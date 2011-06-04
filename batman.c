@@ -25,6 +25,70 @@ struct reachable_peer {
   unsigned char tq_avg;
 };
 
+#ifndef RTF_UP
+/* Keep this in sync with /usr/src/linux/include/linux/route.h */
+#define RTF_UP          0x0001	/* route usable                 */
+#define RTF_GATEWAY     0x0002	/* destination is a gateway     */
+#define RTF_HOST        0x0004	/* host entry (net otherwise)   */
+#define RTF_REINSTATE   0x0008	/* reinstate route after tmout  */
+#define RTF_DYNAMIC     0x0010	/* created dyn. (by redirect)   */
+#define RTF_MODIFIED    0x0020	/* modified dyn. (by redirect)  */
+#define RTF_MTU         0x0040	/* specific MTU for this route  */
+#ifndef RTF_MSS
+#define RTF_MSS         RTF_MTU	/* Compatibility :-(            */
+#endif
+#define RTF_WINDOW      0x0080	/* per route window clamping    */
+#define RTF_IRTT        0x0100	/* Initial round trip time      */
+#define RTF_REJECT      0x0200	/* Reject route                 */
+#endif
+
+int readRoutingTable(struct in_addr peers[],int *peer_count,int peer_max){
+  char devname[64];
+  unsigned long d, g, m;
+  int flgs, ref, use, metric, mtu, win, ir;
+  
+  fprintf(stderr,"Reading routing table\n");
+  
+  FILE *fp = fopen("/proc/net/route","r");
+  if (!fp) return -1;
+  
+  fprintf(stderr,"Skipping line\n");
+  if (fscanf(fp, "%*[^\n]\n") < 0)
+    goto ERROR;
+  
+  while(1){
+    int r;
+    fprintf(stderr,"Reading next route\n");
+    r = fscanf(fp, "%63s%lx%lx%X%d%d%d%lx%d%d%d\n",
+	       devname, &d, &g, &flgs, &ref, &use, &metric, &m,
+	       &mtu, &win, &ir);
+    
+    if (r != 11) {
+      if ((r < 0) && feof(fp)) { /* EOF with no (nonspace) chars read. */
+	fprintf(stderr,"eof\n");
+	break;
+      }
+    ERROR:
+      fclose(fp);
+      return setReason("Unable to parse routing table");
+    }
+    
+    if (!(flgs & RTF_UP)) { /* Skip interfaces that are down. */
+      if (debug>1) fprintf(stderr,"Skipping down interface %s\n",devname);
+      continue;
+    }
+    
+    if (m!=0xFFFFFFFF){
+      if (debug>1) fprintf(stderr,"Skipping non host route to %d\n",(int)d);
+      continue; // only include host routes, TODO pickup any networks and send them broadcasts...
+    }
+    
+    if (*peer_count<peer_max)	peers[(*peer_count)++].s_addr=d;
+  }
+  fclose(fp);
+  return 0;
+}
+
 int readBatmanPeerFile(char *file_path,struct in_addr peers[],int *peer_count,int peer_max)
 {
   /* Shiny new code to read the flat file containing peer list */

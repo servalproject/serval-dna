@@ -335,6 +335,7 @@ int clearResponses(struct response_set *responses);
 int responseFromPeerP(struct response_set *responses,int peerId);
 int responseFromPeer(struct response_set *responses,int peerId);
 int additionalPeer(char *peer);
+int readRoutingTable(struct in_addr peers[],int *peer_count,int peer_max);
 int readBatmanPeerFile(char *file_path,struct in_addr peers[],int *peer_count,int peer_max);
 int getBatmanPeerList(char *socket_path,struct in_addr peers[],int *peer_count,int peer_max);
 int hlrDump(unsigned char *hlr,int hofs);

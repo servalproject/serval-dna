@@ -20,7 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "mphlr.h"
 
 char *batman_socket=NULL;
-char *batman_peerfile="/data/data/org.servalproject/var/batmand.peers";
+char *batman_peerfile=NULL;
 
 int peer_count=0;
 struct in_addr peers[MAX_PEERS];
@@ -73,8 +73,12 @@ int getPeerList()
   /* XXX Add broadcast address of every running interface */
 
   /* XXX Query BATMANd for other peers */
-  if (batman_peerfile) readBatmanPeerFile(batman_peerfile,peers,&peer_count,MAX_PEERS);
-  if (batman_socket) getBatmanPeerList(batman_socket,peers,&peer_count,MAX_PEERS);
+  if (batman_peerfile) 
+    readBatmanPeerFile(batman_peerfile,peers,&peer_count,MAX_PEERS);
+  else if (batman_socket)
+    getBatmanPeerList(batman_socket,peers,&peer_count,MAX_PEERS);
+  else
+    readRoutingTable(peers,&peer_count,MAX_PEERS);
 
   return 0;
 }
