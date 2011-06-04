@@ -52,92 +52,8 @@ static char *sdnalookup_descrip =
 static char *sdnalookup_app = "SDNALookup";
 static char *sdnalookup_synopsis = "Resolve DID into SIP address via Serval DNA";
 
-char *gatewayuri=NULL;
-
-static char *handle_cli_sdnalookup(int fd, int argc, char *argv[])
-{
-  char *did=NULL;
-  char *sid=NULL;
-  unsigned char buffer[65535];
-  int len=0;
-  int instance=0;
- 
-   if (argc != 4) {
-        ast_cli(fd, "You did not provide an argument to serval dna lookup\n\n");
-        return RESULT_FAILURE;
-    }
-
-   did=argv[3];
-
-   batman_peerfile="/data/data/org.servalproject/var/batmand.peers";
-
-   if (requestItem(did,sid,"locations",instance,buffer,sizeof(buffer),&len,NULL))
-     {
-       ast_cli(fd,"Serval DNA Lookup: requestItem() failed (len=%d).\n\n",len);
-       return RESULT_FAILURE;
-     }
-   
-   ast_cli(fd,"%s resolves to %s\n",did,buffer);
-   return RESULT_SUCCESS;
-}
-
-static char *handle_cli_sdnapeers(int fd, int argc, char *argv[])
-{
-  int i;
- 
-   if (argc != 3) {
-        ast_cli(fd, "serval dna peers does not argue about arguments.\n\n");
-        return RESULT_FAILURE;
-    }
-
-   batman_peerfile="/data/data/org.servalproject/var/batmand.peers";
-   getPeerList();
-   ast_cli(fd,"%d peers reachable:\n",peer_count);
-   for(i=0;i<peer_count;i++)
-     {
-       unsigned char *c=(unsigned char *)&peers[i];
-       ast_cli(fd,"  %d.%d.%d.%d\n",c[0],c[1],c[2],c[3]);
-     }
-   return RESULT_SUCCESS;
-}
-
-
-static char *handle_cli_sdnagate(int fd, int argc, char *argv[])
-{
-   unsigned char buffer[65535];
-   int len=0;
-   int instance=0;
-
-   if (gatewayuri) free(gatewayuri);
-   gatewayuri=NULL;
-   if (argc == 3 ) {
-       ast_cli(fd,"Serval DNA Gateway Function OFF.\n\n",len);
-       return RESULT_SUCCESS;
-   } 
-   if (argc != 4) {
-        ast_cli(fd, "You did not provide an argument to serval dna gateway\n\n");
-        return RESULT_FAILURE;
-    }
-
-   gatewayuri=strdup(argv[3]);
-
-   ast_cli(fd,"Serval DNA Gateway Function ON (trunk URI is %s/EXTENSION).\n\n",gatewayuri);
-   return RESULT_SUCCESS;
-}
-
-static char *handle_cli_sdnadebug(int fd, int argc, char *argv[])
-{
-   if (argc != 3) {
-        ast_cli(fd, "You did not provide an argument to serval debug\n\n");
-        return RESULT_FAILURE;
-    }
-
-   debug=atoi(argv[2]);
-
-   ast_cli(fd,"Serval debug level set to %d\n",debug);
-   return RESULT_SUCCESS;
-}
-
+//char *gatewayuri=NULL;
+//int debug=0;
 
 static char sdnalookup_usage[]=
   "Usage: serval dna lookup <did>\n"
@@ -163,16 +79,162 @@ static char sdnagate_usage[]=
   "Examples:\n"
   "       serval dna gateway 4000@10.130.1.101\n";
 
+static char sdnaaddpeer_usage[]=
+  "Usage: serval dna addpeer <peer addr>\n"
+  "       Add a static peer to Serval DNA.\n"
+  "Examples:\n"
+  "       serval dna addpeer 10.20.30.40\n";
+
+static char *handle_cli_sdnalookup(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
+{
+  char *did=NULL;
+  char *sid=NULL;
+  unsigned char buffer[65535];
+  int len=0;
+  int instance=0;
+
+   switch (cmd) {
+   case CLI_INIT:
+      e->command = "serval dna lookup";
+      e->usage = sdnalookup_usage;
+      return NULL;
+   case CLI_GENERATE:
+      return NULL;
+   }
+
+   if (a->argc != 4) {
+        ast_cli(a->fd, "You did not provide an argument to serval dna lookup\n\n");
+        return RESULT_FAILURE;
+    }
+
+   did=a->argv[3];
+
+//   batman_peerfile="/data/data/org.servalproject/var/batmand.peers";
+
+   fprintf(stderr, "batman_peerfile=%s\n", batman_peerfile);
+   if (requestItem(did,sid,"locations",instance,buffer,sizeof(buffer),&len,NULL))
+     {
+       ast_cli(a->fd,"Serval DNA Lookup: requestItem() failed (len=%d).\n\n",len);
+       return RESULT_FAILURE;
+     }
+   
+   ast_cli(a->fd,"%s resolves to %s\n",did,buffer);
+   return RESULT_SUCCESS;
+}
+
+static char *handle_cli_sdnapeers(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
+{
+  int i;
+
+   switch (cmd) {
+   case CLI_INIT:
+      e->command = "serval dna peers";
+      e->usage = sdnapeers_usage;
+      return NULL;
+   case CLI_GENERATE:
+      return NULL;
+   }
+ 
+   if (a->argc != 3) {
+        ast_cli(a->fd, "serval dna peers does not argue about arguments.\n\n");
+        return RESULT_FAILURE;
+    }
+
+//   batman_peerfile="/data/data/org.servalproject/var/batmand.peers";
+   getPeerList();
+   ast_cli(a->fd,"%d peers reachable:\n",peer_count);
+   for(i=0;i<peer_count;i++)
+     {
+       unsigned char *c=(unsigned char *)&peers[i];
+       ast_cli(a->fd,"  %d.%d.%d.%d\n",c[0],c[1],c[2],c[3]);
+     }
+   return RESULT_SUCCESS;
+}
+
+
+static char *handle_cli_sdnagate(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
+{
+   int len=0;
+
+   switch (cmd) {
+   case CLI_INIT:
+      e->command = "serval dna gateway";
+      e->usage = sdnagate_usage;
+      return NULL;
+   case CLI_GENERATE:
+      return NULL;
+   }
+
+   if (gatewayuri) free(gatewayuri);
+   gatewayuri=NULL;
+   if (a->argc == 3 ) {
+       ast_cli(a->fd,"Serval DNA Gateway Function OFF.\n\n",len);
+       return RESULT_SUCCESS;
+   } 
+   if (a->argc != 4) {
+        ast_cli(a->fd, "You did not provide an argument to serval dna gateway\n\n");
+        return RESULT_FAILURE;
+    }
+
+   gatewayuri=strdup(a->argv[3]);
+
+   ast_cli(a->fd,"Serval DNA Gateway Function ON (trunk URI is %s/EXTENSION).\n\n",gatewayuri);
+   return RESULT_SUCCESS;
+}
+
+static char *handle_cli_sdnadebug(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
+{
+   switch (cmd) {
+   case CLI_INIT:
+      e->command = "serval debug";
+      e->usage = sdnadebug_usage;
+      return NULL;
+   case CLI_GENERATE:
+      return NULL;
+   }
+
+   if (a->argc != 3) {
+        ast_cli(a->fd, "You did not provide an argument to serval debug\n\n");
+        return RESULT_FAILURE;
+    }
+
+   debug=atoi(a->argv[2]);
+
+   ast_cli(a->fd,"Serval debug level set to %d\n",debug);
+   return RESULT_SUCCESS;
+}
+
+static char *handle_cli_sdnaaddpeer(struct ast_cli_entry *e, int cmd, struct ast_cli_args *a)
+{
+   switch (cmd) {
+   case CLI_INIT:
+      e->command = "serval dna addpeer";
+      e->usage = sdnaaddpeer_usage;
+      return NULL;
+   case CLI_GENERATE:
+      return NULL;
+   }
+
+   if (a->argc != 4) {
+        ast_cli(a->fd, "You did not provide an address\n\n");
+        return RESULT_FAILURE;
+   }
+
+   const char *peer = a->argv[3];
+
+   if (additionalPeer(peer))
+       return RESULT_FAILURE;
+
+   ast_cli(a->fd,"Peer %s added successfully\n", peer);
+   return RESULT_SUCCESS;
+}
 
 static struct ast_cli_entry cli_sdnalookup[] = {
-  { { "serval","dna","lookup" }, handle_cli_sdnalookup,
-    "Resolve a telephone number via Serval DNA", sdnalookup_usage },
-  { { "serval","dna","peers" }, handle_cli_sdnapeers,
-    "Ask DNA to list peers reachable on the mesh", sdnapeers_usage },
-  { { "serval","debug" }, handle_cli_sdnadebug,
-    "Set Serval debug level", sdnadebug_usage },
-  { { "serval","dna","gateway" }, handle_cli_sdnagate,
-    "Enable DNA Gateway ", sdnagate_usage },
+  AST_CLI_DEFINE( handle_cli_sdnalookup, "Resolve a telephone number via Serval DNA" ),
+  AST_CLI_DEFINE( handle_cli_sdnapeers, "Ask DNA to list peers reachable on the mesh" ),
+  AST_CLI_DEFINE( handle_cli_sdnadebug, "Set Serval debug level" ),
+  AST_CLI_DEFINE( handle_cli_sdnagate, "Enable DNA Gateway" ),
+  AST_CLI_DEFINE( handle_cli_sdnaaddpeer, "Add a static peer to DNA" )
 };
 
 static int sdnalookup_exec(struct ast_channel *chan, void *data)
@@ -185,7 +247,7 @@ static int sdnalookup_exec(struct ast_channel *chan, void *data)
 
   char status[256] = "INVALIDARGS";
 
-  batman_peerfile="/data/data/org.servalproject/var/batmand.peers";
+//  batman_peerfile="/data/data/org.servalproject/var/batmand.peers";
 
   /* Clear Serval DNA set variables */
   pbx_builtin_setvar_helper(chan, "SDNADID", "");
@@ -220,7 +282,7 @@ static int sdnalookup_exec(struct ast_channel *chan, void *data)
     if (debug) fprintf(stderr,"SNASID=%s\n",sid);
   }
   if (len) {
-    pbx_builtin_setvar_helper(chan,"SDNALOCATION",buffer);
+    pbx_builtin_setvar_helper(chan,"SDNALOCATION",(char*)buffer);
     if (debug) fprintf(stderr,"SNALOCATION=%s\n",buffer);
   }
   return 0;
@@ -229,21 +291,25 @@ static int sdnalookup_exec(struct ast_channel *chan, void *data)
 static int unload_module(void)
 {
   int res;
-  
+
   ast_cli_unregister_multiple(cli_sdnalookup, ARRAY_LEN(cli_sdnalookup));
   res = ast_unregister_application(sdnalookup_app);
-  
+
   return res;
 }
 
 static int load_module(void)
 {
+  batman_peerfile=NULL;
   ast_cli_register_multiple(cli_sdnalookup, ARRAY_LEN(cli_sdnalookup));
-  return ast_register_application(sdnalookup_app, sdnalookup_exec, sdnalookup_synopsis, sdnalookup_descrip);
+  ast_register_application(sdnalookup_app, sdnalookup_exec, sdnalookup_synopsis, sdnalookup_descrip);
+#ifdef ASTERISK_1_4
+  return AST_MODULE_LOAD_SUCCESS;
+#else
+  return 0;
+#endif
 }
 
-// PGS XXX 20110317 - Why on earth do we need to define this?
-#define AST_MODULE "ael"
+#define AST_MODULE "app_serval"
 
 AST_MODULE_INFO_STANDARD(ASTERISK_GPL_KEY, "Serval Mesh Telephony Adapter and Serval DNA Resolver");
-
