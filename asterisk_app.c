@@ -61,15 +61,13 @@ static char *handle_cli_sdnalookup(int fd, int argc, char *argv[])
   unsigned char buffer[65535];
   int len=0;
   int instance=0;
- 
+
    if (argc != 4) {
         ast_cli(fd, "You did not provide an argument to serval dna lookup\n\n");
         return RESULT_FAILURE;
     }
 
    did=argv[3];
-
-   batman_peerfile="/data/data/org.servalproject/var/batmand.peers";
 
    if (requestItem(did,sid,"locations",instance,buffer,sizeof(buffer),&len,NULL))
      {
@@ -84,13 +82,12 @@ static char *handle_cli_sdnalookup(int fd, int argc, char *argv[])
 static char *handle_cli_sdnapeers(int fd, int argc, char *argv[])
 {
   int i;
- 
+
    if (argc != 3) {
         ast_cli(fd, "serval dna peers does not argue about arguments.\n\n");
         return RESULT_FAILURE;
     }
 
-   batman_peerfile="/data/data/org.servalproject/var/batmand.peers";
    getPeerList();
    ast_cli(fd,"%d peers reachable:\n",peer_count);
    for(i=0;i<peer_count;i++)
@@ -185,8 +182,6 @@ static int sdnalookup_exec(struct ast_channel *chan, void *data)
 
   char status[256] = "INVALIDARGS";
 
-  batman_peerfile="/data/data/org.servalproject/var/batmand.peers";
-
   /* Clear Serval DNA set variables */
   pbx_builtin_setvar_helper(chan, "SDNADID", "");
   pbx_builtin_setvar_helper(chan, "SDNASID", "");
@@ -220,7 +215,7 @@ static int sdnalookup_exec(struct ast_channel *chan, void *data)
     if (debug) fprintf(stderr,"SNASID=%s\n",sid);
   }
   if (len) {
-    pbx_builtin_setvar_helper(chan,"SDNALOCATION",buffer);
+    pbx_builtin_setvar_helper(chan,"SDNALOCATION",(char*)buffer);
     if (debug) fprintf(stderr,"SNALOCATION=%s\n",buffer);
   }
   return 0;
@@ -229,21 +224,20 @@ static int sdnalookup_exec(struct ast_channel *chan, void *data)
 static int unload_module(void)
 {
   int res;
-  
+
   ast_cli_unregister_multiple(cli_sdnalookup, ARRAY_LEN(cli_sdnalookup));
   res = ast_unregister_application(sdnalookup_app);
-  
+
   return res;
 }
 
 static int load_module(void)
 {
+  batman_peerfile=NULL;
   ast_cli_register_multiple(cli_sdnalookup, ARRAY_LEN(cli_sdnalookup));
   return ast_register_application(sdnalookup_app, sdnalookup_exec, sdnalookup_synopsis, sdnalookup_descrip);
 }
 
-// PGS XXX 20110317 - Why on earth do we need to define this?
-#define AST_MODULE "ael"
+#define AST_MODULE "app_serval"
 
 AST_MODULE_INFO_STANDARD(ASTERISK_GPL_KEY, "Serval Mesh Telephony Adapter and Serval DNA Resolver");
-

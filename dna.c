@@ -259,6 +259,7 @@ int usage(char *complaint)
   exit(-1);
 }
 
+#ifndef DNA_NO_MAIN
 int main(int argc,char **argv)
 {
   int c;
@@ -406,3 +407,5 @@ int main(int argc,char **argv)
   /* Client mode: */
   return 0;
 }
+#endif
+
