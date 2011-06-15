@@ -41,7 +41,7 @@ ASTERISK_FILE_VERSION(__FILE__, "$Revision: Serval $")
 #include "asterisk/cdr.h"
 #include "asterisk/options.h"
 
-#include "mphlr.h"
+#include "serval.c"
 
 #undef inet_ntoa
 #define inet_ntoa ast_inet_ntoa
@@ -51,8 +51,6 @@ static char *sdnalookup_descrip =
 
 static char *sdnalookup_app = "SDNALookup";
 static char *sdnalookup_synopsis = "Resolve DID into SIP address via Serval DNA";
-
-char *gatewayuri=NULL;
 
 static char *handle_cli_sdnalookup(int fd, int argc, char *argv[])
 {

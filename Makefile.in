@@ -1,16 +1,24 @@
+SRCS=	dna.c server.c client.c peers.c ciphers.c responses.c packetformats.c dataformats.c \
+	hlrdata.c srandomdev.c simulate.c batman.c overlay.c export.c gateway.c
+
 OBJS=	dna.o server.o client.o peers.o ciphers.o responses.o packetformats.o dataformats.o \
 	hlrdata.o srandomdev.o simulate.o batman.o overlay.o export.o gateway.o
 HDRS=	Makefile mphlr.h
 LDFLAGS=	@LDFLAGS@
 DEFS=	@DEFS@
 
-all:	dna
+all:	serval.c dna
 
 %.o:	%.c $(HDRS)
 	$(CC) $(DEFS) -Os -g -Wall -c $<
 
 dna:	$(OBJS)
 	$(CC) -Os -g -Wall -o dna $(OBJS) $(LDFLAGS)
+
+serval.c:	$(SRCS) $(HDRS)
+	cat mphlr.h > serval.c
+	echo '#include <sys/mman.h>' >>serval.c
+	cat $(SRCS) | grep -v "#include" | sed -e 's/inet_ntoa/ast_inet_ntoa/g' >>serval.c
 
 testserver: dna
 	clear
