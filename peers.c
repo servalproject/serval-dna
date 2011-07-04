@@ -19,12 +19,19 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "mphlr.h"
 
+#ifndef WIN32
+#include <net/if.h>
+#include <netinet/in.h>
+#include <linux/if.h>
+#include <linux/netlink.h>
+#include <linux/rtnetlink.h>
+#endif
+
 char *batman_socket=NULL;
 char *batman_peerfile=NULL;
 
 int peer_count=0;
 struct in_addr peers[MAX_PEERS];
-unsigned char peer_replied[MAX_PEERS];
 
 struct in_addr nominated_peers[256];
 int nom_peer_count=0;
@@ -42,6 +49,63 @@ int additionalPeer(char *peer)
   return 0;
 }
 
+int getBroadcastAddresses(struct in_addr peers[],int *peer_count,int peer_max){
+#ifndef WIN32
+  // android ndk doesn't have ifaddrs.h, so we have to use the netlink interface
+  
+  // Ask for the address information.
+  struct {
+    struct nlmsghdr netlinkHeader;
+    struct ifaddrmsg msg;
+  }addrRequest;
+  char buff[16384];
+  int netsock;
+  size_t bytesRead;
+  struct nlmsghdr *hdr;
+  
+  netsock = socket(AF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE);
+  
+  memset(&addrRequest, 0, sizeof(addrRequest));
+  
+  addrRequest.netlinkHeader.nlmsg_flags = NLM_F_REQUEST | NLM_F_ROOT;
+  addrRequest.netlinkHeader.nlmsg_type = RTM_GETADDR;
+  addrRequest.netlinkHeader.nlmsg_len = NLMSG_ALIGN(NLMSG_LENGTH(sizeof(addrRequest)));
+  addrRequest.msg.ifa_family = AF_INET;
+  addrRequest.msg.ifa_index = 0; // All interfaces.
+  
+  TEMP_FAILURE_RETRY(send(netsock, &addrRequest, addrRequest.netlinkHeader.nlmsg_len, 0));
+  while((bytesRead = TEMP_FAILURE_RETRY(recv(netsock, buff, sizeof(buff), 0)))>0){
+    for (hdr = (struct nlmsghdr*)buff; 
+	 NLMSG_OK(hdr, (size_t)bytesRead); 
+	 hdr = NLMSG_NEXT(hdr, bytesRead)) {
+      
+      switch (hdr->nlmsg_type) {
+	case NLMSG_DONE:
+	  return 0;
+	case NLMSG_ERROR:
+	  return -1;
+	case RTM_NEWADDR:
+	{
+	  struct ifaddrmsg* address = (struct ifaddrmsg*)(NLMSG_DATA(hdr));
+	  struct rtattr* rta = IFA_RTA(address);
+	  size_t ifaPayloadLength = IFA_PAYLOAD(hdr);
+	  
+	  while (RTA_OK(rta, ifaPayloadLength)) {
+	    if (rta->rta_type == IFA_BROADCAST && address->ifa_family == AF_INET) {
+	      struct in_addr *addr=(struct in_addr *)RTA_DATA(rta);
+	      peers[(*peer_count)++].s_addr=addr->s_addr;
+	    }
+	    rta = RTA_NEXT(rta, ifaPayloadLength);
+	  }
+	}
+	  break;
+      }
+    }
+  }
+#endif
+  return 0;
+}
+
 int getPeerList()
 {
   /* Generate the list of known peers.
@@ -50,14 +114,6 @@ int getPeerList()
      Once BATMAN Advanced is available, we will be able to do that.
      In the mean time, we need to query BATMANd to find the known list of peers.  This is not
      quite as easy as we might wish.
-
-     Also, while using layer 3 routing we should keep note of which nodes have repied so that
-     we can not waste bandwidth by resending to them.  For this purpose we maintain a set of
-     flags, peer_replied[], which is set to zero by us, and then set non-zero if that peer 
-     solicits a reply, letting us know that we can suppress resends to that address.
-
-     Broadcasting to interfaces is a special problem for managing replies, as we should never mark those
-     peers as replied.  We will do this by setting their peer_replied[] flag to 2 instead of zero.
   */
   int i;
 
@@ -67,10 +123,10 @@ int getPeerList()
   for(i=0;i<nom_peer_count;i++) peers[peer_count++]=nominated_peers[i];
 
   /* Add ourselves as a peer */
-  peers[peer_count].s_addr=inet_addr("127.0.0.1");
-  peer_replied[peer_count++]=0; 
+  peers[peer_count++].s_addr=inet_addr("127.0.0.1");
 
-  /* XXX Add broadcast address of every running interface */
+  /* Add broadcast address of every running interface */
+  getBroadcastAddresses(peers,&peer_count,MAX_PEERS);
 
   /* XXX Query BATMANd for other peers */
   if (batman_peerfile) 
@@ -89,8 +145,7 @@ int sendToPeers(unsigned char *packet,int packet_len,int method,int peerId,struc
      to get the message out.  BATMAN Advanced might solve this, though.
 
      So, in the mean time, we need to explicitly send the request to each peer.
-     If this is a re-send, we don't want to bother the peers who have already responded,
-     so check the peer_replied[] flags.
+     We don't want to bother the peers who have already responded.
   */
   int i;
   int maxPeer=peer_count-1;

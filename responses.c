@@ -53,7 +53,7 @@ int responseFromPeer(struct response_set *responses,int peerId)
   int byte;
   int bit;
 
-  if (peerId<0||peerId>peer_count) return -1;
+  if (peerId<0||peerId>=peer_count) return -1;
   if (!responses) return -1;
   if (!responses->reply_bitmask)
     {
@@ -78,7 +78,7 @@ int responseFromPeerP(struct response_set *responses,int peerId)
  if (!responses) return 0;
  if (!responses->reply_bitmask) return 0;
 
- if (peerId<0||peerId>peer_count) return 0;
+ if (peerId<0||peerId>=peer_count) return 0;
 
   byte=peerId>>3;
   bit=peerId&7;

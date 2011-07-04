@@ -86,6 +86,9 @@ int server(char *backing_file,int size,int foregroundMode)
     exit(-3);
   }
 
+  int TRUE=1;
+  setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &TRUE, sizeof(TRUE));
+  
   bind_addr.sin_family = AF_INET;
   bind_addr.sin_port = htons( PORT_DNA );
   bind_addr.sin_addr.s_addr = htonl( INADDR_ANY );
