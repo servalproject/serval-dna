@@ -29,6 +29,24 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "win32/win32.h"
 #else
 #include <unistd.h>
+#ifdef HAVE_NET_IF_H
+#include <net/if.h>
+#endif
+#ifdef HAVE_NETINET_IN_H
+#include <netinet/in.h>
+#endif
+#ifdef HAVE_LINUX_IF_H
+#include <linux/if.h>
+#endif
+#ifdef HAVE_LINUX_NETLINK_H
+#include <linux/netlink.h>
+#endif
+#ifdef HAVE_LINUX_RTNETLINK_H
+#include <linux/rtnetlink.h>
+#endif
+#ifdef HAVE_IFADDRS_H
+#include <ifaddrs.h>
+#endif
 #endif
 
 #if !defined(FORASTERISK) && !defined(s_addr)

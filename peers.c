@@ -19,25 +19,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "mphlr.h"
 
-#ifdef HAVE_NET_IF_H
-#include <net/if.h>
-#endif
-#ifdef HAVE_NETINET_IN_H
-#include <netinet/in.h>
-#endif
-#ifdef HAVE_LINUX_IF_H
-#include <linux/if.h>
-#endif
-#ifdef HAVE_LINUX_NETLINK_H
-#include <linux/netlink.h>
-#endif
-#ifdef HAVE_LINUX_RTNETLINK_H
-#include <linux/rtnetlink.h>
-#endif
-#ifdef HAVE_IFADDRS_H
-#include <ifaddrs.h>
-#endif
-
 char *batman_socket=NULL;
 char *batman_peerfile=NULL;
 
@@ -79,6 +60,8 @@ int getBroadcastAddresses(struct in_addr peers[],int *peer_count,int peer_max){
   size_t bytesRead;
   struct nlmsghdr *hdr;
   
+  if (debug>1) fprintf(stderr,"Reading broadcast addresses\n");
+  
   netsock = socket(AF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE);
   
   memset(&addrRequest, 0, sizeof(addrRequest));
@@ -89,8 +72,12 @@ int getBroadcastAddresses(struct in_addr peers[],int *peer_count,int peer_max){
   addrRequest.msg.ifa_family = AF_INET;
   addrRequest.msg.ifa_index = 0; // All interfaces.
   
-  TEMP_FAILURE_RETRY(send(netsock, &addrRequest, addrRequest.netlinkHeader.nlmsg_len, 0));
-  while((bytesRead = TEMP_FAILURE_RETRY(recv(netsock, buff, sizeof(buff), 0)))>0){
+  while (send(netsock, &addrRequest, addrRequest.netlinkHeader.nlmsg_len, 0)==EINTR);
+  
+  while(1){
+    while((bytesRead = recv(netsock, buff, sizeof(buff), 0))==EINTR);
+    if (bytesRead<=0) break;
+    
     for (hdr = (struct nlmsghdr*)buff; 
 	 NLMSG_OK(hdr, (size_t)bytesRead); 
 	 hdr = NLMSG_NEXT(hdr, bytesRead)) {
