@@ -71,9 +71,9 @@ struct in_addr {
 //FIXME #include <getopt.h>
 #include <ctype.h>
 
-/* UDP Port numbers for various Serval services */
+/* UDP Port numbers for various Serval services.
+ The overlay mesh works over DNA */
 #define PORT_DNA 4110
-#define PORT_OVERLAY 4119
 
 /* OpenWRT libc doesn't have bcopy, but has memmove */
 #define bcopy(A,B,C) memmove(B,A,C)
@@ -351,6 +351,7 @@ int asteriskObtainGateway(char *requestor_sid,char *did,char *uri_out);
 #define CRYPT_SIGNED 2
 #define CRYPT_PUBLIC 4
 
+extern int overlayMode;
 #define OVERLAY_INTERFACE_UNKNOWN 0
 #define OVERLAY_INTERFACE_ETHERNET 1
 #define OVERLAY_INTERFACE_WIFI 2
@@ -372,6 +373,17 @@ typedef struct overlay_interface {
      These figures will be refined over time, and we will allow people to set them per-interface.
   */
   int tick_ms;
+  /* The time of the last tick on this interface in milli seconds */
+  long long last_tick_ms;
+
+  /* Broadcast address and netmask, if known */
+  struct sockaddr_in broadcast_address;
+  struct sockaddr_in netmask;
+
+  /* Not necessarily the real MTU, but the largest frame size we are willing to TX on this interface.
+     For radio links the actual maximum and the maximum that is likely to be delivered reliably are
+     potentially two quite different values. */
+  int mtu;
 } overlay_interface;
 
 /* Maximum interface count is rather arbitrary.
@@ -473,6 +485,9 @@ typedef struct overlay_payload {
   /* make the payload pointer be at the end, so that we can conveniently have the data follow this structure if necessary.
      (this lets us change the char * to a char payload[1] down the track to simplify this) */
   unsigned char *payload;
+
+  /* time this frame was enqueued */
+  long long enqueued_at;
 } overlay_payload;
 
 typedef struct overlay_txqueue {
@@ -514,6 +529,17 @@ int ob_append_bytes(overlay_buffer *b,unsigned char *bytes,int count);
 int ob_append_short(overlay_buffer *b,unsigned short v);
 int ob_append_int(overlay_buffer *b,unsigned int v);
 
+int op_free(overlay_payload *p);
+
 long long parse_quantity(char *q);
 
 int overlay_init_interface(in_addr_t src_addr,int speed_in_bits,int port,int type);
+int overlay_interface_discover();
+int overlay_interface_discover();
+long long overlay_time_until_next_tick();
+int overlay_rx_messages();
+int overlay_check_ticks();
+int overlay_add_selfannouncement();
+int overlay_payload_package_fmt1(overlay_payload *p,overlay_buffer *b);
+
+extern int overlay_interface_count;

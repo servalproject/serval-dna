@@ -1,10 +1,10 @@
 SRCS=	dna.c server.c client.c peers.c ciphers.c responses.c packetformats.c dataformats.c \
 	hlrdata.c srandomdev.c simulate.c batman.c export.c gateway.c \
-	overlay.c overlay_buffer.c overlay_interface.c
+	overlay.c overlay_buffer.c overlay_interface.c overlay_payload.c overlay_route.c
 
 OBJS=	dna.o server.o client.o peers.o ciphers.o responses.o packetformats.o dataformats.o \
 	hlrdata.o srandomdev.o simulate.o batman.o export.o gateway.o \
-	overlay.o overlay_buffer.o overlay_interface.o
+	overlay.o overlay_buffer.o overlay_interface.o overlay_payload.o overlay_route.o
 HDRS=	Makefile mphlr.h
 LDFLAGS=	-L/Developer/SDKs/MacOSX10.6.sdk/usr/lib
 CFLAGS=	-I/Developer/SDKs/MacOSX10.6.sdk/usr/include

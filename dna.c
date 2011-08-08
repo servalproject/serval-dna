@@ -291,6 +291,7 @@ int main(int argc,char **argv)
 	case 'N': /* Ask for overlay network to setup one or more interfaces */
 	  if (overlay_interface_args(optarg))
 	    return WHY("Invalid interface specification(s) passed to -N");
+	  overlayMode=1;
 	  break;
 	case 'G': /* Offer gateway services */
           gatewayuri=strdup(optarg);

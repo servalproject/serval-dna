@@ -28,13 +28,85 @@ struct sockaddr recvaddr;
 struct in_addr client_addr;
 int client_port;
 
+int getBackingStore(char *s,int size);
+int createServerSocket();
+int simpleServerMode();
+
+
 int server(char *backing_file,int size,int foregroundMode)
 {
   
-  struct sockaddr_in bind_addr;
-  
-  /* Get backing store */
-  if (!backing_file)
+  /* Get backing store for HLR */
+  getBackingStore(backing_file,size);
+
+  if (overlayMode)
+    {
+      /* Now find and initialise all the suitable network interfaces, i.e., 
+	 those running IPv4.
+	 Packet radio dongles will get discovered later as the interfaces get probed.
+
+	 This will setup the sockets for the server to communicate on each interface.
+	 
+	 XXX - Problems may persist where the same address is used on multiple interfaces,
+	 but otherwise hopefully it will allow us to bridge multiple networks.
+      */
+      overlay_interface_discover();
+    }
+  else
+    {
+      /* Create a simple socket for listening on if we are not in overlay mesh mode. */
+      createServerSocket();     
+    }
+
+  /* Detach from the console */
+  if (!foregroundMode) daemon(0,0);
+
+  if (!overlayMode) simpleServerMode();
+  else {
+    /* In overlay mode we need to listen to all of our sockets, and also to
+       send periodic traffic. This means we need to */
+    fprintf(stderr,"Running in overlay mode.\n");
+
+    /* Get the set of socket file descriptors we need to monitor */
+    int i;
+    fd_set read_fds;
+    int maxfd=-1;
+    FD_ZERO(&read_fds);      
+    for(i=0;i<overlay_interface_count;i++)
+      {
+	if (overlay_interfaces[i].socket>maxfd) maxfd=overlay_interfaces[i].socket;
+	FD_SET(overlay_interfaces[i].socket,&read_fds);
+      }
+    
+    while(1) {
+      /* Work out how long we can wait before we need to tick */
+      long long ms=overlay_time_until_next_tick();
+      struct timeval waittime;
+      waittime.tv_usec=(ms%1000)*1000;
+      waittime.tv_sec=ms/1000;
+
+      fprintf(stderr,"%d,%d\n",waittime.tv_sec,waittime.tv_usec);
+      int r=select(maxfd+1,&read_fds,NULL,NULL,&waittime);
+      if (r<0) {
+	/* select had a problem */
+	perror("select()");
+	return WHY("select() complained.");
+      } else if (r>0) {
+	/* We have data, so try to receive it */
+	overlay_rx_messages();
+      } else {
+	/* No data before tick occurred, so do nothing. */
+      }
+      /* Check if we need to trigger any ticks on any interfaces */
+      overlay_check_ticks();
+    }
+  }
+  return 0;
+}
+
+int getBackingStore(char *backing_file,int size)
+{
+ if (!backing_file)
     {
       /* transitory storage of HLR data, so just malloc() the memory */
       hlr=calloc(size,1);
@@ -77,60 +149,7 @@ int server(char *backing_file,int size,int foregroundMode)
 			 size,backing_file);
     }
   hlr_size=size;
-
-
-  sock=socket(PF_INET,SOCK_DGRAM,0);
-  if (sock<0) {
-    fprintf(stderr,"Could not create UDP socket.\n");
-    perror("socket");
-    exit(-3);
-  }
-
-  int TRUE=1;
-  setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &TRUE, sizeof(TRUE));
-  
-  bind_addr.sin_family = AF_INET;
-  bind_addr.sin_port = htons( PORT_DNA );
-  bind_addr.sin_addr.s_addr = htonl( INADDR_ANY );
-  if(bind(sock,(struct sockaddr *)&bind_addr,sizeof(bind_addr))) {
-    fprintf(stderr,"MP HLR server could not bind to UDP port %d\n", PORT_DNA);
-    perror("bind");
-    exit(-3);
-  }
-
-  /* Detach from the console */
-  if (!foregroundMode) daemon(0,0);
-
-  while(1) {
-    unsigned char buffer[16384];
-    socklen_t recvaddrlen=sizeof(recvaddr);
-    struct pollfd fds;
-    int len;
-
-    bzero((void *)&recvaddr,sizeof(recvaddr));
-    fds.fd=sock; fds.events=POLLIN;
-    
-    /* Wait patiently for packets to arrive */
-    while (poll(&fds,1,1000)<1)	sleep(0);
-
-    len=recvfrom(sock,buffer,sizeof(buffer),0,&recvaddr,&recvaddrlen);
-
-    client_port=((struct sockaddr_in*)&recvaddr)->sin_port;
-    client_addr=((struct sockaddr_in*)&recvaddr)->sin_addr;
-
-    if (debug) fprintf(stderr,"Received packet from %s (len=%d).\n",inet_ntoa(client_addr),len);
-    if (debug>1) dump("recvaddr",(unsigned char *)&recvaddr,recvaddrlen);
-    if (debug>3) dump("packet",(unsigned char *)buffer,len);
-    if (dropPacketP(len)) {
-      if (debug) fprintf(stderr,"Simulation mode: Dropped packet due to simulated link parameters.\n");
-      continue;
-    }
-    if (!packetOk(buffer,len,NULL)) process_packet(buffer,len,&recvaddr,recvaddrlen);
-    else {
-      if (debug) setReason("Ignoring invalid packet");
-    }
-    if (debug>1) fprintf(stderr,"Finished processing packet, waiting for next one.\n");
-  }  
+  return 0;
 }
 
 int processRequest(unsigned char *packet,int len,
@@ -491,5 +510,65 @@ int respondSimple(char *sid,int action,unsigned char *action_text,int action_len
 
   if (packetSendRequest(REQ_REPLY,packet,*packet_len,NONBATCH,transaction_id,NULL)) return -1;
   
+  return 0;
+}
+
+int createServerSocket() 
+{
+  struct sockaddr_in bind_addr;
+  
+  sock=socket(PF_INET,SOCK_DGRAM,0);
+  if (sock<0) {
+    fprintf(stderr,"Could not create UDP socket.\n");
+    perror("socket");
+    exit(-3);
+  }
+  
+  int TRUE=1;
+  setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &TRUE, sizeof(TRUE));
+  
+  bind_addr.sin_family = AF_INET;
+  bind_addr.sin_port = htons( PORT_DNA );
+  bind_addr.sin_addr.s_addr = htonl( INADDR_ANY );
+  if(bind(sock,(struct sockaddr *)&bind_addr,sizeof(bind_addr))) {
+    fprintf(stderr,"MP HLR server could not bind to UDP port %d\n", PORT_DNA);
+    perror("bind");
+    exit(-3);
+  }
+  return 0;
+}
+
+int simpleServerMode()
+{
+  while(1) {
+    unsigned char buffer[16384];
+    socklen_t recvaddrlen=sizeof(recvaddr);
+    struct pollfd fds;
+    int len;
+
+    bzero((void *)&recvaddr,sizeof(recvaddr));
+    fds.fd=sock; fds.events=POLLIN;
+    
+    /* Wait patiently for packets to arrive */
+    while (poll(&fds,1,1000)<1)	sleep(0);
+
+    len=recvfrom(sock,buffer,sizeof(buffer),0,&recvaddr,&recvaddrlen);
+
+    client_port=((struct sockaddr_in*)&recvaddr)->sin_port;
+    client_addr=((struct sockaddr_in*)&recvaddr)->sin_addr;
+
+    if (debug) fprintf(stderr,"Received packet from %s (len=%d).\n",inet_ntoa(client_addr),len);
+    if (debug>1) dump("recvaddr",(unsigned char *)&recvaddr,recvaddrlen);
+    if (debug>3) dump("packet",(unsigned char *)buffer,len);
+    if (dropPacketP(len)) {
+      if (debug) fprintf(stderr,"Simulation mode: Dropped packet due to simulated link parameters.\n");
+      continue;
+    }
+    if (!packetOk(buffer,len,NULL)) process_packet(buffer,len,&recvaddr,recvaddrlen);
+    else {
+      if (debug) setReason("Ignoring invalid packet");
+    }
+    if (debug>1) fprintf(stderr,"Finished processing packet, waiting for next one.\n");
+  }
   return 0;
 }
