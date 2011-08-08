@@ -118,7 +118,7 @@ int readBatmanPeerFile(char *file_path,struct in_addr peers[],int *peer_count,in
   timestamp=ntohl(timestamp);  
 
   if (timestamp<(time(0)-3)) {
-    if (debug>1) fprintf(stderr,"Ignoring stale BATMAN peer list (%d seconds old)\n",time(0)-timestamp);
+    if (debug>1) fprintf(stderr,"Ignoring stale BATMAN peer list (%d seconds old)\n",(int)(time(0)-timestamp));
     fclose(f);
     return -1;
   }

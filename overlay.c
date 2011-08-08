@@ -6,246 +6,61 @@
   Each overlay packet can contain one or more encapsulated packets each addressed using Serval DNA SIDs, with source, 
   destination and next-hop addresses.
 
-  The use of long (relative to IPv4) ECC160 addresses means that it is a really good idea to have neighbouring nodes
-  exchange lists of peer aliases so that addresses can be summarised, possibly using less space than IPv4 would have.
+  The use of an overlay also lets us be a bit clever about using irregular transports, such as an ISM915 modem attached via ethernet
+  (which we are planning to build in coming months), by paring off the IP and UDP headers that would otherwise dominate.  Even on
+  regular WiFi and ethernet we can aggregate packets in a way similar to IAX, but not just for voice frames.
+
+  The use of long (relative to IPv4 or even IPv6) 256 bit Curve25519 addresses means that it is a really good idea to
+  have neighbouring nodes exchange lists of peer aliases so that addresses can be summarised, possibly using less space than IPv4
+  would have.
+  
+  One approach to handle address shortening is to have the periodic TTL=255 BATMAN-style hello packets include an epoch number.  
+  This epoch number can be used by immediate neighbours of the originator to reference the neighbours listed in that packet by
+  their ordinal position in the packet instead of by their full address.  This gets us address shortening to 1 byte in most cases 
+  in return for no new packets, but the periodic hello packets will now be larger.  We might deal with this issue by having these
+  hello packets reference the previous epoch for common neighbours.  Unresolved neighbour addresses could be resolved by a simple
+  DNA request, which should only need to occur ocassionally, and other link-local neighbours could sniff and cache the responses
+  to avoid duplicated traffic.  Indeed, during quiet times nodes could preemptively advertise address resolutions if they wished,
+  or similarly advertise the full address of a few (possibly randomly selected) neighbours in each epoch.
 
   Byzantine Robustness is a goal, so we have to think about all sorts of malicious failure modes.
 
   One approach to help byzantine robustness is to have multiple signature shells for each hop for mesh topology packets.
   Thus forging a report of closeness requires forging a signature.  As such frames are forwarded, the outermost signature
-  shell is removed.
+  shell is removed. This is really only needed for more paranoid uses.
 
+  We want to have different traffic classes for voice/video calls versus regular traffic, e.g., MeshMS frames.  Thus we need to have
+  separate traffic queues for these items.  Aside from allowing us to prioritise isochronous data, it also allows us to expire old
+  isochronous frames that are in-queue once there is no longer any point delivering them (e.g after holding them more than 200ms).
+  We can also be clever about round-robin fair-sharing or even prioritising among isochronous streams.  Since we also know about the
+  DNA isochronous protocols and the forward error correction and other redundancy measures we also get smart about dropping, say, 1 in 3
+  frames from every call if we know that this can be safely done.  That is, when traffic is low, we maximise redundancy, and when we
+  start to hit the limit of traffic, we start to throw away some of the redundancy.  This of course relies on us knowing when the
+  network channel is getting too full.
   
- */
+*/
 
 #include "mphlr.h"
 
 int overlay_socket=-1;
 
-typedef struct overlay_buffer {
-  unsigned char *bytes;
-  int length;
-  int allocSize;
-  int checkpointLength;
-  int sizeLimit;
-} overlay_buffer;
-
 int ob_unlimitsize(overlay_buffer *b);
 
-typedef struct overlay_payload {
-  struct overlay_payload *prev;
-  struct overlay_payload *next;
-
-  /* We allows 256 bit addresses and 32bit port numbers */
-  char src[SIDDIDFIELD_LEN];
-  char dst[SIDDIDFIELD_LEN];
-  int srcPort;
-  int dstPort;
-  
-  /* Hops before packet is dropped */
-  unsigned char ttl;
-  unsigned char trafficClass;
-
-  unsigned char srcAddrType;
-  unsigned char dstAddrType;
-
-  /* Method of encryption if any employed */
-  unsigned char cipher;
-
-  /* Payload flags */
-  unsigned char flags;
-
-  /* Pointer to the payload itself */
-  unsigned char *payload;
-  int payloadLength;
-} overlay_payload;
-
-typedef struct overlay_txqueue {
-  overlay_payload *first;
-  overlay_payload *last;
-  int length;
-  int maxLength;
-  /* Latency target in ms for this traffic class */
-  int latencyTarget;
-} overlay_txqueue;
-
-/* XXX Need to initialise these:
-   Real-time queue for voice
-   Real-time queue for video (lower priority than voice)
-   Ordinary service queue
-   Rhizome opportunistic queue
-
-   (Mesh management doesn't need a queue, as each overlay packet is tagged with some mesh management information)
- */
 overlay_txqueue overlay_tx[4];
 
-int overlay_sock=-1;
-
-int overlay_init()
-{
-  struct sockaddr_in bind_addr;
-  
-  overlay_sock=socket(PF_INET,SOCK_DGRAM,0);
-  if (overlay_sock<0) {
-    fprintf(stderr,"Could not create overlay UDP socket.\n");
-    perror("socket");
-    exit(-3);
-  }
-
-  bind_addr.sin_family = AF_INET;
-  bind_addr.sin_port = htons( PORT_DNA );
-  bind_addr.sin_addr.s_addr = htonl( INADDR_ANY );
-  if(bind(sock,(struct sockaddr *)&bind_addr,sizeof(bind_addr))) {
-    fprintf(stderr,"MP HLR server could not bind to UDP port %d\n", PORT_DNA);
-    perror("bind");
-    exit(-3);
-  }
-
-  return 0;
-}
-
-int overlay_rx_messages()
-{
-  if (overlay_socket==-1) overlay_init();
-
-  return 0;
-}
-
-int overlay_tx_messages()
-{
-  if (overlay_socket==-1) overlay_init();
-
-  return 0;
-}
-
-int overlay_broadcast_ensemble(char *bytes,int len)
-{
-  struct sockaddr_in s;
-
-  memset(&s, '\0', sizeof(struct sockaddr_in));
-  s.sin_family = AF_INET;
-  s.sin_port = htons( PORT_OVERLAY );
-  s.sin_addr.s_addr = htonl( INADDR_BROADCAST );
-
-  if(sendto(overlay_socket, bytes, len, 0, (struct sockaddr *)&s, sizeof(struct sockaddr_in)) < 0)
-    /* Failed to send */
-    return -1;
-  else
-    /* Sent okay */
-    return 0;
-}
 
 int overlay_payload_verify()
 {
   /* Make sure that an incoming payload has a valid signature from the sender.
      This is used to prevent spoofing */
 
-  return -1;
+  return WHY("function not implemented");
 }
 
-
-overlay_buffer *ob_new(int size)
-{
-  overlay_buffer *ret=calloc(sizeof(overlay_buffer),1);
-  if (!ret) return NULL;
-
-  ob_unlimitsize(ret);
-
-  return ret;
-}
-
-int ob_free(overlay_buffer *b)
-{
-  if (!b) return -1;
-  if (b->bytes) free(b->bytes);
-  b->bytes=NULL;
-  b->allocSize=0;
-  b->sizeLimit=0;
-  free(b);
-  return 0;
-}
-
-int ob_checkpoint(overlay_buffer *b)
-{
-  if (!b) return -1;
-  b->checkpointLength=b->length;
-  return 0;
-}
-
-int ob_rewind(overlay_buffer *b)
-{
-  if (!b) return -1;
-  b->length=b->checkpointLength;
-  return 0;
-}
-
-int ob_limitsize(overlay_buffer *b,int bytes)
-{
-  if (!b) return -1;
-  if (b->length>bytes) return -1;
-  if (b->checkpointLength>bytes) return -1;
-  if (bytes<0) return -1;
-  b->sizeLimit=bytes;
-  return 0;
-}
-
-int ob_unlimitsize(overlay_buffer *b)
-{
-  if (!b) return -1;
-  b->sizeLimit=-1;
-  return 0;
-}
-
-int ob_makespace(overlay_buffer *b,int bytes)
-{
-  if (b->sizeLimit!=-1) {
-    if (b->length+bytes>b->sizeLimit) return -1;
-  }
-  if (b->length+bytes<b->allocSize)
-    {
-      int newSize=b->length+bytes;
-      if (newSize<64) newSize=64;
-      if (newSize&63) newSize+=64-(newSize&63);
-      if (newSize>1024) {
-	if (newSize&1023) newSize+=1024-(newSize&1023);
-      }
-      if (newSize>65536) {
-	if (newSize&65535) newSize+=65536-(newSize&65535);
-      }
-      unsigned char *r=realloc(b->bytes,newSize);
-      if (!r) return -1;
-      b->bytes=r;
-      b->allocSize=newSize;
-      return 0;
-    }
-  else
-    return 0;
-}
-
-int ob_append_bytes(overlay_buffer *b,unsigned char *bytes,int count)
-{
-  if (ob_makespace(b,count)) return -1;
-  
-  bcopy(bytes,&b->bytes[b->length],count);
-  b->length+=count;
-  return 0;
-}
-
-int ob_append_short(overlay_buffer *b,unsigned short v)
-{
-  unsigned short s=htons(v);
-  return ob_append_bytes(b,(unsigned char *)&s,sizeof(unsigned short));
-}
-
-int ob_append_int(overlay_buffer *b,unsigned int v)
-{
-  unsigned int s=htonl(v);
-  return ob_append_bytes(b,(unsigned char *)&s,sizeof(unsigned int));
-}
 
 int overlay_get_nexthop(overlay_payload *p,unsigned char *hopout,int *hopaddrlen)
 {
-  return -1;
+  return WHY("function not implemented");
 }
 
 int overlay_payload_package_fmt1(overlay_payload *p,overlay_buffer *b)
@@ -258,9 +73,9 @@ int overlay_payload_package_fmt1(overlay_payload *p,overlay_buffer *b)
 
   overlay_buffer *headers=ob_new(256);
 
-  if (!headers) return -1;
-  if (!p) return -1;
-  if (!b) return -1;
+  if (!headers) return WHY("could not allocate overlay buffer for headers");
+  if (!p) return WHY("p is NULL");
+  if (!b) return WHY("b is NULL");
 
   /* Build header */
   int fail=0;
@@ -268,37 +83,71 @@ int overlay_payload_package_fmt1(overlay_payload *p,overlay_buffer *b)
   if (overlay_get_nexthop(p,nexthop,&nexthoplen)) fail++;
   if (ob_append_bytes(headers,nexthop,nexthoplen)) fail++;
 
-  /* XXX Can use shorter fields for different address types */
+  /* XXX Can use shorter fields for different address types, and if we know that the next hop
+     knows a short-hand for the address.
+     XXX Need a prefix byte for the type of address being used.
+     BETTER - We just insist that the first byte of Curve25519 addresses be >0x0f, and use
+     the low numbers for special cases:
+     
+  */
+  if (p->src[0]<0x10||p->dst[0]<0x10) {
+    // Make sure that addresses do not overload the special address spaces of 0x00*-0x0f*
+    fail++;
+    return WHY("address begins with reserved value 0x00-0x0f");
+  }
   if (ob_append_bytes(headers,(unsigned char *)p->src,SIDDIDFIELD_LEN)) fail++;
   if (ob_append_bytes(headers,(unsigned char *)p->dst,SIDDIDFIELD_LEN)) fail++;
   
   if (fail) {
     ob_free(headers);
-    return -1;
+    return WHY("failure count was non-zero");
   }
 
   /* Write payload format plus total length of header bits */
   if (ob_makespace(b,2+headers->length+p->payloadLength)) {
     /* Not enough space free in output buffer */
     ob_free(headers);
-    return -1;
+    return WHY("Could not make enough space free in output buffer");
   }
-
+  
   /* Package up headers and payload */
   ob_checkpoint(b);
-  if (ob_append_short(b,0x1000|(p->payloadLength+headers->length))) fail++;
-  if (ob_append_bytes(b,headers->bytes,headers->length)) fail++;
-  if (ob_append_bytes(b,p->payload,p->payloadLength)) fail++;
-
-  /* XXX SIGNATURE! */
-
+  if (ob_append_short(b,0x1000|(p->payloadLength+headers->length))) 
+    { fail++; WHY("could not append version and length bytes"); }
+  if (ob_append_bytes(b,headers->bytes,headers->length)) 
+    { fail++; WHY("could not append header"); }
+  if (ob_append_bytes(b,p->payload,p->payloadLength)) 
+    { fail++; WHY("could not append payload"); }
+  
+  /* XXX SIGN &/or ENCRYPT */
+  
   ob_free(headers);
-
-  if (fail) { ob_rewind(b); return -1; } else return 0;
+  
+  if (fail) { ob_rewind(b); return WHY("failure count was non-zero"); } else return 0;
 }
-
+  
 overlay_payload *overlay_payload_unpackage(overlay_buffer *b) {
   /* Extract the payload at the current location in the buffer. */
-
+    
+  WHY("not implemented");
   return NULL;
 }
+
+int overlay_payload_enqueue(int q,overlay_payload *p,int urgentP)
+{
+  /* Add payload p to queue q.
+     If urgentP is set, then ask for the payload queue to be sent now.
+  */
+
+  return WHY("not implemented");
+  if (urgentP) overlay_push_queued();
+}
+
+int overlay_push_queued()
+{
+  /* Try to send frames.
+     The trick here is that we need to aggregate payloads based on which interface they need to go to */
+
+  return WHY("not implemented");
+}
+

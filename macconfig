@@ -1,0 +1,4 @@
+export LDFLAGS=-L/Developer/SDKs/MacOSX10.6.sdk/usr/lib
+export CPPFLAGS=-I/Developer/SDKs/MacOSX10.6.sdk/usr/include
+export CFLAGS=-I/Developer/SDKs/MacOSX10.6.sdk/usr/include
+./configure $*

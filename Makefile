@@ -1,19 +1,22 @@
 SRCS=	dna.c server.c client.c peers.c ciphers.c responses.c packetformats.c dataformats.c \
-	hlrdata.c srandomdev.c simulate.c batman.c overlay.c export.c gateway.c
+	hlrdata.c srandomdev.c simulate.c batman.c export.c gateway.c \
+	overlay.c overlay_buffer.c overlay_interface.c
 
 OBJS=	dna.o server.o client.o peers.o ciphers.o responses.o packetformats.o dataformats.o \
-	hlrdata.o srandomdev.o simulate.o batman.o overlay.o export.o gateway.o
+	hlrdata.o srandomdev.o simulate.o batman.o export.o gateway.o \
+	overlay.o overlay_buffer.o overlay_interface.o
 HDRS=	Makefile mphlr.h
-LDFLAGS=	
-DEFS=	-DPACKAGE_NAME=\"\" -DPACKAGE_TARNAME=\"\" -DPACKAGE_VERSION=\"\" -DPACKAGE_STRING=\"\" -DPACKAGE_BUGREPORT=\"\" -DPACKAGE_URL=\"\" -DHAVE_LIBC=1 -DSTDC_HEADERS=1 -DHAVE_SYS_TYPES_H=1 -DHAVE_SYS_STAT_H=1 -DHAVE_STDLIB_H=1 -DHAVE_STRING_H=1 -DHAVE_MEMORY_H=1 -DHAVE_STRINGS_H=1 -DHAVE_INTTYPES_H=1 -DHAVE_STDINT_H=1 -DHAVE_UNISTD_H=1 -DHAVE_STDIO_H=1 -DHAVE_ERRNO_H=1 -DHAVE_STDLIB_H=1 -DHAVE_STRINGS_H=1 -DHAVE_UNISTD_H=1 -DHAVE_STRING_H=1 -DHAVE_ARPA_INET_H=1 -DHAVE_SYS_SOCKET_H=1 -DHAVE_SYS_MMAN_H=1 -DHAVE_SYS_TIME_H=1 -DHAVE_POLL_H=1 -DHAVE_NETDB_H=1
+LDFLAGS=	-L/Developer/SDKs/MacOSX10.6.sdk/usr/lib
+CFLAGS=	-I/Developer/SDKs/MacOSX10.6.sdk/usr/include
+DEFS=	-DPACKAGE_NAME=\"\" -DPACKAGE_TARNAME=\"\" -DPACKAGE_VERSION=\"\" -DPACKAGE_STRING=\"\" -DPACKAGE_BUGREPORT=\"\" -DPACKAGE_URL=\"\" -DHAVE_LIBC=1 -DSTDC_HEADERS=1 -DHAVE_SYS_TYPES_H=1 -DHAVE_SYS_STAT_H=1 -DHAVE_STDLIB_H=1 -DHAVE_STRING_H=1 -DHAVE_MEMORY_H=1 -DHAVE_STRINGS_H=1 -DHAVE_INTTYPES_H=1 -DHAVE_STDINT_H=1 -DHAVE_UNISTD_H=1 -DHAVE_STDIO_H=1 -DHAVE_ERRNO_H=1 -DHAVE_STDLIB_H=1 -DHAVE_STRINGS_H=1 -DHAVE_UNISTD_H=1 -DHAVE_STRING_H=1 -DHAVE_ARPA_INET_H=1 -DHAVE_SYS_SOCKET_H=1 -DHAVE_SYS_MMAN_H=1 -DHAVE_SYS_TIME_H=1 -DHAVE_POLL_H=1 -DHAVE_NETDB_H=1 -DHAVE_NETINET_IN_H=1 -DHAVE_IFADDRS_H=1 -DHAVE_NET_IF_H
 
 all:	serval.c dna
 
 %.o:	%.c $(HDRS)
-	$(CC) $(DEFS) -Os -g -Wall -c $<
+	$(CC) $(CFLAGS) $(DEFS) -Os -g -Wall -c $<
 
 dna:	$(OBJS)
-	$(CC) -Os -g -Wall -o dna $(OBJS) $(LDFLAGS)
+	$(CC) $(CFLAGS) -Os -g -Wall -o dna $(OBJS) $(LDFLAGS)
 
 serval.c:	$(SRCS) $(HDRS)
 	cat mphlr.h > serval.c

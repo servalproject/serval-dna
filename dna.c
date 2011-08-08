@@ -215,7 +215,7 @@ int usage(char *complaint)
 {
   fprintf(stderr,"dna: %s\n",complaint);
   fprintf(stderr,"usage:\n");
-  fprintf(stderr,"   dna [-v ...] -S <hlr size in MB> [-f HLR backing file] [-I import.txt] [-G SIP gateway]\n");
+  fprintf(stderr,"   dna [-v ...] -S <hlr size in MB> [-f HLR backing file] [-I import.txt] [-N interface,...] [-G SIP gateway]\n");
   fprintf(stderr,"or\n");
   fprintf(stderr,"   dna <-d|-s> id -A\n");
   fprintf(stderr,"or\n");
@@ -255,6 +255,13 @@ int usage(char *complaint)
   fprintf(stderr,"            @value means read value from file called value.\n");
   fprintf(stderr,"       -C - Request the creation of a new subscriber with the specified DID.\n");
   fprintf(stderr,"       -t - Specify the request timeout period.\n");
+  fprintf(stderr,"       -N - Specify one or more interfaces for the DNA overlay mesh to operate.\n");
+  fprintf(stderr,"            Interface specifications take the form IP[:speed[:type[:port]]], and\n");
+  fprintf(stderr,"            multiple interfaces can be specified by comma separating them.\n");
+  fprintf(stderr,"            Speed is the interface speed in bits per second (K,M or G suffixes allowed)\n");
+  fprintf(stderr,"            Type is WiFi,ethernet,catear or other.\n");
+  fprintf(stderr,"            Port specifies an alternate UDP port, otherwise %d is used.\n",PORT_DNA);
+  fprintf(stderr,"            e.g., -N 10.1.2.3,10.1.130.45:2M:wifi\n");
   fprintf(stderr,"\n");
   exit(-1);
 }
@@ -277,10 +284,14 @@ int main(int argc,char **argv)
 
   srandomdev();
 
-  while((c=getopt(argc,argv,"Ab:B:E:G:I:S:f:d:i:l:L:np:P:s:t:vR:W:U:D:CO:")) != -1 ) 
+  while((c=getopt(argc,argv,"Ab:B:E:G:I:S:f:d:i:l:L:np:P:s:t:vR:W:U:D:CO:N:")) != -1 ) 
     {
       switch(c)
 	{
+	case 'N': /* Ask for overlay network to setup one or more interfaces */
+	  if (overlay_interface_args(optarg))
+	    return WHY("Invalid interface specification(s) passed to -N");
+	  break;
 	case 'G': /* Offer gateway services */
           gatewayuri=strdup(optarg);
           break;
@@ -409,3 +420,34 @@ int main(int argc,char **argv)
 }
 #endif
 
+long long parse_quantity(char *q)
+{
+  int m;
+  char units[80];
+
+  if (strlen(q)>=80) return WHY("quantity string >=80 characters");
+
+  if (sscanf(q,"%d%s",&m,units)==2)
+    {
+      if (units[1]) return WHY("Units should be single character");
+      switch(units[0])
+	{
+	case 'k': return m*1000LL;
+	case 'K': return m*1024LL;
+	case 'm': return m*1000LL*1000LL;
+	case 'M': return m*1024LL*1024LL;
+	case 'g': return m*1000LL*1000LL*1000LL;
+	case 'G': return m*1024LL*1024LL*1024LL;
+	default:
+	  return WHY("Illegal unit: should be k,K,m,M,g, or G.");
+	}
+    }
+  if (sscanf(q,"%d",&m)==1)
+    {
+      return m;
+    }
+  else
+    {
+      return WHY("Could not parse quantity");
+    }
+}

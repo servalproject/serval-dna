@@ -19,12 +19,23 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "mphlr.h"
 
-#ifndef WIN32
+#ifdef HAVE_NET_IF_H
 #include <net/if.h>
+#endif
+#ifdef HAVE_NETINET_IN_H
 #include <netinet/in.h>
+#endif
+#ifdef HAVE_LINUX_IF_H
 #include <linux/if.h>
+#endif
+#ifdef HAVE_LINUX_NETLINK_H
 #include <linux/netlink.h>
+#endif
+#ifdef HAVE_LINUX_RTNETLINK_H
 #include <linux/rtnetlink.h>
+#endif
+#ifdef HAVE_IFADDRS_H
+#include <ifaddrs.h>
 #endif
 
 char *batman_socket=NULL;
@@ -50,8 +61,13 @@ int additionalPeer(char *peer)
 }
 
 int getBroadcastAddresses(struct in_addr peers[],int *peer_count,int peer_max){
-#ifndef WIN32
-  // android ndk doesn't have ifaddrs.h, so we have to use the netlink interface
+  /* The Android ndk doesn't have ifaddrs.h, so we have to use the netlink interface.
+     However, netlink is only available on Linux, so for BSD systems, e.g., Mac, we
+     need to use the ifaddrs method.
+
+     Also, ifaddrs will work on non-linux systems which is considered critical.
+  */
+#ifdef HAVE_LINUX_NETLINK_H
   
   // Ask for the address information.
   struct {
@@ -102,6 +118,37 @@ int getBroadcastAddresses(struct in_addr peers[],int *peer_count,int peer_max){
       }
     }
   }
+#else
+#ifdef HAVE_IFADDRS_H
+  struct ifaddrs *ifaddr,*ifa;
+  int family, s;
+  char host[NI_MAXHOST];
+  
+  if (getifaddrs(&ifaddr) == -1)  {
+    perror("getifaddr()");
+    return WHY("getifaddrs() failed");
+  }
+
+  for (ifa=ifaddr;ifa!=NULL;ifa=ifa->ifa_next) {
+    family=ifa->ifa_addr->sa_family;
+    switch(family) {
+    case AF_INET: 
+      /* Add our local address and computed broadcast address to the list of peers.
+	 XXX - ifa->ifa_broadaddr should give us the broadcast address, but doesn't seem to
+	 on mac osx.  So we have resorted computing the normal (ceiling) broadcast address.
+       */
+      peers[(*peer_count)++].s_addr=((struct sockaddr_in *)ifa->ifa_addr)->sin_addr.s_addr;
+      {
+	struct sockaddr_in broadcast;
+	unsigned int local=(((struct sockaddr_in *)(ifa->ifa_addr))->sin_addr.s_addr);
+	unsigned int netmask=(((struct sockaddr_in *)(ifa->ifa_netmask))->sin_addr.s_addr);
+	peers[(*peer_count)++].s_addr=local|~netmask;
+      }
+      break;
+    }
+  }
+
+#endif
 #endif
   return 0;
 }

@@ -1,19 +1,22 @@
 SRCS=	dna.c server.c client.c peers.c ciphers.c responses.c packetformats.c dataformats.c \
-	hlrdata.c srandomdev.c simulate.c batman.c overlay.c export.c gateway.c
+	hlrdata.c srandomdev.c simulate.c batman.c export.c gateway.c \
+	overlay.c overlay_buffer.c overlay_interface.c
 
 OBJS=	dna.o server.o client.o peers.o ciphers.o responses.o packetformats.o dataformats.o \
-	hlrdata.o srandomdev.o simulate.o batman.o overlay.o export.o gateway.o
+	hlrdata.o srandomdev.o simulate.o batman.o export.o gateway.o \
+	overlay.o overlay_buffer.o overlay_interface.o
 HDRS=	Makefile mphlr.h
 LDFLAGS=	@LDFLAGS@
+CFLAGS=	@CFLAGS@
 DEFS=	@DEFS@
 
 all:	serval.c dna
 
 %.o:	%.c $(HDRS)
-	$(CC) $(DEFS) -Os -g -Wall -c $<
+	$(CC) $(CFLAGS) $(DEFS) -Os -g -Wall -c $<
 
 dna:	$(OBJS)
-	$(CC) -Os -g -Wall -o dna $(OBJS) $(LDFLAGS)
+	$(CC) $(CFLAGS) -Os -g -Wall -o dna $(OBJS) $(LDFLAGS)
 
 serval.c:	$(SRCS) $(HDRS)
 	cat mphlr.h > serval.c

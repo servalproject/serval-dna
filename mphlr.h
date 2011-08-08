@@ -350,3 +350,170 @@ int asteriskObtainGateway(char *requestor_sid,char *did,char *uri_out);
 #define CRYPT_CIPHERED 1
 #define CRYPT_SIGNED 2
 #define CRYPT_PUBLIC 4
+
+#define OVERLAY_INTERFACE_UNKNOWN 0
+#define OVERLAY_INTERFACE_ETHERNET 1
+#define OVERLAY_INTERFACE_WIFI 2
+#define OVERLAY_INTERFACE_PACKETRADIO 3
+typedef struct overlay_interface {
+  int socket;
+  int bits_per_second;
+  int port;
+  int type;
+  /* Number of milli-seconds per tick for this interface, which is basically related to the     
+     the typical TX range divided by the maximum expected speed of nodes in the network.
+     This means that short-range communications has a higher bandwidth requirement than
+     long-range communications because the tick interval has to be shorter to still allow
+     fast-convergence time to allow for mobility.
+
+     For wifi (nominal range 100m) it is usually 500ms.
+     For ~100K ISM915MHz (nominal range 1000m) it will probably be about 5000ms.
+     For ~10K ISM915MHz (nominal range ~3000m) it will probably be about 15000ms.
+     These figures will be refined over time, and we will allow people to set them per-interface.
+  */
+  int tick_ms;
+} overlay_interface;
+
+/* Maximum interface count is rather arbitrary.
+   Memory consumption is O(n) with respect to this parameter, so let's not make it too big for now.
+*/
+#define OVERLAY_MAX_INTERFACES 16
+extern overlay_interface overlay_interfaces[OVERLAY_MAX_INTERFACES];
+
+/*
+  For each peer we need to keep track of the routes that we know to reach it.
+
+  We want to use static sized data structures as much as we can to keep things efficient by
+  allowing computed memory address lookups instead of following linked lists and other 
+  non-deterministic means.
+
+  The tricky part of doing all this is that each interface may have a different maximum number
+  of peers based on the bandwidth of the link, as we do not want mesh traffic to consume all
+  available bandwidth.  In particular, we need to reserve at least enough bandwidth for one
+  call.
+
+  Related to this, if we are in a mesh larger than the per-interface limit allows, then we need to
+  only track the highest-scoring peers.  This sounds simple, but how to we tell when to replace a
+  low-scoring peer with another one which has a better reachability score, if we are not tracking 
+  the reachability score of that node?
+
+  The answer to this is that we track as many nodes as we can, but only announce the highest
+  scoring nodes on each interface as bandwidth allows.
+
+  This also keeps our memory usage fixed.
+
+  XXX - At present we are setting OVERLAY_MAX_PEERS at compile time.
+  With a bit of work we can change this to be a run-time option.
+
+  Memory consumption of OVERLAY_MAX_PEERS=n is O(n^2).
+  XXX We could and should improve this down the track by only monitoring the top k routes, and replacing the worst route
+  option when a better one comes along.  This would get the memory usage down to O(n).
+
+ */
+#define OVERLAY_MAX_PEERS 500
+
+typedef struct overlay_peer {
+  unsigned char address[SIDDIDFIELD_LEN];
+
+  /* Scores and score update times for reaching this node via various interfaces */
+  int known_routes[OVERLAY_MAX_INTERFACES];
+  unsigned short scores[OVERLAY_MAX_INTERFACES][OVERLAY_MAX_PEERS];
+
+  /* last_regeneration is the time that this peer was created/replaced with another peer.
+     lastupdate[] indicates the time that another peer's reachability report
+     caused us to update our score to reach via that peer.
+     If lastupdate[x][y] is older than last_regeneration[y], then we must
+     ignore the entry, because the lastupdate[x][y] entry references a previous
+     generation of that peer, i.e., not to the peer we think it does.
+     
+     This slight convolution allows us to replace peers without having to touch the
+     records of every other peer in our list.
+  */
+  int last_regeneration;
+  unsigned int lastupdate[OVERLAY_MAX_INTERFACES][OVERLAY_MAX_PEERS];
+} overlay_peer;
+
+extern overlay_peer overlay_peers[OVERLAY_MAX_PEERS];
+
+typedef struct overlay_buffer {
+  unsigned char *bytes;
+  int length;
+  int allocSize;
+  int checkpointLength;
+  int sizeLimit;
+} overlay_buffer;
+
+int ob_unlimitsize(overlay_buffer *b);
+
+typedef struct overlay_payload {
+  struct overlay_payload *prev;
+  struct overlay_payload *next;
+
+  /* We allows 256 bit addresses and 32bit port numbers */
+  char src[SIDDIDFIELD_LEN];
+  char dst[SIDDIDFIELD_LEN];
+  int srcPort;
+  int dstPort;
+  
+  /* Hops before packet is dropped */
+  unsigned char ttl;
+  unsigned char trafficClass;
+
+  unsigned char srcAddrType;
+  unsigned char dstAddrType;
+
+  /* Method of encryption if any employed */
+  unsigned char cipher;
+
+  /* Payload flags */
+  unsigned char flags;
+
+  /* Size and Pointer to the payload itself */
+  int payloadLength;
+  /* make the payload pointer be at the end, so that we can conveniently have the data follow this structure if necessary.
+     (this lets us change the char * to a char payload[1] down the track to simplify this) */
+  unsigned char *payload;
+} overlay_payload;
+
+typedef struct overlay_txqueue {
+  overlay_payload *first;
+  overlay_payload *last;
+  int length;
+  int maxLength;
+  /* Latency target in ms for this traffic class.
+     Frames older than the latency target will get dropped. */
+  int latencyTarget;
+  
+  /* XXX Need to initialise these:
+     Real-time queue for voice (<200ms ?)
+     Real-time queue for video (<200ms ?) (lower priority than voice)
+     Ordinary service queue (<3 sec ?)
+     Rhizome opportunistic queue (infinity)
+     
+     (Mesh management doesn't need a queue, as each overlay packet is tagged with some mesh management information)
+  */
+} overlay_txqueue;
+
+extern overlay_txqueue overlay_tx[4];
+#define OVERLAY_ISOCHRONOUS_VOICE 0
+#define OVERLAY_ISOCHRONOUS_VIDEO 1
+#define OVERLAY_ORDINARY 2
+#define OVERLAY_OPPORTUNISTIC 3
+
+int setReason(char *fmt, ...);
+#define WHY(X) setReason("%s:%d:%s()  %s",__FILE__,__LINE__,__FUNCTION__,X)
+
+overlay_buffer *ob_new(int size);
+int ob_free(overlay_buffer *b);
+int ob_checkpoint(overlay_buffer *b);
+int ob_rewind(overlay_buffer *b);
+int ob_limitsize(overlay_buffer *b,int bytes);
+int ob_unlimitsize(overlay_buffer *b);
+int ob_makespace(overlay_buffer *b,int bytes);
+int ob_append_bytes(overlay_buffer *b,unsigned char *bytes,int count);
+int ob_append_short(overlay_buffer *b,unsigned short v);
+int ob_append_int(overlay_buffer *b,unsigned int v);
+
+long long parse_quantity(char *q);
+
+int overlay_init_interface(in_addr_t src_addr,int speed_in_bits,int port,int type);
