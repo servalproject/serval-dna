@@ -217,6 +217,8 @@ int usage(char *complaint)
   fprintf(stderr,"usage:\n");
   fprintf(stderr,"   dna [-v ...] -S <hlr size in MB> [-f HLR backing file] [-I import.txt] [-N interface,...] [-G SIP gateway]\n");
   fprintf(stderr,"or\n");
+  fprintf(stderr,"   dna [-v ...] -f <HLR backing file> -E <hlr export file>\n");
+  fprintf(stderr,"or\n");
   fprintf(stderr,"   dna <-d|-s> id -A\n");
   fprintf(stderr,"or\n");
   fprintf(stderr,"   dna <-d|-s> id [-p pin] [-i variable instance] <-R variable[=value]>\n");
@@ -231,6 +233,8 @@ int usage(char *complaint)
 
   fprintf(stderr,"\n");
   fprintf(stderr,"       -v - increase verbosity.\n");
+  fprintf(stderr,"       -E - Export specified HLR database into specified flat text file.\n");
+  fprintf(stderr,"       -I - Import a previously exported HLR database into this one.\n");
   fprintf(stderr,"       -A - Ask for address of subscriber.\n");
   fprintf(stderr,"       -b - Specify BATMAN socket to obtain peer list (flaky).\n");
   fprintf(stderr,"       -l - Specify BATMAN socket to obtain peer list (better, but requires Serval patched BATMAN).\n");
