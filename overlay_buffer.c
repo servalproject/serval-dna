@@ -58,7 +58,7 @@ int ob_makespace(overlay_buffer *b,int bytes)
   if (b->sizeLimit!=-1) {
     if (b->length+bytes>b->sizeLimit) return WHY("Asked to make space beyond size limit");
   }
-  if (b->length+bytes<b->allocSize)
+  if (b->length+bytes>=b->allocSize)
     {
       int newSize=b->length+bytes;
       if (newSize<64) newSize=64;

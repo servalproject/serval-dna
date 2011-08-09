@@ -109,6 +109,10 @@ int overlay_init_interface(in_addr_t src_addr,int speed_in_bits,int port,int typ
     return WHY("MP HLR server could not bind to requested UDP port (bind() failed)");
   }
 
+  /* Pick a reasonable default MTU.
+     This will ultimately get tuned by the bandwidth and other properties of the interface */
+  I(mtu)=1200;
+
   I(bits_per_second)=speed_in_bits;
   I(port)=bind_addr.sin_port;
   I(type)=type;
@@ -228,7 +232,7 @@ int overlay_tick_interface(int i, long long now)
      component payloads are all self-authenticating, or at least that is the theory. */
   unsigned char bytes[]={/* Magic */ 'O',0x10,
 			 /* Version */ 0x00,0x01};
-  ob_append_bytes(e,bytes,4);
+  if (ob_append_bytes(e,bytes,4)) return WHY("ob_append_bytes() refused to append magic bytes.");
 
   /* 1. Send announcement about ourselves, including one SID that we host if we host more than one SID
      (the first SID we host becomes our own identity, saving a little bit of data here).
@@ -281,6 +285,7 @@ int overlay_tick_interface(int i, long long now)
      
   /* Now send the frame.  This takes the form of a special DNA packet with a different
      service code, which we setup earlier. */
+  fprintf(stderr,"Sending %d bytes\n",e->length);
   if (!overlay_broadcast_ensemble(i,e->bytes,e->length))
     {
       fprintf(stderr,"Successfully transmitted tick frame on interface #%d\n",i);
