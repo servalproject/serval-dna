@@ -41,7 +41,7 @@ int seedHlr()
      by allowing the use of createHlr().
  */
   {
-    int i;
+    int i,ofs=0;
     char sid[65];
     char did[65];
     /* Make DID start with 2 through 9, as 1 is special in many number spaces. */ 
@@ -49,6 +49,7 @@ int seedHlr()
     /* Then add 10 more digits, which is what we do in the mobile phone software */
     for(i=1;i<11;i++) did[i]='0'+random()%10; did[11]=0;
     if (createHlr(did,sid)) return WHY("Failed to seed HLR with home entry");
+    if (hlrSetVariable(hlr,ofs,VAR_LOCATIONS,0,(unsigned char *)"4000",4)) return WHY("Could not set location while seeding HLR");
   }
   return 0;
 }
@@ -154,7 +155,8 @@ int findHlr(unsigned char *hlr,int *ofs,char *sid,char *did)
 	    h=hlrentrygetent(h);
 	  }
       }
-  
+      if ((!sid)&&(!did)) match=1;
+      
       /* For each match ... */
       if (match) 
 	{
