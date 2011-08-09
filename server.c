@@ -149,6 +149,9 @@ int getBackingStore(char *backing_file,int size)
 			 size,backing_file);
     }
   hlr_size=size;
+
+  seedHlr();
+
   return 0;
 }
 

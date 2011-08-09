@@ -26,6 +26,33 @@ int bcompare(unsigned char *a,unsigned char *b,size_t len)
   return 0;
 }
 
+int seedHlr()
+{
+  /* If HLR is entry, create a default entry */
+  int offset=0;
+  if (!nextHlr(hlr,&offset)) {
+    /* There is an entry, so nothing to do */
+    return 0;
+  }
+
+  /* There wasn't an entry, so make one.
+     Pick a random SID (it will pick one for us). 
+     For completeness we will pick a random DID, which also makes life easier for us anyway
+     by allowing the use of createHlr().
+ */
+  {
+    int i;
+    char sid[65];
+    char did[65];
+    /* Make DID start with 2 through 9, as 1 is special in many number spaces. */ 
+    did[0]='2'+random()%8;
+    /* Then add 10 more digits, which is what we do in the mobile phone software */
+    for(i=1;i<11;i++) did[i]='0'+random()%10; did[11]=0;
+    if (createHlr(did,sid)) return WHY("Failed to seed HLR with home entry");
+  }
+  return 0;
+}
+
 int nextHlr(unsigned char *hlr,int *ofs)
 {
   int record_length;
