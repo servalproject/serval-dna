@@ -125,7 +125,7 @@ double simulatedBER;
 
 extern int serverMode;
 
-extern char *gatewayuri;
+extern char *gatewayspec;
 
 extern struct sockaddr recvaddr;
 extern struct in_addr client_addr;

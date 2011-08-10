@@ -20,6 +20,33 @@ typedef struct dna_gateway_extension {
 #define MAX_CURRENT_EXTENSIONS 1024
 dna_gateway_extension extensions[MAX_CURRENT_EXTENSIONS];
 
+int prepareGateway(char *spec)
+{
+  if ((!strcasecmp(spec,"potato"))||(!strcasecmp(spec,"meshpotato"))||(!strcasecmp(spec,"mp"))||(!strcasecmp(spec,"mp1"))) {
+    /* Setup for mesh potato */
+    asterisk_extensions_conf="/etc/asterisk/gatewayextensions.conf";
+    asterisk_binary="/usr/sbin/asterisk";
+    temp_file="/var/dnatemp.out";
+    cmd_file="/var/dnatemp.cmd";
+    shell="/bin/sh";
+    return 0;
+  } else if ((!strcasecmp(spec,"android"))||(!strcasecmp(spec,"batphone"))) {
+    /* Setup for android -- this is default, so don't change anything */
+    return 0;
+  } else if (!strncasecmp(spec,"custom:",7)) {
+    char a[1024],b[1024],c[1024],d[1024],e[1024];
+    if (sscanf(spec,"custom:%[^:]:%[^:]:%[^:]:%[^:]:%[^:]",a,b,c,d,e)!=5) return WHY("Invalid custom gateway specification");
+    asterisk_extensions_conf=strdup(a);
+    asterisk_binary=strdup(b);
+    temp_file=strdup(c);
+    cmd_file=strdup(d);
+    shell=strdup(e);
+    return 0;
+  }
+  else 
+    return WHY("Invalid gateway specification");
+}
+
 int safeSystem(char *cmd_file)
 {
   {

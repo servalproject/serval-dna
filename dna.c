@@ -20,7 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "mphlr.h"
 #include <stdarg.h>
 
-char *gatewayuri=NULL;
+char *gatewayspec=NULL;
 
 char *outputtemplate=NULL;
 char *instrumentation_file=NULL;
@@ -215,7 +215,7 @@ int usage(char *complaint)
 {
   fprintf(stderr,"dna: %s\n",complaint);
   fprintf(stderr,"usage:\n");
-  fprintf(stderr,"   dna [-v ...] -S <hlr size in MB> [-f HLR backing file] [-I import.txt] [-N interface,...] [-G SIP gateway]\n");
+  fprintf(stderr,"   dna [-v ...] -S <hlr size in MB> [-f HLR backing file] [-I import.txt] [-N interface,...] [-G gateway specification]\n");
   fprintf(stderr,"or\n");
   fprintf(stderr,"   dna [-v ...] -f <HLR backing file> -E <hlr export file>\n");
   fprintf(stderr,"or\n");
@@ -259,6 +259,8 @@ int usage(char *complaint)
   fprintf(stderr,"            @value means read value from file called value.\n");
   fprintf(stderr,"       -C - Request the creation of a new subscriber with the specified DID.\n");
   fprintf(stderr,"       -t - Specify the request timeout period.\n");
+  fprintf(stderr,"       -G - Offer gateway services.  Argument specifies locations of necessary files.\n");
+  fprintf(stderr,"            Use -G [potato|android|custom:...] to set defaults for your device type.\n");
   fprintf(stderr,"       -N - Specify one or more interfaces for the DNA overlay mesh to operate.\n");
   fprintf(stderr,"            Interface specifications take the form IP[:speed[:type[:port]]], and\n");
   fprintf(stderr,"            multiple interfaces can be specified by comma separating them.\n");
@@ -298,7 +300,8 @@ int main(int argc,char **argv)
 	  overlayMode=1;
 	  break;
 	case 'G': /* Offer gateway services */
-          gatewayuri=strdup(optarg);
+          gatewayspec=strdup(optarg);
+	  if(prepareGateway(gatewayspec)) return usage("Invalid gateway specification");
           break;
         case 'E': /* Export HLR into plain text file that can be imported later */
           if (!hlr_file) usage("You must specify an HLR file to export from, i.e., dna -f hlr.dat -E hlr.txt");

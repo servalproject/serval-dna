@@ -420,7 +420,7 @@ int processRequest(unsigned char *packet,int len,
 		      data[dlen++]=sendDone&0xff;
 		      respondSimple(hlr_sid,ACTION_DATA,data,dlen,transaction_id,CRYPT_CIPHERED|CRYPT_SIGNED);
 		    }
-		  if (gatewayuri&&(var_id==VAR_LOCATIONS)&&did&&strlen(did))
+		  if (gatewayspec&&(var_id==VAR_LOCATIONS)&&did&&strlen(did))
 		    {
 		      /* We are a gateway, so offer connection via the gateway as well */
 		      unsigned char data[MAX_DATA_BYTES+16];
