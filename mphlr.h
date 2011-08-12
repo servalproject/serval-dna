@@ -315,6 +315,7 @@ int getReplyPackets(int method,int peer,int batchP,
 		    unsigned char *transaction_id,int timeout);
 int clearResponse(struct response **response);
 int nextHlr(unsigned char *hlr,int *ofs);
+int seedHlr();
 int findHlr(unsigned char *hlr,int *ofs,char *sid,char *did);
 int createHlr(char *did,char *sid);
 struct hlrentry_handle *openhlrentry(unsigned char *hlr,int hofs);
@@ -364,6 +365,10 @@ int exportHlr(unsigned char *hlr,char *text);
 int openHlrFile(char *backing_file,int size);
 int runCommand(char *cmd);
 int asteriskObtainGateway(char *requestor_sid,char *did,char *uri_out);
+int packetOkDNA(unsigned char *packet,int len,unsigned char *transaction_id);
+int packetOkOverlay(unsigned char *packet,int len,unsigned char *transaction_id);
+int prepareGateway(char *gatewayspec);
+
 
 #define CRYPT_CIPHERED 1
 #define CRYPT_SIGNED 2
@@ -573,6 +578,8 @@ int overlay_rx_messages();
 int overlay_check_ticks();
 int overlay_add_selfannouncement();
 int overlay_payload_package_fmt1(overlay_payload *p,overlay_buffer *b);
+int overlay_interface_args(char *arg);
+int overlay_get_nexthop(overlay_payload *p,unsigned char *nexthop,int *nexthoplen);
 
 extern int overlay_interface_count;
 

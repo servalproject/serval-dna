@@ -108,9 +108,8 @@ int getBroadcastAddresses(struct in_addr peers[],int *peer_count,int peer_max){
 #else
 #ifdef HAVE_IFADDRS_H
   struct ifaddrs *ifaddr,*ifa;
-  int family, s;
-  char host[NI_MAXHOST];
-  
+  int family;
+    
   if (getifaddrs(&ifaddr) == -1)  {
     perror("getifaddr()");
     return WHY("getifaddrs() failed");
@@ -126,7 +125,6 @@ int getBroadcastAddresses(struct in_addr peers[],int *peer_count,int peer_max){
        */
       peers[(*peer_count)++].s_addr=((struct sockaddr_in *)ifa->ifa_addr)->sin_addr.s_addr;
       {
-	struct sockaddr_in broadcast;
 	unsigned int local=(((struct sockaddr_in *)(ifa->ifa_addr))->sin_addr.s_addr);
 	unsigned int netmask=(((struct sockaddr_in *)(ifa->ifa_netmask))->sin_addr.s_addr);
 	peers[(*peer_count)++].s_addr=local|~netmask;

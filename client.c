@@ -281,7 +281,7 @@ int fixResponses(struct response_set *responses)
 	      bcopy(rr->response,new,rr->value_bytes);
 	      bcopy(addr,&new[rr->value_bytes],alen+1);
 	      free(rr->response); rr->response=NULL;
-	      rr->response=new;
+	      rr->response=(unsigned char *)new;
 	      rr->value_len+=alen;
 	      rr->value_bytes+=alen;
 	      if (debug>1) fprintf(stderr,"Response string now '%s'\n",rr->response);
@@ -607,7 +607,7 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
       extractSid(r->sid,&slen,sid);
       switch(r->code)
 	{
-	case ACTION_OKAY: printf("OK:%s\n",sid); if (buffer) {strcpy(buffer,sid); *len=strlen(sid); } successes++; break;
+	case ACTION_OKAY: printf("OK:%s\n",sid); if (buffer) {strcpy((char *)buffer,sid); *len=strlen(sid); } successes++; break;
 	case ACTION_DECLINED: printf("DECLINED:%s\n",sid); errors++; break;
 	case ACTION_DATA: 
 	  /* Display data.
@@ -625,7 +625,7 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
 		did[0]=0;
 		extractDid(r->response,&dlen,did);
 		printf("DIDS:%s:%d:%s\n",sid,r->var_instance,did);
-		if (buffer) {strcpy(buffer,did); *len=strlen(did); }
+		if (buffer) {strcpy((char *)buffer,did); *len=strlen(did); }
 		successes++;
 	      }
 	      break;

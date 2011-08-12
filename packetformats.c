@@ -59,14 +59,24 @@ int process_packet(unsigned char *packet,int len,struct sockaddr *sender,int sen
 
 int packetOk(unsigned char *packet,int len,unsigned char *transaction_id)
 {
+  if (len<HEADERFIELDS_LEN) return setReason("Packet is too short");
+
+  if (packet[0]==0x41&&packet[1]==0x10) 
+    return packetOkDNA(packet,len,transaction_id);
+
+  if (packet[0]==0x4F&&packet[1]==0x10) 
+    return packetOkOverlay(packet,len,transaction_id);
+
+  return setReason("Packet type not recognised.");
+}
+
+int packetOkDNA(unsigned char *packet,int len,unsigned char *transaction_id)
+{
   /* Make sure that the packet is meant for us, and is not mal-formed */
   int version;
   int cipher;
   int length;
   int payloadRotation;
-
-  if (len<HEADERFIELDS_LEN) return setReason("Packet is too short");
-  if (packet[0]!=0x41||packet[1]!=0x10) return setReason("Packet has incorrect magic value");
 
   version=(packet[2]<<8)|packet[3];
   length=(packet[4]<<8)|packet[5];

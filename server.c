@@ -85,7 +85,7 @@ int server(char *backing_file,int size,int foregroundMode)
       waittime.tv_usec=(ms%1000)*1000;
       waittime.tv_sec=ms/1000;
 
-      fprintf(stderr,"%d,%d\n",waittime.tv_sec,waittime.tv_usec);
+      fprintf(stderr,"%d,%d\n",(int)waittime.tv_sec,waittime.tv_usec);
       int r=select(maxfd+1,&read_fds,NULL,NULL,&waittime);
       if (r<0) {
 	/* select had a problem */
@@ -93,9 +93,13 @@ int server(char *backing_file,int size,int foregroundMode)
 	return WHY("select() complained.");
       } else if (r>0) {
 	/* We have data, so try to receive it */
+	fprintf(stderr,"select() reports packets waiting\n");
 	overlay_rx_messages();
       } else {
-	/* No data before tick occurred, so do nothing. */
+	/* No data before tick occurred, so do nothing.
+	   Well, for now let's just check anyway. */
+	fprintf(stderr,"select() timeout.\n");
+	overlay_rx_messages();
       }
       /* Check if we need to trigger any ticks on any interfaces */
       overlay_check_ticks();
@@ -234,11 +238,11 @@ int processRequest(unsigned char *packet,int len,
 		char messageLen = packet[pofs];
 		pofs++;
 		strncpy(emitterPhoneNumber, (const char*)packet+pofs, emitterPhoneNumberLen);
-		emitterPhoneNumber[emitterPhoneNumberLen]=0;
+		emitterPhoneNumber[(unsigned int)emitterPhoneNumberLen]=0;
 		
 		pofs+=emitterPhoneNumberLen;
 		strncpy(message, (const char*)packet+pofs, messageLen); 
-		message[messageLen]=0;
+		message[(unsigned int)messageLen]=0;
 		
 		pofs+=messageLen;
 	      

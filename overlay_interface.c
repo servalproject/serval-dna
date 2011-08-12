@@ -152,6 +152,7 @@ int overlay_interface_init_socket(int interface,struct sockaddr_in src_addr,stru
     perror("bind()");
     return WHY("MP HLR server could not bind to requested UDP port (bind() failed)");
   }
+  fprintf(stderr,"Bound to port 0x%04x\n",src_addr.sin_port);
 
   int broadcastP=1;
   if(setsockopt(I(socket), SOL_SOCKET, SO_BROADCAST, &broadcastP, sizeof(broadcastP)) < 0) {
@@ -203,11 +204,36 @@ int overlay_rx_messages()
   /* XXX Okay, so how are we managing out-of-process consumers?
      They need some way to register their interest in listening to a port.
   */
-  for(i=0;i<overlay_interface_count;i++)
-    {
-    }
+  unsigned char packet[16384];
+  int plen=0;
+  int c[OVERLAY_MAX_INTERFACES];
+  int count=0;
+  
+  /* Look at all interfaces */
+  for(i=0;i<overlay_interface_count;i++) { c[i]=(overlay_interfaces[i].observed>0); count+=c[i]; }
 
-  return WHY("Not implemented");
+  /* Grab packets from interfaces in round-robin fashion until all have been grabbed,
+     or until we have spent too long (maybe 10ms?) */
+  while(count>0)
+    for(i=0;i<overlay_interface_count;i++)
+      {
+	struct sockaddr src_addr;
+	unsigned int addrlen=sizeof(src_addr);
+	unsigned char transaction_id[8];
+
+	plen=recvfrom(overlay_interfaces[i].socket,packet,sizeof(packet),MSG_DONTWAIT,
+		      &src_addr,&addrlen);
+	if (plen<0) { c[i]=0; count--; } else {
+	  /* We have a frame from this interface */
+	  fprintf(stderr,"Received %d bytes on interface #%d\n",plen,i);
+
+	  bzero(&transaction_id[0],8);
+	  if (!packetOk(packet,plen,transaction_id)) WHY("Malformed packet");
+	  
+	}
+      }
+
+  return 0;
 }
 
 int overlay_tx_messages()
@@ -367,7 +393,7 @@ int overlay_tick_interface(int i, long long now)
 	/* Stale, so remove from queue */
 	*p=pp->next;
 	pp->next->prev=*p;
-	op_free(p);
+	op_free(*p);
       }
       else
 	{
@@ -421,7 +447,8 @@ int overlay_tick_interface(int i, long long now)
 	}
       return 0;
     }
-  else WHY("overlay_broadcast_ensemble() failed");
+  else return WHY("overlay_broadcast_ensemble() failed");
+
 }
 
 int overlay_check_ticks()
@@ -441,7 +468,6 @@ int overlay_check_ticks()
   now=nowtv.tv_sec*1000;
   now=now+nowtv.tv_usec/1000;
 
-
   /* Now check if the next tick time for the interfaces is no later than that time.
      If so, trigger a tick on the interface. */
   for(i=0;i<overlay_interface_count;i++)
@@ -455,7 +481,7 @@ int overlay_check_ticks()
 	    overlay_interfaces[i].last_tick_ms=now;
 	  }
     }
-
+  
   return 0;
 }
 
