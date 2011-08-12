@@ -8,6 +8,17 @@ int overlay_ready=0;
 int overlay_interface_count=0;
 overlay_interface overlay_interfaces[OVERLAY_MAX_INTERFACES];
 
+struct interface_rules {
+  char *namespec;
+  unsigned long long speed_in_bits;
+  int port;
+  char type;
+  char excludeP;
+  struct interface_rules *next;
+};
+
+struct interface_rules *interface_filter=NULL;
+
 int overlay_interface_type(char *s)
 {
   if (!strcasecmp(s,"ethernet")) return OVERLAY_INTERFACE_ETHERNET;
@@ -21,11 +32,26 @@ int overlay_interface_arg(char *arg)
 {
   /* Parse an interface argument, of the form:
 
-     address[:speed[:type[:port]]]
+     <+|->[interfacename][=type]
+
+     +interface tells DNA to sit on that interface
+     -interface tells DNA to not sit on that interface
+     +/- without an interface tells DNA to sit on all interfaces.
+
+     The first match rules, so -en0+ tells DNA to use all interfaces, excepting en0
+
+     The optional =type specifier tells DNA how to handle the interface in terms of
+     bandwidth:distance relationship for calculating tick times etc.
+
+     The special type =custom allows full specification:
+     
+     XXX - Settle the custom specification now that we have changed the interface
+     management.
   */
-  
-  char address[80];
-  char speed[80]="2m";
+
+  char sign[80]="+";
+  char interface_name[80]="";
+  char speed[80]="1m";
   char typestring[80]="wifi";
   int port=PORT_DNA;
   int type=OVERLAY_INTERFACE_UNKNOWN;
@@ -34,27 +60,47 @@ int overlay_interface_arg(char *arg)
   /* Too long */
   if (strlen(arg)>79) return WHY("interface specification was >79 characters");
 
-  if (sscanf(arg,"%[^:]%n:%[^:]%n:%[^:]%n:%d%n",
-	     address,&n,speed,&n,typestring,&n,&port,&n)>=1)
+  struct interface_rules *r=calloc(sizeof(struct interface_rules),1);
+  if (!r) return WHY("calloc(struct interface rules),1) failed");
+
+
+  if (sscanf(arg,"%[+-]%n%[^=+-]%n=%[^:]%n:%d%n:%[^:]%n",
+	     sign,&n,interface_name,&n,typestring,&n,&port,&n,speed,&n)>=1)
     {
-      int speed_in_bits=parse_quantity(speed);
+      if (n<strlen(arg)) { free(r); return WHY("Extra junk at end of interface specification"); }
+
+      if (strlen(sign)>1) { free(r); return WHY("Sign must be + or -"); }
+      switch(sign[0])
+	{
+	case '+': break;
+	case '-': r->excludeP=1; break;
+	default: 
+	  free(r);
+	  return WHY("Invalid interface list item: Must begin with + or -");
+	}
+
+      long long speed_in_bits=parse_quantity(speed);
       if (speed_in_bits<=1) {
-	fprintf(stderr,"speed='%s'\n",speed);
+	free(r);
 	return WHY("Interfaces must be capable of at least 1 bit per second");
       }
       if (n<strlen(arg)) return WHY("Extra stuff at end of interface specification");
 
       type=overlay_interface_type(typestring);
-      if (type<0) return WHY("Invalid interface type in specification");
+      if (type<0) { free(r); return WHY("Invalid interface type in specification"); }
 
-      /* Okay, register the interface */
-      in_addr_t src_addr=inet_addr(address);
-      if (overlay_init_interface(src_addr,speed_in_bits,port,type))
-	return WHY("Could not initialise interface");
+      /* Okay, register the interface preference */
+      r->namespec=strdup(interface_name);
+      r->speed_in_bits=speed_in_bits;
+      r->port=port;
+      r->type=type;
+      
+      r->next=interface_filter;
+      interface_filter=r;
 
+      return 0;
     }
-  else return WHY("Bad interface specification");
-  return 0;
+  else { free(r); return WHY("Bad interface specification"); }
 }
 
 int overlay_interface_args(char *arg)
@@ -83,38 +129,56 @@ int overlay_interface_args(char *arg)
   return 0;     
 }
 
-int overlay_init_interface(in_addr_t src_addr,int speed_in_bits,int port,int type)
+int overlay_interface_init_socket(int interface,struct sockaddr_in src_addr,struct sockaddr_in broadcast,
+				  struct sockaddr_in netmask)
 {
-  struct sockaddr_in bind_addr;
-
-  /* Too many interfaces */
-  if (overlay_interface_count>=OVERLAY_MAX_INTERFACES) return WHY("Too many interfaces -- Increase OVERLAY_MAX_INTERFACES");
-
-#define I(X) overlay_interfaces[overlay_interface_count].X
+#define I(X) overlay_interfaces[interface].X
+  I(local_address)=src_addr;
+  I(broadcast_address)=broadcast;
+  I(netmask)=netmask;
 
   I(socket)=socket(PF_INET,SOCK_DGRAM,0);
   if (I(socket)<0) {
     return WHY("Could not create UDP socket for interface");
   }
 
-  bind_addr.sin_family = AF_INET;
-  bind_addr.sin_port = htons( port<0?PORT_DNA:port );
+  src_addr.sin_family = AF_INET;
+  src_addr.sin_port = htons( I(port) );
   /* XXX Is this right? Are we really setting the local side address?
      I was in a plane when at the time, so couldn't Google it.
   */
-  fprintf(stderr,"src_addr=%08x\n",(unsigned int)src_addr);
-  bind_addr.sin_addr.s_addr = htonl( src_addr );
-  if(bind(I(socket),(struct sockaddr *)&bind_addr,sizeof(bind_addr))) {
+  fprintf(stderr,"src_addr=%08x\n",(unsigned int)src_addr.sin_addr.s_addr);
+  if(bind(I(socket),(struct sockaddr *)&src_addr,sizeof(src_addr))) {
     perror("bind()");
     return WHY("MP HLR server could not bind to requested UDP port (bind() failed)");
   }
+
+  int broadcastP=1;
+  if(setsockopt(I(socket), SOL_SOCKET, SO_BROADCAST, &broadcastP, sizeof(broadcastP)) < 0) {
+    perror("setsockopt");
+    return WHY("setsockopt() failed");
+  }
+ 
+  return 0;
+#undef I(X)
+}
+
+int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockaddr_in broadcast,
+			   struct sockaddr_in netmask,int speed_in_bits,int port,int type)
+{
+  /* Too many interfaces */
+  if (overlay_interface_count>=OVERLAY_MAX_INTERFACES) return WHY("Too many interfaces -- Increase OVERLAY_MAX_INTERFACES");
+
+#define I(X) overlay_interfaces[overlay_interface_count].X
+
+  strcpy(I(name),name);
 
   /* Pick a reasonable default MTU.
      This will ultimately get tuned by the bandwidth and other properties of the interface */
   I(mtu)=1200;
 
   I(bits_per_second)=speed_in_bits;
-  I(port)=bind_addr.sin_port;
+  I(port)=ntohs(src_addr.sin_port);
   I(type)=type;
   I(tick_ms)=500;
   switch(type) {
@@ -122,6 +186,9 @@ int overlay_init_interface(in_addr_t src_addr,int speed_in_bits,int port,int typ
   case OVERLAY_INTERFACE_ETHERNET: I(tick_ms)=500; break;
   case OVERLAY_INTERFACE_WIFI: I(tick_ms)=500; break;
   }
+
+  if (overlay_interface_init_socket(overlay_interface_count,src_addr,broadcast,netmask))
+    return WHY("overlay_interface_init_socket() failed");
 
   overlay_interface_count++;
 #undef I(X)
@@ -171,8 +238,11 @@ int overlay_broadcast_ensemble(int interface_number,unsigned char *bytes,int len
   s.sin_port = htons( overlay_interfaces[interface_number].port );
 
   if(sendto(overlay_interfaces[interface_number].socket, bytes, len, 0, (struct sockaddr *)&s, sizeof(struct sockaddr_in)) < 0)
-    /* Failed to send */
-    return WHY("sendto() failed");
+    {
+      /* Failed to send */
+      perror("sendto");
+      return WHY("sendto() failed");
+    }
   else
     /* Sent okay */
     return 0;
@@ -182,12 +252,15 @@ int overlay_interface_discover()
 {
 #ifdef HAVE_IFADDRS_H
   struct ifaddrs *ifaddr,*ifa;
-  int family;
+  int family,i;
   
   if (getifaddrs(&ifaddr) == -1)  {
     perror("getifaddr()");
     return WHY("getifaddrs() failed");
   }
+
+  /* Mark all interfaces as not observed, so that we know if we need to cull any */
+  for(i=0;i<overlay_interface_count;i++) overlay_interfaces[i].observed--;
 
   for (ifa=ifaddr;ifa!=NULL;ifa=ifa->ifa_next) {
     family=ifa->ifa_addr->sa_family;
@@ -195,16 +268,56 @@ int overlay_interface_discover()
     case AF_INET: 
       {
 	unsigned char *name=(unsigned char *)ifa->ifa_name;
-	unsigned int local=(((struct sockaddr_in *)(ifa->ifa_addr))->sin_addr.s_addr);
-	unsigned int netmask=(((struct sockaddr_in *)(ifa->ifa_netmask))->sin_addr.s_addr);
-	unsigned int broadcast=local|~netmask;
-	printf("%s: %08x %08x %08x\n",name,local,netmask,broadcast);
-	/* XXX now register the interface, or update the existing interface registration */
+	struct sockaddr_in local=*(struct sockaddr_in *)ifa->ifa_addr;
+	struct sockaddr_in netmask=*(struct sockaddr_in *)ifa->ifa_netmask;
+	unsigned int broadcast_bits=local.sin_addr.s_addr|~netmask.sin_addr.s_addr;
+	struct sockaddr_in broadcast=local;
+	broadcast.sin_addr.s_addr=broadcast_bits;
+	printf("%s: %08x %08x %08x\n",name,local.sin_addr.s_addr,netmask.sin_addr.s_addr,broadcast.sin_addr.s_addr);
+	/* Now register the interface, or update the existing interface registration */
+	struct interface_rules *r=interface_filter,*me=NULL;
+	while(r) {
+	  if (!strcasecmp((char *)name,r->namespec)) me=r;
+	  if (!r->namespec[0]) me=r;
+	  r=r->next;
+	}
+	if (me&&(!me->excludeP)) {
+	  /* We should register or update this interface. */
+	  int i;
+	  for(i=0;i<overlay_interface_count;i++) if (!strcasecmp(overlay_interfaces[i].name,(char *)name)) break;
+	  if (i<overlay_interface_count) {
+	    /* We already know about this interface, so just update it */
+	    if ((overlay_interfaces[i].local_address.sin_addr.s_addr==local.sin_addr.s_addr)&&
+		(overlay_interfaces[i].broadcast_address.sin_addr.s_addr==broadcast.sin_addr.s_addr)&&
+		(overlay_interfaces[i].netmask.sin_addr.s_addr==netmask.sin_addr.s_addr))
+	      {
+		/* Mark it as being seen */
+		overlay_interfaces[i].observed=1;
+		continue;
+	      }
+	    else
+	      {
+		/* Interface has changed */
+		close(overlay_interfaces[i].socket);
+		if (overlay_interface_init_socket(i,local,broadcast,netmask))
+		  WHY("Could not reinitialise changed interface");
+	      }
+	  }
+	  else {
+	    /* New interface, so register it */
+	    if (overlay_interface_init((char *)name,local,broadcast,netmask,
+				       me->speed_in_bits,me->port,me->type))
+	      WHY("Could not initialise newly seen interface");
+	  }	    
+	}
 	break;
       }
     }
   }
 #endif
+
+  /* XXX Cull any non-observed interfaces */
+
   return 0;
 }
 

@@ -375,6 +375,7 @@ extern int overlayMode;
 #define OVERLAY_INTERFACE_WIFI 2
 #define OVERLAY_INTERFACE_PACKETRADIO 3
 typedef struct overlay_interface {
+  char name[80];
   int socket;
   int bits_per_second;
   int port;
@@ -399,6 +400,7 @@ typedef struct overlay_interface {
   int sequence_number;
 
   /* Broadcast address and netmask, if known */
+  struct sockaddr_in local_address;
   struct sockaddr_in broadcast_address;
   struct sockaddr_in netmask;
 
@@ -406,6 +408,11 @@ typedef struct overlay_interface {
      For radio links the actual maximum and the maximum that is likely to be delivered reliably are
      potentially two quite different values. */
   int mtu;
+
+  /* If the interface still exists on the local machine.
+     If not, it we keep track of it for a few seconds before purging it, incase of flapping, e.g.,
+     due to DHCP renewal */
+  int observed;
 } overlay_interface;
 
 /* Maximum interface count is rather arbitrary.
@@ -555,7 +562,10 @@ int op_free(overlay_payload *p);
 
 long long parse_quantity(char *q);
 
-int overlay_init_interface(in_addr_t src_addr,int speed_in_bits,int port,int type);
+int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockaddr_in broadcast,
+			   struct sockaddr_in netmask,int speed_in_bits,int port,int type);
+int overlay_interface_init_socket(int i,struct sockaddr_in src_addr,struct sockaddr_in broadcast,
+				  struct sockaddr_in netmask);
 int overlay_interface_discover();
 int overlay_interface_discover();
 long long overlay_time_until_next_tick();
