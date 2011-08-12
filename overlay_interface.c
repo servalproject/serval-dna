@@ -228,8 +228,7 @@ int overlay_rx_messages()
 	  fprintf(stderr,"Received %d bytes on interface #%d\n",plen,i);
 
 	  bzero(&transaction_id[0],8);
-	  if (!packetOk(packet,plen,transaction_id)) WHY("Malformed packet");
-	  
+	  if (!packetOk(packet,plen,transaction_id,&src_addr,addrlen,1)) WHY("Malformed packet");	  
 	}
       }
 

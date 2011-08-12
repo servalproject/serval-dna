@@ -24,7 +24,6 @@ int hlr_size=0;
 
 FILE *i_f=NULL;
 
-struct sockaddr recvaddr;
 struct in_addr client_addr;
 int client_port;
 
@@ -182,17 +181,17 @@ int processRequest(unsigned char *packet,int len,
 	  /* Creating an HLR requires an initial DID number and definately no SID -
 	     you can't choose a SID. */
 	  if (debug>1) fprintf(stderr,"Creating a new HLR record. did='%s', sid='%s'\n",did,sid);
-	  if (!did[0]) return respondSimple(NULL,ACTION_DECLINED,NULL,0,transaction_id,CRYPT_CIPHERED|CRYPT_SIGNED);
-	  if (sid[0])  return respondSimple(sid,ACTION_DECLINED,NULL,0,transaction_id,CRYPT_CIPHERED|CRYPT_SIGNED);
+	  if (!did[0]) return respondSimple(NULL,ACTION_DECLINED,NULL,0,transaction_id,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
+	  if (sid[0])  return respondSimple(sid,ACTION_DECLINED,NULL,0,transaction_id,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
 	  if (debug>1) fprintf(stderr,"Verified that create request supplies DID but not SID\n");
 	  
 	  {
 	    char sid[128];
 	    /* make HLR with new random SID and initial DID */
 	    if (!createHlr(did,sid))
-	      return respondSimple(sid,ACTION_OKAY,NULL,0,transaction_id,CRYPT_CIPHERED|CRYPT_SIGNED);
+	      return respondSimple(sid,ACTION_OKAY,NULL,0,transaction_id,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
 	    else
-	      return respondSimple(NULL,ACTION_DECLINED,NULL,0,transaction_id,CRYPT_CIPHERED|CRYPT_SIGNED);
+	      return respondSimple(NULL,ACTION_DECLINED,NULL,0,transaction_id,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
 	  }
 	  pofs+=1;
 	  pofs+=1+SID_SIZE;
@@ -254,7 +253,7 @@ int processRequest(unsigned char *packet,int len,
 		  sprintf(amCommand, "am broadcast -a org.servalproject.DT -e number \"%s\"  -e content \"%s\"", emitterPhoneNumber, message);
 		  if (debug>1) fprintf(stderr,"Delivering DT message via intent: %s\n",amCommand);
 		  int exitcode = runCommand(amCommand);
-		  respondSimple(hlrSid(hlr, ofs),ACTION_OKAY,NULL,0,transaction_id,CRYPT_CIPHERED|CRYPT_SIGNED);
+		  respondSimple(hlrSid(hlr, ofs),ACTION_OKAY,NULL,0,transaction_id,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
 		}
 	      }
 	      break;
@@ -265,7 +264,7 @@ int processRequest(unsigned char *packet,int len,
 	      if ((!sid)||(!sid[0])) {
 		setReason("You can only set variables by SID");
 		return respondSimple(NULL,ACTION_ERROR,(unsigned char *)"SET requires authentication by SID",0,transaction_id,
-				     CRYPT_CIPHERED|CRYPT_SIGNED);
+				     sender,CRYPT_CIPHERED|CRYPT_SIGNED);
 	      }
 
 	      while(findHlr(hlr,&ofs,sid,did))
@@ -292,7 +291,7 @@ int processRequest(unsigned char *packet,int len,
 		      setReason("Could not extract ACTION_SET request");
 		      return 
 			respondSimple(NULL,ACTION_ERROR,(unsigned char *)"Mal-formed SET request",0,transaction_id,
-				      CRYPT_CIPHERED|CRYPT_SIGNED);
+				      sender,CRYPT_CIPHERED|CRYPT_SIGNED);
 		    }
 		  
 		  /* Get the stored value */
@@ -306,7 +305,7 @@ int processRequest(unsigned char *packet,int len,
 		      return 
 			  respondSimple(NULL,ACTION_ERROR,
 					(unsigned char *)"Cannot SET NOCREATE/REPLACE a value that does not exist",
-					0,transaction_id,CRYPT_CIPHERED|CRYPT_SIGNED);
+					0,transaction_id,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
 		    }
 		  } else {
 		    if (flags==SET_NOREPLACE) {
@@ -315,7 +314,7 @@ int processRequest(unsigned char *packet,int len,
 		      return 
 			respondSimple(NULL,ACTION_ERROR,
 				      (unsigned char *)"Cannot SET NOREPLACE; a value exists",
-				      0,transaction_id,CRYPT_CIPHERED|CRYPT_SIGNED);
+				      0,transaction_id,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
 		      }
 		  }
 		  /* Replace the changed portion of the stored value */
@@ -331,13 +330,13 @@ int processRequest(unsigned char *packet,int len,
 		      setReason("Failed to write variable");
 		      return 
 			respondSimple(NULL,ACTION_ERROR,(unsigned char *)"Failed to SET variable",0,transaction_id,
-				      CRYPT_CIPHERED|CRYPT_SIGNED);
+				      sender,CRYPT_CIPHERED|CRYPT_SIGNED);
 		    }
 		  if (debug>2) { fprintf(stderr,"HLR after writing:\n"); hlrDump(hlr,ofs); }
 		  
 		  /* Reply that we wrote the fragment */
 		  respondSimple(sid,ACTION_WROTE,&packet[rofs],6,
-				transaction_id,CRYPT_CIPHERED|CRYPT_SIGNED);
+				transaction_id,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
 		  /* Advance to next record and keep searching */
 		  if (nextHlr(hlr,&ofs)) break;
 		}
@@ -395,7 +394,7 @@ int processRequest(unsigned char *packet,int len,
   			      
 				// only send each value when the *next* record is found, that way we can easily stamp the last response with DONE
 				if (sendDone>0)
-				  respondSimple(hlr_sid,ACTION_DATA,data,dlen,transaction_id,CRYPT_CIPHERED|CRYPT_SIGNED);
+				  respondSimple(hlr_sid,ACTION_DATA,data,dlen,transaction_id,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
 
 				dlen=0;
 	    
@@ -422,7 +421,7 @@ int processRequest(unsigned char *packet,int len,
 		    {
 		      data[dlen++]=ACTION_DONE;
 		      data[dlen++]=sendDone&0xff;
-		      respondSimple(hlr_sid,ACTION_DATA,data,dlen,transaction_id,CRYPT_CIPHERED|CRYPT_SIGNED);
+		      respondSimple(hlr_sid,ACTION_DATA,data,dlen,transaction_id,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
 		    }
 		  if (gatewayspec&&(var_id==VAR_LOCATIONS)&&did&&strlen(did))
 		    {
@@ -447,7 +446,7 @@ int processRequest(unsigned char *packet,int len,
 			  if (packageVariableSegment(data,&dlen,&fake,offset,MAX_DATA_BYTES+16))
 			    return setReason("packageVariableSegment() of gateway URI failed.");
 			  
-			  respondSimple(hlrSid(hlr,0),ACTION_DATA,data,dlen,transaction_id,CRYPT_CIPHERED|CRYPT_SIGNED);
+			  respondSimple(hlrSid(hlr,0),ACTION_DATA,data,dlen,transaction_id,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
 			}
 		      else
 			{
@@ -472,7 +471,7 @@ int processRequest(unsigned char *packet,int len,
 }
 
 int respondSimple(char *sid,int action,unsigned char *action_text,int action_len,
-		  unsigned char *transaction_id,int cryptoFlags)
+		  unsigned char *transaction_id,struct sockaddr *recvaddr,int cryptoFlags)
 {
   unsigned char packet[8000];
   int pl=0;
@@ -515,7 +514,7 @@ int respondSimple(char *sid,int action,unsigned char *action_text,int action_len
 
   if (debug) fprintf(stderr,"Sending response of %d bytes.\n",*packet_len);
 
-  if (packetSendRequest(REQ_REPLY,packet,*packet_len,NONBATCH,transaction_id,NULL)) return -1;
+  if (packetSendRequest(REQ_REPLY,packet,*packet_len,NONBATCH,transaction_id,recvaddr,NULL)) return -1;
   
   return 0;
 }
@@ -549,6 +548,7 @@ int simpleServerMode()
 {
   while(1) {
     unsigned char buffer[16384];
+    struct sockaddr recvaddr;
     socklen_t recvaddrlen=sizeof(recvaddr);
     struct pollfd fds;
     int len;
@@ -571,8 +571,7 @@ int simpleServerMode()
       if (debug) fprintf(stderr,"Simulation mode: Dropped packet due to simulated link parameters.\n");
       continue;
     }
-    if (!packetOk(buffer,len,NULL)) process_packet(buffer,len,&recvaddr,recvaddrlen);
-    else {
+    if (packetOk(buffer,len,NULL,&recvaddr,recvaddrlen,1)) { 
       if (debug) setReason("Ignoring invalid packet");
     }
     if (debug>1) fprintf(stderr,"Finished processing packet, waiting for next one.\n");

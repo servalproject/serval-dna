@@ -57,20 +57,22 @@ int process_packet(unsigned char *packet,int len,struct sockaddr *sender,int sen
   return 0;
 }
 
-int packetOk(unsigned char *packet,int len,unsigned char *transaction_id)
+int packetOk(unsigned char *packet,int len,unsigned char *transaction_id,
+	     struct sockaddr *recvaddr,int recvaddrlen,int parseP)
 {
   if (len<HEADERFIELDS_LEN) return setReason("Packet is too short");
 
   if (packet[0]==0x41&&packet[1]==0x10) 
-    return packetOkDNA(packet,len,transaction_id);
+    return packetOkDNA(packet,len,transaction_id,recvaddr,recvaddrlen,parseP);
 
   if (packet[0]==0x4F&&packet[1]==0x10) 
-    return packetOkOverlay(packet,len,transaction_id);
+    return packetOkOverlay(packet,len,transaction_id,recvaddr,recvaddrlen,parseP);
 
   return setReason("Packet type not recognised.");
 }
 
-int packetOkDNA(unsigned char *packet,int len,unsigned char *transaction_id)
+int packetOkDNA(unsigned char *packet,int len,unsigned char *transaction_id,
+		struct sockaddr *recvaddr,int recvaddrlen,int parseP)
 {
   /* Make sure that the packet is meant for us, and is not mal-formed */
   int version;
@@ -111,7 +113,7 @@ int packetOkDNA(unsigned char *packet,int len,unsigned char *transaction_id)
   if (debug>1) fprintf(stderr,"Packet passes sanity checks and is ready for decoding.\n");
   if (debug>2) dump("unrotated packet",packet,len);
 
-  return 0;
+  if (parseP) return process_packet(packet,len,recvaddr,recvaddrlen); else return 0;
 }
 
 int packetMakeHeader(unsigned char *packet,int packet_maxlen,int *packet_len,

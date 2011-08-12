@@ -51,7 +51,8 @@ int packetSendFollowup(struct in_addr destination,
 }
 
 int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP,
-		      unsigned char *transaction_id,struct response_set *responses)
+		      unsigned char *transaction_id,struct sockaddr *recvaddr,
+		      struct response_set *responses)
 {
   int i;
   int cumulative_timeout=0; /* ms */
@@ -76,7 +77,7 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
   /* Deal with special case */
   if (method==REQ_REPLY)
     {
-      int r=sendto(sock,packet,packet_len,0,(struct sockaddr *)&recvaddr,sizeof(recvaddr));
+      int r=sendto(sock,packet,packet_len,0,recvaddr,sizeof(recvaddr));
       if (r<packet_len)	{
 	if (debug) fprintf(stderr,"Could not send to client %s\n",inet_ntoa(client_addr));
       } else {
@@ -128,7 +129,7 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
 	while(1)
 	  {
 	    /* Wait for response */
-	    int r=getReplyPackets(method,i,batchP,responses,transaction_id,timeout_remaining);
+	    int r=getReplyPackets(method,i,batchP,responses,transaction_id,recvaddr,timeout_remaining);
 	    if (r&&debug>1) fprintf(stderr,"getReplyPackets(): Returned on timeout\n");
 	    
 	    switch(method)
@@ -203,7 +204,7 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
    sendToPeers() does it that way.  We just have to remember to
    ask for serialised attempts, rather than all at once.
 */
-int requestNewHLR(char *did,char *pin,char *sid)
+int requestNewHLR(char *did,char *pin,char *sid,struct sockaddr *recvaddr)
 {
   unsigned char packet[8000];
   int packet_len=0;
@@ -221,7 +222,7 @@ int requestNewHLR(char *did,char *pin,char *sid)
 
   /* Send it to peers, starting with ourselves, one at a time until one succeeds.
      XXX - This could take a while if we have long timeouts for each. */
-  if (packetSendRequest(REQ_SERIAL,packet,packet_len,NONBATCH,transaction_id,&responses)) return -1;
+  if (packetSendRequest(REQ_SERIAL,packet,packet_len,NONBATCH,transaction_id,recvaddr,&responses)) return -1;
 
   /* Extract response */
   if (debug>2) dumpResponses(&responses);
@@ -292,9 +293,8 @@ int fixResponses(struct response_set *responses)
   return 0;
 }
 
-int getReplyPackets(int method,int peer,int batchP,
-		    struct response_set *responses,
-		    unsigned char *transaction_id,int timeout)
+int getReplyPackets(int method,int peer,int batchP,struct response_set *responses,
+		    unsigned char *transaction_id,struct sockaddr *recvaddr,int timeout)
 {
   /* set timeout alarm */
   
@@ -307,9 +307,9 @@ int getReplyPackets(int method,int peer,int batchP,
   int timeout_usecs;
   int to=timeout;
   int len;
-
+  
   if (debug>1) printf("getReplyPackets(policy=%d)\n",method);
-
+  
   /* Work out when the timeout will expire */
   gettimeofday(&t,NULL); 
   timeout_secs=t.tv_sec; timeout_usecs=t.tv_usec;
@@ -318,33 +318,34 @@ int getReplyPackets(int method,int peer,int batchP,
   
   while(1) {
     unsigned char buffer[16384];
-    socklen_t recvaddrlen=sizeof(recvaddr);
+    struct sockaddr sender;
+    socklen_t recvaddrlen=sizeof(struct sockaddr);
     struct pollfd fds;
-
-    bzero((void *)&recvaddr,sizeof(recvaddr));
+    
+    bzero((void *)recvaddr,sizeof(struct sockaddr));
     fds.fd=sock; fds.events=POLLIN; fds.revents=0;
-
+    
     while (poll(&fds,1,10 /* wait for 10ms at a time */)==0)
       {
 	gettimeofday(&t,NULL);
 	if (t.tv_sec>timeout_secs) return 1;
 	if (t.tv_sec==timeout_secs&&t.tv_usec>=timeout_usecs) return 1;
       }
-    len=recvfrom(sock,buffer,sizeof(buffer),0,&recvaddr,&recvaddrlen);
-	if (len<=0) return setReason("Unable to receive packet.");
-
-    client_port=((struct sockaddr_in*)&recvaddr)->sin_port;
-    client_addr=((struct sockaddr_in*)&recvaddr)->sin_addr;
+    len=recvfrom(sock,buffer,sizeof(buffer),0,recvaddr,&recvaddrlen);
+    if (len<=0) return setReason("Unable to receive packet.");
+    
+    client_port=((struct sockaddr_in *)recvaddr)->sin_port;
+    client_addr=((struct sockaddr_in *)recvaddr)->sin_addr;
 
     if (debug) fprintf(stderr,"Received reply from %s (len=%d).\n",inet_ntoa(client_addr),len);
-    if (debug>1) dump("recvaddr",(unsigned char *)&recvaddr,recvaddrlen);
+    if (debug>1) dump("recvaddr",(unsigned char *)&sender,recvaddrlen);
     if (debug>2) dump("packet",(unsigned char *)buffer,len);
 
     if (dropPacketP(len)) {
       if (debug) fprintf(stderr,"Simulation mode: Dropped packet due to simulated link parameters.\n");
       continue;
     }
-    if (!packetOk(buffer,len,transaction_id)) {
+    if (!packetOk(buffer,len,transaction_id,recvaddr,recvaddrlen,0)) {
       /* Packet passes tests - extract responses and append them to the end of the response list */
       if (extractResponses(client_addr,buffer,len,responses)) 
 	return setReason("Problem extracting response fields from reply packets");
@@ -375,7 +376,7 @@ int getReplyPackets(int method,int peer,int batchP,
 }
 
 int writeItem(char *sid,int var_id,int instance,unsigned char *value,
-	      int value_start,int value_length,int flags)
+	      int value_start,int value_length,int flags, struct sockaddr *recvaddr)
 {
   unsigned char packet[8000];
   int packet_len=0;
@@ -405,7 +406,7 @@ int writeItem(char *sid,int var_id,int instance,unsigned char *value,
 	  if (o+bytes>value_length) bytes=value_length-o;
 	  if (debug>1) fprintf(stderr,"  writing [%d,%d)\n",o,o+bytes-1);
 	  if (writeItem(sid,var_id,instance,&value[o-value_start],o,bytes,
-			flags|((o>value_start)?SET_FRAGMENT:0)))
+			flags|((o>value_start)?SET_FRAGMENT:0),NULL))
 	    {
 	      if (debug) fprintf(stderr,"   - writing installment failed\n");
 	      return setReason("Failure during multi-packet write of long-value");
@@ -425,7 +426,7 @@ int writeItem(char *sid,int var_id,int instance,unsigned char *value,
 
   /* XXX should be able to target to the peer holding the SID, if we have it.
      In any case, we */
-  if (packetSendRequest(REQ_FIRSTREPLY,packet,packet_len,NONBATCH,transaction_id,&responses)) return -1;
+  if (packetSendRequest(REQ_FIRSTREPLY,packet,packet_len,NONBATCH,transaction_id,recvaddr,&responses)) return -1;
 
   r=responses.responses;
   while(r)
@@ -513,7 +514,7 @@ int peerAddress(char *did,char *sid,int flags)
 
   method=REQ_PARALLEL;
   if (sid) method=REQ_FIRSTREPLY;
-  if (packetSendRequest(method,packet,packet_len,NONBATCH,transaction_id,&responses)) {
+  if (packetSendRequest(method,packet,packet_len,NONBATCH,transaction_id,NULL,&responses)) {
     if (debug) fprintf(stderr,"peerAddress() failed because packetSendRequest() failed.\n");
     return -1;
   }
@@ -594,7 +595,7 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
 
   method=REQ_PARALLEL;
   if (sid) method=REQ_FIRSTREPLY;
-  if (packetSendRequest(method,packet,packet_len,(instance==-1)?BATCH:NONBATCH,transaction_id,&responses)) {
+  if (packetSendRequest(method,packet,packet_len,(instance==-1)?BATCH:NONBATCH,transaction_id,NULL,&responses)) {
     if (debug) fprintf(stderr,"requestItem() failed because packetSendRequest() failed.\n");
     return -1;
   }
@@ -737,7 +738,7 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
 			bzero(&responses,sizeof(responses));
 
 			/* XXX should target specific peer that sent first piece */
-			getReplyPackets(REQ_PARALLEL,i,0,&responses,transaction_id,250);
+			getReplyPackets(REQ_PARALLEL,i,0,&responses,transaction_id,(struct sockaddr *)&r->sender,250);
 			rr=responses.responses;
 			while(rr)
 			  {
