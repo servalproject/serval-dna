@@ -262,12 +262,8 @@ int usage(char *complaint)
   fprintf(stderr,"       -G - Offer gateway services.  Argument specifies locations of necessary files.\n");
   fprintf(stderr,"            Use -G [potato|android|custom:...] to set defaults for your device type.\n");
   fprintf(stderr,"       -N - Specify one or more interfaces for the DNA overlay mesh to operate.\n");
-  fprintf(stderr,"            Interface specifications take the form IP[:speed[:type[:port]]], and\n");
-  fprintf(stderr,"            multiple interfaces can be specified by comma separating them.\n");
-  fprintf(stderr,"            Speed is the interface speed in bits per second (K,M or G suffixes allowed)\n");
-  fprintf(stderr,"            Type is WiFi,ethernet,catear or other.\n");
-  fprintf(stderr,"            Port specifies an alternate UDP port, otherwise %d is used.\n",PORT_DNA);
-  fprintf(stderr,"            e.g., -N 10.1.2.3,10.1.130.45:2M:wifi\n");
+  fprintf(stderr,"            Interface specifications take the form <+|->[interface[=type][,...]\n");
+  fprintf(stderr,"            e.g., -N -en0,+ to use all interfaces except en0\n");
   fprintf(stderr,"\n");
   exit(-1);
 }

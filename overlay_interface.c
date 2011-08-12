@@ -178,7 +178,7 @@ int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockadd
   I(mtu)=1200;
 
   I(bits_per_second)=speed_in_bits;
-  I(port)=ntohs(src_addr.sin_port);
+  I(port)=port;
   I(type)=type;
   I(tick_ms)=500;
   switch(type) {
@@ -235,6 +235,7 @@ int overlay_broadcast_ensemble(int interface_number,unsigned char *bytes,int len
   memset(&s, '\0', sizeof(struct sockaddr_in));
   s = overlay_interfaces[interface_number].broadcast_address;
   s.sin_family = AF_INET;
+  fprintf(stderr,"Port=%d\n",overlay_interfaces[interface_number].port);
   s.sin_port = htons( overlay_interfaces[interface_number].port );
 
   if(sendto(overlay_interfaces[interface_number].socket, bytes, len, 0, (struct sockaddr *)&s, sizeof(struct sockaddr_in)) < 0)
@@ -430,23 +431,29 @@ int overlay_check_ticks()
   struct timeval nowtv;
   long long now;
 
+  /* Check for changes to interfaces */
+  overlay_interface_discover();
+  
   if (gettimeofday(&nowtv,NULL))
     return WHY("gettimeofday() failed");
-  
+
   /* Get current time in milliseconds */
   now=nowtv.tv_sec*1000;
   now=now+nowtv.tv_usec/1000;
+
 
   /* Now check if the next tick time for the interfaces is no later than that time.
      If so, trigger a tick on the interface. */
   for(i=0;i<overlay_interface_count;i++)
     {
-      if (now>=overlay_interfaces[i].last_tick_ms+overlay_interfaces[i].tick_ms)
-	{
-	  /* This interface is due for a tick */
-	  overlay_tick_interface(i,now);
-	  overlay_interfaces[i].last_tick_ms=now;
-	}
+      /* Only tick live interfaces */
+      if (overlay_interfaces[i].observed>0)
+	if (now>=overlay_interfaces[i].last_tick_ms+overlay_interfaces[i].tick_ms)
+	  {
+	    /* This interface is due for a tick */
+	    overlay_tick_interface(i,now);
+	    overlay_interfaces[i].last_tick_ms=now;
+	  }
     }
 
   return 0;
