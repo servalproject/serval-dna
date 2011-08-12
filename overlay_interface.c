@@ -220,7 +220,8 @@ int overlay_tick_interface(int i, long long now)
   }
     
   fprintf(stderr,"Ticking interface #%d\n",i);
-
+  overlay_interfaces[i].sequence_number++;
+  
   /* Get a buffer ready, and limit it's size appropriately.
      XXX size limit should be reduced from MTU.
      XXX we should also take account of the volume of data likely to be in the TX buffer. */  
@@ -288,7 +289,8 @@ int overlay_tick_interface(int i, long long now)
   fprintf(stderr,"Sending %d bytes\n",e->length);
   if (!overlay_broadcast_ensemble(i,e->bytes,e->length))
     {
-      fprintf(stderr,"Successfully transmitted tick frame on interface #%d\n",i);
+      fprintf(stderr,"Successfully transmitted tick frame #%d on interface #%d\n",
+	      overlay_interfaces[i].sequence_number,i);
       /* De-queue the passengers who were aboard. */
       int j;
       overlay_payload **p=&overlay_tx[OVERLAY_ISOCHRONOUS_VOICE].first;

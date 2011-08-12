@@ -394,6 +394,10 @@ typedef struct overlay_interface {
   /* The time of the last tick on this interface in milli seconds */
   long long last_tick_ms;
 
+  /* Sequence number of last tick.  Sent with announcments to help keep track of the reliability of
+     getting traffic to/from us. */
+  int sequence_number;
+
   /* Broadcast address and netmask, if known */
   struct sockaddr_in broadcast_address;
   struct sockaddr_in netmask;

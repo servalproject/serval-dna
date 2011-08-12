@@ -1,6 +1,6 @@
 #include "mphlr.h"
 
-int overlay_add_selfannouncement(overlay_buffer *b)
+int overlay_add_selfannouncement(int interface,overlay_buffer *b)
 {
   /* Pull the first record from the HLR database and turn it into a
      self-announcment. These are shorter than regular Subscriber Observation
@@ -22,15 +22,35 @@ int overlay_add_selfannouncement(overlay_buffer *b)
   */
 
   unsigned char c;
+  int zero=0;
+  
+  /* Make sure we can find our SID */
+  if (!findHlr(hlr,&zero,NULL,NULL)) return WHY("Could not find first entry in HLR");
 
+  /* Header byte */
   c=OF_SELFANNOUNCE;
   if (ob_append_bytes(b,&c,1))
     return WHY("ob_append_bytes() could not add self-announcement header");
   
-  
-  
+  /* Add our SID to the announcement */
+  if (ob_append_bytes(b,&hlr[zero+4],SID_SIZE)) return WHY("Could not append SID to self-announcement");
 
-  return WHY("Not implemented");
+  /* A sequence number, so that others can keep track of their reception of our frames.
+   These are per-interface */
+  if (ob_append_int(b,overlay_interfaces[interface].sequence_number))
+    return WHY("ob_append_int() could not add sequence number to self-announcement");
+
+  /* A TTL for this frame?
+     XXX - BATMAN uses various TTLs, but I think that it may just be better to have all TTL=1,
+     and have the onward nodes selectively choose which nodes to on-announce.  If we prioritise
+     newly arrived nodes somewhat (or at least reserve some slots for them), then we can still
+     get the good news travels fast property of BATMAN, but without having to flood in the formal
+     sense. */
+  c=1;
+  if (ob_append_bytes(b,&c,1))
+    return WHY("ob_append_bytes() could not add TTL to self-announcement");
+  
+  return 0;
 }
 
 int overlay_get_nexthop(overlay_payload *p,unsigned char *nexthop,int *nexthoplen)
