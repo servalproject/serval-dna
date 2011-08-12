@@ -561,3 +561,6 @@ int overlay_add_selfannouncement();
 int overlay_payload_package_fmt1(overlay_payload *p,overlay_buffer *b);
 
 extern int overlay_interface_count;
+
+/* Userland overlay mesh packet codes */
+#define OF_SELFANNOUNCE 0x01
