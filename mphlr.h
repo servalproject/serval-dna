@@ -386,6 +386,7 @@ extern int overlayMode;
 typedef struct overlay_interface {
   char name[80];
   int socket;
+  int fd;
   int bits_per_second;
   int port;
   int type;

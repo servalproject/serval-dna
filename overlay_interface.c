@@ -178,18 +178,31 @@ int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockadd
      This will ultimately get tuned by the bandwidth and other properties of the interface */
   I(mtu)=1200;
 
+  I(observed)=1;
   I(bits_per_second)=speed_in_bits;
   I(port)=port;
   I(type)=type;
   I(tick_ms)=500;
+  I(last_tick_ms)=0;
+  I(fd)=0;
   switch(type) {
   case OVERLAY_INTERFACE_PACKETRADIO: I(tick_ms)=15000; break;
   case OVERLAY_INTERFACE_ETHERNET: I(tick_ms)=500; break;
   case OVERLAY_INTERFACE_WIFI: I(tick_ms)=500; break;
   }
 
-  if (overlay_interface_init_socket(overlay_interface_count,src_addr,broadcast,netmask))
-    return WHY("overlay_interface_init_socket() failed");
+  if (name[0]=='>') {
+    I(fd) = open(&name[1],O_APPEND|O_NONBLOCK|O_RDWR);
+    if (I(fd)<1)
+      return WHY("could not open dummy interface file for append");
+    /* Seek to end of file as initial reading point */
+    I(socket)=lseek(I(fd),0,SEEK_END); /* socket gets reused to hold file offset */
+    /* XXX later add pretend location information so that we can decide which "packets" to receive
+       based on closeness */    
+  } else {
+    if (overlay_interface_init_socket(overlay_interface_count,src_addr,broadcast,netmask))
+      return WHY("overlay_interface_init_socket() failed");    
+  }
 
   overlay_interface_count++;
 #undef I(X)
@@ -221,14 +234,29 @@ int overlay_rx_messages()
 	unsigned int addrlen=sizeof(src_addr);
 	unsigned char transaction_id[8];
 
-	plen=recvfrom(overlay_interfaces[i].socket,packet,sizeof(packet),MSG_DONTWAIT,
-		      &src_addr,&addrlen);
-	if (plen<0) { c[i]=0; count--; } else {
-	  /* We have a frame from this interface */
-	  fprintf(stderr,"Received %d bytes on interface #%d\n",plen,i);
-
-	  bzero(&transaction_id[0],8);
-	  if (!packetOk(packet,plen,transaction_id,&src_addr,addrlen,1)) WHY("Malformed packet");	  
+	if (overlay_interfaces[i].fd) {
+	  /* Read from dummy interface file */
+	  lseek(overlay_interfaces[i].fd,overlay_interfaces[i].socket,SEEK_SET);
+	  if (read(overlay_interfaces[i].fd,packet,overlay_interfaces[i].mtu)==overlay_interfaces[i].mtu)
+	    {
+	      overlay_interfaces[i].socket+=overlay_interfaces[i].mtu;
+	      plen=overlay_interfaces[i].mtu;
+	      bzero(&transaction_id[0],8);
+	      bzero(&src_addr,sizeof(src_addr));
+	      if (!packetOk(packet,plen,transaction_id,&src_addr,addrlen,1)) WHY("Malformed packet from dummy interface");
+	    }
+	  else { c[i]=0; count--; }
+	} else {
+	  /* Read from UDP socket */
+	  plen=recvfrom(overlay_interfaces[i].socket,packet,sizeof(packet),MSG_DONTWAIT,
+			&src_addr,&addrlen);
+	  if (plen<0) { c[i]=0; count--; } else {
+	    /* We have a frame from this interface */
+	    fprintf(stderr,"Received %d bytes on interface #%d\n",plen,i);
+	    
+	    bzero(&transaction_id[0],8);
+	    if (!packetOk(packet,plen,transaction_id,&src_addr,addrlen,1)) WHY("Malformed packet");	  
+	  }
 	}
       }
 
@@ -250,7 +278,7 @@ int overlay_tx_messages()
 
   /* XXX Go through queue and separate into per-interface queues? */
   
-  return 0;
+  return WHY("not implemented");
 }
 
 int overlay_broadcast_ensemble(int interface_number,unsigned char *bytes,int len)
@@ -263,15 +291,29 @@ int overlay_broadcast_ensemble(int interface_number,unsigned char *bytes,int len
   fprintf(stderr,"Port=%d\n",overlay_interfaces[interface_number].port);
   s.sin_port = htons( overlay_interfaces[interface_number].port );
 
-  if(sendto(overlay_interfaces[interface_number].socket, bytes, len, 0, (struct sockaddr *)&s, sizeof(struct sockaddr_in)) < 0)
+  if (overlay_interfaces[interface_number].fd)
     {
-      /* Failed to send */
-      perror("sendto");
-      return WHY("sendto() failed");
+      if (write(overlay_interfaces[interface_number].fd,bytes,overlay_interfaces[interface_number].mtu)
+	  !=overlay_interfaces[interface_number].mtu)
+	{
+	  perror("write()");
+	  return WHY("write() failed");
+	}
+      else
+	return 0;
     }
   else
-    /* Sent okay */
-    return 0;
+    {
+      if(sendto(overlay_interfaces[interface_number].socket, bytes, len, 0, (struct sockaddr *)&s, sizeof(struct sockaddr_in)) < 0)
+	{
+	  /* Failed to send */
+	  perror("sendto");
+	  return WHY("sendto() failed");
+	}
+      else
+	/* Sent okay */
+	return 0;
+    }
 }
 
 int overlay_interface_discover()
@@ -288,6 +330,28 @@ int overlay_interface_discover()
   /* Mark all interfaces as not observed, so that we know if we need to cull any */
   for(i=0;i<overlay_interface_count;i++) overlay_interfaces[i].observed--;
 
+  /* Check through for any virtual dummy interfaces */
+  struct interface_rules *r=interface_filter;
+  while(r) {
+    if (r->namespec[0]=='>') {
+      for(i=0;i<overlay_interface_count;i++) if (!strcasecmp(overlay_interfaces[i].name,r->namespec)) break;
+      if (i<overlay_interface_count)
+	/* We already know about this interface, so just update it */
+	overlay_interfaces[i].observed=1;
+      else {
+	/* New interface, so register it */
+	struct sockaddr_in dummyaddr;
+	if (overlay_interface_init(r->namespec,dummyaddr,dummyaddr,dummyaddr,
+				   1000000,PORT_DNA,OVERLAY_INTERFACE_WIFI))
+	  WHY("Could not initialise newly seen interface");
+	else
+	  fprintf(stderr,"Registered interface %s\n",r->namespec);
+      }	          
+    }
+    r=r->next;
+  }
+
+  /* Check through actual network interfaces */
   for (ifa=ifaddr;ifa!=NULL;ifa=ifa->ifa_next) {
     family=ifa->ifa_addr->sa_family;
     switch(family) {
@@ -308,6 +372,7 @@ int overlay_interface_discover()
 	  r=r->next;
 	}
 	if (me&&(!me->excludeP)) {
+	  fprintf(stderr,"Interface %s is interesting.\n",name);
 	  /* We should register or update this interface. */
 	  int i;
 	  for(i=0;i<overlay_interface_count;i++) if (!strcasecmp(overlay_interfaces[i].name,(char *)name)) break;
@@ -334,6 +399,8 @@ int overlay_interface_discover()
 	    if (overlay_interface_init((char *)name,local,broadcast,netmask,
 				       me->speed_in_bits,me->port,me->type))
 	      WHY("Could not initialise newly seen interface");
+	    else
+	      fprintf(stderr,"Registered interface %s\n",name);
 	  }	    
 	}
 	break;
@@ -341,8 +408,7 @@ int overlay_interface_discover()
     }
   }
 #endif
-
-  /* XXX Cull any non-observed interfaces */
+  freeifaddrs(ifaddr);
 
   return 0;
 }
@@ -464,21 +530,28 @@ int overlay_check_ticks()
     return WHY("gettimeofday() failed");
 
   /* Get current time in milliseconds */
-  now=nowtv.tv_sec*1000;
+  now=nowtv.tv_sec*1000LL;
   now=now+nowtv.tv_usec/1000;
 
   /* Now check if the next tick time for the interfaces is no later than that time.
      If so, trigger a tick on the interface. */
+  fprintf(stderr,"Examining %d interfaces.\n",overlay_interface_count);
   for(i=0;i<overlay_interface_count;i++)
     {
       /* Only tick live interfaces */
       if (overlay_interfaces[i].observed>0)
-	if (now>=overlay_interfaces[i].last_tick_ms+overlay_interfaces[i].tick_ms)
-	  {
-	    /* This interface is due for a tick */
-	    overlay_tick_interface(i,now);
-	    overlay_interfaces[i].last_tick_ms=now;
-	  }
+	{
+	  fprintf(stderr,"Interface %s ticks every %dms, last at %lld.\n",overlay_interfaces[i].name,
+		  overlay_interfaces[i].tick_ms,overlay_interfaces[i].last_tick_ms);
+	  if (now>=overlay_interfaces[i].last_tick_ms+overlay_interfaces[i].tick_ms)
+	    {
+	      /* This interface is due for a tick */
+	      overlay_tick_interface(i,now);
+	      overlay_interfaces[i].last_tick_ms=now;
+	    }
+	}
+      else
+	fprintf(stderr,"Interface %s is awol.\n",overlay_interfaces[i].name);
     }
   
   return 0;
@@ -492,11 +565,16 @@ long long overlay_time_until_next_tick()
   struct timeval tv;
 
   gettimeofday(&tv,NULL);
-  now=tv.tv_sec*1000+tv.tv_usec/1000;
+  now=tv.tv_sec*1000LL+tv.tv_usec/1000;
 
   int i;
+  fprintf(stderr,"Tick-check on %d interfaces at %lldms\n",overlay_interface_count,now);
   for(i=0;i<overlay_interface_count;i++)
+    if (overlay_interfaces[i].observed>0)
     {
+	  fprintf(stderr,"Interface %s ticks every %dms, last at %lld.\n",overlay_interfaces[i].name,
+		  overlay_interfaces[i].tick_ms,overlay_interfaces[i].last_tick_ms);
+
       long long thistick=(overlay_interfaces[i].last_tick_ms+overlay_interfaces[i].tick_ms)-now;
       if (thistick<0) thistick=0;
       if (thistick<nexttick) nexttick=thistick;
