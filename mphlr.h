@@ -591,3 +591,16 @@ extern int overlay_interface_count;
 
 /* Userland overlay mesh packet codes */
 #define OF_SELFANNOUNCE 0x01
+
+#define OVERLAY_ADDRESS_CACHE_SIZE 1024
+int overlay_abbreviate_address(unsigned char *in,char *out,int *ofs);
+int overlay_abbreviate_expand_address(unsigned char *in,int *inofs,unsigned char *out,int *ofs);
+int overlay_address_cache_address(unsigned char *sid);
+int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *ofs,
+				    int prefix_bytes,int index_bytes);
+int overlay_abbreviate_remember_index(int index_byte_count,unsigned char *in,unsigned char *index_bytes);
+
+
+#define OA_RESOLVED 0      /* We expanded the abbreviation */
+#define OA_PLEASEEXPLAIN 1 /* We need the sender to explain their abbreviation */
+#define OA_UNSUPPORTED 2   /* We cannot expand the abbreviation as we do not understand this code */
