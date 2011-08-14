@@ -385,8 +385,9 @@ extern int overlayMode;
 #define OVERLAY_INTERFACE_PACKETRADIO 3
 typedef struct overlay_interface {
   char name[80];
-  int socket;
   int fd;
+  int offset;
+  int fileP;
   int bits_per_second;
   int port;
   int type;

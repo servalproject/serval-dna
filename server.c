@@ -61,49 +61,8 @@ int server(char *backing_file,int size,int foregroundMode)
   if (!foregroundMode) daemon(0,0);
 
   if (!overlayMode) simpleServerMode();
-  else {
-    /* In overlay mode we need to listen to all of our sockets, and also to
-       send periodic traffic. This means we need to */
-    fprintf(stderr,"Running in overlay mode.\n");
+  else overlayServerMode();
 
-    /* Get the set of socket file descriptors we need to monitor */
-    int i;
-    fd_set read_fds;
-    int maxfd=-1;
-    FD_ZERO(&read_fds);      
-    for(i=0;i<overlay_interface_count;i++)
-      {
-	if (overlay_interfaces[i].socket>maxfd) maxfd=overlay_interfaces[i].socket;
-	FD_SET(overlay_interfaces[i].socket,&read_fds);
-      }
-    
-    while(1) {
-      /* Work out how long we can wait before we need to tick */
-      long long ms=overlay_time_until_next_tick();
-      struct timeval waittime;
-      waittime.tv_usec=(ms%1000)*1000;
-      waittime.tv_sec=ms/1000;
-
-      fprintf(stderr,"%d,%d\n",(int)waittime.tv_sec,waittime.tv_usec);
-      int r=select(maxfd+1,&read_fds,NULL,NULL,&waittime);
-      if (r<0) {
-	/* select had a problem */
-	perror("select()");
-	return WHY("select() complained.");
-      } else if (r>0) {
-	/* We have data, so try to receive it */
-	fprintf(stderr,"select() reports packets waiting\n");
-	overlay_rx_messages();
-      } else {
-	/* No data before tick occurred, so do nothing.
-	   Well, for now let's just check anyway. */
-	fprintf(stderr,"select() timeout.\n");
-	overlay_rx_messages();
-      }
-      /* Check if we need to trigger any ticks on any interfaces */
-      overlay_check_ticks();
-    }
-  }
   return 0;
 }
 

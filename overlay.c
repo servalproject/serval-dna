@@ -45,7 +45,62 @@
 
 #include "mphlr.h"
 
-int overlay_socket=-1;
 int overlayMode=0;
 
 overlay_txqueue overlay_tx[4];
+
+int overlayServerMode()
+{
+  /* In overlay mode we need to listen to all of our sockets, and also to
+     send periodic traffic. This means we need to */
+  fprintf(stderr,"Running in overlay mode.\n");
+  
+  /* Get the set of socket file descriptors we need to monitor.
+     Note that end-of-file will trigger select(), so we cannot run select() if we 
+     have any dummy interfaces running. So we do an ugly hack of just waiting no more than
+     5ms between checks if we have a dummy interface running.  This is a reasonable simulation
+     of wifi latency anyway, so we'll live with it.  Larger values will affect voice transport,
+     and smaller values would affect CPU and energy use, and make the simulation less realistic. */
+  int i;
+  fd_set read_fds;
+  int maxfd=-1;  
+  while(1) {
+    /* Work out how long we can wait before we need to tick */
+    long long ms=overlay_time_until_next_tick();
+    struct timeval waittime;
+    
+    int filesPresent=0;
+    FD_ZERO(&read_fds);      
+    for(i=0;i<overlay_interface_count;i++)
+      {
+	if (!overlay_interfaces[i].fileP)
+	  {
+	    if (overlay_interfaces[i].fd>maxfd) maxfd=overlay_interfaces[i].fd;
+	    FD_SET(overlay_interfaces[i].fd,&read_fds);
+	  }
+	else { filesPresent=1; if (ms>5) ms=5; }
+      }
+    
+    waittime.tv_usec=(ms%1000)*1000;
+    waittime.tv_sec=ms/1000;
+
+    if (debug&4) fprintf(stderr,"Waiting via select() for up to %lldms\n",ms);
+    int r=select(maxfd+1,&read_fds,NULL,NULL,&waittime);
+    if (r<0) {
+      /* select had a problem */
+      if (debug&4) perror("select()");
+      WHY("select() complained.");
+    } else if (r>0) {
+      /* We have data, so try to receive it */
+      if (debug&4) fprintf(stderr,"select() reports packets waiting\n");
+      overlay_rx_messages();
+    } else {
+      /* No data before tick occurred, so do nothing.
+	 Well, for now let's just check anyway. */
+      if (debug&4) fprintf(stderr,"select() timeout.\n");
+      overlay_rx_messages();
+    }
+    /* Check if we need to trigger any ticks on any interfaces */
+    overlay_check_ticks();
+  }
+}
