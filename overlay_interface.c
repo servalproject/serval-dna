@@ -242,13 +242,15 @@ int overlay_rx_messages()
 	  lseek(overlay_interfaces[i].fd,overlay_interfaces[i].offset,SEEK_SET);
 	  if (debug&4) fprintf(stderr,"Reading from interface log at offset %d, end of file at %lld.\n",
 		  overlay_interfaces[i].offset,length);
-	  if (read(overlay_interfaces[i].fd,packet,overlay_interfaces[i].mtu)==overlay_interfaces[i].mtu)
+	  if (read(overlay_interfaces[i].fd,packet,2048)==2048)
 	    {
-	      overlay_interfaces[i].offset+=overlay_interfaces[i].mtu;
-	      plen=overlay_interfaces[i].mtu;
+	      overlay_interfaces[i].offset+=2048;
+	      plen=2048-128;
 	      bzero(&transaction_id[0],8);
 	      bzero(&src_addr,sizeof(src_addr));
-	      if (!packetOk(packet,plen,transaction_id,&src_addr,addrlen,1)) WHY("Malformed packet from dummy interface");
+	      if ((packet[0]==0x01)&&!(packet[1]|packet[2]|packet[3]))
+		{ if (!packetOk(&packet[128],plen,transaction_id,&src_addr,addrlen,1)) WHY("Malformed packet from dummy interface"); }
+	      else WHY("Invalid packet version in dummy interface");
 	    }
 	  else { c[i]=0; count--; }
 	} else {
@@ -298,8 +300,33 @@ int overlay_broadcast_ensemble(int interface_number,unsigned char *bytes,int len
 
   if (overlay_interfaces[interface_number].fileP)
     {
-      if (write(overlay_interfaces[interface_number].fd,bytes,overlay_interfaces[interface_number].mtu)
-	  !=overlay_interfaces[interface_number].mtu)
+      char buf[2048];
+      /* Version information */
+      buf[0]=1; buf[1]=0; 
+      buf[2]=0; buf[3]=0;
+      /* bytes 4-5  = half-power beam height (uint16) */
+      /* bytes 6-7  = half-power beam width (uint16) */
+      /* bytes 8-11 = range in metres, centre beam (uint32) */
+      /* bytes 16-47 = sender */
+      /* bytes 48-79 = next hop */
+      /* bytes 80-83 = latitude (uint32) */
+      /* bytes 84-87 = longitude (uint32) */
+      /* bytes 88-89 = X/Z direction (uint16) */
+      /* bytes 90-91 = Y direction (uint16) */
+      /* bytes 92-93 = speed in metres per second (uint16) */
+      /* bytes 94-97 = TX frequency in Hz, uncorrected for doppler (which must be done at the receiving end to take into account
+         relative motion) */
+      /* bytes 98-109 = coding method (use for doppler response etc) null terminated string */
+      /* bytes 110-127 reserved for future use */
+
+      if (len>2048-128) {
+	WHY("Truncating long packet to fit within 1920 byte limit for dummy interface");
+	len=2048-128;
+      }
+
+      bzero(&buf[128+len],2048-(128+len));
+      bcopy(bytes,&buf[128],len);
+      if (write(overlay_interfaces[interface_number].fd,buf,2048)!=2048)
 	{
 	  perror("write()");
 	  return WHY("write() failed");
