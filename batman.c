@@ -47,7 +47,7 @@ int readRoutingTable(struct in_addr peers[],int *peer_count,int peer_max){
   unsigned long d, g, m;
   int flgs, ref, use, metric, mtu, win, ir;
   
-  fprintf(stderr,"Reading routing table\n");
+  if (debug) fprintf(stderr,"Reading routing table\n");
   
   FILE *fp = fopen("/proc/net/route","r");
   if (!fp) return -1;

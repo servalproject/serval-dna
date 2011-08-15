@@ -27,7 +27,7 @@ int process_packet(unsigned char *packet,int len,struct sockaddr *sender,int sen
   unsigned char *transaction_id=&packet[OFS_TRANSIDFIELD];
   
   did[0]=0; sid[0]=0;
-  
+
   /* Get DID or SID */
   if (packetGetID(packet,len,did,sid)) return setReason("Could not parse DID or SID");
   

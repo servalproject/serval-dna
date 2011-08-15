@@ -523,7 +523,7 @@ int simpleServerMode()
     client_port=((struct sockaddr_in*)&recvaddr)->sin_port;
     client_addr=((struct sockaddr_in*)&recvaddr)->sin_addr;
 
-    if (debug) fprintf(stderr,"Received packet from %s (len=%d).\n",inet_ntoa(client_addr),len);
+    if (debug) fprintf(stderr,"Received packet from %s:%d (len=%d).\n",inet_ntoa(client_addr),client_port,len);
     if (debug>1) dump("recvaddr",(unsigned char *)&recvaddr,recvaddrlen);
     if (debug>3) dump("packet",(unsigned char *)buffer,len);
     if (dropPacketP(len)) {

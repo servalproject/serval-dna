@@ -77,9 +77,11 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
   /* Deal with special case */
   if (method==REQ_REPLY)
     {
-      int r=sendto(sock,packet,packet_len,0,recvaddr,sizeof(recvaddr));
+      int r=sendto(sock,packet,packet_len,0,recvaddr,sizeof(struct sockaddr_in));
       if (r<packet_len)	{
-	if (debug) fprintf(stderr,"Could not send to client %s\n",inet_ntoa(client_addr));
+	if (debug) fprintf(stderr,"Could not send to client %s (packet=%p,len=%d,sock=%d)\n",
+			   inet_ntoa(client_addr),packet,packet_len,sock);
+	perror("sendto");
       } else {
 	if (debug>1) fprintf(stderr,"Sent request to client %s\n",inet_ntoa(client_addr));
       }
@@ -333,13 +335,15 @@ int getReplyPackets(int method,int peer,int batchP,struct response_set *response
       }
     len=recvfrom(sock,buffer,sizeof(buffer),0,recvaddr,&recvaddrlen);
     if (len<=0) return setReason("Unable to receive packet.");
-    
-    client_port=((struct sockaddr_in *)recvaddr)->sin_port;
-    client_addr=((struct sockaddr_in *)recvaddr)->sin_addr;
 
-    if (debug) fprintf(stderr,"Received reply from %s (len=%d).\n",inet_ntoa(client_addr),len);
-    if (debug>1) dump("recvaddr",(unsigned char *)&sender,recvaddrlen);
-    if (debug>2) dump("packet",(unsigned char *)buffer,len);
+    if (recvaddr) {
+      client_port=((struct sockaddr_in *)recvaddr)->sin_port;
+      client_addr=((struct sockaddr_in *)recvaddr)->sin_addr;
+      
+      if (debug) fprintf(stderr,"Received reply from %s (len=%d).\n",inet_ntoa(client_addr),len);
+      if (debug>1) dump("recvaddr",(unsigned char *)&sender,recvaddrlen);
+      if (debug>2) dump("packet",(unsigned char *)buffer,len);
+    }
 
     if (dropPacketP(len)) {
       if (debug) fprintf(stderr,"Simulation mode: Dropped packet due to simulated link parameters.\n");
