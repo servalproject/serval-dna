@@ -155,12 +155,25 @@ int overlay_frame_process(int interface,overlay_frame *f)
   if (i==SID_SIZE) forMe=1;
 
   fprintf(stderr,"This frame is%s for me.\n",forMe?"":" not");
-  
+
+  /* Not for us? Then just ignore it */
+  if (!forMe) return 0;
+
   switch(f->type)
     {
     case OF_TYPE_SELFANNOUNCE:
+      if (overlay_frame_resolve_addresses(interface,f))
+	return WHY("Failed to resolve destination and sender addresses in frame");
+      fprintf(stderr,"Destination for this frame is (resolve code=%d): ",f->destination_address_status);
+      if (f->destination_address_status==OA_RESOLVED) for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",f->destination[i]); else fprintf(stderr,"???");
+      fprintf(stderr,"\n");
+      fprintf(stderr,"Source for this frame is (resolve code=%d): ",f->source_address_status);
+      if (f->source_address_status==OA_RESOLVED) for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",f->source[i]); else fprintf(stderr,"???");
+      fprintf(stderr,"\n");
+      
       break;
     default:
+      return WHY("Support for that f->type not yet implemented");
       break;
     }
 

@@ -654,6 +654,7 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
 				    int prefix_bytes,int index_bytes);
 int overlay_abbreviate_remember_index(int index_byte_count,unsigned char *in,unsigned char *index_bytes);
 extern int overlay_abbreviate_repeat_policy;
+int overlay_abbreviate_set_most_recent_address(unsigned char *in);
 
 /* Return codes for resolution of abbreviated addressses */
 #define OA_UNINITIALISED 0 /* Nothing has been written into the field */
@@ -685,6 +686,8 @@ typedef struct overlay_frame {
   unsigned int type;
   unsigned int modifiers;
 
+  unsigned char ttl;
+
   unsigned char nexthop[32];
   int nexthop_address_status;
 
@@ -707,3 +710,4 @@ typedef struct overlay_frame {
 } overlay_frame;
 
 int overlay_frame_process(int interface,overlay_frame *f);
+int overlay_frame_resolve_addresses(int interface,overlay_frame *f);

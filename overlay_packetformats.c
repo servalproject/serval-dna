@@ -23,6 +23,7 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *t
      All frames have the following fields:
 
      Frame type (8bits)
+     TTL (8bits)
      Remaining frame size (RFS) (8bits for <256 bytes, 16bits for <510 bytes etc)
      Next hop (variable length due to address abbreviation)
      Destination (variable length due to address abbreviation)*
@@ -115,6 +116,9 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *t
 	  ofs++;
 	  break;
 	}
+      /* Get time to live */
+      f.ttl=packet[ofs++];
+
       /* Get length of remainder of frame */
       f.rfs=packet[ofs];
       while (packet[ofs]==0xff&&(ofs<len)&&(f.rfs<16384)) f.rfs+=packet[++ofs];
@@ -134,7 +138,7 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *t
 	 frame may not be for us, so there is no point wasting time and energy if we don't have
 	 to.
       */
-      f.bytes=&packet[ofs];
+      f.bytes=&packet[offset];
       f.bytecount=f.rfs-(offset-ofs);
 
       /* Finally process the frame */
@@ -145,6 +149,23 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *t
       if (debug&4) fprintf(stderr,"ofs=%d, f.rfs=%d, len=%d\n",ofs,f.rfs,len);
       ofs+=f.rfs;
     }
+
+  return 0;
+}
+
+int overlay_frame_resolve_addresses(int interface,overlay_frame *f)
+{
+  /* Get destination and source addresses and set pointers to payload appropriately */
+  int alen=0;
+  int offset=0;
+
+  overlay_abbreviate_set_most_recent_address(f->nexthop);
+  f->destination_address_status=overlay_abbreviate_expand_address(interface,f->bytes,&offset,f->destination,&alen);
+  alen=0;
+  f->source_address_status=overlay_abbreviate_expand_address(interface,f->bytes,&offset,f->source,&alen);
+  f->payload=&f->bytes[offset];
+  f->payloadlength=f->bytes-offset;
+  if (f->payloadlength<0) return WHY("Abbreviated ddresses run past end of packet");
 
   return 0;
 }
@@ -182,10 +203,20 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
     return WHY("ob_append_bytes() could not add self-announcement header");
 
   int send_prefix=(overlay_interfaces[interface].ticks_since_sent_full_address<4);
+
+  /* A TTL for this frame.
+     XXX - BATMAN uses various TTLs, but I think that it may just be better to have all TTL=1,
+     and have the onward nodes selectively choose which nodes to on-announce.  If we prioritise
+     newly arrived nodes somewhat (or at least reserve some slots for them), then we can still
+     get the good news travels fast property of BATMAN, but without having to flood in the formal
+     sense. */
+  c=1;
+  if (ob_append_bytes(b,&c,1))
+    return WHY("ob_append_bytes() could not add TTL to self-announcement");
   
   /* Add space for Remaining Frame Size field.  This will always be a single byte
      for self-announcments as they are always <256 bytes. */
-  c=1+1+(send_prefix?(1+7):SID_SIZE)+4+1;
+  c=1+1+(send_prefix?(1+7):SID_SIZE)+4;
   if (ob_append_bytes(b,&c,1))
     return WHY("ob_append_bytes() could not add RFS for self-announcement frame");
 
@@ -225,15 +256,8 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
   if (ob_append_int(b,overlay_interfaces[interface].sequence_number))
     return WHY("ob_append_int() could not add sequence number to self-announcement");
 
-  /* A TTL for this frame?
-     XXX - BATMAN uses various TTLs, but I think that it may just be better to have all TTL=1,
-     and have the onward nodes selectively choose which nodes to on-announce.  If we prioritise
-     newly arrived nodes somewhat (or at least reserve some slots for them), then we can still
-     get the good news travels fast property of BATMAN, but without having to flood in the formal
-     sense. */
-  c=1;
-  if (ob_append_bytes(b,&c,1))
-    return WHY("ob_append_bytes() could not add TTL to self-announcement");
   
   return 0;
 }
+
+
