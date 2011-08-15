@@ -164,7 +164,7 @@ int overlay_frame_resolve_addresses(int interface,overlay_frame *f)
   alen=0;
   f->source_address_status=overlay_abbreviate_expand_address(interface,f->bytes,&offset,f->source,&alen);
   f->payload=&f->bytes[offset];
-  f->payloadlength=f->bytes-offset;
+  f->payloadlength=f->bytecount-offset;
   if (f->payloadlength<0) return WHY("Abbreviated ddresses run past end of packet");
 
   return 0;

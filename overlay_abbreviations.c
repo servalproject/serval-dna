@@ -179,6 +179,12 @@ int overlay_abbreviate_cache_address(unsigned char *sid)
 
   /* Not yet in cache, so store it */
   bcopy(sid,&cache->sids[index].b[0],SID_SIZE);
+  if (debug&4) {
+    fprintf(stderr,"Cached address ");
+    int i;
+    for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",cache->sids[index].b[i]);
+    fprintf(stderr,"\n");
+  }
 
   return 0;
 }

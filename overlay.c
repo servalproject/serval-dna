@@ -64,6 +64,14 @@ int overlayServerMode()
   int i;
   fd_set read_fds;
   int maxfd=-1;  
+
+  /* Add all local SIDs to our cache */
+  int ofs=0;
+  while(findHlr(hlr,&ofs,NULL,NULL)) {
+    overlay_abbreviate_cache_address(&hlr[ofs+4]);
+    if (nextHlr(hlr,&ofs)) break;
+  }
+
   while(1) {
     /* Work out how long we can wait before we need to tick */
     long long ms=overlay_time_until_next_tick();
@@ -145,6 +153,8 @@ int overlay_frame_process(int interface,overlay_frame *f)
 
   /* Okay, nexthop is valid, so let's see if it is us */
   int forMe=0,i;
+  int ultimatelyForMe=0;
+  int broadcast=0;
   fprintf(stderr,"Nexthop for this frame is: ");
   for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",f->nexthop[i]);
   fprintf(stderr,"\n");
@@ -154,22 +164,51 @@ int overlay_frame_process(int interface,overlay_frame *f)
   for(i=0;i<SID_SIZE;i++) if (f->nexthop[i]!=hlr[4+i]) break;
   if (i==SID_SIZE) forMe=1;
 
-  fprintf(stderr,"This frame is%s for me.\n",forMe?"":" not");
-
-  /* Not for us? Then just ignore it */
-  if (!forMe) return 0;
-
-  switch(f->type)
-    {
-    case OF_TYPE_SELFANNOUNCE:
-      if (overlay_frame_resolve_addresses(interface,f))
-	return WHY("Failed to resolve destination and sender addresses in frame");
+  if (forMe) {
+    /* It's for us, so resolve the addresses */
+    if (overlay_frame_resolve_addresses(interface,f))
+      return WHY("Failed to resolve destination and sender addresses in frame");
+    if (debug&4) {
       fprintf(stderr,"Destination for this frame is (resolve code=%d): ",f->destination_address_status);
       if (f->destination_address_status==OA_RESOLVED) for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",f->destination[i]); else fprintf(stderr,"???");
       fprintf(stderr,"\n");
       fprintf(stderr,"Source for this frame is (resolve code=%d): ",f->source_address_status);
       if (f->source_address_status==OA_RESOLVED) for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",f->source[i]); else fprintf(stderr,"???");
       fprintf(stderr,"\n");
+    }
+
+    if (f->destination_address_status==OA_RESOLVED) {
+      for(i=0;i<SID_SIZE;i++) if (f->destination[i]!=0xff) break;
+      if (i==SID_SIZE) { ultimatelyForMe=1; broadcast=1; }
+      for(i=0;i<SID_SIZE;i++) if (f->destination[i]!=hlr[4+i]) break;
+      if (i==SID_SIZE) ultimatelyForMe=1;
+    }
+  }
+  
+  fprintf(stderr,"This frame does%s have me listed as next hop.\n",forMe?"":" not");
+  fprintf(stderr,"This frame is%s for me.\n",ultimatelyForMe?"":" not");
+
+  /* Not for us? Then just ignore it */
+  if (!forMe) return 0;
+
+  /* Is this a frame we have to forward on? */
+  if (((!ultimatelyForMe)||broadcast)&&(f->ttl>1))
+    {
+      /* Yes, it is. */
+      int len=0;
+      if (overlay_get_nexthop(f->destination,f->nexthop,&len))
+	return WHY("Could not find next hop for host - dropping frame");
+      f->ttl--;
+      /* Queue frame for dispatch */
+
+      return WHY("forwarding of frame not implemented");
+    }
+
+  switch(f->type)
+    {
+    case OF_TYPE_SELFANNOUNCE:
+      
+      
       
       break;
     default:

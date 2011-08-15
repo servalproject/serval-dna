@@ -512,8 +512,8 @@ typedef struct overlay_payload {
   struct overlay_payload *next;
 
   /* We allows 256 bit addresses and 32bit port numbers */
-  char src[SIDDIDFIELD_LEN];
-  char dst[SIDDIDFIELD_LEN];
+  unsigned char src[SIDDIDFIELD_LEN];
+  unsigned char dst[SIDDIDFIELD_LEN];
   int srcPort;
   int dstPort;
   
@@ -595,7 +595,7 @@ int overlay_check_ticks();
 int overlay_add_selfannouncement();
 int overlay_payload_package_fmt1(overlay_payload *p,overlay_buffer *b);
 int overlay_interface_args(char *arg);
-int overlay_get_nexthop(overlay_payload *p,unsigned char *nexthop,int *nexthoplen);
+int overlay_get_nexthop(unsigned char *final_destination,unsigned char *nexthop,int *nexthoplen);
 
 extern int overlay_interface_count;
 
@@ -649,7 +649,7 @@ extern int overlay_interface_count;
 #define OVERLAY_ADDRESS_CACHE_SIZE 1024
 int overlay_abbreviate_address(unsigned char *in,char *out,int *ofs);
 int overlay_abbreviate_expand_address(int interface,unsigned char *in,int *inofs,unsigned char *out,int *ofs);
-int overlay_address_cache_address(unsigned char *sid);
+int overlay_abbreviate_cache_address(unsigned char *sid);
 int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *ofs,
 				    int prefix_bytes,int index_bytes);
 int overlay_abbreviate_remember_index(int index_byte_count,unsigned char *in,unsigned char *index_bytes);

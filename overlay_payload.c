@@ -25,7 +25,7 @@ int overlay_payload_package_fmt1(overlay_payload *p,overlay_buffer *b)
   /* Build header */
   int fail=0;
 
-  if (overlay_get_nexthop(p,nexthop,&nexthoplen)) fail++;
+  if (overlay_get_nexthop((unsigned char *)p->dst,nexthop,&nexthoplen)) fail++;
   if (ob_append_bytes(headers,nexthop,nexthoplen)) fail++;
 
   /* XXX Can use shorter fields for different address types, and if we know that the next hop
