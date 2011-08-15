@@ -72,7 +72,8 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *t
   int ofs;
   overlay_frame f;
 
-  for(ofs=0;ofs<len;)
+  /* Skip magic bytes and version */
+  for(ofs=4;ofs<len;)
     {
       /* Clear out the data structure ready for next frame */
       f.nexthop_address_status=OA_UNINITIALISED;
@@ -117,6 +118,7 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *t
       /* Get length of remainder of frame */
       f.rfs=packet[ofs];
       while (packet[ofs]==0xff&&(ofs<len)&&(f.rfs<16384)) f.rfs+=packet[++ofs];
+      ofs++;
 
       if (!f.rfs) {
 	/* Zero length -- assume we fell off the end of the packet */
@@ -126,7 +128,7 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *t
       /* Now extract the next hop address */
       int alen=0;
       int offset=ofs;
-      f.nexthop_address_status=overlay_abbreviate_expand_address(packet,&offset,f.nexthop,&alen);
+      f.nexthop_address_status=overlay_abbreviate_expand_address(interface,packet,&offset,f.nexthop,&alen);
 
       /* Now just make the rest of the frame available via the received frame structure, as the
 	 frame may not be for us, so there is no point wasting time and energy if we don't have

@@ -259,10 +259,11 @@ int overlay_abbreviate_address(unsigned char *in,char *out,int *ofs)
 
 }
 
-int overlay_abbreviate_expand_address(unsigned char *in,int *inofs,unsigned char *out,int *ofs)
+int overlay_abbreviate_expand_address(int interface,unsigned char *in,int *inofs,unsigned char *out,int *ofs)
 {
   int bytes=0;
-  switch(in[0])
+  fprintf(stderr,"Address first byte/abbreviation code=%02x (input offset=%d)\n",in[*inofs],*inofs);
+  switch(in[*inofs])
     {
     case OA_CODE_00: case OA_CODE_02: case OA_CODE_04: case OA_CODE_0C:
       /* Unsupported codes, so tell the sender 
@@ -270,7 +271,8 @@ int overlay_abbreviate_expand_address(unsigned char *in,int *inofs,unsigned char
       (*inofs)++;
       return OA_UNSUPPORTED;
     case OA_CODE_INDEX: /* single byte index look up */
-      exit(WHY("Unimplemented address abbreviation code"));
+      WHY("Unimplemented address abbreviation code");
+      overlay_interface_repeat_abbreviation_policy[interface]=1;
       break;
     case OA_CODE_PREVIOUS: /* Same as last address */
       (*inofs)++;
@@ -279,29 +281,32 @@ int overlay_abbreviate_expand_address(unsigned char *in,int *inofs,unsigned char
       return OA_RESOLVED;
       break;
     case OA_CODE_PREFIX3: case OA_CODE_PREFIX3_INDEX1: /* 3-byte prefix */
-      if (in[0]==0x09) bytes=1;
+      if (in[*inofs]==0x09) bytes=1;
       (*inofs)+=3+bytes;
-      return overlay_abbreviate_cache_lookup(in,out,ofs,3,bytes);
+      return overlay_abbreviate_cache_lookup(&in[1],out,ofs,3,bytes);
     case OA_CODE_PREFIX7: case OA_CODE_PREFIX7_INDEX1: /* 7-byte prefix */
-      if (in[0]==OA_CODE_PREFIX7_INDEX1) bytes=1;
+      if (in[*inofs]==OA_CODE_PREFIX7_INDEX1) bytes=1;
       (*inofs)+=7+bytes;
-      return overlay_abbreviate_cache_lookup(in,out,ofs,7,bytes);
+      WHY("Resolving address from 7-byte prefix");
+      return overlay_abbreviate_cache_lookup(&in[(*inofs)+1],out,ofs,7,bytes);
     case OA_CODE_PREFIX11: case OA_CODE_PREFIX11_INDEX1: case OA_CODE_PREFIX11_INDEX2: /* 11-byte prefix */
-      if (in[0]==OA_CODE_PREFIX11_INDEX1) bytes=1;
-      if (in[0]==OA_CODE_PREFIX11_INDEX2) bytes=2;
+      if (in[*inofs]==OA_CODE_PREFIX11_INDEX1) bytes=1;
+      if (in[*inofs]==OA_CODE_PREFIX11_INDEX2) bytes=2;
       (*inofs)+=11+bytes;
-      return overlay_abbreviate_cache_lookup(in,out,ofs,11,bytes);
+      return overlay_abbreviate_cache_lookup(&in[(*inofs)+1],out,ofs,11,bytes);
     case OA_CODE_BROADCAST: /* broadcast */
       memset(&out[*ofs],0xff,SID_SIZE);
       (*inofs)++;
+      WHY("Resolved address (broadcast)");
       return OA_RESOLVED;
     case OA_CODE_FULL_INDEX1: case OA_CODE_FULL_INDEX2: 
     default: /* Full address, optionally followed by index for us to remember */
-      if (in[0]==OA_CODE_FULL_INDEX1) bytes=1; 
-      if (in[0]==OA_CODE_FULL_INDEX2) bytes=2;
-      bcopy(in,&out[*ofs],SID_SIZE);
-      if (bytes) overlay_abbreviate_remember_index(bytes,in,&in[SID_SIZE]);
+      if (in[*inofs]==OA_CODE_FULL_INDEX1) bytes=1; 
+      if (in[*inofs]==OA_CODE_FULL_INDEX2) bytes=2;
+      bcopy(&in,&out[*ofs],SID_SIZE);
+      if (bytes) overlay_abbreviate_remember_index(bytes,in,&in[(*inofs)+SID_SIZE]);
       (*inofs)+=SID_SIZE+bytes;
+      WHY("Resolved address (full address provided)");
       return OA_RESOLVED;
     }
 }
@@ -327,6 +332,11 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
   /* Work out the index in the cache where this address would live */
   int index=((in[0]<<16)|(in[0]<<8)|in[2])>>cache->shift;
 
+  int i;
+  fprintf(stderr,"Looking in cache slot #%d for: ",index);
+  for(i=0;i<prefix_bytes;i++) fprintf(stderr,"%02x",cache->sids[index].b[i]);
+  fprintf(stderr,"*\n");
+
   /* So is it there? */
   if (bcmp(in,&cache->sids[index].b[0],prefix_bytes))
     {
@@ -338,6 +348,10 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
      colliding prefixes and ask the sender to resolve them for us */
 
   /* It is here, so let's return it */
+  fprintf(stderr,"I think I looked up the following: ");
+  for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",cache->sids[index].b[i]);
+  fprintf(stderr,"\n");
+
   bcopy(&cache->sids[index].b[0],&out[(*ofs)],SID_SIZE);
   (*ofs)+=SID_SIZE;
   if (index_bytes) {

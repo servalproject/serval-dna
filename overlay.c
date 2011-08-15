@@ -145,6 +145,10 @@ int overlay_frame_process(int interface,overlay_frame *f)
 
   /* Okay, nexthop is valid, so let's see if it is us */
   int forMe=0,i;
+  fprintf(stderr,"Nexthop for this frame is: ");
+  for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",f->nexthop[i]);
+  fprintf(stderr,"\n");
+
   for(i=0;i<SID_SIZE;i++) if (f->nexthop[i]!=0xff) break;
   if (i==SID_SIZE) forMe=1;
   for(i=0;i<SID_SIZE;i++) if (f->nexthop[i]!=hlr[4+i]) break;
