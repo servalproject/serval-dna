@@ -103,4 +103,11 @@ int overlayServerMode()
     /* Check if we need to trigger any ticks on any interfaces */
     overlay_check_ticks();
   }
+
+  return 0;
+}
+
+int overlay_frame_process(overlay_frame *f)
+{
+  return WHY("Not implemented");
 }

@@ -21,7 +21,7 @@
   0x0c      = reserved.
   0x0d      = same as 0x07, but assign two byte index.
   0x0e      = full address followed by two-byte index allocation.
-  0x0f      = broadcast.
+  0x0f      = broadcast link-local.
   
   However, in this implementation we not include support for the two-byte 
   index code, as it requires 64Kx32=2MB storage, which is too much to ask
@@ -68,6 +68,10 @@
   crypto-system ID byte, although we still limit addresses to 256 bits, so we always need
   no more than 33 bytes.  In any case, indicating the crypto system is not the problem of
   this section, as we are just concerned with abbreviating and expanding the addresses.
+
+  (A simple solution to the multiple crypto-system problem is to have the receiver try each
+  known crypto system when decoding a frame, and remember which addresses use which system.
+  Probably a reasonable solution for now.)
 
   To decode abbreviations supplied by other nodes we need to try to replicate a copy of
   their abbreviation table.  This is where things get memory intensive (about 8KB per node).
@@ -260,40 +264,41 @@ int overlay_abbreviate_expand_address(unsigned char *in,int *inofs,unsigned char
   int bytes=0;
   switch(in[0])
     {
-    case 0x00: case 0x02: case 0x04: case 0x0c:
+    case OA_CODE_00: case OA_CODE_02: case OA_CODE_04: case OA_CODE_0C:
       /* Unsupported codes, so tell the sender 
 	 if the frame was addressed to us as next-hop */
       (*inofs)++;
       return OA_UNSUPPORTED;
-    case 0x01: /* single byte index look up */
+    case OA_CODE_INDEX: /* single byte index look up */
       exit(WHY("Unimplemented address abbreviation code"));
       break;
-    case 0x03: /* Same as last address */
+    case OA_CODE_PREVIOUS: /* Same as last address */
       (*inofs)++;
       bcopy(&overlay_abbreviate_previous_address.b[0],&out[*ofs],SID_SIZE);
       (*ofs)+=SID_SIZE;
       return OA_RESOLVED;
       break;
-    case 0x05: case 0x09: /* 3-byte prefix */
+    case OA_CODE_PREFIX3: case OA_CODE_PREFIX3_INDEX1: /* 3-byte prefix */
       if (in[0]==0x09) bytes=1;
       (*inofs)+=3+bytes;
       return overlay_abbreviate_cache_lookup(in,out,ofs,3,bytes);
-    case 0x06: case 0x0a: /* 7-byte prefix */
-      if (in[0]==0x0a) bytes=1;
+    case OA_CODE_PREFIX7: case OA_CODE_PREFIX7_INDEX1: /* 7-byte prefix */
+      if (in[0]==OA_CODE_PREFIX7_INDEX1) bytes=1;
       (*inofs)+=7+bytes;
       return overlay_abbreviate_cache_lookup(in,out,ofs,7,bytes);
-    case 0x07: case 0x0b: case 0x0d: /* 11-byte prefix */
-      if (in[0]==0x0b) bytes=1;
-      if (in[0]==0x0d) bytes=2;
+    case OA_CODE_PREFIX11: case OA_CODE_PREFIX11_INDEX1: case OA_CODE_PREFIX11_INDEX2: /* 11-byte prefix */
+      if (in[0]==OA_CODE_PREFIX11_INDEX1) bytes=1;
+      if (in[0]==OA_CODE_PREFIX11_INDEX2) bytes=2;
       (*inofs)+=11+bytes;
       return overlay_abbreviate_cache_lookup(in,out,ofs,11,bytes);
-    case 0x0f: /* broadcast */
+    case OA_CODE_BROADCAST: /* broadcast */
       memset(&out[*ofs],0xff,SID_SIZE);
       (*inofs)++;
       return 0;
-    case 0x08: case 0x0e: default: /* Full address, optionally followed by index for us to remember */
-      if (in[0]==0x08) bytes=1; 
-      if (in[0]==0x0e) bytes=2;
+    case OA_CODE_FULL_INDEX1: case OA_CODE_FULL_INDEX2: 
+    default: /* Full address, optionally followed by index for us to remember */
+      if (in[0]==OA_CODE_FULL_INDEX1) bytes=1; 
+      if (in[0]==OA_CODE_FULL_INDEX2) bytes=2;
       bcopy(in,&out[*ofs],SID_SIZE);
       if (bytes) overlay_abbreviate_remember_index(bytes,in,&in[SID_SIZE]);
       (*inofs)+=SID_SIZE+bytes;

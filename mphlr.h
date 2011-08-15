@@ -405,6 +405,8 @@ typedef struct overlay_interface {
   int tick_ms;
   /* The time of the last tick on this interface in milli seconds */
   long long last_tick_ms;
+  /* How many times have we abbreviated our address since we last announced it in full? */
+  int ticks_since_sent_full_address;
 
   /* Sequence number of last tick.  Sent with announcments to help keep track of the reliability of
      getting traffic to/from us. */
@@ -589,8 +591,52 @@ int overlay_get_nexthop(overlay_payload *p,unsigned char *nexthop,int *nexthople
 
 extern int overlay_interface_count;
 
-/* Userland overlay mesh packet codes */
-#define OF_SELFANNOUNCE 0x01
+/* Overlay mesh packet codes */
+#define OF_TYPE_BITS 0xf0
+#define OF_TYPE_SELFANNOUNCE 0x10 /* BATMAN style announcement frames */
+#define OF_TYPE_SELFANNOUNCE_ACK 0x20 /* BATMAN style "I saw your announcment" frames */
+#define OF_TYPE_DATA 0x30 /* Ordinary data frame.
+		        Upto MTU bytes of payload.
+			16 bit channel/port indicator for each end. 
+		        */
+#define OF_TYPE_DATA_VOICE 0x40 /* Voice data frame. 
+			      Limited to 255 bytes of payload. 
+			      1 byte channel/port indicator for each end */
+#define OF_TYPE_RHIZOME_ADVERT 0x50 /* Advertisment of file availability via Rhizome */
+#define OF_TYPE_RESERVED_06 0x60
+#define OF_TYPE_RESERVED_07 0x70
+#define OF_TYPE_RESERVED_08 0x80
+#define OF_TYPE_RESERVED_09 0x90
+#define OF_TYPE_RESERVED_0a 0xa0
+#define OF_TYPE_RESERVED_0b 0xb0
+#define OF_TYPE_RESERVED_0c 0xc0
+#define OF_TYPE_RESERVED_0d 0xd0
+#define OF_TYPE_EXTENDED12 0xe0 /* modifier bits and next byte provide 12 bits extended format
+				   (for future expansion, just allows us to skip the frame) */
+#define OF_TYPE_EXTENDED20 0xf0 /* modifier bits and next 2 bytes provide 20 bits extended format
+				 (for future expansion, just allows us to skip the frame) */
+/* Flags used to control the interpretation of the resolved type field */
+#define OF_TYPE_FLAG_BITS 0xf0000000
+#define OF_TYPE_FLAG_NORMAL 0x0
+#define OF_TYPE_FLAG_E12 0x10000000
+#define OF_TYPE_FLAG_E20 0x00000000
+
+/* Modifiers that indicate the disposition of the frame */
+#define OF_MODIFIER_BITS 0x0f
+
+/* Crypto/security options */
+#define OF_CRYPTO_BITS 0x0c
+#define OF_CRYPTO_NONE 0x00
+#define OF_CRYPTO_CIPHERED 0x04 /* Encrypted frame */
+#define OF_CRYPTO_SIGNED 0x08   /* Encrypted and Digitally signed frame */
+#define OF_CRYPTO_PARANOID 0x0c /* Encrypted and digitally signed frame, with final destination address also encrypted. */
+
+/* Data compression */
+#define OF_COMPRESS_BITS 0x03
+#define OF_COMPRESS_NONE 0x00
+#define OF_COMPRESS_GZIP 0x01     /* Frame compressed with gzip */
+#define OF_COMPRESS_BZIP2 0x02    /* bzip2 */
+#define OF_COMPRESS_RESERVED 0x03 /* Reserved for another compression system */
 
 #define OVERLAY_ADDRESS_CACHE_SIZE 1024
 int overlay_abbreviate_address(unsigned char *in,char *out,int *ofs);
@@ -600,7 +646,53 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
 				    int prefix_bytes,int index_bytes);
 int overlay_abbreviate_remember_index(int index_byte_count,unsigned char *in,unsigned char *index_bytes);
 
-
-#define OA_RESOLVED 0      /* We expanded the abbreviation */
+/* Return codes for resolution of abbreviated addressses */
+#define OA_UNINITIALISED 0 /* Nothing has been written into the field */
+#define OA_RESOLVED 1      /* We expanded the abbreviation successfully */
 #define OA_PLEASEEXPLAIN 1 /* We need the sender to explain their abbreviation */
-#define OA_UNSUPPORTED 2   /* We cannot expand the abbreviation as we do not understand this code */
+#define OA_UNSUPPORTED 3   /* We cannot expand the abbreviation as we do not understand this code */
+
+/* Codes used to describe abbreviated addresses.
+   Values 0x10 - 0xff are the first byte of, and implicit indicators of addresses written in full */
+#define OA_CODE_00 0x00
+#define OA_CODE_INDEX 0x01
+#define OA_CODE_02 0x02
+#define OA_CODE_PREVIOUS 0x03
+#define OA_CODE_04 0x04
+#define OA_CODE_PREFIX3 0x05
+#define OA_CODE_PREFIX7 0x06
+#define OA_CODE_PREFIX11 0x07
+#define OA_CODE_FULL_INDEX1 0x08
+#define OA_CODE_PREFIX3_INDEX1 0x09
+#define OA_CODE_PREFIX7_INDEX1 0x0a
+#define OA_CODE_PREFIX11_INDEX1 0x0b
+#define OA_CODE_0C 0x0c
+#define OA_CODE_PREFIX11_INDEX2 0x0d
+#define OA_CODE_FULL_INDEX2 0x0e
+/* The TTL field in a frame is used to differentiate between link-local and wide-area broadcasts */
+#define OA_CODE_BROADCAST 0x0f
+
+typedef struct overlay_frame {
+  unsigned int type;
+  unsigned int modifiers;
+
+  unsigned char nexthop[32];
+  int nexthop_address_status;
+
+  unsigned char destination[32];
+  int destination_address_status;
+
+  unsigned char source[32];
+  int source_address_status;
+
+  /* Frame content from destination address onwards */
+  unsigned int bytecount;
+  unsigned char *bytes;
+
+  /* Actual payload */
+  unsigned int payloadlength;
+  unsigned char *payload;
+
+  int rfs; /* remainder of frame size */
+
+} overlay_frame;
