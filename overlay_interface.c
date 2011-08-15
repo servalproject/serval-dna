@@ -19,6 +19,9 @@ struct interface_rules {
 
 struct interface_rules *interface_filter=NULL;
 
+/* Do we need to repeat our abbreviation policy? */
+int overlay_interface_repeat_abbreviation_policy[OVERLAY_MAX_INTERFACES]={1};
+
 int overlay_interface_type(char *s)
 {
   if (!strcasecmp(s,"ethernet")) return OVERLAY_INTERFACE_ETHERNET;
@@ -249,7 +252,7 @@ int overlay_rx_messages()
 	      bzero(&transaction_id[0],8);
 	      bzero(&src_addr,sizeof(src_addr));
 	      if ((packet[0]==0x01)&&!(packet[1]|packet[2]|packet[3]))
-		{ if (!packetOk(&packet[128],plen,transaction_id,&src_addr,addrlen,1)) WHY("Malformed packet from dummy interface"); }
+		{ if (!packetOk(i,&packet[128],plen,transaction_id,&src_addr,addrlen,1)) WHY("Malformed packet from dummy interface"); }
 	      else WHY("Invalid packet version in dummy interface");
 	    }
 	  else { c[i]=0; count--; }
@@ -262,7 +265,7 @@ int overlay_rx_messages()
 	    if (debug&4)fprintf(stderr,"Received %d bytes on interface #%d\n",plen,i);
 	    
 	    bzero(&transaction_id[0],8);
-	    if (!packetOk(packet,plen,transaction_id,&src_addr,addrlen,1)) WHY("Malformed packet");	  
+	    if (!packetOk(i,packet,plen,transaction_id,&src_addr,addrlen,1)) WHY("Malformed packet");	  
 	  }
 	}
       }

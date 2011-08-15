@@ -1,7 +1,7 @@
 #include "mphlr.h"
 
 
-int packetOkOverlay(unsigned char *packet,int len,unsigned char *transaction_id,
+int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *transaction_id,
 		    struct sockaddr *recvaddr,int recvaddrlen,int parseP)
 {
   /* 
@@ -97,7 +97,6 @@ int packetOkOverlay(unsigned char *packet,int len,unsigned char *transaction_id,
 	  f.modifiers=0;
 	  ofs+=2;
 	  break;
-	case OF_TYPE_RESERVED_06:
 	case OF_TYPE_RESERVED_07:
 	case OF_TYPE_RESERVED_08:
 	case OF_TYPE_RESERVED_09:
@@ -110,6 +109,7 @@ int packetOkOverlay(unsigned char *packet,int len,unsigned char *transaction_id,
 	case OF_TYPE_DATA:
 	case OF_TYPE_DATA_VOICE:
 	case OF_TYPE_RHIZOME_ADVERT:
+	case OF_TYPE_PLEASEEXPLAIN:
 	  /* No extra bytes to deal with here */
 	  ofs++;
 	  break;
@@ -136,11 +136,11 @@ int packetOkOverlay(unsigned char *packet,int len,unsigned char *transaction_id,
       f.bytecount=f.rfs-(offset-ofs);
 
       /* Finally process the frame */
-      overlay_frame_process(&f);
+      overlay_frame_process(interface,&f);
       
       /* Skip the rest of the bytes in this frame so that we can examine the next one in this
 	 ensemble */
-      fprintf(stderr,"ofs=%d, f.rfs=%d, len=%d\n",ofs,f.rfs,len);
+      if (debug&4) fprintf(stderr,"ofs=%d, f.rfs=%d, len=%d\n",ofs,f.rfs,len);
       ofs+=f.rfs;
     }
 

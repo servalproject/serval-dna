@@ -107,7 +107,58 @@ int overlayServerMode()
   return 0;
 }
 
-int overlay_frame_process(overlay_frame *f)
+int overlay_frame_process(int interface,overlay_frame *f)
 {
+  if (!f) return WHY("f==NULL");
+
+  /* First order of business is whether the nexthop address has been resolved.
+     If not, we need to think about asking for it to be resolved.
+     The trouble is that we do not want to trigger a Hanson Event (a storm of
+     please explains/resolution requests). Yet, we do not want to delay 
+     communications unnecessarily.  
+
+     The simple solution for now is to queue the address for resolution request
+     in our next tick.  If we see another resolution request for the same
+     address in the mean time, then we can cancel our request */
+  switch (f->nexthop_address_status)
+    {
+    case OA_UNINITIALISED:
+      /* Um? Right. */
+      return WHY("frame passed with ununitialised nexthop address");
+      break;
+    case OA_RESOLVED:
+      /* Great, we have the address, so we can get on with things */
+      break;
+    case OA_PLEASEEXPLAIN:
+      break;
+    case OA_UNSUPPORTED:
+    default:
+      /* If we don't support the address format, we should probably tell
+	 the sender. Again, we queue this up, and cancel it if someone else
+	 tells them in the meantime to avoid an Opposition Event (like a Hanson
+	 Event, but repeatedly berating any node that holds a different policy
+	 to itself. */
+      overlay_interface_repeat_abbreviation_policy[interface]=1;
+      return -1;
+      break;
+    }
+
+  /* Okay, nexthop is valid, so let's see if it is us */
+  int forMe=0,i;
+  for(i=0;i<SID_SIZE;i++) if (f->nexthop[i]!=0xff) break;
+  if (i==SID_SIZE) forMe=1;
+  for(i=0;i<SID_SIZE;i++) if (f->nexthop[i]!=hlr[4+i]) break;
+  if (i==SID_SIZE) forMe=1;
+
+  fprintf(stderr,"This frame is%s for me.\n",forMe?"":" not");
+  
+  switch(f->type)
+    {
+    case OF_TYPE_SELFANNOUNCE:
+      break;
+    default:
+      break;
+    }
+
   return WHY("Not implemented");
 }

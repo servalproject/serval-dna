@@ -530,7 +530,8 @@ int simpleServerMode()
       if (debug) fprintf(stderr,"Simulation mode: Dropped packet due to simulated link parameters.\n");
       continue;
     }
-    if (packetOk(buffer,len,NULL,&recvaddr,recvaddrlen,1)) { 
+    /* Simple server mode doesn't really use interface numbers, so lie and say interface -1 */
+    if (packetOk(-1,buffer,len,NULL,&recvaddr,recvaddrlen,1)) { 
       if (debug) setReason("Ignoring invalid packet");
     }
     if (debug>1) fprintf(stderr,"Finished processing packet, waiting for next one.\n");

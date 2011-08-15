@@ -57,7 +57,7 @@ int process_packet(unsigned char *packet,int len,struct sockaddr *sender,int sen
   return 0;
 }
 
-int packetOk(unsigned char *packet,int len,unsigned char *transaction_id,
+int packetOk(int interface,unsigned char *packet,int len,unsigned char *transaction_id,
 	     struct sockaddr *recvaddr,int recvaddrlen,int parseP)
 {
   if (len<HEADERFIELDS_LEN) return setReason("Packet is too short");
@@ -66,7 +66,13 @@ int packetOk(unsigned char *packet,int len,unsigned char *transaction_id,
     return packetOkDNA(packet,len,transaction_id,recvaddr,recvaddrlen,parseP);
 
   if (packet[0]==0x4F&&packet[1]==0x10) 
-    return packetOkOverlay(packet,len,transaction_id,recvaddr,recvaddrlen,parseP);
+    {
+      if (interface>-1)
+	return packetOkOverlay(interface,packet,len,transaction_id,recvaddr,recvaddrlen,parseP);
+      else
+	/* We ignore overlay mesh packets in simple server mode, which is indicated by interface==-1 */
+	return -1;
+    }
 
   return setReason("Packet type not recognised.");
 }

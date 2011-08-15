@@ -294,7 +294,7 @@ int overlay_abbreviate_expand_address(unsigned char *in,int *inofs,unsigned char
     case OA_CODE_BROADCAST: /* broadcast */
       memset(&out[*ofs],0xff,SID_SIZE);
       (*inofs)++;
-      return 0;
+      return OA_RESOLVED;
     case OA_CODE_FULL_INDEX1: case OA_CODE_FULL_INDEX2: 
     default: /* Full address, optionally followed by index for us to remember */
       if (in[0]==OA_CODE_FULL_INDEX1) bytes=1; 
@@ -302,7 +302,7 @@ int overlay_abbreviate_expand_address(unsigned char *in,int *inofs,unsigned char
       bcopy(in,&out[*ofs],SID_SIZE);
       if (bytes) overlay_abbreviate_remember_index(bytes,in,&in[SID_SIZE]);
       (*inofs)+=SID_SIZE+bytes;
-      return 0;
+      return OA_RESOLVED;
     }
 }
 

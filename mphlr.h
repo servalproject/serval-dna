@@ -296,7 +296,7 @@ int server(char *backing_file,int size,int foregroundMode);
 int setReason(char *fmt, ...);
 int hexvalue(unsigned char c);
 int dump(char *name,unsigned char *addr,int len);
-int packetOk(unsigned char *packet,int len,unsigned char *transaction_id,
+int packetOk(int interface,unsigned char *packet,int len,unsigned char *transaction_id,
 	     struct sockaddr *recvaddr,int recvaddrlen,int parseP);
 int process_packet(unsigned char *packet,int len,struct sockaddr *sender,int sender_len);
 int packetMakeHeader(unsigned char *packet,int packet_maxlen,int *packet_len,unsigned char *transaction_id);
@@ -365,7 +365,7 @@ int runCommand(char *cmd);
 int asteriskObtainGateway(char *requestor_sid,char *did,char *uri_out);
 int packetOkDNA(unsigned char *packet,int len,unsigned char *transaction_id,
 		struct sockaddr *recvaddr,int recvaddrlen,int parseP);
-int packetOkOverlay(unsigned char *packet,int len,unsigned char *transaction_id,
+int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *transaction_id,
 		    struct sockaddr *recvaddr,int recvaddrlen,int parseP);
 int prepareGateway(char *gatewayspec);
 int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP,
@@ -433,6 +433,14 @@ typedef struct overlay_interface {
 */
 #define OVERLAY_MAX_INTERFACES 16
 extern overlay_interface overlay_interfaces[OVERLAY_MAX_INTERFACES];
+
+/* Has someone sent us an abbreviation of an unknown type recently? If so remind them
+   that we don't accept these.
+   XXX - This method assumes bidirectional links.  We should consider sending direct
+   to the perpetuator. We will deal with that in time, the main thing is that we have
+   a message type that can be used for the purpose.
+*/
+extern int overlay_interface_repeat_abbreviation_policy[OVERLAY_MAX_INTERFACES];
 
 /*
   For each peer we need to keep track of the routes that we know to reach it.
@@ -603,7 +611,7 @@ extern int overlay_interface_count;
 			      Limited to 255 bytes of payload. 
 			      1 byte channel/port indicator for each end */
 #define OF_TYPE_RHIZOME_ADVERT 0x50 /* Advertisment of file availability via Rhizome */
-#define OF_TYPE_RESERVED_06 0x60
+#define OF_TYPE_PLEASEEXPLAIN 0x60 /* Request for resolution of an abbreviated address */
 #define OF_TYPE_RESERVED_07 0x70
 #define OF_TYPE_RESERVED_08 0x80
 #define OF_TYPE_RESERVED_09 0x90
@@ -645,11 +653,12 @@ int overlay_address_cache_address(unsigned char *sid);
 int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *ofs,
 				    int prefix_bytes,int index_bytes);
 int overlay_abbreviate_remember_index(int index_byte_count,unsigned char *in,unsigned char *index_bytes);
+extern int overlay_abbreviate_repeat_policy;
 
 /* Return codes for resolution of abbreviated addressses */
 #define OA_UNINITIALISED 0 /* Nothing has been written into the field */
 #define OA_RESOLVED 1      /* We expanded the abbreviation successfully */
-#define OA_PLEASEEXPLAIN 1 /* We need the sender to explain their abbreviation */
+#define OA_PLEASEEXPLAIN 2 /* We need the sender to explain their abbreviation */
 #define OA_UNSUPPORTED 3   /* We cannot expand the abbreviation as we do not understand this code */
 
 /* Codes used to describe abbreviated addresses.
@@ -696,3 +705,5 @@ typedef struct overlay_frame {
   int rfs; /* remainder of frame size */
 
 } overlay_frame;
+
+int overlay_frame_process(int interface,overlay_frame *f);
