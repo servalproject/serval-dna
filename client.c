@@ -322,7 +322,7 @@ int getReplyPackets(int method,int peer,int batchP,struct response_set *response
     socklen_t recvaddrlen=sizeof(struct sockaddr);
     struct pollfd fds;
     
-    bzero((void *)recvaddr,sizeof(struct sockaddr));
+    if (recvaddr) bzero((void *)recvaddr,sizeof(struct sockaddr));
     fds.fd=sock; fds.events=POLLIN; fds.revents=0;
     
     while (poll(&fds,1,10 /* wait for 10ms at a time */)==0)
