@@ -196,21 +196,27 @@ int overlay_frame_process(int interface,overlay_frame *f)
     {
       /* Yes, it is. */
       int len=0;
-      if (overlay_get_nexthop(f->destination,f->nexthop,&len))
-	return WHY("Could not find next hop for host - dropping frame");
-      f->ttl--;
-      /* Queue frame for dispatch */
-      /* XXX We currently have separate overlay_payload structures for sending and
-	 overlay_frame for receiving.  Need to harmonise this. Multiple conversions
-	 are wasteful.  We really should be able to cope with a single structure. */
 
-
-      WHY("forwarding of frame not implemented");
-
-      /* If the frame was a broadcast frame, then we need to hang around
-	 so that we can process it, since we are one of the recipients.
-	 Otherwise, return triumphant. */
-      if (!broadcast) return 0;
+      if (broadcast&&(f->type==OF_TYPE_SELFANNOUNCE)) {
+	// Don't forward broadcast self-announcement packets as that is O(n^2) with
+	// traffic.  We have other means to propagating the mesh topology information.
+      } else {
+	if (overlay_get_nexthop(f->destination,f->nexthop,&len))
+	  return WHY("Could not find next hop for host - dropping frame");
+	f->ttl--;
+	/* Queue frame for dispatch */
+	/* XXX We currently have separate overlay_payload structures for sending and
+	   overlay_frame for receiving.  Need to harmonise this. Multiple conversions
+	   are wasteful.  We really should be able to cope with a single structure. */
+	
+	
+	WHY("forwarding of frame not implemented");
+	
+	/* If the frame was a broadcast frame, then we need to hang around
+	   so that we can process it, since we are one of the recipients.
+	   Otherwise, return triumphant. */
+	if (!broadcast) return 0;
+      }
     }
 
   switch(f->type)
