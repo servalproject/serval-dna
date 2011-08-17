@@ -105,7 +105,7 @@ typedef struct overlay_node {
    handle hash collissions while still allowing us to have static memory usage. */
 int overlay_bin_count=0;
 int overlay_bin_size=0;
-overlay_node *overlay_nodes[]=NULL;
+overlay_node **overlay_nodes=NULL;
 
 /* We also need to keep track of which nodes are our direct neighbours.
    This means we need to keep an eye on how recently we received DIRECT announcements
@@ -119,7 +119,7 @@ overlay_node *overlay_nodes[]=NULL;
 */
 int overlay_max_neighbours=0;
 int overlay_neighbour_count=0;
-overlay_node *overlay_neighbours[]=NULL;
+overlay_node **overlay_neighbours=NULL;
 
 int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen)
 {
