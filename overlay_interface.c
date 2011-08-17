@@ -452,7 +452,7 @@ int overlay_tick_interface(int i, long long now)
 {
   int frame_pax=0;
 #define MAX_FRAME_PAX 1024
-  overlay_payload *pax[MAX_FRAME_PAX];
+  overlay_frame *pax[MAX_FRAME_PAX];
 
   if (overlay_interfaces[i].bits_per_second<1) {
     /* An interface with no speed budget is for listening only, so doesn't get ticked */
@@ -481,11 +481,11 @@ int overlay_tick_interface(int i, long long now)
   overlay_add_selfannouncement(i,e);
   
   /* 2. Add any queued high-priority isochronous data (i.e. voice) to the frame. */
-  overlay_payload **p=&overlay_tx[OVERLAY_ISOCHRONOUS_VOICE].first;
+  overlay_frame **p=&overlay_tx[OVERLAY_ISOCHRONOUS_VOICE].first;
   while(p)
     {
       /* Throw away any stale frames */
-      overlay_payload *pp=*p;
+      overlay_frame *pp=*p;
 
       if (!pp) break;
 
@@ -505,7 +505,7 @@ int overlay_tick_interface(int i, long long now)
 	     bad.  The only hard limit is the maximum number of payloads we allow in a frame, which is
 	     set so high as to be irrelevant, even on loopback or gigabit ethernet interface */
 	  if (frame_pax>=MAX_FRAME_PAX) break;
-	  if (!overlay_payload_package_fmt1(*p,e))
+	  if (!overlay_frame_package_fmt1(*p,e))
 	    {
 	      /* Add payload to list of payloads we are sending with this frame so that we can dequeue them
 		 if we send them. */
@@ -533,7 +533,7 @@ int overlay_tick_interface(int i, long long now)
 	      overlay_interfaces[i].sequence_number,i,e->length);
       /* De-queue the passengers who were aboard. */
       int j;
-      overlay_payload **p=&overlay_tx[OVERLAY_ISOCHRONOUS_VOICE].first;
+      overlay_frame **p=&overlay_tx[OVERLAY_ISOCHRONOUS_VOICE].first;
       for(j=0;j<frame_pax;j++)
 	{
 	  /* Skip any frames that didn't get queued */

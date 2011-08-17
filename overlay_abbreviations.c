@@ -203,6 +203,16 @@ int overlay_abbreviate_try_byindex(unsigned char *in,char *out,int *ofs,int inde
     return 1;
 }
 
+int overlay_abbreviate_append_address(overlay_buffer *b,unsigned char *a)
+{
+  int count=0;
+  ob_makespace(b,SID_SIZE+3);
+  int r=overlay_abbreviate_address(a,&b->bytes[b->length],&count);
+  if (r) return r;
+  b->length+=count;
+  return 0;
+}
+
 int overlay_abbreviate_address(unsigned char *in,char *out,int *ofs)
 {
   int i;

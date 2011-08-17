@@ -22,9 +22,9 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *t
 
      All frames have the following fields:
 
-     Frame type (8bits)
+     Frame type (8-24bits)
      TTL (8bits)
-     Remaining frame size (RFS) (8bits for <256 bytes, 16bits for <510 bytes etc)
+     Remaining frame size (RFS) (see overlay_payload.c or overlay_buffer.c for explanation of format)
      Next hop (variable length due to address abbreviation)
      Destination (variable length due to address abbreviation)*
      Source (variable length due to address abbreviation)*
@@ -119,10 +119,8 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *t
       /* Get time to live */
       f.ttl=packet[ofs++];
 
-      /* Get length of remainder of frame */
-      f.rfs=packet[ofs];
-      while (packet[ofs]==0xff&&(ofs<len)&&(f.rfs<16384)) f.rfs+=packet[++ofs];
-      ofs++;
+      /* Decode length of remainder of frame */
+      f.rfs=rfs_decode(packet,&ofs);
 
       if (!f.rfs) {
 	/* Zero length -- assume we fell off the end of the packet */

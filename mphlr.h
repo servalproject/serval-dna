@@ -373,6 +373,43 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
 		      struct response_set *responses);
 
 
+typedef struct overlay_frame {
+  struct overlay_frame *prev;
+  struct overlay_frame *next;
+
+  unsigned int type;
+  unsigned int modifiers;
+
+  unsigned char ttl;
+
+  unsigned char nexthop[32];
+  int nexthop_address_status;
+
+  unsigned char destination[32];
+  int destination_address_status;
+
+  unsigned char source[32];
+  int source_address_status;
+
+  /* Frame content from destination address onwards */
+  unsigned int bytecount;
+  unsigned char *bytes;
+
+  /* Actual payload */
+  unsigned int payloadlength;
+  unsigned char *payload;
+  int payloadFreeP; /* Set if this needs to be freed on disposal
+		       of the frame */
+
+  int rfs; /* remainder of frame size */
+
+  long long enqueued_at;
+
+} overlay_frame;
+
+int overlay_frame_process(int interface,overlay_frame *f);
+int overlay_frame_resolve_addresses(int interface,overlay_frame *f);
+
 
 #define CRYPT_CIPHERED 1
 #define CRYPT_SIGNED 2
@@ -503,46 +540,16 @@ typedef struct overlay_buffer {
   int allocSize;
   int checkpointLength;
   int sizeLimit;
+  int var_length_offset;
+  int var_length_bytes;
 } overlay_buffer;
 
 int ob_unlimitsize(overlay_buffer *b);
 
-typedef struct overlay_payload {
-  struct overlay_payload *prev;
-  struct overlay_payload *next;
-
-  /* We allows 256 bit addresses and 32bit port numbers */
-  unsigned char src[SIDDIDFIELD_LEN];
-  unsigned char dst[SIDDIDFIELD_LEN];
-  int srcPort;
-  int dstPort;
-  
-  /* Hops before packet is dropped */
-  unsigned char ttl;
-  unsigned char trafficClass;
-
-  unsigned char srcAddrType;
-  unsigned char dstAddrType;
-
-  /* Method of encryption if any employed */
-  unsigned char cipher;
-
-  /* Payload flags */
-  unsigned char flags;
-
-  /* Size and Pointer to the payload itself */
-  int payloadLength;
-  /* make the payload pointer be at the end, so that we can conveniently have the data follow this structure if necessary.
-     (this lets us change the char * to a char payload[1] down the track to simplify this) */
-  unsigned char *payload;
-
-  /* time this frame was enqueued */
-  long long enqueued_at;
-} overlay_payload;
 
 typedef struct overlay_txqueue {
-  overlay_payload *first;
-  overlay_payload *last;
+  struct overlay_frame *first;
+  struct overlay_frame *last;
   int length;
   int maxLength;
   /* Latency target in ms for this traffic class.
@@ -578,8 +585,11 @@ int ob_makespace(overlay_buffer *b,int bytes);
 int ob_append_bytes(overlay_buffer *b,unsigned char *bytes,int count);
 int ob_append_short(overlay_buffer *b,unsigned short v);
 int ob_append_int(overlay_buffer *b,unsigned int v);
+int ob_patch_rfs(overlay_buffer *b,int l);
+int ob_indel_space(overlay_buffer *b,int offset,int shift);
+int ob_append_rfs(overlay_buffer *b,int l);
 
-int op_free(overlay_payload *p);
+int op_free(overlay_frame *p);
 
 long long parse_quantity(char *q);
 
@@ -593,7 +603,7 @@ long long overlay_time_until_next_tick();
 int overlay_rx_messages();
 int overlay_check_ticks();
 int overlay_add_selfannouncement();
-int overlay_payload_package_fmt1(overlay_payload *p,overlay_buffer *b);
+int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b);
 int overlay_interface_args(char *arg);
 int overlay_get_nexthop(unsigned char *final_destination,unsigned char *nexthop,int *nexthoplen);
 
@@ -627,7 +637,7 @@ extern int overlay_interface_count;
 #define OF_TYPE_FLAG_BITS 0xf0000000
 #define OF_TYPE_FLAG_NORMAL 0x0
 #define OF_TYPE_FLAG_E12 0x10000000
-#define OF_TYPE_FLAG_E20 0x00000000
+#define OF_TYPE_FLAG_E20 0x20000000
 
 /* Modifiers that indicate the disposition of the frame */
 #define OF_MODIFIER_BITS 0x0f
@@ -648,6 +658,8 @@ extern int overlay_interface_count;
 
 #define OVERLAY_ADDRESS_CACHE_SIZE 1024
 int overlay_abbreviate_address(unsigned char *in,char *out,int *ofs);
+int overlay_abbreviate_append_address(overlay_buffer *b,unsigned char *a);
+
 int overlay_abbreviate_expand_address(int interface,unsigned char *in,int *inofs,unsigned char *out,int *ofs);
 int overlay_abbreviate_cache_address(unsigned char *sid);
 int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *ofs,
@@ -682,32 +694,13 @@ int overlay_abbreviate_set_most_recent_address(unsigned char *in);
 /* The TTL field in a frame is used to differentiate between link-local and wide-area broadcasts */
 #define OA_CODE_BROADCAST 0x0f
 
-typedef struct overlay_frame {
-  unsigned int type;
-  unsigned int modifiers;
+#define RFS_PLUS250 0xfa
+#define RFS_PLUS456 0xfb
+#define RFS_PLUS762 0xfc
+#define RFS_PLUS1018 0xfd
+#define RFS_PLUS1274 0xfe
+#define RFS_3BYTE 0xff
+int rfs_length(int l);
+int rfs_encode(int l,unsigned char *b);
+int rfs_decode(unsigned char *b,int *offset);
 
-  unsigned char ttl;
-
-  unsigned char nexthop[32];
-  int nexthop_address_status;
-
-  unsigned char destination[32];
-  int destination_address_status;
-
-  unsigned char source[32];
-  int source_address_status;
-
-  /* Frame content from destination address onwards */
-  unsigned int bytecount;
-  unsigned char *bytes;
-
-  /* Actual payload */
-  unsigned int payloadlength;
-  unsigned char *payload;
-
-  int rfs; /* remainder of frame size */
-
-} overlay_frame;
-
-int overlay_frame_process(int interface,overlay_frame *f);
-int overlay_frame_resolve_addresses(int interface,overlay_frame *f);
