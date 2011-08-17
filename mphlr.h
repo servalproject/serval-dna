@@ -704,3 +704,4 @@ int rfs_length(int l);
 int rfs_encode(int l,unsigned char *b);
 int rfs_decode(unsigned char *b,int *offset);
 
+int overlay_route_init(int mb_ram);

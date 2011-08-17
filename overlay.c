@@ -65,6 +65,9 @@ int overlayServerMode()
   fd_set read_fds;
   int maxfd=-1;  
 
+  /* Create structures to use 1MB of RAM for testing */
+  overlay_route_init(1);
+
   /* Add all local SIDs to our cache */
   int ofs=0;
   while(findHlr(hlr,&ofs,NULL,NULL)) {

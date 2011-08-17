@@ -73,6 +73,7 @@
 
 */
 
+#define OVERLAY_SENDER_PREFIX_LENGTH 12
 typedef struct overlay_node_observation {
   int valid;
   
@@ -86,7 +87,7 @@ typedef struct overlay_node_observation {
   int sequence_range_low;
   int sequence_range_high;
   long long rx_time;
-  unsigned char sender[SID_SIZE];
+  unsigned char sender_prefix[OVERLAY_SENDER_PREFIX_LENGTH];
 } overlay_node_observation;
 
 /* Keep track of last 32 observations of a node.
@@ -121,18 +122,161 @@ int overlay_max_neighbours=0;
 int overlay_neighbour_count=0;
 overlay_node **overlay_neighbours=NULL;
 
+/* allocate structures according to memory availability.
+   We size differently because some devices are very constrained,
+   e.g., mesh potatoes, some are middle sized, like mobile phones, and
+   some are very large, like dedicated servers, that can keep track of
+   very many nodes.
+   
+   The memory allocation is in two main areas:
+   
+   1. Neighbour list, which is short, requiring just a single pointer per
+   direct neighbour.  So this can probably be set to a fairly large value
+   on any sized machine, certainly in the thousands, which should be more
+   than sufficient for wifi-type interfaces.  1000 neighbours requires
+   onlt 8KB on a 64 bit machine, which is probably a reasonable limit per
+   MB allocated.  This leaves 1016KB/MB for:
+   
+   2. The node information (overlay_node) structures.  These take more
+   space and have to be sized appropriately.  We also need to choose the
+   associativity of the node table based on the size of the structure.
+   The smaller the structure the greater the associativity we should have
+   so that the fewer the entries the more effectively we use them.  The
+   trade-off is that increased associativity results in increased search
+   time as the bins are searched for matches.  This is also why for very
+   large tables we want low associativity so that we are more CPU efficient.
+   
+   The bulk of the size ofthe overlay_node structure is the observations
+   information, because each observation contains a full 32 byte SID. The
+   question is whether a full SID is required, or whether a prefix is
+   sufficient, or if there is some even more compact representation possible.
+   
+   In principle the sender of the observation should be a direct neighbour,
+   and so we could just use a neighbour index. However the neighbour indices
+   are liable to change or become invalid over time, and we don't want to have
+   to trawl through the nodes every time that happens, as otherwise the CPU
+   requirements will be crazy.  
+   
+   This suggests that the use of a prefix is probably more appropriate. The
+   prefix must be long enough to be robust against birthday-paradox effects
+   and attacks. So at least 8 bytes (64 bits) is mandatory to make it
+   reasonably difficult to find a colliding public key prefix.  Prudence 
+   suggests that a longer prefix is desirable to give a safety margin, perhaps
+   12 bytes (96 bits) being a reasonable figure.  
+   
+   This approximately halves the memory requirement per node to about 4KB (i.e.
+   ~250 nodes per MB), and employing shorter prefixes than 12 bytes will result
+   in diminishing returns, so this gives us confidence that it is an appropriate
+   figure.
+   
+   Four-way associativity is probably reasonable for large-memory deployments
+   where we have space for many thousands of nodes to keep string comparison
+   effort to low levels.
+   
+   For small-memory deployments where we have space for only a few hundred nodes it
+   probably makes sence to go for eight-way associativity just to be on the safe
+   side.  However, this is somewhat arbitrary.  Only experience will teach us.
+   
+   One final note on potential attacks against us is that by having a hashed structure,
+   even with modest associativity, is that if an attacker knows the hash function 
+   they can readily cause hash collisions and interfere with connectivity to nodes
+   on the mesh.  
+   
+   The most robust solution to this problem would be to use a linear hash function
+   that takes, say, 10 of the 32 bytes as input, as this would result in a hash function
+   space of:  32!/22! which is > 2^47.  This would then require several times 2^47 
+   observation injections by an adversary to cause a hash collision with confidence.
+   Actually determining that such a collision had been caused would probably multiply
+   the effort required by some small further constant.  
+   
+   Using a non-linear hash function would raise the space to 32^10 > 2^50, the factor 
+   of 8 probably not being worth the CPU complexity of such a non-linear function.
+   
+   However the question arises as to whether such an extreme approach is required, 
+   remembering that changing the hash function does not break the protocol, so 
+   such strong hash functions could be employed in future if needed without breaking
+   backward compatibility.
+   
+   So let us then think about some very simple alternatives that might be good enough
+   for now, but that are very fast to calculate.
+   
+   The simplest is to just choose a sufficient number of bytes from the SIDs to create
+   a sufficiently long index value.  This gives 32!/(32-n)! where n is the number of
+   bytes required, or 32 for the worst-case situation of n.
+   
+   An improvement is to xor bytes to produce the index value.  Using pairs of bytes
+   gets us to something along the lines of 32!/(32-2n)! for production of a single byte,
+   which is a modest improvement, but possibly not good enough.  As we increase the number
+   of bytes xored together the situation improves to a point. However if we go to far we 
+   end up reducing the total space because once more than half of the bytes are involved in
+   the xor it is equivalent to the xor of all of the bytes xored with the bytes not included
+   in the xor. This means that regardless of the length of the index we need, we probably want
+   to use only half of the bytes as input, a this gives a complexity of 32!/16! = 2^73,
+   which is plenty.
+   
+   In fact, this gives us a better result than the previous concept, and can be implemented
+   using a very simple algorithm.  All we need to do is get a random ordering of the numbers 
+   [0..31], and round robin xor the bytes we need with the [0..15]th elements of the random
+   ordering.  
+*/
+
+/* The random ordering of bytes for the hash */
+int overlay_route_hash_order[16];
+int overlay_route_hash_bytes=0;
+
+int overlay_route_init(int mb_ram)
+{
+  int i,j;
+  /* XXX Initialise the random number generator in a robust manner */
+
+  /* Generate hash ordering function */
+  for(i=0;i<32;i++) {
+    j=32;
+    while(j<i) {
+      overlay_route_hash_order[i]=random()%32;
+      for(j=0;j<i;j++) if (overlay_route_hash_order[i]==overlay_route_hash_order[j]) break;
+    }
+  }
+
+  int associativity=4;
+  int bin_count=1;
+
+  long long space=(sizeof(overlay_node*)*1024LL)+sizeof(overlay_node)*bin_count*associativity*1LL;
+  while (space<mb_ram*1048576LL&&associativity<8)
+    {
+      long long space2=(sizeof(overlay_node*)*1024LL)+sizeof(overlay_node)*(bin_count*2LL)*associativity*1LL;
+      if (space2<mb_ram*1048576LL) { bin_count*=2; continue; }
+      space2=(sizeof(overlay_node*)*1024LL)+sizeof(overlay_node)*bin_count*(associativity+1)*1LL;
+      if (space2<mb_ram*1048576LL) { associativity++; continue; }
+      break;
+    }
+
+  space=(sizeof(overlay_node*)*1024LL)+sizeof(overlay_node)*bin_count*associativity*1LL;
+  int percent=100LL*space/(mb_ram*1048576LL);
+  fprintf(stderr,"Using %d%% of %dMB RAM allows for %d bins with %d-way associativity and %d direct neighbours.\n",
+	  percent,mb_ram,bin_count,associativity,1024*mb_ram);
+
+  /* Now fiddle it to get bin_count to be a power of two that fits and doesn't waste too much space. */
+  
+
+  return WHY("Not implemented");
+}
+
 int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen)
 {
+  if (!overlay_neighbours) return 0;
   return WHY("Not implemented");
 }
 
 int overlay_route_saw_selfannounce(overlay_frame *f)
 {
-  
+  /* XXX send ack out even if we have no structures setup? */
+  if (!overlay_neighbours) return 0;
   return WHY("Not implemented");
 }
 
 int overlay_route_saw_selfannounce_ack(overlay_frame *f)
 {
+  if (!overlay_neighbours) return 0;
   return WHY("Not implemented");  
 }
