@@ -251,11 +251,11 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
       
   /* Sequence number range.  Based on one tick per milli-second. */
   overlay_update_sequence_number();
+  if (ob_append_int(b,overlay_interfaces[interface].last_tick_ms))
+    return WHY("ob_append_int() could not add sequence number to self-announcement");
   if (ob_append_int(b,overlay_sequence_number))
     return WHY("ob_append_int() could not add sequence number to self-announcement");
-  if (ob_append_int(b,overlay_sequence_number+overlay_interfaces[interface].tick_ms-1))
-    return WHY("ob_append_int() could not add sequence number to self-announcement");
-
+  overlay_interfaces[interface].last_tick_ms=overlay_sequence_number;
   
   return 0;
 }

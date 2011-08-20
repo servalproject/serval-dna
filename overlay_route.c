@@ -58,6 +58,33 @@
   to handle mono-directional links.  BATMAN does this well, but I don't have the documentation
   here at 36,000 feet to digest it and think about how to incorporate it.
 
+  Having landed and thought about this a bit more, what we will do is send link-local
+  announcements which each direct neighbour Y will listen to and build up an estimated
+  probability of a packet sent by X reaching them.  This information will be 
+  periodically broadcast as the interface ticks, and not forwarded beyond link-local,
+  this preventing super-scalar traffic growth.  When X hears that Y's P(X,Y) from 
+  such a neighbour reception notice X can record P(X,Y) as its link score to Y. This
+  deals with asymmetric delivery probabilities for link-local neighbours.
+
+  So how do we efficiently distribute P(X,Y) to our second-degree neighbours, which 
+  we shall call Z? We will assume that P(X,Z) = P(X,Y)*P(Y,Z).  Thus X needs to get
+  Y's set of P(Y,a) values. This is easy to arrange if X and Y are bidirectionally
+  link-local, as Y can periodically broadcast this information, and X can cache it.
+  This process will eventually build up the entire set P(X,b), where b are all nodes
+  on the mesh. However, it assumes that every link is bidirectional.  What if X can
+  send directly to Y, but Y cannot send directly to X, i.e., P(X,Y)~1, P(Y,X)~0?
+  Provided that there is some path P(Y,m)*P(m,X) >0, then Y will eventually learn 
+  about it.  If Y knows that P(X,Y)>0, then it knows that X is a link-local neighbour
+  monodirectionally, and thus should endeavour to tell X about its direct neighbours.
+  This is fairly easy to arrange, and we will try this approach.
+
+  So overall, this results in traffic at each node which is O(n^2+n*m) where n is the
+  number of direct neighbours and m is the total number of nodes reachable on the 
+  mesh.  As we can limit the number of nodes reachable on the mesh by having nodes
+  only advertise their k highest scoring nodes, we can effectively limit the traffic
+  to approximately linear with respect to reachable node count, but quadratic with
+  respect to the number of immediate neighbours.  This seems a reasonable outcome.
+
   Related to this we need to continue thinking about how to handle intermittant links in a more
   formal sense, including getting an idea of when nodes might reappear.
 
@@ -105,7 +132,9 @@ typedef struct overlay_node {
    first few bits of the peer's SIDs, and a number of entries in each bin to
    handle hash collissions while still allowing us to have static memory usage. */
 int overlay_bin_count=0;
-int overlay_bin_size=0;
+int overlay_bin_size=0; /* associativity, i.e., entries per bin */
+int overlay_bin_bytes=0; /* number of bytes required to represent the range
+			    [0..bin_count) */
 overlay_node **overlay_nodes=NULL;
 
 /* We also need to keep track of which nodes are our direct neighbours.
@@ -228,15 +257,21 @@ int overlay_route_init(int mb_ram)
 {
   int i,j;
   /* XXX Initialise the random number generator in a robust manner */
+  fprintf(stderr,"WARNING: RNG Not Securely Initialised.\n");
 
   /* Generate hash ordering function */
+  fprintf(stderr,"Generating byte-order for hash function:");
   for(i=0;i<32;i++) {
-    j=32;
+    j=0;
+    overlay_route_hash_order[i]=random()&31;
     while(j<i) {
-      overlay_route_hash_order[i]=random()%32;
+      overlay_route_hash_order[i]=random()&31;
       for(j=0;j<i;j++) if (overlay_route_hash_order[i]==overlay_route_hash_order[j]) break;
     }
+    fprintf(stderr," %d",overlay_route_hash_order[i]);
   }
+  fprintf(stderr,"\n");
+  overlay_route_hash_bytes=16;
 
   int associativity=4;
   int bin_count=1;
@@ -286,7 +321,17 @@ int overlay_route_init(int mb_ram)
   overlay_bin_count=bin_count;
   overlay_bin_size=associativity;
   fprintf(stderr,"Node and neighbour tables allocated.\n");
-  
+
+  /* Work out number of bytes required to represent the bin number.
+     Used for calculation of sid hash */
+  overlay_bin_bytes=1;
+  while(bin_count&0xffffff00) {
+    fprintf(stderr,"bin_count=0x%08x, overlay_bin_bytes=%d\n",bin_count,overlay_bin_bytes);
+    overlay_bin_bytes++;
+    bin_count=bin_count>>8;
+  }
+  fprintf(stderr,"bin_count=0x%08x, overlay_bin_bytes=%d\n",bin_count,overlay_bin_bytes);
+
   return 0;
 }
 
@@ -296,16 +341,68 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen)
   return WHY("Not implemented");
 }
 
+unsigned int overlay_route_hash_sid(unsigned char *sid)
+{
+  /* Calculate the bin number of an address (sid) from the sid. */
+  if (!overlay_route_hash_bytes) return WHY("overlay_route_hash_bytes==0");
+  unsigned int bin=0;
+  int byte=0;
+  int i;
+  for(i=0;i<overlay_route_hash_bytes;i++) {
+    bin=bin^((sid[overlay_route_hash_order[i]])<<(8*byte));
+    byte++;
+    if (byte>=overlay_bin_bytes) byte=0;
+  }
+
+  /* Mask out extranous bits to return only a valid bin number */
+  bin&=(overlay_bin_count-1);
+  fprintf(stderr,"The following address resolves to bin #%d\n",bin);
+  for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",sid[i]);
+  fprintf(stderr,"\n");
+  return bin;
+}
+
+overlay_node *overlay_route_find_node(unsigned char *sid,int createP)
+{
+  int bin_number=overlay_route_hash_sid(sid);
+  int free_slot=-1;
+  int slot;
+
+  if (bin_number<0) { WHY("negative bin number"); return NULL; }
+
+  for(slot=0;slot<overlay_bin_size;slot++)
+    if (!bcmp(sid,overlay_nodes[bin_number][slot].sid,SID_SIZE))
+      {
+	/* Found it */
+	return &overlay_nodes[bin_number][slot];
+      }
+    else if (overlay_nodes[bin_number][slot].sid[0]==0) free_slot=slot;
+ 
+  /* Didn't find it */
+  if (!createP) return NULL;
+
+  if (free_slot==-1)
+    {
+      /* Displace one of the others in the bin so we can go there */
+      int i;
+      for(i=0;i<OVERLAY_MAX_OBSERVATIONS;i++)
+	overlay_nodes[bin_number][free_slot].observations[i].valid=0;
+      overlay_nodes[bin_number][free_slot].neighbour_id=0;
+      overlay_nodes[bin_number][free_slot].most_recent_observation_id=0;      
+    }
+
+  bcopy(sid,overlay_nodes[bin_number][free_slot].sid,SID_SIZE);
+  return &overlay_nodes[bin_number][free_slot];
+}
+
 int overlay_route_saw_selfannounce(overlay_frame *f)
 {
   /* XXX send ack out even if we have no structures setup? */
   if (!overlay_neighbours) return 0;
 
-#ifdef NOT_DEFINED
   /* Lookup node in node cache */
-  overlay_node *n=overlay_route_find_node(f->source);
+  overlay_node *n=overlay_route_find_node(f->source,1);
   if (!n) return WHY("Could not find node record for observed node");
-#endif
 
   /* Update observations of this node, and then insert it into the neighbour list if it is not
      already there. */
@@ -314,6 +411,20 @@ int overlay_route_saw_selfannounce(overlay_frame *f)
   s1=ntohl(*((int*)&f->payload[0]));
   s2=ntohl(*((int*)&f->payload[4]));
   fprintf(stderr,"Received self-announcement for sequence range [%08x,%08x]\n",s1,s2);
+
+  /* Replace oldest observation with this one */
+  int obs_index=n->most_recent_observation_id+1;
+  if (obs_index>=OVERLAY_MAX_OBSERVATIONS) obs_index=0;
+  n->observations[obs_index].valid=0;
+  n->observations[obs_index].rx_time=overlay_sequence_number; /* now in ms */
+  n->observations[obs_index].sequence_range_low=s1;
+  n->observations[obs_index].sequence_range_high=s2;
+  bcopy(f->source,n->observations[obs_index].sender_prefix,
+	OVERLAY_SENDER_PREFIX_LENGTH);
+  n->observations[obs_index].valid=1;
+  n->most_recent_observation_id=obs_index;
+
+  /* Recalculate link score for this node */
 
   return WHY("Not implemented");
 }
