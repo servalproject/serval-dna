@@ -115,7 +115,7 @@ overlay_node **overlay_nodes=NULL;
    require lots of random memory reads to resolve.
 
    The simplest approach is to maintain a large cache of neighbours and practise random
-   replacement.  If is however succecptible to cache flushing attacks by adversaries, so
+   replacement.  It is however succecptible to cache flushing attacks by adversaries, so
    we will need something smarter in the long term.
 */
 int overlay_max_neighbours=0;
@@ -241,24 +241,52 @@ int overlay_route_init(int mb_ram)
   int associativity=4;
   int bin_count=1;
 
-  long long space=(sizeof(overlay_node*)*1024LL)+sizeof(overlay_node)*bin_count*associativity*1LL;
+  /* Now fiddle it to get bin_count to be a power of two that fits and doesn't waste too much space. */
+  long long space=(sizeof(overlay_node*)*1024LL*mb_ram)+sizeof(overlay_node)*bin_count*associativity*1LL;
   while (space<mb_ram*1048576LL&&associativity<8)
     {
-      long long space2=(sizeof(overlay_node*)*1024LL)+sizeof(overlay_node)*(bin_count*2LL)*associativity*1LL;
+      long long space2=(sizeof(overlay_node*)*1024LL*mb_ram)+sizeof(overlay_node)*(bin_count*2LL)*associativity*1LL;
       if (space2<mb_ram*1048576LL) { bin_count*=2; continue; }
       space2=(sizeof(overlay_node*)*1024LL)+sizeof(overlay_node)*bin_count*(associativity+1)*1LL;
       if (space2<mb_ram*1048576LL) { associativity++; continue; }
       break;
     }
 
-  space=(sizeof(overlay_node*)*1024LL)+sizeof(overlay_node)*bin_count*associativity*1LL;
-  int percent=100LL*space/(mb_ram*1048576LL);
-  fprintf(stderr,"Using %d%% of %dMB RAM allows for %d bins with %d-way associativity and %d direct neighbours.\n",
-	  percent,mb_ram,bin_count,associativity,1024*mb_ram);
+  /* Report on the space used */
+  {
+    space=(sizeof(overlay_node*)*1024LL*mb_ram)+sizeof(overlay_node)*bin_count*associativity*1LL;
+    int percent=100LL*space/(mb_ram*1048576LL);
+    fprintf(stderr,"Using %d%% of %dMB RAM allows for %d bins with %d-way associativity and %d direct neighbours.\n",
+	    percent,mb_ram,bin_count,associativity,1024*mb_ram);
+  }
 
-  /* Now fiddle it to get bin_count to be a power of two that fits and doesn't waste too much space. */
+  /* Now allocate the structures */
+
+  overlay_nodes=calloc(sizeof(overlay_node*),bin_count);
+  if (!overlay_nodes) return WHY("calloc() failed.");
+
+  overlay_neighbours=calloc(sizeof(overlay_node*),1024*mb_ram);
+  if (!overlay_neighbours) {
+    free(overlay_nodes);
+    return WHY("calloc() failed.");
+  }
+
+  for(i=0;i<bin_count;i++)
+    {
+      overlay_nodes[i]=calloc(sizeof(overlay_node),associativity);
+      if (!overlay_nodes[i]) {
+	while(--i>=0) free(overlay_nodes[i]);
+	free(overlay_nodes);
+	free(overlay_neighbours);
+	return WHY("calloc() failed.");
+      }
+    }
+
+  overlay_max_neighbours=1024*mb_ram;
+  overlay_bin_count=bin_count;
+  overlay_bin_size=associativity;
+  fprintf(stderr,"Node and neighbour tables allocated.\n");
   
-
   return WHY("Not implemented");
 }
 
