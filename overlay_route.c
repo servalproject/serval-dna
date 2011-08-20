@@ -287,7 +287,7 @@ int overlay_route_init(int mb_ram)
   overlay_bin_size=associativity;
   fprintf(stderr,"Node and neighbour tables allocated.\n");
   
-  return WHY("Not implemented");
+  return 0;
 }
 
 int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen)
@@ -300,6 +300,21 @@ int overlay_route_saw_selfannounce(overlay_frame *f)
 {
   /* XXX send ack out even if we have no structures setup? */
   if (!overlay_neighbours) return 0;
+
+#ifdef NOT_DEFINED
+  /* Lookup node in node cache */
+  overlay_node *n=overlay_route_find_node(f->source);
+  if (!n) return WHY("Could not find node record for observed node");
+#endif
+
+  /* Update observations of this node, and then insert it into the neighbour list if it is not
+     already there. */
+  unsigned int s1,s2;
+  
+  s1=ntohl(*((int*)&f->payload[0]));
+  s2=ntohl(*((int*)&f->payload[4]));
+  fprintf(stderr,"Received self-announcement for sequence range [%08x,%08x]\n",s1,s2);
+
   return WHY("Not implemented");
 }
 

@@ -439,7 +439,8 @@ typedef struct overlay_interface {
      For ~10K ISM915MHz (nominal range ~3000m) it will probably be about 15000ms.
      These figures will be refined over time, and we will allow people to set them per-interface.
   */
-  int tick_ms;
+  int tick_ms; /* milliseconds per tick */
+
   /* The time of the last tick on this interface in milli seconds */
   long long last_tick_ms;
   /* How many times have we abbreviated our address since we last announced it in full? */
@@ -470,6 +471,8 @@ typedef struct overlay_interface {
 */
 #define OVERLAY_MAX_INTERFACES 16
 extern overlay_interface overlay_interfaces[OVERLAY_MAX_INTERFACES];
+extern unsigned int overlay_sequence_number;
+extern time_t overlay_sequence_start_time;
 
 /* Has someone sent us an abbreviation of an unknown type recently? If so remind them
    that we don't accept these.

@@ -214,7 +214,7 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
   
   /* Add space for Remaining Frame Size field.  This will always be a single byte
      for self-announcments as they are always <256 bytes. */
-  c=1+1+(send_prefix?(1+7):SID_SIZE)+4;
+  c=1+1+(send_prefix?(1+7):SID_SIZE)+4+4;
   if (ob_append_bytes(b,&c,1))
     return WHY("ob_append_bytes() could not add RFS for self-announcement frame");
 
@@ -249,9 +249,11 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
       overlay_interfaces[interface].ticks_since_sent_full_address++;
     }
       
-  /* A sequence number, so that others can keep track of their reception of our frames.
-   These are per-interface */
-  if (ob_append_int(b,overlay_interfaces[interface].sequence_number))
+  /* Sequence number range.  Based on one tick per milli-second. */
+  overlay_update_sequence_number();
+  if (ob_append_int(b,overlay_sequence_number))
+    return WHY("ob_append_int() could not add sequence number to self-announcement");
+  if (ob_append_int(b,overlay_sequence_number+overlay_interfaces[interface].tick_ms-1))
     return WHY("ob_append_int() could not add sequence number to self-announcement");
 
   

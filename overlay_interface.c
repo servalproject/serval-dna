@@ -19,8 +19,25 @@ struct interface_rules {
 
 struct interface_rules *interface_filter=NULL;
 
+unsigned int overlay_sequence_number=0;
+time_t overlay_sequence_start_time;
+
 /* Do we need to repeat our abbreviation policy? */
 int overlay_interface_repeat_abbreviation_policy[OVERLAY_MAX_INTERFACES]={1};
+
+int overlay_update_sequence_number()
+{
+  struct timeval nowtv;
+  if (gettimeofday(&nowtv,NULL))
+    return WHY("gettimeofday() failed");
+
+  /* Get current time in milliseconds */
+  long long now=(nowtv.tv_sec-overlay_sequence_start_time)*1000LL;
+  now=now+nowtv.tv_usec/1000;
+
+  overlay_sequence_number=now&0xffffffff;
+  return 0;
+}
 
 int overlay_interface_type(char *s)
 {
@@ -140,6 +157,8 @@ int overlay_interface_init_socket(int interface,struct sockaddr_in src_addr,stru
   I(broadcast_address)=broadcast;
   I(netmask)=netmask;
   I(fileP)=0;
+
+  overlay_sequence_start_time=time(0);
 
   I(fd)=socket(PF_INET,SOCK_DGRAM,0);
   if (I(fd)<0) {
@@ -460,7 +479,6 @@ int overlay_tick_interface(int i, long long now)
   }
     
   if (debug&4) fprintf(stderr,"Ticking interface #%d\n",i);
-  overlay_interfaces[i].sequence_number++;
   
   /* Get a buffer ready, and limit it's size appropriately.
      XXX size limit should be reduced from MTU.
@@ -529,8 +547,9 @@ int overlay_tick_interface(int i, long long now)
   if (debug&4) fprintf(stderr,"Sending %d bytes\n",e->length);
   if (!overlay_broadcast_ensemble(i,e->bytes,e->length))
     {
+      overlay_update_sequence_number();
       fprintf(stderr,"Successfully transmitted tick frame #%d on interface #%d (%d bytes)\n",
-	      overlay_interfaces[i].sequence_number,i,e->length);
+	      overlay_sequence_number,i,e->length);
       /* De-queue the passengers who were aboard. */
       int j;
       overlay_frame **p=&overlay_tx[OVERLAY_ISOCHRONOUS_VOICE].first;

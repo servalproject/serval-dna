@@ -307,20 +307,20 @@ int overlay_abbreviate_expand_address(int interface,unsigned char *in,int *inofs
     case OA_CODE_PREFIX3: case OA_CODE_PREFIX3_INDEX1: /* 3-byte prefix */
       if (in[*inofs]==0x09) bytes=1;
       r=overlay_abbreviate_cache_lookup(&in[(*inofs)+1],out,ofs,3,bytes);
-      (*inofs)+=3+bytes;
+      (*inofs)+=1+3+bytes;
       overlay_abbreviate_set_most_recent_address(&out[*ofs]);
       return r;
     case OA_CODE_PREFIX7: case OA_CODE_PREFIX7_INDEX1: /* 7-byte prefix */
       if (in[*inofs]==OA_CODE_PREFIX7_INDEX1) bytes=1;
       r=overlay_abbreviate_cache_lookup(&in[(*inofs)+1],out,ofs,7,bytes);
-      (*inofs)+=7+bytes;
+      (*inofs)+=1+7+bytes;
       overlay_abbreviate_set_most_recent_address(&out[*ofs]);
       return r;
     case OA_CODE_PREFIX11: case OA_CODE_PREFIX11_INDEX1: case OA_CODE_PREFIX11_INDEX2: /* 11-byte prefix */
       if (in[*inofs]==OA_CODE_PREFIX11_INDEX1) bytes=1;
       if (in[*inofs]==OA_CODE_PREFIX11_INDEX2) bytes=2;
       r=overlay_abbreviate_cache_lookup(&in[(*inofs)+1],out,ofs,11,bytes);
-      (*inofs)+=11+bytes;
+      (*inofs)+=1+11+bytes;
       overlay_abbreviate_set_most_recent_address(&out[*ofs]);
       return r;
     case OA_CODE_BROADCAST: /* broadcast */
