@@ -25,7 +25,7 @@ time_t overlay_sequence_start_time;
 /* Do we need to repeat our abbreviation policy? */
 int overlay_interface_repeat_abbreviation_policy[OVERLAY_MAX_INTERFACES]={1};
 
-int overlay_update_sequence_number()
+long long overlay_gettime_ms()
 {
   struct timeval nowtv;
   if (gettimeofday(&nowtv,NULL))
@@ -35,6 +35,12 @@ int overlay_update_sequence_number()
   long long now=(nowtv.tv_sec-overlay_sequence_start_time)*1000LL;
   now=now+nowtv.tv_usec/1000;
 
+  return now;
+}
+
+int overlay_update_sequence_number()
+{
+  long long now=overlay_gettime_ms();
   overlay_sequence_number=now&0xffffffff;
   return 0;
 }

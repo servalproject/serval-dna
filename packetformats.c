@@ -277,9 +277,11 @@ int packetAddVariableRequest(unsigned char *packet,int packet_maxlen,int *packet
     return setReason("Requested unknown HLR variable");
   }
   itemId=vars[itemId].id;
-  if (instance<-1) return setReason("Asked for illegal variable value instance");
-  if (instance>0xfe) return setReason("Asked for illegal variable value instance");
-  if ((itemId<0x80)&&instance) return setReason("Asked for secondary value of single-value variable");
+  if (instance<-1) return setReason("Asked for illegal variable value instance (<-1)");
+  if (instance>0xfe) return setReason("Asked for illegal variable value instance (>0xfe)");
+  if ((instance!=-1)&&(itemId<0x80)&&instance) { 
+    return setReason("Asked for secondary value of single-value variable for read");
+  }
   if (start_offset<0||start_offset>0xffff) return setReason("Asked for illegal variable value starting offset");
   if (bytes<0||(start_offset+bytes)>0xffff) {
     if (debug) fprintf(stderr,"Asked for %d bytes at offset %d\n",bytes,start_offset);
@@ -290,8 +292,7 @@ int packetAddVariableRequest(unsigned char *packet,int packet_maxlen,int *packet
   CHECK_PACKET_LEN(1+1+((itemId&0x80)?1:0)+2+2);
   packet[(*packet_len)++]=ACTION_GET;
   packet[(*packet_len)++]=itemId;
-  if (instance==-1) instance=0xff;
-  if (itemId&0x80) packet[(*packet_len)++]=instance;
+  if (itemId&0x80) { packet[(*packet_len)++]=instance; }
   packet[(*packet_len)++]=start_offset>>8;
   packet[(*packet_len)++]=start_offset&0xff;
   packet[(*packet_len)++]=bytes>>8;
@@ -315,9 +316,11 @@ int packetAddVariableWrite(unsigned char *packet,int packet_maxlen,
   if (debug>1) printf("packetAddVariableWrite(start=%d,len=%d,flags=%d)\n",start_offset,value_len,flags);
 
   /* Sanity check */
-  if (instance<0) return setReason("Asked for illegal variable value instance");
-  if (instance>0xfe) return setReason("Asked for illegal variable value instance");
-  if ((itemId<0x80)&&instance) return setReason("Asked for secondary value of single-value variable");
+  if (itemId&0x80) {
+    if (instance<0) return setReason("Asked for illegal variable value instance (<0)");
+    if (instance>0xfe) return setReason("Asked for illegal variable value instance (>0xfe)");
+  }
+  if ((itemId<0x80)&&instance&&(instance!=-1)) return setReason("Asked for secondary value of single-value variable for write");
   if (start_offset<0||start_offset>0xffff) return setReason("Asked for illegal variable value starting offset");
   if (max_offset<0||max_offset>0xffff) return setReason("Asked for illegal variable value ending offset");
   
@@ -352,7 +355,7 @@ int extractRequest(unsigned char *packet,int *packet_ofs,int packet_len,
 
   *itemId=packet[(*packet_ofs)++];
 
-  if ((*itemId)&0x80) *instance=packet[(*packet_ofs)++];
+  if ((*itemId)&0x80) *instance=packet[(*packet_ofs)++]; else *instance=0;
   if (*instance==0xff) *instance=-1;
 
   *start_offset=packet[(*packet_ofs)++]<<8;

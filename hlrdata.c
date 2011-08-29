@@ -369,7 +369,7 @@ int hlrSetVariable(unsigned char *hlr,int hofs,int varid,int varinstance,
       if (debug>1) fprintf(stderr,"h->var_id=%02x, h->h->var_instance=%02x, h->entry_offset=%x\n",
 			   h->var_id,h->var_instance,h->entry_offset);
       if ((h->var_id<varid)
-	  ||(h->var_id==varid&&h->var_instance<varinstance))
+	  ||((h->var_id&0x80)&&(h->var_id==varid&&h->var_instance<varinstance)))
 	{
 	  hlr_offset=h->entry_offset;
 	  if (debug>1) fprintf(stderr,"Found variable instance prior: hlr_offset=%d.\n",hlr_offset);
@@ -390,19 +390,19 @@ int hlrSetVariable(unsigned char *hlr,int hofs,int varid,int varinstance,
   if (h&&hlr_offset>-1)
     {
       if (debug>2) printf("hlr_offset=%d\n",hlr_offset);
-      if (h&&h->var_id==varid&&h->var_instance==varinstance)
+      if (h&&h->var_id==varid&&((h->var_instance==varinstance)||(!(h->var_id&0x80))))
 	{
-		int existing_size;
+	  int existing_size;
 	  /* Replace existing value */
-	  if (debug) fprintf(stderr,"Replacing value in HLR\n");
-	  existing_size=1+2+(h->var_id&0x80?1:0)+h->value_len;
-	  hlrMakeSpace(hlr,hofs,hlr_offset,1+2+len+(varid&0x80?1:0)-existing_size);
+	  if (debug) fprintf(stderr,"Replacing value in HLR:\n");
+	  existing_size=1+2+((h->var_id&0x80)?1:0)+h->value_len;
+	  hlrMakeSpace(hlr,hofs,hlr_offset,1+2+len+((varid&0x80)?1:0)-existing_size);
 	}
       else
 	{
 	  /* Insert value here */
 	  if (debug) fprintf(stderr,"Inserting value in HLR\n");
-	  hlrMakeSpace(hlr,hofs,hlr_offset,1+2+len+(varid&0x80?1:0));
+	  hlrMakeSpace(hlr,hofs,hlr_offset,1+2+len+((varid&0x80)?1:0));
 	}
     }
   else
@@ -410,7 +410,7 @@ int hlrSetVariable(unsigned char *hlr,int hofs,int varid,int varinstance,
       /* HLR record has no entries, or this entry needs to go at the end,
 	 so insert value at end of the record */
       if (debug) fprintf(stderr,"Inserting value at end of HLR @ 0x%x\n",hlr_size);
-      hlrMakeSpace(hlr,hofs,hlr_size,1+2+len+(varid&0x80?1:0));
+      hlrMakeSpace(hlr,hofs,hlr_size,1+2+len+((varid&0x80)?1:0));
       hlr_offset=hlr_size;
     }
 
@@ -435,14 +435,24 @@ int hlrStowValue(unsigned char *hlr,int hofs,int hlr_offset,
 int hlrMakeSpace(unsigned char *hlr,int hofs,int hlr_offset,int bytes)
 {
   int length;
+  int shifted_bytes=hlr_size-(hofs+hlr_offset+bytes);
+  /* Don't read past end of file */
+  if (bytes<0) shifted_bytes+=bytes;
+
   /* Deal with easy case first */
   if (!bytes) return 0;
+
+  if (debug>2) { 
+    fprintf(stderr,"hlrMakeSpace: Inserting %d bytes at offset %d with hofs=%d. shifted bytes=%d\n",
+	    bytes,hlr_offset,hofs,shifted_bytes);
+    fflush(stderr);
+  }
 
   /* Shift rest of HLR up/down.
      If down, back-fill bytes with zeros. */
   bcopy(&hlr[hofs+hlr_offset],&hlr[hofs+hlr_offset+bytes],
-	hlr_size-(hofs+hlr_offset+bytes));
-  if (bytes<0) bzero(&hlr[hlr_size-bytes],0-bytes);
+	shifted_bytes);
+  if (bytes<0) bzero(&hlr[hlr_size+bytes],0-bytes);
 
   /* Update record length */
   length=hlrGetRecordLength(hlr,hofs);

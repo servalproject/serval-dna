@@ -707,4 +707,40 @@ int rfs_length(int l);
 int rfs_encode(int l,unsigned char *b);
 int rfs_decode(unsigned char *b,int *offset);
 
+#define OVERLAY_SENDER_PREFIX_LENGTH 12
+typedef struct overlay_node_observation {
+  int valid;
+  
+  /* Sequence numbers are handled as ranges because the tick
+     rate can vary between interfaces, and we want to be able to
+     estimate the reliability of links to nodes that may have
+     several available interfaces.
+     We don't want sequence numbers to wrap too often, but we
+     would also like to support fairly fast ticking interfaces,
+     e.g., for gigabit type links. So lets go with 1ms granularity. */
+  int sequence_range_low;
+  int sequence_range_high;
+  long long rx_time;
+  unsigned char sender_prefix[OVERLAY_SENDER_PREFIX_LENGTH];
+} overlay_node_observation;
+
+/* Keep track of last 32 observations of a node.
+   Hopefully this is enough, if not, we will increase */
+#define OVERLAY_MAX_OBSERVATIONS 32
+
+typedef struct overlay_node {
+  unsigned char sid[SID_SIZE];
+  int neighbour_id; /* 0=not a neighbour */
+  long long last_observation_time_ms;
+  int most_recent_observation_id;
+  overlay_node_observation observations[OVERLAY_MAX_OBSERVATIONS];
+} overlay_node;
+
+long long overlay_gettime_ms();
+int overlay_route_init(int mb_ram);
+int overlay_route_saw_selfannounce_ack(overlay_frame *f,long long now);
+int overlay_route_recalc_node_metrics(overlay_node *n);
+int overlay_route_saw_selfannounce(overlay_frame *f,long long now);
+overlay_node *overlay_route_find_node(unsigned char *sid,int createP);
+unsigned int overlay_route_hash_sid(unsigned char *sid);
 int overlay_route_init(int mb_ram);

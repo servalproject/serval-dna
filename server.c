@@ -306,13 +306,19 @@ int processRequest(unsigned char *packet,int len,
 		unsigned char data[MAX_DATA_BYTES+16];
 		int dlen=0;
 		int sendDone=0;
-		int var_id=packet[pofs+1];
-		int instance=packet[pofs+2];
-		int offset=(packet[pofs+3]<<8)+packet[pofs+4];
+
+		if (debug>2) dump("Request bytes",&packet[pofs],8);
+
+		pofs++;
+		int var_id=packet[pofs];
+		int instance=-1;
+		if (var_id&0x80) instance=packet[++pofs];
+		pofs++;
+		int offset=(packet[pofs]<<8)+packet[pofs+1]; pofs+=2;
 		char *hlr_sid=NULL;
 
-		pofs+=7;
-		if (debug>2) dump("Request bytes",&packet[pofs],8);
+		pofs+=3;
+
 		if (debug>1) fprintf(stderr,"Processing ACTION_GET (var_id=%02x, instance=%02x, pofs=0x%x, len=%d)\n",var_id,instance,pofs,len);
 
 		ofs=0;

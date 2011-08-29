@@ -100,33 +100,6 @@
 
 */
 
-#define OVERLAY_SENDER_PREFIX_LENGTH 12
-typedef struct overlay_node_observation {
-  int valid;
-  
-  /* Sequence numbers are handled as ranges because the tick
-     rate can vary between interfaces, and we want to be able to
-     estimate the reliability of links to nodes that may have
-     several available interfaces.
-     We don't want sequence numbers to wrap too often, but we
-     would also like to support fairly fast ticking interfaces,
-     e.g., for gigabit type links. So lets go with 1ms granularity. */
-  int sequence_range_low;
-  int sequence_range_high;
-  long long rx_time;
-  unsigned char sender_prefix[OVERLAY_SENDER_PREFIX_LENGTH];
-} overlay_node_observation;
-
-/* Keep track of last 32 observations of a node.
-   Hopefully this is enough, if not, we will increase */
-#define OVERLAY_MAX_OBSERVATIONS 32
-
-typedef struct overlay_node {
-  unsigned char sid[SID_SIZE];
-  int neighbour_id; /* 0=not a neighbour */
-  int most_recent_observation_id;
-  overlay_node_observation observations[OVERLAY_MAX_OBSERVATIONS];
-} overlay_node;
 
 /* For fast handling we will have a number of bins that will be indexed by the
    first few bits of the peer's SIDs, and a number of entries in each bin to
@@ -395,9 +368,16 @@ overlay_node *overlay_route_find_node(unsigned char *sid,int createP)
   return &overlay_nodes[bin_number][free_slot];
 }
 
-int overlay_route_saw_selfannounce(overlay_frame *f)
+int overlay_route_ack_selfannounce(overlay_frame *f)
+{
+  return WHY("Not implemented");
+}
+
+int overlay_route_saw_selfannounce(overlay_frame *f,long long now)
 {
   /* XXX send ack out even if we have no structures setup? */
+  overlay_route_ack_selfannounce(f);
+
   if (!overlay_neighbours) return 0;
 
   /* Lookup node in node cache */
@@ -424,12 +404,22 @@ int overlay_route_saw_selfannounce(overlay_frame *f)
   n->observations[obs_index].valid=1;
   n->most_recent_observation_id=obs_index;
 
-  /* Recalculate link score for this node */
+  n->last_observation_time_ms=now;
 
-  return WHY("Not implemented");
+  /* Recalculate link score for this node */
+  if (overlay_route_recalc_node_metrics(n)) return WHY("recalc_node_metrics() failed.");
+
+  return 0;
 }
 
-int overlay_route_saw_selfannounce_ack(overlay_frame *f)
+/* Recalculate node reachability metric. */
+int overlay_route_recalc_node_metrics(overlay_node *n)
+{
+  return WHY("Not Implemented");
+
+}
+
+int overlay_route_saw_selfannounce_ack(overlay_frame *f,long long now)
 {
   if (!overlay_neighbours) return 0;
   return WHY("Not implemented");  

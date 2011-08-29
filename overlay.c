@@ -122,6 +122,8 @@ int overlay_frame_process(int interface,overlay_frame *f)
 {
   if (!f) return WHY("f==NULL");
 
+  long long now=overlay_gettime_ms();
+
   /* First order of business is whether the nexthop address has been resolved.
      If not, we need to think about asking for it to be resolved.
      The trouble is that we do not want to trigger a Hanson Event (a storm of
@@ -225,10 +227,10 @@ int overlay_frame_process(int interface,overlay_frame *f)
   switch(f->type)
     {
     case OF_TYPE_SELFANNOUNCE:
-      overlay_route_saw_selfannounce(f);
+      overlay_route_saw_selfannounce(f,now);
       break;
     case OF_TYPE_SELFANNOUNCE_ACK:
-      overlay_route_saw_selfannounce_ack(f);
+      overlay_route_saw_selfannounce_ack(f,now);
       break;
     default:
       return WHY("Support for that f->type not yet implemented");
