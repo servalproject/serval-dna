@@ -122,7 +122,7 @@ overlay_node **overlay_nodes=NULL;
 */
 int overlay_max_neighbours=0;
 int overlay_neighbour_count=0;
-overlay_node **overlay_neighbours=NULL;
+overlay_neighbour *overlay_neighbours=NULL;
 
 /* allocate structures according to memory availability.
    We size differently because some devices are very constrained,
@@ -250,19 +250,19 @@ int overlay_route_init(int mb_ram)
   int bin_count=1;
 
   /* Now fiddle it to get bin_count to be a power of two that fits and doesn't waste too much space. */
-  long long space=(sizeof(overlay_node*)*1024LL*mb_ram)+sizeof(overlay_node)*bin_count*associativity*1LL;
+  long long space=(sizeof(overlay_neighbour*)*1024LL*mb_ram)+sizeof(overlay_node)*bin_count*associativity*1LL;
   while (space<mb_ram*1048576LL&&associativity<8)
     {
-      long long space2=(sizeof(overlay_node*)*1024LL*mb_ram)+sizeof(overlay_node)*(bin_count*2LL)*associativity*1LL;
+      long long space2=(sizeof(overlay_neighbour*)*1024LL*mb_ram)+sizeof(overlay_node)*(bin_count*2LL)*associativity*1LL;
       if (space2<mb_ram*1048576LL) { bin_count*=2; continue; }
-      space2=(sizeof(overlay_node*)*1024LL)+sizeof(overlay_node)*bin_count*(associativity+1)*1LL;
+      space2=(sizeof(overlay_neighbour*)*1024LL)+sizeof(overlay_node)*bin_count*(associativity+1)*1LL;
       if (space2<mb_ram*1048576LL) { associativity++; continue; }
       break;
     }
 
   /* Report on the space used */
   {
-    space=(sizeof(overlay_node*)*1024LL*mb_ram)+sizeof(overlay_node)*bin_count*associativity*1LL;
+    space=(sizeof(overlay_neighbour*)*1024LL*mb_ram)+sizeof(overlay_node)*bin_count*associativity*1LL;
     int percent=100LL*space/(mb_ram*1048576LL);
     fprintf(stderr,"Using %d%% of %dMB RAM allows for %d bins with %d-way associativity and %d direct neighbours.\n",
 	    percent,mb_ram,bin_count,associativity,1024*mb_ram);
@@ -273,7 +273,7 @@ int overlay_route_init(int mb_ram)
   overlay_nodes=calloc(sizeof(overlay_node*),bin_count);
   if (!overlay_nodes) return WHY("calloc() failed.");
 
-  overlay_neighbours=calloc(sizeof(overlay_node*),1024*mb_ram);
+  overlay_neighbours=calloc(sizeof(overlay_neighbour*),1024*mb_ram);
   if (!overlay_neighbours) {
     free(overlay_nodes);
     return WHY("calloc() failed.");
@@ -373,33 +373,43 @@ int overlay_route_ack_selfannounce(overlay_frame *f)
   return WHY("Not implemented");
 }
 
+int overlay_route_i_can_hear(unsigned char *who,unsigned int s1,unsigned int s2,long long now)
+{
+  return WHY("Not implemented");
+}
+
 int overlay_route_saw_selfannounce(overlay_frame *f,long long now)
 {
-  /* XXX send ack out even if we have no structures setup? */
   overlay_route_ack_selfannounce(f);
 
-  if (!overlay_neighbours) return 0;
-
-  /* Lookup node in node cache */
-  overlay_node *n=overlay_route_find_node(f->source,1);
-  if (!n) return WHY("Could not find node record for observed node");
-
-  /* Update observations of this node, and then insert it into the neighbour list if it is not
-     already there. */
   unsigned int s1,s2;
   
   s1=ntohl(*((int*)&f->payload[0]));
   s2=ntohl(*((int*)&f->payload[4]));
   fprintf(stderr,"Received self-announcement for sequence range [%08x,%08x]\n",s1,s2);
 
+  overlay_route_i_can_hear(f->source,s1,s2,now);
+
+  return 0;
+}
+
+int overlay_someone_can_hear(unsigned char *hearer,unsigned char *who,unsigned int who_score,unsigned int who_gates,long long now)
+{
+  /* Lookup node in node cache */
+  overlay_node *n=overlay_route_find_node(who,1);
+  if (!n) return WHY("Could not find node record for observed node");
+
+  /* Update observations of this node, and then insert it into the neighbour list if it is not
+     already there. */
+
   /* Replace oldest observation with this one */
   int obs_index=n->most_recent_observation_id+1;
   if (obs_index>=OVERLAY_MAX_OBSERVATIONS) obs_index=0;
   n->observations[obs_index].valid=0;
-  n->observations[obs_index].rx_time=overlay_sequence_number; /* now in ms */
-  n->observations[obs_index].sequence_range_low=s1;
-  n->observations[obs_index].sequence_range_high=s2;
-  bcopy(f->source,n->observations[obs_index].sender_prefix,
+  n->observations[obs_index].rx_time=now;
+  n->observations[obs_index].score=who_score;
+  n->observations[obs_index].gateways_en_route=who_gates;
+  bcopy(hearer,n->observations[obs_index].sender_prefix,
 	OVERLAY_SENDER_PREFIX_LENGTH);
   n->observations[obs_index].valid=1;
   n->most_recent_observation_id=obs_index;
@@ -412,9 +422,14 @@ int overlay_route_saw_selfannounce(overlay_frame *f,long long now)
   return 0;
 }
 
-/* Recalculate node reachability metric. */
+/* Recalculate node reachability metric.
+   For now we will calculate a weighted sum of recent reachability.
+   The sequence numbers are all based on a milli-second clock
+*/
 int overlay_route_recalc_node_metrics(overlay_node *n)
 {
+  int i;
+
   return WHY("Not Implemented");
 
 }
