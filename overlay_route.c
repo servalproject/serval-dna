@@ -373,30 +373,85 @@ int overlay_route_ack_selfannounce(overlay_frame *f)
   return WHY("Not implemented");
 }
 
-int overlay_route_i_can_hear(unsigned char *who,unsigned int s1,unsigned int s2,long long now)
+int overlay_route_make_neighbour(overlay_node *n)
 {
+  if (!n) return WHY("n is NULL");
+
+  /* If it is already a neighbour, then return */
+  if (n->neighbour_id) return 0;
+
+  /* It isn't yet a neighbour, so find or free a neighbour slot */
+  /* slot 0 is reserved, so skip it */
+  if (!overlay_neighbour_count) overlay_neighbour_count=1;
+  if (overlay_neighbour_count<overlay_max_neighbours) {
+    /* Use next free neighbour slot */
+    n->neighbour_id=overlay_neighbour_count++;
+  } else {
+    /* Evict an old neighbour */
+    int nid=1+random()%(overlay_max_neighbours-1);
+    if (overlay_neighbours[nid].node) overlay_neighbours[nid].node->neighbour_id=0;
+    n->neighbour_id=nid;
+  }
+  bzero(&overlay_neighbours[n->neighbour_id],sizeof(overlay_neighbour));
+  overlay_neighbours[n->neighbour_id].node=n;
+  return 0;
+}
+
+int overlay_route_i_can_hear(unsigned char *who,int sender_interface,unsigned int s1,unsigned int s2,long long now)
+{
+  /* 1. Find (or create) node entry for the node.
+     2. Replace oldest observation with this observation.
+     3. Update score of how reliably we can hear this node */
+
+  /* Find node, or create entry if it hasn't been seen before */
+  overlay_node *n=overlay_route_find_node(who,1 /* create if necessary */);
+  if (!n) return WHY("Could not find node record for observed node");
+
+  /* Check if node is already a neighbour, or if not, make it one */
+  if (!n->neighbour_id) if (overlay_route_make_neighbour(n)) return WHY("overlay_route_make_neighbour() failed");
+
+  /* Get neighbour structure */
+  overlay_neighbour *neh=&overlay_neighbours[n->neighbour_id];
+
+  /* Replace oldest observation with this one */
+  int obs_index=neh->most_recent_observation_id+1;
+  if (obs_index>=OVERLAY_MAX_OBSERVATIONS) obs_index=0;
+  neh->observations[obs_index].valid=0;
+  neh->observations[obs_index].time_ms=now;
+  neh->observations[obs_index].s1=s1;
+  neh->observations[obs_index].s2=s2;
+  neh->observations[obs_index].sender_interface=sender_interface;
+  neh->observations[obs_index].valid=1;
+  neh->most_recent_observation_id=obs_index;
+  neh->last_observation_time_ms=now;
+
+  /* Update reachability metrics for node */
+  if (overlay_route_recalc_node_metrics(n)) WHY("overlay_route_recalc_node_metrics() failed");
+
   return WHY("Not implemented");
 }
 
 int overlay_route_saw_selfannounce(overlay_frame *f,long long now)
 {
-  overlay_route_ack_selfannounce(f);
-
   unsigned int s1,s2;
+  unsigned char sender_interface;
   
   s1=ntohl(*((int*)&f->payload[0]));
   s2=ntohl(*((int*)&f->payload[4]));
+  sender_interface=ntohl(*((unsigned char*)&f->payload[8]));
   fprintf(stderr,"Received self-announcement for sequence range [%08x,%08x]\n",s1,s2);
 
-  overlay_route_i_can_hear(f->source,s1,s2,now);
+  overlay_route_i_can_hear(f->source,sender_interface,s1,s2,now);
+
+  overlay_route_ack_selfannounce(f);
 
   return 0;
 }
 
-int overlay_someone_can_hear(unsigned char *hearer,unsigned char *who,unsigned int who_score,unsigned int who_gates,long long now)
+int overlay_someoneelse_can_hear(unsigned char *hearer,unsigned char *who,unsigned int who_score,unsigned int who_gates,long long now)
 {
   /* Lookup node in node cache */
-  overlay_node *n=overlay_route_find_node(who,1);
+  overlay_node *n=overlay_route_find_node(who,1 /* create if necessary */);
   if (!n) return WHY("Could not find node record for observed node");
 
   /* Update observations of this node, and then insert it into the neighbour list if it is not

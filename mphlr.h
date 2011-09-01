@@ -718,6 +718,8 @@ typedef struct overlay_neighbour_observation {
   unsigned int s1;
   unsigned int s2;
   long long time_ms;
+  unsigned char sender_interface;
+  unsigned char valid;
 } overlay_neighbour_observation;
 
 #define OVERLAY_SENDER_PREFIX_LENGTH 12
@@ -744,7 +746,10 @@ typedef struct overlay_node {
 
 typedef struct overlay_neighbour {
   unsigned char sid[SID_SIZE];
+  long long last_observation_time_ms;
+  int most_recent_observation_id;
   overlay_neighbour_observation observations[OVERLAY_MAX_OBSERVATIONS];
+  overlay_node *node;
 } overlay_neighbour;
 
 long long overlay_gettime_ms();
