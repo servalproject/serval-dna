@@ -123,7 +123,7 @@ int packetOkDNA(unsigned char *packet,int len,unsigned char *transaction_id,
 }
 
 int packetMakeHeader(unsigned char *packet,int packet_maxlen,int *packet_len,
-		     unsigned char *transaction_id)
+		     unsigned char *transaction_id,int cryptoflags)
 {
   int i;
 
@@ -197,7 +197,7 @@ int packetSetSid(unsigned char *packet,int packet_maxlen,int *packet_len,char *s
   return stowSid(packet,ofs,sid);
 }
 
-int packetFinalise(unsigned char *packet,int packet_maxlen,int *packet_len)
+int packetFinalise(unsigned char *packet,int packet_maxlen,int *packet_len,int cryptoflags)
 {
   /* Add any padding bytes and EOT to packet */
   int paddingBytes=rand()&0xf;
@@ -244,6 +244,8 @@ int packetFinalise(unsigned char *packet,int packet_maxlen,int *packet_len)
   }
   packet[OFS_ROTATIONFIELD]=payloadRotation;
   if (debug>3) dump("rotated packet",packet,*packet_len);
+
+  if (cryptoflags) return packetEncipher(packet,packet_maxlen,packet_len);
 
   return 0;
 }

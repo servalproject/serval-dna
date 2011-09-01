@@ -216,11 +216,11 @@ int requestNewHLR(char *did,char *pin,char *sid,struct sockaddr *recvaddr)
   bzero(&responses,sizeof(responses));
 
   /* Prepare the request packet */
-  if (packetMakeHeader(packet,8000,&packet_len,NULL)) return -1;
+  if (packetMakeHeader(packet,8000,&packet_len,NULL,CRYPT_PUBLIC)) return -1;
   bcopy(&packet[OFS_TRANSIDFIELD],transaction_id,TRANSID_SIZE);
   if (packetSetDid(packet,8000,&packet_len,did)) return -1;
   if (packetAddHLRCreateRequest(packet,8000,&packet_len)) return -1;
-  if (packetFinalise(packet,8000,&packet_len)) return -1;
+  if (packetFinalise(packet,8000,&packet_len,CRYPT_PUBLIC)) return -1;
 
   /* Send it to peers, starting with ourselves, one at a time until one succeeds.
      XXX - This could take a while if we have long timeouts for each. */
@@ -420,13 +420,13 @@ int writeItem(char *sid,int var_id,int instance,unsigned char *value,
       return 0;
     }
 
-  /* Prepare the request packet */
-  if (packetMakeHeader(packet,8000,&packet_len,NULL)) return -1;
+  /* Prepare the request packet to write the variable */
+  if (packetMakeHeader(packet,8000,&packet_len,NULL,CRYPT_SIGNED|CRYPT_CIPHERED)) return -1;
   bcopy(&packet[OFS_TRANSIDFIELD],transaction_id,TRANSID_SIZE);
   if (packetSetSid(packet,8000,&packet_len,sid)) return -1;
   if (packetAddVariableWrite(packet,8000,&packet_len,var_id,instance,
 			     value,value_start,value_length,flags)) return -1;
-  if (packetFinalise(packet,8000,&packet_len)) return -1;
+  if (packetFinalise(packet,8000,&packet_len,CRYPT_SIGNED|CRYPT_CIPHERED)) return -1;
 
   /* XXX should be able to target to the peer holding the SID, if we have it.
      In any case, we */
@@ -483,8 +483,9 @@ int peerAddress(char *did,char *sid,int flags)
 
   for(i=0;i<TRANSID_SIZE;i++) transaction_id[i]=random()&0xff;
 
-  /* Prepare the request packet */
-  if (packetMakeHeader(packet,8000,&packet_len,transaction_id)) 
+  /* Prepare the request packet: this is broadcast, so make it public.
+   As these can get sent out quite often, don't waste time and energy signing. */
+  if (packetMakeHeader(packet,8000,&packet_len,transaction_id,CRYPT_PUBLIC)) 
     {
       if (debug) fprintf(stderr,"%s() failed at line %d\n",__FUNCTION__,__LINE__);
       return -1;
@@ -511,7 +512,7 @@ int peerAddress(char *did,char *sid,int flags)
     if (debug) fprintf(stderr,"%s() failed at line %d\n",__FUNCTION__,__LINE__);
     return -1;
   }
-  if (packetFinalise(packet,8000,&packet_len)) {
+  if (packetFinalise(packet,8000,&packet_len,CRYPT_PUBLIC)) {
     if (debug) fprintf(stderr,"%s() failed at line %d\n",__FUNCTION__,__LINE__);
     return -1;
   }
@@ -564,8 +565,8 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
 
   bzero(&responses,sizeof(responses));
 
-  /* Prepare the request packet */
-  if (packetMakeHeader(packet,8000,&packet_len,transaction_id)) 
+  /* Prepare the request packet. Don't let anyone else see what we are asking for. */
+  if (packetMakeHeader(packet,8000,&packet_len,transaction_id,CRYPT_SIGNED|CRYPT_CIPHERED)) 
     {
       if (debug) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
       return -1;
@@ -592,7 +593,7 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
     if (debug) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
     return -1;
   }
-  if (packetFinalise(packet,8000,&packet_len)) {
+  if (packetFinalise(packet,8000,&packet_len,CRYPT_SIGNED|CRYPT_CIPHERED)) {
     if (debug) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
     return -1;
   }
@@ -699,7 +700,7 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
 			      /* Send accumulated request direct to the responder */
 			      if (packet_len>=MAX_DATA_BYTES)
 				{
-				  if (packetFinalise(packet,8000,&packet_len)) {
+				  if (packetFinalise(packet,8000,&packet_len,CRYPT_CIPHERED|CRYPT_SIGNED)) {
 				    if (debug) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
 				    return -1;
 				  }
@@ -709,7 +710,8 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
 			      /* Prepare a new request packet if one is not currently being built */
 			      if (!packet_len)
 				{
-				  if (packetMakeHeader(packet,8000,&packet_len,transaction_id)) {
+				  /* We are requesting data, so ask for privacy */
+				  if (packetMakeHeader(packet,8000,&packet_len,transaction_id,CRYPT_CIPHERED|CRYPT_SIGNED)) {
 				    if (debug) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
 				    return -1;
 				  }
@@ -730,7 +732,7 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
 			/* Send accumulated request direct to the responder */
 			if (packet_len)
 			  {
-			    if (packetFinalise(packet,8000,&packet_len)) {
+			    if (packetFinalise(packet,8000,&packet_len,CRYPT_SIGNED|CRYPT_CIPHERED)) {
 			      if (debug) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
 			      return -1;
 			    }

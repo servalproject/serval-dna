@@ -460,7 +460,7 @@ int respondSimple(char *sid,int action,unsigned char *action_text,int action_len
   }
 
   /* Prepare the request packet */
-  if (packetMakeHeader(packet,8000,packet_len,transaction_id)) return -1;
+  if (packetMakeHeader(packet,8000,packet_len,transaction_id,cryptoFlags)) return -1;
   if (sid&&sid[0]) 
     { if (packetSetSid(packet,8000,packet_len,sid)) 
 	return setReason("invalid SID in reply"); }
@@ -475,7 +475,7 @@ int respondSimple(char *sid,int action,unsigned char *action_text,int action_len
 
   if (debug>2) dump("Simple response octets",action_text,action_len);
 
-  if (packetFinalise(packet,8000,packet_len)) return -1;
+  if (packetFinalise(packet,8000,packet_len,cryptoFlags)) return -1;
 
   if (debug) fprintf(stderr,"Sending response of %d bytes.\n",*packet_len);
 

@@ -299,10 +299,10 @@ int dump(char *name,unsigned char *addr,int len);
 int packetOk(int interface,unsigned char *packet,int len,unsigned char *transaction_id,
 	     struct sockaddr *recvaddr,int recvaddrlen,int parseP);
 int process_packet(unsigned char *packet,int len,struct sockaddr *sender,int sender_len);
-int packetMakeHeader(unsigned char *packet,int packet_maxlen,int *packet_len,unsigned char *transaction_id);
+int packetMakeHeader(unsigned char *packet,int packet_maxlen,int *packet_len,unsigned char *transaction_id,int cryptoflags);
 int packetSetDid(unsigned char *packet,int packet_maxlen,int *packet_len,char *did);
 int packetSetSid(unsigned char *packet,int packet_maxlen,int *packet_len,char *sid);
-int packetFinalise(unsigned char *packet,int packet_maxlen,int *packet_len);
+int packetFinalise(unsigned char *packet,int packet_maxlen,int *packet_len,int cryptoflags);
 int packetAddHLRCreateRequest(unsigned char *packet,int packet_maxlen,int *packet_len);
 int extractResponses(struct in_addr sender,unsigned char *buffer,int len,struct response_set *responses);
 int packetAddVariableRequest(unsigned char *packet,int packet_maxlen,int *packet_len,
