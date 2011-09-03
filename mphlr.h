@@ -661,7 +661,7 @@ extern int overlay_interface_count;
 #define OF_COMPRESS_RESERVED 0x03 /* Reserved for another compression system */
 
 #define OVERLAY_ADDRESS_CACHE_SIZE 1024
-int overlay_abbreviate_address(unsigned char *in,char *out,int *ofs);
+int overlay_abbreviate_address(unsigned char *in,unsigned char *out,int *ofs);
 int overlay_abbreviate_append_address(overlay_buffer *b,unsigned char *a);
 
 int overlay_abbreviate_expand_address(int interface,unsigned char *in,int *inofs,unsigned char *out,int *ofs);
@@ -720,6 +720,7 @@ typedef struct overlay_neighbour_observation {
   unsigned int s2;
   long long time_ms;
   unsigned char sender_interface;
+  unsigned char receiver_interface;
   unsigned char valid;
 } overlay_neighbour_observation;
 
@@ -755,9 +756,9 @@ typedef struct overlay_neighbour {
 
 long long overlay_gettime_ms();
 int overlay_route_init(int mb_ram);
-int overlay_route_saw_selfannounce_ack(overlay_frame *f,long long now);
+int overlay_route_saw_selfannounce_ack(int interface,overlay_frame *f,long long now);
 int overlay_route_recalc_node_metrics(overlay_node *n);
-int overlay_route_saw_selfannounce(overlay_frame *f,long long now);
+int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now);
 overlay_node *overlay_route_find_node(unsigned char *sid,int createP);
 unsigned int overlay_route_hash_sid(unsigned char *sid);
 int overlay_route_init(int mb_ram);

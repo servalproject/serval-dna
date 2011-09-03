@@ -227,10 +227,10 @@ int overlay_frame_process(int interface,overlay_frame *f)
   switch(f->type)
     {
     case OF_TYPE_SELFANNOUNCE:
-      overlay_route_saw_selfannounce(f,now);
+      overlay_route_saw_selfannounce(interface,f,now);
       break;
     case OF_TYPE_SELFANNOUNCE_ACK:
-      overlay_route_saw_selfannounce_ack(f,now);
+      overlay_route_saw_selfannounce_ack(interface,f,now);
       break;
     default:
       return WHY("Support for that f->type not yet implemented");

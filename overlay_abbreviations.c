@@ -189,7 +189,7 @@ int overlay_abbreviate_cache_address(unsigned char *sid)
   return 0;
 }
 
-int overlay_abbreviate_try_byindex(unsigned char *in,char *out,int *ofs,int index)
+int overlay_abbreviate_try_byindex(unsigned char *in,unsigned char *out,int *ofs,int index)
 {
   if(!bcmp(in,abbrs->sids[index],SID_SIZE))
     {
@@ -213,11 +213,11 @@ int overlay_abbreviate_append_address(overlay_buffer *b,unsigned char *a)
   return 0;
 }
 
-int overlay_abbreviate_address(unsigned char *in,char *out,int *ofs)
+int overlay_abbreviate_address(unsigned char *in,unsigned char *out,int *ofs)
 {
   int i;
   int wasInCachedP=overlay_abbreviate_cache_address(in);
-
+  
   if (!in) return WHY("in==NULL");
   if (in[0]<0x10) return WHY("Invalid address - 0x00-0x0f are reserved prefixes.");
 

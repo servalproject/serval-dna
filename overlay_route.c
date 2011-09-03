@@ -397,7 +397,7 @@ int overlay_route_make_neighbour(overlay_node *n)
   return 0;
 }
 
-int overlay_route_i_can_hear(unsigned char *who,int sender_interface,unsigned int s1,unsigned int s2,long long now)
+int overlay_route_i_can_hear(unsigned char *who,int sender_interface,unsigned int s1,unsigned int s2,int receiver_interface,long long now)
 {
   /* 1. Find (or create) node entry for the node.
      2. Replace oldest observation with this observation.
@@ -421,6 +421,7 @@ int overlay_route_i_can_hear(unsigned char *who,int sender_interface,unsigned in
   neh->observations[obs_index].s1=s1;
   neh->observations[obs_index].s2=s2;
   neh->observations[obs_index].sender_interface=sender_interface;
+  neh->observations[obs_index].receiver_interface=receiver_interface;
   neh->observations[obs_index].valid=1;
   neh->most_recent_observation_id=obs_index;
   neh->last_observation_time_ms=now;
@@ -431,7 +432,7 @@ int overlay_route_i_can_hear(unsigned char *who,int sender_interface,unsigned in
   return WHY("Not implemented");
 }
 
-int overlay_route_saw_selfannounce(overlay_frame *f,long long now)
+int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now)
 {
   unsigned int s1,s2;
   unsigned char sender_interface;
@@ -441,7 +442,7 @@ int overlay_route_saw_selfannounce(overlay_frame *f,long long now)
   sender_interface=ntohl(*((unsigned char*)&f->payload[8]));
   fprintf(stderr,"Received self-announcement for sequence range [%08x,%08x]\n",s1,s2);
 
-  overlay_route_i_can_hear(f->source,sender_interface,s1,s2,now);
+  overlay_route_i_can_hear(f->source,sender_interface,s1,s2,interface,now);
 
   overlay_route_ack_selfannounce(f);
 
@@ -492,12 +493,19 @@ int overlay_someoneelse_can_hear(unsigned char *hearer,unsigned char *who,unsign
 int overlay_route_recalc_node_metrics(overlay_node *n)
 {
   int i;
+  
+  /* Somewhere to remember how many milliseconds we have seen */
+  int ms_observed[OVERLAY_MAX_INTERFACES];
+  for(i=0;i<OVERLAY_MAX_INTERFACES;i++) ms_observed[i]=0;
+
+  /* XXX This simple accumulation scheme does not weed out duplicates */
+
 
   return WHY("Not Implemented");
 
 }
 
-int overlay_route_saw_selfannounce_ack(overlay_frame *f,long long now)
+int overlay_route_saw_selfannounce_ack(int interface,overlay_frame *f,long long now)
 {
   if (!overlay_neighbours) return 0;
   return WHY("Not implemented");  
