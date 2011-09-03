@@ -585,6 +585,7 @@ int ob_rewind(overlay_buffer *b);
 int ob_limitsize(overlay_buffer *b,int bytes);
 int ob_unlimitsize(overlay_buffer *b);
 int ob_makespace(overlay_buffer *b,int bytes);
+int ob_append_byte(overlay_buffer *b,unsigned char byte);
 int ob_append_bytes(overlay_buffer *b,unsigned char *bytes,int count);
 int ob_append_short(overlay_buffer *b,unsigned short v);
 int ob_append_int(overlay_buffer *b,unsigned int v);

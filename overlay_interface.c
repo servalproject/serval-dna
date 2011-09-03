@@ -277,7 +277,7 @@ int overlay_rx_messages()
 	      bzero(&transaction_id[0],8);
 	      bzero(&src_addr,sizeof(src_addr));
 	      if ((packet[0]==0x01)&&!(packet[1]|packet[2]|packet[3]))
-		{ if (!packetOk(i,&packet[128],plen,transaction_id,&src_addr,addrlen,1)) WHY("Malformed packet from dummy interface"); }
+		{ if (!packetOk(i,&packet[128],plen,transaction_id,&src_addr,addrlen,1)) WHY("Malformed or unsupported packet from dummy interface (packetOK() failed)"); }
 	      else WHY("Invalid packet version in dummy interface");
 	    }
 	  else { c[i]=0; count--; }
@@ -423,7 +423,7 @@ int overlay_interface_discover()
 	unsigned int broadcast_bits=local.sin_addr.s_addr|~netmask.sin_addr.s_addr;
 	struct sockaddr_in broadcast=local;
 	broadcast.sin_addr.s_addr=broadcast_bits;
-	if (debug>1) printf("%s: %08x %08x %08x\n",name,local.sin_addr.s_addr,netmask.sin_addr.s_addr,broadcast.sin_addr.s_addr);
+	if (debug>3) printf("%s: %08x %08x %08x\n",name,local.sin_addr.s_addr,netmask.sin_addr.s_addr,broadcast.sin_addr.s_addr);
 	/* Now register the interface, or update the existing interface registration */
 	struct interface_rules *r=interface_filter,*me=NULL;
 	while(r) {

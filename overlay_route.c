@@ -477,9 +477,17 @@ int overlay_someoneelse_can_hear(unsigned char *hearer,unsigned char *who,unsign
   return 0;
 }
 
-/* Recalculate node reachability metric.
-   For now we will calculate a weighted sum of recent reachability.
-   The sequence numbers are all based on a milli-second clock
+/* Recalculate node reachability metric, but only for directly connected nodes,
+   i.e., link-local neighbours.
+
+   The scores should be calculated separately for each interface we can
+   hear the node on, so that this information can get back to the sender so that
+   they know the best interface to use when trying to talk to us.
+
+   For now we will calculate a weighted sum of recent reachability over some fixed
+   length time interval.
+   The sequence numbers are all based on a milli-second clock.
+   
 */
 int overlay_route_recalc_node_metrics(overlay_node *n)
 {

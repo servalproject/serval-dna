@@ -78,6 +78,15 @@ int ob_makespace(overlay_buffer *b,int bytes)
     return 0;
 }
 
+int ob_append_byte(overlay_buffer *b,unsigned char byte)
+{
+  if (ob_makespace(b,1)) return WHY("ob_makespace() failed");
+  
+  bcopy(&byte,&b->bytes[b->length],1);
+  b->length++;
+  return 0;
+}
+
 int ob_append_bytes(overlay_buffer *b,unsigned char *bytes,int count)
 {
   if (ob_makespace(b,count)) return WHY("ob_makespace() failed");
