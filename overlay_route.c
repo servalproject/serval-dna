@@ -527,7 +527,8 @@ int overlay_route_recalc_node_metrics(overlay_node *n,long long now)
 int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
 {
   int i;
-  
+  long long most_recent_observation=0;
+
   /* Somewhere to remember how many milliseconds we have seen */
   int ms_observed[OVERLAY_MAX_INTERFACES];
   for(i=0;i<OVERLAY_MAX_INTERFACES;i++) ms_observed[i]=0;
@@ -545,6 +546,8 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
       unsigned int interval=n->observations[i].s2-n->observations[i].s1;
       fprintf(stderr,"adding %dms\n",interval);
       ms_observed[n->observations[i].sender_interface]+=interval;
+
+      if (n->observations[i].time_ms>most_recent_observation) most_recent_observation=n->observations[i].time_ms;
     }
 
   /* From the sum of observations calculate the metrics.
@@ -557,14 +560,14 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
       // Not observed at all
       score=0;
     } else {
-      int seconds_observed=ms_observed[i]/1000;
       if ((1+ms_observed[i]/100)<100) score=1+ms_observed[i]/100; // 1 - 99
       else if ((100+(ms_observed[i]/500-20))<200) score=100+(ms_observed[i]/500-20); // 100 - 199
       else if ((200+(ms_observed[i]/3000-20))<255) score=200+(ms_observed[i]/3000-20); // 200 - 254
       else score=255;
     }
 
-    /* XXX We should reduce the score by an age factor in case the most recent observation is stale 
+    /* Reduce score by 1 point for each second we have not seen anything from it */
+    score-=(now-most_recent_observation)/1000;
 
     n->scores[i]=score;
     if (debug>2&&score) fprintf(stderr,"Neighbour score on interface #%d = %d (observations for %dms)\n",i,score,ms_observed[i]);
