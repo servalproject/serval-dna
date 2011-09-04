@@ -735,7 +735,8 @@ typedef struct overlay_node_observation {
 } overlay_node_observation;
 
 /* Keep track of last 32 observations of a node.
-   Hopefully this is enough, if not, we will increase */
+   Hopefully this is enough, if not, we will increase.
+   To keep the requirement down we will collate contigious observations on each interface. */
 #define OVERLAY_MAX_OBSERVATIONS 32
 
 typedef struct overlay_node {
@@ -752,12 +753,18 @@ typedef struct overlay_neighbour {
   int most_recent_observation_id;
   overlay_neighbour_observation observations[OVERLAY_MAX_OBSERVATIONS];
   overlay_node *node;
+
+  /* Scores of visibility from each of the neighbours interfaces.
+     This is so that the sender knows which interface to use to reach us.
+   */
+  unsigned char scores[OVERLAY_MAX_INTERFACES];
 } overlay_neighbour;
 
 long long overlay_gettime_ms();
 int overlay_route_init(int mb_ram);
 int overlay_route_saw_selfannounce_ack(int interface,overlay_frame *f,long long now);
-int overlay_route_recalc_node_metrics(overlay_node *n);
+int overlay_route_recalc_node_metrics(overlay_node *n,long long now);
+int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now);
 int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now);
 overlay_node *overlay_route_find_node(unsigned char *sid,int createP);
 unsigned int overlay_route_hash_sid(unsigned char *sid);

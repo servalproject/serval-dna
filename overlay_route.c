@@ -413,23 +413,52 @@ int overlay_route_i_can_hear(unsigned char *who,int sender_interface,unsigned in
   /* Get neighbour structure */
   overlay_neighbour *neh=&overlay_neighbours[n->neighbour_id];
 
-  /* Replace oldest observation with this one */
-  int obs_index=neh->most_recent_observation_id+1;
-  if (obs_index>=OVERLAY_MAX_OBSERVATIONS) obs_index=0;
-  neh->observations[obs_index].valid=0;
-  neh->observations[obs_index].time_ms=now;
-  neh->observations[obs_index].s1=s1;
-  neh->observations[obs_index].s2=s2;
-  neh->observations[obs_index].sender_interface=sender_interface;
-  neh->observations[obs_index].receiver_interface=receiver_interface;
-  neh->observations[obs_index].valid=1;
-  neh->most_recent_observation_id=obs_index;
-  neh->last_observation_time_ms=now;
+  int obs_index=neh->most_recent_observation_id;
+  int mergedP=0;
+
+  /* See if this observation is contiguous with a previous one, if so, merge.
+     This not only reduces the number of observation slots we need, but dramatically speeds up
+     the scanning of recent observations when re-calculating observation scores. */
+  while (neh->observations[obs_index].valid&&(neh->observations[obs_index].s2>=(s1-1)))
+    {
+      if (neh->observations[obs_index].sender_interface==sender_interface)
+	{
+	  if (!neh->observations[obs_index].s1)
+	    neh->observations[obs_index].s1=neh->observations[obs_index].s2; 
+	  neh->observations[obs_index].s2=s2;
+	  neh->observations[obs_index].sender_interface=sender_interface;
+	  neh->observations[obs_index].receiver_interface=receiver_interface;
+	  neh->observations[obs_index].time_ms=now;
+	  fprintf(stderr,">>> Merging observations.\n");
+	  mergedP=1;
+	  break;
+	}
+
+      obs_index--;
+      if (obs_index<0) obs_index=OVERLAY_MAX_OBSERVATIONS-1;
+    }
+
+  if (!mergedP) {
+    /* Replace oldest observation with this one */
+    obs_index=neh->most_recent_observation_id+1;
+    if (obs_index>=OVERLAY_MAX_OBSERVATIONS) obs_index=0;
+    neh->observations[obs_index].valid=0;
+    neh->observations[obs_index].time_ms=now;
+    neh->observations[obs_index].s1=s1;
+    neh->observations[obs_index].s2=s2;
+    neh->observations[obs_index].sender_interface=sender_interface;
+    neh->observations[obs_index].receiver_interface=receiver_interface;
+    neh->observations[obs_index].valid=1;
+    neh->most_recent_observation_id=obs_index;
+    neh->last_observation_time_ms=now;
+  }
+
+  WHY("stored observation");
 
   /* Update reachability metrics for node */
-  if (overlay_route_recalc_node_metrics(n)) WHY("overlay_route_recalc_node_metrics() failed");
+  if (overlay_route_recalc_neighbour_metrics(neh,now)) WHY("overlay_route_recalc_neighbour_metrics() failed");
 
-  return WHY("Not implemented");
+  return 0;
 }
 
 int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now)
@@ -473,9 +502,14 @@ int overlay_someoneelse_can_hear(unsigned char *hearer,unsigned char *who,unsign
   n->last_observation_time_ms=now;
 
   /* Recalculate link score for this node */
-  if (overlay_route_recalc_node_metrics(n)) return WHY("recalc_node_metrics() failed.");
+  if (overlay_route_recalc_node_metrics(n,now)) return WHY("recalc_node_metrics() failed.");
 
   return 0;
+}
+
+int overlay_route_recalc_node_metrics(overlay_node *n,long long now)
+{
+  return WHY("Not implemented.");
 }
 
 /* Recalculate node reachability metric, but only for directly connected nodes,
@@ -490,7 +524,7 @@ int overlay_someoneelse_can_hear(unsigned char *hearer,unsigned char *who,unsign
    The sequence numbers are all based on a milli-second clock.
    
 */
-int overlay_route_recalc_node_metrics(overlay_node *n)
+int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
 {
   int i;
   
@@ -498,11 +532,46 @@ int overlay_route_recalc_node_metrics(overlay_node *n)
   int ms_observed[OVERLAY_MAX_INTERFACES];
   for(i=0;i<OVERLAY_MAX_INTERFACES;i++) ms_observed[i]=0;
 
-  /* XXX This simple accumulation scheme does not weed out duplicates */
+  /* XXX This simple accumulation scheme does not weed out duplicates, nor weight for recency of
+     communication.
+     Also, we might like to take into account the interface we received 
+     the announcements on. */
+  for(i=0;i<OVERLAY_MAX_OBSERVATIONS;i++)
+    /* Only count observations less than 200 seconds old.
+       XXX Down the track we will have a mechanism for older observations so that we can report
+       intermittent paths */
+    if (n->observations[i].valid&&n->observations[i].s1&&((now-n->observations[i].time_ms)<200000)) {
+      /* No need to do wrap-around calculation as the following is modulo 2^32 also */
+      unsigned int interval=n->observations[i].s2-n->observations[i].s1;
+      fprintf(stderr,"adding %dms\n",interval);
+      ms_observed[n->observations[i].sender_interface]+=interval;
+    }
 
+  /* From the sum of observations calculate the metrics.
+     We want the score to climb quickly and then plateu.
+     For fast calculation we will use a step-wise linear approach, similar to that used in
+     DNA sequence comparison. */
+  for(i=0;i<OVERLAY_MAX_INTERFACES;i++) {
+    int score;
+    if (ms_observed[i]==0) {
+      // Not observed at all
+      score=0;
+    } else {
+      int seconds_observed=ms_observed[i]/1000;
+      if ((1+ms_observed[i]/100)<100) score=1+ms_observed[i]/100; // 1 - 99
+      else if ((100+(ms_observed[i]/500-20))<200) score=100+(ms_observed[i]/500-20); // 100 - 199
+      else if ((200+(ms_observed[i]/3000-20))<255) score=200+(ms_observed[i]/3000-20); // 200 - 254
+      else score=255;
+    }
 
-  return WHY("Not Implemented");
+    /* XXX We should reduce the score by an age factor in case the most recent observation is stale 
 
+    n->scores[i]=score;
+    if (debug>2&&score) fprintf(stderr,"Neighbour score on interface #%d = %d (observations for %dms)\n",i,score,ms_observed[i]);
+  }
+  
+  return 0;
+  
 }
 
 int overlay_route_saw_selfannounce_ack(int interface,overlay_frame *f,long long now)
