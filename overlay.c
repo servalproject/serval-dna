@@ -47,7 +47,7 @@
 
 int overlayMode=0;
 
-overlay_txqueue overlay_tx[5];
+overlay_txqueue overlay_tx[OQ_MAX];
 
 int overlayServerMode()
 {

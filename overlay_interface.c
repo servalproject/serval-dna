@@ -543,14 +543,14 @@ int overlay_tick_interface(int i, long long now)
   overlay_add_selfannouncement(i,e);
   
   /* 2. Add any queued high-priority isochronous data (i.e. voice) to the frame. */
-  p=&overlay_tx[OVERLAY_ISOCHRONOUS_VOICE].first;
+  p=&overlay_tx[OQ_ISOCHRONOUS_VOICE].first;
   overlay_stuff_packet_from_queue(i,e,p,now,pax,&frame_pax,MAX_FRAME_PAX);
 
   /* 3. Add some mesh reachability reports (unlike BATMAN we announce reachability to peers progressively).
         Give priority to newly observed nodes so that good news travels quickly to help roaming.
 	XXX - Don't forget about PONGing reachability reports to allow use of monodirectional links.
   */
-  p=&overlay_tx[OVERLAY_MESH_MANAGEMENT].first;
+  p=&overlay_tx[OQ_MESH_MANAGEMENT].first;
   overlay_stuff_packet_from_queue(i,e,p,now,pax,&frame_pax,MAX_FRAME_PAX);
 
   /* 4. XXX Add lower-priority queued data */
@@ -566,18 +566,21 @@ int overlay_tick_interface(int i, long long now)
       fprintf(stderr,"Successfully transmitted tick frame #%d on interface #%d (%d bytes)\n",
 	      overlay_sequence_number,i,e->length);
       /* De-queue the passengers who were aboard. */
-      int j;
-      overlay_frame **p=&overlay_tx[OVERLAY_ISOCHRONOUS_VOICE].first;
-      for(j=0;j<frame_pax;j++)
+      int j,q;
+      for(q=0;q<OQ_MAX;q++)
 	{
-	  /* Skip any frames that didn't get queued */
-	  while ((*p)&&(*p!=pax[j])) p=&(*p)->next;
-	  /* Now get rid of this frame once we have found it */
-	  if (*p) {
-	    *p=pax[j]->next;
-	    if (pax[j]->next) pax[j]->next->prev=pax[j]->prev;
-	    if (op_free(pax[j])) WHY("op_free() failed");
-	  }
+	  overlay_frame **p=&overlay_tx[q].first;
+	  for(j=0;j<frame_pax;j++)
+	    {
+	      /* Skip any frames that didn't get queued */
+	      while ((*p)&&(*p!=pax[j])) p=&(*p)->next;
+	      /* Now get rid of this frame once we have found it */
+	      if (*p) {
+		*p=pax[j]->next;
+		if (pax[j]->next) pax[j]->next->prev=pax[j]->prev;
+		if (op_free(pax[j])) WHY("op_free() failed");
+	      }
+	    }
 	}
       return 0;
     }

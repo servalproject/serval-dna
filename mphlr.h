@@ -566,12 +566,14 @@ typedef struct overlay_txqueue {
   */
 } overlay_txqueue;
 
-extern overlay_txqueue overlay_tx[5];
-#define OVERLAY_ISOCHRONOUS_VOICE 0
-#define OVERLAY_MESH_MANAGEMENT 1
-#define OVERLAY_ISOCHRONOUS_VIDEO 2
-#define OVERLAY_ORDINARY 3
-#define OVERLAY_OPPORTUNISTIC 4
+
+#define OQ_ISOCHRONOUS_VOICE 0
+#define OQ_MESH_MANAGEMENT 1
+#define OQ_ISOCHRONOUS_VIDEO 2
+#define OQ_ORDINARY 3
+#define OQ_OPPORTUNISTIC 4
+#define OQ_MAX 5
+extern overlay_txqueue overlay_tx[OQ_MAX];
 
 int setReason(char *fmt, ...);
 #define WHY(X) setReason("%s:%d:%s()  %s",__FILE__,__LINE__,__FUNCTION__,X)
@@ -773,4 +775,5 @@ int overlay_frame_set_me_as_source(overlay_frame *f);
   int overlay_frame_set_neighbour_as_source(overlay_frame *f,overlay_neighbour *n);
 int overlay_update_sequence_number();
 int packetEncipher(unsigned char *packet,int maxlen,int *len,int cryptoflags);
+int overlayServerMode();
 

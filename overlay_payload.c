@@ -160,7 +160,7 @@ int overlay_frame_set_neighbour_as_source(overlay_frame *f,overlay_neighbour *n)
   bcopy(n->sid,f->source,SID_SIZE);
   f->source_address_status=OA_RESOLVED;
 
-  return WHY("Not implemented");
+  return 0;
 }
 
 unsigned char *overlay_get_my_sid()
@@ -180,5 +180,5 @@ int overlay_frame_set_me_as_source(overlay_frame *f)
 
   f->source_address_status=OA_RESOLVED;
 
-  return WHY("Not implemented");
+  return 0;
 }

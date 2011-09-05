@@ -408,7 +408,7 @@ int overlay_route_ack_selfannounce(overlay_frame *f,overlay_neighbour *n)
   overlay_frame_set_me_as_source(out);
   /* (next-hop will get set at TX time, so no need to set it here) */
   out->nexthop_address_status=OA_UNINITIALISED;
-
+  
   /* Set the time in the ack. Use the last sequence number we have seen
      from this neighbour, as that may be helpful information for that neighbour
      down the track.  My policy is to communicate that information which should
@@ -422,6 +422,9 @@ int overlay_route_ack_selfannounce(overlay_frame *f,overlay_neighbour *n)
      numbers means we can't just take the highest-numbered sequence number.  
      So we need to take the observation which was most recently received.
   */
+  out->payload=ob_new(4+32*2+1); /* will grow if it isn't big enough, but let's try to
+				    avoid a realloc() if possible */
+
   int i;
   int best_obs_id=-1;
   long long best_obs_time=0;
@@ -461,7 +464,7 @@ int overlay_route_ack_selfannounce(overlay_frame *f,overlay_neighbour *n)
   ob_append_byte(out->payload,0);
 
   /* XXX Add to queue */
-
+  
   /* XXX Remove any stale versions (or should we just freshen, and forget making
      a new one, since it would be more efficient). */
 
