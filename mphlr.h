@@ -772,7 +772,8 @@ int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now)
 overlay_node *overlay_route_find_node(unsigned char *sid,int createP);
 unsigned int overlay_route_hash_sid(unsigned char *sid);
 int overlay_route_init(int mb_ram);
-overlay_neighbour *overlay_route_get_neighbour_structure(unsigned char *packed_sid);
+overlay_neighbour *overlay_route_get_neighbour_structure(unsigned char *packed_sid, 
+							 int createP);
 unsigned char *overlay_get_my_sid();
 int overlay_frame_set_me_as_source(overlay_frame *f);
   int overlay_frame_set_neighbour_as_source(overlay_frame *f,overlay_neighbour *n);

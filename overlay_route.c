@@ -336,6 +336,7 @@ int overlay_route_init(int mb_ram)
 int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
 			int *interface)
 {
+  int i;
   if (!overlay_neighbours) return 0;
 
   overlay_neighbour *neh=overlay_route_get_neighbour_structure(d,0 /* don't create if 
@@ -352,7 +353,7 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
     *interface=0;
     for(i=1;i<OVERLAY_MAX_INTERFACES;i++)
       if (neh->scores[i]>neh->scores[*interface]) *interface=i;
-    if (neg->scores[*interface]<1) return WHY("No open path to node");
+    if (neh->scores[*interface]<1) return WHY("No open path to node");
     return 0;
   } else {
     /* Is not a direct neighbour */
@@ -629,7 +630,7 @@ int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now)
 {
   unsigned int s1,s2;
   unsigned char sender_interface;
-  overlay_neighbour *n=overlay_route_get_neighbour_structure(f->source);
+  overlay_neighbour *n=overlay_route_get_neighbour_structure(f->source,1 /* make neighbour if not yet one */);
  
   if (!n) return WHY("overlay_route_get_neighbour_structure() failed");
 
