@@ -136,9 +136,27 @@ overlay_buffer *overlay_payload_unpackage(overlay_frame *b) {
 int overlay_payload_enqueue(int q,overlay_frame *p)
 {
   /* Add payload p to queue q.
+
+     Queues get scanned from first to last, so we should append new entries
+     on the end of the queue.
+
+     Complain if there are too many frames in the queue.
   */
 
-  return WHY("not implemented");
+  if (q<0||q>=OQ_MAX) return WHY("Invalid queue specified");
+  if (!p) return WHY("Cannot queue NULL");
+
+  if (overlay_tx[q].length>=overlay_tx[q].maxLength) return WHY("Queue congested");
+  
+  overlay_frame *l=overlay_tx[q].last;
+  if (l) l->next=p;
+  p->prev=l;
+  p->next=NULL;
+  overlay_tx[q].last=p;
+  if (!overlay_tx[q].first) overlay_tx[q].first=p;
+  overlay_tx[q].length++;
+  
+  return 0;
 }
 
 int op_free(overlay_frame *p)

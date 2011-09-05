@@ -550,8 +550,9 @@ int ob_unlimitsize(overlay_buffer *b);
 typedef struct overlay_txqueue {
   struct overlay_frame *first;
   struct overlay_frame *last;
-  int length;
-  int maxLength;
+  int length; /* # frames in queue */
+  int maxLength; /* max # frames in queue before we consider ourselves congested */
+
   /* Latency target in ms for this traffic class.
      Frames older than the latency target will get dropped. */
   int latencyTarget;
@@ -776,4 +777,5 @@ int overlay_frame_set_me_as_source(overlay_frame *f);
 int overlay_update_sequence_number();
 int packetEncipher(unsigned char *packet,int maxlen,int *len,int cryptoflags);
 int overlayServerMode();
+int overlay_payload_enqueue(int q,overlay_frame *p);
 

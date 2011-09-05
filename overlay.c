@@ -209,8 +209,10 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	if (overlay_get_nexthop(f->destination,f->nexthop,&len))
 	  return WHY("Could not find next hop for host - dropping frame");
 	f->ttl--;
-
-	/* Queue frame for dispatch */		
+	
+	/* Queue frame for dispatch.
+	   Don't forget to put packet in the correct queue based on type.
+	   (e.g., mesh management, voice, video, ordinary or opportunistic). */		
 	WHY("forwarding of frames not implemented");
 	
 	/* If the frame was a broadcast frame, then we need to hang around
