@@ -329,9 +329,11 @@ unsigned int overlay_route_hash_sid(unsigned char *sid)
 
   /* Mask out extranous bits to return only a valid bin number */
   bin&=(overlay_bin_count-1);
-  fprintf(stderr,"The following address resolves to bin #%d\n",bin);
-  for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",sid[i]);
-  fprintf(stderr,"\n");
+  if (debug>2) {
+    fprintf(stderr,"The following address resolves to bin #%d\n",bin);
+    for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",sid[i]);
+    fprintf(stderr,"\n");
+  }
   return bin;
 }
 
@@ -368,8 +370,104 @@ overlay_node *overlay_route_find_node(unsigned char *sid,int createP)
   return &overlay_nodes[bin_number][free_slot];
 }
 
-int overlay_route_ack_selfannounce(overlay_frame *f)
+int overlay_route_ack_selfannounce(overlay_frame *f,overlay_neighbour *n)
 {
+  /* Acknowledge the receipt of a self-announcement of an immediate neighbour.
+     We could acknowledge immediately, but that requires the transmission of an
+     extra packet with all the overhead that entails.  However, there is no real
+     need to send the ack out immediately.  It should be entirely reasonable to 
+     send the ack out with the next interface tick. 
+
+     So we can craft the ack and submit it to the queue. As the next-hop will get
+     determined at TX time, this will ensure that we send the packet out on the 
+     right interface to reach the originator of the self-assessment.
+
+     So all we need to do is craft the payload and put it onto the queue for 
+     OVERLAY_MESH_MANAGEMENT messages.
+
+     Also, we should check for older such frames on the queue and drop them.
+   */
+
+  /* XXX Allocate overlay_frame structure and populate it */
+  overlay_frame *out=NULL;
+  out=calloc(sizeof(overlay_frame),1);
+  if (!out) return WHY("calloc() failed to allocate an overlay frame");
+
+  out->type=OF_TYPE_SELFANNOUNCE_ACK;
+  out->modifiers=0;
+  out->ttl=6; /* maximum time to live for an ack taking an indirect route back
+		 to the originator.  If it were 1, then we would not be able to
+		 handle mono-directional links (which WiFi is notorious for). */
+
+  /* Set destination of ack to source of observed frame */
+  if (overlay_frame_set_neighbour_as_source(out,n)) {
+    op_free(out);
+    return WHY("overlay_frame_set_neighbour_as_source() failed");
+  }
+  /* set source to ourselves */
+  overlay_frame_set_me_as_source(out);
+  /* (next-hop will get set at TX time, so no need to set it here) */
+  out->nexthop_address_status=OA_UNINITIALISED;
+
+  /* Set the time in the ack. Use the last sequence number we have seen
+     from this neighbour, as that may be helpful information for that neighbour
+     down the track.  My policy is to communicate that information which should
+     be helpful for forming and maintaining the health of the mesh, as that way
+     each node can in potentially implement a different mesh routing protocol,
+     without breaking the wire protocol.  This makes over-the-air software updates
+     much safer.
+
+     Combining of adjacent observation reports may mean that the most recent
+     observation is not the last one in the list, also the wrapping of the sequence
+     numbers means we can't just take the highest-numbered sequence number.  
+     So we need to take the observation which was most recently received.
+  */
+  int i;
+  int best_obs_id=-1;
+  long long best_obs_time=0;
+  for(i=0;i<OVERLAY_MAX_OBSERVATIONS;i++) {
+    if (n->observations[i].time_ms>best_obs_time) {
+      best_obs_id=i;
+      best_obs_time=n->observations[i].time_ms;
+    }
+  }
+  ob_append_int(out->payload,n->observations[best_obs_id].s2);
+
+  /* The ack needs to contain the per-interface scores that we have built up
+     for this neighbour.
+     We expect that for most neighbours they will have many fewer than 32 interfaces,
+     and even when they have multiple interfaces that we will only be able to hear
+     them on one or a few. 
+
+     So we will structure the format so that we use fewer bytes when fewer interfaces
+     are involved.
+
+     Probably the simplest is to put each non-zero score followed by it's interface.
+     That way the whole list will be easy to parse, and as short as 3 bytes for a
+     single interface.
+
+     We could use the spare 2 bits at the top of the interface id to indicate
+     multiple interfaces with same score? 
+  */
+  for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
+    {
+      /* Only include interfaces with score >0 */
+      if (n->scores[i]) {
+	ob_append_byte(out->payload,n->scores[i]);
+	ob_append_byte(out->payload,i);
+      }
+    }
+  /* Terminate list */
+  ob_append_byte(out->payload,0);
+
+  /* XXX Add to queue */
+
+  /* XXX Remove any stale versions (or should we just freshen, and forget making
+     a new one, since it would be more efficient). */
+
+  /* XXX Temporary to stop memory leaks while writing the rest of this function */
+  op_free(out);
+
   return WHY("Not implemented");
 }
 
@@ -397,7 +495,21 @@ int overlay_route_make_neighbour(overlay_node *n)
   return 0;
 }
 
-int overlay_route_i_can_hear(unsigned char *who,int sender_interface,unsigned int s1,unsigned int s2,int receiver_interface,long long now)
+overlay_neighbour *overlay_route_get_neighbour_structure(unsigned char *packed_sid)
+{
+  overlay_node *n=overlay_route_find_node(packed_sid,1 /* create if necessary */);
+  if (!n) { WHY("Could not find node record for observed node"); return NULL; }
+
+  /* Check if node is already a neighbour, or if not, make it one */
+  if (!n->neighbour_id) if (overlay_route_make_neighbour(n)) { WHY("overlay_route_make_neighbour() failed"); return NULL; }
+
+  /* Get neighbour structure */
+  return &overlay_neighbours[n->neighbour_id];
+
+}
+
+int overlay_route_i_can_hear(unsigned char *who,int sender_interface,unsigned int s1,unsigned int s2,
+			     int receiver_interface,long long now)
 {
   /* 1. Find (or create) node entry for the node.
      2. Replace oldest observation with this observation.
@@ -429,7 +541,6 @@ int overlay_route_i_can_hear(unsigned char *who,int sender_interface,unsigned in
 	  neh->observations[obs_index].sender_interface=sender_interface;
 	  neh->observations[obs_index].receiver_interface=receiver_interface;
 	  neh->observations[obs_index].time_ms=now;
-	  fprintf(stderr,">>> Merging observations.\n");
 	  mergedP=1;
 	  break;
 	}
@@ -453,8 +564,6 @@ int overlay_route_i_can_hear(unsigned char *who,int sender_interface,unsigned in
     neh->last_observation_time_ms=now;
   }
 
-  WHY("stored observation");
-
   /* Update reachability metrics for node */
   if (overlay_route_recalc_neighbour_metrics(neh,now)) WHY("overlay_route_recalc_neighbour_metrics() failed");
 
@@ -465,15 +574,18 @@ int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now)
 {
   unsigned int s1,s2;
   unsigned char sender_interface;
-  
-  s1=ntohl(*((int*)&f->payload[0]));
-  s2=ntohl(*((int*)&f->payload[4]));
-  sender_interface=ntohl(*((unsigned char*)&f->payload[8]));
-  fprintf(stderr,"Received self-announcement for sequence range [%08x,%08x]\n",s1,s2);
+  overlay_neighbour *n=overlay_route_get_neighbour_structure(f->source);
+ 
+  if (!n) return WHY("overlay_route_get_neighbour_structure() failed");
+
+  s1=ntohl(*((int*)&f->payload->bytes[0]));
+  s2=ntohl(*((int*)&f->payload->bytes[4]));
+  sender_interface=f->payload->bytes[8];
+  fprintf(stderr,"Received self-announcement for sequence range [%08x,%08x] from interface %d\n",s1,s2,sender_interface);
 
   overlay_route_i_can_hear(f->source,sender_interface,s1,s2,interface,now);
 
-  overlay_route_ack_selfannounce(f);
+  overlay_route_ack_selfannounce(f,n);
 
   return 0;
 }
@@ -544,8 +656,12 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
     if (n->observations[i].valid&&n->observations[i].s1&&((now-n->observations[i].time_ms)<200000)) {
       /* No need to do wrap-around calculation as the following is modulo 2^32 also */
       unsigned int interval=n->observations[i].s2-n->observations[i].s1;
-      fprintf(stderr,"adding %dms\n",interval);
-      ms_observed[n->observations[i].sender_interface]+=interval;
+      /* Support interface tick speeds down to 1 per hour (well and truly slow enough to do
+	 50KB/12 hours which is the minimum traffic rate on an expensive BGAN satellite link) */
+      if (interval<3600000) {
+	fprintf(stderr,"adding %dms\n",interval);
+	ms_observed[n->observations[i].sender_interface]+=interval;
+      }
 
       if (n->observations[i].time_ms>most_recent_observation) most_recent_observation=n->observations[i].time_ms;
     }
@@ -564,6 +680,8 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
       else if ((100+(ms_observed[i]/500-20))<200) score=100+(ms_observed[i]/500-20); // 100 - 199
       else if ((200+(ms_observed[i]/3000-20))<255) score=200+(ms_observed[i]/3000-20); // 200 - 254
       else score=255;
+      /* Deal with invalid sequence number ranges */
+      if (score<0) score=0;
     }
 
     /* Reduce score by 1 point for each second we have not seen anything from it */

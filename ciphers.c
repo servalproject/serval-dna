@@ -36,7 +36,7 @@ int packetGetPrivateKeyForSid()
   int ofs=0;
   while(findHlr(hlr,&ofs,NULL,NULL)) {
     // XXX If the SIDs match, then this is it */
-    if (!current_sid) {
+    if (!current_sid_set) {
       /* we are using the first sid in the HLR */
     } else {
       /* Compare current SID with SID of this HLR record */
@@ -51,6 +51,7 @@ int packetGetPrivateKeyForSid()
 
 int packetClearPrivateKeys()
 {
+  return setReason("Not implemented");
 }
 
 int packetDecipher(unsigned char *packet,int len,int cipher)
@@ -79,7 +80,7 @@ int packetDecipher(unsigned char *packet,int len,int cipher)
   }
 }
 
-int packetEncipher(unsigned char *packet,int len,int cryptoflags)
+int packetEncipher(unsigned char *packet,int maxlen,int *len,int cryptoflags)
 {
   // Not encrypting for now
   return 0;

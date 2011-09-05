@@ -81,7 +81,7 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
      we rely on context for abbreviating the addresses.  So we write it initially and then patch it
      after.
   */
-  int max_len=((SID_SIZE+3)*3+headers->length+p->payloadlength);
+  int max_len=((SID_SIZE+3)*3+headers->length+p->payload->length);
   ob_append_rfs(b,max_len);
 
   int addrs_len=b->length;
@@ -95,7 +95,7 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
   overlay_abbreviate_set_most_recent_address(p->source);
 
   addrs_len=b->length-addrs_len;
-  int actual_len=addrs_len+p->payloadlength;
+  int actual_len=addrs_len+p->payload->length;
   ob_patch_rfs(b,actual_len);
 
   if (fail) {
@@ -104,7 +104,7 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
   }
 
   /* Write payload format plus total length of header bits */
-  if (ob_makespace(b,2+headers->length+p->payloadlength)) {
+  if (ob_makespace(b,2+headers->length+p->payload->length)) {
     /* Not enough space free in output buffer */
     ob_free(headers);
     return WHY("Could not make enough space free in output buffer");
@@ -112,11 +112,11 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
   
   /* Package up headers and payload */
   ob_checkpoint(b);
-  if (ob_append_short(b,0x1000|(p->payloadlength+headers->length))) 
+  if (ob_append_short(b,0x1000|(p->payload->length+headers->length))) 
     { fail++; WHY("could not append version and length bytes"); }
   if (ob_append_bytes(b,headers->bytes,headers->length)) 
     { fail++; WHY("could not append header"); }
-  if (ob_append_bytes(b,p->payload,p->payloadlength)) 
+  if (ob_append_bytes(b,p->payload->bytes,p->payload->length)) 
     { fail++; WHY("could not append payload"); }
   
   /* XXX SIGN &/or ENCRYPT */
@@ -148,8 +148,37 @@ int op_free(overlay_frame *p)
   if (p->next&&p->next->prev==p) return WHY("p->next->prev still points here");
   p->prev=NULL;
   p->next=NULL;
-  if (p->payload) free(p->payload);
+  if (p->payload) ob_free(p->payload);
   p->payload=NULL;
   free(p);
   return 0;
+}
+
+int overlay_frame_set_neighbour_as_source(overlay_frame *f,overlay_neighbour *n)
+{
+  if (!n) return WHY("Neighbour was null");
+  bcopy(n->sid,f->source,SID_SIZE);
+  f->source_address_status=OA_RESOLVED;
+
+  return WHY("Not implemented");
+}
+
+unsigned char *overlay_get_my_sid()
+{
+
+  /* Make sure we can find our SID */
+  int zero=0;
+  if (!findHlr(hlr,&zero,NULL,NULL)) { WHY("Could not find first entry in HLR"); return NULL; }
+  return &hlr[zero+4];
+}
+
+int overlay_frame_set_me_as_source(overlay_frame *f)
+{
+  unsigned char *sid=overlay_get_my_sid();
+  if (!sid) return WHY("overlay_get_my_sid() failed.");
+  bcopy(sid,f->source,SID_SIZE);
+
+  f->source_address_status=OA_RESOLVED;
+
+  return WHY("Not implemented");
 }

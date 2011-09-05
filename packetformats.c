@@ -245,7 +245,7 @@ int packetFinalise(unsigned char *packet,int packet_maxlen,int *packet_len,int c
   packet[OFS_ROTATIONFIELD]=payloadRotation;
   if (debug>3) dump("rotated packet",packet,*packet_len);
 
-  if (cryptoflags) return packetEncipher(packet,packet_maxlen,packet_len);
+  if (cryptoflags) return packetEncipher(packet,packet_maxlen,packet_len,cryptoflags);
 
   return 0;
 }

@@ -195,3 +195,27 @@ int ob_patch_rfs(overlay_buffer *b,int l)
   return 0;
   
 }
+
+int asprintable(int c)
+{
+  if (c<' ') return '.';
+  if (c>0x7e) return '.';
+  return c;
+}
+
+int ob_dump(overlay_buffer *b)
+{
+  fprintf(stderr,"Dumping overlay_buffer at %p : length=%d\n",b,b->length);
+  int i,j;
+
+  for(i=0;i<b->length;i+=16)
+    {
+      fprintf(stderr,"%04x :",i);
+      for(j=0;j<16&&(i+j<b->length);j++) fprintf(stderr," %02x",b->bytes[i+j]);
+      for(;j<16;j++) fprintf(stderr,"   ");
+      fprintf(stderr,"  ");
+      for(j=0;j<16&&(i+j<b->length);j++) fprintf(stderr," %c",asprintable(b->bytes[i+j]));
+      fprintf(stderr,"\n");
+    }
+  return 0;
+}

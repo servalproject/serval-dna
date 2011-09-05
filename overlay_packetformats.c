@@ -161,9 +161,13 @@ int overlay_frame_resolve_addresses(int interface,overlay_frame *f)
   f->destination_address_status=overlay_abbreviate_expand_address(interface,f->bytes,&offset,f->destination,&alen);
   alen=0;
   f->source_address_status=overlay_abbreviate_expand_address(interface,f->bytes,&offset,f->source,&alen);
-  f->payload=&f->bytes[offset];
-  f->payloadlength=f->bytecount-offset;
-  if (f->payloadlength<0) return WHY("Abbreviated ddresses run past end of packet");
+
+  /* Copy payload into overlay_buffer structure */
+  if (f->bytecount-offset<0) return WHY("Abbreviated ddresses run past end of packet");
+  if (!f->payload) f->payload=ob_new(f->bytecount-offset); else f->payload->length=0;
+  if (!f->payload) return WHY("calloc(overlay_buffer) failed.");
+  if (ob_append_bytes(f->payload,&f->bytes[offset],f->bytecount-offset)) 
+    return WHY("ob_append_bytes() failed.");
 
   return 0;
 }
@@ -190,10 +194,7 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
   */
 
   unsigned char c;
-  int zero=0;
-  
-  /* Make sure we can find our SID */
-  if (!findHlr(hlr,&zero,NULL,NULL)) return WHY("Could not find first entry in HLR");
+  unsigned char *sid=overlay_get_my_sid();
 
   /* Header byte */
   c=OF_TYPE_SELFANNOUNCE;
@@ -238,14 +239,14 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
      address in full an arbitrary 1 in 4 times.
   */
   if (overlay_interfaces[interface].ticks_since_sent_full_address>3)
-    { if (ob_append_bytes(b,&hlr[zero+4],SID_SIZE)) return WHY("Could not append SID to self-announcement"); 
+    { if (ob_append_bytes(b,sid,SID_SIZE)) return WHY("Could not append SID to self-announcement"); 
       overlay_interfaces[interface].ticks_since_sent_full_address=0;
     }
   else
     {
       c=OA_CODE_PREFIX7;
       if (ob_append_bytes(b,&c,1)) return WHY("ob_append_bytes() could not add address format code.");
-      if (ob_append_bytes(b,&hlr[zero+4],7)) return WHY("Could not append SID prefix to self-announcement"); 
+      if (ob_append_bytes(b,sid,7)) return WHY("Could not append SID prefix to self-announcement"); 
       overlay_interfaces[interface].ticks_since_sent_full_address++;
     }
       

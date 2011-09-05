@@ -396,10 +396,7 @@ typedef struct overlay_frame {
   unsigned char *bytes;
 
   /* Actual payload */
-  unsigned int payloadlength;
-  unsigned char *payload;
-  int payloadFreeP; /* Set if this needs to be freed on disposal
-		       of the frame */
+  struct overlay_buffer *payload;
 
   int rfs; /* remainder of frame size */
 
@@ -569,11 +566,12 @@ typedef struct overlay_txqueue {
   */
 } overlay_txqueue;
 
-extern overlay_txqueue overlay_tx[4];
+extern overlay_txqueue overlay_tx[5];
 #define OVERLAY_ISOCHRONOUS_VOICE 0
-#define OVERLAY_ISOCHRONOUS_VIDEO 1
-#define OVERLAY_ORDINARY 2
-#define OVERLAY_OPPORTUNISTIC 3
+#define OVERLAY_MESH_MANAGEMENT 1
+#define OVERLAY_ISOCHRONOUS_VIDEO 2
+#define OVERLAY_ORDINARY 3
+#define OVERLAY_OPPORTUNISTIC 4
 
 int setReason(char *fmt, ...);
 #define WHY(X) setReason("%s:%d:%s()  %s",__FILE__,__LINE__,__FUNCTION__,X)
@@ -769,3 +767,10 @@ int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now)
 overlay_node *overlay_route_find_node(unsigned char *sid,int createP);
 unsigned int overlay_route_hash_sid(unsigned char *sid);
 int overlay_route_init(int mb_ram);
+overlay_neighbour *overlay_route_get_neighbour_structure(unsigned char *packed_sid);
+unsigned char *overlay_get_my_sid();
+int overlay_frame_set_me_as_source(overlay_frame *f);
+  int overlay_frame_set_neighbour_as_source(overlay_frame *f,overlay_neighbour *n);
+int overlay_update_sequence_number();
+int packetEncipher(unsigned char *packet,int maxlen,int *len,int cryptoflags);
+

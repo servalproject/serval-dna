@@ -473,11 +473,49 @@ int overlay_interface_discover()
   return 0;
 }
 
+int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,overlay_frame **p,long long now,overlay_frame *pax[],int *frame_pax,int frame_max_pax) 
+{
+  while(p&&*p)
+    {
+      /* Throw away any stale frames */
+      overlay_frame *pp=*p;
+      
+      if (!pp) break;
+      
+      if (now>((*p)->enqueued_at+200)) {
+	/* Stale, so remove from queue */
+	*p=pp->next;
+	pp->next->prev=*p;
+	op_free(*p);
+      }
+      else
+	{
+	  /* XXX Filter for those which should be sent via this interface.
+	     To do that we need to know the nexthop, and the best route to the next hop. */
+	  
+	  /* We keep trying to queue frames in case they will fit, as not all frames are of equal size.
+	     This means that lower bit-rate codecs will get higher priority, which is probably not all
+	     bad.  The only hard limit is the maximum number of payloads we allow in a frame, which is
+	     set so high as to be irrelevant, even on loopback or gigabit ethernet interface */
+	  if (*frame_pax>=frame_max_pax) break;
+	  if (!overlay_frame_package_fmt1(*p,e))
+	    {
+	      /* Add payload to list of payloads we are sending with this frame so that we can dequeue them
+		 if we send them. */
+	      pax[(*frame_pax)++]=*p;
+	    }
+	  p=&(*p)->next;
+	}
+    }
+  return 0;
+}
+
 int overlay_tick_interface(int i, long long now)
 {
   int frame_pax=0;
 #define MAX_FRAME_PAX 1024
   overlay_frame *pax[MAX_FRAME_PAX];
+  overlay_frame **p;
 
   if (overlay_interfaces[i].bits_per_second<1) {
     /* An interface with no speed budget is for listening only, so doesn't get ticked */
@@ -505,44 +543,15 @@ int overlay_tick_interface(int i, long long now)
   overlay_add_selfannouncement(i,e);
   
   /* 2. Add any queued high-priority isochronous data (i.e. voice) to the frame. */
-  overlay_frame **p=&overlay_tx[OVERLAY_ISOCHRONOUS_VOICE].first;
-  while(p)
-    {
-      /* Throw away any stale frames */
-      overlay_frame *pp=*p;
-
-      if (!pp) break;
-
-      if (now>((*p)->enqueued_at+200)) {
-	/* Stale, so remove from queue */
-	*p=pp->next;
-	pp->next->prev=*p;
-	op_free(*p);
-      }
-      else
-	{
-	  /* XXX Filter for those which should be sent via this interface.
-	     To do that we need to know the nexthop, and the best route to the next hop. */
-	  
-	  /* We keep trying to queue frames in case they will fit, as not all frames are of equal size.
-	     This means that lower bit-rate codecs will get higher priority, which is probably not all
-	     bad.  The only hard limit is the maximum number of payloads we allow in a frame, which is
-	     set so high as to be irrelevant, even on loopback or gigabit ethernet interface */
-	  if (frame_pax>=MAX_FRAME_PAX) break;
-	  if (!overlay_frame_package_fmt1(*p,e))
-	    {
-	      /* Add payload to list of payloads we are sending with this frame so that we can dequeue them
-		 if we send them. */
-	      pax[frame_pax++]=*p;
-	    }
-	  p=&(*p)->next;
-	}
-    }
+  p=&overlay_tx[OVERLAY_ISOCHRONOUS_VOICE].first;
+  overlay_stuff_packet_from_queue(i,e,p,now,pax,&frame_pax,MAX_FRAME_PAX);
 
   /* 3. Add some mesh reachability reports (unlike BATMAN we announce reachability to peers progressively).
         Give priority to newly observed nodes so that good news travels quickly to help roaming.
 	XXX - Don't forget about PONGing reachability reports to allow use of monodirectional links.
   */
+  p=&overlay_tx[OVERLAY_MESH_MANAGEMENT].first;
+  overlay_stuff_packet_from_queue(i,e,p,now,pax,&frame_pax,MAX_FRAME_PAX);
 
   /* 4. XXX Add lower-priority queued data */
 

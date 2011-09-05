@@ -189,7 +189,7 @@ int processRequest(unsigned char *packet,int len,
 		char emitterPhoneNumber[256];
 		char message[256];
 		pofs++;
-		char messageType = packet[pofs];
+		/* char messageType = packet[pofs]; */
 		pofs++;
 		char emitterPhoneNumberLen = packet[pofs];
 		pofs++;
@@ -211,7 +211,7 @@ int processRequest(unsigned char *packet,int len,
 		  char amCommand[576]; // 64 char + 2*256(max) char = 576
 		  sprintf(amCommand, "am broadcast -a org.servalproject.DT -e number \"%s\"  -e content \"%s\"", emitterPhoneNumber, message);
 		  if (debug>1) fprintf(stderr,"Delivering DT message via intent: %s\n",amCommand);
-		  int exitcode = runCommand(amCommand);
+		  runCommand(amCommand);
 		  respondSimple(hlrSid(hlr, ofs),ACTION_OKAY,NULL,0,transaction_id,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
 		}
 	      }
