@@ -384,6 +384,7 @@ typedef struct overlay_frame {
 
   unsigned char nexthop[32];
   int nexthop_address_status;
+  int nexthop_interface; /* which interface the next hop should be attempted on */
 
   unsigned char destination[32];
   int destination_address_status;

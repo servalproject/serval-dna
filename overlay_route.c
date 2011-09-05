@@ -308,9 +308,37 @@ int overlay_route_init(int mb_ram)
   return 0;
 }
 
+/* Select a next hop to get to a node.
+   Frist, let us consider neighbours.  These are on a local link to us, and do not require any
+   intermediate nodes to transmit to us.  However, assymetric packet loss is common, so we may
+   not be able to transmit back to the neighbour.  We know if we can because we will have
+   received acks to our self announcements.  However, to send an ack to a self announcement we
+   need a fall-back option.  This fall-back should be by sending to the broadcast address.
+
+   The complication comes when we have multiple interfaces available.  If we send to all, then
+   we need a way of keeping track which interfaces we have sent it on so far, which is a bit
+   icky, and more to the point requires some revamping of code.  A bigger problem is that we might
+   have cheap and expensive interfaces, and we don't want to go blabbing about our wifi or ethernet
+   based peers over a $10/MB BGAN link, when we can reasonably know that it shouldn't be necessary.
+
+   The trouble is that sometimes it might just be necessary. We then have two options, send traffic
+   over multiple interfaces to try to discover such one-way links, even if internet back-haul is 
+   required in between.  This is nice in the long-term.  Or, we be more conservative with the traffic
+   and require that a resolution to the route be discoverable via the interface that the frame
+   arrived on.
+
+   In any case, we need to tag the nexthop address with the interface(s) on which to send it.
+
+   Once we have this working and neighbours can communicate, then we can move on to addressing
+   nodes that are only indirectly connected. Indeed, the two are somewhat interconnected as
+   an indirect route may be required to get a self-announce ack back to the sender.
+*/
 int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen)
 {
   if (!overlay_neighbours) return 0;
+
+  
+
   return WHY("Not implemented");
 }
 
