@@ -173,7 +173,7 @@ int overlay_abbreviate_cache_address(unsigned char *sid)
   int index=((sid[0]<<16)|(sid[0]<<8)|sid[2])>>cache->shift;
 
   /* Does the stored address match the one we have been passed? */
-  if (!bcmp(sid,&cache->sids[index].b[0],SID_SIZE))
+  if (!memcmp(sid,&cache->sids[index].b[0],SID_SIZE))
     /* Address is already in cache, so return and let the caller know. */
     return 1;
 
@@ -191,7 +191,7 @@ int overlay_abbreviate_cache_address(unsigned char *sid)
 
 int overlay_abbreviate_try_byindex(unsigned char *in,unsigned char *out,int *ofs,int index)
 {
-  if(!bcmp(in,abbrs->sids[index],SID_SIZE))
+  if(!memcmp(in,abbrs->sids[index],SID_SIZE))
     {
       /* We can encode this address with one byte */      
       out[(*ofs)++]=0x01;
@@ -370,7 +370,7 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
   fprintf(stderr,"*\n");
 
   /* So is it there? */
-  if (bcmp(in,&cache->sids[index].b[0],prefix_bytes))
+  if (memcmp(in,&cache->sids[index].b[0],prefix_bytes))
     {
       /* No, it isn't in the cache. */
       return OA_PLEASEEXPLAIN;

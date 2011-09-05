@@ -190,7 +190,7 @@ int overlay_interface_init_socket(int interface,struct sockaddr_in src_addr,stru
   }
  
   return 0;
-#undef I(X)
+#undef I
 }
 
 int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockaddr_in broadcast,
@@ -235,7 +235,7 @@ int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockadd
   }
 
   overlay_interface_count++;
-#undef I(X)
+#undef I
   return 0;
 }
 
@@ -467,8 +467,8 @@ int overlay_interface_discover()
       }
     }
   }
-#endif
   freeifaddrs(ifaddr);
+#endif
 
   return 0;
 }

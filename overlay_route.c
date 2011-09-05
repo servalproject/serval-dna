@@ -394,7 +394,7 @@ overlay_node *overlay_route_find_node(unsigned char *sid,int createP)
   if (bin_number<0) { WHY("negative bin number"); return NULL; }
 
   for(slot=0;slot<overlay_bin_size;slot++)
-    if (!bcmp(sid,overlay_nodes[bin_number][slot].sid,SID_SIZE))
+    if (!memcmp(sid,overlay_nodes[bin_number][slot].sid,SID_SIZE))
       {
 	/* Found it */
 	return &overlay_nodes[bin_number][slot];
