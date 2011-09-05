@@ -6,6 +6,12 @@ LOCAL_SRC_FILES:= \
         client.c        \
         export.c        \
         overlay.c       \
+	overlay_abbreviations.c \
+	overlay_buffer.c        \
+	overlay_interface.c     \
+	overlay_packetformats.c \
+	overlay_payload.c       \
+	overlay_route.c         \
         responses.c     \
         srandomdev.c    \
         batman.c        \
