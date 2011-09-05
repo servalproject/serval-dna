@@ -333,11 +333,30 @@ int overlay_route_init(int mb_ram)
    nodes that are only indirectly connected. Indeed, the two are somewhat interconnected as
    an indirect route may be required to get a self-announce ack back to the sender.
 */
-int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen)
+int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
+			int *interface)
 {
   if (!overlay_neighbours) return 0;
 
-  
+  overlay_neighbour *neh=overlay_route_get_neighbour_structure(d,0 /* don't create if 
+								      missing */);
+
+  if (neh) {
+    /* Is a direct neighbour.
+       So in the absence of any better indirect route, we pick the interface that
+       we can hear this neighbour on the most reliably, and then send the frame 
+       via that interface and directly addressed to the recipient. */
+    bcopy(d,nexthop,SID_SIZE);
+    (*nexthoplen)=SID_SIZE;
+
+    *interface=0;
+    for(i=1;i<OVERLAY_MAX_INTERFACES;i++)
+      if (neh->scores[i]>neh->scores[*interface]) *interface=i;
+    if (neg->scores[*interface]<1) return WHY("No open path to node");
+    return 0;
+  } else {
+    /* Is not a direct neighbour */
+  }
 
   return WHY("Not implemented");
 }
@@ -530,9 +549,10 @@ int overlay_route_make_neighbour(overlay_node *n)
   return 0;
 }
 
-overlay_neighbour *overlay_route_get_neighbour_structure(unsigned char *packed_sid)
+overlay_neighbour *overlay_route_get_neighbour_structure(unsigned char *packed_sid,
+							 int createP)
 {
-  overlay_node *n=overlay_route_find_node(packed_sid,1 /* create if necessary */);
+  overlay_node *n=overlay_route_find_node(packed_sid,createP);
   if (!n) { WHY("Could not find node record for observed node"); return NULL; }
 
   /* Check if node is already a neighbour, or if not, make it one */

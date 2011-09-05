@@ -611,7 +611,8 @@ int overlay_check_ticks();
 int overlay_add_selfannouncement();
 int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b);
 int overlay_interface_args(char *arg);
-int overlay_get_nexthop(unsigned char *final_destination,unsigned char *nexthop,int *nexthoplen);
+int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
+			int *interface);
 
 extern int overlay_interface_count;
 

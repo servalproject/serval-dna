@@ -209,13 +209,13 @@ int overlay_frame_process(int interface,overlay_frame *f)
   if (((!ultimatelyForMe)||broadcast)&&(f->ttl>1))
     {
       /* Yes, it is. */
-      int len=0;
+      int len=0;      
 
       if (broadcast&&(f->type==OF_TYPE_SELFANNOUNCE)) {
 	// Don't forward broadcast self-announcement packets as that is O(n^2) with
 	// traffic.  We have other means to propagating the mesh topology information.
       } else {
-	if (overlay_get_nexthop(f->destination,f->nexthop,&len))
+	if (overlay_get_nexthop(f->destination,f->nexthop,&len,&f->nexthop_interface))
 	  return WHY("Could not find next hop for host - dropping frame");
 	f->ttl--;
 	
