@@ -209,13 +209,9 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	if (overlay_get_nexthop(f->destination,f->nexthop,&len))
 	  return WHY("Could not find next hop for host - dropping frame");
 	f->ttl--;
-	/* Queue frame for dispatch */
-	/* XXX We currently have separate overlay_payload structures for sending and
-	   overlay_frame for receiving.  Need to harmonise this. Multiple conversions
-	   are wasteful.  We really should be able to cope with a single structure. */
-	
-	
-	WHY("forwarding of frame not implemented");
+
+	/* Queue frame for dispatch */		
+	WHY("forwarding of frames not implemented");
 	
 	/* If the frame was a broadcast frame, then we need to hang around
 	   so that we can process it, since we are one of the recipients.
@@ -237,5 +233,5 @@ int overlay_frame_process(int interface,overlay_frame *f)
       break;
     }
 
-  return WHY("Not implemented");
+  return 0;
 }

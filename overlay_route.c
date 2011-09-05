@@ -464,6 +464,11 @@ int overlay_route_ack_selfannounce(overlay_frame *f,overlay_neighbour *n)
   ob_append_byte(out->payload,0);
 
   /* XXX Add to queue */
+  if (overlay_payload_enqueue(OQ_MESH_MANAGEMENT,out))
+    {
+      op_free(out);
+      return WHY("overlay_payload_enqueue(self-announce ack) failed");
+    }
   
   /* XXX Remove any stale versions (or should we just freshen, and forget making
      a new one, since it would be more efficient). */
