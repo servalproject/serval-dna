@@ -400,7 +400,7 @@ typedef struct overlay_frame {
   struct overlay_buffer *payload;
 
   int rfs; /* remainder of frame size */
-
+  
   long long enqueued_at;
 
 } overlay_frame;
@@ -760,7 +760,11 @@ typedef struct overlay_neighbour {
      This is so that the sender knows which interface to use to reach us.
    */
   unsigned char scores[OVERLAY_MAX_INTERFACES];
+
+  /* One-byte index entries for address abbreviation */
+  unsigned char one_byte_index_address_prefixes[256][OVERLAY_SENDER_PREFIX_LENGTH];
 } overlay_neighbour;
+extern overlay_neighbour *overlay_neighbours;
 
 long long overlay_gettime_ms();
 int overlay_route_init(int mb_ram);
@@ -782,3 +786,4 @@ int packetEncipher(unsigned char *packet,int maxlen,int *len,int cryptoflags);
 int overlayServerMode();
 int overlay_payload_enqueue(int q,overlay_frame *p);
 long long overlay_time_in_ms();
+int overlay_abbreviate_lookup_sender_id();

@@ -88,6 +88,16 @@
   full address.  Given that we already have need for the clarification process, let's
   go that way, and change the policy later if appropriate.
 
+  Having had said this, on mono-directional links there is a problem with using the
+  various abbreviation schemes that require state.  And this is that the receiver has
+  no way to issue a please-explain.  In these situations, we need to fall-back to at
+  most using the abbreviations only most of the time, and still sending the full-address
+  some of the time, so that even without a feedback look to ask for explanations the
+  receiver should synchronise with us fairly well.
+
+  Also, we haven't implemented index-based lookup on the receiver side, so we need to fix
+  that or disable it on the sender side.
+
 */
 
 typedef struct overlay_address_table {
@@ -189,14 +199,31 @@ int overlay_abbreviate_cache_address(unsigned char *sid)
   return 0;
 }
 
-int overlay_abbreviate_try_byindex(unsigned char *in,unsigned char *out,int *ofs,int index)
+int overlay_abbreviate_try_byindex(unsigned char *in,unsigned char *out,int *ofs,
+				   int index)
 {
   if(!memcmp(in,abbrs->sids[index],SID_SIZE))
     {
-      /* We can encode this address with one byte */      
-      out[(*ofs)++]=0x01;
-      out[(*ofs)++]=index;
-      return 0;
+      /* We can encode this address with one byte */
+      /* Don't always abbreviate as the receiver may not have the means to send us
+	 please-explains, e.g., due to mono-directional links.  Thus we want to resend
+	 the whole address sometimes. */
+      if (random()&7) {
+	/* Do use abbreviation */
+	out[(*ofs)++]=0x01;
+	out[(*ofs)++]=index;
+	return 0;
+      } else {
+	/* Don't use the abbreviation this time, but rather repeat it again for the 
+	   receiving side to cache.
+	   XXX - Should we use a prefix here instead of full length?
+	*/
+	out[(*ofs)++]=0x08;
+	bcopy(in,&out[(*ofs)],SID_SIZE);
+	(*ofs)+=SID_SIZE;
+	out[(*ofs)++]=index;
+	return 0;
+      }
     }
   else
     /* Cannot find index in our node list. */
@@ -242,7 +269,8 @@ int overlay_abbreviate_address(unsigned char *in,unsigned char *out,int *ofs)
      XXX If we do, we need a way to indicate a reference to an old epoch */
   for(i=0;i<2;i++)
     if (abbrs->byfirstbyte[in[0]][i])
-      { if (!overlay_abbreviate_try_byindex(in,out,ofs,i)) return 0; }
+      { if (!overlay_abbreviate_try_byindex(in,out,ofs,abbrs->byfirstbyte[in[0]][i])) 
+	  return 0; }
     else break;
   if (i<2&&abbrs->next_free) {
     // There is a spare slot to abbreviate this address by storing it in an index if we 
@@ -296,9 +324,13 @@ int overlay_abbreviate_expand_address(int interface,unsigned char *in,int *inofs
       WHY("Reserved address abbreviation code");
       return OA_UNSUPPORTED;
     case OA_CODE_INDEX: /* single byte index look up */
-      WHY("Unimplemented address abbreviation code (single byte index lookup)");
-      overlay_interface_repeat_abbreviation_policy[interface]=1;
-      return OA_UNSUPPORTED;
+      /* Lookup sender's neighbour ID */
+      if (overlay_abbreviate_current_sender_id==-1) if (overlay_abbreviate_lookup_sender_id()) return WHY("could not lookup neighbour ID of packet sender");
+      r=overlay_abbreviate_cache_lookup(overlay_neighbours[overlay_abbreviate_current_sender_id].one_byte_index_address_prefixes[in[*inofs]],
+				      out,ofs,OVERLAY_SENDER_PREFIX_LENGTH,0);
+      (*inofs)++;
+      overlay_abbreviate_set_most_recent_address(&out[*ofs]);
+      return r;
     case OA_CODE_PREVIOUS: /* Same as last address */
       (*inofs)++;
       bcopy(&overlay_abbreviate_previous_address.b[0],&out[*ofs],SID_SIZE);
@@ -343,18 +375,33 @@ int overlay_abbreviate_expand_address(int interface,unsigned char *in,int *inofs
     }
 }
 
+int overlay_abbreviate_lookup_sender_id()
+{
+  overlay_neighbour *neh=overlay_route_get_neighbour_structure(overlay_abbreviate_current_sender.b,1 /* create if needed */);
+  if (!neh) { overlay_abbreviate_current_sender_id=-1; return WHY("Could not find sender in neighbour list"); }
+  /* Okay, so the following is a little tortuous in asking our parent who we are instead of just knowing, 
+     but it will do for now */
+  overlay_abbreviate_current_sender_id=neh->node->neighbour_id;
+  return 0;
+}
+
 int overlay_abbreviate_remember_index(int index_byte_count,unsigned char *sid_to_remember,unsigned char *index_bytes)
 {
   int zero=0;
   char sid[SID_SIZE*2+1];
   int index=index_bytes[0];
   if (index_byte_count>1) index=(index<<8)|index_bytes[1];
-  fprintf(stderr,"index=%d\n",index);
 
+  /* Lookup sender's neighbour ID */
+  if (overlay_abbreviate_current_sender_id==-1) overlay_abbreviate_lookup_sender_id();
+
+  fprintf(stderr,"index=%d\n",index);
   sid[0]=0; extractSid(sid_to_remember,&zero,sid);
   fprintf(stderr,"We need to remember that the sender #%d has assigned index #%d to the following:\n      [%s]\n",
 	  overlay_abbreviate_current_sender_id,index,sid);
-  return WHY("Not implemented");
+
+  bcopy(sid_to_remember,overlay_neighbours[overlay_abbreviate_current_sender_id].one_byte_index_address_prefixes[index],OVERLAY_SENDER_PREFIX_LENGTH);
+  return 0;
 }
 
 int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *ofs,
