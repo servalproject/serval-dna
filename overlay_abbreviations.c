@@ -293,9 +293,10 @@ int overlay_abbreviate_expand_address(int interface,unsigned char *in,int *inofs
       /* Unsupported codes, so tell the sender 
 	 if the frame was addressed to us as next-hop */
       (*inofs)++;
+      WHY("Reserved address abbreviation code");
       return OA_UNSUPPORTED;
     case OA_CODE_INDEX: /* single byte index look up */
-      WHY("Unimplemented address abbreviation code");
+      WHY("Unimplemented address abbreviation code (single byte index lookup)");
       overlay_interface_repeat_abbreviation_policy[interface]=1;
       return OA_UNSUPPORTED;
     case OA_CODE_PREVIOUS: /* Same as last address */
@@ -332,8 +333,9 @@ int overlay_abbreviate_expand_address(int interface,unsigned char *in,int *inofs
     default: /* Full address, optionally followed by index for us to remember */
       if (in[*inofs]==OA_CODE_FULL_INDEX1) bytes=1; 
       if (in[*inofs]==OA_CODE_FULL_INDEX2) bytes=2;
+      if (bytes) (*inofs)++; /* Skip leading control code if present */
       bcopy(&in[*inofs],&out[*ofs],SID_SIZE);
-      if (bytes) overlay_abbreviate_remember_index(bytes,in,&in[(*inofs)+SID_SIZE]);
+      if (bytes) overlay_abbreviate_remember_index(bytes,&in[*inofs],&in[(*inofs)+SID_SIZE]);
       overlay_abbreviate_cache_address(&in[*inofs]);
       overlay_abbreviate_set_most_recent_address(&out[*ofs]);
       (*inofs)+=SID_SIZE+bytes;
@@ -341,14 +343,15 @@ int overlay_abbreviate_expand_address(int interface,unsigned char *in,int *inofs
     }
 }
 
-int overlay_abbreviate_remember_index(int index_byte_count,unsigned char *in,unsigned char *index_bytes)
+int overlay_abbreviate_remember_index(int index_byte_count,unsigned char *sid_to_remember,unsigned char *index_bytes)
 {
   int zero=0;
   char sid[SID_SIZE*2+1];
   int index=index_bytes[0];
   if (index_byte_count>1) index=(index<<8)|index_bytes[1];
+  fprintf(stderr,"index=%d\n",index);
 
-  sid[0]=0; extractSid(in,&zero,sid);
+  sid[0]=0; extractSid(sid_to_remember,&zero,sid);
   fprintf(stderr,"We need to remember that the sender #%d has assigned index #%d to the following:\n      [%s]\n",
 	  overlay_abbreviate_current_sender_id,index,sid);
   return WHY("Not implemented");
@@ -373,6 +376,7 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
   if (memcmp(in,&cache->sids[index].b[0],prefix_bytes))
     {
       /* No, it isn't in the cache. */
+      WHY("Encountered unresolvable address -- are we asking for explanation?");
       return OA_PLEASEEXPLAIN;
     }
   
@@ -394,6 +398,7 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
        corrective action in case it is never required. 
     */
     overlay_abbreviate_remember_index(index_bytes,&cache->sids[index].b[0],&in[prefix_bytes]);
+    (*ofs)+=index_bytes;
   }
   return OA_RESOLVED;
 }

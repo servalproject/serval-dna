@@ -751,7 +751,6 @@ typedef struct overlay_node {
 } overlay_node;
 
 typedef struct overlay_neighbour {
-  unsigned char sid[SID_SIZE];
   long long last_observation_time_ms;
   int most_recent_observation_id;
   overlay_neighbour_observation observations[OVERLAY_MAX_OBSERVATIONS];
@@ -776,7 +775,8 @@ overlay_neighbour *overlay_route_get_neighbour_structure(unsigned char *packed_s
 							 int createP);
 unsigned char *overlay_get_my_sid();
 int overlay_frame_set_me_as_source(overlay_frame *f);
-  int overlay_frame_set_neighbour_as_source(overlay_frame *f,overlay_neighbour *n);
+int overlay_frame_set_neighbour_as_source(overlay_frame *f,overlay_neighbour *n);
+int overlay_frame_set_neighbour_as_destination(overlay_frame *f,overlay_neighbour *n);
 int overlay_update_sequence_number();
 int packetEncipher(unsigned char *packet,int maxlen,int *len,int cryptoflags);
 int overlayServerMode();

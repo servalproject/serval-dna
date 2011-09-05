@@ -337,7 +337,7 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
 			int *interface)
 {
   int i;
-  if (!overlay_neighbours) return 0;
+  if (!overlay_neighbours) return WHY("I have no neighbours");
 
   overlay_neighbour *neh=overlay_route_get_neighbour_structure(d,0 /* don't create if 
 								      missing */);
@@ -351,8 +351,9 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
     (*nexthoplen)=SID_SIZE;
 
     *interface=0;
-    for(i=1;i<OVERLAY_MAX_INTERFACES;i++)
+    for(i=1;i<OVERLAY_MAX_INTERFACES;i++) {
       if (neh->scores[i]>neh->scores[*interface]) *interface=i;
+    }
     if (neh->scores[*interface]<1) return WHY("No open path to node");
     return 0;
   } else {
@@ -448,7 +449,7 @@ int overlay_route_ack_selfannounce(overlay_frame *f,overlay_neighbour *n)
 		 handle mono-directional links (which WiFi is notorious for). */
 
   /* Set destination of ack to source of observed frame */
-  if (overlay_frame_set_neighbour_as_source(out,n)) {
+  if (overlay_frame_set_neighbour_as_destination(out,n)) {
     op_free(out);
     return WHY("overlay_frame_set_neighbour_as_source() failed");
   }
@@ -742,6 +743,7 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
 
     /* Reduce score by 1 point for each second we have not seen anything from it */
     score-=(now-most_recent_observation)/1000;
+    if (score<0) score=0;
 
     n->scores[i]=score;
     if (debug>2&&score) fprintf(stderr,"Neighbour score on interface #%d = %d (observations for %dms)\n",i,score,ms_observed[i]);

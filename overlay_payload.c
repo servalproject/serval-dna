@@ -177,8 +177,17 @@ int op_free(overlay_frame *p)
 int overlay_frame_set_neighbour_as_source(overlay_frame *f,overlay_neighbour *n)
 {
   if (!n) return WHY("Neighbour was null");
-  bcopy(n->sid,f->source,SID_SIZE);
+  bcopy(n->node->sid,f->source,SID_SIZE);
   f->source_address_status=OA_RESOLVED;
+
+  return 0;
+}
+
+int overlay_frame_set_neighbour_as_destination(overlay_frame *f,overlay_neighbour *n)
+{
+  if (!n) return WHY("Neighbour was null");
+  bcopy(n->node->sid,f->destination,SID_SIZE);
+  f->destination_address_status=OA_RESOLVED;
 
   return 0;
 }
