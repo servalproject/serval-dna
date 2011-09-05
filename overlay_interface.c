@@ -473,8 +473,9 @@ int overlay_interface_discover()
   return 0;
 }
 
-int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,overlay_frame **p,long long now,overlay_frame *pax[],int *frame_pax,int frame_max_pax) 
+int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,overlay_frame *pax[],int *frame_pax,int frame_max_pax) 
 {
+  overlay_frame **p=&overlay_tx[q].first;
   while(p&&*p)
     {
       /* Throw away any stale frames */
@@ -482,11 +483,23 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,overlay_frame **p,lo
       
       if (!pp) break;
       
-      if (now>((*p)->enqueued_at+200)) {
+      /* XXX Uses hardcoded freshness threshold, when it should get it from the queue */
+      if (now>((*p)->enqueued_at+overlay_tx[q].latencyTarget)) {
 	/* Stale, so remove from queue */
-	*p=pp->next;
-	pp->next->prev=*p;
-	op_free(*p);
+
+	/* Get pointer to stale entry */
+	overlay_frame *stale=*p;
+	fprintf(stderr,"Removing stale frame at %p (now=%lld, expiry=%lld)\n",stale,
+		now,((*p)->enqueued_at+overlay_tx[q].latencyTarget));
+	/* Make ->next pointer that points to the stale node skip the stale node */
+	*p=stale->next;	
+	/* If there is an entry after the stale now, make it's prev point to the 
+	   node before the stale node */
+	if (*p) (*p)->prev=stale->prev;
+	if (overlay_tx[q].first==stale) overlay_tx[q].first=stale->next;
+	if (overlay_tx[q].last==stale) overlay_tx[q].last=stale->prev;
+	op_free(stale);
+	overlay_tx[q].length--;
       }
       else
 	{
@@ -515,7 +528,6 @@ int overlay_tick_interface(int i, long long now)
   int frame_pax=0;
 #define MAX_FRAME_PAX 1024
   overlay_frame *pax[MAX_FRAME_PAX];
-  overlay_frame **p;
 
   if (overlay_interfaces[i].bits_per_second<1) {
     /* An interface with no speed budget is for listening only, so doesn't get ticked */
@@ -543,15 +555,13 @@ int overlay_tick_interface(int i, long long now)
   overlay_add_selfannouncement(i,e);
   
   /* 2. Add any queued high-priority isochronous data (i.e. voice) to the frame. */
-  p=&overlay_tx[OQ_ISOCHRONOUS_VOICE].first;
-  overlay_stuff_packet_from_queue(i,e,p,now,pax,&frame_pax,MAX_FRAME_PAX);
+  overlay_stuff_packet_from_queue(i,e,OQ_ISOCHRONOUS_VOICE,now,pax,&frame_pax,MAX_FRAME_PAX);
 
   /* 3. Add some mesh reachability reports (unlike BATMAN we announce reachability to peers progressively).
         Give priority to newly observed nodes so that good news travels quickly to help roaming.
 	XXX - Don't forget about PONGing reachability reports to allow use of monodirectional links.
   */
-  p=&overlay_tx[OQ_MESH_MANAGEMENT].first;
-  overlay_stuff_packet_from_queue(i,e,p,now,pax,&frame_pax,MAX_FRAME_PAX);
+  overlay_stuff_packet_from_queue(i,e,OQ_MESH_MANAGEMENT,now,pax,&frame_pax,MAX_FRAME_PAX);
 
   /* 4. XXX Add lower-priority queued data */
 
@@ -588,22 +598,30 @@ int overlay_tick_interface(int i, long long now)
 
 }
 
+long long overlay_time_in_ms()
+{
+  long long now;
+  struct timeval nowtv;
+  if (gettimeofday(&nowtv,NULL))
+    return WHY("gettimeofday() failed");
+  
+  /* Get current time in milliseconds */
+  now=nowtv.tv_sec*1000LL;
+  now=now+nowtv.tv_usec/1000;
+  
+  return now;
+}
+
+
 int overlay_check_ticks()
 {
   /* Check if any interface(s) are due for a tick */
   int i;
-  struct timeval nowtv;
-  long long now;
-
+  
   /* Check for changes to interfaces */
   overlay_interface_discover();
   
-  if (gettimeofday(&nowtv,NULL))
-    return WHY("gettimeofday() failed");
-
-  /* Get current time in milliseconds */
-  now=nowtv.tv_sec*1000LL;
-  now=now+nowtv.tv_usec/1000;
+  long long now=overlay_time_in_ms();
 
   /* Now check if the next tick time for the interfaces is no later than that time.
      If so, trigger a tick on the interface. */

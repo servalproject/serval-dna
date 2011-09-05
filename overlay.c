@@ -55,13 +55,22 @@ int overlayServerMode()
      send periodic traffic. This means we need to */
   fprintf(stderr,"Running in overlay mode.\n");
   
+  /* Set default congestion levels for queues */
+  int i;
+  for(i=0;i<OQ_MAX;i++) {
+    overlay_tx[i].maxLength=100;
+    overlay_tx[i].latencyTarget=5000; /* Keep packets in queue for 5 seconds by default */
+  }
+  /* But expire voice/video call packets much sooner, as they just aren't any use if late */
+  overlay_tx[OQ_ISOCHRONOUS_VOICE].latencyTarget=500;
+  overlay_tx[OQ_ISOCHRONOUS_VIDEO].latencyTarget=500;
+
   /* Get the set of socket file descriptors we need to monitor.
      Note that end-of-file will trigger select(), so we cannot run select() if we 
      have any dummy interfaces running. So we do an ugly hack of just waiting no more than
      5ms between checks if we have a dummy interface running.  This is a reasonable simulation
      of wifi latency anyway, so we'll live with it.  Larger values will affect voice transport,
      and smaller values would affect CPU and energy use, and make the simulation less realistic. */
-  int i;
   fd_set read_fds;
   int maxfd=-1;  
 

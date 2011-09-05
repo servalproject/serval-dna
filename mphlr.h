@@ -778,4 +778,4 @@ int overlay_update_sequence_number();
 int packetEncipher(unsigned char *packet,int maxlen,int *len,int cryptoflags);
 int overlayServerMode();
 int overlay_payload_enqueue(int q,overlay_frame *p);
-
+long long overlay_time_in_ms();

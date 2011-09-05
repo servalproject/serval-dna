@@ -474,7 +474,6 @@ int overlay_route_ack_selfannounce(overlay_frame *f,overlay_neighbour *n)
      a new one, since it would be more efficient). */
 
   /* XXX Temporary to stop memory leaks while writing the rest of this function */
-  op_free(out);
 
   return WHY("Not implemented");
 }

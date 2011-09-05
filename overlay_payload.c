@@ -152,6 +152,8 @@ int overlay_payload_enqueue(int q,overlay_frame *p)
   if (l) l->next=p;
   p->prev=l;
   p->next=NULL;
+  p->enqueued_at=overlay_time_in_ms();
+
   overlay_tx[q].last=p;
   if (!overlay_tx[q].first) overlay_tx[q].first=p;
   overlay_tx[q].length++;
