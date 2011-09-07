@@ -485,7 +485,8 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,
       
       /* XXX Uses hardcoded freshness threshold, when it should get it from the queue */
       if (now>((*p)->enqueued_at+overlay_tx[q].latencyTarget)) {
-	/* Stale, so remove from queue */
+	/* Stale, so remove from queue.
+	   (NOT the cause of the 20110905 segfault) */
 
 	/* Get pointer to stale entry */
 	overlay_frame *stale=*p;
@@ -505,7 +506,7 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,
 	{
 	  /* XXX Filter for those which should be sent via this interface.
 	     To do that we need to know the nexthop, and the best route to the next hop. */
-	  
+	  	  
 	  /* We keep trying to queue frames in case they will fit, as not all frames are of equal size.
 	     This means that lower bit-rate codecs will get higher priority, which is probably not all
 	     bad.  The only hard limit is the maximum number of payloads we allow in a frame, which is

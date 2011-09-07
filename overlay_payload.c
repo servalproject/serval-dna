@@ -118,7 +118,7 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
     { fail++; WHY("could not append header"); }
   if (ob_append_bytes(b,p->payload->bytes,p->payload->length)) 
     { fail++; WHY("could not append payload"); }
-  
+
   /* XXX SIGN &/or ENCRYPT */
   
   ob_free(headers);

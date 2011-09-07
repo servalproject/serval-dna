@@ -350,6 +350,7 @@ int overlay_abbreviate_expand_address(int interface,unsigned char *in,int *inofs
       overlay_abbreviate_set_most_recent_address(&out[*ofs]);
       return r;
     case OA_CODE_PREFIX11: case OA_CODE_PREFIX11_INDEX1: case OA_CODE_PREFIX11_INDEX2: /* 11-byte prefix */
+      bytes=0;
       if (in[*inofs]==OA_CODE_PREFIX11_INDEX1) bytes=1;
       if (in[*inofs]==OA_CODE_PREFIX11_INDEX2) bytes=2;
       r=overlay_abbreviate_cache_lookup(&in[(*inofs)+1],out,ofs,11,bytes);
@@ -400,6 +401,7 @@ int overlay_abbreviate_remember_index(int index_byte_count,unsigned char *sid_to
   fprintf(stderr,"We need to remember that the sender #%d has assigned index #%d to the following:\n      [%s]\n",
 	  overlay_abbreviate_current_sender_id,index,sid);
 
+  /* This is not the cause of the segmentation fault */
   bcopy(sid_to_remember,overlay_neighbours[overlay_abbreviate_current_sender_id].one_byte_index_address_prefixes[index],OVERLAY_SENDER_PREFIX_LENGTH);
   return 0;
 }
@@ -428,13 +430,15 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
     }
   
   /* XXX We should implement associativity in the address cache so that we can spot
-     colliding prefixes and ask the sender to resolve them for us */
+     colliding prefixes and ask the sender to resolve them for us, or better yet dynamically
+     size the prefix length based on whether any given short prefix has collided */
 
   /* It is here, so let's return it */
   fprintf(stderr,"I think I looked up the following: ");
   for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",cache->sids[index].b[i]);
   fprintf(stderr,"\n");
 
+  fprintf(stderr,"Copying cache entry to %p[%d]\n",out,*ofs);
   bcopy(&cache->sids[index].b[0],&out[(*ofs)],SID_SIZE);
   (*ofs)+=SID_SIZE;
   if (index_bytes) {

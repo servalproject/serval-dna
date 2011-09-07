@@ -73,6 +73,10 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *t
   int ofs;
   overlay_frame f;
 
+  f.payload=NULL;
+  f.bytes=NULL;
+  f.bytecount=0;
+
   /* Skip magic bytes and version */
   for(ofs=4;ofs<len;)
     {
@@ -138,6 +142,10 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *t
       */
       f.bytes=&packet[offset];
       f.bytecount=f.rfs-(offset-ofs);
+      if (f.bytecount<0) {
+	f.bytecount=0;
+	WHY("negative residual byte count after extracting addresses from frame header");
+      }
 
       /* Finally process the frame */
       overlay_frame_process(interface,&f);

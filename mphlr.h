@@ -393,7 +393,7 @@ typedef struct overlay_frame {
   int source_address_status;
 
   /* Frame content from destination address onwards */
-  unsigned int bytecount;
+  int bytecount;
   unsigned char *bytes;
 
   /* Actual payload */

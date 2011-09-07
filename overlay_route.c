@@ -716,8 +716,16 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
       /* Support interface tick speeds down to 1 per hour (well and truly slow enough to do
 	 50KB/12 hours which is the minimum traffic rate on an expensive BGAN satellite link) */
       if (interval<3600000) {
-	fprintf(stderr,"adding %dms\n",interval);
-	ms_observed[n->observations[i].sender_interface]+=interval;
+	fprintf(stderr,"adding %dms (interface %d '%s')\n",interval,n->observations[i].sender_interface,
+		overlay_interfaces[n->observations[i].sender_interface].name);
+	/* sender_interface is unsigned, so a single-sided test is sufficient for bounds checking */
+	if (n->observations[i].sender_interface<OVERLAY_MAX_INTERFACES)
+	  ms_observed[n->observations[i].sender_interface]+=interval;
+	else
+	  {
+	    WHY("Invalid interface ID in observation");
+	    fprintf(stderr,"XXXXXXX adding %dms (interface %d)\n",interval,n->observations[i].sender_interface);
+	  }
       }
 
       if (n->observations[i].time_ms>most_recent_observation) most_recent_observation=n->observations[i].time_ms;
@@ -747,6 +755,8 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
 
     n->scores[i]=score;
     if (debug>2&&score) fprintf(stderr,"Neighbour score on interface #%d = %d (observations for %dms)\n",i,score,ms_observed[i]);
+    if (score&&i) 
+      fprintf(stderr,"WHOOP!\n");
   }
   
   return 0;
