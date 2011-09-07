@@ -240,6 +240,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
       overlay_route_saw_selfannounce_ack(interface,f,now);
       break;
     default:
+      fprintf(stderr,"Unsupported f->type=0x%x\n",f->type);
       return WHY("Support for that f->type not yet implemented");
       break;
     }

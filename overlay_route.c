@@ -524,7 +524,8 @@ int overlay_route_ack_selfannounce(overlay_frame *f,overlay_neighbour *n)
 
   /* XXX Temporary to stop memory leaks while writing the rest of this function */
 
-  return WHY("Not implemented");
+  WHY("incomplete");
+  return 0;
 }
 
 int overlay_route_make_neighbour(overlay_node *n)

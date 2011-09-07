@@ -15,17 +15,20 @@ int op_append_type(overlay_buffer *headers,overlay_frame *p)
     {
     case OF_TYPE_FLAG_NORMAL:
       c[0]=p->type|p->modifiers;
+      fprintf(stderr,"type resolves to %02x\n",c[0]);
       if (ob_append_bytes(headers,c,1)) return -1;
       break;
     case OF_TYPE_FLAG_E12:
       c[0]=(p->type&OF_MODIFIER_BITS)|OF_TYPE_EXTENDED12;
       c[1]=(p->type>>4)&0xff;
+      fprintf(stderr,"type resolves to %02x%02x\n",c[0],c[1]);
       if (ob_append_bytes(headers,c,2)) return -1;
       break;
     case OF_TYPE_FLAG_E20:
       c[0]=(p->type&OF_MODIFIER_BITS)|OF_TYPE_EXTENDED20;
       c[1]=(p->type>>4)&0xff;
       c[2]=(p->type>>12)&0xff;
+      fprintf(stderr,"type resolves to %02x%02x%02x\n",c[0],c[1],c[2]);
       if (ob_append_bytes(headers,c,3)) return -1;
       break;
     default: 
@@ -44,7 +47,6 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
      Will pick a next hop if one has not been chosen.
   */
 
-  unsigned char c[64];
   int nexthoplen=0;
 
   overlay_buffer *headers=ob_new(256);
@@ -70,10 +72,12 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
   /* XXX Write fields in correct order */
 
   /* Write out type field byte(s) */
-  if (op_append_type(headers,p)) fail++;
+  fprintf(stderr,">>>>> packet length before appending frame type = %d\n",b->length);
+  if (!fail) if (op_append_type(headers,p)) fail++;
 
   /* Write out TTL */
-  c[0]=p->ttl; if (ob_append_bytes(headers,c,1)) fail++;
+    fprintf(stderr,">>>>> packet length before appending TTL = %d\n",b->length);
+  if (!fail) if (ob_append_byte(headers,p->ttl)) fail++;
 
   /* Length.  This is the fun part, because we cannot calculate how many bytes we need until
      we have abbreviated the addresses, and the length encoding we use varies according to the
@@ -81,22 +85,32 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
      we rely on context for abbreviating the addresses.  So we write it initially and then patch it
      after.
   */
-  int max_len=((SID_SIZE+3)*3+headers->length+p->payload->length);
-  ob_append_rfs(b,max_len);
-
-  int addrs_len=b->length;
-
-  /* Write out addresses as abbreviated as possible */
-  overlay_abbreviate_append_address(b,p->nexthop);
-  overlay_abbreviate_set_most_recent_address(p->nexthop);
-  overlay_abbreviate_append_address(b,p->destination);
-  overlay_abbreviate_set_most_recent_address(p->destination);
-  overlay_abbreviate_append_address(b,p->source);
-  overlay_abbreviate_set_most_recent_address(p->source);
-
-  addrs_len=b->length-addrs_len;
-  int actual_len=addrs_len+p->payload->length;
-  ob_patch_rfs(b,actual_len);
+  if (!fail) {
+    int max_len=((SID_SIZE+3)*3+headers->length+p->payload->length);
+    ob_dump(headers,"before append rfs");
+    ob_append_rfs(headers,max_len);
+    
+    int addrs_start=headers->length;
+    
+    /* Write out addresses as abbreviated as possible */
+    fprintf(stderr,">>>>> packet length before appending nexthop = %d\n",b->length);
+    overlay_abbreviate_append_address(headers,p->nexthop);
+    overlay_abbreviate_set_most_recent_address(p->nexthop);
+    fprintf(stderr,">>>>> packet length before appending destination = %d\n",b->length);
+    overlay_abbreviate_append_address(headers,p->destination);
+    overlay_abbreviate_set_most_recent_address(p->destination);
+    fprintf(stderr,">>>>> packet length before appending source = %d\n",b->length);
+    overlay_abbreviate_append_address(headers,p->source);
+    overlay_abbreviate_set_most_recent_address(p->source);
+    
+    int addrs_len=headers->length-addrs_start;
+    int actual_len=addrs_len+p->payload->length;
+    fprintf(stderr,"Actual RFS=%d\n",actual_len);
+    ob_patch_rfs(headers,actual_len);
+    ob_dump(headers,"after patch rfs");
+  }
+  ob_dump(b,"Existing packet");
+  ob_dump(headers,"Payload headers");
 
   if (fail) {
     ob_free(headers);
@@ -112,12 +126,14 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
   
   /* Package up headers and payload */
   ob_checkpoint(b);
-  if (ob_append_short(b,0x1000|(p->payload->length+headers->length))) 
-    { fail++; WHY("could not append version and length bytes"); }
   if (ob_append_bytes(b,headers->bytes,headers->length)) 
     { fail++; WHY("could not append header"); }
+  fprintf(stderr,">>>>> packet length AFTER appending headers = %d\n",b->length);
   if (ob_append_bytes(b,p->payload->bytes,p->payload->length)) 
     { fail++; WHY("could not append payload"); }
+  fprintf(stderr,">>>>> packet length after appending PAYLOAD = %d\n",b->length);
+
+  ob_dump(b,"Appended packet");
 
   /* XXX SIGN &/or ENCRYPT */
   

@@ -91,7 +91,7 @@ int findHlr(unsigned char *hlr,int *ofs,char *sid,char *did)
 
   if ((*ofs)>=hlr_size) return 0;
 
-  if (debug>1) fprintf(stderr,"Searching for HLR record sid=[%s]/did=[%s]\n",sid?sid:"NULL",did?did:"NULL");
+  if (debug>4) fprintf(stderr,"Searching for HLR record sid=[%s]/did=[%s]\n",sid?sid:"NULL",did?did:"NULL");
   
   if (did&&did[0]) {
     /* Make packed version of DID so that we can compare faster with the DIDs in the HLR */
@@ -117,7 +117,7 @@ int findHlr(unsigned char *hlr,int *ofs,char *sid,char *did)
       
       if (!record_length) return 0;
 
-      if (debug>1) fprintf(stderr,"Considering HLR entry @ 0x%x\n",*ofs);
+      if (debug>4) fprintf(stderr,"Considering HLR entry @ 0x%x\n",*ofs);
   
       records_searched++;
   
@@ -160,7 +160,7 @@ int findHlr(unsigned char *hlr,int *ofs,char *sid,char *did)
       /* For each match ... */
       if (match) 
 	{
-	  if (debug>1) fprintf(stderr,"Returning HLR entry @ 0x%x\n",*ofs);
+	  if (debug>4) fprintf(stderr,"Returning HLR entry @ 0x%x\n",*ofs);
 	  return 1;
 	}
   

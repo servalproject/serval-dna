@@ -203,9 +203,9 @@ int asprintable(int c)
   return c;
 }
 
-int ob_dump(overlay_buffer *b)
+int ob_dump(overlay_buffer *b,char *desc)
 {
-  fprintf(stderr,"Dumping overlay_buffer at %p : length=%d\n",b,b->length);
+  fprintf(stderr,"Dumping overlay_buffer '%s' at %p : length=%d\n",desc,b,b->length);
   int i,j;
 
   for(i=0;i<b->length;i+=16)

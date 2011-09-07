@@ -248,6 +248,11 @@ int overlay_abbreviate_address(unsigned char *in,unsigned char *out,int *ofs)
   if (!in) return WHY("in==NULL");
   if (in[0]<0x10) return WHY("Invalid address - 0x00-0x0f are reserved prefixes.");
 
+  /* Try repeating previous address */
+  for(i=0;i<SID_SIZE;i++) if (in[i]!=overlay_abbreviate_previous_address.b[i]) break;
+  if (i==SID_SIZE) { out[(*ofs)++]=OA_CODE_PREVIOUS; return 0; } else
+    WHY("this address does not match previous sender");
+
   if (!abbrs) {
     // Abbreviation table not setup, so allocate it.
     // Epoch starts at zero. 
@@ -269,9 +274,12 @@ int overlay_abbreviate_address(unsigned char *in,unsigned char *out,int *ofs)
      XXX If we do, we need a way to indicate a reference to an old epoch */
   for(i=0;i<2;i++)
     if (abbrs->byfirstbyte[in[0]][i])
-      { if (!overlay_abbreviate_try_byindex(in,out,ofs,abbrs->byfirstbyte[in[0]][i])) 
-	  return 0; }
+      { 
+	if (0) { if (!overlay_abbreviate_try_byindex(in,out,ofs,abbrs->byfirstbyte[in[0]][i])) 
+	    return 0; } else WHY("Abbreviation by index temporarily disabled to simplify development");
+      }
     else break;
+
   if (i<2&&abbrs->next_free) {
     // There is a spare slot to abbreviate this address by storing it in an index if we 
     // wish. So let's store it, then send the full address along with the newly allocated
@@ -282,7 +290,7 @@ int overlay_abbreviate_address(unsigned char *in,unsigned char *out,int *ofs)
     abbrs->byfirstbyte[in[0]][i]=abbrs->next_free;
 
     /* Write address out with index code */
-    out[(*ofs)++]=0x08;
+    out[(*ofs)++]=OA_CODE_FULL_INDEX1;
     bcopy(in,&out[(*ofs)],SID_SIZE);
     (*ofs)+=SID_SIZE;
     out[(*ofs)++]=abbrs->next_free;
@@ -298,7 +306,7 @@ int overlay_abbreviate_address(unsigned char *in,unsigned char *out,int *ofs)
      right as an simple initial policy. */
   if (wasInCachedP) {
     /* Prefix addresses that have been seen recently */
-    out[(*ofs)++]=0x06;
+    out[(*ofs)++]=OA_CODE_PREFIX7;
     bcopy(in,&out[(*ofs)],7);
     (*ofs)+=7;
     return 0;
@@ -330,6 +338,7 @@ int overlay_abbreviate_expand_address(int interface,unsigned char *in,int *inofs
 				      out,ofs,OVERLAY_SENDER_PREFIX_LENGTH,0);
       (*inofs)++;
       overlay_abbreviate_set_most_recent_address(&out[*ofs]);
+      (*inofs)++;
       return r;
     case OA_CODE_PREVIOUS: /* Same as last address */
       (*inofs)++;
@@ -438,7 +447,6 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
   for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",cache->sids[index].b[i]);
   fprintf(stderr,"\n");
 
-  fprintf(stderr,"Copying cache entry to %p[%d]\n",out,*ofs);
   bcopy(&cache->sids[index].b[0],&out[(*ofs)],SID_SIZE);
   (*ofs)+=SID_SIZE;
   if (index_bytes) {
