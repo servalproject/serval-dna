@@ -250,8 +250,7 @@ int overlay_abbreviate_address(unsigned char *in,unsigned char *out,int *ofs)
 
   /* Try repeating previous address */
   for(i=0;i<SID_SIZE;i++) if (in[i]!=overlay_abbreviate_previous_address.b[i]) break;
-  if (i==SID_SIZE) { out[(*ofs)++]=OA_CODE_PREVIOUS; return 0; } else
-    WHY("this address does not match previous sender");
+  if (i==SID_SIZE) { out[(*ofs)++]=OA_CODE_PREVIOUS; return 0; } 
 
   if (!abbrs) {
     // Abbreviation table not setup, so allocate it.
@@ -322,7 +321,7 @@ int overlay_abbreviate_address(unsigned char *in,unsigned char *out,int *ofs)
 int overlay_abbreviate_expand_address(int interface,unsigned char *in,int *inofs,unsigned char *out,int *ofs)
 {
   int bytes=0,r;
-  fprintf(stderr,"Address first byte/abbreviation code=%02x (input offset=%d)\n",in[*inofs],*inofs);
+  if (debug>3) fprintf(stderr,"Address first byte/abbreviation code=%02x (input offset=%d)\n",in[*inofs],*inofs);
   switch(in[*inofs])
     {
     case OA_CODE_00: case OA_CODE_02: case OA_CODE_04: case OA_CODE_0C:
@@ -426,9 +425,11 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
   int index=((in[0]<<16)|(in[0]<<8)|in[2])>>cache->shift;
 
   int i;
-  fprintf(stderr,"Looking in cache slot #%d for: ",index);
-  for(i=0;i<prefix_bytes;i++) fprintf(stderr,"%02x",in[i]);
-  fprintf(stderr,"*\n");
+  if (debug>3) {
+    fprintf(stderr,"Looking in cache slot #%d for: ",index);
+    for(i=0;i<prefix_bytes;i++) fprintf(stderr,"%02x",in[i]);
+    fprintf(stderr,"*\n");
+  }
 
   /* So is it there? */
   if (memcmp(in,&cache->sids[index].b[0],prefix_bytes))
@@ -442,10 +443,12 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
      colliding prefixes and ask the sender to resolve them for us, or better yet dynamically
      size the prefix length based on whether any given short prefix has collided */
 
-  /* It is here, so let's return it */
-  fprintf(stderr,"I think I looked up the following: ");
-  for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",cache->sids[index].b[i]);
-  fprintf(stderr,"\n");
+  if (debug>3) { 
+    /* It is here, so let's return it */
+    fprintf(stderr,"I think I looked up the following: ");
+    for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",cache->sids[index].b[i]);
+    fprintf(stderr,"\n");
+  }
 
   bcopy(&cache->sids[index].b[0],&out[(*ofs)],SID_SIZE);
   (*ofs)+=SID_SIZE;

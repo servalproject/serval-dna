@@ -179,6 +179,8 @@ int createHlr(char *did,char *sid) {
 
   /* Generate random SID */
   for(i=0;i<64;i++) sid[i]=hexdigit[random()&0xf]; sid[64]=0;
+  /* But make sure first digit is non-zero as required by the overlay mesh */
+  while(sid[0]=='0') sid[i]=hexdigit[random()&0xf];
   if (debug>1) fprintf(stderr,"Creating new HLR entry with sid %s\n",sid);
   
   /* Find first free byte of HLR */

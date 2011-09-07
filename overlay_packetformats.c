@@ -89,8 +89,8 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *t
       f.type=packet[ofs]&OF_TYPE_BITS;
       f.modifiers=packet[ofs]&OF_MODIFIER_BITS;
 
-      fprintf(stderr,"f.type=0x%02x, f.modifiers=0x%02x, ofs=%d\n",
-	      f.type,f.modifiers,ofs);
+      if (debug>3) fprintf(stderr,"f.type=0x%02x, f.modifiers=0x%02x, ofs=%d\n",
+			   f.type,f.modifiers,ofs);
 
       switch(packet[ofs]&OF_TYPE_BITS)
 	{
@@ -128,7 +128,7 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *t
 
       /* Decode length of remainder of frame */
       f.rfs=rfs_decode(packet,&ofs);
-      fprintf(stderr,"f.rfs=%d, ofs=%d\n",f.rfs,ofs);
+      if (debug>3) fprintf(stderr,"f.rfs=%d, ofs=%d\n",f.rfs,ofs);
 
       if (!f.rfs) {
 	/* Zero length -- assume we fell off the end of the packet */
@@ -149,8 +149,8 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *t
       if (f.bytecount<0) {
 	f.bytecount=0;
 	WHY("negative residual byte count after extracting addresses from frame header");
-	fprintf(stderr,"f.rfs=%d, offset=%d, ofs=%d\n",
-		f.rfs,offset,ofs);
+	if (debug>3) fprintf(stderr,"f.rfs=%d, offset=%d, ofs=%d\n",
+			     f.rfs,offset,ofs);
 	exit(1);
       }
 
@@ -276,8 +276,6 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
   /* A byte that indicates which interface we are sending over */
   if (ob_append_byte(b,interface))
     return WHY("ob_append_int() could not add interface number to self-announcement");
-
-  ob_dump(b,"self announcement");
 
   return 0;
 }
