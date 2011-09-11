@@ -729,23 +729,26 @@ typedef struct overlay_neighbour_observation {
 
 #define OVERLAY_SENDER_PREFIX_LENGTH 12
 typedef struct overlay_node_observation {
-  int valid;
-  
-  unsigned int score;
-  unsigned int gateways_en_route;
+  unsigned char valid;
+  unsigned char score;
+  unsigned char gateways_en_route;
+  unsigned char interface;
   long long rx_time;
   unsigned char sender_prefix[OVERLAY_SENDER_PREFIX_LENGTH];
 } overlay_node_observation;
 
 /* Keep track of last 32 observations of a node.
    Hopefully this is enough, if not, we will increase.
-   To keep the requirement down we will collate contigious observations on each interface. */
+   To keep the requirement down we will collate contigious neighbour observations on each interface.
+   For node observations we can just replace old observations with new ones. 
+*/
 #define OVERLAY_MAX_OBSERVATIONS 32
 
 typedef struct overlay_node {
   unsigned char sid[SID_SIZE];
   int neighbour_id; /* 0=not a neighbour */
   long long last_observation_time_ms;
+  unsigned int last_first_hand_observation_time_sec;
   int most_recent_observation_id;
   overlay_node_observation observations[OVERLAY_MAX_OBSERVATIONS];
 } overlay_node;
@@ -790,3 +793,4 @@ int overlay_abbreviate_lookup_sender_id();
 int ob_dump(overlay_buffer *b,char *desc);
 unsigned int ob_get_int(overlay_buffer *b,int offset);
 char *overlay_render_sid(unsigned char *sid);
+int overlay_route_record_link(long long now,unsigned char *to,unsigned char *via,unsigned int timestamp,int score,int interface,int gateways_en_route);

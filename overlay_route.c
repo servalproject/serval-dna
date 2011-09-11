@@ -483,7 +483,11 @@ int overlay_route_ack_selfannounce(overlay_frame *f,overlay_neighbour *n)
       best_obs_time=n->observations[i].time_ms;
     }
   }
-  ob_append_int(out->payload,n->observations[best_obs_id].s2);
+  /* Observation time is presented in seconds to save space in transit.
+     This is used to base score decay on when the last ACTUAL FIRST-HAND was made,
+     rather than when someone heard that someone else heard from the nodes third
+     cousin's step-uncle's room-mate-in-law, twice removed. */
+  ob_append_int(out->payload,n->observations[best_obs_id].s2/1000);
 
   /* The ack needs to contain the per-interface scores that we have built up
      for this neighbour.
@@ -522,9 +526,6 @@ int overlay_route_ack_selfannounce(overlay_frame *f,overlay_neighbour *n)
   /* XXX Remove any stale versions (or should we just freshen, and forget making
      a new one, since it would be more efficient). */
 
-  /* XXX Temporary to stop memory leaks while writing the rest of this function */
-
-  WHY("incomplete");
   return 0;
 }
 
@@ -781,7 +782,7 @@ char *overlay_render_sid(unsigned char *sid)
    has a score for the link to their neighbour, which is measuring the correct
    direction of the link. 
 
-   Frames consist of 32bit timestamp in milliseconds followed by zero or more entries
+   Frames consist of 32bit timestamp in seconds followed by zero or more entries
    of the format:
    
    8bits - link score
@@ -798,7 +799,6 @@ char *overlay_render_sid(unsigned char *sid)
 int overlay_route_saw_selfannounce_ack(int interface,overlay_frame *f,long long now)
 {
   if (!overlay_neighbours) return 0;
-  ob_dump(f->payload,"selfannounce_ack");
 
   int i;
   int iface;
@@ -814,10 +814,63 @@ int overlay_route_saw_selfannounce_ack(int interface,overlay_frame *f,long long 
     iface=f->payload->bytes[i++];
 
     // Call something like the following for each link
-    fprintf(stderr,"route_record_link(0x%llx,%s,%s,0x%08x,%d,%d)\n",
-	    now,overlay_render_sid(f->source),overlay_render_sid(f->source),timestamp,score,interface);
-    // overlay_route_record_link(now,f->source,f->source,timestamp,score,interface);
+    overlay_route_record_link(now,f->source,f->source,timestamp,score,interface,0 /* no gateways in between */);
   }
 
   return 0;
+}
+
+int overlay_route_record_link(long long now,unsigned char *to,unsigned char *via,unsigned int timestamp,int score,int interface,int gateways_en_route)
+{
+  fprintf(stderr,"route_record_link(0x%llx,%s,",
+	  now,overlay_render_sid(to));
+  fprintf(stderr,"%s,0x%08x,%d,%d)\n",
+	  overlay_render_sid(via),timestamp,score,interface);
+  
+  overlay_node *n=overlay_route_find_node(to,1 /* create node if missing */);
+  if (!n) return WHY("Could not find or create entry for node");
+  
+  int i,slot=-1;
+  for(i=0;i<OVERLAY_MAX_OBSERVATIONS;i++)
+    {
+      /* Take note of where we can find space for a fresh observation */
+      if ((slot==-1)&&(!n->observations[i].valid)) slot=i;
+      
+      /* If the intermediate hosts ("via"s) and interface numbers match, then overwrite old observation with new one */
+      if (n->observations[i].interface==interface&&
+	  (!memcmp(via,n->observations[i].sender_prefix,OVERLAY_SENDER_PREFIX_LENGTH)))
+	{
+	  /* Bingo - update this one */
+	  slot=i;
+	  break;
+	}
+    }
+  /* If in doubt, replace a random slot.
+     XXX - we should probably replace the lowest scoring slot instead,
+     but random will work well enough for now. */
+  if (slot==-1) slot=random()%OVERLAY_MAX_OBSERVATIONS;
+
+  n->observations[slot].valid=0;
+  n->observations[slot].score=score;
+  n->observations[slot].gateways_en_route=gateways_en_route;
+  n->observations[slot].rx_time=now;
+  bcopy(via,n->observations[slot].sender_prefix,OVERLAY_SENDER_PREFIX_LENGTH);
+  n->observations[slot].valid=1;
+  
+  /* Remember that we have seen an observation for this node.
+     XXX - This should actually be set to the time that the last first-hand
+     observation of the node was made, so that stale information doesn't build
+     false belief of reachability.
+     This is why the timestamp field is supplied, which is just copied from the
+     original selfannouncement ack.  We just have to register it against our
+     local time to interpret it (XXX which comes with some risks related to
+     clock-skew, but we will deal with those in due course).
+  */
+  n->last_observation_time_ms=now;
+  if (timestamp>n->last_first_hand_observation_time_sec)
+    n->last_first_hand_observation_time_sec=timestamp;
+
+  WHY("Need to update best known route"); 
+  
+  return WHY("Not complete");
 }

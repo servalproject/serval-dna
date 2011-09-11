@@ -341,7 +341,6 @@ int overlay_abbreviate_expand_address(int interface,unsigned char *in,int *inofs
       return r;
     case OA_CODE_PREVIOUS: /* Same as last address */
       (*inofs)++;
-      fprintf(stderr,"copying %s to offset %d\n",overlay_render_sid(&overlay_abbreviate_previous_address.b[0]),*ofs);
       bcopy(&overlay_abbreviate_previous_address.b[0],&out[*ofs],SID_SIZE);
       overlay_abbreviate_set_most_recent_address(&out[*ofs]);
       (*ofs)+=SID_SIZE;
@@ -478,7 +477,5 @@ int overlay_abbreviate_set_most_recent_address(unsigned char *in)
   bcopy(in,&overlay_abbreviate_previous_address.b[0],SID_SIZE);
   if (debug>3) fprintf(stderr,"Most recent address=%s\n",
 		       overlay_render_sid(in));
-  if (!in[0])
-    exit(0);
   return 0;
 }
