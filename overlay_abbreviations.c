@@ -341,21 +341,22 @@ int overlay_abbreviate_expand_address(int interface,unsigned char *in,int *inofs
       return r;
     case OA_CODE_PREVIOUS: /* Same as last address */
       (*inofs)++;
+      fprintf(stderr,"copying %s to offset %d\n",overlay_render_sid(&overlay_abbreviate_previous_address.b[0]),*ofs);
       bcopy(&overlay_abbreviate_previous_address.b[0],&out[*ofs],SID_SIZE);
-      (*ofs)+=SID_SIZE;
       overlay_abbreviate_set_most_recent_address(&out[*ofs]);
+      (*ofs)+=SID_SIZE;
       return OA_RESOLVED;
     case OA_CODE_PREFIX3: case OA_CODE_PREFIX3_INDEX1: /* 3-byte prefix */
       if (in[*inofs]==0x09) bytes=1;
       r=overlay_abbreviate_cache_lookup(&in[(*inofs)+1],out,ofs,3,bytes);
       (*inofs)+=1+3+bytes;
-      overlay_abbreviate_set_most_recent_address(&out[*ofs]);
+      overlay_abbreviate_set_most_recent_address(&out[(*ofs)-SID_SIZE]);
       return r;
     case OA_CODE_PREFIX7: case OA_CODE_PREFIX7_INDEX1: /* 7-byte prefix */
       if (in[*inofs]==OA_CODE_PREFIX7_INDEX1) bytes=1;
       r=overlay_abbreviate_cache_lookup(&in[(*inofs)+1],out,ofs,7,bytes);
       (*inofs)+=1+7+bytes;
-      overlay_abbreviate_set_most_recent_address(&out[*ofs]);
+      overlay_abbreviate_set_most_recent_address(&out[(*ofs)-SID_SIZE]);
       return r;
     case OA_CODE_PREFIX11: case OA_CODE_PREFIX11_INDEX1: case OA_CODE_PREFIX11_INDEX2: /* 11-byte prefix */
       bytes=0;
@@ -363,7 +364,7 @@ int overlay_abbreviate_expand_address(int interface,unsigned char *in,int *inofs
       if (in[*inofs]==OA_CODE_PREFIX11_INDEX2) bytes=2;
       r=overlay_abbreviate_cache_lookup(&in[(*inofs)+1],out,ofs,11,bytes);
       (*inofs)+=1+11+bytes;
-      overlay_abbreviate_set_most_recent_address(&out[*ofs]);
+      overlay_abbreviate_set_most_recent_address(&out[(*ofs)-SID_SIZE]);
       return r;
     case OA_CODE_BROADCAST: /* broadcast */
       memset(&out[*ofs],0xff,SID_SIZE);
@@ -475,5 +476,9 @@ int overlay_abbreviate_set_current_sender(unsigned char *in)
 int overlay_abbreviate_set_most_recent_address(unsigned char *in)
 {
   bcopy(in,&overlay_abbreviate_previous_address.b[0],SID_SIZE);
+  if (debug>3) fprintf(stderr,"Most recent address=%s\n",
+		       overlay_render_sid(in));
+  if (!in[0])
+    exit(0);
   return 0;
 }

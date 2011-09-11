@@ -788,3 +788,5 @@ int overlay_payload_enqueue(int q,overlay_frame *p);
 long long overlay_time_in_ms();
 int overlay_abbreviate_lookup_sender_id();
 int ob_dump(overlay_buffer *b,char *desc);
+unsigned int ob_get_int(overlay_buffer *b,int offset);
+char *overlay_render_sid(unsigned char *sid);

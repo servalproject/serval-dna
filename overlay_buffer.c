@@ -108,6 +108,21 @@ int ob_append_int(overlay_buffer *b,unsigned int v)
   return ob_append_bytes(b,(unsigned char *)&s,sizeof(unsigned int));
 }
 
+unsigned int ob_get_int(overlay_buffer *b,int offset)
+{
+  if (!b) return WHY("b is NULL");
+  if (offset<0) return WHY("passed illegal offset (<0)");
+  if ((offset+sizeof(unsigned int))>b->length) return WHY("passed offset too large");
+
+  // Some platforms require alignment
+  if (((int)&b->bytes[offset])&3) {
+    unsigned char bb[4];
+    bcopy(&b->bytes[offset],&bb[0],4);
+    return ntohl(*(unsigned int *)&bb[0]);
+  } else
+    return ntohl(*((unsigned int *)&b->bytes[offset]));
+}
+
 int ob_append_rfs(overlay_buffer *b,int l)
 {
   /* Encode the specified length and append it to the buffer */

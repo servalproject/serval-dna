@@ -764,8 +764,60 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
   
 }
 
+char ors_out[SID_SIZE*2+1];
+char *overlay_render_sid(unsigned char *sid)
+{
+  int zero=0;
+
+  extractSid(sid,&zero,ors_out);
+  ors_out[SID_SIZE*2]=0;
+  return ors_out;
+}
+
+/* 
+   Self-announcement acks bounce back to the self-announcer from immediate neighbours
+   who report the link score they have calculated based on listening to self-announces
+   from that peer.  By acking them these scores then get to the originator, who then
+   has a score for the link to their neighbour, which is measuring the correct
+   direction of the link. 
+
+   Frames consist of 32bit timestamp in milliseconds followed by zero or more entries
+   of the format:
+   
+   8bits - link score
+   8bits - interface number
+
+   this is followed by a 00 byte to indicate the end.
+
+   That way we don't waste lots of bytes on single-interface nodes.
+   (But I am sure we can do better).
+
+   These link scores should get stored in our node list as compared to our neighbour list,
+   with the node itself listed as the nexthop that the score is associated with.
+*/
 int overlay_route_saw_selfannounce_ack(int interface,overlay_frame *f,long long now)
 {
   if (!overlay_neighbours) return 0;
-  return WHY("Not implemented");  
+  ob_dump(f->payload,"selfannounce_ack");
+
+  int i;
+  int iface;
+  int score;
+  unsigned int timestamp;
+
+  timestamp=ob_get_int(f->payload,0);
+  i=4;
+
+  while(i<f->payload->length) {
+    score=f->payload->bytes[i++];
+    if (!score) break;
+    iface=f->payload->bytes[i++];
+
+    // Call something like the following for each link
+    fprintf(stderr,"route_record_link(0x%llx,%s,%s,0x%08x,%d,%d)\n",
+	    now,overlay_render_sid(f->source),overlay_render_sid(f->source),timestamp,score,interface);
+    // overlay_route_record_link(now,f->source,f->source,timestamp,score,interface);
+  }
+
+  return 0;
 }
