@@ -814,18 +814,19 @@ int overlay_route_saw_selfannounce_ack(int interface,overlay_frame *f,long long 
 
     // Call something like the following for each link
     if (f->source_address_status==OA_RESOLVED)
-      overlay_route_record_link(now,f->source,f->source,timestamp,score,interface,0 /* no gateways in between */);
+      overlay_route_record_link(now,f->source,f->source,timestamp,score,
+				0 /* no gateways in between */);
   }
 
   return 0;
 }
 
-int overlay_route_record_link(long long now,unsigned char *to,unsigned char *via,unsigned int timestamp,int score,int interface,int gateways_en_route)
+int overlay_route_record_link(long long now,unsigned char *to,unsigned char *via,unsigned int timestamp,int score,int gateways_en_route)
 {
-  fprintf(stderr,"route_record_link(0x%llx,%s,",
-	  now,overlay_render_sid(to));
-  fprintf(stderr,"%s,0x%08x,%d,%d)\n",
-	  overlay_render_sid(via),timestamp,score,interface);
+  fprintf(stderr,"route_record_link(0x%llx,%s*,",
+	  now,overlay_render_sid_prefix(to,7));
+  fprintf(stderr,"%s*,0x%08x,%d)\n",
+	  overlay_render_sid_prefix(via,7),timestamp,score);
   
   overlay_node *n=overlay_route_find_node(to,1 /* create node if missing */);
   if (!n) return WHY("Could not find or create entry for node");
