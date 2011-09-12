@@ -732,7 +732,7 @@ typedef struct overlay_node_observation {
   unsigned char observed_score; /* serves as validty check also */
   unsigned char corrected_score;
   unsigned char gateways_en_route;
-  unsigned char interface;
+  unsigned char RESERVED; /* for alignment */
   long long rx_time;
   unsigned char sender_prefix[OVERLAY_SENDER_PREFIX_LENGTH];
 } overlay_node_observation;

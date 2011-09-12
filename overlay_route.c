@@ -649,7 +649,9 @@ int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now)
   return 0;
 }
 
-int overlay_someoneelse_can_hear(unsigned char *hearer,unsigned char *who,unsigned int who_score,unsigned int who_gates,long long now)
+int overlay_someoneelse_can_hear(unsigned char *hearer,unsigned char *who,
+				 unsigned int who_score,unsigned int who_gates,
+				 unsigned char interface,long long now)
 {
   /* Lookup node in node cache */
   overlay_node *n=overlay_route_find_node(who,1 /* create if necessary */);
@@ -679,7 +681,19 @@ int overlay_someoneelse_can_hear(unsigned char *hearer,unsigned char *who,unsign
 
 int overlay_route_recalc_node_metrics(overlay_node *n,long long now)
 {
-  return WHY("Not implemented.");
+  int o;
+
+  for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++)
+    {
+      if (n->observations[o].observed_score)
+	{
+	  int discounted_score=n->observations[o].observed_score;
+	  discounted_score-=(now-n->observations[o].rx_time)/1000;
+	  if (discounted_score<0) discounted_score=0;
+	  n->observations[o].corrected_score=discounted_score;
+	}
+    }
+  return 0;
 }
 
 /* Recalculate node reachability metric, but only for directly connected nodes,
@@ -852,8 +866,7 @@ int overlay_route_record_link(long long now,unsigned char *to,unsigned char *via
       if ((slot==-1)&&(!n->observations[i].observed_score)) slot=i;
       
       /* If the intermediate hosts ("via"s) and interface numbers match, then overwrite old observation with new one */
-      if (n->observations[i].interface==interface&&
-	  (!memcmp(via,n->observations[i].sender_prefix,OVERLAY_SENDER_PREFIX_LENGTH)))
+      if (!memcmp(via,n->observations[i].sender_prefix,OVERLAY_SENDER_PREFIX_LENGTH))
 	{
 	  /* Bingo - update this one */
 	  slot=i;
@@ -924,9 +937,9 @@ int overlay_route_dump()
 	      {
 		overlay_node_observation *ob=&overlay_nodes[bin][slot].observations[o];
 		if (ob->corrected_score)
-		  fprintf(stderr," %d/%d via %s*:%d",
+		  fprintf(stderr," %d/%d via %s*",
 			  ob->corrected_score,ob->gateways_en_route,
-			  overlay_render_sid_prefix(ob->sender_prefix,7),ob->interface);			
+			  overlay_render_sid_prefix(ob->sender_prefix,7));			
 	      }
 	  }       
 	fprintf(stderr,"\n");
@@ -1037,17 +1050,6 @@ int overlay_route_tick_neighbour(int neighbour_id,long long now)
 */
 int overlay_route_tick_node(int bin,int slot,long long now)
 {
-  int o;
-
-  for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++)
-    {
-      if (overlay_nodes[bin][slot].observations[o].observed_score)
-	{
-	  int discounted_score=overlay_nodes[bin][slot].observations[o].observed_score;
-	  discounted_score-=(now-overlay_nodes[bin][slot].observations[o].rx_time)/1000;
-	  if (discounted_score<0) discounted_score=0;
-	  overlay_nodes[bin][slot].observations[o].corrected_score=discounted_score;
-	}
-    }
-  return 0;
+  return overlay_route_recalc_node_metrics(&overlay_nodes[bin][slot],now);
 }
+
