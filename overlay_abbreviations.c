@@ -324,12 +324,20 @@ int overlay_abbreviate_expand_address(int interface,unsigned char *in,int *inofs
   if (debug>3) fprintf(stderr,"Address first byte/abbreviation code=%02x (input offset=%d)\n",in[*inofs],*inofs);
   switch(in[*inofs])
     {
-    case OA_CODE_00: case OA_CODE_02: case OA_CODE_04: case OA_CODE_0C:
+    case OA_CODE_02: case OA_CODE_04: case OA_CODE_0C:
       /* Unsupported codes, so tell the sender 
 	 if the frame was addressed to us as next-hop */
       (*inofs)++;
       WHY("Reserved address abbreviation code");
       return OA_UNSUPPORTED;
+    case OA_CODE_SELF: /* address matches the sender who produced the 
+			selfannounce in this packet.  Naturally it cannot be 
+			used to encode the sender's address there ;) */
+      (*inofs)++;
+      bcopy(&overlay_abbreviate_current_sender.b[0],&out[*ofs],SID_SIZE);
+      overlay_abbreviate_set_most_recent_address(&out[*ofs]);
+      (*ofs)+=SID_SIZE;
+      return OA_RESOLVED;
     case OA_CODE_INDEX: /* single byte index look up */
       /* Lookup sender's neighbour ID */
       if (overlay_abbreviate_current_sender_id==-1) if (overlay_abbreviate_lookup_sender_id()) return WHY("could not lookup neighbour ID of packet sender");

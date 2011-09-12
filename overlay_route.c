@@ -646,6 +646,10 @@ int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now)
  
   if (!n) return WHY("overlay_route_get_neighbour_structure() failed");
 
+  /* Record current sender for reference by addresses in subsequent frames in the
+     ensemble */
+  overlay_abbreviate_set_current_sender(f->source);
+
   s1=ntohl(*((int*)&f->payload->bytes[0]));
   s2=ntohl(*((int*)&f->payload->bytes[4]));
   sender_interface=f->payload->bytes[8];

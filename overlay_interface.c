@@ -541,7 +541,7 @@ int overlay_tick_interface(int i, long long now)
      XXX we should also take account of the volume of data likely to be in the TX buffer. */  
   overlay_buffer *e=ob_new(overlay_interfaces[i].mtu);
   if (!e) return WHY("ob_new() failed");
-  ob_limitsize(e,overlay_interfaces[i].mtu);
+  ob_limitsize(e,overlay_interfaces[i].mtu/4);
 
   /* 0. Setup Serval Mesh frame header. We do not use an explicit length field for these, as the various
      component payloads are all self-authenticating, or at least that is the theory. */
@@ -557,13 +557,18 @@ int overlay_tick_interface(int i, long long now)
   /* 2. Add any queued high-priority isochronous data (i.e. voice) to the frame. */
   overlay_stuff_packet_from_queue(i,e,OQ_ISOCHRONOUS_VOICE,now,pax,&frame_pax,MAX_FRAME_PAX);
 
+  ob_limitsize(e,overlay_interfaces[i].mtu/2);
   /* 3. Add some mesh reachability reports (unlike BATMAN we announce reachability to peers progressively).
         Give priority to newly observed nodes so that good news travels quickly to help roaming.
 	XXX - Don't forget about PONGing reachability reports to allow use of monodirectional links.
   */
   overlay_stuff_packet_from_queue(i,e,OQ_MESH_MANAGEMENT,now,pax,&frame_pax,MAX_FRAME_PAX);
 
+  ob_limitsize(e,overlay_interfaces[i].mtu*3/4);
+
   overlay_route_add_advertisements(i,e);
+
+  ob_limitsize(e,overlay_interfaces[i].mtu);
 
   /* 4. XXX Add lower-priority queued data */
 

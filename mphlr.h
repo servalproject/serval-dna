@@ -629,7 +629,7 @@ extern int overlay_interface_count;
 			      1 byte channel/port indicator for each end */
 #define OF_TYPE_RHIZOME_ADVERT 0x50 /* Advertisment of file availability via Rhizome */
 #define OF_TYPE_PLEASEEXPLAIN 0x60 /* Request for resolution of an abbreviated address */
-#define OF_TYPE_RESERVED_07 0x70
+#define OF_TYPE_NODEANNOUNCE 0x70
 #define OF_TYPE_RESERVED_08 0x80
 #define OF_TYPE_RESERVED_09 0x90
 #define OF_TYPE_RESERVED_0a 0xa0
@@ -683,7 +683,7 @@ int overlay_abbreviate_set_most_recent_address(unsigned char *in);
 
 /* Codes used to describe abbreviated addresses.
    Values 0x10 - 0xff are the first byte of, and implicit indicators of addresses written in full */
-#define OA_CODE_00 0x00
+#define OA_CODE_SELF 0x00
 #define OA_CODE_INDEX 0x01
 #define OA_CODE_02 0x02
 #define OA_CODE_PREVIOUS 0x03
@@ -805,3 +805,10 @@ int overlay_route_tick();
 int overlay_route_tick_neighbour(int neighbour_id,long long now);
 int overlay_route_tick_node(int bin,int slot,long long now);
 int overlay_route_add_advertisements(int interface,overlay_buffer *e);
+int ovleray_route_please_advertise(overlay_node *n);
+int overlay_abbreviate_set_current_sender(unsigned char *in);
+
+extern int overlay_bin_count;
+extern int overlay_bin_size; /* associativity, i.e., entries per bin */
+extern int overlay_bin_bytes;
+extern overlay_node **overlay_nodes;
