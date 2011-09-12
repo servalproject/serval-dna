@@ -804,3 +804,4 @@ int overlay_route_dump();
 int overlay_route_tick();
 int overlay_route_tick_neighbour(int neighbour_id,long long now);
 int overlay_route_tick_node(int bin,int slot,long long now);
+int overlay_route_add_advertisements(int interface,overlay_buffer *e);

@@ -421,6 +421,9 @@ overlay_node *overlay_route_find_node(unsigned char *sid,int createP)
       }
     }
 
+  /* Ask for newly discovered node to be advertised */
+  overlay_route_please_advertise(&overlay_nodes[bin_number][slot]);
+
   bcopy(sid,overlay_nodes[bin_number][free_slot].sid,SID_SIZE);
   return &overlay_nodes[bin_number][free_slot];
 }
@@ -522,7 +525,7 @@ int overlay_route_ack_selfannounce(overlay_frame *f,overlay_neighbour *n)
   /* Terminate list */
   ob_append_byte(out->payload,0);
 
-  /* XXX Add to queue */
+  /* Add to queue */
   if (overlay_payload_enqueue(OQ_MESH_MANAGEMENT,out))
     {
       op_free(out);
@@ -677,6 +680,14 @@ int overlay_route_recalc_node_metrics(overlay_node *n,long long now)
 	}
     }
 
+  /* Think about scheduling this node's score for readvertising if its score
+     has changed a lot?
+     Really what we probably want is to advertise when the score goes up, since
+     if it goes down, we probably don't need to say anything at all.
+  */
+  int diff=best_score-n->best_link_score;
+  if (diff>0) overlay_route_please_advertise(n);
+  
   /* Remember new reachability information */
   n->best_link_score=best_score;
   n->best_observation=best_observation;
@@ -1042,3 +1053,13 @@ int overlay_route_tick_node(int bin,int slot,long long now)
   return overlay_route_recalc_node_metrics(&overlay_nodes[bin][slot],now);
 }
 
+/* Request that this node be advertised as a matter of priority */
+int overlay_route_please_advertise(overlay_node *n)
+{
+  return WHY("Not implemented");
+}
+
+int overlay_route_add_advertisements(int interface,overlay_buffer *e)
+{
+  return WHY("Not implemented");
+}

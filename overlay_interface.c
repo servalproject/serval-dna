@@ -563,6 +563,8 @@ int overlay_tick_interface(int i, long long now)
   */
   overlay_stuff_packet_from_queue(i,e,OQ_MESH_MANAGEMENT,now,pax,&frame_pax,MAX_FRAME_PAX);
 
+  overlay_route_add_advertisements(i,e);
+
   /* 4. XXX Add lower-priority queued data */
 
   /* 5. XXX Fill the packet up to a suitable size with anything that seems a good idea */
