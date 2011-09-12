@@ -787,8 +787,6 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
 
     n->scores[i]=score;
     if (debug>3&&score) fprintf(stderr,"Neighbour score on interface #%d = %d (observations for %dms)\n",i,score,ms_observed[i]);
-    if (score&&i) 
-      fprintf(stderr,"WHOOP!\n");
   }
   
   return 0;
