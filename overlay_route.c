@@ -412,7 +412,13 @@ overlay_node *overlay_route_find_node(unsigned char *sid,int createP)
       for(i=0;i<OVERLAY_MAX_OBSERVATIONS;i++)
 	overlay_nodes[bin_number][free_slot].observations[i].observed_score=0;
       overlay_nodes[bin_number][free_slot].neighbour_id=0;
-      overlay_nodes[bin_number][free_slot].most_recent_observation_id=0;      
+      overlay_nodes[bin_number][free_slot].most_recent_observation_id=0;
+      overlay_nodes[bin_number][free_slot].best_link_score=0;
+      overlay_nodes[bin_number][free_slot].best_observation=0;
+      for(i=0;i<OVERLAY_MAX_INTERFACES;i++) {
+	overlay_nodes[bin_number][free_slot].most_recent_advertisment[i]=0;
+	overlay_nodes[bin_number][free_slot].most_recent_advertised_score[i]=0;
+      }
     }
 
   bcopy(sid,overlay_nodes[bin_number][free_slot].sid,SID_SIZE);
@@ -649,10 +655,12 @@ int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now)
   return 0;
 }
 
-
+/* XXX Think about scheduling this node's score for readvertising? */
 int overlay_route_recalc_node_metrics(overlay_node *n,long long now)
 {
   int o;
+  int best_score=0;
+  int best_observation=-1;
 
   for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++)
     {
@@ -662,8 +670,17 @@ int overlay_route_recalc_node_metrics(overlay_node *n,long long now)
 	  discounted_score-=(now-n->observations[o].rx_time)/1000;
 	  if (discounted_score<0) discounted_score=0;
 	  n->observations[o].corrected_score=discounted_score;
+	  if (discounted_score>best_score)  {
+	    best_score=discounted_score;
+	    best_observation=o;
+	  }
 	}
     }
+
+  /* Remember new reachability information */
+  n->best_link_score=best_score;
+  n->best_observation=best_observation;
+
   return 0;
 }
 

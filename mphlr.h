@@ -747,9 +747,15 @@ typedef struct overlay_node_observation {
 typedef struct overlay_node {
   unsigned char sid[SID_SIZE];
   int neighbour_id; /* 0=not a neighbour */
-  long long last_observation_time_ms;
-  unsigned int last_first_hand_observation_time_sec;
   int most_recent_observation_id;
+  int best_link_score;
+  int best_observation;
+  unsigned int last_first_hand_observation_time_sec;
+  long long last_observation_time_ms;
+  /* When did we last advertise this node on each interface, and what score
+     did we advertise? */
+  long long most_recent_advertisment[OVERLAY_MAX_INTERFACES];
+  unsigned char most_recent_advertised_score[OVERLAY_MAX_INTERFACES];
   overlay_node_observation observations[OVERLAY_MAX_OBSERVATIONS];
 } overlay_node;
 
