@@ -911,11 +911,11 @@ int overlay_route_record_link(long long now,unsigned char *to,unsigned char *via
   if (timestamp>n->last_first_hand_observation_time_sec)
     n->last_first_hand_observation_time_sec=timestamp;
 
-  WHY("Need to update best known route"); 
+  overlay_route_recalc_node_metrics(n,now);
   
   overlay_route_dump();
 
-  return WHY("Not complete");
+  return 0;
 }
 
 int overlay_route_dump()
