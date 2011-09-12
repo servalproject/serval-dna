@@ -410,7 +410,7 @@ overlay_node *overlay_route_find_node(unsigned char *sid,int createP)
       /* Displace one of the others in the bin so we can go there */
       int i;
       for(i=0;i<OVERLAY_MAX_OBSERVATIONS;i++)
-	overlay_nodes[bin_number][free_slot].observations[i].valid=0;
+	overlay_nodes[bin_number][free_slot].observations[i].observed_score=0;
       overlay_nodes[bin_number][free_slot].neighbour_id=0;
       overlay_nodes[bin_number][free_slot].most_recent_observation_id=0;      
     }
@@ -619,9 +619,9 @@ int overlay_route_i_can_hear(unsigned char *who,int sender_interface,unsigned in
     neh->observations[obs_index].sender_interface=sender_interface;
     neh->observations[obs_index].receiver_interface=receiver_interface;
     neh->observations[obs_index].valid=1;
-    neh->most_recent_observation_id=obs_index;
-    neh->last_observation_time_ms=now;
   }
+  neh->most_recent_observation_id=obs_index;
+  neh->last_observation_time_ms=now;
 
   /* Update reachability metrics for node */
   if (overlay_route_recalc_neighbour_metrics(neh,now)) WHY("overlay_route_recalc_neighbour_metrics() failed");
@@ -661,13 +661,12 @@ int overlay_someoneelse_can_hear(unsigned char *hearer,unsigned char *who,unsign
   /* Replace oldest observation with this one */
   int obs_index=n->most_recent_observation_id+1;
   if (obs_index>=OVERLAY_MAX_OBSERVATIONS) obs_index=0;
-  n->observations[obs_index].valid=0;
+  n->observations[obs_index].observed_score=0;
   n->observations[obs_index].rx_time=now;
-  n->observations[obs_index].score=who_score;
   n->observations[obs_index].gateways_en_route=who_gates;
   bcopy(hearer,n->observations[obs_index].sender_prefix,
 	OVERLAY_SENDER_PREFIX_LENGTH);
-  n->observations[obs_index].valid=1;
+  n->observations[obs_index].observed_score=who_score;
   n->most_recent_observation_id=obs_index;
 
   n->last_observation_time_ms=now;
@@ -850,7 +849,7 @@ int overlay_route_record_link(long long now,unsigned char *to,unsigned char *via
   for(i=0;i<OVERLAY_MAX_OBSERVATIONS;i++)
     {
       /* Take note of where we can find space for a fresh observation */
-      if ((slot==-1)&&(!n->observations[i].valid)) slot=i;
+      if ((slot==-1)&&(!n->observations[i].observed_score)) slot=i;
       
       /* If the intermediate hosts ("via"s) and interface numbers match, then overwrite old observation with new one */
       if (n->observations[i].interface==interface&&
@@ -866,12 +865,11 @@ int overlay_route_record_link(long long now,unsigned char *to,unsigned char *via
      but random will work well enough for now. */
   if (slot==-1) slot=random()%OVERLAY_MAX_OBSERVATIONS;
 
-  n->observations[slot].valid=0;
-  n->observations[slot].score=score;
+  n->observations[slot].observed_score=0;
   n->observations[slot].gateways_en_route=gateways_en_route;
   n->observations[slot].rx_time=now;
   bcopy(via,n->observations[slot].sender_prefix,OVERLAY_SENDER_PREFIX_LENGTH);
-  n->observations[slot].valid=1;
+  n->observations[slot].observed_score=score;
   
   /* Remember that we have seen an observation for this node.
      XXX - This should actually be set to the time that the last first-hand
@@ -893,50 +891,42 @@ int overlay_route_record_link(long long now,unsigned char *to,unsigned char *via
   return WHY("Not complete");
 }
 
-/*
-  We cause scores to decay when stale.
-
-  Our crude initial mechanism is to discouny by one point per second of staleness.
-
-  XXX In the long-run, we probably need a more sophisticated scheme
-  so that we can quickly switch to fresh routes as they appear, rather than longering
-  away on an old route.
-
-  Perhaps a saner approach is to discount the score so that a stale route can never
-  have a score higher than a fresher route? 
-
-  Both of these require the appraisal of all observations of a given node, and so
-  we probably need to revamp the whole score discounting process to operate at the 
-  node level.
- */
-int overlay_route_discounted_score(overlay_node_observation *ob)
-{
-  long long now=overlay_gettime_ms();
-  int discounted_score=ob->score-(now-ob->rx_time)/1000;
-  if (discounted_score<0) discounted_score=0;
-  return discounted_score;
-}
-
 int overlay_route_dump()
 {
-  int bin,slot,o;
+  int bin,slot,o,n,i;
+  long long now=overlay_gettime_ms();
+
+  fprintf(stderr,"\nOverlay Neighbour Table\n------------------------\n");
+  for(n=0;n<overlay_neighbour_count;n++)
+    if (overlay_neighbours[n].node)
+      {
+	fprintf(stderr,"  %s* : %lldms ago :",
+		overlay_render_sid_prefix(overlay_neighbours[n].node->sid,7),
+		(now-overlay_neighbours[n].last_observation_time_ms));
+	for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
+	  if (overlay_neighbours[n].scores[i]) 
+	    fprintf(stderr," %d(via #%d)",
+		    overlay_neighbours[n].scores[i],i);
+	fprintf(stderr,"\n");
+      }
   
-  fprintf(stderr,"\nOverlay Mesh Route Table\n------------------------\n");
+  fprintf(stderr,"Overlay Mesh Route Table\n------------------------\n");
   
   for(bin=0;bin<overlay_bin_count;bin++)
     for(slot=0;slot<overlay_bin_size;slot++)
       {
 	if (!overlay_nodes[bin][slot].sid[0]) continue;
 	
-	fprintf(stderr,"%s* :",overlay_render_sid_prefix(overlay_nodes[bin][slot].sid,7));
+	fprintf(stderr,"  %s* :",overlay_render_sid_prefix(overlay_nodes[bin][slot].sid,7));
 	for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++)
 	  {
-	    if (overlay_nodes[bin][slot].observations[o].valid)
+	    if (overlay_nodes[bin][slot].observations[o].observed_score)
 	      {
 		overlay_node_observation *ob=&overlay_nodes[bin][slot].observations[o];
-		fprintf(stderr," %d/%d via %s*:%d",
-			overlay_route_discounted_score(ob),ob->gateways_en_route,
-			overlay_render_sid_prefix(ob->sender_prefix,7),ob->interface);			
+		if (ob->corrected_score)
+		  fprintf(stderr," %d/%d via %s*:%d",
+			  ob->corrected_score,ob->gateways_en_route,
+			  overlay_render_sid_prefix(ob->sender_prefix,7),ob->interface);			
 	      }
 	  }       
 	fprintf(stderr,"\n");
@@ -1024,6 +1014,9 @@ int overlay_route_tick()
   return interval;
 }
 
+/* Ticking neighbours is easy; we just pretend we have heard from them again,
+   and recalculate the score that way, which already includes a mechanism for
+   taking into account the age of the most recent observation */
 int overlay_route_tick_neighbour(int neighbour_id,long long now)
 {
   if (overlay_route_recalc_neighbour_metrics(&overlay_neighbours[neighbour_id],now)) 
@@ -1032,7 +1025,29 @@ int overlay_route_tick_neighbour(int neighbour_id,long long now)
   return 0;
 }
 
+/* Updating the route score to get to a node it trickier, as they might not be a
+   neighbour.  Even if they are a neighbour, all we have to go on is the node's
+   observations.
+   From these we can work out a discounted score based on their age.
+
+   XXX This is where the discounting should be modified for nodes that are 
+   updated less often as they exhibit score stability.  Actually, for the
+   most part we can tolerate these without any special action, as their high
+   scores will keep them reachable for longer anyway.
+*/
 int overlay_route_tick_node(int bin,int slot,long long now)
 {
+  int o;
+
+  for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++)
+    {
+      if (overlay_nodes[bin][slot].observations[o].observed_score)
+	{
+	  int discounted_score=overlay_nodes[bin][slot].observations[o].observed_score;
+	  discounted_score-=(now-overlay_nodes[bin][slot].observations[o].rx_time)/1000;
+	  if (discounted_score<0) discounted_score=0;
+	  overlay_nodes[bin][slot].observations[o].corrected_score=discounted_score;
+	}
+    }
   return 0;
 }

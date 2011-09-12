@@ -729,8 +729,8 @@ typedef struct overlay_neighbour_observation {
 
 #define OVERLAY_SENDER_PREFIX_LENGTH 12
 typedef struct overlay_node_observation {
-  unsigned char valid;
-  unsigned char score;
+  unsigned char observed_score; /* serves as validty check also */
+  unsigned char corrected_score;
   unsigned char gateways_en_route;
   unsigned char interface;
   long long rx_time;
