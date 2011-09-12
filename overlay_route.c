@@ -716,13 +716,15 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
       /* No need to do wrap-around calculation as the following is modulo 2^32 also */
       unsigned int interval=n->observations[i].s2-n->observations[i].s1;
       /* Support interface tick speeds down to 1 per hour (well and truly slow enough to do
-	 50KB/12 hours which is the minimum traffic rate on an expensive BGAN satellite link) */
+	 50KB/12 hours which is the minimum traffic charge rate on an expensive BGAN satellite link) */
       if (interval<3600000) {
-	fprintf(stderr,"adding %dms (interface %d '%s')\n",interval,n->observations[i].sender_interface,
-		overlay_interfaces[n->observations[i].sender_interface].name);
+	if (debug>3) fprintf(stderr,"adding %dms (interface %d '%s')\n",interval,n->observations[i].sender_interface,
+			     overlay_interfaces[n->observations[i].sender_interface].name);
 	/* sender_interface is unsigned, so a single-sided test is sufficient for bounds checking */
 	if (n->observations[i].sender_interface<OVERLAY_MAX_INTERFACES)
-	  ms_observed[n->observations[i].sender_interface]+=interval;
+	  /* But never add more than 200s for any single interval, as otherwise staleness might not
+	     cause immediate decay in link score */
+	  ms_observed[n->observations[i].sender_interface]+=(interval<200000)?interval:200000; 
 	else
 	  {
 	    WHY("Invalid interface ID in observation");
@@ -891,6 +893,30 @@ int overlay_route_record_link(long long now,unsigned char *to,unsigned char *via
   return WHY("Not complete");
 }
 
+/*
+  We cause scores to decay when stale.
+
+  Our crude initial mechanism is to discouny by one point per second of staleness.
+
+  XXX In the long-run, we probably need a more sophisticated scheme
+  so that we can quickly switch to fresh routes as they appear, rather than longering
+  away on an old route.
+
+  Perhaps a saner approach is to discount the score so that a stale route can never
+  have a score higher than a fresher route? 
+
+  Both of these require the appraisal of all observations of a given node, and so
+  we probably need to revamp the whole score discounting process to operate at the 
+  node level.
+ */
+int overlay_route_discounted_score(overlay_node_observation *ob)
+{
+  long long now=overlay_gettime_ms();
+  int discounted_score=ob->score-(now-ob->rx_time)/1000;
+  if (discounted_score<0) discounted_score=0;
+  return discounted_score;
+}
+
 int overlay_route_dump()
 {
   int bin,slot,o;
@@ -909,7 +935,7 @@ int overlay_route_dump()
 	      {
 		overlay_node_observation *ob=&overlay_nodes[bin][slot].observations[o];
 		fprintf(stderr," %d/%d via %s*:%d",
-			ob->score,ob->gateways_en_route,
+			overlay_route_discounted_score(ob),ob->gateways_en_route,
 			overlay_render_sid_prefix(ob->sender_prefix,7),ob->interface);			
 	      }
 	  }       
