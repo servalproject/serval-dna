@@ -943,3 +943,91 @@ int overlay_route_dump()
       }
   return 0;
 }
+
+int max(int a,int b)
+{
+  if (a>b) return a; else return b;
+}
+
+/*
+  We want to progressivelly update all routes as we go along, updating a few nodes
+  every call, so that no one call takes too long.  This is important since we don't
+  want to add any excessive delays that might upset delay-sensitive voice and video
+  traffic.
+*/
+int overlay_route_tick_next_neighbour_id=0;
+int overlay_route_tick_neighbour_bundle_size=1;
+int overlay_route_tick_next_node_bin_id=0;
+int overlay_route_tick_node_bundle_size=1;
+int overlay_route_tick()
+{
+  int n;
+
+  long long start_time=overlay_gettime_ms();
+
+  if (debug>3) 
+    fprintf(stderr,"Neighbours: %d@%d, Nodes: %d@%d\n",
+	    overlay_route_tick_neighbour_bundle_size,overlay_route_tick_next_neighbour_id,
+	    overlay_route_tick_node_bundle_size,overlay_route_tick_next_node_bin_id);
+
+  /* Go through some of neighbour list */
+  n=overlay_route_tick_neighbour_bundle_size;
+  if (n<1) n=1;
+  while(n--)
+    {
+      overlay_route_tick_neighbour(overlay_route_tick_next_neighbour_id++);
+      if (overlay_route_tick_next_neighbour_id>=overlay_max_neighbours) overlay_route_tick_next_neighbour_id=0;
+    }
+
+  /* Tweak neighbour bundle size to spread it out over the required time */
+  long long neighbour_time=overlay_gettime_ms()-start_time;
+  if (neighbour_time>2) overlay_route_tick_neighbour_bundle_size/=neighbour_time;
+  else if (neighbour_time==0) overlay_route_tick_neighbour_bundle_size*=2;
+  if (overlay_route_tick_neighbour_bundle_size<1) overlay_route_tick_neighbour_bundle_size=1;
+
+  /* Go through some of node list */
+  n=overlay_route_tick_node_bundle_size;
+  if (n<1) n=1;
+  while(n--)
+    {
+      int slot;
+      for(slot=0;slot<overlay_bin_size;slot++) overlay_route_tick_node(overlay_route_tick_next_node_bin_id,slot);
+      overlay_route_tick_next_node_bin_id++;
+      if (overlay_route_tick_next_node_bin_id>=overlay_bin_count) overlay_route_tick_next_node_bin_id=0;
+    }
+
+  /* Tweak neighbour bundle size to spread it out over the required time.
+     Allow 2ms here instead of 1ms, as neighbour processing may have taken the
+     bulk of the tick. */
+  long long node_time=overlay_gettime_ms()-neighbour_time-start_time;
+  if (node_time>2) overlay_route_tick_node_bundle_size/=node_time;
+  else if (node_time==0) overlay_route_tick_node_bundle_size*=2;
+  if (overlay_route_tick_node_bundle_size<1) overlay_route_tick_node_bundle_size=1;
+
+  /* Limit bundle sizes to sanity */
+  if (overlay_route_tick_neighbour_bundle_size>overlay_max_neighbours)
+    overlay_route_tick_neighbour_bundle_size=overlay_max_neighbours;
+  if (overlay_route_tick_node_bundle_size>overlay_bin_count)
+    overlay_route_tick_node_bundle_size=overlay_bin_count;
+
+  /* Work out how long to have between route ticks to make sure we update all route scores
+     every 5 seconds. */
+  int ticks=max(overlay_max_neighbours/overlay_route_tick_neighbour_bundle_size,
+		overlay_bin_count/overlay_route_tick_node_bundle_size);
+  if (ticks<1) ticks=1;
+  if (ticks>5000) ticks=5000;
+  int interval=5000/ticks;
+
+  if (debug>3) fprintf(stderr,"\nroute tick interval = %dms (%d ticks per 5sec, neigh=%lldms, node=%lldms)\n",interval,ticks,neighbour_time,node_time);
+  return interval;
+}
+
+int overlay_route_tick_neighbour(int neighbour_id)
+{
+  return 0;
+}
+
+int overlay_route_tick_node(int bin,int slot)
+{
+  return 0;
+}

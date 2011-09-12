@@ -101,6 +101,13 @@ int overlayServerMode()
 	else { filesPresent=1; if (ms>5) ms=5; }
       }
     
+    /* Progressively update link scores to neighbours etc, and find out how long before
+       we should next tick the route table.
+       Basically the faster the CPU and the sparser the route table, the less often we
+       will need to tick in order to keep each tick nice and fast. */
+    int route_tick_interval=overlay_route_tick();
+    if (ms>route_tick_interval) ms=route_tick_interval;
+
     waittime.tv_usec=(ms%1000)*1000;
     waittime.tv_sec=ms/1000;
 
