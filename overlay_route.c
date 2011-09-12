@@ -775,6 +775,19 @@ char *overlay_render_sid(unsigned char *sid)
   return ors_out;
 }
 
+char *overlay_render_sid_prefix(unsigned char *sid,int l)
+{
+  int zero=0;
+
+  if (l<0) l=0;
+  if (l>(SID_SIZE*2)) l=SID_SIZE*2;
+
+  extractSid(sid,&zero,ors_out);
+  ors_out[l]=0;
+  return ors_out;
+}
+
+
 /* 
    Self-announcement acks bounce back to the self-announcer from immediate neighbours
    who report the link score they have calculated based on listening to self-announces
@@ -814,7 +827,8 @@ int overlay_route_saw_selfannounce_ack(int interface,overlay_frame *f,long long 
     iface=f->payload->bytes[i++];
 
     // Call something like the following for each link
-    overlay_route_record_link(now,f->source,f->source,timestamp,score,interface,0 /* no gateways in between */);
+    if (f->source_address_status==OA_RESOLVED)
+      overlay_route_record_link(now,f->source,f->source,timestamp,score,interface,0 /* no gateways in between */);
   }
 
   return 0;
@@ -872,5 +886,34 @@ int overlay_route_record_link(long long now,unsigned char *to,unsigned char *via
 
   WHY("Need to update best known route"); 
   
+  overlay_route_dump();
+
   return WHY("Not complete");
+}
+
+int overlay_route_dump()
+{
+  int bin,slot,o;
+  
+  fprintf(stderr,"\nOverlay Mesh Route Table\n------------------------\n");
+  
+  for(bin=0;bin<overlay_bin_count;bin++)
+    for(slot=0;slot<overlay_bin_size;slot++)
+      {
+	if (!overlay_nodes[bin][slot].sid[0]) continue;
+	
+	fprintf(stderr,"%s* :",overlay_render_sid_prefix(overlay_nodes[bin][slot].sid,7));
+	for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++)
+	  {
+	    if (overlay_nodes[bin][slot].observations[o].valid)
+	      {
+		overlay_node_observation *ob=&overlay_nodes[bin][slot].observations[o];
+		fprintf(stderr," %d/%d via %s*:%d",
+			ob->score,ob->gateways_en_route,
+			overlay_render_sid_prefix(ob->sender_prefix,7),ob->interface);			
+	      }
+	  }       
+	fprintf(stderr,"\n");
+      }
+  return 0;
 }

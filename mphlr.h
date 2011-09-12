@@ -794,3 +794,4 @@ int ob_dump(overlay_buffer *b,char *desc);
 unsigned int ob_get_int(overlay_buffer *b,int offset);
 char *overlay_render_sid(unsigned char *sid);
 int overlay_route_record_link(long long now,unsigned char *to,unsigned char *via,unsigned int timestamp,int score,int interface,int gateways_en_route);
+int overlay_route_dump();

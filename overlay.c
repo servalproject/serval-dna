@@ -133,6 +133,8 @@ int overlay_frame_process(int interface,overlay_frame *f)
 
   long long now=overlay_gettime_ms();
 
+  if (debug>1) fprintf(stderr,">>> Received frame\n");
+
   /* First order of business is whether the nexthop address has been resolved.
      If not, we need to think about asking for it to be resolved.
      The trouble is that we do not want to trigger a Hanson Event (a storm of
@@ -198,9 +200,11 @@ int overlay_frame_process(int interface,overlay_frame *f)
       if (i==SID_SIZE) ultimatelyForMe=1;
     }
   }
-  
-  fprintf(stderr,"This frame does%s have me listed as next hop.\n",forMe?"":" not");
-  fprintf(stderr,"This frame is%s for me.\n",ultimatelyForMe?"":" not");
+
+  if (debug>3) {
+    fprintf(stderr,"This frame does%s have me listed as next hop.\n",forMe?"":" not");
+    fprintf(stderr,"This frame is%s for me.\n",ultimatelyForMe?"":" not");
+  }
 
   /* Not for us? Then just ignore it */
   if (!forMe) return 0;

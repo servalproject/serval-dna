@@ -485,8 +485,7 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,
       
       /* XXX Uses hardcoded freshness threshold, when it should get it from the queue */
       if (now>((*p)->enqueued_at+overlay_tx[q].latencyTarget)) {
-	/* Stale, so remove from queue.
-	   (NOT the cause of the 20110905 segfault) */
+	/* Stale, so remove from queue. */
 
 	/* Get pointer to stale entry */
 	overlay_frame *stale=*p;
@@ -587,9 +586,11 @@ int overlay_tick_interface(int i, long long now)
 	      while ((*p)&&(*p!=pax[j])) p=&(*p)->next;
 	      /* Now get rid of this frame once we have found it */
 	      if (*p) {
+		fprintf(stderr,"** dequeueing pax @ %p\n",*p);
 		*p=pax[j]->next;
 		if (pax[j]->next) pax[j]->next->prev=pax[j]->prev;
 		if (op_free(pax[j])) WHY("op_free() failed");
+		overlay_tx[q].length--;
 	      }
 	    }
 	}
