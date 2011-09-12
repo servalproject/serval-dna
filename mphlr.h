@@ -796,5 +796,5 @@ char *overlay_render_sid(unsigned char *sid);
 int overlay_route_record_link(long long now,unsigned char *to,unsigned char *via,unsigned int timestamp,int score,int interface,int gateways_en_route);
 int overlay_route_dump();
 int overlay_route_tick();
-int overlay_route_tick_neighbour(int neighbour_id);
-int overlay_route_tick_node(int bin,int slot);
+int overlay_route_tick_neighbour(int neighbour_id,long long now);
+int overlay_route_tick_node(int bin,int slot,long long now);

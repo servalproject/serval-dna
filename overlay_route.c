@@ -293,7 +293,7 @@ int overlay_route_init(int mb_ram)
   overlay_max_neighbours=1024*mb_ram;
   overlay_bin_count=bin_count;
   overlay_bin_size=associativity;
-  fprintf(stderr,"Node and neighbour tables allocated.\n");
+  fprintf(stderr,"Node (%dbins) and neighbour tables allocated.\n",bin_count);
 
   /* Work out number of bytes required to represent the bin number.
      Used for calculation of sid hash */
@@ -758,7 +758,7 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
     if (score<0) score=0;
 
     n->scores[i]=score;
-    if (debug>2&&score) fprintf(stderr,"Neighbour score on interface #%d = %d (observations for %dms)\n",i,score,ms_observed[i]);
+    if (debug>3&&score) fprintf(stderr,"Neighbour score on interface #%d = %d (observations for %dms)\n",i,score,ms_observed[i]);
     if (score&&i) 
       fprintf(stderr,"WHOOP!\n");
   }
@@ -975,8 +975,8 @@ int overlay_route_tick()
   if (n<1) n=1;
   while(n--)
     {
-      overlay_route_tick_neighbour(overlay_route_tick_next_neighbour_id++);
-      if (overlay_route_tick_next_neighbour_id>=overlay_max_neighbours) overlay_route_tick_next_neighbour_id=0;
+      overlay_route_tick_neighbour(overlay_route_tick_next_neighbour_id++,start_time);
+      if (overlay_route_tick_next_neighbour_id>=overlay_neighbour_count) overlay_route_tick_next_neighbour_id=0;
     }
 
   /* Tweak neighbour bundle size to spread it out over the required time */
@@ -991,7 +991,8 @@ int overlay_route_tick()
   while(n--)
     {
       int slot;
-      for(slot=0;slot<overlay_bin_size;slot++) overlay_route_tick_node(overlay_route_tick_next_node_bin_id,slot);
+      for(slot=0;slot<overlay_bin_size;slot++) 
+	overlay_route_tick_node(overlay_route_tick_next_node_bin_id,slot,start_time);
       overlay_route_tick_next_node_bin_id++;
       if (overlay_route_tick_next_node_bin_id>=overlay_bin_count) overlay_route_tick_next_node_bin_id=0;
     }
@@ -1005,29 +1006,33 @@ int overlay_route_tick()
   if (overlay_route_tick_node_bundle_size<1) overlay_route_tick_node_bundle_size=1;
 
   /* Limit bundle sizes to sanity */
-  if (overlay_route_tick_neighbour_bundle_size>overlay_max_neighbours)
-    overlay_route_tick_neighbour_bundle_size=overlay_max_neighbours;
+  if (overlay_route_tick_neighbour_bundle_size>overlay_neighbour_count
+      &&overlay_neighbour_count)
+    overlay_route_tick_neighbour_bundle_size=overlay_neighbour_count;
   if (overlay_route_tick_node_bundle_size>overlay_bin_count)
     overlay_route_tick_node_bundle_size=overlay_bin_count;
 
   /* Work out how long to have between route ticks to make sure we update all route scores
      every 5 seconds. */
-  int ticks=max(overlay_max_neighbours/overlay_route_tick_neighbour_bundle_size,
+  int ticks=max(overlay_neighbour_count/overlay_route_tick_neighbour_bundle_size,
 		overlay_bin_count/overlay_route_tick_node_bundle_size);
   if (ticks<1) ticks=1;
   if (ticks>5000) ticks=5000;
   int interval=5000/ticks;
 
-  if (debug>3) fprintf(stderr,"\nroute tick interval = %dms (%d ticks per 5sec, neigh=%lldms, node=%lldms)\n",interval,ticks,neighbour_time,node_time);
+  if (debug>3) fprintf(stderr,"route tick interval = %dms (%d ticks per 5sec, neigh=%lldms, node=%lldms)\n",interval,ticks,neighbour_time,node_time);
   return interval;
 }
 
-int overlay_route_tick_neighbour(int neighbour_id)
+int overlay_route_tick_neighbour(int neighbour_id,long long now)
 {
+  if (overlay_route_recalc_neighbour_metrics(&overlay_neighbours[neighbour_id],now)) 
+    WHY("overlay_route_recalc_neighbour_metrics() failed");
+  
   return 0;
 }
 
-int overlay_route_tick_node(int bin,int slot)
+int overlay_route_tick_node(int bin,int slot,long long now)
 {
   return 0;
 }
