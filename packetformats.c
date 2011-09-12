@@ -68,10 +68,12 @@ int packetOk(int interface,unsigned char *packet,int len,unsigned char *transact
   if (packet[0]==0x4F&&packet[1]==0x10) 
     {
       if (interface>-1)
-	return packetOkOverlay(interface,packet,len,transaction_id,recvaddr,recvaddrlen,parseP);
+	{
+	  return packetOkOverlay(interface,packet,len,transaction_id,recvaddr,recvaddrlen,parseP);
+	}
       else
 	/* We ignore overlay mesh packets in simple server mode, which is indicated by interface==-1 */
-	return -1;
+	return setReason("Ignoring overlay mesh packet");
     }
 
   return setReason("Packet type not recognised.");

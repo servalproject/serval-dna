@@ -163,7 +163,7 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *t
       ofs+=f.rfs;
     }
 
-  return 0;
+  return 1;
 }
 
 int overlay_frame_resolve_addresses(int interface,overlay_frame *f)
