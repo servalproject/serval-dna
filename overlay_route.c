@@ -649,35 +649,6 @@ int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now)
   return 0;
 }
 
-int overlay_someoneelse_can_hear(unsigned char *hearer,unsigned char *who,
-				 unsigned int who_score,unsigned int who_gates,
-				 unsigned char interface,long long now)
-{
-  /* Lookup node in node cache */
-  overlay_node *n=overlay_route_find_node(who,1 /* create if necessary */);
-  if (!n) return WHY("Could not find node record for observed node");
-
-  /* Update observations of this node, and then insert it into the neighbour list if it is not
-     already there. */
-
-  /* Replace oldest observation with this one */
-  int obs_index=n->most_recent_observation_id+1;
-  if (obs_index>=OVERLAY_MAX_OBSERVATIONS) obs_index=0;
-  n->observations[obs_index].observed_score=0;
-  n->observations[obs_index].rx_time=now;
-  n->observations[obs_index].gateways_en_route=who_gates;
-  bcopy(hearer,n->observations[obs_index].sender_prefix,
-	OVERLAY_SENDER_PREFIX_LENGTH);
-  n->observations[obs_index].observed_score=who_score;
-  n->most_recent_observation_id=obs_index;
-
-  n->last_observation_time_ms=now;
-
-  /* Recalculate link score for this node */
-  if (overlay_route_recalc_node_metrics(n,now)) return WHY("recalc_node_metrics() failed.");
-
-  return 0;
-}
 
 int overlay_route_recalc_node_metrics(overlay_node *n,long long now)
 {
