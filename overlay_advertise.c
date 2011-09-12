@@ -144,3 +144,65 @@ int overlay_route_add_advertisements(int interface,overlay_buffer *e)
 
   return 0;
 }
+
+/* Pull out the advertisements and update our routing table accordingly.
+   Because we are using a non-standard abbreviation scheme, we have to extract
+   and search for the nodes ourselves.
+
+   Also, we need to discount the scores based on the score of the sender.
+   We can either do this once now (more computationally efficient), or have 
+   a rather complicated scheme whereby we attempt to trace through the list
+   of nodes from here to there.  That seems silly, and is agains't the BATMAN
+   approach of each node just knowing single-hop information.
+ */
+int overlay_route_saw_advertisements(int i,overlay_frame *f, long long now)
+{
+  int ofs=0;
+
+  /* lookup score of current sender */
+  overlay_node *sender=overlay_route_find_node(f->source,0);
+  int sender_score=sender->best_link_score;
+  fprintf(stderr,"score to reach %s is %d\n",
+	  overlay_render_sid(f->source),sender_score);
+
+  while(ofs<f->payload->length)
+    {
+      unsigned char to[SID_SIZE];
+      int out_len=0;
+      int r
+	=overlay_abbreviate_cache_lookup(&f->payload->bytes[ofs],to,&out_len,
+					 6 /* prefix length */,
+					 0 /* no index code to process */);
+      int score=f->payload->bytes[6];
+      int gateways_en_route=f->payload->bytes[7];
+
+      
+      /* Don't let nodes advertise paths to themselves!
+	 (paths to self get detected through selfannouncements and selfannouncement acks) */
+      if (memcmp(&overlay_abbreviate_current_sender.b[0],to,SID_SIZE))
+	{
+	  /* Discount score by score to sender */
+	  score*=sender_score;
+	  score=score>>8;
+	  
+	  if (r==OA_RESOLVED) {
+	    /* File it */
+	    overlay_route_record_link(now,to,&overlay_abbreviate_current_sender.b[0],
+				      time(0) /* XXX should this be in senders timeframe?
+						 Should we be sending time stamps around
+						 so that we know when the last actual
+						 sighting of a node really was? 
+						 (probably a waste of time since we decay
+						 scores from stale observations) */,
+				      score,gateways_en_route);
+	  } else if (r==OA_PLEASEEXPLAIN) {
+	    /* Unresolved address -- ask someone to resolve it for us. */
+	    WHY("Dispatch PLEASEEXPLAIN not implemented");
+	  }
+	}
+					  
+      ofs+=8;
+    }
+  
+  return 0;
+}

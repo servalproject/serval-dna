@@ -372,6 +372,36 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
 		      unsigned char *transaction_id,struct sockaddr *recvaddr,
 		      struct response_set *responses);
 
+typedef struct overlay_address_table {
+  unsigned char epoch;
+  char sids[256][SID_SIZE];
+  /* 0x00 = not set, which thus limits us to using only 255 (0x01-0xff) of the indexes for
+     storing addresses.
+     By spending an extra 256 bytes we reduce, but not eliminate the problem of collisions.
+     Will think about a complete solution later.
+  */
+  unsigned char byfirstbyte[256][2];
+  /* next free entry in sid[] */
+  unsigned char next_free;
+} overlay_address_table;
+
+typedef struct sid {
+  unsigned char b[SID_SIZE];
+} sid;
+
+typedef struct overlay_address_cache {
+  int size;
+  int shift; /* Used to calculat lookup function, which is (b[0].b[1].b[2]>>shift) */
+  sid *sids; /* one entry per bucket, to keep things simple. */
+  /* XXX Should have a means of changing the hash function so that naughty people can't try
+     to force our cache to flush with duplicate addresses? 
+     But we must use only the first 24 bits of the address due to abbreviation policies, 
+     so our options are limited.
+     For now the hash will be the first k bits.
+  */
+} overlay_address_cache;
+
+extern sid overlay_abbreviate_current_sender;
 
 typedef struct overlay_frame {
   struct overlay_frame *prev;
@@ -812,3 +842,5 @@ extern int overlay_bin_count;
 extern int overlay_bin_size; /* associativity, i.e., entries per bin */
 extern int overlay_bin_bytes;
 extern overlay_node **overlay_nodes;
+
+int overlay_route_saw_advertisements(int i,overlay_frame *f, long long now);

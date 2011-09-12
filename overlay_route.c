@@ -684,6 +684,18 @@ int overlay_route_recalc_node_metrics(overlay_node *n,long long now)
 	}
     }
 
+  if (n->neighbour_id)
+    {
+      /* Node is also a direct neighbour, so check score that way */
+      int i;
+      for(i=0;i<overlay_interface_count;i++)
+	if (overlay_neighbours[n->neighbour_id].scores[i]>best_score)
+	  {
+	    best_score=overlay_neighbours[n->neighbour_id].scores[i];
+	    best_observation=-1;
+	  }
+    }
+
   /* Think about scheduling this node's score for readvertising if its score
      has changed a lot?
      Really what we probably want is to advertise when the score goes up, since
@@ -934,7 +946,8 @@ int overlay_route_dump()
       {
 	if (!overlay_nodes[bin][slot].sid[0]) continue;
 	
-	fprintf(stderr,"  %s* :",overlay_render_sid_prefix(overlay_nodes[bin][slot].sid,7));
+	fprintf(stderr,"  %s* : %d :",overlay_render_sid_prefix(overlay_nodes[bin][slot].sid,7),
+		overlay_nodes[bin][slot].best_link_score);
 	for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++)
 	  {
 	    if (overlay_nodes[bin][slot].observations[o].observed_score)
