@@ -7,6 +7,7 @@ LOCAL_SRC_FILES:= \
         export.c        \
         overlay.c       \
 	overlay_abbreviations.c \
+	overlay_advertise.c \
 	overlay_buffer.c        \
 	overlay_interface.c     \
 	overlay_packetformats.c \
