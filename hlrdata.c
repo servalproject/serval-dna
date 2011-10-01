@@ -67,7 +67,7 @@ int nextHlr(unsigned char *hlr,int *ofs)
   record_length|=hlr[(*ofs)+1]<<16;
   record_length|=hlr[(*ofs)+0]<<24;
 
-  if (!record_length) return -1;
+  if (record_length<1) return -1;
 
   (*ofs)+=record_length;
   return 0;
