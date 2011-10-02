@@ -19,6 +19,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "mphlr.h"
 #include <stdarg.h>
+#include <signal.h>
+#include <unistd.h>
 
 char *gatewayspec=NULL;
 
@@ -269,6 +271,15 @@ int usage(char *complaint)
 }
 
 #ifndef DNA_NO_MAIN
+char *exec_args[128];
+int exec_argc=0;
+void signal_handler( int signal ) {
+  /* oops - caught a bad signal -- exec() ourselves fresh */
+  execv(exec_args[0],exec_args);
+  /* Quit if the exec() fails */
+  exit(-3);
+} 
+
 int main(int argc,char **argv)
 {
   int c;
@@ -282,6 +293,18 @@ int main(int argc,char **argv)
 #if defined WIN32
     WSADATA wsa_data;
     WSAStartup(MAKEWORD(1,1), &wsa_data);
+#else
+    /* Catch sigsegv and other crash signals so that we can relaunch ourselves */
+
+    for(exec_argc=0;exec_argc<argc;exec_argc++)
+      exec_args[exec_argc]=strdup(argv[exec_argc]);
+    exec_args[exec_argc]=0;
+
+    signal( SIGSEGV, signal_handler );
+    signal( SIGFPE, signal_handler );
+    signal( SIGILL, signal_handler );
+    signal( SIGBUS, signal_handler );
+    
 #endif
 
   srandomdev();
