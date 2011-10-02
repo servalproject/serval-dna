@@ -243,6 +243,7 @@ int hlrGetRecordLength(unsigned char *hlr,int hofs)
 
   if (record_length<0) {
     // fix corrupt entries
+  if (debug>2) fprintf(stderr,"HLR record @ 0x%x ZEROED.\n",hofs,record_length);
     hlr[hofs+3]=0;
     hlr[hofs+2]=0;
     hlr[hofs+1]=0;
