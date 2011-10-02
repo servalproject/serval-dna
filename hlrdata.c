@@ -241,13 +241,22 @@ int hlrGetRecordLength(unsigned char *hlr,int hofs)
 
   if (debug>2) fprintf(stderr,"HLR record @ 0x%x is %d bytes long.\n",hofs,record_length);
 
-  if (record_length<0) return 0;
+  if (record_length<0) {
+    // fix corrupt entries
+    hlr[hofs+3]=0;
+    hlr[hofs+2]=0;
+    hlr[hofs+1]=0;
+    hlr[hofs+0]=0;
+    return 0;
+  }
 
   return record_length;
 }
 
 int hlrSetRecordLength(unsigned char *hlr,int hofs,int length)
 {
+  if (length<0) length=0;
+
   hlr[hofs+3]=length&0xff;
   hlr[hofs+2]=(length>>8)&0xff;
   hlr[hofs+1]=(length>>16)&0xff;
