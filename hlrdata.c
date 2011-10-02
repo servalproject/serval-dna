@@ -264,7 +264,7 @@ struct hlrentry_handle *openhlrentry(unsigned char *hlr,int hofs)
   int record_length=hlrGetRecordLength(hlr,hofs);
 
   /* If record has zero length, then open fails */
-  if (!record_length)
+  if (record_length<1)
     {
       if (debug>2) fprintf(stderr,"HLR record is zero length -- aborting.\n");
       return NULL;
