@@ -74,7 +74,7 @@ struct mphlr_variable vars[]={
   {0x00,NULL,NULL}
 };
 
-int sock;
+int sock=-1;
 
 #ifndef HAVE_BZERO
 /* OpenWRT doesn't have bzero */
@@ -275,6 +275,7 @@ char *exec_args[128];
 int exec_argc=0;
 void signal_handler( int signal ) {
   /* oops - caught a bad signal -- exec() ourselves fresh */
+  if (sock>-1) close(sock);
   execv(exec_args[0],exec_args);
   /* Quit if the exec() fails */
   exit(-3);
@@ -304,7 +305,7 @@ int main(int argc,char **argv)
     signal( SIGFPE, signal_handler );
     signal( SIGILL, signal_handler );
     signal( SIGBUS, signal_handler );
-    
+    signal( SIGABRT, signal_handler );    
 #endif
 
   srandomdev();

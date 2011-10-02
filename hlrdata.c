@@ -241,6 +241,8 @@ int hlrGetRecordLength(unsigned char *hlr,int hofs)
 
   if (debug>2) fprintf(stderr,"HLR record @ 0x%x is %d bytes long.\n",hofs,record_length);
 
+  if (record_length<0) return 0;
+
   return record_length;
 }
 
