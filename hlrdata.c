@@ -19,6 +19,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "mphlr.h"
 
+int hlrGetRecordLength(unsigned char *hlr,int hofs);
+
 int bcompare(unsigned char *a,unsigned char *b,size_t len)
 {
   int i;
@@ -183,8 +185,14 @@ int createHlr(char *did,char *sid) {
   sid[0]=hexdigit[1+(random()&0xe)];
   if (debug>1) fprintf(stderr,"Creating new HLR entry with sid %s\n",sid);
   
-  /* Find first free byte of HLR */
-  findHlr(hlr,&record_offset,NULL,NULL);
+  /* Find first free byte of HLR.
+     Keep calling findHlr() until we find the end. */
+  while((i=hlrGetRecordLength(hlr,record_offset))>0)
+    {
+      record_offset+=i;
+      if (debug>1) fprintf(stderr,"Skipping %d bytes to 0x%x\n",i,record_offset);
+    }
+  if (i<0) return setReason("Corrupt HLR: Negative length field encountered.");
 
   if (record_offset>=hlr_size)
     {
@@ -196,7 +204,9 @@ int createHlr(char *did,char *sid) {
       /* We have found space, but is it enough? */
       int bytes=hlr_size-record_offset;
       if (bytes<1024) return setReason("<1KB space in HLR");
-      
+     
+      if (debug>2) fprintf(stderr,"Creating new HLR entry @ 0x%x\n",record_offset);
+
       /* Write shiny fresh new record.
 	 32bit - record length 
 	 32 bytes - SID
@@ -243,7 +253,7 @@ int hlrGetRecordLength(unsigned char *hlr,int hofs)
 
   if (record_length<0) {
     // fix corrupt entries
-  if (debug>2) fprintf(stderr,"HLR record @ 0x%x ZEROED.\n",hofs,record_length);
+    if (debug>2) fprintf(stderr,"HLR record @ 0x%x ZEROED.\n",hofs);
     hlr[hofs+3]=0;
     hlr[hofs+2]=0;
     hlr[hofs+1]=0;
