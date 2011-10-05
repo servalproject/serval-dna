@@ -51,7 +51,7 @@ int seedHlr()
     /* Then add 10 more digits, which is what we do in the mobile phone software */
     for(i=1;i<11;i++) did[i]='0'+random()%10; did[11]=0;
     if (createHlr(did,sid)) return WHY("Failed to seed HLR with home entry");
-    if (hlrSetVariable(hlr,ofs,VAR_LOCATIONS,0,(unsigned char *)"4000",4)) return WHY("Could not set location while seeding HLR");
+    if (hlrSetVariable(hlr,ofs,VAR_LOCATIONS,0,(unsigned char *)"4000@",5)) return WHY("Could not set location while seeding HLR");
   }
   return 0;
 }
