@@ -319,7 +319,7 @@ int processRequest(unsigned char *packet,int len,
 		int offset=(packet[pofs]<<8)+packet[pofs+1]; pofs+=2;
 		char *hlr_sid=NULL;
 
-		pofs+=3;
+		pofs+=2;
 
 		if (debug>1) fprintf(stderr,"Processing ACTION_GET (var_id=%02x, instance=%02x, pofs=0x%x, len=%d)\n",var_id,instance,pofs,len);
 
