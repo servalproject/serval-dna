@@ -157,6 +157,8 @@ int processRequest(unsigned char *packet,int len,
 	}
       else
 	{
+	  if (debug>2) fprintf(stderr,"Looking at action code 0x%02x @ packet offset 0x%x\n",
+			       packet[pofs],pofs);
 	  switch(packet[pofs])
 	    {
 	    case ACTION_PAD: /* Skip padding */
