@@ -179,6 +179,8 @@ int createHlr(char *did,char *sid) {
   int i;
   int record_offset=0;
 
+  if (debug) fprintf(stderr,"Asked to create a new HLR record\n");
+
   /* Generate random SID */
   for(i=1;i<64;i++) sid[i]=hexdigit[random()&0xf]; sid[64]=0;
   /* But make sure first digit is non-zero as required by the overlay mesh */
