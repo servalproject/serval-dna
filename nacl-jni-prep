@@ -1,0 +1,25 @@
+# Fetch latest version of source as recommended by nacl installation page
+[ -e nacl-source.tar.bz2 ] || \
+`wget -q -O - http://nacl.cr.yp.to/install.html | grep wget | sed -e 's/^ *//g' -e 's/^wget /wget -O nacl-source.tar.bz2 /'`
+
+# Extract tarball
+bzip2 -d nacl-source.tar.bz2
+mkdir nacl-source
+cd nacl-source
+tar xvf ../nacl-source.tar
+nacldir=`echo *`
+cd ${nacldir}
+
+# Now build the actual compilable sources using our
+# hacked version of NaCl's 'do' script
+cp ../../nacl-prepare-sources .
+chmod 755 nacl-prepare-sources
+./nacl-prepare-sources
+cd nacl-source
+
+# Now build Android.mk with the extra .c files listed
+sources=`echo -n *.c`
+cat ../../../Android-without-nacl.mk | sed -e 's/LOCAL_SRC_FILES:= \\/LOCAL_SRC_FILES:= '"${sources}"' \\/' > ../../../Android.mk
+
+ls -1 *.c *.h >../../../nacl-sources.list
+mv *.c *.h ../../../
