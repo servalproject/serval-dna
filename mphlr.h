@@ -29,6 +29,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "win32/win32.h"
 #else
 #include <unistd.h>
+#ifdef HAVE_SYS_SOCKET_H
+#include <sys/socket.h>
+#endif
+#ifdef HAVE_NET_ROUTE_H
+     #include <net/route.h>
+#endif
 #ifdef HAVE_NET_IF_H
 #include <net/if.h>
 #endif
@@ -845,3 +851,5 @@ extern overlay_node **overlay_nodes;
 
 int overlay_route_saw_advertisements(int i,overlay_frame *f, long long now);
 int overlay_route_please_advertise(overlay_node *n);
+
+#include "nacl.h"
