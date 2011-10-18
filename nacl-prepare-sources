@@ -56,7 +56,7 @@ do
 
       # for each operation primitive abi, loop over implementations
       find "$o/$p" -follow -name "api.h" \
-      | grep ref \
+      | grep /ref/ \
       | sort \
       | while read doth
       do
@@ -69,12 +69,12 @@ do
 	sfiles=`ls "$implementationdir" | grep '\.[sS]$' || :`
 	cppfiles=`ls "$o" | grep '\.cpp$' || :`
  
-        mkdir -p "${work}/${o}" 
-	cp -p "$o"/*.c "$work/${o}"
+        mkdir -p "${work}/${opi}" 
+	cp -p "$o"/*.c "$work/${opi}"
 
-	cp -pr "$implementationdir"/* "$work/${o}"
+	cp -pr "$implementationdir"/* "$work/${opi}"
 
-        rm ${work}/${o}/{measure,try}.c
+        rm ${work}/${opi}/{measure,try}.c
 
 	cp -p MACROS "$work/MACROS"
 	cp -p PROTOTYPES.c "$work/PROTOTYPES.c"
@@ -93,13 +93,14 @@ do
 	    | sed "s/$o/$op/" | while read mop
 	    do
 	      echo "#define ${mop} ${mop}" | sed "s/$op/$o/"
+	      echo "/* CHEESEBURGER ${mop} */"
 	    done
 	    echo "#define ${o}_PRIMITIVE \"${p}\""
 	    echo "#define ${o}_IMPLEMENTATION ${op}_IMPLEMENTATION"
 	    echo "#define ${o}_VERSION ${op}_VERSION"
 	    echo ""
 	    echo "#endif"
-	  ) > "$o.h"
+	  ) > "${opi}/$o.h"
 	
 	  (
 	    echo "#ifndef ${op}_H"
@@ -122,6 +123,7 @@ do
 	    | sed "s/$o/$opi/" | while read mopi
 	    do
 	      echo "#define ${mopi} ${mopi}" | sed "s/$opi/$op/"
+	      echo "/* POTATO ${mopi} $opi $op */"
 	    done
 	    echo "#define ${op}_IMPLEMENTATION \"${implementationdir}\""
 	    echo "#ifndef ${opi}_VERSION"
@@ -131,6 +133,7 @@ do
 	    echo ""
 	    echo "#endif"
 	  ) > "$op.h"
+          
           cd ..
 	)
       done
