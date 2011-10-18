@@ -27,7 +27,7 @@ LOCAL_SRC_FILES:= \
 	randombytes.c	\
         simulate.c
 
-LOCAL_MODULE:= dna
+LOCAL_MODULE:= dnalib
 
 LOCAL_CFLAGS += \
         -DSHELL -DPACKAGE_NAME=\"\" -DPACKAGE_TARNAME=\"\" -DPACKAGE_VERSION=\"\" \
@@ -41,3 +41,10 @@ LOCAL_CFLAGS += \
 
 include $(BUILD_SHARED_LIBRARY)
 
+include $(CLEAR_VARS)
+
+LOCAL_SHARED_LIBRARIES:= dnalib
+LOCAL_MODULE:= dna
+LOCAL_SRC_FILES:= null.c
+
+include $(BUILD_EXECUTABLE)
