@@ -43,8 +43,7 @@ include $(BUILD_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
 
-LOCAL_SHARED_LIBRARIES:= dnalib
 LOCAL_MODULE:= dna
-LOCAL_SRC_FILES:= null.c
+LOCAL_SRC_FILES:= dnawrap.c
 
 include $(BUILD_EXECUTABLE)
