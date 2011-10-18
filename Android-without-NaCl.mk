@@ -24,6 +24,7 @@ LOCAL_SRC_FILES:= \
         dna.c           \
         hlrdata.c       \
         peers.c         \
+	randombytes.c	\
         simulate.c
 
 LOCAL_MODULE:= dna
@@ -38,5 +39,5 @@ LOCAL_CFLAGS += \
         -DHAVE_STRING_H=1 -DHAVE_ARPA_INET_H=1 -DHAVE_SYS_SOCKET_H=1 \
         -DHAVE_SYS_MMAN_H=1 -DHAVE_SYS_TIME_H=1 -DHAVE_POLL_H=1 -DHAVE_NETDB_H=1
 
-include $(BUILD_EXECUTABLE)
+include $(BUILD_SHARED_LIBRARY)
 

@@ -68,15 +68,18 @@ do
 	cfiles=`ls "$implementationdir" | grep '\.c$' || :`
 	sfiles=`ls "$implementationdir" | grep '\.[sS]$' || :`
 	cppfiles=`ls "$o" | grep '\.cpp$' || :`
-  
-	cp -p "$o"/*.c "$work"
-	cp -p "$o"/*.cpp "$work"
+ 
+        mkdir -p "${work}/${o}" 
+	cp -p "$o"/*.c "$work/${o}"
 
-	cp -pr "$implementationdir"/* "$work"
+	cp -pr "$implementationdir"/* "$work/${o}"
+
+        rm ${work}/${o}/{measure,try}.c
 
 	cp -p MACROS "$work/MACROS"
-	cp -p PROTOTYPES.c "$work/compile/PROTOTYPES.c"
-	cp -p PROTOTYPES.cpp "$work/compile/PROTOTYPES.cpp"
+	cp -p PROTOTYPES.c "$work/PROTOTYPES.c"
+	cp -p PROTOTYPES.cpp "$work/PROTOTYPES.cpp"
+	cp $implementationdir/api.h "$work"
 
 	(
 	  cd "$work"
@@ -97,6 +100,7 @@ do
 	    echo ""
 	    echo "#endif"
 	  ) > "$o.h"
+	
 	  (
 	    echo "#ifndef ${op}_H"
 	    echo "#define ${op}_H"
