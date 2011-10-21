@@ -25,7 +25,8 @@ LOCAL_SRC_FILES:= \
         hlrdata.c       \
         peers.c         \
 	randombytes.c	\
-        simulate.c
+        simulate.c \
+	jni.c
 
 LOCAL_MODULE:= dnalib
 
