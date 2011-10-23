@@ -1,3 +1,9 @@
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+
 #include <jni.h>
 #include "crypto_box_curve25519xsalsa20poly1305.h"
 
@@ -8,6 +14,42 @@ JNIEXPORT jint JNICALL Java_to_yp_cr_NaCl_moose
   return 1;
 }
 
+
+static int urandomfd = -1;
+
+int urandombytes(unsigned char *x,unsigned long long xlen)
+{
+  int i;
+  int t=0;
+
+  if (urandomfd == -1) {
+    for (i=0;i<4;i++) {
+      urandomfd = open("/dev/urandom",O_RDONLY);
+      if (urandomfd != -1) break;
+      sleep(1);
+    }
+    if (i==4) return -1;
+  }
+
+  while (xlen > 0) {
+    if (xlen < 1048576) i = xlen; else i = 1048576;
+
+    i = read(urandomfd,x,i);
+    if (i < 1) {
+      sleep(1);
+      t++;
+      if (t>4) return -1;
+      continue;
+    } else t=0;
+
+    x += i;
+    xlen -= i;
+  }
+
+  return 0;
+}
+
+
 JNIEXPORT jint JNICALL Java_to_yp_cr_NaCl_nativeRandomBytes
 (JNIEnv *env, jobject obj, jbyteArray bytes)
 {
@@ -15,7 +57,7 @@ JNIEXPORT jint JNICALL Java_to_yp_cr_NaCl_nativeRandomBytes
   if (l<1) return -1;
   jbyte *b = (*env)->GetPrimitiveArrayCritical(env, bytes, NULL);
 
-  randombytes(b,l);
+  urandombytes(b,l);
 
   if (b) (*env)->ReleasePrimitiveArrayCritical(env, bytes, b, 0);
   return 0;
