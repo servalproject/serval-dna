@@ -8,6 +8,19 @@ JNIEXPORT jint JNICALL Java_to_yp_cr_NaCl_moose
   return 1;
 }
 
+JNIEXPORT jint JNICALL Java_to_yp_cr_NaCl_nativeRandomBytes
+(JNIEnv *env, jobject obj, jbyteArray bytes)
+{
+  int l=(*env)->GetArrayLength(env, bytes);
+  if (l<1) return -1;
+  jbyte *b = (*env)->GetPrimitiveArrayCritical(env, bytes, NULL);
+
+  randombytes(b,l);
+
+  if (b) (*env)->ReleasePrimitiveArrayCritical(env, bytes, b, 0);
+  return 0;
+}
+
 // Lto/yp/cr/NaCl$CryptoBoxKeypair;.method ([B[B)I
 JNIEXPORT jint JNICALL Java_to_yp_cr_NaCl_nativeCryptoBoxKeypair
   (JNIEnv *env, jobject obj, jbyteArray jsk, jbyteArray jpk)
