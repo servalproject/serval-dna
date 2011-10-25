@@ -7,7 +7,7 @@ fi
 mkdir -p  nacl-source
 
 arlist=`find . -name libnacl.a`
-arcount=`echo $arlist | wc -l`
+arcount=`echo $arlist | wc -w`
 if [ $arcount -eq 0 ]; then
    cd nacl-source
    bzip2 -d  ../nacl-source.tar | tar xvf -
