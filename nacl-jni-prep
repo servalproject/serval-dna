@@ -31,5 +31,5 @@ echo `ls -1 nacl-source/*/nacl-source/*/*.c` >>nacl-sources.list
 # Now build Android.mk with the extra .c files listed
 sources=`echo nacl-source/*/nacl-source/*/*.c`
 echo sed -e 's,LOCAL_SRC_FILES:= \\,LOCAL_SRC_FILES:= '"${sources}"' \\,' 
-cat Android-without-nacl.mk | sed -e 's,LOCAL_SRC_FILES:= \\,LOCAL_SRC_FILES:= '"${sources}"' \\,' > Android.mk
+cat Android-without-NaCl.mk | sed -e 's,LOCAL_SRC_FILES:= \\,LOCAL_SRC_FILES:= '"${sources}"' \\,' > Android.mk
 
