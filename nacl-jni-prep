@@ -24,6 +24,8 @@ ls -1 *.h >../../../nacl-sources.list
 mv *.h ../../../
 cd ../../../
 
+rm nacl-source/*/nacl-source/*/measure.c
+
 echo `ls -1 nacl-source/*/nacl-source/*/*.c` >>nacl-sources.list
 
 # Now build Android.mk with the extra .c files listed
