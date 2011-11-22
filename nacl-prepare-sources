@@ -74,7 +74,8 @@ do
 
 	cp -pr "$implementationdir"/* "$work/${opi}"
 
-        rm ${work}/${opi}/{measure,try}.c
+        rm ${work}/${opi}/measure.c
+        rm ${work}/${opi}/try.c
 
 	cp -p MACROS "$work/MACROS"
 	cp -p PROTOTYPES.c "$work/PROTOTYPES.c"
