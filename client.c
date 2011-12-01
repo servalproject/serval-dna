@@ -127,7 +127,7 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
 	*/
 	cumulative_timeout+=this_timeout;
 	timeout_remaining=this_timeout;
-	
+
 	while(1)
 	  {
 	    /* Wait for response */
@@ -278,8 +278,8 @@ int fixResponses(struct response_set *responses)
 	      char *addr=inet_ntoa(rr->sender);
 	      int alen=strlen(addr);
 	      char *new = malloc(rr->value_bytes+alen+1);
-	      if (debug>1) fprintf(stderr,"Fixing LOCATIONS response '%s' received from '%s'\n",
-				   rr->response,addr);
+	      if (debug>1) fprintf(stderr,"Fixing LOCATIONS response '%s' received from '%s (0x%08x)'\n",
+				   rr->response,addr,(unsigned int)rr->sender.s_addr);
 	      if (!new) return -1;
 	      bcopy(rr->response,new,rr->value_bytes);
 	      bcopy(addr,&new[rr->value_bytes],alen+1);
@@ -334,6 +334,11 @@ int getReplyPackets(int method,int peer,int batchP,struct response_set *response
 	if (t.tv_sec>timeout_secs) return 1;
 	if (t.tv_sec==timeout_secs&&t.tv_usec>=timeout_usecs) return 1;
       }
+
+    /* Use this temporary socket address structure if one was not supplied */
+    struct sockaddr reply_recvaddr;
+    if (!recvaddr) recvaddr=&reply_recvaddr;
+
     len=recvfrom(sock,buffer,sizeof(buffer),0,recvaddr,&recvaddrlen);
     if (len<=0) return setReason("Unable to receive packet.");
 
