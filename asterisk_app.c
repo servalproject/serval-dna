@@ -103,8 +103,8 @@ static char *handle_cli_sdnagate(int fd, int argc, char *argv[])
    int len=0;
    int instance=0;
 
-   if (gatewayuri) free(gatewayuri);
-   gatewayuri=NULL;
+   if (gatewayspec) free(gatewayspec);
+   gatewayspec=NULL;
    if (argc == 3 ) {
        ast_cli(fd,"Serval DNA Gateway Function OFF.\n\n",len);
        return RESULT_SUCCESS;
@@ -114,9 +114,9 @@ static char *handle_cli_sdnagate(int fd, int argc, char *argv[])
         return RESULT_FAILURE;
     }
 
-   gatewayuri=strdup(argv[3]);
+   gatewayspec=strdup(argv[3]);
 
-   ast_cli(fd,"Serval DNA Gateway Function ON (trunk URI is %s/EXTENSION).\n\n",gatewayuri);
+   ast_cli(fd,"Serval DNA Gateway Function ON (trunk spec is %s).\n\n",gatewayspec);
    return RESULT_SUCCESS;
 }
 
