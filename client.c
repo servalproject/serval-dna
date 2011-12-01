@@ -287,6 +287,7 @@ int fixResponses(struct response_set *responses)
 	      rr->response=(unsigned char *)new;
 	      rr->value_len+=alen;
 	      rr->value_bytes+=alen;
+	      new[rr->value_len]=0; /* Make sure it is null terminated */
 	      if (debug>1) fprintf(stderr,"Response string now '%s'\n",rr->response);
 	    }
 	}
