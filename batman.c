@@ -80,8 +80,8 @@ int readRoutingTable(struct in_addr peers[],int *peer_count,int peer_max){
     
     if (m!=0xFFFFFFFF){
       /* Netmask indicates a network, so calculate broadcast address */
-      unsigned int d=(d&m)|(0xffffffff^m);
-      if (debug>1) fprintf(stderr,"Adding broadcast address %08x\n",d);
+      d=(d&m)|(0xffffffff^m);
+      if (debug) fprintf(stderr,"Adding broadcast address %08lx\n",d);
     }
     
     if (*peer_count<peer_max)	peers[(*peer_count)++].s_addr=d;
