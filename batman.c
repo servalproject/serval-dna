@@ -58,14 +58,14 @@ int readRoutingTable(struct in_addr peers[],int *peer_count,int peer_max){
   
   while(1){
     int r;
-    fprintf(stderr,"Reading next route\n");
+    if (debug>1) fprintf(stderr,"Reading next route\n");
     r = fscanf(fp, "%63s%lx%lx%X%d%d%d%lx%d%d%d\n",
 	       devname, &d, &g, &flgs, &ref, &use, &metric, &m,
 	       &mtu, &win, &ir);
     
     if (r != 11) {
       if ((r < 0) && feof(fp)) { /* EOF with no (nonspace) chars read. */
-	fprintf(stderr,"eof\n");
+	if (debug>1) fprintf(stderr,"eof\n");
 	break;
       }
     ERROR:
@@ -79,8 +79,9 @@ int readRoutingTable(struct in_addr peers[],int *peer_count,int peer_max){
     }
     
     if (m!=0xFFFFFFFF){
-      if (debug>1) fprintf(stderr,"Skipping non host route to %d\n",(int)d);
-      continue; // only include host routes, TODO pickup any networks and send them broadcasts...
+      /* Netmask indicates a network, so calculate broadcast address */
+      unsigned int d=(d&m)|(0xffffffff^m);
+      if (debug>1) fprintf(stderr,"Adding broadcast address %08x\n",d);
     }
     
     if (*peer_count<peer_max)	peers[(*peer_count)++].s_addr=d;

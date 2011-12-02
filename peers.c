@@ -60,7 +60,7 @@ int getBroadcastAddresses(struct in_addr peers[],int *peer_count,int peer_max){
   size_t bytesRead;
   struct nlmsghdr *hdr;
   
-  if (debug>1) fprintf(stderr,"Reading broadcast addresses\n");
+  if (debug>1) fprintf(stderr,"Reading broadcast addresses (linux style)\n");
   
   netsock = socket(AF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE);
   
@@ -110,6 +110,8 @@ int getBroadcastAddresses(struct in_addr peers[],int *peer_count,int peer_max){
   struct ifaddrs *ifaddr,*ifa;
   int family;
     
+  if (debug>1) fprintf(stderr,"Reading broadcast addresses (posix style)\n");
+
   if (getifaddrs(&ifaddr) == -1)  {
     perror("getifaddr()");
     return WHY("getifaddrs() failed");
@@ -132,7 +134,8 @@ int getBroadcastAddresses(struct in_addr peers[],int *peer_count,int peer_max){
       break;
     }
   }
-
+#else
+ if (debug>1) fprintf(stderr,"Don't know how to read broadcast addresses :(\n");
 #endif
 #endif
   return 0;
