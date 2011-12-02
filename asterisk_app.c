@@ -73,7 +73,8 @@ static char *handle_cli_sdnalookup(int fd, int argc, char *argv[])
        return RESULT_FAILURE;
      }
    
-   ast_cli(fd,"%s resolves to %s\n",did,buffer);
+   buffer[len]=0;
+   ast_cli(fd,"%s resolves to %s (len=%d)\n",did,buffer,len);
    return RESULT_SUCCESS;
 }
 
@@ -213,6 +214,7 @@ static int sdnalookup_exec(struct ast_channel *chan, void *data)
     if (debug) fprintf(stderr,"SNASID=%s\n",sid);
   }
   if (len) {
+    buffer[len]=0;
     pbx_builtin_setvar_helper(chan,"SDNALOCATION",(char*)buffer);
     if (debug) fprintf(stderr,"SNALOCATION=%s\n",buffer);
   }
