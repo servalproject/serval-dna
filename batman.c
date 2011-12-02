@@ -90,6 +90,47 @@ int readRoutingTable(struct in_addr peers[],int *peer_count,int peer_max){
   return 0;
 }
 
+int readArpTable(struct in_addr peers[],int *peer_count,int peer_max){
+  char devname[64];
+  unsigned long d;
+  int q1,q2,q3,q4;
+
+  if (debug) fprintf(stderr,"Reading ARP table\n");
+  
+  FILE *fp = fopen("/proc/net/arp","r");
+  if (!fp) return -1;
+  
+  fprintf(stderr,"Skipping line\n");
+  if (fscanf(fp, "%*[^\n]\n") < 0)
+    goto ERROR;
+  
+  while(1){
+    int r;
+    if (debug>1) fprintf(stderr,"Reading next arp entry\n");
+    r = fscanf(fp, "%d.%d.%d.%d",
+	       &q1,&q2,&q3,&q4);
+    
+    d = (q1&0xff)
+      +((q2&0xff)<<8)
+      +((q3&0xff)<<16)
+      +((q4&0xff)<<24);
+
+    if (r != 4) {
+      if ((r < 0) && feof(fp)) { /* EOF with no (nonspace) chars read. */
+	if (debug>1) fprintf(stderr,"eof\n");
+	break;
+      }
+    ERROR:
+      fclose(fp);
+      return setReason("Unable to parse arp table");
+    }
+        
+    if (*peer_count<peer_max)	peers[(*peer_count)++].s_addr=d;
+  }
+  fclose(fp);
+  return 0;
+}
+
 int readBatmanPeerFile(char *file_path,struct in_addr peers[],int *peer_count,int peer_max)
 {
   /* Shiny new code to read the flat file containing peer list */

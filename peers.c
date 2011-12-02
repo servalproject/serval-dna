@@ -170,6 +170,9 @@ int getPeerList()
     getBatmanPeerList(batman_socket,peers,&peer_count,MAX_PEERS);
   else
     readRoutingTable(peers,&peer_count,MAX_PEERS);
+  /* Read ARP table for good measure as a defence against transient loss of broadcast reception,
+   e.g., when screens go off on phones. */
+  readArpTable(peers,&peer_count,MAX_PEERS);
 
   return 0;
 }
