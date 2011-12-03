@@ -85,6 +85,7 @@ int readRoutingTable(struct in_addr peers[],int *peer_count,int peer_max){
     }
     
     if (*peer_count<peer_max)	peers[(*peer_count)++].s_addr=d;
+    if (debug>2) fprintf(stderr,"Found peer %08lx from routing table\n",d);
   }
   fclose(fp);
   return 0;
@@ -126,6 +127,7 @@ int readArpTable(struct in_addr peers[],int *peer_count,int peer_max){
     }
         
     if (*peer_count<peer_max)	peers[(*peer_count)++].s_addr=d;
+    if (debug>2) fprintf(stderr,"Found peer %08lx from ARP table\n",d);
   }
   fclose(fp);
   return 0;
