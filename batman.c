@@ -52,7 +52,7 @@ int readRoutingTable(struct in_addr peers[],int *peer_count,int peer_max){
   FILE *fp = fopen("/proc/net/route","r");
   if (!fp) return -1;
   
-  fprintf(stderr,"Skipping line\n");
+  if (debug>1) fprintf(stderr,"Skipping line\n");
   if (fscanf(fp, "%*[^\n]\n") < 0)
     goto ERROR;
   
@@ -100,7 +100,7 @@ int readArpTable(struct in_addr peers[],int *peer_count,int peer_max){
   FILE *fp = fopen("/proc/net/arp","r");
   if (!fp) return -1;
   
-  fprintf(stderr,"Skipping line\n");
+  if (debug>1) fprintf(stderr,"Skipping line\n");
   if (fscanf(fp, "%*[^\n]\n") < 0)
     goto ERROR;
   
