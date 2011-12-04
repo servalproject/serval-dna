@@ -106,7 +106,7 @@ int readArpTable(struct in_addr peers[],int *peer_count,int peer_max){
   
   while(1){
     int r;
-    r = fscanf(fp, "%d.%d.%d.%d[%*[^\n]\n",
+    r = fscanf(fp, "%d.%d.%d.%d%*[^\n]\n",
 	       &q1,&q2,&q3,&q4);
     if (debug>1) fprintf(stderr,"Reading next arp entry (r=%d, %d.%d.%d.%d)\n",r,q1,q2,q3,q4);
     
