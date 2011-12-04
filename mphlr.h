@@ -132,6 +132,8 @@ double simulatedBER;
 
 extern int serverMode;
 
+extern int returnMultiVars;
+
 extern char *gatewayspec;
 
 extern struct in_addr client_addr;

@@ -784,7 +784,7 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
 		if (outputtemplate) fclose(outputfile); else fflush(outputfile);		    
 		printf("\n");
 		if (debug) fprintf(stderr,"requestItem() returned DATA\n");
-		return 0;
+		if (!returnMultiVars) return 0;
 		break;
 	      }
 	    } 

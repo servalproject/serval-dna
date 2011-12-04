@@ -34,6 +34,8 @@ int timeout=3000; /* 3000ms request timeout */
 int serverMode=0;
 int clientMode=0;
 
+int returnMultiVars=0;
+
 int hexdigit[16]={'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
 
 struct mphlr_variable vars[]={
@@ -310,10 +312,11 @@ int main(int argc,char **argv)
 
   srandomdev();
 
-  while((c=getopt(argc,argv,"Ab:B:E:G:I:S:f:d:i:l:L:np:P:s:t:vR:W:U:D:CO:N:")) != -1 ) 
+  while((c=getopt(argc,argv,"Ab:B:E:G:I:S:f:d:i:l:L:mnp:P:s:t:vR:W:U:D:CO:N:")) != -1 ) 
     {
       switch(c)
 	{
+	case 'm': returnMultiVars=1; break;
 	case 'N': /* Ask for overlay network to setup one or more interfaces */
 	  if (overlay_interface_args(optarg))
 	    return WHY("Invalid interface specification(s) passed to -N");
