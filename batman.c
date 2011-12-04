@@ -92,7 +92,6 @@ int readRoutingTable(struct in_addr peers[],int *peer_count,int peer_max){
 }
 
 int readArpTable(struct in_addr peers[],int *peer_count,int peer_max){
-  char devname[64];
   unsigned long d;
   int q1,q2,q3,q4;
 
@@ -107,9 +106,9 @@ int readArpTable(struct in_addr peers[],int *peer_count,int peer_max){
   
   while(1){
     int r;
-    if (debug>1) fprintf(stderr,"Reading next arp entry\n");
     r = fscanf(fp, "%d.%d.%d.%d",
 	       &q1,&q2,&q3,&q4);
+    if (debug>1) fprintf(stderr,"Reading next arp entry (r=%d, %d.%d.%d.%d)\n",r,q1,q2,q3,q4);
     
     d = (q1&0xff)
       +((q2&0xff)<<8)
