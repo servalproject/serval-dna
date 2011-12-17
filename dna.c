@@ -243,6 +243,7 @@ int usage(char *complaint)
   fprintf(stderr,"       -b - Specify BATMAN socket to obtain peer list (flaky).\n");
   fprintf(stderr,"       -l - Specify BATMAN socket to obtain peer list (better, but requires Serval patched BATMAN).\n");
   fprintf(stderr,"       -L - Log mesh statistics to specified file.\n");
+  fprintf(stderr,"       -m - Return multiple variable values instead of only first response.\n");
   fprintf(stderr,"       -n - Do not detach from foreground in server mode.\n");
   fprintf(stderr,"       -S - Run in server mode with an HLR of the specified size.\n");
   fprintf(stderr,"       -f - Use the specified file as a permanent store for HLR data.\n");
@@ -250,6 +251,8 @@ int usage(char *complaint)
   fprintf(stderr,"       -s - Search by Subscriber ID (SID) number.\n");
   fprintf(stderr,"       -p - Specify additional DNA nodes to query.\n");
   fprintf(stderr,"       -P - Authenticate using the supplied pin.\n");
+  fprintf(stderr,"       -r - Enable Rhizome store-and-forward transport using the specified data store directory.\n");
+  fprintf(stderr,"            To limit the storage: echo space=[KB] > path/rhizome.conf\n");
   fprintf(stderr,"       -R - Read a variable value.\n");
   fprintf(stderr,"       -O - Place read variable value into files using argument as a template.\n");
   fprintf(stderr,"            The following template codes can be used (interpretted by sprintf):\n");
@@ -312,10 +315,15 @@ int main(int argc,char **argv)
 
   srandomdev();
 
-  while((c=getopt(argc,argv,"Ab:B:E:G:I:S:f:d:i:l:L:mnp:P:s:t:vR:W:U:D:CO:N:")) != -1 ) 
+  while((c=getopt(argc,argv,"Ab:B:E:G:I:S:f:d:i:l:L:mnp:P:r:s:t:vR:W:U:D:CO:N:")) != -1 ) 
     {
       switch(c)
 	{
+	case 'r': /* Enable rhizome */
+	  if (rhizome_datastore_path) return WHY("-r specified more than once");
+	  rhizome_datastore_path=optarg;
+	  rhizome_opendb();
+	  break;
 	case 'm': returnMultiVars=1; break;
 	case 'N': /* Ask for overlay network to setup one or more interfaces */
 	  if (overlay_interface_args(optarg))

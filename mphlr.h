@@ -136,6 +136,8 @@ extern int returnMultiVars;
 
 extern char *gatewayspec;
 
+extern char *rhizome_datastore_path;
+
 extern struct in_addr client_addr;
 extern int client_port;
 

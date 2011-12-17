@@ -1,6 +1,7 @@
 #include "mphlr.h"
 #include "sqlite-amalgamation-3070900/sqlite3.h"
 #include "sha2.h"
+#include <sys/stat.h>
 
 #define MAX_MANIFEST_VARS 256
 #define MAX_MANIFEST_BYTES 8192
@@ -19,6 +20,12 @@ typedef struct rhizome_manifest {
   /* Set non-zero after variables have been packed and
      signature blocks appended */
   int finalised;
+
+  /* When finalised, we keep the filehash and maximum priority due to any
+     group membership handy */
+  long long fileLength;
+  char fileHexHash[SHA512_DIGEST_STRING_LENGTH];
+  int fileHighestPriority;
 
   int var_count;
   char *vars[MAX_MANIFEST_VARS];
@@ -54,6 +61,8 @@ void rhizome_manifest_free(rhizome_manifest *m);
 int rhizome_manifest_pack_variables(rhizome_manifest *m);
 int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename);
 int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid);
+int rhizome_store_file(char *file,char *hash,int priortity);
+
 
 int rhizome_opendb()
 {
@@ -592,7 +601,7 @@ int rhizome_write_manifest_file(rhizome_manifest *m,char *filename)
 
 int rhizome_manifest_createid(rhizome_manifest *m)
 {
-  return crypto_sign_keypair(m->cryptoSignPublic,m->cryptoSignSecret);
+  return crypto_sign_edwards25519sha512batch_keypair(m->cryptoSignPublic,m->cryptoSignSecret);
 }
 
 /*
@@ -605,15 +614,162 @@ int rhizome_manifest_createid(rhizome_manifest *m)
   associated_filename needs to be read in and stored as a blob.  Hopefully that
   can be done in pieces so that we don't have memory exhaustion issues on small
   architectures.  However, we do know it's hash apriori from m, and so we can
-  skip loading the file in if it is already stored.
+  skip loading the file in if it is already stored.  mmap() apparently works on
+  Linux FAT file systems, and is probably the best choice since it doesn't need
+  all pages to be in RAM at the same time.
+
+  SQLite does allow modifying of blobs once stored in the database.
+  The trick is to insert the blob as all zeroes using a special function, and then
+  substitute bytes in the blog progressively.
 
   We need to also need to create the appropriate row(s) in the MANIFESTS, FILES, 
   FILEMANIFESTS and MANIFESTGROUPS tables.
  */
 int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename)
 {
+  if (!m->finalised) return WHY("Manifest was not finalised");
+
+  if (m->fileLength>0) 
+    if (rhizome_store_file(associated_filename,m->fileHexHash,m->fileHighestPriority)) 
+      return WHY("Could not store associated file");						   
+  /* XXX Store manifest itself, and create relationships to groups etc. */
+
   return WHY("Not implemented.");
 }
+
+/* The following function just stores the file (or silently returns if it already
+   exists).
+   The relationships of manifests to this file are the responsibility of the
+   caller. */
+int rhizome_store_file(char *file,char *hash,int priority) {
+  int fd=open(file,O_RDONLY);
+  if (fd<0) return WHY("Could not open associated file");
+  
+  struct stat stat;
+  if (fstat(fd,&stat)) {
+    close(fd);
+    return WHY("Could not stat() associated file");
+  }
+
+  unsigned char *addr =
+    mmap(NULL, stat.st_size, PROT_READ, MAP_FILE|MAP_SHARED, fd, 0);
+  if (addr==MAP_FAILED) {
+    close(fd);
+    return WHY("mmap() of associated file failed.");
+  }
+
+  /* Get hash of file if not supplied */
+  char hexhash[SHA512_DIGEST_STRING_LENGTH];
+  if (!hash)
+    {
+      /* Hash the file */
+      SHA512_CTX c;
+      SHA512_Init(&c);
+      SHA512_Update(&c,addr,stat.st_size);
+      SHA512_End(&c,hexhash);
+      hash=hexhash;
+    }
+
+  /* INSERT INTO FILES(id as text, data blob, length integer, highestpriority integer).
+   BUT, we have to do this incrementally so that we can handle blobs larger than available memory. 
+  This is possible using: 
+     int sqlite3_bind_zeroblob(sqlite3_stmt*, int, int n);
+  That binds an all zeroes blob to a field.  We can then populate the data by
+  opening a handle to the blob using:
+     int sqlite3_blob_write(sqlite3_blob *, const void *z, int n, int iOffset);
+*/
+  
+  char sqlcmd[1024];
+  const char *cmdtail;
+
+  /* See if the file is already stored, and if so, don't bother storing it again */
+  int count=sqlite_exec_int64("SELECT COUNT(*) FROM FILES WHERE id='%s' AND datavalid!=0;",hash); 
+  if (count==1) {
+    /* File is already stored, so just update the highestPriority field if required. */
+    long long storedPriority = sqlite_exec_int64("SELECT highestPriority FROM FILES WHERE id='%s' AND datavalid!=0",hash);
+    if (storedPriority<priority)
+      {
+	snprintf(sqlcmd,1024,"UPDATE FILES SET highestPriority=%d WHERE id='%s';",
+		 priority,hash);
+	if (sqlite3_exec(rhizome_db,sqlcmd,NULL,NULL,NULL)!=SQLITE_OK) {
+	  close(fd);
+	  WHY(sqlite3_errmsg(rhizome_db));
+	  return WHY("SQLite failed to update highestPriority field for stored file.");
+	}
+      }
+    close(fd);
+    return 0;
+  } else if (count>1) {
+    /* This should never happen! */
+    return WHY("Duplicate records for a file in the rhizome database.  Database probably corrupt.");
+  }
+
+  /* Okay, so there are no records that match, but we should delete any half-baked record (with datavalid=0) so that the insert below doesn't fail. */
+  sqlite3_exec(rhizome_db,"DELETE FROM FILES WHERE datavalid=0;",NULL,NULL,NULL);
+
+  snprintf(sqlcmd,1024,"INSERT INTO FILES(id,data,length,highestpriority,datavalid) VALUES('%s',?,%lld,%d,0);",
+	   hash,(long long)stat.st_size,priority);
+  sqlite3_stmt *statement;
+  if (sqlite3_prepare_v2(rhizome_db,sqlcmd,strlen(sqlcmd)+1,&statement,&cmdtail) 
+      != SQLITE_OK)
+    {
+      close(fd);
+      return WHY(sqlite3_errmsg(rhizome_db));
+    }
+  
+  /* Bind appropriate sized zero-filled blob to data field */
+  sqlite3_bind_zeroblob(statement,1,stat.st_size);
+
+  /* Do actual insert, and abort if it fails */
+  int dud=0;
+  if (sqlite3_step(statement)!=SQLITE_OK) dud++;
+  if (sqlite3_finalize(statement)) dud++;
+  if (dud) {
+    close(fd);
+    WHY(sqlite3_errmsg(rhizome_db));
+    return WHY("SQLite3 failed to insert row for file");
+  }
+
+  /* Get rowid for inserted row, so that we can modify the blob */
+  int rowid=sqlite3_last_insert_rowid(rhizome_db);
+  if (rowid<1) {
+    close(fd);
+    WHY(sqlite3_errmsg(rhizome_db));
+    return WHY("SQLite3 failed return rowid of inserted row");
+  }
+
+  sqlite3_blob *blob;
+  if (sqlite3_blob_open(rhizome_db,"main","FILES","data",rowid,
+		    1 /* read/write */,
+			&blob) != SQLITE_OK)
+    {
+      WHY(sqlite3_errmsg(rhizome_db));
+      close(fd);
+      sqlite3_blob_close(blob);
+      return WHY("SQLite3 failed to open file blob for writing");
+    }
+  {
+    long long i;
+    for(i=0;i<stat.st_size;i+=65536)
+      {
+	int n=65536;
+	if (i+n>stat.st_size) n=stat.st_size-i;
+	if (sqlite3_blob_write(blob,&addr[i],n,i) !=SQLITE_OK) dud++;
+      }
+  }
+  if (dud) {
+      WHY(sqlite3_errmsg(rhizome_db));
+      close(fd);
+      sqlite3_blob_close(blob);
+      return WHY("SQLite3 failed write all blob data");
+  }
+
+  /* Get things consistent */
+  sqlite3_exec(rhizome_db,"COMMIT;",NULL,NULL,NULL);
+
+  return WHY("Not implemented");
+}
+
 
 /*
   Adds a group that this bundle should be present in.  If we have the means to sign
