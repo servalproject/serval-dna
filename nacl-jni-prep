@@ -33,6 +33,7 @@ sources=`echo nacl-source/*/nacl-source/*/*.c`
 echo sed -e 's,LOCAL_SRC_FILES:= \\,LOCAL_SRC_FILES:= '"${sources}"' \\,' 
 cat Android-without-NaCl.mk | sed -e 's,LOCAL_SRC_FILES:= \\,LOCAL_SRC_FILES:= '"${sources}"' \\,' > Android.mk
 
+if [ ! -e libsqlite.so ]; then
 # Copy libsqlite.so from /system/lib/ on an android phone.
 phonecount=`adb devices | wc -l`
 if [ ${phonecount} -lt 3 ]; then
@@ -41,5 +42,6 @@ if [ ${phonecount} -lt 3 ]; then
    exit 3
 fi
 dev=`adb devices | awk '($1>"") { n=$1;} END { print n;}'`
-echo "Copying /system/lib/sqlite.so from device $dev"
+echo "Copying /system/lib/libsqlite.so from device $dev"
 adb -s $dev pull /system/lib/libsqlite.so
+fi
