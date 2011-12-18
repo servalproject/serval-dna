@@ -18,6 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "mphlr.h"
+#include "rhizome.h"
 #include <stdarg.h>
 #include <signal.h>
 #include <unistd.h>
