@@ -2,6 +2,7 @@ LOCAL_PATH:= $(call my-dir)
 
 include $(CLEAR_VARS)
 
+LOCAL_LDLIBS := -lsqlite
 LOCAL_SRC_FILES:= \
         client.c        \
         export.c        \
@@ -27,8 +28,7 @@ LOCAL_SRC_FILES:= \
 	randombytes.c	\
         simulate.c \
 	jni.c \
-	rhizome.c \
-	sqlite3.c
+	rhizome.c
 
 LOCAL_MODULE:= dnalib
 
