@@ -390,7 +390,7 @@ rhizome_manifest *rhizome_read_manifest_file(char *filename)
 
   /* Calculate hash of the text part of the file, as we need to couple this with
      each signature block to */
-  unsigned char manifest_hash[crypto_hash_BYTES];
+  unsigned char manifest_hash[crypto_hash_sha512_BYTES];
   crypto_hash(manifest_hash,m->manifestdata,end_of_text);
 
   /* Read signature blocks from file.
@@ -594,9 +594,9 @@ int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename)
 
   /* Store manifest */
   snprintf(sqlcmd,1024,"INSERT INTO MANIFESTS(id,manifest,version,privatekey,inserttime) VALUES('%s',?,%lld,'%s',%lld);",
-	   rhizome_safe_encode(m->cryptoSignPublic,crypto_sign_PUBLICKEYBYTES),
+	   rhizome_safe_encode(m->cryptoSignPublic,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES),
 	   m->version,
-	   rhizome_safe_encode(m->cryptoSignSecret,crypto_sign_SECRETKEYBYTES),
+	   rhizome_safe_encode(m->cryptoSignSecret,crypto_sign_edwards25519sha512batch_SECRETKEYBYTES),
 	   overlay_time_in_ms());
     sqlite3_stmt *statement;
   if (sqlite3_prepare_v2(rhizome_db,sqlcmd,strlen(sqlcmd)+1,&statement,&cmdtail) 
