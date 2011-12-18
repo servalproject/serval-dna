@@ -7,14 +7,14 @@
 typedef struct rhizome_manifest {
   int manifest_bytes;
   unsigned char manifestdata[MAX_MANIFEST_BYTES];
-  unsigned char manifesthash[crypto_hash_BYTES];
+  unsigned char manifesthash[crypto_hash_sha512_BYTES];
 
   /* CryptoSign key pair for this manifest.
      The filename as distributed on Rhizome will be the public key
      of this pair, thus ensuring that noone can tamper with a bundle
      except the creator. */
-  unsigned char cryptoSignPublic[crypto_sign_PUBLICKEYBYTES];
-  unsigned char cryptoSignSecret[crypto_sign_SECRETKEYBYTES];
+  unsigned char cryptoSignPublic[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
+  unsigned char cryptoSignSecret[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES];
 
   int var_count;
   char *vars[MAX_MANIFEST_VARS];
