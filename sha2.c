@@ -33,6 +33,9 @@
 
 #include <string.h>	/* memcpy()/memset() or bcopy()/bzero() */
 #include <assert.h>	/* assert() */
+#ifdef HAVE_SYS_ENDIAN_H
+#include <sys/endian.h>
+#endif
 #include "sha2.h"
 
 /*
