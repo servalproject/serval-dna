@@ -219,9 +219,11 @@ int usage(char *complaint)
 {
   fprintf(stderr,"dna: %s\n",complaint);
   fprintf(stderr,"usage:\n");
-  fprintf(stderr,"   dna [-v ...] -S <hlr size in MB> [-f HLR backing file] [-I import.txt] [-N interface,...] [-G gateway specification]\n");
+  fprintf(stderr,"   dna [-v ...] -S <hlr size in MB> [-f HLR backing file] [-I import.txt] [-N interface,...] [-G gateway specification] [-r rhizome path]\n");
   fprintf(stderr,"or\n");
   fprintf(stderr,"   dna [-v ...] -f <HLR backing file> -E <hlr export file>\n");
+  fprintf(stderr,"or\n");
+  fprintf(stderr,"   dna -r <rhizome path> -M <manifest name>\n");
   fprintf(stderr,"or\n");
   fprintf(stderr,"   dna <-d|-s> id -A\n");
   fprintf(stderr,"or\n");
@@ -244,6 +246,7 @@ int usage(char *complaint)
   fprintf(stderr,"       -l - Specify BATMAN socket to obtain peer list (better, but requires Serval patched BATMAN).\n");
   fprintf(stderr,"       -L - Log mesh statistics to specified file.\n");
   fprintf(stderr,"       -m - Return multiple variable values instead of only first response.\n");
+  fprintf(stderr,"       -M - Create and import a new bundle from the specified manifest.\n");
   fprintf(stderr,"       -n - Do not detach from foreground in server mode.\n");
   fprintf(stderr,"       -S - Run in server mode with an HLR of the specified size.\n");
   fprintf(stderr,"       -f - Use the specified file as a permanent store for HLR data.\n");
@@ -315,7 +318,7 @@ int main(int argc,char **argv)
 
   srandomdev();
 
-  while((c=getopt(argc,argv,"Ab:B:E:G:I:S:f:d:i:l:L:mnp:P:r:s:t:vR:W:U:D:CO:N:")) != -1 ) 
+  while((c=getopt(argc,argv,"Ab:B:E:G:I:S:f:d:i:l:L:mnp:P:r:s:t:vR:W:U:D:CO:M:N:")) != -1 ) 
     {
       switch(c)
 	{
@@ -323,6 +326,18 @@ int main(int argc,char **argv)
 	  if (rhizome_datastore_path) return WHY("-r specified more than once");
 	  rhizome_datastore_path=optarg;
 	  rhizome_opendb();
+	  break;
+	case 'M': /* Distribute specified manifest and file pair using Rhizome. */
+	  /* This option assumes that the manifest is locally produced, and will
+	     create any appropriate signatures, replacing any old signatures on the
+	     manifest.
+	     A different calling would be required to import an existing pre-signed
+	     manifest */
+	  return rhizome_bundle_import(optarg,
+				       NULL /* no groups - XXX should allow them */,
+				       0 /* int verifyP */, 
+				       1 /* int checkFileP */, 
+				       1 /* int signP */);
 	  break;
 	case 'm': returnMultiVars=1; break;
 	case 'N': /* Ask for overlay network to setup one or more interfaces */

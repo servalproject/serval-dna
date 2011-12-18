@@ -17,16 +17,6 @@ typedef struct rhizome_manifest {
   unsigned char cryptoSignPublic[crypto_sign_PUBLICKEYBYTES];
   unsigned char cryptoSignSecret[crypto_sign_SECRETKEYBYTES];
 
-  /* Set non-zero after variables have been packed and
-     signature blocks appended */
-  int finalised;
-
-  /* When finalised, we keep the filehash and maximum priority due to any
-     group membership handy */
-  long long fileLength;
-  char fileHexHash[SHA512_DIGEST_STRING_LENGTH];
-  int fileHighestPriority;
-
   int var_count;
   char *vars[MAX_MANIFEST_VARS];
   char *values[MAX_MANIFEST_VARS];
@@ -38,6 +28,19 @@ typedef struct rhizome_manifest {
   /* 0x02 = CryptoSign signature of signatory */
   int signature_errors; /* if non-zero, then manifest should not be trusted */
 
+  /* Set non-zero after variables have been packed and
+     signature blocks appended.
+     All fields below are only valid once the manifest has been finalised */
+  int finalised;
+
+  /* When finalised, we keep the filehash and maximum priority due to any
+     group membership handy */
+  long long fileLength;
+  char fileHexHash[SHA512_DIGEST_STRING_LENGTH];
+  int fileHighestPriority;
+
+  /* Version of the manifest.  Typically the number of milliseconds since 1970. */
+  long long version;
   
 } rhizome_manifest;
 
@@ -54,6 +57,7 @@ int rhizome_manifest_priority(char *id);
 rhizome_manifest *rhizome_read_manifest_file(char *filename);
 int rhizome_hash_file(char *filename,char *hash_out);
 int rhizome_manifest_get(rhizome_manifest *m,char *var,char *value_out);
+long long  rhizome_manifest_get_ll(rhizome_manifest *m,char *var);
 int rhizome_manifest_set_ll(rhizome_manifest *m,char *var,long long value);
 int rhizome_manifest_set(rhizome_manifest *m,char *var,char *value);
 long long rhizome_file_size(char *filename);
@@ -62,6 +66,9 @@ int rhizome_manifest_pack_variables(rhizome_manifest *m);
 int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename);
 int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid);
 int rhizome_store_file(char *file,char *hash,int priortity);
+char *rhizome_safe_encode(unsigned char *in,int len);
+int rhizome_finish_sqlstatement(sqlite3_stmt *statement);
+int rhizome_bundle_import(char *bundle,char *groups[],int verifyP, int checkFileP, int signP);
 
 
 int rhizome_opendb()
@@ -313,7 +320,7 @@ int rhizome_bundle_import(char *bundle,char *groups[],int verifyP, int checkFile
   char buffer[1024];
   
   snprintf(filename,1024,"%s/import/file.%s",rhizome_datastore_path,bundle); filename[1023]=0;
-  snprintf(manifestname,1024,"%s/manifest.%s",rhizome_datastore_path,bundle); manifestname[1023]=0;
+  snprintf(manifestname,1024,"%s/import/manifest.%s",rhizome_datastore_path,bundle); manifestname[1023]=0;
 
   /* Open files */
   rhizome_manifest *m=rhizome_read_manifest_file(manifestname);
@@ -504,6 +511,18 @@ int rhizome_manifest_get(rhizome_manifest *m,char *var,char *out)
   return -1;
 }
 
+long long rhizome_manifest_get_ll(rhizome_manifest *m,char *var)
+{
+  int i;
+
+  if (!m) return -1;
+
+  for(i=0;i<m->var_count;i++)
+    if (!strcmp(m->vars[i],var))
+      return strtoll(m->values[i],NULL,10);
+  return -1;
+}
+
 int rhizome_manifest_set(rhizome_manifest *m,char *var,char *value)
 {
   int i;
@@ -627,6 +646,9 @@ int rhizome_manifest_createid(rhizome_manifest *m)
  */
 int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename)
 {
+  char sqlcmd[1024];
+  const char *cmdtail;
+
   if (!m->finalised) return WHY("Manifest was not finalised");
 
   if (m->fileLength>0) 
@@ -634,7 +656,66 @@ int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename)
       return WHY("Could not store associated file");						   
   /* XXX Store manifest itself, and create relationships to groups etc. */
 
+  /* Store manifest */
+  snprintf(sqlcmd,1024,"INSERT INTO MANIFESTS(id,manifest,version,privatekey,inserttime) VALUES('%s',?,%lld,'%s',%lld);",
+	   rhizome_safe_encode(m->cryptoSignPublic,crypto_sign_PUBLICKEYBYTES),
+	   m->version,
+	   rhizome_safe_encode(m->cryptoSignSecret,crypto_sign_SECRETKEYBYTES),
+	   overlay_time_in_ms());
+    sqlite3_stmt *statement;
+  if (sqlite3_prepare_v2(rhizome_db,sqlcmd,strlen(sqlcmd)+1,&statement,&cmdtail) 
+      != SQLITE_OK)
+    return WHY(sqlite3_errmsg(rhizome_db));
+  
+  /* Bind appropriate sized zero-filled blob to data field */
+  sqlite3_bind_blob(statement,1,m->manifestdata,m->manifest_bytes,SQLITE_TRANSIENT);
+
+  if (rhizome_finish_sqlstatement(statement))
+    return WHY("SQLite3 failed to insert row for manifest");
+
   return WHY("Not implemented.");
+}
+
+int rhizome_finish_sqlstatement(sqlite3_stmt *statement)
+{
+  /* Do actual insert, and abort if it fails */
+  int dud=0;
+  if (sqlite3_step(statement)!=SQLITE_OK) dud++;
+  if (sqlite3_finalize(statement)) dud++;
+  if (dud) WHY(sqlite3_errmsg(rhizome_db));
+
+  return dud;
+}
+
+/* Like sqlite_encode_binary(), but with a fixed rotation to make comparison of
+   string prefixes easier.  Also, returns string directly for convenience.
+   The rotoring through four return strings is so that this function can be used
+   safely inline in sprintf() type functions, which makes composition of sql statements
+   easier. */
+int rse_rotor=0;
+char rse_out[4][129];
+char *rhizome_safe_encode(unsigned char *in,int len)
+{
+  char *r=rse_out[rse_rotor];
+  rse_rotor++;
+  rse_rotor&=3;
+
+  int i,o=0;
+
+  for(i=0;i<len;i++)
+    {
+      if (o<=127)
+	switch(in[i])
+	  {
+	  case 0x00: case 0x01: case '\'':
+	    r[o++]=0x01;
+	    r[o++]=in[i]^0x80;
+	    break;
+	  default:
+	    r[o++]=in[i];
+	  }
+    }
+  return r;
 }
 
 /* The following function just stores the file (or silently returns if it already
@@ -704,7 +785,8 @@ int rhizome_store_file(char *file,char *hash,int priority) {
     return WHY("Duplicate records for a file in the rhizome database.  Database probably corrupt.");
   }
 
-  /* Okay, so there are no records that match, but we should delete any half-baked record (with datavalid=0) so that the insert below doesn't fail. */
+  /* Okay, so there are no records that match, but we should delete any half-baked record (with datavalid=0) so that the insert below doesn't fail.
+   Don't worry about the return result, since it might not delete any records. */
   sqlite3_exec(rhizome_db,"DELETE FROM FILES WHERE datavalid=0;",NULL,NULL,NULL);
 
   snprintf(sqlcmd,1024,"INSERT INTO FILES(id,data,length,highestpriority,datavalid) VALUES('%s',?,%lld,%d,0);",
@@ -779,5 +861,26 @@ int rhizome_store_file(char *file,char *hash,int priority) {
  */
 int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid)
 {
+  return WHY("Not implemented.");
+}
+
+int rhizome_manifest_finalise(rhizome_manifest *m)
+{
+  /* set fileLength */
+  /* set fileHexHash */
+  /* set fileHighestPriority based on group associations */
+
+  /* set version of manifest, either from version variable, or using current time */
+  if (rhizome_manifest_get(m,"version",NULL))
+    {
+      /* No version set */
+      m->version = overlay_time_in_ms();
+      rhizome_manifest_set_ll(m,"version",m->version);
+    }
+  else
+    m->version = rhizome_manifest_get_ll(m,"version");
+
+  /* mark manifest as finalised */
+
   return WHY("Not implemented.");
 }
