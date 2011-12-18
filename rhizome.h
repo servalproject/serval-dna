@@ -1,7 +1,3 @@
-#ifndef BYTE_ORDER
-#define BYTE_ORDER LITTLE_ENDIAN
-#endif
-
 #include "sqlite-amalgamation-3070900/sqlite3.h"
 #include "sha2.h"
 #include <sys/stat.h>
