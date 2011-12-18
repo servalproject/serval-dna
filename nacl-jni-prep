@@ -33,3 +33,13 @@ sources=`echo nacl-source/*/nacl-source/*/*.c`
 echo sed -e 's,LOCAL_SRC_FILES:= \\,LOCAL_SRC_FILES:= '"${sources}"' \\,' 
 cat Android-without-NaCl.mk | sed -e 's,LOCAL_SRC_FILES:= \\,LOCAL_SRC_FILES:= '"${sources}"' \\,' > Android.mk
 
+# Copy libsqlite.so from /system/lib/ on an android phone.
+phonecount=`adb devices | wc -l`
+if [ ${phonecount} -lt 3 ]; then
+   echo "ERROR: You MUST connect and Android phone with USB debugging enabled"
+   echo "       so that I can copy /system/lib/libsqlite.so to link against."
+   exit 3
+fi
+dev=`adb devices | awk '($1>"") { n=$1;} END { print n;}'`
+echo "Copying /system/lib/sqlite.so from device $dev"
+adb -s $dev pull /system/lib/libsqlite.so
