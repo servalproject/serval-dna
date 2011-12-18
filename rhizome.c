@@ -1,9 +1,10 @@
 #include "mphlr.h"
-#include "sqlite-amalgamation-3070900/sqlite3.h"
-#include "sha2.h"
-#include <sys/stat.h>
+#include "rhizome.h"
 
+long long rhizome_space=0;
+char *rhizome_datastore_path=NULL;
 
+sqlite3 *rhizome_db=NULL;
 
 int rhizome_opendb()
 {

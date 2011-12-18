@@ -1,3 +1,7 @@
+#include "sqlite-amalgamation-3070900/sqlite3.h"
+#include "sha2.h"
+#include <sys/stat.h>
+
 #define MAX_MANIFEST_VARS 256
 #define MAX_MANIFEST_BYTES 8192
 typedef struct rhizome_manifest {
@@ -39,10 +43,10 @@ typedef struct rhizome_manifest {
   
 } rhizome_manifest;
 
-long long rhizome_space=0;
-char *rhizome_datastore_path=NULL;
+extern long long rhizome_space;
+extern char *rhizome_datastore_path;
 
-sqlite3 *rhizome_db=NULL;
+extern sqlite3 *rhizome_db;
 
 int rhizome_manifest_createid(rhizome_manifest *m);
 int rhizome_write_manifest_file(rhizome_manifest *m,char *filename);
