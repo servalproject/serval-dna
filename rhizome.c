@@ -391,7 +391,7 @@ rhizome_manifest *rhizome_read_manifest_file(char *filename)
   /* Calculate hash of the text part of the file, as we need to couple this with
      each signature block to */
   unsigned char manifest_hash[crypto_hash_sha512_BYTES];
-  crypto_hash(manifest_hash,m->manifestdata,end_of_text);
+  crypto_hash_sha512(manifest_hash,m->manifestdata,end_of_text);
 
   /* Read signature blocks from file.
      XXX - What additional information/restrictions should the
