@@ -26,7 +26,9 @@ LOCAL_SRC_FILES:= \
         peers.c         \
 	randombytes.c	\
         simulate.c \
-	jni.c
+	jni.c \
+	rhizome.c \
+	sqlite3.c
 
 LOCAL_MODULE:= dnalib
 
