@@ -377,9 +377,8 @@ int i;
   /* Okay, it is written, and can be put directly into the rhizome database now */
   int r=rhizome_store_bundle(m,filename);
   if (!r) {
-    //    unlink(manifestname);
+    // XXX For testing   unlink(manifestname);
     unlink(filename);
-
     return 0;
   }
 
@@ -453,14 +452,11 @@ rhizome_manifest *rhizome_read_manifest_file(char *filename)
      each signature block to */
   crypto_hash_sha512(m->manifesthash,m->manifestdata,end_of_text);
 
-  /* Read signature blocks from file.
-     XXX - What additional information/restrictions should the
-     signatures have?  start/expiry times? geo bounding box? 
-     Those elements all need to be included in the hash */
+  /* Read signature blocks from file. */
   while(ofs<m->manifest_bytes) {
-    rhizome_manifest_extract_signature(m,&ofs);
+    if (rhizome_manifest_extract_signature(m,&ofs))
+      m->signature_errors++;
   }
-  WHY("Signature reading not implemented");
 
   WHY("Group membership signature reading not implemented (are we still doing it this way?)");
   
