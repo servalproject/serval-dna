@@ -12,7 +12,7 @@
 
 typedef struct rhizome_signature {
   unsigned char signature[crypto_sign_edwards25519sha512batch_BYTES
-			  +crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
+			  +crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES+1];
   int signatureLength;
 } rhizome_signature;
 
@@ -35,10 +35,13 @@ typedef struct rhizome_manifest {
   char *values[MAX_MANIFEST_VARS];
 
   int sig_count;
-  unsigned char *signatureBlocks[MAX_MANIFEST_VARS];
+  /* Parties who have signed this manifest (raw byte format) */
+  unsigned char *signatories[MAX_MANIFEST_VARS];
+  /*
+    0x61 = crypto_sign_edwards25519sha512batch()
+  */
   unsigned char signatureTypes[MAX_MANIFEST_VARS];
-  /* 0x01 = CryptoSign signature of manifest */
-  /* 0x02 = CryptoSign signature of signatory */
+
   int signature_errors; /* if non-zero, then manifest should not be trusted */
 
   /* Absolute path of the file associated with the manifest */

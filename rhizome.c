@@ -274,7 +274,8 @@ int rhizome_manifest_priority(char *id)
    The file should be included in the specified rhizome groups, if possible.
    (some groups may be closed groups that we do not have the private key for.)
 */
-int rhizome_bundle_import(char *bundle,char *groups[],int verifyP, int checkFileP, int signP)
+int rhizome_bundle_import(char *bundle,char *groups[],
+			  int verifyP, int checkFileP, int signP)
 {
   char filename[1024];
   char manifestname[1024];
@@ -341,10 +342,6 @@ int rhizome_bundle_import(char *bundle,char *groups[],int verifyP, int checkFile
       if (!rhizome_find_keypair_bytes(m->cryptoSignPublic,m->cryptoSignSecret))
 	m->haveSecret=1;
     }
-      dump("public key",m->cryptoSignPublic,
-	   crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
-      dump("secret key",m->cryptoSignSecret,
-	   crypto_sign_edwards25519sha512batch_SECRETKEYBYTES);
 
     rhizome_manifest_set(m,"filehash",hexhash);
     if (rhizome_manifest_get(m,"version",NULL)!=0)
@@ -362,7 +359,6 @@ int rhizome_bundle_import(char *bundle,char *groups[],int verifyP, int checkFile
       return WHY("Newer version exists");
     }
 					      
-    
   /* Add group memberships */
 					      
 int i;
@@ -461,6 +457,9 @@ rhizome_manifest *rhizome_read_manifest_file(char *filename)
      XXX - What additional information/restrictions should the
      signatures have?  start/expiry times? geo bounding box? 
      Those elements all need to be included in the hash */
+  while(ofs<m->manifest_bytes) {
+    rhizome_manifest_extract_signature(m,&ofs);
+  }
   WHY("Signature reading not implemented");
 
   WHY("Group membership signature reading not implemented (are we still doing it this way?)");
@@ -532,6 +531,7 @@ int rhizome_manifest_set(rhizome_manifest *m,char *var,char *value)
     if (!strcmp(m->vars[i],var)) {
       free(m->values[i]); 
       m->values[i]=strdup(value);
+      m->finalised=0;
       return 0;
     }
 
@@ -540,6 +540,7 @@ int rhizome_manifest_set(rhizome_manifest *m,char *var,char *value)
   m->vars[m->var_count]=strdup(var);
   m->values[m->var_count]=strdup(value);
   m->var_count++;
+  m->finalised=0;
 
   return 0;
 }
@@ -574,10 +575,13 @@ void rhizome_manifest_free(rhizome_manifest *m)
     { free(m->vars[i]); free(m->values[i]); 
       m->vars[i]=NULL; m->values[i]=NULL; }
 
+  for(i=0;i<m->sig_count;i++)
+    { free(m->signatories[i]);
+      m->signatories[i]=NULL;
+    }
+
   if (m->dataFileName) free(m->dataFileName);
   m->dataFileName=NULL;
-
-  WHY("Doesn't free signatures yet");
 
   free(m);
 
@@ -620,7 +624,7 @@ int rhizome_manifest_sign(rhizome_manifest *m)
     free(sig); 
     return WHY("Manifest plus signatures is too long.");
   }
-  
+
   bcopy(&sig->signature[0],&m->manifestdata[m->manifest_bytes],sig->signatureLength);
 
   m->manifest_bytes+=sig->signatureLength;
@@ -1210,8 +1214,73 @@ rhizome_signature *rhizome_sign_hash(unsigned char *hash,unsigned char *publicKe
   bcopy(&signatureBuffer[96],&out->signature[33],32);
   bcopy(&publicKeyBytes[0],&out->signature[65],crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
   out->signatureLength=65+crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES;
+
   out->signature[0]=out->signatureLength;
 
   return out;
 }
 
+int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
+{
+  unsigned char sigBuf[256];
+  unsigned char verifyBuf[256];
+  unsigned char publicKey[256];
+  if (!m) return WHY("NULL pointer passed in as manifest");
+
+  if ((*ofs)>=m->manifest_bytes) return 0;
+
+  int len=m->manifestdata[*ofs];
+  if (!len) { 
+    (*ofs)=m->manifest_bytes;
+    return WHY("Zero byte signature blocks are not allowed, assuming signature section corrupt.");
+  }
+
+  /* Each signature type is required to have a different length to detect it.
+     At present only crypto_sign_edwards25519sha512batch() signatures are
+     supported. */
+  if (m->sig_count<MAX_MANIFEST_VARS)
+    switch(len) 
+      {
+      case 0x61: /* crypto_sign_edwards25519sha512batch() */
+	/* Reconstitute signature block */
+	bcopy(&m->manifestdata[(*ofs)+1],&sigBuf[0],32);
+	bcopy(&m->manifesthash[0],&sigBuf[32],crypto_hash_sha512_BYTES);
+	bcopy(&m->manifestdata[(*ofs)+1+32],&sigBuf[96],32);
+	/* Get public key of signatory */
+	bcopy(&m->manifestdata[(*ofs)+1+64],&publicKey[0],crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+	
+	unsigned long long mlen=0;
+	int r=crypto_sign_edwards25519sha512batch_open(verifyBuf,&mlen,&sigBuf[0],128,
+						       publicKey);
+	fflush(stdout); fflush(stderr);
+	if (r) {
+	  (*ofs)+=len;
+	  return WHY("Error in signature block (verification failed).");
+	} else {
+	  /* Signature block passes, so add to list of signatures */
+	  m->signatureTypes[m->sig_count]=len;
+	  m->signatories[m->sig_count]
+	    =malloc(crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+	  if(!m->signatories[m->sig_count]) {
+	    (*ofs)+=len;
+	    return WHY("malloc() failed when reading signature block");
+	  }
+	  bcopy(&publicKey[0],m->signatories[m->sig_count],
+		crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+	  m->sig_count++;
+	  WHY("Signature passed.");
+	}
+	break;
+      default:
+	(*ofs)+=len;
+	return WHY("Encountered illegal or malformed signature block");
+      }
+  else
+    {
+      (*ofs)+=len;
+      WHY("Too many signature blocks in manifest.");
+    }
+
+  (*ofs)+=len;
+  return 0;
+}
