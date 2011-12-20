@@ -2,6 +2,14 @@
 #include "sha2.h"
 #include <sys/stat.h>
 
+#define RHIZOME_PRIORITY_HIGHEST RHIZOME_PRIORITY_SERVAL_CORE
+#define RHIZOME_PRIORITY_SERVAL_CORE 5
+#define RHIZOME_PRIORITY_SUBSCRIBED 4
+#define RHIZOME_PRIORITY_SERVAL_OPTIONAL 3
+#define RHIZOME_PRIORITY_DEFAULT 2
+#define RHIZOME_PRIORITY_SERVAL_BULK 1
+#define RHIZOME_PRIORITY_NOTINTERESTED 0
+
 typedef struct rhizome_signature {
   unsigned char signature[crypto_sign_edwards25519sha512batch_BYTES
 			  +crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];

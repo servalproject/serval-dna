@@ -53,7 +53,7 @@ int rhizome_opendb()
       fprintf(stderr,"SQLite could enable incremental vacuuming: %s\n",sqlite3_errmsg(rhizome_db));
       exit(1);
   }
-  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS GROUPLIST(id text not null primary key, closed integer,ciphered integer);",NULL,NULL,NULL))
+  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS GROUPLIST(id text not null primary key, closed integer,ciphered integer,priority integer);",NULL,NULL,NULL))
     {
       fprintf(stderr,"SQLite could not create GROUPLIST table: %s\n",sqlite3_errmsg(rhizome_db));
       exit(1);
@@ -683,6 +683,22 @@ int rhizome_find_keypair_bytes(unsigned char *p,unsigned char *s) {
   return WHY("Could not find matching secret key.");
 }
 
+int rhizome_update_file_priority(char *fileid)
+{
+  /* Drop if no references */
+  int referrers=sqlite_exec_int64("SELECT COUNT(*) FROM FILEMANIFESTS WHERE fileid='%s';",fileid);
+  if (referrers==0)
+    rhizome_drop_stored_file(fileid,RHIZOME_PRIORITY_HIGHEST+1);
+  if (referrers>0) {
+    /* It has referrers, so workout the highest priority of any referrer */
+        int highestPriority=sqlite_exec_int64("SELECT max(grouplist.priority) FROM MANIFESTS,FILEMANIFESTS,GROUPMEMBERSHIPS,GROUPLIST where manifests.id=filemanifests.manifestid AND groupmemberships.manifestid=manifests.id AND groupmemberships.groupid=grouplist.id AND filemanifests.fileid='%s';",fileid);
+    if (highestPriority>=0)
+      sqlite_exec_int64("UPDATE files set highestPriority=%d WHERE id='%s';",
+			highestPriority,fileid);
+  }
+  return 0;
+}
+
 /*
   Store the specified manifest into the sqlite database.
   We assume that sufficient space has been made for us.
@@ -709,26 +725,49 @@ int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename)
   char sqlcmd[1024];
   const char *cmdtail;
 
+  char *manifestid=rhizome_bytes_to_hex(m->cryptoSignPublic,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+
   if (!m->finalised) return WHY("Manifest was not finalised");
 
   /* remove any old version of the manifest */
-  if (sqlite_exec_int64("SELECT COUNT(*) MANIFESTS WHERE id='%s';",
-			rhizome_bytes_to_hex(m->cryptoSignPublic,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES))>0)
+  if (sqlite_exec_int64("SELECT COUNT(*) FROM MANIFESTS WHERE id='%s';",manifestid)>0)
     {
       /* Manifest already exists.
 	 Remove old manifest entry, and replace with new one.
 	 But we do need to check if the file referenced by the old one is still needed,
 	 and if it's priority is right */
-      sqlite_exec_int64("DELETE FROM MANIFESTS WHERE id='%s';",
-			rhizome_bytes_to_hex(m->cryptoSignPublic,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES));
-      WHY("Need to examine the manifestfiles row for the deleted entry (id still matches, so we can find it, and see if it is still needed, or if its priority has changed).  Then delete the old manifestfiles row.");
+      sqlite_exec_int64("DELETE FROM MANIFESTS WHERE id='%s';",manifestid);
+
+      char sql[1024];
+      sqlite3_stmt *statement;
+      snprintf(sql,1024,"SELECT fileid from filemanifests where manifestid='%s';",
+	       manifestid);
+      if (sqlite3_prepare_v2(rhizome_db,sql,strlen(sql)+1,&statement,NULL)!=SQLITE_OK)
+	{
+	  WHY("sqlite3_prepare_v2() failed");
+	  WHY(sql);
+	  WHY(sqlite3_errmsg(rhizome_db));
+	}
+      else
+	{
+	  while ( sqlite3_step(statement)== SQLITE_ROW)
+	    {
+	      const unsigned char *fileid;
+	      if (sqlite3_column_type(statement,0)==SQLITE_TEXT) {
+		fileid=sqlite3_column_text(statement,0);
+		rhizome_update_file_priority((char *)fileid);
+	      }
+	    }
+	  sqlite3_finalize(statement);
+	}      
+      sqlite_exec_int64("DELETE FROM FILEMANIFESTS WHERE manifestid='%s';",manifestid);
+
     }
 
   /* Store manifest */
-  snprintf(sqlcmd,1024,"INSERT INTO MANIFESTS(id,manifest,version,inserttime) VALUES('%s',?,%lld,%lld);",
-	   rhizome_bytes_to_hex(m->cryptoSignPublic,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES),
-	   m->version,
-	   overlay_time_in_ms());
+  snprintf(sqlcmd,1024,
+	   "INSERT INTO MANIFESTS(id,manifest,version,inserttime) VALUES('%s',?,%lld,%lld);",
+	   manifestid,m->version,overlay_time_in_ms());
 
   if (m->haveSecret) {
     if (rhizome_store_keypair_bytes(m->cryptoSignPublic,m->cryptoSignSecret))
@@ -760,7 +799,7 @@ int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename)
 
   /* Create relationship between file and manifest */
   long long r=sqlite_exec_int64("INSERT INTO FILEMANIFESTS(manifestid,fileid) VALUES('%s','%s');",
-				 rhizome_bytes_to_hex(m->cryptoSignPublic,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES),
+				 manifestid,
 				 m->fileHexHash);
   if (r<0) {
     WHY(sqlite3_errmsg(rhizome_db));
@@ -775,11 +814,10 @@ int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename)
     if (closed<1) closed=0;
     int ciphered=rhizome_manifest_get_ll(m,"cipheredgroup");
     if (ciphered<1) ciphered=0;
-    sqlite_exec_int64("delete from grouplist where id='%s';",
-		      rhizome_bytes_to_hex(m->cryptoSignPublic,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES));
+    sqlite_exec_int64("delete from grouplist where id='%s';",manifestid);
     int storedP
-      =sqlite_exec_int64("insert into grouplist(id,closed,ciphered) VALUES('%s',%d,%d);",
-			 rhizome_bytes_to_hex(m->cryptoSignPublic,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES),closed,ciphered);
+      =sqlite_exec_int64("insert into grouplist(id,closed,ciphered,priority) VALUES('%s',%d,%d,%d);",
+			 manifestid,closed,ciphered,RHIZOME_PRIORITY_DEFAULT);
     if (storedP<0) return WHY("Failed to insert group manifest into grouplist table.");
   }
 
@@ -789,8 +827,7 @@ int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename)
     for(g=0;g<m->group_count;g++)
       {
 	if (sqlite_exec_int64("INSERT INTO GROUPMEMBERSHIPS(manifestid,groupid) VALUES('%s','%s');",
-			   rhizome_bytes_to_hex(m->cryptoSignPublic,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES),
-			       m->groups[g])<0)
+			   manifestid, m->groups[g])<0)
 	  dud++;
       }
     if (dud>0) return WHY("Failed to create one or more group associations");
