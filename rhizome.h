@@ -2,6 +2,12 @@
 #include "sha2.h"
 #include <sys/stat.h>
 
+typedef struct rhizome_signature {
+  unsigned char signature[crypto_sign_edwards25519sha512batch_BYTES
+			  +crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
+  int signatureLength;
+} rhizome_signature;
+
 #define MAX_MANIFEST_VARS 256
 #define MAX_MANIFEST_BYTES 8192
 typedef struct rhizome_manifest {
@@ -85,3 +91,6 @@ int rhizome_bundle_import(char *bundle,char *groups[],int verifyP, int checkFile
 int rhizome_manifest_finalise(rhizome_manifest *m,int signP);
 char *rhizome_bytes_to_hex(unsigned char *in,int byteCount);
 int rhizome_hex_to_bytes(char *in,unsigned char *out,int hexChars);
+int rhizome_store_keypair_bytes(unsigned char *p,unsigned char *s);
+int rhizome_find_keypair_bytes(unsigned char *p,unsigned char *s);
+rhizome_signature *rhizome_sign_hash(unsigned char *hash,unsigned char *publicKeyBytes);

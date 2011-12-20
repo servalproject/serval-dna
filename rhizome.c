@@ -325,12 +325,27 @@ int rhizome_bundle_import(char *bundle,char *groups[],int verifyP, int checkFile
     if (rhizome_manifest_get(m,"id",buffer)!=0) {
       /* No bundle id (256 bit random string being a public key in the NaCl CryptoSign crypto system),
 	 so create one, and keep the private key handy. */
+      printf("manifest does not have an id\n");
       rhizome_manifest_createid(m);
+      /* The ID is implicit in transit, but we need to store it in the file,
+	 so that reimporting manifests on receiver nodes works easily.
+	 We might implement something that strips the id variable out of the
+	 manifest when sending it, or some other scheme to avoid sending all 
+	 the extra bytes. */	
+      rhizome_manifest_set(m,"id",rhizome_bytes_to_hex(m->cryptoSignPublic,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES));
     } else {
-      /* An ID was specified, so look for the private key if we have it stowed away */
+      /* An ID was specified, so remember it, and look for the private key if
+	 we have it stowed away */
+      rhizome_hex_to_bytes(buffer,m->cryptoSignPublic,
+			   crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
       if (!rhizome_find_keypair_bytes(m->cryptoSignPublic,m->cryptoSignSecret))
 	m->haveSecret=1;
     }
+      dump("public key",m->cryptoSignPublic,
+	   crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+      dump("secret key",m->cryptoSignSecret,
+	   crypto_sign_edwards25519sha512batch_SECRETKEYBYTES);
+
     rhizome_manifest_set(m,"filehash",hexhash);
     if (rhizome_manifest_get(m,"version",NULL)!=0)
       /* Version not set, so set one */
@@ -366,7 +381,7 @@ int i;
   /* Okay, it is written, and can be put directly into the rhizome database now */
   int r=rhizome_store_bundle(m,filename);
   if (!r) {
-    unlink(manifestname);
+    //    unlink(manifestname);
     unlink(filename);
 
     return 0;
@@ -440,14 +455,13 @@ rhizome_manifest *rhizome_read_manifest_file(char *filename)
 
   /* Calculate hash of the text part of the file, as we need to couple this with
      each signature block to */
-  unsigned char manifest_hash[crypto_hash_sha512_BYTES];
-  crypto_hash_sha512(manifest_hash,m->manifestdata,end_of_text);
+  crypto_hash_sha512(m->manifesthash,m->manifestdata,end_of_text);
 
   /* Read signature blocks from file.
      XXX - What additional information/restrictions should the
      signatures have?  start/expiry times? geo bounding box? 
      Those elements all need to be included in the hash */
-  WHY("Signature verification not implemented");
+  WHY("Signature reading not implemented");
 
   WHY("Group membership signature reading not implemented (are we still doing it this way?)");
   
@@ -585,7 +599,11 @@ int rhizome_manifest_pack_variables(rhizome_manifest *m)
 	       m->vars[i],m->values[i]);
       ofs+=strlen((char *)&m->manifestdata[ofs]);
     }
+  m->manifestdata[ofs++]=0x00;
   m->manifest_bytes=ofs;
+
+  /* Recalculate hash */
+  crypto_hash_sha512(m->manifesthash,m->manifestdata,m->manifest_bytes);
 
   return 0;
 }
@@ -593,7 +611,22 @@ int rhizome_manifest_pack_variables(rhizome_manifest *m)
 /* Sign this manifest using our own private CryptoSign key */
 int rhizome_manifest_sign(rhizome_manifest *m)
 {
-  return WHY("Not implemented.");
+  rhizome_signature *sig=rhizome_sign_hash(m->manifesthash,m->cryptoSignPublic);
+
+  if (!sig) return WHY("rhizome_sign_hash() failed.");
+
+  /* Append signature to end of manifest data */
+  if (sig->signatureLength+m->manifest_bytes>MAX_MANIFEST_BYTES) {
+    free(sig); 
+    return WHY("Manifest plus signatures is too long.");
+  }
+  
+  bcopy(&sig->signature[0],&m->manifestdata[m->manifest_bytes],sig->signatureLength);
+
+  m->manifest_bytes+=sig->signatureLength;
+
+  free(sig);
+  return 0;
 }
 
 int rhizome_write_manifest_file(rhizome_manifest *m,char *filename)
@@ -610,7 +643,9 @@ int rhizome_write_manifest_file(rhizome_manifest *m,char *filename)
 int rhizome_manifest_createid(rhizome_manifest *m)
 {
   m->haveSecret=1;
-  return crypto_sign_edwards25519sha512batch_keypair(m->cryptoSignPublic,m->cryptoSignSecret);
+  int r=crypto_sign_edwards25519sha512batch_keypair(m->cryptoSignPublic,m->cryptoSignSecret);
+  if (!r) return rhizome_store_keypair_bytes(m->cryptoSignPublic,m->cryptoSignSecret);
+  return WHY("Failed to create keypair for manifest ID.");
 }
 
 int rhizome_store_keypair_bytes(unsigned char *p,unsigned char *s) {
@@ -638,7 +673,7 @@ int rhizome_find_keypair_bytes(unsigned char *p,unsigned char *s) {
     if (sqlite3_column_type(statement,0)==SQLITE_TEXT) {
       const unsigned char *hex=sqlite3_column_text(statement,0);
       rhizome_hex_to_bytes((char *)hex,s,
-			   crypto_sign_edwards25519sha512batch_SECRETKEYBYTES);
+			   crypto_sign_edwards25519sha512batch_SECRETKEYBYTES*2);
       /* XXX TODO Decrypt secret using a keyring password */
       sqlite3_finalize(statement);
       return 0;
@@ -675,6 +710,19 @@ int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename)
   const char *cmdtail;
 
   if (!m->finalised) return WHY("Manifest was not finalised");
+
+  /* remove any old version of the manifest */
+  if (sqlite_exec_int64("SELECT COUNT(*) MANIFESTS WHERE id='%s';",
+			rhizome_bytes_to_hex(m->cryptoSignPublic,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES))>0)
+    {
+      /* Manifest already exists.
+	 Remove old manifest entry, and replace with new one.
+	 But we do need to check if the file referenced by the old one is still needed,
+	 and if it's priority is right */
+      sqlite_exec_int64("DELETE FROM MANIFESTS WHERE id='%s';",
+			rhizome_bytes_to_hex(m->cryptoSignPublic,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES));
+      WHY("Need to examine the manifestfiles row for the deleted entry (id still matches, so we can find it, and see if it is still needed, or if its priority has changed).  Then delete the old manifestfiles row.");
+    }
 
   /* Store manifest */
   snprintf(sqlcmd,1024,"INSERT INTO MANIFESTS(id,manifest,version,inserttime) VALUES('%s',?,%lld,%lld);",
@@ -1060,9 +1108,9 @@ char *rhizome_bytes_to_hex(unsigned char *in,int byteCount)
   rse_rotor++;
   rse_rotor&=3;
 
-  for(i=0;i<byteCount;i++)
+  for(i=0;i<byteCount*2;i++)
     {
-      int d=nybltochar(in[i>>1]>>(4-4*(i&1)));
+      int d=nybltochar((in[i>>1]>>(4-4*(i&1)))&0xf);
       rse_out[rse_rotor][i]=d;
     }
   rse_out[rse_rotor][i]=0;
@@ -1073,7 +1121,7 @@ int chartonybl(int c)
 {
   if (c>='A'&&c<='F') return 0x0a+(c-'A');
   if (c>='a'&&c<='f') return 0x0a+(c-'a');
-  if (c>='0'&&c<='9') return 0x0a+(c-'0');
+  if (c>='0'&&c<='9') return 0x00+(c-'0');
   return 0;
 }
 
@@ -1090,3 +1138,43 @@ int rhizome_hex_to_bytes(char *in,unsigned char *out,int hexChars)
     }
   return 0;
 }
+
+rhizome_signature *rhizome_sign_hash(unsigned char *hash,unsigned char *publicKeyBytes)
+{
+  unsigned char secretKeyBytes[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES];
+  
+  if (rhizome_find_keypair_bytes(publicKeyBytes,secretKeyBytes))
+    {
+      WHY("Cannot find secret key to sign manifest data.");
+      return NULL;
+    }
+
+  /* Signature is formed by running crypto_sign_edwards25519sha512batch() on the 
+     hash of the manifest.  The signature actually contains the hash, so to save
+     space we cut the hash out of the signature. */
+  unsigned char signatureBuffer[crypto_sign_edwards25519sha512batch_BYTES+crypto_hash_sha512_BYTES];
+  unsigned long long sigLen=0;
+  int mLen=crypto_hash_sha512_BYTES;
+
+  int r=crypto_sign_edwards25519sha512batch(signatureBuffer,&sigLen,
+					    &hash[0],mLen,secretKeyBytes);
+  if (r) {
+    WHY("crypto_sign() failed.");
+    return NULL;
+  }
+
+  rhizome_signature *out=calloc(sizeof(rhizome_signature),1);
+
+  /* Here we use knowledge of the internal structure of the signature block
+     to remove the hash, since that is implicitly transported, thus reducing the
+     actual signature size down to 64 bytes.
+     We do then need to add the public key of the signatory on. */
+  bcopy(&signatureBuffer[0],&out->signature[1],32);
+  bcopy(&signatureBuffer[96],&out->signature[33],32);
+  bcopy(&publicKeyBytes[0],&out->signature[65],crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+  out->signatureLength=65+crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES;
+  out->signature[0]=out->signatureLength;
+
+  return out;
+}
+
