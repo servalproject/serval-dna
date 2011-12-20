@@ -42,6 +42,12 @@ typedef struct rhizome_manifest {
   char fileHexHash[SHA512_DIGEST_STRING_LENGTH];
   int fileHighestPriority;
 
+  /* Whether we have the secret for this manifest on hand */
+  int haveSecret;
+  /* Whether the manifest contains a signature that corresponds to the 
+     manifest id (ie public key) */
+  int selfSigned;
+
   /* Version of the manifest.  Typically the number of milliseconds since 1970. */
   long long version;
   
@@ -77,3 +83,5 @@ char *rhizome_safe_encode(unsigned char *in,int len);
 int rhizome_finish_sqlstatement(sqlite3_stmt *statement);
 int rhizome_bundle_import(char *bundle,char *groups[],int verifyP, int checkFileP, int signP);
 int rhizome_manifest_finalise(rhizome_manifest *m,int signP);
+char *rhizome_bytes_to_hex(unsigned char *in,int byteCount);
+int rhizome_hex_to_bytes(char *in,unsigned char *out,int hexChars);

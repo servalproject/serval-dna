@@ -53,14 +53,19 @@ int rhizome_opendb()
       fprintf(stderr,"SQLite could enable incremental vacuuming: %s\n",sqlite3_errmsg(rhizome_db));
       exit(1);
   }
-  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS GROUPS(id text not null primary key, priority integer, manifest blob, groupsecret blob);",NULL,NULL,NULL))
+  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS GROUPLIST(id text not null primary key, closed integer,ciphered integer);",NULL,NULL,NULL))
     {
-      fprintf(stderr,"SQLite could not create GROUPS table: %s\n",sqlite3_errmsg(rhizome_db));
+      fprintf(stderr,"SQLite could not create GROUPLIST table: %s\n",sqlite3_errmsg(rhizome_db));
       exit(1);
     }
-  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS MANIFESTS(id text not null primary key, manifest blob, version integer, privatekey blob,inserttime integer);",NULL,NULL,NULL))
+  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS MANIFESTS(id text not null primary key, manifest blob, version integer,inserttime integer);",NULL,NULL,NULL))
     {
       fprintf(stderr,"SQLite could not create MANIFESTS table: %s\n",sqlite3_errmsg(rhizome_db));
+      exit(1);
+    }
+  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS KEYPAIRS(public text not null primary key, private text not null);",NULL,NULL,NULL))
+    {
+      fprintf(stderr,"SQLite could not create KEYPAIRS table: %s\n",sqlite3_errmsg(rhizome_db));
       exit(1);
     }
   if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS FILES(id text not null primary key, data blob, length integer, highestpriority integer, datavalid integer);",NULL,NULL,NULL))
@@ -73,9 +78,9 @@ int rhizome_opendb()
       fprintf(stderr,"SQLite could not create FILEMANIFESTS table: %s\n",sqlite3_errmsg(rhizome_db));
       exit(1);
     }
-  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS MANIFESTGROUPS(manifestid text not null, groupid text not null);",NULL,NULL,NULL))
+  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS GROUPMEMBERSHIPS(manifestid text not null, groupid text not null);",NULL,NULL,NULL))
     {
-      fprintf(stderr,"SQLite could not create MANIFESTGROUPS table: %s\n",sqlite3_errmsg(rhizome_db));
+      fprintf(stderr,"SQLite could not create GROUPMEMBERSHIPS table: %s\n",sqlite3_errmsg(rhizome_db));
       exit(1);
     }
   
@@ -163,7 +168,7 @@ int rhizome_make_space(int group_priority, long long bytes)
   while ( bytes>(rhizome_space-65536-rhizome_database_used_bytes()) && sqlite3_step(statement) == SQLITE_ROW)
     {
       /* Make sure we can drop this blob, and if so drop it, and recalculate number of bytes required */
-      char *id;
+      const unsigned char *id;
       long long length;
 
       /* Get values */
@@ -179,7 +184,7 @@ int rhizome_make_space(int group_priority, long long bytes)
       /* Try to drop this file from storage, discarding any references that do not trump the priority of this
 	 request.  The query done earlier should ensure this, but it doesn't hurt to be paranoid, and it also
 	 protects against inconsistency in the database. */
-      rhizome_drop_stored_file(id,group_priority+1);
+      rhizome_drop_stored_file((char *)id,group_priority+1);
     }
   sqlite3_finalize(statement);
 
@@ -217,7 +222,7 @@ int rhizome_drop_stored_file(char *id,int maximum_priority)
   while ( sqlite3_step(statement) == SQLITE_ROW)
     {
       /* Find manifests for this file */
-      char *id;
+      const unsigned char *id;
       if (sqlite3_column_type(statement, 0)==SQLITE_TEXT) id=sqlite3_column_text(statement, 0);
       else {
 	fprintf(stderr,"Incorrect type in id column of manifests table.\n");
@@ -227,13 +232,14 @@ int rhizome_drop_stored_file(char *id,int maximum_priority)
 	 If so, we cannot drop the manifest or the file.
          However, we will keep iterating, as we can still drop any other manifests pointing to this file
 	 that are lower priority, and thus free up a little space. */
-      if (rhizome_manifest_priority(id)>maximum_priority) {
+      if (rhizome_manifest_priority((char *)id)>maximum_priority) {
 	cannot_drop=1;
       } else {
-	printf("removing stale filemanifests, manifests, manifestgroups\n");
+	printf("removing stale filemanifests, manifests, groupmemberships\n");
 	sqlite_exec_int64("delete from filemanifests where manifestid='%s';",id);
 	sqlite_exec_int64("delete from manifests where manifestid='%s';",id);
-	sqlite_exec_int64("delete from manifestgroups where manifestid='%s';",id);	
+	sqlite_exec_int64("delete from keypairs where public='%s';",id);
+	sqlite_exec_int64("delete from groupmemberships where manifestid='%s';",id);	
       }
     }
   sqlite3_finalize(statement);
@@ -249,12 +255,22 @@ int rhizome_drop_stored_file(char *id,int maximum_priority)
 /* XXX Requires a messy join that might be slow. */
 int rhizome_manifest_priority(char *id)
 {
-  long long result = sqlite_exec_int64("select max(groups.priorty) from groups,manifests,manifestgroups where manifests.id='%s' and groups.id=manifestgroups.groupid and manifestgroups.manifestid=manifests.id;",id);
+  long long result = sqlite_exec_int64("select max(grouplist.priorty) from grouplist,manifests,groupmemberships where manifests.id='%s' and grouplist.id=groupmemberships.groupid and groupmemberships.manifestid=manifests.id;",id);
   return result;
 }
 
 /* Import a bundle from the inbox folder.
    Check that the manifest prototype is valid, and if so, complete it, and sign it if required and possible.
+
+   Note that bundles can either be an ordinary bundle, or a group description.
+   Group specifications are simply manifests that have the "isagroup" variable set.
+   Groups get stored in the manifests table AND a reference included in the 
+   grouplist table.
+   Groups are allowed to be listed as being members of other groups.
+   This allows a nested, i.e., multi-level group heirarchy where sub-groups will only
+   typically be discovered by joining the parent group.  Probably not a bad way to do
+   things.
+
    The file should be included in the specified rhizome groups, if possible.
    (some groups may be closed groups that we do not have the private key for.)
 */
@@ -310,6 +326,9 @@ int rhizome_bundle_import(char *bundle,char *groups[],int verifyP, int checkFile
       /* No bundle id (256 bit random string being a public key in the NaCl CryptoSign crypto system),
 	 so create one, and keep the private key handy. */
       rhizome_manifest_createid(m);
+    } else {
+      
+      WHY("Not reading stored ID.");
     }
     rhizome_manifest_set(m,"filehash",hexhash);
     if (rhizome_manifest_get(m,"version",NULL)!=0)
@@ -318,9 +337,19 @@ int rhizome_bundle_import(char *bundle,char *groups[],int verifyP, int checkFile
     rhizome_manifest_set_ll(m,"first_byte",0);
     rhizome_manifest_set_ll(m,"last_byte",rhizome_file_size(filename));
   }
-       
+   
+  /* Discard if it is older than the most recent known version */
+  long long storedversion = sqlite_exec_int64("SELECT version from manifests where id='%s';",rhizome_bytes_to_hex(m->cryptoSignPublic,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES));
+  if (storedversion>rhizome_manifest_get_ll(m,"version"))
+    {
+      rhizome_manifest_free(m);
+      return WHY("Newer version exists");
+    }
+					      
+    
   /* Add group memberships */
-  int i;
+					      
+int i;
   if (groups) for(i=0;groups[i];i++) rhizome_manifest_add_group(m,groups[i]);
 
   if (rhizome_manifest_finalise(m,signP)) {
@@ -579,7 +608,43 @@ int rhizome_write_manifest_file(rhizome_manifest *m,char *filename)
 
 int rhizome_manifest_createid(rhizome_manifest *m)
 {
+  m->haveSecret=1;
   return crypto_sign_edwards25519sha512batch_keypair(m->cryptoSignPublic,m->cryptoSignSecret);
+}
+
+int rhizome_store_keypair_bytes(unsigned char *p,unsigned char *s) {
+  /* XXX TODO Secrets should be encrypted using a keyring password. */
+  if (sqlite_exec_int64("INSERT INTO KEYPAIRS(public,private) VALUES('%s','%s');",
+			rhizome_bytes_to_hex(p,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES),
+			rhizome_bytes_to_hex(s,crypto_sign_edwards25519sha512batch_SECRETKEYBYTES))<0)
+    return WHY("Failed to store key pair.");
+  return 0;
+}
+
+int rhizome_find_keypair_bytes(unsigned char *p,unsigned char *s) {
+  sqlite3_stmt *statement;
+  char sql[1024];
+  const char *cmdtail;
+
+  snprintf(sql,1024,"SELECT private from KEYPAIRS WHERE public='%s';",
+	   rhizome_bytes_to_hex(p,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES));
+  if (sqlite3_prepare_v2(rhizome_db,sql,strlen(sql)+1,&statement,&cmdtail) 
+      != SQLITE_OK) {
+    sqlite3_finalize(statement);    
+    return WHY(sqlite3_errmsg(rhizome_db));
+  }
+  if ( sqlite3_step(statement) == SQLITE_ROW ) {
+    if (sqlite3_column_type(statement,0)==SQLITE_TEXT) {
+      const unsigned char *hex=sqlite3_column_text(statement,0);
+      rhizome_hex_to_bytes((char *)hex,s,
+			   crypto_sign_edwards25519sha512batch_SECRETKEYBYTES);
+      /* XXX TODO Decrypt secret using a keyring password */
+      sqlite3_finalize(statement);
+      return 0;
+    }
+  }
+  sqlite3_finalize(statement);
+  return WHY("Could not find matching secret key.");
 }
 
 /*
@@ -601,7 +666,7 @@ int rhizome_manifest_createid(rhizome_manifest *m)
   substitute bytes in the blog progressively.
 
   We need to also need to create the appropriate row(s) in the MANIFESTS, FILES, 
-  FILEMANIFESTS and MANIFESTGROUPS tables.
+  FILEMANIFESTS and GROUPMEMBERSHIPS tables, and possibly GROUPLIST as well.
  */
 int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename)
 {
@@ -611,12 +676,23 @@ int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename)
   if (!m->finalised) return WHY("Manifest was not finalised");
 
   /* Store manifest */
-  snprintf(sqlcmd,1024,"INSERT INTO MANIFESTS(id,manifest,version,privatekey,inserttime) VALUES('%s',?,%lld,'%s',%lld);",
-	   rhizome_safe_encode(m->cryptoSignPublic,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES),
+  snprintf(sqlcmd,1024,"INSERT INTO MANIFESTS(id,manifest,version,inserttime) VALUES('%s',?,%lld,%lld);",
+	   rhizome_bytes_to_hex(m->cryptoSignPublic,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES),
 	   m->version,
-	   rhizome_safe_encode(m->cryptoSignSecret,crypto_sign_edwards25519sha512batch_SECRETKEYBYTES),
 	   overlay_time_in_ms());
-    sqlite3_stmt *statement;
+
+  if (m->haveSecret) {
+    if (rhizome_store_keypair_bytes(m->cryptoSignPublic,m->cryptoSignSecret))
+      return WHY("Failed to store key pair.");
+  } else {
+    /* We don't have the secret for this manifest, so only allow updates if 
+       the self-signature is valid */
+    if (!m->selfSigned) {
+      return WHY("Manifest is not signed, and I don't have the key.  Manifest might be forged or corrupt.");
+    }
+  }
+
+  sqlite3_stmt *statement;
   if (sqlite3_prepare_v2(rhizome_db,sqlcmd,strlen(sqlcmd)+1,&statement,&cmdtail) 
       != SQLITE_OK) {
     sqlite3_finalize(statement);    
@@ -635,7 +711,7 @@ int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename)
 
   /* Create relationship between file and manifest */
   long long r=sqlite_exec_int64("INSERT INTO FILEMANIFESTS(manifestid,fileid) VALUES('%s','%s');",
-				 rhizome_safe_encode(m->cryptoSignPublic,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES),
+				 rhizome_bytes_to_hex(m->cryptoSignPublic,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES),
 				 m->fileHexHash);
   if (r<0) {
     WHY(sqlite3_errmsg(rhizome_db));
@@ -643,13 +719,28 @@ int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename)
   }
 
   /* Create relationships to groups */
+  if (rhizome_manifest_get(m,"isagroup",NULL)==0) {
+    /* This manifest is a group, so add entry to group list.
+       Created group is not automatically subscribed to, however. */
+    int closed=rhizome_manifest_get_ll(m,"closedgroup");
+    if (closed<1) closed=0;
+    int ciphered=rhizome_manifest_get_ll(m,"cipheredgroup");
+    if (ciphered<1) ciphered=0;
+    sqlite_exec_int64("delete from grouplist where id='%s';",
+		      rhizome_bytes_to_hex(m->cryptoSignPublic,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES));
+    int storedP
+      =sqlite_exec_int64("insert into grouplist(id,closed,ciphered) VALUES('%s',%d,%d);",
+			 rhizome_bytes_to_hex(m->cryptoSignPublic,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES),closed,ciphered);
+    if (storedP<0) return WHY("Failed to insert group manifest into grouplist table.");
+  }
+
   {
     int g;
     int dud=0;
     for(g=0;g<m->group_count;g++)
       {
-	if (sqlite_exec_int64("INSERT INTO MANIFESTGROUPS(manifestid,groupid) VALUES('%s','%s');",
-			   rhizome_safe_encode(m->cryptoSignPublic,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES),
+	if (sqlite_exec_int64("INSERT INTO GROUPMEMBERSHIPS(manifestid,groupid) VALUES('%s','%s');",
+			   rhizome_bytes_to_hex(m->cryptoSignPublic,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES),
 			       m->groups[g])<0)
 	  dud++;
       }
@@ -948,5 +1039,53 @@ int rhizome_manifest_finalise(rhizome_manifest *m,int signP)
   /* mark manifest as finalised */
   m->finalised=1;
 
+  return 0;
+}
+
+char nybltochar(int nybl)
+{
+  if (nybl<0) return '?';
+  if (nybl>15) return '?';
+  if (nybl<10) return '0'+nybl;
+  return 'A'+nybl-10;
+}
+
+char *rhizome_bytes_to_hex(unsigned char *in,int byteCount)
+{
+  int i=0;
+
+  if (byteCount>64) return "<too long>";
+
+  rse_rotor++;
+  rse_rotor&=3;
+
+  for(i=0;i<byteCount;i++)
+    {
+      int d=nybltochar(in[i>>1]>>(4-4*(i&1)));
+      rse_out[rse_rotor][i]=d;
+    }
+  rse_out[rse_rotor][i]=0;
+  return rse_out[rse_rotor++];
+}
+
+int chartonybl(int c)
+{
+  if (c>='A'&&c<='F') return 0x0a+(c-'A');
+  if (c>='a'&&c<='f') return 0x0a+(c-'a');
+  if (c>='0'&&c<='9') return 0x0a+(c-'0');
+  return 0;
+}
+
+int rhizome_hex_to_bytes(char *in,unsigned char *out,int hexChars)
+{
+  int i;
+
+  for(i=0;i<hexChars;i++)
+    {
+      int byte=i>>1;
+      int nybl=chartonybl(in[i]);
+      out[byte]=out[byte]<<4;
+      out[byte]|=nybl;
+    }
   return 0;
 }
