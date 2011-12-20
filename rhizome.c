@@ -68,12 +68,12 @@ int rhizome_opendb()
       fprintf(stderr,"SQLite could not create FILES table: %s\n",sqlite3_errmsg(rhizome_db));
       exit(1);
     }
-  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS FILEMANIFESTS(fileid text not null primary key, manifestid text not null);",NULL,NULL,NULL))
+  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS FILEMANIFESTS(fileid text not null, manifestid text not null);",NULL,NULL,NULL))
     {
       fprintf(stderr,"SQLite could not create FILEMANIFESTS table: %s\n",sqlite3_errmsg(rhizome_db));
       exit(1);
     }
-  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS MANIFESTGROUPS(manifestid text not null primary key, groupid text not null);",NULL,NULL,NULL))
+  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS MANIFESTGROUPS(manifestid text not null, groupid text not null);",NULL,NULL,NULL))
     {
       fprintf(stderr,"SQLite could not create MANIFESTGROUPS table: %s\n",sqlite3_errmsg(rhizome_db));
       exit(1);
@@ -230,6 +230,7 @@ int rhizome_drop_stored_file(char *id,int maximum_priority)
       if (rhizome_manifest_priority(id)>maximum_priority) {
 	cannot_drop=1;
       } else {
+	printf("removing stale filemanifests, manifests, manifestgroups\n");
 	sqlite_exec_int64("delete from filemanifests where manifestid='%s';",id);
 	sqlite_exec_int64("delete from manifests where manifestid='%s';",id);
 	sqlite_exec_int64("delete from manifestgroups where manifestid='%s';",id);	
@@ -238,6 +239,7 @@ int rhizome_drop_stored_file(char *id,int maximum_priority)
   sqlite3_finalize(statement);
 
   if (!cannot_drop) {
+    printf("cleaning up filemanifests, manifests\n");
     sqlite_exec_int64("delete from filemanifests where fileid='%s';",id);
     sqlite_exec_int64("delete from files where id='%s';",id);
   }
@@ -336,6 +338,7 @@ int rhizome_bundle_import(char *bundle,char *groups[],int verifyP, int checkFile
   if (!r) {
     unlink(manifestname);
     unlink(filename);
+
     return 0;
   }
 
@@ -607,10 +610,6 @@ int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename)
 
   if (!m->finalised) return WHY("Manifest was not finalised");
 
-  /* Store the file */
-  if (m->fileLength>0) 
-    if (rhizome_store_file(associated_filename,m->fileHexHash,m->fileHighestPriority)) 
-      return WHY("Could not store associated file");						   
   /* Store manifest */
   snprintf(sqlcmd,1024,"INSERT INTO MANIFESTS(id,manifest,version,privatekey,inserttime) VALUES('%s',?,%lld,'%s',%lld);",
 	   rhizome_safe_encode(m->cryptoSignPublic,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES),
@@ -623,7 +622,7 @@ int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename)
     sqlite3_finalize(statement);    
     return WHY(sqlite3_errmsg(rhizome_db));
   }
-  
+
   /* Bind manifest data to data field */
   if (sqlite3_bind_blob(statement,1,m->manifestdata,m->manifest_bytes,SQLITE_TRANSIENT)!=SQLITE_OK)
     {
@@ -656,6 +655,15 @@ int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename)
       }
     if (dud>0) return WHY("Failed to create one or more group associations");
   }
+
+  /* Store the file */
+  if (m->fileLength>0) 
+    if (rhizome_store_file(associated_filename,m->fileHexHash,m->fileHighestPriority)) 
+      return WHY("Could not store associated file");						   
+
+  /* Get things consistent */
+  sqlite3_exec(rhizome_db,"COMMIT;",NULL,NULL,NULL);
+
   return 0;
 }
 
@@ -721,6 +729,7 @@ char *rhizome_safe_encode(unsigned char *in,int len)
    The relationships of manifests to this file are the responsibility of the
    caller. */
 int rhizome_store_file(char *file,char *hash,int priority) {
+
   int fd=open(file,O_RDONLY);
   if (fd<0) return WHY("Could not open associated file");
   
@@ -848,6 +857,7 @@ int rhizome_store_file(char *file,char *hash,int priority) {
       sqlite3_blob_close(blob);
       return WHY("SQLite3 failed to open file blob for writing");
     }
+
   {
     long long i;
     for(i=0;i<stat.st_size;i+=65536)
@@ -857,16 +867,21 @@ int rhizome_store_file(char *file,char *hash,int priority) {
 	if (sqlite3_blob_write(blob,&addr[i],n,i) !=SQLITE_OK) dud++;
       }
   }
+  
+  close(fd);
+  sqlite3_blob_close(blob);
+
+  /* Mark file as up-to-date */
+  sqlite_exec_int64("UPDATE FILES SET datavalid=1 WHERE id='%s';",
+	   hash);
+
+
   if (dud) {
       WHY(sqlite3_errmsg(rhizome_db));
-      close(fd);
-      sqlite3_blob_close(blob);
       return WHY("SQLite3 failed write all blob data");
   }
 
-  /* Get things consistent */
-  sqlite3_exec(rhizome_db,"COMMIT;",NULL,NULL,NULL);
-
+  printf("stored file\n");
   return 0;
 }
 
