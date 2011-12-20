@@ -45,6 +45,9 @@ typedef struct rhizome_manifest {
   /* Version of the manifest.  Typically the number of milliseconds since 1970. */
   long long version;
   
+  int group_count;
+  char *groups[MAX_MANIFEST_VARS];
+
 } rhizome_manifest;
 
 extern long long rhizome_space;
