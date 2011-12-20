@@ -327,8 +327,9 @@ int rhizome_bundle_import(char *bundle,char *groups[],int verifyP, int checkFile
 	 so create one, and keep the private key handy. */
       rhizome_manifest_createid(m);
     } else {
-      
-      WHY("Not reading stored ID.");
+      /* An ID was specified, so look for the private key if we have it stowed away */
+      if (!rhizome_find_keypair_bytes(m->cryptoSignPublic,m->cryptoSignSecret))
+	m->haveSecret=1;
     }
     rhizome_manifest_set(m,"filehash",hexhash);
     if (rhizome_manifest_get(m,"version",NULL)!=0)
