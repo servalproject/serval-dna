@@ -27,14 +27,18 @@ typedef struct rhizome_manifest {
   /* 0x02 = CryptoSign signature of signatory */
   int signature_errors; /* if non-zero, then manifest should not be trusted */
 
+  /* Absolute path of the file associated with the manifest */
+  char *dataFileName;
+
   /* Set non-zero after variables have been packed and
      signature blocks appended.
-     All fields below are only valid once the manifest has been finalised */
+     All fields below may not be valid until the manifest has been finalised */
   int finalised;
 
   /* When finalised, we keep the filehash and maximum priority due to any
      group membership handy */
   long long fileLength;
+  int fileHashedP;
   char fileHexHash[SHA512_DIGEST_STRING_LENGTH];
   int fileHighestPriority;
 
@@ -48,6 +52,7 @@ extern char *rhizome_datastore_path;
 
 extern sqlite3 *rhizome_db;
 
+int rhizome_opendb();
 int rhizome_manifest_createid(rhizome_manifest *m);
 int rhizome_write_manifest_file(rhizome_manifest *m,char *filename);
 int rhizome_manifest_sign(rhizome_manifest *m);
@@ -68,3 +73,4 @@ int rhizome_store_file(char *file,char *hash,int priortity);
 char *rhizome_safe_encode(unsigned char *in,int len);
 int rhizome_finish_sqlstatement(sqlite3_stmt *statement);
 int rhizome_bundle_import(char *bundle,char *groups[],int verifyP, int checkFileP, int signP);
+int rhizome_manifest_finalise(rhizome_manifest *m,int signP);

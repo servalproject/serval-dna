@@ -58,7 +58,7 @@ int rhizome_opendb()
       fprintf(stderr,"SQLite could not create GROUPS table: %s\n",sqlite3_errmsg(rhizome_db));
       exit(1);
     }
-  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS MANIFESTS(id text not null primary key, manifest blob, version integer, privatekey blob);",NULL,NULL,NULL))
+  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS MANIFESTS(id text not null primary key, manifest blob, version integer, privatekey blob,inserttime integer);",NULL,NULL,NULL))
     {
       fprintf(stderr,"SQLite could not create MANIFESTS table: %s\n",sqlite3_errmsg(rhizome_db));
       exit(1);
@@ -262,9 +262,21 @@ int rhizome_bundle_import(char *bundle,char *groups[],int verifyP, int checkFile
   if (!m) return WHY("Could not read manifest file.");
   char hexhash[SHA512_DIGEST_STRING_LENGTH];
 
+  rhizome_manifest_dump(m,"Read manifest");
+
+  /* Keep associated file name handy for later */
+  m->dataFileName=strdup(filename);
+  struct stat stat;
+  if (lstat(filename,&stat)) {
+    return WHY("Could not stat() associated file");
+    m->fileLength=stat.st_size;
+  }
+
   if (checkFileP||signP) {
     if (rhizome_hash_file(filename,hexhash))
       { rhizome_manifest_free(m); return WHY("Could not hash file."); }
+    bcopy(&hexhash[0],&m->fileHexHash[0],SHA512_DIGEST_STRING_LENGTH);
+    m->fileHashedP=1;
   }
 
   if (verifyP)
@@ -292,22 +304,20 @@ int rhizome_bundle_import(char *bundle,char *groups[],int verifyP, int checkFile
       rhizome_manifest_createid(m);
     }
     rhizome_manifest_set(m,"filehash",hexhash);
-    if (rhizome_manifest_get(m,"version",buffer)!=0)
+    if (rhizome_manifest_get(m,"version",NULL)!=0)
       /* Version not set, so set one */
       rhizome_manifest_set_ll(m,"version",overlay_time_in_ms());
     rhizome_manifest_set_ll(m,"first_byte",0);
     rhizome_manifest_set_ll(m,"last_byte",rhizome_file_size(filename));
   }
-   
-  /* Convert to final form for signing and writing to disk */
-  rhizome_manifest_pack_variables(m);
-    
-  /* Sign it */
-  if (signP) rhizome_manifest_sign(m);
-
+       
   /* Add group memberships */
   int i;
-  for(i=0;groups[i];i++) rhizome_manifest_add_group(m,groups[i]);
+  if (groups) for(i=0;groups[i];i++) rhizome_manifest_add_group(m,groups[i]);
+
+  if (rhizome_manifest_finalise(m,signP)) {
+    return WHY("Failed to finalise manifest.\n");
+  }
 
   /* Write manifest back to disk */
   if (rhizome_write_manifest_file(m,manifestname)) {
@@ -345,21 +355,22 @@ rhizome_manifest *rhizome_read_manifest_file(char *filename)
 
   /* Parse out variables, signature etc */
   int ofs=0;
-  while(ofs<m->manifest_bytes&&m->manifestdata[ofs])
+  while((ofs<m->manifest_bytes)&&(m->manifestdata[ofs]))
     {
       int i;
       char line[1024],var[1024],value[1024];
-      while(ofs<m->manifest_bytes&&
+      while((ofs<m->manifest_bytes)&&
 	    (m->manifestdata[ofs]==0x0a||
 	     m->manifestdata[ofs]==0x09||
 	     m->manifestdata[ofs]==0x20||
 	     m->manifestdata[ofs]==0x0d)) ofs++;
-      for(i=0;i<(ofs-m->manifest_bytes)
+      for(i=0;(i<(m->manifest_bytes-ofs))
 	    &&(i<1023)
-	    &&m->manifestdata[ofs]!=0x00
-	    &&m->manifestdata[ofs]!=0x0d
-	    &&m->manifestdata[ofs]!=0x0a;i++)
+	    &&(m->manifestdata[ofs+i]!=0x00)
+	    &&(m->manifestdata[ofs+i]!=0x0d)
+	    &&(m->manifestdata[ofs+i]!=0x0a);i++)
 	    line[i]=m->manifestdata[ofs+i];
+      ofs+=i;
       line[i]=0;
       /* Ignore blank lines */
       if (line[0]==0) continue;
@@ -405,8 +416,7 @@ rhizome_manifest *rhizome_read_manifest_file(char *filename)
 
   WHY("Incomplete");
 
-  rhizome_manifest_free(m);
-  return NULL;
+  return m;
 }
 
 int rhizome_hash_file(char *filename,char *hash_out)
@@ -441,7 +451,7 @@ int rhizome_manifest_get(rhizome_manifest *m,char *var,char *out)
 
   for(i=0;i<m->var_count;i++)
     if (!strcmp(m->vars[i],var)) {
-      if (out) strcpy(m->values[i],out);
+      if (out) strcpy(out,m->values[i]);
       return 0;
     }
   return -1;
@@ -469,6 +479,7 @@ int rhizome_manifest_set(rhizome_manifest *m,char *var,char *value)
     if (!strcmp(m->vars[i],var)) {
       free(m->values[i]); 
       m->values[i]=strdup(value);
+      printf("replacing value [%s]=[%s]\n",var,value);
       return 0;
     }
 
@@ -477,6 +488,7 @@ int rhizome_manifest_set(rhizome_manifest *m,char *var,char *value)
   m->vars[m->var_count]=strdup(var);
   m->values[m->var_count]=strdup(value);
   m->var_count++;
+  printf("inserting value [%s]=[%s]\n",var,value);
 
   return 0;
 }
@@ -485,7 +497,7 @@ int rhizome_manifest_set_ll(rhizome_manifest *m,char *var,long long value)
 {
   char svalue[100];
 
-  snprintf(svalue,1024,"%lld",value);
+  snprintf(svalue,100,"%lld",value);
 
   return rhizome_manifest_set(m,var,svalue);
 }
@@ -508,7 +520,11 @@ void rhizome_manifest_free(rhizome_manifest *m)
 
   int i;
   for(i=0;i<m->var_count;i++)
-    { free(m->vars[i]); free(m->values[i]); }
+    { free(m->vars[i]); free(m->values[i]); 
+      m->vars[i]=NULL; m->values[i]=NULL; }
+
+  if (m->dataFileName) free(m->dataFileName);
+  m->dataFileName=NULL;
 
   WHY("Doesn't free signatures yet");
 
@@ -530,6 +546,7 @@ int rhizome_manifest_pack_variables(rhizome_manifest *m)
 	return WHY("Manifest variables too long in total to fit in MAX_MANIFEST_BYTES");
       snprintf((char *)&m->manifestdata[ofs],MAX_MANIFEST_BYTES-ofs,"%s=%s\n",
 	       m->vars[i],m->values[i]);
+      printf("Writing [%s]\n",&m->manifestdata[ofs]);
       ofs+=strlen((char *)&m->manifestdata[ofs]);
     }
   m->manifest_bytes=ofs;
@@ -604,7 +621,8 @@ int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename)
     return WHY(sqlite3_errmsg(rhizome_db));
   
   /* Bind appropriate sized zero-filled blob to data field */
-  sqlite3_bind_blob(statement,1,m->manifestdata,m->manifest_bytes,SQLITE_TRANSIENT);
+  if (sqlite3_bind_blob(statement,1,m->manifestdata,m->manifest_bytes,SQLITE_TRANSIENT)!=SQLITE_OK)
+    return WHY(sqlite3_errmsg(rhizome_db));
 
   if (rhizome_finish_sqlstatement(statement))
     return WHY("SQLite3 failed to insert row for manifest");
@@ -616,11 +634,25 @@ int rhizome_finish_sqlstatement(sqlite3_stmt *statement)
 {
   /* Do actual insert, and abort if it fails */
   int dud=0;
-  if (sqlite3_step(statement)!=SQLITE_OK) dud++;
-  if (sqlite3_finalize(statement)) dud++;
-  if (dud) WHY(sqlite3_errmsg(rhizome_db));
+  int r;
+  r=sqlite3_step(statement);
+  switch(r) {
+  case SQLITE_DONE: case SQLITE_ROW: case SQLITE_OK:
+    break;
+  default:
+    WHY("sqlite3_step() failed.");
+    WHY(sqlite3_errmsg(rhizome_db));
+    dud++;
+  }
 
-  return dud;
+  if ((!dud)&&((r=sqlite3_finalize(statement))!=SQLITE_OK)) {
+    WHY("sqlite3_finalize() failed.");
+    WHY(sqlite3_errmsg(rhizome_db));
+    dud++;
+  }
+
+  if (dud)  return WHY("SQLite3 could not complete statement.");
+  return 0;
 }
 
 /* Like sqlite_encode_binary(), but with a fixed rotation to make comparison of
@@ -800,11 +832,38 @@ int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid)
   return WHY("Not implemented.");
 }
 
-int rhizome_manifest_finalise(rhizome_manifest *m)
+int rhizome_manifest_dump(rhizome_manifest *m,char *msg)
 {
-  /* set fileLength */
+  int i;
+  fprintf(stderr,"Dumping manifest %s:\n",msg);
+  for(i=0;i<m->var_count;i++)
+    fprintf(stderr,"[%s]=[%s]\n",m->vars[i],m->values[i]);
+  return 0;
+}
+
+int rhizome_manifest_finalise(rhizome_manifest *m,int signP)
+{
+  rhizome_manifest_dump(m,"Starting finalise");
+
   /* set fileHexHash */
-  /* set fileHighestPriority based on group associations */
+  if (!m->fileHashedP) {
+    if (rhizome_hash_file(m->dataFileName,m->fileHexHash))
+      return WHY("rhizome_hash_file() failed during finalisation of manifest.");
+    m->fileHashedP=1;
+
+    /* set fileLength */
+    struct stat stat;
+    if (lstat(m->dataFileName,&stat)) {
+      return WHY("Could not stat() associated file");
+      m->fileLength=stat.st_size;
+    }
+  }
+  /* Set file hash and size information */
+  rhizome_manifest_set(m,"filehash",m->fileHexHash);
+  rhizome_manifest_set_ll(m,"filesize",m->fileLength);
+
+  /* set fileHighestPriority based on group associations.
+     XXX - Should probably be set as groups are added */
 
   /* set version of manifest, either from version variable, or using current time */
   if (rhizome_manifest_get(m,"version",NULL))
@@ -816,7 +875,14 @@ int rhizome_manifest_finalise(rhizome_manifest *m)
   else
     m->version = rhizome_manifest_get_ll(m,"version");
 
-  /* mark manifest as finalised */
+  /* Convert to final form for signing and writing to disk */
+  rhizome_manifest_pack_variables(m);
 
-  return WHY("Not implemented.");
+  /* Sign it */
+  if (signP) rhizome_manifest_sign(m);
+
+  /* mark manifest as finalised */
+  m->finalised=1;
+
+  return 0;
 }
