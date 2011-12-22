@@ -534,20 +534,19 @@ int simpleServerMode()
     fds[0].fd=sock; fds[0].events=POLLIN;
     fdcount=1;
     rhizome_server_get_fds(fds,&fdcount,128);
-    printf("poll()ing file descriptors:");
-    { int i;
-      for(i=0;i<fdcount;i++) { printf(" %d",fds[i].fd); } }
-    printf("\n");
+    if (debug>2) {
+      printf("poll()ing file descriptors:");
+      { int i;
+	for(i=0;i<fdcount;i++) { printf(" %d",fds[i].fd); } }
+      printf("\n");
+    }
     
     /* Wait patiently for packets to arrive. */
     if (rhizome_datastore_path) rhizome_server_poll();
-    printf("polling %d fds\n",fdcount);
     while ((r=poll(fds,fdcount,100000))<1) {
-      printf("poll returned %d\n",r);
       if (sigIoFlag) { sigIoFlag=0; break; }
       sleep(0);
     }
-    printf("poll ended: %d fds\n",r);
     if (rhizome_datastore_path) rhizome_server_poll();
 
     if (fds[0].revents&POLLIN) {

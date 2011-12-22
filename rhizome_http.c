@@ -33,48 +33,6 @@ int rhizome_server_socket=-1;
 int sigPipeFlag=0;
 int sigIoFlag=0;
 
-typedef struct rhizome_http_request {
-  int socket;
-  long long last_activity; /* time of last activity in ms */
-  long long initiate_time; /* time connection was initiated */
-
-  /* The HTTP request as currently received */
-  int request_length;
-#define RHIZOME_HTTP_REQUEST_MAXLEN 1024
-  char request[RHIZOME_HTTP_REQUEST_MAXLEN];
-
-  /* Nature of the request */
-  int request_type;
-#define RHIZOME_HTTP_REQUEST_RECEIVING -1
-#define RHIZOME_HTTP_REQUEST_FROMBUFFER 0
-#define RHIZOME_HTTP_REQUEST_FILE 1
-#define RHIZOME_HTTP_REQUEST_SUBSCRIBEDGROUPLIST 2
-#define RHIZOME_HTTP_REQUEST_ALLGROUPLIST 3
-#define RHIZOME_HTTP_REQUEST_BUNDLESINGROUP 4
-#define RHIZOME_HTTP_REQUEST_BUNDLEMANIFEST 5
-
-  /* Local buffer of data to be sent.
-     If a RHIZOME_HTTP_REQUEST_FROMBUFFER, then the buffer is sent, and when empty
-     the request is closed.
-     Else emptying the buffer triggers a request to fetch more data.  Only if no
-     more data is provided do we then close the request. */
-  unsigned char *buffer;
-  int buffer_size; // size
-  int buffer_length; // number of bytes loaded into buffer
-  int buffer_offset; // where we are between [0,buffer_length)
-
-  /* The source specification data which are used in different ways by different 
-     request types */
-  unsigned char source[1024];
-  long long source_index;
-
-} rhizome_http_request;
-
-int rhizome_server_free_http_request(rhizome_http_request *r);
-int rhizome_server_close_http_request(int i);
-
-
-#define RHIZOME_SERVER_MAX_LIVE_REQUESTS 32
 rhizome_http_request *rhizome_live_http_requests[RHIZOME_SERVER_MAX_LIVE_REQUESTS];
 int rhizome_server_live_request_count=0;
 
@@ -136,8 +94,6 @@ int rhizome_server_start()
       return WHY("listen() failed starting rhizome http server\n");
     }
 
-  printf("server socket = %d\n",rhizome_server_socket);
-
   return 0;
 }
 
@@ -146,10 +102,8 @@ int rhizome_server_poll()
   struct sockaddr addr;
   unsigned int addr_len=0;
   int sock;
-  int i;
+  int rn;
   
-  printf("checking on rhizome server connections (and possibly accepting new connections)\n");
-
   /* Having the starting of the server here is helpful in that
      if the port is taken by someone else, we will grab it fairly
      swiftly once it becomes available. */
@@ -158,11 +112,11 @@ int rhizome_server_poll()
 
   /* Process the existing requests.
      XXX - should use poll or select here */
-  if (debug) printf("Checking %d active connections\n",
+  if (debug>1) printf("Checking %d active connections\n",
 		    rhizome_server_live_request_count);
-  for(i=0;i<rhizome_server_live_request_count;i++)
+  for(rn=0;rn<rhizome_server_live_request_count;rn++)
     {
-      rhizome_http_request *r=rhizome_live_http_requests[i];
+      rhizome_http_request *r=rhizome_live_http_requests[rn];
       switch(r->request_type) {
       case RHIZOME_HTTP_REQUEST_RECEIVING:
 	/* Keep reading until we have two CR/LFs in a row */
@@ -174,8 +128,34 @@ int rhizome_server_poll()
 
 	errno=0;
 	int bytes=read(r->socket,&r->request[r->request_length],
-		       RHIZOME_HTTP_REQUEST_MAXLEN-r->request_length);
-	printf("Read %d bytes, errno=%d\n",bytes,errno);
+		       RHIZOME_HTTP_REQUEST_MAXLEN-r->request_length-1);
+
+	/* If we got some data, see if we have found the end of the HTTP request */
+	if (bytes>0) {
+	  int i=r->request_length-10;
+	  int lfcount=0;
+	  if (i<0) i=0;
+	  r->request_length+=bytes;
+	  if (r->request_length<RHIZOME_HTTP_REQUEST_MAXLEN)
+	    r->request[r->request_length]=0;
+	  dump("request",r->request,r->request_length);
+	  for(;i<(r->request_length+bytes);i++)
+	    {
+	      switch(r->request[i]) {
+	      case '\n': lfcount++; break;
+	      case '\r': /* ignore CR */ break;
+	      case 0: /* ignore NUL (telnet inserts them) */ break;
+	      default: lfcount=0; break;
+	      }
+	      if (lfcount==2) break;
+	    }
+	  if (lfcount==2) {
+	    /* We have the request. Now parse it to see if we can respond to it */
+	    rhizome_server_parse_http_request(rn,r);
+	  }
+	  
+	  r->request_length+=bytes;
+	}
 
 	/* Make socket blocking again for poll()/select() */
 	fcntl(r->socket,F_SETFL,fcntl(r->socket, F_GETFL, NULL)&(~O_NONBLOCK));
@@ -183,7 +163,7 @@ int rhizome_server_poll()
 	if (sigPipeFlag||((bytes==0)&&(errno==0))) {
 	  /* broken pipe, so close connection */
 	  WHY("Closing connection due to sigpipe");
-	  rhizome_server_close_http_request(i);
+	  rhizome_server_close_http_request(rn);
 	  continue;
 	}
 
@@ -200,7 +180,6 @@ int rhizome_server_poll()
   while ((rhizome_server_live_request_count<RHIZOME_SERVER_MAX_LIVE_REQUESTS)
 	 &&((sock=accept(rhizome_server_socket,&addr,&addr_len))>-1))
     {
-      printf("accepting connection.\n");
       rhizome_http_request *request = calloc(sizeof(rhizome_http_request),1);	
       request->socket=sock;
       /* We are now trying to read the HTTP request */
@@ -211,12 +190,12 @@ int rhizome_server_poll()
   fcntl(rhizome_server_socket,F_SETFL,
 	fcntl(rhizome_server_socket, F_GETFL, NULL)&(~O_NONBLOCK));
   
-  printf("done rhizome checking.\n");
   return 0;
 }
 
 int rhizome_server_close_http_request(int i)
 {
+  close(rhizome_live_http_requests[i]->socket);
   rhizome_server_free_http_request(rhizome_live_http_requests[i]);
   /* Make it null, so that if we are the list in the list, the following
      assignment still yields the correct behaviour */
@@ -251,8 +230,58 @@ int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
     {
       if ((*fdcount)>=fdmax) return -1;
       fds[*fdcount].fd=rhizome_live_http_requests[i]->socket;
-      fds[*fdcount].events=POLLIN;
+      switch(rhizome_live_http_requests[i]->request_type) {
+      case RHIZOME_HTTP_REQUEST_RECEIVING:
+	fds[*fdcount].events=POLLIN; break;
+      default:
+	fds[*fdcount].events=POLLOUT; break;
+      }
       (*fdcount)++;    
     }
    return 0;
+}
+
+int rhizome_server_parse_http_request(int rn,rhizome_http_request *r)
+{
+  WHY("not implemented. just returning an HTTP error for now.");
+
+  r->buffer=(unsigned char *)strdup("HTTP/1.0 400 Bad Request\r\n\r\n<html><h1>Sorry, couldn't parse your request.</h1></html>\r\n");
+  r->buffer_size=strlen((char *)r->buffer)+1;
+  r->buffer_length=r->buffer_size-1;
+  r->buffer_offset=0;
+
+  r->request_type=RHIZOME_HTTP_REQUEST_FROMBUFFER;
+  
+  /* Try sending data immediately. */
+  rhizome_server_http_send_bytes(rn,r);
+
+  return 0;
+}
+
+int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r)
+{
+  int bytes;
+  fcntl(r->socket,F_SETFL,fcntl(r->socket, F_GETFL, NULL)|O_NONBLOCK);
+
+  switch(r->request_type)
+    {
+    case RHIZOME_HTTP_REQUEST_FROMBUFFER:
+      bytes=r->buffer_length-r->buffer_offset;
+      bytes=write(r->socket,&r->buffer[r->buffer_offset],bytes);
+      if (bytes>0) {
+	r->buffer_offset+=bytes;
+	if (r->buffer_offset>=r->buffer_length) {
+	  /* Our work is done. close socket and go home */
+	  WHY("Finished sending data");
+	  return rhizome_server_close_http_request(rn);	  
+	}
+      }
+      break;
+    default:
+      WHY("sending data from this type of HTTP request not implemented");
+      break;
+    }
+
+  fcntl(r->socket,F_SETFL,fcntl(r->socket, F_GETFL, NULL)&(~O_NONBLOCK));
+  return 0;
 }

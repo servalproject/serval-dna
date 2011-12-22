@@ -23,6 +23,45 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define RHIZOME_HTTP_PORT 4110
 
+typedef struct rhizome_http_request {
+  int socket;
+  long long last_activity; /* time of last activity in ms */
+  long long initiate_time; /* time connection was initiated */
+
+  /* The HTTP request as currently received */
+  int request_length;
+#define RHIZOME_HTTP_REQUEST_MAXLEN 1024
+  char request[RHIZOME_HTTP_REQUEST_MAXLEN];
+
+  /* Nature of the request */
+  int request_type;
+#define RHIZOME_HTTP_REQUEST_RECEIVING -1
+#define RHIZOME_HTTP_REQUEST_FROMBUFFER 0
+#define RHIZOME_HTTP_REQUEST_FILE 1
+#define RHIZOME_HTTP_REQUEST_SUBSCRIBEDGROUPLIST 2
+#define RHIZOME_HTTP_REQUEST_ALLGROUPLIST 3
+#define RHIZOME_HTTP_REQUEST_BUNDLESINGROUP 4
+#define RHIZOME_HTTP_REQUEST_BUNDLEMANIFEST 5
+
+  /* Local buffer of data to be sent.
+     If a RHIZOME_HTTP_REQUEST_FROMBUFFER, then the buffer is sent, and when empty
+     the request is closed.
+     Else emptying the buffer triggers a request to fetch more data.  Only if no
+     more data is provided do we then close the request. */
+  unsigned char *buffer;
+  int buffer_size; // size
+  int buffer_length; // number of bytes loaded into buffer
+  int buffer_offset; // where we are between [0,buffer_length)
+
+  /* The source specification data which are used in different ways by different 
+     request types */
+  unsigned char source[1024];
+  long long source_index;
+
+} rhizome_http_request;
+
+#define RHIZOME_SERVER_MAX_LIVE_REQUESTS 32
+
 #define RHIZOME_PRIORITY_HIGHEST RHIZOME_PRIORITY_SERVAL_CORE
 #define RHIZOME_PRIORITY_SERVAL_CORE 5
 #define RHIZOME_PRIORITY_SUBSCRIBED 4
@@ -126,3 +165,8 @@ int rhizome_hex_to_bytes(char *in,unsigned char *out,int hexChars);
 int rhizome_store_keypair_bytes(unsigned char *p,unsigned char *s);
 int rhizome_find_keypair_bytes(unsigned char *p,unsigned char *s);
 rhizome_signature *rhizome_sign_hash(unsigned char *hash,unsigned char *publicKeyBytes);
+
+int rhizome_server_free_http_request(rhizome_http_request *r);
+int rhizome_server_close_http_request(int i);
+int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r);
+int rhizome_server_parse_http_request(int rn,rhizome_http_request *r);
