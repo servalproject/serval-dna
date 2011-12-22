@@ -511,38 +511,64 @@ int createServerSocket()
   return 0;
 }
 
+extern int sigIoFlag;
+extern int rhizome_server_socket;
 int simpleServerMode()
 {
   while(1) {
     unsigned char buffer[16384];
     struct sockaddr recvaddr;
     socklen_t recvaddrlen=sizeof(recvaddr);
-    struct pollfd fds;
+    struct pollfd fds[128];
+    int fdcount;
     int len;
+    int r;
 
     bzero((void *)&recvaddr,sizeof(recvaddr));
-    fds.fd=sock; fds.events=POLLIN;
+
+    /* Get rhizome server started BEFORE populating fd list so that
+       the server's listen socket is in the list for poll() */
+    if (rhizome_datastore_path) rhizome_server_poll();
+
+    /* Get list of file descripters to watch */
+    fds[0].fd=sock; fds[0].events=POLLIN;
+    fdcount=1;
+    rhizome_server_get_fds(fds,&fdcount,128);
+    printf("poll()ing file descriptors:");
+    { int i;
+      for(i=0;i<fdcount;i++) { printf(" %d",fds[i].fd); } }
+    printf("\n");
     
-    /* Wait patiently for packets to arrive */
-    while (poll(&fds,1,1000)<1)	sleep(0);
-
-    len=recvfrom(sock,buffer,sizeof(buffer),0,&recvaddr,&recvaddrlen);
-
-    client_port=((struct sockaddr_in*)&recvaddr)->sin_port;
-    client_addr=((struct sockaddr_in*)&recvaddr)->sin_addr;
-
-    if (debug) fprintf(stderr,"Received packet from %s:%d (len=%d).\n",inet_ntoa(client_addr),client_port,len);
-    if (debug>1) dump("recvaddr",(unsigned char *)&recvaddr,recvaddrlen);
-    if (debug>3) dump("packet",(unsigned char *)buffer,len);
-    if (dropPacketP(len)) {
-      if (debug) fprintf(stderr,"Simulation mode: Dropped packet due to simulated link parameters.\n");
-      continue;
+    /* Wait patiently for packets to arrive. */
+    if (rhizome_datastore_path) rhizome_server_poll();
+    printf("polling %d fds\n",fdcount);
+    while ((r=poll(fds,fdcount,100000))<1) {
+      printf("poll returned %d\n",r);
+      if (sigIoFlag) { sigIoFlag=0; break; }
+      sleep(0);
     }
-    /* Simple server mode doesn't really use interface numbers, so lie and say interface -1 */
-    if (packetOk(-1,buffer,len,NULL,&recvaddr,recvaddrlen,1)) { 
-      if (debug) setReason("Ignoring invalid packet");
+    printf("poll ended: %d fds\n",r);
+    if (rhizome_datastore_path) rhizome_server_poll();
+
+    if (fds[0].revents&POLLIN) {
+      len=recvfrom(sock,buffer,sizeof(buffer),0,&recvaddr,&recvaddrlen);
+      
+      client_port=((struct sockaddr_in*)&recvaddr)->sin_port;
+      client_addr=((struct sockaddr_in*)&recvaddr)->sin_addr;
+      
+      if (debug) fprintf(stderr,"Received packet from %s:%d (len=%d).\n",inet_ntoa(client_addr),client_port,len);
+      if (debug>1) dump("recvaddr",(unsigned char *)&recvaddr,recvaddrlen);
+      if (debug>3) dump("packet",(unsigned char *)buffer,len);
+      if (dropPacketP(len)) {
+	if (debug) fprintf(stderr,"Simulation mode: Dropped packet due to simulated link parameters.\n");
+	continue;
+      }
+      /* Simple server mode doesn't really use interface numbers, so lie and say interface -1 */
+      if (packetOk(-1,buffer,len,NULL,&recvaddr,recvaddrlen,1)) { 
+	if (debug) setReason("Ignoring invalid packet");
+      }
+      if (debug>1) fprintf(stderr,"Finished processing packet, waiting for next one.\n");
     }
-    if (debug>1) fprintf(stderr,"Finished processing packet, waiting for next one.\n");
   }
   return 0;
 }
