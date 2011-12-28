@@ -170,3 +170,4 @@ int rhizome_server_free_http_request(rhizome_http_request *r);
 int rhizome_server_close_http_request(int i);
 int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r);
 int rhizome_server_parse_http_request(int rn,rhizome_http_request *r);
+int rhizome_server_simple_http_response(rhizome_http_request *r,int result, char *response);

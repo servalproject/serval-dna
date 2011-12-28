@@ -132,13 +132,13 @@ int rhizome_server_poll()
 
 	/* If we got some data, see if we have found the end of the HTTP request */
 	if (bytes>0) {
-	  int i=r->request_length-10;
+	  int i=r->request_length-160;
 	  int lfcount=0;
 	  if (i<0) i=0;
 	  r->request_length+=bytes;
 	  if (r->request_length<RHIZOME_HTTP_REQUEST_MAXLEN)
 	    r->request[r->request_length]=0;
-	  dump("request",r->request,r->request_length);
+	  dump("request",(unsigned char *)r->request,r->request_length);
 	  for(;i<(r->request_length+bytes);i++)
 	    {
 	      switch(r->request[i]) {
@@ -244,17 +244,52 @@ int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
 int rhizome_server_parse_http_request(int rn,rhizome_http_request *r)
 {
   WHY("not implemented. just returning an HTTP error for now.");
+  char id[1024];
 
-  r->buffer=(unsigned char *)strdup("HTTP/1.0 400 Bad Request\r\n\r\n<html><h1>Sorry, couldn't parse your request.</h1></html>\r\n");
+  if (strlen(r->request)<1024) {
+    if (!strncasecmp("GET /rhizome/groups HTTP/1.",r->request,
+		     strlen("GET /rhizome/groups HTTP/1.")))
+      {
+	/* Return the list of known groups */
+	printf("get /rhizome/groups (list of groups)\n");
+	rhizome_server_simple_http_response(r,200,"<html><h1>List of groups</h1></html>\r\n");	
+      }
+    else if (sscanf("GET /rhizome/file/%[0-9a-f] HTTP/1.",r->request,
+	       id)==1)
+      {
+	/* Stream the specified file */
+	printf("get /rhizome/file/ [%s]\n",id);
+	rhizome_server_simple_http_response(r,400,"<html><h1>A specific file</h1></html>\r\n");
+      }
+    else if (sscanf("GET /rhizome/manifest/%[0-9a-f] HTTP/1.",r->request,
+	       id)==1)
+      {
+	/* Stream the specified manifest */
+	printf("get /rhizome/manifest/ [%s]\n",id);
+	rhizome_server_simple_http_response(r,400,"<html><h1>A specific manifest</h1></html>\r\n");      }
+    else 
+      rhizome_server_simple_http_response(r,400,"<html><h1>Sorry, couldn't parse your request.</h1></html>\r\n");
+  }
+  else 
+    rhizome_server_simple_http_response(r,400,"<html><h1>Sorry, your request was too long.</h1></html>\r\n");
+  
+  /* Try sending data immediately. */
+  rhizome_server_http_send_bytes(rn,r);
+
+  return 0;
+}
+
+int rhizome_server_simple_http_response(rhizome_http_request *r,int result, char *response)
+{
+  r->buffer_size=strlen(response)+strlen("HTTP/1.0 XXX Foo\r\n\r\n")+100;
+  r->buffer=(unsigned char *)malloc(r->buffer_size);
+  snprintf((char *)r->buffer,r->buffer_size,"HTTP/1.0 %03d FooContent-type: text/html\r\nContent-length: %d\r\n\r\n%s",result,(int)strlen(response),response);
+  
   r->buffer_size=strlen((char *)r->buffer)+1;
   r->buffer_length=r->buffer_size-1;
   r->buffer_offset=0;
 
   r->request_type=RHIZOME_HTTP_REQUEST_FROMBUFFER;
-  
-  /* Try sending data immediately. */
-  rhizome_server_http_send_bytes(rn,r);
-
   return 0;
 }
 
