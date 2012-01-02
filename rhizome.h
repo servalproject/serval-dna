@@ -36,12 +36,15 @@ typedef struct rhizome_http_request {
   /* Nature of the request */
   int request_type;
 #define RHIZOME_HTTP_REQUEST_RECEIVING -1
-#define RHIZOME_HTTP_REQUEST_FROMBUFFER 0
-#define RHIZOME_HTTP_REQUEST_FILE 1
-#define RHIZOME_HTTP_REQUEST_SUBSCRIBEDGROUPLIST 2
-#define RHIZOME_HTTP_REQUEST_ALLGROUPLIST 3
-#define RHIZOME_HTTP_REQUEST_BUNDLESINGROUP 4
-#define RHIZOME_HTTP_REQUEST_BUNDLEMANIFEST 5
+#define RHIZOME_HTTP_REQUEST_FROMBUFFER 1
+#define RHIZOME_HTTP_REQUEST_FILE 2
+#define RHIZOME_HTTP_REQUEST_SUBSCRIBEDGROUPLIST 4
+#define RHIZOME_HTTP_REQUEST_ALLGROUPLIST 8
+#define RHIZOME_HTTP_REQUEST_BUNDLESINGROUP 16
+  // manifests are small enough to send from a buffer
+  // #define RHIZOME_HTTP_REQUEST_BUNDLEMANIFEST 32
+  // for anything too big, we can just use a blob
+#define RHIZOME_HTTP_REQUEST_BLOB 64
 
   /* Local buffer of data to be sent.
      If a RHIZOME_HTTP_REQUEST_FROMBUFFER, then the buffer is sent, and when empty
@@ -57,6 +60,12 @@ typedef struct rhizome_http_request {
      request types */
   unsigned char source[1024];
   long long source_index;
+
+  char *blob_table;
+  char *blob_column;
+  unsigned long long blob_rowid;
+  /* source_index used for offset in blob */
+  unsigned long long blob_end; 
 
 } rhizome_http_request;
 
@@ -171,3 +180,6 @@ int rhizome_server_close_http_request(int i);
 int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r);
 int rhizome_server_parse_http_request(int rn,rhizome_http_request *r);
 int rhizome_server_simple_http_response(rhizome_http_request *r,int result, char *response);
+long long sqlite_exec_int64(char *sqlformat,...);
+int rhizome_server_http_response_header(rhizome_http_request *r,int result,
+					char *mime_type,unsigned long long bytes);
