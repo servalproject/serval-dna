@@ -292,7 +292,7 @@ int hexFilter(char *s)
 }
 
 int rhizome_server_sql_query_http_response(int rn,rhizome_http_request *r,
-					   char *column,char *query_body,
+					   char *column,char *table,char *query_body,
 					   int bytes_per_row,int dehexP)
 {
   /* Run the provided SQL query progressively and return the values of the first
@@ -346,11 +346,13 @@ int rhizome_server_sql_query_http_response(int rn,rhizome_http_request *r,
   WHY("no function yet exists to obtain our public key?");
 
   /* build templated query */
-  snprintf(query,1024,"SELECT %s %s",column,query_body);
+  snprintf(query,1024,"SELECT %s,rowid %s",column,query_body);
   query[1023]=0;
   bcopy(query,r->source,1024);
   r->source_index=0;
   r->source_flags=dehexP;
+  r->blob_column=strdup(column);
+  r->blob_table=strdup(table);
 
   printf("buffer_length=%d\n",r->buffer_length);
 
@@ -360,6 +362,8 @@ int rhizome_server_sql_query_http_response(int rn,rhizome_http_request *r,
 
 int rhizome_server_sql_query_fill_buffer(int rn,rhizome_http_request *r)
 {
+  unsigned char blob_value[r->source_record_size*2+1];
+
   printf("populating with sql rows at offset %d\n",r->buffer_length);
   if (r->source_index>=r->source_count)
     {
@@ -396,17 +400,45 @@ int rhizome_server_sql_query_fill_buffer(int rn,rhizome_http_request *r)
     {
       r->source_index++;
       
-      if (sqlite3_column_count(statement)!=1) {
+      if (sqlite3_column_count(statement)!=2) {
 	sqlite3_finalize(statement);
 	return WHY("sqlite3 returned multiple columns for a single column query");
       }
+      sqlite3_blob *blob;
       const unsigned char *value;
-      if (sqlite3_column_type(statement, 0)==SQLITE_TEXT) 
-	value=sqlite3_column_text(statement, 0);
-      else 
+      int column_type=sqlite3_column_type(statement, 0);
+      switch(column_type) {
+      case SQLITE_TEXT:	value=sqlite3_column_text(statement, 0); break;
+      case SQLITE_BLOB:
+	printf("table='%s',col='%s',rowid=%lld\n",
+	       r->blob_table,r->blob_column,
+	       sqlite3_column_int64(statement,1));
+	if (sqlite3_blob_open(rhizome_db,"main",r->blob_table,r->blob_column,
+			      sqlite3_column_int64(statement,1) /* rowid */,
+			      0 /* read only */,&blob)!=SQLITE_OK)
+	  {
+	    WHY("Couldn't open blob");
+	    continue;
+	  }
+	if (sqlite3_blob_read(blob,&blob_value[0],
+			  /* copy number of bytes based on whether we need to
+			     de-hex the string or not */
+			      r->source_record_size*(1+(r->source_flags&1)),0)
+	    !=SQLITE_OK) {
+	  WHY("Couldn't read from blob");
+	  sqlite3_blob_close(blob);
+	  continue;
+	}
+	WHY("Did read blob");
+	value=blob_value;
+	sqlite3_blob_close(blob);
+	break;
+      default:
 	/* improper column type, so don't include in report */
+	WHY("Bad column type");
+	printf("colunnt_type=%d\n",column_type);
 	continue;
-
+      }
       if (r->source_flags&1) {
 	/* hex string to be converted */
 	int i;
@@ -448,21 +480,21 @@ int rhizome_server_parse_http_request(int rn,rhizome_http_request *r)
       {
 	/* Return the list of known groups */
 	printf("get /rhizome/groups (list of groups)\n");
-	rhizome_server_sql_query_http_response(rn,r,"id","from groups",32,1);
+	rhizome_server_sql_query_http_response(rn,r,"id","groups","from groups",32,1);
       }
     else if (!strncasecmp(r->request,"GET /rhizome/files HTTP/1.",
 		     strlen("GET /rhizome/files HTTP/1.")))
       {
 	/* Return the list of known files */
 	printf("get /rhizome/files (list of files)\n");
-	rhizome_server_sql_query_http_response(rn,r,"id","from files",32,1);
+	rhizome_server_sql_query_http_response(rn,r,"id","files","from files",32,1);
       }
-    else if (!strncasecmp(r->request,"GET /rhizome/manifests HTTP/1.",
-		     strlen("GET /rhizome/manifests HTTP/1.")))
+    else if (!strncasecmp(r->request,"GET /rhizome/bars HTTP/1.",
+		     strlen("GET /rhizome/bars HTTP/1.")))
       {
 	/* Return the list of known files */
-	printf("get /rhizome/manifests (list of manifests)\n");
-	rhizome_server_sql_query_http_response(rn,r,"id","from manifests",32,1);
+	printf("get /rhizome/bars (list of BARs)\n");
+	rhizome_server_sql_query_http_response(rn,r,"bar","manifests","from manifests",32,0);
       }
     else if (sscanf(r->request,"GET /rhizome/file/%s HTTP/1.",
 	       id)==1)

@@ -336,6 +336,8 @@ int main(int argc,char **argv)
 	     manifest */
 	  return rhizome_bundle_import(optarg,
 				       NULL /* no groups - XXX should allow them */,
+				       255 /* ttl - XXX should read from somewhere,
+					      e.g., bar if being imported */,
 				       0 /* int verifyP */, 
 				       1 /* int checkFileP */, 
 				       1 /* int signP */);

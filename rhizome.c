@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "mphlr.h"
 #include "rhizome.h"
+#include <stdlib.h>
 
 long long rhizome_space=0;
 char *rhizome_datastore_path=NULL;
@@ -77,7 +78,7 @@ int rhizome_opendb()
       fprintf(stderr,"SQLite could not create GROUPLIST table: %s\n",sqlite3_errmsg(rhizome_db));
       exit(1);
     }
-  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS MANIFESTS(id text not null primary key, manifest blob, version integer,inserttime integer);",NULL,NULL,NULL))
+  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS MANIFESTS(id text not null primary key, manifest blob, version integer,inserttime integer, bar blob);",NULL,NULL,NULL))
     {
       fprintf(stderr,"SQLite could not create MANIFESTS table: %s\n",sqlite3_errmsg(rhizome_db));
       exit(1);
@@ -213,7 +214,7 @@ int rhizome_make_space(int group_priority, long long bytes)
   /* XXX Get rid of any higher priority files that are not relevant in this time or location */
 
   /* Couldn't make space */
-  return WHY("Not implemented");
+  return WHY("Incomplete");
 }
 
 /* Drop the specified file from storage, and any manifests that reference it, 
@@ -293,7 +294,7 @@ int rhizome_manifest_priority(char *id)
    The file should be included in the specified rhizome groups, if possible.
    (some groups may be closed groups that we do not have the private key for.)
 */
-int rhizome_bundle_import(char *bundle,char *groups[],
+int rhizome_bundle_import(char *bundle,char *groups[], int ttl,
 			  int verifyP, int checkFileP, int signP)
 {
   char filename[1024];
@@ -307,6 +308,9 @@ int rhizome_bundle_import(char *bundle,char *groups[],
   rhizome_manifest *m=rhizome_read_manifest_file(manifestname);
   if (!m) return WHY("Could not read manifest file.");
   char hexhash[SHA512_DIGEST_STRING_LENGTH];
+
+  /* work out time to live */
+  if (ttl<0) ttl=0; if (ttl>254) ttl=254; m->ttl=ttl;
 
   /* Keep associated file name handy for later */
   m->dataFileName=strdup(filename);
@@ -536,6 +540,19 @@ long long rhizome_manifest_get_ll(rhizome_manifest *m,char *var)
   return -1;
 }
 
+double rhizome_manifest_get_double(rhizome_manifest *m,char *var,double default_value)
+{
+  int i;
+
+  if (!m) return default_value;
+
+  for(i=0;i<m->var_count;i++)
+    if (!strcmp(m->vars[i],var))
+      return strtod(m->values[i],NULL);
+  return default_value;
+}
+
+
 int rhizome_manifest_set(rhizome_manifest *m,char *var,char *value)
 {
   int i;
@@ -718,6 +735,55 @@ int rhizome_update_file_priority(char *fileid)
   return 0;
 }
 
+int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
+{
+  /* BAR = Bundle Advertisement Record.
+     Basically a 32byte precis of a given manifest, that includes version, time-to-live
+     and geographic bounding box information that is used to help manage flooding of
+     bundles.
+
+     64 bits - manifest ID prefix.
+     56 bits - low 56 bits of version number.
+     8 bits  - TTL of bundle in hops.
+     64 bits - length of associated file.
+     16 bits - min latitude (-90 - +90).
+     16 bits - min longitude (-180 - +180).
+     16 bits - max latitude (-90 - +90).
+     16 bits - max longitude (-180 - +180).
+ */
+
+  if (!m) return WHY("null manifest passed in");
+
+  int i;
+
+  /* Manifest prefix */
+  for(i=0;i<8;i++) bar[i]=m->cryptoSignPublic[i];
+  /* Version */
+  for(i=0;i<7;i++) bar[8+6-i]=(m->version>>(8*i))&0xff;
+  /* TTL */
+  if (m->ttl>0) bar[15]=m->ttl-1; else bar[15]=0;
+  /* file length */
+  for(i=0;i<8;i++) bar[16+7-i]=(m->fileLength>>(8*i))&0xff;
+  /* geo bounding box */
+  double minLat=rhizome_manifest_get_double(m,"min_lat",-90);
+  if (minLat<-90) minLat=-90; if (minLat>90) minLat=90;
+  double minLong=rhizome_manifest_get_double(m,"min_long",-180);
+  if (minLong<-180) minLong=-180; if (minLong>180) minLong=180;
+  double maxLat=rhizome_manifest_get_double(m,"max_lat",+90);
+  if (maxLat<-90) maxLat=-90; if (maxLat>90) maxLat=90;
+  double maxLong=rhizome_manifest_get_double(m,"max_long",+180);
+  if (maxLong<-180) maxLong=-180; if (maxLong>180) maxLong=180;
+  
+  unsigned short v;
+  v=(minLat+90)*(65535/180); bar[24]=(v>>8)&0xff; bar[25]=(v>>0)&0xff;
+  v=(minLong+180)*(65535/360); bar[26]=(v>>8)&0xff; bar[27]=(v>>0)&0xff;
+  v=(maxLat+90)*(65535/180); bar[28]=(v>>8)&0xff; bar[29]=(v>>0)&0xff;
+  v=(maxLong+180)*(65535/360); bar[30]=(v>>8)&0xff; bar[31]=(v>>0)&0xff;
+  
+  return 0;
+}
+
+
 /*
   Store the specified manifest into the sqlite database.
   We assume that sufficient space has been made for us.
@@ -784,17 +850,22 @@ int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename)
     }
 
   /* Store manifest */
+  WHY("*** Writing into manifests table");
   snprintf(sqlcmd,1024,
-	   "INSERT INTO MANIFESTS(id,manifest,version,inserttime) VALUES('%s',?,%lld,%lld);",
+	   "INSERT INTO MANIFESTS(id,manifest,version,inserttime,bar) VALUES('%s',?,%lld,%lld,?);",
 	   manifestid,m->version,overlay_time_in_ms());
 
   if (m->haveSecret) {
     if (rhizome_store_keypair_bytes(m->cryptoSignPublic,m->cryptoSignSecret))
-      return WHY("Failed to store key pair.");
+      {
+	WHY("*** Insert into manifests failed (-1).");
+	return WHY("Failed to store key pair.");
+      }
   } else {
     /* We don't have the secret for this manifest, so only allow updates if 
        the self-signature is valid */
     if (!m->selfSigned) {
+    WHY("*** Insert into manifests failed (-2).");
       return WHY("Manifest is not signed, and I don't have the key.  Manifest might be forged or corrupt.");
     }
   }
@@ -802,7 +873,8 @@ int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename)
   sqlite3_stmt *statement;
   if (sqlite3_prepare_v2(rhizome_db,sqlcmd,strlen(sqlcmd)+1,&statement,&cmdtail) 
       != SQLITE_OK) {
-    sqlite3_finalize(statement);    
+    sqlite3_finalize(statement);
+    WHY("*** Insert into manifests failed.");
     return WHY(sqlite3_errmsg(rhizome_db));
   }
 
@@ -810,11 +882,28 @@ int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename)
   if (sqlite3_bind_blob(statement,1,m->manifestdata,m->manifest_bytes,SQLITE_TRANSIENT)!=SQLITE_OK)
     {
       sqlite3_finalize(statement);
+    WHY("*** Insert into manifests failed (2).");
       return WHY(sqlite3_errmsg(rhizome_db));
     }
 
-  if (rhizome_finish_sqlstatement(statement))
+  /* Bind BAR to data field */
+  unsigned char bar[RHIZOME_BAR_BYTES];
+  rhizome_manifest_to_bar(m,bar);
+  
+  if (sqlite3_bind_blob(statement,2,bar,RHIZOME_BAR_BYTES,SQLITE_TRANSIENT)
+      !=SQLITE_OK)
+    {
+      sqlite3_finalize(statement);
+    WHY("*** Insert into manifests failed (3).");
+      return WHY(sqlite3_errmsg(rhizome_db));
+    }
+
+  if (rhizome_finish_sqlstatement(statement)) {
+    WHY("*** Insert into manifests failed (4).");
     return WHY("SQLite3 failed to insert row for manifest");
+  }
+  else
+    WHY("*** Insert into manifests apparently worked.");
 
   /* Create relationship between file and manifest */
   long long r=sqlite_exec_int64("INSERT INTO FILEMANIFESTS(manifestid,fileid) VALUES('%s','%s');",

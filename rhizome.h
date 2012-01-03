@@ -89,6 +89,8 @@ typedef struct rhizome_signature {
   int signatureLength;
 } rhizome_signature;
 
+#define RHIZOME_BAR_BYTES 32
+
 #define MAX_MANIFEST_VARS 256
 #define MAX_MANIFEST_BYTES 8192
 typedef struct rhizome_manifest {
@@ -124,6 +126,9 @@ typedef struct rhizome_manifest {
      signature blocks appended.
      All fields below may not be valid until the manifest has been finalised */
   int finalised;
+
+  /* time-to-live in hops of this manifest. */
+  int ttl;
 
   /* When finalised, we keep the filehash and maximum priority due to any
      group membership handy */
@@ -171,7 +176,8 @@ int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid);
 int rhizome_store_file(char *file,char *hash,int priortity);
 char *rhizome_safe_encode(unsigned char *in,int len);
 int rhizome_finish_sqlstatement(sqlite3_stmt *statement);
-int rhizome_bundle_import(char *bundle,char *groups[],int verifyP, int checkFileP, int signP);
+int rhizome_bundle_import(char *bundle,char *groups[],int ttl,
+			  int verifyP, int checkFileP, int signP);
 int rhizome_manifest_finalise(rhizome_manifest *m,int signP);
 char *rhizome_bytes_to_hex(unsigned char *in,int byteCount);
 int rhizome_hex_to_bytes(char *in,unsigned char *out,int hexChars);
@@ -188,3 +194,6 @@ long long sqlite_exec_int64(char *sqlformat,...);
 int rhizome_server_http_response_header(rhizome_http_request *r,int result,
 					char *mime_type,unsigned long long bytes);
 int rhizome_server_sql_query_fill_buffer(int rn,rhizome_http_request *r);
+double rhizome_manifest_get_double(rhizome_manifest *m,char *var,double default_value);
+int chartonybl(int c);
+int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs);
