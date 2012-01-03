@@ -45,6 +45,7 @@ typedef struct rhizome_http_request {
   // #define RHIZOME_HTTP_REQUEST_BUNDLEMANIFEST 32
   // for anything too big, we can just use a blob
 #define RHIZOME_HTTP_REQUEST_BLOB 64
+#define RHIZOME_HTTP_REQUEST_FAVICON 128
 
   /* Local buffer of data to be sent.
      If a RHIZOME_HTTP_REQUEST_FROMBUFFER, then the buffer is sent, and when empty
@@ -60,6 +61,8 @@ typedef struct rhizome_http_request {
      request types */
   unsigned char source[1024];
   long long source_index;
+  long long source_count;
+  int source_record_size;
 
   char *blob_table;
   char *blob_column;
@@ -183,3 +186,4 @@ int rhizome_server_simple_http_response(rhizome_http_request *r,int result, char
 long long sqlite_exec_int64(char *sqlformat,...);
 int rhizome_server_http_response_header(rhizome_http_request *r,int result,
 					char *mime_type,unsigned long long bytes);
+int rhizome_server_sql_query_fill_buffer(int rn,rhizome_http_request *r);
