@@ -134,7 +134,7 @@ unsigned int ob_get_int(overlay_buffer *b,int offset)
   if ((offset+sizeof(unsigned int))>b->length) return WHY("passed offset too large");
 
   // Some platforms require alignment
-  if (((int)&b->bytes[offset])&3) {
+  if (((unsigned long long)&b->bytes[offset])&3) {
     unsigned char bb[4];
     bcopy(&b->bytes[offset],&bb[0],4);
     return ntohl(*(unsigned int *)&bb[0]);

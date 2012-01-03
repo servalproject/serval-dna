@@ -382,6 +382,8 @@ int prepareGateway(char *gatewayspec);
 int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP,
 		      unsigned char *transaction_id,struct sockaddr *recvaddr,
 		      struct response_set *responses);
+int readArpTable(struct in_addr peers[],int *peer_count,int peer_max);
+
 
 typedef struct overlay_address_table {
   unsigned char epoch;
