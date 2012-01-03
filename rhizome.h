@@ -63,6 +63,7 @@ typedef struct rhizome_http_request {
   long long source_index;
   long long source_count;
   int source_record_size;
+  unsigned int source_flags;
 
   char *blob_table;
   char *blob_column;

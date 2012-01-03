@@ -293,7 +293,7 @@ int hexFilter(char *s)
 
 int rhizome_server_sql_query_http_response(int rn,rhizome_http_request *r,
 					   char *column,char *query_body,
-					   int bytes_per_row)
+					   int bytes_per_row,int dehexP)
 {
   /* Run the provided SQL query progressively and return the values of the first
      column it returns.  As the result list may be very long, we will add the
@@ -350,6 +350,7 @@ int rhizome_server_sql_query_http_response(int rn,rhizome_http_request *r,
   query[1023]=0;
   bcopy(query,r->source,1024);
   r->source_index=0;
+  r->source_flags=dehexP;
 
   printf("buffer_length=%d\n",r->buffer_length);
 
@@ -406,7 +407,16 @@ int rhizome_server_sql_query_fill_buffer(int rn,rhizome_http_request *r)
 	/* improper column type, so don't include in report */
 	continue;
 
-      bcopy(value,&r->buffer[r->buffer_length],r->source_record_size);
+      if (r->source_flags&1) {
+	/* hex string to be converted */
+	int i;
+	for(i=0;i<r->source_record_size;i++)
+	  /* convert the two nybls and make a byte */
+	  r->buffer[r->buffer_length+i]
+	    =(chartonybl(value[i<<1])<<4)|chartonybl(value[(i<<1)+1]);
+      } else
+	/* direct binary value */
+	bcopy(value,&r->buffer[r->buffer_length],r->source_record_size);
       r->buffer_length+=r->source_record_size;
       
       printf("wrote row %lld, buffer_length=%d\n",
@@ -438,21 +448,21 @@ int rhizome_server_parse_http_request(int rn,rhizome_http_request *r)
       {
 	/* Return the list of known groups */
 	printf("get /rhizome/groups (list of groups)\n");
-	rhizome_server_sql_query_http_response(rn,r,"id","from groups",64);
+	rhizome_server_sql_query_http_response(rn,r,"id","from groups",32,1);
       }
     else if (!strncasecmp(r->request,"GET /rhizome/files HTTP/1.",
 		     strlen("GET /rhizome/files HTTP/1.")))
       {
 	/* Return the list of known files */
 	printf("get /rhizome/files (list of files)\n");
-	rhizome_server_sql_query_http_response(rn,r,"id","from files",64);
+	rhizome_server_sql_query_http_response(rn,r,"id","from files",32,1);
       }
     else if (!strncasecmp(r->request,"GET /rhizome/manifests HTTP/1.",
 		     strlen("GET /rhizome/manifests HTTP/1.")))
       {
 	/* Return the list of known files */
 	printf("get /rhizome/manifests (list of manifests)\n");
-	rhizome_server_sql_query_http_response(rn,r,"id","from manifests",64);
+	rhizome_server_sql_query_http_response(rn,r,"id","from manifests",32,1);
       }
     else if (sscanf(r->request,"GET /rhizome/file/%s HTTP/1.",
 	       id)==1)
