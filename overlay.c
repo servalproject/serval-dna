@@ -99,6 +99,12 @@ int overlayServerMode()
   /* Add all local SIDs to our cache */
   int ofs=0;
   while(findHlr(hlr,&ofs,NULL,NULL)) {
+    int i;
+    if (debug) { 
+      fprintf(stderr,"Adding ");
+      for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",hlr[ofs+4+i]);
+      fprintf(stderr," to list of local addresses.\n");
+    }
     overlay_abbreviate_cache_address(&hlr[ofs+4]);
     if (nextHlr(hlr,&ofs)) break;
   }
@@ -274,6 +280,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
       break;
     case OF_TYPE_RHIZOME_ADVERT:
       overlay_rhizome_saw_advertisements(interface,f,now);
+      break;
     default:
       fprintf(stderr,"Unsupported f->type=0x%x\n",f->type);
       return WHY("Support for that f->type not yet implemented");
