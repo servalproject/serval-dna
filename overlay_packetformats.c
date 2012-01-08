@@ -170,7 +170,7 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *t
 	WHY("negative residual byte count after extracting addresses from frame header");
 	if (debug>3) fprintf(stderr,"f.rfs=%d, offset=%d, ofs=%d\n",
 			     f.rfs,offset,ofs);
-	exit(1);
+	return WHY("negative residual byte count after extracting addresses from frame header");
       }
 
       /* Finally process the frame */
@@ -182,7 +182,7 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *t
       ofs+=f.rfs;
     }
 
-  return 1;
+  return 0;
 }
 
 int overlay_frame_resolve_addresses(int interface,overlay_frame *f)

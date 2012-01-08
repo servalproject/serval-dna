@@ -63,7 +63,9 @@ int packetOk(int interface,unsigned char *packet,int len,unsigned char *transact
   if (len<HEADERFIELDS_LEN) return setReason("Packet is too short");
 
   if (packet[0]==0x41&&packet[1]==0x10) 
-    return packetOkDNA(packet,len,transaction_id,recvaddr,recvaddrlen,parseP);
+    {
+      return packetOkDNA(packet,len,transaction_id,recvaddr,recvaddrlen,parseP);
+    }
 
   if (packet[0]==0x4F&&packet[1]==0x10) 
     {

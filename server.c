@@ -427,7 +427,7 @@ int processRequest(unsigned char *packet,int len,
 	      setReason("Asked to perform unsupported action");
 	      if (debug) fprintf(stderr,"Packet offset = 0x%x\n",pofs);
 	      if (debug) dump("Packet",packet,len);
-	      return -1;
+	      return WHY("Asked to perform unsupported action.");
 	    }	   
 	}
     }
@@ -449,7 +449,7 @@ int respondSimple(char *sid,int action,unsigned char *action_text,int action_len
   /* XXX Complain about invalid crypto flags.
      XXX We don't do anything with the crypto flags right now
      XXX Other packet sending routines need this as well. */
-  if (!cryptoFlags) return -1;
+  if (!cryptoFlags) return WHY("Crypto-flags not set.");
 
   /* ACTION_ERROR is associated with an error message.
      For syntactic simplicity, we do not require the respondSimple() call to provide
@@ -462,7 +462,8 @@ int respondSimple(char *sid,int action,unsigned char *action_text,int action_len
   }
 
   /* Prepare the request packet */
-  if (packetMakeHeader(packet,8000,packet_len,transaction_id,cryptoFlags)) return -1;
+  if (packetMakeHeader(packet,8000,packet_len,transaction_id,cryptoFlags)) 
+    return WHY("packetMakeHeader() failed.");
   if (sid&&sid[0]) 
     { if (packetSetSid(packet,8000,packet_len,sid)) 
 	return setReason("invalid SID in reply"); }
@@ -477,11 +478,13 @@ int respondSimple(char *sid,int action,unsigned char *action_text,int action_len
 
   if (debug>2) dump("Simple response octets",action_text,action_len);
 
-  if (packetFinalise(packet,8000,packet_len,cryptoFlags)) return -1;
+  if (packetFinalise(packet,8000,packet_len,cryptoFlags))
+    return WHY("packetFinalise() failed.");
 
   if (debug) fprintf(stderr,"Sending response of %d bytes.\n",*packet_len);
 
-  if (packetSendRequest(REQ_REPLY,packet,*packet_len,NONBATCH,transaction_id,recvaddr,NULL)) return -1;
+  if (packetSendRequest(REQ_REPLY,packet,*packet_len,NONBATCH,transaction_id,recvaddr,NULL)) 
+    return WHY("packetSendRequest() failed.");
   
   return 0;
 }

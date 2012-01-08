@@ -299,7 +299,7 @@ int overlay_rx_messages()
 	      bzero(&transaction_id[0],8);
 	      bzero(&src_addr,sizeof(src_addr));
 	      if ((packet[0]==0x01)&&!(packet[1]|packet[2]|packet[3]))
-		{ if (!packetOk(i,&packet[128],plen,transaction_id,&src_addr,addrlen,1)) WHY("Malformed or unsupported packet from dummy interface (packetOK() failed)"); }
+		{ if (packetOk(i,&packet[128],plen,transaction_id,&src_addr,addrlen,1)) WHY("Malformed or unsupported packet from dummy interface (packetOK() failed)"); }
 	      else WHY("Invalid packet version in dummy interface");
 	    }
 	  else { c[i]=0; count--; }
@@ -311,7 +311,7 @@ int overlay_rx_messages()
 	    /* We have a frame from this interface */
 	    if (debug&4)fprintf(stderr,"Received %d bytes on interface #%d\n",plen,i);
 	    
-	    if (!packetOk(i,packet,plen,NULL,&src_addr,addrlen,1)) WHY("Malformed packet");	  
+	    if (packetOk(i,packet,plen,NULL,&src_addr,addrlen,1)) WHY("Malformed packet");	  
 	  }
 	}
       }
