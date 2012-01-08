@@ -104,8 +104,8 @@ int overlayServerMode()
       fprintf(stderr,"Adding ");
       for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",hlr[ofs+4+i]);
       fprintf(stderr," to list of local addresses.\n");
-      overlay_add_local_identity(&hlr[ofs+4]);
     }
+    overlay_add_local_identity(&hlr[ofs+4]);
     overlay_abbreviate_cache_address(&hlr[ofs+4]);
     if (nextHlr(hlr,&ofs)) break;
   }
