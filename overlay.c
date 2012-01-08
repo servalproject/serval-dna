@@ -166,6 +166,9 @@ int overlay_frame_process(int interface,overlay_frame *f)
 
   long long now=overlay_gettime_ms();
 
+  if (overlay_address_is_local(f->source))
+    return -1; /* WHY("Dropping frame claiming to come from myself."); */
+
   if (debug>1) fprintf(stderr,">>> Received frame (type=%02x)\n",f->type);
 
   /* First order of business is whether the nexthop address has been resolved.
