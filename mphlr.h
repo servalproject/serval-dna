@@ -512,6 +512,7 @@ typedef struct overlay_interface {
 */
 #define OVERLAY_MAX_INTERFACES 16
 extern overlay_interface overlay_interfaces[OVERLAY_MAX_INTERFACES];
+extern int overlay_last_interface_number; // used to remember where a packet came from
 extern unsigned int overlay_sequence_number;
 extern time_t overlay_sequence_start_time;
 
@@ -656,6 +657,7 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b);
 int overlay_interface_args(char *arg);
 int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
 			int *interface);
+int overlay_sendto(struct sockaddr_in *recipientaddr,unsigned char *bytes,int len);
 
 extern int overlay_interface_count;
 

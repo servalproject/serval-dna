@@ -43,7 +43,7 @@ int packetSendFollowup(struct in_addr destination,
   r=sendto(sock,packet,packet_len,0,(struct sockaddr *)&peer_addr,sizeof(peer_addr));
   if (r<packet_len)	{
     if (debug) fprintf(stderr,"Could not send to %s (r=%d, packet_len=%d)\n",inet_ntoa(destination),r,packet_len);
-    perror("sendto");
+    perror("sendto(a)");
   } else {
     if (debug>1) fprintf(stderr,"Sent request to client %s\n",inet_ntoa(destination));
   }
@@ -77,11 +77,15 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
   /* Deal with special case */
   if (method==REQ_REPLY)
     {
-      int r=sendto(sock,packet,packet_len,0,recvaddr,sizeof(struct sockaddr_in));
+      int r;
+      if (overlayMode) 
+	r=overlay_sendto(recvaddr,packet,packet_len);
+      else
+	r=sendto(sock,packet,packet_len,0,recvaddr,sizeof(struct sockaddr_in));
       if (r<packet_len)	{
 	if (debug) fprintf(stderr,"Could not send to client %s (packet=%p,len=%d,sock=%d)\n",
 			   inet_ntoa(client_addr),packet,packet_len,sock);
-	perror("sendto");
+	perror("sendto(b)");
       } else {
 	if (debug>1) fprintf(stderr,"Sent request to client %s\n",inet_ntoa(client_addr));
       }

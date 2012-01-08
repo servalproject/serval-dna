@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 int overlay_ready=0;
 int overlay_interface_count=0;
 overlay_interface overlay_interfaces[OVERLAY_MAX_INTERFACES];
+int overlay_last_interface_number=-1;
 
 struct interface_rules {
   char *namespec;
@@ -283,6 +284,8 @@ int overlay_rx_messages()
 	unsigned int addrlen=sizeof(src_addr);
 	unsigned char transaction_id[8];
 
+	overlay_last_interface_number=i;
+
 	if (overlay_interfaces[i].fileP) {
 	  /* Read from dummy interface file */
 	  long long length=lseek(overlay_interfaces[i].fd,0,SEEK_END);
@@ -308,8 +311,7 @@ int overlay_rx_messages()
 	    /* We have a frame from this interface */
 	    if (debug&4)fprintf(stderr,"Received %d bytes on interface #%d\n",plen,i);
 	    
-	    bzero(&transaction_id[0],8);
-	    if (!packetOk(i,packet,plen,transaction_id,&src_addr,addrlen,1)) WHY("Malformed packet");	  
+	    if (!packetOk(i,packet,plen,NULL,&src_addr,addrlen,1)) WHY("Malformed packet");	  
 	  }
 	}
       }
@@ -335,15 +337,22 @@ int overlay_tx_messages()
   return WHY("not implemented");
 }
 
-int overlay_broadcast_ensemble(int interface_number,unsigned char *bytes,int len)
+int overlay_broadcast_ensemble(int interface_number,
+			       struct sockaddr_in *recipientaddr /* NULL == broadcast */,
+			       unsigned char *bytes,int len)
 {
   struct sockaddr_in s;
 
   memset(&s, '\0', sizeof(struct sockaddr_in));
-  s = overlay_interfaces[interface_number].broadcast_address;
-  s.sin_family = AF_INET;
-  if (debug&4) fprintf(stderr,"Port=%d\n",overlay_interfaces[interface_number].port);
-  s.sin_port = htons( overlay_interfaces[interface_number].port );
+  if (recipientaddr) {
+    bcopy(recipientaddr,&s,sizeof(struct sockaddr_in));
+  }
+  else {
+    s = overlay_interfaces[interface_number].broadcast_address;
+    s.sin_family = AF_INET;
+    if (debug&4) fprintf(stderr,"Port=%d\n",overlay_interfaces[interface_number].port);
+    s.sin_port = htons( overlay_interfaces[interface_number].port );
+  }
 
   if (overlay_interfaces[interface_number].fileP)
     {
@@ -383,16 +392,27 @@ int overlay_broadcast_ensemble(int interface_number,unsigned char *bytes,int len
     }
   else
     {
-      if(sendto(overlay_interfaces[interface_number].fd, bytes, len, 0, (struct sockaddr *)&s, sizeof(struct sockaddr_in)) < 0)
+      if(sendto(overlay_interfaces[interface_number].fd, bytes, len, 0, (struct sockaddr *)&s, sizeof(struct sockaddr_in)) != len)
 	{
 	  /* Failed to send */
-	  perror("sendto");
+	  perror("sendto(c)");
 	  return WHY("sendto() failed");
 	}
       else
 	/* Sent okay */
 	return 0;
     }
+}
+
+/* This function is called to return old non-overlay requests back out the
+   interface they came in. */
+int overlay_sendto(struct sockaddr_in *recipientaddr,unsigned char *bytes,int len)
+{
+  if (debug>1) fprintf(stderr,"Sending %d bytes.\n",len);
+  if(overlay_broadcast_ensemble(overlay_last_interface_number,recipientaddr,bytes,len)) 
+    return -1;
+  else 
+    return len;
 }
 
 int overlay_interface_discover()
@@ -596,7 +616,7 @@ int overlay_tick_interface(int i, long long now)
   /* Now send the frame.  This takes the form of a special DNA packet with a different
      service code, which we setup earlier. */
   if (debug&4) fprintf(stderr,"Sending %d bytes\n",e->length);
-  if (!overlay_broadcast_ensemble(i,e->bytes,e->length))
+  if (!overlay_broadcast_ensemble(i,NULL,e->bytes,e->length))
     {
       overlay_update_sequence_number();
       fprintf(stderr,"Successfully transmitted tick frame #%d on interface #%d (%d bytes)\n",
