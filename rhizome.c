@@ -1394,7 +1394,7 @@ int bundle_offset=0;
 int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 {
   int bytes=e->sizeLimit-e->length;
-  int overhead=1+1+3+32+1+1; /* maximum overhead */
+  int overhead=1+1+3+1+1+1; /* maximum overhead */
   int slots=(bytes-overhead)/8;
   if (slots>30) slots=30;
   int slots_used=0;
@@ -1408,16 +1408,26 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
   ob_append_byte(e,1); /* TTL */
   int rfs_offset=e->length; /* remember where the RFS byte gets stored 
 			       so that we can patch it later */
-  ob_append_byte(e,1+1+1+8*slots_used/* RFS */);
+  ob_append_byte(e,1+1+1+1+RHIZOME_BAR_BYTES*slots_used/* RFS */);
 
   /* Stuff in dummy address fields */
   ob_append_byte(e,OA_CODE_BROADCAST);
   ob_append_byte(e,OA_CODE_BROADCAST);
   ob_append_byte(e,OA_CODE_SELF);
 
+  /* Version of rhizome advert block */
+  ob_append_byte(e,1);
+
   /* XXX Should add priority bundles here.
      XXX Should prioritise bundles for subscribed groups, Serval-authorised files
-     etc over common bundles. */
+     etc over common bundles.
+     XXX Should wait a while after going through bundle list so that we don't waste
+     CPU on db queries if there are not many bundles.  Actually, we probably just
+     shouldn't be sending bundles blindly on every tick.
+     XXX How do we indicate group membership with BARs? Or do groups actively poll?
+  */
+  
+  WHY("Group handling not completely thought out here yet.");
 
   /* Get number of bundles available if required */
   if (bundles_available==-1||(bundle_offset>=bundles_available)) {
@@ -1470,7 +1480,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
     }
 
   if (debug>1) printf("Appended %d rhizome advertisements to packet.\n",slots_used);
-  e->bytes[rfs_offset]=1+1+1+8*slots_used;
+  e->bytes[rfs_offset]=1+1+1+1+RHIZOME_BAR_BYTES*slots_used;
   sqlite3_finalize(statement);
 
   return 0;
