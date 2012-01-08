@@ -272,6 +272,8 @@ int overlay_frame_process(int interface,overlay_frame *f)
     case OF_TYPE_NODEANNOUNCE:
       overlay_route_saw_advertisements(interface,f,now);
       break;
+    case OF_TYPE_RHIZOME_ADVERT:
+      overlay_rhizome_saw_advertisements(interface,f,now);
     default:
       fprintf(stderr,"Unsupported f->type=0x%x\n",f->type);
       return WHY("Support for that f->type not yet implemented");

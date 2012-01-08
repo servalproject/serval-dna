@@ -860,6 +860,7 @@ extern int overlay_bin_bytes;
 extern overlay_node **overlay_nodes;
 
 int overlay_route_saw_advertisements(int i,overlay_frame *f, long long now);
+int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now);
 int overlay_route_please_advertise(overlay_node *n);
 int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_server_poll();

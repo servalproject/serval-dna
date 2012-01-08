@@ -373,7 +373,15 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
     for(i=1;i<OVERLAY_MAX_INTERFACES;i++) {
       if (neh->scores[i]>neh->scores[*interface]) *interface=i;
     }
-    if (neh->scores[*interface]<1) return WHY("No open path to node");
+    if (neh->scores[*interface]<1) {
+      if (debug>2) { 
+	int i;
+	fprintf(stderr,"No open path to ");
+	for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",neh->node->sid[i]);
+	fprintf(stderr,"\n");
+      }
+      return WHY("No open path to node");
+    }
     return 0;
   } else {
     /* Is not a direct neighbour */

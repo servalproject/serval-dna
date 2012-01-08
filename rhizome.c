@@ -1486,3 +1486,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
   return 0;
 }
 
+int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
+{
+  return WHY("Not implemented.");
+}
