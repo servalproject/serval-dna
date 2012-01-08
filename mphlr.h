@@ -658,6 +658,7 @@ int overlay_interface_args(char *arg);
 int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
 			int *interface);
 int overlay_sendto(struct sockaddr_in *recipientaddr,unsigned char *bytes,int len);
+int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e);
 
 extern int overlay_interface_count;
 

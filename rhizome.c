@@ -1388,3 +1388,87 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
   (*ofs)+=len;
   return 0;
 }
+
+int bundles_available=-1;
+int bundle_offset=0;
+int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
+{
+  int bytes=e->sizeLimit-e->length;
+  int overhead=1+1+3+32+1+1; /* maximum overhead */
+  int slots=(bytes-overhead)/8;
+  if (slots>30) slots=30;
+  int slots_used=0;
+
+  if (slots<1) return WHY("No room for node advertisements");
+
+  if (!rhizome_db) return WHY("Rhizome not enabled");
+
+  if (ob_append_byte(e,OF_TYPE_RHIZOME_ADVERT))
+    return WHY("could not add rhizome bundle advertisement header");
+  ob_append_byte(e,1); /* TTL */
+  int rfs_offset=e->length; /* remember where the RFS byte gets stored 
+			       so that we can patch it later */
+  ob_append_byte(e,1+1+1+8*slots_used/* RFS */);
+
+  /* Stuff in dummy address fields */
+  ob_append_byte(e,OA_CODE_BROADCAST);
+  ob_append_byte(e,OA_CODE_BROADCAST);
+  ob_append_byte(e,OA_CODE_SELF);
+
+  /* XXX Should add priority bundles here.
+     XXX Should prioritise bundles for subscribed groups, Serval-authorised files
+     etc over common bundles. */
+
+  /* Get number of bundles available if required */
+  if (bundles_available==-1||(bundle_offset>=bundles_available)) {
+    bundles_available=sqlite_exec_int64("SELECT COUNT(BAR) FROM MANIFESTS;");
+    bundle_offset=0;
+  }
+
+  sqlite3_stmt *statement;
+  char query[1024];
+  snprintf(query,1024,"SELECT BAR,ROWID FROM MANIFESTS LIMIT %d,%d",bundle_offset,slots);
+
+  switch (sqlite3_prepare_v2(rhizome_db,query,-1,&statement,NULL))
+    {
+    case SQLITE_OK: case SQLITE_DONE: case SQLITE_ROW:
+      break;
+    default:
+      sqlite3_finalize(statement);
+      sqlite3_close(rhizome_db);
+      rhizome_db=NULL;
+      WHY(query);
+      WHY(sqlite3_errmsg(rhizome_db));
+      return WHY("Could not prepare sql statement for fetching BARs for advertisement.");
+    }
+  while((slots_used<slots)&&(sqlite3_step(statement)==SQLITE_ROW)&&
+	(e->length+RHIZOME_BAR_BYTES<=e->sizeLimit))
+    {
+      sqlite3_blob *blob;
+      int column_type=sqlite3_column_type(statement, 0);
+      switch(column_type) {
+      case SQLITE_BLOB:
+	if (sqlite3_blob_open(rhizome_db,"main","manifests","bar",
+			      sqlite3_column_int64(statement,1) /* rowid */,
+			      0 /* read only */,&blob)!=SQLITE_OK)
+	  {
+	    WHY("Couldn't open blob");
+	    continue;
+	  }
+	if (sqlite3_blob_read(blob,&e->bytes[e->length],RHIZOME_BAR_BYTES,0)
+	    !=SQLITE_OK) {
+	  WHY("Couldn't read from blob");
+	  sqlite3_blob_close(blob);
+	  continue;
+	}
+	e->length+=RHIZOME_BAR_BYTES;
+	
+	sqlite3_blob_close(blob);
+      }
+    }
+
+  e->bytes[rfs_offset]=1+1+1+8*slots_used;
+
+  return 0;
+}
+

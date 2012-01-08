@@ -605,6 +605,8 @@ int overlay_tick_interface(int i, long long now)
 
   ob_limitsize(e,overlay_interfaces[i].mtu*3/4);
 
+  /* Add advertisements for ROUTES not Rhizome bundles.
+     Rhizome bundle advertisements are lower priority */
   overlay_route_add_advertisements(i,e);
 
   ob_limitsize(e,overlay_interfaces[i].mtu);
@@ -612,7 +614,8 @@ int overlay_tick_interface(int i, long long now)
   /* 4. XXX Add lower-priority queued data */
 
   /* 5. XXX Fill the packet up to a suitable size with anything that seems a good idea */
-     
+  overlay_rhizome_add_advertisements(i,e);
+
   /* Now send the frame.  This takes the form of a special DNA packet with a different
      service code, which we setup earlier. */
   if (debug&4) fprintf(stderr,"Sending %d bytes\n",e->length);
