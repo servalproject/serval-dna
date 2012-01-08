@@ -665,6 +665,16 @@ int overlay_route_i_can_hear(unsigned char *who,int sender_interface,unsigned in
   return 0;
 }
 
+int overlay_print_address(FILE *f,char *prefix,unsigned char *s,char *suffix)
+{
+  int i;
+  fprintf(f,"%s",prefix);
+  for(i=0;i<SID_SIZE;i++) fprintf(f,"%02x",s[i]);
+  fprintf(f,"%s",suffix);
+  return 0;
+}
+
+
 int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now)
 {
   unsigned int s1,s2;
@@ -683,6 +693,14 @@ int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now)
   fprintf(stderr,"Received self-announcement for sequence range [%08x,%08x] from interface %d\n",s1,s2,sender_interface);
 
   overlay_route_i_can_hear(f->source,sender_interface,s1,s2,interface,now);
+
+  /* Ignore self-announcements from ourself. */
+  if (overlay_address_is_local(&f->source[0]))
+    {
+      // XXX But we should make note that we have loop-back to this interface
+      WHY("One or more interfaces loops back to this one, or someone is naughtily forwarding packets between interfaces.");
+      return 0; 
+    }
 
   overlay_route_ack_selfannounce(f,n);
 
@@ -945,10 +963,54 @@ int overlay_route_record_link(long long now,unsigned char *to,unsigned char *via
   return 0;
 }
 
+int overlay_local_identity_count=0;
+unsigned char *overlay_local_identities[OVERLAY_MAX_LOCAL_IDENTITIES];
+
+int overlay_address_is_local(unsigned char *s) 
+{ int ii,i;
+  for (ii=0;ii<overlay_local_identity_count;ii++) {
+    for(i=0;i<SID_SIZE;i++) 
+      if (s[i]!=overlay_local_identities[ii][i]) 
+	{ if (debug>3) fprintf(stderr,"address is not local address #%d, since byte %d = %02x != %02x\n",
+			       ii,i,s[i],overlay_local_identities[ii][i]);
+	  break; }
+    if (i==SID_SIZE) { return 1; }
+  }
+  return 0;
+}
+
+int overlay_add_local_identity(unsigned char *s)
+{
+  int i;
+  if (overlay_local_identity_count>=OVERLAY_MAX_LOCAL_IDENTITIES)
+    return WHY("Too many local identities. Increase OVERLAY_MAX_LOCAL_IDENTITIES.");
+
+  overlay_local_identities[overlay_local_identity_count]=malloc(SID_SIZE);
+  if (!overlay_local_identities[overlay_local_identity_count])
+    return WHY("malloc() failed while recording local identity.");
+
+  for(i=0;i<SID_SIZE;i++) {
+    overlay_local_identities[overlay_local_identity_count][i]=s[i];
+  }
+
+  overlay_local_identity_count++;
+
+  return 0;
+}
+
 int overlay_route_dump()
 {
   int bin,slot,o,n,i;
   long long now=overlay_gettime_ms();
+
+  fprintf(stderr,"\nOverlay Local Identities\n------------------------\n");
+  for(n=0;n<overlay_local_identity_count;n++)
+    {
+      int i;
+      for(i=0;i<SID_SIZE;i++)
+	fprintf(stderr,"%02x",overlay_local_identities[n][i]);
+      fprintf(stderr,"\n");
+    }
 
   fprintf(stderr,"\nOverlay Neighbour Table\n------------------------\n");
   for(n=0;n<overlay_neighbour_count;n++)

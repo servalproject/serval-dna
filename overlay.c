@@ -104,6 +104,7 @@ int overlayServerMode()
       fprintf(stderr,"Adding ");
       for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",hlr[ofs+4+i]);
       fprintf(stderr," to list of local addresses.\n");
+      overlay_add_local_identity(&hlr[ofs+4]);
     }
     overlay_abbreviate_cache_address(&hlr[ofs+4]);
     if (nextHlr(hlr,&ofs)) break;
@@ -165,7 +166,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
 
   long long now=overlay_gettime_ms();
 
-  if (debug>1) fprintf(stderr,">>> Received frame\n");
+  if (debug>1) fprintf(stderr,">>> Received frame (type=%02x)\n",f->type);
 
   /* First order of business is whether the nexthop address has been resolved.
      If not, we need to think about asking for it to be resolved.
@@ -209,8 +210,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
 
   for(i=0;i<SID_SIZE;i++) if (f->nexthop[i]!=0xff) break;
   if (i==SID_SIZE) forMe=1;
-  for(i=0;i<SID_SIZE;i++) if (f->nexthop[i]!=hlr[4+i]) break;
-  if (i==SID_SIZE) forMe=1;
+  if (overlay_address_is_local(f->nexthop)) forMe=1;
 
   if (forMe) {
     /* It's for us, so resolve the addresses */
@@ -228,14 +228,14 @@ int overlay_frame_process(int interface,overlay_frame *f)
     if (f->destination_address_status==OA_RESOLVED) {
       for(i=0;i<SID_SIZE;i++) if (f->destination[i]!=0xff) break;
       if (i==SID_SIZE) { ultimatelyForMe=1; broadcast=1; }
-      for(i=0;i<SID_SIZE;i++) if (f->destination[i]!=hlr[4+i]) break;
-      if (i==SID_SIZE) ultimatelyForMe=1;
+      if (overlay_address_is_local(f->destination)) ultimatelyForMe=1;
     }
   }
 
-  if (debug>3) {
+  if (debug>2) {
     fprintf(stderr,"This frame does%s have me listed as next hop.\n",forMe?"":" not");
     fprintf(stderr,"This frame is%s for me.\n",ultimatelyForMe?"":" not");
+    fprintf(stderr,"This frame is%s broadcast.\n",broadcast?"":" not");
   }
 
   /* Not for us? Then just ignore it */
@@ -247,10 +247,17 @@ int overlay_frame_process(int interface,overlay_frame *f)
       /* Yes, it is. */
       int len=0;      
 
-      if (broadcast&&(f->type==OF_TYPE_SELFANNOUNCE)) {
-	// Don't forward broadcast self-announcement packets as that is O(n^2) with
-	// traffic.  We have other means to propagating the mesh topology information.
-      } else {
+      if (broadcast&&
+	  ((f->type==OF_TYPE_SELFANNOUNCE)
+	   ||(f->type==OF_TYPE_RHIZOME_ADVERT)
+	   ))
+	{
+	  // Don't forward broadcast self-announcement packets as that is O(n^2) with
+	  // traffic.  We have other means to propagating the mesh topology information.
+	  // Similarly, rhizome advertisement traffic is always link local, so don't 
+	  // forward that either.
+	} else {
+	if (debug>2) fprintf(stderr,"\nForwarding frame.\n");
 	if (overlay_get_nexthop(f->destination,f->nexthop,&len,&f->nexthop_interface))
 	  return WHY("Could not find next hop for host - dropping frame");
 	f->ttl--;

@@ -659,8 +659,14 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
 			int *interface);
 int overlay_sendto(struct sockaddr_in *recipientaddr,unsigned char *bytes,int len);
 int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e);
+int overlay_add_local_identity(unsigned char *s);
+int overlay_address_is_local(unsigned char *s);
 
 extern int overlay_interface_count;
+
+#define OVERLAY_MAX_LOCAL_IDENTITIES 256
+extern int overlay_local_identity_count;
+extern unsigned char *overlay_local_identities[OVERLAY_MAX_LOCAL_IDENTITIES];
 
 /* Overlay mesh packet codes */
 #define OF_TYPE_BITS 0xf0
