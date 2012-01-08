@@ -1455,6 +1455,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	    WHY("Couldn't open blob");
 	    continue;
 	  }
+	ob_makespace(e,RHIZOME_BAR_BYTES);
 	if (sqlite3_blob_read(blob,&e->bytes[e->length],RHIZOME_BAR_BYTES,0)
 	    !=SQLITE_OK) {
 	  WHY("Couldn't read from blob");
@@ -1462,12 +1463,15 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	  continue;
 	}
 	e->length+=RHIZOME_BAR_BYTES;
-	
+	slots_used++;
+
 	sqlite3_blob_close(blob);
       }
     }
 
+  if (debug>1) printf("Appended %d rhizome advertisements to packet.\n",slots_used);
   e->bytes[rfs_offset]=1+1+1+8*slots_used;
+  sqlite3_finalize(statement);
 
   return 0;
 }
