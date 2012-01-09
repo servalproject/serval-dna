@@ -292,7 +292,7 @@ int overlay_route_init(int mb_ram)
   overlay_nodes=calloc(sizeof(overlay_node*),bin_count);
   if (!overlay_nodes) return WHY("calloc() failed.");
 
-  overlay_neighbours=calloc(sizeof(overlay_neighbour*),1024*mb_ram);
+  overlay_neighbours=calloc(sizeof(overlay_neighbour),1024*mb_ram);
   if (!overlay_neighbours) {
     free(overlay_nodes);
     return WHY("calloc() failed.");
@@ -406,9 +406,13 @@ unsigned int overlay_route_hash_sid(unsigned char *sid)
   /* Mask out extranous bits to return only a valid bin number */
   bin&=(overlay_bin_count-1);
   if (debug>3) {
+    int zeroes=0;
     fprintf(stderr,"The following address resolves to bin #%d\n",bin);
-    for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",sid[i]);
+    for(i=0;i<SID_SIZE;i++) { fprintf(stderr,"%02x",sid[i]); if (!sid[i]) zeroes++; }
     fprintf(stderr,"\n");
+    if (zeroes>8) {
+      fprintf(stderr,"Looks like corrupt memory or packet to me!\n");
+    }
   }
   return bin;
 }
@@ -586,6 +590,7 @@ int overlay_route_make_neighbour(overlay_node *n)
   }
   bzero(&overlay_neighbours[n->neighbour_id],sizeof(overlay_neighbour));
   overlay_neighbours[n->neighbour_id].node=n;
+
   return 0;
 }
 
@@ -618,6 +623,10 @@ int overlay_route_i_can_hear(unsigned char *who,int sender_interface,unsigned in
   if (!n->neighbour_id) if (overlay_route_make_neighbour(n)) return WHY("overlay_route_make_neighbour() failed");
 
   /* Get neighbour structure */
+  if (n->neighbour_id<0||n->neighbour_id>overlay_max_neighbours)
+    { WHY("n->neighbour_id set to illegal value");
+      return -1;
+    }
   overlay_neighbour *neh=&overlay_neighbours[n->neighbour_id];
 
   int obs_index=neh->most_recent_observation_id;
@@ -732,13 +741,17 @@ int overlay_route_recalc_node_metrics(overlay_node *n,long long now)
   if (n->neighbour_id)
     {
       /* Node is also a direct neighbour, so check score that way */
+      if (n->neighbour_id>overlay_max_neighbours||n->neighbour_id<0)
+	return WHY("n->neighbour_id is invalid.");
       int i;
       for(i=0;i<overlay_interface_count;i++)
-	if (overlay_neighbours[n->neighbour_id].scores[i]>best_score)
-	  {
-	    best_score=overlay_neighbours[n->neighbour_id].scores[i];
-	    best_observation=-1;
-	  }
+	{
+	  if (overlay_neighbours[n->neighbour_id].scores[i]>best_score)
+	    {
+	      best_score=overlay_neighbours[n->neighbour_id].scores[i];
+	      best_observation=-1;
+	    }
+	}
     }
 
   /* Think about scheduling this node's score for readvertising if its score
@@ -791,7 +804,7 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
       /* Support interface tick speeds down to 1 per hour (well and truly slow enough to do
 	 50KB/12 hours which is the minimum traffic charge rate on an expensive BGAN satellite link) */
       if (interval<3600000) {
-	if (debug>3) fprintf(stderr,"adding %dms (interface %d '%s')\n",interval,n->observations[i].sender_interface,
+	if (debug&DEBUG_VERBOSE_IO) fprintf(stderr,"adding %dms (interface %d '%s')\n",interval,n->observations[i].sender_interface,
 			     overlay_interfaces[n->observations[i].sender_interface].name);
 	/* sender_interface is unsigned, so a single-sided test is sufficient for bounds checking */
 	if (n->observations[i].sender_interface<OVERLAY_MAX_INTERFACES)
@@ -1098,8 +1111,9 @@ int overlay_route_tick()
   while(n--)
     {
       int slot;
-      for(slot=0;slot<overlay_bin_size;slot++) 
+      for(slot=0;slot<overlay_bin_size;slot++) {
 	overlay_route_tick_node(overlay_route_tick_next_node_bin_id,slot,start_time);
+      }
       overlay_route_tick_next_node_bin_id++;
       if (overlay_route_tick_next_node_bin_id>=overlay_bin_count) overlay_route_tick_next_node_bin_id=0;
     }

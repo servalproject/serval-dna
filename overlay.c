@@ -137,7 +137,7 @@ int overlayServerMode()
     waittime.tv_usec=(ms%1000)*1000;
     waittime.tv_sec=ms/1000;
 
-    if (debug&4) fprintf(stderr,"Waiting via select() for up to %lldms\n",ms);
+    if (debug&DEBUG_VERBOSE_IO) fprintf(stderr,"Waiting via select() for up to %lldms\n",ms);
     int r=select(maxfd+1,&read_fds,NULL,NULL,&waittime);
     if (r<0) {
       /* select had a problem */
@@ -150,11 +150,12 @@ int overlayServerMode()
     } else {
       /* No data before tick occurred, so do nothing.
 	 Well, for now let's just check anyway. */
-      if (debug&4) fprintf(stderr,"select() timeout.\n");
+      if (debug&DEBUG_VERBOSE_IO) fprintf(stderr,"select() timeout.\n");
       overlay_rx_messages();
     }
     /* Check if we need to trigger any ticks on any interfaces */
     overlay_check_ticks();
+      sleep(1);
   }
 
   return 0;
@@ -190,6 +191,8 @@ int overlay_frame_process(int interface,overlay_frame *f)
       /* Great, we have the address, so we can get on with things */
       break;
     case OA_PLEASEEXPLAIN:
+      return WHY("Address cannot be resolved -- aborting packet processing.\n");
+      /* XXX Should send a please explain to get this address resolved. */
       break;
     case OA_UNSUPPORTED:
     default:
@@ -228,10 +231,18 @@ int overlay_frame_process(int interface,overlay_frame *f)
       fprintf(stderr,"\n");
     }
 
+    if (f->source_address_status!=OA_RESOLVED) {
+      if (debug>1) WHY("Source address could not be resolved, so dropping frame.");
+      return -1;
+    }
+
     if (f->destination_address_status==OA_RESOLVED) {
       for(i=0;i<SID_SIZE;i++) if (f->destination[i]!=0xff) break;
       if (i==SID_SIZE) { ultimatelyForMe=1; broadcast=1; }
       if (overlay_address_is_local(f->destination)) ultimatelyForMe=1;
+    } else {
+      if (debug>1) WHY("Destination address could not be resolved, so dropping frame.");
+      return -1;
     }
   }
 

@@ -872,3 +872,9 @@ int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_server_poll();
 
 #include "nacl.h"
+
+
+#define DEBUG_OVERLAYINTERFACES 4
+#define DEBUG_PACKETXFER 1
+#define DEBUG_VERBOSE 2
+#define DEBUG_VERBOSE_IO 8

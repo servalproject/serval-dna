@@ -1488,5 +1488,8 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 
 int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 {
+  if (!f) return -1;
+  fprintf(stderr,"rhizome f->bytecount=%d\n",f->bytecount);
+
   return WHY("Not implemented.");
 }
