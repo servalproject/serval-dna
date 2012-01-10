@@ -802,7 +802,10 @@ int overlay_route_recalc_node_metrics(overlay_node *n,long long now)
      if it goes down, we probably don't need to say anything at all.
   */
   int diff=best_score-n->best_link_score;
-  if (diff>0) overlay_route_please_advertise(n);
+  if (diff>0) { 
+    overlay_route_please_advertise(n);
+    if (debug&DEBUG_OVERLAYROUTEMONITOR) overlay_route_dump();
+  }
   
   /* Remember new reachability information */
   n->best_link_score=best_score;

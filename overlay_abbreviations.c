@@ -264,8 +264,11 @@ int overlay_abbreviate_address(unsigned char *in,unsigned char *out,int *ofs)
   for(i=0;i<2;i++)
     if (abbrs->byfirstbyte[in[0]][i])
       { 
-	if (0) { if (!overlay_abbreviate_try_byindex(in,out,ofs,abbrs->byfirstbyte[in[0]][i])) 
-	    return 0; } else WHY("Abbreviation by index temporarily disabled to simplify development");
+	if (0) { if (!overlay_abbreviate_try_byindex(in,out,ofs,abbrs->byfirstbyte[in[0]][i])) return 0; } 
+	else {
+	  if (debug&DEBUG_OVERLAYABBREVIATIONS) 
+	    WHY("Abbreviation by index temporarily disabled to simplify development");
+	}
       }
     else break;
 

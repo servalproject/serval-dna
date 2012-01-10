@@ -34,20 +34,20 @@ int op_append_type(overlay_buffer *headers,overlay_frame *p)
     {
     case OF_TYPE_FLAG_NORMAL:
       c[0]=p->type|p->modifiers;
-      if (debug>3) fprintf(stderr,"type resolves to %02x\n",c[0]);
+      if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"type resolves to %02x\n",c[0]);
       if (ob_append_bytes(headers,c,1)) return -1;
       break;
     case OF_TYPE_FLAG_E12:
       c[0]=(p->type&OF_MODIFIER_BITS)|OF_TYPE_EXTENDED12;
       c[1]=(p->type>>4)&0xff;
-      if (debug>3) fprintf(stderr,"type resolves to %02x%02x\n",c[0],c[1]);
+      if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"type resolves to %02x%02x\n",c[0],c[1]);
       if (ob_append_bytes(headers,c,2)) return -1;
       break;
     case OF_TYPE_FLAG_E20:
       c[0]=(p->type&OF_MODIFIER_BITS)|OF_TYPE_EXTENDED20;
       c[1]=(p->type>>4)&0xff;
       c[2]=(p->type>>12)&0xff;
-      if (debug>3) fprintf(stderr,"type resolves to %02x%02x%02x\n",c[0],c[1],c[2]);
+      if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"type resolves to %02x%02x%02x\n",c[0],c[1],c[2]);
       if (ob_append_bytes(headers,c,3)) return -1;
       break;
     default: 

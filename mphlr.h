@@ -892,5 +892,6 @@ int rhizome_server_poll();
 #define DEBUG_OVERLAYROUTING 32768
 #define DEBUG_SECURITY 65536
 #define DEBUG_RHIZOME 131072
+#define DEBUG_OVERLAYROUTEMONITOR 262144
 
 int serval_packetvisualise(FILE *f,char *message,unsigned char *packet,int plen);
