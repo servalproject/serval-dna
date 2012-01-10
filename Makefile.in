@@ -2,13 +2,15 @@ SRCS=	dna.c server.c client.c peers.c ciphers.c responses.c packetformats.c data
 	hlrdata.c srandomdev.c simulate.c batman.c export.c gateway.c \
 	overlay.c overlay_buffer.c overlay_interface.c overlay_payload.c overlay_route.c \
 	overlay_packetformats.c overlay_abbreviations.c overlay_advertise.c \
-	rhizome.c rhizome_http.c sqlite3.c encode.c sha2.c randombytes.c
+	rhizome.c rhizome_http.c sqlite3.c encode.c sha2.c randombytes.c \
+	serval_packetvisualise.c
 
 OBJS=	dna.o server.o client.o peers.o ciphers.o responses.o packetformats.o dataformats.o \
 	hlrdata.o srandomdev.o simulate.o batman.o export.o gateway.o \
 	overlay.o overlay_buffer.o overlay_interface.o overlay_payload.o overlay_route.o \
 	overlay_packetformats.o overlay_abbreviations.o overlay_advertise.o \
-	rhizome.o rhizome_http.o sqlite3.o encode.o sha2.o randombytes.o
+	rhizome.o rhizome_http.o sqlite3.o encode.o sha2.o randombytes.o \
+	serval_packetvisualise.o
 
 HDRS=	Makefile mphlr.h sqlite-amalgamation-3070900/sqlite3.h sha2.h rhizome.h
 
