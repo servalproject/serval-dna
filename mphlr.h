@@ -878,5 +878,19 @@ int rhizome_server_poll();
 #define DEBUG_PACKETXFER 1
 #define DEBUG_VERBOSE 4
 #define DEBUG_VERBOSE_IO 8
+#define DEBUG_PEERS 16
+#define DEBUG_DNARESPONSES 32
+#define DEBUG_DNAREQUESTS 64
+#define DEBUG_SIMULATION 128
+#define DEBUG_DNAVARS 256
+#define DEBUG_PACKETFORMATS 512
+#define DEBUG_GATEWAY 1024
+#define DEBUG_HLR 2048
+#define DEBUG_IO 4096
+#define DEBUG_OVERLAYFRAMES 8192
+#define DEBUG_OVERLAYABBREVIATIONS 16384
+#define DEBUG_OVERLAYROUTING 32768
+#define DEBUG_SECURITY 65536
+#define DEBUG_RHIZOME 131072
 
 int serval_packetvisualise(FILE *f,char *message,unsigned char *packet,int plen);

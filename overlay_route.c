@@ -374,7 +374,7 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
       if (neh->scores[i]>neh->scores[*interface]) *interface=i;
     }
     if (neh->scores[*interface]<1) {
-      if (debug>2) { 
+      if (debug>DEBUG_OVERLAYROUTING) { 
 	int i;
 	fprintf(stderr,"No open path to ");
 	for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",neh->node->sid[i]);
@@ -405,7 +405,7 @@ unsigned int overlay_route_hash_sid(unsigned char *sid)
 
   /* Mask out extranous bits to return only a valid bin number */
   bin&=(overlay_bin_count-1);
-  if (debug>3) {
+  if (debug>DEBUG_OVERLAYROUTING) {
     int zeroes=0;
     fprintf(stderr,"The following address resolves to bin #%d\n",bin);
     for(i=0;i<SID_SIZE;i++) { fprintf(stderr,"%02x",sid[i]); if (!sid[i]) zeroes++; }
@@ -886,7 +886,7 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
     if (score<0) score=0;
 
     n->scores[i]=score;
-    if (debug>3&&score) fprintf(stderr,"Neighbour score on interface #%d = %d (observations for %dms)\n",i,score,ms_observed[i]);
+    if ((debug&DEBUG_OVERLAYROUTING)&&score) fprintf(stderr,"Neighbour score on interface #%d = %d (observations for %dms)\n",i,score,ms_observed[i]);
   }
   
   return 0;
@@ -1026,7 +1026,7 @@ int overlay_address_is_local(unsigned char *s)
   for (ii=0;ii<overlay_local_identity_count;ii++) {
     for(i=0;i<SID_SIZE;i++) 
       if (s[i]!=overlay_local_identities[ii][i]) 
-	{ if (debug>3) fprintf(stderr,"address is not local address #%d, since byte %d = %02x != %02x\n",
+	{ if (debug&DEBUG_OVERLAYROUTING) fprintf(stderr,"address is not local address #%d, since byte %d = %02x != %02x\n",
 			       ii,i,s[i],overlay_local_identities[ii][i]);
 	  break; }
     if (i==SID_SIZE) { return 1; }
@@ -1127,7 +1127,7 @@ int overlay_route_tick()
 
   long long start_time=overlay_gettime_ms();
 
-  if (debug>3) 
+  if (debug&DEBUG_OVERLAYROUTING) 
     fprintf(stderr,"Neighbours: %d@%d, Nodes: %d@%d\n",
 	    overlay_route_tick_neighbour_bundle_size,overlay_route_tick_next_neighbour_id,
 	    overlay_route_tick_node_bundle_size,overlay_route_tick_next_node_bin_id);
@@ -1183,7 +1183,7 @@ int overlay_route_tick()
   if (ticks>5000) ticks=5000;
   int interval=5000/ticks;
 
-  if (debug>3) fprintf(stderr,"route tick interval = %dms (%d ticks per 5sec, neigh=%lldms, node=%lldms)\n",interval,ticks,neighbour_time,node_time);
+  if (debug&DEBUG_OVERLAYROUTING) fprintf(stderr,"route tick interval = %dms (%d ticks per 5sec, neigh=%lldms, node=%lldms)\n",interval,ticks,neighbour_time,node_time);
   return interval;
 }
 

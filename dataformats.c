@@ -50,7 +50,7 @@ int stowDid(unsigned char *packet,int *ofs,char *did)
   int nybl;
   int d=0;
   int len=0;
-  if (debug>2) printf("Packing DID \"%s\"\n",did);
+  if (debug&DEBUG_PACKETFORMATS) printf("Packing DID \"%s\"\n",did);
 
   while(did[d]&&(d<DID_MAXSIZE))
     {
@@ -106,7 +106,7 @@ int extractSid(unsigned char *packet,int *ofs,char *sid)
 int stowSid(unsigned char *packet,int ofs,char *sid)
 {
   int i;
-  if (debug>2) printf("Stowing SID \"%s\"\n",sid);
+  if (debug&DEBUG_PACKETFORMATS) printf("Stowing SID \"%s\"\n",sid);
   if (strlen(sid)!=64) return setReason("Asked to stow invalid SID (should be 64 hex digits)");
   for(i=0;i<SID_SIZE;i++)
     {
@@ -127,7 +127,7 @@ int packetGetID(unsigned char *packet,int len,char *did,char *sid)
     case 0: /* DID */
       ofs++;
       if (extractDid(packet,&ofs,did)) return setReason("Could not decode DID");
-      if (debug>1) fprintf(stderr,"Decoded DID as %s\n",did);
+      if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"Decoded DID as %s\n",did);
       return 0;
       break;
     case 1: /* SID */
@@ -165,7 +165,7 @@ int isFieldZeroP(unsigned char *packet,int start,int count)
       mod&=0xff;
     }
 
-  if (debug>3) {
+  if (debug&DEBUG_PACKETFORMATS) {
     if (mod) fprintf(stderr,"Field [%d,%d) is non-zero (mod=0x%02x)\n",start,start+count,mod);
     else fprintf(stderr,"Field [%d,%d) is zero\n",start,start+count);
   }
@@ -178,8 +178,9 @@ int safeZeroField(unsigned char *packet,int start,int count)
   int mod=0;
   int i;
 
-  if (debug>3) fprintf(stderr,"Known plain-text counter-measure: safe-zeroing [%d,%d)\n",
-		       start,start+count);
+  if (debug&DEBUG_PACKETFORMATS)
+    fprintf(stderr,"Known plain-text counter-measure: safe-zeroing [%d,%d)\n",
+	    start,start+count);
   
   for(i=start;i<(start+count-1);i++)
     {

@@ -220,26 +220,26 @@ int usage(char *complaint)
 {
   fprintf(stderr,"dna: %s\n",complaint);
   fprintf(stderr,"usage:\n");
-  fprintf(stderr,"   dna [-v ...] -S <hlr size in MB> [-f HLR backing file] [-I import.txt] [-N interface,...] [-G gateway specification] [-r rhizome path]\n");
+  fprintf(stderr,"   dna [-v <flags>] -S <hlr size in MB> [-f HLR backing file] [-I import.txt] [-N interface,...] [-G gateway specification] [-r rhizome path]\n");
   fprintf(stderr,"or\n");
-  fprintf(stderr,"   dna [-v ...] -f <HLR backing file> -E <hlr export file>\n");
+  fprintf(stderr,"   dna [-v <flags>] -f <HLR backing file> -E <hlr export file>\n");
   fprintf(stderr,"or\n");
   fprintf(stderr,"   dna -r <rhizome path> -M <manifest name>\n");
   fprintf(stderr,"or\n");
   fprintf(stderr,"   dna <-d|-s> id -A\n");
   fprintf(stderr,"or\n");
   fprintf(stderr,"   dna <-d|-s> id [-p pin] [-i variable instance] <-R variable[=value]>\n");
-  fprintf(stderr,"       [-v ...] [-t request timeout in ms] [-O output file name template]\n");
+  fprintf(stderr,"       [-v <flags>] [-t request timeout in ms] [-O output file name template]\n");
   fprintf(stderr,"or\n");
   fprintf(stderr,"   dna <-d|-s> id [-p pin] [-i variable instance] <-W|-U|-D variable[=[$|@]value]>\n");
-  fprintf(stderr,"       [-v ...] [-t request timeout in ms]\n");
+  fprintf(stderr,"       [-v <flags>] [-t request timeout in ms]\n");
   fprintf(stderr,"or\n");
-  fprintf(stderr,"   dna [-v ...] [-t timeout] -d did -C\n");
+  fprintf(stderr,"   dna [-v <flags>] [-t timeout] -d did -C\n");
   fprintf(stderr,"or\n");
-  fprintf(stderr,"   dna [-v ...] -f <hlr.dat> -E <export.txt>\n");
+  fprintf(stderr,"   dna [-v <flags>] -f <hlr.dat> -E <export.txt>\n");
 
   fprintf(stderr,"\n");
-  fprintf(stderr,"       -v - increase verbosity.\n");
+  fprintf(stderr,"       -v - Set verbosity.\n");
   fprintf(stderr,"       -E - Export specified HLR database into specified flat text file.\n");
   fprintf(stderr,"       -I - Import a previously exported HLR database into this one.\n");
   fprintf(stderr,"       -A - Ask for address of subscriber.\n");
@@ -319,7 +319,7 @@ int main(int argc,char **argv)
 
   srandomdev();
 
-  while((c=getopt(argc,argv,"Ab:B:E:G:I:S:f:d:i:l:L:mnp:P:r:s:t:vR:W:U:D:CO:M:N:")) != -1 ) 
+  while((c=getopt(argc,argv,"Ab:B:E:G:I:S:f:d:i:l:L:mnp:P:r:s:t:v:R:W:U:D:CO:M:N:")) != -1 ) 
     {
       switch(c)
 	{
@@ -420,8 +420,26 @@ int main(int argc,char **argv)
 	case 't': /* request timeout (ms) */
 	  timeout=atoi(optarg);
 	  break;
-	case 'v': /* Increase verbosity */
-	  debug++;
+	case 'v': /* set verbosity */
+	  debug=strtoll(optarg,NULL,10);
+	  if (strstr(optarg,"interfaces")) debug|=DEBUG_OVERLAYINTERFACES;
+	  if (strstr(optarg,"packetxfer")) debug|=DEBUG_PACKETXFER;
+	  if (strstr(optarg,"verbose")) debug|=DEBUG_VERBOSE;
+	  if (strstr(optarg,"verbio")) debug|=DEBUG_VERBOSE_IO;
+	  if (strstr(optarg,"peers")) debug|=DEBUG_PEERS;
+	  if (strstr(optarg,"dnaresponses")) debug|=DEBUG_DNARESPONSES;
+	  if (strstr(optarg,"dnarequests")) debug|=DEBUG_DNAREQUESTS;
+	  if (strstr(optarg,"simulation")) debug|=DEBUG_SIMULATION;
+	  if (strstr(optarg,"dnavars")) debug|=DEBUG_DNAVARS;
+	  if (strstr(optarg,"packetformats")) debug|=DEBUG_PACKETFORMATS;
+	  if (strstr(optarg,"gateway")) debug|=DEBUG_GATEWAY;
+	  if (strstr(optarg,"hlr")) debug|=DEBUG_HLR;
+	  if (strstr(optarg,"sockio")) debug|=DEBUG_IO;
+	  if (strstr(optarg,"frames")) debug|=DEBUG_OVERLAYFRAMES;
+	  if (strstr(optarg,"abbreviations")) debug|=DEBUG_OVERLAYABBREVIATIONS;
+	  if (strstr(optarg,"routing")) debug|=DEBUG_OVERLAYROUTING;
+	  if (strstr(optarg,"security")) debug|=DEBUG_SECURITY;
+	  if (strstr(optarg,"rhizome")) debug|=DEBUG_RHIZOME;
 	  break;
 	case 'A': /* get address (IP or otherwise) of a given peer */
 	  peerAddress(did,sid,3 /* 1 = print list of addresses to stdout, 2 = set peer list to responders */);

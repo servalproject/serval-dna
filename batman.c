@@ -47,25 +47,25 @@ int readRoutingTable(struct in_addr peers[],int *peer_count,int peer_max){
   unsigned long d, g, m;
   int flgs, ref, use, metric, mtu, win, ir;
   
-  if (debug) fprintf(stderr,"Reading routing table\n");
+  if (debug&DEBUG_PEERS) fprintf(stderr,"Reading routing table\n");
   
   FILE *fp = fopen("/proc/net/route","r");
   if (!fp) return -1;
   
-  if (debug>1) fprintf(stderr,"Skipping line\n");
+  if (debug&DEBUG_PEERS) fprintf(stderr,"Skipping line\n");
   if (fscanf(fp, "%*[^\n]\n") < 0)
     goto ERROR;
   
   while(1){
     int r;
-    if (debug>1) fprintf(stderr,"Reading next route\n");
+    if (debug&DEBUG_PEERS) fprintf(stderr,"Reading next route\n");
     r = fscanf(fp, "%63s%lx%lx%X%d%d%d%lx%d%d%d\n",
 	       devname, &d, &g, &flgs, &ref, &use, &metric, &m,
 	       &mtu, &win, &ir);
     
     if (r != 11) {
       if ((r < 0) && feof(fp)) { /* EOF with no (nonspace) chars read. */
-	if (debug>1) fprintf(stderr,"eof\n");
+	if (debug&DEBUG_PEERS) fprintf(stderr,"eof\n");
 	break;
       }
     ERROR:
@@ -74,18 +74,18 @@ int readRoutingTable(struct in_addr peers[],int *peer_count,int peer_max){
     }
     
     if (!(flgs & RTF_UP)) { /* Skip interfaces that are down. */
-      if (debug>1) fprintf(stderr,"Skipping down interface %s\n",devname);
+      if (debug&DEBUG_PEERS) fprintf(stderr,"Skipping down interface %s\n",devname);
       continue;
     }
     
     if (m!=0xFFFFFFFF){
       /* Netmask indicates a network, so calculate broadcast address */
       d=(d&m)|(0xffffffff^m);
-      if (debug) fprintf(stderr,"Adding broadcast address %08lx\n",d);
+      if (debug&DEBUG_PEERS) fprintf(stderr,"Adding broadcast address %08lx\n",d);
     }
     
     if (*peer_count<peer_max)	peers[(*peer_count)++].s_addr=d;
-    if (debug>2) fprintf(stderr,"Found peer %08lx from routing table\n",d);
+    if (debug&DEBUG_PEERS) fprintf(stderr,"Found peer %08lx from routing table\n",d);
   }
   fclose(fp);
   return 0;
@@ -95,12 +95,12 @@ int readArpTable(struct in_addr peers[],int *peer_count,int peer_max){
   unsigned long d;
   int q1,q2,q3,q4;
 
-  if (debug) fprintf(stderr,"Reading ARP table\n");
+  if (debug&DEBUG_PEERS) fprintf(stderr,"Reading ARP table\n");
   
   FILE *fp = fopen("/proc/net/arp","r");
   if (!fp) return -1;
   
-  if (debug>1) fprintf(stderr,"Skipping line\n");
+  if (debug&DEBUG_PEERS) fprintf(stderr,"Skipping line\n");
   if (fscanf(fp, "%*[^\n]\n") < 0)
     goto ERROR;
   
@@ -108,7 +108,7 @@ int readArpTable(struct in_addr peers[],int *peer_count,int peer_max){
     int r;
     r = fscanf(fp, "%d.%d.%d.%d%*[^\n]\n",
 	       &q1,&q2,&q3,&q4);
-    if (debug>1) fprintf(stderr,"Reading next arp entry (r=%d, %d.%d.%d.%d)\n",r,q1,q2,q3,q4);
+    if (debug&DEBUG_PEERS) fprintf(stderr,"Reading next arp entry (r=%d, %d.%d.%d.%d)\n",r,q1,q2,q3,q4);
     
     d = (q1&0xff)
       +((q2&0xff)<<8)
@@ -117,7 +117,7 @@ int readArpTable(struct in_addr peers[],int *peer_count,int peer_max){
 
     if (r != 4) {
       if ((r < 0) && feof(fp)) { /* EOF with no (nonspace) chars read. */
-	if (debug>1) fprintf(stderr,"eof\n");
+	if (debug&DEBUG_PEERS) fprintf(stderr,"eof\n");
 	break;
       }
     ERROR:
@@ -126,7 +126,7 @@ int readArpTable(struct in_addr peers[],int *peer_count,int peer_max){
     }
         
     if (*peer_count<peer_max)	peers[(*peer_count)++].s_addr=d;
-    if (debug>2) fprintf(stderr,"Found peer %08lx from ARP table\n",d);
+    if (debug&DEBUG_PEERS) fprintf(stderr,"Found peer %08lx from ARP table\n",d);
   }
   fclose(fp);
   return 0;
@@ -161,7 +161,7 @@ int readBatmanPeerFile(char *file_path,struct in_addr peers[],int *peer_count,in
   timestamp=ntohl(timestamp);  
 
   if (timestamp<(time(0)-3)) {
-    if (debug>1) fprintf(stderr,"Ignoring stale BATMAN peer list (%d seconds old)\n",(int)(time(0)-timestamp));
+    if (debug&DEBUG_PEERS) fprintf(stderr,"Ignoring stale BATMAN peer list (%d seconds old)\n",(int)(time(0)-timestamp));
     fclose(f);
     return -1;
   }
@@ -172,7 +172,7 @@ int readBatmanPeerFile(char *file_path,struct in_addr peers[],int *peer_count,in
       if (!p.addr_len) break;
       i.s_addr=*(unsigned int *)&p.addr[0];
       if (*peer_count<peer_max)	peers[(*peer_count)++]=i;
-      if (debug>1) fprintf(stderr,"Found BATMAN peer '%s'\n",inet_ntoa(i));
+      if (debug&DEBUG_PEERS) fprintf(stderr,"Found BATMAN peer '%s'\n",inet_ntoa(i));
     }
 
   fclose(f);
@@ -222,7 +222,7 @@ int getBatmanPeerList(char *socket_path,struct in_addr peers[],int *peer_count,i
     {      
       switch (poll(&fds,1,1500)) {
       case 1: /* Excellent - we have a response */ break;
-      case 0: if (debug>1) fprintf(stderr,"BATMAN did not respond to peer enquiry.\n");
+      case 0: if (debug&DEBUG_PEERS) fprintf(stderr,"BATMAN did not respond to peer enquiry.\n");
 	close(sock);
 	if (tries++<=3) goto askagain;
 	return setReason("No response from BATMAN.");
@@ -239,7 +239,7 @@ int getBatmanPeerList(char *socket_path,struct in_addr peers[],int *peer_count,i
 	    /* Got a partial response, then a dead line.
 	       Should probably ask again unless we have tried too many times.
 	    */
-	    if (debug>2) fprintf(stderr,"Trying again after cold drop.\n");
+	    if (debug&DEBUG_PEERS) fprintf(stderr,"Trying again after cold drop.\n");
 	    close(sock);
 	    bytes=0;
 	    if (tries++<=3) goto askagain;
@@ -248,9 +248,9 @@ int getBatmanPeerList(char *socket_path,struct in_addr peers[],int *peer_count,i
 	return setReason("failed to read() from BATMAN socket.");
       }
       if (!res) return 0;
-      if (debug>1) fprintf(stderr,"BATMAN has responded with %d bytes.\n",res);
+      if (debug&DEBUG_PEERS) fprintf(stderr,"BATMAN has responded with %d bytes.\n",res);
       
-      if (debug>2) dump("BATMAN says",&buf[bytes],res);
+      if (debug&DEBUG_PEERS) dump("BATMAN says",&buf[bytes],res);
       
       if (res<80 /*||buf[bytes]!='B' -- turns out we can't rely on this, either */
 	  ||buf[bytes+res-1]!=0x0a||buf[bytes+res-4]!='E')
@@ -265,7 +265,7 @@ int getBatmanPeerList(char *socket_path,struct in_addr peers[],int *peer_count,i
 	  */
 	  if (buf[bytes+res-4]!='E') {
 	    /* no end marker, so try adding record to the end. */
-	    if (debug>2) fprintf(stderr,"Data has no end marker, accumulating.\n");
+	    if (debug&DEBUG_PEERS) fprintf(stderr,"Data has no end marker, accumulating.\n");
 	    bytes+=res;
 	    goto getmore;
 	  }
@@ -276,7 +276,7 @@ int getBatmanPeerList(char *socket_path,struct in_addr peers[],int *peer_count,i
       
       while(ofs<bytes)
 	{	  
-	  if(debug>1) fprintf(stderr,"New line @ %d\n",ofs);
+	  if(debug&DEBUG_PEERS) fprintf(stderr,"New line @ %d\n",ofs);
 	  /* Check for IP address of peers */
 	  if (isdigit(buf[ofs]))
 	    {
@@ -285,7 +285,7 @@ int getBatmanPeerList(char *socket_path,struct in_addr peers[],int *peer_count,i
 		if (buf[i+ofs]==' ') { 
 		  buf[i+ofs]=0;
 		  if (*peer_count<peer_max) peers[(*peer_count)++].s_addr=inet_addr((char *)&buf[ofs]);
-		  if (debug>1) fprintf(stderr,"Found BATMAN peer '%s'\n",&buf[ofs]);
+		  if (debug&DEBUG_PEERS) fprintf(stderr,"Found BATMAN peer '%s'\n",&buf[ofs]);
 		  buf[ofs+i]=' ';
 		  break; 
 		}	    

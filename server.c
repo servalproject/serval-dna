@@ -73,7 +73,7 @@ int getBackingStore(char *backing_file,int size)
       /* transitory storage of HLR data, so just malloc() the memory */
       hlr=calloc(size,1);
       if (!hlr) exit(setReason("Failed to calloc() HLR database."));
-      if (debug) fprintf(stderr,"Allocated %d byte temporary HLR store\n",size);
+      if (debug&DEBUG_HLR) fprintf(stderr,"Allocated %d byte temporary HLR store\n",size);
     }
   else
     {
@@ -107,7 +107,7 @@ int getBackingStore(char *backing_file,int size)
 	perror("mmap");
 	exit(setReason("Memory mapping of HLR backing file failed."));
       }
-      if (debug) fprintf(stderr,"Allocated %d byte HLR store backed by file `%s'\n",
+      if (debug&DEBUG_HLR) fprintf(stderr,"Allocated %d byte HLR store backed by file `%s'\n",
 			 size,backing_file);
     }
   hlr_size=size;
@@ -130,7 +130,7 @@ int processRequest(unsigned char *packet,int len,
 
   while(pofs<len)
     {
-      if (debug>1) fprintf(stderr,"  processRequest: len=%d, pofs=%d, pofs_prev=%d\n",len,pofs,prev_pofs);
+      if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"  processRequest: len=%d, pofs=%d, pofs_prev=%d\n",len,pofs,prev_pofs);
       /* Avoid infinite loops */
       if (pofs<=prev_pofs) break;
       prev_pofs=pofs;
@@ -139,10 +139,10 @@ int processRequest(unsigned char *packet,int len,
 	{
 	  /* Creating an HLR requires an initial DID number and definately no SID -
 	     you can't choose a SID. */
-	  if (debug>1) fprintf(stderr,"Creating a new HLR record. did='%s', sid='%s'\n",did,sid);
+	  if (debug&DEBUG_HLR) fprintf(stderr,"Creating a new HLR record. did='%s', sid='%s'\n",did,sid);
 	  if (!did[0]) return respondSimple(NULL,ACTION_DECLINED,NULL,0,transaction_id,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
 	  if (sid[0])  return respondSimple(sid,ACTION_DECLINED,NULL,0,transaction_id,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
-	  if (debug>1) fprintf(stderr,"Verified that create request supplies DID but not SID\n");
+	  if (debug&DEBUG_HLR) fprintf(stderr,"Verified that create request supplies DID but not SID\n");
 	  
 	  {
 	    char sid[128];
@@ -157,7 +157,7 @@ int processRequest(unsigned char *packet,int len,
 	}
       else
 	{
-	  if (debug>2) fprintf(stderr,"Looking at action code 0x%02x @ packet offset 0x%x\n",
+	  if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"Looking at action code 0x%02x @ packet offset 0x%x\n",
 			       packet[pofs],pofs);
 	  switch(packet[pofs])
 	    {
@@ -186,7 +186,7 @@ int processRequest(unsigned char *packet,int len,
 	      break;
 	    case ACTION_DIGITALTELEGRAM:
 	      // Unpack SMS message.
-	      if (debug>1) fprintf(stderr,"In ACTION_DIGITALTELEGRAM\n");
+	      if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"In ACTION_DIGITALTELEGRAM\n");
 	      {
 		char emitterPhoneNumber[256];
 		char message[256];
@@ -212,7 +212,7 @@ int processRequest(unsigned char *packet,int len,
 		  // Send SMS to android
 		  char amCommand[576]; // 64 char + 2*256(max) char = 576
 		  sprintf(amCommand, "am broadcast -a org.servalproject.DT -e number \"%s\"  -e content \"%s\"", emitterPhoneNumber, message);
-		  if (debug>1) fprintf(stderr,"Delivering DT message via intent: %s\n",amCommand);
+		  if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"Delivering DT message via intent: %s\n",amCommand);
 		  runCommand(amCommand);
 		  respondSimple(hlrSid(hlr, ofs),ACTION_OKAY,NULL,0,transaction_id,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
 		}
@@ -220,7 +220,7 @@ int processRequest(unsigned char *packet,int len,
 	      break;
 	    case ACTION_SET:
 	      ofs=0;
-	      if (debug>1) fprintf(stderr,"Looking for hlr entries with sid='%s' / did='%s'\n",sid,did);
+	      if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"Looking for hlr entries with sid='%s' / did='%s'\n",sid,did);
 
 	      if ((!sid)||(!sid[0])) {
 		setReason("You can only set variables by SID");
@@ -234,8 +234,8 @@ int processRequest(unsigned char *packet,int len,
 		  unsigned char value[9000],oldvalue[65536];
 		  int oldr,oldl;
 		  
-		  if (debug>1) fprintf(stderr,"findHlr found a match for writing at 0x%x\n",ofs);
-		  if (debug>2) hlrDump(hlr,ofs);
+		  if (debug&DEBUG_HLR) fprintf(stderr,"findHlr found a match for writing at 0x%x\n",ofs);
+		  if (debug&DEBUG_HLR) hlrDump(hlr,ofs);
 		  
 		  /* XXX consider taking action on this HLR
 		     (check PIN first depending on the action requested) */
@@ -271,7 +271,7 @@ int processRequest(unsigned char *packet,int len,
 		  } else {
 		    if (flags==SET_NOREPLACE) {
 		      setReason("Tried to SET_NOREPLACE an existing value");
-		      if (debug>1) dump("Existing value",oldvalue,oldl);
+		      if (debug&DEBUG_DNAREQUESTS) dump("Existing value (in SET_NOREPLACE flagged request)",oldvalue,oldl);
 		      return 
 			respondSimple(NULL,ACTION_ERROR,
 				      (unsigned char *)"Cannot SET NOREPLACE; a value exists",
@@ -293,7 +293,7 @@ int processRequest(unsigned char *packet,int len,
 			respondSimple(NULL,ACTION_ERROR,(unsigned char *)"Failed to SET variable",0,transaction_id,
 				      sender,CRYPT_CIPHERED|CRYPT_SIGNED);
 		    }
-		  if (debug>2) { fprintf(stderr,"HLR after writing:\n"); hlrDump(hlr,ofs); }
+		  if (debug&DEBUG_HLR) { fprintf(stderr,"HLR after writing:\n"); hlrDump(hlr,ofs); }
 		  
 		  /* Reply that we wrote the fragment */
 		  respondSimple(sid,ACTION_WROTE,&packet[rofs],6,
@@ -309,7 +309,7 @@ int processRequest(unsigned char *packet,int len,
 		int dlen=0;
 		int sendDone=0;
 
-		if (debug>2) dump("Request bytes",&packet[pofs],8);
+		if (debug&DEBUG_HLR) dump("Request bytes",&packet[pofs],8);
 
 		pofs++;
 		int var_id=packet[pofs];
@@ -321,10 +321,10 @@ int processRequest(unsigned char *packet,int len,
 
 		pofs+=2;
 
-		if (debug>1) fprintf(stderr,"Processing ACTION_GET (var_id=%02x, instance=%02x, pofs=0x%x, len=%d)\n",var_id,instance,pofs,len);
+		if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"Processing ACTION_GET (var_id=%02x, instance=%02x, pofs=0x%x, len=%d)\n",var_id,instance,pofs,len);
 
 		ofs=0;
-		if (debug>1) fprintf(stderr,"Looking for hlr entries with sid='%s' / did='%s'\n",sid?sid:"null",did?did:"null");
+		if (debug&DEBUG_HLR) fprintf(stderr,"Looking for hlr entries with sid='%s' / did='%s'\n",sid?sid:"null",did?did:"null");
 
 		while(1)
 		  {
@@ -333,9 +333,9 @@ int processRequest(unsigned char *packet,int len,
 		    // if an empty did was passed in, get results from all hlr records
 		    if (*sid || *did){
  		      if (!findHlr(hlr,&ofs,sid,did)) break;
-		      if (debug>1) fprintf(stderr,"findHlr found a match @ 0x%x\n",ofs);
+		      if (debug&DEBUG_HLR) fprintf(stderr,"findHlr found a match @ 0x%x\n",ofs);
 		    }
-		    if (debug>2) hlrDump(hlr,ofs);
+		    if (debug&DEBUG_HLR) hlrDump(hlr,ofs);
   		  
 		    /* XXX consider taking action on this HLR
 		       (check PIN first depending on the action requested) */
@@ -346,17 +346,17 @@ int processRequest(unsigned char *packet,int len,
   		  
 		    /* Step through HLR to find any matching instances of the requested variable */
 		    h=openhlrentry(hlr,ofs);
-		    if (debug>1) fprintf(stderr,"openhlrentry(hlr,%d) returned %p\n",ofs,h);
+		    if (debug&DEBUG_HLR) fprintf(stderr,"openhlrentry(hlr,%d) returned %p\n",ofs,h);
 		    while(h)
 		      {
 			/* Is this the variable? */
-			if (debug>2) fprintf(stderr,"  considering var_id=%02x, instance=%02x\n",
+			if (debug&DEBUG_HLR) fprintf(stderr,"  considering var_id=%02x, instance=%02x\n",
 					     h->var_id,h->var_instance);
 			if (h->var_id==var_id)
 			  {
 			    if (h->var_instance==instance||instance==-1)
 			      {
-				if (debug>1) fprintf(stderr,"Sending matching variable value instance (instance #%d), value offset %d.\n",
+				if (debug&DEBUG_HLR) fprintf(stderr,"Sending matching variable value instance (instance #%d), value offset %d.\n",
 						     h->var_instance,offset);
   			      
 				// only send each value when the *next* record is found, that way we can easily stamp the last response with DONE
@@ -372,11 +372,11 @@ int processRequest(unsigned char *packet,int len,
 				sendDone++;
 			      }
 			    else
-			      if (debug>2) fprintf(stderr,"Ignoring variable instance %d (not %d)\n",
+			      if (debug&DEBUG_HLR) fprintf(stderr,"Ignoring variable instance %d (not %d)\n",
 						   h->var_instance,instance);
 			  }
 			else
-			  if (debug>2) fprintf(stderr,"Ignoring variable ID %d (not %d)\n",
+			  if (debug&DEBUG_HLR) fprintf(stderr,"Ignoring variable ID %d (not %d)\n",
 					       h->var_id,var_id);
 			h=hlrentrygetent(h);
 		      }
@@ -425,14 +425,14 @@ int processRequest(unsigned char *packet,int len,
 	      break;
 	    default:
 	      setReason("Asked to perform unsupported action");
-	      if (debug) fprintf(stderr,"Packet offset = 0x%x\n",pofs);
-	      if (debug) dump("Packet",packet,len);
+	      if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"Asked to perform unsipported action at Packet offset = 0x%x\n",pofs);
+	      if (debug&DEBUG_PACKETFORMATS) dump("Packet",packet,len);
 	      return WHY("Asked to perform unsupported action.");
 	    }	   
 	}
     }
   
-  if (debug>1) fprintf(stderr,"Searched %d HLR entries.\n",records_searched);
+  if (debug&DEBUG_HLR) fprintf(stderr,"Searched %d HLR entries.\n",records_searched);
 
   return 0;
 }
@@ -476,12 +476,12 @@ int respondSimple(char *sid,int action,unsigned char *action_text,int action_len
   if (action==ACTION_ERROR) packet[(*packet_len)++]=action_len;
   for(i=0;i<action_len;i++) packet[(*packet_len)++]=action_text[i];
 
-  if (debug>2) dump("Simple response octets",action_text,action_len);
+  if (debug&DEBUG_DNARESPONSES) dump("Simple response octets",action_text,action_len);
 
   if (packetFinalise(packet,8000,packet_len,cryptoFlags))
     return WHY("packetFinalise() failed.");
 
-  if (debug) fprintf(stderr,"Sending response of %d bytes.\n",*packet_len);
+  if (debug&DEBUG_DNARESPONSES) fprintf(stderr,"Sending response of %d bytes.\n",*packet_len);
 
   if (packetSendRequest(REQ_REPLY,packet,*packet_len,NONBATCH,transaction_id,recvaddr,NULL)) 
     return WHY("packetSendRequest() failed.");
@@ -537,7 +537,7 @@ int simpleServerMode()
     fds[0].fd=sock; fds[0].events=POLLIN;
     fdcount=1;
     rhizome_server_get_fds(fds,&fdcount,128);
-    if (debug>2) {
+    if (debug&DEBUG_IO) {
       printf("poll()ing file descriptors:");
       { int i;
 	for(i=0;i<fdcount;i++) { printf(" %d",fds[i].fd); } }
@@ -558,18 +558,18 @@ int simpleServerMode()
       client_port=((struct sockaddr_in*)&recvaddr)->sin_port;
       client_addr=((struct sockaddr_in*)&recvaddr)->sin_addr;
       
-      if (debug) fprintf(stderr,"Received packet from %s:%d (len=%d).\n",inet_ntoa(client_addr),client_port,len);
-      if (debug>1) dump("recvaddr",(unsigned char *)&recvaddr,recvaddrlen);
-      if (debug>3) dump("packet",(unsigned char *)buffer,len);
+      if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"Received packet from %s:%d (len=%d).\n",inet_ntoa(client_addr),client_port,len);
+      if (debug&DEBUG_PACKETXFER) dump("recvaddr",(unsigned char *)&recvaddr,recvaddrlen);
+      if (debug&DEBUG_PACKETXFER) dump("packet",(unsigned char *)buffer,len);
       if (dropPacketP(len)) {
-	if (debug) fprintf(stderr,"Simulation mode: Dropped packet due to simulated link parameters.\n");
+	if (debug&DEBUG_SIMULATION) fprintf(stderr,"Simulation mode: Dropped packet due to simulated link parameters.\n");
 	continue;
       }
       /* Simple server mode doesn't really use interface numbers, so lie and say interface -1 */
       if (packetOk(-1,buffer,len,NULL,&recvaddr,recvaddrlen,1)) { 
-	if (debug) setReason("Ignoring invalid packet");
+	if (debug&DEBUG_PACKETFORMATS) setReason("Ignoring invalid packet");
       }
-      if (debug>1) fprintf(stderr,"Finished processing packet, waiting for next one.\n");
+      if (debug&DEBUG_PACKETXFER) fprintf(stderr,"Finished processing packet, waiting for next one.\n");
     }
   }
   return 0;

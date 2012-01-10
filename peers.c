@@ -60,7 +60,7 @@ int getBroadcastAddresses(struct in_addr peers[],int *peer_count,int peer_max){
   size_t bytesRead;
   struct nlmsghdr *hdr;
   
-  if (debug>1) fprintf(stderr,"Reading broadcast addresses (linux style)\n");
+  if (debug&DEBUG_PEERS) fprintf(stderr,"Reading broadcast addresses (linux style)\n");
   
   netsock = socket(AF_NETLINK, SOCK_DGRAM, NETLINK_ROUTE);
   
@@ -110,7 +110,7 @@ int getBroadcastAddresses(struct in_addr peers[],int *peer_count,int peer_max){
   struct ifaddrs *ifaddr,*ifa;
   int family;
     
-  if (debug>1) fprintf(stderr,"Reading broadcast addresses (posix style)\n");
+  if (debug&DEBUG_PEERS) fprintf(stderr,"Reading broadcast addresses (posix style)\n");
 
   if (getifaddrs(&ifaddr) == -1)  {
     perror("getifaddr()");
@@ -135,7 +135,7 @@ int getBroadcastAddresses(struct in_addr peers[],int *peer_count,int peer_max){
     }
   }
 #else
- if (debug>1) fprintf(stderr,"Don't know how to read broadcast addresses :(\n");
+ if (debug&DEBUG_PEERS) fprintf(stderr,"Don't know how to read broadcast addresses :(\n");
 #endif
 #endif
   return 0;
@@ -201,27 +201,27 @@ int sendToPeers(unsigned char *packet,int packet_len,int method,int peerId,struc
       {
 	peer_addr.sin_addr=peers[i];
 
-	if (debug>1) fprintf(stderr,"Sending packet to peer #%d\n",i);
+	if (debug&(DEBUG_PACKETXFER|DEBUG_PEERS)) fprintf(stderr,"Sending packet to peer #%d\n",i);
 	
 	ret=sendto(sock,packet,packet_len,0,(struct sockaddr *)&peer_addr,sizeof(peer_addr));
 	if (ret<packet_len)
 	  {
 	    /* XXX something bad happened */
-	    if (debug) fprintf(stderr,"Could not send to peer %s\n",inet_ntoa(peer_addr.sin_addr));
+	    if (debug&(DEBUG_PACKETXFER|DEBUG_PEERS)) fprintf(stderr,"Could not send to peer %s\n",inet_ntoa(peer_addr.sin_addr));
 	  }
 	else
 	  {
-	    if (debug>1) fprintf(stderr,"Sent request to peer %s\n",inet_ntoa(peer_addr.sin_addr));
+	    if (debug&(DEBUG_PACKETXFER|DEBUG_PEERS)) fprintf(stderr,"Sent request to peer %s\n",inet_ntoa(peer_addr.sin_addr));
 	    n++;
 	    /* If sending to only one peer, return now */ 
 	    if (method==i) break;
 	  }
       }
     else
-      if (debug>1) fprintf(stderr,"Peer %s has already replied, so not sending again.\n",
+      if (debug&DEBUG_PEERS) fprintf(stderr,"Peer %s has already replied, so not sending again.\n",
 			   inet_ntoa(peer_addr.sin_addr));
 
-  if (debug) fprintf(stderr,"Sent request to %d peers.\n",n);
+  if (debug&DEBUG_PEERS) fprintf(stderr,"Sent request to %d peers.\n",n);
 
   return 0;
 

@@ -37,7 +37,7 @@ int process_packet(unsigned char *packet,int len,struct sockaddr *sender,int sen
       /* Authentication has been attempted.
 	 If it is incorrect, then we need to return with ACTION_DECLINED
       */
-      if (debug>1) fprintf(stderr,"A PIN has been supplied.\n");
+      if (debug&DEBUG_SECURITY) fprintf(stderr,"A PIN has been supplied.\n");
       
       /* Can only authenticate by SID, not DID (since DIDs are ambiguous) */
       if (packet[OFS_SIDDIDFIELD]!=1) return setReason("You can only authenticate against a SID");
@@ -49,7 +49,7 @@ int process_packet(unsigned char *packet,int len,struct sockaddr *sender,int sen
     {
       /* No attempt at authentication was made */
       authenticatedP=0;
-      if (debug>1) fprintf(stderr,"No PIN was supplied.\n");
+      if (debug&DEBUG_SECURITY) fprintf(stderr,"No PIN was supplied.\n");
     }
 
   if (serverMode) return processRequest(packet,len,sender,sender_len,transaction_id,did,sid);
@@ -120,8 +120,8 @@ int packetOkDNA(unsigned char *packet,int len,unsigned char *transaction_id,
     bcopy(&temp[0],&packet[HEADERFIELDS_LEN],payloadRotation);
   }
 
-  if (debug>1) fprintf(stderr,"Packet passes sanity checks and is ready for decoding.\n");
-  if (debug>2) dump("unrotated packet",packet,len);
+  if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"Packet passes sanity checks and is ready for decoding.\n");
+  if (debug&DEBUG_PACKETFORMATS) dump("unrotated packet",packet,len);
 
   if (parseP) return process_packet(packet,len,recvaddr,recvaddrlen); else return 0;
 }
@@ -193,7 +193,7 @@ int packetSetSid(unsigned char *packet,int packet_maxlen,int *packet_len,char *s
   int ofs=OFS_SIDDIDFIELD; /* where the DID/subscriber ID gets written */
 
   if (strlen(sid)!=64) {
-    if (debug) fprintf(stderr,"Invalid SID: [%s] - should be 64 hex digits\n",sid);
+    if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"Invalid SID: [%s] - should be 64 hex digits\n",sid);
     return setReason("SID must consist of 64 hex digits");
   }
 
@@ -229,10 +229,10 @@ int packetFinalise(unsigned char *packet,int packet_maxlen,int *packet_len,int c
   payloadRotation=(*packet_len)-HEADERFIELDS_LEN;
   if (payloadRotation>0xff) payloadRotation=0xff;
   payloadRotation=random()%payloadRotation;
-  if (debug>2) 
+  if (debug&DEBUG_SECURITY) 
     fprintf(stderr,"Known Plaintext counter-measure: rotating packet payload by 0x%02x bytes.\n",
 	    payloadRotation);
-  if (debug>2) dump("unrotated packet",packet,*packet_len);
+  if (debug&DEBUG_SECURITY) dump("unrotated packet",packet,*packet_len);
 
   /* Now rotate the payload */
   {
@@ -247,7 +247,7 @@ int packetFinalise(unsigned char *packet,int packet_maxlen,int *packet_len,int c
     bcopy(&temp[0],&packet[(*packet_len)-payloadRotation],payloadRotation);
   }
   packet[OFS_ROTATIONFIELD]=payloadRotation;
-  if (debug>3) dump("rotated packet",packet,*packet_len);
+  if (debug&DEBUG_SECURITY) dump("rotated packet",packet,*packet_len);
 
   if (cryptoflags) return packetEncipher(packet,packet_maxlen,packet_len,cryptoflags);
 
@@ -261,7 +261,7 @@ int packetAddHLRCreateRequest(unsigned char *packet,int packet_maxlen,int *packe
   CHECK_PACKET_LEN(1);
   packet[(*packet_len)++]=ACTION_CREATEHLR;
 
-  if (debug>2) dump("Variable request octets (HLR create)",&packet[packet_len_in],(*packet_len)-packet_len_in);
+  if (debug&(DEBUG_HLR|DEBUG_PACKETFORMATS)) dump("Variable request octets (HLR create)",&packet[packet_len_in],(*packet_len)-packet_len_in);
 
   return 0;
 }
@@ -279,7 +279,7 @@ int packetAddVariableRequest(unsigned char *packet,int packet_maxlen,int *packet
 
   /* Sanity check the request */
   if (!vars[itemId].name) {
-    if (debug) fprintf(stderr,"`%s' is not a known HLR variable.\n",item);
+    if (debug&(DEBUG_DNAVARS|DEBUG_PACKETFORMATS)) fprintf(stderr,"`%s' is not a known HLR variable.\n",item);
     return setReason("Requested unknown HLR variable");
   }
   itemId=vars[itemId].id;
@@ -290,7 +290,7 @@ int packetAddVariableRequest(unsigned char *packet,int packet_maxlen,int *packet
   }
   if (start_offset<0||start_offset>0xffff) return setReason("Asked for illegal variable value starting offset");
   if (bytes<0||(start_offset+bytes)>0xffff) {
-    if (debug) fprintf(stderr,"Asked for %d bytes at offset %d\n",bytes,start_offset);
+    if (debug&(DEBUG_PACKETFORMATS|DEBUG_DNAVARS)) fprintf(stderr,"Asked for %d bytes at offset %d\n",bytes,start_offset);
     return setReason("Asked for illegal variable value ending offset");
   }
   
@@ -304,7 +304,7 @@ int packetAddVariableRequest(unsigned char *packet,int packet_maxlen,int *packet
   packet[(*packet_len)++]=bytes>>8;
   packet[(*packet_len)++]=bytes&0xff;
   
-  if (debug>2) dump("Variable request octets (var)",&packet[packet_len_in],(*packet_len)-packet_len_in);
+  if (debug&DEBUG_PACKETFORMATS) dump("Variable request octets (var)",&packet[packet_len_in],(*packet_len)-packet_len_in);
 
   return 0;
 }
@@ -319,7 +319,7 @@ int packetAddVariableWrite(unsigned char *packet,int packet_maxlen,
 
   int max_offset=start_offset+value_len-1;
 
-  if (debug>1) printf("packetAddVariableWrite(start=%d,len=%d,flags=%d)\n",start_offset,value_len,flags);
+  if (debug&DEBUG_PACKETFORMATS) printf("packetAddVariableWrite(start=%d,len=%d,flags=%d)\n",start_offset,value_len,flags);
 
   /* Sanity check */
   if (itemId&0x80) {
@@ -341,13 +341,13 @@ int packetAddVariableWrite(unsigned char *packet,int packet_maxlen,
   packet[(*packet_len)++]=value_len&0xff;
   packet[(*packet_len)++]=flags;
   
-  if (debug>2) dump("Packet with var write header",&packet[0],*packet_len);
+  if (debug&DEBUG_PACKETFORMATS) dump("Packet with var write header",&packet[0],*packet_len);
 
   CHECK_PACKET_LEN(value_len);
   bcopy(&value[0],&packet[*packet_len],value_len);
   (*packet_len)+=value_len;
 
-  if (debug>2) dump("Variable request octets (write)",&packet[packet_len_in],(*packet_len)-packet_len_in);
+  if (debug&DEBUG_PACKETFORMATS) dump("Variable request octets (write)",&packet[packet_len_in],(*packet_len)-packet_len_in);
 
   return 0;
 }
@@ -371,11 +371,11 @@ int extractRequest(unsigned char *packet,int *packet_ofs,int packet_len,
   *bytes|=packet[(*packet_ofs)++];
 
   *flags=packet[(*packet_ofs)++];
-  if (debug>2) printf("Write flags = 0x%02x\n",*flags);
+  if (debug&DEBUG_DNAREQUESTS) printf("Write flags = 0x%02x\n",*flags);
 
   if (*packet_ofs<0||(*packet_ofs)+(*bytes)>=packet_len)
     {
-      if (debug) fprintf(stderr,"Packet offset is %d, length is %d, and asked for %d bytes.\n",*packet_ofs,packet_len,*bytes);
+      if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"Packet offset is %d, length is %d, and asked for %d bytes.\n",*packet_ofs,packet_len,*bytes);
       return setReason("mal-formed request packet (too short for claimed data)");
     }
 
@@ -404,7 +404,7 @@ int extractResponses(struct in_addr sender,unsigned char *buffer,int len,struct 
       switch(buffer[ofs])
 	{
 	case ACTION_EOT:
-	  if (debug>1) fprintf(stderr,"Reached response packet EOT.\n");
+	  if (debug&DEBUG_DNARESPONSES) fprintf(stderr,"Reached response packet EOT.\n");
 	case ACTION_DECLINED: case ACTION_OKAY:
 	case ACTION_CREATEHLR:
 	  r->response_len=0; break;
@@ -438,7 +438,7 @@ int extractResponses(struct in_addr sender,unsigned char *buffer,int len,struct 
 	case ACTION_XFER:
 	default:
 	  free(r);
-	  if (debug>1) fprintf(stderr,"Encountered unimplemented response code 0x%02x @ 0x%x\n",buffer[ofs],ofs);
+	  if (debug&(DEBUG_DNARESPONSES|DEBUG_PACKETFORMATS)) fprintf(stderr,"Encountered unimplemented response code 0x%02x @ 0x%x\n",buffer[ofs],ofs);
 	  fixResponses(responses);
 	  return setReason("Encountered unimplemented response type");
 	}
@@ -463,7 +463,7 @@ int extractResponses(struct in_addr sender,unsigned char *buffer,int len,struct 
       if (r->peer_id>peer_count) r->peer_id=-1;
 
       /* Link new response into chain */
-      if (debug>2) printf("Linking response into response set.\n");
+      if (debug&DEBUG_DNARESPONSES) printf("Linking response into response set.\n");
       r->prev=responses->last_response;
       if (responses->last_response)
 	responses->last_response->next=r;
@@ -474,7 +474,7 @@ int extractResponses(struct in_addr sender,unsigned char *buffer,int len,struct 
 
       responseFromPeer(responses,r->peer_id);
 
-      if (debug>2) dumpResponses(responses);
+      if (debug&DEBUG_DNARESPONSES) dumpResponses(responses);
     }
   
   fixResponses(responses);
@@ -493,7 +493,7 @@ int packageVariableSegment(unsigned char *data,int *dlen,struct hlrentry_handle 
   bytes=buffer_size-(*dlen)-8;
   if ((h->value_len-offset)<bytes) bytes=h->value_len-offset;
   if (bytes<0) bytes=0;
-  if (debug>1) fprintf(stderr,"Packaging %d bytes of variable\n",bytes);
+  if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"Packaging %d bytes of variable\n",bytes);
 
   /* Describe variable */
 
@@ -512,13 +512,13 @@ int packageVariableSegment(unsigned char *data,int *dlen,struct hlrentry_handle 
   /* Number of bytes in this segment */
   data[(*dlen)++]=(bytes>>8)&0xff;
   data[(*dlen)++]=bytes&0xff;
-  if (debug>1) fprintf(stderr,"Packaging %d bytes\n",bytes);
+  if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"Packaging %d bytes\n",bytes);
 
   /* Package the variable value itself (or part thereof) */
   bcopy(&h->value[offset],&data[*dlen],bytes);
   (*dlen)+=bytes;
 
-  if (debug>2) dump("Variable segment octets",&data[dlen_in],(*dlen)-dlen_in);
+  if (debug&DEBUG_PACKETFORMATS) dump("Variable segment octets",&data[dlen_in],(*dlen)-dlen_in);
 
   return 0;
 }

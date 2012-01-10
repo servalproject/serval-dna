@@ -1479,7 +1479,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
       }
     }
 
-  if (debug>1) printf("Appended %d rhizome advertisements to packet.\n",slots_used);
+  if (debug&DEBUG_RHIZOME) printf("Appended %d rhizome advertisements to packet.\n",slots_used);
   e->bytes[rfs_offset]=1+1+1+1+RHIZOME_BAR_BYTES*slots_used;
   sqlite3_finalize(statement);
 

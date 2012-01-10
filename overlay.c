@@ -100,7 +100,7 @@ int overlayServerMode()
   int ofs=0;
   while(findHlr(hlr,&ofs,NULL,NULL)) {
     int i;
-    if (debug) { 
+    if (debug&DEBUG_OVERLAYINTERFACES) { 
       fprintf(stderr,"Adding ");
       for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",hlr[ofs+4+i]);
       fprintf(stderr," to list of local addresses.\n");
@@ -141,16 +141,16 @@ int overlayServerMode()
     int r=select(maxfd+1,&read_fds,NULL,NULL,&waittime);
     if (r<0) {
       /* select had a problem */
-      if (debug&4) perror("select()");
+      if (debug&DEBUG_IO) perror("select()");
       WHY("select() complained.");
     } else if (r>0) {
       /* We have data, so try to receive it */
-      if (debug&4) fprintf(stderr,"select() reports packets waiting\n");
+      if (debug&DEBUG_IO) fprintf(stderr,"select() reports packets waiting\n");
       overlay_rx_messages();
     } else {
       /* No data before tick occurred, so do nothing.
 	 Well, for now let's just check anyway. */
-      if (debug&DEBUG_VERBOSE_IO) fprintf(stderr,"select() timeout.\n");
+      if (debug&DEBUG_IO) fprintf(stderr,"select() timeout.\n");
       overlay_rx_messages();
     }
     /* Check if we need to trigger any ticks on any interfaces */
@@ -169,7 +169,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
   if (overlay_address_is_local(f->source))
     return -1; /* WHY("Dropping frame claiming to come from myself."); */
 
-  if (debug>1) fprintf(stderr,">>> Received frame (type=%02x)\n",f->type);
+  if (debug&DEBUG_OVERLAYFRAMES) fprintf(stderr,">>> Received frame (type=%02x)\n",f->type);
 
   /* First order of business is whether the nexthop address has been resolved.
      If not, we need to think about asking for it to be resolved.
@@ -221,7 +221,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
     /* It's for us, so resolve the addresses */
     if (overlay_frame_resolve_addresses(interface,f))
       return WHY("Failed to resolve destination and sender addresses in frame");
-    if (debug&4) {
+    if (debug&DEBUG_OVERLAYFRAMES) {
       fprintf(stderr,"Destination for this frame is (resolve code=%d): ",f->destination_address_status);
       if (f->destination_address_status==OA_RESOLVED) for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",f->destination[i]); else fprintf(stderr,"???");
       fprintf(stderr,"\n");
@@ -231,7 +231,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
     }
 
     if (f->source_address_status!=OA_RESOLVED) {
-      if (debug>1) WHY("Source address could not be resolved, so dropping frame.");
+      if (debug&DEBUG_OVERLAYFRAMES) WHY("Source address could not be resolved, so dropping frame.");
       return -1;
     }
 
@@ -240,12 +240,12 @@ int overlay_frame_process(int interface,overlay_frame *f)
       if (i==SID_SIZE) { ultimatelyForMe=1; broadcast=1; }
       if (overlay_address_is_local(f->destination)) ultimatelyForMe=1;
     } else {
-      if (debug>1) WHY("Destination address could not be resolved, so dropping frame.");
+      if (debug&DEBUG_OVERLAYFRAMES) WHY("Destination address could not be resolved, so dropping frame.");
       return -1;
     }
   }
 
-  if (debug>2) {
+  if (debug&DEBUG_OVERLAYFRAMES) {
     fprintf(stderr,"This frame does%s have me listed as next hop.\n",forMe?"":" not");
     fprintf(stderr,"This frame is%s for me.\n",ultimatelyForMe?"":" not");
     fprintf(stderr,"This frame is%s broadcast.\n",broadcast?"":" not");
@@ -270,7 +270,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	  // Similarly, rhizome advertisement traffic is always link local, so don't 
 	  // forward that either.
 	} else {
-	if (debug>2) fprintf(stderr,"\nForwarding frame.\n");
+	if (debug&DEBUG_OVERLAYFRAMES) fprintf(stderr,"\nForwarding frame.\n");
 	if (overlay_get_nexthop(f->destination,f->nexthop,&len,&f->nexthop_interface))
 	  return WHY("Could not find next hop for host - dropping frame");
 	f->ttl--;

@@ -90,14 +90,14 @@ int runCommand(char *cmd)
 {
   FILE *f=fopen(cmd_file,"w");
   if (!f) {
-    if (debug) fprintf(stderr,"%s:%d: Could not write to command file '%s'.\n",__FUNCTION__,__LINE__,cmd_file);    
+    if (debug&DEBUG_GATEWAY) fprintf(stderr,"%s:%d: Could not write to command file '%s'.\n",__FUNCTION__,__LINE__,cmd_file);    
     return 0;
   }
   fprintf(f,"#!%s\n%s\n",shell,cmd);
   fclose(f);
   if (chmod(cmd_file,0000700))
     {
-    if (debug) fprintf(stderr,"%s:%d: Could not chmod command file '%s'.\n",__FUNCTION__,__LINE__,cmd_file);    
+    if (debug&DEBUG_GATEWAY) fprintf(stderr,"%s:%d: Could not chmod command file '%s'.\n",__FUNCTION__,__LINE__,cmd_file);    
     return 0;
     }
   return safeSystem(cmd_file);
@@ -165,11 +165,11 @@ int asteriskCreateExtension(char *requestor_sid,char *did,char *uri_out)
   if (extensions[index].uriprefixlen<0) {
     /* Whoops - something wrong with the extension/uri, so kill the record and fail. */
     extensions[index].expires=1;
-    if (debug) fprintf(stderr,"%s:%d: Generated extension appears to be malformed.\n",__FUNCTION__,__LINE__);
+    if (debug&DEBUG_GATEWAY) fprintf(stderr,"%s:%d: Generated extension appears to be malformed.\n",__FUNCTION__,__LINE__);
     return -1;
   }
 
-  if (debug) fprintf(stderr,"Created extension '%s' to dial %s\n",extensions[index].uri,did);
+  if (debug&DEBUG_GATEWAY) fprintf(stderr,"Created extension '%s' to dial %s\n",extensions[index].uri,did);
   strcpy(uri_out,extensions[index].uri);
 
   return 0;
@@ -183,7 +183,7 @@ int asteriskWriteExtensions()
 
   out=fopen(asterisk_extensions_conf,"w");
   if (!out) {
-    if (debug) fprintf(stderr,"%s:%d: Could not write extensions file '%s'.\n",__FUNCTION__,__LINE__,asterisk_extensions_conf);
+    if (debug&DEBUG_GATEWAY) fprintf(stderr,"%s:%d: Could not write extensions file '%s'.\n",__FUNCTION__,__LINE__,asterisk_extensions_conf);
     return -1;
   }
 
@@ -219,10 +219,10 @@ int asteriskReloadExtensions()
   snprintf(cmd,8192,"%s -rx 'dialplan reload'",asterisk_binary);
   if (runCommand(cmd))
     {
-      if (debug) fprintf(stderr,"%s:%d: Dialplan reload failed.\n",__FUNCTION__,__LINE__);
+      if (debug&DEBUG_GATEWAY) fprintf(stderr,"%s:%d: Dialplan reload failed.\n",__FUNCTION__,__LINE__);
       return -1;
     }
-  if (debug) fprintf(stderr,"%s:%d: Dialplan reload appeared to succeed.\n",__FUNCTION__,__LINE__);  
+  if (debug&DEBUG_GATEWAY) fprintf(stderr,"%s:%d: Dialplan reload appeared to succeed.\n",__FUNCTION__,__LINE__);  
   return 0;
 }
 
@@ -248,12 +248,12 @@ int asteriskGatewayUpP()
   snprintf(cmd,8192,"%s -rx 'sip show registry' > %s",asterisk_binary,temp_file);
 
   if (runCommand(cmd)) {
-    if (debug) { fprintf(stderr,"%s:%d: system(%s) might have failed.\n",__FUNCTION__,__LINE__,cmd_file);
+    if (debug&DEBUG_GATEWAY) { fprintf(stderr,"%s:%d: system(%s) might have failed.\n",__FUNCTION__,__LINE__,cmd_file);
       perror("system"); }
   }
   FILE *f=fopen(temp_file,"r");
   if (!f) {
-    if (debug) fprintf(stderr,"%s:%d: Could not read result of \"sip show registry\" from '%s'.\n",__FUNCTION__,__LINE__,temp_file);
+    if (debug&DEBUG_GATEWAY) fprintf(stderr,"%s:%d: Could not read result of \"sip show registry\" from '%s'.\n",__FUNCTION__,__LINE__,temp_file);
     return 0;
   }
   
@@ -294,22 +294,22 @@ int asteriskObtainGateway(char *requestor_sid,char *did,char *uri_out)
     */
   
   if (!asteriskGatewayUpP()) 
-    { if (debug) fprintf(stderr,"Asterisk gatway is not up, so not offering gateway.\n"); return -1; }
+    { if (debug&DEBUG_GATEWAY) fprintf(stderr,"Asterisk gatway is not up, so not offering gateway.\n"); return -1; }
   if (asteriskCreateExtension(requestor_sid,did,uri_out)) 
     {
-      if (debug) fprintf(stderr,"asteriskCreateExtension() failed, so not offering gateway.\n");
+      if (debug&DEBUG_GATEWAY) fprintf(stderr,"asteriskCreateExtension() failed, so not offering gateway.\n");
       return -1;
     }
   if (asteriskWriteExtensions())
     {
-      if (debug) fprintf(stderr,"asteriskWriteExtensions() failed, so not offering gateway.\n");
+      if (debug&DEBUG_GATEWAY) fprintf(stderr,"asteriskWriteExtensions() failed, so not offering gateway.\n");
       return -1;
     }
   if (asteriskReloadExtensions()) 
     {
-      if (debug) fprintf(stderr,"asteriskReloadExtensions() failed, so not offering gateway.\n");
+      if (debug&DEBUG_GATEWAY) fprintf(stderr,"asteriskReloadExtensions() failed, so not offering gateway.\n");
       return -1;
     }
-  if (debug) fprintf(stderr,"asteriskReloadExtensions() suceeded, offering gateway.\n");
+  if (debug&DEBUG_GATEWAY) fprintf(stderr,"asteriskReloadExtensions() suceeded, offering gateway.\n");
   return 0;
 }

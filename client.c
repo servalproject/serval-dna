@@ -42,10 +42,10 @@ int packetSendFollowup(struct in_addr destination,
   
   r=sendto(sock,packet,packet_len,0,(struct sockaddr *)&peer_addr,sizeof(peer_addr));
   if (r<packet_len)	{
-    if (debug) fprintf(stderr,"Could not send to %s (r=%d, packet_len=%d)\n",inet_ntoa(destination),r,packet_len);
+    if (debug&DEBUG_PACKETXFER) fprintf(stderr,"Could not send to %s (r=%d, packet_len=%d)\n",inet_ntoa(destination),r,packet_len);
     perror("sendto(a)");
   } else {
-    if (debug>1) fprintf(stderr,"Sent request to client %s\n",inet_ntoa(destination));
+    if (debug&DEBUG_PACKETXFER) fprintf(stderr,"Sent request to client %s\n",inet_ntoa(destination));
   }
   return 0;
 }
@@ -83,11 +83,11 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
       else
 	r=sendto(sock,packet,packet_len,0,recvaddr,sizeof(struct sockaddr_in));
       if (r<packet_len)	{
-	if (debug) fprintf(stderr,"Could not send to client %s (packet=%p,len=%d,sock=%d)\n",
+	if (debug&DEBUG_PACKETXFER) fprintf(stderr,"Could not send to client %s (packet=%p,len=%d,sock=%d)\n",
 			   inet_ntoa(client_addr),packet,packet_len,sock);
 	perror("sendto(b)");
       } else {
-	if (debug>1) fprintf(stderr,"Sent request to client %s\n",inet_ntoa(client_addr));
+	if (debug&DEBUG_PACKETXFER) fprintf(stderr,"Sent request to client %s\n",inet_ntoa(client_addr));
       }
       return 0;
     }
@@ -146,19 +146,19 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
 		    peers and so tests that we wait if not all peers have responded) */
 		break;
 	      case REQ_FIRSTREPLY:
-		if (debug>1) fprintf(stderr,"Returning with first reply (REQ_FIRSTREPLY)\n");
+		if (debug&DEBUG_DNARESPONSES) fprintf(stderr,"Returning with first reply (REQ_FIRSTREPLY)\n");
 		if (!r) return 0;
 		break;
 	      case REQ_SERIAL:
 		if (!r) {
 		  /* Stop if we have an affirmative response.
 		     XXX - doesn't allow for out of order replies. */
-		  if (debug>1) dumpResponses(responses);
+		  if (debug&DEBUG_DNARESPONSES) dumpResponses(responses);
 		  rr=responses->last_response;
 		  while (rr)
 		    {
 		      if (rr->checked) break;
-		      if (debug>1) 
+		      if (debug&DEBUG_DNARESPONSES) 
 			fprintf(stderr,"Got a response code 0x%02x, checking if that is what we need.\n",rr->code);
 		      switch (rr->code)
 			{
@@ -198,7 +198,7 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
       }
       cumulative_timeout+=this_timeout;
     }
-  if (debug>1) if (cumulative_timeout>=timeout) 
+  if (debug&DEBUG_DNARESPONSES) if (cumulative_timeout>=timeout) 
 		 fprintf(stderr,"Request timed out after retries (timeout=%d, elapsed=%d).\n",
 			 timeout,cumulative_timeout);
 
@@ -231,7 +231,7 @@ int requestNewHLR(char *did,char *pin,char *sid,struct sockaddr *recvaddr)
   if (packetSendRequest(REQ_SERIAL,packet,packet_len,NONBATCH,transaction_id,recvaddr,&responses)) return -1;
 
   /* Extract response */
-  if (debug>2) dumpResponses(&responses);
+  if (debug&DEBUG_DNARESPONSES) dumpResponses(&responses);
   if (!responses.response_count) {
     printf("NOREPLY\n");
     return -1;
@@ -264,25 +264,28 @@ int fixResponses(struct response_set *responses)
 {
   struct response *rr;
 
-  if (debug>1) fprintf(stderr,"Fixing response set\n");
+  if (debug&DEBUG_DNARESPONSES) fprintf(stderr,"Fixing response set\n");
 
   if (!responses) return -1;
 
   rr=responses->responses;
   while(rr)
     {
-      if (debug>1) fprintf(stderr,"  len=%d, rr->code=%02x, rr->var_id=%02x\n",
-			   rr->value_bytes,rr->code,rr->var_id);
+      if (debug&DEBUG_DNARESPONSES)
+	fprintf(stderr,"  len=%d, rr->code=%02x, rr->var_id=%02x\n",
+		rr->value_bytes,rr->code,rr->var_id);
       if (rr->value_bytes>0&&rr->code==ACTION_DATA&&rr->var_id==VAR_LOCATIONS)
 	{
-	  if (debug>1) fprintf(stderr,"  response='%s'\n",rr->response);
+	  if (debug&DEBUG_DNARESPONSES) 
+	    fprintf(stderr,"  response='%s'\n",rr->response);
 	  if (rr->response[rr->value_bytes-1]=='@')
 	    {
 	      /* Append response with IP address of sender */
 	      char *addr=inet_ntoa(rr->sender);
 	      int alen=strlen(addr);
 	      char *new = malloc(rr->value_bytes+alen+1);
-	      if (debug>1) fprintf(stderr,"Fixing LOCATIONS response '%s' received from '%s (0x%08x)'\n",
+	      if (debug&DEBUG_DNARESPONSES) 
+		fprintf(stderr,"Fixing LOCATIONS response '%s' received from '%s (0x%08x)'\n",
 				   rr->response,addr,(unsigned int)rr->sender.s_addr);
 	      if (!new) return -1;
 	      bcopy(rr->response,new,rr->value_bytes);
@@ -292,7 +295,7 @@ int fixResponses(struct response_set *responses)
 	      rr->value_len+=alen;
 	      rr->value_bytes+=alen;
 	      new[rr->value_len]=0; /* Make sure it is null terminated */
-	      if (debug>1) fprintf(stderr,"Response string now '%s'\n",rr->response);
+	      if (debug&DEBUG_DNARESPONSES) fprintf(stderr,"Response string now '%s'\n",rr->response);
 	    }
 	}
       rr=rr->next;
@@ -315,7 +318,7 @@ int getReplyPackets(int method,int peer,int batchP,struct response_set *response
   int to=timeout;
   int len;
   
-  if (debug>1) printf("getReplyPackets(policy=%d)\n",method);
+  if (debug&DEBUG_DNARESPONSES) printf("getReplyPackets(policy=%d)\n",method);
   
   /* Work out when the timeout will expire */
   gettimeofday(&t,NULL); 
@@ -350,13 +353,13 @@ int getReplyPackets(int method,int peer,int batchP,struct response_set *response
       client_port=((struct sockaddr_in *)recvaddr)->sin_port;
       client_addr=((struct sockaddr_in *)recvaddr)->sin_addr;
       
-      if (debug) fprintf(stderr,"Received reply from %s (len=%d).\n",inet_ntoa(client_addr),len);
-      if (debug>1) dump("recvaddr",(unsigned char *)&sender,recvaddrlen);
-      if (debug>2) dump("packet",(unsigned char *)buffer,len);
+      if (debug&DEBUG_DNARESPONSES) fprintf(stderr,"Received reply from %s (len=%d).\n",inet_ntoa(client_addr),len);
+      if (debug&DEBUG_DNARESPONSES) dump("recvaddr",(unsigned char *)&sender,recvaddrlen);
+      if (debug&DEBUG_DNARESPONSES) dump("packet",(unsigned char *)buffer,len);
     }
 
     if (dropPacketP(len)) {
-      if (debug) fprintf(stderr,"Simulation mode: Dropped packet due to simulated link parameters.\n");
+      if (debug&DEBUG_SIMULATION) fprintf(stderr,"Simulation mode: Dropped packet due to simulated link parameters.\n");
       continue;
     }
     if (!packetOk(-1,buffer,len,transaction_id,recvaddr,recvaddrlen,0)) {
@@ -381,10 +384,10 @@ int getReplyPackets(int method,int peer,int batchP,struct response_set *response
 	}
       }
       else {
-	if (debug>1) printf("Waiting for more packets, since called with policy %d\n",method);
+	if (debug&DEBUG_DNARESPONSES) printf("Waiting for more packets, since called with policy %d\n",method);
       }
     } else {
-      if (debug) setReason("Ignoring invalid packet");
+      if (debug&(DEBUG_PACKETXFER|DEBUG_DNARESPONSES)) setReason("Ignoring invalid packet");
     }      
   }
 }
@@ -400,7 +403,7 @@ int writeItem(char *sid,int var_id,int instance,unsigned char *value,
 
   bzero(&responses,sizeof(responses));
 
-  if (debug>1) fprintf(stderr,"Writing %d bytes of var %02x/%02x @ 0x%d flags=%d\n",
+  if (debug&DEBUG_DNAVARS) fprintf(stderr,"Writing %d bytes of var %02x/%02x @ 0x%d flags=%d\n",
 		       value_length,var_id,instance,value_start,flags);
 
   if (!sid) {
@@ -413,16 +416,16 @@ int writeItem(char *sid,int var_id,int instance,unsigned char *value,
   if (value_length-value_start>MAX_DATA_BYTES)
     { 
       int o;      
-      if (debug) fprintf(stderr,"Writing large value (%d bytes)\n",value_length-value_start);
+      if (debug&DEBUG_DNAVARS) fprintf(stderr,"Writing large value (%d bytes)\n",value_length-value_start);
       for(o=value_start;o<value_length;o+=MAX_DATA_BYTES)
 	{
 	  int bytes=MAX_DATA_BYTES;
 	  if (o+bytes>value_length) bytes=value_length-o;
-	  if (debug>1) fprintf(stderr,"  writing [%d,%d)\n",o,o+bytes-1);
+	  if (debug&DEBUG_DNAVARS) fprintf(stderr,"  writing [%d,%d)\n",o,o+bytes-1);
 	  if (writeItem(sid,var_id,instance,&value[o-value_start],o,bytes,
 			flags|((o>value_start)?SET_FRAGMENT:0),NULL))
 	    {
-	      if (debug) fprintf(stderr,"   - writing installment failed\n");
+	      if (debug&DEBUG_DNAVARS) fprintf(stderr,"   - writing installment failed\n");
 	      return setReason("Failure during multi-packet write of long-value");
 	    }
 	}
@@ -497,47 +500,47 @@ int peerAddress(char *did,char *sid,int flags)
    As these can get sent out quite often, don't waste time and energy signing. */
   if (packetMakeHeader(packet,8000,&packet_len,transaction_id,CRYPT_PUBLIC)) 
     {
-      if (debug) fprintf(stderr,"%s() failed at line %d\n",__FUNCTION__,__LINE__);
+      if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"%s() failed at line %d\n",__FUNCTION__,__LINE__);
       return -1;
     }
   if (did&&(!sid))
     { if (packetSetDid(packet,8000,&packet_len,did)) {
-	if (debug) fprintf(stderr,"%s() failed at line %d\n",__FUNCTION__,__LINE__);
+	if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"%s() failed at line %d\n",__FUNCTION__,__LINE__);
 	return -1; }
     }
   else if (sid&&(!did))
     { if (packetSetSid(packet,8000,&packet_len,sid)) {
-	if (debug) fprintf(stderr,"%s() failed at line %d\n",__FUNCTION__,__LINE__);
+	if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"%s() failed at line %d\n",__FUNCTION__,__LINE__);
 	return -1;
       }
     }
   else {
-    if (debug) fprintf(stderr,"%s() failed at line %d\n",__FUNCTION__,__LINE__);
+    if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"%s() failed at line %d\n",__FUNCTION__,__LINE__);
     return setReason("You must request items by DID or SID, not neither, nor both");
   }
 
       
   if (packetAddVariableRequest(packet,8000,&packet_len,
 			       "dids",0,0,128 /* only small things please */)) {
-    if (debug) fprintf(stderr,"%s() failed at line %d\n",__FUNCTION__,__LINE__);
+    if (debug&DEBUG_DNAVARS) fprintf(stderr,"%s() failed at line %d\n",__FUNCTION__,__LINE__);
     return -1;
   }
   if (packetFinalise(packet,8000,&packet_len,CRYPT_PUBLIC)) {
-    if (debug) fprintf(stderr,"%s() failed at line %d\n",__FUNCTION__,__LINE__);
+    if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"%s() failed at line %d\n",__FUNCTION__,__LINE__);
     return -1;
   }
 
   method=REQ_PARALLEL;
   if (sid) method=REQ_FIRSTREPLY;
   if (packetSendRequest(method,packet,packet_len,NONBATCH,transaction_id,NULL,&responses)) {
-    if (debug) fprintf(stderr,"peerAddress() failed because packetSendRequest() failed.\n");
+    if (debug&DEBUG_PACKETXFER) fprintf(stderr,"peerAddress() failed because packetSendRequest() failed.\n");
     return -1;
   }
 
   r=responses.responses;
   if (!r)
     {
-      if (debug) fprintf(stderr,"peerAddress() failed because noone answered.\n");
+      if (debug&DEBUG_PEERS) fprintf(stderr,"peerAddress() failed because noone answered.\n");
       return -1;
     }
   while(r)
@@ -578,40 +581,40 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
   /* Prepare the request packet. Don't let anyone else see what we are asking for. */
   if (packetMakeHeader(packet,8000,&packet_len,transaction_id,CRYPT_SIGNED|CRYPT_CIPHERED)) 
     {
-      if (debug) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
+      if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
       return -1;
     }
   if (did&&(!sid))
     { if (packetSetDid(packet,8000,&packet_len,did)) {
-	if (debug) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
+	if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
 	return -1; }
     }
   else if (sid&&(!did))
     { if (packetSetSid(packet,8000,&packet_len,sid)) {
-	if (debug) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
+	if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
 	return -1;
       }
     }
   else {
-    if (debug) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
+    if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
     return setReason("You must request items by DID or SID, not neither, nor both");
   }
 
       
   if (packetAddVariableRequest(packet,8000,&packet_len,
 			       item,instance,0,buffer_length)) {
-    if (debug) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
+    if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
     return -1;
   }
   if (packetFinalise(packet,8000,&packet_len,CRYPT_SIGNED|CRYPT_CIPHERED)) {
-    if (debug) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
+    if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
     return -1;
   }
 
   method=REQ_PARALLEL;
   if (sid) method=REQ_FIRSTREPLY;
   if (packetSendRequest(method,packet,packet_len,(instance==-1)?BATCH:NONBATCH,transaction_id,NULL,&responses)) {
-    if (debug) fprintf(stderr,"requestItem() failed because packetSendRequest() failed.\n");
+    if (debug&DEBUG_PACKETXFER) fprintf(stderr,"requestItem() failed because packetSendRequest() failed.\n");
     return -1;
   }
 
@@ -664,7 +667,7 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
 		    snprintf(outputname,8192,outputtemplate,sid,r->var_id,r->var_instance);
 		    outputfile=fopen(outputname,"w");
 		    if (!outputfile) printf("ERROR:Could not open output file '%s'",outputname);
-		    if (debug) fprintf(stderr,"Writing output to '%s'\n",outputname);
+		    if (debug&DEBUG_VERBOSE) fprintf(stderr,"Writing output to '%s'\n",outputname);
 		  }
 
 		if (outputfile) fwrite(r->response,r->value_bytes,1,outputfile);
@@ -697,7 +700,7 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
 
 		    while(needMoreData&&(tries++<15))
 		      {
-			if (debug>1) fprintf(stderr,"Multi-packet request: try %d, %d fragments remaining.\n",tries,needMoreData);
+			if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"Multi-packet request: try %d, %d fragments remaining.\n",tries,needMoreData);
 			needMoreData=0;
 			for(i=0;i<recv_map_size;i++)
 			  if (!recv_map[i])
@@ -705,13 +708,13 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
 			      needMoreData++;
 			      offset=i*MAX_DATA_BYTES;
 			      
-			      if (debug>1) fprintf(stderr,"Asking for variable segment @ offset %d\n",offset);
+			      if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"Asking for variable segment @ offset %d\n",offset);
 			      
 			      /* Send accumulated request direct to the responder */
 			      if (packet_len>=MAX_DATA_BYTES)
 				{
 				  if (packetFinalise(packet,8000,&packet_len,CRYPT_CIPHERED|CRYPT_SIGNED)) {
-				    if (debug) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
+				    if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
 				    return -1;
 				  }
 				  packetSendFollowup(r->sender,packet,packet_len);
@@ -722,11 +725,11 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
 				{
 				  /* We are requesting data, so ask for privacy */
 				  if (packetMakeHeader(packet,8000,&packet_len,transaction_id,CRYPT_CIPHERED|CRYPT_SIGNED)) {
-				    if (debug) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
+				    if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
 				    return -1;
 				  }
 				  if (packetSetSid(packet,8000,&packet_len,sid)) {
-				    if (debug) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
+				    if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
 				    return setReason("SID went mouldy during multi-packet get");
 				  }
 				}
@@ -735,7 +738,7 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
 			      if (max_bytes>buffer_length) max_bytes=buffer_length;
 			      if (packetAddVariableRequest(packet,8000,&packet_len,
 							   item,r->var_instance,offset,max_bytes)) {
-				if (debug) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
+				if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
 				return -1;
 			      }
 			    }
@@ -743,7 +746,7 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
 			if (packet_len)
 			  {
 			    if (packetFinalise(packet,8000,&packet_len,CRYPT_SIGNED|CRYPT_CIPHERED)) {
-			      if (debug) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
+			      if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
 			      return -1;
 			    }
 			    packetSendFollowup(r->sender,packet,packet_len);
@@ -763,8 +766,8 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
 				int piece=rr->value_offset/MAX_DATA_BYTES;
 				if (!recv_map[piece])
 				  {
-				    if (debug>1) fprintf(stderr,"Extracted value fragment @ offset %d, with %d bytes\n",rr->value_offset,rr->value_bytes);
-				    if (debug>2) dump("Fragment",rr->response,rr->value_bytes);
+				    if (debug&DEBUG_DNARESPONSES) fprintf(stderr,"Extracted value fragment @ offset %d, with %d bytes\n",rr->value_offset,rr->value_bytes);
+				    if (debug&DEBUG_DNARESPONSES) dump("Fragment",rr->response,rr->value_bytes);
 				    fseek(outputfile,rr->value_offset,SEEK_SET);
 				    fwrite(rr->response,rr->value_bytes,1,outputfile);
 				    if (buffer) bcopy(rr->response,&buffer[rr->value_offset],rr->value_bytes);
@@ -772,7 +775,7 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
 				  }
 				else
 				  {
-				    if (debug>1) fprintf(stderr,"DUPLICATE value fragment @ offset %d, with %d bytes\n",rr->value_offset,rr->value_bytes);
+				    if (debug&DEBUG_DNARESPONSES) fprintf(stderr,"DUPLICATE value fragment @ offset %d, with %d bytes\n",rr->value_offset,rr->value_bytes);
 				   
 				  }
 			      }
@@ -787,7 +790,7 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
 		  }
 		if (outputtemplate) fclose(outputfile); else fflush(outputfile);		    
 		printf("\n");
-		if (debug) fprintf(stderr,"requestItem() returned DATA\n");
+		if (debug&DEBUG_DNARESPONSES) fprintf(stderr,"requestItem() returned DATA\n");
 		if (!returnMultiVars) return 0;
 		break;
 	      }
@@ -809,6 +812,6 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
       r=r->next;
     }
 
-  if (debug) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
+  if (debug&DEBUG_VERBOSE) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
   return -1;
 }

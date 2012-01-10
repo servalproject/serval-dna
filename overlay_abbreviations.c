@@ -179,7 +179,7 @@ int overlay_abbreviate_cache_address(unsigned char *sid)
 
   /* Not yet in cache, so store it */
   bcopy(sid,&cache->sids[index].b[0],SID_SIZE);
-  if (debug&4) {
+  if (debug&DEBUG_OVERLAYABBREVIATIONS) {
     fprintf(stderr,"Cached address ");
     int i;
     for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",cache->sids[index].b[i]);
@@ -311,7 +311,7 @@ int overlay_abbreviate_address(unsigned char *in,unsigned char *out,int *ofs)
 int overlay_abbreviate_expand_address(int interface,unsigned char *in,int *inofs,unsigned char *out,int *ofs)
 {
   int bytes=0,r;
-  if (debug>3) fprintf(stderr,"Address first byte/abbreviation code=%02x (input offset=%d)\n",in[*inofs],*inofs);
+  if (debug&DEBUG_OVERLAYABBREVIATIONS) fprintf(stderr,"Address first byte/abbreviation code=%02x (input offset=%d)\n",in[*inofs],*inofs);
   switch(in[*inofs])
     {
     case OA_CODE_02: case OA_CODE_04: case OA_CODE_0C:
@@ -424,7 +424,7 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
   int index=((in[0]<<16)|(in[0]<<8)|in[2])>>cache->shift;
 
   int i;
-  if (debug>3) {
+  if (debug&DEBUG_OVERLAYABBREVIATIONS) {
     fprintf(stderr,"Looking in cache slot #%d for: ",index);
     for(i=0;i<prefix_bytes;i++) fprintf(stderr,"%02x",in[i]);
     fprintf(stderr,"*\n");
@@ -442,7 +442,7 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
      colliding prefixes and ask the sender to resolve them for us, or better yet dynamically
      size the prefix length based on whether any given short prefix has collided */
 
-  if (debug>3) { 
+  if (debug&DEBUG_OVERLAYABBREVIATIONS) { 
     /* It is here, so let's return it */
     fprintf(stderr,"I think I looked up the following: ");
     for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",cache->sids[index].b[i]);
@@ -474,7 +474,7 @@ int overlay_abbreviate_set_current_sender(unsigned char *in)
 int overlay_abbreviate_set_most_recent_address(unsigned char *in)
 {
   bcopy(in,&overlay_abbreviate_previous_address.b[0],SID_SIZE);
-  if (debug>3) fprintf(stderr,"Most recent address=%s\n",
+  if (debug&DEBUG_OVERLAYABBREVIATIONS) fprintf(stderr,"Most recent address=%s\n",
 		       overlay_render_sid(in));
   return 0;
 }

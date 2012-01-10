@@ -137,7 +137,7 @@ int rhizome_server_poll()
 
   /* Process the existing requests.
      XXX - should use poll or select here */
-  if (debug>1) printf("Checking %d active connections\n",
+  if (debug&DEBUG_RHIZOME) printf("Checking %d active connections\n",
 		    rhizome_server_live_request_count);
   for(rn=0;rn<rhizome_server_live_request_count;rn++)
     {
@@ -594,7 +594,7 @@ int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r)
   int bytes;
   fcntl(r->socket,F_SETFL,fcntl(r->socket, F_GETFL, NULL)|O_NONBLOCK);
 
-  if (debug>1) fprintf(stderr,"Request #%d, type=0x%x\n",rn,r->request_type);
+  if (debug&DEBUG_RHIZOME) fprintf(stderr,"Request #%d, type=0x%x\n",rn,r->request_type);
 
   /* Flush anything out of the buffer if present, before doing any further
      processing */
@@ -614,7 +614,7 @@ int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r)
 	    WHY("Finished sending data");
 	    return rhizome_server_close_http_request(rn);	  
 	  } else {
-	    if (debug>1) { fprintf(stderr,"request type = 0x%x after sending buffer.\n",
+	    if (debug&DEBUG_RHIZOME) { fprintf(stderr,"request type = 0x%x after sending buffer.\n",
 				   r->request_type);
 	    }
 	  }

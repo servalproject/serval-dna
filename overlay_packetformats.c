@@ -108,7 +108,7 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *t
       f.type=packet[ofs]&OF_TYPE_BITS;
       f.modifiers=packet[ofs]&OF_MODIFIER_BITS;
 
-      if (debug>3) fprintf(stderr,"f.type=0x%02x, f.modifiers=0x%02x, ofs=%d\n",
+      if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"f.type=0x%02x, f.modifiers=0x%02x, ofs=%d\n",
 			   f.type,f.modifiers,ofs);
 
       switch(packet[ofs]&OF_TYPE_BITS)
@@ -147,7 +147,7 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *t
 
       /* Decode length of remainder of frame */
       f.rfs=rfs_decode(packet,&ofs);
-      if (debug>3) fprintf(stderr,"f.rfs=%d, ofs=%d\n",f.rfs,ofs);
+      if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"f.rfs=%d, ofs=%d\n",f.rfs,ofs);
 
       if (!f.rfs) {
 	/* Zero length -- assume we fell off the end of the packet */
@@ -168,7 +168,7 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *t
       if (f.bytecount<0) {
 	f.bytecount=0;
 	WHY("negative residual byte count after extracting addresses from frame header");
-	if (debug>3) fprintf(stderr,"f.rfs=%d, offset=%d, ofs=%d\n",
+	if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"f.rfs=%d, offset=%d, ofs=%d\n",
 			     f.rfs,offset,ofs);
 	return WHY("negative residual byte count after extracting addresses from frame header");
       }
@@ -178,7 +178,7 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *t
       
       /* Skip the rest of the bytes in this frame so that we can examine the next one in this
 	 ensemble */
-      if (debug&4) fprintf(stderr,"ofs=%d, f.rfs=%d, len=%d\n",ofs,f.rfs,len);
+      if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"ofs=%d, f.rfs=%d, len=%d\n",ofs,f.rfs,len);
       ofs+=f.rfs;
     }
 

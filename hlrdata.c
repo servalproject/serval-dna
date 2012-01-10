@@ -93,14 +93,14 @@ int findHlr(unsigned char *hlr,int *ofs,char *sid,char *did)
 
   if ((*ofs)>=hlr_size) return 0;
 
-  if (debug>4) fprintf(stderr,"Searching for HLR record sid=[%s]/did=[%s]\n",sid?sid:"NULL",did?did:"NULL");
+  if (debug&DEBUG_HLR) fprintf(stderr,"Searching for HLR record sid=[%s]/did=[%s]\n",sid?sid:"NULL",did?did:"NULL");
   
   if (did&&did[0]) {
     /* Make packed version of DID so that we can compare faster with the DIDs in the HLR */
     if (stowDid(packed_id,&pid_len,did)) return setReason("DID appears to be invalid");
     /* Find significant length of packed DID */
     for(pid_len=0;pid_len<DID_MAXSIZE;pid_len++) if ((packed_id[pid_len]&0x0f)==0x0f) { pid_len++; break; }
-    if (debug>1) dump("Searching for DID records that match",packed_id,pid_len);
+    if (debug&DEBUG_HLR) dump("Searching for DID records that match",packed_id,pid_len);
   }
 
   if (sid&&sid[0]) {
@@ -119,14 +119,14 @@ int findHlr(unsigned char *hlr,int *ofs,char *sid,char *did)
       
       if (!record_length) return 0;
 
-      if (debug>4) fprintf(stderr,"Considering HLR entry @ 0x%x\n",*ofs);
+      if (debug&DEBUG_HLR) fprintf(stderr,"Considering HLR entry @ 0x%x\n",*ofs);
   
       records_searched++;
   
       if (sid&&sid[0]) {
 	/* Lookup by SID, so just see if it matches */
 	if (!bcompare(packed_id,&hlr[(*ofs)+4],SID_SIZE)) {
-	  if (debug>1) fprintf(stderr,"Found requested SID at address 0x%x.\n",*ofs);
+	  if (debug&DEBUG_HLR) fprintf(stderr,"Found requested SID at address 0x%x.\n",*ofs);
 	  match=1;
 	}
       }
@@ -137,22 +137,22 @@ int findHlr(unsigned char *hlr,int *ofs,char *sid,char *did)
 	while(h)
 	  {
 	    /* Search through variables for matching DIDs */
-	    if (debug>2) {
+	    if (debug&DEBUG_HLR) {
 	      fprintf(stderr,"Considering variable 0x%02x, instance %d.\n",
 		      h->var_id,h->var_instance);
 	      dump("variable value",h->value,h->value_len);
 	    }
 	    if (h->var_id==VAR_DIDS) { /* DID entry  */
-	      if (debug>2) fprintf(stderr,"Checking DID against record DID\n");
+	      if (debug&DEBUG_HLR) fprintf(stderr,"Checking DID against record DID\n");
 	      if (!bcompare(packed_id,h->value,pid_len)) {		
-		if (debug>1) fprintf(stderr,"Found matching DID in HLR record #%d\n",records_searched);
+		if (debug&DEBUG_HLR) fprintf(stderr,"Found matching DID in HLR record #%d\n",records_searched);
 		match=1;
 		break;
 	      }
 	    }
 	    else
 	      {
-		if (debug>2) fprintf(stderr,"Skipping non-DID variable while searching for DID.\n");
+		if (debug&DEBUG_HLR) fprintf(stderr,"Skipping non-DID variable while searching for DID.\n");
 	      }		
 	    h=hlrentrygetent(h);
 	  }
@@ -162,7 +162,7 @@ int findHlr(unsigned char *hlr,int *ofs,char *sid,char *did)
       /* For each match ... */
       if (match) 
 	{
-	  if (debug>4) fprintf(stderr,"Returning HLR entry @ 0x%x\n",*ofs);
+	  if (debug&DEBUG_HLR) fprintf(stderr,"Returning HLR entry @ 0x%x\n",*ofs);
 	  return 1;
 	}
   
@@ -179,20 +179,20 @@ int createHlr(char *did,char *sid) {
   int i;
   int record_offset=0;
 
-  if (debug) fprintf(stderr,"Asked to create a new HLR record\n");
+  if (debug&DEBUG_HLR) fprintf(stderr,"Asked to create a new HLR record\n");
 
   /* Generate random SID */
   for(i=1;i<64;i++) sid[i]=hexdigit[random()&0xf]; sid[64]=0;
   /* But make sure first digit is non-zero as required by the overlay mesh */
   sid[0]=hexdigit[1+(random()&0xe)];
-  if (debug>1) fprintf(stderr,"Creating new HLR entry with sid %s\n",sid);
+  if (debug&DEBUG_HLR) fprintf(stderr,"Creating new HLR entry with sid %s\n",sid);
   
   /* Find first free byte of HLR.
      Keep calling findHlr() until we find the end. */
   while((i=hlrGetRecordLength(hlr,record_offset))>0)
     {
       record_offset+=i;
-      if (debug>1) fprintf(stderr,"Skipping %d bytes to 0x%x\n",i,record_offset);
+      if (debug&DEBUG_HLR) fprintf(stderr,"Skipping %d bytes to 0x%x\n",i,record_offset);
     }
   if (i<0) return setReason("Corrupt HLR: Negative length field encountered.");
 
@@ -207,7 +207,7 @@ int createHlr(char *did,char *sid) {
       int bytes=hlr_size-record_offset;
       if (bytes<1024) return setReason("<1KB space in HLR");
      
-      if (debug>2) fprintf(stderr,"Creating new HLR entry @ 0x%x\n",record_offset);
+      if (debug&DEBUG_HLR) fprintf(stderr,"Creating new HLR entry @ 0x%x\n",record_offset);
 
       /* Write shiny fresh new record.
 	 32bit - record length 
@@ -232,9 +232,9 @@ int createHlr(char *did,char *sid) {
 	hlrSetVariable(hlr,record_offset,VAR_DIDS,0x00,packeddid,pdidlen);
       }
 
-      if (debug) fprintf(stderr,"Created new 36 byte HLR record for DID=[%s] @ 0x%x with SID=[%s]\n",
+      if (debug&DEBUG_HLR) fprintf(stderr,"Created new 36 byte HLR record for DID=[%s] @ 0x%x with SID=[%s]\n",
 			 did,record_offset,sid);
-      if (debug>2) dump("after HLR create",&hlr[0],256);
+      if (debug&DEBUG_HLR) dump("after HLR create",&hlr[0],256);
       return 0;
     }
 
@@ -251,11 +251,11 @@ int hlrGetRecordLength(unsigned char *hlr,int hofs)
   record_length|=hlr[hofs+1]<<16;
   record_length|=hlr[hofs+0]<<24;
 
-  if (debug>2) fprintf(stderr,"HLR record @ 0x%x is %d bytes long.\n",hofs,record_length);
+  if (debug&DEBUG_HLR) fprintf(stderr,"HLR record @ 0x%x is %d bytes long.\n",hofs,record_length);
 
   if (record_length<0) {
     // fix corrupt entries
-    if (debug>2) fprintf(stderr,"HLR record @ 0x%x ZEROED.\n",hofs);
+    if (debug&DEBUG_HLR) fprintf(stderr,"HLR record @ 0x%x ZEROED.\n",hofs);
     hlr[hofs+3]=0;
     hlr[hofs+2]=0;
     hlr[hofs+1]=0;
@@ -288,7 +288,7 @@ struct hlrentry_handle *openhlrentry(unsigned char *hlr,int hofs)
   /* If record has zero length, then open fails */
   if (record_length<1)
     {
-      if (debug>2) fprintf(stderr,"HLR record is zero length -- aborting.\n");
+      if (debug&DEBUG_HLR) fprintf(stderr,"HLR record is zero length -- aborting.\n");
       return NULL;
     }
 
@@ -316,25 +316,25 @@ struct hlrentry_handle *hlrentrygetent(struct hlrentry_handle *h)
   if (h->entry_offset==0)
     {
       /* First entry */
-      if (debug>2) fprintf(stderr,"Considering first entry of HLR record.\n");
+      if (debug&DEBUG_HLR) fprintf(stderr,"Considering first entry of HLR record.\n");
       h->entry_offset=HLR_RECORD_LEN_SIZE+SID_SIZE;
     }
   else
     {
       /* subsequent entry */
-      if (debug>2) fprintf(stderr,"Considering entry @ 0x%x\n",h->entry_offset);
+      if (debug&DEBUG_HLR) fprintf(stderr,"Considering entry @ 0x%x\n",h->entry_offset);
       h->entry_offset+=1+2+h->value_len+(h->var_id&0x80?1:0);
     }
 
   /* XXX Check if end of record */
   if (h->entry_offset>=h->record_length) {
-    if (debug>2) fprintf(stderr,"Reached end of HLR record (%d>=%d).\n",h->entry_offset,h->record_length);
+    if (debug&DEBUG_HLR) fprintf(stderr,"Reached end of HLR record (%d>=%d).\n",h->entry_offset,h->record_length);
     return NULL;
   }
 
   /* XXX Extract variable */
   ptr=h->hlr_offset+h->entry_offset;
-  if (debug>2) fprintf(stderr,"Extracting HLR variable @ 0x%x\n",ptr);
+  if (debug&DEBUG_HLR) fprintf(stderr,"Extracting HLR variable @ 0x%x\n",ptr);
   h->var_id=hlr[ptr];
   h->value_len=(hlr[ptr+1]<<8)+hlr[ptr+2];
   ptr+=3;
@@ -384,7 +384,7 @@ int hlrSetVariable(unsigned char *hlr,int hofs,int varid,int varinstance,
   int hlr_offset=-1;
   int hlr_size=hlrGetRecordLength(hlr,hofs);
 
-  if (debug) fprintf(stderr,"hlrSetVariable(varid=%02x, instance=%02x, len=%d)\n",
+  if (debug&DEBUG_HLR) fprintf(stderr,"hlrSetVariable(varid=%02x, instance=%02x, len=%d)\n",
 		     varid,varinstance,len);
 
   h=openhlrentry(hlr,hofs);
@@ -392,18 +392,18 @@ int hlrSetVariable(unsigned char *hlr,int hofs,int varid,int varinstance,
   /* Find the place in the HLR record where this variable should go */
   while(h)
     {     
-      if (debug>1) fprintf(stderr,"h->var_id=%02x, h->h->var_instance=%02x, h->entry_offset=%x\n",
+      if (debug&DEBUG_HLR) fprintf(stderr,"h->var_id=%02x, h->h->var_instance=%02x, h->entry_offset=%x\n",
 			   h->var_id,h->var_instance,h->entry_offset);
       if ((h->var_id<varid)
 	  ||((h->var_id&0x80)&&(h->var_id==varid&&h->var_instance<varinstance)))
 	{
 	  hlr_offset=h->entry_offset;
-	  if (debug>1) fprintf(stderr,"Found variable instance prior: hlr_offset=%d.\n",hlr_offset);
+	  if (debug&DEBUG_HLR) fprintf(stderr,"Found variable instance prior: hlr_offset=%d.\n",hlr_offset);
 	}
       else
 	{
 	  /* Value goes here */
-	  if (debug>1) fprintf(stderr,"Found variable instance to overwrite: hlr_offset=%d.\n",hlr_offset);
+	  if (debug&DEBUG_HLR) fprintf(stderr,"Found variable instance to overwrite: hlr_offset=%d.\n",hlr_offset);
 	  hlr_offset=h->entry_offset;
 	  break;
 	}
@@ -415,19 +415,19 @@ int hlrSetVariable(unsigned char *hlr,int hofs,int varid,int varinstance,
 
   if (h&&hlr_offset>-1)
     {
-      if (debug>2) printf("hlr_offset=%d\n",hlr_offset);
+      if (debug&DEBUG_HLR) printf("hlr_offset=%d\n",hlr_offset);
       if (h&&h->var_id==varid&&((h->var_instance==varinstance)||(!(h->var_id&0x80))))
 	{
 	  int existing_size;
 	  /* Replace existing value */
-	  if (debug) fprintf(stderr,"Replacing value in HLR:\n");
+	  if (debug&DEBUG_HLR) fprintf(stderr,"Replacing value in HLR:\n");
 	  existing_size=1+2+((h->var_id&0x80)?1:0)+h->value_len;
 	  hlrMakeSpace(hlr,hofs,hlr_offset,1+2+len+((varid&0x80)?1:0)-existing_size);
 	}
       else
 	{
 	  /* Insert value here */
-	  if (debug) fprintf(stderr,"Inserting value in HLR\n");
+	  if (debug&DEBUG_HLR) fprintf(stderr,"Inserting value in HLR\n");
 	  hlrMakeSpace(hlr,hofs,hlr_offset,1+2+len+((varid&0x80)?1:0));
 	}
     }
@@ -435,7 +435,7 @@ int hlrSetVariable(unsigned char *hlr,int hofs,int varid,int varinstance,
     {
       /* HLR record has no entries, or this entry needs to go at the end,
 	 so insert value at end of the record */
-      if (debug) fprintf(stderr,"Inserting value at end of HLR @ 0x%x\n",hlr_size);
+      if (debug&DEBUG_HLR) fprintf(stderr,"Inserting value at end of HLR @ 0x%x\n",hlr_size);
       hlrMakeSpace(hlr,hofs,hlr_size,1+2+len+((varid&0x80)?1:0));
       hlr_offset=hlr_size;
     }
@@ -468,7 +468,7 @@ int hlrMakeSpace(unsigned char *hlr,int hofs,int hlr_offset,int bytes)
   /* Deal with easy case first */
   if (!bytes) return 0;
 
-  if (debug>2) { 
+  if (debug&DEBUG_HLR) { 
     fprintf(stderr,"hlrMakeSpace: Inserting %d bytes at offset %d with hofs=%d. shifted bytes=%d\n",
 	    bytes,hlr_offset,hofs,shifted_bytes);
     fflush(stderr);
@@ -484,7 +484,7 @@ int hlrMakeSpace(unsigned char *hlr,int hofs,int hlr_offset,int bytes)
   length=hlrGetRecordLength(hlr,hofs);
   length+=bytes;
   hlrSetRecordLength(hlr,hofs,length);
-  if (debug>1) fprintf(stderr,"hlrMakeSpace: HLR entry now %d bytes long.\n",length);
+  if (debug&DEBUG_HLR) fprintf(stderr,"hlrMakeSpace: HLR entry now %d bytes long.\n",length);
 
   return 0;
 }
@@ -515,7 +515,7 @@ int openHlrFile(char *backing_file,int size)
       /* transitory storage of HLR data, so just malloc() the memory */
       hlr=calloc(size,1);
       if (!hlr) exit(setReason("Failed to calloc() HLR database."));
-      if (debug) fprintf(stderr,"Allocated %d byte temporary HLR store\n",size);
+      if (debug&DEBUG_HLR) fprintf(stderr,"Allocated %d byte temporary HLR store\n",size);
     }
   else
     {
@@ -553,7 +553,7 @@ int openHlrFile(char *backing_file,int size)
         perror("mmap");
         exit(setReason("Memory mapping of HLR backing file failed."));
       }
-      if (debug) fprintf(stderr,"Allocated %d byte HLR store backed by file `%s'\n",
+      if (debug&DEBUG_HLR) fprintf(stderr,"Allocated %d byte HLR store backed by file `%s'\n",
                          size,backing_file);
     }
   hlr_size=size;

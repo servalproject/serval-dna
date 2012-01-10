@@ -194,12 +194,12 @@ int overlay_interface_init_socket(int interface,struct sockaddr_in src_addr,stru
   /* XXX Is this right? Are we really setting the local side address?
      I was in a plane when at the time, so couldn't Google it.
   */
-  if (debug&4) fprintf(stderr,"src_addr=%08x\n",(unsigned int)src_addr.sin_addr.s_addr);
+  if (debug&DEBUG_PACKETXFER) fprintf(stderr,"src_addr=%08x\n",(unsigned int)src_addr.sin_addr.s_addr);
   if(bind(I(fd),(struct sockaddr *)&src_addr,sizeof(src_addr))) {
     perror("bind()");
     return WHY("MP HLR server could not bind to requested UDP port (bind() failed)");
   }
-  if (debug&4) fprintf(stderr,"Bound to port 0x%04x\n",src_addr.sin_port);
+  if (debug&(DEBUG_PACKETXFER|DEBUG_IO)) fprintf(stderr,"Bound to port 0x%04x\n",src_addr.sin_port);
 
   int broadcastP=1;
   if(setsockopt(I(fd), SOL_SOCKET, SO_BROADCAST, &broadcastP, sizeof(broadcastP)) < 0) {
@@ -303,9 +303,10 @@ int overlay_rx_messages()
 		    plen=2048-128;		    
 		    plen=packet[110]+(packet[111]<<8);
 		    if (plen>(2048-128)) plen=-1;
-		    if (debug) serval_packetvisualise(stderr,
-						       "Read from dummy interface",
-						       &packet[128],plen);
+		    if (debug&DEBUG_PACKETXFER) 
+		      serval_packetvisualise(stderr,
+					     "Read from dummy interface",
+					     &packet[128],plen);
 		    bzero(&transaction_id[0],8);
 		    bzero(&src_addr,sizeof(src_addr));
 		    if ((plen>=0)&&(packet[0]==0x01)&&!(packet[1]|packet[2]|packet[3])) {
@@ -320,8 +321,9 @@ int overlay_rx_messages()
 			  &src_addr,&addrlen);
 	    if (plen<0) { c[i]=0; count--; } else {
 	      /* We have a frame from this interface */
-	      if (debug) serval_packetvisualise(stderr,"Read from real interface",
-						 packet,plen);
+	      if (debug&DEBUG_PACKETXFER) 
+		serval_packetvisualise(stderr,"Read from real interface",
+				       packet,plen);
 	      if (debug&DEBUG_OVERLAYINTERFACES)fprintf(stderr,"Received %d bytes on interface #%d\n",plen,i);
 	      
 	      if (packetOk(i,packet,plen,NULL,&src_addr,addrlen,1)) WHY("Malformed packet");	  
@@ -366,7 +368,7 @@ int overlay_broadcast_ensemble(int interface_number,
   else {
     s = overlay_interfaces[interface_number].broadcast_address;
     s.sin_family = AF_INET;
-    if (debug&4) fprintf(stderr,"Port=%d\n",overlay_interfaces[interface_number].port);
+    if (debug&DEBUG_PACKETXFER) fprintf(stderr,"Port=%d\n",overlay_interfaces[interface_number].port);
     s.sin_port = htons( overlay_interfaces[interface_number].port );
   }
 
@@ -429,15 +431,21 @@ int overlay_broadcast_ensemble(int interface_number,
    interface they came in. */
 int overlay_sendto(struct sockaddr_in *recipientaddr,unsigned char *bytes,int len)
 {
-  if (debug>1) fprintf(stderr,"Sending %d bytes.\n",len);
+  if (debug&DEBUG_PACKETXFER) fprintf(stderr,"Sending %d bytes.\n",len);
   if(overlay_broadcast_ensemble(overlay_last_interface_number,recipientaddr,bytes,len)) 
     return -1;
   else 
     return len;
 }
 
+time_t overlay_last_interface_discover_time=0;
 int overlay_interface_discover()
 {
+  /* Don't waste too much time and effort on interface discovery,
+     especially if we can't attach to a given interface for some reason. */
+  if ((time(0)-overlay_last_interface_discover_time)<2) return 0;
+  overlay_last_interface_discover_time=time(0);
+
 #ifdef HAVE_IFADDRS_H
   struct ifaddrs *ifaddr,*ifa;
   int family,i;
@@ -465,7 +473,7 @@ int overlay_interface_discover()
 				   1000000,PORT_DNA,OVERLAY_INTERFACE_WIFI))
 	  WHY("Could not initialise newly seen interface");
 	else
-	  if (debug&4)fprintf(stderr,"Registered interface %s\n",r->namespec);
+	  if (debug&DEBUG_OVERLAYINTERFACES) fprintf(stderr,"Registered interface %s\n",r->namespec);
       }	          
     }
     r=r->next;
@@ -483,7 +491,7 @@ int overlay_interface_discover()
 	unsigned int broadcast_bits=local.sin_addr.s_addr|~netmask.sin_addr.s_addr;
 	struct sockaddr_in broadcast=local;
 	broadcast.sin_addr.s_addr=broadcast_bits;
-	if (debug>3) printf("%s: %08x %08x %08x\n",name,local.sin_addr.s_addr,netmask.sin_addr.s_addr,broadcast.sin_addr.s_addr);
+	if (debug&DEBUG_OVERLAYINTERFACES) printf("%s: %08x %08x %08x\n",name,local.sin_addr.s_addr,netmask.sin_addr.s_addr,broadcast.sin_addr.s_addr);
 	/* Now register the interface, or update the existing interface registration */
 	struct interface_rules *r=interface_filter,*me=NULL;
 	while(r) {
@@ -492,7 +500,8 @@ int overlay_interface_discover()
 	  r=r->next;
 	}
 	if (me&&(!me->excludeP)) {
-	  if (debug&4)fprintf(stderr,"Interface %s is interesting.\n",name);
+	  if (debug&DEBUG_OVERLAYINTERFACES)
+	    fprintf(stderr,"Interface %s is interesting.\n",name);
 	  /* We should register or update this interface. */
 	  int i;
 	  for(i=0;i<overlay_interface_count;i++) if (!strcasecmp(overlay_interfaces[i].name,(char *)name)) break;
@@ -520,7 +529,7 @@ int overlay_interface_discover()
 				       me->speed_in_bits,me->port,me->type))
 	      WHY("Could not initialise newly seen interface");
 	    else
-	      if (debug&4) fprintf(stderr,"Registered interface %s\n",name);
+	      if (debug&DEBUG_OVERLAYINTERFACES) fprintf(stderr,"Registered interface %s\n",name);
 	  }	    
 	}
 	break;
@@ -594,7 +603,7 @@ int overlay_tick_interface(int i, long long now)
     return 0;
   }
     
-  if (debug&4) fprintf(stderr,"Ticking interface #%d\n",i);
+  if (debug&DEBUG_OVERLAYINTERFACES) fprintf(stderr,"Ticking interface #%d\n",i);
   
   /* Get a buffer ready, and limit it's size appropriately.
      XXX size limit should be reduced from MTU.
@@ -639,7 +648,8 @@ int overlay_tick_interface(int i, long long now)
 
   /* Now send the frame.  This takes the form of a special DNA packet with a different
      service code, which we setup earlier. */
-  if (debug&4) fprintf(stderr,"Sending %d bytes\n",e->length);
+  if (debug&DEBUG_OVERLAYINTERFACES) 
+    fprintf(stderr,"Sending %d byte tick packet\n",e->length);
   if (!overlay_broadcast_ensemble(i,NULL,e->bytes,e->length))
     {
       overlay_update_sequence_number();
@@ -684,7 +694,7 @@ int overlay_check_ticks()
 
   /* Now check if the next tick time for the interfaces is no later than that time.
      If so, trigger a tick on the interface. */
-  if (debug&4) fprintf(stderr,"Examining %d interfaces.\n",overlay_interface_count);
+  if (debug&DEBUG_OVERLAYINTERFACES) fprintf(stderr,"Examining %d interfaces.\n",overlay_interface_count);
   for(i=0;i<overlay_interface_count;i++)
     {
       /* Only tick live interfaces */
