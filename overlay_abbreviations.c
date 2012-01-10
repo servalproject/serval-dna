@@ -131,6 +131,7 @@ sid overlay_abbreviate_previous_address={{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
    it on most occassions.
 */
 sid overlay_abbreviate_current_sender={{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}};
+int overlay_abbreviate_current_sender_set=0;
 int overlay_abbreviate_current_sender_id=-1;
 
 int overlay_abbreviate_prepare_cache()
@@ -330,7 +331,7 @@ int overlay_abbreviate_expand_address(int interface,unsigned char *in,int *inofs
 			used to encode the sender's address there ;) */
       (*inofs)++;
       if (debug&DEBUG_OVERLAYABBREVIATIONS) fprintf(stderr,"Resolving OA_CODE_SELF.\n");
-      if (overlay_abbreviate_current_sender_id>=0) {
+      if (overlay_abbreviate_current_sender_set) {
 	bcopy(&overlay_abbreviate_current_sender.b[0],&out[*ofs],SID_SIZE);
 	overlay_abbreviate_set_most_recent_address(&out[*ofs]);
 	(*ofs)+=SID_SIZE;
@@ -523,6 +524,13 @@ int overlay_abbreviate_set_current_sender(unsigned char *in)
 {
   bcopy(in,&overlay_abbreviate_current_sender.b[0],SID_SIZE);
   overlay_abbreviate_current_sender_id=-1;
+  overlay_abbreviate_current_sender_set=1;
+  return 0;
+}
+
+int overlay_abbreviate_unset_current_sender()
+{
+  overlay_abbreviate_current_sender_set=0;
   return 0;
 }
 

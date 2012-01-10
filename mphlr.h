@@ -901,4 +901,5 @@ int serval_packetvisualise(FILE *f,char *message,unsigned char *packet,int plen)
 int overlay_broadcast_drop_check(unsigned char *a);
 int overlay_address_is_broadcast(unsigned char *a);
 int overlay_broadcast_generate_address(unsigned char *a);
+int overlay_abbreviate_unset_current_sender();
 

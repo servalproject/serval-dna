@@ -95,6 +95,9 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *t
   f.payload=NULL;
   f.bytes=NULL;
   f.bytecount=0;
+  f.prev=NULL; f.next=NULL;
+
+  overlay_abbreviate_unset_current_sender();
 
   /* Skip magic bytes and version */
   for(ofs=4;ofs<len;)
