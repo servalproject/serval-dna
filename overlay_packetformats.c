@@ -195,6 +195,13 @@ int overlay_frame_resolve_addresses(int interface,overlay_frame *f)
   f->destination_address_status=overlay_abbreviate_expand_address(interface,f->bytes,&offset,f->destination,&alen);
   alen=0;
   f->source_address_status=overlay_abbreviate_expand_address(interface,f->bytes,&offset,f->source,&alen);
+  if (debug&DEBUG_OVERLAYABBREVIATIONS)
+    {
+      fprintf(stderr,"Wrote %d bytes into source address: \n",alen);
+      int i;
+      for(i=0;i<32;i++) fprintf(stderr,"%02X",f->source[i]);
+      fprintf(stderr,"\n");
+    }
 
   /* Copy payload into overlay_buffer structure */
   if (f->bytecount-offset<0) return WHY("Abbreviated ddresses run past end of packet");
@@ -292,7 +299,8 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
   if (ob_append_int(b,overlay_sequence_number))
     return WHY("ob_append_int() could not add high sequence number to self-announcement");
   overlay_interfaces[interface].last_tick_ms=overlay_sequence_number;
-  fprintf(stderr,"last tick seq# = %lld\n",overlay_interfaces[interface].last_tick_ms);
+  if (debug&DEBUG_OVERLAYINTERFACES)
+    fprintf(stderr,"last tick seq# = %lld\n",overlay_interfaces[interface].last_tick_ms);
 
   /* A byte that indicates which interface we are sending over */
   if (ob_append_byte(b,interface))

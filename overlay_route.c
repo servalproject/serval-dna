@@ -516,10 +516,12 @@ int overlay_route_ack_selfannounce(overlay_frame *f,overlay_neighbour *n)
 	for(i=0;i<SID_SIZE;i++) out->nexthop[i]=0xff;
 	out->nexthop_address_status=OA_RESOLVED;
 	out->ttl=2;
-	WHY("Broadcasting ack to selfannounce");
+	if (debug&DEBUG_OVERLAYROUTING) 
+	  fprintf(stderr,"Broadcasting ack to selfannounce");
       }
     else
-      WHY("singlecasting ack to selfannounce via known route");
+      if (debug&DEBUG_OVERLAYROUTING)
+	fprintf(stderr,"singlecasting ack to selfannounce via known route");
   }
   
   /* Set the time in the ack. Use the last sequence number we have seen
@@ -740,8 +742,10 @@ int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now)
   s1=ntohl(*((int*)&f->payload->bytes[0]));
   s2=ntohl(*((int*)&f->payload->bytes[4]));
   sender_interface=f->payload->bytes[8];
-  fprintf(stderr,"Received self-announcement for sequence range [%08x,%08x] from interface %d\n",s1,s2,sender_interface);
-  dump("Payload",&f->payload->bytes[0],f->payload->length);
+  if (debug&DEBUG_OVERLAYROUTING) {
+    fprintf(stderr,"Received self-announcement for sequence range [%08x,%08x] from interface %d\n",s1,s2,sender_interface);
+    dump("Payload",&f->payload->bytes[0],f->payload->length);
+  }
 
   overlay_route_i_can_hear(f->source,sender_interface,s1,s2,interface,now);
 

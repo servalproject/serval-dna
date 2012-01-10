@@ -1427,7 +1427,8 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
      XXX How do we indicate group membership with BARs? Or do groups actively poll?
   */
   
-  WHY("Group handling not completely thought out here yet.");
+  if (debug&DEBUG_RHIZOME)
+    WHY("Group handling not completely thought out here yet.");
 
   /* Get number of bundles available if required */
   if (bundles_available==-1||(bundle_offset>=bundles_available)) {

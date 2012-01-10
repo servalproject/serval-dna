@@ -80,7 +80,6 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
   if (p->nexthop_address_status!=OA_RESOLVED) {
     if (overlay_get_nexthop((unsigned char *)p->destination,p->nexthop,&nexthoplen,&p->nexthop_interface)) fail++;
     else p->nexthop_address_status=OA_RESOLVED;
-    fprintf(stderr,"!!! Resolved nexthop\n");
   }
 
   if (p->source[0]<0x10) {

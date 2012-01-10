@@ -169,8 +169,10 @@ int overlay_abbreviate_cache_address(unsigned char *sid)
   if ((!cache)&&OVERLAY_ADDRESS_CACHE_SIZE) overlay_abbreviate_prepare_cache();
   if (!cache) return 0;
 
-  /* Work out the index in the cache where this address would go */
-  int index=((sid[0]<<16)|(sid[0]<<8)|sid[2])>>cache->shift;
+  /* Work out the index in the cache where this address would go.
+     The XOR 1 is to make sure that all zeroes address doesn't live in index 0,
+     which would otherwise result in it being detected as already present. */
+  int index=(((sid[0]<<16)|(sid[0]<<8)|sid[2])>>cache->shift)^1;
 
   /* Does the stored address match the one we have been passed? */
   if (!memcmp(sid,&cache->sids[index].b[0],SID_SIZE))
@@ -327,10 +329,16 @@ int overlay_abbreviate_expand_address(int interface,unsigned char *in,int *inofs
 			selfannounce in this packet.  Naturally it cannot be 
 			used to encode the sender's address there ;) */
       (*inofs)++;
-      bcopy(&overlay_abbreviate_current_sender.b[0],&out[*ofs],SID_SIZE);
-      overlay_abbreviate_set_most_recent_address(&out[*ofs]);
-      (*ofs)+=SID_SIZE;
-      return OA_RESOLVED;
+      if (debug&DEBUG_OVERLAYABBREVIATIONS) fprintf(stderr,"Resolving OA_CODE_SELF.\n");
+      if (overlay_abbreviate_current_sender_id>=0) {
+	bcopy(&overlay_abbreviate_current_sender.b[0],&out[*ofs],SID_SIZE);
+	overlay_abbreviate_set_most_recent_address(&out[*ofs]);
+	(*ofs)+=SID_SIZE;
+	return OA_RESOLVED;
+      } else {
+	if (debug&DEBUG_OVERLAYABBREVIATIONS) fprintf(stderr,"Cannot resolve OA_CODE_SELF until we can resolve sender's address.\n");
+	return OA_UNINITIALISED;
+      }
     case OA_CODE_INDEX: /* single byte index look up */
       /* Lookup sender's neighbour ID */
       if (overlay_abbreviate_current_sender_id==-1) if (overlay_abbreviate_lookup_sender_id()) return WHY("could not lookup neighbour ID of packet sender");
@@ -406,12 +414,13 @@ int overlay_abbreviate_remember_index(int index_byte_count,unsigned char *sid_to
   /* Lookup sender's neighbour ID */
   if (overlay_abbreviate_current_sender_id==-1) overlay_abbreviate_lookup_sender_id();
 
-  fprintf(stderr,"index=%d\n",index);
   sid[0]=0; extractSid(sid_to_remember,&zero,sid);
-  fprintf(stderr,"We need to remember that the sender #%d has assigned index #%d to the following:\n      [%s]\n",
+  if (debug&DEBUG_OVERLAYABBREVIATIONS) {
+    fprintf(stderr,"index=%d\n",index);
+    fprintf(stderr,"We need to remember that the sender #%d has assigned index #%d to the following:\n      [%s]\n",
 	  overlay_abbreviate_current_sender_id,index,sid);
+  }
 
-  /* This is not the cause of the segmentation fault */
   bcopy(sid_to_remember,overlay_neighbours[overlay_abbreviate_current_sender_id].one_byte_index_address_prefixes[index],OVERLAY_SENDER_PREFIX_LENGTH);
   return 0;
 }
@@ -424,7 +433,7 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
   if (!cache) return OA_PLEASEEXPLAIN; /* No cache? Then ask for address in full */  
 
   /* Work out the index in the cache where this address would live */
-  int index=((in[0]<<16)|(in[0]<<8)|in[2])>>cache->shift;
+  int index=(((in[0]<<16)|(in[0]<<8)|in[2])>>cache->shift)^1;
 
   int i;
   if (debug&DEBUG_OVERLAYABBREVIATIONS) {
@@ -433,11 +442,38 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
     fprintf(stderr,"*\n");
   }
 
+  if (in[0]<0x10) {
+    /* Illegal address */
+    if (debug&DEBUG_OVERLAYABBREVIATIONS)
+      fprintf(stderr,"Passed an illegal address (first byte <0x10)\n");
+    return OA_UNSUPPORTED;
+  }
+
   /* So is it there? */
   if (memcmp(in,&cache->sids[index].b[0],prefix_bytes))
     {
-      /* No, it isn't in the cache. */
-      WHY("Encountered unresolvable address -- are we asking for explanation?");
+      /* No, it isn't in the cache, but it might be a local address. */
+      int i,j;
+      for(i=0;i<overlay_local_identity_count;i++)
+	{
+	  for(j=0;j<prefix_bytes;j++)
+	    if (overlay_local_identities[i][j]!=in[j]) break;
+	  if (j>=prefix_bytes) {
+	    if (debug&DEBUG_OVERLAYABBREVIATIONS) 
+	      WHY("Found reference to local address.");
+	    bcopy(&overlay_local_identities[i][0],&out[(*ofs)],SID_SIZE);
+	    (*ofs)+=SID_SIZE;
+	    return OA_RESOLVED;
+	  }
+	  else {
+	    if (debug&DEBUG_OVERLAYABBREVIATIONS)
+	      fprintf(stderr,"not identity #%d (%02x != %02x)\n",
+		      i,in[j],overlay_local_identities[i][j]);
+	  }
+	}
+
+      if (debug&DEBUG_OVERLAYABBREVIATIONS) 
+	WHY("Encountered unresolvable address -- are we asking for explanation?");
       return OA_PLEASEEXPLAIN;
     }
   
@@ -464,6 +500,14 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
     overlay_abbreviate_remember_index(index_bytes,&cache->sids[index].b[0],&in[prefix_bytes]);
     (*ofs)+=index_bytes;
   }
+  if (debug&DEBUG_OVERLAYABBREVIATIONS)
+  {
+    int i;
+    fprintf(stderr,"OA_RESOLVED returned for ");
+    for(i=0;i<32;i++) fprintf(stderr,"%02X",cache->sids[index].b[i]);
+    fprintf(stderr,"\n");
+  }
+  
   return OA_RESOLVED;
 }
 

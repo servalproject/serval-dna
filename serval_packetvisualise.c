@@ -16,6 +16,7 @@ unsigned char senderAddress[32];
 
 int serval_packetvisualise_renderaddress(FILE *f,unsigned char *packet,int *ofs,int senderP)
 {
+
   switch(packet[*ofs]) {
   case 0x00: /* ourself */
     if (senderSet) {

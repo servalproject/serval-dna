@@ -181,8 +181,9 @@ int overlay_route_saw_advertisements(int i,overlay_frame *f, long long now)
   /* lookup score of current sender */
   overlay_node *sender=overlay_route_find_node(f->source,0);
   int sender_score=sender->best_link_score;
-  fprintf(stderr,"score to reach %s is %d\n",
-	  overlay_render_sid(f->source),sender_score);
+  if (debug&DEBUG_OVERLAYROUTEMONITOR)
+    fprintf(stderr,"score to reach %s is %d\n",
+	    overlay_render_sid(f->source),sender_score);
 
   while(ofs<f->payload->length)
     {

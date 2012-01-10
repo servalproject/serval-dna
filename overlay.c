@@ -166,8 +166,8 @@ int overlay_frame_process(int interface,overlay_frame *f)
 
   long long now=overlay_gettime_ms();
 
-  if (overlay_address_is_local(f->source))
-    return -1; /* WHY("Dropping frame claiming to come from myself."); */
+  if (f->source_address_status==OA_RESOLVED&&overlay_address_is_local(f->source))
+      return WHY("Dropping frame claiming to come from myself.");
 
   if (debug&DEBUG_OVERLAYFRAMES) fprintf(stderr,">>> Received frame (type=%02x)\n",f->type);
 
@@ -209,9 +209,6 @@ int overlay_frame_process(int interface,overlay_frame *f)
   int forMe=0,i;
   int ultimatelyForMe=0;
   int broadcast=0;
-  fprintf(stderr,"Nexthop for this frame is: ");
-  for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",f->nexthop[i]);
-  fprintf(stderr,"\n");
 
   for(i=0;i<SID_SIZE;i++) if (f->nexthop[i]!=0xff) break;
   if (i==SID_SIZE) forMe=1;
@@ -293,7 +290,6 @@ int overlay_frame_process(int interface,overlay_frame *f)
       overlay_route_saw_selfannounce(interface,f,now);
       break;
     case OF_TYPE_SELFANNOUNCE_ACK:
-      fprintf(stderr,"!!! selfannounce_ack\n");
       overlay_route_saw_selfannounce_ack(interface,f,now);
       break;
     case OF_TYPE_NODEANNOUNCE:

@@ -653,7 +653,8 @@ int overlay_tick_interface(int i, long long now)
   if (!overlay_broadcast_ensemble(i,NULL,e->bytes,e->length))
     {
       overlay_update_sequence_number();
-      fprintf(stderr,"Successfully transmitted tick frame #%lld on interface #%d (%d bytes)\n",
+      if (debug&DEBUG_OVERLAYINTERFACES)
+	fprintf(stderr,"Successfully transmitted tick frame #%lld on interface #%d (%d bytes)\n",
 	      (long long)overlay_sequence_number,i,e->length);
       /* De-queue the passengers who were aboard. */
       int j,q;
@@ -666,7 +667,7 @@ int overlay_tick_interface(int i, long long now)
 	      while ((*p)&&(*p!=pax[j])) p=&(*p)->next;
 	      /* Now get rid of this frame once we have found it */
 	      if (*p) {
-		fprintf(stderr,"** dequeueing pax @ %p\n",*p);
+		if (debug&DEBUG_QUEUES) fprintf(stderr,"** dequeueing pax @ %p\n",*p);
 		*p=pax[j]->next;
 		if (pax[j]->next) pax[j]->next->prev=pax[j]->prev;
 		if (op_free(pax[j])) WHY("op_free() failed");
