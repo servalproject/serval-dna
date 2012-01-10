@@ -442,6 +442,7 @@ int main(int argc,char **argv)
 	  if (strstr(optarg,"rhizome")) debug|=DEBUG_RHIZOME;
 	  if (strstr(optarg,"monitorroutes")) debug|=DEBUG_OVERLAYROUTEMONITOR;
 	  if (strstr(optarg,"queues")) debug|=DEBUG_QUEUES;
+	  if (strstr(optarg,"broadcasts")) debug|=DEBUG_BROADCASTS;
 	  break;
 	case 'A': /* get address (IP or otherwise) of a given peer */
 	  peerAddress(did,sid,3 /* 1 = print list of addresses to stdout, 2 = set peer list to responders */);
