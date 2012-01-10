@@ -84,7 +84,7 @@ int overlay_route_add_advertisements(int interface,overlay_buffer *e)
    */
   int i;
   int bytes=e->sizeLimit-e->length;
-  int overhead=1+1+3+32+1+1; /* maximum overhead */
+  int overhead=1+8+1+3+32+1+1; /* maximum overhead */
   int slots=(bytes-overhead)/8;
   if (slots>30) slots=30;
   int slots_used=0;
@@ -96,11 +96,12 @@ int overlay_route_add_advertisements(int interface,overlay_buffer *e)
   ob_append_byte(e,1); /* TTL */
   int rfs_offset=e->length; /* remember where the RFS byte gets stored 
 			       so that we can patch it later */
-  ob_append_byte(e,1+1+1+8*slots_used/* RFS */);
+  ob_append_byte(e,1+8+1+1+8*slots_used/* RFS */);
 
   /* Stuff in dummy address fields */
   ob_append_byte(e,OA_CODE_BROADCAST);
-  ob_append_byte(e,OA_CODE_BROADCAST);
+  for(i=0;i<8;i++) ob_append_byte(e,random()&0xff); /* random BPI */
+  ob_append_byte(e,OA_CODE_PREVIOUS);
   ob_append_byte(e,OA_CODE_SELF);
   
   int count;
@@ -159,7 +160,7 @@ int overlay_route_add_advertisements(int interface,overlay_buffer *e)
       if (oad_bin==bin&&oad_slot==slot) break;
     }
   
-  e->bytes[rfs_offset]=1+1+1+8*slots_used;
+  e->bytes[rfs_offset]=1+8+1+1+8*slots_used;
 
   return 0;
 }

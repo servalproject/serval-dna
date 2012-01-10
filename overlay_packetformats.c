@@ -257,7 +257,7 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
   
   /* Add space for Remaining Frame Size field.  This will always be a single byte
      for self-announcments as they are always <256 bytes. */
-  c=1+1+(send_prefix?(1+7):SID_SIZE)+4+4+1;
+  c=1+8+1+(send_prefix?(1+7):SID_SIZE)+4+4+1;
   if (ob_append_bytes(b,&c,1))
     return WHY("ob_append_bytes() could not add RFS for self-announcement frame");
 
@@ -265,6 +265,7 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
   c=OA_CODE_BROADCAST;
   if (ob_append_bytes(b,&c,1))
     return WHY("ob_append_bytes() could not add self-announcement header");
+  { int i; for(i=0;i<8;i++) ob_append_byte(b,random()&0xff); } /* BPI for broadcast */
   
   /* Add final destination.  Always broadcast for self-announcments.
      As we have just referenced the broadcast address, we can encode it in a single byte */

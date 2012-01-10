@@ -1408,11 +1408,12 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
   ob_append_byte(e,1); /* TTL */
   int rfs_offset=e->length; /* remember where the RFS byte gets stored 
 			       so that we can patch it later */
-  ob_append_byte(e,1+1+1+1+RHIZOME_BAR_BYTES*slots_used/* RFS */);
+  ob_append_byte(e,1+8+1+1+1+RHIZOME_BAR_BYTES*slots_used/* RFS */);
 
   /* Stuff in dummy address fields */
   ob_append_byte(e,OA_CODE_BROADCAST);
-  ob_append_byte(e,OA_CODE_BROADCAST);
+  { int i; for(i=0;i<8;i++) ob_append_byte(e,random()&0xff); } /* BPI for broadcast */
+  ob_append_byte(e,OA_CODE_PREVIOUS);
   ob_append_byte(e,OA_CODE_SELF);
 
   /* Version of rhizome advert block */
@@ -1481,7 +1482,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
     }
 
   if (debug&DEBUG_RHIZOME) printf("Appended %d rhizome advertisements to packet.\n",slots_used);
-  e->bytes[rfs_offset]=1+1+1+1+RHIZOME_BAR_BYTES*slots_used;
+  e->bytes[rfs_offset]=1+8+1+1+1+RHIZOME_BAR_BYTES*slots_used;
   sqlite3_finalize(statement);
 
   return 0;

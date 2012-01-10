@@ -57,6 +57,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
   start to hit the limit of traffic, we start to throw away some of the redundancy.  This of course relies on us knowing when the
   network channel is getting too full.
 
+  Smart-flooding of broadcast information is also a requirement.  The long addresses help here, as we can make any address that begins
+  with the first 192 bits all ones be broadcast, and use the remaining 64 bits as a "broadcast packet identifier" (BPI).  
+  Nodes can remember recently seen BPIs and not forward broadcast frames that have been seen recently.  This should get us smart flooding
+  of the majority of a mesh (with some node mobility issues being a factor).  We could refine this later, but it will do for now, especially
+  since for things like number resolution we are happy to send repeat requests.
+
   This file currently seems to exist solely to contain this introduction, which is fine with me. Functions land in here until their
   proper place becomes apparent.
   
@@ -208,10 +214,12 @@ int overlay_frame_process(int interface,overlay_frame *f)
   /* Okay, nexthop is valid, so let's see if it is us */
   int forMe=0,i;
   int ultimatelyForMe=0;
-  int broadcast=0;
+  int broadcast=overlay_address_is_broadcast(f->nexthop);
+  int duplicateBroadcast=0;
 
-  for(i=0;i<SID_SIZE;i++) if (f->nexthop[i]!=0xff) break;
-  if (i==SID_SIZE) forMe=1;
+  if (broadcast) {
+    if (overlay_broadcast_drop_check(f->destination)) duplicateBroadcast=1;
+    forMe=1; }
   if (overlay_address_is_local(f->nexthop)) forMe=1;
 
   if (forMe) {
@@ -239,8 +247,9 @@ int overlay_frame_process(int interface,overlay_frame *f)
       }
 
     if (f->destination_address_status==OA_RESOLVED) {
-      for(i=0;i<SID_SIZE;i++) if (f->destination[i]!=0xff) break;
-      if (i==SID_SIZE) { ultimatelyForMe=1; broadcast=1; }
+      if (overlay_address_is_broadcast(f->destination))	
+	{ ultimatelyForMe=1; broadcast=1; 
+	  if (overlay_broadcast_drop_check(f->destination)) duplicateBroadcast=1; }
       if (overlay_address_is_local(f->destination)) ultimatelyForMe=1;
     } else {
       if (debug&DEBUG_OVERLAYFRAMES) WHY("Destination address could not be resolved, so dropping frame.");
@@ -263,7 +272,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
       /* Yes, it is. */
       int len=0;      
 
-      if (broadcast&&
+      if (broadcast&&(!duplicateBroadcast)&&
 	  ((f->type==OF_TYPE_SELFANNOUNCE)
 	   ||(f->type==OF_TYPE_RHIZOME_ADVERT)
 	   ))
@@ -272,6 +281,9 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	  // traffic.  We have other means to propagating the mesh topology information.
 	  // Similarly, rhizome advertisement traffic is always link local, so don't 
 	  // forward that either.
+	  if (debug&DEBUG_BROADCASTS)
+	    if (duplicateBroadcast)
+	      fprintf(stderr,"Dropping broadcast frame (BPI seen before)\n");
 	} else {
 	if (debug&DEBUG_OVERLAYFRAMES) fprintf(stderr,"\nForwarding frame.\n");
 	if (overlay_get_nexthop(f->destination,f->nexthop,&len,&f->nexthop_interface))

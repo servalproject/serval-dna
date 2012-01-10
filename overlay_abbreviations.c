@@ -375,8 +375,16 @@ int overlay_abbreviate_expand_address(int interface,unsigned char *in,int *inofs
       overlay_abbreviate_set_most_recent_address(&out[(*ofs)-SID_SIZE]);
       return r;
     case OA_CODE_BROADCAST: /* broadcast */
-      memset(&out[*ofs],0xff,SID_SIZE);
+      memset(&out[*ofs],0xff,SID_SIZE-8);
       (*inofs)++;
+      /* Copy Broadcast Packet Identifier */
+      { int i; for(i=0;i<8;i++) out[(*ofs)+24+i]=in[(*inofs)+i]; }
+      if (debug&DEBUG_BROADCASTS) 
+	fprintf(stderr,"Expanded broadcast address with "
+		"BPI=%02X%02X%02X%02X%02X%02X%02X%02X\n",
+		in[(*inofs)+0],in[(*inofs)+1],in[(*inofs)+2],in[(*inofs)+3],
+		in[(*inofs)+4],in[(*inofs)+5],in[(*inofs)+6],in[(*inofs)+7]);
+      (*inofs)+=8;
       overlay_abbreviate_set_most_recent_address(&out[*ofs]);
       return OA_RESOLVED;
     case OA_CODE_FULL_INDEX1: case OA_CODE_FULL_INDEX2: 

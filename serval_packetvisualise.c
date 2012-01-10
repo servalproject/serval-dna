@@ -75,7 +75,14 @@ int serval_packetvisualise_renderaddress(FILE *f,unsigned char *packet,int *ofs,
     (*ofs)+=11;
     break;
   case 0x0f: /* broadcast */
-    fprintf(f,"<broadcast>"); (*ofs)++; break;
+    {
+      int i;
+      (*ofs)++; 
+      fprintf(f,"<broadcast BPI=");
+      for(i=0;i<8;i++) fprintf(f,"%02X",packet[(*ofs)+i]);
+      (*ofs)+=8;
+      fprintf(f,">"); break;
+    }
   case 0x0b: /* prefix 11 bytes and assign index */
   case 0x0d: /* prefix 11 bytes and assign 2-byte index */
 
