@@ -270,26 +270,57 @@ int isOverlayPacket(FILE *f,unsigned char *packet,int *ofs,int len)
 	    }
 	  } 
 	  break;
+	case 0x50: /* rhizome advertisement */
+	  {
+	    int i,j;
+	    fprintf(f,"%sRhizome bundle advertisement record (BAR) announcements, version %d\n",indent(8),frame[0]);
+	    if (frame[0]>1) fprintf(f,"%sWARNING: Version is newer than I understand.\n",
+				    indent(10));
+	    for(i=1;i<(frame_len-31);i+=32) {
+	      fprintf(f,"%smanifest id = %02X%02X%02X%02X%02X%02X%02X%02X*\n",
+		      indent(10),frame[i],frame[i+1],frame[i+2],frame[i+3],
+		      frame[i+4],frame[i+5],frame[i+6],frame[i+7]);
+	    
+	      unsigned long long manifest_version=0;
+	      for(j=0;j<7;j++) manifest_version=(manifest_version<<8)|frame[i+8+j];
+	      fprintf(f,"%smanifest revision = %lld (0x%llx)\n",
+		      indent(12),manifest_version,manifest_version);
+	      fprintf(f,"%smanifest TTL = %d (0x%x)\n",
+		      indent(12),frame[i+16],frame[i+16]);
+	      unsigned long long file_size=0;
+	      for(j=0;j<6;j++) file_size=(file_size<<8)+frame[i+18+j];
+	      fprintf(f,"%sassociated file size = %lld (0x%llx) bytesov\n",
+		      indent(12),file_size,file_size);
+	      double lat0=((frame[i+24]<<8)+frame[i+25])*180/65535-90;
+	      double long0=((frame[i+26]<<8)+frame[i+27])*360/65535-180;
+	      double lat1=((frame[i+28]<<8)+frame[i+29])*180/65535-90;
+	      double long1=((frame[i+30]<<8)+frame[i+31])*360/65535-180;
+	      fprintf(f,"%sgeographic extent of relevance (lat,long) = (%.f,%.f) - (%.f,%.f)\n",
+		      indent(12),lat0,long0,lat1,long1);
+	    }
+	  }
+	  break;
 	case 0x30: /* MDP frame */
 	case 0x40: /* voice frame */
-	case 0x50: /* rhizome advertisement */
 	case 0x60: /* please explain (request for expansion of an abbreviated address) */
 	case 0x70: /* node announce */
 	default:
-	  /* Reserved values */
-	  fprintf(f,"%sWARNING: Packet contains reserved/unknown frame type 0x%02x\n",
-		  indent(8),frame_type);
-	  int i,j;
-	  for(i=0;i<frame_len;i+=16) 
-	    {
-	      fprintf(f,"%sframe+%04x :",indent(10),i);
-	      for(j=0;j<16&&(i+j)<len;j++) fprintf(f," %02x",frame[i+j]);
-	      for(;j<16;j++) fprintf(f,"   ");
-	      fprintf(f,"    ");
-	      for(j=0;j<16&&(i+j)<len;j++) fprintf(f,"%c",frame[i+j]>=' '
-						   &&frame[i+j]<0x7c?frame[i+j]:'.');
-	      fprintf(f,"\n");
-	    }
+	  {
+	    /* Reserved values */
+	    fprintf(f,"%sWARNING: Packet contains reserved/unknown frame type 0x%02x\n",
+		    indent(8),frame_type);
+	    int i,j;
+	    for(i=0;i<frame_len;i+=16) 
+	      {
+		fprintf(f,"%sframe+%04x :",indent(10),i);
+		for(j=0;j<16&&(i+j)<len;j++) fprintf(f," %02x",frame[i+j]);
+		for(;j<16;j++) fprintf(f,"   ");
+		fprintf(f,"    ");
+		for(j=0;j<16&&(i+j)<len;j++) fprintf(f,"%c",frame[i+j]>=' '
+						     &&frame[i+j]<0x7c?frame[i+j]:'.');
+		fprintf(f,"\n");
+	      }
+	  }
 	  break;
 	}
       }	

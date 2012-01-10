@@ -388,6 +388,7 @@ int overlay_abbreviate_lookup_sender_id()
   if (!neh) { overlay_abbreviate_current_sender_id=-1; return WHY("Could not find sender in neighbour list"); }
   /* Okay, so the following is a little tortuous in asking our parent who we are instead of just knowing, 
      but it will do for now */
+  if (!neh->node) return WHY("neighbour structure has no associated node");
   overlay_abbreviate_current_sender_id=neh->node->neighbour_id;
   return 0;
 }

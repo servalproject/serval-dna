@@ -600,6 +600,9 @@ int overlay_route_make_neighbour(overlay_node *n)
   /* If it is already a neighbour, then return */
   if (n->neighbour_id) return 0;
 
+  /* If address is local don't both making it a neighbour */
+  if (overlay_address_is_local(n->sid)) return 0;
+
   /* It isn't yet a neighbour, so find or free a neighbour slot */
   /* slot 0 is reserved, so skip it */
   if (!overlay_neighbour_count) overlay_neighbour_count=1;
@@ -621,6 +624,11 @@ int overlay_route_make_neighbour(overlay_node *n)
 overlay_neighbour *overlay_route_get_neighbour_structure(unsigned char *packed_sid,
 							 int createP)
 {
+  if (overlay_address_is_local(packed_sid)) {
+    WHY("asked for neighbour structure for myself");
+    return NULL;
+  }
+
   overlay_node *n=overlay_route_find_node(packed_sid,createP);
   if (!n) { WHY("Could not find node record for observed node"); return NULL; }
 
@@ -638,6 +646,9 @@ int overlay_route_i_can_hear(unsigned char *who,int sender_interface,unsigned in
   /* 1. Find (or create) node entry for the node.
      2. Replace oldest observation with this observation.
      3. Update score of how reliably we can hear this node */
+
+  /* Ignore traffic from ourselves. */
+  if (overlay_address_is_local(who)) return 0;
 
   /* Find node, or create entry if it hasn't been seen before */
   overlay_node *n=overlay_route_find_node(who,1 /* create if necessary */);
@@ -710,6 +721,8 @@ int overlay_print_address(FILE *f,char *prefix,unsigned char *s,char *suffix)
 
 int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now)
 {
+  if (overlay_address_is_local(f->source)) return 0;
+
   unsigned int s1,s2;
   unsigned char sender_interface;
   overlay_neighbour *n=overlay_route_get_neighbour_structure(f->source,1 /* make neighbour if not yet one */);
@@ -719,6 +732,10 @@ int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now)
   /* Record current sender for reference by addresses in subsequent frames in the
      ensemble */
   overlay_abbreviate_set_current_sender(f->source);
+
+  /* Ignore self announcements from ourselves */
+  if (overlay_address_is_local(f->source))
+    return 0;
 
   s1=ntohl(*((int*)&f->payload->bytes[0]));
   s2=ntohl(*((int*)&f->payload->bytes[4]));
