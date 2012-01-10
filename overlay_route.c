@@ -972,6 +972,18 @@ int overlay_route_saw_selfannounce_ack(int interface,overlay_frame *f,long long 
 
 int overlay_route_record_link(long long now,unsigned char *to,unsigned char *via,unsigned int timestamp,int score,int gateways_en_route)
 {
+  int i,slot=-1;
+
+  /* Don't record routes to ourselves */
+  if (overlay_address_is_local(to)) return 0;
+
+  for(i=0;i<SID_SIZE;i++) if (to[i]!=via[i]) break;
+  if (i==SID_SIZE) {
+    /* TO and VIA are the same, which makes no sense.
+       So ignore */
+    return 0;
+  }
+
   fprintf(stderr,"route_record_link(0x%llx,%s*,",
 	  now,overlay_render_sid_prefix(to,7));
   fprintf(stderr,"%s*,0x%08x,%d)\n",
@@ -980,7 +992,6 @@ int overlay_route_record_link(long long now,unsigned char *to,unsigned char *via
   overlay_node *n=overlay_route_find_node(to,1 /* create node if missing */);
   if (!n) return WHY("Could not find or create entry for node");
   
-  int i,slot=-1;
   for(i=0;i<OVERLAY_MAX_OBSERVATIONS;i++)
     {
       /* Take note of where we can find space for a fresh observation */
@@ -1020,8 +1031,8 @@ int overlay_route_record_link(long long now,unsigned char *to,unsigned char *via
 
   overlay_route_recalc_node_metrics(n,now);
   
-  overlay_route_dump();
-
+  if (1||debug&DEBUG_OVERLAYROUTEMONITOR) overlay_route_dump();
+  
   return 0;
 }
 

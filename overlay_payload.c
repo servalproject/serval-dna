@@ -140,7 +140,9 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
   if (ob_makespace(b,2+headers->length+p->payload->length)) {
     /* Not enough space free in output buffer */
     ob_free(headers);
-    return WHY("Could not make enough space free in output buffer");
+    if (debug&DEBUG_PACKETFORMATS)
+      WHY("Could not make enough space free in output buffer");
+    return -1;
   }
   
   /* Package up headers and payload */

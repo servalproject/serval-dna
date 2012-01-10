@@ -231,6 +231,12 @@ int overlay_frame_process(int interface,overlay_frame *f)
       if (debug&DEBUG_OVERLAYFRAMES) WHY("Source address could not be resolved, so dropping frame.");
       return -1;
     }
+    if (overlay_address_is_local(f->source))
+      {
+	if (debug&DEBUG_OVERLAYROUTING) 
+	  WHY("Dropping frame claiming to come from myself.");
+	return -1; 
+      }
 
     if (f->destination_address_status==OA_RESOLVED) {
       for(i=0;i<SID_SIZE;i++) if (f->destination[i]!=0xff) break;
