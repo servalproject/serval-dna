@@ -592,6 +592,38 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,
   return 0;
 }
 
+int overlay_queue_dump(overlay_txqueue *q)
+{
+  struct overlay_frame *f;
+
+  fprintf(stderr,"overlay_txqueue @ 0x%p\n",q);
+  fprintf(stderr,"  length=%d\n",q->length);
+  fprintf(stderr,"  maxLenght=%d\n",q->maxLength);
+  fprintf(stderr,"  latencyTarget=%d milli-seconds\n",q->latencyTarget);
+  fprintf(stderr,"  first=%p\n",q->first);
+  f=q->first;
+  while(f) {
+    fprintf(stderr,"    %p: ->next=%p, ->prev=%p\n",
+	    f,f->next,f->prev);
+    if (f==f->next) {
+      fprintf(stderr,"        LOOP!\n"); break;
+    }
+    f=f->next;
+  }
+
+  fprintf(stderr,"  last=%p\n",q->last);
+  f=q->last;
+  while(f) {
+    fprintf(stderr,"    %p: ->next=%p, ->prev=%p\n",
+	    f,f->next,f->prev);
+    if (f==f->prev) {
+      fprintf(stderr,"        LOOP!\n"); break;
+    }
+    f=f->prev;
+  }
+  return 0;
+}
+
 int overlay_tick_interface(int i, long long now)
 {
   int frame_pax=0;
@@ -667,10 +699,26 @@ int overlay_tick_interface(int i, long long now)
 	      while ((*p)&&(*p!=pax[j])) p=&(*p)->next;
 	      /* Now get rid of this frame once we have found it */
 	      if (*p) {
-		if (debug&DEBUG_QUEUES) fprintf(stderr,"** dequeueing pax @ %p\n",*p);
+		if (debug&DEBUG_QUEUES)
+		  { 
+		    fprintf(stderr,"** dequeueing pax @ %p\n",*p);
+		    overlay_queue_dump(&overlay_tx[q]);
+		  }
 		*p=pax[j]->next;
+		if (overlay_tx[q].last==pax[j]) overlay_tx[q].last=pax[j]->prev;
+		if (overlay_tx[q].first==pax[j]) overlay_tx[q].first=pax[j]->next;
+		if (pax[j]->prev) pax[j]->prev->next=pax[j]->next;
 		if (pax[j]->next) pax[j]->next->prev=pax[j]->prev;
-		if (op_free(pax[j])) WHY("op_free() failed");
+		if (debug&DEBUG_QUEUES)
+		  { 
+		    fprintf(stderr,"** dequeued pax @ %p\n",*p);
+		    overlay_queue_dump(&overlay_tx[q]);
+		  }
+		if (op_free(pax[j])) {
+		  overlay_queue_dump(&overlay_tx[q]);
+		  WHY("op_free() failed");
+		  if (debug&DEBUG_QUEUES) sleep(3600);
+		}
 		overlay_tx[q].length--;
 	      }
 	    }

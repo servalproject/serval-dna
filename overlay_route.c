@@ -405,7 +405,7 @@ unsigned int overlay_route_hash_sid(unsigned char *sid)
 
   /* Mask out extranous bits to return only a valid bin number */
   bin&=(overlay_bin_count-1);
-  if (debug>DEBUG_OVERLAYROUTING) {
+  if (debug&DEBUG_OVERLAYROUTING) {
     int zeroes=0;
     fprintf(stderr,"The following address resolves to bin #%d\n",bin);
     for(i=0;i<SID_SIZE;i++) { fprintf(stderr,"%02x",sid[i]); if (!sid[i]) zeroes++; }
