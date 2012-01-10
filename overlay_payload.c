@@ -80,6 +80,7 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
   if (p->nexthop_address_status!=OA_RESOLVED) {
     if (overlay_get_nexthop((unsigned char *)p->destination,p->nexthop,&nexthoplen,&p->nexthop_interface)) fail++;
     else p->nexthop_address_status=OA_RESOLVED;
+    fprintf(stderr,"!!! Resolved nexthop\n");
   }
 
   if (p->source[0]<0x10) {
@@ -183,7 +184,7 @@ int overlay_payload_enqueue(int q,overlay_frame *p)
   if (l) l->next=p;
   p->prev=l;
   p->next=NULL;
-  p->enqueued_at=overlay_time_in_ms();
+  p->enqueued_at=overlay_gettime_ms();
 
   overlay_tx[q].last=p;
   if (!overlay_tx[q].first) overlay_tx[q].first=p;

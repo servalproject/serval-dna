@@ -155,7 +155,6 @@ int overlayServerMode()
     }
     /* Check if we need to trigger any ticks on any interfaces */
     overlay_check_ticks();
-      sleep(1);
   }
 
   return 0;
@@ -294,6 +293,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
       overlay_route_saw_selfannounce(interface,f,now);
       break;
     case OF_TYPE_SELFANNOUNCE_ACK:
+      fprintf(stderr,"!!! selfannounce_ack\n");
       overlay_route_saw_selfannounce_ack(interface,f,now);
       break;
     case OF_TYPE_NODEANNOUNCE:

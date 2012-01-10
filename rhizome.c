@@ -369,7 +369,7 @@ int rhizome_bundle_import(char *bundle,char *groups[], int ttl,
     rhizome_manifest_set(m,"filehash",hexhash);
     if (rhizome_manifest_get(m,"version",NULL)!=0)
       /* Version not set, so set one */
-      rhizome_manifest_set_ll(m,"version",overlay_time_in_ms());
+      rhizome_manifest_set_ll(m,"version",overlay_gettime_ms());
     rhizome_manifest_set_ll(m,"first_byte",0);
     rhizome_manifest_set_ll(m,"last_byte",rhizome_file_size(filename));
   }
@@ -853,7 +853,7 @@ int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename)
   WHY("*** Writing into manifests table");
   snprintf(sqlcmd,1024,
 	   "INSERT INTO MANIFESTS(id,manifest,version,inserttime,bar) VALUES('%s',?,%lld,%lld,?);",
-	   manifestid,m->version,overlay_time_in_ms());
+	   manifestid,m->version,overlay_gettime_ms());
 
   if (m->haveSecret) {
     if (rhizome_store_keypair_bytes(m->cryptoSignPublic,m->cryptoSignSecret))
@@ -1218,7 +1218,7 @@ int rhizome_manifest_finalise(rhizome_manifest *m,int signP)
   if (rhizome_manifest_get(m,"version",NULL))
     {
       /* No version set */
-      m->version = overlay_time_in_ms();
+      m->version = overlay_gettime_ms();
       rhizome_manifest_set_ll(m,"version",m->version);
     }
   else

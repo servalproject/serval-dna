@@ -874,7 +874,9 @@ int rhizome_server_poll();
 #include "nacl.h"
 
 
-#define DEBUG_OVERLAYINTERFACES 4
+#define DEBUG_OVERLAYINTERFACES 2
 #define DEBUG_PACKETXFER 1
-#define DEBUG_VERBOSE 2
+#define DEBUG_VERBOSE 4
 #define DEBUG_VERBOSE_IO 8
+
+int serval_packetvisualise(FILE *f,char *message,unsigned char *packet,int plen);

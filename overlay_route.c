@@ -475,6 +475,12 @@ int overlay_route_ack_selfannounce(overlay_frame *f,overlay_neighbour *n)
      OVERLAY_MESH_MANAGEMENT messages.
 
      Also, we should check for older such frames on the queue and drop them.
+
+     There is one caveat to the above:  until the first selfannounce gets returned,
+     we don't have an open route.  Thus we need to just make sure that the ack
+     goes out broadcast if we don't know about a return path. Once the return path
+     starts getting built, it should be fine.
+
    */
 
   /* XXX Allocate overlay_frame structure and populate it */
@@ -486,17 +492,35 @@ int overlay_route_ack_selfannounce(overlay_frame *f,overlay_neighbour *n)
   out->modifiers=0;
   out->ttl=6; /* maximum time to live for an ack taking an indirect route back
 		 to the originator.  If it were 1, then we would not be able to
-		 handle mono-directional links (which WiFi is notorious for). */
+		 handle mono-directional links (which WiFi is notorious for).
+	         XXX 6 is quite an arbitrary selection however. */
 
   /* Set destination of ack to source of observed frame */
   if (overlay_frame_set_neighbour_as_destination(out,n)) {
     op_free(out);
     return WHY("overlay_frame_set_neighbour_as_source() failed");
   }
+
+
   /* set source to ourselves */
   overlay_frame_set_me_as_source(out);
-  /* (next-hop will get set at TX time, so no need to set it here) */
+  /* Next-hop will get set at TX time, so no need to set it here.
+     However, if there is no known next-hop for this node (because the return path
+     has not yet begun to be built), then we need to set the nexthop to broadcast. */
   out->nexthop_address_status=OA_UNINITIALISED;
+  { unsigned char nexthop[SID_SIZE]; int nexthoplen,interface;
+    if (overlay_get_nexthop(out->destination,nexthop,&nexthoplen,&interface))
+      {
+	/* No path, so set nexthop to be broadcast, but don't broadcast it too far. */
+	int i;
+	for(i=0;i<SID_SIZE;i++) out->nexthop[i]=0xff;
+	out->nexthop_address_status=OA_RESOLVED;
+	out->ttl=2;
+	WHY("Broadcasting ack to selfannounce");
+      }
+    else
+      WHY("singlecasting ack to selfannounce via known route");
+  }
   
   /* Set the time in the ack. Use the last sequence number we have seen
      from this neighbour, as that may be helpful information for that neighbour
@@ -700,6 +724,7 @@ int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now)
   s2=ntohl(*((int*)&f->payload->bytes[4]));
   sender_interface=f->payload->bytes[8];
   fprintf(stderr,"Received self-announcement for sequence range [%08x,%08x] from interface %d\n",s1,s2,sender_interface);
+  dump("Payload",&f->payload->bytes[0],f->payload->length);
 
   overlay_route_i_can_hear(f->source,sender_interface,s1,s2,interface,now);
 

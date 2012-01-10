@@ -277,44 +277,60 @@ int overlay_rx_messages()
 
   /* Grab packets from interfaces in round-robin fashion until all have been grabbed,
      or until we have spent too long (maybe 10ms?) */
+  int now = overlay_gettime_ms();
   while(count>0)
-    for(i=0;i<overlay_interface_count;i++)
-      {
-	struct sockaddr src_addr;
-	unsigned int addrlen=sizeof(src_addr);
-	unsigned char transaction_id[8];
-
-	overlay_last_interface_number=i;
-
-	if (overlay_interfaces[i].fileP) {
-	  /* Read from dummy interface file */
-	  long long length=lseek(overlay_interfaces[i].fd,0,SEEK_END);
-	  lseek(overlay_interfaces[i].fd,overlay_interfaces[i].offset,SEEK_SET);
-	  if (debug&DEBUG_OVERLAYINTERFACES) fprintf(stderr,"Reading from interface #%d log at offset %d, end of file at %lld.\n",i,
-		  overlay_interfaces[i].offset,length);
-	  if (read(overlay_interfaces[i].fd,&packet[0],2048)==2048)
-	    {
-	      overlay_interfaces[i].offset+=2048;
-	      plen=2048-128;
-	      bzero(&transaction_id[0],8);
-	      bzero(&src_addr,sizeof(src_addr));
-	      if ((packet[0]==0x01)&&!(packet[1]|packet[2]|packet[3])) {
-		{ if (packetOk(i,&packet[128],plen,transaction_id,&src_addr,addrlen,1)) WHY("Malformed or unsupported packet from dummy interface (packetOK() failed)"); } }
-	      else WHY("Invalid packet version in dummy interface");
+    {
+      for(i=0;i<overlay_interface_count;i++)
+	{
+	  struct sockaddr src_addr;
+	  unsigned int addrlen=sizeof(src_addr);
+	  unsigned char transaction_id[8];
+	  
+	  overlay_last_interface_number=i;
+	  
+	  if (overlay_interfaces[i].fileP) {
+	    /* Read from dummy interface file */
+	    long long length=lseek(overlay_interfaces[i].fd,0,SEEK_END);
+	    if (overlay_interfaces[i].offset<length)
+	      {
+		lseek(overlay_interfaces[i].fd,overlay_interfaces[i].offset,SEEK_SET);
+		if (debug&DEBUG_OVERLAYINTERFACES) 
+		  fprintf(stderr,"Reading from interface #%d log at offset %d, end of file at %lld.\n",i,
+			  overlay_interfaces[i].offset,length);
+		if (read(overlay_interfaces[i].fd,&packet[0],2048)==2048)
+		  {
+		    overlay_interfaces[i].offset+=2048;
+		    plen=2048-128;		    
+		    plen=packet[110]+(packet[111]<<8);
+		    if (plen>(2048-128)) plen=-1;
+		    if (debug) serval_packetvisualise(stderr,
+						       "Read from dummy interface",
+						       &packet[128],plen);
+		    bzero(&transaction_id[0],8);
+		    bzero(&src_addr,sizeof(src_addr));
+		    if ((plen>=0)&&(packet[0]==0x01)&&!(packet[1]|packet[2]|packet[3])) {
+		      { if (packetOk(i,&packet[128],plen,transaction_id,&src_addr,addrlen,1)) WHY("Malformed or unsupported packet from dummy interface (packetOK() failed)"); } }
+		    else WHY("Invalid packet version in dummy interface");
+		  }
+		else { c[i]=0; count--; }
+	      }
+	  } else {
+	    /* Read from UDP socket */
+	    plen=recvfrom(overlay_interfaces[i].fd,packet,sizeof(packet),MSG_DONTWAIT,
+			  &src_addr,&addrlen);
+	    if (plen<0) { c[i]=0; count--; } else {
+	      /* We have a frame from this interface */
+	      if (debug) serval_packetvisualise(stderr,"Read from real interface",
+						 packet,plen);
+	      if (debug&DEBUG_OVERLAYINTERFACES)fprintf(stderr,"Received %d bytes on interface #%d\n",plen,i);
+	      
+	      if (packetOk(i,packet,plen,NULL,&src_addr,addrlen,1)) WHY("Malformed packet");	  
 	    }
-	  else { c[i]=0; count--; }
-	} else {
-	  /* Read from UDP socket */
-	  plen=recvfrom(overlay_interfaces[i].fd,packet,sizeof(packet),MSG_DONTWAIT,
-			&src_addr,&addrlen);
-	  if (plen<0) { c[i]=0; count--; } else {
-	    /* We have a frame from this interface */
-	    if (debug&DEBUG_OVERLAYINTERFACES)fprintf(stderr,"Received %d bytes on interface #%d\n",plen,i);
-	    
-	    if (packetOk(i,packet,plen,NULL,&src_addr,addrlen,1)) WHY("Malformed packet");	  
 	  }
 	}
-      }
+      /* Don't sit here forever, or else we will never send any packets */
+      if (overlay_gettime_ms()>(now+10)) break;
+    }
 
   return 0;
 }
@@ -373,12 +389,17 @@ int overlay_broadcast_ensemble(int interface_number,
       /* bytes 94-97 = TX frequency in Hz, uncorrected for doppler (which must be done at the receiving end to take into account
          relative motion) */
       /* bytes 98-109 = coding method (use for doppler response etc) null terminated string */
-      /* bytes 110-127 reserved for future use */
+      /* bytes 110-111 = length of packet body in bytes */
+      /* bytes 112-127 reserved for future use */
 
       if (len>2048-128) {
 	WHY("Truncating long packet to fit within 1920 byte limit for dummy interface");
 	len=2048-128;
       }
+
+      /* Record length of packet */
+      buf[110]=len&0xff;
+      buf[111]=(len>>8)&0xff;
 
       bzero(&buf[128+len],2048-(128+len));
       bcopy(bytes,&buf[128],len);
@@ -649,19 +670,6 @@ int overlay_tick_interface(int i, long long now)
 
 }
 
-long long overlay_time_in_ms()
-{
-  long long now;
-  struct timeval nowtv;
-  if (gettimeofday(&nowtv,NULL))
-    return WHY("gettimeofday() failed");
-  
-  /* Get current time in milliseconds */
-  now=nowtv.tv_sec*1000LL;
-  now=now+nowtv.tv_usec/1000;
-  
-  return now;
-}
 
 
 int overlay_check_ticks()
@@ -672,7 +680,7 @@ int overlay_check_ticks()
   /* Check for changes to interfaces */
   overlay_interface_discover();
   
-  long long now=overlay_time_in_ms();
+  long long now=overlay_gettime_ms();
 
   /* Now check if the next tick time for the interfaces is no later than that time.
      If so, trigger a tick on the interface. */
