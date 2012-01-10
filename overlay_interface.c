@@ -710,11 +710,7 @@ long long overlay_time_until_next_tick()
 {
   /* By default only tick once per day */
   long long nexttick=86400*1000;
-  long long now;
-  struct timeval tv;
-
-  gettimeofday(&tv,NULL);
-  now=tv.tv_sec*1000LL+tv.tv_usec/1000;
+  long long now=overlay_gettime_ms();
 
   int i;
   if (debug&DEBUG_VERBOSE_IO)fprintf(stderr,"Tick-check on %d interfaces at %lldms\n",overlay_interface_count,now);
