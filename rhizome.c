@@ -1390,14 +1390,18 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
 }
 
 int bundles_available=-1;
-int bundle_offset=0;
+int bundle_offset[2]={0,0};
 int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 {
+  int pass;
   int bytes=e->sizeLimit-e->length;
-  int overhead=1+1+3+1+1+1; /* maximum overhead */
-  int slots=(bytes-overhead)/8;
+  int overhead=1+8+1+3+1+1+1; /* maximum overhead */
+  int slots=(bytes-overhead)/RHIZOME_BAR_BYTES;
   if (slots>30) slots=30;
   int slots_used=0;
+  int bytes_used=0;
+  int bytes_available=bytes-overhead;
+  int bundles_advertised=0;
 
   if (slots<1) return WHY("No room for node advertisements");
 
@@ -1416,8 +1420,12 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
   ob_append_byte(e,OA_CODE_PREVIOUS);
   ob_append_byte(e,OA_CODE_SELF);
 
-  /* Version of rhizome advert block */
-  ob_append_byte(e,1);
+  /* Randomly choose whether to advertise manifests or BARs first. */
+  int skipmanifests=random()&1;
+  /* Version of rhizome advert block:
+     1 = manifests then BARs,
+     2 = BARs only */
+  ob_append_byte(e,1+skipmanifests);
 
   /* XXX Should add priority bundles here.
      XXX Should prioritise bundles for subscribed groups, Serval-authorised files
@@ -1432,58 +1440,104 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
     WHY("Group handling not completely thought out here yet.");
 
   /* Get number of bundles available if required */
-  if (bundles_available==-1||(bundle_offset>=bundles_available)) {
-    bundles_available=sqlite_exec_int64("SELECT COUNT(BAR) FROM MANIFESTS;");
-    bundle_offset=0;
-  }
-
-  sqlite3_stmt *statement;
-  char query[1024];
-  snprintf(query,1024,"SELECT BAR,ROWID FROM MANIFESTS LIMIT %d,%d",bundle_offset,slots);
-
-  switch (sqlite3_prepare_v2(rhizome_db,query,-1,&statement,NULL))
+  bundles_available=sqlite_exec_int64("SELECT COUNT(BAR) FROM MANIFESTS;");
+  if (bundles_available==-1||(bundle_offset[0]>=bundles_available)) 
+    bundle_offset[0]=0;
+  if (bundles_available==-1||(bundle_offset[1]>=bundles_available)) 
+    bundle_offset[1]=0;
+  
+  for(pass=skipmanifests;pass<2;pass++)
     {
-    case SQLITE_OK: case SQLITE_DONE: case SQLITE_ROW:
-      break;
-    default:
-      sqlite3_finalize(statement);
-      sqlite3_close(rhizome_db);
-      rhizome_db=NULL;
-      WHY(query);
-      WHY(sqlite3_errmsg(rhizome_db));
-      return WHY("Could not prepare sql statement for fetching BARs for advertisement.");
-    }
-  while((slots_used<slots)&&(sqlite3_step(statement)==SQLITE_ROW)&&
-	(e->length+RHIZOME_BAR_BYTES<=e->sizeLimit))
-    {
-      sqlite3_blob *blob;
-      int column_type=sqlite3_column_type(statement, 0);
-      switch(column_type) {
-      case SQLITE_BLOB:
-	if (sqlite3_blob_open(rhizome_db,"main","manifests","bar",
-			      sqlite3_column_int64(statement,1) /* rowid */,
-			      0 /* read only */,&blob)!=SQLITE_OK)
-	  {
-	    WHY("Couldn't open blob");
-	    continue;
-	  }
-	ob_makespace(e,RHIZOME_BAR_BYTES);
-	if (sqlite3_blob_read(blob,&e->bytes[e->length],RHIZOME_BAR_BYTES,0)
-	    !=SQLITE_OK) {
-	  WHY("Couldn't read from blob");
-	  sqlite3_blob_close(blob);
-	  continue;
+      sqlite3_stmt *statement;
+      char query[1024];
+      switch(pass) {
+      case 0: /* Full manifests */
+	snprintf(query,1024,"SELECT MANIFEST,ROWID FROM MANIFESTS LIMIT %d,%d",
+		 bundle_offset[pass],slots);
+	break;
+      case 1: /* BARs */
+	snprintf(query,1024,"SELECT BAR,ROWID FROM MANIFESTS LIMIT %d,%d",
+		 bundle_offset[pass],slots);
+	break;
+      }      
+
+      switch (sqlite3_prepare_v2(rhizome_db,query,-1,&statement,NULL))
+	{
+	case SQLITE_OK: case SQLITE_DONE: case SQLITE_ROW:
+	  break;
+	default:
+	  sqlite3_finalize(statement);
+	  sqlite3_close(rhizome_db);
+	  rhizome_db=NULL;
+	  WHY(query);
+	  WHY(sqlite3_errmsg(rhizome_db));
+	  return WHY("Could not prepare sql statement for fetching BARs for advertisement.");
 	}
-	e->length+=RHIZOME_BAR_BYTES;
-	slots_used++;
+      while((bytes_used<bytes_available)&&(sqlite3_step(statement)==SQLITE_ROW)&&
+	    (e->length+RHIZOME_BAR_BYTES<=e->sizeLimit))
+	{
+	  sqlite3_blob *blob;
+	  int column_type=sqlite3_column_type(statement, 0);
+	  switch(column_type) {
+	  case SQLITE_BLOB:
+	    if (sqlite3_blob_open(rhizome_db,"main","manifests",
+				  pass?"bar":"manifest",
+				  sqlite3_column_int64(statement,1) /* rowid */,
+				  0 /* read only */,&blob)!=SQLITE_OK)
+	      {
+		WHY("Couldn't open blob");
+		continue;
+	      }
+	    int blob_bytes=sqlite3_blob_bytes(blob);
+	    if (pass&&(blob_bytes!=RHIZOME_BAR_BYTES)) {
+	      if (debug&DEBUG_RHIZOME) 
+		fprintf(stderr,"Found a BAR that is the wrong size - ignoring\n");
+	      continue;
+	    }
+	    
+	    /* Only include manifests that are <=1KB inline.
+	       Longer ones are only advertised by BAR */
+	    if (blob_bytes>1024) continue;
 
-	sqlite3_blob_close(blob);
-      }
+	    int overhead=0;
+	    if (!pass) overhead=2;
+	    if (ob_makespace(e,overhead+blob_bytes)) {
+	      if (debug&DEBUG_RHIZOME) 
+		fprintf(stderr,"Stopped cramming %s into Rhizome advertisement frame.\n",
+			pass?"BARs":"manifests");
+	      break;
+	    }
+	    if (!pass) {
+	      /* put manifest length field and manifest ID */
+	      e->bytes[e->length]=(blob_bytes>>8)&0xff;
+	      e->bytes[e->length+1]=(blob_bytes>>0)&0xff;
+	      if (debug&DEBUG_RHIZOME)
+		fprintf(stderr,"length bytes written at offset 0x%x\n",e->length);
+	    }
+	    if (sqlite3_blob_read(blob,&e->bytes[e->length+overhead],blob_bytes,0)
+		!=SQLITE_OK) {
+	      if (debug&DEBUG_RHIZOME) WHY("Couldn't read from blob");
+	      sqlite3_blob_close(blob);
+	      continue;
+	    }
+	    e->length+=overhead+blob_bytes;
+	    bytes_used+=overhead+blob_bytes;
+	    bundles_advertised++;
+	    
+	    sqlite3_blob_close(blob);
+	  }
+	}
+      sqlite3_finalize(statement);
+      if (!pass) 
+	{
+	  /* Mark end of whole manifests by writing 0xff, which is more than the MSB
+	     of a manifest's length is allowed to be. */
+	  ob_append_byte(e,0xff);
+	}
     }
-
-  if (debug&DEBUG_RHIZOME) printf("Appended %d rhizome advertisements to packet.\n",slots_used);
-  e->bytes[rfs_offset]=1+8+1+1+1+RHIZOME_BAR_BYTES*slots_used;
-  sqlite3_finalize(statement);
+  
+  if (debug&DEBUG_RHIZOME) printf("Appended %d rhizome advertisements to packet.\n",bundles_advertised);
+  e->bytes[rfs_offset]=1+8+1+1+1+bytes_used;
 
   return 0;
 }

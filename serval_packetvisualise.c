@@ -280,11 +280,82 @@ int isOverlayPacket(FILE *f,unsigned char *packet,int *ofs,int len)
 	  break;
 	case 0x50: /* rhizome advertisement */
 	  {
-	    int i,j;
-	    fprintf(f,"%sRhizome bundle advertisement record (BAR) announcements, version %d\n",indent(8),frame[0]);
-	    if (frame[0]>1) fprintf(f,"%sWARNING: Version is newer than I understand.\n",
-				    indent(10));
-	    for(i=1;i<(frame_len-31);i+=32) {
+	    int i,j,k;
+	    int rhizome_ad_frame_type=frame[0];
+	    fprintf(f,"%sRhizome bundle advertisement frame, version %d\n",indent(8),rhizome_ad_frame_type);
+	    if (rhizome_ad_frame_type>2) 
+	      fprintf(f,"%sWARNING: Version is newer than I understand.\n",indent(10));
+	    i=1;
+	    if (rhizome_ad_frame_type==1) {
+	      /* Frame contains whole manifest(s) */
+	      fprintf(f,"%sBundle Manifest(s) (i=%d, frame_len=%d):\n",
+		      indent(8),i,frame_len);
+	      while(i<frame_len)
+		{		  
+		  int manifest_len=(frame[i]<<8)+frame[i+1];
+		  /* Check for end of manifests */
+		  if (manifest_len>=0xff00) { i+=1; break; }
+		  else i+=2;
+		  /* find manifest self-signature block */
+		  for(j=0;j<manifest_len;j++) if (frame[i+j]==0) { j++; break;}
+		  fprintf(f,"%smanifest id (from first signature block) = ",indent(10));
+		  for(k=0;k<32;k++) fprintf(f,"%02X",frame[i+j+k+1+64]);
+		  fprintf(f,"\n");
+		  /* Print manifest text body */
+		  int column=0;
+		  fprintf(f,"%sManifest variables:\n",indent(12));
+		  for(k=0;k<(j-1);k++) {		    
+		    if (!column) { fprintf(f,"%s",indent(14)); column=14; }
+		    switch(frame[i+k]) {
+		    case '\r': /* ignore CR */
+		    case '\n': /* LF */
+		      column=0;
+		      /* fall through */
+		    default:
+		      fprintf(f,"%c",frame[i+k]);
+		    }
+		  }
+		  /* Print manifest signature blocks */
+		  
+		  fprintf(f,"%sManifest signature blocks\n",indent(12));
+		  for(;j<manifest_len;)
+		    {
+		      int sigLen=frame[i+j];
+		      switch(sigLen) {
+		      case 0x61: /* cryptosign signature */
+			fprintf(f,"%sNaCl CryptoSign Generated Signature\n",indent(14));
+			fprintf(f,"%sPublic key of signatory = ",indent(16));
+			for(k=0;k<32;k++) fprintf(f,"%02X",frame[i+j+1+64+k]);
+			fprintf(f,"\n");
+			fprintf(f,"%sSignature data:",indent(16));
+			for(k=0;k<64;k++)
+			  {
+			    if (!(k&0xf)) fprintf(f,"\n%s",indent(18-1));
+			    fprintf(f," %02X",frame[i+j+1+k]);
+			  }
+			fprintf(f,"\n");
+			break;
+		      case 0:
+			sigLen=1;
+		      default:
+			fprintf(f,"%sUnknown Signature Type 0x%02x\n",indent(14),frame[i+j]);
+			fprintf(f,"%sSignature data:",indent(16));
+			for(k=0;k<(sigLen-1);k++)
+			  {
+			    if (!(k&0xf)) fprintf(f,"\n%s",indent(18-1));
+			    fprintf(f," %02X",frame[i+j+1+k]);
+			  }
+			fprintf(f,"\n");			
+			break;
+		      }
+		      j+=sigLen;
+		    }
+		  i+=manifest_len;
+		}
+	    }
+
+	    fprintf(f,"%sBundle Advertisement Records (BARs):\n",indent(8));
+	    for(;i<(frame_len-31);i+=32) {
 	      fprintf(f,"%smanifest id = %02X%02X%02X%02X%02X%02X%02X%02X*\n",
 		      indent(10),frame[i],frame[i+1],frame[i+2],frame[i+3],
 		      frame[i+4],frame[i+5],frame[i+6],frame[i+7]);

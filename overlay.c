@@ -196,7 +196,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
       /* Great, we have the address, so we can get on with things */
       break;
     case OA_PLEASEEXPLAIN:
-      return WHY("Address cannot be resolved -- aborting packet processing.\n");
+      return WHY("Address cannot be resolved -- aborting packet processing.");
       /* XXX Should send a please explain to get this address resolved. */
       break;
     case OA_UNSUPPORTED:
