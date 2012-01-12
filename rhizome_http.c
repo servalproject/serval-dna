@@ -81,6 +81,8 @@ int rhizome_server_start()
   struct sockaddr_in address;
   int on=1;
 
+  WHY("Started rhizome server");
+
   /* Catch broken pipe signals */
   signal(SIGPIPE,sigPipeHandler);
   signal(SIGIO,sigIoHandler);
@@ -253,6 +255,10 @@ int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
 
   if (rhizome_server_socket>-1)
     {
+      if (debug&DEBUG_IO) {
+	fprintf(stderr,"rhizome http server is poll() slot #%d (fd %d)\n",
+		*fdcount,rhizome_server_socket);
+      }
       fds[*fdcount].fd=rhizome_server_socket;
       fds[*fdcount].events=POLLIN;
       (*fdcount)++;
@@ -261,6 +267,9 @@ int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
   for(i=0;i<rhizome_server_live_request_count;i++)
     {
       if ((*fdcount)>=fdmax) return -1;
+      if (debug&DEBUG_IO) {
+	fprintf(stderr,"rhizome http request #%d is poll() slot #%d (fd %d)\n",
+		i,*fdcount,rhizome_live_http_requests[i]->socket); }
       fds[*fdcount].fd=rhizome_live_http_requests[i]->socket;
       switch(rhizome_live_http_requests[i]->request_type) {
       case RHIZOME_HTTP_REQUEST_RECEIVING:

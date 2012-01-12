@@ -435,6 +435,9 @@ typedef struct overlay_frame {
   unsigned char source[32];
   int source_address_status;
 
+  /* IPv4 node frame was received from (if applicable) */
+  struct sockaddr *recvaddr;
+
   /* Frame content from destination address onwards */
   int bytecount;
   unsigned char *bytes;

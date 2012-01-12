@@ -96,8 +96,9 @@ int overlayServerMode()
      5ms between checks if we have a dummy interface running.  This is a reasonable simulation
      of wifi latency anyway, so we'll live with it.  Larger values will affect voice transport,
      and smaller values would affect CPU and energy use, and make the simulation less realistic. */
-  fd_set read_fds;
-  int maxfd=-1;  
+
+  struct pollfd fds[128];
+  int fdcount;
 
   /* Create structures to use 1MB of RAM for testing */
   overlay_route_init(1);
@@ -116,21 +117,41 @@ int overlayServerMode()
     if (nextHlr(hlr,&ofs)) break;
   }
 
+  /* Get rhizome server started BEFORE populating fd list so that
+     the server's listen socket is in the list for poll() */
+  if (rhizome_datastore_path) rhizome_server_poll();
+  
   while(1) {
     /* Work out how long we can wait before we need to tick */
     long long ms=overlay_time_until_next_tick();
-    struct timeval waittime;
     
     int filesPresent=0;
-    FD_ZERO(&read_fds);      
+    fds[0].fd=sock; fds[0].events=POLLIN;
+    fdcount=1;
+    rhizome_server_get_fds(fds,&fdcount,128);
+    
     for(i=0;i<overlay_interface_count;i++)
       {
-	if (!overlay_interfaces[i].fileP)
+	/* Make socket non-blocking so that poll() behaves correctly.
+	   We then set non-blocking before actually reading from it */
+	fcntl(overlay_interfaces[i].fd, F_SETFL,
+	      fcntl(overlay_interfaces[i].fd, F_GETFL, NULL)&(~O_NONBLOCK));	
+
+	if ((!overlay_interfaces[i].fileP)&&(fdcount<128))
 	  {
-	    if (overlay_interfaces[i].fd>maxfd) maxfd=overlay_interfaces[i].fd;
-	    FD_SET(overlay_interfaces[i].fd,&read_fds);
+    	    if (debug&DEBUG_IO) {
+	      fprintf(stderr,"Interface %s is poll() slot #%d (fd %d)\n",      
+		      overlay_interfaces[i].name,
+		      fdcount,
+		      overlay_interfaces[i].fd);
+	    }
+	    fds[fdcount].fd=overlay_interfaces[i].fd;
+	    fds[fdcount].events=POLLRDNORM;
+	    fds[fdcount].revents=0;
+	    fdcount++;
 	  }
-	else { filesPresent=1; if (ms>5) ms=5; }
+	if (overlay_interfaces[i].fileP)
+	  { filesPresent=1; if (ms>5) ms=5; }
       }
     
     /* Progressively update link scores to neighbours etc, and find out how long before
@@ -140,23 +161,39 @@ int overlayServerMode()
     int route_tick_interval=overlay_route_tick();
     if (ms>route_tick_interval) ms=route_tick_interval;
 
-    waittime.tv_usec=(ms%1000)*1000;
-    waittime.tv_sec=ms/1000;
-
-    if (debug&DEBUG_VERBOSE_IO) fprintf(stderr,"Waiting via select() for up to %lldms\n",ms);
-    int r=select(maxfd+1,&read_fds,NULL,NULL,&waittime);
+    if (debug&DEBUG_VERBOSE_IO)
+      fprintf(stderr,"Waiting via poll() for up to %lldms\n",ms);
+    int r=poll(fds,fdcount,ms);
+  
     if (r<0) {
       /* select had a problem */
-      if (debug&DEBUG_IO) perror("select()");
+      if (debug&DEBUG_IO) perror("poll()");
       WHY("select() complained.");
     } else if (r>0) {
       /* We have data, so try to receive it */
-      if (debug&DEBUG_IO) fprintf(stderr,"select() reports packets waiting\n");
+      if (debug&DEBUG_IO) {
+	fprintf(stderr,"poll() reports %d fds ready\n",r);
+	int i;
+	for(i=0;i<fdcount;i++) {
+	  if (fds[i].revents) 
+	    {
+	      fprintf(stderr,"   #%d (fd %d): %d (",i,fds[i].fd,fds[i].revents);
+	      if ((fds[i].revents&POLL_IN)==POLL_IN) fprintf(stderr,"POLL_IN,");
+	      if ((fds[i].revents&POLLRDNORM)==POLLRDNORM) fprintf(stderr,"POLLRDNORM,");
+	      if ((fds[i].revents&POLL_OUT)==POLL_OUT) fprintf(stderr,"POLL_OUT,");
+	      if ((fds[i].revents&POLL_ERR)==POLL_ERR) fprintf(stderr,"POLL_ERR,");
+	      if ((fds[i].revents&POLL_HUP)==POLL_HUP) fprintf(stderr,"POLL_HUP,");
+	      if ((fds[i].revents&POLLNVAL)==POLLNVAL) fprintf(stderr,"POLL_NVAL,");
+	      fprintf(stderr,")\n");
+	    }
+	  
+	}
+      }
       overlay_rx_messages();
     } else {
       /* No data before tick occurred, so do nothing.
 	 Well, for now let's just check anyway. */
-      if (debug&DEBUG_IO) fprintf(stderr,"select() timeout.\n");
+      if (debug&DEBUG_IO) fprintf(stderr,"poll() timeout.\n");
       overlay_rx_messages();
     }
     /* Check if we need to trigger any ticks on any interfaces */

@@ -20,6 +20,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "mphlr.h"
 
 
+struct sockaddr_in loopback = {
+  .sin_family=0,
+  .sin_port=0,
+  .sin_addr.s_addr=0x0100007f
+};
+
 int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *transaction_id,
 		    struct sockaddr *recvaddr,int recvaddrlen,int parseP)
 {
@@ -96,6 +102,16 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *t
   f.bytes=NULL;
   f.bytecount=0;
   f.prev=NULL; f.next=NULL;
+  if (recvaddr->sa_family==AF_INET)
+    f.recvaddr=recvaddr; 
+  else {
+    if (overlay_interfaces[interface].fileP) {
+      /* dummy interface, so tell to use 0.0.0.0 */
+      f.recvaddr=(struct sockaddr *)&loopback;
+    } else 
+      /* some other sort of interface, so we can't offer any help here */
+      f.recvaddr=NULL;
+  }
 
   overlay_abbreviate_unset_current_sender();
 

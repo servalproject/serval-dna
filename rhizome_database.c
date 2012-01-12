@@ -501,6 +501,7 @@ char *rhizome_safe_encode(unsigned char *in,int len)
 	    r[o++]=in[i];
 	  }
     }
+  r[128]=0;
   return r;
 }
 
