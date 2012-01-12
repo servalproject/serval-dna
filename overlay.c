@@ -190,11 +190,13 @@ int overlayServerMode()
 	}
       }
       overlay_rx_messages();
+      if (rhizome_datastore_path) rhizome_server_poll();
     } else {
       /* No data before tick occurred, so do nothing.
 	 Well, for now let's just check anyway. */
       if (debug&DEBUG_IO) fprintf(stderr,"poll() timeout.\n");
       overlay_rx_messages();
+      if (rhizome_datastore_path) rhizome_server_poll();
     }
     /* Check if we need to trigger any ticks on any interfaces */
     overlay_check_ticks();
