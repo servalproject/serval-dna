@@ -368,7 +368,7 @@ int isOverlayPacket(FILE *f,unsigned char *packet,int *ofs,int len)
 		      indent(12),frame[i+16],frame[i+16]);
 	      unsigned long long file_size=0;
 	      for(j=0;j<6;j++) file_size=(file_size<<8)+frame[i+18+j];
-	      fprintf(f,"%sassociated file size = %lld (0x%llx) bytesov\n",
+	      fprintf(f,"%sassociated file size = %lld (0x%llx) bytes\n",
 		      indent(12),file_size,file_size);
 	      double lat0=((frame[i+24]<<8)+frame[i+25])*180/65535-90;
 	      double long0=((frame[i+26]<<8)+frame[i+27])*360/65535-180;

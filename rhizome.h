@@ -117,7 +117,7 @@ typedef struct rhizome_manifest {
   */
   unsigned char signatureTypes[MAX_MANIFEST_VARS];
 
-  int signature_errors; /* if non-zero, then manifest should not be trusted */
+  int errors; /* if non-zero, then manifest should not be trusted */
 
   /* Absolute path of the file associated with the manifest */
   char *dataFileName;
@@ -162,9 +162,9 @@ int rhizome_write_manifest_file(rhizome_manifest *m,char *filename);
 int rhizome_manifest_sign(rhizome_manifest *m);
 int rhizome_drop_stored_file(char *id,int maximum_priority);
 int rhizome_manifest_priority(char *id);
-rhizome_manifest *rhizome_read_manifest_file(char *filename);
+rhizome_manifest *rhizome_read_manifest_file(char *filename,int bufferPAndSize,int flags);
 int rhizome_hash_file(char *filename,char *hash_out);
-int rhizome_manifest_get(rhizome_manifest *m,char *var,char *value_out);
+char *rhizome_manifest_get(rhizome_manifest *m,char *var,char *value_out,int maxlen);
 long long  rhizome_manifest_get_ll(rhizome_manifest *m,char *var);
 int rhizome_manifest_set_ll(rhizome_manifest *m,char *var,long long value);
 int rhizome_manifest_set(rhizome_manifest *m,char *var,char *value);
@@ -197,3 +197,11 @@ int rhizome_server_sql_query_fill_buffer(int rn,rhizome_http_request *r);
 double rhizome_manifest_get_double(rhizome_manifest *m,char *var,double default_value);
 int chartonybl(int c);
 int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs);
+long long sqlite_exec_int64(char *sqlformat,...);
+int rhizome_update_file_priority(char *fileid);
+int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
+char nybltochar(int n);
+int rhizome_queue_manifest_import(rhizome_manifest *m);
+
+#define RHIZOME_DONTVERIFY 0
+#define RHIZOME_VERIFY 1
