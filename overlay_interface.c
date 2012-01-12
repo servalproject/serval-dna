@@ -299,9 +299,6 @@ int overlay_rx_messages()
 	      {
 		if (debug&DEBUG_OVERLAYINTERFACES) 		  
 		  fprintf(stderr,"At end of input on dummy interface #%d\n",i);
-		char c;
-		int r=read(overlay_interfaces[i].fd,&c,1);
-		fprintf(stderr,"r=%d\n",r);
 	      }
 	    else
 	      {

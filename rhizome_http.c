@@ -78,10 +78,13 @@ int rhizome_server_start()
 {
   if (rhizome_server_socket>-1) return 0;
 
+  /* Only try to start http server periodically */
+  if (rhizome_server_socket<-1) { rhizome_server_socket++; return -1; }
+
   struct sockaddr_in address;
   int on=1;
 
-  WHY("Started rhizome server");
+  if (debug&DEBUG_RHIZOME) fprintf(stderr,"Trying to start rhizome server.\n");
 
   /* Catch broken pipe signals */
   signal(SIGPIPE,sigPipeHandler);
@@ -89,7 +92,10 @@ int rhizome_server_start()
 
   rhizome_server_socket=socket(AF_INET,SOCK_STREAM,0);
   if (rhizome_server_socket<0)
-    return WHY("socket() failed starting rhizome http server");
+    {
+      rhizome_server_socket=-1000;
+      return WHY("socket() failed starting rhizome http server");
+    }
 
   setsockopt(rhizome_server_socket, SOL_SOCKET,  SO_REUSEADDR,
                   (char *)&on, sizeof(on));
@@ -102,8 +108,9 @@ int rhizome_server_start()
 	   sizeof(address)) < 0) 
     {
       close(rhizome_server_socket);
-      rhizome_server_socket=-1;
-      return WHY("bind() failed starting rhizome http server\n");
+      rhizome_server_socket=-1000;
+      if (debug&DEBUG_RHIZOME)  WHY("bind() failed starting rhizome http server\n");
+      return -1;
     }
 
   int rc = ioctl(rhizome_server_socket, FIONBIO, (char *)&on);

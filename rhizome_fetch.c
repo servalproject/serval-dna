@@ -128,9 +128,12 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
 	    bcopy(peerip,&peeraddr,sizeof(peeraddr));
 	    peeraddr.sin_port=htons(RHIZOME_HTTP_PORT);
 	    int r=connect(sock,(struct sockaddr*)&peeraddr,sizeof(peeraddr));
-	    if (r!=EINPROGRESS||(r!=0)) {
+	    if ((errno!=EINPROGRESS)&&(r!=0)) {	      
 	      close (sock);
-	      WHY("Failed to open socket to peer's rhizome web server");
+	      if (debug&DEBUG_RHIZOME) {
+		WHY("Failed to open socket to peer's rhizome web server");
+		perror("connect");
+	      }
 	      return -1;
 	    }
 	    file_fetch_queue[rhizome_file_fetch_queue_count].manifest=m;
