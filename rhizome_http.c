@@ -155,7 +155,8 @@ int rhizome_server_poll()
 	{
 	case RHIZOME_HTTP_REQUEST_RECEIVING:
 	  /* Keep reading until we have two CR/LFs in a row */
-	  WHY("receiving http request data");
+	  r->request[r->request_length]=0;
+	  fprintf(stderr,"http request so far: [%s]\n",r->request);
 	  
 	  sigPipeFlag=0;
 	  
@@ -544,7 +545,7 @@ int rhizome_server_parse_http_request(int rn,rhizome_http_request *r)
 	    rhizome_server_http_response_header(r,200,"application/binary",
 						r->blob_end-r->source_index);
 	    sqlite3_blob_close(blob);
-	    WHY("opened blob and file");
+	    WHY("opened blob and file -- but still need to send file body.");
 	  }
 	}
       }
@@ -619,7 +620,7 @@ int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r)
       bytes=r->buffer_length-r->buffer_offset;
       bytes=write(r->socket,&r->buffer[r->buffer_offset],bytes);
       if (bytes>0) {
-	printf("wrote %d bytes\n",bytes);
+	fprintf(stderr,"wrote %d bytes\n",bytes);
 	dump("bytes written",&r->buffer[r->buffer_offset],bytes);
 	r->buffer_offset+=bytes;
 	if (r->buffer_offset>=r->buffer_length) {
@@ -682,7 +683,7 @@ int rhizome_server_http_response_header(rhizome_http_request *r,int result,
     r->buffer_size=bytes+strlen("HTTP/1.0 000 \r\n\r\n")+strlen(httpResultString(A_VALUE_GREATER_THAN_FOUR))+100;
     r->buffer=(unsigned char *)malloc(r->buffer_size);
   }
-  snprintf((char *)r->buffer,r->buffer_size,"HTTP/1.0 %03d \r\nContent-type: text/html\r\nContent-length: %lld\r\n\r\n",result,bytes);
+  snprintf((char *)r->buffer,r->buffer_size,"HTTP/1.0 %03d \r\nContent-type: %s\r\nContent-length: %lld\r\n\r\n",result,mime_type,bytes);
   
   r->buffer_length=strlen((char *)r->buffer);
   r->buffer_offset=0;

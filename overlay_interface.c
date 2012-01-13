@@ -332,9 +332,6 @@ int overlay_rx_messages()
 	    plen=recvfrom(overlay_interfaces[i].fd,packet,sizeof(packet),
 			  MSG_DONTWAIT,
 			  &src_addr,&addrlen);
-	    fprintf(stderr,"Interface #%d (%s): plen=%d\n",
-		    i,overlay_interfaces[i].name,plen);
-	    perror("recvfrom");
 	    if (plen<0) { 
 	      c[i]=0; count--; 
 	    } else {

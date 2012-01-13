@@ -129,7 +129,8 @@ int overlayServerMode()
     fds[0].fd=sock; fds[0].events=POLLIN;
     fdcount=1;
     rhizome_server_get_fds(fds,&fdcount,128);
-    
+    rhizome_fetching_get_fds(fds,&fdcount,128);
+
     for(i=0;i<overlay_interface_count;i++)
       {
 	/* Make socket non-blocking so that poll() behaves correctly.
@@ -190,13 +191,19 @@ int overlayServerMode()
 	}
       }
       overlay_rx_messages();
-      if (rhizome_datastore_path) rhizome_server_poll();
+      if (rhizome_datastore_path) {
+	rhizome_server_poll();
+	rhizome_fetch_poll();
+      }
     } else {
       /* No data before tick occurred, so do nothing.
 	 Well, for now let's just check anyway. */
       if (debug&DEBUG_IO) fprintf(stderr,"poll() timeout.\n");
       overlay_rx_messages();
-      if (rhizome_datastore_path) rhizome_server_poll();
+      if (rhizome_datastore_path) {
+	rhizome_server_poll();
+	rhizome_fetch_poll();
+      }
     }
     /* Check if we need to trigger any ticks on any interfaces */
     overlay_check_ticks();
