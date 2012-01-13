@@ -95,6 +95,7 @@ typedef struct rhizome_signature {
 #define MAX_MANIFEST_BYTES 8192
 typedef struct rhizome_manifest {
   int manifest_bytes;
+  int manifest_all_bytes;
   unsigned char manifestdata[MAX_MANIFEST_BYTES];
   unsigned char manifesthash[crypto_hash_sha512_BYTES];
 

@@ -528,7 +528,7 @@ int rhizome_server_parse_http_request(int rn,rhizome_http_request *r)
 	  long long rowid = sqlite_exec_int64("select rowid from files where id='%s';",id);
 	  sqlite3_blob *blob;
 	  if (rowid>=0) 
-	    if (sqlite3_blob_open(rhizome_db,"main","files","id",rowid,0,&blob)
+	    if (sqlite3_blob_open(rhizome_db,"main","files","data",rowid,0,&blob)
 		!=SQLITE_OK)
 	      rowid=-1;
 
@@ -538,12 +538,13 @@ int rhizome_server_parse_http_request(int rn,rhizome_http_request *r)
 	  }
 	  else {
 	    r->blob_table=strdup("files");
-	    r->blob_column=strdup("id");
+	    r->blob_column=strdup("data");
 	    r->blob_rowid=rowid;
 	    r->source_index=0;	    
 	    r->blob_end=sqlite3_blob_bytes(blob);
 	    rhizome_server_http_response_header(r,200,"application/binary",
 						r->blob_end-r->source_index);
+	    r->request_type|=RHIZOME_HTTP_REQUEST_BLOB;
 	    sqlite3_blob_close(blob);
 	    WHY("opened blob and file -- but still need to send file body.");
 	  }
@@ -608,6 +609,7 @@ int rhizome_server_simple_http_response(rhizome_http_request *r,int result, char
 */
 int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r)
 {
+  sqlite3_blob *blob;
   int bytes;
   fcntl(r->socket,F_SETFL,fcntl(r->socket, F_GETFL, NULL)|O_NONBLOCK);
 
@@ -642,7 +644,7 @@ int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r)
       }
     }
 
-  switch(r->request_type)
+  switch(r->request_type&(~RHIZOME_HTTP_REQUEST_FROMBUFFER))
     {
     case RHIZOME_HTTP_REQUEST_FAVICON:
       if (r->buffer_size<favicon_len) {
@@ -662,6 +664,41 @@ int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r)
       }
       
       break;
+    case RHIZOME_HTTP_REQUEST_BLOB:
+      /* Get more data from the file and put it in the buffer */
+      r->buffer_length=r->blob_end-r->source_index;
+      if (r->buffer_length<=0) {
+	/* end of blob reached */
+	r->request_type=0; break;
+      }
+      if (r->buffer_size<65536) {
+	free(r->buffer); r->buffer=malloc(65536);
+	if (!r->buffer) {
+	  if (debug&DEBUG_RHIZOME) WHY("malloc() failed");
+	  r->request_type=0; break;
+	}
+	r->buffer_size=65536;
+      }
+      if (r->buffer_length>r->buffer_size) r->buffer_length=r->buffer_size;
+      if (sqlite3_blob_open(rhizome_db,"main",r->blob_table,r->blob_column,
+			    r->blob_rowid,0,&blob)==SQLITE_OK)
+	{
+	  if(sqlite3_blob_read(blob,&r->buffer[0],r->buffer_length,r->source_index)
+	     ==SQLITE_OK)
+	    {
+	      r->request_type|=RHIZOME_HTTP_REQUEST_FROMBUFFER;
+	      r->source_index+=r->buffer_length;
+	    }
+	  else
+	    r->request_type=0;
+	  sqlite3_blob_close(blob);
+	}
+      else
+	{
+	  if (debug&DEBUG_RHIZOME) WHY("could not open blob to send more data");
+	  r->request_type=0;
+	}
+      break;
     case RHIZOME_HTTP_REQUEST_FROMBUFFER:
       /* This really shouldn't happen! */
       
@@ -671,6 +708,8 @@ int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r)
       WHY("sending data from this type of HTTP request not implemented");
       break;
     }
+
+  if (!r->request_type) return rhizome_server_close_http_request(rn);	  
 
   fcntl(r->socket,F_SETFL,fcntl(r->socket, F_GETFL, NULL)&(~O_NONBLOCK));
   return 1;

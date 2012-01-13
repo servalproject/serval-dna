@@ -40,6 +40,8 @@ rhizome_manifest *rhizome_read_manifest_file(char *filename,int bufferP,int flag
     fclose(f);
   }
 
+  m->manifest_all_bytes=m->manifest_bytes;
+
   /* Parse out variables, signature etc */
   int ofs=0;
   while((ofs<m->manifest_bytes)&&(m->manifestdata[ofs]))
@@ -122,7 +124,8 @@ rhizome_manifest *rhizome_read_manifest_file(char *filename,int bufferP,int flag
 	      fprintf(stderr,
 		      "Manifest id variable does not match first signature block.\n");
 	    m->errors++;
-	  }
+	    m->selfSigned=0;
+	  } else m->selfSigned=1;
       }
     }
 
@@ -286,6 +289,8 @@ int rhizome_manifest_pack_variables(rhizome_manifest *m)
     }
   m->manifestdata[ofs++]=0x00;
   m->manifest_bytes=ofs;
+  if (debug&DEBUG_RHIZOME) WHY("Repacked variables in manifest.");
+  m->manifest_all_bytes=ofs;
 
   /* Recalculate hash */
   crypto_hash_sha512(m->manifesthash,m->manifestdata,m->manifest_bytes);
@@ -309,6 +314,7 @@ int rhizome_manifest_sign(rhizome_manifest *m)
   bcopy(&sig->signature[0],&m->manifestdata[m->manifest_bytes],sig->signatureLength);
 
   m->manifest_bytes+=sig->signatureLength;
+  m->manifest_all_bytes=m->manifest_bytes;
 
   free(sig);
   return 0;
@@ -319,7 +325,7 @@ int rhizome_write_manifest_file(rhizome_manifest *m,char *filename)
   if (!m) return WHY("Manifest is null.");
   if (!m->finalised) return WHY("Manifest must be finalised before it can be written.");
   FILE *f=fopen(filename,"w");
-  int r=fwrite(m->manifestdata,m->manifest_bytes,1,f);
+  int r=fwrite(m->manifestdata,m->manifest_all_bytes,1,f);
   fclose(f);
   if (r!=1) return WHY("Failed to fwrite() manifest file.");
   return 0;

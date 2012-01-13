@@ -179,6 +179,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
 	    char filename[1024];
 	    snprintf(filename,1024,"%s/import/file.%s",rhizome_datastore_path,
 		     rhizome_manifest_get(q->manifest,"id",NULL,0));
+	    q->manifest->dataFileName=strdup(filename);
 	    q->file=fopen(filename,"w");
 	    if (!q->file) {
 	      if (debug&DEBUG_RHIZOME)
@@ -262,7 +263,7 @@ int rhizome_fetch_poll()
 	  }
 	  break;
 	case RHIZOME_FETCH_RXFILE:
-	  /* Keep reading until we have two CR/LFs in a row */
+	  /* Keep reading until we have the promised amount of data */
 	  if (debug&DEBUG_RHIZOME) 
 	    fprintf(stderr,"receiving rhizome fetch file body (current offset=%d)\n",
 		    q->file_ofs);
@@ -291,14 +292,39 @@ int rhizome_fetch_poll()
 		continue;
 	      }
 	    q->file_ofs+=bytes;
-	    if (q->file_ofs>=q->file_len)
+	  }	  
+	  if (q->file_ofs>=q->file_len)
+	    {
+	      /* got all of file */
+	      q->close=1;
+	      if (debug&DEBUG_RHIZOME) fprintf(stderr,"Received all of file via rhizome -- now to import it\n");
 	      {
-		/* got all of file */
-		q->close=1;
-		if (debug&DEBUG_RHIZOME) fprintf(stderr,"Received all of file via rhizome -- now to import it\n");
+		fclose(q->file);
+		char filename[1024];
+		snprintf(filename,1024,"%s/import/manifest.%s",
+			 rhizome_datastore_path,
+			 rhizome_manifest_get(q->manifest,"id",NULL,0));
+		/* Do really write the manifest unchanged */
+		fprintf(stderr,"manifest has %d signatories\n",q->manifest->sig_count);
+		fprintf(stderr,"manifest id = %s, len=%d\n",
+			rhizome_manifest_get(q->manifest,"id",NULL,0),
+			q->manifest->manifest_bytes);
+		dump("manifest",&q->manifest->manifestdata[0],
+		     q->manifest->manifest_all_bytes);
+		q->manifest->finalised=1;
+		q->manifest->manifest_bytes=q->manifest->manifest_all_bytes;
+		if (!rhizome_write_manifest_file(q->manifest,filename)) {
+		    rhizome_bundle_import(rhizome_manifest_get(q->manifest,
+							       "id",NULL,0),
+					  NULL /* no additional groups */,
+					  q->manifest->ttl-1 /* TTL */,
+					  1 /* do verify */,
+					  1 /* do check hash of file */,
+					  0 /* do not sign it, just keep existing
+					       signatures */);		  
+		  }
 	      }
-	    
-	  }
+	    }
 	  break;
 	case RHIZOME_FETCH_RXHTTPHEADERS:
 	  /* Keep reading until we have two CR/LFs in a row */
@@ -388,6 +414,8 @@ int rhizome_fetch_poll()
 	     have moved out of range. */
 	  if (!action) {
 	    if (time(0)-q->last_action>RHIZOME_IDLE_TIMEOUT) {
+	      if (debug&DEBUG_RHIZOME) 
+		WHY("Closing connection due to inactivity timeout.");
 	      q->close=1;
 	      continue;
 	    }

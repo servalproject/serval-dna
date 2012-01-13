@@ -360,7 +360,7 @@ int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename)
     /* We don't have the secret for this manifest, so only allow updates if 
        the self-signature is valid */
     if (!m->selfSigned) {
-    WHY("*** Insert into manifests failed (-2).");
+      WHY("*** Insert into manifests failed (-2).");
       return WHY("Manifest is not signed, and I don't have the key.  Manifest might be forged or corrupt.");
     }
   }
