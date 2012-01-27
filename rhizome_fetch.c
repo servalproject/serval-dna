@@ -84,17 +84,184 @@ rhizome_file_fetch_record file_fetch_queue[MAX_QUEUED_FILES];
 
    For HTTP over IPv4, the biggest problem is that we don't know the IPv4 address of
    the sender, or in fact that the link is over IPv4 and thus that HTTP over IPv4 is
-   an option.  We probably need to be passed this information.
+   an option.  We probably need to be passed this information.  This has since been
+   incorporated.
 */
-   
+
+/* As defined below uses 64KB */
+#define RHIZOME_VERSION_CACHE_NYBLS 2 /* 256=2^8=2nybls */
+#define RHIZOME_VERSION_CACHE_SHIFT 1
+#define RHIZOME_VERSION_CACHE_SIZE 128
+#define RHIZOME_VERSION_CACHE_ASSOCIATIVITY 16
+unsigned char rhizome_manifest_version_cache
+[RHIZOME_VERSION_CACHE_SIZE][RHIZOME_VERSION_CACHE_ASSOCIATIVITY][32];
+
+int rhizome_manifest_version_cache_store(rhizome_manifest *m)
+{
+  int bin=0;
+  int slot;
+  int i;
+
+  char *id=rhizome_manifest_get(m,"id",NULL,0);
+  if (!id) return 1; // dodgy manifest, so don't suggest that we want to RX it.
+
+  /* Work out bin number in cache */
+  for(i=0;i<RHIZOME_VERSION_CACHE_NYBLS;i++)
+    {
+      int nybl=chartonybl(id[i]);
+      bin=(bin<<4)|nybl;
+    }
+  bin=bin>>RHIZOME_VERSION_CACHE_SHIFT;
+
+  slot=random()%RHIZOME_VERSION_CACHE_ASSOCIATIVITY;
+  unsigned char *entry=rhizome_manifest_version_cache[bin][slot];
+  unsigned long long *cached_version=(unsigned long long *)&entry[24];
+  unsigned long long manifest_version = rhizome_manifest_get_ll(m,"version");
+
+  *cached_version=manifest_version;
+  for(i=0;i<24;i++)
+    {
+      int byte=(chartonybl(id[(i*2)])<<4)|chartonybl(id[(i*2)+1]);
+      entry[i]=byte;
+    }
+
+  return 0;
+}
+
+int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
+{
+  int bin=0;
+  int slot;
+  int i;
+
+  char *id=rhizome_manifest_get(m,"id",NULL,0);
+  if (!id) return 1; // dodgy manifest, so don't suggest that we want to RX it.
+
+  /* Work out bin number in cache */
+  for(i=0;i<RHIZOME_VERSION_CACHE_NYBLS;i++)
+    {
+      int nybl=chartonybl(id[i]);
+      bin=(bin<<4)|nybl;
+    }
+  bin=bin>>RHIZOME_VERSION_CACHE_SHIFT;
+  
+  for(slot=0;slot<RHIZOME_VERSION_CACHE_ASSOCIATIVITY;slot++)
+    {
+      unsigned char *entry=rhizome_manifest_version_cache[bin][slot];
+      for(i=0;i<24;i++)
+	{
+	  int byte=
+	    (chartonybl(id[(i*2)+RHIZOME_VERSION_CACHE_NYBLS])<<4)
+	    |chartonybl(id[(i*2)+RHIZOME_VERSION_CACHE_NYBLS+1]);
+	  if (byte!=entry[i]) break;
+	}
+      if (i==24) {
+	/* Entries match -- so check version */
+	unsigned long long rev = rhizome_manifest_get_ll(m,"version");
+	unsigned long long *cached_rev=(unsigned long long *)&entry[24];
+	if (rev<*cached_rev) {
+	  /* the presented manifest is older than we have.
+	     This allows the caller to know that they can tell whoever gave them the
+	     manifest it's time to get with the times.  May or not every be
+	     implemented, but it would be nice. XXX */
+	  return -2;
+	} else if (rev<=*cached_rev) {
+	  /* the presented manifest is already stored. */	   
+	  return -1;
+	} else {
+	  /* the presented manifest is newer than we have */
+	  return 0;
+	}	  
+      }
+    }
+
+  /* Not in cache, so all is well, well, maybe.
+     What we do know is that it is unlikely to be in the database, so it probably
+     doesn't hurt to try to receive it.  
+
+     Of course, we can just ask the database if it is there already, and populate
+     the cache in the process if we find it.  The tradeoff is that the whole point
+     of the cache is to AVOID database lookups, not incurr them whenever the cache
+     has a negative result.  But if we don't ask the database, then we can waste
+     more effort fetching the file associated with the manifest, and will ultimately
+     incurr a database lookup (and more), so while it seems a little false economy
+     we need to do the lookup now.
+
+     What this all suggests is that we need fairly high associativity so that misses
+     are rare events. But high associativity then introduces a linear search cost,
+     although that is unlikely to be nearly as much cost as even thinking about a
+     database query.
+
+     It also says that on a busy network that things will eventually go pear-shaped
+     and require regular database queries, and that memory allowing, we should use
+     a fairly large cache here.
+ */
+  unsigned long long manifest_version=rhizome_manifest_get_ll(m,"version");
+  if (sqlite_exec_int64("select count(*) from manifests"
+			" where id='%s' and version>=%lld",
+			id,manifest_version)>0) {
+    /* Okay, so we have a stored version which is newer, so update the cache
+       using a random replacement strategy. */
+    unsigned long long stored_version
+      =sqlite_exec_int64("select version from manifests where id='%s'",
+			 id);
+
+    slot=random()%RHIZOME_VERSION_CACHE_ASSOCIATIVITY;
+    unsigned char *entry=rhizome_manifest_version_cache[bin][slot];
+    unsigned long long *cached_version=(unsigned long long *)&entry[24];
+    *cached_version=stored_version;
+    for(i=0;i<24;i++)
+      {
+	int byte=(chartonybl(id[(i*2)])<<4)|chartonybl(id[(i*2)+1]);
+	entry[i]=byte;
+      }
+    
+    /* Finally, say that it isn't worth RXing this manifest */
+    if (stored_version>manifest_version) return -2; else return -1;
+  } else {
+    /* At best we hold an older version of this manifest */
+    return 0;
+  }
+
+}
+
 int rhizome_queue_manifest_import(rhizome_manifest *m,
 				  struct sockaddr_in *peerip)
 {
   int i;
 
+  /* Do the quick rejection tests first, before the more expensive once,
+     like querying the database for manifests. 
+
+     We probably need a cache of recently rejected manifestid:versionid
+     pairs so that we can avoid database lookups in most cases.  Probably
+     the first 64bits of manifestid is sufficient to make it resistant to
+     collission attacks, but using 128bits or the full 256 bits would be safer.
+     Let's make the cache use 256 bit (32byte) entries for power of two
+     efficiency, and so use the last 64bits for version id, thus using 192 bits
+     for collission avoidance --- probably sufficient for many years yet (from
+     time of writing in 2012).  We get a little more than 192 bits by using
+     the cache slot number to implicitly store the first bits.
+  */
+
+  if (rhizome_manifest_version_cache_lookup(m)) {
+    /* We already have this version or newer */
+    if (debug&DEBUG_RHIZOMESYNC) {
+      fprintf(stderr,"manifest id=%s, version=%lld\n",
+	      rhizome_manifest_get(m,"id",NULL,0),
+	      rhizome_manifest_get_ll(m,"version"));
+      WHY("We already have that manifest or newer.\n");
+    }
+    return -1;
+  } else {
+    if (debug&DEBUG_RHIZOMESYNC) {
+      fprintf(stderr,"manifest id=%s, version=%lld is new to us.\n",
+	      rhizome_manifest_get(m,"id",NULL,0),
+	      rhizome_manifest_get_ll(m,"version"));
+  }
   /* Don't queue if queue slots already full */
   if (rhizome_file_fetch_queue_count>=MAX_QUEUED_FILES) {
-    if (debug&DEBUG_RHIZOME) fprintf(stderr,"Already busy fetching files");
+    if (debug&DEBUG_RHIZOME) WHY("Already busy fetching files");
     return -1;
   }
   /* Don't queue if already queued */

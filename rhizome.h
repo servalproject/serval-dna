@@ -208,3 +208,5 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,struct sockaddr_in *peerip
 #define RHIZOME_VERIFY 1
 
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
+int rhizome_manifest_version_cache_lookup(rhizome_manifest *m);
+int rhizome_manifest_version_cache_store(rhizome_manifest *m);
