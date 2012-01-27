@@ -96,8 +96,9 @@ rhizome_manifest *rhizome_read_manifest_file(char *filename,int bufferP,int flag
     
     /* Read signature blocks from file. */
     while(ofs<m->manifest_bytes) {
-      fprintf(stderr,"ofs=0x%x, m->manifest_bytes=0x%x\n",
-	    ofs,m->manifest_bytes);
+      if (debug&DEBUG_RHIZOME)
+	fprintf(stderr,"ofs=0x%x, m->manifest_bytes=0x%x\n",
+		ofs,m->manifest_bytes);
       rhizome_manifest_extract_signature(m,&ofs);
     }
     
@@ -129,7 +130,8 @@ rhizome_manifest *rhizome_read_manifest_file(char *filename,int bufferP,int flag
       }
     }
 
-    WHY("Group membership determination not implemented (see which signatories are groups? what about manifests signed by groups we don't yet know about?)");
+    if (debug&DEBUG_RHIZOME) 
+      WHY("Group membership determination not implemented (see which signatories are groups? what about manifests signed by groups we don't yet know about?)");
   }
   
   m->manifest_bytes=end_of_text;

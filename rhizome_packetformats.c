@@ -308,9 +308,8 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	  } else {
 	    if (debug&DEBUG_RHIZOME) fprintf(stderr,"Verifying manifest %s revealed no errors -- will try to store.\n",manifest_id);
 	    
-	    /* Add manifest to import queue. Challenge here is that we need to know
-	     the IPv4 address of the peer */
-	    WHY("Doesn't provide IPv4 address of sender of frame");
+	    /* Add manifest to import queue. We need to know originating IPv4 address
+	       so that we can transfer by HTTP. */
 	    if (rhizome_queue_manifest_import(m,f->recvaddr))
 	      rhizome_manifest_free(m);
 	  }

@@ -197,11 +197,8 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
 	  }
       }
     }
-
-  /* got file, so now import */
-  WHY("Actual importing not implemented");
-
-  return WHY("Not implemented.");
+  
+  return 0;
 }
 
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
@@ -255,8 +252,10 @@ int rhizome_fetch_poll()
 	    if (q->request_ofs>=q->request_len) {
 	      /* Sent all of request.  Switch to listening for HTTP response headers.
 	       */
-	      if (debug&DEBUG_RHIZOME) fprintf(stderr,"Sent http request to fetch file. (%d of %d bytes)\n",q->request_ofs,q->request_len);
-	      fprintf(stderr,"sent [%s]\n",q->request);
+	      if (debug&DEBUG_RHIZOME) {
+		fprintf(stderr,"Sent http request to fetch file. (%d of %d bytes)\n",q->request_ofs,q->request_len);	      
+		fprintf(stderr,"sent [%s]\n",q->request);
+	      }
 	      q->request_len=0; q->request_ofs=0;
 	      q->state=RHIZOME_FETCH_RXHTTPHEADERS;
 	    }
@@ -305,12 +304,14 @@ int rhizome_fetch_poll()
 			 rhizome_datastore_path,
 			 rhizome_manifest_get(q->manifest,"id",NULL,0));
 		/* Do really write the manifest unchanged */
-		fprintf(stderr,"manifest has %d signatories\n",q->manifest->sig_count);
-		fprintf(stderr,"manifest id = %s, len=%d\n",
-			rhizome_manifest_get(q->manifest,"id",NULL,0),
-			q->manifest->manifest_bytes);
-		dump("manifest",&q->manifest->manifestdata[0],
-		     q->manifest->manifest_all_bytes);
+		if (debug&DEBUG_RHIZOME) {
+		  fprintf(stderr,"manifest has %d signatories\n",q->manifest->sig_count);
+		  fprintf(stderr,"manifest id = %s, len=%d\n",
+			  rhizome_manifest_get(q->manifest,"id",NULL,0),
+			  q->manifest->manifest_bytes);
+		  dump("manifest",&q->manifest->manifestdata[0],
+		       q->manifest->manifest_all_bytes);
+		}
 		q->manifest->finalised=1;
 		q->manifest->manifest_bytes=q->manifest->manifest_all_bytes;
 		if (!rhizome_write_manifest_file(q->manifest,filename)) {
@@ -345,7 +346,8 @@ int rhizome_fetch_poll()
 	    q->request_len+=bytes;
 	    if (q->request_len<1024)
 	      q->request[q->request_len]=0;
-	    dump("http reply headers",(unsigned char *)q->request,q->request_len);
+	    if (debug&DEBUG_RHIZOME)
+	      dump("http reply headers",(unsigned char *)q->request,q->request_len);
 	    for(;i<(q->request_len+bytes);i++)
 	      {
 		switch(q->request[i]) {

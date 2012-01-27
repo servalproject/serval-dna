@@ -154,7 +154,7 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
 	  bcopy(&publicKey[0],m->signatories[m->sig_count],
 		crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
 	  m->sig_count++;
-	  WHY("Signature passed.");
+	  if (debug&DEBUG_RHIZOME) WHY("Signature passed.");
 	}
 	break;
       default:

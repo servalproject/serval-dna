@@ -304,8 +304,13 @@ int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename)
 {
   char sqlcmd[1024];
   const char *cmdtail;
+  int i;
 
-  char *manifestid=rhizome_bytes_to_hex(m->cryptoSignPublic,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+  char manifestid[65];
+  strncpy(manifestid,rhizome_manifest_get(m,"id",NULL,0),64);
+  manifestid[64]=0;
+  for(i=0;i<64;i++)
+    manifestid[i]=toupper(manifestid[i]);
 
   if (!m->finalised) return WHY("Manifest was not finalised");
 
