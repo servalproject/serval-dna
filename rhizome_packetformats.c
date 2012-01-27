@@ -270,25 +270,25 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	if (!m->errors)
 	  {
 	    /* Manifest is okay, so see if it is worth storing */
-	    manifest_id=rhizome_manifest_get(m,"id",NULL,0);
-	    if (manifest_id)
-	      {
-		if (sqlite_exec_int64("SELECT COUNT(*) from manifests where id='%s';",
-				      manifest_id)==0) {
-		  if (debug&DEBUG_RHIZOME) fprintf(stderr,"Unverified manifest %s looks worthly of replication (not seen before).\n",manifest_id);
-		  importManifest=1;
-		}
-		else
-		  if (sqlite_exec_int64("SELECT version from manifests where id='%s';",
-					manifest_id)
-		      <rhizome_manifest_get_ll(m,"version")) {
-		    if (debug&DEBUG_RHIZOME) fprintf(stderr,"Unverified manifest %s looks worthly of replication (newer version).\n",manifest_id);		 
-		    importManifest=1;
-		  }
-		  else {
-		    if (debug&DEBUG_RHIZOME) fprintf(stderr,"Unverified manifest %s not worth storing (we already have it or a newer version of it).\n",manifest_id);	      
-		  }
+	    if (rhizome_manifest_version_cache_lookup(m)) {
+	      /* We already have this version or newer */
+	      if (debug&DEBUG_RHIZOMESYNC) {
+		fprintf(stderr,"manifest id=%s, version=%lld\n",
+			rhizome_manifest_get(m,"id",NULL,0),
+			rhizome_manifest_get_ll(m,"version"));
+		WHY("We already have that manifest or newer.\n");
 	      }
+	      importManifest=0;
+	    } else {
+	      if (debug&DEBUG_RHIZOMESYNC) {
+		fprintf(stderr,"manifest id=%s, version=%lld is new to us.\n",
+			rhizome_manifest_get(m,"id",NULL,0),
+			rhizome_manifest_get_ll(m,"version"));
+	      }
+	      importManifest=1;
+	    }
+
+	    manifest_id=rhizome_manifest_get(m,"id",NULL,0);
 	  }
 	else
 	  {

@@ -258,7 +258,9 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
       fprintf(stderr,"manifest id=%s, version=%lld is new to us.\n",
 	      rhizome_manifest_get(m,"id",NULL,0),
 	      rhizome_manifest_get_ll(m,"version"));
+    }
   }
+
   /* Don't queue if queue slots already full */
   if (rhizome_file_fetch_queue_count>=MAX_QUEUED_FILES) {
     if (debug&DEBUG_RHIZOME) WHY("Already busy fetching files");
