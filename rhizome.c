@@ -36,19 +36,24 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
    The file should be included in the specified rhizome groups, if possible.
    (some groups may be closed groups that we do not have the private key for.)
 */
-int rhizome_bundle_import(char *bundle,char *groups[], int ttl,
+int rhizome_bundle_import(rhizome_manifest *m_in,char *bundle,char *groups[], int ttl,
 			  int verifyP, int checkFileP, int signP)
 {
   char filename[1024];
   char manifestname[1024];
   char *buffer;
-  
+ 
+
   snprintf(filename,1024,"%s/import/file.%s",rhizome_datastore_path,bundle); filename[1023]=0;
   snprintf(manifestname,1024,"%s/import/manifest.%s",rhizome_datastore_path,bundle); manifestname[1023]=0;
 
   /* Open files */
-  rhizome_manifest *m=rhizome_read_manifest_file(manifestname,0 /* file not buffer */,
-						 RHIZOME_VERIFY);
+  rhizome_manifest *m=m_in;
+  if (!m_in) 
+    m=rhizome_read_manifest_file(manifestname,0 /* file not buffer */,RHIZOME_VERIFY);
+  else
+    if (debug&DEBUG_RHIZOMESYNC) fprintf(stderr,"Importing direct from manifest structure hashP=%d\n",m->fileHashedP);
+
   if (!m) return WHY("Could not read manifest file.");
   char hexhash[SHA512_DIGEST_STRING_LENGTH];
 
@@ -57,10 +62,12 @@ int rhizome_bundle_import(char *bundle,char *groups[], int ttl,
 
   /* Keep associated file name handy for later */
   m->dataFileName=strdup(filename);
-  struct stat stat;
-  if (lstat(filename,&stat)) {
-    return WHY("Could not stat() associated file");
-    m->fileLength=stat.st_size;
+  if (checkFileP) {
+    struct stat stat;
+    if (lstat(filename,&stat)) {
+      return WHY("Could not stat() associated file");
+      m->fileLength=stat.st_size;
+    }
   }
 
   if (checkFileP||signP) {

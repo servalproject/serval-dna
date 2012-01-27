@@ -90,15 +90,30 @@ rhizome_file_fetch_record file_fetch_queue[MAX_QUEUED_FILES];
 int rhizome_queue_manifest_import(rhizome_manifest *m,
 				  struct sockaddr_in *peerip)
 {
+  int i;
+
+  /* Don't queue if queue slots already full */
   if (rhizome_file_fetch_queue_count>=MAX_QUEUED_FILES) {
     if (debug&DEBUG_RHIZOME) fprintf(stderr,"Already busy fetching files");
     return -1;
+  }
+  /* Don't queue if already queued */
+  char *id=rhizome_manifest_get(m,"id",NULL,0);
+  for(i=0;i<rhizome_file_fetch_queue_count;i++) {
+    rhizome_file_fetch_record 
+      *q=&file_fetch_queue[i];
+    if (!strcasecmp(id,rhizome_manifest_get(q->manifest,"id",NULL,0))) {
+	if (debug&DEBUG_RHIZOMESYNC)
+	  fprintf(stderr,"Already have %s in the queue.\n",id);
+	return -1;
+      }
   }
 
   char *filehash=rhizome_manifest_get(m,"filehash",NULL,0);
   long long filesize=rhizome_manifest_get_ll(m,"filesize");
 
-  if (debug&DEBUG_RHIZOME) fprintf(stderr,"Getting ready to fetch file %s\n",filehash);
+  if (debug&DEBUG_RHIZOMESYNC) 
+    fprintf(stderr,"Getting ready to fetch file %s for manifest %s\n",filehash,rhizome_manifest_get(m,"id",NULL,0));
 
   if (filesize>0&&(filehash!=NULL))
     {  
@@ -196,11 +211,33 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
 	    return WHY("Rhizome fetching via overlay not implemented");
 	  }
       }
+      else
+	{
+	  if (debug&DEBUG_RHIZOMESYNC) 
+	    fprintf(stderr,"We already have the file for this manifest; importing from manifest alone.\n");
+	  m->finalised=1;
+	  m->fileHashedP=1;
+	  m->manifest_bytes=m->manifest_all_bytes;
+	  char filename[1024];
+	  snprintf(filename,1024,"%s/import/manifest.%s",
+		   rhizome_datastore_path,
+		   rhizome_manifest_get(m,"id",NULL,0));
+	  if (!rhizome_write_manifest_file(m,filename)) {
+	    rhizome_bundle_import(m,rhizome_manifest_get(m,"id",NULL,0),
+				  NULL /* no additional groups */,
+				  m->ttl-1 /* TTL */,
+				  1 /* do verify */,
+				  0 /* don't check hash of file (since we are using the databse stored copy) */,
+				  0 /* do not sign it, just keep existing
+				       signatures */);		  
+	    
+	  }
+	}
     }
   
   return 0;
 }
-
+  
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
 {
   int i;
@@ -315,14 +352,16 @@ int rhizome_fetch_poll()
 		q->manifest->finalised=1;
 		q->manifest->manifest_bytes=q->manifest->manifest_all_bytes;
 		if (!rhizome_write_manifest_file(q->manifest,filename)) {
-		    rhizome_bundle_import(rhizome_manifest_get(q->manifest,
-							       "id",NULL,0),
+		  rhizome_bundle_import(q->manifest,
+					rhizome_manifest_get(q->manifest,
+							     "id",NULL,0),
 					  NULL /* no additional groups */,
 					  q->manifest->ttl-1 /* TTL */,
 					  1 /* do verify */,
 					  1 /* do check hash of file */,
 					  0 /* do not sign it, just keep existing
-					       signatures */);		  
+					       signatures */);
+		  q->manifest=NULL;
 		  }
 	      }
 	    }

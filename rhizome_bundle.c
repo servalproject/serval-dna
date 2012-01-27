@@ -360,14 +360,14 @@ int rhizome_manifest_finalise(rhizome_manifest *m,int signP)
     if (rhizome_hash_file(m->dataFileName,m->fileHexHash))
       return WHY("rhizome_hash_file() failed during finalisation of manifest.");
     m->fileHashedP=1;
-  }
 
-  /* set fileLength */
-  struct stat stat;
-  if (lstat(m->dataFileName,&stat)) {
-    return WHY("Could not stat() associated file");
+    /* set fileLength */
+    struct stat stat;
+    if (lstat(m->dataFileName,&stat)) {
+      return WHY("Could not stat() associated file");
+    }
+    m->fileLength=stat.st_size;
   }
-  m->fileLength=stat.st_size;
   
   /* Set file hash and size information */
   rhizome_manifest_set(m,"filehash",m->fileHexHash);
