@@ -343,7 +343,7 @@ int main(int argc,char **argv)
 	     manifest.
 	     A different calling would be required to import an existing pre-signed
 	     manifest */
-	  return rhizome_bundle_import(optarg,
+	  return rhizome_bundle_import(NULL,optarg,
 				       NULL /* no groups - XXX should allow them */,
 				       255 /* ttl - XXX should read from somewhere,
 					      e.g., bar if being imported */,
@@ -440,6 +440,7 @@ int main(int argc,char **argv)
 	  if (strstr(optarg,"routing")) debug|=DEBUG_OVERLAYROUTING;
 	  if (strstr(optarg,"security")) debug|=DEBUG_SECURITY;
 	  if (strstr(optarg,"rhizome")) debug|=DEBUG_RHIZOME;
+	  if (strstr(optarg,"filesync")) debug|=DEBUG_RHIZOMESYNC;
 	  if (strstr(optarg,"monitorroutes")) debug|=DEBUG_OVERLAYROUTEMONITOR;
 	  if (strstr(optarg,"queues")) debug|=DEBUG_QUEUES;
 	  if (strstr(optarg,"broadcasts")) debug|=DEBUG_BROADCASTS;

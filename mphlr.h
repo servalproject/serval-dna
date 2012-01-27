@@ -898,6 +898,7 @@ int rhizome_server_poll();
 #define DEBUG_OVERLAYROUTEMONITOR 262144
 #define DEBUG_QUEUES 524288
 #define DEBUG_BROADCASTS 1048576
+#define DEBUG_RHIZOMESYNC 2097152
 
 int serval_packetvisualise(FILE *f,char *message,unsigned char *packet,int plen);
 
