@@ -25,7 +25,7 @@ rhizome_manifest *rhizome_read_manifest_file(char *filename,int bufferP,int flag
 {
   if (bufferP>MAX_MANIFEST_BYTES) return NULL;
 
-  rhizome_manifest *m = calloc(sizeof(rhizome_manifest),1);
+  rhizome_manifest *m = rhizome_new_manifest();
   if (!m) return NULL;
 
   if (bufferP) {
@@ -252,15 +252,94 @@ long long rhizome_file_size(char *filename)
   return size;
 }
 
-void rhizome_manifest_free(rhizome_manifest *m)
+#define MAX_RHIZOME_MANIFESTS 16
+rhizome_manifest manifests[MAX_RHIZOME_MANIFESTS];
+char manifest_free[MAX_RHIZOME_MANIFESTS];
+int manifest_first_free=-1;
+const char *manifest_alloc_sourcefiles[MAX_RHIZOME_MANIFESTS];
+const char *manifest_alloc_functions[MAX_RHIZOME_MANIFESTS];
+int manifest_alloc_lines[MAX_RHIZOME_MANIFESTS];
+const char *manifest_free_sourcefiles[MAX_RHIZOME_MANIFESTS];
+const char *manifest_free_functions[MAX_RHIZOME_MANIFESTS];
+int manifest_free_lines[MAX_RHIZOME_MANIFESTS];
+
+rhizome_manifest *_rhizome_new_manifest(const char *filename,const char *funcname,
+					int line)
+{
+  if (manifest_first_free<0) {
+    /* Setup structures */
+    int i;
+    for(i=0;i<MAX_RHIZOME_MANIFESTS;i++) {
+      manifest_alloc_sourcefiles[i]="<never allocated>";
+      manifest_alloc_functions[i]="<never allocated>";
+      manifest_alloc_lines[i]=-1;
+      manifest_free_sourcefiles[i]="<never freed>";
+      manifest_free_functions[i]="<never freed>";
+      manifest_free_lines[i]=-1;
+      manifest_free[i]=1;
+    }
+    manifest_first_free=0;
+  }
+
+  /* No free manifests */
+  if (manifest_first_free>=MAX_RHIZOME_MANIFESTS)
+    {
+      int i;
+      fprintf(stderr,"%s:%d:%s() call to rhizome_new_manifest() could not be serviced.\n   (no free manifest records, this probably indicates a memory leak.)\n",
+	      filename,line,funcname);
+      fprintf(stderr,"   Manifest Slot# | Last allocated by\n");
+      for(i=0;i<MAX_RHIZOME_MANIFESTS;i++) {
+	fprintf(stderr,"   %-14d | %s:%d in %s()\n",
+		i,
+		manifest_alloc_sourcefiles[i],
+		manifest_alloc_lines[i],
+		manifest_alloc_functions[i]);
+      }     
+      return NULL;
+    }
+
+  rhizome_manifest *m=&manifests[manifest_first_free];
+  bzero(m,sizeof(rhizome_manifest));
+  m->manifest_record_number=manifest_first_free;
+
+  /* Indicate where manifest was allocated, and that it is no longer
+     free. */
+  manifest_alloc_sourcefiles[manifest_first_free]=filename;
+  manifest_alloc_lines[manifest_first_free]=line;
+  manifest_alloc_functions[manifest_first_free]=funcname;
+  manifest_free[manifest_first_free]=0;
+  manifest_free_sourcefiles[manifest_first_free]="<not freed>";
+  manifest_free_functions[manifest_first_free]="<not freed>";
+  manifest_free_lines[manifest_first_free]=-1;
+
+  /* Work out where next free manifest record lives */
+  for(;manifest_first_free<MAX_RHIZOME_MANIFESTS
+	&&(!manifest_free[manifest_first_free]);
+      manifest_first_free++)
+    continue;
+
+  return m;
+}
+
+void _rhizome_manifest_free(const char *sourcefile,const char *funcname,int line,
+			    rhizome_manifest *m)
 {
   if (!m) return;
-
   int i;
+  int mid=m->manifest_record_number;
+
+  if (m!=&manifests[mid]) {
+    fprintf(stderr,"%s:%d:%s() called rhizome_manifest_free() and asked to free"
+	    " manifest %p, which claims to be manifest slot #%d (%p), but isn't.\n",
+	    sourcefile,line,funcname,m,mid,&manifests[mid]);
+    exit(-1);
+  }
+
+  /* Free variable and signature blocks.
+     XXX These should be moved to malloc-free storage eventually */
   for(i=0;i<m->var_count;i++)
     { free(m->vars[i]); free(m->values[i]); 
       m->vars[i]=NULL; m->values[i]=NULL; }
-
   for(i=0;i<m->sig_count;i++)
     { free(m->signatories[i]);
       m->signatories[i]=NULL;
@@ -269,7 +348,11 @@ void rhizome_manifest_free(rhizome_manifest *m)
   if (m->dataFileName) free(m->dataFileName);
   m->dataFileName=NULL;
 
-  free(m);
+  manifest_free[mid]=1;
+  manifest_free_sourcefiles[mid]=sourcefile;
+  manifest_free_functions[mid]=funcname;
+  manifest_free_lines[mid]=line;
+  if (mid<manifest_first_free) manifest_first_free=mid;
 
   return;
 }

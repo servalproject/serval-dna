@@ -295,6 +295,7 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	    if (debug&DEBUG_RHIZOME) fprintf(stderr,"Unverified manifest has errors - so not processing any further.\n");
 	  }
 	rhizome_manifest_free(m);
+	m=NULL;
 
 	if (importManifest) {
 	  /* Okay, so the manifest looks like it is potentially interesting to us,
