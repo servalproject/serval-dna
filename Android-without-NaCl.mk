@@ -9,6 +9,7 @@ LOCAL_SRC_FILES:= \
         overlay.c       \
 	overlay_abbreviations.c \
 	overlay_advertise.c \
+	overlay_broadcast.c \
 	overlay_buffer.c        \
 	overlay_interface.c     \
 	overlay_packetformats.c \
@@ -29,7 +30,14 @@ LOCAL_SRC_FILES:= \
         simulate.c \
 	jni.c \
 	sha2.c \
-	rhizome.c
+	rhizome.c \
+	rhizome_bundle.c \
+	rhizome_crypto.c \
+	rhizome_database.c \
+	rhizome_fetch.c \
+	rhizome_http.c \
+	rhizome_packetformats.c \
+	serval_packetvisualise.c
 
 LOCAL_MODULE:= dnalib
 
