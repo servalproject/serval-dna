@@ -206,6 +206,7 @@ struct response {
   int code;
   unsigned char sid[32];
   struct in_addr sender;
+  int recvttl;
   unsigned char *response;
   int response_len;
   int var_id;
@@ -283,6 +284,7 @@ extern struct mphlr_variable vars[];
 #define ACTION_WROTE 0x83
 
 #define ACTION_XFER 0xf0
+#define ACTION_RECVTTL 0xfd
 #define ACTION_PAD 0xfe
 #define ACTION_EOT 0xff
 
@@ -293,27 +295,33 @@ extern int hexdigit[16];
 
 extern int sock;
 
+int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
+		struct sockaddr *recvaddr,unsigned int *recvaddrlen);
 int stowSid(unsigned char *packet,int ofs,char *sid);
 int stowDid(unsigned char *packet,int *ofs,char *did);
 int isFieldZeroP(unsigned char *packet,int start,int count);
 void srandomdev();
 int respondSimple(char *sid,int action,unsigned char *action_text,int action_len,
-		  unsigned char *transaction_id,struct sockaddr *recvaddr,int cryptoFlags);
+		  unsigned char *transaction_id,int recvttl,
+		  struct sockaddr *recvaddr,int cryptoFlags);
 int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffer,int buffer_length,int *len,
 		unsigned char *transaction_id);
-int requestNewHLR(char *did,char *pin,char *sid,struct sockaddr *recvaddr);
+int requestNewHLR(char *did,char *pin,char *sid,int recvttl,struct sockaddr *recvaddr);
 int server(char *backing_file,int size,int foregroundMode);
 
 int setReason(char *fmt, ...);
 int hexvalue(unsigned char c);
 int dump(char *name,unsigned char *addr,int len);
-int packetOk(int interface,unsigned char *packet,int len,unsigned char *transaction_id,
+int packetOk(int interface,unsigned char *packet,int len,
+	     unsigned char *transaction_id, int recvttl,
 	     struct sockaddr *recvaddr,int recvaddrlen,int parseP);
-int process_packet(unsigned char *packet,int len,struct sockaddr *sender,int sender_len);
+int process_packet(unsigned char *packet,int len,
+		   int recvttl,struct sockaddr *sender,int sender_len);
 int packetMakeHeader(unsigned char *packet,int packet_maxlen,int *packet_len,unsigned char *transaction_id,int cryptoflags);
 int packetSetDid(unsigned char *packet,int packet_maxlen,int *packet_len,char *did);
 int packetSetSid(unsigned char *packet,int packet_maxlen,int *packet_len,char *sid);
-int packetFinalise(unsigned char *packet,int packet_maxlen,int *packet_len,int cryptoflags);
+int packetFinalise(unsigned char *packet,int packet_maxlen,int recvttl,
+		   int *packet_len,int cryptoflags);
 int packetAddHLRCreateRequest(unsigned char *packet,int packet_maxlen,int *packet_len);
 int extractResponses(struct in_addr sender,unsigned char *buffer,int len,struct response_set *responses);
 int packetAddVariableRequest(unsigned char *packet,int packet_maxlen,int *packet_len,
@@ -345,11 +353,12 @@ int extractDid(unsigned char *packet,int *ofs,char *did);
 char *hlrSid(unsigned char *hlr,int ofs);
 int parseAssignment(unsigned char *text,int *var_id,unsigned char *value,int *value_len);
 int writeItem(char *sid,int var_id,int instance,unsigned char *value,
-	      int value_start,int value_length,int flags, struct sockaddr *recvaddr);
+	      int value_start,int value_length,int flags, 
+	      int recvttl,struct sockaddr *recvaddr);
 int packetAddVariableWrite(unsigned char *packet,int packet_maxlen,int *packet_len,
 			   int itemId,int instance,unsigned char *value,int start_offset,int value_len,int flags);
 int processRequest(unsigned char *packet,int len,struct sockaddr *sender,int sender_len,
-		   unsigned char *transaction_id,char *did,char *sid);
+		   unsigned char *transaction_id,int recvttl,char *did,char *sid);
 
 int extractRequest(unsigned char *packet,int *packet_ofs,int packet_len,
 		   int *itemId,int *instance,unsigned char *value,
@@ -375,8 +384,9 @@ int openHlrFile(char *backing_file,int size);
 int runCommand(char *cmd);
 int asteriskObtainGateway(char *requestor_sid,char *did,char *uri_out);
 int packetOkDNA(unsigned char *packet,int len,unsigned char *transaction_id,
-		struct sockaddr *recvaddr,int recvaddrlen,int parseP);
-int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *transaction_id,
+		int recvttl,struct sockaddr *recvaddr,int recvaddrlen,int parseP);
+int packetOkOverlay(int interface,unsigned char *packet,int len,
+		    unsigned char *transaction_id,int recvttl,
 		    struct sockaddr *recvaddr,int recvaddrlen,int parseP);
 int prepareGateway(char *gatewayspec);
 int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP,

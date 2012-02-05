@@ -19,7 +19,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "mphlr.h"
 
-int process_packet(unsigned char *packet,int len,struct sockaddr *sender,int sender_len)
+int process_packet(unsigned char *packet,int len,
+		   int recvttl,struct sockaddr *sender,int sender_len)
 {
   int authenticatedP=0;
   char did[128];
@@ -52,26 +53,29 @@ int process_packet(unsigned char *packet,int len,struct sockaddr *sender,int sen
       if (debug&DEBUG_SECURITY) fprintf(stderr,"No PIN was supplied.\n");
     }
 
-  if (serverMode) return processRequest(packet,len,sender,sender_len,transaction_id,did,sid);
+  if (serverMode) return processRequest(packet,len,sender,sender_len,transaction_id,
+					recvttl,did,sid);
    
   return 0;
 }
 
-int packetOk(int interface,unsigned char *packet,int len,unsigned char *transaction_id,
+int packetOk(int interface,unsigned char *packet,int len,
+	     unsigned char *transaction_id,int ttl,
 	     struct sockaddr *recvaddr,int recvaddrlen,int parseP)
 {
   if (len<HEADERFIELDS_LEN) return setReason("Packet is too short");
 
   if (packet[0]==0x41&&packet[1]==0x10) 
     {
-      return packetOkDNA(packet,len,transaction_id,recvaddr,recvaddrlen,parseP);
+      return packetOkDNA(packet,len,transaction_id,ttl,recvaddr,recvaddrlen,parseP);
     }
 
   if (packet[0]==0x4F&&packet[1]==0x10) 
     {
       if (interface>-1)
 	{
-	  return packetOkOverlay(interface,packet,len,transaction_id,recvaddr,recvaddrlen,parseP);
+	  return packetOkOverlay(interface,packet,len,transaction_id,ttl,
+				 recvaddr,recvaddrlen,parseP);
 	}
       else
 	/* We ignore overlay mesh packets in simple server mode, which is indicated by interface==-1 */
@@ -82,6 +86,7 @@ int packetOk(int interface,unsigned char *packet,int len,unsigned char *transact
 }
 
 int packetOkDNA(unsigned char *packet,int len,unsigned char *transaction_id,
+		int recvttl,
 		struct sockaddr *recvaddr,int recvaddrlen,int parseP)
 {
   /* Make sure that the packet is meant for us, and is not mal-formed */
@@ -123,7 +128,7 @@ int packetOkDNA(unsigned char *packet,int len,unsigned char *transaction_id,
   if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"Packet passes sanity checks and is ready for decoding.\n");
   if (debug&DEBUG_PACKETFORMATS) dump("unrotated packet",packet,len);
 
-  if (parseP) return process_packet(packet,len,recvaddr,recvaddrlen); else return 0;
+  if (parseP) return process_packet(packet,len,recvttl,recvaddr,recvaddrlen); else return 0;
 }
 
 int packetMakeHeader(unsigned char *packet,int packet_maxlen,int *packet_len,
@@ -201,7 +206,8 @@ int packetSetSid(unsigned char *packet,int packet_maxlen,int *packet_len,char *s
   return stowSid(packet,ofs,sid);
 }
 
-int packetFinalise(unsigned char *packet,int packet_maxlen,int *packet_len,int cryptoflags)
+int packetFinalise(unsigned char *packet,int packet_maxlen,int recvttl,
+		   int *packet_len,int cryptoflags)
 {
   /* Add any padding bytes and EOT to packet */
   int paddingBytes=rand()&0xf;
@@ -215,6 +221,15 @@ int packetFinalise(unsigned char *packet,int packet_maxlen,int *packet_len,int c
       while(paddingBytes--) packet[(*packet_len)++]=random()&0xff;
     }
 
+  /* tell requester what the ttl was when we received the packet */
+  if (recvttl>-1) {
+    CHECK_PACKET_LEN(2);
+    packet[(*packet_len)++]=ACTION_RECVTTL;
+    packet[(*packet_len)++]=recvttl;
+  }
+
+  /* mark end of packet */
+  CHECK_PACKET_LEN(1);
   packet[(*packet_len)++]=ACTION_EOT;
 
   /* Set payload length */
@@ -390,6 +405,8 @@ int extractResponses(struct in_addr sender,unsigned char *buffer,int len,struct 
 {
   int ofs=OFS_PAYLOAD;
   
+  struct response *first_response=NULL;
+
   while(ofs<len)
     {
       /* XXX should allocate responses from a temporary and bounded slab of memory */
@@ -433,6 +450,18 @@ int extractResponses(struct in_addr sender,unsigned char *buffer,int len,struct 
 	  unpackageVariableSegment(&buffer[ofs+1],len-ofs,WITHOUTDATA,r);
 	  r->response=NULL;
 	  break;
+	case ACTION_RECVTTL:
+	  r->recvttl=buffer[ofs+1];
+	  r->response_len=1;
+	  /* Attach TTL to other responses from this packet */
+	  {
+	    struct response *rr=first_response;
+	    while(rr) {
+	      rr->recvttl=r->recvttl;
+	      rr=rr->next;
+	    }
+	  }
+	  break;
 	case ACTION_SET:
 	case ACTION_DEL:
 	case ACTION_XFER:
@@ -471,6 +500,8 @@ int extractResponses(struct in_addr sender,unsigned char *buffer,int len,struct 
 	responses->responses=r;
       responses->last_response=r;
       responses->response_count++;
+
+      if (!first_response) first_response=r;
 
       responseFromPeer(responses,r->peer_id);
 

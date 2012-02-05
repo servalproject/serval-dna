@@ -79,7 +79,7 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
     {
       int r;
       if (overlayMode) 
-	r=overlay_sendto(recvaddr,packet,packet_len);
+	r=overlay_sendto((struct sockaddr_in *)recvaddr,packet,packet_len);
       else
 	r=sendto(sock,packet,packet_len,0,recvaddr,sizeof(struct sockaddr_in));
       if (r<packet_len)	{
@@ -210,7 +210,8 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
    sendToPeers() does it that way.  We just have to remember to
    ask for serialised attempts, rather than all at once.
 */
-int requestNewHLR(char *did,char *pin,char *sid,struct sockaddr *recvaddr)
+int requestNewHLR(char *did,char *pin,char *sid,
+		  int recvttl,struct sockaddr *recvaddr)
 {
   unsigned char packet[8000];
   int packet_len=0;
@@ -224,11 +225,12 @@ int requestNewHLR(char *did,char *pin,char *sid,struct sockaddr *recvaddr)
   bcopy(&packet[OFS_TRANSIDFIELD],transaction_id,TRANSID_SIZE);
   if (packetSetDid(packet,8000,&packet_len,did)) return -1;
   if (packetAddHLRCreateRequest(packet,8000,&packet_len)) return -1;
-  if (packetFinalise(packet,8000,&packet_len,CRYPT_PUBLIC)) return -1;
+  if (packetFinalise(packet,8000,recvttl,&packet_len,CRYPT_PUBLIC)) return -1;
 
   /* Send it to peers, starting with ourselves, one at a time until one succeeds.
      XXX - This could take a while if we have long timeouts for each. */
-  if (packetSendRequest(REQ_SERIAL,packet,packet_len,NONBATCH,transaction_id,recvaddr,&responses)) return -1;
+  if (packetSendRequest(REQ_SERIAL,packet,packet_len,NONBATCH,
+			transaction_id,recvaddr,&responses)) return -1;
 
   /* Extract response */
   if (debug&DEBUG_DNARESPONSES) dumpResponses(&responses);
@@ -344,9 +346,10 @@ int getReplyPackets(int method,int peer,int batchP,struct response_set *response
 
     /* Use this temporary socket address structure if one was not supplied */
     struct sockaddr reply_recvaddr;
+    int ttl=-1;
     if (!recvaddr) recvaddr=&reply_recvaddr;
 
-    len=recvfrom(sock,buffer,sizeof(buffer),0,recvaddr,&recvaddrlen);
+    len=recvwithttl(sock,buffer,sizeof(buffer),&ttl,recvaddr,&recvaddrlen);
     if (len<=0) return setReason("Unable to receive packet.");
 
     if (recvaddr) {
@@ -362,7 +365,7 @@ int getReplyPackets(int method,int peer,int batchP,struct response_set *response
       if (debug&DEBUG_SIMULATION) fprintf(stderr,"Simulation mode: Dropped packet due to simulated link parameters.\n");
       continue;
     }
-    if (!packetOk(-1,buffer,len,transaction_id,recvaddr,recvaddrlen,0)) {
+    if (!packetOk(-1,buffer,len,transaction_id,ttl,recvaddr,recvaddrlen,0)) {
       /* Packet passes tests - extract responses and append them to the end of the response list */
       if (extractResponses(client_addr,buffer,len,responses)) 
 	return setReason("Problem extracting response fields from reply packets");
@@ -393,7 +396,8 @@ int getReplyPackets(int method,int peer,int batchP,struct response_set *response
 }
 
 int writeItem(char *sid,int var_id,int instance,unsigned char *value,
-	      int value_start,int value_length,int flags, struct sockaddr *recvaddr)
+	      int value_start,int value_length,int flags,
+	      int recvttl,struct sockaddr *recvaddr)
 {
   unsigned char packet[8000];
   int packet_len=0;
@@ -423,7 +427,7 @@ int writeItem(char *sid,int var_id,int instance,unsigned char *value,
 	  if (o+bytes>value_length) bytes=value_length-o;
 	  if (debug&DEBUG_DNAVARS) fprintf(stderr,"  writing [%d,%d)\n",o,o+bytes-1);
 	  if (writeItem(sid,var_id,instance,&value[o-value_start],o,bytes,
-			flags|((o>value_start)?SET_FRAGMENT:0),NULL))
+			flags|((o>value_start)?SET_FRAGMENT:0),recvttl,NULL))
 	    {
 	      if (debug&DEBUG_DNAVARS) fprintf(stderr,"   - writing installment failed\n");
 	      return setReason("Failure during multi-packet write of long-value");
@@ -439,7 +443,7 @@ int writeItem(char *sid,int var_id,int instance,unsigned char *value,
   if (packetSetSid(packet,8000,&packet_len,sid)) return -1;
   if (packetAddVariableWrite(packet,8000,&packet_len,var_id,instance,
 			     value,value_start,value_length,flags)) return -1;
-  if (packetFinalise(packet,8000,&packet_len,CRYPT_SIGNED|CRYPT_CIPHERED)) return -1;
+  if (packetFinalise(packet,8000,recvttl,&packet_len,CRYPT_SIGNED|CRYPT_CIPHERED)) return -1;
 
   /* XXX should be able to target to the peer holding the SID, if we have it.
      In any case, we */
@@ -525,7 +529,7 @@ int peerAddress(char *did,char *sid,int flags)
     if (debug&DEBUG_DNAVARS) fprintf(stderr,"%s() failed at line %d\n",__FUNCTION__,__LINE__);
     return -1;
   }
-  if (packetFinalise(packet,8000,&packet_len,CRYPT_PUBLIC)) {
+  if (packetFinalise(packet,8000,-1,&packet_len,CRYPT_PUBLIC)) {
     if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"%s() failed at line %d\n",__FUNCTION__,__LINE__);
     return -1;
   }
@@ -564,7 +568,8 @@ int peerAddress(char *did,char *sid,int flags)
   return 0;
 }
 
-int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffer,int buffer_length,int *len,
+int requestItem(char *did,char *sid,char *item,int instance,
+		unsigned char *buffer,int buffer_length,int *len,
 		unsigned char *transaction_id)
 {
   unsigned char packet[8000];
@@ -606,7 +611,7 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
     if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
     return -1;
   }
-  if (packetFinalise(packet,8000,&packet_len,CRYPT_SIGNED|CRYPT_CIPHERED)) {
+  if (packetFinalise(packet,8000,-1,&packet_len,CRYPT_SIGNED|CRYPT_CIPHERED)) {
     if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
     return -1;
   }
@@ -626,8 +631,8 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
       extractSid(r->sid,&slen,sid);
       switch(r->code)
 	{
-	case ACTION_OKAY: printf("OK:%s\n",sid); if (buffer) {strcpy((char *)buffer,sid); *len=strlen(sid); } successes++; break;
-	case ACTION_DECLINED: printf("DECLINED:%s\n",sid); errors++; break;
+	case ACTION_OKAY: printf("OK:%s:%d\n",sid,r->recvttl); if (buffer) {strcpy((char *)buffer,sid); *len=strlen(sid); } successes++; break;
+	case ACTION_DECLINED: printf("DECLINED:%s:%d\n",sid,r->recvttl); errors++; break;
 	case ACTION_DATA: 
 	  /* Display data.
 	     The trick is knowing the format of the data.
@@ -643,7 +648,7 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
 		int dlen=0;
 		did[0]=0;
 		extractDid(r->response,&dlen,did);
-		printf("DIDS:%s:%d:%s\n",sid,r->var_instance,did);
+		printf("DIDS:%s:%d:%d:%s\n",sid,r->recvttl,r->var_instance,did);
 		if (buffer) {strcpy((char *)buffer,did); *len=strlen(did); }
 		successes++;
 	      }
@@ -658,7 +663,7 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
 		while(vars[v].name&&vars[v].id!=r->var_id) v++;
 		if (!vars[v].id) printf("0x%02x",r->var_id);
 		while(vars[v].name[i]) fputc(toupper(vars[v].name[i++]),stdout);
-		printf(":%s:%d:",sid,r->var_instance);
+		printf(":%s:%d:%d:",sid,r->recvttl,r->var_instance);
 		*len=r->value_len;
 		
 		if (outputtemplate)
@@ -713,7 +718,7 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
 			      /* Send accumulated request direct to the responder */
 			      if (packet_len>=MAX_DATA_BYTES)
 				{
-				  if (packetFinalise(packet,8000,&packet_len,CRYPT_CIPHERED|CRYPT_SIGNED)) {
+				  if (packetFinalise(packet,8000,-1,&packet_len,CRYPT_CIPHERED|CRYPT_SIGNED)) {
 				    if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
 				    return -1;
 				  }
@@ -745,7 +750,7 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
 			/* Send accumulated request direct to the responder */
 			if (packet_len)
 			  {
-			    if (packetFinalise(packet,8000,&packet_len,CRYPT_SIGNED|CRYPT_CIPHERED)) {
+			    if (packetFinalise(packet,8000,-1,&packet_len,CRYPT_SIGNED|CRYPT_CIPHERED)) {
 			      if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
 			      return -1;
 			    }
@@ -797,7 +802,7 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
 	    } 
 	  break;
 	case ACTION_DONE: 
-	  printf("DONE:%s:%d\n",sid,r->response[0]);
+	  printf("DONE:%s:%d:%d\n",sid,r->recvttl,r->response[0]);
 	  break;
 	case ACTION_GET: printf("ERROR:You cant respond with GET\n"); break;
 	case ACTION_SET: printf("ERROR:You cant respond with SET\n"); break;

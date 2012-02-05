@@ -319,7 +319,10 @@ int overlay_rx_messages()
 		    bzero(&transaction_id[0],8);
 		    bzero(&src_addr,sizeof(src_addr));
 		    if ((plen>=0)&&(packet[0]==0x01)&&!(packet[1]|packet[2]|packet[3])) {
-		      { if (packetOk(i,&packet[128],plen,transaction_id,&src_addr,addrlen,1)) WHY("Malformed or unsupported packet from dummy interface (packetOK() failed)"); } }
+		      { if (packetOk(i,&packet[128],plen,transaction_id,
+				     -1 /* fake TTL */,
+				     &src_addr,addrlen,1)) 
+			  WHY("Malformed or unsupported packet from dummy interface (packetOK() failed)"); } }
 		    else WHY("Invalid packet version in dummy interface");
 		  }
 		else { 
@@ -329,9 +332,9 @@ int overlay_rx_messages()
 	      }
 	  } else {
 	    /* Read from UDP socket */
-	    plen=recvfrom(overlay_interfaces[i].fd,packet,sizeof(packet),
-			  MSG_DONTWAIT,
-			  &src_addr,&addrlen);
+	    int recvttl=1;
+	    plen=recvwithttl(overlay_interfaces[i].fd,packet,sizeof(packet),
+			     &recvttl,&src_addr,&addrlen);
 	    if (plen<0) { 
 	      c[i]=0; count--; 
 	    } else {
@@ -341,7 +344,8 @@ int overlay_rx_messages()
 				       packet,plen);
 	      if (debug&DEBUG_OVERLAYINTERFACES)fprintf(stderr,"Received %d bytes on interface #%d (%s)\n",plen,i,overlay_interfaces[i].name);
 	      
-	      if (packetOk(i,packet,plen,NULL,&src_addr,addrlen,1)) WHY("Malformed packet");	  
+	      if (packetOk(i,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) 
+		WHY("Malformed packet");	  
 	    }
 	  }
 	}

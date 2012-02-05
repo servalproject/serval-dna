@@ -26,7 +26,8 @@ struct sockaddr_in loopback = {
   .sin_addr.s_addr=0x0100007f
 };
 
-int packetOkOverlay(int interface,unsigned char *packet,int len,unsigned char *transaction_id,
+int packetOkOverlay(int interface,unsigned char *packet,int len,
+		    unsigned char *transaction_id,int recvttl,
 		    struct sockaddr *recvaddr,int recvaddrlen,int parseP)
 {
   /* 

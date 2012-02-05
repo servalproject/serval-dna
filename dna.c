@@ -462,7 +462,7 @@ int main(int argc,char **argv)
 	    int value_len=65535;
 	    if (parseAssignment((unsigned char *)optarg,&var_id,value,&value_len)) return -1;
 	    value[value_len]=0;
-	    return writeItem(did?did:sid,var_id,instance,value,0,value_len,SET_NOREPLACE,NULL);
+	    return writeItem(did?did:sid,var_id,instance,value,0,value_len,SET_NOREPLACE,-1,NULL);
 	  }
 	  break;
 	case 'U': /* write or update a variable */
@@ -472,14 +472,14 @@ int main(int argc,char **argv)
 	    int value_len=65535;
 	    if (parseAssignment((unsigned char *)optarg,&var_id,value,&value_len)) return -1;
 	    value[value_len]=0;
-	    return writeItem(did?did:sid,var_id,instance,value,0,value_len,SET_REPLACE,NULL);
+	    return writeItem(did?did:sid,var_id,instance,value,0,value_len,SET_REPLACE,-1,NULL);
 	  }
 	  break;
 	case 'C': /* create a new HLR entry */
 	  {
 	    if (optind<argc) usage("Extraneous options after HLR creation request");
 	    if ((!did)||(sid)) usage("Specify exactly one DID and no SID to create a new HLR entry");
-	    return requestNewHLR(did,pin,sid,NULL);
+	    return requestNewHLR(did,pin,sid,-1,NULL);
 	  }
 	  break;
 	case 'O': /* output to templated files */
