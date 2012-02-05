@@ -573,9 +573,6 @@ int createServerSocket()
   setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &TRUE, sizeof(TRUE));
 
   errno=0;
-  if(setsockopt(sock, IPPROTO_IP, IP_RECVDSTADDR, &TRUE,sizeof(TRUE))<0)
-    perror("setsockopt(IP_RECVDSTADDR)");  
-  errno=0;
   if(setsockopt(sock, IPPROTO_IP, IP_RECVTTL, &TRUE,sizeof(TRUE))<0)
     perror("setsockopt(IP_RECVTTL)");  
 
