@@ -69,15 +69,19 @@ int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
 	 cmsg != NULL; 
 	 cmsg = CMSG_NXTHDR(&msg,cmsg)) {
       
-      if ((cmsg->cmsg_level == IPPROTO_IP) && (cmsg->cmsg_type == IP_RECVTTL) &&
-	  (cmsg->cmsg_len) ){
+      if ((cmsg->cmsg_level == IPPROTO_IP) && 
+	  ((cmsg->cmsg_type == IP_RECVTTL) ||(cmsg->cmsg_type == IP_TTL))
+	  &&(cmsg->cmsg_len) ){
 	fprintf(stderr,"  TTL (%p) data location resolves to %p\n",
 		ttl,CMSG_DATA(cmsg));
 	if (CMSG_DATA(cmsg)) {
 	  *ttl = *(unsigned char *) CMSG_DATA(cmsg);
 	  fprintf(stderr,"  TTL of packet is %d\n",*ttl);
 	} 
-      } 	 
+      } else {
+	fprintf(stderr,"I didn't expect to see level=%02x, type=%02x\n",
+		cmsg->cmsg_level,cmsg->cmsg_type);
+      }	 
     }
   }
   *recvaddrlen=msg.msg_namelen;
