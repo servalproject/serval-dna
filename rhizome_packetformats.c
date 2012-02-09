@@ -114,6 +114,10 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
      CPU on db queries if there are not many bundles.  Actually, we probably just
      shouldn't be sending bundles blindly on every tick.
      XXX How do we indicate group membership with BARs? Or do groups actively poll?
+
+     XXX XXX XXX We should cache database results so that we don't waste all our time
+     and energy asking the database much the same questions possibly many times per
+     second.
   */
   
   if (debug&DEBUG_RHIZOME)
@@ -125,6 +129,8 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
     bundle_offset[0]=0;
   if (bundles_available==-1||(bundle_offset[1]>=bundles_available)) 
     bundle_offset[1]=0;
+  fprintf(stderr,"%d bundles in database (%d %d), slots=%d.\n",bundles_available,
+	  bundle_offset[0],bundle_offset[1],slots);
   
   for(pass=skipmanifests;pass<2;pass++)
     {
@@ -156,6 +162,8 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
       while((bytes_used<bytes_available)&&(sqlite3_step(statement)==SQLITE_ROW)&&
 	    (e->length+RHIZOME_BAR_BYTES<=e->sizeLimit))
 	{
+	  fprintf(stderr,"pass=%d, rowid=%lld\n",
+		  pass,sqlite3_column_int64(statement,1));
 	  sqlite3_blob *blob;
 	  int column_type=sqlite3_column_type(statement, 0);
 	  switch(column_type) {
@@ -177,7 +185,10 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	    
 	    /* Only include manifests that are <=1KB inline.
 	       Longer ones are only advertised by BAR */
-	    if (blob_bytes>1024) continue;
+	    if (blob_bytes>1024) { 
+	      fprintf(stderr,"blob>1k - ignoring\n");
+	      continue;
+	    }
 
 	    int overhead=0;
 	    if (!pass) overhead=2;
@@ -185,7 +196,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	      if (debug&DEBUG_RHIZOME) 
 		fprintf(stderr,"Stopped cramming %s into Rhizome advertisement frame.\n",
 			pass?"BARs":"manifests");
-	      break;
+	      goto stopStuffing;
 	    }
 	    if (!pass) {
 	      /* put manifest length field and manifest ID */
@@ -203,6 +214,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	    e->length+=overhead+blob_bytes;
 	    bytes_used+=overhead+blob_bytes;
 	    bundles_advertised++;
+	    bundle_offset[pass]=sqlite3_column_int64(statement,1)+1;
 	    
 	    sqlite3_blob_close(blob);
 	  }
@@ -214,6 +226,8 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	     of a manifest's length is allowed to be. */
 	  ob_append_byte(e,0xff);
 	}
+    stopStuffing:
+      continue;
     }
   
   if (debug&DEBUG_RHIZOME) printf("Appended %d rhizome advertisements to packet.\n",bundles_advertised);
@@ -318,6 +332,10 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	else
 	  rhizome_manifest_free(m);	  
 	
+	if (!manifest_length) {
+	  WHY("Infinite loop in packet decoding");
+	  break;
+	}
 	ofs+=manifest_length;
       }
       

@@ -335,6 +335,16 @@ void _rhizome_manifest_free(const char *sourcefile,const char *funcname,int line
     exit(-1);
   }
 
+  if (manifest_free[mid]) {
+    fprintf(stderr,"%s:%d:%s() called rhizome_manifest_free() and asked to free"
+	    " manifest slot #%d (%p), which has already been freed at %s:%d:%s().\n",
+	    sourcefile,line,funcname,mid,m,
+	    manifest_free_sourcefiles[mid],
+	    manifest_free_lines[mid],
+	    manifest_free_functions[mid]);
+    exit(-1);
+  }
+
   /* Free variable and signature blocks.
      XXX These should be moved to malloc-free storage eventually */
   for(i=0;i<m->var_count;i++)
