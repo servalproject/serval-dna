@@ -129,7 +129,7 @@ int overlay_route_add_advertisements(int interface,overlay_buffer *e)
 	 But this will do for now. 
       */
       int skip=0;
-      for(i=0;i<count;i++) 
+      for(i=0;i<oad_request_count;i++) 
 	if (oad_requests[i]==&overlay_nodes[oad_bin][oad_slot])
 	  skip=1;
       
