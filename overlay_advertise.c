@@ -104,7 +104,6 @@ int overlay_route_add_advertisements(int interface,overlay_buffer *e)
   ob_append_byte(e,OA_CODE_PREVIOUS);
   ob_append_byte(e,OA_CODE_SELF);
   
-  int count;
   while (slots>0&&oad_request_count) {
       oad_request_count--;
       ob_append_bytes(e,oad_requests[oad_request_count]->sid,6);

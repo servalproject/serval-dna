@@ -296,9 +296,26 @@ int isOverlayPacket(FILE *f,unsigned char *packet,int *ofs,int len)
 		  /* Check for end of manifests */
 		  if (manifest_len>=0xff00) { i+=1; break; }
 		  else i+=2;
+		  if (manifest_len>(frame_len-i)) {
+		    fprintf(f,"%sERROR: Manifest extends for 0x%x bytes, but frame contains only 0x%x more bytes -- skipping rest of frame.\n",indent(10),manifest_len,frame_len-i);
+		    int j;
+		    for(;i<frame_len;i+=16) 
+		      {
+			fprintf(f,"%s%04x :",indent(12),i);
+			for(j=0;j<16&&(i+j)<frame_len;j++) fprintf(f," %02x",frame[i+j]);
+			for(;j<16;j++) fprintf(f,"   ");
+			fprintf(f,"    ");
+			for(j=0;j<16&&(i+j)<frame_len;j++) fprintf(f,"%c",frame[i+j]>=' '
+							     &&frame[i+j]<0x7c?frame[i+j]:'.');
+			fprintf(f,"\n");
+		      }
+		    i=frame_len;
+		    break;
+		  }
 		  /* find manifest self-signature block */
 		  for(j=0;j<manifest_len;j++) if (frame[i+j]==0) { j++; break;}
-		  fprintf(f,"%smanifest id (from first signature block) = ",indent(10));
+		  fprintf(f,"%smanifest id @0x%x-0x%x/0x%x (len=0x%x) (from first signature block) = ",
+			  indent(10),i,i+manifest_len-1,frame_len,manifest_len);
 		  for(k=0;k<32;k++) fprintf(f,"%02X",frame[i+j+k+1+64]);
 		  fprintf(f,"\n");
 		  /* Print manifest text body */

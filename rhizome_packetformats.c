@@ -162,8 +162,6 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
       while((bytes_used<bytes_available)&&(sqlite3_step(statement)==SQLITE_ROW)&&
 	    (e->length+RHIZOME_BAR_BYTES<=e->sizeLimit))
 	{
-	  fprintf(stderr,"pass=%d, rowid=%lld\n",
-		  pass,sqlite3_column_int64(statement,1));
 	  sqlite3_blob *blob;
 	  int column_type=sqlite3_column_type(statement, 0);
 	  switch(column_type) {
@@ -191,12 +189,13 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	    }
 
 	    int overhead=0;
+	    int frameFull=0;
 	    if (!pass) overhead=2;
 	    if (ob_makespace(e,overhead+blob_bytes)) {
 	      if (debug&DEBUG_RHIZOME) 
 		fprintf(stderr,"Stopped cramming %s into Rhizome advertisement frame.\n",
 			pass?"BARs":"manifests");
-	      goto stopStuffing;
+	      frameFull=1;
 	    }
 	    if (!pass) {
 	      /* put manifest length field and manifest ID */
@@ -205,8 +204,17 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	      if (debug&DEBUG_RHIZOME)
 		fprintf(stderr,"length bytes written at offset 0x%x\n",e->length);
 	    }
+	    if (frameFull) { 
+	      goto stopStuffing;
+	    }
 	    if (sqlite3_blob_read(blob,&e->bytes[e->length+overhead],blob_bytes,0)
 		!=SQLITE_OK) {
+	      if (!pass) {
+		fprintf(stderr,"  Manifest:\n");
+		int i;
+		for(i=0;i<blob_bytes;i++) fprintf(stderr,"%c",e->bytes[e->length+overhead+i]);
+		
+	      }
 	      if (debug&DEBUG_RHIZOME) WHY("Couldn't read from blob");
 	      sqlite3_blob_close(blob);
 	      continue;
@@ -214,23 +222,22 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	    e->length+=overhead+blob_bytes;
 	    bytes_used+=overhead+blob_bytes;
 	    bundles_advertised++;
-	    bundle_offset[pass]=sqlite3_column_int64(statement,1)+1;
+	    bundle_offset[pass]=sqlite3_column_int64(statement,1);
 	    
 	    sqlite3_blob_close(blob);
 	  }
 	}
       sqlite3_finalize(statement);
+    stopStuffing:
       if (!pass) 
 	{
 	  /* Mark end of whole manifests by writing 0xff, which is more than the MSB
 	     of a manifest's length is allowed to be. */
 	  ob_append_byte(e,0xff);
 	}
-    stopStuffing:
-      continue;
     }
   
-  if (debug&DEBUG_RHIZOME) printf("Appended %d rhizome advertisements to packet.\n",bundles_advertised);
+  if (debug&DEBUG_RHIZOME) printf("Appended %d rhizome advertisements to packet using %d bytes.\n",bundles_advertised,bytes_used);
   int rfs_value=1+8+1+1+1+bytes_used;
   if (rfs_value<0xfa)
     e->bytes[rfs_offset]=rfs_value;
@@ -268,7 +275,11 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	if (manifest_length>=0xff00) {
 	  ofs++;
 	  break;
-	} 
+	}
+	if (ofs+manifest_length>f->payload->length) {
+	  WHY("Illegal manifest length field in rhizome advertisement frame.");
+	  break;
+	}
 
 	ofs+=2;
 	if (manifest_length==0) continue;
@@ -325,7 +336,7 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	    
 	    /* Add manifest to import queue. We need to know originating IPv4 address
 	       so that we can transfer by HTTP. */
-	    if (rhizome_queue_manifest_import(m,f->recvaddr))
+	    if (rhizome_queue_manifest_import(m,(struct sockaddr_in *)f->recvaddr))
 	      rhizome_manifest_free(m);
 	  }
 	}

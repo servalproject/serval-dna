@@ -916,4 +916,14 @@ int overlay_broadcast_drop_check(unsigned char *a);
 int overlay_address_is_broadcast(unsigned char *a);
 int overlay_broadcast_generate_address(unsigned char *a);
 int overlay_abbreviate_unset_current_sender();
+int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
+int rhizome_fetch_poll();
 
+#define DEBUG_MEM_ABUSE
+#ifdef DEBUG_MEM_ABUSE
+int memabuseInit();
+int memabuseCheck(char *func,char *file,int line);
+#else
+#define memabuseInit() /* */
+#define memabuseCheck(A,B,C) /* */
+#endif

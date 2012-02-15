@@ -59,30 +59,35 @@ int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
   fcntl(sock,F_SETFL, O_NONBLOCK);
 
   int len = recvmsg(sock,&msg,0);
+
+  if (debug&DEBUG_PACKETXFER)
+    fprintf(stderr,"recvmsg returned %d bytes (flags=%d,msg_controllen=%d)\n",
+	    len,msg.msg_flags,msg.msg_controllen);
   
-  fprintf(stderr,"recvmsg returned %d bytes (flags=%d,msg_controllen=%d)\n",
-	  len,msg.msg_flags,msg.msg_controllen);
-  
-  if (len>0) {
-    struct cmsghdr *cmsg;
-    for (cmsg = CMSG_FIRSTHDR(&msg); 
-	 cmsg != NULL; 
-	 cmsg = CMSG_NXTHDR(&msg,cmsg)) {
-      
-      if ((cmsg->cmsg_level == IPPROTO_IP) && 
-	  ((cmsg->cmsg_type == IP_RECVTTL) ||(cmsg->cmsg_type == IP_TTL))
-	  &&(cmsg->cmsg_len) ){
-	fprintf(stderr,"  TTL (%p) data location resolves to %p\n",
-		ttl,CMSG_DATA(cmsg));
-	if (CMSG_DATA(cmsg)) {
-	  *ttl = *(unsigned char *) CMSG_DATA(cmsg);
-	  fprintf(stderr,"  TTL of packet is %d\n",*ttl);
-	} 
-      } else {
-	fprintf(stderr,"I didn't expect to see level=%02x, type=%02x\n",
-		cmsg->cmsg_level,cmsg->cmsg_type);
-      }	 
-    }
+  struct cmsghdr *cmsg;
+  if (len>0)
+    {
+      for (cmsg = CMSG_FIRSTHDR(&msg); 
+	   cmsg != NULL; 
+	   cmsg = CMSG_NXTHDR(&msg,cmsg)) {
+	
+	if ((cmsg->cmsg_level == IPPROTO_IP) && 
+	    ((cmsg->cmsg_type == IP_RECVTTL) ||(cmsg->cmsg_type == IP_TTL))
+	    &&(cmsg->cmsg_len) ){
+	  if (debug&DEBUG_PACKETXFER)
+	    fprintf(stderr,"  TTL (%p) data location resolves to %p\n",
+		    ttl,CMSG_DATA(cmsg));
+	  if (CMSG_DATA(cmsg)) {
+	    *ttl = *(unsigned char *) CMSG_DATA(cmsg);
+	    if (debug&DEBUG_PACKETXFER)
+	      fprintf(stderr,"  TTL of packet is %d\n",*ttl);
+	  } 
+	} else {
+	  if (debug&DEBUG_PACKETXFER)
+	    fprintf(stderr,"I didn't expect to see level=%02x, type=%02x\n",
+		    cmsg->cmsg_level,cmsg->cmsg_type);
+	}	 
+      }
   }
   *recvaddrlen=msg.msg_namelen;
 
@@ -655,3 +660,39 @@ int simpleServerMode()
   }
   return 0;
 }
+
+#ifdef DEBUG_MEM_ABUSE
+unsigned char groundzero[65536];
+
+int memabuseInit()
+{
+  unsigned char *zero=(unsigned char *)0;
+  int i;
+  for(i=0;i<65536;i++) groundzero[i]=zero[i];
+  return 0;
+}
+
+int memabuseCheck(char *func,char *file,int line)
+{
+  unsigned char *zero=(unsigned char *)0;
+  int firstAddr=-1;
+  int lastAddr=-1;
+  int i;
+  for(i=0;i<65536;i++) if (groundzero[i]!=zero[i]) {
+      lastAddr=i;
+      if (firstAddr==-1) firstAddr=i;
+    }
+  
+  if (lastAddr>0) {
+    fprintf(stderr,"WARNING: Memory corruption in first 64KB of RAM detected.\n");
+    fprintf(stderr,"         Changed bytes exist in range 0x%04x - 0x%04x\n",firstAddr,lastAddr);
+    dump("Changed memory content",&zero[firstAddr],lastAddr-firstAddr+1);
+    dump("Initial memory content",&groundzero[firstAddr],lastAddr-firstAddr+1);
+    sleep(1);
+  } else {
+    fprintf(stderr,"All's well at %s() %s:%d\n",func,file,line);
+  }
+  
+  return 0;
+}
+#endif
