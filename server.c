@@ -663,16 +663,26 @@ int simpleServerMode()
 
 #ifdef DEBUG_MEM_ABUSE
 unsigned char groundzero[65536];
+int memabuseInitP=0;
 
 int memabuseInit()
 {
+  if (memabuseInitP) {
+    fprintf(stderr,"WARNING: memabuseInit() called more than once.\n");
+    return memabuseCheck();
+  }
+
   unsigned char *zero=(unsigned char *)0;
   int i;
-  for(i=0;i<65536;i++) groundzero[i]=zero[i];
+  for(i=0;i<65536;i++) {
+    groundzero[i]=zero[i];
+    printf("%04x\n",i);
+  }
+  memabuseInitP=1;
   return 0;
 }
 
-int memabuseCheck(char *func,char *file,int line)
+int _memabuseCheck(const char *func,const char *file,const int line)
 {
   unsigned char *zero=(unsigned char *)0;
   int firstAddr=-1;

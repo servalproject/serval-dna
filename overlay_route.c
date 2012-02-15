@@ -245,9 +245,20 @@ overlay_neighbour *overlay_neighbours=NULL;
 int overlay_route_hash_order[16];
 int overlay_route_hash_bytes=0;
 
+int overlay_route_initP=0;
 int overlay_route_init(int mb_ram)
 {
   int i,j;
+
+  /* Try to catch one observed behaviour when memory corruption has occurred. */
+  if (overlay_route_initP) {
+    fprintf(stderr,"ERROR: overlay_route_init() multiply called.\n");
+    sleep(3600);
+  }
+  overlay_route_initP=1;
+  
+  memabuseCheck();
+
   /* XXX Initialise the random number generator in a robust manner */
   fprintf(stderr,"WARNING: RNG Not Securely Initialised.\n");
 

@@ -120,11 +120,11 @@ int overlayServerMode()
   /* Get rhizome server started BEFORE populating fd list so that
      the server's listen socket is in the list for poll() */
   if (rhizome_datastore_path) rhizome_server_poll();
-  
+    
   while(1) {
     /* Work out how long we can wait before we need to tick */
     long long ms=overlay_time_until_next_tick();
-    
+    memabuseCheck();
     int filesPresent=0;
     fds[0].fd=sock; fds[0].events=POLLIN;
     fdcount=1;
