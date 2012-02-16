@@ -96,6 +96,12 @@ struct in_addr {
 //FIXME #include <getopt.h>
 #include <ctype.h>
 
+#ifdef ANDROID
+#define DEFAULT_INSTANCE_PATH "/data/data/org.servalproject/var/serval-node"
+#else
+#define DEFAULT_INSTANCE_PATH "/var/serval-node"
+#endif
+
 /* UDP Port numbers for various Serval services.
  The overlay mesh works over DNA */
 #define PORT_DNA 4110
