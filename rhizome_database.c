@@ -110,6 +110,12 @@ int rhizome_opendb()
       fprintf(stderr,"SQLite could not create GROUPMEMBERSHIPS table: %s\n",sqlite3_errmsg(rhizome_db));
       exit(1);
     }
+  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS VERIFICATIONS(sid text not null, did text, name text,starttime integer, endtime integer,signature blob);",
+		   NULL,NULL,NULL))
+    {
+      fprintf(stderr,"SQLite could not create VERIFICATIONS table: %s\n",sqlite3_errmsg(rhizome_db));
+      exit(1);
+    }
   
   /* XXX Setup special groups, e.g., Serval Software and Serval Optional Data */
 
