@@ -300,6 +300,8 @@ int main(int argc,char **argv)
   int instance=-1;
   int foregroundMode=0;
 
+  memabuseInit();
+
 #if defined WIN32
     WSADATA wsa_data;
     WSAStartup(MAKEWORD(1,1), &wsa_data);
