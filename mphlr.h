@@ -919,11 +919,40 @@ int overlay_abbreviate_unset_current_sender();
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_fetch_poll();
 
-#define DEBUG_MEM_ABUSE
+typedef struct dna_identity_status {
+  char sid[SID_SIZE*2+1];
+  char did[64+1];
+  char name[255+1];
+
+  int initialisedP;
+  time_t startofvalidity;
+  time_t endofvalidity;
+  int verifier_count;
+#define MAX_SIGNATURES 16
+  /* Dynamically allocate these so that we don't waste a memory
+     (well, if we are talking about running on a feature phone, 4KB per entry
+     (16*256 bytes) is best avoided if we can.) */
+  unsigned char *verifiers[MAX_SIGNATURES];
+#define IDENTITY_VERIFIED (1<<0)
+#define IDENTITY_VERIFIEDBYME (1<<1)
+#define IDENTITY_NOTVERIFIED (1<<2)
+  /* The value below is for caching negative results */
+#define IDENTITY_UNKNOWN (1<<3)
+  int verification_status;
+} dna_identity_status;
+
+dna_identity_status dnacache_lookup(char *did,char *name,char *sid);
+dna_identity_status dnacache_lookup_next();
+int dnacache_update_verification(char *did,char *sid,char *name,
+				 char *signature,int revokeVerificationP);
+int dnacache_vouch_for_identity(char *did,char *sid,char *name);
+
+#undef DEBUG_MEM_ABUSE
 #ifdef DEBUG_MEM_ABUSE
 int memabuseInit();
-int memabuseCheck(char *func,char *file,int line);
+int _memabuseCheck(const char *func,const char *file,const int line);
+#define memabuseCheck() _memabuseCheck(__FUNCTION__,__FILE__,__LINE__)
 #else
 #define memabuseInit() /* */
-#define memabuseCheck(A,B,C) /* */
+#define memabuseCheck() /* */
 #endif
