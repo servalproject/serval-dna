@@ -43,6 +43,29 @@ int cli_usage() {
   return -1;
 }
 
+char *cli_arg(int argc,char **argv,command_line_option *o,
+	    char *argname,char *defaultvalue)
+{
+  int arglen=strlen(argname)+2;
+  int i;
+  for(i=0;o->words[i];i++)
+    if ((strlen(o->words[i])==arglen)
+	&&(o->words[i][0]=='<')
+	&&(o->words[i][arglen-1]=='>')
+	&&(!strncasecmp(&o->words[i][1],argname,arglen-2)))
+      {
+	/* Found the arg, so return the corresponding argument */
+	return argv[i];
+      }
+
+  /* No matching argument was found, so return default value.
+     It might seem that this should never happen, but it can because more than
+     one version of a command line optiom may exist, one with a given argument
+     and another without, and allowing a default value means we can have a single
+     function handle both in a fairly simple manner. */
+  return defaultvalue;
+}
+
 /* args[] excludes command name (unless hardlinks are used to use first words 
    of command sequences as alternate names of the command. */
 int parseCommandLine(int argc, char **args)
@@ -91,7 +114,26 @@ int parseCommandLine(int argc, char **args)
 
 int app_dna_lookup(int argc,char **argv,struct command_line_option *o)
 {
-  return -1;
+  return WHY("Not implemented");
+}
+
+int app_server_start(int argc,char **argv,struct command_line_option *o)
+{
+  return WHY("Not implemented");
+}
+
+int app_server_stop(int argc,char **argv,struct command_line_option *o)
+{
+  return WHY("Not implemented");
+}
+
+int app_server_status(int argc,char **argv,struct command_line_option *o)
+{
+  char *instancepath
+    =cli_arg(argc,argv,o,"instance path",getenv("SERVALINSTANCE_PATH"));
+  if (!instancepath) instancepath=DEFAULT_INSTANCE_PATH;
+  
+  return WHY("Not implemented");
 }
 
 /* NULL marks ends of command structure.
@@ -106,5 +148,10 @@ int app_dna_lookup(int argc,char **argv,struct command_line_option *o)
 command_line_option command_line_options[]={
   {app_dna_lookup,{"dna","lookup","<did>",NULL},CLIFLAG_NONOVERLAY,"Lookup the SIP/MDP address of the supplied telephone number (DID)."},
   {cli_usage,{"help",NULL},0,"Display command usage."},
+  {app_server_start,{"node","start"},CLIFLAG_STANDALONE,"Start Serval Mesh node process.  Instance path is read from SERVALINSTANCE_PATH environment variable."},
+  {app_server_start,{"node","start","in","<instance path>"},CLIFLAG_STANDALONE,"Start Serval Mesh node process.  Instance path is as specified."},
+  {app_server_stop,{"node","stop"},0,"Ask running Serval Mesh node process to stop. Instance path is read from SERVALINSTANCE_PATH environment variable."},
+  {app_server_stop,{"node","stop","in","<instance path>"},0,"Ask running Serval Mesh node process to stop.  Instance path as specified."},
+  {app_server_status,{"node","status"},0,"Display information about any running Serval Mesh node."},
   {NULL,{NULL}}
 };
