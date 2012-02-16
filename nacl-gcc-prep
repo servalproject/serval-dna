@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # Fetch latest version of source as recommended by nacl installation page
 if [ ! -e nacl-source.tar.bz2 ]; then
    `wget -q -O - http://nacl.cr.yp.to/install.html | grep wget | sed -e 's/^ *//g' -e 's/^wget /wget -q -O nacl-source.tar.bz2 /'`
