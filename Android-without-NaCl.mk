@@ -37,6 +37,8 @@ LOCAL_SRC_FILES:= \
 	rhizome_fetch.c \
 	rhizome_http.c \
 	rhizome_packetformats.c \
+	dna_identity.c \
+	commandline.c \
 	serval_packetvisualise.c
 
 LOCAL_MODULE:= dnalib
