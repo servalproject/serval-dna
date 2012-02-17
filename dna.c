@@ -284,7 +284,113 @@ char *exec_args[128];
 int exec_argc=0;
 void signal_handler( int signal ) {
   /* oops - caught a bad signal -- exec() ourselves fresh */
+  char signalName[64];
+  snprintf(signalName,63,"signal %d",signal); signalName[63]=0;
+  switch(signal) {
+#ifdef SIGHUP
+  case SIGHUP: snprintf(signalName,63,"SIG %s (%d)","hangup",signal);
+#endif
+#ifdef SIGINT
+  case SIGINT: snprintf(signalName,63,"SIG %s (%d)","interrupt",signal);
+#endif
+#ifdef SIGQUIT
+  case SIGQUIT: snprintf(signalName,63,"SIG %s (%d)","quit",signal);
+#endif
+#ifdef SIGILL
+  case SIGILL: snprintf(signalName,63,"SIG %s (%d)","illegal instruction (not reset when caught)",signal);
+#endif
+#ifdef SIGTRAP
+  case SIGTRAP: snprintf(signalName,63,"SIG %s (%d)","trace trap (not reset when caught)",signal);
+#endif
+#ifdef SIGABRT
+  case SIGABRT: snprintf(signalName,63,"SIG %s (%d)","abort()",signal);
+#endif
+#ifdef SIGPOLL
+  case SIGPOLL: snprintf(signalName,63,"SIG %s (%d)","pollable event ([XSR] generated, not supported)",signal);
+#endif
+#ifdef SIGEMT
+  case SIGEMT: snprintf(signalName,63,"SIG %s (%d)","EMT instruction",signal);
+#endif
+#ifdef SIGFPE
+  case SIGFPE: snprintf(signalName,63,"SIG %s (%d)","floating point exception",signal);
+#endif
+#ifdef SIGKILL
+  case SIGKILL: snprintf(signalName,63,"SIG %s (%d)","kill (cannot be caught or ignored)",signal);
+#endif
+#ifdef SIGBUS
+  case SIGBUS: snprintf(signalName,63,"SIG %s (%d)","bus error",signal);
+#endif
+#ifdef SIGSEGV
+  case SIGSEGV: snprintf(signalName,63,"SIG %s (%d)","segmentation violation",signal);
+#endif
+#ifdef SIGSYS
+  case SIGSYS: snprintf(signalName,63,"SIG %s (%d)","bad argument to system call",signal);
+#endif
+#ifdef SIGPIPE
+  case SIGPIPE: snprintf(signalName,63,"SIG %s (%d)","write on a pipe with no one to read it",signal);
+#endif
+#ifdef SIGALRM
+  case SIGALRM: snprintf(signalName,63,"SIG %s (%d)","alarm clock",signal);
+#endif
+#ifdef SIGTERM
+  case SIGTERM: snprintf(signalName,63,"SIG %s (%d)","software termination signal from kill",signal);
+#endif
+#ifdef SIGURG
+  case SIGURG: snprintf(signalName,63,"SIG %s (%d)","urgent condition on IO channel",signal);
+#endif
+#ifdef SIGSTOP
+  case SIGSTOP: snprintf(signalName,63,"SIG %s (%d)","sendable stop signal not from tty",signal);
+#endif
+#ifdef SIGTSTP
+  case SIGTSTP: snprintf(signalName,63,"SIG %s (%d)","stop signal from tty",signal);
+#endif
+#ifdef SIGCONT
+  case SIGCONT: snprintf(signalName,63,"SIG %s (%d)","continue a stopped process",signal);
+#endif
+#ifdef SIGCHLD
+  case SIGCHLD: snprintf(signalName,63,"SIG %s (%d)","to parent on child stop or exit",signal);
+#endif
+#ifdef SIGTTIN
+  case SIGTTIN: snprintf(signalName,63,"SIG %s (%d)","to readers pgrp upon background tty read",signal);
+#endif
+#ifdef SIGTTOU
+  case SIGTTOU: snprintf(signalName,63,"SIG %s (%d)","like TTIN for output if (tp->t_local&LTOSTOP)",signal);
+#endif
+#ifdef SIGIO
+  case SIGIO: snprintf(signalName,63,"SIG %s (%d)","input/output possible signal",signal);
+#endif
+#ifdef SIGXCPU
+  case SIGXCPU: snprintf(signalName,63,"SIG %s (%d)","exceeded CPU time limit",signal);
+#endif
+#ifdef SIGXFSZ
+  case SIGXFSZ: snprintf(signalName,63,"SIG %s (%d)","exceeded file size limit",signal);
+#endif
+#ifdef SIGVTALRM
+  case SIGVTALRM: snprintf(signalName,63,"SIG %s (%d)","virtual time alarm",signal);
+#endif
+#ifdef SIGPROF
+  case SIGPROF: snprintf(signalName,63,"SIG %s (%d)","profiling time alarm",signal);
+#endif
+#ifdef SIGWINCH
+  case SIGWINCH: snprintf(signalName,63,"SIG %s (%d)","window size changes",signal);
+#endif
+#ifdef SIGINFO
+  case SIGINFO: snprintf(signalName,63,"SIG %s (%d)","information request",signal);
+#endif
+#ifdef SIGUSR1
+  case SIGUSR1: snprintf(signalName,63,"SIG %s (%d)","user defined signal 1",signal);
+#endif
+#ifdef SIGUSR2
+  case SIGUSR2: snprintf(signalName,63,"SIG %s (%d)","user defined signal 2",signal);
+#endif
+  }
+  signalName[63]=0;
+  fprintf(stderr,"Caught terminal signal %s -- respawning.\n",signalName);
   if (sock>-1) close(sock);
+  int i;
+  for(i=0;i<overlay_interface_count;i++)
+    if (overlay_interfaces[i].fd>-1)
+      close(overlay_interfaces[i].fd);
   execv(exec_args[0],exec_args);
   /* Quit if the exec() fails */
   exit(-3);
