@@ -428,6 +428,39 @@ void signal_handler( int signal ) {
   exit(-3);
 } 
 
+int setVerbosity(char *optarg) {
+  long long old_debug=debug;
+  debug=strtoll(optarg,NULL,10);
+  if (strstr(optarg,"interfaces")) debug|=DEBUG_OVERLAYINTERFACES;
+  if (strstr(optarg,"packetxfer")) debug|=DEBUG_PACKETXFER;
+  if (strstr(optarg,"verbose")) debug|=DEBUG_VERBOSE;
+  if (strstr(optarg,"verbio")) debug|=DEBUG_VERBOSE_IO;
+  if (strstr(optarg,"peers")) debug|=DEBUG_PEERS;
+  if (strstr(optarg,"dnaresponses")) debug|=DEBUG_DNARESPONSES;
+  if (strstr(optarg,"dnarequests")) debug|=DEBUG_DNAREQUESTS;
+  if (strstr(optarg,"simulation")) debug|=DEBUG_SIMULATION;
+  if (strstr(optarg,"dnavars")) debug|=DEBUG_DNAVARS;
+  if (strstr(optarg,"packetformats")) debug|=DEBUG_PACKETFORMATS;
+  if (strstr(optarg,"gateway")) debug|=DEBUG_GATEWAY;
+  if (strstr(optarg,"hlr")) debug|=DEBUG_HLR;
+  if (strstr(optarg,"sockio")) debug|=DEBUG_IO;
+  if (strstr(optarg,"frames")) debug|=DEBUG_OVERLAYFRAMES;
+  if (strstr(optarg,"abbreviations")) debug|=DEBUG_OVERLAYABBREVIATIONS;
+  if (strstr(optarg,"routing")) debug|=DEBUG_OVERLAYROUTING;
+  if (strstr(optarg,"security")) debug|=DEBUG_SECURITY;
+  if (strstr(optarg,"rhizome")) debug|=DEBUG_RHIZOME;
+  if (strstr(optarg,"filesync")) debug|=DEBUG_RHIZOMESYNC;
+  if (strstr(optarg,"monitorroutes")) debug|=DEBUG_OVERLAYROUTEMONITOR;
+  if (strstr(optarg,"queues")) debug|=DEBUG_QUEUES;
+  if (strstr(optarg,"broadcasts")) debug|=DEBUG_BROADCASTS;
+
+  if (old_debug==debug) {
+    fprintf(stderr,"WARNING: Option '%s' had no effect on existing debug/verbosity level.\n",
+	    optarg);
+  }
+  return 0;
+}
+
 int main(int argc,char **argv)
 {
   int c;
@@ -459,6 +492,25 @@ int main(int argc,char **argv)
 
   srandomdev();
 
+  if (argv[1]&&argv[1][0]!='-') {
+    /* First argument doesn't start with a dash, so assume it is for the new command line
+       parser. */
+
+    /* Don't include name of program in arguments */
+    int return_value=parseCommandLine(argc-1,&argv[1]);
+
+#if defined WIN32
+    WSACleanup();
+#endif
+    
+    return return_value;
+  } 
+
+  fprintf(stderr,
+	  "WARNING: The use of the old command line structure is being deprecated.\n"
+	  "         Type '%s help' to learn about the new command line structure.\n",
+	  argv[0]);
+
   while((c=getopt(argc,argv,"Ab:B:E:G:I:S:f:d:i:l:L:mnp:P:r:s:t:v:R:W:U:D:CO:M:N:")) != -1 ) 
     {
       switch(c)
@@ -475,7 +527,7 @@ int main(int argc,char **argv)
 	    exit(WHY("Rhizome directory name too long."));
 	  }
 	  hlr_file=strdup(temp);
-
+	  
 	  break;
 	case 'M': /* Distribute specified manifest and file pair using Rhizome. */
 	  /* This option assumes that the manifest is locally produced, and will
@@ -498,22 +550,22 @@ int main(int argc,char **argv)
 	  overlayMode=1;
 	  break;
 	case 'G': /* Offer gateway services */
-          gatewayspec=strdup(optarg);
+	  gatewayspec=strdup(optarg);
 	  if(prepareGateway(gatewayspec)) return usage("Invalid gateway specification");
-          break;
-        case 'E': /* Export HLR into plain text file that can be imported later */
-          if (!hlr_file) usage("You must specify an HLR file to export from, i.e., dna -f hlr.dat -E hlr.txt");
-          return exportHlr((unsigned char*)hlr_file,optarg);
-          break;
-        case 'I': /* Import HLR data from a plain text file into current HLR */
-          if (importFile) usage("-I multiply specified.");
-          importFile=optarg;
-          if (!hlr_file||!serverMode) usage("-I requires -S and -f.");
-          if (openHlrFile(hlr_file,hlr_size))
-            exit(setReason("Failed to open HLR database"));
-          importHlr(importFile);
-          return 0;
-          break;
+	  break;
+	case 'E': /* Export HLR into plain text file that can be imported later */
+	  if (!hlr_file) usage("You must specify an HLR file to export from, i.e., dna -f hlr.dat -E hlr.txt");
+	  return exportHlr((unsigned char*)hlr_file,optarg);
+	  break;
+	case 'I': /* Import HLR data from a plain text file into current HLR */
+	  if (importFile) usage("-I multiply specified.");
+	  importFile=optarg;
+	  if (!hlr_file||!serverMode) usage("-I requires -S and -f.");
+	  if (openHlrFile(hlr_file,hlr_size))
+	    exit(setReason("Failed to open HLR database"));
+	  importHlr(importFile);
+	  return 0;
+	  break;
 	case 'n': /* don't detach from foreground in server mode */
 	  foregroundMode=1; break;
 	case 'b': /* talk peers on a BATMAN mesh */
@@ -561,29 +613,7 @@ int main(int argc,char **argv)
 	  timeout=atoi(optarg);
 	  break;
 	case 'v': /* set verbosity */
-	  debug=strtoll(optarg,NULL,10);
-	  if (strstr(optarg,"interfaces")) debug|=DEBUG_OVERLAYINTERFACES;
-	  if (strstr(optarg,"packetxfer")) debug|=DEBUG_PACKETXFER;
-	  if (strstr(optarg,"verbose")) debug|=DEBUG_VERBOSE;
-	  if (strstr(optarg,"verbio")) debug|=DEBUG_VERBOSE_IO;
-	  if (strstr(optarg,"peers")) debug|=DEBUG_PEERS;
-	  if (strstr(optarg,"dnaresponses")) debug|=DEBUG_DNARESPONSES;
-	  if (strstr(optarg,"dnarequests")) debug|=DEBUG_DNAREQUESTS;
-	  if (strstr(optarg,"simulation")) debug|=DEBUG_SIMULATION;
-	  if (strstr(optarg,"dnavars")) debug|=DEBUG_DNAVARS;
-	  if (strstr(optarg,"packetformats")) debug|=DEBUG_PACKETFORMATS;
-	  if (strstr(optarg,"gateway")) debug|=DEBUG_GATEWAY;
-	  if (strstr(optarg,"hlr")) debug|=DEBUG_HLR;
-	  if (strstr(optarg,"sockio")) debug|=DEBUG_IO;
-	  if (strstr(optarg,"frames")) debug|=DEBUG_OVERLAYFRAMES;
-	  if (strstr(optarg,"abbreviations")) debug|=DEBUG_OVERLAYABBREVIATIONS;
-	  if (strstr(optarg,"routing")) debug|=DEBUG_OVERLAYROUTING;
-	  if (strstr(optarg,"security")) debug|=DEBUG_SECURITY;
-	  if (strstr(optarg,"rhizome")) debug|=DEBUG_RHIZOME;
-	  if (strstr(optarg,"filesync")) debug|=DEBUG_RHIZOMESYNC;
-	  if (strstr(optarg,"monitorroutes")) debug|=DEBUG_OVERLAYROUTEMONITOR;
-	  if (strstr(optarg,"queues")) debug|=DEBUG_QUEUES;
-	  if (strstr(optarg,"broadcasts")) debug|=DEBUG_BROADCASTS;
+	  setVerbosity(optarg);
 	  break;
 	case 'A': /* get address (IP or otherwise) of a given peer */
 	  peerAddress(did,sid,3 /* 1 = print list of addresses to stdout, 2 = set peer list to responders */);
