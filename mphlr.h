@@ -947,6 +947,8 @@ typedef struct dna_identity_status {
   int verification_status;
 } dna_identity_status;
 
+int parseCommandLine(int argc,char *argv[]);
+
 dna_identity_status dnacache_lookup(char *did,char *name,char *sid);
 dna_identity_status dnacache_lookup_next();
 int dnacache_update_verification(char *did,char *sid,char *name,
