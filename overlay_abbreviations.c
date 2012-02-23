@@ -17,7 +17,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include "mphlr.h"
+#include "serval.h"
 
 /*
   We use 256bit Curve25519 addresses in the overlay mesh.  This means we have very large

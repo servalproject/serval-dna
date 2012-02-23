@@ -17,7 +17,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include "mphlr.h"
+#include "serval.h"
 
 int process_packet(unsigned char *packet,int len,
 		   int recvttl,struct sockaddr *sender,int sender_len)

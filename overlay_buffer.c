@@ -17,7 +17,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include "mphlr.h"
+#include "serval.h"
 
 overlay_buffer *ob_new(int size)
 {
@@ -79,6 +79,10 @@ int ob_makespace(overlay_buffer *b,int bytes)
       return -1; 
     }
   }
+
+  printf("ob_makespace(%p,%d)\n  b->bytes=%p,b->length=%d,b->allocSize=%d\n",
+	 b,bytes,b->bytes,b->length,b->allocSize);
+
   if (b->length+bytes>=b->allocSize)
     {
       int newSize=b->length+bytes;
@@ -90,6 +94,8 @@ int ob_makespace(overlay_buffer *b,int bytes)
       if (newSize>65536) {
 	if (newSize&65535) newSize+=65536-(newSize&65535);
       }
+      if (1) printf("  realloc(b->bytes=%p,newSize=%d)\n",
+	     b->bytes,newSize);
       unsigned char *r=realloc(b->bytes,newSize);
       if (!r) return WHY("realloc() failed");
       b->bytes=r;

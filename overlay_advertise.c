@@ -17,7 +17,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include "mphlr.h"
+#include "serval.h"
 
 /* List of prioritised advertisements */
 #define OVERLAY_MAX_ADVERTISEMENT_REQUESTS 16

@@ -25,7 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
   since for things like number resolution we are happy to send repeat requests.
  */
 
-#include "mphlr.h"
+#include "serval.h"
 
 /* Determine if an address is broadcast */
 int overlay_address_is_broadcast(unsigned char *a)

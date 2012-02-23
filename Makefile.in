@@ -14,7 +14,7 @@ OBJS=	dna.o server.o client.o peers.o ciphers.o responses.o packetformats.o data
 	rhizome_packetformats.o rhizome_fetch.o sqlite3.o encode.o sha2.o randombytes.o \
 	overlay_broadcast.o dna_identity.o commandline.o serval_packetvisualise.o
 
-HDRS=	Makefile mphlr.h sqlite-amalgamation-3070900/sqlite3.h sha2.h rhizome.h
+HDRS=	Makefile serval.h sqlite-amalgamation-3070900/sqlite3.h sha2.h rhizome.h
 
 LDFLAGS=	@LDFLAGS@
 CFLAGS=	@CFLAGS@
@@ -29,7 +29,7 @@ dna:	$(OBJS)
 	$(CC) $(CFLAGS) -Os -g -Wall -o dna $(OBJS) $(LDFLAGS)
 
 serval.c:	$(SRCS) $(HDRS)
-	cat mphlr.h > serval.c
+	cat serval.h > serval.c
 	echo '#include <sys/mman.h>' >>serval.c
 	cat $(SRCS) | grep -v "#include" | sed -e 's/inet_ntoa/ast_inet_ntoa/g' >>serval.c
 

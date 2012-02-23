@@ -17,7 +17,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include "mphlr.h"
+#include "serval.h"
 #include "rhizome.h"
 #include <stdlib.h>
 
@@ -87,6 +87,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 
   if (!rhizome_db) return WHY("Rhizome not enabled");
 
+  dump("buffer (90)",(unsigned char *)e,sizeof(*e));
   if (ob_append_byte(e,OF_TYPE_RHIZOME_ADVERT))
     return WHY("could not add rhizome bundle advertisement header");
   ob_append_byte(e,1); /* TTL */
@@ -98,7 +99,9 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
   ob_append_byte(e,OA_CODE_BROADCAST);
   { int i; for(i=0;i<8;i++) ob_append_byte(e,random()&0xff); } /* BPI for broadcast */
   ob_append_byte(e,OA_CODE_PREVIOUS);
+  dump("buffer (102)",(unsigned char *)e,sizeof(*e));
   ob_append_byte(e,OA_CODE_SELF);
+  dump("buffer (104)",(unsigned char *)e,sizeof(*e));
 
   /* Randomly choose whether to advertise manifests or BARs first. */
   int skipmanifests=random()&1;
@@ -191,6 +194,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	    int overhead=0;
 	    int frameFull=0;
 	    if (!pass) overhead=2;
+	    dump("buffer (197)",(unsigned char *)e,sizeof(*e));
 	    if (ob_makespace(e,overhead+blob_bytes)) {
 	      if (debug&DEBUG_RHIZOME) 
 		fprintf(stderr,"Stopped cramming %s into Rhizome advertisement frame.\n",
@@ -204,6 +208,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	      if (debug&DEBUG_RHIZOME)
 		fprintf(stderr,"length bytes written at offset 0x%x\n",e->length);
 	    }
+	    dump("buffer (211)",(unsigned char *)e,sizeof(*e));
 	    if (frameFull) { 
 	      goto stopStuffing;
 	    }
@@ -217,9 +222,16 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	      }
 	      if (debug&DEBUG_RHIZOME) WHY("Couldn't read from blob");
 	      sqlite3_blob_close(blob);
+	    dump("buffer (225)",(unsigned char *)e,sizeof(*e));
+	    
 	      continue;
 	    }
-	    e->length+=overhead+blob_bytes;
+	    dump("buffer (211)",(unsigned char *)e,sizeof(*e));
+	    	    e->length+=overhead+blob_bytes;
+	    if (e->length>e->allocSize) {
+	      WHY("e->length > e->size");
+	      abort();
+	    }
 	    bytes_used+=overhead+blob_bytes;
 	    bundles_advertised++;
 	    bundle_offset[pass]=sqlite3_column_int64(statement,1);
@@ -229,6 +241,8 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	}
       sqlite3_finalize(statement);
     stopStuffing:
+      dump("buffer (244)",(unsigned char *)e,sizeof(*e));
+	    
       if (!pass) 
 	{
 	  /* Mark end of whole manifests by writing 0xff, which is more than the MSB
