@@ -189,6 +189,13 @@ int overlay_interface_init_socket(int interface,struct sockaddr_in src_addr,stru
     return WHY("Could not create UDP socket for interface");
   }
 
+  /* Automatically close socket on calls to exec().
+     This makes life easier when we restart with an exec after receiving
+     a bad signal. */
+  fcntl(I(fd), F_SETFL,
+	fcntl(I(fd), F_GETFL, NULL)|O_CLOEXEC);
+
+
   src_addr.sin_family = AF_INET;
   src_addr.sin_port = htons( I(port) );
   /* XXX Is this right? Are we really setting the local side address?
