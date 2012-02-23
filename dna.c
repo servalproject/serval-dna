@@ -289,99 +289,131 @@ void signal_handler( int signal ) {
   switch(signal) {
 #ifdef SIGHUP
   case SIGHUP: snprintf(signalName,63,"SIG %s (%d)","hangup",signal);
+    break;
 #endif
 #ifdef SIGINT
   case SIGINT: snprintf(signalName,63,"SIG %s (%d)","interrupt",signal);
+    break;
 #endif
 #ifdef SIGQUIT
   case SIGQUIT: snprintf(signalName,63,"SIG %s (%d)","quit",signal);
+    break;
 #endif
 #ifdef SIGILL
   case SIGILL: snprintf(signalName,63,"SIG %s (%d)","illegal instruction (not reset when caught)",signal);
+    break;
 #endif
 #ifdef SIGTRAP
   case SIGTRAP: snprintf(signalName,63,"SIG %s (%d)","trace trap (not reset when caught)",signal);
+    break;
 #endif
 #ifdef SIGABRT
   case SIGABRT: snprintf(signalName,63,"SIG %s (%d)","abort()",signal);
+    break;
 #endif
 #ifdef SIGPOLL
   case SIGPOLL: snprintf(signalName,63,"SIG %s (%d)","pollable event ([XSR] generated, not supported)",signal);
+    break;
 #endif
 #ifdef SIGEMT
   case SIGEMT: snprintf(signalName,63,"SIG %s (%d)","EMT instruction",signal);
+    break;
 #endif
 #ifdef SIGFPE
   case SIGFPE: snprintf(signalName,63,"SIG %s (%d)","floating point exception",signal);
+    break;
 #endif
 #ifdef SIGKILL
   case SIGKILL: snprintf(signalName,63,"SIG %s (%d)","kill (cannot be caught or ignored)",signal);
+    break;
 #endif
 #ifdef SIGBUS
   case SIGBUS: snprintf(signalName,63,"SIG %s (%d)","bus error",signal);
+    break;
 #endif
 #ifdef SIGSEGV
   case SIGSEGV: snprintf(signalName,63,"SIG %s (%d)","segmentation violation",signal);
+    break;
 #endif
 #ifdef SIGSYS
   case SIGSYS: snprintf(signalName,63,"SIG %s (%d)","bad argument to system call",signal);
+    break;
 #endif
 #ifdef SIGPIPE
   case SIGPIPE: snprintf(signalName,63,"SIG %s (%d)","write on a pipe with no one to read it",signal);
+    break;
 #endif
 #ifdef SIGALRM
   case SIGALRM: snprintf(signalName,63,"SIG %s (%d)","alarm clock",signal);
+    break;
 #endif
 #ifdef SIGTERM
   case SIGTERM: snprintf(signalName,63,"SIG %s (%d)","software termination signal from kill",signal);
+    break;
 #endif
 #ifdef SIGURG
   case SIGURG: snprintf(signalName,63,"SIG %s (%d)","urgent condition on IO channel",signal);
+    break;
 #endif
 #ifdef SIGSTOP
   case SIGSTOP: snprintf(signalName,63,"SIG %s (%d)","sendable stop signal not from tty",signal);
+    break;
 #endif
 #ifdef SIGTSTP
   case SIGTSTP: snprintf(signalName,63,"SIG %s (%d)","stop signal from tty",signal);
+    break;
 #endif
 #ifdef SIGCONT
   case SIGCONT: snprintf(signalName,63,"SIG %s (%d)","continue a stopped process",signal);
+    break;
 #endif
 #ifdef SIGCHLD
   case SIGCHLD: snprintf(signalName,63,"SIG %s (%d)","to parent on child stop or exit",signal);
+    break;
 #endif
 #ifdef SIGTTIN
   case SIGTTIN: snprintf(signalName,63,"SIG %s (%d)","to readers pgrp upon background tty read",signal);
+    break;
 #endif
 #ifdef SIGTTOU
   case SIGTTOU: snprintf(signalName,63,"SIG %s (%d)","like TTIN for output if (tp->t_local&LTOSTOP)",signal);
+    break;
 #endif
 #ifdef SIGIO
   case SIGIO: snprintf(signalName,63,"SIG %s (%d)","input/output possible signal",signal);
+    break;
 #endif
 #ifdef SIGXCPU
   case SIGXCPU: snprintf(signalName,63,"SIG %s (%d)","exceeded CPU time limit",signal);
+    break;
 #endif
 #ifdef SIGXFSZ
   case SIGXFSZ: snprintf(signalName,63,"SIG %s (%d)","exceeded file size limit",signal);
+    break;
 #endif
 #ifdef SIGVTALRM
   case SIGVTALRM: snprintf(signalName,63,"SIG %s (%d)","virtual time alarm",signal);
+    break;
 #endif
 #ifdef SIGPROF
   case SIGPROF: snprintf(signalName,63,"SIG %s (%d)","profiling time alarm",signal);
+    break;
 #endif
 #ifdef SIGWINCH
   case SIGWINCH: snprintf(signalName,63,"SIG %s (%d)","window size changes",signal);
+    break;
 #endif
 #ifdef SIGINFO
   case SIGINFO: snprintf(signalName,63,"SIG %s (%d)","information request",signal);
+    break;
 #endif
 #ifdef SIGUSR1
   case SIGUSR1: snprintf(signalName,63,"SIG %s (%d)","user defined signal 1",signal);
+    break;
 #endif
 #ifdef SIGUSR2
   case SIGUSR2: snprintf(signalName,63,"SIG %s (%d)","user defined signal 2",signal);
+    break;
 #endif
   }
   signalName[63]=0;
