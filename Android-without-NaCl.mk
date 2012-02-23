@@ -62,3 +62,10 @@ LOCAL_MODULE:= dna
 LOCAL_SRC_FILES:= dnawrap.c
 
 include $(BUILD_EXECUTABLE)
+
+include $(CLEAR_VARS)
+
+LOCAL_MODULE:= serval
+LOCAL_SRC_FILES:= servalwrap.c
+
+include $(BUILD_EXECUTABLE)
