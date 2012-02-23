@@ -578,6 +578,12 @@ int createServerSocket()
     exit(-3);
   }
   
+  /* Automatically close socket on calls to exec().
+     This makes life easier when we restart with an exec after receiving
+     a bad signal. */
+  fcntl(sock, F_SETFL,
+	fcntl(sock, F_GETFL, NULL)|O_CLOEXEC);
+
   int TRUE=1;
   setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &TRUE, sizeof(TRUE));
 
