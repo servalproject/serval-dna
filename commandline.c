@@ -30,6 +30,32 @@ typedef struct command_line_option {
 
 extern command_line_option command_line_options[];
 
+int servalNodeRunning(int *pid,char *instancepath)
+{
+  char filename[1024];
+  char line[1024];
+  if (!instancepath) instancepath=DEFAULT_INSTANCE_PATH;
+
+  int running=0;
+  snprintf(filename,1023,"%s/serval.conf",instancepath); filename[1023]=0;
+  FILE *f=fopen(filename,"r");
+  if (f) {
+    line[0]=0; fgets(line,1024,f);
+    *pid = strtoll(line,NULL,10);
+    running=*pid;
+    if (running) {
+      /* Check that process is really running.
+         Some systems don't have /proc (including mac), 
+	 so we need to find out some otherway.*/
+      running=0;
+      WHY("need to test if process running");
+    }
+    fclose(f);
+  }
+
+  return running;
+}
+
 int cli_usage() {
   fprintf(stderr,"\nServal Mesh version <version>.\n");
   fprintf(stderr,"Usage:\n");
@@ -133,7 +159,34 @@ int app_server_status(int argc,char **argv,struct command_line_option *o)
     =cli_arg(argc,argv,o,"instance path",getenv("SERVALINSTANCE_PATH"));
   if (!instancepath) instancepath=DEFAULT_INSTANCE_PATH;
   
-  return WHY("Not implemented");
+  char filename[1024];
+  char line[1024];
+  FILE *f;
+  
+  /* Display configuration information */
+  snprintf(filename,1023,"%s/serval.conf",instancepath); filename[1023]=0;
+  f=fopen(filename,"r");
+  if (f) {
+    line[0]=0; fgets(line,1024,f);
+    printf("\nServal Mesh configuration:\n");
+    while(line[0]) {
+      printf("   %s",line);
+      line[0]=0; fgets(line,1024,f);
+    }
+    fclose(f);
+  }
+  /* Display running status of daemon from serval.pid file */
+  int pid=-1;
+  int running = servalNodeRunning(&pid,instancepath);
+
+  if (running)
+    printf("Serval mesh process is running (pid=%d)\n",pid);
+  else if (pid<0) {
+    fprintf(stderr,"ERROR: Could determine status of Serval Node process.\n");
+  } else {
+    printf("Serval Mesh process not running (but there is a stale PID file)\n");
+  }
+  return 0;
 }
 
 /* NULL marks ends of command structure.
@@ -147,11 +200,17 @@ int app_server_status(int argc,char **argv,struct command_line_option *o)
 */
 command_line_option command_line_options[]={
   {app_dna_lookup,{"dna","lookup","<did>",NULL},CLIFLAG_NONOVERLAY,"Lookup the SIP/MDP address of the supplied telephone number (DID)."},
-  {cli_usage,{"help",NULL},0,"Display command usage."},
-  {app_server_start,{"node","start"},CLIFLAG_STANDALONE,"Start Serval Mesh node process.  Instance path is read from SERVALINSTANCE_PATH environment variable."},
-  {app_server_start,{"node","start","in","<instance path>"},CLIFLAG_STANDALONE,"Start Serval Mesh node process.  Instance path is as specified."},
-  {app_server_stop,{"node","stop"},0,"Ask running Serval Mesh node process to stop. Instance path is read from SERVALINSTANCE_PATH environment variable."},
-  {app_server_stop,{"node","stop","in","<instance path>"},0,"Ask running Serval Mesh node process to stop.  Instance path as specified."},
-  {app_server_status,{"node","status"},0,"Display information about any running Serval Mesh node."},
+  {cli_usage,{"help",NULL},0,
+   "Display command usage."},
+  {app_server_start,{"node","start"},CLIFLAG_STANDALONE,
+   "Start Serval Mesh node process.  Instance path is read from SERVALINSTANCE_PATH environment variable."},
+  {app_server_start,{"node","start","in","<instance path>"},CLIFLAG_STANDALONE,
+   "Start Serval Mesh node process.  Instance path is as specified."},
+  {app_server_stop,{"node","stop"},0,
+   "Ask running Serval Mesh node process to stop. Instance path is read from SERVALINSTANCE_PATH environment variable."},
+  {app_server_stop,{"node","stop","in","<instance path>"},0,
+   "Ask running Serval Mesh node process to stop.  Instance path as specified."},
+  {app_server_status,{"node","status"},0,
+   "Display information about any running Serval Mesh node."},
   {NULL,{NULL}}
 };
