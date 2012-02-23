@@ -37,7 +37,7 @@ int servalNodeRunning(int *pid,char *instancepath)
   if (!instancepath) instancepath=DEFAULT_INSTANCE_PATH;
 
   int running=0;
-  snprintf(filename,1023,"%s/serval.conf",instancepath); filename[1023]=0;
+  snprintf(filename,1023,"%s/serval.pid",instancepath); filename[1023]=0;
   FILE *f=fopen(filename,"r");
   if (f) {
     line[0]=0; fgets(line,1024,f);
@@ -51,7 +51,7 @@ int servalNodeRunning(int *pid,char *instancepath)
       WHY("need to test if process running");
     }
     fclose(f);
-  }
+  } 
 
   return running;
 }
@@ -99,6 +99,7 @@ int parseCommandLine(int argc, char **args)
   int i,j;
   int ambiguous=0;
   int cli_call=-1;
+
   for(i=0;command_line_options[i].function;i++)
     {
       for(j=0;(j<argc)&&command_line_options[i].words[j];j++)
@@ -134,8 +135,8 @@ int parseCommandLine(int argc, char **args)
   if (cli_call<0) return cli_usage();
 
   /* Otherwise, make call */
-  return command_line_options[i].function(argc,args,
-					  &command_line_options[i]);
+  return command_line_options[cli_call].function(argc,args,
+					  &command_line_options[cli_call]);
 }
 
 int app_dna_lookup(int argc,char **argv,struct command_line_option *o)
@@ -179,13 +180,12 @@ int app_server_status(int argc,char **argv,struct command_line_option *o)
   int pid=-1;
   int running = servalNodeRunning(&pid,instancepath);
 
+  printf("For Serval Mesh instance %s:\n",instancepath);
   if (running)
-    printf("Serval mesh process is running (pid=%d)\n",pid);
-  else if (pid<0) {
-    fprintf(stderr,"ERROR: Could determine status of Serval Node process.\n");
-  } else {
-    printf("Serval Mesh process not running (but there is a stale PID file)\n");
-  }
+    printf("  Serval mesh process is running (pid=%d)\n",pid);
+  else
+    printf("  Serval Mesh process not running\n");
+  
   return 0;
 }
 
