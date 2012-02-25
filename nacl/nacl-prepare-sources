@@ -152,10 +152,9 @@ do
 rm -f ${work}/measure.c ${work}/try.c
 
 # DOC - Create nacl.h for lazy programmers
-(cd ${work} ; find . -name \*.h -a \! -name mphlr.h -a \! -name nacl.h | sed -Ee 's,\./(.*),#include <\1>,') >${work}/nacl.h
-
+(cd ${work} ; find . -maxdepth 1 -name \*.h -a \! -name mphlr.h -a \! -name nacl.h | sed -Ee 's,\./(.*),#include <\1>,') >${work}/nacl.h
 # DOC - Create source list suitable for inclusion into a makefile
 echo "NACL_SOURCES := \\" >${work}/sources.mk
-(cd ${work} ; find . -mindepth 2 -name \*.c | sed -Ee 's,\./(.*),${NACL_BASE}/\1,' | sort | xargs echo) >>${work}/sources.mk
+(cd ${work} ; find . -mindepth 2 -name \*.c | sed -Ee 's,\./(.*),$(NACL_BASE)/\1,' | sort | xargs echo ) >>${work}/sources.mk
 
 echo "=== `date` === finishing"
