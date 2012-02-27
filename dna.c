@@ -380,8 +380,10 @@ void signal_handler( int signal ) {
     break;
 #endif
 #ifdef SIGIO
+#if SIGIO != SIGPOLL          
   case SIGIO: snprintf(signalName,63,"SIG %s (%d)","input/output possible signal",signal);
     break;
+#endif
 #endif
 #ifdef SIGXCPU
   case SIGXCPU: snprintf(signalName,63,"SIG %s (%d)","exceeded CPU time limit",signal);
