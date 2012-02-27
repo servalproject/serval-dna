@@ -39,6 +39,7 @@ LOCAL_SRC_FILES:= \
         serval-dna/batman.c        \
         serval-dna/ciphers.c       \
         serval-dna/client.c        \
+	serval-dna/commandline.c   \
         serval-dna/dataformats.c   \
         serval-dna/dna.c           \
         serval-dna/export.c        \
