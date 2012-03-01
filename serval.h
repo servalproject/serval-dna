@@ -315,6 +315,8 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
 		unsigned char *transaction_id);
 int requestNewHLR(char *did,char *pin,char *sid,int recvttl,struct sockaddr *recvaddr);
 int server(char *backing_file,int size,int foregroundMode);
+int isTransactionInCache(unsigned char *transaction_id);
+void insertTransactionInCache(unsigned char *transaction_id);
 
 int setReason(char *fmt, ...);
 int hexvalue(unsigned char c);

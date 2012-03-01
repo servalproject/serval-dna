@@ -29,6 +29,7 @@ SRCS=	batman.c \
 	rhizome_packetformats.c \
 	serval_packetvisualise.c \
 	server.c \
+	trans_cache.c \
 	sha2.c \
 	simulate.c \
 	srandomdev.c
