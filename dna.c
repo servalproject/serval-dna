@@ -301,8 +301,10 @@ void servalShutdownCleanly()
 }
 
 void signal_handler( int signal ) {
+  
+  if (signal==SIGQUIT) servalShutdownCleanly();
 
-  if (signal==SIGHUP) {
+  if (signal==SIGHUP||signal==SIGINT) {
     /* Shut down.
        The shutting down should be done from the main-line code rather than here,
        so we first try to tell the mainline code to do so.  If, however, this is
@@ -525,8 +527,10 @@ int main(int argc,char **argv)
     signal( SIGBUS, signal_handler );
     signal( SIGABRT, signal_handler );
 
-    /* Catch SIGHUP so that we can respond to requests to do things */
+    /* Catch SIGHUP etc so that we can respond to requests to do things */
     signal( SIGHUP, signal_handler );
+    signal( SIGINT, signal_handler );
+    signal( SIGQUIT, signal_handler );
 #endif
 
   srandomdev();
