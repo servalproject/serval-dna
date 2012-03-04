@@ -122,6 +122,9 @@ int overlayServerMode()
   if (rhizome_datastore_path) rhizome_server_poll();
     
   while(1) {
+
+    if (servalShutdown) servalShutdownCleanly();
+
     /* Work out how long we can wait before we need to tick */
     long long ms=overlay_time_until_next_tick();
     memabuseCheck();

@@ -137,6 +137,7 @@ extern unsigned char *hlr;
 double simulatedBER;
 
 extern int serverMode;
+extern int servalShutdown;
 
 extern int returnMultiVars;
 
@@ -304,6 +305,7 @@ extern int hexdigit[16];
 
 extern int sock;
 
+void servalShutdownCleanly();
 int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
 		struct sockaddr *recvaddr,unsigned int *recvaddrlen);
 int stowSid(unsigned char *packet,int ofs,char *sid);
@@ -929,6 +931,7 @@ int overlay_broadcast_generate_address(unsigned char *a);
 int overlay_abbreviate_unset_current_sender();
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_fetch_poll();
+int rhizome_opendb();
 
 typedef struct dna_identity_status {
   char sid[SID_STRLEN];

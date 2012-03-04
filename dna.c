@@ -283,7 +283,40 @@ int usage(char *complaint)
 #ifndef DNA_NO_MAIN
 char *exec_args[128];
 int exec_argc=0;
+
+int servalShutdown=0;
+
+void servalShutdownCleanly()
+{
+  WHY("Shutting down as requested.");
+  /* Try to remove shutdown and PID files and exit */
+  char *instancepath=getenv("SERVALINSTANCE_PATH");
+  if (!instancepath) instancepath=DEFAULT_INSTANCE_PATH;
+  char filename[1024];
+  snprintf(filename,1024,"%s/doshutdown",instancepath);
+  unlink(filename);
+  snprintf(filename,1024,"%s/serval.pid",instancepath);
+  unlink(filename);
+  exit(0);
+}
+
 void signal_handler( int signal ) {
+
+  if (signal==SIGHUP) {
+    /* Shut down.
+       The shutting down should be done from the main-line code rather than here,
+       so we first try to tell the mainline code to do so.  If, however, this is
+       not the first time we have been asked to shut down, then we will do it here. */
+    if (servalShutdown) {
+      /* We have been asked before, so shut down cleanly */
+      servalShutdownCleanly();
+    } else {
+      WHY("Asking Serval process to shutdown cleanly");
+      servalShutdown=1;
+    }
+    return;    
+  }
+
   /* oops - caught a bad signal -- exec() ourselves fresh */
   char signalName[64];
   snprintf(signalName,63,"signal %d",signal); signalName[63]=0;
@@ -490,7 +523,10 @@ int main(int argc,char **argv)
     signal( SIGFPE, signal_handler );
     signal( SIGILL, signal_handler );
     signal( SIGBUS, signal_handler );
-    signal( SIGABRT, signal_handler );    
+    signal( SIGABRT, signal_handler );
+
+    /* Catch SIGHUP so that we can respond to requests to do things */
+    signal( SIGHUP, signal_handler );
 #endif
 
   srandomdev();

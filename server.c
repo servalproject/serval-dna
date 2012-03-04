@@ -123,6 +123,19 @@ int server(char *backing_file,int size,int foregroundMode)
   /* Detach from the console */
   if (!foregroundMode) daemon(0,0);
 
+  /* Record PID */
+  char filename[1024];
+  char *instancepath=getenv("SERVALINSTANCE_PATH");
+  if (!instancepath) instancepath=DEFAULT_INSTANCE_PATH;
+  snprintf(filename,1023,"%s/serval.pid",instancepath); filename[1023]=0;
+  FILE *f=fopen(filename,"w");
+  if (!f) {
+    WHY("Could not write to PID file");
+    exit(-1);
+  }
+  fprintf(f,"%d\n",getpid());
+  fclose(f);
+
   if (!overlayMode) simpleServerMode();
   else overlayServerMode();
 
@@ -628,6 +641,8 @@ int simpleServerMode()
     int fdcount;
     int len;
     int r;
+
+    if (servalShutdown) servalShutdownCleanly();
 
     bzero((void *)&recvaddr,sizeof(recvaddr));
 
