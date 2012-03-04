@@ -58,6 +58,7 @@ int rhizome_opendb()
   rhizome_space=1024LL*atof(confValueGet("rhizome_kb","1024"));
   fprintf(stderr,"Rhizome will use %lldKB of storage for its database.\n",
 	  rhizome_space/1024LL);
+  fprintf(stderr,"   serval.conf:rhizome_kb=%.f\n",rhizome_space/1024.0);
 
   /* Create tables if required */
   if (sqlite3_exec(rhizome_db,"PRAGMA auto_vacuum=2;",NULL,NULL,NULL)) {
