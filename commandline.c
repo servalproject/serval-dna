@@ -277,7 +277,10 @@ int app_server_stop(int argc,char **argv,struct command_line_option *o)
       switch (errno) {
       case EINVAL: WHY("This is embarassing, but the operating system says I don't know how to send a signal."); break;
       case EPERM: WHY("I don't have permission to stop the Serval process.  You could try using sudo, or run the stop command as the appropriate user."); break;
-      case ESRCH: WHY("The process id I have recorded doesn't seem to exist anymore.  Did someone kill the process without telling me?"); break;
+      case ESRCH: WHY("The process id I have recorded doesn't seem to exist anymore.  Did someone kill the process without telling me?"); 
+	/* Clean up any lingering mess */
+	servalShutdownCleanly();
+	break;
       default:
 	perror("This is reason given by the operating system");
       }

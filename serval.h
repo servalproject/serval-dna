@@ -306,6 +306,7 @@ extern int hexdigit[16];
 extern int sock;
 
 void servalShutdownCleanly();
+char *confValueGet(char *var,char *defaultValue);
 int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
 		struct sockaddr *recvaddr,unsigned int *recvaddrlen);
 int stowSid(unsigned char *packet,int ofs,char *sid);

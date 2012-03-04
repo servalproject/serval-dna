@@ -54,26 +54,10 @@ int rhizome_opendb()
     exit(1);
   }
 
-  /* Read Rhizome configuration, and write it back out as we understand it. */
-  char conf[1024];
-  snprintf(conf,1024,"%s/rhizome.conf",rhizome_datastore_path);
-  FILE *f=fopen(conf,"r");
-  if (f) {
-    char line[1024];
-    line[0]=0; fgets(line,1024,f);
-    while (line[0]) {
-      if (sscanf(line,"space=%lld",&rhizome_space)==1) { 
-	rhizome_space*=1024; /* Units are kilobytes */
-      }
-      line[0]=0; fgets(line,1024,f);
-    }
-    fclose(f);
-  }
-  f=fopen(conf,"w");
-  if (f) {
-    fprintf(f,"space=%lld\n",rhizome_space/1024LL);
-    fclose(f);
-  }
+  /* Read Rhizome configuration */
+  rhizome_space=1024LL*atof(confValueGet("rhizome_kb","1024"));
+  fprintf(stderr,"Rhizome will use %lldKB of storage for its database.\n",
+	  rhizome_space/1024LL);
 
   /* Create tables if required */
   if (sqlite3_exec(rhizome_db,"PRAGMA auto_vacuum=2;",NULL,NULL,NULL)) {
