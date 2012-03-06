@@ -59,7 +59,6 @@ static void init_trans_cache()
       entry_freelist = e;
     }
     initialised = 1;
-    if (local_debug) fprintf(stderr, "init_trans_cache() done\n");
   }
 }
 
@@ -90,14 +89,10 @@ static size_t hashTransactionId(unsigned char *transaction_id, size_t len)
 static struct entry * findTransactionCacheEntry(unsigned char *transaction_id)
 {
   size_t hash = hashTransactionId(transaction_id, TRANS_CACHE_BUCKETS);
-  if (local_debug) fprintf(stderr, "findTransactionCacheEntry: hash=%lu\n", hash);
   struct entry **bucket = &buckets[hash];
-  if (local_debug) fprintf(stderr, "findTransactionCacheEntry: bucket=%p\n", bucket);
   struct entry *e = *bucket;
-  if (local_debug) fprintf(stderr, "findTransactionCacheEntry: e=%p\n", e);
   while (e && memcmp(e->transaction_id, transaction_id, TRANSID_SIZE) != 0) {
     e = e->bucket_next;
-    if (local_debug) fprintf(stderr, "findTransactionCacheEntry: e=%p\n", e);
   }
   return e;
 }
@@ -165,23 +160,17 @@ void insertTransactionInCache(unsigned char *transaction_id)
 {
   if (local_debug) fprintf(stderr, "insertTransactionInCache(%llx)\n", *(long long unsigned*)transaction_id);
   size_t hash = hashTransactionId(transaction_id, TRANS_CACHE_BUCKETS);
-  if (local_debug) fprintf(stderr, "findTransactionCacheEntry: hash=%lu\n", hash);
   if (!entry_freelist) {
     init_trans_cache();
     evict();
   }
-  if (local_debug) fprintf(stderr, "findTransactionCacheEntry: entry_freelist=%p\n", entry_freelist);
   struct entry *e = entry_freelist;
-  if (local_debug) fprintf(stderr, "findTransactionCacheEntry: entry_freelist->bucket_next=%p\n", entry_freelist->bucket_next);
   entry_freelist = e->bucket_next;
   memcpy(e->transaction_id, transaction_id, TRANSID_SIZE);
   struct entry **bucket = &buckets[hash];
-  if (local_debug) fprintf(stderr, "findTransactionCacheEntry: bucket=%p\n", bucket);
-  if (local_debug) fprintf(stderr, "findTransactionCacheEntry: *bucket=%p\n", *bucket);
   e->bucket_next = *bucket;
   *bucket = e;
   lru_insert_head(e);
-  if (local_debug) fprintf(stderr, "insertTransactionInCache done\n");
 }
 
 /* Return TRUE if the given transaction ID is in the cache.  If it is, promote
