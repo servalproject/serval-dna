@@ -259,6 +259,7 @@ struct hlrentry_handle {
 #define VAR_PIN 0x05
 #define VAR_VOICESIG 0x08
 #define VAR_HLRMASTER 0x0f
+#define VAR_NAME 0x10
 #define VAR_DIDS 0x80
 #define VAR_LOCATIONS 0x81
 #define VAR_IEMIS 0x82

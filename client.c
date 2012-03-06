@@ -653,7 +653,6 @@ int requestItem(char *did,char *sid,char *item,int instance,
 		successes++;
 	      }
 	      break;
-	    case VAR_NOTE:
 	    default:
 	      /* ASCII formatted variable types */
 	      {

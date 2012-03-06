@@ -54,6 +54,7 @@ struct mphlr_variable vars[]={
   {VAR_VOICESIG,"voicesig","Voice signature of this subscriber"},
 
   {VAR_HLRMASTER,"hlrmaster","Location where the master copy of this HLR record is maintained."},
+    {VAR_NAME, "name", "Published name of this subscriber"},
 
   /* Variables that can take multiple values */
   {VAR_DIDS,"dids","Numbers claimed by this subscriber"},
