@@ -200,7 +200,7 @@ int processRequest(unsigned char *packet,int len,
 
       if (packet[pofs]==ACTION_CREATEHLR)
 	{
-	  /* Creating an HLR requires an initial DID number and definately no SID -
+	  /* Creating an HLR requires an initial DID number and definitely no SID -
 	     you can't choose a SID. */
 	  if (debug&DEBUG_HLR) fprintf(stderr,"Creating a new HLR record. did='%s', sid='%s'\n",did,sid);
 	  if (!did[0]) return respondSimple(NULL,ACTION_DECLINED,NULL,0,transaction_id,recvttl,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
@@ -209,13 +209,15 @@ int processRequest(unsigned char *packet,int len,
 	  
 	  {
 	    char sid[128];
-	    /* make HLR with new random SID and initial DID */
-	    if (!createHlr(did,sid))
-	      return respondSimple(sid,ACTION_OKAY,NULL,0,transaction_id,
-				   recvttl,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
-	    else
-	      return respondSimple(NULL,ACTION_DECLINED,NULL,0,transaction_id,
-				   recvttl,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
+	    /* Look for an existing HLR with the requested DID. If there is one, respond with its
+	       SID.  This handles duplicates of the same message.  If there is none, then make a new
+	       HLR with random SID and initial DID.  */
+	    int ofs = 0;
+	    if (findHlr(hlr, &ofs, sid, did) || !createHlr(did, sid)) {
+	      return respondSimple(sid, ACTION_OKAY, NULL, 0, transaction_id, recvttl, sender, CRYPT_CIPHERED|CRYPT_SIGNED);
+	    } else {
+	      return respondSimple(NULL,ACTION_DECLINED,NULL,0,transaction_id, recvttl,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
+	    }
 	  }
 	  pofs+=1;
 	  pofs+=1+SID_SIZE;
