@@ -252,43 +252,40 @@ int processRequest(unsigned char *packet,int len,
 	    case ACTION_DIGITALTELEGRAM:
 	      if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"In ACTION_DIGITALTELEGRAM\n");
 	      {
-		// Check transaction cache, to see if message has already been delivered.  If not, then process it.
-		int delivered = isTransactionInCache(transaction_id);
-		if (!delivered) {
-		  // Unpack SMS message.
-		  char emitterPhoneNumber[256];
-		  char message[256];
-		  pofs++;
-		  /* char messageType = packet[pofs]; */
-		  pofs++;
-		  char emitterPhoneNumberLen = packet[pofs];
-		  pofs++;
-		  char messageLen = packet[pofs];
-		  pofs++;
-		  strncpy(emitterPhoneNumber, (const char*)packet+pofs, emitterPhoneNumberLen);
-		  emitterPhoneNumber[(unsigned int)emitterPhoneNumberLen]=0;
-		  
-		  pofs+=emitterPhoneNumberLen;
-		  strncpy(message, (const char*)packet+pofs, messageLen); 
-		  message[(unsigned int)messageLen]=0;
-		  
-		  pofs+=messageLen;
+		// Unpack SMS message.
+		char emitterPhoneNumber[256];
+		char message[256];
+		pofs++;
+		/* char messageType = packet[pofs]; */
+		pofs++;
+		char emitterPhoneNumberLen = packet[pofs];
+		pofs++;
+		char messageLen = packet[pofs];
+		pofs++;
+		strncpy(emitterPhoneNumber, (const char*)packet+pofs, emitterPhoneNumberLen);
+		emitterPhoneNumber[(unsigned int)emitterPhoneNumberLen]=0;
 		
-		  // Check if I'm the recipient
-		  ofs=0;
-		  if (findHlr(hlr, &ofs, sid, did)){
+		pofs+=emitterPhoneNumberLen;
+		strncpy(message, (const char*)packet+pofs, messageLen); 
+		message[(unsigned int)messageLen]=0;
+		
+		pofs+=messageLen;
+	      
+		// Check if I'm the recipient
+		ofs=0;
+		if (findHlr(hlr, &ofs, sid, did)) {
+		  // Check transaction cache to see if message has already been delivered.  If not,
+		  // then deliver it now.
+		  if (!isTransactionInCache(transaction_id)) {
 		    // Deliver SMS to android.
 		    char amCommand[576]; // 64 char + 2*256(max) char = 576
 		    sprintf(amCommand, "am broadcast -a org.servalproject.DT -e number \"%s\"  -e content \"%s\"", emitterPhoneNumber, message);
 		    if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"Delivering DT message via intent: %s\n",amCommand);
 		    runCommand(amCommand);
-		    delivered = 1;
 		    // Record in cache to prevent re-delivering the same message if a duplicate is received.
 		    insertTransactionInCache(transaction_id);
 		  }
-		}
-		if (delivered) {
-		  respondSimple(hlrSid(hlr, ofs), ACTION_OKAY, NULL, 0, transaction_id, recvttl,sender, CRYPT_CIPHERED|CRYPT_SIGNED);
+		  respondSimple(hlrSid(hlr, ofs), ACTION_OKAY, NULL, 0, transaction_id, recvttl, sender, CRYPT_CIPHERED|CRYPT_SIGNED);
 		}
 	      }
 	      break;

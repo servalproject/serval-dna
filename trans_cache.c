@@ -29,29 +29,37 @@ struct entry {
   struct entry *lru_next;
 };
 
-static struct entry *buckets[TRANS_CACHE_SIZE];
+static int initialised = 0;
+static struct entry *buckets[TRANS_CACHE_BUCKETS];
 static struct entry *lru_head = NULL;
 static struct entry *lru_tail = NULL;
 // Static allocation of cache entry pool, but could easily be malloc'd
-// instead, in init_pool().
+// instead, in init_trans_cache().
 static struct entry entry_pool[TRANS_CACHE_SIZE];
 static struct entry *entry_freelist = NULL;
-static int entry_pool_initialised = 0;
+static int local_debug = 0;
 
 /* Initialise the transaction cache entry pool.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-static void init_pool()
+static void init_trans_cache()
 {
-  if (!entry_pool_initialised) {
-    entry_freelist = NULL;
+  if (!initialised) {
+    if (local_debug) fprintf(stderr, "init_trans_cache() start\n");
     int i;
-    for (i = 0; i != TRANS_CACHE_SIZE - 1; ++i) {
-      entry_pool[i].bucket_next = entry_freelist;
-      entry_freelist = &entry_pool[i];
+    for (i = 0; i != TRANS_CACHE_BUCKETS; ++i) {
+      buckets[i] = NULL;
     }
-    entry_pool_initialised = 1;
+    lru_head = lru_tail = entry_freelist = NULL;
+    for (i = 0; i != TRANS_CACHE_SIZE; ++i) {
+      struct entry *e = &entry_pool[i];
+      e->bucket_next = entry_freelist;
+      e->lru_prev = e->lru_next = NULL;
+      entry_freelist = e;
+    }
+    initialised = 1;
+    if (local_debug) fprintf(stderr, "init_trans_cache() done\n");
   }
 }
 
@@ -82,10 +90,14 @@ static size_t hashTransactionId(unsigned char *transaction_id, size_t len)
 static struct entry * findTransactionCacheEntry(unsigned char *transaction_id)
 {
   size_t hash = hashTransactionId(transaction_id, TRANS_CACHE_BUCKETS);
+  if (local_debug) fprintf(stderr, "findTransactionCacheEntry: hash=%lu\n", hash);
   struct entry **bucket = &buckets[hash];
+  if (local_debug) fprintf(stderr, "findTransactionCacheEntry: bucket=%p\n", bucket);
   struct entry *e = *bucket;
+  if (local_debug) fprintf(stderr, "findTransactionCacheEntry: e=%p\n", e);
   while (e && memcmp(e->transaction_id, transaction_id, TRANSID_SIZE) != 0) {
     e = e->bucket_next;
+    if (local_debug) fprintf(stderr, "findTransactionCacheEntry: e=%p\n", e);
   }
   return e;
 }
@@ -98,7 +110,11 @@ static void lru_insert_head(struct entry *e)
 {
   e->lru_next = lru_head;
   e->lru_prev = NULL;
-  lru_head->lru_prev = e;
+  if (lru_head) {
+    lru_head->lru_prev = e;
+  } else {
+    lru_tail = e;
+  }
   lru_head = e;
 }
 
@@ -126,6 +142,7 @@ static void lru_remove(struct entry *e)
  */
 static void evict()
 {
+  if (local_debug) fprintf(stderr, "evict() lru_tail=%p\n", lru_tail);
   if (lru_tail) {
     struct entry *e = lru_tail;
     lru_remove(e);
@@ -146,20 +163,25 @@ static void evict()
  */
 void insertTransactionInCache(unsigned char *transaction_id)
 {
+  if (local_debug) fprintf(stderr, "insertTransactionInCache(%llx)\n", *(long long unsigned*)transaction_id);
   size_t hash = hashTransactionId(transaction_id, TRANS_CACHE_BUCKETS);
+  if (local_debug) fprintf(stderr, "findTransactionCacheEntry: hash=%lu\n", hash);
   if (!entry_freelist) {
-    init_pool();
-  }
-  if (!entry_freelist) {
+    init_trans_cache();
     evict();
   }
+  if (local_debug) fprintf(stderr, "findTransactionCacheEntry: entry_freelist=%p\n", entry_freelist);
   struct entry *e = entry_freelist;
+  if (local_debug) fprintf(stderr, "findTransactionCacheEntry: entry_freelist->bucket_next=%p\n", entry_freelist->bucket_next);
   entry_freelist = e->bucket_next;
   memcpy(e->transaction_id, transaction_id, TRANSID_SIZE);
   struct entry **bucket = &buckets[hash];
+  if (local_debug) fprintf(stderr, "findTransactionCacheEntry: bucket=%p\n", bucket);
+  if (local_debug) fprintf(stderr, "findTransactionCacheEntry: *bucket=%p\n", *bucket);
   e->bucket_next = *bucket;
-  lru_insert_head(e);
   *bucket = e;
+  lru_insert_head(e);
+  if (local_debug) fprintf(stderr, "insertTransactionInCache done\n");
 }
 
 /* Return TRUE if the given transaction ID is in the cache.  If it is, promote
@@ -169,6 +191,7 @@ void insertTransactionInCache(unsigned char *transaction_id)
  */
 int isTransactionInCache(unsigned char *transaction_id)
 {
+  if (local_debug) fprintf(stderr, "isTransactionInCache(%llx)\n", *(long long unsigned*)transaction_id);
   struct entry *e = findTransactionCacheEntry(transaction_id);
   if (e && e != lru_head) {
     lru_remove(e);
