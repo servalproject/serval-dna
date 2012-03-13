@@ -416,7 +416,7 @@ int overlay_abbreviate_lookup_sender_id()
 int overlay_abbreviate_remember_index(int index_byte_count,unsigned char *sid_to_remember,unsigned char *index_bytes)
 {
   int zero=0;
-  char sid[SID_SIZE*2+1];
+  char sid[SID_STRLEN+1];
   int index=index_bytes[0];
   if (index_byte_count>1) index=(index<<8)|index_bytes[1];
 

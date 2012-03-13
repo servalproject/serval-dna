@@ -208,16 +208,21 @@ int processRequest(unsigned char *packet,int len,
 	  if (debug&DEBUG_HLR) fprintf(stderr,"Verified that create request supplies DID but not SID\n");
 	  
 	  {
-	    char sid[128];
 	    /* Look for an existing HLR with the requested DID. If there is one, respond with its
 	       SID.  This handles duplicates of the same message.  If there is none, then make a new
 	       HLR with random SID and initial DID.  */
 	    int ofs = 0;
-	    if (findHlr(hlr, &ofs, sid, did) || !createHlr(did, sid)) {
-	      return respondSimple(sid, ACTION_OKAY, NULL, 0, transaction_id, recvttl, sender, CRYPT_CIPHERED|CRYPT_SIGNED);
-	    } else {
-	      return respondSimple(NULL,ACTION_DECLINED,NULL,0,transaction_id, recvttl,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
+	    int response = ACTION_DECLINED;
+	    if (findHlr(hlr, &ofs, sid, did)) {
+	      hlrSid(hlr, ofs, sid);
+	      if (debug&DEBUG_HLR) fprintf(stderr,"HLR found with did='%s' at ofs=%x: sid='%s'\n", did, ofs, sid);
+	      response = ACTION_OKAY;
 	    }
+	    else if (createHlr(did, sid) == 0) {
+	      if (debug&DEBUG_HLR) fprintf(stderr,"HLR created with did='%s': sid='%s'\n", did, sid);
+	      response = ACTION_OKAY;
+	    }
+	    return respondSimple(sid, response, NULL, 0, transaction_id, recvttl, sender, CRYPT_CIPHERED|CRYPT_SIGNED);
 	  }
 	  pofs+=1;
 	  pofs+=1+SID_SIZE;
@@ -287,7 +292,8 @@ int processRequest(unsigned char *packet,int len,
 		    // Record in cache to prevent re-delivering the same message if a duplicate is received.
 		    insertTransactionInCache(transaction_id);
 		  }
-		  respondSimple(hlrSid(hlr, ofs), ACTION_OKAY, NULL, 0, transaction_id, recvttl, sender, CRYPT_CIPHERED|CRYPT_SIGNED);
+		  char sid[SID_STRLEN+1];
+		  respondSimple(hlrSid(hlr, ofs, sid), ACTION_OKAY, NULL, 0, transaction_id, recvttl, sender, CRYPT_CIPHERED|CRYPT_SIGNED);
 		}
 	      }
 	      break;
@@ -397,6 +403,7 @@ int processRequest(unsigned char *packet,int len,
 		if (var_id&0x80) instance=packet[++pofs];
 		pofs++;
 		int offset=(packet[pofs]<<8)+packet[pofs+1]; pofs+=2;
+		char sid[SID_STRLEN+1];
 		char *hlr_sid=NULL;
 
 		pofs+=2;
@@ -448,7 +455,7 @@ int processRequest(unsigned char *packet,int len,
 	    
 				if (packageVariableSegment(data,&dlen,h,offset,MAX_DATA_BYTES+16))
 				  return setReason("packageVariableSegment() failed.");
-				hlr_sid=hlrSid(hlr,ofs);
+				hlr_sid = hlrSid(hlr, ofs, sid);
 
 				sendDone++;
 			      }
@@ -495,7 +502,8 @@ int processRequest(unsigned char *packet,int len,
 			  if (packageVariableSegment(data,&dlen,&fake,offset,MAX_DATA_BYTES+16))
 			    return setReason("packageVariableSegment() of gateway URI failed.");
 			  
-			  respondSimple(hlrSid(hlr,0),ACTION_DATA,data,dlen,
+			  char sid[SID_STRLEN+1];
+			  respondSimple(hlrSid(hlr, 0, sid),ACTION_DATA,data,dlen,
 					transaction_id,recvttl,sender,
 					CRYPT_CIPHERED|CRYPT_SIGNED);
 			}

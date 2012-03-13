@@ -99,7 +99,7 @@ int extractSid(unsigned char *packet,int *ofs,char *sid)
       sid[d++]=hexdigit[packet[*ofs]&0xf];
       (*ofs)++;
     }
-  sid[64]=0;
+  sid[d]=0;
   return 0;
 }
 
@@ -107,7 +107,9 @@ int stowSid(unsigned char *packet,int ofs,char *sid)
 {
   int i;
   if (debug&DEBUG_PACKETFORMATS) printf("Stowing SID \"%s\"\n",sid);
-  if (strlen(sid)!=64) return setReason("Asked to stow invalid SID (should be 64 hex digits)");
+  size_t n = strlen(sid);
+  if (n != SID_STRLEN)
+    return setReason("Asked to stow invalid SID (strlen is %u but should be %u hex digits)", n, SID_STRLEN);
   for(i=0;i<SID_SIZE;i++)
     {
       if (hexvalue(sid[i<<1])<0) return -1;

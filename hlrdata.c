@@ -30,7 +30,7 @@ int bcompare(unsigned char *a,unsigned char *b,size_t len)
 
 int seedHlr()
 {
-  /* If HLR is entry, create a default entry */
+  /* If HLR is empty, create a default entry */
   int offset=0;
   if (!nextHlr(hlr,&offset)) {
     /* There is an entry, so nothing to do */
@@ -44,7 +44,7 @@ int seedHlr()
  */
   {
     int i,ofs=0;
-    char sid[65];
+    char sid[SID_STRLEN+1];
     char did[65];
     /* Make DID start with 2 through 9, as 1 is special in many number spaces. */ 
     did[0]='2'+random()%8;
@@ -75,12 +75,11 @@ int nextHlr(unsigned char *hlr,int *ofs)
   return 0;
 }
 
-char sid_string[SID_SIZE*2+1];
-char *hlrSid(unsigned char *hlr,int ofs)
+char *hlrSid(unsigned char *hlr, int ofs, char *sid)
 {
-  int o=ofs+4;
-  extractSid(hlr,&o,sid_string);
-  return sid_string;
+  int o = ofs + 4;
+  extractSid(hlr, &o, sid);
+  return sid;
 }
 
 int findHlr(unsigned char *hlr,int *ofs,char *sid,char *did)
@@ -182,7 +181,9 @@ int createHlr(char *did,char *sid) {
   if (debug&DEBUG_HLR) fprintf(stderr,"Asked to create a new HLR record\n");
 
   /* Generate random SID */
-  for(i=1;i<64;i++) sid[i]=hexdigit[random()&0xf]; sid[64]=0;
+  for (i = 1; i != SID_STRLEN; ++i)
+    sid[i] = hexdigit[random() & 0xf];
+  sid[SID_STRLEN]=0;
   /* But make sure first digit is non-zero as required by the overlay mesh */
   sid[0]=hexdigit[1+(random()&0xe)];
   if (debug&DEBUG_HLR) fprintf(stderr,"Creating new HLR entry with sid %s\n",sid);

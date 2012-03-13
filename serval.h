@@ -208,9 +208,11 @@ extern char *batman_peerfile;
 #define OFS_PINFIELD (OFS_SIDDIDFIELD+SIDDIDFIELD_LEN)
 #define OFS_PAYLOAD (OFS_PINFIELD+16+16)
 
+#define SID_STRLEN (SID_SIZE*2)
+
 struct response {
   int code;
-  unsigned char sid[32];
+  unsigned char sid[SID_SIZE];
   struct in_addr sender;
   int recvttl;
   unsigned char *response;
@@ -359,7 +361,7 @@ int extractSid(unsigned char *packet,int *ofs,char *sid);
 int hlrSetVariable(unsigned char *hlr,int hofs,int varid,int varinstance,
 		   unsigned char *value,int len);
 int extractDid(unsigned char *packet,int *ofs,char *did);
-char *hlrSid(unsigned char *hlr,int ofs);
+char *hlrSid(unsigned char *hlr, int ofs, char *sid);
 int parseAssignment(unsigned char *text,int *var_id,unsigned char *value,int *value_len);
 int writeItem(char *sid,int var_id,int instance,unsigned char *value,
 	      int value_start,int value_length,int flags, 
@@ -929,7 +931,7 @@ int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_fetch_poll();
 
 typedef struct dna_identity_status {
-  char sid[SID_SIZE*2+1];
+  char sid[SID_STRLEN];
   char did[64+1];
   char name[255+1];
 

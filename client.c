@@ -246,7 +246,7 @@ int requestNewHLR(char *did,char *pin,char *sid,
       break;
     case ACTION_OKAY:
       {
-	char sid[128];
+	char sid[SID_STRLEN+1];
 	int ofs=0;
 	extractSid(&responses.responses->sid[0],&ofs,&sid[0]);
 	printf("OK:%s\n",sid);
@@ -453,7 +453,7 @@ int writeItem(char *sid,int var_id,int instance,unsigned char *value,
   while(r)
     {
       int slen=0;
-      char sid[SID_SIZE*2+1];
+      char sid[SID_STRLEN+1];
       extractSid(r->sid,&slen,sid);
       switch(r->code)
 	{
@@ -626,7 +626,7 @@ int requestItem(char *did,char *sid,char *item,int instance,
   r=responses.responses;
   while(r)
     {
-      char sid[SID_SIZE*2+1];
+      char sid[SID_STRLEN+1];
       int slen=0;
       extractSid(r->sid,&slen,sid);
       switch(r->code)

@@ -911,13 +911,12 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
   
 }
 
-char ors_out[SID_SIZE*2+1];
+char ors_out[SID_STRLEN+1];
 char *overlay_render_sid(unsigned char *sid)
 {
   int zero=0;
-
   extractSid(sid,&zero,ors_out);
-  ors_out[SID_SIZE*2]=0;
+  ors_out[SID_STRLEN] = '\0';
   return ors_out;
 }
 
@@ -926,8 +925,7 @@ char *overlay_render_sid_prefix(unsigned char *sid,int l)
   int zero=0;
 
   if (l<0) l=0;
-  if (l>(SID_SIZE*2)) l=SID_SIZE*2;
-
+  if (l>SID_STRLEN) l=SID_STRLEN;
   extractSid(sid,&zero,ors_out);
   ors_out[l]=0;
   return ors_out;

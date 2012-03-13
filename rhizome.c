@@ -71,9 +71,11 @@ int rhizome_bundle_import(rhizome_manifest *m_in,char *bundle,char *groups[], in
   }
 
   if (checkFileP||signP) {
-    if (rhizome_hash_file(filename,hexhash))
-      { rhizome_manifest_free(m); return WHY("Could not hash file."); }
-    bcopy(&hexhash[0],&m->fileHexHash[0],SHA512_DIGEST_STRING_LENGTH);
+    if (rhizome_hash_file(filename,hexhash)) {
+      rhizome_manifest_free(m);
+      return WHY("Could not hash file.");
+    }
+    memcpy(&m->fileHexHash[0],&hexhash[0],SHA512_DIGEST_STRING_LENGTH);
     m->fileHashedP=1;
   }
 
@@ -85,8 +87,11 @@ int rhizome_bundle_import(rhizome_manifest *m_in,char *bundle,char *groups[], in
       char *mhexhash;
       if (checkFileP) {
 	if ((mhexhash=rhizome_manifest_get(m,"filehash",NULL,0))!=NULL)
-	  if (strcmp(hexhash,mhexhash)) verifyErrors++; }
-      if (m->errors) verifyErrors+=m->errors;
+	  if (strcmp(hexhash,mhexhash))
+	    verifyErrors++;
+      }
+      if (m->errors)
+	verifyErrors+=m->errors;
       if (verifyErrors) {
 	rhizome_manifest_free(m);
 	unlink(manifestname);

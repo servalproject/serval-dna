@@ -73,11 +73,11 @@ int importHlr(char *textfile)
 	    case 0: /* looking for a control line */
 	      if (!strncmp("sid=",(char *)line,4)) {
 		/* Read SID, and create HLR record for it if one doesn't already exist */
-		if (l!=4+SID_SIZE*2)
+		if (l!=4+SID_STRLEN)
 		  exit(setReason("Malformed sid= line encountered in line %d of HLR import file.",linenum));
 
 		/* Extract SID */
-		for(j=0;j<SID_SIZE*2;j++) sid[j]=line[4+j]; sid[SID_SIZE*2]=0;
+		for(j=0;j<SID_STRLEN;j++) sid[j]=line[4+j]; sid[SID_STRLEN]=0;
 
 		/* Find or Create HLR Record */
 		if (findHlr(hlr,&hofs,sid,NULL))
