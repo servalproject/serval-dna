@@ -241,7 +241,7 @@ int exportHlr(unsigned char *hlr_file,char *text)
 	  cols=0;
 	  for (i=0;i<h->value_len;i++)
 	    {
-	      if (h->value[i]>=' '&&h->value[i]<=0x7f&&h->value[i]!='\\'&&(cols||h->value[i]!='#'))
+	      if (h->value[i]>=' '&&h->value[i]<0x7f&&h->value[i]!='\\'&&(cols||h->value[i]!='#'))
 		{
 		  fprintf(o,"%c",h->value[i]);
 		  cols++;
