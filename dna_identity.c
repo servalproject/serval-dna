@@ -69,6 +69,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 int dna_identity_cache_initialisedP=0;
 dna_identity_status dna_identity_cache[DNA_IDENTITY_CACHE_SIZE];
 
+int dnacache_lookup_next_slot_to_examine=0;
+char *dnacache_lookup_did=NULL;
+char *dnacache_lookup_name=NULL;
+char *dnacache_lookup_sid=NULL;
+int dnacache_lookup_complete=1;
+int dnacache_lookup_sidfound=0;
+
+
 dna_identity_status dnacache_lookup(char *did,char *name,char *sid)
 {
   /* Mark all slots as unused initially */
@@ -85,18 +93,63 @@ dna_identity_status dnacache_lookup(char *did,char *name,char *sid)
 
      Also, if DID/NAME is specified without SID, and the cache entry indicates
      that there are no duplicates for the specified value in the database, then
-     the database query can be eshewed.
+     the database query can be eshewed, provided that the entry for the SID
+     (whether positive or negative) has been pulled into the cache.
 
      Otherwise, the database must be queried.
      
      Negative results are also cached so that database queries can be avoided for
      repeated queries to identies that we do not know about.
   */
+  
+  /* Here we just prepare the lookup, and then we do the real work in
+     dnacache_lookup_next(), which does the heavy lifting */
+
+  dnacache_lookup_next_slot_to_examine=0;
+  dnacache_lookup_did=did;
+  dnacache_lookup_name=name;
+  dnacache_lookup_sid=sid;
+  dnacache_lookup_complete=0;
+  dnacache_lookup_sidfound=0;
+
+  return dnacache_lookup_next();
 }
 
-dna_identity_status dnachache_lookup_next()
+dna_identity_status *dnachache_lookup_next()
 {
+  if (dnacache_lookup_complete) return NULL;
 
+  /* Look in slots for matches */
+  while (dnacache_lookup_next_slot_to_examine<DNA_IDENTITY_CACHE_SIZE)
+    {
+      dna_identity_status *slot=
+	&dna_identity_cache[dnacache_lookup_next_slot_to_examine++];
+
+      /* Perform the various tests that reject this slot if it doesn't match */
+      if (!slot->initialisedP) continue;
+      if (dnacache_lookup_sid&&(strcasecmp(dnacache_lookup_sid,slot->sid)))
+	continue;
+      else dnacache_lookup_sidfound=1;
+      if (dnacache_lookup_did&&(strcasecmp(dnacache_lookup_did,slot->did)))
+	continue;
+      if (dnacache_lookup_name&&(strcasecmp(dnacache_lookup_name,slot->name)))
+	continue;
+
+      if (dnacache_lookup_sid&&dnacache_lookup_sidfound)
+	/* SIDs are unique, a SID was specified, and a matching record was found,
+	   therefore no database query is required. */
+	dnacache_lookup_complete=1;
+      if (slot->uniqueDidAndName&&dnacache_lookup_did&&dnacache_lookup_name)
+	/* If the entry is known to be the only such DID/name combination,
+	   then we need look no further */
+	dnacache_lookup_complete=1;     
+
+      /* Well, we passed all the slots, so it must be us */
+      return slot;
+    }
+
+  WHY("Do database lookup");
+  return NULL;
 }
 
 /*

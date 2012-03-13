@@ -953,7 +953,11 @@ typedef struct dna_identity_status {
 #define IDENTITY_NOTVERIFIED (1<<2)
   /* The value below is for caching negative results */
 #define IDENTITY_UNKNOWN (1<<3)
-  int verification_status;
+  int verificationStatus;
+
+  /* Set if we know that there are no duplicates of this DID/name
+     combination, as it allows us to avoid a database lookup. */
+  int uniqueDidAndName;
 } dna_identity_status;
 
 int parseCommandLine(int argc,char *argv[]);
