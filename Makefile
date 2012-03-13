@@ -1,6 +1,7 @@
 SRCS=	batman.c \
 	ciphers.c \
 	client.c \
+	commandline.c \
 	dataformats.c \
 	dna.c \
 	export.c \
@@ -34,7 +35,7 @@ SRCS=	batman.c \
 
 OBJS=	$(SRCS:.c=.o)
 
-HDRS=	Makefile mphlr.h
+HDRS=	Makefile serval.h
 
 # NACL library build info
 # You must run the following for this to work
@@ -52,13 +53,18 @@ CFLAGS=	-g -O2 $(NACL_CFLAGS) $(SQLITE3_CFLAGS)
 
 DEFS=	-DPACKAGE_NAME=\"\" -DPACKAGE_TARNAME=\"\" -DPACKAGE_VERSION=\"\" -DPACKAGE_STRING=\"\" -DPACKAGE_BUGREPORT=\"\" -DHAVE_LIBC=1 -DSTDC_HEADERS=1 -DHAVE_SYS_TYPES_H=1 -DHAVE_SYS_STAT_H=1 -DHAVE_STDLIB_H=1 -DHAVE_STRING_H=1 -DHAVE_MEMORY_H=1 -DHAVE_STRINGS_H=1 -DHAVE_INTTYPES_H=1 -DHAVE_STDINT_H=1 -DHAVE_UNISTD_H=1 -DHAVE_STDIO_H=1 -DHAVE_ERRNO_H=1 -DHAVE_STDLIB_H=1 -DHAVE_STRINGS_H=1 -DHAVE_UNISTD_H=1 -DHAVE_STRING_H=1 -DHAVE_ARPA_INET_H=1 -DHAVE_SYS_SOCKET_H=1 -DHAVE_SYS_MMAN_H=1 -DHAVE_SYS_TIME_H=1 -DHAVE_POLL_H=1 -DHAVE_NETDB_H=1 -DHAVE_NET_IF_H=1 -DHAVE_NETINET_IN_H=1 -DHAVE_IFADDRS_H=1 -DHAVE_NET_ROUTE_H=1
 
-all:	dna
+all:	dna serval.c
 
 %.o:	%.c $(HDRS)
 	$(CC) $(CFLAGS) $(DEFS) -Os -g -Wall -c $<
 
 dna:	$(OBJS)
 	$(CC) $(CFLAGS) -Os -g -Wall -o dna $(OBJS) $(LDFLAGS)
+
+serval.c:	$(SRCS) $(HDRS)
+	cat serval.h > serval.c
+	echo '#include <sys/mman.h>' >>serval.c
+	cat $(SRCS) | grep -v "#include" | sed -e 's/inet_ntoa/ast_inet_ntoa/g' >>serval.c
 
 testserver: dna
 	clear
