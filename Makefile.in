@@ -1,0 +1,58 @@
+SRCS=	dna.c server.c client.c peers.c ciphers.c responses.c packetformats.c dataformats.c \
+	hlrdata.c srandomdev.c simulate.c batman.c export.c gateway.c \
+	overlay.c overlay_buffer.c overlay_interface.c overlay_payload.c overlay_route.c \
+	overlay_packetformats.c overlay_abbreviations.c overlay_advertise.c \
+	rhizome.c rhizome_http.c rhizome_bundle.c rhizome_database.c rhizome_crypto.c \
+	rhizome_packetformats.c rhizome_fetch.c sqlite3.c encode.c sha2.c randombytes.c \
+	overlay_broadcast.c dna_identity.c commandline.c serval_packetvisualise.c
+
+OBJS=	dna.o server.o client.o peers.o ciphers.o responses.o packetformats.o dataformats.o \
+	hlrdata.o srandomdev.o simulate.o batman.o export.o gateway.o \
+	overlay.o overlay_buffer.o overlay_interface.o overlay_payload.o overlay_route.o \
+	overlay_packetformats.o overlay_abbreviations.o overlay_advertise.o \
+	rhizome.o rhizome_http.o rhizome_bundle.o rhizome_database.o rhizome_crypto.o \
+	rhizome_packetformats.o rhizome_fetch.o sqlite3.o encode.o sha2.o randombytes.o \
+	overlay_broadcast.o dna_identity.o commandline.o serval_packetvisualise.o
+
+HDRS=	Makefile serval.h sqlite-amalgamation-3070900/sqlite3.h sha2.h rhizome.h
+
+LDFLAGS=	@LDFLAGS@
+CFLAGS=	@CFLAGS@
+DEFS=	@DEFS@
+
+all:	serval.c dna
+
+%.o:	%.c $(HDRS)
+	$(CC) $(CFLAGS) $(DEFS) -Os -g -Wall -c $<
+
+dna:	$(OBJS)
+	$(CC) $(CFLAGS) -Os -g -Wall -o dna $(OBJS) $(LDFLAGS)
+
+serval.c:	$(SRCS) $(HDRS)
+	cat serval.h > serval.c
+	echo '#include <sys/mman.h>' >>serval.c
+	cat $(SRCS) | grep -v "#include" | sed -e 's/inet_ntoa/ast_inet_ntoa/g' >>serval.c
+
+testserver: dna
+	clear
+	rm hlr.dat
+	./dna -vvv -S 1 -f hlr.dat
+
+testcreate: dna
+	clear
+	./dna -vvv -d 0427679796 -C
+	@touch testcreate
+
+testget:	dna testcreate
+	clear
+	./dna -vvv -d 0427679796 -R dids | tee testget
+
+testset:	dna testget
+	clear
+	# Try writing a value to a variable
+	echo "short value" >shortvalue.txt
+	./dna -vvv -s `cat testget | cut -f2 -d: | tail -1` -i 0 -W note=@shortvalue.txt
+
+testbigset: testget
+	clear
+	./dna -vvv -s `cat testget | cut -f2 -d: | tail -1` -i 0 -W note=@411.txt
