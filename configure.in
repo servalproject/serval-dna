@@ -11,7 +11,9 @@ AC_CHECK_HEADERS(stdio.h errno.h stdlib.h strings.h unistd.h string.h arpa/inet.
 echo "Fetching and building NaCl if required."
 echo "(this can take HOURS to build depending on your architecture,"
 echo " but fortunately it only needs to happen once.)"
+cd nacl
 ./nacl-gcc-prep
+cd ..
 LDFLAGS="$LDFLAGS "`cat naclbuilddir.txt`"/libnacl.a"
 
 AC_CHECK_LIB(nsl,callrpc,[LDFLAGS="$LDFLAGS -lnsl"])
