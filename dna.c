@@ -286,12 +286,20 @@ int exec_argc=0;
 
 int servalShutdown=0;
 
+char *thisinstancepath=NULL;
+char *serval_instancepath()
+{
+  if (thisinstancepath) return thisinstancepath;
+  char *instancepath=getenv("SERVALINSTANCE_PATH");
+  if (!instancepath) instancepath=DEFAULT_INSTANCE_PATH;
+  return instancepath;
+}
+
 void servalShutdownCleanly()
 {
   WHY("Shutting down as requested.");
   /* Try to remove shutdown and PID files and exit */
-  char *instancepath=getenv("SERVALINSTANCE_PATH");
-  if (!instancepath) instancepath=DEFAULT_INSTANCE_PATH;
+  char *instancepath=serval_instancepath();
   char filename[1024];
   snprintf(filename,1024,"%s/doshutdown",instancepath);
   unlink(filename);

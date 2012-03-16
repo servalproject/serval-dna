@@ -170,8 +170,7 @@ char *confValueGet(char *var,char *defaultValue)
   if (!var) return defaultValue;
   int varLen=strlen(var);
 
-  char *instancepath=getenv("SERVALINSTANCE_PATH");
-  if (!instancepath) instancepath=DEFAULT_INSTANCE_PATH;
+  char *instancepath=serval_instancepath();
 
   char filename[1024];
   snprintf(filename,1024,"%s/serval.conf",instancepath); filename[1023]=0;
@@ -209,6 +208,9 @@ int app_server_start(int argc,char **argv,struct command_line_option *o)
   /* Process optional arguments */
   if ((argc>=3)&&(!strcasecmp(argv[2],"foreground"))) foregroundP=1;
   if ((argc>=4)&&(!strcasecmp(argv[2],"in"))) instancepath=argv[3];
+
+  /* Record instance path for easy access by whole process */
+  thisinstancepath=strdup(instancepath);
 
   int pid=-1;
   int running = servalNodeRunning(&pid,instancepath);

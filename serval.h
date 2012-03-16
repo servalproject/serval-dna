@@ -701,7 +701,7 @@ extern unsigned char *overlay_local_identities[OVERLAY_MAX_LOCAL_IDENTITIES];
 #define OF_TYPE_SELFANNOUNCE_ACK 0x20 /* BATMAN style "I saw your announcment" frames */
 #define OF_TYPE_DATA 0x30 /* Ordinary data frame.
 		        Upto MTU bytes of payload.
-			16 bit channel/port indicator for each end. 
+			32 bit channel/port indicator for each end. 
 		        */
 #define OF_TYPE_DATA_VOICE 0x40 /* Voice data frame. 
 			      Limited to 255 bytes of payload. 
@@ -897,6 +897,7 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now);
 int overlay_route_please_advertise(overlay_node *n);
 int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_server_poll();
+int overlay_saw_mdp_frame(int interface,overlay_frame *f,long long now);
 
 #include "nacl.h"
 
@@ -962,8 +963,8 @@ typedef struct dna_identity_status {
 
 int parseCommandLine(int argc,char *argv[]);
 
-dna_identity_status dnacache_lookup(char *did,char *name,char *sid);
-dna_identity_status dnacache_lookup_next();
+dna_identity_status *dnacache_lookup(char *did,char *name,char *sid);
+dna_identity_status *dnacache_lookup_next();
 int dnacache_update_verification(char *did,char *sid,char *name,
 				 char *signature,int revokeVerificationP);
 int dnacache_vouch_for_identity(char *did,char *sid,char *name);
@@ -977,3 +978,6 @@ int _memabuseCheck(const char *func,const char *file,const int line);
 #define memabuseInit() /* */
 #define memabuseCheck() /* */
 #endif
+
+char *thisinstancepath;
+char *serval_instancepath();
