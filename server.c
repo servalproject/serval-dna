@@ -416,6 +416,7 @@ int processRequest(unsigned char *packet,int len,
 		if (var_id&0x80) instance=packet[++pofs];
 		pofs++;
 		int offset=(packet[pofs]<<8)+packet[pofs+1]; pofs+=2;
+#warning Defining SID here is masking the version passed in, which other stuff still expects to be visible?  Also, does it need to be SID_STRLEN*2+1 to allow for byte->hex expansion? Or has SID_STRLEN been defined to take that into account?
 		char sid[SID_STRLEN+1];
 		char *hlr_sid=NULL;
 
@@ -424,7 +425,7 @@ int processRequest(unsigned char *packet,int len,
 		if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"Processing ACTION_GET (var_id=%02x, instance=%02x, pofs=0x%x, len=%d)\n",var_id,instance,pofs,len);
 
 		ofs=0;
-		if (debug&DEBUG_HLR) fprintf(stderr,"Looking for hlr entries with sid='%s' / did='%s'\n",sid?sid:"null",did?did:"null");
+		if (debug&DEBUG_HLR) fprintf(stderr,"Looking for hlr entries with sid='%s' / did='%s'\n",(sid&&sid[0])?sid:"null",did?did:"null");
 
 		while(1)
 		  {
