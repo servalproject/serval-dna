@@ -77,7 +77,7 @@ int dnacache_lookup_complete=1;
 int dnacache_lookup_sidfound=0;
 
 
-dna_identity_status dnacache_lookup(char *did,char *name,char *sid)
+dna_identity_status *dnacache_lookup(char *did,char *name,char *sid)
 {
   /* Mark all slots as unused initially */
   if (!dna_identity_cache_initialisedP) {
@@ -115,7 +115,7 @@ dna_identity_status dnacache_lookup(char *did,char *name,char *sid)
   return dnacache_lookup_next();
 }
 
-dna_identity_status *dnachache_lookup_next()
+dna_identity_status *dnacache_lookup_next()
 {
   if (dnacache_lookup_complete) return NULL;
 
