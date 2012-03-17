@@ -45,13 +45,11 @@ int overlay_mdp_setup_sockets()
     snprintf(&name.sun_path[1],100,"org.servalproject.mesh.overlay.mdp");
     len = 1+strlen(&name.sun_path[1]) + sizeof(name.sun_family);
     
-    mdp_abstract_socket = socket(AF_UNIX, SOCK_STREAM, 0);
+    mdp_abstract_socket = socket(AF_UNIX, SOCK_DGRAM, 0);
     if (mdp_abstract_socket>-1) {
       int dud=0;
       int r=bind(mdp_abstract_socket, (struct sockaddr *)&name, len);
       if (r) { dud=1; r=0; WHY("bind() of abstract name space socket failed (not an error on non-linux systems"); }
-      r=listen(mdp_abstract_socket,100); // allow a lot of queued up MDP frames 
-      if (r) { dud++; WHY("listen() failed"); }
       if (dud) {
 	close(mdp_abstract_socket);
 	mdp_abstract_socket=-1;
@@ -64,13 +62,11 @@ int overlay_mdp_setup_sockets()
     char *instancepath=serval_instancepath();
     snprintf(&name.sun_path[0],100,"%s/mdp.socket",instancepath);
     len = 0+strlen(&name.sun_path[0]) + sizeof(name.sun_family);
-    mdp_named_socket = socket(AF_UNIX, SOCK_STREAM, 0);
+    mdp_named_socket = socket(AF_UNIX, SOCK_DGRAM, 0);
     if (mdp_named_socket>-1) {
       int dud=0;
       int r=bind(mdp_named_socket, (struct sockaddr *)&name, len);
       if (r) { dud=1; r=0; WHY("bind() of named unix domain socket failed"); }
-      r=listen(mdp_named_socket,100); // allow a lot of queued up MDP frames 
-      if (r) { dud++; WHY("listen() failed"); }
       if (dud) {
 	close(mdp_named_socket);
 	mdp_named_socket=-1;
