@@ -164,12 +164,13 @@ dna_identity_status *dnacache_lookup_next()
 int dnacache_update_verification(char *did,char *sid,char *name,
 				 char *signature,int revokeVerificationP)
 {
-
+  return WHY("Not implemented");
 }
 
 /* Sign a verification record ourselves for the specified identity, by creating 
    and storing signature and adding record to the cache. */
 int dnacache_vouch_for_identity(char *did,char *sid,char *name)
 {
-
+  return WHY("Not implemented");
 }
+
