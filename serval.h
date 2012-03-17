@@ -981,3 +981,6 @@ int _memabuseCheck(const char *func,const char *file,const int line);
 
 char *thisinstancepath;
 char *serval_instancepath();
+
+int overlay_mdp_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
+int overlay_mdp_poll();

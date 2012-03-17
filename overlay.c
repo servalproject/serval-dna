@@ -133,6 +133,7 @@ int overlayServerMode()
     fdcount=1;
     rhizome_server_get_fds(fds,&fdcount,128);
     rhizome_fetching_get_fds(fds,&fdcount,128);
+    overlay_mdp_get_fds(fds,&fdcount,128);
 
     for(i=0;i<overlay_interface_count;i++)
       {
@@ -197,6 +198,7 @@ int overlayServerMode()
       if (rhizome_datastore_path) {
 	rhizome_server_poll();
 	rhizome_fetch_poll();
+	overlay_mdp_poll();
       }
     } else {
       /* No data before tick occurred, so do nothing.
