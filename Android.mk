@@ -36,6 +36,7 @@ LOCAL_SRC_FILES:= \
 	serval-dna/overlay_packetformats.c \
 	serval-dna/overlay_payload.c       \
 	serval-dna/overlay_route.c         \
+	serval-dna/overlay_mdp.c	\
         serval-dna/batman.c        \
         serval-dna/ciphers.c       \
         serval-dna/client.c        \
