@@ -345,6 +345,35 @@ int app_server_status(int argc,char **argv,struct command_line_option *o)
   return 0;
 }
 
+int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
+{
+  char *sid=cli_arg(argc,argv,o,"SID|broadcast","broadcast");
+  char *instancepath=serval_instancepath();
+
+  /* Open socket to MDP */
+
+  int sock;
+  struct sockaddr_un name;
+  char mdp_socket_name[101];
+  mdp_socket_name[100]=0;
+  snprintf(mdp_socket_name,100,"%s/mdp.socket",instancepath);
+  if (mdp_socket_name[100]) {
+    return WHY("instance path is too long (unix domain named sockets have a short maximum path length)");
+  }
+  
+  sock = socket(AF_UNIX, SOCK_DGRAM, 0);
+  if (sock < 0) {
+    perror("opening datagram socket");
+    exit(1);
+  }
+  /* Construct name of socket to send to. */
+  name.sun_family = AF_UNIX;
+  strcpy(name.sun_path, mdp_socket_name);
+  close(sock);
+
+  return WHY("Not implmented");
+}
+
 /* NULL marks ends of command structure.
    "<anystring>" marks an arg that can take any value.
    Only exactly matching prototypes will be used.
@@ -370,5 +399,7 @@ command_line_option command_line_options[]={
    "Ask running Serval Mesh node process to stop.  Instance path as specified."},
   {app_server_status,{"node","status"},0,
    "Display information about any running Serval Mesh node."},
+  {app_mdp_ping,{"mdp","ping","<SID|broadcast>"},CLIFLAG_STANDALONE,
+   "Attempts to ping specified node via Mesh Datagram Protocol (MDP)."},
   {NULL,{NULL}}
 };
