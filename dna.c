@@ -305,6 +305,8 @@ void servalShutdownCleanly()
   unlink(filename);
   snprintf(filename,1024,"%s/serval.pid",instancepath);
   unlink(filename);
+  snprintf(filename,1024,"%s/mdp.socket",instancepath);
+  unlink(filename);
   exit(0);
 }
 

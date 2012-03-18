@@ -60,8 +60,10 @@ int overlay_mdp_setup_sockets()
 #endif
   if (mdp_named_socket==-1) {
     char *instancepath=serval_instancepath();
+    if (strlen(instancepath)>85) return WHY("Instance path too long to allow construction of named unix domain socket.");
     snprintf(&name.sun_path[0],100,"%s/mdp.socket",instancepath);
-    len = 0+strlen(&name.sun_path[0]) + sizeof(name.sun_family);
+    unlink(&name.sun_path[0]);
+    len = 0+strlen(&name.sun_path[0]) + sizeof(name.sun_family)+1;
     mdp_named_socket = socket(AF_UNIX, SOCK_DGRAM, 0);
     if (mdp_named_socket>-1) {
       int dud=0;
