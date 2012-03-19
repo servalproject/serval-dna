@@ -136,9 +136,22 @@ int overlay_mdp_poll()
     if (len>0) {
       dump("packet from unix domain socket",
 	   buffer,len);
-      if (debug&DEBUG_PACKETXFER) 
-	serval_packetvisualise(stderr,"Read from unix domain socket",
-			       buffer,len);
+      /* Look at overlay_mdp_frame we have received */
+      overlay_mdp_frame *mdp=(overlay_mdp_frame *)&buffer[0];
+      switch(mdp->packetTypeAndFlags) {
+      case MDP_TX: /* Send payload */
+	break;
+      case MDP_BIND: /* Bind to port */
+	WHY("MDP_BIND request");
+	break;
+      default:
+	/* Client is not allowed to send any other frame type */
+	mdp->packetTypeAndFlags=MDP_ERROR;
+	mdp->error.error=2;
+	snprintf(mdp->error.message,128,"Illegal request type.  Clients may use only MDP_TX or MDP_BIND.");
+	int len=4+4+strlen(mdp->error.message)+1;
+	int e=sendto(mdp_named_socket,mdp,len,0,(struct sockaddr *)&recvaddr,recvaddrlen);
+      }
     }
 
     recvaddr_un=(struct sockaddr_un *)&recvaddr;
@@ -146,12 +159,27 @@ int overlay_mdp_poll()
 	  fcntl(mdp_named_socket, F_GETFL, NULL)&(~O_NONBLOCK)); 
   }
 
-  return WHY("Not implemented");
+  if (!(random()&0xff)) WHY("Not implemented");
+  return -1;
 }
 
 int mdp_client_socket=-1;
 int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
 {
+  int len=4;
+ 
+  /* Minimise frame length to save work and prevent accidental disclosure of
+     memory contents. */
+  switch(mdp->packetTypeAndFlags)
+    {
+    case MDP_TX: len=4+sizeof(mdp->out)+mdp->out.payload_length; break;
+    case MDP_RX: len=4+sizeof(mdp->in)+mdp->out.payload_length; break;
+    case MDP_BIND: len=4+4; break;
+    case MDP_ERROR: len=4+4+strlen(mdp->error.message)+1; break;
+    default:
+      return WHY("Illegal MDP frame type.");
+    }
+
   if (mdp_client_socket==-1) {
     /* Open socket to MDP server (thus connection is always local) */
     WHY("Use of abstract name space socket for Linux not implemented");
@@ -175,10 +203,15 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
   strcpy(name.sun_path, mdp_socket_name); 
 
   /* XXX Sends whole mdp structure, regardless of how much or little is used. */
-  int result=sendto(mdp_client_socket, mdp, sizeof(overlay_mdp_frame), 0,
+  int result=sendto(mdp_client_socket, mdp, len, 0,
 		    (struct sockaddr *)&name, sizeof(struct sockaddr_un));
   if (result<0) {
-        perror("sending datagram message");
+    mdp->packetTypeAndFlags=MDP_ERROR;
+    mdp->error.error=1;
+    snprintf(mdp->error.message,128,"Error sending frame to MDP server.");
+    /* Clear socket so that we have the chance of reconnecting */
+    mdp_client_socket=-1;
+    return -1;
   } else {
     WHY("packet sent");
     if (!(flags&MDP_AWAITREPLY)) return 0;
@@ -198,6 +231,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
   }
 
   /* Check if reply available */
+  
 
   return WHY("Not implemented");
 }
