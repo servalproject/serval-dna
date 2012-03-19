@@ -221,6 +221,8 @@ int app_server_start(int argc,char **argv,struct command_line_option *o)
 	    "         You should probably put something in the interfaces setting.\n");
   }
 
+  setVerbosity(confValueGet("debug",""));
+
   int pid=-1;
   int running = servalNodeRunning(&pid,instancepath);
   if (running<0) return -1;
@@ -359,28 +361,28 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
   char *sid=cli_arg(argc,argv,o,"SID|broadcast","broadcast");
   char *instancepath=serval_instancepath();
 
-  /* Open socket to MDP */
+  /* MDP frames consist of:
+     destination SID (32 bytes)
+     destination port (4 bytes)
+     payload length (2 bytes)
+     payload (rest of packet) */
+  overlay_mdp_frame mdp;
 
-  int sock;
-  struct sockaddr_un name;
-  char mdp_socket_name[101];
-  mdp_socket_name[100]=0;
-  snprintf(mdp_socket_name,100,"%s/mdp.socket",instancepath);
-  if (mdp_socket_name[100]) {
-    return WHY("instance path is too long (unix domain named sockets have a short maximum path length)");
+  /* Bind to MDP socket and await confirmation */
+  int port=32768+(random()&32767);
+  mdp.packetTypeAndFlags=MDP_BIND;
+  mdp.bind.port_number=port;
+  int result=overlay_mdp_dispatch(&mdp,MDP_AWAITREPLY,5000);
+  if (result) {
+    if (mdp.packetTypeAndFlags==MDP_ERROR)
+      fprintf(stderr,"Could not bind to MDP port %d: error=%d, message='%s'\n",
+	      port,mdp.error.error,mdp.error.message);
+    else
+      fprintf(stderr,"Could not bind to MDP port %d (no reason given)\n",port);
+    return -1;
   }
-  
-  sock = socket(AF_UNIX, SOCK_DGRAM, 0);
-  if (sock < 0) {
-    perror("opening datagram socket");
-    exit(1);
-  }
-  /* Construct name of socket to send to. */
-  name.sun_family = AF_UNIX;
-  strcpy(name.sun_path, mdp_socket_name);
-  close(sock);
 
-  return WHY("Not implmented");
+  return WHY("MDP ping not implemented (we don't send the packet)");
 }
 
 int app_server_set(int argc,char **argv,struct command_line_option *o)

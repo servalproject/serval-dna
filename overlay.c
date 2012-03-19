@@ -195,6 +195,7 @@ int overlayServerMode()
 	}
       }
       overlay_rx_messages();
+      fprintf(stderr,"tick\n");
       if (rhizome_datastore_path) {
 	rhizome_server_poll();
 	rhizome_fetch_poll();
@@ -208,6 +209,7 @@ int overlayServerMode()
       if (rhizome_datastore_path) {
 	rhizome_server_poll();
 	rhizome_fetch_poll();
+	overlay_mdp_poll();
       }
     }
     /* Check if we need to trigger any ticks on any interfaces */

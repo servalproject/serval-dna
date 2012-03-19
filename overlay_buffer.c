@@ -80,8 +80,9 @@ int ob_makespace(overlay_buffer *b,int bytes)
     }
   }
 
-  printf("ob_makespace(%p,%d)\n  b->bytes=%p,b->length=%d,b->allocSize=%d\n",
-	 b,bytes,b->bytes,b->length,b->allocSize);
+  if (0)
+    printf("ob_makespace(%p,%d)\n  b->bytes=%p,b->length=%d,b->allocSize=%d\n",
+	   b,bytes,b->bytes,b->length,b->allocSize);
 
   if (b->length+bytes>=b->allocSize)
     {
@@ -94,7 +95,7 @@ int ob_makespace(overlay_buffer *b,int bytes)
       if (newSize>65536) {
 	if (newSize&65535) newSize+=65536-(newSize&65535);
       }
-      if (1) printf("  realloc(b->bytes=%p,newSize=%d)\n",
+      if (0) printf("  realloc(b->bytes=%p,newSize=%d)\n",
 	     b->bytes,newSize);
       unsigned char *r=realloc(b->bytes,newSize);
       if (!r) return WHY("realloc() failed");

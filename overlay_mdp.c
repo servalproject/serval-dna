@@ -120,5 +120,84 @@ int overlay_saw_mdp_frame(int interface,overlay_frame *f,long long now)
 
 int overlay_mdp_poll()
 {
+  unsigned char buffer[16384];
+  int ttl;
+  struct sockaddr recvaddr;
+  socklen_t recvaddrlen=sizeof(recvaddr);
+  struct sockaddr_un *recvaddr_un=NULL;
+
+  if (mdp_named_socket>-1) {
+    ttl=-1;
+    bzero((void *)&recvaddr,sizeof(recvaddr));
+    fcntl(mdp_named_socket, F_SETFL, 
+	  fcntl(mdp_named_socket, F_GETFL, NULL)|O_NONBLOCK); 
+    int len = recvwithttl(mdp_named_socket,buffer,sizeof(buffer),&ttl,
+			  &recvaddr,&recvaddrlen);
+    if (len>0) {
+      dump("packet from unix domain socket",
+	   buffer,len);
+      if (debug&DEBUG_PACKETXFER) 
+	serval_packetvisualise(stderr,"Read from unix domain socket",
+			       buffer,len);
+    }
+
+    recvaddr_un=(struct sockaddr_un *)&recvaddr;
+    fcntl(mdp_named_socket, F_SETFL, 
+	  fcntl(mdp_named_socket, F_GETFL, NULL)&(~O_NONBLOCK)); 
+  }
+
+  return WHY("Not implemented");
+}
+
+int mdp_client_socket=-1;
+int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
+{
+  if (mdp_client_socket==-1) {
+    /* Open socket to MDP server (thus connection is always local) */
+    WHY("Use of abstract name space socket for Linux not implemented");
+    
+    mdp_client_socket = socket(AF_UNIX, SOCK_DGRAM, 0);
+    if (mdp_client_socket < 0) {
+      perror("socket");
+      return WHY("Could not open socket to MDP server");
+    }
+  }
+
+  /* Construct name of socket to send to. */
+  char mdp_socket_name[101];
+  mdp_socket_name[100]=0;
+  snprintf(mdp_socket_name,100,"%s/mdp.socket",serval_instancepath());
+  if (mdp_socket_name[100]) {
+    return WHY("instance path is too long (unix domain named sockets have a short maximum path length)");
+  }
+  struct sockaddr_un name;
+  name.sun_family = AF_UNIX;
+  strcpy(name.sun_path, mdp_socket_name); 
+
+  /* XXX Sends whole mdp structure, regardless of how much or little is used. */
+  int result=sendto(mdp_client_socket, mdp, sizeof(overlay_mdp_frame), 0,
+		    (struct sockaddr *)&name, sizeof(struct sockaddr_un));
+  if (result<0) {
+        perror("sending datagram message");
+  } else {
+    WHY("packet sent");
+    if (!(flags&MDP_AWAITREPLY)) return 0;
+  }
+
+  /* Wait for a reply until timeout */
+  struct pollfd fds[1];
+  int fdcount=1;
+  fds[0].fd=mdp_client_socket; fds[0].events=POLLIN;
+  result = poll(fds,fdcount,timeout_ms);
+  if (result==0) {
+    /* Timeout */
+    mdp->packetTypeAndFlags=MDP_ERROR;
+    mdp->error.error=1;
+    snprintf(mdp->error.message,128,"Timeout waiting for reply to MDP packet (packet was successfully sent).");
+    return -1;
+  }
+
+  /* Check if reply available */
+
   return WHY("Not implemented");
 }

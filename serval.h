@@ -984,3 +984,53 @@ char *serval_instancepath();
 
 int overlay_mdp_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int overlay_mdp_poll();
+
+typedef struct sockaddr_mdp {
+  unsigned char sid[SID_SIZE];
+  unsigned int port;
+} sockaddr_mdp;
+
+#define MDP_TX 1
+typedef struct overlay_mdp_outgoing_frame {
+  sockaddr_mdp dst;
+  unsigned short payload_length;
+  unsigned char payload[0];
+} overlay_mdp_outgoing_frame;
+
+#define MDP_RX 2
+typedef struct overlay_mdp_incoming_frame {
+  sockaddr_mdp dst;
+  sockaddr_mdp src;
+  unsigned short payload_length;
+  unsigned char payload[0];
+} overlay_mdp_incoming_frame;
+
+#define MDP_BIND 3
+typedef struct overlay_mdp_bind_request {
+  unsigned int port_number;
+} overlay_mdp_bind_request;
+
+#define MDP_ERROR 4
+typedef struct overlay_mdp_error {
+  unsigned int error;
+  char message[0];
+} overlay_mdp_error;
+
+typedef struct overlay_mdp_frame {
+#define MDP_AWAITREPLY 5
+  unsigned int packetTypeAndFlags;
+  union {
+    overlay_mdp_outgoing_frame out;
+    overlay_mdp_incoming_frame in;
+    overlay_mdp_bind_request bind;
+    overlay_mdp_error error;
+    /* 2048 is too large (causes EMSGSIZE errors on OSX, but probably fine on
+       Linux) */
+    char raw[2000];
+  };
+} overlay_mdp_frame;
+
+int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms);
+
+
+int setVerbosity(char *optarg);

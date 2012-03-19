@@ -249,7 +249,9 @@ int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockadd
 
   if (name[0]=='>') {
     I(fileP)=1;
-    I(fd) = open(&name[1],O_APPEND|O_RDWR);
+    char dummyfile[1024];
+    snprintf(dummyfile,1024,"%s/%s",serval_instancepath(),&name[1]);
+    I(fd) = open(dummyfile,O_APPEND|O_RDWR);
     if (I(fd)<1)
       return WHY("could not open dummy interface file for append");
     /* Seek to end of file as initial reading point */
