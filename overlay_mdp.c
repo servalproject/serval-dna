@@ -146,11 +146,15 @@ int overlay_mdp_poll()
 	break;
       default:
 	/* Client is not allowed to send any other frame type */
+	WHY("Illegal frame type.");
 	mdp->packetTypeAndFlags=MDP_ERROR;
 	mdp->error.error=2;
 	snprintf(mdp->error.message,128,"Illegal request type.  Clients may use only MDP_TX or MDP_BIND.");
 	int len=4+4+strlen(mdp->error.message)+1;
+	errno=0;
 	int e=sendto(mdp_named_socket,mdp,len,0,(struct sockaddr *)&recvaddr,recvaddrlen);
+	
+	perror("sendto");
       }
     }
 
@@ -167,6 +171,8 @@ int mdp_client_socket=-1;
 int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
 {
   int len=4;
+  char mdp_temporary_socket[1024];
+  mdp_temporary_socket[0]=0;
  
   /* Minimise frame length to save work and prevent accidental disclosure of
      memory contents. */
@@ -189,6 +195,20 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
       perror("socket");
       return WHY("Could not open socket to MDP server");
     }
+
+    /* We must bind to a temporary file name */
+    snprintf(mdp_temporary_socket,1024,"%s/mdp-client.socket",serval_instancepath());
+    unlink(mdp_temporary_socket);    
+    struct sockaddr_un name;
+    name.sun_family = AF_UNIX;
+    snprintf(&name.sun_path[0],100,mdp_temporary_socket);
+    int len = 1+strlen(&name.sun_path[0]) + sizeof(name.sun_family)+1;
+    int r=bind(mdp_client_socket, (struct sockaddr *)&name, len);
+    if (r) {
+      WHY("Could not bind MDP client socket to file name");
+      perror("bind");
+      return -1;
+    }
   }
 
   /* Construct name of socket to send to. */
@@ -196,6 +216,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
   mdp_socket_name[100]=0;
   snprintf(mdp_socket_name,100,"%s/mdp.socket",serval_instancepath());
   if (mdp_socket_name[100]) {
+    if (mdp_temporary_socket[0]) unlink(mdp_temporary_socket);
     return WHY("instance path is too long (unix domain named sockets have a short maximum path length)");
   }
   struct sockaddr_un name;
@@ -211,9 +232,11 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
     snprintf(mdp->error.message,128,"Error sending frame to MDP server.");
     /* Clear socket so that we have the chance of reconnecting */
     mdp_client_socket=-1;
+    if (mdp_temporary_socket[0]) unlink(mdp_temporary_socket);
     return -1;
   } else {
     WHY("packet sent");
+    if (mdp_temporary_socket[0]) unlink(mdp_temporary_socket);
     if (!(flags&MDP_AWAITREPLY)) return 0;
   }
 
@@ -227,11 +250,12 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
     mdp->packetTypeAndFlags=MDP_ERROR;
     mdp->error.error=1;
     snprintf(mdp->error.message,128,"Timeout waiting for reply to MDP packet (packet was successfully sent).");
+    if (mdp_temporary_socket[0]) unlink(mdp_temporary_socket);
     return -1;
   }
 
   /* Check if reply available */
   
-
+  if (mdp_temporary_socket[0]) unlink(mdp_temporary_socket);
   return WHY("Not implemented");
 }
