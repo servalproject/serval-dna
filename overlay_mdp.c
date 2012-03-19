@@ -122,20 +122,23 @@ int overlay_mdp_poll()
 {
   unsigned char buffer[16384];
   int ttl;
-  struct sockaddr recvaddr;
-  socklen_t recvaddrlen=sizeof(recvaddr);
+  unsigned char recvaddrbuffer[1024];
+  struct sockaddr *recvaddr=(struct sockaddr *)&recvaddrbuffer[0];
+  socklen_t recvaddrlen=sizeof(recvaddrbuffer);
   struct sockaddr_un *recvaddr_un=NULL;
 
   if (mdp_named_socket>-1) {
     ttl=-1;
-    bzero((void *)&recvaddr,sizeof(recvaddr));
+    bzero((void *)recvaddrbuffer,sizeof(recvaddrbuffer));
     fcntl(mdp_named_socket, F_SETFL, 
 	  fcntl(mdp_named_socket, F_GETFL, NULL)|O_NONBLOCK); 
     int len = recvwithttl(mdp_named_socket,buffer,sizeof(buffer),&ttl,
-			  &recvaddr,&recvaddrlen);
+			  recvaddr,&recvaddrlen);
+
     if (len>0) {
       dump("packet from unix domain socket",
 	   buffer,len);
+      dump("recvaddr",recvaddrbuffer,recvaddrlen);
       /* Look at overlay_mdp_frame we have received */
       overlay_mdp_frame *mdp=(overlay_mdp_frame *)&buffer[0];
       switch(mdp->packetTypeAndFlags) {
@@ -152,13 +155,13 @@ int overlay_mdp_poll()
 	snprintf(mdp->error.message,128,"Illegal request type.  Clients may use only MDP_TX or MDP_BIND.");
 	int len=4+4+strlen(mdp->error.message)+1;
 	errno=0;
-	int e=sendto(mdp_named_socket,mdp,len,0,(struct sockaddr *)&recvaddr,recvaddrlen);
+	int e=sendto(mdp_named_socket,mdp,len,0,(struct sockaddr *)recvaddr,recvaddrlen);
 	
 	perror("sendto");
       }
     }
 
-    recvaddr_un=(struct sockaddr_un *)&recvaddr;
+    recvaddr_un=(struct sockaddr_un *)recvaddr;
     fcntl(mdp_named_socket, F_SETFL, 
 	  fcntl(mdp_named_socket, F_GETFL, NULL)&(~O_NONBLOCK)); 
   }
@@ -201,7 +204,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
     unlink(mdp_temporary_socket);    
     struct sockaddr_un name;
     name.sun_family = AF_UNIX;
-    snprintf(&name.sun_path[0],100,mdp_temporary_socket);
+    snprintf(&name.sun_path[0],100,"%s",mdp_temporary_socket);
     int len = 1+strlen(&name.sun_path[0]) + sizeof(name.sun_family)+1;
     int r=bind(mdp_client_socket, (struct sockaddr *)&name, len);
     if (r) {
