@@ -212,6 +212,15 @@ int app_server_start(int argc,char **argv,struct command_line_option *o)
   /* Record instance path for easy access by whole process */
   thisinstancepath=strdup(instancepath);
 
+  /* Now that we know our instance path, we can ask for the default set of
+     network interfaces that we will take interest in. */
+  overlay_interface_args(confValueGet("interfaces",""));
+  if (strlen(confValueGet("interfaces",""))<1) {
+    fprintf(stderr,
+	    "WARNING: Noone has told me which network interfaces to listen on.\n"
+	    "         You should probably put something in the interfaces setting.\n");
+  }
+
   int pid=-1;
   int running = servalNodeRunning(&pid,instancepath);
   if (running<0) return -1;
@@ -374,6 +383,54 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
   return WHY("Not implmented");
 }
 
+int app_server_set(int argc,char **argv,struct command_line_option *o)
+{
+  char *var=cli_arg(argc,argv,o,"variable","");
+  char *val=cli_arg(argc,argv,o,"value","");
+
+  char conffile[1024];
+  char tempfile[1024];
+
+  snprintf(conffile,1024,"%s/serval.conf",serval_instancepath());
+  snprintf(tempfile,1024,"%s/serval.conf.temp",serval_instancepath());
+
+  FILE *in=fopen(conffile,"r");
+  if (!in) in=fopen(conffile,"w");
+  if (!in)
+    return WHY("could not read configuration file.");
+  FILE *out=fopen(tempfile,"w");
+  if (!out) {
+    fclose(in);
+    return WHY("could not write temporary file.");
+  }
+  char line[1024];
+
+  /* Read and write lines of config file, replacing the variable in question
+     if required.  If the variable didn't already exist, then write it out at
+     the end. */
+  int found=0;
+  int varlen=strlen(var);
+  line[0]=0; fgets(line,1024,in);
+  while(line[0]) {
+    if ((!strncasecmp(var,line,varlen))&&(line[varlen]=='='))
+      {
+	fprintf(out,"%s=%s\n",var,val);
+	found=1;
+      }
+    else
+      fprintf(out,"%s",line);
+    line[0]=0; fgets(line,1024,in);
+  }
+  if (!found) fprintf(out,"%s=%s\n",var,val);
+  fclose(in); fclose(out);
+  
+  if (rename(tempfile,conffile)) {
+    return WHY("Failed to put temporary config file into place.");
+  }
+
+  return 0;
+}
+
 /* NULL marks ends of command structure.
    "<anystring>" marks an arg that can take any value.
    Only exactly matching prototypes will be used.
@@ -401,5 +458,7 @@ command_line_option command_line_options[]={
    "Display information about any running Serval Mesh node."},
   {app_mdp_ping,{"mdp","ping","<SID|broadcast>"},CLIFLAG_STANDALONE,
    "Attempts to ping specified node via Mesh Datagram Protocol (MDP)."},
+  {app_server_set,{"set","<variable>","<value>"},0,
+   "Set specified configuration variable."},
   {NULL,{NULL}}
 };
