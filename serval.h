@@ -1041,4 +1041,6 @@ int setVerbosity(char *optarg);
 int overlay_mdp_client_init();
 int overlay_mdp_client_done();
 int overlay_mdp_client_poll(long long timeout_ms);
+int overlay_mdp_recv(overlay_mdp_frame *mdp,int *ttl);
 extern int mdp_client_socket;
+

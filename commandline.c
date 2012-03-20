@@ -387,12 +387,20 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
   unsigned int firstSeq=random();
   unsigned int sequence_number=firstSeq;
 
+  /* Get SID that we want to ping */
+  int i;
+  unsigned char ping_sid[SID_SIZE];
+  if (strcasecmp(sid,"broadcast")) {
+    stowSid(ping_sid,0,sid);
+  } else {
+    for(i=0;i<SID_SIZE;i++) ping_sid[i]=0xff;
+  }
+
   while(1) {
-    int i;
     /* Now send the ping packets */
     mdp.packetTypeAndFlags=MDP_TX;
     /* Set destination to broadcast */
-    for(i=0;i<SID_SIZE;i++) mdp.out.dst.sid[i]=0xff;
+    for(i=0;i<SID_SIZE;i++) mdp.out.dst.sid[i]=ping_sid[i];
     /* Set port to well known echo port (from /etc/services) */
     mdp.out.dst.port=7;
     mdp.out.payload_length=4;
@@ -417,11 +425,25 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
       result = overlay_mdp_client_poll(timeout_ms);
 
       if (result>0) {
-	fprintf(stderr,"Frames ready for reception.\n");
+	int ttl=-1;
+	while (overlay_mdp_recv(&mdp,&ttl)==0) {
+	  switch(mdp.packetTypeAndFlags&MDP_TYPE_MASK) {
+	  case MDP_ERROR:
+	    fprintf(stderr,"mdpping: overlay_mdp_recv: %s (code %d)\n",
+		    mdp.error.message,mdp.error.error);
+	    break;
+	  case MDP_RX:
+	    break;
+	  default:
+	    fprintf(stderr,"mdpping: overlay_mdp_recv: Unexpected MDP frame type 0x%x\n",mdp.packetTypeAndFlags);
+	    break;
+	  }
+	}
       }
       now=overlay_gettime_ms();
       if (servalShutdown) {
 	/* XXX Report final statistics before going */
+	WHY("I should be giving you ping statistics now");
 	return 0;
       }
     }

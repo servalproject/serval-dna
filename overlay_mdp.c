@@ -254,6 +254,12 @@ int overlay_mdp_poll()
       overlay_mdp_frame *mdp=(overlay_mdp_frame *)&buffer[0];
       switch(mdp->packetTypeAndFlags&MDP_TYPE_MASK) {
       case MDP_TX: /* Send payload */
+	/* Construct MDP packet frame from overlay_mdp_frame structure
+	   (need to add return address from bindings list, and copy
+	   payload etc). */
+	WHY("Not implemented");
+	overlay_mdp_reply_error(mdp_named_socket,recvaddr_un,recvaddrlen,
+				1,"Sending MDP packets not implemented");
 	break;
       case MDP_BIND: /* Bind to port */
 	return overlay_mdp_process_bind_request(mdp_named_socket,mdp,
@@ -322,7 +328,6 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
     overlay_mdp_client_done();
     return -1;
   } else {
-    WHY("packet sent");
     if (!(flags&MDP_AWAITREPLY)) {       
       return 0;
     }
@@ -341,33 +346,8 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
     return -1;
   }
 
-  /* Check if reply available */
-  unsigned char replybuffer[2048];
-  fcntl(mdp_client_socket, F_SETFL, 
-	fcntl(mdp_client_socket, F_GETFL, NULL)|O_NONBLOCK); 
   int ttl=-1;
-  unsigned char recvaddrbuffer[1024];
-  struct sockaddr *recvaddr=(struct sockaddr *)recvaddrbuffer;
-  unsigned int recvaddrlen=sizeof(recvaddrbuffer);
-  struct sockaddr_un *recvaddr_un;
-  mdp->packetTypeAndFlags=0;
-  len = recvwithttl(mdp_client_socket,(unsigned char *)mdp,
-		    sizeof(overlay_mdp_frame),&ttl,recvaddr,&recvaddrlen);
-  recvaddr_un=(struct sockaddr_un *)recvaddr;
-  if (len>0) {
-    /* Make sure recvaddr matches who we sent it to */
-    if (strcmp(mdp_socket_name,recvaddr_un->sun_path)) {
-      /* Okay, reply was PROBABLY not from the server, but on OSX if the path
-	 has a symlink in it, it is resolved in the reply path, but might not
-	 be in the request path (mdp_socket_name), thus we need to stat() and
-	 compare inode numbers etc */
-      struct stat sb1,sb2;
-      if (stat(mdp_socket_name,&sb1)) return WHY("stat(mdp_socket_name) failed, so could not verify that reply came from MDP server");
-      if (stat(recvaddr_un->sun_path,&sb2)) return WHY("stat(ra->sun_path) failed, so could not verify that reply came from MDP server");
-      if ((sb1.st_ino!=sb2.st_ino)||(sb1.st_dev!=sb2.st_dev))
-	return WHY("Reply did not come from server");
-    }
-
+  if (!overlay_mdp_recv(mdp,&ttl)) {
     /* If all is well, examine result and return error code provided */
     WHY("Got a reply from server");
     if ((mdp->packetTypeAndFlags&MDP_TYPE_MASK)==MDP_ERROR)
@@ -426,10 +406,49 @@ int overlay_mdp_client_done()
 int overlay_mdp_client_poll(long long timeout_ms)
 {
   if (timeout_ms<0) timeout_ms=0;
-  printf("waiting for %lldms on client socket.\n",timeout_ms);
   struct pollfd fds[1];
   int fdcount=1;
   fds[0].fd=mdp_client_socket; fds[0].events=POLLIN;
 
   return poll(fds,fdcount,timeout_ms);
+}
+
+int overlay_mdp_recv(overlay_mdp_frame *mdp,int *ttl) 
+{
+  char mdp_socket_name[101];
+  mdp_socket_name[100]=0;
+  snprintf(mdp_socket_name,100,"%s/mdp.socket",serval_instancepath());
+
+  /* Check if reply available */
+  fcntl(mdp_client_socket, F_SETFL, 
+	fcntl(mdp_client_socket, F_GETFL, NULL)|O_NONBLOCK); 
+  unsigned char recvaddrbuffer[1024];
+  struct sockaddr *recvaddr=(struct sockaddr *)recvaddrbuffer;
+  unsigned int recvaddrlen=sizeof(recvaddrbuffer);
+  struct sockaddr_un *recvaddr_un;
+  mdp->packetTypeAndFlags=0;
+  int len = recvwithttl(mdp_client_socket,(unsigned char *)mdp,
+		    sizeof(overlay_mdp_frame),ttl,recvaddr,&recvaddrlen);
+  recvaddr_un=(struct sockaddr_un *)recvaddr;
+  if (len>0) {
+    /* Make sure recvaddr matches who we sent it to */
+    /* Null terminate recvaddr->sun_path as required */
+    recvaddr_un->sun_path[recvaddr_un->sun_len-sizeof(recvaddr_un->sun_len)-sizeof(recvaddr_un->sun_family)]=0;
+    if (strcmp(mdp_socket_name,recvaddr_un->sun_path)) {
+      /* Okay, reply was PROBABLY not from the server, but on OSX if the path
+	 has a symlink in it, it is resolved in the reply path, but might not
+	 be in the request path (mdp_socket_name), thus we need to stat() and
+	 compare inode numbers etc */
+      struct stat sb1,sb2;
+      if (stat(mdp_socket_name,&sb1)) return WHY("stat(mdp_socket_name) failed, so could not verify that reply came from MDP server");
+      if (stat(recvaddr_un->sun_path,&sb2)) return WHY("stat(ra->sun_path) failed, so could not verify that reply came from MDP server");
+      if ((sb1.st_ino!=sb2.st_ino)||(sb1.st_dev!=sb2.st_dev))
+	return WHY("Reply did not come from server");
+    }
+    /* Valid packet received */
+    return 0;
+  } else 
+    /* no packet received */
+    return -1;
+
 }
