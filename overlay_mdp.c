@@ -376,17 +376,28 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
   int ttl=-1;
   unsigned char recvaddrbuffer[1024];
   struct sockaddr *recvaddr=(struct sockaddr *)recvaddrbuffer;
-  int recvaddrlen=sizeof(recvaddrbuffer);
+  unsigned int recvaddrlen=sizeof(recvaddrbuffer);
   struct sockaddr_un *recvaddr_un;
   len = recvwithttl(mdp_client_socket,replybuffer,sizeof(replybuffer),&ttl,
 			recvaddr,&recvaddrlen);
   recvaddr_un=(struct sockaddr_un *)recvaddr;
   if (len>0) {
     /* Make sure recvaddr matches who we sent it to */
-    
+    if (strcmp(mdp_socket_name,recvaddr_un->sun_path)) {
+      /* Okay, reply was PROBABLY not from the server, but on OSX if the path
+	 has a symlink in it, it is resolved in the reply path, but might not
+	 be in the request path (mdp_socket_name), thus we need to stat() and
+	 compare inode numbers etc */
+      struct stat sb1,sb2;
+      if (stat(mdp_socket_name,&sb1)) return WHY("stat(mdp_socket_name) failed, so could not verify that reply came from MDP server");
+      if (stat(recvaddr_un->sun_path,&sb2)) return WHY("stat(ra->sun_path) failed, so could not verify that reply came from MDP server");
+      if ((sb1.st_ino!=sb2.st_ino)||(sb1.st_dev!=sb2.st_dev))
+	return WHY("Reply did not come from server");
+    }
 
     /* If all is well, examine result and return error code provided */
     overlay_mdp_frame *mdpreply=(overlay_mdp_frame *)&replybuffer[0];
+    WHY("Got a reply from server");
     
   }
 
