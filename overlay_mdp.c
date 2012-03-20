@@ -267,9 +267,10 @@ int overlay_mdp_poll()
 	snprintf(mdp->error.message,128,"Illegal request type.  Clients may use only MDP_TX or MDP_BIND.");
 	int len=4+4+strlen(mdp->error.message)+1;
 	errno=0;
-	int e=sendto(mdp_named_socket,mdp,len,0,(struct sockaddr *)recvaddr,recvaddrlen);
-	
-	perror("sendto");
+	/* We ignore the result of the following, because it is just sending an
+	   error message back to the client.  If this fails, where would we report
+	   the error to? My point exactly. */
+	sendto(mdp_named_socket,mdp,len,0,(struct sockaddr *)recvaddr,recvaddrlen);
       }
     }
 
@@ -285,9 +286,9 @@ int mdp_client_socket=-1;
 int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
 {
   int len=4;
-  char mdp_temporary_socket[1024];
-  mdp_temporary_socket[0]=0;
  
+  if (mdp_client_socket==-1) overlay_mdp_client_init();
+
   /* Minimise frame length to save work and prevent accidental disclosure of
      memory contents. */
   switch(mdp->packetTypeAndFlags)
@@ -300,37 +301,11 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
       return WHY("Illegal MDP frame type.");
     }
 
-  if (mdp_client_socket==-1) {
-    /* Open socket to MDP server (thus connection is always local) */
-    WHY("Use of abstract name space socket for Linux not implemented");
-    
-    mdp_client_socket = socket(AF_UNIX, SOCK_DGRAM, 0);
-    if (mdp_client_socket < 0) {
-      perror("socket");
-      return WHY("Could not open socket to MDP server");
-    }
-
-    /* We must bind to a temporary file name */
-    snprintf(mdp_temporary_socket,1024,"%s/mdp-client.socket",serval_instancepath());
-    unlink(mdp_temporary_socket);    
-    struct sockaddr_un name;
-    name.sun_family = AF_UNIX;
-    snprintf(&name.sun_path[0],100,"%s",mdp_temporary_socket);
-    int len = 1+strlen(&name.sun_path[0]) + sizeof(name.sun_family)+1;
-    int r=bind(mdp_client_socket, (struct sockaddr *)&name, len);
-    if (r) {
-      WHY("Could not bind MDP client socket to file name");
-      perror("bind");
-      return -1;
-    }
-  }
-
   /* Construct name of socket to send to. */
   char mdp_socket_name[101];
   mdp_socket_name[100]=0;
   snprintf(mdp_socket_name,100,"%s/mdp.socket",serval_instancepath());
-  if (mdp_socket_name[100]) {
-    if (mdp_temporary_socket[0]) unlink(mdp_temporary_socket);
+  if (mdp_socket_name[100]) {    
     return WHY("instance path is too long (unix domain named sockets have a short maximum path length)");
   }
   struct sockaddr_un name;
@@ -344,13 +319,11 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
     mdp->error.error=1;
     snprintf(mdp->error.message,128,"Error sending frame to MDP server.");
     /* Clear socket so that we have the chance of reconnecting */
-    mdp_client_socket=-1;
-    if (mdp_temporary_socket[0]) unlink(mdp_temporary_socket);
+    overlay_mdp_client_done();
     return -1;
   } else {
     WHY("packet sent");
-    if (!(flags&MDP_AWAITREPLY)) { 
-      if (mdp_temporary_socket[0]) unlink(mdp_temporary_socket);
+    if (!(flags&MDP_AWAITREPLY)) {       
       return 0;
     }
   }
@@ -364,8 +337,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
     /* Timeout */
     mdp->packetTypeAndFlags=MDP_ERROR;
     mdp->error.error=1;
-    snprintf(mdp->error.message,128,"Timeout waiting for reply to MDP packet (packet was successfully sent).");
-    if (mdp_temporary_socket[0]) unlink(mdp_temporary_socket);
+    snprintf(mdp->error.message,128,"Timeout waiting for reply to MDP packet (packet was successfully sent).");    
     return -1;
   }
 
@@ -398,9 +370,55 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
     /* If all is well, examine result and return error code provided */
     overlay_mdp_frame *mdpreply=(overlay_mdp_frame *)&replybuffer[0];
     WHY("Got a reply from server");
-    
+    if ((mdpreply->packetTypeAndFlags&MDP_TYPE_MASK)==MDP_ERROR)
+	return mdpreply->error.error;
+    else
+      return WHY("MDP server replied with something unexpected");
+  } else {
+    /* poll() said that there was data, but there isn't.
+       So we will abort. */
+    return WHY("poll() aborted");
   }
+}
 
-  if (mdp_temporary_socket[0]) unlink(mdp_temporary_socket);
-  return WHY("Not implemented");
+int overlay_mdp_client_init()
+{
+  char mdp_temporary_socket[1024];
+  mdp_temporary_socket[0]=0;
+  if (mdp_client_socket==-1) {
+    /* Open socket to MDP server (thus connection is always local) */
+    WHY("Use of abstract name space socket for Linux not implemented");
+    
+    mdp_client_socket = socket(AF_UNIX, SOCK_DGRAM, 0);
+    if (mdp_client_socket < 0) {
+      perror("socket");
+      return WHY("Could not open socket to MDP server");
+    }
+
+    /* We must bind to a temporary file name */
+    snprintf(mdp_temporary_socket,1024,"%s/mdp-client.socket",serval_instancepath());
+    unlink(mdp_temporary_socket);    
+    struct sockaddr_un name;
+    name.sun_family = AF_UNIX;
+    snprintf(&name.sun_path[0],100,"%s",mdp_temporary_socket);
+    int len = 1+strlen(&name.sun_path[0]) + sizeof(name.sun_family)+1;
+    int r=bind(mdp_client_socket, (struct sockaddr *)&name, len);
+    if (r) {
+      WHY("Could not bind MDP client socket to file name");
+      perror("bind");
+      return -1;
+    }
+  }
+  
+  return 0;
+}
+
+int overlay_mdp_client_done()
+{
+  char mdp_temporary_socket[1024];
+  snprintf(mdp_temporary_socket,1024,"%s/mdp-client.socket",serval_instancepath());
+  unlink(mdp_temporary_socket);
+  if (mdp_client_socket!=-1) close(mdp_client_socket);
+  mdp_client_socket=-1;
+  return 0;
 }
