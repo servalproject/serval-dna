@@ -89,7 +89,7 @@ int overlay_mdp_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
   if ((*fdcount)>=fdmax) return -1;
   if (mdp_abstract_socket>-1)
     {
-      if (debug&DEBUG_IO) {
+      if (1||debug&DEBUG_IO) {
 	fprintf(stderr,"MDP abstract name space socket is poll() slot #%d (fd %d)\n",
 		*fdcount,mdp_abstract_socket);
       }
@@ -100,7 +100,7 @@ int overlay_mdp_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
   if ((*fdcount)>=fdmax) return -1;
   if (mdp_named_socket>-1)
     {
-      if (debug&DEBUG_IO) {
+      if (1||debug&DEBUG_IO) {
 	fprintf(stderr,"MDP named unix domain socket is poll() slot #%d (fd %d)\n",
 		*fdcount,mdp_named_socket);
       }
@@ -111,6 +111,126 @@ int overlay_mdp_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
 
 
   return 0;
+}
+
+#define MDP_MAX_BINDINGS 100
+#define MDP_MAX_SOCKET_NAME_LEN 110
+int mdp_bindings_initialised=0;
+sockaddr_mdp mdp_bindings[MDP_MAX_BINDINGS];
+char mdp_bindings_sockets[MDP_MAX_BINDINGS][MDP_MAX_SOCKET_NAME_LEN];
+int mdp_bindings_socket_name_lengths[MDP_MAX_BINDINGS];
+
+int overlay_mdp_reply_error(int sock,
+			    struct sockaddr_un *recvaddr,int recvaddrlen,
+			    int error_number,char *message)
+{
+  overlay_mdp_frame mdpreply;
+
+  printf("sock=%d, mdpreply=%p, ra=%p,ral=%d\n",
+	 sock,&mdpreply,recvaddr,recvaddrlen);
+  printf("sun_path='%s' (len=%d)\n",recvaddr->sun_path,strlen(recvaddr->sun_path));
+
+  mdpreply.packetTypeAndFlags=MDP_ERROR;
+  mdpreply.error.error=error_number;
+  if (error_number==0||message)
+    snprintf(&mdpreply.error.message[0],128,"%s",message?message:"Success");
+  else
+    snprintf(&mdpreply.error.message[0],128,"Error code #%d",error_number);
+  mdpreply.error.message[127]=0;
+  int replylen=4+4+strlen(mdpreply.error.message)+1;
+  errno=0;
+  WHY("sendto() fails here, even though sock is a socket!");
+  dump("recvaddr",recvaddr,recvaddrlen);
+  int r=sendto(sock,(char *)&mdpreply,replylen,0,
+	       (struct sockaddr *)recvaddr,recvaddrlen);
+  if (r) { 
+    perror("sendto"); 
+    WHY("sendto() failed when sending MDP reply"); 
+    printf("sock=%d, r=%d\n",sock,r);
+    return -1;
+  }
+  return 0;  
+}
+
+int overlay_mdp_reply_ok(int sock,
+			 struct sockaddr_un *recvaddr,int recvaddrlen,
+			 char *message)
+{
+  return overlay_mdp_reply_error(sock,recvaddr,recvaddrlen,0,message);
+}
+
+int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
+				     struct sockaddr_un *recvaddr,int recvaddrlen)
+{
+  return overlay_mdp_reply_ok(sock,recvaddr,recvaddrlen,"Port bound");
+
+  int i;
+  if (!mdp_bindings_initialised) {
+    /* Mark all slots as unused */
+    for(i=0;i<MDP_MAX_BINDINGS;i++) mdp_bindings[i].port=0;
+    mdp_bindings_initialised=1;
+  }
+
+  /* See if binding already exists */
+  int found=-1;
+  int free=-1;
+  for(i=0;i<MDP_MAX_BINDINGS;i++) {
+    /* Look for duplicate bindings */
+    if (mdp_bindings[i].port==mdp->bind.port_number)
+      if (!memcmp(mdp_bindings[i].sid,mdp->bind.sid,SID_SIZE))
+	{ found=i; break; }
+    /* Look for free slots in case we need one */
+    if ((free==-1)&&(mdp_bindings[i].port==0)) free=i;
+  }
+  
+  /* Binding was found.  See if it is us, if so, then all is well,
+     else we check flags to see if we should override the existing binding. */
+  if (found>-1) {
+    if (mdp_bindings_socket_name_lengths[found]==recvaddrlen)
+      if (!memcmp(mdp_bindings_sockets[found],recvaddr->sun_path,recvaddrlen))
+	{
+	  fprintf(stderr,"Identical binding exists");
+	  return overlay_mdp_reply_ok(sock,recvaddr,recvaddrlen,"Port bound (actually, it was already bound to you)");
+	}
+    /* Okay, so there is an existing binding.  Either replace it (if requested) or
+       return an error */
+    if (!(mdp->packetTypeAndFlags&MDP_FORCE))
+      {
+	return overlay_mdp_reply_error(sock,recvaddr,recvaddrlen,3,
+				       "Port already in use");
+      }
+    else {
+      /* Cause existing binding to be replaced.
+	 XXX - We should notify the existing binding holder that their binding
+	 has been snaffled. */
+      WHY("Warn socket holder about port-snatch");
+      free=found;
+    }
+  }
+
+  /* Okay, so no binding exists.  Make one, and return success.
+     If we have too many bindings, we should return an error.
+     XXX - We don't find out when the socket responsible for a binding has died,
+     so stale bindings can hang around.  We really need a solution to this, e.g., 
+     probing the sockets periodically (by sending an MDP NOOP frame perhaps?) and
+     destroying any socket that reports an error.
+  */
+  if (free==-1) {
+    /* XXX Should we probe for stale bindings here and now, since this is when
+       we want the spare slots ? */
+    WHY("Should probe existing bindings to see if any can be freed");
+    fprintf(stderr,"No free port binding slots.  Close other connections and try again?");
+    return overlay_mdp_reply_error(sock,recvaddr,recvaddrlen,4,"All binding slots in use. Close old connections and try again, or increase MDP_MAX_BINDINGS.");
+  }
+
+  /* Okay, record binding and report success */
+  mdp_bindings[free].port=mdp->bind.port_number;
+  memcpy(&mdp_bindings[free].sid[0],&mdp->bind.sid[0],SID_SIZE);
+  mdp_bindings_socket_name_lengths[free]=recvaddrlen-2;
+  printf("socket name length = %d\n",mdp_bindings_socket_name_lengths[free]);
+  memcpy(&mdp_bindings_sockets[free][0],&recvaddr->sun_path[0],
+	 mdp_bindings_socket_name_lengths[free]);
+  return overlay_mdp_reply_ok(sock,recvaddr,recvaddrlen,"Port bound");
 }
 
 int overlay_saw_mdp_frame(int interface,overlay_frame *f,long long now)
@@ -134,6 +254,7 @@ int overlay_mdp_poll()
 	  fcntl(mdp_named_socket, F_GETFL, NULL)|O_NONBLOCK); 
     int len = recvwithttl(mdp_named_socket,buffer,sizeof(buffer),&ttl,
 			  recvaddr,&recvaddrlen);
+    recvaddr_un=(struct sockaddr_un *)recvaddr;
 
     if (len>0) {
       dump("packet from unix domain socket",
@@ -141,11 +262,13 @@ int overlay_mdp_poll()
       dump("recvaddr",recvaddrbuffer,recvaddrlen);
       /* Look at overlay_mdp_frame we have received */
       overlay_mdp_frame *mdp=(overlay_mdp_frame *)&buffer[0];
-      switch(mdp->packetTypeAndFlags) {
+      switch(mdp->packetTypeAndFlags&MDP_TYPE_MASK) {
       case MDP_TX: /* Send payload */
 	break;
       case MDP_BIND: /* Bind to port */
 	WHY("MDP_BIND request");
+	return overlay_mdp_process_bind_request(mdp_named_socket,mdp,
+						recvaddr_un,recvaddrlen);
 	break;
       default:
 	/* Client is not allowed to send any other frame type */
@@ -161,7 +284,6 @@ int overlay_mdp_poll()
       }
     }
 
-    recvaddr_un=(struct sockaddr_un *)recvaddr;
     fcntl(mdp_named_socket, F_SETFL, 
 	  fcntl(mdp_named_socket, F_GETFL, NULL)&(~O_NONBLOCK)); 
   }
@@ -226,7 +348,6 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
   name.sun_family = AF_UNIX;
   strcpy(name.sun_path, mdp_socket_name); 
 
-  /* XXX Sends whole mdp structure, regardless of how much or little is used. */
   int result=sendto(mdp_client_socket, mdp, len, 0,
 		    (struct sockaddr *)&name, sizeof(struct sockaddr_un));
   if (result<0) {

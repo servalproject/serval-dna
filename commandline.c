@@ -372,6 +372,7 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
   int port=32768+(random()&32767);
   mdp.packetTypeAndFlags=MDP_BIND;
   mdp.bind.port_number=port;
+  bzero(&mdp.bind.sid[0],SID_SIZE); // listen on all addressses
   int result=overlay_mdp_dispatch(&mdp,MDP_AWAITREPLY,5000);
   if (result) {
     if (mdp.packetTypeAndFlags==MDP_ERROR)

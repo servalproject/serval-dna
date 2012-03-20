@@ -990,11 +990,14 @@ typedef struct sockaddr_mdp {
   unsigned int port;
 } sockaddr_mdp;
 
+#define MDP_TYPE_MASK 0xff
+#define MDP_FLAG_MASK 0xff00
+#define MDP_FORCE 0x0100
 #define MDP_TX 1
 typedef struct overlay_mdp_outgoing_frame {
   sockaddr_mdp dst;
   unsigned short payload_length;
-  unsigned char payload[0];
+  unsigned char payload[1900];
 } overlay_mdp_outgoing_frame;
 
 #define MDP_RX 2
@@ -1002,18 +1005,19 @@ typedef struct overlay_mdp_incoming_frame {
   sockaddr_mdp dst;
   sockaddr_mdp src;
   unsigned short payload_length;
-  unsigned char payload[0];
+  unsigned char payload[1900];
 } overlay_mdp_incoming_frame;
 
 #define MDP_BIND 3
 typedef struct overlay_mdp_bind_request {
   unsigned int port_number;
+  unsigned char sid[SID_SIZE];
 } overlay_mdp_bind_request;
 
 #define MDP_ERROR 4
 typedef struct overlay_mdp_error {
   unsigned int error;
-  char message[0];
+  char message[128];
 } overlay_mdp_error;
 
 typedef struct overlay_mdp_frame {
