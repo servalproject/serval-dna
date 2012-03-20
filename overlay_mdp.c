@@ -422,3 +422,14 @@ int overlay_mdp_client_done()
   mdp_client_socket=-1;
   return 0;
 }
+
+int overlay_mdp_client_poll(long long timeout_ms)
+{
+  if (timeout_ms<0) timeout_ms=0;
+  printf("waiting for %lldms on client socket.\n",timeout_ms);
+  struct pollfd fds[1];
+  int fdcount=1;
+  fds[0].fd=mdp_client_socket; fds[0].events=POLLIN;
+
+  return poll(fds,fdcount,timeout_ms);
+}

@@ -383,7 +383,52 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
     return -1;
   }
 
-  return WHY("MDP ping not implemented (we don't send the packet)");
+  /* First sequence number in the echo frames */
+  unsigned int firstSeq=random();
+  unsigned int sequence_number=firstSeq;
+
+  while(1) {
+    int i;
+    /* Now send the ping packets */
+    mdp.packetTypeAndFlags=MDP_TX;
+    /* Set destination to broadcast */
+    for(i=0;i<SID_SIZE;i++) mdp.out.dst.sid[i]=0xff;
+    /* Set port to well known echo port (from /etc/services) */
+    mdp.out.dst.port=7;
+    mdp.out.payload_length=4;
+    int *seq=(int *)&mdp.out.payload;
+    *seq=sequence_number;
+    
+    int res=overlay_mdp_dispatch(&mdp,0,0);
+    if (res) {
+      fprintf(stderr,"ERROR: Could not dispatch PING frame #%d (error %d)\n",
+	      sequence_number-firstSeq,res);
+      if (mdp.packetTypeAndFlags==MDP_ERROR) 
+	fprintf(stderr,"       Error message: %s\n",mdp.error.message);
+    }
+
+    /* Now look for replies until one second has passed, and print any replies
+       with appropriate information as required */
+    long long now=overlay_gettime_ms();
+    long long timeout=now+1000;
+
+    while(now<timeout) {
+      long long timeout_ms=timeout-overlay_gettime_ms();
+      result = overlay_mdp_client_poll(timeout_ms);
+
+      if (result>0) {
+	fprintf(stderr,"Frames ready for reception.\n");
+      }
+      now=overlay_gettime_ms();
+      if (servalShutdown) {
+	/* XXX Report final statistics before going */
+	return 0;
+      }
+    }
+    timeout=now+1000;
+  }
+
+  return 0;
 }
 
 int app_server_set(int argc,char **argv,struct command_line_option *o)
