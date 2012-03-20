@@ -17,7 +17,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
-
+#include <sys/stat.h>
 
 int mdp_abstract_socket=-1;
 int mdp_named_socket=-1;
@@ -126,10 +126,6 @@ int overlay_mdp_reply_error(int sock,
 {
   overlay_mdp_frame mdpreply;
 
-  printf("sock=%d, mdpreply=%p, ra=%p,ral=%d\n",
-	 sock,&mdpreply,recvaddr,recvaddrlen);
-  printf("sun_path='%s' (len=%d)\n",recvaddr->sun_path,strlen(recvaddr->sun_path));
-
   mdpreply.packetTypeAndFlags=MDP_ERROR;
   mdpreply.error.error=error_number;
   if (error_number==0||message)
@@ -139,11 +135,9 @@ int overlay_mdp_reply_error(int sock,
   mdpreply.error.message[127]=0;
   int replylen=4+4+strlen(mdpreply.error.message)+1;
   errno=0;
-  WHY("sendto() fails here, even though sock is a socket!");
-  dump("recvaddr",recvaddr,recvaddrlen);
   int r=sendto(sock,(char *)&mdpreply,replylen,0,
 	       (struct sockaddr *)recvaddr,recvaddrlen);
-  if (r) { 
+  if (r<0) { 
     perror("sendto"); 
     WHY("sendto() failed when sending MDP reply"); 
     printf("sock=%d, r=%d\n",sock,r);
@@ -162,8 +156,6 @@ int overlay_mdp_reply_ok(int sock,
 int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
 				     struct sockaddr_un *recvaddr,int recvaddrlen)
 {
-  return overlay_mdp_reply_ok(sock,recvaddr,recvaddrlen,"Port bound");
-
   int i;
   if (!mdp_bindings_initialised) {
     /* Mark all slots as unused */
@@ -182,7 +174,7 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
     /* Look for free slots in case we need one */
     if ((free==-1)&&(mdp_bindings[i].port==0)) free=i;
   }
-  
+ 
   /* Binding was found.  See if it is us, if so, then all is well,
      else we check flags to see if we should override the existing binding. */
   if (found>-1) {
@@ -196,6 +188,7 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
        return an error */
     if (!(mdp->packetTypeAndFlags&MDP_FORCE))
       {
+	fprintf(stderr,"Port already in use.\n");
 	return overlay_mdp_reply_error(sock,recvaddr,recvaddrlen,3,
 				       "Port already in use");
       }
@@ -227,9 +220,9 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
   mdp_bindings[free].port=mdp->bind.port_number;
   memcpy(&mdp_bindings[free].sid[0],&mdp->bind.sid[0],SID_SIZE);
   mdp_bindings_socket_name_lengths[free]=recvaddrlen-2;
-  printf("socket name length = %d\n",mdp_bindings_socket_name_lengths[free]);
   memcpy(&mdp_bindings_sockets[free][0],&recvaddr->sun_path[0],
 	 mdp_bindings_socket_name_lengths[free]);
+  fprintf(stderr,"Port bound\n");
   return overlay_mdp_reply_ok(sock,recvaddr,recvaddrlen,"Port bound");
 }
 
@@ -257,16 +250,12 @@ int overlay_mdp_poll()
     recvaddr_un=(struct sockaddr_un *)recvaddr;
 
     if (len>0) {
-      dump("packet from unix domain socket",
-	   buffer,len);
-      dump("recvaddr",recvaddrbuffer,recvaddrlen);
       /* Look at overlay_mdp_frame we have received */
       overlay_mdp_frame *mdp=(overlay_mdp_frame *)&buffer[0];
       switch(mdp->packetTypeAndFlags&MDP_TYPE_MASK) {
       case MDP_TX: /* Send payload */
 	break;
       case MDP_BIND: /* Bind to port */
-	WHY("MDP_BIND request");
 	return overlay_mdp_process_bind_request(mdp_named_socket,mdp,
 						recvaddr_un,recvaddrlen);
 	break;
@@ -360,8 +349,10 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
     return -1;
   } else {
     WHY("packet sent");
-    if (mdp_temporary_socket[0]) unlink(mdp_temporary_socket);
-    if (!(flags&MDP_AWAITREPLY)) return 0;
+    if (!(flags&MDP_AWAITREPLY)) { 
+      if (mdp_temporary_socket[0]) unlink(mdp_temporary_socket);
+      return 0;
+    }
   }
 
   /* Wait for a reply until timeout */
@@ -379,7 +370,26 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
   }
 
   /* Check if reply available */
-  
+  unsigned char replybuffer[2048];
+  fcntl(mdp_client_socket, F_SETFL, 
+	fcntl(mdp_client_socket, F_GETFL, NULL)|O_NONBLOCK); 
+  int ttl=-1;
+  unsigned char recvaddrbuffer[1024];
+  struct sockaddr *recvaddr=(struct sockaddr *)recvaddrbuffer;
+  int recvaddrlen=sizeof(recvaddrbuffer);
+  struct sockaddr_un *recvaddr_un;
+  len = recvwithttl(mdp_client_socket,replybuffer,sizeof(replybuffer),&ttl,
+			recvaddr,&recvaddrlen);
+  recvaddr_un=(struct sockaddr_un *)recvaddr;
+  if (len>0) {
+    /* Make sure recvaddr matches who we sent it to */
+    
+
+    /* If all is well, examine result and return error code provided */
+    overlay_mdp_frame *mdpreply=(overlay_mdp_frame *)&replybuffer[0];
+    
+  }
+
   if (mdp_temporary_socket[0]) unlink(mdp_temporary_socket);
   return WHY("Not implemented");
 }
