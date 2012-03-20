@@ -350,8 +350,9 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
   struct sockaddr *recvaddr=(struct sockaddr *)recvaddrbuffer;
   unsigned int recvaddrlen=sizeof(recvaddrbuffer);
   struct sockaddr_un *recvaddr_un;
-  len = recvwithttl(mdp_client_socket,replybuffer,sizeof(replybuffer),&ttl,
-			recvaddr,&recvaddrlen);
+  mdp->packetTypeAndFlags=0;
+  len = recvwithttl(mdp_client_socket,(unsigned char *)mdp,
+		    sizeof(overlay_mdp_frame),&ttl,recvaddr,&recvaddrlen);
   recvaddr_un=(struct sockaddr_un *)recvaddr;
   if (len>0) {
     /* Make sure recvaddr matches who we sent it to */
@@ -368,10 +369,9 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
     }
 
     /* If all is well, examine result and return error code provided */
-    overlay_mdp_frame *mdpreply=(overlay_mdp_frame *)&replybuffer[0];
     WHY("Got a reply from server");
-    if ((mdpreply->packetTypeAndFlags&MDP_TYPE_MASK)==MDP_ERROR)
-	return mdpreply->error.error;
+    if ((mdp->packetTypeAndFlags&MDP_TYPE_MASK)==MDP_ERROR)
+	return mdp->error.error;
     else
       return WHY("MDP server replied with something unexpected");
   } else {
