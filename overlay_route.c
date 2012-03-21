@@ -1168,7 +1168,8 @@ int overlay_route_tick()
       if (overlay_route_tick_next_neighbour_id>=overlay_neighbour_count) overlay_route_tick_next_neighbour_id=0;
     }
 
-  /* Tweak neighbour bundle size to spread it out over the required time */
+  /* Tweak neighbour bundle size to spread it out over the required time.
+     XXX Does this behave correctly when there are no neighbours? */
   long long neighbour_time=overlay_gettime_ms()-start_time;
   if (neighbour_time>2) overlay_route_tick_neighbour_bundle_size/=neighbour_time;
   else if (neighbour_time==0) overlay_route_tick_neighbour_bundle_size*=2;

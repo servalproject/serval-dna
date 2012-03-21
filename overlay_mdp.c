@@ -288,7 +288,7 @@ int overlay_mdp_poll()
 	  switch(mdp->packetTypeAndFlags&(MDP_NOCRYPT|MDP_NOSIGN)) {
 	  case 0: /* crypted and signed (using CryptBox authcryption primitive) */
 	    frame->modifiers=OF_CRYPTO_SIGNED|OF_CRYPTO_CIPHERED; 
-	    ob_free(frame->payload);
+	    op_free(frame);
 	    return WHY("ciphered+signed MDP frames not implemented");
 	    break;
 	  case MDP_NOSIGN: 
@@ -297,7 +297,7 @@ int overlay_mdp_poll()
 	       of representing the ciphered stream segment.
 	    */
 	    frame->modifiers=OF_CRYPTO_CIPHERED; 
-	    ob_free(frame->payload);
+	    op_free(frame);
 	    return WHY("ciphered MDP packets not implemented");
 	    break;
 	  case MDP_NOCRYPT: 
@@ -306,15 +306,21 @@ int overlay_mdp_poll()
 	       CryptoSign key, and allow queries as to the authenticity of said key
 	       via authcrypted channel between the parties. */
 	    frame->modifiers=OF_CRYPTO_SIGNED; 
-	    ob_free(frame->payload);
+	    op_free(frame);
 	    return WHY("signed MDP packets not implemented");
 	    break;
 	  case MDP_NOSIGN|MDP_NOCRYPT: /* clear text and no signature */
 	    frame->modifiers=0; 
 	    /* Copy payload body in */
-	    frame->payload=ob_new(4 /* dst port */
+	    frame->payload=ob_new(1 /* frame type (MDP) */
+				  +1 /* MDP version */
+				  +4 /* dst port */
 				  +4 /* src port */
 				  +mdp->out.payload_length);
+	    /* MDP version 1 */
+	    ob_append_byte(frame->payload,0x01);
+	    ob_append_byte(frame->payload,0x01);
+	    /* Destination port */
 	    ob_append_int(frame->payload,mdp->out.dst.port);
 	    /* XXX we should probably pull the source port from the bindings
 	       On that note, when a binding is granted, we should probably

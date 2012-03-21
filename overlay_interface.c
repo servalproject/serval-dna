@@ -159,7 +159,7 @@ int overlay_interface_args(char *arg)
 
   for(i=0;arg[i];i++)
     {
-      if (arg[i]==',') {
+      if (arg[i]==','||arg[i]=='\n') {
 	interface[len]=0;
 	if (overlay_interface_arg(interface)) return WHY("Could not add interface");
 	len=0;
@@ -572,6 +572,7 @@ int overlay_interface_discover()
 
 int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,overlay_frame *pax[],int *frame_pax,int frame_max_pax) 
 {
+  printf("Stuffing from queue #%d\n",q);
   overlay_frame **p=&overlay_tx[q].first;
   while(p&&*p)
     {
@@ -698,11 +699,13 @@ int overlay_tick_interface(int i, long long now)
   /* Add advertisements for ROUTES not Rhizome bundles.
      Rhizome bundle advertisements are lower priority */
   overlay_route_add_advertisements(i,e);
-
+  
   ob_limitsize(e,overlay_interfaces[i].mtu);
 
   /* 4. XXX Add lower-priority queued data */
-
+  overlay_stuff_packet_from_queue(i,e,OQ_ISOCHRONOUS_VIDEO,now,pax,&frame_pax,MAX_FRAME_PAX);
+  overlay_stuff_packet_from_queue(i,e,OQ_ORDINARY,now,pax,&frame_pax,MAX_FRAME_PAX);
+  overlay_stuff_packet_from_queue(i,e,OQ_OPPORTUNISTIC,now,pax,&frame_pax,MAX_FRAME_PAX);
   /* 5. XXX Fill the packet up to a suitable size with anything that seems a good idea */
   overlay_rhizome_add_advertisements(i,e);
 
