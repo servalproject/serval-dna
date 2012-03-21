@@ -195,7 +195,6 @@ int overlayServerMode()
 	}
       }
       overlay_rx_messages();
-      fprintf(stderr,"tick\n");
       if (rhizome_datastore_path) {
 	rhizome_server_poll();
 	rhizome_fetch_poll();
