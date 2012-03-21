@@ -129,7 +129,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
     bundle_offset[0]=0;
   if (bundles_available==-1||(bundle_offset[1]>=bundles_available)) 
     bundle_offset[1]=0;
-  if(0)
+  if(1)
     fprintf(stderr,"%d bundles in database (%d %d), slots=%d.\n",bundles_available,
 	    bundle_offset[0],bundle_offset[1],slots);
   
@@ -222,6 +222,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	    
 	      continue;
 	    }
+	    e->length+=overhead+blob_bytes;
 	    if (e->length>e->allocSize) {
 	      WHY("e->length > e->size");
 	      abort();
@@ -256,7 +257,8 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
       e->bytes[rfs_offset+1]=(rfs_value-250)&0xff;
       e->length++;
     }
-
+  printf("Final packet size = %d\n",e->length);
+  
   return 0;
 }
 
