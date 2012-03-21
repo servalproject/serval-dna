@@ -266,8 +266,6 @@ int overlay_mdp_poll()
 	     flag is not set. Also, MDP_NOSIGN must also be applied, until
 	     NaCl cryptobox keys can be used for signing. */	
 	  if (broadcast) {
-	    printf("flags=0x%x, target=0x%x\n",
-		   mdp->packetTypeAndFlags,MDP_NOCRYPT|MDP_NOSIGN);
 	    if ((mdp->packetTypeAndFlags&(MDP_NOCRYPT|MDP_NOSIGN))
 		!=(MDP_NOCRYPT|MDP_NOSIGN))
 	      return overlay_mdp_reply_error(mdp_named_socket,
@@ -289,21 +287,42 @@ int overlay_mdp_poll()
 	     text should have maximum entropy). */
 	  switch(mdp->packetTypeAndFlags&(MDP_NOCRYPT|MDP_NOSIGN)) {
 	  case 0: /* crypted and signed (using CryptBox authcryption primitive) */
-	    frame->modifiers=OF_CRYPTO_SIGNED|OF_CRYPTO_CIPHERED; break;
+	    frame->modifiers=OF_CRYPTO_SIGNED|OF_CRYPTO_CIPHERED; 
+	    ob_free(frame->payload);
+	    return WHY("ciphered+signed MDP frames not implemented");
+	    break;
 	  case MDP_NOSIGN: 
 	    /* ciphered, but not signed.
 	       This means we don't use CryptoBox, but rather a more compact means
 	       of representing the ciphered stream segment.
 	    */
-	    frame->modifiers=OF_CRYPTO_CIPHERED; break;
+	    frame->modifiers=OF_CRYPTO_CIPHERED; 
+	    ob_free(frame->payload);
+	    return WHY("ciphered MDP packets not implemented");
+	    break;
 	  case MDP_NOCRYPT: 
 	    /* clear text, but signed (need to think about how to implement this
 	       while NaCl cannot sign using CryptoBox keys. We could use a 
 	       CryptoSign key, and allow queries as to the authenticity of said key
 	       via authcrypted channel between the parties. */
-	    frame->modifiers=OF_CRYPTO_SIGNED; break;
+	    frame->modifiers=OF_CRYPTO_SIGNED; 
+	    ob_free(frame->payload);
+	    return WHY("signed MDP packets not implemented");
+	    break;
 	  case MDP_NOSIGN|MDP_NOCRYPT: /* clear text and no signature */
-	    frame->modifiers=0; break;
+	    frame->modifiers=0; 
+	    /* Copy payload body in */
+	    frame->payload=ob_new(4 /* dst port */
+				  +4 /* src port */
+				  +mdp->out.payload_length);
+	    ob_append_int(frame->payload,mdp->out.dst.port);
+	    /* XXX we should probably pull the source port from the bindings
+	       On that note, when a binding is granted, we should probably
+	       provide a token that can be used to lookup the binding and
+	       indicate which binding the packet is for? */
+	    ob_append_int(frame->payload,0);
+	    ob_append_bytes(frame->payload,mdp->out.payload,mdp->out.payload_length);
+	    break;
 	  }
 	  frame->ttl=64; /* normal TTL (XXX allow setting this would be a good idea) */	  
 	  /* set source to ourselves 
@@ -325,6 +344,7 @@ int overlay_mdp_poll()
 	      if (frame) op_free(frame);
 	      return WHY("Error enqueuing frame");
 	    }
+	  else WHY("queued frame");
 
 	  WHY("Not implemented");
 	  overlay_mdp_reply_error(mdp_named_socket,recvaddr_un,recvaddrlen,
