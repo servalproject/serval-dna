@@ -732,8 +732,10 @@ extern unsigned char *overlay_local_identities[OVERLAY_MAX_LOCAL_IDENTITIES];
 #define OF_CRYPTO_BITS 0x0c
 #define OF_CRYPTO_NONE 0x00
 #define OF_CRYPTO_CIPHERED 0x04 /* Encrypted frame */
-#define OF_CRYPTO_SIGNED 0x08   /* Encrypted and Digitally signed frame */
-#define OF_CRYPTO_PARANOID 0x0c /* Encrypted and digitally signed frame, with final destination address also encrypted. */
+#define OF_CRYPTO_SIGNED 0x08   /* signed frame */
+/* The following was previously considered, but is not being implemented at this
+   time.
+   #define OF_CRYPTO_PARANOID 0x0c Encrypted and digitally signed frame, with final destination address also encrypted. */
 
 /* Data compression */
 #define OF_COMPRESS_BITS 0x03
@@ -869,6 +871,8 @@ unsigned char *overlay_get_my_sid();
 int overlay_frame_set_me_as_source(overlay_frame *f);
 int overlay_frame_set_neighbour_as_source(overlay_frame *f,overlay_neighbour *n);
 int overlay_frame_set_neighbour_as_destination(overlay_frame *f,overlay_neighbour *n);
+int overlay_frame_set_broadcast_as_destination(overlay_frame *f);
+int overlay_broadcast_generate_address(unsigned char *a);
 int overlay_update_sequence_number();
 int packetEncipher(unsigned char *packet,int maxlen,int *len,int cryptoflags);
 int overlayServerMode();
@@ -993,6 +997,8 @@ typedef struct sockaddr_mdp {
 #define MDP_TYPE_MASK 0xff
 #define MDP_FLAG_MASK 0xff00
 #define MDP_FORCE 0x0100
+#define MDP_NOCRYPT 0x0200
+#define MDP_NOSIGN 0x0400
 #define MDP_TX 1
 typedef struct overlay_mdp_outgoing_frame {
   sockaddr_mdp dst;

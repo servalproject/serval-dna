@@ -398,7 +398,7 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
 
   while(1) {
     /* Now send the ping packets */
-    mdp.packetTypeAndFlags=MDP_TX;
+    mdp.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT|MDP_NOSIGN;
     /* Set destination to broadcast */
     for(i=0;i<SID_SIZE;i++) mdp.out.dst.sid[i]=ping_sid[i];
     /* Set port to well known echo port (from /etc/services) */

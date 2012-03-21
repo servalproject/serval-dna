@@ -225,6 +225,15 @@ int overlay_frame_set_neighbour_as_destination(overlay_frame *f,overlay_neighbou
   return 0;
 }
 
+int overlay_frame_set_broadcast_as_destination(overlay_frame *f)
+{  
+  overlay_broadcast_generate_address(f->destination);
+  f->destination_address_status=OA_RESOLVED;
+
+  return 0;
+}
+
+
 unsigned char *overlay_get_my_sid()
 {
 

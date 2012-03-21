@@ -257,9 +257,80 @@ int overlay_mdp_poll()
 	/* Construct MDP packet frame from overlay_mdp_frame structure
 	   (need to add return address from bindings list, and copy
 	   payload etc). */
-	WHY("Not implemented");
-	overlay_mdp_reply_error(mdp_named_socket,recvaddr_un,recvaddrlen,
-				1,"Sending MDP packets not implemented");
+	{
+	  /* Work out if destination is broadcast or not */
+	  int i,broadcast=1;
+	  for(i=0;i<SID_SIZE;i++) if (mdp->out.dst.sid[i]!=0xff) broadcast=0;
+
+	  /* broadcast packets cannot be encrypted, so complain if MDP_NOCRYPT
+	     flag is not set. Also, MDP_NOSIGN must also be applied, until
+	     NaCl cryptobox keys can be used for signing. */	
+	  if (broadcast) {
+	    printf("flags=0x%x, target=0x%x\n",
+		   mdp->packetTypeAndFlags,MDP_NOCRYPT|MDP_NOSIGN);
+	    if ((mdp->packetTypeAndFlags&(MDP_NOCRYPT|MDP_NOSIGN))
+		!=(MDP_NOCRYPT|MDP_NOSIGN))
+	      return overlay_mdp_reply_error(mdp_named_socket,
+					     recvaddr_un,recvaddrlen,5,
+					     "Broadcast packets cannot be encrypted "
+					     "or signed (signing will be possible in"
+					     " a future version).");
+	  }
+	  
+	  /* Prepare the overlay frame for dispatch */
+	  struct overlay_frame *frame;
+	  frame=calloc(sizeof(overlay_frame),1);
+	  if (!frame) return WHY("calloc() failed to allocate overlay frame");
+	  frame->type=OF_TYPE_DATA;
+
+	  /* Work out the disposition of the frame.  For now we are only worried
+	     about the crypto matters, and not compression that may be applied
+	     before encryption (since applying it after is useless as ciphered
+	     text should have maximum entropy). */
+	  switch(mdp->packetTypeAndFlags&(MDP_NOCRYPT|MDP_NOSIGN)) {
+	  case 0: /* crypted and signed (using CryptBox authcryption primitive) */
+	    frame->modifiers=OF_CRYPTO_SIGNED|OF_CRYPTO_CIPHERED; break;
+	  case MDP_NOSIGN: 
+	    /* ciphered, but not signed.
+	       This means we don't use CryptoBox, but rather a more compact means
+	       of representing the ciphered stream segment.
+	    */
+	    frame->modifiers=OF_CRYPTO_CIPHERED; break;
+	  case MDP_NOCRYPT: 
+	    /* clear text, but signed (need to think about how to implement this
+	       while NaCl cannot sign using CryptoBox keys. We could use a 
+	       CryptoSign key, and allow queries as to the authenticity of said key
+	       via authcrypted channel between the parties. */
+	    frame->modifiers=OF_CRYPTO_SIGNED; break;
+	  case MDP_NOSIGN|MDP_NOCRYPT: /* clear text and no signature */
+	    frame->modifiers=0; break;
+	  }
+	  frame->ttl=64; /* normal TTL (XXX allow setting this would be a good idea) */	  
+	  /* set source to ourselves 
+	     XXX should eventually honour binding, which should allow choosing which
+	     local identity.  This will be required for openbts integration/SIP:MSIP
+	     gateways etc. */
+	  overlay_frame_set_me_as_source(frame);
+
+	  /* Set destination address */
+	  if (broadcast)
+	    overlay_frame_set_broadcast_as_destination(frame);
+	  else{
+	    bcopy(&mdp->out.dst.sid[0],frame->destination,SID_SIZE);
+	    frame->destination_address_status=OA_RESOLVED;
+	  }	
+	  
+	  if (overlay_payload_enqueue(OQ_ORDINARY,frame))
+	    {
+	      if (frame) op_free(frame);
+	      return WHY("Error enqueuing frame");
+	    }
+
+	  WHY("Not implemented");
+	  overlay_mdp_reply_error(mdp_named_socket,recvaddr_un,recvaddrlen,
+				  1,"Sending MDP packets not implemented");
+	  op_free(frame);
+	}
 	break;
       case MDP_BIND: /* Bind to port */
 	return overlay_mdp_process_bind_request(mdp_named_socket,mdp,
@@ -297,7 +368,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
 
   /* Minimise frame length to save work and prevent accidental disclosure of
      memory contents. */
-  switch(mdp->packetTypeAndFlags)
+  switch(mdp->packetTypeAndFlags&MDP_TYPE_MASK)
     {
     case MDP_TX: len=4+sizeof(mdp->out)+mdp->out.payload_length; break;
     case MDP_RX: len=4+sizeof(mdp->in)+mdp->out.payload_length; break;
