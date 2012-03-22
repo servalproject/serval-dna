@@ -129,7 +129,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
     bundle_offset[0]=0;
   if (bundles_available==-1||(bundle_offset[1]>=bundles_available)) 
     bundle_offset[1]=0;
-  if(1)
+  if(0)
     fprintf(stderr,"%d bundles in database (%d %d), slots=%d.\n",bundles_available,
 	    bundle_offset[0],bundle_offset[1],slots);
   
@@ -195,7 +195,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	    int overhead=0;
 	    int frameFull=0;
 	    if (!pass) overhead=2;
-	    printf("e=%p, e->bytes=%p,e->length=%d, e->allocSize=%d\n",
+	    if (0) printf("e=%p, e->bytes=%p,e->length=%d, e->allocSize=%d\n",
 		   e,e->bytes,e->length,e->allocSize);	    
 	    
 	    if (ob_makespace(e,overhead+2+blob_bytes)) {
@@ -218,8 +218,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	    }
 	    if (e->length+overhead+blob_bytes>=e->allocSize) {
 	      WHY("Reading blob will overflow overlay_buffer");
-#warning temporary debug measure
-	      sleep(3600);
+	      continue;
 	    }
 	    if (sqlite3_blob_read(blob,&e->bytes[e->length+overhead],blob_bytes,0)
 		!=SQLITE_OK) {

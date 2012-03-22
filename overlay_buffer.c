@@ -80,7 +80,7 @@ int ob_makespace(overlay_buffer *b,int bytes)
     }
   }
 
-  if (1)
+  if (0)
     printf("ob_makespace(%p,%d)\n  b->bytes=%p,b->length=%d,b->allocSize=%d\n",
 	   b,bytes,b->bytes,b->length,b->allocSize);
 
@@ -95,15 +95,16 @@ int ob_makespace(overlay_buffer *b,int bytes)
       if (newSize>65536) {
 	if (newSize&65535) newSize+=65536-(newSize&65535);
       }
-      if (1) printf("  realloc(b->bytes=%p,newSize=%d)\n",
+      if (0) printf("  realloc(b->bytes=%p,newSize=%d)\n",
 	     b->bytes,newSize);
-      /* XXX OSX realloc() seems to be able to corrupt things if the heap is not happy when calling realloc().
+      /* XXX OSX realloc() seems to be able to corrupt things if the heap is not happy when calling realloc(), making debugging memory corruption much harder.
 	 So will do a three-stage malloc,bcopy,free to see if we can tease the bug out that way. */
       /*
 	unsigned char *r=realloc(b->bytes,newSize);
 	if (!r) return WHY("realloc() failed");
 	b->bytes=r; 
       */
+#ifdef MALLOC_PARANOIA
 #warning adding lots of padding to try to catch overruns
       if (b->bytes) {
 	int i;
@@ -121,6 +122,9 @@ int ob_makespace(overlay_buffer *b,int bytes)
 	int i;
 	for(i=0;i<4096;i++) new[newSize+i]=0xbd;
       }
+#else
+      unsigned char *new=malloc(newSize);
+#endif
       bcopy(b->bytes,new,b->length);
       if (b->bytes) free(b->bytes);
       b->bytes=new;
@@ -136,8 +140,6 @@ int ob_setbyte(overlay_buffer *b,int ofs,unsigned char value)
   if (ofs<0||ofs>=b->allocSize) {
     fprintf(stderr,"ERROR: Asked to set byte %d in overlay buffer %p, which has only %d allocated bytes.\n",
 	    ofs,b,b->allocSize);
-#warning temporary debug
-    sleep(3600);
     return -1;
   }
   b->bytes[ofs]=value;

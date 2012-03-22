@@ -572,11 +572,11 @@ int overlay_interface_discover()
 
 int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,overlay_frame *pax[],int *frame_pax,int frame_max_pax) 
 {
-  printf("Stuffing from queue #%d\n",q);
+  if (0) printf("Stuffing from queue #%d\n",q);
   overlay_frame **p=&overlay_tx[q].first;
   while(p&&*p)
     {
-      printf("p=%p, *p=%p, queue=%d\n",p,*p,q);
+      if (0) printf("p=%p, *p=%p, queue=%d\n",p,*p,q);
 
       /* Throw away any stale frames */
       overlay_frame *pp=*p;
@@ -584,9 +584,9 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,
       if (!pp) break;
       
       /* XXX Uses hardcoded freshness threshold, when it should get it from the queue */
-      printf("now=%lld, *p=%p, q=%d, overlay_tx[q]=%p\n",
+      if (0) printf("now=%lld, *p=%p, q=%d, overlay_tx[q]=%p\n",
 	     now,*p,q,&overlay_tx[q]);
-      overlay_queue_dump(&overlay_tx[q]);
+      if (0) overlay_queue_dump(&overlay_tx[q]);
       if (now>((*p)->enqueued_at+overlay_tx[q].latencyTarget)) {
 	/* Stale, so remove from queue. */
 

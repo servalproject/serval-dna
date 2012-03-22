@@ -78,7 +78,10 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
   int fail=0;
 
   if (p->nexthop_address_status!=OA_RESOLVED) {
-    if (overlay_get_nexthop((unsigned char *)p->destination,p->nexthop,&nexthoplen,&p->nexthop_interface)) fail++;
+    if (overlay_get_nexthop((unsigned char *)p->destination,p->nexthop,&nexthoplen,&p->nexthop_interface)) {
+      fail++;
+      return WHY("could not determine next hop address for payload");
+    }
     else p->nexthop_address_status=OA_RESOLVED;
   }
 
@@ -98,7 +101,7 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
     return WHY("packet nexthop address begins with reserved value 0x00-0x0f");
   }
 
-  /* XXX Write fields in correct order */
+  /* Write fields into binary structure in correct order */
 
   /* Write out type field byte(s) */
   if (!fail) if (op_append_type(headers,p)) fail++;
