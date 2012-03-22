@@ -189,12 +189,14 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	      continue;
 	    }
 
+	    /* XXX This whole section is too hard to follow how the frame gets
+	       built up. In particular the calculations for space required etc
+	       are quite opaque... and I wrote it!  */
 	    int overhead=0;
 	    int frameFull=0;
 	    if (!pass) overhead=2;
 	    printf("e=%p, e->bytes=%p,e->length=%d, e->allocSize=%d\n",
-		   e,e->bytes,e->length,e->allocSize);
-	    
+		   e,e->bytes,e->length,e->allocSize);	    
 	    
 	    if (ob_makespace(e,overhead+2+blob_bytes)) {
 	      if (debug&DEBUG_RHIZOME) 
