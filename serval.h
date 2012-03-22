@@ -1050,3 +1050,5 @@ int overlay_mdp_client_poll(long long timeout_ms);
 int overlay_mdp_recv(overlay_mdp_frame *mdp,int *ttl);
 extern int mdp_client_socket;
 
+int ob_bcopy(overlay_buffer *b,int from, int to, int len);
+int ob_setbyte(overlay_buffer *b,int ofs,unsigned char value);

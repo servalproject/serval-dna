@@ -159,7 +159,7 @@ int overlay_route_add_advertisements(int interface,overlay_buffer *e)
       if (oad_bin==bin&&oad_slot==slot) break;
     }
   
-  e->bytes[rfs_offset]=1+8+1+1+8*slots_used;
+  ob_setbyte(e,rfs_offset,1+8+1+1+8*slots_used);
 
   return 0;
 }

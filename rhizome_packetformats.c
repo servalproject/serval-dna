@@ -73,6 +73,9 @@ int bundles_available=-1;
 int bundle_offset[2]={0,0};
 int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 {
+#warning Mac-specific debug thing here
+  setenv("MallocScribble","1",1);
+
   int pass;
   int bytes=e->sizeLimit-e->length;
   int overhead=1+8+1+3+1+1+1; /* maximum overhead */
@@ -192,6 +195,8 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	    int overhead=0;
 	    int frameFull=0;
 	    if (!pass) overhead=2;
+	    printf("e=%p, e->bytes=%p,e->length=%d\n",e,e->bytes,e->length);
+	    
 	    if (ob_makespace(e,overhead+blob_bytes)) {
 	      if (debug&DEBUG_RHIZOME) 
 		fprintf(stderr,"Stopped cramming %s into Rhizome advertisement frame.\n",
@@ -200,8 +205,8 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	    }
 	    if (!pass) {
 	      /* put manifest length field and manifest ID */
-	      e->bytes[e->length]=(blob_bytes>>8)&0xff;
-	      e->bytes[e->length+1]=(blob_bytes>>0)&0xff;
+	      ob_setbyte(e,e->length,(blob_bytes>>8)&0xff);
+	      ob_setbyte(e,e->length+1,(blob_bytes>>0)&0xff);
 	      if (debug&DEBUG_RHIZOME)
 		fprintf(stderr,"length bytes written at offset 0x%x\n",e->length);
 	    }
@@ -247,14 +252,14 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
   if (debug&DEBUG_RHIZOME) printf("Appended %d rhizome advertisements to packet using %d bytes.\n",bundles_advertised,bytes_used);
   int rfs_value=1+8+1+1+1+bytes_used;
   if (rfs_value<0xfa)
-    e->bytes[rfs_offset]=rfs_value;
+    ob_setbyte(e,rfs_offset,rfs_value);
   else
     {
       ob_makespace(e,1);
-      bcopy(&e->bytes[rfs_offset],&e->bytes[rfs_offset+1],
+      ob_bcopy(e,rfs_offset,rfs_offset+1,
 	    e->length-rfs_offset);
-      e->bytes[rfs_offset]=0xfa+(rfs_value-250)/256;
-      e->bytes[rfs_offset+1]=(rfs_value-250)&0xff;
+      ob_setbyte(e,rfs_offset,0xfa+(rfs_value-250)/256);
+      ob_setbyte(e,rfs_offset+1,(rfs_value-250)&0xff);
       e->length++;
     }
   printf("Final packet size = %d\n",e->length);

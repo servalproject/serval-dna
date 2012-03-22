@@ -280,6 +280,8 @@ int overlay_mdp_poll()
 	  frame=calloc(sizeof(overlay_frame),1);
 	  if (!frame) return WHY("calloc() failed to allocate overlay frame");
 	  frame->type=OF_TYPE_DATA;
+	  frame->prev=NULL;
+	  frame->next=NULL;
 
 	  /* Work out the disposition of the frame.  For now we are only worried
 	     about the crypto matters, and not compression that may be applied
@@ -350,12 +352,10 @@ int overlay_mdp_poll()
 	      if (frame) op_free(frame);
 	      return WHY("Error enqueuing frame");
 	    }
-	  else WHY("queued frame");
-
-	  WHY("Not implemented");
-	  overlay_mdp_reply_error(mdp_named_socket,recvaddr_un,recvaddrlen,
-				  1,"Sending MDP packets not implemented");
-	  op_free(frame);
+	  else {
+	    WHY("queued frame");
+	    return 0;
+	  }
 	}
 	break;
       case MDP_BIND: /* Bind to port */

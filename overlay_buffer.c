@@ -95,8 +95,10 @@ int ob_makespace(overlay_buffer *b,int bytes)
       if (newSize>65536) {
 	if (newSize&65535) newSize+=65536-(newSize&65535);
       }
-      if (0) printf("  realloc(b->bytes=%p,newSize=%d)\n",
+      if (1) printf("  realloc(b->bytes=%p,newSize=%d)\n",
 	     b->bytes,newSize);
+#warning useless malloc() call to make sure that heap corruption check runs before we do any real work
+      void *p=malloc(1);
       unsigned char *r=realloc(b->bytes,newSize);
       if (!r) return WHY("realloc() failed");
       b->bytes=r;
@@ -105,6 +107,28 @@ int ob_makespace(overlay_buffer *b,int bytes)
     }
   else
     return 0;
+}
+
+int ob_setbyte(overlay_buffer *b,int ofs,unsigned char value)
+{
+  if (ofs<0||ofs>b->allocSize) {
+    fprintf(stderr,"ERROR: Asked to set byte %d in overlay buffer %p, which has only %d allocated bytes.\n",
+	    ofs,b,b->allocSize);
+    exit(-1);
+  }
+  b->bytes[ofs]=value;
+  return 0;
+}
+
+int ob_bcopy(overlay_buffer *b,int from, int to, int len)
+{
+  if (from<0||to<0||len<0||(from+len)>=b->allocSize||(to+len)>=b->allocSize)
+    {
+      fprintf(stderr,"call to ob_bcopy would corrupt memory.  Aborting.\n");
+      exit(-1);
+    }
+  bcopy(&b->bytes[from],&b->bytes[to],len); 
+  return 0;
 }
 
 int ob_append_byte(overlay_buffer *b,unsigned char byte)
