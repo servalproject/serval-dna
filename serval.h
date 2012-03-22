@@ -1052,3 +1052,13 @@ extern int mdp_client_socket;
 
 int ob_bcopy(overlay_buffer *b,int from, int to, int len);
 int ob_setbyte(overlay_buffer *b,int ofs,unsigned char value);
+
+#define malloc(X) _serval_debug_malloc(X,__FILE__,__FUNCTION__,__LINE__)
+#define calloc(X,Y) _serval_debug_calloc(X,Y,__FILE__,__FUNCTION__,__LINE__)
+#define free(X) _serval_debug_free(X,__FILE__,__FUNCTION__,__LINE__)
+
+void *_serval_debug_malloc(unsigned int bytes,char *file,const char *func,int line);
+void *_serval_debug_calloc(unsigned int bytes,unsigned int count,char *file,const char *func,int line);
+void _serval_debug_free(void *p,char *file,const char *func,int line);
+
+

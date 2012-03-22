@@ -80,7 +80,7 @@ int ob_makespace(overlay_buffer *b,int bytes)
     }
   }
 
-  if (0)
+  if (1)
     printf("ob_makespace(%p,%d)\n  b->bytes=%p,b->length=%d,b->allocSize=%d\n",
 	   b,bytes,b->bytes,b->length,b->allocSize);
 
@@ -97,11 +97,33 @@ int ob_makespace(overlay_buffer *b,int bytes)
       }
       if (1) printf("  realloc(b->bytes=%p,newSize=%d)\n",
 	     b->bytes,newSize);
-#warning useless malloc() call to make sure that heap corruption check runs before we do any real work
-      void *p=malloc(1);
-      unsigned char *r=realloc(b->bytes,newSize);
-      if (!r) return WHY("realloc() failed");
-      b->bytes=r;
+      /* XXX OSX realloc() seems to be able to corrupt things if the heap is not happy when calling realloc().
+	 So will do a three-stage malloc,bcopy,free to see if we can tease the bug out that way. */
+      /*
+	unsigned char *r=realloc(b->bytes,newSize);
+	if (!r) return WHY("realloc() failed");
+	b->bytes=r; 
+      */
+#warning adding lots of padding to try to catch overruns
+      if (b->bytes) {
+	int i;
+	int corrupt=0;
+	for(i=0;i<4096;i++) if (b->bytes[b->allocSize+i]!=0xbd) corrupt++;
+	if (corrupt) {
+	  printf("!!!!!! %d corrupted bytes in overrun catch tray\n",corrupt);
+	  dump("overrun catch tray",&b->bytes[b->allocSize],4096);
+	  sleep(3600);
+	}
+      }
+      unsigned char *new=malloc(newSize+4096);
+      if (!new) return WHY("realloc() failed");
+      {
+	int i;
+	for(i=0;i<4096;i++) new[newSize+i]=0xbd;
+      }
+      bcopy(b->bytes,new,b->length);
+      if (b->bytes) free(b->bytes);
+      b->bytes=new;
       b->allocSize=newSize;
       return 0;
     }
@@ -111,10 +133,12 @@ int ob_makespace(overlay_buffer *b,int bytes)
 
 int ob_setbyte(overlay_buffer *b,int ofs,unsigned char value)
 {
-  if (ofs<0||ofs>b->allocSize) {
+  if (ofs<0||ofs>=b->allocSize) {
     fprintf(stderr,"ERROR: Asked to set byte %d in overlay buffer %p, which has only %d allocated bytes.\n",
 	    ofs,b,b->allocSize);
-    exit(-1);
+#warning temporary debug
+    sleep(3600);
+    return -1;
   }
   b->bytes[ofs]=value;
   return 0;
@@ -286,4 +310,28 @@ int ob_dump(overlay_buffer *b,char *desc)
       fprintf(stderr,"\n");
     }
   return 0;
+}
+
+#undef malloc
+#undef calloc
+#undef free
+
+void *_serval_debug_malloc(unsigned int bytes,char *file,const char *func,int line)
+{
+  void *r=malloc(bytes);
+  fprintf(stderr,"%s:%d:%s(): malloc(%d) -> %p\n",file,line,func,bytes,r);
+  return r;
+}
+
+void *_serval_debug_calloc(unsigned int bytes,unsigned int count,char *file,const char *func,int line)
+{
+  void *r=calloc(bytes,count);
+  fprintf(stderr,"%s:%d:%s(): calloc(%d,%d) -> %p\n",file,line,func,bytes,count,r);
+  return r;
+}
+
+void _serval_debug_free(void *p,char *file,const char *func,int line)
+{
+  free(p);
+  fprintf(stderr,"%s:%d:%s(): free(%p)\n",file,line,func,p);
 }

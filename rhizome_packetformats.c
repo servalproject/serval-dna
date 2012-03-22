@@ -73,9 +73,6 @@ int bundles_available=-1;
 int bundle_offset[2]={0,0};
 int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 {
-#warning Mac-specific debug thing here
-  setenv("MallocScribble","1",1);
-
   int pass;
   int bytes=e->sizeLimit-e->length;
   int overhead=1+8+1+3+1+1+1; /* maximum overhead */
@@ -195,9 +192,11 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	    int overhead=0;
 	    int frameFull=0;
 	    if (!pass) overhead=2;
-	    printf("e=%p, e->bytes=%p,e->length=%d\n",e,e->bytes,e->length);
+	    printf("e=%p, e->bytes=%p,e->length=%d, e->allocSize=%d\n",
+		   e,e->bytes,e->length,e->allocSize);
 	    
-	    if (ob_makespace(e,overhead+blob_bytes)) {
+	    
+	    if (ob_makespace(e,overhead+2+blob_bytes)) {
 	      if (debug&DEBUG_RHIZOME) 
 		fprintf(stderr,"Stopped cramming %s into Rhizome advertisement frame.\n",
 			pass?"BARs":"manifests");
@@ -205,6 +204,8 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	    }
 	    if (!pass) {
 	      /* put manifest length field and manifest ID */
+	      /* XXX why on earth is this being done this way, instead of 
+		 with ob_append_byte() ??? */		
 	      ob_setbyte(e,e->length,(blob_bytes>>8)&0xff);
 	      ob_setbyte(e,e->length+1,(blob_bytes>>0)&0xff);
 	      if (debug&DEBUG_RHIZOME)
@@ -212,6 +213,11 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	    }
 	    if (frameFull) { 
 	      goto stopStuffing;
+	    }
+	    if (e->length+overhead+blob_bytes>=e->allocSize) {
+	      WHY("Reading blob will overflow overlay_buffer");
+#warning temporary debug measure
+	      sleep(3600);
 	    }
 	    if (sqlite3_blob_read(blob,&e->bytes[e->length+overhead],blob_bytes,0)
 		!=SQLITE_OK) {
