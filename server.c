@@ -416,9 +416,8 @@ int processRequest(unsigned char *packet,int len,
 		if (var_id&0x80) instance=packet[++pofs];
 		pofs++;
 		int offset=(packet[pofs]<<8)+packet[pofs+1]; pofs+=2;
-#warning Defining SID here is masking the version passed in, which other stuff still expects to be visible?  Also, does it need to be SID_STRLEN*2+1 to allow for byte->hex expansion? Or has SID_STRLEN been defined to take that into account?
-		char sid[SID_STRLEN+1];
 		char *hlr_sid=NULL;
+		char hlr_sid_s[SID_STRLEN+1];
 
 		pofs+=2;
 
@@ -469,7 +468,7 @@ int processRequest(unsigned char *packet,int len,
 	    
 				if (packageVariableSegment(data,&dlen,h,offset,MAX_DATA_BYTES+16))
 				  return setReason("packageVariableSegment() failed.");
-				hlr_sid = hlrSid(hlr, ofs, sid);
+				hlr_sid = hlrSid(hlr, ofs, hlr_sid_s);
 
 				sendDone++;
 			      }
