@@ -529,9 +529,7 @@ int overlay_mdp_recv(overlay_mdp_frame *mdp,int *ttl)
   recvaddr_un=(struct sockaddr_un *)recvaddr;
   if (len>0) {
     /* Make sure recvaddr matches who we sent it to */
-    /* Null terminate recvaddr->sun_path as required */
-    recvaddr_un->sun_path[recvaddr_un->sun_len-sizeof(recvaddr_un->sun_len)-sizeof(recvaddr_un->sun_family)]=0;
-    if (strcmp(mdp_socket_name,recvaddr_un->sun_path)) {
+    if (strncmp(mdp_socket_name, recvaddr_un->sun_path, sizeof(recvaddr_un->sun_path))) {
       /* Okay, reply was PROBABLY not from the server, but on OSX if the path
 	 has a symlink in it, it is resolved in the reply path, but might not
 	 be in the request path (mdp_socket_name), thus we need to stat() and
