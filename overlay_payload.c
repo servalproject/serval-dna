@@ -78,11 +78,22 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
   int fail=0;
 
   if (p->nexthop_address_status!=OA_RESOLVED) {
-    if (overlay_get_nexthop((unsigned char *)p->destination,p->nexthop,&nexthoplen,&p->nexthop_interface)) {
-      fail++;
-      return WHY("could not determine next hop address for payload");
+    dump("destination",(unsigned char *)p->destination,32);
+    if (overlay_address_is_broadcast(p->destination)) {
+      /* Broadcast frames are broadcast rather than unicast to next hop.
+	 Just check if the broadcast frame should be dropped first. */
+      if (overlay_broadcast_drop_check(p->destination))
+	return WHY("This broadcast packet ID has been seen recently");
+      int i;
+      for(i=0;i<SID_SIZE;i++) p->nexthop[i]=0xff;
+      p->nexthop_address_status=OA_RESOLVED;
+    } else {
+      if (overlay_get_nexthop((unsigned char *)p->destination,p->nexthop,&nexthoplen,&p->nexthop_interface)) {
+	fail++;
+	return WHY("could not determine next hop address for payload");
+      }
+      else p->nexthop_address_status=OA_RESOLVED;
     }
-    else p->nexthop_address_status=OA_RESOLVED;
   }
 
   if (p->source[0]<0x10) {
