@@ -89,7 +89,7 @@ int overlay_mdp_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
   if ((*fdcount)>=fdmax) return -1;
   if (mdp_abstract_socket>-1)
     {
-      if (1||debug&DEBUG_IO) {
+      if (debug&DEBUG_IO) {
 	fprintf(stderr,"MDP abstract name space socket is poll() slot #%d (fd %d)\n",
 		*fdcount,mdp_abstract_socket);
       }
@@ -100,7 +100,7 @@ int overlay_mdp_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
   if ((*fdcount)>=fdmax) return -1;
   if (mdp_named_socket>-1)
     {
-      if (1||debug&DEBUG_IO) {
+      if (debug&DEBUG_IO) {
 	fprintf(stderr,"MDP named unix domain socket is poll() slot #%d (fd %d)\n",
 		*fdcount,mdp_named_socket);
       }
@@ -259,8 +259,6 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
   mdp_bindings_socket_name_lengths[free]=recvaddrlen-2;
   memcpy(&mdp_bindings_sockets[free][0],&recvaddr->sun_path[0],
 	 mdp_bindings_socket_name_lengths[free]);
-  fprintf(stderr,"Port bound\n");
-  WHY("Need to return binding information to client");
   return overlay_mdp_reply_ok(sock,recvaddr,recvaddrlen,"Port bound");
 }
 
@@ -271,6 +269,7 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
 
 int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 {
+  printf("mdp frame type=0x%x\n",mdp->packetTypeAndFlags);
   return WHY("Not implemented");
 }
 
@@ -333,8 +332,6 @@ int overlay_mdp_poll()
     int len = recvwithttl(mdp_named_socket,buffer,sizeof(buffer),&ttl,
 			  recvaddr,&recvaddrlen);
     recvaddr_un=(struct sockaddr_un *)recvaddr;
-
-    dump("mdp frame",buffer,len);
 
     if (len>0) {
       /* Look at overlay_mdp_frame we have received */

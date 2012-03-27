@@ -269,7 +269,6 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
       ob_setbyte(e,rfs_offset+1,(rfs_value-250)&0xff);
       e->length++;
     }
-  printf("Final packet size = %d\n",e->length);
   
   return 0;
 }
