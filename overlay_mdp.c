@@ -274,6 +274,48 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
   return WHY("Not implemented");
 }
 
+int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,
+				      struct sockaddr_un *recvaddr,
+				      int recvaddrlen)
+{
+  if (overlay_address_is_broadcast(src->sid))
+    {
+      /* This is rather naughty if it happens, since broadcasting a
+	 response can lead to all manner of nasty things.
+	 Picture a packet with broadcast as the source address, sent
+	 to, say, the MDP echo port on another node, and with a source
+	 port also of the echo port.  Said echo will get multiplied many,
+	 many, many times over before the TTL finally reaches zero.
+	 So we just say no to any packet with a broadcast source address. 
+	 (Of course we have other layers of protection against such 
+	 shenanigens, such as using BPIs to smart-flood broadcasts, but
+	 security comes through depth.)
+      */
+      return WHY("Packet had broadcast address as source address");
+    }
+  
+  /* Now make sure that source address is in the list of bound addresses,
+     and that the recvaddr matches. */
+  int i;
+  for(i=0;i<MDP_MAX_BINDINGS;i++)
+    {
+      if (!memcmp(src,&mdp_bindings[i],sizeof(sockaddr_mdp)))
+	{
+	  /* Binding matches, now make sure the sockets match */
+	  if (mdp_bindings_socket_name_lengths[i]==(recvaddrlen-sizeof(short)))
+	      if (!memcmp(mdp_bindings_sockets[i],recvaddr->sun_path,
+			  recvaddrlen-sizeof(short)))
+	      {
+		/* Everything matches, so this unix socket and MDP address 
+		   combination is valid */
+		return 0;
+	      }
+	}
+    }
+
+  return WHY("No such socket binding:unix domain socket tuple exists -- someone might be trying to spoof someone else's connection");
+}
+
 int overlay_mdp_poll()
 {
   unsigned char buffer[16384];
@@ -296,7 +338,8 @@ int overlay_mdp_poll()
 
     if (len>0) {
       /* Look at overlay_mdp_frame we have received */
-      overlay_mdp_frame *mdp=(overlay_mdp_frame *)&buffer[0];
+      overlay_mdp_frame *mdp=(overlay_mdp_frame *)&buffer[0];      
+
       switch(mdp->packetTypeAndFlags&MDP_TYPE_MASK) {
       case MDP_GETADDRS:
 	{
@@ -343,21 +386,15 @@ int overlay_mdp_poll()
 	  /* Work out if destination is broadcast or not */
 	  int broadcast=1;
 
-	  if (overlay_address_is_broadcast(mdp->out.src.sid))
-	    {
-	      /* This is rather naughty if it happens, since broadcasting a
-		 response can lead to all manner of nasty things.
-		 Picture a packet with broadcast as the source address, sent
-		 to, say, the MDP echo port on another node, and with a source
-		 port also of the echo port.  Said echo will get multiplied many,
-		 many, many times over before the TTL finally reaches zero.
-		 So we just say no to any packet with a broadcast source address. 
-		 (Of course we have other layers of protection against such 
-		 shenanigens, such as using BPIs to smart-flood broadcasts, but
-		 security comes through depth.)
-	      */
-	      return WHY("Packet had broadcast address as source address");
-	    }
+	  if (overlay_mdp_sanitytest_sourceaddr(&mdp->out.src,
+					    (struct sockaddr_un *)recvaddr,
+					    recvaddrlen))
+	    return overlay_mdp_reply_error
+	      (mdp_named_socket,
+	       (struct sockaddr_un *)recvaddr,
+	       recvaddrlen,8,
+	       "Source address is invalid (you must bind to a source address before"
+	       " you can send packets");
 
 	  if (!overlay_address_is_broadcast(mdp->out.dst.sid)) broadcast=0;
 
