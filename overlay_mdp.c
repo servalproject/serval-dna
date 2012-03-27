@@ -133,9 +133,20 @@ int overlay_mdp_reply_error(int sock,
   else
     snprintf(&mdpreply.error.message[0],128,"Error code #%d",error_number);
   mdpreply.error.message[127]=0;
-  int replylen=4+4+strlen(mdpreply.error.message)+1;
+
+  return overlay_mdp_reply(sock,recvaddr,recvaddrlen,&mdpreply);
+}
+
+int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
+			  overlay_mdp_frame *mdpreply)
+{
+  int replylen;
+
+  replylen=overlay_mdp_relevant_bytes(mdpreply);
+  if (replylen<0) return WHY("Invalid MDP frame (could not compute length)");
+
   errno=0;
-  int r=sendto(sock,(char *)&mdpreply,replylen,0,
+  int r=sendto(sock,(char *)mdpreply,replylen,0,
 	       (struct sockaddr *)recvaddr,recvaddrlen);
   if (r<0) { 
     perror("sendto"); 
@@ -163,6 +174,31 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
     mdp_bindings_initialised=1;
   }
 
+  WHY("Doesn't authenticate source address on multi-SID installations like an OpenBTS:mesh gateway)");
+  
+  /* Make sure source address is either all zeros (listen on all), or a valid
+     local address */
+  for(i=0;i<SID_SIZE;i++) if (mdp->bind.sid[i]) break;
+  if (i<SID_SIZE) {
+    /* Not all zeroes, so make sure it is a valid SID */
+    int j,ok=0;
+    for(j=0;j<overlay_local_identity_count;j++)
+      {
+	fprintf(stderr,"Comparing %s against local addr ",
+		overlay_render_sid(mdp->bind.sid));
+	fprintf(stderr,"%s\n",
+		overlay_render_sid(overlay_local_identities[j]));
+	for(i=0;i<SID_SIZE;i++)
+	  if (mdp->bind.sid[i]!=overlay_local_identities[j][i]) break;
+	if (i==SID_SIZE) { ok=1; break; }
+      }
+    if (!ok) {
+      /* Source address is invalid */
+      return overlay_mdp_reply_error(sock,recvaddr,recvaddrlen,7,
+				     "Bind address is not valid (must be a local MDP address, or all zeroes).");
+    }
+  }
+
   /* See if binding already exists */
   int found=-1;
   int free=-1;
@@ -182,6 +218,7 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
       if (!memcmp(mdp_bindings_sockets[found],recvaddr->sun_path,recvaddrlen))
 	{
 	  fprintf(stderr,"Identical binding exists");
+	  WHY("Need to return binding information to client");
 	  return overlay_mdp_reply_ok(sock,recvaddr,recvaddrlen,"Port bound (actually, it was already bound to you)");
 	}
     /* Okay, so there is an existing binding.  Either replace it (if requested) or
@@ -223,10 +260,16 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
   memcpy(&mdp_bindings_sockets[free][0],&recvaddr->sun_path[0],
 	 mdp_bindings_socket_name_lengths[free]);
   fprintf(stderr,"Port bound\n");
+  WHY("Need to return binding information to client");
   return overlay_mdp_reply_ok(sock,recvaddr,recvaddrlen,"Port bound");
 }
 
-int overlay_saw_mdp_frame(int interface,overlay_frame *f,long long now)
+int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long now)
+{
+  return WHY("Not implemented");
+}
+
+int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 {
   return WHY("Not implemented");
 }
@@ -249,18 +292,88 @@ int overlay_mdp_poll()
 			  recvaddr,&recvaddrlen);
     recvaddr_un=(struct sockaddr_un *)recvaddr;
 
+    dump("mdp frame",buffer,len);
+
     if (len>0) {
       /* Look at overlay_mdp_frame we have received */
       overlay_mdp_frame *mdp=(overlay_mdp_frame *)&buffer[0];
       switch(mdp->packetTypeAndFlags&MDP_TYPE_MASK) {
+      case MDP_GETADDRS:
+	{
+	  overlay_mdp_frame mdpreply;
+	  
+	  /* Work out which SIDs to get ... */
+	  int sid_num=mdp->addrlist.first_sid;
+	  int max_sid=mdp->addrlist.last_sid;
+	  int max_sids=mdp->addrlist.frame_sid_count;
+	  /* ... and constrain list for sanity */
+	  if (sid_num<0) sid_num=0;
+	  if (sid_num>overlay_local_identity_count) max_sids=0;
+	  if (max_sids>MDP_MAX_SID_REQUEST) max_sids=MDP_MAX_SID_REQUEST;
+	  if (max_sids>(overlay_local_identity_count-sid_num))
+	    max_sids=overlay_local_identity_count-sid_num;
+	  if (max_sid>(overlay_local_identity_count-sid_num))
+	    max_sid=overlay_local_identity_count-sid_num;	
+	  if (max_sids<0) max_sids=0;
+	  
+	  /* Prepare reply packet */
+	  mdpreply.packetTypeAndFlags=MDP_ADDRLIST;
+	  mdpreply.addrlist.server_sid_count=overlay_local_identity_count;
+	  mdpreply.addrlist.first_sid=sid_num;
+	  mdpreply.addrlist.last_sid=max_sid;
+	  mdpreply.addrlist.frame_sid_count=max_sids;
+	  
+	  /* Populate with SIDs */
+	  int i;
+	  for(i=0;i<max_sids;i++)
+	    bcopy(overlay_local_identities[sid_num+i],
+		  mdpreply.addrlist.sids[i],SID_SIZE);
+	  
+	  /* Send back to caller */
+	  return overlay_mdp_reply(mdp_named_socket,
+				   (struct sockaddr_un *)recvaddr,recvaddrlen,
+				   &mdpreply);
+	}
+	break;
       case MDP_TX: /* Send payload */
 	/* Construct MDP packet frame from overlay_mdp_frame structure
 	   (need to add return address from bindings list, and copy
 	   payload etc). */
 	{
 	  /* Work out if destination is broadcast or not */
-	  int i,broadcast=1;
-	  for(i=0;i<SID_SIZE;i++) if (mdp->out.dst.sid[i]!=0xff) broadcast=0;
+	  int broadcast=1;
+
+	  if (overlay_address_is_broadcast(mdp->out.src.sid))
+	    {
+	      /* This is rather naughty if it happens, since broadcasting a
+		 response can lead to all manner of nasty things.
+		 Picture a packet with broadcast as the source address, sent
+		 to, say, the MDP echo port on another node, and with a source
+		 port also of the echo port.  Said echo will get multiplied many,
+		 many, many times over before the TTL finally reaches zero.
+		 So we just say no to any packet with a broadcast source address. 
+		 (Of course we have other layers of protection against such 
+		 shenanigens, such as using BPIs to smart-flood broadcasts, but
+		 security comes through depth.)
+	      */
+	      return WHY("Packet had broadcast address as source address");
+	    }
+
+	  if (!overlay_address_is_broadcast(mdp->out.dst.sid)) broadcast=0;
+
+	  if (overlay_address_is_local(mdp->out.dst.sid)||broadcast)
+	    {
+	      /* Packet is addressed such that we should process it. */
+	      overlay_saw_mdp_frame(-1 /* not received on a network interface */,
+				    mdp,overlay_gettime_ms());
+
+	      if (!broadcast) {
+		/* Is local, and is not broadcast, so shouldn't get sent out
+		   on the wire. */
+		WHY("non-broadcast packet delivered locally");
+		return 0;
+	      }
+	    }
 
 	  /* broadcast packets cannot be encrypted, so complain if MDP_NOCRYPT
 	     flag is not set. Also, MDP_NOSIGN must also be applied, until
@@ -385,6 +498,45 @@ int overlay_mdp_poll()
   return -1;
 }
 
+int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp) 
+{
+  int len=4;
+  switch(mdp->packetTypeAndFlags&MDP_TYPE_MASK)
+    {
+    case MDP_ADDRLIST: len=4
+	+sizeof(mdp->addrlist.frame_sid_count)
+	+sizeof(mdp->addrlist.first_sid)
+	+sizeof(mdp->addrlist.last_sid)
+	+sizeof(mdp->addrlist.server_sid_count)
+	+mdp->addrlist.frame_sid_count*SID_SIZE;
+      break;
+    case MDP_GETADDRS: len=4
+	+sizeof(mdp->addrlist.frame_sid_count)
+	+sizeof(mdp->addrlist.first_sid)
+	+sizeof(mdp->addrlist.last_sid)
+	+sizeof(mdp->addrlist.server_sid_count);
+      break;
+    case MDP_TX: 
+      len=4+sizeof(mdp->out)
+	-sizeof(mdp->out.payload)
+	+mdp->out.payload_length; 
+      break;
+    case MDP_RX: 
+      len=4+sizeof(mdp->in)
+	-sizeof(mdp->in.payload)
+	+mdp->in.payload_length; break;
+    case MDP_BIND: len=4+sizeof(mdp->bind); break;
+    case MDP_ERROR: 
+      /* This formulation is used so that we don't copy any bytes after the
+	 end of the string, to avoid information leaks */
+      len=4+4+strlen(mdp->error.message)+1; break;
+    default:
+      fprintf(stderr,"mdp frame type=0x%x\n",mdp->packetTypeAndFlags);
+      return WHY("Illegal MDP frame type.");
+    }
+  return len;
+}
+
 int mdp_client_socket=-1;
 int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
 {
@@ -394,15 +546,8 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
 
   /* Minimise frame length to save work and prevent accidental disclosure of
      memory contents. */
-  switch(mdp->packetTypeAndFlags&MDP_TYPE_MASK)
-    {
-    case MDP_TX: len=4+sizeof(mdp->out)+mdp->out.payload_length; break;
-    case MDP_RX: len=4+sizeof(mdp->in)+mdp->out.payload_length; break;
-    case MDP_BIND: len=4+4; break;
-    case MDP_ERROR: len=4+4+strlen(mdp->error.message)+1; break;
-    default:
-      return WHY("Illegal MDP frame type.");
-    }
+  len=overlay_mdp_relevant_bytes(mdp);
+  if (len<0) return WHY("MDP frame invalid (could not compute length)");
 
   /* Construct name of socket to send to. */
   char mdp_socket_name[101];
@@ -450,7 +595,8 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms)
     if ((mdp->packetTypeAndFlags&MDP_TYPE_MASK)==MDP_ERROR)
 	return mdp->error.error;
     else
-      return WHY("MDP server replied with something unexpected");
+      /* Something other than an error has been returned */
+      return 0;
   } else {
     /* poll() said that there was data, but there isn't.
        So we will abort. */

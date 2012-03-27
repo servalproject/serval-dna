@@ -901,7 +901,7 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now);
 int overlay_route_please_advertise(overlay_node *n);
 int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_server_poll();
-int overlay_saw_mdp_frame(int interface,overlay_frame *f,long long now);
+int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long now);
 
 #include "nacl.h"
 
@@ -1001,6 +1001,7 @@ typedef struct sockaddr_mdp {
 #define MDP_NOSIGN 0x0400
 #define MDP_TX 1
 typedef struct overlay_mdp_outgoing_frame {
+  sockaddr_mdp src;
   sockaddr_mdp dst;
   unsigned short payload_length;
   unsigned char payload[1900];
@@ -1026,13 +1027,28 @@ typedef struct overlay_mdp_error {
   char message[128];
 } overlay_mdp_error;
 
+#define MDP_GETADDRS 5
+#define MDP_ADDRLIST 6
+typedef struct overlay_mdp_addrlist {
+  unsigned int server_sid_count;
+  unsigned int first_sid;
+  unsigned int last_sid;
+  unsigned char frame_sid_count; /* how many of the following 59 slots are
+				    populated */
+  /* 59*32 < 1900, so up to 59 SIDs in a single reply.
+     Multiple replies can be used to respond with more. */
+#define MDP_MAX_SID_REQUEST 59
+  unsigned char sids[MDP_MAX_SID_REQUEST][SID_SIZE];
+} overlay_mdp_addrlist;
+
 typedef struct overlay_mdp_frame {
-#define MDP_AWAITREPLY 5
+#define MDP_AWAITREPLY 7
   unsigned int packetTypeAndFlags;
   union {
     overlay_mdp_outgoing_frame out;
     overlay_mdp_incoming_frame in;
     overlay_mdp_bind_request bind;
+    overlay_mdp_addrlist addrlist;
     overlay_mdp_error error;
     /* 2048 is too large (causes EMSGSIZE errors on OSX, but probably fine on
        Linux) */
@@ -1041,6 +1057,7 @@ typedef struct overlay_mdp_frame {
 } overlay_mdp_frame;
 
 int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms);
+int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now);
 
 
 int setVerbosity(char *optarg);
@@ -1049,6 +1066,10 @@ int overlay_mdp_client_done();
 int overlay_mdp_client_poll(long long timeout_ms);
 int overlay_mdp_recv(overlay_mdp_frame *mdp,int *ttl);
 extern int mdp_client_socket;
+int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
+			  overlay_mdp_frame *mdpreply);
+int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp);
+
 
 int ob_bcopy(overlay_buffer *b,int from, int to, int len);
 int ob_setbyte(overlay_buffer *b,int ofs,unsigned char value);

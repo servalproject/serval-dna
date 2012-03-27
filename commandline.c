@@ -368,12 +368,44 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
      payload (rest of packet) */
   overlay_mdp_frame mdp;
 
+  /* Get list of local addresses */
+  mdp.packetTypeAndFlags=MDP_GETADDRS;
+  mdp.addrlist.first_sid=-1;
+  mdp.addrlist.last_sid=0x7fffffff;
+  mdp.addrlist.frame_sid_count=MDP_MAX_SID_REQUEST;
+  int result=overlay_mdp_dispatch(&mdp,MDP_AWAITREPLY,5000);
+  if (result) {
+    if (mdp.packetTypeAndFlags==MDP_ERROR)
+      {
+	fprintf(stderr,"Could not get list of local MDP addresses\n");
+	fprintf(stderr,"  MDP Server error #%d: '%s'\n",
+		mdp.error.error,mdp.error.message);
+      }
+    else
+      fprintf(stderr,"Could not get list of local MDP addresses\n");
+    return -1;
+  } else {
+    if (mdp.packetTypeAndFlags!=MDP_ADDRLIST) 
+      return WHY("MDP Server returned wrong frame type.");
+    fprintf(stderr,"Server returned list of %d local addresses.\n",
+	    mdp.addrlist.frame_sid_count);
+    int i;
+    for(i=0;i<mdp.addrlist.frame_sid_count;i++)
+      fprintf(stderr,"  %s\n",overlay_render_sid(mdp.addrlist.sids[i]));
+  }
+
   /* Bind to MDP socket and await confirmation */
   int port=32768+(random()&32767);
   mdp.packetTypeAndFlags=MDP_BIND;
+  if (0)
+    bzero(&mdp.bind.sid[0],SID_SIZE); // listen on all addressses
+  else
+    /* Listen on a local address.
+       Must be done before setting anything else in mdp.bind, since mdp.bind
+       and mdp.addrlist share storage as a union in the mdp structure. */
+    bcopy(&mdp.addrlist.sids[0][0],mdp.bind.sid,SID_SIZE);
   mdp.bind.port_number=port;
-  bzero(&mdp.bind.sid[0],SID_SIZE); // listen on all addressses
-  int result=overlay_mdp_dispatch(&mdp,MDP_AWAITREPLY,5000);
+  result=overlay_mdp_dispatch(&mdp,MDP_AWAITREPLY,5000);
   if (result) {
     if (mdp.packetTypeAndFlags==MDP_ERROR)
       fprintf(stderr,"Could not bind to MDP port %d: error=%d, message='%s'\n",
@@ -387,7 +419,8 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
   unsigned int firstSeq=random();
   unsigned int sequence_number=firstSeq;
 
-  /* Get SID that we want to ping */
+  /* Get SID that we want to ping.
+     XXX - allow lookup of SID prefixes */
   int i;
   unsigned char ping_sid[SID_SIZE];
   if (strcasecmp(sid,"broadcast")) {
