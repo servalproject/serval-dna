@@ -404,6 +404,8 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
        Must be done before setting anything else in mdp.bind, since mdp.bind
        and mdp.addrlist share storage as a union in the mdp structure. */
     bcopy(&mdp.addrlist.sids[0][0],mdp.bind.sid,SID_SIZE);
+  unsigned char srcsid[SID_SIZE];
+  bcopy(mdp.bind.sid,srcsid,SID_SIZE);
   mdp.bind.port_number=port;
   result=overlay_mdp_dispatch(&mdp,MDP_AWAITREPLY,5000);
   if (result) {
@@ -432,6 +434,8 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
   while(1) {
     /* Now send the ping packets */
     mdp.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT|MDP_NOSIGN;
+    mdp.out.src.port=port;
+    bcopy(srcsid,mdp.out.src.sid,SID_SIZE);
     /* Set destination to broadcast */
     for(i=0;i<SID_SIZE;i++) mdp.out.dst.sid[i]=ping_sid[i];
     /* Set port to well known echo port (from /etc/services) */
