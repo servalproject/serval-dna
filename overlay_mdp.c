@@ -264,12 +264,31 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
 
 int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long now)
 {
+  /* Take frame source and destination and use them to populate mdp->in->{src,dst}
+     SIDs.
+     XXX - I think we put the SIDs into the MDP frame at present, which is
+     redundant, as they are included in the lower-level overlay frame structure.
+     Take ports from mdp frame itself.
+     Take payload from mdp frame itself.
+  */
   return WHY("Not implemented");
 }
 
 int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 {
   printf("mdp frame type=0x%x\n",mdp->packetTypeAndFlags);
+
+  switch(mdp->packetTypeAndFlags&MDP_TYPE_MASK) {
+  case MDP_TX: 
+    /* Regular MDP frame addressed to us.  Look for matching port binding,
+       and if available, push to client.  Else do nothing, or if we feel nice
+       send back a connection refused type message? Silence is probably the
+       more prudent path. */    
+    break;
+  default:
+    return WHY("We should only see MDP_TX frames here");
+  }
+
   return WHY("Not implemented");
 }
 
