@@ -373,7 +373,7 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
   mdp.addrlist.first_sid=-1;
   mdp.addrlist.last_sid=0x7fffffff;
   mdp.addrlist.frame_sid_count=MDP_MAX_SID_REQUEST;
-  int result=overlay_mdp_dispatch(&mdp,MDP_AWAITREPLY,5000);
+  int result=overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000);
   if (result) {
     if (mdp.packetTypeAndFlags==MDP_ERROR)
       {
@@ -407,7 +407,7 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
   unsigned char srcsid[SID_SIZE];
   bcopy(mdp.bind.sid,srcsid,SID_SIZE);
   mdp.bind.port_number=port;
-  result=overlay_mdp_dispatch(&mdp,MDP_AWAITREPLY,5000);
+  result=overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000);
   if (result) {
     if (mdp.packetTypeAndFlags==MDP_ERROR)
       fprintf(stderr,"Could not bind to MDP port %d: error=%d, message='%s'\n",

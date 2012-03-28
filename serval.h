@@ -1000,20 +1000,13 @@ typedef struct sockaddr_mdp {
 #define MDP_NOCRYPT 0x0200
 #define MDP_NOSIGN 0x0400
 #define MDP_TX 1
+#define MDP_RX 2
 typedef struct overlay_mdp_outgoing_frame {
   sockaddr_mdp src;
   sockaddr_mdp dst;
   unsigned short payload_length;
   unsigned char payload[1900];
-} overlay_mdp_outgoing_frame;
-
-#define MDP_RX 2
-typedef struct overlay_mdp_incoming_frame {
-  sockaddr_mdp dst;
-  sockaddr_mdp src;
-  unsigned short payload_length;
-  unsigned char payload[1900];
-} overlay_mdp_incoming_frame;
+} overlay_mdp_data_frame;
 
 #define MDP_BIND 3
 typedef struct overlay_mdp_bind_request {
@@ -1045,8 +1038,8 @@ typedef struct overlay_mdp_frame {
 #define MDP_AWAITREPLY 7
   unsigned int packetTypeAndFlags;
   union {
-    overlay_mdp_outgoing_frame out;
-    overlay_mdp_incoming_frame in;
+    overlay_mdp_data_frame out;
+    overlay_mdp_data_frame in;
     overlay_mdp_bind_request bind;
     overlay_mdp_addrlist addrlist;
     overlay_mdp_error error;
@@ -1056,20 +1049,23 @@ typedef struct overlay_mdp_frame {
   };
 } overlay_mdp_frame;
 
-int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int flags,int timeout_ms);
-int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now);
-
-
 int setVerbosity(char *optarg);
+
+/* Client-side MDP function */
+extern int mdp_client_socket;
 int overlay_mdp_client_init();
 int overlay_mdp_client_done();
 int overlay_mdp_client_poll(long long timeout_ms);
 int overlay_mdp_recv(overlay_mdp_frame *mdp,int *ttl);
-extern int mdp_client_socket;
+int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms);
+
+/* Server-side MDP functions */
+int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now);
 int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
 			  overlay_mdp_frame *mdpreply);
 int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp);
-
+int overlay_mdp_dispatch(overlay_mdp_frame *mdp,
+		     struct sockaddr_un *recvaddr,int recvaddlen);
 
 int ob_bcopy(overlay_buffer *b,int from, int to, int len);
 int ob_setbyte(overlay_buffer *b,int ofs,unsigned char value);
