@@ -444,7 +444,7 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
     int *seq=(int *)&mdp.out.payload;
     *seq=sequence_number;
     
-    int res=overlay_mdp_dispatch(&mdp,0,0);
+    int res=overlay_mdp_send(&mdp,0,0);
     if (res) {
       fprintf(stderr,"ERROR: Could not dispatch PING frame #%d (error %d)\n",
 	      sequence_number-firstSeq,res);
@@ -484,6 +484,7 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
 	return 0;
       }
     }
+    sequence_number++;
     timeout=now+1000;
   }
 
