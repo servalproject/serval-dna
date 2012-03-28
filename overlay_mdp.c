@@ -278,7 +278,6 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 {
   int i;
   int match=-1;
-  printf("mdp frame type=0x%x\n",mdp->packetTypeAndFlags);
 
   switch(mdp->packetTypeAndFlags&MDP_TYPE_MASK) {
   case MDP_TX: 
@@ -329,6 +328,16 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
       /* We now know the socket, and so we can pass the MDP_TX frame to the 
 	 recipient.  We do, however, translate it into an MDP_RX frame first,
 	 so that the recipient understands the context. */
+      mdp->packetTypeAndFlags&=~MDP_TYPE_MASK;
+      mdp->packetTypeAndFlags|=MDP_RX;
+      struct sockaddr_un addr;
+      bcopy(mdp_bindings_sockets[match],&addr.sun_path[0],mdp_bindings_socket_name_lengths[match]);
+      addr.sun_family=AF_UNIX;
+      int r=sendto(mdp_named_socket,mdp,overlay_mdp_relevant_bytes(mdp),0,(struct sockaddr*)&addr,sizeof(addr));
+      printf("r=%d\n",r);
+      if (r==overlay_mdp_relevant_bytes(mdp)) return 0;
+      perror("sendto");
+      return WHY("Failed to pass received MDP frame to client");
     } else {
       /* No socket is bound, ignore the packet ... except for magic sockets */
       switch(mdp->out.dst.port) {
@@ -361,6 +370,7 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
     return WHY("We should only see MDP_TX frames here");
   }
 
+  
   return WHY("Not implemented");
 }
 
