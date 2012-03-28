@@ -351,6 +351,16 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 	  bcopy(&mdp->out.dst,&temp,sizeof(sockaddr_mdp));
 	  bcopy(&mdp->out.src,&mdp->out.dst,sizeof(sockaddr_mdp));
 	  bcopy(&temp,&mdp->out.src,sizeof(sockaddr_mdp));
+	  /* If the packet was sent to broadcast, then replace broadcast address
+	     with our local address. For now just responds with first local address */
+	  if (overlay_address_is_broadcast(mdp->out.src.sid))
+	    {
+	      if (overlay_local_identity_count)
+		bcopy(&overlay_local_identities[0][0],mdp->out.src.sid,SID_SIZE);
+	      else
+		/* No local addresses, so put all zeroes */
+		bzero(mdp->out.src.sid,SID_SIZE);
+	    }
 
 	  /* queue frame for delivery */
 	  return 
