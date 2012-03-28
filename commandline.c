@@ -387,11 +387,6 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
   } else {
     if (mdp.packetTypeAndFlags!=MDP_ADDRLIST) 
       return WHY("MDP Server returned wrong frame type.");
-    fprintf(stderr,"Server returned list of %d local addresses.\n",
-	    mdp.addrlist.frame_sid_count);
-    int i;
-    for(i=0;i<mdp.addrlist.frame_sid_count;i++)
-      fprintf(stderr,"  %s\n",overlay_render_sid(mdp.addrlist.sids[i]));
   }
 
   /* Bind to MDP socket and await confirmation */
@@ -422,7 +417,8 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
   unsigned int sequence_number=firstSeq;
 
   /* Get SID that we want to ping.
-     XXX - allow lookup of SID prefixes */
+     XXX - allow lookup of SID prefixes and telephone numbers
+     (that would require MDP lookup of phone numbers, which doesn't yet occur) */
   int i;
   unsigned char ping_sid[SID_SIZE];
   if (strcasecmp(sid,"broadcast")) {
@@ -430,6 +426,11 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
   } else {
     for(i=0;i<SID_SIZE;i++) ping_sid[i]=0xff;
   }
+
+  /* XXX Eventually we should try to resolve SID to phone number and vice versa */
+  printf("MDP PING %s (%s): 12 data bytes\n",
+	 overlay_render_sid(ping_sid),
+	 overlay_render_sid(ping_sid));
 
   while(1) {
     /* Now send the ping packets */

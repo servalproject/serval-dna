@@ -742,7 +742,6 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
   int ttl=-1;
   if (!overlay_mdp_recv(mdp,&ttl)) {
     /* If all is well, examine result and return error code provided */
-    WHY("Got a reply from server");
     if ((mdp->packetTypeAndFlags&MDP_TYPE_MASK)==MDP_ERROR)
 	return mdp->error.error;
     else
