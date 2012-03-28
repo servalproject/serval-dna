@@ -440,9 +440,11 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
     for(i=0;i<SID_SIZE;i++) mdp.out.dst.sid[i]=ping_sid[i];
     /* Set port to well known echo port (from /etc/services) */
     mdp.out.dst.port=7;
-    mdp.out.payload_length=4;
+    mdp.out.payload_length=4+8;
     int *seq=(int *)&mdp.out.payload;
     *seq=sequence_number;
+    long long *txtime=(long long *)&mdp.out.payload[4];
+    *txtime=overlay_gettime_ms();
     
     int res=overlay_mdp_send(&mdp,0,0);
     if (res) {
@@ -470,6 +472,13 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
 		    mdp.error.message,mdp.error.error);
 	    break;
 	  case MDP_RX:
+	    {
+	      int *rxseq=(int *)&mdp.in.payload;
+	      long long *txtime=(long long *)&mdp.in.payload[4];
+	      printf("%s: seq=%d time=%lld ms\n",
+		     overlay_render_sid(mdp.in.src.sid),
+		     (*rxseq)-firstSeq,overlay_gettime_ms()-*txtime);
+	    }
 	    break;
 	  default:
 	    fprintf(stderr,"mdpping: overlay_mdp_recv: Unexpected MDP frame type 0x%x\n",mdp.packetTypeAndFlags);
