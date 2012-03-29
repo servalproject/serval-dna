@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdarg.h>
 #include <signal.h>
 #include <unistd.h>
+#include <dirent.h>
 
 char *gatewayspec=NULL;
 
@@ -300,6 +301,26 @@ int form_serval_instance_path(char *buf, size_t bufsiz, const char *path)
   if (snprintf(buf, bufsiz, "%s/%s", serval_instancepath(), path) < bufsiz)
     return 1;
   fprintf(stderr, "Cannot form pathname \"%s/%s\" -- buffer too small (%lu bytes)", serval_instancepath(), path, (unsigned long)bufsiz);
+  return 0;
+}
+
+int create_serval_instance_dir() {
+  const char *instancepath = serval_instancepath();
+  if (mkdir(instancepath, 0700) == -1) {
+    if (errno == EEXIST) {
+      DIR *d = opendir(instancepath);
+      if (!d) {
+	WHYF("Cannot access %s", instancepath);
+	perror("opendir");
+	return -1;
+      }
+      closedir(d);
+      return 0;
+    }
+    WHYF("Cannot mkdir %s", instancepath);
+    perror("mkdir");
+    return -1;
+  }
   return 0;
 }
 

@@ -97,7 +97,6 @@ int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
 
 int server(char *backing_file,int size,int foregroundMode)
 {
-  
   /* Get backing store for HLR */
   getBackingStore(backing_file,size);
 

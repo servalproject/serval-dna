@@ -216,6 +216,10 @@ int app_server_start(int argc,char **argv,struct command_line_option *o)
   /* Record instance path for easy access by whole process */
   thisinstancepath=strdup(instancepath);
 
+  /* Create the instance directory if it does not yet exist */
+  if (create_serval_instance_dir() == -1)
+    return -1;
+
   /* Now that we know our instance path, we can ask for the default set of
      network interfaces that we will take interest in. */
   overlay_interface_args(confValueGet("interfaces",""));
@@ -242,7 +246,11 @@ int app_server_start(int argc,char **argv,struct command_line_option *o)
   */
   rhizome_datastore_path=strdup(instancepath);
   rhizome_opendb();
-  char *hlr_file = asprintf("%s/%s", instancepath, "hlr.dat");
+  char *hlr_file;
+  if (asprintf(&hlr_file, "%s/%s", instancepath, "hlr.dat") == -1) {
+    fprintf(stderr,"ERROR: asprintf() failed\n");
+    return -1;
+  }
   hlr_size=atof(confValueGet("hlr_size","1"))*1048576;
   if (hlr_size<0) {
     fprintf(stderr,"HLR Size must be >0MB\n");
@@ -497,6 +505,9 @@ int app_server_set(int argc,char **argv,struct command_line_option *o)
 {
   char *var=cli_arg(argc,argv,o,"variable","");
   char *val=cli_arg(argc,argv,o,"value","");
+
+  if (create_serval_instance_dir() == -1)
+    return -1;
 
   char conffile[1024];
   FILE *in;

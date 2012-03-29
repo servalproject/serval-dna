@@ -987,6 +987,7 @@ int _memabuseCheck(const char *func,const char *file,const int line);
 char *thisinstancepath;
 char *serval_instancepath();
 int form_serval_instance_path(char * buf, size_t bufsiz, const char *path);
+int create_serval_instance_dir();
 
 /* Handy statement for forming a path to an instance file in a char buffer whose declaration
  * is in scope (so that sizeof(buf) will work).  Evaluates to true if the pathname fitted into
