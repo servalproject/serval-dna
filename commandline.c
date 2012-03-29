@@ -425,6 +425,12 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
 	 overlay_render_sid(ping_sid),
 	 overlay_render_sid(ping_sid));
 
+  long long rx_mintime=-1;
+  long long rx_maxtime=-1;
+  long long rx_count=0,tx_count=0;
+  long long rx_ms=0;
+  long long rx_times[1024];
+
   while(1) {
     /* Now send the ping packets */
     mdp.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT|MDP_NOSIGN;
@@ -446,7 +452,7 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
 	      sequence_number-firstSeq,res);
       if (mdp.packetTypeAndFlags==MDP_ERROR) 
 	fprintf(stderr,"       Error message: %s\n",mdp.error.message);
-    }
+    } else tx_count++;
 
     /* Now look for replies until one second has passed, and print any replies
        with appropriate information as required */
@@ -469,9 +475,15 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
 	    {
 	      int *rxseq=(int *)&mdp.in.payload;
 	      long long *txtime=(long long *)&mdp.in.payload[4];
+	      long long delay=overlay_gettime_ms()-*txtime;
 	      printf("%s: seq=%d time=%lld ms\n",
 		     overlay_render_sid(mdp.in.src.sid),
-		     (*rxseq)-firstSeq,overlay_gettime_ms()-*txtime);
+		     (*rxseq)-firstSeq+1,delay);
+	      rx_count++;
+	      rx_ms+=delay;
+	      if (rx_mintime>delay||rx_mintime==-1) rx_mintime=delay;
+	      if (delay>rx_maxtime) rx_maxtime=delay;
+	      rx_times[rx_count%1024]=delay;
 	    }
 	    break;
 	  default:
@@ -482,8 +494,25 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
       }
       now=overlay_gettime_ms();
       if (servalShutdown) {
+
+	float rx_stddev=0;
+	float rx_mean=rx_ms*1.0/rx_count;
+	int samples=rx_count;
+	if (samples>1024) samples=1024;
+	int i;
+	for(i=0;i<samples;i++)
+	  rx_stddev+=(rx_mean-rx_times[i])*(rx_mean-rx_times[i]);
+	rx_stddev/=samples;
+	rx_stddev=sqrtf(rx_stddev);
+
 	/* XXX Report final statistics before going */
-	WHY("I should be giving you ping statistics now");
+	fprintf(stderr,"--- %s ping statistics ---\n",overlay_render_sid(ping_sid));
+	fprintf(stderr,"%lld packets transmitted, %lld packets received, %3.1f%% packet loss\n",
+		tx_count,rx_count,tx_count?(tx_count-rx_count)*100.0/tx_count:0);
+	fprintf(stderr,"round-trip min/avg/max/stddev%s = %lld/%.3f/%lld/%.3f ms\n",
+		(samples<rx_count)?" (stddev calculated from last 1024 samples)":"",
+		rx_mintime,rx_mean,rx_maxtime,rx_stddev);
+
 	return 0;
       }
     }
