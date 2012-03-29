@@ -501,20 +501,16 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
   return 0;
 }
 
-int app_server_set(int argc,char **argv,struct command_line_option *o)
+static int set_variable(const char *var, const char *val)
 {
-  char *var=cli_arg(argc,argv,o,"variable","");
-  char *val=cli_arg(argc,argv,o,"value","");
-
-  if (create_serval_instance_dir() == -1)
-    return -1;
-
   char conffile[1024];
   FILE *in;
   if (!FORM_SERVAL_INSTANCE_PATH(conffile, "serval.conf") ||
       !((in = fopen(conffile, "r")) || (in = fopen(conffile, "w")))
     ) {
-    return WHY("could not read configuration file.");
+    if (var)
+      return WHY("could not read configuration file.");
+    return -1;
   }
 
   char tempfile[1024];
@@ -534,22 +530,66 @@ int app_server_set(int argc,char **argv,struct command_line_option *o)
   int varlen=strlen(var);
   line[0]=0; fgets(line,1024,in);
   while(line[0]) {
-    if ((!strncasecmp(var,line,varlen))&&(line[varlen]=='='))
-      {
-	fprintf(out,"%s=%s\n",var,val);
-	found=1;
-      }
-    else
+    if (!strncasecmp(var, line, varlen) && line[varlen] == '=') {
+      found = 1;
+      if (val)
+	fprintf(out, "%s=%s\n", var, val);
+    } else
       fprintf(out,"%s",line);
     line[0]=0; fgets(line,1024,in);
   }
-  if (!found) fprintf(out,"%s=%s\n",var,val);
+  if (!found && val)
+    fprintf(out, "%s=%s\n", var, val);
   fclose(in); fclose(out);
-  
+
   if (rename(tempfile,conffile)) {
     return WHYF("Failed to rename \"%s\" to \"%s\".", tempfile, conffile);
   }
 
+  return 0;
+}
+
+int app_server_set(int argc,char **argv,struct command_line_option *o)
+{
+  char *var = cli_arg(argc, argv, o, "variable", "");
+  char *val = cli_arg(argc, argv, o, "value", "");
+  if (create_serval_instance_dir() == -1)
+    return -1;
+  return set_variable(var, val);
+}
+
+int app_server_del(int argc,char **argv,struct command_line_option *o)
+{
+  char *var = cli_arg(argc, argv, o, "variable", "");
+  return set_variable(var, NULL);
+}
+
+int app_server_get(int argc,char **argv,struct command_line_option *o)
+{
+  char *var=cli_arg(argc,argv,o,"variable","");
+
+  char conffile[1024];
+  FILE *in;
+  if (!FORM_SERVAL_INSTANCE_PATH(conffile, "serval.conf") ||
+      !((in = fopen(conffile, "r")) || (in = fopen(conffile, "w")))
+    ) {
+    return WHY("could not read configuration file.");
+  }
+
+  /* Read lines of config file. */
+  char line[1024];
+  int found=0;
+  int varlen=strlen(var);
+  line[0]=0; fgets(line,1024,in);
+  while(line[0]) {
+    if ((!strncasecmp(var,line,varlen))&&(line[varlen]=='=')) {
+      fputs(line, stdout);
+      break;
+    }
+    line[0]=0;
+    fgets(line,1024,in);
+  }
+  fclose(in);
   return 0;
 }
 
@@ -566,21 +606,25 @@ command_line_option command_line_options[]={
   {app_dna_lookup,{"dna","lookup","<did>",NULL},CLIFLAG_NONOVERLAY,"Lookup the SIP/MDP address of the supplied telephone number (DID)."},
   {cli_usage,{"help",NULL},0,
    "Display command usage."},
-  {app_server_start,{"node","start"},CLIFLAG_STANDALONE,
+  {app_server_start,{"node","start",NULL},CLIFLAG_STANDALONE,
    "Start Serval Mesh node process.  Instance path is read from SERVALINSTANCE_PATH environment variable."},
-  {app_server_start,{"node","start","foreground"},CLIFLAG_STANDALONE,
+  {app_server_start,{"node","start","foreground",NULL},CLIFLAG_STANDALONE,
    "Start Serval Mesh node process without detatching from foreground."},
-  {app_server_start,{"node","start","in","<instance path>"},CLIFLAG_STANDALONE,
+  {app_server_start,{"node","start","in","<instance path>",NULL},CLIFLAG_STANDALONE,
    "Start Serval Mesh node process.  Instance path is as specified."},
-  {app_server_stop,{"node","stop"},0,
+  {app_server_stop,{"node","stop",NULL},0,
    "Ask running Serval Mesh node process to stop. Instance path is read from SERVALINSTANCE_PATH environment variable."},
-  {app_server_stop,{"node","stop","in","<instance path>"},0,
+  {app_server_stop,{"node","stop","in","<instance path>",NULL},0,
    "Ask running Serval Mesh node process to stop.  Instance path as specified."},
-  {app_server_status,{"node","status"},0,
+  {app_server_status,{"node","status",NULL},0,
    "Display information about any running Serval Mesh node."},
-  {app_mdp_ping,{"mdp","ping","<SID|broadcast>"},CLIFLAG_STANDALONE,
+  {app_mdp_ping,{"mdp","ping","<SID|broadcast>",NULL},CLIFLAG_STANDALONE,
    "Attempts to ping specified node via Mesh Datagram Protocol (MDP)."},
-  {app_server_set,{"set","<variable>","<value>"},0,
+  {app_server_set,{"set","<variable>","<value>",NULL},0,
    "Set specified configuration variable."},
+  {app_server_del,{"del","<variable>",NULL},0,
+   "Set specified configuration variable."},
+  {app_server_get,{"get","<variable>",NULL},0,
+   "Get specified configuration variable."},
   {NULL,{NULL}}
 };
