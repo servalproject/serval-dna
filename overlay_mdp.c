@@ -815,6 +815,8 @@ int overlay_mdp_recv(overlay_mdp_frame *mdp,int *ttl)
   int len = recvwithttl(mdp_client_socket,(unsigned char *)mdp,
 		    sizeof(overlay_mdp_frame),ttl,recvaddr,&recvaddrlen);
   recvaddr_un=(struct sockaddr_un *)recvaddr;
+  /* Null terminate received address so that the stat() call below can succeed */
+  if (recvaddrlen<1024) recvaddrbuffer[recvaddrlen]=0;
   if (len>0) {
     /* Make sure recvaddr matches who we sent it to */
     if (strncmp(mdp_socket_name, recvaddr_un->sun_path, sizeof(recvaddr_un->sun_path))) {
