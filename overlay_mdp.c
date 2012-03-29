@@ -295,7 +295,7 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
     
     for(i=0;i<MDP_MAX_BINDINGS;i++)
       {
-	if (!bcmp(&mdp->out.dst,&mdp_bindings[i],sizeof(sockaddr_mdp)))
+	if (!memcmp(&mdp->out.dst,&mdp_bindings[i],sizeof(sockaddr_mdp)))
 	  { /* exact and specific match, so stop searching */
 	    match=i; break; }
 	else {
