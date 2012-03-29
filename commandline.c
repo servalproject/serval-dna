@@ -31,12 +31,9 @@ typedef struct command_line_option {
 
 extern command_line_option command_line_options[];
 
-int servalNodeRunning(int *pid,char *instancepath)
+static int servalNodeRunning(int *pid)
 {
-  char filename[1024];
-  char line[1024];
-  if (!instancepath) instancepath=DEFAULT_INSTANCE_PATH;
-
+  char *instancepath = serval_instancepath();
   struct stat st;
   int r=stat(instancepath,&st);
   if (r) {
@@ -57,20 +54,23 @@ int servalNodeRunning(int *pid,char *instancepath)
   }
 
   int running=0;
-  snprintf(filename,1023,"%s/serval.pid",instancepath); filename[1023]=0;
-  FILE *f=fopen(filename,"r");
-  if (f) {
-    line[0]=0; fgets(line,1024,f);    
-    *pid = strtoll(line,NULL,10);
-    running=*pid;
-    if (running) {
-      /* Check that process is really running.
-         Some systems don't have /proc (including mac), 
-	 so we need to find out some otherway.*/
-      running=1; // assume pid means is running for now      
-    }
-    fclose(f);
-  } 
+  char filename[1024];
+  if (FORM_SERVAL_INSTANCE_PATH(filename, "serval.pid")) {
+    FILE *f=fopen(filename,"r");
+    if (f) {
+      char line[1024];
+      line[0]=0; fgets(line,1024,f);    
+      *pid = strtoll(line,NULL,10);
+      running=*pid;
+      if (running) {
+	/* Check that process is really running.
+	  Some systems don't have /proc (including mac), 
+	  so we need to find out some otherway.*/
+	running=1; // assume pid means is running for now      
+      }
+      fclose(f);
+    } 
+  }
 
   return running;
 }
@@ -170,12 +170,16 @@ char *confValueGet(char *var,char *defaultValue)
   if (!var) return defaultValue;
   int varLen=strlen(var);
 
-  char *instancepath=serval_instancepath();
-
   char filename[1024];
-  snprintf(filename,1024,"%s/serval.conf",instancepath); filename[1023]=0;
-  FILE *f=fopen(filename,"r");
-  if (!f) return defaultValue;
+  if (!FORM_SERVAL_INSTANCE_PATH(filename, "serval.conf")) {
+    fprintf(stderr, "Using default value of %s: %s\n", var, defaultValue);
+    return defaultValue;
+  }
+  FILE *f = fopen(filename,"r");
+  if (!f) {
+    fprintf(stderr, "Cannot open serval.conf.  Using default value of %s: %s\n", var, defaultValue);
+    return defaultValue;
+  }
   
   char line[1024];
   line[0]=0; fgets(line,1024,f);
@@ -224,7 +228,7 @@ int app_server_start(int argc,char **argv,struct command_line_option *o)
   setVerbosity(confValueGet("debug",""));
 
   int pid=-1;
-  int running = servalNodeRunning(&pid,instancepath);
+  int running = servalNodeRunning(&pid);
   if (running<0) return -1;
   if (running>0) {
     fprintf(stderr,"ERROR: Serval process already running (pid=%d)\n",pid);
@@ -238,12 +242,7 @@ int app_server_start(int argc,char **argv,struct command_line_option *o)
   */
   rhizome_datastore_path=strdup(instancepath);
   rhizome_opendb();
-  char temp[1024];temp[1023]=0;
-  snprintf(temp,1024,"%s/hlr.dat",instancepath); 
-  if (temp[1023]) {
-    exit(WHY("Instance path directory name too long."));
-  }
-  char *hlr_file=strdup(temp);
+  char *hlr_file = asprintf("%s/%s", instancepath, "hlr.dat");
   hlr_size=atof(confValueGet("hlr_size","1"))*1048576;
   if (hlr_size<0) {
     fprintf(stderr,"HLR Size must be >0MB\n");
@@ -256,11 +255,10 @@ int app_server_start(int argc,char **argv,struct command_line_option *o)
 
 int app_server_stop(int argc,char **argv,struct command_line_option *o)
 {
-  char *instancepath=getenv("SERVALINSTANCE_PATH");
-  if (!instancepath) instancepath=DEFAULT_INSTANCE_PATH;
+  thisinstancepath = cli_arg(argc,argv,o,"instance path",getenv("SERVALINSTANCE_PATH"));
 
   int pid=-1;
-  int running = servalNodeRunning(&pid,instancepath);
+  int running = servalNodeRunning(&pid);
   if (running>0) {
     /* Is running, so we can try to kill it.
        This is a little complicated by the fact that we catch most signals
@@ -275,9 +273,8 @@ int app_server_stop(int argc,char **argv,struct command_line_option *o)
     }
 
     char stopfile[1024];
-    snprintf(stopfile,1024,"%s/doshutdown",instancepath);
-    FILE *f=fopen(stopfile,"w");
-    if (!f) {
+    FILE *f;
+    if (!(FORM_SERVAL_INSTANCE_PATH(stopfile, "doshutdown") && (f = fopen(stopfile, "w")))) {
       WHY("Could not create shutdown file");
       return -1;
     }
@@ -305,7 +302,7 @@ int app_server_stop(int argc,char **argv,struct command_line_option *o)
     time_t timeout=time(0)+5;
     while(timeout>time(0)) {
       pid=-1;
-      int running = servalNodeRunning(&pid,instancepath);
+      int running = servalNodeRunning(&pid);
       if (running<1) {
 	fprintf(stderr,"Serval process appears to have stopped.\n");
 	return 0;
@@ -322,18 +319,13 @@ int app_server_stop(int argc,char **argv,struct command_line_option *o)
 
 int app_server_status(int argc,char **argv,struct command_line_option *o)
 {
-  char *instancepath
-    =cli_arg(argc,argv,o,"instance path",getenv("SERVALINSTANCE_PATH"));
-  if (!instancepath) instancepath=DEFAULT_INSTANCE_PATH;
-  
-  char filename[1024];
-  char line[1024];
-  FILE *f;
+  thisinstancepath = cli_arg(argc, argv, o, "instance path", NULL);
   
   /* Display configuration information */
-  snprintf(filename,1023,"%s/serval.conf",instancepath); filename[1023]=0;
-  f=fopen(filename,"r");
-  if (f) {
+  char filename[1024];
+  FILE *f;
+  if (FORM_SERVAL_INSTANCE_PATH(filename, "serval.conf") && (f = fopen(filename, "r"))) {
+    char line[1024];
     line[0]=0; fgets(line,1024,f);
     printf("\nServal Mesh configuration:\n");
     while(line[0]) {
@@ -342,12 +334,13 @@ int app_server_status(int argc,char **argv,struct command_line_option *o)
     }
     fclose(f);
   }
+
   /* Display running status of daemon from serval.pid file */
   int pid=-1;
-  int running = servalNodeRunning(&pid,instancepath);
+  int running = servalNodeRunning(&pid);
   if (running<0) return -1;
 
-  printf("For Serval Mesh instance %s:\n",instancepath);
+  printf("For Serval Mesh instance %s:\n", serval_instancepath());
   if (running)
     printf("  Serval mesh process is running (pid=%d)\n",pid);
   else
@@ -359,7 +352,6 @@ int app_server_status(int argc,char **argv,struct command_line_option *o)
 int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
 {
   char *sid=cli_arg(argc,argv,o,"SID|broadcast","broadcast");
-  char *instancepath=serval_instancepath();
 
   /* MDP frames consist of:
      destination SID (32 bytes)
@@ -507,25 +499,26 @@ int app_server_set(int argc,char **argv,struct command_line_option *o)
   char *val=cli_arg(argc,argv,o,"value","");
 
   char conffile[1024];
-  char tempfile[1024];
-
-  snprintf(conffile,1024,"%s/serval.conf",serval_instancepath());
-  snprintf(tempfile,1024,"%s/serval.conf.temp",serval_instancepath());
-
-  FILE *in=fopen(conffile,"r");
-  if (!in) in=fopen(conffile,"w");
-  if (!in)
+  FILE *in;
+  if (!FORM_SERVAL_INSTANCE_PATH(conffile, "serval.conf") ||
+      !((in = fopen(conffile, "r")) || (in = fopen(conffile, "w")))
+    ) {
     return WHY("could not read configuration file.");
-  FILE *out=fopen(tempfile,"w");
-  if (!out) {
+  }
+
+  char tempfile[1024];
+  FILE *out;
+  if (!FORM_SERVAL_INSTANCE_PATH(tempfile, "serval.conf.temp") ||
+      !(out = fopen(tempfile, "w"))
+    ) {
     fclose(in);
     return WHY("could not write temporary file.");
   }
-  char line[1024];
 
   /* Read and write lines of config file, replacing the variable in question
      if required.  If the variable didn't already exist, then write it out at
      the end. */
+  char line[1024];
   int found=0;
   int varlen=strlen(var);
   line[0]=0; fgets(line,1024,in);
@@ -543,7 +536,7 @@ int app_server_set(int argc,char **argv,struct command_line_option *o)
   fclose(in); fclose(out);
   
   if (rename(tempfile,conffile)) {
-    return WHY("Failed to put temporary config file into place.");
+    return WHYF("Failed to rename \"%s\" to \"%s\".", tempfile, conffile);
   }
 
   return 0;

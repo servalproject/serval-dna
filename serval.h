@@ -650,6 +650,7 @@ extern overlay_txqueue overlay_tx[OQ_MAX];
 
 int setReason(char *fmt, ...);
 #define WHY(X) setReason("%s:%d:%s()  %s",__FILE__,__LINE__,__FUNCTION__,X)
+#define WHYF(F, ...) setReason("%s:%d:%s()  " F, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
 
 overlay_buffer *ob_new(int size);
 int ob_free(overlay_buffer *b);
@@ -985,6 +986,12 @@ int _memabuseCheck(const char *func,const char *file,const int line);
 
 char *thisinstancepath;
 char *serval_instancepath();
+int form_serval_instance_path(char * buf, size_t bufsiz, const char *path);
+
+/* Handy statement for forming a path to an instance file in a char buffer whose declaration
+ * is in scope (so that sizeof(buf) will work).  Evaluates to true if the pathname fitted into
+ * the provided buffer, false (0) otherwise (after printing a message to stderr).  */
+#define FORM_SERVAL_INSTANCE_PATH(buf, path) (form_serval_instance_path(buf, sizeof(buf), (path)))
 
 int overlay_mdp_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int overlay_mdp_poll();

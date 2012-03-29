@@ -295,19 +295,29 @@ char *serval_instancepath()
   return instancepath;
 }
 
+int form_serval_instance_path(char *buf, size_t bufsiz, const char *path)
+{
+  if (snprintf(buf, bufsiz, "%s/%s", serval_instancepath(), path) < bufsiz)
+    return 1;
+  fprintf(stderr, "Cannot form pathname \"%s/%s\" -- buffer too small (%lu bytes)", serval_instancepath(), path, (unsigned long)bufsiz);
+  return 0;
+}
+
 void servalShutdownCleanly()
 {
   WHY("Shutting down as requested.");
   /* Try to remove shutdown and PID files and exit */
-  char *instancepath=serval_instancepath();
   char filename[1024];
-  snprintf(filename,1024,"%s/doshutdown",instancepath);
-  unlink(filename);
-  snprintf(filename,1024,"%s/serval.pid",instancepath);
-  unlink(filename);
-  if (mdp_client_socket==-1) {
-    snprintf(filename,1024,"%s/mdp.socket",instancepath);
+  if (FORM_SERVAL_INSTANCE_PATH(filename, "doshutdown")) {
     unlink(filename);
+  }
+  if (FORM_SERVAL_INSTANCE_PATH(filename, "serval.pid")) {
+    unlink(filename);
+  }
+  if (mdp_client_socket==-1) {
+    if (FORM_SERVAL_INSTANCE_PATH(filename, "mdp.socket")) {
+      unlink(filename);
+    }
   } else {
     overlay_mdp_client_done();
   }

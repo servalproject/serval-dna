@@ -59,9 +59,9 @@ int overlay_mdp_setup_sockets()
   }
 #endif
   if (mdp_named_socket==-1) {
-    char *instancepath=serval_instancepath();
-    if (strlen(instancepath)>85) return WHY("Instance path too long to allow construction of named unix domain socket.");
-    snprintf(&name.sun_path[0],100,"%s/mdp.socket",instancepath);
+    if (!form_serval_instance_path(&name.sun_path[0], 100, "mdp.socket")) {
+      return WHY("Cannot construct name of unix domain socket.");
+    }
     unlink(&name.sun_path[0]);
     len = 0+strlen(&name.sun_path[0]) + sizeof(name.sun_family)+1;
     mdp_named_socket = socket(AF_UNIX, SOCK_DGRAM, 0);
@@ -701,15 +701,10 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
   if (len<0) return WHY("MDP frame invalid (could not compute length)");
 
   /* Construct name of socket to send to. */
-  char mdp_socket_name[101];
-  mdp_socket_name[100]=0;
-  snprintf(mdp_socket_name,100,"%s/mdp.socket",serval_instancepath());
-  if (mdp_socket_name[100]) {    
-    return WHY("instance path is too long (unix domain named sockets have a short maximum path length)");
-  }
   struct sockaddr_un name;
   name.sun_family = AF_UNIX;
-  strcpy(name.sun_path, mdp_socket_name); 
+  if (!FORM_SERVAL_INSTANCE_PATH(name.sun_path, "mdp.socket"))
+    return -1;
 
   int result=sendto(mdp_client_socket, mdp, len, 0,
 		    (struct sockaddr *)&name, sizeof(struct sockaddr_un));
@@ -756,8 +751,6 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
 
 int overlay_mdp_client_init()
 {
-  char mdp_temporary_socket[1024];
-  mdp_temporary_socket[0]=0;
   if (mdp_client_socket==-1) {
     /* Open socket to MDP server (thus connection is always local) */
     WHY("Use of abstract name space socket for Linux not implemented");
@@ -769,12 +762,12 @@ int overlay_mdp_client_init()
     }
 
     /* We must bind to a temporary file name */
-    snprintf(mdp_temporary_socket,1024,"%s/mdp-client.socket",serval_instancepath());
-    unlink(mdp_temporary_socket);    
     struct sockaddr_un name;
     name.sun_family = AF_UNIX;
-    snprintf(&name.sun_path[0],100,"%s",mdp_temporary_socket);
-    int len = 1+strlen(&name.sun_path[0]) + sizeof(name.sun_family)+1;
+    if (!FORM_SERVAL_INSTANCE_PATH(name.sun_path, "mdb-client.socket"))
+      return WHY("Could not form MDP client socket name");
+    unlink(name.sun_path);
+    int len = 1 + strlen(name.sun_path) + sizeof(name.sun_family) + 1;
     int r=bind(mdp_client_socket, (struct sockaddr *)&name, len);
     if (r) {
       WHY("Could not bind MDP client socket to file name");
@@ -789,9 +782,10 @@ int overlay_mdp_client_init()
 int overlay_mdp_client_done()
 {
   char mdp_temporary_socket[1024];
-  snprintf(mdp_temporary_socket,1024,"%s/mdp-client.socket",serval_instancepath());
-  unlink(mdp_temporary_socket);
-  if (mdp_client_socket!=-1) close(mdp_client_socket);
+  if (FORM_SERVAL_INSTANCE_PATH(mdp_temporary_socket, "mdp-client.socket"))
+    unlink(mdp_temporary_socket);
+  if (mdp_client_socket!=-1)
+    close(mdp_client_socket);
   mdp_client_socket=-1;
   return 0;
 }
@@ -809,12 +803,10 @@ int overlay_mdp_client_poll(long long timeout_ms)
 int overlay_mdp_recv(overlay_mdp_frame *mdp,int *ttl) 
 {
   char mdp_socket_name[101];
-  mdp_socket_name[100]=0;
-  snprintf(mdp_socket_name,100,"%s/mdp.socket",serval_instancepath());
-
+  if (!FORM_SERVAL_INSTANCE_PATH(mdp_socket_name, "mdp.socket"))
+    return -1;
   /* Check if reply available */
-  fcntl(mdp_client_socket, F_SETFL, 
-	fcntl(mdp_client_socket, F_GETFL, NULL)|O_NONBLOCK); 
+  fcntl(mdp_client_socket, F_SETFL, fcntl(mdp_client_socket, F_GETFL, NULL)|O_NONBLOCK); 
   unsigned char recvaddrbuffer[1024];
   struct sockaddr *recvaddr=(struct sockaddr *)recvaddrbuffer;
   unsigned int recvaddrlen=sizeof(recvaddrbuffer);

@@ -125,12 +125,12 @@ int server(char *backing_file,int size,int foregroundMode)
 
   /* Record PID */
   char filename[1024];
-  char *instancepath=getenv("SERVALINSTANCE_PATH");
-  if (!instancepath) instancepath=DEFAULT_INSTANCE_PATH;
-  snprintf(filename,1023,"%s/serval.pid",instancepath); filename[1023]=0;
+  if (!FORM_SERVAL_INSTANCE_PATH(filename, "serval.pid"))
+    exit(-1);
   FILE *f=fopen(filename,"w");
   if (!f) {
     WHY("Could not write to PID file");
+    perror("fopen");
     exit(-1);
   }
   fprintf(f,"%d\n",getpid());

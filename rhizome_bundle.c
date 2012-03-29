@@ -63,6 +63,11 @@ rhizome_manifest *rhizome_read_manifest_file(char *filename,int bufferP,int flag
       line[i]=0;
       /* Ignore blank lines */
       if (line[0]==0) continue;
+      /* Ignore comment lines */
+      if (line[0] == '#' || line[0] == '!') continue;
+      /* Parse property lines */
+      /* This could be improved to parse Java's Properties.store() output, by handling backlash
+         escapes and continuation lines */
       if (sscanf(line,"%[^=]=%[^\n\r]",var,value)==2)
 	{
 	  if (rhizome_manifest_get(m,var,NULL,0)!=NULL) {

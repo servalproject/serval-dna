@@ -250,10 +250,9 @@ int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockadd
   if (name[0]=='>') {
     I(fileP)=1;
     char dummyfile[1024];
-    snprintf(dummyfile,1024,"%s/%s",serval_instancepath(),&name[1]);
-    I(fd) = open(dummyfile,O_APPEND|O_RDWR);
-    if (I(fd)<1)
+    if (!FORM_SERVAL_INSTANCE_PATH(dummyfile, &name[1]) || (I(fd) = open(dummyfile,O_APPEND|O_RDWR)) < 1) {
       return WHY("could not open dummy interface file for append");
+    }
     /* Seek to end of file as initial reading point */
     I(offset)=lseek(I(fd),0,SEEK_END); /* socket gets reused to hold file offset */
     /* XXX later add pretend location information so that we can decide which "packets" to receive
