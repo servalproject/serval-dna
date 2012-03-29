@@ -88,21 +88,20 @@ int cli_usage() {
   return -1;
 }
 
-char *cli_arg(int argc,char **argv,command_line_option *o,
-	    char *argname,char *defaultvalue)
+char *cli_arg(int argc, char **argv, command_line_option *o, char *argname, char *defaultvalue)
 {
-  int arglen=strlen(argname)+2;
+  int arglen = strlen(argname);
   int i;
-  for(i=0;o->words[i];i++)
-    if ((strlen(o->words[i])==arglen)
-	&&(o->words[i][0]=='<')
-	&&(o->words[i][arglen-1]=='>')
-	&&(!strncasecmp(&o->words[i][1],argname,arglen-2)))
-      {
-	/* Found the arg, so return the corresponding argument */
-	return argv[i];
-      }
-
+  const char *word;
+  for(i = 0; word = o->words[i]; ++i) {
+    int wordlen = strlen(word);
+    if (i < argc
+      &&( (wordlen==arglen+2 && word[0]=='<' && word[wordlen-1]=='>' && !strncasecmp(&word[1], argname, arglen))
+        ||(wordlen==arglen+4 && word[0]=='[' && word[1]=='<' && word[wordlen-1]==']' && word[wordlen-2]=='>' && !strncasecmp(&word[2], argname, arglen)))
+      ) {
+      return argv[i];
+    }
+  }
   /* No matching argument was found, so return default value.
      It might seem that this should never happen, but it can because more than
      one version of a command line optiom may exist, one with a given argument
@@ -115,24 +114,23 @@ char *cli_arg(int argc,char **argv,command_line_option *o,
    of command sequences as alternate names of the command. */
 int parseCommandLine(int argc, char **args)
 {
-  int i,j;
+  int i;
   int ambiguous=0;
   int cli_call=-1;
-
   for(i=0;command_line_options[i].function;i++)
     {
-      for(j=0;(j<argc)&&command_line_options[i].words[j];j++)
-	if ((command_line_options[i].words[j][0]!='<')&&
-	    strcasecmp(command_line_options[i].words[j],args[j])) {
+      int j;
+      const char *word = NULL;
+      for (j = 0; (word = command_line_options[i].words[j]) && j != argc; ++j) {
+	if (word[0] == '[' || (word[0] != '<' && strcasecmp(word, args[j]))) {
 	  /* Words don't match, and word is not a place-holder for an argument,
 	     so it isn't this command line call. */
 	  break;
 	}
-
-      if ((j==argc)&&(!command_line_options[i].words[j])) {
-	/* We used up all words in args and command line call sequence, so we have
-	   a match. If we have multiple matches, then note that the call is 
-	   ambiguous. */
+      }
+      if (word ? word[0] == '[' : j == argc) {
+	/* We used up all non-optional words in args and command line call sequence, so we have
+	   a match. If we have multiple matches, then note that the call is ambiguous. */
 	if (cli_call>=0) ambiguous++;
 	if (ambiguous==1) {
 	  fprintf(stderr,"Ambiguous command line call:\n   ");
@@ -154,12 +152,14 @@ int parseCommandLine(int argc, char **args)
   if (cli_call<0) return cli_usage();
 
   /* Otherwise, make call */
-  return command_line_options[cli_call].function(argc,args,
-					  &command_line_options[cli_call]);
+  return command_line_options[cli_call].function(argc,args, &command_line_options[cli_call]);
 }
 
 int app_dna_lookup(int argc,char **argv,struct command_line_option *o)
 {
+  /* Create the instance directory if it does not yet exist */
+  if (create_serval_instance_dir() == -1)
+    return -1;
   return WHY("Not implemented");
 }
 
@@ -205,16 +205,9 @@ char *confValueGet(char *var,char *defaultValue)
 
 int app_server_start(int argc,char **argv,struct command_line_option *o)
 {
-  int foregroundP=0;
-  char *instancepath=getenv("SERVALINSTANCE_PATH");
-  if (!instancepath) instancepath=DEFAULT_INSTANCE_PATH;
-
   /* Process optional arguments */
-  if ((argc>=3)&&(!strcasecmp(argv[2],"foreground"))) foregroundP=1;
-  if ((argc>=4)&&(!strcasecmp(argv[2],"in"))) instancepath=argv[3];
-
-  /* Record instance path for easy access by whole process */
-  thisinstancepath=strdup(instancepath);
+  int foregroundP= (argc >= 3 && !strcasecmp(argv[2], "foreground"));
+  thisinstancepath = cli_arg(argc, argv, o, "instance path", NULL);
 
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
@@ -244,10 +237,10 @@ int app_server_start(int argc,char **argv,struct command_line_option *o)
      We can just become the server process ourselves --- no need to fork.
      
   */
-  rhizome_datastore_path=strdup(instancepath);
+  rhizome_datastore_path = serval_instancepath();
   rhizome_opendb();
   char *hlr_file;
-  if (asprintf(&hlr_file, "%s/%s", instancepath, "hlr.dat") == -1) {
+  if (asprintf(&hlr_file, "%s/%s", serval_instancepath(), "hlr.dat") == -1) {
     fprintf(stderr,"ERROR: asprintf() failed\n");
     return -1;
   }
@@ -263,7 +256,7 @@ int app_server_start(int argc,char **argv,struct command_line_option *o)
 
 int app_server_stop(int argc,char **argv,struct command_line_option *o)
 {
-  thisinstancepath = cli_arg(argc,argv,o,"instance path",getenv("SERVALINSTANCE_PATH"));
+  thisinstancepath = cli_arg(argc, argv, o, "instance path", NULL);
 
   int pid=-1;
   int running = servalNodeRunning(&pid);
@@ -566,8 +559,7 @@ int app_server_del(int argc,char **argv,struct command_line_option *o)
 
 int app_server_get(int argc,char **argv,struct command_line_option *o)
 {
-  char *var=cli_arg(argc,argv,o,"variable","");
-
+  char *var = cli_arg(argc, argv, o, "variable", "");
   char conffile[1024];
   FILE *in;
   if (!FORM_SERVAL_INSTANCE_PATH(conffile, "serval.conf") ||
@@ -575,14 +567,16 @@ int app_server_get(int argc,char **argv,struct command_line_option *o)
     ) {
     return WHY("could not read configuration file.");
   }
-
   /* Read lines of config file. */
   char line[1024];
   int found=0;
   int varlen=strlen(var);
   line[0]=0; fgets(line,1024,in);
   while(line[0]) {
-    if ((!strncasecmp(var,line,varlen))&&(line[varlen]=='=')) {
+    if (varlen == 0) {
+      fputs(line, stdout);
+    }
+    else if (!strncasecmp(var, line, varlen) && line[varlen] == '=') {
       fputs(line, stdout);
       break;
     }
@@ -593,8 +587,19 @@ int app_server_get(int argc,char **argv,struct command_line_option *o)
   return 0;
 }
 
+int app_rhizome_add(int argc, char **argv, struct command_line_option *o)
+{
+  char *manifestpath = cli_arg(argc, argv, o, "manifestfilepath", "");
+  char *filepath = cli_arg(argc, argv, o, "filepath", "");
+  printf("manifestpath = \"%s\"\n", manifestpath);
+  printf("filepath = \"%s\"\n", filepath);
+  return 0;
+}
+
 /* NULL marks ends of command structure.
    "<anystring>" marks an arg that can take any value.
+   "[<anystring>]" marks an optional arg that can take any value.
+   All args following the first optional arg are optional, whether marked or not.
    Only exactly matching prototypes will be used.
    Together with the description, this makes it easy for us to auto-generate the
    list of valid command line formats for display to the user if they try an
@@ -603,28 +608,33 @@ int app_server_get(int argc,char **argv,struct command_line_option *o)
    Keep this list alphabetically sorted for user convenience.
 */
 command_line_option command_line_options[]={
-  {app_dna_lookup,{"dna","lookup","<did>",NULL},CLIFLAG_NONOVERLAY,"Lookup the SIP/MDP address of the supplied telephone number (DID)."},
+  {app_dna_lookup,{"dna","lookup","<did>",NULL},CLIFLAG_NONOVERLAY,
+   "Lookup the SIP/MDP address of the supplied telephone number (DID)."},
   {cli_usage,{"help",NULL},0,
    "Display command usage."},
   {app_server_start,{"node","start",NULL},CLIFLAG_STANDALONE,
-   "Start Serval Mesh node process.  Instance path is read from SERVALINSTANCE_PATH environment variable."},
+   "Start Serval Mesh node process with instance path taken from SERVALINSTANCE_PATH environment variable."},
+  {app_server_start,{"node","start","in","<instance path>",NULL},CLIFLAG_STANDALONE,
+   "Start Serval Mesh node process with given instance path."},
   {app_server_start,{"node","start","foreground",NULL},CLIFLAG_STANDALONE,
    "Start Serval Mesh node process without detatching from foreground."},
-  {app_server_start,{"node","start","in","<instance path>",NULL},CLIFLAG_STANDALONE,
-   "Start Serval Mesh node process.  Instance path is as specified."},
+  {app_server_start,{"node","start","foreground","in","<instance path>",NULL},CLIFLAG_STANDALONE,
+   "Start Serval Mesh node process with given instance path, without detatching from foreground."},
   {app_server_stop,{"node","stop",NULL},0,
-   "Ask running Serval Mesh node process to stop. Instance path is read from SERVALINSTANCE_PATH environment variable."},
+   "Stop a running Serval Mesh node process with instance path taken from SERVALINSTANCE_PATH environment variable."},
   {app_server_stop,{"node","stop","in","<instance path>",NULL},0,
-   "Ask running Serval Mesh node process to stop.  Instance path as specified."},
+   "Stop a running Serval Mesh node process with given instance path."},
   {app_server_status,{"node","status",NULL},0,
    "Display information about any running Serval Mesh node."},
   {app_mdp_ping,{"mdp","ping","<SID|broadcast>",NULL},CLIFLAG_STANDALONE,
    "Attempts to ping specified node via Mesh Datagram Protocol (MDP)."},
-  {app_server_set,{"set","<variable>","<value>",NULL},0,
+  {app_server_set,{"config","set","<variable>","<value>",NULL},0,
    "Set specified configuration variable."},
-  {app_server_del,{"del","<variable>",NULL},0,
+  {app_server_del,{"config","del","<variable>",NULL},0,
    "Set specified configuration variable."},
-  {app_server_get,{"get","<variable>",NULL},0,
+  {app_server_get,{"config","get","[<variable>]",NULL},0,
    "Get specified configuration variable."},
+  {app_rhizome_add,{"rhizome","add","<manifestfilepath>","[<filepath>]",NULL},0,
+   "Add a manifest and file to Rhizome."},
   {NULL,{NULL}}
 };

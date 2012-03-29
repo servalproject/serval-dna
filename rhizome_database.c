@@ -42,11 +42,10 @@ int rhizome_opendb()
     fprintf(stderr,"Cannot open rhizome database -- no path specified\n");
     exit(1);
   }
-  if (strlen(rhizome_datastore_path)>1000) {
+  if (snprintf(dbname, sizeof(dbname), "%s/rhizome.db", rhizome_datastore_path) >= sizeof(dbname)) {
     fprintf(stderr,"Cannot open rhizome database -- data store path is too long\n");
     exit(1);
   }
-  snprintf(dbname,1024,"%s/rhizome.db",rhizome_datastore_path);
 
   int r=sqlite3_open(dbname,&rhizome_db);
   if (r) {
