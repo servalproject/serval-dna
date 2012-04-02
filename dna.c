@@ -609,13 +609,10 @@ int main(int argc,char **argv)
 	  rhizome_opendb();
 	  /* Also set hlr file to be in the Rhizome directory, to save the need to specify it
 	     separately. */
-	  char temp[1024];temp[1023]=0;
-	  snprintf(temp,1024,"%s/hlr.dat",optarg); 
-	  if (temp[1023]) {
+	  char temp[1024];
+	  if (snprintf(temp, sizeof(temp), "%s/hlr.dat", optarg) >= sizeof(temp))
 	    exit(WHY("Rhizome directory name too long."));
-	  }
-	  hlr_file=strdup(temp);
-	  
+	  hlr_file = strdup(temp);
 	  break;
 	case 'M': /* Distribute specified manifest and file pair using Rhizome. */
 	  /* This option assumes that the manifest is locally produced, and will

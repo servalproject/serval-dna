@@ -18,7 +18,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include <sys/stat.h>
+#include <sys/time.h>
+#include <math.h>
+#include <string.h>
 #include "serval.h"
+#include "rhizome.h"
 
 typedef struct command_line_option {
   int (*function)(int argc,char **argv,struct command_line_option *o);
@@ -618,11 +622,50 @@ int app_server_get(int argc,char **argv,struct command_line_option *o)
 
 int app_rhizome_add(int argc, char **argv, struct command_line_option *o)
 {
-  char *manifestpath = cli_arg(argc, argv, o, "manifestfilepath", "");
-  char *filepath = cli_arg(argc, argv, o, "filepath", "");
-  printf("manifestpath = \"%s\"\n", manifestpath);
-  printf("filepath = \"%s\"\n", filepath);
-  return 0;
+  const char *filepath = cli_arg(argc, argv, o, "filepath", "");
+  const char *manifestpath = cli_arg(argc, argv, o, "manifestpath", "");
+  /* Ensure the Rhizome database exists and is open */
+  if (create_serval_instance_dir() == -1)
+    return -1;
+  rhizome_datastore_path = serval_instancepath();
+  rhizome_opendb();
+  /* Create a new manifest that will represent the file, having a "name" value of the file's
+   * basename and a "date" value of right now */
+  rhizome_manifest *m = rhizome_new_manifest();
+  const char *name = strrchr(filepath, '/');
+  name = name ? name + 1 : filepath;
+  rhizome_manifest_set(m, "name", name);
+  rhizome_manifest_set_ll(m, "date", overlay_gettime_ms());
+  /* Add the manifest and its associated file to the Rhizome database, generating an "id" in the
+   * process */
+  int ret = rhizome_add_manifest(m, filepath,
+				 NULL, // no groups - XXX should allow them
+				 255, // ttl - XXX should read from somewhere
+				 0, // int verifyP
+				 1, // int checkFileP
+				 1 // int signP
+    );
+  if (ret == -1) {
+    return WHY("Manifest not added to Rhizome database");
+  } else {
+    /* If successfully added, overwrite the manifest file so that the Java component that is
+     * invoking this command can read it to obtain feedback on the result. */
+    if (manifestpath[0] && rhizome_write_manifest_file(m, manifestpath) == -1) {
+      ret = WHY("Could not overwrite manifest file.");
+    }
+  }
+  rhizome_manifest_free(m);
+  return ret;
+}
+
+int app_rhizome_list(int argc, char **argv, struct command_line_option *o)
+{
+  /* Create the instance directory if it does not yet exist */
+  if (create_serval_instance_dir() == -1)
+    return -1;
+  rhizome_datastore_path = serval_instancepath();
+  rhizome_opendb();
+  rhizome_list_manifests(0, 0);
 }
 
 /* NULL marks ends of command structure.
@@ -663,7 +706,9 @@ command_line_option command_line_options[]={
    "Set specified configuration variable."},
   {app_server_get,{"config","get","[<variable>]",NULL},0,
    "Get specified configuration variable."},
-  {app_rhizome_add,{"rhizome","add","<manifestfilepath>","[<filepath>]",NULL},0,
-   "Add a manifest and file to Rhizome."},
+  {app_rhizome_add,{"rhizome","add","file","<filepath>","[<manifestpath>]",NULL},0,
+   "Add a file to Rhizome and optionally write its manifest to the given path"},
+  {app_rhizome_list,{"rhizome","list",NULL},0,
+   "List all manifests and files in Rhizome"},
   {NULL,{NULL}}
 };

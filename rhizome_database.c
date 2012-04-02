@@ -290,7 +290,7 @@ int rhizome_drop_stored_file(char *id,int maximum_priority)
   We need to also need to create the appropriate row(s) in the MANIFESTS, FILES, 
   FILEMANIFESTS and GROUPMEMBERSHIPS tables, and possibly GROUPLIST as well.
  */
-int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename)
+int rhizome_store_bundle(rhizome_manifest *m, const char *associated_filename)
 {
   char sqlcmd[1024];
   const char *cmdtail;
@@ -500,13 +500,68 @@ char *rhizome_safe_encode(unsigned char *in,int len)
   return r;
 }
 
+int rhizome_list_manifests(int limit, int offset)
+{
+  char sqlcmd[1024];
+  int n = snprintf(sqlcmd, sizeof(sqlcmd), "SELECT files.id, files.length, files.datavalid, manifests.id, manifests.manifest, manifests.version, manifests.inserttime FROM files, filemanifests, manifests WHERE files.id = filemanifests.fileid AND filemanifests.manifestid = manifests.id");
+  if (n >= sizeof(sqlcmd))
+    return WHY("SQL command too long");
+  if (limit) {
+    n += snprintf(&sqlcmd[n], sizeof(sqlcmd) - n, " LIMIT %u", limit);
+    if (n >= sizeof(sqlcmd))
+      return WHY("SQL command too long");
+  }
+  if (offset) {
+    n += snprintf(&sqlcmd[n], sizeof(sqlcmd) - n, " OFFSET %u", offset);
+    if (n >= sizeof(sqlcmd))
+      return WHY("SQL command too long");
+  }
+  sqlite3_stmt *statement;
+  const char *cmdtail;
+  int ret = 0;
+  if (sqlite3_prepare_v2(rhizome_db, sqlcmd, strlen(sqlcmd) + 1, &statement, &cmdtail) != SQLITE_OK) {
+    sqlite3_finalize(statement);
+    ret = WHY(sqlite3_errmsg(rhizome_db));
+  } else {
+    size_t rows = 0;
+    while (sqlite3_step(statement) == SQLITE_ROW) {
+      ++rows;
+      if (!(   sqlite3_column_count(statement) == 7
+	    && sqlite3_column_type(statement, 0) == SQLITE_TEXT
+	    && sqlite3_column_type(statement, 1) == SQLITE_INTEGER
+	    && sqlite3_column_type(statement, 2) == SQLITE_INTEGER
+	    && sqlite3_column_type(statement, 3) == SQLITE_TEXT
+	    && sqlite3_column_type(statement, 4) == SQLITE_BLOB
+	    && sqlite3_column_type(statement, 5) == SQLITE_INTEGER
+	    && sqlite3_column_type(statement, 6) == SQLITE_INTEGER
+      )) { 
+	ret = WHY("Incorrect statement column");
+	break;
+      }
+      size_t filesize = sqlite3_column_int(statement, 1);
+      size_t manifestblobsize = sqlite3_column_bytes(statement, 4);
+      const char *manifestblob = (char *) sqlite3_column_blob(statement, 4);
+      printf("manifest blob = %s\n", manifestblob);
+      rhizome_manifest *m = rhizome_read_manifest_file(manifestblob, manifestblobsize, RHIZOME_VERIFY);
+      const char *name = rhizome_manifest_get(m, "name", NULL, 0);
+      printf("file id = %s\nfile length = %u\nfile datavalid = %u\nfile name = \"%s\"\n",
+	  sqlite3_column_text(statement, 0),
+	  filesize,
+	  sqlite3_column_int(statement, 2),
+	  name
+	);
+      rhizome_manifest_free(m);
+    }
+    printf("Found %lu rows\n", (unsigned long) rows);
+  }
+  sqlite3_finalize(statement);
+  return ret;
+}
 
-/* The following function just stores the file (or silently returns if it already
-   exists).
-   The relationships of manifests to this file are the responsibility of the
-   caller. */
-int rhizome_store_file(char *file,char *hash,int priority) {
-
+/* The following function just stores the file (or silently returns if it already exists).
+   The relationships of manifests to this file are the responsibility of the caller. */
+int rhizome_store_file(const char *file,char *hash,int priority)
+{
   int fd=open(file,O_RDONLY);
   if (fd<0) return WHY("Could not open associated file");
   
@@ -695,5 +750,3 @@ int rhizome_update_file_priority(char *fileid)
   }
   return 0;
 }
-
-

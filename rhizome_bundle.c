@@ -21,7 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include <stdlib.h>
 
-rhizome_manifest *rhizome_read_manifest_file(char *filename,int bufferP,int flags)
+rhizome_manifest *rhizome_read_manifest_file(const char *filename, int bufferP, int flags)
 {
   if (bufferP>MAX_MANIFEST_BYTES) return NULL;
 
@@ -30,12 +30,15 @@ rhizome_manifest *rhizome_read_manifest_file(char *filename,int bufferP,int flag
 
   if (bufferP) {
     m->manifest_bytes=bufferP;
-    bcopy(filename,m->manifestdata,m->manifest_bytes);
+    memcpy(m->manifestdata, filename, m->manifest_bytes);
   }
   else {
     FILE *f=fopen(filename,"r");
-    if (!f) { WHY("Could not open manifest file for reading."); 
-      rhizome_manifest_free(m); return NULL; }
+    if (!f) {
+      WHYF("Could not open manifest file %s for reading.", filename); 
+      rhizome_manifest_free(m);
+      return NULL;
+    }
     m->manifest_bytes = fread(m->manifestdata,1,MAX_MANIFEST_BYTES,f);
     fclose(f);
   }
@@ -144,7 +147,7 @@ rhizome_manifest *rhizome_read_manifest_file(char *filename,int bufferP,int flag
   return m;
 }
 
-int rhizome_hash_file(char *filename,char *hash_out)
+int rhizome_hash_file(const char *filename,char *hash_out)
 {
   /* Gnarf! NaCl's crypto_hash() function needs the whole file passed in in one
      go.  Trouble is, we need to run Serval DNA on filesystems that lack mmap(),
@@ -212,7 +215,7 @@ double rhizome_manifest_get_double(rhizome_manifest *m,char *var,double default_
 }
 
 
-int rhizome_manifest_set(rhizome_manifest *m,char *var,char *value)
+int rhizome_manifest_set(rhizome_manifest *m, const char *var, const char *value)
 {
   int i;
 
@@ -243,18 +246,6 @@ int rhizome_manifest_set_ll(rhizome_manifest *m,char *var,long long value)
   snprintf(svalue,100,"%lld",value);
 
   return rhizome_manifest_set(m,var,svalue);
-}
-
-long long rhizome_file_size(char *filename)
-{
-  FILE *f;
-
-  /* XXX really should just use stat instead of opening the file */
-  f=fopen(filename,"r");
-  fseek(f,0,SEEK_END);
-  long long size=ftello(f);
-  fclose(f);
-  return size;
 }
 
 #define MAX_RHIZOME_MANIFESTS 16
@@ -420,7 +411,7 @@ int rhizome_manifest_sign(rhizome_manifest *m)
   return 0;
 }
 
-int rhizome_write_manifest_file(rhizome_manifest *m,char *filename)
+int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename)
 {
   if (!m) return WHY("Manifest is null.");
   if (!m->finalised) return WHY("Manifest must be finalised before it can be written.");

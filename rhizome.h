@@ -160,16 +160,16 @@ extern sqlite3 *rhizome_db;
 
 int rhizome_opendb();
 int rhizome_manifest_createid(rhizome_manifest *m);
-int rhizome_write_manifest_file(rhizome_manifest *m,char *filename);
+int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename);
 int rhizome_manifest_sign(rhizome_manifest *m);
 int rhizome_drop_stored_file(char *id,int maximum_priority);
 int rhizome_manifest_priority(char *id);
-rhizome_manifest *rhizome_read_manifest_file(char *filename,int bufferPAndSize,int flags);
-int rhizome_hash_file(char *filename,char *hash_out);
+rhizome_manifest *rhizome_read_manifest_file(const char *filename, int bufferPAndSize, int flags);
+int rhizome_hash_file(const char *filename,char *hash_out);
 char *rhizome_manifest_get(rhizome_manifest *m,char *var,char *value_out,int maxlen);
 long long  rhizome_manifest_get_ll(rhizome_manifest *m,char *var);
 int rhizome_manifest_set_ll(rhizome_manifest *m,char *var,long long value);
-int rhizome_manifest_set(rhizome_manifest *m,char *var,char *value);
+int rhizome_manifest_set(rhizome_manifest *m, const char *var, const char *value);
 long long rhizome_file_size(char *filename);
 void _rhizome_manifest_free(const char *sourcefile,const char *funcname,int line,
 			    rhizome_manifest *m);
@@ -177,13 +177,15 @@ void _rhizome_manifest_free(const char *sourcefile,const char *funcname,int line
 rhizome_manifest *_rhizome_new_manifest(const char *file,const char *func,int line);
 #define rhizome_new_manifest() _rhizome_new_manifest(__FILE__,__FUNCTION__,__LINE__)
 int rhizome_manifest_pack_variables(rhizome_manifest *m);
-int rhizome_store_bundle(rhizome_manifest *m,char *associated_filename);
+int rhizome_store_bundle(rhizome_manifest *m, const char *associated_filename);
 int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid);
-int rhizome_store_file(char *file,char *hash,int priortity);
+int rhizome_store_file(const char *file,char *hash,int priortity);
 char *rhizome_safe_encode(unsigned char *in,int len);
 int rhizome_finish_sqlstatement(sqlite3_stmt *statement);
 int rhizome_bundle_import(rhizome_manifest *m_in,char *bundle,char *groups[], int ttl,
 			  int verifyP, int checkFileP, int signP);
+int rhizome_add_manifest(rhizome_manifest *m, const char *filename, char *groups[], int ttl,
+			 int verifyP, int checkFileP, int signP);
 int rhizome_manifest_finalise(rhizome_manifest *m,int signP);
 char *rhizome_bytes_to_hex(unsigned char *in,int byteCount);
 int rhizome_hex_to_bytes(char *in,unsigned char *out,int hexChars);

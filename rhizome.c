@@ -36,72 +36,92 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
    The file should be included in the specified rhizome groups, if possible.
    (some groups may be closed groups that we do not have the private key for.)
 */
+
 int rhizome_bundle_import(rhizome_manifest *m_in,char *bundle,char *groups[], int ttl,
 			  int verifyP, int checkFileP, int signP)
 {
   char filename[1024];
   char manifestname[1024];
-  char *buffer;
  
+  if (snprintf(filename, sizeof(filename), "%s/import/file.%s", rhizome_datastore_path, bundle) >= sizeof(filename)
+   || snprintf(manifestname, sizeof(manifestname), "%s/import/manifest.%s", rhizome_datastore_path, bundle) >= sizeof(manifestname)) {
+    return WHY("Manifest bundle name too long");
+  }
 
-  snprintf(filename,1024,"%s/import/file.%s",rhizome_datastore_path,bundle); filename[1023]=0;
-  snprintf(manifestname,1024,"%s/import/manifest.%s",rhizome_datastore_path,bundle); manifestname[1023]=0;
+  /* Read manifest file if no manifest was given */
+  rhizome_manifest *m = m_in;
+  if (!m_in)  {
+    m = rhizome_read_manifest_file(manifestname, 0 /* file not buffer */, RHIZOME_VERIFY);
+    if (!m)
+      return WHY("Could not read manifest file.");
+  } else {
+    if (debug&DEBUG_RHIZOMESYNC)
+      fprintf(stderr,"Importing direct from manifest structure hashP=%d\n",m->fileHashedP);
+  }
 
-  /* Open files */
-  rhizome_manifest *m=m_in;
-  if (!m_in) 
-    m=rhizome_read_manifest_file(manifestname,0 /* file not buffer */,RHIZOME_VERIFY);
-  else
-    if (debug&DEBUG_RHIZOMESYNC) fprintf(stderr,"Importing direct from manifest structure hashP=%d\n",m->fileHashedP);
+  /* Add the manifest and its associated file to the Rhizome database. */
+  int ret = rhizome_add_manifest(m, filename, groups, ttl, verifyP, checkFileP, signP);
+  unlink(filename);
+  if (ret == -1) {
+    unlink(manifestname);
+  } else {
+    /* >>> For testing, write manifest file back to disk and leave it there */
+    // unlink(manifestname);
+    if (rhizome_write_manifest_file(m, manifestname))
+      ret = WHY("Could not write manifest file.");
+  }
 
-  if (!m) return WHY("Could not read manifest file.");
+  /* If the manifest was allocated in this function, then this function is responsible for freeing
+   * it */
+  if (!m_in)
+    rhizome_manifest_free(m);
+
+  return ret;
+}
+
+int rhizome_add_manifest(rhizome_manifest *m, const char *filename, char *groups[], int ttl, int verifyP, int checkFileP, int signP)
+{
+  char *buffer;
   char hexhash[SHA512_DIGEST_STRING_LENGTH];
 
-  /* work out time to live */
-  if (ttl<0) ttl=0; if (ttl>254) ttl=254; m->ttl=ttl;
-
   /* Keep associated file name handy for later */
-  m->dataFileName=strdup(filename);
-  if (checkFileP) {
+  m->dataFileName = strdup(filename);
+
+  /* Store time to live */
+  m->ttl = ttl < 0 ? 0 : ttl > 254 ? 254 : ttl;
+
+  /* Check file is accessible and discover its length */
+  if (checkFileP || verifyP) {
     struct stat stat;
-    if (lstat(filename,&stat)) {
+    if (lstat(filename,&stat))
       return WHY("Could not stat() associated file");
-      m->fileLength=stat.st_size;
-    }
+    m->fileLength = stat.st_size;
   }
 
-  if (checkFileP||signP) {
-    if (rhizome_hash_file(filename,hexhash)) {
-      rhizome_manifest_free(m);
+  if (checkFileP || signP) {
+    if (rhizome_hash_file(filename, hexhash))
       return WHY("Could not hash file.");
-    }
-    memcpy(&m->fileHexHash[0],&hexhash[0],SHA512_DIGEST_STRING_LENGTH);
-    m->fileHashedP=1;
+    memcpy(&m->fileHexHash[0], &hexhash[0], SHA512_DIGEST_STRING_LENGTH);
+    m->fileHashedP = 1;
   }
 
-  if (verifyP)
-    {
-      /* Make sure hashes match.
-	 Make sure that no signature verification errors were spotted on loading. */
-      int verifyErrors=0;
-      char *mhexhash;
-      if (checkFileP) {
-	if ((mhexhash=rhizome_manifest_get(m,"filehash",NULL,0))!=NULL)
-	  if (strcmp(hexhash,mhexhash))
-	    verifyErrors++;
-      }
-      if (m->errors)
-	verifyErrors+=m->errors;
-      if (verifyErrors) {
-	rhizome_manifest_free(m);
-	unlink(manifestname);
-	unlink(filename);
-	return WHY("Errors encountered verifying bundle manifest");
-      }
+  if (verifyP) {
+    /* Make sure hashes match.
+       Make sure that no signature verification errors were spotted on loading. */
+    int verifyErrors=0;
+    char *mhexhash;
+    if (checkFileP) {
+      if ((mhexhash=rhizome_manifest_get(m,"filehash",NULL,0))!=NULL)
+	if (strcmp(hexhash,mhexhash))
+	  verifyErrors++;
     }
-
-  if (!verifyP) {
-    if ((buffer=rhizome_manifest_get(m,"id",NULL,0))!=NULL) {
+    if (m->errors)
+      verifyErrors+=m->errors;
+    if (verifyErrors)
+      return WHY("Errors encountered verifying bundle manifest");
+  }
+  else {
+    if (!(buffer = rhizome_manifest_get(m, "id", NULL, 0))) {
       /* No bundle id (256 bit random string being a public key in the NaCl CryptoSign crypto system),
 	 so create one, and keep the private key handy. */
       printf("manifest does not have an id\n");
@@ -124,43 +144,34 @@ int rhizome_bundle_import(rhizome_manifest *m_in,char *bundle,char *groups[], in
     rhizome_manifest_set(m,"filehash",hexhash);
     if (rhizome_manifest_get(m,"version",NULL,0)==NULL)
       /* Version not set, so set one */
-      rhizome_manifest_set_ll(m,"version",overlay_gettime_ms());
-    rhizome_manifest_set_ll(m,"first_byte",0);
-    rhizome_manifest_set_ll(m,"last_byte",rhizome_file_size(filename));
+      rhizome_manifest_set_ll(m,"version", overlay_gettime_ms());
+    rhizome_manifest_set_ll(m,"first_byte", 0);
+    rhizome_manifest_set_ll(m,"last_byte", m->fileLength);
   }
    
   /* Discard if it is older than the most recent known version */
-  long long storedversion = sqlite_exec_int64("SELECT version from manifests where id='%s';",rhizome_bytes_to_hex(m->cryptoSignPublic,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES));
-  if (storedversion>rhizome_manifest_get_ll(m,"version"))
-    {
-      rhizome_manifest_free(m);
-      return WHY("Newer version exists");
-    }
+  long long storedversion = sqlite_exec_int64(
+      "SELECT version from manifests where id='%s';",
+      rhizome_bytes_to_hex(m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)
+    );
+  if (storedversion > rhizome_manifest_get_ll(m, "version"))
+    return WHY("Newer version exists");
 					      
   /* Add group memberships */
-					      
-int i;
-  if (groups) for(i=0;groups[i];i++) rhizome_manifest_add_group(m,groups[i]);
+  if (groups) {
+    int i;
+    for(i = 0; groups[i]; i++)
+      rhizome_manifest_add_group(m, groups[i]);
+  }
 
-  if (rhizome_manifest_finalise(m,signP)) {
+  if (rhizome_manifest_finalise(m,signP))
     return WHY("Failed to finalise manifest.\n");
-  }
-
-  /* Write manifest back to disk */
-  if (rhizome_write_manifest_file(m,manifestname)) {
-    rhizome_manifest_free(m);
-    return WHY("Could not write manifest file.");
-  }
 
   /* Okay, it is written, and can be put directly into the rhizome database now */
-  int r=rhizome_store_bundle(m,filename);
-  if (!r) {
-    // XXX For testing   unlink(manifestname);
-    unlink(filename);
-    return 0;
-  }
+  if (rhizome_store_bundle(m, filename) == -1)
+    return WHY("rhizome_store_bundle() failed.");
 
-  return WHY("rhizome_store_bundle() failed.");
+  return 0;
 }
 
 /* Update an existing Rhizome bundle */
