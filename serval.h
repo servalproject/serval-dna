@@ -710,7 +710,7 @@ extern unsigned char *overlay_local_identities[OVERLAY_MAX_LOCAL_IDENTITIES];
 #define OF_TYPE_RHIZOME_ADVERT 0x50 /* Advertisment of file availability via Rhizome */
 #define OF_TYPE_PLEASEEXPLAIN 0x60 /* Request for resolution of an abbreviated address */
 #define OF_TYPE_NODEANNOUNCE 0x70
-#define OF_TYPE_RESERVED_08 0x80
+#define OF_TYPE_IDENTITYENQUIRY 0x80
 #define OF_TYPE_RESERVED_09 0x90
 #define OF_TYPE_RESERVED_0a 0xa0
 #define OF_TYPE_RESERVED_0b 0xb0
