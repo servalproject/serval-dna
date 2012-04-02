@@ -146,7 +146,7 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,
 	  ofs+=2;
 	  break;
 	case OF_TYPE_NODEANNOUNCE:
-	case OF_TYPE_RESERVED_08:
+	case OF_TYPE_IDENTITYENQUIRY:
 	case OF_TYPE_RESERVED_09:
 	case OF_TYPE_RESERVED_0a:
 	case OF_TYPE_RESERVED_0b:
