@@ -1,0 +1,35 @@
+#!/bin/bash
+
+source "${0%/*}/../testframework.sh"
+dna="${0%/*}/../dna"
+
+setup() {
+   export SERVALINSTANCE_PATH=$TFWTMP/dna
+   hlr_dat=$SERVALINSTANCE_PATH/hlr.dat
+   mkdir $SERVALINSTANCE_PATH
+   # Start DNA server
+   "$dna" -n -vvv -S 1 -f $hlr_dat >$SERVALINSTANCE_PATH/dna.log 2>&1 &
+   sleep 1
+   pids=$(ps -u$UID | awk '$4 == "dna" {print $1}')
+   if [ -z "$pids" ]; then
+      _tfw_fatalmsg "dna did not start"
+      _tfw_caterr $SERVALINSTANCE_PATH/dna.log
+      _tfw_fatalexit
+   fi
+}
+
+teardown() {
+   [ -s $SERVALINSTANCE_PATH/serval.pid ] && kill $(cat $SERVALINSTANCE_PATH/serval.pid)
+}
+
+doc_CreateSID='Create a new SID in <<3 seconds'
+test_CreateSID() {
+   execute "$dna" -d 0427679796 -C
+   assertExitStatus '==' 0
+   assertRealTime '<' 0.5
+   assertStdoutGrep '^OK:'
+   sid=`replayStdout | grep '^OK:' | cut -f2 -d:`
+   assertCmp 'valid SID was returned' "$sid" '~' '[0-9A-F]+'
+}
+
+runTests
