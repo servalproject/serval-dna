@@ -6,9 +6,13 @@
 *.o
 *.suo
 .*.sw?
-dna
+configure
+autom4te.cache
+Makefile
+config.log
+config.status
 nacl/nacl-20110221/build
 nacl/naclinc.txt
 nacl/nacllib.txt
 serval.c
-
+dna

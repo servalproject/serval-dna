@@ -14,9 +14,13 @@ echo " but fortunately it only needs to happen once.)"
 cd nacl
 ./nacl-gcc-prep
 cd ..
-LDFLAGS="$LDFLAGS "`cat naclbuilddir.txt`"/libnacl.a"
+CFLAGS="$CFLAGS -Inacl/"`cat nacl/naclinc.txt`
+LDFLAGS="$LDFLAGS nacl/"`cat nacl/nacllib.txt`
 
+AC_CHECK_LIB(m,sqrtf,[LDFLAGS="$LDFLAGS -lm"])
 AC_CHECK_LIB(nsl,callrpc,[LDFLAGS="$LDFLAGS -lnsl"])
 AC_CHECK_LIB(socket,socket,[LDFLAGS="$LDFLAGS -lsocket"])
+AC_CHECK_LIB(dl,dlopen,[LDFLAGS="$LDFLAGS -ldl"])
+AC_CHECK_LIB(pthread,pthread_create,[LDFLAGS="$LDFLAGS -lpthread"])
 
 AC_OUTPUT(Makefile)
