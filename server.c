@@ -17,6 +17,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include <time.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 
@@ -128,7 +129,7 @@ int server(char *backing_file,int size,int foregroundMode)
     exit(-1);
   FILE *f=fopen(filename,"w");
   if (!f) {
-    WHY("Could not write to PID file");
+    WHYF("Could not write to PID file %s", filename);
     perror("fopen");
     exit(-1);
   }
