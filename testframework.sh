@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Serval Project testing framework
+# Serval Project testing framework for Bash shell
 # Copyright 2012 Paul Gardner-Stephen
 #
 # This program is free software; you can redistribute it and/or
@@ -20,109 +20,204 @@
 # This file is sourced by all testing scripts.  A typical test script looks
 # like this:
 #
-# #!/bin/sh
-# . testframework.sh
-# doc_feature1='Feature one works correctly'
+# #!/bin/bash
+# source testframework.sh
+# setup() {
+#   export BLAH_CONFIG=$TFWTMP/blah.conf
+#   echo "username=$LOGNAME" >$BLAH_CONFIG
+# }
+# teardown() {
+#   # $TFWTMP is always removed after every test, so no need to
+#   # remove blah.conf ourselves.
+# }
+# doc_feature1='Feature one works'
 # test_feature1() {
-#   execute feature1 --options arg1 arg2
-#   assertExitStatus == 0
-#   assertUserTime <= 0
+#   execute programUnderTest --feature1 arg1 arg2
+#   assertExitStatus '==' 0
+#   assertRealTime --message='ran in under half a second' '<=' 0.5
 #   assertStdoutIs ""
 #   assertStderrIs ""
 # }
-# doc_feature2='Name of feature two'
+# doc_feature2='Feature two fails with status 1'
+# setup_feature2() {
+#   # Overrides setup(), so we have to call it ourselves explicitly
+#   # here if we still want it.
+#   setup
+#   echo "option=specialValue" >>$BLAH_CONFIG
+# }
 # test_feature2() {
-#   execute feature2 --options arg1 arg2
-#   assertExitStatus == 1
+#   execute programUnderTest --feature2 arg1 arg2
+#   assertExitStatus '==' 1
 #   assertStdoutIs ""
 #   assertStderrGrep "^ERROR: missing arg3$"
 # }
-# runTests
+# runTests "$@"
+
+usage() {
+   echo "Usage: ${0##*/} [-t|--trace] [-v|--verbose] [--filter=prefix] [--]"
+}
 
 runTests() {
    _tfw_stdout=1
-   _tfw_stderr=2
+   _tfw_stdout=1
    _tfw_checkBashVersion
-   _tfw_setup
-   for testName in `_tfw_findTests` ; do
-      local docvar="doc_$testName"
-      _tfw_echo "${!docvar:-$testName}"
-      (
-         set -e
-         setup
-         trap 'stat=$?; teardown; exit $stat' 0
-         test_$testName
-      )
-      stat=$?
-      [ $stat -eq 255 ] && exit 255 # Bail out if _tfw_fatal was called in a test
-      if [ $stat -eq 0 ]; then
-         _tfw_echo PASS
-      else
-         _tfw_echo FAIL
+   _tfw_trace=false
+   _tfw_verbose=false
+   _tfw_logfile=test.log
+   local allargs="$*"
+   local filter=
+   while [ $# -ne 0 ]; do
+      case "$1" in
+      --help) usage; exit 0;;
+      -t|--trace) _tfw_trace=true;;
+      -v|--verbose) _tfw_verbose=true;;
+      --filter=*) filter="${1#*=}";;
+      --) shift; break;;
+      --*) _tfw_fatal "unsupported option: $1";;
+      *) _tfw_fatal "spurious argument: $1";;
+      esac
+      shift
+   # Kick off the log file.
+   done
+   {
+      date
+      echo "$0 $allargs"
+   } >$_tfw_logfile
+   # Iterate through all test cases.
+   local testcount=0
+   local passcount=0
+   for testName in `_tfw_findTests`
+   do
+      _tfw_testname=$testName
+      if [ -z "$filter" -o "${testName#$filter}" != "$testName" ]; then
+         let testcount=testcount+1
+         (
+            local docvar="doc_$testName"
+            _tfw_echo -n "$testcount. ${!docvar:-$testName}..."
+            trap '_tfw_status=$?; _tfw_teardown; exit $_tfw_status' 0 1 2 15
+            _tfw_result=ERROR
+            _tfw_setup
+            _tfw_result=FAIL
+            _tfw_phase=testcase
+            echo "# call test_$testName()"
+            $_tfw_trace && set -x
+            test_$testName
+            _tfw_result=PASS
+            exit 0
+         )
+         local stat=$?
+         case $stat in
+         255) exit 255;; # _tfw_fatal was called
+         254) _tfw_echo " ERROR";; # _tfw_failexit was called in setup or teardown or _tfw_error was called anywhere
+         0) _tfw_echo " PASS"; let passcount=passcount+1;;
+         *) _tfw_echo " FAIL";;
+         esac
       fi
    done
-   return 0
+   s=$([ $testcount -eq 1 ] || echo s)
+   _tfw_echo "$testcount test$s, $passcount passed"
+   [ $passcount -eq $testcount ]
 }
 
+# The following functions can be overridden by a test script to provide a
+# default fixture for all test cases.
+
 setup() {
-   : # To be overridden by the test script
+   :
 }
 
 teardown() {
-   : # To be overridden by the test script
+   :
 }
+
+# The following functions are provided to facilitate writing test cases and
+# fixtures.
 
 execute() {
    _tfw_last_argv0="$1"
-   /usr/bin/time --portability --output=$_tfw_tmp/times "$@" >$_tfw_tmp/stdout 2>$_tfw_tmp/stderr
+   echo "# execute $*"
+   /usr/bin/time --format='realtime=%e;usertime=%U;systime=%S' --output=$_tfw_tmp/times "$@" >$_tfw_tmp/stdout 2>$_tfw_tmp/stderr
    _tfw_exitStatus=$?
-}
-
-assert() {
-   local message="$1"
-   shift
-   [ -z "$message" ] && message="assertion $@"
-   if ! "$@"; then
-      fail "assertion failed: $message"
+   echo "# Exit status = $_tfw_exitStatus"
+   if grep --quiet --invert-match --regexp='^realtime=[0-9.]*;usertime=[0-9.]*;systime=[0-9.]*$' $_tfw_tmp/times; then
+      echo "# Times file contains spurious data:"
+      _tfw_cat $_tfw_tmp/times
+      if [ $_tfw_exitStatus -eq 0 ]; then
+         _tfw_exitStatus=255
+         echo "# Deeming exit status of command to be $_tfw_exitStatus"
+      fi
+      realtime=0
+      usertime=0
+      systime=0
+      realtime_ms=0
+      #usertime_ms=0
+      #systime_ms=0
+   else
+      source $_tfw_tmp/times
+      realtime_ms=$(/usr/bin/awk "BEGIN { print int($realtime * 1000) }")
+      #usertime_ms=$(/usr/bin/awk "BEGIN { print int($usertime * 1000) }")
+      #systime_ms=$(/usr/bin/awk "BEGIN { print int($systime * 1000) }")
    fi
-}
-
-_tfw_cmp() {
-   [ $# -ne 3 ] && _tfw_error 2 "incorrect arguments"
-   local arg1="$1"
-   local op="$2"
-   local arg2="$3"
-   case $op in
-   '=='|'!='|'<'|'<='|'>'|'>=') awkop="$op";;
-   '~'|'!~') awkop="$op";;
-   *) _tfw_error "invalid operator: $op";;
-   esac
-   /usr/bin/awk -v arg1="$arg1" -v arg2="$arg2" -- 'BEGIN { exit (arg1 '"$awkop"' arg2) ? 0 : 1 }' </dev/null
-}
-
-assertCmp() {
-   local message="$1 (${2:-''} $3 ${4:-''})"
-   shift
-   assert "$message" _tfw_cmp "$@"
    return 0
 }
 
-log() {
-   _tfw_echo "$@"
+assert() {
+   _tfw_getopts_assert assert "$@"
+   shift $_tfw_getopts_shift
+   _tfw_assert "$@" || _tfw_failexit
+   echo "# Assertion passed: $*"
+   return 0
+}
+
+assertExpr() {
+   _tfw_getopts_assert assertexpr "$@"
+   shift $_tfw_getopts_shift
+   local awkexpr=$(_tfw_expr_to_awkexpr "$@")
+   _tfw_message="${_tfw_message+$_tfw_message }($awkexpr)"
+   _tfw_assert _tfw_eval_awkexpr "$awkexpr" || _tfw_failexit
+   echo "# Assertion passed: $awkexpr"
+   return 0
 }
 
 fail() {
-   _tfw_echo "$1"
-   exit 1
+   _tfw_getopts_assert fail "$@"
+   shift $_tfw_getopts_shift
+   [ $# -ne 0 ] && _tfw_failmsg "$1"
+   _tfw_backtrace >&2
+   _tfw_failexit
+}
+
+error() {
+   _tfw_getopts_assert error "$@"
+   shift $_tfw_getopts_shift
+   [ $# -ne 0 ] && _tfw_errormsg "$1"
+   _tfw_backtrace >&2
+   _tfw_errorexit
+}
+
+fatal() {
+   [ $# -eq 0 ] && set -- "no reason given"
+   _tfw_fatalmsg "$@"
+   _tfw_backtrace >&2
+   _tfw_fatalexit
 }
 
 assertExitStatus() {
-   assertCmp "exit status of ${_tfw_last_argv0##*/} $_tfw_exitStatus $*" "$_tfw_exitStatus" "$@"
+   _tfw_getopts_assert exitstatus "$@"
+   shift $_tfw_getopts_shift
+   [ -z "$_tfw_message" ] && _tfw_message="exit status of ${_tfw_last_argv0##*/} ($_tfw_exitStatus) $*"
+   _tfw_assertExpr "$_tfw_exitStatus" "$@" || _tfw_failexit
+   echo "# Assertion passed: $_tfw_message"
+   return 0
 }
 
 assertRealTime() {
-   local realtime=$(awk '$1 == "real" { print $2 }' $_tfw_tmp/times)
-   assertCmp "real execution time of ${_tfw_last_argv0##*/}" "$realtime" "$@"
+   _tfw_getopts_assert realtime "$@"
+   shift $_tfw_getopts_shift
+   [ -z "$_tfw_message" ] && _tfw_message="real execution time of ${_tfw_last_argv0##*/} ($realtime) $*"
+   _tfw_assertExpr "$realtime" "$@" || _tfw_failexit
+   echo "# Assertion passed: $_tfw_message"
+   return 0
 }
 
 replayStdout() {
@@ -134,48 +229,235 @@ replayStderr() {
 }
 
 assertStdoutIs() {
-   _tfw_assert_stdxxx_is stdout "$@"
+   _tfw_assert_stdxxx_is stdout "$@" || _tfw_failexit
 }
 
 assertStderrIs() {
-   _tfw_assert_stdxxx_is stderr "$@"
+   _tfw_assert_stdxxx_is stderr "$@" || _tfw_failexit
 }
 
 assertStdoutGrep() {
-   _tfw_assert_stdxxx_grep stdout "$@"
+   _tfw_assert_stdxxx_grep stdout "$@" || _tfw_failexit
 }
 
 assertStderrGrep() {
-   _tfw_assert_stdxxx_grep stderr "$@"
+   _tfw_assert_stdxxx_grep stderr "$@" || _tfw_failexit
+}
+
+# Internal (private) functions that are not to be invoked directly from test
+# scripts.
+
+_tfw_setup() {
+   _tfw_phase=setup
+   _tfw_tmp=/tmp/_tfw-$$
+   /bin/mkdir $_tfw_tmp
+   exec <&- 5>&1 5>&2 >$_tfw_tmp/log.stdout 2>$_tfw_tmp/log.stderr 6>$_tfw_tmp/log.xtrace
+   BASH_XTRACEFD=6
+   _tfw_stdout=5
+   _tfw_stderr=5
+   if $_tfw_verbose; then
+      # These tail processes will die when the test case's subshell exits.
+      tail --pid=$$ --follow $_tfw_tmp/log.stdout >&$_tfw_stdout 2>/dev/null &
+      tail --pid=$$ --follow $_tfw_tmp/log.stderr >&$_tfw_stderr 2>/dev/null &
+   fi
+   export TFWTMP=$_tfw_tmp/tmp
+   /bin/mkdir $TFWTMP
+   echo '# SETUP'
+   case `type -t setup_$testName` in
+   function)
+      echo "# call setup_$testName()"
+      $_tfw_trace && set -x
+      setup_$testName $testName
+      set +x
+      ;;
+   *)
+      echo "# call setup($testName)"
+      $_tfw_trace && set -x
+      setup $testName
+      set +x
+      ;;
+   esac
+   echo '# END SETUP'
+}
+
+_tfw_teardown() {
+   _tfw_phase=teardown
+   echo '# TEARDOWN'
+   case `type -t teardown_$testName` in
+   function)
+      echo "# call teardown_$testName()"
+      $_tfw_trace && set -x
+      teardown_$testName
+      set +x
+      ;;
+   *)
+      echo "# call teardown($testName)"
+      $_tfw_trace && set -x
+      teardown $testName
+      set +x
+      ;;
+   esac
+   echo '# END TEARDOWN'
+   {
+      local banner="==================== $_tfw_testname ===================="
+      echo "$banner"
+      echo "TEST RESULT: $_tfw_result"
+      echo '++++++++++ log.stdout ++++++++++'
+      cat $_tfw_tmp/log.stdout
+      echo '++++++++++'
+      echo '++++++++++ log.stderr ++++++++++'
+      cat $_tfw_tmp/log.stderr
+      echo '++++++++++'
+      if $_tfw_trace; then
+         echo '++++++++++ log.xtrace ++++++++++'
+         cat $_tfw_tmp/log.xtrace
+         echo '++++++++++'
+      fi
+      echo "${banner//[^=]/=}"
+   } >>$_tfw_logfile
+   /bin/rm -rf $_tfw_tmp
+}
+
+_tfw_assert() {
+   if ! "$@"; then
+      _tfw_failmsg "assertion failed: ${_tfw_message:-$*}"
+      _tfw_backtrace >&2
+      return 1
+   fi
+   return 0
+}
+
+_tfw_getopts_assert() {
+   local context="$1"
+   shift
+   _tfw_message=
+   _tfw_dump_stdout_on_fail=false
+   _tfw_dump_stderr_on_fail=false
+   _tfw_opt_matches=
+   _tfw_getopts_shift=0
+   while [ $# -ne 0 ]; do
+      case "$context:$1" in
+      *:--message=*) _tfw_message="${1#*=}";;
+      *:--stdout) _tfw_dump_stdout_on_fail=true;;
+      *:--stderr) _tfw_dump_stderr_on_fail=true;;
+      filegrep:--matches=*) _tfw_opt_matches="${1#*=}";;
+      *:--) let _tfw_getopts_shift=_tfw_getopts_shift+1; shift; break;;
+      *:--*) _tfw_error "unsupported option: $1";;
+      *) break;;
+      esac
+      let _tfw_getopts_shift=_tfw_getopts_shift+1
+      shift
+   done
+}
+
+_tfw_expr_to_awkexpr() {
+   local awkexpr=
+   for arg; do
+      if [ -z "${arg//[0-9]}" ]; then
+         awkexpr="${awkexpr:+$awkexpr }$arg"
+      else
+         case $arg in
+         '==' | '!=' | '<' | '<=' | '>' | '>=' | \
+         '~' | '!~' | '&&' | '||' | '!' )
+            awkexpr="${awkexpr:+$awkexpr }$arg"
+            ;;
+         *)
+            arg=${arg//\\/\\\\} #} restore Vim syntax highlighting
+            arg=${arg//"/\\"}
+            awkexpr="${awkexpr:+$awkexpr }\"$arg\""
+            ;;
+         esac
+      fi
+   done
+   echo $awkexpr
+}
+
+_tfw_eval_awkexpr() {
+   local awkerrs # on separate line so we don't lose exit status
+   awkerrs=$(/usr/bin/awk "BEGIN { exit(($*) ? 0 : 1) }" </dev/null 2>&1)
+   local stat=$?
+   if [ -n "$awkerrs" ]; then
+      _tfw_error "invalid expression: $*"
+      stat=254
+   fi
+   return $stat
+}
+
+_tfw_assertExpr() {
+   local awkexpr=$(_tfw_expr_to_awkexpr "$@")
+   _tfw_assert _tfw_eval_awkexpr "$awkexpr" || _tfw_failexit
+   echo "# Assertion passed: $awkexpr"
 }
 
 _tfw_assert_stdxxx_is() {
-   [ $# -ne 2 ] && _tfw_error 2 "incorrect arguments"
-   if ! [ "$2" = $(/bin/cat $_tfw_tmp/$1) ]; then
-      _tfw_echo "assertion failed: $1 of ${_tfw_last_argv0##*/} is \"$2\""
-      _tfw_cat --$1
-      exit 1
+   local qual="$1"
+   shift
+   _tfw_getopts_assert filecontent --$qual "$@"
+   shift $_tfw_getopts_shift
+   if [ $# -ne 1 ]; then
+      _tfw_error "incorrect arguments"
+      return 254
    fi
+   local message="${_tfw_message:-$qual of ${_tfw_last_argv0##*/} is \"$1\"}"
+   if ! [ "$1" = $(/bin/cat $_tfw_tmp/$qual) ]; then
+      _tfw_failmsg "assertion failed: $message"
+      _tfw_backtrace >&2
+      return 1
+   fi
+   echo "# Assertion passed: $message"
+   return 0
 }
 
 _tfw_assert_stdxxx_grep() {
-   [ $# -ne 2 ] && _tfw_error 2 "incorrect arguments"
-   if ! /bin/grep --quiet --regexp="$2" $_tfw_tmp/$1; then
-      _tfw_echo "assertion failed: $1 of ${_tfw_last_argv0##*/} matches \"$2\""
-      _tfw_cat --$1
-      exit 1
+   local qual="$1"
+   shift
+   _tfw_getopts_assert filegrep --$qual "$@"
+   shift $((_tfw_getopts_shift - 1))
+   if [ $# -ne 1 ]; then
+      _tfw_error "incorrect arguments"
+      return 254
    fi
+   local message="${_tfw_message:-$qual of ${_tfw_last_argv0##*/} contains a line matching \"$1\"}"
+   local matches=$(/bin/grep --regexp="$1" $_tfw_tmp/$qual | /usr/bin/wc --lines)
+   if [ -z "$_tfw_opt_matches" ]; then
+      message="${_tfw_message:-$qual of ${_tfw_last_argv0##*/} contains a line matching \"$1\"}"
+      if [ $matches -eq 0 ]; then
+         _tfw_failmsg "assertion failed: $message"
+         _tfw_backtrace >&2
+         return 1
+      fi
+   elif [ -z "${_tfw_opt_matches//[0-9]}" ]; then
+      message="${_tfw_message:-$qual of ${_tfw_last_argv0##*/} contains exactly $_tfw_opt_matches line$s matching \"$1\"}"
+      if [ $matches -ne $_tfw_opt_matches ]; then
+         local s=$([ $_tfw_opt_matches -ne 1 ] && echo s)
+         _tfw_failmsg "assertion failed: $message"
+         _tfw_backtrace >&2
+         return 1
+      fi
+   else
+      _tfw_error "unsupported value for --matches=$_tfw_opt_matches"
+      return 254
+   fi
+   echo "# Assertion passed: $message"
+   return 0
 }
 
+# Write to the real stdout of the test script.
 _tfw_echo() {
    echo "$@" >&$_tfw_stdout
 }
 
+# Write a message to the real stderr of the test script, so the user sees it
+# immediately.  Also write the message to the stderr log, so it can be recovered
+# later.
 _tfw_echoerr() {
    echo "$@" >&$_tfw_stderr
+   if [ $_tfw_stderr -ne 2 ]; then
+      echo "$@" >&2
+   fi
 }
 
-_tfw_catguts() {
+_tfw_cat() {
    for file; do
       case $file in
       --stdout) 
@@ -197,29 +479,6 @@ _tfw_catguts() {
    done
 }
 
-_tfw_cat() {
-   _tfw_catguts "$@" >&$_tfw_stdout
-}
-
-_tfw_caterr() {
-   _tfw_catguts "$@" >&$_tfw_stderr
-}
-
-_tfw_setup() {
-   _tfw_tmp=/tmp/_tfw-$$
-   /bin/mkdir $_tfw_tmp
-   trap 'stat=$?; _tfw_teardown; exit $stat' 0 1 2 15
-   exec <&- 5>&1 5>&2 >$_tfw_tmp/log.stdout 2>$_tfw_tmp/log.stderr
-   _tfw_stdout=5
-   _tfw_stderr=5
-   export TFWTMP=$_tfw_tmp/tmp
-   /bin/mkdir $TFWTMP
-}
-
-_tfw_teardown() {
-   /bin/rm -rf $_tfw_tmp
-}
-
 _tfw_checkBashVersion() {
    case $BASH_VERSION in
    [56789].* | 4.[23456789].*) ;;
@@ -229,19 +488,72 @@ _tfw_checkBashVersion() {
 }
 
 _tfw_findTests() {
-   builtin declare -F | sed -n -e '/^declare -f test_..*/s/^declare -f test_//p'
+   builtin declare -F | sed -n -e '/^declare -f test_..*/s/^declare -f test_//p' | sort
 }
 
-_tfw_error() {
-   local up=1
-   if [ $# -gt 1 ]; then
-      case $1 in
-      [1-9]) up=$1; shift;;
-      esac
-   fi
-   echo "${BASH_SOURCE[$up]}: ERROR in ${FUNCNAME[$up]}: $*" >&$_tfw_stderr
-   exit 1
+# A "fail" event occurs when any assertion fails, and indicates that the test
+# has not passed.  Other tests may still proceed.  A "fail" event during setup
+# or teardown is treated as an error, not a failure.
+
+_tfw_failmsg() {
+   # A failure during setup or teardown is treated as an error.
+   case $_tfw_phase in
+   testcase) echo "FAIL: $*";;
+   *) echo "ERROR: $*" >&2;;
+   esac
 }
+
+_tfw_backtrace() {
+   local -i up=1
+   while [ "${BASH_SOURCE[$up]}" == "${BASH_SOURCE[0]}" ]; do
+      let up=up+1
+   done
+   local -i i=0
+   while [ $up -lt ${#FUNCNAME[*]} -a "${BASH_SOURCE[$up]}" != "${BASH_SOURCE[0]}" ]; do
+      echo "[$i] ${FUNCNAME[$(($up-1))]}() called from ${FUNCNAME[$up]}() at line ${BASH_LINENO[$(($up-1))]} of ${BASH_SOURCE[$up]}"
+      let up=up+1
+      let i=i+1
+   done
+}
+
+_tfw_failexit() {
+   # When exiting a test case due to a failure, log any diagnostic output that
+   # has been requested.
+   $_tfw_dump_stdout_on_fail && _tfw_cat --stdout
+   $_tfw_dump_stderr_on_fail && _tfw_cat --stderr
+   # A failure during setup or teardown is treated as an error.
+   case $_tfw_phase in
+   testcase) exit 1;;
+   *) _tfw_errorexit;;
+   esac
+}
+
+# An "error" event prevents a test from running, so it neither passes nor fails.
+# Other tests may still proceed.
+
+_tfw_error() {
+   local -i up=1
+   while true; do
+      case ${FUNCNAME[$up]} in
+      _tfw_*) let up=up+1;;
+      *) break;;
+      esac
+   done
+   echo "ERROR in ${FUNCNAME[$up]}: $*" >&2
+   _tfw_backtrace >&2
+   _tfw_errorexit
+}
+
+_tfw_errorexit() {
+   # Do not exit process during teardown
+   case $_tfw_phase in
+   teardown) _tfw_result=ERROR; [ $_tfw_status -lt 254 ] && _tfw_status=254;;
+   *) exit 254;;
+   esac
+}
+
+# A "fatal" event stops the entire test run, and generally indicates an
+# insurmountable problem in the test script or in the test framework itself.
 
 _tfw_fatalmsg() {
    _tfw_echoerr "${BASH_SOURCE[1]}: FATAL: $*"
