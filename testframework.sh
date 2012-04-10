@@ -48,7 +48,7 @@
 # test_feature2() {
 #   execute programUnderTest --feature2 arg1 arg2
 #   assertExitStatus '==' 1
-#   assertStdoutIs ""
+#   assertStdoutIs -e "Response:\tok\n"
 #   assertStderrGrep "^ERROR: missing arg3$"
 # }
 # runTests "$@"
@@ -474,13 +474,14 @@ _tfw_assert_stdxxx_is() {
    local qual="$1"
    shift
    _tfw_getopts_assert filecontent --$qual "$@"
-   shift $_tfw_getopts_shift
-   if [ $# -ne 1 ]; then
+   shift $((_tfw_getopts_shift - 1))
+   if [ $# -lt 1 ]; then
       _tfw_error "incorrect arguments"
       return 254
    fi
-   local message="${_tfw_message:-$qual of ${_tfw_last_argv0##*/} is \"$1\"}"
-   if ! [ "$1" = $(/bin/cat $_tfw_tmp/$qual) ]; then
+   local message="${_tfw_message:-$qual of ${_tfw_last_argv0##*/} is $*}"
+   echo -n "$@" >$_tfw_tmp/stdxxx_is.tmp
+   if ! /usr/bin/cmp --quiet $_tfw_tmp/stdxxx_is.tmp "$_tfw_tmp/$qual"; then
       _tfw_failmsg "assertion failed: $message"
       _tfw_backtrace >&2
       return 1
