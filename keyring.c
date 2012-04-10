@@ -17,6 +17,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "nacl.h"
 
 static int urandomfd = -1;
 
@@ -301,5 +302,81 @@ int keyring_enter_keyringpin(keyring_file *k,char *pin)
   return 0;
 }
 
-/* Enter an identity pin and search for matching records */
+/* Enter an identity pin and search for matching records.
+   This involves going through the bitmap for each slab, and
+   then trying each keyring pin and identity pin with each
+   record marked as allocated.
+   We might find more than one matching identity, and that's okay;
+   we just load them all. 
+*/
+int keyring_enter_identitypin(keyring_file *k,char *pin)
+{
+  if (!k) return WHY("k is null");
 
+  WHY("Not implemented");
+}
+
+/* Read the slot, and try to decrypt it.
+   Decryption is symmetric with encryption, so the same function is used
+   for munging the slot before making use of it, whichever way we are going.
+   Once munged, we then need to verify that the slot is valid, and if so
+   unpack the details of the identity.
+*/
+int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,int slot)
+{
+  return WHY("Not implemented");
+}
+
+/*
+  En/Decrypting a block requires use of the first 32 bytes of the block to provide
+  salt.  The next 64 bytes constitute a message authentication code (MAC) that is
+  used to verify the validity of the block.  The verification occurs in a higher
+  level function, and all we need to know here is that we shouldn't decrypt the
+  first 96 bytes of the block.
+ */
+int keyring_munge_block(unsigned char *block,int len /* includes the first 96 bytes */,
+			unsigned char *KeyRingSalt,int KeyRingSaltLen,
+			char *KeyRingPin,char *PKRPin)
+{
+  int exit_code=1;
+  unsigned char hashKey[crypto_hash_sha512_BYTES];
+  unsigned char hashNonce[crypto_hash_sha512_BYTES];
+
+  unsigned char work[65536];
+  int ofs;
+
+  if (len<96) return WHY("block too short");
+
+  unsigned char *PKRSalt=&block[0];
+  int PKRSaltLen=32;
+
+  /* Generate key and nonce hashes from the various inputs */
+#define APPEND(b,l) if (ofs+(l)>=65536) { WHY("Input too long"); goto kmb_safeexit; } bcopy((b),&work[ofs],(l)); ofs+=(l)
+
+  /* Form key as hash of various concatenated inputs.
+     The ordering and repetition of the inputs is designed to make rainbow tables
+     infeasible */
+  ofs=0;
+  APPEND(PKRSalt,PKRSaltLen);
+  APPEND(PKRPin,strlen(PKRPin));
+  APPEND(PKRSalt,PKRSaltLen);
+  APPEND(KeyRingPin,strlen(KeyRingPin));
+  crypto_hash_sha512(hashKey,work,ofs);
+
+  /* Form the nonce as hash of various other concatenated inputs */
+  ofs=0;
+  APPEND(KeyRingPin,strlen(KeyRingPin));
+  APPEND(KeyRingSalt,KeyRingSaltLen);
+  APPEND(KeyRingPin,strlen(KeyRingPin));
+  APPEND(PKRPin,strlen(PKRPin));
+  crypto_hash_sha512(hashNonce,work,ofs);
+
+  WHY("Not implemented");
+
+ kmb_safeexit:
+  /* Wipe out all sensitive structures before returning */
+  bzero(&work[0],65536);
+  bzero(&hashKey[0],crypto_hash_sha512_BYTES);
+  bzero(&hashNonce[0],crypto_hash_sha512_BYTES);
+  return exit_code;
+}
