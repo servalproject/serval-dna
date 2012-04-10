@@ -18,6 +18,39 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 
+static int urandomfd = -1;
+
+int urandombytes(unsigned char *x,unsigned long long xlen)
+{
+  int i;
+  int t=0;
+
+  if (urandomfd == -1) {
+    for (i=0;i<4;i++) {
+      urandomfd = open("/dev/urandom",O_RDONLY);
+      if (urandomfd != -1) break;
+      sleep(1);
+    }
+    if (i==4) return -1;
+  }
+
+  while (xlen > 0) {
+    if (xlen < 1048576) i = xlen; else i = 1048576;
+
+    i = read(urandomfd,x,i);
+    if (i < 1) {
+      sleep(1);
+      t++;
+      if (t>4) return -1;
+      continue;
+    } else t=0;
+
+    x += i;
+    xlen -= i;
+  }
+
+  return 0;
+}
 
 /*
   Open keyring file, read BAM and create initial context using the 
@@ -43,6 +76,34 @@ keyring_file *keyring_open(char *file)
       return NULL;
     }
   k->file_size=ftello(k->file);
+
+  if (k->file_size<KEYRING_PAGE_SIZE) {
+    /* Uninitialised, so write 2KB of zeroes, 
+       followed by 2KB of random bytes as salt. */
+    if (fseeko(k->file,0,SEEK_SET)) {
+      WHY("Could not seek to start of file to write header");
+      keyring_free(k);
+      return NULL;
+    }
+    unsigned char buffer[KEYRING_PAGE_SIZE];
+    bzero(&buffer[0],KEYRING_BAM_BYTES);
+    if (fwrite(&buffer[0],2048,1,k->file)!=1) {
+      WHY("Could not write empty bitmap in fresh keyring file");
+      keyring_free(k);
+      return NULL;
+    }
+    if (urandombytes(&buffer[0],KEYRING_PAGE_SIZE-KEYRING_BAM_BYTES))
+      {
+	WHY("Could not get random keyring salt to put in fresh keyring file");
+	keyring_free(k);
+	return NULL;
+      }
+    if (fwrite(&buffer[0],KEYRING_PAGE_SIZE-KEYRING_BAM_BYTES,1,k->file)!=1) {
+      WHY("Could not write keyring salt in fresh keyring file");
+      keyring_free(k);
+      return NULL;
+    }
+  }
 
   /* Read BAMs for each slab in the file */
   keyring_bam **b=&k->bam;
@@ -85,6 +146,7 @@ keyring_file *keyring_open(char *file)
 	  keyring_free(k);
 	  return NULL;
 	}
+      k->contexts[0]->KeyRingPin=""; /* Implied empty PIN if none provided */
       k->contexts[0]->KeyRingSaltLen=KEYRING_PAGE_SIZE-KEYRING_BAM_BYTES;
       k->contexts[0]->KeyRingSalt=malloc(k->contexts[0]->KeyRingSaltLen);
       if (!k->contexts[0]->KeyRingSalt)
@@ -205,3 +267,39 @@ void keyring_free_keypair(keypair *kp)
   bzero(kp,sizeof(keypair));
   return;
 }
+
+/* Create a new keyring context for the loaded keyring file.
+   We don't need to load any identities etc, as that happens when we enter
+   an identity pin. 
+   If the pin is NULL, it is assumed to be blank.
+   The pin does NOT have to be numeric, and has no practical length limitation,
+   as it is used as an input into a hashing function.  But for sanity sake, let's
+   limit it to 16KB.
+*/
+int keyring_enter_keyringpin(keyring_file *k,char *pin)
+{
+  if (!k) return WHY("k is null");
+  if (k->context_count>=KEYRING_MAX_CONTEXTS) 
+    return WHY("Too many loaded contexts already");
+  if (k->context_count<1)
+    return WHY("Cannot enter PIN without keyring salt being available");
+
+  k->contexts[k->context_count]=calloc(sizeof(keyring_context),1);
+  if (!k->contexts[k->context_count]) return WHY("Could not allocate new keyring context structure");
+  keyring_context *c=k->contexts[k->context_count];
+  /* Store pin */
+  c->KeyRingPin=pin?strdup(pin):"";
+  /* Get salt from the zeroeth context */
+  c->KeyRingSalt=malloc(k->contexts[0]->KeyRingSaltLen);
+  if (!c->KeyRingSalt) {
+    free(c); k->contexts[k->context_count]=NULL;
+    return WHY("Could not copy keyring salt from context zero");
+  }
+  c->KeyRingSaltLen=k->contexts[0]->KeyRingSaltLen;
+  bcopy(&k->contexts[0]->KeyRingSalt[0],&c->KeyRingSalt[0],c->KeyRingSaltLen);
+  k->context_count++;
+  return 0;
+}
+
+/* Enter an identity pin and search for matching records */
+
