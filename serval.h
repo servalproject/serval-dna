@@ -1009,11 +1009,12 @@ typedef struct sockaddr_mdp {
 #define MDP_NOSIGN 0x0400
 #define MDP_TX 1
 #define MDP_RX 2
-typedef struct overlay_mdp_outgoing_frame {
+typedef struct overlay_mdp_data_frame {
   sockaddr_mdp src;
   sockaddr_mdp dst;
   unsigned short payload_length;
-  unsigned char payload[1900];
+#define MDP_MTU 2000
+  unsigned char payload[MDP_MTU-100];
 } overlay_mdp_data_frame;
 
 #define MDP_BIND 3
@@ -1036,7 +1037,7 @@ typedef struct overlay_mdp_addrlist {
   unsigned int last_sid;
   unsigned char frame_sid_count; /* how many of the following 59 slots are
 				    populated */
-  /* 59*32 < 1900, so up to 59 SIDs in a single reply.
+  /* 59*32 < (MDP_MTU-100), so up to 59 SIDs in a single reply.
      Multiple replies can be used to respond with more. */
 #define MDP_MAX_SID_REQUEST 59
   unsigned char sids[MDP_MAX_SID_REQUEST][SID_SIZE];
@@ -1053,7 +1054,7 @@ typedef struct overlay_mdp_frame {
     overlay_mdp_error error;
     /* 2048 is too large (causes EMSGSIZE errors on OSX, but probably fine on
        Linux) */
-    char raw[2000];
+    char raw[MDP_MTU];
   };
 } overlay_mdp_frame;
 
@@ -1087,3 +1088,59 @@ void *_serval_debug_malloc(unsigned int bytes,char *file,const char *func,int li
 void *_serval_debug_calloc(unsigned int bytes,unsigned int count,char *file,const char *func,int line);
 void _serval_debug_free(void *p,char *file,const char *func,int line);
 #endif
+
+typedef struct keypair {
+  int type;
+  unsigned char *private_key;
+  int private_key_len;
+  unsigned char *public_key;
+  int public_key_len;
+} keypair;
+
+/* Contains just the list of private:public key pairs and types,
+   the pin used to extract them, and the slot in the keyring file
+   (so that it can be replaced/rewritten as required). */
+#define PKR_MAX_KEYPAIRS 64
+typedef struct keyring_identity {  
+  char *PKRPin;
+  unsigned int slot;
+  keypair *keypairs[PKR_MAX_KEYPAIRS];
+} keyring_identity;
+
+/* 64K identities, can easily be increased should the need arise,
+   but keep it low-ish for now so that the 64K pointers don't eat too
+   much ram on a small device.  Should probably think about having
+   small and large device settings for some of these things */
+#define KEYRING_MAX_IDENTITIES 65536
+typedef struct keyring_context {
+  char *KeyRingPin;
+  unsigned char *KeyRingSalt;
+  int KeyRingSaltLen;
+
+  int identity_count;
+  keyring_identity *identities[KEYRING_MAX_IDENTITIES];
+} keyring_context;
+
+#define KEYRING_PAGE_SIZE 4096
+#define KEYRING_BAM_BYTES 2048
+#define KEYRING_SLAB_SIZE (KEYRING_PAGE_SIZE*(KEYRING_BAM_BYTES<<3))
+typedef struct keyring_bam {
+  unsigned long file_offset;
+  unsigned char bitmap[KEYRING_BAM_BYTES];
+  struct keyring_bam *next;
+} keyring_bam;
+
+#define KEYRING_MAX_CONTEXTS 256
+typedef struct keyring_file {
+  int context_count;
+  keyring_bam *bam;
+  keyring_context *contexts[KEYRING_MAX_CONTEXTS];
+  FILE *file;
+  off_t file_size;
+} keyring_file;
+
+keyring_file *keyring_open(char *file);
+void keyring_free(keyring_file *k);
+void keyring_free_context(keyring_context *c);
+void keyring_free_identity(keyring_identity *id);
+void keyring_free_keypair(keypair *kp);
