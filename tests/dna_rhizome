@@ -40,7 +40,7 @@ setup_AddManifest() {
    setup_dna
    assert_rhizome_list_empty
    echo "A test file" >file1
-   echo >file1.manifest
+   echo 'name=wah' >file1.manifest
    echo "Another test file" >file2
 }
 test_AddManifest() {
@@ -49,13 +49,13 @@ test_AddManifest() {
    tfw_cat --stdout
    tfw_cat --stderr
    tfw_cat -v file1.manifest
-   assertGrep file1.manifest '^name="file1"$'
+   assertGrep file1.manifest '^name=wah$'
    assertGrep file1.manifest '^date=[0-9]\+$'
    assertGrep file1.manifest '^version=[0-9]\+$'
    assertGrep file1.manifest '^id=[0-9a-fA-F]\+$'
-   assertGrep file1.manifest "^filesize=$(wc --bytes file1)\$"
+   assertGrep file1.manifest "^filesize=$(cat file1 | wc --bytes)\$"
    assertGrep file1.manifest "^first_byte=0$"
-   assertGrep file1.manifest "^last_byte=$(wc --bytes file1)\$"
+   assertGrep file1.manifest "^last_byte=$(cat file1 | wc --bytes)\$"
 }
 
 doc_AddThenList="Rhizome list contains one file after one add"

@@ -299,8 +299,7 @@ assertGrep() {
       _tfw_error "incorrect arguments"
       return 254
    fi
-   _tfw_assert_grep "$1" "$1" "$2"
-   return 0
+   _tfw_assert_grep "$1" "$1" "$2" || _tfw_failexit
 }
 
 # Internal (private) functions that are not to be invoked directly from test
