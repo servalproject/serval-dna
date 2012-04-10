@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Test script for Serval DNA executable.
+# Tests for Serval DNA HLR operations.
+#
 # Copyright 2012 Paul Gardner-Stephen
 #
 # This program is free software; you can redistribute it and/or
@@ -18,55 +19,11 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 source "${0%/*}/../testframework.sh"
-dna="${0%/*}/../dna"
-
-# Default setup function
-setup() {
-   export SERVALINSTANCE_PATH=$TFWTMP/dna
-   mkdir $SERVALINSTANCE_PATH
-   hlr_dat=$SERVALINSTANCE_PATH/hlr.dat
-}
+source "${0%/*}/../testdefs.sh"
 
 # Default teardown function
 teardown() {
    stop_dna_server
-}
-
-# Utility function
-start_dna_server() {
-   # Ensure there are no existing DNA servers
-   pids=$(ps -u$UID | awk '$4 == "dna" {print $1}')
-   if [ -n "$pids" ]; then
-      error "cannot run test: dna process already running with pid: $pids"
-   fi
-   # Start DNA server
-   $dna -v verbose -f $hlr_dat -S 1 -n "$@" >$TFWTMP/dna.log 2>&1 &
-   sleep 1
-   pids=$(ps -u$UID | awk '$4 == "dna" {print $1}')
-   if [ -z "$pids" ]; then
-      echo "dna server did not start"
-      echo "--- dna.log ---"
-      cat $SERVALINSTANCE_PATH/dna.log
-      echo "---"
-      fail
-   fi
-   if ! [ -s $SERVALINSTANCE_PATH/serval.pid ] && kill -0 $(cat $SERVALINSTANCE_PATH/serval.pid); then
-      echo "serval.pid was not created"
-      echo "--- dna.log ---"
-      cat $SERVALINSTANCE_PATH/dna.log
-      echo "---"
-      fail
-   fi
-}
-
-# Utility function
-stop_dna_server() {
-   [ -s $SERVALINSTANCE_PATH/serval.pid ] && kill $(cat $SERVALINSTANCE_PATH/serval.pid)
-   if [ -s $TFWTMP/dna.log ]; then
-      echo '--- dna.log ---'
-      cat $TFWTMP/dna.log
-      echo '---'
-   fi
 }
 
 # Utility function
@@ -95,7 +52,7 @@ echo_long_message() {
 # Test case, transcribed from ../testdna
 doc_CreateSID='Create new SID'
 setup_CreateSID() {
-   setup
+   setup_dna
    start_dna_server
 }
 test_CreateSID() {
@@ -107,7 +64,7 @@ test_CreateSID() {
 # Test case, transcribed from ../testdna
 doc_GetShortVar='Get short variable'
 setup_GetShortVar() {
-   setup
+   setup_dna
    start_dna_server
    create_sid
 }
@@ -122,7 +79,7 @@ test_GetShortVar() {
 # Test case, transcribed from ../testdna
 doc_SetShortVar='Set short variable'
 setup_SetShortVar() {
-   setup
+   setup_dna
    start_dna_server
    create_sid
 }
@@ -135,7 +92,7 @@ test_SetShortVar() {
 # Test case, transcribed from ../testdna
 doc_SetGetShortVar='Set then get short variable'
 setup_SetGetShortVar() {
-   setup
+   setup_dna
    start_dna_server
    create_sid
    set_short_var
@@ -150,14 +107,14 @@ test_SetGetShortVar() {
 # Test case, transcribed from ../testdna
 doc_GetShortVarToFile='Get variable into a file'
 setup_GetShortVarToFile() {
-   setup
+   setup_dna
    start_dna_server
    create_sid
    set_short_var
 }
 test_GetShortVarToFile() {
    echo "WARNING: Known issue: output to file does not work with DID lists"
-   dnatest_dat=$TFWTMP/dnatest.dat
+   dnatest_dat=$DNATMP/dnatest.dat
    execute $dna -s $sid -O $dnatest_dat -i 0 -R note
    assertExitStatus '==' 0
    assertRealTime '<' 0.5
@@ -168,7 +125,7 @@ test_GetShortVarToFile() {
 # Test case, transcribed from ../testdna
 doc_SetMultiShortVar='Set multiple instances of a short variable'
 setup_SetMultiShortVar() {
-   setup
+   setup_dna
    start_dna_server
    create_sid
    set_short_var
@@ -187,7 +144,7 @@ test_SetMultiShortVar() {
 # Test case, transcribed from ../testdna
 doc_GetMultiShortVar='Get multiple instances of a short variable'
 setup_GetMultiShortVar() {
-   setup
+   setup_dna
    start_dna_server
    create_sid
    set_short_var
@@ -208,7 +165,7 @@ test_GetMultiShortVar() {
 # Test case, transcribed from ../testdna
 doc_OverwriteVarNoUpdate='Set does not overwrite variable'
 setup_OverwriteVarNoUpdate() {
-   setup
+   setup_dna
    start_dna_server
    create_sid
    set_short_var
@@ -227,7 +184,7 @@ test_OverwriteVarNoUpdate() {
 # Test case, transcribed from ../testdna
 doc_UpdateVar='Update overwrites variable'
 setup_UpdateVar() {
-   setup
+   setup_dna
    start_dna_server
    create_sid
    set_short_var
@@ -246,75 +203,22 @@ test_UpdateVar() {
 # Test case, transcribed from ../testdna
 doc_UpdateVarBigValue='Can set variable with multi-packet value'
 setup_UpdateVarBigValue() {
-   setup
+   setup_dna
    start_dna_server
    create_sid
    set_short_var
-   echo_long_message >$TFWTMP/dnatest.in
+   echo_long_message >$DNATMP/dnatest.in
 }
 test_UpdateVarBigValue() {
    execute $dna -s $sid -i 0 -U note="@dnatest.in"
    assertExitStatus '==' 0
    assertRealTime '<' 0.5
    assertStdoutGrep --matches=1 --message='variable write confirmed' "^WROTE:$sid$"
-   execute $dna -v verbose -s $sid -O $TFWTMP/dnatest.out -i 0 -R note
+   execute $dna -v verbose -s $sid -O $DNATMP/dnatest.out -i 0 -R note
    assertExitStatus '==' 0
    assertRealTime '<' 0.5
    assertStdoutGrep --matches=1 --message='variable new value returned' "^NOTE:$sid:[0-9]\+:0"
-   assert --message='long value read correctly' cmp --quiet $TFWTMP/dnatest.in $TFWTMP/dnatest.out
-}
-
-# Test case, transcribed from ../testdna
-doc_BitErrorCreateSID='Create new SID despite bit errors'
-setup_BitErrorCreateSID() {
-   ber=0.001
-   setup
-   start_dna_server -B $ber
-}
-test_BitErrorCreateSID() {
-   local iterations=10
-   local i=0
-   local fails=0
-   local totaltime_ms=0
-   local maxtime_ms=0
-   while [ $i -lt $iterations ]; do
-      execute $dna -B $ber -d 0427679796 -C
-      assertExitStatus '==' 0
-      sid=`replayStdout | grep '^OK:' | cut -f2 -d:`
-      let totaltime_ms=totaltime_ms+realtime_ms
-      [ $realtime_ms -gt $maxtime_ms ] && maxtime_ms=$realtime_ms
-      if [ -z "$sid" ]; then
-         let fails=fails+1
-         echo "# iteration $i: no sid after ${realtime_ms} ms"
-      else
-         echo "# iteration $i: sid=$sid after ${realtime_ms} ms"
-      fi
-      let i=i+1
-   done
-   let meantime_ms=totaltime_ms/iterations
-   echo "# average time = $meantime_ms ms"
-   echo "# maximum time = $maxtime_ms ms"
-   assertExpr --message='packet loss was properly injected' $meantime_ms '>' 25
-   assertExpr --message="reliable at BER=$ber packet loss" $fails '<=' 4
-   assertExpr --message="timeout works at BER=$ber packet loss" $totaltime_ms '<=' 3000 '&&' $maxtime_ms '<=' 330
-}
-
-# Test case, transcribed from ../testdna
-doc_SetVarBigValueBitErrors='Can set variable with multi-packet value despite bit errors'
-setup_SetVarBigValueBitErrors() {
-   ber=0.00001
-   setup
-   start_dna_server -B $ber
-   echo_long_message >$TFWTMP/dnatest.in
-}
-test_SetVarBigValueBitErrors() {
-   execute $dna -B $ber -s $sid -i 0 -W note="@dnatest.in"
-   assertExitStatus '==' 0
-   assertStdoutGrep --matches=1 --message='variable write confirmed' "^WROTE:$sid$"
-   execute $dna -v verbose -B $ber -s $sid -O $TFWTMP/dnatest.out -i 0 -R note
-   assertExitStatus '==' 0
-   assertStdoutGrep --matches=1 --message='variable new value returned' "^NOTE:$sid:[0-9]\+:0"
-   assert --message='long value read correctly' cmp --quiet $TFWTMP/dnatest.in $TFWTMP/dnatest.out
+   assert --message='long value read correctly' cmp --quiet $DNATMP/dnatest.in $DNATMP/dnatest.out
 }
 
 runTests "$@"

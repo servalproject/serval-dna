@@ -63,7 +63,10 @@ runTests() {
    _tfw_checkBashVersion
    _tfw_trace=false
    _tfw_verbose=false
-   _tfw_logfile=test.log
+   _tfw_invoking_script=$(abspath "${BASH_SOURCE[1]}")
+   _tfw_suite_name="${_tfw_invoking_script##*/}"
+   _tfw_cwd=$(abspath "$PWD")
+   _tfw_logfile="$_tfw_cwd/test.$_tfw_suite_name.log"
    local allargs="$*"
    local filter=
    while [ $# -ne 0 ]; do
@@ -86,22 +89,23 @@ runTests() {
    # Iterate through all test cases.
    local testcount=0
    local passcount=0
-   for testName in `_tfw_findTests`
+   local testName
+   for testName in `_tfw_find_tests`
    do
-      _tfw_testname=$testName
-      if [ -z "$filter" -o "${testName#$filter}" != "$testName" ]; then
+      _tfw_test_name="$testName"
+      if [ -z "$filter" -o "${_tfw_test_name#$filter}" != "$_tfw_test_name" ]; then
          let testcount=testcount+1
          (
-            local docvar="doc_$testName"
-            _tfw_echo -n "$testcount. ${!docvar:-$testName}..."
+            local docvar="doc_$_tfw_test_name"
+            _tfw_echo -n "$testcount. ${!docvar:-$_tfw_test_name}..."
             trap '_tfw_status=$?; _tfw_teardown; exit $_tfw_status' 0 1 2 15
             _tfw_result=ERROR
             _tfw_setup
             _tfw_result=FAIL
             _tfw_phase=testcase
-            echo "# call test_$testName()"
+            echo "# call test_$_tfw_test_name()"
             $_tfw_trace && set -x
-            test_$testName
+            test_$_tfw_test_name
             _tfw_result=PASS
             exit 0
          )
@@ -133,6 +137,18 @@ teardown() {
 # The following functions are provided to facilitate writing test cases and
 # fixtures.
 
+# Echo the absolute path (containing symlinks if given) of the given
+# file/directory, which does not have to exist or even be accessible.
+abspath() {
+   _tfw_abspath -L "$1"
+}
+
+# Echo the absolute path (resolving all symlinks) of the given file/directory,
+# which does not have to exist or even be accessible.
+realpath() {
+   _tfw_abspath -P "$1"
+}
+
 execute() {
    _tfw_last_argv0="$1"
    echo "# execute $*"
@@ -141,7 +157,7 @@ execute() {
    echo "# Exit status = $_tfw_exitStatus"
    if grep --quiet --invert-match --regexp='^realtime=[0-9.]*;usertime=[0-9.]*;systime=[0-9.]*$' $_tfw_tmp/times; then
       echo "# Times file contains spurious data:"
-      _tfw_cat $_tfw_tmp/times
+      tfw_cat --header=times $_tfw_tmp/times
       if [ $_tfw_exitStatus -eq 0 ]; then
          _tfw_exitStatus=255
          echo "# Deeming exit status of command to be $_tfw_exitStatus"
@@ -202,6 +218,33 @@ fatal() {
    _tfw_fatalexit
 }
 
+tfw_cat() {
+   local $header
+   for file; do
+      case $file in
+      --stdout) 
+         echo "#--- ${header:-stdout of ${_tfw_last_argv0##*/}} ---"
+         /bin/cat $_tfw_tmp/stdout
+         echo "#---"
+         header=
+         ;;
+      --stderr) 
+         echo "#--- ${header:-stderr of ${_tfw_last_argv0##*/}} ---"
+         /bin/cat $_tfw_tmp/stderr
+         echo "#---"
+         header=
+         ;;
+      --header=*) header="${1#*=}";;
+      *)
+         echo "#--- ${header:-$file} ---"
+         /bin/cat "$file"
+         echo "#---"
+         header=
+         ;;
+      esac
+   done
+}
+
 assertExitStatus() {
    _tfw_getopts_assert exitstatus "$@"
    shift $_tfw_getopts_shift
@@ -247,6 +290,43 @@ assertStderrGrep() {
 # Internal (private) functions that are not to be invoked directly from test
 # scripts.
 
+# Echo the absolute path of the given path, using only Bash builtins.
+_tfw_abspath() {
+   cdopt=-L
+   if [ $# -gt 1 -a "${1:0:1}" = - ]; then
+      cdopt="$1"
+      shift
+   fi
+   case "$1" in
+   */)
+      builtin echo $(_tfw_abspath $cdopt "${1%/}")/
+      ;;
+   /*/*) 
+      if [ -d "$1" ]; then
+         (CDPATH= builtin cd $cdopt "$1" && builtin echo "$PWD")
+      else
+         builtin echo $(_tfw_abspath $cdopt "${1%/*}")/"${1##*/}"
+      fi
+      ;;
+   /*)
+      echo "$1"
+      ;;
+   */*)
+      if [ -d "$1" ]; then
+         (CDPATH= builtin cd $cdopt "$1" && builtin echo "$PWD")
+      else
+         builtin echo $(_tfw_abspath $cdopt "${1%/*}")/"${1##*/}"
+      fi
+      ;;
+   . | ..)
+      (CDPATH= builtin cd $cdopt "$1" && builtin echo "$PWD")
+      ;;
+   *)
+      (CDPATH= builtin cd $cdopt . && builtin echo "$PWD/$1")
+      ;;
+   esac
+}
+
 _tfw_setup() {
    _tfw_phase=setup
    _tfw_tmp=/tmp/_tfw-$$
@@ -262,18 +342,19 @@ _tfw_setup() {
    fi
    export TFWTMP=$_tfw_tmp/tmp
    /bin/mkdir $TFWTMP
+   cd $TFWTMP
    echo '# SETUP'
-   case `type -t setup_$testName` in
+   case `type -t setup_$_tfw_test_name` in
    function)
-      echo "# call setup_$testName()"
+      echo "# call setup_$_tfw_test_name()"
       $_tfw_trace && set -x
-      setup_$testName $testName
+      setup_$_tfw_test_name $_tfw_test_name
       set +x
       ;;
    *)
-      echo "# call setup($testName)"
+      echo "# call setup($_tfw_test_name)"
       $_tfw_trace && set -x
-      setup $testName
+      setup $_tfw_test_name
       set +x
       ;;
    esac
@@ -283,23 +364,23 @@ _tfw_setup() {
 _tfw_teardown() {
    _tfw_phase=teardown
    echo '# TEARDOWN'
-   case `type -t teardown_$testName` in
+   case `type -t teardown_$_tfw_test_name` in
    function)
-      echo "# call teardown_$testName()"
+      echo "# call teardown_$_tfw_test_name()"
       $_tfw_trace && set -x
-      teardown_$testName
+      teardown_$_tfw_test_name
       set +x
       ;;
    *)
-      echo "# call teardown($testName)"
+      echo "# call teardown($_tfw_test_name)"
       $_tfw_trace && set -x
-      teardown $testName
+      teardown $_tfw_test_name
       set +x
       ;;
    esac
    echo '# END TEARDOWN'
    {
-      local banner="==================== $_tfw_testname ===================="
+      local banner="==================== $_tfw_test_name ===================="
       echo "$banner"
       echo "TEST RESULT: $_tfw_result"
       echo '++++++++++ log.stdout ++++++++++'
@@ -457,28 +538,6 @@ _tfw_echoerr() {
    fi
 }
 
-_tfw_cat() {
-   for file; do
-      case $file in
-      --stdout) 
-         echo "--- stdout of ${_tfw_last_argv0##*/} ---"
-         /bin/cat $_tfw_tmp/stdout
-         echo "---"
-         ;;
-      --stderr) 
-         echo "--- stderr of ${_tfw_last_argv0##*/} ---"
-         /bin/cat $_tfw_tmp/stderr
-         echo "---"
-         ;;
-      *)
-         echo "--- $file ---"
-         /bin/cat "$file"
-         echo "---"
-         ;;
-      esac
-   done
-}
-
 _tfw_checkBashVersion() {
    case $BASH_VERSION in
    [56789].* | 4.[23456789].*) ;;
@@ -487,7 +546,7 @@ _tfw_checkBashVersion() {
    esac
 }
 
-_tfw_findTests() {
+_tfw_find_tests() {
    builtin declare -F | sed -n -e '/^declare -f test_..*/s/^declare -f test_//p' | sort
 }
 
@@ -519,8 +578,8 @@ _tfw_backtrace() {
 _tfw_failexit() {
    # When exiting a test case due to a failure, log any diagnostic output that
    # has been requested.
-   $_tfw_dump_stdout_on_fail && _tfw_cat --stdout
-   $_tfw_dump_stderr_on_fail && _tfw_cat --stderr
+   $_tfw_dump_stdout_on_fail && tfw_cat --stdout
+   $_tfw_dump_stderr_on_fail && tfw_cat --stderr
    # A failure during setup or teardown is treated as an error.
    case $_tfw_phase in
    testcase) exit 1;;
@@ -531,7 +590,8 @@ _tfw_failexit() {
 # An "error" event prevents a test from running, so it neither passes nor fails.
 # Other tests may still proceed.
 
-_tfw_error() {
+_tfw_errormsg() {
+   [ $# -eq 0 ] && set -- "(no message)"
    local -i up=1
    while true; do
       case ${FUNCNAME[$up]} in
@@ -539,7 +599,11 @@ _tfw_error() {
       *) break;;
       esac
    done
-   echo "ERROR in ${FUNCNAME[$up]}: $*" >&2
+   echo "ERROR in ${FUNCNAME[$up]}: $*"
+}
+
+_tfw_error() {
+   _tfw_errormsg "$@" >&2
    _tfw_backtrace >&2
    _tfw_errorexit
 }
