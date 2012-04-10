@@ -210,6 +210,7 @@ int rhizome_update_file_priority(char *fileid);
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
 char nybltochar(int n);
 int rhizome_queue_manifest_import(rhizome_manifest *m,struct sockaddr_in *peerip);
+int rhizome_list_manifests(int limit, int offset);
 
 #define RHIZOME_DONTVERIFY 0
 #define RHIZOME_VERIFY 1

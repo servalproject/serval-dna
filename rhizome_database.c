@@ -541,7 +541,7 @@ int rhizome_list_manifests(int limit, int offset)
       size_t filesize = sqlite3_column_int(statement, 1);
       size_t manifestblobsize = sqlite3_column_bytes(statement, 4);
       const char *manifestblob = (char *) sqlite3_column_blob(statement, 4);
-      printf("manifest blob = %s\n", manifestblob);
+      //printf("manifest blob = %s\n", manifestblob);
       rhizome_manifest *m = rhizome_read_manifest_file(manifestblob, manifestblobsize, RHIZOME_VERIFY);
       const char *name = rhizome_manifest_get(m, "name", NULL, 0);
       printf("file id = %s\nfile length = %u\nfile datavalid = %u\nfile name = \"%s\"\n",

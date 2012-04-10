@@ -17,10 +17,13 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#define _GNU_SOURCE // For asprintf()
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <math.h>
 #include <string.h>
+#include <time.h>
+#include <stdio.h>
 #include "serval.h"
 #include "rhizome.h"
 
@@ -97,7 +100,7 @@ char *cli_arg(int argc, char **argv, command_line_option *o, char *argname, char
   int arglen = strlen(argname);
   int i;
   const char *word;
-  for(i = 0; word = o->words[i]; ++i) {
+  for(i = 0; (word = o->words[i]); ++i) {
     int wordlen = strlen(word);
     if (i < argc
       &&( (wordlen==arglen+2 && word[0]=='<' && word[wordlen-1]=='>' && !strncasecmp(&word[1], argname, arglen))
@@ -602,7 +605,6 @@ int app_server_get(int argc,char **argv,struct command_line_option *o)
   }
   /* Read lines of config file. */
   char line[1024];
-  int found=0;
   int varlen=strlen(var);
   line[0]=0; fgets(line,1024,in);
   while(line[0]) {
@@ -620,7 +622,7 @@ int app_server_get(int argc,char **argv,struct command_line_option *o)
   return 0;
 }
 
-int app_rhizome_add(int argc, char **argv, struct command_line_option *o)
+int app_rhizome_add_file(int argc, char **argv, struct command_line_option *o)
 {
   const char *filepath = cli_arg(argc, argv, o, "filepath", "");
   const char *manifestpath = cli_arg(argc, argv, o, "manifestpath", "");
@@ -629,13 +631,24 @@ int app_rhizome_add(int argc, char **argv, struct command_line_option *o)
     return -1;
   rhizome_datastore_path = serval_instancepath();
   rhizome_opendb();
-  /* Create a new manifest that will represent the file, having a "name" value of the file's
-   * basename and a "date" value of right now */
-  rhizome_manifest *m = rhizome_new_manifest();
-  const char *name = strrchr(filepath, '/');
-  name = name ? name + 1 : filepath;
-  rhizome_manifest_set(m, "name", name);
-  rhizome_manifest_set_ll(m, "date", overlay_gettime_ms());
+  /* Create a new manifest that will represent the file.  If a manifest file was supplied, then read
+   * it, otherwise create a blank manifest. */
+  rhizome_manifest *m = NULL;
+  if (manifestpath[0]) {
+    m = rhizome_read_manifest_file(manifestpath, 0, RHIZOME_VERIFY);
+  } else {
+    m = rhizome_new_manifest();
+  }
+  /* Ensure the manifest has a "name" value.  Use the file's basename if missing. */
+  if (rhizome_manifest_get(m, "name", NULL, 0) == NULL) {
+    const char *name = strrchr(filepath, '/');
+    name = name ? name + 1 : filepath;
+    rhizome_manifest_set(m, "name", name);
+  }
+  /* Ensure the manifest has a "date" value.  Use current time if missing.  */
+  if (rhizome_manifest_get(m, "date", NULL, 0) == NULL) {
+    rhizome_manifest_set_ll(m, "date", overlay_gettime_ms());
+  }
   /* Add the manifest and its associated file to the Rhizome database, generating an "id" in the
    * process */
   int ret = rhizome_add_manifest(m, filepath,
@@ -706,7 +719,7 @@ command_line_option command_line_options[]={
    "Set specified configuration variable."},
   {app_server_get,{"config","get","[<variable>]",NULL},0,
    "Get specified configuration variable."},
-  {app_rhizome_add,{"rhizome","add","file","<filepath>","[<manifestpath>]",NULL},0,
+  {app_rhizome_add_file,{"rhizome","add","file","<filepath>","[<manifestpath>]",NULL},0,
    "Add a file to Rhizome and optionally write its manifest to the given path"},
   {app_rhizome_list,{"rhizome","list",NULL},0,
    "List all manifests and files in Rhizome"},
