@@ -181,7 +181,7 @@ assert() {
    _tfw_getopts_assert assert "$@"
    shift $_tfw_getopts_shift
    _tfw_assert "$@" || _tfw_failexit
-   echo "# Assertion passed: $*"
+   echo "# assert $*"
    return 0
 }
 
@@ -191,7 +191,7 @@ assertExpr() {
    local awkexpr=$(_tfw_expr_to_awkexpr "$@")
    _tfw_message="${_tfw_message+$_tfw_message }($awkexpr)"
    _tfw_assert _tfw_eval_awkexpr "$awkexpr" || _tfw_failexit
-   echo "# Assertion passed: $awkexpr"
+   echo "# assert $awkexpr"
    return 0
 }
 
@@ -255,7 +255,7 @@ assertExitStatus() {
    shift $_tfw_getopts_shift
    [ -z "$_tfw_message" ] && _tfw_message="exit status of ${_tfw_last_argv0##*/} ($_tfw_exitStatus) $*"
    _tfw_assertExpr "$_tfw_exitStatus" "$@" || _tfw_failexit
-   echo "# Assertion passed: $_tfw_message"
+   echo "# assert $_tfw_message"
    return 0
 }
 
@@ -264,7 +264,7 @@ assertRealTime() {
    shift $_tfw_getopts_shift
    [ -z "$_tfw_message" ] && _tfw_message="real execution time of ${_tfw_last_argv0##*/} ($realtime) $*"
    _tfw_assertExpr "$realtime" "$@" || _tfw_failexit
-   echo "# Assertion passed: $_tfw_message"
+   echo "# assert $_tfw_message"
    return 0
 }
 
@@ -292,8 +292,53 @@ assertStderrGrep() {
    _tfw_assert_stdxxx_grep stderr "$@" || _tfw_failexit
 }
 
+assertGrep() {
+   _tfw_getopts_assert filegrep "$@"
+   shift $_tfw_getopts_shift
+   if [ $# -ne 2 ]; then
+      _tfw_error "incorrect arguments"
+      return 254
+   fi
+   _tfw_assert_grep "$1" "$1" "$2"
+   return 0
+}
+
 # Internal (private) functions that are not to be invoked directly from test
 # scripts.
+
+# Utility for setting shopt variables and restoring their original value:
+#     _tfw_shopt -s extglob -u extdebug
+#     ...
+#     _tfw_shopt_restore
+_tfw_shopt() {
+   if [ -n "$_tfw_shopt_orig" ]; then
+      _tfw_fatal "unrestored shopt settings: $_tfw_shopt_orig"
+   fi
+   _tfw_shopt_orig=
+   local op=s
+   while [ $# -ne 0 ]
+   do
+      case "$1" in
+      -s) op=s;;
+      -u) op=u;;
+      *)
+         local opt="$1"
+         _tfw_shopt_orig="${restore:+$restore; }shopt -$(shopt -q $opt && echo s || echo u) $opt"
+         shopt -$op $opt
+         ;;
+      esac
+      shift
+   done
+}
+_tfw_shopt_restore() {
+   if [ -n "$_tfw_shopt_orig" ]; then
+      eval "$_tfw_shopt_orig"
+      _tfw_shopt_orig=
+   fi
+}
+
+# The rest of this file is parsed for extended glob patterns.
+_tfw_shopt -s extglob
 
 # Echo the absolute path of the given path, using only Bash builtins.
 _tfw_abspath() {
@@ -472,7 +517,7 @@ _tfw_eval_awkexpr() {
 _tfw_assertExpr() {
    local awkexpr=$(_tfw_expr_to_awkexpr "$@")
    _tfw_assert _tfw_eval_awkexpr "$awkexpr" || _tfw_failexit
-   echo "# Assertion passed: $awkexpr"
+   echo "# assert $awkexpr"
 }
 
 _tfw_assert_stdxxx_is() {
@@ -491,7 +536,7 @@ _tfw_assert_stdxxx_is() {
       _tfw_backtrace >&2
       return 1
    fi
-   echo "# Assertion passed: $message"
+   echo "# assert $message"
    return 0
 }
 
@@ -504,29 +549,69 @@ _tfw_assert_stdxxx_grep() {
       _tfw_error "incorrect arguments"
       return 254
    fi
-   local message="${_tfw_message:-$qual of ${_tfw_last_argv0##*/} contains a line matching \"$1\"}"
-   local matches=$(/bin/grep --regexp="$1" $_tfw_tmp/$qual | /usr/bin/wc --lines)
-   if [ -z "$_tfw_opt_matches" ]; then
-      message="${_tfw_message:-$qual of ${_tfw_last_argv0##*/} contains a line matching \"$1\"}"
-      if [ $matches -eq 0 ]; then
+   _tfw_assert_grep "$qual of ${_tfw_last_argv0##*/}" $_tfw_tmp/$qual "$@"
+}
+
+_tfw_assert_grep() {
+   local label="$1"
+   local file="$2"
+   local pattern="$3"
+   local message=
+   local matches=$(/bin/grep --regexp="$pattern" "$file" | /usr/bin/wc --lines)
+   local ret=0
+   _tfw_shopt -s extglob
+   case "$_tfw_opt_matches" in
+   '')
+      message="${_tfw_message:-$label contains a line matching \"$pattern\"}"
+      if [ $matches -ne 0 ]; then
+         echo "# assert $message"
+      else
          _tfw_failmsg "assertion failed: $message"
-         _tfw_backtrace >&2
-         return 1
+         ret=1
       fi
-   elif [ -z "${_tfw_opt_matches//[0-9]}" ]; then
-      message="${_tfw_message:-$qual of ${_tfw_last_argv0##*/} contains exactly $_tfw_opt_matches line$s matching \"$1\"}"
-      if [ $matches -ne $_tfw_opt_matches ]; then
-         local s=$([ $_tfw_opt_matches -ne 1 ] && echo s)
+      ;;
+   +([0-9]))
+      local s=$([ $_tfw_opt_matches -ne 1 ] && echo s)
+      message="${_tfw_message:-$label contains exactly $_tfw_opt_matches line$s matching \"$pattern\"}"
+      if [ $matches -eq $_tfw_opt_matches ]; then
+         echo "# assert $message"
+      else
          _tfw_failmsg "assertion failed: $message"
-         _tfw_backtrace >&2
-         return 1
+         ret=1
       fi
-   else
+      ;;
+   +([0-9])-*([0-9]))
+      local bound=${_tfw_opt_matches%-*}
+      local s=$([ $bound -ne 1 ] && echo s)
+      message="${_tfw_message:-$label contains at least $bound line$s matching \"$pattern\"}"
+      if [ $matches -ge $bound ]; then
+         echo "# assert $message"
+      else
+         _tfw_failmsg "assertion failed: $message"
+         ret=1
+      fi
+      ;;& # Test the next case as well...
+   *([0-9])-+([0-9]))
+      local bound=${_tfw_opt_matches#*-}
+      local s=$([ $bound -ne 1 ] && echo s)
+      message="${_tfw_message:-$label contains at most $bound line$s matching \"$pattern\"}"
+      if [ $matches -le $bound ]; then
+         echo "# assert $message"
+      else
+         _tfw_failmsg "assertion failed: $message"
+         ret=1
+      fi
+      ;;
+   *)
       _tfw_error "unsupported value for --matches=$_tfw_opt_matches"
-      return 254
+      ret=254
+      ;;
+   esac
+   _tfw_shopt_restore
+   if [ $ret -ne 0 ]; then
+      _tfw_backtrace >&2
    fi
-   echo "# Assertion passed: $message"
-   return 0
+   return $ret
 }
 
 # Write to the real stdout of the test script.
@@ -555,14 +640,13 @@ _tfw_checkBashVersion() {
 # Return a list of test names in the order that the test_TestName functions were
 # defined.
 _tfw_find_tests() {
-   local old_extdebug=$(builtin shopt -q extdebug && echo s || echo u)
-   shopt -s extdebug
+   _tfw_shopt -s extdebug
    builtin declare -F |
       /bin/sed -n -e '/^declare -f test_..*/s/^declare -f test_//p' |
       while read name; do builtin declare -F "test_$name"; done |
       /usr/bin/sort --key 2,2n --key 3,3 |
       /bin/sed -e 's/^test_//' -e 's/[    ].*//'
-   builtin shopt -$old_extdebug extdebug
+   _tfw_shopt_restore
 }
 
 # A "fail" event occurs when any assertion fails, and indicates that the test
@@ -647,3 +731,6 @@ _tfw_fatal() {
 _tfw_fatalexit() {
    exit 255
 }
+
+# Restore the caller's shopt preferences before returning.
+_tfw_shopt_restore
