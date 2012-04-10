@@ -1,0 +1,121 @@
+#!/bin/bash
+
+# Tests for Serval DNA rhizome operations.
+#
+# Copyright 2012 Paul Gardner-Stephen
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+
+assert_rhizome_list_empty() {
+   execute $dna rhizome list
+   assertExitStatus --stdout --stderr '==' 0
+   assertStdoutIs -e "Found 0 rows\n"
+}
+
+doc_InitialEmptyList="Initial rhizome list is empty"
+setup_InitialEmptyList() {
+   setup_dna
+}
+test_InitialEmptyList() {
+   assert_rhizome_list_empty
+}
+
+doc_AddManifest="Rhizome add with manifest"
+setup_AddManifest() {
+   setup_dna
+   assert_rhizome_list_empty
+   echo "A test file" >file1
+   echo >file1.manifest
+   echo "Another test file" >file2
+}
+test_AddManifest() {
+   execute $dna rhizome add file file1 file1.manifest
+   assertExitStatus --stderr '==' 0
+   tfw_cat --stdout
+   tfw_cat --stderr
+   tfw_cat -v file1.manifest
+   assertGrep file1.manifest '^name="file1"$'
+   assertGrep file1.manifest '^date=[0-9]\+$'
+   assertGrep file1.manifest '^version=[0-9]\+$'
+   assertGrep file1.manifest '^id=[0-9a-fA-F]\+$'
+   assertGrep file1.manifest "^filesize=$(wc --bytes file1)\$"
+   assertGrep file1.manifest "^first_byte=0$"
+   assertGrep file1.manifest "^last_byte=$(wc --bytes file1)\$"
+}
+
+doc_AddThenList="Rhizome list contains one file after one add"
+setup_AddThenList() {
+   setup_dna
+   assert_rhizome_list_empty
+   echo "A test file" >file1
+   echo "Another test file" >file2
+}
+test_AddThenList() {
+   # Add first file
+   execute $dna rhizome add file file1
+   assertExitStatus --stderr '==' 0
+   execute $dna rhizome list
+   assertExitStatus --stdout --stderr '==' 0
+   assertStdoutGrep "^Found 1 rows$"
+   assertExpr --stdout $(replayStdout | wc --lines) '==' 5
+   assertStdoutGrep --matches=1 '^file name = "file1"$'
+   assertStdoutGrep --matches=0 '^file name = "file2"$'
+   replayStdout >add1.stdout
+   # Add second file
+   execute $dna rhizome add file file2
+   assertExitStatus --stderr '==' 0
+   execute $dna rhizome list
+   assertExitStatus --stdout --stderr '==' 0
+   assertStdoutGrep "^Found 2 rows$"
+   assertExpr --stdout $(replayStdout | wc --lines) '==' 9
+   assertStdoutGrep --matches=1 '^file name = "file1"$'
+   assertStdoutGrep --matches=1 '^file name = "file2"$'
+}
+
+doc_AddDuplicate="Rhizome add of same file"
+setup_AddDuplicate() {
+   setup_dna
+   assert_rhizome_list_empty
+   echo "A test file" >file1
+   echo "Another test file" >file2
+   # Add first file
+   execute $dna rhizome add file file1
+   assertExitStatus --stderr '==' 0
+   # Add second file
+   execute $dna rhizome add file file2
+   assertExitStatus --stderr '==' 0
+   # Make sure they are both in the list.
+   execute $dna rhizome list
+   assertExitStatus --stdout --stderr '==' 0
+   assertStdoutGrep "^Found 2 rows$"
+   assertStdoutGrep --matches=1 '^file name = "file1"$'
+   assertStdoutGrep --matches=1 '^file name = "file2"$'
+}
+test_AddDuplicate() {
+   # Add first file again (nothing should change except its date).
+   execute $dna rhizome add file file1
+   assertExitStatus --stderr '==' 0
+   execute $dna rhizome list
+   assertExitStatus --stdout --stderr '==' 0
+   assertStdoutGrep "^Found 2 rows$"
+   assertExpr --stdout $(replayStdout | wc --lines) '==' 9
+   assertStdoutGrep --matches=1 '^file name = "file1"$'
+   assertStdoutGrep --matches=1 '^file name = "file2"$'
+}
+
+runTests "$@"
