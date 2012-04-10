@@ -219,27 +219,32 @@ fatal() {
 }
 
 tfw_cat() {
-   local $header
+   local header=
+   local show_nonprinting=
    for file; do
       case $file in
       --stdout) 
          echo "#--- ${header:-stdout of ${_tfw_last_argv0##*/}} ---"
-         /bin/cat $_tfw_tmp/stdout
+         /bin/cat $show_nonprinting $_tfw_tmp/stdout
          echo "#---"
          header=
+         show_nonprinting=
          ;;
       --stderr) 
          echo "#--- ${header:-stderr of ${_tfw_last_argv0##*/}} ---"
-         /bin/cat $_tfw_tmp/stderr
+         /bin/cat $show_nonprinting $_tfw_tmp/stderr
          echo "#---"
          header=
+         show_nonprinting=
          ;;
       --header=*) header="${1#*=}";;
+      -v|--show-nonprinting) show_nonprinting=--show-nonprinting;;
       *)
          echo "#--- ${header:-$file} ---"
-         /bin/cat "$file"
+         /bin/cat $show_nonprinting "$file"
          echo "#---"
          header=
+         show_nonprinting=
          ;;
       esac
    done
@@ -547,8 +552,17 @@ _tfw_checkBashVersion() {
    esac
 }
 
+# Return a list of test names in the order that the test_TestName functions were
+# defined.
 _tfw_find_tests() {
-   builtin declare -F | sed -n -e '/^declare -f test_..*/s/^declare -f test_//p' | sort
+   local old_extdebug=$(builtin shopt -q extdebug && echo s || echo u)
+   shopt -s extdebug
+   builtin declare -F |
+      /bin/sed -n -e '/^declare -f test_..*/s/^declare -f test_//p' |
+      while read name; do builtin declare -F "test_$name"; done |
+      /usr/bin/sort --key 2,2n --key 3,3 |
+      /bin/sed -e 's/^test_//' -e 's/[    ].*//'
+   builtin shopt -$old_extdebug extdebug
 }
 
 # A "fail" event occurs when any assertion fails, and indicates that the test
