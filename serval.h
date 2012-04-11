@@ -1122,9 +1122,10 @@ typedef struct keyring_context {
   keyring_identity *identities[KEYRING_MAX_IDENTITIES];
 } keyring_context;
 
-#define KEYRING_PAGE_SIZE 4096
-#define KEYRING_BAM_BYTES 2048
-#define KEYRING_SLAB_SIZE (KEYRING_PAGE_SIZE*(KEYRING_BAM_BYTES<<3))
+#define KEYRING_PAGE_SIZE 4096LL
+#define KEYRING_BAM_BYTES 2048LL
+#define KEYRING_BAM_BITS (KEYRING_BAM_BYTES<<3)
+#define KEYRING_SLAB_SIZE (KEYRING_PAGE_SIZE*KEYRING_BAM_BITS)
 typedef struct keyring_bam {
   unsigned long file_offset;
   unsigned char bitmap[KEYRING_BAM_BYTES];
@@ -1140,7 +1141,6 @@ typedef struct keyring_file {
   off_t file_size;
 } keyring_file;
 
-keyring_file *keyring_open(char *file);
 void keyring_free(keyring_file *k);
 void keyring_free_context(keyring_context *c);
 void keyring_free_identity(keyring_identity *id);
@@ -1148,3 +1148,6 @@ void keyring_free_keypair(keypair *kp);
 #define KEYTYPE_CRYPTOBOX 0x01
 #define KEYTYPE_CRYPTOSIGN 0x02
 
+/* Public calls to keyring management */
+keyring_file *keyring_open(char *file);
+int keyring_enter_pin(keyring_file *k,char *pin);

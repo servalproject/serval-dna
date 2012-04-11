@@ -555,3 +555,149 @@ int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
   return exit_code;
 }
 
+/* Try all valid slots with the PIN and see if we find any identities with that PIN.
+   We might find more than one. */
+int keyring_enter_pin(keyring_file *k,char *pin)
+{
+  if (!k) return -1;
+  if (!pin) pin="";
+
+  int slot;
+  int identitiesFound=0;
+
+  for(slot=0;slot<k->file_size/KEYRING_PAGE_SIZE;slot++)
+    {
+      if (slot&(KEYRING_BAM_BITS-1)) {
+	/* Not a BAM slot, so examine */
+	off_t file_offset=slot*KEYRING_PAGE_SIZE;
+
+	/* See if this part of the keyring file is organised */
+	keyring_bam *b=k->bam;
+	while (b&&(file_offset>=b->file_offset+KEYRING_SLAB_SIZE))
+	  b=b->next;
+	if (!b) continue;
+
+	/* Now see if slot is marked in-use.  No point checking unallocated slots,
+	   especially since the cost can be upto a second of CPU time on a phone. */
+	int position=slot&(KEYRING_BAM_BITS-1);
+	int byte=position>>3;
+	int bit=position&7;
+	if (b->bitmap[byte]&(1<<bit)) {
+	  /* Slot is occupied, so check it.
+	     We have to check it for each keyring context (ie keyring pin) */
+	  int c;
+	  for(c=0;c<k->context_count;c++)
+	    {
+	      int result=keyring_decrypt_pkr(k,k->contexts[c],pin,slot);
+	      if (!result) identitiesFound++;
+	    }
+	}	
+      }
+    }
+  
+  /* Tell the caller how many identities we found */
+  return identitiesFound;
+  
+}
+
+/* Create a new identity in the specified context (which supplies the keyring pin)
+   with the specified PKR pin.  
+   The crypto_box and crypto_sign key pairs are automatically created, and the PKR
+   is packed and written to a hithero unallocated slot which is then marked full. 
+*/
+int keyring_create_identity(keyring_file *k,keyring_context *c,char *pin)
+{
+  int exit_code=1;
+  if (!k) return WHY("keyring is NULL");
+  if (!k->bam) return WHY("keyring lacks BAM (not to be confused with KAPOW)");
+  if (!c) return WHY("keyring context is NULL");
+  if (!pin) pin="";
+
+  keyring_identity *id=calloc(sizeof(keyring_identity),1);
+
+  /* Store pin */
+  id->PKRPin=strdup(pin);
+  if (!id->PKRPin) {
+    WHY("Could not store pin");
+    goto kci_safeexit;
+  }
+
+  /* Find free slot in keyring */
+  /* XXX Only stores to first slab! */
+  keyring_bam *b=k->bam;
+  for(id->slot=0;id->slot<KEYRING_BAM_BITS;id->slot++)
+    {
+      int position=id->slot&(KEYRING_BAM_BITS-1);
+      int byte=position>>3;
+      int bit=position&7;
+      if (!(b->bitmap[byte]&(1<<bit))) 
+	/* found a free slot */
+	break;
+    }
+  if (id->slot>=KEYRING_BAM_BITS) {
+    WHY("no free slots in first slab (and I don't know how to store in subsequent slabs yet");
+    goto kci_safeexit;
+  }
+
+  /* Allocate key pairs */
+
+  /* crypto_box key pair */
+  id->keypairs[0]=calloc(sizeof(keypair),1);
+  if (!id->keypairs[0]) {
+    WHY("calloc() failed preparing first key pair storage");
+    goto kci_safeexit;
+  }
+  id->keypair_count=1;
+  id->keypairs[0]->type=KEYTYPE_CRYPTOBOX;
+  id->keypairs[0]->private_key_len=crypto_box_curve25519xsalsa20poly1305_SECRETKEYBYTES;
+  id->keypairs[0]->private_key=malloc(id->keypairs[0]->private_key_len);
+  if (!id->keypairs[0]->private_key) {
+    WHY("malloc() failed preparing first private key storage");
+    goto kci_safeexit;
+  }
+  id->keypairs[0]->public_key_len=crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES;
+  id->keypairs[0]->public_key=malloc(id->keypairs[0]->public_key_len);
+  if (!id->keypairs[0]->public_key) {
+    WHY("malloc() failed preparing first public key storage");
+    goto kci_safeexit;
+  }
+  crypto_box_curve25519xsalsa20poly1305_keypair(id->keypairs[0]->public_key,
+						id->keypairs[0]->private_key);
+
+  /* crypto_box key pair */
+  id->keypairs[1]=calloc(sizeof(keypair),1);
+  if (!id->keypairs[1]) {
+    WHY("calloc() failed preparing second key pair storage");
+    goto kci_safeexit;
+  }
+  id->keypair_count=2;
+  id->keypairs[1]->type=KEYTYPE_CRYPTOSIGN;
+  id->keypairs[1]->private_key_len=crypto_sign_edwards25519sha512batch_SECRETKEYBYTES;
+  id->keypairs[1]->private_key=malloc(id->keypairs[1]->private_key_len);
+  if (!id->keypairs[1]->private_key) {
+    WHY("malloc() failed preparing second private key storage");
+    goto kci_safeexit;
+  }
+  id->keypairs[1]->public_key_len=crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES;
+  id->keypairs[1]->public_key=malloc(id->keypairs[1]->public_key_len);
+  if (!id->keypairs[1]->public_key) {
+    WHY("malloc() failed preparing second public key storage");
+    goto kci_safeexit;
+  }
+  crypto_sign_edwards25519sha512batch_keypair(id->keypairs[1]->public_key,
+					      id->keypairs[1]->private_key);
+
+
+  
+
+  /* XXX
+     - Create packed and encrypted PKR.
+     - Mark slot in-use.
+     - Clean up sensitive data
+  */
+  WHY("Not implemented");
+
+ kci_safeexit:
+  if (id) keyring_free_identity(id);
+  return exit_code;
+}
