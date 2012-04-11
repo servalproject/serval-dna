@@ -381,6 +381,7 @@ int keyring_munge_block(unsigned char *block,int len /* includes the first 96 by
   bzero(&hashKey[0],crypto_hash_sha512_BYTES);
   bzero(&hashNonce[0],crypto_hash_sha512_BYTES);
   return exit_code;
+#undef APPEND
 }
 
 keyring_identity *keyring_unpack_identity(unsigned char *slot)
@@ -499,6 +500,7 @@ int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
 {
   int exit_code=1;
   unsigned char slot[KEYRING_PAGE_SIZE];
+  unsigned char hash[crypto_hash_sha512_BYTES];
   unsigned char work[65536];
   keyring_identity *id=NULL; 
   int ofs;
@@ -525,12 +527,29 @@ int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
   }
 
   /* 4. Verify that slot is self-consistent (check MAC) */
+#define APPEND(b,l) if (ofs+(l)>=65536) { WHY("Input too long"); goto kdp_safeexit; } bcopy((b),&work[ofs],(l)); ofs+=(l)
+
   ofs=0;
+  APPEND(&slot[0],32);
+  APPEND(id->keypairs[0]->private_key,id->keypairs[0]->private_key_len);
+  APPEND(id->keypairs[0]->public_key,id->keypairs[0]->public_key_len);
+  APPEND(pin,strlen(pin));
+  crypto_hash_sha512(hash,work,ofs);
+  /* compare hash to record */
+  if (bcmp(hash,&slot[32],crypto_hash_sha512_BYTES))
+    {
+      WHY("Slot is not valid (MAC mismatch)");
+      goto kdp_safeexit;
+    }
+  /* Well, it's all fine, so add the id into the context and return */
+  c->identities[c->identity_count++]=id;
+  return 0;
 
   WHY("Not implemented");
  kdp_safeexit:
   /* Clean up any potentially sensitive data before exiting */
   bzero(slot,KEYRING_PAGE_SIZE);
+  bzero(hash,crypto_hash_sha512_BYTES);
   bzero(&work[0],65536);
   if (id) keyring_free_identity(id); id=NULL;
   return exit_code;
