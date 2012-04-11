@@ -678,7 +678,7 @@ int app_rhizome_list(int argc, char **argv, struct command_line_option *o)
     return -1;
   rhizome_datastore_path = serval_instancepath();
   rhizome_opendb();
-  rhizome_list_manifests(0, 0);
+  return rhizome_list_manifests(0, 0);
 }
 
 /* NULL marks ends of command structure.

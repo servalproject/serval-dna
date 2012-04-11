@@ -21,20 +21,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include <stdlib.h>
 
-/* Import a bundle from the inbox folder.
-   Check that the manifest prototype is valid, and if so, complete it, and sign it if required and possible.
+/* Import a bundle from the inbox folder.  The bundle is contained a pair of files, one containing
+   the manifest and the optional other containing the payload.
 
-   Note that bundles can either be an ordinary bundle, or a group description.
-   Group specifications are simply manifests that have the "isagroup" variable set.
-   Groups get stored in the manifests table AND a reference included in the 
-   grouplist table.
-   Groups are allowed to be listed as being members of other groups.
-   This allows a nested, i.e., multi-level group heirarchy where sub-groups will only
-   typically be discovered by joining the parent group.  Probably not a bad way to do
-   things.
-
-   The file should be included in the specified rhizome groups, if possible.
-   (some groups may be closed groups that we do not have the private key for.)
+   The logic is all in rhizome_add_manifest().  This function just wraps that function and manages
+   file and object buffers and lifetimes.
 */
 
 int rhizome_bundle_import(rhizome_manifest *m_in,char *bundle,char *groups[], int ttl,
@@ -71,92 +62,160 @@ int rhizome_bundle_import(rhizome_manifest *m_in,char *bundle,char *groups[], in
       ret = WHY("Could not write manifest file.");
   }
 
-  /* If the manifest was allocated in this function, then this function is responsible for freeing
-   * it */
+  /* If the manifest structure was allocated in this function, then this function is responsible for
+     freeing it */
   if (!m_in)
     rhizome_manifest_free(m);
 
   return ret;
 }
 
-int rhizome_add_manifest(rhizome_manifest *m, const char *filename, char *groups[], int ttl, int verifyP, int checkFileP, int signP)
-{
-  char *buffer;
-  char hexhash[SHA512_DIGEST_STRING_LENGTH];
+/* Add a manifest/payload pair ("bundle") to the rhizome data store.
 
-  /* Keep associated file name handy for later */
+   Fills in any missing manifest fields (generating a new, random manifest ID if necessary),
+   optionally performs consistency checks (see below), adds the manifest to the given groups (for
+   which private keys must be held), optionally signs it, and inserts the manifest and payload into
+   the rhizome store unless the store already contains a manifest with the same ID and a higher
+   version number or an identical manifest (in which case the stored version number is bumped to the
+   maximum of the two).
+
+   This function is called in three different situations:
+    (a) when the user injects a file (with or without a complete manifest) into rhizome,
+    (b) when a manifest is received via the mesh and the file is already present in the rhizome store,
+    (c) when a file is received via the mesh for a manifest that was received previously.
+
+   The following arguments distinguish these situations:
+
+    ttl
+      - In case (a) ttl will be typically set to the initial (maximum?) TTL for a manifest.  In
+	cases (b) and (c) ttl will be the TTL of the received manifest decremented by one.  This
+	function clamps the supplied value into the legal range 0..255, so callers need not perform
+	range checking after decrement.
+
+    verifyP
+      - If set, then checks that no signature verifications failed when the manifest was loaded.
+	(If checkFileP is given, then also checks that the payload and manifest are consistent.)
+	This is used in case (a) if the user provided a manifest file, and always for cases (b) and
+	(c).  It ensures the integrity of the received/provided manifest, and ensures that the
+	received/provided payload is actually the one that the manifest belongs to.  If verifyP is
+	false, then the new manifest will be overwritten with the correct values for the payload.
+
+    checkFileP
+      - If set then checks that the payload file is readable, and will cause verifyP to also check
+	that the payload matches the values in the manifest, specifically length and content hash.
+	This is always used in cases (a) and (c), but not in case (b) because in that case, the
+	file's contents with the given file hash are known to be already in the database.
+
+    signP
+      - If set, then signs the manifest after all its fields have been filled in.  Only used in case
+	(a), because in cases (b) and (c) the manifest has already been signed, since it is already
+	on the air.
+
+   A bundle can either be an ordinary manifest-payload pair, or a group description.
+   
+    - Group descriptions are manifests with no payload that have the "isagroup" variable set.  They
+      get stored in the manifests table AND a reference is added to the grouplist table.  Any
+      manifest, including any group manifest, may be a member of zero or one group.  This allows a
+      nested, i.e., multi-level group hierarchy where sub-groups will only typically be discovered
+      by joining the parent group.
+
+*/
+
+int rhizome_add_manifest(rhizome_manifest *m,
+			 const char *filename,
+			 char *groups[],
+			 int ttl,
+			 int verifyP, // verify that file's hash is consistent with manifest
+			 int checkFileP,
+			 int signP
+			)
+{
+  char *id = NULL;
+  char hexhash[SHA512_DIGEST_STRING_LENGTH];
+  int verifyErrors = 0;
+
+  /* Keep payload file name handy for later */
   m->dataFileName = strdup(filename);
 
-  /* Store time to live */
+  /* Store time to live, clamped to within legal range */
   m->ttl = ttl < 0 ? 0 : ttl > 254 ? 254 : ttl;
 
-  /* Check file is accessible and discover its length */
-  if (checkFileP || verifyP) {
+  /* Check payload file is accessible and discover its length, then check that it matches
+     the file size stored in the manifest */
+  if (checkFileP) {
     struct stat stat;
     if (lstat(filename,&stat))
-      return WHY("Could not stat() associated file");
+      return WHY("Could not stat() payload file");
     m->fileLength = stat.st_size;
+    long long mfilesize = rhizome_manifest_get_ll(m, "filesize");
+    if (mfilesize != -1 && mfilesize != m->fileLength)
+      ++verifyErrors;
   }
 
-  if (checkFileP || signP) {
+  /* Compute hash of payload unless we know verification has already failed */
+  if (checkFileP ? !(verifyP && (m->errors || verifyErrors)) : signP) {
     if (rhizome_hash_file(filename, hexhash))
       return WHY("Could not hash file.");
     memcpy(&m->fileHexHash[0], &hexhash[0], SHA512_DIGEST_STRING_LENGTH);
     m->fileHashedP = 1;
   }
 
+  /* Check that paylod hash matches manifest */
+  if (checkFileP) {
+    const char *mhexhash = rhizome_manifest_get(m, "filehash", NULL, 0);
+    if (mhexhash && strcmp(hexhash, mhexhash))
+      ++verifyErrors;
+  }
+
+  /* If any signature errors were encountered on loading, or manifest is inconsistent with payload,
+     then bail out now. */
   if (verifyP) {
-    /* Make sure hashes match.
-       Make sure that no signature verification errors were spotted on loading. */
-    int verifyErrors=0;
-    char *mhexhash;
-    if (checkFileP) {
-      if ((mhexhash=rhizome_manifest_get(m,"filehash",NULL,0))!=NULL)
-	if (strcmp(hexhash,mhexhash))
-	  verifyErrors++;
-    }
-    if (m->errors)
-      verifyErrors+=m->errors;
-    if (verifyErrors)
+    if (verifyErrors || m->errors)
       return WHY("Errors encountered verifying bundle manifest");
   }
-  else {
-    if (!(buffer = rhizome_manifest_get(m, "id", NULL, 0))) {
-      /* No bundle id (256 bit random string being a public key in the NaCl CryptoSign crypto system),
-	 so create one, and keep the private key handy. */
-      printf("manifest does not have an id\n");
-      rhizome_manifest_createid(m);
-      /* The ID is implicit in transit, but we need to store it in the file,
-	 so that reimporting manifests on receiver nodes works easily.
-	 We might implement something that strips the id variable out of the
-	 manifest when sending it, or some other scheme to avoid sending all 
-	 the extra bytes. */	
-      rhizome_manifest_set(m,"id",rhizome_bytes_to_hex(m->cryptoSignPublic,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES));
-    } else {
-      /* An ID was specified, so remember it, and look for the private key if
-	 we have it stowed away */
-      rhizome_hex_to_bytes(buffer,m->cryptoSignPublic,
-			   crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
-      if (!rhizome_find_keypair_bytes(m->cryptoSignPublic,m->cryptoSignSecret))
-	m->haveSecret=1;
-    }
 
-    rhizome_manifest_set(m,"filehash",hexhash);
-    if (rhizome_manifest_get(m,"version",NULL,0)==NULL)
-      /* Version not set, so set one */
-      rhizome_manifest_set_ll(m,"version", overlay_gettime_ms());
-    rhizome_manifest_set_ll(m,"first_byte", 0);
-    rhizome_manifest_set_ll(m,"last_byte", m->fileLength);
+  /* Fill in the manifest to avoid redundant work by rhizome_manifest_finalise() below */
+  if (checkFileP) {
+    rhizome_manifest_set(m, "filehash", hexhash);
+    rhizome_manifest_set_ll(m, "first_byte", 0);
+    rhizome_manifest_set_ll(m, "last_byte", m->fileLength);
   }
-   
-  /* Discard if it is older than the most recent known version */
-  long long storedversion = sqlite_exec_int64(
-      "SELECT version from manifests where id='%s';",
-      rhizome_bytes_to_hex(m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)
-    );
-  if (storedversion > rhizome_manifest_get_ll(m, "version"))
-    return WHY("Newer version exists");
-					      
+
+  /* Supply manifest version number if missing, so we can do the version check below */
+  if (rhizome_manifest_get(m, "version", NULL, 0) == NULL) {
+    rhizome_manifest_set_ll(m, "version", overlay_gettime_ms());
+  }
+
+  /* Check if a manifest is already stored for the same file with the same details, except version
+     number.  This catches the case of "dna rhizome add file <filename>" on the same file more than
+     once.  (Debounce!) */
+
+  /* If the manifest already has an ID, look to see if we possess its private key */
+  if ((id = rhizome_manifest_get(m, "id", NULL, 0))) {
+    rhizome_hex_to_bytes(id, m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
+    if (!rhizome_find_keypair_bytes(m->cryptoSignPublic, m->cryptoSignSecret))
+      m->haveSecret=1;
+  }
+
+  /* Discard the new manifest it is older than the most recent known version with the same ID */
+  if (id) {
+    long long storedversion = sqlite_exec_int64("SELECT version from manifests where id='%s';", id);
+    if (storedversion > rhizome_manifest_get_ll(m, "version")) {
+      return WHY("Newer version exists");
+    }
+  } else {
+    /* The manifest had no ID (256 bit random string being a public key in the NaCl CryptoSign
+       crypto system), so create one. */
+    printf("manifest does not have an id\n");
+    rhizome_manifest_createid(m);
+    /* The ID is implicit in transit, but we need to store it in the file, so that reimporting
+       manifests on receiver nodes works easily.  We might implement something that strips the id
+       variable out of the manifest when sending it, or some other scheme to avoid sending all the
+       extra bytes. */	
+    id = rhizome_bytes_to_hex(m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+    rhizome_manifest_set(m, "id", id);
+  }
+
   /* Add group memberships */
   if (groups) {
     int i;
@@ -164,6 +223,7 @@ int rhizome_add_manifest(rhizome_manifest *m, const char *filename, char *groups
       rhizome_manifest_add_group(m, groups[i]);
   }
 
+  /* Finish completing the manifest */
   if (rhizome_manifest_finalise(m,signP))
     return WHY("Failed to finalise manifest.\n");
 
