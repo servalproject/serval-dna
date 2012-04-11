@@ -313,17 +313,6 @@ int keyring_enter_identitypin(keyring_file *k,char *pin)
 {
   if (!k) return WHY("k is null");
 
-  WHY("Not implemented");
-}
-
-/* Read the slot, and try to decrypt it.
-   Decryption is symmetric with encryption, so the same function is used
-   for munging the slot before making use of it, whichever way we are going.
-   Once munged, we then need to verify that the slot is valid, and if so
-   unpack the details of the identity.
-*/
-int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,int slot)
-{
   return WHY("Not implemented");
 }
 
@@ -350,6 +339,13 @@ int keyring_munge_block(unsigned char *block,int len /* includes the first 96 by
   unsigned char *PKRSalt=&block[0];
   int PKRSaltLen=32;
 
+#if crypto_stream_xsalsa20_KEYBYTES>crypto_hash_sha512_BYTES
+#error crypto primitive key size too long -- hash needs to be expanded
+#endif
+#if crypto_stream_xsalsa20_NONCEBYTES>crypto_hash_sha512_BYTES
+#error crypto primitive nonce size too long -- hash needs to be expanded
+#endif
+
   /* Generate key and nonce hashes from the various inputs */
 #define APPEND(b,l) if (ofs+(l)>=65536) { WHY("Input too long"); goto kmb_safeexit; } bcopy((b),&work[ofs],(l)); ofs+=(l)
 
@@ -371,12 +367,172 @@ int keyring_munge_block(unsigned char *block,int len /* includes the first 96 by
   APPEND(PKRPin,strlen(PKRPin));
   crypto_hash_sha512(hashNonce,work,ofs);
 
-  WHY("Not implemented");
+  /* Now en/de-crypt the remainder of the block. 
+     We do this in-place for convenience, so you should not pass in a mmap()'d
+     lump. */
+  crypto_stream_xsalsa20_xor(&block[96],&block[96],len-96,
+			     hashNonce,hashKey);
+  exit_code=0;
 
  kmb_safeexit:
   /* Wipe out all sensitive structures before returning */
+  ofs=0;
   bzero(&work[0],65536);
   bzero(&hashKey[0],crypto_hash_sha512_BYTES);
   bzero(&hashNonce[0],crypto_hash_sha512_BYTES);
   return exit_code;
 }
+
+keyring_identity *keyring_unpack_identity(unsigned char *slot)
+{
+  /* Skip salt and MAC */
+  int i;
+  int ofs;
+  keyring_identity *id=calloc(sizeof(keyring_identity),1);
+  if (!id) { WHY("calloc() of identity failed"); return NULL; }
+  if (!slot) { WHY("slot is null"); return NULL; }
+
+  /* There was a known plain-text opportunity here:
+     byte 96 must be 0x01, and some other bytes are likely deducible, e.g., the
+     location of the trailing 0x00 byte can probably be guessed with confidence.
+     Payload rotation would help here.  So let's do that.  First two bytes is
+     rotation in bytes of remainder of block.
+  */
+
+  int rotation=(slot[96]<<8)|slot[97];
+  ofs=32+64+2;
+#define slot_byte(X) (slot[96+((X)+rotation)%(KEYRING_PAGE_SIZE-96)])
+
+  /* Parse block */
+  for(;ofs<KEYRING_PAGE_SIZE;)
+    {
+      switch(slot_byte(ofs)) {
+      case 0x00:
+	/* End of interesting data */
+	break;
+      case KEYTYPE_CRYPTOBOX:
+      case KEYTYPE_CRYPTOSIGN:
+	if (id->keypair_count>=PKR_MAX_KEYPAIRS) {
+	  WHY("Too many key pairs in identity");
+	  keyring_free_identity(id);
+	  return NULL;
+	}
+	keypair *kp=id->keypairs[id->keypair_count]=calloc(sizeof(keypair),1);
+	if (!id->keypairs[id->keypair_count]) {
+	  WHY("calloc() of key pair structure failed.");
+	  keyring_free_identity(id);
+	  return NULL;
+	}
+	kp->type=slot_byte(ofs);
+	switch(kp->type) {
+	case KEYTYPE_CRYPTOBOX:
+	  kp->private_key_len=crypto_box_curve25519xsalsa20poly1305_SECRETKEYBYTES;
+	  kp->public_key_len=crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES;
+	  break;
+	case KEYTYPE_CRYPTOSIGN:
+	  kp->private_key_len=crypto_sign_edwards25519sha512batch_SECRETKEYBYTES;
+	  kp->public_key_len=crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES;
+	  break;
+	}
+	kp->private_key=malloc(kp->private_key_len);
+	if (!kp->private_key) {
+	  WHY("malloc() of private key storage failed.");
+	  keyring_free_identity(id);
+	  return NULL;
+	}
+	for(i=0;i<kp->private_key_len;i++) kp->private_key[i]=slot_byte(ofs+i);
+	kp->private_key=malloc(kp->private_key_len);
+	if (!kp->private_key) {
+	  WHY("malloc() of private key storage failed.");
+	  keyring_free_identity(id);
+	  return NULL;
+	}
+	/* Hop over the private key and token that we have read */
+	ofs+=1+kp->private_key_len;
+	switch(kp->type) {
+	case KEYTYPE_CRYPTOBOX:
+	  /* Compute public key from private key.
+	     
+	     Public key calculation as below is taken from section 3 of:
+	     http://cr.yp.to/highspeed/naclcrypto-20090310.pdf
+	     
+	     XXX - This can take a while on a mobile phone since it involves a
+	     scalarmult operation, so searching through all slots for a pin could 
+	     take a while (perhaps 1 second per pin:slot cominbation).  
+	     This is both good and bad.  The other option is to store
+	     the public key as well, which would make entering a pin faster, but
+	     would also make trying an incorrect pin faster, thus simplifying some
+	     brute-force attacks.  We need to make a decision between speed/convenience
+	     and security here.
+	  */
+	  crypto_scalarmult_curve25519_base(kp->public_key,kp->private_key);
+	  break;
+	case KEYTYPE_CRYPTOSIGN:
+	  /* While it is possible to compute the public key from the private key,
+	     NaCl currently does not provide a function to do this, so we have to
+	     store it, or else subvert the NaCl API, which I would rather not do.
+	  */
+	  for(i=0;i<kp->public_key_len;i++) kp->public_key[i]=slot_byte(ofs+i);
+	  ofs+=kp->public_key_len;
+	  break;
+	}
+	break;
+      default:
+	/* Invalid data, so invalid record.  Free and return failure.
+	   We don't complain about this, however, as it is the natural
+	   effect of trying a pin on an incorrect keyring slot. */
+	keyring_free_identity(id);
+	return NULL;
+      }
+    }
+  return id;
+}
+
+/* Read the slot, and try to decrypt it.
+   Decryption is symmetric with encryption, so the same function is used
+   for munging the slot before making use of it, whichever way we are going.
+   Once munged, we then need to verify that the slot is valid, and if so
+   unpack the details of the identity.
+*/
+int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
+			char *pin,int slot_number)
+{
+  int exit_code=1;
+  unsigned char slot[KEYRING_PAGE_SIZE];
+  unsigned char work[65536];
+  keyring_identity *id=NULL; 
+  int ofs;
+
+  /* 1. Read slot. */
+  if (fseeko(k->file,slot_number*KEYRING_PAGE_SIZE,SEEK_SET))
+    return WHY("fseeko() failed");
+  if (fread(&slot[0],KEYRING_PAGE_SIZE,1,k->file)!=1)
+    return WHY("read() failed");
+  /* 2. Decrypt data from slot. */
+  if (keyring_munge_block(slot,KEYRING_PAGE_SIZE,
+			  k->contexts[0]->KeyRingSalt,
+			  k->contexts[0]->KeyRingSaltLen,
+			  c->KeyRingPin,pin)) {
+    WHY("keyring_munge_block() failed");
+    goto kdp_safeexit;
+  }  
+
+  /* 3. Unpack contents of slot into a new identity in the provided context. */  
+  id=keyring_unpack_identity(slot);
+  if (!id) {
+    WHY("keyring_unpack_identity() failed");
+    goto kdp_safeexit;
+  }
+
+  /* 4. Verify that slot is self-consistent (check MAC) */
+  ofs=0;
+
+  WHY("Not implemented");
+ kdp_safeexit:
+  /* Clean up any potentially sensitive data before exiting */
+  bzero(slot,KEYRING_PAGE_SIZE);
+  bzero(&work[0],65536);
+  if (id) keyring_free_identity(id); id=NULL;
+  return exit_code;
+}
+

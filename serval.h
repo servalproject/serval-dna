@@ -1104,6 +1104,7 @@ typedef struct keypair {
 typedef struct keyring_identity {  
   char *PKRPin;
   unsigned int slot;
+  int keypair_count;
   keypair *keypairs[PKR_MAX_KEYPAIRS];
 } keyring_identity;
 
@@ -1144,3 +1145,6 @@ void keyring_free(keyring_file *k);
 void keyring_free_context(keyring_context *c);
 void keyring_free_identity(keyring_identity *id);
 void keyring_free_keypair(keypair *kp);
+#define KEYTYPE_CRYPTOBOX 0x01
+#define KEYTYPE_CRYPTOSIGN 0x02
+
