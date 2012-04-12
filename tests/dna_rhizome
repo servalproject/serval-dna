@@ -21,6 +21,11 @@
 source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 
+setup_dna_rhizome() {
+   setup_dna "$@"
+   executeOk $dna config set debug rhizome
+}
+
 assert_rhizome_list_empty() {
    executeOk $dna rhizome list
    assertStdoutIs -e "Found 0 rows\n"
@@ -28,7 +33,7 @@ assert_rhizome_list_empty() {
 
 doc_InitialEmptyList="Initial rhizome list is empty"
 setup_InitialEmptyList() {
-   setup_dna
+   setup_dna_rhizome
 }
 test_InitialEmptyList() {
    assert_rhizome_list_empty
@@ -36,7 +41,7 @@ test_InitialEmptyList() {
 
 doc_AddManifest="Rhizome add with manifest"
 setup_AddManifest() {
-   setup_dna
+   setup_dna_rhizome
    assert_rhizome_list_empty
    echo "A test file" >file1
    echo 'name=wah' >file1.manifest
@@ -58,7 +63,7 @@ test_AddManifest() {
 
 doc_AddThenList="Rhizome list contains one file after one add"
 setup_AddThenList() {
-   setup_dna
+   setup_dna_rhizome
    assert_rhizome_list_empty
    echo "A test file" >file1
    echo "Another test file" >file2
@@ -83,7 +88,7 @@ test_AddThenList() {
 
 doc_AddDuplicate="Rhizome add of same file"
 setup_AddDuplicate() {
-   setup_dna
+   setup_dna_rhizome
    assert_rhizome_list_empty
    echo "A test file" >file1
    echo "Another test file" >file2
@@ -99,7 +104,10 @@ setup_AddDuplicate() {
 }
 test_AddDuplicate() {
    # Add first file again (nothing should change except its date).
+   executeOk $dna config get debug
+   tfw_cat --stdout
    executeOk $dna rhizome add file file1
+   tfw_cat --stderr
    executeOk $dna rhizome list
    assertStdoutGrep "^Found 2 rows$"
    assertStdoutLineCount '==' 11
