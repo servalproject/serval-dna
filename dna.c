@@ -40,45 +40,6 @@ int returnMultiVars=0;
 
 int hexdigit[16]={'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
 
-struct mphlr_variable vars[]={
-  /* Variables that can have only a single value */
-  {VAR_EOR,"eor","Marks end of record"},
-  {VAR_CREATETIME,"createtime","Time HLR record was created"},
-  {VAR_CREATOR,"creator","Device that created this HLR record"},
-  {VAR_REVISION,"revision","Revision number of this HLR record"},
-  {VAR_REVISOR,"revisor","Device that revised this HLR record"},
-  {VAR_PIN,"pin","Secret PIN for this HLR record"},
-
-  /* GSM encoded audio, so a 16KB MPHLR maximum size shouldn't
-     pose a problem.  8KB = ~4.5 seconds, which is a long time 
-     to say your name in, leaving 8KB for other variables. */
-  {VAR_VOICESIG,"voicesig","Voice signature of this subscriber"},
-
-  {VAR_HLRMASTER,"hlrmaster","Location where the master copy of this HLR record is maintained."},
-    {VAR_NAME, "name", "Published name of this subscriber"},
-
-  /* Variables that can take multiple values */
-  {VAR_DIDS,"dids","Numbers claimed by this subscriber"},
-  {VAR_LOCATIONS,"locations","Locations where this subscriber wishes to receive calls"},
-  {VAR_IEMIS,"iemis","GSM IEMIs claimed by this subscriber"},
-  {VAR_TEMIS,"temis","GSM TEMIs claimed by this subscriber"},
-
-  /* Each entry here has a flag byte (unread, ...) */
-  {VAR_CALLS_IN,"callsin","Calls received by this subscriber"},
-  {VAR_CALLS_MISSED,"callsmissed","Calls missed by this subscriber"},
-  {VAR_CALLS_OUT,"callsout","Calls made by this subscriber"},
-
-  {VAR_SMESSAGES,"smessages","SMS received by this subscriber"},
-
-  {VAR_DID2SUBSCRIBER,"did2subscriber","Preferred subscribers for commonly called DIDs"},
-
-  {VAR_HLRBACKUPS,"hlrbackups","Locations where backups of this HLR record are maintained."},
-
-  {VAR_NOTE,"note","Free-form notes on this HLR record"},
-
-  {0x00,NULL,NULL}
-};
-
 int sock=-1;
 
 #ifndef HAVE_BZERO
@@ -160,7 +121,7 @@ int parseAssignment(unsigned char *text,int *var_id,unsigned char *value,int *va
      Values are length limited to 65535 bytes.
   */
 
-  int i,v;
+  int i;
   int max_len=*value_len;
   int vlen=0;
   int tlen=strlen((char *)text);
@@ -170,11 +131,13 @@ int parseAssignment(unsigned char *text,int *var_id,unsigned char *value,int *va
   }
 
   /* Identify which variable */
+  *var_id=-1;
   for(i=0;i<tlen;i++) if (text[i]=='=') break;
-  for(v=0;vars[v].name;v++)   if (!strncasecmp(vars[v].name,(char *)text,i)) break;
+  
+  /* Go through known keyring variables */
+  if (!strcasecmp((char *)text,"did")) *var_id=KEYTYPE_DID;
 
-  if (!vars[v].name) return setReason("Illegal variable name in assignment");
-  *var_id=vars[v].id;
+  if (*var_id==-1) return setReason("Illegal variable name in assignment");
 
   i++;
   switch(text[i])
@@ -222,9 +185,7 @@ int usage(char *complaint)
 {
   fprintf(stderr,"dna: %s\n",complaint);
   fprintf(stderr,"usage:\n");
-  fprintf(stderr,"   dna [-v <flags>] -S <hlr size in MB> [-f HLR backing file] [-I import.txt] [-N interface,...] [-G gateway specification] [-r rhizome path]\n");
-  fprintf(stderr,"or\n");
-  fprintf(stderr,"   dna [-v <flags>] -f <HLR backing file> -E <hlr export file>\n");
+  fprintf(stderr,"   dna [-v <flags>] -S [-f keyring file] [-N interface,...] [-G gateway specification] [-r rhizome path]\n");
   fprintf(stderr,"or\n");
   fprintf(stderr,"   dna -r <rhizome path> -M <manifest name>\n");
   fprintf(stderr,"or\n");
@@ -238,12 +199,10 @@ int usage(char *complaint)
   fprintf(stderr,"or\n");
   fprintf(stderr,"   dna [-v <flags>] [-t timeout] -d did -C\n");
   fprintf(stderr,"or\n");
-  fprintf(stderr,"   dna [-v <flags>] -f <hlr.dat> -E <export.txt>\n");
+  fprintf(stderr,"   dna [-v <flags>] -f <keyring file> -E <export.txt>\n");
 
   fprintf(stderr,"\n");
   fprintf(stderr,"       -v - Set verbosity.\n");
-  fprintf(stderr,"       -E - Export specified HLR database into specified flat text file.\n");
-  fprintf(stderr,"       -I - Import a previously exported HLR database into this one.\n");
   fprintf(stderr,"       -A - Ask for address of subscriber.\n");
   fprintf(stderr,"       -b - Specify BATMAN socket to obtain peer list (flaky).\n");
   fprintf(stderr,"       -l - Specify BATMAN socket to obtain peer list (better, but requires Serval patched BATMAN).\n");
@@ -251,8 +210,8 @@ int usage(char *complaint)
   fprintf(stderr,"       -m - Return multiple variable values instead of only first response.\n");
   fprintf(stderr,"       -M - Create and import a new bundle from the specified manifest.\n");
   fprintf(stderr,"       -n - Do not detach from foreground in server mode.\n");
-  fprintf(stderr,"       -S - Run in server mode with an HLR of the specified size.\n");
-  fprintf(stderr,"       -f - Use the specified file as a permanent store for HLR data.\n");
+  fprintf(stderr,"       -S - Run in server mode.\n");
+  fprintf(stderr,"       -f - Location of keyring file.\n");
   fprintf(stderr,"       -d - Search by Direct Inward Dial (DID) number.\n");
   fprintf(stderr,"       -s - Search by Subscriber ID (SID) number.\n");
   fprintf(stderr,"       -p - Specify additional DNA nodes to query.\n");
@@ -550,7 +509,7 @@ int main(int argc,char **argv)
   char *pin=NULL;
   char *did=NULL;
   char *sid=NULL;
-  char *hlr_file=NULL;
+  char *keyring_file=NULL;
   int instance=-1;
   int foregroundMode=0;
 
@@ -599,20 +558,22 @@ int main(int argc,char **argv)
 	  "         Type '%s help' to learn about the new command line structure.\n",
 	  argv[0]);
 
-  while((c=getopt(argc,argv,"Ab:B:E:G:I:S:f:d:i:l:L:mnp:P:r:s:t:v:R:W:U:D:CO:M:N:")) != -1 ) 
+  while((c=getopt(argc,argv,"Ab:B:E:G:I:Sf:d:i:l:L:mnp:P:r:s:t:v:R:W:U:D:CO:M:N:")) != -1 ) 
     {
       switch(c)
 	{
+	case 'S': serverMode=1; break;
 	case 'r': /* Enable rhizome */
 	  if (rhizome_datastore_path) return WHY("-r specified more than once");
 	  rhizome_datastore_path=optarg;
 	  rhizome_opendb();
-	  /* Also set hlr file to be in the Rhizome directory, to save the need to specify it
+	  /* Also set keyring file to be in the Rhizome directory, to save the need to specify it
 	     separately. */
 	  char temp[1024];
-	  if (snprintf(temp, sizeof(temp), "%s/hlr.dat", optarg) >= sizeof(temp))
+	  if (snprintf(temp, sizeof(temp), "%s/serval.keyring", optarg)
+	      >= sizeof(temp))
 	    exit(WHY("Rhizome directory name too long."));
-	  hlr_file = strdup(temp);
+	  keyring_file = strdup(temp);
 	  break;
 	case 'M': /* Distribute specified manifest and file pair using Rhizome. */
 	  /* This option assumes that the manifest is locally produced, and will
@@ -638,19 +599,6 @@ int main(int argc,char **argv)
 	  gatewayspec=strdup(optarg);
 	  if(prepareGateway(gatewayspec)) return usage("Invalid gateway specification");
 	  break;
-	case 'E': /* Export HLR into plain text file that can be imported later */
-	  if (!hlr_file) usage("You must specify an HLR file to export from, i.e., dna -f hlr.dat -E hlr.txt");
-	  return exportHlr((unsigned char*)hlr_file,optarg);
-	  break;
-	case 'I': /* Import HLR data from a plain text file into current HLR */
-	  if (importFile) usage("-I multiply specified.");
-	  importFile=optarg;
-	  if (!hlr_file||!serverMode) usage("-I requires -S and -f.");
-	  if (openHlrFile(hlr_file,hlr_size))
-	    exit(setReason("Failed to open HLR database"));
-	  importHlr(importFile);
-	  return 0;
-	  break;
 	case 'n': /* don't detach from foreground in server mode */
 	  foregroundMode=1; break;
 	case 'b': /* talk peers on a BATMAN mesh */
@@ -666,18 +614,13 @@ int main(int argc,char **argv)
 	  simulatedBER=atof(optarg);
 	  fprintf(stderr,"WARNING: Bit error injection enabled -- this will cause packet loss and is intended only for testing.\n");
 	  break;
-	case 'S': 
-	  if (atof(optarg)<0.1||atof(optarg)>16384) usage("HLR must be 0.1MB - 16384MB in size.");
-	  hlr_size=(int)(atof(optarg)*1048576.0);
-	  serverMode=1; 
-	  break;
 	case 'i':
 	  instance=atoi(optarg);
 	  if (instance<-1||instance>255) usage("Illegal variable instance ID.");
 	  break;
 	case 'f':
-	  if (clientMode) usage("Only servers use backing files");
-	  hlr_file=strdup(optarg);
+	  if (clientMode) usage("Only servers use keyring files");
+	  keyring_file=strdup(optarg);
 	  break;
 	case 'p': /* additional peers to query */
 	  if (additionalPeer(optarg)) exit(-3);
@@ -730,12 +673,8 @@ int main(int argc,char **argv)
 	    return writeItem(did?did:sid,var_id,instance,value,0,value_len,SET_REPLACE,-1,NULL);
 	  }
 	  break;
-	case 'C': /* create a new HLR entry */
-	  {
-	    if (optind<argc) usage("Extraneous options after HLR creation request");
-	    if ((!did)||(sid)) usage("Specify exactly one DID and no SID to create a new HLR entry");
-	    return requestNewHLR(did,pin,sid,-1,NULL);
-	  }
+	case 'C': /* create a new keyring entry */
+	  return WHY("Entries in new keyring format must be used with new command line framework.");
 	  break;
 	case 'O': /* output to templated files */
 	  if (outputtemplate) usage("You can only specify -O once");
@@ -749,10 +688,10 @@ int main(int argc,char **argv)
 
   if (optind<argc) usage("Extraneous options at end of command");
 
-  if (hlr_file&&clientMode) usage("Only servers use backing files");
+  if (keyring_file&&clientMode) usage("Only servers use backing files");
   if (serverMode&&clientMode) usage("You asked me to be both server and client.  That's silly.");
-  if (serverMode) return server(hlr_file,hlr_size,foregroundMode);
-  if (!clientMode) usage("Mesh Potato Home Location Register (HLR) Tool.");
+  if (serverMode) return server(keyring_file,foregroundMode);
+  if (!clientMode) usage("Serval server and client utility.");
 
 #if defined WIN32
     WSACleanup();

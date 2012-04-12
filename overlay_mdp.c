@@ -181,17 +181,8 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
   for(i=0;i<SID_SIZE;i++) if (mdp->bind.sid[i]) break;
   if (i<SID_SIZE) {
     /* Not all zeroes, so make sure it is a valid SID */
-    int j,ok=0;
-    for(j=0;j<overlay_local_identity_count;j++)
-      {
-	fprintf(stderr,"Comparing %s against local addr ",
-		overlay_render_sid(mdp->bind.sid));
-	fprintf(stderr,"%s\n",
-		overlay_render_sid(overlay_local_identities[j]));
-	for(i=0;i<SID_SIZE;i++)
-	  if (mdp->bind.sid[i]!=overlay_local_identities[j][i]) break;
-	if (i==SID_SIZE) { ok=1; break; }
-      }
+    int ok=0;
+    if (overlay_address_is_local(mdp->bind.sid)) ok=1;
     if (!ok) {
       /* Source address is invalid */
       return overlay_mdp_reply_error(sock,recvaddr,recvaddrlen,7,
@@ -355,8 +346,12 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 	     with our local address. For now just responds with first local address */
 	  if (overlay_address_is_broadcast(mdp->out.src.sid))
 	    {
-	      if (overlay_local_identity_count)
-		bcopy(&overlay_local_identities[0][0],mdp->out.src.sid,SID_SIZE);
+	      if (keyring->contexts[0]->identity_count&&
+		  keyring->contexts[0]->identities[0]->keypair_count&&
+		  keyring->contexts[0]->identities[0]->keypairs[0]->type
+		  ==KEYTYPE_CRYPTOBOX)		  
+		bcopy(keyring->contexts[0]->identities[0]->keypairs[0]->public_key,
+		      mdp->out.src.sid,SID_SIZE);
 	      else
 		/* No local addresses, so put all zeroes */
 		bzero(mdp->out.src.sid,SID_SIZE);
@@ -592,26 +587,35 @@ int overlay_mdp_poll()
 	  int max_sids=mdp->addrlist.frame_sid_count;
 	  /* ... and constrain list for sanity */
 	  if (sid_num<0) sid_num=0;
-	  if (sid_num>overlay_local_identity_count) max_sids=0;
 	  if (max_sids>MDP_MAX_SID_REQUEST) max_sids=MDP_MAX_SID_REQUEST;
-	  if (max_sids>(overlay_local_identity_count-sid_num))
-	    max_sids=overlay_local_identity_count-sid_num;
-	  if (max_sid>(overlay_local_identity_count-sid_num))
-	    max_sid=overlay_local_identity_count-sid_num;	
 	  if (max_sids<0) max_sids=0;
 	  
 	  /* Prepare reply packet */
 	  mdpreply.packetTypeAndFlags=MDP_ADDRLIST;
-	  mdpreply.addrlist.server_sid_count=overlay_local_identity_count;
+	  {
+	    int cn=0,in=0,kp=0;
+	    int count=0;
+	    while(keyring_next_identity(keyring,&cn,&in,&kp)) {	    
+	      in++; count++;
+	    }
+	    mdpreply.addrlist.server_sid_count=count;
+	  }
 	  mdpreply.addrlist.first_sid=sid_num;
 	  mdpreply.addrlist.last_sid=max_sid;
 	  mdpreply.addrlist.frame_sid_count=max_sids;
 	  
 	  /* Populate with SIDs */
-	  int i;
-	  for(i=0;i<max_sids;i++)
-	    bcopy(overlay_local_identities[sid_num+i],
-		  mdpreply.addrlist.sids[i],SID_SIZE);
+	  int cn=0,in=0,kp=0;
+	  int i=0;
+	  int count=0;
+	  while(keyring_next_identity(keyring,&cn,&in,&kp)) {	    
+	    if (count>=sid_num&&(i<max_sids))
+	      bcopy(keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key,
+		    mdpreply.addrlist.sids[i++],SID_SIZE);
+	    in++; kp=0;
+	    count++;
+	    if (i>=max_sids) break;
+	  }
 	  
 	  /* Send back to caller */
 	  return overlay_mdp_reply(mdp_named_socket,

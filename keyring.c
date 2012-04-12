@@ -756,19 +756,20 @@ int keyring_enter_pin(keyring_file *k,char *pin)
    The crypto_box and crypto_sign key pairs are automatically created, and the PKR
    is packed and written to a hithero unallocated slot which is then marked full. 
 */
-int keyring_create_identity(keyring_file *k,keyring_context *c,char *pin)
+keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c,char *pin)
 {
   /* Check obvious abort conditions early */
-  if (!k) return WHY("keyring is NULL");
-  if (!k->bam) return WHY("keyring lacks BAM (not to be confused with KAPOW)");
-  if (!c) return WHY("keyring context is NULL");
-  if (c->identity_count>=KEYRING_MAX_IDENTITIES) return WHY("keyring context has too many identities");
+  if (!k) { WHY("keyring is NULL"); return NULL; }
+  if (!k->bam) { WHY("keyring lacks BAM (not to be confused with KAPOW)"); return NULL; }
+  if (!c) { WHY("keyring context is NULL"); return NULL; }
+  if (c->identity_count>=KEYRING_MAX_IDENTITIES) 
+    { WHY("keyring context has too many identities"); return NULL; }
 
-  int exit_code=1;
   if (!pin) pin="";
 
   keyring_identity *id=calloc(sizeof(keyring_identity),1);
-
+  if (!id) { WHY("calloc() failed"); return NULL; }
+  
   /* Store pin */
   id->PKRPin=strdup(pin);
   if (!id->PKRPin) {
@@ -885,11 +886,11 @@ int keyring_create_identity(keyring_file *k,keyring_context *c,char *pin)
   else
 #endif
     /* Everything went fine */
-    return 0;
+    return id;
 
  kci_safeexit:
   if (id) keyring_free_identity(id);
-  return exit_code;
+  return NULL;
 }
 
 int keyring_commit(keyring_file *k)
@@ -1026,6 +1027,25 @@ int keyring_find_did(keyring_file *k,int *cn,int *in,int *kp,char *did)
   return 0;
 }
 
+int keyring_next_identity(keyring_file *k,int *cn,int *in,int *kp)
+{
+  if (!k) return 0;
+
+  while ((*cn)<k->context_count) {
+    while (((*cn)<k->context_count)&&((*in)>=k->contexts[*cn]->identity_count)) {
+      (*cn)++; (*in)=0;
+    }
+    if ((*cn)>=k->context_count) return 0;
+
+    for((*kp)=0;*kp<k->contexts[*cn]->identities[*in]->keypair_count;(*kp)++)
+      if (k->contexts[*cn]->identities[*in]->keypairs[*kp]->type==KEYTYPE_CRYPTOBOX)
+	  return 1;
+
+    (*in)++;
+  }
+  return 0;
+}
+
 int keyring_find_sid(keyring_file *k,int *cn,int *in,int *kp,unsigned char *sid)
 {
   if (!k) return 0;
@@ -1093,5 +1113,30 @@ keyring_file *keyring_open_with_pins(char *pinlist)
 
  keyring_enter_pins(k,pinlist);
  return k;
+}
+
+/* If no identities, create an initial identity with a phone number.
+   This identity will not be pin protected (initially). */
+int keyring_seed(keyring_file *k)
+{
+  if (!k) return WHY("keyring is null");
+
+  /* nothing to do if there is already an identity */
+  if (k->contexts[0]->identity_count) return 0;
+
+  int i;
+  char did[65];
+  /* Securely generate random telephone number */
+  urandombytes((unsigned char *)did,10);
+  /* Make DID start with 2 through 9, as 1 is special in many number spaces. */ 
+  did[0]='2'+did[0]%8;
+  /* Then add 10 more digits, which is what we do in the mobile phone software */
+  for(i=1;i<11;i++) did[i]='0'+did[i]%10; did[11]=0;
+
+  keyring_identity *id=keyring_create_identity(k,k->contexts[0],"");
+  if (!id) return WHY("Could not create new identity");
+  if (keyring_set_did(id,did)) return WHY("Could not set DID of new identity");
+  if (keyring_commit(k)) return WHY("Could not commit new identity to keyring file");
+  return 0;
 }
 

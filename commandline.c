@@ -245,19 +245,9 @@ int app_server_start(int argc,char **argv,struct command_line_option *o)
   */
   rhizome_datastore_path = serval_instancepath();
   rhizome_opendb();
-  char *hlr_file;
-  if (asprintf(&hlr_file, "%s/%s", serval_instancepath(), "hlr.dat") == -1) {
-    fprintf(stderr,"ERROR: asprintf() failed\n");
-    return -1;
-  }
-  hlr_size=atof(confValueGet("hlr_size","1"))*1048576;
-  if (hlr_size<0) {
-    fprintf(stderr,"HLR Size must be >0MB\n");
-    return -1;
-  }
 
   overlayMode=1;
-  return server(hlr_file,hlr_size,foregroundP);
+  return server(NULL,foregroundP);
 }
 
 int app_server_stop(int argc,char **argv,struct command_line_option *o)

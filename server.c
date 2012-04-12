@@ -31,7 +31,7 @@ FILE *i_f=NULL;
 struct in_addr client_addr;
 int client_port;
 
-int getBackingStore(char *s,int size);
+int getKeyring(char *s);
 int createServerSocket();
 int simpleServerMode();
 
@@ -96,10 +96,10 @@ int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
 }
 
 
-int server(char *backing_file,int size,int foregroundMode)
+int server(char *backing_file,int foregroundMode)
 {
   /* Get backing store for HLR */
-  getBackingStore(backing_file,size);
+  getKeyring(backing_file);
 
   if (overlayMode)
     {
@@ -142,55 +142,22 @@ int server(char *backing_file,int size,int foregroundMode)
   return 0;
 }
 
-int getBackingStore(char *backing_file,int size)
+int getKeyring(char *backing_file)
 {
  if (!backing_file)
-    {
-      /* transitory storage of HLR data, so just malloc() the memory */
-      hlr=calloc(size,1);
-      if (!hlr) exit(setReason("Failed to calloc() HLR database."));
-      if (debug&DEBUG_HLR) fprintf(stderr,"Allocated %d byte temporary HLR store\n",size);
+    {     
+      exit(WHY("Keyring requires a backing file"));
     }
   else
     {
-      unsigned char zero[8192];
-      FILE *f=fopen(backing_file,"r+");
-      if (!f) f=fopen(backing_file,"w+");
-      if (!f) exit(setReason("Could not open backing file."));
-      bzero(&zero[0],8192);
-      fseek(f,0,SEEK_END);
-      errno=0;
-      while(ftell(f)<size)
-	{
-	  int r;
-	  fseek(f,0,SEEK_END);
-	  if ((r=fwrite(zero,8192,1,f))!=1)
-	    {
-	      perror("fwrite");
-	      exit(setReason("Could not enlarge backing file to requested size (short write)"));
-	    }
-	  fseek(f,0,SEEK_END);
-	}
-      
-      if (errno) perror("fseek");
-      if (fwrite("",1,1,f)!=1)
-	{
-	  fprintf(stderr,"Failed to set backing file size.\n");
-	  perror("fwrite");
-	}
-      hlr=(unsigned char *)mmap(NULL,size,PROT_READ|PROT_WRITE,MAP_SHARED|MAP_NORESERVE,fileno(f),0);
-      if (hlr==MAP_FAILED) {
-	perror("mmap");
-	exit(setReason("Memory mapping of HLR backing file failed."));
+      if (keyring) {
+	exit(WHY("Keyring being opened twice"));
+	keyring=keyring_open(backing_file);
       }
-      if (debug&DEBUG_HLR) fprintf(stderr,"Allocated %d byte HLR store backed by file `%s'\n",
-			 size,backing_file);
     }
-  hlr_size=size;
+ keyring_seed(keyring);
 
-  seedHlr();
-
-  return 0;
+ return 0;
 }
 
 int processRequest(unsigned char *packet,int len,
@@ -198,7 +165,7 @@ int processRequest(unsigned char *packet,int len,
 		   unsigned char *transaction_id,int recvttl, char *did,char *sid)
 {
   /* Find HLR entry by DID or SID, unless creating */
-  int ofs,rofs=0;
+  int ofs;
   int records_searched=0;
   
   int prev_pofs=0;
@@ -217,26 +184,22 @@ int processRequest(unsigned char *packet,int len,
 	     you can't choose a SID. */
 	  if (debug&DEBUG_HLR) fprintf(stderr,"Creating a new HLR record. did='%s', sid='%s'\n",did,sid);
 	  if (!did[0]) return respondSimple(NULL,ACTION_DECLINED,NULL,0,transaction_id,recvttl,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
-	  if (sid[0])  return respondSimple(sid,ACTION_DECLINED,NULL,0,transaction_id,recvttl,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
+	  if (sid[0])  
+	    return respondSimple(NULL,ACTION_DECLINED,NULL,0,transaction_id,
+				 recvttl,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
 	  if (debug&DEBUG_HLR) fprintf(stderr,"Verified that create request supplies DID but not SID\n");
 	  
-	  {
-	    /* Look for an existing HLR with the requested DID. If there is one, respond with its
-	       SID.  This handles duplicates of the same message.  If there is none, then make a new
-	       HLR with random SID and initial DID.  */
-	    int ofs = 0;
-	    int response = ACTION_DECLINED;
-	    if (findHlr(hlr, &ofs, sid, did)) {
-	      hlrSid(hlr, ofs, sid);
-	      if (debug&DEBUG_HLR) fprintf(stderr,"HLR found with did='%s' at ofs=%x: sid='%s'\n", did, ofs, sid);
-	      response = ACTION_OKAY;
-	    }
-	    else if (createHlr(did, sid) == 0) {
-	      if (debug&DEBUG_HLR) fprintf(stderr,"HLR created with did='%s': sid='%s'\n", did, sid);
-	      response = ACTION_OKAY;
-	    }
-	    return respondSimple(sid, response, NULL, 0, transaction_id, recvttl, sender, CRYPT_CIPHERED|CRYPT_SIGNED);
-	  }
+	  /* Creating an identity is nice and easy now with the new keyring */
+	  keyring_identity *id=keyring_create_identity(keyring,keyring->contexts[0],
+						       "");
+	  if (id) keyring_set_did(id,did);
+	  if (id==NULL||keyring_commit(keyring))
+	    return respondSimple(NULL,ACTION_DECLINED,NULL,0,transaction_id,recvttl,
+				 sender,CRYPT_CIPHERED|CRYPT_SIGNED);
+	  else
+	    return respondSimple(id,ACTION_OKAY,NULL,0,transaction_id,recvttl,
+				 sender,CRYPT_CIPHERED|CRYPT_SIGNED);	
+	  	  
 	  pofs+=1;
 	  pofs+=1+SID_SIZE;
 	}
@@ -269,137 +232,13 @@ int processRequest(unsigned char *packet,int len,
 		  }
 	      }
 	      break;
-	    case ACTION_DIGITALTELEGRAM:
-	      if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"In ACTION_DIGITALTELEGRAM\n");
-	      {
-		// Unpack SMS message.
-		char emitterPhoneNumber[256];
-		char message[256];
-		pofs++;
-		/* char messageType = packet[pofs]; */
-		pofs++;
-		char emitterPhoneNumberLen = packet[pofs];
-		pofs++;
-		char messageLen = packet[pofs];
-		pofs++;
-		strncpy(emitterPhoneNumber, (const char*)packet+pofs, emitterPhoneNumberLen);
-		emitterPhoneNumber[(unsigned int)emitterPhoneNumberLen]=0;
-		
-		pofs+=emitterPhoneNumberLen;
-		strncpy(message, (const char*)packet+pofs, messageLen); 
-		message[(unsigned int)messageLen]=0;
-		
-		pofs+=messageLen;
-	      
-		// Check if I'm the recipient
-		ofs=0;
-		if (findHlr(hlr, &ofs, sid, did)) {
-		  // Check transaction cache to see if message has already been delivered.  If not,
-		  // then deliver it now.
-		  if (!isTransactionInCache(transaction_id)) {
-		    // Deliver SMS to android.
-		    char amCommand[576]; // 64 char + 2*256(max) char = 576
-		    sprintf(amCommand, "am broadcast -a org.servalproject.DT -e number \"%s\"  -e content \"%s\"", emitterPhoneNumber, message);
-		    if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"Delivering DT message via intent: %s\n",amCommand);
-		    runCommand(amCommand);
-		    // Record in cache to prevent re-delivering the same message if a duplicate is received.
-		    insertTransactionInCache(transaction_id);
-		  }
-		  char sid[SID_STRLEN+1];
-		  respondSimple(hlrSid(hlr, ofs, sid), ACTION_OKAY, NULL, 0, transaction_id, recvttl, sender, CRYPT_CIPHERED|CRYPT_SIGNED);
-		}
-	      }
-	      break;
 	    case ACTION_SET:
-	      ofs=0;
-	      if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"Looking for hlr entries with sid='%s' / did='%s'\n",sid,did);
-
-	      if ((!sid)||(!sid[0])) {
-		setReason("You can only set variables by SID");
-		return respondSimple(NULL,ACTION_ERROR,
-				     (unsigned char *)"SET requires authentication by SID",
-				     0,transaction_id,recvttl,
-				     sender,CRYPT_CIPHERED|CRYPT_SIGNED);
-	      }
-
-	      while(findHlr(hlr,&ofs,sid,did))
-		{
-		  int itemId,instance,start_offset,bytes,flags;
-		  unsigned char value[9000],oldvalue[65536];
-		  int oldr,oldl;
-		  
-		  if (debug&DEBUG_HLR) fprintf(stderr,"findHlr found a match for writing at 0x%x\n",ofs);
-		  if (debug&DEBUG_HLR) hlrDump(hlr,ofs);
-		  
-		  /* XXX consider taking action on this HLR
-		     (check PIN first depending on the action requested) */
+	      setReason("You can only set keyring variables locally");
+	      return respondSimple(NULL,ACTION_ERROR,
+				   (unsigned char *)"Would be insecure",
+				   0,transaction_id,recvttl,
+				   sender,CRYPT_CIPHERED|CRYPT_SIGNED);
 	      
-		  /* XXX Doesn't verify PIN authentication */
-		  
-		  /* Get write request */
-		    
-		  pofs++; rofs=pofs;
-		  if (extractRequest(packet,&pofs,len,
-				     &itemId,&instance,value,
-				     &start_offset,&bytes,&flags))
-		    {
-		      setReason("Could not extract ACTION_SET request");
-		      return 
-			respondSimple(NULL,ACTION_ERROR,
-				      (unsigned char *)"Mal-formed SET request",
-				      0,transaction_id,recvttl,
-				      sender,CRYPT_CIPHERED|CRYPT_SIGNED);
-		    }
-		  
-		  /* Get the stored value */
-		  oldl=65536;
-		  oldr=hlrGetVariable(hlr,ofs,itemId,instance,oldvalue,&oldl);
-		  if (oldr) {
-		    if (flags==SET_NOREPLACE) {
-		      oldl=0;
-		    } else {
-		      setReason("Tried to SET_NOCREATE/SET_REPLACE a non-existing value");
-		      return 
-			  respondSimple(NULL,ACTION_ERROR,
-					(unsigned char *)"Cannot SET NOCREATE/REPLACE a value that does not exist",
-					0,transaction_id,recvttl,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
-		    }
-		  } else {
-		    if (flags==SET_NOREPLACE) {
-		      setReason("Tried to SET_NOREPLACE an existing value");
-		      if (debug&DEBUG_DNAREQUESTS) dump("Existing value (in SET_NOREPLACE flagged request)",oldvalue,oldl);
-		      return 
-			respondSimple(NULL,ACTION_ERROR,
-				      (unsigned char *)"Cannot SET NOREPLACE; a value exists",
-				      0,transaction_id,recvttl,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
-		      }
-		  }
-		  /* Replace the changed portion of the stored value */
-		  if ((start_offset+bytes)>oldl) {
-		    bzero(&oldvalue[oldl],start_offset+bytes-oldl);
-		    oldl=start_offset+bytes;
-		  }
-		  bcopy(&value[0],&oldvalue[start_offset],bytes);
-		    
-		  /* Write new value back */
-		  if (hlrSetVariable(hlr,ofs,itemId,instance,oldvalue,oldl))
-		    {
-		      setReason("Failed to write variable");
-		      return 
-			respondSimple(NULL,ACTION_ERROR,
-				      (unsigned char *)"Failed to SET variable",
-				      0,transaction_id,recvttl,
-				      sender,CRYPT_CIPHERED|CRYPT_SIGNED);
-		    }
-		  if (debug&DEBUG_HLR) { fprintf(stderr,"HLR after writing:\n"); hlrDump(hlr,ofs); }
-		  
-		  /* Reply that we wrote the fragment */
-		  respondSimple(sid,ACTION_WROTE,&packet[rofs],6,
-				transaction_id,recvttl,
-				sender,CRYPT_CIPHERED|CRYPT_SIGNED);
-		  /* Advance to next record and keep searching */
-		  if (nextHlr(hlr,&ofs)) break;
-		}
 	      break;
 	    case ACTION_GET:
 	      {
@@ -416,112 +255,132 @@ int processRequest(unsigned char *packet,int len,
 		if (var_id&0x80) instance=packet[++pofs];
 		pofs++;
 		int offset=(packet[pofs]<<8)+packet[pofs+1]; pofs+=2;
-		char *hlr_sid=NULL;
-		char hlr_sid_s[SID_STRLEN+1];
+		keyring_identity *responding_id=NULL;
 
 		pofs+=2;
 
 		if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"Processing ACTION_GET (var_id=%02x, instance=%02x, pofs=0x%x, len=%d)\n",var_id,instance,pofs,len);
 
 		ofs=0;
-		if (debug&DEBUG_HLR) fprintf(stderr,"Looking for hlr entries with sid='%s' / did='%s'\n",(sid&&sid[0])?sid:"null",did?did:"null");
+		if (debug&DEBUG_HLR) fprintf(stderr,"Looking for identities with sid='%s' / did='%s'\n",(sid&&sid[0])?sid:"null",did?did:"null");
+		  
+		/* Keyring only has DIDs in it for now.
+		   Location is implied, so we allow that */
+		switch(var_id) {
+		case VAR_DIDS:
+		case VAR_LOCATIONS:
+		  break;
+		default:
+		  return respondSimple(NULL,ACTION_ERROR,
+				       (unsigned char *)"Unsupported variable",
+				       0,transaction_id,recvttl,
+				       sender,CRYPT_CIPHERED|CRYPT_SIGNED);
 
-		while(1)
-		  {
-		    struct hlrentry_handle *h;
+		}
 
-		    // if an empty did was passed in, get results from all hlr records
-		    if (*sid || *did){
- 		      if (!findHlr(hlr,&ofs,sid,did)) break;
-		      if (debug&DEBUG_HLR) fprintf(stderr,"findHlr found a match @ 0x%x\n",ofs);
+		{		  
+		  int cn=0,in=0,kp=0;
+		  int found=0;
+		  int count=0;
+		  while(cn<keyring->context_count) {
+		    found=0;
+		    if (sid) {
+		      unsigned char packedSid[SID_SIZE];
+		      stowSid(packedSid,0,sid);
+		      found=keyring_find_sid(keyring,&cn,&in,&kp,packedSid);
+		    } else {
+		      found=keyring_find_did(keyring,&cn,&in,&kp,did);
 		    }
-		    if (debug&DEBUG_HLR) hlrDump(hlr,ofs);
-  		  
-		    /* XXX consider taking action on this HLR
-		       (check PIN first depending on the action requested) */
 
-		    /* Form a reply packet containing the requested data */
-  		  
-		    if (instance==0xff) instance=-1;
-  		  
-		    /* Step through HLR to find any matching instances of the requested variable */
-		    h=openhlrentry(hlr,ofs);
-		    if (debug&DEBUG_HLR) fprintf(stderr,"openhlrentry(hlr,%d) returned %p\n",ofs,h);
-		    while(h)
-		      {
-			/* Is this the variable? */
-			if (debug&DEBUG_HLR) fprintf(stderr,"  considering var_id=%02x, instance=%02x\n",
-					     h->var_id,h->var_instance);
-			if (h->var_id==var_id)
-			  {
-			    if (h->var_instance==instance||instance==-1)
-			      {
-				if (debug&DEBUG_HLR) fprintf(stderr,"Sending matching variable value instance (instance #%d), value offset %d.\n",
-						     h->var_instance,offset);
-  			      
-				// only send each value when the *next* record is found, that way we can easily stamp the last response with DONE
-				if (sendDone>0)
-				  respondSimple(hlr_sid,ACTION_DATA,data,dlen,
-						transaction_id,recvttl,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
+		    struct response r;
 
-				dlen=0;
-	    
-				if (packageVariableSegment(data,&dlen,h,offset,MAX_DATA_BYTES+16))
-				  return setReason("packageVariableSegment() failed.");
-				hlr_sid = hlrSid(hlr, ofs, hlr_sid_s);
-
-				sendDone++;
-			      }
-			    else
-			      if (debug&DEBUG_HLR) fprintf(stderr,"Ignoring variable instance %d (not %d)\n",
-						   h->var_instance,instance);
-			  }
-			else
-			  if (debug&DEBUG_HLR) fprintf(stderr,"Ignoring variable ID %d (not %d)\n",
-					       h->var_id,var_id);
-			h=hlrentrygetent(h);
+		    if (found&&(instance==-1||instance==count)) {
+		      /* We have a matching identity/DID, now see what variable
+			 they want.
+			 VAR_DIDS and VAR_LOCATIONS are the only ones we support
+			 with the new keyring file format for now. */
+		      r.var_id=var_id;
+		      r.var_instance=instance;
+		      switch(var_id) {
+		      case VAR_DIDS:
+			r.response=keyring->contexts[cn]->identities[in]
+			  ->keypairs[kp]->private_key;
+			r.value_len=strlen((char *)r.response);
+			break;
+		      case VAR_LOCATIONS:
+			r.response=(unsigned char *)"4000@";
+			r.value_len=strlen((char *)r.response);		      
+			break;
 		      }
-  		  
-		    /* Advance to next record and keep searching */
-		    if (nextHlr(hlr,&ofs)) break;
-		  }
-		  if (sendDone)
-		    {
-		      data[dlen++]=ACTION_DONE;
-		      data[dlen++]=sendDone&0xff;
-		      respondSimple(hlr_sid,ACTION_DATA,data,dlen,transaction_id,
-				    recvttl,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
-		    }
-		  if (gatewayspec&&(var_id==VAR_LOCATIONS)&&did&&strlen(did))
-		    {
-		      /* We are a gateway, so offer connection via the gateway as well */
-		      unsigned char data[MAX_DATA_BYTES+16];
-		      int dlen=0;
-		      struct hlrentry_handle fake;
-		      unsigned char uri[1024];
 
-		      /* We use asterisk to provide the gateway service,
-			 so we need to create a temporary extension in extensions.conf,
-			 ask asterisk to re-read extensions.conf, and then make sure it has
-			 a functional SIP gateway.
-		      */
-		      if (!asteriskObtainGateway(sid,did,(char *)uri))
-			{
-			  
-			  fake.value_len=strlen((char *)uri);
-			  fake.var_id=var_id;
-			  fake.value=uri;
-			  
-			  if (packageVariableSegment(data,&dlen,&fake,offset,MAX_DATA_BYTES+16))
-			    return setReason("packageVariableSegment() of gateway URI failed.");
-			  
-			  char sid[SID_STRLEN+1];
-			  respondSimple(hlrSid(hlr, 0, sid),ACTION_DATA,data,dlen,
-					transaction_id,recvttl,sender,
-					CRYPT_CIPHERED|CRYPT_SIGNED);
-			}
-		      else
-			{
+		      /* For multiple packet responses, we want to tag only the
+			 last one with DONE, so we queue up the most recently generated
+			 packet, and only dispatch it when we are about to produce 
+			 another.  Then at the end of the loop, if we have a packet
+			 waiting we simply mark that with with DONE, and everything
+			 falls into place. */		      
+		      if (sendDone>0)
+			/* Send previous packet */
+			respondSimple(responding_id,ACTION_DATA,data,dlen,
+				      transaction_id,recvttl,sender,
+				      CRYPT_CIPHERED|CRYPT_SIGNED);		      
+		      /* Prepare new packet */
+		      dlen=0;		      
+		      if (packageVariableSegment(data,&dlen,&r,offset,
+						 MAX_DATA_BYTES+16))
+			return setReason("packageVariableSegment() failed.");
+		      responding_id = keyring->contexts[cn]->identities[in];
+
+		      /* Remember that we need to send this new packet */
+		      sendDone++;
+
+		      count++;
+		      if (sid) in++; else kp++;
+		    }
+		  }
+		}
+
+		/* Now, see if we have a final queued packet which needs marking with
+		   DONE and then sending. */
+		if (sendDone)
+		  {
+		    data[dlen++]=ACTION_DONE;
+		    data[dlen++]=sendDone&0xff;
+		    respondSimple(responding_id,ACTION_DATA,data,dlen,transaction_id,
+				  recvttl,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
+		  }
+		
+		if (gatewayspec&&(var_id==VAR_LOCATIONS)&&did&&strlen(did))
+		  {
+		    /* We are a gateway, so offer connection via the gateway as well */
+		    unsigned char data[MAX_DATA_BYTES+16];
+		    int dlen=0;
+		    struct response fake;
+		    unsigned char uri[1024];
+		    
+		    /* We use asterisk to provide the gateway service,
+		       so we need to create a temporary extension in extensions.conf,
+		       ask asterisk to re-read extensions.conf, and then make sure it has
+		       a functional SIP gateway.
+		    */
+		    if (!asteriskObtainGateway(sid,did,(char *)uri))
+		      {
+			
+			fake.value_len=strlen((char *)uri);
+			fake.var_id=var_id;
+			fake.response=uri;
+			
+			if (packageVariableSegment(data,&dlen,&fake,offset,MAX_DATA_BYTES+16))
+			  return setReason("packageVariableSegment() of gateway URI failed.");
+			
+			WHY("Gateway claims to be 1st identity, when it should probably have its own identity");
+			respondSimple(keyring->contexts[0]->identities[0],
+				      ACTION_DATA,data,dlen,
+				      transaction_id,recvttl,sender,
+				      CRYPT_CIPHERED|CRYPT_SIGNED);
+		      }
+		    else
+		      {
 			  /* Should we indicate the gateway is not available? */
 			}
 		    }
@@ -542,7 +401,8 @@ int processRequest(unsigned char *packet,int len,
   return 0;
 }
 
-int respondSimple(char *sid,int action,unsigned char *action_text,int action_len,
+int respondSimple(keyring_identity *id,
+		  int action,unsigned char *action_text,int action_len,
 		  unsigned char *transaction_id,int recvttl,
 		  struct sockaddr *recvaddr,int cryptoFlags)
 {
@@ -570,8 +430,8 @@ int respondSimple(char *sid,int action,unsigned char *action_text,int action_len
   /* Prepare the request packet */
   if (packetMakeHeader(packet,8000,packet_len,transaction_id,cryptoFlags)) 
     return WHY("packetMakeHeader() failed.");
-  if (sid&&sid[0]) 
-    { if (packetSetSid(packet,8000,packet_len,sid)) 
+  if (id)
+    { if (packetSetSidFromId(packet,8000,packet_len,id)) 
 	return setReason("invalid SID in reply"); }
   else 
     { if (packetSetDid(packet,8000,packet_len,"")) 

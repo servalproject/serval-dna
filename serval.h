@@ -163,8 +163,91 @@ extern char *instrumentation_file;
 extern char *batman_socket;
 extern char *batman_peerfile;
 
-/* HLR records can be upto 4GB, so 4x8bits are needed to encode the size */
-#define HLR_RECORD_LEN_SIZE 4
+
+typedef struct keypair {
+  int type;
+  unsigned char *private_key;
+  int private_key_len;
+  unsigned char *public_key;
+  int public_key_len;
+} keypair;
+
+/* Contains just the list of private:public key pairs and types,
+   the pin used to extract them, and the slot in the keyring file
+   (so that it can be replaced/rewritten as required). */
+#define PKR_MAX_KEYPAIRS 64
+#define PKR_SALT_BYTES 32
+#define PKR_MAC_BYTES 64
+typedef struct keyring_identity {  
+  char *PKRPin;
+  unsigned int slot;
+  int keypair_count;
+  keypair *keypairs[PKR_MAX_KEYPAIRS];
+} keyring_identity;
+
+/* 64K identities, can easily be increased should the need arise,
+   but keep it low-ish for now so that the 64K pointers don't eat too
+   much ram on a small device.  Should probably think about having
+   small and large device settings for some of these things */
+#define KEYRING_MAX_IDENTITIES 65536
+typedef struct keyring_context {
+  char *KeyRingPin;
+  unsigned char *KeyRingSalt;
+  int KeyRingSaltLen;
+
+  int identity_count;
+  keyring_identity *identities[KEYRING_MAX_IDENTITIES];
+} keyring_context;
+
+#define KEYRING_PAGE_SIZE 4096LL
+#define KEYRING_BAM_BYTES 2048LL
+#define KEYRING_BAM_BITS (KEYRING_BAM_BYTES<<3)
+#define KEYRING_SLAB_SIZE (KEYRING_PAGE_SIZE*KEYRING_BAM_BITS)
+typedef struct keyring_bam {
+  off_t file_offset;
+  unsigned char bitmap[KEYRING_BAM_BYTES];
+  struct keyring_bam *next;
+} keyring_bam;
+
+#define KEYRING_MAX_CONTEXTS 256
+typedef struct keyring_file {
+  int context_count;
+  keyring_bam *bam;
+  keyring_context *contexts[KEYRING_MAX_CONTEXTS];
+  FILE *file;
+  off_t file_size;
+} keyring_file;
+
+void keyring_free(keyring_file *k);
+void keyring_free_context(keyring_context *c);
+void keyring_free_identity(keyring_identity *id);
+void keyring_free_keypair(keypair *kp);
+int keyring_identity_mac(keyring_context *c,keyring_identity *id,
+			 unsigned char *pkrsalt,unsigned char *mac);
+#define KEYTYPE_CRYPTOBOX 0x01
+#define KEYTYPE_CRYPTOSIGN 0x02
+#define KEYTYPE_RHIZOME 0x03
+/* DIDs aren't really keys, but the keyring is a real handy place to keep them,
+   and keep them private if people so desire */
+#define KEYTYPE_DID 0x04
+
+/* handle to keyring file for use in running instance */
+extern keyring_file *keyring;
+
+/* Public calls to keyring management */
+keyring_file *keyring_open(char *file);
+keyring_file *keyring_open_with_pins(char *pinlist);
+int keyring_enter_pin(keyring_file *k,char *pin);
+int keyring_enter_pins(keyring_file *k,char *pinlist);
+int keyring_set_did(keyring_identity *id,char *did);
+int keyring_next_identity(keyring_file *k,int *cn,int *in,int *kp);
+int keyring_find_did(keyring_file *k,int *cn,int *in,int *kp,char *did);
+int keyring_find_sid(keyring_file *k,int *cn,int *in,int *kp,unsigned char *sid);
+int keyring_commit(keyring_file *k);
+keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c,
+					  char *pin);
+
+int keyring_seed(keyring_file *k);
 
 /* Packet format:
 
@@ -240,19 +323,6 @@ struct response_set {
   unsigned char *reply_bitmask;
 };
 
-struct hlrentry_handle {
-  int record_length;
-  unsigned char *hlr;
-  int hlr_offset;
-  
-  int var_id;
-  int var_instance;
-  unsigned char *value;
-  int value_len;
-
-  int entry_offset;
-};
-
 /* Array of variables that can be placed in an MPHLR */
 #define VAR_EOR 0x00
 #define VAR_CREATETIME 0x01
@@ -313,13 +383,14 @@ int stowSid(unsigned char *packet,int ofs,char *sid);
 int stowDid(unsigned char *packet,int *ofs,char *did);
 int isFieldZeroP(unsigned char *packet,int start,int count);
 void srandomdev();
-int respondSimple(char *sid,int action,unsigned char *action_text,int action_len,
+int respondSimple(keyring_identity *id,
+		  int action,unsigned char *action_text,int action_len,
 		  unsigned char *transaction_id,int recvttl,
 		  struct sockaddr *recvaddr,int cryptoFlags);
 int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffer,int buffer_length,int *len,
 		unsigned char *transaction_id);
 int requestNewHLR(char *did,char *pin,char *sid,int recvttl,struct sockaddr *recvaddr);
-int server(char *backing_file,int size,int foregroundMode);
+int server(char *backing_file,int foregroundMode);
 int isTransactionInCache(unsigned char *transaction_id);
 void insertTransactionInCache(unsigned char *transaction_id);
 
@@ -333,7 +404,10 @@ int process_packet(unsigned char *packet,int len,
 		   int recvttl,struct sockaddr *sender,int sender_len);
 int packetMakeHeader(unsigned char *packet,int packet_maxlen,int *packet_len,unsigned char *transaction_id,int cryptoflags);
 int packetSetDid(unsigned char *packet,int packet_maxlen,int *packet_len,char *did);
-int packetSetSid(unsigned char *packet,int packet_maxlen,int *packet_len,char *sid);
+// Deprecated
+// int packetSetSid(unsigned char *packet,int packet_maxlen,int *packet_len,char *sid);
+int packetSetSidFromId(unsigned char *packet,int packet_maxlen,int *packet_len,
+		       keyring_identity *id);
 int packetFinalise(unsigned char *packet,int packet_maxlen,int recvttl,
 		   int *packet_len,int cryptoflags);
 int packetAddHLRCreateRequest(unsigned char *packet,int packet_maxlen,int *packet_len);
@@ -346,16 +420,8 @@ int sendToPeers(unsigned char *packet,int packet_len,int method,int peerId,struc
 int getReplyPackets(int method,int peer,int batchP,struct response_set *responses,
 		    unsigned char *transaction_id,struct sockaddr *recvaddr,int timeout);
 int clearResponse(struct response **response);
-int nextHlr(unsigned char *hlr,int *ofs);
-int seedHlr();
-int findHlr(unsigned char *hlr,int *ofs,char *sid,char *did);
-int createHlr(char *did,char *sid);
-struct hlrentry_handle *openhlrentry(unsigned char *hlr,int hofs);
-struct hlrentry_handle *hlrentrygetent(struct hlrentry_handle *h);
-int hlrStowValue(unsigned char *hlr,int hofs,int hlr_offset,
-		 int varid,int varinstance,unsigned char *value,int len);
-int hlrMakeSpace(unsigned char *hlr,int hofs,int hlr_offset,int bytes);
-int packageVariableSegment(unsigned char *data,int *dlen,struct hlrentry_handle *h,
+int packageVariableSegment(unsigned char *data,int *dlen,
+			   struct response *h,
 			   int offset,int buffer_size);
 int packetDecipher(unsigned char *packet,int len,int cipher);
 int safeZeroField(unsigned char *packet,int start,int count);
@@ -1088,81 +1154,3 @@ void *_serval_debug_malloc(unsigned int bytes,char *file,const char *func,int li
 void *_serval_debug_calloc(unsigned int bytes,unsigned int count,char *file,const char *func,int line);
 void _serval_debug_free(void *p,char *file,const char *func,int line);
 #endif
-
-typedef struct keypair {
-  int type;
-  unsigned char *private_key;
-  int private_key_len;
-  unsigned char *public_key;
-  int public_key_len;
-} keypair;
-
-/* Contains just the list of private:public key pairs and types,
-   the pin used to extract them, and the slot in the keyring file
-   (so that it can be replaced/rewritten as required). */
-#define PKR_MAX_KEYPAIRS 64
-#define PKR_SALT_BYTES 32
-#define PKR_MAC_BYTES 64
-typedef struct keyring_identity {  
-  char *PKRPin;
-  unsigned int slot;
-  int keypair_count;
-  keypair *keypairs[PKR_MAX_KEYPAIRS];
-} keyring_identity;
-
-/* 64K identities, can easily be increased should the need arise,
-   but keep it low-ish for now so that the 64K pointers don't eat too
-   much ram on a small device.  Should probably think about having
-   small and large device settings for some of these things */
-#define KEYRING_MAX_IDENTITIES 65536
-typedef struct keyring_context {
-  char *KeyRingPin;
-  unsigned char *KeyRingSalt;
-  int KeyRingSaltLen;
-
-  int identity_count;
-  keyring_identity *identities[KEYRING_MAX_IDENTITIES];
-} keyring_context;
-
-#define KEYRING_PAGE_SIZE 4096LL
-#define KEYRING_BAM_BYTES 2048LL
-#define KEYRING_BAM_BITS (KEYRING_BAM_BYTES<<3)
-#define KEYRING_SLAB_SIZE (KEYRING_PAGE_SIZE*KEYRING_BAM_BITS)
-typedef struct keyring_bam {
-  off_t file_offset;
-  unsigned char bitmap[KEYRING_BAM_BYTES];
-  struct keyring_bam *next;
-} keyring_bam;
-
-#define KEYRING_MAX_CONTEXTS 256
-typedef struct keyring_file {
-  int context_count;
-  keyring_bam *bam;
-  keyring_context *contexts[KEYRING_MAX_CONTEXTS];
-  FILE *file;
-  off_t file_size;
-} keyring_file;
-
-void keyring_free(keyring_file *k);
-void keyring_free_context(keyring_context *c);
-void keyring_free_identity(keyring_identity *id);
-void keyring_free_keypair(keypair *kp);
-int keyring_identity_mac(keyring_context *c,keyring_identity *id,
-			 unsigned char *pkrsalt,unsigned char *mac);
-#define KEYTYPE_CRYPTOBOX 0x01
-#define KEYTYPE_CRYPTOSIGN 0x02
-#define KEYTYPE_RHIZOME 0x03
-/* DIDs aren't really keys, but the keyring is a real handy place to keep them,
-   and keep them private if people so desire */
-#define KEYTYPE_DID 0x04
-
-/* Public calls to keyring management */
-keyring_file *keyring_open(char *file);
-keyring_file *keyring_open_with_pins(char *pinlist);
-int keyring_enter_pin(keyring_file *k,char *pin);
-int keyring_enter_pins(keyring_file *k,char *pinlist);
-int keyring_set_did(keyring_identity *id,char *did);
-int keyring_find_did(keyring_file *k,int *cn,int *in,int *kp,char *did);
-int keyring_find_sid(keyring_file *k,int *cn,int *in,int *kp,unsigned char *sid);
-int keyring_commit(keyring_file *k);
-int keyring_create_identity(keyring_file *k,keyring_context *c,char *pin);

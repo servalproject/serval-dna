@@ -462,25 +462,25 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
   if (memcmp(in,&cache->sids[index].b[0],prefix_bytes))
     {
       /* No, it isn't in the cache, but it might be a local address. */
-      int i,j;
-      for(i=0;i<overlay_local_identity_count;i++)
-	{
-	  for(j=0;j<prefix_bytes;j++)
-	    if (overlay_local_identities[i][j]!=in[j]) break;
-	  if (j>=prefix_bytes) {
-	    if (debug&DEBUG_OVERLAYABBREVIATIONS) 
-	      WHY("Found reference to local address.");
-	    bcopy(&overlay_local_identities[i][0],&out[(*ofs)],SID_SIZE);
-	    (*ofs)+=SID_SIZE;
-	    return OA_RESOLVED;
-	  }
-	  else {
-	    if (debug&DEBUG_OVERLAYABBREVIATIONS)
-	      fprintf(stderr,"not identity #%d (%02x != %02x)\n",
-		      i,in[j],overlay_local_identities[i][j]);
-	  }
-	}
-
+      int cn=0,id=0,kp=0;
+      for(cn=0;cn<keyring->context_count;cn++)
+	for(id=0;id<keyring->contexts[cn]->identity_count;id++)
+	  for(kp=0;kp<keyring->contexts[cn]->identities[id]->keypair_count;kp++)
+	    if (keyring->contexts[cn]->identities[id]->keypairs[kp]->type
+		==KEYTYPE_CRYPTOBOX)
+	      {
+		if (!bcmp(in,keyring->contexts[cn]->identities[id]
+			  ->keypairs[kp]->public_key,prefix_bytes))
+		  {
+		    if (debug&DEBUG_OVERLAYABBREVIATIONS) 
+		      WHY("Found reference to local address.");
+		    bcopy(&keyring->contexts[cn]->identities[id]
+			  ->keypairs[kp]->public_key[0],&out[(*ofs)],SID_SIZE);
+		    (*ofs)+=SID_SIZE;
+		    return OA_RESOLVED;
+		  }
+	      }    
+      
       if (debug&DEBUG_OVERLAYABBREVIATIONS) 
 	WHY("Encountered unresolvable address -- are we asking for explanation?");
       return OA_PLEASEEXPLAIN;
@@ -490,7 +490,7 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
      colliding prefixes and ask the sender to resolve them for us, or better yet dynamically
      size the prefix length based on whether any given short prefix has collided */
 
-  if (debug&DEBUG_OVERLAYABBREVIATIONS) { 
+if (debug&DEBUG_OVERLAYABBREVIATIONS) { 
     /* It is here, so let's return it */
     fprintf(stderr,"I think I looked up the following: ");
     for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",cache->sids[index].b[i]);

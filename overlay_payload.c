@@ -278,11 +278,20 @@ int overlay_frame_set_broadcast_as_destination(overlay_frame *f)
 
 unsigned char *overlay_get_my_sid()
 {
-
   /* Make sure we can find our SID */
-  int zero=0;
-  if (!findHlr(hlr,&zero,NULL,NULL)) { WHY("Could not find first entry in HLR"); return NULL; }
-  return &hlr[zero+4];
+  int kp;
+  if (!keyring)
+    { WHY("keyring is null"); return NULL; }
+  if (!keyring->context_count) 
+    { WHY("No context zero in keyring"); return NULL; }
+  if (!keyring->contexts[0]->identity_count) 
+    { WHY("No identity in keyring context zero"); return NULL; }
+
+  for(kp=0;kp<keyring->contexts[0]->identities[0]->keypair_count;kp++)
+    if (keyring->contexts[0]->identities[0]->keypairs[kp]->type==KEYTYPE_CRYPTOBOX)
+      return keyring->contexts[0]->identities[0]->keypairs[kp]->public_key;
+  
+  WHY("Could not find first entry in HLR"); return NULL; 
 }
 
 int overlay_frame_set_me_as_source(overlay_frame *f)

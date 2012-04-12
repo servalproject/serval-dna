@@ -74,12 +74,24 @@ int overlayMode=0;
 
 overlay_txqueue overlay_tx[OQ_MAX];
 
+keyring_file *keyring=NULL;
+
 int overlayServerMode()
 {
   /* In overlay mode we need to listen to all of our sockets, and also to
      send periodic traffic. This means we need to */
   fprintf(stderr,"Running in overlay mode.\n");
   
+  /* Get keyring available for use.
+     Required for MDP, and very soon as a complete replacement for the
+     HLR for DNA lookups, even in non-overlay mode. */
+  keyring=keyring_open_with_pins("");
+  if (!keyring) {
+    return WHY("Could not open serval keyring file.");
+  }
+  /* put initial identity in if we don't have any visible */
+  keyring_seed(keyring);
+
   /* Set default congestion levels for queues */
   int i;
   for(i=0;i<OQ_MAX;i++) {
@@ -102,20 +114,6 @@ int overlayServerMode()
 
   /* Create structures to use 1MB of RAM for testing */
   overlay_route_init(1);
-
-  /* Add all local SIDs to our cache */
-  int ofs=0;
-  while(findHlr(hlr,&ofs,NULL,NULL)) {
-    int i;
-    if (debug&DEBUG_OVERLAYINTERFACES) { 
-      fprintf(stderr,"Adding ");
-      for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",hlr[ofs+4+i]);
-      fprintf(stderr," to list of local addresses.\n");
-    }
-    overlay_add_local_identity(&hlr[ofs+4]);
-    overlay_abbreviate_cache_address(&hlr[ofs+4]);
-    if (nextHlr(hlr,&ofs)) break;
-  }
 
   /* Get rhizome server started BEFORE populating fd list so that
      the server's listen socket is in the list for poll() */

@@ -19,6 +19,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 
+/* Now that we are using the keyring, we only support a small subset of variables.
+   (VAR_NAME is not properly supported yet) 
+*/
+struct mphlr_variable vars[]={
+    {VAR_NAME, "name", "Published name of this subscriber"},
+    {VAR_DIDS,"dids","Numbers claimed by this subscriber"},
+    {VAR_LOCATIONS,"locations","Network address of telephone end point"},
+    {0x00,NULL,NULL}
+};
+
+
 int packetSendFollowup(struct in_addr destination,
 		       unsigned char *packet,int packet_len)
 {

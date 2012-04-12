@@ -206,6 +206,28 @@ int packetSetSid(unsigned char *packet,int packet_maxlen,int *packet_len,char *s
   return stowSid(packet,ofs,sid);
 }
 
+int packetSetSidFromId(unsigned char *packet,int packet_maxlen,int *packet_len,
+		       keyring_identity *id)
+{
+  if (!id) return WHY("id is null");
+
+  unsigned char *sid=NULL;
+  int i;
+
+  for(i=0;i<id->keypair_count;i++)
+    if (id->keypairs[i]->type==KEYTYPE_CRYPTOBOX)
+      { sid=id->keypairs[i]->public_key; break; }
+
+  if (!sid) return WHY("Could not find SID in identity");
+
+  /* find and copy SID from identity */
+  int ofs=OFS_SIDDIDFIELD;
+  packet[ofs++]=0x01; /* SID */
+  bcopy(sid,&packet[ofs],SID_SIZE);
+  return 0;
+}
+
+
 int packetFinalise(unsigned char *packet,int packet_maxlen,int recvttl,
 		   int *packet_len,int cryptoflags)
 {
@@ -512,7 +534,8 @@ int extractResponses(struct in_addr sender,unsigned char *buffer,int len,struct 
   return 0;
 }
 
-int packageVariableSegment(unsigned char *data,int *dlen,struct hlrentry_handle *h,
+int packageVariableSegment(unsigned char *data,int *dlen,
+			   struct response *h,
 			   int offset,int buffer_size)
 {
   int bytes;
@@ -546,7 +569,7 @@ int packageVariableSegment(unsigned char *data,int *dlen,struct hlrentry_handle 
   if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"Packaging %d bytes\n",bytes);
 
   /* Package the variable value itself (or part thereof) */
-  bcopy(&h->value[offset],&data[*dlen],bytes);
+  bcopy(&h->response[offset],&data[*dlen],bytes);
   (*dlen)+=bytes;
 
   if (debug&DEBUG_PACKETFORMATS) dump("Variable segment octets",&data[dlen_in],(*dlen)-dlen_in);

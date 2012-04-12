@@ -32,20 +32,6 @@ int packetSetMySid(char *sid)
 
 int packetGetPrivateKeyForSid()
 {
- /* Add all local SIDs to our cache */
-  int ofs=0;
-  while(findHlr(hlr,&ofs,NULL,NULL)) {
-    // XXX If the SIDs match, then this is it */
-    if (!current_sid_set) {
-      /* we are using the first sid in the HLR */
-    } else {
-      /* Compare current SID with SID of this HLR record */
-      /* XXX get PIN field which contains the private key or ciphered private key.
-	 Use code from ACTION_GET case in server.c as a guide */
-    }
-    if (nextHlr(hlr,&ofs)) break;
-  }
-
   return setReason("Not implemented");
 }
 
