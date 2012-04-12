@@ -738,7 +738,7 @@ int app_keyring_list(int argc, char **argv, struct command_line_option *o)
 
 int app_keyring_add(int argc, char **argv, struct command_line_option *o)
 {
-  const char *pin = cli_arg(argc, argv, o, "[<pin>]", "");
+  const char *pin = cli_arg(argc, argv, o, "pin", "");
 
   if (create_serval_instance_dir() == -1)
     return -1;

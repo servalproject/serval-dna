@@ -19,6 +19,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "nacl.h"
 
+#define NO_ROTATION
+
 static int urandomfd = -1;
 
 int urandombytes(unsigned char *x,unsigned long long xlen)
@@ -417,6 +419,7 @@ int keyring_pack_identity(keyring_context *c,keyring_identity *i,
 	WHY("too many or too long key pairs");
 	ofs=0; goto kpi_safeexit;
       }
+      printf("key type 0x%02x @ 0x%x\n",i->keypairs[kp]->type,ofs);
       packed[ofs++]=i->keypairs[kp]->type;
       switch(i->keypairs[kp]->type) {
       case KEYTYPE_CRYPTOBOX:
@@ -484,6 +487,9 @@ int keyring_pack_identity(keyring_context *c,keyring_identity *i,
   if (urandombytes((unsigned char *)&rotation,sizeof(rotation)))
     return WHY("urandombytes() failed to generate random rotation");
   rotation&=0xffff;
+#ifdef NO_ROTATION
+  rotation=0;
+#endif
   unsigned char slot[KEYRING_PAGE_SIZE];
   /* XXX There has to be a more efficient way to do this! */
   int n;
@@ -498,7 +504,7 @@ int keyring_pack_identity(keyring_context *c,keyring_identity *i,
   return exit_code;
 }
 
-keyring_identity *keyring_unpack_identity(unsigned char *slot)
+keyring_identity *keyring_unpack_identity(unsigned char *slot,char *pin)
 {
   /* Skip salt and MAC */
   int i;
@@ -507,6 +513,8 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot)
   if (!id) { WHY("calloc() of identity failed"); return NULL; }
   if (!slot) { WHY("slot is null"); return NULL; }
 
+  id->PKRPin=strdup(pin);
+
   /* There was a known plain-text opportunity here:
      byte 96 must be 0x01, and some other bytes are likely deducible, e.g., the
      location of the trailing 0x00 byte can probably be guessed with confidence.
@@ -514,16 +522,19 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot)
      rotation in bytes of remainder of block.
   */
 
-  int rotation=(slot[96]<<8)|slot[97];
-  ofs=32+64+2;
+  int rotation=(slot[PKR_SALT_BYTES+PKR_MAC_BYTES]<<8)
+    |slot[PKR_SALT_BYTES+PKR_MAC_BYTES+1];
+  ofs=PKR_SALT_BYTES+PKR_MAC_BYTES+2;
   printf("reading with rotation = 0x%x\n",rotation);
 
   /* Parse block */
-  for(;ofs<KEYRING_PAGE_SIZE;)
+  for(ofs=0;ofs<(KEYRING_PAGE_SIZE-PKR_SALT_BYTES-PKR_MAC_BYTES-2);)
     {
+      printf("slot_byte(%d)=0x%x\n",ofs,slot_byte(ofs));
       switch(slot_byte(ofs)) {
       case 0x00:
-	/* End of interesting data */
+	/* End of data, stop looking */
+	ofs=KEYRING_PAGE_SIZE;
 	break;
       case KEYTYPE_CRYPTOBOX:
       case KEYTYPE_CRYPTOSIGN:
@@ -555,10 +566,10 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot)
 	  keyring_free_identity(id);
 	  return NULL;
 	}
-	for(i=0;i<kp->private_key_len;i++) kp->private_key[i]=slot_byte(ofs+i);
-	kp->private_key=malloc(kp->private_key_len);
-	if (!kp->private_key) {
-	  WHY("malloc() of private key storage failed.");
+	for(i=0;i<kp->private_key_len;i++) kp->private_key[i]=slot_byte(ofs+1+i);
+	kp->public_key=malloc(kp->public_key_len);
+	if (!kp->public_key) {
+	  WHY("malloc() of public key storage failed.");
 	  keyring_free_identity(id);
 	  return NULL;
 	}
@@ -591,6 +602,9 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot)
 	  ofs+=kp->public_key_len;
 	  break;
 	}
+	id->keypair_count++;
+	printf("keypair_count=%d\n",id->keypair_count);
+	fflush(stdout);
 	break;
       default:
 	/* Invalid data, so invalid record.  Free and return failure.
@@ -600,6 +614,7 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot)
 	WHY("PKR has invalid structure (wrong pin?)");
 	return NULL;
       }
+      
     }
   return id;
 }
@@ -610,6 +625,11 @@ int keyring_identity_mac(keyring_context *c,keyring_identity *id,
   int ofs;
   unsigned char work[65536];
 #define APPEND(b,l) if (ofs+(l)>=65536) { bzero(work,ofs); return WHY("Input too long"); } bcopy((b),&work[ofs],(l)); ofs+=(l)
+
+  dump("mac salt",pkrsalt,32);
+  dump("mac priv",id->keypairs[0]->private_key,id->keypairs[0]->private_key_len);
+  dump("mac publ",id->keypairs[0]->public_key,id->keypairs[0]->public_key_len);
+  dump("mac pin",id->PKRPin,strlen(id->PKRPin));
 
   ofs=0;
   APPEND(&pkrsalt[0],32);
@@ -651,7 +671,7 @@ int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
   }  
 
   /* 3. Unpack contents of slot into a new identity in the provided context. */  
-  id=keyring_unpack_identity(slot);
+  id=keyring_unpack_identity(slot,pin);
   if (!id) {
     WHY("keyring_unpack_identity() failed");
     goto kdp_safeexit;
@@ -664,8 +684,10 @@ int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
   }
   /* compare hash to record */
   if (bcmp(hash,&slot[32],crypto_hash_sha512_BYTES))
-    {
+    {      
       WHY("Slot is not valid (MAC mismatch)");
+      dump("computed",hash,crypto_hash_sha512_BYTES);
+      dump("stored",&slot[32],crypto_hash_sha512_BYTES);
       goto kdp_safeexit;
     }
   /* Well, it's all fine, so add the id into the context and return */
@@ -717,9 +739,10 @@ int keyring_enter_pin(keyring_file *k,char *pin)
 	     We have to check it for each keyring context (ie keyring pin) */
 	  int c;
 	  printf("looking in slot #%d for pin=%s\n",slot,pin);
+	  fflush(stdout);
 	  for(c=0;c<k->context_count;c++)
 	    {
-	      int result=keyring_decrypt_pkr(k,k->contexts[c],pin,slot);
+	      int result=keyring_decrypt_pkr(k,k->contexts[c],pin?pin:"",slot);
 	      if (!result) identitiesFound++;
 	    }
 	}	
@@ -890,7 +913,6 @@ int keyring_commit(keyring_file *k)
 	  errorCount++;
 	else {
 	  /* Now crypt and store block */
-
 	  /* Crypt */
 	  if (keyring_munge_block(pkr,
 				  KEYRING_PAGE_SIZE,
