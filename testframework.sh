@@ -150,35 +150,22 @@ realpath() {
 }
 
 execute() {
-   _tfw_last_argv0="$1"
    echo "# execute $*"
-   /usr/bin/time --format='realtime=%e;usertime=%U;systime=%S' --output=$_tfw_tmp/times "$@" >$_tfw_tmp/stdout 2>$_tfw_tmp/stderr
-   _tfw_exitStatus=$?
-   echo "# Exit status = $_tfw_exitStatus"
-   if grep --quiet --invert-match --regexp='^realtime=[0-9.]*;usertime=[0-9.]*;systime=[0-9.]*$' $_tfw_tmp/times; then
-      echo "# Times file contains spurious data:"
-      tfw_cat --header=times $_tfw_tmp/times
-      if [ $_tfw_exitStatus -eq 0 ]; then
-         _tfw_exitStatus=255
-         echo "# Deeming exit status of command to be $_tfw_exitStatus"
-      fi
-      realtime=0
-      usertime=0
-      systime=0
-      realtime_ms=0
-      #usertime_ms=0
-      #systime_ms=0
-   else
-      source $_tfw_tmp/times
-      realtime_ms=$(/usr/bin/awk "BEGIN { print int($realtime * 1000) }")
-      #usertime_ms=$(/usr/bin/awk "BEGIN { print int($usertime * 1000) }")
-      #systime_ms=$(/usr/bin/awk "BEGIN { print int($systime * 1000) }")
-   fi
-   return 0
+   _tfw_getopts execute "$@"
+   shift $_tfw_getopts_shift
+   _tfw_execute "$@"
+}
+
+executeOk() {
+   echo "# executeOk $*"
+   _tfw_getopts executeok "$@"
+   _tfw_opt_exit_status=0
+   shift $_tfw_getopts_shift
+   _tfw_execute "$@"
 }
 
 assert() {
-   _tfw_getopts_assert assert "$@"
+   _tfw_getopts assert "$@"
    shift $_tfw_getopts_shift
    _tfw_assert "$@" || _tfw_failexit
    echo "# assert $*"
@@ -186,7 +173,7 @@ assert() {
 }
 
 assertExpr() {
-   _tfw_getopts_assert assertexpr "$@"
+   _tfw_getopts assertexpr "$@"
    shift $_tfw_getopts_shift
    local awkexpr=$(_tfw_expr_to_awkexpr "$@")
    _tfw_message="${_tfw_message+$_tfw_message }($awkexpr)"
@@ -196,7 +183,7 @@ assertExpr() {
 }
 
 fail() {
-   _tfw_getopts_assert fail "$@"
+   _tfw_getopts fail "$@"
    shift $_tfw_getopts_shift
    [ $# -ne 0 ] && _tfw_failmsg "$1"
    _tfw_backtrace >&2
@@ -204,7 +191,7 @@ fail() {
 }
 
 error() {
-   _tfw_getopts_assert error "$@"
+   _tfw_getopts error "$@"
    shift $_tfw_getopts_shift
    [ $# -ne 0 ] && _tfw_errormsg "$1"
    _tfw_backtrace >&2
@@ -224,14 +211,14 @@ tfw_cat() {
    for file; do
       case $file in
       --stdout) 
-         echo "#--- ${header:-stdout of ${_tfw_last_argv0##*/}} ---"
+         echo "#--- ${header:-stdout of ${_tfw_execute_argv0##*/}} ---"
          /bin/cat $show_nonprinting $_tfw_tmp/stdout
          echo "#---"
          header=
          show_nonprinting=
          ;;
       --stderr) 
-         echo "#--- ${header:-stderr of ${_tfw_last_argv0##*/}} ---"
+         echo "#--- ${header:-stderr of ${_tfw_execute_argv0##*/}} ---"
          /bin/cat $show_nonprinting $_tfw_tmp/stderr
          echo "#---"
          header=
@@ -251,18 +238,18 @@ tfw_cat() {
 }
 
 assertExitStatus() {
-   _tfw_getopts_assert exitstatus "$@"
+   _tfw_getopts assertexitstatus "$@"
    shift $_tfw_getopts_shift
-   [ -z "$_tfw_message" ] && _tfw_message="exit status of ${_tfw_last_argv0##*/} ($_tfw_exitStatus) $*"
+   [ -z "$_tfw_message" ] && _tfw_message="exit status of ${_tfw_execute_argv0##*/} ($_tfw_exitStatus) $*"
    _tfw_assertExpr "$_tfw_exitStatus" "$@" || _tfw_failexit
    echo "# assert $_tfw_message"
    return 0
 }
 
 assertRealTime() {
-   _tfw_getopts_assert realtime "$@"
+   _tfw_getopts assertrealtime "$@"
    shift $_tfw_getopts_shift
-   [ -z "$_tfw_message" ] && _tfw_message="real execution time of ${_tfw_last_argv0##*/} ($realtime) $*"
+   [ -z "$_tfw_message" ] && _tfw_message="real execution time of ${_tfw_execute_argv0##*/} ($realtime) $*"
    _tfw_assertExpr "$realtime" "$@" || _tfw_failexit
    echo "# assert $_tfw_message"
    return 0
@@ -301,7 +288,7 @@ assertStderrGrep() {
 }
 
 assertGrep() {
-   _tfw_getopts_assert filegrep "$@"
+   _tfw_getopts assertgrep "$@"
    shift $_tfw_getopts_shift
    if [ $# -ne 2 ]; then
       _tfw_error "incorrect arguments"
@@ -456,6 +443,40 @@ _tfw_teardown() {
    /bin/rm -rf $_tfw_tmp
 }
 
+_tfw_execute() {
+   _tfw_execute_argv0="$1"
+   /usr/bin/time --format='realtime=%e;usertime=%U;systime=%S' --output=$_tfw_tmp/times "$@" >$_tfw_tmp/stdout 2>$_tfw_tmp/stderr
+   _tfw_exitStatus=$?
+   if [ -n "$_tfw_opt_exit_status" ]; then
+      _tfw_message="exit status of ${_tfw_execute_argv0##*/} ($_tfw_exitStatus) is $_tfw_opt_exit_status"
+      _tfw_dump_stderr_on_fail=true
+      _tfw_assert [ "$_tfw_exitStatus" -eq "$_tfw_opt_exit_status" ] || _tfw_failexit
+      echo "# assert $_tfw_message"
+   else
+      echo "# exit status of ${_tfw_execute_argv0##*/} = $_tfw_exitStatus"
+   fi
+   if grep --quiet --invert-match --regexp='^realtime=[0-9.]*;usertime=[0-9.]*;systime=[0-9.]*$' $_tfw_tmp/times; then
+      echo "# times file contains spurious data:"
+      tfw_cat --header=times $_tfw_tmp/times
+      if [ $_tfw_exitStatus -eq 0 ]; then
+         _tfw_exitStatus=255
+         echo "# deeming exit status of command to be $_tfw_exitStatus"
+      fi
+      realtime=0
+      usertime=0
+      systime=0
+      realtime_ms=0
+      #usertime_ms=0
+      #systime_ms=0
+   else
+      source $_tfw_tmp/times
+      realtime_ms=$(/usr/bin/awk "BEGIN { print int($realtime * 1000) }")
+      #usertime_ms=$(/usr/bin/awk "BEGIN { print int($usertime * 1000) }")
+      #systime_ms=$(/usr/bin/awk "BEGIN { print int($systime * 1000) }")
+   fi
+   return 0
+}
+
 _tfw_assert() {
    if ! "$@"; then
       _tfw_failmsg "assertion failed: ${_tfw_message:-$*}"
@@ -465,20 +486,22 @@ _tfw_assert() {
    return 0
 }
 
-_tfw_getopts_assert() {
+_tfw_getopts() {
    local context="$1"
    shift
    _tfw_message=
    _tfw_dump_stdout_on_fail=false
    _tfw_dump_stderr_on_fail=false
+   _tfw_opt_exit_status=
    _tfw_opt_matches=
    _tfw_getopts_shift=0
    while [ $# -ne 0 ]; do
       case "$context:$1" in
-      *:--message=*) _tfw_message="${1#*=}";;
       *:--stdout) _tfw_dump_stdout_on_fail=true;;
       *:--stderr) _tfw_dump_stderr_on_fail=true;;
-      filegrep:--matches=*) _tfw_opt_matches="${1#*=}";;
+      execute:--exit-status=*) _tfw_opt_exit_status="${1#*=}";;
+      assert*:--message=*) _tfw_message="${1#*=}";;
+      assertgrep:--matches=*) _tfw_opt_matches="${1#*=}";;
       *:--) let _tfw_getopts_shift=_tfw_getopts_shift+1; shift; break;;
       *:--*) _tfw_error "unsupported option: $1";;
       *) break;;
@@ -529,13 +552,13 @@ _tfw_assertExpr() {
 _tfw_assert_stdxxx_is() {
    local qual="$1"
    shift
-   _tfw_getopts_assert filecontent --$qual "$@"
+   _tfw_getopts assertfilecontent --$qual "$@"
    shift $((_tfw_getopts_shift - 1))
    if [ $# -lt 1 ]; then
       _tfw_error "incorrect arguments"
       return 254
    fi
-   local message="${_tfw_message:-$qual of ${_tfw_last_argv0##*/} is $*}"
+   local message="${_tfw_message:-$qual of ${_tfw_execute_argv0##*/} is $*}"
    echo -n "$@" >$_tfw_tmp/stdxxx_is.tmp
    if ! /usr/bin/cmp --quiet $_tfw_tmp/stdxxx_is.tmp "$_tfw_tmp/$qual"; then
       _tfw_failmsg "assertion failed: $message"
@@ -549,7 +572,7 @@ _tfw_assert_stdxxx_is() {
 _tfw_assert_stdxxx_linecount() {
    local qual="$1"
    shift
-   _tfw_getopts_assert filecontent --$qual "$@"
+   _tfw_getopts assertfilecontent --$qual "$@"
    shift $((_tfw_getopts_shift - 1))
    if [ $# -lt 1 ]; then
       _tfw_error "incorrect arguments"
@@ -565,13 +588,13 @@ _tfw_assert_stdxxx_linecount() {
 _tfw_assert_stdxxx_grep() {
    local qual="$1"
    shift
-   _tfw_getopts_assert filegrep --$qual "$@"
+   _tfw_getopts assertgrep --$qual "$@"
    shift $((_tfw_getopts_shift - 1))
    if [ $# -ne 1 ]; then
       _tfw_error "incorrect arguments"
       return 254
    fi
-   _tfw_assert_grep "$qual of ${_tfw_last_argv0##*/}" $_tfw_tmp/$qual "$@"
+   _tfw_assert_grep "$qual of ${_tfw_execute_argv0##*/}" $_tfw_tmp/$qual "$@"
 }
 
 _tfw_assert_grep() {

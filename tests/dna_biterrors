@@ -40,8 +40,7 @@ test_BitErrorCreateSID() {
    local totaltime_ms=0
    local maxtime_ms=0
    while [ $i -lt $iterations ]; do
-      execute $dna -B $ber -d 0427679796 -C
-      assertExitStatus '==' 0
+      executeOk $dna -B $ber -d 0427679796 -C
       sid=`replayStdout | grep '^OK:' | cut -f2 -d:`
       let totaltime_ms=totaltime_ms+realtime_ms
       [ $realtime_ms -gt $maxtime_ms ] && maxtime_ms=$realtime_ms
@@ -70,11 +69,9 @@ setup_SetVarBigValueBitErrors() {
    echo_long_message >$DNATMP/dnatest.in
 }
 test_SetVarBigValueBitErrors() {
-   execute $dna -B $ber -s $sid -i 0 -W note="@dnatest.in"
-   assertExitStatus '==' 0
+   executeOk $dna -B $ber -s $sid -i 0 -W note="@dnatest.in"
    assertStdoutGrep --matches=1 --message='variable write confirmed' "^WROTE:$sid$"
-   execute $dna -v verbose -B $ber -s $sid -O $DNATMP/dnatest.out -i 0 -R note
-   assertExitStatus '==' 0
+   executeOk $dna -v verbose -B $ber -s $sid -O $DNATMP/dnatest.out -i 0 -R note
    assertStdoutGrep --matches=1 --message='variable new value returned' "^NOTE:$sid:[0-9]\+:0"
    assert --message='long value read correctly' cmp --quiet $DNATMP/dnatest.in $DNATMP/dnatest.out
 }

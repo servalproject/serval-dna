@@ -28,16 +28,14 @@ teardown() {
 
 # Utility function
 create_sid() {
-   execute $dna "$@" -d 0427679796 -C
-   assertExitStatus '==' 0
+   executeOk $dna "$@" -d 0427679796 -C
    assertStdoutGrep --matches=1 '^OK:'
    sid=`replayStdout | grep '^OK:' | cut -f2 -d:`
 }
 
 # Utility function
 set_short_var() {
-   execute $dna -s $sid -i 0 -W note="a short literal value"
-   assertExitStatus '==' 0
+   executeOk $dna -s $sid -i 0 -W note="a short literal value"
 }
 
 # Utility function
@@ -69,8 +67,7 @@ setup_GetShortVar() {
    create_sid
 }
 test_GetShortVar() {
-   execute $dna -d 0427679796 -R dids
-   assertExitStatus '==' 0
+   executeOk $dna -d 0427679796 -R dids
    assertRealTime '>' 2.9 # Waited for all replies
    assertStdoutGrep --message='received an existing DID' "^DIDS:${sid}:[0-9]\+:0:0427679796"
    assertStdoutGrep --matches=1 --message='filtered out duplicate responses' "^DIDS:${sid}:[0-9]\+:0:0427679796"
@@ -98,8 +95,7 @@ setup_SetGetShortVar() {
    set_short_var
 }
 test_SetGetShortVar() {
-   execute $dna -s $sid -i 0 -R note
-   assertExitStatus '==' 0
+   executeOk $dna -s $sid -i 0 -R note
    assertRealTime '<' 0.5
    assertStdoutGrep --matches=1 --message='read variable correctly' "^NOTE:$sid:[0-9]\+:0:a short literal value"
 }
@@ -115,8 +111,7 @@ setup_GetShortVarToFile() {
 test_GetShortVarToFile() {
    echo "WARNING: Known issue: output to file does not work with DID lists"
    dnatest_dat=$DNATMP/dnatest.dat
-   execute $dna -s $sid -O $dnatest_dat -i 0 -R note
-   assertExitStatus '==' 0
+   executeOk $dna -s $sid -O $dnatest_dat -i 0 -R note
    assertRealTime '<' 0.5
    assertStdoutGrep --matches=1 --message='read variable into file' "^NOTE:$sid:[0-9]\+:0"
    assertFileContents $dnatest_dat 'a short literal value'
@@ -131,12 +126,10 @@ setup_SetMultiShortVar() {
    set_short_var
 }
 test_SetMultiShortVar() {
-   execute $dna -s $sid -i 1 -W note='$414243'
-   assertExitStatus '==' 0
+   executeOk $dna -s $sid -i 1 -W note='$414243'
    assertRealTime '<' 0.5
    assertStdoutGrep --matches=1 --message='variable write confirmed' "^WROTE:$sid$"
-   execute $dna -s $sid -i 1 -R note
-   assertExitStatus '==' 0
+   executeOk $dna -s $sid -i 1 -R note
    assertRealTime '<' 0.5
    assertStdoutGrep --matches=1 --message='new variable correctly set in hex' "^NOTE:$sid:[0-9]\+:1:ABC$"
 }
@@ -148,14 +141,11 @@ setup_GetMultiShortVar() {
    start_dna_server
    create_sid
    set_short_var
-   execute $dna -s $sid -i 1 -W note='$414243'
-   assertExitStatus '==' 0
-   execute $dna -s $sid -i 2 -W note
-   assertExitStatus '==' 0
+   executeOk $dna -s $sid -i 1 -W note='$414243'
+   executeOk $dna -s $sid -i 2 -W note
 }
 test_GetMultiShortVar() {
-   execute $dna -s $sid -m -R note
-   assertExitStatus '==' 0
+   executeOk $dna -s $sid -m -R note
    assertRealTime '<' 0.5
    assertStdoutGrep --matches=1 --message='first variable read correctly' "^NOTE:$sid:[0-9]\+:0:a short literal value$"
    assertStdoutGrep --matches=1 --message='second variable read correctly' "^NOTE:$sid:[0-9]\+:1:ABC$"
@@ -171,12 +161,10 @@ setup_OverwriteVarNoUpdate() {
    set_short_var
 }
 test_OverwriteVarNoUpdate() {
-   execute $dna -s $sid -i 0 -W note="replacement short literal value"
-   assertExitStatus '==' 0
+   executeOk $dna -s $sid -i 0 -W note="replacement short literal value"
    assertRealTime '<' 0.5
    assertStdoutGrep --matches=0 --message='variable write not confirmed' "^WROTE:$sid$"
-   execute $dna -s $sid -i 0 -R note
-   assertExitStatus '==' 0
+   executeOk $dna -s $sid -i 0 -R note
    assertRealTime '<' 0.5
    assertStdoutGrep --matches=1 --message='variable retains original value' "^NOTE:$sid:[0-9]\+:0:a short literal value"
 }
@@ -190,12 +178,10 @@ setup_UpdateVar() {
    set_short_var
 }
 test_UpdateVar() {
-   execute $dna -s $sid -i 0 -U note="replacement short literal value"
-   assertExitStatus '==' 0
+   executeOk $dna -s $sid -i 0 -U note="replacement short literal value"
    assertRealTime '<' 0.5
    assertStdoutGrep --matches=1 --message='variable write confirmed' "^WROTE:$sid$"
-   execute $dna -s $sid -i 0 -R note
-   assertExitStatus '==' 0
+   executeOk $dna -s $sid -i 0 -R note
    assertRealTime '<' 0.5
    assertStdoutGrep --matches=1 --message='variable has new value' "^NOTE:$sid:[0-9]\+:0:replacement short literal value"
 }
@@ -210,12 +196,10 @@ setup_UpdateVarBigValue() {
    echo_long_message >$DNATMP/dnatest.in
 }
 test_UpdateVarBigValue() {
-   execute $dna -s $sid -i 0 -U note="@dnatest.in"
-   assertExitStatus '==' 0
+   executeOk $dna -s $sid -i 0 -U note="@dnatest.in"
    assertRealTime '<' 0.5
    assertStdoutGrep --matches=1 --message='variable write confirmed' "^WROTE:$sid$"
-   execute $dna -v verbose -s $sid -O $DNATMP/dnatest.out -i 0 -R note
-   assertExitStatus '==' 0
+   executeOk $dna -v verbose -s $sid -O $DNATMP/dnatest.out -i 0 -R note
    assertRealTime '<' 0.5
    assertStdoutGrep --matches=1 --message='variable new value returned' "^NOTE:$sid:[0-9]\+:0"
    assert --message='long value read correctly' cmp --quiet $DNATMP/dnatest.in $DNATMP/dnatest.out

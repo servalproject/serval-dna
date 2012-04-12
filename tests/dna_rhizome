@@ -22,8 +22,7 @@ source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 
 assert_rhizome_list_empty() {
-   execute $dna rhizome list
-   assertExitStatus --stdout --stderr '==' 0
+   executeOk $dna rhizome list
    assertStdoutIs -e "Found 0 rows\n"
 }
 
@@ -44,8 +43,7 @@ setup_AddManifest() {
    echo "Another test file" >file2
 }
 test_AddManifest() {
-   execute $dna rhizome add file file1 file1.manifest
-   assertExitStatus --stderr '==' 0
+   executeOk $dna rhizome add file file1 file1.manifest
    tfw_cat --stdout
    tfw_cat --stderr
    tfw_cat -v file1.manifest
@@ -67,20 +65,16 @@ setup_AddThenList() {
 }
 test_AddThenList() {
    # Add first file
-   execute $dna rhizome add file file1
-   assertExitStatus --stderr '==' 0
-   execute $dna rhizome list
-   assertExitStatus --stdout --stderr '==' 0
+   executeOk $dna rhizome add file file1
+   executeOk $dna rhizome list
    assertStdoutGrep "^Found 1 rows$"
    assertStdoutLineCount '==' 6
    assertStdoutGrep --matches=1 '^file name = "file1"$'
    assertStdoutGrep --matches=0 '^file name = "file2"$'
    replayStdout >add1.stdout
    # Add second file
-   execute $dna rhizome add file file2
-   assertExitStatus --stderr '==' 0
-   execute $dna rhizome list
-   assertExitStatus --stdout --stderr '==' 0
+   executeOk $dna rhizome add file file2
+   executeOk $dna rhizome list
    assertStdoutGrep "^Found 2 rows$"
    assertStdoutLineCount '==' 11
    assertStdoutGrep --matches=1 '^file name = "file1"$'
@@ -94,24 +88,19 @@ setup_AddDuplicate() {
    echo "A test file" >file1
    echo "Another test file" >file2
    # Add first file
-   execute $dna rhizome add file file1
-   assertExitStatus --stderr '==' 0
+   executeOk $dna rhizome add file file1
    # Add second file
-   execute $dna rhizome add file file2
-   assertExitStatus --stderr '==' 0
+   executeOk $dna rhizome add file file2
    # Make sure they are both in the list.
-   execute $dna rhizome list
-   assertExitStatus --stdout --stderr '==' 0
+   executeOk $dna rhizome list
    assertStdoutGrep "^Found 2 rows$"
    assertStdoutGrep --matches=1 '^file name = "file1"$'
    assertStdoutGrep --matches=1 '^file name = "file2"$'
 }
 test_AddDuplicate() {
    # Add first file again (nothing should change except its date).
-   execute $dna rhizome add file file1
-   assertExitStatus --stderr '==' 0
-   execute $dna rhizome list
-   assertExitStatus --stdout --stderr '==' 0
+   executeOk $dna rhizome add file file1
+   executeOk $dna rhizome list
    assertStdoutGrep "^Found 2 rows$"
    assertStdoutLineCount '==' 11
    assertStdoutGrep --matches=1 '^file name = "file1"$'
