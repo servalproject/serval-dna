@@ -846,8 +846,38 @@ int keyring_commit(keyring_file *k)
   for(cn=0;cn<k->context_count;cn++)
     for(in=0;in<k->contexts[cn]->identity_count;in++)
       {
+	unsigned char pkr[KEYRING_PAGE_SIZE];
+	if (keyring_pack_identity(k->contexts[cn],
+				  k->contexts[cn]->identities[in],
+				  pkr))
+	  errorCount++;
+	else {
+	  /* Now crypt and store block */
+
+	  /* Crypt */
+	  if (keyring_munge_block(pkr,
+				  KEYRING_PAGE_SIZE,
+				  k->contexts[cn]->KeyRingSalt, 
+				  k->contexts[cn]->KeyRingSaltLen, 
+				  k->contexts[cn]->KeyRingPin,
+				  k->contexts[cn]->identities[in]->PKRPin))
+	    errorCount++;
+	  else 
+	    {
+	      /* Store */
+	      off_t file_offset
+		=KEYRING_PAGE_SIZE
+		*k->contexts[cn]->identities[in]->slot;
+	      if (fseeko(k->file,file_offset,SEEK_SET))
+		errorCount++;
+	      else
+		if (fwrite(pkr,KEYRING_PAGE_SIZE,1,k->file)!=1)
+		  errorCount++;		
+	    }
+	}
 	WHY("Writing identities not implemented");
       }
 
+  if (errorCount) WHY("One or more errors occurred while commiting keyring to disk");
   return errorCount;
 }
