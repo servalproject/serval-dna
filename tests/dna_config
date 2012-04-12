@@ -1,0 +1,118 @@
+#!/bin/bash
+
+# Tests for Serval DNA configuration operations.
+#
+# Copyright 2012 Paul Gardner-Stephen
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+
+setup() {
+   setup_dna
+}
+
+doc_GetCreateInstanceDir="Get creates instance directory"
+setup_GetCreateInstanceDir() {
+   setup_dna --no-mkdir
+   assert [ ! -d $SERVALINSTANCE_PATH ]
+}
+test_GetCreateInstanceDir() {
+   executeOk $dna config get
+   assert [ -d $SERVALINSTANCE_PATH ]
+}
+
+doc_SetCreateInstanceDir="Set creates instance directory"
+setup_SetCreateInstanceDir() {
+   setup_dna --no-mkdir
+   assert [ ! -d $SERVALINSTANCE_PATH ]
+}
+test_SetCreateInstanceDir() {
+   executeOk $dna config set foo bar
+   assert [ -d $SERVALINSTANCE_PATH ]
+}
+
+doc_GetNull="Get an unset config item"
+test_GetNull() {
+   executeOk $dna config get foo
+   assertStdoutLineCount '==' 0
+}
+
+doc_SetGet="Set and get a single config item"
+test_SetGet() {
+   executeOk $dna config set foo bar
+   executeOk $dna config get foo
+   assertStdoutLineCount '==' 1
+   assertStdoutGrep --stdout --stderr --matches=1 '^foo=bar$'
+}
+
+doc_GetAll="Get all config items"
+test_GetAll() {
+   executeOk $dna config set foo bar
+   executeOk $dna config set hello world
+   executeOk $dna config get
+   assertStdoutLineCount '==' 2
+   assertStdoutGrep --stdout --matches=1 '^foo=bar$'
+   assertStdoutGrep --stdout --matches=1 '^hello=world$'
+}
+
+doc_SetTwice="Set a single config item twice"
+test_SetTwice() {
+   executeOk $dna config set foo bar
+   executeOk $dna config get foo
+   assertStdoutLineCount '==' 1
+   assertStdoutGrep --stdout --stderr --matches=1 '^foo=bar$'
+   executeOk $dna config set foo wah
+   executeOk $dna config get foo
+   assertStdoutLineCount '==' 1
+   assertStdoutGrep --stdout --stderr --matches=1 '^foo=wah$'
+}
+
+doc_DelNull="Delete an unset config item"
+test_DelNull() {
+   executeOk $dna config del foo
+   assertStdoutLineCount '==' 0
+}
+
+doc_Del="Delete single config item"
+test_Del() {
+   executeOk $dna config set foo bar
+   executeOk $dna config set hello world
+   executeOk $dna config get
+   assertStdoutLineCount '==' 2
+   executeOk $dna config del foo
+   executeOk $dna config get
+   assertStdoutLineCount '==' 1
+   executeOk $dna config get foo
+   assertStdoutLineCount '==' 0
+}
+
+doc_CaseInsensitive="Config item names are case insensitive"
+test_CaseInsensitive() {
+   executeOk $dna config set foo bar
+   executeOk $dna config get foo
+   assertStdoutLineCount '==' 1
+   assertStdoutGrep --stdout --stderr --matches=1 '^foo=bar$'
+   executeOk $dna config get Foo
+   assertStdoutLineCount '==' 1
+   assertStdoutGrep --stdout --stderr --matches=1 '^foo=bar$'
+   executeOk $dna config set FOO wah
+   executeOk $dna config get foo
+   assertStdoutLineCount '==' 1
+   assertStdoutGrep --stdout --stderr --matches=1 '^FOO=wah$'
+}
+
+runTests "$@"
