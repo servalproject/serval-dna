@@ -560,9 +560,9 @@ static int set_variable(const char *var, const char *val)
   line[0]=0; fgets(line,1024,in);
   while(line[0]) {
     if (!strncasecmp(var, line, varlen) && line[varlen] == '=') {
-      found = 1;
-      if (val)
+      if (!found && val)
 	fprintf(out, "%s=%s\n", var, val);
+      found = 1;
     } else
       fprintf(out,"%s",line);
     line[0]=0; fgets(line,1024,in);
@@ -590,6 +590,8 @@ int app_server_set(int argc,char **argv,struct command_line_option *o)
 int app_server_del(int argc,char **argv,struct command_line_option *o)
 {
   char *var = cli_arg(argc, argv, o, "variable", "");
+  if (create_serval_instance_dir() == -1)
+    return -1;
   return set_variable(var, NULL);
 }
 
@@ -598,6 +600,8 @@ int app_server_get(int argc,char **argv,struct command_line_option *o)
   char *var = cli_arg(argc, argv, o, "variable", "");
   char conffile[1024];
   FILE *in;
+  if (create_serval_instance_dir() == -1)
+    return -1;
   if (!FORM_SERVAL_INSTANCE_PATH(conffile, "serval.conf") ||
       !((in = fopen(conffile, "r")) || (in = fopen(conffile, "w")))
     ) {
