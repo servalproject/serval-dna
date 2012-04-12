@@ -626,11 +626,6 @@ int keyring_identity_mac(keyring_context *c,keyring_identity *id,
   unsigned char work[65536];
 #define APPEND(b,l) if (ofs+(l)>=65536) { bzero(work,ofs); return WHY("Input too long"); } bcopy((b),&work[ofs],(l)); ofs+=(l)
 
-  dump("mac salt",pkrsalt,32);
-  dump("mac priv",id->keypairs[0]->private_key,id->keypairs[0]->private_key_len);
-  dump("mac publ",id->keypairs[0]->public_key,id->keypairs[0]->public_key_len);
-  dump("mac pin",id->PKRPin,strlen(id->PKRPin));
-
   ofs=0;
   APPEND(&pkrsalt[0],32);
   APPEND(id->keypairs[0]->private_key,id->keypairs[0]->private_key_len);
@@ -845,6 +840,24 @@ int keyring_create_identity(keyring_file *k,keyring_context *c,char *pin)
   }
   crypto_sign_edwards25519sha512batch_keypair(id->keypairs[1]->public_key,
 					      id->keypairs[1]->private_key);
+
+  /* Rhizome Secret (for protecting Bundle Private Keys) */
+  id->keypairs[2]=calloc(sizeof(keypair),1);
+  if (!id->keypairs[2]) {
+    WHY("calloc() failed preparing second key pair storage");
+    goto kci_safeexit;
+  }
+  id->keypair_count=3;
+  id->keypairs[2]->type=KEYTYPE_RHIZOME;
+  id->keypairs[2]->private_key_len=32;
+  id->keypairs[2]->private_key=malloc(id->keypairs[2]->private_key_len);
+  if (!id->keypairs[2]->private_key) {
+    WHY("malloc() failed preparing second private key storage");
+    goto kci_safeexit;
+  }
+  id->keypairs[2]->public_key_len=0;
+  id->keypairs[2]->public_key=NULL;
+  urandombytes(id->keypairs[2]->private_key,id->keypairs[2]->private_key_len);
 
   /* Mark slot in use */
   int position=id->slot&(KEYRING_BAM_BITS-1);

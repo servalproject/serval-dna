@@ -1151,6 +1151,10 @@ int keyring_identity_mac(keyring_context *c,keyring_identity *id,
 			 unsigned char *pkrsalt,unsigned char *mac);
 #define KEYTYPE_CRYPTOBOX 0x01
 #define KEYTYPE_CRYPTOSIGN 0x02
+#define KEYTYPE_RHIZOME 0x03
+/* DIDs aren't really keys, but the keyring is a real handy place to keep them,
+   and keep them private if people so desire */
+#define KEYTYPE_DID 0x04
 
 /* Public calls to keyring management */
 keyring_file *keyring_open(char *file);
