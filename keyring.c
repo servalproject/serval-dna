@@ -422,6 +422,11 @@ int keyring_pack_identity(keyring_context *c,keyring_identity *i,
       printf("key type 0x%02x @ 0x%x\n",i->keypairs[kp]->type,ofs);
       packed[ofs++]=i->keypairs[kp]->type;
       switch(i->keypairs[kp]->type) {
+      case KEYTYPE_RHIZOME:
+      case KEYTYPE_DID:
+	/* Both of these are 32 bytes and only one value, 
+	   so the CRYPTOBOX case below works */
+	/* fall through */
       case KEYTYPE_CRYPTOBOX:
 	/* For cryptobox we only need the private key, as we compute the public
 	   key from it when extracting the identity */
@@ -536,6 +541,8 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot,char *pin)
 	/* End of data, stop looking */
 	ofs=KEYRING_PAGE_SIZE;
 	break;
+      case KEYTYPE_RHIZOME:
+      case KEYTYPE_DID:
       case KEYTYPE_CRYPTOBOX:
       case KEYTYPE_CRYPTOSIGN:
 	if (id->keypair_count>=PKR_MAX_KEYPAIRS) {
@@ -558,6 +565,9 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot,char *pin)
 	case KEYTYPE_CRYPTOSIGN:
 	  kp->private_key_len=crypto_sign_edwards25519sha512batch_SECRETKEYBYTES;
 	  kp->public_key_len=crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES;
+	  break;
+	case KEYTYPE_RHIZOME: case KEYTYPE_DID:
+	  kp->private_key_len=32; kp->public_key_len=0;
 	  break;
 	}
 	kp->private_key=malloc(kp->private_key_len);
@@ -600,6 +610,9 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot,char *pin)
 	  */
 	  for(i=0;i<kp->public_key_len;i++) kp->public_key[i]=slot_byte(ofs+i);
 	  ofs+=kp->public_key_len;
+	  break;
+	case KEYTYPE_RHIZOME: case KEYTYPE_DID:
+	  /* no public key value for these, just do nothing */
 	  break;
 	}
 	id->keypair_count++;
@@ -951,4 +964,60 @@ int keyring_commit(keyring_file *k)
 
   if (errorCount) WHY("One or more errors occurred while commiting keyring to disk");
   return errorCount;
+}
+
+int keyring_set_did(keyring_identity *id,char *did)
+{
+  if (!id) return WHY("id is null");
+  if (!did) return WHY("did is null");
+
+  /* Find where to put it */
+  int i;
+  for(i=0;i<id->keypair_count;i++)
+    if (id->keypairs[i]->type==KEYTYPE_DID)
+      break;
+
+  if (i>=PKR_MAX_KEYPAIRS) return WHY("Too many key pairs");
+
+  /* allocate if needed */
+  if (i>=id->keypair_count) {
+    unsigned char *packedDid=calloc(32,1);
+    if (!packedDid) return WHY("calloc() failed");
+    id->keypairs[i]->private_key=packedDid;
+    id->keypairs[i]->private_key_len=32;
+    id->keypair_count++;
+  }
+  
+  /* Store DID unpacked for ease of searching */
+  int len=strlen(did); if (len>31) len=31;
+  bcopy(did,&id->keypairs[i]->private_key,len);
+  bzero(&id->keypairs[i]->private_key[len],32-len);
+  
+  return 0;
+}
+
+int keyring_find_did(keyring_file *k,int *cn,int *in,int *kp,char *did)
+{
+  if (!k) return -1;
+
+  while ((*cn)<k->context_count) {
+    for(*kp=0;*kp<k->contexts[*cn]->identities[*in]->keypair_count;(*kp)++)
+      {
+	if (k->contexts[*cn]->identities[*in]->keypairs[*kp]->type==KEYTYPE_DID)
+	  {
+	    /* Compare DIDs */
+	    if (!strcasecmp(did,(char *)k->contexts[*cn]->identities[*in]
+				 ->keypairs[*kp]->private_key))
+	      /* match */
+	      return 1;
+	  }
+      }
+
+
+    /* See if there is still somewhere to search */
+    if ((*in)>=k->contexts[*cn]->identity_count) {
+      (*cn)++; (*in)=0;
+    }
+  }
+  return -1;
 }
