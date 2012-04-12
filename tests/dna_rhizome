@@ -72,7 +72,7 @@ test_AddThenList() {
    execute $dna rhizome list
    assertExitStatus --stdout --stderr '==' 0
    assertStdoutGrep "^Found 1 rows$"
-   assertExpr --stdout $(replayStdout | wc --lines) '==' 5
+   assertStdoutLineCount '==' 6
    assertStdoutGrep --matches=1 '^file name = "file1"$'
    assertStdoutGrep --matches=0 '^file name = "file2"$'
    replayStdout >add1.stdout
@@ -82,7 +82,7 @@ test_AddThenList() {
    execute $dna rhizome list
    assertExitStatus --stdout --stderr '==' 0
    assertStdoutGrep "^Found 2 rows$"
-   assertExpr --stdout $(replayStdout | wc --lines) '==' 9
+   assertStdoutLineCount '==' 11
    assertStdoutGrep --matches=1 '^file name = "file1"$'
    assertStdoutGrep --matches=1 '^file name = "file2"$'
 }
@@ -113,7 +113,7 @@ test_AddDuplicate() {
    execute $dna rhizome list
    assertExitStatus --stdout --stderr '==' 0
    assertStdoutGrep "^Found 2 rows$"
-   assertExpr --stdout $(replayStdout | wc --lines) '==' 9
+   assertStdoutLineCount '==' 11
    assertStdoutGrep --matches=1 '^file name = "file1"$'
    assertStdoutGrep --matches=1 '^file name = "file2"$'
 }

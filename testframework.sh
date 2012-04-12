@@ -284,6 +284,14 @@ assertStderrIs() {
    _tfw_assert_stdxxx_is stderr "$@" || _tfw_failexit
 }
 
+assertStdoutLineCount() {
+   _tfw_assert_stdxxx_linecount stdout "$@" || _tfw_failexit
+}
+
+assertStderrLineCount() {
+   _tfw_assert_stdxxx_linecount stderr "$@" || _tfw_failexit
+}
+
 assertStdoutGrep() {
    _tfw_assert_stdxxx_grep stdout "$@" || _tfw_failexit
 }
@@ -516,7 +524,6 @@ _tfw_eval_awkexpr() {
 _tfw_assertExpr() {
    local awkexpr=$(_tfw_expr_to_awkexpr "$@")
    _tfw_assert _tfw_eval_awkexpr "$awkexpr" || _tfw_failexit
-   echo "# assert $awkexpr"
 }
 
 _tfw_assert_stdxxx_is() {
@@ -536,6 +543,22 @@ _tfw_assert_stdxxx_is() {
       return 1
    fi
    echo "# assert $message"
+   return 0
+}
+
+_tfw_assert_stdxxx_linecount() {
+   local qual="$1"
+   shift
+   _tfw_getopts_assert filecontent --$qual "$@"
+   shift $((_tfw_getopts_shift - 1))
+   if [ $# -lt 1 ]; then
+      _tfw_error "incorrect arguments"
+      return 254
+   fi
+   local lineCount=$(cat $_tfw_tmp/$qual | /usr/bin/wc --lines)
+   [ -z "$_tfw_message" ] && _tfw_message="$qual line count ($lineCount) $*"
+   _tfw_assertExpr "$lineCount" "$@" || _tfw_failexit
+   echo "# assert $_tfw_message"
    return 0
 }
 
