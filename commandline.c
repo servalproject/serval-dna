@@ -159,6 +159,7 @@ int parseCommandLine(int argc, char **args)
   if (cli_call<0) return cli_usage();
 
   /* Otherwise, make call */
+  setVerbosity(confValueGet("debug",""));
   return command_line_options[cli_call].function(argc,args, &command_line_options[cli_call]);
 }
 
@@ -228,8 +229,6 @@ int app_server_start(int argc,char **argv,struct command_line_option *o)
 	    "WARNING: Noone has told me which network interfaces to listen on.\n"
 	    "         You should probably put something in the interfaces setting.\n");
   }
-
-  setVerbosity(confValueGet("debug",""));
 
   int pid=-1;
   int running = servalNodeRunning(&pid);
@@ -639,17 +638,17 @@ int app_rhizome_add_file(int argc, char **argv, struct command_line_option *o)
    * it, otherwise create a blank manifest. */
   rhizome_manifest *m = NULL;
   if (manifestpath[0]) {
-    m = rhizome_read_manifest_file(manifestpath, 0, RHIZOME_VERIFY);
+    m = rhizome_read_manifest_file(manifestpath, 0, 0); // no verify
   } else {
     m = rhizome_new_manifest();
   }
-  /* Ensure the manifest has a "name" value.  Use the file's basename if missing. */
+  /* Use the file's basename to fill in a missing "name". */
   if (rhizome_manifest_get(m, "name", NULL, 0) == NULL) {
     const char *name = strrchr(filepath, '/');
     name = name ? name + 1 : filepath;
     rhizome_manifest_set(m, "name", name);
   }
-  /* Ensure the manifest has a "date" value.  Use current time if missing.  */
+  /* Use current time to fill in a missing "date".  */
   if (rhizome_manifest_get(m, "date", NULL, 0) == NULL) {
     rhizome_manifest_set_ll(m, "date", overlay_gettime_ms());
   }
@@ -658,7 +657,7 @@ int app_rhizome_add_file(int argc, char **argv, struct command_line_option *o)
   int ret = rhizome_add_manifest(m, filepath,
 				 NULL, // no groups - XXX should allow them
 				 255, // ttl - XXX should read from somewhere
-				 0, // int verifyP
+				 manifestpath[0] != 0, // int verifyP
 				 1, // int checkFileP
 				 1 // int signP
     );

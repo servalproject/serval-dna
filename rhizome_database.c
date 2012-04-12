@@ -340,7 +340,7 @@ int rhizome_store_bundle(rhizome_manifest *m, const char *associated_filename)
     }
 
   /* Store manifest */
-  WHY("*** Writing into manifests table");
+  if (debug & DEBUG_RHIZOME) fprintf(stderr, "Writing into manifests table\n");
   snprintf(sqlcmd,1024,
 	   "INSERT INTO MANIFESTS(id,manifest,version,inserttime,bar) VALUES('%s',?,%lld,%lld,?);",
 	   manifestid,m->version,overlay_gettime_ms());
@@ -392,8 +392,9 @@ int rhizome_store_bundle(rhizome_manifest *m, const char *associated_filename)
     WHY("*** Insert into manifests failed (4).");
     return WHY("SQLite3 failed to insert row for manifest");
   }
-  else
-    WHY("*** Insert into manifests apparently worked.");
+  else {
+    if (debug & DEBUG_RHIZOME) fprintf(stderr, "Insert into manifests apparently worked.\n");
+  }
 
   /* Create relationship between file and manifest */
   long long r=sqlite_exec_int64("INSERT INTO FILEMANIFESTS(manifestid,fileid) VALUES('%s','%s');",
@@ -539,12 +540,12 @@ int rhizome_list_manifests(int limit, int offset)
 	break;
       }
       size_t filesize = sqlite3_column_int(statement, 1);
-      size_t manifestblobsize = sqlite3_column_bytes(statement, 4);
       const char *manifestblob = (char *) sqlite3_column_blob(statement, 4);
+      size_t manifestblobsize = sqlite3_column_bytes(statement, 4); // must call after sqlite3_column_blob()
       //printf("manifest blob = %s\n", manifestblob);
-      rhizome_manifest *m = rhizome_read_manifest_file(manifestblob, manifestblobsize, RHIZOME_VERIFY);
+      rhizome_manifest *m = rhizome_read_manifest_file(manifestblob, manifestblobsize, 0);
       const char *name = rhizome_manifest_get(m, "name", NULL, 0);
-      printf("file id = %s\nfile length = %u\nfile datavalid = %u\nfile name = \"%s\"\n",
+      printf("file id = %s\nfile length = %u\nfile datavalid = %u\nfile name = \"%s\"\n\n",
 	  sqlite3_column_text(statement, 0),
 	  filesize,
 	  sqlite3_column_int(statement, 2),
@@ -749,4 +750,60 @@ int rhizome_update_file_priority(char *fileid)
 			highestPriority,fileid);
   }
   return 0;
+}
+
+/* Search the database for a manifest having the same name and payload content.
+ */
+int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
+{
+  if (!m->fileHashedP)
+    return WHY("Manifest payload is not hashed");
+  char sqlcmd[1024];
+  int n = snprintf(sqlcmd, sizeof(sqlcmd), "SELECT manifests.id, manifests.manifest FROM filemanifests, manifests WHERE filemanifests.fileid = ? AND filemanifests.manifestid = manifests.id");
+  if (n >= sizeof(sqlcmd))
+    return WHY("SQL command too long");
+  int ret = 0;
+  sqlite3_stmt *statement;
+  const char *cmdtail;
+  if (sqlite3_prepare_v2(rhizome_db, sqlcmd, strlen(sqlcmd) + 1, &statement, &cmdtail) != SQLITE_OK) {
+    sqlite3_finalize(statement);
+    ret = WHY(sqlite3_errmsg(rhizome_db));
+  } else {
+    if (debug & DEBUG_RHIZOME) fprintf(stderr, "fileHaxHash = \"%s\"\n", m->fileHexHash);
+    sqlite3_bind_text(statement, 1, m->fileHexHash, -1, SQLITE_STATIC);
+    const char *name = rhizome_manifest_get(m, "name", NULL, 0);
+    size_t rows = 0;
+    while (sqlite3_step(statement) == SQLITE_ROW) {
+      ++rows;
+      if (debug & DEBUG_RHIZOME) fprintf(stderr, "Row %d\n", rows);
+      if (!(   sqlite3_column_count(statement) == 2
+	    && sqlite3_column_type(statement, 0) == SQLITE_TEXT
+	    && sqlite3_column_type(statement, 1) == SQLITE_BLOB
+      )) { 
+	ret = WHY("Incorrect statement columns");
+	break;
+      }
+      const char *manifestid = (char *) sqlite3_column_text(statement, 0);
+      size_t manifestidsize = sqlite3_column_bytes(statement, 0); // must call after sqlite3_column_text()
+      if (manifestidsize != crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES * 2) {
+	ret = WHYF("Malformed manifest.id from query: %s", manifestid);
+	break;
+      }
+      const char *manifestblob = (char *) sqlite3_column_blob(statement, 1);
+      size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
+      rhizome_manifest *mq = rhizome_read_manifest_file(manifestblob, manifestblobsize, 0);
+      const char *nameq = rhizome_manifest_get(mq, "name", NULL, 0);
+      /* No need to compare "filehash" here, but we do so as a precaution. */
+      if (debug & DEBUG_RHIZOME) fprintf(stderr, "Consider manifest.id=%s manifest.name=\"%s\"\n", manifestid, nameq);
+      if ( !strcmp(nameq, name)
+	&& !strncmp(rhizome_manifest_get(mq, "filehash", NULL, 0), m->fileHexHash, SHA512_DIGEST_STRING_LENGTH)) {
+	*found = mq;
+	ret = 1;
+	break;
+      }
+      rhizome_manifest_free(mq);
+    }
+  }
+  sqlite3_finalize(statement);
+  return ret;
 }

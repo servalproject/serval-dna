@@ -74,7 +74,7 @@ rhizome_manifest *rhizome_read_manifest_file(const char *filename, int bufferP, 
       if (sscanf(line,"%[^=]=%[^\n\r]",var,value)==2)
 	{
 	  if (rhizome_manifest_get(m,var,NULL,0)!=NULL) {
-	    WHY("Error in manifest file (duplicate variable -- keeping first value).");
+	    if (debug&DEBUG_RHIZOME) fprintf(stderr, "Error in manifest file (duplicate variable \"%s\"-- keeping first value)\n", var);
 	    m->errors++;
 	  }
 	  if (m->var_count<MAX_MANIFEST_VARS)
@@ -119,7 +119,7 @@ rhizome_manifest *rhizome_read_manifest_file(const char *filename, int bufferP, 
       char *id=rhizome_manifest_get(m,"id",NULL,0);
 
       if (!id) { 
-	if (debug&DEBUG_RHIZOME) fprintf(stderr,"Manifest lacks id variable.");
+	if (debug&DEBUG_RHIZOME) fprintf(stderr,"Manifest lacks id variable.\n");
 	m->errors++; }
       else {
 	unsigned char manifest_bytes[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
@@ -139,7 +139,7 @@ rhizome_manifest *rhizome_read_manifest_file(const char *filename, int bufferP, 
     }
 
     if (debug&DEBUG_RHIZOME) 
-      WHY("Group membership determination not implemented (see which signatories are groups? what about manifests signed by groups we don't yet know about?)");
+      fprintf(stderr, "Group membership determination not implemented (see which signatories are groups? what about manifests signed by groups we don't yet know about?)\n");
   }
   
   m->manifest_bytes=end_of_text;
@@ -154,24 +154,22 @@ int rhizome_hash_file(const char *filename,char *hash_out)
      and may be very resource constrained. Thus we need a streamable SHA-512
      implementation.
   */
-  FILE *f=fopen(filename,"r");
-  if (!f) return WHY("Could not open file for reading to calculage SHA512 hash.");
-  unsigned char buffer[8192];
-  int r;
-
+  FILE *f = fopen(filename, "r");
+  if (!f)
+    return WHYF("Could not read %s to calculate SHA512 hash.", filename);
   SHA512_CTX context;
   SHA512_Init(&context);
-
-  while(!feof(f)) {
-    r=fread(buffer,1,8192,f);
-    if (r>0) SHA512_Update(&context,buffer,r);
+  while (!feof(f)) {
+    unsigned char buffer[8192];
+    int r = fread(buffer, 1, 8192, f);
+    if (r > 0)
+      SHA512_Update(&context, buffer, r);
   }
-
-  SHA512_End(&context,(char *)hash_out);
+  SHA512_End(&context, (char *)hash_out);
   return 0;
 }
 
-char *rhizome_manifest_get(rhizome_manifest *m,char *var,char *out,int maxlen)
+char *rhizome_manifest_get(const rhizome_manifest *m, const char *var, char *out, int maxlen)
 {
   int i,j;
 
@@ -190,15 +188,18 @@ char *rhizome_manifest_get(rhizome_manifest *m,char *var,char *out,int maxlen)
   return NULL;
 }
 
-long long rhizome_manifest_get_ll(rhizome_manifest *m,char *var)
+long long rhizome_manifest_get_ll(rhizome_manifest *m, const char *var)
 {
+  if (!m)
+    return -1;
   int i;
-
-  if (!m) return -1;
-
-  for(i=0;i<m->var_count;i++)
-    if (!strcmp(m->vars[i],var))
-      return strtoll(m->values[i],NULL,10);
+  for (i = 0;i != m->var_count; ++i)
+    if (!strcmp(m->vars[i], var)) {
+      char *vp = m->values[i];
+      char *ep = vp;
+      long long val = strtoll(vp, &ep, 10);
+      return (ep != vp && *ep == '\0') ? val : -1;
+    }
   return -1;
 }
 
@@ -380,7 +381,7 @@ int rhizome_manifest_pack_variables(rhizome_manifest *m)
     }
   m->manifestdata[ofs++]=0x00;
   m->manifest_bytes=ofs;
-  if (debug&DEBUG_RHIZOME) WHY("Repacked variables in manifest.");
+  if (debug&DEBUG_RHIZOME) fprintf(stderr, "Repacked variables in manifest.\n");
   m->manifest_all_bytes=ofs;
 
   /* Recalculate hash */

@@ -134,6 +134,13 @@ int rhizome_add_manifest(rhizome_manifest *m,
   char hexhash[SHA512_DIGEST_STRING_LENGTH];
   int verifyErrors = 0;
 
+  /* Ensure manifest meets basic sanity checks. */
+  const char *name = rhizome_manifest_get(m, "name", NULL, 0);
+  if (name == NULL || !name[0])
+      return WHY("Manifest missing 'name' field");
+  if (rhizome_manifest_get_ll(m, "date") == -1)
+      return WHY("Manifest missing 'date' field");
+
   /* Keep payload file name handy for later */
   m->dataFileName = strdup(filename);
 
@@ -148,8 +155,10 @@ int rhizome_add_manifest(rhizome_manifest *m,
       return WHY("Could not stat() payload file");
     m->fileLength = stat.st_size;
     long long mfilesize = rhizome_manifest_get_ll(m, "filesize");
-    if (mfilesize != -1 && mfilesize != m->fileLength)
+    if (mfilesize != -1 && mfilesize != m->fileLength) {
+      WHYF("Manifest.filesize (%lld) != actual file size (%lld)", mfilesize, m->fileLength);
       ++verifyErrors;
+    }
   }
 
   /* Compute hash of payload unless we know verification has already failed */
@@ -163,32 +172,54 @@ int rhizome_add_manifest(rhizome_manifest *m,
   /* Check that paylod hash matches manifest */
   if (checkFileP) {
     const char *mhexhash = rhizome_manifest_get(m, "filehash", NULL, 0);
-    if (mhexhash && strcmp(hexhash, mhexhash))
+    if (mhexhash && strcmp(hexhash, mhexhash)) {
+      WHYF("Manifest.filehash (%s) != actual file hash (%s)", mhexhash, hexhash);
       ++verifyErrors;
+    }
   }
 
   /* If any signature errors were encountered on loading, or manifest is inconsistent with payload,
      then bail out now. */
   if (verifyP) {
+    if (m->errors)
+      WHYF("Manifest.errors (%d) is non-zero", m->errors);
     if (verifyErrors || m->errors)
       return WHY("Errors encountered verifying bundle manifest");
   }
 
-  /* Fill in the manifest to avoid redundant work by rhizome_manifest_finalise() below */
+  /* Fill in the manifest so that duplicate detection can be performed, and to avoid redundant work
+     by rhizome_manifest_finalise() below. */
   if (checkFileP) {
     rhizome_manifest_set(m, "filehash", hexhash);
     rhizome_manifest_set_ll(m, "first_byte", 0);
     rhizome_manifest_set_ll(m, "last_byte", m->fileLength);
   }
 
+  /* Check if a manifest is already stored for the same payload with the same details.
+     This catches the case of "dna rhizome add file <filename>" on the same file more than once.
+     (Debounce!) */
+  rhizome_manifest *dupm = NULL;
+  if (rhizome_find_duplicate(m, &dupm) == -1)
+    return WHY("Errors encountered searching for duplicate manifest");
+  if (dupm) {
+    if (debug & DEBUG_RHIZOME) fprintf(stderr, "Not adding manifest for payload name=\"%s\" hexhash=%s - duplicate found in rhizome store\n", name, hexhash);
+#if 0
+    /* TODO Upgrade the version of the duplicate? */
+    long long version = rhizome_manifest_get_ll(m, "version");
+    long long dupversion = rhizome_manifest_get_ll(dupm, "version");
+    if (version > dupversion) {
+      rhizome_manifest_set_ll(dupm, "version", version);
+      ...
+    }
+#endif
+    rhizome_manifest_free(dupm);
+    return 0;
+  }
+
   /* Supply manifest version number if missing, so we can do the version check below */
   if (rhizome_manifest_get(m, "version", NULL, 0) == NULL) {
     rhizome_manifest_set_ll(m, "version", overlay_gettime_ms());
   }
-
-  /* Check if a manifest is already stored for the same file with the same details, except version
-     number.  This catches the case of "dna rhizome add file <filename>" on the same file more than
-     once.  (Debounce!) */
 
   /* If the manifest already has an ID, look to see if we possess its private key */
   if ((id = rhizome_manifest_get(m, "id", NULL, 0))) {
