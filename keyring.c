@@ -530,12 +530,10 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot,char *pin)
   int rotation=(slot[PKR_SALT_BYTES+PKR_MAC_BYTES]<<8)
     |slot[PKR_SALT_BYTES+PKR_MAC_BYTES+1];
   ofs=PKR_SALT_BYTES+PKR_MAC_BYTES+2;
-  printf("reading with rotation = 0x%x\n",rotation);
 
   /* Parse block */
   for(ofs=0;ofs<(KEYRING_PAGE_SIZE-PKR_SALT_BYTES-PKR_MAC_BYTES-2);)
     {
-      printf("slot_byte(%d)=0x%x\n",ofs,slot_byte(ofs));
       switch(slot_byte(ofs)) {
       case 0x00:
 	/* End of data, stop looking */
@@ -724,8 +722,6 @@ int keyring_enter_pin(keyring_file *k,char *pin)
 
   for(slot=0;slot<k->file_size/KEYRING_PAGE_SIZE;slot++)
     {
-      printf("looking in slot #%d for pin=%s\n",slot,pin);
-
       /* slot zero is the BAM and salt, so skip it */
       if (slot&(KEYRING_BAM_BITS-1)) {
 	/* Not a BAM slot, so examine */
@@ -746,8 +742,6 @@ int keyring_enter_pin(keyring_file *k,char *pin)
 	  /* Slot is occupied, so check it.
 	     We have to check it for each keyring context (ie keyring pin) */
 	  int c;
-	  printf("looking in slot #%d for pin=%s\n",slot,pin);
-	  fflush(stdout);
 	  for(c=0;c<k->context_count;c++)
 	    {
 	      int result=keyring_decrypt_pkr(k,k->contexts[c],pin?pin:"",slot);
