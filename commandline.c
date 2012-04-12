@@ -681,6 +681,89 @@ int app_rhizome_list(int argc, char **argv, struct command_line_option *o)
   return rhizome_list_manifests(0, 0);
 }
 
+int app_keyring_create(int argc, char **argv, struct command_line_option *o)
+{
+  if (create_serval_instance_dir() == -1)
+    return -1;
+  char *instancePath = serval_instancepath();
+  char keyringFile[1024];
+  snprintf(keyringFile,1024,"%s/serval.keyring",instancePath);
+  if (!keyring_open(keyringFile)) 
+    fprintf(stderr,"keyring create:Failed to create/open keyring file\n");
+  return 0;
+}
+
+int app_keyring_list(int argc, char **argv, struct command_line_option *o)
+{
+ if (create_serval_instance_dir() == -1)
+    return -1;
+  char *instancePath = serval_instancepath();
+  char keyringFile[1024];
+  keyring_file *k=NULL;
+  snprintf(keyringFile,1024,"%s/serval.keyring",instancePath);
+  if ((k=keyring_open(keyringFile))==NULL) 
+    { fprintf(stderr,"keyring list:Failed to create/open keyring file\n");
+      return -1; }
+
+  char *pinlist = strdup(cli_arg(argc, argv, o, "pin,pin ...", ""));
+  char *pin=strtok((char *)pinlist,",");
+  if (!pin) pin=cli_arg(argc, argv, o, "pin,pin ...", "");
+  while(pin) {
+    keyring_enter_pin(k,pin);
+    pin=strtok(NULL,",");
+  }
+
+  int cn=0;
+  int in=0;
+
+  for(cn=0;cn<k->context_count;cn++)
+    for(in=0;in<k->contexts[cn]->identity_count;in++)
+      {
+	int kpn;
+	keypair *kp;
+	for(kpn=0;kpn<k->contexts[cn]->identities[in]->keypair_count;kpn++)
+	  {
+	    kp=k->contexts[cn]->identities[in]->keypairs[kpn];
+	    if (!kpn)
+	      printf("Identity accessed with pin='%s'\n",
+		     k->contexts[cn]->identities[in]->PKRPin);
+	    printf("   %02x:",kp->type);
+	    int i;
+	    for(i=0;i<kp->public_key_len;i++) printf("%02x",kp->public_key[i]);
+	    printf("\n");
+	  }
+      }
+  return 0;
+ }
+
+int app_keyring_add(int argc, char **argv, struct command_line_option *o)
+{
+  const char *pin = cli_arg(argc, argv, o, "[<pin>]", "");
+
+  if (create_serval_instance_dir() == -1)
+    return -1;
+  char *instancePath = serval_instancepath();
+  char keyringFile[1024];
+  keyring_file *k=NULL;
+  snprintf(keyringFile,1024,"%s/serval.keyring",instancePath);
+  if ((k=keyring_open(keyringFile))==NULL) 
+    { fprintf(stderr,"keyring add:Failed to create/open keyring file\n");
+      return -1; }
+  
+  if (keyring_create_identity(k,k->contexts[0],(char *)pin))
+    {
+      fprintf(stderr,"Could not create new identity\n");
+      return -1;
+    }
+  if (keyring_commit(k)) {
+    fprintf(stderr,"Could not write new identity\n");
+    return -1;
+  }
+  keyring_free(k);
+  return 0;
+
+}
+
 /* NULL marks ends of command structure.
    "<anystring>" marks an arg that can take any value.
    "[<anystring>]" marks an optional arg that can take any value.
@@ -723,5 +806,11 @@ command_line_option command_line_options[]={
    "Add a file to Rhizome and optionally write its manifest to the given path"},
   {app_rhizome_list,{"rhizome","list",NULL},0,
    "List all manifests and files in Rhizome"},
+  {app_keyring_create,{"keyring","create",NULL},0,
+   "Create a new keyring file."},
+  {app_keyring_list,{"keyring","list","[<pin,pin ...>]",NULL},0,
+   "List identites in specified key ring that can be accessed using the specified PINs"},
+  {app_keyring_add,{"keyring","add","[<pin>]",NULL},0,
+   "Create a new identity in the keyring protected by the provided PIN"},
   {NULL,{NULL}}
 };

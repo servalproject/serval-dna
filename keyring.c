@@ -65,8 +65,10 @@ keyring_file *keyring_open(char *file)
   /* Open keyring file read-write if we can, else use it read-only */
   k->file=fopen(file,"r+");
   if (!k->file) k->file=fopen(file,"r");
+  if (!k->file) k->file=fopen(file,"w+");
   if (!k->file) {
     WHY("Could not open keyring file");
+    fprintf(stderr,"file='%s'\n",file);
     keyring_free(k);
     return NULL;
   }
@@ -104,6 +106,7 @@ keyring_file *keyring_open(char *file)
       keyring_free(k);
       return NULL;
     }
+    k->file_size=KEYRING_PAGE_SIZE;
   }
 
   /* Read BAMs for each slab in the file */
@@ -138,7 +141,7 @@ keyring_file *keyring_open(char *file)
     /* Read salt if this is the first bitmap block.
        We setup a context for this self-supplied key-ring salt.
        (other keyring salts may be provided later on, resulting in
-        multiple contexts being loaded) */
+       multiple contexts being loaded) */
     if (!offset) {     
       k->contexts[0]=calloc(sizeof(keyring_context),1);     
       if (!k->contexts[0])
@@ -147,7 +150,7 @@ keyring_file *keyring_open(char *file)
 	  keyring_free(k);
 	  return NULL;
 	}
-      k->contexts[0]->KeyRingPin=""; /* Implied empty PIN if none provided */
+      k->contexts[0]->KeyRingPin=strdup(""); /* Implied empty PIN if none provided */
       k->contexts[0]->KeyRingSaltLen=KEYRING_PAGE_SIZE-KEYRING_BAM_BYTES;
       k->contexts[0]->KeyRingSalt=malloc(k->contexts[0]->KeyRingSaltLen);
       if (!k->contexts[0]->KeyRingSalt)
@@ -289,7 +292,7 @@ int keyring_enter_keyringpin(keyring_file *k,char *pin)
   if (!k->contexts[k->context_count]) return WHY("Could not allocate new keyring context structure");
   keyring_context *c=k->contexts[k->context_count];
   /* Store pin */
-  c->KeyRingPin=pin?strdup(pin):"";
+  c->KeyRingPin=pin?strdup(pin):strdup("");
   /* Get salt from the zeroeth context */
   c->KeyRingSalt=malloc(k->contexts[0]->KeyRingSaltLen);
   if (!c->KeyRingSalt) {
@@ -322,7 +325,7 @@ int keyring_enter_identitypin(keyring_file *k,char *pin)
   used to verify the validity of the block.  The verification occurs in a higher
   level function, and all we need to know here is that we shouldn't decrypt the
   first 96 bytes of the block.
- */
+*/
 int keyring_munge_block(unsigned char *block,int len /* includes the first 96 bytes */,
 			unsigned char *KeyRingSalt,int KeyRingSaltLen,
 			char *KeyRingPin,char *PKRPin)
@@ -384,6 +387,7 @@ int keyring_munge_block(unsigned char *block,int len /* includes the first 96 by
 #undef APPEND
 }
 
+#define slot_byte(X) slot[((PKR_SALT_BYTES+PKR_MAC_BYTES+2)+((X)+rotation)%(KEYRING_PAGE_SIZE-(PKR_SALT_BYTES+PKR_MAC_BYTES+2)))]
 int keyring_pack_identity(keyring_context *c,keyring_identity *i,
 			  unsigned char packed[KEYRING_PAGE_SIZE])
 {
@@ -398,6 +402,12 @@ int keyring_pack_identity(keyring_context *c,keyring_identity *i,
   /* Calculate MAC */
   keyring_identity_mac(c,i,&packed[0] /* pkr salt */,
 		       &packed[0+PKR_SALT_BYTES] /* write mac in after salt */);
+  ofs+=PKR_MAC_BYTES;
+
+  /* Leave 2 bytes for rotation (put zeroes for now) */
+  int rotate_ofs=ofs;
+  packed[ofs]=0; packed[ofs+1]=0;
+  ofs+=2;
 
   /* Write keypairs */
   int kp;
@@ -469,6 +479,22 @@ int keyring_pack_identity(keyring_context *c,keyring_identity *i,
   if (urandombytes(&packed[ofs],KEYRING_PAGE_SIZE-ofs))
     return WHY("urandombytes() failed to back-fill packed identity block");
 
+  /* Rotate block by a random amount (get the randomness safely) */
+  unsigned int rotation;
+  if (urandombytes((unsigned char *)&rotation,sizeof(rotation)))
+    return WHY("urandombytes() failed to generate random rotation");
+  rotation&=0xffff;
+  unsigned char slot[KEYRING_PAGE_SIZE];
+  /* XXX There has to be a more efficient way to do this! */
+  int n;
+  for(n=0;n<(KEYRING_PAGE_SIZE-(PKR_SALT_BYTES+PKR_MAC_BYTES+2));n++)
+    slot_byte(n)=packed[PKR_SALT_BYTES+PKR_MAC_BYTES+2+n];
+  bcopy(&slot[PKR_SALT_BYTES+PKR_MAC_BYTES+2],&packed[PKR_SALT_BYTES+PKR_MAC_BYTES+2],
+	KEYRING_PAGE_SIZE-(PKR_SALT_BYTES+PKR_MAC_BYTES+2));
+  packed[rotate_ofs]=rotation>>8;
+  packed[rotate_ofs+1]=rotation&0xff;
+  printf("Writing record with rotation = 0x%x\n",rotation);
+
   return exit_code;
 }
 
@@ -490,7 +516,7 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot)
 
   int rotation=(slot[96]<<8)|slot[97];
   ofs=32+64+2;
-#define slot_byte(X) (slot[96+((X)+rotation)%(KEYRING_PAGE_SIZE-96)])
+  printf("reading with rotation = 0x%x\n",rotation);
 
   /* Parse block */
   for(;ofs<KEYRING_PAGE_SIZE;)
@@ -571,6 +597,7 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot)
 	   We don't complain about this, however, as it is the natural
 	   effect of trying a pin on an incorrect keyring slot. */
 	keyring_free_identity(id);
+	WHY("PKR has invalid structure (wrong pin?)");
 	return NULL;
       }
     }
@@ -667,6 +694,9 @@ int keyring_enter_pin(keyring_file *k,char *pin)
 
   for(slot=0;slot<k->file_size/KEYRING_PAGE_SIZE;slot++)
     {
+      printf("looking in slot #%d for pin=%s\n",slot,pin);
+
+      /* slot zero is the BAM and salt, so skip it */
       if (slot&(KEYRING_BAM_BITS-1)) {
 	/* Not a BAM slot, so examine */
 	off_t file_offset=slot*KEYRING_PAGE_SIZE;
@@ -686,6 +716,7 @@ int keyring_enter_pin(keyring_file *k,char *pin)
 	  /* Slot is occupied, so check it.
 	     We have to check it for each keyring context (ie keyring pin) */
 	  int c;
+	  printf("looking in slot #%d for pin=%s\n",slot,pin);
 	  for(c=0;c<k->context_count;c++)
 	    {
 	      int result=keyring_decrypt_pkr(k,k->contexts[c],pin,slot);
@@ -725,10 +756,12 @@ int keyring_create_identity(keyring_file *k,keyring_context *c,char *pin)
     goto kci_safeexit;
   }
 
-  /* Find free slot in keyring */
+  /* Find free slot in keyring.
+     Slot 0 in any slab is the BAM and possible keyring salt, so only search for
+     space in slots 1 and above. */
   /* XXX Only stores to first slab! */
-  keyring_bam *b=k->bam;
-  for(id->slot=0;id->slot<KEYRING_BAM_BITS;id->slot++)
+  keyring_bam *b=k->bam; 
+  for(id->slot=1;id->slot<KEYRING_BAM_BITS;id->slot++)
     {
       int position=id->slot&(KEYRING_BAM_BITS-1);
       int byte=position>>3;
@@ -799,6 +832,9 @@ int keyring_create_identity(keyring_file *k,keyring_context *c,char *pin)
   /* Add identity to data structure */
   c->identities[c->identity_count++]=id;
 
+  /* We require explicit calling of keyring_commit(), since that seems
+     more sensible */
+#ifdef NOTDEFINED
   /* Commit keyring to disk */
   if (keyring_commit(k))
     {
@@ -809,6 +845,7 @@ int keyring_create_identity(keyring_file *k,keyring_context *c,char *pin)
       c->identities[--c->identity_count]=NULL;
     }
   else
+#endif
     /* Everything went fine */
     return 0;
 
@@ -828,10 +865,10 @@ int keyring_commit(keyring_file *k)
   while (b) {
     if (fseeko(k->file,b->file_offset,SEEK_SET)==0)
       {
-	if (fwrite(k->contexts[0]->KeyRingSalt,k->contexts[0]->KeyRingSaltLen,1,
-		   k->file)!=1) errorCount++;
+	if (fwrite(b->bitmap,KEYRING_BAM_BYTES,1,k->file)!=1) errorCount++;
 	else
-	  if (fwrite(b->bitmap,KEYRING_BAM_BYTES,1,k->file)!=1) errorCount++;
+	  if (fwrite(k->contexts[0]->KeyRingSalt,k->contexts[0]->KeyRingSaltLen,1,
+		   k->file)!=1) errorCount++;
       }
     else errorCount++;
     b=b->next;
@@ -874,8 +911,7 @@ int keyring_commit(keyring_file *k)
 		if (fwrite(pkr,KEYRING_PAGE_SIZE,1,k->file)!=1)
 		  errorCount++;		
 	    }
-	}
-	WHY("Writing identities not implemented");
+	}	
       }
 
   if (errorCount) WHY("One or more errors occurred while commiting keyring to disk");
