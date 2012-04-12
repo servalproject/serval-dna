@@ -1,5 +1,5 @@
 SRCS=	dna.c server.c client.c peers.c ciphers.c responses.c packetformats.c dataformats.c \
-	hlrdata.c srandomdev.c simulate.c batman.c export.c gateway.c \
+	srandomdev.c simulate.c batman.c gateway.c \
 	overlay.c overlay_buffer.c overlay_interface.c overlay_payload.c overlay_route.c \
 	overlay_packetformats.c overlay_abbreviations.c overlay_advertise.c overlay_mdp.c \
 	rhizome.c rhizome_http.c rhizome_bundle.c rhizome_database.c rhizome_crypto.c \
@@ -8,7 +8,7 @@ SRCS=	dna.c server.c client.c peers.c ciphers.c responses.c packetformats.c data
 	trans_cache.c keyring.c
 
 OBJS=	dna.o server.o client.o peers.o ciphers.o responses.o packetformats.o dataformats.o \
-	hlrdata.o srandomdev.o simulate.o batman.o export.o gateway.o \
+	srandomdev.o simulate.o batman.o gateway.o \
 	overlay.o overlay_buffer.o overlay_interface.o overlay_payload.o overlay_route.o \
 	overlay_packetformats.o overlay_abbreviations.o overlay_advertise.o overlay_mdp.o \
 	rhizome.o rhizome_http.o rhizome_bundle.o rhizome_database.o rhizome_crypto.o \

@@ -43,9 +43,7 @@ LOCAL_SRC_FILES:= \
 	serval-dna/commandline.c   \
         serval-dna/dataformats.c   \
         serval-dna/dna.c           \
-        serval-dna/export.c        \
         serval-dna/gateway.c       \
-        serval-dna/hlrdata.c       \
         serval-dna/overlay.c       \
         serval-dna/overlay_broadcast.c \
         serval-dna/packetformats.c \
