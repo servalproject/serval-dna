@@ -1158,8 +1158,11 @@ int keyring_identity_mac(keyring_context *c,keyring_identity *id,
 
 /* Public calls to keyring management */
 keyring_file *keyring_open(char *file);
-int keyring_commit(keyring_file *k);
-int keyring_create_identity(keyring_file *k,keyring_context *c,char *pin);
+keyring_file *keyring_open_with_pins(char *pinlist);
 int keyring_enter_pin(keyring_file *k,char *pin);
+int keyring_enter_pins(keyring_file *k,char *pinlist);
 int keyring_set_did(keyring_identity *id,char *did);
 int keyring_find_did(keyring_file *k,int *cn,int *in,int *kp,char *did);
+int keyring_find_sid(keyring_file *k,int *cn,int *in,int *kp,unsigned char *sid);
+int keyring_commit(keyring_file *k);
+int keyring_create_identity(keyring_file *k,keyring_context *c,char *pin);

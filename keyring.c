@@ -19,8 +19,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "nacl.h"
 
-#define NO_ROTATION
-
 static int urandomfd = -1;
 
 int urandombytes(unsigned char *x,unsigned long long xlen)
@@ -419,7 +417,6 @@ int keyring_pack_identity(keyring_context *c,keyring_identity *i,
 	WHY("too many or too long key pairs");
 	ofs=0; goto kpi_safeexit;
       }
-      printf("key type 0x%02x @ 0x%x\n",i->keypairs[kp]->type,ofs);
       packed[ofs++]=i->keypairs[kp]->type;
       switch(i->keypairs[kp]->type) {
       case KEYTYPE_RHIZOME:
@@ -504,7 +501,6 @@ int keyring_pack_identity(keyring_context *c,keyring_identity *i,
 	KEYRING_PAGE_SIZE-(PKR_SALT_BYTES+PKR_MAC_BYTES+2));
   packed[rotate_ofs]=rotation>>8;
   packed[rotate_ofs+1]=rotation&0xff;
-  printf("Writing record with rotation = 0x%x\n",rotation);
 
   return exit_code;
 }
@@ -614,15 +610,12 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot,char *pin)
 	  break;
 	}
 	id->keypair_count++;
-	printf("keypair_count=%d\n",id->keypair_count);
-	fflush(stdout);
 	break;
       default:
 	/* Invalid data, so invalid record.  Free and return failure.
 	   We don't complain about this, however, as it is the natural
 	   effect of trying a pin on an incorrect keyring slot. */
-	keyring_free_identity(id);
-	WHY("PKR has invalid structure (wrong pin?)");
+	keyring_free_identity(id);	
 	return NULL;
       }
       
@@ -679,9 +672,11 @@ int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
   /* 3. Unpack contents of slot into a new identity in the provided context. */  
   id=keyring_unpack_identity(slot,pin);
   if (!id) {
-    WHY("keyring_unpack_identity() failed");
+    // Don't complain, because this happens routinely when trying pins against slots.
+    // WHY("keyring_unpack_identity() failed");
     goto kdp_safeexit;
   }
+  id->slot=slot_number;
 
   /* 4. Verify that slot is self-consistent (check MAC) */
   if (keyring_identity_mac(k->contexts[0],id,&slot[0],hash)) {
@@ -947,7 +942,11 @@ int keyring_commit(keyring_file *k)
 	      off_t file_offset
 		=KEYRING_PAGE_SIZE
 		*k->contexts[cn]->identities[in]->slot;
-	      if (fseeko(k->file,file_offset,SEEK_SET))
+	      if (!file_offset) {
+		fprintf(stderr,"ID %d:%d has slot=0\n",
+			cn,in);
+	      }
+	      else if (fseeko(k->file,file_offset,SEEK_SET))
 		errorCount++;
 	      else
 		if (fwrite(pkr,KEYRING_PAGE_SIZE,1,k->file)!=1)
@@ -975,6 +974,9 @@ int keyring_set_did(keyring_identity *id,char *did)
 
   /* allocate if needed */
   if (i>=id->keypair_count) {
+    id->keypairs[i]=calloc(sizeof(keypair),1);
+    if (!id->keypairs[i]) return WHY("calloc() failed");
+    id->keypairs[i]->type=KEYTYPE_DID;
     unsigned char *packedDid=calloc(32,1);
     if (!packedDid) return WHY("calloc() failed");
     id->keypairs[i]->private_key=packedDid;
@@ -984,17 +986,23 @@ int keyring_set_did(keyring_identity *id,char *did)
   
   /* Store DID unpacked for ease of searching */
   int len=strlen(did); if (len>31) len=31;
-  bcopy(did,&id->keypairs[i]->private_key,len);
+  bcopy(did,&id->keypairs[i]->private_key[0],len);
   bzero(&id->keypairs[i]->private_key[len],32-len);
+  dump("storing did",&id->keypairs[i]->private_key[0],32);
   
   return 0;
 }
 
 int keyring_find_did(keyring_file *k,int *cn,int *in,int *kp,char *did)
 {
-  if (!k) return -1;
+  if (!k) return 0;
 
   while ((*cn)<k->context_count) {
+    while (((*cn)<k->context_count)&&((*in)>=k->contexts[*cn]->identity_count)) {
+      (*cn)++; (*in)=0;
+    }
+    if ((*cn)>=k->context_count) return 0;
+
     for(*kp=0;*kp<k->contexts[*cn]->identities[*in]->keypair_count;(*kp)++)
       {
 	if (k->contexts[*cn]->identities[*in]->keypairs[*kp]->type==KEYTYPE_DID)
@@ -1002,16 +1010,88 @@ int keyring_find_did(keyring_file *k,int *cn,int *in,int *kp,char *did)
 	    /* Compare DIDs */
 	    if (!strcasecmp(did,(char *)k->contexts[*cn]->identities[*in]
 				 ->keypairs[*kp]->private_key))
-	      /* match */
-	      return 1;
+	      {
+		/* match */
+		return 1;
+	      }
 	  }
       }
 
-
     /* See if there is still somewhere to search */
+    (*in)++;
     if ((*in)>=k->contexts[*cn]->identity_count) {
       (*cn)++; (*in)=0;
     }
   }
-  return -1;
+  return 0;
 }
+
+int keyring_find_sid(keyring_file *k,int *cn,int *in,int *kp,unsigned char *sid)
+{
+  if (!k) return 0;
+
+  while ((*cn)<k->context_count) {
+    while (((*cn)<k->context_count)&&((*in)>=k->contexts[*cn]->identity_count)) {
+      (*cn)++; (*in)=0;
+    }
+    if ((*cn)>=k->context_count) return 0;
+
+    for((*kp)=0;*kp<k->contexts[*cn]->identities[*in]->keypair_count;(*kp)++)
+      {
+	if (k->contexts[*cn]->identities[*in]->keypairs[*kp]->type==KEYTYPE_CRYPTOBOX)
+	  {
+	    /* Compare SIDs */
+	    if (!bcmp(sid,(char *)k->contexts[*cn]->identities[*in]
+		      ->keypairs[*kp]->public_key,SID_SIZE))
+	      {
+		/* match */
+		return 1;
+	      }
+	  }
+      }
+
+    /* See if there is still somewhere to search */
+    (*in)++;
+    if ((*in)>=k->contexts[*cn]->identity_count) {
+      (*cn)++; (*in)=0;
+    }
+  }
+  return 0;
+}
+
+
+int keyring_enter_pins(keyring_file *k,char *pinlist)
+{
+  char pin[1024];
+  int i,j=0;
+
+  for(i=0;i<=strlen(pinlist);i++)
+    if (pinlist[i]==','||pinlist[i]==0)
+      {
+	pin[j]=0;
+	keyring_enter_pin(k,pin);
+	j=0;
+      }
+    else
+      if (j<1023) pin[j++]=pinlist[i];
+
+  return 0;
+}
+
+keyring_file *keyring_open_with_pins(char *pinlist)
+{
+  keyring_file *k=NULL;
+
+ if (create_serval_instance_dir() == -1)
+    return NULL;
+ char *instancePath = serval_instancepath();
+ char keyringFile[1024];
+ snprintf(keyringFile,1024,"%s/serval.keyring",instancePath);
+ if ((k=keyring_open(keyringFile))==NULL) 
+   { fprintf(stderr,"keyring list:Failed to create/open keyring file\n");
+     return NULL; }
+
+ keyring_enter_pins(k,pinlist);
+ return k;
+}
+
