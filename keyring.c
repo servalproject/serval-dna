@@ -384,6 +384,94 @@ int keyring_munge_block(unsigned char *block,int len /* includes the first 96 by
 #undef APPEND
 }
 
+int keyring_pack_identity(keyring_context *c,keyring_identity *i,
+			  unsigned char packed[KEYRING_PAGE_SIZE])
+{
+  int ofs=0;
+  int exit_code=-1;
+
+  /* Convert an identity to a KEYRING_PAGE_SIZE bytes long block that
+     consists of 32 bytes of random salt, a 64 byte (512 bit) message
+     authentication code (MAC) and the list of key pairs. */
+  if (urandombytes(&packed[0],PKR_SALT_BYTES)) return WHY("Could not generate salt");
+  ofs+=PKR_SALT_BYTES;
+  /* Calculate MAC */
+  keyring_identity_mac(c,i,&packed[0] /* pkr salt */,
+		       &packed[0+PKR_SALT_BYTES] /* write mac in after salt */);
+
+  /* Write keypairs */
+  int kp;
+  for(kp=0;kp<i->keypair_count;kp++)
+    {
+      if (ofs>=KEYRING_PAGE_SIZE) {
+	WHY("too many or too long key pairs");
+	ofs=0; goto kpi_safeexit;
+      }
+      packed[ofs++]=i->keypairs[kp]->type;
+      switch(i->keypairs[kp]->type) {
+      case KEYTYPE_CRYPTOBOX:
+	/* For cryptobox we only need the private key, as we compute the public
+	   key from it when extracting the identity */
+	if ((ofs+i->keypairs[kp]->private_key_len)>=KEYRING_PAGE_SIZE)
+	  {
+	    WHY("too many or too long key pairs");
+	    ofs=0;
+	    goto kpi_safeexit;
+	  }
+	bcopy(i->keypairs[kp]->private_key,&packed[ofs],
+	      i->keypairs[kp]->private_key_len);
+	ofs+=i->keypairs[kp]->private_key_len;
+	break;
+      case KEYTYPE_CRYPTOSIGN:
+	/* For cryptosign keys there is no public API in NaCl to compute the
+	   public key from the private key (although we could subvert the API
+	   abstraction and do it anyway). But in the interests of niceness we
+	   just store the public and private key pair together */
+	if ((ofs
+	     +i->keypairs[kp]->private_key_len
+	     +i->keypairs[kp]->public_key_len)>=KEYRING_PAGE_SIZE)
+	  {
+	    WHY("too many or too long key pairs");
+	    ofs=0;
+	    goto kpi_safeexit;
+	  }
+	/* Write private then public */
+	bcopy(i->keypairs[kp]->private_key,&packed[ofs],
+	      i->keypairs[kp]->private_key_len);
+	ofs+=i->keypairs[kp]->private_key_len;
+	bcopy(i->keypairs[kp]->public_key,&packed[ofs],
+	      i->keypairs[kp]->public_key_len);
+	ofs+=i->keypairs[kp]->public_key_len;
+	break;
+	
+      default:
+	WHY("unknown key type");
+	goto kpi_safeexit;
+      }
+    }
+
+  if (ofs>=KEYRING_PAGE_SIZE) {
+    WHY("too many or too long key pairs");
+    ofs=0; goto kpi_safeexit;
+  }
+  packed[ofs++]=0x00; /* Terminate block */
+
+  /* We are now all done, give or take the zeroeing of the trailing bytes. */
+  exit_code=0;
+
+
+ kpi_safeexit:
+  /* Clear out remainder of block so that we don't leak info.
+     We could have zeroed the thing to begin with, but that means extra
+     memory writes that are otherwise avoidable.
+     Actually, we don't want zeroes (known plain-text attack against most
+     of the block's contents in the typical case), we want random data. */
+  if (urandombytes(&packed[ofs],KEYRING_PAGE_SIZE-ofs))
+    return WHY("urandombytes() failed to back-fill packed identity block");
+
+  return exit_code;
+}
+
 keyring_identity *keyring_unpack_identity(unsigned char *slot)
 {
   /* Skip salt and MAC */
@@ -489,6 +577,23 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot)
   return id;
 }
 
+int keyring_identity_mac(keyring_context *c,keyring_identity *id,
+			 unsigned char *pkrsalt,unsigned char *mac)
+{
+  int ofs;
+  unsigned char work[65536];
+#define APPEND(b,l) if (ofs+(l)>=65536) { bzero(work,ofs); return WHY("Input too long"); } bcopy((b),&work[ofs],(l)); ofs+=(l)
+
+  ofs=0;
+  APPEND(&pkrsalt[0],32);
+  APPEND(id->keypairs[0]->private_key,id->keypairs[0]->private_key_len);
+  APPEND(id->keypairs[0]->public_key,id->keypairs[0]->public_key_len);
+  APPEND(id->PKRPin,strlen(id->PKRPin));
+  crypto_hash_sha512(mac,work,ofs);
+  return 0;
+}
+
+
 /* Read the slot, and try to decrypt it.
    Decryption is symmetric with encryption, so the same function is used
    for munging the slot before making use of it, whichever way we are going.
@@ -503,7 +608,6 @@ int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
   unsigned char hash[crypto_hash_sha512_BYTES];
   unsigned char work[65536];
   keyring_identity *id=NULL; 
-  int ofs;
 
   /* 1. Read slot. */
   if (fseeko(k->file,slot_number*KEYRING_PAGE_SIZE,SEEK_SET))
@@ -527,14 +631,10 @@ int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
   }
 
   /* 4. Verify that slot is self-consistent (check MAC) */
-#define APPEND(b,l) if (ofs+(l)>=65536) { WHY("Input too long"); goto kdp_safeexit; } bcopy((b),&work[ofs],(l)); ofs+=(l)
-
-  ofs=0;
-  APPEND(&slot[0],32);
-  APPEND(id->keypairs[0]->private_key,id->keypairs[0]->private_key_len);
-  APPEND(id->keypairs[0]->public_key,id->keypairs[0]->public_key_len);
-  APPEND(pin,strlen(pin));
-  crypto_hash_sha512(hash,work,ofs);
+  if (keyring_identity_mac(k->contexts[0],id,&slot[0],hash)) {
+    WHY("could not calculate MAC for identity");
+    goto kdp_safeexit;
+  }
   /* compare hash to record */
   if (bcmp(hash,&slot[32],crypto_hash_sha512_BYTES))
     {
@@ -607,10 +707,13 @@ int keyring_enter_pin(keyring_file *k,char *pin)
 */
 int keyring_create_identity(keyring_file *k,keyring_context *c,char *pin)
 {
-  int exit_code=1;
+  /* Check obvious abort conditions early */
   if (!k) return WHY("keyring is NULL");
   if (!k->bam) return WHY("keyring lacks BAM (not to be confused with KAPOW)");
   if (!c) return WHY("keyring context is NULL");
+  if (c->identity_count>=KEYRING_MAX_IDENTITIES) return WHY("keyring context has too many identities");
+
+  int exit_code=1;
   if (!pin) pin="";
 
   keyring_identity *id=calloc(sizeof(keyring_identity),1);
@@ -687,17 +790,64 @@ int keyring_create_identity(keyring_file *k,keyring_context *c,char *pin)
   crypto_sign_edwards25519sha512batch_keypair(id->keypairs[1]->public_key,
 					      id->keypairs[1]->private_key);
 
+  /* Mark slot in use */
+  int position=id->slot&(KEYRING_BAM_BITS-1);
+  int byte=position>>3;
+  int bit=position&7;  
+  b->bitmap[byte]|=(1<<bit);
 
-  
+  /* Add identity to data structure */
+  c->identities[c->identity_count++]=id;
 
-  /* XXX
-     - Create packed and encrypted PKR.
-     - Mark slot in-use.
-     - Clean up sensitive data
-  */
-  WHY("Not implemented");
+  /* Commit keyring to disk */
+  if (keyring_commit(k))
+    {
+      /* Write to disk failed, so unlink identity and clear allocation and generally
+	 clean up the mess. */
+      b->bitmap[byte]&=0xff-(1<<bit);
+      /* Add identity to data structure */
+      c->identities[--c->identity_count]=NULL;
+    }
+  else
+    /* Everything went fine */
+    return 0;
 
  kci_safeexit:
   if (id) keyring_free_identity(id);
   return exit_code;
+}
+
+int keyring_commit(keyring_file *k)
+{
+  int errorCount=0;
+  if (!k) return WHY("keyring was NULL");
+  if (k->context_count<1) return WHY("Keyring has no contexts");
+
+  /* Write all BAMs */
+  keyring_bam *b=k->bam;
+  while (b) {
+    if (fseeko(k->file,b->file_offset,SEEK_SET)==0)
+      {
+	if (fwrite(k->contexts[0]->KeyRingSalt,k->contexts[0]->KeyRingSaltLen,1,
+		   k->file)!=1) errorCount++;
+	else
+	  if (fwrite(b->bitmap,KEYRING_BAM_BYTES,1,k->file)!=1) errorCount++;
+      }
+    else errorCount++;
+    b=b->next;
+  }
+
+  /* For each identity in each context, write the record to disk.
+     This re-salts every identity as it is re-written, and the pin 
+     for each identity and context is used, so changing a keypair or pin
+     is as simple as updating the keyring_identity or related structure, 
+     and then calling this function. */
+  int cn,in;
+  for(cn=0;cn<k->context_count;cn++)
+    for(in=0;in<k->contexts[cn]->identity_count;in++)
+      {
+	WHY("Writing identities not implemented");
+      }
+
+  return errorCount;
 }

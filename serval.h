@@ -1101,6 +1101,8 @@ typedef struct keypair {
    the pin used to extract them, and the slot in the keyring file
    (so that it can be replaced/rewritten as required). */
 #define PKR_MAX_KEYPAIRS 64
+#define PKR_SALT_BYTES 32
+#define PKR_MAC_BYTES 64
 typedef struct keyring_identity {  
   char *PKRPin;
   unsigned int slot;
@@ -1127,7 +1129,7 @@ typedef struct keyring_context {
 #define KEYRING_BAM_BITS (KEYRING_BAM_BYTES<<3)
 #define KEYRING_SLAB_SIZE (KEYRING_PAGE_SIZE*KEYRING_BAM_BITS)
 typedef struct keyring_bam {
-  unsigned long file_offset;
+  off_t file_offset;
   unsigned char bitmap[KEYRING_BAM_BYTES];
   struct keyring_bam *next;
 } keyring_bam;
@@ -1145,9 +1147,12 @@ void keyring_free(keyring_file *k);
 void keyring_free_context(keyring_context *c);
 void keyring_free_identity(keyring_identity *id);
 void keyring_free_keypair(keypair *kp);
+int keyring_identity_mac(keyring_context *c,keyring_identity *id,
+			 unsigned char *pkrsalt,unsigned char *mac);
 #define KEYTYPE_CRYPTOBOX 0x01
 #define KEYTYPE_CRYPTOSIGN 0x02
 
 /* Public calls to keyring management */
 keyring_file *keyring_open(char *file);
 int keyring_enter_pin(keyring_file *k,char *pin);
+int keyring_commit(keyring_file *k);
