@@ -100,9 +100,6 @@ int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
 
 int server(char *backing_file,int foregroundMode)
 {
-  /* Get backing store for HLR */
-  getKeyring(backing_file);
-
   if (overlayMode)
     {
       /* Now find and initialise all the suitable network interfaces, i.e., 
@@ -120,8 +117,11 @@ int server(char *backing_file,int foregroundMode)
     {
       /* Create a simple socket for listening on if we are not in overlay mesh mode. */
       createServerSocket();     
-    }
 
+      /* Get backing store for keyring (overlay sets it up itself) */
+      getKeyring(backing_file);
+    }
+  
   /* Detach from the console */
   if (!foregroundMode) daemon(0,0);
 
