@@ -1152,11 +1152,62 @@ int keyring_seed(keyring_file *k)
   can indeed be reused.
 */
 
-unsigned char *keyring_get_nm_bytes(sockaddr_mdp *priv,sockaddr_mdp *pub)
+/* XXX We need a more efficient implementation than a linear list, but it will
+   do for now. */
+struct nm_record {
+  /* 96 bytes per record */
+  unsigned char known_key[crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES];
+  unsigned char unknown_key[crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES];
+  unsigned char nm_bytes[crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES];
+};
+
+int nm_slots_used=0;
+/* 512 x 96 bytes = 48KB, not too big */
+#define NM_CACHE_SLOTS 512
+struct nm_record nm_cache[NM_CACHE_SLOTS];
+
+unsigned char *keyring_get_nm_bytes(sockaddr_mdp *known,sockaddr_mdp *unknown)
 {
-  if (!priv) WHYRETNULL("priv is null");
-  if (!pub) WHYRETNULL("pub is null");
+  if (!known) WHYRETNULL("known pub key is null");
+  if (!unknown) WHYRETNULL("unknown pub key is null");
   if (!keyring) WHYRETNULL("keyring is null");
 
-  WHYRETNULL("Not implemented");
+  int i;
+
+  /* See if we have it cached already */
+  for(i=0;i<nm_slots_used;i++)
+    {
+      if (bcmp(nm_cache[i].known_key,known->sid,
+	       crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES)) continue;
+      if (bcmp(nm_cache[i].unknown_key,unknown->sid,
+	       crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES)) continue;
+      return nm_cache[i].nm_bytes;
+    }
+
+  /* Not in the cache, so prepare to cache it (or return failure if known is not
+     in fact a known key */
+  int cn,in,kp;
+  if (!keyring_find_sid(keyring,&cn,&in,&kp,known->sid))
+    WHYRETNULL("known key is not in fact known.");
+
+  /* work out where to store it */
+  if (nm_slots_used<NM_CACHE_SLOTS) {
+    i=nm_slots_used; nm_slots_used++; 
+  } else {
+    i=random()%NM_CACHE_SLOTS;
+  }
+
+  /* calculate and store */
+  bcopy(known->sid,nm_cache[i].known_key,
+	crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES);
+  bcopy(unknown->sid,nm_cache[i].unknown_key,
+	crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES);
+  crypto_box_curve25519xsalsa20poly1305_beforenm(nm_cache[i].nm_bytes,
+						 unknown->sid,
+						 keyring
+						 ->contexts[cn]
+						 ->identities[in]
+						 ->keypairs[kp]->private_key);
+						 
+  return nm_cache[i].nm_bytes;
 }
