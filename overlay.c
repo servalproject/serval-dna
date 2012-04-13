@@ -264,10 +264,11 @@ int overlay_frame_process(int interface,overlay_frame *f)
   /* Okay, nexthop is valid, so let's see if it is us */
   int forMe=0,i;
   int ultimatelyForMe=0;
-  int broadcast=overlay_address_is_broadcast(f->nexthop);
+  int broadcast=overlay_address_is_broadcast(f->nexthop)|overlay_address_is_broadcast(f->destination);
   int duplicateBroadcast=0;
 
   if (broadcast) {
+    if (overlay_broadcast_drop_check(f->nexthop)) duplicateBroadcast=1;
     if (overlay_broadcast_drop_check(f->destination)) duplicateBroadcast=1;
     forMe=1; }
   if (overlay_address_is_local(f->nexthop)) forMe=1;
@@ -276,6 +277,15 @@ int overlay_frame_process(int interface,overlay_frame *f)
     /* It's for us, so resolve the addresses */
     if (overlay_frame_resolve_addresses(interface,f))
       return WHY("Failed to resolve destination and sender addresses in frame");
+
+    /* repeat broadcast checks after resolving address */
+    broadcast=overlay_address_is_broadcast(f->nexthop)
+      |overlay_address_is_broadcast(f->destination);
+    if (broadcast) {
+      if (overlay_broadcast_drop_check(f->nexthop)) duplicateBroadcast=1;
+      if (overlay_broadcast_drop_check(f->destination)) duplicateBroadcast=1;
+    }
+
     if (debug&DEBUG_OVERLAYFRAMES) {
       fprintf(stderr,"Destination for this frame is (resolve code=%d): ",f->destination_address_status);
       if (f->destination_address_status==OA_RESOLVED) for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",f->destination[i]); else fprintf(stderr,"???");
@@ -310,8 +320,11 @@ int overlay_frame_process(int interface,overlay_frame *f)
   if (debug&DEBUG_OVERLAYFRAMES) {
     fprintf(stderr,"This frame does%s have me listed as next hop.\n",forMe?"":" not");
     fprintf(stderr,"This frame is%s for me.\n",ultimatelyForMe?"":" not");
-    fprintf(stderr,"This frame is%s broadcast.\n",broadcast?"":" not");
+    fprintf(stderr,"This frame is%s%s broadcast.\n",
+	    broadcast?"":" not",duplicateBroadcast?" a duplicate":"");
   }
+
+  if (duplicateBroadcast) return 0;
 
   /* Not for us? Then just ignore it */
   if (!forMe) return 0;
@@ -336,6 +349,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	      fprintf(stderr,"Dropping broadcast frame (BPI seen before)\n");
 	} else {
 	if (debug&DEBUG_OVERLAYFRAMES) fprintf(stderr,"\nForwarding frame.\n");
+	dump("forward to",f->destination,SID_SIZE);
 	if (overlay_get_nexthop(f->destination,f->nexthop,&len,&f->nexthop_interface))
 	  return WHY("Could not find next hop for host - dropping frame");
 	f->ttl--;
