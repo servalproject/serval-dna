@@ -396,10 +396,22 @@ int isOverlayPacket(FILE *f,unsigned char *packet,int *ofs,int len)
 	    }
 	  }
 	  break;
+	case 0x70: /* node announce */
+	  {
+	    int i;
+	    fprintf(f,"%sNode reachability announcment(s):\n",indent(8));
+	    for(i=0;i<frame_len;i+=8)
+	      fprintf(f,"%s  %02X%02X%02X%02X%02X%02X* best link score = %d, via %d gateways\n",
+		      indent(10),
+		      frame[i+0],frame[i+1],frame[i+2],frame[i+3],
+		      frame[i+4],frame[i+5],
+		      frame[i+6],frame[i+7]);
+	  }
+
+	  break;
 	case 0x30: /* MDP frame */
 	case 0x40: /* voice frame */
 	case 0x60: /* please explain (request for expansion of an abbreviated address) */
-	case 0x70: /* node announce */
 	default:
 	  {
 	    /* Reserved values */
