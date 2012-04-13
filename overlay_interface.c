@@ -588,7 +588,6 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,
       
       if (!pp) break;
       
-      /* XXX Uses hardcoded freshness threshold, when it should get it from the queue */
       if (0) printf("now=%lld, *p=%p, q=%d, overlay_tx[q]=%p\n",
 	     now,*p,q,&overlay_tx[q]);
       if (0) overlay_queue_dump(&overlay_tx[q]);
@@ -611,13 +610,16 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,
       }
       else
 	{
-	  /* XXX Filter for those which should be sent via this interface.
-	     To do that we need to know the nexthop, and the best route to the next hop. */
-	  	  
-	  /* We keep trying to queue frames in case they will fit, as not all frames are of equal size.
-	     This means that lower bit-rate codecs will get higher priority, which is probably not all
-	     bad.  The only hard limit is the maximum number of payloads we allow in a frame, which is
-	     set so high as to be irrelevant, even on loopback or gigabit ethernet interface */
+	  /* We keep trying to queue frames in case they will fit, as not all
+	     frames are of equal size.  This means that lower bit-rate codecs will
+	     get higher priority, which is probably not all bad.  The only hard
+	     limit is the maximum number of payloads we allow in a frame, which is
+	     set so high as to be irrelevant, even on loopback or gigabit ethernet
+	     interface */
+
+	  /* Filter for those which should be sent via this interface.
+	     To do that we need to know the nexthop, and the best route to the
+	     next hop. */
 	  int dontSend=1;
 
 	  /* See if this interface has the best path to this node */
