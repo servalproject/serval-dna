@@ -220,6 +220,16 @@ int overlay_payload_enqueue(int q,overlay_frame *p)
 
   if (0) dump_queue("before",q);
   
+  /* If the frame is broadcast, then mark it correctly so that it can be sent
+     via all interfaces. */
+  if (overlay_address_is_broadcast(p->destination))
+    {
+      p->isBroadcast=1;
+      int i;
+      for(i=0;i<OVERLAY_MAX_INTERFACES;i++) p->broadcast_sent_via[i]=0;
+    }
+  else p->isBroadcast=0;
+
   overlay_frame *l=overlay_tx[q].last;
   if (l) l->next=p;
   p->prev=l;

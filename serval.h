@@ -474,6 +474,7 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
 		      struct response_set *responses);
 int readArpTable(struct in_addr peers[],int *peer_count,int peer_max);
 
+#define OVERLAY_MAX_INTERFACES 16
 
 typedef struct overlay_address_table {
   unsigned char epoch;
@@ -515,6 +516,12 @@ typedef struct overlay_frame {
 
   unsigned char ttl;
 
+  /* Mark which interfaces the frame has been sent on,
+     so that we can ensure that broadcast frames get sent
+     exactly once on each interface */
+  int isBroadcast;
+  unsigned char broadcast_sent_via[OVERLAY_MAX_INTERFACES];
+
   unsigned char nexthop[32];
   int nexthop_address_status;
   int nexthop_interface; /* which interface the next hop should be attempted on */
@@ -554,6 +561,7 @@ extern int overlayMode;
 #define OVERLAY_INTERFACE_ETHERNET 1
 #define OVERLAY_INTERFACE_WIFI 2
 #define OVERLAY_INTERFACE_PACKETRADIO 3
+
 typedef struct overlay_interface {
   char name[80];
   int fd;
@@ -603,7 +611,6 @@ typedef struct overlay_interface {
 /* Maximum interface count is rather arbitrary.
    Memory consumption is O(n) with respect to this parameter, so let's not make it too big for now.
 */
-#define OVERLAY_MAX_INTERFACES 16
 extern overlay_interface overlay_interfaces[OVERLAY_MAX_INTERFACES];
 extern int overlay_last_interface_number; // used to remember where a packet came from
 extern unsigned int overlay_sequence_number;
