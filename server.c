@@ -150,10 +150,11 @@ int getKeyring(char *backing_file)
     }
   else
     {
-      if (keyring) {
+      if (keyring) 
 	exit(WHY("Keyring being opened twice"));
-	keyring=keyring_open(backing_file);
-      }
+      keyring=keyring_open(backing_file);
+      /* unlock all entries with blank pins */
+      keyring_enter_pins(keyring,"");
     }
  keyring_seed(keyring);
 
