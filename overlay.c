@@ -256,6 +256,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	 tells them in the meantime to avoid an Opposition Event (like a Hanson
 	 Event, but repeatedly berating any node that holds a different policy
 	 to itself. */
+      WHY("Packet with unsupported address format");
       overlay_interface_repeat_abbreviation_policy[interface]=1;
       return -1;
       break;
@@ -268,23 +269,16 @@ int overlay_frame_process(int interface,overlay_frame *f)
   int duplicateBroadcast=0;
 
   if (broadcast) {
-    if (overlay_broadcast_drop_check(f->nexthop)) duplicateBroadcast=1;
     if (overlay_broadcast_drop_check(f->destination)) duplicateBroadcast=1;
     forMe=1; }
   if (overlay_address_is_local(f->nexthop)) forMe=1;
+
+  WHYF("here forme=%d",forMe);
 
   if (forMe) {
     /* It's for us, so resolve the addresses */
     if (overlay_frame_resolve_addresses(interface,f))
       return WHY("Failed to resolve destination and sender addresses in frame");
-
-    /* repeat broadcast checks after resolving address */
-    broadcast=overlay_address_is_broadcast(f->nexthop)
-      |overlay_address_is_broadcast(f->destination);
-    if (broadcast) {
-      if (overlay_broadcast_drop_check(f->nexthop)) duplicateBroadcast=1;
-      if (overlay_broadcast_drop_check(f->destination)) duplicateBroadcast=1;
-    }
 
     if (debug&DEBUG_OVERLAYFRAMES) {
       fprintf(stderr,"Destination for this frame is (resolve code=%d): ",f->destination_address_status);
@@ -308,8 +302,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
 
     if (f->destination_address_status==OA_RESOLVED) {
       if (overlay_address_is_broadcast(f->destination))	
-	{ ultimatelyForMe=1; broadcast=1; 
-	  if (overlay_broadcast_drop_check(f->destination)) duplicateBroadcast=1; }
+	{ ultimatelyForMe=1; broadcast=1; }
       if (overlay_address_is_local(f->destination)) ultimatelyForMe=1;
     } else {
       if (debug&DEBUG_OVERLAYFRAMES) WHY("Destination address could not be resolved, so dropping frame.");
@@ -324,10 +317,16 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	    broadcast?"":" not",duplicateBroadcast?" a duplicate":"");
   }
 
-  if (duplicateBroadcast) return 0;
+  if (duplicateBroadcast) {
+    WHY("Packet is duplicate broadcast");
+    return 0;
+  }
 
   /* Not for us? Then just ignore it */
-  if (!forMe) return 0;
+  if (!forMe) {
+    WHY("Packet is not for me");
+    return 0;
+  }
 
   /* Is this a frame we have to forward on? */
   if (((!ultimatelyForMe)||broadcast)&&(f->ttl>1))
@@ -349,16 +348,23 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	      fprintf(stderr,"Dropping broadcast frame (BPI seen before)\n");
 	} else {
 	if (debug&DEBUG_OVERLAYFRAMES) fprintf(stderr,"\nForwarding frame.\n");
+	int dontForward=0;
 	dump("forward to",f->destination,SID_SIZE);
-	if (overlay_get_nexthop(f->destination,f->nexthop,&len,&f->nexthop_interface))
-	  return WHY("Could not find next hop for host - dropping frame");
+	if (!broadcast) {
+	  if (overlay_get_nexthop(f->destination,f->nexthop,&len,
+				  &f->nexthop_interface))
+	    WHY("Could not find next hop for host - dropping frame");
+	  dontForward=1;
+	}
 	f->ttl--;
-	
-	/* Queue frame for dispatch.
-	   Don't forget to put packet in the correct queue based on type.
-	   (e.g., mesh management, voice, video, ordinary or opportunistic). */		
-	WHY("forwarding of frames not implemented");
-	
+
+	if (!dontForward) {
+	  /* Queue frame for dispatch.
+	     Don't forget to put packet in the correct queue based on type.
+	     (e.g., mesh management, voice, video, ordinary or opportunistic). */		
+	  WHY("forwarding of frames not implemented");
+	}
+
 	/* If the frame was a broadcast frame, then we need to hang around
 	   so that we can process it, since we are one of the recipients.
 	   Otherwise, return triumphant. */
@@ -381,7 +387,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
       overlay_rhizome_saw_advertisements(interface,f,now);
       break;
     case OF_TYPE_DATA:
-      WHY("saw mdp contianing frame");
+      WHY("saw mdp containing frame");
       overlay_saw_mdp_containing_frame(interface,f,now);
       break;
     default:
