@@ -1186,7 +1186,7 @@ unsigned char *keyring_get_nm_bytes(sockaddr_mdp *known,sockaddr_mdp *unknown)
 
   /* Not in the cache, so prepare to cache it (or return failure if known is not
      in fact a known key */
-  int cn,in,kp;
+  int cn=0,in=0,kp=0;
   if (!keyring_find_sid(keyring,&cn,&in,&kp,known->sid))
     WHYRETNULL("known key is not in fact known.");
 
