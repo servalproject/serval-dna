@@ -571,7 +571,7 @@ int overlay_interface_discover()
 
 int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,overlay_frame *pax[],int *frame_pax,int frame_max_pax) 
 {
-  if (0) printf("Stuffing from queue #%d\n",q);
+  if (0) printf("Stuffing from queue #%d on interface #%d\n",q,i);
   overlay_frame **p=&overlay_tx[q].first;
   while(p&&*p)
     {
@@ -612,13 +612,41 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,
 	     This means that lower bit-rate codecs will get higher priority, which is probably not all
 	     bad.  The only hard limit is the maximum number of payloads we allow in a frame, which is
 	     set so high as to be irrelevant, even on loopback or gigabit ethernet interface */
-	  if (*frame_pax>=frame_max_pax) break;
-	  if (!overlay_frame_package_fmt1(*p,e))
-	    {
-	      /* Add payload to list of payloads we are sending with this frame so that we can dequeue them
-		 if we send them. */
-	      pax[(*frame_pax)++]=*p;
+	  int dontSend=1;
+
+	  /* See if this interface has the best path to this node */
+	  if (!(*p)->isBroadcast) {
+	    unsigned char nexthop[SID_SIZE];
+	    int len=0;
+	    int next_hop_interface=-1;
+	    int r=overlay_get_nexthop((*p)->destination,nexthop,&len,
+				      &next_hop_interface);
+	    if (!r) {
+	      if (next_hop_interface==i) {
+		dontSend=0; } else {
+		if (0) 
+		  printf("Packet should go via interface #%d, but I am interface #%d\n",next_hop_interface,i);
+	      }
+	    } else {
+	      WHY("bummer, I couldn't find an open route to that node");
 	    }
+	  } else if (!(*p)->broadcast_sent_via[i])
+	    /* Broadcast frames are easy to work out if they go via this interface, 
+	       just make sure that they haven't been previously sent via this
+	       interface. We then have some magic that only dequeues broadcast packets
+	       once they have been sent via all open interfaces (or gone stale) */
+	    dontSend=0;
+	  
+	  if (dontSend==0) {   
+	    /* Try sending by this queue */
+	    if (*frame_pax>=frame_max_pax) break;
+	    if (!overlay_frame_package_fmt1(*p,e))
+	      {
+		/* Add payload to list of payloads we are sending with this frame so that we can dequeue them
+		   if we send them. */
+		pax[(*frame_pax)++]=*p;
+	      }
+	  }
 	  p=&(*p)->next;
 	}
     }
@@ -732,6 +760,24 @@ int overlay_tick_interface(int i, long long now)
 	    {
 	      /* Skip any frames that didn't get queued */
 	      while ((*p)&&(*p!=pax[j])) p=&(*p)->next;
+	      /* skip any broadcast frames that still have live
+		 interfaces left to send via */
+	      while (*p) {
+		if ((*p)->isBroadcast) {
+		  int i;
+		  int workLeft=0;
+		  for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
+		    {
+		      if (overlay_interfaces[i].observed>0)
+			if (!(*p)->broadcast_sent_via[i]) { workLeft=1; break; }
+		    }
+		  if (!workLeft) {
+		    WHY("Leaving broadcast payload on the queue for other interfaces");
+		    break;
+		  }
+		}
+		p=&(*p)->next;
+	      }
 	      /* Now get rid of this frame once we have found it */
 	      if (*p) {
 		if (debug&DEBUG_QUEUES)
