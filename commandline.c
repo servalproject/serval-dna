@@ -410,11 +410,13 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
      XXX - allow lookup of SID prefixes and telephone numbers
      (that would require MDP lookup of phone numbers, which doesn't yet occur) */
   int i;
+  int broadcast=0;
   unsigned char ping_sid[SID_SIZE];
   if (strcasecmp(sid,"broadcast")) {
     stowSid(ping_sid,0,sid);
   } else {
     for(i=0;i<SID_SIZE;i++) ping_sid[i]=0xff;
+    broadcast=1;
   }
 
   /* XXX Eventually we should try to resolve SID to phone number and vice versa */
@@ -430,7 +432,8 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
 
   while(1) {
     /* Now send the ping packets */
-    mdp.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT|MDP_NOSIGN;
+    mdp.packetTypeAndFlags=MDP_TX;
+    if (broadcast) mdp.packetTypeAndFlags|=MDP_NOCRYPT|MDP_NOSIGN;
     mdp.out.src.port=port;
     bcopy(srcsid,mdp.out.src.sid,SID_SIZE);
     /* Set destination to broadcast */
