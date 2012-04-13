@@ -367,6 +367,9 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
 			int *interface)
 {
   int i;
+  
+  if (overlay_broadcast_drop_check(d)) return WHY("I have sent that broadcast frame before");
+
   if (!overlay_neighbours) return WHY("I have no neighbours");
 
   overlay_neighbour *neh=overlay_route_get_neighbour_structure(d,0 /* don't create if 
@@ -438,12 +441,14 @@ overlay_node *overlay_route_find_node(unsigned char *sid,int createP)
   if (bin_number<0) { WHY("negative bin number"); return NULL; }
 
   for(slot=0;slot<overlay_bin_size;slot++)
-    if (!memcmp(sid,overlay_nodes[bin_number][slot].sid,SID_SIZE))
-      {
-	/* Found it */
-	return &overlay_nodes[bin_number][slot];
-      }
-    else if (overlay_nodes[bin_number][slot].sid[0]==0) free_slot=slot;
+    {
+      if (!memcmp(sid,&overlay_nodes[bin_number][slot].sid[0],SID_SIZE))
+	{
+	  /* Found it */
+	  return &overlay_nodes[bin_number][slot];
+	}
+      else if (overlay_nodes[bin_number][slot].sid[0]==0) free_slot=slot;
+    }
  
   /* Didn't find it */
   if (!createP) return NULL;
@@ -641,7 +646,7 @@ overlay_neighbour *overlay_route_get_neighbour_structure(unsigned char *packed_s
   if (overlay_address_is_local(packed_sid)) {
     WHY("asked for neighbour structure for myself");
     return NULL;
-  }
+  }  
 
   overlay_node *n=overlay_route_find_node(packed_sid,createP);
   if (!n) { WHY("Could not find node record for observed node"); return NULL; }
