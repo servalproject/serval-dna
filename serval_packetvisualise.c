@@ -410,6 +410,29 @@ int isOverlayPacket(FILE *f,unsigned char *packet,int *ofs,int len)
 
 	  break;
 	case 0x30: /* MDP frame */
+	  {
+	    int version=(frame[0]<<8)|(frame[1]);
+	    fprintf(f,"%sMDP frame (version=0x%04x):\n",indent(8),version);
+	    int dst_port=(frame[2]<<24)|(frame[3]<<16)|(frame[4]<<8)|frame[5];
+	    int src_port=(frame[6]<<24)|(frame[7]<<16)|(frame[8]<<8)|frame[9];
+	    fprintf(f,"%s      source port = %d (0x%08x)\n",
+		    indent(10),src_port,src_port);
+	    fprintf(f,"%s destination port = %d (0x%08x)\n",
+		    indent(10),dst_port,dst_port);
+	    fprintf(f,"%sMDP Payload:\n",indent(10));
+	    int i,j;
+	    for(i=0;i<frame_len-10;i+=16) 
+	      {
+		fprintf(f,"%sframe+%04x :",indent(12),i);
+		for(j=0;j<16&&(i+j)<len;j++) fprintf(f," %02x",frame[i+j+10]);
+		for(;j<16;j++) fprintf(f,"   ");
+		fprintf(f,"    ");
+		for(j=0;j<16&&(i+j)<len;j++) fprintf(f,"%c",frame[i+j+10]>=' '
+						     &&frame[i+j]<0x7c?frame[i+j+10]:'.');
+		fprintf(f,"\n");
+	      }
+	  }
+	  break;
 	case 0x40: /* voice frame */
 	case 0x60: /* please explain (request for expansion of an abbreviated address) */
 	default:
