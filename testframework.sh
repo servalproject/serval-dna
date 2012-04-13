@@ -186,7 +186,7 @@ fail() {
    _tfw_getopts fail "$@"
    shift $_tfw_getopts_shift
    [ $# -ne 0 ] && _tfw_failmsg "$1"
-   _tfw_backtrace >&2
+   _tfw_backtrace
    _tfw_failexit
 }
 
@@ -194,14 +194,14 @@ error() {
    _tfw_getopts error "$@"
    shift $_tfw_getopts_shift
    [ $# -ne 0 ] && _tfw_errormsg "$1"
-   _tfw_backtrace >&2
+   _tfw_backtrace
    _tfw_errorexit
 }
 
 fatal() {
    [ $# -eq 0 ] && set -- "no reason given"
    _tfw_fatalmsg "$@"
-   _tfw_backtrace >&2
+   _tfw_backtrace
    _tfw_fatalexit
 }
 
@@ -480,7 +480,7 @@ _tfw_execute() {
 _tfw_assert() {
    if ! "$@"; then
       _tfw_failmsg "assertion failed: ${_tfw_message:-$*}"
-      _tfw_backtrace >&2
+      _tfw_backtrace
       return 1
    fi
    return 0
@@ -492,6 +492,7 @@ _tfw_getopts() {
    _tfw_message=
    _tfw_dump_stdout_on_fail=false
    _tfw_dump_stderr_on_fail=false
+   _tfw_opt_error_on_fail=false
    _tfw_opt_exit_status=
    _tfw_opt_matches=
    _tfw_getopts_shift=0
@@ -500,6 +501,7 @@ _tfw_getopts() {
       *:--stdout) _tfw_dump_stdout_on_fail=true;;
       *:--stderr) _tfw_dump_stderr_on_fail=true;;
       execute:--exit-status=*) _tfw_opt_exit_status="${1#*=}";;
+      assert*:--error-on-fail) _tfw_opt_error_on_fail=true;;
       assert*:--message=*) _tfw_message="${1#*=}";;
       assertgrep:--matches=*) _tfw_opt_matches="${1#*=}";;
       *:--) let _tfw_getopts_shift=_tfw_getopts_shift+1; shift; break;;
@@ -562,7 +564,7 @@ _tfw_assert_stdxxx_is() {
    echo -n "$@" >$_tfw_tmp/stdxxx_is.tmp
    if ! /usr/bin/cmp --quiet $_tfw_tmp/stdxxx_is.tmp "$_tfw_tmp/$qual"; then
       _tfw_failmsg "assertion failed: $message"
-      _tfw_backtrace >&2
+      _tfw_backtrace
       return 1
    fi
    echo "# assert $message"
@@ -654,7 +656,7 @@ _tfw_assert_grep() {
    esac
    _tfw_shopt_restore
    if [ $ret -ne 0 ]; then
-      _tfw_backtrace >&2
+      _tfw_backtrace
    fi
    return $ret
 }
@@ -665,7 +667,7 @@ _tfw_echo() {
 }
 
 # Write a message to the real stderr of the test script, so the user sees it
-# immediately.  Also write the message to the stderr log, so it can be recovered
+# immediately.  Also write the message to the test log, so it can be recovered
 # later.
 _tfw_echoerr() {
    echo "$@" >&$_tfw_stderr
@@ -701,12 +703,18 @@ _tfw_find_tests() {
 _tfw_failmsg() {
    # A failure during setup or teardown is treated as an error.
    case $_tfw_phase in
-   testcase) echo "FAIL: $*";;
-   *) echo "ERROR: $*" >&2;;
+   testcase)
+      if ! $_tfw_opt_error_on_fail; then
+         echo "FAIL: $*"
+         return 0;
+      fi
+      ;;
    esac
+   echo "ERROR: $*"
 }
 
 _tfw_backtrace() {
+   echo '#--- backtrace ---'
    local -i up=1
    while [ "${BASH_SOURCE[$up]}" == "${BASH_SOURCE[0]}" ]; do
       let up=up+1
@@ -717,6 +725,7 @@ _tfw_backtrace() {
       let up=up+1
       let i=i+1
    done
+   echo '#---'
 }
 
 _tfw_failexit() {
@@ -726,9 +735,13 @@ _tfw_failexit() {
    $_tfw_dump_stderr_on_fail && tfw_cat --stderr
    # A failure during setup or teardown is treated as an error.
    case $_tfw_phase in
-   testcase) exit 1;;
-   *) _tfw_errorexit;;
+   testcase)
+      if ! $_tfw_opt_error_on_fail; then
+         exit 1
+      fi
+      ;;
    esac
+   _tfw_errorexit
 }
 
 # An "error" event prevents a test from running, so it neither passes nor fails.
@@ -747,15 +760,16 @@ _tfw_errormsg() {
 }
 
 _tfw_error() {
-   _tfw_errormsg "$@" >&2
-   _tfw_backtrace >&2
+   _tfw_errormsg "ERROR: $*"
+   _tfw_backtrace
    _tfw_errorexit
 }
 
 _tfw_errorexit() {
    # Do not exit process during teardown
+   _tfw_result=ERROR
    case $_tfw_phase in
-   teardown) _tfw_result=ERROR; [ $_tfw_status -lt 254 ] && _tfw_status=254;;
+   teardown) [ $_tfw_status -lt 254 ] && _tfw_status=254;;
    *) exit 254;;
    esac
 }
