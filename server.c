@@ -61,7 +61,7 @@ int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
 
   int len = recvmsg(sock,&msg,0);
 
-  if (debug&DEBUG_PACKETXFER) {
+  if (0&&debug&DEBUG_PACKETRX) {
     fprintf(stderr,"recvmsg returned %d bytes (flags=%d,msg_controllen=%d)\n",
 	    len,msg.msg_flags,msg.msg_controllen);
     dump("received data",buffer,len);
@@ -77,16 +77,16 @@ int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
 	if ((cmsg->cmsg_level == IPPROTO_IP) && 
 	    ((cmsg->cmsg_type == IP_RECVTTL) ||(cmsg->cmsg_type == IP_TTL))
 	    &&(cmsg->cmsg_len) ){
-	  if (debug&DEBUG_PACKETXFER)
+	  if (debug&DEBUG_PACKETRX)
 	    fprintf(stderr,"  TTL (%p) data location resolves to %p\n",
 		    ttl,CMSG_DATA(cmsg));
 	  if (CMSG_DATA(cmsg)) {
 	    *ttl = *(unsigned char *) CMSG_DATA(cmsg);
-	    if (debug&DEBUG_PACKETXFER)
+	    if (debug&DEBUG_PACKETRX)
 	      fprintf(stderr,"  TTL of packet is %d\n",*ttl);
 	  } 
 	} else {
-	  if (debug&DEBUG_PACKETXFER)
+	  if (debug&DEBUG_PACKETRX)
 	    fprintf(stderr,"I didn't expect to see level=%02x, type=%02x\n",
 		    cmsg->cmsg_level,cmsg->cmsg_type);
 	}	 
@@ -571,8 +571,8 @@ int simpleServerMode()
       client_addr=((struct sockaddr_in*)&recvaddr)->sin_addr;
       
       if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"Received packet from %s:%d (len=%d).\n",inet_ntoa(client_addr),client_port,len);
-      if (debug&DEBUG_PACKETXFER) dump("recvaddr",(unsigned char *)&recvaddr,recvaddrlen);
-      if (debug&DEBUG_PACKETXFER) dump("packet",(unsigned char *)buffer,len);
+      if (debug&DEBUG_PACKETRX) dump("recvaddr",(unsigned char *)&recvaddr,recvaddrlen);
+      if (debug&DEBUG_PACKETRX) dump("packet",(unsigned char *)buffer,len);
       if (dropPacketP(len)) {
 	if (debug&DEBUG_SIMULATION) fprintf(stderr,"Simulation mode: Dropped packet due to simulated link parameters.\n");
 	continue;
@@ -581,7 +581,7 @@ int simpleServerMode()
       if (packetOk(-1,buffer,len,NULL,ttl,&recvaddr,recvaddrlen,1)) { 
 	if (debug&DEBUG_PACKETFORMATS) setReason("Ignoring invalid packet");
       }
-      if (debug&DEBUG_PACKETXFER) fprintf(stderr,"Finished processing packet, waiting for next one.\n");
+      if (debug&DEBUG_PACKETRX) fprintf(stderr,"Finished processing packet, waiting for next one.\n");
     }
   }
   return 0;

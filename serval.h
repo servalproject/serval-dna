@@ -983,7 +983,7 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
 
 
 #define DEBUG_OVERLAYINTERFACES 2
-#define DEBUG_PACKETXFER 1
+#define DEBUG_PACKETRX 1
 #define DEBUG_VERBOSE 4
 #define DEBUG_VERBOSE_IO 8
 #define DEBUG_PEERS 16

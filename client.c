@@ -53,10 +53,10 @@ int packetSendFollowup(struct in_addr destination,
   
   r=sendto(sock,packet,packet_len,0,(struct sockaddr *)&peer_addr,sizeof(peer_addr));
   if (r<packet_len)	{
-    if (debug&DEBUG_PACKETXFER) fprintf(stderr,"Could not send to %s (r=%d, packet_len=%d)\n",inet_ntoa(destination),r,packet_len);
+    if (debug&DEBUG_PACKETTX) fprintf(stderr,"Could not send to %s (r=%d, packet_len=%d)\n",inet_ntoa(destination),r,packet_len);
     perror("sendto(a)");
   } else {
-    if (debug&DEBUG_PACKETXFER) fprintf(stderr,"Sent request to client %s\n",inet_ntoa(destination));
+    if (debug&DEBUG_PACKETTX) fprintf(stderr,"Sent request to client %s\n",inet_ntoa(destination));
   }
   return 0;
 }
@@ -94,11 +94,11 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
       else
 	r=sendto(sock,packet,packet_len,0,recvaddr,sizeof(struct sockaddr_in));
       if (r<packet_len)	{
-	if (debug&DEBUG_PACKETXFER) fprintf(stderr,"Could not send to client %s (packet=%p,len=%d,sock=%d)\n",
+	if (debug&DEBUG_PACKETTX) fprintf(stderr,"Could not send to client %s (packet=%p,len=%d,sock=%d)\n",
 			   inet_ntoa(client_addr),packet,packet_len,sock);
 	perror("sendto(b)");
       } else {
-	if (debug&DEBUG_PACKETXFER) fprintf(stderr,"Sent request to client %s\n",inet_ntoa(client_addr));
+	if (debug&DEBUG_PACKETTX) fprintf(stderr,"Sent request to client %s\n",inet_ntoa(client_addr));
       }
       return 0;
     }
@@ -401,7 +401,7 @@ int getReplyPackets(int method,int peer,int batchP,struct response_set *response
 	if (debug&DEBUG_DNARESPONSES) printf("Waiting for more packets, since called with policy %d\n",method);
       }
     } else {
-      if (debug&(DEBUG_PACKETXFER|DEBUG_DNARESPONSES)) setReason("Ignoring invalid packet");
+      if (debug&(DEBUG_PACKETRX|DEBUG_DNARESPONSES)) setReason("Ignoring invalid packet");
     }      
   }
 }
@@ -549,7 +549,7 @@ int peerAddress(char *did,char *sid,int flags)
   method=REQ_PARALLEL;
   if (sid) method=REQ_FIRSTREPLY;
   if (packetSendRequest(method,packet,packet_len,NONBATCH,transaction_id,NULL,&responses)) {
-    if (debug&DEBUG_PACKETXFER) fprintf(stderr,"peerAddress() failed because packetSendRequest() failed.\n");
+    if (debug&DEBUG_PACKETTX) fprintf(stderr,"peerAddress() failed because packetSendRequest() failed.\n");
     return -1;
   }
 
@@ -631,7 +631,7 @@ int requestItem(char *did,char *sid,char *item,int instance,
   method=REQ_PARALLEL;
   if (sid) method=REQ_FIRSTREPLY;
   if (packetSendRequest(method,packet,packet_len,(instance==-1)?BATCH:NONBATCH,transaction_id,NULL,&responses)) {
-    if (debug&DEBUG_PACKETXFER) fprintf(stderr,"requestItem() failed because packetSendRequest() failed.\n");
+    if (debug&DEBUG_PACKETTX) fprintf(stderr,"requestItem() failed because packetSendRequest() failed.\n");
     return -1;
   }
 

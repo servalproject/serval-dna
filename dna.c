@@ -474,8 +474,8 @@ int setVerbosity(char *optarg) {
   long long old_debug=debug;
   debug=strtoll(optarg,NULL,10);
   if (strstr(optarg,"interfaces")) debug|=DEBUG_OVERLAYINTERFACES;
-  if (strstr(optarg,"packetxfer")) debug|=DEBUG_PACKETXFER;
-  if (strstr(optarg,"packettx")) debug|=DEBUG_PACKETTX;
+  if (strstr(optarg,"rx")) debug|=DEBUG_PACKETRX;
+  if (strstr(optarg,"tx")) debug|=DEBUG_PACKETTX;
   if (strstr(optarg,"verbose")) debug|=DEBUG_VERBOSE;
   if (strstr(optarg,"verbio")) debug|=DEBUG_VERBOSE_IO;
   if (strstr(optarg,"peers")) debug|=DEBUG_PEERS;

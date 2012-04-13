@@ -201,17 +201,17 @@ int sendToPeers(unsigned char *packet,int packet_len,int method,int peerId,struc
       {
 	peer_addr.sin_addr=peers[i];
 
-	if (debug&(DEBUG_PACKETXFER|DEBUG_PEERS)) fprintf(stderr,"Sending packet to peer #%d\n",i);
+	if (debug&(DEBUG_PACKETTX|DEBUG_PEERS)) fprintf(stderr,"Sending packet to peer #%d\n",i);
 	
 	ret=sendto(sock,packet,packet_len,0,(struct sockaddr *)&peer_addr,sizeof(peer_addr));
 	if (ret<packet_len)
 	  {
 	    /* XXX something bad happened */
-	    if (debug&(DEBUG_PACKETXFER|DEBUG_PEERS)) fprintf(stderr,"Could not send to peer %s\n",inet_ntoa(peer_addr.sin_addr));
+	    if (debug&(DEBUG_PACKETTX|DEBUG_PEERS)) fprintf(stderr,"Could not send to peer %s\n",inet_ntoa(peer_addr.sin_addr));
 	  }
 	else
 	  {
-	    if (debug&(DEBUG_PACKETXFER|DEBUG_PEERS)) fprintf(stderr,"Sent request to peer %s\n",inet_ntoa(peer_addr.sin_addr));
+	    if (debug&(DEBUG_PACKETTX|DEBUG_PEERS)) fprintf(stderr,"Sent request to peer %s\n",inet_ntoa(peer_addr.sin_addr));
 	    n++;
 	    /* If sending to only one peer, return now */ 
 	    if (method==i) break;

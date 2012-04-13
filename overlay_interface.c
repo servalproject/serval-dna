@@ -201,12 +201,12 @@ int overlay_interface_init_socket(int interface,struct sockaddr_in src_addr,stru
   /* XXX Is this right? Are we really setting the local side address?
      I was in a plane when at the time, so couldn't Google it.
   */
-  if (debug&DEBUG_PACKETXFER) fprintf(stderr,"src_addr=%08x\n",(unsigned int)src_addr.sin_addr.s_addr);
+  if (debug&DEBUG_PACKETRX) fprintf(stderr,"src_addr=%08x\n",(unsigned int)src_addr.sin_addr.s_addr);
   if(bind(I(fd),(struct sockaddr *)&src_addr,sizeof(src_addr))) {
     perror("bind()");
     return WHY("MP HLR server could not bind to requested UDP port (bind() failed)");
   }
-  if (debug&(DEBUG_PACKETXFER|DEBUG_IO)) fprintf(stderr,"Bound to port 0x%04x\n",src_addr.sin_port);
+  if (debug&(DEBUG_PACKETRX|DEBUG_IO)) fprintf(stderr,"Bound to port 0x%04x\n",src_addr.sin_port);
 
   int broadcastP=1;
   if(setsockopt(I(fd), SOL_SOCKET, SO_BROADCAST, &broadcastP, sizeof(broadcastP)) < 0) {
@@ -320,7 +320,7 @@ int overlay_rx_messages()
 		    plen=2048-128;		    
 		    plen=packet[110]+(packet[111]<<8);
 		    if (plen>(2048-128)) plen=-1;
-		    if (debug&DEBUG_PACKETXFER) 
+		    if (debug&DEBUG_PACKETRX) 
 		      serval_packetvisualise(stderr,
 					     "Read from dummy interface",
 					     &packet[128],plen);
@@ -347,7 +347,7 @@ int overlay_rx_messages()
 	      c[i]=0; count--; 
 	    } else {
 	      /* We have a frame from this interface */
-	      if (debug&DEBUG_PACKETXFER) 
+	      if (debug&DEBUG_PACKETRX) 
 		serval_packetvisualise(stderr,"Read from real interface",
 				       packet,plen);
 	      if (debug&DEBUG_OVERLAYINTERFACES)fprintf(stderr,"Received %d bytes on interface #%d (%s)\n",plen,i,overlay_interfaces[i].name);
@@ -401,7 +401,7 @@ int overlay_broadcast_ensemble(int interface_number,
   else {
     s = overlay_interfaces[interface_number].broadcast_address;
     s.sin_family = AF_INET;
-    if (debug&DEBUG_PACKETXFER) fprintf(stderr,"Port=%d\n",overlay_interfaces[interface_number].port);
+    if (debug&DEBUG_PACKETTX) fprintf(stderr,"Port=%d\n",overlay_interfaces[interface_number].port);
     s.sin_port = htons( overlay_interfaces[interface_number].port );
   }
 
@@ -464,7 +464,7 @@ int overlay_broadcast_ensemble(int interface_number,
    interface they came in. */
 int overlay_sendto(struct sockaddr_in *recipientaddr,unsigned char *bytes,int len)
 {
-  if (debug&DEBUG_PACKETXFER) fprintf(stderr,"Sending %d bytes.\n",len);
+  if (debug&DEBUG_PACKETTX) fprintf(stderr,"Sending %d bytes.\n",len);
   if(overlay_broadcast_ensemble(overlay_last_interface_number,recipientaddr,bytes,len)) 
     return -1;
   else 
@@ -637,11 +637,14 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,
 	      WHY("bummer, I couldn't find an open route to that node");
 	    }
 	  } else if (!(*p)->broadcast_sent_via[i])
-	    /* Broadcast frames are easy to work out if they go via this interface, 
-	       just make sure that they haven't been previously sent via this
-	       interface. We then have some magic that only dequeues broadcast packets
-	       once they have been sent via all open interfaces (or gone stale) */
-	    dontSend=0;
+	    {
+	      /* Broadcast frames are easy to work out if they go via this interface, 
+		 just make sure that they haven't been previously sent via this
+		 interface. We then have some magic that only dequeues broadcast packets
+		 once they have been sent via all open interfaces (or gone stale) */
+	      dontSend=0;
+	      (*p)->broadcast_sent_via[i]=1;
+	    }
 	  
 	  if (dontSend==0) {   
 	    /* Try sending by this queue */
@@ -776,7 +779,9 @@ int overlay_tick_interface(int i, long long now)
 		  for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
 		    {
 		      if (overlay_interfaces[i].observed>0)
-			if (!(*p)->broadcast_sent_via[i]) { workLeft=1; break; }
+			if (!(*p)->broadcast_sent_via[i])
+			  { fprintf(stderr,"Frame still needs to be send on interface #%d\n",i);
+			    workLeft=1; break; }
 		    }
 		  if (!workLeft) {
 		    WHY("Leaving broadcast payload on the queue for other interfaces");
