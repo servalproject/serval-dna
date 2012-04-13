@@ -485,6 +485,7 @@ int writeItem(char *sid,int var_id,int instance,unsigned char *value,
 	case ACTION_CREATEHLR: printf("ERROR:You cant respond with CREATEHLR\n"); break;
 	case ACTION_PAD: /* ignore it */ break;
 	case ACTION_EOT: /* ignore it */ break;
+	case ACTION_RECVTTL: /* ignore it */ break;
 	default: printf("ERROR:Unexpected response code 0x%02x\n",r->code);
 	}
       fflush(stdout);
@@ -821,6 +822,7 @@ int requestItem(char *did,char *sid,char *item,int instance,
 	case ACTION_CREATEHLR: printf("ERROR:You cant respond with CREATEHLR\n"); break;
 	case ACTION_PAD: /* ignore it */ break;
 	case ACTION_EOT: /* ignore it */ break;
+	case ACTION_RECVTTL: /* ignore it */ break;
 	default: printf("ERROR:Unexpected response code 0x%02x\n",r->code);
 	}
       fflush(stdout);

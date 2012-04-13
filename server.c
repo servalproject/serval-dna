@@ -61,9 +61,11 @@ int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
 
   int len = recvmsg(sock,&msg,0);
 
-  if (debug&DEBUG_PACKETXFER)
+  if (debug&DEBUG_PACKETXFER) {
     fprintf(stderr,"recvmsg returned %d bytes (flags=%d,msg_controllen=%d)\n",
 	    len,msg.msg_flags,msg.msg_controllen);
+    dump("received data",buffer,len);
+  }
   
   struct cmsghdr *cmsg;
   if (len>0)
@@ -254,6 +256,7 @@ int processRequest(unsigned char *packet,int len,
 		int var_id=packet[pofs];
 		int instance=-1;
 		if (var_id&0x80) instance=packet[++pofs];
+		if (instance==0xff) instance=-1;
 		pofs++;
 		int offset=(packet[pofs]<<8)+packet[pofs+1]; pofs+=2;
 		keyring_identity *responding_id=NULL;
@@ -285,17 +288,19 @@ int processRequest(unsigned char *packet,int len,
 		  int count=0;
 		  while(cn<keyring->context_count) {
 		    found=0;
-		    if (sid) {
+		    if (sid&&sid[0]) {
 		      unsigned char packedSid[SID_SIZE];
 		      stowSid(packedSid,0,sid);
 		      found=keyring_find_sid(keyring,&cn,&in,&kp,packedSid);
 		    } else {
 		      found=keyring_find_did(keyring,&cn,&in,&kp,did);
+		      printf("found=%d, instance=%d\n",found,instance);
 		    }
 
 		    struct response r;
 
 		    if (found&&(instance==-1||instance==count)) {
+		      printf("preparing response\n");
 		      /* We have a matching identity/DID, now see what variable
 			 they want.
 			 VAR_DIDS and VAR_LOCATIONS are the only ones we support
@@ -319,7 +324,7 @@ int processRequest(unsigned char *packet,int len,
 			 packet, and only dispatch it when we are about to produce 
 			 another.  Then at the end of the loop, if we have a packet
 			 waiting we simply mark that with with DONE, and everything
-			 falls into place. */		      
+			 falls into place. */
 		      if (sendDone>0)
 			/* Send previous packet */
 			respondSimple(responding_id,ACTION_DATA,data,dlen,
@@ -336,8 +341,30 @@ int processRequest(unsigned char *packet,int len,
 		      sendDone++;
 
 		      count++;
-		      if (sid) in++; else kp++;
 		    }
+		    
+		    /* look for next record.
+		       Here the placing of DONE at the end of the response stream 
+		       becomes challenging, as we may be responding as multiple
+		       identities.  This means we have to DONE after each identity. */
+		    int lastin=in,lastcn=cn;		    
+		    kp++;
+		    keyring_sanitise_position(keyring,&cn,&in,&kp);
+		    if (lastin!=in||lastcn!=cn) {
+		      /* moved off last identity, so send waiting packet if there is
+			 one. */
+		      if (sendDone)
+			{
+			  data[dlen++]=ACTION_DONE;
+			  data[dlen++]=sendDone&0xff;
+			  respondSimple(responding_id,ACTION_DATA,data,dlen,
+					transaction_id,
+					recvttl,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
+			}
+		      sendDone=0;
+		      
+		    }
+		    
 		  }
 		}
 

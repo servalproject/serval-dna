@@ -996,86 +996,87 @@ int keyring_set_did(keyring_identity *id,char *did)
 
 int keyring_find_did(keyring_file *k,int *cn,int *in,int *kp,char *did)
 {
-  if (!k) return 0;
+  if (keyring_sanitise_position(k,cn,in,kp)) return 0;
 
-  while ((*cn)<k->context_count) {
-    while (((*cn)<k->context_count)&&((*in)>=k->contexts[*cn]->identity_count)) {
-      (*cn)++; (*in)=0;
-    }
-    if ((*cn)>=k->context_count) return 0;
-
-    for(*kp=0;*kp<k->contexts[*cn]->identities[*in]->keypair_count;(*kp)++)
+  while (1) {
+    /* we know we have a sane position, so see if it is interesting */
+    
+    if (k->contexts[*cn]->identities[*in]->keypairs[*kp]->type==KEYTYPE_DID)
       {
-	if (k->contexts[*cn]->identities[*in]->keypairs[*kp]->type==KEYTYPE_DID)
+	/* Compare DIDs */
+	if ((!did[0])||(!strcasecmp(did,(char *)k->contexts[*cn]->identities[*in]
+				    ->keypairs[*kp]->private_key)))
 	  {
-	    /* Compare DIDs */
-	    if (!strcasecmp(did,(char *)k->contexts[*cn]->identities[*in]
-				 ->keypairs[*kp]->private_key))
-	      {
-		/* match */
-		return 1;
-	      }
+	    /* match */
+	    return 1;
 	  }
       }
-
-    /* See if there is still somewhere to search */
-    (*in)++;
-    if ((*in)>=k->contexts[*cn]->identity_count) {
-      (*cn)++; (*in)=0;
-    }
+    
+    (*kp)++;
+    if (keyring_sanitise_position(k,cn,in,kp)) return 0;
   }
+
   return 0;
 }
 
 int keyring_next_identity(keyring_file *k,int *cn,int *in,int *kp)
 {
-  if (!k) return 0;
+  if (keyring_sanitise_position(k,cn,in,kp)) return 0;
 
-  while ((*cn)<k->context_count) {
-    while (((*cn)<k->context_count)&&((*in)>=k->contexts[*cn]->identity_count)) {
-      (*cn)++; (*in)=0;
-    }
-    if ((*cn)>=k->context_count) return 0;
+  while(1) {
+    if (k->contexts[*cn]->identities[*in]->keypairs[*kp]->type==KEYTYPE_CRYPTOBOX)
+      return 1;
 
-    for((*kp)=0;*kp<k->contexts[*cn]->identities[*in]->keypair_count;(*kp)++)
-      if (k->contexts[*cn]->identities[*in]->keypairs[*kp]->type==KEYTYPE_CRYPTOBOX)
-	  return 1;
-
-    (*in)++;
+    (*kp)++;
+    if (keyring_sanitise_position(k,cn,in,kp)) return 0;
   }
   return 0;
 }
 
+int keyring_sanitise_position(keyring_file *k,int *cn,int *in,int *kp)
+{
+  if (!k) return 1;
+  /* Sanity check passed in position */
+  if ((*cn)>=keyring->context_count) return 1;
+  if ((*in)>=keyring->contexts[*cn]->identity_count)
+    {
+      (*in)=0; (*cn)++;
+      if ((*cn)>=keyring->context_count) return 1;
+    }
+  if ((*kp)>=keyring->contexts[*cn]->identities[*in]->keypair_count)
+    {
+      *kp=0; (*in)++;
+      if ((*in)>=keyring->contexts[*cn]->identity_count)
+	{
+	  (*in)=0; (*cn)++;
+	  if ((*cn)>=keyring->context_count) return 1;
+	}
+    }
+  return 0;
+}
+
+
 int keyring_find_sid(keyring_file *k,int *cn,int *in,int *kp,unsigned char *sid)
 {
-  if (!k) return 0;
+  if (keyring_sanitise_position(k,cn,in,kp)) return 0;
 
-  while ((*cn)<k->context_count) {
-    while (((*cn)<k->context_count)&&((*in)>=k->contexts[*cn]->identity_count)) {
-      (*cn)++; (*in)=0;
-    }
-    if ((*cn)>=k->context_count) return 0;
+  while (1) {
+    /* we know we have a sane position, so see if it is interesting */
 
-    for((*kp)=0;*kp<k->contexts[*cn]->identities[*in]->keypair_count;(*kp)++)
+    if (k->contexts[*cn]->identities[*in]->keypairs[*kp]->type==KEYTYPE_CRYPTOBOX)
       {
-	if (k->contexts[*cn]->identities[*in]->keypairs[*kp]->type==KEYTYPE_CRYPTOBOX)
+	/* Compare SIDs */
+	if (!bcmp(sid,(char *)k->contexts[*cn]->identities[*in]
+		  ->keypairs[*kp]->public_key,SID_SIZE))
 	  {
-	    /* Compare SIDs */
-	    if (!bcmp(sid,(char *)k->contexts[*cn]->identities[*in]
-		      ->keypairs[*kp]->public_key,SID_SIZE))
-	      {
-		/* match */
-		return 1;
-	      }
+	    /* match */
+	    return 1;
 	  }
       }
-
-    /* See if there is still somewhere to search */
-    (*in)++;
-    if ((*in)>=k->contexts[*cn]->identity_count) {
-      (*cn)++; (*in)=0;
-    }
+    (*kp)++;
+    if (keyring_sanitise_position(k,cn,in,kp)) return 0;
   }
+
   return 0;
 }
 

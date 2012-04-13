@@ -139,8 +139,8 @@ int packetGetID(unsigned char *packet,int len,char *did,char *sid)
       return 0;
       break;
     default: /* no idea */
-      break;
       return setReason("Unknown ID key");
+      break;
     }
   
   return setReason("Impossible event #1 just occurred");
