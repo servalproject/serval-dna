@@ -84,7 +84,8 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
       if (overlay_broadcast_drop_check(p->destination))
 	return WHY("This broadcast packet ID has been seen recently");
       int i;
-      for(i=0;i<SID_SIZE;i++) p->nexthop[i]=0xff;
+      /* Copy the broadcast address exactly so that we preserve the BPI */
+      for(i=0;i<SID_SIZE;i++) p->nexthop[i]=p->destination[i];
       p->nexthop_address_status=OA_RESOLVED;
     } else {
       if (overlay_get_nexthop((unsigned char *)p->destination,p->nexthop,&nexthoplen,&p->nexthop_interface)) {
