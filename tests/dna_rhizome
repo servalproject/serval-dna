@@ -51,7 +51,7 @@ strip_signatures() {
    done
 }
 
-doc_InitialEmptyList="Initial rhizome list is empty"
+doc_InitialEmptyList="Initial list is empty"
 setup_InitialEmptyList() {
    setup_dna_rhizome
 }
@@ -59,7 +59,7 @@ test_InitialEmptyList() {
    assert_rhizome_list
 }
 
-doc_AddNoManifest="Rhizome add with no manifest file"
+doc_AddNoManifest="Add with no manifest file"
 setup_AddNoManifest() {
    setup_dna_rhizome
    assert_rhizome_list
@@ -70,7 +70,7 @@ test_AddNoManifest() {
    executeOk $dna rhizome add file file1
 }
 
-doc_AddNonExistManifest="Rhizome add with non-existent manifest file"
+doc_AddNonExistManifest="Add with non-existent manifest file"
 setup_AddNonExistManifest() {
    setup_dna_rhizome
    assert_rhizome_list
@@ -91,7 +91,7 @@ test_AddNonExistManifest() {
    assertGrep file1.manifest "^last_byte=$(cat file1 | wc --bytes)\$"
 }
 
-doc_AddManifest="Rhizome add with manifest"
+doc_AddManifest="Add with minimal manifest file"
 setup_AddManifest() {
    setup_dna_rhizome
    assert_rhizome_list
@@ -113,7 +113,7 @@ test_AddManifest() {
    assertGrep file1.manifest "^last_byte=$(cat file1 | wc --bytes)\$"
 }
 
-doc_AddThenList="Rhizome list contains one file after one add"
+doc_AddThenList="List contains one file after one add"
 setup_AddThenList() {
    setup_dna_rhizome
    assert_rhizome_list
@@ -129,7 +129,7 @@ test_AddThenList() {
    assert_rhizome_list file1 file2
 }
 
-doc_AddDuplicate="Rhizome add of same file"
+doc_AddDuplicate="Add same file detects duplicate"
 setup_AddDuplicate() {
    setup_dna_rhizome
    assert_rhizome_list
@@ -160,7 +160,7 @@ test_AddDuplicate() {
    assert diff file2.manifest file2.manifestA
 }
 
-doc_AddMismatched="Rhizome add fails on mismatched manifest and payload"
+doc_AddMismatched="Add mismatched manifest/payload fails"
 setup_AddMismatched() {
    setup_AddDuplicate
 }
@@ -175,17 +175,35 @@ test_AddMismatched() {
    assert_rhizome_list file1 file2
 }
 
-doc_AddUpdate="Rhizome add new version of existing file"
-setup_AddUpdate() {
+doc_AddUpdateNoVersion="Add new payload to existing manifest without new version"
+setup_AddUpdateNoVersion() {
    setup_AddDuplicate
-}
-test_AddUpdate() {
-   # Change payload associated with first manifest.
    cp file1.manifest file1_2.manifest
    strip_signatures file1_2.manifest
    sed -i -e '/^date=/d' -e '/^filehash=/d' -e '/^filesize=/d' file1_2.manifest
+   assertGrep --matches=0 file1_2.manifest '^filehash='
+   assertGrep file1_2.manifest '^version='
+   cp file1_2.manifest file1_2.manifest.orig
+}
+test_AddUpdateNoVersion() {
    tfw_cat file1_2.manifest
-   assertGrep --matches=0 --error-on-fail file1_2.manifest '^filehash='
+   execute $dna rhizome add file file1_2 file1_2.manifest
+   assertExitStatus '!=' 0
+   assert cmp file1_2.manifest file1_2.manifest.orig
+   # And rhizome store should be unchanged.
+   assert_rhizome_list file1 file2
+}
+
+doc_AddUpdate="Add new version and payload to existing manifest"
+setup_AddUpdate() {
+   setup_AddUpdateNoVersion
+   version=$(sed -n -e '/^version=/s///p' file1.manifest)
+   let version=version+1
+   sed -i -e "/^version=/s/=.*/=$version/" file1_2.manifest
+   assertGrep --matches=1 file1_2.manifest "^version=$version$"
+}
+test_AddUpdate() {
+   tfw_cat file1_2.manifest
    executeOk $dna rhizome add file file1_2 file1_2.manifest
    # The new manifest must now have a different filehash from the original.
    filehash1=$(sed -n -e '/^filehash=/s///p' file1.manifest)
