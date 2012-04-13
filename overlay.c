@@ -273,8 +273,6 @@ int overlay_frame_process(int interface,overlay_frame *f)
     forMe=1; }
   if (overlay_address_is_local(f->nexthop)) forMe=1;
 
-  WHYF("here forme=%d",forMe);
-
   if (forMe) {
     /* It's for us, so resolve the addresses */
     if (overlay_frame_resolve_addresses(interface,f))
@@ -324,7 +322,6 @@ int overlay_frame_process(int interface,overlay_frame *f)
 
   /* Not for us? Then just ignore it */
   if (!forMe) {
-    WHY("Packet is not for me");
     return 0;
   }
 
@@ -349,7 +346,6 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	} else {
 	if (debug&DEBUG_OVERLAYFRAMES) fprintf(stderr,"\nForwarding frame.\n");
 	int dontForward=0;
-	dump("forward to",f->destination,SID_SIZE);
 	if (!broadcast) {
 	  if (overlay_get_nexthop(f->destination,f->nexthop,&len,
 				  &f->nexthop_interface))
