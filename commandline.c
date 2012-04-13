@@ -351,6 +351,8 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
 {
   char *sid=cli_arg(argc,argv,o,"SID|broadcast","broadcast");
 
+  if (!keyring) keyring=keyring_open_with_pins("");
+
   /* MDP frames consist of:
      destination SID (32 bytes)
      destination port (4 bytes)
@@ -736,13 +738,13 @@ int app_keyring_add(int argc, char **argv, struct command_line_option *o)
   if (!k) { fprintf(stderr,"keyring add:Failed to create/open keyring file\n");
     return -1; }
   
-  if (keyring_create_identity(k,k->contexts[0],(char *)pin))
+  if (keyring_create_identity(k,k->contexts[0],(char *)pin)==NULL)
     {
-      fprintf(stderr,"Could not create new identity\n");
+      fprintf(stderr,"Could not create new identity (keyring_create_identity() failed)\n");
       return -1;
     }
   if (keyring_commit(k)) {
-    fprintf(stderr,"Could not write new identity\n");
+    fprintf(stderr,"Could not write new identity (keyring_commit() failed)\n");
     return -1;
   }
   keyring_free(k);
