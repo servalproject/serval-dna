@@ -581,7 +581,7 @@ int main(int argc,char **argv)
 	     manifest.
 	     A different calling would be required to import an existing pre-signed
 	     manifest */
-	  return rhizome_bundle_import(NULL,optarg,
+	  return rhizome_bundle_import(NULL, NULL, optarg,
 				       NULL /* no groups - XXX should allow them */,
 				       255 /* ttl - XXX should read from somewhere,
 					      e.g., bar if being imported */,

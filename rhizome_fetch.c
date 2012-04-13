@@ -393,7 +393,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
 		   rhizome_datastore_path,
 		   rhizome_manifest_get(m,"id",NULL,0));
 	  if (!rhizome_write_manifest_file(m,filename)) {
-	    rhizome_bundle_import(m,rhizome_manifest_get(m,"id",NULL,0),
+	    rhizome_bundle_import(m, NULL, rhizome_manifest_get(m,"id",NULL,0),
 				  NULL /* no additional groups */,
 				  m->ttl-1 /* TTL */,
 				  1 /* do verify */,
@@ -522,17 +522,15 @@ int rhizome_fetch_poll()
 		q->manifest->finalised=1;
 		q->manifest->manifest_bytes=q->manifest->manifest_all_bytes;
 		if (!rhizome_write_manifest_file(q->manifest,filename)) {
-		  rhizome_bundle_import(q->manifest,
-					rhizome_manifest_get(q->manifest,
-							     "id",NULL,0),
-					  NULL /* no additional groups */,
-					  q->manifest->ttl-1 /* TTL */,
-					  1 /* do verify */,
-					  1 /* do check hash of file */,
-					  0 /* do not sign it, just keep existing
-					       signatures */);
+		  rhizome_bundle_import(q->manifest, NULL, 
+					rhizome_manifest_get(q->manifest, "id", NULL, 0),
+					NULL /* no additional groups */,
+					q->manifest->ttl - 1 /* TTL */,
+					1 /* do verify */,
+					1 /* do check hash of file */,
+					0 /* do not sign it, just keep existing signatures */);
 		  q->manifest=NULL;
-		  }
+		}
 	      }
 	    }
 	  break;

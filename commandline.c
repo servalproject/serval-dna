@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <math.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 #include <stdio.h>
 #include "serval.h"
 #include "rhizome.h"
@@ -627,27 +628,36 @@ int app_rhizome_add_file(int argc, char **argv, struct command_line_option *o)
   /* Create a new manifest that will represent the file.  If a manifest file was supplied, then read
    * it, otherwise create a blank manifest. */
   rhizome_manifest *m = NULL;
-  if (manifestpath[0]) {
+  int manifest_file_supplied = 0;
+  if (manifestpath[0] && access(manifestpath, R_OK) == 0) {
     m = rhizome_read_manifest_file(manifestpath, 0, 0); // no verify
+    if (!m)
+      return WHY("Manifest file could not be loaded -- not added to rhizome");
+    manifest_file_supplied = 1;
   } else {
     m = rhizome_new_manifest();
+    if (!m)
+      return WHY("Manifest struct could not be allocated -- not added to rhizome");
   }
-  /* Use the file's basename to fill in a missing "name". */
+  /* Fill in a few missing manifest fields, to make it easier to use when adding new files:
+      - the payload file's basename for "name"
+      - current time for "date"
+  */
   if (rhizome_manifest_get(m, "name", NULL, 0) == NULL) {
     const char *name = strrchr(filepath, '/');
     name = name ? name + 1 : filepath;
     rhizome_manifest_set(m, "name", name);
   }
-  /* Use current time to fill in a missing "date".  */
   if (rhizome_manifest_get(m, "date", NULL, 0) == NULL) {
     rhizome_manifest_set_ll(m, "date", overlay_gettime_ms());
   }
   /* Add the manifest and its associated file to the Rhizome database, generating an "id" in the
    * process */
-  int ret = rhizome_add_manifest(m, filepath,
+  rhizome_manifest *mout = NULL;
+  int ret = rhizome_add_manifest(m, &mout, filepath,
 				 NULL, // no groups - XXX should allow them
 				 255, // ttl - XXX should read from somewhere
-				 manifestpath[0] != 0, // int verifyP
+				 manifest_file_supplied, // int verifyP
 				 1, // int checkFileP
 				 1 // int signP
     );
@@ -656,11 +666,13 @@ int app_rhizome_add_file(int argc, char **argv, struct command_line_option *o)
   } else {
     /* If successfully added, overwrite the manifest file so that the Java component that is
      * invoking this command can read it to obtain feedback on the result. */
-    if (manifestpath[0] && rhizome_write_manifest_file(m, manifestpath) == -1) {
+    if (manifestpath[0] && rhizome_write_manifest_file(mout, manifestpath) == -1) {
       ret = WHY("Could not overwrite manifest file.");
     }
   }
   rhizome_manifest_free(m);
+  if (mout != m)
+    rhizome_manifest_free(mout);
   return ret;
 }
 

@@ -182,9 +182,11 @@ int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid);
 int rhizome_store_file(const char *file,char *hash,int priortity);
 char *rhizome_safe_encode(unsigned char *in,int len);
 int rhizome_finish_sqlstatement(sqlite3_stmt *statement);
-int rhizome_bundle_import(rhizome_manifest *m_in,char *bundle,char *groups[], int ttl,
+int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, char *bundle,
+			  char *groups[], int ttl,
 			  int verifyP, int checkFileP, int signP);
-int rhizome_add_manifest(rhizome_manifest *m, const char *filename, char *groups[], int ttl,
+int rhizome_add_manifest(rhizome_manifest *m_in, rhizome_manifest **m_out, const char *filename,
+			 char *groups[], int ttl,
 			 int verifyP, int checkFileP, int signP);
 int rhizome_manifest_finalise(rhizome_manifest *m,int signP);
 char *rhizome_bytes_to_hex(unsigned char *in,int byteCount);

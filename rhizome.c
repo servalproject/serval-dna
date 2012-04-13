@@ -28,12 +28,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
    file and object buffers and lifetimes.
 */
 
-int rhizome_bundle_import(rhizome_manifest *m_in,char *bundle,char *groups[], int ttl,
+int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, char *bundle,
+			  char *groups[], int ttl,
 			  int verifyP, int checkFileP, int signP)
 {
+  if (m_out) *m_out = NULL;
+
   char filename[1024];
   char manifestname[1024];
- 
   if (snprintf(filename, sizeof(filename), "%s/import/file.%s", rhizome_datastore_path, bundle) >= sizeof(filename)
    || snprintf(manifestname, sizeof(manifestname), "%s/import/manifest.%s", rhizome_datastore_path, bundle) >= sizeof(manifestname)) {
     return WHY("Manifest bundle name too long");
@@ -51,7 +53,8 @@ int rhizome_bundle_import(rhizome_manifest *m_in,char *bundle,char *groups[], in
   }
 
   /* Add the manifest and its associated file to the Rhizome database. */
-  int ret = rhizome_add_manifest(m, filename, groups, ttl, verifyP, checkFileP, signP);
+  rhizome_manifest *dupm;
+  int ret = rhizome_add_manifest(m, &dupm, filename, groups, ttl, verifyP, checkFileP, signP);
   unlink(filename);
   if (ret == -1) {
     unlink(manifestname);
@@ -62,9 +65,11 @@ int rhizome_bundle_import(rhizome_manifest *m_in,char *bundle,char *groups[], in
       ret = WHY("Could not write manifest file.");
   }
 
-  /* If the manifest structure was allocated in this function, then this function is responsible for
-     freeing it */
-  if (!m_in)
+  /* If the manifest structure was allocated in this function, and it is not being returned to the
+     caller, then this function is responsible for freeing it */
+  if (m_out)
+    *m_out = m;
+  else if (!m_in)
     rhizome_manifest_free(m);
 
   return ret;
@@ -121,7 +126,8 @@ int rhizome_bundle_import(rhizome_manifest *m_in,char *bundle,char *groups[], in
 
 */
 
-int rhizome_add_manifest(rhizome_manifest *m,
+int rhizome_add_manifest(rhizome_manifest *m_in,
+			 rhizome_manifest **m_out,
 			 const char *filename,
 			 char *groups[],
 			 int ttl,
@@ -130,22 +136,20 @@ int rhizome_add_manifest(rhizome_manifest *m,
 			 int signP
 			)
 {
-  char *id = NULL;
-  char hexhash[SHA512_DIGEST_STRING_LENGTH];
-  int verifyErrors = 0;
+  if (m_out) *m_out = NULL;
 
   /* Ensure manifest meets basic sanity checks. */
-  const char *name = rhizome_manifest_get(m, "name", NULL, 0);
+  const char *name = rhizome_manifest_get(m_in, "name", NULL, 0);
   if (name == NULL || !name[0])
       return WHY("Manifest missing 'name' field");
-  if (rhizome_manifest_get_ll(m, "date") == -1)
+  if (rhizome_manifest_get_ll(m_in, "date") == -1)
       return WHY("Manifest missing 'date' field");
 
   /* Keep payload file name handy for later */
-  m->dataFileName = strdup(filename);
+  m_in->dataFileName = strdup(filename);
 
   /* Store time to live, clamped to within legal range */
-  m->ttl = ttl < 0 ? 0 : ttl > 254 ? 254 : ttl;
+  m_in->ttl = ttl < 0 ? 0 : ttl > 254 ? 254 : ttl;
 
   /* Check payload file is accessible and discover its length, then check that it matches
      the file size stored in the manifest */
@@ -153,115 +157,121 @@ int rhizome_add_manifest(rhizome_manifest *m,
     struct stat stat;
     if (lstat(filename,&stat))
       return WHY("Could not stat() payload file");
-    m->fileLength = stat.st_size;
-    long long mfilesize = rhizome_manifest_get_ll(m, "filesize");
-    if (mfilesize != -1 && mfilesize != m->fileLength) {
-      WHYF("Manifest.filesize (%lld) != actual file size (%lld)", mfilesize, m->fileLength);
-      ++verifyErrors;
+    m_in->fileLength = stat.st_size;
+    long long mfilesize = rhizome_manifest_get_ll(m_in, "filesize");
+    if (mfilesize != -1 && mfilesize != m_in->fileLength) {
+      WHYF("Manifest.filesize (%lld) != actual file size (%lld)", mfilesize, m_in->fileLength);
+      if (verifyP)
+	return -1;
     }
   }
+
+  /* Bail out now if errors occurred loading the manifest file, eg signature failed to validate */
+  if (verifyP && m_in->errors)
+      return WHYF("Manifest.errors (%d) is non-zero", m_in->errors);
 
   /* Compute hash of payload unless we know verification has already failed */
-  if (checkFileP ? !(verifyP && (m->errors || verifyErrors)) : signP) {
+  if (checkFileP || signP) {
+    char hexhash[SHA512_DIGEST_STRING_LENGTH];
     if (rhizome_hash_file(filename, hexhash))
       return WHY("Could not hash file.");
-    memcpy(&m->fileHexHash[0], &hexhash[0], SHA512_DIGEST_STRING_LENGTH);
-    m->fileHashedP = 1;
+    memcpy(&m_in->fileHexHash[0], &hexhash[0], SHA512_DIGEST_STRING_LENGTH);
+    m_in->fileHashedP = 1;
   }
 
-  /* Check that paylod hash matches manifest */
+  /* Check that payload hash matches manifest */
   if (checkFileP) {
-    const char *mhexhash = rhizome_manifest_get(m, "filehash", NULL, 0);
-    if (mhexhash && strcmp(hexhash, mhexhash)) {
-      WHYF("Manifest.filehash (%s) != actual file hash (%s)", mhexhash, hexhash);
-      ++verifyErrors;
+    const char *mhexhash = rhizome_manifest_get(m_in, "filehash", NULL, 0);
+    if (mhexhash && strcmp(m_in->fileHexHash, mhexhash)) {
+      WHYF("Manifest.filehash (%s) does not match payload hash (%s)", mhexhash, m_in->fileHexHash);
+      if (verifyP)
+	return -1;
     }
-  }
-
-  /* If any signature errors were encountered on loading, or manifest is inconsistent with payload,
-     then bail out now. */
-  if (verifyP) {
-    if (m->errors)
-      WHYF("Manifest.errors (%d) is non-zero", m->errors);
-    if (verifyErrors || m->errors)
-      return WHY("Errors encountered verifying bundle manifest");
   }
 
   /* Fill in the manifest so that duplicate detection can be performed, and to avoid redundant work
      by rhizome_manifest_finalise() below. */
   if (checkFileP) {
-    rhizome_manifest_set(m, "filehash", hexhash);
-    rhizome_manifest_set_ll(m, "first_byte", 0);
-    rhizome_manifest_set_ll(m, "last_byte", m->fileLength);
+    rhizome_manifest_set(m_in, "filehash", m_in->fileHexHash);
+    rhizome_manifest_set_ll(m_in, "first_byte", 0);
+    rhizome_manifest_set_ll(m_in, "last_byte", m_in->fileLength);
   }
 
   /* Check if a manifest is already stored for the same payload with the same details.
      This catches the case of "dna rhizome add file <filename>" on the same file more than once.
      (Debounce!) */
   rhizome_manifest *dupm = NULL;
-  if (rhizome_find_duplicate(m, &dupm) == -1)
+  if (rhizome_find_duplicate(m_in, &dupm) == -1)
     return WHY("Errors encountered searching for duplicate manifest");
   if (dupm) {
-    if (debug & DEBUG_RHIZOME) fprintf(stderr, "Not adding manifest for payload name=\"%s\" hexhash=%s - duplicate found in rhizome store\n", name, hexhash);
+    if (debug & DEBUG_RHIZOME)
+      fprintf(stderr, "Not adding manifest for payload name=\"%s\" hexhash=%s - duplicate found in rhizome store\n", name, m_in->fileHexHash);
 #if 0
     /* TODO Upgrade the version of the duplicate? */
-    long long version = rhizome_manifest_get_ll(m, "version");
+    long long version = rhizome_manifest_get_ll(m_in, "version");
     long long dupversion = rhizome_manifest_get_ll(dupm, "version");
     if (version > dupversion) {
       rhizome_manifest_set_ll(dupm, "version", version);
       ...
     }
 #endif
-    rhizome_manifest_free(dupm);
+    if (m_out) {
+      /* Finish completing the manifest */
+      if (rhizome_manifest_finalise(dupm, 0))
+	return WHY("Failed to finalise manifest.\n");
+      *m_out = dupm;
+    }
+    else
+      rhizome_manifest_free(dupm);
     return 0;
   }
 
   /* Supply manifest version number if missing, so we can do the version check below */
-  if (rhizome_manifest_get(m, "version", NULL, 0) == NULL) {
-    rhizome_manifest_set_ll(m, "version", overlay_gettime_ms());
+  if (rhizome_manifest_get(m_in, "version", NULL, 0) == NULL) {
+    rhizome_manifest_set_ll(m_in, "version", overlay_gettime_ms());
   }
 
-  /* If the manifest already has an ID, look to see if we possess its private key */
-  if ((id = rhizome_manifest_get(m, "id", NULL, 0))) {
-    rhizome_hex_to_bytes(id, m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
-    if (!rhizome_find_keypair_bytes(m->cryptoSignPublic, m->cryptoSignSecret))
-      m->haveSecret=1;
-  }
-
-  /* Discard the new manifest it is older than the most recent known version with the same ID */
-  if (id) {
+  /* If the manifest already has an ID */
+  char *id = NULL;
+  if ((id = rhizome_manifest_get(m_in, "id", NULL, 0))) {
+    /* Discard the new manifest it is older than the most recent known version with the same ID */
     long long storedversion = sqlite_exec_int64("SELECT version from manifests where id='%s';", id);
-    if (storedversion > rhizome_manifest_get_ll(m, "version")) {
+    if (storedversion > rhizome_manifest_get_ll(m_in, "version")) {
       return WHY("Newer version exists");
     }
+    /* Check if we know its private key */
+    rhizome_hex_to_bytes(id, m_in->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
+    if (!rhizome_find_keypair_bytes(m_in->cryptoSignPublic, m_in->cryptoSignSecret))
+      m_in->haveSecret=1;
   } else {
     /* The manifest had no ID (256 bit random string being a public key in the NaCl CryptoSign
        crypto system), so create one. */
     printf("manifest does not have an id\n");
-    rhizome_manifest_createid(m);
+    rhizome_manifest_createid(m_in);
     /* The ID is implicit in transit, but we need to store it in the file, so that reimporting
        manifests on receiver nodes works easily.  We might implement something that strips the id
        variable out of the manifest when sending it, or some other scheme to avoid sending all the
        extra bytes. */	
-    id = rhizome_bytes_to_hex(m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
-    rhizome_manifest_set(m, "id", id);
+    id = rhizome_bytes_to_hex(m_in->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+    rhizome_manifest_set(m_in, "id", id);
   }
 
   /* Add group memberships */
   if (groups) {
     int i;
     for(i = 0; groups[i]; i++)
-      rhizome_manifest_add_group(m, groups[i]);
+      rhizome_manifest_add_group(m_in, groups[i]);
   }
 
   /* Finish completing the manifest */
-  if (rhizome_manifest_finalise(m,signP))
+  if (rhizome_manifest_finalise(m_in, signP))
     return WHY("Failed to finalise manifest.\n");
 
   /* Okay, it is written, and can be put directly into the rhizome database now */
-  if (rhizome_store_bundle(m, filename) == -1)
+  if (rhizome_store_bundle(m_in, filename) == -1)
     return WHY("rhizome_store_bundle() failed.");
 
+  if (m_out) *m_out = m_in;
   return 0;
 }
 

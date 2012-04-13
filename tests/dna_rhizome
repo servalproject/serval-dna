@@ -26,9 +26,29 @@ setup_dna_rhizome() {
    executeOk $dna config set debug rhizome
 }
 
-assert_rhizome_list_empty() {
+assert_rhizome_list() {
    executeOk $dna rhizome list
-   assertStdoutIs -e "Found 0 rows\n"
+   assertStdoutLineCount '==' $#
+   assertStdoutGrep --matches=$# '^fileid=.*:name='
+   local filename
+   for filename; do
+      local filehash='[^:]\+'
+      # If there is a manifest file that looks like it matches this payload
+      # file, then use its file hash to check the rhizome list output.
+      if [ -r "$filename.manifest" ]; then
+         local name=$(sed -n -e '/^name=/s///p' "$filename.manifest")
+         if [ "$name" == "$filename" ]; then
+            filehash=$(sed -n -e '/^filehash=/s///p' "$filename.manifest")
+         fi
+      fi
+      assertStdoutGrep --matches=1 "^\(.*:\)\?fileid=$filehash:.*:name=$filename\$"
+   done
+}
+
+strip_signatures() {
+   for file; do
+      cat -v "$file" | sed -e '/^^@/,$d' >"tmp.$file" && mv -f "tmp.$file" "$file"
+   done
 }
 
 doc_InitialEmptyList="Initial rhizome list is empty"
@@ -36,15 +56,47 @@ setup_InitialEmptyList() {
    setup_dna_rhizome
 }
 test_InitialEmptyList() {
-   assert_rhizome_list_empty
+   assert_rhizome_list
+}
+
+doc_AddNoManifest="Rhizome add with no manifest file"
+setup_AddNoManifest() {
+   setup_dna_rhizome
+   assert_rhizome_list
+   echo "A test file" >file1
+   echo "Another test file" >file2
+}
+test_AddNoManifest() {
+   executeOk $dna rhizome add file file1
+}
+
+doc_AddNonExistManifest="Rhizome add with non-existent manifest file"
+setup_AddNonExistManifest() {
+   setup_dna_rhizome
+   assert_rhizome_list
+   echo "A test file" >file1
+   echo "Another test file" >file2
+}
+test_AddNonExistManifest() {
+   assert --error-on-fail [ ! -e file1.manifest ]
+   executeOk $dna rhizome add file file1 file1.manifest
+   assert [ -r file1.manifest ]
+   tfw_cat -v file1.manifest
+   assertGrep file1.manifest '^name=file1$'
+   assertGrep file1.manifest '^date=[0-9]\+$'
+   assertGrep file1.manifest '^version=[0-9]\+$'
+   assertGrep file1.manifest '^id=[0-9a-fA-F]\+$'
+   assertGrep file1.manifest "^filesize=$(cat file1 | wc --bytes)\$"
+   assertGrep file1.manifest "^first_byte=0$"
+   assertGrep file1.manifest "^last_byte=$(cat file1 | wc --bytes)\$"
 }
 
 doc_AddManifest="Rhizome add with manifest"
 setup_AddManifest() {
    setup_dna_rhizome
-   assert_rhizome_list_empty
+   assert_rhizome_list
    echo "A test file" >file1
-   echo 'name=wah' >file1.manifest
+   echo -e 'name=wah\ndate=12345' >file1.manifest
    echo "Another test file" >file2
 }
 test_AddManifest() {
@@ -53,7 +105,7 @@ test_AddManifest() {
    tfw_cat --stderr
    tfw_cat -v file1.manifest
    assertGrep file1.manifest '^name=wah$'
-   assertGrep file1.manifest '^date=[0-9]\+$'
+   assertGrep file1.manifest '^date=12345$'
    assertGrep file1.manifest '^version=[0-9]\+$'
    assertGrep file1.manifest '^id=[0-9a-fA-F]\+$'
    assertGrep file1.manifest "^filesize=$(cat file1 | wc --bytes)\$"
@@ -64,55 +116,86 @@ test_AddManifest() {
 doc_AddThenList="Rhizome list contains one file after one add"
 setup_AddThenList() {
    setup_dna_rhizome
-   assert_rhizome_list_empty
+   assert_rhizome_list
    echo "A test file" >file1
    echo "Another test file" >file2
 }
 test_AddThenList() {
    # Add first file
-   executeOk $dna rhizome add file file1
-   executeOk $dna rhizome list
-   assertStdoutGrep "^Found 1 rows$"
-   assertStdoutLineCount '==' 6
-   assertStdoutGrep --matches=1 '^file name = "file1"$'
-   assertStdoutGrep --matches=0 '^file name = "file2"$'
-   replayStdout >add1.stdout
+   executeOk $dna rhizome add file file1 file1.manifest
+   assert_rhizome_list file1
    # Add second file
-   executeOk $dna rhizome add file file2
-   executeOk $dna rhizome list
-   assertStdoutGrep "^Found 2 rows$"
-   assertStdoutLineCount '==' 11
-   assertStdoutGrep --matches=1 '^file name = "file1"$'
-   assertStdoutGrep --matches=1 '^file name = "file2"$'
+   executeOk $dna rhizome add file file2 file2.manifest
+   assert_rhizome_list file1 file2
 }
 
 doc_AddDuplicate="Rhizome add of same file"
 setup_AddDuplicate() {
    setup_dna_rhizome
-   assert_rhizome_list_empty
+   assert_rhizome_list
    echo "A test file" >file1
    echo "Another test file" >file2
+   echo "A test file, second version" >file1_2
    # Add first file
-   executeOk $dna rhizome add file file1
+   executeOk $dna rhizome add file file1 file1.manifest
    # Add second file
-   executeOk $dna rhizome add file file2
+   executeOk $dna rhizome add file file2 file2.manifest
    # Make sure they are both in the list.
-   executeOk $dna rhizome list
-   assertStdoutGrep "^Found 2 rows$"
-   assertStdoutGrep --matches=1 '^file name = "file1"$'
-   assertStdoutGrep --matches=1 '^file name = "file2"$'
+   assert_rhizome_list file1 file2
 }
 test_AddDuplicate() {
-   # Add first file again (nothing should change except its date).
-   executeOk $dna config get debug
-   tfw_cat --stdout
-   executeOk $dna rhizome add file file1
-   tfw_cat --stderr
-   executeOk $dna rhizome list
-   assertStdoutGrep "^Found 2 rows$"
-   assertStdoutLineCount '==' 11
-   assertStdoutGrep --matches=1 '^file name = "file1"$'
-   assertStdoutGrep --matches=1 '^file name = "file2"$'
+   # Add first file again - nothing should change in its manifests, and it
+   # should appear that the add command succeeded (with perhaps some grumbling
+   # on stderr).
+   executeOk $dna rhizome add file file1 file1.manifestA
+   assert [ -s file1.manifestA ]
+   assert_rhizome_list file1 file2
+   strip_signatures file1.manifest file1.manifestA
+   assert diff file1.manifest file1.manifestA
+   # Repeat for second file.
+   executeOk $dna rhizome add file file2 file2.manifestA
+   assert [ -s file2.manifestA ]
+   assert_rhizome_list file1 file2
+   strip_signatures file2.manifest file2.manifestA
+   assert diff file2.manifest file2.manifestA
+}
+
+doc_AddMismatched="Rhizome add fails on mismatched manifest and payload"
+setup_AddMismatched() {
+   setup_AddDuplicate
+}
+test_AddMismatched() {
+   # Try to add another file using an existing manifest, should fail and leave
+   # the manifest file unchanged.
+   cp file1.manifest file1_2.manifest
+   execute $dna rhizome add file file1_2 file1_2.manifest
+   assertExitStatus '!=' 0
+   assert cmp file1.manifest file1_2.manifest
+   # And rhizome store should be unchanged.
+   assert_rhizome_list file1 file2
+}
+
+doc_AddUpdate="Rhizome add new version of existing file"
+setup_AddUpdate() {
+   setup_AddDuplicate
+}
+test_AddUpdate() {
+   # Change payload associated with first manifest.
+   cp file1.manifest file1_2.manifest
+   strip_signatures file1_2.manifest
+   sed -i -e '/^date=/d' -e '/^filehash=/d' -e '/^filesize=/d' file1_2.manifest
+   tfw_cat file1_2.manifest
+   assertGrep --matches=0 --error-on-fail file1_2.manifest '^filehash='
+   executeOk $dna rhizome add file file1_2 file1_2.manifest
+   # The new manifest must now have a different filehash from the original.
+   filehash1=$(sed -n -e '/^filehash=/s///p' file1.manifest)
+   filehash1_2=$(sed -n -e '/^filehash=/s///p' file1_2.manifest)
+   assert [ -n "$filehash1" ]
+   assert [ -n "$filehash1_2" ]
+   assert [ "$filehash1" != "$filehash1_2" ]
+   # Rhizome store contents reflect new payload.
+   mv -f file1_2.manifest file1.manifest
+   assert_rhizome_list file1 file2
 }
 
 runTests "$@"

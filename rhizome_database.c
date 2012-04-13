@@ -504,7 +504,11 @@ char *rhizome_safe_encode(unsigned char *in,int len)
 int rhizome_list_manifests(int limit, int offset)
 {
   char sqlcmd[1024];
-  int n = snprintf(sqlcmd, sizeof(sqlcmd), "SELECT files.id, files.length, files.datavalid, manifests.id, manifests.manifest, manifests.version, manifests.inserttime FROM files, filemanifests, manifests WHERE files.id = filemanifests.fileid AND filemanifests.manifestid = manifests.id");
+  int n = snprintf(sqlcmd, sizeof(sqlcmd),
+      "SELECT files.id, files.length, files.datavalid, manifests.id, manifests.manifest, manifests.version, manifests.inserttime"
+      " FROM files, filemanifests, manifests WHERE files.id = filemanifests.fileid AND filemanifests.manifestid = manifests.id"
+      " ORDER BY files.id ASC"
+    );
   if (n >= sizeof(sqlcmd))
     return WHY("SQL command too long");
   if (limit) {
@@ -539,21 +543,23 @@ int rhizome_list_manifests(int limit, int offset)
 	ret = WHY("Incorrect statement column");
 	break;
       }
-      size_t filesize = sqlite3_column_int(statement, 1);
       const char *manifestblob = (char *) sqlite3_column_blob(statement, 4);
       size_t manifestblobsize = sqlite3_column_bytes(statement, 4); // must call after sqlite3_column_blob()
-      //printf("manifest blob = %s\n", manifestblob);
       rhizome_manifest *m = rhizome_read_manifest_file(manifestblob, manifestblobsize, 0);
       const char *name = rhizome_manifest_get(m, "name", NULL, 0);
-      printf("file id = %s\nfile length = %u\nfile datavalid = %u\nfile name = \"%s\"\n\n",
+      long long date = rhizome_manifest_get_ll(m, "date");
+      printf("fileid=%s:manifestid=%s:version=%d:inserttime=%lld:length=%u:datavalid=%u:date=%lld:name=%s\n",
 	  sqlite3_column_text(statement, 0),
-	  filesize,
+	  sqlite3_column_text(statement, 3),
+	  sqlite3_column_int(statement, 5),
+	  (long long) sqlite3_column_int64(statement, 6),
+	  sqlite3_column_int(statement, 1),
 	  sqlite3_column_int(statement, 2),
+	  date,
 	  name
 	);
       rhizome_manifest_free(m);
     }
-    printf("Found %lu rows\n", (unsigned long) rows);
   }
   sqlite3_finalize(statement);
   return ret;
@@ -758,6 +764,9 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
 {
   if (!m->fileHashedP)
     return WHY("Manifest payload is not hashed");
+  const char *name = rhizome_manifest_get(m, "name", NULL, 0);
+  if (!name)
+      return WHY("Manifest has no name");
   char sqlcmd[1024];
   int n = snprintf(sqlcmd, sizeof(sqlcmd), "SELECT manifests.id, manifests.manifest FROM filemanifests, manifests WHERE filemanifests.fileid = ? AND filemanifests.manifestid = manifests.id");
   if (n >= sizeof(sqlcmd))
@@ -766,12 +775,10 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
   sqlite3_stmt *statement;
   const char *cmdtail;
   if (sqlite3_prepare_v2(rhizome_db, sqlcmd, strlen(sqlcmd) + 1, &statement, &cmdtail) != SQLITE_OK) {
-    sqlite3_finalize(statement);
     ret = WHY(sqlite3_errmsg(rhizome_db));
   } else {
-    if (debug & DEBUG_RHIZOME) fprintf(stderr, "fileHaxHash = \"%s\"\n", m->fileHexHash);
+    if (debug & DEBUG_RHIZOME) fprintf(stderr, "fileHexHash = \"%s\"\n", m->fileHexHash);
     sqlite3_bind_text(statement, 1, m->fileHexHash, -1, SQLITE_STATIC);
-    const char *name = rhizome_manifest_get(m, "name", NULL, 0);
     size_t rows = 0;
     while (sqlite3_step(statement) == SQLITE_ROW) {
       ++rows;
@@ -793,12 +800,20 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
       size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
       rhizome_manifest *mq = rhizome_read_manifest_file(manifestblob, manifestblobsize, 0);
       const char *nameq = rhizome_manifest_get(mq, "name", NULL, 0);
-      /* No need to compare "filehash" here, but we do so as a precaution. */
+      const char *filehashq = rhizome_manifest_get(mq, "filehash", NULL, 0);
+      long long lengthq = rhizome_manifest_get_ll(mq, "filesize");
       if (debug & DEBUG_RHIZOME) fprintf(stderr, "Consider manifest.id=%s manifest.name=\"%s\"\n", manifestid, nameq);
-      if ( !strcmp(nameq, name)
-	&& !strncmp(rhizome_manifest_get(mq, "filehash", NULL, 0), m->fileHexHash, SHA512_DIGEST_STRING_LENGTH)) {
+      /* No need to compare "filehash" or "filesize" here, but we do so as a precaution if present */
+      if (  nameq && !strcmp(nameq, name)
+	 && (!filehashq || strncmp(filehashq, m->fileHexHash, SHA512_DIGEST_STRING_LENGTH) == 0)
+	 && (lengthq == -1 || lengthq == m->fileLength)
+      ) {
+	memcpy(mq->fileHexHash, m->fileHexHash, SHA512_DIGEST_STRING_LENGTH);
+	mq->fileHashedP = 1;
+	mq->fileLength = m->fileLength;
 	*found = mq;
 	ret = 1;
+	if (debug & DEBUG_RHIZOME) fprintf(stderr, "found\n");
 	break;
       }
       rhizome_manifest_free(mq);
