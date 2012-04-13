@@ -479,15 +479,61 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,
   frame->prev=NULL;
   frame->next=NULL;
   
+  int fe=0;
+
   /* Work out the disposition of the frame.  For now we are only worried
      about the crypto matters, and not compression that may be applied
      before encryption (since applying it after is useless as ciphered
      text should have maximum entropy). */
   switch(mdp->packetTypeAndFlags&(MDP_NOCRYPT|MDP_NOSIGN)) {
-  case 0: /* crypted and signed (using CryptBox authcryption primitive) */
-    frame->modifiers=OF_CRYPTO_SIGNED|OF_CRYPTO_CIPHERED; 
-    op_free(frame);
-    return WHY("ciphered+signed MDP frames not implemented");
+  case 0: /* crypted and signed (using CryptoBox authcryption primitive) */
+    frame->modifiers=OF_CRYPTO_SIGNED|OF_CRYPTO_CIPHERED;
+    /* Prepare payload */
+    frame->payload=ob_new(1 /* frame type (MDP) */
+			  +1 /* MDP version */
+			  +4 /* dst port */
+			  +4 /* src port */
+			  +crypto_box_curve25519xsalsa20poly1305_NONCEBYTES
+			  +crypto_box_curve25519xsalsa20poly1305_ZEROBYTES
+			  +mdp->out.payload_length);
+    /* MDP version 1 */
+    fe|=ob_append_byte(frame->payload,0x01);
+    fe|=ob_append_byte(frame->payload,0x01);
+    /* Destination port */
+    fe|=ob_append_int(frame->payload,mdp->out.dst.port);
+    /* XXX we should probably pull the source port from the bindings
+       On that note, when a binding is granted, we should probably
+       provide a token that can be used to lookup the binding and
+       indicate which binding the packet is for? */
+    fe|=ob_append_int(frame->payload,0);
+    {
+      /* write cryptobox nonce */
+      unsigned char nonce[crypto_box_curve25519xsalsa20poly1305_NONCEBYTES];
+      if (urandombytes(nonce,crypto_box_curve25519xsalsa20poly1305_NONCEBYTES))
+	{	op_free(frame); WHY("urandombytes() failed to generate nonce"); }
+      fe|=
+	ob_append_bytes(frame->payload,nonce,crypto_box_curve25519xsalsa20poly1305_NONCEBYTES);
+      /* generate plain message with zero bytes and get ready to cipher it */
+      unsigned char plain[crypto_box_curve25519xsalsa20poly1305_ZEROBYTES
+			  +mdp->out.payload_length];
+      bzero(&plain[0],crypto_box_curve25519xsalsa20poly1305_ZEROBYTES);
+      bcopy(&mdp->out.payload,&plain[crypto_box_curve25519xsalsa20poly1305_ZEROBYTES],
+	    mdp->out.payload_length);
+      
+      /* get pre-computed PKxSK bytes (the slow part of auth-cryption that can be
+	 retained and reused, and use that to do the encryption quickly. */
+      unsigned char *k=keyring_get_nm_bytes(&mdp->out.src,&mdp->out.dst);
+      if (!k) { op_free(frame); return WHY("could not compute Curve25519(NxM)"); }
+      /* Get pointer to place in frame where the ciphered text needs to go */
+      unsigned char *cipher_text=ob_append_space(frame->payload,sizeof(plain));
+      if (fe||(!cipher_text))
+	{ op_free(frame); return WHY("could not make space for ciphered text"); }
+      /* Actually authcrypt the payload */
+      if (crypto_box_afternm(cipher_text,plain,
+			     crypto_box_curve25519xsalsa20poly1305_ZEROBYTES
+			     +mdp->out.payload_length,nonce,k))
+	{ op_free(frame); return WHY("crypto_box_afternm() failed"); }
+    }
     break;
   case MDP_NOSIGN: 
     /* ciphered, but not signed.

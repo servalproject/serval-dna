@@ -1142,3 +1142,21 @@ int keyring_seed(keyring_file *k)
   return 0;
 }
 
+/*
+  The CryptoBox function of NaCl involves a scalar mult operation between the
+  public key of the recipient and the private key of the sender (or vice versa).
+  This can take about 1 cpu second on a phone, which is rather bad.
+  Fortunately, NaCl allows the caching of the result of this computation, which can
+  then be fed into the process to make it much, much faster.
+  Thus we need a mechanism for caching the various scalarmult results so that they
+  can indeed be reused.
+*/
+
+unsigned char *keyring_get_nm_bytes(sockaddr_mdp *priv,sockaddr_mdp *pub)
+{
+  if (!priv) WHYRETNULL("priv is null");
+  if (!pub) WHYRETNULL("pub is null");
+  if (!keyring) WHYRETNULL("keyring is null");
+
+  WHYRETNULL("Not implemented");
+}

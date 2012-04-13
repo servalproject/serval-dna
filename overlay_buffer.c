@@ -166,6 +166,15 @@ int ob_append_byte(overlay_buffer *b,unsigned char byte)
   return 0;
 }
 
+unsigned char *ob_append_space(overlay_buffer *b,int count)
+{
+  if (ob_makespace(b,count)) { WHY("ob_makespace() failed"); return NULL; }
+  
+  unsigned char *r=&b->bytes[b->length];
+  b->length+=count;
+  return r;
+}
+
 int ob_append_bytes(overlay_buffer *b,unsigned char *bytes,int count)
 {
   if (ob_makespace(b,count)) return WHY("ob_makespace() failed");

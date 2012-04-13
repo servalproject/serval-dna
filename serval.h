@@ -247,7 +247,6 @@ int keyring_find_sid(keyring_file *k,int *cn,int *in,int *kp,unsigned char *sid)
 int keyring_commit(keyring_file *k);
 keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c,
 					  char *pin);
-
 int keyring_seed(keyring_file *k);
 
 /* Packet format:
@@ -717,6 +716,7 @@ extern overlay_txqueue overlay_tx[OQ_MAX];
 
 int setReason(char *fmt, ...);
 #define WHY(X) setReason("%s:%d:%s()  %s",__FILE__,__LINE__,__FUNCTION__,X)
+#define WHYRETNULL(X) { setReason("%s:%d:%s()  %s",__FILE__,__LINE__,__FUNCTION__,X); return NULL; } 
 #define WHYF(F, ...) setReason("%s:%d:%s()  " F, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
 
 overlay_buffer *ob_new(int size);
@@ -728,6 +728,7 @@ int ob_unlimitsize(overlay_buffer *b);
 int ob_makespace(overlay_buffer *b,int bytes);
 int ob_append_byte(overlay_buffer *b,unsigned char byte);
 int ob_append_bytes(overlay_buffer *b,unsigned char *bytes,int count);
+unsigned char *ob_append_space(overlay_buffer *b,int count);
 int ob_append_short(overlay_buffer *b,unsigned short v);
 int ob_append_int(overlay_buffer *b,unsigned int v);
 int ob_patch_rfs(overlay_buffer *b,int l);
@@ -1068,6 +1069,7 @@ typedef struct sockaddr_mdp {
   unsigned char sid[SID_SIZE];
   unsigned int port;
 } sockaddr_mdp;
+unsigned char *keyring_get_nm_bytes(sockaddr_mdp *priv,sockaddr_mdp *pub);
 
 #define MDP_TYPE_MASK 0xff
 #define MDP_FLAG_MASK 0xff00
@@ -1145,6 +1147,8 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,
 
 int ob_bcopy(overlay_buffer *b,int from, int to, int len);
 int ob_setbyte(overlay_buffer *b,int ofs,unsigned char value);
+
+int urandombytes(unsigned char *x,unsigned long long xlen);
 
 #ifdef MALLOC_PARANOIA
 #define malloc(X) _serval_debug_malloc(X,__FILE__,__FUNCTION__,__LINE__)
