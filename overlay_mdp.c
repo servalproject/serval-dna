@@ -257,12 +257,51 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
 {
   /* Take frame source and destination and use them to populate mdp->in->{src,dst}
      SIDs.
-     XXX - I think we put the SIDs into the MDP frame at present, which is
-     redundant, as they are included in the lower-level overlay frame structure.
      Take ports from mdp frame itself.
      Take payload from mdp frame itself.
   */
-  return WHY("Not implemented");
+  unsigned char *b=&f->payload->bytes[0];
+  dump("mdp frame",b,f->payload->length);
+  if (f->payload->length<10) return WHY("Invalid MDP frame");
+  int version=(b[0]<<8)+b[1];
+  if (version!=0x0101) return WHY("Saw unsupported MDP frame version");
+  overlay_mdp_frame mdp;
+
+  /* Indicate MDP message type */
+  mdp.packetTypeAndFlags=MDP_TX;
+
+  int decrypt=1;
+
+  /* copy crypto flags from frame so that we know if we need to decrypt or verify it */
+  switch(f->modifiers&OF_CRYPTO_BITS)  {
+  case 0: 
+    decrypt=0;
+    mdp.packetTypeAndFlags|=MDP_NOCRYPT|MDP_NOSIGN; break;    
+  case OF_CRYPTO_CIPHERED:
+    mdp.packetTypeAndFlags|=MDP_NOSIGN; break;
+  case OF_CRYPTO_SIGNED:
+    mdp.packetTypeAndFlags|=MDP_NOCRYPT; break;
+  case OF_CRYPTO_CIPHERED|OF_CRYPTO_SIGNED:
+    break;
+  }
+
+  /* Get source and destination addresses */
+  bcopy(&f->destination[0],&mdp.in.dst.sid[0],SID_SIZE);
+  bcopy(&f->source[0],&mdp.in.src.sid[0],SID_SIZE);
+  /* extract MDP port numbers */
+  mdp.in.src.port=(b[2]<<24)+(b[3]<<16)+(b[4]<<8)+b[5];
+  mdp.in.dst.port=(b[6]<<24)+(b[7]<<16)+(b[8]<<8)+b[9];
+  printf("mdp dst.port=%d, src.port=%d\n",mdp.in.dst.port,mdp.in.src.port);
+
+  if (!decrypt) {
+    /* get payload */
+    mdp.in.payload_length=f->payload->length-10;
+    bcopy(&b[10],&mdp.in.payload[0],mdp.in.payload_length);
+  } else
+    return WHY("decryption/signature verification not implemented");
+
+  /* and do something with it! */
+  return overlay_saw_mdp_frame(interface,&mdp,now);
 }
 
 int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
@@ -279,8 +318,6 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
     if ((!overlay_address_is_local(mdp->out.dst.sid))
 	&&(!overlay_address_is_broadcast(mdp->out.dst.sid)))
       {
-	fprintf(stderr,"%s is not a local address\n",
-		overlay_render_sid(mdp->out.dst.sid));
 	return WHY("Asked to process an MDP packet that was not addressed to this node.");
       }
     
@@ -587,7 +624,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,
   else{
     bcopy(&mdp->out.dst.sid[0],frame->destination,SID_SIZE);
     frame->destination_address_status=OA_RESOLVED;
-  }	
+  }
   
   if (overlay_payload_enqueue(OQ_ORDINARY,frame))
     {
