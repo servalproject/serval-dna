@@ -78,7 +78,6 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
   int fail=0;
 
   if (p->nexthop_address_status!=OA_RESOLVED) {
-    dump("destination",(unsigned char *)p->destination,32);
     if (overlay_address_is_broadcast(p->destination)) {
       /* Broadcast frames are broadcast rather than unicast to next hop.
 	 Just check if the broadcast frame should be dropped first. */
@@ -219,7 +218,7 @@ int overlay_payload_enqueue(int q,overlay_frame *p)
 
   if (overlay_tx[q].length>=overlay_tx[q].maxLength) return WHY("Queue congested");
 
-  dump_queue("before",q);
+  if (0) dump_queue("before",q);
   
   overlay_frame *l=overlay_tx[q].last;
   if (l) l->next=p;
@@ -231,7 +230,7 @@ int overlay_payload_enqueue(int q,overlay_frame *p)
   if (!overlay_tx[q].first) overlay_tx[q].first=p;
   overlay_tx[q].length++;
   
-  dump_queue("after",q);
+  if (0) dump_queue("after",q);
 
   return 0;
 }
