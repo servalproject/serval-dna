@@ -294,13 +294,12 @@ int processRequest(unsigned char *packet,int len,
 		      found=keyring_find_sid(keyring,&cn,&in,&kp,packedSid);
 		    } else {
 		      found=keyring_find_did(keyring,&cn,&in,&kp,did);
-		      printf("found=%d, instance=%d\n",found,instance);
 		    }
 
 		    struct response r;
+		    unsigned char packedDid[64];
 
 		    if (found&&(instance==-1||instance==count)) {
-		      printf("preparing response\n");
 		      /* We have a matching identity/DID, now see what variable
 			 they want.
 			 VAR_DIDS and VAR_LOCATIONS are the only ones we support
@@ -309,9 +308,12 @@ int processRequest(unsigned char *packet,int len,
 		      r.var_instance=instance;
 		      switch(var_id) {
 		      case VAR_DIDS:
-			r.response=keyring->contexts[cn]->identities[in]
-			  ->keypairs[kp]->private_key;
-			r.value_len=strlen((char *)r.response);
+			/* We need to pack the DID before sending off */
+			r.value_len=0;
+			stowDid(packedDid,&r.value_len,
+				(char *)keyring->contexts[cn]->identities[in]
+				->keypairs[kp]->private_key);
+			r.response=packedDid;
 			break;
 		      case VAR_LOCATIONS:
 			r.response=(unsigned char *)"4000@";
