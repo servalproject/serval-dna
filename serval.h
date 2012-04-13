@@ -999,11 +999,13 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
 #define DEBUG_OVERLAYABBREVIATIONS 16384
 #define DEBUG_OVERLAYROUTING 32768
 #define DEBUG_SECURITY 65536
-#define DEBUG_RHIZOME 131072
-#define DEBUG_OVERLAYROUTEMONITOR 262144
-#define DEBUG_QUEUES 524288
-#define DEBUG_BROADCASTS 1048576
-#define DEBUG_RHIZOMESYNC 2097152
+#define DEBUG_RHIZOME (1<<17)
+#define DEBUG_OVERLAYROUTEMONITOR (1<<18)
+#define DEBUG_QUEUES (1<<19)
+#define DEBUG_BROADCASTS (1<<20)
+#define DEBUG_RHIZOMESYNC (1<<21)
+#define DEBUG_DISABLERHIZOME (1<<22)
+#define DEBUG_PACKETTX (1<<23)
 
 int serval_packetvisualise(FILE *f,char *message,unsigned char *packet,int plen);
 

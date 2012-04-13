@@ -475,6 +475,7 @@ int setVerbosity(char *optarg) {
   debug=strtoll(optarg,NULL,10);
   if (strstr(optarg,"interfaces")) debug|=DEBUG_OVERLAYINTERFACES;
   if (strstr(optarg,"packetxfer")) debug|=DEBUG_PACKETXFER;
+  if (strstr(optarg,"packettx")) debug|=DEBUG_PACKETTX;
   if (strstr(optarg,"verbose")) debug|=DEBUG_VERBOSE;
   if (strstr(optarg,"verbio")) debug|=DEBUG_VERBOSE_IO;
   if (strstr(optarg,"peers")) debug|=DEBUG_PEERS;
@@ -491,6 +492,8 @@ int setVerbosity(char *optarg) {
   if (strstr(optarg,"routing")) debug|=DEBUG_OVERLAYROUTING;
   if (strstr(optarg,"security")) debug|=DEBUG_SECURITY;
   if (strstr(optarg,"rhizome")) debug|=DEBUG_RHIZOME;
+  if (strstr(optarg,"norhizome")) 
+    { debug|=DEBUG_DISABLERHIZOME; debug&=~DEBUG_RHIZOME; }
   if (strstr(optarg,"filesync")) debug|=DEBUG_RHIZOMESYNC;
   if (strstr(optarg,"monitorroutes")) debug|=DEBUG_OVERLAYROUTEMONITOR;
   if (strstr(optarg,"queues")) debug|=DEBUG_QUEUES;

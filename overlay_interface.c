@@ -388,6 +388,12 @@ int overlay_broadcast_ensemble(int interface_number,
 {
   struct sockaddr_in s;
 
+  if (debug&DEBUG_PACKETTX)
+    {
+      fprintf(stderr,"Sending this packet via interface #%d\n",interface_number);
+      serval_packetvisualise(stdout,NULL,bytes,len);
+    }
+
   memset(&s, '\0', sizeof(struct sockaddr_in));
   if (recipientaddr) {
     bcopy(recipientaddr,&s,sizeof(struct sockaddr_in));
@@ -739,7 +745,8 @@ int overlay_tick_interface(int i, long long now)
   overlay_stuff_packet_from_queue(i,e,OQ_ORDINARY,now,pax,&frame_pax,MAX_FRAME_PAX);
   overlay_stuff_packet_from_queue(i,e,OQ_OPPORTUNISTIC,now,pax,&frame_pax,MAX_FRAME_PAX);
   /* 5. XXX Fill the packet up to a suitable size with anything that seems a good idea */
-  overlay_rhizome_add_advertisements(i,e);
+  if (!(debug&DEBUG_DISABLERHIZOME))
+    overlay_rhizome_add_advertisements(i,e);
 
   /* Now send the frame.  This takes the form of a special DNA packet with a different
      service code, which we setup earlier. */
