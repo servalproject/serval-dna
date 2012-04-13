@@ -413,11 +413,11 @@ int isOverlayPacket(FILE *f,unsigned char *packet,int *ofs,int len)
 	  {
 	    int version=(frame[0]<<8)|(frame[1]);
 	    fprintf(f,"%sMDP frame (version=0x%04x):\n",indent(8),version);
-	    int dst_port=(frame[2]<<24)|(frame[3]<<16)|(frame[4]<<8)|frame[5];
-	    int src_port=(frame[6]<<24)|(frame[7]<<16)|(frame[8]<<8)|frame[9];
-	    fprintf(f,"%s      source port = %d (0x%08x)\n",
+	    int src_port=(frame[2]<<24)|(frame[3]<<16)|(frame[4]<<8)|frame[5];
+	    int dst_port=(frame[6]<<24)|(frame[7]<<16)|(frame[8]<<8)|frame[9];
+	    fprintf(f,"%s      source port =%-6d (0x%08x)\n",
 		    indent(10),src_port,src_port);
-	    fprintf(f,"%s destination port = %d (0x%08x)\n",
+	    fprintf(f,"%s destination port =%-6d (0x%08x)\n",
 		    indent(10),dst_port,dst_port);
 	    fprintf(f,"%sMDP Payload:\n",indent(10));
 	    int i,j;
