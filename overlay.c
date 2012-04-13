@@ -381,6 +381,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
       overlay_rhizome_saw_advertisements(interface,f,now);
       break;
     case OF_TYPE_DATA:
+      WHY("saw mdp contianing frame");
       overlay_saw_mdp_containing_frame(interface,f,now);
       break;
     default:
