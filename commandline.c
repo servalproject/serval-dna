@@ -478,9 +478,11 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
 	      int *rxseq=(int *)&mdp.in.payload;
 	      long long *txtime=(long long *)&mdp.in.payload[4];
 	      long long delay=overlay_gettime_ms()-*txtime;
-	      printf("%s: seq=%d time=%lld ms\n",
+	      printf("%s: seq=%d time=%lld ms%s%s\n",
 		     overlay_render_sid(mdp.in.src.sid),
-		     (*rxseq)-firstSeq+1,delay);
+		     (*rxseq)-firstSeq+1,delay,
+		     mdp.packetTypeAndFlags&MDP_NOCRYPT?"":" ENCRYPTED",
+		     mdp.packetTypeAndFlags&MDP_NOSIGN?"":" SIGNED");
 	      rx_count++;
 	      rx_ms+=delay;
 	      if (rx_mintime>delay||rx_mintime==-1) rx_mintime=delay;
