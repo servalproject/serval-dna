@@ -912,8 +912,7 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
 
   /* From the sum of observations calculate the metrics.
      We want the score to climb quickly and then plateu.
-     For fast calculation we will use a step-wise linear approach, similar to that used in
-     DNA sequence comparison. */
+  */
   for(i=0;i<OVERLAY_MAX_INTERFACES;i++) {
     int score;
     if (ms_observed_200sec[i]>200000) ms_observed_200sec[i]=200000;
