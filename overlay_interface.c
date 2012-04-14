@@ -774,25 +774,24 @@ int overlay_tick_interface(int i, long long now)
 	      while ((*p)&&(*p!=pax[j])) p=&(*p)->next;
 	      /* skip any broadcast frames that still have live
 		 interfaces left to send via */
-	      while (*p) {
-		if ((*p)->isBroadcast) {
+	      if (p&&(*p)&&(*p)->isBroadcast)
+		while (p&&(*p)&&((*p)->isBroadcast)) {
 		  int i;
 		  int workLeft=0;
 		  for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
 		    {
 		      if (overlay_interfaces[i].observed>0)
 			if (!(*p)->broadcast_sent_via[i])
-			  { if (0) fprintf(stderr,"Frame still needs to be sent on interface #%d\n",i);
+			  { if (1) fprintf(stderr,"Frame still needs to be sent on interface #%d\n",i);
 			    workLeft=1; break; }
 		    }
 		  if (!workLeft) {
-		    if (debug&DEBUG_BROADCASTS) 
-		      WHY("Leaving broadcast payload on the queue for other interfaces");
+		    if (1||debug&DEBUG_BROADCASTS) 
+		      WHY("Dequeueing broadcast frame that has been fully distributed");
 		    break;
 		  }
+		  p=&(*p)->next;
 		}
-		p=&(*p)->next;
-	      }
 	      /* Now get rid of this frame once we have found it */
 	      if (*p) {
 		if (debug&DEBUG_QUEUES)
@@ -817,7 +816,7 @@ int overlay_tick_interface(int i, long long now)
 		}
 		overlay_tx[q].length--;
 	      }
-	    }
+	    }	  
 	}
       return 0;
     }
