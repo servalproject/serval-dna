@@ -269,9 +269,6 @@ int overlay_frame_process(int interface,overlay_frame *f)
   int nhbroadcast=overlay_address_is_broadcast(f->nexthop);
   int duplicateBroadcast=0;
 
-  printf("destination is %s\n",overlay_render_sid(f->destination));
-  printf("nexthop is %s\n",overlay_render_sid(f->nexthop));
-
   if (nhbroadcast) {
     if (overlay_broadcast_drop_check(f->nexthop)) duplicateBroadcast=1;
     forMe=1; }
