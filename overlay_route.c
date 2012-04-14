@@ -842,6 +842,13 @@ int overlay_route_recalc_node_metrics(overlay_node *n,long long now)
    length time interval.
    The sequence numbers are all based on a milli-second clock.
    
+   For mobile mesh networks we need this metric to be very fast adapting to new
+   paths, but to have a memory of older paths in case they are still useful.
+
+   We thus combined equally a measure of very recent reachability (in last 10
+   interface ticks perhaps?) with a measure of longer-term reachability (last
+   200 seconds perhaps?).  Also, if no recent observations, then we further
+   limit the score.
 */
 int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
 {
@@ -849,30 +856,50 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
   long long most_recent_observation=0;
 
   /* Somewhere to remember how many milliseconds we have seen */
-  int ms_observed[OVERLAY_MAX_INTERFACES];
-  for(i=0;i<OVERLAY_MAX_INTERFACES;i++) ms_observed[i]=0;
+  int ms_observed_5sec[OVERLAY_MAX_INTERFACES];
+  int ms_observed_200sec[OVERLAY_MAX_INTERFACES];
+  for(i=0;i<OVERLAY_MAX_INTERFACES;i++) {
+    ms_observed_5sec[i]=0;
+    ms_observed_200sec[i]=0;
+  }
 
   /* XXX This simple accumulation scheme does not weed out duplicates, nor weight for recency of
      communication.
      Also, we might like to take into account the interface we received 
      the announcements on. */
   for(i=0;i<OVERLAY_MAX_OBSERVATIONS;i++)
-    /* Only count observations less than 200 seconds old.
-       XXX Down the track we will have a mechanism for older observations so that we can report
-       intermittent paths */
-    if (n->observations[i].valid&&n->observations[i].s1&&((now-n->observations[i].time_ms)<200000)) {
-      /* No need to do wrap-around calculation as the following is modulo 2^32 also */
-      unsigned int interval=n->observations[i].s2-n->observations[i].s1;
-      /* Support interface tick speeds down to 1 per hour (well and truly slow enough to do
-	 50KB/12 hours which is the minimum traffic charge rate on an expensive BGAN satellite link) */
+    if (n->observations[i].valid&&n->observations[i].s1) {
+      /* Check the observation age, and ignore if too old */
+      int obs_age=now-n->observations[i].time_ms;
+      if (obs_age>200000) continue;
+
+      /* Work out the interval covered by the observation.
+	 The times are represented as lowest 32 bits of a 64-bit 
+	 millisecond clock.  This introduces modulo problems, 
+	 however by using 32-bit modulo arithmatic here, we avoid
+	 most of them. */
+      unsigned int interval=n->observations[i].s2-n->observations[i].s1;      
+
+      /* Ignore very large intervals (>1hour) as being likely to be erroneous.
+	 (or perhaps a clock wrap due to the modulo arithmatic)
+
+	 One tick per hour should be well and truly slow enough to do
+	 50KB per 12 hours, which is the minimum traffic charge rate 
+	 on an expensive BGAN satellite link. 	 
+      */
       if (interval<3600000) {
-	if (debug&DEBUG_VERBOSE_IO) fprintf(stderr,"adding %dms (interface %d '%s')\n",interval,n->observations[i].sender_interface,
-			     overlay_interfaces[n->observations[i].sender_interface].name);
+	if (debug&DEBUG_VERBOSE_IO) 
+	  fprintf(stderr,"adding %dms (interface %d '%s')\n",
+		  interval,n->observations[i].sender_interface,
+		  overlay_interfaces[n->observations[i].sender_interface].name);
+
 	/* sender_interface is unsigned, so a single-sided test is sufficient for bounds checking */
 	if (n->observations[i].sender_interface<OVERLAY_MAX_INTERFACES)
-	  /* But never add more than 200s for any single interval, as otherwise staleness might not
-	     cause immediate decay in link score */
-	  ms_observed[n->observations[i].sender_interface]+=(interval<200000)?interval:200000; 
+	  {
+	    ms_observed_200sec[n->observations[i].sender_interface]+=interval;
+	    if (obs_age<=5000)
+	      ms_observed_5sec[n->observations[i].sender_interface]+=interval;
+	  }
 	else
 	  {
 	    WHY("Invalid interface ID in observation");
@@ -889,16 +916,20 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
      DNA sequence comparison. */
   for(i=0;i<OVERLAY_MAX_INTERFACES;i++) {
     int score;
-    if (ms_observed[i]==0) {
+    if (ms_observed_200sec[i]>200000) ms_observed_200sec[i]=200000;
+    if (ms_observed_5sec[i]>5000) ms_observed_5sec[i]=5000;
+    if (ms_observed_200sec[i]==0) {
       // Not observed at all
       score=0;
     } else {
-      if ((1+ms_observed[i]/100)<100) score=1+ms_observed[i]/100; // 1 - 99
-      else if ((100+(ms_observed[i]/500-20))<200) score=100+(ms_observed[i]/500-20); // 100 - 199
-      else if ((200+(ms_observed[i]/3000-20))<255) score=200+(ms_observed[i]/3000-20); // 200 - 254
-      else score=255;
+      int contrib_200=ms_observed_200sec[i]/(200000/128);
+      int contrib_5=ms_observed_5sec[i]/(5000/128);
+
+      if (contrib_5<1) score=contrib_200/2; else
+      score=contrib_5+contrib_200;      
+
       /* Deal with invalid sequence number ranges */
-      if (score<0) score=0;
+      if (score<0) score=0; if (score>255) score=255;
     }
 
     /* Reduce score by 1 point for each second we have not seen anything from it */
@@ -906,7 +937,7 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
     if (score<0) score=0;
 
     n->scores[i]=score;
-    if ((debug&DEBUG_OVERLAYROUTING)&&score) fprintf(stderr,"Neighbour score on interface #%d = %d (observations for %dms)\n",i,score,ms_observed[i]);
+    if ((debug&DEBUG_OVERLAYROUTING)&&score) fprintf(stderr,"Neighbour score on interface #%d = %d (observations for %dms)\n",i,score,ms_observed_200sec[i]);
   }
   
   return 0;
