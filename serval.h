@@ -743,6 +743,7 @@ int ob_indel_space(overlay_buffer *b,int offset,int shift);
 int ob_append_rfs(overlay_buffer *b,int l);
 
 int op_free(overlay_frame *p);
+overlay_frame *op_dup(overlay_frame *f);
 
 long long parse_quantity(char *q);
 

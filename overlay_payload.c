@@ -259,6 +259,29 @@ int op_free(overlay_frame *p)
   return 0;
 }
 
+overlay_frame *op_dup(overlay_frame *in)
+{
+  if (!in) return NULL;
+
+  /* clone the frame */
+  overlay_frame *out=malloc(sizeof(overlay_frame));
+  if (!out) WHYRETNULL("malloc() failed");
+
+  /* copy main data structure */
+  bcopy(in,out,sizeof(overlay_frame));
+  out->payload=ob_new(in->payload->length);
+  if (!out->payload) {
+    free(out);
+    WHYRETNULL("ob_new() failed");
+  }
+  if (ob_append_bytes(out->payload,&in->payload->bytes[0],in->payload->length))
+    {
+      op_free(out);
+      WHYRETNULL("could not duplicate payload bytes");
+    }
+  return out;
+}
+
 int overlay_frame_set_neighbour_as_source(overlay_frame *f,overlay_neighbour *n)
 {
   if (!n) return WHY("Neighbour was null");
