@@ -287,7 +287,9 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
     mdp.packetTypeAndFlags|=MDP_NOCRYPT; break;
   case OF_CRYPTO_CIPHERED|OF_CRYPTO_SIGNED:
     {
-      printf("crypted MDP frame for %s\n",overlay_render_sid(mdp.out.dst.sid));
+      printf("crypted MDP frame for %s\n",
+	     overlay_render_sid(mdp.out.dst.sid));
+
       unsigned char *k=keyring_get_nm_bytes(&mdp.out.dst,&mdp.out.src);
       unsigned char *nonce=&f->payload->bytes[0];
       int nb=crypto_box_curve25519xsalsa20poly1305_NONCEBYTES;
@@ -311,8 +313,6 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
     }    
   }
 
-  dump("mdp frame",b,len);
-
   int version=(b[0]<<8)+b[1];
   if (version!=0x0101) return WHY("Saw unsupported MDP frame version");
 
@@ -320,8 +320,8 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
   mdp.packetTypeAndFlags=MDP_TX;
 
   /* extract MDP port numbers */
-  mdp.in.dst.port=(b[6]<<24)+(b[7]<<16)+(b[8]<<8)+b[9];
   mdp.in.src.port=(b[2]<<24)+(b[3]<<16)+(b[4]<<8)+b[5];
+  mdp.in.dst.port=(b[6]<<24)+(b[7]<<16)+(b[8]<<8)+b[9];
   printf("mdp dst.port=%d, src.port=%d\n",mdp.in.dst.port,mdp.in.src.port);
 
   mdp.in.payload_length=len-10;
@@ -407,6 +407,8 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 	  bcopy(&mdp->out.dst,&temp,sizeof(sockaddr_mdp));
 	  bcopy(&mdp->out.src,&mdp->out.dst,sizeof(sockaddr_mdp));
 	  bcopy(&temp,&mdp->out.src,sizeof(sockaddr_mdp));
+
+	  if (mdp->out.dst.port==7) return WHY("echo loop averted");
 	  /* If the packet was sent to broadcast, then replace broadcast address
 	     with our local address. For now just responds with first local address */
 	  if (overlay_address_is_broadcast(mdp->out.src.sid))
@@ -589,14 +591,14 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       plain[zb+0]=0x01; 
       plain[zb+1]=0x01;
       /* Ports */
-      plain[zb+2]=(mdp->out.dst.port>>24)&0xff;
-      plain[zb+3]=(mdp->out.dst.port>>16)&0xff;
-      plain[zb+4]=(mdp->out.dst.port>>8)&0xff;
-      plain[zb+5]=(mdp->out.dst.port>>0)&0xff;
-      plain[zb+6]=(mdp->out.src.port>>24)&0xff;
-      plain[zb+7]=(mdp->out.src.port>>16)&0xff;
-      plain[zb+8]=(mdp->out.src.port>>8)&0xff;
-      plain[zb+9]=(mdp->out.src.port>>0)&0xff;
+      plain[zb+2]=(mdp->out.src.port>>24)&0xff;
+      plain[zb+3]=(mdp->out.src.port>>16)&0xff;
+      plain[zb+4]=(mdp->out.src.port>>8)&0xff;
+      plain[zb+5]=(mdp->out.src.port>>0)&0xff;
+      plain[zb+6]=(mdp->out.dst.port>>24)&0xff;
+      plain[zb+7]=(mdp->out.dst.port>>16)&0xff;
+      plain[zb+8]=(mdp->out.dst.port>>8)&0xff;
+      plain[zb+9]=(mdp->out.dst.port>>0)&0xff;
       /* payload */
       bcopy(&mdp->out.payload,&plain[zb+10],mdp->out.payload_length);
       int cipher_len=zb+10+mdp->out.payload_length;
@@ -618,7 +620,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 	 uses. */
       bcopy(&cipher_text[16],&cipher_text[0],cipher_len-16);
       frame->payload->length-=16;
-      if (1) {
+      if (0) {
 	WHY("authcrypted mdp frame");
 	dump("nm bytes",k,crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES);
 	dump("nonce",nonce,crypto_box_curve25519xsalsa20poly1305_NONCEBYTES);
@@ -823,7 +825,6 @@ int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
 	 end of the string, to avoid information leaks */
       len=4+4+strlen(mdp->error.message)+1; break;
     default:
-      fprintf(stderr,"mdp frame type=0x%x\n",mdp->packetTypeAndFlags);
       return WHY("Illegal MDP frame type.");
     }
   return len;
