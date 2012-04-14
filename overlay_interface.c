@@ -786,7 +786,8 @@ int overlay_tick_interface(int i, long long now)
 			    workLeft=1; break; }
 		    }
 		  if (!workLeft) {
-		    WHY("Leaving broadcast payload on the queue for other interfaces");
+		    if (debug&DEBUG_BROADCASTS) 
+		      WHY("Leaving broadcast payload on the queue for other interfaces");
 		    break;
 		  }
 		}

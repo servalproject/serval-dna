@@ -325,7 +325,6 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
        send back a connection refused type message? Silence is probably the
        more prudent path.
     */
-    dump("mdp dst",&mdp->out.dst.sid[0],SID_SIZE);
     if ((!overlay_address_is_local(mdp->out.dst.sid))
 	&&(!overlay_address_is_broadcast(mdp->out.dst.sid)))
       {
@@ -336,7 +335,6 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
       {
 	if (!memcmp(&mdp->out.dst,&mdp_bindings[i],sizeof(sockaddr_mdp)))
 	  { /* exact and specific match, so stop searching */
-	    WHY("Found binding");
 	    match=i; break; }
 	else {
 	  /* No exact match, so see if the port matches, and local-side address
@@ -514,7 +512,6 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       if (!broadcast) {
 	/* Is local, and is not broadcast, so shouldn't get sent out
 	   on the wire. */
-	WHY("non-broadcast packet delivered locally");
 	return 0;
       }
     }
@@ -648,7 +645,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       return WHY("Error enqueuing frame");
     }
   else {
-    WHY("queued frame");
+    if (debug&DEBUG_OVERLAYINTERFACES) WHY("queued frame");
     return 0;
   }
 }
@@ -748,8 +745,7 @@ int overlay_mdp_poll()
 	  fcntl(mdp_named_socket, F_GETFL, NULL)&(~O_NONBLOCK)); 
   }
 
-  if (!(random()&0xff)) WHY("Not implemented");
-  return -1;
+  return 0;
 }
 
 int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp) 
