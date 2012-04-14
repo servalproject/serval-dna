@@ -530,7 +530,8 @@ int overlay_route_ack_selfannounce(overlay_frame *f,overlay_neighbour *n)
       {
 	/* No path, so set nexthop to be broadcast, but don't broadcast it too far. */
 	int i;
-	for(i=0;i<SID_SIZE;i++) out->nexthop[i]=0xff;
+	for(i=0;i<(SID_SIZE-8);i++) out->nexthop[i]=0xff;
+	for(i=24;i<SID_SIZE;i++) out->nexthop[i]=random()&0xff;
 	out->nexthop_address_status=OA_RESOLVED;
 	out->ttl=2;
 	if (debug&DEBUG_OVERLAYROUTING) 
