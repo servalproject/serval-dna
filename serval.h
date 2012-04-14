@@ -1151,7 +1151,7 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now);
 int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
 			  overlay_mdp_frame *mdpreply);
 int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp);
-int overlay_mdp_dispatch(overlay_mdp_frame *mdp,
+int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 		     struct sockaddr_un *recvaddr,int recvaddlen);
 
 int ob_bcopy(overlay_buffer *b,int from, int to, int len);
