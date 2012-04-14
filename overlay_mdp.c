@@ -425,7 +425,7 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 	    }
 
 	  /* queue frame for delivery */
-	  return 
+	  return
 	    overlay_mdp_dispatch(mdp,0 /* system generated */,
 				 NULL,0);
 	}
