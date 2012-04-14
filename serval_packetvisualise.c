@@ -194,12 +194,12 @@ int isOverlayPacket(FILE *f,unsigned char *packet,int *ofs,int len)
       fprintf(f,"\n%sframe is ",indent(8));
       switch(frame_flags&0xc) {
       case 0: fprintf(f,"not encrypted"); break;
-      case 4: fprintf(f,"encrypted using recipients public key"); 
+      case 4: fprintf(f,"encrypted using recipients public key (SID)"); 
 	cantDecodeFrame=1; break;
-      case 8: fprintf(f,"encrypted using recipients public key, signed using senders private key"); 
+      case 8: fprintf(f,"signed using senders public signing key (SAS)"); 
 	cantDecodeFrame=1; break;
-      case 0xc: fprintf(f,"encrypted using recipients public key, signed using senders private key, and addresses are also encrypted"); 
-	cantDecodeFrame=1; cantDecodeRecipient=1; break;
+      case 0xc: fprintf(f,"authcrypted (encrypted and authenticated) using CryptoBox (SID)"); 
+	cantDecodeFrame=1; break;
       }
       fprintf(f,"\n");
 
