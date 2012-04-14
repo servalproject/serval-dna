@@ -260,15 +260,16 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
      Take ports from mdp frame itself.
      Take payload from mdp frame itself.
   */
-  unsigned char *b=&f->payload->bytes[0];
-  dump("mdp frame",b,f->payload->length);
-  if (f->payload->length<10) return WHY("Invalid MDP frame");
-  int version=(b[0]<<8)+b[1];
-  if (version!=0x0101) return WHY("Saw unsupported MDP frame version");
   overlay_mdp_frame mdp;
 
-  /* Indicate MDP message type */
-  mdp.packetTypeAndFlags=MDP_TX;
+  /* Get source and destination addresses */
+  bcopy(&f->destination[0],&mdp.in.dst.sid[0],SID_SIZE);
+  bcopy(&f->source[0],&mdp.in.src.sid[0],SID_SIZE);
+
+  int len=f->payload->length;
+  unsigned char *b;
+
+  if (len<10) return WHY("Invalid MDP frame");
 
   int decrypt=1;
 
@@ -285,20 +286,28 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
     break;
   }
 
-  /* Get source and destination addresses */
-  bcopy(&f->destination[0],&mdp.in.dst.sid[0],SID_SIZE);
-  bcopy(&f->source[0],&mdp.in.src.sid[0],SID_SIZE);
-  /* extract MDP port numbers */
-  mdp.in.src.port=(b[2]<<24)+(b[3]<<16)+(b[4]<<8)+b[5];
-  mdp.in.dst.port=(b[6]<<24)+(b[7]<<16)+(b[8]<<8)+b[9];
-  printf("mdp dst.port=%d, src.port=%d\n",mdp.in.dst.port,mdp.in.src.port);
-
   if (!decrypt) {
     /* get payload */
-    mdp.in.payload_length=f->payload->length-10;
-    bcopy(&b[10],&mdp.in.payload[0],mdp.in.payload_length);
+    b=&f->payload->bytes[0];
+    len=f->payload->length;
   } else
     return WHY("decryption/signature verification not implemented");
+
+  dump("mdp frame",b,len);
+
+  int version=(b[0]<<8)+b[1];
+  if (version!=0x0101) return WHY("Saw unsupported MDP frame version");
+
+  /* Indicate MDP message type */
+  mdp.packetTypeAndFlags=MDP_TX;
+
+  /* extract MDP port numbers */
+  mdp.in.dst.port=(b[6]<<24)+(b[7]<<16)+(b[8]<<8)+b[9];
+  mdp.in.src.port=(b[2]<<24)+(b[3]<<16)+(b[4]<<8)+b[5];
+  printf("mdp dst.port=%d, src.port=%d\n",mdp.in.dst.port,mdp.in.src.port);
+
+  mdp.in.payload_length=len-10;
+  bcopy(&b[10],&mdp.in.payload[0],mdp.in.payload_length);
 
   /* and do something with it! */
   return overlay_saw_mdp_frame(interface,&mdp,now);
@@ -314,7 +323,9 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
     /* Regular MDP frame addressed to us.  Look for matching port binding,
        and if available, push to client.  Else do nothing, or if we feel nice
        send back a connection refused type message? Silence is probably the
-       more prudent path. */
+       more prudent path.
+    */
+    dump("mdp dst",&mdp->out.dst.sid[0],SID_SIZE);
     if ((!overlay_address_is_local(mdp->out.dst.sid))
 	&&(!overlay_address_is_broadcast(mdp->out.dst.sid)))
       {
@@ -325,6 +336,7 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
       {
 	if (!memcmp(&mdp->out.dst,&mdp_bindings[i],sizeof(sockaddr_mdp)))
 	  { /* exact and specific match, so stop searching */
+	    WHY("Found binding");
 	    match=i; break; }
 	else {
 	  /* No exact match, so see if the port matches, and local-side address
@@ -396,8 +408,8 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 
 	  /* queue frame for delivery */
 	  return 
-	    overlay_saw_mdp_frame(-1 /* we don't know the originating interface */,
-				  mdp,overlay_gettime_ms());
+	    overlay_mdp_dispatch(mdp,0 /* system generated */,
+				 NULL,0);
 	}
 	break;
       default:
@@ -406,17 +418,15 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 	return WHY("Received packet for which no listening process exists");
       }
     }
-
     break;
   default:
     return WHY("We should only see MDP_TX frames here");
   }
 
-  
   return WHY("Not implemented");
 }
 
-int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,
+int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,int userGeneratedFrameP,
 				      struct sockaddr_un *recvaddr,
 				      int recvaddrlen)
 {
@@ -436,6 +446,18 @@ int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,
       return WHY("Packet had broadcast address as source address");
     }
   
+  /* Check for build-in port listeners */
+  if (!userGeneratedFrameP)
+    if (overlay_address_is_local(src->sid)) {
+      switch(src->port) {
+      case 7: 
+	/* locally hard-wired port */
+	return 0;
+      default:
+	break;
+      }
+    }
+
   /* Now make sure that source address is in the list of bound addresses,
      and that the recvaddr matches. */
   int i;
@@ -455,6 +477,8 @@ int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,
 	}
     }
 
+  printf("addr=%s port=%d\n",
+	 overlay_render_sid(src->sid),src->port);
   return WHY("No such socket binding:unix domain socket tuple exists -- someone might be trying to spoof someone else's connection");
 }
 
@@ -464,13 +488,13 @@ int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,
    This is for use by the SERVER. 
    Clients should use overlay_mdp_send()
  */
-int overlay_mdp_dispatch(overlay_mdp_frame *mdp,
-		     struct sockaddr_un *recvaddr,int recvaddrlen)
+int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
+			 struct sockaddr_un *recvaddr,int recvaddrlen)
 {
   /* Work out if destination is broadcast or not */
   int broadcast=1;
   
-  if (overlay_mdp_sanitytest_sourceaddr(&mdp->out.src,
+  if (overlay_mdp_sanitytest_sourceaddr(&mdp->out.src,userGeneratedFrameP,
 					recvaddr,recvaddrlen))
     return overlay_mdp_reply_error
       (mdp_named_socket,
@@ -538,11 +562,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,
     fe|=ob_append_byte(frame->payload,0x01);
     /* Destination port */
     fe|=ob_append_int(frame->payload,mdp->out.dst.port);
-    /* XXX we should probably pull the source port from the bindings
-       On that note, when a binding is granted, we should probably
-       provide a token that can be used to lookup the binding and
-       indicate which binding the packet is for? */
-    fe|=ob_append_int(frame->payload,0);
+    fe|=ob_append_int(frame->payload,mdp->out.src.port);
     {
       /* write cryptobox nonce */
       unsigned char nonce[crypto_box_curve25519xsalsa20poly1305_NONCEBYTES];
@@ -603,11 +623,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,
     ob_append_byte(frame->payload,0x01);
     /* Destination port */
     ob_append_int(frame->payload,mdp->out.dst.port);
-    /* XXX we should probably pull the source port from the bindings
-       On that note, when a binding is granted, we should probably
-       provide a token that can be used to lookup the binding and
-       indicate which binding the packet is for? */
-    ob_append_int(frame->payload,0);
+    ob_append_int(frame->payload,mdp->out.src.port);
     ob_append_bytes(frame->payload,mdp->out.payload,mdp->out.payload_length);
     break;
   }
@@ -706,8 +722,8 @@ int overlay_mdp_poll()
 				   &mdpreply);
 	}
 	break;
-      case MDP_TX: /* Send payload */
-	return overlay_mdp_dispatch(mdp,(struct sockaddr_un*)recvaddr,recvaddrlen);
+      case MDP_TX: /* Send payload (and don't treat it as system privileged) */
+	return overlay_mdp_dispatch(mdp,1,(struct sockaddr_un*)recvaddr,recvaddrlen);
 	break;
       case MDP_BIND: /* Bind to port */
 	return overlay_mdp_process_bind_request(mdp_named_socket,mdp,
