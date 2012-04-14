@@ -268,30 +268,42 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
 
   int len=f->payload->length;
   unsigned char *b;
+  unsigned char plain_block[len+16];
 
   if (len<10) return WHY("Invalid MDP frame");
-
-  int decrypt=1;
 
   /* copy crypto flags from frame so that we know if we need to decrypt or verify it */
   switch(f->modifiers&OF_CRYPTO_BITS)  {
   case 0: 
-    decrypt=0;
-    mdp.packetTypeAndFlags|=MDP_NOCRYPT|MDP_NOSIGN; break;    
-  case OF_CRYPTO_CIPHERED:
-    mdp.packetTypeAndFlags|=MDP_NOSIGN; break;
-  case OF_CRYPTO_SIGNED:
-    mdp.packetTypeAndFlags|=MDP_NOCRYPT; break;
-  case OF_CRYPTO_CIPHERED|OF_CRYPTO_SIGNED:
-    break;
-  }
-
-  if (!decrypt) {
     /* get payload */
     b=&f->payload->bytes[0];
     len=f->payload->length;
-  } else
-    return WHY("decryption/signature verification not implemented");
+    mdp.packetTypeAndFlags|=MDP_NOCRYPT|MDP_NOSIGN; break;    
+  case OF_CRYPTO_CIPHERED:
+    return WHY("decryption not implemented");
+    mdp.packetTypeAndFlags|=MDP_NOSIGN; break;
+  case OF_CRYPTO_SIGNED:
+    return WHY("signature verification not implemented");
+    mdp.packetTypeAndFlags|=MDP_NOCRYPT; break;
+  case OF_CRYPTO_CIPHERED|OF_CRYPTO_SIGNED:
+    {
+      unsigned char *k=keyring_get_nm_bytes(&mdp.out.dst,&mdp.out.src);
+      unsigned char *nonce=&f->payload->bytes[0];
+      int nb=crypto_box_curve25519xsalsa20poly1305_NONCEBYTES;
+      if (!k) return WHY("I don't have the private key required to decrypt that");
+      bzero(&plain_block[0],crypto_box_curve25519xsalsa20poly1305_ZEROBYTES-16);
+      int cipher_len=f->payload->length-nb;
+      bcopy(&f->payload->bytes[nb],&plain_block[16],cipher_len);
+      dump("cipher block",plain_block,cipher_len);
+      if (crypto_box_curve25519xsalsa20poly1305_open_afternm
+	  (plain_block,plain_block,cipher_len,nonce,k))
+	return WHY("crypto_box_open_afternm() failed (forged or corrupted packet?)");
+      dump("plain block",plain_block,cipher_len);
+      
+      return WHY("decryption/signature verification not implemented");
+      break;
+    }    
+  }
 
   dump("mdp frame",b,len);
 
@@ -554,12 +566,6 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 			  +crypto_box_curve25519xsalsa20poly1305_NONCEBYTES
 			  +crypto_box_curve25519xsalsa20poly1305_ZEROBYTES
 			  +mdp->out.payload_length);
-    /* MDP version 1 */
-    fe|=ob_append_byte(frame->payload,0x01);
-    fe|=ob_append_byte(frame->payload,0x01);
-    /* Destination port */
-    fe|=ob_append_int(frame->payload,mdp->out.dst.port);
-    fe|=ob_append_int(frame->payload,mdp->out.src.port);
     {
       /* write cryptobox nonce */
       unsigned char nonce[crypto_box_curve25519xsalsa20poly1305_NONCEBYTES];
@@ -569,24 +575,52 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 	ob_append_bytes(frame->payload,nonce,crypto_box_curve25519xsalsa20poly1305_NONCEBYTES);
       /* generate plain message with zero bytes and get ready to cipher it */
       unsigned char plain[crypto_box_curve25519xsalsa20poly1305_ZEROBYTES
-			  +mdp->out.payload_length];
-      bzero(&plain[0],crypto_box_curve25519xsalsa20poly1305_ZEROBYTES);
-      bcopy(&mdp->out.payload,&plain[crypto_box_curve25519xsalsa20poly1305_ZEROBYTES],
-	    mdp->out.payload_length);
+			  +10+mdp->out.payload_length];
+      /* zero bytes */
+      int zb=crypto_box_curve25519xsalsa20poly1305_ZEROBYTES;
+      bzero(&plain[0],zb);
+      /* MDP version 1 */
+      plain[zb+0]=0x01; 
+      plain[zb+1]=0x01;
+      /* Ports */
+      plain[zb+2]=(mdp->out.dst.port>>24)&0xff;
+      plain[zb+3]=(mdp->out.dst.port>>16)&0xff;
+      plain[zb+4]=(mdp->out.dst.port>>8)&0xff;
+      plain[zb+5]=(mdp->out.dst.port>>0)&0xff;
+      plain[zb+6]=(mdp->out.src.port>>24)&0xff;
+      plain[zb+7]=(mdp->out.src.port>>16)&0xff;
+      plain[zb+8]=(mdp->out.src.port>>8)&0xff;
+      plain[zb+9]=(mdp->out.src.port>>0)&0xff;
+      /* payload */
+      bcopy(&mdp->out.payload,&plain[zb+10],mdp->out.payload_length);
+      int cipher_len=zb+10+mdp->out.payload_length;
       
       /* get pre-computed PKxSK bytes (the slow part of auth-cryption that can be
 	 retained and reused, and use that to do the encryption quickly. */
       unsigned char *k=keyring_get_nm_bytes(&mdp->out.src,&mdp->out.dst);
       if (!k) { op_free(frame); return WHY("could not compute Curve25519(NxM)"); }
       /* Get pointer to place in frame where the ciphered text needs to go */
-      unsigned char *cipher_text=ob_append_space(frame->payload,sizeof(plain));
+      int cipher_offset=frame->payload->length;
+      unsigned char *cipher_text=ob_append_space(frame->payload,cipher_len);
       if (fe||(!cipher_text))
 	{ op_free(frame); return WHY("could not make space for ciphered text"); }
       /* Actually authcrypt the payload */
-      if (crypto_box_afternm(cipher_text,plain,
-			     crypto_box_curve25519xsalsa20poly1305_ZEROBYTES
-			     +mdp->out.payload_length,nonce,k))
+      if (crypto_box_curve25519xsalsa20poly1305_afternm
+	  (cipher_text,plain,cipher_len,nonce,k))
 	{ op_free(frame); return WHY("crypto_box_afternm() failed"); }
+      /* now shuffle down 16 bytes to get rid of the temporary space that crypto_box
+	 uses. */
+      bcopy(&cipher_text[16],&cipher_text[0],cipher_len-16);
+      frame->payload->length-=16;
+      if (0) {
+	WHY("authcrypted mdp frame");
+	dump("plain text",&plain[16],cipher_len-16);
+	dump("cipher text",cipher_text,cipher_len-16);
+	printf("frame->payload->length=%d,cipher_len-16=%d,cipher_offset=%d\n",
+	       frame->payload->length,cipher_len-16,cipher_offset);
+	dump("frame",&frame->payload->bytes[0],
+	     frame->payload->length);
+      }
     }
     break;
   case MDP_NOSIGN: 

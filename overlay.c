@@ -271,7 +271,6 @@ int overlay_frame_process(int interface,overlay_frame *f)
 
   if (nhbroadcast) {
     if (overlay_broadcast_drop_check(f->nexthop)) duplicateBroadcast=1;
-    printf("DUPCHECK nexthop is %s\n",overlay_render_sid(f->nexthop));
     
     forMe=1; }
   if (overlay_address_is_local(f->nexthop)) forMe=1;
