@@ -290,17 +290,20 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
       unsigned char *k=keyring_get_nm_bytes(&mdp.out.dst,&mdp.out.src);
       unsigned char *nonce=&f->payload->bytes[0];
       int nb=crypto_box_curve25519xsalsa20poly1305_NONCEBYTES;
+      int zb=crypto_box_curve25519xsalsa20poly1305_ZEROBYTES;
       if (!k) return WHY("I don't have the private key required to decrypt that");
+      dump("nm bytes",k,crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES);
+      dump("nonce",nonce,crypto_box_curve25519xsalsa20poly1305_NONCEBYTES);
       bzero(&plain_block[0],crypto_box_curve25519xsalsa20poly1305_ZEROBYTES-16);
       int cipher_len=f->payload->length-nb;
       bcopy(&f->payload->bytes[nb],&plain_block[16],cipher_len);
-      dump("cipher block",plain_block,cipher_len);
+      dump("cipher block",&plain_block[16],cipher_len);
       if (crypto_box_curve25519xsalsa20poly1305_open_afternm
-	  (plain_block,plain_block,cipher_len,nonce,k))
+	  (plain_block,plain_block,cipher_len+16,nonce,k))
 	return WHY("crypto_box_open_afternm() failed (forged or corrupted packet?)");
-      dump("plain block",plain_block,cipher_len);
-      
-      return WHY("decryption/signature verification not implemented");
+      dump("plain block",&plain_block[zb],cipher_len-16);
+      b=&plain_block[zb];
+      len=cipher_len-16;
       break;
     }    
   }
@@ -612,10 +615,12 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 	 uses. */
       bcopy(&cipher_text[16],&cipher_text[0],cipher_len-16);
       frame->payload->length-=16;
-      if (0) {
+      if (1) {
 	WHY("authcrypted mdp frame");
+	dump("nm bytes",k,crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES);
+	dump("nonce",nonce,crypto_box_curve25519xsalsa20poly1305_NONCEBYTES);
 	dump("plain text",&plain[16],cipher_len-16);
-	dump("cipher text",cipher_text,cipher_len-16);
+	dump("cipher text",cipher_text,cipher_len-16);	
 	printf("frame->payload->length=%d,cipher_len-16=%d,cipher_offset=%d\n",
 	       frame->payload->length,cipher_len-16,cipher_offset);
 	dump("frame",&frame->payload->bytes[0],
