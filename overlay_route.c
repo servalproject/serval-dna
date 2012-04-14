@@ -388,21 +388,16 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
       if (neh->scores[i]>neh->scores[*interface]) *interface=i;
     }
     if (neh->scores[*interface]<1) {
-      if (debug>DEBUG_OVERLAYROUTING) { 
-	int i;
-	fprintf(stderr,"No open path to ");
-	for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",neh->node->sid[i]);
-	fprintf(stderr,"\n");
-      }
+      if (debug>DEBUG_OVERLAYROUTING)
+	fprintf(stderr,"No open path to %s\n",overlay_render_sid(neh->node->sid));
       return WHY("No open path to node");
     }
+    if (0) printf("nexthop is %s\n",overlay_render_sid(nexthop));
     return 0;
   } else {
     /* Is not a direct neighbour */
     return WHY("Calculating next-hop destination for nodes that are not direct neighbours is not yet implemented");
   }
-
-  return WHY("Not implemented");
 }
 
 unsigned int overlay_route_hash_sid(unsigned char *sid)
