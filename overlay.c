@@ -271,6 +271,8 @@ int overlay_frame_process(int interface,overlay_frame *f)
 
   if (nhbroadcast) {
     if (overlay_broadcast_drop_check(f->nexthop)) duplicateBroadcast=1;
+    printf("DUPCHECK nexthop is %s\n",overlay_render_sid(f->nexthop));
+    
     forMe=1; }
   if (overlay_address_is_local(f->nexthop)) forMe=1;
 
@@ -355,14 +357,30 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	}
 	f->ttl--;
 
-	printf("considering forwarding frame to %s (forme=%d, broadcast=%d)\n",
-	       overlay_render_sid(f->destination),ultimatelyForMe,broadcast);
+	printf("considering forwarding frame to %s (forme=%d, broadcast=%d, dup=%d)\n",
+	       overlay_render_sid(f->destination),ultimatelyForMe,broadcast,
+	       duplicateBroadcast);
 	if (overlay_address_is_broadcast(f->destination))
-	  if (overlay_broadcast_drop_check(f->destination))
-	    { 
-	      dontForward=1;
-	      return WHY("Not forwarding or reading duplicate broadcast");
-	    }
+	  {
+	    /* if nexthop and destination address are the same, and nexthop was shown
+	       not to be a duplicate, then we don't need to test the destination
+	       address for being a duplicate broadcast. */
+	    int sameAsNextHop=1,i;
+	    for(i=0;i<SID_SIZE;i++) 
+	      if (f->nexthop[i]!=f->destination[i])
+		{ sameAsNextHop=0; break; }
+
+	    if ((!sameAsNextHop)&&overlay_broadcast_drop_check(f->destination))
+	      duplicateBroadcast=1;
+	    if (duplicateBroadcast)
+	      { 
+		printf("reject src is %s\n",overlay_render_sid(f->source));
+		printf("reject nexthop is %s\n",overlay_render_sid(f->nexthop));
+		printf("reject destination is %s\n",
+		       overlay_render_sid(f->destination));		
+		return WHY("Not forwarding or reading duplicate broadcast");
+	      }
+	  }
 
 	if (!dontForward) {
 	  /* Queue frame for dispatch.
