@@ -265,11 +265,15 @@ int overlay_frame_process(int interface,overlay_frame *f)
   /* Okay, nexthop is valid, so let's see if it is us */
   int forMe=0,i;
   int ultimatelyForMe=0;
-  int broadcast=overlay_address_is_broadcast(f->nexthop)|overlay_address_is_broadcast(f->destination);
+  int broadcast=0;
+  int nhbroadcast=overlay_address_is_broadcast(f->nexthop);
   int duplicateBroadcast=0;
 
-  if (broadcast) {
-    if (overlay_broadcast_drop_check(f->destination)) duplicateBroadcast=1;
+  printf("destination is %s\n",overlay_render_sid(f->destination));
+  printf("nexthop is %s\n",overlay_render_sid(f->nexthop));
+
+  if (nhbroadcast) {
+    if (overlay_broadcast_drop_check(f->nexthop)) duplicateBroadcast=1;
     forMe=1; }
   if (overlay_address_is_local(f->nexthop)) forMe=1;
 
@@ -277,7 +281,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
     /* It's for us, so resolve the addresses */
     if (overlay_frame_resolve_addresses(interface,f))
       return WHY("Failed to resolve destination and sender addresses in frame");
-
+    broadcast=overlay_address_is_broadcast(f->destination);    
     if (debug&DEBUG_OVERLAYFRAMES) {
       fprintf(stderr,"Destination for this frame is (resolve code=%d): ",f->destination_address_status);
       if (f->destination_address_status==OA_RESOLVED) for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",f->destination[i]); else fprintf(stderr,"???");
@@ -354,11 +358,34 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	}
 	f->ttl--;
 
+	printf("considering forwarding frame to %s (forme=%d, broadcast=%d)\n",
+	       overlay_render_sid(f->destination),ultimatelyForMe,broadcast);
+	if (overlay_address_is_broadcast(f->destination))
+	  if (overlay_broadcast_drop_check(f->destination))
+	    { 
+	      dontForward=1;
+	      return WHY("Not forwarding or reading duplicate broadcast");
+	    }
+
 	if (!dontForward) {
 	  /* Queue frame for dispatch.
 	     Don't forget to put packet in the correct queue based on type.
-	     (e.g., mesh management, voice, video, ordinary or opportunistic). */		
-	  WHY("forwarding of frames not implemented");
+	     (e.g., mesh management, voice, video, ordinary or opportunistic).
+
+	     But the really important bit is to clone the frame, since the
+	     structure we are looking at here must be left as is and returned
+	     to the caller to do as they please */	  
+	  overlay_frame *qf=op_dup(f);
+	  if (!qf) WHY("Could not clone frame for queuing");
+	  else {
+	    /* XXX we should preserve the queue priority of the frame */
+	    int qn=OQ_ORDINARY;
+	    WHY("queuing frame for forwarding");
+	    if (overlay_payload_enqueue(qn,qf)) {
+	      WHY("failed to enqueue forwarded payload");
+	      op_free(qf);
+	    }
+	  }
 	}
 
 	/* If the frame was a broadcast frame, then we need to hang around
