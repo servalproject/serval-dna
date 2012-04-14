@@ -182,6 +182,7 @@ int isOverlayPacket(FILE *f,unsigned char *packet,int *ofs,int len)
 
       int cantDecodeFrame=0;
       int cantDecodeRecipient=0;
+      int showSignature=0;
       fprintf(f,"%sframe is ",indent(8));
       switch(frame_flags&0x3) {
       case 0: fprintf(f,"not compressed"); break;
@@ -197,7 +198,12 @@ int isOverlayPacket(FILE *f,unsigned char *packet,int *ofs,int len)
       case 4: fprintf(f,"encrypted using recipients public key (SID)"); 
 	cantDecodeFrame=1; break;
       case 8: fprintf(f,"signed using senders public signing key (SAS)"); 
-	cantDecodeFrame=1; break;
+	/* This doesn't stop us displaying the frame, as the body is still en claire.
+	   It does mean that we should present the signature block, and not
+	   show the signature as part of the packet body. */
+	cantDecodeFrame=0; 
+	showSignature=1;
+	break;
       case 0xc: fprintf(f,"authcrypted (encrypted and authenticated) using CryptoBox (SID)"); 
 	cantDecodeFrame=1; break;
       }
@@ -227,6 +233,7 @@ int isOverlayPacket(FILE *f,unsigned char *packet,int *ofs,int len)
 	fprintf(f,"%sFrame payload begins at offset 0x%x\n",indent(8),*ofs);
 	frame=&packet[*ofs];
 	frame_len=next_frame_ofs-(*ofs);
+	if (showSignature) frame_len-=64;
 	frame_ofs=0;
       } else {
 	fprintf(f,"%sWARNING: Cannot decode frame addresses due to encryption.\n",
@@ -450,6 +457,23 @@ int isOverlayPacket(FILE *f,unsigned char *packet,int *ofs,int len)
 	      }
 	  }
 	  break;
+	}
+
+	if (showSignature) {
+	int i,j;
+	fprintf(f,"%sWARNING: Signature is for display purposes, and has not been verified\n",indent(8));
+	fprintf(f,"%sFrame signature block (SAS signed):\n",indent(8));
+	for(i=0;i<64;i+=16) 
+	  {
+	    fprintf(f,"%s%04x :",indent(10),i);
+	    for(j=0;j<16&&(i+j)<len;j++) fprintf(f," %02x",frame[frame_len+i+j]);
+	    for(;j<16;j++) fprintf(f,"   ");
+	    fprintf(f,"    ");
+	    for(j=0;j<16&&(i+j)<len;j++) 
+	      fprintf(f,"%c",frame[frame_len+i+j]>=' '
+		      &&frame[frame_len+i+j]<0x7c?frame[frame_len+i+j]:'.');
+	    fprintf(f,"\n");
+	  }
 	}
       }	
       
