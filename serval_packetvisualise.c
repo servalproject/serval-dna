@@ -269,13 +269,10 @@ int isOverlayPacket(FILE *f,unsigned char *packet,int *ofs,int len)
 	    int i;
 	    fprintf(f,"%sACK of self-announce\n",indent(8));
 	    time=0; for(i=0;i<4;i++) time=(time<<8)|frame[frame_ofs++];
-	    fprintf(f,"%sObservation time : %10lldsecs (0x%08llx)\n",indent(10),time,time);
-	    while(frame_ofs<frame_len) {
-	      int iface=frame[frame_ofs++];
-	      int score=frame[frame_ofs++];
-	      fprintf(f,"%sinterface #%d reachability score: %d (0x%02x)\n",
-		      indent(12),iface,score,score);
-	    }
+	    fprintf(f,"%sObservation time : %10lld secs (0x%08llx)\n",
+		    indent(10),time,time);
+	    int iface=frame[frame_ofs++];
+	    fprintf(f,"%sSender Interface : %d\n",indent(10),iface);	    
 	  } 
 	  break;
 	case 0x50: /* rhizome advertisement */
