@@ -320,10 +320,13 @@ int overlay_rx_messages()
 		    plen=2048-128;		    
 		    plen=packet[110]+(packet[111]<<8);
 		    if (plen>(2048-128)) plen=-1;
-		    if (debug&DEBUG_PACKETRX) 
+		    if (debug&DEBUG_PACKETRX) {
+		      fflush(stdout);
 		      serval_packetvisualise(stderr,
 					     "Read from dummy interface",
 					     &packet[128],plen);
+		      fflush(stderr); 
+		    }
 		    bzero(&transaction_id[0],8);
 		    bzero(&src_addr,sizeof(src_addr));
 		    if ((plen>=0)&&(packet[0]==0x01)&&!(packet[1]|packet[2]|packet[3])) {
@@ -347,9 +350,12 @@ int overlay_rx_messages()
 	      c[i]=0; count--; 
 	    } else {
 	      /* We have a frame from this interface */
-	      if (debug&DEBUG_PACKETRX) 
+	      if (debug&DEBUG_PACKETRX) {
+		fflush(stdout);
 		serval_packetvisualise(stderr,"Read from real interface",
 				       packet,plen);
+		fflush(stderr);
+	      }
 	      if (debug&DEBUG_OVERLAYINTERFACES)fprintf(stderr,"Received %d bytes on interface #%d (%s)\n",plen,i,overlay_interfaces[i].name);
 	      
 	      if (packetOk(i,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) 
@@ -577,11 +583,11 @@ int overlay_interface_discover()
 
 int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,overlay_frame *pax[],int *frame_pax,int frame_max_pax) 
 {
-  if (1) printf("Stuffing from queue #%d on interface #%d\n",q,i);
+  if (0) printf("Stuffing from queue #%d on interface #%d\n",q,i);
   overlay_frame **p=&overlay_tx[q].first;
   while(p&&*p)
     {
-      if (1) printf("p=%p, *p=%p, queue=%d\n",p,*p,q);
+      if (0) printf("p=%p, *p=%p, queue=%d\n",p,*p,q);
 
       /* Throw away any stale frames */
       overlay_frame *pp=*p;
@@ -631,7 +637,7 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,
 				      &next_hop_interface);
 	    if (!r) {
 	      if (next_hop_interface==i) {
-		printf("unicast pax %p\n",*p);
+		if (0) printf("unicast pax %p\n",*p);
 		dontSend=0; } else {
 		if (0) 
 		  printf("Packet should go via interface #%d, but I am interface #%d\n",next_hop_interface,i);
@@ -648,7 +654,7 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,
 		 once they have been sent via all open interfaces (or gone stale) */
 	      dontSend=0;
 	      (*p)->broadcast_sent_via[i]=1;
-	      printf("broadcast pax %p\n",*p);
+	      if (0) printf("broadcast pax %p\n",*p);
 	    }
 	  
 	  if (dontSend==0) {   
@@ -658,7 +664,12 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,
 	      {
 		/* Add payload to list of payloads we are sending with this frame so that we can dequeue them
 		   if we send them. */
-		printf("  paxed#%d %p\n",*frame_pax,*p);
+		if (0) {
+		  printf("  paxed#%d %p%s\n",*frame_pax,*p,
+			 (*p)->isBroadcast?"(broadcast)":"");
+		  fflush(stdout);
+		  dump("payload of pax",(*p)->payload->bytes,(*p)->payload->length);
+		}
 		pax[(*frame_pax)++]=*p;
 	      }
 	  }
@@ -777,8 +788,13 @@ int overlay_tick_interface(int i, long long now)
       for(j=0;j<frame_pax;j++)
 	{
 	  overlay_frame *p=pax[j];
+	  if (0) 
+	    printf("dequeue %p ?%s\n",p,p->isBroadcast?" (broadcast)":" (unicast)");
 	  if (!p->isBroadcast)
-	    p->dequeue=1;
+	    {
+	      if (0) printf("yes\n");
+	      p->dequeue=1;
+	    }
 	  else {
 	    int i;
 	    int workLeft=0;
@@ -804,9 +820,11 @@ int overlay_tick_interface(int i, long long now)
 	  overlay_frame **p=&overlay_tx[q].first;
 	  overlay_frame *t;
 	  while(p&&(*p))
-	    {
+	    {	      
 	      if ((*p)->dequeue) {
 		{
+		  if (0) printf("dequeuing %p%s NOW\n",
+				*p,(*p)->isBroadcast?" (broadcast)":" (unicast)");	  
 		  t=*p;
 		  *p=t->next;
 		  if (overlay_tx[q].last==t) overlay_tx[q].last=t->prev;
@@ -825,9 +843,11 @@ int overlay_tick_interface(int i, long long now)
 		  }
 		  overlay_tx[q].length--;
 		}
+	      } else {
+		/* only skip ahead if we haven't dequeued something */
+		if (!(*p)) break;
+		p=&(*p)->next;
 	      }
-	      if (!(*p)) break;
-	      p=&(*p)->next;
 	    }
 	}
       return 0;
