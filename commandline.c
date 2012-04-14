@@ -435,7 +435,7 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
   while(1) {
     /* Now send the ping packets */
     mdp.packetTypeAndFlags=MDP_TX;
-    if (broadcast) { mdp.packetTypeAndFlags|=MDP_NOCRYPT|MDP_NOSIGN;
+    if (broadcast) { mdp.packetTypeAndFlags|=MDP_NOCRYPT;
       fprintf(stderr,"WARNING: broadcast ping packets will not be encryped.\n"); }
     mdp.out.src.port=port;
     bcopy(srcsid,mdp.out.src.sid,SID_SIZE);

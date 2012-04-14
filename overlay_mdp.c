@@ -283,6 +283,39 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
     return WHY("decryption not implemented");
     mdp.packetTypeAndFlags|=MDP_NOSIGN; break;
   case OF_CRYPTO_SIGNED:
+    {
+      /* This call below will dispatch the request for the SAS if we don't
+	 already have it.  In the meantime, we just drop the frame if the SAS
+	 is not available. */
+      unsigned char *key=keyring_find_sas_public(keyring,mdp.out.src.sid);
+      if (!key) return WHY("SAS key not currently on record, so cannot verify");
+
+      /* get payload and following compacted signature */
+      b=&f->payload->bytes[0];
+      len=f->payload->length-crypto_sign_edwards25519sha512batch_BYTES;
+
+      /* get hash */
+      unsigned char hash[crypto_hash_sha512_BYTES];
+      crypto_hash_sha512(hash,b,len);
+
+      /* reconstitute signature by putting hash between two halves of signature */
+      unsigned char signature[crypto_hash_sha512_BYTES
+			      +crypto_sign_edwards25519sha512batch_BYTES];
+      bcopy(&b[len],&signature[0],32);
+      crypto_hash_sha512(&signature[32],b,len);
+      dump("hash for verification",hash,crypto_hash_sha512_BYTES);
+      bcopy(&b[len+32],&signature[32+crypto_hash_sha512_BYTES],32);
+      
+      /* verify signature */
+      unsigned char m[crypto_hash_sha512_BYTES];
+      unsigned long long  mlen=0;
+      int result
+	=crypto_sign_edwards25519sha512batch_open(m,&mlen,
+						  signature,sizeof(signature),
+						  key);
+      if (result) return WHY("Signature verification failed: incorrect signature");
+      else WHY("signature check passed");
+    }
     return WHY("signature verification not implemented");
     mdp.packetTypeAndFlags|=MDP_NOCRYPT; break;
   case OF_CRYPTO_CIPHERED|OF_CRYPTO_SIGNED:
@@ -397,7 +430,12 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
     } else {
       /* No socket is bound, ignore the packet ... except for magic sockets */
       switch(mdp->out.dst.port) {
-      case 7: /* well known ECHO port for TCP/UDP and now MDP */
+      case MDP_PORT_KEYMAPREQUEST:
+	/* Either respond with the appropriate SAS, or record this one if it
+	   verfies out okay. */
+	WHY("key mapping request");
+	return keyring_mapping_request(keyring,&mdp);
+      case MDP_PORT_ECHO: /* well known ECHO port for TCP/UDP and now MDP */
 	{
 	  /* Echo is easy: we swap the sender and receiver addresses (and thus port
 	     numbers) and send the frame back. */
@@ -468,7 +506,8 @@ int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,int userGeneratedFrameP,
   if (!userGeneratedFrameP)
     if (overlay_address_is_local(src->sid)) {
       switch(src->port) {
-      case 7: 
+      case MDP_PORT_ECHO:
+      case MDP_PORT_KEYMAPREQUEST:
 	/* locally hard-wired port */
 	return 0;
       default:
@@ -540,14 +579,10 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
      flag is not set. Also, MDP_NOSIGN must also be applied, until
      NaCl cryptobox keys can be used for signing. */	
   if (broadcast) {
-    if ((mdp->packetTypeAndFlags&(MDP_NOCRYPT|MDP_NOSIGN))
-	!=(MDP_NOCRYPT|MDP_NOSIGN))
+    if (!(mdp->packetTypeAndFlags&MDP_NOCRYPT))
       return overlay_mdp_reply_error(mdp_named_socket,
 				     recvaddr,recvaddrlen,5,
-				     "Broadcast packets cannot be encrypted "
-				     "or signed (signing will be possible in"
-				     " a future version).");
-  }
+				     "Broadcast packets cannot be encrypted ");  }
   
   /* Prepare the overlay frame for dispatch */
   struct overlay_frame *frame;
@@ -643,13 +678,69 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
     return WHY("ciphered MDP packets not implemented");
     break;
   case MDP_NOCRYPT: 
-    /* clear text, but signed (need to think about how to implement this
-       while NaCl cannot sign using CryptoBox keys. We could use a 
-       CryptoSign key, and allow queries as to the authenticity of said key
-       via authcrypted channel between the parties. */
+    /* Payload is sent unencrypted, but signed.
+
+       To save space we do a trick where we hash the payload, and get the 
+       signature of that, but do not send the hash itself, since that can
+       be reproduced (and indeed must be for verification) at the receiver's
+       end.
+
+       As the signing key is implicit, and the hash is also implicit, we can
+       chop out part of the signature and thus save some bytes.
+    */
     frame->modifiers=OF_CRYPTO_SIGNED; 
-    op_free(frame);
-    return WHY("signed MDP packets not implemented");
+    /* Prepare payload */
+    frame->payload=ob_new(1 /* frame type (MDP) */
+			  +1 /* MDP version */
+			  +4 /* dst port */
+			  +4 /* src port */
+			  +crypto_sign_edwards25519sha512batch_BYTES
+			  +mdp->out.payload_length);
+    {
+      unsigned char *key=keyring_find_sas_private(keyring,mdp->out.src.sid);
+      if (!key) { op_free(frame); return WHY("could not find signing key"); }
+      
+      /* Build plain-text that includes header and hash it so that
+         we can sign that hash. */
+      unsigned char hash[crypto_hash_sha512_BYTES];
+      unsigned char plain[10+mdp->out.payload_length];
+
+      /* MDP version 1 */
+      plain[0]=0x01; 
+      plain[1]=0x01;
+      /* Ports */
+      plain[2]=(mdp->out.src.port>>24)&0xff;
+      plain[3]=(mdp->out.src.port>>16)&0xff;
+      plain[4]=(mdp->out.src.port>>8)&0xff;
+      plain[5]=(mdp->out.src.port>>0)&0xff;
+      plain[6]=(mdp->out.dst.port>>24)&0xff;
+      plain[7]=(mdp->out.dst.port>>16)&0xff;
+      plain[8]=(mdp->out.dst.port>>8)&0xff;
+      plain[9]=(mdp->out.dst.port>>0)&0xff;
+      /* payload */
+      bcopy(&mdp->out.payload,&plain[10],mdp->out.payload_length);
+      /* now hash it */
+      crypto_hash_sha512(hash,plain,10+mdp->out.payload_length);
+      
+      unsigned char signature[crypto_hash_sha512_BYTES
+			      +crypto_sign_edwards25519sha512batch_BYTES];
+      unsigned long long  sig_len=0;
+      crypto_sign_edwards25519sha512batch(signature,&sig_len,
+					  hash,crypto_hash_sha512_BYTES,
+					  key);
+      if (!sig_len) { op_free(frame); return WHY("Signing MDP frame failed"); }
+      /* chop hash out of middle of signature since it has to be recomputed
+	 at the far end, anyway, as described above. */
+      bcopy(&signature[32+64],&signature[32],32);
+      sig_len-=crypto_hash_sha512_BYTES;
+      
+      /* ok, now chain plain-text with the signature at the end and send it */
+      ob_append_bytes(frame->payload,plain,10+mdp->out.payload_length);
+      /* chop hash out of middle of signature since it has to be recomputed
+	 at the far end, anyway, as described above. */
+      ob_append_bytes(frame->payload,&signature[0],32);
+      ob_append_bytes(frame->payload,&signature[32+crypto_hash_sha512_BYTES],32);
+    }
     break;
   case MDP_NOSIGN|MDP_NOCRYPT: /* clear text and no signature */
     frame->modifiers=0; 

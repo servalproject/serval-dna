@@ -244,6 +244,9 @@ int keyring_sanitise_position(keyring_file *k,int *cn,int *in,int *kp);
 int keyring_next_identity(keyring_file *k,int *cn,int *in,int *kp);
 int keyring_find_did(keyring_file *k,int *cn,int *in,int *kp,char *did);
 int keyring_find_sid(keyring_file *k,int *cn,int *in,int *kp,unsigned char *sid);
+unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid);
+unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid);
+
 int keyring_commit(keyring_file *k);
 keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c,
 					  char *pin);
@@ -1082,6 +1085,9 @@ typedef struct sockaddr_mdp {
 } sockaddr_mdp;
 unsigned char *keyring_get_nm_bytes(sockaddr_mdp *priv,sockaddr_mdp *pub);
 
+#define MDP_PORT_ECHO 7
+#define MDP_PORT_KEYMAPREQUEST 0xf0000001
+
 #define MDP_TYPE_MASK 0xff
 #define MDP_FLAG_MASK 0xff00
 #define MDP_FORCE 0x0100
@@ -1137,6 +1143,8 @@ typedef struct overlay_mdp_frame {
     char raw[MDP_MTU];
   };
 } overlay_mdp_frame;
+
+int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req);
 
 int setVerbosity(char *optarg);
 

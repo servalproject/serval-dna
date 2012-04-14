@@ -1055,6 +1055,119 @@ int keyring_sanitise_position(keyring_file *k,int *cn,int *in,int *kp)
   return 0;
 }
 
+unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid)
+{
+  int cn=0,in=0,kp=0;
+
+  if (!keyring_find_sid(k,&cn,&in,&kp,sid)) 
+    WHYRETNULL("Could not find SID in keyring, so can't find SAS");
+
+  for(kp=0;kp<k->contexts[cn]->identities[in]->keypair_count;kp++)
+    if (k->contexts[cn]->identities[in]->keypairs[kp]->type==KEYTYPE_CRYPTOSIGN)
+      return k->contexts[cn]->identities[in]->keypairs[kp]->private_key;
+
+  WHYRETNULL("Identity lacks SAS");
+}
+
+struct sid_sas_mapping {
+  unsigned char sid[SID_SIZE];
+  unsigned char sas_public[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
+  unsigned long long last_request_time_in_ms;
+  unsigned char validP;
+};
+
+#define MAX_SID_SAS_MAPPINGS 1024
+int sid_sas_mapping_count=0;
+struct sid_sas_mapping sid_sas_mappings[MAX_SID_SAS_MAPPINGS];
+
+int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req)
+{
+  if (!k) return WHY("keyring is null");
+  if (!req) return WHY("req is null");
+
+  /* The authcryption of the MDP frame proves that the SAS key is owned by the
+     owner of the SID, and so is absolutely compulsory. */
+  if (req->packetTypeAndFlags&MDP_NOCRYPT) 
+    return WHY("mapping requests must be performed under authcryption");
+
+  if (req->out.payload_length==1) {
+    /* It's a request, so find the SAS for the SID the request was addressed to,
+       use that to sign that SID, and then return it in an authcrypted frame. */
+    WHY("Not implemented");
+  } else {
+    /* It's probably a response. */
+    switch(req->out.payload[0]) {
+    case KEYTYPE_CRYPTOSIGN:
+      WHY("Not implemented");
+      break;
+    default:
+      WHY("Key mapping response for unknown key type. Oh well.");
+    }
+  }
+  return WHY("Not implemented");
+}
+
+unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
+{
+  /* Main issue here is that we need to have the public SAS key for
+     this sender.  This needs to be cached somewhere (possibly persistently,
+     or not depending on a persons paranoia level, as having a SID:SAS
+     mapping implies that at least machine to machine contact has occurred
+     with that identity.
+     
+     See the Serval Security Framework document for a discussion of some of the
+     privacy and security issues that vex a persistent store.
+
+     For now we will just use a non-persistent cache for safety (and it happens
+     to be easy to implement as well :)
+  */
+  int i;
+  long long now=overlay_gettime_ms();
+  for(i=0;i<sid_sas_mapping_count;i++)
+    {
+      if (bcmp(sid,sid_sas_mappings[i].sid,SID_SIZE)) continue;
+      if (sid_sas_mappings[i].validP) return sid_sas_mappings[i].sas_public;
+      /* Don't flood the network with mapping requests */
+      if ((now-sid_sas_mappings[i].last_request_time_in_ms)<1000) return NULL;
+      /* we can request again, so fall out to where we do that.
+         i is set to this mapping, so the request process will update this
+         record. */
+      break;
+    }
+
+  /* allocate mapping slot or replace one at random, depending on how full things
+     are */
+  if (i==sid_sas_mapping_count) {
+    if (i>=MAX_SID_SAS_MAPPINGS) i=random()%MAX_SID_SAS_MAPPINGS;
+    else sid_sas_mapping_count++;
+  }
+
+  /* pre-populate mapping slot */
+  bcopy(&sid[0],&sid_sas_mappings[i].sid[0],SID_SIZE);
+  bzero(&sid_sas_mappings[i].sas_public,
+	crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+  sid_sas_mappings[i].validP=0;
+  sid_sas_mappings[i].last_request_time_in_ms=now;
+
+  /* request mapping. */
+  overlay_mdp_frame mdp;
+  mdp.packetTypeAndFlags=MDP_TX;
+  bcopy(&sid[0],&mdp.out.dst.sid[0],SID_SIZE);
+  mdp.out.dst.port=MDP_PORT_KEYMAPREQUEST;
+  mdp.out.src.port=MDP_PORT_KEYMAPREQUEST;
+  if (k->contexts[0]->identity_count&&
+      k->contexts[0]->identities[0]->keypair_count&&
+      k->contexts[0]->identities[0]->keypairs[0]->type
+      ==KEYTYPE_CRYPTOBOX)		  
+    bcopy(keyring->contexts[0]->identities[0]->keypairs[0]->public_key,
+	  mdp.out.src.sid,SID_SIZE);
+  else WHYRETNULL("couldn't request SAS (I don't know who I am)");
+  mdp.out.payload_length=1;
+  mdp.out.payload[0]=KEYTYPE_CRYPTOSIGN;
+  overlay_mdp_dispatch(&mdp,0 /* system generated */,
+		       NULL,0);
+  return NULL;
+}
 
 int keyring_find_sid(keyring_file *k,int *cn,int *in,int *kp,unsigned char *sid)
 {
