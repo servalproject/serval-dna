@@ -577,11 +577,11 @@ int overlay_interface_discover()
 
 int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,overlay_frame *pax[],int *frame_pax,int frame_max_pax) 
 {
-  if (0) printf("Stuffing from queue #%d on interface #%d\n",q,i);
+  if (1) printf("Stuffing from queue #%d on interface #%d\n",q,i);
   overlay_frame **p=&overlay_tx[q].first;
   while(p&&*p)
     {
-      if (0) printf("p=%p, *p=%p, queue=%d\n",p,*p,q);
+      if (1) printf("p=%p, *p=%p, queue=%d\n",p,*p,q);
 
       /* Throw away any stale frames */
       overlay_frame *pp=*p;
@@ -631,6 +631,7 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,
 				      &next_hop_interface);
 	    if (!r) {
 	      if (next_hop_interface==i) {
+		printf("unicast pax %p\n",*p);
 		dontSend=0; } else {
 		if (0) 
 		  printf("Packet should go via interface #%d, but I am interface #%d\n",next_hop_interface,i);
@@ -647,6 +648,7 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,
 		 once they have been sent via all open interfaces (or gone stale) */
 	      dontSend=0;
 	      (*p)->broadcast_sent_via[i]=1;
+	      printf("broadcast pax %p\n",*p);
 	    }
 	  
 	  if (dontSend==0) {   
@@ -656,11 +658,13 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,
 	      {
 		/* Add payload to list of payloads we are sending with this frame so that we can dequeue them
 		   if we send them. */
+		printf("  paxed#%d %p\n",*frame_pax,*p);
 		pax[(*frame_pax)++]=*p;
 	      }
 	  }
-	  p=&(*p)->next;
 	}
+      /* Consider next in queue */
+      p=&(*p)->next;
     }
   return 0;
 }
@@ -676,8 +680,8 @@ int overlay_queue_dump(overlay_txqueue *q)
   fprintf(stderr,"  first=%p\n",q->first);
   f=q->first;
   while(f) {
-    fprintf(stderr,"    %p: ->next=%p, ->prev=%p\n",
-	    f,f->next,f->prev);
+    fprintf(stderr,"    %p: ->next=%p, ->prev=%p ->dequeue=%d\n",
+	    f,f->next,f->prev,f->dequeue);
     if (f==f->next) {
       fprintf(stderr,"        LOOP!\n"); break;
     }
@@ -764,60 +768,67 @@ int overlay_tick_interface(int i, long long now)
       if (debug&DEBUG_OVERLAYINTERFACES)
 	fprintf(stderr,"Successfully transmitted tick frame #%lld on interface #%d (%d bytes)\n",
 	      (long long)overlay_sequence_number,i,e->length);
-      /* De-queue the passengers who were aboard. */
+
+      /* De-queue the passengers who were aboard.
+	 One round of marking, and then one round of culling from the queue. */
       int j,q;
+      
+      /* Mark frames that can be dequeued */
+      for(j=0;j<frame_pax;j++)
+	{
+	  overlay_frame *p=pax[j];
+	  if (!p->isBroadcast)
+	    p->dequeue=1;
+	  else {
+	    int i;
+	    int workLeft=0;
+	    for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
+	      {
+		if (overlay_interfaces[i].observed>0)
+		  if (!p->broadcast_sent_via[i])
+		    { 
+		      if (1) 
+			fprintf(stderr,
+				"Frame still needs to be sent on interface #%d\n",i);
+		      workLeft=1; 
+		      break;
+		    }
+	      }
+	    if (!workLeft) p->dequeue=1;
+	  }
+	}
+
+      /* Visit queues and dequeue all that we can */
       for(q=0;q<OQ_MAX;q++)
 	{
 	  overlay_frame **p=&overlay_tx[q].first;
-	  for(j=0;j<frame_pax;j++)
+	  overlay_frame *t;
+	  while(p&&(*p))
 	    {
-	      /* Skip any frames that didn't get queued */
-	      while ((*p)&&(*p!=pax[j])) p=&(*p)->next;
-	      /* skip any broadcast frames that still have live
-		 interfaces left to send via */
-	      if (p&&(*p)&&(*p)->isBroadcast)
-		while (p&&(*p)&&((*p)->isBroadcast)) {
-		  int i;
-		  int workLeft=0;
-		  for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
-		    {
-		      if (overlay_interfaces[i].observed>0)
-			if (!(*p)->broadcast_sent_via[i])
-			  { if (1) fprintf(stderr,"Frame still needs to be sent on interface #%d\n",i);
-			    workLeft=1; break; }
+	      if ((*p)->dequeue) {
+		{
+		  t=*p;
+		  *p=t->next;
+		  if (overlay_tx[q].last==t) overlay_tx[q].last=t->prev;
+		  if (overlay_tx[q].first==t) overlay_tx[q].first=t->next;
+		  if (t->prev) t->prev->next=t->next;
+		  if (t->next) t->next->prev=t->prev;
+		  if (debug&DEBUG_QUEUES)
+		    { 
+		      fprintf(stderr,"** dequeued pax @ %p\n",t);
+		      overlay_queue_dump(&overlay_tx[q]);
 		    }
-		  if (!workLeft) {
-		    if (1||debug&DEBUG_BROADCASTS) 
-		      WHY("Dequeueing broadcast frame that has been fully distributed");
-		    break;
-		  }
-		  p=&(*p)->next;
-		}
-	      /* Now get rid of this frame once we have found it */
-	      if (*p) {
-		if (debug&DEBUG_QUEUES)
-		  { 
-		    fprintf(stderr,"** dequeueing pax @ %p\n",*p);
+		  if (op_free(t)) {
 		    overlay_queue_dump(&overlay_tx[q]);
+		    WHY("op_free() failed");
+		    if (debug&DEBUG_QUEUES) exit(WHY("Queue structures corrupt"));
 		  }
-		*p=pax[j]->next;
-		if (overlay_tx[q].last==pax[j]) overlay_tx[q].last=pax[j]->prev;
-		if (overlay_tx[q].first==pax[j]) overlay_tx[q].first=pax[j]->next;
-		if (pax[j]->prev) pax[j]->prev->next=pax[j]->next;
-		if (pax[j]->next) pax[j]->next->prev=pax[j]->prev;
-		if (debug&DEBUG_QUEUES)
-		  { 
-		    fprintf(stderr,"** dequeued pax @ %p\n",*p);
-		    overlay_queue_dump(&overlay_tx[q]);
-		  }
-		if (op_free(pax[j])) {
-		  overlay_queue_dump(&overlay_tx[q]);
-		  WHY("op_free() failed");
-		  if (debug&DEBUG_QUEUES) sleep(3600);
+		  overlay_tx[q].length--;
 		}
-		overlay_tx[q].length--;
 	      }
-	    }	  
+	      if (!(*p)) break;
+	      p=&(*p)->next;
+	    }
 	}
       return 0;
     }

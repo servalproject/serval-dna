@@ -424,7 +424,15 @@ int overlay_frame_process(int interface,overlay_frame *f)
       overlay_rhizome_saw_advertisements(interface,f,now);
       break;
     case OF_TYPE_DATA:
-      WHY("saw mdp containing frame");
+      if (0) {
+	WHY("saw mdp containing frame");
+	printf("  src = %s\n",overlay_render_sid(f->source));
+	printf("  nxt = %s\n",overlay_render_sid(f->nexthop));
+	printf("  dst = %s\n",overlay_render_sid(f->destination));
+	fflush(stdout);
+	dump("payload",&f->payload->bytes[0],f->payload->length);
+	fflush(stdout);
+      }
       overlay_saw_mdp_containing_frame(interface,f,now);
       break;
     default:

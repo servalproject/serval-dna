@@ -515,6 +515,7 @@ typedef struct overlay_frame {
   unsigned int modifiers;
 
   unsigned char ttl;
+  unsigned char dequeue;
 
   /* Mark which interfaces the frame has been sent on,
      so that we can ensure that broadcast frames get sent
