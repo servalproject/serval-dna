@@ -432,11 +432,12 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
   long long rx_ms=0;
   long long rx_times[1024];
 
+  if (broadcast) 
+    fprintf(stderr,"WARNING: broadcast ping packets will not be encryped.\n");
   while(1) {
     /* Now send the ping packets */
     mdp.packetTypeAndFlags=MDP_TX;
-    if (broadcast) { mdp.packetTypeAndFlags|=MDP_NOCRYPT;
-      fprintf(stderr,"WARNING: broadcast ping packets will not be encryped.\n"); }
+    if (broadcast) mdp.packetTypeAndFlags|=MDP_NOCRYPT;
     mdp.out.src.port=port;
     bcopy(srcsid,mdp.out.src.sid,SID_SIZE);
     /* Set destination to broadcast */
