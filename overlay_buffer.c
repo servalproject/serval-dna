@@ -277,7 +277,7 @@ int ob_indel_space(overlay_buffer *b,int offset,int shift)
     if (ob_makespace(b,-shift)) return -1;
     bcopy(&b->bytes[offset],&b->bytes[offset+shift],b->length-(offset+shift));
   } else if (shift<0) { /* free up space */
-    bcopy(&b->bytes[offset],&b->bytes[offset+shift],b->length-(offset-shift));
+    bcopy(&b->bytes[offset-shift],&b->bytes[offset],b->length-(offset-shift));
   }
   b->length+=shift;
   return 0;
