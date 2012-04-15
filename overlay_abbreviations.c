@@ -228,7 +228,7 @@ int overlay_abbreviate_append_address(overlay_buffer *b,unsigned char *a)
   int count=0;
   ob_makespace(b,SID_SIZE+3);
   int r=overlay_abbreviate_address(a,&b->bytes[b->length],&count);
-  if (DEBUG_PACKETCONSTRUCTION) {
+  if (debug&DEBUG_PACKETCONSTRUCTION) {
     fprintf(stderr,"address %s abbreviates as shown in this ",
 	    overlay_render_sid(a));
     dump(NULL,&b->bytes[b->length],count);

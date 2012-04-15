@@ -320,8 +320,10 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
     mdp.packetTypeAndFlags|=MDP_NOCRYPT; break;
   case OF_CRYPTO_CIPHERED|OF_CRYPTO_SIGNED:
     {
+      fflush(stderr);
       printf("crypted MDP frame for %s\n",
 	     overlay_render_sid(mdp.out.dst.sid));
+      fflush(stdout);
 
       unsigned char *k=keyring_get_nm_bytes(&mdp.out.dst,&mdp.out.src);
       unsigned char *nonce=&f->payload->bytes[0];

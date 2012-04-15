@@ -1132,7 +1132,6 @@ int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req)
       +crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES
       +slen;
     overlay_mdp_swap_src_dst(req);
-    #warning disabled crypt and sign for debugging.
     req->packetTypeAndFlags=MDP_TX; /* crypt and sign */
     WHY("Sent SID:SAS mapping mutual-signature");
     printf("%d byte reply is from %s:%u\n           to %s:%u\n",
@@ -1173,8 +1172,28 @@ int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req)
 	if (bcmp(plain,req->out.src.sid,SID_SIZE))
 	  return WHY("key mapping signed block is for wrong SID");
 	WHY("Key mapping looks valid");
-      }
-      WHY("Not implemented");
+
+	/* work out where to put it */
+	int i;
+	for(i=0;i<sid_sas_mapping_count;i++)
+	  if (!bcmp(req->out.src.sid,sid_sas_mappings[i].sid,SID_SIZE)) break;
+
+	if (i>=MAX_SID_SAS_MAPPINGS) i=random()%MAX_SID_SAS_MAPPINGS;
+	if (i>=sid_sas_mapping_count) sid_sas_mapping_count=i+1;
+
+	/* now put it */
+	bcopy(&req->out.src.sid,&sid_sas_mappings[i].sid[0],SID_SIZE);
+	bcopy(sas_public,&sid_sas_mappings[i].sas_public[0],
+	      crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+	fprintf(stderr,"Mapping #%d (count=%d) SID=%s to SAS=%s*\n",i,
+		sid_sas_mapping_count,
+		overlay_render_sid(sid_sas_mappings[i].sid),
+		overlay_render_sid(sid_sas_mappings[i].sas_public));
+	sid_sas_mappings[i].validP=1;
+	sid_sas_mappings[i].last_request_time_in_ms=0;
+	WHY("Stored mapping");
+	return 0;
+      }      
       break;
     default:
       WHY("Key mapping response for unknown key type. Oh well.");
