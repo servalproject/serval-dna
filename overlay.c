@@ -318,7 +318,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
   }
 
   if (duplicateBroadcast) {
-    WHY("Packet is duplicate broadcast");
+    if (0) WHY("Packet is duplicate broadcast");
     return 0;
   }
 
@@ -356,9 +356,11 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	}
 	f->ttl--;
 
-	printf("considering forwarding frame to %s (forme=%d, broadcast=%d, dup=%d)\n",
-	       overlay_render_sid(f->destination),ultimatelyForMe,broadcast,
-	       duplicateBroadcast);
+	if (0)
+	  printf("considering forwarding frame to %s (forme=%d, bcast=%d, dup=%d)\n",
+		 overlay_render_sid(f->destination),ultimatelyForMe,broadcast,
+		 duplicateBroadcast);
+
 	if (overlay_address_is_broadcast(f->destination))
 	  {
 	    /* if nexthop and destination address are the same, and nexthop was shown
@@ -394,7 +396,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	  else {
 	    /* XXX we should preserve the queue priority of the frame */
 	    int qn=OQ_ORDINARY;
-	    WHY("queuing frame for forwarding");
+	    if (0) WHY("queuing frame for forwarding");
 	    if (overlay_payload_enqueue(qn,qf)) {
 	      WHY("failed to enqueue forwarded payload");
 	      op_free(qf);

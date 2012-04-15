@@ -303,7 +303,7 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
 			      +crypto_sign_edwards25519sha512batch_BYTES];
       bcopy(&b[len],&signature[0],32);
       crypto_hash_sha512(&signature[32],b,len);
-      dump("hash for verification",hash,crypto_hash_sha512_BYTES);
+      if (0) dump("hash for verification",hash,crypto_hash_sha512_BYTES);
       bcopy(&b[len+32],&signature[32+crypto_hash_sha512_BYTES],32);
       
       /* verify signature */
@@ -314,9 +314,8 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
 						  signature,sizeof(signature),
 						  key);
       if (result) return WHY("Signature verification failed: incorrect signature");
-      else WHY("signature check passed");
-    }
-    return WHY("signature verification not implemented");
+      else if (0) WHY("signature check passed");
+    }    
     mdp.packetTypeAndFlags|=MDP_NOCRYPT; break;
   case OF_CRYPTO_CIPHERED|OF_CRYPTO_SIGNED:
     {
@@ -357,7 +356,8 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
   /* extract MDP port numbers */
   mdp.in.src.port=(b[2]<<24)+(b[3]<<16)+(b[4]<<8)+b[5];
   mdp.in.dst.port=(b[6]<<24)+(b[7]<<16)+(b[8]<<8)+b[9];
-  printf("RX mdp dst.port=%d, src.port=%d\n",mdp.in.dst.port,mdp.in.src.port);
+  fprintf(stderr,
+	  "RX mdp dst.port=%d, src.port=%d\n",mdp.in.dst.port,mdp.in.src.port);  
 
   mdp.in.payload_length=len-10;
   bcopy(&b[10],&mdp.in.payload[0],mdp.in.payload_length);
@@ -470,10 +470,16 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 		bzero(mdp->out.src.sid,SID_SIZE);
 	    }
 
-	  /* queue frame for delivery */
-	  return
-	    overlay_mdp_dispatch(mdp,0 /* system generated */,
-				 NULL,0);
+	  /* queue frame for delivery */	  
+	  overlay_mdp_dispatch(mdp,0 /* system generated */,
+			       NULL,0);
+	  
+	  /* and switch addresses back around in case the caller was planning on
+	     using MDP structure again (this happens if there is a loop-back reply
+	     and the frame needs sending on, as happens with broadcasts.  MDP ping
+	     is a simple application where this occurs). */
+	  overlay_mdp_swap_src_dst(mdp);
+
 	}
 	break;
       default:
@@ -563,6 +569,9 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   /* Work out if destination is broadcast or not */
   int broadcast=1;
   
+  fprintf(stderr,
+	  "TX mdp dst.port=%d, src.port=%d\n",mdp->out.dst.port,mdp->out.src.port);  
+
   if (overlay_mdp_sanitytest_sourceaddr(&mdp->out.src,userGeneratedFrameP,
 					recvaddr,recvaddrlen))
     return overlay_mdp_reply_error
@@ -766,8 +775,8 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
     ob_append_byte(frame->payload,0x01);
     ob_append_byte(frame->payload,0x01);
     /* Destination port */
-    ob_append_int(frame->payload,mdp->out.dst.port);
     ob_append_int(frame->payload,mdp->out.src.port);
+    ob_append_int(frame->payload,mdp->out.dst.port);
     ob_append_bytes(frame->payload,mdp->out.payload,mdp->out.payload_length);
     break;
   }
