@@ -484,6 +484,7 @@ int setVerbosity(char *optarg) {
   if (strstr(optarg,"simulation")) debug|=DEBUG_SIMULATION;
   if (strstr(optarg,"dnavars")) debug|=DEBUG_DNAVARS;
   if (strstr(optarg,"packetformats")) debug|=DEBUG_PACKETFORMATS;
+  if (strstr(optarg,"packetconstruction")) debug|=DEBUG_PACKETCONSTRUCTION;
   if (strstr(optarg,"gateway")) debug|=DEBUG_GATEWAY;
   if (strstr(optarg,"hlr")) debug|=DEBUG_HLR;
   if (strstr(optarg,"sockio")) debug|=DEBUG_IO;

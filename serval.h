@@ -244,7 +244,8 @@ int keyring_sanitise_position(keyring_file *k,int *cn,int *in,int *kp);
 int keyring_next_identity(keyring_file *k,int *cn,int *in,int *kp);
 int keyring_find_did(keyring_file *k,int *cn,int *in,int *kp,char *did);
 int keyring_find_sid(keyring_file *k,int *cn,int *in,int *kp,unsigned char *sid);
-unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid);
+unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
+					unsigned char **sas_public);
 unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid);
 
 int keyring_commit(keyring_file *k);
@@ -1011,6 +1012,7 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
 #define DEBUG_RHIZOMESYNC (1<<21)
 #define DEBUG_DISABLERHIZOME (1<<22)
 #define DEBUG_PACKETTX (1<<23)
+#define DEBUG_PACKETCONSTRUCTION (1<<24)
 
 int serval_packetvisualise(FILE *f,char *message,unsigned char *packet,int plen);
 
@@ -1086,7 +1088,7 @@ typedef struct sockaddr_mdp {
 unsigned char *keyring_get_nm_bytes(sockaddr_mdp *priv,sockaddr_mdp *pub);
 
 #define MDP_PORT_ECHO 7
-#define MDP_PORT_KEYMAPREQUEST 0xf0000001
+#define MDP_PORT_KEYMAPREQUEST 0x10000001
 
 #define MDP_TYPE_MASK 0xff
 #define MDP_FLAG_MASK 0xff00
@@ -1158,6 +1160,7 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms);
 
 /* Server-side MDP functions */
 int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now);
+int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp);
 int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
 			  overlay_mdp_frame *mdpreply);
 int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp);
@@ -1166,6 +1169,10 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 
 int ob_bcopy(overlay_buffer *b,int from, int to, int len);
 int ob_setbyte(overlay_buffer *b,int ofs,unsigned char value);
+
+char *overlay_render_sid(unsigned char *sid);
+char *overlay_render_sid_prefix(unsigned char *sid,int l);
+int dump_payload(overlay_frame *p,char *message);
 
 int urandombytes(unsigned char *x,unsigned long long xlen);
 

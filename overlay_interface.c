@@ -769,6 +769,9 @@ int overlay_tick_interface(int i, long long now)
   if (!(debug&DEBUG_DISABLERHIZOME))
     overlay_rhizome_add_advertisements(i,e);
 
+  if (debug&DEBUG_PACKETCONSTRUCTION)
+    dump("assembled packet",&e->bytes[0],e->length);
+
   /* Now send the frame.  This takes the form of a special DNA packet with a different
      service code, which we setup earlier. */
   if (debug&DEBUG_OVERLAYINTERFACES) 

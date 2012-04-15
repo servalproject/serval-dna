@@ -1055,7 +1055,8 @@ int keyring_sanitise_position(keyring_file *k,int *cn,int *in,int *kp)
   return 0;
 }
 
-unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid)
+unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
+					unsigned char **sas_public)
 {
   int cn=0,in=0,kp=0;
 
@@ -1064,7 +1065,12 @@ unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid)
 
   for(kp=0;kp<k->contexts[cn]->identities[in]->keypair_count;kp++)
     if (k->contexts[cn]->identities[in]->keypairs[kp]->type==KEYTYPE_CRYPTOSIGN)
-      return k->contexts[cn]->identities[in]->keypairs[kp]->private_key;
+      {
+	if (sas_public) 
+	  *sas_public=
+	    k->contexts[cn]->identities[in]->keypairs[kp]->public_key;
+	return k->contexts[cn]->identities[in]->keypairs[kp]->private_key;
+      }
 
   WHYRETNULL("Identity lacks SAS");
 }
@@ -1087,17 +1093,87 @@ int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req)
 
   /* The authcryption of the MDP frame proves that the SAS key is owned by the
      owner of the SID, and so is absolutely compulsory. */
-  if (req->packetTypeAndFlags&MDP_NOCRYPT) 
+  if (req->packetTypeAndFlags&(MDP_NOCRYPT|MDP_NOSIGN)) 
     return WHY("mapping requests must be performed under authcryption");
 
   if (req->out.payload_length==1) {
     /* It's a request, so find the SAS for the SID the request was addressed to,
        use that to sign that SID, and then return it in an authcrypted frame. */
-    WHY("Not implemented");
+    unsigned char *sas_public=NULL;
+    unsigned char *sas_priv
+      =keyring_find_sas_private(keyring,req->out.dst.sid,&sas_public);
+    
+    if ((!sas_priv)||(!sas_public)) return WHY("I don't have that SAS key");
+    unsigned long long slen;
+    /* type of key being verified */
+    req->out.payload[0]=KEYTYPE_CRYPTOSIGN;
+    /* the public key itself */
+    int sigbytes=crypto_sign_edwards25519sha512batch_BYTES;
+    int keybytes=crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES;
+    bcopy(sas_public,&req->out.payload[1],keybytes);
+    /* and a signature of the SID using the SAS key, to prove possession of
+       the key.  Possession of the SID has already been established by the
+       decrypting of the surrounding MDP packet.
+       XXX - We could chop the SID out of the middle of the signed block here,
+       just as we do for signed MDP packets to save 32 bytes.  We won't worry
+       about doing this, however, as the mapping process is only once per session,
+       not once per packet.  Unless I get excited enough to do it, that is.
+    */
+    if (crypto_sign_edwards25519sha512batch
+	(&req->out.payload[1+keybytes],&slen,req->out.dst.sid,SID_SIZE,sas_priv))
+      return WHY("crypto_sign() failed");
+    /* chop the SID out of the signature, since it can be reinserted on reception */
+    bcopy(&req->out.payload[1+keybytes+32+SID_SIZE],
+	  &req->out.payload[1+keybytes+32],sigbytes-32);
+    slen-=SID_SIZE;
+    /* and record the full length of this */
+    req->out.payload_length
+      =1
+      +crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES
+      +slen;
+    overlay_mdp_swap_src_dst(req);
+    #warning disabled crypt and sign for debugging.
+    req->packetTypeAndFlags=MDP_TX; /* crypt and sign */
+    WHY("Sent SID:SAS mapping mutual-signature");
+    printf("%d byte reply is from %s:%u\n           to %s:%u\n",
+	   req->out.payload_length,
+	   overlay_render_sid(req->out.src.sid),req->out.src.port,
+	   overlay_render_sid(req->out.dst.sid),req->out.dst.port);
+    return overlay_mdp_dispatch(req,1,NULL,0);
   } else {
     /* It's probably a response. */
     switch(req->out.payload[0]) {
     case KEYTYPE_CRYPTOSIGN:
+      {
+	if (req->out.payload_length<
+	    (1
+	     +crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES))
+	  return WHY("Truncated key mapping announcement?");
+	unsigned char plain[req->out.payload_length];
+	unsigned long long plain_len=0;
+	unsigned char *sas_public=&req->out.payload[1];
+	unsigned char *compactsignature
+	  =&req->out.payload[1+crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
+	/* reconstitute signed SID for verification */
+	int siglen=SID_SIZE+crypto_sign_edwards25519sha512batch_BYTES;
+	unsigned char signature[siglen];
+	bcopy(&compactsignature[0],&signature[0],32);
+	bcopy(&req->out.src.sid[0],&signature[32],SID_SIZE);
+	bcopy(&compactsignature[32],&signature[32+SID_SIZE],32);
+	int r=crypto_sign_edwards25519sha512batch_open(plain,&plain_len,
+						       signature,siglen,
+						       sas_public);
+	if (r) 
+	  return 
+	    WHY("Verification of signed SID in key mapping assertion failed");
+	/* These next two tests should never be able to fail, but let's just 
+	   check anyway. */
+	if (plain_len!=SID_SIZE) 
+	  return WHY("key mapping signed block is wrong length");
+	if (bcmp(plain,req->out.src.sid,SID_SIZE))
+	  return WHY("key mapping signed block is for wrong SID");
+	WHY("Key mapping looks valid");
+      }
       WHY("Not implemented");
       break;
     default:
@@ -1126,7 +1202,7 @@ unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
   for(i=0;i<sid_sas_mapping_count;i++)
     {
       if (bcmp(sid,sid_sas_mappings[i].sid,SID_SIZE)) continue;
-      if (sid_sas_mappings[i].validP) return sid_sas_mappings[i].sas_public;
+      if (sid_sas_mappings[i].validP) return sid_sas_mappings[i].sas_public;      
       /* Don't flood the network with mapping requests */
       if ((now-sid_sas_mappings[i].last_request_time_in_ms)<1000) return NULL;
       /* we can request again, so fall out to where we do that.

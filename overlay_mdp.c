@@ -364,6 +364,15 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
   return overlay_saw_mdp_frame(interface,&mdp,now);
 }
 
+int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp)
+{
+  sockaddr_mdp temp;
+  bcopy(&mdp->out.dst,&temp,sizeof(sockaddr_mdp));
+  bcopy(&mdp->out.src,&mdp->out.dst,sizeof(sockaddr_mdp));
+  bcopy(&temp,&mdp->out.src,sizeof(sockaddr_mdp));
+  return 0;
+}
+
 int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 {
   int i;
@@ -434,17 +443,14 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 	/* Either respond with the appropriate SAS, or record this one if it
 	   verfies out okay. */
 	WHY("key mapping request");
-	return keyring_mapping_request(keyring,&mdp);
+	return keyring_mapping_request(keyring,mdp);
       case MDP_PORT_ECHO: /* well known ECHO port for TCP/UDP and now MDP */
 	{
 	  /* Echo is easy: we swap the sender and receiver addresses (and thus port
 	     numbers) and send the frame back. */
 
 	  /* Swap addresses */
-	  sockaddr_mdp temp;
-	  bcopy(&mdp->out.dst,&temp,sizeof(sockaddr_mdp));
-	  bcopy(&mdp->out.src,&mdp->out.dst,sizeof(sockaddr_mdp));
-	  bcopy(&temp,&mdp->out.src,sizeof(sockaddr_mdp));
+	  overlay_mdp_swap_src_dst(mdp);
 
 	  if (mdp->out.dst.port==7) return WHY("echo loop averted");
 	  /* If the packet was sent to broadcast, then replace broadcast address
@@ -502,19 +508,6 @@ int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,int userGeneratedFrameP,
       return WHY("Packet had broadcast address as source address");
     }
   
-  /* Check for build-in port listeners */
-  if (!userGeneratedFrameP)
-    if (overlay_address_is_local(src->sid)) {
-      switch(src->port) {
-      case MDP_PORT_ECHO:
-      case MDP_PORT_KEYMAPREQUEST:
-	/* locally hard-wired port */
-	return 0;
-      default:
-	break;
-      }
-    }
-
   /* Now make sure that source address is in the list of bound addresses,
      and that the recvaddr matches. */
   int i;
@@ -534,8 +527,25 @@ int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,int userGeneratedFrameP,
 	}
     }
 
-  printf("addr=%s port=%d\n",
-	 overlay_render_sid(src->sid),src->port);
+  /* Check for build-in port listeners */
+  if (overlay_address_is_local(src->sid)) {
+    switch(src->port) {
+    case MDP_PORT_ECHO:
+      /* we don't allow user/network generated packets claiming to
+	 be from the echo port, largely to prevent echo:echo connections
+	 and the resulting denial of service from triggering endless pongs. */
+      if (!userGeneratedFrameP) return 0; 
+      break;
+      /* other built-in listeners */
+    case MDP_PORT_KEYMAPREQUEST:
+      return 0;
+    default:
+      break;
+    }      
+  } 
+
+  printf("addr=%s port=%u (0x%x)\n",
+	 overlay_render_sid(src->sid),src->port,src->port);
   return WHY("No such socket binding:unix domain socket tuple exists -- someone might be trying to spoof someone else's connection");
 }
 
@@ -697,7 +707,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 			  +crypto_sign_edwards25519sha512batch_BYTES
 			  +mdp->out.payload_length);
     {
-      unsigned char *key=keyring_find_sas_private(keyring,mdp->out.src.sid);
+      unsigned char *key=keyring_find_sas_private(keyring,mdp->out.src.sid,NULL);
       if (!key) { op_free(frame); return WHY("could not find signing key"); }
       
       /* Build plain-text that includes header and hash it so that

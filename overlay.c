@@ -225,7 +225,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
   if (f->source_address_status==OA_RESOLVED&&overlay_address_is_local(f->source))
       return WHY("Dropping frame claiming to come from myself.");
 
-  if (debug&DEBUG_OVERLAYFRAMES) fprintf(stderr,">>> Received frame (type=%02x)\n",f->type);
+  if (debug&DEBUG_OVERLAYFRAMES) fprintf(stderr,">>> Received frame (type=%02x, bytes=%d)\n",f->type,f->payload?f->payload->length:-1);
 
   /* First order of business is whether the nexthop address has been resolved.
      If not, we need to think about asking for it to be resolved.

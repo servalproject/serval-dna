@@ -74,6 +74,9 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
   if (!p) return WHY("p is NULL");
   if (!b) return WHY("b is NULL");
 
+  if (debug&DEBUG_PACKETCONSTRUCTION)
+    dump_payload(p,"package_fmt1 stuffing into packet");
+
   /* Build header */
   int fail=0;
 
@@ -128,6 +131,8 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
   */
   if (!fail) {
     int max_len=((SID_SIZE+3)*3+headers->length+p->payload->length);
+    if (debug&DEBUG_PACKETCONSTRUCTION) 
+      fprintf(stderr,"Appending RFS for max_len=%d\n",max_len);
     ob_append_rfs(headers,max_len);
     
     int addrs_start=headers->length;
@@ -142,6 +147,8 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
     
     int addrs_len=headers->length-addrs_start;
     int actual_len=addrs_len+p->payload->length;
+    if (debug&DEBUG_PACKETCONSTRUCTION) 
+      fprintf(stderr,"Patching RFS for actual_len=%d\n",actual_len);
     ob_patch_rfs(headers,actual_len);
   }
 
@@ -204,6 +211,24 @@ int dump_queue(char *msg,int q)
   }
   return 0;
 }
+
+int dump_payload(overlay_frame *p,char *message)
+{
+  fflush(stdout);
+  fprintf(stderr,
+	  "+++++\nFrame from %s to %s of type 0x%02x %s:\n",
+	  overlay_render_sid(p->source),
+	  overlay_render_sid(p->destination),p->type,
+	  message?message:"");
+  fprintf(stderr," next hop is %s\n",overlay_render_sid(p->nexthop));
+  fflush(stderr);
+  if (p->payload) dump("payload contents",
+		       &p->payload->bytes[0],p->payload->length);   
+  fflush(stdout); fflush(stderr);
+  fprintf(stderr,"-----\n");
+  return 0;
+}
+
 int overlay_payload_enqueue(int q,overlay_frame *p)
 {
   /* Add payload p to queue q.
@@ -216,6 +241,8 @@ int overlay_payload_enqueue(int q,overlay_frame *p)
 
   if (q<0||q>=OQ_MAX) return WHY("Invalid queue specified");
   if (!p) return WHY("Cannot queue NULL");
+
+  if (0) dump_payload(p,"queued for delivery");
 
   if (overlay_tx[q].length>=overlay_tx[q].maxLength) return WHY("Queue congested");
 

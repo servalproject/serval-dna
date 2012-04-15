@@ -178,6 +178,11 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,
       int alen=0;
       int offset=ofs;
       f.nexthop_address_status=overlay_abbreviate_expand_address(interface,packet,&offset,f.nexthop,&alen);
+      if (debug&DEBUG_PACKETFORMATS) {
+	if (f.nexthop_address_status==OA_RESOLVED)
+	  fprintf(stderr,"next hop address is %s\n",
+		  overlay_render_sid(f.nexthop));
+      }
 
       /* Now just make the rest of the frame available via the received frame structure, as the
 	 frame may not be for us, so there is no point wasting time and energy if we don't have
@@ -198,7 +203,7 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,
       
       /* Skip the rest of the bytes in this frame so that we can examine the next one in this
 	 ensemble */
-      if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"ofs=%d, f.rfs=%d, len=%d\n",ofs,f.rfs,len);
+      if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"next ofs=%d, f.rfs=%d, len=%d\n",ofs,f.rfs,len);
       ofs+=f.rfs;
     }
 
