@@ -670,15 +670,12 @@ int app_rhizome_add_file(int argc, char **argv, struct command_line_option *o)
 				 1, // int checkFileP
 				 1 // int signP
     );
-  if (ret == -1) {
+  if (ret == -1)
     return WHY("Manifest not added to Rhizome database");
-  } else {
-    /* If successfully added, overwrite the manifest file so that the Java component that is
-     * invoking this command can read it to obtain feedback on the result. */
-    if (manifestpath[0] && rhizome_write_manifest_file(mout, manifestpath) == -1) {
-      ret = WHY("Could not overwrite manifest file.");
-    }
-  }
+  /* If successfully added, overwrite the manifest file so that the Java component that is
+     invoking this command can read it to obtain feedback on the result. */
+  if (manifestpath[0] && rhizome_write_manifest_file(mout, manifestpath) == -1)
+    ret = WHY("Could not overwrite manifest file.");
   rhizome_manifest_free(m);
   if (mout != m)
     rhizome_manifest_free(mout);
@@ -832,3 +829,4 @@ command_line_option command_line_options[]={
    "Set the DID for the specified SID.  Optionally supply PIN to unlock the SID record in the keyring."},
   {NULL,{NULL}}
 };
+

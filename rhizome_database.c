@@ -142,7 +142,7 @@ long long sqlite_exec_int64(char *sqlformat,...)
 	 sqlite3_finalize(statement);
 	 return -1;
        }
-       long long result= sqlite3_column_int(statement,0);
+       long long result= sqlite3_column_int64(statement,0);
        sqlite3_finalize(statement);
        return result;
      }
@@ -548,10 +548,10 @@ int rhizome_list_manifests(int limit, int offset)
       rhizome_manifest *m = rhizome_read_manifest_file(manifestblob, manifestblobsize, 0);
       const char *name = rhizome_manifest_get(m, "name", NULL, 0);
       long long date = rhizome_manifest_get_ll(m, "date");
-      printf("fileid=%s:manifestid=%s:version=%d:inserttime=%lld:length=%u:datavalid=%u:date=%lld:name=%s\n",
+      printf("fileid=%s:manifestid=%s:version=%lld:inserttime=%lld:length=%u:datavalid=%u:date=%lld:name=%s\n",
 	  sqlite3_column_text(statement, 0),
 	  sqlite3_column_text(statement, 3),
-	  sqlite3_column_int(statement, 5),
+	  (long long) sqlite3_column_int64(statement, 5),
 	  (long long) sqlite3_column_int64(statement, 6),
 	  sqlite3_column_int(statement, 1),
 	  sqlite3_column_int(statement, 2),
@@ -768,7 +768,10 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
   if (!name)
       return WHY("Manifest has no name");
   char sqlcmd[1024];
-  int n = snprintf(sqlcmd, sizeof(sqlcmd), "SELECT manifests.id, manifests.manifest FROM filemanifests, manifests WHERE filemanifests.fileid = ? AND filemanifests.manifestid = manifests.id");
+  int n = snprintf(sqlcmd, sizeof(sqlcmd),
+      "SELECT manifests.id, manifests.manifest, manifests.version FROM filemanifests, manifests"
+      " WHERE filemanifests.manifestid = manifests.id AND filemanifests.fileid = ?"
+    );
   if (n >= sizeof(sqlcmd))
     return WHY("SQL command too long");
   int ret = 0;
@@ -779,13 +782,15 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
   } else {
     if (debug & DEBUG_RHIZOME) fprintf(stderr, "fileHexHash = \"%s\"\n", m->fileHexHash);
     sqlite3_bind_text(statement, 1, m->fileHexHash, -1, SQLITE_STATIC);
+    sqlite3_bind_int64(statement, 2, m->version);
     size_t rows = 0;
     while (sqlite3_step(statement) == SQLITE_ROW) {
       ++rows;
       if (debug & DEBUG_RHIZOME) fprintf(stderr, "Row %d\n", rows);
-      if (!(   sqlite3_column_count(statement) == 2
+      if (!(   sqlite3_column_count(statement) == 3
 	    && sqlite3_column_type(statement, 0) == SQLITE_TEXT
 	    && sqlite3_column_type(statement, 1) == SQLITE_BLOB
+	    && sqlite3_column_type(statement, 2) == SQLITE_INTEGER
       )) { 
 	ret = WHY("Incorrect statement columns");
 	break;
@@ -798,19 +803,25 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
       }
       const char *manifestblob = (char *) sqlite3_column_blob(statement, 1);
       size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
+      long long manifestversion = sqlite3_column_int64(statement, 2);
       rhizome_manifest *mq = rhizome_read_manifest_file(manifestblob, manifestblobsize, 0);
       const char *nameq = rhizome_manifest_get(mq, "name", NULL, 0);
+      long long versionq = rhizome_manifest_get_ll(mq, "version");
       const char *filehashq = rhizome_manifest_get(mq, "filehash", NULL, 0);
       long long lengthq = rhizome_manifest_get_ll(mq, "filesize");
-      if (debug & DEBUG_RHIZOME) fprintf(stderr, "Consider manifest.id=%s manifest.name=\"%s\"\n", manifestid, nameq);
+      if (debug & DEBUG_RHIZOME)
+	fprintf(stderr, "Consider manifest.id=%s manifest.name=\"%s\" manifest.version=%lld\n", manifestid, nameq, versionq);
       /* No need to compare "filehash" or "filesize" here, but we do so as a precaution if present */
       if (  nameq && !strcmp(nameq, name)
-	 && (!filehashq || strncmp(filehashq, m->fileHexHash, SHA512_DIGEST_STRING_LENGTH) == 0)
+	 && (versionq == -1 || versionq == manifestversion) // consistency check
+	 && (m->version == -1 || manifestversion == m->version)
 	 && (lengthq == -1 || lengthq == m->fileLength)
+	 && (!filehashq || strncmp(filehashq, m->fileHexHash, SHA512_DIGEST_STRING_LENGTH) == 0)
       ) {
 	memcpy(mq->fileHexHash, m->fileHexHash, SHA512_DIGEST_STRING_LENGTH);
 	mq->fileHashedP = 1;
 	mq->fileLength = m->fileLength;
+	mq->version = manifestversion;
 	*found = mq;
 	ret = 1;
 	if (debug & DEBUG_RHIZOME) fprintf(stderr, "found\n");

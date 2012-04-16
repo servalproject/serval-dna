@@ -77,6 +77,11 @@ int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, char
 
 /* Add a manifest/payload pair ("bundle") to the rhizome data store.
 
+   Returns:
+     0 if successful
+     2 if a duplicate is already in the store (same name, version and filehash)
+     -1 on error or failure
+
    Fills in any missing manifest fields (generating a new, random manifest ID if necessary),
    optionally performs consistency checks (see below), adds the manifest to the given groups (for
    which private keys must be held), optionally signs it, and inserts the manifest and payload into
@@ -197,6 +202,10 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
     rhizome_manifest_set_ll(m_in, "last_byte", m_in->fileLength);
   }
 
+  /* Make sure the manifest structure contains the version number, which may legitimately be -1 if
+     the caller did not provide a version. */
+  m_in->version = rhizome_manifest_get_ll(m_in, "version");
+
   /* Check if a manifest is already stored for the same payload with the same details.
      This catches the case of "dna rhizome add file <filename>" on the same file more than once.
      (Debounce!) */
@@ -205,39 +214,36 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
     return WHY("Errors encountered searching for duplicate manifest");
   if (dupm) {
     if (debug & DEBUG_RHIZOME)
-      fprintf(stderr, "Not adding manifest for payload name=\"%s\" hexhash=%s - duplicate found in rhizome store\n", name, m_in->fileHexHash);
-#if 0
-    /* TODO Upgrade the version of the duplicate? */
-    long long version = rhizome_manifest_get_ll(m_in, "version");
-    long long dupversion = rhizome_manifest_get_ll(dupm, "version");
-    if (version > dupversion) {
-      rhizome_manifest_set_ll(dupm, "version", version);
-      ...
-    }
-#endif
+      fprintf(stderr, "Found duplicate payload: name=\"%s\" version=%llu hexhash=%s -- not adding\n", name, dupm->version, dupm->fileHexHash);
+    /* If the caller wants the duplicate manifest, it must be finalised, otherwise discarded. */
     if (m_out) {
-      /* Finish completing the manifest */
       if (rhizome_manifest_finalise(dupm, 0))
 	return WHY("Failed to finalise manifest.\n");
       *m_out = dupm;
     }
     else
       rhizome_manifest_free(dupm);
-    return 0;
+    return 2;
   }
 
   /* Supply manifest version number if missing, so we can do the version check below */
-  if (rhizome_manifest_get(m_in, "version", NULL, 0) == NULL) {
-    rhizome_manifest_set_ll(m_in, "version", overlay_gettime_ms());
+  if (m_in->version == -1) {
+    m_in->version = overlay_gettime_ms();
+    rhizome_manifest_set_ll(m_in, "version", m_in->version);
   }
 
   /* If the manifest already has an ID */
   char *id = NULL;
   if ((id = rhizome_manifest_get(m_in, "id", NULL, 0))) {
-    /* Discard the new manifest it is older than the most recent known version with the same ID */
+    /* Discard the new manifest unless it is newer than the most recent known version with the same ID */
     long long storedversion = sqlite_exec_int64("SELECT version from manifests where id='%s';", id);
-    if (storedversion > rhizome_manifest_get_ll(m_in, "version")) {
+    if (debug & DEBUG_RHIZOME)
+      fprintf(stderr, "Found existing version=%lld, new version=%lld\n", storedversion, m_in->version);
+    if (m_in->version < storedversion) {
       return WHY("Newer version exists");
+    }
+    if (m_in->version == storedversion) {
+      return WHY("Same version exists");
     }
     /* Check if we know its private key */
     rhizome_hex_to_bytes(id, m_in->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
