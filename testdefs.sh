@@ -50,15 +50,13 @@ stop_dna_server() {
 #  - set SERVALINSTANCE_PATH environment variable
 #  - mkdir $SERVALINSTANCE_PATH unless --no-mkdir option given
 setup_dna() {
-   local -A opts
-   for opt; do opts["$opt"]=true; done
    dna=$(abspath "${this%/*}/dna") # The DNA executable under test
    if ! [ -x "$dna" ]; then
       error "dna executable not present: $dna"
       return 1
    fi
    export DNATMP=$TFWTMP/dnatmp
-   ${opts['--no-mkdir']:-false} || mkdir $DNATMP
+   [ "$1" = --no-mkdir ] || mkdir $DNATMP
    export SERVALINSTANCE_PATH=$DNATMP
    hlr_dat=$SERVALINSTANCE_PATH/hlr.dat
 }

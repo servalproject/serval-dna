@@ -67,7 +67,7 @@ strip_signatures() {
 extract_manifest_version() {
    local _var="$1"
    local _manifestfile="$2"
-   local _version=$(sed -n -e '/^version=[0-9]\+$/s/^version=//p' "$_manifestfile")
+   local _version=$(sed -n -e '/^version=[0-9]\{1,\}$/s/^version=//p' "$_manifestfile")
    assert --message="$_manifestfile contains valid 'version=' line" [ -n "$_version" ]
    [ -n "$_var" ] && eval $_var=$_version
 }
@@ -75,7 +75,7 @@ extract_manifest_version() {
 extract_manifest_filehash() {
    local _var="$1"
    local _manifestfile="$2"
-   local _filehash=$(sed -n -e '/^filehash=[0-9a-fA-F]\+$/s/^filehash=//p' "$_manifestfile")
+   local _filehash=$(sed -n -e '/^filehash=[0-9a-fA-F]\{1,\}$/s/^filehash=//p' "$_manifestfile")
    assert --message="$_manifestfile contains valid 'filehash=' line" [ -n "$_filehash" ]
    eval $_var=$_filehash
 }
@@ -111,13 +111,14 @@ test_AddNonExistManifest() {
    executeOk $dna rhizome add file file1 file1.manifest
    assert [ -r file1.manifest ]
    tfw_cat -v file1.manifest
+   local size=$(( $(cat file1 | wc -c) + 0 ))
    assertGrep file1.manifest '^name=file1$'
    assertGrep file1.manifest '^date=[0-9]\+$'
    assertGrep file1.manifest '^version=[0-9]\+$'
    assertGrep file1.manifest '^id=[0-9a-fA-F]\+$'
-   assertGrep file1.manifest "^filesize=$(cat file1 | wc --bytes)\$"
+   assertGrep file1.manifest "^filesize=$size\$"
    assertGrep file1.manifest "^first_byte=0$"
-   assertGrep file1.manifest "^last_byte=$(cat file1 | wc --bytes)\$"
+   assertGrep file1.manifest "^last_byte=$size\$"
 }
 
 doc_AddManifest="Add with minimal manifest file"
@@ -133,13 +134,14 @@ test_AddManifest() {
    tfw_cat --stdout
    tfw_cat --stderr
    tfw_cat -v file1.manifest
+   local size=$(( $(cat file1 | wc -c) + 0 ))
    assertGrep file1.manifest '^name=wah$'
    assertGrep file1.manifest '^date=12345$'
    assertGrep file1.manifest '^version=[0-9]\+$'
    assertGrep file1.manifest '^id=[0-9a-fA-F]\+$'
-   assertGrep file1.manifest "^filesize=$(cat file1 | wc --bytes)\$"
+   assertGrep file1.manifest "^filesize=$size\$"
    assertGrep file1.manifest "^first_byte=0$"
-   assertGrep file1.manifest "^last_byte=$(cat file1 | wc --bytes)\$"
+   assertGrep file1.manifest "^last_byte=$size\$"
 }
 
 doc_AddThenList="List contains one file after one add"
@@ -209,7 +211,8 @@ setup_AddUpdateSameVersion() {
    setup_AddDuplicate
    cp file1.manifest file1_2.manifest
    strip_signatures file1_2.manifest
-   sed -i -e '/^date=/d' -e '/^filehash=/d' -e '/^filesize=/d' file1_2.manifest
+   sed -i -e '/^date=/d;/^filehash=/d;/^filesize=/d' file1_2.manifest
+   tfw_cat -v file1_2.manifest
    assertGrep --matches=0 file1_2.manifest '^filehash='
    extract_manifest_version '' file1_2.manifest # asserts has version= line
    assertGrep file1_2.manifest '^id='
@@ -234,7 +237,7 @@ setup_AddUpdateNewVersion() {
    assertGrep --matches=1 file1_2.manifest "^version=$version$"
 }
 test_AddUpdateNewVersion() {
-   tfw_cat file1_2.manifest
+   tfw_cat -v file1_2.manifest
    executeOk $dna rhizome add file file1_2 file1_2.manifest
    assert_manifest_newer file1.manifest file1_2.manifest
    # Rhizome store contents reflect new payload.
@@ -249,7 +252,7 @@ setup_AddUpdateAutoVersion() {
    assertGrep --matches=0 file1_2.manifest '^version='
 }
 test_AddUpdateAutoVersion() {
-   tfw_cat file1_2.manifest
+   tfw_cat -v file1_2.manifest
    sleep 0.001 # Ensure that at least one millisecond has elapsed
    executeOk $dna rhizome add file file1_2 file1_2.manifest
    assert_manifest_newer file1.manifest file1_2.manifest

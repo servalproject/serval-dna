@@ -59,7 +59,7 @@ usage() {
 
 runTests() {
    _tfw_stdout=1
-   _tfw_stdout=1
+   _tfw_stderr=2
    _tfw_checkBashVersion
    _tfw_trace=false
    _tfw_verbose=false
@@ -212,23 +212,23 @@ tfw_cat() {
       case $file in
       --stdout) 
          echo "#--- ${header:-stdout of ${_tfw_execute_argv0##*/}} ---"
-         /bin/cat $show_nonprinting $_tfw_tmp/stdout
+         cat $show_nonprinting $_tfw_tmp/stdout
          echo "#---"
          header=
          show_nonprinting=
          ;;
       --stderr) 
          echo "#--- ${header:-stderr of ${_tfw_execute_argv0##*/}} ---"
-         /bin/cat $show_nonprinting $_tfw_tmp/stderr
+         cat $show_nonprinting $_tfw_tmp/stderr
          echo "#---"
          header=
          show_nonprinting=
          ;;
       --header=*) header="${1#*=}";;
-      -v|--show-nonprinting) show_nonprinting=--show-nonprinting;;
+      -v|--show-nonprinting) show_nonprinting=-v;;
       *)
          echo "#--- ${header:-$file} ---"
-         /bin/cat $show_nonprinting "$file"
+         cat $show_nonprinting "$file"
          echo "#---"
          header=
          show_nonprinting=
@@ -374,7 +374,7 @@ _tfw_abspath() {
 _tfw_setup() {
    _tfw_phase=setup
    _tfw_tmp=/tmp/_tfw-$$
-   /bin/mkdir $_tfw_tmp
+   mkdir $_tfw_tmp
    exec <&- 5>&1 5>&2 >$_tfw_tmp/log.stdout 2>$_tfw_tmp/log.stderr 6>$_tfw_tmp/log.xtrace
    BASH_XTRACEFD=6
    _tfw_stdout=5
@@ -385,7 +385,7 @@ _tfw_setup() {
       tail --pid=$$ --follow $_tfw_tmp/log.stderr >&$_tfw_stderr 2>/dev/null &
    fi
    export TFWTMP=$_tfw_tmp/tmp
-   /bin/mkdir $TFWTMP
+   mkdir $TFWTMP
    cd $TFWTMP
    echo '# SETUP'
    case `type -t setup_$_tfw_test_name` in
@@ -440,13 +440,14 @@ _tfw_teardown() {
       fi
       echo "${banner//[^=]/=}"
    } >>$_tfw_logfile
-   /bin/rm -rf $_tfw_tmp
+   rm -rf $_tfw_tmp
 }
 
 _tfw_execute() {
    _tfw_execute_argv0="$1"
-   /usr/bin/time --format='realtime=%e;usertime=%U;systime=%S' --output=$_tfw_tmp/times "$@" >$_tfw_tmp/stdout 2>$_tfw_tmp/stderr
+   { time -p "$@" >$_tfw_tmp/stdout 2>$_tfw_tmp/stderr ; } 2>$_tfw_tmp/times
    _tfw_exitStatus=$?
+   # Deal with exit status.
    if [ -n "$_tfw_opt_exit_status" ]; then
       _tfw_message="exit status of ${_tfw_execute_argv0##*/} ($_tfw_exitStatus) is $_tfw_opt_exit_status"
       _tfw_dump_stderr_on_fail=true
@@ -455,25 +456,37 @@ _tfw_execute() {
    else
       echo "# exit status of ${_tfw_execute_argv0##*/} = $_tfw_exitStatus"
    fi
-   if grep --quiet --invert-match --regexp='^realtime=[0-9.]*;usertime=[0-9.]*;systime=[0-9.]*$' $_tfw_tmp/times; then
-      echo "# times file contains spurious data:"
-      tfw_cat --header=times $_tfw_tmp/times
-      if [ $_tfw_exitStatus -eq 0 ]; then
-         _tfw_exitStatus=255
-         echo "# deeming exit status of command to be $_tfw_exitStatus"
-      fi
-      realtime=0
-      usertime=0
-      systime=0
-      realtime_ms=0
-      #usertime_ms=0
-      #systime_ms=0
-   else
-      source $_tfw_tmp/times
-      realtime_ms=$(/usr/bin/awk "BEGIN { print int($realtime * 1000) }")
-      #usertime_ms=$(/usr/bin/awk "BEGIN { print int($usertime * 1000) }")
-      #systime_ms=$(/usr/bin/awk "BEGIN { print int($systime * 1000) }")
+   # Parse execution time report.
+   if ! _tfw_parse_times_to_milliseconds real realtime_ms ||
+      ! _tfw_parse_times_to_milliseconds user usertime_ms ||
+      ! _tfw_parse_times_to_milliseconds sys systime_ms
+   then
+      echo '# malformed output from time:'
+      tfw_cat --header=times -v $_tfw_tmp/times
    fi
+   return 0
+}
+
+_tfw_parse_times_to_milliseconds() {
+   local label="$1"
+   local var="$2"
+   local milliseconds=$(awk '$1 == "'"$label"'" {
+         value = $2
+         minutes = 0
+         if (match(value, "[0-9]+m")) {
+            minutes = substr(value, RSTART, RLENGTH - 1)
+            value = substr(value, 1, RSTART - 1) substr(value, RSTART + RLENGTH)
+         }
+         if (substr(value, length(value)) == "s") {
+            value = substr(value, 1, length(value) - 1)
+         }
+         if (match(value, "^[0-9]+(\.[0-9]+)?$")) {
+            seconds = value + 0
+            print (minutes * 60 + seconds) * 1000
+         }
+      }' $_tfw_tmp/times)
+   [ -z "$milliseconds" ] && return 1
+   [ -n "$var" ] && eval $var=$milliseconds
    return 0
 }
 
@@ -537,7 +550,7 @@ _tfw_expr_to_awkexpr() {
 
 _tfw_eval_awkexpr() {
    local awkerrs # on separate line so we don't lose exit status
-   awkerrs=$(/usr/bin/awk "BEGIN { exit(($*) ? 0 : 1) }" </dev/null 2>&1)
+   awkerrs=$(awk "BEGIN { exit(($*) ? 0 : 1) }" </dev/null 2>&1)
    local stat=$?
    if [ -n "$awkerrs" ]; then
       _tfw_error "invalid expression: $*"
@@ -562,7 +575,7 @@ _tfw_assert_stdxxx_is() {
    fi
    local message="${_tfw_message:-$qual of ${_tfw_execute_argv0##*/} is $*}"
    echo -n "$@" >$_tfw_tmp/stdxxx_is.tmp
-   if ! /usr/bin/cmp --quiet $_tfw_tmp/stdxxx_is.tmp "$_tfw_tmp/$qual"; then
+   if ! cmp --quiet $_tfw_tmp/stdxxx_is.tmp "$_tfw_tmp/$qual"; then
       _tfw_failmsg "assertion failed: $message"
       _tfw_backtrace
       return 1
@@ -580,7 +593,7 @@ _tfw_assert_stdxxx_linecount() {
       _tfw_error "incorrect arguments"
       return 254
    fi
-   local lineCount=$(cat $_tfw_tmp/$qual | /usr/bin/wc --lines)
+   local lineCount=$(( $(cat $_tfw_tmp/$qual | wc -l) + 0 ))
    [ -z "$_tfw_message" ] && _tfw_message="$qual line count ($lineCount) $*"
    _tfw_assertExpr "$lineCount" "$@" || _tfw_failexit
    echo "# assert $_tfw_message"
@@ -604,11 +617,13 @@ _tfw_assert_grep() {
    local file="$2"
    local pattern="$3"
    local message=
-   local matches=$(/bin/grep --regexp="$pattern" "$file" | /usr/bin/wc --lines)
+   local matches=$(( $(grep --regexp="$pattern" "$file" | wc -l) + 0 ))
+   local done=false
    local ret=0
    _tfw_shopt -s extglob
    case "$_tfw_opt_matches" in
    '')
+      done=true
       message="${_tfw_message:-$label contains a line matching \"$pattern\"}"
       if [ $matches -ne 0 ]; then
          echo "# assert $message"
@@ -617,7 +632,10 @@ _tfw_assert_grep() {
          ret=1
       fi
       ;;
+   esac
+   case "$_tfw_opt_matches" in
    +([0-9]))
+      done=true
       local s=$([ $_tfw_opt_matches -ne 1 ] && echo s)
       message="${_tfw_message:-$label contains exactly $_tfw_opt_matches line$s matching \"$pattern\"}"
       if [ $matches -eq $_tfw_opt_matches ]; then
@@ -627,7 +645,10 @@ _tfw_assert_grep() {
          ret=1
       fi
       ;;
+   esac
+   case "$_tfw_opt_matches" in
    +([0-9])-*([0-9]))
+      done=true
       local bound=${_tfw_opt_matches%-*}
       local s=$([ $bound -ne 1 ] && echo s)
       message="${_tfw_message:-$label contains at least $bound line$s matching \"$pattern\"}"
@@ -637,8 +658,11 @@ _tfw_assert_grep() {
          _tfw_failmsg "assertion failed: $message"
          ret=1
       fi
-      ;;& # Test the next case as well...
+      ;;
+   esac
+   case "$_tfw_opt_matches" in
    *([0-9])-+([0-9]))
+      done=true
       local bound=${_tfw_opt_matches#*-}
       local s=$([ $bound -ne 1 ] && echo s)
       message="${_tfw_message:-$label contains at most $bound line$s matching \"$pattern\"}"
@@ -649,11 +673,11 @@ _tfw_assert_grep() {
          ret=1
       fi
       ;;
-   *)
+   esac
+   if ! $done; then
       _tfw_error "unsupported value for --matches=$_tfw_opt_matches"
       ret=254
-      ;;
-   esac
+   fi
    _tfw_shopt_restore
    if [ $ret -ne 0 ]; then
       _tfw_backtrace
@@ -677,11 +701,17 @@ _tfw_echoerr() {
 }
 
 _tfw_checkBashVersion() {
-   case $BASH_VERSION in
-   [56789].* | 4.[23456789].*) ;;
-   '') _tfw_fatal "not running in Bash (/bin/bash) shell";;
-   *) _tfw_fatal "unsupported Bash version: $BASH_VERSION";;
-   esac
+   [ -z "$BASH_VERSION" ] && _tfw_fatal "not running in Bash (/bin/bash) shell"
+   if [ -n "${BASH_VERSINFO[*]}" ]; then
+      [ ${BASH_VERSINFO[0]} -gt 3 ] && return 0
+      if [ ${BASH_VERSINFO[0]} -eq 3 ]; then
+         [ ${BASH_VERSINFO[1]} -gt 2 ] && return 0
+         if [ ${BASH_VERSINFO[1]} -eq 2 ]; then
+            [ ${BASH_VERSINFO[2]} -ge 48 ] && return 0
+         fi
+      fi
+   fi
+   _tfw_fatal "unsupported Bash version: $BASH_VERSION"
 }
 
 # Return a list of test names in the order that the test_TestName functions were
@@ -689,10 +719,10 @@ _tfw_checkBashVersion() {
 _tfw_find_tests() {
    _tfw_shopt -s extdebug
    builtin declare -F |
-      /bin/sed -n -e '/^declare -f test_..*/s/^declare -f test_//p' |
+      sed -n -e '/^declare -f test_./s/^declare -f test_//p' |
       while read name; do builtin declare -F "test_$name"; done |
-      /usr/bin/sort --key 2,2n --key 3,3 |
-      /bin/sed -e 's/^test_//' -e 's/[    ].*//'
+      sort --key 2,2n --key 3,3 |
+      sed -e 's/^test_//' -e 's/[    ].*//'
    _tfw_shopt_restore
 }
 
