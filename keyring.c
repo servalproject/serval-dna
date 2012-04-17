@@ -684,7 +684,7 @@ int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
     goto kdp_safeexit;
   }
   /* compare hash to record */
-  if (bcmp(hash,&slot[32],crypto_hash_sha512_BYTES))
+  if (memcmp(hash,&slot[32],crypto_hash_sha512_BYTES))
     {      
       WHY("Slot is not valid (MAC mismatch)");
       dump("computed",hash,crypto_hash_sha512_BYTES);
@@ -1169,14 +1169,14 @@ int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req)
 	   check anyway. */
 	if (plain_len!=SID_SIZE) 
 	  return WHY("key mapping signed block is wrong length");
-	if (bcmp(plain,req->out.src.sid,SID_SIZE))
+	if (memcmp(plain,req->out.src.sid,SID_SIZE))
 	  return WHY("key mapping signed block is for wrong SID");
 	WHY("Key mapping looks valid");
 
 	/* work out where to put it */
 	int i;
 	for(i=0;i<sid_sas_mapping_count;i++)
-	  if (!bcmp(req->out.src.sid,sid_sas_mappings[i].sid,SID_SIZE)) break;
+	  if (!memcmp(req->out.src.sid,sid_sas_mappings[i].sid,SID_SIZE)) break;
 
 	if (i>=MAX_SID_SAS_MAPPINGS) i=random()%MAX_SID_SAS_MAPPINGS;
 	if (i>=sid_sas_mapping_count) sid_sas_mapping_count=i+1;
@@ -1220,7 +1220,7 @@ unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
   long long now=overlay_gettime_ms();
   for(i=0;i<sid_sas_mapping_count;i++)
     {
-      if (bcmp(sid,sid_sas_mappings[i].sid,SID_SIZE)) continue;
+      if (memcmp(sid,sid_sas_mappings[i].sid,SID_SIZE)) continue;
       if (sid_sas_mappings[i].validP) return sid_sas_mappings[i].sas_public;      
       /* Don't flood the network with mapping requests */
       if ((now-sid_sas_mappings[i].last_request_time_in_ms)<1000) return NULL;
@@ -1274,7 +1274,7 @@ int keyring_find_sid(keyring_file *k,int *cn,int *in,int *kp,unsigned char *sid)
     if (k->contexts[*cn]->identities[*in]->keypairs[*kp]->type==KEYTYPE_CRYPTOBOX)
       {
 	/* Compare SIDs */
-	if (!bcmp(sid,(char *)k->contexts[*cn]->identities[*in]
+	if (!memcmp(sid,(char *)k->contexts[*cn]->identities[*in]
 		  ->keypairs[*kp]->public_key,SID_SIZE))
 	  {
 	    /* match */
@@ -1385,9 +1385,9 @@ unsigned char *keyring_get_nm_bytes(sockaddr_mdp *known,sockaddr_mdp *unknown)
   /* See if we have it cached already */
   for(i=0;i<nm_slots_used;i++)
     {
-      if (bcmp(nm_cache[i].known_key,known->sid,
+      if (memcmp(nm_cache[i].known_key,known->sid,
 	       crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES)) continue;
-      if (bcmp(nm_cache[i].unknown_key,unknown->sid,
+      if (memcmp(nm_cache[i].unknown_key,unknown->sid,
 	       crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES)) continue;
       return nm_cache[i].nm_bytes;
     }

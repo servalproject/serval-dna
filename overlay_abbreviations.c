@@ -482,7 +482,7 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
 	    if (keyring->contexts[cn]->identities[id]->keypairs[kp]->type
 		==KEYTYPE_CRYPTOBOX)
 	      {
-		if (!bcmp(in,keyring->contexts[cn]->identities[id]
+		if (!memcmp(in,keyring->contexts[cn]->identities[id]
 			  ->keypairs[kp]->public_key,prefix_bytes))
 		  {
 		    if (debug&DEBUG_OVERLAYABBREVIATIONS) 
