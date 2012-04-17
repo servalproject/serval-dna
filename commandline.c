@@ -351,13 +351,6 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
 {
   char *sid=cli_arg(argc,argv,o,"SID|broadcast","broadcast");
 
-  if (!keyring) keyring=keyring_open_with_pins("");
-
-  /* MDP frames consist of:
-     destination SID (32 bytes)
-     destination port (4 bytes)
-     payload length (2 bytes)
-     payload (rest of packet) */
   overlay_mdp_frame mdp;
 
   /* Get list of local addresses */
@@ -485,6 +478,7 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
 		     (*rxseq)-firstSeq+1,delay,
 		     mdp.packetTypeAndFlags&MDP_NOCRYPT?"":" ENCRYPTED",
 		     mdp.packetTypeAndFlags&MDP_NOSIGN?"":" SIGNED");
+	     #warning we need duplicate pong detection here so that stats work properly
 	      rx_count++;
 	      rx_ms+=delay;
 	      if (rx_mintime>delay||rx_mintime==-1) rx_mintime=delay;
