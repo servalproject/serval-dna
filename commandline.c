@@ -433,8 +433,7 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
     if (broadcast) mdp.packetTypeAndFlags|=MDP_NOCRYPT;
     mdp.out.src.port=port;
     bcopy(srcsid,mdp.out.src.sid,SID_SIZE);
-    /* Set destination to broadcast */
-    for(i=0;i<SID_SIZE;i++) mdp.out.dst.sid[i]=ping_sid[i];
+    bcopy(ping_sid,&mdp.out.dst.sid[0],SID_SIZE);
     /* Set port to well known echo port (from /etc/services) */
     mdp.out.dst.port=7;
     mdp.out.payload_length=4+8;
@@ -474,11 +473,10 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
 	      long long *txtime=(long long *)&mdp.in.payload[4];
 	      long long delay=overlay_gettime_ms()-*txtime;
 	      printf("%s: seq=%d time=%lld ms%s%s\n",
-		     overlay_render_sid(mdp.in.src.sid),
-		     (*rxseq)-firstSeq+1,delay,
+		     overlay_render_sid(mdp.in.src.sid),(*rxseq)-firstSeq+1,delay,
 		     mdp.packetTypeAndFlags&MDP_NOCRYPT?"":" ENCRYPTED",
 		     mdp.packetTypeAndFlags&MDP_NOSIGN?"":" SIGNED");
-	     #warning we need duplicate pong detection here so that stats work properly
+	     #warning put duplicate pong detection here so that stats work properly
 	      rx_count++;
 	      rx_ms+=delay;
 	      if (rx_mintime>delay||rx_mintime==-1) rx_mintime=delay;
@@ -487,7 +485,8 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
 	    }
 	    break;
 	  default:
-	    fprintf(stderr,"mdpping: overlay_mdp_recv: Unexpected MDP frame type 0x%x\n",mdp.packetTypeAndFlags);
+	    fprintf(stderr,"mdpping: overlay_mdp_recv: Unexpected MDP frame type"
+		    " 0x%x\n",mdp.packetTypeAndFlags);
 	    break;
 	  }
 	}
