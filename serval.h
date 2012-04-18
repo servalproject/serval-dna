@@ -1132,14 +1132,34 @@ typedef struct overlay_mdp_addrlist {
   unsigned char sids[MDP_MAX_SID_REQUEST][SID_SIZE];
 } overlay_mdp_addrlist;
 
+#define MDP_VOMPEVENT 7
+typedef struct overlay_mdp_vompevent {
+  unsigned long long audio_sample_endtime;
+  unsigned long long last_activity;
+#define VOMPEVENT_RINGING (1<<0)
+#define VOMPEVENT_CALLENDED (1<<1)
+#define VOMPEVENT_CALLREJECT (1<<2)
+#define VOMPEVENT_TIMEOUT (1<<3)
+#define VOMPEVENT_ERROR (1<<4)
+#define VOMPEVENT_AUDIOSTREAMING (1<<5)
+#define VOMPEVENT_DIAL (1<<6)
+  unsigned int flags;
+  unsigned short audio_sample_bytes;
+  unsigned char local_state;
+  unsigned char remote_state;
+  unsigned char audio_sample_codec;
+  unsigned char audio_bytes[MDP_MTU-100];
+} overlay_mdp_vompevent;
+
 typedef struct overlay_mdp_frame {
-#define MDP_AWAITREPLY 7
+#define MDP_AWAITREPLY 9999
   unsigned int packetTypeAndFlags;
   union {
     overlay_mdp_data_frame out;
     overlay_mdp_data_frame in;
     overlay_mdp_bind_request bind;
     overlay_mdp_addrlist addrlist;
+    overlay_mdp_vompevent vompevent;
     overlay_mdp_error error;
     /* 2048 is too large (causes EMSGSIZE errors on OSX, but probably fine on
        Linux) */
