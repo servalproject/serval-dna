@@ -63,7 +63,8 @@ LOCAL_SRC_FILES:= \
 	serval-dna/sha2.c          \
 	serval-dna/simulate.c      \
         serval-dna/srandomdev.c    \
-	serval-dna/keyring.c
+	serval-dna/keyring.c       \
+	serval-dna/vomp.c
 
 LOCAL_MODULE:= dna
 
