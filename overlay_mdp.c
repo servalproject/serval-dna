@@ -832,6 +832,8 @@ int overlay_mdp_poll()
       overlay_mdp_frame *mdp=(overlay_mdp_frame *)&buffer[0];      
 
       switch(mdp->packetTypeAndFlags&MDP_TYPE_MASK) {
+      case MDP_VOMPEVENT:
+	return vomp_mdp_event(mdp,recvaddr_un,recvaddrlen);
       case MDP_GETADDRS:
 	{
 	  overlay_mdp_frame mdpreply;

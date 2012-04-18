@@ -146,16 +146,29 @@ int vomp_call_destroy(vomp_call_state *call)
   return WHY("Not implemented");
 }
 
+/* An MDP message of type MDP_VOMPEVENT received from the unix domain socket.
+   This is how user tasks request telephone calls and receive updated status
+   and audio from the call. We need the receiver socket so that we can 
+   route the events back to wherever they should be going. 
+   XXX - We should have some means of authenticating/protecting this interface
+   so that any old process cannot request a mesh call. Although, in fairness,
+   the user will know about the call because the call display will come up.
+*/
+int vomp_mdp_event(overlay_mdp_frame *mdp,
+		   struct sockaddr_un *recvaddr,int recvaddrlen)
+{
+  return WHY("Not implemented");
+}
+
 /* At this point we know the MDP frame is addressed to the VoMP port, but 
    we have not inspected the contents. As these frames are wire-format, we
    must pay attention to endianness. */
-void vomp_mdp_received(overlay_mdp_frame *mdp)
+int vomp_mdp_received(overlay_mdp_frame *mdp)
 {
   if (mdp->packetTypeAndFlags&(MDP_NOCRYPT|MDP_NOSIGN))
     {
       /* stream-crypted audio frame */
-      WHY("not implemented");
-      return;
+      return WHY("not implemented");
     }
 
   /* only auth-crypted frames make it this far */
@@ -184,21 +197,18 @@ void vomp_mdp_received(overlay_mdp_frame *mdp)
 				      sender_session,recvr_session);
 	if (!call) {
 	  /* could not allocate a call slot, so do nothing */
-	  WHY("No free call slots");
-	  return;
+	  return WHY("No free call slots");
 	}
 
 	/* We have a session number.  Send a status update back to sender */
 	call->last_activity=overlay_gettime_ms();
-	vomp_send_status(call);
-	return;
+	return vomp_send_status(call);
       } else {
 	/* A VoMP packet for a call apparently already in progress */
 	call=vomp_find_or_create_call(mdp->in.src.sid,mdp->in.dst.sid,
 				      sender_session,recvr_session);
 	if (!call) {
-	  WHY("VoMP frame does not correspond to an active call - stale traffic or replay attack?");
-	  return;
+	  return WHY("VoMP frame does not correspond to an active call - stale traffic or replay attack?");
 	}
 	/* Consider states: our actual state, sender state, what the sender thinks
 	   our state is, and what we think the sender's state is.  But largely it
@@ -219,7 +229,7 @@ void vomp_mdp_received(overlay_mdp_frame *mdp)
 	     No action is required, but we probably shouldn't count it towards
 	     valid call activity, so don't touch the recent activity timer.
 	     Just return. */
-	  return;
+	  return 0;
 	case (VOMP_STATE_NOCALL<<3)|VOMP_STATE_RINGINGOUT:
 	  /* We have have issued a session, but think that no call is in progress.
 	     The remote party is now indicating that they are trying to ring us.
@@ -379,11 +389,10 @@ void vomp_mdp_received(overlay_mdp_frame *mdp)
 	case (VOMP_STATE_CALLENDED<<3)|VOMP_STATE_INCALL:
 	  /* For all of these states wait for the far end to synchronise,
 	     but don't touch the call timer */
-	  return;
+	  return 0;
 	case (VOMP_STATE_CALLENDED<<3)|VOMP_STATE_CALLENDED:
 	  /* We both agree the call is done.  Destroy call. */
-	  vomp_call_destroy(call);
-	  return;
+	  return vomp_call_destroy(call);
 	}
 	
 	/* touch call timer if the current state has not vetoed by returning */
@@ -401,4 +410,5 @@ void vomp_mdp_received(overlay_mdp_frame *mdp)
     break;
   }
 
+  return WHY("Malformed VoMP MDP packet?");
 }

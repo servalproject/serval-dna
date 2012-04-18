@@ -1242,3 +1242,6 @@ typedef struct vomp_call_state {
 #define VOMP_STATE_RINGINGIN 4
 #define VOMP_STATE_INCALL 5
 #define VOMP_STATE_CALLENDED 6
+int vomp_mdp_event(overlay_mdp_frame *mdp,
+		   struct sockaddr_un *recvaddr,int recvaddrlen);
+int vomp_mdp_received(overlay_mdp_frame *mdp);
