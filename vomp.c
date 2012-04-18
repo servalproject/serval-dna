@@ -25,40 +25,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 
-typedef struct vomp_call_half {
-  unsigned char sid[SID_SIZE];
-  unsigned char state;
-  unsigned char codec;
-  unsigned int session;
-#define VOMP_SESSION_MASK 0xffffff
-  unsigned int sequence;
-  /* the following is from call creation, not start of audio flow */
-  unsigned long long milliseconds_since_call_start;
-} vomp_call_half;
-
-typedef struct vomp_call_state {
-  vomp_call_half local;
-  vomp_call_half remote;
-  int ringing;
-  unsigned long long last_activity;
-  int audio_started;
-} vomp_call_state;
-
-#define VOMP_CODEC_CODEC2_2400 0x01
-#define VOMP_CODEC_CODEC2_1400 0x02
-#define VOMP_CODEC_GSM 0x03
-#define VOMP_CODEC_DTMF 0x04
-#define VOMP_CODEC_ENGAGED 0x05
-#define VOMP_CODEC_CODECSISUPPORT 0xfe
-#define VOMP_CODEC_CHANGEYOURCODECTO 0xff
-
-#define VOMP_STATE_NOCALL 1
-#define VOMP_STATE_CALLPREP 2
-#define VOMP_STATE_RINGINGOUT 3
-#define VOMP_STATE_RINGINGIN 4
-#define VOMP_STATE_INCALL 5
-#define VOMP_STATE_CALLENDED 6
-
 /* Although we only support one call at a time, we allow for multiple call states.
    This is partly to deal with denial of service attacks that might occur by causing
    the ejection of newly allocated session numbers before the caller has had a chance

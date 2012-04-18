@@ -1089,6 +1089,7 @@ unsigned char *keyring_get_nm_bytes(sockaddr_mdp *priv,sockaddr_mdp *pub);
 
 #define MDP_PORT_ECHO 7
 #define MDP_PORT_KEYMAPREQUEST 0x10000001
+#define MDP_PORT_VOMP 0x10000002
 
 #define MDP_TYPE_MASK 0xff
 #define MDP_FLAG_MASK 0xff00
@@ -1185,3 +1186,38 @@ void *_serval_debug_malloc(unsigned int bytes,char *file,const char *func,int li
 void *_serval_debug_calloc(unsigned int bytes,unsigned int count,char *file,const char *func,int line);
 void _serval_debug_free(void *p,char *file,const char *func,int line);
 #endif
+
+
+typedef struct vomp_call_half {
+  unsigned char sid[SID_SIZE];
+  unsigned char state;
+  unsigned char codec;
+  unsigned int session;
+#define VOMP_SESSION_MASK 0xffffff
+  unsigned int sequence;
+  /* the following is from call creation, not start of audio flow */
+  unsigned long long milliseconds_since_call_start;
+} vomp_call_half;
+
+typedef struct vomp_call_state {
+  vomp_call_half local;
+  vomp_call_half remote;
+  int ringing;
+  unsigned long long last_activity;
+  int audio_started;
+} vomp_call_state;
+
+#define VOMP_CODEC_CODEC2_2400 0x01
+#define VOMP_CODEC_CODEC2_1400 0x02
+#define VOMP_CODEC_GSM 0x03
+#define VOMP_CODEC_DTMF 0x04
+#define VOMP_CODEC_ENGAGED 0x05
+#define VOMP_CODEC_CODECSISUPPORT 0xfe
+#define VOMP_CODEC_CHANGEYOURCODECTO 0xff
+
+#define VOMP_STATE_NOCALL 1
+#define VOMP_STATE_CALLPREP 2
+#define VOMP_STATE_RINGINGOUT 3
+#define VOMP_STATE_RINGINGIN 4
+#define VOMP_STATE_INCALL 5
+#define VOMP_STATE_CALLENDED 6

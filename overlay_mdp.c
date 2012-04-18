@@ -441,6 +441,8 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
     } else {
       /* No socket is bound, ignore the packet ... except for magic sockets */
       switch(mdp->out.dst.port) {
+      case MDP_PORT_VOMP:
+	return vomp_mdp_received(mdp);
       case MDP_PORT_KEYMAPREQUEST:
 	/* Either respond with the appropriate SAS, or record this one if it
 	   verfies out okay. */
@@ -546,6 +548,7 @@ int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,int userGeneratedFrameP,
       break;
       /* other built-in listeners */
     case MDP_PORT_KEYMAPREQUEST:
+    case MDP_PORT_VOMP:
       return 0;
     default:
       break;
