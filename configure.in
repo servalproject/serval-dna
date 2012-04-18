@@ -22,6 +22,6 @@ AC_CHECK_LIB(nsl,callrpc,[LDFLAGS="$LDFLAGS -lnsl"])
 AC_CHECK_LIB(socket,socket,[LDFLAGS="$LDFLAGS -lsocket"])
 AC_CHECK_LIB(dl,dlopen,[LDFLAGS="$LDFLAGS -ldl"])
 AC_CHECK_LIB(pthread,pthread_create,[LDFLAGS="$LDFLAGS -lpthread"])
-AC_CHECK_FILE(/Library/Frameworks/SDL.framework,[LDFLAGS="$LDFLAGS -F SDL -F SDL_main"; CFLAGS="$CFLAGS -DWITH_SDL";])
+AC_CHECK_FILE(/Library/Frameworks/SDL.framework,[LDFLAGS="$LDFLAGS -framework SDL"; CFLAGS="$CFLAGS -DWITH_SDL";])
 
 AC_OUTPUT(Makefile)
