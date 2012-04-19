@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include "serval.h"
 #include "rhizome.h"
@@ -96,27 +97,6 @@ int cli_usage() {
   return -1;
 }
 
-char *cli_arg(int argc, char **argv, command_line_option *o, char *argname, char *defaultvalue)
-{
-  int arglen = strlen(argname);
-  int i;
-  const char *word;
-  for(i = 0; (word = o->words[i]); ++i) {
-    int wordlen = strlen(word);
-    if (i < argc
-      &&( (wordlen==arglen+2 && word[0]=='<' && word[wordlen-1]=='>' && !strncasecmp(&word[1], argname, arglen))
-        ||(wordlen==arglen+4 && word[0]=='[' && word[1]=='<' && word[wordlen-1]==']' && word[wordlen-2]=='>' && !strncasecmp(&word[2], argname, arglen)))
-      ) {
-      return argv[i];
-    }
-  }
-  /* No matching argument was found, so return default value.  It might seem that this should never
-     happen, but it can because more than one version of a command line option may exist, one with a
-     given argument and another without, and allowing a default value means we can have a single
-     function handle both in a fairly simple manner. */
-  return defaultvalue;
-}
-
 /* args[] excludes command name (unless hardlinks are used to use first words 
    of command sequences as alternate names of the command. */
 int parseCommandLine(int argc, char **args)
@@ -128,16 +108,34 @@ int parseCommandLine(int argc, char **args)
     {
       int j;
       const char *word = NULL;
-      for (j = 0; (word = command_line_options[i].words[j]) && j != argc; ++j) {
-	if (word[0] == '[' || (word[0] != '<' && strcasecmp(word, args[j]))) {
-	  /* Words don't match, and word is not a place-holder for an argument,
-	     so it isn't this command line call. */
+      int optional = 0;
+      int mandatory = 0;
+      for (j = 0; (word = command_line_options[i].words[j]); ++j) {
+	int wordlen = strlen(word);
+	if (!(   (wordlen > 2 && word[0] == '<' && word[wordlen-1] == '>')
+	      || (wordlen > 4 && word[0] == '[' && word[1] == '<' && word[wordlen-2] == '>' && word[wordlen-1] == ']')
+	      || (wordlen > 0)
+	)) {
+	  fprintf(stderr,"Internal error: command_line_options[%d].word[%d]=\"%s\" is malformed\n", i, j, word);
 	  break;
+	} else if (word[0] == '<') {
+	  ++mandatory;
+	  if (optional) {
+	    fprintf(stderr,"Internal error: command_line_options[%d].word[%d]=\"%s\" should be optional\n", i, j, word);
+	    break;
+	  }
+	} else if (word[0] == '[') {
+	  ++optional;
+	} else {
+	  ++mandatory;
+	  if (j < argc && strcasecmp(word, args[j])) // literal words don't match
+	    break;
 	}
       }
-      if (word ? word[0] == '[' : j == argc) {
-	/* We used up all non-optional words in args and command line call sequence, so we have
-	   a match. If we have multiple matches, then note that the call is ambiguous. */
+      if (!word && argc >= mandatory && argc <= mandatory + optional) {
+	/* A match!  We got through the command definition with no internal errors and all literal
+	   args matched and we have a proper number of args.  If we have multiple matches, then note
+	   that the call is ambiguous. */
 	if (cli_call>=0) ambiguous++;
 	if (ambiguous==1) {
 	  fprintf(stderr,"Ambiguous command line call:\n   ");
@@ -152,7 +150,7 @@ int parseCommandLine(int argc, char **args)
 	cli_call=i;
       }
     }
-  
+
   /* Don't process ambiguous calls */
   if (ambiguous) return -1;
   /* Complain if we found no matching calls */
@@ -161,6 +159,36 @@ int parseCommandLine(int argc, char **args)
   /* Otherwise, make call */
   setVerbosity(confValueGet("debug",""));
   return command_line_options[cli_call].function(argc,args, &command_line_options[cli_call]);
+}
+
+int cli_arg(int argc, char **argv, command_line_option *o, char *argname, char **dst, int (*validator)(const char *arg), char *defaultvalue)
+{
+  int arglen = strlen(argname);
+  int i;
+  const char *word;
+  for(i = 0; (word = o->words[i]); ++i) {
+    int wordlen = strlen(word);
+    /* No need to check that the "<...>" and "[<...>]" are all intact in the command_line_option,
+       because that was already checked in parseCommandLine(). */
+    if (i < argc
+      &&(  (wordlen == arglen + 2 && word[0] == '<' && !strncasecmp(&word[1], argname, arglen))
+        || (wordlen == arglen + 4 && word[0] == '[' && !strncasecmp(&word[2], argname, arglen)))
+    ) {
+      char *value = argv[i];
+      if (validator && !(*validator)(value)) {
+	fprintf(stderr, "Invalid argument %d '%s': \"%s\"\n", i, argname, value);
+	return -1;
+      }
+      *dst = value;
+      return 0;
+    }
+  }
+  /* No matching valid argument was found, so return default value.  It might seem that this should
+     never happen, but it can because more than one version of a command line option may exist, one
+     with a given argument and another without, and allowing a default value means we can have a
+     single function handle both in a fairly simple manner. */
+  *dst = defaultvalue;
+  return 1;
 }
 
 int app_dna_lookup(int argc,char **argv,struct command_line_option *o)
@@ -211,11 +239,17 @@ char *confValueGet(char *var,char *defaultValue)
   return defaultValue;
 }
 
+int cli_absolute_path(const char *arg)
+{
+  return arg[0] == '/' && arg[1] != '\0';
+}
+
 int app_server_start(int argc,char **argv,struct command_line_option *o)
 {
   /* Process optional arguments */
   int foregroundP= (argc >= 3 && !strcasecmp(argv[2], "foreground"));
-  thisinstancepath = cli_arg(argc, argv, o, "instance path", NULL);
+  if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1)
+    return -1;
 
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
@@ -252,7 +286,8 @@ int app_server_start(int argc,char **argv,struct command_line_option *o)
 
 int app_server_stop(int argc,char **argv,struct command_line_option *o)
 {
-  thisinstancepath = cli_arg(argc, argv, o, "instance path", NULL);
+  if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1)
+    return -1;
 
   int pid=-1;
   int running = servalNodeRunning(&pid);
@@ -316,7 +351,8 @@ int app_server_stop(int argc,char **argv,struct command_line_option *o)
 
 int app_server_status(int argc,char **argv,struct command_line_option *o)
 {
-  thisinstancepath = cli_arg(argc, argv, o, "instance path", NULL);
+  if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1)
+    return -1;
   
   /* Display configuration information */
   char filename[1024];
@@ -348,7 +384,9 @@ int app_server_status(int argc,char **argv,struct command_line_option *o)
 
 int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
 {
-  char *sid=cli_arg(argc,argv,o,"SID|broadcast","broadcast");
+  char *sid;
+  if (cli_arg(argc, argv, o, "SID|broadcast", &sid, validateSid, "broadcast") == -1)
+    return -1;
 
   overlay_mdp_frame mdp;
 
@@ -569,10 +607,23 @@ static int set_variable(const char *var, const char *val)
   return 0;
 }
 
+int cli_configvarname(const char *arg)
+{
+  if (arg[0] == '\0')
+    return 0;
+  const char *s;
+  for (s = arg; *s; ++s)
+    if (!(isalnum(*s) || *s == '_'))
+      return 0;
+  return 1;
+}
+
 int app_config_set(int argc,char **argv,struct command_line_option *o)
 {
-  char *var = cli_arg(argc, argv, o, "variable", "");
-  char *val = cli_arg(argc, argv, o, "value", "");
+  char *var, *val;
+  if (	cli_arg(argc, argv, o, "variable", &var, cli_configvarname, NULL)
+     || cli_arg(argc, argv, o, "value", &val, NULL, ""))
+    return -1;
   if (create_serval_instance_dir() == -1)
     return -1;
   return set_variable(var, val);
@@ -580,7 +631,9 @@ int app_config_set(int argc,char **argv,struct command_line_option *o)
 
 int app_config_del(int argc,char **argv,struct command_line_option *o)
 {
-  char *var = cli_arg(argc, argv, o, "variable", "");
+  char *var;
+  if (cli_arg(argc, argv, o, "variable", &var, cli_configvarname, NULL))
+    return -1;
   if (create_serval_instance_dir() == -1)
     return -1;
   return set_variable(var, NULL);
@@ -588,11 +641,13 @@ int app_config_del(int argc,char **argv,struct command_line_option *o)
 
 int app_config_get(int argc,char **argv,struct command_line_option *o)
 {
-  char *var = cli_arg(argc, argv, o, "variable", "");
-  char conffile[1024];
-  FILE *in;
+  char *var;
+  if (cli_arg(argc, argv, o, "variable", &var, cli_configvarname, NULL))
+    return -1;
   if (create_serval_instance_dir() == -1)
     return -1;
+  char conffile[1024];
+  FILE *in;
   if (!FORM_SERVAL_INSTANCE_PATH(conffile, "serval.conf") ||
       !((in = fopen(conffile, "r")) || (in = fopen(conffile, "w")))
     ) {
@@ -619,8 +674,9 @@ int app_config_get(int argc,char **argv,struct command_line_option *o)
 
 int app_rhizome_add_file(int argc, char **argv, struct command_line_option *o)
 {
-  const char *filepath = cli_arg(argc, argv, o, "filepath", "");
-  const char *manifestpath = cli_arg(argc, argv, o, "manifestpath", "");
+  char *filepath, *manifestpath;
+  cli_arg(argc, argv, o, "filepath", &filepath, NULL, "");
+  cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "");
   /* Ensure the Rhizome database exists and is open */
   if (create_serval_instance_dir() == -1)
     return -1;
@@ -674,19 +730,31 @@ int app_rhizome_add_file(int argc, char **argv, struct command_line_option *o)
   return ret;
 }
 
+int cli_uint(const char *arg)
+{
+  register const char *s = arg;
+  while (isdigit(*s++))
+    ;
+  return s != arg && *s == '\0';
+}
+
 int app_rhizome_list(int argc, char **argv, struct command_line_option *o)
 {
+  char *offset, *limit;
+  cli_arg(argc, argv, o, "offset", &offset, cli_uint, "0");
+  cli_arg(argc, argv, o, "limit", &limit, cli_uint, "0");
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
     return -1;
   rhizome_datastore_path = serval_instancepath();
   rhizome_opendb();
-  return rhizome_list_manifests(0, 0);
+  return rhizome_list_manifests(atoi(offset), atoi(limit));
 }
 
 int app_keyring_create(int argc, char **argv, struct command_line_option *o)
 {
-  char *pin = cli_arg(argc, argv, o, "pin,pin ...", "");
+  char *pin;
+  cli_arg(argc, argv, o, "pin,pin ...", &pin, NULL, "");
   keyring_file *k=keyring_open_with_pins(pin);
   if (!k) fprintf(stderr,"keyring create:Failed to create/open keyring file\n");
   return 0;
@@ -694,7 +762,8 @@ int app_keyring_create(int argc, char **argv, struct command_line_option *o)
 
 int app_keyring_list(int argc, char **argv, struct command_line_option *o)
 {
-  char *pin = cli_arg(argc, argv, o, "pin,pin ...", "");
+  char *pin;
+  cli_arg(argc, argv, o, "pin,pin ...", &pin, NULL, "");
   keyring_file *k=keyring_open_with_pins(pin);
 
   int cn=0;
@@ -725,7 +794,8 @@ int app_keyring_list(int argc, char **argv, struct command_line_option *o)
 
 int app_keyring_add(int argc, char **argv, struct command_line_option *o)
 {
-  const char *pin = cli_arg(argc, argv, o, "pin", "");
+  char *pin;
+  cli_arg(argc, argv, o, "pin", &pin, NULL, "");
 
   keyring_file *k=keyring_open_with_pins("");
   if (!k) { fprintf(stderr,"keyring add:Failed to create/open keyring file\n");
@@ -746,9 +816,10 @@ int app_keyring_add(int argc, char **argv, struct command_line_option *o)
 
 int app_keyring_set_did(int argc, char **argv, struct command_line_option *o)
 {
-  const char *sid = cli_arg(argc, argv, o, "sid", "");
-  const char *did = cli_arg(argc, argv, o, "did", "");
-  const char *pin = cli_arg(argc, argv, o, "pin", "");
+  char *sid, *did, *pin;
+  cli_arg(argc, argv, o, "sid", &sid, NULL, "");
+  cli_arg(argc, argv, o, "did", &did, NULL, "");
+  cli_arg(argc, argv, o, "pin", &pin, NULL, "");
 
   if (strlen(did)>31) return WHY("DID too long (31 digits max)");
 

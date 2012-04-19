@@ -103,20 +103,29 @@ int extractSid(unsigned char *packet,int *ofs,char *sid)
   return 0;
 }
 
-int stowSid(unsigned char *packet,int ofs,char *sid)
+int validateSid(const char *sid)
 {
-  int i;
-  if (debug&DEBUG_PACKETFORMATS) printf("Stowing SID \"%s\"\n",sid);
   size_t n = strlen(sid);
   if (n != SID_STRLEN)
-    return setReason("Asked to stow invalid SID (strlen is %u but should be %u hex digits)", n, SID_STRLEN);
-  for(i=0;i<SID_SIZE;i++)
-    {
-      if (hexvalue(sid[i<<1])<0) return -1;
-      packet[ofs]=hexvalue(sid[i<<1])<<4;
-      if (hexvalue(sid[(i<<1)+1])<0) return -1;
-      packet[ofs++]|=hexvalue(sid[(i<<1)+1]);
-    }  
+    return setReason("Invalid SID (strlen is %u, should be %u)", n, SID_STRLEN);
+  const char *s;
+  for (s = sid; *s; ++s)
+    if (hexvalue(*s) == -1)
+      return -1;
+  return 0;
+}
+
+int stowSid(unsigned char *packet, int ofs, const char *sid)
+{
+  if (debug&DEBUG_PACKETFORMATS)
+    printf("Stowing SID \"%s\"\n", sid);
+  if (!validateSid(sid))
+    return -1;
+  int i;
+  for(i = 0; i != SID_SIZE; ++i) {
+    packet[ofs] = hexvalue(sid[i<<1]) << 4;
+    packet[ofs++] |= hexvalue(sid[(i<<1)+1]);
+  }
   return 0;
 }
 
