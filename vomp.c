@@ -265,24 +265,26 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	/* provide call endpoint info to user */
 	vomp_call_state *call
 	  =vomp_find_call_by_session(mdp->vompevent.call_session_token);
-	if (!call)
-	  return overlay_mdp_reply_error
-	    (mdp_named_socket,recvaddr,recvaddrlen,4006,
-	     "No such call");
 
 	/* collect call info and send to requestor */
 	overlay_mdp_frame mdpreply;
 	bzero(&mdpreply,sizeof(mdpreply));
 	mdpreply.packetTypeAndFlags=MDP_VOMPEVENT;
 	mdpreply.vompevent.flags=VOMPEVENT_CALLINFO;
-	if (call->ringing) mdpreply.vompevent.flags|=VOMPEVENT_RINGING;
-	if (call->audio_started) mdpreply.vompevent.flags|=VOMPEVENT_AUDIOSTREAMING;
-	if (call->remote.state==VOMP_STATE_CALLENDED) 
-	  mdpreply.vompevent.flags|=VOMPEVENT_CALLENDED;
-	bcopy(call->local.sid,mdpreply.vompevent.local_sid,SID_SIZE);
-	bcopy(call->remote.sid,mdpreply.vompevent.remote_sid,SID_SIZE);
-	bcopy(call->local.did,mdpreply.vompevent.local_did,64);
-	bcopy(call->remote.did,mdpreply.vompevent.remote_did,64);
+	if (call) {
+	  if (call->ringing) mdpreply.vompevent.flags|=VOMPEVENT_RINGING;
+	  if (call->audio_started) 
+	    mdpreply.vompevent.flags|=VOMPEVENT_AUDIOSTREAMING;
+	  if (call->remote.state==VOMP_STATE_CALLENDED) 
+	    mdpreply.vompevent.flags|=VOMPEVENT_CALLENDED;
+	  bcopy(call->local.sid,mdpreply.vompevent.local_sid,SID_SIZE);
+	  bcopy(call->remote.sid,mdpreply.vompevent.remote_sid,SID_SIZE);
+	  bcopy(call->local.did,mdpreply.vompevent.local_did,64);
+	  bcopy(call->remote.did,mdpreply.vompevent.remote_did,64);
+	} else 
+	  if (mdp->vompevent.call_session_token)
+	    /* let the requestor know that the requested call doesn't exist */
+	    mdpreply.vompevent.flags|=VOMPEVENT_ERROR;
 
 	/* and provide a quick summary of all calls in progress */
 	int i;
