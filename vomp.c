@@ -18,7 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 /*
-  VoMP works using a 5-state model of a phone call, and relies on MDP for 
+  VoMP works using a 6-state model of a phone call, and relies on MDP for 
   auth-cryption of frames. VoMP provides it's own replay protection.
 
 */
@@ -30,6 +30,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
    the ejection of newly allocated session numbers before the caller has had a chance
    to progress the call to a further state. */
 int vomp_call_count=0;
+int vomp_active_call=-1;
 #define VOMP_MAX_CALLS 16
 vomp_call_state vomp_call_states[VOMP_MAX_CALLS];
 
@@ -39,6 +40,15 @@ int vomp_interested_usock_count=0;
 struct sockaddr_un *vomp_interested_usocks[VOMP_MAX_INTERESTED];
 int vomp_interested_usock_lengths[VOMP_MAX_INTERESTED];
 unsigned long long vomp_interested_expiries[VOMP_MAX_INTERESTED];
+
+vomp_call_state *vomp_find_call_by_session(int session_token)
+{
+  int i;
+  for(i=0;i<vomp_call_count;i++)
+    if (session_token==vomp_call_states[i].local.session)
+      return &vomp_call_states[i];
+  return NULL;
+}
 
 vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
 					  unsigned char *local_sid,
@@ -105,7 +115,11 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
   return &vomp_call_states[i];
 }
 
-int vomp_send_status(vomp_call_state *call)
+/* send updated call status to end-point and to any interested listeners as
+   appropriate */
+#define VOMP_TELLINTERESTED (1<<0)
+#define VOMP_TELLREMOTE (1<<1)
+int vomp_send_status(vomp_call_state *call,int flags)
 {
   return WHY("Not implemented");
 }
@@ -248,9 +262,63 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
       }
       break;
     case VOMPEVENT_DIAL: 
-      /* audio bytes is actually local DID:remote DID tuple. */
+      /* pull local_did and remote_did and start putting the call together.
+	 These need to be passed to the node being called to provide caller id,
+	 and potentially handle call-routing, e.g., if it is a gateway.
+         */
+      {
+	/* Populate call structure */
+	if (vomp_call_count>=VOMP_MAX_CALLS) 
+	  return overlay_mdp_reply_error
+	    (mdp_named_socket,recvaddr,recvaddrlen,4004,
+	     "All call slots in use");
+	int slot=vomp_call_count++;
+	vomp_call_state *call=&vomp_call_states[slot];
+	bzero(call,sizeof(vomp_call_state));
+	bcopy(mdp->vompevent.local_sid,call->local.sid,SID_SIZE);
+	bcopy(mdp->vompevent.remote_sid,call->remote.sid,SID_SIZE);
+	bcopy(mdp->vompevent.local_did,call->local.did,64);
+	bcopy(mdp->vompevent.remote_did,call->remote.did,64);
+	call->local.state=1;
+	call->remote.state=0; /* far end has yet to agree that a call is happening */
+	/* allocate unique call session token, which is how the client will
+	   refer to this call during its life */
+	while (!call->local.session)
+	  {
+	    if (urandombytes((unsigned char *)&call->local.session,sizeof(int)))
+	      return overlay_mdp_reply_error
+		(mdp_named_socket,recvaddr,recvaddrlen,4005,
+		 "Insufficient entropy");
+	    int i;
+	    for(i=0;i<vomp_call_count;i++)
+	      if (i!=slot) 
+		if (call->local.session==vomp_call_states[i].local.session) break;
+	    /* reject duplicate call session numbers */
+	    if (i>=vomp_call_count) call->local.session=0;
+	  }
+	call->local.session&=VOMP_SESSION_MASK;
+	call->last_activity=overlay_gettime_ms();
+
+	/* send status update to remote, thus causing call to be created
+	   (hopefully) at far end. */
+	return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED);
+      }
+      break;
     case VOMPEVENT_CALLREJECT: /* hangup is the same */
+      {
+	vomp_call_state *call
+	  =vomp_find_call_by_session(mdp->vompevent.call_session_token);
+	if (!call) 
+	  return overlay_mdp_reply_error
+	    (mdp_named_socket,recvaddr,recvaddrlen,4006,
+	     "No such call");
+	if (call->local.state==VOMP_STATE_INCALL) vomp_call_stop_audio(call);
+	call->local.state=VOMP_STATE_CALLENDED;
+	return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED);
+      }
     case VOMPEVENT_AUDIOSTREAMING: /* user supplying audio */
+      WHY("Handling of in-call audio not yet implemented");
+      break;
     default:
       /* didn't understand it, so respond with an error */
       return overlay_mdp_reply_error(mdp_named_socket,
@@ -304,7 +372,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 
 	/* We have a session number.  Send a status update back to sender */
 	call->last_activity=overlay_gettime_ms();
-	return vomp_send_status(call);
+	return vomp_send_status(call,VOMP_TELLREMOTE);
       } else {
 	/* A VoMP packet for a call apparently already in progress */
 	call=vomp_find_or_create_call(mdp->in.src.sid,mdp->in.dst.sid,
@@ -500,7 +568,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	/* touch call timer if the current state has not vetoed by returning */
 	call->last_activity=overlay_gettime_ms();
 	/* and then send an update to the call status */
-	vomp_send_status(call);
+	vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED);
       }
     }
     break;

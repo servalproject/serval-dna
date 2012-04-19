@@ -1141,6 +1141,9 @@ typedef struct overlay_mdp_addrlist {
 
 #define MDP_VOMPEVENT 7
 typedef struct overlay_mdp_vompevent {
+  /* Once a call has been established, this is how the MDP/VoMP server
+     and user-end process talk about the call. */
+  unsigned int call_session_token;
   unsigned long long audio_sample_endtime;
   unsigned long long last_activity;
 #define VOMPEVENT_RINGING (1<<0)
@@ -1153,12 +1156,23 @@ typedef struct overlay_mdp_vompevent {
 #define VOMPEVENT_DIAL (1<<6)
 #define VOMPEVENT_REGISTERINTEREST (1<<7)
 #define VOMPEVENT_WITHDRAWINTEREST (1<<8)
+#define VOMPEVENT_CALLCREATED (1<<9)
   unsigned int flags;
   unsigned short audio_sample_bytes;
   unsigned char local_state;
   unsigned char remote_state;
   unsigned char audio_sample_codec;
-  unsigned char audio_bytes[MDP_MTU-100];
+  union {
+    struct {
+      /* Used to precisely define the call end points during call
+	 setup. */
+      unsigned char local_did[64];
+      unsigned char remote_did[64];
+      unsigned char local_sid[SID_SIZE];
+      unsigned char remote_sid[SID_SIZE];
+    };
+    unsigned char audio_bytes[MDP_MTU-100];
+  };
 } overlay_mdp_vompevent;
 
 typedef struct overlay_mdp_frame {
@@ -1220,6 +1234,7 @@ void _serval_debug_free(void *p,char *file,const char *func,int line);
 
 typedef struct vomp_call_half {
   unsigned char sid[SID_SIZE];
+  unsigned char did[64];
   unsigned char state;
   unsigned char codec;
   unsigned int session;
