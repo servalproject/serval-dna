@@ -1157,6 +1157,7 @@ typedef struct overlay_mdp_vompevent {
 #define VOMPEVENT_REGISTERINTEREST (1<<7)
 #define VOMPEVENT_WITHDRAWINTEREST (1<<8)
 #define VOMPEVENT_CALLCREATED (1<<9)
+#define VOMPEVENT_PICKUP (1<<10)
   unsigned int flags;
   unsigned short audio_sample_bytes;
   unsigned char local_state;
@@ -1244,7 +1245,7 @@ typedef struct vomp_call_half {
   unsigned long long milliseconds_since_call_start;
 } vomp_call_half;
 
-typedef struct vomp_call_state {
+typedef struct vomp_call_stateo {
   vomp_call_half local;
   vomp_call_half remote;
   int ringing;

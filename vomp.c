@@ -316,6 +316,21 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	call->local.state=VOMP_STATE_CALLENDED;
 	return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED);
       }
+    case VOMPEVENT_PICKUP: 
+      {
+	vomp_call_state *call
+	  =vomp_find_call_by_session(mdp->vompevent.call_session_token);
+	if (!call) 
+	  return overlay_mdp_reply_error
+	    (mdp_named_socket,recvaddr,recvaddrlen,4006,
+	     "No such call");
+	call->local.state=VOMP_STATE_INCALL;
+	call->ringing=0;
+	/* state machine does job of starting audio stream, just tell everyone about
+	   the changed state. */      
+	return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED);
+      }
+      break;
     case VOMPEVENT_AUDIOSTREAMING: /* user supplying audio */
       WHY("Handling of in-call audio not yet implemented");
       break;
