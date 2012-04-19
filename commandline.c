@@ -110,10 +110,9 @@ char *cli_arg(int argc, char **argv, command_line_option *o, char *argname, char
       return argv[i];
     }
   }
-  /* No matching argument was found, so return default value.
-     It might seem that this should never happen, but it can because more than
-     one version of a command line optiom may exist, one with a given argument
-     and another without, and allowing a default value means we can have a single
+  /* No matching argument was found, so return default value.  It might seem that this should never
+     happen, but it can because more than one version of a command line option may exist, one with a
+     given argument and another without, and allowing a default value means we can have a single
      function handle both in a fairly simple manner. */
   return defaultvalue;
 }
@@ -570,7 +569,7 @@ static int set_variable(const char *var, const char *val)
   return 0;
 }
 
-int app_server_set(int argc,char **argv,struct command_line_option *o)
+int app_config_set(int argc,char **argv,struct command_line_option *o)
 {
   char *var = cli_arg(argc, argv, o, "variable", "");
   char *val = cli_arg(argc, argv, o, "value", "");
@@ -579,7 +578,7 @@ int app_server_set(int argc,char **argv,struct command_line_option *o)
   return set_variable(var, val);
 }
 
-int app_server_del(int argc,char **argv,struct command_line_option *o)
+int app_config_del(int argc,char **argv,struct command_line_option *o)
 {
   char *var = cli_arg(argc, argv, o, "variable", "");
   if (create_serval_instance_dir() == -1)
@@ -587,7 +586,7 @@ int app_server_del(int argc,char **argv,struct command_line_option *o)
   return set_variable(var, NULL);
 }
 
-int app_server_get(int argc,char **argv,struct command_line_option *o)
+int app_config_get(int argc,char **argv,struct command_line_option *o)
 {
   char *var = cli_arg(argc, argv, o, "variable", "");
   char conffile[1024];
@@ -802,15 +801,15 @@ command_line_option command_line_options[]={
    "Display information about any running Serval Mesh node."},
   {app_mdp_ping,{"mdp","ping","<SID|broadcast>",NULL},CLIFLAG_STANDALONE,
    "Attempts to ping specified node via Mesh Datagram Protocol (MDP)."},
-  {app_server_set,{"config","set","<variable>","<value>",NULL},0,
+  {app_config_set,{"config","set","<variable>","<value>",NULL},0,
    "Set specified configuration variable."},
-  {app_server_del,{"config","del","<variable>",NULL},0,
+  {app_config_del,{"config","del","<variable>",NULL},0,
    "Set specified configuration variable."},
-  {app_server_get,{"config","get","[<variable>]",NULL},0,
+  {app_config_get,{"config","get","[<variable>]",NULL},0,
    "Get specified configuration variable."},
   {app_rhizome_add_file,{"rhizome","add","file","<filepath>","[<manifestpath>]",NULL},0,
    "Add a file to Rhizome and optionally write its manifest to the given path"},
-  {app_rhizome_list,{"rhizome","list",NULL},0,
+  {app_rhizome_list,{"rhizome","list","[<offset>]","[<limit>]",NULL},0,
    "List all manifests and files in Rhizome"},
   {app_keyring_create,{"keyring","create",NULL},0,
    "Create a new keyring file."},
