@@ -146,24 +146,53 @@ int vomp_call_stop_audio(vomp_call_state *call)
 
 int vomp_call_start_ringing(vomp_call_state *call)
 {
-  return WHY("Not implemented");
+  /* We just need to set the flag to say that we are ringing.
+     Interested listeners and far end will be informed via vomp_send_status() */
+  call->ringing=1;
+  fprintf(stderr,"RING RING!\n");
+  return 0;
 }
 
 int vomp_call_rejected(vomp_call_state *call)
-{
-  return WHY("Not implemented");
+{  
+  /* state number change is handled elsewhere, we just need to make sure
+     that things are tidy. */
+  if (call->audio_started) vomp_call_stop_audio(call);
+  if (call->ringing) call->ringing=0;
+  return 0;
 }
 
 int vomp_call_error(vomp_call_state *call)
 {
   if (call->audio_started) vomp_call_stop_audio(call);
-  return WHY("Not implemented");
+  if (call->ringing) call->ringing=0;
+  return 0;
 }
 
 int vomp_call_destroy(vomp_call_state *call)
 {
+  /* do some general clean ups */
   if (call->audio_started) vomp_call_stop_audio(call);
-  return WHY("Not implemented");
+
+  fprintf(stderr,"Destroying call %s <--> %s\n",
+	  call->local.did,call->remote.did);
+
+  /* now release the call structure */
+  int i;
+  for(i=0;i<VOMP_MAX_CALLS;i++)
+    if (call==&vomp_call_states[i]) break;
+  if (i>=VOMP_MAX_CALLS) return WHY("supplied call handle looks invalid");
+
+  if (i==vomp_call_count-1)
+    vomp_call_count--;
+  else
+    {
+      bcopy(&vomp_call_states[vomp_call_count-1],
+	    &vomp_call_states[i],
+	    sizeof(vomp_call_state));
+      vomp_call_count--;
+    }
+  return 0;
 }
 
 /* An MDP message of type MDP_VOMPEVENT received from the unix domain socket.
