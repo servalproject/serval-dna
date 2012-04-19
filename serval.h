@@ -1140,6 +1140,7 @@ typedef struct overlay_mdp_addrlist {
 } overlay_mdp_addrlist;
 
 #define MDP_VOMPEVENT 7
+#define VOMP_MAX_CALLS 16
 typedef struct overlay_mdp_vompevent {
   /* Once a call has been established, this is how the MDP/VoMP server
      and user-end process talk about the call. */
@@ -1172,6 +1173,10 @@ typedef struct overlay_mdp_vompevent {
       unsigned char remote_did[64];
       unsigned char local_sid[SID_SIZE];
       unsigned char remote_sid[SID_SIZE];
+      /* session numbers of other calls in progress 
+	 (for VOMPEVENT_CALLINFO) */
+      unsigned int other_calls_sessions[VOMP_MAX_CALLS];
+      unsigned char other_calls_states[VOMP_MAX_CALLS];
     };
     unsigned char audio_bytes[MDP_MTU-100];
   };

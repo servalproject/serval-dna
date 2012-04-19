@@ -31,7 +31,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
    to progress the call to a further state. */
 int vomp_call_count=0;
 int vomp_active_call=-1;
-#define VOMP_MAX_CALLS 16
 vomp_call_state vomp_call_states[VOMP_MAX_CALLS];
 
 /* Now keep track of who wants to know what we are up to */
@@ -284,6 +283,18 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	bcopy(call->remote.sid,mdpreply.vompevent.remote_sid,SID_SIZE);
 	bcopy(call->local.did,mdpreply.vompevent.local_did,64);
 	bcopy(call->remote.did,mdpreply.vompevent.remote_did,64);
+
+	/* and provide a quick summary of all calls in progress */
+	int i;
+	for(i=0;i<VOMP_MAX_CALLS;i++)
+	  {
+	    if (i<vomp_call_count) {
+	      mdpreply.vompevent.other_calls_sessions[i]
+		=vomp_call_states[i].local.session;
+	      mdpreply.vompevent.other_calls_states[i]
+		=vomp_call_states[i].local.state;
+	    }
+	  }
 
 	return overlay_mdp_reply(mdp_named_socket,recvaddr,recvaddrlen,&mdpreply);
       }
