@@ -7,14 +7,7 @@ SRCS=	dna.c server.c client.c peers.c ciphers.c responses.c packetformats.c data
 	overlay_broadcast.c dna_identity.c commandline.c serval_packetvisualise.c \
 	trans_cache.c keyring.c vomp.c
 
-OBJS=	dna.o server.o client.o peers.o ciphers.o responses.o packetformats.o dataformats.o \
-	srandomdev.o simulate.o batman.o gateway.o \
-	overlay.o overlay_buffer.o overlay_interface.o overlay_payload.o overlay_route.o \
-	overlay_packetformats.o overlay_abbreviations.o overlay_advertise.o overlay_mdp.o \
-	rhizome.o rhizome_http.o rhizome_bundle.o rhizome_database.o rhizome_crypto.o \
-	rhizome_packetformats.o rhizome_fetch.o sqlite3.o encode.o sha2.o randombytes.o \
-	overlay_broadcast.o dna_identity.o commandline.o serval_packetvisualise.o \
-	trans_cache.o keyring.o vomp.o
+OBJS=	$(SRCS:.c=.o)
 
 HDRS=	Makefile serval.h sqlite-amalgamation-3070900/sqlite3.h sha2.h rhizome.h
 
