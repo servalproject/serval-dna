@@ -1255,10 +1255,12 @@ typedef struct vomp_call_stateo {
   vomp_call_half local;
   vomp_call_half remote;
   int ringing;
+  unsigned long long create_time;
   unsigned long long last_activity;
   int audio_started;
 } vomp_call_state;
 
+#define VOMP_CODEC_NONE 0x00
 #define VOMP_CODEC_CODEC2_2400 0x01
 #define VOMP_CODEC_CODEC2_1400 0x02
 #define VOMP_CODEC_GSM 0x03

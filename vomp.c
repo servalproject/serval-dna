@@ -111,6 +111,7 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
   vomp_call_states[i].remote.session=sender_session;
   vomp_call_states[i].local.state=VOMP_STATE_NOCALL;
   vomp_call_states[i].remote.state=VOMP_STATE_NOCALL;
+  vomp_call_states[i].create_time=overlay_gettime_ms();
   return &vomp_call_states[i];
 }
 
@@ -118,9 +119,68 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
    appropriate */
 #define VOMP_TELLINTERESTED (1<<0)
 #define VOMP_TELLREMOTE (1<<1)
+#define VOMP_NEWCALL (1<<2)
 int vomp_send_status(vomp_call_state *call,int flags)
 {
-  return WHY("Not implemented");
+  if (flags&VOMP_TELLREMOTE) {
+    overlay_mdp_frame mdp;
+    bzero(&mdp,sizeof(mdp));
+    mdp.packetTypeAndFlags=MDP_TX;
+    bcopy(call->local.sid,mdp.out.src.sid,SID_SIZE);
+    mdp.out.src.port=MDP_PORT_VOMP;
+    bcopy(call->remote.sid,mdp.out.dst.sid,SID_SIZE);
+    mdp.out.dst.port=MDP_PORT_VOMP;
+    
+    mdp.out.payload[0]=0x01; /* Normal VoMP frame */
+    mdp.out.payload[1]=call->remote.state;
+    mdp.out.payload[2]=call->local.state;
+    mdp.out.payload[3]=VOMP_CODEC_NONE;
+    mdp.out.payload[4]=(call->remote.sequence>>8)&0xff;
+    mdp.out.payload[5]=(call->remote.sequence>>0)&0xff;
+    mdp.out.payload[6]=(call->remote.session>>16)&0xff;
+    mdp.out.payload[7]=(call->remote.session>>8)&0xff;
+    mdp.out.payload[8]=(call->remote.session>>0)&0xff;
+    mdp.out.payload[9]=(call->local.session>>16)&0xff;
+    mdp.out.payload[10]=(call->local.session>>8)&0xff;
+    mdp.out.payload[11]=(call->local.session>>0)&0xff;
+    unsigned long long call_millis=overlay_gettime_ms()-call->create_time;
+    mdp.out.payload[12]=(call_millis>>16)&0xff;
+    mdp.out.payload[13]=(call_millis>>8)&0xff;
+    mdp.out.payload[14]=(call_millis>>0)&0xff;
+
+    overlay_mdp_send(&mdp,0,0);
+
+    call->local.sequence++;
+  }
+  if (flags&VOMP_TELLINTERESTED) {
+    overlay_mdp_frame mdp;
+    bzero(&mdp,sizeof(mdp));
+    mdp.packetTypeAndFlags=MDP_VOMPEVENT;
+    mdp.vompevent.call_session_token=call->local.session;
+    mdp.vompevent.last_activity=call->last_activity;
+    if (call->ringing) mdp.vompevent.flags|=VOMPEVENT_RINGING;
+    if (call->local.state==VOMP_STATE_CALLENDED) 
+      mdp.vompevent.flags|=VOMPEVENT_CALLENDED;
+    if (call->remote.state==VOMPEVENT_CALLENDED)
+      mdp.vompevent.flags|=VOMPEVENT_CALLREJECT;
+    if (call->audio_started) 
+      mdp.vompevent.flags|=VOMPEVENT_AUDIOSTREAMING;
+    if (flags&VOMP_NEWCALL)
+      mdp.vompevent.flags|=VOMPEVENT_CALLCREATED;
+    mdp.vompevent.local_state=call->local.state;
+    mdp.vompevent.remote_state=call->remote.state;
+
+    int i;
+    long long now=overlay_gettime_ms();
+    for(i=0;i<vomp_interested_usock_count;i++)
+      if (vomp_interested_expiries[i]>=now) {
+	overlay_mdp_reply(mdp_named_socket,
+			  vomp_interested_usocks[i],
+			  vomp_interested_usock_lengths[i],
+			  &mdp);
+      }
+  }
+  return 0;
 }
 
 int vomp_call_start_audio(vomp_call_state *call)
@@ -132,7 +192,6 @@ int vomp_process_audio(vomp_call_state *call,overlay_mdp_frame *mdp)
 {
   // int first_frame_codec=mdp->in.payload[3];
   // int recvr_seq=(mdp->in.payload[4]<<8)+mdp->in.payload[5];
-  // int sender_seq=(mdp->in.payload[4]<<8)+mdp->in.payload[5];
   // unsigned int sender_millis=
   //   (mdp->in.payload[12]<<16)+(mdp->in.payload[13]<<8)+mdp->in.payload[14];
 
@@ -432,12 +491,13 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
   switch(mdp->in.payload[0]) {
   case 0x01: /* Ordinary VoMP state+optional audio frame */
     {
-      // int recvr_state=mdp->in.payload[2];
+      // int recvr_state=mdp->in.payload[1];
       int sender_state=mdp->in.payload[2];
       unsigned int recvr_session=
 	(mdp->in.payload[6]<<16)+(mdp->in.payload[7]<<8)+mdp->in.payload[8];
       unsigned int sender_session=
 	(mdp->in.payload[9]<<16)+(mdp->in.payload[10]<<8)+mdp->in.payload[11];
+      int sender_seq=(mdp->in.payload[4]<<8)+mdp->in.payload[5];
       
       if (!recvr_session) {
 	/* wants to create a call session.
@@ -456,6 +516,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 
 	/* We have a session number.  Send a status update back to sender */
 	call->last_activity=overlay_gettime_ms();
+	call->remote.sequence=sender_seq;
 	return vomp_send_status(call,VOMP_TELLREMOTE);
       } else {
 	/* A VoMP packet for a call apparently already in progress */
