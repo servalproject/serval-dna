@@ -1158,6 +1158,7 @@ typedef struct overlay_mdp_vompevent {
 #define VOMPEVENT_WITHDRAWINTEREST (1<<8)
 #define VOMPEVENT_CALLCREATED (1<<9)
 #define VOMPEVENT_PICKUP (1<<10)
+#define VOMPEVENT_CALLINFO (1<<11)
   unsigned int flags;
   unsigned short audio_sample_bytes;
   unsigned char local_state;
