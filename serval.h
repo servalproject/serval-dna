@@ -1081,6 +1081,12 @@ int create_serval_instance_dir();
 
 int overlay_mdp_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int overlay_mdp_poll();
+int overlay_mdp_reply_error(int sock,
+			    struct sockaddr_un *recvaddr,int recvaddrlen,
+			    int error_number,char *message);
+extern int mdp_abstract_socket;
+extern int mdp_named_socket;
+
 
 typedef struct sockaddr_mdp {
   unsigned char sid[SID_SIZE];
@@ -1140,10 +1146,13 @@ typedef struct overlay_mdp_vompevent {
 #define VOMPEVENT_RINGING (1<<0)
 #define VOMPEVENT_CALLENDED (1<<1)
 #define VOMPEVENT_CALLREJECT (1<<2)
+#define VOMPEVENT_HANGUP VOMPEVENT_CALLREJECT
 #define VOMPEVENT_TIMEOUT (1<<3)
 #define VOMPEVENT_ERROR (1<<4)
 #define VOMPEVENT_AUDIOSTREAMING (1<<5)
 #define VOMPEVENT_DIAL (1<<6)
+#define VOMPEVENT_REGISTERINTEREST (1<<7)
+#define VOMPEVENT_WITHDRAWINTEREST (1<<8)
   unsigned int flags;
   unsigned short audio_sample_bytes;
   unsigned char local_state;
@@ -1231,8 +1240,9 @@ typedef struct vomp_call_state {
 #define VOMP_CODEC_CODEC2_2400 0x01
 #define VOMP_CODEC_CODEC2_1400 0x02
 #define VOMP_CODEC_GSM 0x03
-#define VOMP_CODEC_DTMF 0x04
-#define VOMP_CODEC_ENGAGED 0x05
+#define VOMP_CODEC_DTMF 0x80
+#define VOMP_CODEC_ENGAGED 0x81
+#define VOMP_CODEC_CALLERID 0x82
 #define VOMP_CODEC_CODECSISUPPORT 0xfe
 #define VOMP_CODEC_CHANGEYOURCODECTO 0xff
 

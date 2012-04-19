@@ -33,6 +33,13 @@ int vomp_call_count=0;
 #define VOMP_MAX_CALLS 16
 vomp_call_state vomp_call_states[VOMP_MAX_CALLS];
 
+/* Now keep track of who wants to know what we are up to */
+int vomp_interested_usock_count=0;
+#define VOMP_MAX_INTERESTED 128
+struct sockaddr_un *vomp_interested_usocks[VOMP_MAX_INTERESTED];
+int vomp_interested_usock_lengths[VOMP_MAX_INTERESTED];
+unsigned long long vomp_interested_expiries[VOMP_MAX_INTERESTED];
+
 vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
 					  unsigned char *local_sid,
 					  unsigned int sender_session,
@@ -157,6 +164,101 @@ int vomp_call_destroy(vomp_call_state *call)
 int vomp_mdp_event(overlay_mdp_frame *mdp,
 		   struct sockaddr_un *recvaddr,int recvaddrlen)
 {
+  /* Frames from the user can take only a few forms:
+     - announce interest in call state.
+     - withdraw interest in call state.
+     - place a call (SID+DID combination)
+     - deliver audio for sending
+     - indicate pickup, hangup or call reject
+
+     We then send back all sorts of relevant call state information as well as
+     transported audio.  In particular we inform when the call state changes,
+     including if any error has occurred.
+  */
+  switch(mdp->vompevent.flags)
+    {
+    case VOMPEVENT_REGISTERINTEREST:
+      /* put unix domain socket on record to send call state event and audio to. */
+      {
+	int i;
+	int candidate=-1;
+	long long now=overlay_gettime_ms();
+	for(i=0;i<vomp_interested_usock_count;i++)
+	  {
+	    if (vomp_interested_usock_lengths[i]==recvaddrlen)
+	      if (!memcmp(recvaddr->sun_path,
+			  vomp_interested_usocks[i],recvaddrlen))
+		/* found it -- so we are already monitoring this one */
+		return overlay_mdp_reply_error(mdp_named_socket,recvaddr,recvaddrlen,
+					       0,"Success");
+	    if (vomp_interested_expiries[i]<now) candidate=i;
+	  }
+	if (i>=vomp_interested_usock_count&&(candidate>-1)) i=candidate;
+	/* not currently on the list, so add */
+	if (i<VOMP_MAX_INTERESTED) {
+	  if (vomp_interested_usocks[i]) {
+	    free(vomp_interested_usocks[i]);
+	    vomp_interested_usocks[i]=NULL;
+	  }
+	  vomp_interested_usocks[i]=malloc(recvaddrlen);
+	  if (!vomp_interested_usocks[i])
+	    return overlay_mdp_reply_error(mdp_named_socket, recvaddr,recvaddrlen,
+					   4002,"Out of memory");
+	  bcopy(recvaddr,vomp_interested_usocks[i],
+		recvaddrlen);
+	  vomp_interested_usock_lengths[i]=recvaddrlen;
+	  vomp_interested_expiries[i]=overlay_gettime_ms()+60000;
+	  if (i==vomp_interested_usock_count) vomp_interested_usock_count++;
+	} else {
+	  return overlay_mdp_reply_error
+	    (mdp_named_socket,recvaddr,recvaddrlen,
+	     4003,"Too many listeners (try again in a minute?)");
+	}
+      }
+      break;
+    case VOMPEVENT_WITHDRAWINTEREST:
+      /* opposite of above */
+      {
+	int i;
+	for(i=0;i<vomp_interested_usock_count;i++)
+	  {
+	    if (vomp_interested_usock_lengths[i]==recvaddrlen)
+	      if (!memcmp(recvaddr->sun_path,
+			  vomp_interested_usocks[i],recvaddrlen))
+		{
+		  /* found it -- so we are already monitoring this one */
+		  free(vomp_interested_usocks[i]);
+		  if (i<vomp_interested_usock_count-1)
+		    {
+		      int swap=vomp_interested_usock_count-1;
+		      vomp_interested_usock_lengths[i]
+			=vomp_interested_usock_lengths[swap];
+		      vomp_interested_usocks[i]=vomp_interested_usocks[swap];
+		      vomp_interested_expiries[i]=vomp_interested_expiries[swap];
+		    }
+		  vomp_interested_usock_count--;
+		  return overlay_mdp_reply_error
+		    (mdp_named_socket,recvaddr,recvaddrlen,
+		     0,"Success. You have been removed.");
+		}
+	  }
+	return overlay_mdp_reply_error
+	  (mdp_named_socket,recvaddr,recvaddrlen,
+	   0,"Success. You were never listening.");
+      }
+      break;
+    case VOMPEVENT_DIAL: 
+      /* audio bytes is actually local DID:remote DID tuple. */
+    case VOMPEVENT_CALLREJECT: /* hangup is the same */
+    case VOMPEVENT_AUDIOSTREAMING: /* user supplying audio */
+    default:
+      /* didn't understand it, so respond with an error */
+      return overlay_mdp_reply_error(mdp_named_socket,
+				     recvaddr,recvaddrlen,4001,
+				     "Invalid VOMPEVENT request (use DIAL,HANGUP,CALLREJECT,AUDIOSTREAMING,REGISTERINTERST,WITHDRAWINTERST only)"); 
+
+    }
+
   return WHY("Not implemented");
 }
 
