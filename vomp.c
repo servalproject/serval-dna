@@ -48,8 +48,8 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
 	continue;
       if (recvr_session&(recvr_session!=vomp_call_states[i].local.session))
 	continue;
-      if (bcmp(remote_sid,vomp_call_states[i].remote.sid,SID_SIZE)) continue;
-      if (bcmp(local_sid,vomp_call_states[i].local.sid,SID_SIZE)) continue;
+      if (memcmp(remote_sid,vomp_call_states[i].remote.sid,SID_SIZE)) continue;
+      if (memcmp(local_sid,vomp_call_states[i].local.sid,SID_SIZE)) continue;
 
       /* it matches.  but has it expired (no activity in 120 seconds)? */
       if (vomp_call_states[i].last_activity<(overlay_gettime_ms()-120000))
