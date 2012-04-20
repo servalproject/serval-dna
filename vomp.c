@@ -420,6 +420,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	      return overlay_mdp_reply_error
 		(mdp_named_socket,recvaddr,recvaddrlen,4005,
 		 "Insufficient entropy");
+	    call->local.session&=VOMP_SESSION_MASK;
 	    printf("session=0x%08x\n",call->local.session);
 	    int i;
 	    for(i=0;i<vomp_call_count;i++)
@@ -776,7 +777,10 @@ int app_vomp_dial(int argc, char **argv, struct command_line_option *o)
   mdp.packetTypeAndFlags=MDP_VOMPEVENT;
   mdp.vompevent.flags=VOMPEVENT_DIAL;
   if (overlay_mdp_getmyaddr(0,&mdp.vompevent.local_sid[0])) return -1;
-  stowSid(mdp.vompevent.remote_sid,0,sid);
+  stowSid(&mdp.vompevent.remote_sid[0],0,sid);
+  printf("local_sid=%s\n",overlay_render_sid(mdp.vompevent.local_sid));
+  printf("remote_sid=%s from %s\n",
+	 overlay_render_sid(mdp.vompevent.remote_sid),sid);
 
   if (overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000))
     {
