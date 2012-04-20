@@ -939,7 +939,7 @@ int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
       break;
     case MDP_VOMPEVENT:
       /* XXX too hard to work out precisely for now. */
-      len=sizeof(mdp);
+      len=sizeof(overlay_mdp_frame);
       break;
     default:
       return WHY("Illegal MDP frame type.");
