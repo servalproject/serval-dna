@@ -114,6 +114,7 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
   vomp_call_states[i].local.state=VOMP_STATE_NOCALL;
   vomp_call_states[i].remote.state=VOMP_STATE_NOCALL;
   vomp_call_states[i].create_time=overlay_gettime_ms();
+  vomp_call_states[i].last_activity=vomp_call_states[i].create_time;
   return &vomp_call_states[i];
 }
 
