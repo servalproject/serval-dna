@@ -1,6 +1,6 @@
-/* 
+/*
 Serval Distributed Numbering Architecture (DNA)
-Copyright (C) 2010 Paul Gardner-Stephen 
+Copyright (C) 2010-2012 Paul Gardner-Stephen
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <jni.h>
 #include "serval.h"
 #include "rhizome.h"
 
@@ -95,6 +96,39 @@ int cli_usage() {
       fprintf(stderr,"\n   %s\n",command_line_options[i].description);
     }
   return -1;
+}
+
+
+/* JNI entry point to command line.  See org.servalproject.servald.ServalD class for the Java side.
+   JNI method descriptor: "([Ljava/lang/String;)Lorg/servalproject/servald/ServalDResult;"
+*/
+JNIEXPORT jobject JNICALL Java_org_servalproject_servald_ServalD_command(JNIEnv *env, jobject this, jobjectArray args)
+{
+  jclass resultClass = NULL;
+  jclass stringClass = NULL;
+  jmethodID resultConstructorId = NULL;
+  jobjectArray outv = NULL;
+  jint status = 42;
+  if ((resultClass = (*env)->FindClass(env, "org/servalproject/servald/ServalDResult")) == NULL)
+    return NULL; // exception
+  if ((resultConstructorId = (*env)->GetMethodID(env, resultClass, "<init>", "(I[Ljava/lang/String;)V")) == NULL)
+    return NULL; // exception
+  if ((stringClass = (*env)->FindClass(env, "java/lang/String")) == NULL)
+    return NULL; // exception
+  // Eventually we will return the output buffer, but for now just echo the args.
+  jsize len = (*env)->GetArrayLength(env, args);
+  if ((outv = (*env)->NewObjectArray(env, len, stringClass, NULL)) == NULL)
+    return NULL; // out of memory exception
+  jsize i;
+  for (i = 0; i != len; ++i) {
+    const jstring arg = (jstring)(*env)->GetObjectArrayElement(env, args, i);
+    const char *str = (*env)->GetStringUTFChars(env, arg, NULL);
+    if (str == NULL)
+      return NULL; // out of memory exception
+    (*env)->SetObjectArrayElement(env, outv, i, (*env)->NewStringUTF(env, str));
+    (*env)->ReleaseStringUTFChars(env, arg, str);
+  }
+  return (*env)->NewObject(env, resultClass, resultConstructorId, status, outv);
 }
 
 /* args[] excludes command name (unless hardlinks are used to use first words 
@@ -872,15 +906,15 @@ command_line_option command_line_options[]={
    "Display information about any running Serval Mesh node."},
   {app_mdp_ping,{"mdp","ping","<SID|broadcast>",NULL},CLIFLAG_STANDALONE,
    "Attempts to ping specified node via Mesh Datagram Protocol (MDP)."},
-  {app_config_set,{"config","set","<variable>","<value>",NULL},0,
+  {app_config_set,{"config","set","<variable>","<value>",NULL},CLIFLAG_STANDALONE,
    "Set specified configuration variable."},
-  {app_config_del,{"config","del","<variable>",NULL},0,
+  {app_config_del,{"config","del","<variable>",NULL},CLIFLAG_STANDALONE,
    "Set specified configuration variable."},
-  {app_config_get,{"config","get","[<variable>]",NULL},0,
+  {app_config_get,{"config","get","[<variable>]",NULL},CLIFLAG_STANDALONE,
    "Get specified configuration variable."},
-  {app_rhizome_add_file,{"rhizome","add","file","<filepath>","[<manifestpath>]",NULL},0,
+  {app_rhizome_add_file,{"rhizome","add","file","<filepath>","[<manifestpath>]",NULL},CLIFLAG_STANDALONE,
    "Add a file to Rhizome and optionally write its manifest to the given path"},
-  {app_rhizome_list,{"rhizome","list","[<offset>]","[<limit>]",NULL},0,
+  {app_rhizome_list,{"rhizome","list","[<offset>]","[<limit>]",NULL},CLIFLAG_STANDALONE,
    "List all manifests and files in Rhizome"},
   {app_keyring_create,{"keyring","create",NULL},0,
    "Create a new keyring file."},
