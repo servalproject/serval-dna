@@ -11,17 +11,20 @@ OBJS=	$(SRCS:.c=.o)
 
 HDRS=	Makefile serval.h sqlite-amalgamation-3070900/sqlite3.h sha2.h rhizome.h
 
-LDFLAGS=	@LDFLAGS@
+LDFLAGS=@LDFLAGS@
 CFLAGS=	@CFLAGS@
 DEFS=	@DEFS@
 
-all:	serval.c dna
+all:	serval.c dna libservald.so
 
 %.o:	%.c $(HDRS)
 	$(CC) $(CFLAGS) $(DEFS) -Os -g -Wall -c $<
 
 dna:	$(OBJS)
-	$(CC) $(CFLAGS) -Os -g -Wall -o dna $(OBJS) $(LDFLAGS)
+	$(CC) $(CFLAGS) -Os -g -Wall -o $@ $(OBJS) $(LDFLAGS)
+
+libservald.so: $(OBJS)
+	$(CC) $(CFLAGS) -Os -g -Wall -shared -o $@ $(OBJS) $(LDFLAGS)
 
 serval.c:	$(SRCS) $(HDRS)
 	cat serval.h > serval.c
