@@ -1281,6 +1281,7 @@ typedef struct vomp_call_stateo {
 int vomp_mdp_event(overlay_mdp_frame *mdp,
 		   struct sockaddr_un *recvaddr,int recvaddrlen);
 int vomp_mdp_received(overlay_mdp_frame *mdp);
+char *vomp_describe_state(int state);
 
 typedef struct command_line_option {
   int (*function)(int argc,char **argv,struct command_line_option *o);

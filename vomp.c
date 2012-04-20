@@ -56,6 +56,7 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
 {
   int expired_slot=-1;
   int i;
+  printf("%d calls already in progress.\n",vomp_call_count);
   for(i=0;i<vomp_call_count;i++)
     {
       /* do the fast comparison first, and only if that matches proceed to
@@ -70,6 +71,7 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
       /* it matches.  but has it expired (no activity in 120 seconds)? */
       if (vomp_call_states[i].last_activity<(overlay_gettime_ms()-120000))
 	{
+	  printf("slot %d has expired.\n",i);
 	  expired_slot=i;
 	  continue;
 	}
@@ -147,6 +149,8 @@ int vomp_send_status(vomp_call_state *call,int flags)
     mdp.out.payload[12]=(call_millis>>16)&0xff;
     mdp.out.payload[13]=(call_millis>>8)&0xff;
     mdp.out.payload[14]=(call_millis>>0)&0xff;
+
+    mdp.out.payload_length=15;
 
     overlay_mdp_send(&mdp,0,0);
 
@@ -410,8 +414,8 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	bcopy(mdp->vompevent.remote_sid,call->remote.sid,SID_SIZE);
 	bcopy(mdp->vompevent.local_did,call->local.did,64);
 	bcopy(mdp->vompevent.remote_did,call->remote.did,64);
-	call->local.state=1;
-	call->remote.state=0; /* far end has yet to agree that a call is happening */
+	call->local.state=VOMP_STATE_CALLPREP;
+	call->remote.state=VOMP_STATE_NOCALL; /* far end has yet to agree that a call is happening */
 	/* allocate unique call session token, which is how the client will
 	   refer to this call during its life */
 	while (!call->local.session)
@@ -431,6 +435,8 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	  }
 	call->local.session&=VOMP_SESSION_MASK;
 	call->last_activity=overlay_gettime_ms();
+
+	dump_vomp_status();
 
 	/* send status update to remote, thus causing call to be created
 	   (hopefully) at far end. */
@@ -493,6 +499,9 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 
   vomp_call_state *call=NULL;
 
+  WHYF("VoMP type byte = 0x%02x\n",mdp->in.payload[0]);
+  dump("rxd mdp",&mdp->in.payload[0],mdp->in.payload_length);
+
   switch(mdp->in.payload[0]) {
   case 0x01: /* Ordinary VoMP state+optional audio frame */
     {
@@ -512,18 +521,25 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	   trying to use such replays to cause a denial of service attack we need
 	   to be able to track multiple potential session numbers even from the
 	   same SID. */
+	WHY("recvr_session==0, creating call.");
+
 	call=vomp_find_or_create_call(mdp->in.src.sid,mdp->in.dst.sid,
 				      sender_session,recvr_session);
 	if (!call) {
 	  /* could not allocate a call slot, so do nothing */
 	  return WHY("No free call slots");
 	}
+	WHYF("Far end is in state %s",vomp_describe_state(sender_state));
+	WHYF("I am in state %s",vomp_describe_state(call->local.state));
 
 	/* We have a session number.  Send a status update back to sender */
 	call->last_activity=overlay_gettime_ms();
 	call->remote.sequence=sender_seq;
+	call->remote.state=sender_state;
+	dump_vomp_status();
 	return vomp_send_status(call,VOMP_TELLREMOTE);
       } else {
+	WHY("recvr_session!=0, looking for existing call");
 	/* A VoMP packet for a call apparently already in progress */
 	call=vomp_find_or_create_call(mdp->in.src.sid,mdp->in.dst.sid,
 				      sender_session,recvr_session);
@@ -536,10 +552,17 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	   state is.  That leaves us with just 6X6=36 cases. */
 	int combined_state=call->local.state<<3;
 	combined_state|=sender_state;
+	call->remote.state=sender_state;
+	dump_vomp_status();
+	WHYF("Far end is in state %s",vomp_describe_state(call->remote.state));
+	WHYF("I am in state %s",vomp_describe_state(call->local.state));
 	switch(combined_state) {
 	case (VOMP_STATE_NOCALL<<3)|VOMP_STATE_NOCALL:
 	  /* We both think that we are not yet in a call, and we have session numbers
-	     at each end. Presumably waiting for further state synchronisation */
+	     at each end. Presumably waiting for further state synchronisation.
+	     Do nothing (not even send anything back, as that results in the peer 
+	     doing the same, as they are in the same state as us) */
+	  return 0;
 	  break;
 	case (VOMP_STATE_NOCALL<<3)|VOMP_STATE_CALLPREP:
 	  /* The remote party is in the call-prep state, while we think no call
@@ -548,7 +571,8 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	     received the session # they should have moved to RINGINGOUT. 
 	     No action is required, but we probably shouldn't count it towards
 	     valid call activity, so don't touch the recent activity timer.
-	     Just return. */
+	     Just return.
+	  */
 	  return 0;
 	case (VOMP_STATE_NOCALL<<3)|VOMP_STATE_RINGINGOUT:
 	  /* We have have issued a session, but think that no call is in progress.
@@ -746,14 +770,17 @@ char *vomp_describe_state(int state)
   return "UNKNOWN";
 }
 
-int app_vomp_status(int argc, char **argv, struct command_line_option *o)
-{ 
+int dump_vomp_status()
+{
   int i;
+  printf(">>> Active VoMP call states:\n");
   for(i=0;i<vomp_call_count;i++)
     {
-      printf("%s\n-> %s\n   (%s -> %s)\n",
-	     vomp_call_states[i].local.sid,
-	     vomp_call_states[i].remote.sid,
+      printf("%s/%06x\n-> %s/%06x\n   (%s -> %s)\n",
+	     overlay_render_sid(vomp_call_states[i].local.sid),
+	     vomp_call_states[i].local.session,
+	     overlay_render_sid(vomp_call_states[i].remote.sid),
+	     vomp_call_states[i].remote.session,
 	     vomp_call_states[i].local.did,
 	     vomp_call_states[i].remote.did);
       printf("   local state=%s, remote state=%s\n",
@@ -762,6 +789,11 @@ int app_vomp_status(int argc, char **argv, struct command_line_option *o)
     }
   if (!vomp_call_count) printf("No active calls\n");
   return 0;
+}
+
+int app_vomp_status(int argc, char **argv, struct command_line_option *o)
+{ 
+  return WHY("Not implemented");
 }
 
 int app_vomp_dial(int argc, char **argv, struct command_line_option *o)
