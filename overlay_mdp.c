@@ -917,7 +917,6 @@ int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
     case MDP_ADDRLIST: 
       len=&mdp->addrlist.sids[0][0]-(unsigned char *)mdp;
       len+=mdp->addrlist.frame_sid_count*SID_SIZE;
-      printf("%d sids takes 0x%x bytes\n",mdp->addrlist.frame_sid_count,len);
       break;
     case MDP_GETADDRS: 
       len=&mdp->addrlist.sids[0][0]-(unsigned char *)mdp;
@@ -929,13 +928,19 @@ int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
     case MDP_RX: 
       len=&mdp->in.payload[0]-(unsigned char *)mdp;
       len+=mdp->in.payload_length; 
+      break;
     case MDP_BIND: 
       len=&mdp->bind.sid[SID_SIZE]-(unsigned char *)mdp;
     case MDP_ERROR: 
       /* This formulation is used so that we don't copy any bytes after the
 	 end of the string, to avoid information leaks */
       len=&mdp->error.message[0]-(char *)mdp;
-      len+=strlen(mdp->error.message)+1; break;
+      len+=strlen(mdp->error.message)+1; 
+      break;
+    case MDP_VOMPEVENT:
+      /* XXX too hard to work out precisely for now. */
+      len=sizeof(mdp);
+      break;
     default:
       return WHY("Illegal MDP frame type.");
     }
