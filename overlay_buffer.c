@@ -347,17 +347,19 @@ int ob_dump(overlay_buffer *b,char *desc)
 #undef malloc
 #undef calloc
 #undef free
+#undef realloc
 
+#define SDM_GUARD_AFTER 16384
 void *_serval_debug_malloc(unsigned int bytes,char *file,const char *func,int line)
 {
-  void *r=malloc(bytes);
+  void *r=malloc(bytes+SDM_GUARD_AFTER);
   fprintf(stderr,"%s:%d:%s(): malloc(%d) -> %p\n",file,line,func,bytes,r);
   return r;
 }
 
 void *_serval_debug_calloc(unsigned int bytes,unsigned int count,char *file,const char *func,int line)
 {
-  void *r=calloc(bytes,count);
+  void *r=calloc(bytes+SDM_GUARD_AFTER,count);
   fprintf(stderr,"%s:%d:%s(): calloc(%d,%d) -> %p\n",file,line,func,bytes,count,r);
   return r;
 }
