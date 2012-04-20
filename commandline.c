@@ -26,7 +26,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
+#ifdef HAVE_JNI_H
 #include <jni.h>
+#endif
 #include "serval.h"
 #include "rhizome.h"
 
@@ -88,6 +90,7 @@ int cli_usage() {
 }
 
 
+#ifdef HAVE_JNI_H
 /* JNI entry point to command line.  See org.servalproject.servald.ServalD class for the Java side.
    JNI method descriptor: "([Ljava/lang/String;)Lorg/servalproject/servald/ServalDResult;"
 */
@@ -119,6 +122,7 @@ JNIEXPORT jobject JNICALL Java_org_servalproject_servald_ServalD_command(JNIEnv 
   }
   return (*env)->NewObject(env, resultClass, resultConstructorId, status, outv);
 }
+#endif
 
 /* args[] excludes command name (unless hardlinks are used to use first words 
    of command sequences as alternate names of the command. */
