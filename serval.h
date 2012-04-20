@@ -17,6 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#define MALLOC_PARANOIA
+
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -1131,7 +1133,7 @@ typedef struct overlay_mdp_addrlist {
   unsigned int server_sid_count;
   unsigned int first_sid;
   unsigned int last_sid;
-  unsigned char frame_sid_count; /* how many of the following 59 slots are
+  unsigned int frame_sid_count; /* how many of the following 59 slots are
 				    populated */
   /* 59*32 < (MDP_MTU-100), so up to 59 SIDs in a single reply.
      Multiple replies can be used to respond with more. */
@@ -1279,3 +1281,20 @@ typedef struct vomp_call_stateo {
 int vomp_mdp_event(overlay_mdp_frame *mdp,
 		   struct sockaddr_un *recvaddr,int recvaddrlen);
 int vomp_mdp_received(overlay_mdp_frame *mdp);
+
+typedef struct command_line_option {
+  int (*function)(int argc,char **argv,struct command_line_option *o);
+  char *words[32]; // 32 words should be plenty!
+  unsigned long long flags;
+#define CLIFLAG_NONOVERLAY (1<<0) /* Uses a legacy IPv4 DNA call instead of overlay mnetwork */
+#define CLIFLAG_STANDALONE (1<<1) /* Cannot be issued to a running instance */
+  char *description; // describe this invocation
+} command_line_option;
+
+extern command_line_option command_line_options[];
+int cli_arg(int argc, char **argv, command_line_option *o, char *argname, char **dst, int (*validator)(const char *arg), char *defaultvalue);
+
+int overlay_mdp_getmyaddr(int index,unsigned char *sid);
+
+int app_vomp_status(int argc, char **argv, struct command_line_option *o);
+int app_vomp_dial(int argc, char **argv, struct command_line_option *o);

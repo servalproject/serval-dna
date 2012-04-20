@@ -30,17 +30,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "rhizome.h"
 
-typedef struct command_line_option {
-  int (*function)(int argc,char **argv,struct command_line_option *o);
-  char *words[32]; // 32 words should be plenty!
-  unsigned long long flags;
-#define CLIFLAG_NONOVERLAY (1<<0) /* Uses a legacy IPv4 DNA call instead of overlay mnetwork */
-#define CLIFLAG_STANDALONE (1<<1) /* Cannot be issued to a running instance */
-  char *description; // describe this invocation
-} command_line_option;
-
-extern command_line_option command_line_options[];
-
 static int servalNodeRunning(int *pid)
 {
   char *instancepath = serval_instancepath();
@@ -424,27 +413,6 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
 
   overlay_mdp_frame mdp;
 
-  /* Get list of local addresses */
-  mdp.packetTypeAndFlags=MDP_GETADDRS;
-  mdp.addrlist.first_sid=-1;
-  mdp.addrlist.last_sid=0x7fffffff;
-  mdp.addrlist.frame_sid_count=MDP_MAX_SID_REQUEST;
-  int result=overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000);
-  if (result) {
-    if (mdp.packetTypeAndFlags==MDP_ERROR)
-      {
-	fprintf(stderr,"Could not get list of local MDP addresses\n");
-	fprintf(stderr,"  MDP Server error #%d: '%s'\n",
-		mdp.error.error,mdp.error.message);
-      }
-    else
-      fprintf(stderr,"Could not get list of local MDP addresses\n");
-    return -1;
-  } else {
-    if (mdp.packetTypeAndFlags!=MDP_ADDRLIST) 
-      return WHY("MDP Server returned wrong frame type.");
-  }
-
   /* Bind to MDP socket and await confirmation */
   int port=32768+(random()&32767);
   mdp.packetTypeAndFlags=MDP_BIND;
@@ -456,9 +424,10 @@ int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
        and mdp.addrlist share storage as a union in the mdp structure. */
     bcopy(&mdp.addrlist.sids[0][0],mdp.bind.sid,SID_SIZE);
   unsigned char srcsid[SID_SIZE];
+  if (overlay_mdp_getmyaddr(0,mdp.bind.sid)) return -1;
   bcopy(mdp.bind.sid,srcsid,SID_SIZE);
   mdp.bind.port_number=port;
-  result=overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000);
+  int result=overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000);
   if (result) {
     if (mdp.packetTypeAndFlags==MDP_ERROR)
       fprintf(stderr,"Could not bind to MDP port %d: error=%d, message='%s'\n",
@@ -924,6 +893,10 @@ command_line_option command_line_options[]={
    "Create a new identity in the keyring protected by the provided PIN"},
   {app_keyring_set_did,{"set","did","<sid>","<did>","[<pin>]",NULL},CLIFLAG_STANDALONE,
    "Set the DID for the specified SID.  Optionally supply PIN to unlock the SID record in the keyring."},
+  {app_vomp_status,{"vomp","status",NULL},0,
+   "Display status of any VoMP calls"},
+  {app_vomp_dial,{"vomp","<sid>","<did>","[<callerid>]",NULL},0,
+   "Attempt to dial the specified sid and did. Optionally supply the calling number"},
   {NULL,{NULL}}
 };
 

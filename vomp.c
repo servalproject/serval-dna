@@ -276,6 +276,8 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
      transported audio.  In particular we inform when the call state changes,
      including if any error has occurred.
   */
+  dump("vomp frame",mdp,256);
+  fprintf(stderr,"Flags=0x%x\n",mdp->vompevent.flags);
   switch(mdp->vompevent.flags)
     {
     case VOMPEVENT_REGISTERINTEREST:
@@ -394,6 +396,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	 These need to be passed to the node being called to provide caller id,
 	 and potentially handle call-routing, e.g., if it is a gateway.
          */
+      fprintf(stderr,"DIAL!\n");
       {
 	/* Populate call structure */
 	if (vomp_call_count>=VOMP_MAX_CALLS) 
@@ -417,12 +420,13 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	      return overlay_mdp_reply_error
 		(mdp_named_socket,recvaddr,recvaddrlen,4005,
 		 "Insufficient entropy");
+	    printf("session=0x%08x\n",call->local.session);
 	    int i;
 	    for(i=0;i<vomp_call_count;i++)
 	      if (i!=slot) 
 		if (call->local.session==vomp_call_states[i].local.session) break;
 	    /* reject duplicate call session numbers */
-	    if (i>=vomp_call_count) call->local.session=0;
+	    if (i<vomp_call_count) call->local.session=0;
 	  }
 	call->local.session&=VOMP_SESSION_MASK;
 	call->last_activity=overlay_gettime_ms();
@@ -726,4 +730,84 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
   }
 
   return WHY("Malformed VoMP MDP packet?");
+}
+
+char *vomp_describe_state(int state)
+{
+  switch(state) {
+  case VOMP_STATE_CALLENDED: return "CALLENDED";
+  case VOMP_STATE_INCALL: return "INCALL";
+  case VOMP_STATE_RINGINGIN: return "RINGINGIN";
+  case VOMP_STATE_RINGINGOUT: return "RINGINGOUT";
+  case VOMP_STATE_CALLPREP: return "CALLPREP";
+  case VOMP_STATE_NOCALL: return "NOCALL";
+  }
+  return "UNKNOWN";
+}
+
+int app_vomp_status(int argc, char **argv, struct command_line_option *o)
+{ 
+  int i;
+  for(i=0;i<vomp_call_count;i++)
+    {
+      printf("%s\n-> %s\n   (%s -> %s)\n",
+	     vomp_call_states[i].local.sid,
+	     vomp_call_states[i].remote.sid,
+	     vomp_call_states[i].local.did,
+	     vomp_call_states[i].remote.did);
+      printf("   local state=%s, remote state=%s\n",
+	     vomp_describe_state(vomp_call_states[i].local.state),
+	     vomp_describe_state(vomp_call_states[i].remote.state));
+    }
+  if (!vomp_call_count) printf("No active calls\n");
+  return 0;
+}
+
+int app_vomp_dial(int argc, char **argv, struct command_line_option *o)
+{
+  char *sid,*did,*callerid;
+  cli_arg(argc, argv, o, "sid", &sid, NULL, "");
+  cli_arg(argc, argv, o, "did", &did, NULL, "");
+  cli_arg(argc, argv, o, "callerid", &callerid, NULL, NULL);
+
+  overlay_mdp_frame mdp;
+  bzero(&mdp,sizeof(mdp));
+
+  mdp.packetTypeAndFlags=MDP_VOMPEVENT;
+  mdp.vompevent.flags=VOMPEVENT_DIAL;
+  if (overlay_mdp_getmyaddr(0,&mdp.vompevent.local_sid[0])) return -1;
+  stowSid(mdp.vompevent.remote_sid,0,sid);
+
+  if (overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000))
+    {
+      WHY("Dial request failed.");
+    }
+
+  return WHY("Not implemented");
+} 
+
+int overlay_mdp_getmyaddr(int index,unsigned char *sid)
+{
+  overlay_mdp_frame a;
+
+  a.packetTypeAndFlags=MDP_GETADDRS;
+  a.addrlist.first_sid=index;
+  a.addrlist.last_sid=0x7fffffff;
+  a.addrlist.frame_sid_count=MDP_MAX_SID_REQUEST;
+  int result=overlay_mdp_send(&a,MDP_AWAITREPLY,5000);
+  if (result) {
+    if (a.packetTypeAndFlags==MDP_ERROR)
+      {
+	fprintf(stderr,"Could not get list of local MDP addresses\n");
+	fprintf(stderr,"  MDP Server error #%d: '%s'\n",
+		a.error.error,a.error.message);
+      }
+    else
+      fprintf(stderr,"Could not get list of local MDP addresses\n");
+    return -1;
+  }
+  if ((a.packetTypeAndFlags&MDP_TYPE_MASK)!=MDP_ADDRLIST)
+    return WHY("MDP Server returned something other than an address list");
+  bcopy(&a.addrlist.sids[0][0],sid,SID_SIZE);
+  return 0;
 }
