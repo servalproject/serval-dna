@@ -583,12 +583,12 @@ int overlay_interface_discover()
 
 int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,overlay_frame *pax[],int *frame_pax,int frame_max_pax) 
 {
-  if (1) printf("Stuffing from queue #%d on interface #%d\n",q,i);
+  if (0) printf("Stuffing from queue #%d on interface #%d\n",q,i);
   overlay_frame **p=&overlay_tx[q].first;
-  if (1) printf("A p=%p, *p=%p, queue=%d\n",p,*p,q);
+  if (0) printf("A p=%p, *p=%p, queue=%d\n",p,*p,q);
   while(p&&(*p))
     {
-      if (1) printf("B p=%p, *p=%p, queue=%d\n",p,*p,q);
+      if (0) printf("B p=%p, *p=%p, queue=%d\n",p,*p,q);
 
       /* Throw away any stale frames */
       overlay_frame *pp;
@@ -605,9 +605,14 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,
 
 	/* Get pointer to stale entry */
 	overlay_frame *stale=*p;
-	fprintf(stderr,"Removing stale frame at %p (now=%lld, expiry=%lld)\n",stale,
-		now,((*p)->enqueued_at+overlay_tx[q].latencyTarget));
+	if (0) 
+	  fprintf(stderr,"Removing stale frame at %p (now=%lld, expiry=%lld)\n",
+		  stale,
+		  now,((*p)->enqueued_at+overlay_tx[q].latencyTarget));
+	if (0) printf("now=%lld, *p=%p, q=%d, overlay_tx[q]=%p\n",
+		      now,*p,q,&overlay_tx[q]);
 	/* Make ->next pointer that points to the stale node skip the stale node */
+	if (0) printf("p=%p, stale=%p, stale->next=%p\n",p,stale,stale->next);
 	*p=stale->next;	
 	/* If there is an entry after the stale now, make it's prev point to the 
 	   node before the stale node */
@@ -678,14 +683,15 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,
 	  }
 	}
 
-      if (1) printf("C p=%p, *p=%p, queue=%d\n",p,*p,q);
+      if (0) printf("C p=%p, *p=%p, queue=%d\n",p,*p,q);
 
-      /* Consider next in queue */
-      p=&(*p)->next;
+      if (*p) 
+	/* Consider next in queue */
+	p=&(*p)->next;
 
-      if (1) printf("D p=%p, *p=%p, queue=%d\n",p,p?*p:-1,q);
+      if (0) printf("D p=%p, *p=%p, queue=%d\n",p,p?*p:-1,q);
     }
-  if (1) printf("returning from stuffing\n");
+  if (0) printf("returning from stuffing\n");
   return 0;
 }
 
