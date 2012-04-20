@@ -17,14 +17,17 @@ DEFS=	@DEFS@
 
 all:	serval.c dna libservald.so
 
+sqlite3.o:	sqlite3.c
+	$(CC) $(CFLAGS) $(DEFS) -Wall -c $<
+
 %.o:	%.c $(HDRS)
-	$(CC) $(CFLAGS) $(DEFS) -Os -g -Wall -c $<
+	$(CC) $(CFLAGS) $(DEFS) -Wall -c $<
 
 dna:	$(OBJS)
-	$(CC) $(CFLAGS) -Os -g -Wall -o $@ $(OBJS) $(LDFLAGS)
+	$(CC) $(CFLAGS) -Wall -o $@ $(OBJS) $(LDFLAGS)
 
 libservald.so: $(OBJS)
-	$(CC) $(CFLAGS) -Os -g -Wall -shared -o $@ $(OBJS) $(LDFLAGS)
+	$(CC) $(CFLAGS) -Wall -shared -o $@ $(OBJS) $(LDFLAGS)
 
 serval.c:	$(SRCS) $(HDRS)
 	cat serval.h > serval.c
