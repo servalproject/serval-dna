@@ -62,12 +62,23 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
     {
       /* do the fast comparison first, and only if that matches proceed to
 	 the slower SID comparisons */
-      if (vomp_call_states[i].remote.session
-	  &&(sender_session!=vomp_call_states[i].remote.session))
-	continue;
-      if (vomp_call_states[i].local.session	  
-	  &&(recvr_session!=vomp_call_states[i].local.session))
-	continue;
+      fprintf(stderr,"asking for %06x:%06x, this call %06x:%06x\n",
+	      sender_session,recvr_session,
+	      vomp_call_states[i].remote.session,
+	      vomp_call_states[i].local.session);
+
+      int checked=0;
+      if (vomp_call_states[i].remote.session&&sender_session) { 
+	checked++;
+	if(sender_session!=vomp_call_states[i].remote.session)
+	  continue;
+      }
+      if (vomp_call_states[i].local.session&&recvr_session) {
+	checked++;
+	if(recvr_session!=vomp_call_states[i].local.session)
+	  continue;
+      }
+      if (!checked) continue;
       if (memcmp(remote_sid,vomp_call_states[i].remote.sid,SID_SIZE)) continue;
       if (memcmp(local_sid,vomp_call_states[i].local.sid,SID_SIZE)) continue;
 
@@ -90,6 +101,11 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
 	vomp_call_states[i].remote.session=sender_session;
 
       WHYF("Returning existing call #%d",i);
+      fprintf(stderr,"%06x:%06x matches call #%d %06x:%06x\n",
+	     sender_session,recvr_session,i,
+	     vomp_call_states[i].remote.session,
+	     vomp_call_states[i].local.session);
+      
       return &vomp_call_states[i];
     }
 
@@ -419,7 +435,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	 These need to be passed to the node being called to provide caller id,
 	 and potentially handle call-routing, e.g., if it is a gateway.
          */
-      fprintf(stderr,"DIAL!\n");
+      fprintf(stderr,"DIAL Request!\n");
       {
 	/* Populate call structure */
 	if (vomp_call_count>=VOMP_MAX_CALLS) 
@@ -459,7 +475,10 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 
 	/* send status update to remote, thus causing call to be created
 	   (hopefully) at far end. */
-	return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED);
+	vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED);
+	WHY("sending MDP reply back");
+	return overlay_mdp_reply_error 
+	  (mdp_named_socket,recvaddr,recvaddrlen,0, "Success");
       }
       break;
     case VOMPEVENT_CALLREJECT: /* hangup is the same */
@@ -761,12 +780,15 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED);
       }
     }
+    return 0;
     break;
   case 0x02: /* codec selection, lists set of acceptable codec formats,
 		and may thus cause change of codec, including during the call */
+    return WHY("Codec selection not implemented");
     break;
   default:
     /* unsupported VoMP frame */
+    WHYF("Unsupported VoMP frame type = 0x%02x",mdp->in.payload[0]);
     break;
   }
 
