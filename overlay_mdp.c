@@ -148,12 +148,13 @@ int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
   errno=0;
   int r=sendto(sock,(char *)mdpreply,replylen,0,
 	       (struct sockaddr *)recvaddr,recvaddrlen);
-  if (r<0) { 
+  if (r<replylen) { 
     perror("sendto"); 
     WHY("sendto() failed when sending MDP reply"); 
     printf("sock=%d, r=%d\n",sock,r);
     return -1;
-  }
+  } else
+    WHYF("reply of %d bytes sent",r);
   return 0;  
 }
 
@@ -928,11 +929,13 @@ int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
       break;
     case MDP_BIND: 
       len=&mdp->bind.sid[SID_SIZE]-(unsigned char *)mdp;
+      break;
     case MDP_ERROR: 
       /* This formulation is used so that we don't copy any bytes after the
 	 end of the string, to avoid information leaks */
       len=&mdp->error.message[0]-(char *)mdp;
-      len+=strlen(mdp->error.message)+1; 
+      len+=strlen(mdp->error.message)+1;
+      WHYF("error mdp frame is %d bytes",len);
       break;
     case MDP_VOMPEVENT:
       /* XXX too hard to work out precisely for now. */
@@ -987,7 +990,7 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
     mdp->packetTypeAndFlags=MDP_ERROR;
     mdp->error.error=1;
     snprintf(mdp->error.message,128,"Timeout waiting for reply to MDP packet (packet was successfully sent).");    
-    return -1;
+    return WHY("Timeout waiting for server response");
   }
 
   int ttl=-1;
@@ -1060,7 +1063,7 @@ int overlay_mdp_recv(overlay_mdp_frame *mdp,int *ttl)
 {
   char mdp_socket_name[101];
   if (!FORM_SERVAL_INSTANCE_PATH(mdp_socket_name, "mdp.socket"))
-    return -1;
+    return WHY("Could not find mdp socket");
   /* Check if reply available */
   fcntl(mdp_client_socket, F_SETFL, fcntl(mdp_client_socket, F_GETFL, NULL)|O_NONBLOCK); 
   unsigned char recvaddrbuffer[1024];
@@ -1090,6 +1093,6 @@ int overlay_mdp_recv(overlay_mdp_frame *mdp,int *ttl)
     return 0;
   } else 
     /* no packet received */
-    return -1;
+    return WHY("No packet received");
 
 }
