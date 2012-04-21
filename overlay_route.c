@@ -259,8 +259,7 @@ int overlay_route_init(int mb_ram)
   
   memabuseCheck();
 
-  /* XXX Initialise the random number generator in a robust manner */
-  fprintf(stderr,"WARNING: RNG Not Securely Initialised.\n");
+  srandomdev();
 
   /* Generate hash ordering function */
   fprintf(stderr,"Generating byte-order for hash function:");
