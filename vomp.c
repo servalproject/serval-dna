@@ -56,26 +56,40 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
 {
   int expired_slot=-1;
   int i;
+  dump_vomp_status();
   printf("%d calls already in progress.\n",vomp_call_count);
   for(i=0;i<vomp_call_count;i++)
     {
       /* do the fast comparison first, and only if that matches proceed to
 	 the slower SID comparisons */
-      if (sender_session&(sender_session!=vomp_call_states[i].remote.session))
+      if (vomp_call_states[i].remote.session
+	  &&(sender_session!=vomp_call_states[i].remote.session))
 	continue;
-      if (recvr_session&(recvr_session!=vomp_call_states[i].local.session))
+      if (vomp_call_states[i].local.session	  
+	  &&(recvr_session!=vomp_call_states[i].local.session))
 	continue;
       if (memcmp(remote_sid,vomp_call_states[i].remote.sid,SID_SIZE)) continue;
       if (memcmp(local_sid,vomp_call_states[i].local.sid,SID_SIZE)) continue;
 
-      /* it matches.  but has it expired (no activity in 120 seconds)? */
-      if (vomp_call_states[i].last_activity<(overlay_gettime_ms()-120000))
+      /* it matches.  but has it expired (no activity in 120 seconds)?
+         NOTE: as these time calculations are unsigned, we must add to
+	 the last activity time rather than subtract from the current time
+	 when calculating the timeout.
+      */
+      if (vomp_call_states[i].last_activity+120000<(overlay_gettime_ms()))
 	{
-	  printf("slot %d has expired.\n",i);
+	  WHYF("slot %d has expired.",i);
+	  WHYF("  last_activity=%lld, now=%lld",
+	       vomp_call_states[i].last_activity,overlay_gettime_ms());
 	  expired_slot=i;
 	  continue;
 	}
 
+      /* Record session number if required */
+      if (!vomp_call_states[i].remote.session) 
+	vomp_call_states[i].remote.session=sender_session;
+
+      WHYF("Returning existing call #%d",i);
       return &vomp_call_states[i];
     }
 
@@ -115,6 +129,7 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
   vomp_call_states[i].remote.state=VOMP_STATE_NOCALL;
   vomp_call_states[i].create_time=overlay_gettime_ms();
   vomp_call_states[i].last_activity=vomp_call_states[i].create_time;
+  WHYF("Returning new call #%d",i);
   return &vomp_call_states[i];
 }
 
@@ -126,36 +141,40 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
 int vomp_send_status(vomp_call_state *call,int flags)
 {
   if (flags&VOMP_TELLREMOTE) {
-    overlay_mdp_frame mdp;
-    bzero(&mdp,sizeof(mdp));
-    mdp.packetTypeAndFlags=MDP_TX;
-    bcopy(call->local.sid,mdp.out.src.sid,SID_SIZE);
-    mdp.out.src.port=MDP_PORT_VOMP;
-    bcopy(call->remote.sid,mdp.out.dst.sid,SID_SIZE);
-    mdp.out.dst.port=MDP_PORT_VOMP;
-    
-    mdp.out.payload[0]=0x01; /* Normal VoMP frame */
-    mdp.out.payload[1]=call->remote.state;
-    mdp.out.payload[2]=call->local.state;
-    mdp.out.payload[3]=VOMP_CODEC_NONE;
-    mdp.out.payload[4]=(call->remote.sequence>>8)&0xff;
-    mdp.out.payload[5]=(call->remote.sequence>>0)&0xff;
-    mdp.out.payload[6]=(call->remote.session>>16)&0xff;
-    mdp.out.payload[7]=(call->remote.session>>8)&0xff;
-    mdp.out.payload[8]=(call->remote.session>>0)&0xff;
-    mdp.out.payload[9]=(call->local.session>>16)&0xff;
-    mdp.out.payload[10]=(call->local.session>>8)&0xff;
-    mdp.out.payload[11]=(call->local.session>>0)&0xff;
-    unsigned long long call_millis=overlay_gettime_ms()-call->create_time;
-    mdp.out.payload[12]=(call_millis>>16)&0xff;
-    mdp.out.payload[13]=(call_millis>>8)&0xff;
-    mdp.out.payload[14]=(call_millis>>0)&0xff;
+    int combined_status=(call->remote.state<<4)|call->local.state;
+    if (call->last_sent_status!=combined_status) {
+      call->last_sent_status=combined_status;
 
-    mdp.out.payload_length=15;
-
-    overlay_mdp_send(&mdp,0,0);
-
-    call->local.sequence++;
+      overlay_mdp_frame mdp;
+      bzero(&mdp,sizeof(mdp));
+      mdp.packetTypeAndFlags=MDP_TX;
+      bcopy(call->local.sid,mdp.out.src.sid,SID_SIZE);
+      mdp.out.src.port=MDP_PORT_VOMP;
+      bcopy(call->remote.sid,mdp.out.dst.sid,SID_SIZE);
+      mdp.out.dst.port=MDP_PORT_VOMP;
+      
+      mdp.out.payload[0]=0x01; /* Normal VoMP frame */
+      mdp.out.payload[1]=combined_status;
+      mdp.out.payload[2]=(call->remote.sequence>>8)&0xff;
+      mdp.out.payload[3]=(call->remote.sequence>>0)&0xff;
+      mdp.out.payload[4]=(call->local.sequence>>8)&0xff;
+      mdp.out.payload[5]=(call->local.sequence>>0)&0xff;
+      unsigned long long call_millis=overlay_gettime_ms()-call->create_time;
+      mdp.out.payload[6]=(call_millis>>8)&0xff;
+      mdp.out.payload[7]=(call_millis>>0)&0xff;
+      mdp.out.payload[8]=(call->remote.session>>16)&0xff;
+      mdp.out.payload[9]=(call->remote.session>>8)&0xff;
+      mdp.out.payload[10]=(call->remote.session>>0)&0xff;
+      mdp.out.payload[11]=(call->local.session>>16)&0xff;
+      mdp.out.payload[12]=(call->local.session>>8)&0xff;
+      mdp.out.payload[13]=(call->local.session>>0)&0xff;
+      
+      mdp.out.payload_length=14;
+      
+      overlay_mdp_send(&mdp,0,0);
+      
+      call->local.sequence++;
+    }
   }
   if (flags&VOMP_TELLINTERESTED) {
     overlay_mdp_frame mdp;
@@ -195,10 +214,6 @@ int vomp_call_start_audio(vomp_call_state *call)
 
 int vomp_process_audio(vomp_call_state *call,overlay_mdp_frame *mdp)
 {
-  // int first_frame_codec=mdp->in.payload[3];
-  // int recvr_seq=(mdp->in.payload[4]<<8)+mdp->in.payload[5];
-  // unsigned int sender_millis=
-  //   (mdp->in.payload[12]<<16)+(mdp->in.payload[13]<<8)+mdp->in.payload[14];
 
   return WHY("Not implemented");
 }
@@ -506,12 +521,12 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
   switch(mdp->in.payload[0]) {
   case 0x01: /* Ordinary VoMP state+optional audio frame */
     {
-      // int recvr_state=mdp->in.payload[1];
-      int sender_state=mdp->in.payload[2];
+      // int recvr_state=mdp->in.payload[1]>>4;
+      int sender_state=mdp->in.payload[1]&0xf;
       unsigned int recvr_session=
-	(mdp->in.payload[6]<<16)+(mdp->in.payload[7]<<8)+mdp->in.payload[8];
+	(mdp->in.payload[8]<<16)+(mdp->in.payload[9]<<8)+mdp->in.payload[10];
       unsigned int sender_session=
-	(mdp->in.payload[9]<<16)+(mdp->in.payload[10]<<8)+mdp->in.payload[11];
+	(mdp->in.payload[11]<<16)+(mdp->in.payload[12]<<8)+mdp->in.payload[13];
       int sender_seq=(mdp->in.payload[4]<<8)+mdp->in.payload[5];
       
       if (!recvr_session) {

@@ -1260,6 +1260,7 @@ typedef struct vomp_call_stateo {
   unsigned long long create_time;
   unsigned long long last_activity;
   int audio_started;
+  int last_sent_status;
 } vomp_call_state;
 
 #define VOMP_CODEC_NONE 0x00
