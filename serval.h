@@ -1253,7 +1253,7 @@ typedef struct vomp_call_half {
   unsigned long long milliseconds_since_call_start;
 } vomp_call_half;
 
-typedef struct vomp_call_stateo {
+typedef struct vomp_call_state {
   vomp_call_half local;
   vomp_call_half remote;
   int ringing;
@@ -1261,6 +1261,7 @@ typedef struct vomp_call_stateo {
   unsigned long long last_activity;
   int audio_started;
   int last_sent_status;
+  int next_status_time;
 } vomp_call_state;
 
 #define VOMP_CODEC_NONE 0x00
@@ -1279,10 +1280,16 @@ typedef struct vomp_call_stateo {
 #define VOMP_STATE_RINGINGIN 4
 #define VOMP_STATE_INCALL 5
 #define VOMP_STATE_CALLENDED 6
+
+/* in milliseconds of inactivity */
+#define VOMP_CALL_TIMEOUT 120000
+#define VOMP_CALL_STATUS_INTERVAL 1000
 int vomp_mdp_event(overlay_mdp_frame *mdp,
 		   struct sockaddr_un *recvaddr,int recvaddrlen);
 int vomp_mdp_received(overlay_mdp_frame *mdp);
 char *vomp_describe_state(int state);
+int vomp_tick();
+int vomp_tick_interval();
 
 typedef struct command_line_option {
   int (*function)(int argc,char **argv,struct command_line_option *o);

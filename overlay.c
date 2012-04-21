@@ -163,11 +163,16 @@ int overlayServerMode()
        will need to tick in order to keep each tick nice and fast. */
     int route_tick_interval=overlay_route_tick();
     if (ms>route_tick_interval) ms=route_tick_interval;
+    int vomp_tick_time=vomp_tick_interval();
+    if (ms>vomp_tick_time) ms=vomp_tick_time;
 
     if (debug&DEBUG_VERBOSE_IO)
       fprintf(stderr,"Waiting via poll() for up to %lldms\n",ms);
     int r=poll(fds,fdcount,ms);
   
+    /* Do high-priority audio handling first */
+    vomp_tick();
+
     if (r<0) {
       /* select had a problem */
       if (debug&DEBUG_IO) perror("poll()");

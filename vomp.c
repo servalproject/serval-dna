@@ -76,7 +76,7 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
 	 the last activity time rather than subtract from the current time
 	 when calculating the timeout.
       */
-      if (vomp_call_states[i].last_activity+120000<(overlay_gettime_ms()))
+      if (vomp_call_states[i].last_activity+VOMP_CALL_TIMEOUT<(overlay_gettime_ms()))
 	{
 	  WHYF("slot %d has expired.",i);
 	  WHYF("  last_activity=%lld, now=%lld",
@@ -138,11 +138,14 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
 #define VOMP_TELLINTERESTED (1<<0)
 #define VOMP_TELLREMOTE (1<<1)
 #define VOMP_NEWCALL (1<<2)
+#define VOMP_FORCETELLREMOTE ((1<<3)|VOMP_TELLREMOTE)
+
 int vomp_send_status(vomp_call_state *call,int flags)
 {
   if (flags&VOMP_TELLREMOTE) {
     int combined_status=(call->remote.state<<4)|call->local.state;
-    if (call->last_sent_status!=combined_status) {
+    if (call->last_sent_status!=combined_status||
+	(flags&VOMP_FORCETELLREMOTE)==VOMP_FORCETELLREMOTE) {
       call->last_sent_status=combined_status;
 
       overlay_mdp_frame mdp;
@@ -862,4 +865,50 @@ int overlay_mdp_getmyaddr(int index,unsigned char *sid)
     return WHY("MDP Server returned something other than an address list");
   bcopy(&a.addrlist.sids[0][0],sid,SID_SIZE);
   return 0;
+}
+
+int vomp_tick()
+{
+  /* Send any reminder packets for call state, and also process any audio. */
+  unsigned long long now=overlay_gettime_ms();
+  int i;
+
+  for(i=0;i<vomp_call_count;i++)
+    {
+      if (now>vomp_call_states[i].next_status_time)
+	{
+	  vomp_send_status(&vomp_call_states[i],VOMP_FORCETELLREMOTE);
+	  vomp_call_states[i].next_status_time=now+VOMP_CALL_STATUS_INTERVAL;
+	}
+      /* See if any calls need to begin expiring */
+      if (vomp_call_states[i].last_activity+VOMP_CALL_TIMEOUT<now)
+	switch(vomp_call_states[i].local.state)	  
+	  {
+	  case VOMP_STATE_INCALL:
+	    /* Timeout while call in progress, so end call.
+	       Keep call structure hanging around for a bit so that we can
+	       synchonrise with the far end if possible. */
+	    vomp_call_states[i].local.state=VOMP_STATE_CALLENDED;
+	    vomp_send_status(&vomp_call_states[i],
+			     VOMP_TELLREMOTE|VOMP_TELLINTERESTED);
+	    vomp_call_states[i].last_activity=now;
+	    vomp_call_stop_audio(&vomp_call_states[i]);
+	    break;
+	  default:	    
+	  /* Call timed out while not actually in progress, so just immmediately
+	     tear the call down */
+	    vomp_call_destroy(&vomp_call_states[i]);
+	    /* since this slot will get reclaimed, we need to wind back one in
+	       the iteration of the list of slots */
+	    i--;
+	    break;
+	  }
+    }    
+  return 0;
+}
+
+int vomp_tick_interval()
+{
+  /* Work out the number of milliseconds until the next vomp tick is required. */
+  return 1000;
 }
