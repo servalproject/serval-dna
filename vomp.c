@@ -56,7 +56,6 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
 {
   int expired_slot=-1;
   int i;
-  dump_vomp_status();
   printf("%d calls already in progress.\n",vomp_call_count);
   for(i=0;i<vomp_call_count;i++)
     {
@@ -471,8 +470,6 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	call->local.session&=VOMP_SESSION_MASK;
 	call->last_activity=overlay_gettime_ms();
 
-	dump_vomp_status();
-
 	/* send status update to remote, thus causing call to be created
 	   (hopefully) at far end. */
 	vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED);
@@ -571,7 +568,6 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	call->last_activity=overlay_gettime_ms();
 	call->remote.sequence=sender_seq;
 	call->remote.state=sender_state;
-	dump_vomp_status();
 	return vomp_send_status(call,VOMP_TELLREMOTE);
       } else {
 	WHY("recvr_session!=0, looking for existing call");
@@ -588,7 +584,6 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	int combined_state=call->local.state<<3;
 	combined_state|=sender_state;
 	call->remote.state=sender_state;
-	dump_vomp_status();
 	WHYF("Far end is in state %s",vomp_describe_state(call->remote.state));
 	WHYF("I am in state %s",vomp_describe_state(call->local.state));
 	switch(combined_state) {
@@ -856,8 +851,13 @@ int app_vomp_dial(int argc, char **argv, struct command_line_option *o)
     {
       WHY("Dial request failed.");
     }
-
-  return WHY("Not implemented");
+  if (mdp.packetTypeAndFlags==MDP_ERROR&&mdp.error.error)
+    fprintf(stderr,"Dial request failed: error=%d, message='%s'\n",
+	    mdp.error.error,mdp.error.message);
+  else 
+    printf("Dial request accepted.\n");
+  
+  return 0;
 } 
 
 int overlay_mdp_getmyaddr(int index,unsigned char *sid)
