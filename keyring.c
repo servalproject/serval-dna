@@ -241,7 +241,6 @@ void keyring_free_context(keyring_context *c)
 void keyring_free_identity(keyring_identity *id)
 {
   int i;
-  WHYF("id->PKRPin=%p\n",id->PKRPin);
   if (id->PKRPin) {
     /* Wipe pin before freeing (slightly tricky since this is a variable length string */
     for(i=0;id->PKRPin[i];i++) {
@@ -249,7 +248,6 @@ void keyring_free_identity(keyring_identity *id)
       id->PKRPin[i]=' '; }
     i=0;
     
-    WHYF("id->PKRPin=%p\n",id->PKRPin);
     free(id->PKRPin); id->PKRPin=NULL;
   }
 
@@ -521,8 +519,6 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot,char *pin)
   if (!slot) { WHY("slot is null"); return NULL; }
 
   id->PKRPin=strdup(pin);
-
-  WHYF("id->PKRPin=%p\n",id->PKRPin);
 
   /* There was a known plain-text opportunity here:
      byte 96 must be 0x01, and some other bytes are likely deducible, e.g., the

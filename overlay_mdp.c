@@ -572,9 +572,6 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   /* Work out if destination is broadcast or not */
   int broadcast=1;
   
-  fprintf(stderr,
-	  "TX mdp dst.port=%d, src.port=%d\n",mdp->out.dst.port,mdp->out.src.port);  
-
   if (overlay_mdp_sanitytest_sourceaddr(&mdp->out.src,userGeneratedFrameP,
 					recvaddr,recvaddrlen))
     return overlay_mdp_reply_error

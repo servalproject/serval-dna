@@ -518,9 +518,6 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 
   vomp_call_state *call=NULL;
 
-  WHYF("VoMP type byte = 0x%02x\n",mdp->in.payload[0]);
-  dump("rxd mdp",&mdp->in.payload[0],mdp->in.payload_length);
-
   switch(mdp->in.payload[0]) {
   case 0x01: /* Ordinary VoMP state+optional audio frame */
     {
