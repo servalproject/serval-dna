@@ -1171,8 +1171,8 @@ typedef struct overlay_mdp_vompevent {
     struct {
       /* Used to precisely define the call end points during call
 	 setup. */
-      unsigned char local_did[64];
-      unsigned char remote_did[64];
+      char local_did[64];
+      char remote_did[64];
       unsigned char local_sid[SID_SIZE];
       unsigned char remote_sid[SID_SIZE];
       /* session numbers of other calls in progress 

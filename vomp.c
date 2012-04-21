@@ -399,6 +399,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	bzero(&mdpreply,sizeof(mdpreply));
 	mdpreply.packetTypeAndFlags=MDP_VOMPEVENT;
 	mdpreply.vompevent.flags=VOMPEVENT_CALLINFO;
+	mdpreply.vompevent.call_session_token=mdp->vompevent.call_session_token;
 	if (call) {
 	  if (call->ringing) mdpreply.vompevent.flags|=VOMPEVENT_RINGING;
 	  if (call->audio_started) 
@@ -842,13 +843,47 @@ int app_vomp_status(int argc, char **argv, struct command_line_option *o)
 		mdp.error.error,mdp.error.message);
       return -1;
     }
+  if (mdp.packetTypeAndFlags!=MDP_VOMPEVENT) {
+    return WHYF("Received incorrect reply type from server (received MDP message type 0x%04x)\n",mdp.packetTypeAndFlags);
+  }
+  if (mdp.vompevent.flags!=VOMPEVENT_CALLINFO) {
+    return WHYF("Received incorrect reply type from server (received VoMP message type 0x%04x)\n",mdp.vompevent.flags);
+  }
   int i;
+  int count=0;
+  overlay_mdp_frame mdp2;
+  bzero(&mdp2,sizeof(mdp2));
   for(i=0;i<VOMP_MAX_CALLS;i++)
-    {
-      fprintf(stderr,"%06x:%s\n",
-	      mdp.vompevent.other_calls_sessions[i],
-	      vomp_describe_state(mdp.vompevent.other_calls_states[i]));
-    }
+    if (mdp.vompevent.other_calls_sessions[i])
+      {
+	count++;
+	fprintf(stderr,"%06x:%s:",
+		mdp.vompevent.other_calls_sessions[i],
+		vomp_describe_state(mdp.vompevent.other_calls_states[i]));
+	mdp2.packetTypeAndFlags=MDP_VOMPEVENT;
+	mdp2.vompevent.flags=VOMPEVENT_CALLINFO;
+	mdp2.vompevent.call_session_token=mdp.vompevent.other_calls_sessions[i];
+	if (overlay_mdp_send(&mdp2,MDP_AWAITREPLY,5000))
+	  fprintf(stderr,"<server failed to provide detail>");
+	else
+	  {
+	    if (mdp2.vompevent.call_session_token!=mdp.vompevent.other_calls_sessions[i])
+	      fprintf(stderr,"<strange reply from server (%04x, %04x, token %06x)>",
+		      mdp.packetTypeAndFlags,mdp.vompevent.flags,
+		      mdp2.vompevent.call_session_token);
+	    else {
+	      fprintf(stderr,"%s* -> %s* (%s -> %s)",
+		      overlay_render_sid_prefix(mdp2.vompevent.local_sid,6),
+		      overlay_render_sid_prefix(mdp2.vompevent.remote_sid,6),
+		      strlen(mdp2.vompevent.local_did)
+		      ?mdp2.vompevent.local_did:"<no local number>",
+		      strlen(mdp2.vompevent.remote_did)
+		      ?mdp2.vompevent.remote_did:"<no remote number>");
+	    }
+	  }
+	fprintf(stderr,"\n");
+      }
+  fprintf(stderr,"%d live call descriptors.\n",count);
   return 0;
 }
 
