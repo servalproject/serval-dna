@@ -474,8 +474,11 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	   (hopefully) at far end. */
 	vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED);
 	WHY("sending MDP reply back");
-	return overlay_mdp_reply_error 
+	dump("recvaddr",recvaddr,recvaddrlen);
+	int result= overlay_mdp_reply_error 
 	  (mdp_named_socket,recvaddr,recvaddrlen,0, "Success");
+	if (result) WHY("Failed to send MDP reply");
+	return result;
       }
       break;
     case VOMPEVENT_CALLREJECT: /* hangup is the same */
@@ -826,7 +829,27 @@ int dump_vomp_status()
 
 int app_vomp_status(int argc, char **argv, struct command_line_option *o)
 { 
-  return WHY("Not implemented");
+  overlay_mdp_frame mdp;
+  bzero(&mdp,sizeof(mdp));
+
+  mdp.packetTypeAndFlags=MDP_VOMPEVENT;
+  mdp.vompevent.flags=VOMPEVENT_CALLINFO;
+  if (overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000))
+    {
+      WHY("Current call state information request failed.");
+      if (mdp.packetTypeAndFlags==MDP_ERROR&&mdp.error.error)
+	fprintf(stderr,"MDP: error=%d, message='%s'\n",
+		mdp.error.error,mdp.error.message);
+      return -1;
+    }
+  int i;
+  for(i=0;i<VOMP_MAX_CALLS;i++)
+    {
+      fprintf(stderr,"%06x:%s\n",
+	      mdp.vompevent.other_calls_sessions[i],
+	      vomp_describe_state(mdp.vompevent.other_calls_states[i]));
+    }
+  return 0;
 }
 
 int app_vomp_dial(int argc, char **argv, struct command_line_option *o)
