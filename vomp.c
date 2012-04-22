@@ -484,6 +484,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
       break;
     case VOMPEVENT_CALLREJECT: /* hangup is the same */
       {
+	WHY("Hanging up");
 	vomp_call_state *call
 	  =vomp_find_call_by_session(mdp->vompevent.call_session_token);
 	if (!call) 
@@ -492,10 +493,14 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	     "No such call");
 	if (call->local.state==VOMP_STATE_INCALL) vomp_call_stop_audio(call);
 	call->local.state=VOMP_STATE_CALLENDED;
+	overlay_mdp_reply_error(mdp_named_socket,
+				recvaddr,recvaddrlen,0,"Success");
 	return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED);
       }
+      break;
     case VOMPEVENT_PICKUP: 
       {
+	WHY("Picking up");
 	vomp_call_state *call
 	  =vomp_find_call_by_session(mdp->vompevent.call_session_token);
 	if (!call) 
@@ -505,7 +510,9 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	call->local.state=VOMP_STATE_INCALL;
 	call->ringing=0;
 	/* state machine does job of starting audio stream, just tell everyone about
-	   the changed state. */      
+	   the changed state. */
+	overlay_mdp_reply_error(mdp_named_socket,
+				recvaddr,recvaddrlen,0,"Success");
 	return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED);
       }
       break;
@@ -917,6 +924,58 @@ int app_vomp_dial(int argc, char **argv, struct command_line_option *o)
   
   return 0;
 } 
+
+
+int app_vomp_pickup(int argc, char **argv, struct command_line_option *o)
+{
+  char *call_token;
+  cli_arg(argc, argv, o, "call", &call_token, NULL, "");
+
+  overlay_mdp_frame mdp;
+  bzero(&mdp,sizeof(mdp));
+
+  mdp.packetTypeAndFlags=MDP_VOMPEVENT;
+  mdp.vompevent.flags=VOMPEVENT_PICKUP;
+  mdp.vompevent.call_session_token=strtol(call_token,NULL,16);
+
+  if (overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000))
+    {
+      WHY("Pickup request failed.");
+    }
+  if (mdp.packetTypeAndFlags==MDP_ERROR&&mdp.error.error)
+    fprintf(stderr,"Pickup request failed: error=%d, message='%s'\n",
+	    mdp.error.error,mdp.error.message);
+  else 
+    printf("Pickup request accepted.\n");
+  
+  return 0;
+} 
+
+int app_vomp_hangup(int argc, char **argv, struct command_line_option *o)
+{
+  char *call_token;
+  cli_arg(argc, argv, o, "call", &call_token, NULL, "");
+
+  overlay_mdp_frame mdp;
+  bzero(&mdp,sizeof(mdp));
+
+  mdp.packetTypeAndFlags=MDP_VOMPEVENT;
+  mdp.vompevent.flags=VOMPEVENT_HANGUP;
+  mdp.vompevent.call_session_token=strtol(call_token,NULL,16);
+
+  if (overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000))
+    {
+      WHY("Hangup/reject request failed.");
+    }
+  if (mdp.packetTypeAndFlags==MDP_ERROR&&mdp.error.error)
+    fprintf(stderr,"Hangup/reject request failed: error=%d, message='%s'\n",
+	    mdp.error.error,mdp.error.message);
+  else 
+    printf("Hangup/reject request accepted.\n");
+  
+  return 0;
+} 
+
 
 int overlay_mdp_getmyaddr(int index,unsigned char *sid)
 {

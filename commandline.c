@@ -899,7 +899,11 @@ command_line_option command_line_options[]={
    "Set the DID for the specified SID.  Optionally supply PIN to unlock the SID record in the keyring."},
   {app_vomp_status,{"vomp","status",NULL},0,
    "Display status of any VoMP calls"},
-  {app_vomp_dial,{"vomp","<sid>","<did>","[<callerid>]",NULL},0,
+  {app_vomp_pickup,{"vomp","pickup","<call>",NULL},0,
+   "Accept specified call (use vomp status to get list of calls)"},
+  {app_vomp_hangup,{"vomp","hangup","<call>",NULL},0,
+   "End specified call (use vomp status to get list of calls)"},
+  {app_vomp_dial,{"vomp","dial","<sid>","<did>","[<callerid>]",NULL},0,
    "Attempt to dial the specified sid and did. Optionally supply the calling number"},
   {NULL,{NULL}}
 };
