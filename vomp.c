@@ -1019,7 +1019,11 @@ int app_vomp_monitor(int argc, char **argv, struct command_line_option *o)
   while(!servalShutdown) {
     overlay_mdp_frame rx;
     int ttl;
-    if (overlay_mdp_client_poll(0)>0)
+    /* In theory we should be able to ask for a timeout of -1 for
+       infinity, but broken poll() and select() implementations on OSX
+       make this impossible.  So one unnecessary check per second is 
+       probably tolerable.  */
+    if (overlay_mdp_client_poll(1000)>0)
       if (!overlay_mdp_recv(&rx,&ttl))
 	{
 	  switch(rx.packetTypeAndFlags) {
