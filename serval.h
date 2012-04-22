@@ -927,6 +927,7 @@ typedef struct overlay_node {
 
 typedef struct overlay_neighbour {
   long long last_observation_time_ms;
+  long long last_metric_update;
   int most_recent_observation_id;
   overlay_neighbour_observation observations[OVERLAY_MAX_OBSERVATIONS];
   overlay_node *node;
