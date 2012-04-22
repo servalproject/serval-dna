@@ -319,6 +319,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
   switch(mdp->vompevent.flags)
     {
     case VOMPEVENT_REGISTERINTEREST:
+      WHY("Request to register interest");
       /* put unix domain socket on record to send call state event and audio to. */
       {
 	int i;
@@ -350,6 +351,8 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	  vomp_interested_usock_lengths[i]=recvaddrlen;
 	  vomp_interested_expiries[i]=overlay_gettime_ms()+60000;
 	  if (i==vomp_interested_usock_count) vomp_interested_usock_count++;
+	  return overlay_mdp_reply_error
+	    (mdp_named_socket,recvaddr,recvaddrlen,0,"Success");	     
 	} else {
 	  return overlay_mdp_reply_error
 	    (mdp_named_socket,recvaddr,recvaddrlen,
@@ -359,6 +362,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
       break;
     case VOMPEVENT_WITHDRAWINTEREST:
       /* opposite of above */
+      WHY("Request to withdraw interest");
       {
 	int i;
 	for(i=0;i<vomp_interested_usock_count;i++)
@@ -848,13 +852,18 @@ int app_vomp_status(int argc, char **argv, struct command_line_option *o)
       if (mdp.packetTypeAndFlags==MDP_ERROR&&mdp.error.error)
 	fprintf(stderr,"MDP: error=%d, message='%s'\n",
 		mdp.error.error,mdp.error.message);
+      overlay_mdp_client_done();
       return -1;
     }
   if (mdp.packetTypeAndFlags!=MDP_VOMPEVENT) {
-    return WHYF("Received incorrect reply type from server (received MDP message type 0x%04x)\n",mdp.packetTypeAndFlags);
+    WHYF("Received incorrect reply type from server (received MDP message type 0x%04x)\n",mdp.packetTypeAndFlags);
+    overlay_mdp_client_done();
+    return -1;
   }
   if (mdp.vompevent.flags!=VOMPEVENT_CALLINFO) {
-    return WHYF("Received incorrect reply type from server (received VoMP message type 0x%04x)\n",mdp.vompevent.flags);
+    WHYF("Received incorrect reply type from server (received VoMP message type 0x%04x)\n",mdp.vompevent.flags);
+    overlay_mdp_client_done();
+    return -1;
   }
   int i;
   int count=0;
@@ -891,7 +900,7 @@ int app_vomp_status(int argc, char **argv, struct command_line_option *o)
 	fprintf(stderr,"\n");
       }
   fprintf(stderr,"%d live call descriptors.\n",count);
-  return 0;
+  return overlay_mdp_client_done();
 }
 
 int app_vomp_dial(int argc, char **argv, struct command_line_option *o)
@@ -922,7 +931,7 @@ int app_vomp_dial(int argc, char **argv, struct command_line_option *o)
   else 
     printf("Dial request accepted.\n");
   
-  return 0;
+  return overlay_mdp_client_done();
 } 
 
 
@@ -948,7 +957,7 @@ int app_vomp_pickup(int argc, char **argv, struct command_line_option *o)
   else 
     printf("Pickup request accepted.\n");
   
-  return 0;
+  return overlay_mdp_client_done();
 } 
 
 int app_vomp_hangup(int argc, char **argv, struct command_line_option *o)
@@ -973,9 +982,45 @@ int app_vomp_hangup(int argc, char **argv, struct command_line_option *o)
   else 
     printf("Hangup/reject request accepted.\n");
   
-  return 0;
+  return overlay_mdp_client_done();
 } 
 
+int app_vomp_monitor(int argc, char **argv, struct command_line_option *o)
+{
+  overlay_mdp_frame mdp;
+  bzero(&mdp,sizeof(mdp));
+
+  mdp.packetTypeAndFlags=MDP_VOMPEVENT;
+  mdp.vompevent.flags=VOMPEVENT_REGISTERINTEREST;
+  if (overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000))
+    { WHY("Failed to register interest in telephony events.");
+      overlay_mdp_client_done(); return -1; } 
+  if (mdp.packetTypeAndFlags==MDP_ERROR&&mdp.error.error) {
+    fprintf(stderr,"  MDP Server error #%d: '%s'\n",
+	    mdp.error.error,mdp.error.message);
+     }
+
+  while(!servalShutdown) {
+    overlay_mdp_frame rx;
+    int ttl;
+    if (overlay_mdp_client_poll(0)>0)
+      if (!overlay_mdp_recv(&rx,&ttl))
+	dump("monitored message",&rx,overlay_mdp_relevant_bytes(&rx));
+    
+  }
+
+  mdp.packetTypeAndFlags=MDP_VOMPEVENT;
+  mdp.vompevent.flags=VOMPEVENT_WITHDRAWINTEREST;
+  if (overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000))
+    { WHY("Failed to deregister interest in telephony events.");
+      overlay_mdp_client_done(); return -1; }
+  if (mdp.packetTypeAndFlags==MDP_ERROR&&mdp.error.error) {
+    fprintf(stderr,"  MDP Server error #%d: '%s'\n",
+	    mdp.error.error,mdp.error.message);
+     }
+
+  return overlay_mdp_client_done();
+}
 
 int overlay_mdp_getmyaddr(int index,unsigned char *sid)
 {

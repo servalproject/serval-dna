@@ -1309,3 +1309,4 @@ int app_vomp_status(int argc, char **argv, struct command_line_option *o);
 int app_vomp_dial(int argc, char **argv, struct command_line_option *o);
 int app_vomp_pickup(int argc, char **argv, struct command_line_option *o);
 int app_vomp_hangup(int argc, char **argv, struct command_line_option *o);
+int app_vomp_monitor(int argc, char **argv, struct command_line_option *o);
