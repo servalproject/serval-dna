@@ -1023,7 +1023,7 @@ int overlay_mdp_client_init()
     /* We must bind to a temporary file name */
     struct sockaddr_un name;
     name.sun_family = AF_UNIX;
-    if (!FORM_SERVAL_INSTANCE_PATH(name.sun_path, "mdb-client.socket"))
+    if (!FORM_SERVAL_INSTANCE_PATH(name.sun_path, "mdp-client.socket"))
       return WHY("Could not form MDP client socket name");
     unlink(name.sun_path);
     int len = 1 + strlen(name.sun_path) + sizeof(name.sun_family) + 1;
