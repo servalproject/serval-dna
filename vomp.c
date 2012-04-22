@@ -1005,7 +1005,33 @@ int app_vomp_monitor(int argc, char **argv, struct command_line_option *o)
     int ttl;
     if (overlay_mdp_client_poll(0)>0)
       if (!overlay_mdp_recv(&rx,&ttl))
-	dump("monitored message",&rx,overlay_mdp_relevant_bytes(&rx));
+	{
+	  switch(rx.packetTypeAndFlags) {
+	  case MDP_ERROR:
+	    fprintf(stderr,"MDP Server error #%d: '%s'\n",
+		    rx.error.error,rx.error.message);
+	    break;
+	  case MDP_VOMPEVENT:
+	    fprintf(stderr,"VoMP call descriptor %06x %s:%s",
+		    rx.vompevent.call_session_token,
+		    vomp_describe_state(rx.vompevent.local_state),
+		    vomp_describe_state(rx.vompevent.remote_state));
+	    if (rx.vompevent.flags&VOMPEVENT_RINGING) 
+	      fprintf(stderr," RINGING");
+	    if (rx.vompevent.flags&VOMPEVENT_CALLENDED) 
+	      fprintf(stderr," CALLENDED");
+	    if (rx.vompevent.flags&VOMPEVENT_CALLREJECT) 
+	      fprintf(stderr," CALLREJECTED");
+	    if (rx.vompevent.flags&VOMPEVENT_CALLCREATED) 
+	      fprintf(stderr," CREATED");
+	    if (rx.vompevent.flags&VOMPEVENT_AUDIOSTREAMING) 
+	      fprintf(stderr," AUDIOSTREAMING");
+	    fprintf(stderr,"\n");
+	    break;
+	  default:
+	    fprintf(stderr,"Unknown message (type=0x%02x)\n",rx.packetTypeAndFlags);
+	  }
+	}
     
   }
 
