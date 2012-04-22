@@ -1008,6 +1008,9 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
   }
 }
 
+char overlay_mdp_client_socket_path[1024];
+int overlay_mdp_client_socket_path_len=-1;
+
 int overlay_mdp_client_init()
 {
   if (mdp_client_socket==-1) {
@@ -1022,9 +1025,19 @@ int overlay_mdp_client_init()
 
     /* We must bind to a temporary file name */
     struct sockaddr_un name;
+    unsigned int random_value;
+    if (urandombytes((unsigned char *)&random_value,sizeof(int)))
+	return WHY("urandombytes() failed");
     name.sun_family = AF_UNIX;
-    if (!FORM_SERVAL_INSTANCE_PATH(name.sun_path, "mdp-client.socket"))
-      return WHY("Could not form MDP client socket name");
+    if (overlay_mdp_client_socket_path_len==-1) {
+      char fmt[1024];
+      if (!FORM_SERVAL_INSTANCE_PATH(fmt, "mdp-client-%08x.socket"))
+	return WHY("Could not form MDP client socket name");
+      snprintf(overlay_mdp_client_socket_path,1024,fmt,random_value);
+      overlay_mdp_client_socket_path_len=strlen(overlay_mdp_client_socket_path);
+    }
+    bcopy(overlay_mdp_client_socket_path,name.sun_path,
+	  overlay_mdp_client_socket_path_len);
     unlink(name.sun_path);
     int len = 1 + strlen(name.sun_path) + sizeof(name.sun_family) + 1;
     int r=bind(mdp_client_socket, (struct sockaddr *)&name, len);
@@ -1040,9 +1053,8 @@ int overlay_mdp_client_init()
 
 int overlay_mdp_client_done()
 {
-  char mdp_temporary_socket[1024];
-  if (FORM_SERVAL_INSTANCE_PATH(mdp_temporary_socket, "mdp-client.socket"))
-    unlink(mdp_temporary_socket);
+  if (overlay_mdp_client_socket_path_len>-1)
+    unlink(overlay_mdp_client_socket_path);
   if (mdp_client_socket!=-1)
     close(mdp_client_socket);
   mdp_client_socket=-1;
