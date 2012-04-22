@@ -1063,12 +1063,20 @@ int overlay_mdp_client_done()
 
 int overlay_mdp_client_poll(long long timeout_ms)
 {
+  fd_set r;
+  FD_ZERO(&r);
+  FD_SET(mdp_client_socket,&r);
   if (timeout_ms<0) timeout_ms=0;
-  struct pollfd fds[1];
-  int fdcount=1;
-  fds[0].fd=mdp_client_socket; fds[0].events=POLLIN;
+  
+  struct timeval tv;
 
-  return poll(fds,fdcount,timeout_ms);
+  if (timeout_ms>=0) {
+    tv.tv_sec=timeout_ms/1000;
+    tv.tv_usec=(timeout_ms%1000)*1000;
+    return select(mdp_client_socket+1,&r,NULL,&r,&tv);
+  }
+  else
+    return select(mdp_client_socket+1,&r,NULL,&r,NULL);
 }
 
 int overlay_mdp_recv(overlay_mdp_frame *mdp,int *ttl) 
