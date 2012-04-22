@@ -7,12 +7,12 @@ AC_PROG_JAVAC
 
 AC_CHECK_LIB(c,srandomdev)
 
-AC_CHECK_HEADERS(stdio.h errno.h stdlib.h strings.h unistd.h string.h arpa/inet.h sys/socket.h sys/mman.h sys/time.h poll.h netdb.h linux/if.h linux/netlink.h linux/rtnetlink.h net/if.h netinet/in.h ifaddrs.h net/route.h signal.h)
+AC_CHECK_HEADERS(stdio.h errno.h stdlib.h strings.h unistd.h string.h arpa/inet.h sys/socket.h sys/mman.h sys/time.h poll.h netdb.h linux/if.h linux/netlink.h linux/rtnetlink.h net/if.h netinet/in.h ifaddrs.h net/route.h signal.h portaudio.h)
 
-AC_JNI_INCLUDE_DIR
-for JNI_INCLUDE_DIR in $JNI_INCLUDE_DIRS; do
-  CFLAGS="$CFLAGS -I$JNI_INCLUDE_DIR"
-done
+dnl AC_JNI_INCLUDE_DIR
+dnl for JNI_INCLUDE_DIR in $JNI_INCLUDE_DIRS; do
+dnl   CFLAGS="$CFLAGS -I$JNI_INCLUDE_DIR"
+dnl done
 
 echo "Fetching and building NaCl if required."
 echo "(this can take HOURS to build depending on your architecture,"
@@ -28,6 +28,6 @@ AC_CHECK_LIB(nsl,callrpc,[LDFLAGS="$LDFLAGS -lnsl"])
 AC_CHECK_LIB(socket,socket,[LDFLAGS="$LDFLAGS -lsocket"])
 AC_CHECK_LIB(dl,dlopen,[LDFLAGS="$LDFLAGS -ldl"])
 AC_CHECK_LIB(pthread,pthread_create,[LDFLAGS="$LDFLAGS -lpthread"])
-AC_CHECK_FILE(/Library/Frameworks/SDL.framework,[LDFLAGS="$LDFLAGS -framework SDL"; CFLAGS="$CFLAGS -DWITH_SDL";])
+AC_CHECK_LIB(portaudio,Pa_Terminate,[LDFLAGS="$LDFLAGS -lportaudio"; CFLAGS="$CFLAGS -DWITH_PORTAUDIO"])
 
 AC_OUTPUT(Makefile)
