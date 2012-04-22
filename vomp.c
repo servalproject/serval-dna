@@ -52,7 +52,8 @@ vomp_call_state *vomp_find_call_by_session(int session_token)
 vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
 					  unsigned char *local_sid,
 					  unsigned int sender_session,
-					  unsigned int recvr_session)
+					  unsigned int recvr_session,
+					  int sender_state,int recvr_state)
 {
   int expired_slot=-1;
   int i;
@@ -108,7 +109,10 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
       return &vomp_call_states[i];
     }
 
-  /* not in the list.  So allocate a slot. */
+  /* not in the list.  So allocate a slot, but only if the call is in progress. */
+  if (recvr_state==VOMP_STATE_CALLENDED&&sender_state==VOMP_STATE_CALLENDED)
+    return NULL;
+
   if (expired_slot>-1) i=expired_slot;
   else if ((i<VOMP_MAX_CALLS)&&(i==vomp_call_count)) {
     /* there is room to allocate another, so do that */
@@ -227,6 +231,7 @@ int vomp_send_status(vomp_call_state *call,int flags)
 
 int vomp_call_start_audio(vomp_call_state *call)
 {
+  call->audio_started=1;
   return WHY("Not implemented");
 }
 
@@ -238,6 +243,7 @@ int vomp_process_audio(vomp_call_state *call,overlay_mdp_frame *mdp)
 
 int vomp_call_stop_audio(vomp_call_state *call)
 {
+  call->audio_started=0;
   return WHY("Not implemented");
 }
 
@@ -273,6 +279,9 @@ int vomp_call_destroy(vomp_call_state *call)
 
   fprintf(stderr,"Destroying call %s <--> %s\n",
 	  call->local.did,call->remote.did);
+
+  /* tell everyone the call has died */
+  vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED);
 
   /* now release the call structure */
   int i;
@@ -552,7 +561,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
   switch(mdp->in.payload[0]) {
   case 0x01: /* Ordinary VoMP state+optional audio frame */
     {
-      // int recvr_state=mdp->in.payload[1]>>4;
+      int recvr_state=mdp->in.payload[1]>>4;
       int sender_state=mdp->in.payload[1]&0xf;
       unsigned int recvr_session=
 	(mdp->in.payload[8]<<16)+(mdp->in.payload[9]<<8)+mdp->in.payload[10];
@@ -571,7 +580,8 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	WHY("recvr_session==0, creating call.");
 
 	call=vomp_find_or_create_call(mdp->in.src.sid,mdp->in.dst.sid,
-				      sender_session,recvr_session);
+				      sender_session,recvr_session,
+				      sender_state,recvr_state);
 	if (!call) {
 	  /* could not allocate a call slot, so do nothing */
 	  return WHY("No free call slots");
@@ -588,7 +598,8 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	WHY("recvr_session!=0, looking for existing call");
 	/* A VoMP packet for a call apparently already in progress */
 	call=vomp_find_or_create_call(mdp->in.src.sid,mdp->in.dst.sid,
-				      sender_session,recvr_session);
+				      sender_session,recvr_session,
+				      sender_state,recvr_state);
 	if (!call) {
 	  return WHY("VoMP frame does not correspond to an active call - stale traffic or replay attack?");
 	}
@@ -706,6 +717,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	  /* we are calling them, and they have entered the call, so we should enter
 	     the call as well. */
 	  call->local.state=VOMP_STATE_INCALL;
+	  call->ringing=0;
 	  if (vomp_call_start_audio(call)) call->local.codec=VOMP_CODEC_ENGAGED;  
 	  break;
 	case (VOMP_STATE_RINGINGOUT<<3)|VOMP_STATE_CALLENDED:
@@ -780,8 +792,12 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	     but don't touch the call timer */
 	  return 0;
 	case (VOMP_STATE_CALLENDED<<3)|VOMP_STATE_CALLENDED:
-	  /* We both agree the call is done.  Destroy call. */
-	  return vomp_call_destroy(call);
+	  /* We both agree the call is done.  Destroy call.
+	     But make sure that we have confidence that the end of the call
+	     has propagated to both ends before destroying */
+	  if (call->remote.state==VOMP_STATE_CALLENDED
+	      &&call->local.state==VOMP_STATE_CALLENDED)
+	    return vomp_call_destroy(call);
 	}
 	
 	/* touch call timer if the current state has not vetoed by returning */
