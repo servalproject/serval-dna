@@ -5,7 +5,7 @@ SRCS=	dna.c server.c client.c peers.c ciphers.c responses.c packetformats.c data
 	rhizome.c rhizome_http.c rhizome_bundle.c rhizome_database.c rhizome_crypto.c \
 	rhizome_packetformats.c rhizome_fetch.c sqlite3.c encode.c sha2.c randombytes.c \
 	overlay_broadcast.c dna_identity.c commandline.c serval_packetvisualise.c \
-	trans_cache.c keyring.c vomp.c
+	trans_cache.c keyring.c vomp.c pa_phone.c
 
 OBJS=	$(SRCS:.c=.o)
 
