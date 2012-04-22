@@ -716,6 +716,8 @@ int overlay_route_i_can_hear(unsigned char *who,int sender_interface,unsigned in
   }
   neh->most_recent_observation_id=obs_index;
   neh->last_observation_time_ms=now;
+  /* force updating of stats for neighbour if we have added an observation */
+  neh->last_metric_update=0;
 
   /* Update reachability metrics for node */
   if (overlay_route_recalc_neighbour_metrics(neh,now)) WHY("overlay_route_recalc_neighbour_metrics() failed");
@@ -853,6 +855,10 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
 {
   int i;
   long long most_recent_observation=0;
+
+  /* Only update every half-second */
+  if (n->last_metric_update+500<now) return 0;
+  n->last_metric_update=now;
 
   /* Somewhere to remember how many milliseconds we have seen */
   int ms_observed_5sec[OVERLAY_MAX_INTERFACES];
@@ -1188,9 +1194,12 @@ int overlay_route_tick()
   if (neighbour_time>2) overlay_route_tick_neighbour_bundle_size/=neighbour_time;
   else if (neighbour_time==0) overlay_route_tick_neighbour_bundle_size*=2;
   if (overlay_route_tick_neighbour_bundle_size<1) overlay_route_tick_neighbour_bundle_size=1;
+  if (overlay_route_tick_neighbour_bundle_size>overlay_neighbour_count)
+    overlay_route_tick_neighbour_bundle_size=overlay_neighbour_count;
 
   /* Go through some of node list */
   n=overlay_route_tick_node_bundle_size;
+  printf("ticking %d nodes\n",n);
   if (n<1) n=1;
   while(n--)
     {
@@ -1206,7 +1215,7 @@ int overlay_route_tick()
      Allow 2ms here instead of 1ms, as neighbour processing may have taken the
      bulk of the tick. */
   long long node_time=overlay_gettime_ms()-neighbour_time-start_time;
-  if (node_time>2) overlay_route_tick_node_bundle_size/=node_time;
+  if (node_time>1) overlay_route_tick_node_bundle_size/=node_time;
   else if (node_time==0) overlay_route_tick_node_bundle_size*=2;
   if (overlay_route_tick_node_bundle_size<1) overlay_route_tick_node_bundle_size=1;
 
@@ -1219,7 +1228,8 @@ int overlay_route_tick()
 
   /* Work out how long to have between route ticks to make sure we update all route scores
      every 5 seconds. */
-  int ticks=max(overlay_neighbour_count/overlay_route_tick_neighbour_bundle_size,
+  int ticks=max(overlay_neighbour_count
+		?overlay_neighbour_count/overlay_route_tick_neighbour_bundle_size:0,
 		overlay_bin_count/overlay_route_tick_node_bundle_size);
   if (ticks<1) ticks=1;
   if (ticks>5000) ticks=5000;
