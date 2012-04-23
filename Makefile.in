@@ -19,7 +19,6 @@ SRCS=	batman.c \
 	overlay_packetformats.c \
 	overlay_payload.c \
 	overlay_route.c \
-	pa_phone.c \
 	packetformats.c \
 	peers.c \
 	randombytes.c \
@@ -40,6 +39,12 @@ SRCS=	batman.c \
 	trans_cache.c \
 	vomp.c
 
+HAVE_VOIPTEST=	@HAVE_VOIPTEST@
+ifeq ($(HAVE_VOIPTEST), 1)
+SRCS+=	pa_phone.c
+VOIPTEST_CFLAGS=-DHAVE_VOIPTEST=1
+endif
+
 OBJS=	$(SRCS:.c=.o)
 
 HDRS=	fifo.h \
@@ -49,9 +54,10 @@ HDRS=	fifo.h \
 	sha2.h \
 	sqlite-amalgamation-3070900/sqlite3.h
 
-LDFLAGS=@LDFLAGS@
-CFLAGS=	@CPPFLAGS@ @CFLAGS@
+LDFLAGS=@LDFLAGS@ @PORTAUDIO_LIBS@ @SRC_LIBS@ @SPANDSP_LIBS@ @PTHREAD_LIBS@
+CFLAGS=	@CPPFLAGS@ @CFLAGS@ @PORTAUDIO_CFLAGS@ @SRC_CFLAGS@ @SPANDSP_CFLAGS@ @PTHREAD_CFLAGS@ $(VOIPTEST_CFLAGS)
 DEFS=	@DEFS@
+
 
 all:	serval.c dna libservald.so
 
