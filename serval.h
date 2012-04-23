@@ -1144,11 +1144,13 @@ typedef struct overlay_mdp_addrlist {
 
 #define MDP_VOMPEVENT 7
 #define VOMP_MAX_CALLS 16
+/* elements sorted by size for alignment */
 typedef struct overlay_mdp_vompevent {
   /* Once a call has been established, this is how the MDP/VoMP server
      and user-end process talk about the call. */
   unsigned int call_session_token;
   unsigned long long audio_sample_endtime;
+  unsigned long long audio_sample_starttime;
   unsigned long long last_activity;
 #define VOMPEVENT_RINGING (1<<0)
 #define VOMPEVENT_CALLENDED (1<<1)
@@ -1165,9 +1167,9 @@ typedef struct overlay_mdp_vompevent {
 #define VOMPEVENT_CALLINFO (1<<11)
   unsigned int flags;
   unsigned short audio_sample_bytes;
+  unsigned char audio_sample_codec;  
   unsigned char local_state;
   unsigned char remote_state;
-  unsigned char audio_sample_codec;
   /* list of codecs the registering party is willing to support
        (for VOMPEVENT_REGISTERINTEREST) */
   unsigned char supported_codecs[257];

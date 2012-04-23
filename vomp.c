@@ -1159,6 +1159,14 @@ int app_vomp_monitor(int argc, const char *const *argv, struct command_line_opti
 		fprintf(stderr," %s",vomp_describe_codec(i));	    
 
 	    fprintf(stderr,"\n");
+	    if (rx.vompevent.audio_sample_codec) {
+	      fprintf(stderr,"    attached audio sample: codec=%s, len=%d\n",
+		      vomp_describe_codec(rx.vompevent.audio_sample_codec),
+		      rx.vompevent.audio_sample_bytes);
+	      fprintf(stderr,"    sample covers %lldms - %lldms of call.\n",
+		      rx.vompevent.audio_sample_starttime,
+		      rx.vompevent.audio_sample_endtime);
+	    }
 	    break;
 	  default:
 	    fprintf(stderr,"Unknown message (type=0x%02x)\n",rx.packetTypeAndFlags);
