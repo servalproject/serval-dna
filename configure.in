@@ -16,9 +16,9 @@ PKG_CHECK_MODULES([PORTAUDIO], [portaudio-2.0])
 PKG_CHECK_MODULES([SRC], [samplerate])
 PKG_CHECK_MODULES([SPANDSP], [spandsp])
 AC_CHECK_HEADERS([codec2.h])
-AC_CHECK_LIB([codec2], [codec2_create])
+AC_CHECK_LIB([codec2], [codec2_create], [AC_SUBST(CODEC2_LIBS, -lcodec2)])
 AC_SUBST(HAVE_VOIPTEST, 1)
-])
+], [AC_SUBST(HAVE_VOIPTEST, 0)])
 
 dnl Check for programs.
 AC_PROG_CC

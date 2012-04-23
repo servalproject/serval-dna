@@ -1,15 +1,16 @@
-#if 0
-#ifdef WITH_PORTAUDIO
-
-#include "codec2.h"
-#define SPAN_DECLARE(x)	x
-#include "echo.h"
+#include <codec2.h>
+#include <spandsp.h>
 #include "fifo.h"
 #include <portaudio.h>
+#include <pthread.h>
 #include <samplerate.h>
 #include "serval.h"
 
 /* Defines */
+#define IN_FRAMES 128
+#define NUM_BUFS	(8)
+#define ECHO_LEN	(128)
+#define ADAPT_MODE	(ECHO_CAN_USE_ADAPTION | ECHO_CAN_USE_NLP | ECHO_CAN_USE_CNG)
 #define MIN(x, y)	((x) > (y) ? y : x)
 #define MAX(x, y)	((x) < (y) ? y : x)
 
@@ -17,6 +18,8 @@
 
 /* Prototypes */
 typedef struct {
+  PaStream			*stream;
+  
   SRC_STATE			*src;
 
   pthread_mutex_t		mtx;		/* Mutex for frobbing queues */
@@ -51,7 +54,6 @@ typedef struct {
 /* Declarations */
 
 /* Prototypes */
-void		runstream(PaCtx *ctx, int netfd, struct sockaddr *send_addr, socklen_t addrlen);
 void		freectx(PaCtx *ctx);
 
 /* This routine will be called by the PortAudio engine when audio is needed.
@@ -102,8 +104,9 @@ patestCallback(const void *inputBuffer, void *outputBuffer,
 
 PaCtx *
 pa_phone_setup(void) {
-  PaCtx	*ctx;
-  int	err, err2;
+  PaCtx		*ctx;
+  int		err, i, srcerr;
+  PaError	err2;
 
   err = paNoError;
   err2 = 0;
@@ -116,7 +119,7 @@ pa_phone_setup(void) {
 
   /* Init mutex */
   if (pthread_mutex_init(&ctx->mtx, NULL) != 0) {
-    WHY("Unable to init mutex: %s\n", strerror(errno));
+    WHYF("Unable to init mutex: %s\n", strerror(errno));
     err2 = 1;
     goto error;
   }
@@ -146,7 +149,7 @@ pa_phone_setup(void) {
 
   /* Init sample rate converter */
   if ((ctx->src = src_new(SRC_SINC_BEST_QUALITY, 1, &srcerr)) == NULL) {
-    WHY("Unable to init sample rate converter: %d\n", srcerr);
+    WHYF("Unable to init sample rate converter: %d\n", srcerr);
     err2 = 1;
     goto error;
   }
@@ -170,7 +173,7 @@ pa_phone_setup(void) {
     goto error;
      
   /* Open an audio I/O stream. */
-  if ((err = Pa_OpenDefaultStream(&stream,
+  if ((err = Pa_OpenDefaultStream(&ctx->stream,
 				  1,          /* input channels */
 				  1,          /* output channels */
 				  paInt16,
@@ -181,38 +184,58 @@ pa_phone_setup(void) {
     goto error;
  
   /* Start stream */
-  if ((err = Pa_StartStream(stream)) != paNoError)
+  if ((err = Pa_StartStream(ctx->stream)) != paNoError)
     goto error;
 
   /* Close down stream, PA, etc */
 /* XXX: hangs in pthread_join on Ubuntu 10.04 */
 #ifndef linux
-  if ((err = Pa_StopStream(stream)) != paNoError)
+  if ((err = Pa_StopStream(ctx->stream)) != paNoError)
     goto error;
 #endif
 
   /* Do stuff */
 
-  if ((err = Pa_CloseStream(stream)) != paNoError)
+  if ((err = Pa_CloseStream(ctx->stream)) != paNoError)
     goto error;
 
   error:
   Pa_Terminate();
     
   /* Free things */
-  freectx(&ctx);
-  if (netfd != -1)
-    close(netfd);
+  freectx(ctx);
     
   if (err != paNoError)
-    WHY("Port audio error: %s\n", Pa_GetErrorText(err));
+    WHYF("Port audio error: %s\n", Pa_GetErrorText(err));
 
   return NULL;
 }
 
-#endif
-#endif
+void
+freectx(PaCtx *ctx) {
+    /* Destroy mutex */
+    pthread_mutex_destroy(&ctx->mtx);
+    
+    /* Free SRC resources */
+    if (ctx->src != NULL)
+	src_delete(ctx->src);
 
+    /* Free echo caneller */
+    if (ctx->echocan != NULL)
+	echo_can_free(ctx->echocan);
+
+    /* Free codec2 */
+    if (ctx->codec2 != NULL)
+	codec2_destroy(ctx->codec2);
+
+    /* Free FIFOs */
+    if (ctx->incoming != NULL)
+	fifo_free(ctx->incoming);
+    if (ctx->incrate != NULL)
+	fifo_free(ctx->incrate);
+    if (ctx->outgoing != NULL)
+	fifo_free(ctx->outgoing);
+}
 
 /*
  * Local variables:
