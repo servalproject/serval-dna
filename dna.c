@@ -246,11 +246,11 @@ int exec_argc=0;
 
 int servalShutdown=0;
 
-char *thisinstancepath=NULL;
-char *serval_instancepath()
+const char *thisinstancepath=NULL;
+const char *serval_instancepath()
 {
   if (thisinstancepath) return thisinstancepath;
-  char *instancepath=getenv("SERVALINSTANCE_PATH");
+  const char *instancepath=getenv("SERVALINSTANCE_PATH");
   if (!instancepath) instancepath=DEFAULT_INSTANCE_PATH;
   return instancepath;
 }
@@ -507,7 +507,7 @@ int setVerbosity(char *optarg) {
   return 0;
 }
 
-int main(int argc,char **argv)
+int main(int argc, char **argv)
 {
   int c;
   char *pin=NULL;
@@ -548,7 +548,7 @@ int main(int argc,char **argv)
        parser. */
 
     /* Don't include name of program in arguments */
-    int return_value=parseCommandLine(argc-1,&argv[1]);
+    int return_value = parseCommandLine(argc - 1, (const char*const*)&argv[1]);
 
 #if defined WIN32
     WSACleanup();

@@ -154,7 +154,7 @@ typedef struct rhizome_manifest {
 } rhizome_manifest;
 
 extern long long rhizome_space;
-extern char *rhizome_datastore_path;
+extern const char *rhizome_datastore_path;
 
 extern sqlite3 *rhizome_db;
 

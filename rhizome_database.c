@@ -22,7 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdlib.h>
 
 long long rhizome_space=0;
-char *rhizome_datastore_path=NULL;
+const char *rhizome_datastore_path = NULL;
 
 sqlite3 *rhizome_db=NULL;
 

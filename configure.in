@@ -34,14 +34,17 @@ dnl Check for a working Java compiler, keep going if unsuccessful.
 pushdef([AC_MSG_ERROR], defn([AC_MSG_WARN]))
 AC_PROG_JAVAC
 popdef([AC_MSG_ERROR])
+AC_SUBST([JAVAC])
 
 dnl Check for JNI includes, keep going if not present.
-pushdef([AC_MSG_ERROR], defn([AC_MSG_WARN]))
-AC_JNI_INCLUDE_DIR
-for JNI_INCLUDE_DIR in $JNI_INCLUDE_DIRS; do
-  CPPFLAGS="$CPPFLAGS -I$JNI_INCLUDE_DIR"
-done
-popdef([AC_MSG_ERROR])
+if test -n "$JAVAC"; then
+    pushdef([AC_MSG_ERROR], defn([AC_MSG_WARN]))
+    AC_JNI_INCLUDE_DIR
+    for JNI_INCLUDE_DIR in $JNI_INCLUDE_DIRS; do
+    CPPFLAGS="$CPPFLAGS -I$JNI_INCLUDE_DIR"
+    done
+    popdef([AC_MSG_ERROR])
+fi
 
 AC_CHECK_LIB(c,srandomdev)
 
@@ -76,4 +79,7 @@ AC_SEARCH_LIBS([expf], [m], AC_DEFINE([HAVE_EXPF], [1], [Define to 1 if you have
 AC_SEARCH_LIBS([logf], [m], AC_DEFINE([HAVE_LOGF], [1], [Define to 1 if you have the logf() function.]))
 AC_SEARCH_LIBS([log10f], [m], AC_DEFINE([HAVE_LOG10F], [1], [Define to 1 if you have the log10f() function.]))
 
-AC_OUTPUT(Makefile)
+AC_OUTPUT([
+    Makefile
+    testconfig.sh
+])

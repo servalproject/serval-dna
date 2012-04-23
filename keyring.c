@@ -332,7 +332,7 @@ int keyring_enter_identitypin(keyring_file *k,char *pin)
 */
 int keyring_munge_block(unsigned char *block,int len /* includes the first 96 bytes */,
 			unsigned char *KeyRingSalt,int KeyRingSaltLen,
-			char *KeyRingPin,char *PKRPin)
+			const char *KeyRingPin, const char *PKRPin)
 {
   int exit_code=1;
   unsigned char hashKey[crypto_hash_sha512_BYTES];
@@ -509,7 +509,7 @@ int keyring_pack_identity(keyring_context *c,keyring_identity *i,
   return exit_code;
 }
 
-keyring_identity *keyring_unpack_identity(unsigned char *slot,char *pin)
+keyring_identity *keyring_unpack_identity(unsigned char *slot, const char *pin)
 {
   /* Skip salt and MAC */
   int i;
@@ -651,7 +651,7 @@ int keyring_identity_mac(keyring_context *c,keyring_identity *id,
    unpack the details of the identity.
 */
 int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
-			char *pin,int slot_number)
+			const char *pin,int slot_number)
 {
   int exit_code=1;
   unsigned char slot[KEYRING_PAGE_SIZE];
@@ -711,7 +711,7 @@ int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
 
 /* Try all valid slots with the PIN and see if we find any identities with that PIN.
    We might find more than one. */
-int keyring_enter_pin(keyring_file *k,char *pin)
+int keyring_enter_pin(keyring_file *k, const char *pin)
 {
   if (!k) return -1;
   if (!pin) pin="";
@@ -1293,7 +1293,7 @@ int keyring_find_sid(keyring_file *k,int *cn,int *in,int *kp,unsigned char *sid)
 }
 
 
-int keyring_enter_pins(keyring_file *k,char *pinlist)
+int keyring_enter_pins(keyring_file *k, const char *pinlist)
 {
   char pin[1024];
   int i,j=0;
@@ -1311,13 +1311,13 @@ int keyring_enter_pins(keyring_file *k,char *pinlist)
   return 0;
 }
 
-keyring_file *keyring_open_with_pins(char *pinlist)
+keyring_file *keyring_open_with_pins(const char *pinlist)
 {
   keyring_file *k=NULL;
 
  if (create_serval_instance_dir() == -1)
     return NULL;
- char *instancePath = serval_instancepath();
+ const char *instancePath = serval_instancepath();
  char keyringFile[1024];
  snprintf(keyringFile,1024,"%s/serval.keyring",instancePath);
  if ((k=keyring_open(keyringFile))==NULL) 

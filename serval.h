@@ -145,7 +145,7 @@ extern int returnMultiVars;
 
 extern char *gatewayspec;
 
-extern char *rhizome_datastore_path;
+extern const char *rhizome_datastore_path;
 
 extern struct in_addr client_addr;
 extern int client_port;
@@ -238,9 +238,9 @@ extern keyring_file *keyring;
 
 /* Public calls to keyring management */
 keyring_file *keyring_open(char *file);
-keyring_file *keyring_open_with_pins(char *pinlist);
-int keyring_enter_pin(keyring_file *k,char *pin);
-int keyring_enter_pins(keyring_file *k,char *pinlist);
+keyring_file *keyring_open_with_pins(const char *pinlist);
+int keyring_enter_pin(keyring_file *k, const char *pin);
+int keyring_enter_pins(keyring_file *k, const char *pinlist);
 int keyring_set_did(keyring_identity *id,char *did);
 int keyring_sanitise_position(keyring_file *k,int *cn,int *in,int *kp);
 int keyring_next_identity(keyring_file *k,int *cn,int *in,int *kp);
@@ -1054,7 +1054,7 @@ typedef struct dna_identity_status {
   int uniqueDidAndName;
 } dna_identity_status;
 
-int parseCommandLine(int argc,char *argv[]);
+int parseCommandLine(int argc, const char *const *argv);
 
 dna_identity_status *dnacache_lookup(char *did,char *name,char *sid);
 dna_identity_status *dnacache_lookup_next();
@@ -1072,8 +1072,8 @@ int _memabuseCheck(const char *func,const char *file,const int line);
 #define memabuseCheck() /* */
 #endif
 
-char *thisinstancepath;
-char *serval_instancepath();
+const char *thisinstancepath;
+const char *serval_instancepath();
 int form_serval_instance_path(char * buf, size_t bufsiz, const char *path);
 int create_serval_instance_dir();
 
@@ -1304,7 +1304,7 @@ int vomp_tick();
 int vomp_tick_interval();
 
 typedef struct command_line_option {
-  int (*function)(int argc,char **argv,struct command_line_option *o);
+  int (*function)(int argc, const char *const *argv, struct command_line_option *o);
   char *words[32]; // 32 words should be plenty!
   unsigned long long flags;
 #define CLIFLAG_NONOVERLAY (1<<0) /* Uses a legacy IPv4 DNA call instead of overlay mnetwork */
@@ -1313,12 +1313,12 @@ typedef struct command_line_option {
 } command_line_option;
 
 extern command_line_option command_line_options[];
-int cli_arg(int argc, char **argv, command_line_option *o, char *argname, char **dst, int (*validator)(const char *arg), char *defaultvalue);
+int cli_arg(int argc, const char *const *argv, command_line_option *o, char *argname, const char **dst, int (*validator)(const char *arg), char *defaultvalue);
 
 int overlay_mdp_getmyaddr(int index,unsigned char *sid);
 
-int app_vomp_status(int argc, char **argv, struct command_line_option *o);
-int app_vomp_dial(int argc, char **argv, struct command_line_option *o);
-int app_vomp_pickup(int argc, char **argv, struct command_line_option *o);
-int app_vomp_hangup(int argc, char **argv, struct command_line_option *o);
-int app_vomp_monitor(int argc, char **argv, struct command_line_option *o);
+int app_vomp_status(int argc, const char *const *argv, struct command_line_option *o);
+int app_vomp_dial(int argc, const char *const *argv, struct command_line_option *o);
+int app_vomp_pickup(int argc, const char *const *argv, struct command_line_option *o);
+int app_vomp_hangup(int argc, const char *const *argv, struct command_line_option *o);
+int app_vomp_monitor(int argc, const char *const *argv, struct command_line_option *o);

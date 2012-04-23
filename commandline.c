@@ -35,7 +35,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 static int servalNodeRunning(int *pid)
 {
-  char *instancepath = serval_instancepath();
+  const char *instancepath = serval_instancepath();
   struct stat st;
   int r=stat(instancepath,&st);
   if (r) {
@@ -90,6 +90,61 @@ int cli_usage() {
   return -1;
 }
 
+/* Data structures for accumulating output of a single JNI call.
+*/
+
+struct outv_field {
+  struct outv_field *next;
+  size_t length;
+};
+
+#define OUTV_CHUNK_MIN_SIZE	(8192)
+
+int in_jni_call = 0;
+
+struct outv_field *outv = NULL;
+size_t outc = 0;
+
+struct outv_field **outv_fieldp = NULL;
+struct outv_field *outv_field = NULL;
+char *outv_current = NULL;
+char *outv_limit = NULL;
+
+static void outv_end_field()
+{
+  outv_field->length = outv_current - (char*)outv_field - sizeof(struct outv_field);
+  outv_fieldp = &outv_field->next;
+  outv_field = NULL;
+}
+
+static int outv_create_field(size_t needed)
+{
+  if (outv_field == NULL) {
+    size_t bufsiz = (needed > OUTV_CHUNK_MIN_SIZE) ? needed : OUTV_CHUNK_MIN_SIZE;
+    size_t size = sizeof(struct outv_field) + bufsiz;
+    struct outv_field *field = (struct outv_field *) malloc(size);
+    if (field == NULL)
+      return WHYF("Out of memory allocating %lu bytes", (unsigned long) size);
+    *outv_fieldp = outv_field = field;
+    ++outc;
+    field->next = NULL;
+    field->length = 0;
+    outv_current = (char *)field + sizeof(struct outv_field);
+    outv_limit = outv_current + bufsiz;
+  }
+  return 0;
+}
+
+static int outv_growbuf(size_t needed)
+{
+  size_t bufsiz = (needed > OUTV_CHUNK_MIN_SIZE) ? needed : OUTV_CHUNK_MIN_SIZE;
+  size_t size = (outv_current - (char*)outv_field) + bufsiz;
+  struct outv_chunk* chunk = (struct outv_chunk *) malloc(size);
+  if (chunk == NULL)
+    return WHYF("Out of memory allocating %lu bytes", (unsigned long) size);
+  outv_limit = outv_current + bufsiz;
+  return 0;
+}
 
 #ifdef HAVE_JNI_H
 
@@ -101,35 +156,69 @@ JNIEXPORT jobject JNICALL Java_org_servalproject_servald_ServalD_command(JNIEnv 
   jclass resultClass = NULL;
   jclass stringClass = NULL;
   jmethodID resultConstructorId = NULL;
-  jobjectArray outv = NULL;
-  jint status = 42;
+  jobjectArray outArray = NULL;
+  // Enforce non re-entrancy.
+  if (in_jni_call) {
+    jclass exceptionClass = NULL;
+    if ((exceptionClass = (*env)->FindClass(env, "org/servalproject/servald/ServalDReentranceException")) == NULL)
+      return NULL; // exception
+    (*env)->ThrowNew(env, exceptionClass, "re-entrancy not supported");
+    return NULL;
+  }
   if ((resultClass = (*env)->FindClass(env, "org/servalproject/servald/ServalDResult")) == NULL)
     return NULL; // exception
   if ((resultConstructorId = (*env)->GetMethodID(env, resultClass, "<init>", "(I[Ljava/lang/String;)V")) == NULL)
     return NULL; // exception
   if ((stringClass = (*env)->FindClass(env, "java/lang/String")) == NULL)
     return NULL; // exception
-  // Eventually we will return the output buffer, but for now just echo the args.
+  // Construct argv, argc from method arguments.
   jsize len = (*env)->GetArrayLength(env, args);
-  if ((outv = (*env)->NewObjectArray(env, len, stringClass, NULL)) == NULL)
-    return NULL; // out of memory exception
+  const char **argv = malloc(sizeof(char*) * (len + 1));
+  if (argv == NULL) {
+    jclass exceptionClass = NULL;
+    if ((exceptionClass = (*env)->FindClass(env, "java/lang/OutOfMemoryError")) == NULL)
+      return NULL; // exception
+    (*env)->ThrowNew(env, exceptionClass, "malloc returned NULL");
+    return NULL;
+  }
   jsize i;
   for (i = 0; i != len; ++i) {
     const jstring arg = (jstring)(*env)->GetObjectArrayElement(env, args, i);
     const char *str = (*env)->GetStringUTFChars(env, arg, NULL);
     if (str == NULL)
       return NULL; // out of memory exception
-    (*env)->SetObjectArrayElement(env, outv, i, (*env)->NewStringUTF(env, str));
-    (*env)->ReleaseStringUTFChars(env, arg, str);
+    argv[i] = str;
   }
-  return (*env)->NewObject(env, resultClass, resultConstructorId, status, outv);
+  argv[len] = NULL;
+  int argc = len;
+  // Set up the output buffer.
+  outv = NULL;
+  outc = 0;
+  outv_field = NULL;
+  outv_fieldp = &outv;
+  // Execute the command.
+  in_jni_call = 1;
+  jint status = parseCommandLine(argc, argv);
+  in_jni_call = 0;
+  free(argv);
+  // Unpack the output.
+  outv_end_field();
+  if ((outArray = (*env)->NewObjectArray(env, outc, stringClass, NULL)) == NULL)
+    return NULL; // out of memory exception
+  for (i = 0; i != outc; ++i) {
+    const jstring str = (jstring)(*env)->NewString(env, (jchar*)((char*)&outv[i] + sizeof(struct outv_field)), outv[i].length);
+    if (str == NULL)
+      return NULL; // out of memory exception
+    (*env)->SetObjectArrayElement(env, outArray, i, str);
+  }
+  return (*env)->NewObject(env, resultClass, resultConstructorId, status, outArray);
 }
 
 #endif /* HAVE_JNI_H */
 
 /* args[] excludes command name (unless hardlinks are used to use first words 
    of command sequences as alternate names of the command. */
-int parseCommandLine(int argc, char **args)
+int parseCommandLine(int argc, const char *const *args)
 {
   int i;
   int ambiguous=0;
@@ -142,9 +231,13 @@ int parseCommandLine(int argc, char **args)
       int mandatory = 0;
       for (j = 0; (word = command_line_options[i].words[j]); ++j) {
 	int wordlen = strlen(word);
-	if (!(   (wordlen > 2 && word[0] == '<' && word[wordlen-1] == '>')
-	      || (wordlen > 4 && word[0] == '[' && word[1] == '<' && word[wordlen-2] == '>' && word[wordlen-1] == ']')
-	      || (wordlen > 0)
+	if (optional < 0) {
+	  fprintf(stderr,"Internal error: command_line_options[%d].word[%d]=\"%s\" not allowed after \"...\"\n", i, j, word);
+	  break;
+	}
+	else if (!(  (wordlen > 2 && word[0] == '<' && word[wordlen-1] == '>')
+		  || (wordlen > 4 && word[0] == '[' && word[1] == '<' && word[wordlen-2] == '>' && word[wordlen-1] == ']')
+		  || (wordlen > 0)
 	)) {
 	  fprintf(stderr,"Internal error: command_line_options[%d].word[%d]=\"%s\" is malformed\n", i, j, word);
 	  break;
@@ -156,13 +249,15 @@ int parseCommandLine(int argc, char **args)
 	  }
 	} else if (word[0] == '[') {
 	  ++optional;
+	} else if (wordlen == 3 && word[0] == '.' && word[1] == '.' && word[2] == '.') {
+	  optional = -1;
 	} else {
 	  ++mandatory;
 	  if (j < argc && strcasecmp(word, args[j])) // literal words don't match
 	    break;
 	}
       }
-      if (!word && argc >= mandatory && argc <= mandatory + optional) {
+      if (!word && argc >= mandatory && (optional < 0 || argc <= mandatory + optional)) {
 	/* A match!  We got through the command definition with no internal errors and all literal
 	   args matched and we have a proper number of args.  If we have multiple matches, then note
 	   that the call is ambiguous. */
@@ -188,10 +283,10 @@ int parseCommandLine(int argc, char **args)
 
   /* Otherwise, make call */
   setVerbosity(confValueGet("debug",""));
-  return command_line_options[cli_call].function(argc,args, &command_line_options[cli_call]);
+  return command_line_options[cli_call].function(argc, args, &command_line_options[cli_call]);
 }
 
-int cli_arg(int argc, char **argv, command_line_option *o, char *argname, char **dst, int (*validator)(const char *arg), char *defaultvalue)
+int cli_arg(int argc, const char *const *argv, command_line_option *o, char *argname, const char **dst, int (*validator)(const char *arg), char *defaultvalue)
 {
   int arglen = strlen(argname);
   int i;
@@ -204,7 +299,7 @@ int cli_arg(int argc, char **argv, command_line_option *o, char *argname, char *
       &&(  (wordlen == arglen + 2 && word[0] == '<' && !strncasecmp(&word[1], argname, arglen))
         || (wordlen == arglen + 4 && word[0] == '[' && !strncasecmp(&word[2], argname, arglen)))
     ) {
-      char *value = argv[i];
+      const char *value = argv[i];
       if (validator && !(*validator)(value)) {
 	fprintf(stderr, "Invalid argument %d '%s': \"%s\"\n", i, argname, value);
 	return -1;
@@ -221,17 +316,110 @@ int cli_arg(int argc, char **argv, command_line_option *o, char *argname, char *
   return 1;
 }
 
+/* Write a single character to output.  If in a JNI call, then this appends the character to the
+   current output field.  Returns the character written cast to an unsigned char then to int, or EOF
+   on error.
+ */
+int cli_putchar(char c)
+{
+    if (in_jni_call) {
+      if (outv_create_field(1) == -1)
+	return EOF;
+      if (outv_current == outv_limit && outv_growbuf(1) == -1)
+	return EOF;
+      *outv_current++ = c;
+      return (unsigned char) c;
+    }
+    else
+      return putchar(c);
+}
+
+/* Write a null-terminated string to output.  If in a JNI call, then this appends the string to the
+   current output field.  The terminating null is not included.  Returns a non-negative integer on
+   success, EOF on error.
+ */
+int cli_puts(const char *str)
+{
+    if (in_jni_call) {
+      size_t len = strlen(str);
+      if (outv_create_field(1) == -1)
+	return EOF;
+      size_t avail = outv_limit - outv_current;
+      if (avail < len) {
+	strncpy(outv_current, str, avail);
+	outv_current = outv_limit;
+	if (outv_growbuf(len) == -1)
+	  return EOF;
+	len -= avail;
+	str += avail;
+      }
+      strncpy(outv_current, str, len);
+      outv_current += len;
+      return 0;
+    }
+    else
+      return fputs(str, stdout);
+}
+
+/* Write a formatted string to output.  If in a JNI call, then this appends the string to the
+   current output field, excluding the terminating null.  Returns the number of bytes
+   written/appended, or -1 on error.
+ */
 int cli_printf(const char *fmt, ...)
 {
+  int ret = 0;
   va_list ap,ap2;
   va_start(ap,fmt);
   va_copy(ap2,ap);
-  //vsnprintf(msg,8192,fmt,ap2);
+  if (in_jni_call) {
+    if (outv_create_field(0) == -1)
+      return -1;
+    size_t avail = outv_limit - outv_current;
+    int count = vsnprintf(outv_current, avail, fmt, ap2);
+    if (count >= avail) {
+      if (outv_growbuf(count) == -1)
+	return -1;
+      vsprintf(outv_current, fmt, ap2);
+    }
+    outv_current += count;
+    ret = count;
+  } else
+    ret = vfprintf(stdout, fmt, ap2);
   va_end(ap);
+  return ret;
+}
+
+/* Delimit the current output field.  This closes the current field, so that the next cli_ output
+   function will start appending to a new field.  Returns 0 on success, -1 on error.  If not in a
+   JNI call, then this simply writes a newline to standard output (or the value of the
+   SERVALD_OUTPUT_DELIMITER env var if set).
+ */
+int cli_delim()
+{
+  if (in_jni_call) {
+    if (outv_create_field(0) == -1)
+      return -1;
+    outv_end_field();
+  } else {
+    const char *delim = getenv("SERVALD_OUTPUT_DELIMITER");
+    if (delim == NULL)
+      delim = "\n";
+    fputs(delim, stdout);
+  }
   return 0;
 }
 
-int app_dna_lookup(int argc,char **argv,struct command_line_option *o)
+int app_echo(int argc, const char *const *argv, struct command_line_option *o)
+{
+  int i;
+  for (i = 1; i < argc; ++i) {
+    cli_puts(argv[i]);
+    cli_delim();
+  }
+  return 0;
+}
+
+int app_dna_lookup(int argc, const char *const *argv, struct command_line_option *o)
 {
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
@@ -284,7 +472,7 @@ int cli_absolute_path(const char *arg)
   return arg[0] == '/' && arg[1] != '\0';
 }
 
-int app_server_start(int argc,char **argv,struct command_line_option *o)
+int app_server_start(int argc, const char *const *argv, struct command_line_option *o)
 {
   /* Process optional arguments */
   int foregroundP= (argc >= 3 && !strcasecmp(argv[2], "foreground"));
@@ -324,7 +512,7 @@ int app_server_start(int argc,char **argv,struct command_line_option *o)
   return server(NULL,foregroundP);
 }
 
-int app_server_stop(int argc,char **argv,struct command_line_option *o)
+int app_server_stop(int argc, const char *const *argv, struct command_line_option *o)
 {
   if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1)
     return -1;
@@ -389,7 +577,7 @@ int app_server_stop(int argc,char **argv,struct command_line_option *o)
   return WHY("Not implemented");
 }
 
-int app_server_status(int argc,char **argv,struct command_line_option *o)
+int app_server_status(int argc, const char *const *argv, struct command_line_option *o)
 {
   if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1)
     return -1;
@@ -422,9 +610,9 @@ int app_server_status(int argc,char **argv,struct command_line_option *o)
   return 0;
 }
 
-int app_mdp_ping(int argc,char **argv,struct command_line_option *o)
+int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *o)
 {
-  char *sid;
+  const char *sid;
   if (cli_arg(argc, argv, o, "SID|broadcast", &sid, validateSid, "broadcast") == -1)
     return -1;
 
@@ -638,9 +826,9 @@ int cli_configvarname(const char *arg)
   return 1;
 }
 
-int app_config_set(int argc,char **argv,struct command_line_option *o)
+int app_config_set(int argc, const char *const *argv, struct command_line_option *o)
 {
-  char *var, *val;
+  const char *var, *val;
   if (	cli_arg(argc, argv, o, "variable", &var, cli_configvarname, NULL)
      || cli_arg(argc, argv, o, "value", &val, NULL, ""))
     return -1;
@@ -649,9 +837,9 @@ int app_config_set(int argc,char **argv,struct command_line_option *o)
   return set_variable(var, val);
 }
 
-int app_config_del(int argc,char **argv,struct command_line_option *o)
+int app_config_del(int argc, const char *const *argv, struct command_line_option *o)
 {
-  char *var;
+  const char *var;
   if (cli_arg(argc, argv, o, "variable", &var, cli_configvarname, NULL))
     return -1;
   if (create_serval_instance_dir() == -1)
@@ -659,10 +847,10 @@ int app_config_del(int argc,char **argv,struct command_line_option *o)
   return set_variable(var, NULL);
 }
 
-int app_config_get(int argc,char **argv,struct command_line_option *o)
+int app_config_get(int argc, const char *const *argv, struct command_line_option *o)
 {
-  char *var;
-  if (cli_arg(argc, argv, o, "variable", &var, cli_configvarname, NULL))
+  const char *var;
+  if (cli_arg(argc, argv, o, "variable", &var, cli_configvarname, NULL) == -1)
     return -1;
   if (create_serval_instance_dir() == -1)
     return -1;
@@ -675,7 +863,7 @@ int app_config_get(int argc,char **argv,struct command_line_option *o)
   }
   /* Read lines of config file. */
   char line[1024];
-  int varlen=strlen(var);
+  int varlen = var ? strlen(var) : 0;
   line[0]=0; fgets(line,1024,in);
   while(line[0]) {
     if (varlen == 0) {
@@ -692,9 +880,9 @@ int app_config_get(int argc,char **argv,struct command_line_option *o)
   return 0;
 }
 
-int app_rhizome_add_file(int argc, char **argv, struct command_line_option *o)
+int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_option *o)
 {
-  char *filepath, *manifestpath;
+  const char *filepath, *manifestpath;
   cli_arg(argc, argv, o, "filepath", &filepath, NULL, "");
   cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "");
   /* Ensure the Rhizome database exists and is open */
@@ -758,9 +946,9 @@ int cli_uint(const char *arg)
   return s != arg && *s == '\0';
 }
 
-int app_rhizome_list(int argc, char **argv, struct command_line_option *o)
+int app_rhizome_list(int argc, const char *const *argv, struct command_line_option *o)
 {
-  char *offset, *limit;
+  const char *offset, *limit;
   cli_arg(argc, argv, o, "offset", &offset, cli_uint, "0");
   cli_arg(argc, argv, o, "limit", &limit, cli_uint, "0");
   /* Create the instance directory if it does not yet exist */
@@ -771,18 +959,18 @@ int app_rhizome_list(int argc, char **argv, struct command_line_option *o)
   return rhizome_list_manifests(atoi(offset), atoi(limit));
 }
 
-int app_keyring_create(int argc, char **argv, struct command_line_option *o)
+int app_keyring_create(int argc, const char *const *argv, struct command_line_option *o)
 {
-  char *pin;
+  const char *pin;
   cli_arg(argc, argv, o, "pin,pin ...", &pin, NULL, "");
   keyring_file *k=keyring_open_with_pins(pin);
   if (!k) fprintf(stderr,"keyring create:Failed to create/open keyring file\n");
   return 0;
 }
 
-int app_keyring_list(int argc, char **argv, struct command_line_option *o)
+int app_keyring_list(int argc, const char *const *argv, struct command_line_option *o)
 {
-  char *pin;
+  const char *pin;
   cli_arg(argc, argv, o, "pin,pin ...", &pin, NULL, "");
   keyring_file *k=keyring_open_with_pins(pin);
 
@@ -812,9 +1000,9 @@ int app_keyring_list(int argc, char **argv, struct command_line_option *o)
   return 0;
  }
 
-int app_keyring_add(int argc, char **argv, struct command_line_option *o)
+int app_keyring_add(int argc, const char *const *argv, struct command_line_option *o)
 {
-  char *pin;
+  const char *pin;
   cli_arg(argc, argv, o, "pin", &pin, NULL, "");
 
   keyring_file *k=keyring_open_with_pins("");
@@ -834,9 +1022,9 @@ int app_keyring_add(int argc, char **argv, struct command_line_option *o)
   return 0;
 }
 
-int app_keyring_set_did(int argc, char **argv, struct command_line_option *o)
+int app_keyring_set_did(int argc, const char *const *argv, struct command_line_option *o)
 {
-  char *sid, *did, *pin;
+  const char *sid, *did, *pin;
   cli_arg(argc, argv, o, "sid", &sid, NULL, "");
   cli_arg(argc, argv, o, "did", &did, NULL, "");
   cli_arg(argc, argv, o, "pin", &pin, NULL, "");
@@ -876,6 +1064,8 @@ command_line_option command_line_options[]={
    "Lookup the SIP/MDP address of the supplied telephone number (DID)."},
   {cli_usage,{"help",NULL},0,
    "Display command usage."},
+  {app_echo,{"echo","...",NULL},CLIFLAG_STANDALONE,
+   "Lookup the SIP/MDP address of the supplied telephone number (DID)."},
   {app_server_start,{"node","start",NULL},CLIFLAG_STANDALONE,
    "Start Serval Mesh node process with instance path taken from SERVALINSTANCE_PATH environment variable."},
   {app_server_start,{"node","start","in","<instance path>",NULL},CLIFLAG_STANDALONE,
