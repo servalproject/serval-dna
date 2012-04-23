@@ -199,10 +199,15 @@ int vomp_send_status(vomp_call_state *call,int flags)
       
       if ((!call->remote.session)||(flags&VOMP_TELLCODECS)) {
 	/* Also include list of supported codecs */
+	WHY("Including codec list");
 	int i;
 	for(i=0;i<256;i++)
-	  if (vomp_local_codec_list[i]) mdp.out.payload[mdp.out.payload_length++]=i;
+	  if (vomp_local_codec_list[i]) {
+	    mdp.out.payload[mdp.out.payload_length++]=i;
+	    WHYF("  I support the %s codec",vomp_describe_codec(i));
+	  }
 	mdp.out.payload[mdp.out.payload_length++]=0;
+	WHYF("mdp frame with codec list is %d bytes",mdp.out.payload_length);
       }
 
       overlay_mdp_send(&mdp,0,0);
@@ -228,6 +233,8 @@ int vomp_send_status(vomp_call_state *call,int flags)
     mdp.vompevent.local_state=call->local.state;
     mdp.vompevent.remote_state=call->remote.state;
 
+    bcopy(&call->remote_codec_list[0],&mdp.vompevent.supported_codecs[0],256);
+    
     int i;
     long long now=overlay_gettime_ms();
     for(i=0;i<vomp_interested_usock_count;i++)
@@ -236,8 +243,7 @@ int vomp_send_status(vomp_call_state *call,int flags)
 			  vomp_interested_usocks[i],
 			  vomp_interested_usock_lengths[i],
 			  &mdp);
-      }
-    bcopy(&call->remote_codec_list[0],&mdp.vompevent.supported_codecs[0],256);
+      }   
   }
   return 0;
 }
@@ -337,7 +343,6 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
      transported audio.  In particular we inform when the call state changes,
      including if any error has occurred.
   */
-  dump("vomp frame",(unsigned char *)mdp,256);
   fprintf(stderr,"Flags=0x%x\n",mdp->vompevent.flags);
   switch(mdp->vompevent.flags)
     {
@@ -379,7 +384,9 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	    /* Replace set of locally supported codecs */
 	    for(i=0;i<256;i++) vomp_local_codec_list[i]=0;
 	    for(i=0;(i<256)&&mdp->vompevent.supported_codecs[i];i++)
-	      vomp_local_codec_list[mdp->vompevent.supported_codecs[i]]=1;
+	      {
+		vomp_local_codec_list[mdp->vompevent.supported_codecs[i]]=1;
+	      }
 	  }
 		
 	  return overlay_mdp_reply_error
@@ -571,6 +578,23 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
   return WHY("Not implemented");
 }
 
+int vomp_extract_remote_codec_list(vomp_call_state *call,overlay_mdp_frame *mdp)
+{
+  WHY("Receiving list of remote codecs");
+  int i;
+  dump("codec list mdp frame",
+       (unsigned char *)&mdp->in.payload[0],mdp->in.payload_length);
+  for(i=0;mdp->in.payload[14+i]&&(i<256)
+	&&((14+i)<mdp->in.payload_length);i++)
+    {
+      WHYF("populating remote codec list with %s",
+	   vomp_describe_codec(mdp->in.payload[14+i]));
+      call->remote_codec_list[mdp->in.payload[14+i]]=1;
+    }  
+  return 0;
+}
+
+
 /* At this point we know the MDP frame is addressed to the VoMP port, but 
    we have not inspected the contents. As these frames are wire-format, we
    must pay attention to endianness. */
@@ -668,11 +692,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	     What we do need to do is decode the list of offered codecs, and tell
 	     any registered listener.
 	  */
-	  {
-	    int i;
-	    for(i=0;mdp->in.payload[14+i]&&(i<256);i++)
-	      call->remote_codec_list[mdp->in.payload[14+i]]=1;	    
-	  }
+	  vomp_extract_remote_codec_list(call,mdp);
 	  return 0;
 	case (VOMP_STATE_NOCALL<<3)|VOMP_STATE_RINGINGOUT:
 	  /* We have have issued a session, but think that no call is in progress.
@@ -681,6 +701,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	     until we both have acknowledged this (when I am RINGINGIN and they are
 	     RINGINGOUT). */
 	  call->local.state=VOMP_STATE_RINGINGIN;
+	  vomp_extract_remote_codec_list(call,mdp);
 	  break;
 	case (VOMP_STATE_NOCALL<<3)|VOMP_STATE_RINGINGIN:
 	  /* We think there is no call, while the remote end thinks that we are
@@ -705,6 +726,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	     far end. But we don't start ringing until the far end acknowledges
 	     the state change. */
 	  call->local.state=VOMP_STATE_RINGINGOUT;
+	  vomp_extract_remote_codec_list(call,mdp);
 	  break;
 	case (VOMP_STATE_CALLPREP<<3)|VOMP_STATE_CALLPREP:
 	  /* we are both in callprep stage, so we are both trying to ring each 
@@ -712,18 +734,21 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	     let's not prevent it.  We move to RINGINGOUT (as they probably will
 	     as well). */
 	  call->local.state=VOMP_STATE_RINGINGOUT;
+	  vomp_extract_remote_codec_list(call,mdp);
 	  break;
 	case (VOMP_STATE_CALLPREP<<3)|VOMP_STATE_RINGINGOUT:
 	  /* We are trying to call them, and they are trying to call us, again
 	     this seems a very unlikely situation.  But the appropriate action is
 	     clear: get ready to start ringing. */
 	  call->local.state=VOMP_STATE_RINGINGIN;
+	  vomp_extract_remote_codec_list(call,mdp);
 	  break;
 	case (VOMP_STATE_CALLPREP<<3)|VOMP_STATE_RINGINGIN:
 	  /* We are trying to call them, and they think we are trying to call them.
 	     They seem to have guessed our next move, which is fine.  We move to
 	     RINGINGOUT. */
 	  call->local.state=VOMP_STATE_RINGINGOUT;
+	  vomp_extract_remote_codec_list(call,mdp);
 	  break;
 	case (VOMP_STATE_CALLPREP<<3)|VOMP_STATE_INCALL:
 	  /* We are trying to call them, and they think we are already in a call.
@@ -742,13 +767,16 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	  /* We are calling them, and they have not yet answered, wait for
 	     synchronisation. */
 	  call->local.state=VOMP_STATE_RINGINGOUT;
+	  vomp_extract_remote_codec_list(call,mdp);
 	  break;
 	case (VOMP_STATE_RINGINGOUT<<3)|VOMP_STATE_CALLPREP:
 	  /* we are calling them, and they are getting ready to call us, so wait
 	     for synchronisation */
+	  vomp_extract_remote_codec_list(call,mdp);
 	  break;
 	case (VOMP_STATE_RINGINGOUT<<3)|VOMP_STATE_RINGINGOUT:
 	  /* we are each calling each other, so move to INCALL and start audio */
+	  vomp_extract_remote_codec_list(call,mdp);
 	  call->local.state=VOMP_STATE_INCALL;
 	  if (vomp_call_start_audio(call)) call->local.codec=VOMP_CODEC_ENGAGED;  
 	  break;
@@ -756,6 +784,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	  /* we are calling them and they are calling us, so keep on ringing.
 	     Or if we haven't started making noise, then do so. */
 	  if (!call->ringing) vomp_call_start_ringing(call);
+	  vomp_extract_remote_codec_list(call,mdp);
 	  break;   
 	case (VOMP_STATE_RINGINGOUT<<3)|VOMP_STATE_INCALL:
 	  /* we are calling them, and they have entered the call, so we should enter
@@ -784,6 +813,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	case (VOMP_STATE_RINGINGIN<<3)|VOMP_STATE_RINGINGOUT:
 	  /* we are ringing and they are ringing us.  Make sure we are ringing. */
 	  if (!call->ringing) vomp_call_start_ringing(call);
+	  vomp_extract_remote_codec_list(call,mdp);
 	  break;
 	case (VOMP_STATE_RINGINGIN<<3)|VOMP_STATE_RINGINGIN:
 	  /* er, we both think that the other is calling us. */
@@ -847,7 +877,11 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	/* touch call timer if the current state has not vetoed by returning */
 	call->last_activity=overlay_gettime_ms();
 	/* and then send an update to the call status */
-	vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED);
+	if (call->local.state<VOMP_STATE_INCALL
+	    &&call->remote.state<VOMP_STATE_INCALL)
+	  vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED|VOMP_TELLCODECS);
+	else
+	  vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED);
       }
     }
     return 0;
@@ -1118,6 +1152,12 @@ int app_vomp_monitor(int argc, char **argv, struct command_line_option *o)
 	      fprintf(stderr," CREATED");
 	    if (rx.vompevent.flags&VOMPEVENT_AUDIOSTREAMING) 
 	      fprintf(stderr," AUDIOSTREAMING");
+	    int i;
+	    fprintf(stderr," codecs:");
+	    for(i=0;i<256;i++) 
+	      if (rx.vompevent.supported_codecs[i])
+		fprintf(stderr," %s",vomp_describe_codec(i));	    
+
 	    fprintf(stderr,"\n");
 	    break;
 	  default:
