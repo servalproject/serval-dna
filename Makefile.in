@@ -1,15 +1,53 @@
-SRCS=	dna.c server.c client.c peers.c ciphers.c responses.c packetformats.c dataformats.c \
-	srandomdev.c simulate.c batman.c gateway.c \
-	overlay.c overlay_buffer.c overlay_interface.c overlay_payload.c overlay_route.c \
-	overlay_packetformats.c overlay_abbreviations.c overlay_advertise.c overlay_mdp.c \
-	rhizome.c rhizome_http.c rhizome_bundle.c rhizome_database.c rhizome_crypto.c \
-	rhizome_packetformats.c rhizome_fetch.c sqlite3.c encode.c sha2.c randombytes.c \
-	overlay_broadcast.c dna_identity.c commandline.c serval_packetvisualise.c \
-	trans_cache.c keyring.c vomp.c pa_phone.c fifo.c
+SRCS=	batman.c \
+	ciphers.c \
+	client.c \
+	commandline.c \
+	dataformats.c \
+	dna.c \
+	dna_identity.c \
+	encode.c \
+	fifo.c \
+	gateway.c \
+	keyring.c \
+	overlay.c \
+	overlay_abbreviations.c \
+	overlay_advertise.c \
+	overlay_broadcast.c \
+	overlay_buffer.c \
+	overlay_interface.c \
+	overlay_mdp.c \
+	overlay_packetformats.c \
+	overlay_payload.c \
+	overlay_route.c \
+	pa_phone.c \
+	packetformats.c \
+	peers.c \
+	randombytes.c \
+	responses.c \
+	rhizome.c \
+	rhizome_bundle.c \
+	rhizome_crypto.c \
+	rhizome_database.c \
+	rhizome_fetch.c \
+	rhizome_http.c \
+	rhizome_packetformats.c \
+	serval_packetvisualise.c \
+	server.c \
+	sha2.c \
+	simulate.c \
+	sqlite3.c \
+	srandomdev.c \
+	trans_cache.c \
+	vomp.c
 
 OBJS=	$(SRCS:.c=.o)
 
-HDRS=	Makefile serval.h sqlite-amalgamation-3070900/sqlite3.h sha2.h rhizome.h
+HDRS=	fifo.h \
+	Makefile \
+	rhizome.h \
+	serval.h \
+	sha2.h \
+	sqlite-amalgamation-3070900/sqlite3.h
 
 LDFLAGS=@LDFLAGS@
 CFLAGS=	@CPPFLAGS@ @CFLAGS@
