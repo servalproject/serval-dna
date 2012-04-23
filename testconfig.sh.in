@@ -1,0 +1,4 @@
+#!/bin/bash
+# This file is sourced by some of the test scripts in ./tests.
+# It defines some settings that were established by ./configure.
+JAVAC="@JAVAC@"

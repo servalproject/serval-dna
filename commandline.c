@@ -231,9 +231,13 @@ int parseCommandLine(int argc, const char *const *args)
       int mandatory = 0;
       for (j = 0; (word = command_line_options[i].words[j]); ++j) {
 	int wordlen = strlen(word);
-	if (!(   (wordlen > 2 && word[0] == '<' && word[wordlen-1] == '>')
-	      || (wordlen > 4 && word[0] == '[' && word[1] == '<' && word[wordlen-2] == '>' && word[wordlen-1] == ']')
-	      || (wordlen > 0)
+	if (optional < 0) {
+	  fprintf(stderr,"Internal error: command_line_options[%d].word[%d]=\"%s\" not allowed after \"...\"\n", i, j, word);
+	  break;
+	}
+	else if (!(  (wordlen > 2 && word[0] == '<' && word[wordlen-1] == '>')
+		  || (wordlen > 4 && word[0] == '[' && word[1] == '<' && word[wordlen-2] == '>' && word[wordlen-1] == ']')
+		  || (wordlen > 0)
 	)) {
 	  fprintf(stderr,"Internal error: command_line_options[%d].word[%d]=\"%s\" is malformed\n", i, j, word);
 	  break;
@@ -245,13 +249,15 @@ int parseCommandLine(int argc, const char *const *args)
 	  }
 	} else if (word[0] == '[') {
 	  ++optional;
+	} else if (wordlen == 3 && word[0] == '.' && word[1] == '.' && word[2] == '.') {
+	  optional = -1;
 	} else {
 	  ++mandatory;
 	  if (j < argc && strcasecmp(word, args[j])) // literal words don't match
 	    break;
 	}
       }
-      if (!word && argc >= mandatory && argc <= mandatory + optional) {
+      if (!word && argc >= mandatory && (optional < 0 || argc <= mandatory + optional)) {
 	/* A match!  We got through the command definition with no internal errors and all literal
 	   args matched and we have a proper number of args.  If we have multiple matches, then note
 	   that the call is ambiguous. */
@@ -399,6 +405,16 @@ int cli_delim()
     if (delim == NULL)
       delim = "\n";
     fputs(delim, stdout);
+  }
+  return 0;
+}
+
+int app_echo(int argc, const char *const *argv, struct command_line_option *o)
+{
+  int i;
+  for (i = 1; i < argc; ++i) {
+    cli_puts(argv[i]);
+    cli_delim();
   }
   return 0;
 }
@@ -1048,6 +1064,8 @@ command_line_option command_line_options[]={
    "Lookup the SIP/MDP address of the supplied telephone number (DID)."},
   {cli_usage,{"help",NULL},0,
    "Display command usage."},
+  {app_echo,{"echo","...",NULL},CLIFLAG_STANDALONE,
+   "Lookup the SIP/MDP address of the supplied telephone number (DID)."},
   {app_server_start,{"node","start",NULL},CLIFLAG_STANDALONE,
    "Start Serval Mesh node process with instance path taken from SERVALINSTANCE_PATH environment variable."},
   {app_server_start,{"node","start","in","<instance path>",NULL},CLIFLAG_STANDALONE,

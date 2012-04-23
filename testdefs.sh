@@ -1,6 +1,7 @@
 # Common definitions for all test suites in test/*
 
 this=$(abspath "${BASH_SOURCE[0]}")
+here="${this%/*}"
 
 # Utility function for setting up a fixture with a DNA server process:
 #  - Ensure that no dna processes are running

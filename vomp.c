@@ -1023,7 +1023,7 @@ int app_vomp_status(int argc, const char *const *argv, struct command_line_optio
 
 int app_vomp_dial(int argc, const char *const *argv, struct command_line_option *o)
 {
-  char *sid,*did,*callerid;
+  const char *sid,*did,*callerid;
   cli_arg(argc, argv, o, "sid", &sid, NULL, "");
   cli_arg(argc, argv, o, "did", &did, NULL, "");
   cli_arg(argc, argv, o, "callerid", &callerid, NULL, NULL);
@@ -1055,7 +1055,7 @@ int app_vomp_dial(int argc, const char *const *argv, struct command_line_option 
 
 int app_vomp_pickup(int argc, const char *const *argv, struct command_line_option *o)
 {
-  char *call_token;
+  const char *call_token;
   cli_arg(argc, argv, o, "call", &call_token, NULL, "");
 
   overlay_mdp_frame mdp;
@@ -1080,7 +1080,7 @@ int app_vomp_pickup(int argc, const char *const *argv, struct command_line_optio
 
 int app_vomp_hangup(int argc, const char *const *argv, struct command_line_option *o)
 {
-  char *call_token;
+  const char *call_token;
   cli_arg(argc, argv, o, "call", &call_token, NULL, "");
 
   overlay_mdp_frame mdp;
