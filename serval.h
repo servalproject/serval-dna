@@ -1182,6 +1182,9 @@ typedef struct overlay_mdp_vompevent {
       unsigned char other_calls_states[VOMP_MAX_CALLS];
     };
     unsigned char audio_bytes[MDP_MTU-100];
+    /* list of codecs the registering party is willing to support
+       (for VOMPEVENT_REGISTERINTEREST) */
+    unsigned char supported_codecs[257];
   };
 } overlay_mdp_vompevent;
 
@@ -1263,15 +1266,21 @@ typedef struct vomp_call_state {
   int audio_started;
   int last_sent_status;
   int next_status_time;
+  unsigned char remote_codec_list[256];
 } vomp_call_state;
 
 #define VOMP_CODEC_NONE 0x00
 #define VOMP_CODEC_CODEC2_2400 0x01
 #define VOMP_CODEC_CODEC2_1400 0x02
-#define VOMP_CODEC_GSM 0x03
+#define VOMP_CODEC_GSMHALF 0x03
+#define VOMP_CODEC_GSMFULL 0x04
+#define VOMP_CODEC_16SIGNED 0x05
+#define VOMP_CODEC_8ULAW 0x06
+#define VOMP_CODEC_8ALAW 0x07
 #define VOMP_CODEC_DTMF 0x80
 #define VOMP_CODEC_ENGAGED 0x81
-#define VOMP_CODEC_CALLERID 0x82
+#define VOMP_CODEC_ONHOLD 0x82
+#define VOMP_CODEC_CALLERID 0x83
 #define VOMP_CODEC_CODECSISUPPORT 0xfe
 #define VOMP_CODEC_CHANGEYOURCODECTO 0xff
 

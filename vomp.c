@@ -33,6 +33,9 @@ int vomp_call_count=0;
 int vomp_active_call=-1;
 vomp_call_state vomp_call_states[VOMP_MAX_CALLS];
 
+/* which codecs we support (set by registered listener) */
+unsigned char vomp_local_codec_list[256];
+
 /* Now keep track of who wants to know what we are up to */
 int vomp_interested_usock_count=0;
 #define VOMP_MAX_INTERESTED 128
@@ -158,6 +161,7 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
 #define VOMP_TELLREMOTE (1<<1)
 #define VOMP_NEWCALL (1<<2)
 #define VOMP_FORCETELLREMOTE ((1<<3)|VOMP_TELLREMOTE)
+#define VOMP_TELLCODECS (1<<4)
 
 int vomp_send_status(vomp_call_state *call,int flags)
 {
@@ -193,6 +197,14 @@ int vomp_send_status(vomp_call_state *call,int flags)
       
       mdp.out.payload_length=14;
       
+      if ((!call->remote.session)||(flags&VOMP_TELLCODECS)) {
+	/* Also include list of supported codecs */
+	int i;
+	for(i=0;i<256;i++)
+	  if (vomp_local_codec_list[i]) mdp.out.payload[mdp.out.payload_length++]=i;
+	mdp.out.payload[mdp.out.payload_length++]=0;
+      }
+
       overlay_mdp_send(&mdp,0,0);
       
       call->local.sequence++;
@@ -309,6 +321,7 @@ int vomp_call_destroy(vomp_call_state *call)
    so that any old process cannot request a mesh call. Although, in fairness,
    the user will know about the call because the call display will come up.
 */
+
 int vomp_mdp_event(overlay_mdp_frame *mdp,
 		   struct sockaddr_un *recvaddr,int recvaddrlen)
 {
@@ -323,7 +336,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
      transported audio.  In particular we inform when the call state changes,
      including if any error has occurred.
   */
-  dump("vomp frame",mdp,256);
+  dump("vomp frame",(unsigned char *)mdp,256);
   fprintf(stderr,"Flags=0x%x\n",mdp->vompevent.flags);
   switch(mdp->vompevent.flags)
     {
@@ -360,6 +373,14 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	  vomp_interested_usock_lengths[i]=recvaddrlen;
 	  vomp_interested_expiries[i]=overlay_gettime_ms()+60000;
 	  if (i==vomp_interested_usock_count) vomp_interested_usock_count++;
+
+	  if (mdp->vompevent.supported_codecs[0]) {
+	    /* Replace set of locally supported codecs */
+	    for(i=0;i<256;i++) vomp_local_codec_list[i]=0;
+	    for(i=0;(i<256)&&mdp->vompevent.supported_codecs[i];i++)
+	      vomp_local_codec_list[mdp->vompevent.supported_codecs[i]]=1;
+	  }
+		
 	  return overlay_mdp_reply_error
 	    (mdp_named_socket,recvaddr,recvaddrlen,0,"Success");	     
 	} else {
@@ -488,7 +509,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	   (hopefully) at far end. */
 	vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED);
 	WHY("sending MDP reply back");
-	dump("recvaddr",recvaddr,recvaddrlen);
+	dump("recvaddr",(unsigned char *)recvaddr,recvaddrlen);
 	int result= overlay_mdp_reply_error 
 	  (mdp_named_socket,recvaddr,recvaddrlen,0, "Success");
 	if (result) WHY("Failed to send MDP reply");
@@ -520,13 +541,19 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	  return overlay_mdp_reply_error
 	    (mdp_named_socket,recvaddr,recvaddrlen,4006,
 	     "No such call");
-	call->local.state=VOMP_STATE_INCALL;
-	call->ringing=0;
-	/* state machine does job of starting audio stream, just tell everyone about
-	   the changed state. */
-	overlay_mdp_reply_error(mdp_named_socket,
-				recvaddr,recvaddrlen,0,"Success");
-	return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED);
+	if (call->local.state==VOMP_STATE_RINGINGIN) {
+	  call->local.state=VOMP_STATE_INCALL;
+	  call->ringing=0;
+	  /* state machine does job of starting audio stream, just tell everyone about
+	     the changed state. */
+	  overlay_mdp_reply_error(mdp_named_socket,
+				  recvaddr,recvaddrlen,0,"Success");
+	  return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED);
+	} else {
+	  overlay_mdp_reply_error(mdp_named_socket,
+				  recvaddr,recvaddrlen,4009,
+				  "Call is not RINGINGIN, so cannot be picked up");
+	}
       }
       break;
     case VOMPEVENT_AUDIOSTREAMING: /* user supplying audio */
@@ -593,7 +620,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	call->last_activity=overlay_gettime_ms();
 	call->remote.sequence=sender_seq;
 	call->remote.state=sender_state;
-	return vomp_send_status(call,VOMP_TELLREMOTE);
+	return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLCODECS);
       } else {
 	WHY("recvr_session!=0, looking for existing call");
 	/* A VoMP packet for a call apparently already in progress */
@@ -603,6 +630,14 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	if (!call) {
 	  return WHY("VoMP frame does not correspond to an active call - stale traffic or replay attack?");
 	}
+
+	if (!vomp_interested_usock_count) {
+	  /* No registered listener, so we cannot answer the call, so just reject
+	     it. */
+	  call->local.state=VOMP_STATE_CALLENDED;
+	  return vomp_send_status(call,VOMP_TELLREMOTE);
+	}
+
 	/* Consider states: our actual state, sender state, what the sender thinks
 	   our state is, and what we think the sender's state is.  But largely it
 	   breaks down to what we think our state is, and what they think their 
