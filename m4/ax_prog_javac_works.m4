@@ -65,6 +65,7 @@ else
   AC_MSG_ERROR([The Java compiler $JAVAC failed (see config.log, check the CLASSPATH?)])
   echo "configure: failed program was:" >&AC_FD_CC
   cat $JAVA_TEST >&AC_FD_CC
+  ac_cv_prog_javac_works=no
 fi
 rm -f $JAVA_TEST $CLASS_TEST
 ])

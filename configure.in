@@ -1,18 +1,25 @@
 dnl Process this file with autoconf to produce a configure script.
 AC_INIT(dna.c)
 
-dnl Checks for programs.
+dnl Check for programs.
 AC_PROG_CC
+
+dnl Check for a working Java compiler, keep going if unsuccessful.
+pushdef([AC_MSG_ERROR], defn([AC_MSG_WARN]))
 AC_PROG_JAVAC
+popdef([AC_MSG_ERROR])
+
+dnl Check for JNI includes, keep going if not present.
+pushdef([AC_MSG_ERROR], defn([AC_MSG_WARN]))
+AC_JNI_INCLUDE_DIR
+for JNI_INCLUDE_DIR in $JNI_INCLUDE_DIRS; do
+  CFLAGS="$CFLAGS -I$JNI_INCLUDE_DIR"
+done
+popdef([AC_MSG_ERROR])
 
 AC_CHECK_LIB(c,srandomdev)
 
-AC_CHECK_HEADERS(stdio.h errno.h stdlib.h strings.h unistd.h string.h arpa/inet.h sys/socket.h sys/mman.h sys/time.h poll.h netdb.h linux/if.h linux/netlink.h linux/rtnetlink.h net/if.h netinet/in.h ifaddrs.h net/route.h signal.h portaudio.h)
-
-dnl AC_JNI_INCLUDE_DIR
-dnl for JNI_INCLUDE_DIR in $JNI_INCLUDE_DIRS; do
-dnl   CFLAGS="$CFLAGS -I$JNI_INCLUDE_DIR"
-dnl done
+AC_CHECK_HEADERS(stdio.h errno.h stdlib.h strings.h unistd.h string.h arpa/inet.h sys/socket.h sys/mman.h sys/time.h poll.h netdb.h linux/if.h linux/netlink.h linux/rtnetlink.h net/if.h netinet/in.h ifaddrs.h net/route.h signal.h jni.h)
 
 echo "Fetching and building NaCl if required."
 echo "(this can take HOURS to build depending on your architecture,"

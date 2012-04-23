@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
 #ifdef HAVE_JNI_H
@@ -91,6 +92,7 @@ int cli_usage() {
 
 
 #ifdef HAVE_JNI_H
+
 /* JNI entry point to command line.  See org.servalproject.servald.ServalD class for the Java side.
    JNI method descriptor: "([Ljava/lang/String;)Lorg/servalproject/servald/ServalDResult;"
 */
@@ -122,7 +124,8 @@ JNIEXPORT jobject JNICALL Java_org_servalproject_servald_ServalD_command(JNIEnv 
   }
   return (*env)->NewObject(env, resultClass, resultConstructorId, status, outv);
 }
-#endif
+
+#endif /* HAVE_JNI_H */
 
 /* args[] excludes command name (unless hardlinks are used to use first words 
    of command sequences as alternate names of the command. */
@@ -216,6 +219,16 @@ int cli_arg(int argc, char **argv, command_line_option *o, char *argname, char *
      single function handle both in a fairly simple manner. */
   *dst = defaultvalue;
   return 1;
+}
+
+int cli_printf(const char *fmt, ...)
+{
+  va_list ap,ap2;
+  va_start(ap,fmt);
+  va_copy(ap2,ap);
+  //vsnprintf(msg,8192,fmt,ap2);
+  va_end(ap);
+  return 0;
 }
 
 int app_dna_lookup(int argc,char **argv,struct command_line_option *o)
