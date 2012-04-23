@@ -1199,7 +1199,6 @@ int overlay_route_tick()
 
   /* Go through some of node list */
   n=overlay_route_tick_node_bundle_size;
-  printf("ticking %d nodes\n",n);
   if (n<1) n=1;
   while(n--)
     {
