@@ -1168,6 +1168,9 @@ typedef struct overlay_mdp_vompevent {
   unsigned char local_state;
   unsigned char remote_state;
   unsigned char audio_sample_codec;
+  /* list of codecs the registering party is willing to support
+       (for VOMPEVENT_REGISTERINTEREST) */
+  unsigned char supported_codecs[257];
   union {
     struct {
       /* Used to precisely define the call end points during call
@@ -1181,10 +1184,8 @@ typedef struct overlay_mdp_vompevent {
       unsigned int other_calls_sessions[VOMP_MAX_CALLS];
       unsigned char other_calls_states[VOMP_MAX_CALLS];
     };
-    unsigned char audio_bytes[MDP_MTU-100];
-    /* list of codecs the registering party is willing to support
-       (for VOMPEVENT_REGISTERINTEREST) */
-    unsigned char supported_codecs[257];
+#define MAX_AUDIO_BYTES 1024
+    unsigned char audio_bytes[MAX_AUDIO_BYTES];
   };
 } overlay_mdp_vompevent;
 

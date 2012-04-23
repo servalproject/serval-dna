@@ -237,6 +237,7 @@ int vomp_send_status(vomp_call_state *call,int flags)
 			  vomp_interested_usock_lengths[i],
 			  &mdp);
       }
+    bcopy(&call->remote_codec_list[0],&mdp.vompevent.supported_codecs[0],256);
   }
   return 0;
 }
@@ -663,7 +664,15 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	     No action is required, but we probably shouldn't count it towards
 	     valid call activity, so don't touch the recent activity timer.
 	     Just return.
+
+	     What we do need to do is decode the list of offered codecs, and tell
+	     any registered listener.
 	  */
+	  {
+	    int i;
+	    for(i=0;mdp->in.payload[14+i]&&(i<256);i++)
+	      call->remote_codec_list[mdp->in.payload[14+i]]=1;	    
+	  }
 	  return 0;
 	case (VOMP_STATE_NOCALL<<3)|VOMP_STATE_RINGINGOUT:
 	  /* We have have issued a session, but think that no call is in progress.
@@ -890,6 +899,25 @@ int dump_vomp_status()
   return 0;
 }
 
+char *vomp_describe_codec(int c)
+{
+  switch(c) {
+  case VOMP_CODEC_NONE: return "none";
+  case VOMP_CODEC_CODEC2_2400: return "CODEC2@1400";
+  case VOMP_CODEC_CODEC2_1400: return "CODEC2@2400";
+  case VOMP_CODEC_GSMHALF: return "GSM-half-rate";
+  case VOMP_CODEC_GSMFULL: return "GSM-full-rate";
+  case VOMP_CODEC_16SIGNED: return "16bit-raw";
+  case VOMP_CODEC_8ULAW: return "8bit-uLaw";
+  case VOMP_CODEC_8ALAW: return "8bit-aLaw";
+  case VOMP_CODEC_DTMF: return "DTMF";
+  case VOMP_CODEC_ENGAGED: return "Engaged-tone";
+  case VOMP_CODEC_ONHOLD: return "On-Hold";
+  case VOMP_CODEC_CALLERID: return "CallerID";
+  }
+  return "unknown";
+}
+
 int app_vomp_status(int argc, char **argv, struct command_line_option *o)
 { 
   overlay_mdp_frame mdp;
@@ -947,8 +975,13 @@ int app_vomp_status(int argc, char **argv, struct command_line_option *o)
 		      strlen(mdp2.vompevent.remote_did)
 		      ?mdp2.vompevent.remote_did:"<no remote number>");
 	    }
+	    int i;
+	    fprintf(stderr," supports");
+	    for(i=0;i<256;i++) 
+	      if (mdp2.vompevent.supported_codecs[i])
+		fprintf(stderr," %s",vomp_describe_codec(i));	    
 	  }
-	fprintf(stderr,"\n");
+	fprintf(stderr,"\n");	
       }
   fprintf(stderr,"%d live call descriptors.\n",count);
   return overlay_mdp_client_done();
@@ -1043,13 +1076,17 @@ int app_vomp_monitor(int argc, char **argv, struct command_line_option *o)
 
   mdp.packetTypeAndFlags=MDP_VOMPEVENT;
   mdp.vompevent.flags=VOMPEVENT_REGISTERINTEREST;
+  mdp.vompevent.supported_codecs[0]=VOMP_CODEC_DTMF;
+  mdp.vompevent.supported_codecs[1]=VOMP_CODEC_NONE;
+
   if (overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000))
     { WHY("Failed to register interest in telephony events.");
-      overlay_mdp_client_done(); return -1; } 
-  if (mdp.packetTypeAndFlags==MDP_ERROR&&mdp.error.error) {
-    fprintf(stderr,"  MDP Server error #%d: '%s'\n",
-	    mdp.error.error,mdp.error.message);
-     }
+      overlay_mdp_client_done(); 
+      if (mdp.packetTypeAndFlags==MDP_ERROR&&mdp.error.error) 
+	fprintf(stderr,"  MDP Server error #%d: '%s'\n",
+		mdp.error.error,mdp.error.message);
+      return -1; 
+    }
 
   while(!servalShutdown) {
     overlay_mdp_frame rx;
