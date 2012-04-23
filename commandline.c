@@ -1110,6 +1110,10 @@ command_line_option command_line_options[]={
    "End specified call (use vomp status to get list of calls)"},
   {app_vomp_dial,{"vomp","dial","<sid>","<did>","[<callerid>]",NULL},0,
    "Attempt to dial the specified sid and did. Optionally supply the calling number"},
+#ifdef HAVE_VOIPTEST
+  {app_pa_phone,{"phone",NULL},0,
+   "Run phone test application"},
+#endif
   {NULL,{NULL}}
 };
 

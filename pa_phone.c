@@ -51,10 +51,25 @@ typedef struct {
     
 } PaCtx;
 
+static void	freectx(PaCtx *ctx);
+static int	patestCallback(const void *inputBuffer, void *outputBuffer, unsigned long framesPerBuffer,
+			       const PaStreamCallbackTimeInfo* timeInfo, PaStreamCallbackFlags statusFlags,
+			       void *userData);
+static PaCtx	*pa_phone_setup(void);
+
 /* Declarations */
 
-/* Prototypes */
-void		freectx(PaCtx *ctx);
+int
+app_pa_phone(int argc, const char *const *argv, struct command_line_option *o) {
+  PaCtx	 	*ctx;
+  
+  if ((ctx = pa_phone_setup()) == NULL)
+    return -1;
+
+  freectx(ctx);
+
+  return 0;
+}
 
 /* This routine will be called by the PortAudio engine when audio is needed.
 ** It may called at interrupt level on some machines so don't do anything
@@ -102,7 +117,7 @@ patestCallback(const void *inputBuffer, void *outputBuffer,
   return paContinue;
 }
 
-PaCtx *
+static PaCtx *
 pa_phone_setup(void) {
   PaCtx		*ctx;
   int		err, i, srcerr;
@@ -211,7 +226,7 @@ pa_phone_setup(void) {
   return NULL;
 }
 
-void
+static void
 freectx(PaCtx *ctx) {
     /* Destroy mutex */
     pthread_mutex_destroy(&ctx->mtx);

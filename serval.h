@@ -1322,3 +1322,7 @@ int app_vomp_dial(int argc, const char *const *argv, struct command_line_option 
 int app_vomp_pickup(int argc, const char *const *argv, struct command_line_option *o);
 int app_vomp_hangup(int argc, const char *const *argv, struct command_line_option *o);
 int app_vomp_monitor(int argc, const char *const *argv, struct command_line_option *o);
+#ifdef HAVE_VOIPTEST
+int app_pa_phone(int argc, const char *const *argv, struct command_line_option *o);
+#endif
+
