@@ -11,6 +11,10 @@ autom4te.cache
 Makefile
 config.log
 config.status
+config.guess
+config.sub
+install-sh
+ltmain.sh
 nacl/nacl-20110221/build
 nacl/naclinc.txt
 nacl/nacllib.txt

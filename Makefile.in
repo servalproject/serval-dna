@@ -12,7 +12,7 @@ OBJS=	$(SRCS:.c=.o)
 HDRS=	Makefile serval.h sqlite-amalgamation-3070900/sqlite3.h sha2.h rhizome.h
 
 LDFLAGS=@LDFLAGS@
-CFLAGS=	@CFLAGS@
+CFLAGS=	@CPPFLAGS@ @CFLAGS@
 DEFS=	@DEFS@
 
 all:	serval.c dna libservald.so
