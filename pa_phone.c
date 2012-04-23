@@ -1,3 +1,4 @@
+#if 0
 #ifdef WITH_PORTAUDIO
 
 #include "codec2.h"
@@ -209,6 +210,7 @@ pa_phone_setup(void) {
   return NULL;
 }
 
+#endif
 #endif
 
 
