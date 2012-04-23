@@ -1299,6 +1299,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 		   struct sockaddr_un *recvaddr,int recvaddrlen);
 int vomp_mdp_received(overlay_mdp_frame *mdp);
 char *vomp_describe_state(int state);
+char *vomp_describe_codec(int c);
 int vomp_tick();
 int vomp_tick_interval();
 
