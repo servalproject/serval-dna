@@ -218,7 +218,6 @@ int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
       if (flags&VOMP_SENDAUDIO) {
 	if (vomp_sample_size(arg->vompevent.audio_sample_codec)
 	    ==arg->vompevent.audio_sample_bytes) {
-	WHY("We should remember the last few audio frames so that we can send more than one in a packet, so that we have implicit preemptive retry of packets.  Also helps resolve jitter");
         unsigned short  *len=&mdp.out.payload_length;
 	unsigned char *p=&mdp.out.payload[0];
 
@@ -242,9 +241,6 @@ int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
 	/* stuff frame with most recent sample blocks as a form of preemptive
 	   retransmission. But don't make the packets too large. */
 	while ((*len)<256) {
-	  WHYF("TOP rotor=%d, codec=%s, endtime=%lld",
-	       rotor,vomp_describe_codec(sb[rotor].codec),
-	       sb[rotor].endtime);
 	  p[(*len)++]=sb[rotor].codec;
 	  bcopy(&sb[rotor].bytes[0],&p[*len],vomp_sample_size(sb[rotor].codec));
 	  (*len)+=vomp_sample_size(sb[rotor].codec);
@@ -252,9 +248,6 @@ int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
 	  rotor--; if (rotor<0) rotor+=VOMP_MAX_RECENT_SAMPLES;
 	  rotor%=VOMP_MAX_RECENT_SAMPLES;
 	  
-	  WHYF("END rotor=%d, codec=%s, endtime=%lld",
-	       rotor,vomp_describe_codec(sb[rotor].codec),
-	       sb[rotor].endtime);
 	  if ((!sb[rotor].endtime)||(sb[rotor].endtime==now_rel_call)) break;
 	}
 	call->recent_sample_rotor++;
