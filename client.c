@@ -451,6 +451,7 @@ int writeItem(char *sid,int var_id,int instance,unsigned char *value,
   /* Prepare the request packet to write the variable */
   if (packetMakeHeader(packet,8000,&packet_len,NULL,CRYPT_SIGNED|CRYPT_CIPHERED)) return -1;
   bcopy(&packet[OFS_TRANSIDFIELD],transaction_id,TRANSID_SIZE);
+#warning packetSetSid has been deprecated, which is why we have removed the prototype.
   if (packetSetSid(packet,8000,&packet_len,sid)) return -1;
   if (packetAddVariableWrite(packet,8000,&packet_len,var_id,instance,
 			     value,value_start,value_length,flags)) return -1;
