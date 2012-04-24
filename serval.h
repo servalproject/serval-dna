@@ -1165,6 +1165,7 @@ typedef struct overlay_mdp_vompevent {
 #define VOMPEVENT_CALLCREATED (1<<9)
 #define VOMPEVENT_PICKUP (1<<10)
 #define VOMPEVENT_CALLINFO (1<<11)
+#define VOMPEVENT_AUDIOPACKET (1<<12)
   unsigned int flags;
   unsigned short audio_sample_bytes;
   unsigned char audio_sample_codec;  
@@ -1327,4 +1328,3 @@ int app_vomp_monitor(int argc, const char *const *argv, struct command_line_opti
 #ifdef HAVE_VOIPTEST
 int app_pa_phone(int argc, const char *const *argv, struct command_line_option *o);
 #endif
-

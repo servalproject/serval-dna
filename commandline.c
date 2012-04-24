@@ -1108,6 +1108,8 @@ command_line_option command_line_options[]={
    "Accept specified call (use vomp status to get list of calls)"},
   {app_vomp_hangup,{"vomp","hangup","<call>",NULL},0,
    "End specified call (use vomp status to get list of calls)"},
+  {app_vomp_dtmf,{"vomp","dtmf","<call>","<digits>",NULL},0,
+   "Send DTMF digits over specified call"},
   {app_vomp_dial,{"vomp","dial","<sid>","<did>","[<callerid>]",NULL},0,
    "Attempt to dial the specified sid and did. Optionally supply the calling number"},
 #ifdef HAVE_VOIPTEST

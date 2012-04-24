@@ -1052,6 +1052,66 @@ int app_vomp_dial(int argc, const char *const *argv, struct command_line_option 
   return overlay_mdp_client_done();
 } 
 
+int vomp_parse_dtmf_digit(char c)
+{
+  if (c>='0'&&c<='9') return c-0x30;
+  switch (c) {
+  case 'a': case 'A': return 0xa;
+  case 'b': case 'B': return 0xb;
+  case 'c': case 'C': return 0xc;
+  case 'd': case 'D': return 0xd;
+  case '*': return 0xe;
+  case '#': return 0xf;
+  }
+  return -1;
+}
+
+char vomp_dtmf_digit_to_char(int digit)
+{
+  if (digit<0) return '?';
+  if (digit<10) return '0'+digit;
+  if (digit<0xe) return 'A'+digit-0xa;
+  if (digit==0xe) return '*';
+  if (digit==0xf) return '#';
+  return '?';
+}
+
+int app_vomp_dtmf(int argc, char **argv, struct command_line_option *o)
+{
+  char *call_token;
+  char *digits;
+  cli_arg(argc, argv, o, "call", &call_token, NULL, "");
+  cli_arg(argc, argv, o, "digits", &digits,NULL,"");
+
+  overlay_mdp_frame mdp;
+  bzero(&mdp,sizeof(mdp));
+
+  mdp.packetTypeAndFlags=MDP_VOMPEVENT;
+  mdp.vompevent.flags=VOMPEVENT_AUDIOPACKET;
+  mdp.vompevent.call_session_token=strtol(call_token,NULL,16);
+
+  mdp.vompevent.audio_sample_codec=VOMP_CODEC_DTMF;
+  int i;
+  for(i=0;i<strlen(digits);i++) {
+    int digit=vomp_parse_dtmf_digit(digits[i]);
+    if (digit<0) return WHYF("'%c' is not a DTMF digit.",digits[i]);    
+    mdp.vompevent.audio_bytes[mdp.vompevent.audio_sample_bytes++]
+      =(digit<<4)+7; /* 70ms standard tone duration */
+  }
+
+  if (overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000))
+    {
+      WHY("Send DTMF failed.");
+    }
+  if (mdp.packetTypeAndFlags==MDP_ERROR&&mdp.error.error)
+    fprintf(stderr,"Send DTMF failed: error=%d, message='%s'\n",
+	    mdp.error.error,mdp.error.message);
+  else
+    printf("Send DTMF accepted.\n");
+  
+  return overlay_mdp_client_done();
+} 
+
 
 int app_vomp_pickup(int argc, const char *const *argv, struct command_line_option *o)
 {
