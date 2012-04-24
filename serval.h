@@ -1097,9 +1097,10 @@ typedef struct sockaddr_mdp {
 } sockaddr_mdp;
 unsigned char *keyring_get_nm_bytes(sockaddr_mdp *priv,sockaddr_mdp *pub);
 
-#define MDP_PORT_ECHO 7
+#define MDP_PORT_ECHO 0x00000007
 #define MDP_PORT_KEYMAPREQUEST 0x10000001
 #define MDP_PORT_VOMP 0x10000002
+#define MDP_PORT_DNALOOKUP 0x10000003
 
 #define MDP_TYPE_MASK 0xff
 #define MDP_FLAG_MASK 0xff00

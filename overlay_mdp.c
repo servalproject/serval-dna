@@ -560,6 +560,7 @@ int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,int userGeneratedFrameP,
       /* other built-in listeners */
     case MDP_PORT_KEYMAPREQUEST:
     case MDP_PORT_VOMP:
+    case MDP_PORT_DNALOOKUP:
       return 0;
     default:
       break;
@@ -806,6 +807,8 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
     frame->destination_address_status=OA_RESOLVED;
   }
   
+  int q=OQ_ORDINARY;
+  if (mdp->out.dst.port==MDP_PORT_VOMP) q=OQ_ISOCHRONOUS_VOICE;
   if (overlay_payload_enqueue(OQ_ORDINARY,frame))
     {
       if (frame) op_free(frame);
