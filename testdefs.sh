@@ -1,7 +1,8 @@
 # Common definitions for all test suites in test/*
 
-this=$(abspath "${BASH_SOURCE[0]}")
-here="${this%/*}"
+testdefs_sh=$(abspath "${BASH_SOURCE[0]}")
+dna_source_root="${testdefs_sh%/*}"
+dna_build_root="$dna_source_root"
 
 # Utility function for setting up a fixture with a DNA server process:
 #  - Ensure that no dna processes are running
@@ -51,7 +52,7 @@ stop_dna_server() {
 #  - set SERVALINSTANCE_PATH environment variable
 #  - mkdir $SERVALINSTANCE_PATH unless --no-mkdir option given
 setup_dna() {
-   dna=$(abspath "${this%/*}/dna") # The DNA executable under test
+   dna=$(abspath "$dna_build_root/dna") # The DNA executable under test
    if ! [ -x "$dna" ]; then
       error "dna executable not present: $dna"
       return 1
@@ -60,6 +61,14 @@ setup_dna() {
    [ "$1" = --no-mkdir ] || mkdir $DNATMP
    export SERVALINSTANCE_PATH=$DNATMP
    hlr_dat=$SERVALINSTANCE_PATH/hlr.dat
+}
+
+# Utility function for setting up DNA JNI fixtures:
+#  - check that libservald.so is present
+#  - set LD_LIBRARY_PATH so that libservald.so can be found
+setup_servald_so() {
+   assert [ -r "$dna_build_root/libservald.so" ]
+   export LD_LIBRARY_PATH="$dna_build_root"
 }
 
 # Utility function for managing DNA fixtures:

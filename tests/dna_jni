@@ -24,20 +24,29 @@ source "${0%/*}/../testconfig.sh"
 
 setup() {
    setup_dna
+   assert_echo_works
    compile_java_classes
+   setup_servald_so
 }
 
 compile_java_classes() {
-   local batphone_source=$(abspath "$here/../..")
-   assert [ "$JAVAC" ]
+   assert --message='Java compiler was detected by ./configure' [ "$JAVAC" ]
    mkdir classes
-   assert $JAVAC -d classes "$batphone_source"/src/org/servalproject/servald/*.java
+   assert $JAVAC -d classes "$dna_source_root"/java/org/servalproject/servald/*.java
    assert [ -r classes/org/servalproject/servald/ServalD.class ]
+   assert [ -r classes/org/servalproject/servald/ServalDResult.class ]
+   assert [ -r classes/org/servalproject/servald/ServalDReentranceError.class ]
+}
+
+# Make sure that the normal echo command-line works, without JNI.
+assert_echo_works() {
+   executeOk $dna echo 'Hello,' 'world!'
+   assertStdoutIs -e 'Hello,\nworld!\n'
 }
 
 doc_Echo="Serval echo command works via JNI"
 test_Echo() {
-   execute $dna echo "Hello," "world!"
+   executeOk java -classpath "$PWD/classes" org.servalproject.servald.ServalD echo 'Hello,' 'world!'
    assertStdoutIs -e 'Hello,\nworld!\n'
 }
 

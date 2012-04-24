@@ -94,55 +94,56 @@ int cli_usage() {
 */
 
 struct outv_field {
-  struct outv_field *next;
-  size_t length;
+  jstring jstr;
 };
 
-#define OUTV_CHUNK_MIN_SIZE	(8192)
+#define OUTV_BUFFER_ATOM	(8192)
+#define OUTC_INCREMENT		(256)
 
-int in_jni_call = 0;
+JNIEnv *jni_env = NULL;
+int jni_exception = 0;
 
 struct outv_field *outv = NULL;
 size_t outc = 0;
+size_t outc_limit = 0;
 
-struct outv_field **outv_fieldp = NULL;
-struct outv_field *outv_field = NULL;
+char *outv_buffer = NULL;
 char *outv_current = NULL;
 char *outv_limit = NULL;
 
-static void outv_end_field()
+static int outv_growbuf(size_t needed)
 {
-  outv_field->length = outv_current - (char*)outv_field - sizeof(struct outv_field);
-  outv_fieldp = &outv_field->next;
-  outv_field = NULL;
-}
-
-static int outv_create_field(size_t needed)
-{
-  if (outv_field == NULL) {
-    size_t bufsiz = (needed > OUTV_CHUNK_MIN_SIZE) ? needed : OUTV_CHUNK_MIN_SIZE;
-    size_t size = sizeof(struct outv_field) + bufsiz;
-    struct outv_field *field = (struct outv_field *) malloc(size);
-    if (field == NULL)
-      return WHYF("Out of memory allocating %lu bytes", (unsigned long) size);
-    *outv_fieldp = outv_field = field;
-    ++outc;
-    field->next = NULL;
-    field->length = 0;
-    outv_current = (char *)field + sizeof(struct outv_field);
-    outv_limit = outv_current + bufsiz;
+  size_t newsize = (outv_limit - outv_current < needed) ? (outv_limit - outv_buffer) + needed : 0;
+  if (newsize) {
+    // Round up to nearest multiple of OUTV_BUFFER_ATOM.
+    newsize = newsize + OUTV_BUFFER_ATOM - ((newsize - 1) % OUTV_BUFFER_ATOM + 1);
+    size_t length = outv_current - outv_buffer;
+    outv_buffer = realloc(outv_buffer, newsize);
+    if (outv_buffer == NULL)
+      return WHYF("Out of memory allocating %lu bytes", (unsigned long) newsize);
+    outv_current = outv_buffer + length;
+    outv_limit = outv_buffer + newsize;
   }
   return 0;
 }
 
-static int outv_growbuf(size_t needed)
+static int outv_end_field()
 {
-  size_t bufsiz = (needed > OUTV_CHUNK_MIN_SIZE) ? needed : OUTV_CHUNK_MIN_SIZE;
-  size_t size = (outv_current - (char*)outv_field) + bufsiz;
-  struct outv_chunk* chunk = (struct outv_chunk *) malloc(size);
-  if (chunk == NULL)
-    return WHYF("Out of memory allocating %lu bytes", (unsigned long) size);
-  outv_limit = outv_current + bufsiz;
+  outv_growbuf(1);
+  *outv_current++ = '\0';
+  if (outc == outc_limit) {
+    outc_limit += OUTC_INCREMENT;
+    size_t newsize = outc_limit * sizeof(struct outv_field);
+    outv = realloc(outv, newsize);
+  }
+  struct outv_field *f = &outv[outc];
+  f->jstr = (jstring)(*jni_env)->NewStringUTF(jni_env, outv_buffer);
+  outv_current = outv_buffer;
+  if (f->jstr == NULL) {
+    jni_exception = 1;
+    return WHY("Exception thrown from NewStringUTF()");
+  }
+  ++outc;
   return 0;
 }
 
@@ -157,21 +158,23 @@ JNIEXPORT jobject JNICALL Java_org_servalproject_servald_ServalD_command(JNIEnv 
   jclass stringClass = NULL;
   jmethodID resultConstructorId = NULL;
   jobjectArray outArray = NULL;
+  jint status = 0;
   // Enforce non re-entrancy.
-  if (in_jni_call) {
+  if (jni_env) {
     jclass exceptionClass = NULL;
-    if ((exceptionClass = (*env)->FindClass(env, "org/servalproject/servald/ServalDReentranceException")) == NULL)
+    if ((exceptionClass = (*env)->FindClass(env, "org/servalproject/servald/ServalDReentranceError")) == NULL)
       return NULL; // exception
     (*env)->ThrowNew(env, exceptionClass, "re-entrancy not supported");
     return NULL;
   }
+  // Get some handles to some classes and methods that we use later on.
   if ((resultClass = (*env)->FindClass(env, "org/servalproject/servald/ServalDResult")) == NULL)
     return NULL; // exception
   if ((resultConstructorId = (*env)->GetMethodID(env, resultClass, "<init>", "(I[Ljava/lang/String;)V")) == NULL)
     return NULL; // exception
   if ((stringClass = (*env)->FindClass(env, "java/lang/String")) == NULL)
     return NULL; // exception
-  // Construct argv, argc from method arguments.
+  // Construct argv, argc from this method's arguments.
   jsize len = (*env)->GetArrayLength(env, args);
   const char **argv = malloc(sizeof(char*) * (len + 1));
   if (argv == NULL) {
@@ -182,35 +185,51 @@ JNIEXPORT jobject JNICALL Java_org_servalproject_servald_ServalD_command(JNIEnv 
     return NULL;
   }
   jsize i;
-  for (i = 0; i != len; ++i) {
-    const jstring arg = (jstring)(*env)->GetObjectArrayElement(env, args, i);
-    const char *str = (*env)->GetStringUTFChars(env, arg, NULL);
-    if (str == NULL)
-      return NULL; // out of memory exception
-    argv[i] = str;
-  }
-  argv[len] = NULL;
+  for (i = 0; i <= len; ++i)
+    argv[i] = NULL;
   int argc = len;
-  // Set up the output buffer.
-  outv = NULL;
-  outc = 0;
-  outv_field = NULL;
-  outv_fieldp = &outv;
-  // Execute the command.
-  in_jni_call = 1;
-  jint status = parseCommandLine(argc, argv);
-  in_jni_call = 0;
+  // From now on, in case of an exception we have to free some resources before
+  // returning.
+  jni_exception = 0;
+  for (i = 0; !jni_exception && i != len; ++i) {
+    const jstring arg = (jstring)(*env)->GetObjectArrayElement(env, args, i);
+    if (arg == NULL)
+      jni_exception = 1;
+    else {
+      const char *str = (*env)->GetStringUTFChars(env, arg, NULL);
+      if (str == NULL)
+	jni_exception = 1;
+      else
+	argv[i] = str;
+    }
+  }
+  if (!jni_exception) {
+    // Set up the output buffer.
+    outc = 0;
+    outv_current = outv_buffer;
+    // Execute the command.
+    jni_env = env;
+    status = parseCommandLine(argc, argv);
+    jni_env = NULL;
+  }
+  // Release argv Java string buffers.
+  for (i = 0; i != len; ++i) {
+    if (argv[i]) {
+      const jstring arg = (jstring)(*env)->GetObjectArrayElement(env, args, i);
+      (*env)->ReleaseStringUTFChars(env, arg, argv[i]);
+    }
+  }
   free(argv);
-  // Unpack the output.
-  outv_end_field();
+  // Deal with Java exceptions: NewStringUTF out of memory in outv_end_field().
+  if (jni_exception || (outv_current != outv_buffer && outv_end_field() == -1))
+    return NULL;
+  // Pack the output fields into a Java array of strings.
   if ((outArray = (*env)->NewObjectArray(env, outc, stringClass, NULL)) == NULL)
     return NULL; // out of memory exception
-  for (i = 0; i != outc; ++i) {
-    const jstring str = (jstring)(*env)->NewString(env, (jchar*)((char*)&outv[i] + sizeof(struct outv_field)), outv[i].length);
-    if (str == NULL)
-      return NULL; // out of memory exception
-    (*env)->SetObjectArrayElement(env, outArray, i, str);
-  }
+  for (i = 0; i != outc; ++i)
+    (*env)->SetObjectArrayElement(env, outArray, i, outv[i].jstr);
+  // Return the ResultD object constructed with the status integer and the array of output field
+  // strings.
   return (*env)->NewObject(env, resultClass, resultConstructorId, status, outArray);
 }
 
@@ -221,6 +240,8 @@ JNIEXPORT jobject JNICALL Java_org_servalproject_servald_ServalD_command(JNIEnv 
 int parseCommandLine(int argc, const char *const *args)
 {
   int i;
+  for (i = 0; i != argc; ++i)
+    fprintf(stderr, "args[%d]=\"%s\"\n", i, args[i]);
   int ambiguous=0;
   int cli_call=-1;
   for(i=0;command_line_options[i].function;i++)
@@ -322,9 +343,7 @@ int cli_arg(int argc, const char *const *argv, command_line_option *o, char *arg
  */
 int cli_putchar(char c)
 {
-    if (in_jni_call) {
-      if (outv_create_field(1) == -1)
-	return EOF;
+    if (jni_env) {
       if (outv_current == outv_limit && outv_growbuf(1) == -1)
 	return EOF;
       *outv_current++ = c;
@@ -340,10 +359,8 @@ int cli_putchar(char c)
  */
 int cli_puts(const char *str)
 {
-    if (in_jni_call) {
+    if (jni_env) {
       size_t len = strlen(str);
-      if (outv_create_field(1) == -1)
-	return EOF;
       size_t avail = outv_limit - outv_current;
       if (avail < len) {
 	strncpy(outv_current, str, avail);
@@ -371,9 +388,7 @@ int cli_printf(const char *fmt, ...)
   va_list ap,ap2;
   va_start(ap,fmt);
   va_copy(ap2,ap);
-  if (in_jni_call) {
-    if (outv_create_field(0) == -1)
-      return -1;
+  if (jni_env) {
     size_t avail = outv_limit - outv_current;
     int count = vsnprintf(outv_current, avail, fmt, ap2);
     if (count >= avail) {
@@ -396,9 +411,7 @@ int cli_printf(const char *fmt, ...)
  */
 int cli_delim()
 {
-  if (in_jni_call) {
-    if (outv_create_field(0) == -1)
-      return -1;
+  if (jni_env) {
     outv_end_field();
   } else {
     const char *delim = getenv("SERVALD_OUTPUT_DELIMITER");
