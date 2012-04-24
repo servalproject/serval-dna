@@ -60,7 +60,7 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
 {
   int expired_slot=-1;
   int i;
-  printf("%d calls already in progress.\n",vomp_call_count);
+  if (0) printf("%d calls already in progress.\n",vomp_call_count);
   for(i=0;i<vomp_call_count;i++)
     {
       /* do the fast comparison first, and only if that matches proceed to
@@ -165,13 +165,16 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
 #define VOMP_NEWCALL (1<<2)
 #define VOMP_FORCETELLREMOTE ((1<<3)|VOMP_TELLREMOTE)
 #define VOMP_TELLCODECS (1<<4)
+#define VOMP_SENDAUDIO (1<<5)
 
-int vomp_send_status(vomp_call_state *call,int flags)
+int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
 {
   if (flags&VOMP_TELLREMOTE) {
     int combined_status=(call->remote.state<<4)|call->local.state;
-    if (call->last_sent_status!=combined_status||
-	(flags&VOMP_FORCETELLREMOTE)==VOMP_FORCETELLREMOTE) {
+    if (call->last_sent_status!=combined_status
+	||(flags&VOMP_FORCETELLREMOTE)==VOMP_FORCETELLREMOTE
+	||flags&VOMP_SENDAUDIO)
+      {
       call->last_sent_status=combined_status;
 
       overlay_mdp_frame mdp;
@@ -211,6 +214,17 @@ int vomp_send_status(vomp_call_state *call,int flags)
 	  }
 	mdp.out.payload[mdp.out.payload_length++]=0;
 	if (0) WHYF("mdp frame with codec list is %d bytes",mdp.out.payload_length);
+      }
+      if (flags&VOMP_SENDAUDIO
+	  &&vomp_sample_size(arg->vompevent.audio_sample_codec)
+	  ==arg->vompevent.audio_sample_bytes) {
+	WHY("We should remember the last few audio frames so that we can send more than one in a packet, so that we have implicit preemptive retry of packets.  Also helps resolve jitter");
+        unsigned short  *len=&mdp.out.payload_length;
+	unsigned char *p=&mdp.out.payload[0];
+	p[(*len)++]=arg->vompevent.audio_sample_codec;
+	int i;
+	for(i=0;i<arg->vompevent.audio_sample_bytes;i++) 
+	  p[(*len)++]=arg->vompevent.audio_bytes[i];
       }
 
       overlay_mdp_send(&mdp,0,0);
@@ -303,7 +317,7 @@ int vomp_call_destroy(vomp_call_state *call)
 	  call->local.did,call->remote.did);
 
   /* tell everyone the call has died */
-  vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED);
+  vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED,NULL);
 
   /* now release the call structure */
   int i;
@@ -518,7 +532,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 
 	/* send status update to remote, thus causing call to be created
 	   (hopefully) at far end. */
-	vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED);
+	vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED,NULL);
 	WHY("sending MDP reply back");
 	dump("recvaddr",(unsigned char *)recvaddr,recvaddrlen);
 	int result= overlay_mdp_reply_error 
@@ -540,7 +554,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	call->local.state=VOMP_STATE_CALLENDED;
 	overlay_mdp_reply_error(mdp_named_socket,
 				recvaddr,recvaddrlen,0,"Success");
-	return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED);
+	return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED,NULL);
       }
       break;
     case VOMPEVENT_PICKUP: 
@@ -559,7 +573,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	     the changed state. */
 	  overlay_mdp_reply_error(mdp_named_socket,
 				  recvaddr,recvaddrlen,0,"Success");
-	  return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED);
+	  return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED,NULL);
 	} else {
 	  overlay_mdp_reply_error(mdp_named_socket,
 				  recvaddr,recvaddrlen,4009,
@@ -568,7 +582,11 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
       }
       break;
     case VOMPEVENT_AUDIOPACKET: /* user supplying audio */
-      WHY("Handling of in-call audio not yet implemented");
+      {
+	vomp_call_state *call
+	  =vomp_find_call_by_session(mdp->vompevent.call_session_token);
+	return vomp_send_status(call,VOMP_SENDAUDIO,mdp);
+      }
       break;
     default:
       /* didn't understand it, so respond with an error */
@@ -652,7 +670,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	call->last_activity=overlay_gettime_ms();
 	call->remote.sequence=sender_seq;
 	call->remote.state=sender_state;
-	return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLCODECS);
+	return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLCODECS,NULL);
       } else {
 	if (0) WHY("recvr_session!=0, looking for existing call");
 	/* A VoMP packet for a call apparently already in progress */
@@ -667,7 +685,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	  /* No registered listener, so we cannot answer the call, so just reject
 	     it. */
 	  call->local.state=VOMP_STATE_CALLENDED;
-	  return vomp_send_status(call,VOMP_TELLREMOTE);
+	  return vomp_send_status(call,VOMP_TELLREMOTE,NULL);
 	}
 
 	/* Consider states: our actual state, sender state, what the sender thinks
@@ -884,9 +902,10 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	/* and then send an update to the call status */
 	if (call->local.state<VOMP_STATE_INCALL
 	    &&call->remote.state<VOMP_STATE_INCALL)
-	  vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED|VOMP_TELLCODECS);
+	  vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED|VOMP_TELLCODECS,
+			   NULL);
 	else
-	  vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED);
+	  vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED,NULL);
       }
     }
     return 0;
@@ -955,6 +974,26 @@ char *vomp_describe_codec(int c)
   case VOMP_CODEC_CALLERID: return "CallerID";
   }
   return "unknown";
+}
+
+int vomp_sample_size(int c)
+{
+  switch(c) {
+  case VOMP_CODEC_NONE: return 0;
+  case VOMP_CODEC_CODEC2_2400: return 7; /* actually 2550bps, 51 bits per 20ms, 
+					    but using whole byte here, so 2800bps */
+  case VOMP_CODEC_CODEC2_1400: return 7; /* per 40ms */
+  case VOMP_CODEC_GSMHALF: return 14; /* check. 5.6kbits */
+  case VOMP_CODEC_GSMFULL: return 33; /* padded to 13.2kbit/sec */
+  case VOMP_CODEC_16SIGNED: return 320; /* 8000x2bytes*0.02sec */
+  case VOMP_CODEC_8ULAW: return 160;
+  case VOMP_CODEC_8ALAW: return 160;
+  case VOMP_CODEC_DTMF: return 1;
+  case VOMP_CODEC_ENGAGED: return 0;
+  case VOMP_CODEC_ONHOLD: return 0;
+  case VOMP_CODEC_CALLERID: return 32;
+  }
+  return -1;
 }
 
 int app_vomp_status(int argc, const char *const *argv, struct command_line_option *o)
@@ -1095,19 +1134,17 @@ int app_vomp_dtmf(int argc, const char *const *argv, struct command_line_option 
   mdp.vompevent.flags=VOMPEVENT_AUDIOPACKET;
   mdp.vompevent.call_session_token=strtol(call_token,NULL,16);
 
+  /* One digit per sample block. */
   mdp.vompevent.audio_sample_codec=VOMP_CODEC_DTMF;
   int i;
   for(i=0;i<strlen(digits);i++) {
     int digit=vomp_parse_dtmf_digit(digits[i]);
     if (digit<0) return WHYF("'%c' is not a DTMF digit.",digits[i]);    
-    mdp.vompevent.audio_bytes[mdp.vompevent.audio_sample_bytes++]
+    mdp.vompevent.audio_bytes[mdp.vompevent.audio_sample_bytes]
       =(digit<<4)+7; /* 70ms standard tone duration */
+    if (overlay_mdp_send(&mdp,0,0)) WHY("Send DTMF failed.");
   }
 
-  if (overlay_mdp_send(&mdp,0,0))
-    {
-      WHY("Send DTMF failed.");
-    }
   printf("DTMF digit(s) sent.\n");
   
   return overlay_mdp_client_done();
@@ -1285,7 +1322,7 @@ int vomp_tick()
     {
       if (now>vomp_call_states[i].next_status_time)
 	{
-	  vomp_send_status(&vomp_call_states[i],VOMP_FORCETELLREMOTE);
+	  vomp_send_status(&vomp_call_states[i],VOMP_FORCETELLREMOTE,NULL);
 	  vomp_call_states[i].next_status_time=now+VOMP_CALL_STATUS_INTERVAL;
 	}
       /* See if any calls need to begin expiring */
@@ -1298,7 +1335,7 @@ int vomp_tick()
 	       synchonrise with the far end if possible. */
 	    vomp_call_states[i].local.state=VOMP_STATE_CALLENDED;
 	    vomp_send_status(&vomp_call_states[i],
-			     VOMP_TELLREMOTE|VOMP_TELLINTERESTED);
+			     VOMP_TELLREMOTE|VOMP_TELLINTERESTED,NULL);
 	    vomp_call_states[i].last_activity=now;
 	    vomp_call_stop_audio(&vomp_call_states[i]);
 	    break;

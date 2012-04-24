@@ -1305,6 +1305,7 @@ char *vomp_describe_state(int state);
 char *vomp_describe_codec(int c);
 int vomp_tick();
 int vomp_tick_interval();
+int vomp_sample_size(int c);
 
 typedef struct command_line_option {
   int (*function)(int argc, const char *const *argv, struct command_line_option *o);
