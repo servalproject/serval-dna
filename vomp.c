@@ -221,6 +221,16 @@ int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
 	WHY("We should remember the last few audio frames so that we can send more than one in a packet, so that we have implicit preemptive retry of packets.  Also helps resolve jitter");
         unsigned short  *len=&mdp.out.payload_length;
 	unsigned char *p=&mdp.out.payload[0];
+
+	/* write the sample end-time in milliseconds since call establishment */
+	unsigned long long now=overlay_gettime_ms();
+	unsigned long long now_rel_call=now-call->create_time;
+	p[(*len)++]=(now_rel_call>>24)&0xff;
+	p[(*len)++]=(now_rel_call>>16)&0xff;
+	p[(*len)++]=(now_rel_call>>8)&0xff;
+	p[(*len)++]=(now_rel_call>>0)&0xff;
+
+	/* now codec code and sample block */
 	p[(*len)++]=arg->vompevent.audio_sample_codec;
 	int i;
 	for(i=0;i<arg->vompevent.audio_sample_bytes;i++) 
@@ -290,6 +300,14 @@ int vomp_process_audio(vomp_call_state *call,overlay_mdp_frame *mdp)
 {
   int ofs=14;
   WHYF("got here (payload has %d bytes)",mdp->in.payload_length);
+
+  /* Get end time marker for sample block collection */
+  unsigned int e=0;
+  e=mdp->in.payload[ofs++]<<24;
+  e|=mdp->in.payload[ofs++]<<16;
+  e|=mdp->in.payload[ofs++]<<8;
+  e|=mdp->in.payload[ofs++]<<0;
+
   while(ofs<mdp->in.payload_length)
     {
       int codec=mdp->in.payload[ofs];
@@ -298,12 +316,15 @@ int vomp_process_audio(vomp_call_state *call,overlay_mdp_frame *mdp)
       if ((ofs+1+vomp_sample_size(codec))>mdp->in.payload_length) break;
 
       overlay_mdp_frame arg;
-      arg.vompevent.audio_sample_starttime=0;
-      arg.vompevent.audio_sample_endtime=0;
       arg.vompevent.audio_sample_codec=codec;
       arg.vompevent.audio_sample_bytes=vomp_sample_size(codec);
       bcopy(&mdp->in.payload[ofs+1],&arg.vompevent.audio_bytes[0],
 	    arg.vompevent.audio_sample_bytes);     
+      arg.vompevent.audio_sample_endtime=e;
+      /* work out start-time from end-time less duration of included sample(s).
+         XXX - Assumes only non-adaptive codecs. */
+      e-=vomp_codec_timespan(codec);
+      arg.vompevent.audio_sample_starttime=e+1;
 
       /* Pass audio frame to all registered listeners */
       vomp_send_status(call,VOMP_TELLINTERESTED|VOMP_SENDAUDIO,&arg);
@@ -1032,6 +1053,26 @@ int vomp_sample_size(int c)
   }
   return -1;
 }
+
+int vomp_codec_timespan(int c)
+{
+  switch(c) {
+  case VOMP_CODEC_NONE: return 1;
+  case VOMP_CODEC_CODEC2_2400: return 20;
+  case VOMP_CODEC_CODEC2_1400: return 40;
+  case VOMP_CODEC_GSMHALF: return 20;
+  case VOMP_CODEC_GSMFULL: return 20;
+  case VOMP_CODEC_16SIGNED: return 20; 
+  case VOMP_CODEC_8ULAW: return 20;
+  case VOMP_CODEC_8ALAW: return 20;
+  case VOMP_CODEC_DTMF: return 70;
+  case VOMP_CODEC_ENGAGED: return 20;
+  case VOMP_CODEC_ONHOLD: return 20;
+  case VOMP_CODEC_CALLERID: return 0;
+  }
+  return -1;
+}
+
 
 int app_vomp_status(int argc, const char *const *argv, struct command_line_option *o)
 { 
