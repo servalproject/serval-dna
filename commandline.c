@@ -444,6 +444,10 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
     return -1;
+
+  /* use MDP to send the lookup request to MDP_PORT_DNALOOKUP, and wait for
+     replies. */
+
   return WHY("Not implemented");
 }
 
