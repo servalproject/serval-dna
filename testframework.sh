@@ -508,6 +508,7 @@ _tfw_getopts() {
    _tfw_opt_error_on_fail=false
    _tfw_opt_exit_status=
    _tfw_opt_matches=
+   _tfw_opt_line=
    _tfw_getopts_shift=0
    while [ $# -ne 0 ]; do
       case "$context:$1" in
@@ -517,6 +518,7 @@ _tfw_getopts() {
       assert*:--error-on-fail) _tfw_opt_error_on_fail=true;;
       assert*:--message=*) _tfw_message="${1#*=}";;
       assertgrep:--matches=*) _tfw_opt_matches="${1#*=}";;
+      assertfilecontent:--line=*) _tfw_opt_line="${1#*=}";;
       *:--) let _tfw_getopts_shift=_tfw_getopts_shift+1; shift; break;;
       *:--*) _tfw_error "unsupported option: $1";;
       *) break;;
@@ -573,9 +575,25 @@ _tfw_assert_stdxxx_is() {
       _tfw_error "incorrect arguments"
       return 254
    fi
-   local message="${_tfw_message:-$qual of ${_tfw_execute_argv0##*/} is $*}"
+   _tfw_shopt -s extglob
+   case "$_tfw_opt_line" in
+   +([0-9]))
+      sed -n -e "${_tfw_opt_line}p" "$_tfw_tmp/$qual" >"$_tfw_tmp/content"
+      ;;
+   '')
+      ln -f "$_tfw_tmp/$qual" "$_tfw_tmp/content"
+      ;;
+   *)
+      _tfw_error "unsupported value for --line=$_tfw_opt_line"
+      _tfw_backtrace
+      _tfw_shopt_restore
+      return 254
+      ;;
+   esac
+   _tfw_shopt_restore
+   local message="${_tfw_message:-${_tfw_opt_line:+line $_tfw_opt_line of }$qual of ${_tfw_execute_argv0##*/} is $*}"
    echo -n "$@" >$_tfw_tmp/stdxxx_is.tmp
-   if ! cmp --quiet $_tfw_tmp/stdxxx_is.tmp "$_tfw_tmp/$qual"; then
+   if ! cmp --quiet $_tfw_tmp/stdxxx_is.tmp "$_tfw_tmp/content"; then
       _tfw_failmsg "assertion failed: $message"
       _tfw_backtrace
       return 1

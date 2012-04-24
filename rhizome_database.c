@@ -529,6 +529,14 @@ int rhizome_list_manifests(int limit, int offset)
     ret = WHY(sqlite3_errmsg(rhizome_db));
   } else {
     size_t rows = 0;
+    cli_puts("fileid"); cli_delim(":");
+    cli_puts("manifestid"); cli_delim(":");
+    cli_puts("version"); cli_delim(":");
+    cli_puts("inserttime"); cli_delim(":");
+    cli_puts("length"); cli_delim(":");
+    cli_puts("datavalid"); cli_delim(":");
+    cli_puts("date"); cli_delim(":");
+    cli_puts("name"); cli_delim("\n");
     while (sqlite3_step(statement) == SQLITE_ROW) {
       ++rows;
       if (!(   sqlite3_column_count(statement) == 7
@@ -548,16 +556,14 @@ int rhizome_list_manifests(int limit, int offset)
       rhizome_manifest *m = rhizome_read_manifest_file(manifestblob, manifestblobsize, 0);
       const char *name = rhizome_manifest_get(m, "name", NULL, 0);
       long long date = rhizome_manifest_get_ll(m, "date");
-      printf("fileid=%s:manifestid=%s:version=%lld:inserttime=%lld:length=%u:datavalid=%u:date=%lld:name=%s\n",
-	  sqlite3_column_text(statement, 0),
-	  sqlite3_column_text(statement, 3),
-	  (long long) sqlite3_column_int64(statement, 5),
-	  (long long) sqlite3_column_int64(statement, 6),
-	  sqlite3_column_int(statement, 1),
-	  sqlite3_column_int(statement, 2),
-	  date,
-	  name
-	);
+      cli_puts((const char *)sqlite3_column_text(statement, 0)); cli_delim(":");
+      cli_puts((const char *)sqlite3_column_text(statement, 3)); cli_delim(":");
+      cli_printf("%lld", (long long) sqlite3_column_int64(statement, 5)); cli_delim(":");
+      cli_printf("%lld", (long long) sqlite3_column_int64(statement, 6)); cli_delim(":");
+      cli_printf("%u", sqlite3_column_int(statement, 1)); cli_delim(":");
+      cli_printf("%u", sqlite3_column_int(statement, 2)); cli_delim(":");
+      cli_printf("%lld", date); cli_delim(":");
+      cli_puts(name); cli_delim("\n");
       rhizome_manifest_free(m);
     }
   }
@@ -795,7 +801,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
 	ret = WHY("Incorrect statement columns");
 	break;
       }
-      const char *manifestid = (char *) sqlite3_column_text(statement, 0);
+      const char *manifestid = (const char *) sqlite3_column_text(statement, 0);
       size_t manifestidsize = sqlite3_column_bytes(statement, 0); // must call after sqlite3_column_text()
       if (manifestidsize != crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES * 2) {
 	ret = WHYF("Malformed manifest.id from query: %s", manifestid);

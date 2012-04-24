@@ -240,8 +240,6 @@ JNIEXPORT jobject JNICALL Java_org_servalproject_servald_ServalD_command(JNIEnv 
 int parseCommandLine(int argc, const char *const *args)
 {
   int i;
-  for (i = 0; i != argc; ++i)
-    fprintf(stderr, "args[%d]=\"%s\"\n", i, args[i]);
   int ambiguous=0;
   int cli_call=-1;
   for(i=0;command_line_options[i].function;i++)
@@ -409,14 +407,14 @@ int cli_printf(const char *fmt, ...)
    JNI call, then this simply writes a newline to standard output (or the value of the
    SERVALD_OUTPUT_DELIMITER env var if set).
  */
-int cli_delim()
+int cli_delim(const char *opt)
 {
   if (jni_env) {
     outv_end_field();
   } else {
     const char *delim = getenv("SERVALD_OUTPUT_DELIMITER");
     if (delim == NULL)
-      delim = "\n";
+      delim = opt ? opt : "\n";
     fputs(delim, stdout);
   }
   return 0;
@@ -427,7 +425,7 @@ int app_echo(int argc, const char *const *argv, struct command_line_option *o)
   int i;
   for (i = 1; i < argc; ++i) {
     cli_puts(argv[i]);
-    cli_delim();
+    cli_delim(NULL);
   }
   return 0;
 }
@@ -1131,4 +1129,3 @@ command_line_option command_line_options[]={
 #endif
   {NULL,{NULL}}
 };
-

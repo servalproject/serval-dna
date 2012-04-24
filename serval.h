@@ -1318,6 +1318,10 @@ typedef struct command_line_option {
 
 extern command_line_option command_line_options[];
 int cli_arg(int argc, const char *const *argv, command_line_option *o, char *argname, const char **dst, int (*validator)(const char *arg), char *defaultvalue);
+int cli_putchar(char c);
+int cli_puts(const char *str);
+int cli_printf(const char *fmt, ...);
+int cli_delim(const char *opt);
 
 int overlay_mdp_getmyaddr(int index,unsigned char *sid);
 

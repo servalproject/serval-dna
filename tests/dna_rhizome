@@ -28,8 +28,8 @@ setup_dna_rhizome() {
 
 assert_rhizome_list() {
    executeOk $dna rhizome list
-   assertStdoutLineCount '==' $#
-   assertStdoutGrep --matches=$# '^fileid=.*:name='
+   assertStdoutLineCount '==' $(($# + 1))
+   assertStdoutIs --line=1 -e 'fileid:manifestid:version:inserttime:length:datavalid:date:name\n'
    local filename
    for filename; do
       local filehash='[^:]\+'
@@ -41,7 +41,7 @@ assert_rhizome_list() {
             filehash=$(sed -n -e '/^filehash=/s///p' "$filename.manifest")
          fi
       fi
-      assertStdoutGrep --matches=1 "^\(.*:\)\?fileid=$filehash:.*:name=$filename\$"
+      assertStdoutGrep --matches=1 "^$filehash:.*:$filename\$"
    done
 }
 
