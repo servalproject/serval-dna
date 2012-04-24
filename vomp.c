@@ -221,23 +221,38 @@ int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
         unsigned short  *len=&mdp.out.payload_length;
 	unsigned char *p=&mdp.out.payload[0];
 
-	/* write the sample end-time in milliseconds since call establishment */
-	unsigned long long now=overlay_gettime_ms();
-	unsigned long long now_rel_call=now-call->create_time;
-	p[(*len)++]=(now_rel_call>>24)&0xff;
-	p[(*len)++]=(now_rel_call>>16)&0xff;
-	p[(*len)++]=(now_rel_call>>8)&0xff;
-	p[(*len)++]=(now_rel_call>>0)&0xff;
+	/* record sample in recent list.
+	   XXX - What timestamp to attach to the sample?
+	   Two obvious choices:
+	   1. The sample is for the most recent n milliseconds; or
+	   2. The sample is for the next n milliseconds following the
+	   last sample.
 
-	/* record sample in recent list */
+	   Option 1 introduces all sorts of problems with sample production
+	   jitter, where as option 2 has no such problems, but simply requires the
+	   producer of audio to ensure that they provide exactly the right amount
+	   of audio, or risk the call getting out of sync.  This is a fairly
+	   reasonable expectation, or else things go to pot.
+
+	   Note that in-call slew is the responsibility of the player, not the
+	   recorder of audio.  Basically if the audio queue starts to bank up,
+	   then the player needs to drop samples.
+	*/
 	vomp_sample_block *sb=call->recent_samples;
 	int rotor=call->recent_sample_rotor%VOMP_MAX_RECENT_SAMPLES;
 	sb[rotor].codec=arg->vompevent.audio_sample_codec;
-	sb[rotor].endtime=now_rel_call;
-	sb[rotor].starttime=now_rel_call-vomp_codec_timespan(sb[rotor].codec);
+	sb[rotor].endtime=call->audio_clock+vomp_codec_timespan(sb[rotor].codec)-1;
+	sb[rotor].starttime=call->audio_clock;
+	call->audio_clock=sb[rotor].endtime+1;
 	bcopy(&arg->vompevent.audio_bytes[0],&sb[rotor].bytes[0],
 	      vomp_sample_size(sb[rotor].codec));
 	
+	/* write the sample end-time in milliseconds since call establishment */
+	p[(*len)++]=(call->audio_clock>>24)&0xff;
+	p[(*len)++]=(call->audio_clock>>16)&0xff;
+	p[(*len)++]=(call->audio_clock>>8)&0xff;
+	p[(*len)++]=(call->audio_clock>>0)&0xff;	
+
 	/* stuff frame with most recent sample blocks as a form of preemptive
 	   retransmission. But don't make the packets too large. */
 	while ((*len)<256) {
@@ -248,7 +263,7 @@ int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
 	  rotor--; if (rotor<0) rotor+=VOMP_MAX_RECENT_SAMPLES;
 	  rotor%=VOMP_MAX_RECENT_SAMPLES;
 	  
-	  if ((!sb[rotor].endtime)||(sb[rotor].endtime==now_rel_call)) break;
+	  if ((!sb[rotor].endtime)||(sb[rotor].endtime==call->audio_clock+1)) break;
 	}
 	call->recent_sample_rotor++;
 	call->recent_sample_rotor%=VOMP_MAX_RECENT_SAMPLES;
@@ -1080,7 +1095,7 @@ int vomp_codec_timespan(int c)
   case VOMP_CODEC_16SIGNED: return 20; 
   case VOMP_CODEC_8ULAW: return 20;
   case VOMP_CODEC_8ALAW: return 20;
-  case VOMP_CODEC_DTMF: return 70;
+  case VOMP_CODEC_DTMF: return 80;
   case VOMP_CODEC_ENGAGED: return 20;
   case VOMP_CODEC_ONHOLD: return 20;
   case VOMP_CODEC_CALLERID: return 0;
@@ -1236,7 +1251,9 @@ int app_vomp_dtmf(int argc, const char *const *argv, struct command_line_option 
     int digit=vomp_parse_dtmf_digit(digits[i]);
     if (digit<0) return WHYF("'%c' is not a DTMF digit.",digits[i]);    
     mdp.vompevent.audio_bytes[mdp.vompevent.audio_sample_bytes]
-      =(digit<<4)+7; /* 70ms standard tone duration */
+      =(digit<<4); /* 80ms standard tone duration, so that it is a multiple
+		      of the majority of codec time units (70ms is the nominal
+		      DTMF tone length for most systems). */
     if (overlay_mdp_send(&mdp,0,0)) WHY("Send DTMF failed.");
   }
 

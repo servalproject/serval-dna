@@ -1275,6 +1275,7 @@ typedef struct vomp_call_state {
   int ringing;
   unsigned long long create_time;
   unsigned long long last_activity;
+  unsigned long long audio_clock;
   int audio_started;
   int last_sent_status;
   int next_status_time;
