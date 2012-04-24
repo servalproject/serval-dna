@@ -230,15 +230,35 @@ int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
 	p[(*len)++]=(now_rel_call>>8)&0xff;
 	p[(*len)++]=(now_rel_call>>0)&0xff;
 
-	/* now codec code and sample block */
-	p[(*len)++]=arg->vompevent.audio_sample_codec;
-	int i;
-	for(i=0;i<arg->vompevent.audio_sample_bytes;i++) 
-	  p[(*len)++]=arg->vompevent.audio_bytes[i];
-	} else {
-	  WHYF("Sample bytes(%d) != codec specification(%d)",
-	       arg->vompevent.audio_sample_bytes,
-	       vomp_sample_size(arg->vompevent.audio_sample_codec));
+	/* record sample in recent list */
+	vomp_sample_block *sb=call->recent_samples;
+	int rotor=call->recent_sample_rotor%VOMP_MAX_RECENT_SAMPLES;
+	sb[rotor].codec=arg->vompevent.audio_sample_codec;
+	sb[rotor].endtime=now_rel_call;
+	sb[rotor].starttime=now_rel_call-vomp_codec_timespan(sb[rotor].codec);
+	bcopy(&arg->vompevent.audio_bytes[0],&sb[rotor].bytes[0],
+	      vomp_sample_size(sb[rotor].codec));
+	
+	/* stuff frame with most recent sample blocks as a form of preemptive
+	   retransmission. But don't make the packets too large. */
+	while ((*len)<256) {
+	  WHYF("TOP rotor=%d, codec=%s, endtime=%lld",
+	       rotor,vomp_describe_codec(sb[rotor].codec),
+	       sb[rotor].endtime);
+	  p[(*len)++]=sb[rotor].codec;
+	  bcopy(&sb[rotor].bytes[0],&p[*len],vomp_sample_size(sb[rotor].codec));
+	  (*len)+=vomp_sample_size(sb[rotor].codec);
+	  
+	  rotor--; if (rotor<0) rotor+=VOMP_MAX_RECENT_SAMPLES;
+	  rotor%=VOMP_MAX_RECENT_SAMPLES;
+	  
+	  WHYF("END rotor=%d, codec=%s, endtime=%lld",
+	       rotor,vomp_describe_codec(sb[rotor].codec),
+	       sb[rotor].endtime);
+	  if ((!sb[rotor].endtime)||(sb[rotor].endtime==now_rel_call)) break;
+	}
+	call->recent_sample_rotor++;
+	call->recent_sample_rotor%=VOMP_MAX_RECENT_SAMPLES;
 	}
       }
 
@@ -299,7 +319,8 @@ int vomp_call_start_audio(vomp_call_state *call)
 int vomp_process_audio(vomp_call_state *call,overlay_mdp_frame *mdp)
 {
   int ofs=14;
-  WHYF("got here (payload has %d bytes)",mdp->in.payload_length);
+  if (mdp->in.payload_length>14)
+    WHYF("got here (payload has %d bytes)",mdp->in.payload_length);
 
   /* Get end time marker for sample block collection */
   unsigned int e=0;
@@ -643,7 +664,8 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	WHY("Audio packet arrived");
 	vomp_call_state *call
 	  =vomp_find_call_by_session(mdp->vompevent.call_session_token);
-	return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_SENDAUDIO,mdp);
+	if (call)
+	  return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_SENDAUDIO,mdp);
       }
       break;
     default:

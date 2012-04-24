@@ -1261,6 +1261,14 @@ typedef struct vomp_call_half {
   unsigned long long milliseconds_since_call_start;
 } vomp_call_half;
 
+typedef struct vomp_sample_block {
+  unsigned int codec;
+  unsigned long long starttime;
+  unsigned long long endtime;
+  unsigned char bytes[1024];
+} vomp_sample_block;
+
+#define VOMP_MAX_RECENT_SAMPLES 8
 typedef struct vomp_call_state {
   vomp_call_half local;
   vomp_call_half remote;
@@ -1271,6 +1279,8 @@ typedef struct vomp_call_state {
   int last_sent_status;
   int next_status_time;
   unsigned char remote_codec_list[256];
+  int recent_sample_rotor;
+  vomp_sample_block recent_samples[VOMP_MAX_RECENT_SAMPLES];
 } vomp_call_state;
 
 #define VOMP_CODEC_NONE 0x00
@@ -1306,6 +1316,7 @@ char *vomp_describe_codec(int c);
 int vomp_tick();
 int vomp_tick_interval();
 int vomp_sample_size(int c);
+int vomp_codec_timespan(int c);
 
 typedef struct command_line_option {
   int (*function)(int argc, const char *const *argv, struct command_line_option *o);
