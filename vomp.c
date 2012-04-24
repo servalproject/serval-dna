@@ -169,7 +169,7 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
 
 int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
 {
-  if (flags&VOMP_TELLREMOTE) {
+  if (flags&(VOMP_TELLREMOTE|VOMP_SENDAUDIO)) {
     int combined_status=(call->remote.state<<4)|call->local.state;
     if (call->last_sent_status!=combined_status
 	||(flags&VOMP_FORCETELLREMOTE)==VOMP_FORCETELLREMOTE
@@ -215,9 +215,9 @@ int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
 	mdp.out.payload[mdp.out.payload_length++]=0;
 	if (0) WHYF("mdp frame with codec list is %d bytes",mdp.out.payload_length);
       }
-      if (flags&VOMP_SENDAUDIO
-	  &&vomp_sample_size(arg->vompevent.audio_sample_codec)
-	  ==arg->vompevent.audio_sample_bytes) {
+      if (flags&VOMP_SENDAUDIO) {
+	if (vomp_sample_size(arg->vompevent.audio_sample_codec)
+	    ==arg->vompevent.audio_sample_bytes) {
 	WHY("We should remember the last few audio frames so that we can send more than one in a packet, so that we have implicit preemptive retry of packets.  Also helps resolve jitter");
         unsigned short  *len=&mdp.out.payload_length;
 	unsigned char *p=&mdp.out.payload[0];
@@ -225,6 +225,11 @@ int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
 	int i;
 	for(i=0;i<arg->vompevent.audio_sample_bytes;i++) 
 	  p[(*len)++]=arg->vompevent.audio_bytes[i];
+	} else {
+	  WHYF("Sample bytes(%d) != codec specification(%d)",
+	       arg->vompevent.audio_sample_bytes,
+	       vomp_sample_size(arg->vompevent.audio_sample_codec));
+	}
       }
 
       overlay_mdp_send(&mdp,0,0);
@@ -273,7 +278,18 @@ int vomp_call_start_audio(vomp_call_state *call)
 
 int vomp_process_audio(vomp_call_state *call,overlay_mdp_frame *mdp)
 {
+  int ofs=14;
+  WHYF("got here (payload has %d bytes)",mdp->in.payload_length);
+  while(ofs<mdp->in.payload_length)
+    {
+      int codec=mdp->in.payload[ofs];
+      WHYF("Spotted a %s sample block",vomp_describe_codec(codec));
+      if (!codec||vomp_sample_size(codec)<0) break;
 
+      /* Pass audio frame to all registered listeners */
+	
+      ofs+=1+vomp_sample_size(codec);
+    }
   return 0;
 }
 
@@ -583,6 +599,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
       break;
     case VOMPEVENT_AUDIOPACKET: /* user supplying audio */
       {
+	WHY("Audio packet arrived");
 	vomp_call_state *call
 	  =vomp_find_call_by_session(mdp->vompevent.call_session_token);
 	return vomp_send_status(call,VOMP_SENDAUDIO,mdp);
@@ -1136,6 +1153,8 @@ int app_vomp_dtmf(int argc, const char *const *argv, struct command_line_option 
 
   /* One digit per sample block. */
   mdp.vompevent.audio_sample_codec=VOMP_CODEC_DTMF;
+  mdp.vompevent.audio_sample_bytes=1;
+
   int i;
   for(i=0;i<strlen(digits);i++) {
     int digit=vomp_parse_dtmf_digit(digits[i]);
