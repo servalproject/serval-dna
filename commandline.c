@@ -93,6 +93,8 @@ int cli_usage() {
 /* Data structures for accumulating output of a single JNI call.
 */
 
+#ifdef HAVE_JNI_H
+
 struct outv_field {
   jstring jstr;
 };
@@ -146,8 +148,6 @@ static int outv_end_field()
   ++outc;
   return 0;
 }
-
-#ifdef HAVE_JNI_H
 
 /* JNI entry point to command line.  See org.servalproject.servald.ServalD class for the Java side.
    JNI method descriptor: "([Ljava/lang/String;)Lorg/servalproject/servald/ServalDResult;"
@@ -341,6 +341,7 @@ int cli_arg(int argc, const char *const *argv, command_line_option *o, char *arg
  */
 int cli_putchar(char c)
 {
+#ifdef HAVE_JNI_H
     if (jni_env) {
       if (outv_current == outv_limit && outv_growbuf(1) == -1)
 	return EOF;
@@ -348,6 +349,7 @@ int cli_putchar(char c)
       return (unsigned char) c;
     }
     else
+#endif
       return putchar(c);
 }
 
@@ -357,6 +359,7 @@ int cli_putchar(char c)
  */
 int cli_puts(const char *str)
 {
+#ifdef HAVE_JNI_H
     if (jni_env) {
       size_t len = strlen(str);
       size_t avail = outv_limit - outv_current;
@@ -373,6 +376,7 @@ int cli_puts(const char *str)
       return 0;
     }
     else
+#endif
       return fputs(str, stdout);
 }
 
@@ -386,6 +390,7 @@ int cli_printf(const char *fmt, ...)
   va_list ap,ap2;
   va_start(ap,fmt);
   va_copy(ap2,ap);
+#ifdef HAVE_JNI_H
   if (jni_env) {
     size_t avail = outv_limit - outv_current;
     int count = vsnprintf(outv_current, avail, fmt, ap2);
@@ -397,6 +402,7 @@ int cli_printf(const char *fmt, ...)
     outv_current += count;
     ret = count;
   } else
+#endif
     ret = vfprintf(stdout, fmt, ap2);
   va_end(ap);
   return ret;
@@ -409,9 +415,12 @@ int cli_printf(const char *fmt, ...)
  */
 int cli_delim(const char *opt)
 {
+#ifdef HAVE_JNI_H
   if (jni_env) {
     outv_end_field();
-  } else {
+  } else
+#endif
+  {
     const char *delim = getenv("SERVALD_OUTPUT_DELIMITER");
     if (delim == NULL)
       delim = opt ? opt : "\n";
