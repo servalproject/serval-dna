@@ -12,10 +12,6 @@ Makefile
 testconfig.sh
 config.log
 config.status
-config.guess
-config.sub
-install-sh
-ltmain.sh
 nacl/nacl-20110221/build
 nacl/naclinc.txt
 nacl/nacllib.txt
@@ -23,7 +19,3 @@ serval.c
 dna
 *.so
 test.*.log
-config.guess
-config.sub
-install-sh
-ltmain.sh
