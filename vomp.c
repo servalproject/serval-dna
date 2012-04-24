@@ -65,10 +65,11 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
     {
       /* do the fast comparison first, and only if that matches proceed to
 	 the slower SID comparisons */
-      fprintf(stderr,"asking for %06x:%06x, this call %06x:%06x\n",
-	      sender_session,recvr_session,
-	      vomp_call_states[i].remote.session,
-	      vomp_call_states[i].local.session);
+      if (0)
+	fprintf(stderr,"asking for %06x:%06x, this call %06x:%06x\n",
+		sender_session,recvr_session,
+		vomp_call_states[i].remote.session,
+		vomp_call_states[i].local.session);
 
       int checked=0;
       if (vomp_call_states[i].remote.session&&sender_session) { 
@@ -103,11 +104,13 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
       if (!vomp_call_states[i].remote.session) 
 	vomp_call_states[i].remote.session=sender_session;
 
-      WHYF("Returning existing call #%d",i);
-      fprintf(stderr,"%06x:%06x matches call #%d %06x:%06x\n",
-	     sender_session,recvr_session,i,
-	     vomp_call_states[i].remote.session,
-	     vomp_call_states[i].local.session);
+      if (0) {
+	WHYF("Returning existing call #%d",i);
+	fprintf(stderr,"%06x:%06x matches call #%d %06x:%06x\n",
+		sender_session,recvr_session,i,
+		vomp_call_states[i].remote.session,
+		vomp_call_states[i].local.session);
+      }
       
       return &vomp_call_states[i];
     }
@@ -199,15 +202,15 @@ int vomp_send_status(vomp_call_state *call,int flags)
       
       if ((!call->remote.session)||(flags&VOMP_TELLCODECS)) {
 	/* Also include list of supported codecs */
-	WHY("Including codec list");
+	if (0) WHY("Including codec list");
 	int i;
 	for(i=0;i<256;i++)
 	  if (vomp_local_codec_list[i]) {
 	    mdp.out.payload[mdp.out.payload_length++]=i;
-	    WHYF("  I support the %s codec",vomp_describe_codec(i));
+	    if (0) WHYF("  I support the %s codec",vomp_describe_codec(i));
 	  }
 	mdp.out.payload[mdp.out.payload_length++]=0;
-	WHYF("mdp frame with codec list is %d bytes",mdp.out.payload_length);
+	if (0) WHYF("mdp frame with codec list is %d bytes",mdp.out.payload_length);
       }
 
       overlay_mdp_send(&mdp,0,0);
@@ -257,7 +260,7 @@ int vomp_call_start_audio(vomp_call_state *call)
 int vomp_process_audio(vomp_call_state *call,overlay_mdp_frame *mdp)
 {
 
-  return WHY("Not implemented");
+  return 0;
 }
 
 int vomp_call_stop_audio(vomp_call_state *call)
@@ -564,7 +567,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	}
       }
       break;
-    case VOMPEVENT_AUDIOSTREAMING: /* user supplying audio */
+    case VOMPEVENT_AUDIOPACKET: /* user supplying audio */
       WHY("Handling of in-call audio not yet implemented");
       break;
     default:
@@ -580,15 +583,17 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 
 int vomp_extract_remote_codec_list(vomp_call_state *call,overlay_mdp_frame *mdp)
 {
-  WHY("Receiving list of remote codecs");
   int i;
-  dump("codec list mdp frame",
-       (unsigned char *)&mdp->in.payload[0],mdp->in.payload_length);
+  if (0) {
+    WHY("Receiving list of remote codecs");
+    dump("codec list mdp frame",
+	 (unsigned char *)&mdp->in.payload[0],mdp->in.payload_length);
+  }
   for(i=0;mdp->in.payload[14+i]&&(i<256)
 	&&((14+i)<mdp->in.payload_length);i++)
     {
-      WHYF("populating remote codec list with %s",
-	   vomp_describe_codec(mdp->in.payload[14+i]));
+      if (0) WHYF("populating remote codec list with %s",
+		  vomp_describe_codec(mdp->in.payload[14+i]));
       call->remote_codec_list[mdp->in.payload[14+i]]=1;
     }  
   return 0;
@@ -638,8 +643,10 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	  /* could not allocate a call slot, so do nothing */
 	  return WHY("No free call slots");
 	}
-	WHYF("Far end is in state %s",vomp_describe_state(sender_state));
-	WHYF("I am in state %s",vomp_describe_state(call->local.state));
+	if (0) {
+	  WHYF("Far end is in state %s",vomp_describe_state(sender_state));
+	  WHYF("I am in state %s",vomp_describe_state(call->local.state));
+	}
 
 	/* We have a session number.  Send a status update back to sender */
 	call->last_activity=overlay_gettime_ms();
@@ -647,7 +654,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	call->remote.state=sender_state;
 	return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLCODECS);
       } else {
-	WHY("recvr_session!=0, looking for existing call");
+	if (0) WHY("recvr_session!=0, looking for existing call");
 	/* A VoMP packet for a call apparently already in progress */
 	call=vomp_find_or_create_call(mdp->in.src.sid,mdp->in.dst.sid,
 				      sender_session,recvr_session,
@@ -670,8 +677,6 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	int combined_state=call->local.state<<3;
 	combined_state|=sender_state;
 	call->remote.state=sender_state;
-	WHYF("Far end is in state %s",vomp_describe_state(call->remote.state));
-	WHYF("I am in state %s",vomp_describe_state(call->local.state));
 	switch(combined_state) {
 	case (VOMP_STATE_NOCALL<<3)|VOMP_STATE_NOCALL:
 	  /* We both think that we are not yet in a call, and we have session numbers
@@ -1099,15 +1104,11 @@ int app_vomp_dtmf(int argc, const char *const *argv, struct command_line_option 
       =(digit<<4)+7; /* 70ms standard tone duration */
   }
 
-  if (overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000))
+  if (overlay_mdp_send(&mdp,0,0))
     {
       WHY("Send DTMF failed.");
     }
-  if (mdp.packetTypeAndFlags==MDP_ERROR&&mdp.error.error)
-    fprintf(stderr,"Send DTMF failed: error=%d, message='%s'\n",
-	    mdp.error.error,mdp.error.message);
-  else
-    printf("Send DTMF accepted.\n");
+  printf("DTMF digit(s) sent.\n");
   
   return overlay_mdp_client_done();
 } 
