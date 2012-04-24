@@ -61,6 +61,7 @@ setup_dna() {
    [ "$1" = --no-mkdir ] || mkdir $DNATMP
    export SERVALINSTANCE_PATH=$DNATMP
    hlr_dat=$SERVALINSTANCE_PATH/hlr.dat
+   unset SERVALD_OUTPUT_DELIMITER
 }
 
 # Utility function for setting up DNA JNI fixtures:

@@ -44,10 +44,21 @@ assert_echo_works() {
    assertStdoutIs -e 'Hello,\nworld!\n'
 }
 
-doc_Echo="Serval echo command works via JNI"
+doc_Echo="Serval JNI echo Hello world"
 test_Echo() {
    executeOk java -classpath "$PWD/classes" org.servalproject.servald.ServalD echo 'Hello,' 'world!'
    assertStdoutIs -e 'Hello,\nworld!\n'
+}
+
+doc_Delim="Serval non-JNI output delimiter environment variable"
+setup_Delim() {
+   setup_dna
+   assert_echo_works
+}
+test_Delim() {
+   export SERVALD_OUTPUT_DELIMITER=:::
+   executeOk $dna echo 'Hello,' 'world!'
+   assertStdoutIs 'Hello,:::world!:::'
 }
 
 runTests "$@"
