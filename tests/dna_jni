@@ -36,6 +36,7 @@ compile_java_classes() {
    assert [ -r classes/org/servalproject/servald/ServalD.class ]
    assert [ -r classes/org/servalproject/servald/ServalDResult.class ]
    assert [ -r classes/org/servalproject/servald/ServalDReentranceError.class ]
+   assert [ -r classes/org/servalproject/servald/ServalDTests.class ]
 }
 
 # Make sure that the normal echo command-line works, without JNI.
@@ -61,5 +62,11 @@ test_Delim() {
    assertStdoutIs 'Hello,:::world!:::'
 }
 
-runTests "$@"
+doc_Repeat="Serval JNI repeated calls in same process"
+test_Repeat() {
+   executeOk java -classpath "$PWD/classes" org.servalproject.servald.ServalDTests repeat 50 echo 'Hello,' 'world!'
+   assertStdoutLineCount '==' 50
+   assertStdoutGrep --matches=50 '^0:Hello,:world!$'
+}
 
+runTests "$@"
