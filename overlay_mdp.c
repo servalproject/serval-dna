@@ -83,6 +83,7 @@ int overlay_mdp_setup_sockets()
       int send_buffer_size=64*1024;    
       int res = setsockopt(mdp_named_socket, SOL_SOCKET, SO_SNDBUF, 
 		       &send_buffer_size, sizeof(send_buffer_size));
+      if (res) WHYF("setsockopt() failed: errno=%d",errno);
     }
   }
 
@@ -1056,6 +1057,12 @@ int overlay_mdp_client_init()
       perror("bind");
       return -1;
     }
+
+    int send_buffer_size=128*1024;
+    int res = setsockopt(mdp_client_socket, SOL_SOCKET, SO_SNDBUF, 
+			 &send_buffer_size, sizeof(send_buffer_size));
+    if (res) WHYF("setsockopt() failed: errno=%d",errno);
+
   }
   
   return 0;
