@@ -169,7 +169,7 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
 
 int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
 {
-  if (flags&(VOMP_TELLREMOTE|VOMP_SENDAUDIO)) {
+  if (flags&VOMP_TELLREMOTE) {
     int combined_status=(call->remote.state<<4)|call->local.state;
     if (call->last_sent_status!=combined_status
 	||(flags&VOMP_FORCETELLREMOTE)==VOMP_FORCETELLREMOTE
@@ -256,6 +256,16 @@ int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
     mdp.vompevent.remote_state=call->remote.state;
 
     bcopy(&call->remote_codec_list[0],&mdp.vompevent.supported_codecs[0],256);
+
+    if (flags&VOMP_SENDAUDIO) {
+      bcopy(&arg->vompevent.audio_bytes[0],
+	    &mdp.vompevent.audio_bytes[0],
+	    vomp_sample_size(arg->vompevent.audio_sample_codec));
+      mdp.vompevent.audio_sample_codec=arg->vompevent.audio_sample_codec;
+      mdp.vompevent.audio_sample_bytes=arg->vompevent.audio_sample_bytes;
+      mdp.vompevent.audio_sample_starttime=arg->vompevent.audio_sample_starttime;
+      mdp.vompevent.audio_sample_endtime=arg->vompevent.audio_sample_endtime;
+    }
     
     int i;
     long long now=overlay_gettime_ms();
@@ -285,8 +295,18 @@ int vomp_process_audio(vomp_call_state *call,overlay_mdp_frame *mdp)
       int codec=mdp->in.payload[ofs];
       WHYF("Spotted a %s sample block",vomp_describe_codec(codec));
       if (!codec||vomp_sample_size(codec)<0) break;
+      if ((ofs+1+vomp_sample_size(codec))>mdp->in.payload_length) break;
+
+      overlay_mdp_frame arg;
+      arg.vompevent.audio_sample_starttime=0;
+      arg.vompevent.audio_sample_endtime=0;
+      arg.vompevent.audio_sample_codec=codec;
+      arg.vompevent.audio_sample_bytes=vomp_sample_size(codec);
+      bcopy(&mdp->in.payload[ofs+1],&arg.vompevent.audio_bytes[0],
+	    arg.vompevent.audio_sample_bytes);     
 
       /* Pass audio frame to all registered listeners */
+      vomp_send_status(call,VOMP_TELLINTERESTED|VOMP_SENDAUDIO,&arg);
 	
       ofs+=1+vomp_sample_size(codec);
     }
@@ -602,7 +622,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	WHY("Audio packet arrived");
 	vomp_call_state *call
 	  =vomp_find_call_by_session(mdp->vompevent.call_session_token);
-	return vomp_send_status(call,VOMP_SENDAUDIO,mdp);
+	return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_SENDAUDIO,mdp);
       }
       break;
     default:
