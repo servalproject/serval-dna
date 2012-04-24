@@ -55,7 +55,12 @@ int overlay_mdp_setup_sockets()
 	mdp_abstract_socket=-1;
 	WHY("Could not open abstract name-space socket (only a problem on Linux).");
       }
+      
+      int send_buffer_size=64*1024;    
+      int res = setsockopt(mdp_abstract_socket, SOL_SOCKET, SO_SNDBUF, 
+		       &send_buffer_size, sizeof(send_buffer_size));
     }
+
   }
 #endif
   if (mdp_named_socket==-1) {
@@ -74,6 +79,10 @@ int overlay_mdp_setup_sockets()
 	mdp_named_socket=-1;
 	WHY("Could not open named unix domain socket.");
       }
+
+      int send_buffer_size=64*1024;    
+      int res = setsockopt(mdp_named_socket, SOL_SOCKET, SO_SNDBUF, 
+		       &send_buffer_size, sizeof(send_buffer_size));
     }
   }
 
@@ -154,7 +163,7 @@ int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
     printf("sock=%d, r=%d\n",sock,r);
     return -1;
   } else
-    WHYF("reply of %d bytes sent",r);
+    if (0) WHYF("reply of %d bytes sent",r);
   return 0;  
 }
 
