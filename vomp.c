@@ -1076,10 +1076,10 @@ char vomp_dtmf_digit_to_char(int digit)
   return '?';
 }
 
-int app_vomp_dtmf(int argc, char **argv, struct command_line_option *o)
+int app_vomp_dtmf(int argc, const char *const *argv, struct command_line_option *o)
 {
-  char *call_token;
-  char *digits;
+  const char *call_token;
+  const char *digits;
   cli_arg(argc, argv, o, "call", &call_token, NULL, "");
   cli_arg(argc, argv, o, "digits", &digits,NULL,"");
 

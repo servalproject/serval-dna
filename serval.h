@@ -1328,3 +1328,4 @@ int app_vomp_monitor(int argc, const char *const *argv, struct command_line_opti
 #ifdef HAVE_VOIPTEST
 int app_pa_phone(int argc, const char *const *argv, struct command_line_option *o);
 #endif
+int app_vomp_dtmf(int argc, const char *const *argv, struct command_line_option *o);
