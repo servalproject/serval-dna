@@ -569,7 +569,7 @@ int cli_absolute_path(const char *arg)
 int app_server_start(int argc, const char *const *argv, struct command_line_option *o)
 {
   /* Process optional arguments */
-  int foregroundP= (argc >= 3 && !strcasecmp(argv[2], "foreground"));
+  int foregroundP= (argc >= 2 && !strcasecmp(argv[1], "foreground"));
   if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1)
     return -1;
 
@@ -1165,6 +1165,50 @@ int app_id_self(int argc, const char *const *argv, struct command_line_option *o
   return 0;
 }
 
+int app_node_info(int argc, const char *const *argv, struct command_line_option *o)
+{
+  const char *sid;
+  cli_arg(argc, argv, o, "sid", &sid, NULL, "");
+  unsigned char packed_sid[SID_SIZE];
+
+  overlay_mdp_frame mdp;
+  bzero(&mdp,sizeof(mdp));
+
+  mdp.packetTypeAndFlags=MDP_NODEINFO;
+  if (argc>3) mdp.nodeinfo.resolve_did=1;
+
+  /* get SID or SID prefix */
+  int i;
+  mdp.nodeinfo.sid_prefix_length=0;
+  for(i = 0; i != SID_SIZE&&sid[i<<1]&&sid[(i<<1)+1]; ++i) {
+    packed_sid[mdp.nodeinfo.sid_prefix_length] = hexvalue(sid[i<<1]) << 4;
+    packed_sid[mdp.nodeinfo.sid_prefix_length++] |= hexvalue(sid[(i<<1)+1]);
+  }
+
+  int result=overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000);
+  if (result) {
+    if (mdp.packetTypeAndFlags==MDP_ERROR)
+      {
+	return WHYF("  MDP Server error #%d: '%s'",mdp.error.error,mdp.error.message);
+      }
+    else
+      return WHYF("Could not get information about node.");
+  }
+
+  cli_printf("%d:%d:%s:%s:%s:%s:%s:%d:%d\n",
+	     mdp.nodeinfo.index,
+	     mdp.nodeinfo.count,
+	     mdp.nodeinfo.foundP?"found":"noresult",
+	     overlay_render_sid(mdp.nodeinfo.sid),
+	     mdp.nodeinfo.resolve_did?mdp.nodeinfo.did:"did-not-resolved",
+	     mdp.nodeinfo.localP?"self":"peer",
+	     mdp.nodeinfo.neighbourP?"direct":"indirect",
+	     mdp.nodeinfo.score,
+	     mdp.nodeinfo.interface_number);
+
+  return 0;
+}
+
 /* NULL marks ends of command structure.
    "<anystring>" marks an arg that can take any value.
    "[<anystring>]" marks an optional arg that can take any value.
@@ -1189,19 +1233,19 @@ command_line_option command_line_options[]={
    "Display command usage."},
   {app_echo,{"echo","...",NULL},CLIFLAG_STANDALONE,
    "Output the supplied string."},
-  {app_server_start,{"node","start",NULL},CLIFLAG_STANDALONE,
+  {app_server_start,{"start",NULL},CLIFLAG_STANDALONE,
    "Start Serval Mesh node process with instance path taken from SERVALINSTANCE_PATH environment variable."},
-  {app_server_start,{"node","start","in","<instance path>",NULL},CLIFLAG_STANDALONE,
+  {app_server_start,{"start","in","<instance path>",NULL},CLIFLAG_STANDALONE,
    "Start Serval Mesh node process with given instance path."},
-  {app_server_start,{"node","start","foreground",NULL},CLIFLAG_STANDALONE,
+  {app_server_start,{"start","foreground",NULL},CLIFLAG_STANDALONE,
    "Start Serval Mesh node process without detatching from foreground."},
-  {app_server_start,{"node","start","foreground","in","<instance path>",NULL},CLIFLAG_STANDALONE,
+  {app_server_start,{"start","foreground","in","<instance path>",NULL},CLIFLAG_STANDALONE,
    "Start Serval Mesh node process with given instance path, without detatching from foreground."},
-  {app_server_stop,{"node","stop",NULL},0,
+  {app_server_stop,{"stop",NULL},0,
    "Stop a running Serval Mesh node process with instance path taken from SERVALINSTANCE_PATH environment variable."},
-  {app_server_stop,{"node","stop","in","<instance path>",NULL},0,
+  {app_server_stop,{"stop","in","<instance path>",NULL},0,
    "Stop a running Serval Mesh node process with given instance path."},
-  {app_server_status,{"node","status",NULL},0,
+  {app_server_status,{"status",NULL},0,
    "Display information about any running Serval Mesh node."},
   {app_mdp_ping,{"mdp","ping","<SID|broadcast>",NULL},CLIFLAG_STANDALONE,
    "Attempts to ping specified node via Mesh Datagram Protocol (MDP)."},
@@ -1239,6 +1283,8 @@ command_line_option command_line_options[]={
    "Return my own identity(s) as SIDs"},
   {app_id_self,{"id","peers",NULL},0,
    "Return identity of known peers as SIDs"},
+  {app_node_info,{"node","info","<sid>","[<did>]",NULL},0,
+   "Return information about SID, and optionally ask for DID resolution via network"},
 #ifdef HAVE_VOIPTEST
   {app_pa_phone,{"phone",NULL},0,
    "Run phone test application"},

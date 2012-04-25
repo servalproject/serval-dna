@@ -1193,6 +1193,22 @@ typedef struct overlay_mdp_vompevent {
   };
 } overlay_mdp_vompevent;
 
+#define MDP_NODEINFO 8
+typedef struct overlay_mdp_nodeinfo {
+  unsigned char sid[SID_SIZE];
+  int sid_prefix_length; /* allow wildcard matching */
+  char did[64];
+  int foundP;
+  int localP;
+  int neighbourP;
+  int score;
+  int interface_number;
+  int resolve_did;
+  unsigned long long time_since_last_observation;
+  int index; /* which record to return or was returned (incase there are multiple matches) */
+  int count; /* number of matching records */
+} overlay_mdp_nodeinfo;
+
 typedef struct overlay_mdp_frame {
 #define MDP_AWAITREPLY 9999
   unsigned int packetTypeAndFlags;
@@ -1202,6 +1218,7 @@ typedef struct overlay_mdp_frame {
     overlay_mdp_bind_request bind;
     overlay_mdp_addrlist addrlist;
     overlay_mdp_vompevent vompevent;
+    overlay_mdp_nodeinfo nodeinfo;
     overlay_mdp_error error;
     /* 2048 is too large (causes EMSGSIZE errors on OSX, but probably fine on
        Linux) */
@@ -1338,6 +1355,8 @@ int cli_delim(const char *opt);
 
 int overlay_mdp_getmyaddr(int index,unsigned char *sid);
 int overlay_mdp_bind(unsigned char *localaddr,int port); 
+int overlay_route_node_info(overlay_mdp_frame *mdp,
+			    struct sockaddr_un *addr,int addrlen);
 
 int app_vomp_status(int argc, const char *const *argv, struct command_line_option *o);
 int app_vomp_dial(int argc, const char *const *argv, struct command_line_option *o);

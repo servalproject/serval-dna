@@ -1264,3 +1264,131 @@ int overlay_route_tick_node(int bin,int slot,long long now)
   return overlay_route_recalc_node_metrics(&overlay_nodes[bin][slot],now);
 }
 
+int overlay_route_node_info(overlay_mdp_frame *mdp,
+			    struct sockaddr_un *addr,int addrlen)
+{
+  int bin,slot,n;
+  long long now=overlay_gettime_ms();
+
+  /* check if it is a local identity */
+  int cn,in,kp;
+  for(cn=0;cn<keyring->context_count;cn++)
+    for(in=0;in<keyring->contexts[cn]->identity_count;in++)
+      for(kp=0;kp<keyring->contexts[cn]->identities[in]->keypair_count;kp++)
+	if (keyring->contexts[cn]->identities[in]->keypairs[kp]->type
+	    ==KEYTYPE_CRYPTOBOX)
+	  {
+	    if (!bcmp(&mdp->nodeinfo.sid[0],
+		      &keyring->contexts[cn]->identities[in]
+		      ->keypairs[kp]->public_key[0],
+		      mdp->nodeinfo.sid_prefix_length))
+	      {
+		if (mdp->nodeinfo.count==mdp->nodeinfo.index)
+		  {
+		    mdp->nodeinfo.foundP=1;
+		    mdp->nodeinfo.localP=1;
+		    mdp->nodeinfo.neighbourP=0;
+		    mdp->nodeinfo.time_since_last_observation=0;
+		    mdp->nodeinfo.score=256;
+		    mdp->nodeinfo.interface_number=-1;
+		    bcopy(&keyring->contexts[cn]->identities[in]
+			  ->keypairs[kp]->public_key[0],
+			  &mdp->nodeinfo.sid[0],SID_SIZE);
+
+		    mdp->nodeinfo.did[0]=0;
+		    if (mdp->nodeinfo.resolve_did) {
+		      mdp->nodeinfo.resolve_did=0;
+		      int k2;
+		      for(k2=0;k2<keyring->contexts[cn]->identities[in]
+			    ->keypair_count;k2++)
+			if (keyring->contexts[cn]->identities[in]->keypairs[k2]->type
+			    ==KEYTYPE_DID)
+			  {
+			    /* private key field has packed did */
+			    extractDid(keyring->contexts[cn]->identities[in]
+				       ->keypairs[k2]->private_key,0,
+				       &mdp->nodeinfo.did[0]);
+			    mdp->nodeinfo.resolve_did=1;
+			  }
+		    }
+		  }
+		mdp->nodeinfo.count++;
+	      }
+	  }
+
+  /* check neighbour table, i.e., if directly connected */
+  for(n=0;n<overlay_neighbour_count;n++)
+    if (overlay_neighbours[n].node)
+      {
+	if (!bcmp(&mdp->nodeinfo.sid[0],
+		  &overlay_neighbours[n].node->sid[0],
+		  mdp->nodeinfo.sid_prefix_length))
+	  {
+	    if (mdp->nodeinfo.count==mdp->nodeinfo.index)
+	      {
+		mdp->nodeinfo.foundP=1;
+		mdp->nodeinfo.localP=0;
+		mdp->nodeinfo.neighbourP=1;
+		mdp->nodeinfo.time_since_last_observation
+		  =overlay_gettime_ms()
+		  -overlay_neighbours[n].last_observation_time_ms;
+		mdp->nodeinfo.score=-1;
+		mdp->nodeinfo.interface_number=-1;
+		int i;
+		for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
+		  if (overlay_neighbours[n].scores[i]>mdp->nodeinfo.score)
+		    {
+		      mdp->nodeinfo.score=overlay_neighbours[n].scores[i];
+		      mdp->nodeinfo.interface_number=i;
+		    }
+		
+		bcopy(&overlay_neighbours[n].node->sid[0],
+		      &mdp->nodeinfo.sid[0],SID_SIZE);
+	      }
+	    mdp->nodeinfo.count++;
+	  }
+      }
+  
+  /* check if it is an indirectly connected node that we know about */
+  for(bin=0;bin<overlay_bin_count;bin++)
+    for(slot=0;slot<overlay_bin_size;slot++)
+      {
+	if (!overlay_nodes[bin][slot].sid[0]) continue;
+	
+	if (!bcmp(&mdp->nodeinfo.sid[0],
+		  &overlay_nodes[bin][slot].sid[0],
+		  mdp->nodeinfo.sid_prefix_length))
+	  {
+	    if (mdp->nodeinfo.count==mdp->nodeinfo.index)
+	      {
+		mdp->nodeinfo.foundP=1;
+		mdp->nodeinfo.localP=0;
+		mdp->nodeinfo.neighbourP=0;
+		mdp->nodeinfo.time_since_last_observation=overlay_gettime_ms();
+		mdp->nodeinfo.score=-1;
+		mdp->nodeinfo.interface_number=-1;
+		int o;
+		for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++)
+		  if (overlay_nodes[bin][slot].observations[o].observed_score)
+		    {
+		      overlay_node_observation *ob
+			=&overlay_nodes[bin][slot].observations[o];
+		      if (ob->corrected_score>mdp->nodeinfo.score) {
+			mdp->nodeinfo.score=ob->corrected_score;
+		      }
+		      if ((now-ob->rx_time)
+			  <mdp->nodeinfo.time_since_last_observation)
+			mdp->nodeinfo.time_since_last_observation=now-ob->rx_time;
+		    }
+		
+		bcopy(&overlay_nodes[bin][slot].sid[0],
+		      &mdp->nodeinfo.sid[0],SID_SIZE);
+	      }
+	    mdp->nodeinfo.count++;
+	  }
+      }
+
+  return overlay_mdp_reply(mdp_named_socket,addr,addrlen,mdp);
+
+  return 0;
+}

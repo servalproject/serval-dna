@@ -902,6 +902,8 @@ int overlay_mdp_poll()
       switch(mdp->packetTypeAndFlags&MDP_TYPE_MASK) {
       case MDP_VOMPEVENT:
 	return vomp_mdp_event(mdp,recvaddr_un,recvaddrlen);
+      case MDP_NODEINFO:
+	return overlay_route_node_info(mdp,recvaddr_un,recvaddrlen);
       case MDP_GETADDRS:
 	{
 	  overlay_mdp_frame mdpreply;
@@ -1018,6 +1020,10 @@ int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
     case MDP_VOMPEVENT:
       /* XXX too hard to work out precisely for now. */
       len=sizeof(overlay_mdp_frame);
+      break;
+    case MDP_NODEINFO:
+      len=&mdp->nodeinfo.count-(int *)mdp;
+      len+=sizeof(mdp->nodeinfo.count);
       break;
     default:
       return WHY("Illegal MDP frame type.");
