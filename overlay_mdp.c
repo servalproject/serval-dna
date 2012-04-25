@@ -942,6 +942,7 @@ int overlay_mdp_poll()
 	    if (i>=max_sids) break;
 	  }
 	  mdpreply.addrlist.frame_sid_count=i;
+	  mdpreply.addrlist.last_sid=count-1;
 
 	  /* Send back to caller */
 	  return overlay_mdp_reply(mdp_named_socket,
