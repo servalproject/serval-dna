@@ -459,6 +459,56 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 	   verfies out okay. */
 	WHY("key mapping request");
 	return keyring_mapping_request(keyring,mdp);
+      case MDP_PORT_DNALOOKUP: /* attempt to resolve DID to SID */
+	{
+	  int cn=0,in=0,kp=0;
+	  char did[64+1];
+	  int pll=mdp->out.payload_length;
+	  /* get did from the packet */
+	  if (mdp->out.payload_length>=64) 
+	    return WHY("DNA DID resolution contains excessively long DID");
+	  if (mdp->out.payload_length<1)
+	    return WHY("Empty DID in DNA resolution request");
+	  bcopy(&mdp->out.payload[0],&did[0],pll);
+	  /* make sure it is null terminated */
+	  did[pll]=0; 
+	  overlay_mdp_swap_src_dst(mdp);
+	  while(keyring_find_did(keyring,&cn,&in,&kp,did))
+	    {
+	      /* package DID plus SID into reply (we include the DID because
+		 it could be a wild-card DID search). */
+	      if (keyring->contexts[cn]->identities[in]->keypairs[kp]
+		  ->private_key_len>64) 
+		/* skip excessively long DID records */
+		continue;
+	      /* copy SID out */
+	      bcopy(keyring->contexts[cn]->identities[in]->keypairs[0]
+		    ->public_key,&mdp->out.payload[0],
+		    keyring->contexts[cn]->identities[in]->keypairs[0]
+		    ->public_key_len);
+	      /* and null-terminated DID */
+	      bcopy(keyring->contexts[cn]->identities[in]->keypairs[kp]
+		    ->private_key,&mdp->out.payload[SID_SIZE],
+		    keyring->contexts[cn]->identities[in]->keypairs[kp]
+		    ->private_key_len);
+	      /* set length */
+	      mdp->out.payload_length=SID_SIZE+
+		keyring->contexts[cn]->identities[in]->keypairs[kp]
+		->private_key_len;
+	      overlay_mdp_dispatch(mdp,0 /* system generated */,
+				   NULL,0);
+	    }
+	  /* and switch addresses back around in case the caller was planning on
+	     using MDP structure again (this happens if there is a loop-back reply
+	     and the frame needs sending on, as happens with broadcasts.  MDP ping
+	     is a simple application where this occurs).
+	     Similarly restore MDP payload content and length */
+	  overlay_mdp_swap_src_dst(mdp);
+	  bcopy(&did[0],&mdp->out.payload[0],pll);
+	  mdp->out.payload_length=pll;
+	  return 0;
+	}
+	break;
       case MDP_PORT_ECHO: /* well known ECHO port for TCP/UDP and now MDP */
 	{
 	  /* Echo is easy: we swap the sender and receiver addresses (and thus port
@@ -1135,6 +1185,24 @@ int overlay_mdp_recv(overlay_mdp_frame *mdp,int *ttl)
     return 0;
   } else 
     /* no packet received */
-    return WHY("No packet received");
+    return -1;
 
+}
+
+int overlay_mdp_bind(unsigned char *localaddr,int port) 
+{
+  overlay_mdp_frame mdp;
+  mdp.packetTypeAndFlags=MDP_BIND;
+  bcopy(localaddr,mdp.bind.sid,SID_SIZE);
+  mdp.bind.port_number=port;
+  int result=overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000);
+  if (result) {
+    if (mdp.packetTypeAndFlags==MDP_ERROR)
+      fprintf(stderr,"Could not bind to MDP port %d: error=%d, message='%s'\n",
+	      port,mdp.error.error,mdp.error.message);
+    else
+      fprintf(stderr,"Could not bind to MDP port %d (no reason given)\n",port);
+    return -1;
+  }
+  return 0;
 }

@@ -441,14 +441,79 @@ int app_echo(int argc, const char *const *argv, struct command_line_option *o)
 
 int app_dna_lookup(int argc, const char *const *argv, struct command_line_option *o)
 {
+  int i;
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
     return -1;
 
+  const char *did;
+  if (cli_arg(argc, argv, o, "did", &did, NULL, "*") == -1)
+    return -1;
+
+  /* Bind to MDP socket and await confirmation */
+  unsigned char srcsid[SID_SIZE];
+  int port=32768+(random()&32767);
+  if (overlay_mdp_getmyaddr(0,srcsid)) return WHY("Could not get local address");
+  if (overlay_mdp_bind(srcsid,port)) return WHY("Could not bind to MDP socket");
+  WHY("bound port");
+
   /* use MDP to send the lookup request to MDP_PORT_DNALOOKUP, and wait for
      replies. */
+  overlay_mdp_frame mdp;
+  bzero(&mdp,sizeof(mdp));
 
-  return WHY("Not implemented");
+  mdp.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT;
+
+  /* set source address to a local address, and pick a random port */
+  mdp.out.src.port=port;
+  bcopy(&srcsid[0],&mdp.out.src.sid[0],SID_SIZE);
+
+  /* Send to broadcast address and DNA lookup port */
+  for(i=0;i<SID_SIZE;i++) mdp.out.dst.sid[i]=0xff;
+  mdp.out.dst.port=MDP_PORT_DNALOOKUP;
+
+  /* put DID into packet */
+  bcopy(did,&mdp.out.payload[0],strlen(did)+1);
+  mdp.out.payload_length=strlen(did)+1;
+
+  /* Now repeatedly send resolution request and collect results until we reach
+     timeout. */
+  unsigned long long timeout=overlay_gettime_ms()+3000;
+  unsigned long long last_tx=0;
+  while(timeout>overlay_gettime_ms())
+    {
+      unsigned long long now=overlay_gettime_ms();
+      if ((last_tx+125)<now)
+	{ 
+	  overlay_mdp_send(&mdp,0,0);
+	  last_tx=now;
+	}
+      long long short_timeout=125;
+      while(short_timeout>0) {
+	if (overlay_mdp_client_poll(short_timeout))
+	  {
+	    overlay_mdp_frame rx;
+	    int ttl;
+	    while (overlay_mdp_recv(&rx,&ttl)==0)
+	      {
+		if (rx.packetTypeAndFlags==MDP_ERROR)
+		  {
+		    fprintf(stderr,"       Error message: %s\n",mdp.error.message);
+		  }
+		else if (rx.packetTypeAndFlags==MDP_RX)
+		  fprintf(stderr,"%s:%s\n",
+			  overlay_render_sid(&rx.in.payload[0]),
+			  &rx.in.payload[SID_SIZE]);
+		if (servalShutdown) break;
+	      }
+	  }
+	if (servalShutdown) break;
+	short_timeout=125-(overlay_gettime_ms()-now);
+      }
+      if (servalShutdown) break;
+    }
+
+  return 0;
 }
 
 int confValueRotor=0;
@@ -641,30 +706,12 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
     return -1;
 
   overlay_mdp_frame mdp;
-
+  
   /* Bind to MDP socket and await confirmation */
-  int port=32768+(random()&32767);
-  mdp.packetTypeAndFlags=MDP_BIND;
-  if (0)
-    bzero(&mdp.bind.sid[0],SID_SIZE); // listen on all addressses
-  else
-    /* Listen on a local address.
-       Must be done before setting anything else in mdp.bind, since mdp.bind
-       and mdp.addrlist share storage as a union in the mdp structure. */
-    bcopy(&mdp.addrlist.sids[0][0],mdp.bind.sid,SID_SIZE);
   unsigned char srcsid[SID_SIZE];
-  if (overlay_mdp_getmyaddr(0,mdp.bind.sid)) return -1;
-  bcopy(mdp.bind.sid,srcsid,SID_SIZE);
-  mdp.bind.port_number=port;
-  int result=overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000);
-  if (result) {
-    if (mdp.packetTypeAndFlags==MDP_ERROR)
-      fprintf(stderr,"Could not bind to MDP port %d: error=%d, message='%s'\n",
-	      port,mdp.error.error,mdp.error.message);
-    else
-      fprintf(stderr,"Could not bind to MDP port %d (no reason given)\n",port);
-    return -1;
-  }
+  int port=32768+(random()&32767);
+  if (overlay_mdp_getmyaddr(0,srcsid)) return WHY("Could not get local address");
+  if (overlay_mdp_bind(srcsid,port)) return WHY("Could not bind to MDP socket");
 
   /* First sequence number in the echo frames */
   unsigned int firstSeq=random();
@@ -726,7 +773,7 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
 
     while(now<timeout) {
       long long timeout_ms=timeout-overlay_gettime_ms();
-      result = overlay_mdp_client_poll(timeout_ms);
+      int result = overlay_mdp_client_poll(timeout_ms);
 
       if (result>0) {
 	int ttl=-1;
@@ -1089,7 +1136,7 @@ command_line_option command_line_options[]={
   {cli_usage,{"help",NULL},0,
    "Display command usage."},
   {app_echo,{"echo","...",NULL},CLIFLAG_STANDALONE,
-   "Lookup the SIP/MDP address of the supplied telephone number (DID)."},
+   "Output the supplied string."},
   {app_server_start,{"node","start",NULL},CLIFLAG_STANDALONE,
    "Start Serval Mesh node process with instance path taken from SERVALINSTANCE_PATH environment variable."},
   {app_server_start,{"node","start","in","<instance path>",NULL},CLIFLAG_STANDALONE,
