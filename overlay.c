@@ -399,8 +399,10 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	  overlay_frame *qf=op_dup(f);
 	  if (!qf) WHY("Could not clone frame for queuing");
 	  else {
-	    /* XXX we should preserve the queue priority of the frame */
 	    int qn=OQ_ORDINARY;
+	    /* Make sure voice traffic gets priority */
+	    if ((qf->type&OF_TYPE_BITS)==OF_TYPE_DATA_VOICE)
+	      qn=OQ_ISOCHRONOUS_VOICE;
 	    if (0) WHY("queuing frame for forwarding");
 	    if (overlay_payload_enqueue(qn,qf)) {
 	      WHY("failed to enqueue forwarded payload");
