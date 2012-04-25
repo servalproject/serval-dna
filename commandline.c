@@ -1124,6 +1124,36 @@ int app_keyring_set_did(int argc, const char *const *argv, struct command_line_o
   return 0;
 }
 
+int app_id_self(int argc, const char *const *argv, struct command_line_option *o)
+{
+  /* List my own identities */
+  overlay_mdp_frame a;
+
+  a.packetTypeAndFlags=MDP_GETADDRS;
+  a.addrlist.first_sid=-1;
+  a.addrlist.last_sid=0x7fffffff;
+  a.addrlist.frame_sid_count=MDP_MAX_SID_REQUEST;
+  int result=overlay_mdp_send(&a,MDP_AWAITREPLY,5000);
+  if (result) {
+    if (a.packetTypeAndFlags==MDP_ERROR)
+      {
+	WHYF("  MDP Server error #%d: '%s'",
+	     a.error.error,a.error.message);
+      }
+    else
+      WHYF("Could not get list of local MDP addresses");
+    return WHY("Failed to get local address list");
+  }
+  if ((a.packetTypeAndFlags&MDP_TYPE_MASK)!=MDP_ADDRLIST)
+    return WHY("MDP Server returned something other than an address list");
+  int i;
+  for(i=0;i<a.addrlist.frame_sid_count;i++) {
+    cli_printf("%s\n",overlay_render_sid(a.addrlist.sids[i]));    
+  }
+  /* XXX Only displays the first MDP_MAX_SID_REQUEST (currently 59) SIDs */
+  return 0;
+}
+
 /* NULL marks ends of command structure.
    "<anystring>" marks an arg that can take any value.
    "[<anystring>]" marks an optional arg that can take any value.
@@ -1133,10 +1163,16 @@ int app_keyring_set_did(int argc, const char *const *argv, struct command_line_o
    list of valid command line formats for display to the user if they try an
    invalid one.  It also means we can do away with getopt() etc.
 
+   The CLIFLAG_STANDALONE means that they cannot be used with a running servald
+   instance, but act as an instance.  In other words, don't call these from the
+   serval frontend, e.g, Java application on Android.  There are various reasons,
+   such as some will try to fork() and exec() (bad for a Java thread to do), while
+   others manipulate files that the running instance may be using.
+
    Keep this list alphabetically sorted for user convenience.
 */
 command_line_option command_line_options[]={
-  {app_dna_lookup,{"dna","lookup","<did>",NULL},CLIFLAG_NONOVERLAY,
+  {app_dna_lookup,{"dna","lookup","<did>",NULL},0,
    "Lookup the SIP/MDP address of the supplied telephone number (DID)."},
   {cli_usage,{"help",NULL},0,
    "Display command usage."},
@@ -1170,7 +1206,7 @@ command_line_option command_line_options[]={
    "List all manifests and files in Rhizome"},
   {app_keyring_create,{"keyring","create",NULL},0,
    "Create a new keyring file."},
-  {app_keyring_list,{"keyring","list","[<pin,pin ...>]",NULL},0,
+  {app_keyring_list,{"keyring","list","[<pin,pin ...>]",NULL},CLIFLAG_STANDALONE,
    "List identites in specified key ring that can be accessed using the specified PINs"},
   {app_keyring_add,{"keyring","add","[<pin>]",NULL},CLIFLAG_STANDALONE,
    "Create a new identity in the keyring protected by the provided PIN"},
@@ -1187,7 +1223,11 @@ command_line_option command_line_options[]={
   {app_vomp_dtmf,{"vomp","dtmf","<call>","<digits>",NULL},0,
    "Send DTMF digits over specified call"},
   {app_vomp_dial,{"vomp","dial","<sid>","<did>","[<callerid>]",NULL},0,
-   "Attempt to dial the specified sid and did. Optionally supply the calling number"},
+   "Attempt to dial the specified sid and did."},
+  {app_id_self,{"id","self",NULL},0,
+   "Return my own identity(s) as SIDs"},
+  //  {app_id_peers,{"id","peers",NULL},0,
+  // "Return identity of known peers as SIDs"},
 #ifdef HAVE_VOIPTEST
   {app_pa_phone,{"phone",NULL},0,
    "Run phone test application"},

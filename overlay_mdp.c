@@ -941,7 +941,8 @@ int overlay_mdp_poll()
 	    count++;
 	    if (i>=max_sids) break;
 	  }
-	  
+	  mdpreply.addrlist.frame_sid_count=i;
+
 	  /* Send back to caller */
 	  return overlay_mdp_reply(mdp_named_socket,
 				   (struct sockaddr_un *)recvaddr,recvaddrlen,
