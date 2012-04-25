@@ -498,8 +498,13 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 	      mdp->out.payload_length=
 		keyring->contexts[cn]->identities[in]->keypairs[kp]
 		->private_key_len;
+	      /* mark as outgoing MDP message */
+	      mdp->packetTypeAndFlags&=MDP_FLAG_MASK;
+	      mdp->packetTypeAndFlags|=MDP_TX;
 	      overlay_mdp_dispatch(mdp,0 /* system generated */,
 				   NULL,0);
+	      kp++;
+	      
 	    }
 	  /* and switch addresses back around in case the caller was planning on
 	     using MDP structure again (this happens if there is a loop-back reply
@@ -522,7 +527,7 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 	  /* Swap addresses */
 	  overlay_mdp_swap_src_dst(mdp);
 
-	  if (mdp->out.dst.port==7) return WHY("echo loop averted");
+	  if (mdp->out.dst.port==MDP_PORT_ECHO) return WHY("echo loop averted");
 	  /* If the packet was sent to broadcast, then replace broadcast address
 	     with our local address. For now just responds with first local address */
 	  if (overlay_address_is_broadcast(mdp->out.src.sid))
@@ -558,7 +563,8 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
     }
     break;
   default:
-    return WHY("We should only see MDP_TX frames here");
+    return WHYF("We should only see MDP_TX frames here (MDP message type = 0x%x)",
+		mdp->packetTypeAndFlags);
   }
 
   return WHY("Not implemented");

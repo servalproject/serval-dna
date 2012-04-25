@@ -1337,7 +1337,7 @@ int cli_printf(const char *fmt, ...);
 int cli_delim(const char *opt);
 
 int overlay_mdp_getmyaddr(int index,unsigned char *sid);
-int overlay_mdp_bind(unsigned char *localaddr,int port);
+int overlay_mdp_bind(unsigned char *localaddr,int port); 
 
 int app_vomp_status(int argc, const char *const *argv, struct command_line_option *o);
 int app_vomp_dial(int argc, const char *const *argv, struct command_line_option *o);
