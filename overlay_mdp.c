@@ -917,30 +917,16 @@ int overlay_mdp_poll()
 	  
 	  /* Prepare reply packet */
 	  mdpreply.packetTypeAndFlags=MDP_ADDRLIST;
-	  if (mdp->addrlist.selfP)
-	    {
-	      /* For list of my own identities */
-	      int cn=0,in=0,kp=0;
-	      int count=0;
-	      while(keyring_next_identity(keyring,&cn,&in,&kp)) {	    
-		in++; count++;
-	      }
-	      mdpreply.addrlist.server_sid_count=count;
-	    }
-	  else 
-	    {
-	      /* For peer list */
-	    }
 	  mdpreply.addrlist.first_sid=sid_num;
 	  mdpreply.addrlist.last_sid=max_sid;
 	  mdpreply.addrlist.frame_sid_count=max_sids;
 	  
 	  /* Populate with SIDs */
+	  int i=0;
+	  int count=0;
 	  if (mdp->addrlist.selfP) {
 	    /* from self */
 	    int cn=0,in=0,kp=0;
-	    int i=0;
-	    int count=0;
 	    while(keyring_next_identity(keyring,&cn,&in,&kp)) {	    
 	      if (count>=sid_num&&(i<max_sids))
 		bcopy(keyring->contexts[cn]->identities[in]
@@ -950,11 +936,23 @@ int overlay_mdp_poll()
 	      count++;
 	      if (i>=max_sids) break;
 	    }
-	    mdpreply.addrlist.frame_sid_count=i;
-	    mdpreply.addrlist.last_sid=count-1;
 	  } else {
 	    /* from peer list */
+	    int bin,slot;
+	    int i=0,count=0;
+	    for(bin=0;bin<overlay_bin_count;bin++)
+	      for(slot=0;slot<overlay_bin_size;slot++)
+		{
+		  if (!overlay_nodes[bin][slot].sid[0]) continue;
+		  if (count>=sid_num&&(i<max_sids))
+		    bcopy(overlay_nodes[bin][slot].sid,
+			  mdpreply.addrlist.sids[i++],SID_SIZE);
+		  count++;
+		}
 	  }
+	  mdpreply.addrlist.frame_sid_count=i;
+	  mdpreply.addrlist.last_sid=sid_num+i-1;
+	  mdpreply.addrlist.server_sid_count=count;
 
 	  /* Send back to caller */
 	  return overlay_mdp_reply(mdp_named_socket,
