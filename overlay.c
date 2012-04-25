@@ -433,6 +433,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
       overlay_rhizome_saw_advertisements(interface,f,now);
       break;
     case OF_TYPE_DATA:
+    case OF_TYPE_DATA_VOICE:
       if (0) {
 	WHY("saw mdp containing frame");
 	printf("  src = %s\n",overlay_render_sid(f->source));

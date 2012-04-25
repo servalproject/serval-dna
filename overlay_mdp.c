@@ -621,7 +621,9 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   struct overlay_frame *frame;
   frame=calloc(sizeof(overlay_frame),1);
   if (!frame) return WHY("calloc() failed to allocate overlay frame");
-  frame->type=OF_TYPE_DATA;
+  /* give voice packets priority */
+  if (mdp->out.dst.port==MDP_PORT_VOMP) frame->type=OF_TYPE_DATA_VOICE;
+  else frame->type=OF_TYPE_DATA;
   frame->prev=NULL;
   frame->next=NULL;
   
