@@ -1131,6 +1131,7 @@ typedef struct overlay_mdp_error {
 #define MDP_GETADDRS 5
 #define MDP_ADDRLIST 6
 typedef struct overlay_mdp_addrlist {
+  int selfP;
   unsigned int server_sid_count;
   unsigned int first_sid;
   unsigned int last_sid;

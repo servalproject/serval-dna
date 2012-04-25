@@ -1131,6 +1131,7 @@ int app_id_self(int argc, const char *const *argv, struct command_line_option *o
   int result;
 
   a.packetTypeAndFlags=MDP_GETADDRS;
+  a.addrlist.selfP=1; /* get own identities, not those of peers */
   a.addrlist.first_sid=-1;
   a.addrlist.last_sid=0x7fffffff;
   a.addrlist.frame_sid_count=MDP_MAX_SID_REQUEST;
