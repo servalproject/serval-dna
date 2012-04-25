@@ -472,27 +472,31 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 	  bcopy(&mdp->out.payload[0],&did[0],pll);
 	  /* make sure it is null terminated */
 	  did[pll]=0; 
+	  /* remember source sid for putting back later */
+	  unsigned char srcsid[32];
+	  bcopy(&mdp->out.src.sid[0],&srcsid[0],SID_SIZE);
+	  /* now switch addresses around for any replies */
 	  overlay_mdp_swap_src_dst(mdp);
+	  
 	  while(keyring_find_did(keyring,&cn,&in,&kp,did))
 	    {
+	      WHYF("Found matching did");
 	      /* package DID plus SID into reply (we include the DID because
 		 it could be a wild-card DID search). */
 	      if (keyring->contexts[cn]->identities[in]->keypairs[kp]
 		  ->private_key_len>64) 
 		/* skip excessively long DID records */
 		continue;
-	      /* copy SID out */
-	      bcopy(keyring->contexts[cn]->identities[in]->keypairs[0]
-		    ->public_key,&mdp->out.payload[0],
-		    keyring->contexts[cn]->identities[in]->keypairs[0]
-		    ->public_key_len);
+	      /* copy SID out into source address of frame */
 	      /* and null-terminated DID */
+	      bcopy(&keyring->contexts[cn]->identities[in]->keypairs[kp]
+		    ->public_key[0],&mdp->out.src.sid[0],SID_SIZE);
 	      bcopy(keyring->contexts[cn]->identities[in]->keypairs[kp]
-		    ->private_key,&mdp->out.payload[SID_SIZE],
+		    ->private_key,&mdp->out.payload[0],
 		    keyring->contexts[cn]->identities[in]->keypairs[kp]
 		    ->private_key_len);
 	      /* set length */
-	      mdp->out.payload_length=SID_SIZE+
+	      mdp->out.payload_length=
 		keyring->contexts[cn]->identities[in]->keypairs[kp]
 		->private_key_len;
 	      overlay_mdp_dispatch(mdp,0 /* system generated */,
@@ -502,8 +506,10 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 	     using MDP structure again (this happens if there is a loop-back reply
 	     and the frame needs sending on, as happens with broadcasts.  MDP ping
 	     is a simple application where this occurs).
-	     Similarly restore MDP payload content and length */
+	     Similarly restore destination address & MDP payload content and
+	     length */
 	  overlay_mdp_swap_src_dst(mdp);
+	  bcopy(&srcsid[0],&mdp->out.src.sid[0],SID_SIZE);
 	  bcopy(&did[0],&mdp->out.payload[0],pll);
 	  mdp->out.payload_length=pll;
 	  return 0;

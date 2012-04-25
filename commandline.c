@@ -476,6 +476,8 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
   bcopy(did,&mdp.out.payload[0],strlen(did)+1);
   mdp.out.payload_length=strlen(did)+1;
 
+  WHY("polling network");
+
   /* Now repeatedly send resolution request and collect results until we reach
      timeout. */
   unsigned long long timeout=overlay_gettime_ms()+3000;
