@@ -1008,8 +1008,10 @@ int keyring_find_did(keyring_file *k,int *cn,int *in,int *kp,char *did)
     if (k->contexts[*cn]->identities[*in]->keypairs[*kp]->type==KEYTYPE_DID)
       {
 	/* Compare DIDs */
-	if ((!did[0])||(!strcasecmp(did,(char *)k->contexts[*cn]->identities[*in]
-				    ->keypairs[*kp]->private_key)))
+	if ((!did[0])
+	    ||(did[0]=='*'&&did[1]==0)
+	    ||(!strcasecmp(did,(char *)k->contexts[*cn]->identities[*in]
+			   ->keypairs[*kp]->private_key)))
 	  {
 	    /* match */
 	    return 1;

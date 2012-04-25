@@ -454,6 +454,8 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
   unsigned char srcsid[SID_SIZE];
   int port=32768+(random()&32767);
   if (overlay_mdp_getmyaddr(0,srcsid)) return WHY("Could not get local address");
+  printf("binding to %s:%d\n",
+	 overlay_render_sid(srcsid),port);
   if (overlay_mdp_bind(srcsid,port)) return WHY("Could not bind to MDP socket");
   WHY("bound port");
 
@@ -461,20 +463,6 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
      replies. */
   overlay_mdp_frame mdp;
   bzero(&mdp,sizeof(mdp));
-
-  mdp.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT;
-
-  /* set source address to a local address, and pick a random port */
-  mdp.out.src.port=port;
-  bcopy(&srcsid[0],&mdp.out.src.sid[0],SID_SIZE);
-
-  /* Send to broadcast address and DNA lookup port */
-  for(i=0;i<SID_SIZE;i++) mdp.out.dst.sid[i]=0xff;
-  mdp.out.dst.port=MDP_PORT_DNALOOKUP;
-
-  /* put DID into packet */
-  bcopy(did,&mdp.out.payload[0],strlen(did)+1);
-  mdp.out.payload_length=strlen(did)+1;
 
   WHY("polling network");
 
@@ -487,6 +475,20 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
       unsigned long long now=overlay_gettime_ms();
       if ((last_tx+125)<now)
 	{ 
+	  mdp.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT;
+	  
+	  /* set source address to a local address, and pick a random port */
+	  mdp.out.src.port=port;
+	  bcopy(&srcsid[0],&mdp.out.src.sid[0],SID_SIZE);
+	  
+	  /* Send to broadcast address and DNA lookup port */
+	  for(i=0;i<SID_SIZE;i++) mdp.out.dst.sid[i]=0xff;
+	  mdp.out.dst.port=MDP_PORT_DNALOOKUP;
+	  
+	  /* put DID into packet */
+	  bcopy(did,&mdp.out.payload[0],strlen(did)+1);
+	  mdp.out.payload_length=strlen(did)+1;
+
 	  overlay_mdp_send(&mdp,0,0);
 	  last_tx=now;
 	}

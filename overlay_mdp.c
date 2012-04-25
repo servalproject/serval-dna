@@ -477,7 +477,6 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 	  bcopy(&mdp->out.src.sid[0],&srcsid[0],SID_SIZE);
 	  /* now switch addresses around for any replies */
 	  overlay_mdp_swap_src_dst(mdp);
-	  
 	  while(keyring_find_did(keyring,&cn,&in,&kp,did))
 	    {
 	      WHYF("Found matching did");
@@ -489,7 +488,7 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 		continue;
 	      /* copy SID out into source address of frame */
 	      /* and null-terminated DID */
-	      bcopy(&keyring->contexts[cn]->identities[in]->keypairs[kp]
+	      bcopy(&keyring->contexts[cn]->identities[in]->keypairs[0]
 		    ->public_key[0],&mdp->out.src.sid[0],SID_SIZE);
 	      bcopy(keyring->contexts[cn]->identities[in]->keypairs[kp]
 		    ->private_key,&mdp->out.payload[0],
@@ -1212,3 +1211,31 @@ int overlay_mdp_bind(unsigned char *localaddr,int port)
   }
   return 0;
 }
+
+int overlay_mdp_getmyaddr(int index,unsigned char *sid)
+{
+  overlay_mdp_frame a;
+
+  a.packetTypeAndFlags=MDP_GETADDRS;
+  a.addrlist.first_sid=index;
+  a.addrlist.last_sid=0x7fffffff;
+  a.addrlist.frame_sid_count=MDP_MAX_SID_REQUEST;
+  int result=overlay_mdp_send(&a,MDP_AWAITREPLY,5000);
+  if (result) {
+    if (a.packetTypeAndFlags==MDP_ERROR)
+      {
+	fprintf(stderr,"Could not get list of local MDP addresses\n");
+	fprintf(stderr,"  MDP Server error #%d: '%s'\n",
+		a.error.error,a.error.message);
+      }
+    else
+      fprintf(stderr,"Could not get list of local MDP addresses\n");
+    return WHY("Failed to get local address list");
+  }
+  if ((a.packetTypeAndFlags&MDP_TYPE_MASK)!=MDP_ADDRLIST)
+    return WHY("MDP Server returned something other than an address list");
+  WHYF("local addr 0 = %s",overlay_render_sid(a.addrlist.sids[0]));
+  bcopy(&a.addrlist.sids[0][0],sid,SID_SIZE);
+  return 0;
+}
+

@@ -1398,32 +1398,6 @@ int app_vomp_monitor(int argc, const char *const *argv, struct command_line_opti
   return overlay_mdp_client_done();
 }
 
-int overlay_mdp_getmyaddr(int index,unsigned char *sid)
-{
-  overlay_mdp_frame a;
-
-  a.packetTypeAndFlags=MDP_GETADDRS;
-  a.addrlist.first_sid=index;
-  a.addrlist.last_sid=0x7fffffff;
-  a.addrlist.frame_sid_count=MDP_MAX_SID_REQUEST;
-  int result=overlay_mdp_send(&a,MDP_AWAITREPLY,5000);
-  if (result) {
-    if (a.packetTypeAndFlags==MDP_ERROR)
-      {
-	fprintf(stderr,"Could not get list of local MDP addresses\n");
-	fprintf(stderr,"  MDP Server error #%d: '%s'\n",
-		a.error.error,a.error.message);
-      }
-    else
-      fprintf(stderr,"Could not get list of local MDP addresses\n");
-    return -1;
-  }
-  if ((a.packetTypeAndFlags&MDP_TYPE_MASK)!=MDP_ADDRLIST)
-    return WHY("MDP Server returned something other than an address list");
-  bcopy(&a.addrlist.sids[0][0],sid,SID_SIZE);
-  return 0;
-}
-
 int vomp_tick()
 {
   /* Send any reminder packets for call state, and also process any audio. */
