@@ -1128,29 +1128,36 @@ int app_id_self(int argc, const char *const *argv, struct command_line_option *o
 {
   /* List my own identities */
   overlay_mdp_frame a;
+  int result;
 
   a.packetTypeAndFlags=MDP_GETADDRS;
   a.addrlist.first_sid=-1;
   a.addrlist.last_sid=0x7fffffff;
   a.addrlist.frame_sid_count=MDP_MAX_SID_REQUEST;
-  int result=overlay_mdp_send(&a,MDP_AWAITREPLY,5000);
-  if (result) {
-    if (a.packetTypeAndFlags==MDP_ERROR)
-      {
-	WHYF("  MDP Server error #%d: '%s'",
-	     a.error.error,a.error.message);
-      }
-    else
-      WHYF("Could not get list of local MDP addresses");
-    return WHY("Failed to get local address list");
+
+  while(a.addrlist.frame_sid_count==MDP_MAX_SID_REQUEST) {
+    result=overlay_mdp_send(&a,MDP_AWAITREPLY,5000);
+    if (result) {
+      if (a.packetTypeAndFlags==MDP_ERROR)
+	{
+	  WHYF("  MDP Server error #%d: '%s'",
+	       a.error.error,a.error.message);
+	}
+      else
+	WHYF("Could not get list of local MDP addresses");
+      return WHY("Failed to get local address list");
+    }
+    if ((a.packetTypeAndFlags&MDP_TYPE_MASK)!=MDP_ADDRLIST)
+      return WHY("MDP Server returned something other than an address list");
+    int i;
+    WHYF("first_sid=%d, last_sid=%d",a.addrlist.first_sid,a.addrlist.last_sid);
+    for(i=0;i<a.addrlist.frame_sid_count;i++) {
+      cli_printf("%s\n",overlay_render_sid(a.addrlist.sids[i]));    
+    }
+    /* get ready to ask for next block of SIDs */
+    a.packetTypeAndFlags=MDP_GETADDRS;
+    a.addrlist.first_sid=a.addrlist.last_sid+1;
   }
-  if ((a.packetTypeAndFlags&MDP_TYPE_MASK)!=MDP_ADDRLIST)
-    return WHY("MDP Server returned something other than an address list");
-  int i;
-  for(i=0;i<a.addrlist.frame_sid_count;i++) {
-    cli_printf("%s\n",overlay_render_sid(a.addrlist.sids[i]));    
-  }
-  /* XXX Only displays the first MDP_MAX_SID_REQUEST (currently 59) SIDs */
   return 0;
 }
 
