@@ -1108,7 +1108,6 @@ unsigned char *keyring_get_nm_bytes(sockaddr_mdp *priv,sockaddr_mdp *pub);
 #define MDP_NOCRYPT 0x0200
 #define MDP_NOSIGN 0x0400
 #define MDP_TX 1
-#define MDP_RX 2
 typedef struct overlay_mdp_data_frame {
   sockaddr_mdp src;
   sockaddr_mdp dst;

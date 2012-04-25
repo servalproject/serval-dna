@@ -435,12 +435,7 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 		}
 	}
       }
-    if (match>-1) {
-      /* We now know the socket, and so we can pass the MDP_TX frame to the 
-	 recipient.  We do, however, translate it into an MDP_RX frame first,
-	 so that the recipient understands the context. */
-      mdp->packetTypeAndFlags&=~MDP_TYPE_MASK;
-      mdp->packetTypeAndFlags|=MDP_RX;
+    if (match>-1) {      
       struct sockaddr_un addr;
       bcopy(mdp_bindings_sockets[match],&addr.sun_path[0],mdp_bindings_socket_name_lengths[match]);
       addr.sun_family=AF_UNIX;
@@ -661,7 +656,6 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       /* Packet is addressed such that we should process it. */
       overlay_saw_mdp_frame(-1 /* not received on a network interface */,
 			    mdp,overlay_gettime_ms());
-      
       if (!broadcast) {
 	/* Is local, and is not broadcast, so shouldn't get sent out
 	   on the wire. */
@@ -998,10 +992,6 @@ int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
     case MDP_TX: 
       len=&mdp->out.payload[0]-(unsigned char *)mdp;
       len+=mdp->out.payload_length; 
-      break;
-    case MDP_RX: 
-      len=&mdp->in.payload[0]-(unsigned char *)mdp;
-      len+=mdp->in.payload_length; 
       break;
     case MDP_BIND: 
       len=&mdp->bind.sid[SID_SIZE]-(unsigned char *)mdp;

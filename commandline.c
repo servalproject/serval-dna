@@ -504,10 +504,11 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 		  {
 		    fprintf(stderr,"       Error message: %s\n",mdp.error.message);
 		  }
-		else if (rx.packetTypeAndFlags==MDP_RX)
+		else if ((rx.packetTypeAndFlags&MDP_TYPE_MASK)==MDP_TX)
 		  fprintf(stderr,"%s:%s\n",
-			  overlay_render_sid(&rx.in.payload[0]),
-			  &rx.in.payload[SID_SIZE]);
+			  overlay_render_sid(&rx.in.src.sid[0]),
+			  &rx.in.payload[0]);
+		else WHYF("packettype=0x%x",rx.packetTypeAndFlags);
 		if (servalShutdown) break;
 	      }
 	  }
@@ -787,7 +788,7 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
 	    fprintf(stderr,"mdpping: overlay_mdp_recv: %s (code %d)\n",
 		    mdp.error.message,mdp.error.error);
 	    break;
-	  case MDP_RX:
+	  case MDP_TX:
 	    {
 	      int *rxseq=(int *)&mdp.in.payload;
 	      long long *txtime=(long long *)&mdp.in.payload[4];
