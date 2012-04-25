@@ -1131,7 +1131,10 @@ int app_id_self(int argc, const char *const *argv, struct command_line_option *o
   int result;
 
   a.packetTypeAndFlags=MDP_GETADDRS;
-  a.addrlist.selfP=1; /* get own identities, not those of peers */
+  if (!strcasecmp(argv[1],"self"))
+    a.addrlist.selfP=1; /* get own identities, not those of peers */
+  else
+    a.addrlist.selfP=0; /* get peer list */
   a.addrlist.first_sid=-1;
   a.addrlist.last_sid=0x7fffffff;
   a.addrlist.frame_sid_count=MDP_MAX_SID_REQUEST;
@@ -1234,8 +1237,8 @@ command_line_option command_line_options[]={
    "Attempt to dial the specified sid and did."},
   {app_id_self,{"id","self",NULL},0,
    "Return my own identity(s) as SIDs"},
-  //  {app_id_peers,{"id","peers",NULL},0,
-  // "Return identity of known peers as SIDs"},
+  {app_id_self,{"id","peers",NULL},0,
+   "Return identity of known peers as SIDs"},
 #ifdef HAVE_VOIPTEST
   {app_pa_phone,{"phone",NULL},0,
    "Run phone test application"},
