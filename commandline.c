@@ -1205,16 +1205,18 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
       return WHYF("Could not get information about node.");
   }
 
-  cli_printf("%d:%d:%s:%s:%s:%s:%s:%d:%d",
-	     mdp.nodeinfo.index,
-	     mdp.nodeinfo.count,
-	     mdp.nodeinfo.foundP?"found":"noresult",
-	     overlay_render_sid(mdp.nodeinfo.sid),
-	     mdp.nodeinfo.resolve_did?mdp.nodeinfo.did:"did-not-resolved",
-	     mdp.nodeinfo.localP?"self":"peer",
-	     mdp.nodeinfo.neighbourP?"direct":"indirect",
-	     mdp.nodeinfo.score,
-	     mdp.nodeinfo.interface_number);
+  cli_printf("record"); cli_delim(":");
+  cli_printf("%d",mdp.nodeinfo.index); cli_delim(":");
+  cli_printf("%d",mdp.nodeinfo.count); cli_delim(":");
+  cli_printf("%s",mdp.nodeinfo.foundP?"found":"noresult"); cli_delim(":");
+  cli_printf("%s",overlay_render_sid(mdp.nodeinfo.sid)); cli_delim(":");
+  cli_printf("%s",mdp.nodeinfo.resolve_did?mdp.nodeinfo.did:"did-not-resolved"); 
+  cli_delim(":");
+  cli_printf("%s",mdp.nodeinfo.localP?"self":"peer"); cli_delim(":");
+  cli_printf("%s",mdp.nodeinfo.neighbourP?"direct":"indirect"); 
+  cli_delim(":");
+  cli_printf("%d",mdp.nodeinfo.score); cli_delim(":");
+  cli_printf("%d",mdp.nodeinfo.interface_number);
   cli_delim("\n");
 
   return 0;
