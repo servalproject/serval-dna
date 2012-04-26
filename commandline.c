@@ -1133,6 +1133,7 @@ int app_id_self(int argc, const char *const *argv, struct command_line_option *o
   /* List my own identities */
   overlay_mdp_frame a;
   int result;
+  int count=0;
 
   a.packetTypeAndFlags=MDP_GETADDRS;
   if (!strcasecmp(argv[1],"self"))
@@ -1160,12 +1161,14 @@ int app_id_self(int argc, const char *const *argv, struct command_line_option *o
     int i;
     WHYF("first_sid=%d, last_sid=%d",a.addrlist.first_sid,a.addrlist.last_sid);
     for(i=0;i<a.addrlist.frame_sid_count;i++) {
+      count++;
       cli_printf("%s",overlay_render_sid(a.addrlist.sids[i])); cli_delim("\n");
     }
     /* get ready to ask for next block of SIDs */
     a.packetTypeAndFlags=MDP_GETADDRS;
     a.addrlist.first_sid=a.addrlist.last_sid+1;
   }
+  cli_printf("returned %d SIDs",count); cli_delim("\n");
   return 0;
 }
 
