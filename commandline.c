@@ -298,7 +298,11 @@ int parseCommandLine(int argc, const char *const *args)
   /* Don't process ambiguous calls */
   if (ambiguous) return -1;
   /* Complain if we found no matching calls */
-  if (cli_call<0) return cli_usage();
+  if (cli_call<0) {
+    fprintf(stderr,"Unknown command line call:\n   ");
+    int j; for(j=0;j<argc;j++) fprintf(stderr," %s",args[j]);
+    return cli_usage();
+  }
 
   /* Otherwise, make call */
   setVerbosity(confValueGet("debug",""));
