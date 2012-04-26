@@ -9,7 +9,7 @@ class ServalD
 		System.loadLibrary("servald");
 	}
 
-	public native ServalDResult command(String[] args);
+	public native ServalDResult command(String... args);
 
 	public static void main(String[] args)
 	{
