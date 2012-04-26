@@ -1022,8 +1022,9 @@ int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
       len=sizeof(overlay_mdp_frame);
       break;
     case MDP_NODEINFO:
-      len=&mdp->nodeinfo.count-(int *)mdp;
-      len+=sizeof(mdp->nodeinfo.count);
+      /* XXX problems with calculating this due to structure padding, 
+	 so doubled required space, and now it works. */
+      len=sizeof(overlay_mdp_nodeinfo)*2;
       break;
     default:
       return WHY("Illegal MDP frame type.");
