@@ -1283,10 +1283,10 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
 	if (keyring->contexts[cn]->identities[in]->keypairs[kp]->type
 	    ==KEYTYPE_CRYPTOBOX)
 	  {
-	    if (!bcmp(&mdp->nodeinfo.sid[0],
-		      &keyring->contexts[cn]->identities[in]
-		      ->keypairs[kp]->public_key[0],
-		      mdp->nodeinfo.sid_prefix_length/2))
+	    if (!memcmp(&mdp->nodeinfo.sid[0],
+			&keyring->contexts[cn]->identities[in]
+			->keypairs[kp]->public_key[0],
+			mdp->nodeinfo.sid_prefix_length/2))
 	      {
 		if (mdp->nodeinfo.count==mdp->nodeinfo.index)
 		  {
@@ -1327,9 +1327,9 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
   for(n=0;n<overlay_neighbour_count;n++)
     if (overlay_neighbours[n].node)
       {
-	if (!bcmp(&mdp->nodeinfo.sid[0],
-		  &overlay_neighbours[n].node->sid[0],
-		  mdp->nodeinfo.sid_prefix_length/2))
+	if (!memcmp(&mdp->nodeinfo.sid[0],
+		    &overlay_neighbours[n].node->sid[0],
+		    mdp->nodeinfo.sid_prefix_length/2))
 	  {
 	    if (mdp->nodeinfo.count==mdp->nodeinfo.index)
 	      {
@@ -1362,9 +1362,9 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
       {
 	if (!overlay_nodes[bin][slot].sid[0]) continue;
 	
-	if (!bcmp(&mdp->nodeinfo.sid[0],
-		  &overlay_nodes[bin][slot].sid[0],
-		  mdp->nodeinfo.sid_prefix_length/2))
+	if (!memcmp(&mdp->nodeinfo.sid[0],
+		    &overlay_nodes[bin][slot].sid[0],
+		    mdp->nodeinfo.sid_prefix_length/2))
 	  {
 	    if (mdp->nodeinfo.count==mdp->nodeinfo.index)
 	      {
