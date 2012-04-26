@@ -529,6 +529,7 @@ int rhizome_list_manifests(int limit, int offset)
     ret = WHY(sqlite3_errmsg(rhizome_db));
   } else {
     size_t rows = 0;
+    cli_puts("8"); cli_delim("\n"); // number of columns
     cli_puts("fileid"); cli_delim(":");
     cli_puts("manifestid"); cli_delim(":");
     cli_puts("version"); cli_delim(":");
