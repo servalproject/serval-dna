@@ -88,7 +88,7 @@ include $(BUILD_SHARED_LIBRARY)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE:= servald
-LOCAL_SRC_FILES:= servalwrap.c
+LOCAL_SRC_FILES:= serval-dna/servalwrap.c
 
 include $(BUILD_EXECUTABLE)
 
