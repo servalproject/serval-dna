@@ -22,9 +22,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 int main(int argc,char **argv)
 {
- void *h = dlopen("/data/data/org.servalproject/lib/libdnalib.so",RTLD_LAZY);
+ void *h = dlopen("/data/data/org.servalproject/lib/libserval.so",RTLD_LAZY);
  int (*servalmain)(int,char **) = dlsym(h,"parseCommandLine");
- if (!servalmain) return fprintf(stderr,"Could not load libdnalib.so\n");
+ if (!servalmain) return fprintf(stderr,"Could not load libserval.so\n");
  return (*servalmain)(argc,argv);
 
 }
