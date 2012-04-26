@@ -1156,7 +1156,7 @@ int app_id_self(int argc, const char *const *argv, struct command_line_option *o
     int i;
     WHYF("first_sid=%d, last_sid=%d",a.addrlist.first_sid,a.addrlist.last_sid);
     for(i=0;i<a.addrlist.frame_sid_count;i++) {
-      cli_printf("%s\n",overlay_render_sid(a.addrlist.sids[i]));    
+      cli_printf("%s",overlay_render_sid(a.addrlist.sids[i])); cli_delim("\n");
     }
     /* get ready to ask for next block of SIDs */
     a.packetTypeAndFlags=MDP_GETADDRS;
@@ -1169,7 +1169,6 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 {
   const char *sid;
   cli_arg(argc, argv, o, "sid", &sid, NULL, "");
-  unsigned char packed_sid[SID_SIZE];
 
   overlay_mdp_frame mdp;
   bzero(&mdp,sizeof(mdp));
@@ -1177,13 +1176,17 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
   mdp.packetTypeAndFlags=MDP_NODEINFO;
   if (argc>3) mdp.nodeinfo.resolve_did=1;
 
-  /* get SID or SID prefix */
+  /* get SID or SID prefix 
+     XXX - Doesn't correctly handle odd-lengthed SID prefixes (ignores last digit).
+     The matching code in overlay_route.c also has a similar problem with the last
+     digit of an odd-length prefix being ignored. */
   int i;
   mdp.nodeinfo.sid_prefix_length=0;
-  for(i = 0; i != SID_SIZE&&sid[i<<1]&&sid[(i<<1)+1]; ++i) {
-    packed_sid[mdp.nodeinfo.sid_prefix_length] = hexvalue(sid[i<<1]) << 4;
-    packed_sid[mdp.nodeinfo.sid_prefix_length++] |= hexvalue(sid[(i<<1)+1]);
+  for(i = 0; (i != SID_SIZE)&&sid[i<<1]&&sid[(i<<1)+1]; i++) {
+    mdp.nodeinfo.sid[mdp.nodeinfo.sid_prefix_length] = hexvalue(sid[i<<1]) << 4;
+    mdp.nodeinfo.sid[mdp.nodeinfo.sid_prefix_length++] |= hexvalue(sid[(i<<1)+1]);
   }
+  mdp.nodeinfo.sid_prefix_length*=2;
 
   int result=overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000);
   if (result) {
@@ -1195,7 +1198,7 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
       return WHYF("Could not get information about node.");
   }
 
-  cli_printf("%d:%d:%s:%s:%s:%s:%s:%d:%d\n",
+  cli_printf("%d:%d:%s:%s:%s:%s:%s:%d:%d",
 	     mdp.nodeinfo.index,
 	     mdp.nodeinfo.count,
 	     mdp.nodeinfo.foundP?"found":"noresult",
@@ -1205,6 +1208,7 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 	     mdp.nodeinfo.neighbourP?"direct":"indirect",
 	     mdp.nodeinfo.score,
 	     mdp.nodeinfo.interface_number);
+  cli_delim("\n");
 
   return 0;
 }
