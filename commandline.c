@@ -1067,10 +1067,10 @@ int app_keyring_list(int argc, const char *const *argv, struct command_line_opti
 	  }
 	if (sid||did) {
 	    int i;
-	    if (sid) for(i=0;i<SID_SIZE;i++) printf("%02x",sid[i]);
-	    else printf("<blank SID>");
-	    if (did) printf(":%s",did); else printf(":<no phone number set>");
-	    printf("\n");
+	    if (sid) for(i=0;i<SID_SIZE;i++) cli_printf("%02x",sid[i]);
+	    cli_delim(":");
+	    if (did) cli_puts((char*)did);
+	    cli_delim("\n");
 	}
       }
   return 0;
