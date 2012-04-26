@@ -66,7 +66,7 @@ LOCAL_SRC_FILES:= \
 	serval-dna/keyring.c       \
 	serval-dna/vomp.c
 
-LOCAL_MODULE:= dna
+LOCAL_MODULE:= serval
 
 LOCAL_CFLAGS += \
         -DSHELL -DPACKAGE_NAME=\"\" -DPACKAGE_TARNAME=\"\" -DPACKAGE_VERSION=\"\" \
@@ -83,5 +83,13 @@ LOCAL_CFLAGS += \
 
 LOCAL_STATIC_LIBRARIES := sqlite3 nacl
 
+include $(BUILD_SHARED_LIBRARY)
+
+include $(CLEAR_VARS)
+
+LOCAL_MODULE:= servald
+LOCAL_SRC_FILES:= servalwrap.c
+
 include $(BUILD_EXECUTABLE)
+
 
