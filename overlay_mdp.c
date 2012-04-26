@@ -1121,6 +1121,7 @@ int overlay_mdp_client_init()
 	return WHY("Could not form MDP client socket name");
       snprintf(overlay_mdp_client_socket_path,1024,fmt,random_value);
       overlay_mdp_client_socket_path_len=strlen(overlay_mdp_client_socket_path);
+      WHYF("MDP client socket name='%s'",overlay_mdp_client_socket_path);
     }
     bcopy(overlay_mdp_client_socket_path,name.sun_path,
 	  overlay_mdp_client_socket_path_len);
