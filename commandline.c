@@ -167,6 +167,7 @@ JNIEXPORT jobject JNICALL Java_org_servalproject_servald_ServalD_command(JNIEnv 
     (*env)->ThrowNew(env, exceptionClass, "re-entrancy not supported");
     return NULL;
   }
+
   // Get some handles to some classes and methods that we use later on.
   if ((resultClass = (*env)->FindClass(env, "org/servalproject/servald/ServalDResult")) == NULL)
     return NULL; // exception
@@ -1168,7 +1169,6 @@ int app_id_self(int argc, const char *const *argv, struct command_line_option *o
     a.packetTypeAndFlags=MDP_GETADDRS;
     a.addrlist.first_sid=a.addrlist.last_sid+1;
   }
-  cli_printf("returned %d SIDs",count); cli_delim("\n");
   return 0;
 }
 
