@@ -1270,6 +1270,11 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
   int bin,slot,n;
   long long now=overlay_gettime_ms();
 
+  WHYF("Looking for node %s* (prefix len=0x%x)",
+       overlay_render_sid_prefix(mdp->nodeinfo.sid,mdp->nodeinfo.sid_prefix_length),
+       mdp->nodeinfo.sid_prefix_length
+       );
+
   /* check if it is a local identity */
   int cn,in,kp;
   for(cn=0;cn<keyring->context_count;cn++)
@@ -1281,7 +1286,7 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
 	    if (!bcmp(&mdp->nodeinfo.sid[0],
 		      &keyring->contexts[cn]->identities[in]
 		      ->keypairs[kp]->public_key[0],
-		      mdp->nodeinfo.sid_prefix_length))
+		      mdp->nodeinfo.sid_prefix_length/2))
 	      {
 		if (mdp->nodeinfo.count==mdp->nodeinfo.index)
 		  {
@@ -1304,10 +1309,12 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
 			if (keyring->contexts[cn]->identities[in]->keypairs[k2]->type
 			    ==KEYTYPE_DID)
 			  {
-			    /* private key field has packed did */
-			    extractDid(keyring->contexts[cn]->identities[in]
-				       ->keypairs[k2]->private_key,0,
-				       &mdp->nodeinfo.did[0]);
+			    /* private key field has unpacked did */
+			    bcopy(&keyring->contexts[cn]->identities[in]
+				  ->keypairs[k2]->private_key[0],
+				  &mdp->nodeinfo.did[0],
+				  keyring->contexts[cn]->identities[in]
+				  ->keypairs[k2]->private_key_len);
 			    mdp->nodeinfo.resolve_did=1;
 			  }
 		    }
@@ -1322,7 +1329,7 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
       {
 	if (!bcmp(&mdp->nodeinfo.sid[0],
 		  &overlay_neighbours[n].node->sid[0],
-		  mdp->nodeinfo.sid_prefix_length))
+		  mdp->nodeinfo.sid_prefix_length/2))
 	  {
 	    if (mdp->nodeinfo.count==mdp->nodeinfo.index)
 	      {
@@ -1357,7 +1364,7 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
 	
 	if (!bcmp(&mdp->nodeinfo.sid[0],
 		  &overlay_nodes[bin][slot].sid[0],
-		  mdp->nodeinfo.sid_prefix_length))
+		  mdp->nodeinfo.sid_prefix_length/2))
 	  {
 	    if (mdp->nodeinfo.count==mdp->nodeinfo.index)
 	      {
