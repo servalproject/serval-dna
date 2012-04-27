@@ -1112,18 +1112,18 @@ int app_keyring_set_did(int argc, const char *const *argv, struct command_line_o
 
   if (strlen(did)>31) return WHY("DID too long (31 digits max)");
 
-  keyring_file *k=keyring_open_with_pins((char *)pin);
-  if (!k) return WHY("Could not open keyring file");
+  keyring=keyring_open_with_pins((char *)pin);
+  if (!keyring) return WHY("Could not open keyring file");
 
   unsigned char packedSid[SID_SIZE];
   stowSid(packedSid,0,(char *)sid);
 
   int cn=0,in=0,kp=0;
-  int r=keyring_find_sid(k,&cn,&in,&kp,packedSid);
+  int r=keyring_find_sid(keyring,&cn,&in,&kp,packedSid);
   if (!r) return WHY("No matching SID");
-  if (keyring_set_did(k->contexts[cn]->identities[in],(char *)did))
+  if (keyring_set_did(keyring->contexts[cn]->identities[in],(char *)did))
     return WHY("Could not set DID");
-  if (keyring_commit(k))
+  if (keyring_commit(keyring))
     return WHY("Could not write updated keyring record");
 
   return 0;
@@ -1296,7 +1296,7 @@ command_line_option command_line_options[]={
    "Return my own identity(s) as SIDs"},
   {app_id_self,{"id","peers",NULL},0,
    "Return identity of known peers as SIDs"},
-  {app_node_info,{"node","info","<sid>","[<did>]",NULL},0,
+  {app_node_info,{"node","info","<sid>","[getdid]",NULL},0,
    "Return information about SID, and optionally ask for DID resolution via network"},
 #ifdef HAVE_VOIPTEST
   {app_pa_phone,{"phone",NULL},0,
