@@ -1098,7 +1098,9 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
 {
   int len=4;
  
-  if (mdp_client_socket==-1) overlay_mdp_client_init();
+  if (mdp_client_socket==-1) 
+      if (overlay_mdp_client_init() != 0)
+	  return -1;
 
   /* Minimise frame length to save work and prevent accidental disclosure of
      memory contents. */
