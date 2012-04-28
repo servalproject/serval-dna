@@ -175,13 +175,11 @@ int overlay_interface_args(char *arg)
   return 0;     
 }
 
-int overlay_interface_init_socket(int interface,struct sockaddr_in src_addr,struct sockaddr_in broadcast,
-				  struct sockaddr_in netmask)
+int overlay_interface_init_socket(int interface,struct sockaddr_in src_addr,struct sockaddr_in broadcast)
 {
 #define I(X) overlay_interfaces[interface].X
   I(local_address)=src_addr;
   I(broadcast_address)=broadcast;
-  I(netmask)=netmask;
   I(fileP)=0;
 
   I(fd)=socket(PF_INET,SOCK_DGRAM,0);
@@ -219,7 +217,7 @@ int overlay_interface_init_socket(int interface,struct sockaddr_in src_addr,stru
 }
 
 int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockaddr_in broadcast,
-			   struct sockaddr_in netmask,int speed_in_bits,int port,int type)
+			   int speed_in_bits,int port,int type)
 {
   /* Too many interfaces */
   if (overlay_interface_count>=OVERLAY_MAX_INTERFACES) return WHY("Too many interfaces -- Increase OVERLAY_MAX_INTERFACES");
@@ -258,7 +256,7 @@ int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockadd
     /* XXX later add pretend location information so that we can decide which "packets" to receive
        based on closeness */    
   } else {
-    if (overlay_interface_init_socket(overlay_interface_count,src_addr,broadcast,netmask))
+    if (overlay_interface_init_socket(overlay_interface_count,src_addr,broadcast))
       return WHY("overlay_interface_init_socket() failed");    
   }
 
@@ -477,6 +475,52 @@ int overlay_sendto(struct sockaddr_in *recipientaddr,unsigned char *bytes,int le
     return len;
 }
 
+int overlay_interface_register(unsigned char *name,
+			       struct sockaddr_in local,
+			       struct sockaddr_in broadcast)
+{
+  /* Now register the interface, or update the existing interface registration */
+  struct interface_rules *r=interface_filter,*me=NULL;
+  while(r) {
+    if (!strcasecmp((char *)name,r->namespec)) me=r;
+    if (!r->namespec[0]) me=r;
+    r=r->next;
+  }
+  if (me&&(!me->excludeP)) {
+    if (debug&DEBUG_OVERLAYINTERFACES)
+      fprintf(stderr,"Interface %s is interesting.\n",name);
+    /* We should register or update this interface. */
+    int i;
+    for(i=0;i<overlay_interface_count;i++) if (!strcasecmp(overlay_interfaces[i].name,(char *)name)) break;
+    if (i<overlay_interface_count) {
+      /* We already know about this interface, so just update it */
+      if ((overlay_interfaces[i].local_address.sin_addr.s_addr==local.sin_addr.s_addr)&&
+	  (overlay_interfaces[i].broadcast_address.sin_addr.s_addr==broadcast.sin_addr.s_addr))
+	{
+	  /* Mark it as being seen */
+	  overlay_interfaces[i].observed=1;
+	  return 0;
+	}
+      else
+	{
+	  /* Interface has changed */
+	  close(overlay_interfaces[i].fd);
+	  if (overlay_interface_init_socket(i,local,broadcast))
+	    WHY("Could not reinitialise changed interface");
+	}
+    }
+    else {
+      /* New interface, so register it */
+      if (overlay_interface_init((char *)name,local,broadcast,
+				 me->speed_in_bits,me->port,me->type))
+	WHY("Could not initialise newly seen interface");
+      else
+	if (debug&DEBUG_OVERLAYINTERFACES) fprintf(stderr,"Registered interface %s\n",name);
+    }	    
+  }
+  return 0;
+}
+  
 time_t overlay_last_interface_discover_time=0;
 int overlay_interface_discover()
 {
@@ -485,16 +529,15 @@ int overlay_interface_discover()
   if ((time(0)-overlay_last_interface_discover_time)<2) return 0;
   overlay_last_interface_discover_time=time(0);
 
-#ifdef HAVE_IFADDRS_H
-  struct ifaddrs *ifaddr,*ifa;
-  int family,i;
-  
-  if (getifaddrs(&ifaddr) == -1)  {
-    perror("getifaddr()");
-    return WHY("getifaddrs() failed");
-  }
+  /* The Android ndk doesn't have ifaddrs.h, so we have to use the netlink interface.
+     However, netlink is only available on Linux, so for BSD systems, e.g., Mac, we
+     need to use the ifaddrs method.
+
+     Also, ifaddrs will work on non-linux systems which is considered critical.
+  */
 
   /* Mark all interfaces as not observed, so that we know if we need to cull any */
+  int i;
   for(i=0;i<overlay_interface_count;i++) overlay_interfaces[i].observed--;
 
   /* Check through for any virtual dummy interfaces */
@@ -508,7 +551,7 @@ int overlay_interface_discover()
       else {
 	/* New interface, so register it */
 	struct sockaddr_in dummyaddr;
-	if (overlay_interface_init(r->namespec,dummyaddr,dummyaddr,dummyaddr,
+	if (overlay_interface_init(r->namespec,dummyaddr,dummyaddr,
 				   1000000,PORT_DNA,OVERLAY_INTERFACE_WIFI))
 	  WHY("Could not initialise newly seen interface");
 	else
@@ -516,6 +559,15 @@ int overlay_interface_discover()
       }	          
     }
     r=r->next;
+  }
+
+#ifdef HAVE_IFADDRS_H
+  struct ifaddrs *ifaddr,*ifa;
+  int family;
+  
+  if (getifaddrs(&ifaddr) == -1)  {
+    perror("getifaddr()");
+    return WHY("getifaddrs() failed");
   }
 
   /* Check through actual network interfaces */
@@ -527,56 +579,24 @@ int overlay_interface_discover()
 	unsigned char *name=(unsigned char *)ifa->ifa_name;
 	struct sockaddr_in local=*(struct sockaddr_in *)ifa->ifa_addr;
 	struct sockaddr_in netmask=*(struct sockaddr_in *)ifa->ifa_netmask;
-	unsigned int broadcast_bits=local.sin_addr.s_addr|~netmask.sin_addr.s_addr;
-	struct sockaddr_in broadcast=local;
-	broadcast.sin_addr.s_addr=broadcast_bits;
+	struct sockaddr_in broadcast=local;	
 	if (debug&DEBUG_OVERLAYINTERFACES) printf("%s: %08x %08x %08x\n",name,local.sin_addr.s_addr,netmask.sin_addr.s_addr,broadcast.sin_addr.s_addr);
-	/* Now register the interface, or update the existing interface registration */
-	struct interface_rules *r=interface_filter,*me=NULL;
-	while(r) {
-	  if (!strcasecmp((char *)name,r->namespec)) me=r;
-	  if (!r->namespec[0]) me=r;
-	  r=r->next;
-	}
-	if (me&&(!me->excludeP)) {
-	  if (debug&DEBUG_OVERLAYINTERFACES)
-	    fprintf(stderr,"Interface %s is interesting.\n",name);
-	  /* We should register or update this interface. */
-	  int i;
-	  for(i=0;i<overlay_interface_count;i++) if (!strcasecmp(overlay_interfaces[i].name,(char *)name)) break;
-	  if (i<overlay_interface_count) {
-	    /* We already know about this interface, so just update it */
-	    if ((overlay_interfaces[i].local_address.sin_addr.s_addr==local.sin_addr.s_addr)&&
-		(overlay_interfaces[i].broadcast_address.sin_addr.s_addr==broadcast.sin_addr.s_addr)&&
-		(overlay_interfaces[i].netmask.sin_addr.s_addr==netmask.sin_addr.s_addr))
-	      {
-		/* Mark it as being seen */
-		overlay_interfaces[i].observed=1;
-		continue;
-	      }
-	    else
-	      {
-		/* Interface has changed */
-		close(overlay_interfaces[i].fd);
-		if (overlay_interface_init_socket(i,local,broadcast,netmask))
-		  WHY("Could not reinitialise changed interface");
-	      }
-	  }
-	  else {
-	    /* New interface, so register it */
-	    if (overlay_interface_init((char *)name,local,broadcast,netmask,
-				       me->speed_in_bits,me->port,me->type))
-	      WHY("Could not initialise newly seen interface");
-	    else
-	      if (debug&DEBUG_OVERLAYINTERFACES) fprintf(stderr,"Registered interface %s\n",name);
-	  }	    
-	}
+	overlay_interface_register(name,local,broadcast);
+
 	break;
       }
     }
   }
   freeifaddrs(ifaddr);
+#else
+#ifdef HAVE_LINUX_IF_H
+  /* Use alternative linux-only method to find and register interfaces. */
+  lsif();
+#else
+#error Don't know how to get interface list on this platform
 #endif
+#endif
+
 
   return 0;
 }
@@ -689,7 +709,7 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,
 	/* Consider next in queue */
 	p=&(*p)->next;
 
-      if (0) printf("D p=%p, *p=%p, queue=%d\n",p,p?*p:-1,q);
+      if (0) printf("D p=%p, *p=%p, queue=%d\n",p,p?*p:NULL,q);
     }
   if (0) printf("returning from stuffing\n");
   return 0;

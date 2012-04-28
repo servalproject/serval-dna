@@ -603,7 +603,6 @@ typedef struct overlay_interface {
   /* Broadcast address and netmask, if known */
   struct sockaddr_in local_address;
   struct sockaddr_in broadcast_address;
-  struct sockaddr_in netmask;
 
   /* Not necessarily the real MTU, but the largest frame size we are willing to TX on this interface.
      For radio links the actual maximum and the maximum that is likely to be delivered reliably are
@@ -756,9 +755,8 @@ overlay_frame *op_dup(overlay_frame *f);
 long long parse_quantity(char *q);
 
 int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockaddr_in broadcast,
-			   struct sockaddr_in netmask,int speed_in_bits,int port,int type);
-int overlay_interface_init_socket(int i,struct sockaddr_in src_addr,struct sockaddr_in broadcast,
-				  struct sockaddr_in netmask);
+			   int speed_in_bits,int port,int type);
+int overlay_interface_init_socket(int i,struct sockaddr_in src_addr,struct sockaddr_in broadcast);
 int overlay_interface_discover();
 int overlay_interface_discover();
 long long overlay_time_until_next_tick();
