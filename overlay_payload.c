@@ -229,7 +229,7 @@ int dump_payload(overlay_frame *p,char *message)
   return 0;
 }
 
-int overlay_payload_enqueue(int q,overlay_frame *p)
+int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP)
 {
   /* Add payload p to queue q.
 
@@ -250,7 +250,7 @@ int overlay_payload_enqueue(int q,overlay_frame *p)
   
   /* If the frame is broadcast, then mark it correctly so that it can be sent
      via all interfaces. */
-  if (overlay_address_is_broadcast(p->destination))
+  if (overlay_address_is_broadcast(p->destination)||forceBroadcastP)
     {
       p->isBroadcast=1;
       int i;

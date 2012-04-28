@@ -960,7 +960,7 @@ int overlay_broadcast_generate_address(unsigned char *a);
 int overlay_update_sequence_number();
 int packetEncipher(unsigned char *packet,int maxlen,int *len,int cryptoflags);
 int overlayServerMode();
-int overlay_payload_enqueue(int q,overlay_frame *p);
+int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP);
 long long overlay_time_in_ms();
 int overlay_abbreviate_lookup_sender_id();
 int ob_dump(overlay_buffer *b,char *desc);

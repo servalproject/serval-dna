@@ -404,7 +404,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	    if ((qf->type&OF_TYPE_BITS)==OF_TYPE_DATA_VOICE)
 	      qn=OQ_ISOCHRONOUS_VOICE;
 	    if (0) WHY("queuing frame for forwarding");
-	    if (overlay_payload_enqueue(qn,qf)) {
+	    if (overlay_payload_enqueue(qn,qf,0)) {
 	      WHY("failed to enqueue forwarded payload");
 	      op_free(qf);
 	    }

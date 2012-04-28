@@ -533,10 +533,9 @@ int overlay_route_ack_selfannounce(overlay_frame *f,overlay_neighbour *n)
       out->nexthop_address_status=OA_RESOLVED;
       out->ttl=2;
       out->isBroadcast=1;
-      for(i=0;i<OVERLAY_MAX_INTERFACES;i++)out->broadcast_sent_via[i]=0;
       if (1||debug&DEBUG_OVERLAYROUTING) 
 	WHY("Broadcasting ack to selfannounce for hithero unroutable node");
-    }
+    } else out->isBroadcast=0;
   }
 
   /* Set the time in the ack. Use the last sequence number we have seen
@@ -597,8 +596,9 @@ int overlay_route_ack_selfannounce(overlay_frame *f,overlay_neighbour *n)
   /* Terminate list */
   ob_append_byte(out->payload,0);
 
-  /* Add to queue */
-  if (overlay_payload_enqueue(OQ_MESH_MANAGEMENT,out))
+  /* Add to queue. Keep broadcast status that we have assigned here if required to
+     get ack back to sender before we have a route. */
+  if (overlay_payload_enqueue(OQ_MESH_MANAGEMENT,out,out->isBroadcast))
     {
       op_free(out);
       return WHY("overlay_payload_enqueue(self-announce ack) failed");
