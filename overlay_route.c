@@ -519,23 +519,26 @@ int overlay_route_ack_selfannounce(overlay_frame *f,overlay_neighbour *n)
      However, if there is no known next-hop for this node (because the return path
      has not yet begun to be built), then we need to set the nexthop to broadcast. */
   out->nexthop_address_status=OA_UNINITIALISED;
-  { unsigned char nexthop[SID_SIZE]; int nexthoplen,interface;
-    if (overlay_get_nexthop(out->destination,nexthop,&nexthoplen,&interface))
-      {
-	/* No path, so set nexthop to be broadcast, but don't broadcast it too far. */
-	int i;
-	for(i=0;i<(SID_SIZE-8);i++) out->nexthop[i]=0xff;
-	for(i=24;i<SID_SIZE;i++) out->nexthop[i]=random()&0xff;
-	out->nexthop_address_status=OA_RESOLVED;
-	out->ttl=2;
-	if (debug&DEBUG_OVERLAYROUTING) 
-	  fprintf(stderr,"Broadcasting ack to selfannounce");
-      }
-    else
-      if (debug&DEBUG_OVERLAYROUTING)
-	fprintf(stderr,"singlecasting ack to selfannounce via known route");
+  {
+    unsigned char nexthop[SID_SIZE];
+    int len=0;
+    int next_hop_interface=-1;
+    int r=overlay_get_nexthop(out->destination,nexthop,&len,
+			      &next_hop_interface);
+    if (r) {
+      /* no open path, so convert to broadcast */
+      int i;
+      for(i=0;i<(SID_SIZE-8);i++) out->nexthop[i]=0xff;
+      for(i=24;i<SID_SIZE;i++) out->nexthop[i]=random()&0xff;
+      out->nexthop_address_status=OA_RESOLVED;
+      out->ttl=2;
+      out->isBroadcast=1;
+      for(i=0;i<OVERLAY_MAX_INTERFACES;i++)out->broadcast_sent_via[i]=0;
+      if (1||debug&DEBUG_OVERLAYROUTING) 
+	WHY("Broadcasting ack to selfannounce for hithero unroutable node");
+    }
   }
-  
+
   /* Set the time in the ack. Use the last sequence number we have seen
      from this neighbour, as that may be helpful information for that neighbour
      down the track.  My policy is to communicate that information which should
