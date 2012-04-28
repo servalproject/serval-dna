@@ -103,7 +103,7 @@ int lsif(void)
 	   broadcast.sin_addr);
     overlay_interface_register(item->ifr_name,local,broadcast);
   }
- 
+  close(sck); 
   return 0;
 }
 #endif
