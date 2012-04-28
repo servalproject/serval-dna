@@ -59,7 +59,7 @@
 #define SIOCGIFBRDADDR OSIOCGIFBRDADDR
 #endif
 
-#ifdef HAVE_LINUX_IF_H
+#ifdef ANDROID
 int lsif(void)
 {
   char            buf[8192] = {0};
