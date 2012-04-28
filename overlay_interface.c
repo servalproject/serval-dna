@@ -589,7 +589,7 @@ int overlay_interface_discover()
   }
   freeifaddrs(ifaddr);
 #else
-#ifdef HAVE_LINUX_IF_H
+#ifdef ANDROID
   /* Use alternative linux-only method to find and register interfaces. */
   lsif();
 #else
