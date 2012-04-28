@@ -38,14 +38,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifdef HAVE_NET_ROUTE_H
      #include <net/route.h>
 #endif
+#ifdef HAVE_LINUX_IF_H
+#include <linux/if.h>
+#else
 #ifdef HAVE_NET_IF_H
 #include <net/if.h>
 #endif
+#endif
 #ifdef HAVE_NETINET_IN_H
 #include <netinet/in.h>
-#endif
-#ifdef HAVE_LINUX_IF_H
-#include <linux/if.h>
 #endif
 #ifdef HAVE_LINUX_NETLINK_H
 #include <linux/netlink.h>
@@ -91,7 +92,6 @@ struct in_addr {
 #ifndef WIN32
 #include <sys/ioctl.h>
 #include <sys/un.h>
-#include <net/if.h>
 #endif
 
 #include <fcntl.h>
