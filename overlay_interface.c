@@ -185,7 +185,16 @@ int overlay_interface_init_socket(int interface,struct sockaddr_in src_addr,stru
   I(fd)=socket(PF_INET,SOCK_DGRAM,0);
   if (I(fd)<0) {
     return WHY("Could not create UDP socket for interface");
-  }
+  } else 
+    WHYF("interface #%d fd=%d",interface,I(fd));
+
+  int broadcastP=1;
+  if(setsockopt(I(fd), SOL_SOCKET, SO_BROADCAST, &broadcastP, sizeof(broadcastP)) < 0) {
+    WHY("Could not enable broadcast reception for socket.  This is really bad.");
+    perror("setsockopt");
+    return WHY("setsockopt() failed");
+  } else
+    WHYF("Interface #%d broadcast flag = %d",interface,broadcastP);
 
   /* Automatically close socket on calls to exec().
      This makes life easier when we restart with an exec after receiving
@@ -194,24 +203,18 @@ int overlay_interface_init_socket(int interface,struct sockaddr_in src_addr,stru
 	fcntl(I(fd), F_GETFL, NULL)|O_CLOEXEC);
 
 
-  src_addr.sin_family = AF_INET;
-  src_addr.sin_port = htons( I(port) );
+  broadcast.sin_family = AF_INET;
+  broadcast.sin_port = htons( I(port) );
   /* XXX Is this right? Are we really setting the local side address?
      I was in a plane when at the time, so couldn't Google it.
   */
-  if (debug&DEBUG_PACKETRX) fprintf(stderr,"src_addr=%08x\n",(unsigned int)src_addr.sin_addr.s_addr);
-  if(bind(I(fd),(struct sockaddr *)&src_addr,sizeof(src_addr))) {
+  if (debug&DEBUG_PACKETRX) fprintf(stderr,"src_addr=%08x\n",(unsigned int)broadcast.sin_addr.s_addr);
+  if(bind(I(fd),(struct sockaddr *)&broadcast,sizeof(src_addr))) {
     perror("bind()");
     return WHY("MP HLR server could not bind to requested UDP port (bind() failed)");
   }
-  if (debug&(DEBUG_PACKETRX|DEBUG_IO)) fprintf(stderr,"Bound to port 0x%04x\n",src_addr.sin_port);
+  if (debug&(DEBUG_PACKETRX|DEBUG_IO)) fprintf(stderr,"Bound to port 0x%04x\n",broadcast.sin_port);
 
-  int broadcastP=1;
-  if(setsockopt(I(fd), SOL_SOCKET, SO_BROADCAST, &broadcastP, sizeof(broadcastP)) < 0) {
-    perror("setsockopt");
-    return WHY("setsockopt() failed");
-  }
- 
   return 0;
 #undef I
 }
@@ -342,6 +345,7 @@ int overlay_rx_messages()
 	  } else {
 	    /* Read from UDP socket */
 	    int recvttl=1;
+	    errno=0;
 	    plen=recvwithttl(overlay_interfaces[i].fd,packet,sizeof(packet),
 			     &recvttl,&src_addr,&addrlen);
 	    if (plen<0) { 
@@ -504,7 +508,9 @@ int overlay_interface_register(unsigned char *name,
       else
 	{
 	  /* Interface has changed */
+	  WHY("Interface changed");
 	  close(overlay_interfaces[i].fd);
+	  overlay_interfaces[i].fd=-1;
 	  if (overlay_interface_init_socket(i,local,broadcast))
 	    WHY("Could not reinitialise changed interface");
 	}
