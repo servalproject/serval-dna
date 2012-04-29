@@ -125,7 +125,7 @@ int stowSid(unsigned char *packet, int ofs, const char *sid)
   if (!validateSid(sid))
     return WHY("Invalid SID passed in");
   if (!strcasecmp(sid,"broadcast"))
-    for(i=0;i<i<32;i++) packet[ofs++]=0xff;
+    for(i=0;i<32;i++) packet[ofs++]=0xff;
   else
     for(i = 0; i != SID_SIZE; ++i) {
       packet[ofs] = hexvalue(sid[i<<1]) << 4;
