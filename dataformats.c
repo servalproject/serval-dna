@@ -105,6 +105,7 @@ int extractSid(unsigned char *packet,int *ofs,char *sid)
 
 int validateSid(const char *sid)
 {
+  if (!strcasecmp(sid,"broadcast")) return 1;
   size_t n = strlen(sid);
   if (n != SID_STRLEN)
     { WHYF("Invalid SID (strlen is %u, should be %u)", n, SID_STRLEN); return 0; }
@@ -117,15 +118,19 @@ int validateSid(const char *sid)
 
 int stowSid(unsigned char *packet, int ofs, const char *sid)
 {
+
+  int i;
   if (debug&DEBUG_PACKETFORMATS)
     printf("Stowing SID \"%s\"\n", sid);
   if (!validateSid(sid))
     return WHY("Invalid SID passed in");
-  int i;
-  for(i = 0; i != SID_SIZE; ++i) {
-    packet[ofs] = hexvalue(sid[i<<1]) << 4;
-    packet[ofs++] |= hexvalue(sid[(i<<1)+1]);
-  }
+  if (!strcasecmp(sid,"broadcast"))
+    for(i=0;i<i<32;i++) packet[ofs++]=0xff;
+  else
+    for(i = 0; i != SID_SIZE; ++i) {
+      packet[ofs] = hexvalue(sid[i<<1]) << 4;
+      packet[ofs++] |= hexvalue(sid[(i<<1)+1]);
+    }
   return 0;
 }
 
