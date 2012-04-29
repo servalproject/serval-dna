@@ -887,7 +887,6 @@ typedef struct overlay_neighbour_observation {
   unsigned int s2;
   long long time_ms;
   unsigned char sender_interface;
-  unsigned char receiver_interface;
   unsigned char valid;
 } overlay_neighbour_observation;
 
@@ -897,6 +896,7 @@ typedef struct overlay_node_observation {
   unsigned char corrected_score;
   unsigned char gateways_en_route;
   unsigned char RESERVED; /* for alignment */
+  unsigned char interface;
   long long rx_time;
   unsigned char sender_prefix[OVERLAY_SENDER_PREFIX_LENGTH];
 } overlay_node_observation;
@@ -914,7 +914,7 @@ typedef struct overlay_node {
   int most_recent_observation_id;
   int best_link_score;
   int best_observation;
-  unsigned int last_first_hand_observation_time_sec;
+  unsigned int last_first_hand_observation_time_millisec;
   long long last_observation_time_ms;
   /* When did we last advertise this node on each interface, and what score
      did we advertise? */
@@ -966,7 +966,9 @@ int overlay_abbreviate_lookup_sender_id();
 int ob_dump(overlay_buffer *b,char *desc);
 unsigned int ob_get_int(overlay_buffer *b,int offset);
 char *overlay_render_sid(unsigned char *sid);
-int overlay_route_record_link(long long now,unsigned char *to,unsigned char *via,unsigned int timestamp,int score,int gateways_en_route);
+int overlay_route_record_link(long long now,unsigned char *to,
+			      unsigned char *via,int sender_interface,
+			      unsigned int s1,unsigned int s2,int score,int gateways_en_route);
 int overlay_route_dump();
 int overlay_route_tick();
 int overlay_route_tick_neighbour(int neighbour_id,long long now);

@@ -209,7 +209,7 @@ int overlay_interface_init_socket(int interface,struct sockaddr_in src_addr,stru
      I was in a plane when at the time, so couldn't Google it.
   */
   if (debug&DEBUG_PACKETRX) fprintf(stderr,"src_addr=%08x\n",(unsigned int)broadcast.sin_addr.s_addr);
-  if(bind(I(fd),(struct sockaddr *)&broadcast,sizeof(src_addr))) {
+  if(bind(I(fd),(struct sockaddr *)&broadcast,sizeof(broadcast))) {
     perror("bind()");
     return WHY("MP HLR server could not bind to requested UDP port (bind() failed)");
   }
@@ -360,8 +360,10 @@ int overlay_rx_messages()
 	      }
 	      if (debug&DEBUG_OVERLAYINTERFACES)fprintf(stderr,"Received %d bytes on interface #%d (%s)\n",plen,i,overlay_interfaces[i].name);
 	      
-	      if (packetOk(i,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) 
-		WHY("Malformed packet");	  
+	      if (packetOk(i,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
+		WHY("Malformed packet");
+		serval_packetvisualise(stderr,"Malformed packet", packet,plen);
+	      }
 	    }
 	  }
 	}
@@ -498,8 +500,10 @@ int overlay_interface_register(unsigned char *name,
     for(i=0;i<overlay_interface_count;i++) if (!strcasecmp(overlay_interfaces[i].name,(char *)name)) break;
     if (i<overlay_interface_count) {
       /* We already know about this interface, so just update it */
-      if ((overlay_interfaces[i].local_address.sin_addr.s_addr==local.sin_addr.s_addr)&&
-	  (overlay_interfaces[i].broadcast_address.sin_addr.s_addr==broadcast.sin_addr.s_addr))
+      if (((overlay_interfaces[i].local_address.sin_addr.s_addr&0xffffffff)
+	   ==(local.sin_addr.s_addr&0xffffffff))
+	  &&((overlay_interfaces[i].broadcast_address.sin_addr.s_addr&0xffffffff)
+	     ==(broadcast.sin_addr.s_addr&0xffffffff)))
 	{
 	  /* Mark it as being seen */
 	  overlay_interfaces[i].observed=1;
@@ -508,7 +512,11 @@ int overlay_interface_register(unsigned char *name,
       else
 	{
 	  /* Interface has changed */
-	  WHY("Interface changed");
+	  WHYF("Interface changed %08llx.%08llx vs %08llx.%08llx",
+	       overlay_interfaces[i].local_address.sin_addr.s_addr,
+	       overlay_interfaces[i].broadcast_address.sin_addr.s_addr,
+	       local.sin_addr.s_addr,
+	       broadcast.sin_addr.s_addr);
 	  close(overlay_interfaces[i].fd);
 	  overlay_interfaces[i].fd=-1;
 	  if (overlay_interface_init_socket(i,local,broadcast))
@@ -585,7 +593,8 @@ int overlay_interface_discover()
 	unsigned char *name=(unsigned char *)ifa->ifa_name;
 	struct sockaddr_in local=*(struct sockaddr_in *)ifa->ifa_addr;
 	struct sockaddr_in netmask=*(struct sockaddr_in *)ifa->ifa_netmask;
-	struct sockaddr_in broadcast=local;	
+	struct sockaddr_in broadcast=local;
+	broadcast.sin_addr.s_addr|=(~netmask.sin_addr.s_addr);
 	if (debug&DEBUG_OVERLAYINTERFACES) printf("%s: %08x %08x %08x\n",name,local.sin_addr.s_addr,netmask.sin_addr.s_addr,broadcast.sin_addr.s_addr);
 	overlay_interface_register(name,local,broadcast);
 

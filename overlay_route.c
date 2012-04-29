@@ -387,9 +387,9 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
       if (neh->scores[i]>neh->scores[*interface]) *interface=i;
     }
     if (neh->scores[*interface]<1) {
-      if (debug>DEBUG_OVERLAYROUTING)
-	fprintf(stderr,"No open path to %s\n",overlay_render_sid(neh->node->sid));
-      return WHY("No open path to node");
+      if (debug&DEBUG_OVERLAYROUTING)
+	WHYF("No open path to %s\n",overlay_render_sid(neh->node->sid));
+      return -1; 
     }
     if (0) printf("nexthop is %s\n",overlay_render_sid(nexthop));
     return 0;
@@ -470,7 +470,9 @@ overlay_node *overlay_route_find_node(unsigned char *sid,int createP)
   return &overlay_nodes[bin_number][free_slot];
 }
 
-int overlay_route_ack_selfannounce(overlay_frame *f,overlay_neighbour *n)
+int overlay_route_ack_selfannounce(overlay_frame *f,
+				   unsigned int s1,unsigned int s2,
+				   overlay_neighbour *n)
 {
   /* Acknowledge the receipt of a self-announcement of an immediate neighbour.
      We could acknowledge immediately, but that requires the transmission of an
@@ -511,10 +513,9 @@ int overlay_route_ack_selfannounce(overlay_frame *f,overlay_neighbour *n)
     op_free(out);
     return WHY("overlay_frame_set_neighbour_as_source() failed");
   }
-
-
   /* set source to ourselves */
   overlay_frame_set_me_as_source(out);
+
   /* Next-hop will get set at TX time, so no need to set it here.
      However, if there is no known next-hop for this node (because the return path
      has not yet begun to be built), then we need to set the nexthop to broadcast. */
@@ -533,7 +534,7 @@ int overlay_route_ack_selfannounce(overlay_frame *f,overlay_neighbour *n)
       out->nexthop_address_status=OA_RESOLVED;
       out->ttl=2;
       out->isBroadcast=1;
-      if (1||debug&DEBUG_OVERLAYROUTING) 
+      if (debug&DEBUG_OVERLAYROUTING) 
 	WHY("Broadcasting ack to selfannounce for hithero unroutable node");
     } else out->isBroadcast=0;
   }
@@ -554,20 +555,10 @@ int overlay_route_ack_selfannounce(overlay_frame *f,overlay_neighbour *n)
   out->payload=ob_new(4+32*2+1); /* will grow if it isn't big enough, but let's try to
 				    avoid a realloc() if possible */
 
-  int i;
-  int best_obs_id=-1;
-  long long best_obs_time=0;
-  for(i=0;i<OVERLAY_MAX_OBSERVATIONS;i++) {
-    if (n->observations[i].time_ms>best_obs_time) {
-      best_obs_id=i;
-      best_obs_time=n->observations[i].time_ms;
-    }
-  }
-  /* Observation time is presented in seconds to save space in transit.
-     This is used to base score decay on when the last ACTUAL FIRST-HAND was made,
-     rather than when someone heard that someone else heard from the nodes third
-     cousin's step-uncle's room-mate-in-law, twice removed. */
-  ob_append_int(out->payload,n->observations[best_obs_id].s2/1000);
+  /* XXX - we should merge contiguous observation reports so that packet loss 
+     on the return path doesn't count against the link. */
+  ob_append_int(out->payload,s1);
+  ob_append_int(out->payload,s2);
 
   /* The ack needs to contain the per-interface scores that we have built up
      for this neighbour.
@@ -585,6 +576,7 @@ int overlay_route_ack_selfannounce(overlay_frame *f,overlay_neighbour *n)
      We could use the spare 2 bits at the top of the interface id to indicate
      multiple interfaces with same score? 
   */
+  int i;
   for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
     {
       /* Only include interfaces with score >0 */
@@ -657,15 +649,29 @@ overlay_neighbour *overlay_route_get_neighbour_structure(unsigned char *packed_s
 
 }
 
-int overlay_route_i_can_hear(unsigned char *who,int sender_interface,unsigned int s1,unsigned int s2,
-			     int receiver_interface,long long now)
+int overlay_route_i_can_hear_node(unsigned char *who,int sender_interface,
+				  unsigned int s1,unsigned int s2,
+				  int receiver_interface,long long now)
+{
+  if (0) WHYF("I can hear node %s (but I really only care who can hear me)",
+	      overlay_render_sid(who));
+  return 0;
+}
+
+
+int overlay_route_node_can_hear_me(unsigned char *who,int sender_interface,
+				   unsigned int s1,unsigned int s2,
+				   long long now)
 {
   /* 1. Find (or create) node entry for the node.
      2. Replace oldest observation with this observation.
      3. Update score of how reliably we can hear this node */
 
   /* Ignore traffic from ourselves. */
-  if (overlay_address_is_local(who)) return 0;
+  if (overlay_address_is_local(who)) 
+    {
+      return 0;
+    }
 
   /* Find node, or create entry if it hasn't been seen before */
   overlay_node *n=overlay_route_find_node(who,1 /* create if necessary */);
@@ -691,11 +697,11 @@ int overlay_route_i_can_hear(unsigned char *who,int sender_interface,unsigned in
     {
       if (neh->observations[obs_index].sender_interface==sender_interface)
 	{
+	  if (0) WHYF("merging observation in slot #%d",obs_index);
 	  if (!neh->observations[obs_index].s1)
 	    neh->observations[obs_index].s1=neh->observations[obs_index].s2; 
 	  neh->observations[obs_index].s2=s2;
 	  neh->observations[obs_index].sender_interface=sender_interface;
-	  neh->observations[obs_index].receiver_interface=receiver_interface;
 	  neh->observations[obs_index].time_ms=now;
 	  mergedP=1;
 	  break;
@@ -709,12 +715,12 @@ int overlay_route_i_can_hear(unsigned char *who,int sender_interface,unsigned in
     /* Replace oldest observation with this one */
     obs_index=neh->most_recent_observation_id+1;
     if (obs_index>=OVERLAY_MAX_OBSERVATIONS) obs_index=0;
+    if (0) WHYF("storing observation in slot #%d",obs_index);
     neh->observations[obs_index].valid=0;
     neh->observations[obs_index].time_ms=now;
     neh->observations[obs_index].s1=s1;
     neh->observations[obs_index].s2=s2;
     neh->observations[obs_index].sender_interface=sender_interface;
-    neh->observations[obs_index].receiver_interface=receiver_interface;
     neh->observations[obs_index].valid=1;
   }
   neh->most_recent_observation_id=obs_index;
@@ -725,6 +731,7 @@ int overlay_route_i_can_hear(unsigned char *who,int sender_interface,unsigned in
   /* Update reachability metrics for node */
   if (overlay_route_recalc_neighbour_metrics(neh,now)) WHY("overlay_route_recalc_neighbour_metrics() failed");
 
+  overlay_route_dump();
   return 0;
 }
 
@@ -753,8 +760,10 @@ int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now)
   overlay_abbreviate_set_current_sender(f->source);
 
   /* Ignore self announcements from ourselves */
-  if (overlay_address_is_local(f->source))
+  if (overlay_address_is_local(f->source)) {
+    if(0) WHY("Ignoring selfannouncement from myself");
     return 0;
+  }
 
   s1=ntohl(*((int*)&f->payload->bytes[0]));
   s2=ntohl(*((int*)&f->payload->bytes[4]));
@@ -764,7 +773,7 @@ int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now)
     dump("Payload",&f->payload->bytes[0],f->payload->length);
   }
 
-  overlay_route_i_can_hear(f->source,sender_interface,s1,s2,interface,now);
+  overlay_route_i_can_hear_node(f->source,sender_interface,s1,s2,interface,now);
 
   /* Ignore self-announcements from ourself. */
   if (overlay_address_is_local(&f->source[0]))
@@ -774,7 +783,7 @@ int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now)
       return 0; 
     }
 
-  overlay_route_ack_selfannounce(f,n);
+  overlay_route_ack_selfannounce(f,s1,s2,n);
 
   return 0;
 }
@@ -860,7 +869,11 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
   long long most_recent_observation=0;
 
   /* Only update every half-second */
-  if (n->last_metric_update+500<now) return 0;
+  if ((now-n->last_metric_update)<500) {
+    if (0) WHYF("refusing to update metric too often (last at %lldms, now=%lldms)",
+		n->last_metric_update,now);
+    return 0;
+  }
   n->last_metric_update=now;
 
   /* Somewhere to remember how many milliseconds we have seen */
@@ -875,7 +888,7 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
      communication.
      Also, we might like to take into account the interface we received 
      the announcements on. */
-  for(i=0;i<OVERLAY_MAX_OBSERVATIONS;i++)
+  for(i=0;i<OVERLAY_MAX_OBSERVATIONS;i++) {
     if (n->observations[i].valid&&n->observations[i].s1) {
       /* Check the observation age, and ignore if too old */
       int obs_age=now-n->observations[i].time_ms;
@@ -917,6 +930,7 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
 
       if (n->observations[i].time_ms>most_recent_observation) most_recent_observation=n->observations[i].time_ms;
     }
+  }
 
   /* From the sum of observations calculate the metrics.
      We want the score to climb quickly and then plateu.
@@ -1000,48 +1014,71 @@ char *overlay_render_sid_prefix(unsigned char *sid,int l)
 */
 int overlay_route_saw_selfannounce_ack(int interface,overlay_frame *f,long long now)
 {
-  if (!overlay_neighbours) return 0;
+  if (0) WHYF("processing selfannounce ack (payload length=%d)",f->payload->length);
+  if (!overlay_neighbours) {
+    if (0) WHY("no neighbours, so returning immediately");
+    return 0;
+  }
 
   int i;
   int iface;
-  int score;
-  unsigned int timestamp;
 
-  timestamp=ob_get_int(f->payload,0);
-  i=4;
+  unsigned int s1=ob_get_int(f->payload,0);
+  unsigned int s2=ob_get_int(f->payload,4);
+  i=8;
 
-  while(i<f->payload->length) {
-    score=f->payload->bytes[i++];
-    if (!score) break;
+  if(i<f->payload->length) {
     iface=f->payload->bytes[i++];
 
     // Call something like the following for each link
-    if (f->source_address_status==OA_RESOLVED)
-      overlay_route_record_link(now,f->source,f->source,timestamp,score,
+    if (f->source_address_status==OA_RESOLVED&&
+	f->destination_address_status==OA_RESOLVED) {
+      overlay_route_record_link(now,f->source,f->source,iface,s1,s2,
+				0 /* no associated score */,
 				0 /* no gateways in between */);
-  }
+    } else WHY("address(es) not resolved");
+  } else WHY("Short selfannounce ack");
 
   return 0;
 }
 
-int overlay_route_record_link(long long now,unsigned char *to,unsigned char *via,unsigned int timestamp,int score,int gateways_en_route)
+/* if to and via are the same, then this is evidence that we can get to the
+   node directly. */
+int overlay_route_record_link(long long now,unsigned char *to,
+			      unsigned char *via,int sender_interface,
+			      unsigned int s1,unsigned int s2,int score,
+			      int gateways_en_route)
 {
   int i,slot=-1;
 
+  if (0) WHYF("to=%s, via=%s",
+	      overlay_render_sid(to),overlay_render_sid(via));
+
   /* Don't record routes to ourselves */
-  if (overlay_address_is_local(to)) return 0;
+  if (overlay_address_is_local(to)) {
+    WHYF("Ignoring self announce ack addressed to me (%s).",
+	overlay_render_sid(to));
+    return 0;
+  }
+  else WHYF("Recording link to %s",overlay_render_sid(to));
 
   for(i=0;i<SID_SIZE;i++) if (to[i]!=via[i]) break;
-  if (i==SID_SIZE) {
-    /* TO and VIA are the same, which makes no sense.
-       So ignore */
+  if (i==SID_SIZE)
+    {
+      /* It's a neighbour observation */
+      WHYF("%s is my neighbour",overlay_render_sid(to));
+      overlay_route_node_can_hear_me(to,sender_interface,s1,s2,now);
+    }
+
+  if (!score) {
+    if (0) WHY("non-scoring report, so done");
     return 0;
   }
 
   fprintf(stderr,"route_record_link(0x%llx,%s*,",
 	  now,overlay_render_sid_prefix(to,7));
-  fprintf(stderr,"%s*,0x%08x,%d)\n",
-	  overlay_render_sid_prefix(via,7),timestamp,score);
+  fprintf(stderr,"%s*,0x%08x-0x%08x,%d)\n",
+	  overlay_render_sid_prefix(via,7),s1,s2,score);
   
   overlay_node *n=overlay_route_find_node(to,1 /* create node if missing */);
   if (!n) return WHY("Could not find or create entry for node");
@@ -1051,7 +1088,8 @@ int overlay_route_record_link(long long now,unsigned char *to,unsigned char *via
       /* Take note of where we can find space for a fresh observation */
       if ((slot==-1)&&(!n->observations[i].observed_score)) slot=i;
       
-      /* If the intermediate hosts ("via"s) and interface numbers match, then overwrite old observation with new one */
+      /* If the intermediate host ("via") address and interface numbers match, 
+	 then overwrite old observation with new one */
       if (!memcmp(via,n->observations[i].sender_prefix,OVERLAY_SENDER_PREFIX_LENGTH))
 	{
 	  /* Bingo - update this one */
@@ -1069,6 +1107,7 @@ int overlay_route_record_link(long long now,unsigned char *to,unsigned char *via
   n->observations[slot].rx_time=now;
   bcopy(via,n->observations[slot].sender_prefix,OVERLAY_SENDER_PREFIX_LENGTH);
   n->observations[slot].observed_score=score;
+  n->observations[slot].interface=sender_interface;
   
   /* Remember that we have seen an observation for this node.
      XXX - This should actually be set to the time that the last first-hand
@@ -1080,8 +1119,8 @@ int overlay_route_record_link(long long now,unsigned char *to,unsigned char *via
      clock-skew, but we will deal with those in due course).
   */
   n->last_observation_time_ms=now;
-  if (timestamp>n->last_first_hand_observation_time_sec)
-    n->last_first_hand_observation_time_sec=timestamp;
+  if (s2>n->last_first_hand_observation_time_millisec)
+    n->last_first_hand_observation_time_millisec=s2;
 
   overlay_route_recalc_node_metrics(n,now);
   

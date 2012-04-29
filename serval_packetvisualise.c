@@ -276,8 +276,9 @@ int isOverlayPacket(FILE *f,unsigned char *packet,int *ofs,int len)
 	    int i;
 	    fprintf(f,"%sACK of self-announce\n",indent(8));
 	    time=0; for(i=0;i<4;i++) time=(time<<8)|frame[frame_ofs++];
-	    fprintf(f,"%sObservation time : %10lld secs (0x%08llx)\n",
-		    indent(10),time,time);
+	    fprintf(f,"%sStart time: %10lldms (0x%08llx)\n",indent(10),time,time);
+	    time=0; for(i=0;i<4;i++) time=(time<<8)|frame[frame_ofs++];
+	    fprintf(f,"%sEnd time:   %10lldms (0x%08llx)\n",indent(10),time,time);
 	    int iface=frame[frame_ofs++];
 	    fprintf(f,"%sSender Interface : %d\n",indent(10),iface);	    
 	  } 

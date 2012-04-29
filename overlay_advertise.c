@@ -208,12 +208,10 @@ int overlay_route_saw_advertisements(int i,overlay_frame *f, long long now)
 	  if (r==OA_RESOLVED) {
 	    /* File it */
 	    overlay_route_record_link(now,to,&overlay_abbreviate_current_sender.b[0],
-				      time(0) /* XXX should this be in senders timeframe?
-						 Should we be sending time stamps around
-						 so that we know when the last actual
-						 sighting of a node really was? 
-						 (probably a waste of time since we decay
-						 scores from stale observations) */,
+				      i,
+				      /* time range that this advertisement covers.
+				         XXX - Make it up for now. */
+				      now-2500,now,
 				      score,gateways_en_route);
 	  } else if (r==OA_PLEASEEXPLAIN) {
 	    /* Unresolved address -- ask someone to resolve it for us. */
