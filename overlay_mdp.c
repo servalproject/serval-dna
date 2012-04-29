@@ -1237,6 +1237,7 @@ int overlay_mdp_getmyaddr(int index,unsigned char *sid)
   overlay_mdp_frame a;
 
   a.packetTypeAndFlags=MDP_GETADDRS;
+  a.addrlist.selfP=1;
   a.addrlist.first_sid=index;
   a.addrlist.last_sid=0x7fffffff;
   a.addrlist.frame_sid_count=MDP_MAX_SID_REQUEST;
