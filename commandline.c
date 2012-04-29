@@ -1160,9 +1160,6 @@ int app_id_self(int argc, const char *const *argv, struct command_line_option *o
     if ((a.packetTypeAndFlags&MDP_TYPE_MASK)!=MDP_ADDRLIST)
       return WHY("MDP Server returned something other than an address list");
     int i;
-    WHYF("first_sid=%d, last_sid=%d",a.addrlist.first_sid,a.addrlist.last_sid);
-    WHYF("frame_sid_count=%d, server_sid_count=%d",
-	 a.addrlist.frame_sid_count,a.addrlist.server_sid_count);
     for(i=0;i<a.addrlist.frame_sid_count;i++) {
       count++;
       cli_printf("%s",overlay_render_sid(a.addrlist.sids[i])); cli_delim("\n");

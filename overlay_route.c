@@ -904,7 +904,7 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
 
       /* Check the observation age, and ignore if too old */
       int obs_age=now-n->observations[i].time_ms;
-      WHYF("tallying obs: %dms old, %dms long",
+      if (0) WHYF("tallying obs: %dms old, %dms long",
 	   obs_age,interval);
       if (obs_age>200000) continue;
 
