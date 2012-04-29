@@ -107,19 +107,19 @@ int validateSid(const char *sid)
 {
   size_t n = strlen(sid);
   if (n != SID_STRLEN)
-    return WHYF("Invalid SID (strlen is %u, should be %u)", n, SID_STRLEN);
+    { WHYF("Invalid SID (strlen is %u, should be %u)", n, SID_STRLEN); return 0; }
   const char *s;
   for (s = sid; *s; ++s)
     if (hexvalue(*s) == -1)
-      return WHY("SID contains non-hex character");
-  return 0;
+      { WHY("SID contains non-hex character"); return 0; }
+  return 1;
 }
 
 int stowSid(unsigned char *packet, int ofs, const char *sid)
 {
   if (debug&DEBUG_PACKETFORMATS)
     printf("Stowing SID \"%s\"\n", sid);
-  if (validateSid(sid))
+  if (!validateSid(sid))
     return WHY("Invalid SID passed in");
   int i;
   for(i = 0; i != SID_SIZE; ++i) {
