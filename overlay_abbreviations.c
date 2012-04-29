@@ -248,7 +248,9 @@ int overlay_abbreviate_address(unsigned char *in,unsigned char *out,int *ofs)
 
   /* Try repeating previous address */
   for(i=0;i<SID_SIZE;i++) if (in[i]!=overlay_abbreviate_previous_address.b[i]) break;
-  if (i==SID_SIZE) { out[(*ofs)++]=OA_CODE_PREVIOUS; return 0; } 
+  if (i==SID_SIZE) { 
+    out[(*ofs)++]=OA_CODE_PREVIOUS; 
+    return 0; } 
 
   /* Is it a broadcast address? */
   if (overlay_address_is_broadcast(in)) {

@@ -674,6 +674,7 @@ int overlay_route_node_can_hear_me(unsigned char *who,int sender_interface,
   /* Ignore traffic from ourselves. */
   if (overlay_address_is_local(who)) 
     {
+      WHY("I can hear myself. How odd");
       return 0;
     }
 
@@ -894,16 +895,18 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
      the announcements on. */
   for(i=0;i<OVERLAY_MAX_OBSERVATIONS;i++) {
     if (n->observations[i].valid&&n->observations[i].s1) {
-      /* Check the observation age, and ignore if too old */
-      int obs_age=now-n->observations[i].time_ms;
-      if (obs_age>200000) continue;
-
       /* Work out the interval covered by the observation.
 	 The times are represented as lowest 32 bits of a 64-bit 
 	 millisecond clock.  This introduces modulo problems, 
 	 however by using 32-bit modulo arithmatic here, we avoid
 	 most of them. */
       unsigned int interval=n->observations[i].s2-n->observations[i].s1;      
+
+      /* Check the observation age, and ignore if too old */
+      int obs_age=now-n->observations[i].time_ms;
+      WHYF("tallying obs: %dms old, %dms long",
+	   obs_age,interval);
+      if (obs_age>200000) continue;
 
       /* Ignore very large intervals (>1hour) as being likely to be erroneous.
 	 (or perhaps a clock wrap due to the modulo arithmatic)
@@ -1018,9 +1021,9 @@ char *overlay_render_sid_prefix(unsigned char *sid,int l)
 */
 int overlay_route_saw_selfannounce_ack(int interface,overlay_frame *f,long long now)
 {
-  if (1) WHYF("processing selfannounce ack (payload length=%d)",f->payload->length);
+  if (0) WHYF("processing selfannounce ack (payload length=%d)",f->payload->length);
   if (!overlay_neighbours) {
-    if (1) WHY("no neighbours, so returning immediately");
+    if (0) WHY("no neighbours, so returning immediately");
     return 0;
   }
 
@@ -1034,6 +1037,8 @@ int overlay_route_saw_selfannounce_ack(int interface,overlay_frame *f,long long 
   // Call something like the following for each link
   if (f->source_address_status==OA_RESOLVED&&
       f->destination_address_status==OA_RESOLVED) {
+    if (0) WHYF("f->source=%s, f->destination=%s",
+		overlay_render_sid(f->source),overlay_render_sid(f->destination));
     overlay_route_record_link(now,f->source,f->source,iface,s1,s2,
 			      0 /* no associated score */,
 			      0 /* no gateways in between */);
@@ -1051,9 +1056,9 @@ int overlay_route_record_link(long long now,unsigned char *to,
 {
   int i,slot=-1;
 
-  if (1) WHYF("to=%s, via=%s, iface=%d",
+  if (0) WHYF("to=%s, via=%s, iface=%d, s1=%d, s2=%d",
 	      overlay_render_sid(to),overlay_render_sid(via),
-	      sender_interface);
+	      sender_interface,s1,s2);
  
 
   if (sender_interface>OVERLAY_MAX_INTERFACES) return 0;
@@ -1316,10 +1321,12 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
   int bin,slot,n;
   long long now=overlay_gettime_ms();
 
-  WHYF("Looking for node %s* (prefix len=0x%x)",
-       overlay_render_sid_prefix(mdp->nodeinfo.sid,mdp->nodeinfo.sid_prefix_length),
-       mdp->nodeinfo.sid_prefix_length
-       );
+  if (0) 
+    WHYF("Looking for node %s* (prefix len=0x%x)",
+	 overlay_render_sid_prefix(mdp->nodeinfo.sid,
+				   mdp->nodeinfo.sid_prefix_length),
+	 mdp->nodeinfo.sid_prefix_length
+	 );
 
   /* check if it is a local identity */
   int cn,in,kp;
