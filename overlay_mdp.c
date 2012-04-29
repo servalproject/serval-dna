@@ -940,13 +940,17 @@ int overlay_mdp_poll()
 	    }
 	  } else {
 	    /* from peer list */
+	    overlay_route_dump();
 	    int bin,slot;
 	    int i=0,count=0;
+	    WHYF("max_sids=%d, sid_num=%d",max_sids,sid_num);
 	    for(bin=0;bin<overlay_bin_count;bin++)
 	      for(slot=0;slot<overlay_bin_size;slot++)
 		{
-		  if (!overlay_nodes[bin][slot].sid[0]) continue;
-		  if (count>=sid_num&&(i<max_sids))
+		  if (!overlay_nodes[bin][slot].sid[0]) 
+		    { 
+		      continue; }
+		  if ((count>=sid_num)&&(i<max_sids))
 		    bcopy(overlay_nodes[bin][slot].sid,
 			  mdpreply.addrlist.sids[i++],SID_SIZE);
 		  count++;

@@ -472,6 +472,7 @@ overlay_node *overlay_route_find_node(unsigned char *sid,int createP)
 
 int overlay_route_ack_selfannounce(overlay_frame *f,
 				   unsigned int s1,unsigned int s2,
+				   int interface,
 				   overlay_neighbour *n)
 {
   /* Acknowledge the receipt of a self-announcement of an immediate neighbour.
@@ -576,6 +577,7 @@ int overlay_route_ack_selfannounce(overlay_frame *f,
      We could use the spare 2 bits at the top of the interface id to indicate
      multiple interfaces with same score? 
   */
+#ifdef NOTDEFINED
   int i;
   for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
     {
@@ -587,6 +589,8 @@ int overlay_route_ack_selfannounce(overlay_frame *f,
     }
   /* Terminate list */
   ob_append_byte(out->payload,0);
+#endif
+  ob_append_byte(out->payload,interface);
 
   /* Add to queue. Keep broadcast status that we have assigned here if required to
      get ack back to sender before we have a route. */
@@ -783,7 +787,7 @@ int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now)
       return 0; 
     }
 
-  overlay_route_ack_selfannounce(f,s1,s2,n);
+  overlay_route_ack_selfannounce(f,s1,s2,sender_interface,n);
 
   return 0;
 }
@@ -1014,30 +1018,26 @@ char *overlay_render_sid_prefix(unsigned char *sid,int l)
 */
 int overlay_route_saw_selfannounce_ack(int interface,overlay_frame *f,long long now)
 {
-  if (0) WHYF("processing selfannounce ack (payload length=%d)",f->payload->length);
+  if (1) WHYF("processing selfannounce ack (payload length=%d)",f->payload->length);
   if (!overlay_neighbours) {
-    if (0) WHY("no neighbours, so returning immediately");
+    if (1) WHY("no neighbours, so returning immediately");
     return 0;
   }
 
-  int i;
-  int iface;
+  if (f->payload->length<9) 
+    return WHY("FOO! selfannounce ack packet too short");
 
   unsigned int s1=ob_get_int(f->payload,0);
   unsigned int s2=ob_get_int(f->payload,4);
-  i=8;
+  int iface=f->payload->bytes[8];
 
-  if(i<f->payload->length) {
-    iface=f->payload->bytes[i++];
-
-    // Call something like the following for each link
-    if (f->source_address_status==OA_RESOLVED&&
-	f->destination_address_status==OA_RESOLVED) {
-      overlay_route_record_link(now,f->source,f->source,iface,s1,s2,
-				0 /* no associated score */,
-				0 /* no gateways in between */);
-    } else WHY("address(es) not resolved");
-  } else WHY("Short selfannounce ack");
+  // Call something like the following for each link
+  if (f->source_address_status==OA_RESOLVED&&
+      f->destination_address_status==OA_RESOLVED) {
+    overlay_route_record_link(now,f->source,f->source,iface,s1,s2,
+			      0 /* no associated score */,
+			      0 /* no gateways in between */);
+  } else WHY("address(es) not resolved");
 
   return 0;
 }
@@ -1051,8 +1051,12 @@ int overlay_route_record_link(long long now,unsigned char *to,
 {
   int i,slot=-1;
 
-  if (0) WHYF("to=%s, via=%s",
-	      overlay_render_sid(to),overlay_render_sid(via));
+  if (1) WHYF("to=%s, via=%s, iface=%d",
+	      overlay_render_sid(to),overlay_render_sid(via),
+	      sender_interface);
+ 
+
+  if (sender_interface>OVERLAY_MAX_INTERFACES) return 0;
 
   /* Don't record routes to ourselves */
   if (overlay_address_is_local(to)) {
