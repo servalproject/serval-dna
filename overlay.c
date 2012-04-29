@@ -296,13 +296,15 @@ int overlay_frame_process(int interface,overlay_frame *f)
 
     if (f->source_address_status!=OA_RESOLVED) {
       if (debug&DEBUG_OVERLAYFRAMES) WHY("Source address could not be resolved, so dropping frame.");
-      return WHY("could not resolve source address");
+      return -1;
     }
     if (overlay_address_is_local(f->source))
       {
+	/* not that noteworthy, as when listening to a broadcast socket
+	   you hear everything you send. */
 	if (debug&DEBUG_OVERLAYROUTING) 
 	  WHY("Dropping frame claiming to come from myself.");
-	return WHY("dropping frame claiming to be from myself"); 
+	return -1;
       }
 
     if (f->destination_address_status==OA_RESOLVED) {

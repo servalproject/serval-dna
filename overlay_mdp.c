@@ -942,7 +942,8 @@ int overlay_mdp_poll()
 	    /* from peer list */
 	    overlay_route_dump();
 	    int bin,slot;
-	    int i=0,count=0;
+	    i=0;
+	    count=0;
 	    WHYF("max_sids=%d, sid_num=%d",max_sids,sid_num);
 	    for(bin=0;bin<overlay_bin_count;bin++)
 	      for(slot=0;slot<overlay_bin_size;slot++)
@@ -950,15 +951,24 @@ int overlay_mdp_poll()
 		  if (!overlay_nodes[bin][slot].sid[0]) 
 		    { 
 		      continue; }
-		  if ((count>=sid_num)&&(i<max_sids))
+		  WHYF("Considering returning %s* count=%d, sid_num=%d, i=%d, max_sids=%d",
+		       overlay_render_sid_prefix(&overlay_nodes[bin][slot].sid[0],7),
+		       count,sid_num,i,max_sids);
+		  if ((count>=sid_num)&&(i<max_sids)) {
 		    bcopy(overlay_nodes[bin][slot].sid,
 			  mdpreply.addrlist.sids[i++],SID_SIZE);
+		  }
 		  count++;
 		}
 	  }
 	  mdpreply.addrlist.frame_sid_count=i;
 	  mdpreply.addrlist.last_sid=sid_num+i-1;
 	  mdpreply.addrlist.server_sid_count=count;
+	  WHYF("frame_sid_count=%d, last_sid=%d, server_sid_count=%d",
+	       mdpreply.addrlist.frame_sid_count,
+	       mdpreply.addrlist.last_sid,
+	       mdpreply.addrlist.server_sid_count);
+	       
 
 	  /* Send back to caller */
 	  return overlay_mdp_reply(mdp_named_socket,
