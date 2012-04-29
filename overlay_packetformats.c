@@ -318,6 +318,8 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
       if (ob_append_bytes(b,sid,7)) return WHY("Could not append SID prefix to self-announcement"); 
       overlay_interfaces[interface].ticks_since_sent_full_address++;
     }
+  /* Make note that this is the most recent address we have set */
+  overlay_abbreviate_set_most_recent_address(sid);
       
   /* Sequence number range.  Based on one tick per milli-second. */
   overlay_update_sequence_number();
