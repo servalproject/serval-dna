@@ -81,8 +81,8 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
   int fail=0;
 
   if (p->nexthop_address_status!=OA_RESOLVED) {
-    WHYF("next hop is NOT resolved for packet to %s",
-	 overlay_render_sid(p->destination));
+    if (0) WHYF("next hop is NOT resolved for packet to %s",
+		overlay_render_sid(p->destination));
     if (overlay_address_is_broadcast(p->destination)) {
       /* Broadcast frames are broadcast rather than unicast to next hop.
 	 Just check if the broadcast frame should be dropped first. */

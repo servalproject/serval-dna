@@ -731,7 +731,7 @@ int overlay_route_node_can_hear_me(unsigned char *who,int sender_interface,
   /* Update reachability metrics for node */
   if (overlay_route_recalc_neighbour_metrics(neh,now)) WHY("overlay_route_recalc_neighbour_metrics() failed");
 
-  overlay_route_dump();
+  if (debug&DEBUG_OVERLAYROUTEMONITOR) overlay_route_dump();
   return 0;
 }
 
@@ -1056,17 +1056,17 @@ int overlay_route_record_link(long long now,unsigned char *to,
 
   /* Don't record routes to ourselves */
   if (overlay_address_is_local(to)) {
-    WHYF("Ignoring self announce ack addressed to me (%s).",
-	overlay_render_sid(to));
+    if (0) WHYF("Ignoring self announce ack addressed to me (%s).",
+		overlay_render_sid(to));
     return 0;
   }
-  else WHYF("Recording link to %s",overlay_render_sid(to));
+  else if (0) WHYF("Recording link to %s",overlay_render_sid(to));
 
   for(i=0;i<SID_SIZE;i++) if (to[i]!=via[i]) break;
   if (i==SID_SIZE)
     {
       /* It's a neighbour observation */
-      WHYF("%s is my neighbour",overlay_render_sid(to));
+      if (0) WHYF("%s is my neighbour",overlay_render_sid(to));
       overlay_route_node_can_hear_me(to,sender_interface,s1,s2,now);
     }
 
@@ -1124,7 +1124,7 @@ int overlay_route_record_link(long long now,unsigned char *to,
 
   overlay_route_recalc_node_metrics(n,now);
   
-  if (1||debug&DEBUG_OVERLAYROUTEMONITOR) overlay_route_dump();
+  if (debug&DEBUG_OVERLAYROUTEMONITOR) overlay_route_dump();
   
   return 0;
 }
