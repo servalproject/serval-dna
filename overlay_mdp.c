@@ -1105,7 +1105,7 @@ int overlay_mdp_client_init()
 {
   if (mdp_client_socket==-1) {
     /* Open socket to MDP server (thus connection is always local) */
-    WHY("Use of abstract name space socket for Linux not implemented");
+    if (0) WHY("Use of abstract name space socket for Linux not implemented");
     
     mdp_client_socket = socket(AF_UNIX, SOCK_DGRAM, 0);
     if (mdp_client_socket < 0) {
@@ -1255,7 +1255,7 @@ int overlay_mdp_getmyaddr(int index,unsigned char *sid)
   }
   if ((a.packetTypeAndFlags&MDP_TYPE_MASK)!=MDP_ADDRLIST)
     return WHY("MDP Server returned something other than an address list");
-  WHYF("local addr 0 = %s",overlay_render_sid(a.addrlist.sids[0]));
+  if (0) WHYF("local addr 0 = %s",overlay_render_sid(a.addrlist.sids[0]));
   bcopy(&a.addrlist.sids[0][0],sid,SID_SIZE);
   return 0;
 }
