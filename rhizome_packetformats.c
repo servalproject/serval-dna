@@ -253,6 +253,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	  /* Mark end of whole manifests by writing 0xff, which is more than the MSB
 	     of a manifest's length is allowed to be. */
 	  ob_append_byte(e,0xff);
+	  bytes_used++;
 	}
     }
   
