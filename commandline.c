@@ -289,7 +289,10 @@ int parseCommandLine(int argc, const char *const *args)
 
   /* Otherwise, make call */
   setVerbosity(confValueGet("debug",""));
-  return command_line_options[cli_call].function(argc, args, &command_line_options[cli_call]);
+  int result=command_line_options[cli_call].function(argc, args, &command_line_options[cli_call]);
+  /* clean up after ourselves */
+  overlay_mdp_client_done();
+  return result;
 }
 
 int cli_arg(int argc, const char *const *argv, command_line_option *o, char *argname, const char **dst, int (*validator)(const char *arg), char *defaultvalue)
@@ -505,6 +508,7 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
       if (servalShutdown) break;
     }
 
+  overlay_mdp_client_done();
   return 0;
 }
 
@@ -823,6 +827,7 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
 		(samples<rx_count)?" (stddev calculated from last 1024 samples)":"",
 		rx_mintime,rx_mean,rx_maxtime,rx_stddev);
 
+	overlay_mdp_client_done();
 	return 0;
       }
     }
@@ -830,6 +835,7 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
     timeout=now+1000;
   }
 
+  overlay_mdp_client_done();
   return 0;
 }
 
@@ -1185,10 +1191,13 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
   if (result) {
     if (mdp.packetTypeAndFlags==MDP_ERROR)
       {
+	overlay_mdp_client_done();
 	return WHYF("  MDP Server error #%d: '%s'",mdp.error.error,mdp.error.message);
       }
-    else
+    else {
+      overlay_mdp_client_done();
       return WHYF("Could not get information about node.");
+    }
   }
 
   if (resolveDid&&(!mdp.nodeinfo.resolve_did)) {
