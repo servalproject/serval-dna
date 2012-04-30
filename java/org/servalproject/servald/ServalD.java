@@ -1,23 +1,33 @@
 package org.servalproject.servald;
 
-import org.servalproject.servald.ServalDResult;
+import java.util.List;
+import java.util.LinkedList;
 
 class ServalD
 {
+	int status;
+	List<String> outv;
+
 	public ServalD()
 	{
 		System.loadLibrary("servald");
 	}
 
-	public native ServalDResult command(String... args);
+	public native int rawCommand(List<String> outv, String... args);
+
+	public void command(String... args)
+	{
+		this.outv = new LinkedList<String>();
+		this.status = this.rawCommand(this.outv, args);
+	}
 
 	public static void main(String[] args)
 	{
-		ServalD sdi = new ServalD();
-		ServalDResult res = sdi.command(args);
-		for (String s: res.outv) {
+		ServalD servald = new ServalD();
+		servald.command(args);
+		for (String s: servald.outv) {
 			System.out.println(s);
 		}
-		System.exit(res.status);
+		System.exit(servald.status);
 	}
 }

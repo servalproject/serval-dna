@@ -2,8 +2,9 @@ package org.servalproject.servald;
 
 import java.lang.reflect.*;
 import java.util.Arrays;
+import java.util.List;
+import java.util.LinkedList;
 import org.servalproject.servald.ServalD;
-import org.servalproject.servald.ServalDResult;
 
 class ServalDTests
 {
@@ -24,11 +25,11 @@ class ServalDTests
 	public static void repeat(String[] args)
 	{
 		int repeat = Integer.decode(args[0]);
-		ServalD sdi = new ServalD();
+		ServalD servald = new ServalD();
 		for (int i = 0; i != repeat; ++i) {
-			ServalDResult res = sdi.command(Arrays.copyOfRange(args, 1, args.length));
-			System.out.print(res.status);
-			for (String s: res.outv) {
+			servald.command(Arrays.copyOfRange(args, 1, args.length));
+			System.out.print(servald.status);
+			for (String s: servald.outv) {
 				System.out.print(":");
 				System.out.print(s);
 			}

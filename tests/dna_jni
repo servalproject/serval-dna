@@ -34,8 +34,6 @@ compile_java_classes() {
    mkdir classes
    assert $JAVAC -d classes "$dna_source_root"/java/org/servalproject/servald/*.java
    assert [ -r classes/org/servalproject/servald/ServalD.class ]
-   assert [ -r classes/org/servalproject/servald/ServalDResult.class ]
-   assert [ -r classes/org/servalproject/servald/ServalDReentranceError.class ]
    assert [ -r classes/org/servalproject/servald/ServalDTests.class ]
 }
 

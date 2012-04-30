@@ -95,19 +95,13 @@ int cli_usage() {
 
 #ifdef HAVE_JNI_H
 
-struct outv_field {
-  jstring jstr;
-};
-
-#define OUTV_BUFFER_ATOM	(8192)
-#define OUTC_INCREMENT		(256)
+#define OUTV_BUFFER_ALLOCSIZE	(8192)
 
 JNIEnv *jni_env = NULL;
 int jni_exception = 0;
 
-struct outv_field *outv = NULL;
-size_t outc = 0;
-size_t outc_limit = 0;
+jobject outv_list = NULL;
+jmethodID listAddMethodId = NULL;
 
 char *outv_buffer = NULL;
 char *outv_current = NULL;
@@ -117,8 +111,8 @@ static int outv_growbuf(size_t needed)
 {
   size_t newsize = (outv_limit - outv_current < needed) ? (outv_limit - outv_buffer) + needed : 0;
   if (newsize) {
-    // Round up to nearest multiple of OUTV_BUFFER_ATOM.
-    newsize = newsize + OUTV_BUFFER_ATOM - ((newsize - 1) % OUTV_BUFFER_ATOM + 1);
+    // Round up to nearest multiple of OUTV_BUFFER_ALLOCSIZE.
+    newsize = newsize + OUTV_BUFFER_ALLOCSIZE - ((newsize - 1) % OUTV_BUFFER_ALLOCSIZE + 1);
     size_t length = outv_current - outv_buffer;
     outv_buffer = realloc(outv_buffer, newsize);
     if (outv_buffer == NULL)
@@ -133,57 +127,52 @@ static int outv_end_field()
 {
   outv_growbuf(1);
   *outv_current++ = '\0';
-  if (outc == outc_limit) {
-    outc_limit += OUTC_INCREMENT;
-    size_t newsize = outc_limit * sizeof(struct outv_field);
-    outv = realloc(outv, newsize);
-  }
-  struct outv_field *f = &outv[outc];
-  f->jstr = (jstring)(*jni_env)->NewStringUTF(jni_env, outv_buffer);
+  jstring str = (jstring)(*jni_env)->NewStringUTF(jni_env, outv_buffer);
   outv_current = outv_buffer;
-  if (f->jstr == NULL) {
+  if (str == NULL) {
     jni_exception = 1;
     return WHY("Exception thrown from NewStringUTF()");
   }
-  ++outc;
+  (*jni_env)->CallBooleanMethod(jni_env, outv_list, listAddMethodId, str);
+  if ((*jni_env)->ExceptionOccurred(jni_env)) {
+    jni_exception = 1;
+    return WHY("Exception thrown from CallBooleanMethod()");
+  }
   return 0;
 }
 
 /* JNI entry point to command line.  See org.servalproject.servald.ServalD class for the Java side.
-   JNI method descriptor: "([Ljava/lang/String;)Lorg/servalproject/servald/ServalDResult;"
+   JNI method descriptor: "(Ljava/util/List;[Ljava/lang/String;)I"
 */
-JNIEXPORT jobject JNICALL Java_org_servalproject_servald_ServalD_command(JNIEnv *env, jobject this, jobjectArray args)
+JNIEXPORT jint JNICALL Java_org_servalproject_servald_ServalD_rawCommand(JNIEnv *env, jobject this, jobject outv, jobjectArray args)
 {
-  jclass resultClass = NULL;
   jclass stringClass = NULL;
-  jmethodID resultConstructorId = NULL;
-  jobjectArray outArray = NULL;
+  jclass listClass = NULL;
   jint status = 0;
   // Enforce non re-entrancy.
   if (jni_env) {
     jclass exceptionClass = NULL;
-    if ((exceptionClass = (*env)->FindClass(env, "org/servalproject/servald/ServalDReentranceError")) == NULL)
-      return NULL; // exception
+    if ((exceptionClass = (*env)->FindClass(env, "java/lang/IllegalStateException")) == NULL)
+      return -1; // exception
     (*env)->ThrowNew(env, exceptionClass, "re-entrancy not supported");
-    return NULL;
+    return -1;
   }
-
   // Get some handles to some classes and methods that we use later on.
-  if ((resultClass = (*env)->FindClass(env, "org/servalproject/servald/ServalDResult")) == NULL)
-    return NULL; // exception
-  if ((resultConstructorId = (*env)->GetMethodID(env, resultClass, "<init>", "(I[Ljava/lang/String;)V")) == NULL)
-    return NULL; // exception
   if ((stringClass = (*env)->FindClass(env, "java/lang/String")) == NULL)
-    return NULL; // exception
+    return -1; // exception
+  if ((listClass = (*env)->FindClass(env, "java/util/List")) == NULL)
+    return -1; // exception
+  if ((listAddMethodId = (*env)->GetMethodID(env, listClass, "add", "(Ljava/lang/Object;)Z")) == NULL)
+    return -1; // exception
   // Construct argv, argc from this method's arguments.
   jsize len = (*env)->GetArrayLength(env, args);
   const char **argv = malloc(sizeof(char*) * (len + 1));
   if (argv == NULL) {
     jclass exceptionClass = NULL;
     if ((exceptionClass = (*env)->FindClass(env, "java/lang/OutOfMemoryError")) == NULL)
-      return NULL; // exception
+      return -1; // exception
     (*env)->ThrowNew(env, exceptionClass, "malloc returned NULL");
-    return NULL;
+    return -1;
   }
   jsize i;
   for (i = 0; i <= len; ++i)
@@ -206,7 +195,7 @@ JNIEXPORT jobject JNICALL Java_org_servalproject_servald_ServalD_command(JNIEnv 
   }
   if (!jni_exception) {
     // Set up the output buffer.
-    outc = 0;
+    outv_list = outv;
     outv_current = outv_buffer;
     // Execute the command.
     jni_env = env;
@@ -223,15 +212,8 @@ JNIEXPORT jobject JNICALL Java_org_servalproject_servald_ServalD_command(JNIEnv 
   free(argv);
   // Deal with Java exceptions: NewStringUTF out of memory in outv_end_field().
   if (jni_exception || (outv_current != outv_buffer && outv_end_field() == -1))
-    return NULL;
-  // Pack the output fields into a Java array of strings.
-  if ((outArray = (*env)->NewObjectArray(env, outc, stringClass, NULL)) == NULL)
-    return NULL; // out of memory exception
-  for (i = 0; i != outc; ++i)
-    (*env)->SetObjectArrayElement(env, outArray, i, outv[i].jstr);
-  // Return the ResultD object constructed with the status integer and the array of output field
-  // strings.
-  return (*env)->NewObject(env, resultClass, resultConstructorId, status, outArray);
+    return -1;
+  return status;
 }
 
 #endif /* HAVE_JNI_H */
@@ -422,7 +404,7 @@ int cli_delim(const char *opt)
 {
 #ifdef HAVE_JNI_H
   if (jni_env) {
-    outv_end_field();
+    return outv_end_field();
   } else
 #endif
   {
