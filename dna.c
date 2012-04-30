@@ -84,6 +84,10 @@ int dumpResponses(struct response_set *responses)
   return 0;
 }
 
+#ifdef ANDROID
+#include <android/log.h> 
+#endif
+
 int setReason(char *fmt, ...)
 {
   va_list ap,ap2;
@@ -96,6 +100,9 @@ int setReason(char *fmt, ...)
 
   va_end(ap);
 
+#ifdef ANDROID
+  __android_log_print(ANDROID_LOG_DEBUG, "servald", "%s",msg);  
+#endif
   fprintf(stderr,"Error: %s\n",msg);
   return -1;
 }
