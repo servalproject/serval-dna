@@ -1171,10 +1171,12 @@ int overlay_mdp_client_init()
 
 int overlay_mdp_client_done()
 {
-  /* Tell MDP server to release all our bindings */
-  overlay_mdp_frame mdp;
-  mdp.packetTypeAndFlags=MDP_GOODBYE;
-  overlay_mdp_send(&mdp,0,0);
+  if (mdp_client_socket!=-1) {
+    /* Tell MDP server to release all our bindings */
+    overlay_mdp_frame mdp;
+    mdp.packetTypeAndFlags=MDP_GOODBYE;
+    overlay_mdp_send(&mdp,0,0);
+  }
 
   if (overlay_mdp_client_socket_path_len>-1)
     unlink(overlay_mdp_client_socket_path);
