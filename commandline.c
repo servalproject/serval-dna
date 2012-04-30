@@ -616,64 +616,67 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
   if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1)
     return -1;
 
-  int pid=-1;
-  int running = servalNodeRunning(&pid);
-  if (running>0) {
-    /* Is running, so we can try to kill it.
-       This is a little complicated by the fact that we catch most signals
-       so that unexpected aborts just restart.
-       What we can do is put some code in the signal handler that does abort
-       the process if a certain file exists, perhaps instance_path/doshutdown,
-       and removes the file.
-    */
-    if (pid<0) {
-      WHY("Could not determine process id of Serval process.  Stale instance perhaps?");
-      return -1;
-    }
+  int tries=0;
 
-    char stopfile[1024];
-    FILE *f;
-    if (!(FORM_SERVAL_INSTANCE_PATH(stopfile, "doshutdown") && (f = fopen(stopfile, "w")))) {
-      WHY("Could not create shutdown file");
-      return -1;
-    }
-    fclose(f);
-    int result=kill(pid,SIGHUP);
-    if (!result) {
-      fprintf(stderr,"Stop request sent to Serval process.\n");
-    } else {
-      WHY("Could not send SIGHUP to Serval process.");
-      switch (errno) {
-      case EINVAL: WHY("This is embarassing, but the operating system says I don't know how to send a signal."); break;
-      case EPERM: WHY("I don't have permission to stop the Serval process.  You could try using sudo, or run the stop command as the appropriate user."); break;
-      case ESRCH: WHY("The process id I have recorded doesn't seem to exist anymore.  Did someone kill the process without telling me?"); 
-	/* Clean up any lingering mess */
-	servalShutdownCleanly();
-	break;
-      default:
-	perror("This is reason given by the operating system");
-      }
-      return -1;
-    }
-
-    /* Allow a few seconds for the process to die, and keep an eye on things 
-       while this is happening. */
-    time_t timeout=time(0)+5;
-    while(timeout>time(0)) {
-      pid=-1;
+  for(tries=0;tries<3;tries++)
+    {
+      int pid=-1;
       int running = servalNodeRunning(&pid);
-      if (running<1) {
-	fprintf(stderr,"Serval process appears to have stopped.\n");
-	return 0;
+      if (running>0) {
+	/* Is running, so we can try to kill it.
+	   This is a little complicated by the fact that we catch most signals
+	   so that unexpected aborts just restart.
+	   What we can do is put some code in the signal handler that does abort
+	   the process if a certain file exists, perhaps instance_path/doshutdown,
+	   and removes the file.
+	*/
+	if (pid<0) {
+	  WHY("Could not determine process id of Serval process.  Stale instance perhaps?");
+	  return -1;
+	}
+	
+	char stopfile[1024];
+	FILE *f;
+	if (!(FORM_SERVAL_INSTANCE_PATH(stopfile, "doshutdown") && (f = fopen(stopfile, "w")))) {
+	  WHY("Could not create shutdown file");
+	  return -1;
+	}
+	fclose(f);
+	int result=kill(pid,SIGHUP);
+	if (!result) {
+	  fprintf(stderr,"Stop request sent to Serval process.\n");
+	} else {
+	  WHY("Could not send SIGHUP to Serval process.");
+	  switch (errno) {
+	  case EINVAL: WHY("This is embarassing, but the operating system says I don't know how to send a signal."); break;
+	  case EPERM: WHY("I don't have permission to stop the Serval process.  You could try using sudo, or run the stop command as the appropriate user."); break;
+	  case ESRCH: WHY("The process id I have recorded doesn't seem to exist anymore.  Did someone kill the process without telling me?"); 
+	    /* Clean up any lingering mess */
+	    servalShutdownCleanly();
+	    break;
+	  default:
+	    perror("This is reason given by the operating system");
+	  }
+	  return -1;
+	}
+	
+	/* Allow a few seconds for the process to die, and keep an eye on things 
+	   while this is happening. */
+	time_t timeout=time(0)+2;
+	while(timeout>time(0)) {
+	  pid=-1;
+	  int running = servalNodeRunning(&pid);
+	  if (running<1) {
+	    fprintf(stderr,"Serval process appears to have stopped.\n");
+	    return 0;
+	  }
+	}
+      } else {
+	return WHY("Serval process for that instance does not appear to be running.");
       }
     }
-    return WHY("I tried to stop it, but it seems that the Serval process is still running.");
-
-  } else {
-      return WHY("Serval process for that instance does not appear to be running.");
-  }
  
-  return WHY("Not implemented");
+  return WHY("Tried to stop servald without success");
 }
 
 int app_server_status(int argc, const char *const *argv, struct command_line_option *o)
