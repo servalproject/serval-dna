@@ -1121,9 +1121,9 @@ int overlay_mdp_client_init()
     name.sun_family = AF_UNIX;
     if (overlay_mdp_client_socket_path_len==-1) {
       char fmt[1024];
-      if (!FORM_SERVAL_INSTANCE_PATH(fmt, "mdp-client-%d.socket"))
+      if (!FORM_SERVAL_INSTANCE_PATH(fmt, "mdp-client-%d-%08x.socket"))
 	return WHY("Could not form MDP client socket name");
-      snprintf(overlay_mdp_client_socket_path,1024,fmt,getpid());
+      snprintf(overlay_mdp_client_socket_path,1024,fmt,getpid(),random_value);
       overlay_mdp_client_socket_path_len=strlen(overlay_mdp_client_socket_path)+1;
       WHYF("MDP client socket name='%s'",overlay_mdp_client_socket_path);
     }
