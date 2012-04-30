@@ -1233,7 +1233,11 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 		mdp.nodeinfo.resolve_did=1;
 	      }
 	    break;
-	  }
+	  } else {
+	  WHY("Poll for DNA number resolution failed");
+	  if (m2.packetTypeAndFlags==MDP_ERROR) 
+	    WHYF("error.error=%d, error.message=%s",m2.error.error,m2.error.message);
+	}
       }
     }
   }
