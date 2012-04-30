@@ -1217,7 +1217,7 @@ int overlay_mdp_recv(overlay_mdp_frame *mdp,int *ttl)
 int overlay_mdp_bind(unsigned char *localaddr,int port) 
 {
   overlay_mdp_frame mdp;
-  mdp.packetTypeAndFlags=MDP_BIND;
+  mdp.packetTypeAndFlags=MDP_BIND|MDP_FORCE;
   bcopy(localaddr,mdp.bind.sid,SID_SIZE);
   mdp.bind.port_number=port;
   int result=overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000);
