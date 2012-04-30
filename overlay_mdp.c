@@ -129,6 +129,7 @@ int mdp_bindings_initialised=0;
 sockaddr_mdp mdp_bindings[MDP_MAX_BINDINGS];
 char mdp_bindings_sockets[MDP_MAX_BINDINGS][MDP_MAX_SOCKET_NAME_LEN];
 int mdp_bindings_socket_name_lengths[MDP_MAX_BINDINGS];
+unsigned long long mdp_bindings_time[MDP_MAX_BINDINGS];
 
 int overlay_mdp_reply_error(int sock,
 			    struct sockaddr_un *recvaddr,int recvaddrlen,
@@ -173,6 +174,19 @@ int overlay_mdp_reply_ok(int sock,
 			 char *message)
 {
   return overlay_mdp_reply_error(sock,recvaddr,recvaddrlen,0,message);
+}
+
+int overlay_mdp_releasebindings(struct sockaddr_un *recvaddr,int recvaddrlen)
+{
+  /* Free up any MDP bindings held by this client. */
+  int i;
+  for(i=0;i<MDP_MAX_BINDINGS;i++)
+    if (mdp_bindings_socket_name_lengths[i]==recvaddrlen)
+      if (!memcmp(mdp_bindings_sockets[i],recvaddr->sun_path,recvaddrlen))
+	mdp_bindings[i].port=0;
+
+  return 0;
+
 }
 
 int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
@@ -249,10 +263,13 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
   */
   if (free==-1) {
     /* XXX Should we probe for stale bindings here and now, since this is when
-       we want the spare slots ? */
-    WHY("Should probe existing bindings to see if any can be freed");
-    fprintf(stderr,"No free port binding slots.  Close other connections and try again?");
-    return overlay_mdp_reply_error(sock,recvaddr,recvaddrlen,4,"All binding slots in use. Close old connections and try again, or increase MDP_MAX_BINDINGS.");
+       we want the spare slots ?
+
+       Picking one at random is as good a policy as any.
+       Call listeners don't have a port binding, so are unaffected by this.
+    */
+    free=random()%MDP_MAX_BINDINGS;
+    mdp_bindings[free].port=0;
   }
 
   /* Okay, record binding and report success */
@@ -261,6 +278,7 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
   mdp_bindings_socket_name_lengths[free]=recvaddrlen-2;
   memcpy(&mdp_bindings_sockets[free][0],&recvaddr->sun_path[0],
 	 mdp_bindings_socket_name_lengths[free]);
+  mdp_bindings_time[free]=overlay_gettime_ms();
   return overlay_mdp_reply_ok(sock,recvaddr,recvaddrlen,"Port bound");
 }
 
@@ -900,6 +918,8 @@ int overlay_mdp_poll()
       overlay_mdp_frame *mdp=(overlay_mdp_frame *)&buffer[0];      
 
       switch(mdp->packetTypeAndFlags&MDP_TYPE_MASK) {
+      case MDP_GOODBYE:
+	return overlay_mdp_releasebindings(recvaddr_un,recvaddrlen);
       case MDP_VOMPEVENT:
 	return vomp_mdp_event(mdp,recvaddr_un,recvaddrlen);
       case MDP_NODEINFO:
@@ -1000,6 +1020,9 @@ int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
   int len=4;
   switch(mdp->packetTypeAndFlags&MDP_TYPE_MASK)
     {
+    case MDP_GOODBYE:
+      /* no arguments for saying goodbye */
+      break;
     case MDP_ADDRLIST: 
       len=&mdp->addrlist.sids[0][0]-(unsigned char *)mdp;
       len+=mdp->addrlist.frame_sid_count*SID_SIZE;
@@ -1150,6 +1173,11 @@ int overlay_mdp_client_init()
 
 int overlay_mdp_client_done()
 {
+  /* Tell MDP server to release all our bindings */
+  overlay_mdp_frame mdp;
+  mdp.packetTypeAndFlags=MDP_GOODBYE;
+  overlay_mdp_send(&mdp,0,0);
+
   if (overlay_mdp_client_socket_path_len>-1)
     unlink(overlay_mdp_client_socket_path);
   if (mdp_client_socket!=-1)

@@ -1209,6 +1209,7 @@ typedef struct overlay_mdp_nodeinfo {
   int count; /* number of matching records */
 } overlay_mdp_nodeinfo;
 
+#define MDP_GOODBYE 9
 typedef struct overlay_mdp_frame {
 #define MDP_AWAITREPLY 9999
   unsigned int packetTypeAndFlags;
