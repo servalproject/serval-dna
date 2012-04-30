@@ -1084,8 +1084,6 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
     mdp->error.error=1;
     snprintf(mdp->error.message,128,"Error sending frame to MDP server.");
     perror("sendto(f)");
-    /* Clear socket so that we have the chance of reconnecting */
-    overlay_mdp_client_done();
     return -1;
   } else {
     if (!(flags&MDP_AWAITREPLY)) {       
