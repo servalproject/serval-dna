@@ -1178,9 +1178,11 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 
   overlay_mdp_frame mdp;
   bzero(&mdp,sizeof(mdp));
+  int resolveDid=0;
 
   mdp.packetTypeAndFlags=MDP_NODEINFO;
   if (argc>3) mdp.nodeinfo.resolve_did=1;
+  resolveDid=mdp.nodeinfo.resolve_did;
 
   /* get SID or SID prefix 
      XXX - Doesn't correctly handle odd-lengthed SID prefixes (ignores last digit).
@@ -1202,6 +1204,44 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
       }
     else
       return WHYF("Could not get information about node.");
+  }
+
+  if (resolveDid&&(!mdp.nodeinfo.resolve_did)) {
+    /* Asked for DID resolution, but did not get it, so do a DNA lookup
+       here.  We do this on the client side, so that we don't block the 
+       single-threaded server. */
+    overlay_mdp_frame m2;
+    bzero(&m2,sizeof(m2));
+    int port=32768+(random()&0xffff);
+    unsigned char srcsid[SID_SIZE];
+    if (overlay_mdp_getmyaddr(0,srcsid)) port=0;
+    if (overlay_mdp_bind(srcsid,port)) port=0;
+
+    if (port) {    
+      int i;
+      for(i=0;i<(3000/125);i++) {
+	m2.packetTypeAndFlags=MDP_TX;
+	m2.out.src.port=port;
+	bcopy(&srcsid[0],&m2.out.src.sid[0],SID_SIZE);
+	bcopy(&mdp.nodeinfo.sid[0],&m2.out.dst.sid[0],SID_SIZE);
+	m2.out.dst.port=MDP_PORT_DNALOOKUP;
+	/* search for any DID */
+	m2.out.payload[0]=0;
+	m2.out.payload_length=1;
+	
+	if (!overlay_mdp_send(&m2,MDP_AWAITREPLY,125))
+	  {	    
+	    int bytes=m2.in.payload_length;
+	    if ((bytes+1)<sizeof(mdp.nodeinfo.did))
+	      {
+		bcopy(&m2.in.payload[0],&mdp.nodeinfo.did[0],bytes);
+		mdp.nodeinfo.did[bytes]=0;
+		mdp.nodeinfo.resolve_did=1;
+	      }
+	    break;
+	  }
+      }
+    }
   }
 
   cli_printf("record"); cli_delim(":");

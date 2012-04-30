@@ -1394,6 +1394,7 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
 		  -overlay_neighbours[n].last_observation_time_ms;
 		mdp->nodeinfo.score=-1;
 		mdp->nodeinfo.interface_number=-1;
+		mdp->nodeinfo.resolve_did=0;
 		int i;
 		for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
 		  if (overlay_neighbours[n].scores[i]>mdp->nodeinfo.score)
@@ -1427,6 +1428,7 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
 		mdp->nodeinfo.time_since_last_observation=overlay_gettime_ms();
 		mdp->nodeinfo.score=-1;
 		mdp->nodeinfo.interface_number=-1;
+		mdp->nodeinfo.resolve_did=0;
 		int o;
 		for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++)
 		  if (overlay_nodes[bin][slot].observations[o].observed_score)
