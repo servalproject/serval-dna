@@ -856,9 +856,6 @@ int overlay_tick_interface(int i, long long now)
 		if (overlay_interfaces[i].observed>0)
 		  if (!p->broadcast_sent_via[i])
 		    { 
-		      if (1) 
-			fprintf(stderr,
-				"Frame still needs to be sent on interface #%d\n",i);
 		      workLeft=1; 
 		      break;
 		    }
