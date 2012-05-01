@@ -192,6 +192,7 @@ int overlay_interface_init_socket(int interface,struct sockaddr_in src_addr,stru
   if(setsockopt(I(fd), SOL_SOCKET, SO_BROADCAST, &broadcastP, sizeof(broadcastP)) < 0) {
     WHY("Could not enable broadcast reception for socket.  This is really bad.");
     perror("setsockopt");
+    close(I(fd)); I(fd)=0;
     return WHY("setsockopt() failed");
   } else
     WHYF("Interface #%d broadcast flag = %d",interface,broadcastP);
