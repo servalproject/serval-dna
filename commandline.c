@@ -436,6 +436,9 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
   if (create_serval_instance_dir() == -1)
     return -1;
 
+  int sid_count=0;
+  unsigned char sids[128][SID_SIZE];
+
   const char *did;
   if (cli_arg(argc, argv, o, "did", &did, NULL, "*") == -1)
     return -1;
@@ -444,10 +447,7 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
   unsigned char srcsid[SID_SIZE];
   int port=32768+(random()&32767);
   if (overlay_mdp_getmyaddr(0,srcsid)) return WHY("Could not get local address");
-  printf("binding to %s:%d\n",
-	 overlay_render_sid(srcsid),port);
   if (overlay_mdp_bind(srcsid,port)) return WHY("Could not bind to MDP socket");
-  WHY("bound port");
 
   /* use MDP to send the lookup request to MDP_PORT_DNALOOKUP, and wait for
      replies. */
@@ -494,10 +494,22 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 		  {
 		    fprintf(stderr,"       Error message: %s\n",mdp.error.message);
 		  }
-		else if ((rx.packetTypeAndFlags&MDP_TYPE_MASK)==MDP_TX)
-		  fprintf(stderr,"%s:%s\n",
-			  overlay_render_sid(&rx.in.src.sid[0]),
-			  &rx.in.payload[0]);
+		else if ((rx.packetTypeAndFlags&MDP_TYPE_MASK)==MDP_TX) {
+		  /* Display match unless it is a duplicate.
+		     XXX - For wildcard searches, each sid will only show up once. */
+		  int i;
+		  for(i=0;i<sid_count;i++)
+		    if (!bcmp(&rx.in.src.sid[0],&sids[i][0],SID_SIZE))
+		      break;		  
+		  if (i==sid_count) {
+		    cli_puts(overlay_render_sid(&rx.in.src.sid[0])); cli_delim(":");
+		    cli_puts((char *)&rx.in.payload[0]); cli_delim("\n");
+		    if (sid_count<128) {
+		      bcopy(&rx.in.src.sid[0],&sids[i][0],SID_SIZE);
+		      sid_count++;
+		    }
+		  }
+		}
 		else WHYF("packettype=0x%x",rx.packetTypeAndFlags);
 		if (servalShutdown) break;
 	      }
