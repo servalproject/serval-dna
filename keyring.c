@@ -846,10 +846,14 @@ keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c,
     WHY("malloc() failed preparing first public key storage");
     goto kci_safeexit;
   }
-  crypto_box_curve25519xsalsa20poly1305_keypair(id->keypairs[0]->public_key,
-						id->keypairs[0]->private_key);
+  /* Filter out public keys that start with 0x0, as they are reserved for address
+     abbreviation. */
+  id->keypairs[0]->public_key[0]=0;
+  while(id->keypairs[0]->public_key[0]==0)
+    crypto_box_curve25519xsalsa20poly1305_keypair(id->keypairs[0]->public_key,
+						  id->keypairs[0]->private_key);
 
-  /* crypto_box key pair */
+  /* crypto_sign key pair */
   id->keypairs[1]=calloc(sizeof(keypair),1);
   if (!id->keypairs[1]) {
     WHY("calloc() failed preparing second key pair storage");
@@ -869,7 +873,6 @@ keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c,
     WHY("malloc() failed preparing second public key storage");
     goto kci_safeexit;
   }
-#warning XXX - Doesnt make sure that public key first nybl is >0 - 1 in 16 identities will be invalid
 
   crypto_sign_edwards25519sha512batch_keypair(id->keypairs[1]->public_key,
 					      id->keypairs[1]->private_key);
