@@ -493,8 +493,9 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 	  while(keyring_find_did(keyring,&cn,&in,&kp,did))
 	    {
 	      WHYF("Found matching did");
-	      /* package DID plus SID into reply (we include the DID because
-		 it could be a wild-card DID search). */
+	      /* package DID and Name into reply (we include the DID because
+		 it could be a wild-card DID search, but the SID is implied 
+		 in the source address of our reply). */
 	      if (keyring->contexts[cn]->identities[in]->keypairs[kp]
 		  ->private_key_len>64) 
 		/* skip excessively long DID records */
@@ -507,10 +508,20 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 		    ->private_key,&mdp->out.payload[0],
 		    keyring->contexts[cn]->identities[in]->keypairs[kp]
 		    ->private_key_len);
+	      bcopy(keyring->contexts[cn]->identities[in]->keypairs[kp]
+		    ->public_key,&mdp->out.payload[keyring
+						    ->contexts[cn]
+						    ->identities[in]
+						    ->keypairs[kp]
+						    ->private_key_len],
+		    keyring->contexts[cn]->identities[in]->keypairs[kp]
+		    ->private_key_len);
 	      /* set length */
 	      mdp->out.payload_length=
 		keyring->contexts[cn]->identities[in]->keypairs[kp]
-		->private_key_len;
+		->private_key_len
+		+keyring->contexts[cn]->identities[in]->keypairs[kp]
+		->public_key_len;
 	      /* mark as outgoing MDP message */
 	      mdp->packetTypeAndFlags&=MDP_FLAG_MASK;
 	      mdp->packetTypeAndFlags|=MDP_TX;

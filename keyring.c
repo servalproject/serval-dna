@@ -425,9 +425,26 @@ int keyring_pack_identity(keyring_context *c,keyring_identity *i,
       switch(i->keypairs[kp]->type) {
       case KEYTYPE_RHIZOME:
       case KEYTYPE_DID:
-	/* Both of these are 32 bytes and only one value, 
-	   so the CRYPTOBOX case below works */
-	/* fall through */
+	/* 32 chars for unpacked DID/rhizome secret, 
+	   64 chars for name (for DIDs only) */
+	if ((ofs
+	     +i->keypairs[kp]->private_key_len
+	     +i->keypairs[kp]->public_key_len
+	     )>=KEYRING_PAGE_SIZE)
+	  {
+	    WHY("too many or too long key pairs");
+	    ofs=0;
+	    goto kpi_safeexit;
+	  }
+	bcopy(i->keypairs[kp]->private_key,&packed[ofs],
+	      i->keypairs[kp]->private_key_len);
+	ofs+=i->keypairs[kp]->private_key_len;
+	if (i->keypairs[kp]->type==KEYTYPE_DID) {
+	  bcopy(i->keypairs[kp]->public_key,&packed[ofs],
+		i->keypairs[kp]->private_key_len);
+	  ofs+=i->keypairs[kp]->public_key_len; 
+	}
+	break;
       case KEYTYPE_CRYPTOBOX:
 	/* For cryptobox we only need the private key, as we compute the public
 	   key from it when extracting the identity */
@@ -564,8 +581,11 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot, const char *pin)
 	  kp->private_key_len=crypto_sign_edwards25519sha512batch_SECRETKEYBYTES;
 	  kp->public_key_len=crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES;
 	  break;
-	case KEYTYPE_RHIZOME: case KEYTYPE_DID:
+	case KEYTYPE_RHIZOME: 
 	  kp->private_key_len=32; kp->public_key_len=0;
+	  break;
+	case KEYTYPE_DID:
+	  kp->private_key_len=32; kp->public_key_len=64;
 	  break;
 	}
 	kp->private_key=malloc(kp->private_key_len);
@@ -601,15 +621,18 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot, const char *pin)
 	  */
 	  crypto_scalarmult_curve25519_base(kp->public_key,kp->private_key);
 	  break;
+	case KEYTYPE_DID:
 	case KEYTYPE_CRYPTOSIGN:
 	  /* While it is possible to compute the public key from the private key,
 	     NaCl currently does not provide a function to do this, so we have to
 	     store it, or else subvert the NaCl API, which I would rather not do.
+	     So we just copy it out.  We use the same code for extracting the
+	     public key for a DID (i.e, subscriber name)
 	  */
 	  for(i=0;i<kp->public_key_len;i++) kp->public_key[i]=slot_byte(ofs+i);
 	  ofs+=kp->public_key_len;
 	  break;
-	case KEYTYPE_RHIZOME: case KEYTYPE_DID:
+	case KEYTYPE_RHIZOME: 
 	  /* no public key value for these, just do nothing */
 	  break;
 	}
@@ -760,7 +783,8 @@ int keyring_enter_pin(keyring_file *k, const char *pin)
    The crypto_box and crypto_sign key pairs are automatically created, and the PKR
    is packed and written to a hithero unallocated slot which is then marked full. 
 */
-keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c,char *pin)
+keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c,
+					  char *pin)
 {
   /* Check obvious abort conditions early */
   if (!k) { WHY("keyring is NULL"); return NULL; }
@@ -845,6 +869,8 @@ keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c,cha
     WHY("malloc() failed preparing second public key storage");
     goto kci_safeexit;
   }
+#warning XXX - Doesnt make sure that public key first nybl is >0 - 1 in 16 identities will be invalid
+
   crypto_sign_edwards25519sha512batch_keypair(id->keypairs[1]->public_key,
 					      id->keypairs[1]->private_key);
 
@@ -964,16 +990,19 @@ int keyring_commit(keyring_file *k)
   return errorCount;
 }
 
-int keyring_set_did(keyring_identity *id,char *did)
+int keyring_set_did(keyring_identity *id,char *did,char *name)
 {
   if (!id) return WHY("id is null");
   if (!did) return WHY("did is null");
+  if (!name) name="Mr. Smith";
 
   /* Find where to put it */
   int i;
   for(i=0;i<id->keypair_count;i++)
-    if (id->keypairs[i]->type==KEYTYPE_DID)
+    if (id->keypairs[i]->type==KEYTYPE_DID) {
+      WHY("Identity contains DID");
       break;
+    }
 
   if (i>=PKR_MAX_KEYPAIRS) return WHY("Too many key pairs");
 
@@ -984,16 +1013,25 @@ int keyring_set_did(keyring_identity *id,char *did)
     id->keypairs[i]->type=KEYTYPE_DID;
     unsigned char *packedDid=calloc(32,1);
     if (!packedDid) return WHY("calloc() failed");
+    unsigned char *packedName=calloc(64,1);
+    if (!packedName) return WHY("calloc() failed");
     id->keypairs[i]->private_key=packedDid;
     id->keypairs[i]->private_key_len=32;
+    id->keypairs[i]->public_key=packedName;
+    id->keypairs[i]->public_key_len=64;
     id->keypair_count++;
+    WHY("Created DID record for identity");
   }
   
   /* Store DID unpacked for ease of searching */
   int len=strlen(did); if (len>31) len=31;
   bcopy(did,&id->keypairs[i]->private_key[0],len);
   bzero(&id->keypairs[i]->private_key[len],32-len);
+  len=strlen(name); if (len>63) len=63;
+  bcopy(name,&id->keypairs[i]->public_key[0],len);
+  bzero(&id->keypairs[i]->public_key[len],64-len);
   dump("storing did",&id->keypairs[i]->private_key[0],32);
+  dump("storing name",&id->keypairs[i]->public_key[0],64);
   
   return 0;
 }
@@ -1344,14 +1382,15 @@ int keyring_seed(keyring_file *k)
   unsigned char did[65];
   /* Securely generate random telephone number */
   urandombytes((unsigned char *)did,10);
-  /* Make DID start with 2 through 9, as 1 is special in many number spaces. */ 
+  /* Make DID start with 2 through 9, as 1 is special in many number spaces, 
+     and 0 is commonly used for escaping to national or international dialling. */ 
   did[0]='2'+(did[0]%8);
   /* Then add 10 more digits, which is what we do in the mobile phone software */
   for(i=1;i<11;i++) did[i]='0'+(did[i]%10); did[11]=0;
-
+  
   keyring_identity *id=keyring_create_identity(k,k->contexts[0],"");
   if (!id) return WHY("Could not create new identity");
-  if (keyring_set_did(id,(char *)did)) return WHY("Could not set DID of new identity");
+  if (keyring_set_did(id,(char *)did,"")) return WHY("Could not set DID of new identity");
   if (keyring_commit(k)) return WHY("Could not commit new identity to keyring file");
   return 0;
 }

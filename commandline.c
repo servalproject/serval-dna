@@ -1109,12 +1109,14 @@ int app_keyring_add(int argc, const char *const *argv, struct command_line_optio
 
 int app_keyring_set_did(int argc, const char *const *argv, struct command_line_option *o)
 {
-  const char *sid, *did, *pin;
+  const char *sid, *did, *pin, *name;
   cli_arg(argc, argv, o, "sid", &sid, NULL, "");
   cli_arg(argc, argv, o, "did", &did, NULL, "");
+  cli_arg(argc, argv, o, "name", &name, NULL, "");
   cli_arg(argc, argv, o, "pin", &pin, NULL, "");
 
   if (strlen(did)>31) return WHY("DID too long (31 digits max)");
+  if (strlen(name)>63) return WHY("Name too long (31 char max)");
 
   keyring=keyring_open_with_pins((char *)pin);
   if (!keyring) return WHY("Could not open keyring file");
@@ -1125,7 +1127,8 @@ int app_keyring_set_did(int argc, const char *const *argv, struct command_line_o
   int cn=0,in=0,kp=0;
   int r=keyring_find_sid(keyring,&cn,&in,&kp,packedSid);
   if (!r) return WHY("No matching SID");
-  if (keyring_set_did(keyring->contexts[cn]->identities[in],(char *)did))
+  if (keyring_set_did(keyring->contexts[cn]->identities[in],
+		      (char *)did,(char *)name))
     return WHY("Could not set DID");
   if (keyring_commit(keyring))
     return WHY("Could not write updated keyring record");
@@ -1239,9 +1242,10 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 	if (!overlay_mdp_send(&m2,MDP_AWAITREPLY,125))
 	  {	    
 	    int bytes=m2.in.payload_length;
-	    if ((bytes+1)<sizeof(mdp.nodeinfo.did))
+	    if ((bytes+1)<sizeof(mdp.nodeinfo.did)+sizeof(mdp.nodeinfo.name))
 	      {
-		bcopy(&m2.in.payload[0],&mdp.nodeinfo.did[0],bytes);
+		bcopy(&m2.in.payload[0],&mdp.nodeinfo.did[0],32);
+		bcopy(&m2.in.payload[32],&mdp.nodeinfo.name[0],64);
 		mdp.nodeinfo.did[bytes]=0;
 		mdp.nodeinfo.resolve_did=1;
 	      }
@@ -1266,7 +1270,8 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
   cli_printf("%s",mdp.nodeinfo.neighbourP?"direct":"indirect"); 
   cli_delim(":");
   cli_printf("%d",mdp.nodeinfo.score); cli_delim(":");
-  cli_printf("%d",mdp.nodeinfo.interface_number);
+  cli_printf("%d",mdp.nodeinfo.interface_number); cli_delim(":");
+  cli_printf("%s",mdp.nodeinfo.resolve_did?mdp.nodeinfo.name:"name-not-resolved");
   cli_delim("\n");
 
   return 0;
@@ -1328,7 +1333,7 @@ command_line_option command_line_options[]={
    "List identites in specified key ring that can be accessed using the specified PINs"},
   {app_keyring_add,{"keyring","add","[<pin>]",NULL},CLIFLAG_STANDALONE,
    "Create a new identity in the keyring protected by the provided PIN"},
-  {app_keyring_set_did,{"set","did","<sid>","<did>","[<pin>]",NULL},CLIFLAG_STANDALONE,
+  {app_keyring_set_did,{"set","did","<sid>","<did>","<name>","[<pin>]",NULL},CLIFLAG_STANDALONE,
    "Set the DID for the specified SID.  Optionally supply PIN to unlock the SID record in the keyring."},
   {app_vomp_status,{"vomp","status",NULL},0,
    "Display status of any VoMP calls"},

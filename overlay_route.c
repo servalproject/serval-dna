@@ -1368,6 +1368,12 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
 				  &mdp->nodeinfo.did[0],
 				  keyring->contexts[cn]->identities[in]
 				  ->keypairs[k2]->private_key_len);
+			    /* public key has name */
+			    bcopy(&keyring->contexts[cn]->identities[in]
+				  ->keypairs[k2]->public_key[0],
+				  &mdp->nodeinfo.name[0],
+				  keyring->contexts[cn]->identities[in]
+				  ->keypairs[k2]->public_key_len);
 			    mdp->nodeinfo.resolve_did=1;
 			  }
 		    }

@@ -241,7 +241,7 @@ keyring_file *keyring_open(char *file);
 keyring_file *keyring_open_with_pins(const char *pinlist);
 int keyring_enter_pin(keyring_file *k, const char *pin);
 int keyring_enter_pins(keyring_file *k, const char *pinlist);
-int keyring_set_did(keyring_identity *id,char *did);
+int keyring_set_did(keyring_identity *id,char *did,char *name);
 int keyring_sanitise_position(keyring_file *k,int *cn,int *in,int *kp);
 int keyring_next_identity(keyring_file *k,int *cn,int *in,int *kp);
 int keyring_find_did(keyring_file *k,int *cn,int *in,int *kp,char *did);
@@ -1198,6 +1198,7 @@ typedef struct overlay_mdp_nodeinfo {
   unsigned char sid[SID_SIZE];
   int sid_prefix_length; /* allow wildcard matching */
   char did[64];
+  char name[64];
   int foundP;
   int localP;
   int neighbourP;
