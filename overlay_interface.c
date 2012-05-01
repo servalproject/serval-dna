@@ -211,6 +211,8 @@ int overlay_interface_init_socket(int interface,struct sockaddr_in src_addr,stru
   if (debug&DEBUG_PACKETRX) fprintf(stderr,"src_addr=%08x\n",(unsigned int)broadcast.sin_addr.s_addr);
   if(bind(I(fd),(struct sockaddr *)&broadcast,sizeof(broadcast))) {
     perror("bind()");
+    close(I(fd));
+    I(fd)=-1;
     return WHY("MP HLR server could not bind to requested UDP port (bind() failed)");
   }
   if (debug&(DEBUG_PACKETRX|DEBUG_IO)) fprintf(stderr,"Bound to port 0x%04x\n",broadcast.sin_port);
