@@ -499,7 +499,7 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 		     XXX - For wildcard searches, each sid will only show up once. */
 		  int i;
 		  for(i=0;i<sid_count;i++)
-		    if (!bcmp(&rx.in.src.sid[0],&sids[i][0],SID_SIZE))
+		    if (!memcmp(&rx.in.src.sid[0],&sids[i][0],SID_SIZE))
 		      break;		  
 		  if (i==sid_count) {
 		    cli_puts(overlay_render_sid(&rx.in.src.sid[0])); cli_delim(":");
