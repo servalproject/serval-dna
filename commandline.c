@@ -503,7 +503,8 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 		      break;		  
 		  if (i==sid_count) {
 		    cli_puts(overlay_render_sid(&rx.in.src.sid[0])); cli_delim(":");
-		    cli_puts((char *)&rx.in.payload[0]); cli_delim("\n");
+		    cli_puts((char *)&rx.in.payload[0]); cli_delim(":");
+		    cli_puts((char *)&rx.in.payload[32]); cli_delim("\n");
 		    if (sid_count<128) {
 		      bcopy(&rx.in.src.sid[0],&sids[i][0],SID_SIZE);
 		      sid_count++;
