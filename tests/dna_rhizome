@@ -171,17 +171,22 @@ test_AddThenList() {
    assert_rhizome_list file1 file2
 }
 
-doc_ExtractManifest="Extract manifest after one add"
-setup_ExtractManifest() {
+doc_AddThenExtractManifest="Extract manifest after one add"
+setup_AddThenExtractManifest() {
    setup_dna_rhizome
    echo "A test file" >file1
    executeOk $dna rhizome add file file1 file1.manifest
    assert_rhizome_list file1
    extract_manifest_id manifestid file1.manifest
+   extract_manifest_version version file1.manifest
 }
-test_ExtractManifest() {
+test_AddThenExtractManifest() {
    executeOk $dna rhizome extract manifest $manifestid file1x.manifest
    assert cmp file1.manifest file1x.manifest
+   assertStdoutLineCount '==' 3
+   assertStdoutGrep --matches=1 "^manifestid:$manifestid$"
+   assertStdoutGrep --matches=1 "^version:$version$"
+   assertStdoutGrep --matches=1 "^inserttime:[0-9]\+$"
 }
 
 doc_AddDuplicate="Add same manifest detects duplicate"
