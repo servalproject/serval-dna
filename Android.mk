@@ -65,7 +65,8 @@ LOCAL_SRC_FILES:= \
         serval-dna/srandomdev.c    \
 	serval-dna/keyring.c       \
 	serval-dna/vomp.c \
-	serval-dna/lsif.c
+	serval-dna/lsif.c \
+	serval-dna/monitor.c
 
 LOCAL_MODULE:= serval
 
