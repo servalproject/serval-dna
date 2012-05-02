@@ -132,6 +132,7 @@ int overlayServerMode()
     rhizome_server_get_fds(fds,&fdcount,128);
     rhizome_fetching_get_fds(fds,&fdcount,128);
     overlay_mdp_get_fds(fds,&fdcount,128);
+    monitor_get_fds(fds,&fdcount,128);
 
     for(i=0;i<overlay_interface_count;i++)
       {
@@ -202,6 +203,7 @@ int overlayServerMode()
 	rhizome_server_poll();
 	rhizome_fetch_poll();
 	overlay_mdp_poll();
+	monitor_poll();
       }
     } else {
       /* No data before tick occurred, so do nothing.
@@ -212,6 +214,7 @@ int overlayServerMode()
 	rhizome_server_poll();
 	rhizome_fetch_poll();
 	overlay_mdp_poll();
+	monitor_poll();
       }
     }
     /* Check if we need to trigger any ticks on any interfaces */

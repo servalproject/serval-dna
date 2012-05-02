@@ -1329,6 +1329,15 @@ typedef struct vomp_call_state {
 /* in milliseconds of inactivity */
 #define VOMP_CALL_TIMEOUT 120000
 #define VOMP_CALL_STATUS_INTERVAL 1000
+
+#define VOMP_TELLINTERESTED (1<<0)
+#define VOMP_TELLREMOTE (1<<1)
+#define VOMP_NEWCALL (1<<2)
+#define VOMP_FORCETELLREMOTE ((1<<3)|VOMP_TELLREMOTE)
+#define VOMP_TELLCODECS (1<<4)
+#define VOMP_SENDAUDIO (1<<5)
+
+vomp_call_state *vomp_find_call_by_session(int session_token);
 int vomp_mdp_event(overlay_mdp_frame *mdp,
 		   struct sockaddr_un *recvaddr,int recvaddrlen);
 int vomp_mdp_received(overlay_mdp_frame *mdp);
@@ -1369,3 +1378,9 @@ int app_vomp_monitor(int argc, const char *const *argv, struct command_line_opti
 int app_pa_phone(int argc, const char *const *argv, struct command_line_option *o);
 #endif
 int app_vomp_dtmf(int argc, const char *const *argv, struct command_line_option *o);
+
+int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
+
+int monitor_setup_sockets();
+int monitor_poll();
+int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);

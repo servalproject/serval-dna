@@ -160,12 +160,6 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
 
 /* send updated call status to end-point and to any interested listeners as
    appropriate */
-#define VOMP_TELLINTERESTED (1<<0)
-#define VOMP_TELLREMOTE (1<<1)
-#define VOMP_NEWCALL (1<<2)
-#define VOMP_FORCETELLREMOTE ((1<<3)|VOMP_TELLREMOTE)
-#define VOMP_TELLCODECS (1<<4)
-#define VOMP_SENDAUDIO (1<<5)
 
 int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
 {

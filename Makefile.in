@@ -38,7 +38,8 @@ SRCS=	batman.c \
 	srandomdev.c \
 	trans_cache.c \
 	vomp.c \
-	lsif.c
+	lsif.c \
+	monitor.c
 
 HAVE_VOIPTEST=	@HAVE_VOIPTEST@
 ifeq ($(HAVE_VOIPTEST), 1)
