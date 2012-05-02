@@ -170,7 +170,15 @@ int overlayServerMode()
     if (debug&DEBUG_VERBOSE_IO)
       fprintf(stderr,"Waiting via poll() for up to %lldms\n",ms);
     int r=poll(fds,fdcount,ms);
-  
+    if (debug&DEBUG_VERBOSE_IO) {
+      fprintf(stderr,"poll() says %d file descriptors are ready\n",r);
+      int i;
+      for(i=0;i<fdcount;i++)
+	if (fds[i].revents) 
+	  fprintf(stderr,"fd #%d is ready (0x%x)\n",
+		  fds[i].fd,fds[i].revents);
+    }   
+
     /* Do high-priority audio handling first */
     vomp_tick();
 

@@ -745,7 +745,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	  /* could not allocate a call slot, so do nothing */
 	  return WHY("No free call slots");
 	}
-	if (0) {
+	if (1) {
 	  WHYF("Far end is in state %s",vomp_describe_state(sender_state));
 	  WHYF("I am in state %s",vomp_describe_state(call->local.state));
 	}
@@ -770,8 +770,13 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	  {
 	  /* No registered listener, so we cannot answer the call, so just reject
 	     it. */
+	    WHYF("Rejecting call due to lack of a listener: states=%d,%d",
+		 call->local.state,call->remote.state);
+
 	  call->local.state=VOMP_STATE_CALLENDED;
-	  return vomp_send_status(call,VOMP_TELLREMOTE,NULL);
+	  if (call->remote.state<VOMP_STATE_CALLENDED)
+	    vomp_send_status(call,VOMP_TELLREMOTE,NULL);
+	  /* now let the state machine progress to destroy the call */
 	}
 
 	/* Consider states: our actual state, sender state, what the sender thinks
