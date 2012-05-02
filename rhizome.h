@@ -160,6 +160,8 @@ extern sqlite3 *rhizome_db;
 
 int rhizome_opendb();
 int rhizome_manifest_createid(rhizome_manifest *m);
+int rhizome_strn_is_manifest_id(const char *id);
+int rhizome_str_is_manifest_id(const char *id);
 int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename);
 int rhizome_manifest_sign(rhizome_manifest *m);
 int rhizome_drop_stored_file(char *id,int maximum_priority);
@@ -190,7 +192,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in, rhizome_manifest **m_out, const
 			 int verifyP, int checkFileP, int signP);
 int rhizome_manifest_finalise(rhizome_manifest *m,int signP);
 char *rhizome_bytes_to_hex(unsigned char *in,int byteCount);
-int rhizome_hex_to_bytes(char *in,unsigned char *out,int hexChars);
+int rhizome_hex_to_bytes(const char *in,unsigned char *out,int hexChars);
 int rhizome_store_keypair_bytes(unsigned char *p,unsigned char *s);
 int rhizome_find_keypair_bytes(unsigned char *p,unsigned char *s);
 rhizome_signature *rhizome_sign_hash(unsigned char *hash,unsigned char *publicKeyBytes);
@@ -214,6 +216,7 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
 char nybltochar(int n);
 int rhizome_queue_manifest_import(rhizome_manifest *m,struct sockaddr_in *peerip);
 int rhizome_list_manifests(int limit, int offset);
+int rhizome_retrieve_manifest(const char *id, rhizome_manifest **mp);
 
 #define RHIZOME_DONTVERIFY 0
 #define RHIZOME_VERIFY 1

@@ -34,15 +34,17 @@ assert_rhizome_list() {
    local filename
    for filename; do
       local filehash='[^:]\+'
+      local manifestid='[^:]\+'
       # If there is a manifest file that looks like it matches this payload
       # file, then use its file hash to check the rhizome list output.
       if [ -r "$filename.manifest" ]; then
          local name=$(sed -n -e '/^name=/s///p' "$filename.manifest")
          if [ "$name" == "$filename" ]; then
             filehash=$(sed -n -e '/^filehash=/s///p' "$filename.manifest")
+            manifestid=$(sed -n -e '/^id=/s///p' "$filename.manifest")
          fi
       fi
-      assertStdoutGrep --matches=1 "^$filehash:.*:$filename\$"
+      assertStdoutGrep --matches=1 "^$filehash:$manifestid:.*:$filename\$"
    done
 }
 
@@ -63,6 +65,14 @@ strip_signatures() {
    for file; do
       cat -v "$file" | sed -e '/^^@/,$d' >"tmp.$file" && mv -f "tmp.$file" "$file"
    done
+}
+
+extract_manifest_id() {
+   local _var="$1"
+   local _manifestfile="$2"
+   local _id=$(sed -n -e '/^id=[0-9a-fA-F]\{64\}$/s/^id=//p' "$_manifestfile")
+   assert --message="$_manifestfile contains valid 'id=' line" [ -n "$_id" ]
+   [ -n "$_var" ] && eval $_var=$_id
 }
 
 extract_manifest_version() {
@@ -116,7 +126,7 @@ test_AddNonExistManifest() {
    assertGrep file1.manifest '^name=file1$'
    assertGrep file1.manifest '^date=[0-9]\+$'
    assertGrep file1.manifest '^version=[0-9]\+$'
-   assertGrep file1.manifest '^id=[0-9a-fA-F]\+$'
+   assertGrep file1.manifest '^id=[0-9a-fA-F]\{64\}$'
    assertGrep file1.manifest "^filesize=$size\$"
    assertGrep file1.manifest "^first_byte=0$"
    assertGrep file1.manifest "^last_byte=$size\$"
@@ -136,10 +146,10 @@ test_AddManifest() {
    tfw_cat --stderr
    tfw_cat -v file1.manifest
    local size=$(( $(cat file1 | wc -c) + 0 ))
+   assertGrep file1.manifest '^id=[0-9a-fA-F]\{64\}$'
    assertGrep file1.manifest '^name=wah$'
-   assertGrep file1.manifest '^date=12345$'
    assertGrep file1.manifest '^version=[0-9]\+$'
-   assertGrep file1.manifest '^id=[0-9a-fA-F]\+$'
+   assertGrep file1.manifest '^date=12345$'
    assertGrep file1.manifest "^filesize=$size\$"
    assertGrep file1.manifest "^first_byte=0$"
    assertGrep file1.manifest "^last_byte=$size\$"
@@ -159,6 +169,19 @@ test_AddThenList() {
    # Add second file
    executeOk $dna rhizome add file file2 file2.manifest
    assert_rhizome_list file1 file2
+}
+
+doc_ExtractManifest="Extract manifest after one add"
+setup_ExtractManifest() {
+   setup_dna_rhizome
+   echo "A test file" >file1
+   executeOk $dna rhizome add file file1 file1.manifest
+   assert_rhizome_list file1
+   extract_manifest_id manifestid file1.manifest
+}
+test_ExtractManifest() {
+   executeOk $dna rhizome extract manifest $manifestid file1x.manifest
+   assert cmp file1.manifest file1x.manifest
 }
 
 doc_AddDuplicate="Add same manifest detects duplicate"

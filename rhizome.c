@@ -303,7 +303,7 @@ int chartonybl(int c)
   return 0;
 }
 
-int rhizome_hex_to_bytes(char *in,unsigned char *out,int hexChars)
+int rhizome_hex_to_bytes(const char *in,unsigned char *out,int hexChars)
 {
   int i;
 

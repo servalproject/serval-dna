@@ -20,6 +20,22 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "rhizome.h"
 #include <stdlib.h>
+#include <ctype.h>
+
+int rhizome_strn_is_manifest_id(const char *id)
+{
+  int i;
+  for (i = 0; i != crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES * 2; ++i)
+    if (!isxdigit(id[i]))
+      return 0;
+  return 1;
+}
+
+int rhizome_str_is_manifest_id(const char *id)
+{
+  size_t len = strlen(id);
+  return len == crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES * 2 && rhizome_strn_is_manifest_id(id);
+}
 
 int rhizome_manifest_createid(rhizome_manifest *m)
 {

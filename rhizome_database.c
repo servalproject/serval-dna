@@ -840,3 +840,80 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
   sqlite3_finalize(statement);
   return ret;
 }
+
+/* Retrieve a manifest from the database, given its manifest ID.
+
+   Returns 1 if manifest is found (new manifest is allocated and assigned to *m, caller is
+   responsible for freeing).
+
+   Returns 0 if manifest is not found (*m is unchanged).
+
+   Returns -1 on error (*m is unchanged).
+ */
+int rhizome_retrieve_manifest(const char *id, rhizome_manifest **mp)
+{
+  char sqlcmd[1024];
+  int n = snprintf(sqlcmd, sizeof(sqlcmd), "SELECT id, manifest, version, inserttime FROM manifests WHERE id = ?");
+  if (n >= sizeof(sqlcmd))
+    return WHY("SQL command too long");
+  sqlite3_stmt *statement;
+  const char *cmdtail;
+  int ret = 0;
+  rhizome_manifest *m = NULL;
+  if (sqlite3_prepare_v2(rhizome_db, sqlcmd, strlen(sqlcmd) + 1, &statement, &cmdtail) != SQLITE_OK) {
+    sqlite3_finalize(statement);
+    ret = WHY(sqlite3_errmsg(rhizome_db));
+  } else {
+    sqlite3_bind_text(statement, 1, id, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES * 2, SQLITE_STATIC);
+    while (sqlite3_step(statement) == SQLITE_ROW) {
+      if (!(   sqlite3_column_count(statement) == 4
+	    && sqlite3_column_type(statement, 0) == SQLITE_TEXT
+	    && sqlite3_column_type(statement, 1) == SQLITE_BLOB
+	    && sqlite3_column_type(statement, 2) == SQLITE_INTEGER
+	    && sqlite3_column_type(statement, 3) == SQLITE_INTEGER
+      )) { 
+	ret = WHY("Incorrect statement column");
+	break;
+      }
+      const char *manifestblob = (char *) sqlite3_column_blob(statement, 1);
+      size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
+      m = rhizome_read_manifest_file(manifestblob, manifestblobsize, 0);
+      if (m == NULL) {
+	ret = WHY("Invalid manifest blob from database");
+      } else {
+	rhizome_hex_to_bytes(id, m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
+	const char *filehashq = rhizome_manifest_get(m, "filehash", NULL, 0);
+	if (filehashq == NULL)
+	  ret = WHY("Manifest is missing filehash line");
+	else {
+	  memcpy(m->fileHexHash, filehashq, SHA512_DIGEST_STRING_LENGTH);
+	  m->fileHashedP = 1;
+	}
+	long long versionq = rhizome_manifest_get_ll(m, "version");
+	if (versionq == -1)
+	  ret = WHY("Manifest is missing version line");
+	else
+	  m->version = versionq;
+	long long lengthq = rhizome_manifest_get_ll(m, "filesize");
+	if (lengthq == -1)
+	  ret = WHY("Manifest is missing filesize line");
+	else
+	  m->fileLength = lengthq;
+	cli_puts("manifestid"); cli_delim(":");
+	cli_puts((const char *)sqlite3_column_text(statement, 0)); cli_delim("\n");
+	cli_puts("version"); cli_delim(":");
+	cli_printf("%lld", (long long) sqlite3_column_int64(statement, 2)); cli_delim("\n");
+	cli_puts("inserttime"); cli_delim(":");
+	cli_printf("%lld", (long long) sqlite3_column_int64(statement, 3)); cli_delim("\n");
+	// Could write the manifest blob to the CLI output here, but that would require the output to
+	// support byte[] fields as well as String fields.
+	ret = 1;
+      }
+      break;
+    }
+  }
+  sqlite3_finalize(statement);
+  if (ret > 0)
+    *mp = m;
+  return ret;
+}
