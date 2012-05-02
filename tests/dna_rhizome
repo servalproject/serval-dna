@@ -189,6 +189,33 @@ test_AddThenExtractManifest() {
    assertStdoutGrep --matches=1 "^inserttime:[0-9]\+$"
 }
 
+doc_ExtractMissingManifest="Extract non-existent manifest"
+setup_ExtractMissingManifest() {
+   setup_dna_rhizome
+   manifestid=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF
+}
+test_ExtractMissingManifest() {
+   execute --exit-status=1 $dna rhizome extract manifest $manifestid foo.manifest
+   assertStdoutLineCount '==' 0
+   assert [ ! -e foo.manifest ]
+}
+
+doc_ExtractManifestInvalidID="Extract manifest using invalid ID"
+setup_ExtractManifestInvalidID() {
+   setup_dna_rhizome
+}
+test_ExtractManifestInvalidID() {
+   execute --exit-status=255 $dna rhizome extract manifest 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEx foo.manifest
+   assertStdoutLineCount '==' 0
+   assert [ ! -e foo.manifest ]
+   execute --exit-status=255 $dna rhizome extract manifest 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDE foo.manifest
+   assertStdoutLineCount '==' 0
+   assert [ ! -e foo.manifest ]
+   execute --exit-status=255 $dna rhizome extract manifest '' foo.manifest
+   assertStdoutLineCount '==' 0
+   assert [ ! -e foo.manifest ]
+}
+
 doc_AddDuplicate="Add same manifest detects duplicate"
 setup_AddDuplicate() {
    setup_dna_rhizome

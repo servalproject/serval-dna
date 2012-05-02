@@ -1032,8 +1032,9 @@ int cli_manifestid(const char *arg)
 int app_rhizome_extract_manifest(int argc, const char *const *argv, struct command_line_option *o)
 {
   const char *manifestid, *manifestpath;
-  cli_arg(argc, argv, o, "manifestid", &manifestid, cli_manifestid, NULL);
-  cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "");
+  if (cli_arg(argc, argv, o, "manifestid", &manifestid, cli_manifestid, NULL)
+   || cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "") == -1)
+    return -1;
   /* Ensure the Rhizome database exists and is open */
   if (create_serval_instance_dir() == -1)
     return -1;
@@ -1041,13 +1042,10 @@ int app_rhizome_extract_manifest(int argc, const char *const *argv, struct comma
   rhizome_opendb();
   /* Extract the manifest from the database */
   rhizome_manifest *m = NULL;
-  int ret = -1;
-  switch (rhizome_retrieve_manifest(manifestid, &m)) {
-    case 0:
-      ret = 0;
-      break;
-    case 1:
-      ret = 0;
+  int ret = rhizome_retrieve_manifest(manifestid, &m);
+  switch (ret) {
+    case 0: ret = 1; break;
+    case 1: ret = 0;
       if (manifestpath[0]) {
 	if (rhizome_manifest_finalise(m, 1) == -1)
 	  ret = WHY("Could not overwrite manifest file.");
@@ -1055,6 +1053,8 @@ int app_rhizome_extract_manifest(int argc, const char *const *argv, struct comma
 	  ret = WHY("Could not overwrite manifest file.");
       }
       break;
+    case -1: break;
+    default: ret = WHYF("Unsupported return value %d", ret); break;
   }
   if (m)
     rhizome_manifest_free(m);
@@ -1370,9 +1370,9 @@ command_line_option command_line_options[]={
    "Add a file to Rhizome and optionally write its manifest to the given path"},
   {app_rhizome_list,{"rhizome","list","[<offset>]","[<limit>]",NULL},CLIFLAG_STANDALONE,
    "List all manifests and files in Rhizome"},
-  {app_rhizome_extract_manifest,{"rhizome","extract","manifest","<manifestid>","<manifestpath>",NULL},CLIFLAG_STANDALONE,
+  {app_rhizome_extract_manifest,{"rhizome","extract","manifest","<manifestid>","[<manifestpath>]",NULL},CLIFLAG_STANDALONE,
    "Extract a manifest from Rhizome and write it to the given path"},
-  {app_rhizome_extract_file,{"rhizome","extract","file","<fileid>","<filepath>",NULL},CLIFLAG_STANDALONE,
+  {app_rhizome_extract_file,{"rhizome","extract","file","<fileid>","[<filepath>]",NULL},CLIFLAG_STANDALONE,
    "Extract a file from Rhizome and write it to the given path"},
   {app_keyring_create,{"keyring","create",NULL},0,
    "Create a new keyring file."},
