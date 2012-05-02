@@ -286,6 +286,7 @@ int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
       mdp.vompevent.flags|=VOMPEVENT_CALLCREATED;
     mdp.vompevent.local_state=call->local.state;
     mdp.vompevent.remote_state=call->remote.state;
+    monitor_call_status(call);
 
     bcopy(&call->remote_codec_list[0],&mdp.vompevent.supported_codecs[0],256);
 
@@ -297,6 +298,7 @@ int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
       mdp.vompevent.audio_sample_bytes=arg->vompevent.audio_sample_bytes;
       mdp.vompevent.audio_sample_starttime=arg->vompevent.audio_sample_starttime;
       mdp.vompevent.audio_sample_endtime=arg->vompevent.audio_sample_endtime;
+      monitor_send_audio(call,arg);
     }
     
     int i;
@@ -565,7 +567,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 		=vomp_call_states[i].local.state;
 	    }
 	  }
-
+	
 	return overlay_mdp_reply(mdp_named_socket,recvaddr,recvaddrlen,&mdpreply);
       }
       break;
@@ -763,7 +765,9 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	  return WHY("VoMP frame does not correspond to an active call - stale traffic or replay attack?");
 	}
 
-	if (!vomp_interested_usock_count) {
+	if ((!vomp_interested_usock_count)
+	    &&(!monitor_socket_count))
+	  {
 	  /* No registered listener, so we cannot answer the call, so just reject
 	     it. */
 	  call->local.state=VOMP_STATE_CALLENDED;

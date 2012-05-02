@@ -1304,6 +1304,11 @@ typedef struct vomp_call_state {
   vomp_sample_block recent_samples[VOMP_MAX_RECENT_SAMPLES];
 } vomp_call_state;
 
+extern int vomp_call_count;
+extern int vomp_active_call;
+extern vomp_call_state vomp_call_states[VOMP_MAX_CALLS];
+
+
 #define VOMP_CODEC_NONE 0x00
 #define VOMP_CODEC_CODEC2_2400 0x01
 #define VOMP_CODEC_CODEC2_1400 0x02
@@ -1384,3 +1389,6 @@ int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int monitor_setup_sockets();
 int monitor_poll();
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
+int monitor_call_status(vomp_call_state *call);
+int monitor_send_audio(vomp_call_state *call,overlay_mdp_frame *audio);
+extern int monitor_socket_count;

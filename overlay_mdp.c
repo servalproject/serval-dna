@@ -153,6 +153,8 @@ int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
 {
   int replylen;
 
+  if (!recvaddr) return 0;
+
   replylen=overlay_mdp_relevant_bytes(mdpreply);
   if (replylen<0) return WHY("Invalid MDP frame (could not compute length)");
 

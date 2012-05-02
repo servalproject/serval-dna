@@ -53,6 +53,7 @@ struct monitor_context {
 #define MAX_MONITOR_SOCKETS 8
 int monitor_socket_count=0;
 struct monitor_context monitor_sockets[MAX_MONITOR_SOCKETS];
+long long monitor_last_update_time=0;
 
 int monitor_process_command(int index,char *cmd);
 int monitor_process_data(int index);
@@ -135,6 +136,15 @@ int monitor_poll()
   int s;
   struct sockaddr ignored_address;
   socklen_t ignored_length=sizeof(ignored_address);
+
+  /* tell all monitor clients about status of all calls periodically */
+  long long now=overlay_gettime_ms();
+  if (now>(monitor_last_update_time+1000)) {
+    monitor_last_update_time=now;
+    int i;
+    for(i=0;i<vomp_call_count;i++)
+      monitor_call_status(&vomp_call_states[i]);
+  }
 
   /* Check for new connections */
   while((s=accept(monitor_named_socket,&ignored_address,&ignored_length))>-1) {
@@ -243,11 +253,20 @@ int monitor_poll()
 int monitor_process_command(int index,char *cmd) 
 {
   int callSessionToken,sampleType,bytes;
+  char sid[80],localDid[80],remoteDid[80];
+  overlay_mdp_frame mdp;
+  mdp.packetTypeAndFlags=MDP_VOMPEVENT;  
 
   struct monitor_context *c=&monitor_sockets[index];
   c->line_length=0;
 
-  if (sscanf(cmd,cmd,"AUDIO:%x:%d:%d",
+  if (strlen(cmd)>80) {
+    write(c->socket,"ERROR:Command too long\n",
+	  strlen("ERROR:Command too long\n"));
+    return -1;
+  }
+
+  if (sscanf(cmd,"AUDIO:%x:%d:%d",
 	     &callSessionToken,&sampleType,&bytes)==3)
     {
       /* Start getting sample */
@@ -266,6 +285,22 @@ int monitor_process_command(int index,char *cmd)
     c->flags|=MONITOR_RHIZOME;
   else if (!strcasecmp(cmd,"ignore rhizome"))
     c->flags&=~MONITOR_RHIZOME;
+  else if (sscanf(cmd,"CREATECALL:%s:%s:%s",sid,localDid,remoteDid)==3) {
+    mdp.vompevent.flags=VOMPEVENT_DIAL;
+    if (overlay_mdp_getmyaddr(0,&mdp.vompevent.local_sid[0])) return -1;
+    stowSid(&mdp.vompevent.remote_sid[0],0,sid);
+    vomp_mdp_event(&mdp,NULL,0);
+  } 
+  else if (sscanf(cmd,"PICKUP:%x",callSessionToken)==1) {
+     mdp.vompevent.flags=VOMPEVENT_PICKUP;
+     mdp.vompevent.call_session_token=callSessionToken;
+     vomp_mdp_event(&mdp,NULL,0);
+  }
+  else if (sscanf(cmd,"HANGUP:%x",callSessionToken)==1) {
+     mdp.vompevent.flags=VOMPEVENT_HANGUP;
+     mdp.vompevent.call_session_token=callSessionToken;
+     vomp_mdp_event(&mdp,NULL,0);
+  }
 
   char msg[1024];
   snprintf(msg,1024,"MONITORSTATUS:%d\n",c->flags);
@@ -299,5 +334,19 @@ int monitor_process_data(int index)
 
   vomp_send_status(call,VOMP_TELLREMOTE|VOMP_SENDAUDIO,&mdp);
 
+  return 0;
+}
+
+int monitor_call_status(vomp_call_state *call)
+{
+  WHYF("Tell call monitor about call %06x:%06x",
+       call->local.session,call->remote.session);
+  return 0;
+}
+
+int monitor_send_audio(vomp_call_state *call,overlay_mdp_frame *audio)
+{
+  WHYF("Tell call monitor about audio for call %06x:%06x",
+       call->local.session,call->remote.session);
   return 0;
 }
