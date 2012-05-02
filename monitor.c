@@ -76,7 +76,12 @@ int monitor_setup_sockets()
     if (monitor_named_socket>-1) {
       int dud=0;
       int r=bind(monitor_named_socket, (struct sockaddr *)&name, len);
-      if (r) { dud=1; r=0; WHY("bind() of named unix domain socket failed"); }
+      if (r) { dud=1; r=0; 
+	WHY("bind() of named unix domain monitor socket failed"); }
+      r=listen(monitor_named_socket,MAX_MONITOR_SOCKETS);
+      if (r) { dud=1; r=0;
+	WHY("listen() of named unix domain monitor socket failed");
+      }
       if (dud) {
 	close(monitor_named_socket);
 	monitor_named_socket=-1;
@@ -99,7 +104,6 @@ int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
   /* Make sure sockets are open */
   monitor_setup_sockets();
 
-#ifdef NOTDEFINED
   /* This block should work, but in reality it doesn't.
      poll() on linux is ALWAYS claiming that accept() can be
      run.  So we just have to check it whenever some other fd triggers
@@ -116,7 +120,6 @@ int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
       fds[*fdcount].events=POLLIN;
       (*fdcount)++;
     }
-#endif
 
   int i;
   for(i=0;i<monitor_socket_count;i++) {
