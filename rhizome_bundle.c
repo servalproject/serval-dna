@@ -147,6 +147,21 @@ rhizome_manifest *rhizome_read_manifest_file(const char *filename, int bufferP, 
   return m;
 }
 
+int rhizome_strn_is_file_hash(const char *text)
+{
+  int i;
+  for (i = 0; i != SHA512_DIGEST_LENGTH * 2; ++i)
+    if (!isxdigit(text[i]))
+      return 0;
+  return 1;
+}
+
+int rhizome_str_is_file_hash(const char *text)
+{
+  size_t len = strlen(text);
+  return len == SHA512_DIGEST_LENGTH * 2 && rhizome_strn_is_file_hash(text);
+}
+
 int rhizome_hash_file(const char *filename,char *hash_out)
 {
   /* Gnarf! NaCl's crypto_hash() function needs the whole file passed in in one

@@ -160,8 +160,10 @@ extern sqlite3 *rhizome_db;
 
 int rhizome_opendb();
 int rhizome_manifest_createid(rhizome_manifest *m);
-int rhizome_strn_is_manifest_id(const char *id);
-int rhizome_str_is_manifest_id(const char *id);
+int rhizome_strn_is_manifest_id(const char *text);
+int rhizome_str_is_manifest_id(const char *text);
+int rhizome_strn_is_file_hash(const char *text);
+int rhizome_str_is_file_hash(const char *text);
 int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename);
 int rhizome_manifest_sign(rhizome_manifest *m);
 int rhizome_drop_stored_file(char *id,int maximum_priority);
@@ -216,7 +218,8 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
 char nybltochar(int n);
 int rhizome_queue_manifest_import(rhizome_manifest *m,struct sockaddr_in *peerip);
 int rhizome_list_manifests(int limit, int offset);
-int rhizome_retrieve_manifest(const char *id, rhizome_manifest **mp);
+int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp);
+int rhizome_retrieve_file(const char *fileid, const char *filepath);
 
 #define RHIZOME_DONTVERIFY 0
 #define RHIZOME_VERIFY 1

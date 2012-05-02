@@ -1061,9 +1061,31 @@ int app_rhizome_extract_manifest(int argc, const char *const *argv, struct comma
   return ret;
 }
 
+int cli_fileid(const char *arg)
+{
+  return rhizome_str_is_file_hash(arg);
+}
+
 int app_rhizome_extract_file(int argc, const char *const *argv, struct command_line_option *o)
 {
-  return WHY("Not implemented");
+  const char *fileid, *filepath;
+  if (cli_arg(argc, argv, o, "fileid", &fileid, cli_fileid, NULL)
+   || cli_arg(argc, argv, o, "filepath", &filepath, NULL, "") == -1)
+    return -1;
+  /* Ensure the Rhizome database exists and is open */
+  if (create_serval_instance_dir() == -1)
+    return -1;
+  rhizome_datastore_path = serval_instancepath();
+  rhizome_opendb();
+  /* Extract the file from the database */
+  int ret = rhizome_retrieve_file(fileid, filepath);
+  switch (ret) {
+    case 0: ret = 1; break;
+    case 1: ret = 0; break;
+    case -1: break;
+    default: ret = WHYF("Unsupported return value %d", ret); break;
+  }
+  return ret;
 }
 
 int cli_uint(const char *arg)

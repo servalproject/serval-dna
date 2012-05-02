@@ -842,15 +842,13 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
 }
 
 /* Retrieve a manifest from the database, given its manifest ID.
-
-   Returns 1 if manifest is found (new manifest is allocated and assigned to *m, caller is
-   responsible for freeing).
-
-   Returns 0 if manifest is not found (*m is unchanged).
-
-   Returns -1 on error (*m is unchanged).
+ *
+ * Returns 1 if manifest is found (if mp != NULL then a new manifest struct is allocated, made
+ * finalisable and * assigned to *mp, caller is responsible for freeing).
+ * Returns 0 if manifest is not found (*mp is unchanged).
+ * Returns -1 on error (*mp is unchanged).
  */
-int rhizome_retrieve_manifest(const char *id, rhizome_manifest **mp)
+int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
 {
   char sqlcmd[1024];
   int n = snprintf(sqlcmd, sizeof(sqlcmd), "SELECT id, manifest, version, inserttime FROM manifests WHERE id = ?");
@@ -864,7 +862,7 @@ int rhizome_retrieve_manifest(const char *id, rhizome_manifest **mp)
     sqlite3_finalize(statement);
     ret = WHY(sqlite3_errmsg(rhizome_db));
   } else {
-    sqlite3_bind_text(statement, 1, id, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES * 2, SQLITE_STATIC);
+    sqlite3_bind_text(statement, 1, manifestid, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES * 2, SQLITE_STATIC);
     while (sqlite3_step(statement) == SQLITE_ROW) {
       if (!(   sqlite3_column_count(statement) == 4
 	    && sqlite3_column_type(statement, 0) == SQLITE_TEXT
@@ -877,28 +875,33 @@ int rhizome_retrieve_manifest(const char *id, rhizome_manifest **mp)
       }
       const char *manifestblob = (char *) sqlite3_column_blob(statement, 1);
       size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
-      m = rhizome_read_manifest_file(manifestblob, manifestblobsize, 0);
-      if (m == NULL) {
-	ret = WHY("Invalid manifest blob from database");
-      } else {
-	rhizome_hex_to_bytes(id, m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
-	const char *filehashq = rhizome_manifest_get(m, "filehash", NULL, 0);
-	if (filehashq == NULL)
-	  ret = WHY("Manifest is missing filehash line");
-	else {
-	  memcpy(m->fileHexHash, filehashq, SHA512_DIGEST_STRING_LENGTH);
-	  m->fileHashedP = 1;
+      if (mp) {
+	m = rhizome_read_manifest_file(manifestblob, manifestblobsize, 0);
+	if (m == NULL) {
+	  ret = WHY("Invalid manifest blob from database");
+	} else {
+	  ret = 1;
+	  rhizome_hex_to_bytes(manifestid, m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
+	  const char *filehashq = rhizome_manifest_get(m, "filehash", NULL, 0);
+	  if (filehashq == NULL)
+	    ret = WHY("Manifest is missing filehash line");
+	  else {
+	    memcpy(m->fileHexHash, filehashq, SHA512_DIGEST_STRING_LENGTH);
+	    m->fileHashedP = 1;
+	  }
+	  long long versionq = rhizome_manifest_get_ll(m, "version");
+	  if (versionq == -1)
+	    ret = WHY("Manifest is missing version line");
+	  else
+	    m->version = versionq;
+	  long long lengthq = rhizome_manifest_get_ll(m, "filesize");
+	  if (lengthq == -1)
+	    ret = WHY("Manifest is missing filesize line");
+	  else
+	    m->fileLength = lengthq;
 	}
-	long long versionq = rhizome_manifest_get_ll(m, "version");
-	if (versionq == -1)
-	  ret = WHY("Manifest is missing version line");
-	else
-	  m->version = versionq;
-	long long lengthq = rhizome_manifest_get_ll(m, "filesize");
-	if (lengthq == -1)
-	  ret = WHY("Manifest is missing filesize line");
-	else
-	  m->fileLength = lengthq;
+      }
+      if (ret == 1) {
 	cli_puts("manifestid"); cli_delim(":");
 	cli_puts((const char *)sqlite3_column_text(statement, 0)); cli_delim("\n");
 	cli_puts("version"); cli_delim(":");
@@ -907,13 +910,72 @@ int rhizome_retrieve_manifest(const char *id, rhizome_manifest **mp)
 	cli_printf("%lld", (long long) sqlite3_column_int64(statement, 3)); cli_delim("\n");
 	// Could write the manifest blob to the CLI output here, but that would require the output to
 	// support byte[] fields as well as String fields.
-	ret = 1;
       }
       break;
     }
   }
   sqlite3_finalize(statement);
-  if (ret > 0)
+  if (mp && ret == 1)
     *mp = m;
+  return ret;
+}
+
+/* Retrieve a file from the database, given its file hash.
+ *
+ * Returns 1 if file is found (contents are written to filepath if given).
+ * Returns 0 if file is not found.
+ * Returns -1 on error.
+ */
+int rhizome_retrieve_file(const char *fileid, const char *filepath)
+{
+  char sqlcmd[1024];
+  int n = snprintf(sqlcmd, sizeof(sqlcmd), "SELECT id, data, length FROM files WHERE id = ? AND datavalid != 0");
+  if (n >= sizeof(sqlcmd))
+    return WHY("SQL command too long");
+  sqlite3_stmt *statement;
+  const char *cmdtail;
+  int ret = 0;
+  if (sqlite3_prepare_v2(rhizome_db, sqlcmd, strlen(sqlcmd) + 1, &statement, &cmdtail) != SQLITE_OK) {
+    sqlite3_finalize(statement);
+    ret = WHY(sqlite3_errmsg(rhizome_db));
+  } else {
+    sqlite3_bind_text(statement, 1, fileid, SHA512_DIGEST_LENGTH * 2, SQLITE_STATIC);
+    while (sqlite3_step(statement) == SQLITE_ROW) {
+      if (!(   sqlite3_column_count(statement) == 3
+	    && sqlite3_column_type(statement, 0) == SQLITE_TEXT
+	    && sqlite3_column_type(statement, 1) == SQLITE_BLOB
+	    && sqlite3_column_type(statement, 2) == SQLITE_INTEGER
+      )) { 
+	ret = WHY("Incorrect statement column");
+	break;
+      }
+      const char *fileblob = (char *) sqlite3_column_blob(statement, 1);
+      size_t fileblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
+      long long length = sqlite3_column_int64(statement, 2);
+      if (fileblobsize != length)
+	ret = WHY("File length does not match blob size");
+      else {
+	int fd = open(filepath, O_WRONLY | O_CREAT | O_TRUNC, 0775);
+	if (fd == -1) {
+	  ret = WHYF("Cannot open %s for write/create", filepath);
+	  perror("open");
+	} else if (write(fd, fileblob, length) != length) {
+	  ret = WHYF("Error writing %lld bytes to %s ", (long long) length, filepath);
+	  perror("write");
+	} else if (close(fd) == -1) {
+	  ret = WHYF("Error flushing to %s ", filepath);
+	  perror("close");
+	} else {
+	  ret = 1;
+	  cli_puts("filehash"); cli_delim(":");
+	  cli_puts((const char *)sqlite3_column_text(statement, 0)); cli_delim("\n");
+	  cli_puts("length"); cli_delim(":");
+	  cli_printf("%lld", length); cli_delim("\n");
+	}
+      }
+      break;
+    }
+  }
+  sqlite3_finalize(statement);
   return ret;
 }

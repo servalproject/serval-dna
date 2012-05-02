@@ -67,28 +67,28 @@ strip_signatures() {
    done
 }
 
-extract_manifest_id() {
+extract_manifest() {
    local _var="$1"
    local _manifestfile="$2"
-   local _id=$(sed -n -e '/^id=[0-9a-fA-F]\{64\}$/s/^id=//p' "$_manifestfile")
-   assert --message="$_manifestfile contains valid 'id=' line" [ -n "$_id" ]
-   [ -n "$_var" ] && eval $_var=$_id
+   local _label="$3"
+   local _rexp="$4"
+   local _value=$(sed -n -e "/^$_label=$_rexp\$/s/^$_label=//p" "$_manifestfile")
+   assert --message="$_manifestfile contains valid '$_label=' line" \
+          --dump-on-fail="$_manifestfile" \
+          [ -n "$_value" ]
+   [ -n "$_var" ] && eval $_var=$_value
 }
 
-extract_manifest_version() {
-   local _var="$1"
-   local _manifestfile="$2"
-   local _version=$(sed -n -e '/^version=[0-9]\{1,\}$/s/^version=//p' "$_manifestfile")
-   assert --message="$_manifestfile contains valid 'version=' line" [ -n "$_version" ]
-   [ -n "$_var" ] && eval $_var=$_version
+extract_manifest_id() {
+   extract_manifest "$1" "$2" id '[0-9a-fA-F]\{64\}'
 }
 
 extract_manifest_filehash() {
-   local _var="$1"
-   local _manifestfile="$2"
-   local _filehash=$(sed -n -e '/^filehash=[0-9a-fA-F]\{1,\}$/s/^filehash=//p' "$_manifestfile")
-   assert --message="$_manifestfile contains valid 'filehash=' line" [ -n "$_filehash" ]
-   eval $_var=$_filehash
+   extract_manifest "$1" "$2" filehash '[0-9a-fA-F]\{128\}'
+}
+
+extract_manifest_version() {
+   extract_manifest "$1" "$2" version '[0-9]\{1,\}'
 }
 
 doc_InitialEmptyList="Initial list is empty"
@@ -214,6 +214,50 @@ test_ExtractManifestInvalidID() {
    execute --exit-status=255 $dna rhizome extract manifest '' foo.manifest
    assertStdoutLineCount '==' 0
    assert [ ! -e foo.manifest ]
+}
+
+doc_AddThenExtractFile="Extract file after one add"
+setup_AddThenExtractFile() {
+   setup_dna_rhizome
+   echo "A test file" >file1
+   executeOk $dna rhizome add file file1 file1.manifest
+   assert_rhizome_list file1
+   extract_manifest_filehash filehash file1.manifest
+}
+test_AddThenExtractFile() {
+   executeOk $dna rhizome extract file $filehash file1x
+   assert cmp file1 file1x
+   local size=$(( $(cat file1 | wc -c) + 0 ))
+   assertStdoutLineCount '==' 2
+   assertStdoutGrep --matches=1 "^filehash:$filehash$"
+   assertStdoutGrep --matches=1 "^length:$size$"
+}
+
+doc_ExtractMissingFile="Extract non-existent file"
+setup_ExtractMissingFile() {
+   setup_dna_rhizome
+   filehash=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF
+}
+test_ExtractMissingFile() {
+   execute --exit-status=1 $dna rhizome extract file $filehash foo
+   assertStdoutLineCount '==' 0
+   assert [ ! -e foo ]
+}
+
+doc_ExtractFileInvalidID="Extract file using invalid ID"
+setup_ExtractFileInvalidID() {
+   setup_dna_rhizome
+}
+test_ExtractFileInvalidID() {
+   execute --exit-status=255 $dna rhizome extract file 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEx foo
+   assertStdoutLineCount '==' 0
+   assert [ ! -e foo ]
+   execute --exit-status=255 $dna rhizome extract file 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDE foo
+   assertStdoutLineCount '==' 0
+   assert [ ! -e foo ]
+   execute --exit-status=255 $dna rhizome extract file '' foo
+   assertStdoutLineCount '==' 0
+   assert [ ! -e foo ]
 }
 
 doc_AddDuplicate="Add same manifest detects duplicate"

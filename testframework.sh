@@ -160,6 +160,7 @@ executeOk() {
    echo "# executeOk $*"
    _tfw_getopts executeok "$@"
    _tfw_opt_exit_status=0
+   _tfw_dump_on_fail --stderr
    shift $_tfw_getopts_shift
    _tfw_execute "$@"
 }
@@ -499,12 +500,27 @@ _tfw_assert() {
    return 0
 }
 
+declare -a _tfw_opt_dump_on_fail
+
+_tfw_dump_on_fail() {
+   for arg; do
+      local _found=false
+      local _f
+      for _f in "${_tfw_opt_dump_on_fail[@]}"; do
+         if [ "$_f" = "$arg" ]; then
+            _found=true
+            break
+         fi
+      done
+      $_found || _tfw_opt_dump_on_fail+=("$arg")
+   done
+}
+
 _tfw_getopts() {
    local context="$1"
    shift
    _tfw_message=
-   _tfw_dump_stdout_on_fail=false
-   _tfw_dump_stderr_on_fail=false
+   _tfw_opt_dump_on_fail=()
    _tfw_opt_error_on_fail=false
    _tfw_opt_exit_status=
    _tfw_opt_matches=
@@ -512,8 +528,9 @@ _tfw_getopts() {
    _tfw_getopts_shift=0
    while [ $# -ne 0 ]; do
       case "$context:$1" in
-      *:--stdout) _tfw_dump_stdout_on_fail=true;;
-      *:--stderr) _tfw_dump_stderr_on_fail=true;;
+      *:--stdout) _tfw_dump_on_fail --stdout;;
+      *:--stderr) _tfw_dump_on_fail --stderr;;
+      assert*:--dump-on-fail=*) _tfw_dump_on_fail "${1#*=}";;
       execute:--exit-status=*) _tfw_opt_exit_status="${1#*=}";;
       assert*:--error-on-fail) _tfw_opt_error_on_fail=true;;
       assert*:--message=*) _tfw_message="${1#*=}";;
@@ -779,8 +796,7 @@ _tfw_backtrace() {
 _tfw_failexit() {
    # When exiting a test case due to a failure, log any diagnostic output that
    # has been requested.
-   $_tfw_dump_stdout_on_fail && tfw_cat --stdout
-   $_tfw_dump_stderr_on_fail && tfw_cat --stderr
+   tfw_cat "${_tfw_opt_dump_on_fail[@]}"
    # A failure during setup or teardown is treated as an error.
    case $_tfw_phase in
    testcase)
