@@ -355,6 +355,8 @@ int monitor_call_status(vomp_call_state *call)
 	   call->local.state,call->remote.state);
   for(i=0;i<monitor_socket_count;i++)
     {
+      if (!(monitor_sockets[i].flags&MONITOR_VOMP))
+	continue;
     nextInSameSlot:
       errno=0;
       write(monitor_sockets[i].socket,msg,strlen(msg));
@@ -399,6 +401,8 @@ int monitor_send_audio(vomp_call_state *call,overlay_mdp_frame *audio)
   int i;
   for(i=0;i<monitor_socket_count;i++)
     {
+      if (!(monitor_sockets[i].flags&MONITOR_VOMP))
+	continue;
     nextInSameSlot:
       errno=0;
       write(monitor_sockets[i].socket,msg,msglen);

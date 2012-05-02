@@ -155,6 +155,7 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
   vomp_call_states[i].create_time=overlay_gettime_ms();
   vomp_call_states[i].last_activity=vomp_call_states[i].create_time;
   WHYF("Returning new call #%d",i);
+  monitor_call_status(&vomp_call_states[i]);
   return &vomp_call_states[i];
 }
 
