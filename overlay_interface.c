@@ -550,12 +550,10 @@ int overlay_interface_discover()
 {
   /* Don't waste too much time and effort on interface discovery,
      especially if we can't attach to a given interface for some reason. */
-  WHY("called");
-  if ((time(0)-overlay_last_interface_discover_time)<0)
+  if (overlay_last_interface_discover_time>time(0))
     overlay_last_interface_discover_time=time(0);
   if ((time(0)-overlay_last_interface_discover_time)<2) return 0;
   overlay_last_interface_discover_time=time(0);
-  WHY("checking");
 
   /* The Android ndk doesn't have ifaddrs.h, so we have to use the netlink interface.
      However, netlink is only available on Linux, so for BSD systems, e.g., Mac, we
@@ -581,7 +579,8 @@ int overlay_interface_discover()
 	struct sockaddr_in dummyaddr;
 	if (overlay_interface_init(r->namespec,dummyaddr,dummyaddr,
 				   1000000,PORT_DNA,OVERLAY_INTERFACE_WIFI))
-	  WHY("Could not initialise newly seen interface");
+	  { if (debug&DEBUG_OVERLAYINTERFACES)
+	      WHY("Could not initialise newly seen interface"); }
 	else
 	  if (debug&DEBUG_OVERLAYINTERFACES) fprintf(stderr,"Registered interface %s\n",r->namespec);
       }	          
