@@ -606,10 +606,12 @@ int overlay_interface_discover()
     }
   }
   freeifaddrs(ifaddr);
-#else
+#endif
 #ifdef ANDROID
   /* Use alternative linux-only method to find and register interfaces. */
   lsif();
+#else
+#ifdef HAVE_IFADDRS_H
 #else
 #error Don't know how to get interface list on this platform
 #endif

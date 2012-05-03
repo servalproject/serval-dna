@@ -74,6 +74,7 @@ int lsif(void)
   /* Get a socket handle. */
   sck = socket(PF_INET, SOCK_DGRAM, 0);
   if(sck < 0) {
+    WHY("Failed to gt socket handle to list addresses");
     return 1;
   }
  
@@ -81,12 +82,14 @@ int lsif(void)
   ifc.ifc_len = sizeof(buf);
   ifc.ifc_buf = buf;
   if(ioctl(sck, SIOCGIFCONF, &ifc) < 0) {
+    WHY("Failed to read interface list");
     return 1;
   }
 
   /* Iterate through the list of interfaces. */
   ifr = ifc.ifc_req;
   nInterfaces = ifc.ifc_len / sizeof(struct ifreq); 
+  WHYF("Examining %d interfaces",nInterfaces);
   for(i = 0; i < nInterfaces; i++) {
     item = &ifr[i];
     
