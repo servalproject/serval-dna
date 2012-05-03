@@ -1024,7 +1024,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   return ret;
 }
 
-int cli_manifestid(const char *arg)
+int climanifestid(const char *arg)
 {
   return rhizome_str_is_manifest_id(arg);
 }
@@ -1316,9 +1316,11 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 	      }
 	    break;
 	  } else {
-	  WHY("Poll for DNA number resolution failed");
-	  if (m2.packetTypeAndFlags==MDP_ERROR) 
-	    WHYF("error.error=%d, error.message=%s",m2.error.error,m2.error.message);
+	  if (0) {
+	    WHY("Poll for DNA number resolution failed");
+	    if (m2.packetTypeAndFlags==MDP_ERROR) 
+	      WHYF("error.error=%d, error.message=%s",m2.error.error,m2.error.message);
+	  }
 	}
       }
     }
