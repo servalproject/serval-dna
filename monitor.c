@@ -67,11 +67,12 @@ int monitor_setup_sockets()
   name.sun_family = AF_UNIX;
   
   if (monitor_named_socket==-1) {
-    if (!form_serval_instance_path(&name.sun_path[0], 100, "monitor.socket")) {
+    name.sun_path[0]=0;
+    if (!form_serval_instance_path(&name.sun_path[1], 100, "monitor.socket")) {
       return WHY("Cannot construct name of unix domain socket.");
     }
-    unlink(&name.sun_path[0]);
-    len = 0+strlen(&name.sun_path[0]) + sizeof(name.sun_family)+1;
+    if (name.sun_path[0]) unlink(&name.sun_path[0]);    
+    len = 1+strlen(&name.sun_path[1]) + sizeof(name.sun_family)+1;
     monitor_named_socket = socket(AF_UNIX, SOCK_STREAM, 0);
     if (monitor_named_socket>-1) {
       int dud=0;
@@ -168,6 +169,7 @@ int monitor_poll()
       monitor_socket_count++;
       write(s,"MONITOR:You are talking to servald\n",
 	    strlen("MONITOR:You are talking to servald\n"));
+      WHY("Got a client");
     }
     fcntl(monitor_named_socket,F_SETFL,
 	  fcntl(monitor_named_socket, F_GETFL, NULL)&(~O_NONBLOCK));
