@@ -1275,6 +1275,7 @@ typedef struct vomp_call_half {
   unsigned char sid[SID_SIZE];
   unsigned char did[64];
   unsigned char state;
+  unsigned char last_state; // last state communicated to monitoring parties
   unsigned char codec;
   unsigned int session;
 #define VOMP_SESSION_MASK 0xffffff

@@ -227,8 +227,9 @@ int monitor_poll()
 	  bytes=-1;
 	  break;
 	}
+	errno=0;
 	bytes=read(c->socket,&c->line[c->line_length],1);
-	if (bytes==-1) {
+	if (bytes<1) {
 	  switch(errno) {
 	  case EAGAIN: case EINTR: 
 	    /* transient errors */
@@ -263,10 +264,11 @@ int monitor_poll()
       }
       break;
     case MONITOR_STATE_DATA:
+      errno=0;
       bytes=read(c->socket,
 		 &c->buffer[c->data_offset],
 		 c->data_expected-c->data_offset);
-      if (bytes==-1) {
+      if (bytes<1) {
 	switch(errno) {
 	case EAGAIN: case EINTR: 
 	  /* transient errors */
@@ -451,38 +453,43 @@ int monitor_process_data(int index)
 int monitor_call_status(vomp_call_state *call)
 {
   int i;
-  WHYF("Tell call monitor about call %06x:%06x",
-       call->local.session,call->remote.session);
   char msg[1024];
-  snprintf(msg,1024,"CALLSTATUS:%06x:%06x:%d:%d\n",
-	   call->local.session,call->remote.session,
-	   call->local.state,call->remote.state);
-  for(i=0;i<monitor_socket_count;i++)
-    {
-      if (!(monitor_sockets[i].flags&MONITOR_VOMP))
-	continue;
-    nextInSameSlot:
-      errno=0;
-      fcntl(monitor_sockets[i].socket,F_SETFL,
-	    fcntl(monitor_sockets[i].socket, F_GETFL, NULL)|O_NONBLOCK);
-      write(monitor_sockets[i].socket,msg,strlen(msg));
-      if (errno&&(errno!=EINTR)&&(errno!=EAGAIN)) {
-	/* error sending update, so kill monitor socket */
-	WHYF("Tearing down monitor client #%d due to errno=%d",
-	     i,errno);
-	close(monitor_sockets[i].socket);
-	if (i==monitor_socket_count-1) {
-	  monitor_socket_count--;
+  int show=0;
+  if (call->local.state>call->local.last_state) show=1;
+  if (call->remote.state>call->remote.last_state) show=1;
+  call->local.last_state=call->local.state;
+  call->remote.last_state=call->remote.state;
+  if (show) {
+    snprintf(msg,1024,"CALLSTATUS:%06x:%06x:%d:%d\n",
+	     call->local.session,call->remote.session,
+	     call->local.state,call->remote.state);
+    for(i=0;i<monitor_socket_count;i++)
+      {
+	if (!(monitor_sockets[i].flags&MONITOR_VOMP))
 	  continue;
-	} else {
-	  bcopy(&monitor_sockets[monitor_socket_count-1],
-		&monitor_sockets[i],
-		sizeof(struct monitor_context));
-	  monitor_socket_count--;
-	  goto nextInSameSlot;
+      nextInSameSlot:
+	errno=0;
+	fcntl(monitor_sockets[i].socket,F_SETFL,
+	      fcntl(monitor_sockets[i].socket, F_GETFL, NULL)|O_NONBLOCK);
+	write(monitor_sockets[i].socket,msg,strlen(msg));
+	if (errno&&(errno!=EINTR)&&(errno!=EAGAIN)) {
+	  /* error sending update, so kill monitor socket */
+	  WHYF("Tearing down monitor client #%d due to errno=%d",
+	       i,errno);
+	  close(monitor_sockets[i].socket);
+	  if (i==monitor_socket_count-1) {
+	    monitor_socket_count--;
+	    continue;
+	  } else {
+	    bcopy(&monitor_sockets[monitor_socket_count-1],
+		  &monitor_sockets[i],
+		  sizeof(struct monitor_context));
+	    monitor_socket_count--;
+	    goto nextInSameSlot;
+	  }
 	}
       }
-    }
+  }
   return 0;
 }
 
