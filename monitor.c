@@ -195,7 +195,7 @@ int monitor_poll()
       monitor_socket_count++;
       write(s,"MONITOR:You are talking to servald\n",
 	    strlen("MONITOR:You are talking to servald\n"));
-      WHY("Got a client");
+      WHYF("Got %d clients",monitor_socket_count);
     }
     
     ignored_length=sizeof(ignored_address);
@@ -224,13 +224,15 @@ int monitor_poll()
 	  break;
 	}
 	bytes=read(c->socket,&c->line[c->line_length],1);
-	if (bytes>0) WHYF("Read monitor byte 0x%02x",c->line[c->line_length]);
+	if (bytes>0) WHYF("Read monitor byte 0x%02x",c->line[c->line_length]);	
 	if (bytes==-1) {
 	  switch(errno) {
 	  case EAGAIN: case EINTR: 
 	    /* transient errors */
 	  default:
 	    /* all other errors; close socket */
+	    WHYF("Tearing down monitor client #%d due to errno=%d",
+		 i,errno);
 	    close(c->socket);
 	    if (i==monitor_socket_count-1) {
 	      monitor_socket_count--;
@@ -263,6 +265,8 @@ int monitor_poll()
 	  /* transient errors */
 	default:
 	  /* all other errors; close socket */
+	    WHYF("Tearing down monitor client #%d due to errno=%d",
+		 i,errno);
 	    close(c->socket);
 	    if (i==monitor_socket_count-1) {
 	      monitor_socket_count--;
@@ -412,6 +416,8 @@ int monitor_call_status(vomp_call_state *call)
       write(monitor_sockets[i].socket,msg,strlen(msg));
       if (errno&&(errno!=EINTR)&&(errno!=EAGAIN)) {
 	/* error sending update, so kill monitor socket */
+	WHYF("Tearing down monitor client #%d due to errno=%d",
+	     i,errno);
 	close(monitor_sockets[i].socket);
 	if (i==monitor_socket_count-1) {
 	  monitor_socket_count--;
@@ -460,6 +466,8 @@ int monitor_send_audio(vomp_call_state *call,overlay_mdp_frame *audio)
       write(monitor_sockets[i].socket,msg,msglen);
       if (errno&&(errno!=EINTR)&&(errno!=EAGAIN)) {
 	/* error sending update, so kill monitor socket */
+	WHYF("Tearing down monitor client #%d due to errno=%d",
+	     i,errno);
 	close(monitor_sockets[i].socket);
 	if (i==monitor_socket_count-1) {
 	  monitor_socket_count--;
