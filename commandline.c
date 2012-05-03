@@ -38,22 +38,13 @@ static int servalNodeRunning(int *pid)
   const char *instancepath = serval_instancepath();
   struct stat st;
   int r=stat(instancepath,&st);
-  if (r) {
-    fprintf(stderr,
-	    "ERROR: Instance path '%s' non existant or not accessable.\n"
-	    "       Operating system says: %s (errno=%d)\n",
-	    instancepath,strerror(errno),errno);
-    fprintf(stderr,
-	    "       (Set SERVALINSTANCE_PATH to specify an alternate location.)\n");
-    return -1;
-  }
-  if ((st.st_mode&S_IFMT)!=S_IFDIR) {
-    fprintf(stderr,
-	    "ERROR: Instance path must be a valid directory.\n"
-	    "       '%s' is not a directory.\n",instancepath);
-    *pid=-1;
-    return -1;
-  }
+  if (r)
+    return setReason("Instance path '%s' non existant or not accessable: %s [errno=%d]"
+	" (Set SERVALINSTANCE_PATH to specify an alternate location)",
+	instancepath, strerror(errno), errno
+      );
+  if ((st.st_mode&S_IFMT)!=S_IFDIR)
+    return setReason("Instance path '%s' is not a directory", instancepath);
 
   int running=0;
   char filename[1024];
@@ -218,6 +209,25 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servald_ServalD_rawCommand(JNIEnv 
 
 #endif /* HAVE_JNI_H */
 
+static void complainCommandLine(const char *prefix, int argc, const char *const *argv)
+{
+  char buf[1024];
+  char *b = buf;
+  int i;
+  char *e = buf + sizeof(buf) - 4;
+  for (i = 0; b < e && i != argc; ++i) {
+      if (i)
+	*b++ = ' ';
+      if (b < e)
+	b += snprintf(b, e - b, "%s", argv[i]);
+  }
+  if (b < e)
+      *b = '\0';
+  else
+      strcpy(e, "...");
+  setReason("%s%s", prefix, buf);
+}
+
 /* args[] excludes command name (unless hardlinks are used to use first words 
    of command sequences as alternate names of the command. */
 int parseCommandLine(int argc, const char *const *args)
@@ -234,19 +244,19 @@ int parseCommandLine(int argc, const char *const *args)
       for (j = 0; (word = command_line_options[i].words[j]); ++j) {
 	int wordlen = strlen(word);
 	if (optional < 0) {
-	  fprintf(stderr,"Internal error: command_line_options[%d].word[%d]=\"%s\" not allowed after \"...\"\n", i, j, word);
+	  WHYF("Internal error: command_line_options[%d].word[%d]=\"%s\" not allowed after \"...\"", i, j, word);
 	  break;
 	}
 	else if (!(  (wordlen > 2 && word[0] == '<' && word[wordlen-1] == '>')
 		  || (wordlen > 4 && word[0] == '[' && word[1] == '<' && word[wordlen-2] == '>' && word[wordlen-1] == ']')
 		  || (wordlen > 0)
 	)) {
-	  fprintf(stderr,"Internal error: command_line_options[%d].word[%d]=\"%s\" is malformed\n", i, j, word);
+	  WHYF("Internal error: command_line_options[%d].word[%d]=\"%s\" is malformed", i, j, word);
 	  break;
 	} else if (word[0] == '<') {
 	  ++mandatory;
 	  if (optional) {
-	    fprintf(stderr,"Internal error: command_line_options[%d].word[%d]=\"%s\" should be optional\n", i, j, word);
+	    WHYF("Internal error: command_line_options[%d].word[%d]=\"%s\" should be optional", i, j, word);
 	    break;
 	  }
 	} else if (word[0] == '[') {
@@ -265,14 +275,12 @@ int parseCommandLine(int argc, const char *const *args)
 	   that the call is ambiguous. */
 	if (cli_call>=0) ambiguous++;
 	if (ambiguous==1) {
-	  fprintf(stderr,"Ambiguous command line call:\n   ");
-	  for(j=0;j<argc;j++) fprintf(stderr," %s",args[j]);
-	  fprintf(stderr,"\nMatches the following known command line calls:\n");
+	  setReason("Ambiguous command line call:");
+	  complainCommandLine("   ", argc, args);
+	  setReason("Matches the following known command line calls:");
 	}
 	if (ambiguous) {
-	  fprintf(stderr,"   ");
-	  for(j=0;j<argc;j++) fprintf(stderr," %s",command_line_options[i].words[j]);
-	  fprintf(stderr,"\n");
+	  complainCommandLine("   ", argc, command_line_options[i].words);
 	}
 	cli_call=i;
       }
@@ -282,8 +290,8 @@ int parseCommandLine(int argc, const char *const *args)
   if (ambiguous) return -1;
   /* Complain if we found no matching calls */
   if (cli_call<0) {
-    fprintf(stderr,"Unknown command line call:\n   ");
-    int j; for(j=0;j<argc;j++) fprintf(stderr," %s",args[j]);
+    setReason("Unknown command line call:");
+    complainCommandLine("   ", argc, args);
     return cli_usage();
   }
 
@@ -309,10 +317,8 @@ int cli_arg(int argc, const char *const *argv, command_line_option *o, char *arg
         || (wordlen == arglen + 4 && word[0] == '[' && !strncasecmp(&word[2], argname, arglen)))
     ) {
       const char *value = argv[i];
-      if (validator && !(*validator)(value)) {
-	fprintf(stderr, "Invalid argument %d '%s': \"%s\"\n", i, argname, value);
-	return -1;
-      }
+      if (validator && !(*validator)(value))
+	return setReason("Invalid argument %d '%s': \"%s\"", i, argname, value);
       *dst = value;
       return 0;
     }
@@ -492,7 +498,7 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 	      {
 		if (rx.packetTypeAndFlags==MDP_ERROR)
 		  {
-		    fprintf(stderr,"       Error message: %s\n",mdp.error.message);
+		    WHYF("       Error message: %s", mdp.error.message);
 		  }
 		else if ((rx.packetTypeAndFlags&MDP_TYPE_MASK)==MDP_TX) {
 		  /* Display match unless it is a duplicate.
@@ -534,12 +540,12 @@ char *confValueGet(char *var,char *defaultValue)
 
   char filename[1024];
   if (!FORM_SERVAL_INSTANCE_PATH(filename, "serval.conf")) {
-    fprintf(stderr, "Using default value of %s: %s\n", var, defaultValue);
+    WHYF("Using default value of %s: %s", var, defaultValue);
     return defaultValue;
   }
   FILE *f = fopen(filename,"r");
   if (!f) {
-    fprintf(stderr, "Cannot open serval.conf.  Using default value of %s: %s\n", var, defaultValue);
+    WHYF("Cannot open serval.conf, using default value of %s: %s", var, defaultValue);
     return defaultValue;
   }
   
@@ -585,18 +591,15 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
      network interfaces that we will take interest in. */
   overlay_interface_args(confValueGet("interfaces",""));
   if (strlen(confValueGet("interfaces",""))<1) {
-    fprintf(stderr,
-	    "WARNING: Noone has told me which network interfaces to listen on.\n"
-	    "         You should probably put something in the interfaces setting.\n");
+    WHY("Noone has told me which network interfaces to listen on; "
+	"you should probably put something in the interfaces setting.");
   }
 
   int pid=-1;
   int running = servalNodeRunning(&pid);
   if (running<0) return -1;
-  if (running>0) {
-    fprintf(stderr,"ERROR: Serval process already running (pid=%d)\n",pid);
-    return -1;
-  }
+  if (running>0)
+    return WHYF("Serval process already running (pid=%d)", pid);
   /* Start the Serval process.
      All server settings will be read by the server process from the
      instance directory when it starts up.
@@ -643,7 +646,7 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
 	fclose(f);
 	int result=kill(pid,SIGHUP);
 	if (!result) {
-	  fprintf(stderr,"Stop request sent to Serval process.\n");
+	  WHY("Stop request sent to Serval process.");
 	} else {
 	  WHY("Could not send SIGHUP to Serval process.");
 	  switch (errno) {
@@ -667,7 +670,7 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
 	  pid=-1;
 	  int running = servalNodeRunning(&pid);
 	  if (running<1) {
-	    fprintf(stderr,"Serval process appears to have stopped.\n");
+	    WHY("Serval process appears to have stopped.");
 	    return 0;
 	  }
 	}
@@ -755,7 +758,7 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
   long long rx_times[1024];
 
   if (broadcast) 
-    fprintf(stderr,"WARNING: broadcast ping packets will not be encryped.\n");
+    WHY("WARNING: broadcast ping packets will not be encryped.");
   while(1) {
     /* Now send the ping packets */
     mdp.packetTypeAndFlags=MDP_TX;
@@ -773,10 +776,9 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
     
     int res=overlay_mdp_send(&mdp,0,0);
     if (res) {
-      fprintf(stderr,"ERROR: Could not dispatch PING frame #%d (error %d)\n",
-	      sequence_number-firstSeq,res);
-      if (mdp.packetTypeAndFlags==MDP_ERROR) 
-	fprintf(stderr,"       Error message: %s\n",mdp.error.message);
+      WHYF("ERROR: Could not dispatch PING frame #%d (error %d)", sequence_number - firstSeq, res);
+      if (mdp.packetTypeAndFlags==MDP_ERROR)
+	WHYF("       Error message: %s", mdp.error.message);
     } else tx_count++;
 
     /* Now look for replies until one second has passed, and print any replies
@@ -793,8 +795,7 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
 	while (overlay_mdp_recv(&mdp,&ttl)==0) {
 	  switch(mdp.packetTypeAndFlags&MDP_TYPE_MASK) {
 	  case MDP_ERROR:
-	    fprintf(stderr,"mdpping: overlay_mdp_recv: %s (code %d)\n",
-		    mdp.error.message,mdp.error.error);
+	    WHYF("mdpping: overlay_mdp_recv: %s (code %d)", mdp.error.message, mdp.error.error);
 	    break;
 	  case MDP_TX:
 	    {
@@ -814,8 +815,7 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
 	    }
 	    break;
 	  default:
-	    fprintf(stderr,"mdpping: overlay_mdp_recv: Unexpected MDP frame type"
-		    " 0x%x\n",mdp.packetTypeAndFlags);
+	    WHYF("mdpping: overlay_mdp_recv: Unexpected MDP frame type 0x%x", mdp.packetTypeAndFlags);
 	    break;
 	  }
 	}
@@ -1114,7 +1114,7 @@ int app_keyring_create(int argc, const char *const *argv, struct command_line_op
   const char *pin;
   cli_arg(argc, argv, o, "pin,pin ...", &pin, NULL, "");
   keyring_file *k=keyring_open_with_pins(pin);
-  if (!k) fprintf(stderr,"keyring create:Failed to create/open keyring file\n");
+  if (!k) WHY("keyring create: Failed to create/open keyring file");
   return 0;
 }
 
@@ -1156,18 +1156,13 @@ int app_keyring_add(int argc, const char *const *argv, struct command_line_optio
   cli_arg(argc, argv, o, "pin", &pin, NULL, "");
 
   keyring_file *k=keyring_open_with_pins("");
-  if (!k) { fprintf(stderr,"keyring add:Failed to create/open keyring file\n");
+  if (!k) { WHY("keyring add: Failed to create/open keyring file");
     return -1; }
   
   if (keyring_create_identity(k,k->contexts[0],(char *)pin)==NULL)
-    {
-      fprintf(stderr,"Could not create new identity (keyring_create_identity() failed)\n");
-      return -1;
-    }
-  if (keyring_commit(k)) {
-    fprintf(stderr,"Could not write new identity (keyring_commit() failed)\n");
-    return -1;
-  }
+    return setReason("Could not create new identity (keyring_create_identity() failed)");
+  if (keyring_commit(k))
+    return setReason("Could not write new identity (keyring_commit() failed)");
   keyring_free(k);
   return 0;
 }

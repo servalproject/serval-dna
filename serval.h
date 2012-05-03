@@ -1356,11 +1356,11 @@ int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg);
 
 typedef struct command_line_option {
   int (*function)(int argc, const char *const *argv, struct command_line_option *o);
-  char *words[32]; // 32 words should be plenty!
+  const char *words[32]; // 32 words should be plenty!
   unsigned long long flags;
 #define CLIFLAG_NONOVERLAY (1<<0) /* Uses a legacy IPv4 DNA call instead of overlay mnetwork */
 #define CLIFLAG_STANDALONE (1<<1) /* Cannot be issued to a running instance */
-  char *description; // describe this invocation
+  const char *description; // describe this invocation
 } command_line_option;
 
 extern command_line_option command_line_options[];
