@@ -148,7 +148,7 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servald_ServalD_rawCommand(JNIEnv 
 {
   jclass stringClass = NULL;
   jclass listClass = NULL;
-  jint status = 0;
+  unsigned char status = 0; // to match what the shell gets: 0..255
   // Enforce non re-entrancy.
   if (jni_env) {
     jclass exceptionClass = NULL;
@@ -213,7 +213,7 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servald_ServalD_rawCommand(JNIEnv 
   // Deal with Java exceptions: NewStringUTF out of memory in outv_end_field().
   if (jni_exception || (outv_current != outv_buffer && outv_end_field() == -1))
     return -1;
-  return status;
+  return (jint) status;
 }
 
 #endif /* HAVE_JNI_H */
