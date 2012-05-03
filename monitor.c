@@ -212,7 +212,6 @@ int monitor_poll()
     struct monitor_context *c=&monitor_sockets[i];
     fcntl(c->socket,F_SETFL,
 	  fcntl(c->socket, F_GETFL, NULL)|O_NONBLOCK);
-    WHYF("looking at monitor socket #%d",i);
     switch(c->state) {
     case MONITOR_STATE_COMMAND:
       bytes=1;
