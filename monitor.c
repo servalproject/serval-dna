@@ -26,14 +26,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include <sys/stat.h>
 
-/* Need a better way to do this! */
-#ifndef ANDROID
+#ifndef HAVE_STRUCT_UCRED
 struct ucred {
   pid_t pid;
   uid_t uid;
   gid_t gid;
 };
-#endif
+#endif // HAVE_STRUCT_UCRED
 
 /* really shouldn't need more than 2:
    1 for rhizome
