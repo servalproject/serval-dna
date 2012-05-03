@@ -166,9 +166,13 @@ int monitor_poll()
   }
 
   /* Check for new connections */
-  fcntl(monitor_named_socket,F_SETFL,
-	fcntl(monitor_named_socket, F_GETFL, NULL)|O_NONBLOCK);
-  while((s=accept(monitor_named_socket,&ignored_address,&ignored_length))>-1) {
+  while((
+#ifdef HAVE_LINUX_IF_H
+	 s=accept4(monitor_named_socket,&ignored_address,&ignored_length,O_NONBLOCK)
+#else
+	 s=accept(monitor_named_socket,&ignored_address,&ignored_length)
+#endif
+)>-1) {
     int res = fcntl(s,F_SETFL, O_NONBLOCK);
     if (res) { close(s); continue; }
     struct ucred ucred;
@@ -196,6 +200,9 @@ int monitor_poll()
     }
     
     ignored_length=sizeof(ignored_address);
+    WHY("look for next new client ...");
+    fcntl(monitor_named_socket,F_SETFL,
+	  fcntl(monitor_named_socket, F_GETFL, NULL)|O_NONBLOCK);
   }
 
   /* Read from any open connections */
