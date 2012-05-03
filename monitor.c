@@ -75,6 +75,9 @@ int monitor_setup_sockets()
   name.sun_family = AF_UNIX;
   
   if (monitor_named_socket==-1) {
+    /* ignore SIGPIPE so that we don't explode */
+    signal(SIGPIPE, SIG_IGN);
+
     name.sun_path[0]=0;
     snprintf(&name.sun_path[1],100,"org.servalproject.servald.monitor.socket");
     if (name.sun_path[0]) unlink(&name.sun_path[0]);    
@@ -307,7 +310,7 @@ int monitor_process_command(int index,char *cmd)
 {
   int callSessionToken,sampleType,bytes;
   char sid[MONITOR_LINE_LENGTH],localDid[MONITOR_LINE_LENGTH];
-  char remoteDid[MONITOR_LINE_LENGTH];
+  char remoteDid[MONITOR_LINE_LENGTH],digits[MONITOR_LINE_LENGTH];
   overlay_mdp_frame mdp;
   mdp.packetTypeAndFlags=MDP_VOMPEVENT;  
 
@@ -327,17 +330,27 @@ int monitor_process_command(int index,char *cmd)
 
   char msg[1024];
 
-  if (sscanf(cmd,"AUDIO:%x:%d:%d",
-	     &callSessionToken,&sampleType,&bytes)==3)
-    {
-      /* Start getting sample */
+  if (cmd[0]=='*') {
+    /* command with content */
+    int ofs=0;
+    if (sscanf(cmd,"*%d:%n",&bytes,&ofs)==1) {
+      /* work out rest of command */
+      cmd=&cmd[ofs];
       c->state=MONITOR_STATE_DATA;
-      c->sample_call_session_token=callSessionToken;
-      c->sample_codec=sampleType;
       c->data_expected=bytes;
       c->data_offset=0;
-      return 0;
+      c->sample_codec=-1;
+
+      if (sscanf(cmd,"AUDIO:%x:%d",
+		 &callSessionToken,&sampleType)==2)
+	{
+	  /* Start getting sample */
+	  c->sample_call_session_token=callSessionToken;
+	  c->sample_codec=sampleType;
+	  return 0;
+	}
     }
+  }
   else if (!strcasecmp(cmd,"monitor vomp"))
     c->flags|=MONITOR_VOMP;
   else if (!strcasecmp(cmd,"ignore vomp"))
@@ -371,6 +384,28 @@ int monitor_process_command(int index,char *cmd)
      mdp.vompevent.flags=VOMPEVENT_HANGUP;
      mdp.vompevent.call_session_token=callSessionToken;
      vomp_mdp_event(&mdp,NULL,0);
+  } else if (sscanf(cmd,"dtmf %x %s",&callSessionToken,digits)==2) {
+    mdp.vompevent.flags=VOMPEVENT_AUDIOPACKET;
+    mdp.vompevent.call_session_token=callSessionToken;
+
+    /* One digit per sample block. */
+    mdp.vompevent.audio_sample_codec=VOMP_CODEC_DTMF;
+    mdp.vompevent.audio_sample_bytes=1;
+    
+    int i;
+    for(i=0;i<strlen(digits);i++) {
+      int digit=vomp_parse_dtmf_digit(digits[i]);
+      if (digit<0) {
+	snprintf(msg,1024,"ERROR: invalid DTMF digit 0x%02x\n",digit);
+	write(c->socket,msg,strlen(msg));
+      }
+      mdp.vompevent.audio_bytes[mdp.vompevent.audio_sample_bytes]
+	=(digit<<4); /* 80ms standard tone duration, so that it is a multiple
+			of the majority of codec time units (70ms is the nominal
+			DTMF tone length for most systems). */
+      if (overlay_mdp_send(&mdp,0,0)) WHY("Send DTMF failed.");
+    }
+    
   }
 
   fcntl(c->socket,F_SETFL,
@@ -458,12 +493,14 @@ int monitor_send_audio(vomp_call_state *call,overlay_mdp_frame *audio)
 
   int sample_bytes=vomp_sample_size(audio->vompevent.audio_sample_codec);
   unsigned char msg[1024+MAX_AUDIO_BYTES];
+  /* All commands followed by binary data start with *len:, so that 
+     they can be easily parsed at the far end, even if not supported. */
   snprintf((char *)msg,1024,
-	   "AUDIOPACKET:%06x:%06x:%d:%d:%d:%d:%lld:%lld\n",
+	   "*%d:AUDIOPACKET:%06x:%06x:%d:%d:%d:%lld:%lld\n",
+	   sample_bytes,
 	   call->local.session,call->remote.session,
 	   call->local.state,call->remote.state,
 	   audio->vompevent.audio_sample_codec,
-	   sample_bytes,
 	   audio->vompevent.audio_sample_starttime,
 	   audio->vompevent.audio_sample_endtime);
   int msglen=strlen((char *)msg);

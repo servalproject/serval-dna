@@ -1355,6 +1355,7 @@ int vomp_tick_interval();
 int vomp_sample_size(int c);
 int vomp_codec_timespan(int c);
 int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg);
+int vomp_parse_dtmf_digit(char c);
 
 typedef struct command_line_option {
   int (*function)(int argc, const char *const *argv, struct command_line_option *o);
