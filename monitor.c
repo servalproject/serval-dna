@@ -209,9 +209,10 @@ int monitor_poll()
   nextInSameSlot:
     errno=0;
     int bytes;
-    struct monitor_context *c=&monitor_sockets[monitor_socket_count];
+    struct monitor_context *c=&monitor_sockets[i];
     fcntl(c->socket,F_SETFL,
 	  fcntl(c->socket, F_GETFL, NULL)|O_NONBLOCK);
+    WHYF("looking at monitor socket #%d",i);
     switch(c->state) {
     case MONITOR_STATE_COMMAND:
       bytes=1;
@@ -285,6 +286,9 @@ int monitor_poll()
 	  }
       }
       break;
+    default:
+      c->state=MONITOR_STATE_COMMAND;
+      WHY("fixed monitor connection state");
     }
       
   }
