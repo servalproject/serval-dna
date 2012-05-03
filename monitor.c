@@ -122,9 +122,8 @@ int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
   if (monitor_named_socket>-1)
     {
       if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) {
-	fprintf(stderr,
-		"Monitor named unix domain socket is poll() slot #%d (fd %d)\n",
-		*fdcount,monitor_named_socket);
+	WHYF("Monitor named unix domain socket is poll() slot #%d (fd %d)\n",
+	     *fdcount,monitor_named_socket);
       }
       fds[*fdcount].fd=monitor_named_socket;
       fds[*fdcount].events=POLLIN;
@@ -132,12 +131,13 @@ int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
     }
 
   int i;
+  if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) 
+    WHYF("looking at %d monitor clients",monitor_socket_count);
   for(i=0;i<monitor_socket_count;i++) {
     if ((*fdcount)>=fdmax) return -1;
     if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) {
-      fprintf(stderr,
-	      "Monitor named unix domain client socket is poll() slot #%d (fd %d)\n",
-	      *fdcount,monitor_sockets[i].socket);
+      WHY("Monitor named unix domain client socket is poll() slot #%d (fd %d)\n",
+	  *fdcount,monitor_sockets[i].socket);
       }
       fds[*fdcount].fd=monitor_sockets[i].socket;
       fds[*fdcount].events=POLLIN;
