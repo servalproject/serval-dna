@@ -899,17 +899,21 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
 	    ret = WHY("Manifest is missing filesize line");
 	  else
 	    m->fileLength = lengthq;
+	  if (ret == 1) {
+	    cli_puts("manifestid"); cli_delim(":");
+	    cli_puts((const char *)sqlite3_column_text(statement, 0)); cli_delim("\n");
+	    cli_puts("version"); cli_delim(":");
+	    cli_printf("%lld", (long long) sqlite3_column_int64(statement, 2)); cli_delim("\n");
+	    cli_puts("inserttime"); cli_delim(":");
+	    cli_printf("%lld", (long long) sqlite3_column_int64(statement, 3)); cli_delim("\n");
+	    cli_puts("filehash"); cli_delim(":");
+	    cli_puts(m->fileHexHash); cli_delim("\n");
+	    cli_puts("filesize"); cli_delim(":");
+	    cli_printf("%lld", (long long) m->fileLength); cli_delim("\n");
+	    // Could write the manifest blob to the CLI output here, but that would require the output to
+	    // support byte[] fields as well as String fields.
+	  }
 	}
-      }
-      if (ret == 1) {
-	cli_puts("manifestid"); cli_delim(":");
-	cli_puts((const char *)sqlite3_column_text(statement, 0)); cli_delim("\n");
-	cli_puts("version"); cli_delim(":");
-	cli_printf("%lld", (long long) sqlite3_column_int64(statement, 2)); cli_delim("\n");
-	cli_puts("inserttime"); cli_delim(":");
-	cli_printf("%lld", (long long) sqlite3_column_int64(statement, 3)); cli_delim("\n");
-	// Could write the manifest blob to the CLI output here, but that would require the output to
-	// support byte[] fields as well as String fields.
       }
       break;
     }
@@ -969,7 +973,7 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath)
 	  ret = 1;
 	  cli_puts("filehash"); cli_delim(":");
 	  cli_puts((const char *)sqlite3_column_text(statement, 0)); cli_delim("\n");
-	  cli_puts("length"); cli_delim(":");
+	  cli_puts("filesize"); cli_delim(":");
 	  cli_printf("%lld", length); cli_delim("\n");
 	}
       }

@@ -179,14 +179,18 @@ setup_AddThenExtractManifest() {
    assert_rhizome_list file1
    extract_manifest_id manifestid file1.manifest
    extract_manifest_version version file1.manifest
+   extract_manifest_filehash filehash file1.manifest
 }
 test_AddThenExtractManifest() {
    executeOk $dna rhizome extract manifest $manifestid file1x.manifest
    assert cmp file1.manifest file1x.manifest
-   assertStdoutLineCount '==' 3
+   assertStdoutLineCount '==' 5
+   local size=$(( $(cat file1 | wc -c) + 0 ))
    assertStdoutGrep --matches=1 "^manifestid:$manifestid$"
    assertStdoutGrep --matches=1 "^version:$version$"
    assertStdoutGrep --matches=1 "^inserttime:[0-9]\+$"
+   assertStdoutGrep --matches=1 "^filehash:$filehash$"
+   assertStdoutGrep --matches=1 "^filesize:$size$"
 }
 
 doc_ExtractMissingManifest="Extract non-existent manifest"
@@ -230,7 +234,7 @@ test_AddThenExtractFile() {
    local size=$(( $(cat file1 | wc -c) + 0 ))
    assertStdoutLineCount '==' 2
    assertStdoutGrep --matches=1 "^filehash:$filehash$"
-   assertStdoutGrep --matches=1 "^length:$size$"
+   assertStdoutGrep --matches=1 "^filesize:$size$"
 }
 
 doc_ExtractMissingFile="Extract non-existent file"
