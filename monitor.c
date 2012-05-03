@@ -26,6 +26,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include <sys/stat.h>
 
+struct ucred {
+  pid_t pid;
+  uid_t uid;
+  gid_t gid;
+};
+
 /* really shouldn't need more than 2:
    1 for rhizome
    1 for VoMP call 
@@ -68,9 +74,7 @@ int monitor_setup_sockets()
   
   if (monitor_named_socket==-1) {
     name.sun_path[0]=0;
-    if (!form_serval_instance_path(&name.sun_path[1], 100, "monitor.socket")) {
-      return WHY("Cannot construct name of unix domain socket.");
-    }
+    snprintf(&name.sun_path[1],100,"org.servalproject.servald.monitor.socket");
     if (name.sun_path[0]) unlink(&name.sun_path[0]);    
     len = 1+strlen(&name.sun_path[1]) + sizeof(name.sun_family)+1;
     monitor_named_socket = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -93,6 +97,7 @@ int monitor_setup_sockets()
       int res = setsockopt(monitor_named_socket, SOL_SOCKET, SO_RCVBUF, 
 		       &send_buffer_size, sizeof(send_buffer_size));
       if (res) WHYF("setsockopt() failed: errno=%d",errno);
+
     }
   }
 
@@ -158,7 +163,18 @@ int monitor_poll()
 	fcntl(monitor_named_socket, F_GETFL, NULL)|O_NONBLOCK);
   while((s=accept(monitor_named_socket,&ignored_address,&ignored_length))>-1) {
     int res = fcntl(s,F_SETFL, O_NONBLOCK);
-    if (res) close(s); 
+    if (res) { close(s); continue; }
+    struct ucred ucred;
+    socklen_t len=sizeof(ucred);
+    res = getsockopt(s,SOL_SOCKET,SO_PEERCRED,&ucred,&len);
+    if (res) { 
+      WHY("Failed to read credentials of monitor.socket client");
+      close(s); continue; }
+    if (ucred.uid&&(ucred.uid!=getuid())) {
+      WHYF("monitor.socket client has wrong uid (%d versus %d)",
+	   ucred.uid,getuid());
+      close(s); continue;
+    }
     else if (monitor_socket_count>=MAX_MONITOR_SOCKETS) {
       write(s,"CLOSE:All sockets busy\n",strlen("CLOSE:All sockets busy\n"));
       close(s);
