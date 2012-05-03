@@ -136,7 +136,7 @@ int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
   for(i=0;i<monitor_socket_count;i++) {
     if ((*fdcount)>=fdmax) return -1;
     if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) {
-      WHY("Monitor named unix domain client socket is poll() slot #%d (fd %d)\n",
+      WHYF("Monitor named unix domain client socket is poll() slot #%d (fd %d)\n",
 	  *fdcount,monitor_sockets[i].socket);
       }
       fds[*fdcount].fd=monitor_sockets[i].socket;
