@@ -298,6 +298,8 @@ int monitor_process_command(int index,char *cmd)
   overlay_mdp_frame mdp;
   mdp.packetTypeAndFlags=MDP_VOMPEVENT;  
 
+  WHYF("Received monitor instruction: %s\n",cmd);
+
   struct monitor_context *c=&monitor_sockets[index];
   c->line_length=0;
 
