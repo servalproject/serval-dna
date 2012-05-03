@@ -1024,7 +1024,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   return ret;
 }
 
-int climanifestid(const char *arg)
+int cli_manifestid(const char *arg)
 {
   return rhizome_str_is_manifest_id(arg);
 }
