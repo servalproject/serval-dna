@@ -205,7 +205,8 @@ int monitor_poll()
     errno=0;
     int bytes;
     struct monitor_context *c=&monitor_sockets[monitor_socket_count];
-
+    fcntl(c->socket,F_SETFL,
+	  fcntl(c->socket, F_GETFL, NULL)|O_NONBLOCK);
     switch(c->state) {
     case MONITOR_STATE_COMMAND:
       bytes=1;
@@ -214,6 +215,7 @@ int monitor_poll()
 	  /* line too long */
 	  c->line[MONITOR_LINE_LENGTH-1]=0;
 	  monitor_process_command(i,c->line);
+	  bytes=-1;
 	  break;
 	}
 	bytes=read(c->socket,&c->line[c->line_length],1);
@@ -293,6 +295,9 @@ int monitor_process_command(int index,char *cmd)
   struct monitor_context *c=&monitor_sockets[index];
   c->line_length=0;
 
+  fcntl(c->socket,F_SETFL,
+	fcntl(c->socket, F_GETFL, NULL)|O_NONBLOCK);
+
   if (strlen(cmd)>80) {
     write(c->socket,"ERROR:Command too long\n",
 	  strlen("ERROR:Command too long\n"));
@@ -335,6 +340,9 @@ int monitor_process_command(int index,char *cmd)
      vomp_mdp_event(&mdp,NULL,0);
   }
 
+  fcntl(c->socket,F_SETFL,
+	fcntl(c->socket, F_GETFL, NULL)|O_NONBLOCK);
+
   char msg[1024];
   snprintf(msg,1024,"MONITORSTATUS:%d\n",c->flags);
   write(c->socket,msg,strlen(msg));
@@ -350,6 +358,9 @@ int monitor_process_data(int index)
 
   if (vomp_sample_size(c->sample_codec)!=c->data_offset)
     return WHY("Ignoring sample block of incorrect size");
+
+  fcntl(c->socket,F_SETFL,
+	fcntl(c->socket, F_GETFL, NULL)|O_NONBLOCK);
 
   vomp_call_state *call=vomp_find_call_by_session(c->sample_call_session_token);
   if (!call) {
@@ -385,6 +396,8 @@ int monitor_call_status(vomp_call_state *call)
 	continue;
     nextInSameSlot:
       errno=0;
+      fcntl(monitor_sockets[i].socket,F_SETFL,
+	    fcntl(monitor_sockets[i].socket, F_GETFL, NULL)|O_NONBLOCK);
       write(monitor_sockets[i].socket,msg,strlen(msg));
       if (errno&&(errno!=EINTR)&&(errno!=EAGAIN)) {
 	/* error sending update, so kill monitor socket */
@@ -431,6 +444,8 @@ int monitor_send_audio(vomp_call_state *call,overlay_mdp_frame *audio)
 	continue;
     nextInSameSlot:
       errno=0;
+      fcntl(monitor_sockets[i].socket,F_SETFL,
+	    fcntl(monitor_sockets[i].socket, F_GETFL, NULL)|O_NONBLOCK);
       write(monitor_sockets[i].socket,msg,msglen);
       if (errno&&(errno!=EINTR)&&(errno!=EAGAIN)) {
 	/* error sending update, so kill monitor socket */
