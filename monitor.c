@@ -79,7 +79,9 @@ int monitor_setup_sockets()
     name.sun_path[0]=0;
     snprintf(&name.sun_path[1],100,"org.servalproject.servald.monitor.socket");
     if (name.sun_path[0]) unlink(&name.sun_path[0]);    
-    len = 1+strlen(&name.sun_path[1]) + sizeof(name.sun_family)+1;
+    /* DONT include the null if forming an abstract socket, but DO include it
+       if forming a file-system */
+    len = 1+strlen(&name.sun_path[1]) + sizeof(name.sun_family);
     monitor_named_socket = socket(AF_UNIX, SOCK_STREAM, 0);
     if (monitor_named_socket>-1) {
       int dud=0;
