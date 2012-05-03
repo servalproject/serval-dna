@@ -59,6 +59,47 @@
 #define SIOCGIFBRDADDR OSIOCGIFBRDADDR
 #endif
 
+int overlay_interface_register(unsigned char *name,
+			       struct sockaddr_in local,
+			       struct sockaddr_in broadcast);
+
+/* for when all other options fail, as can happen on Android,
+   if the permissions for the socket-based method are broken.
+   Down side is that it while it gets the interface name and
+   broadcast, it doesn't get the local address for that
+   interface. 
+*/
+int scrapeProcNetRoute()
+{
+  FILE *f=fopen("/proc/net/route","r");
+  if (!f) return fprintf(stderr,"Can't read from /proc/net/route\n");
+
+  char line[1024],name[1024],dest[1024],mask[1024];
+
+  /* skip header line */
+  line[0]=0; fgets(line,1024,f);
+
+  line[0]=0; fgets(line,1024,f);
+  while(line[0]) {
+    int r;
+    if ((r=sscanf(line,"%s %s %*s %*s %*s %*s %*s %s",name,dest,mask))==3)
+      {
+	unsigned int d = strtol(dest,NULL,16);
+	unsigned int m = strtol(mask,NULL,16);
+	struct sockaddr_in local,broadcast;
+	if (!(d&(~m))) {
+	  local.sin_addr.s_addr=d;
+	  broadcast.sin_addr.s_addr=d|~m;
+	  overlay_interface_register((unsigned char *)name,local,broadcast);
+	}
+      }
+
+    line[0]=0; fgets(line,1024,f);    
+  }
+  fclose(f);
+  return 0;
+}
+
 #ifdef ANDROID
 int lsif(void)
 {
@@ -74,7 +115,8 @@ int lsif(void)
   /* Get a socket handle. */
   sck = socket(PF_INET, SOCK_DGRAM, 0);
   if(sck < 0) {
-    fprintf(stderr,"Failed to gt socket handle to list addresses\n");
+    fprintf(stderr,"Failed to gt socket handle to list addresses, errno=%d\n",
+	    errno);
     return 1;
   }
  

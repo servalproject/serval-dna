@@ -601,7 +601,9 @@ typedef struct overlay_interface {
   int sequence_number;
 
   /* Broadcast address and netmask, if known */
-  struct sockaddr_in local_address;
+  /* We really only case about distinct broadcast addresses on interfaces.
+     Also simplifies aliases on interfaces.
+     struct sockaddr_in local_address; */
   struct sockaddr_in broadcast_address;
 
   /* Not necessarily the real MTU, but the largest frame size we are willing to TX on this interface.

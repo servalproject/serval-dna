@@ -178,7 +178,7 @@ int overlay_interface_args(char *arg)
 int overlay_interface_init_socket(int interface,struct sockaddr_in src_addr,struct sockaddr_in broadcast)
 {
 #define I(X) overlay_interfaces[interface].X
-  I(local_address)=src_addr;
+  //  I(local_address)=src_addr;
   I(broadcast_address)=broadcast;
   I(fileP)=0;
 
@@ -502,29 +502,36 @@ int overlay_interface_register(unsigned char *name,
     int i;
     for(i=0;i<overlay_interface_count;i++) if (!strcasecmp(overlay_interfaces[i].name,(char *)name)) break;
     if (i<overlay_interface_count) {
-      /* We already know about this interface, so just update it */
-      if (((overlay_interfaces[i].local_address.sin_addr.s_addr&0xffffffff)
-	   ==(local.sin_addr.s_addr&0xffffffff))
-	  &&((overlay_interfaces[i].broadcast_address.sin_addr.s_addr&0xffffffff)
-	     ==(broadcast.sin_addr.s_addr&0xffffffff)))
+      /* We already know about this interface, so just update it.
+         We actually only care about the broadcast address for the overlay mesh.
+         this is a good thing, because it turns out to be pretty hard to discover
+	 your own IP address on Android. */
+      if ( /* ((overlay_interfaces[i].local_address.sin_addr.s_addr&0xffffffff)
+	      ==(local.sin_addr.s_addr&0xffffffff))&& */
+	  ((overlay_interfaces[i].broadcast_address.sin_addr.s_addr&0xffffffff)
+	   ==(broadcast.sin_addr.s_addr&0xffffffff)))
 	{
 	  /* Mark it as being seen */
 	  overlay_interfaces[i].observed=1;
 	  return 0;
 	}
       else
-	{
-	  /* Interface has changed */
-	  WHYF("Interface changed %08llx.%08llx vs %08llx.%08llx",
-	       overlay_interfaces[i].local_address.sin_addr.s_addr,
-	       overlay_interfaces[i].broadcast_address.sin_addr.s_addr,
-	       local.sin_addr.s_addr,
-	       broadcast.sin_addr.s_addr);
-	  close(overlay_interfaces[i].fd);
-	  overlay_interfaces[i].fd=-1;
-	  if (overlay_interface_init_socket(i,local,broadcast))
-	    WHY("Could not reinitialise changed interface");
-	}
+	if (0)
+	  {
+	    /* Interface has changed.
+	       This old approach has problems for machines with multiple IP 
+	       addresses on a given interface, so now we allow multiple
+	       interfaces on the same underlying network adaptor. */
+	    WHYF("Interface changed %08llx.%08llx vs %08llx.%08llx",
+		 /* overlay_interfaces[i].local_address.sin_addr.s_addr */0,
+		 overlay_interfaces[i].broadcast_address.sin_addr.s_addr,
+		 local.sin_addr.s_addr,
+		 broadcast.sin_addr.s_addr);
+	    close(overlay_interfaces[i].fd);
+	    overlay_interfaces[i].fd=-1;
+	    if (overlay_interface_init_socket(i,local,broadcast))
+	      WHY("Could not reinitialise changed interface");
+	  }
     }
     else {
       /* New interface, so register it */
@@ -543,8 +550,12 @@ int overlay_interface_discover()
 {
   /* Don't waste too much time and effort on interface discovery,
      especially if we can't attach to a given interface for some reason. */
+  WHY("called");
+  if ((time(0)-overlay_last_interface_discover_time)<0)
+    overlay_last_interface_discover_time=time(0);
   if ((time(0)-overlay_last_interface_discover_time)<2) return 0;
   overlay_last_interface_discover_time=time(0);
+  WHY("checking");
 
   /* The Android ndk doesn't have ifaddrs.h, so we have to use the netlink interface.
      However, netlink is only available on Linux, so for BSD systems, e.g., Mac, we
@@ -578,6 +589,13 @@ int overlay_interface_discover()
     r=r->next;
   }
 
+#ifdef ANDROID
+  /* Use alternative linux-only method to find and register interfaces. */
+  lsif();
+#endif
+  /* /proc based approach */
+  scrapeProcNetRoute();
+
 #ifdef HAVE_IFADDRS_H
   struct ifaddrs *ifaddr,*ifa;
   int family;
@@ -607,16 +625,6 @@ int overlay_interface_discover()
   }
   freeifaddrs(ifaddr);
 #endif
-#ifdef ANDROID
-  /* Use alternative linux-only method to find and register interfaces. */
-  lsif();
-#else
-#ifdef HAVE_IFADDRS_H
-#else
-#error Don't know how to get interface list on this platform
-#endif
-#endif
-
 
   return 0;
 }
