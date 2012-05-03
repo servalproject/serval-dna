@@ -154,6 +154,8 @@ int monitor_poll()
   struct sockaddr ignored_address;
   socklen_t ignored_length=sizeof(ignored_address);
 
+  WHY("Starting checking servald monitor connections");
+
   /* tell all monitor clients about status of all calls periodically */
   long long now=overlay_gettime_ms();
   if (now>(monitor_last_update_time+1000)) {
@@ -192,13 +194,12 @@ int monitor_poll()
 	    strlen("MONITOR:You are talking to servald\n"));
       WHY("Got a client");
     }
-    fcntl(monitor_named_socket,F_SETFL,
-	  fcntl(monitor_named_socket, F_GETFL, NULL)&(~O_NONBLOCK));
     
     ignored_length=sizeof(ignored_address);
   }
 
   /* Read from any open connections */
+  WHY("Read from open connections");
   int i;
   for(i=0;i<monitor_socket_count;i++) {
   nextInSameSlot:
@@ -282,6 +283,7 @@ int monitor_poll()
     }
       
   }
+  WHY("Finished checking servald monitor connections");
   return 0;
 }
 
