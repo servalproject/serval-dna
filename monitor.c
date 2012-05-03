@@ -325,6 +325,8 @@ int monitor_process_command(int index,char *cmd)
     return -1;
   }
 
+  char msg[1024];
+
   if (sscanf(cmd,"AUDIO:%x:%d:%d",
 	     &callSessionToken,&sampleType,&bytes)==3)
     {
@@ -346,9 +348,19 @@ int monitor_process_command(int index,char *cmd)
     c->flags&=~MONITOR_RHIZOME;
   else if (sscanf(cmd,"call %s %s %s",sid,localDid,remoteDid)==3) {
     mdp.vompevent.flags=VOMPEVENT_DIAL;
-    if (overlay_mdp_getmyaddr(0,&mdp.vompevent.local_sid[0])) return -1;
-    stowSid(&mdp.vompevent.remote_sid[0],0,sid);
-    vomp_mdp_event(&mdp,NULL,0);
+    int cn=0,in=0,kp=0;
+    if(!keyring_next_identity(keyring,&cn,&in,&kp))
+      {
+	snprintf(msg,1024,"ERROR:no local identity, so cannot place call\n");
+	write(c->socket,msg,strlen(msg));
+      }
+    else {
+      bcopy(keyring->contexts[cn]->identities[in]
+	    ->keypairs[kp]->public_key,
+	    &mdp.vompevent.local_sid[0],SID_SIZE);
+      stowSid(&mdp.vompevent.remote_sid[0],0,sid);
+      vomp_mdp_event(&mdp,NULL,0);
+    }
   } 
   else if (sscanf(cmd,"pickup %x",&callSessionToken)==1) {
      mdp.vompevent.flags=VOMPEVENT_PICKUP;
@@ -364,7 +376,6 @@ int monitor_process_command(int index,char *cmd)
   fcntl(c->socket,F_SETFL,
 	fcntl(c->socket, F_GETFL, NULL)|O_NONBLOCK);
 
-  char msg[1024];
   snprintf(msg,1024,"MONITORSTATUS:%d\n",c->flags);
   write(c->socket,msg,strlen(msg));
 
