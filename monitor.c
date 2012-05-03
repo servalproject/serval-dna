@@ -166,6 +166,9 @@ int monitor_poll()
   }
 
   /* Check for new connections */
+  fcntl(monitor_named_socket,F_SETFL,
+	fcntl(monitor_named_socket, F_GETFL, NULL)|O_NONBLOCK);
+  WHY("Getting ready to accept()");
   while((
 #ifdef HAVE_LINUX_IF_H
 	 s=accept4(monitor_named_socket,&ignored_address,&ignored_length,O_NONBLOCK)
