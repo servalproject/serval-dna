@@ -224,6 +224,7 @@ int monitor_poll()
 	  break;
 	}
 	bytes=read(c->socket,&c->line[c->line_length],1);
+	if (bytes>0) WHYF("Read monitor byte 0x%02x",c->line[c->line_length]);
 	if (bytes==-1) {
 	  switch(errno) {
 	  case EAGAIN: case EINTR: 
@@ -243,7 +244,7 @@ int monitor_poll()
 	    }
 	  }
 	}
-	c->line_length+=bytes;
+	if (bytes>0) c->line_length+=bytes;
 	if (c->line[c->line_length-1]=='\n') {
 	  /* got command */
 	  c->line[c->line_length]=0; /* trim new line for easier parsing */
