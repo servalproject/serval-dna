@@ -39,7 +39,7 @@ struct ucred {
    1 for VoMP call 
    but spares never hurt, and the cost is low
 */
-#define MONITOR_LINE_LENGTH 80
+#define MONITOR_LINE_LENGTH 160
 #define MONITOR_DATA_SIZE MAX_AUDIO_BYTES
 struct monitor_context {
 #define MONITOR_VOMP (1<<0)
@@ -101,7 +101,7 @@ int monitor_setup_sockets()
       int res = setsockopt(monitor_named_socket, SOL_SOCKET, SO_RCVBUF, 
 		       &send_buffer_size, sizeof(send_buffer_size));
       if (res) WHYF("setsockopt() failed: errno=%d",errno);
-
+      else WHY("Monitor server socket setup");
     }
   }
 
@@ -190,6 +190,7 @@ int monitor_poll()
       close(s);
     } else {
       struct monitor_context *c=&monitor_sockets[monitor_socket_count];
+      c->socket=s;
       c->line_length=0;
       c->state=MONITOR_STATE_COMMAND;
       monitor_socket_count++;
@@ -224,11 +225,11 @@ int monitor_poll()
 	  break;
 	}
 	bytes=read(c->socket,&c->line[c->line_length],1);
-	if (bytes>0) WHYF("Read monitor byte 0x%02x",c->line[c->line_length]);	
 	if (bytes==-1) {
 	  switch(errno) {
 	  case EAGAIN: case EINTR: 
 	    /* transient errors */
+	    break;
 	  default:
 	    /* all other errors; close socket */
 	    WHYF("Tearing down monitor client #%d due to errno=%d",
@@ -246,13 +247,16 @@ int monitor_poll()
 	    }
 	  }
 	}
-	if (bytes>0) c->line_length+=bytes;
-	if (c->line[c->line_length-1]=='\n') {
-	  /* got command */
-	  c->line[c->line_length]=0; /* trim new line for easier parsing */
-	  monitor_process_command(i,c->line);
-	  break;
-	}
+	if (bytes>0&&(c->line[c->line_length]!='\r')) 
+	  {
+	    c->line_length+=bytes;
+	    if (c->line[c->line_length-1]=='\n') {
+	      /* got command */
+	      c->line[c->line_length-1]=0; /* trim new line for easier parsing */
+	      monitor_process_command(i,c->line);
+	      break;
+	    }
+	  }
       }
       break;
     case MONITOR_STATE_DATA:
@@ -263,6 +267,7 @@ int monitor_poll()
 	switch(errno) {
 	case EAGAIN: case EINTR: 
 	  /* transient errors */
+	  break;
 	default:
 	  /* all other errors; close socket */
 	    WHYF("Tearing down monitor client #%d due to errno=%d",
@@ -301,11 +306,12 @@ int monitor_poll()
 int monitor_process_command(int index,char *cmd) 
 {
   int callSessionToken,sampleType,bytes;
-  char sid[80],localDid[80],remoteDid[80];
+  char sid[MONITOR_LINE_LENGTH],localDid[MONITOR_LINE_LENGTH];
+  char remoteDid[MONITOR_LINE_LENGTH];
   overlay_mdp_frame mdp;
   mdp.packetTypeAndFlags=MDP_VOMPEVENT;  
 
-  WHYF("Received monitor instruction: %s\n",cmd);
+  WHYF("Received monitor instruction: '%s'",cmd);
 
   struct monitor_context *c=&monitor_sockets[index];
   c->line_length=0;
@@ -313,7 +319,7 @@ int monitor_process_command(int index,char *cmd)
   fcntl(c->socket,F_SETFL,
 	fcntl(c->socket, F_GETFL, NULL)|O_NONBLOCK);
 
-  if (strlen(cmd)>80) {
+  if (strlen(cmd)>MONITOR_LINE_LENGTH) {
     write(c->socket,"ERROR:Command too long\n",
 	  strlen("ERROR:Command too long\n"));
     return -1;
@@ -338,18 +344,18 @@ int monitor_process_command(int index,char *cmd)
     c->flags|=MONITOR_RHIZOME;
   else if (!strcasecmp(cmd,"ignore rhizome"))
     c->flags&=~MONITOR_RHIZOME;
-  else if (sscanf(cmd,"CREATECALL:%s:%s:%s",sid,localDid,remoteDid)==3) {
+  else if (sscanf(cmd,"call %s %s %s",sid,localDid,remoteDid)==3) {
     mdp.vompevent.flags=VOMPEVENT_DIAL;
     if (overlay_mdp_getmyaddr(0,&mdp.vompevent.local_sid[0])) return -1;
     stowSid(&mdp.vompevent.remote_sid[0],0,sid);
     vomp_mdp_event(&mdp,NULL,0);
   } 
-  else if (sscanf(cmd,"PICKUP:%x",&callSessionToken)==1) {
+  else if (sscanf(cmd,"pickup %x",&callSessionToken)==1) {
      mdp.vompevent.flags=VOMPEVENT_PICKUP;
      mdp.vompevent.call_session_token=callSessionToken;
      vomp_mdp_event(&mdp,NULL,0);
   }
-  else if (sscanf(cmd,"HANGUP:%x",&callSessionToken)==1) {
+  else if (sscanf(cmd,"hangup %x",&callSessionToken)==1) {
      mdp.vompevent.flags=VOMPEVENT_HANGUP;
      mdp.vompevent.call_session_token=callSessionToken;
      vomp_mdp_event(&mdp,NULL,0);
