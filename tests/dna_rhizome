@@ -302,12 +302,14 @@ test_AddDuplicate() {
    # on stderr).
    execute --exit-status=2 $dna rhizome add file file1 file1.manifestA
    assert [ -s file1.manifestA ]
+   assert_stdout_add_file file1
    assert_rhizome_list file1 file2
    strip_signatures file1.manifest file1.manifestA
    assert diff file1.manifest file1.manifestA
    # Repeat for second file.
    execute --exit-status=2 $dna rhizome add file file2 file2.manifestA
    assert [ -s file2.manifestA ]
+   assert_stdout_add_file file2
    assert_rhizome_list file1 file2
    strip_signatures file2.manifest file2.manifestA
    assert diff file2.manifest file2.manifestA
@@ -361,6 +363,7 @@ setup_AddUpdateNewVersion() {
 test_AddUpdateNewVersion() {
    tfw_cat -v file1_2.manifest
    executeOk $dna rhizome add file file1_2 file1_2.manifest
+   assert_stdout_add_file file1_2 file1
    assert_manifest_newer file1.manifest file1_2.manifest
    # Rhizome store contents reflect new payload.
    mv -f file1_2.manifest file1.manifest

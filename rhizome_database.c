@@ -824,6 +824,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
 	 && (lengthq == -1 || lengthq == m->fileLength)
 	 && (!filehashq || strncmp(filehashq, m->fileHexHash, SHA512_DIGEST_STRING_LENGTH) == 0)
       ) {
+	rhizome_hex_to_bytes(manifestid, mq->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
 	memcpy(mq->fileHexHash, m->fileHexHash, SHA512_DIGEST_STRING_LENGTH);
 	mq->fileHashedP = 1;
 	mq->fileLength = m->fileLength;
