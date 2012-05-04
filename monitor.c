@@ -460,9 +460,12 @@ int monitor_call_status(vomp_call_state *call)
   call->local.last_state=call->local.state;
   call->remote.last_state=call->remote.state;
   if (show) {
-    snprintf(msg,1024,"CALLSTATUS:%06x:%06x:%d:%d\n",
+    snprintf(msg,1024,"CALLSTATUS:%06x:%06x:%d:%d:%s:%s:%s:%s\n",
 	     call->local.session,call->remote.session,
-	     call->local.state,call->remote.state);
+	     call->local.state,call->remote.state,
+	     overlay_render_sid(call->local.sid),
+	     overlay_render_sid(call->remote.sid),
+	     call->local.did,call->remote.did);
     for(i=0;i<monitor_socket_count;i++)
       {
 	if (!(monitor_sockets[i].flags&MONITOR_VOMP))
