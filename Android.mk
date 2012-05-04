@@ -95,4 +95,9 @@ LOCAL_SRC_FILES:= serval-dna/servalwrap.c
 
 include $(BUILD_EXECUTABLE)
 
+include $(CLEAR_VARS)
 
+LOCAL_MODULE:= monitor
+LOCAL_SRC_FILES:= serval-dna/monitor-cli.c
+
+include $(BUILD_EXECUTABLE)
