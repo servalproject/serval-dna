@@ -33,19 +33,36 @@ assert_rhizome_list() {
    assertStdoutIs --line=2 -e 'fileid:manifestid:version:inserttime:length:datavalid:date:name\n'
    local filename
    for filename; do
-      local filehash='[^:]\+'
-      local manifestid='[^:]\+'
-      # If there is a manifest file that looks like it matches this payload
-      # file, then use its file hash to check the rhizome list output.
-      if [ -r "$filename.manifest" ]; then
-         local name=$(sed -n -e '/^name=/s///p' "$filename.manifest")
-         if [ "$name" == "$filename" ]; then
-            filehash=$(sed -n -e '/^filehash=/s///p' "$filename.manifest")
-            manifestid=$(sed -n -e '/^id=/s///p' "$filename.manifest")
-         fi
-      fi
-      assertStdoutGrep --matches=1 "^$filehash:$manifestid:.*:$filename\$"
+      unpack_manifest_for_grep "$filename"
+      assertStdoutGrep --matches=1 "^$re_filehash:$re_manifestid:.*:$re_name\$"
    done
+}
+
+assert_stdout_add_file() {
+   local filename="$1"
+   unpack_manifest_for_grep "$filename"
+   assertStdoutLineCount '==' 4
+   assertStdoutGrep --matches=1 "^name:${2:-$re_name}\$"
+   assertStdoutGrep --matches=1 "^manifestid:$re_manifestid\$"
+   assertStdoutGrep --matches=1 "^filehash:$re_filehash\$"
+   assertStdoutGrep --matches=1 "^filesize:$re_size\$"
+}
+
+unpack_manifest_for_grep() {
+   local filename="$1"
+   re_size=$(( $(cat "$filename" | wc -c) + 0 ))
+   re_filehash='[0-9a-fA-F]\{128\}'
+   re_manifestid='[0-9a-fA-F]\{64\}'
+   re_name="${filename##*/}" # should escape grep metacharacters
+   # If there is a manifest file that looks like it matches this payload
+   # file, then use its file hash to check the rhizome list output.
+   if [ -r "$filename.manifest" ]; then
+      local name=$(sed -n -e '/^name=/s///p' "$filename.manifest")
+      if [ "$name" == "${filename##*/}" ]; then
+         re_filehash=$(sed -n -e '/^filehash=/s///p' "$filename.manifest")
+         re_manifestid=$(sed -n -e '/^id=/s///p' "$filename.manifest")
+      fi
+   fi
 }
 
 assert_manifest_newer() {
@@ -108,6 +125,7 @@ setup_AddNoManifest() {
 }
 test_AddNoManifest() {
    executeOk $dna rhizome add file file1
+   assert_stdout_add_file file1
 }
 
 doc_AddNonExistManifest="Add with non-existent manifest file"
@@ -120,16 +138,17 @@ setup_AddNonExistManifest() {
 test_AddNonExistManifest() {
    assert --error-on-fail [ ! -e file1.manifest ]
    executeOk $dna rhizome add file file1 file1.manifest
+   assert_stdout_add_file file1
    assert [ -r file1.manifest ]
    tfw_cat -v file1.manifest
-   local size=$(( $(cat file1 | wc -c) + 0 ))
    assertGrep file1.manifest '^name=file1$'
    assertGrep file1.manifest '^date=[0-9]\+$'
    assertGrep file1.manifest '^version=[0-9]\+$'
-   assertGrep file1.manifest '^id=[0-9a-fA-F]\{64\}$'
-   assertGrep file1.manifest "^filesize=$size\$"
+   assertGrep file1.manifest "^id=$re_manifestid\$"
+   assertGrep file1.manifest "^filehash=$re_filehash\$"
+   assertGrep file1.manifest "^filesize=$re_size\$"
    assertGrep file1.manifest "^first_byte=0$"
-   assertGrep file1.manifest "^last_byte=$size\$"
+   assertGrep file1.manifest "^last_byte=$re_size\$"
 }
 
 doc_AddManifest="Add with minimal manifest file"
@@ -142,17 +161,16 @@ setup_AddManifest() {
 }
 test_AddManifest() {
    executeOk $dna rhizome add file file1 file1.manifest
-   tfw_cat --stdout
-   tfw_cat --stderr
-   tfw_cat -v file1.manifest
-   local size=$(( $(cat file1 | wc -c) + 0 ))
-   assertGrep file1.manifest '^id=[0-9a-fA-F]\{64\}$'
+   tfw_cat --stdout --stderr -v file1.manifest
+   assert_stdout_add_file file1 wah
    assertGrep file1.manifest '^name=wah$'
    assertGrep file1.manifest '^version=[0-9]\+$'
    assertGrep file1.manifest '^date=12345$'
-   assertGrep file1.manifest "^filesize=$size\$"
+   assertGrep file1.manifest "^id=$re_manifestid\$"
+   assertGrep file1.manifest "^filehash=$re_filehash\$"
+   assertGrep file1.manifest "^filesize=$re_size\$"
    assertGrep file1.manifest "^first_byte=0$"
-   assertGrep file1.manifest "^last_byte=$size\$"
+   assertGrep file1.manifest "^last_byte=$re_size\$"
 }
 
 doc_AddThenList="List contains one file after one add"

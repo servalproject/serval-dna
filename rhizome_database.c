@@ -296,7 +296,7 @@ int rhizome_store_bundle(rhizome_manifest *m, const char *associated_filename)
   const char *cmdtail;
   int i;
 
-  char manifestid[65];
+  char manifestid[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES * 2 + 1];
   strncpy(manifestid,rhizome_manifest_get(m,"id",NULL,0),64);
   manifestid[64]=0;
   for(i=0;i<64;i++)
@@ -727,7 +727,6 @@ int rhizome_store_file(const char *file,char *hash,int priority)
       return WHY("SQLite3 failed write all blob data");
   }
 
-  printf("stored file\n");
   return 0;
 }
 

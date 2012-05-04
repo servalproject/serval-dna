@@ -1018,6 +1018,17 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
      invoking this command can read it to obtain feedback on the result. */
   if (manifestpath[0] && rhizome_write_manifest_file(mout, manifestpath) == -1)
     ret = WHY("Could not overwrite manifest file.");
+  cli_puts("manifestid"); cli_delim(":");
+  cli_puts(rhizome_bytes_to_hex(m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)); cli_delim("\n");
+  cli_puts("filehash"); cli_delim(":");
+  cli_puts(m->fileHexHash); cli_delim("\n");
+  cli_puts("filesize"); cli_delim(":");
+  cli_printf("%lld", m->fileLength); cli_delim("\n");
+  const char *name = rhizome_manifest_get(m, "name", NULL, 0);
+  if (name) {
+    cli_puts("name"); cli_delim(":");
+    cli_puts(name); cli_delim("\n");
+  }
   rhizome_manifest_free(m);
   if (mout != m)
     rhizome_manifest_free(mout);

@@ -252,7 +252,6 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
   } else {
     /* The manifest had no ID (256 bit random string being a public key in the NaCl CryptoSign
        crypto system), so create one. */
-    printf("manifest does not have an id\n");
     rhizome_manifest_createid(m_in);
     /* The ID is implicit in transit, but we need to store it in the file, so that reimporting
        manifests on receiver nodes works easily.  We might implement something that strips the id
