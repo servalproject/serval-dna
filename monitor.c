@@ -232,7 +232,7 @@ int monitor_poll()
 	bytes=read(c->socket,&c->line[c->line_length],1);
 	if (bytes<1) {
 	  switch(errno) {
-	  case EAGAIN: case EINTR: 
+	  case EAGAIN: case EINTR: case ENOTRECOVERABLE:
 	    /* transient errors */
 	    break;
 	  default:
