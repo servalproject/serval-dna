@@ -1415,8 +1415,19 @@ int vomp_tick()
 	  vomp_send_status(&vomp_call_states[i],VOMP_FORCETELLREMOTE,NULL);
 	  vomp_call_states[i].next_status_time=now+VOMP_CALL_STATUS_INTERVAL;
 	}
-      /* See if any calls need to begin expiring */
-      if (vomp_call_states[i].last_activity+VOMP_CALL_TIMEOUT<now)
+      /* See if any calls need to begin expiring
+	 (current timeout is set at 2 minutes) */
+      if (vomp_call_states[i].local.state<VOMP_STATE_INCALL
+	  &&vomp_call_states[i].create_time+VOMP_CALL_TIMEOUT<now)
+	{
+	  /* timeout calls that haven't reached INCALL status, e.g.,
+	     ringing. As well as sensible UX, it also prevents our call
+	     slots getting full of cruft. */
+	  vomp_call_destroy(&vomp_call_states[i]);
+	  /* since this slot will get reclaimed, we need to wind back one in
+	     the iteration of the list of slots */
+	  i--;
+	} else if (vomp_call_states[i].last_activity+VOMP_CALL_TIMEOUT<now)
 	switch(vomp_call_states[i].local.state)	  
 	  {
 	  case VOMP_STATE_INCALL:
