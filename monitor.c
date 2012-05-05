@@ -237,8 +237,8 @@ int monitor_poll()
 	    break;
 	  default:
 	    /* all other errors; close socket */
-	    WHYF("Tearing down monitor client #%d due to errno=%d",
-		 i,errno);
+	    WHYF("Tearing down monitor client #%d due to errno=%d (%s)",
+		 i,errno,strerror(errno));
 	    close(c->socket);
 	    if (i==monitor_socket_count-1) {
 	      monitor_socket_count--;
