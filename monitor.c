@@ -186,6 +186,7 @@ int monitor_poll()
     if (ucred.uid&&(ucred.uid!=getuid())) {
       WHYF("monitor.socket client has wrong uid (%d versus %d)",
 	   ucred.uid,getuid());
+      write(s,"CLOSE:Incorrect UID\n",strlen("CLOSE:Incorrect UID\n"));
       close(s); continue;
     }
     else if (monitor_socket_count>=MAX_MONITOR_SOCKETS) {
