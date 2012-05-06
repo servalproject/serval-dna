@@ -317,8 +317,6 @@ int monitor_process_command(int index,char *cmd)
   overlay_mdp_frame mdp;
   mdp.packetTypeAndFlags=MDP_VOMPEVENT;  
 
-  WHYF("Received monitor instruction: '%s'",cmd);
-
   struct monitor_context *c=&monitor_sockets[index];
   c->line_length=0;
 
@@ -445,8 +443,9 @@ int monitor_process_data(int index)
   mdp.vompevent.audio_sample_codec=c->sample_codec;
   bcopy(&c->buffer[0],&mdp.vompevent.audio_bytes[0],
 	vomp_sample_size(c->sample_codec));
+  mdp.vompevent.audio_sample_bytes=vomp_sample_size(c->sample_codec);
 
-  vomp_send_status(call,VOMP_TELLREMOTE|VOMP_SENDAUDIO,&mdp);
+  if (overlay_mdp_send(&mdp,0,0)) WHY("Send audio failed.");
 
   return 0;
 }

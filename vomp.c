@@ -210,7 +210,11 @@ int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
 	mdp.out.payload[mdp.out.payload_length++]=0;
 	if (0) WHYF("mdp frame with codec list is %d bytes",mdp.out.payload_length);
       }
+
       if (flags&VOMP_SENDAUDIO) {
+	WHYF("got %d sample bytes, expecting %d",
+	     arg->vompevent.audio_sample_bytes,
+	     vomp_sample_size(arg->vompevent.audio_sample_codec));
 	if (vomp_sample_size(arg->vompevent.audio_sample_codec)
 	    ==arg->vompevent.audio_sample_bytes) {
         unsigned short  *len=&mdp.out.payload_length;
@@ -294,7 +298,7 @@ int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
     bcopy(&call->remote_codec_list[0],&mdp.vompevent.supported_codecs[0],256);
 
     if (flags&VOMP_SENDAUDIO) {
-      WHY("Frame contains audio (codec=%s)",
+      WHYF("Frame contains audio (codec=%s)",
 	  vomp_describe_codec(arg->vompevent.audio_sample_codec));
       bcopy(&arg->vompevent.audio_bytes[0],
 	    &mdp.vompevent.audio_bytes[0],
@@ -330,8 +334,6 @@ int vomp_process_audio(vomp_call_state *call,overlay_mdp_frame *mdp)
   int ofs=14;
   if (mdp->in.payload_length>14)
     WHYF("got here (payload has %d bytes)",mdp->in.payload_length);
-  else 
-    WHY("in-call with zero audio bytes");
 
   /* Get end time marker for sample block collection */
   unsigned int e=0;
@@ -676,8 +678,11 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	WHY("Audio packet arrived");
 	vomp_call_state *call
 	  =vomp_find_call_by_session(mdp->vompevent.call_session_token);
-	if (call)
+	if (call) {
+	  WHY("pushing audio sample out");
 	  return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_SENDAUDIO,mdp);
+	}
+	else WHY("audio packet had invalid call session token");
       }
       break;
     default:
@@ -728,7 +733,6 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
   switch(mdp->in.payload[0]) {
   case 0x01: /* Ordinary VoMP state+optional audio frame */
     {
-      WHY("Saw VoMP frame");
       int recvr_state=mdp->in.payload[1]>>4;
       int sender_state=mdp->in.payload[1]&0xf;
       unsigned int recvr_session=
