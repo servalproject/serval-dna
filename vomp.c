@@ -216,6 +216,8 @@ int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
         unsigned short  *len=&mdp.out.payload_length;
 	unsigned char *p=&mdp.out.payload[0];
 
+	WHY("Including audio sample block");
+
 	/* record sample in recent list.
 	   XXX - What timestamp to attach to the sample?
 	   Two obvious choices:
@@ -292,6 +294,8 @@ int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
     bcopy(&call->remote_codec_list[0],&mdp.vompevent.supported_codecs[0],256);
 
     if (flags&VOMP_SENDAUDIO) {
+      WHY("Frame contains audio (codec=%s)",
+	  vomp_describe_codec(arg->vompevent.audio_sample_codec));
       bcopy(&arg->vompevent.audio_bytes[0],
 	    &mdp.vompevent.audio_bytes[0],
 	    vomp_sample_size(arg->vompevent.audio_sample_codec));
@@ -326,6 +330,8 @@ int vomp_process_audio(vomp_call_state *call,overlay_mdp_frame *mdp)
   int ofs=14;
   if (mdp->in.payload_length>14)
     WHYF("got here (payload has %d bytes)",mdp->in.payload_length);
+  else 
+    WHY("in-call with zero audio bytes");
 
   /* Get end time marker for sample block collection */
   unsigned int e=0;
@@ -722,6 +728,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
   switch(mdp->in.payload[0]) {
   case 0x01: /* Ordinary VoMP state+optional audio frame */
     {
+      WHY("Saw VoMP frame");
       int recvr_state=mdp->in.payload[1]>>4;
       int sender_state=mdp->in.payload[1]&0xf;
       unsigned int recvr_session=
@@ -1061,6 +1068,7 @@ char *vomp_describe_codec(int c)
   case VOMP_CODEC_16SIGNED: return "16bit-raw";
   case VOMP_CODEC_8ULAW: return "8bit-uLaw";
   case VOMP_CODEC_8ALAW: return "8bit-aLaw";
+  case VOMP_CODEC_PCM: return "PCM@8KHz";
   case VOMP_CODEC_DTMF: return "DTMF";
   case VOMP_CODEC_ENGAGED: return "Engaged-tone";
   case VOMP_CODEC_ONHOLD: return "On-Hold";
