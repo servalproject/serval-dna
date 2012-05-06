@@ -171,11 +171,6 @@ int monitor_poll()
       for(m=0;m<monitor_socket_count;m++)
 	write(monitor_sockets[m].socket,msg,strlen(msg));
     }
-    /* send dummy keep-alive for 000000, so that monitors can detect whether
-       they should have got a keep alive for their calls recently */
-    snprintf(msg,128,"KEEPALIVE:0\n");
-    for(m=0;m<monitor_socket_count;m++)
-      write(monitor_sockets[m].socket,msg,strlen(msg));
   }
 
   /* Check for new connections */
