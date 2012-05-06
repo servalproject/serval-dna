@@ -276,6 +276,22 @@ int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP)
   
   if (0) dump_queue("after",q);
 
+  if (q==OQ_ISOCHRONOUS_VOICE
+      ||(overlay_tx[q].length>=(overlay_tx[q].maxLength/2)))
+    {
+      /* queues are getting a bit full, so pump some packets out now.
+         XXX - this is a bit crude, as it should work out which 
+	 interfaces need prodding, and also correctly prioritise what
+         goes into the packet.  Also, it should make sure the queue is 
+	 not too full after. */
+      int i;
+      long long now=overlay_gettime_ms();
+      for(i=0;i<overlay_interface_count;i++) {
+	overlay_tick_interface(i,now);
+	overlay_interfaces[i].last_tick_ms=now;
+      }
+    }
+
   return 0;
 }
 
