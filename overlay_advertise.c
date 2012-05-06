@@ -215,7 +215,7 @@ int overlay_route_saw_advertisements(int i,overlay_frame *f, long long now)
 				      score,gateways_en_route);
 	  } else if (r==OA_PLEASEEXPLAIN) {
 	    /* Unresolved address -- ask someone to resolve it for us. */
-	    WHY("Dispatch PLEASEEXPLAIN not implemented");
+#warning	    WHY("Dispatch PLEASEEXPLAIN not implemented");
 	  }
 	}
 					  
