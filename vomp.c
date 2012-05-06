@@ -591,6 +591,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	bcopy(mdp->vompevent.remote_sid,call->remote.sid,SID_SIZE);
 	bcopy(mdp->vompevent.local_did,call->local.did,64);
 	bcopy(mdp->vompevent.remote_did,call->remote.did,64);
+	call->create_time=overlay_gettime_ms();
 	call->local.state=VOMP_STATE_CALLPREP;
 	call->remote.state=VOMP_STATE_NOCALL; /* far end has yet to agree that a call is happening */
 	/* allocate unique call session token, which is how the client will
@@ -746,7 +747,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	  /* could not allocate a call slot, so do nothing */
 	  return WHY("No free call slots");
 	}
-	if (1) {
+	if (0) {
 	  WHYF("Far end is in state %s",vomp_describe_state(sender_state));
 	  WHYF("I am in state %s",vomp_describe_state(call->local.state));
 	}
@@ -1418,12 +1419,13 @@ int vomp_tick()
       /* See if any calls need to begin expiring
 	 (current timeout is set at 2 minutes) */
       if (vomp_call_states[i].local.state<VOMP_STATE_INCALL
-	  &&vomp_call_states[i].create_time+VOMP_CALL_TIMEOUT<now)
+	  &&((vomp_call_states[i].create_time+VOMP_CALL_TIMEOUT)<now))
 	{
 	  /* timeout calls that haven't reached INCALL status, e.g.,
 	     ringing. As well as sensible UX, it also prevents our call
 	     slots getting full of cruft. */
-	  WHYF("Destroying stale call");
+	  WHYF("Destroying stale call #%d (state %d.%d)",i,
+	       vomp_call_states[i].local.state,vomp_call_states[i].remote.state);
 	  vomp_call_destroy(&vomp_call_states[i]);
 	  /* since this slot will get reclaimed, we need to wind back one in
 	     the iteration of the list of slots */
