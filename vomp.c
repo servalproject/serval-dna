@@ -1081,6 +1081,7 @@ int vomp_sample_size(int c)
   case VOMP_CODEC_16SIGNED: return 320; /* 8000x2bytes*0.02sec */
   case VOMP_CODEC_8ULAW: return 160;
   case VOMP_CODEC_8ALAW: return 160;
+  case VOMP_CODEC_PCM: return 320;
   case VOMP_CODEC_DTMF: return 1;
   case VOMP_CODEC_ENGAGED: return 0;
   case VOMP_CODEC_ONHOLD: return 0;
@@ -1100,6 +1101,7 @@ int vomp_codec_timespan(int c)
   case VOMP_CODEC_16SIGNED: return 20; 
   case VOMP_CODEC_8ULAW: return 20;
   case VOMP_CODEC_8ALAW: return 20;
+  case VOMP_CODEC_PCM: return 20;
   case VOMP_CODEC_DTMF: return 80;
   case VOMP_CODEC_ENGAGED: return 20;
   case VOMP_CODEC_ONHOLD: return 20;

@@ -1320,6 +1320,7 @@ extern vomp_call_state vomp_call_states[VOMP_MAX_CALLS];
 #define VOMP_CODEC_16SIGNED 0x05
 #define VOMP_CODEC_8ULAW 0x06
 #define VOMP_CODEC_8ALAW 0x07
+#define VOMP_CODEC_PCM 0x08
 #define VOMP_CODEC_DTMF 0x80
 #define VOMP_CODEC_ENGAGED 0x81
 #define VOMP_CODEC_ONHOLD 0x82
