@@ -158,6 +158,8 @@ int monitor_poll()
 
   /* tell all monitor clients about status of all calls periodically */
   long long now=overlay_gettime_ms();
+  char msg[128];
+  int m;
   if (now>(monitor_last_update_time+1000)) {
     monitor_last_update_time=now;
     int i;
@@ -165,12 +167,15 @@ int monitor_poll()
       /* Push out any undelivered status changes */
       monitor_call_status(&vomp_call_states[i]);
       /* And let far-end know that call is still alive */
-      char msg[128];
-      int m;
       snprintf(msg,128,"KEEPALIVE:%06x\n",vomp_call_states[i].local.session);
       for(m=0;m<monitor_socket_count;m++)
 	write(monitor_sockets[m].socket,msg,strlen(msg));
     }
+    /* send dummy keep-alive for 000000, so that monitors can detect whether
+       they should have got a keep alive for their calls recently */
+    snprintf(msg,128,"KEEPALIVE:0\n");
+    for(m=0;m<monitor_socket_count;m++)
+      write(monitor_sockets[m].socket,msg,strlen(msg));
   }
 
   /* Check for new connections */
