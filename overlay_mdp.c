@@ -350,10 +350,12 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
     mdp.packetTypeAndFlags|=MDP_NOCRYPT; break;
   case OF_CRYPTO_CIPHERED|OF_CRYPTO_SIGNED:
     {
-      fflush(stderr);
-      printf("crypted MDP frame for %s\n",
-	     overlay_render_sid(mdp.out.dst.sid));
-      fflush(stdout);
+      if (0) {
+	fflush(stderr);
+	printf("crypted MDP frame for %s\n",
+	       overlay_render_sid(mdp.out.dst.sid));
+	fflush(stdout);
+      }
 
       unsigned char *k=keyring_get_nm_bytes(&mdp.out.dst,&mdp.out.src);
       unsigned char *nonce=&f->payload->bytes[0];
@@ -387,7 +389,7 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
   /* extract MDP port numbers */
   mdp.in.src.port=(b[2]<<24)+(b[3]<<16)+(b[4]<<8)+b[5];
   mdp.in.dst.port=(b[6]<<24)+(b[7]<<16)+(b[8]<<8)+b[9];
-  fprintf(stderr,
+  if (0) fprintf(stderr,
 	  "RX mdp dst.port=%d, src.port=%d\n",mdp.in.dst.port,mdp.in.src.port);  
 
   mdp.in.payload_length=len-10;
