@@ -161,8 +161,16 @@ int monitor_poll()
   if (now>(monitor_last_update_time+1000)) {
     monitor_last_update_time=now;
     int i;
-    for(i=0;i<vomp_call_count;i++)
+    for(i=0;i<vomp_call_count;i++) {
+      /* Push out any undelivered status changes */
       monitor_call_status(&vomp_call_states[i]);
+      /* And let far-end know that call is still alive */
+      char msg[128];
+      int m;
+      snprintf(msg,128,"KEEPALIVE:%06x\n",vomp_call_states[i].local.session);
+      for(m=0;m<monitor_socket_count;m++)
+	write(monitor_sockets[m].socket,msg,strlen(msg));
+    }
   }
 
   /* Check for new connections */
