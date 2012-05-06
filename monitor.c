@@ -376,7 +376,15 @@ int monitor_process_command(int index,char *cmd)
       vomp_mdp_event(&mdp,NULL,0);
     }
   } 
-  else if (sscanf(cmd,"pickup %x",&callSessionToken)==1) {
+  else if (sscanf(cmd,"status %x",&callSessionToken)==1) {
+    int i;
+    for(i=0;i<vomp_call_count;i++)
+      if (vomp_call_states[i].local.session==callSessionToken
+	  ||callSessionToken==0) {
+	vomp_call_states[i].local.last_state=0;
+	monitor_call_status(&vomp_call_states[i]);
+      }
+  } else if (sscanf(cmd,"pickup %x",&callSessionToken)==1) {
      mdp.vompevent.flags=VOMPEVENT_PICKUP;
      mdp.vompevent.call_session_token=callSessionToken;
      vomp_mdp_event(&mdp,NULL,0);
@@ -460,6 +468,7 @@ int monitor_call_status(vomp_call_state *call)
   call->local.last_state=call->local.state;
   call->remote.last_state=call->remote.state;
   if (show) {
+    if (0) WHYF("sending call status to monitor");
     snprintf(msg,1024,"CALLSTATUS:%06x:%06x:%d:%d:%s:%s:%s:%s\n",
 	     call->local.session,call->remote.session,
 	     call->local.state,call->remote.state,

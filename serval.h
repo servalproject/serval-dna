@@ -840,6 +840,7 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
 int overlay_abbreviate_remember_index(int index_byte_count,unsigned char *in,unsigned char *index_bytes);
 extern int overlay_abbreviate_repeat_policy;
 int overlay_abbreviate_set_most_recent_address(unsigned char *in);
+int overlay_abbreviate_clear_most_recent_address();
 
 /* Return codes for resolution of abbreviated addressses */
 #define OA_UNINITIALISED 0 /* Nothing has been written into the field */

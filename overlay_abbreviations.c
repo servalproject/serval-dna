@@ -556,3 +556,13 @@ int overlay_abbreviate_set_most_recent_address(unsigned char *in)
 		       overlay_render_sid(in));
   return 0;
 }
+
+int overlay_abbreviate_clear_most_recent_address()
+{
+  /* make previous address invalid (first byte must be >0x0f to be valid) */
+  overlay_abbreviate_previous_address.b[0]=0x00;
+
+  if (debug&DEBUG_OVERLAYABBREVIATIONS) 
+    fprintf(stderr,"Cleared most recent address\n");
+  return 0;
+}

@@ -898,8 +898,10 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   }
   
   int q=OQ_ORDINARY;
-  if (mdp->out.dst.port==MDP_PORT_VOMP) q=OQ_ISOCHRONOUS_VOICE;
-  if (overlay_payload_enqueue(OQ_ORDINARY,frame,0))
+  if (mdp->out.dst.port==MDP_PORT_VOMP) {
+    q=OQ_ISOCHRONOUS_VOICE;
+  }
+  if (overlay_payload_enqueue(q,frame,0))
     {
       if (frame) op_free(frame);
       return WHY("Error enqueuing frame");

@@ -798,7 +798,10 @@ int overlay_tick_interface(int i, long long now)
      component payloads are all self-authenticating, or at least that is the theory. */
   unsigned char bytes[]={/* Magic */ 'O',0x10,
 			 /* Version */ 0x00,0x01};
-  if (ob_append_bytes(e,bytes,4)) return WHY("ob_append_bytes() refused to append magic bytes.");
+  if (ob_append_bytes(e,bytes,4)) {
+    ob_free(e);
+    return WHY("ob_append_bytes() refused to append magic bytes.");
+  }
 
   /* 1. Send announcement about ourselves, including one SID that we host if we host more than one SID
      (the first SID we host becomes our own identity, saving a little bit of data here).

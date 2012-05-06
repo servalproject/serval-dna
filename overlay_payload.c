@@ -244,7 +244,51 @@ int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP)
 
      Complain if there are too many frames in the queue.
   */
+  if (q==OQ_ISOCHRONOUS_VOICE&&(!forceBroadcastP)) {
+    /* Dispatch voice data immediately. */
+    int interface=-1;
+    int nexthoplen=SID_SIZE;
 
+    overlay_abbreviate_clear_most_recent_address();
+
+    if (overlay_get_nexthop(p->destination,p->nexthop,&nexthoplen,
+			    &interface)) {
+      return WHY("Failed to resolve nexthop for voice packet");
+    }
+    if (interface==-1) {
+      return WHY("Failed to determine interface for sending voice packet");
+    }
+
+    overlay_buffer *b=ob_new(overlay_interfaces[interface].mtu);
+    unsigned char bytes[]={/* Magic */ 'O',0x10,
+			   /* Version */ 0x00,0x01};
+    if (ob_append_bytes(b,bytes,4)) {
+      ob_free(b);
+      return WHY("ob_append_bytes() refused to append magic bytes.");
+    }
+    if (overlay_frame_package_fmt1(p,b)) {
+      ob_free(b);
+      return WHY("could not package voice frame for immediate dispatch");
+    }
+
+    if (debug&DEBUG_OVERLAYINTERFACES) 
+      WHYF("Sending %d byte voice packet",b->length);
+    if (!overlay_broadcast_ensemble(interface,NULL,b->bytes,b->length))
+      {
+	overlay_update_sequence_number();
+	if (debug&DEBUG_OVERLAYINTERFACES)
+	  WHYF("Voice frame #%lld sent on interface #%d (%d bytes)",
+	       (long long)overlay_sequence_number,interface,b->length);
+	ob_free(b);
+	return 0;
+      } else {
+      WHYF("Failed to send voice frame on interface #%d (%d bytes)",
+	   interface,b->length);
+      ob_free(b);
+      return -1;
+    }
+  }
+  
   if (q<0||q>=OQ_MAX) return WHY("Invalid queue specified");
   if (!p) return WHY("Cannot queue NULL");
 
@@ -275,22 +319,6 @@ int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP)
   overlay_tx[q].length++;
   
   if (0) dump_queue("after",q);
-
-  if (q==OQ_ISOCHRONOUS_VOICE
-      ||(overlay_tx[q].length>=(overlay_tx[q].maxLength/2)))
-    {
-      /* queues are getting a bit full, so pump some packets out now.
-         XXX - this is a bit crude, as it should work out which 
-	 interfaces need prodding, and also correctly prioritise what
-         goes into the packet.  Also, it should make sure the queue is 
-	 not too full after. */
-      int i;
-      long long now=overlay_gettime_ms();
-      for(i=0;i<overlay_interface_count;i++) {
-	overlay_tick_interface(i,now);
-	overlay_interfaces[i].last_tick_ms=now;
-      }
-    }
 
   return 0;
 }

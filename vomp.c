@@ -602,6 +602,8 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	call->create_time=overlay_gettime_ms();
 	call->local.state=VOMP_STATE_CALLPREP;
 	call->remote.state=VOMP_STATE_NOCALL; /* far end has yet to agree that a call is happening */
+	monitor_call_status(call);
+
 	/* allocate unique call session token, which is how the client will
 	   refer to this call during its life */
 	while (!call->local.session)
@@ -644,6 +646,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	     "No such call");
 	if (call->local.state==VOMP_STATE_INCALL) vomp_call_stop_audio(call);
 	call->local.state=VOMP_STATE_CALLENDED;
+	monitor_call_status(call);
 	overlay_mdp_reply_error(mdp_named_socket,
 				recvaddr,recvaddrlen,0,"Success");
 	return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED,NULL);
@@ -660,6 +663,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	     "No such call");
 	if (call->local.state==VOMP_STATE_RINGINGIN) {
 	  call->local.state=VOMP_STATE_INCALL;
+	  monitor_call_status(call);
 	  call->ringing=0;
 	  /* state machine does job of starting audio stream, just tell everyone about
 	     the changed state. */
@@ -767,6 +771,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	call->last_activity=overlay_gettime_ms();
 	call->remote.sequence=sender_seq;
 	call->remote.state=sender_state;
+	monitor_call_status(call);
 	return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLCODECS,NULL);
       } else {
 	if (0) WHY("recvr_session!=0, looking for existing call");
@@ -783,13 +788,19 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	  {
 	  /* No registered listener, so we cannot answer the call, so just reject
 	     it. */
-	    WHYF("Rejecting call due to lack of a listener: states=%d,%d",
+	    if (0) WHYF("Rejecting call due to lack of a listener: states=%d,%d",
 		 call->local.state,call->remote.state);
 
 	  call->local.state=VOMP_STATE_CALLENDED;
+	  monitor_call_status(call);
 	  if (call->remote.state<VOMP_STATE_CALLENDED)
 	    vomp_send_status(call,VOMP_TELLREMOTE,NULL);
 	  /* now let the state machine progress to destroy the call */
+	}
+
+	if (0) {
+	  WHYF("Far end is in state %s",vomp_describe_state(sender_state));
+	  WHYF("I am in state %s",vomp_describe_state(call->local.state));
 	}
 
 	/* Consider states: our actual state, sender state, what the sender thinks
@@ -799,6 +810,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	int combined_state=call->local.state<<3;
 	combined_state|=sender_state;
 	call->remote.state=sender_state;
+	monitor_call_status(call);
 	switch(combined_state) {
 	case (VOMP_STATE_NOCALL<<3)|VOMP_STATE_NOCALL:
 	  /* We both think that we are not yet in a call, and we have session numbers
@@ -828,6 +840,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	     until we both have acknowledged this (when I am RINGINGIN and they are
 	     RINGINGOUT). */
 	  call->local.state=VOMP_STATE_RINGINGIN;
+	  monitor_call_status(call);
 	  vomp_extract_remote_codec_list(call,mdp);
 	  break;
 	case (VOMP_STATE_NOCALL<<3)|VOMP_STATE_RINGINGIN:
@@ -836,6 +849,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	     We just keep persisting, because once they acknowledge this, we will
 	     both move to CALLENDED and hang up */
 	  call->local.state=VOMP_STATE_CALLENDED;
+	  monitor_call_status(call);
 	  break;
 	case (VOMP_STATE_NOCALL<<3)|VOMP_STATE_INCALL:
 	  /* As above, a call has probably been hung up by us, but the far end has
@@ -845,6 +859,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	case (VOMP_STATE_NOCALL<<3)|VOMP_STATE_CALLENDED:
 	  /* Far end has given up on the call, so also move to CALLENDED */
 	  call->local.state=VOMP_STATE_CALLENDED;
+	  monitor_call_status(call);
 	  break;
 	case (VOMP_STATE_CALLPREP<<3)|VOMP_STATE_NOCALL:
 	  /* We are getting ready to ring, and the other end has issued a session
@@ -853,6 +868,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	     far end. But we don't start ringing until the far end acknowledges
 	     the state change. */
 	  call->local.state=VOMP_STATE_RINGINGOUT;
+	  monitor_call_status(call);
 	  vomp_extract_remote_codec_list(call,mdp);
 	  break;
 	case (VOMP_STATE_CALLPREP<<3)|VOMP_STATE_CALLPREP:
@@ -861,6 +877,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	     let's not prevent it.  We move to RINGINGOUT (as they probably will
 	     as well). */
 	  call->local.state=VOMP_STATE_RINGINGOUT;
+	  monitor_call_status(call);
 	  vomp_extract_remote_codec_list(call,mdp);
 	  break;
 	case (VOMP_STATE_CALLPREP<<3)|VOMP_STATE_RINGINGOUT:
@@ -868,6 +885,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	     this seems a very unlikely situation.  But the appropriate action is
 	     clear: get ready to start ringing. */
 	  call->local.state=VOMP_STATE_RINGINGIN;
+	  monitor_call_status(call);
 	  vomp_extract_remote_codec_list(call,mdp);
 	  break;
 	case (VOMP_STATE_CALLPREP<<3)|VOMP_STATE_RINGINGIN:
@@ -875,6 +893,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	     They seem to have guessed our next move, which is fine.  We move to
 	     RINGINGOUT. */
 	  call->local.state=VOMP_STATE_RINGINGOUT;
+	  monitor_call_status(call);
 	  vomp_extract_remote_codec_list(call,mdp);
 	  break;
 	case (VOMP_STATE_CALLPREP<<3)|VOMP_STATE_INCALL:
@@ -884,16 +903,19 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	     can switch to engaged tone by sending a single VOMP_CODEC_ENGAGED
 	     audio frame. Call-waiting not currently supported. */
 	  call->local.state=VOMP_STATE_INCALL;
+	  monitor_call_status(call);
 	  if (vomp_call_start_audio(call)) call->local.codec=VOMP_CODEC_ENGAGED;  
 	  break;
 	case (VOMP_STATE_CALLPREP<<3)|VOMP_STATE_CALLENDED:
 	  /* far end says no call */
 	  call->local.state=VOMP_STATE_CALLENDED;
+	  monitor_call_status(call);	
 	  break;
 	case (VOMP_STATE_RINGINGOUT<<3)|VOMP_STATE_NOCALL:
 	  /* We are calling them, and they have not yet answered, wait for
 	     synchronisation. */
 	  call->local.state=VOMP_STATE_RINGINGOUT;
+	  monitor_call_status(call);
 	  vomp_extract_remote_codec_list(call,mdp);
 	  break;
 	case (VOMP_STATE_RINGINGOUT<<3)|VOMP_STATE_CALLPREP:
@@ -905,6 +927,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	  /* we are each calling each other, so move to INCALL and start audio */
 	  vomp_extract_remote_codec_list(call,mdp);
 	  call->local.state=VOMP_STATE_INCALL;
+	  monitor_call_status(call);
 	  if (vomp_call_start_audio(call)) call->local.codec=VOMP_CODEC_ENGAGED;  
 	  break;
 	case (VOMP_STATE_RINGINGOUT<<3)|VOMP_STATE_RINGINGIN:
@@ -917,6 +940,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	  /* we are calling them, and they have entered the call, so we should enter
 	     the call as well. */
 	  call->local.state=VOMP_STATE_INCALL;
+	  monitor_call_status(call);
 	  call->ringing=0;
 	  if (vomp_call_start_audio(call)) call->local.codec=VOMP_CODEC_ENGAGED;  
 	  break;
@@ -924,10 +948,12 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	  /* Other end has rejected call */
 	  vomp_call_rejected(call);
 	  call->local.state=VOMP_STATE_CALLENDED;
+	  monitor_call_status(call);
 	  break;
 	case (VOMP_STATE_RINGINGIN<<3)|VOMP_STATE_NOCALL:
 	  /* we are ringing and they think there is no call, so move to CALLENDED */
 	  call->local.state=VOMP_STATE_CALLENDED;
+	  monitor_call_status(call);
 	  vomp_call_error(call);
 	  break;
 	case (VOMP_STATE_RINGINGIN<<3)|VOMP_STATE_CALLPREP:
@@ -935,6 +961,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	     ringing us.  I guess we should stop ringing. Should we also abort the
 	     call? */
 	  call->local.state=VOMP_STATE_CALLENDED;
+	  monitor_call_status(call);
 	  vomp_call_error(call);
 	  break;
 	case (VOMP_STATE_RINGINGIN<<3)|VOMP_STATE_RINGINGOUT:
@@ -945,6 +972,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	case (VOMP_STATE_RINGINGIN<<3)|VOMP_STATE_RINGINGIN:
 	  /* er, we both think that the other is calling us. */
 	  call->local.state=VOMP_STATE_CALLENDED;
+	  monitor_call_status(call);
 	  vomp_call_error(call);
 	  break;
 	case (VOMP_STATE_RINGINGIN<<3)|VOMP_STATE_INCALL:
@@ -956,15 +984,18 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	  /* the far end has rejected our attempt to call them */
 	  vomp_call_rejected(call);
 	  call->local.state=VOMP_STATE_CALLENDED;
+	  monitor_call_status(call);
 	  break;
 	case (VOMP_STATE_INCALL<<3)|VOMP_STATE_NOCALL:
 	  /* this shouldn't happen */
 	  call->local.state=VOMP_STATE_CALLENDED;
+	  monitor_call_status(call);
 	  vomp_call_error(call);
 	  break;
 	case (VOMP_STATE_INCALL<<3)|VOMP_STATE_CALLPREP:
 	  /* this shouldn't happen either */
 	  call->local.state=VOMP_STATE_CALLENDED;
+	  monitor_call_status(call);
 	  vomp_call_error(call);
 	  break;
 	case (VOMP_STATE_INCALL<<3)|VOMP_STATE_RINGINGOUT:
@@ -983,6 +1014,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	  /* far end hung up */
 	  vomp_call_stop_audio(call);
 	  call->local.state=VOMP_STATE_CALLENDED;
+	  monitor_call_status(call);
 	  break;
 	case (VOMP_STATE_CALLENDED<<3)|VOMP_STATE_NOCALL:
 	case (VOMP_STATE_CALLENDED<<3)|VOMP_STATE_CALLPREP:
@@ -1452,6 +1484,7 @@ int vomp_tick()
 	       Keep call structure hanging around for a bit so that we can
 	       synchonrise with the far end if possible. */
 	    vomp_call_states[i].local.state=VOMP_STATE_CALLENDED;
+	    monitor_call_status(&vomp_call_states[i]);
 	    vomp_send_status(&vomp_call_states[i],
 			     VOMP_TELLREMOTE|VOMP_TELLINTERESTED,NULL);
 	    vomp_call_states[i].last_activity=now;
