@@ -1423,6 +1423,7 @@ int vomp_tick()
 	  /* timeout calls that haven't reached INCALL status, e.g.,
 	     ringing. As well as sensible UX, it also prevents our call
 	     slots getting full of cruft. */
+	  WHYF("Destroying stale call");
 	  vomp_call_destroy(&vomp_call_states[i]);
 	  /* since this slot will get reclaimed, we need to wind back one in
 	     the iteration of the list of slots */
