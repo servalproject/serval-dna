@@ -1241,8 +1241,8 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
   int resolveDid=0;
 
   mdp.packetTypeAndFlags=MDP_NODEINFO;
-  if (argc>3) mdp.nodeinfo.resolve_did=1;
-  resolveDid=mdp.nodeinfo.resolve_did;
+  if (argc>3) resolveDid=1;
+  mdp.nodeinfo.resolve_did=0; // so we know that we don't have a result yet.
 
   /* get SID or SID prefix 
      XXX - Doesn't correctly handle odd-lengthed SID prefixes (ignores last digit).
@@ -1291,7 +1291,7 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 	/* search for any DID */
 	m2.out.payload[0]=0;
 	m2.out.payload_length=1;
-	
+
 	if (!overlay_mdp_send(&m2,MDP_AWAITREPLY,125))
 	  {	    
 	    int bytes=m2.in.payload_length;
