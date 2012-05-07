@@ -607,8 +607,9 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
     if (foregroundP)
       return server(NULL);
     switch ((pid = fork())) {
-      case 0: {
-	// Child process.
+      case -1:
+	return WHYF("fork() failed: %s [errno=%d]", strerror(errno), errno);
+      case 0: { // Child process.
 	chdir("/");
 	close(0);
 	open("/dev/null", O_RDONLY);
@@ -625,9 +626,7 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
 	}
 	return server(NULL);
       }
-      case -1:
-	return WHYF("fork() failed: %s [errno=%d]", strerror(errno), errno);
-      default: {
+      default: { // Parent process
 	/* Allow a few seconds for the process to start, and keep an eye on things while this is
 	  happening. */
 	time_t timeout = time(NULL) + 5;
