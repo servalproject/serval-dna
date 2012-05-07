@@ -1231,6 +1231,27 @@ int app_id_self(int argc, const char *const *argv, struct command_line_option *o
   return 0;
 }
 
+int app_test_rfs(int argc, const char *const *argv, struct command_line_option *o)
+{
+  unsigned char bytes[8];
+  int i;
+  
+  fprintf(stderr,"Testing that RFS coder works properly.\n");
+  for(i=0;i<65536;i++)
+    {
+      rfs_encode(i,&bytes[0]);
+      int zero=0;
+      int r=rfs_decode(&bytes[0],&zero);
+      if (i!=r) {
+	fprintf(stderr,"RFS encoding of %d decodes to %d: ",i,r);
+	int j;
+	for(j=0;j<zero;j++) fprintf(stderr," %02x",bytes[j]);
+	fprintf(stderr,"\n");
+      }
+    }
+  return 0;
+}
+
 int app_node_info(int argc, const char *const *argv, struct command_line_option *o)
 {
   const char *sid;
@@ -1412,6 +1433,8 @@ command_line_option command_line_options[]={
    "Return identity of known peers as SIDs"},
   {app_node_info,{"node","info","<sid>","[getdid]",NULL},0,
    "Return information about SID, and optionally ask for DID resolution via network"},
+  {app_test_rfs,{"test","rfs",NULL},0,
+   "Test RFS field calculation"},
 #ifdef HAVE_VOIPTEST
   {app_pa_phone,{"phone",NULL},0,
    "Run phone test application"},

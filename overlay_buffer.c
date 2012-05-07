@@ -246,8 +246,11 @@ int rfs_encode(int l, unsigned char *b)
 {
   if (l<250) { b[0]=l; }
   else if (l<(255+250+(256*4))) {
-    b[0]=RFS_PLUS250+(l-250)/256;
-    b[1]=l-((l-250)/256);
+    l-=250;
+    int page=(l>>8);
+    l&=0xff;
+    b[0]=RFS_PLUS250+page;
+    b[1]=l;
   } else {
     b[0]=RFS_3BYTE;
     b[1]=l>>8;

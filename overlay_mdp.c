@@ -372,7 +372,7 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
       }
       if (crypto_box_curve25519xsalsa20poly1305_open_afternm
 	  (plain_block,plain_block,cipher_len+16,nonce,k))
-	return WHY("crypto_box_open_afternm() failed (forged or corrupted packet?)");
+	return WHYF("crypto_box_open_afternm() failed (forged or corrupted packet of %d bytes)",cipher_len+16);
       if (0) dump("plain block",&plain_block[zb],cipher_len-16);
       b=&plain_block[zb];
       len=cipher_len-16;
