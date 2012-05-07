@@ -266,7 +266,7 @@ int form_serval_instance_path(char *buf, size_t bufsiz, const char *path)
 {
   if (snprintf(buf, bufsiz, "%s/%s", serval_instancepath(), path) < bufsiz)
     return 1;
-  fprintf(stderr, "Cannot form pathname \"%s/%s\" -- buffer too small (%lu bytes)", serval_instancepath(), path, (unsigned long)bufsiz);
+  setReason("Cannot form pathname \"%s/%s\" -- buffer too small (%lu bytes)", serval_instancepath(), path, (unsigned long)bufsiz);
   return 0;
 }
 
@@ -290,9 +290,8 @@ int create_serval_instance_dir() {
   return 0;
 }
 
-void servalShutdownCleanly()
+void serverCleanUp()
 {
-  WHY("Shutting down as requested.");
   /* Try to remove shutdown and PID files and exit */
   char filename[1024];
   if (FORM_SERVAL_INSTANCE_PATH(filename, "doshutdown")) {
@@ -308,26 +307,29 @@ void servalShutdownCleanly()
   } else {
     overlay_mdp_client_done();
   }
-  exit(0);
 }
 
 void signal_handler( int signal ) {
   
-  if (signal==SIGQUIT) servalShutdownCleanly();
-
-  if (signal==SIGHUP||signal==SIGINT) {
-    /* Shut down.
-       The shutting down should be done from the main-line code rather than here,
-       so we first try to tell the mainline code to do so.  If, however, this is
-       not the first time we have been asked to shut down, then we will do it here. */
-    if (servalShutdown) {
-      /* We have been asked before, so shut down cleanly */
-      servalShutdownCleanly();
-    } else {
-      WHY("Asking Serval process to shutdown cleanly");
-      servalShutdown=1;
-    }
-    return;    
+  switch (signal) {
+    case SIGQUIT:
+      serverCleanUp();
+      exit(0);
+    case SIGHUP:
+    case SIGINT:
+      /* Shut down.
+	The shutting down should be done from the main-line code rather than here,
+	so we first try to tell the mainline code to do so.  If, however, this is
+	not the first time we have been asked to shut down, then we will do it here. */
+      if (servalShutdown) {
+	/* We have been asked before, so shut down cleanly */
+	serverCleanUp();
+	exit(0);
+      } else {
+	WHY("Asking Serval process to shutdown cleanly");
+	servalShutdown=1;
+      }
+      return;
   }
 
   /* oops - caught a bad signal -- exec() ourselves fresh */
@@ -477,7 +479,7 @@ void signal_handler( int signal ) {
   exit(-3);
 } 
 
-int setVerbosity(char *optarg) {
+int setVerbosity(const char *optarg) {
   long long old_debug=debug;
   debug=strtoll(optarg,NULL,10);
   if (strstr(optarg,"interfaces")) debug|=DEBUG_OVERLAYINTERFACES;
@@ -507,7 +509,7 @@ int setVerbosity(char *optarg) {
   if (strstr(optarg,"queues")) debug|=DEBUG_QUEUES;
   if (strstr(optarg,"broadcasts")) debug|=DEBUG_BROADCASTS;
 
-  if (old_debug==debug) {
+  if (old_debug==debug && optarg[0]) {
     fprintf(stderr,"WARNING: Option '%s' had no effect on existing debug/verbosity level.\n",
 	    optarg);
   }

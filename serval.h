@@ -381,7 +381,7 @@ extern int hexdigit[16];
 
 extern int sock;
 
-void servalShutdownCleanly();
+void serverCleanUp();
 char *confValueGet(char *var,char *defaultValue);
 int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
 		struct sockaddr *recvaddr,unsigned int *recvaddrlen);
@@ -766,7 +766,7 @@ int overlay_rx_messages();
 int overlay_check_ticks();
 int overlay_add_selfannouncement();
 int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b);
-int overlay_interface_args(char *arg);
+int overlay_interface_args(const char *arg);
 int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
 			int *interface);
 int overlay_sendto(struct sockaddr_in *recipientaddr,unsigned char *bytes,int len);
@@ -1233,7 +1233,7 @@ typedef struct overlay_mdp_frame {
 
 int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req);
 
-int setVerbosity(char *optarg);
+int setVerbosity(const char *optarg);
 
 /* Client-side MDP function */
 extern int mdp_client_socket;

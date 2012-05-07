@@ -121,7 +121,10 @@ int overlayServerMode()
     
   while(1) {
 
-    if (servalShutdown) servalShutdownCleanly();
+    if (servalShutdown) {
+      serverCleanUp();
+      exit(0);
+    }
 
     /* Work out how long we can wait before we need to tick */
     long long ms=overlay_time_until_next_tick();

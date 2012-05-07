@@ -128,12 +128,12 @@ int server(char *backing_file,int foregroundMode)
   /* Record PID */
   char filename[1024];
   if (!FORM_SERVAL_INSTANCE_PATH(filename, "serval.pid"))
-    exit(-1);
+    return -1;
   FILE *f=fopen(filename,"w");
   if (!f) {
     WHYF("Could not write to PID file %s", filename);
     perror("fopen");
-    exit(-1);
+    return -1;
   }
   fprintf(f,"%d\n",getpid());
   fclose(f);
@@ -532,7 +532,10 @@ int simpleServerMode()
     int len;
     int r;
 
-    if (servalShutdown) servalShutdownCleanly();
+    if (servalShutdown) {
+      serverCleanUp();
+      exit(0);
+    }
 
     bzero((void *)&recvaddr,sizeof(recvaddr));
 

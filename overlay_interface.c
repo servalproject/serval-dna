@@ -149,7 +149,7 @@ int overlay_interface_arg(char *arg)
   else { free(r); return WHY("Bad interface specification"); }
 }
 
-int overlay_interface_args(char *arg)
+int overlay_interface_args(const char *arg)
 {
   /* Parse series of comma-separated interface definitions from a single argument
    */

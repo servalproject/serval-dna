@@ -33,39 +33,34 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "rhizome.h"
 
-static int servalNodeRunning(int *pid)
+/** Return the PID of the currently running server process, return 0 if there is none.
+ */
+static int servalNodeRunning()
 {
   const char *instancepath = serval_instancepath();
   struct stat st;
-  int r=stat(instancepath,&st);
-  if (r)
-    return setReason("Instance path '%s' non existant or not accessable: %s [errno=%d]"
+  if (stat(instancepath, &st) == -1)
+    return setReason(
+	"Instance path '%s' non existant or not accessable: %s [errno=%d]"
 	" (Set SERVALINSTANCE_PATH to specify an alternate location)",
 	instancepath, strerror(errno), errno
       );
-  if ((st.st_mode&S_IFMT)!=S_IFDIR)
+  if ((st.st_mode & S_IFMT) != S_IFDIR)
     return setReason("Instance path '%s' is not a directory", instancepath);
-
-  int running=0;
   char filename[1024];
-  if (FORM_SERVAL_INSTANCE_PATH(filename, "serval.pid")) {
-    FILE *f=fopen(filename,"r");
-    if (f) {
-      char line[1024];
-      line[0]=0; fgets(line,1024,f);    
-      *pid = strtoll(line,NULL,10);
-      running=*pid;
-      if (running) {
-	/* Check that process is really running.
-	  Some systems don't have /proc (including mac), 
-	  so we need to find out some otherway.*/
-	running=1; // assume pid means is running for now      
-      }
-      fclose(f);
-    } 
+  if (!FORM_SERVAL_INSTANCE_PATH(filename, "serval.pid"))
+    return -1;
+  FILE *f = NULL;
+  if ((f = fopen(filename, "r"))) {
+    char buf[20];
+    fgets(buf, sizeof buf, f);
+    fclose(f);
+    int pid = atoi(buf);
+    if (pid > 0 && kill(pid, 0) != -1)
+      return pid;
+    unlink(filename);
   }
-
-  return running;
+  return 0;
 }
 
 int cli_usage() {
@@ -582,137 +577,122 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
   int foregroundP= (argc >= 2 && !strcasecmp(argv[1], "foreground"));
   if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1)
     return -1;
-
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
     return -1;
-
+  cli_puts("instancepath");
+  cli_delim(":");
+  cli_puts(serval_instancepath());
+  cli_delim("\n");
   /* Now that we know our instance path, we can ask for the default set of
      network interfaces that we will take interest in. */
-  overlay_interface_args(confValueGet("interfaces",""));
-  if (strlen(confValueGet("interfaces",""))<1) {
-    WHY("Noone has told me which network interfaces to listen on; "
-	"you should probably put something in the interfaces setting.");
+  const char *interfaces = confValueGet("interfaces", "");
+  if (!interfaces[0])
+    WHY("No network interfaces configured (empty 'interfaces' config setting)");
+  overlay_interface_args(interfaces);
+  int pid = servalNodeRunning();
+  if (pid < 0)
+    return -1;
+  int ret = 1;
+  if (pid > 0) {
+    WHYF("Serval process already running (pid=%d)", pid);
+  } else {
+    /* Start the Serval process.
+      All server settings will be read by the server process from the
+      instance directory when it starts up.
+      We can just become the server process ourselves --- no need to fork.
+    */
+    rhizome_datastore_path = serval_instancepath();
+    rhizome_opendb();
+    overlayMode = 1;
+    if ((pid = server(NULL, foregroundP)) <= 0)
+      return -1;
+    ret = 0;
   }
-
-  int pid=-1;
-  int running = servalNodeRunning(&pid);
-  if (running<0) return -1;
-  if (running>0)
-    return WHYF("Serval process already running (pid=%d)", pid);
-  /* Start the Serval process.
-     All server settings will be read by the server process from the
-     instance directory when it starts up.
-     We can just become the server process ourselves --- no need to fork.
-     
-  */
-  rhizome_datastore_path = serval_instancepath();
-  rhizome_opendb();
-
-  overlayMode=1;
-  return server(NULL,foregroundP);
+  cli_puts("pid");
+  cli_delim(":");
+  cli_printf("%d", pid);
+  cli_delim("\n");
+  return ret;
 }
 
 int app_server_stop(int argc, const char *const *argv, struct command_line_option *o)
 {
   if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1)
     return -1;
-
-  int tries=0;
-
-  for(tries=0;tries<3;tries++)
-    {
-      int pid=-1;
-      int running = servalNodeRunning(&pid);
-      if (running>0) {
-	/* Is running, so we can try to kill it.
-	   This is a little complicated by the fact that we catch most signals
-	   so that unexpected aborts just restart.
-	   What we can do is put some code in the signal handler that does abort
-	   the process if a certain file exists, perhaps instance_path/doshutdown,
-	   and removes the file.
-	*/
-	if (pid<0) {
-	  WHY("Could not determine process id of Serval process.  Stale instance perhaps?");
-	  return -1;
+  const char *instancepath = serval_instancepath();
+  int pid = servalNodeRunning();
+  if (pid < 0)
+    return -1;
+  cli_puts("instancepath");
+  cli_delim(":");
+  cli_puts(instancepath);
+  cli_delim("\n");
+  if (pid) {
+    cli_puts("pid");
+    cli_delim(":");
+    cli_printf("%d", pid);
+    cli_delim("\n");
+    int tries = 0;
+    while (1) {
+      if (tries >= 3)
+	return WHYF(
+	    "Serval process for instance '%s' did not stop after %d SIGHUP signals",
+	    instancepath, tries
+	  );
+      ++tries;
+      /* Create the stopfile, which causes the server process's signal handler to exit
+	 instead of restarting. */
+      char stopfile[1024];
+      if (!FORM_SERVAL_INSTANCE_PATH(stopfile, "doshutdown"))
+	return -1;
+      FILE *f;
+      if ((f = fopen(stopfile, "w")) == NULL)
+	return WHYF("Could not create shutdown file '%s'", stopfile);
+      fclose(f);
+      if (kill(pid,SIGHUP) == -1) {
+	// ESRCH means process is gone, possibly we are racing with another stop, or servald just
+	// died unexpectedly.
+	if (errno == ESRCH) {
+	  serverCleanUp();
+	  break;
 	}
-	
-	char stopfile[1024];
-	FILE *f;
-	if (!(FORM_SERVAL_INSTANCE_PATH(stopfile, "doshutdown") && (f = fopen(stopfile, "w")))) {
-	  WHY("Could not create shutdown file");
-	  return -1;
-	}
-	fclose(f);
-	int result=kill(pid,SIGHUP);
-	if (!result) {
-	  WHY("Stop request sent to Serval process.");
-	} else {
-	  WHY("Could not send SIGHUP to Serval process.");
-	  switch (errno) {
-	  case EINVAL: WHY("This is embarassing, but the operating system says I don't know how to send a signal."); break;
-	  case EPERM: WHY("I don't have permission to stop the Serval process.  You could try using sudo, or run the stop command as the appropriate user."); break;
-	  case ENOENT:
-	  case ESRCH: WHY("The process id I have recorded doesn't seem to exist anymore.  Did someone kill the process without telling me?"); 
-	    /* Clean up any lingering mess */
-	    servalShutdownCleanly();
-	    break;
-	  default:
-	    perror("This is reason given by the operating system");
-	  }
-	  return -1;
-	}
-	
-	/* Allow a few seconds for the process to die, and keep an eye on things 
-	   while this is happening. */
-	time_t timeout=time(0)+2;
-	while(timeout>time(0)) {
-	  pid=-1;
-	  int running = servalNodeRunning(&pid);
-	  if (running<1) {
-	    WHY("Serval process appears to have stopped.");
-	    return 0;
-	  }
-	}
-      } else {
-	return WHY("Serval process for that instance does not appear to be running.");
+	return WHYF("Error sending SIGHUP to Serval instance '%s' process pid=%d: %s [errno=%d]",
+	      instancepath, pid, strerror(errno), errno
+	    );
       }
+      /* Allow a few seconds for the process to die, and keep an eye on things while this is
+	  happening. */
+      time_t timeout = time(NULL) + 2;
+      while (time(NULL) < timeout && servalNodeRunning() == pid)
+	usleep(200000); // 5 Hz
     }
- 
-  return WHY("Tried to stop servald without success");
+    cli_puts("tries");
+    cli_delim(":");
+    cli_printf("%d", tries);
+    cli_delim("\n");
+  }
+  return pid ? 0 : 1;
 }
 
 int app_server_status(int argc, const char *const *argv, struct command_line_option *o)
 {
   if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1)
     return -1;
-  
-  /* Display configuration information */
-  char filename[1024];
-  FILE *f;
-  if (FORM_SERVAL_INSTANCE_PATH(filename, "serval.conf") && (f = fopen(filename, "r"))) {
-    char line[1024];
-    line[0]=0; fgets(line,1024,f);
-    printf("\nServal Mesh configuration:\n");
-    while(line[0]) {
-      printf("   %s",line);
-      line[0]=0; fgets(line,1024,f);
-    }
-    fclose(f);
+  int pid = servalNodeRunning();
+  if (pid < 0)
+    return -1;
+  cli_puts("instancepath");
+  cli_delim(":");
+  cli_puts(serval_instancepath());
+  cli_delim("\n");
+  if (pid) {
+    cli_puts("pid");
+    cli_delim(":");
+    cli_printf("%d", pid);
+    cli_delim("\n");
   }
-
-  /* Display running status of daemon from serval.pid file */
-  int pid=-1;
-  int running = servalNodeRunning(&pid);
-  if (running<0) return -1;
-
-  printf("For Serval Mesh instance %s:\n", serval_instancepath());
-  if (running)
-    printf("  Serval mesh process is running (pid=%d)\n",pid);
-  else
-    printf("  Serval Mesh process not running\n");
-  
-  return 0;
+  return pid > 0 ? 0 : 1;
 }
 
 int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *o)
