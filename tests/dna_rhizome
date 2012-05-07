@@ -29,8 +29,8 @@ setup_dna_rhizome() {
 assert_rhizome_list() {
    executeOk $dna rhizome list
    assertStdoutLineCount '==' $(($# + 2))
-   assertStdoutIs --line=1 -e '8\n'
-   assertStdoutIs --line=2 -e 'fileid:manifestid:version:inserttime:length:datavalid:date:name\n'
+   assertStdoutIs --line=1 -e '7\n'
+   assertStdoutIs --line=2 -e 'fileid:manifestid:version:inserttime:length:date:name\n'
    local filename
    for filename; do
       unpack_manifest_for_grep "$filename"

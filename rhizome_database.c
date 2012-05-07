@@ -505,8 +505,9 @@ int rhizome_list_manifests(int limit, int offset)
 {
   char sqlcmd[1024];
   int n = snprintf(sqlcmd, sizeof(sqlcmd),
-      "SELECT files.id, files.length, files.datavalid, manifests.id, manifests.manifest, manifests.version, manifests.inserttime"
-      " FROM files, filemanifests, manifests WHERE files.id = filemanifests.fileid AND filemanifests.manifestid = manifests.id"
+      "SELECT files.id, files.length, manifests.id, manifests.manifest, manifests.version, manifests.inserttime"
+      " FROM files, filemanifests, manifests"
+      " WHERE files.id = filemanifests.fileid AND filemanifests.manifestid = manifests.id AND files.datavalid <> 0"
       " ORDER BY files.id ASC"
     );
   if (n >= sizeof(sqlcmd))
@@ -529,40 +530,37 @@ int rhizome_list_manifests(int limit, int offset)
     ret = WHY(sqlite3_errmsg(rhizome_db));
   } else {
     size_t rows = 0;
-    cli_puts("8"); cli_delim("\n"); // number of columns
+    cli_puts("7"); cli_delim("\n"); // number of columns
     cli_puts("fileid"); cli_delim(":");
     cli_puts("manifestid"); cli_delim(":");
     cli_puts("version"); cli_delim(":");
     cli_puts("inserttime"); cli_delim(":");
     cli_puts("length"); cli_delim(":");
-    cli_puts("datavalid"); cli_delim(":");
     cli_puts("date"); cli_delim(":");
     cli_puts("name"); cli_delim("\n");
     while (sqlite3_step(statement) == SQLITE_ROW) {
       ++rows;
-      if (!(   sqlite3_column_count(statement) == 7
+      if (!(   sqlite3_column_count(statement) == 6
 	    && sqlite3_column_type(statement, 0) == SQLITE_TEXT
 	    && sqlite3_column_type(statement, 1) == SQLITE_INTEGER
-	    && sqlite3_column_type(statement, 2) == SQLITE_INTEGER
-	    && sqlite3_column_type(statement, 3) == SQLITE_TEXT
-	    && sqlite3_column_type(statement, 4) == SQLITE_BLOB
+	    && sqlite3_column_type(statement, 2) == SQLITE_TEXT
+	    && sqlite3_column_type(statement, 3) == SQLITE_BLOB
+	    && sqlite3_column_type(statement, 4) == SQLITE_INTEGER
 	    && sqlite3_column_type(statement, 5) == SQLITE_INTEGER
-	    && sqlite3_column_type(statement, 6) == SQLITE_INTEGER
       )) { 
 	ret = WHY("Incorrect statement column");
 	break;
       }
-      const char *manifestblob = (char *) sqlite3_column_blob(statement, 4);
-      size_t manifestblobsize = sqlite3_column_bytes(statement, 4); // must call after sqlite3_column_blob()
+      const char *manifestblob = (char *) sqlite3_column_blob(statement, 3);
+      size_t manifestblobsize = sqlite3_column_bytes(statement, 3); // must call after sqlite3_column_blob()
       rhizome_manifest *m = rhizome_read_manifest_file(manifestblob, manifestblobsize, 0);
       const char *name = rhizome_manifest_get(m, "name", NULL, 0);
       long long date = rhizome_manifest_get_ll(m, "date");
       cli_puts((const char *)sqlite3_column_text(statement, 0)); cli_delim(":");
-      cli_puts((const char *)sqlite3_column_text(statement, 3)); cli_delim(":");
+      cli_puts((const char *)sqlite3_column_text(statement, 2)); cli_delim(":");
+      cli_printf("%lld", (long long) sqlite3_column_int64(statement, 4)); cli_delim(":");
       cli_printf("%lld", (long long) sqlite3_column_int64(statement, 5)); cli_delim(":");
-      cli_printf("%lld", (long long) sqlite3_column_int64(statement, 6)); cli_delim(":");
       cli_printf("%u", sqlite3_column_int(statement, 1)); cli_delim(":");
-      cli_printf("%u", sqlite3_column_int(statement, 2)); cli_delim(":");
       cli_printf("%lld", date); cli_delim(":");
       cli_puts(name); cli_delim("\n");
       rhizome_manifest_free(m);
