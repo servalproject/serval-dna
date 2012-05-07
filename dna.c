@@ -703,7 +703,11 @@ int main(int argc, char **argv)
 
   if (keyring_file&&clientMode) usage("Only servers use backing files");
   if (serverMode&&clientMode) usage("You asked me to be both server and client.  That's silly.");
-  if (serverMode) return server(keyring_file,foregroundMode);
+  if (serverMode) {
+    if (!foregroundMode)
+      daemon(0,0);
+    return server(keyring_file);
+  }
   if (!clientMode) usage("Serval server and client utility.");
 
 #if defined WIN32

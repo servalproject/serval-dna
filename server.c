@@ -98,7 +98,7 @@ int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
 }
 
 
-int server(char *backing_file,int foregroundMode)
+int server(char *backing_file)
 {
   if (overlayMode)
     {
@@ -122,9 +122,6 @@ int server(char *backing_file,int foregroundMode)
       getKeyring(backing_file);
     }
   
-  /* Detach from the console */
-  if (!foregroundMode) daemon(0,0);
-
   /* Record PID */
   char filename[1024];
   if (!FORM_SERVAL_INSTANCE_PATH(filename, "serval.pid"))

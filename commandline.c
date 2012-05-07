@@ -273,6 +273,7 @@ int parseCommandLine(int argc, const char *const *args)
 	  setReason("Ambiguous command line call:");
 	  complainCommandLine("   ", argc, args);
 	  setReason("Matches the following known command line calls:");
+	  complainCommandLine("   ", argc, command_line_options[cli_call].words);
 	}
 	if (ambiguous) {
 	  complainCommandLine("   ", argc, command_line_options[i].words);
@@ -574,16 +575,14 @@ int cli_absolute_path(const char *arg)
 int app_server_start(int argc, const char *const *argv, struct command_line_option *o)
 {
   /* Process optional arguments */
-  int foregroundP= (argc >= 2 && !strcasecmp(argv[1], "foreground"));
-  if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1)
+  const char *execpath;
+  int foregroundP = (argc >= 2 && !strcasecmp(argv[1], "foreground"));
+  if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1
+   || cli_arg(argc, argv, o, "exec path", &execpath, cli_absolute_path, NULL) == -1)
     return -1;
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
     return -1;
-  cli_puts("instancepath");
-  cli_delim(":");
-  cli_puts(serval_instancepath());
-  cli_delim("\n");
   /* Now that we know our instance path, we can ask for the default set of
      network interfaces that we will take interest in. */
   const char *interfaces = confValueGet("interfaces", "");
@@ -605,10 +604,53 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
     rhizome_datastore_path = serval_instancepath();
     rhizome_opendb();
     overlayMode = 1;
-    if ((pid = server(NULL, foregroundP)) <= 0)
-      return -1;
-    ret = 0;
+    if (foregroundP)
+      return server(NULL);
+    switch ((pid = fork())) {
+      case 0: {
+	// Child process.
+	chdir("/");
+	close(0);
+	open("/dev/null", O_RDONLY);
+	close(1);
+	open("/dev/null", O_WRONLY);
+	close(2);
+	open("/dev/null", O_WRONLY);
+	/* The execpath option is provided so that a JNI call to "start" can be made which creates a
+	   new server daemon process with the correct argv[0].  Otherwise, the servald process appears
+	   as a process with argv[0] = "org.servalproject". */
+	if (execpath) {
+	  execl(execpath, execpath, "start", "foreground", NULL);
+	  return -1;
+	}
+	return server(NULL);
+      }
+      case -1:
+	return WHYF("fork() failed: %s [errno=%d]", strerror(errno), errno);
+      default: {
+	/* Allow a few seconds for the process to start, and keep an eye on things while this is
+	  happening. */
+	time_t timeout = time(NULL) + 5;
+	int rpid;
+	while (time(NULL) < timeout && (rpid = servalNodeRunning()) == 0)
+	    usleep(200000); // 5 Hz
+	if (rpid == -1)
+	  return -1;
+	if (rpid == 0)
+	  return WHY("Server process did not start");
+	if (rpid != pid) {
+	  WHYF("Started server process has pid=%d, expecting pid=%d", rpid, pid);
+	  pid = rpid;
+	}
+	ret = 0;
+	break;
+      }
+    }
   }
+  cli_puts("instancepath");
+  cli_delim(":");
+  cli_puts(serval_instancepath());
+  cli_delim("\n");
   cli_puts("pid");
   cli_delim(":");
   cli_printf("%d", pid);
@@ -635,7 +677,7 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
     cli_delim("\n");
     int tries = 0;
     while (1) {
-      if (tries >= 3)
+      if (tries >= 5)
 	return WHYF(
 	    "Serval process for instance '%s' did not stop after %d SIGHUP signals",
 	    instancepath, tries
@@ -662,7 +704,7 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
 	    );
       }
       /* Allow a few seconds for the process to die, and keep an eye on things while this is
-	  happening. */
+	 happening. */
       time_t timeout = time(NULL) + 2;
       while (time(NULL) < timeout && servalNodeRunning() == pid)
 	usleep(200000); // 5 Hz
@@ -1380,6 +1422,10 @@ command_line_option command_line_options[]={
   {app_server_start,{"start",NULL},CLIFLAG_STANDALONE,
    "Start Serval Mesh node process with instance path taken from SERVALINSTANCE_PATH environment variable."},
   {app_server_start,{"start","in","<instance path>",NULL},CLIFLAG_STANDALONE,
+   "Start Serval Mesh node process with given instance path."},
+  {app_server_start,{"start","exec","<exec path>",NULL},CLIFLAG_STANDALONE,
+   "Start Serval Mesh node process with instance path taken from SERVALINSTANCE_PATH environment variable."},
+  {app_server_start,{"start","exec","<exec path>","in","<instance path>",NULL},CLIFLAG_STANDALONE,
    "Start Serval Mesh node process with given instance path."},
   {app_server_start,{"start","foreground",NULL},CLIFLAG_STANDALONE,
    "Start Serval Mesh node process without detatching from foreground."},
