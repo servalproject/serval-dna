@@ -481,9 +481,8 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 	  int cn=0,in=0,kp=0;
 	  char did[64+1];
 	  int pll=mdp->out.payload_length;
+	  if (pll>64) pll=64;
 	  /* get did from the packet */
-	  if (mdp->out.payload_length>=64) 
-	    return WHY("DNA DID resolution contains excessively long DID");
 	  if (mdp->out.payload_length<1)
 	    return WHY("Empty DID in DNA resolution request");
 	  bcopy(&mdp->out.payload[0],&did[0],pll);
