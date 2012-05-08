@@ -166,7 +166,7 @@ int monitor_poll()
     monitor_last_update_time=now+1000;
   }
   if (now>(monitor_last_update_time+1000)) {
-    WHY("Send keep alives");
+    // WHY("Send keep alives");
     monitor_last_update_time=now;
     int i;
     for(i=0;i<vomp_call_count;i++) {
