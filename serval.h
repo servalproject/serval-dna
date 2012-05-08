@@ -381,7 +381,6 @@ extern int hexdigit[16];
 
 extern int sock;
 
-void serverCleanUp();
 char *confValueGet(char *var,char *defaultValue);
 int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
 		struct sockaddr *recvaddr,unsigned int *recvaddrlen);
@@ -400,6 +399,9 @@ int requestNewHLR(char *did,char *pin,char *sid,int recvttl,struct sockaddr *rec
 int server_pid();
 int server(char *backing_file);
 void server_shutdown_check();
+int server_create_stopfile();
+int server_check_stopfile();
+void serverCleanUp();
 int isTransactionInCache(unsigned char *transaction_id);
 void insertTransactionInCache(unsigned char *transaction_id);
 

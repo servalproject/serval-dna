@@ -596,12 +596,15 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
 	return server(NULL);
       }
       default: { // Parent process
-	/* Allow a few seconds for the process to start, and keep an eye on things while this is
-	  happening. */
-	time_t timeout = time(NULL) + 5;
-	int rpid;
-	while (time(NULL) < timeout && (rpid = server_pid()) == 0)
-	    usleep(200000); // 5 Hz
+	/* Allow a few seconds for the process to start. */
+	int rpid = 0;
+	time_t timeout = overlay_gettime_ms() + 5000;
+	do {
+	  struct timespec delay;
+	  delay.tv_sec = 0;
+	  delay.tv_nsec = 200000000; // 200 ms = 5 Hz
+	  nanosleep(&delay, NULL);
+	} while ((rpid = server_pid()) == 0 && overlay_gettime_ms() < timeout);
 	if (rpid == -1)
 	  return -1;
 	if (rpid == 0)
@@ -644,7 +647,8 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
     cli_printf("%d", pid);
     cli_delim("\n");
     int tries = 0;
-    while (1) {
+    int running = pid;
+    while (running == pid) {
       if (tries >= 5)
 	return WHYF(
 	    "Serval process for instance '%s' did not stop after %d SIGHUP signals",
@@ -653,16 +657,10 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
       ++tries;
       /* Create the stopfile, which causes the server process's signal handler to exit
 	 instead of restarting. */
-      char stopfile[1024];
-      if (!FORM_SERVAL_INSTANCE_PATH(stopfile, "doshutdown"))
-	return -1;
-      FILE *f;
-      if ((f = fopen(stopfile, "w")) == NULL)
-	return WHYF("Could not create shutdown file '%s'", stopfile);
-      fclose(f);
-      if (kill(pid,SIGHUP) == -1) {
+      server_create_stopfile();
+      if (kill(pid, SIGHUP) == -1) {
 	// ESRCH means process is gone, possibly we are racing with another stop, or servald just
-	// died unexpectedly.
+	// died voluntarily.
 	if (errno == ESRCH) {
 	  serverCleanUp();
 	  break;
@@ -671,11 +669,14 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
 	      instancepath, pid, strerror(errno), errno
 	    );
       }
-      /* Allow a few seconds for the process to die, and keep an eye on things while this is
-	 happening. */
-      time_t timeout = time(NULL) + 2;
-      while (time(NULL) < timeout && server_pid() == pid)
-	usleep(200000); // 5 Hz
+      /* Allow a few seconds for the process to die. */
+      time_t timeout = overlay_gettime_ms() + 2000;
+      do {
+	struct timespec delay;
+	delay.tv_sec = 0;
+	delay.tv_nsec = 200000000; // 200 ms = 5 Hz
+	nanosleep(&delay, NULL);
+      } while ((running = server_pid()) == pid && overlay_gettime_ms() < timeout);
     }
     cli_puts("tries");
     cli_delim(":");

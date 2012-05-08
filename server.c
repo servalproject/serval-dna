@@ -18,11 +18,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include <time.h>
+#include <unistd.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/stat.h>
 
 #include "serval.h"
+
+#define PIDFILE_NAME	  "servald.pid"
+#define STOPFILE_NAME	  "servald.stop"
 
 static int server_getpid = 0;
 unsigned char *hlr=NULL;
@@ -114,7 +118,7 @@ int server_pid()
   if ((st.st_mode & S_IFMT) != S_IFDIR)
     return setReason("Instance path '%s' is not a directory", instancepath);
   char filename[1024];
-  if (!FORM_SERVAL_INSTANCE_PATH(filename, "serval.pid"))
+  if (!FORM_SERVAL_INSTANCE_PATH(filename, PIDFILE_NAME))
     return -1;
   FILE *f = NULL;
   if ((f = fopen(filename, "r"))) {
@@ -155,7 +159,7 @@ int server(char *backing_file)
   
   /* Record PID to advertise that the server is now running */
   char filename[1024];
-  if (!FORM_SERVAL_INSTANCE_PATH(filename, "serval.pid"))
+  if (!FORM_SERVAL_INSTANCE_PATH(filename, PIDFILE_NAME))
     return -1;
   FILE *f=fopen(filename,"w");
   if (!f) {
@@ -177,14 +181,20 @@ int server(char *backing_file)
  */
 void server_shutdown_check()
 {
-  static long long server_pid_time_ms = 0;
   if (servalShutdown) {
+    WHY("Shutdown flag set -- terminating with cleanup");
+    serverCleanUp();
+    exit(0);
+  }
+  if (server_check_stopfile() == 1) {
+    WHY("Shutdown file exists -- terminating with cleanup");
     serverCleanUp();
     exit(0);
   }
   /* If this server has been supplanted with another or Serval has been uninstalled, then its PID
       file will change or be unaccessible.  In this case, shut down without all the cleanup.
       Perform this check at most once per second.  */
+  static long long server_pid_time_ms = 0;
   long long time_ms = overlay_gettime_ms();
   if (server_pid_time_ms == 0 || time_ms - server_pid_time_ms > 1000) {
     server_pid_time_ms = time_ms;
@@ -192,6 +202,51 @@ void server_shutdown_check()
       WHYF("Server pid file no longer contains my pid=%d -- shutting down without cleanup", server_pid);
       exit(1);
     }
+  }
+}
+
+int server_create_stopfile()
+{
+  char stopfile[1024];
+  if (!FORM_SERVAL_INSTANCE_PATH(stopfile, STOPFILE_NAME))
+    return -1;
+  FILE *f;
+  if ((f = fopen(stopfile, "w")) == NULL)
+    return WHYF("Could not create stopfile '%s'", stopfile);
+  fclose(f);
+  return 0;
+}
+
+int server_check_stopfile()
+{
+  char stopfile[1024];
+  if (!FORM_SERVAL_INSTANCE_PATH(stopfile, STOPFILE_NAME))
+    return -1;
+  int r = access(stopfile, F_OK);
+  if (r == 0)
+    return 1;
+  if (r == -1 && errno == ENOENT)
+    return 0;
+  WHYF("Access check for stopfile '%s' failed: %s [errno=%d]", stopfile, strerror(errno), errno);
+  return -1;
+}
+
+void serverCleanUp()
+{
+  /* Try to remove shutdown and PID files and exit */
+  char filename[1024];
+  if (FORM_SERVAL_INSTANCE_PATH(filename, STOPFILE_NAME)) {
+    unlink(filename);
+  }
+  if (FORM_SERVAL_INSTANCE_PATH(filename, PIDFILE_NAME)) {
+    unlink(filename);
+  }
+  if (mdp_client_socket==-1) {
+    if (FORM_SERVAL_INSTANCE_PATH(filename, "mdp.socket")) {
+      unlink(filename);
+    }
+  } else {
+    overlay_mdp_client_done();
   }
 }
 

@@ -290,25 +290,6 @@ int create_serval_instance_dir() {
   return 0;
 }
 
-void serverCleanUp()
-{
-  /* Try to remove shutdown and PID files and exit */
-  char filename[1024];
-  if (FORM_SERVAL_INSTANCE_PATH(filename, "doshutdown")) {
-    unlink(filename);
-  }
-  if (FORM_SERVAL_INSTANCE_PATH(filename, "serval.pid")) {
-    unlink(filename);
-  }
-  if (mdp_client_socket==-1) {
-    if (FORM_SERVAL_INSTANCE_PATH(filename, "mdp.socket")) {
-      unlink(filename);
-    }
-  } else {
-    overlay_mdp_client_done();
-  }
-}
-
 void signal_handler( int signal ) {
   
   switch (signal) {
