@@ -191,7 +191,7 @@ int overlay_interface_init_socket(int interface,struct sockaddr_in src_addr,stru
   int broadcastP=1;
   if(setsockopt(I(fd), SOL_SOCKET, SO_BROADCAST, &broadcastP, sizeof(broadcastP)) < 0) {
     WHY("Could not enable broadcast reception for socket.  This is really bad.");
-    perror("setsockopt");
+    WHY_perror("setsockopt");
     close(I(fd)); I(fd)=0;
     return WHY("setsockopt() failed");
   } else
@@ -211,7 +211,7 @@ int overlay_interface_init_socket(int interface,struct sockaddr_in src_addr,stru
   */
   if (debug&DEBUG_PACKETRX) fprintf(stderr,"src_addr=%08x\n",(unsigned int)broadcast.sin_addr.s_addr);
   if(bind(I(fd),(struct sockaddr *)&broadcast,sizeof(broadcast))) {
-    perror("bind()");
+    WHY_perror("bind");
     close(I(fd));
     I(fd)=-1;
     return WHY("MP HLR server could not bind to requested UDP port (bind() failed)");
@@ -453,7 +453,7 @@ int overlay_broadcast_ensemble(int interface_number,
       bcopy(bytes,&buf[128],len);
       if (write(overlay_interfaces[interface_number].fd,buf,2048)!=2048)
 	{
-	  perror("write()");
+	  WHY_perror("write");
 	  return WHY("write() failed");
 	}
       else
@@ -464,7 +464,7 @@ int overlay_broadcast_ensemble(int interface_number,
       if(sendto(overlay_interfaces[interface_number].fd, bytes, len, 0, (struct sockaddr *)&s, sizeof(struct sockaddr_in)) != len)
 	{
 	  /* Failed to send */
-	  perror("sendto(c)");
+	  WHY_perror("sendto(c)");
 	  return WHY("sendto() failed");
 	}
       else
@@ -600,7 +600,7 @@ int overlay_interface_discover()
   int family;
   
   if (getifaddrs(&ifaddr) == -1)  {
-    perror("getifaddr()");
+    WHY_perror("getifaddr()");
     return WHY("getifaddrs() failed");
   }
 

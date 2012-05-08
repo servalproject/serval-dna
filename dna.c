@@ -277,15 +277,13 @@ int create_serval_instance_dir() {
       DIR *d = opendir(instancepath);
       if (!d) {
 	WHYF("Cannot access %s", instancepath);
-	perror("opendir");
-	return -1;
+	return WHY_perror("opendir");
       }
       closedir(d);
       return 0;
     }
     WHYF("Cannot mkdir %s", instancepath);
-    perror("mkdir");
-    return -1;
+    return WHY_perror("mkdir");
   }
   return 0;
 }

@@ -162,8 +162,8 @@ int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
   int r=sendto(sock,(char *)mdpreply,replylen,0,
 	       (struct sockaddr *)recvaddr,recvaddrlen);
   if (r<replylen) { 
-    perror("sendto(d)"); 
     WHY("sendto() failed when sending MDP reply"); 
+    WHY_perror("sendto(d)"); 
     printf("sock=%d, r=%d\n",sock,r);
     return -1;
   } else
@@ -464,7 +464,7 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
       int r=sendto(mdp_named_socket,mdp,overlay_mdp_relevant_bytes(mdp),0,(struct sockaddr*)&addr,sizeof(addr));
       printf("r=%d\n",r);
       if (r==overlay_mdp_relevant_bytes(mdp)) return 0;
-      perror("sendto(e)");
+      WHY_perror("sendto(e)");
       return WHY("Failed to pass received MDP frame to client");
     } else {
       /* No socket is bound, ignore the packet ... except for magic sockets */
@@ -1101,7 +1101,7 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
     mdp->packetTypeAndFlags=MDP_ERROR;
     mdp->error.error=1;
     snprintf(mdp->error.message,128,"Error sending frame to MDP server.");
-    perror("sendto(f)");
+    WHY_perror("sendto(f)");
     return -1;
   } else {
     if (!(flags&MDP_AWAITREPLY)) {       
@@ -1148,7 +1148,7 @@ int overlay_mdp_client_init()
     
     mdp_client_socket = socket(AF_UNIX, SOCK_DGRAM, 0);
     if (mdp_client_socket < 0) {
-      perror("socket");
+      WHY_perror("socket");
       return WHY("Could not open socket to MDP server");
     }
 
@@ -1173,7 +1173,7 @@ int overlay_mdp_client_init()
     int r=bind(mdp_client_socket, (struct sockaddr *)&name, len);
     if (r) {
       WHY("Could not bind MDP client socket to file name");
-      perror("bind");
+      WHY_perror("bind");
       return -1;
     }
 

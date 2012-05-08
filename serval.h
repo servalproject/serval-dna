@@ -739,6 +739,7 @@ int setReason(char *fmt, ...);
 #define WHY(X) setReason("%s:%d:%s()  %s",__FILE__,__LINE__,__FUNCTION__,X)
 #define WHYRETNULL(X) { setReason("%s:%d:%s()  %s",__FILE__,__LINE__,__FUNCTION__,X); return NULL; } 
 #define WHYF(F, ...) setReason("%s:%d:%s()  " F, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
+#define WHY_perror(X) setReason("%s:%d:%s()  %s: %s [errno=%d]" X, __FILE__, __LINE__, __FUNCTION__, X, strerror(errno), errno)
 
 overlay_buffer *ob_new(int size);
 int ob_free(overlay_buffer *b);

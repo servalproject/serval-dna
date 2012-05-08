@@ -113,8 +113,7 @@ int getBroadcastAddresses(struct in_addr peers[],int *peer_count,int peer_max){
   if (debug&DEBUG_PEERS) fprintf(stderr,"Reading broadcast addresses (posix style)\n");
 
   if (getifaddrs(&ifaddr) == -1)  {
-    perror("getifaddr()");
-    return WHY("getifaddrs() failed");
+    return WHY_perror("getifaddr");
   }
 
   for (ifa=ifaddr;ifa!=NULL;ifa=ifa->ifa_next) {

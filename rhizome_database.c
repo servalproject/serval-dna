@@ -960,13 +960,13 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath)
 	int fd = open(filepath, O_WRONLY | O_CREAT | O_TRUNC, 0775);
 	if (fd == -1) {
 	  ret = WHYF("Cannot open %s for write/create", filepath);
-	  perror("open");
+	  WHY_perror("open");
 	} else if (write(fd, fileblob, length) != length) {
 	  ret = WHYF("Error writing %lld bytes to %s ", (long long) length, filepath);
-	  perror("write");
+	  WHY_perror("write");
 	} else if (close(fd) == -1) {
 	  ret = WHYF("Error flushing to %s ", filepath);
-	  perror("close");
+	  WHY_perror("close");
 	} else {
 	  ret = 1;
 	  cli_puts("filehash"); cli_delim(":");

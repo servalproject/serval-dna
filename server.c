@@ -164,7 +164,7 @@ int server(char *backing_file)
   FILE *f=fopen(filename,"w");
   if (!f) {
     WHYF("Could not write to PID file %s", filename);
-    perror("fopen");
+    WHY_perror("fopen");
     return -1;
   }
   server_getpid = getpid();
@@ -607,8 +607,8 @@ int createServerSocket()
   
   sock=socket(PF_INET,SOCK_DGRAM,0);
   if (sock<0) {
-    fprintf(stderr,"Could not create UDP socket.\n");
-    perror("socket");
+    WHY("Could not create UDP socket.");
+    WHY_perror("socket");
     exit(-3);
   }
   
@@ -623,14 +623,14 @@ int createServerSocket()
 
   errno=0;
   if(setsockopt(sock, IPPROTO_IP, IP_RECVTTL, &TRUE,sizeof(TRUE))<0)
-    perror("setsockopt(IP_RECVTTL)");  
+    WHY_perror("setsockopt(IP_RECVTTL)");  
 
   bind_addr.sin_family = AF_INET;
   bind_addr.sin_port = htons( PORT_DNA );
   bind_addr.sin_addr.s_addr = htonl( INADDR_ANY );
   if(bind(sock,(struct sockaddr *)&bind_addr,sizeof(bind_addr))) {
-    fprintf(stderr,"MP HLR server could not bind to UDP port %d\n", PORT_DNA);
-    perror("bind");
+    WHYF("MP HLR server could not bind to UDP port %d", PORT_DNA);
+    WHY_perror("bind");
     exit(-3);
   }
   return 0;

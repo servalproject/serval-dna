@@ -21,7 +21,7 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
   struct sockaddr_un addr;
 
   if ( (fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-    perror("socket error");
+    perror("socket");
     exit(-1);
   }
 
@@ -34,7 +34,7 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
   printf("last char='%c' %02x\n",p[len-1],p[len-1]);
 
   if (connect(fd, (struct sockaddr*)&addr, len) == -1) {
-    perror("connect error");
+    perror("connect");
     exit(-1);
   }
 

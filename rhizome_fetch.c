@@ -338,7 +338,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
 	      close (sock);
 	      if (debug&DEBUG_RHIZOME) {
 		WHY("Failed to open socket to peer's rhizome web server");
-		perror("connect");
+		WHY_perror("connect");
 	      }
 	      return -1;
 	    }
