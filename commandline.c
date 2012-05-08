@@ -570,6 +570,8 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
       instance directory when it starts up.
       We can just become the server process ourselves --- no need to fork.
     */
+    if (server_remove_stopfile() == -1)
+      return -1;
     rhizome_datastore_path = serval_instancepath();
     rhizome_opendb();
     overlayMode = 1;
@@ -678,6 +680,7 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
 	nanosleep(&delay, NULL);
       } while ((running = server_pid()) == pid && overlay_gettime_ms() < timeout);
     }
+    server_remove_stopfile();
     cli_puts("tries");
     cli_delim(":");
     cli_printf("%d", tries);

@@ -400,6 +400,7 @@ int server_pid();
 int server(char *backing_file);
 void server_shutdown_check();
 int server_create_stopfile();
+int server_remove_stopfile();
 int server_check_stopfile();
 void serverCleanUp();
 int isTransactionInCache(unsigned char *transaction_id);

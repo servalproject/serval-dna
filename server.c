@@ -212,9 +212,22 @@ int server_create_stopfile()
     return -1;
   FILE *f;
   if ((f = fopen(stopfile, "w")) == NULL)
-    return WHYF("Could not create stopfile '%s'", stopfile);
+    return WHYF("Could not create stopfile '%s': %s [errno=%d]", stopfile, strerror(errno), errno);
   fclose(f);
   return 0;
+}
+
+int server_remove_stopfile()
+{
+  char stopfile[1024];
+  if (!FORM_SERVAL_INSTANCE_PATH(stopfile, STOPFILE_NAME))
+    return -1;
+  if (unlink(stopfile) == -1) {
+    if (errno == ENOENT)
+      return 0;
+    return WHYF("Could not unlink stopfile '%s': %s [errno=%d]", stopfile, strerror(errno), errno);
+  }
+  return 1;
 }
 
 int server_check_stopfile()
@@ -234,13 +247,10 @@ int server_check_stopfile()
 void serverCleanUp()
 {
   /* Try to remove shutdown and PID files and exit */
+  server_remove_stopfile();
   char filename[1024];
-  if (FORM_SERVAL_INSTANCE_PATH(filename, STOPFILE_NAME)) {
+  if (FORM_SERVAL_INSTANCE_PATH(filename, PIDFILE_NAME))
     unlink(filename);
-  }
-  if (FORM_SERVAL_INSTANCE_PATH(filename, PIDFILE_NAME)) {
-    unlink(filename);
-  }
   if (mdp_client_socket==-1) {
     if (FORM_SERVAL_INSTANCE_PATH(filename, "mdp.socket")) {
       unlink(filename);
