@@ -636,57 +636,57 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
   if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1)
     return -1;
   const char *instancepath = serval_instancepath();
-  int pid = server_pid();
-  if (pid < 0)
-    return -1;
   cli_puts("instancepath");
   cli_delim(":");
   cli_puts(instancepath);
   cli_delim("\n");
-  if (pid) {
-    cli_puts("pid");
-    cli_delim(":");
-    cli_printf("%d", pid);
-    cli_delim("\n");
-    int tries = 0;
-    int running = pid;
-    while (running == pid) {
-      if (tries >= 5)
-	return WHYF(
-	    "Serval process for instance '%s' did not stop after %d SIGHUP signals",
-	    instancepath, tries
-	  );
-      ++tries;
-      /* Create the stopfile, which causes the server process's signal handler to exit
-	 instead of restarting. */
-      server_create_stopfile();
-      if (kill(pid, SIGHUP) == -1) {
-	// ESRCH means process is gone, possibly we are racing with another stop, or servald just
-	// died voluntarily.
-	if (errno == ESRCH) {
-	  serverCleanUp();
-	  break;
-	}
-	return WHYF("Error sending SIGHUP to Serval instance '%s' process pid=%d: %s [errno=%d]",
-	      instancepath, pid, strerror(errno), errno
-	    );
+  int pid = server_pid();
+  // If there is no pidfile, then there is no server process to stop.
+  if (pid <= 0)
+    return 1;
+  // Otherwise, we have a server process to stop, so get to work.
+  cli_puts("pid");
+  cli_delim(":");
+  cli_printf("%d", pid);
+  cli_delim("\n");
+  int tries = 0;
+  int running = pid;
+  while (running == pid) {
+    if (tries >= 5)
+      return WHYF(
+	  "Serval process for instance '%s' did not stop after %d SIGHUP signals",
+	  instancepath, tries
+	);
+    ++tries;
+    /* Create the stopfile, which causes the server process's signal handler to exit
+	instead of restarting. */
+    server_create_stopfile();
+    if (kill(pid, SIGHUP) == -1) {
+      // ESRCH means process is gone, possibly we are racing with another stop, or servald just
+      // died voluntarily.
+      if (errno == ESRCH) {
+	serverCleanUp();
+	break;
       }
-      /* Allow a few seconds for the process to die. */
-      time_t timeout = overlay_gettime_ms() + 2000;
-      do {
-	struct timespec delay;
-	delay.tv_sec = 0;
-	delay.tv_nsec = 200000000; // 200 ms = 5 Hz
-	nanosleep(&delay, NULL);
-      } while ((running = server_pid()) == pid && overlay_gettime_ms() < timeout);
+      return WHYF("Error sending SIGHUP to Serval instance '%s' process pid=%d: %s [errno=%d]",
+	    instancepath, pid, strerror(errno), errno
+	  );
     }
-    server_remove_stopfile();
-    cli_puts("tries");
-    cli_delim(":");
-    cli_printf("%d", tries);
-    cli_delim("\n");
+    /* Allow a few seconds for the process to die. */
+    time_t timeout = overlay_gettime_ms() + 2000;
+    do {
+      struct timespec delay;
+      delay.tv_sec = 0;
+      delay.tv_nsec = 200000000; // 200 ms = 5 Hz
+      nanosleep(&delay, NULL);
+    } while ((running = server_pid()) == pid && overlay_gettime_ms() < timeout);
   }
-  return pid ? 0 : 1;
+  server_remove_stopfile();
+  cli_puts("tries");
+  cli_delim(":");
+  cli_printf("%d", tries);
+  cli_delim("\n");
+  return 0;
 }
 
 int app_server_status(int argc, const char *const *argv, struct command_line_option *o)
