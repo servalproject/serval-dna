@@ -6,13 +6,18 @@
 #include <poll.h>
 #include <fcntl.h>
 
+#include "serval.h"
+
 int fd;
 int writeLine(char *msg)
 {
   write(fd,msg,strlen(msg));
 }
 
-int main(int argc, char *argv[]) {
+int app_monitor_cli(int argc, const char *const *argv, struct command_line_option *o)
+{
+  const char *sid=NULL;
+  cli_arg(argc, argv, o, "sid", &sid, NULL, "");
   struct sockaddr_un addr;
 
   if ( (fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
@@ -51,7 +56,7 @@ int main(int argc, char *argv[]) {
   writeLine("monitor vomp\n");
   writeLine("monitor rhizome\n");
 
-  if (argc>1) {
+  if (sid!=NULL&&sid[0]) {
     char msg[1024];
     snprintf(msg,1024,"call %s 5551 5552\n",argv[1]);
     writeLine(msg);

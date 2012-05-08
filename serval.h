@@ -1395,6 +1395,7 @@ int app_vomp_monitor(int argc, const char *const *argv, struct command_line_opti
 int app_pa_phone(int argc, const char *const *argv, struct command_line_option *o);
 #endif
 int app_vomp_dtmf(int argc, const char *const *argv, struct command_line_option *o);
+int app_monitor_cli(int argc, const char *const *argv, struct command_line_option *o);
 
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 

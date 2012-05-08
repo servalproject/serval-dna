@@ -1453,6 +1453,8 @@ command_line_option command_line_options[]={
    "Return information about SID, and optionally ask for DID resolution via network"},
   {app_test_rfs,{"test","rfs",NULL},0,
    "Test RFS field calculation"},
+  {app_monitor_cli,{"monitor","[<sid>]",NULL},0,
+   "Interactive servald monitor interface.  Specify SID to auto-dial that peer and insert dummy audio data"},
 #ifdef HAVE_VOIPTEST
   {app_pa_phone,{"phone",NULL},0,
    "Run phone test application"},
