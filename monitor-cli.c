@@ -8,11 +8,25 @@
 
 #include "serval.h"
 
+char cmd[1024];
+int cmdLen=0;
+int cmdOfs=0;
+int dataBytesExpected=0;
+unsigned char data[65536];
+int dataBytes=0;
+
+#define STATE_CMD 1
+#define STATE_DATA 2
+int state=STATE_CMD;
+
 int fd;
 int writeLine(char *msg)
 {
   write(fd,msg,strlen(msg));
+  return 0;
 }
+
+int processChar(int c);
 
 int app_monitor_cli(int argc, const char *const *argv, struct command_line_option *o)
 {
@@ -88,6 +102,7 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
   return 0;
 }
 
+int counter=0;
 int callState=0;
 int processLine(char *cmd,unsigned char *data,int dataLen)
 {
@@ -124,6 +139,7 @@ int processLine(char *cmd,unsigned char *data,int dataLen)
       /* Send synthetic audio packet */
       char buffer[1024];
       sprintf(buffer,"*320:AUDIO:%x:8\n"
+	      "%08d pasdfghjklzxcvbnm123456"
 	      "qwertyuiopasdfghjklzxcvbnm123456"
 	      "qwertyuiopasdfghjklzxcvbnm123456"
 	      "qwertyuiopasdfghjklzxcvbnm123456"
@@ -132,25 +148,18 @@ int processLine(char *cmd,unsigned char *data,int dataLen)
 	      "qwertyuiopasdfghjklzxcvbnm123456"
 	      "qwertyuiopasdfghjklzxcvbnm123456"
 	      "qwertyuiopasdfghjklzxcvbnm123456"
-	      "qwertyuiopasdfghjklzxcvbnm123456"
-	      "qwertyuiopasdfghjklzxcvbnm123456",l_id);
+	      "qwertyuiopasdfghjklzxcvbnm123456",l_id,counter++);
       writeLine(buffer);
       printf("< *320:AUDIO:%x:8\\n<320 bytes>\n",l_id);
     }
   }
-
+  cmd[0]=0;
+  cmdLen=0;
+  dataBytes=0;
+  dataBytesExpected=0;
+  state=STATE_CMD;
+  return 0;
 }
-
-char cmd[1024];
-int cmdLen=0;
-int cmdOfs=0;
-int dataBytesExpected=0;
-unsigned char data[65536];
-int dataBytes=0;
-
-#define STATE_CMD 1
-#define STATE_DATA 2
-int state=STATE_CMD;
 int processChar(int c)
 {
   switch(state) {
@@ -180,4 +189,5 @@ int processChar(int c)
       cmdLen=0;
     }
   }      
+  return 0;
 }

@@ -166,6 +166,8 @@ int monitor_poll()
     for(i=0;i<vomp_call_count;i++) {
       /* Push out any undelivered status changes */
       monitor_call_status(&vomp_call_states[i]);
+      WHYF("Sending keepalives for call #%d",i);
+
       /* And let far-end know that call is still alive */
       snprintf(msg,128,"\nKEEPALIVE:%06x\n",vomp_call_states[i].local.session);
       for(m=0;m<monitor_socket_count;m++)
@@ -562,6 +564,7 @@ int monitor_send_audio(vomp_call_state *call,overlay_mdp_frame *audio)
       fcntl(monitor_sockets[i].socket,F_SETFL,
 	    fcntl(monitor_sockets[i].socket, F_GETFL, NULL)|O_NONBLOCK);
       write(monitor_sockets[i].socket,msg,msglen);
+      WHYF("Writing AUDIOPACKET to client");
       if (errno&&(errno!=EINTR)&&(errno!=EAGAIN)) {
 	/* error sending update, so kill monitor socket */
 	WHYF("Tearing down monitor client #%d due to errno=%d",
