@@ -212,15 +212,15 @@ int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
       }
 
       if (flags&VOMP_SENDAUDIO) {
-	WHYF("got %d sample bytes, expecting %d",
-	     arg->vompevent.audio_sample_bytes,
-	     vomp_sample_size(arg->vompevent.audio_sample_codec));
+	if (0) WHYF("got %d sample bytes, expecting %d",
+		    arg->vompevent.audio_sample_bytes,
+		    vomp_sample_size(arg->vompevent.audio_sample_codec));
 	if (vomp_sample_size(arg->vompevent.audio_sample_codec)
 	    ==arg->vompevent.audio_sample_bytes) {
         unsigned short  *len=&mdp.out.payload_length;
 	unsigned char *p=&mdp.out.payload[0];
 
-	WHY("Including audio sample block");
+	// WHY("Including audio sample block");
 
 	/* record sample in recent list.
 	   XXX - What timestamp to attach to the sample?
@@ -298,8 +298,8 @@ int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
     bcopy(&call->remote_codec_list[0],&mdp.vompevent.supported_codecs[0],256);
 
     if (flags&VOMP_SENDAUDIO) {
-      WHYF("Frame contains audio (codec=%s)",
-	  vomp_describe_codec(arg->vompevent.audio_sample_codec));
+      if (0) WHYF("Frame contains audio (codec=%s)",
+		  vomp_describe_codec(arg->vompevent.audio_sample_codec));
       bcopy(&arg->vompevent.audio_bytes[0],
 	    &mdp.vompevent.audio_bytes[0],
 	    vomp_sample_size(arg->vompevent.audio_sample_codec));
@@ -332,8 +332,8 @@ int vomp_call_start_audio(vomp_call_state *call)
 int vomp_process_audio(vomp_call_state *call,overlay_mdp_frame *mdp)
 {
   int ofs=14;
-  if (mdp->in.payload_length>14)
-    WHYF("got here (payload has %d bytes)",mdp->in.payload_length);
+  // if (mdp->in.payload_length>14)
+  //  WHYF("got here (payload has %d bytes)",mdp->in.payload_length);
 
   /* Get end time marker for sample block collection */
   unsigned int e=0;
@@ -345,7 +345,7 @@ int vomp_process_audio(vomp_call_state *call,overlay_mdp_frame *mdp)
   while(ofs<mdp->in.payload_length)
     {
       int codec=mdp->in.payload[ofs];
-      WHYF("Spotted a %s sample block",vomp_describe_codec(codec));
+      // WHYF("Spotted a %s sample block",vomp_describe_codec(codec));
       if (!codec||vomp_sample_size(codec)<0) break;
       if ((ofs+1+vomp_sample_size(codec))>mdp->in.payload_length) break;
 
@@ -560,6 +560,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	  bcopy(call->remote.sid,mdpreply.vompevent.remote_sid,SID_SIZE);
 	  bcopy(call->local.did,mdpreply.vompevent.local_did,64);
 	  bcopy(call->remote.did,mdpreply.vompevent.remote_did,64);
+	  dump_vomp_status();
 	} else 
 	  if (mdp->vompevent.call_session_token)
 	    /* let the requestor know that the requested call doesn't exist */
@@ -679,11 +680,11 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
       break;
     case VOMPEVENT_AUDIOPACKET: /* user supplying audio */
       {
-	WHY("Audio packet arrived");
+	// WHY("Audio packet arrived");
 	vomp_call_state *call
 	  =vomp_find_call_by_session(mdp->vompevent.call_session_token);
 	if (call) {
-	  WHY("pushing audio sample out");
+	  // WHY("pushing audio sample out");
 	  return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_SENDAUDIO,mdp);
 	}
 	else WHY("audio packet had invalid call session token");
