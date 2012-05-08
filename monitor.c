@@ -369,6 +369,19 @@ int monitor_process_command(int index,char *cmd)
   else if (!strcasecmp(cmd,"ignore rhizome"))
     c->flags&=~MONITOR_RHIZOME;
   else if (sscanf(cmd,"call %s %s %s",sid,localDid,remoteDid)==3) {
+    if (sid[0]=='*') {
+      /* For testing, pick a peer and call them */
+      int bin,slot;
+      for(bin=0;bin<overlay_bin_count;bin++)
+	for(slot=0;slot<overlay_bin_size;slot++)
+	  {
+	    if (!overlay_nodes[bin][slot].sid[0]) 
+	      { 
+		continue; }
+	    strcpy(sid,overlay_render_sid(overlay_nodes[bin][slot].sid));
+	    break;
+	  }
+    }
     mdp.vompevent.flags=VOMPEVENT_DIAL;
     int cn=0,in=0,kp=0;
     if(!keyring_next_identity(keyring,&cn,&in,&kp))
