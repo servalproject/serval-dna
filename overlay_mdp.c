@@ -162,10 +162,8 @@ int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
   int r=sendto(sock,(char *)mdpreply,replylen,0,
 	       (struct sockaddr *)recvaddr,recvaddrlen);
   if (r<replylen) { 
-    WHY("sendto() failed when sending MDP reply"); 
     WHY_perror("sendto(d)"); 
-    printf("sock=%d, r=%d\n",sock,r);
-    return -1;
+    return WHYF("sendto() failed when sending MDP reply, sock=%d, r=%d", sock, r); 
   } else
     if (0) WHYF("reply of %d bytes sent",r);
   return 0;  
@@ -1101,8 +1099,7 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
     mdp->packetTypeAndFlags=MDP_ERROR;
     mdp->error.error=1;
     snprintf(mdp->error.message,128,"Error sending frame to MDP server.");
-    WHY_perror("sendto(f)");
-    return -1;
+    return WHY_perror("sendto(f)");
   } else {
     if (!(flags&MDP_AWAITREPLY)) {       
       return 0;
@@ -1172,9 +1169,8 @@ int overlay_mdp_client_init()
     int len = 1 + strlen(name.sun_path) + sizeof(name.sun_family) + 1;
     int r=bind(mdp_client_socket, (struct sockaddr *)&name, len);
     if (r) {
-      WHY("Could not bind MDP client socket to file name");
       WHY_perror("bind");
-      return -1;
+      return WHY("Could not bind MDP client socket to file name");
     }
 
     int send_buffer_size=128*1024;
