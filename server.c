@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <time.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <sys/stat.h>
 
 #include "serval.h"
 
@@ -582,10 +583,7 @@ int simpleServerMode()
     int len;
     int r;
 
-    if (servalShutdown) {
-      serverCleanUp();
-      exit(0);
-    }
+    server_shutdown_check();
 
     bzero((void *)&recvaddr,sizeof(recvaddr));
 
