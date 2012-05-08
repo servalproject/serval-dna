@@ -317,18 +317,12 @@ void signal_handler( int signal ) {
       exit(0);
     case SIGHUP:
     case SIGINT:
-      /* Shut down.
-	The shutting down should be done from the main-line code rather than here,
-	so we first try to tell the mainline code to do so.  If, however, this is
-	not the first time we have been asked to shut down, then we will do it here. */
-      if (servalShutdown) {
-	/* We have been asked before, so shut down cleanly */
-	serverCleanUp();
-	exit(0);
-      } else {
-	WHY("Asking Serval process to shutdown cleanly");
-	servalShutdown=1;
-      }
+      /* Terminate the server process.  The shutting down should be done from the main-line code
+	 rather than here, so we first try to tell the mainline code to do so.  If, however, this is
+	 not the first time we have been asked to shut down, then we will do it here. */
+      server_shutdown_check();
+      WHY("Asking Serval process to shutdown cleanly");
+      servalShutdown = 1;
       return;
   }
 

@@ -33,36 +33,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "rhizome.h"
 
-/** Return the PID of the currently running server process, return 0 if there is none.
- */
-static int servalNodeRunning()
-{
-  const char *instancepath = serval_instancepath();
-  struct stat st;
-  if (stat(instancepath, &st) == -1)
-    return setReason(
-	"Instance path '%s' non existant or not accessable: %s [errno=%d]"
-	" (Set SERVALINSTANCE_PATH to specify an alternate location)",
-	instancepath, strerror(errno), errno
-      );
-  if ((st.st_mode & S_IFMT) != S_IFDIR)
-    return setReason("Instance path '%s' is not a directory", instancepath);
-  char filename[1024];
-  if (!FORM_SERVAL_INSTANCE_PATH(filename, "serval.pid"))
-    return -1;
-  FILE *f = NULL;
-  if ((f = fopen(filename, "r"))) {
-    char buf[20];
-    fgets(buf, sizeof buf, f);
-    fclose(f);
-    int pid = atoi(buf);
-    if (pid > 0 && kill(pid, 0) != -1)
-      return pid;
-    unlink(filename);
-  }
-  return 0;
-}
-
 int cli_usage() {
   fprintf(stderr,"\nServal Mesh version <version>.\n");
   fprintf(stderr,"Usage:\n");
@@ -589,7 +559,7 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
   if (!interfaces[0])
     WHY("No network interfaces configured (empty 'interfaces' config setting)");
   overlay_interface_args(interfaces);
-  int pid = servalNodeRunning();
+  int pid = server_pid();
   if (pid < 0)
     return -1;
   int ret = 1;
@@ -631,7 +601,7 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
 	  happening. */
 	time_t timeout = time(NULL) + 5;
 	int rpid;
-	while (time(NULL) < timeout && (rpid = servalNodeRunning()) == 0)
+	while (time(NULL) < timeout && (rpid = server_pid()) == 0)
 	    usleep(200000); // 5 Hz
 	if (rpid == -1)
 	  return -1;
@@ -662,7 +632,7 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
   if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1)
     return -1;
   const char *instancepath = serval_instancepath();
-  int pid = servalNodeRunning();
+  int pid = server_pid();
   if (pid < 0)
     return -1;
   cli_puts("instancepath");
@@ -705,7 +675,7 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
       /* Allow a few seconds for the process to die, and keep an eye on things while this is
 	 happening. */
       time_t timeout = time(NULL) + 2;
-      while (time(NULL) < timeout && servalNodeRunning() == pid)
+      while (time(NULL) < timeout && server_pid() == pid)
 	usleep(200000); // 5 Hz
     }
     cli_puts("tries");
@@ -720,7 +690,7 @@ int app_server_status(int argc, const char *const *argv, struct command_line_opt
 {
   if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1)
     return -1;
-  int pid = servalNodeRunning();
+  int pid = server_pid();
   if (pid < 0)
     return -1;
   cli_puts("instancepath");

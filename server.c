@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 
+static int server_getpid = 0;
 unsigned char *hlr=NULL;
 int hlr_size=0;
 
@@ -97,6 +98,35 @@ int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
   return len;
 }
 
+/** Return the PID of the currently running server process, return 0 if there is none.
+ */
+int server_pid()
+{
+  const char *instancepath = serval_instancepath();
+  struct stat st;
+  if (stat(instancepath, &st) == -1)
+    return setReason(
+	"Instance path '%s' non existant or not accessable: %s [errno=%d]"
+	" (Set SERVALINSTANCE_PATH to specify an alternate location)",
+	instancepath, strerror(errno), errno
+      );
+  if ((st.st_mode & S_IFMT) != S_IFDIR)
+    return setReason("Instance path '%s' is not a directory", instancepath);
+  char filename[1024];
+  if (!FORM_SERVAL_INSTANCE_PATH(filename, "serval.pid"))
+    return -1;
+  FILE *f = NULL;
+  if ((f = fopen(filename, "r"))) {
+    char buf[20];
+    fgets(buf, sizeof buf, f);
+    fclose(f);
+    int pid = atoi(buf);
+    if (pid > 0 && kill(pid, 0) != -1)
+      return pid;
+    unlink(filename);
+  }
+  return 0;
+}
 
 int server(char *backing_file)
 {
@@ -122,7 +152,7 @@ int server(char *backing_file)
       getKeyring(backing_file);
     }
   
-  /* Record PID */
+  /* Record PID to advertise that the server is now running */
   char filename[1024];
   if (!FORM_SERVAL_INSTANCE_PATH(filename, "serval.pid"))
     return -1;
@@ -132,13 +162,36 @@ int server(char *backing_file)
     perror("fopen");
     return -1;
   }
-  fprintf(f,"%d\n",getpid());
+  server_getpid = getpid();
+  fprintf(f,"%d\n", server_getpid);
   fclose(f);
 
   if (!overlayMode) simpleServerMode();
   else overlayServerMode();
 
   return 0;
+}
+
+/* Called periodically by the server process in its main loop.
+ */
+void server_shutdown_check()
+{
+  static long long server_pid_time_ms = 0;
+  if (servalShutdown) {
+    serverCleanUp();
+    exit(0);
+  }
+  /* If this server has been supplanted with another or Serval has been uninstalled, then its PID
+      file will change or be unaccessible.  In this case, shut down without all the cleanup.
+      Perform this check at most once per second.  */
+  long long time_ms = overlay_gettime_ms();
+  if (server_pid_time_ms == 0 || time_ms - server_pid_time_ms > 1000) {
+    server_pid_time_ms = time_ms;
+    if (server_pid() != server_getpid) {
+      WHYF("Server pid file no longer contains my pid=%d -- shutting down without cleanup", server_pid);
+      exit(1);
+    }
+  }
 }
 
 int getKeyring(char *backing_file)

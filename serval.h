@@ -397,7 +397,9 @@ int respondSimple(keyring_identity *id,
 int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffer,int buffer_length,int *len,
 		unsigned char *transaction_id);
 int requestNewHLR(char *did,char *pin,char *sid,int recvttl,struct sockaddr *recvaddr);
+int server_pid();
 int server(char *backing_file);
+void server_shutdown_check();
 int isTransactionInCache(unsigned char *transaction_id);
 void insertTransactionInCache(unsigned char *transaction_id);
 

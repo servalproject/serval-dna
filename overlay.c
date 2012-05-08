@@ -78,6 +78,8 @@ keyring_file *keyring=NULL;
 
 int overlayServerMode()
 {
+  long long server_pid_time_ms = overlay_gettime_ms();
+
   /* In overlay mode we need to listen to all of our sockets, and also to
      send periodic traffic. This means we need to */
   fprintf(stderr,"Running in overlay mode.\n");
@@ -118,13 +120,10 @@ int overlayServerMode()
   /* Get rhizome server started BEFORE populating fd list so that
      the server's listen socket is in the list for poll() */
   if (rhizome_datastore_path) rhizome_server_poll();
-    
+
   while(1) {
 
-    if (servalShutdown) {
-      serverCleanUp();
-      exit(0);
-    }
+    server_shutdown_check();
 
     /* Work out how long we can wait before we need to tick */
     long long ms=overlay_time_until_next_tick();
