@@ -565,11 +565,8 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
   if (pid > 0) {
     WHYF("Serval process already running (pid=%d)", pid);
   } else {
-    /* Start the Serval process.
-      All server settings will be read by the server process from the
-      instance directory when it starts up.
-      We can just become the server process ourselves --- no need to fork.
-    */
+    /* Start the Serval process.  All server settings will be read by the server process from the
+       instance directory when it starts up.  */
     if (server_remove_stopfile() == -1)
       return -1;
     rhizome_datastore_path = serval_instancepath();
@@ -577,48 +574,53 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
     overlayMode = 1;
     if (foregroundP)
       return server(NULL);
-    switch ((pid = fork())) {
+    int cpid;
+    switch ((cpid = fork())) {
       case -1:
-	return WHYF("fork() failed: %s [errno=%d]", strerror(errno), errno);
-      case 0: { // Child process.
-	chdir("/");
-	close(0);
-	open("/dev/null", O_RDONLY);
-	close(1);
-	open("/dev/null", O_WRONLY);
-	close(2);
-	open("/dev/null", O_WRONLY);
-	/* The execpath option is provided so that a JNI call to "start" can be made which creates a
-	   new server daemon process with the correct argv[0].  Otherwise, the servald process appears
-	   as a process with argv[0] = "org.servalproject". */
-	if (execpath) {
-	  execl(execpath, execpath, "start", "foreground", NULL);
-	  return -1;
+	return WHY_perror("fork");
+      case 0: {
+	/* Child process.  Fork then exit, to disconnect daemon from parent process, so that
+	   when daemon exits it does not live on as a zombie. N.B. Do not return from within this
+	   process; that will unroll the JNI call stack and cause havoc.  Use exit().  */
+	switch (fork()) {
+	  case -1:
+	    exit(WHY_perror("fork"));
+	  case 0: { // Grandchild process
+	    chdir("/");
+	    close(0);
+	    open("/dev/null", O_RDONLY);
+	    close(1);
+	    open("/dev/null", O_WRONLY);
+	    close(2);
+	    open("/dev/null", O_WRONLY);
+	    /* The execpath option is provided so that a JNI call to "start" can be made which
+	       creates a new server daemon process with the correct argv[0].  Otherwise, the servald
+	       process appears as a process with argv[0] = "org.servalproject". */
+	    if (execpath) {
+	      execl(execpath, execpath, "start", "foreground", NULL);
+	      exit(-1);
+	    }
+	    exit(server(NULL));
+	  }
 	}
-	return server(NULL);
-      }
-      default: { // Parent process
-	/* Allow a few seconds for the process to start. */
-	int rpid = 0;
-	time_t timeout = overlay_gettime_ms() + 5000;
-	do {
-	  struct timespec delay;
-	  delay.tv_sec = 0;
-	  delay.tv_nsec = 200000000; // 200 ms = 5 Hz
-	  nanosleep(&delay, NULL);
-	} while ((rpid = server_pid()) == 0 && overlay_gettime_ms() < timeout);
-	if (rpid == -1)
-	  return -1;
-	if (rpid == 0)
-	  return WHY("Server process did not start");
-	if (rpid != pid) {
-	  WHYF("Started server process has pid=%d, expecting pid=%d", rpid, pid);
-	  pid = rpid;
-	}
-	ret = 0;
-	break;
+	exit(0); // Parent is waitpid()-ing for this.
       }
     }
+    /* Parent process.  Wait for the child process to fork the grandchild then die. */
+    waitpid(cpid, NULL, 0);
+    /* Allow a few seconds for the grandchild process to report for duty. */
+    time_t timeout = overlay_gettime_ms() + 5000;
+    do {
+      struct timespec delay;
+      delay.tv_sec = 0;
+      delay.tv_nsec = 200000000; // 200 ms = 5 Hz
+      nanosleep(&delay, NULL);
+    } while ((pid = server_pid()) == 0 && overlay_gettime_ms() < timeout);
+    if (pid == -1)
+      return -1;
+    if (pid == 0)
+      return WHY("Server process did not start");
+    ret = 0;
   }
   cli_puts("instancepath");
   cli_delim(":");
@@ -654,8 +656,8 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
   while (running == pid) {
     if (tries >= 5)
       return WHYF(
-	  "Serval process for instance '%s' did not stop after %d SIGHUP signals",
-	  instancepath, tries
+	  "Servald pid=%d for instance '%s' did not stop after %d SIGHUP signals",
+	  pid, instancepath, tries
 	);
     ++tries;
     /* Create the stopfile, which causes the server process's signal handler to exit
@@ -668,9 +670,8 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
 	serverCleanUp();
 	break;
       }
-      return WHYF("Error sending SIGHUP to Serval instance '%s' process pid=%d: %s [errno=%d]",
-	    instancepath, pid, strerror(errno), errno
-	  );
+      WHY_perror("kill");
+      return WHYF("Error sending SIGHUP to Servald pid=%d for instance '%s'", pid, instancepath);
     }
     /* Allow a few seconds for the process to die. */
     time_t timeout = overlay_gettime_ms() + 2000;
