@@ -199,7 +199,7 @@ void server_shutdown_check()
   if (server_pid_time_ms == 0 || time_ms - server_pid_time_ms > 1000) {
     server_pid_time_ms = time_ms;
     if (server_pid() != server_getpid) {
-      WHYF("Server pid file no longer contains my pid=%d -- shutting down without cleanup", server_pid);
+      WHYF("Server pid file no longer contains pid=%d -- shutting down without cleanup", server_getpid);
       exit(1);
     }
   }
