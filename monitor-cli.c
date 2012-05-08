@@ -51,8 +51,11 @@ int main(int argc, char *argv[]) {
   writeLine("monitor vomp\n");
   writeLine("monitor rhizome\n");
 
-  if (argc>1)
-    writeLine("call * 5551 5552\n");
+  if (argc>1) {
+    char msg[1024];
+    snprintf(msg,1024,"call %s 5551 5552\n",argv[1]);
+    writeLine(msg);
+  }
 
   while(1) {
     poll(fds,fdcount,1000);
