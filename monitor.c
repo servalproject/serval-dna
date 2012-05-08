@@ -167,7 +167,7 @@ int monitor_poll()
       /* Push out any undelivered status changes */
       monitor_call_status(&vomp_call_states[i]);
       /* And let far-end know that call is still alive */
-      snprintf(msg,128,"KEEPALIVE:%06x\n",vomp_call_states[i].local.session);
+      snprintf(msg,128,"\nKEEPALIVE:%06x\n",vomp_call_states[i].local.session);
       for(m=0;m<monitor_socket_count;m++)
 	write(monitor_sockets[m].socket,msg,strlen(msg));
     }
@@ -194,11 +194,11 @@ int monitor_poll()
     if (ucred.uid&&(ucred.uid!=getuid())) {
       WHYF("monitor.socket client has wrong uid (%d versus %d)",
 	   ucred.uid,getuid());
-      write(s,"CLOSE:Incorrect UID\n",strlen("CLOSE:Incorrect UID\n"));
+      write(s,"\nCLOSE:Incorrect UID\n",strlen("\nCLOSE:Incorrect UID\n"));
       close(s); continue;
     }
     else if (monitor_socket_count>=MAX_MONITOR_SOCKETS) {
-      write(s,"CLOSE:All sockets busy\n",strlen("CLOSE:All sockets busy\n"));
+      write(s,"\nCLOSE:All sockets busy\n",strlen("\nCLOSE:All sockets busy\n"));
       close(s);
     } else {
       struct monitor_context *c=&monitor_sockets[monitor_socket_count];
@@ -206,8 +206,8 @@ int monitor_poll()
       c->line_length=0;
       c->state=MONITOR_STATE_COMMAND;
       monitor_socket_count++;
-      write(s,"MONITOR:You are talking to servald\n",
-	    strlen("MONITOR:You are talking to servald\n"));
+      write(s,"\nMONITOR:You are talking to servald\n",
+	    strlen("\nMONITOR:You are talking to servald\n"));
       WHYF("Got %d clients",monitor_socket_count);
     }
     
@@ -332,8 +332,8 @@ int monitor_process_command(int index,char *cmd)
 	fcntl(c->socket, F_GETFL, NULL)|O_NONBLOCK);
 
   if (strlen(cmd)>MONITOR_LINE_LENGTH) {
-    write(c->socket,"ERROR:Command too long\n",
-	  strlen("ERROR:Command too long\n"));
+    write(c->socket,"\nERROR:Command too long\n",
+	  strlen("\nERROR:Command too long\n"));
     return -1;
   }
 
@@ -373,7 +373,7 @@ int monitor_process_command(int index,char *cmd)
     int cn=0,in=0,kp=0;
     if(!keyring_next_identity(keyring,&cn,&in,&kp))
       {
-	snprintf(msg,1024,"ERROR:no local identity, so cannot place call\n");
+	snprintf(msg,1024,"\nERROR:no local identity, so cannot place call\n");
 	write(c->socket,msg,strlen(msg));
       }
     else {
@@ -413,7 +413,7 @@ int monitor_process_command(int index,char *cmd)
     for(i=0;i<strlen(digits);i++) {
       int digit=vomp_parse_dtmf_digit(digits[i]);
       if (digit<0) {
-	snprintf(msg,1024,"ERROR: invalid DTMF digit 0x%02x\n",digit);
+	snprintf(msg,1024,"\nERROR: invalid DTMF digit 0x%02x\n",digit);
 	write(c->socket,msg,strlen(msg));
       }
       mdp.vompevent.audio_bytes[mdp.vompevent.audio_sample_bytes]
@@ -428,7 +428,7 @@ int monitor_process_command(int index,char *cmd)
   fcntl(c->socket,F_SETFL,
 	fcntl(c->socket, F_GETFL, NULL)|O_NONBLOCK);
 
-  snprintf(msg,1024,"MONITORSTATUS:%d\n",c->flags);
+  snprintf(msg,1024,"\nMONITORSTATUS:%d\n",c->flags);
   write(c->socket,msg,strlen(msg));
 
   return 0;
@@ -450,7 +450,7 @@ int monitor_process_data(int index)
 
   vomp_call_state *call=vomp_find_call_by_session(c->sample_call_session_token);
   if (!call) {
-    write(c->socket,"ERROR:No such call\n",strlen("ERROR:No such call\n"));
+    write(c->socket,"\nERROR:No such call\n",strlen("\nERROR:No such call\n"));
     return -1;
   }
 
@@ -479,7 +479,7 @@ int monitor_call_status(vomp_call_state *call)
   call->remote.last_state=call->remote.state;
   if (show) {
     if (0) WHYF("sending call status to monitor");
-    snprintf(msg,1024,"CALLSTATUS:%06x:%06x:%d:%d:%s:%s:%s:%s\n",
+    snprintf(msg,1024,"\nCALLSTATUS:%06x:%06x:%d:%d:%s:%s:%s:%s\n",
 	     call->local.session,call->remote.session,
 	     call->local.state,call->remote.state,
 	     overlay_render_sid(call->local.sid),
@@ -523,9 +523,11 @@ int monitor_send_audio(vomp_call_state *call,overlay_mdp_frame *audio)
   int sample_bytes=vomp_sample_size(audio->vompevent.audio_sample_codec);
   unsigned char msg[1024+MAX_AUDIO_BYTES];
   /* All commands followed by binary data start with *len:, so that 
-     they can be easily parsed at the far end, even if not supported. */
+     they can be easily parsed at the far end, even if not supported.
+     Put newline at start of these so that receiving data in command
+     mode doesn't confuse the parser.  */
   snprintf((char *)msg,1024,
-	   "*%d:AUDIOPACKET:%06x:%06x:%d:%d:%d:%lld:%lld\n",
+	   "\n*%d:AUDIOPACKET:%06x:%06x:%d:%d:%d:%lld:%lld\n",
 	   sample_bytes,
 	   call->local.session,call->remote.session,
 	   call->local.state,call->remote.state,
