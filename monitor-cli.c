@@ -38,11 +38,6 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
     exit(-1);
   }
 
-  fcntl(fd,F_SETFL,
-	fcntl(fd, F_GETFL, NULL)|O_NONBLOCK);
-  fcntl(STDIN_FILENO,F_SETFL,
-	fcntl(STDIN_FILENO, F_GETFL, NULL)|O_NONBLOCK);
-
   struct pollfd fds[128];
   int fdcount=0;
 
@@ -65,6 +60,11 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
   while(1) {
     poll(fds,fdcount,1000);
 
+    fcntl(fd,F_SETFL,
+	  fcntl(fd, F_GETFL, NULL)|O_NONBLOCK);
+    fcntl(STDIN_FILENO,F_SETFL,
+	  fcntl(STDIN_FILENO, F_GETFL, NULL)|O_NONBLOCK);
+    
     char line[1024];
     int bytes;
     int i;
@@ -77,6 +77,12 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
       printf("< %s",line);
       write(fd,line,bytes);
     }
+
+  fcntl(fd,F_SETFL,
+	fcntl(fd, F_GETFL, NULL)&~O_NONBLOCK);
+  fcntl(STDIN_FILENO,F_SETFL,
+	fcntl(STDIN_FILENO, F_GETFL, NULL)&~O_NONBLOCK);
+
   }
   
   return 0;
