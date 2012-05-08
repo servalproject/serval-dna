@@ -155,12 +155,18 @@ int monitor_poll()
   int s;
   struct sockaddr ignored_address;
   socklen_t ignored_length=sizeof(ignored_address);
+  WHY("here");
 
   /* tell all monitor clients about status of all calls periodically */
   long long now=overlay_gettime_ms();
   char msg[128];
   int m;
+  if (monitor_last_update_time>(now+1000)) {
+    WHY("Fixed run away monitor_last_update_time");
+    monitor_last_update_time=now+1000;
+  }
   if (now>(monitor_last_update_time+1000)) {
+    WHY("Send keep alives");
     monitor_last_update_time=now;
     int i;
     for(i=0;i<vomp_call_count;i++) {
