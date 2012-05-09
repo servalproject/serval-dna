@@ -88,23 +88,21 @@ int monitor_setup_sockets()
     if (monitor_named_socket>-1) {
       int dud=0;
       int r=bind(monitor_named_socket, (struct sockaddr *)&name, len);
-      if (r) { dud=1; r=0; 
-	WHY("bind() of named unix domain monitor socket failed"); }
+      if (r) { dud=1; r=0; WHY_perror("bind"); }
       r=listen(monitor_named_socket,MAX_MONITOR_SOCKETS);
-      if (r) { dud=1; r=0;
-	WHY("listen() of named unix domain monitor socket failed");
+      if (r) { dud=1; r=0; WHY_perror("listen");
       }
       if (dud) {
 	close(monitor_named_socket);
 	monitor_named_socket=-1;
-	WHY("Could not open named unix domain socket.");
+	return -1;
       }
 
       int send_buffer_size=64*1024;    
       int res = setsockopt(monitor_named_socket, SOL_SOCKET, SO_RCVBUF, 
 		       &send_buffer_size, sizeof(send_buffer_size));
-      if (res) WHYF("setsockopt() failed: errno=%d",errno);
-      else WHY("Monitor server socket setup");
+      if (res) WHY_perror("setsockopt");
+      else if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) WHY("Monitor server socket setup");
     }
   }
 
