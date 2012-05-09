@@ -1407,3 +1407,25 @@ int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int monitor_call_status(vomp_call_state *call);
 int monitor_send_audio(vomp_call_state *call,overlay_mdp_frame *audio);
 extern int monitor_socket_count;
+
+#define AUDIO_MSM_G1_ETC 1
+#define AUDIO_MSM_N1_ETC 2
+extern int detectedAudioDevice;
+extern char *detectedAudioDeviceName;
+int detectAudioDevice();
+int getAudioPlayFd();
+int getAudioRecordFd();
+int getAudioFd();
+int getAudioBytes(unsigned char *buffer,
+		  int offset,
+		  int bufferSize);
+int playAudio(unsigned char *data,int bytes);
+int stopAudio();
+int startAudio();
+int encodeAndDispatchRecordedAudio(int fd,int callSessionToken,
+				   int recordCodec,
+				   unsigned char *sampleData,
+				   int sampleBytes);
+char *audio_msm_g1_detect();
+int audio_msm_g1_start();
+int audio_msm_g1_stop();

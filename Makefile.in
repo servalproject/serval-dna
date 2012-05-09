@@ -40,7 +40,10 @@ SRCS=	batman.c \
 	vomp.c \
 	lsif.c \
 	monitor.c \
-	monitor-cli.c
+	monitor-cli.c \
+	codecs.c \
+	audiodevices.c \
+	audio_msm_g1.c
 
 HAVE_VOIPTEST=	@HAVE_VOIPTEST@
 ifeq ($(HAVE_VOIPTEST), 1)

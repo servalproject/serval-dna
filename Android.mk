@@ -67,7 +67,10 @@ LOCAL_SRC_FILES:= \
 	serval-dna/vomp.c \
 	serval-dna/lsif.c \
 	serval-dna/monitor.c \
-	serval-dna/monitor-cli.c
+	serval-dna/monitor-cli.c \
+	serval-dna/codecs.c \
+	serval-dna/audiodevices.c \
+	serval-dna/audio_msm_g1.c
 
 LOCAL_MODULE:= serval
 
@@ -93,5 +96,12 @@ include $(CLEAR_VARS)
 
 LOCAL_MODULE:= servald
 LOCAL_SRC_FILES:= serval-dna/servalwrap.c
+
+include $(BUILD_EXECUTABLE)
+
+include $(CLEAR_VARS)
+
+LOCAL_MODULE:= playwav
+LOCAL_SRC_FILES:= serval-dna/playwav.c
 
 include $(BUILD_EXECUTABLE)
