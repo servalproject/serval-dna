@@ -387,10 +387,11 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
       if (neh->scores[i]>neh->scores[*interface]) *interface=i;
     }
     if (neh->scores[*interface]<1) {
-      if (debug&DEBUG_OVERLAYROUTING)
+      if (debug&DEBUG_OVERLAYROUTING) {
 	*interface=-1;
 	WHYF("No open path to %s\n",overlay_render_sid(neh->node->sid));
-      return -1; 
+      }
+      return -1;
     }
     if (0) printf("nexthop is %s\n",overlay_render_sid(nexthop));
     return 0;
