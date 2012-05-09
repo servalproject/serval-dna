@@ -397,6 +397,7 @@ int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffe
 		unsigned char *transaction_id);
 int requestNewHLR(char *did,char *pin,char *sid,int recvttl,struct sockaddr *recvaddr);
 int server_pid();
+void server_save_argv(int argc, const char *const *argv);
 int server(char *backing_file);
 void server_shutdown_check();
 int server_create_stopfile();

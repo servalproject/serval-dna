@@ -248,11 +248,6 @@ int usage(char *complaint)
 }
 
 #ifndef DNA_NO_MAIN
-char *exec_args[128];
-int exec_argc=0;
-
-int servalShutdown=0;
-
 const char *thisinstancepath=NULL;
 const char *serval_instancepath()
 {
@@ -287,170 +282,6 @@ int create_serval_instance_dir() {
   }
   return 0;
 }
-
-void signal_handler( int signal ) {
-  
-  switch (signal) {
-    case SIGQUIT:
-      serverCleanUp();
-      exit(0);
-    case SIGHUP:
-    case SIGINT:
-      /* Terminate the server process.  The shutting down should be done from the main-line code
-	 rather than here, so we first try to tell the mainline code to do so.  If, however, this is
-	 not the first time we have been asked to shut down, then we will do it here. */
-      server_shutdown_check();
-      WHY("Asking Serval process to shutdown cleanly");
-      servalShutdown = 1;
-      return;
-  }
-
-  /* oops - caught a bad signal -- exec() ourselves fresh */
-  char signalName[64];
-  snprintf(signalName,63,"signal %d",signal); signalName[63]=0;
-  switch(signal) {
-#ifdef SIGHUP
-  case SIGHUP: snprintf(signalName,63,"SIG %s (%d)","hangup",signal);
-    break;
-#endif
-#ifdef SIGINT
-  case SIGINT: snprintf(signalName,63,"SIG %s (%d)","interrupt",signal);
-    break;
-#endif
-#ifdef SIGQUIT
-  case SIGQUIT: snprintf(signalName,63,"SIG %s (%d)","quit",signal);
-    break;
-#endif
-#ifdef SIGILL
-  case SIGILL: snprintf(signalName,63,"SIG %s (%d)","illegal instruction (not reset when caught)",signal);
-    break;
-#endif
-#ifdef SIGTRAP
-  case SIGTRAP: snprintf(signalName,63,"SIG %s (%d)","trace trap (not reset when caught)",signal);
-    break;
-#endif
-#ifdef SIGABRT
-  case SIGABRT: snprintf(signalName,63,"SIG %s (%d)","abort()",signal);
-    break;
-#endif
-#ifdef SIGPOLL
-  case SIGPOLL: snprintf(signalName,63,"SIG %s (%d)","pollable event ([XSR] generated, not supported)",signal);
-    break;
-#endif
-#ifdef SIGEMT
-  case SIGEMT: snprintf(signalName,63,"SIG %s (%d)","EMT instruction",signal);
-    break;
-#endif
-#ifdef SIGFPE
-  case SIGFPE: snprintf(signalName,63,"SIG %s (%d)","floating point exception",signal);
-    break;
-#endif
-#ifdef SIGKILL
-  case SIGKILL: snprintf(signalName,63,"SIG %s (%d)","kill (cannot be caught or ignored)",signal);
-    break;
-#endif
-#ifdef SIGBUS
-  case SIGBUS: snprintf(signalName,63,"SIG %s (%d)","bus error",signal);
-    break;
-#endif
-#ifdef SIGSEGV
-  case SIGSEGV: snprintf(signalName,63,"SIG %s (%d)","segmentation violation",signal);
-    break;
-#endif
-#ifdef SIGSYS
-  case SIGSYS: snprintf(signalName,63,"SIG %s (%d)","bad argument to system call",signal);
-    break;
-#endif
-#ifdef SIGPIPE
-  case SIGPIPE: snprintf(signalName,63,"SIG %s (%d)","write on a pipe with no one to read it",signal);
-    break;
-#endif
-#ifdef SIGALRM
-  case SIGALRM: snprintf(signalName,63,"SIG %s (%d)","alarm clock",signal);
-    break;
-#endif
-#ifdef SIGTERM
-  case SIGTERM: snprintf(signalName,63,"SIG %s (%d)","software termination signal from kill",signal);
-    break;
-#endif
-#ifdef SIGURG
-  case SIGURG: snprintf(signalName,63,"SIG %s (%d)","urgent condition on IO channel",signal);
-    break;
-#endif
-#ifdef SIGSTOP
-  case SIGSTOP: snprintf(signalName,63,"SIG %s (%d)","sendable stop signal not from tty",signal);
-    break;
-#endif
-#ifdef SIGTSTP
-  case SIGTSTP: snprintf(signalName,63,"SIG %s (%d)","stop signal from tty",signal);
-    break;
-#endif
-#ifdef SIGCONT
-  case SIGCONT: snprintf(signalName,63,"SIG %s (%d)","continue a stopped process",signal);
-    break;
-#endif
-#ifdef SIGCHLD
-  case SIGCHLD: snprintf(signalName,63,"SIG %s (%d)","to parent on child stop or exit",signal);
-    break;
-#endif
-#ifdef SIGTTIN
-  case SIGTTIN: snprintf(signalName,63,"SIG %s (%d)","to readers pgrp upon background tty read",signal);
-    break;
-#endif
-#ifdef SIGTTOU
-  case SIGTTOU: snprintf(signalName,63,"SIG %s (%d)","like TTIN for output if (tp->t_local&LTOSTOP)",signal);
-    break;
-#endif
-#ifdef SIGIO
-#if SIGIO != SIGPOLL          
-  case SIGIO: snprintf(signalName,63,"SIG %s (%d)","input/output possible signal",signal);
-    break;
-#endif
-#endif
-#ifdef SIGXCPU
-  case SIGXCPU: snprintf(signalName,63,"SIG %s (%d)","exceeded CPU time limit",signal);
-    break;
-#endif
-#ifdef SIGXFSZ
-  case SIGXFSZ: snprintf(signalName,63,"SIG %s (%d)","exceeded file size limit",signal);
-    break;
-#endif
-#ifdef SIGVTALRM
-  case SIGVTALRM: snprintf(signalName,63,"SIG %s (%d)","virtual time alarm",signal);
-    break;
-#endif
-#ifdef SIGPROF
-  case SIGPROF: snprintf(signalName,63,"SIG %s (%d)","profiling time alarm",signal);
-    break;
-#endif
-#ifdef SIGWINCH
-  case SIGWINCH: snprintf(signalName,63,"SIG %s (%d)","window size changes",signal);
-    break;
-#endif
-#ifdef SIGINFO
-  case SIGINFO: snprintf(signalName,63,"SIG %s (%d)","information request",signal);
-    break;
-#endif
-#ifdef SIGUSR1
-  case SIGUSR1: snprintf(signalName,63,"SIG %s (%d)","user defined signal 1",signal);
-    break;
-#endif
-#ifdef SIGUSR2
-  case SIGUSR2: snprintf(signalName,63,"SIG %s (%d)","user defined signal 2",signal);
-    break;
-#endif
-  }
-  signalName[63]=0;
-  fprintf(stderr,"Caught terminal signal %s -- respawning.\n",signalName);
-  if (sock>-1) close(sock);
-  int i;
-  for(i=0;i<overlay_interface_count;i++)
-    if (overlay_interfaces[i].fd>-1)
-      close(overlay_interfaces[i].fd);
-  execv(exec_args[0],exec_args);
-  /* Quit if the exec() fails */
-  exit(-3);
-} 
 
 int setVerbosity(const char *optarg) {
   long long old_debug=debug;
@@ -499,31 +330,15 @@ int main(int argc, char **argv)
   int instance=-1;
   int foregroundMode=0;
 
-  memabuseInit();
-
 #if defined WIN32
     WSADATA wsa_data;
     WSAStartup(MAKEWORD(1,1), &wsa_data);
-#else
-    /* Catch sigsegv and other crash signals so that we can relaunch ourselves */
-
-    for(exec_argc=0;exec_argc<argc;exec_argc++)
-      exec_args[exec_argc]=strdup(argv[exec_argc]);
-    exec_args[exec_argc]=0;
-
-    signal( SIGSEGV, signal_handler );
-    signal( SIGFPE, signal_handler );
-    signal( SIGILL, signal_handler );
-    signal( SIGBUS, signal_handler );
-    signal( SIGABRT, signal_handler );
-
-    /* Catch SIGHUP etc so that we can respond to requests to do things */
-    signal( SIGHUP, signal_handler );
-    signal( SIGINT, signal_handler );
-    signal( SIGQUIT, signal_handler );
 #endif
 
+  memabuseInit();
   srandomdev();
+
+  server_save_argv(argc, argv);
 
   if (argv[1]&&argv[1][0]!='-') {
     /* First argument doesn't start with a dash, so assume it is for the new command line

@@ -28,6 +28,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define PIDFILE_NAME	  "servald.pid"
 #define STOPFILE_NAME	  "servald.stop"
 
+char *exec_args[128];
+int exec_argc = 0;
+
+int servalShutdown = 0;
+
 static int server_getpid = 0;
 unsigned char *hlr=NULL;
 int hlr_size=0;
@@ -37,6 +42,7 @@ FILE *i_f=NULL;
 struct in_addr client_addr;
 int client_port;
 
+void signal_handler(int signal);
 int getKeyring(char *s);
 int createServerSocket();
 int simpleServerMode();
@@ -133,8 +139,27 @@ int server_pid()
   return 0;
 }
 
+void server_save_argv(int argc, const char *const *argv)
+{
+    /* Save our argv[] to use for relaunching */
+    for (exec_argc = 0; exec_argc != argc; ++exec_argc)
+      exec_args[exec_argc] = strdup(argv[exec_argc]);
+    exec_args[exec_argc] = 0;
+}
+
 int server(char *backing_file)
 {
+  /* Catch sigsegv and other crash signals so that we can relaunch ourselves */
+  signal(SIGSEGV, signal_handler);
+  signal(SIGFPE, signal_handler);
+  signal(SIGILL, signal_handler);
+  signal(SIGBUS, signal_handler);
+  signal(SIGABRT, signal_handler);
+  /* Catch SIGHUP etc so that we can respond to requests to do things */
+  signal(SIGHUP, signal_handler);
+  signal(SIGINT, signal_handler);
+  signal(SIGQUIT, signal_handler);
+
   if (overlayMode)
     {
       /* Now find and initialise all the suitable network interfaces, i.e., 
@@ -197,6 +222,7 @@ void server_shutdown_check()
   static long long server_pid_time_ms = 0;
   long long time_ms = overlay_gettime_ms();
   if (server_pid_time_ms == 0 || time_ms - server_pid_time_ms > 1000) {
+    WHYF("time_ms=%lld", time_ms);
     server_pid_time_ms = time_ms;
     if (server_pid() != server_getpid) {
       WHYF("Server pid file no longer contains pid=%d -- shutting down without cleanup", server_getpid);
@@ -259,6 +285,144 @@ void serverCleanUp()
     overlay_mdp_client_done();
   }
 }
+
+static void signame(char *buf, size_t len, int signal)
+{
+  const char *desc = "";
+  switch(signal) {
+#ifdef SIGHUP
+  case SIGHUP: desc = "HUP"; break;
+#endif
+#ifdef SIGINT
+  case SIGINT: desc = "INT"; break;
+#endif
+#ifdef SIGQUIT
+  case SIGQUIT: desc = "QUIT"; break;
+#endif
+#ifdef SIGILL
+  case SIGILL: desc = "ILL (not reset when caught)"; break;
+#endif
+#ifdef SIGTRAP
+  case SIGTRAP: desc = "TRAP (not reset when caught)"; break;
+#endif
+#ifdef SIGABRT
+  case SIGABRT: desc = "ABRT"; break;
+#endif
+#ifdef SIGPOLL
+  case SIGPOLL: desc = "POLL ([XSR] generated, not supported)"; break;
+#endif
+#ifdef SIGEMT
+  case SIGEMT: desc = "EMT"; break;
+#endif
+#ifdef SIGFPE
+  case SIGFPE: desc = "FPE"; break;
+#endif
+#ifdef SIGKILL
+  case SIGKILL: desc = "KILL (cannot be caught or ignored)"; break;
+#endif
+#ifdef SIGBUS
+  case SIGBUS: desc = "BUS"; break;
+#endif
+#ifdef SIGSEGV
+  case SIGSEGV: desc = "SEGV"; break;
+#endif
+#ifdef SIGSYS
+  case SIGSYS: desc = "SYS"; break;
+#endif
+#ifdef SIGPIPE
+  case SIGPIPE: desc = "PIPE"; break;
+#endif
+#ifdef SIGALRM
+  case SIGALRM: desc = "ALRM"; break;
+#endif
+#ifdef SIGTERM
+  case SIGTERM: desc = "TERM"; break;
+#endif
+#ifdef SIGURG
+  case SIGURG: desc = "URG"; break;
+#endif
+#ifdef SIGSTOP
+  case SIGSTOP: desc = "STOP"; break;
+#endif
+#ifdef SIGTSTP
+  case SIGTSTP: desc = "TSTP"; break;
+#endif
+#ifdef SIGCONT
+  case SIGCONT: desc = "CONT"; break;
+#endif
+#ifdef SIGCHLD
+  case SIGCHLD: desc = "CHLD"; break;
+#endif
+#ifdef SIGTTIN
+  case SIGTTIN: desc = "TTIN"; break;
+#endif
+#ifdef SIGTTOU
+  case SIGTTOU: desc = "TTOU"; break;
+#endif
+#ifdef SIGIO
+#if SIGIO != SIGPOLL          
+  case SIGIO: desc = "IO"; break;
+#endif
+#endif
+#ifdef SIGXCPU
+  case SIGXCPU: desc = "XCPU"; break;
+#endif
+#ifdef SIGXFSZ
+  case SIGXFSZ: desc = "XFSZ"; break;
+#endif
+#ifdef SIGVTALRM
+  case SIGVTALRM: desc = "VTALRM"; break;
+#endif
+#ifdef SIGPROF
+  case SIGPROF: desc = "PROF"; break;
+#endif
+#ifdef SIGWINCH
+  case SIGWINCH: desc = "WINCH"; break;
+#endif
+#ifdef SIGINFO
+  case SIGINFO: desc = "INFO"; break;
+#endif
+#ifdef SIGUSR1
+  case SIGUSR1: desc = "USR1"; break;
+#endif
+#ifdef SIGUSR2
+  case SIGUSR2: desc = "USR2"; break;
+#endif
+  }
+  snprintf(buf, len, "SIG%s (%d) %s", desc, signal, strsignal(signal));
+  buf[len - 1] = '\0';
+}
+
+void signal_handler(int signal)
+{
+  char buf[80];
+  signame(buf, sizeof(buf), signal);
+  WHYF("Caught %s", buf);
+  switch (signal) {
+    case SIGQUIT:
+      serverCleanUp();
+      exit(0);
+    case SIGHUP:
+    case SIGINT:
+      /* Terminate the server process.  The shutting down should be done from the main-line code
+	 rather than here, so we first try to tell the mainline code to do so.  If, however, this is
+	 not the first time we have been asked to shut down, then we will do it here. */
+      server_shutdown_check();
+      WHY("Asking Serval process to shutdown cleanly");
+      servalShutdown = 1;
+      return;
+  }
+  /* oops - caught a bad signal -- exec() ourselves fresh */
+  WHY("Respawning");
+  if (sock>-1) close(sock);
+  int i;
+  for(i=0;i<overlay_interface_count;i++)
+    if (overlay_interfaces[i].fd>-1)
+      close(overlay_interfaces[i].fd);
+  execv(exec_args[0],exec_args);
+  /* Quit if the exec() fails */
+  exit(-3);
+} 
 
 int getKeyring(char *backing_file)
 {
