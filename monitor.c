@@ -189,7 +189,7 @@ int monitor_poll()
 	 (s = accept4(monitor_named_socket,ignored_address,&ignored_length,O_NONBLOCK))
 #else
 	 (DEBUG("accept"), 1) && //XXX
-	 (s = accept(monitor_named_socket,&ignored_address,&ignored_length))
+	 (s = accept(monitor_named_socket,ignored_address,&ignored_length))
 #endif
       != -1
   ) {
