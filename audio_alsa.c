@@ -18,7 +18,13 @@
 
 #include "serval.h"
 
-#ifdef HAVE_ALSA_ASOUNDLIB_H
+#ifndef HAVE_ALSA_ASOUNDLIB_H
+/* XXX Android NDK lacks the header files needed to build this.
+   Will deal with it later */
+monitor_audio *audio_alsa_detect() {
+  return NULL;
+}
+#else
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,7 +46,7 @@
    necessary symbols we need.
 */
 typedef struct alsa_functions {
-  int (*snd_pcm_open)(snd_pcm_t **,char *,int,int);
+  int (*snd_pcm_open_preferred)(snd_pcm_t **,int *,int *,int);
   int (*snd_pcm_close)(snd_pcm_t *);
   int (*snd_pcm_hw_params_malloc)(snd_pcm_hw_params_t **);
   int (*snd_pcm_hw_params_any)(snd_pcm_t *,snd_pcm_hw_params_t *);
@@ -63,10 +69,12 @@ alsa_functions *alsa = NULL;
 
 int alsa_load()
 {
+  WHY("Trying to load ALSA library");
   void *h = dlopen(ALSA_LIB_PATH,RTLD_LAZY);
+  if (!h) h=dlopen("/usr/lib/i386-linux-gnu/libasound.so.2",RTLD_LAZY);
   if (!h) return -1;
   alsa_functions *a=calloc(sizeof(alsa_functions),1);
-  GETSYM(snd_pcm_open);
+  GETSYM(snd_pcm_open_preferred);
   GETSYM(snd_pcm_hw_params_malloc);
   GETSYM(snd_pcm_hw_params_any);
   GETSYM(snd_pcm_hw_params_set_access);
@@ -81,7 +89,8 @@ int alsa_load()
   GETSYM(snd_pcm_poll_descriptors);
   alsa=a;
   dlclose(h);
-  
+  WHY("Loaded ALSA library");
+
   return 0;
 }
 
@@ -120,8 +129,8 @@ int audio_alsa_start_play()
   record_params=NULL; play_params=NULL;
 
   /* Open playback device */
-  r = alsa->snd_pcm_open (&play_handle,"default",SND_PCM_STREAM_PLAYBACK,
-			  SND_PCM_NONBLOCK);
+  r = alsa->snd_pcm_open_preferred (&play_handle,NULL,NULL,
+				    SND_PCM_STREAM_PLAYBACK|SND_PCM_NONBLOCK);
   if (r) { WHYF("ALSA pcm_open() failed"); goto error; }
 
   /* Configure playback device for 8000Hz, 16 bit, mono */
@@ -157,8 +166,8 @@ int audio_alsa_start_play()
 int audio_alsa_start_record()
 {
   /* Open recording device non-blocking */
-  int r = alsa->snd_pcm_open (&record_handle,"default",SND_PCM_STREAM_CAPTURE,
-			      SND_PCM_NONBLOCK);
+  int r = alsa->snd_pcm_open_preferred(&record_handle,NULL,NULL,
+				       SND_PCM_STREAM_CAPTURE|SND_PCM_NONBLOCK);
   if (r) { WHYF("ALSA pcm_open() failed"); goto error; }
 
   /* Configure playback device for 8000Hz, 16 bit, mono */
@@ -243,25 +252,23 @@ int audio_alsa_write(unsigned char *buffer,int bytes)
   else return 0;
 }
 
-#endif // HAVE_ALSA_ASOUNDLIB_H
-
 monitor_audio *audio_alsa_detect()
 {
-#ifdef HAVE_ALSA_ASOUNDLIB_H
   if (!alsa) alsa_load();
   if (!alsa) return NULL;
   snd_pcm_t *handle;
-  if (alsa->snd_pcm_open (&handle, "default", SND_PCM_STREAM_PLAYBACK, 0) != -1) {
-    alsa->snd_pcm_close(handle);
-    monitor_audio *au=calloc(sizeof(monitor_audio),1);
-    strcpy(au->name,"ALSA compatible");
-    au->start=audio_alsa_start;
-    au->stop=audio_alsa_stop;
-    au->poll_fds=audio_alsa_pollfds;
-    au->read=audio_alsa_read;
-    au->write=audio_alsa_write;
-    return au;
-  }
-#endif // HAVE_ALSA_ASOUNDLIB_H
-  return NULL;
+  if (alsa->snd_pcm_open_preferred(&handle,NULL,NULL,SND_PCM_STREAM_PLAYBACK) < 0)
+    return NULL;
+  alsa->snd_pcm_close(handle);
+
+  monitor_audio *au=calloc(sizeof(monitor_audio),1);
+  strcpy(au->name,"ALSA compatible");
+  au->start=audio_alsa_start;
+  au->stop=audio_alsa_stop;
+  au->poll_fds=audio_alsa_pollfds;
+  au->read=audio_alsa_read;
+  au->write=audio_alsa_write;
+  return au;
 }
+
+#endif

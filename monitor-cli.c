@@ -48,6 +48,7 @@ int processChar(int c);
 
 int autoAnswerP=1;
 int pipeAudio=1;
+int reflectAudio=0;
 int syntheticAudio=0;
 int showReceived=1;
 int interactiveP=1;
@@ -61,6 +62,11 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
   const char *sid=NULL;
   cli_arg(argc, argv, o, "sid", &sid, NULL, "");
   struct sockaddr_un addr;
+
+  if (!strcasecmp(sid,"reflect")) {
+    pipeAudio=1; reflectAudio=1;
+    sid="";
+  }
 
   if ( (fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
     perror("socket");
@@ -81,7 +87,10 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
   }
 
   if (pipeAudio) {
-    detectAudioDevice();
+    if (reflectAudio)
+      audev=audio_reflector_detect();
+    else 
+      detectAudioDevice();
     char *name=audev?audev->name:NULL;
     if (!name) {
       WHY("Could not detect any audio device. Will not pipe audio.");
@@ -118,17 +127,13 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
      we need, so we need to keep any left over ones from the previous
      read. */
   int audioRecordBufferBytes=0;
+  int audioRecordBufferSize=8000*2;
   unsigned char audioRecordBuffer[8000*2];
 
   int base_fd_count=fdcount;
   while(1) {
     fdcount=base_fd_count;
-    int audio_fd = getAudioRecordFd();
-    if (audio_fd>-1) {
-      fds[fdcount].fd=STDIN_FILENO;
-      fds[fdcount].events=POLLIN;
-      fdcount++;
-    }
+    fdcount+=audev->poll_fds(&fds[fdcount],128-fdcount);
     poll(fds,fdcount,1000);
 
     fcntl(fd,F_SETFL,
@@ -136,9 +141,6 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
     if (interactiveP) 
       fcntl(STDIN_FILENO,F_SETFL,
 	    fcntl(STDIN_FILENO, F_GETFL, NULL)|O_NONBLOCK);
-    if (audio_fd>-1) 
-      fcntl(audio_fd,F_SETFL,
-	    fcntl(audio_fd, F_GETFL, NULL)|O_NONBLOCK);
     
     int bytes;
     int i;
@@ -153,12 +155,14 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
 	printf("< %s",line);
 	write(fd,line,bytes);
       }
-      if (audio_fd>-1) {
-	/* attempt to read next audio buffer.
-	   Some audio devices that we are using require an entire buffer
-	   to be read at a time. */
-	audioRecordBufferBytes
-	  =getAudioBytes(audioRecordBuffer,audioRecordBufferBytes,sizeof(audioRecordBuffer));
+    }
+
+    if (audev&&audev->read)
+      {
+	int bytesRead=audev->read(&audioRecordBuffer[audioRecordBufferBytes],
+				  audioRecordBufferSize-audioRecordBufferBytes);
+	if (bytesRead>0) audioRecordBufferBytes+=bytesRead;
+	
 	/* 8KHz 16 bit samples = 16000 bytes per second.
 	   Thus one 1ms of audio = 16 bytes. */
 	int audioRecordBufferOffset=0;
@@ -180,13 +184,11 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
 	      audioRecordBufferBytes-audioRecordBufferOffset);
 	audioRecordBufferBytes-=audioRecordBufferOffset;
       }
-    }
-
-  fcntl(fd,F_SETFL,
-	fcntl(fd, F_GETFL, NULL)&~O_NONBLOCK);
-  fcntl(STDIN_FILENO,F_SETFL,
-	fcntl(STDIN_FILENO, F_GETFL, NULL)&~O_NONBLOCK);
-
+    
+    fcntl(fd,F_SETFL,
+	  fcntl(fd, F_GETFL, NULL)&~O_NONBLOCK);
+    fcntl(STDIN_FILENO,F_SETFL,
+	  fcntl(STDIN_FILENO, F_GETFL, NULL)&~O_NONBLOCK);   
   }
   
   return 0;
@@ -220,8 +222,8 @@ int processLine(char *cmd,unsigned char *data,int dataLen)
 	     &l_id,&r_id,&l_state,&r_state,
 	     &codec,&start_time,&end_time)==7)
     {
-      if (pipeAudio) {
-	playAudio(data,dataLen);
+      if (pipeAudio&&audev) {
+	bufferAudioForPlayback(codec,start_time,end_time,data,dataLen);	
       }
     }
   if (sscanf(cmd,"CALLSTATUS:%x:%x:%d:%d",
@@ -268,6 +270,7 @@ int processLine(char *cmd,unsigned char *data,int dataLen)
   state=STATE_CMD;
   return 0;
 }
+
 int processChar(int c)
 {
   switch(state) {

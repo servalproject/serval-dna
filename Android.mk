@@ -71,7 +71,8 @@ LOCAL_SRC_FILES:= \
 	serval-dna/codecs.c \
 	serval-dna/audiodevices.c \
 	serval-dna/audio_msm_g1.c \
-	serval-dna/audio_alsa.c
+	serval-dna/audio_alsa.c \
+	serval-dna/audio_reflector.c
 
 LOCAL_MODULE:= serval
 

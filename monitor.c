@@ -361,6 +361,7 @@ int monitor_process_command(int index,char *cmd)
   }
 
   char msg[1024];
+  int flag;
 
   if (cmd[0]=='*') {
     /* command with content */
@@ -391,6 +392,17 @@ int monitor_process_command(int index,char *cmd)
     c->flags|=MONITOR_RHIZOME;
   else if (!strcasecmp(cmd,"ignore rhizome"))
     c->flags&=~MONITOR_RHIZOME;
+  else if (sscanf(cmd,"FASTAUDIO:%x:%d",&callSessionToken,&flag)==2)
+    {
+      int i;
+      for(i=0;i<vomp_call_count;i++)
+	if (vomp_call_states[i].local.session==callSessionToken
+	    ||callSessionToken==0) {
+	  vomp_call_states[i].fast_audio=flag;
+	  vomp_call_states[i].local.last_state=-1;
+	  monitor_call_status(&vomp_call_states[i]);	  
+	}
+    }
   else if (sscanf(cmd,"call %s %s %s",sid,localDid,remoteDid)==3) {
     if (sid[0]=='*') {
       /* For testing, pick a peer and call them */
@@ -515,9 +527,10 @@ int monitor_call_status(vomp_call_state *call)
   call->remote.last_state=call->remote.state;
   if (show) {
     if (0) WHYF("sending call status to monitor");
-    snprintf(msg,1024,"\nCALLSTATUS:%06x:%06x:%d:%d:%s:%s:%s:%s\n",
+    snprintf(msg,1024,"\nCALLSTATUS:%06x:%06x:%d:%d:%d:%s:%s:%s:%s\n",
 	     call->local.session,call->remote.session,
 	     call->local.state,call->remote.state,
+	     call->fast_audio,
 	     overlay_render_sid(call->local.sid),
 	     overlay_render_sid(call->remote.sid),
 	     call->local.did,call->remote.did);

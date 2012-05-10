@@ -40,3 +40,14 @@ int encodeAndDispatchRecordedAudio(int fd,int callSessionToken,
   write(fd,msg,len);
   return 0;
 }
+
+int bufferAudioForPlayback(int codec,long long start_time,long long end_time,
+		unsigned char *data,int dataLen)
+{
+  /* XXX We need to buffer and reorder out-of-order sample blocks and
+     decode codecs etc here. */
+
+  /* send audio to device */
+  int bytesWritten=audev->write(&data[0],dataLen);
+  return 0;
+}

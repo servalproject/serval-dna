@@ -61,15 +61,6 @@ int getAudioBytes(unsigned char *buffer,
   return -1;
 }
 
-/* as with recording, some of the devices have a fixed buffer size that
-   we must completely fill. 
-*/
-int playAudio(unsigned char *data,int bytes)
-{
-  if (audev&&audev->write) return audev->write(data,bytes);
-  return -1;
-}
-
 int stopAudio()
 {
   if (audev&&audev->stop) return audev->stop();

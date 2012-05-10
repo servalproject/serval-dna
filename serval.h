@@ -1320,6 +1320,7 @@ typedef struct vomp_call_state {
   vomp_call_half local;
   vomp_call_half remote;
   int ringing;
+  int fast_audio;
   unsigned long long create_time;
   unsigned long long last_activity;
   unsigned long long audio_clock;
@@ -1444,17 +1445,19 @@ extern monitor_audio *audev;
 
 monitor_audio *audio_msm_g1_detect();
 monitor_audio *audio_alsa_detect();
+monitor_audio *audio_reflector_detect();
 int detectAudioDevice();
 int getAudioPlayFd();
 int getAudioRecordFd();
 int getAudioBytes(unsigned char *buffer,
 		  int offset,
 		  int bufferSize);
-int playAudio(unsigned char *data,int bytes);
-int startAudio();
-int stopAudio();
 int encodeAndDispatchRecordedAudio(int fd,int callSessionToken,
 				   int recordCodec,
 				   unsigned char *sampleData,
 				   int sampleBytes);
 int scrapeProcNetRoute();
+int bufferAudioForPlayback(int codec,long long start_time,long long end_time,
+			   unsigned char *data,int dataLen);
+int startAudio();
+int stopAudio();
