@@ -98,10 +98,3 @@ LOCAL_MODULE:= servald
 LOCAL_SRC_FILES:= serval-dna/servalwrap.c
 
 include $(BUILD_EXECUTABLE)
-
-include $(CLEAR_VARS)
-
-LOCAL_MODULE:= playwav
-LOCAL_SRC_FILES:= serval-dna/playwav.c
-
-include $(BUILD_EXECUTABLE)
