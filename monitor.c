@@ -230,7 +230,7 @@ int monitor_poll()
     fcntl(monitor_named_socket,F_SETFL,
 	  fcntl(monitor_named_socket, F_GETFL, NULL)|O_NONBLOCK);
   }
-  DEBUG_perror("accept"); //XXX
+  if (errno != EAGAIN) WHY_perror("accept");
 
   /* Read from any open connections */
   int i;
@@ -256,12 +256,16 @@ int monitor_poll()
 	DEBUG("read"); //XXX
 	bytes=read(c->socket,&c->line[c->line_length],1);
 	if (bytes<1) {
-	  DEBUG_perror("read"); //XXX
 	  switch(errno) {
-	  case EAGAIN: case EINTR: case ENOTRECOVERABLE:
+	  case EINTR:
+	  case ENOTRECOVERABLE:
 	    /* transient errors */
+	    WHY_perror("read");
+	    break;
+	  case EAGAIN:
 	    break;
 	  default:
+	    WHY_perror("read");
 	    /* all other errors; close socket */
 	    WHYF("Tearing down monitor client #%d due to errno=%d (%s)",
 		 i,errno,strerror(errno)?strerror(errno):"<unknown error>");
