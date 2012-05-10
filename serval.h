@@ -1445,10 +1445,14 @@ extern monitor_audio *audev;
 monitor_audio *audio_msm_g1_detect();
 monitor_audio *audio_alsa_detect();
 int detectAudioDevice();
+int getAudioPlayFd();
+int getAudioRecordFd();
 int getAudioBytes(unsigned char *buffer,
 		  int offset,
 		  int bufferSize);
 int playAudio(unsigned char *data,int bytes);
+int startAudio();
+int stopAudio();
 int encodeAndDispatchRecordedAudio(int fd,int callSessionToken,
 				   int recordCodec,
 				   unsigned char *sampleData,
