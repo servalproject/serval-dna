@@ -28,6 +28,28 @@
 
 #include "serval.h"
 
+#include <errno.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <sys/ioctl.h>
+#if __MACH__ || __NetBSD__ || __OpenBSD__ || __FreeBSD__
+#include <sys/sysctl.h>
+#endif
+/* Include sockio.h if needed */
+#ifndef SIOCGIFCONF
+#include <sys/sockio.h>
+#endif
+#include <netinet/in.h>
+#include <netinet/if_ether.h>
+#if __MACH__
+#include <net/if_dl.h>
+#endif
+
 /* On platforms that have variable length 
    ifreq use the old fixed length interface instead */
 #ifdef OSIOCGIFCONF
