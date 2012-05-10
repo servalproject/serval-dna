@@ -82,7 +82,7 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
 
   if (pipeAudio) {
     detectAudioDevice();
-    char *name=detectedAudioDeviceName;
+    char *name=audev?audev->name:NULL;
     if (!name) {
       WHY("Could not detect any audio device. Will not pipe audio.");
       pipeAudio=0;

@@ -21,8 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define AUDIO_MSM_G1_ETC 1
 #define AUDIO_MSM_N1_ETC 2
-int detectedAudioDevice=-1;
-char *detectedAudioDeviceName=NULL;
+monitor_audio *audev=NULL;
 
 int playFd=-1;
 int recordFd=-1;
@@ -31,10 +30,10 @@ int recordBufferSize=0;
 
 int detectAudioDevice()
 {
-  detectedAudioDeviceName=audio_msm_g1_detect();
-  if (detectedAudioDeviceName) {
-    detectedAudioDevice=AUDIO_MSM_G1_ETC;
-    WHYF("Detected audio device '%s'",detectedAudioDeviceName);
+  if (!audev) audev=audio_msm_g1_detect();
+  if (!audev) audev=audio_alsa_detect();
+  if (audev) {
+    WHYF("Detected audio device '%s'",audev->name);
     return 0;
   }
   return -1;
@@ -56,88 +55,29 @@ int getAudioBytes(unsigned char *buffer,
 		  int offset,
 		  int bufferSize) 
 {
-  switch(detectedAudioDevice) {
-    /* some devices require reading a whole buffer in one go */
-  case AUDIO_MSM_G1_ETC:
-    {
-      if (bufferSize-offset<recordBufferSize) {
-	return WHY("Supplied buffer has no space for new samples");
-      }
-      int b=read(recordFd,&buffer[offset],recordBufferSize);
-      if (b>0) offset+=b;
-      return offset;
-    }
-    break;
-    /* while others allow reading an arbitrary amount */
-  default:
-    {
-      int b=read(recordFd,&buffer[offset],bufferSize-offset);
-      if (b>0) offset+=b;
-      return offset;
-    }
-    break;
+  if (audev&&audev->write) {
+    return audev->write(&buffer[offset],bufferSize-offset);    
   }
-  return WHYF("Reading audio for device class #%d not implemented",
-	      detectedAudioDevice);
+  return -1;
 }
 
 /* as with recording, some of the devices have a fixed buffer size that
    we must completely fill. 
 */
-int playBufferBytes=0;
-unsigned char playBuffer[65536];
 int playAudio(unsigned char *data,int bytes)
 {
-  switch(detectedAudioDevice) {
-    /* some devices require reading a whole buffer in one go */
-  case AUDIO_MSM_G1_ETC:
-    if (bytes+playBufferBytes>65536)
-      return WHY("Play marshalling buffer full");
-    bcopy(&data[0],&playBuffer[playBufferBytes],bytes);
-    playBufferBytes+=bytes;
-    int i;
-    for(i=0;i<playBufferBytes;i+=playBufferSize)
-      {
-	if (write(playFd,&playBuffer[i],playBufferSize)<
-	    playBufferSize) 
-	  break;	  
-      }
-    bcopy(&playBuffer[i],&playBuffer[0],playBufferBytes-i);
-    playBufferBytes-=i;
-    break;
-    /* the rest we can just write() to */
-  default:
-    if (write(playFd,data,bytes)<bytes) 
-      return WHY("short write() when playing audio");
-    return 0;
-  }
-
-  return WHYF("Playing audio for device class #%d not implemented",
-	      detectedAudioDevice);
+  if (audev&&audev->write) return audev->write(data,bytes);
+  return -1;
 }
 
 int stopAudio()
 {
-  switch(detectedAudioDevice) {
-  case AUDIO_MSM_G1_ETC:
-    return audio_msm_g1_stop();
-    break;
-  default:
-    break;
-  }
-  return WHYF("Stopping audio for device class #%d not implemented",
-	      detectedAudioDevice);
+  if (audev&&audev->stop) return audev->stop();
+  return -1;
 }
 
 int startAudio()
 {
-  switch(detectedAudioDevice) {
-  case AUDIO_MSM_G1_ETC:
-    return audio_msm_g1_start();
-    break;
-  default:
-    break;
-  }
-  return WHYF("Starting audio for device class #%d not implemented",
-	      detectedAudioDevice);
+  if (audev&&audev->start) return audev->start();
+  return -1;
 }

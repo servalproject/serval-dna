@@ -31,6 +31,7 @@ extern int recordFd;
 extern int playBufferSize;
 extern int recordBufferSize;
 
+#include "serval.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -239,21 +240,6 @@ set_volume_rpc (uint32_t device, uint32_t method, uint32_t volume)
   return 0;
 }
 
-
-/* See if we can query end-points for this device.
-   If so, assume we have detected it. 
-*/
-char *audio_msm_g1_detect()
-{
-   int fd = open ("/dev/msm_snd", O_RDWR);
-   if (fd<0) return NULL;
-   int endpoints=0;
-   int rc =ioctl(fd,SND_GET_NUM_ENDPOINTS,&endpoints);
-   close(fd);
-   if (rc>0) return "G1/IDEOS style MSM audio";
-   else return NULL;
-}
-
 /* Prepare audio path, volume etc, and then open play and
    record file descriptors. 
 */
@@ -265,7 +251,7 @@ int audio_msm_g1_start_play()
 
   /* Look through endpoints for the regular in-call endpoint */
   int endpoints=0;
-  int rc =ioctl(fd,SND_GET_NUM_ENDPOINTS,&endpoints);
+  ioctl(fd,SND_GET_NUM_ENDPOINTS,&endpoints);
   int endpoint=-1;
   int i;
   for(i=0;i<endpoints;i++) {
@@ -394,3 +380,68 @@ int audio_msm_g1_start()
   return 0;
 }
 
+int audio_msm_g1_poll_fds(struct pollfd *fds,int slots)
+{
+  int count=0;
+  if (playFd>-1&&slots>0) {
+    fds[count].fd=playFd;
+    fds[count].events=POLL_IN;
+    count++; slots--;
+  }
+  return count;
+}
+
+int audio_msm_g1_read(unsigned char *buffer,int maximum_count)
+{
+  /* Regardless of the maximum, we must read exactly buffer sized pieces
+     on this audio device */
+  if (maximum_count<recordBufferSize) {
+    return WHY("Supplied buffer has no space for sample quanta");
+  }
+  int b=read(recordFd,&buffer[0],recordBufferSize);
+  return b;
+}
+
+int playBufferBytes=0;
+unsigned char playBuffer[65536];
+int audio_msm_g1_write(unsigned char *data,int bytes) 
+{
+  if (bytes+playBufferBytes>65536)
+    { WHY("Play marshalling buffer full");
+      return 0; }
+  bcopy(&data[0],&playBuffer[playBufferBytes],bytes);
+  playBufferBytes+=bytes;
+  int i;
+  for(i=0;i<playBufferBytes;i+=playBufferSize)
+    {
+      if (write(playFd,&playBuffer[i],playBufferSize)<
+	  playBufferSize) 
+	break;	  
+    }
+  bcopy(&playBuffer[i],&playBuffer[0],playBufferBytes-i);
+  playBufferBytes-=i;
+
+  return bytes;
+}
+
+/* See if we can query end-points for this device.
+   If so, assume we have detected it. 
+*/
+monitor_audio *audio_msm_g1_detect()
+{
+   int fd = open ("/dev/msm_snd", O_RDWR);
+   if (fd<0) return NULL;
+   int endpoints=0;
+   int rc =ioctl(fd,SND_GET_NUM_ENDPOINTS,&endpoints);
+   close(fd);
+   if (rc>0)  {
+     monitor_audio *au=calloc(sizeof(monitor_audio),1);
+     strcpy(au->name,"G1/IDEOS style MSM audio");
+     au->start=audio_msm_g1_start;
+     au->stop=audio_msm_g1_stop;
+     au->poll_fds=audio_msm_g1_poll_fds;
+     au->read=audio_msm_g1_read;
+     au->write=audio_msm_g1_write;
+     return au;
+   } else return NULL;
+}
