@@ -25,28 +25,8 @@
  * http://teotwawki.steubentech.com/
  *
  */
-#include <errno.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <sys/ioctl.h>
-#if __MACH__ || __NetBSD__ || __OpenBSD__ || __FreeBSD__
-#include <sys/sysctl.h>
-#endif
-/* Include sockio.h if needed */
-#ifndef SIOCGIFCONF
-#include <sys/sockio.h>
-#endif
-#include <netinet/in.h>
-#include <net/if.h>
-#include <netinet/if_ether.h>
-#if __MACH__
-#include <net/if_dl.h>
-#endif
+
+#include "serval.h"
 
 /* On platforms that have variable length 
    ifreq use the old fixed length interface instead */
@@ -57,12 +37,6 @@
 #define SIOCGIFADDR OSIOCGIFADDR
 #undef SIOCGIFBRDADDR
 #define SIOCGIFBRDADDR OSIOCGIFBRDADDR
-#endif
-
-#ifdef ANDROID
-#include "serval.h"
-#else
-#warning for some reason including serval.h here causes ifmap, ifreq and ifconf to be redefined on some linux distros
 #endif
 
 /* for when all other options fail, as can happen on Android,
