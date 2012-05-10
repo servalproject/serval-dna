@@ -20,12 +20,6 @@
    Copyright (C) 2008 The Android Open Source Project
 */
 
-int setReason(char *fmt, ...);
-#define WHY(X) setReason("%s:%d:%s()  %s",__FILE__,__LINE__,__FUNCTION__,X)
-#define WHYRETNULL(X) { setReason("%s:%d:%s()  %s",__FILE__,__LINE__,__FUNCTION__,X); return NULL; } 
-#define WHYF(F, ...) setReason("%s:%d:%s()  " F, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
-#define WHY_perror(X) setReason("%s:%d:%s()  %s: %s [errno=%d]", __FILE__, __LINE__, __FUNCTION__, X, strerror(errno), errno)
-
 extern int playFd;
 extern int recordFd;
 extern int playBufferSize;
