@@ -16,12 +16,14 @@
    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include "serval.h"
+
+#ifdef HAVE_ALSA_ASOUNDLIB_H
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <dlfcn.h>
 #include <alsa/asoundlib.h>
-
-#include "serval.h"
 
 #ifndef ANDROID
 #define ALSA_LIB_PATH "/lib/libasound.so.2"
@@ -241,23 +243,25 @@ int audio_alsa_write(unsigned char *buffer,int bytes)
   else return 0;
 }
 
+#endif // HAVE_ALSA_ASOUNDLIB_H
+
 monitor_audio *audio_alsa_detect()
 {
+#ifdef HAVE_ALSA_ASOUNDLIB_H
   if (!alsa) alsa_load();
   if (!alsa) return NULL;
-
-  int r;
   snd_pcm_t *handle;
-  if ((r = alsa->snd_pcm_open (&handle, "default", SND_PCM_STREAM_PLAYBACK, 0)) < 0)
-    return NULL;
-  alsa->snd_pcm_close(handle);
-
-  monitor_audio *au=calloc(sizeof(monitor_audio),1);
-  strcpy(au->name,"ALSA compatible");
-  au->start=audio_alsa_start;
-  au->stop=audio_alsa_stop;
-  au->poll_fds=audio_alsa_pollfds;
-  au->read=audio_alsa_read;
-  au->write=audio_alsa_write;
-  return au;
+  if (alsa->snd_pcm_open (&handle, "default", SND_PCM_STREAM_PLAYBACK, 0) != -1) {
+    alsa->snd_pcm_close(handle);
+    monitor_audio *au=calloc(sizeof(monitor_audio),1);
+    strcpy(au->name,"ALSA compatible");
+    au->start=audio_alsa_start;
+    au->stop=audio_alsa_stop;
+    au->poll_fds=audio_alsa_pollfds;
+    au->read=audio_alsa_read;
+    au->write=audio_alsa_write;
+    return au;
+  }
+#endif // HAVE_ALSA_ASOUNDLIB_H
+  return NULL;
 }
