@@ -296,7 +296,7 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
   bcopy(&f->source[0],&mdp.in.src.sid[0],SID_SIZE);
 
   int len=f->payload->length;
-  unsigned char *b;
+  unsigned char *b = NULL;
   unsigned char plain_block[len+16];
 
   if (len<10) return WHY("Invalid MDP frame");

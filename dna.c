@@ -347,7 +347,7 @@ int setVerbosity(const char *optarg) {
 int main(int argc, char **argv)
 {
   int c;
-  char *pin=NULL;
+  //char *pin=NULL;
   char *did=NULL;
   char *sid=NULL;
   char *keyring_file=NULL;
@@ -362,7 +362,7 @@ int main(int argc, char **argv)
   memabuseInit();
   srandomdev();
 
-  server_save_argv(argc, argv);
+  server_save_argv(argc, (const char*const*)argv);
 
   if (argv[1]&&argv[1][0]!='-') {
     /* First argument doesn't start with a dash, so assume it is for the new command line
@@ -451,7 +451,7 @@ int main(int argc, char **argv)
 	  if (additionalPeer(optarg)) exit(-3);
 	  break;
 	case 'P': /* Supply pin */
-	  pin=strdup(optarg);
+	  //pin=strdup(optarg);
 	  clientMode=1;
 	  break;
 	case 'd': /* Ask by DID */

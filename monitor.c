@@ -89,6 +89,7 @@ int monitor_setup_sockets()
       int dud=0;
       int r=bind(monitor_named_socket, (struct sockaddr *)&name, len);
       if (r) { dud=1; r=0; WHY_perror("bind"); }
+      DEBUG("listen"); //XXX
       r=listen(monitor_named_socket,MAX_MONITOR_SOCKETS);
       if (r) { dud=1; r=0; WHY_perror("listen");
       }
@@ -182,13 +183,16 @@ int monitor_poll()
   /* Check for new connections */
   fcntl(monitor_named_socket,F_SETFL,
 	fcntl(monitor_named_socket, F_GETFL, NULL)|O_NONBLOCK);
-  while((
+  while (
 #ifdef HAVE_LINUX_IF_H
-	 s=accept4(monitor_named_socket,ignored_address,&ignored_length,O_NONBLOCK)
+	 (DEBUG("accept4"), 1) && //XXX
+	 (s = accept4(monitor_named_socket,ignored_address,&ignored_length,O_NONBLOCK))
 #else
-	 s=accept(monitor_named_socket,&ignored_address,&ignored_length)
+	 (DEBUG("accept"), 1) && //XXX
+	 (s = accept(monitor_named_socket,&ignored_address,&ignored_length))
 #endif
-)>-1) {
+      != -1
+  ) {
     WHYF("ignored_length=%d",ignored_length);
     int res = fcntl(s,F_SETFL, O_NONBLOCK);
     if (res) { close(s); continue; }
@@ -226,6 +230,7 @@ int monitor_poll()
     fcntl(monitor_named_socket,F_SETFL,
 	  fcntl(monitor_named_socket, F_GETFL, NULL)|O_NONBLOCK);
   }
+  DEBUG_perror("accept"); //XXX
 
   /* Read from any open connections */
   int i;
@@ -248,8 +253,10 @@ int monitor_poll()
 	  break;
 	}
 	errno=0;
+	DEBUG("read"); //XXX
 	bytes=read(c->socket,&c->line[c->line_length],1);
 	if (bytes<1) {
+	  DEBUG_perror("read"); //XXX
 	  switch(errno) {
 	  case EAGAIN: case EINTR: case ENOTRECOVERABLE:
 	    /* transient errors */
@@ -285,6 +292,7 @@ int monitor_poll()
       break;
     case MONITOR_STATE_DATA:
       errno=0;
+      DEBUG("read"); //XXX
       bytes=read(c->socket,
 		 &c->buffer[c->data_offset],
 		 c->data_expected-c->data_offset);

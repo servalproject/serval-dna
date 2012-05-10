@@ -186,14 +186,14 @@ int rhizome_make_space(int group_priority, long long bytes)
     {
       /* Make sure we can drop this blob, and if so drop it, and recalculate number of bytes required */
       const unsigned char *id;
-      long long length;
+      //long long length;
 
       /* Get values */
       if (sqlite3_column_type(statement, 0)==SQLITE_TEXT) id=sqlite3_column_text(statement, 0);
       else {
 	fprintf(stderr,"Incorrect type in id column of files table.\n");
 	continue; }
-      if (sqlite3_column_type(statement, 1)==SQLITE_INTEGER) length=sqlite3_column_int(statement, 1);
+      if (sqlite3_column_type(statement, 1)==SQLITE_INTEGER) ;//length=sqlite3_column_int(statement, 1);
       else {
 	fprintf(stderr,"Incorrect type in length column of files table.\n");
 	continue; }
@@ -205,7 +205,7 @@ int rhizome_make_space(int group_priority, long long bytes)
     }
   sqlite3_finalize(statement);
 
-  long long equal_priority_larger_file_space_used = sqlite_exec_int64("SELECT COUNT(length) FROM FILES WHERE highestpriority=%d and length>%lld",group_priority,bytes);
+  //long long equal_priority_larger_file_space_used = sqlite_exec_int64("SELECT COUNT(length) FROM FILES WHERE highestpriority=%d and length>%lld",group_priority,bytes);
   /* XXX Get rid of any equal priority files that are larger than this one */
 
   /* XXX Get rid of any higher priority files that are not relevant in this time or location */

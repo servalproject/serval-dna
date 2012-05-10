@@ -262,7 +262,6 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
 
   unsigned char c;
   unsigned char *sid=overlay_get_my_sid();
-  unsigned long long now=overlay_gettime_ms();
 
   /* Header byte */
   c=OF_TYPE_SELFANNOUNCE;

@@ -59,9 +59,7 @@
 #define SIOCGIFBRDADDR OSIOCGIFBRDADDR
 #endif
 
-int overlay_interface_register(unsigned char *name,
-			       struct sockaddr_in local,
-			       struct sockaddr_in broadcast);
+#include "serval.h"
 
 /* for when all other options fail, as can happen on Android,
    if the permissions for the socket-based method are broken.

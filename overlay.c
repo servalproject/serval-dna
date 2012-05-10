@@ -78,8 +78,6 @@ keyring_file *keyring=NULL;
 
 int overlayServerMode()
 {
-  long long server_pid_time_ms = overlay_gettime_ms();
-
   /* In overlay mode we need to listen to all of our sockets, and also to
      send periodic traffic. This means we need to */
   fprintf(stderr,"Running in overlay mode.\n");
@@ -128,7 +126,7 @@ int overlayServerMode()
     /* Work out how long we can wait before we need to tick */
     long long ms=overlay_time_until_next_tick();
     memabuseCheck();
-    int filesPresent=0;
+    //int filesPresent=0;
     fds[0].fd=sock; fds[0].events=POLLIN;
     fdcount=1;
     rhizome_server_get_fds(fds,&fdcount,128);
@@ -156,8 +154,10 @@ int overlayServerMode()
 	    fds[fdcount].revents=0;
 	    fdcount++;
 	  }
-	if (overlay_interfaces[i].fileP)
-	  { filesPresent=1; if (ms>5) ms=5; }
+	if (overlay_interfaces[i].fileP) {
+	  //filesPresent=1;
+	  if (ms>5) ms=5;
+	}
       }
     
     /* Progressively update link scores to neighbours etc, and find out how long before

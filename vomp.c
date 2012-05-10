@@ -32,6 +32,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 int vomp_call_count=0;
 int vomp_active_call=-1;
 vomp_call_state vomp_call_states[VOMP_MAX_CALLS];
+int dump_vomp_status();
 
 /* which codecs we support (set by registered listener) */
 unsigned char vomp_local_codec_list[256];

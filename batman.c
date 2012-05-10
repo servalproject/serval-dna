@@ -17,6 +17,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include <time.h>
 #include "serval.h"
 
 struct reachable_peer {
@@ -170,7 +171,8 @@ int readBatmanPeerFile(char *file_path,struct in_addr peers[],int *peer_count,in
     {
       struct in_addr i;
       if (!p.addr_len) break;
-      i.s_addr=*(unsigned int *)&p.addr[0];
+      union { char c[4]; uint32_t ui32; } *u = (void*)&p.addr[0];
+      i.s_addr = u->ui32;
       if (*peer_count<peer_max)	peers[(*peer_count)++]=i;
       if (debug&DEBUG_PEERS) fprintf(stderr,"Found BATMAN peer '%s'\n",inet_ntoa(i));
     }

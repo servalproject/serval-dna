@@ -17,9 +17,10 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include "serval.h"
+#include <time.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include "serval.h"
 
 char *asterisk_extensions_conf="/data/data/org.servalproject/asterisk/etc/asterisk/gatewayextensions.conf";
 char *asterisk_binary="/data/data/org.servalproject/asterisk/sbin/asterisk";

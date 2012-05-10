@@ -134,6 +134,7 @@ int sqlite_encode_binary(const unsigned char *in, int n, unsigned char *out){
   memset(cnt, 0, sizeof(cnt));
   for(i=n-1; i>=0; i--){ cnt[in[i]]++; }
   m = n;
+  e = 0;
   for(i=1; i<256; i++){
     int sum;
     if( i=='\'' ) continue;

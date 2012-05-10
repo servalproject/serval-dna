@@ -22,7 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 int process_packet(unsigned char *packet,int len,
 		   int recvttl,struct sockaddr *sender,int sender_len)
 {
-  int authenticatedP=0;
+  //int authenticatedP=0;
   char did[128];
   char sid[128];
   unsigned char *transaction_id=&packet[OFS_TRANSIDFIELD];
@@ -49,7 +49,7 @@ int process_packet(unsigned char *packet,int len,
   else 
     {
       /* No attempt at authentication was made */
-      authenticatedP=0;
+      //authenticatedP=0;
       if (debug&DEBUG_SECURITY) fprintf(stderr,"No PIN was supplied.\n");
     }
 

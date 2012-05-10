@@ -368,6 +368,7 @@ int audio_msm_g1_stop()
 {
   audio_msm_g1_stop_play();
   audio_msm_g1_stop_record();
+  return 0;
 }
 
 int audio_msm_g1_start()

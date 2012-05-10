@@ -448,7 +448,6 @@ int processRequest(unsigned char *packet,int len,
 		   unsigned char *transaction_id,int recvttl, char *did,char *sid)
 {
   /* Find HLR entry by DID or SID, unless creating */
-  int ofs;
   int records_searched=0;
   
   int prev_pofs=0;
@@ -510,7 +509,7 @@ int processRequest(unsigned char *packet,int len,
 		if (instrumentation_file)
 		  {
 		    if (!i_f) { if (strcmp(instrumentation_file,"-")) i_f=fopen(instrumentation_file,"a"); else i_f=stdout; }
-		    if (i_f) fprintf(i_f,"%ld:%08x:%d:%d\n",time(0),*(unsigned int *)&sender->sa_data[0],field,value);
+		    if (i_f) fprintf(i_f,"%ld:%02x%02x%02x%02x:%d:%d\n",time(0),sender->sa_data[0],sender->sa_data[1],sender->sa_data[2],sender->sa_data[3],field,value);
 		    if (i_f) fflush(i_f);
 		  }
 	      }
@@ -545,7 +544,6 @@ int processRequest(unsigned char *packet,int len,
 
 		if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"Processing ACTION_GET (var_id=%02x, instance=%02x, pofs=0x%x, len=%d)\n",var_id,instance,pofs,len);
 
-		ofs=0;
 		if (debug&DEBUG_HLR) fprintf(stderr,"Looking for identities with sid='%s' / did='%s'\n",(sid&&sid[0])?sid:"null",did?did:"null");
 		  
 		/* Keyring only has DIDs in it for now.

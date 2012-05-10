@@ -203,12 +203,12 @@ unsigned int ob_get_int(overlay_buffer *b,int offset)
   if ((offset+sizeof(unsigned int))>b->length) return WHY("passed offset too large");
 
   // Some platforms require alignment
-  if (((unsigned long long)&b->bytes[offset])&3) {
-    unsigned char bb[4];
-    bcopy(&b->bytes[offset],&bb[0],4);
-    return ntohl(*(unsigned int *)&bb[0]);
+  if (((uintptr_t)&b->bytes[offset])&3) {
+    union { unsigned char uc[4]; uint32_t ui32; } bb;
+    bcopy(&b->bytes[offset], &bb.uc[0], 4);
+    return ntohl(bb.ui32);
   } else
-    return ntohl(*((unsigned int *)&b->bytes[offset]));
+    return ntohl(*((uint32_t*)&b->bytes[offset]));
 }
 
 int ob_append_rfs(overlay_buffer *b,int l)

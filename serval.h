@@ -1403,6 +1403,13 @@ int overlay_mdp_getmyaddr(int index,unsigned char *sid);
 int overlay_mdp_bind(unsigned char *localaddr,int port); 
 int overlay_route_node_info(overlay_mdp_frame *mdp,
 			    struct sockaddr_un *addr,int addrlen);
+int overlay_interface_register(unsigned char *name,
+			       struct sockaddr_in local,
+			       struct sockaddr_in broadcast);
+int overlay_queue_dump(overlay_txqueue *q);
+int overlay_broadcast_ensemble(int interface_number,
+			       struct sockaddr_in *recipientaddr /* NULL == broadcast */,
+			       unsigned char *bytes,int len);
 
 int app_vomp_status(int argc, const char *const *argv, struct command_line_option *o);
 int app_vomp_dial(int argc, const char *const *argv, struct command_line_option *o);
@@ -1446,3 +1453,4 @@ int encodeAndDispatchRecordedAudio(int fd,int callSessionToken,
 				   int recordCodec,
 				   unsigned char *sampleData,
 				   int sampleBytes);
+int scrapeProcNetRoute();

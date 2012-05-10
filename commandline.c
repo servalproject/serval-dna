@@ -19,6 +19,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define _GNU_SOURCE // For asprintf()
 #include <sys/time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <math.h>
 #include <string.h>
 #include <time.h>
