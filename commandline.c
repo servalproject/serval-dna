@@ -585,7 +585,10 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
 	switch (fork()) {
 	  case -1:
 	    exit(WHY_perror("fork"));
-	  case 0: { // Grandchild process
+	  case 0: {
+	    /* Grandchild process.  Disconnect from current directory, disconnect standard i/o
+	       streams, and start a new process group so that if we are being started by an adb
+	       shell session, then we don't receive a SIGHUP when the adb shell process ends.  */
 	    chdir("/");
 	    close(0);
 	    open("/dev/null", O_RDONLY);
@@ -593,6 +596,7 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
 	    open("/dev/null", O_WRONLY);
 	    close(2);
 	    open("/dev/null", O_WRONLY);
+	    setpgrp();
 	    /* The execpath option is provided so that a JNI call to "start" can be made which
 	       creates a new server daemon process with the correct argv[0].  Otherwise, the servald
 	       process appears as a process with argv[0] = "org.servalproject". */
