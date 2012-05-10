@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #ifdef HAVE_STRINGS_H
 #include <strings.h>
 #endif
@@ -736,11 +737,25 @@ typedef struct overlay_txqueue {
 #define OQ_MAX 5
 extern overlay_txqueue overlay_tx[OQ_MAX];
 
+#define LOG_LEVEL_DEBUG     (0)
+#define LOG_LEVEL_INFO      (1)
+#define LOG_LEVEL_WARN      (2)
+#define LOG_LEVEL_ERROR     (3)
+#define LOG_LEVEL_FATAL     (4)
+
 int setReason(char *fmt, ...);
+void logMessage(int level, char *fmt, ...);
+void vlogMessage(int level, char *fmt, va_list);
+
 #define WHY(X) setReason("%s:%d:%s()  %s",__FILE__,__LINE__,__FUNCTION__,X)
-#define WHYRETNULL(X) { setReason("%s:%d:%s()  %s",__FILE__,__LINE__,__FUNCTION__,X); return NULL; } 
-#define WHYF(F, ...) setReason("%s:%d:%s()  " F, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
+#define WHYNULL(X) (setReason("%s:%d:%s()  %s",__FILE__,__LINE__,__FUNCTION__,X), NULL)
+#define WHYF(F,...) setReason("%s:%d:%s()  " F, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
 #define WHY_perror(X) setReason("%s:%d:%s()  %s: %s [errno=%d]", __FILE__, __LINE__, __FUNCTION__, X, strerror(errno), errno)
+
+#define DEBUGF(F,...) logMessage(LOG_LEVEL_DEBUG, "%s:%d:%s()  " F, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
+#define DEBUG(X) DEBUGF("%s", X)
+#define DEBUG_perror(X) DEBUGF("%s: %s [errno=%d]", X, strerror(errno), errno)
+#define D DEBUG("D")
 
 overlay_buffer *ob_new(int size);
 int ob_free(overlay_buffer *b);

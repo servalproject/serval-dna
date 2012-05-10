@@ -1108,7 +1108,7 @@ unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
   int cn=0,in=0,kp=0;
 
   if (!keyring_find_sid(k,&cn,&in,&kp,sid)) 
-    WHYRETNULL("Could not find SID in keyring, so can't find SAS");
+    return WHYNULL("Could not find SID in keyring, so can't find SAS");
 
   for(kp=0;kp<k->contexts[cn]->identities[in]->keypair_count;kp++)
     if (k->contexts[cn]->identities[in]->keypairs[kp]->type==KEYTYPE_CRYPTOSIGN)
@@ -1119,7 +1119,7 @@ unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
 	return k->contexts[cn]->identities[in]->keypairs[kp]->private_key;
       }
 
-  WHYRETNULL("Identity lacks SAS");
+  return WHYNULL("Identity lacks SAS");
 }
 
 struct sid_sas_mapping {
@@ -1303,7 +1303,7 @@ unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
       ==KEYTYPE_CRYPTOBOX)		  
     bcopy(keyring->contexts[0]->identities[0]->keypairs[0]->public_key,
 	  mdp.out.src.sid,SID_SIZE);
-  else WHYRETNULL("couldn't request SAS (I don't know who I am)");
+  else return WHYNULL("couldn't request SAS (I don't know who I am)");
   mdp.out.payload_length=1;
   mdp.out.payload[0]=KEYTYPE_CRYPTOSIGN;
   overlay_mdp_dispatch(&mdp,0 /* system generated */,
@@ -1424,9 +1424,9 @@ struct nm_record nm_cache[NM_CACHE_SLOTS];
 
 unsigned char *keyring_get_nm_bytes(sockaddr_mdp *known,sockaddr_mdp *unknown)
 {
-  if (!known) WHYRETNULL("known pub key is null");
-  if (!unknown) WHYRETNULL("unknown pub key is null");
-  if (!keyring) WHYRETNULL("keyring is null");
+  if (!known) return WHYNULL("known pub key is null");
+  if (!unknown) return WHYNULL("unknown pub key is null");
+  if (!keyring) return WHYNULL("keyring is null");
 
   int i;
 
@@ -1444,7 +1444,7 @@ unsigned char *keyring_get_nm_bytes(sockaddr_mdp *known,sockaddr_mdp *unknown)
      in fact a known key */
   int cn=0,in=0,kp=0;
   if (!keyring_find_sid(keyring,&cn,&in,&kp,known->sid))
-    WHYRETNULL("known key is not in fact known.");
+    return WHYNULL("known key is not in fact known.");
 
   /* work out where to store it */
   if (nm_slots_used<NM_CACHE_SLOTS) {

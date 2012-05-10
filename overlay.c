@@ -186,8 +186,7 @@ int overlayServerMode()
 
     if (r<0) {
       /* select had a problem */
-      if (debug&DEBUG_IO) WHY_perror("poll()");
-      WHY("select() complained.");
+      WHY_perror("poll");
     } else if (r>0) {
       /* We have data, so try to receive it */
       if (debug&DEBUG_IO) {

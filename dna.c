@@ -19,7 +19,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 #include "rhizome.h"
-#include <stdarg.h>
 #include <signal.h>
 #include <unistd.h>
 #include <dirent.h>
@@ -88,25 +87,50 @@ int dumpResponses(struct response_set *responses)
 #include <android/log.h> 
 #endif
 
-int setReason(char *fmt, ...)
+void logMessage(int level, char *fmt, ...)
 {
-  va_list ap,ap2;
-  char msg[8192];
-
-  va_start(ap,fmt);
-  va_copy(ap2,ap);
-
-  vsnprintf(msg,8192,fmt,ap2); msg[8191]=0;
-
-  va_end(ap);
-
-#ifdef ANDROID
-  __android_log_print(ANDROID_LOG_DEBUG, "servald", "%s",msg);  
-#endif
-  fprintf(stderr,"Error: %s\n",msg);
-  return -1;
+  va_list ap;
+  va_start(ap, fmt);
+  vlogMessage(level, fmt, ap);
 }
 
+void vlogMessage(int level, char *fmt, va_list ap)
+{
+  va_list ap2;
+  char buf[8192];
+  va_copy(ap2, ap);
+  vsnprintf(buf, sizeof buf, fmt, ap2);
+  va_end(ap);
+  buf[sizeof buf - 1] = '\0';
+#ifdef ANDROID
+  int alevel = ANDROID_LOG_UNKNOWN;
+  switch (level) {
+    case LOG_LEVEL_FATAL: alevel = ANDROID_LOG_FATAL; break;
+    case LOG_LEVEL_ERROR: alevel = ANDROID_LOG_ERROR; break;
+    case LOG_LEVEL_INFO:  alevel = ANDROID_LOG_INFO; break;
+    case LOG_LEVEL_WARN:  alevel = ANDROID_LOG_WARN; break;
+    case LOG_LEVEL_DEBUG: alevel = ANDROID_LOG_DEBUG; break;
+  }
+  __android_log_print(alevel, "servald", "%s", buf);
+#endif
+  const char *levelstr = "UNKNOWN";
+  switch (level) {
+    case LOG_LEVEL_FATAL: levelstr = "FATAL"; break;
+    case LOG_LEVEL_ERROR: levelstr = "ERROR"; break;
+    case LOG_LEVEL_INFO:  levelstr = "INFO"; break;
+    case LOG_LEVEL_WARN:  levelstr = "WARN"; break;
+    case LOG_LEVEL_DEBUG: levelstr = "DEBUG"; break;
+  }
+  fprintf(stderr, "%s: %s\n", levelstr, buf);
+}
+
+int setReason(char *fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  vlogMessage(LOG_LEVEL_ERROR, fmt, ap);
+  return -1;
+}
 
 int hexvalue(unsigned char c)
 {
