@@ -59,7 +59,11 @@
 #define SIOCGIFBRDADDR OSIOCGIFBRDADDR
 #endif
 
+#ifdef ANDROID
 #include "serval.h"
+#else
+#warning for some reason including serval.h here causes ifmap, ifreq and ifconf to be redefined on some linux distros
+#endif
 
 /* for when all other options fail, as can happen on Android,
    if the permissions for the socket-based method are broken.
