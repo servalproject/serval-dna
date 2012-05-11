@@ -239,6 +239,8 @@ set_volume_rpc (uint32_t device, uint32_t method, uint32_t volume)
 */
 int audio_msm_g1_start_play()
 {
+  if (playFd>-1) return 0;
+
   /* Get audio control device */
   int fd = open ("/dev/msm_snd", O_RDWR);
   if (fd<0) return -1;
@@ -272,6 +274,7 @@ int audio_msm_g1_start_play()
   if (ioctl(playFd, AUDIO_GET_CONFIG,&config))
     {
       close(playFd);
+      playFd=-1;
       return WHY("Could not read audio device configuration");
     }
   config.channel_count=1;
@@ -280,18 +283,49 @@ int audio_msm_g1_start_play()
   if (ioctl(playFd, AUDIO_SET_CONFIG,&config))
     {
       close(playFd);
+      playFd=-1;
       return WHY("Could not set audio device configuration");
     }
   
+  fcntl(playFd,F_SETFL,
+	fcntl(playFd, F_GETFL, NULL)|O_NONBLOCK);
+
+  /*
+    If playBufferSize equates to too long an interval,
+    then try to reduce it in various ways.
+  */    
+  float bufferTime=playBufferSize/2*1.0/config.sample_rate;
+  if (bufferTime>0.02) {
+    WHYF("PLAY buf=%.3fsecs, which is too long. Trying to reduce it.",
+	 bufferTime);
+
+    /* 64 bytes = 32 samples = ~4ms */
+    config.buffer_size=64*8;
+    config.buffer_count=2;
+    if (!ioctl(playFd, AUDIO_SET_CONFIG,&config))
+      {
+	if (!ioctl(playFd, AUDIO_GET_CONFIG,&config)) {
+	  playBufferSize=config.buffer_size;
+	  bufferTime=playBufferSize/2*1.0/config.sample_rate;
+	  WHYF("Succeeded in reducing play buffer to %d bytes (%.3fsecs)",
+	       playBufferSize,bufferTime);
+	  goto fixedBufferSize;
+	}
+      }
+  }
+ fixedBufferSize:
+ 
   /* tell hardware to start playing */
   ioctl(playFd,AUDIO_START,0);
   
-  WHY("G1/IDEOS style MSM audio device initialised and ready to play");
+  WHYF("G1/IDEOS style MSM audio device initialised and ready to play");
+  WHYF("Play buffer size = %d bytes",playBufferSize);
   return 0;
 }
 
 int audio_msm_g1_stop_play()
 {
+  WHY("stopping audio play");
   if (playFd>-1) close(playFd);
   playFd=-1;
   return 0;
@@ -299,11 +333,14 @@ int audio_msm_g1_stop_play()
 
 int audio_msm_g1_start_record()
 {
-  recordFd=open("/dev/msm_pcm_out",O_RDWR);
+  if (recordFd>-1) return 0;
+
+  recordFd=open("/dev/msm_pcm_in",O_RDWR);
   struct msm_audio_config config;
   if (ioctl(recordFd, AUDIO_GET_CONFIG,&config))
     {
       close(recordFd);
+      recordFd=-1;
       return WHY("Could not read audio device configuration");
     }
   config.channel_count=1;
@@ -311,6 +348,7 @@ int audio_msm_g1_start_record()
   if (ioctl(recordFd, AUDIO_SET_CONFIG,&config))
     {
       close(recordFd);
+      recordFd=-1;
       return WHY("Could not set audio device configuration");
     }
 
@@ -321,19 +359,22 @@ int audio_msm_g1_start_record()
   recordBufferSize=config.buffer_size;
   float bufferTime=recordBufferSize/2*1.0/config.sample_rate;
   if (bufferTime>0.02) {
-    WHYF("REC buf=%.3fsecs, which is too long. Trying to reduce it.");
+    WHYF("REC buf=%.3fsecs, which is too long. Trying to reduce it.",
+	 bufferTime);
 
     /* 64 bytes = 32 samples = ~4ms */
-    config.buffer_size=64;
+    config.buffer_size=64*8;
+    config.buffer_count=2;
     if (!ioctl(recordFd, AUDIO_SET_CONFIG,&config))
       {
-	recordBufferSize=config.buffer_size;
-	bufferTime=recordBufferSize/2*1.0/config.sample_rate;
-	WHYF("Succeeded in reducing record buffer to %d bytes (%.3fsecs)",
-	     recordBufferSize,bufferTime);
-	goto fixedBufferSize;
+	if (!ioctl(playFd, AUDIO_GET_CONFIG,&config)) {
+	  recordBufferSize=config.buffer_size;
+	  bufferTime=recordBufferSize/2*1.0/config.sample_rate;
+	  WHYF("Succeeded in reducing record buffer to %d bytes (%.3fsecs)",
+	       recordBufferSize,bufferTime);
+	  goto fixedBufferSize;
+	}
       }
-    recordBufferSize=64;
 
 #if 0
     /* Ask for 2x speed and 2x channels, to divide effective buffer size by 4.
@@ -343,6 +384,9 @@ int audio_msm_g1_start_record()
 #endif
   }
  fixedBufferSize:
+
+  fcntl(recordFd,F_SETFL,
+	fcntl(recordFd, F_GETFL, NULL)|O_NONBLOCK);
   
   /* tell hardware to start playing */
   ioctl(recordFd,AUDIO_START,0);
@@ -353,6 +397,7 @@ int audio_msm_g1_start_record()
 
 int audio_msm_g1_stop_record()
 {
+  WHY("stopping recording");
   if (recordFd>-1) close(recordFd);
   recordFd=-1;
   return 0;
@@ -388,12 +433,20 @@ int audio_msm_g1_poll_fds(struct pollfd *fds,int slots)
 
 int audio_msm_g1_read(unsigned char *buffer,int maximum_count)
 {
+  if (recordFd==-1) return 0;
+
   /* Regardless of the maximum, we must read exactly buffer sized pieces
      on this audio device */
   if (maximum_count<recordBufferSize) {
     return WHY("Supplied buffer has no space for sample quanta");
   }
+  fcntl(recordFd,F_SETFL,fcntl(recordFd, F_GETFL, NULL)|O_NONBLOCK);
   int b=read(recordFd,&buffer[0],recordBufferSize);
+  if (b<1) 
+    WHYF("read failed: b=%d, err=%s",b,strerror(errno));
+  else 
+    WHYF("read %d bytes",b);
+  if (errno=EBADF) recordFd=-1;
   return b;
 }
 
@@ -401,21 +454,45 @@ int playBufferBytes=0;
 unsigned char playBuffer[65536];
 int audio_msm_g1_write(unsigned char *data,int bytes) 
 {
+  if (playFd==-1) return 0;
+  fcntl(playFd,F_SETFL,fcntl(playFd, F_GETFL, NULL)|O_NONBLOCK);
   if (bytes+playBufferBytes>65536)
     { WHY("Play marshalling buffer full");
       return 0; }
   bcopy(&data[0],&playBuffer[playBufferBytes],bytes);
   playBufferBytes+=bytes;
   int i;
-  for(i=0;i<playBufferBytes;i+=playBufferSize)
+  for(i=0;i<playBufferBytes;)
     {
-      if (write(playFd,&playBuffer[i],playBufferSize)<
-	  playBufferSize) 
-	break;	  
+      struct msm_audio_stats stats;
+      if (ioctl (playFd, AUDIO_GET_STATS, &stats) == 0)
+	WHYF("stats.out_bytes = %10d", stats.out_bytes);
+
+      int bytes=playBufferSize;
+      if (i+bytes>playBufferBytes) bytes=playBufferBytes-i;
+      WHYF("Trying to write %d bytes of audio",bytes);
+      ioctl(playFd,AUDIO_START,0);
+      fcntl(playFd,F_SETFL,fcntl(playFd, F_GETFL, NULL)|O_NONBLOCK);
+      int w=0;
+      WHYF("write(%d,&pb[%d],%d) (playBufferBytes=%d)",
+	   playFd,i,bytes,playBufferBytes);
+      if ((w=write(playFd,&playBuffer[i],bytes))<
+	  1)
+	{
+	  WHYF("Failed to write, returned %d (errno=%s)",
+	       w,strerror(errno));
+	  if (errno==EBADF) playFd=-1;
+	  break;
+	} else {
+	WHYF("Wrote %d bytes of audio",w);
+	i+=w;
+      }
+      WHY("after write");
     }
   bcopy(&playBuffer[i],&playBuffer[0],playBufferBytes-i);
   playBufferBytes-=i;
 
+  WHY("done writing");
   return bytes;
 }
 
@@ -425,11 +502,14 @@ int audio_msm_g1_write(unsigned char *data,int bytes)
 monitor_audio *audio_msm_g1_detect()
 {
    int fd = open ("/dev/msm_snd", O_RDWR);
-   if (fd<0) return NULL;
+   if (fd<0) {
+     WHYF("Could not open /dev/msm_snd (err=%s)",strerror(errno));
+     return NULL;
+   }
    int endpoints=0;
-   int rc =ioctl(fd,SND_GET_NUM_ENDPOINTS,&endpoints);
+   ioctl(fd,SND_GET_NUM_ENDPOINTS,&endpoints);
    close(fd);
-   if (rc>0)  {
+   if (endpoints>0)  {
      monitor_audio *au=calloc(sizeof(monitor_audio),1);
      strcpy(au->name,"G1/IDEOS style MSM audio");
      au->start=audio_msm_g1_start;
@@ -438,5 +518,8 @@ monitor_audio *audio_msm_g1_detect()
      au->read=audio_msm_g1_read;
      au->write=audio_msm_g1_write;
      return au;
-   } else return NULL;
+   } else {
+     WHY("zero end points, so assuming not compatibile audio device");
+     return NULL;
+   }
 }

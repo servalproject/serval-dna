@@ -50,12 +50,13 @@ int autoAnswerP=1;
 int pipeAudio=1;
 int reflectAudio=0;
 int syntheticAudio=0;
-int showReceived=1;
+int showReceived=0;
 int interactiveP=1;
 int recordCodec=VOMP_CODEC_PCM;
 int recordCodecBlockSamples=320;
 int recordCodecTimespan=20;
 int callSessionToken=0;
+int fast_audio=0;
 
 int app_monitor_cli(int argc, const char *const *argv, struct command_line_option *o)
 {
@@ -132,8 +133,9 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
 
   int base_fd_count=fdcount;
   while(1) {
+    WHY("pollloop");
     fdcount=base_fd_count;
-    fdcount+=audev->poll_fds(&fds[fdcount],128-fdcount);
+    if (audev&&audev->poll_fds) fdcount+=audev->poll_fds(&fds[fdcount],128-fdcount);
     poll(fds,fdcount,1000);
 
     fcntl(fd,F_SETFL,
@@ -159,8 +161,10 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
 
     if (audev&&audev->read)
       {
+	WHY("about to read");
 	int bytesRead=audev->read(&audioRecordBuffer[audioRecordBufferBytes],
 				  audioRecordBufferSize-audioRecordBufferBytes);
+	WHY("read");
 	if (bytesRead>0) audioRecordBufferBytes+=bytesRead;
 	
 	/* 8KHz 16 bit samples = 16000 bytes per second.
@@ -171,7 +175,8 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
 	  /* encode and deliver audio block to servald via monitor interface */
 	  encodeAndDispatchRecordedAudio(fd,callSessionToken,recordCodec,
 					 &audioRecordBuffer[audioRecordBufferOffset],
-					 recordCodecTimespan*16);			      
+					 recordCodecTimespan*16);
+	  WHY("sample block sent");
 	  /* skip over the samples we have already processed */
 	  audioRecordBufferOffset+=recordCodecTimespan*16;
 	}
@@ -222,21 +227,28 @@ int processLine(char *cmd,unsigned char *data,int dataLen)
 	     &l_id,&r_id,&l_state,&r_state,
 	     &codec,&start_time,&end_time)==7)
     {
-      if (pipeAudio&&audev) {
+      if (pipeAudio&&audev&&fast_audio) {
 	bufferAudioForPlayback(codec,start_time,end_time,data,dataLen);	
       }
     }
-  if (sscanf(cmd,"CALLSTATUS:%x:%x:%d:%d",
-	     &l_id,&r_id,&l_state,&r_state)==4)
+  char msg[1024];
+  if (sscanf(cmd,"CALLSTATUS:%x:%x:%d:%d:%d",
+	     &l_id,&r_id,&l_state,&r_state,&fast_audio)==5)
     {
+      if (l_state<5&&l_id&&pipeAudio) {
+	// Take control of audio for this call, and let the java side know
+	snprintf(msg,1024,"FASTAUDIO:%x:1\n",l_id);
+	writeLine(msg);
+      }
       if (l_state==4&&autoAnswerP) {
 	// We are ringing, so pickup
-	char msg[1024];
 	sprintf(msg,"pickup %x\n",l_id);
 	writeLine(msg);
       }
-      if (l_state==5) { 
-	startAudio();
+      if (l_state==5) {
+	if (fast_audio) {	  
+	  startAudio();
+	}
 	callSessionToken=l_id;
       } else {
 	stopAudio();
