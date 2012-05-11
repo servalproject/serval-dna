@@ -370,9 +370,10 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
 	      if (debug&DEBUG_RHIZOME)
 		fprintf(stderr,"Could not open '%s' to write received file.\n",
 			filename);
+	    } else {
+	      rhizome_file_fetch_queue_count++;
+	      if (debug&DEBUG_RHIZOME) fprintf(stderr,"Queued file for fetching\n");
 	    }
-	    rhizome_file_fetch_queue_count++;
-	    if (debug&DEBUG_RHIZOME) fprintf(stderr,"Queued file for fetching\n");
 	    return 0;
 	  }
 	else
