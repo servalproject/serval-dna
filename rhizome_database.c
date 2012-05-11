@@ -343,7 +343,7 @@ int rhizome_store_bundle(rhizome_manifest *m, const char *associated_filename)
   if (debug & DEBUG_RHIZOME) fprintf(stderr, "Writing into manifests table\n");
   snprintf(sqlcmd,1024,
 	   "INSERT INTO MANIFESTS(id,manifest,version,inserttime,bar) VALUES('%s',?,%lld,%lld,?);",
-	   manifestid,m->version,overlay_gettime_ms());
+	   manifestid, m->version, gettime_ms());
 
   if (m->haveSecret) {
     if (rhizome_store_keypair_bytes(m->cryptoSignPublic,m->cryptoSignSecret))

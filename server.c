@@ -109,6 +109,14 @@ int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
   return len;
 }
 
+long long gettime_ms()
+{
+  struct timeval nowtv;
+  if (gettimeofday(&nowtv, NULL))
+    FATAL_perror("gettimeofday"); // If this fails, all else is lost!
+  return nowtv.tv_sec * 1000LL + nowtv.tv_usec / 1000;
+}
+
 /** Return the PID of the currently running server process, return 0 if there is none.
  */
 int server_pid()
@@ -220,9 +228,8 @@ void server_shutdown_check()
       file will change or be unaccessible.  In this case, shut down without all the cleanup.
       Perform this check at most once per second.  */
   static long long server_pid_time_ms = 0;
-  long long time_ms = overlay_gettime_ms();
+  long long time_ms = gettime_ms();
   if (server_pid_time_ms == 0 || time_ms - server_pid_time_ms > 1000) {
-    WHYF("time_ms=%lld", time_ms);
     server_pid_time_ms = time_ms;
     if (server_pid() != server_getpid) {
       WHYF("Server pid file no longer contains pid=%d -- shutting down without cleanup", server_getpid);

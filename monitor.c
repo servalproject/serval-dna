@@ -89,7 +89,6 @@ int monitor_setup_sockets()
       int dud=0;
       int r=bind(monitor_named_socket, (struct sockaddr *)&name, len);
       if (r) { dud=1; r=0; WHY_perror("bind"); }
-      DEBUG("listen"); //XXX
       r=listen(monitor_named_socket,MAX_MONITOR_SOCKETS);
       if (r) { dud=1; r=0; WHY_perror("listen");
       }
@@ -185,10 +184,8 @@ int monitor_poll()
 	fcntl(monitor_named_socket, F_GETFL, NULL)|O_NONBLOCK);
   while (
 #ifdef HAVE_LINUX_IF_H
-	 (DEBUG("accept4"), 1) && //XXX
 	 (s = accept4(monitor_named_socket,ignored_address,&ignored_length,O_NONBLOCK))
 #else
-	 (DEBUG("accept"), 1) && //XXX
 	 (s = accept(monitor_named_socket,ignored_address,&ignored_length))
 #endif
       != -1
@@ -253,7 +250,6 @@ int monitor_poll()
 	  break;
 	}
 	errno=0;
-	DEBUG("read"); //XXX
 	bytes=read(c->socket,&c->line[c->line_length],1);
 	if (bytes<1) {
 	  switch(errno) {
@@ -296,7 +292,6 @@ int monitor_poll()
       break;
     case MONITOR_STATE_DATA:
       errno=0;
-      DEBUG("read"); //XXX
       bytes=read(c->socket,
 		 &c->buffer[c->data_offset],
 		 c->data_expected-c->data_offset);

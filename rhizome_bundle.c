@@ -485,7 +485,7 @@ int rhizome_manifest_finalise(rhizome_manifest *m,int signP)
   if (rhizome_manifest_get(m,"version",NULL,0)==NULL)
     {
       /* No version set */
-      m->version = overlay_gettime_ms();
+      m->version = gettime_ms();
       rhizome_manifest_set_ll(m,"version",m->version);
     }
   else

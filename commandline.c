@@ -615,13 +615,13 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
     /* Parent process.  Wait for the child process to fork the grandchild then die. */
     waitpid(cpid, NULL, 0);
     /* Allow a few seconds for the grandchild process to report for duty. */
-    time_t timeout = overlay_gettime_ms() + 5000;
+    long long timeout = gettime_ms() + 5000;
     do {
       struct timespec delay;
       delay.tv_sec = 0;
       delay.tv_nsec = 200000000; // 200 ms = 5 Hz
       nanosleep(&delay, NULL);
-    } while ((pid = server_pid()) == 0 && overlay_gettime_ms() < timeout);
+    } while ((pid = server_pid()) == 0 && gettime_ms() < timeout);
     if (pid == -1)
       return -1;
     if (pid == 0)
@@ -680,13 +680,13 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
       return WHYF("Error sending SIGHUP to Servald pid=%d for instance '%s'", pid, instancepath);
     }
     /* Allow a few seconds for the process to die. */
-    time_t timeout = overlay_gettime_ms() + 2000;
+    long long timeout = gettime_ms() + 2000;
     do {
       struct timespec delay;
       delay.tv_sec = 0;
       delay.tv_nsec = 200000000; // 200 ms = 5 Hz
       nanosleep(&delay, NULL);
-    } while ((running = server_pid()) == pid && overlay_gettime_ms() < timeout);
+    } while ((running = server_pid()) == pid && gettime_ms() < timeout);
   }
   server_remove_stopfile();
   cli_puts("tries");
@@ -1001,7 +1001,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
     rhizome_manifest_set(m, "name", name);
   }
   if (rhizome_manifest_get(m, "date", NULL, 0) == NULL) {
-    rhizome_manifest_set_ll(m, "date", overlay_gettime_ms());
+    rhizome_manifest_set_ll(m, "date", gettime_ms());
   }
   /* Add the manifest and its associated file to the Rhizome database, generating an "id" in the
    * process */

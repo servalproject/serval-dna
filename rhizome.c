@@ -228,7 +228,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
 
   /* Supply manifest version number if missing, so we can do the version check below */
   if (m_in->version == -1) {
-    m_in->version = overlay_gettime_ms();
+    m_in->version = gettime_ms();
     rhizome_manifest_set_ll(m_in, "version", m_in->version);
   }
 

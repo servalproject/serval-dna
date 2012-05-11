@@ -41,21 +41,19 @@ struct interface_rules {
 struct interface_rules *interface_filter=NULL;
 
 unsigned int overlay_sequence_number=0;
-time_t overlay_sequence_start_time;
 
 /* Do we need to repeat our abbreviation policy? */
 int overlay_interface_repeat_abbreviation_policy[OVERLAY_MAX_INTERFACES]={1};
 
+/* Return milliseconds since server started.  First call will always return zero.  */
 long long overlay_gettime_ms()
 {
-  struct timeval nowtv;
-  if (gettimeofday(&nowtv,NULL))
-    return WHY("gettimeofday() failed");
-
-  /* Get current time in milliseconds */
-  long long now=(nowtv.tv_sec-overlay_sequence_start_time)*1000LL;
-  now=now+nowtv.tv_usec/1000;
-
+  static time_t overlay_sequence_start_time = 0;
+  long long now = gettime_ms();
+  if (!overlay_sequence_start_time) {
+    overlay_sequence_start_time = now;
+    now = 0;
+  }
   return now;
 }
 
@@ -249,8 +247,6 @@ int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockadd
   case OVERLAY_INTERFACE_ETHERNET: I(tick_ms)=500; break;
   case OVERLAY_INTERFACE_WIFI: I(tick_ms)=500; break;
   }
-
-  if (!overlay_sequence_start_time) overlay_sequence_start_time=time(0);
 
   if (name[0]=='>') {
     I(fileP)=1;

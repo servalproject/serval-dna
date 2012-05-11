@@ -398,6 +398,7 @@ int respondSimple(keyring_identity *id,
 int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffer,int buffer_length,int *len,
 		unsigned char *transaction_id);
 int requestNewHLR(char *did,char *pin,char *sid,int recvttl,struct sockaddr *recvaddr);
+long long gettime_ms();
 int server_pid();
 void server_save_argv(int argc, const char *const *argv);
 int server(char *backing_file);
@@ -631,7 +632,6 @@ typedef struct overlay_interface {
 extern overlay_interface overlay_interfaces[OVERLAY_MAX_INTERFACES];
 extern int overlay_last_interface_number; // used to remember where a packet came from
 extern unsigned int overlay_sequence_number;
-extern time_t overlay_sequence_start_time;
 
 /* Has someone sent us an abbreviation of an unknown type recently? If so remind them
    that we don't accept these.
@@ -748,14 +748,18 @@ int setReason(char *fmt, ...);
 void logMessage(int level, char *fmt, ...);
 void vlogMessage(int level, char *fmt, va_list);
 
+#define FATALF(F,...)       do { logMessage(LOG_LEVEL_FATAL, "%s:%d:%s()  " F, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__); exit(-1); } while(1)
+#define FATAL(X)            FATALF("%s", (X))
+#define FATAL_perror(X)     FATALF("%s: %s [errno=%d]", (X), strerror(errno), errno)
+
 #define WHY(X) setReason("%s:%d:%s()  %s",__FILE__,__LINE__,__FUNCTION__,X)
 #define WHYNULL(X) (setReason("%s:%d:%s()  %s",__FILE__,__LINE__,__FUNCTION__,X), NULL)
 #define WHYF(F,...) setReason("%s:%d:%s()  " F, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
 #define WHY_perror(X) setReason("%s:%d:%s()  %s: %s [errno=%d]", __FILE__, __LINE__, __FUNCTION__, X, strerror(errno), errno)
 
 #define DEBUGF(F,...) logMessage(LOG_LEVEL_DEBUG, "%s:%d:%s()  " F, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
-#define DEBUG(X) DEBUGF("%s", X)
-#define DEBUG_perror(X) DEBUGF("%s: %s [errno=%d]", X, strerror(errno), errno)
+#define DEBUG(X) DEBUGF("%s", (X))
+#define DEBUG_perror(X) DEBUGF("%s: %s [errno=%d]", (X), strerror(errno), errno)
 #define D DEBUG("D")
 
 overlay_buffer *ob_new(int size);
