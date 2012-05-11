@@ -129,9 +129,17 @@ rhizome_manifest *rhizome_read_manifest_file(const char *filename, int bufferP, 
 	    memcmp(&m->signatories[0][0],manifest_bytes,
 		   crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES))
 	  {
-	    if (debug&DEBUG_RHIZOME) 
-	      fprintf(stderr,
-		      "Manifest id variable does not match first signature block.\n");
+	    if (debug&DEBUG_RHIZOME) {
+	      if (m->sig_count>0) {	      
+		fprintf(stderr,
+			"Manifest id variable does not match first signature block.\n");
+		fprintf(stderr,"  (signature key is %s)\n",
+			/* XXX bit of a hack that relies on SIDs and signing public keys being the same length */
+			overlay_render_sid(&m->signatories[0][0]));
+	      } else {
+		fprintf(stderr,"Manifest has no signature blocks, but should have self-signature block");
+	      }
+	    }
 	    m->errors++;
 	    m->selfSigned=0;
 	  } else m->selfSigned=1;
