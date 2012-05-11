@@ -31,12 +31,16 @@
 
   We may need to introduce a low-pass filter to prevent aliasing, assuming that
   the microphone and ACD in these phones responds to requencies above 4KHz.
+
+  Added fun with this device is that we must read/write exactly one buffer full
+  at a time.
  */
 #define DESIRED_BUFFER_SIZE 256
 #define DESIRED_SAMPLE_RATE 32000
 #define RESAMPLE_FACTOR (DESIRED_SAMPLE_RATE/8000)
 int resamplingBufferSize=0;
-unsigned char *resamplingBuffer=0;
+unsigned char *playMarshallBuffer=0;
+unsigned char *recordMarshallBuffer=0;
 
 extern int playFd;
 extern int recordFd;
@@ -259,13 +263,6 @@ int audio_msm_g1_start_play()
 {
   if (playFd>-1) return 0;
 
-  /* Largest possible resampling buffer required for this chipset.
-     (we resample so that we can use 8KHz audio for transport,
-     but 32KHz sample rate on the audio hardware so that buffers
-     correspond to a shorter period of time */
-  resamplingBufferSize=2*RESAMPLE_FACTOR*8192;
-  resamplingBuffer=malloc(resamplingBufferSize);
-
   /* Get audio control device */
   int fd = open ("/dev/msm_snd", O_RDWR);
   if (fd<0) return -1;
@@ -324,6 +321,8 @@ int audio_msm_g1_start_play()
   float bufferTime=playBufferSize/2*1.0/config.sample_rate;
   WHYF("PLAY buf=%.3fsecs.",bufferTime);
 
+  playMarshallBuffer=malloc(playBufferSize);
+
   /* tell hardware to start playing */
   ioctl(playFd,AUDIO_START,0);
   
@@ -336,7 +335,8 @@ int audio_msm_g1_stop_play()
 {
   WHY("stopping audio play");
   if (playFd>-1) close(playFd);
-  playFd=-1;
+  if (playMarshallBuffer) free(playMarshallBuffer);
+  playFd=-1; playMarshallBuffer=NULL;
   return 0;
 }
 
@@ -371,6 +371,9 @@ int audio_msm_g1_start_record()
   float bufferTime=recordBufferSize/2*1.0/config.sample_rate;
   WHYF("REC buf=%.3fsecs.",bufferTime);
 
+  if (!recordMarshallBuffer)
+    recordMarshallBuffer=malloc(recordBufferSize);
+
   fcntl(recordFd,F_SETFL,
 	fcntl(recordFd, F_GETFL, NULL)|O_NONBLOCK);
   
@@ -385,6 +388,8 @@ int audio_msm_g1_stop_record()
 {
   WHY("stopping recording");
   if (recordFd>-1) close(recordFd);
+  if (recordMarshallBuffer) free(recordMarshallBuffer);
+  recordMarshallBuffer=NULL;
   recordFd=-1;
   return 0;
 }
@@ -417,50 +422,50 @@ int audio_msm_g1_poll_fds(struct pollfd *fds,int slots)
   return count;
 }
 
+int recordMarshallBufferOffset=0;
 int audio_msm_g1_read(unsigned char *buffer,int maximum_count)
 {
   if (recordFd==-1) return 0;
-  if (!resamplingBuffer) return 0;
+  if (!recordMarshallBuffer) return 0;
 
-  int maxRawBytes=maximum_count*RESAMPLE_FACTOR;
-  if (maxRawBytes>resamplingBufferSize)
-    maxRawBytes=resamplingBufferSize;
-  if (maxRawBytes>recordBufferSize)
-    maxRawBytes=recordBufferSize;
+  int supplied=0;  
 
-  fcntl(recordFd,F_SETFL,fcntl(recordFd, F_GETFL, NULL)|O_NONBLOCK);      
-  ioctl(recordFd,AUDIO_START,0);
-  WHY("calling read()");
+  /* read new samples if we don't have any lingering around */  
+  if (!recordMarshallBufferOffset) {
+    fcntl(recordFd,F_SETFL,fcntl(recordFd, F_GETFL, NULL)|O_NONBLOCK);      
+    ioctl(recordFd,AUDIO_START,0);
+    WHY("calling read()");
+    int b=read(recordFd,&recordMarshallBuffer[0],recordBufferSize);
+    if (b<1)
+      WHYF("read failed: b=%d, err=%s",b,strerror(errno));
+    if (errno==EBADF) recordFd=-1;
+    WHYF("read %d raw (upsampled) bytes",b);
+    recordMarshallBufferOffset=b;
+  } 
 
-  /* read raw samples */
-  int b=read(recordFd,&resamplingBuffer[0],maxRawBytes);
-  if (b<1)
-    WHYF("read failed: b=%d, err=%s",b,strerror(errno));
-  if (errno==EBADF) recordFd=-1;
-  WHYF("read %d raw (upsampled) bytes",b);
-
-  /* downsample to output buffer */
-  {
-    int i;
-    /* copy every RESAMPLE_FACTOR-th sample (each being 16 bits)
-       to output buffer */
-    int outpos=0;
-    for(i=0;i<b;i+=(2*RESAMPLE_FACTOR)) 
-      {       
-	buffer[outpos++]=resamplingBuffer[i];
-	buffer[outpos++]=resamplingBuffer[i+1];
-      }
-    b/=RESAMPLE_FACTOR;
+  /* supply audio from marshalling buffer if it has anything.
+     Don't forget to downsample first. */
+  int marshall_offset=0;
+  while(marshall_offset<recordMarshallBufferOffset
+	&&supplied<maximum_count) {
+    buffer[supplied+0]=recordMarshallBuffer[marshall_offset];
+    buffer[supplied+1]=recordMarshallBuffer[marshall_offset+1];
+    supplied+=2;
+    marshall_offset+=2*RESAMPLE_FACTOR;
   }
-  WHYF("Read %d samples.",b/2);
+  bcopy(&recordMarshallBuffer[marshall_offset],
+	&recordMarshallBuffer[0],
+	recordMarshallBufferOffset-marshall_offset);
+  recordMarshallBufferOffset-=marshall_offset;
+  
+  /* Else we read exactly one buffer full into the marshalling buffer */
 
-#warning for debug
-  WHYF("Echoing %d bytes of 8KHz audio",b);
-  audio_msm_g1_write(buffer,b);
+  WHYF("Read %d samples.",supplied/2);
 
-  return b;
+  return supplied;
 }
 
+int playMarshallBufferOffset=0;
 int audio_msm_g1_write(unsigned char *data,int bytes) 
 {
   if (playFd==-1) return 0;
@@ -468,41 +473,51 @@ int audio_msm_g1_write(unsigned char *data,int bytes)
  
   WHYF("Writing %d bytes of 8KHz audio",bytes);
 
-  int maxBytes=bytes;
-  if (maxBytes*RESAMPLE_FACTOR>resamplingBufferSize)
-    maxBytes=resamplingBufferSize/RESAMPLE_FACTOR;
+  int i,played=0;
 
-  /* upsample ready for play back.
-     XXX This is a really crude approach, and it could be done much better. */
-  int i,j,outpos=0;
-  for(i=0;i<bytes;i+=2)
-    for(j=0;j<RESAMPLE_FACTOR;j++) {
-      resamplingBuffer[outpos++]=data[i];
-      resamplingBuffer[outpos++]=data[i+1];
-    }  
-  WHYF("Writing %d bytes of upsampled audio",outpos);
-
-  struct msm_audio_stats stats;
-  if (ioctl (playFd, AUDIO_GET_STATS, &stats) == 0)
-    WHYF("stats.out_bytes = %10d", stats.out_bytes);
-
-  /* even if set non-blocking the following write can block 
-     if we don't call this ioctl first */
-  ioctl(playFd,AUDIO_START,0); 
-  int w=write(playFd,&resamplingBuffer[0],outpos);
-  w/=RESAMPLE_FACTOR;
-  if (w<1)
+  while(played<bytes)
     {
-      WHYF("Failed to write, returned %d (errno=%s)",
-	   w,strerror(errno));
-      if (errno==EBADF) playFd=-1;      
-    } else {
-    WHYF("Wrote %d bytes of audio",w);
-    i+=w;
-  }
+      if (playMarshallBufferOffset==playBufferSize) {
+	/* we have a buffer full of samples, so play it */
+	struct msm_audio_stats stats;
+	if (ioctl (playFd, AUDIO_GET_STATS, &stats) == 0)
+	  WHYF("stats.out_bytes = %10d", stats.out_bytes);
+	
+	/* even if set non-blocking the following write can block 
+	   if we don't call this ioctl first */
+	ioctl(playFd,AUDIO_START,0); 
+	int w=write(playFd,&playMarshallBuffer[0],playBufferSize);
+	if (w<1)
+	  {
+	    WHYF("Failed to write, returned %d (errno=%s)",
+		 w,strerror(errno));
+	    if (errno==EBADF) playFd=-1;      
+	  } else {
+	  if (w<=playBufferSize) {
+	    /* short write, so update buffer status and inform caller */
+	    bcopy(&playMarshallBuffer[w],&playMarshallBuffer[0],
+		  playBufferSize-w);
+	    playMarshallBufferOffset-=w;
+	    WHYF("short write: %d of %d raw bytes written",
+		 w,playBufferSize);
+	    return w/RESAMPLE_FACTOR;
+	  }
+	}
+	playMarshallBufferOffset=0;
+      }
 
-  WHY("done writing");
-  return bytes;
+      /* upsample for playing back */
+      for(i=0;i<RESAMPLE_FACTOR;i++) {
+	playMarshallBuffer[playMarshallBufferOffset++]
+	  =data[played];
+	playMarshallBuffer[playMarshallBufferOffset++]
+	  =data[played+1];
+      }
+      played+=2;     
+    }
+
+  WHYF("done writing %d audio bytes",played);
+  return played;
 }
 
 /* See if we can query end-points for this device.
