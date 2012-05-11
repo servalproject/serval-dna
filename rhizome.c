@@ -276,6 +276,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
   if (rhizome_store_bundle(m_in, filename) == -1)
     return WHY("rhizome_store_bundle() failed.");
 
+  monitor_announce_bundle(m_in);
   if (m_out) *m_out = m_in;
   return 0;
 }

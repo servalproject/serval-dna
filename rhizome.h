@@ -227,3 +227,4 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath);
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_manifest_version_cache_lookup(rhizome_manifest *m);
 int rhizome_manifest_version_cache_store(rhizome_manifest *m);
+int monitor_announce_bundle(rhizome_manifest *m);

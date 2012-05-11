@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "rhizome.h"
 #include <sys/stat.h>
 
 #ifndef HAVE_STRUCT_UCRED
@@ -508,6 +509,46 @@ int monitor_process_data(int index)
 
   if (overlay_mdp_send(&mdp,0,0)) WHY("Send audio failed.");
 
+  return 0;
+}
+
+int monitor_announce_bundle(rhizome_manifest *m)
+{
+  int i;
+  char msg[1024];
+  snprintf(msg,1024,"\nBUNDLE:%s:%lld:%lld:%s\n",
+	   /* XXX bit of a hack here, since SIDs and 
+	      cryptosign public keys have the same length */
+	   overlay_render_sid(m->cryptoSignPublic),
+	   m->version,
+	   m->fileLength,
+	   m->dataFileName?m->dataFileName:"");
+  for(i=0;i<monitor_socket_count;i++)
+    {
+      if (!(monitor_sockets[i].flags&MONITOR_RHIZOME))
+	continue;
+      nextInSameSlot:
+	errno=0;
+	fcntl(monitor_sockets[i].socket,F_SETFL,
+	      fcntl(monitor_sockets[i].socket, F_GETFL, NULL)|O_NONBLOCK);
+	write(monitor_sockets[i].socket,msg,strlen(msg));
+	if (errno&&(errno!=EINTR)&&(errno!=EAGAIN)) {
+	  /* error sending update, so kill monitor socket */
+	  WHYF("Tearing down monitor client #%d due to errno=%d",
+	       i,errno);
+	  close(monitor_sockets[i].socket);
+	  if (i==monitor_socket_count-1) {
+	    monitor_socket_count--;
+	    continue;
+	  } else {
+	    bcopy(&monitor_sockets[monitor_socket_count-1],
+		  &monitor_sockets[i],
+		  sizeof(struct monitor_context));
+	    monitor_socket_count--;
+	    goto nextInSameSlot;
+	  }
+	}
+      }
   return 0;
 }
 
