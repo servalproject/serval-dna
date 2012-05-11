@@ -20,6 +20,24 @@
    Copyright (C) 2008 The Android Open Source Project
 */
 
+/*
+  We ask the driver to reduce it's buffer size, but it doesn't listen.
+  This is very strange, as looking in pcm_out.c of kernel source it appears
+  that it should work just fine.
+
+  What does work, however, is increasing the sample rate, so that the buffers
+  empty sooner. So we use 32000Hz instead of 8000Hz so that the 2KB record buffer
+  holds only 1/32nd of a second instead of 1/8th of a second.
+
+  We may need to introduce a low-pass filter to prevent aliasing, assuming that
+  the microphone and ACD in these phones responds to requencies above 4KHz.
+ */
+#define DESIRED_BUFFER_SIZE 256
+#define DESIRED_SAMPLE_RATE 32000
+#define RESAMPLE_FACTOR (DESIRED_SAMPLE_RATE/8000)
+int resamplingBufferSize=0;
+unsigned char *resamplingBuffer=0;
+
 extern int playFd;
 extern int recordFd;
 extern int playBufferSize;
@@ -241,6 +259,13 @@ int audio_msm_g1_start_play()
 {
   if (playFd>-1) return 0;
 
+  /* Largest possible resampling buffer required for this chipset.
+     (we resample so that we can use 8KHz audio for transport,
+     but 32KHz sample rate on the audio hardware so that buffers
+     correspond to a shorter period of time */
+  resamplingBufferSize=2*RESAMPLE_FACTOR*8192;
+  resamplingBuffer=malloc(resamplingBufferSize);
+
   /* Get audio control device */
   int fd = open ("/dev/msm_snd", O_RDWR);
   if (fd<0) return -1;
@@ -278,8 +303,8 @@ int audio_msm_g1_start_play()
       return WHY("Could not read audio device configuration");
     }
   config.channel_count=1;
-  config.sample_rate=8000;
-  playBufferSize=config.buffer_size;
+  config.sample_rate=DESIRED_SAMPLE_RATE;
+  config.buffer_size=DESIRED_BUFFER_SIZE;
   if (ioctl(playFd, AUDIO_SET_CONFIG,&config))
     {
       close(playFd);
@@ -294,27 +319,11 @@ int audio_msm_g1_start_play()
     If playBufferSize equates to too long an interval,
     then try to reduce it in various ways.
   */    
+  ioctl(playFd, AUDIO_GET_CONFIG,&config);
+  playBufferSize=config.buffer_size;
   float bufferTime=playBufferSize/2*1.0/config.sample_rate;
-  if (bufferTime>0.02) {
-    WHYF("PLAY buf=%.3fsecs, which is too long. Trying to reduce it.",
-	 bufferTime);
+  WHYF("PLAY buf=%.3fsecs.",bufferTime);
 
-    /* 64 bytes = 32 samples = ~4ms */
-    config.buffer_size=64*8;
-    config.buffer_count=2;
-    if (!ioctl(playFd, AUDIO_SET_CONFIG,&config))
-      {
-	if (!ioctl(playFd, AUDIO_GET_CONFIG,&config)) {
-	  playBufferSize=config.buffer_size;
-	  bufferTime=playBufferSize/2*1.0/config.sample_rate;
-	  WHYF("Succeeded in reducing play buffer to %d bytes (%.3fsecs)",
-	       playBufferSize,bufferTime);
-	  goto fixedBufferSize;
-	}
-      }
-  }
- fixedBufferSize:
- 
   /* tell hardware to start playing */
   ioctl(playFd,AUDIO_START,0);
   
@@ -344,7 +353,8 @@ int audio_msm_g1_start_record()
       return WHY("Could not read audio device configuration");
     }
   config.channel_count=1;
-  config.sample_rate=8000;
+  config.sample_rate=DESIRED_SAMPLE_RATE;
+  config.buffer_size=DESIRED_BUFFER_SIZE;
   if (ioctl(recordFd, AUDIO_SET_CONFIG,&config))
     {
       close(recordFd);
@@ -355,35 +365,11 @@ int audio_msm_g1_start_record()
   /*
     If recordBufferSize equates to too long an interval,
     then try to reduce it in various ways.
-  */  
+  */
+  ioctl(recordFd, AUDIO_GET_CONFIG,&config);
   recordBufferSize=config.buffer_size;
   float bufferTime=recordBufferSize/2*1.0/config.sample_rate;
-  if (bufferTime>0.02) {
-    WHYF("REC buf=%.3fsecs, which is too long. Trying to reduce it.",
-	 bufferTime);
-
-    /* 64 bytes = 32 samples = ~4ms */
-    config.buffer_size=64*8;
-    config.buffer_count=2;
-    if (!ioctl(recordFd, AUDIO_SET_CONFIG,&config))
-      {
-	if (!ioctl(playFd, AUDIO_GET_CONFIG,&config)) {
-	  recordBufferSize=config.buffer_size;
-	  bufferTime=recordBufferSize/2*1.0/config.sample_rate;
-	  WHYF("Succeeded in reducing record buffer to %d bytes (%.3fsecs)",
-	       recordBufferSize,bufferTime);
-	  goto fixedBufferSize;
-	}
-      }
-
-#if 0
-    /* Ask for 2x speed and 2x channels, to divide effective buffer size by 4.
-     */
-    config.sample_rate=16000;
-    config.channel_count=2;
-#endif
-  }
- fixedBufferSize:
+  WHYF("REC buf=%.3fsecs.",bufferTime);
 
   fcntl(recordFd,F_SETFL,
 	fcntl(recordFd, F_GETFL, NULL)|O_NONBLOCK);
@@ -434,63 +420,86 @@ int audio_msm_g1_poll_fds(struct pollfd *fds,int slots)
 int audio_msm_g1_read(unsigned char *buffer,int maximum_count)
 {
   if (recordFd==-1) return 0;
+  if (!resamplingBuffer) return 0;
 
-  /* Regardless of the maximum, we must read exactly buffer sized pieces
-     on this audio device */
-  if (maximum_count<recordBufferSize) {
-    return WHY("Supplied buffer has no space for sample quanta");
-  }
-  fcntl(recordFd,F_SETFL,fcntl(recordFd, F_GETFL, NULL)|O_NONBLOCK);
-  int b=read(recordFd,&buffer[0],recordBufferSize);
-  if (b<1) 
+  int maxRawBytes=maximum_count*RESAMPLE_FACTOR;
+  if (maxRawBytes>resamplingBufferSize)
+    maxRawBytes=resamplingBufferSize;
+  if (maxRawBytes>recordBufferSize)
+    maxRawBytes=recordBufferSize;
+
+  fcntl(recordFd,F_SETFL,fcntl(recordFd, F_GETFL, NULL)|O_NONBLOCK);      
+  ioctl(recordFd,AUDIO_START,0);
+  WHY("calling read()");
+
+  /* read raw samples */
+  int b=read(recordFd,&resamplingBuffer[0],maxRawBytes);
+  if (b<1)
     WHYF("read failed: b=%d, err=%s",b,strerror(errno));
-  else 
-    WHYF("read %d bytes",b);
-  if (errno=EBADF) recordFd=-1;
+  if (errno==EBADF) recordFd=-1;
+  WHYF("read %d raw (upsampled) bytes",b);
+
+  /* downsample to output buffer */
+  {
+    int i;
+    /* copy every RESAMPLE_FACTOR-th sample (each being 16 bits)
+       to output buffer */
+    int outpos=0;
+    for(i=0;i<b;i+=(2*RESAMPLE_FACTOR)) 
+      {       
+	buffer[outpos++]=resamplingBuffer[i];
+	buffer[outpos++]=resamplingBuffer[i+1];
+      }
+    b/=RESAMPLE_FACTOR;
+  }
+  WHYF("Read %d samples.",b/2);
+
+#warning for debug
+  WHYF("Echoing %d bytes of 8KHz audio",b);
+  audio_msm_g1_write(buffer,b);
+
   return b;
 }
 
-int playBufferBytes=0;
-unsigned char playBuffer[65536];
 int audio_msm_g1_write(unsigned char *data,int bytes) 
 {
   if (playFd==-1) return 0;
   fcntl(playFd,F_SETFL,fcntl(playFd, F_GETFL, NULL)|O_NONBLOCK);
-  if (bytes+playBufferBytes>65536)
-    { WHY("Play marshalling buffer full");
-      return 0; }
-  bcopy(&data[0],&playBuffer[playBufferBytes],bytes);
-  playBufferBytes+=bytes;
-  int i;
-  for(i=0;i<playBufferBytes;)
-    {
-      struct msm_audio_stats stats;
-      if (ioctl (playFd, AUDIO_GET_STATS, &stats) == 0)
-	WHYF("stats.out_bytes = %10d", stats.out_bytes);
+ 
+  WHYF("Writing %d bytes of 8KHz audio",bytes);
 
-      int bytes=playBufferSize;
-      if (i+bytes>playBufferBytes) bytes=playBufferBytes-i;
-      WHYF("Trying to write %d bytes of audio",bytes);
-      ioctl(playFd,AUDIO_START,0);
-      fcntl(playFd,F_SETFL,fcntl(playFd, F_GETFL, NULL)|O_NONBLOCK);
-      int w=0;
-      WHYF("write(%d,&pb[%d],%d) (playBufferBytes=%d)",
-	   playFd,i,bytes,playBufferBytes);
-      if ((w=write(playFd,&playBuffer[i],bytes))<
-	  1)
-	{
-	  WHYF("Failed to write, returned %d (errno=%s)",
-	       w,strerror(errno));
-	  if (errno==EBADF) playFd=-1;
-	  break;
-	} else {
-	WHYF("Wrote %d bytes of audio",w);
-	i+=w;
-      }
-      WHY("after write");
-    }
-  bcopy(&playBuffer[i],&playBuffer[0],playBufferBytes-i);
-  playBufferBytes-=i;
+  int maxBytes=bytes;
+  if (maxBytes*RESAMPLE_FACTOR>resamplingBufferSize)
+    maxBytes=resamplingBufferSize/RESAMPLE_FACTOR;
+
+  /* upsample ready for play back.
+     XXX This is a really crude approach, and it could be done much better. */
+  int i,j,outpos=0;
+  for(i=0;i<bytes;i+=2)
+    for(j=0;j<RESAMPLE_FACTOR;j++) {
+      resamplingBuffer[outpos++]=data[i];
+      resamplingBuffer[outpos++]=data[i+1];
+    }  
+  WHYF("Writing %d bytes of upsampled audio",outpos);
+
+  struct msm_audio_stats stats;
+  if (ioctl (playFd, AUDIO_GET_STATS, &stats) == 0)
+    WHYF("stats.out_bytes = %10d", stats.out_bytes);
+
+  /* even if set non-blocking the following write can block 
+     if we don't call this ioctl first */
+  ioctl(playFd,AUDIO_START,0); 
+  int w=write(playFd,&resamplingBuffer[0],outpos);
+  w/=RESAMPLE_FACTOR;
+  if (w<1)
+    {
+      WHYF("Failed to write, returned %d (errno=%s)",
+	   w,strerror(errno));
+      if (errno==EBADF) playFd=-1;      
+    } else {
+    WHYF("Wrote %d bytes of audio",w);
+    i+=w;
+  }
 
   WHY("done writing");
   return bytes;
