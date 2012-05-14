@@ -400,6 +400,7 @@ int monitor_process_command(int index,char *cmd)
 	}
     }
   else if (sscanf(cmd,"call %s %s %s",sid,localDid,remoteDid)==3) {
+    WHY("here");
     if (sid[0]=='*') {
       /* For testing, pick a peer and call them */
       int bin,slot;
@@ -427,6 +428,7 @@ int monitor_process_command(int index,char *cmd)
       stowSid(&mdp.vompevent.remote_sid[0],0,sid);
       vomp_mdp_event(&mdp,NULL,0);
     }
+    WHY("here");
   } 
   else if (sscanf(cmd,"status %x",&callSessionToken)==1) {
     int i;
