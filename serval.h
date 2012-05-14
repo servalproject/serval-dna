@@ -1330,9 +1330,9 @@ typedef struct vomp_call_state {
   unsigned long long create_time;
   unsigned long long last_activity;
   unsigned long long audio_clock;
+  long long  next_status_time;
   int audio_started;
   int last_sent_status;
-  int next_status_time;
   unsigned char remote_codec_list[256];
   int recent_sample_rotor;
   vomp_sample_block recent_samples[VOMP_MAX_RECENT_SAMPLES];
