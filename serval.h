@@ -605,9 +605,11 @@ typedef struct overlay_interface {
   /* How many times have we abbreviated our address since we last announced it in full? */
   int ticks_since_sent_full_address;
 
-  /* Sequence number of last tick.  Sent with announcments to help keep track of the reliability of
-     getting traffic to/from us. */
+  /* sequence number of last packet sent on this interface.
+     Used to allow NACKs that can request retransmission of recent packets.
+  */
   int sequence_number;
+  /* XXX need recent packet buffers to support the above */
 
   /* Broadcast address and netmask, if known */
   /* We really only case about distinct broadcast addresses on interfaces.
@@ -623,7 +625,7 @@ typedef struct overlay_interface {
   /* If the interface still exists on the local machine.
      If not, it we keep track of it for a few seconds before purging it, incase of flapping, e.g.,
      due to DHCP renewal */
-  int observed;
+  int observed;  
 } overlay_interface;
 
 /* Maximum interface count is rather arbitrary.
