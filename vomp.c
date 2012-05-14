@@ -272,6 +272,8 @@ int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
 	}
       }
 
+      WHYF("sending VoMP frame to far end: state=%d.%d",
+	   call->local.state,call->remote.state);
       overlay_mdp_send(&mdp,0,0);
       
       call->local.sequence++;
