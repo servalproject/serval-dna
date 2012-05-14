@@ -155,6 +155,13 @@ typedef struct rhizome_manifest {
 
 extern long long rhizome_space;
 extern const char *rhizome_datastore_path;
+int form_rhizome_datastore_path(char * buf, size_t bufsiz, const char *fmt, ...);
+int create_rhizome_datastore_dir();
+
+/* Handy statement for forming the path of a rhizome store file in a char buffer whose declaration
+ * is in scope (so that sizeof(buf) will work).  Evaluates to true if the pathname fitted into
+ * the provided buffer, false (0) otherwise (after printing a message to stderr).  */
+#define FORM_RHIZOME_DATASTORE_PATH(buf,fmt,...) (form_rhizome_datastore_path((buf), sizeof(buf), (fmt), ##__VA_ARGS__))
 
 extern sqlite3 *rhizome_db;
 
@@ -186,7 +193,7 @@ int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid);
 int rhizome_store_file(const char *file,char *hash,int priortity);
 char *rhizome_safe_encode(unsigned char *in,int len);
 int rhizome_finish_sqlstatement(sqlite3_stmt *statement);
-int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, char *bundle,
+int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, const char *bundle,
 			  char *groups[], int ttl,
 			  int verifyP, int checkFileP, int signP);
 int rhizome_add_manifest(rhizome_manifest *m_in, rhizome_manifest **m_out, const char *filename,

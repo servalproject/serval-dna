@@ -24,6 +24,41 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 long long rhizome_space=0;
 const char *rhizome_datastore_path = NULL;
 
+int form_rhizome_datastore_path(char * buf, size_t bufsiz, const char *fmt, ...)
+{
+  char *bufp = buf;
+  char *bufe = bufp + bufsiz - 1;
+  if (!rhizome_datastore_path) {
+    WHY("Cannot open rhizome database -- no path specified");
+    return 0;
+  }
+  bufp += snprintf(bufp, bufe - buf, "%s/", rhizome_datastore_path);
+  if (bufp > bufe) {
+      WHY("Path buffer overrun");
+      return 0;
+  }
+  va_list ap;
+  va_start(ap, fmt);
+  va_list ap2;
+  va_copy(ap2, ap);
+  bufp += vsnprintf(bufp, bufe - bufp, fmt, ap2);
+  va_end(ap);
+  if (bufp > bufe) {
+      WHY("Path buffer overrun");
+      return 0;
+  }
+  return 1;
+}
+
+int create_rhizome_datastore_dir()
+{
+  if (!rhizome_datastore_path) {
+    WHY("Cannot create rhizome database -- no path specified");
+    return 0;
+  }
+  return mkdirs(rhizome_datastore_path);
+}
+
 sqlite3 *rhizome_db=NULL;
 
 /* XXX Requires a messy join that might be slow. */
@@ -36,16 +71,10 @@ int rhizome_manifest_priority(char *id)
 int rhizome_opendb()
 {
   if (rhizome_db) return 0;
-  char dbname[1024];
 
-  if (!rhizome_datastore_path) {
-    fprintf(stderr,"Cannot open rhizome database -- no path specified\n");
+  char dbname[1024];
+  if (!FORM_RHIZOME_DATASTORE_PATH(dbname, "rhizome.db"))
     exit(1);
-  }
-  if (snprintf(dbname, sizeof(dbname), "%s/rhizome.db", rhizome_datastore_path) >= sizeof(dbname)) {
-    fprintf(stderr,"Cannot open rhizome database -- data store path is too long\n");
-    exit(1);
-  }
 
   int r=sqlite3_open(dbname,&rhizome_db);
   if (r) {

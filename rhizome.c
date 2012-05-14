@@ -28,7 +28,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
    file and object buffers and lifetimes.
 */
 
-int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, char *bundle,
+int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, const char *bundle,
 			  char *groups[], int ttl,
 			  int verifyP, int checkFileP, int signP)
 {
@@ -36,10 +36,9 @@ int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, char
 
   char filename[1024];
   char manifestname[1024];
-  if (snprintf(filename, sizeof(filename), "%s/import/file.%s", rhizome_datastore_path, bundle) >= sizeof(filename)
-   || snprintf(manifestname, sizeof(manifestname), "%s/import/manifest.%s", rhizome_datastore_path, bundle) >= sizeof(manifestname)) {
+  if (!FORM_RHIZOME_DATASTORE_PATH(filename, "import/file.%s", bundle)
+   || !FORM_RHIZOME_DATASTORE_PATH(manifestname, "import/manifest.%s", bundle))
     return WHY("Manifest bundle name too long");
-  }
 
   /* Read manifest file if no manifest was given */
   rhizome_manifest *m = m_in;

@@ -1109,6 +1109,9 @@ const char *serval_instancepath();
 int form_serval_instance_path(char * buf, size_t bufsiz, const char *path);
 int create_serval_instance_dir();
 
+int mkdirs(const char *path);
+int mkdirsn(const char *path, size_t len);
+
 /* Handy statement for forming a path to an instance file in a char buffer whose declaration
  * is in scope (so that sizeof(buf) will work).  Evaluates to true if the pathname fitted into
  * the provided buffer, false (0) otherwise (after printing a message to stderr).  */

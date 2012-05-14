@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <signal.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <alloca.h>
 
 char *gatewayspec=NULL;
 
@@ -305,6 +306,46 @@ int create_serval_instance_dir() {
     return WHY_perror("mkdir");
   }
   return 0;
+}
+
+int mkdirs(const char *path)
+{
+  return mkdirsn(path, strlen(path));
+}
+
+int mkdirsn(const char *path, size_t len)
+{
+  if (len == 0)
+    return WHY("Bug: empty path");
+  char *pathfrag = alloca(len + 1);
+  strncpy(pathfrag, path, len);
+  pathfrag[len] = '\0';
+  if (mkdir(pathfrag, 0700) != -1)
+    return 0;
+  if (errno == EEXIST) {
+    DIR *d = opendir(pathfrag);
+    if (!d) {
+      WHY_perror("opendir");
+      return WHYF("cannot access %s", pathfrag);
+    }
+    closedir(d);
+    return 0;
+  }
+  if (errno == ENOENT) {
+    const char *lastsep = path + len - 1;
+    while (lastsep != path && *--lastsep != '/')
+      ;
+    while (lastsep != path && *--lastsep == '/')
+      ;
+    if (lastsep != path) {
+      if (mkdirsn(path, lastsep - path + 1) == -1)
+	return -1;
+      if (mkdir(pathfrag, 0700) != -1)
+	return 0;
+    }
+  }
+  WHY_perror("mkdir");
+  return WHYF("cannot mkdir %s", pathfrag);
 }
 
 int setVerbosity(const char *optarg) {

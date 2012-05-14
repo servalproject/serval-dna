@@ -335,11 +335,9 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
 	    peeraddr.sin_port=htons(RHIZOME_HTTP_PORT);
 	    int r=connect(sock,(struct sockaddr*)&peeraddr,sizeof(peeraddr));
 	    if ((errno!=EINPROGRESS)&&(r!=0)) {	      
+	      WHY_perror("connect");
 	      close (sock);
-	      if (debug&DEBUG_RHIZOME) {
-		WHY("Failed to open socket to peer's rhizome web server");
-		WHY_perror("connect");
-	      }
+	      if (debug&DEBUG_RHIZOME) WHY("Failed to open socket to peer's rhizome web server");
 	      return -1;
 	    }
 	    
@@ -361,19 +359,27 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
 	    /* XXX Don't forget to implement resume */
 #define RHIZOME_IDLE_TIMEOUT 10
 	    /* XXX We should stream file straight into the database */
+	    const char *id = rhizome_manifest_get(q->manifest, "id", NULL, 0);
+	    if (id == NULL) {
+	      close(sock);
+	      return WHY("Manifest missing ID");
+	    }
 	    char filename[1024];
-	    snprintf(filename,1024,"%s/import/file.%s",rhizome_datastore_path,
-		     rhizome_manifest_get(q->manifest,"id",NULL,0));
-	    q->manifest->dataFileName=strdup(filename);
+	    if (!FORM_RHIZOME_DATASTORE_PATH(filename, "import/file.%s", id)) {
+	      close(sock);
+	      return -1;
+	    }
+	    q->manifest->dataFileName = strdup(filename);
 	    q->file=fopen(filename,"w");
 	    if (!q->file) {
+	      WHY_perror("fopen");
 	      if (debug&DEBUG_RHIZOME)
-		fprintf(stderr,"Could not open '%s' to write received file.\n",
-			filename);
-	    } else {
-	      rhizome_file_fetch_queue_count++;
-	      if (debug&DEBUG_RHIZOME) fprintf(stderr,"Queued file for fetching\n");
+		DEBUGF("Could not open '%s' to write received file.", filename);
+	      close(sock);
+	      return -1;
 	    }
+	    rhizome_file_fetch_queue_count++;
+	    if (debug&DEBUG_RHIZOME) DEBUGF("Queued file for fetching");
 	    return 0;
 	  }
 	else
@@ -389,12 +395,14 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
 	  m->finalised=1;
 	  m->fileHashedP=1;
 	  m->manifest_bytes=m->manifest_all_bytes;
+	  const char *id = rhizome_manifest_get(m, "id", NULL, 0);
+	  if (id == NULL)
+	    return WHY("Manifest missing ID");
 	  char filename[1024];
-	  snprintf(filename,1024,"%s/import/manifest.%s",
-		   rhizome_datastore_path,
-		   rhizome_manifest_get(m,"id",NULL,0));
-	  if (!rhizome_write_manifest_file(m,filename)) {
-	    rhizome_bundle_import(m, NULL, rhizome_manifest_get(m,"id",NULL,0),
+	  if (!FORM_RHIZOME_DATASTORE_PATH(filename, "import/manifest.%s", id))
+	    return -1;
+	  if (!rhizome_write_manifest_file(m, filename)) {
+	    rhizome_bundle_import(m, NULL, id,
 				  NULL /* no additional groups */,
 				  m->ttl-1 /* TTL */,
 				  1 /* do verify */,
@@ -507,10 +515,12 @@ int rhizome_fetch_poll()
 	      if (debug&DEBUG_RHIZOME) fprintf(stderr,"Received all of file via rhizome -- now to import it\n");
 	      {
 		fclose(q->file);
+		const char *id = rhizome_manifest_get(q->manifest, "id", NULL, 0);
+		if (id == NULL)
+		  return WHY("Manifest missing ID");
 		char filename[1024];
-		snprintf(filename,1024,"%s/import/manifest.%s",
-			 rhizome_datastore_path,
-			 rhizome_manifest_get(q->manifest,"id",NULL,0));
+		if (!FORM_RHIZOME_DATASTORE_PATH("import/manifest.%s", id))
+		  return -1;
 		/* Do really write the manifest unchanged */
 		if (debug&DEBUG_RHIZOME) {
 		  fprintf(stderr,"manifest has %d signatories\n",q->manifest->sig_count);
@@ -523,8 +533,7 @@ int rhizome_fetch_poll()
 		q->manifest->finalised=1;
 		q->manifest->manifest_bytes=q->manifest->manifest_all_bytes;
 		if (!rhizome_write_manifest_file(q->manifest,filename)) {
-		  rhizome_bundle_import(q->manifest, NULL, 
-					rhizome_manifest_get(q->manifest, "id", NULL, 0),
+		  rhizome_bundle_import(q->manifest, NULL, id,
 					NULL /* no additional groups */,
 					q->manifest->ttl - 1 /* TTL */,
 					1 /* do verify */,
