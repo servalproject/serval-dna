@@ -115,4 +115,34 @@ test_CaseInsensitive() {
    assertStdoutGrep --stdout --stderr --matches=1 '^FOO=wah$'
 }
 
+doc_DotsInNames="Config item names can have internal dots"
+test_DotsInNames() {
+   executeOk $dna config set foo.bar yes
+   executeOk $dna config get foo.bar
+   assertStdoutLineCount '==' 1
+   assertStdoutGrep --stdout --stderr --matches=1 '^foo\.bar=yes$'
+   execute $dna config set foo. yes
+   assertExitStatus '!=' 0
+   execute $dna config set .foo yes
+   assertExitStatus '!=' 0
+   execute $dna config set foo..bar yes
+   assertExitStatus '!=' 0
+   executeOk $dna config set foo.x.bar yes
+   executeOk $dna config get foo.x.bar
+   assertStdoutLineCount '==' 1
+   assertStdoutGrep --stdout --stderr --matches=1 '^foo\.x\.bar=yes$'
+}
+
+doc_DebugFlags="Debug flags affect verbosity"
+test_DebugFlags() {
+   executeOk $dna echo one two three
+   assertStderrGrep --matches=0 '\<echo:argv\['
+   executeOk $dna config set debug.verbose true
+   executeOk $dna echo one two three
+   assertStderrGrep --matches=3 '\<echo:argv\['
+   executeOk $dna config set debug.verbose false
+   executeOk $dna echo one two three
+   assertStderrGrep --matches=0 '\<echo:argv\['
+}
+
 runTests "$@"

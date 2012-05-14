@@ -31,6 +31,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 char *exec_args[128];
 int exec_argc = 0;
 
+int serverMode=0;
 int servalShutdown = 0;
 
 static int server_getpid = 0;
@@ -157,6 +158,8 @@ void server_save_argv(int argc, const char *const *argv)
 
 int server(char *backing_file)
 {
+  serverMode = 1;
+
   /* Catch sigsegv and other crash signals so that we can relaunch ourselves */
   signal(SIGSEGV, signal_handler);
   signal(SIGFPE, signal_handler);

@@ -975,3 +975,35 @@ long long overlay_time_until_next_tick()
 
   return nexttick;
 }
+
+long long parse_quantity(char *q)
+{
+  int m;
+  char units[80];
+
+  if (strlen(q)>=80) return WHY("quantity string >=80 characters");
+
+  if (sscanf(q,"%d%s",&m,units)==2)
+    {
+      if (units[1]) return WHY("Units should be single character");
+      switch(units[0])
+	{
+	case 'k': return m*1000LL;
+	case 'K': return m*1024LL;
+	case 'm': return m*1000LL*1000LL;
+	case 'M': return m*1024LL*1024LL;
+	case 'g': return m*1000LL*1000LL*1000LL;
+	case 'G': return m*1024LL*1024LL*1024LL;
+	default:
+	  return WHY("Illegal unit: should be k,K,m,M,g, or G.");
+	}
+    }
+  if (sscanf(q,"%d",&m)==1)
+    {
+      return m;
+    }
+  else
+    {
+      return WHY("Could not parse quantity");
+    }
+}

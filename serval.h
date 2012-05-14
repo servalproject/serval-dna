@@ -28,6 +28,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #endif
 #include <string.h>
 #include <signal.h>
+#include <sys/types.h>
 
 #ifdef WIN32
 #include "win32/win32.h"
@@ -105,6 +106,9 @@ struct in_addr {
 #else
 #define DEFAULT_INSTANCE_PATH "/var/serval-node"
 #endif
+
+/* bzero(3) is deprecated in favour of memset(3). */
+#define bzero(addr,len) memset((addr), 0, (len))
 
 /* UDP Port numbers for various Serval services.
  The overlay mesh works over DNA */
@@ -384,6 +388,8 @@ extern int hexdigit[16];
 extern int sock;
 
 char *confValueGet(char *var,char *defaultValue);
+void confSetDebugFlags();
+int confParseBoolean(const const char *text);
 int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
 		struct sockaddr *recvaddr,unsigned int *recvaddrlen);
 int validateSid(const char *sid);
@@ -410,9 +416,7 @@ void serverCleanUp();
 int isTransactionInCache(unsigned char *transaction_id);
 void insertTransactionInCache(unsigned char *transaction_id);
 
-int setReason(char *fmt, ...);
 int hexvalue(unsigned char c);
-int dump(char *name,unsigned char *addr,int len);
 int packetOk(int interface,unsigned char *packet,int len,
 	     unsigned char *transaction_id, int recvttl,
 	     struct sockaddr *recvaddr,int recvaddrlen,int parseP);
@@ -749,19 +753,25 @@ extern overlay_txqueue overlay_tx[OQ_MAX];
 int setReason(char *fmt, ...);
 void logMessage(int level, char *fmt, ...);
 void vlogMessage(int level, char *fmt, va_list);
+long long debugFlagMask(const char *flagname);
+int dump(char *name,unsigned char *addr,int len);
 
 #define FATALF(F,...)       do { logMessage(LOG_LEVEL_FATAL, "%s:%d:%s()  " F, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__); exit(-1); } while(1)
 #define FATAL(X)            FATALF("%s", (X))
 #define FATAL_perror(X)     FATALF("%s: %s [errno=%d]", (X), strerror(errno), errno)
 
-#define WHY(X) setReason("%s:%d:%s()  %s",__FILE__,__LINE__,__FUNCTION__,X)
-#define WHYNULL(X) (setReason("%s:%d:%s()  %s",__FILE__,__LINE__,__FUNCTION__,X), NULL)
-#define WHYF(F,...) setReason("%s:%d:%s()  " F, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
-#define WHY_perror(X) setReason("%s:%d:%s()  %s: %s [errno=%d]", __FILE__, __LINE__, __FUNCTION__, X, strerror(errno), errno)
+#define WHY(X)              setReason("%s:%d:%s()  %s",__FILE__,__LINE__,__FUNCTION__,X)
+#define WHYNULL(X)          (setReason("%s:%d:%s()  %s",__FILE__,__LINE__,__FUNCTION__,X), NULL)
+#define WHYF(F,...)         setReason("%s:%d:%s()  " F, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
+#define WHY_perror(X)       setReason("%s:%d:%s()  %s: %s [errno=%d]", __FILE__, __LINE__, __FUNCTION__, X, strerror(errno), errno)
 
-#define DEBUGF(F,...) logMessage(LOG_LEVEL_DEBUG, "%s:%d:%s()  " F, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
-#define DEBUG(X) DEBUGF("%s", (X))
-#define DEBUG_perror(X) DEBUGF("%s: %s [errno=%d]", (X), strerror(errno), errno)
+#define WARNF(F,...)        logMessage(LOG_LEVEL_WARN, "%s:%d:%s()  " F, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
+#define WARN(X)             WARNF("%s", (X))
+#define WARN_perror(X)      WARNF("%s: %s [errno=%d]", (X), strerror(errno), errno)
+
+#define DEBUGF(F,...)       logMessage(LOG_LEVEL_DEBUG, "%s:%d:%s()  " F, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
+#define DEBUG(X)            DEBUGF("%s", (X))
+#define DEBUG_perror(X)     DEBUGF("%s: %s [errno=%d]", (X), strerror(errno), errno)
 #define D DEBUG("D")
 
 overlay_buffer *ob_new(int size);
@@ -1023,32 +1033,31 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
 
 #include "nacl.h"
 
-
-#define DEBUG_OVERLAYINTERFACES 2
-#define DEBUG_PACKETRX 1
-#define DEBUG_VERBOSE 4
-#define DEBUG_VERBOSE_IO 8
-#define DEBUG_PEERS 16
-#define DEBUG_DNARESPONSES 32
-#define DEBUG_DNAREQUESTS 64
-#define DEBUG_SIMULATION 128
-#define DEBUG_DNAVARS 256
-#define DEBUG_PACKETFORMATS 512
-#define DEBUG_GATEWAY 1024
-#define DEBUG_HLR 2048
-#define DEBUG_IO 4096
-#define DEBUG_OVERLAYFRAMES 8192
-#define DEBUG_OVERLAYABBREVIATIONS 16384
-#define DEBUG_OVERLAYROUTING 32768
-#define DEBUG_SECURITY 65536
-#define DEBUG_RHIZOME (1<<17)
-#define DEBUG_OVERLAYROUTEMONITOR (1<<18)
-#define DEBUG_QUEUES (1<<19)
-#define DEBUG_BROADCASTS (1<<20)
-#define DEBUG_RHIZOMESYNC (1<<21)
-#define DEBUG_DISABLERHIZOME (1<<22)
-#define DEBUG_PACKETTX (1<<23)
-#define DEBUG_PACKETCONSTRUCTION (1<<24)
+#define DEBUG_PACKETRX              (1 << 0)
+#define DEBUG_OVERLAYINTERFACES     (1 << 1)
+#define DEBUG_VERBOSE               (1 << 2)
+#define DEBUG_VERBOSE_IO            (1 << 3)
+#define DEBUG_PEERS                 (1 << 4)
+#define DEBUG_DNARESPONSES          (1 << 5)
+#define DEBUG_DNAREQUESTS           (1 << 6)
+#define DEBUG_SIMULATION            (1 << 7)
+#define DEBUG_DNAVARS               (1 << 8)
+#define DEBUG_PACKETFORMATS         (1 << 9)
+#define DEBUG_GATEWAY               (1 << 10)
+#define DEBUG_HLR                   (1 << 11)
+#define DEBUG_IO                    (1 << 12)
+#define DEBUG_OVERLAYFRAMES         (1 << 13)
+#define DEBUG_OVERLAYABBREVIATIONS  (1 << 14)
+#define DEBUG_OVERLAYROUTING        (1 << 15)
+#define DEBUG_SECURITY              (1 << 16)
+#define DEBUG_RHIZOME               (1 << 17)
+#define DEBUG_OVERLAYROUTEMONITOR   (1 << 18)
+#define DEBUG_QUEUES                (1 << 19)
+#define DEBUG_BROADCASTS            (1 << 20)
+#define DEBUG_RHIZOMESYNC           (1 << 21)
+#define DEBUG_DISABLERHIZOME        (1 << 22)
+#define DEBUG_PACKETTX              (1 << 23)
+#define DEBUG_PACKETCONSTRUCTION    (1 << 24)
 
 int serval_packetvisualise(FILE *f,char *message,unsigned char *packet,int plen);
 
@@ -1109,8 +1118,8 @@ const char *serval_instancepath();
 int form_serval_instance_path(char * buf, size_t bufsiz, const char *path);
 int create_serval_instance_dir();
 
-int mkdirs(const char *path);
-int mkdirsn(const char *path, size_t len);
+int mkdirs(const char *path, mode_t mode);
+int mkdirsn(const char *path, size_t len, mode_t mode);
 
 /* Handy statement for forming a path to an instance file in a char buffer whose declaration
  * is in scope (so that sizeof(buf) will work).  Evaluates to true if the pathname fitted into
@@ -1264,8 +1273,6 @@ typedef struct overlay_mdp_frame {
 } overlay_mdp_frame;
 
 int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req);
-
-int setVerbosity(const char *optarg);
 
 /* Client-side MDP function */
 extern int mdp_client_socket;

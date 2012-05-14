@@ -21,125 +21,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include <signal.h>
 #include <unistd.h>
-#include <dirent.h>
-#include <alloca.h>
 
 char *gatewayspec=NULL;
-
 char *outputtemplate=NULL;
 char *instrumentation_file=NULL;
-char *importFile=NULL;
 
-int debug=0;
 int timeout=3000; /* 3000ms request timeout */
 
-int serverMode=0;
-int clientMode=0;
-
 int returnMultiVars=0;
-
-int hexdigit[16]={'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
-
-int sock=-1;
-
-#ifndef HAVE_BZERO
-/* OpenWRT doesn't have bzero */
-void bzero(void *m,size_t len)
-{
-  unsigned char *c=m;
-  int i;
-  for(i=0;i<len;i++) c[i]=0;
-}
-#endif
-
-int dump(char *name,unsigned char *addr,int len)
-{
-  int i,j;
-  fprintf(stderr,"Dump of %s\n",name);
-  for(i=0;i<len;i+=16) 
-    {
-      fprintf(stderr,"  %04x :",i);
-      for(j=0;j<16&&(i+j)<len;j++) fprintf(stderr," %02x",addr[i+j]);
-      for(;j<16;j++) fprintf(stderr,"   ");
-      fprintf(stderr,"    ");
-      for(j=0;j<16&&(i+j)<len;j++) fprintf(stderr,"%c",addr[i+j]>=' '&&addr[i+j]<0x7f?addr[i+j]:'.');
-      fprintf(stderr,"\n");
-    }
-  return 0;
-}
-
-int dumpResponses(struct response_set *responses)
-{
-  struct response *r;
-  if (!responses) {fprintf(stderr,"Response set is NULL\n"); return 0; }
-  fprintf(stderr,"Response set claims to contain %d entries.\n",responses->response_count);
-  r=responses->responses;
-  while(r)
-    {
-      fprintf(stderr,"  response code 0x%02x\n",r->code);
-      if (r->next)
-	if (r->next->prev!=r) fprintf(stderr,"    !! response chain is broken\n");
-      r=r->next;
-    }
-  return 0;
-}
-
-#ifdef ANDROID
-#include <android/log.h> 
-#endif
-
-void logMessage(int level, char *fmt, ...)
-{
-  va_list ap;
-  va_start(ap, fmt);
-  vlogMessage(level, fmt, ap);
-}
-
-void vlogMessage(int level, char *fmt, va_list ap)
-{
-  va_list ap2;
-  char buf[8192];
-  va_copy(ap2, ap);
-  vsnprintf(buf, sizeof buf, fmt, ap2);
-  va_end(ap);
-  buf[sizeof buf - 1] = '\0';
-#ifdef ANDROID
-  int alevel = ANDROID_LOG_UNKNOWN;
-  switch (level) {
-    case LOG_LEVEL_FATAL: alevel = ANDROID_LOG_FATAL; break;
-    case LOG_LEVEL_ERROR: alevel = ANDROID_LOG_ERROR; break;
-    case LOG_LEVEL_INFO:  alevel = ANDROID_LOG_INFO; break;
-    case LOG_LEVEL_WARN:  alevel = ANDROID_LOG_WARN; break;
-    case LOG_LEVEL_DEBUG: alevel = ANDROID_LOG_DEBUG; break;
-  }
-  __android_log_print(alevel, "servald", "%s", buf);
-#endif
-  const char *levelstr = "UNKNOWN";
-  switch (level) {
-    case LOG_LEVEL_FATAL: levelstr = "FATAL"; break;
-    case LOG_LEVEL_ERROR: levelstr = "ERROR"; break;
-    case LOG_LEVEL_INFO:  levelstr = "INFO"; break;
-    case LOG_LEVEL_WARN:  levelstr = "WARN"; break;
-    case LOG_LEVEL_DEBUG: levelstr = "DEBUG"; break;
-  }
-  fprintf(stderr, "%s: %s\n", levelstr, buf);
-}
-
-int setReason(char *fmt, ...)
-{
-  va_list ap;
-  va_start(ap, fmt);
-  vlogMessage(LOG_LEVEL_ERROR, fmt, ap);
-  return -1;
-}
-
-int hexvalue(unsigned char c)
-{
-  if (c>='0'&&c<='9') return c-'0';
-  if (c>='A'&&c<='F') return c-'A'+10;
-  if (c>='a'&&c<='f') return c-'a'+10;
-  return setReason("Invalid hex digit in SID");
-}
 
 int parseAssignment(unsigned char *text,int *var_id,unsigned char *value,int *value_len)
 {
@@ -291,98 +180,7 @@ int form_serval_instance_path(char *buf, size_t bufsiz, const char *path)
 }
 
 int create_serval_instance_dir() {
-  const char *instancepath = serval_instancepath();
-  if (mkdir(instancepath, 0700) == -1) {
-    if (errno == EEXIST) {
-      DIR *d = opendir(instancepath);
-      if (!d) {
-	WHYF("Cannot access %s", instancepath);
-	return WHY_perror("opendir");
-      }
-      closedir(d);
-      return 0;
-    }
-    WHYF("Cannot mkdir %s", instancepath);
-    return WHY_perror("mkdir");
-  }
-  return 0;
-}
-
-int mkdirs(const char *path)
-{
-  return mkdirsn(path, strlen(path));
-}
-
-int mkdirsn(const char *path, size_t len)
-{
-  if (len == 0)
-    return WHY("Bug: empty path");
-  char *pathfrag = alloca(len + 1);
-  strncpy(pathfrag, path, len);
-  pathfrag[len] = '\0';
-  if (mkdir(pathfrag, 0700) != -1)
-    return 0;
-  if (errno == EEXIST) {
-    DIR *d = opendir(pathfrag);
-    if (!d) {
-      WHY_perror("opendir");
-      return WHYF("cannot access %s", pathfrag);
-    }
-    closedir(d);
-    return 0;
-  }
-  if (errno == ENOENT) {
-    const char *lastsep = path + len - 1;
-    while (lastsep != path && *--lastsep != '/')
-      ;
-    while (lastsep != path && *--lastsep == '/')
-      ;
-    if (lastsep != path) {
-      if (mkdirsn(path, lastsep - path + 1) == -1)
-	return -1;
-      if (mkdir(pathfrag, 0700) != -1)
-	return 0;
-    }
-  }
-  WHY_perror("mkdir");
-  return WHYF("cannot mkdir %s", pathfrag);
-}
-
-int setVerbosity(const char *optarg) {
-  long long old_debug=debug;
-  debug=strtoll(optarg,NULL,10);
-  if (strstr(optarg,"interfaces")) debug|=DEBUG_OVERLAYINTERFACES;
-  if (strstr(optarg,"rx")) debug|=DEBUG_PACKETRX;
-  if (strstr(optarg,"tx")) debug|=DEBUG_PACKETTX;
-  if (strstr(optarg,"verbose")) debug|=DEBUG_VERBOSE;
-  if (strstr(optarg,"verbio")) debug|=DEBUG_VERBOSE_IO;
-  if (strstr(optarg,"peers")) debug|=DEBUG_PEERS;
-  if (strstr(optarg,"dnaresponses")) debug|=DEBUG_DNARESPONSES;
-  if (strstr(optarg,"dnarequests")) debug|=DEBUG_DNAREQUESTS;
-  if (strstr(optarg,"simulation")) debug|=DEBUG_SIMULATION;
-  if (strstr(optarg,"dnavars")) debug|=DEBUG_DNAVARS;
-  if (strstr(optarg,"packetformats")) debug|=DEBUG_PACKETFORMATS;
-  if (strstr(optarg,"packetconstruction")) debug|=DEBUG_PACKETCONSTRUCTION;
-  if (strstr(optarg,"gateway")) debug|=DEBUG_GATEWAY;
-  if (strstr(optarg,"hlr")) debug|=DEBUG_HLR;
-  if (strstr(optarg,"sockio")) debug|=DEBUG_IO;
-  if (strstr(optarg,"frames")) debug|=DEBUG_OVERLAYFRAMES;
-  if (strstr(optarg,"abbreviations")) debug|=DEBUG_OVERLAYABBREVIATIONS;
-  if (strstr(optarg,"routing")) debug|=DEBUG_OVERLAYROUTING;
-  if (strstr(optarg,"security")) debug|=DEBUG_SECURITY;
-  if (strstr(optarg,"rhizome")) debug|=DEBUG_RHIZOME;
-  if (strstr(optarg,"norhizome")) 
-    { debug|=DEBUG_DISABLERHIZOME; debug&=~DEBUG_RHIZOME; }
-  if (strstr(optarg,"filesync")) debug|=DEBUG_RHIZOMESYNC;
-  if (strstr(optarg,"monitorroutes")) debug|=DEBUG_OVERLAYROUTEMONITOR;
-  if (strstr(optarg,"queues")) debug|=DEBUG_QUEUES;
-  if (strstr(optarg,"broadcasts")) debug|=DEBUG_BROADCASTS;
-
-  if (old_debug==debug && optarg[0]) {
-    fprintf(stderr,"WARNING: Option '%s' had no effect on existing debug/verbosity level.\n",
-	    optarg);
-  }
-  return 0;
+  return mkdirs(serval_instancepath(), 0700);
 }
 
 int main(int argc, char **argv)
@@ -394,6 +192,7 @@ int main(int argc, char **argv)
   char *keyring_file=NULL;
   int instance=-1;
   int foregroundMode=0;
+  int clientMode=0;
 
 #if defined WIN32
     WSADATA wsa_data;
@@ -405,19 +204,15 @@ int main(int argc, char **argv)
 
   server_save_argv(argc, (const char*const*)argv);
 
-  if (argv[1]&&argv[1][0]!='-') {
-    /* First argument doesn't start with a dash, so assume it is for the new command line
-       parser. */
-
+  /* If first argument starts with a dash, we assume it is for the old command line parser. */
+  if (!argv[1] || argv[1][0] != '-') {
     /* Don't include name of program in arguments */
     int return_value = parseCommandLine(argc - 1, (const char*const*)&argv[1]);
-
 #if defined WIN32
     WSACleanup();
 #endif
-    
     return return_value;
-  } 
+  }
 
   fprintf(stderr,
 	  "WARNING: The use of the old command line structure is being deprecated.\n"
@@ -507,7 +302,7 @@ int main(int argc, char **argv)
 	  timeout=atoi(optarg);
 	  break;
 	case 'v': /* set verbosity */
-	  setVerbosity(optarg);
+	  debug |= debugFlagMask(optarg);
 	  break;
 	case 'A': /* get address (IP or otherwise) of a given peer */
 	  peerAddress(did,sid,3 /* 1 = print list of addresses to stdout, 2 = set peer list to responders */);
@@ -571,35 +366,3 @@ int main(int argc, char **argv)
   return 0;
 }
 #endif
-
-long long parse_quantity(char *q)
-{
-  int m;
-  char units[80];
-
-  if (strlen(q)>=80) return WHY("quantity string >=80 characters");
-
-  if (sscanf(q,"%d%s",&m,units)==2)
-    {
-      if (units[1]) return WHY("Units should be single character");
-      switch(units[0])
-	{
-	case 'k': return m*1000LL;
-	case 'K': return m*1024LL;
-	case 'm': return m*1000LL*1000LL;
-	case 'M': return m*1024LL*1024LL;
-	case 'g': return m*1000LL*1000LL*1000LL;
-	case 'G': return m*1024LL*1024LL*1024LL;
-	default:
-	  return WHY("Illegal unit: should be k,K,m,M,g, or G.");
-	}
-    }
-  if (sscanf(q,"%d",&m)==1)
-    {
-      return m;
-    }
-  else
-    {
-      return WHY("Could not parse quantity");
-    }
-}

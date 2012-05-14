@@ -4,6 +4,8 @@ SRCS=	batman.c \
 	commandline.c \
 	dataformats.c \
 	dna.c \
+	log.c \
+	mkdir.c \
 	dna_identity.c \
 	encode.c \
 	fifo.c \

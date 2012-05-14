@@ -19,6 +19,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 
+int hexdigit[16]={'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
+
 int extractDid(unsigned char *packet,int *ofs,char *did)
 {
   int d=0;
@@ -132,6 +134,14 @@ int stowSid(unsigned char *packet, int ofs, const char *sid)
       packet[ofs++] |= hexvalue(sid[(i<<1)+1]);
     }
   return 0;
+}
+
+int hexvalue(unsigned char c)
+{
+  if (c>='0'&&c<='9') return c-'0';
+  if (c>='A'&&c<='F') return c-'A'+10;
+  if (c>='a'&&c<='f') return c-'a'+10;
+  return setReason("Invalid hex digit in SID");
 }
 
 int packetGetID(unsigned char *packet,int len,char *did,char *sid)

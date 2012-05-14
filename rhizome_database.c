@@ -56,7 +56,7 @@ int create_rhizome_datastore_dir()
     WHY("Cannot create rhizome database -- no path specified");
     return 0;
   }
-  return mkdirs(rhizome_datastore_path);
+  return mkdirs(rhizome_datastore_path, 0700);
 }
 
 sqlite3 *rhizome_db=NULL;

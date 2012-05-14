@@ -19,10 +19,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define _GNU_SOURCE // For asprintf()
 #include <sys/time.h>
-#include <sys/types.h>
 #include <sys/wait.h>
 #include <math.h>
 #include <string.h>
+#ifdef HAVE_STRINGS_H
+#include <strings.h>
+#endif
 #include <time.h>
 #include <unistd.h>
 #include <stdarg.h>
@@ -263,7 +265,7 @@ int parseCommandLine(int argc, const char *const *args)
   }
 
   /* Otherwise, make call */
-  setVerbosity(confValueGet("debug",""));
+  confSetDebugFlags();
   int result=command_line_options[cli_call].function(argc, args, &command_line_options[cli_call]);
   /* clean up after ourselves */
   overlay_mdp_client_done();
@@ -396,6 +398,8 @@ int app_echo(int argc, const char *const *argv, struct command_line_option *o)
 {
   int i;
   for (i = 1; i < argc; ++i) {
+    if (debug & DEBUG_VERBOSE)
+      DEBUGF("echo:argv[%d]=%s", i, argv[i]);
     cli_puts(argv[i]);
     cli_delim(NULL);
   }
@@ -507,15 +511,15 @@ char *confValueGet(char *var,char *defaultValue)
 
   char filename[1024];
   if (!FORM_SERVAL_INSTANCE_PATH(filename, "serval.conf")) {
-    WHYF("Using default value of %s: %s", var, defaultValue);
+    WARNF("Using default value of %s: %s", var, defaultValue);
     return defaultValue;
   }
   FILE *f = fopen(filename,"r");
   if (!f) {
-    WHYF("Cannot open serval.conf, using default value of %s: %s", var, defaultValue);
+    WARNF("Cannot open serval.conf, using default value of %s: %s", var, defaultValue);
     return defaultValue;
   }
-  
+
   char line[1024];
   line[0]=0; fgets(line,1024,f);
   while(line[0]) {
@@ -536,6 +540,64 @@ char *confValueGet(char *var,char *defaultValue)
   }
   fclose(f);
   return defaultValue;
+}
+
+void confSetDebugFlags()
+{
+  char filename[1024];
+  if (FORM_SERVAL_INSTANCE_PATH(filename, "serval.conf")) {
+    FILE *f = fopen(filename, "r");
+    if (!f) {
+      WARN("Cannot open serval.conf");
+    } else {
+      long long setmask = 0;
+      long long clearmask = 0;
+      int setall = 0;
+      int clearall = 0;
+      char line[1024];
+      line[0] = '\0';
+      fgets(line, sizeof line, f);
+      while (line[0]) {
+	if (!strncasecmp(line, "debug.", 6)) {
+	  char *flagname = line + 6;
+	  char *p = flagname;
+	  while (*p && *p != '=')
+	    ++p;
+	  int flag;
+	  if (*p) {
+	    char *q = p + 1;
+	    while (*q && *q != '\n')
+	      ++q;
+	    *q = '\0';
+	    if ((flag = confParseBoolean(p + 1)) != -1) {
+	      *p = '\0';
+	      long long mask = debugFlagMask(flagname);
+	      if (mask == -1)
+		if (flag) setall = 1; else clearall = 1;
+	      else
+		if (flag) setmask |= mask; else clearmask |= mask;
+	    }
+	  }
+	}
+	line[0] = '\0';
+	fgets(line, sizeof line, f);
+      }
+      fclose(f);
+      if (setall) debug = -1; else if (clearall) debug = 0;
+      debug &= ~clearmask;
+      debug |= setmask;
+    }
+  }
+}
+
+int confParseBoolean(const char *text)
+{
+  if (!strcasecmp(text, "on") || !strcasecmp(text, "yes") || !strcasecmp(text, "true") || !strcmp(text, "1"))
+    return 1;
+  if (!strcasecmp(text, "off") || !strcasecmp(text, "no") || !strcasecmp(text, "false") || !strcmp(text, "0"))
+    return 0;
+  WARNF("Invalid boolean value '%s'", text);
+  return -1;
 }
 
 int cli_absolute_path(const char *arg)
@@ -906,11 +968,13 @@ int cli_configvarname(const char *arg)
 {
   if (arg[0] == '\0')
     return 0;
-  const char *s;
-  for (s = arg; *s; ++s)
-    if (!(isalnum(*s) || *s == '_'))
+  if (!(isalnum(arg[0]) || arg[0] == '_'))
+    return 0;
+  const char *s = arg + 1;
+  for (; *s; ++s)
+    if (!(isalnum(*s) || *s == '_' || (*s == '.' && s[-1] != '.')))
       return 0;
-  return 1;
+  return s[-1] != '.';
 }
 
 int app_config_set(int argc, const char *const *argv, struct command_line_option *o)

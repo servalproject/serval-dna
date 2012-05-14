@@ -19,6 +19,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 
+int sock = -1;
+
 /* Now that we are using the keyring, we only support a small subset of variables.
    (VAR_NAME is not properly supported yet) 
 */
