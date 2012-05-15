@@ -1082,6 +1082,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   /* Add the manifest and its associated file to the Rhizome database, generating an "id" in the
    * process */
   rhizome_manifest *mout = NULL;
+  WHYF("calling rhizome_add_manifest, author='%s'",authorisingSid);
   int ret = rhizome_add_manifest(m, &mout, filepath,
 				 NULL, // no groups - XXX should allow them
 				 255, // ttl - XXX should read from somewhere
@@ -1501,6 +1502,8 @@ command_line_option command_line_options[]={
    "Get specified configuration variable."},
   {app_rhizome_add_file,{"rhizome","add","file","<filepath>","[<manifestpath>]",NULL},CLIFLAG_STANDALONE,
    "Add a file to Rhizome and optionally write its manifest to the given path"},
+  {app_rhizome_add_file,{"rhizome","add","authored","file","<filepath>","<sid>","[<manifestpath>]",NULL},CLIFLAG_STANDALONE,
+   "Add a file to Rhizome and remember who authored it, so that they can modify the bundle later."},
   {app_rhizome_list,{"rhizome","list","[<offset>]","[<limit>]",NULL},CLIFLAG_STANDALONE,
    "List all manifests and files in Rhizome"},
   {app_rhizome_extract_manifest,{"rhizome","extract","manifest","<manifestid>","[<manifestpath>]",NULL},CLIFLAG_STANDALONE,

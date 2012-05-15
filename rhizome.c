@@ -275,7 +275,10 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
       if (!rhizome_bk_xor(author,m_in->cryptoSignPublic,
 			  m_in->cryptoSignPublic,
 			  bkbytes)) {
+	WHYF("set BK='%s'",rhizome_bytes_to_hex(bkbytes,len));
 	rhizome_manifest_set(m_in,"BK",rhizome_bytes_to_hex(bkbytes,len));
+      } else {
+	WHY("Failed to set BK");
       }
     }   
   }
