@@ -123,13 +123,60 @@ int rhizome_bk_xor(const char *author,
   return 0;
 }
 
-rhizome_signature *rhizome_sign_hash(rhizome_manifest *m)
+/* See if the manifest has a BK entry, and if so, use it to obtain the 
+   private key for the BID.  Decoding BK's relies on the provision of
+   the appropriate SID.
+
+   XXX Note that this function is not able to verify that the private key
+   is correct, as there is no exposed API in NaCl for calculating the
+   public key from a cryptosign private key.  We thus have to trust that
+   the supplied SID is correct.
+
+*/
+int rhizome_extract_privatekey(rhizome_manifest *m,const char *authorHex)
+{
+  char *bk = rhizome_manifest_get(m, "bk", NULL, 0);
+  if (!bk) return WHY("Cannot obtain private key as manifest lacks BK field");
+  
+  unsigned char bkBytes[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES];
+  if (stowBytes(bkBytes,bk,crypto_sign_edwards25519sha512batch_SECRETKEYBYTES))
+    return WHY("Failed to make packed version of BK.  Is it a valid hex string of the correct length?");
+
+  if (rhizome_bk_xor(authorHex,
+		     m->cryptoSignPublic,
+		     bkBytes,
+		     m->cryptoSignSecret))
+    return WHY("rhizome_bk_xor() failed");
+
+  /* Verify validity of key.
+     XXX This is a pretty ugly way to do it, but NaCl offers no API to
+     do this cleanly. */
+  {
+#include "nacl-source/nacl-20110221/nacl-source/crypto_sign_edwards25519sha512batch_ref/ge25519.h"
+    unsigned char *sk=m->cryptoSignSecret;
+    unsigned char pk[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
+    sc25519 scsk;
+    ge25519 gepk;
+        
+    sc25519_from32bytes(&scsk,sk);
+    
+    ge25519_scalarmult_base(&gepk, &scsk);
+    ge25519_pack(pk, &gepk);
+    bzero(&scsk,sizeof(scsk));
+    if (bcmp(pk,m->cryptoSignPublic,
+	     crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES))
+      return WHY("BID secret key decoded from BK was not valid");     
+    else return 0;
+  }
+}
+
+rhizome_signature *rhizome_sign_hash(rhizome_manifest *m,const char *author)
 {
   unsigned char *hash=m->manifesthash;
   unsigned char *publicKeyBytes=m->cryptoSignPublic;
   unsigned char secretKeyBytes[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES];
   
-  if (rhizome_find_privatekey(m))
+  if (rhizome_extract_privatekey(m,author))
     {
       WHY("Cannot find secret key to sign manifest data.");
       return NULL;

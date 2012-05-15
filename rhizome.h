@@ -173,7 +173,7 @@ int rhizome_str_is_manifest_id(const char *text);
 int rhizome_strn_is_file_hash(const char *text);
 int rhizome_str_is_file_hash(const char *text);
 int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename);
-int rhizome_manifest_sign(rhizome_manifest *m);
+int rhizome_manifest_sign(rhizome_manifest *m,const char *authoring_sid);
 int rhizome_drop_stored_file(char *id,int maximum_priority);
 int rhizome_manifest_priority(char *id);
 rhizome_manifest *rhizome_read_manifest_file(const char *filename, int bufferPAndSize, int flags);
@@ -201,11 +201,11 @@ int rhizome_add_manifest(rhizome_manifest *m_in, rhizome_manifest **m_out, const
 			 char *groups[], int ttl,
 			 int verifyP, int checkFileP, int signP,
 			 const char *author);
-int rhizome_manifest_finalise(rhizome_manifest *m,int signP);
+int rhizome_manifest_finalise(rhizome_manifest *m,int signP,const char *author);
 char *rhizome_bytes_to_hex(unsigned char *in,int byteCount);
 int rhizome_hex_to_bytes(const char *in,unsigned char *out,int hexChars);
 int rhizome_find_privatekey(rhizome_manifest *m);
-rhizome_signature *rhizome_sign_hash(rhizome_manifest *m);
+rhizome_signature *rhizome_sign_hash(rhizome_manifest *m,const char *author);
 int rhizome_server_free_http_request(rhizome_http_request *r);
 int rhizome_server_close_http_request(int i);
 int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r);
@@ -239,3 +239,4 @@ int rhizome_bk_xor(const char *author,
 		   unsigned char bid[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES],
 		   unsigned char bkin[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES],
 		   unsigned char bkout[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]);
+int rhizome_extract_privatekey(rhizome_manifest *m,const char *authorHex);

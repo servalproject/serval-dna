@@ -220,7 +220,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
       fprintf(stderr, "Found duplicate payload: name=\"%s\" version=%llu hexhash=%s -- not adding\n", name, dupm->version, dupm->fileHexHash);
     /* If the caller wants the duplicate manifest, it must be finalised, otherwise discarded. */
     if (m_out) {
-      if (rhizome_manifest_finalise(dupm, 0))
+      if (rhizome_manifest_finalise(dupm, 0,NULL))
 	return WHY("Failed to finalise manifest.\n");
       *m_out = dupm;
     }
@@ -250,7 +250,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
     }
     /* Check if we know its private key */
     rhizome_hex_to_bytes(id, m_in->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
-    if (!rhizome_find_privatekey(m_in))
+    if (!rhizome_extract_privatekey(m_in,author))
       m_in->haveSecret=1;
   } else {
     /* The manifest had no ID (256 bit random string being a public key in the NaCl CryptoSign
@@ -270,7 +270,13 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
          The nice thing about this specification is that:
          privateKey = BK XOR sha512(RS##BID), so the same function can be used
 	 to encrypt and decrypt the BK field. */
-      
+      int len=crypto_sign_edwards25519sha512batch_SECRETKEYBYTES;
+      unsigned char bkbytes[len];
+      if (!rhizome_bk_xor(author,m_in->cryptoSignPublic,
+			  m_in->cryptoSignPublic,
+			  bkbytes)) {
+	rhizome_manifest_set(m_in,"BK",rhizome_bytes_to_hex(bkbytes,len));
+      }
     }   
   }
 
@@ -282,7 +288,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
   }
 
   /* Finish completing the manifest */
-  if (rhizome_manifest_finalise(m_in, signP))
+  if (rhizome_manifest_finalise(m_in, signP,author))
     return WHY("Failed to finalise manifest.\n");
 
   /* Okay, it is written, and can be put directly into the rhizome database now */

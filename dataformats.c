@@ -136,6 +136,22 @@ int stowSid(unsigned char *packet, int ofs, const char *sid)
   return 0;
 }
 
+int stowBytes(unsigned char *packet, const char *in,int count)
+{
+  int ofs=0;
+  if (strlen(in)!=(count*2)) 
+    return WHY("Input string is wrong length");
+  int i;
+  for(i = 0; i != count; ++i) {
+    if(hexvalue(in[i<<1])<0) return WHYF("Non-hex char at position %d",i<<1);
+    if(hexvalue(in[(i<<1)+1])<0) return WHYF("Non-hex char at position %d",(i<<1)+1);
+    packet[ofs] = hexvalue(in[i<<1]) << 4;
+    packet[ofs++] |= hexvalue(in[(i<<1)+1]);
+  }
+  return 0;
+}
+
+
 int hexvalue(unsigned char c)
 {
   if (c>='0'&&c<='9') return c-'0';

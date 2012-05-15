@@ -413,10 +413,12 @@ int rhizome_manifest_pack_variables(rhizome_manifest *m)
   return 0;
 }
 
-/* Sign this manifest using our own private CryptoSign key */
-int rhizome_manifest_sign(rhizome_manifest *m)
+/* Sign this manifest using our own private CryptoSign key.
+   We may have multiple identities at any given point, so tell 
+   which one we should be using. */
+int rhizome_manifest_sign(rhizome_manifest *m,const char *author)
 {
-  rhizome_signature *sig=rhizome_sign_hash(m);
+  rhizome_signature *sig=rhizome_sign_hash(m,author);
 
   if (!sig) return WHY("rhizome_sign_hash() failed.");
 
@@ -466,7 +468,7 @@ int rhizome_manifest_dump(rhizome_manifest *m,char *msg)
   return 0;
 }
 
-int rhizome_manifest_finalise(rhizome_manifest *m,int signP)
+int rhizome_manifest_finalise(rhizome_manifest *m,int signP,const char *author)
 {
   /* set fileHexHash */
   if (!m->fileHashedP) {
@@ -503,7 +505,7 @@ int rhizome_manifest_finalise(rhizome_manifest *m,int signP)
   rhizome_manifest_pack_variables(m);
 
   /* Sign it */
-  if (signP) rhizome_manifest_sign(m);
+  if (signP) rhizome_manifest_sign(m,author);
 
   /* mark manifest as finalised */
   m->finalised=1;

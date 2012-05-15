@@ -1137,7 +1137,8 @@ int app_rhizome_extract_manifest(int argc, const char *const *argv, struct comma
     case 0: ret = 1; break;
     case 1: ret = 0;
       if (manifestpath[0]) {
-	if (rhizome_manifest_finalise(m, 1) == -1)
+#warning why do we ask for the manifest to be signed here, when we are just extracting it? Anyway, it wont work while the author field is null.
+	if (rhizome_manifest_finalise(m, 1,NULL) == -1)
 	  ret = WHY("Could not overwrite manifest file.");
 	else if (rhizome_write_manifest_file(m, manifestpath) == -1)
 	  ret = WHY("Could not overwrite manifest file.");

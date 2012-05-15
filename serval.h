@@ -397,6 +397,7 @@ int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
 		struct sockaddr *recvaddr,unsigned int *recvaddrlen);
 int validateSid(const char *sid);
 int stowSid(unsigned char *packet, int ofs, const char *sid);
+int stowBytes(unsigned char *packet, const char *in,int count);
 int stowDid(unsigned char *packet,int *ofs,char *did);
 int isFieldZeroP(unsigned char *packet,int start,int count);
 void srandomdev();
