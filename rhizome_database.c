@@ -127,11 +127,6 @@ int rhizome_opendb()
       fprintf(stderr,"SQLite could not create MANIFESTS table: %s\n",sqlite3_errmsg(rhizome_db));
       exit(1);
     }
-  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS KEYPAIRS(public text not null primary key, private text not null);",NULL,NULL,NULL))
-    {
-      fprintf(stderr,"SQLite could not create KEYPAIRS table: %s\n",sqlite3_errmsg(rhizome_db));
-      exit(1);
-    }
   if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS FILES(id text not null primary key, data blob, length integer, highestpriority integer, datavalid integer);",NULL,NULL,NULL))
     {
       fprintf(stderr,"SQLite could not create FILES table: %s\n",sqlite3_errmsg(rhizome_db));
