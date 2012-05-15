@@ -146,6 +146,13 @@ rhizome_manifest *rhizome_read_manifest_file(const char *filename, int bufferP, 
       }
     }
 
+    /* Check for a BK entry that allows us to recover the private key for this bundle's ID.
+       The challenge is that BK's are designed to offer plausible deniability, in that the
+       manifest provides nothing that would allow an adversary, without posession of the creator's
+       keyring, to be able to prove that any given identity is the creator of the file.
+       */
+    
+
     if (debug&DEBUG_RHIZOME) 
       fprintf(stderr, "Group membership determination not implemented (see which signatories are groups? what about manifests signed by groups we don't yet know about?)\n");
   }
