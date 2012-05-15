@@ -27,6 +27,7 @@ char *asterisk_binary="/data/data/org.servalproject/asterisk/sbin/asterisk";
 char *temp_file="/data/data/org.servalproject/var/temp.out";
 char *cmd_file="/data/data/org.servalproject/var/temp.cmd";
 char *shell="/system/bin/sh";
+char *gatewayspec=NULL;
 
 typedef struct dna_gateway_extension {
   char did[64];

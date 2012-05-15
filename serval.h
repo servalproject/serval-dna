@@ -451,7 +451,6 @@ int hlrSetVariable(unsigned char *hlr,int hofs,int varid,int varinstance,
 		   unsigned char *value,int len);
 int extractDid(unsigned char *packet,int *ofs,char *did);
 char *hlrSid(unsigned char *hlr, int ofs, char *sid);
-int parseAssignment(unsigned char *text,int *var_id,unsigned char *value,int *value_len);
 int writeItem(char *sid,int var_id,int instance,unsigned char *value,
 	      int value_start,int value_length,int flags, 
 	      int recvttl,struct sockaddr *recvaddr);
@@ -1096,6 +1095,9 @@ typedef struct dna_identity_status {
 } dna_identity_status;
 
 int parseCommandLine(int argc, const char *const *argv);
+
+int parseOldCommandLine(int argc, char **argv);
+int parseAssignment(unsigned char *text, int *var_id, unsigned char *value, int *value_len);
 
 dna_identity_status *dnacache_lookup(char *did,char *name,char *sid);
 dna_identity_status *dnacache_lookup_next();

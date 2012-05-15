@@ -29,7 +29,8 @@ SQLITE3_INC=$(LOCAL_PATH)/sqlite3
 include $(LOCAL_PATH)/serval-dna/nacl/$(NACL_VER)/build_android/sources.mk
 
 LOCAL_SRC_FILES:= \
-     serval-dna/overlay_abbreviations.c \
+        serval-dna/main.c \
+        serval-dna/overlay_abbreviations.c \
 	serval-dna/overlay_advertise.c \
 	serval-dna/overlay_buffer.c        \
 	serval-dna/overlay_interface.c     \

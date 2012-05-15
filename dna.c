@@ -19,88 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 #include "rhizome.h"
-#include <signal.h>
 #include <unistd.h>
-
-char *gatewayspec=NULL;
-char *outputtemplate=NULL;
-char *instrumentation_file=NULL;
-
-int timeout=3000; /* 3000ms request timeout */
-
-int returnMultiVars=0;
-
-int parseAssignment(unsigned char *text,int *var_id,unsigned char *value,int *value_len)
-{
-  /* Parse an assignment.
-
-     Valid formats are:
-
-     var=@file   - value comes from named file.
-     var=[[$]value] - value comes from string, and may be empty.  $ means value is in hex
-
-     Values are length limited to 65535 bytes.
-  */
-
-  int i;
-  int max_len=*value_len;
-  int vlen=0;
-  int tlen=strlen((char *)text);
-
-  if (tlen>3072) {
-    return setReason("Variable assignment string is too long, use =@file to read value from a file");
-  }
-
-  /* Identify which variable */
-  *var_id=-1;
-  for(i=0;i<tlen;i++) if (text[i]=='=') break;
-  
-  /* Go through known keyring variables */
-  if (!strcasecmp((char *)text,"did")) *var_id=KEYTYPE_DID;
-
-  if (*var_id==-1) return setReason("Illegal variable name in assignment");
-
-  i++;
-  switch(text[i])
-    {
-    case '$': /* hex */
-      i++;
-      while(i<tlen) {
-	int b=hexvalue(text[i++])<<4;
-	if (i>=tlen) return setReason("Variable value has an odd number of hex digits.");
-	b|=hexvalue(text[i++]);
-	if (b<0) return setReason("That doesn't look like hex to me");
-	if (vlen>=max_len) return setReason("Variable hex value too long");
-	value[vlen++]=b;
-      }
-      *value_len=vlen;
-      return 0;
-      break;
-    case '@': /* file */
-      {
-	FILE *f=fopen((char *)&text[i+1],"r");
-	int flen;
-	fseek(f,0,SEEK_END);
-	flen=ftell(f);
-	if (flen>max_len) return setReason("Variable value from file too long");
-	fseek(f,0,SEEK_SET);
-	vlen=fread(value,1,flen,f);
-	if (vlen!=flen) return setReason("Could not read all of file");
-	fclose(f);
-	*value_len=vlen;
-	return 0;
-      }
-      break;
-    default: /* literal string */
-      vlen=strlen((char *)&text[i]);
-      if (vlen>max_len) return setReason("Variable value too long");
-      bcopy(&text[i],value,vlen);
-      *value_len=vlen;
-      return 0;
-    }
-
-  return 0;
-}
 
 int usage(char *complaint)
 {
@@ -161,29 +80,7 @@ int usage(char *complaint)
   exit(-1);
 }
 
-#ifndef DNA_NO_MAIN
-const char *thisinstancepath=NULL;
-const char *serval_instancepath()
-{
-  if (thisinstancepath) return thisinstancepath;
-  const char *instancepath=getenv("SERVALINSTANCE_PATH");
-  if (!instancepath) instancepath=DEFAULT_INSTANCE_PATH;
-  return instancepath;
-}
-
-int form_serval_instance_path(char *buf, size_t bufsiz, const char *path)
-{
-  if (snprintf(buf, bufsiz, "%s/%s", serval_instancepath(), path) < bufsiz)
-    return 1;
-  setReason("Cannot form pathname \"%s/%s\" -- buffer too small (%lu bytes)", serval_instancepath(), path, (unsigned long)bufsiz);
-  return 0;
-}
-
-int create_serval_instance_dir() {
-  return mkdirs(serval_instancepath(), 0700);
-}
-
-int main(int argc, char **argv)
+int parseOldCommandLine(int argc, char **argv)
 {
   int c;
   //char *pin=NULL;
@@ -193,34 +90,9 @@ int main(int argc, char **argv)
   int instance=-1;
   int foregroundMode=0;
   int clientMode=0;
-
-#if defined WIN32
-    WSADATA wsa_data;
-    WSAStartup(MAKEWORD(1,1), &wsa_data);
-#endif
-
-  memabuseInit();
-  srandomdev();
-
-  server_save_argv(argc, (const char*const*)argv);
-
-  /* If first argument starts with a dash, we assume it is for the old command line parser. */
-  if (!argv[1] || argv[1][0] != '-') {
-    /* Don't include name of program in arguments */
-    int return_value = parseCommandLine(argc - 1, (const char*const*)&argv[1]);
-#if defined WIN32
-    WSACleanup();
-#endif
-    return return_value;
-  }
-
-  fprintf(stderr,
-	  "WARNING: The use of the old command line structure is being deprecated.\n"
-	  "         Type '%s help' to learn about the new command line structure.\n",
-	  argv[0]);
-
-  while((c=getopt(argc,argv,"Ab:B:E:G:I:Sf:d:i:l:L:mnp:P:r:s:t:v:R:W:U:D:CO:M:N:")) != -1 ) 
-    {
+  WARNF("The use of the old command line structure is being deprecated.");
+  WARNF("Type '%s help' to learn about the new command line structure.", argv[0]);
+  while ((c = getopt(argc,argv,"Ab:B:E:G:I:Sf:d:i:l:L:mnp:P:r:s:t:v:R:W:U:D:CO:M:N:")) != -1) {
       switch(c)
 	{
 	case 'S': serverMode=1; break;
@@ -358,11 +230,79 @@ int main(int argc, char **argv)
   }
   if (!clientMode) usage("Serval server and client utility.");
 
-#if defined WIN32
-    WSACleanup();
-#endif
-
   /* Client mode: */
   return 0;
 }
-#endif
+
+int parseAssignment(unsigned char *text,int *var_id,unsigned char *value,int *value_len)
+{
+  /* Parse an assignment.
+
+     Valid formats are:
+
+     var=@file   - value comes from named file.
+     var=[[$]value] - value comes from string, and may be empty.  $ means value is in hex
+
+     Values are length limited to 65535 bytes.
+  */
+
+  int i;
+  int max_len=*value_len;
+  int vlen=0;
+  int tlen=strlen((char *)text);
+
+  if (tlen>3072) {
+    return setReason("Variable assignment string is too long, use =@file to read value from a file");
+  }
+
+  /* Identify which variable */
+  *var_id=-1;
+  for(i=0;i<tlen;i++) if (text[i]=='=') break;
+  
+  /* Go through known keyring variables */
+  if (!strcasecmp((char *)text,"did")) *var_id=KEYTYPE_DID;
+
+  if (*var_id==-1) return setReason("Illegal variable name in assignment");
+
+  i++;
+  switch(text[i])
+    {
+    case '$': /* hex */
+      i++;
+      while(i<tlen) {
+	int b=hexvalue(text[i++])<<4;
+	if (i>=tlen) return setReason("Variable value has an odd number of hex digits.");
+	b|=hexvalue(text[i++]);
+	if (b<0) return setReason("That doesn't look like hex to me");
+	if (vlen>=max_len) return setReason("Variable hex value too long");
+	value[vlen++]=b;
+      }
+      *value_len=vlen;
+      return 0;
+      break;
+    case '@': /* file */
+      {
+	FILE *f=fopen((char *)&text[i+1],"r");
+	int flen;
+	fseek(f,0,SEEK_END);
+	flen=ftell(f);
+	if (flen>max_len) return setReason("Variable value from file too long");
+	fseek(f,0,SEEK_SET);
+	vlen=fread(value,1,flen,f);
+	if (vlen!=flen) return setReason("Could not read all of file");
+	fclose(f);
+	*value_len=vlen;
+	return 0;
+      }
+      break;
+    default: /* literal string */
+      vlen=strlen((char *)&text[i]);
+      if (vlen>max_len) return setReason("Variable value too long");
+      bcopy(&text[i],value,vlen);
+      *value_len=vlen;
+      return 0;
+    }
+
+  return 0;
+}
+

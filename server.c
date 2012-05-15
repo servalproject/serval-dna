@@ -38,6 +38,7 @@ static int server_getpid = 0;
 unsigned char *hlr=NULL;
 int hlr_size=0;
 
+char *instrumentation_file=NULL;
 FILE *i_f=NULL;
 
 struct in_addr client_addr;

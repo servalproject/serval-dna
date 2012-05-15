@@ -1,4 +1,5 @@
-SRCS=	batman.c \
+SRCS=	main.c \
+        batman.c \
 	ciphers.c \
 	client.c \
 	commandline.c \

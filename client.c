@@ -20,6 +20,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 
 int sock = -1;
+char *outputtemplate = NULL;
+int returnMultiVars = 0;
+int timeout = 3000; /* default 3000 ms request timeout */
 
 /* Now that we are using the keyring, we only support a small subset of variables.
    (VAR_NAME is not properly supported yet) 
