@@ -133,7 +133,7 @@ test_DotsInNames() {
    assertStdoutGrep --stdout --stderr --matches=1 '^foo\.x\.bar=yes$'
 }
 
-doc_DebugFlags="Debug flags affect verbosity"
+doc_DebugFlags="Debug config options affect verbosity"
 test_DebugFlags() {
    executeOk $dna echo one two three
    assertStderrGrep --matches=0 '\<echo:argv\['
@@ -143,6 +143,22 @@ test_DebugFlags() {
    executeOk $dna config set debug.verbose false
    executeOk $dna echo one two three
    assertStderrGrep --matches=0 '\<echo:argv\['
+}
+
+doc_DebugFlagAll="Debug config options override debug.all"
+test_DebugFlagAll() {
+   executeOk $dna config set debug.all yes
+   executeOk $dna echo one two three
+   assertStderrGrep --matches=3 '\<echo:argv\['
+   executeOk $dna config set debug.verbose false
+   executeOk $dna echo one two three
+   assertStderrGrep --matches=0 '\<echo:argv\['
+   executeOk $dna config set debug.verbose true
+   executeOk $dna echo one two three
+   assertStderrGrep --matches=3 '\<echo:argv\['
+   executeOk $dna config set debug.all off
+   executeOk $dna echo one two three
+   assertStderrGrep --matches=3 '\<echo:argv\['
 }
 
 runTests "$@"
