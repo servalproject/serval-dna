@@ -117,7 +117,7 @@ int overlayServerMode()
 
   /* Get rhizome server started BEFORE populating fd list so that
      the server's listen socket is in the list for poll() */
-  if (rhizome_datastore_path) rhizome_server_poll();
+  if (rhizome_enabled()) rhizome_server_poll();
 
   while(1) {
 
@@ -205,7 +205,7 @@ int overlayServerMode()
 	}
       }
       overlay_rx_messages();
-      if (rhizome_datastore_path) {
+      if (rhizome_enabled()) {
 	rhizome_server_poll();
 	rhizome_fetch_poll();
 	overlay_mdp_poll();
@@ -216,7 +216,7 @@ int overlayServerMode()
 	 Well, for now let's just check anyway. */
       if (debug&DEBUG_IO) fprintf(stderr,"poll() timeout.\n");
       overlay_rx_messages();
-      if (rhizome_datastore_path) {
+      if (rhizome_enabled()) {
 	rhizome_server_poll();
 	rhizome_fetch_poll();
 	overlay_mdp_poll();

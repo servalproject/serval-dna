@@ -504,7 +504,7 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 
 int confValueRotor=0;
 char confValue[4][128];
-char *confValueGet(char *var,char *defaultValue)
+const char *confValueGet(const char *var, const char *defaultValue)
 {
   if (!var) return defaultValue;
   int varLen=strlen(var);
@@ -542,6 +542,18 @@ char *confValueGet(char *var,char *defaultValue)
   return defaultValue;
 }
 
+int confValueGetBoolean(const char *var, int defaultValue)
+{
+  const char *value = confValueGet(var, NULL);
+  if (!value)
+    return defaultValue;
+  int flag = confParseBoolean(value, var);
+  if (flag >= 0)
+    return flag;
+  WARNF("Config option %s: using default value %s", var, defaultValue ? "true" : "false");
+  return defaultValue;
+}
+
 void confSetDebugFlags()
 {
   char filename[1024];
@@ -565,12 +577,12 @@ void confSetDebugFlags()
 	    ++p;
 	  int flag;
 	  if (*p) {
+	    *p = '\0';
 	    char *q = p + 1;
 	    while (*q && *q != '\n')
 	      ++q;
 	    *q = '\0';
-	    if ((flag = confParseBoolean(p + 1)) != -1) {
-	      *p = '\0';
+	    if ((flag = confParseBoolean(p + 1, flagname)) != -1) {
 	      long long mask = debugFlagMask(flagname);
 	      if (mask == -1)
 		if (flag) setall = 1; else clearall = 1;
@@ -590,13 +602,13 @@ void confSetDebugFlags()
   }
 }
 
-int confParseBoolean(const char *text)
+int confParseBoolean(const char *text, const char *option_name)
 {
   if (!strcasecmp(text, "on") || !strcasecmp(text, "yes") || !strcasecmp(text, "true") || !strcmp(text, "1"))
     return 1;
   if (!strcasecmp(text, "off") || !strcasecmp(text, "no") || !strcasecmp(text, "false") || !strcmp(text, "0"))
     return 0;
-  WARNF("Invalid boolean value '%s'", text);
+  WARNF("Config option %s: invalid boolean value '%s'", option_name, text);
   return -1;
 }
 
@@ -633,7 +645,6 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
        instance directory when it starts up.  */
     if (server_remove_stopfile() == -1)
       return -1;
-    rhizome_datastore_path = serval_instancepath();
     rhizome_opendb();
     overlayMode = 1;
     if (foregroundP)
@@ -1039,7 +1050,6 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   /* Ensure the Rhizome database exists and is open */
   if (create_serval_instance_dir() == -1)
     return -1;
-  rhizome_datastore_path = serval_instancepath();
   rhizome_opendb();
   /* Create a new manifest that will represent the file.  If a manifest file was supplied, then read
    * it, otherwise create a blank manifest. */
@@ -1116,7 +1126,6 @@ int app_rhizome_extract_manifest(int argc, const char *const *argv, struct comma
   /* Ensure the Rhizome database exists and is open */
   if (create_serval_instance_dir() == -1)
     return -1;
-  rhizome_datastore_path = serval_instancepath();
   rhizome_opendb();
   /* Extract the manifest from the database */
   rhizome_manifest *m = NULL;
@@ -1153,7 +1162,6 @@ int app_rhizome_extract_file(int argc, const char *const *argv, struct command_l
   /* Ensure the Rhizome database exists and is open */
   if (create_serval_instance_dir() == -1)
     return -1;
-  rhizome_datastore_path = serval_instancepath();
   rhizome_opendb();
   /* Extract the file from the database */
   int ret = rhizome_retrieve_file(fileid, filepath);
@@ -1182,7 +1190,6 @@ int app_rhizome_list(int argc, const char *const *argv, struct command_line_opti
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
     return -1;
-  rhizome_datastore_path = serval_instancepath();
   rhizome_opendb();
   return rhizome_list_manifests(atoi(offset), atoi(limit));
 }

@@ -151,7 +151,8 @@ extern int returnMultiVars;
 
 extern char *gatewayspec;
 
-extern const char *rhizome_datastore_path;
+int rhizome_enabled();
+const char *rhizome_datastore_path();
 
 extern struct in_addr client_addr;
 extern int client_port;
@@ -387,9 +388,11 @@ extern int hexdigit[16];
 
 extern int sock;
 
-char *confValueGet(char *var,char *defaultValue);
+const char *confValueGet(const char *var, const char *defaultValue);
+int confValueGetBoolean(const char *var, int defaultValue);
 void confSetDebugFlags();
-int confParseBoolean(const const char *text);
+int confParseBoolean(const char *text, const char *option_name);
+
 int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
 		struct sockaddr *recvaddr,unsigned int *recvaddrlen);
 int validateSid(const char *sid);
@@ -1054,9 +1057,8 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
 #define DEBUG_QUEUES                (1 << 19)
 #define DEBUG_BROADCASTS            (1 << 20)
 #define DEBUG_RHIZOMESYNC           (1 << 21)
-#define DEBUG_DISABLERHIZOME        (1 << 22)
-#define DEBUG_PACKETTX              (1 << 23)
-#define DEBUG_PACKETCONSTRUCTION    (1 << 24)
+#define DEBUG_PACKETTX              (1 << 22)
+#define DEBUG_PACKETCONSTRUCTION    (1 << 23)
 
 int serval_packetvisualise(FILE *f,char *message,unsigned char *packet,int plen);
 

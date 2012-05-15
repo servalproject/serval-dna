@@ -22,17 +22,45 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdlib.h>
 
 long long rhizome_space=0;
-const char *rhizome_datastore_path = NULL;
+static const char *rhizome_thisdatastore_path = NULL;
+static int rhizome_enabled_flag = -1; // unknown
+
+int rhizome_enabled()
+{
+  if (rhizome_enabled_flag < 0)
+    rhizome_enabled_flag = confValueGetBoolean("rhizome.enable", 1);
+  return rhizome_enabled_flag;
+}
+
+const char *rhizome_datastore_path()
+{
+  if (!rhizome_thisdatastore_path)
+    rhizome_set_datastore_path(NULL);
+  return rhizome_thisdatastore_path;
+}
+
+int rhizome_set_datastore_path(const char *path)
+{
+  if (path)
+    rhizome_thisdatastore_path = path;
+  else {
+    rhizome_thisdatastore_path = confValueGet("rhizome.datastore_path", NULL);
+    if (rhizome_thisdatastore_path && rhizome_thisdatastore_path[0] != '/') {
+      WHYF("Invalid rhizome.datastore_path config setting: '%s' -- should be absolute path", rhizome_thisdatastore_path);
+    }
+  }
+  if (!rhizome_thisdatastore_path) {
+    rhizome_thisdatastore_path = serval_instancepath();
+    WARNF("Rhizome datastore path not configured -- using instance path '%s'", rhizome_thisdatastore_path);
+  }
+  return 0;
+}
 
 int form_rhizome_datastore_path(char * buf, size_t bufsiz, const char *fmt, ...)
 {
   char *bufp = buf;
   char *bufe = bufp + bufsiz - 1;
-  if (!rhizome_datastore_path) {
-    WHY("Cannot open rhizome database -- no path specified");
-    return 0;
-  }
-  bufp += snprintf(bufp, bufe - buf, "%s/", rhizome_datastore_path);
+  bufp += snprintf(bufp, bufe - buf, "%s/", rhizome_datastore_path());
   if (bufp > bufe) {
       WHY("Path buffer overrun");
       return 0;
@@ -52,11 +80,7 @@ int form_rhizome_datastore_path(char * buf, size_t bufsiz, const char *fmt, ...)
 
 int create_rhizome_datastore_dir()
 {
-  if (!rhizome_datastore_path) {
-    WHY("Cannot create rhizome database -- no path specified");
-    return 0;
-  }
-  return mkdirs(rhizome_datastore_path, 0700);
+  return mkdirs(rhizome_datastore_path(), 0700);
 }
 
 sqlite3 *rhizome_db=NULL;

@@ -827,7 +827,7 @@ int simpleServerMode()
 
     /* Get rhizome server started BEFORE populating fd list so that
        the server's listen socket is in the list for poll() */
-    if (rhizome_datastore_path) rhizome_server_poll();
+    if (rhizome_enabled()) rhizome_server_poll();
 
     /* Get list of file descripters to watch */
     fds[0].fd=sock; fds[0].events=POLLIN;
@@ -841,12 +841,12 @@ int simpleServerMode()
     }
     
     /* Wait patiently for packets to arrive. */
-    if (rhizome_datastore_path) rhizome_server_poll();
+    if (rhizome_enabled()) rhizome_server_poll();
     while ((r=poll(fds,fdcount,100000))<1) {
       if (sigIoFlag) { sigIoFlag=0; break; }
       sleep(0);
     }
-    if (rhizome_datastore_path) rhizome_server_poll();
+    if (rhizome_enabled()) rhizome_server_poll();
 
     unsigned char buffer[16384];
     int ttl=-1; // unknown

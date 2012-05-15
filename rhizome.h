@@ -154,7 +154,8 @@ typedef struct rhizome_manifest {
 } rhizome_manifest;
 
 extern long long rhizome_space;
-extern const char *rhizome_datastore_path;
+const char *rhizome_datastore_path();
+int rhizome_set_datastore_path(const char *path);
 int form_rhizome_datastore_path(char * buf, size_t bufsiz, const char *fmt, ...);
 int create_rhizome_datastore_dir();
 

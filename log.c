@@ -124,7 +124,6 @@ long long debugFlagMask(const char *flagname) {
   else if (!strcasecmp(flagname,"routing"))		return DEBUG_OVERLAYROUTING;
   else if (!strcasecmp(flagname,"security"))		return DEBUG_SECURITY;
   else if (!strcasecmp(flagname,"rhizome"))	        return DEBUG_RHIZOME;
-  else if (!strcasecmp(flagname,"norhizome"))		return DEBUG_DISABLERHIZOME;
   else if (!strcasecmp(flagname,"filesync"))		return DEBUG_RHIZOMESYNC;
   else if (!strcasecmp(flagname,"monitorroutes"))	return DEBUG_OVERLAYROUTEMONITOR;
   else if (!strcasecmp(flagname,"queues"))		return DEBUG_QUEUES;

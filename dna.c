@@ -90,6 +90,7 @@ int parseOldCommandLine(int argc, char **argv)
   int instance=-1;
   int foregroundMode=0;
   int clientMode=0;
+  const char *rhizome_path = NULL;
   WARNF("The use of the old command line structure is being deprecated.");
   WARNF("Type '%s help' to learn about the new command line structure.", argv[0]);
   while ((c = getopt(argc,argv,"Ab:B:E:G:I:Sf:d:i:l:L:mnp:P:r:s:t:v:R:W:U:D:CO:M:N:")) != -1) {
@@ -97,16 +98,8 @@ int parseOldCommandLine(int argc, char **argv)
 	{
 	case 'S': serverMode=1; break;
 	case 'r': /* Enable rhizome */
-	  if (rhizome_datastore_path) return WHY("-r specified more than once");
-	  rhizome_datastore_path=optarg;
-	  rhizome_opendb();
-	  /* Also set keyring file to be in the Rhizome directory, to save the need to specify it
-	     separately. */
-	  char temp[1024];
-	  if (snprintf(temp, sizeof(temp), "%s/serval.keyring", optarg)
-	      >= sizeof(temp))
-	    exit(WHY("Rhizome directory name too long."));
-	  keyring_file = strdup(temp);
+	  if (rhizome_path) return WHY("-r specified more than once");
+	  rhizome_path = optarg;
 	  break;
 	case 'M': /* Distribute specified manifest and file pair using Rhizome. */
 	  /* This option assumes that the manifest is locally produced, and will
@@ -223,7 +216,18 @@ int parseOldCommandLine(int argc, char **argv)
 
   if (keyring_file&&clientMode) usage("Only servers use backing files");
   if (serverMode&&clientMode) usage("You asked me to be both server and client.  That's silly.");
+  if (rhizome_path) {
+    rhizome_set_datastore_path(rhizome_path);
+    rhizome_opendb();
+  }
   if (serverMode) {
+    if (!keyring_file) {
+      /* Set keyring file to be in the Rhizome directory, to save the need to specify it separately. */
+      char temp[1024];
+      if (!FORM_RHIZOME_DATASTORE_PATH(temp, "serval.keyring"))
+	exit(-1);
+      keyring_file = strdup(temp);
+    }
     if (!foregroundMode)
       daemon(0,0);
     return server(keyring_file);

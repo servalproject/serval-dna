@@ -828,7 +828,7 @@ int overlay_tick_interface(int i, long long now)
   overlay_stuff_packet_from_queue(i,e,OQ_ORDINARY,now,pax,&frame_pax,MAX_FRAME_PAX);
   overlay_stuff_packet_from_queue(i,e,OQ_OPPORTUNISTIC,now,pax,&frame_pax,MAX_FRAME_PAX);
   /* 5. XXX Fill the packet up to a suitable size with anything that seems a good idea */
-  if (!(debug&DEBUG_DISABLERHIZOME))
+  if (rhizome_enabled())
     overlay_rhizome_add_advertisements(i,e);
 
   if (debug&DEBUG_PACKETCONSTRUCTION)
