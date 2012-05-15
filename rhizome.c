@@ -53,7 +53,10 @@ int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, cons
 
   /* Add the manifest and its associated file to the Rhizome database. */
   rhizome_manifest *dupm;
-  int ret = rhizome_add_manifest(m, &dupm, filename, groups, ttl, verifyP, checkFileP, signP);
+  int ret = rhizome_add_manifest(m, &dupm, filename, groups, ttl, 
+				 verifyP, checkFileP, signP,
+				 NULL /* don't specify author for manifests
+					 received via mesh */);
   unlink(filename);
   if (ret == -1) {
     unlink(manifestname);
@@ -137,7 +140,8 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
 			 int ttl,
 			 int verifyP, // verify that file's hash is consistent with manifest
 			 int checkFileP,
-			 int signP
+			 int signP,
+			 const char *author
 			)
 {
   if (m_out) *m_out = NULL;
@@ -246,7 +250,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
     }
     /* Check if we know its private key */
     rhizome_hex_to_bytes(id, m_in->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
-    if (!rhizome_find_keypair_bytes(m_in->cryptoSignPublic, m_in->cryptoSignSecret))
+    if (!rhizome_find_privatekey(m_in))
       m_in->haveSecret=1;
   } else {
     /* The manifest had no ID (256 bit random string being a public key in the NaCl CryptoSign
@@ -255,9 +259,19 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
     /* The ID is implicit in transit, but we need to store it in the file, so that reimporting
        manifests on receiver nodes works easily.  We might implement something that strips the id
        variable out of the manifest when sending it, or some other scheme to avoid sending all the
-       extra bytes. */	
+       extra bytes. */
     id = rhizome_bytes_to_hex(m_in->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
     rhizome_manifest_set(m_in, "id", id);
+    if (author) {
+      /* Set the BK using the provided authorship information.
+         Serval Security Framework defines BK as being:
+         BK = privateKey XOR sha512(RS##BID), where BID = cryptoSignPublic, 
+	 and RS is the rhizome secret for the specified author. 
+         The nice thing about this specification is that:
+         privateKey = BK XOR sha512(RS##BID), so the same function can be used
+	 to encrypt and decrypt the BK field. */
+      
+    }   
   }
 
   /* Add group memberships */

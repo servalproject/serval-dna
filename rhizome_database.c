@@ -399,11 +399,8 @@ int rhizome_store_bundle(rhizome_manifest *m, const char *associated_filename)
 	   manifestid, m->version, gettime_ms());
 
   if (m->haveSecret) {
-    if (rhizome_store_keypair_bytes(m->cryptoSignPublic,m->cryptoSignSecret))
-      {
-	WHY("*** Insert into manifests failed (-1).");
-	return WHY("Failed to store key pair.");
-      }
+    /* We used to store the secret in the database, but we don't anymore, as we use 
+       the BK field in the manifest. So nothing to do here. */
   } else {
     /* We don't have the secret for this manifest, so only allow updates if 
        the self-signature is valid */

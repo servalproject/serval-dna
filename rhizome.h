@@ -199,14 +199,13 @@ int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, cons
 			  int verifyP, int checkFileP, int signP);
 int rhizome_add_manifest(rhizome_manifest *m_in, rhizome_manifest **m_out, const char *filename,
 			 char *groups[], int ttl,
-			 int verifyP, int checkFileP, int signP);
+			 int verifyP, int checkFileP, int signP,
+			 const char *author);
 int rhizome_manifest_finalise(rhizome_manifest *m,int signP);
 char *rhizome_bytes_to_hex(unsigned char *in,int byteCount);
 int rhizome_hex_to_bytes(const char *in,unsigned char *out,int hexChars);
-int rhizome_store_keypair_bytes(unsigned char *p,unsigned char *s);
-int rhizome_find_keypair_bytes(unsigned char *p,unsigned char *s);
-rhizome_signature *rhizome_sign_hash(unsigned char *hash,unsigned char *publicKeyBytes);
-
+int rhizome_find_privatekey(rhizome_manifest *m);
+rhizome_signature *rhizome_sign_hash(rhizome_manifest *m);
 int rhizome_server_free_http_request(rhizome_http_request *r);
 int rhizome_server_close_http_request(int i);
 int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r);
@@ -236,3 +235,7 @@ int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_manifest_version_cache_lookup(rhizome_manifest *m);
 int rhizome_manifest_version_cache_store(rhizome_manifest *m);
 int monitor_announce_bundle(rhizome_manifest *m);
+int rhizome_bk_xor(const char *author,
+		   unsigned char bid[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES],
+		   unsigned char bkin[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES],
+		   unsigned char bkout[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]);

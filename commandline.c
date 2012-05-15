@@ -1044,9 +1044,11 @@ int app_config_get(int argc, const char *const *argv, struct command_line_option
 
 int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_option *o)
 {
-  const char *filepath, *manifestpath;
+  const char *filepath, *manifestpath,*authorisingSid;
   cli_arg(argc, argv, o, "filepath", &filepath, NULL, "");
   cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "");
+  cli_arg(argc, argv, o, "sid", &authorisingSid,NULL,"");
+
   /* Ensure the Rhizome database exists and is open */
   if (create_serval_instance_dir() == -1)
     return -1;
@@ -1085,7 +1087,8 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
 				 255, // ttl - XXX should read from somewhere
 				 manifest_file_supplied, // int verifyP
 				 1, // int checkFileP
-				 1 // int signP
+				 1, // int signP
+				 authorisingSid // SID of claiming author as hex, so that they can modify the bundle later
     );
   if (ret == -1)
     return WHY("Manifest not added to Rhizome database");

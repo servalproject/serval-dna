@@ -41,10 +41,11 @@ int rhizome_manifest_createid(rhizome_manifest *m)
 {
   m->haveSecret=1;
   int r=crypto_sign_edwards25519sha512batch_keypair(m->cryptoSignPublic,m->cryptoSignSecret);
-  if (!r) return rhizome_store_keypair_bytes(m->cryptoSignPublic,m->cryptoSignSecret);
+  if (!r) return 0;
   return WHY("Failed to create keypair for manifest ID.");
 }
 
+#ifdef DEPRECATED
 int rhizome_store_keypair_bytes(unsigned char *p,unsigned char *s) {
   /* XXX TODO Secrets should be encrypted using a keyring password. */
   if (sqlite_exec_int64("INSERT INTO KEYPAIRS(public,private) VALUES('%s','%s');",
@@ -79,12 +80,56 @@ int rhizome_find_keypair_bytes(unsigned char *p,unsigned char *s) {
   sqlite3_finalize(statement);
   return WHY("Could not find matching secret key.");
 }
+#endif
 
-rhizome_signature *rhizome_sign_hash(unsigned char *hash,unsigned char *publicKeyBytes)
+int rhizome_bk_xor(const char *author,
+		   unsigned char bid[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES],
+		   unsigned char bkin[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES],
+		   unsigned char bkout[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES])
 {
+  if (crypto_sign_edwards25519sha512batch_SECRETKEYBYTES>
+      crypto_hash_sha512_BYTES)
+    return WHY("BK needs to be longer than it can be");
+
+  unsigned char authorSid[SID_SIZE];
+  if (stowSid(authorSid,0,author)) return WHY("stowSid() failed");
+  int cn=0,in=0,kp=0;
+  if (!keyring_find_sid(keyring,&cn,&in,&kp,authorSid)) 
+    return WHY("keyring_find_sid() couldn't find that SID.  Have you unlocked that identity?");
+  for(kp=0;kp<keyring->contexts[cn]->identities[in]->keypair_count;kp++)
+    if (keyring->contexts[cn]->identities[in]->keypairs[kp]->type==KEYTYPE_RHIZOME)
+      break;
+  if (kp>=keyring->contexts[cn]->identities[in]->keypair_count)
+    return WHY("Identity has no Rhizome Secret");
+  int rs_len=keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key_len;
+  unsigned char *rs=keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key;
+  if (rs_len<16||rs_len>1024)
+    return WHYF("Rhizome Secret is too short or too long (length=%d)",rs_len);
+
+  int combined_len=rs_len+crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES;
+  unsigned char buffer[combined_len];
+  bcopy(&rs[0],&buffer[0],rs_len);
+  bcopy(&bid[0],&buffer[rs_len],crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+  unsigned char hash[crypto_hash_sha512_BYTES];
+  crypto_hash_sha512(hash,buffer,combined_len);
+
+  int i;
+  for(i=0;i<crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES;i++)
+    bkout[i]=bkin[i]^hash[i];
+
+  bzero(&buffer[0],combined_len);
+  bzero(&hash[0],crypto_hash_sha512_BYTES);
+
+  return 0;
+}
+
+rhizome_signature *rhizome_sign_hash(rhizome_manifest *m)
+{
+  unsigned char *hash=m->manifesthash;
+  unsigned char *publicKeyBytes=m->cryptoSignPublic;
   unsigned char secretKeyBytes[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES];
   
-  if (rhizome_find_keypair_bytes(publicKeyBytes,secretKeyBytes))
+  if (rhizome_find_privatekey(m))
     {
       WHY("Cannot find secret key to sign manifest data.");
       return NULL;

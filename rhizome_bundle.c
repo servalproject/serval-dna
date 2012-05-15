@@ -145,14 +145,7 @@ rhizome_manifest *rhizome_read_manifest_file(const char *filename, int bufferP, 
 	  } else m->selfSigned=1;
       }
     }
-
-    /* Check for a BK entry that allows us to recover the private key for this bundle's ID.
-       The challenge is that BK's are designed to offer plausible deniability, in that the
-       manifest provides nothing that would allow an adversary, without posession of the creator's
-       keyring, to be able to prove that any given identity is the creator of the file.
-       */
     
-
     if (debug&DEBUG_RHIZOME) 
       fprintf(stderr, "Group membership determination not implemented (see which signatories are groups? what about manifests signed by groups we don't yet know about?)\n");
   }
@@ -423,7 +416,7 @@ int rhizome_manifest_pack_variables(rhizome_manifest *m)
 /* Sign this manifest using our own private CryptoSign key */
 int rhizome_manifest_sign(rhizome_manifest *m)
 {
-  rhizome_signature *sig=rhizome_sign_hash(m->manifesthash,m->cryptoSignPublic);
+  rhizome_signature *sig=rhizome_sign_hash(m);
 
   if (!sig) return WHY("rhizome_sign_hash() failed.");
 
