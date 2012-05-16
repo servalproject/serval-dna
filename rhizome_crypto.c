@@ -152,21 +152,32 @@ int rhizome_extract_privatekey(rhizome_manifest *m,const char *authorHex)
      XXX This is a pretty ugly way to do it, but NaCl offers no API to
      do this cleanly. */
   {
-#include "nacl-source/nacl-20110221/nacl-source/crypto_sign_edwards25519sha512batch_ref/ge25519.h"
+#ifdef HAVE_CRYPTO_SIGN_NACL_GE25519_H
+#  include "crypto_sign_edwards25519sha512batch_ref/ge25519.h"
+#else
+#  ifdef HAVE_KLUDGE_NACL_GE25519_H
+#    include "edwards25519sha512batch/ref/ge25519.h"
+#  endif
+#endif
+#ifdef ge25519
     unsigned char *sk=m->cryptoSignSecret;
     unsigned char pk[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
     sc25519 scsk;
     ge25519 gepk;
-        
     sc25519_from32bytes(&scsk,sk);
-    
     ge25519_scalarmult_base(&gepk, &scsk);
     ge25519_pack(pk, &gepk);
     bzero(&scsk,sizeof(scsk));
-    if (bcmp(pk,m->cryptoSignPublic,
-	     crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES))
+    if (memcmp(pk, m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES))
       return WHY("BID secret key decoded from BK was not valid");     
-    else return 0;
+    else
+      return 0;
+#else //!ge25519
+    /* XXX Need to test key by signing and testing signature validity. */
+    /* For the time being barf so that the caller does not think we have a validated BK
+       when in fact we do not. */
+    return WHY("ge25519 function not available");
+#endif //!ge25519
   }
 }
 
