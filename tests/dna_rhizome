@@ -147,8 +147,6 @@ test_AddNonExistManifest() {
    assertGrep file1.manifest "^id=$re_manifestid\$"
    assertGrep file1.manifest "^filehash=$re_filehash\$"
    assertGrep file1.manifest "^filesize=$re_size\$"
-   assertGrep file1.manifest "^first_byte=0$"
-   assertGrep file1.manifest "^last_byte=$re_size\$"
 }
 
 doc_AddManifest="Add with minimal manifest file"
@@ -169,8 +167,6 @@ test_AddManifest() {
    assertGrep file1.manifest "^id=$re_manifestid\$"
    assertGrep file1.manifest "^filehash=$re_filehash\$"
    assertGrep file1.manifest "^filesize=$re_size\$"
-   assertGrep file1.manifest "^first_byte=0$"
-   assertGrep file1.manifest "^last_byte=$re_size\$"
 }
 
 doc_AddThenList="List contains one file after one add"
