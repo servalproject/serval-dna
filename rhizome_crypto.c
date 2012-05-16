@@ -113,9 +113,14 @@ int rhizome_bk_xor(const char *author,
   unsigned char hash[crypto_hash_sha512_BYTES];
   crypto_hash_sha512(hash,buffer,combined_len);
 
+  int len=crypto_sign_edwards25519sha512batch_SECRETKEYBYTES;
   int i;
-  for(i=0;i<crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES;i++)
+  for(i=0;i<len;i++)
     bkout[i]=bkin[i]^hash[i];
+  if (0) WHYF("%s* ^ %s* = %s*",
+	      rhizome_bytes_to_hex(bkin,8),
+	      rhizome_bytes_to_hex(hash,8),
+	      rhizome_bytes_to_hex(bkout,8));
 
   bzero(&buffer[0],combined_len);
   bzero(&hash[0],crypto_hash_sha512_BYTES);
@@ -168,9 +173,14 @@ int rhizome_extract_privatekey(rhizome_manifest *m,const char *authorHex)
     ge25519_scalarmult_base(&gepk, &scsk);
     ge25519_pack(pk, &gepk);
     bzero(&scsk,sizeof(scsk));
-    if (memcmp(pk, m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES))
+    if (memcmp(pk, m->cryptoSignPublic, 
+	       crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)) {
+      if (0) {
+	WHYF("  stored public key = %s*",rhizome_bytes_to_hex(m->cryptoSignPublic,8));
+	WHYF("computed public key = %s*",rhizome_bytes_to_hex(pk,8));
+      }
       return WHY("BID secret key decoded from BK was not valid");     
-    else
+    } else
       return 0;
 #else //!ge25519
     /* XXX Need to test key by signing and testing signature validity. */
