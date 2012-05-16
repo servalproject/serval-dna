@@ -184,10 +184,20 @@ static void complainCommandLine(const char *prefix, int argc, const char *const 
   int i;
   char *e = buf + sizeof(buf) - 4;
   for (i = 0; b < e && i != argc; ++i) {
-      if (i)
-	*b++ = ' ';
-      if (b < e)
-	b += snprintf(b, e - b, "%s", argv[i]);
+      if (i) *b++ = ' ';
+      const char *a = argv[i];
+      if (b < e) *b++ = '\'';
+      for (; *a && b < e; ++a) {
+	  if (*a == '\'') {
+	    if (b < e) *b++ = '\'';
+	    if (b < e) *b++ = '\\';
+	    if (b < e) *b++ = '\'';
+	    if (b < e) *b++ = '\'';
+	  } else {
+	    if (b < e) *b++ = *a;
+	  }
+      }
+      if (b < e) *b++ = '\'';
   }
   if (b < e)
       *b = '\0';
@@ -287,7 +297,7 @@ int cli_arg(int argc, const char *const *argv, command_line_option *o, char *arg
     ) {
       const char *value = argv[i];
       if (validator && !(*validator)(value))
-	return setReason("Invalid argument %d '%s': \"%s\"", i, argname, value);
+	return setReason("Invalid argument %d '%s': \"%s\"", i + 1, argname, value);
       *dst = value;
       return 0;
     }
@@ -1068,16 +1078,16 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
       return WHY("Manifest struct could not be allocated -- not added to rhizome");
   }
   /* Fill in a few missing manifest fields, to make it easier to use when adding new files:
-      - the payload file's basename for "name"
-      - current time for "date"
+      - the current time for "date"
+      - if service is "file", then the payload file's basename for "name"
   */
+  if (rhizome_manifest_get(m, "date", NULL, 0) == NULL) {
+    rhizome_manifest_set_ll(m, "date", gettime_ms());
+  }
   if (rhizome_manifest_get(m, "name", NULL, 0) == NULL) {
     const char *name = strrchr(filepath, '/');
     name = name ? name + 1 : filepath;
     rhizome_manifest_set(m, "name", name);
-  }
-  if (rhizome_manifest_get(m, "date", NULL, 0) == NULL) {
-    rhizome_manifest_set_ll(m, "date", gettime_ms());
   }
   /* Add the manifest and its associated file to the Rhizome database, generating an "id" in the
    * process */
@@ -1187,16 +1197,24 @@ int cli_uint(const char *arg)
   return s != arg && *s == '\0';
 }
 
+int cli_optional_sid(const char *arg)
+{
+  return !arg[0] || validateSid(arg);
+}
+
 int app_rhizome_list(int argc, const char *const *argv, struct command_line_option *o)
 {
-  const char *offset, *limit;
+  const char *service, *sender_sid, *recipient_sid, *offset, *limit;
+  cli_arg(argc, argv, o, "service", &service, NULL, "");
+  cli_arg(argc, argv, o, "sender_sid", &sender_sid, cli_optional_sid, "");
+  cli_arg(argc, argv, o, "recipient_sid", &recipient_sid, cli_optional_sid, "");
   cli_arg(argc, argv, o, "offset", &offset, cli_uint, "0");
   cli_arg(argc, argv, o, "limit", &limit, cli_uint, "0");
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
     return -1;
   rhizome_opendb();
-  return rhizome_list_manifests(atoi(offset), atoi(limit));
+  return rhizome_list_manifests(service, sender_sid, recipient_sid, atoi(offset), atoi(limit));
 }
 
 int app_keyring_create(int argc, const char *const *argv, struct command_line_option *o)
@@ -1504,7 +1522,7 @@ command_line_option command_line_options[]={
    "Add a file to Rhizome and optionally write its manifest to the given path"},
   {app_rhizome_add_file,{"rhizome","add","authored","file","<filepath>","<sid>","[<manifestpath>]",NULL},CLIFLAG_STANDALONE,
    "Add a file to Rhizome and remember who authored it, so that they can modify the bundle later."},
-  {app_rhizome_list,{"rhizome","list","[<offset>]","[<limit>]",NULL},CLIFLAG_STANDALONE,
+  {app_rhizome_list,{"rhizome","list","[<service>]","[<sender_sid>]","[<recipient_sid>]","[<offset>]","[<limit>]",NULL},CLIFLAG_STANDALONE,
    "List all manifests and files in Rhizome"},
   {app_rhizome_extract_manifest,{"rhizome","extract","manifest","<manifestid>","[<manifestpath>]",NULL},CLIFLAG_STANDALONE,
    "Extract a manifest from Rhizome and write it to the given path"},

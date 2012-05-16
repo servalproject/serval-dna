@@ -546,7 +546,7 @@ char *rhizome_safe_encode(unsigned char *in,int len)
   return r;
 }
 
-int rhizome_list_manifests(int limit, int offset)
+int rhizome_list_manifests(const char *service, const char *sender_sid, const char *recipient_sid, int limit, int offset)
 {
   char sqlcmd[1024];
   int n = snprintf(sqlcmd, sizeof(sqlcmd),
