@@ -201,8 +201,6 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
      by rhizome_manifest_finalise() below. */
   if (checkFileP) {
     rhizome_manifest_set(m_in, "filehash", m_in->fileHexHash);
-    rhizome_manifest_set_ll(m_in, "first_byte", 0);
-    rhizome_manifest_set_ll(m_in, "last_byte", m_in->fileLength);
   }
 
   /* Make sure the manifest structure contains the version number, which may legitimately be -1 if
