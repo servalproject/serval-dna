@@ -867,33 +867,34 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
       const char *blob_filehash = rhizome_manifest_get(blob_m, "filehash", NULL, 0);
       long long blob_filesize = rhizome_manifest_get_ll(blob_m, "filesize");
       if (debug & DEBUG_RHIZOME)
-	fprintf(stderr, "Consider manifest.id=%s manifest.name=\"%s\" manifest.version=%lld\n", q_manifestid, blob_name, blob_version);
+	DEBUGF("Consider manifest.id=%s manifest.name=\"%s\" manifest.version=%lld", q_manifestid, blob_name, blob_version);
       /* Perform consistency checks, because we're paranoid. */
+      int inconsistent = 0;
       if (blob_id && strcasecmp(blob_id, q_manifestid)) {
-	ret = WHYF("MANIFESTS row id=%s contains inconsistent blob with id=%s", q_manifestid, blob_id);
-	break;
+	WARNF("MANIFESTS row id=%s has inconsistent blob with id=%s -- skipped", q_manifestid, blob_id);
+	++inconsistent;
       }
       if (blob_version != -1 && blob_version != q_version) {
-	ret = WHYF("MANIFESTS row id=%s contains inconsistent blob: manifests.version=%lld, blob.version=%lld",
-		    q_manifestid, q_version, blob_version);
-	break;
+	WARNF("MANIFESTS row id=%s has inconsistent blob: manifests.version=%lld, blob.version=%lld -- skipped",
+	      q_manifestid, q_version, blob_version);
+	++inconsistent;
       }
       if (!blob_filehash && strcmp(blob_filehash, m->fileHexHash)) {
-	ret = WHYF("MANIFESTS row id=%s joined to FILES row id=%s has inconsistent blob: blob.filehash=%s",
-		    q_manifestid, m->fileHexHash, blob_filehash);
-	break;
+	WARNF("MANIFESTS row id=%s joined to FILES row id=%s has inconsistent blob: blob.filehash=%s -- skipped",
+	      q_manifestid, m->fileHexHash, blob_filehash);
+	++inconsistent;
       }
       if (blob_filesize != -1 && blob_filesize != m->fileLength) {
-	ret = WHYF("MANIFESTS row id=%s joined to FILES row id=%s has inconsistent blob: known file size %lld, blob.filesize=%lld",
-		    q_manifestid, m->fileLength, blob_filesize);
-	break;
+	WARNF("MANIFESTS row id=%s joined to FILES row id=%s has inconsistent blob: known file size %lld, blob.filesize=%lld -- skipped",
+	      q_manifestid, m->fileLength, blob_filesize);
+	++inconsistent;
       }
       if (m->version != -1 && q_version != m->version) {
-	ret = WHYF("SELECT query with version=%lld returned incorrect row: manifests.version=%lld", m->version, q_version);
-	break;
+	WARNF("SELECT query with version=%lld returned incorrect row: manifests.version=%lld -- skipped", m->version, q_version);
+	++inconsistent;
       }
       /* The "name" comparison is the only one we can't do in the SELECT, so we do it here. */
-      if (blob_name && !strcmp(blob_name, name)) {
+      if (!inconsistent && blob_name && !strcmp(blob_name, name)) {
 	rhizome_hex_to_bytes(q_manifestid, blob_m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
 	memcpy(blob_m->fileHexHash, m->fileHexHash, SHA512_DIGEST_STRING_LENGTH);
 	blob_m->fileHashedP = 1;
