@@ -179,6 +179,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	    if (pass&&(blob_bytes!=RHIZOME_BAR_BYTES)) {
 	      if (debug&DEBUG_RHIZOME) 
 		fprintf(stderr,"Found a BAR that is the wrong size - ignoring\n");
+	      sqlite3_blob_close(blob);
 	      continue;
 	    }
 	    
@@ -186,6 +187,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	       Longer ones are only advertised by BAR */
 	    if (blob_bytes>1024) { 
 	      fprintf(stderr,"blob>1k - ignoring\n");
+	      sqlite3_blob_close(blob);
 	      continue;
 	    }
 
@@ -214,10 +216,12 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 		fprintf(stderr,"length bytes written at offset 0x%x\n",e->length);
 	    }
 	    if (frameFull) { 
+	      sqlite3_blob_close(blob);
 	      goto stopStuffing;
 	    }
 	    if (e->length+overhead+blob_bytes>=e->allocSize) {
 	      WHY("Reading blob will overflow overlay_buffer");
+	      sqlite3_blob_close(blob);
 	      continue;
 	    }
 	    if (sqlite3_blob_read(blob,&e->bytes[e->length+overhead],blob_bytes,0)
@@ -237,6 +241,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	    e->length+=overhead+blob_bytes;
 	    if (e->length>e->allocSize) {
 	      WHY("e->length > e->size");
+	      sqlite3_blob_close(blob);
 	      abort();
 	    }
 	    bytes_used+=overhead+blob_bytes;
