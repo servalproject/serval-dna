@@ -257,7 +257,8 @@ int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
 
 	/* stuff frame with most recent sample blocks as a form of preemptive
 	   retransmission. But don't make the packets too large. */
-	while ((*len)<256) {
+	while (((*len)+1+vomp_sample_size(sb[rotor].codec))
+	       <VOMP_STUFF_BYTES) {
 	  p[(*len)++]=sb[rotor].codec;
 	  bcopy(&sb[rotor].bytes[0],&p[*len],vomp_sample_size(sb[rotor].codec));
 	  (*len)+=vomp_sample_size(sb[rotor].codec);

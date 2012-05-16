@@ -1194,6 +1194,11 @@ typedef struct overlay_mdp_addrlist {
 
 #define MDP_VOMPEVENT 7
 #define VOMP_MAX_CALLS 16
+/* Maximum amount of audio to cram into a VoMP audio packet.
+   More lets us include preemptive retransmissions.
+   Less reduces the chance of packets getting lost, and reduces
+   the bandwidth used. */
+#define VOMP_STUFF_BYTES 1024
 /* elements sorted by size for alignment */
 typedef struct overlay_mdp_vompevent {
   /* Once a call has been established, this is how the MDP/VoMP server
