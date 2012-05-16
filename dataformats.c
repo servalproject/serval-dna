@@ -107,6 +107,10 @@ int extractSid(unsigned char *packet,int *ofs,char *sid)
 
 int validateSid(const char *sid)
 {
+  if (!sid) {
+    WHY("SID == NULL");
+    return 0;
+  }
   if (!strcasecmp(sid,"broadcast")) return 1;
   size_t n = strlen(sid);
   if (n != SID_STRLEN)
