@@ -1054,10 +1054,16 @@ int app_config_get(int argc, const char *const *argv, struct command_line_option
 
 int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_option *o)
 {
-  const char *filepath, *manifestpath,*authorisingSid;
+  const char *filepath, *manifestpath,*authorisingSid,*pin;
   cli_arg(argc, argv, o, "filepath", &filepath, NULL, "");
   cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "");
   cli_arg(argc, argv, o, "sid", &authorisingSid,NULL,"");
+  cli_arg(argc, argv, o, "pin", &pin,NULL,"");
+
+  keyring=keyring_open_with_pins(pin);
+  if (!keyring) { WHY("keyring add: Failed to create/open keyring file");
+    return -1; }
+
 
   /* Ensure the Rhizome database exists and is open */
   if (create_serval_instance_dir() == -1)
@@ -1067,7 +1073,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
    * it, otherwise create a blank manifest. */
   rhizome_manifest *m = NULL;
   int manifest_file_supplied = 0;
-  if (manifestpath[0] && access(manifestpath, R_OK) == 0) {
+  if (manifestpath[0] && access(manifestpath, R_OK) == 0) {    
     m = rhizome_read_manifest_file(manifestpath, 0, 0); // no verify
     if (!m)
       return WHY("Manifest file could not be loaded -- not added to rhizome");
@@ -1520,7 +1526,7 @@ command_line_option command_line_options[]={
    "Get specified configuration variable."},
   {app_rhizome_add_file,{"rhizome","add","file","<filepath>","[<manifestpath>]",NULL},CLIFLAG_STANDALONE,
    "Add a file to Rhizome and optionally write its manifest to the given path"},
-  {app_rhizome_add_file,{"rhizome","add","authored","file","<filepath>","<sid>","[<manifestpath>]",NULL},CLIFLAG_STANDALONE,
+  {app_rhizome_add_file,{"rhizome","add","authored","file","<filepath>","<sid>","<pin>","[<manifestpath>]",NULL},CLIFLAG_STANDALONE,
    "Add a file to Rhizome and remember who authored it, so that they can modify the bundle later."},
   {app_rhizome_list,{"rhizome","list","[<service>]","[<sender_sid>]","[<recipient_sid>]","[<offset>]","[<limit>]",NULL},CLIFLAG_STANDALONE,
    "List all manifests and files in Rhizome"},

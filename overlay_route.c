@@ -397,6 +397,7 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
     return 0;
   } else {
     /* Is not a direct neighbour */
+    
     return WHY("Calculating next-hop destination for nodes that are not direct neighbours is not yet implemented");
   }
 }

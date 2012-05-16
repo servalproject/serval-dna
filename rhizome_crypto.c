@@ -135,7 +135,7 @@ int rhizome_bk_xor(const char *author,
 */
 int rhizome_extract_privatekey(rhizome_manifest *m,const char *authorHex)
 {
-  char *bk = rhizome_manifest_get(m, "bk", NULL, 0);
+  char *bk = rhizome_manifest_get(m, "BK", NULL, 0);
   if (!bk) return WHY("Cannot obtain private key as manifest lacks BK field");
   
   unsigned char bkBytes[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES];
