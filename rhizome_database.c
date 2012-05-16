@@ -807,7 +807,10 @@ int rhizome_update_file_priority(char *fileid)
   return 0;
 }
 
-/* Search the database for a manifest having the same name and payload content.
+/* Search the database for a manifest having the same name and payload content,
+   and if the version is known, having the same version.
+
+   @author Andrew Bettison <andrew@servalproject.com>
  */
 int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
 {
@@ -817,11 +820,14 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
   if (!name)
       return WHY("Manifest has no name");
   char sqlcmd[1024];
-  int n = snprintf(sqlcmd, sizeof(sqlcmd),
+  char *s = sqlcmd;
+  s += snprintf(s, &sqlcmd[sizeof sqlcmd] - s,
       "SELECT manifests.id, manifests.manifest, manifests.version FROM filemanifests, manifests"
       " WHERE filemanifests.manifestid = manifests.id AND filemanifests.fileid = ?"
     );
-  if (n >= sizeof(sqlcmd))
+  if (m->version != -1 && s < &sqlcmd[sizeof sqlcmd])
+    s += snprintf(s, sqlcmd + sizeof(sqlcmd) - s, " AND manifests.version = ?");
+  if (s >= &sqlcmd[sizeof sqlcmd])
     return WHY("SQL command too long");
   int ret = 0;
   sqlite3_stmt *statement;
@@ -829,9 +835,10 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
   if (sqlite3_prepare_v2(rhizome_db, sqlcmd, strlen(sqlcmd) + 1, &statement, &cmdtail) != SQLITE_OK) {
     ret = WHY(sqlite3_errmsg(rhizome_db));
   } else {
-    if (debug & DEBUG_RHIZOME) fprintf(stderr, "fileHexHash = \"%s\"\n", m->fileHexHash);
+    if (debug & DEBUG_RHIZOME) DEBUGF("fileHexHash = \"%s\"", m->fileHexHash);
     sqlite3_bind_text(statement, 1, m->fileHexHash, -1, SQLITE_STATIC);
-    sqlite3_bind_int64(statement, 2, m->version);
+    if (m->version != -1)
+      sqlite3_bind_int64(statement, 2, m->version);
     size_t rows = 0;
     while (sqlite3_step(statement) == SQLITE_ROW) {
       ++rows;
@@ -844,40 +851,60 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
 	ret = WHY("Incorrect statement columns");
 	break;
       }
-      const char *manifestid = (const char *) sqlite3_column_text(statement, 0);
+      const char *q_manifestid = (const char *) sqlite3_column_text(statement, 0);
       size_t manifestidsize = sqlite3_column_bytes(statement, 0); // must call after sqlite3_column_text()
       if (manifestidsize != crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES * 2) {
-	ret = WHYF("Malformed manifest.id from query: %s", manifestid);
+	ret = WHYF("Malformed manifest.id from query: %s", q_manifestid);
 	break;
       }
       const char *manifestblob = (char *) sqlite3_column_blob(statement, 1);
       size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
-      long long manifestversion = sqlite3_column_int64(statement, 2);
-      rhizome_manifest *mq = rhizome_read_manifest_file(manifestblob, manifestblobsize, 0);
-      const char *nameq = rhizome_manifest_get(mq, "name", NULL, 0);
-      long long versionq = rhizome_manifest_get_ll(mq, "version");
-      const char *filehashq = rhizome_manifest_get(mq, "filehash", NULL, 0);
-      long long lengthq = rhizome_manifest_get_ll(mq, "filesize");
+      long long q_version = sqlite3_column_int64(statement, 2);
+      rhizome_manifest *blob_m = rhizome_read_manifest_file(manifestblob, manifestblobsize, 0);
+      const char *blob_id = rhizome_manifest_get(blob_m, "id", NULL, 0);
+      const char *blob_name = rhizome_manifest_get(blob_m, "name", NULL, 0);
+      long long blob_version = rhizome_manifest_get_ll(blob_m, "version");
+      const char *blob_filehash = rhizome_manifest_get(blob_m, "filehash", NULL, 0);
+      long long blob_filesize = rhizome_manifest_get_ll(blob_m, "filesize");
       if (debug & DEBUG_RHIZOME)
-	fprintf(stderr, "Consider manifest.id=%s manifest.name=\"%s\" manifest.version=%lld\n", manifestid, nameq, versionq);
-      /* No need to compare "filehash" or "filesize" here, but we do so as a precaution if present */
-      if (  nameq && !strcmp(nameq, name)
-	 && (versionq == -1 || versionq == manifestversion) // consistency check
-	 && (m->version == -1 || manifestversion == m->version)
-	 && (lengthq == -1 || lengthq == m->fileLength)
-	 && (!filehashq || strncmp(filehashq, m->fileHexHash, SHA512_DIGEST_STRING_LENGTH) == 0)
-      ) {
-	rhizome_hex_to_bytes(manifestid, mq->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
-	memcpy(mq->fileHexHash, m->fileHexHash, SHA512_DIGEST_STRING_LENGTH);
-	mq->fileHashedP = 1;
-	mq->fileLength = m->fileLength;
-	mq->version = manifestversion;
-	*found = mq;
-	ret = 1;
-	if (debug & DEBUG_RHIZOME) fprintf(stderr, "found\n");
+	fprintf(stderr, "Consider manifest.id=%s manifest.name=\"%s\" manifest.version=%lld\n", q_manifestid, blob_name, blob_version);
+      /* Perform consistency checks, because we're paranoid. */
+      if (blob_id && strcasecmp(blob_id, q_manifestid)) {
+	ret = WHYF("MANIFESTS row id=%s contains inconsistent blob with id=%s", q_manifestid, blob_id);
 	break;
       }
-      rhizome_manifest_free(mq);
+      if (blob_version != -1 && blob_version != q_version) {
+	ret = WHYF("MANIFESTS row id=%s contains inconsistent blob: manifests.version=%lld, blob.version=%lld",
+		    q_manifestid, q_version, blob_version);
+	break;
+      }
+      if (!blob_filehash && strcmp(blob_filehash, m->fileHexHash)) {
+	ret = WHYF("MANIFESTS row id=%s joined to FILES row id=%s has inconsistent blob: blob.filehash=%s",
+		    q_manifestid, m->fileHexHash, blob_filehash);
+	break;
+      }
+      if (blob_filesize != -1 && blob_filesize != m->fileLength) {
+	ret = WHYF("MANIFESTS row id=%s joined to FILES row id=%s has inconsistent blob: known file size %lld, blob.filesize=%lld",
+		    q_manifestid, m->fileLength, blob_filesize);
+	break;
+      }
+      if (m->version != -1 && q_version != m->version) {
+	ret = WHYF("SELECT query with version=%lld returned incorrect row: manifests.version=%lld", m->version, q_version);
+	break;
+      }
+      /* The "name" comparison is the only one we can't do in the SELECT, so we do it here. */
+      if (blob_name && !strcmp(blob_name, name)) {
+	rhizome_hex_to_bytes(q_manifestid, blob_m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
+	memcpy(blob_m->fileHexHash, m->fileHexHash, SHA512_DIGEST_STRING_LENGTH);
+	blob_m->fileHashedP = 1;
+	blob_m->fileLength = m->fileLength;
+	blob_m->version = q_version;
+	*found = blob_m;
+	ret = 1;
+	if (debug & DEBUG_RHIZOME) DEBUG("found");
+	break;
+      }
+      rhizome_manifest_free(blob_m);
     }
   }
   sqlite3_finalize(statement);
@@ -925,18 +952,18 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
 	} else {
 	  ret = 1;
 	  rhizome_hex_to_bytes(manifestid, m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
-	  const char *filehashq = rhizome_manifest_get(m, "filehash", NULL, 0);
-	  if (filehashq == NULL)
+	  const char *blob_filehash = rhizome_manifest_get(m, "filehash", NULL, 0);
+	  if (blob_filehash == NULL)
 	    ret = WHY("Manifest is missing filehash line");
 	  else {
-	    memcpy(m->fileHexHash, filehashq, SHA512_DIGEST_STRING_LENGTH);
+	    memcpy(m->fileHexHash, blob_filehash, SHA512_DIGEST_STRING_LENGTH);
 	    m->fileHashedP = 1;
 	  }
-	  long long versionq = rhizome_manifest_get_ll(m, "version");
-	  if (versionq == -1)
+	  long long blob_version = rhizome_manifest_get_ll(m, "version");
+	  if (blob_version == -1)
 	    ret = WHY("Manifest is missing version line");
 	  else
-	    m->version = versionq;
+	    m->version = blob_version;
 	  long long lengthq = rhizome_manifest_get_ll(m, "filesize");
 	  if (lengthq == -1)
 	    ret = WHY("Manifest is missing filesize line");
