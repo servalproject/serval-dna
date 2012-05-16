@@ -273,7 +273,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
       int len=crypto_sign_edwards25519sha512batch_SECRETKEYBYTES;
       unsigned char bkbytes[len];
       if (!rhizome_bk_xor(author,m_in->cryptoSignPublic,
-			  m_in->cryptoSignPublic,
+			  m_in->cryptoSignSecret,
 			  bkbytes)) {
 	WHYF("set BK='%s'",rhizome_bytes_to_hex(bkbytes,len));
 	rhizome_manifest_set(m_in,"BK",rhizome_bytes_to_hex(bkbytes,len));
