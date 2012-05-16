@@ -520,12 +520,12 @@ int rhizome_finish_sqlstatement(sqlite3_stmt *statement)
    safely inline in sprintf() type functions, which makes composition of sql statements
    easier. */
 int rse_rotor=0;
-char rse_out[4][129];
+char rse_out[8][129];
 char *rhizome_safe_encode(unsigned char *in,int len)
 {
   char *r=rse_out[rse_rotor];
   rse_rotor++;
-  rse_rotor&=3;
+  rse_rotor&=7;
 
   int i,o=0;
 
@@ -780,7 +780,7 @@ char *rhizome_bytes_to_hex(unsigned char *in,int byteCount)
   if (byteCount>64) return "<too long>";
 
   rse_rotor++;
-  rse_rotor&=3;
+  rse_rotor&=7;
 
   for(i=0;i<byteCount*2;i++)
     {
