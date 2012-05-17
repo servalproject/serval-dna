@@ -64,7 +64,7 @@ int create_serval_instance_dir() {
   return mkdirs(serval_instancepath(), 0700);
 }
 
-#ifdef 0
+#if 0
 #include <execinfo.h>
 #define MAX_DEPTH 64
 int printBackTrace()
