@@ -133,9 +133,11 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
     fprintf(stderr,"%d bundles in database (%d %d), slots=%d.\n",bundles_available,
 	    bundle_offset[0],bundle_offset[1],slots);
   
+  sqlite3_stmt *statement=NULL;
+  sqlite3_blob *blob=NULL;
+
   for(pass=skipmanifests;pass<2;pass++)
     {
-      sqlite3_stmt *statement;
       char query[1024];
       switch(pass) {
       case 0: /* Full manifests */
@@ -153,9 +155,8 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	case SQLITE_OK: case SQLITE_DONE: case SQLITE_ROW:
 	  break;
 	default:
-	  sqlite3_finalize(statement);
-	  sqlite3_close(rhizome_db);
-	  rhizome_db=NULL;
+	  sqlite3_finalize(statement); statement=NULL;
+	  sqlite3_close(rhizome_db); rhizome_db=NULL;
 	  WHY(query);
 	  WHY(sqlite3_errmsg(rhizome_db));
 	  return WHY("Could not prepare sql statement for fetching BARs for advertisement.");
@@ -163,10 +164,10 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
       while((bytes_used<bytes_available)&&(sqlite3_step(statement)==SQLITE_ROW)&&
 	    (e->length+RHIZOME_BAR_BYTES<=e->sizeLimit))
 	{
-	  sqlite3_blob *blob;
 	  int column_type=sqlite3_column_type(statement, 0);
 	  switch(column_type) {
 	  case SQLITE_BLOB:
+	    if (blob) sqlite3_blob_close(blob); blob=NULL;
 	    if (sqlite3_blob_open(rhizome_db,"main","manifests",
 				  pass?"bar":"manifest",
 				  sqlite3_column_int64(statement,1) /* rowid */,
@@ -179,7 +180,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	    if (pass&&(blob_bytes!=RHIZOME_BAR_BYTES)) {
 	      if (debug&DEBUG_RHIZOME) 
 		fprintf(stderr,"Found a BAR that is the wrong size - ignoring\n");
-	      sqlite3_blob_close(blob);
+	      sqlite3_blob_close(blob); blob=NULL;
 	      continue;
 	    }
 	    
@@ -187,7 +188,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	       Longer ones are only advertised by BAR */
 	    if (blob_bytes>1024) { 
 	      fprintf(stderr,"blob>1k - ignoring\n");
-	      sqlite3_blob_close(blob);
+	      sqlite3_blob_close(blob); blob=NULL;
 	      continue;
 	    }
 
@@ -216,12 +217,12 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 		fprintf(stderr,"length bytes written at offset 0x%x\n",e->length);
 	    }
 	    if (frameFull) { 
-	      sqlite3_blob_close(blob);
+	      sqlite3_blob_close(blob); blob=NULL;
 	      goto stopStuffing;
 	    }
 	    if (e->length+overhead+blob_bytes>=e->allocSize) {
 	      WHY("Reading blob will overflow overlay_buffer");
-	      sqlite3_blob_close(blob);
+	      sqlite3_blob_close(blob); blob=NULL;
 	      continue;
 	    }
 	    if (sqlite3_blob_read(blob,&e->bytes[e->length+overhead],blob_bytes,0)
@@ -233,7 +234,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 		
 	      }
 	      if (debug&DEBUG_RHIZOME) WHY("Couldn't read from blob");
-	      sqlite3_blob_close(blob);
+	      sqlite3_blob_close(blob); blob=NULL;
 	    dump("buffer (225)",(unsigned char *)e,sizeof(*e));
 	    
 	      continue;
@@ -241,18 +242,19 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	    e->length+=overhead+blob_bytes;
 	    if (e->length>e->allocSize) {
 	      WHY("e->length > e->size");
-	      sqlite3_blob_close(blob);
+	      sqlite3_blob_close(blob); blob=NULL;
 	      abort();
 	    }
 	    bytes_used+=overhead+blob_bytes;
 	    bundles_advertised++;
 	    bundle_offset[pass]=sqlite3_column_int64(statement,1);
 	    
-	    sqlite3_blob_close(blob);
+	    sqlite3_blob_close(blob); blob=NULL;
 	  }
 	}
-      sqlite3_finalize(statement);
     stopStuffing:
+      if (blob) sqlite3_blob_close(blob); blob=NULL;
+      if (statement) sqlite3_finalize(statement); statement=NULL;
       if (!pass) 
 	{
 	  /* Mark end of whole manifests by writing 0xff, which is more than the MSB
@@ -261,6 +263,9 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	  bytes_used++;
 	}
     }
+
+  if (blob) sqlite3_blob_close(blob); blob=NULL;
+  if (statement) sqlite3_finalize(statement); statement=NULL;
   
   if (debug&DEBUG_RHIZOME) printf("Appended %d rhizome advertisements to packet using %d bytes.\n",bundles_advertised,bytes_used);
   int rfs_value=1+8+1+1+1+bytes_used;
