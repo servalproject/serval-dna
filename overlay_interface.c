@@ -187,6 +187,13 @@ int overlay_interface_init_socket(int interface,struct sockaddr_in src_addr,stru
   } else 
     WHYF("interface #%d fd=%d",interface,I(fd));
 
+  int reuseP=1;
+  if(setsockopt( I(fd), SOL_SOCKET, SO_REUSEADDR, &reuseP, sizeof(reuseP)) < 0)
+    {
+      WHY("Could not mark socket to reuse addresses. Not necessarily a problem (yet)");
+      WHY_perror("setsockopt");
+    }
+
   int broadcastP=1;
   if(setsockopt(I(fd), SOL_SOCKET, SO_BROADCAST, &broadcastP, sizeof(broadcastP)) < 0) {
     WHY("Could not enable broadcast reception for socket.  This is really bad.");
