@@ -150,14 +150,14 @@ realpath() {
 }
 
 execute() {
-   echo "# execute $*"
+   echo -n "# execute "; _tfw_shellarg "$@"
    _tfw_getopts execute "$@"
    shift $_tfw_getopts_shift
    _tfw_execute "$@"
 }
 
 executeOk() {
-   echo "# executeOk $*"
+   echo -n "# executeOk "; _tfw_shellarg "$@"
    _tfw_getopts executeok "$@"
    _tfw_opt_exit_status=0
    _tfw_dump_on_fail --stderr
@@ -169,7 +169,7 @@ assert() {
    _tfw_getopts assert "$@"
    shift $_tfw_getopts_shift
    _tfw_assert "$@" || _tfw_failexit
-   echo "# assert $*"
+   echo -n "# assert "; _tfw_shellarg "$@"
    return 0
 }
 
@@ -179,7 +179,7 @@ assertExpr() {
    local awkexpr=$(_tfw_expr_to_awkexpr "$@")
    _tfw_message="${_tfw_message+$_tfw_message }($awkexpr)"
    _tfw_assert _tfw_eval_awkexpr "$awkexpr" || _tfw_failexit
-   echo "# assert $awkexpr"
+   echo -n "# assertExpr "; _tfw_shellarg "$awkexpr"
    return 0
 }
 
@@ -334,6 +334,23 @@ _tfw_shopt_restore() {
 
 # The rest of this file is parsed for extended glob patterns.
 _tfw_shopt -s extglob
+
+# Add shell quotation to the given arguments, so that when expanded using
+# 'eval', the exact same argument results.  This makes argument handling fully
+# immune to spaces and shell metacharacters.
+_tfw_shellarg() {
+   local arg
+   local -a shellarg=()
+   _tfw_shopt -s extglob
+   for arg; do
+      case "$arg" in
+      +([A-Za-z_0-9.,+\/-])) shellarg+=("$arg");;
+      *) shellarg+=("'${arg//'/'\\''}'");;
+      esac
+   done
+   _tfw_shopt_restore
+   echo "${shellarg[@]}"
+}
 
 # Echo the absolute path of the given path, using only Bash builtins.
 _tfw_abspath() {

@@ -1052,13 +1052,18 @@ int app_config_get(int argc, const char *const *argv, struct command_line_option
   return 0;
 }
 
+int cli_optional_sid(const char *arg)
+{
+  return !arg[0] || validateSid(arg);
+}
+
 int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_option *o)
 {
-  const char *filepath, *manifestpath,*authorisingSid,*pin;
+  const char *filepath, *manifestpath, *authorSid, *pin;
   cli_arg(argc, argv, o, "filepath", &filepath, NULL, "");
+  cli_arg(argc, argv, o, "author_sid", &authorSid, cli_optional_sid, "");
+  cli_arg(argc, argv, o, "pin", &pin, NULL, "");
   cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "");
-  cli_arg(argc, argv, o, "sid", &authorisingSid,NULL,"");
-  cli_arg(argc, argv, o, "pin", &pin,NULL,"");
 
   keyring=keyring_open_with_pins(pin);
   if (!keyring) { WHY("keyring add: Failed to create/open keyring file");
@@ -1098,14 +1103,15 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   /* Add the manifest and its associated file to the Rhizome database, generating an "id" in the
    * process */
   rhizome_manifest *mout = NULL;
-  WHYF("calling rhizome_add_manifest, author='%s'",authorisingSid);
-  int ret = rhizome_add_manifest(m, &mout, filepath,
-				 NULL, // no groups - XXX should allow them
-				 255, // ttl - XXX should read from somewhere
-				 manifest_file_supplied, // int verifyP
-				 1, // int checkFileP
-				 1, // int signP
-				 authorisingSid // SID of claiming author as hex, so that they can modify the bundle later
+  if (debug & DEBUG_RHIZOME) DEBUGF("rhizome_add_manifest(author='%s')", authorSid);
+  int ret = rhizome_add_manifest(
+		m, &mout, filepath,
+		NULL, // no groups - XXX should allow them
+		255, // ttl - XXX should read from somewhere
+		manifest_file_supplied, // int verifyP
+		1, // int checkFileP
+		1, // int signP
+		authorSid[0] ? authorSid : NULL // SID of author as hex, so that they can modify the bundle later
     );
   if (ret == -1)
     return WHY("Manifest not added to Rhizome database");
@@ -1203,11 +1209,6 @@ int cli_uint(const char *arg)
   while (isdigit(*s++))
     ;
   return s != arg && *s == '\0';
-}
-
-int cli_optional_sid(const char *arg)
-{
-  return !arg[0] || validateSid(arg);
 }
 
 int app_rhizome_list(int argc, const char *const *argv, struct command_line_option *o)
@@ -1526,10 +1527,8 @@ command_line_option command_line_options[]={
    "Set specified configuration variable."},
   {app_config_get,{"config","get","[<variable>]",NULL},CLIFLAG_STANDALONE,
    "Get specified configuration variable."},
-  {app_rhizome_add_file,{"rhizome","add","file","<filepath>","[<manifestpath>]",NULL},CLIFLAG_STANDALONE,
+  {app_rhizome_add_file,{"rhizome","add","file","<author_sid>","<pin>","<filepath>","[<manifestpath>]",NULL},CLIFLAG_STANDALONE,
    "Add a file to Rhizome and optionally write its manifest to the given path"},
-  {app_rhizome_add_file,{"rhizome","add","authored","file","<filepath>","<sid>","<pin>","[<manifestpath>]",NULL},CLIFLAG_STANDALONE,
-   "Add a file to Rhizome and remember who authored it, so that they can modify the bundle later."},
   {app_rhizome_list,{"rhizome","list","[<service>]","[<sender_sid>]","[<recipient_sid>]","[<offset>]","[<limit>]",NULL},CLIFLAG_STANDALONE,
    "List all manifests and files in Rhizome"},
   {app_rhizome_extract_manifest,{"rhizome","extract","manifest","<manifestid>","[<manifestpath>]",NULL},CLIFLAG_STANDALONE,

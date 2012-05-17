@@ -55,8 +55,8 @@ int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, cons
   rhizome_manifest *dupm;
   int ret = rhizome_add_manifest(m, &dupm, filename, groups, ttl, 
 				 verifyP, checkFileP, signP,
-				 NULL /* don't specify author for manifests
-					 received via mesh */);
+				 NULL /* don't specify author for manifests received via mesh */
+				);
   unlink(filename);
   if (ret == -1) {
     unlink(manifestname);
@@ -141,7 +141,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
 			 int verifyP, // verify that file's hash is consistent with manifest
 			 int checkFileP,
 			 int signP,
-			 const char *author
+			 const char *author // NULL to make an unauthored manifest
 			)
 {
   if (m_out) *m_out = NULL;
@@ -248,7 +248,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
     }
     /* Check if we know its private key */
     rhizome_hex_to_bytes(id, m_in->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
-    if (!rhizome_extract_privatekey(m_in,author))
+    if (!rhizome_extract_privatekey(m_in, author))
       m_in->haveSecret=1;
   } else {
     /* The manifest had no ID (256 bit random string being a public key in the NaCl CryptoSign
@@ -273,8 +273,8 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
       if (!rhizome_bk_xor(author,m_in->cryptoSignPublic,
 			  m_in->cryptoSignSecret,
 			  bkbytes)) {
-	WHYF("set BK='%s'",rhizome_bytes_to_hex(bkbytes,len));
-	rhizome_manifest_set(m_in,"BK",rhizome_bytes_to_hex(bkbytes,len));
+	if (debug&DEBUG_RHIZOME) DEBUGF("set BK='%s'", rhizome_bytes_to_hex(bkbytes,len));
+	rhizome_manifest_set(m_in, "BK", rhizome_bytes_to_hex(bkbytes,len));
       } else {
 	WHY("Failed to set BK");
       }
@@ -289,7 +289,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
   }
 
   /* Finish completing the manifest */
-  if (rhizome_manifest_finalise(m_in, signP,author))
+  if (rhizome_manifest_finalise(m_in, signP, author))
     return WHY("Failed to finalise manifest.\n");
 
   /* Okay, it is written, and can be put directly into the rhizome database now */
