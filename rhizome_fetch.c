@@ -514,12 +514,12 @@ int rhizome_fetch_poll()
 	      q->close=1;
 	      if (debug&DEBUG_RHIZOME) fprintf(stderr,"Received all of file via rhizome -- now to import it\n");
 	      {
-		fclose(q->file);
+		fclose(q->file); q->file=NULL;
 		const char *id = rhizome_manifest_get(q->manifest, "id", NULL, 0);
 		if (id == NULL)
 		  return WHY("Manifest missing ID");
 		char filename[1024];
-		if (!FORM_RHIZOME_DATASTORE_PATH("import/manifest.%s", id))
+		if (!FORM_RHIZOME_DATASTORE_PATH(filename,"import/manifest.%s", id))
 		  return -1;
 		/* Do really write the manifest unchanged */
 		if (debug&DEBUG_RHIZOME) {
@@ -552,7 +552,7 @@ int rhizome_fetch_poll()
 	  
 	  errno=0;
 	  bytes=read(q->socket,&q->request[q->request_len],
-			 1024-q->request_len-1);
+		     1024-q->request_len-1);
 
 	  /* If we got some data, see if we have found the end of the HTTP request */
 	  if (bytes>0) {
@@ -578,7 +578,7 @@ int rhizome_fetch_poll()
 	    if (lfcount==2) {
 	      /* We have the response headers, so parse.
 	         (we may also have some extra bytes, so we need to be a little
-	          careful) */
+		 careful) */
 
 	      /* Terminate string at end of headers */
 	      q->request[i]=0;

@@ -196,7 +196,6 @@ rhizome_signature *rhizome_sign_hash(rhizome_manifest *m,const char *author)
 {
   unsigned char *hash=m->manifesthash;
   unsigned char *publicKeyBytes=m->cryptoSignPublic;
-  unsigned char secretKeyBytes[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES];
   
   if (rhizome_extract_privatekey(m,author))
     {
@@ -212,11 +211,12 @@ rhizome_signature *rhizome_sign_hash(rhizome_manifest *m,const char *author)
   int mLen=crypto_hash_sha512_BYTES;
 
   int r=crypto_sign_edwards25519sha512batch(signatureBuffer,&sigLen,
-					    &hash[0],mLen,secretKeyBytes);
+					    &hash[0],mLen,m->cryptoSignSecret);
   if (r) {
     WHY("crypto_sign() failed.");
     return NULL;
   }
+  dump("formed sig",signatureBuffer,sigLen);
 
   rhizome_signature *out=calloc(sizeof(rhizome_signature),1);
 
@@ -263,6 +263,7 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
 	bcopy(&m->manifestdata[(*ofs)+1+32],&sigBuf[96],32);
 	/* Get public key of signatory */
 	bcopy(&m->manifestdata[(*ofs)+1+64],&publicKey[0],crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+	dump("reconst sigblock",&sigBuf[0],128);
 	
 	unsigned long long mlen=0;
 	int r=crypto_sign_edwards25519sha512batch_open(verifyBuf,&mlen,&sigBuf[0],128,
