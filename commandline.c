@@ -1089,16 +1089,23 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
       return WHY("Manifest struct could not be allocated -- not added to rhizome");
   }
   /* Fill in a few missing manifest fields, to make it easier to use when adding new files:
+      - the default service is "file"
       - the current time for "date"
       - if service is "file", then the payload file's basename for "name"
   */
+  const char *service = rhizome_manifest_get(m, "service", NULL, 0);
+  if (service == NULL) {
+    rhizome_manifest_set(m, "service", (service = "file"));
+  }
   if (rhizome_manifest_get(m, "date", NULL, 0) == NULL) {
     rhizome_manifest_set_ll(m, "date", gettime_ms());
   }
-  if (rhizome_manifest_get(m, "name", NULL, 0) == NULL) {
-    const char *name = strrchr(filepath, '/');
-    name = name ? name + 1 : filepath;
-    rhizome_manifest_set(m, "name", name);
+  if (strcasecmp("file", service) == 0) {
+    if (rhizome_manifest_get(m, "name", NULL, 0) == NULL) {
+      const char *name = strrchr(filepath, '/');
+      name = name ? name + 1 : filepath;
+      rhizome_manifest_set(m, "name", name);
+    }
   }
   /* Add the manifest and its associated file to the Rhizome database, generating an "id" in the
    * process */
@@ -1121,6 +1128,11 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
      invoking this command can read it to obtain feedback on the result. */
   if (manifestpath[0] && rhizome_write_manifest_file(mout, manifestpath) == -1)
     ret = WHY("Could not overwrite manifest file.");
+  service = rhizome_manifest_get(mout, "service", NULL, 0);
+  if (service) {
+    cli_puts("service"); cli_delim(":");
+    cli_puts(service); cli_delim("\n");
+  }
   cli_puts("manifestid"); cli_delim(":");
   cli_puts(rhizome_bytes_to_hex(mout->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)); cli_delim("\n");
   cli_puts("filehash"); cli_delim(":");

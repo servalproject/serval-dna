@@ -45,7 +45,8 @@ assert_rhizome_list() {
 assert_stdout_add_file() {
    local filename="$1"
    unpack_manifest_for_grep "$filename"
-   assertStdoutLineCount '==' 4
+   assertStdoutLineCount '==' 5
+   assertStdoutGrep --matches=1 '^service:file$'
    assertStdoutGrep --matches=1 "^name:${2:-$re_name}\$"
    assertStdoutGrep --matches=1 "^manifestid:$re_manifestid\$"
    assertStdoutGrep --matches=1 "^filehash:$re_filehash\$"
@@ -98,6 +99,10 @@ extract_manifest() {
           --dump-on-fail="$_manifestfile" \
           [ -n "$_value" ]
    [ -n "$_var" ] && eval $_var=$_value
+}
+
+extract_manifest_service() {
+   extract_manifest "$1" "$2" service '[0-9a-zA-Z]\+'
 }
 
 extract_manifest_id() {
@@ -157,6 +162,7 @@ test_AddNonExistManifest() {
    assert_stdout_add_file file1
    assert [ -r file1.manifest ]
    tfw_cat -v file1.manifest
+   assertGrep file1.manifest '^service=file$'
    assertGrep file1.manifest '^name=file1$'
    assertGrep file1.manifest '^date=[0-9]\+$'
    assertGrep file1.manifest '^version=[0-9]\+$'
@@ -177,6 +183,7 @@ test_AddManifest() {
    executeOk $dna rhizome add file $sid '' file1 file1.manifest
    tfw_cat --stdout --stderr -v file1.manifest
    assert_stdout_add_file file1 wah
+   assertGrep file1.manifest '^service=file$'
    assertGrep file1.manifest '^name=wah$'
    assertGrep file1.manifest '^version=[0-9]\+$'
    assertGrep file1.manifest '^date=12345$'
@@ -214,8 +221,9 @@ setup_AddThenExtractManifest() {
 test_AddThenExtractManifest() {
    executeOk $dna rhizome extract manifest $manifestid file1x.manifest
    assert cmp file1.manifest file1x.manifest
-   assertStdoutLineCount '==' 5
+   assertStdoutLineCount '==' 6
    local size=$(( $(cat file1 | wc -c) + 0 ))
+   assertStdoutGrep --matches=1 "^service:file$"
    assertStdoutGrep --matches=1 "^manifestid:$manifestid$"
    assertStdoutGrep --matches=1 "^version:$version$"
    assertStdoutGrep --matches=1 "^inserttime:[0-9]\+$"

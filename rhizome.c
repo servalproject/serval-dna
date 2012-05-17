@@ -147,6 +147,9 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
   if (m_out) *m_out = NULL;
 
   /* Ensure manifest meets basic sanity checks. */
+  const char *service = rhizome_manifest_get(m_in, "service", NULL, 0);
+  if (service == NULL || !service[0])
+      return WHY("Manifest missing 'service' field");
   const char *name = rhizome_manifest_get(m_in, "name", NULL, 0);
   if (name == NULL || !name[0])
       return WHY("Manifest missing 'name' field");

@@ -952,24 +952,29 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
 	} else {
 	  ret = 1;
 	  rhizome_hex_to_bytes(manifestid, m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
+	  const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
+	  if (blob_service == NULL)
+	    ret = WHY("Manifest is missing 'service' field");
 	  const char *blob_filehash = rhizome_manifest_get(m, "filehash", NULL, 0);
 	  if (blob_filehash == NULL)
-	    ret = WHY("Manifest is missing filehash line");
+	    ret = WHY("Manifest is missing 'filehash' field");
 	  else {
 	    memcpy(m->fileHexHash, blob_filehash, SHA512_DIGEST_STRING_LENGTH);
 	    m->fileHashedP = 1;
 	  }
 	  long long blob_version = rhizome_manifest_get_ll(m, "version");
 	  if (blob_version == -1)
-	    ret = WHY("Manifest is missing version line");
+	    ret = WHY("Manifest is missing 'version' field");
 	  else
 	    m->version = blob_version;
-	  long long lengthq = rhizome_manifest_get_ll(m, "filesize");
-	  if (lengthq == -1)
-	    ret = WHY("Manifest is missing filesize line");
+	  long long filesizeq = rhizome_manifest_get_ll(m, "filesize");
+	  if (filesizeq == -1)
+	    ret = WHY("Manifest is missing 'filesize' field");
 	  else
-	    m->fileLength = lengthq;
+	    m->fileLength = filesizeq;
 	  if (ret == 1) {
+	    cli_puts("service"); cli_delim(":");
+	    cli_puts(blob_service); cli_delim("\n");
 	    cli_puts("manifestid"); cli_delim(":");
 	    cli_puts((const char *)sqlite3_column_text(statement, 0)); cli_delim("\n");
 	    cli_puts("version"); cli_delim(":");
