@@ -63,3 +63,22 @@ int form_serval_instance_path(char *buf, size_t bufsiz, const char *path)
 int create_serval_instance_dir() {
   return mkdirs(serval_instancepath(), 0700);
 }
+
+#ifdef 0
+#include <execinfo.h>
+#define MAX_DEPTH 64
+int printBackTrace()
+{
+  int i,depth=0;
+  void *functions[MAX_DEPTH];
+  char **function_names;
+  
+  depth = backtrace (functions, MAX_DEPTH);
+  function_names = backtrace_symbols (functions, depth);
+     
+  for(i=0;i<depth;i++)
+    fprintf(stderr,"%s\n", function_names[i]);
+
+  return 0;
+}
+#endif
