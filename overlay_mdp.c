@@ -48,6 +48,13 @@ int overlay_mdp_setup_sockets()
     mdp_abstract_socket = socket(AF_UNIX, SOCK_DGRAM, 0);
     if (mdp_abstract_socket>-1) {
       int dud=0;
+      int reuseP=1;
+      if(setsockopt( mdp_abstract_socket, SOL_SOCKET, SO_REUSEADDR, 
+		     &reuseP, sizeof(reuseP)) < 0)
+	{
+	  WHY("Could not indicate reuse addresses. Not necessarily a problem (yet)");
+	  WHY_perror("setsockopt");
+	}
       int r=bind(mdp_abstract_socket, (struct sockaddr *)&name, len);
       if (r) { dud=1; r=0; WHY("bind() of abstract name space socket failed (not an error on non-linux systems"); }
       if (dud) {
@@ -59,8 +66,7 @@ int overlay_mdp_setup_sockets()
       int send_buffer_size=64*1024;    
       int res = setsockopt(mdp_abstract_socket, SOL_SOCKET, SO_SNDBUF, 
 		       &send_buffer_size, sizeof(send_buffer_size));
-    }
-
+    } 
   }
 #endif
   if (mdp_named_socket==-1) {
@@ -72,6 +78,13 @@ int overlay_mdp_setup_sockets()
     mdp_named_socket = socket(AF_UNIX, SOCK_DGRAM, 0);
     if (mdp_named_socket>-1) {
       int dud=0;
+      int reuseP=1;
+      if(setsockopt( mdp_named_socket, SOL_SOCKET, SO_REUSEADDR, 
+		     &reuseP, sizeof(reuseP)) < 0)
+	{
+	  WHY("Could not indicate reuse addresses. Not necessarily a problem (yet)");
+	  WHY_perror("setsockopt");
+	}
       int r=bind(mdp_named_socket, (struct sockaddr *)&name, len);
       if (r) { dud=1; r=0; WHY("bind() of named unix domain socket failed"); }
       if (dud) {

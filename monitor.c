@@ -99,6 +99,14 @@ int monitor_setup_sockets()
 	return -1;
       }
 
+      int reuseP=1;
+      if(setsockopt( monitor_named_socket, SOL_SOCKET, SO_REUSEADDR, 
+		     &reuseP, sizeof(reuseP)) < 0)
+	{
+	  WHY("Could not indicate reuse addresses. Not necessarily a problem (yet)");
+	  WHY_perror("setsockopt");
+	}
+
       int send_buffer_size=64*1024;    
       int res = setsockopt(monitor_named_socket, SOL_SOCKET, SO_RCVBUF, 
 		       &send_buffer_size, sizeof(send_buffer_size));
