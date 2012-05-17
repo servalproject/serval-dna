@@ -179,7 +179,7 @@ int overlay_route_saw_advertisements(int i,overlay_frame *f, long long now)
   int ofs=0;
 
   /* lookup score of current sender */
-  overlay_node *sender=overlay_route_find_node(f->source,0);
+  overlay_node *sender=overlay_route_find_node(f->source,SID_SIZE,0);
   int sender_score=sender->best_link_score;
   if (debug&DEBUG_OVERLAYROUTEMONITOR)
     fprintf(stderr,"score to reach %s is %d\n",

@@ -419,7 +419,7 @@ int overlay_abbreviate_expand_address(int interface,unsigned char *in,int *inofs
 
 int overlay_abbreviate_lookup_sender_id()
 {
-  overlay_neighbour *neh=overlay_route_get_neighbour_structure(overlay_abbreviate_current_sender.b,1 /* create if needed */);
+  overlay_neighbour *neh=overlay_route_get_neighbour_structure(overlay_abbreviate_current_sender.b,SID_SIZE,1 /* create if needed */);
   if (!neh) { overlay_abbreviate_current_sender_id=-1; return WHY("Could not find sender in neighbour list"); }
   /* Okay, so the following is a little tortuous in asking our parent who we are instead of just knowing, 
      but it will do for now */

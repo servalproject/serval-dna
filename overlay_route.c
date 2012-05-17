@@ -371,8 +371,9 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
 
   if (!overlay_neighbours) return WHY("I have no neighbours");
 
-  overlay_neighbour *neh=overlay_route_get_neighbour_structure(d,0 /* don't create if 
-								      missing */);
+  overlay_neighbour *neh=overlay_route_get_neighbour_structure(d,SID_SIZE,
+							       0 /* don't create if 
+								    missing */);
 
   if (neh) {
     /* Is a direct neighbour.
@@ -396,9 +397,38 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
     if (0) printf("nexthop is %s\n",overlay_render_sid(nexthop));
     return 0;
   } else {
-    /* Is not a direct neighbour */
-    
-    return WHY("Calculating next-hop destination for nodes that are not direct neighbours is not yet implemented");
+    /* Is not a direct neighbour.
+       XXX - Very simplistic for now. */
+    overlay_node 
+      *n=overlay_route_find_node(d,SID_SIZE,0 /* don't create if missing */ );
+    if (n) {
+      int o;
+      int best_score=0;
+      int best_o=-1;
+      for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++) {
+	int score=n->observations[o].observed_score;
+	overlay_neighbour *neh
+	  =overlay_route_get_neighbour_structure
+	  (n->observations[o].sender_prefix,OVERLAY_SENDER_PREFIX_LENGTH,0);
+	if (neh) {
+	  for(i=1;i<OVERLAY_MAX_INTERFACES;i++) {
+	    if (neh->scores[i]*score>best_score) {
+	      bcopy(&neh->node->sid[0],&nexthop[0],SID_SIZE);
+	      *interface=i;
+	      best_o=o;
+	      best_score=score;
+	    }
+	  }
+	}
+      }
+      if (best_o>-1) {
+	return 0;
+      } else {
+	return WHYF("No open path to %s",overlay_render_sid(d));
+      }
+    } else {
+      return WHYF("No open path to %s",overlay_render_sid(d));
+    }
   }
 }
 
@@ -429,7 +459,7 @@ unsigned int overlay_route_hash_sid(unsigned char *sid)
   return bin;
 }
 
-overlay_node *overlay_route_find_node(unsigned char *sid,int createP)
+overlay_node *overlay_route_find_node(unsigned char *sid,int prefixLen,int createP)
 {
   int bin_number=overlay_route_hash_sid(sid);
   int free_slot=-1;
@@ -439,7 +469,7 @@ overlay_node *overlay_route_find_node(unsigned char *sid,int createP)
 
   for(slot=0;slot<overlay_bin_size;slot++)
     {
-      if (!memcmp(sid,&overlay_nodes[bin_number][slot].sid[0],SID_SIZE))
+      if (!memcmp(sid,&overlay_nodes[bin_number][slot].sid[0],prefixLen))
 	{
 	  /* Found it */
 	  return &overlay_nodes[bin_number][slot];
@@ -638,14 +668,14 @@ int overlay_route_make_neighbour(overlay_node *n)
 }
 
 overlay_neighbour *overlay_route_get_neighbour_structure(unsigned char *packed_sid,
-							 int createP)
+							 int prefixLen,int createP)
 {
   if (overlay_address_is_local(packed_sid)) {
     WHY("asked for neighbour structure for myself");
     return NULL;
   }  
 
-  overlay_node *n=overlay_route_find_node(packed_sid,createP);
+  overlay_node *n=overlay_route_find_node(packed_sid,prefixLen,createP);
   if (!n) { WHY("Could not find node record for observed node"); return NULL; }
 
   /* Check if node is already a neighbour, or if not, make it one */
@@ -682,7 +712,7 @@ int overlay_route_node_can_hear_me(unsigned char *who,int sender_interface,
     }
 
   /* Find node, or create entry if it hasn't been seen before */
-  overlay_node *n=overlay_route_find_node(who,1 /* create if necessary */);
+  overlay_node *n=overlay_route_find_node(who,SID_SIZE,1 /* create if necessary */);
   if (!n) return WHY("Could not find node record for observed node");
 
   /* Check if node is already a neighbour, or if not, make it one */
@@ -759,7 +789,8 @@ int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now)
 
   unsigned int s1,s2;
   unsigned char sender_interface;
-  overlay_neighbour *n=overlay_route_get_neighbour_structure(f->source,1 /* make neighbour if not yet one */);
+  overlay_neighbour *n=overlay_route_get_neighbour_structure(f->source,SID_SIZE,
+							     1 /* make neighbour if not yet one */);
  
   if (!n) return WHY("overlay_route_get_neighbour_structure() failed");
 
@@ -1092,7 +1123,7 @@ int overlay_route_record_link(long long now,unsigned char *to,
   fprintf(stderr,"%s*,0x%08x-0x%08x,%d)\n",
 	  overlay_render_sid_prefix(via,7),s1,s2,score);
   
-  overlay_node *n=overlay_route_find_node(to,1 /* create node if missing */);
+  overlay_node *n=overlay_route_find_node(to,SID_SIZE,1 /* create node if missing */);
   if (!n) return WHY("Could not find or create entry for node");
   
   for(i=0;i<OVERLAY_MAX_OBSERVATIONS;i++)
