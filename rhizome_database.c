@@ -574,7 +574,8 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
     ret = WHY(sqlite3_errmsg(rhizome_db));
   } else {
     size_t rows = 0;
-    cli_puts("7"); cli_delim("\n"); // number of columns
+    cli_puts("8"); cli_delim("\n"); // number of columns
+    cli_puts("service"); cli_delim(":");
     cli_puts("fileid"); cli_delim(":");
     cli_puts("manifestid"); cli_delim(":");
     cli_puts("version"); cli_delim(":");
@@ -598,15 +599,19 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
       const char *manifestblob = (char *) sqlite3_column_blob(statement, 3);
       size_t manifestblobsize = sqlite3_column_bytes(statement, 3); // must call after sqlite3_column_blob()
       rhizome_manifest *m = rhizome_read_manifest_file(manifestblob, manifestblobsize, 0);
-      const char *name = rhizome_manifest_get(m, "name", NULL, 0);
-      long long date = rhizome_manifest_get_ll(m, "date");
-      cli_puts((const char *)sqlite3_column_text(statement, 0)); cli_delim(":");
-      cli_puts((const char *)sqlite3_column_text(statement, 2)); cli_delim(":");
-      cli_printf("%lld", (long long) sqlite3_column_int64(statement, 4)); cli_delim(":");
-      cli_printf("%lld", (long long) sqlite3_column_int64(statement, 5)); cli_delim(":");
-      cli_printf("%u", sqlite3_column_int(statement, 1)); cli_delim(":");
-      cli_printf("%lld", date); cli_delim(":");
-      cli_puts(name); cli_delim("\n");
+      const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
+      if (!service[0] || (blob_service && strcasecmp(service, blob_service) == 0)) {
+	const char *blob_name = rhizome_manifest_get(m, "name", NULL, 0);
+	long long blob_date = rhizome_manifest_get_ll(m, "date");
+	cli_puts(blob_service ? blob_service : ""); cli_delim(":");
+	cli_puts((const char *)sqlite3_column_text(statement, 0)); cli_delim(":");
+	cli_puts((const char *)sqlite3_column_text(statement, 2)); cli_delim(":");
+	cli_printf("%lld", (long long) sqlite3_column_int64(statement, 4)); cli_delim(":");
+	cli_printf("%lld", (long long) sqlite3_column_int64(statement, 5)); cli_delim(":");
+	cli_printf("%u", sqlite3_column_int(statement, 1)); cli_delim(":");
+	cli_printf("%lld", blob_date); cli_delim(":");
+	cli_puts(blob_name ? blob_name : ""); cli_delim("\n");
+      }
       rhizome_manifest_free(m);
     }
   }
