@@ -1070,8 +1070,8 @@ int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
       /* This formulation is used so that we don't copy any bytes after the
 	 end of the string, to avoid information leaks */
       len=&mdp->error.message[0]-(char *)mdp;
-      len+=strlen(mdp->error.message)+1;
-      WHYF("error mdp frame is %d bytes",len);
+      len+=strlen(mdp->error.message)+1;      
+      WHYF("mdp return/error code: %d:%s",mdp->error.error,mdp->error.message);
       break;
     case MDP_VOMPEVENT:
       /* XXX too hard to work out precisely for now. */

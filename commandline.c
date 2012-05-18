@@ -441,12 +441,11 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
   overlay_mdp_frame mdp;
   bzero(&mdp,sizeof(mdp));
 
-  WHY("polling network");
-
   /* Now repeatedly send resolution request and collect results until we reach
      timeout. */
   unsigned long long timeout=overlay_gettime_ms()+3000;
   unsigned long long last_tx=0;
+  
   while(timeout>overlay_gettime_ms())
     {
       unsigned long long now=overlay_gettime_ms();

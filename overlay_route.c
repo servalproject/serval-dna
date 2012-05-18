@@ -368,6 +368,10 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
   int i;
   
   if (overlay_broadcast_drop_check(d)) return WHY("I have sent that broadcast frame before");
+  if (overlay_address_is_broadcast(d)) {
+    bcopy(&d[0],&nexthop[0],SID_SIZE);
+    return 0;
+  }
 
   if (!overlay_neighbours) return WHY("I have no neighbours");
 
