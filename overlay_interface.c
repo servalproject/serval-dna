@@ -45,15 +45,19 @@ unsigned int overlay_sequence_number=0;
 /* Do we need to repeat our abbreviation policy? */
 int overlay_interface_repeat_abbreviation_policy[OVERLAY_MAX_INTERFACES]={1};
 
-/* Return milliseconds since server started.  First call will always return zero.  */
+/* Return milliseconds since server started.  First call will always return zero.
+   Must use long long, not time_t, as time_t can be 32bits, which is too small for
+   milli-seconds since 1970. */
+long long overlay_sequence_start_time = 0;
 long long overlay_gettime_ms()
 {
-  static time_t overlay_sequence_start_time = 0;
-  long long now = gettime_ms();
+  long long now;
   if (!overlay_sequence_start_time) {
-    overlay_sequence_start_time = now;
+    overlay_sequence_start_time = gettime_ms();
     now = 0;
-  }
+  } else
+    now= gettime_ms()-overlay_sequence_start_time;
+
   return now;
 }
 
