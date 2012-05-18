@@ -41,15 +41,13 @@ const char *rhizome_datastore_path()
 
 int rhizome_set_datastore_path(const char *path)
 {
+  if (!path)
+    path = confValueGet("rhizome.datastore_path", NULL);
+  if (path[0] != '/')
+    WARNF("Dangerous rhizome.datastore_path setting: '%s' -- should be absolute", rhizome_thisdatastore_path);
   if (path)
-    rhizome_thisdatastore_path = path;
+    rhizome_thisdatastore_path = strdup(path);
   else {
-    rhizome_thisdatastore_path = confValueGet("rhizome.datastore_path", NULL);
-    if (rhizome_thisdatastore_path && rhizome_thisdatastore_path[0] != '/') {
-      WHYF("Invalid rhizome.datastore_path config setting: '%s' -- should be absolute path", rhizome_thisdatastore_path);
-    }
-  }
-  if (!rhizome_thisdatastore_path) {
     rhizome_thisdatastore_path = serval_instancepath();
     WARNF("Rhizome datastore path not configured -- using instance path '%s'", rhizome_thisdatastore_path);
   }
@@ -80,6 +78,7 @@ int form_rhizome_datastore_path(char * buf, size_t bufsiz, const char *fmt, ...)
 
 int create_rhizome_datastore_dir()
 {
+  if (debug & DEBUG_RHIZOME) DEBUGF("mkdirs(%s, 0700)", rhizome_datastore_path());
   return mkdirs(rhizome_datastore_path(), 0700);
 }
 
@@ -96,56 +95,51 @@ int rhizome_opendb()
 {
   if (rhizome_db) return 0;
 
+  if (create_rhizome_datastore_dir() == -1)
+    return -1;
   char dbname[1024];
   if (!FORM_RHIZOME_DATASTORE_PATH(dbname, "rhizome.db"))
-    exit(1);
+    return -1;
 
-  int r=sqlite3_open(dbname,&rhizome_db);
-  if (r) {
-    fprintf(stderr,"SQLite could not open database: %s\n",sqlite3_errmsg(rhizome_db));
-    exit(1);
-  }
+  if (sqlite3_open(dbname,&rhizome_db))
+    return WHYF("SQLite could not open database: %s", sqlite3_errmsg(rhizome_db));
 
   /* Read Rhizome configuration */
-  rhizome_space=1024LL*atof(confValueGet("rhizome_kb","1024"));
-  fprintf(stderr,"Rhizome will use %lldKB of storage for its database.\n",
-	  rhizome_space/1024LL);
-  fprintf(stderr,"   serval.conf:rhizome_kb=%.f\n",rhizome_space/1024.0);
+  double rhizome_kb = atof(confValueGet("rhizome_kb", "1024"));
+  rhizome_space = 1024LL * rhizome_kb;
+  if (debug&DEBUG_RHIZOME) {
+    DEBUGF("serval.conf:rhizome_kb=%.f", rhizome_kb);
+    DEBUGF("Rhizome will use %lldB of storage for its database.", rhizome_space);
+  }
 
   /* Create tables if required */
   if (sqlite3_exec(rhizome_db,"PRAGMA auto_vacuum=2;",NULL,NULL,NULL)) {
-      fprintf(stderr,"SQLite could enable incremental vacuuming: %s\n",sqlite3_errmsg(rhizome_db));
+      WARNF("SQLite could enable incremental vacuuming: %s", sqlite3_errmsg(rhizome_db));
   }
   if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS GROUPLIST(id text not null primary key, closed integer,ciphered integer,priority integer);",NULL,NULL,NULL))
     {
-      fprintf(stderr,"SQLite could not create GROUPLIST table: %s\n",sqlite3_errmsg(rhizome_db));
-      exit(1);
+      return WHYF("SQLite could not create GROUPLIST table: %s", sqlite3_errmsg(rhizome_db));
     }
   if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS MANIFESTS(id text not null primary key, manifest blob, version integer,inserttime integer, bar blob);",NULL,NULL,NULL))
     {
-      fprintf(stderr,"SQLite could not create MANIFESTS table: %s\n",sqlite3_errmsg(rhizome_db));
-      exit(1);
+      return WHYF("SQLite could not create MANIFESTS table: %s", sqlite3_errmsg(rhizome_db));
     }
   if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS FILES(id text not null primary key, data blob, length integer, highestpriority integer, datavalid integer);",NULL,NULL,NULL))
     {
-      fprintf(stderr,"SQLite could not create FILES table: %s\n",sqlite3_errmsg(rhizome_db));
-      exit(1);
+      return WHYF("SQLite could not create FILES table: %s", sqlite3_errmsg(rhizome_db));
     }
   if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS FILEMANIFESTS(fileid text not null, manifestid text not null);",NULL,NULL,NULL))
     {
-      fprintf(stderr,"SQLite could not create FILEMANIFESTS table: %s\n",sqlite3_errmsg(rhizome_db));
-      exit(1);
+      return WHYF("SQLite could not create FILEMANIFESTS table: %s", sqlite3_errmsg(rhizome_db));
     }
   if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS GROUPMEMBERSHIPS(manifestid text not null, groupid text not null);",NULL,NULL,NULL))
     {
-      fprintf(stderr,"SQLite could not create GROUPMEMBERSHIPS table: %s\n",sqlite3_errmsg(rhizome_db));
-      exit(1);
+      return WHYF("SQLite could not create GROUPMEMBERSHIPS table: %s", sqlite3_errmsg(rhizome_db));
     }
-  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS VERIFICATIONS(sid text not null, did text, name text,starttime integer, endtime integer,signature blob);",
+  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS VERIFICATIONS(sid text not null, did text, name text, starttime integer, endtime integer, signature blob);",
 		   NULL,NULL,NULL))
     {
-      fprintf(stderr,"SQLite could not create VERIFICATIONS table: %s\n",sqlite3_errmsg(rhizome_db));
-      exit(1);
+      return WHYF("SQLite could not create VERIFICATIONS table: %s", sqlite3_errmsg(rhizome_db));
     }
   
   /* XXX Setup special groups, e.g., Serval Software and Serval Optional Data */
@@ -222,7 +216,7 @@ int rhizome_make_space(int group_priority, long long bytes)
   snprintf(sql,1024,"select id,length from files where highestpriority<%d order by descending length",group_priority);
   if(sqlite3_prepare_v2(rhizome_db,sql, -1, &statement, NULL) != SQLITE_OK )
     {
-      fprintf(stderr,"SQLite error running query '%s': %s\n",sql,sqlite3_errmsg(rhizome_db));
+      WHYF("SQLite error running query '%s': %s",sql,sqlite3_errmsg(rhizome_db));
       sqlite3_finalize(statement);
       sqlite3_close(rhizome_db);
       rhizome_db=NULL;
@@ -238,11 +232,11 @@ int rhizome_make_space(int group_priority, long long bytes)
       /* Get values */
       if (sqlite3_column_type(statement, 0)==SQLITE_TEXT) id=sqlite3_column_text(statement, 0);
       else {
-	fprintf(stderr,"Incorrect type in id column of files table.\n");
+	WARNF("Incorrect type in id column of files table.");
 	continue; }
       if (sqlite3_column_type(statement, 1)==SQLITE_INTEGER) ;//length=sqlite3_column_int(statement, 1);
       else {
-	fprintf(stderr,"Incorrect type in length column of files table.\n");
+	WARNF("Incorrect type in length column of files table.");
 	continue; }
       
       /* Try to drop this file from storage, discarding any references that do not trump the priority of this
@@ -276,7 +270,7 @@ int rhizome_drop_stored_file(char *id,int maximum_priority)
 	   id);
   if(sqlite3_prepare_v2(rhizome_db,sql, -1, &statement, NULL) != SQLITE_OK )
     {
-      fprintf(stderr,"SQLite error running query '%s': %s\n",sql,sqlite3_errmsg(rhizome_db));
+      WHYF("SQLite error running query '%s': %s",sql,sqlite3_errmsg(rhizome_db));
       sqlite3_finalize(statement);
       sqlite3_close(rhizome_db);
       rhizome_db=NULL;
@@ -289,7 +283,7 @@ int rhizome_drop_stored_file(char *id,int maximum_priority)
       const unsigned char *id;
       if (sqlite3_column_type(statement, 0)==SQLITE_TEXT) id=sqlite3_column_text(statement, 0);
       else {
-	fprintf(stderr,"Incorrect type in id column of manifests table.\n");
+	WHYF("Incorrect type in id column of manifests table.");
 	continue; }
             
       /* Check that manifest is not part of a higher priority group.
@@ -387,7 +381,7 @@ int rhizome_store_bundle(rhizome_manifest *m, const char *associated_filename)
     }
 
   /* Store manifest */
-  if (debug & DEBUG_RHIZOME) fprintf(stderr, "Writing into manifests table\n");
+  if (debug & DEBUG_RHIZOME) DEBUGF("Writing into manifests table");
   snprintf(sqlcmd,1024,
 	   "INSERT INTO MANIFESTS(id,manifest,version,inserttime,bar) VALUES('%s',?,%lld,%lld,?);",
 	   manifestid, m->version, gettime_ms());
@@ -437,7 +431,7 @@ int rhizome_store_bundle(rhizome_manifest *m, const char *associated_filename)
     return WHY("SQLite3 failed to insert row for manifest");
   }
   else {
-    if (debug & DEBUG_RHIZOME) fprintf(stderr, "Insert into manifests apparently worked.\n");
+    if (debug & DEBUG_RHIZOME) DEBUGF("Insert into manifests apparently worked.");
   }
 
   /* Create relationship between file and manifest */
@@ -846,7 +840,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
     size_t rows = 0;
     while (sqlite3_step(statement) == SQLITE_ROW) {
       ++rows;
-      if (debug & DEBUG_RHIZOME) fprintf(stderr, "Row %d\n", rows);
+      if (debug & DEBUG_RHIZOME) DEBUGF("Row %d", rows);
       if (!(   sqlite3_column_count(statement) == 3
 	    && sqlite3_column_type(statement, 0) == SQLITE_TEXT
 	    && sqlite3_column_type(statement, 1) == SQLITE_BLOB

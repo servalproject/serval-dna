@@ -530,22 +530,29 @@ const char *confValueGet(const char *var, const char *defaultValue)
   }
 
   char line[1024];
-  line[0]=0; fgets(line,1024,f);
-  while(line[0]) {
-    if (!strncasecmp(line,var,varLen)) {
-      if (line[varLen]=='=') {
-	fclose(f);
-	if (strlen(&line[varLen+1])>127) return defaultValue;
-	/* The rotor is used to pick which of four buffers to return in.
-	   This allows the use of up to four calls to confValueGet() in
-	   a single string formatting exercise, without unexpected side
-	   effect. */
-	confValueRotor++; confValueRotor&=3;
-	strcpy(&confValue[confValueRotor][0],&line[varLen+1]);
-	return &confValue[confValueRotor][0];
-      }
+  line[0] = '\0';
+  fgets(line, sizeof line, f);
+  while (line[0]) {
+    if (!strncasecmp(line, var, varLen) && line[varLen] == '=') {
+      fclose(f);
+      size_t len = strlen(&line[varLen + 1]);
+      if (len > sizeof confValue[0])
+	return defaultValue;
+      if (len && line[varLen + len] == '\n')
+	line[varLen + len--] = '\0';
+      if (len && line[varLen + len] == '\r')
+	line[varLen + len--] = '\0';
+      /* The rotor is used to pick which of four buffers to return in.
+	  This allows the use of up to four calls to confValueGet() in
+	  a single string formatting exercise, without unexpected side
+	  effect. */
+      confValueRotor++;
+      confValueRotor &= 3;
+      strcpy(&confValue[confValueRotor][0], &line[varLen + 1]);
+      return &confValue[confValueRotor][0];
     }
-    line[0]=0; fgets(line,1024,f);
+    line[0] = '\0';
+    fgets(line, sizeof line, f);
   }
   fclose(f);
   return defaultValue;
@@ -593,10 +600,23 @@ void confSetDebugFlags()
 	    *q = '\0';
 	    if ((flag = confParseBoolean(p + 1, flagname)) != -1) {
 	      long long mask = debugFlagMask(flagname);
-	      if (mask == -1)
-		if (flag) setall = 1; else clearall = 1;
-	      else
-		if (flag) setmask |= mask; else clearmask |= mask;
+	      if (mask == -1) {
+		if (flag) {
+		  DEBUGF("Set all debug flags");
+		  setall = 1;
+		} else {
+		  DEBUGF("Clear all debug flags");
+		  clearall = 1;
+		}
+	      } else {
+		if (flag) {
+		  DEBUGF("Set debug.%s", flagname);
+		  setmask |= mask;
+		} else {
+		  DEBUGF("Clear debug.%s", flagname);
+		  clearmask |= mask;
+		}
+	      }
 	    }
 	  }
 	}
@@ -654,7 +674,8 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
        instance directory when it starts up.  */
     if (server_remove_stopfile() == -1)
       return -1;
-    rhizome_opendb();
+    if (rhizome_opendb() == -1)
+      return -1;
     overlayMode = 1;
     if (foregroundP)
       return server(NULL);
@@ -1072,7 +1093,8 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   /* Ensure the Rhizome database exists and is open */
   if (create_serval_instance_dir() == -1)
     return -1;
-  rhizome_opendb();
+  if (rhizome_opendb() == -1)
+    return -1;
   /* Create a new manifest that will represent the file.  If a manifest file was supplied, then read
    * it, otherwise create a blank manifest. */
   rhizome_manifest *m = NULL;
@@ -1163,7 +1185,8 @@ int app_rhizome_extract_manifest(int argc, const char *const *argv, struct comma
   /* Ensure the Rhizome database exists and is open */
   if (create_serval_instance_dir() == -1)
     return -1;
-  rhizome_opendb();
+  if (rhizome_opendb() == -1)
+    return -1;
   /* Extract the manifest from the database */
   rhizome_manifest *m = NULL;
   int ret = rhizome_retrieve_manifest(manifestid, &m);
@@ -1202,7 +1225,8 @@ int app_rhizome_extract_file(int argc, const char *const *argv, struct command_l
   /* Ensure the Rhizome database exists and is open */
   if (create_serval_instance_dir() == -1)
     return -1;
-  rhizome_opendb();
+  if (rhizome_opendb() == -1)
+    return -1;
   /* Extract the file from the database */
   int ret = rhizome_retrieve_file(fileid, filepath);
   switch (ret) {
@@ -1233,7 +1257,8 @@ int app_rhizome_list(int argc, const char *const *argv, struct command_line_opti
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
     return -1;
-  rhizome_opendb();
+  if (rhizome_opendb() == -1)
+    return -1;
   return rhizome_list_manifests(service, sender_sid, recipient_sid, atoi(offset), atoi(limit));
 }
 

@@ -218,7 +218,8 @@ int parseOldCommandLine(int argc, char **argv)
   if (serverMode&&clientMode) usage("You asked me to be both server and client.  That's silly.");
   if (rhizome_path) {
     rhizome_set_datastore_path(rhizome_path);
-    rhizome_opendb();
+    if (rhizome_opendb() == -1)
+      exit(-1);
   }
   if (serverMode) {
     if (!keyring_file) {
