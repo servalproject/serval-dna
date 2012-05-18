@@ -473,7 +473,6 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
       bcopy(mdp_bindings_sockets[match],&addr.sun_path[0],mdp_bindings_socket_name_lengths[match]);
       addr.sun_family=AF_UNIX;
       int r=sendto(mdp_named_socket,mdp,overlay_mdp_relevant_bytes(mdp),0,(struct sockaddr*)&addr,sizeof(addr));
-      printf("r=%d\n",r);
       if (r==overlay_mdp_relevant_bytes(mdp)) return 0;
       WHY_perror("sendto(e)");
       return WHY("Failed to pass received MDP frame to client");
@@ -506,7 +505,6 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 	  overlay_mdp_swap_src_dst(mdp);
 	  while(keyring_find_did(keyring,&cn,&in,&kp,did))
 	    {
-	      WHYF("Found matching did");
 	      /* package DID and Name into reply (we include the DID because
 		 it could be a wild-card DID search, but the SID is implied 
 		 in the source address of our reply). */

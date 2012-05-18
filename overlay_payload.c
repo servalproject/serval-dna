@@ -248,15 +248,21 @@ int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP)
     /* Dispatch voice data immediately. */
     int interface=-1;
     int nexthoplen=SID_SIZE;
+    int broadcast=overlay_address_is_broadcast(p->destination);
 
     overlay_abbreviate_clear_most_recent_address();
-
-    if (overlay_get_nexthop(p->destination,p->nexthop,&nexthoplen,
-			    &interface)) {
-      return WHY("Failed to resolve nexthop for voice packet");
-    }
-    if (interface==-1) {
-      return WHY("Failed to determine interface for sending voice packet");
+    
+    if (broadcast) {
+      bcopy(p->destination,p->nexthop,SID_SIZE);
+      interface=0;
+    } else {
+      if (overlay_get_nexthop(p->destination,p->nexthop,&nexthoplen,
+			      &interface)) {
+	return WHY("Failed to resolve nexthop for voice packet");
+      }
+      if (interface==-1&&(!broadcast)) {
+	return WHY("Failed to determine interface for sending voice packet");
+      }
     }
 
     overlay_buffer *b=ob_new(overlay_interfaces[interface].mtu);
@@ -273,6 +279,7 @@ int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP)
 
     if (debug&DEBUG_OVERLAYINTERFACES) 
       WHYF("Sending %d byte voice packet",b->length);
+  nextinterface:
     if (!overlay_broadcast_ensemble(interface,NULL,b->bytes,b->length))
       {
 	overlay_update_sequence_number();
@@ -287,6 +294,12 @@ int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP)
       ob_free(b);
       return -1;
     }
+
+    if (broadcast) {
+      interface++;
+      if (interface<overlay_interface_count) goto nextinterface;
+    }
+    
   }
   
   if (q<0||q>=OQ_MAX) return WHY("Invalid queue specified");
