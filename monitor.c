@@ -619,6 +619,14 @@ int monitor_call_status(vomp_call_state *call)
   return 0;
 }
 
+int monitor_announce_peer(unsigned char *sid)
+{
+  unsigned char msg[1024];
+  snprintf((char *)msg,1024,"\nnewpeer %s\n",overlay_render_sid(sid));
+  monitor_tell_clients(msg,strlen((char *)msg));
+  return 0;
+}
+
 int monitor_send_audio(vomp_call_state *call,overlay_mdp_frame *audio)
 {
   if (0) WHYF("Tell call monitor about audio for call %06x:%06x",
@@ -643,6 +651,13 @@ int monitor_send_audio(vomp_call_state *call,overlay_mdp_frame *audio)
 	&msg[msglen],sample_bytes);
   msglen+=sample_bytes;
 
+  monitor_tell_clients(msg,msglen);
+
+  return 0;
+}
+
+int monitor_tell_clients(unsigned char *msg,int msglen)
+{
   int i;
   for(i=0;i<monitor_socket_count;i++)
     {
@@ -671,7 +686,5 @@ int monitor_send_audio(vomp_call_state *call,overlay_mdp_frame *audio)
 	}
       }
     }
-
-
   return 0;
 }

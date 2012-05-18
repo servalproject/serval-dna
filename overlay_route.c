@@ -502,6 +502,7 @@ overlay_node *overlay_route_find_node(unsigned char *sid,int prefixLen,int creat
 
   /* Ask for newly discovered node to be advertised */
   overlay_route_please_advertise(&overlay_nodes[bin_number][slot]);
+  monitor_announce_peer(sid);
 
   bcopy(sid,overlay_nodes[bin_number][free_slot].sid,SID_SIZE);
   return &overlay_nodes[bin_number][free_slot];
