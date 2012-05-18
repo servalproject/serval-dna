@@ -1451,6 +1451,13 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 	if (!overlay_mdp_send(&m2,MDP_AWAITREPLY,125))
 	  {	    
 	    int bytes=m2.in.payload_length;
+	    if (m2.packetTypeAndFlags!=MDP_TX) {
+	      WHYF("MDP returned an unexpected message (type=0x%x)",
+		   m2.packetTypeAndFlags);
+	      if (m2.packetTypeAndFlags==MDP_ERROR) 
+		WHYF("MDP message is return/error: %d:%s",
+		     m2.error.error,m2.error.message);
+	    }
 	    if ((bytes+1)<sizeof(mdp.nodeinfo.did)+sizeof(mdp.nodeinfo.name))
 	      {
 		bcopy(&m2.in.payload[0],&mdp.nodeinfo.did[0],32);
