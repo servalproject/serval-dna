@@ -150,11 +150,24 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
   const char *service = rhizome_manifest_get(m_in, "service", NULL, 0);
   if (service == NULL || !service[0])
       return WHY("Manifest missing 'service' field");
-  const char *name = rhizome_manifest_get(m_in, "name", NULL, 0);
-  if (name == NULL || !name[0])
-      return WHY("Manifest missing 'name' field");
   if (rhizome_manifest_get_ll(m_in, "date") == -1)
       return WHY("Manifest missing 'date' field");
+  if (strcasecmp(service, "file")) {
+    const char *name = rhizome_manifest_get(m_in, "name", NULL, 0);
+    if (name == NULL || !name[0])
+	return WHY("Manifest missing 'name' field");
+  } else if (strcasecmp(service, "MeshMS")) {
+    const char *sender = rhizome_manifest_get(m_in, "sender", NULL, 0);
+    const char *recipient = rhizome_manifest_get(m_in, "recipient", NULL, 0);
+    if (sender == NULL || sender[0])
+	return WHY("Manifest missing 'sender' field");
+    if (!validateSid(sender))
+	return WHY("Manifest contains invalid 'sender' field");
+    if (recipient == NULL || recipient[0])
+	return WHY("Manifest missing 'recipient' field");
+    if (!validateSid(recipient))
+	return WHY("Manifest contains invalid 'recipient' field");
+  }
 
   /* Keep payload file name handy for later */
   m_in->dataFileName = strdup(filename);
@@ -217,8 +230,6 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
   if (rhizome_find_duplicate(m_in, &dupm) == -1)
     return WHY("Errors encountered searching for duplicate manifest");
   if (dupm) {
-    if (debug & DEBUG_RHIZOME)
-      fprintf(stderr, "Found duplicate payload: name=\"%s\" version=%llu hexhash=%s -- not adding\n", name, dupm->version, dupm->fileHexHash);
     /* If the caller wants the duplicate manifest, it must be finalised, otherwise discarded. */
     if (m_out) {
       if (rhizome_manifest_finalise(dupm, 0,NULL))

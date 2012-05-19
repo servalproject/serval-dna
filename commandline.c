@@ -1084,10 +1084,9 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   cli_arg(argc, argv, o, "author_sid", &authorSid, cli_optional_sid, "");
   cli_arg(argc, argv, o, "pin", &pin, NULL, "");
   cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "");
-  if (!keyring_open_with_pins(pin))
-    return -1;
-  /* Ensure the Rhizome database exists and is open */
   if (create_serval_instance_dir() == -1)
+    return -1;
+  if (!keyring_open_with_pins(pin))
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
@@ -1095,7 +1094,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
    * it, otherwise create a blank manifest. */
   rhizome_manifest *m = NULL;
   int manifest_file_supplied = 0;
-  if (manifestpath[0] && access(manifestpath, R_OK) == 0) {    
+  if (manifestpath[0] && access(manifestpath, R_OK) == 0) {
     m = rhizome_read_manifest_file(manifestpath, 0, 0); // no verify
     if (!m)
       return WHY("Manifest file could not be loaded -- not added to rhizome");

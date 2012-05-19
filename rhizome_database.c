@@ -1,6 +1,6 @@
 /*
-Serval Distributed Numbering Architecture (DNA)
-Copyright (C) 2010 Paul Gardner-Stephen
+Serval Rhizome file sharing
+Copyright (C) 2012 The Serval Project
  
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -899,6 +899,8 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
 	blob_m->fileLength = m->fileLength;
 	blob_m->version = q_version;
 	*found = blob_m;
+	if (debug & DEBUG_RHIZOME)
+	  DEBUGF("Found duplicate payload: name=\"%s\" version=%llu hexhash=%s -- not adding\n", blob_m, blob_m->version, blob_m->fileHexHash);
 	ret = 1;
 	if (debug & DEBUG_RHIZOME) DEBUG("found");
 	break;
