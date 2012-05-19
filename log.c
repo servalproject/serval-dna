@@ -30,6 +30,7 @@ void logMessage(int level, char *fmt, ...)
   va_list ap;
   va_start(ap, fmt);
   vlogMessage(level, fmt, ap);
+  va_end(ap);
 }
 
 void vlogMessage(int level, char *fmt, va_list ap)
@@ -38,7 +39,7 @@ void vlogMessage(int level, char *fmt, va_list ap)
   char buf[8192];
   va_copy(ap2, ap);
   vsnprintf(buf, sizeof buf, fmt, ap2);
-  va_end(ap);
+  va_end(ap2);
   buf[sizeof buf - 1] = '\0';
 #ifdef ANDROID
   int alevel = ANDROID_LOG_UNKNOWN;
@@ -67,6 +68,7 @@ int setReason(char *fmt, ...)
   va_list ap;
   va_start(ap, fmt);
   vlogMessage(LOG_LEVEL_ERROR, fmt, ap);
+  va_end(ap);
   return -1;
 }
 
