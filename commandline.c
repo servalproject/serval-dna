@@ -1084,12 +1084,8 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   cli_arg(argc, argv, o, "author_sid", &authorSid, cli_optional_sid, "");
   cli_arg(argc, argv, o, "pin", &pin, NULL, "");
   cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "");
-
-  keyring=keyring_open_with_pins(pin);
-  if (!keyring) { WHY("keyring add: Failed to create/open keyring file");
-    return -1; }
-
-
+  if (!keyring_open_with_pins(pin))
+    return -1;
   /* Ensure the Rhizome database exists and is open */
   if (create_serval_instance_dir() == -1)
     return -1;
@@ -1266,8 +1262,8 @@ int app_keyring_create(int argc, const char *const *argv, struct command_line_op
 {
   const char *pin;
   cli_arg(argc, argv, o, "pin,pin ...", &pin, NULL, "");
-  keyring_file *k=keyring_open_with_pins(pin);
-  if (!k) WHY("keyring create: Failed to create/open keyring file");
+  if (!keyring_open_with_pins(pin))
+    return -1;
   return 0;
 }
 
@@ -1275,7 +1271,9 @@ int app_keyring_list(int argc, const char *const *argv, struct command_line_opti
 {
   const char *pin;
   cli_arg(argc, argv, o, "pin,pin ...", &pin, NULL, "");
-  keyring_file *k=keyring_open_with_pins(pin);
+  keyring_file *k = keyring_open_with_pins(pin);
+  if (!k)
+    return -1;
 
   int cn=0;
   int in=0;
@@ -1307,11 +1305,9 @@ int app_keyring_add(int argc, const char *const *argv, struct command_line_optio
 {
   const char *pin;
   cli_arg(argc, argv, o, "pin", &pin, NULL, "");
-
-  keyring_file *k=keyring_open_with_pins("");
-  if (!k) { WHY("keyring add: Failed to create/open keyring file");
-    return -1; }
-  
+  keyring_file *k = keyring_open_with_pins("");
+  if (!k)
+    return -1;
   if (keyring_create_identity(k,k->contexts[0],(char *)pin)==NULL)
     return setReason("Could not create new identity (keyring_create_identity() failed)");
   if (keyring_commit(k))
@@ -1331,8 +1327,9 @@ int app_keyring_set_did(int argc, const char *const *argv, struct command_line_o
   if (strlen(did)>31) return WHY("DID too long (31 digits max)");
   if (strlen(name)>63) return WHY("Name too long (31 char max)");
 
-  keyring=keyring_open_with_pins((char *)pin);
-  if (!keyring) return WHY("Could not open keyring file");
+  keyring = keyring_open_with_pins((char *)pin);
+  if (!keyring)
+    return -1;
 
   unsigned char packedSid[SID_SIZE];
   stowSid(packedSid,0,(char *)sid);
