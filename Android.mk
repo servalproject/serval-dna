@@ -46,6 +46,7 @@ LOCAL_SRC_FILES:= \
         serval-dna/dna.c           \
         serval-dna/log.c           \
         serval-dna/mkdir.c         \
+        serval-dna/strbuf.c         \
         serval-dna/gateway.c       \
         serval-dna/overlay.c       \
         serval-dna/overlay_broadcast.c \
