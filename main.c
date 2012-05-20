@@ -30,8 +30,8 @@ int main(int argc, char **argv)
   server_save_argv(argc, (const char*const*)argv);
   int status = 0;
   /* If first argument starts with a dash, assume it is for the old command line parser. */
-  if (argv[1] && argv[1][0] == '-')
-    status = parseCommandLine(argc, (const char*const*)argv);
+  if (argc > 1 && argv[1][0] == '-')
+    status = parseOldCommandLine(argc, argv);
   else
     status = parseCommandLine(argc - 1, (const char*const*)&argv[1]);
 #if defined WIN32
