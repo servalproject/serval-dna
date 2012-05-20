@@ -1006,7 +1006,7 @@ int keyring_set_did(keyring_identity *id,char *did,char *name)
   int i;
   for(i=0;i<id->keypair_count;i++)
     if (id->keypairs[i]->type==KEYTYPE_DID) {
-      WHY("Identity contains DID");
+      DEBUG("Identity contains DID");
       break;
     }
 
@@ -1026,7 +1026,7 @@ int keyring_set_did(keyring_identity *id,char *did,char *name)
     id->keypairs[i]->public_key=packedName;
     id->keypairs[i]->public_key_len=64;
     id->keypair_count++;
-    WHY("Created DID record for identity");
+    DEBUG("Created DID record for identity");
   }
   
   /* Store DID unpacked for ease of searching */
@@ -1183,7 +1183,7 @@ int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req)
       +slen;
     overlay_mdp_swap_src_dst(req);
     req->packetTypeAndFlags=MDP_TX; /* crypt and sign */
-    WHY("Sent SID:SAS mapping mutual-signature");
+    DEBUG("Sent SID:SAS mapping mutual-signature");
     printf("%d byte reply is from %s:%u\n           to %s:%u\n",
 	   req->out.payload_length,
 	   overlay_render_sid(req->out.src.sid),req->out.src.port,
@@ -1221,7 +1221,7 @@ int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req)
 	  return WHY("key mapping signed block is wrong length");
 	if (memcmp(plain,req->out.src.sid,SID_SIZE))
 	  return WHY("key mapping signed block is for wrong SID");
-	WHY("Key mapping looks valid");
+	DEBUG("Key mapping looks valid");
 
 	/* work out where to put it */
 	int i;
@@ -1241,12 +1241,12 @@ int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req)
 		overlay_render_sid(sid_sas_mappings[i].sas_public));
 	sid_sas_mappings[i].validP=1;
 	sid_sas_mappings[i].last_request_time_in_ms=0;
-	WHY("Stored mapping");
+	DEBUG("Stored mapping");
 	return 0;
       }      
       break;
     default:
-      WHY("Key mapping response for unknown key type. Oh well.");
+      WARN("Key mapping response for unknown key type. Oh well.");
     }
   }
   return WHY("Not implemented");
