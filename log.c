@@ -18,6 +18,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "strbuf.h"
+#include <ctype.h>
 
 int debug = 0;
 
@@ -86,6 +88,20 @@ int dump(char *name, unsigned char *addr, int len)
       fprintf(stderr,"\n");
     }
   return 0;
+}
+
+char *catv(const char *data, char *buf, size_t len)
+{
+  strbuf b = strbuf_local(buf, len);
+  for (; *data && !strbuf_overrun(b); ++data) {
+    if (*data == '\n') strbuf_puts(b, "\\n");
+    else if (*data == '\r')   strbuf_puts(b, "\\r");
+    else if (*data == '\t')   strbuf_puts(b, "\\t");
+    else if (*data == '\\')   strbuf_puts(b, "\\\\");
+    else if (isprint(*data))  strbuf_putc(b, *data);
+    else		      strbuf_sprintf(b, "\\x%02x", *data);
+  }
+  return buf;
 }
 
 int dumpResponses(struct response_set *responses)

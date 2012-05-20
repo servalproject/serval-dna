@@ -757,6 +757,7 @@ int setReason(char *fmt, ...);
 void logMessage(int level, char *fmt, ...);
 void vlogMessage(int level, char *fmt, va_list);
 long long debugFlagMask(const char *flagname);
+char *catv(const char *data, char *buf, size_t len);
 int dump(char *name,unsigned char *addr,int len);
 
 #define FATALF(F,...)       do { logMessage(LOG_LEVEL_FATAL, "%s:%d:%s()  " F, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__); exit(-1); } while(1)
