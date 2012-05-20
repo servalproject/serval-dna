@@ -1083,7 +1083,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "");
   if (create_serval_instance_dir() == -1)
     return -1;
-  if (!keyring_open_with_pins(pin))
+  if (!(keyring = keyring_open_with_pins((char *)pin)))
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
@@ -1323,8 +1323,7 @@ int app_keyring_set_did(int argc, const char *const *argv, struct command_line_o
   if (strlen(did)>31) return WHY("DID too long (31 digits max)");
   if (strlen(name)>63) return WHY("Name too long (31 char max)");
 
-  keyring = keyring_open_with_pins((char *)pin);
-  if (!keyring)
+  if (!(keyring = keyring_open_with_pins((char *)pin)))
     return -1;
 
   unsigned char packedSid[SID_SIZE];

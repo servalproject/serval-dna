@@ -1360,15 +1360,15 @@ int keyring_enter_pins(keyring_file *k, const char *pinlist)
 keyring_file *keyring_open_with_pins(const char *pinlist)
 {
   keyring_file *k = NULL;
- if (create_serval_instance_dir() == -1)
+  if (create_serval_instance_dir() == -1)
     return NULL;
- char keyringFile[1024];
- if (!FORM_SERVAL_INSTANCE_PATH(keyringFile, "serval.keyring"))
-   return NULL;
- if ((k = keyring_open(keyringFile)) == NULL)
-   return NULL;
- keyring_enter_pins(k,pinlist);
- return k;
+  char keyringFile[1024];
+  if (!FORM_SERVAL_INSTANCE_PATH(keyringFile, "serval.keyring"))
+    return NULL;
+  if ((k = keyring_open(keyringFile)) == NULL)
+    return NULL;
+  keyring_enter_pins(k,pinlist);
+  return k;
 }
 
 /* If no identities, create an initial identity with a phone number.
