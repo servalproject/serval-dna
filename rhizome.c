@@ -152,11 +152,11 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
       return WHY("Manifest missing 'service' field");
   if (rhizome_manifest_get_ll(m_in, "date") == -1)
       return WHY("Manifest missing 'date' field");
-  if (strcasecmp(service, "file")) {
+  if (strcasecmp(service, "file") == 0) {
     const char *name = rhizome_manifest_get(m_in, "name", NULL, 0);
     if (name == NULL || !name[0])
 	return WHY("Manifest missing 'name' field");
-  } else if (strcasecmp(service, "MeshMS")) {
+  } else if (strcasecmp(service, "MeshMS") == 0) {
     const char *sender = rhizome_manifest_get(m_in, "sender", NULL, 0);
     const char *recipient = rhizome_manifest_get(m_in, "recipient", NULL, 0);
     if (sender == NULL || sender[0])
@@ -284,13 +284,11 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
 	 to encrypt and decrypt the BK field. */
       int len=crypto_sign_edwards25519sha512batch_SECRETKEYBYTES;
       unsigned char bkbytes[len];
-      if (!rhizome_bk_xor(author,m_in->cryptoSignPublic,
-			  m_in->cryptoSignSecret,
-			  bkbytes)) {
+      if (!rhizome_bk_xor(author, m_in->cryptoSignPublic, m_in->cryptoSignSecret, bkbytes)) {
 	if (debug&DEBUG_RHIZOME) DEBUGF("set BK='%s'", rhizome_bytes_to_hex(bkbytes,len));
 	rhizome_manifest_set(m_in, "BK", rhizome_bytes_to_hex(bkbytes,len));
       } else {
-	WHY("Failed to set BK");
+	return WHY("Failed to set BK");
       }
     }   
   }
