@@ -772,6 +772,9 @@ int dump(char *name,unsigned char *addr,int len);
 #define WARN(X)             WARNF("%s", (X))
 #define WARN_perror(X)      WARNF("%s: %s [errno=%d]", (X), strerror(errno), errno)
 
+#define INFOF(F,...)        logMessage(LOG_LEVEL_INFO, "%s:%d:%s()  " F, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
+#define INFO(X)             INFOF("%s", (X))
+
 #define DEBUGF(F,...)       logMessage(LOG_LEVEL_DEBUG, "%s:%d:%s()  " F, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
 #define DEBUG(X)            DEBUGF("%s", (X))
 #define DEBUG_perror(X)     DEBUGF("%s: %s [errno=%d]", (X), strerror(errno), errno)

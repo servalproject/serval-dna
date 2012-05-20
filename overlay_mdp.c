@@ -52,11 +52,16 @@ int overlay_mdp_setup_sockets()
       if(setsockopt( mdp_abstract_socket, SOL_SOCKET, SO_REUSEADDR, 
 		     &reuseP, sizeof(reuseP)) < 0)
 	{
-	  WHY("Could not indicate reuse addresses. Not necessarily a problem (yet)");
-	  WHY_perror("setsockopt");
+	  WARN_perror("setsockopt");
+	  WARN("Could not indicate reuse addresses. Not necessarily a problem (yet)");
 	}
       int r=bind(mdp_abstract_socket, (struct sockaddr *)&name, len);
-      if (r) { dud=1; r=0; WHY("bind() of abstract name space socket failed (not an error on non-linux systems"); }
+      if (r) {
+	WARN_perror("bind");
+	dud=1;
+	r=0;
+	WARN("bind() of abstract name space socket failed (not an error on non-linux systems");
+      }
       if (dud) {
 	close(mdp_abstract_socket);
 	mdp_abstract_socket=-1;
@@ -82,8 +87,8 @@ int overlay_mdp_setup_sockets()
       if(setsockopt( mdp_named_socket, SOL_SOCKET, SO_REUSEADDR, 
 		     &reuseP, sizeof(reuseP)) < 0)
 	{
-	  WHY("Could not indicate reuse addresses. Not necessarily a problem (yet)");
-	  WHY_perror("setsockopt");
+	  WARN_perror("setsockopt");
+	  WARN("Could not indicate reuse addresses. Not necessarily a problem (yet)");
 	}
       int r=bind(mdp_named_socket, (struct sockaddr *)&name, len);
       if (r) { dud=1; r=0; WHY("bind() of named unix domain socket failed"); }
@@ -96,7 +101,8 @@ int overlay_mdp_setup_sockets()
       int send_buffer_size=64*1024;    
       int res = setsockopt(mdp_named_socket, SOL_SOCKET, SO_RCVBUF, 
 		       &send_buffer_size, sizeof(send_buffer_size));
-      if (res) WHYF("setsockopt() failed: errno=%d",errno);
+      if (res)
+	WHY_perror("setsockopt");
     }
   }
 
@@ -178,7 +184,7 @@ int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
     WHY_perror("sendto(d)"); 
     return WHYF("sendto() failed when sending MDP reply, sock=%d, r=%d", sock, r); 
   } else
-    if (0) WHYF("reply of %d bytes sent",r);
+    if (0) DEBUGF("reply of %d bytes sent",r);
   return 0;  
 }
 
@@ -212,7 +218,7 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
     mdp_bindings_initialised=1;
   }
 
-  WHY("Doesn't authenticate source address on multi-SID installations like an OpenBTS:mesh gateway)");
+  DEBUG("Doesn't authenticate source address on multi-SID installations like an OpenBTS:mesh gateway)");
   
   /* Make sure source address is either all zeros (listen on all), or a valid
      local address */
@@ -246,8 +252,8 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
     if (mdp_bindings_socket_name_lengths[found]==recvaddrlen)
       if (!memcmp(mdp_bindings_sockets[found],recvaddr->sun_path,recvaddrlen))
 	{
-	  fprintf(stderr,"Identical binding exists");
-	  WHY("Need to return binding information to client");
+	  INFO("Identical binding exists");
+	  DEBUG("Need to return binding information to client");
 	  return overlay_mdp_reply_ok(sock,recvaddr,recvaddrlen,"Port bound (actually, it was already bound to you)");
 	}
     /* Okay, so there is an existing binding.  Either replace it (if requested) or
@@ -262,7 +268,7 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
       /* Cause existing binding to be replaced.
 	 XXX - We should notify the existing binding holder that their binding
 	 has been snaffled. */
-      WHY("Warn socket holder about port-snatch");
+      DEBUG("Warn socket holder about port-snatch");
       free=found;
     }
   }
@@ -356,7 +362,7 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
 						  signature,sizeof(signature),
 						  key);
       if (result) return WHY("Signature verification failed: incorrect signature");
-      else if (0) WHY("signature check passed");
+      else if (0) DEBUG("signature check passed");
     }    
     mdp.packetTypeAndFlags|=MDP_NOCRYPT; break;
   case OF_CRYPTO_CIPHERED|OF_CRYPTO_SIGNED:
@@ -484,7 +490,7 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
       case MDP_PORT_KEYMAPREQUEST:
 	/* Either respond with the appropriate SAS, or record this one if it
 	   verfies out okay. */
-	WHY("key mapping request");
+	DEBUG("key mapping request");
 	return keyring_mapping_request(keyring,mdp);
       case MDP_PORT_DNALOOKUP: /* attempt to resolve DID to SID */
 	{
@@ -716,7 +722,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   /* Prepare the overlay frame for dispatch */
   struct overlay_frame *frame;
   frame=calloc(sizeof(overlay_frame),1);
-  if (!frame) return WHY("calloc() failed to allocate overlay frame");
+  if (!frame) return WHY_perror("calloc");
   /* give voice packets priority */
   if (mdp->out.dst.port==MDP_PORT_VOMP) frame->type=OF_TYPE_DATA_VOICE;
   else frame->type=OF_TYPE_DATA;
@@ -743,10 +749,11 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
     {
       /* write cryptobox nonce */
       unsigned char nonce[crypto_box_curve25519xsalsa20poly1305_NONCEBYTES];
-      if (urandombytes(nonce,crypto_box_curve25519xsalsa20poly1305_NONCEBYTES))
-	{	op_free(frame); WHY("urandombytes() failed to generate nonce"); }
-      fe|=
-	ob_append_bytes(frame->payload,nonce,crypto_box_curve25519xsalsa20poly1305_NONCEBYTES);
+      if (urandombytes(nonce,crypto_box_curve25519xsalsa20poly1305_NONCEBYTES)) {
+	op_free(frame);
+	return WHY("urandombytes() failed to generate nonce");
+      }
+      fe|= ob_append_bytes(frame->payload,nonce,crypto_box_curve25519xsalsa20poly1305_NONCEBYTES);
       /* generate plain message with zero bytes and get ready to cipher it */
       unsigned char plain[crypto_box_curve25519xsalsa20poly1305_ZEROBYTES
 			  +10+mdp->out.payload_length];
@@ -787,7 +794,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       bcopy(&cipher_text[16],&cipher_text[0],cipher_len-16);
       frame->payload->length-=16;
       if (0) {
-	WHY("authcrypted mdp frame");
+	DEBUG("authcrypted mdp frame");
 	dump("nm bytes",k,crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES);
 	dump("nonce",nonce,crypto_box_curve25519xsalsa20poly1305_NONCEBYTES);
 	dump("plain text",&plain[16],cipher_len-16);
@@ -917,7 +924,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       return WHY("Error enqueuing frame");
     }
   else {
-    if (debug&DEBUG_OVERLAYINTERFACES) WHY("queued frame");
+    if (debug&DEBUG_OVERLAYINTERFACES) DEBUG("queued frame");
     return 0;
   }
 }
@@ -1069,7 +1076,7 @@ int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
 	 end of the string, to avoid information leaks */
       len=&mdp->error.message[0]-(char *)mdp;
       len+=strlen(mdp->error.message)+1;      
-      WHYF("mdp return/error code: %d:%s",mdp->error.error,mdp->error.message);
+      INFOF("mdp return/error code: %d:%s",mdp->error.error,mdp->error.message);
       break;
     case MDP_VOMPEVENT:
       /* XXX too hard to work out precisely for now. */
@@ -1172,7 +1179,7 @@ int overlay_mdp_client_init()
 	return WHY("Could not form MDP client socket name");
       snprintf(overlay_mdp_client_socket_path,1024,fmt,getpid(),random_value);
       overlay_mdp_client_socket_path_len=strlen(overlay_mdp_client_socket_path)+1;
-      WHYF("MDP client socket name='%s'",overlay_mdp_client_socket_path);
+      DEBUGF("MDP client socket name='%s'",overlay_mdp_client_socket_path);
     }
     bcopy(overlay_mdp_client_socket_path,name.sun_path,
 	  overlay_mdp_client_socket_path_len);
@@ -1308,7 +1315,7 @@ int overlay_mdp_getmyaddr(int index,unsigned char *sid)
   }
   if ((a.packetTypeAndFlags&MDP_TYPE_MASK)!=MDP_ADDRLIST)
     return WHY("MDP Server returned something other than an address list");
-  if (0) WHYF("local addr 0 = %s",overlay_render_sid(a.addrlist.sids[0]));
+  if (0) DEBUGF("local addr 0 = %s",overlay_render_sid(a.addrlist.sids[0]));
   bcopy(&a.addrlist.sids[0][0],sid,SID_SIZE);
   return 0;
 }
