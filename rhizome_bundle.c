@@ -31,8 +31,7 @@ rhizome_manifest *rhizome_read_manifest_file(const char *filename, int bufferP, 
   if (bufferP) {
     m->manifest_bytes=bufferP;
     memcpy(m->manifestdata, filename, m->manifest_bytes);
-  }
-  else {
+  } else {
     FILE *f=fopen(filename,"r");
     if (!f) {
       WHYF("Could not open manifest file %s for reading.", filename); 
@@ -71,25 +70,25 @@ rhizome_manifest *rhizome_read_manifest_file(const char *filename, int bufferP, 
       /* Parse property lines */
       /* This could be improved to parse Java's Properties.store() output, by handling backlash
          escapes and continuation lines */
-      if (sscanf(line,"%[^=]=%[^\n\r]",var,value)==2)
-	{
-	  if (rhizome_manifest_get(m,var,NULL,0)!=NULL) {
-	    if (debug&DEBUG_RHIZOME) fprintf(stderr, "Error in manifest file (duplicate variable \"%s\"-- keeping first value)\n", var);
-	    m->errors++;
+      if (sscanf(line,"%[^=]=%[^\n\r]", var, value)==2) {
+	if (rhizome_manifest_get(m,var,NULL,0)) {
+	  WARNF("Ill formed manifest file, duplicate variable \"%s\"-- keeping first value)", var);
+	  m->errors++;
+	} else if (m->var_count<MAX_MANIFEST_VARS) {
+	  /*`
+	  if (debug & DEBUG_RHIZOME) {
+	    char buf[80];
+	    DEBUGF("read manifest line: %s=%s", var, catv(value, buf, sizeof buf));
 	  }
-	  if (m->var_count<MAX_MANIFEST_VARS)
-	    {
-	      m->vars[m->var_count]=strdup(var);
-	      m->values[m->var_count]=strdup(value);
-	      m->var_count++;
-	    }
+	  */
+	  m->vars[m->var_count]=strdup(var);
+	  m->values[m->var_count]=strdup(value);
+	  m->var_count++;
 	}
-      else
-	{
-	  /* Error in manifest file.
-	     Silently ignore for now. */
-	  WHY("Error in manifest file (badly formatted line).");
-	}
+      } else {
+	char buf[80];
+	WARNF("Skipping malformed line in manifest file %s: %s", bufferP ? "<buffer>" : filename, catv(line, buf, sizeof buf));
+      }
     }
   /* The null byte gets included in the check sum */
   if (ofs<m->manifest_bytes) ofs++;
@@ -104,9 +103,7 @@ rhizome_manifest *rhizome_read_manifest_file(const char *filename, int bufferP, 
     
     /* Read signature blocks from file. */
     while(ofs<m->manifest_bytes) {
-      if (debug&DEBUG_RHIZOME)
-	fprintf(stderr,"ofs=0x%x, m->manifest_bytes=0x%x\n",
-		ofs,m->manifest_bytes);
+      if (debug & DEBUG_RHIZOME) DEBUGF("ofs=0x%x, m->manifest_bytes=0x%x", ofs,m->manifest_bytes);
       rhizome_manifest_extract_signature(m,&ofs);
     }
     
@@ -117,10 +114,10 @@ rhizome_manifest *rhizome_read_manifest_file(const char *filename, int bufferP, 
     /* Make sure that id variable is correct */
     {
       char *id=rhizome_manifest_get(m,"id",NULL,0);
-
       if (!id) { 
-	if (debug&DEBUG_RHIZOME) fprintf(stderr,"Manifest lacks id variable.\n");
-	m->errors++; }
+	WARN("Manifest lacks 'id' field");
+	m->errors++;
+      }
       else {
 	unsigned char manifest_bytes[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
 	rhizome_hex_to_bytes(id,manifest_bytes,
@@ -131,13 +128,12 @@ rhizome_manifest *rhizome_read_manifest_file(const char *filename, int bufferP, 
 	  {
 	    if (debug&DEBUG_RHIZOME) {
 	      if (m->sig_count>0) {	      
-		fprintf(stderr,
-			"Manifest id variable does not match first signature block.\n");
-		fprintf(stderr,"  (signature key is %s)\n",
+		DEBUGF("Manifest id variable does not match first signature block (signature key is %s)",
 			/* XXX bit of a hack that relies on SIDs and signing public keys being the same length */
-			overlay_render_sid(&m->signatories[0][0]));
+			overlay_render_sid(&m->signatories[0][0])
+		      );
 	      } else {
-		fprintf(stderr,"Manifest has no signature blocks, but should have self-signature block");
+		DEBUG("Manifest has no signature blocks, but should have self-signature block");
 	      }
 	    }
 	    m->errors++;
@@ -147,7 +143,7 @@ rhizome_manifest *rhizome_read_manifest_file(const char *filename, int bufferP, 
     }
     
     if (debug&DEBUG_RHIZOME) 
-      fprintf(stderr, "Group membership determination not implemented (see which signatories are groups? what about manifests signed by groups we don't yet know about?)\n");
+      DEBUG("Group membership determination not implemented (see which signatories are groups? what about manifests signed by groups we don't yet know about?)");
   }
   
   m->manifest_bytes=end_of_text;
@@ -404,7 +400,7 @@ int rhizome_manifest_pack_variables(rhizome_manifest *m)
     }
   m->manifestdata[ofs++]=0x00;
   m->manifest_bytes=ofs;
-  if (debug&DEBUG_RHIZOME) fprintf(stderr, "Repacked variables in manifest.\n");
+  if (debug&DEBUG_RHIZOME) DEBUG("Repacked variables in manifest.");
   m->manifest_all_bytes=ofs;
 
   /* Recalculate hash */

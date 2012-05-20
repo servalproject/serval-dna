@@ -159,11 +159,11 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
   } else if (strcasecmp(service, RHIZOME_SERVICE_MESHMS) == 0) {
     const char *sender = rhizome_manifest_get(m_in, "sender", NULL, 0);
     const char *recipient = rhizome_manifest_get(m_in, "recipient", NULL, 0);
-    if (sender == NULL || sender[0])
+    if (sender == NULL || !sender[0])
 	return WHY("Manifest missing 'sender' field");
     if (!validateSid(sender))
 	return WHY("Manifest contains invalid 'sender' field");
-    if (recipient == NULL || recipient[0])
+    if (recipient == NULL || !recipient[0])
 	return WHY("Manifest missing 'recipient' field");
     if (!validateSid(recipient))
 	return WHY("Manifest contains invalid 'recipient' field");

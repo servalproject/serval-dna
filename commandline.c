@@ -1092,11 +1092,13 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   rhizome_manifest *m = NULL;
   int manifest_file_supplied = 0;
   if (manifestpath[0] && access(manifestpath, R_OK) == 0) {
+    if (debug & DEBUG_RHIZOME) DEBUGF("reading manifest from %s", manifestpath);
     m = rhizome_read_manifest_file(manifestpath, 0, 0); // no verify
     if (!m)
       return WHY("Manifest file could not be loaded -- not added to rhizome");
     manifest_file_supplied = 1;
   } else {
+    if (debug & DEBUG_RHIZOME) DEBUGF("manifest file %s does not exist", manifestpath);
     m = rhizome_new_manifest();
     if (!m)
       return WHY("Manifest struct could not be allocated -- not added to rhizome");
@@ -1109,15 +1111,23 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   const char *service = rhizome_manifest_get(m, "service", NULL, 0);
   if (service == NULL) {
     rhizome_manifest_set(m, "service", (service = RHIZOME_SERVICE_FILE));
+    if (debug & DEBUG_RHIZOME) DEBUGF("missing 'service', set default service=%s", service);
+  } else {
+    if (debug & DEBUG_RHIZOME) DEBUGF("manifest contains service=%s", service);
   }
   if (rhizome_manifest_get(m, "date", NULL, 0) == NULL) {
     rhizome_manifest_set_ll(m, "date", gettime_ms());
+    if (debug & DEBUG_RHIZOME) DEBUGF("missing 'date', set default date=%s", rhizome_manifest_get(m, "date", NULL, 0));
   }
   if (strcasecmp(RHIZOME_SERVICE_FILE, service) == 0) {
-    if (rhizome_manifest_get(m, "name", NULL, 0) == NULL) {
-      const char *name = strrchr(filepath, '/');
+    const char *name = rhizome_manifest_get(m, "name", NULL, 0);
+    if (name == NULL) {
+      name = strrchr(filepath, '/');
       name = name ? name + 1 : filepath;
       rhizome_manifest_set(m, "name", name);
+      if (debug & DEBUG_RHIZOME) DEBUGF("missing 'name', set default name=\"%s\"", name);
+    } else {
+      if (debug & DEBUG_RHIZOME) DEBUGF("manifest contains name=\"%s\"", name);
     }
   }
   /* Add the manifest and its associated file to the Rhizome database, generating an "id" in the

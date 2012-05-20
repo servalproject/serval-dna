@@ -537,29 +537,23 @@ char *rhizome_safe_encode(unsigned char *in,int len)
 
 int rhizome_list_manifests(const char *service, const char *sender_sid, const char *recipient_sid, int limit, int offset)
 {
-  char sqlcmd[1024];
-  int n = snprintf(sqlcmd, sizeof(sqlcmd),
+  strbuf b = strbuf_alloca(1024);
+  strbuf_sprintf(b,
       "SELECT files.id, files.length, manifests.id, manifests.manifest, manifests.version, manifests.inserttime"
       " FROM files, filemanifests, manifests"
       " WHERE files.id = filemanifests.fileid AND filemanifests.manifestid = manifests.id AND files.datavalid <> 0"
       " ORDER BY files.id ASC"
     );
-  if (n >= sizeof(sqlcmd))
-    return WHY("SQL command too long");
-  if (limit) {
-    n += snprintf(&sqlcmd[n], sizeof(sqlcmd) - n, " LIMIT %u", limit);
-    if (n >= sizeof(sqlcmd))
-      return WHY("SQL command too long");
-  }
-  if (offset) {
-    n += snprintf(&sqlcmd[n], sizeof(sqlcmd) - n, " OFFSET %u", offset);
-    if (n >= sizeof(sqlcmd))
-      return WHY("SQL command too long");
-  }
+  if (limit)
+    strbuf_sprintf(b, " LIMIT %u", limit);
+  if (offset)
+    strbuf_sprintf(b, " OFFSET %u", offset);
+  if (strbuf_overrun(b))
+    return WHYF("SQL command too long: ", strbuf_str(b));
   sqlite3_stmt *statement;
   const char *cmdtail;
   int ret = 0;
-  if (sqlite3_prepare_v2(rhizome_db, sqlcmd, strlen(sqlcmd) + 1, &statement, &cmdtail) != SQLITE_OK) {
+  if (sqlite3_prepare_v2(rhizome_db, strbuf_str(b), strbuf_len(b) + 1, &statement, &cmdtail) != SQLITE_OK) {
     sqlite3_finalize(statement);
     ret = WHY(sqlite3_errmsg(rhizome_db));
   } else {
@@ -810,9 +804,23 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
 {
   if (!m->fileHashedP)
     return WHY("Manifest payload is not hashed");
-  const char *name = rhizome_manifest_get(m, "name", NULL, 0);
-  if (!name)
-      return WHY("Manifest has no name");
+  const char *service = rhizome_manifest_get(m, "service", NULL, 0);
+  const char *name = NULL;
+  const char *sender = NULL;
+  const char *recipient = NULL;
+  if (service == NULL) {
+    return WHY("Manifest has no service");
+  } else if (strcasecmp(service, RHIZOME_SERVICE_FILE) == 0) {
+    name = rhizome_manifest_get(m, "name", NULL, 0);
+    if (!name) return WHY("Manifest has no name");
+  } else if (strcasecmp(service, RHIZOME_SERVICE_MESHMS) == 0) {
+    sender = rhizome_manifest_get(m, "sender", NULL, 0);
+    recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
+    if (!sender) return WHY("Manifest has no sender");
+    if (!recipient) return WHY("Manifest has no recipient");
+  } else {
+    return WHYF("Unsupported service '%s'", service);
+  }
   char sqlcmd[1024];
   char *s = sqlcmd;
   s += snprintf(s, &sqlcmd[sizeof sqlcmd] - s,
@@ -855,13 +863,13 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
       size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
       long long q_version = sqlite3_column_int64(statement, 2);
       rhizome_manifest *blob_m = rhizome_read_manifest_file(manifestblob, manifestblobsize, 0);
+      const char *blob_service = rhizome_manifest_get(blob_m, "service", NULL, 0);
       const char *blob_id = rhizome_manifest_get(blob_m, "id", NULL, 0);
-      const char *blob_name = rhizome_manifest_get(blob_m, "name", NULL, 0);
       long long blob_version = rhizome_manifest_get_ll(blob_m, "version");
       const char *blob_filehash = rhizome_manifest_get(blob_m, "filehash", NULL, 0);
       long long blob_filesize = rhizome_manifest_get_ll(blob_m, "filesize");
       if (debug & DEBUG_RHIZOME)
-	DEBUGF("Consider manifest.id=%s manifest.name=\"%s\" manifest.version=%lld", q_manifestid, blob_name, blob_version);
+	DEBUGF("Consider manifest.service=%s manifest.id=%s manifest.version=%lld", blob_service, q_manifestid, blob_version);
       /* Perform consistency checks, because we're paranoid. */
       int inconsistent = 0;
       if (blob_id && strcasecmp(blob_id, q_manifestid)) {
@@ -887,19 +895,40 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
 	WARNF("SELECT query with version=%lld returned incorrect row: manifests.version=%lld -- skipped", m->version, q_version);
 	++inconsistent;
       }
-      /* The "name" comparison is the only one we can't do in the SELECT, so we do it here. */
-      if (!inconsistent && blob_name && !strcmp(blob_name, name)) {
-	rhizome_hex_to_bytes(q_manifestid, blob_m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
-	memcpy(blob_m->fileHexHash, m->fileHexHash, SHA512_DIGEST_STRING_LENGTH);
-	blob_m->fileHashedP = 1;
-	blob_m->fileLength = m->fileLength;
-	blob_m->version = q_version;
-	*found = blob_m;
-	if (debug & DEBUG_RHIZOME)
-	  DEBUGF("Found duplicate payload: name=\"%s\" version=%llu hexhash=%s -- not adding\n", blob_m, blob_m->version, blob_m->fileHexHash);
-	ret = 1;
-	if (debug & DEBUG_RHIZOME) DEBUG("found");
-	break;
+      if (blob_service == NULL) {
+	WARNF("MANIFESTS row id=%s has blob with no 'service' -- skipped", q_manifestid, blob_id);
+	++inconsistent;
+      }
+      if (!inconsistent) {
+	strbuf b = strbuf_alloca(1024);
+	if (strcasecmp(service, RHIZOME_SERVICE_FILE) == 0) {
+	  const char *blob_name = rhizome_manifest_get(blob_m, "name", NULL, 0);
+	  if (blob_name && !strcmp(blob_name, name)) {
+	    if (debug & DEBUG_RHIZOME)
+	      strbuf_sprintf(b, " name=\"%s\"", blob_name);
+	    ret = 1;
+	  }
+	} else if (strcasecmp(service, RHIZOME_SERVICE_FILE) == 0) {
+	  const char *blob_sender = rhizome_manifest_get(blob_m, "sender", NULL, 0);
+	  const char *blob_recipient = rhizome_manifest_get(blob_m, "recipient", NULL, 0);
+	  if (blob_sender && !strcasecmp(blob_sender, sender) && blob_recipient && !strcasecmp(blob_recipient, recipient)) {
+	    if (debug & DEBUG_RHIZOME)
+	      strbuf_sprintf(b, " sender=%s recipient=%s", blob_sender, blob_recipient);
+	    ret = 1;
+	  }
+	}
+	if (ret == 1) {
+	  rhizome_hex_to_bytes(q_manifestid, blob_m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
+	  memcpy(blob_m->fileHexHash, m->fileHexHash, SHA512_DIGEST_STRING_LENGTH);
+	  blob_m->fileHashedP = 1;
+	  blob_m->fileLength = m->fileLength;
+	  blob_m->version = q_version;
+	  *found = blob_m;
+	  DEBUGF("Found duplicate payload: service=%s%s version=%llu hexhash=%s",
+		  blob_service, strbuf_str(b), blob_m->version, blob_m->fileHexHash
+		);
+	  break;
+	}
       }
       rhizome_manifest_free(blob_m);
     }
