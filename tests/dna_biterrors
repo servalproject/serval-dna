@@ -23,15 +23,15 @@ source "${0%/*}/../testdefs.sh"
 
 # Default teardown function
 teardown() {
-   stop_dna_server
+   stop_servald_server
 }
 
 # Test case, transcribed from ../testdna
 doc_BitErrorCreateSID='Create new SID despite bit errors'
 setup_BitErrorCreateSID() {
    ber=0.001
-   setup_dna
-   start_dna_server -B $ber
+   setup_servald
+   start_servald_server -B $ber
 }
 test_BitErrorCreateSID() {
    local iterations=10
@@ -40,7 +40,7 @@ test_BitErrorCreateSID() {
    local totaltime_ms=0
    local maxtime_ms=0
    while [ $i -lt $iterations ]; do
-      executeOk $dna -B $ber -d 0427679796 -C
+      executeOk $servald -B $ber -d 0427679796 -C
       sid=`replayStdout | grep '^OK:' | cut -f2 -d:`
       let totaltime_ms=totaltime_ms+realtime_ms
       [ $realtime_ms -gt $maxtime_ms ] && maxtime_ms=$realtime_ms
@@ -64,16 +64,16 @@ test_BitErrorCreateSID() {
 doc_SetVarBigValueBitErrors='Can set variable with multi-packet value despite bit errors'
 setup_SetVarBigValueBitErrors() {
    ber=0.00001
-   setup_dna
-   start_dna_server -B $ber
-   echo_long_message >$DNATMP/dnatest.in
+   setup_servald
+   start_servald_server -B $ber
+   echo_long_message >$DNATMP/servaldtest.in
 }
 test_SetVarBigValueBitErrors() {
-   executeOk $dna -B $ber -s $sid -i 0 -W note="@dnatest.in"
+   executeOk $servald -B $ber -s $sid -i 0 -W note="@servaldtest.in"
    assertStdoutGrep --matches=1 --message='variable write confirmed' "^WROTE:$sid$"
-   executeOk $dna -v verbose -B $ber -s $sid -O $DNATMP/dnatest.out -i 0 -R note
+   executeOk $servald -v verbose -B $ber -s $sid -O $DNATMP/servaldtest.out -i 0 -R note
    assertStdoutGrep --matches=1 --message='variable new value returned' "^NOTE:$sid:[0-9]\+:0"
-   assert --message='long value read correctly' cmp --quiet $DNATMP/dnatest.in $DNATMP/dnatest.out
+   assert --message='long value read correctly' cmp --quiet $DNATMP/servaldtest.in $DNATMP/servaldtest.out
 }
 
 runTests "$@"

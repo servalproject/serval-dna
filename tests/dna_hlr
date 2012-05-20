@@ -23,19 +23,19 @@ source "${0%/*}/../testdefs.sh"
 
 # Default teardown function
 teardown() {
-   stop_dna_server
+   stop_servald_server
 }
 
 # Utility function
 create_sid() {
-   executeOk $dna "$@" -d 0427679796 -C
+   executeOk $servald "$@" -d 0427679796 -C
    assertStdoutGrep --matches=1 '^OK:'
    sid=`replayStdout | grep '^OK:' | cut -f2 -d:`
 }
 
 # Utility function
 set_short_var() {
-   executeOk $dna -s $sid -i 0 -W note="a short literal value"
+   executeOk $servald -s $sid -i 0 -W note="a short literal value"
 }
 
 # Utility function
@@ -50,8 +50,8 @@ echo_long_message() {
 # Test case, transcribed from ../testdna
 doc_CreateSID='Create new SID'
 setup_CreateSID() {
-   setup_dna
-   start_dna_server
+   setup_servald
+   start_servald_server
 }
 test_CreateSID() {
    create_sid
@@ -62,12 +62,12 @@ test_CreateSID() {
 # Test case, transcribed from ../testdna
 doc_GetShortVar='Get short variable'
 setup_GetShortVar() {
-   setup_dna
-   start_dna_server
+   setup_servald
+   start_servald_server
    create_sid
 }
 test_GetShortVar() {
-   executeOk $dna -d 0427679796 -R dids
+   executeOk $servald -d 0427679796 -R dids
    assertRealTime '>' 2.9 # Waited for all replies
    assertStdoutGrep --message='received an existing DID' "^DIDS:${sid}:[0-9]\+:0:0427679796"
    assertStdoutGrep --matches=1 --message='filtered out duplicate responses' "^DIDS:${sid}:[0-9]\+:0:0427679796"
@@ -76,8 +76,8 @@ test_GetShortVar() {
 # Test case, transcribed from ../testdna
 doc_SetShortVar='Set short variable'
 setup_SetShortVar() {
-   setup_dna
-   start_dna_server
+   setup_servald
+   start_servald_server
    create_sid
 }
 test_SetShortVar() {
@@ -89,13 +89,13 @@ test_SetShortVar() {
 # Test case, transcribed from ../testdna
 doc_SetGetShortVar='Set then get short variable'
 setup_SetGetShortVar() {
-   setup_dna
-   start_dna_server
+   setup_servald
+   start_servald_server
    create_sid
    set_short_var
 }
 test_SetGetShortVar() {
-   executeOk $dna -s $sid -i 0 -R note
+   executeOk $servald -s $sid -i 0 -R note
    assertRealTime '<' 0.5
    assertStdoutGrep --matches=1 --message='read variable correctly' "^NOTE:$sid:[0-9]\+:0:a short literal value"
 }
@@ -103,33 +103,33 @@ test_SetGetShortVar() {
 # Test case, transcribed from ../testdna
 doc_GetShortVarToFile='Get variable into a file'
 setup_GetShortVarToFile() {
-   setup_dna
-   start_dna_server
+   setup_servald
+   start_servald_server
    create_sid
    set_short_var
 }
 test_GetShortVarToFile() {
    echo "WARNING: Known issue: output to file does not work with DID lists"
-   dnatest_dat=$DNATMP/dnatest.dat
-   executeOk $dna -s $sid -O $dnatest_dat -i 0 -R note
+   servaldtest_dat=$DNATMP/servaldtest.dat
+   executeOk $servald -s $sid -O $servaldtest_dat -i 0 -R note
    assertRealTime '<' 0.5
    assertStdoutGrep --matches=1 --message='read variable into file' "^NOTE:$sid:[0-9]\+:0"
-   assertFileContents $dnatest_dat 'a short literal value'
+   assertFileContents $servaldtest_dat 'a short literal value'
 }
 
 # Test case, transcribed from ../testdna
 doc_SetMultiShortVar='Set multiple instances of a short variable'
 setup_SetMultiShortVar() {
-   setup_dna
-   start_dna_server
+   setup_servald
+   start_servald_server
    create_sid
    set_short_var
 }
 test_SetMultiShortVar() {
-   executeOk $dna -s $sid -i 1 -W note='$414243'
+   executeOk $servald -s $sid -i 1 -W note='$414243'
    assertRealTime '<' 0.5
    assertStdoutGrep --matches=1 --message='variable write confirmed' "^WROTE:$sid$"
-   executeOk $dna -s $sid -i 1 -R note
+   executeOk $servald -s $sid -i 1 -R note
    assertRealTime '<' 0.5
    assertStdoutGrep --matches=1 --message='new variable correctly set in hex' "^NOTE:$sid:[0-9]\+:1:ABC$"
 }
@@ -137,15 +137,15 @@ test_SetMultiShortVar() {
 # Test case, transcribed from ../testdna
 doc_GetMultiShortVar='Get multiple instances of a short variable'
 setup_GetMultiShortVar() {
-   setup_dna
-   start_dna_server
+   setup_servald
+   start_servald_server
    create_sid
    set_short_var
-   executeOk $dna -s $sid -i 1 -W note='$414243'
-   executeOk $dna -s $sid -i 2 -W note
+   executeOk $servald -s $sid -i 1 -W note='$414243'
+   executeOk $servald -s $sid -i 2 -W note
 }
 test_GetMultiShortVar() {
-   executeOk $dna -s $sid -m -R note
+   executeOk $servald -s $sid -m -R note
    assertRealTime '<' 0.5
    assertStdoutGrep --matches=1 --message='first variable read correctly' "^NOTE:$sid:[0-9]\+:0:a short literal value$"
    assertStdoutGrep --matches=1 --message='second variable read correctly' "^NOTE:$sid:[0-9]\+:1:ABC$"
@@ -155,16 +155,16 @@ test_GetMultiShortVar() {
 # Test case, transcribed from ../testdna
 doc_OverwriteVarNoUpdate='Set does not overwrite variable'
 setup_OverwriteVarNoUpdate() {
-   setup_dna
-   start_dna_server
+   setup_servald
+   start_servald_server
    create_sid
    set_short_var
 }
 test_OverwriteVarNoUpdate() {
-   executeOk $dna -s $sid -i 0 -W note="replacement short literal value"
+   executeOk $servald -s $sid -i 0 -W note="replacement short literal value"
    assertRealTime '<' 0.5
    assertStdoutGrep --matches=0 --message='variable write not confirmed' "^WROTE:$sid$"
-   executeOk $dna -s $sid -i 0 -R note
+   executeOk $servald -s $sid -i 0 -R note
    assertRealTime '<' 0.5
    assertStdoutGrep --matches=1 --message='variable retains original value' "^NOTE:$sid:[0-9]\+:0:a short literal value"
 }
@@ -172,16 +172,16 @@ test_OverwriteVarNoUpdate() {
 # Test case, transcribed from ../testdna
 doc_UpdateVar='Update overwrites variable'
 setup_UpdateVar() {
-   setup_dna
-   start_dna_server
+   setup_servald
+   start_servald_server
    create_sid
    set_short_var
 }
 test_UpdateVar() {
-   executeOk $dna -s $sid -i 0 -U note="replacement short literal value"
+   executeOk $servald -s $sid -i 0 -U note="replacement short literal value"
    assertRealTime '<' 0.5
    assertStdoutGrep --matches=1 --message='variable write confirmed' "^WROTE:$sid$"
-   executeOk $dna -s $sid -i 0 -R note
+   executeOk $servald -s $sid -i 0 -R note
    assertRealTime '<' 0.5
    assertStdoutGrep --matches=1 --message='variable has new value' "^NOTE:$sid:[0-9]\+:0:replacement short literal value"
 }
@@ -189,20 +189,20 @@ test_UpdateVar() {
 # Test case, transcribed from ../testdna
 doc_UpdateVarBigValue='Can set variable with multi-packet value'
 setup_UpdateVarBigValue() {
-   setup_dna
-   start_dna_server
+   setup_servald
+   start_servald_server
    create_sid
    set_short_var
-   echo_long_message >$DNATMP/dnatest.in
+   echo_long_message >$DNATMP/servaldtest.in
 }
 test_UpdateVarBigValue() {
-   executeOk $dna -s $sid -i 0 -U note="@dnatest.in"
+   executeOk $servald -s $sid -i 0 -U note="@servaldtest.in"
    assertRealTime '<' 0.5
    assertStdoutGrep --matches=1 --message='variable write confirmed' "^WROTE:$sid$"
-   executeOk $dna -v verbose -s $sid -O $DNATMP/dnatest.out -i 0 -R note
+   executeOk $servald -v verbose -s $sid -O $DNATMP/servaldtest.out -i 0 -R note
    assertRealTime '<' 0.5
    assertStdoutGrep --matches=1 --message='variable new value returned' "^NOTE:$sid:[0-9]\+:0"
-   assert --message='long value read correctly' cmp --quiet $DNATMP/dnatest.in $DNATMP/dnatest.out
+   assert --message='long value read correctly' cmp --quiet $DNATMP/servaldtest.in $DNATMP/servaldtest.out
 }
 
 runTests "$@"
