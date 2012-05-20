@@ -295,6 +295,7 @@ assertGrep() {
       _tfw_error "incorrect arguments"
       return 254
    fi
+   _tfw_dump_on_fail "$1"
    _tfw_assert_grep "$1" "$1" "$2" || _tfw_failexit
 }
 
