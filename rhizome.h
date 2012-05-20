@@ -153,6 +153,13 @@ typedef struct rhizome_manifest {
 
 } rhizome_manifest;
 
+/* Supported service identifiers.  These go in the 'service' field of every
+ * manifest, and indicate which application must be used to process the bundle
+ * after it is received by Rhizome.
+ */
+#define     RHIZOME_SERVICE_FILE    "file"
+#define     RHIZOME_SERVICE_MESHMS  "MeshMS1"
+
 extern long long rhizome_space;
 const char *rhizome_datastore_path();
 int rhizome_set_datastore_path(const char *path);

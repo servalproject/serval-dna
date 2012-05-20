@@ -1102,18 +1102,18 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
       return WHY("Manifest struct could not be allocated -- not added to rhizome");
   }
   /* Fill in a few missing manifest fields, to make it easier to use when adding new files:
-      - the default service is "file"
-      - the current time for "date"
-      - if service is "file", then the payload file's basename for "name"
+      - the default service is FILE
+      - use the current time for "date"
+      - if service is file, then use the payload file's basename for "name"
   */
   const char *service = rhizome_manifest_get(m, "service", NULL, 0);
   if (service == NULL) {
-    rhizome_manifest_set(m, "service", (service = "file"));
+    rhizome_manifest_set(m, "service", (service = RHIZOME_SERVICE_FILE));
   }
   if (rhizome_manifest_get(m, "date", NULL, 0) == NULL) {
     rhizome_manifest_set_ll(m, "date", gettime_ms());
   }
-  if (strcasecmp("file", service) == 0) {
+  if (strcasecmp(RHIZOME_SERVICE_FILE, service) == 0) {
     if (rhizome_manifest_get(m, "name", NULL, 0) == NULL) {
       const char *name = strrchr(filepath, '/');
       name = name ? name + 1 : filepath;

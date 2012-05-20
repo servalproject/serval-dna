@@ -152,11 +152,11 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
       return WHY("Manifest missing 'service' field");
   if (rhizome_manifest_get_ll(m_in, "date") == -1)
       return WHY("Manifest missing 'date' field");
-  if (strcasecmp(service, "file") == 0) {
+  if (strcasecmp(service, RHIZOME_SERVICE_FILE) == 0) {
     const char *name = rhizome_manifest_get(m_in, "name", NULL, 0);
     if (name == NULL || !name[0])
 	return WHY("Manifest missing 'name' field");
-  } else if (strcasecmp(service, "MeshMS") == 0) {
+  } else if (strcasecmp(service, RHIZOME_SERVICE_MESHMS) == 0) {
     const char *sender = rhizome_manifest_get(m_in, "sender", NULL, 0);
     const char *recipient = rhizome_manifest_get(m_in, "recipient", NULL, 0);
     if (sender == NULL || sender[0])
