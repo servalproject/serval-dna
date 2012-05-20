@@ -35,6 +35,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #endif
 #include "serval.h"
 #include "rhizome.h"
+#include "strbuf.h"
 
 int cli_usage() {
   fprintf(stderr,"\nServal Mesh version <version>.\n");
@@ -179,31 +180,28 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servald_ServalD_rawCommand(JNIEnv 
 
 static void complainCommandLine(const char *prefix, int argc, const char *const *argv)
 {
-  char buf[1024];
-  char *b = buf;
+  strbuf b = strbuf_alloca(1024);
   int i;
-  char *e = buf + sizeof(buf) - 4;
-  for (i = 0; b < e && i != argc; ++i) {
-      if (i) *b++ = ' ';
-      const char *a = argv[i];
-      if (b < e) *b++ = '\'';
-      for (; *a && b < e; ++a) {
-	  if (*a == '\'') {
-	    if (b < e) *b++ = '\'';
-	    if (b < e) *b++ = '\\';
-	    if (b < e) *b++ = '\'';
-	    if (b < e) *b++ = '\'';
-	  } else {
-	    if (b < e) *b++ = *a;
-	  }
+  for (i = 0; !strbuf_overrun(b) && i != argc; ++i) {
+      const char *arg = argv[i];
+      if (i)
+	strbuf_putc(b, ' ');
+      if (!arg[0] || strchr(arg, '\'') || strchr(arg, ' ')) {
+	strbuf_putc(b, '\'');
+	for (; *arg && !strbuf_overrun(b); ++arg) {
+	  if (*arg == '\\')
+	    strbuf_puts(b, "\\\\");
+	  else if (*arg == '\'')
+	    strbuf_puts(b, "\\'");
+	  else
+	    strbuf_putc(b, *arg);
+	}
+	strbuf_putc(b, '\'');
+      } else {
+	strbuf_puts(b, arg);
       }
-      if (b < e) *b++ = '\'';
   }
-  if (b < e)
-      *b = '\0';
-  else
-      strcpy(e, "...");
-  setReason("%s%s", prefix, buf);
+  setReason("%s%s%s", prefix, strbuf_str(b), strbuf_overrun(b) ? "..." : "");
 }
 
 /* args[] excludes command name (unless hardlinks are used to use first words 
@@ -525,7 +523,8 @@ const char *confValueGet(const char *var, const char *defaultValue)
   }
   FILE *f = fopen(filename,"r");
   if (!f) {
-    WARNF("Cannot open serval.conf, using default value of %s: %s", var, defaultValue);
+    if (defaultValue)
+      WARNF("Cannot open serval.conf, using default value of %s: %s", var, defaultValue);
     return defaultValue;
   }
 
@@ -575,9 +574,7 @@ void confSetDebugFlags()
   char filename[1024];
   if (FORM_SERVAL_INSTANCE_PATH(filename, "serval.conf")) {
     FILE *f = fopen(filename, "r");
-    if (!f) {
-      WARN("Cannot open serval.conf");
-    } else {
+    if (f) {
       long long setmask = 0;
       long long clearmask = 0;
       int setall = 0;

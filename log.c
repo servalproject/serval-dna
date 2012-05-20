@@ -72,7 +72,7 @@ int setReason(char *fmt, ...)
   return -1;
 }
 
-int dump(char *name,unsigned char *addr,int len)
+int dump(char *name, unsigned char *addr, int len)
 {
   int i,j;
   fprintf(stderr,"Dump of %s\n",name);

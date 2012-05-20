@@ -1,17 +1,17 @@
 /*
 Serval string buffer primitives
 Copyright (C) 2012 The Serval Project
- 
+
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
 as published by the Free Software Foundation; either version 2
 of the License, or (at your option) any later version.
- 
+
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
- 
+
 You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
@@ -30,7 +30,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
     property of the strbuf is true until the next strbuf_init(), and all
     subsequent appends will be fully truncated, ie, nothing more will be
     appended to the buffer.
-    
+
     The string in the buffer is guaranteed to always be nul terminated, which
     means that the maximum strlen() of the assembled string is one less than
     the buffer size.  In other words, the following invariants always hold:
@@ -40,7 +40,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
     char buf[100];
     strbuf b;
     strbuf_init(&b, buf, sizeof buf);
-    strbuf_cat(&b, "text");
+    strbuf_puts(&b, "text");
     strbuf_sprintf(&b, "fmt", val...);
     if (strbuf_overflow(&b))
         // error...
@@ -62,16 +62,63 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
+#include <alloca.h>
 
-typedef struct strbuf {
+#ifndef __STRBUF_INLINE
+# if __GNUC__ && !__GNUC_STDC_INLINE__
+#  define __STRBUF_INLINE extern inline
+# else
+#  define __STRBUF_INLINE inline
+# endif
+#endif
+
+struct strbuf {
     char *start;
     char *end;
     char *current;
-} strbuf;
+};
 
-/** Initialise the strbuf backing buffer.  The current backing buffer and its
- * contents are forgotten, and all strbuf operations henceforward will operate
- * on the new backing buffer.
+typedef struct strbuf *strbuf;
+typedef const struct strbuf *const_strbuf;
+
+/** The number of bytes occupied by a strbuf (not counting its backing buffer).
+ */
+#define SIZEOF_STRBUF (sizeof(struct strbuf))
+
+/** Convenience function for allocating a strbuf and its backing buffer on the
+ * stack within the calling function.  The returned strbuf is only valid for
+ * the duration of the function, so it must not be returned.  See alloca(3) for
+ * more information.
+ *
+ *      void func() {
+ *          strbuf b = strbuf_alloca(1024);
+ *          strbuf_puts(b, "some text");
+ *          strbuf_puts(b, " some more text");
+ *          printf("%s\n", strbuf_str(b));
+ *      }
+ */
+#define strbuf_alloca(size) strbuf_make(alloca(SIZEOF_STRBUF + size), SIZEOF_STRBUF + size)
+
+
+/** Allocate a strbuf for use within the calling function, using a
+ * caller-supplied backing buffer.  The returned strbuf is only valid for the
+ * duration of the function, so it must not be returned.  See alloca(3) for
+ * more information.
+ *
+ *      void func(char *buf, size_t len) {
+ *          strbuf b = strbuf_local(buf, len);
+ *          strbuf_puts(b, "some text");
+ *          strbuf_puts(b, " some more text");
+ *          printf("%s\n", strbuf_str(b));
+ *      }
+ */
+#define strbuf_local(buf,len) strbuf_init(alloca(SIZEOF_STRBUF), (buf), (len))
+
+
+/** Initialise a strbuf with a caller-supplied backing buffer.  The current
+ * backing buffer and its contents are forgotten, and all strbuf operations
+ * henceforward will operate on the new backing buffer.  Returns its first
+ * argument.
  *
  * Immediately following strbuf_init(sb,b,n), the following properties hold:
  *      strbuf_str(sb) == b
@@ -84,43 +131,65 @@ typedef struct strbuf {
  * usual with the sole exception that no chars will be copied into a backing
  * buffer.  This allows strbuf to be used for summing the lengths of strings.
  *
- * If the 'size' argument is zero, the result is undefined.  A segmentation
- * violation could occur, or the calling process may be aborted.  Output may
- * be written to fd 2 (standard error), or the process may hang in a tight
- * loop.  Cats may speak in tongues and the sky may fall.  If the caller wishes
- * to avoid these things, should always ensure that 'size' is nonzero.
+ * If the 'size' argument is zero, then strbuf does not write into its backing
+ * buffer, not even a terminating nul.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-void strbuf_init(strbuf *sb, char *buffer, size_t size);
+strbuf strbuf_init(strbuf sb, char *buffer, size_t size);
 
-/** Append a given number of characters to the strbuf, truncating if necessary to
- * avoid buffer overrun.  Return a pointer to the strbuf so that concatenations
- * can be chained in a single line: strbuf_ncat(strbuf_ncat(sb, "abc", 1), "bcd", 2);
+
+/** Initialise a strbuf and its backing buffer inside the caller-supplied
+ * buffer of the given size.  If the 'size' argument is less than
+ * SIZEOF_STRBUF, then strbuf_make() returns NULL.
+ *
+ * Immediately following sb = strbuf_make(buf,len) where len >= SIZEOF_STRBUF,
+ * the following properties hold:
+ *      (char*) sb == buf
+ *      strbuf_str(sb) == &buf[SIZEOF_STRBUF];
+ *      strbuf_size(sb) == len - SIZEOF_STRBUF;
+ *      strbuf_len(sb) == 0
+ *      strbuf_count(sb) == 0
+ *      strbuf_str()[0] == '\0'
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+__STRBUF_INLINE strbuf strbuf_make(char *buffer, size_t size) {
+  return size < SIZEOF_STRBUF ? NULL : strbuf_init((strbuf) buffer, buffer + SIZEOF_STRBUF, size - SIZEOF_STRBUF);
+}
+
+
+/** Append a null-terminated string to the strbuf up to a maximum number,
+ * truncating if necessary to avoid buffer overrun, and terminating with a nul
+ * which is not counted in the maximum.  Return a pointer to the strbuf so that
+ * concatenations can be chained in a single line: eg,
+ * strbuf_ncat(strbuf_ncat(sb, "abc", 1), "bcd", 2) gives a strbuf containing
+ * "abc";
  *
  * After these operations:
  *      n = strbuf_len(sb);
  *      c = strbuf_count(sb);
  *      strbuf_ncat(text, len);
  * the following invariants hold:
- *      strbuf_count(sb) == c + len
+ *      strbuf_count(sb) == c + min(strlen(text), len)
  *      strbuf_len(sb) >= n
  *      strbuf_len(sb) <= n + len
+ *      strbuf_len(sb) <= n + strlen(text)
  *      strbuf_str(sb) == NULL || strbuf_len(sb) == n || strncmp(strbuf_str(sb) + n, text, strbuf_len(sb) - n) == 0
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-strbuf *strbuf_ncat(strbuf *sb, const char *text, size_t len);
+strbuf strbuf_ncat(strbuf sb, const char *text, size_t len);
 
 
 /** Append a null-terminated string to the strbuf, truncating if necessary to
  * avoid buffer overrun.  Return a pointer to the strbuf so that concatenations
- * can be chained in a single line: strbuf_cat(strbuf_cat(sb, "a"), "b");
+ * can be chained in a single line: strbuf_puts(strbuf_puts(sb, "a"), "b");
  *
  * After these operations:
  *      n = strbuf_len(sb);
  *      c = strbuf_count(sb);
- *      strbuf_cat(text);
+ *      strbuf_puts(text);
  * the following invariants hold:
  *      strbuf_count(sb) == c + strlen(text)
  *      strbuf_len(sb) >= n
@@ -129,22 +198,39 @@ strbuf *strbuf_ncat(strbuf *sb, const char *text, size_t len);
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-inline strbuf *strbuf_cat(strbuf *sb, const char *text) {
-  return strbuf_ncat(sb, text, strlen(text));
-}
+strbuf strbuf_puts(strbuf sb, const char *text);
+
+
+/** Append a single character to the strbuf if there is space, and place a
+ * terminating nul after it.  Return a pointer to the strbuf so that
+ * concatenations can be chained in a single line.
+ *
+ * After these operations:
+ *      n = strbuf_len(sb);
+ *      c = strbuf_count(sb);
+ *      strbuf_putc(ch);
+ * the following invariants hold:
+ *      strbuf_count(sb) == c + 1
+ *      strbuf_len(sb) >= n
+ *      strbuf_len(sb) <= n + 1
+ *      strbuf_str(sb) == NULL || strbuf_len(sb) == n || strbuf_str(sb)[n] == ch
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+strbuf strbuf_putc(strbuf sb, char ch);
 
 
 /** Append the results of sprintf(fmt,...) to the string buffer, truncating if
  * necessary to avoid buffer overrun.  Return sprintf()'s return value.
  *
- * This is equivalent to char tmp[...]; sprintf(tmp, fmt, ...); strbuf_cat(tmp);
+ * This is equivalent to char tmp[...]; sprintf(tmp, fmt, ...); strbuf_puts(tmp);
  * assuming that tmp[] is large enough to contain the entire string produced by
  * the sprintf().
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int strbuf_sprintf(strbuf *sb, const char *fmt, ...);
-int strbuf_vsprintf(strbuf *sb, const char *fmt, va_list ap);
+int strbuf_sprintf(strbuf sb, const char *fmt, ...);
+int strbuf_vsprintf(strbuf sb, const char *fmt, va_list ap);
 
 /** Return a pointer to the current null-terminated string in the strbuf.
  *
@@ -154,7 +240,7 @@ int strbuf_vsprintf(strbuf *sb, const char *fmt, va_list ap);
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-inline char *strbuf_str(const strbuf *sb) {
+__STRBUF_INLINE char *strbuf_str(const_strbuf sb) {
   return sb->start;
 }
 
@@ -168,7 +254,7 @@ inline char *strbuf_str(const strbuf *sb) {
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-char *strbuf_substr(const strbuf *sb, int offset);
+char *strbuf_substr(const_strbuf sb, int offset);
 
 
 /** Return the size of the backing buffer.
@@ -178,7 +264,7 @@ char *strbuf_substr(const strbuf *sb, int offset);
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-inline size_t strbuf_size(const strbuf *sb) {
+__STRBUF_INLINE size_t strbuf_size(const_strbuf sb) {
   return sb->end - sb->start + 1;
 }
 
@@ -190,7 +276,7 @@ inline size_t strbuf_size(const strbuf *sb) {
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-inline size_t strbuf_len(const strbuf *sb) {
+__STRBUF_INLINE size_t strbuf_len(const_strbuf sb) {
   return (sb->current < sb->end ? sb->current : sb->end) - sb->start;
 }
 
@@ -202,7 +288,7 @@ inline size_t strbuf_len(const strbuf *sb) {
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-inline size_t strbuf_count(const strbuf *sb) {
+__STRBUF_INLINE size_t strbuf_count(const_strbuf sb) {
   return sb->current - sb->start;
 }
 
@@ -214,7 +300,7 @@ inline size_t strbuf_count(const strbuf *sb) {
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-inline int strbuf_is_overrun(const strbuf *sb) {
+__STRBUF_INLINE int strbuf_overrun(const_strbuf sb) {
   return sb->current > sb->end;
 }
 

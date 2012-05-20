@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 #include "rhizome.h"
+#include "strbuf.h"
 #include <stdlib.h>
 
 long long rhizome_space=0;
@@ -43,11 +44,11 @@ int rhizome_set_datastore_path(const char *path)
 {
   if (!path)
     path = confValueGet("rhizome.datastore_path", NULL);
-  if (path[0] != '/')
-    WARNF("Dangerous rhizome.datastore_path setting: '%s' -- should be absolute", rhizome_thisdatastore_path);
-  if (path)
+  if (path) {
     rhizome_thisdatastore_path = strdup(path);
-  else {
+    if (path[0] != '/')
+      WARNF("Dangerous rhizome.datastore_path setting: '%s' -- should be absolute", rhizome_thisdatastore_path);
+  } else {
     rhizome_thisdatastore_path = serval_instancepath();
     WARNF("Rhizome datastore path not configured -- using instance path '%s'", rhizome_thisdatastore_path);
   }
@@ -56,20 +57,15 @@ int rhizome_set_datastore_path(const char *path)
 
 int form_rhizome_datastore_path(char * buf, size_t bufsiz, const char *fmt, ...)
 {
-  char *bufp = buf;
-  char *bufe = bufp + bufsiz - 1;
-  bufp += snprintf(bufp, bufe - buf, "%s/", rhizome_datastore_path());
-  if (bufp > bufe) {
-      WHY("Path buffer overrun");
-      return 0;
-  }
+  strbuf b = strbuf_local(buf, bufsiz);
+  strbuf_sprintf(b, "%s/", rhizome_datastore_path());
   va_list ap;
   va_start(ap, fmt);
   va_list ap2;
   va_copy(ap2, ap);
-  bufp += vsnprintf(bufp, bufe - bufp, fmt, ap2);
+  strbuf_sprintf(b, fmt, ap2);
   va_end(ap);
-  if (bufp > bufe) {
+  if (strbuf_overrun(b)) {
       WHY("Path buffer overrun");
       return 0;
   }

@@ -63,6 +63,7 @@ HDRS=	fifo.h \
 	Makefile \
 	rhizome.h \
 	serval.h \
+	strbuf.h \
 	sha2.h \
 	sqlite-amalgamation-3070900/sqlite3.h
 
