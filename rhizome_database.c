@@ -584,7 +584,20 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
       size_t manifestblobsize = sqlite3_column_bytes(statement, 3); // must call after sqlite3_column_blob()
       rhizome_manifest *m = rhizome_read_manifest_file(manifestblob, manifestblobsize, 0);
       const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
-      if (!service[0] || (blob_service && strcasecmp(service, blob_service) == 0)) {
+      int match = 1;
+      if (service[0] && !(blob_service && strcasecmp(service, blob_service) == 0))
+	match = 0;
+      if (match && sender_sid[0]) {
+	const char *blob_sender = rhizome_manifest_get(m, "sender", NULL, 0);
+	if (!(blob_sender && strcasecmp(sender_sid, blob_sender) == 0))
+	  match = 0;
+      }
+      if (match && recipient_sid[0]) {
+	const char *blob_recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
+	if (!(blob_recipient && strcasecmp(recipient_sid, blob_recipient) == 0))
+	  match = 0;
+      }
+      if (match) {
 	const char *blob_name = rhizome_manifest_get(m, "name", NULL, 0);
 	long long blob_date = rhizome_manifest_get_ll(m, "date");
 	cli_puts(blob_service ? blob_service : ""); cli_delim(":");
