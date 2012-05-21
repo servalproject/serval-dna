@@ -405,6 +405,10 @@ int monitor_process_command(int index,char *cmd)
     c->flags|=MONITOR_RHIZOME;
   else if (!strcasecmp(cmd,"ignore rhizome"))
     c->flags&=~MONITOR_RHIZOME;
+  else if (!strcasecmp(cmd,"monitor peers"))
+    c->flags|=MONITOR_PEERS;
+  else if (!strcasecmp(cmd,"ignore peers"))
+    c->flags&=~MONITOR_PEERS;
   else if (sscanf(cmd,"FASTAUDIO:%x:%d",&callSessionToken,&flag)==2)
     {
       int i;
