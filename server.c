@@ -791,11 +791,11 @@ int createServerSocket()
   fcntl(sock, F_SETFL,
 	fcntl(sock, F_GETFL, NULL)|O_CLOEXEC);
 
-  int TRUE=1;
-  setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &TRUE, sizeof(TRUE));
+  int i=1;
+  setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &i, sizeof(i));
 
   errno=0;
-  if(setsockopt(sock, IPPROTO_IP, IP_RECVTTL, &TRUE,sizeof(TRUE))<0)
+  if(setsockopt(sock, IPPROTO_IP, IP_RECVTTL, &i,sizeof(i))<0)
     WHY_perror("setsockopt(IP_RECVTTL)");  
 
   bind_addr.sin_family = AF_INET;

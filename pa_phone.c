@@ -11,8 +11,6 @@
 #define NUM_BUFS	(8)
 #define ECHO_LEN	(128)
 #define ADAPT_MODE	(ECHO_CAN_USE_ADAPTION | ECHO_CAN_USE_NLP | ECHO_CAN_USE_CNG)
-#define MIN(x, y)	((x) > (y) ? y : x)
-#define MAX(x, y)	((x) < (y) ? y : x)
 
 #define CODEC2_BYTES_PER_FRAME ((CODEC2_BITS_PER_FRAME + 7) / 8)
 

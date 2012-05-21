@@ -1,6 +1,8 @@
 dnl Process this file with autoconf to produce a configure script.
 AC_INIT(dna.c)
 
+CPPFLAGS=-D_GNU_SOURCE
+
 dnl Set $host_os, which is needed by javac detection.
 AC_CANONICAL_SYSTEM
 
@@ -37,10 +39,15 @@ dnl Math library functions for spandsp
 AC_CHECK_HEADERS([math.h], [INSERT_MATH_HEADER="#include <math.h>"])
 AC_CHECK_HEADERS([float.h])
 
-dnl Math library functions for spandsp
+dnl Check for Linux version of struct ucred
 AC_CHECK_MEMBER(struct ucred.uid,
-    [AC_DEFINE([HAVE_STRUCT_UCRED], 1)],,
+    [AC_DEFINE([HAVE_LINUX_STRUCT_UCRED], 1)],,
     [#include <sys/socket.h>])
+
+dnl Check for BSD version of struct ucred
+AC_CHECK_MEMBER(struct xucred.cr_uid,
+    [AC_DEFINE([HAVE_BSD_STRUCT_UCRED], 1)],,
+    [#include <sys/ucred.h>])
 
 dnl Check for a working Java compiler, keep going if unsuccessful.
 dnl *** Kludge: override AC_MSG_ERROR because AC_PROG_JAVAC does not have
@@ -75,9 +82,11 @@ AC_CHECK_HEADERS(
     sys/socket.h \
     sys/mman.h \
     sys/time.h \
+    sys/ucred.h \
     poll.h \
     netdb.h \
     linux/if.h \
+    linux/ioctl.h \
     linux/netlink.h \
     linux/rtnetlink.h \
     net/if.h \

@@ -27,13 +27,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include <sys/stat.h>
 
-#ifndef HAVE_STRUCT_UCRED
-struct ucred {
-  pid_t pid;
-  uid_t uid;
-  gid_t gid;
-};
-#endif // HAVE_STRUCT_UCRED
+#if defined(LOCAL_PEERCRED) && !defined(SO_PEERCRED)
+#define SO_PEERCRED LOCAL_PEERCRED
+#endif
 
 /* really shouldn't need more than 2:
    1 for rhizome
@@ -202,7 +198,14 @@ int monitor_poll()
     WHYF("ignored_length=%d",ignored_length);
     int res = fcntl(s,F_SETFL, O_NONBLOCK);
     if (res) { close(s); continue; }
+#if defined(HAVE_LINUX_STRUCT_UCRED)
     struct ucred ucred;
+#elif defined(HAVE_BSD_STRUCT_UCRED)
+    struct xucred ucred;
+#else
+#error "Unknown ucred struct"
+#endif
+    uid_t otheruid;
     socklen_t len=sizeof(ucred);
     res = getsockopt(s,SOL_SOCKET,SO_PEERCRED,&ucred,&len);
     if (len>sizeof(ucred)) {
@@ -211,9 +214,14 @@ int monitor_poll()
     if (res) { 
       WHY("Failed to read credentials of monitor.socket client");
       close(s); continue; }
-    if (ucred.uid&&(ucred.uid!=getuid())) {
+#if defined(HAVE_LINUX_STRUCT_UCRED)
+    otheruid = ucred.uid;
+#elif defined(HAVE_BSD_STRUCT_UCRED)
+    otheruid = ucred.cr_uid;
+#endif
+    if (otheruid&&(otheruid!=getuid())) {
       WHYF("monitor.socket client has wrong uid (%d versus %d)",
-	   ucred.uid,getuid());
+	   otheruid,getuid());
       write(s,"\nCLOSE:Incorrect UID\n",strlen("\nCLOSE:Incorrect UID\n"));
       close(s); continue;
     }

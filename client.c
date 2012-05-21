@@ -52,8 +52,8 @@ int packetSendFollowup(struct in_addr destination,
       fprintf(stderr,"Could not create UDP socket.\n");
       exit(-3);
     }
-    int TRUE=1;
-    setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &TRUE, sizeof(TRUE));
+    r=1;
+    setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &r, sizeof(r));
   }
   
   r=sendto(sock,packet,packet_len,0,(struct sockaddr *)&peer_addr,sizeof(peer_addr));
@@ -86,8 +86,8 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
       fprintf(stderr,"Could not create UDP socket.\n");
       exit(-3);
     }
-    int TRUE=1;
-    setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &TRUE, sizeof(TRUE));
+    i=1;
+    setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &i, sizeof(i));
   }
   
   /* Deal with special case */
