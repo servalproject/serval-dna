@@ -214,9 +214,9 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
       }
       cumulative_timeout+=this_timeout;
     }
-  if (debug&DEBUG_DNARESPONSES) if (cumulative_timeout>=timeout) 
+  if (debug&DEBUG_DNARESPONSES) if (cumulative_timeout>=dnatimeout) 
 		 fprintf(stderr,"Request timed out after retries (timeout=%d, elapsed=%d).\n",
-			 timeout,cumulative_timeout);
+			 dnatimeout,cumulative_timeout);
 
   return 0;
 }
