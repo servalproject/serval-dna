@@ -645,6 +645,36 @@ int cli_absolute_path(const char *arg)
 int app_server_start(int argc, const char *const *argv, struct command_line_option *o)
 {
   /* Process optional arguments */
+  int pid=-1;
+  int status=server_probe(&pid);
+  switch(status) {
+  case SERVER_NOTRESPONDING: 
+    /* server is not responding, and we have been asked to start,
+       so try to kill it?
+    */
+    WHYF("Serval process already running (pid=%d), but no responding.", pid);
+    if (pid>-1) {
+      kill(pid,SIGHUP); sleep(1);
+      status=server_probe(&pid);
+      if (status!=SERVER_NOTRUNNING) {
+	WHY("Tried to stop stuck servald process, but attempt failed.");
+	return -1;
+      }
+      WHY("Killed stuck servald process, so will try to start");
+      pid=-1;
+    }
+    break;
+  case SERVER_NOTRUNNING:
+    /* all is well */
+    break;
+  case SERVER_RUNNING:
+    /* instance running */
+    break;
+  default:
+    /* no idea what is going on, so try to start anyway */
+    break;
+  }
+
   const char *execpath;
   int foregroundP = (argc >= 2 && !strcasecmp(argv[1], "foreground"));
   if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1
@@ -659,7 +689,7 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
   if (!interfaces[0])
     WHY("No network interfaces configured (empty 'interfaces' config setting)");
   overlay_interface_args(interfaces);
-  int pid = server_pid();
+  if (pid==-1) pid = server_pid();
   if (pid < 0)
     return -1;
   int ret = 1;
