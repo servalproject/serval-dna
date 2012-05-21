@@ -22,7 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 int sock = -1;
 char *outputtemplate = NULL;
 int returnMultiVars = 0;
-int timeout = 3000; /* default 3000 ms request timeout */
+int dnatimeout = 3000; /* default 3000 ms request timeout */
 
 /* Now that we are using the keyring, we only support a small subset of variables.
    (VAR_NAME is not properly supported yet) 
@@ -119,15 +119,15 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
     peer_low=0; peer_high=peer_count-1;
     /* If there are too many peers to allow sending to each three times, then we should 
        adjust our incremental timeout accordingly, so far as is practicable */
-    if (this_timeout*peer_count*3>timeout)
+    if (this_timeout*peer_count*3>dnatimeout)
       {
-	this_timeout=timeout/(3*peer_count);
+	this_timeout=dnatimeout/(3*peer_count);
 	if (this_timeout<10) this_timeout=10; /* 10ms minimum sending interval */
       }
   } else 
     { peer_low=-1; peer_high=-1;}
 
-  while(cumulative_timeout<=timeout)
+  while(cumulative_timeout<=dnatimeout)
     {
       /* If not in serial mode, then send request to everyone immediately.
          Make sure we only ask once in parallel mode, since it will always ask everyone */

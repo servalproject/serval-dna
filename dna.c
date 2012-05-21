@@ -164,7 +164,7 @@ int parseOldCommandLine(int argc, char **argv)
 	  sid=strdup(optarg);
 	  break;
 	case 't': /* request timeout (ms) */
-	  timeout=atoi(optarg);
+	  dnatimeout=atoi(optarg);
 	  break;
 	case 'v': /* set verbosity */
 	  debug |= debugFlagMask(optarg);

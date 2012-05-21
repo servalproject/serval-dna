@@ -138,7 +138,7 @@ struct in_addr {
 #define MAX_DATA_BYTES 256
 
 extern int debug;
-extern int timeout;
+extern int dnatimeout;
 extern int hlr_size;
 extern unsigned char *hlr;
 
