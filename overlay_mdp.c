@@ -1113,6 +1113,8 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
   if (!FORM_SERVAL_INSTANCE_PATH(name.sun_path, "mdp.socket"))
     return -1;
 
+  fcntl(mdp_client_socket, F_SETFL,
+	fcntl(mdp_client_socket, F_GETFL, NULL)|O_NONBLOCK);
   int result=sendto(mdp_client_socket, mdp, len, 0,
 		    (struct sockaddr *)&name, sizeof(struct sockaddr_un));
   if (result<0) {
@@ -1159,6 +1161,10 @@ int overlay_mdp_client_socket_path_len=-1;
 
 int overlay_mdp_client_init()
 {
+  if (mdp_named_socket!=-1) {
+    WHY("WARNING: server asked to open client socket!");
+    sleep(10);
+  }
   if (mdp_client_socket==-1) {
     /* Open socket to MDP server (thus connection is always local) */
     if (0) WHY("Use of abstract name space socket for Linux not implemented");
