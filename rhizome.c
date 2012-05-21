@@ -39,6 +39,9 @@ int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, cons
   if (!FORM_RHIZOME_DATASTORE_PATH(filename, "import/file.%s", bundle)
    || !FORM_RHIZOME_DATASTORE_PATH(manifestname, "import/manifest.%s", bundle))
     return WHY("Manifest bundle name too long");
+  WHYF("bundle='%s'",bundle);
+  WHYF("filename='%s'",filename);
+  WHYF("manifestname='%s'",manifestname);
 
   /* Read manifest file if no manifest was given */
   rhizome_manifest *m = m_in;
@@ -186,7 +189,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
   if (checkFileP) {
     struct stat stat;
     if (lstat(filename,&stat))
-      return WHY("Could not stat() payload file");
+      return WHYF("Could not stat() payload file '%s'",filename);
     m_in->fileLength = stat.st_size;
     long long mfilesize = rhizome_manifest_get_ll(m_in, "filesize");
     if (mfilesize != -1 && mfilesize != m_in->fileLength) {
