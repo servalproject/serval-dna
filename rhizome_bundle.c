@@ -174,17 +174,25 @@ int rhizome_hash_file(const char *filename,char *hash_out)
      implementation.
   */
   FILE *f = fopen(filename, "r");
-  if (!f)
-    return WHYF("Could not read %s to calculate SHA512 hash.", filename);
+  if (!f) {
+    WHY_perror("fopen");
+    return WHYF("Could not open %s to calculate SHA512 hash.", filename);
+  }
   SHA512_CTX context;
   SHA512_Init(&context);
   while (!feof(f)) {
     unsigned char buffer[8192];
     int r = fread(buffer, 1, 8192, f);
+    if (r == -1) {
+      WHY_perror("fread");
+      fclose(f);
+      return WHYF("Error reading %s to calculate SHA512 hash", filename);
+    }
     if (r > 0)
       SHA512_Update(&context, buffer, r);
   }
   SHA512_End(&context, (char *)hash_out);
+  fclose(f);
   return 0;
 }
 
