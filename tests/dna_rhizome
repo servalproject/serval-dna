@@ -27,6 +27,7 @@ setup_servald_rhizome() {
    executeOk $servald keyring add
    executeOk $servald keyring list
    sid=$(replayStdout | sed -ne '1s/^\([0-9a-fA-F]\{64\}\):.*$/\1/p')
+   sidb=1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
    assert --message='identity known' [ -n "$sid" ]
 }
 
@@ -38,7 +39,7 @@ assert_rhizome_list() {
    local filename
    for filename; do
       unpack_manifest_for_grep "$filename"
-      assertStdoutGrep --matches=1 "^file:$re_filehash:$re_manifestid:.*:$re_name\$"
+      assertStdoutGrep --matches=1 "^$re_service:$re_filehash:$re_manifestid:.*:$re_name\$"
    done
 }
 
@@ -46,7 +47,7 @@ assert_stdout_add_file() {
    local filename="$1"
    unpack_manifest_for_grep "$filename"
    assertStdoutLineCount '==' 5
-   assertStdoutGrep --matches=1 '^service:file$'
+   assertStdoutGrep --matches=1 "^service:$re_service\$"
    assertStdoutGrep --matches=1 "^name:${2:-$re_name}\$"
    assertStdoutGrep --matches=1 "^manifestid:$re_manifestid\$"
    assertStdoutGrep --matches=1 "^filehash:$re_filehash\$"
@@ -55,18 +56,30 @@ assert_stdout_add_file() {
 
 unpack_manifest_for_grep() {
    local filename="$1"
+   re_service='[A-Za-z0-9_]\+'
    re_size=$(( $(cat "$filename" | wc -c) + 0 ))
-   re_filehash='[0-9a-fA-F]\{128\}'
+   re_filehash=$($servald rhizome hash file "$filename")
+   if [ -z "$re_filehash" ]; then
+      error "Could not compute rhizome hash of $filename"
+   fi
    re_manifestid='[0-9a-fA-F]\{64\}'
-   re_name="${filename##*/}" # should escape grep metacharacters
+   re_name="${filename##*/}" # TODO should escape grep metacharacters
    # If there is a manifest file that looks like it matches this payload
    # file, then use its file hash to check the rhizome list output.
-   if [ -r "$filename.manifest" ]; then
-      local name=$(sed -n -e '/^name=/s///p' "$filename.manifest")
-      if [ "$name" == "${filename##*/}" ]; then
-         re_filehash=$(sed -n -e '/^filehash=/s///p' "$filename.manifest")
-         re_manifestid=$(sed -n -e '/^id=/s///p' "$filename.manifest")
-      fi
+   local filehash=$(sed -n -e '/^filehash=/s///p' "$filename.manifest" 2>/dev/null)
+   if [ "$filehash" = "$re_filehash" ]; then
+      re_manifestid=$(sed -n -e '/^id=/s///p' "$filename.manifest")
+      # TODO should escape grep metacharacters, although service names should be tame
+      re_service=$(sed -n -e '/^service=/s///p' "$filename.manifest")
+      case "$re_service" in
+      file)
+         # TODO should escape grep metacharacters
+         re_name=$(sed -n -e '/^name=/s///p' "$filename.manifest")
+         ;;
+      *)
+         re_name=
+         ;;
+      esac
    fi
 }
 
@@ -107,6 +120,10 @@ extract_manifest_service() {
 
 extract_manifest_id() {
    extract_manifest "$1" "$2" id '[0-9a-fA-F]\{64\}'
+}
+
+extract_manifest_BK() {
+   extract_manifest "$1" "$2" BK '[0-9a-fA-F]\{128\}'
 }
 
 extract_manifest_filehash() {
@@ -352,7 +369,7 @@ test_AddMismatched() {
    assert_rhizome_list file1 file2
 }
 
-doc_AddUpdateSameVersion="Add new payload to existing manifest with same version"
+doc_AddUpdateSameVersion="Add new payload to existing manifest with same version fails"
 setup_AddUpdateSameVersion() {
    setup_AddDuplicate
    cp file1.manifest file1_2.manifest
@@ -388,8 +405,7 @@ test_AddUpdateNewVersion() {
    assert_stdout_add_file file1_2 file1
    assert_manifest_newer file1.manifest file1_2.manifest
    # Rhizome store contents reflect new payload.
-   mv -f file1_2.manifest file1.manifest
-   assert_rhizome_list file1 file2
+   assert_rhizome_list file1_2 file2
 }
 
 doc_AddUpdateAutoVersion="Add new payload to existing manifest with automatic version"
@@ -404,8 +420,85 @@ test_AddUpdateAutoVersion() {
    executeOk $servald rhizome add file $sid '' file1_2 file1_2.manifest
    assert_manifest_newer file1.manifest file1_2.manifest
    # Rhizome store contents reflect new payload.
-   mv -f file1_2.manifest file1.manifest
-   assert_rhizome_list file1 file2
+   assert_rhizome_list file1_2 file2
+}
+
+doc_AddUnsupportedService="Add with unsupported service fails"
+setup_AddUnsupportedService() {
+   setup_servald_rhizome
+   echo "Message1" >file1
+   echo -e 'service=Fubar' >file1.manifest
+}
+test_AddUnsupportedService() {
+   execute $servald rhizome add file $sid '' file1 file1.manifest
+   assertExitStatus '!=' 0
+}
+
+doc_AddMeshMSCreate="First add MeshMS creates manifest"
+setup_AddMeshMSCreate() {
+   setup_servald_rhizome
+   echo "Message1" >file1
+   echo -e "service=MeshMS1\nsender=$sid\nrecipient=$sidb" >file1.manifest
+}
+test_AddMeshMSCreate() {
+   executeOk $servald rhizome add file $sid '' file1 file1.manifest
+   assert_rhizome_list file1
+   extract_manifest_filehash filehash file1.manifest
+   executeOk $servald rhizome extract file $filehash file1x
+   assert diff file1 file1x
+}
+
+doc_AddMeshMSGrow="Second add MeshMS updates manifest"
+setup_AddMeshMSGrow() {
+   setup_servald_rhizome
+   echo "Message1" >file1
+   echo "Message2" >file2
+   echo -e "service=MeshMS1\nsender=$sid\nrecipient=$sidb" >file1.manifest
+   executeOk $servald rhizome add file $sid '' file1 file1.manifest
+   extract_manifest_id id file1.manifest
+   extract_manifest_BK bk file1.manifest
+   echo -e "id=$id\nBK=$bk\nservice=MeshMS1\nsender=$sid\nrecipient=$sidb" >file2.manifest
+}
+test_AddMeshMSGrow() {
+   executeOk $servald rhizome add file $sid '' file2 file2.manifest
+   extract_manifest_filehash filehash file2.manifest
+   assert_rhizome_list file2
+   executeOk $servald rhizome extract file $filehash file2x
+   assert diff file2 file2x
+}
+
+doc_AddMeshMSMissingSender="Add MeshMS without sender fails"
+setup_AddMeshMSMissingSender() {
+   setup_servald_rhizome
+   echo "Message1" >file1
+   echo -e "service=MeshMS1\nrecipient=$sidb" >file1.manifest
+}
+test_AddMeshMSMissingSender() {
+   execute $servald rhizome add file $sid '' file1 file1.manifest
+   assertExitStatus '!=' 0
+}
+
+doc_AddMeshMSMissingRecipient="Add MeshMS without recipient fails"
+setup_AddMeshMSMissingRecipient() {
+   setup_servald_rhizome
+   assert_rhizome_list
+   echo "Message1" >file1
+   echo -e "service=MeshMS1\nsender=$sid" >file1.manifest
+}
+test_AddMeshMSMissingRecipient() {
+   execute $servald rhizome add file $sid '' file1 file1.manifest
+   assertExitStatus '!=' 0
+}
+
+doc_AddMeshMSMissingSender="Add MeshMS without author uses sender"
+setup_AddMeshMSMissingSender() {
+   setup_servald_rhizome
+   echo "Message1" >file1
+   echo -e "service=MeshMS1\nsender=$sid\nrecipient=$sidb" >file1.manifest
+}
+test_AddMeshMSMissingSender() {
+   executeOk $servald rhizome add file '' '' file1 file1.manifest
+   assert_rhizome_list file1
 }
 
 runTests "$@"
