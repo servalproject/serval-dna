@@ -167,7 +167,7 @@ int overlay_abbreviate_prepare_cache()
 
 int overlay_abbreviate_cache_address(unsigned char *sid)
 {
-  if ((!cache)&&OVERLAY_ADDRESS_CACHE_SIZE) overlay_abbreviate_prepare_cache();
+  if ((!cache)&&OVERLAY_ADDRESS_CACHE_SIZE>0) overlay_abbreviate_prepare_cache();
   if (!cache) return 0;
 
   /* Work out the index in the cache where this address would go.
@@ -453,7 +453,7 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
 				    int prefix_bytes,int index_bytes)
 {
   /* Lookup this entry from the cache, and also assign it the specified prefix */
-  if ((!cache)&&OVERLAY_ADDRESS_CACHE_SIZE) overlay_abbreviate_prepare_cache();
+  if ((!cache)&&OVERLAY_ADDRESS_CACHE_SIZE>0) overlay_abbreviate_prepare_cache();
   if (!cache) return OA_PLEASEEXPLAIN; /* No cache? Then ask for address in full */  
 
   /* Work out the index in the cache where this address would live */
