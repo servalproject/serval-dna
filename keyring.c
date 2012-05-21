@@ -852,7 +852,7 @@ keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c,
   /* Filter out public keys that start with 0x0, as they are reserved for address
      abbreviation. */
   id->keypairs[0]->public_key[0]=0;
-  while(id->keypairs[0]->public_key[0]==0)
+  while(id->keypairs[0]->public_key[0]<0x10)
     crypto_box_curve25519xsalsa20poly1305_keypair(id->keypairs[0]->public_key,
 						  id->keypairs[0]->private_key);
 
