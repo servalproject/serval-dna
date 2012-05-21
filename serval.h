@@ -1206,7 +1206,7 @@ typedef struct overlay_mdp_addrlist {
    More lets us include preemptive retransmissions.
    Less reduces the chance of packets getting lost, and reduces
    the bandwidth used. */
-#define VOMP_STUFF_BYTES 1024
+#define VOMP_STUFF_BYTES 800
 /* elements sorted by size for alignment */
 typedef struct overlay_mdp_vompevent {
   /* Once a call has been established, this is how the MDP/VoMP server

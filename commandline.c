@@ -294,7 +294,7 @@ int cli_arg(int argc, const char *const *argv, command_line_option *o, char *arg
     ) {
       const char *value = argv[i];
       if (validator && !(*validator)(value))
-	return setReason("Invalid argument %d '%s': \"%s\"", i + 1, argname, value);
+	return WHYF("Invalid argument %d '%s': \"%s\"", i + 1, argname, value);
       *dst = value;
       return 0;
     }
@@ -1073,6 +1073,18 @@ int cli_optional_sid(const char *arg)
   return !arg[0] || validateSid(arg);
 }
 
+int app_rhizome_hash_file(int argc, const char *const *argv, struct command_line_option *o)
+{
+  const char *filepath;
+  cli_arg(argc, argv, o, "filepath", &filepath, NULL, "");
+  char hexhash[SHA512_DIGEST_STRING_LENGTH];
+  if (rhizome_hash_file(filepath, hexhash))
+    return -1;
+  cli_puts(hexhash);
+  cli_delim("\n");
+  return 0;
+}
+
 int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_option *o)
 {
   const char *filepath, *manifestpath, *authorSid, *pin;
@@ -1571,6 +1583,8 @@ command_line_option command_line_options[]={
    "Set specified configuration variable."},
   {app_config_get,{"config","get","[<variable>]",NULL},CLIFLAG_STANDALONE,
    "Get specified configuration variable."},
+  {app_rhizome_hash_file,{"rhizome","hash","file","<filepath>",NULL},CLIFLAG_STANDALONE,
+   "Compute the Rhizome hash of a file"},
   {app_rhizome_add_file,{"rhizome","add","file","<author_sid>","<pin>","<filepath>","[<manifestpath>]",NULL},CLIFLAG_STANDALONE,
    "Add a file to Rhizome and optionally write its manifest to the given path"},
   {app_rhizome_list,{"rhizome","list","[<service>]","[<sender_sid>]","[<recipient_sid>]","[<offset>]","[<limit>]",NULL},CLIFLAG_STANDALONE,
