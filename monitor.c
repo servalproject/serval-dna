@@ -623,7 +623,7 @@ int monitor_announce_peer(unsigned char *sid)
 {
   unsigned char msg[1024];
   snprintf((char *)msg,1024,"\nnewpeer %s\n",overlay_render_sid(sid));
-  monitor_tell_clients(msg,strlen((char *)msg));
+  monitor_tell_clients(msg,strlen((char *)msg),MONITOR_PEERS);
   return 0;
 }
 
@@ -651,17 +651,17 @@ int monitor_send_audio(vomp_call_state *call,overlay_mdp_frame *audio)
 	&msg[msglen],sample_bytes);
   msglen+=sample_bytes;
 
-  monitor_tell_clients(msg,msglen);
+  monitor_tell_clients(msg,msglen,MONITOR_VOMP);
 
   return 0;
 }
 
-int monitor_tell_clients(unsigned char *msg,int msglen)
+int monitor_tell_clients(unsigned char *msg,int msglen,int mask)
 {
   int i;
   for(i=0;i<monitor_socket_count;i++)
     {
-      if (!(monitor_sockets[i].flags&MONITOR_VOMP))
+      if (!(monitor_sockets[i].flags&mask))
 	continue;
     nextInSameSlot:
       errno=0;
