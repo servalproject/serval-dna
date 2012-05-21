@@ -521,6 +521,7 @@ int rhizome_fetch_poll()
 		char filename[1024];
 		if (!FORM_RHIZOME_DATASTORE_PATH(filename,"import/manifest.%s", id))
 		  return -1;
+		snprintf(filename,1024,"%s/manifest.%s",rhizome_datastore_path(),id);
 		/* Do really write the manifest unchanged */
 		if (debug&DEBUG_RHIZOME) {
 		  fprintf(stderr,"manifest has %d signatories\n",q->manifest->sig_count);
@@ -539,6 +540,10 @@ int rhizome_fetch_poll()
 					1 /* do verify */,
 					1 /* do check hash of file */,
 					0 /* do not sign it, just keep existing signatures */);
+		  q->manifest=NULL;
+		} else {
+		  WHY("rhizome_write_manifest_file() failed");
+		  rhizome_manifest_free(q->manifest);
 		  q->manifest=NULL;
 		}
 	      }
