@@ -799,14 +799,23 @@ int app_server_status(int argc, const char *const *argv, struct command_line_opt
 {
   if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1)
     return -1;
-  int pid = server_pid();
-  if (pid < 0)
-    return -1;
+  int pid=-1;
+  int status=server_probe(&pid);
+
   cli_puts("instancepath");
   cli_delim(":");
   cli_puts(serval_instancepath());
   cli_delim("\n");
-  if (pid) {
+  cli_puts("status");
+  cli_delim(":");
+  switch(status) {
+  case SERVER_NOTRESPONDING: cli_puts("not responding"); break;
+  case SERVER_NOTRUNNING: cli_puts("stopped"); break;
+  case SERVER_RUNNING: cli_puts("running"); break;
+  case SERVER_UNKNOWN: default: cli_puts("unknown"); break;
+  }
+  cli_delim("\n");
+  if (pid>-1) {
     cli_puts("pid");
     cli_delim(":");
     cli_printf("%d", pid);

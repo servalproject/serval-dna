@@ -1497,3 +1497,9 @@ int bufferAudioForPlayback(int codec,long long start_time,long long end_time,
 			   unsigned char *data,int dataLen);
 int startAudio();
 int stopAudio();
+
+#define SERVER_UNKNOWN 1
+#define SERVER_NOTRESPONDING 2
+#define SERVER_NOTRUNNING 3
+#define SERVER_RUNNING 4
+int server_probe(int *pid);
