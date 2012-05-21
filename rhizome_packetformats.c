@@ -322,7 +322,7 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	m=rhizome_read_manifest_file((char *)&f->payload->bytes[ofs],
 				     manifest_length,RHIZOME_DONTVERIFY);
 	int importManifest=0;
-	if (!m->errors)
+	if (m&&(!m->errors))
 	  {
 	    /* Manifest is okay, so see if it is worth storing */
 	    if (rhizome_manifest_version_cache_lookup(m)) {
@@ -349,7 +349,7 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	  {
 	    if (debug&DEBUG_RHIZOME) fprintf(stderr,"Unverified manifest has errors - so not processing any further.\n");
 	  }
-	rhizome_manifest_free(m);
+	if (m) rhizome_manifest_free(m);
 	m=NULL;
 
 	if (importManifest) {
