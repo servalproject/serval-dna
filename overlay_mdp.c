@@ -1000,7 +1000,8 @@ int overlay_mdp_poll()
 	    for(bin=0;bin<overlay_bin_count;bin++)
 	      for(slot=0;slot<overlay_bin_size;slot++)
 		{
-		  if (!overlay_nodes[bin][slot].sid[0]) 
+		  if ((!overlay_nodes[bin][slot].sid[0]) 
+		      ||(overlay_nodes[bin][slot].best_link_score<1))
 		    { 
 		      continue; }
 		  if ((count>=sid_num)&&(i<max_sids)) {
