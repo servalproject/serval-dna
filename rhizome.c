@@ -155,18 +155,24 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
   if (strcasecmp(service, RHIZOME_SERVICE_FILE) == 0) {
     const char *name = rhizome_manifest_get(m_in, "name", NULL, 0);
     if (name == NULL || !name[0])
-	return WHY("Manifest missing 'name' field");
+      return WHY("Manifest missing 'name' field");
   } else if (strcasecmp(service, RHIZOME_SERVICE_MESHMS) == 0) {
     const char *sender = rhizome_manifest_get(m_in, "sender", NULL, 0);
     const char *recipient = rhizome_manifest_get(m_in, "recipient", NULL, 0);
     if (sender == NULL || !sender[0])
-	return WHY("Manifest missing 'sender' field");
+      return WHY("Manifest missing 'sender' field");
     if (!validateSid(sender))
-	return WHY("Manifest contains invalid 'sender' field");
+      return WHY("Manifest contains invalid 'sender' field");
+    /* If the author was not specified, use the 'sender' as the author, otherwise ensure that they
+       match. */
+    if (!author || !author[0])
+      author = sender;
+    else if (strcasecmp(author, sender))
+      return WHYF("Author inconsistent with sender: author=%s, sender=%s", author, sender);
     if (recipient == NULL || !recipient[0])
-	return WHY("Manifest missing 'recipient' field");
+      return WHY("Manifest missing 'recipient' field");
     if (!validateSid(recipient))
-	return WHY("Manifest contains invalid 'recipient' field");
+      return WHY("Manifest contains invalid 'recipient' field");
   }
 
   /* Keep payload file name handy for later */
