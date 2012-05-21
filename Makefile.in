@@ -119,3 +119,5 @@ testset:	dna testget
 testbigset: testget
 	clear
 	./dna -vvv -s `cat testget | cut -f2 -d: | tail -1` -i 0 -W note=@411.txt
+clean:
+	@rm -f $(OBJS) serval.c dna libservald.so
