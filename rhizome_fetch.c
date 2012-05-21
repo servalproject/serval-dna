@@ -369,6 +369,9 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
 	      close(sock);
 	      return -1;
 	    }
+#warning avoiding FORM_RHIZOME_DATASTORE_PATH corruption
+	    snprintf(filename,1024,"%s/import/file.%s",
+		     rhizome_datastore_path(),id);
 	    q->manifest->dataFileName = strdup(filename);
 	    q->file=fopen(filename,"w");
 	    if (!q->file) {
@@ -401,6 +404,9 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
 	  char filename[1024];
 	  if (!FORM_RHIZOME_DATASTORE_PATH(filename, "import/manifest.%s", id))
 	    return -1;
+#warning avoiding FORM_RHIZOME_DATASTORE_PATH corruption
+	    snprintf(filename,1024,"%s/import/manifest.%s",
+		     rhizome_datastore_path(),id);
 	  if (!rhizome_write_manifest_file(m, filename)) {
 	    rhizome_bundle_import(m, NULL, id,
 				  NULL /* no additional groups */,
@@ -521,6 +527,7 @@ int rhizome_fetch_poll()
 		char filename[1024];
 		if (!FORM_RHIZOME_DATASTORE_PATH(filename,"import/manifest.%s", id))
 		  return -1;
+#warning avoiding FORM_RHIZOME_DATASTORE_PATH bugs
 		snprintf(filename,1024,"%s/manifest.%s",rhizome_datastore_path(),id);
 		/* Do really write the manifest unchanged */
 		if (debug&DEBUG_RHIZOME) {

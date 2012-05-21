@@ -287,8 +287,10 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 {
   if (!f) return -1;
-  if (debug&DEBUG_RHIZOME) fprintf(stderr,"rhizome f->bytecount=%d\n",
-				   f->payload->length);
+  if (debug&DEBUG_RHIZOME) {
+    WHYF("rhizome f->bytecount=%d\n",f->payload->length);
+    dump("payload",f->payload->bytes,f->payload->length);
+  }
 
   int ofs=0;
   int ad_frame_type=f->payload->bytes[ofs++];
