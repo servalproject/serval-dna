@@ -58,7 +58,7 @@ int rhizome_set_datastore_path(const char *path)
 int form_rhizome_datastore_path(char * buf, size_t bufsiz, const char *fmt, ...)
 {
   strbuf b = strbuf_local(buf, bufsiz);
-  strbuf_sprintf(b, "%s/", rhizome_datastore_path());
+  strbuf_sprintf(b, "%s/", rhizome_datastore_path());  
   va_list ap;
   va_start(ap, fmt);
   va_list ap2;

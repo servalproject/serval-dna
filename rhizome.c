@@ -43,6 +43,11 @@ int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, cons
   WHYF("filename='%s'",filename);
   WHYF("manifestname='%s'",manifestname);
 
+  snprintf(filename,1024,"%s/import/file.%s",rhizome_datastore_path(),bundle);
+  snprintf(manifestname,1024,"%s/import/manifest.%s",rhizome_datastore_path(),bundle);
+  WHYF("PGS filename='%s'",filename);
+  WHYF("PGS manifestname='%s'",manifestname);
+
   /* Read manifest file if no manifest was given */
   rhizome_manifest *m = m_in;
   if (!m_in)  {
