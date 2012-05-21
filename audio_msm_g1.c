@@ -58,7 +58,9 @@ extern int recordBufferSize;
 #include <sys/ioctl.h>
 #include <errno.h>
 
+#if HAVE_LINUX_IOCTL_H
 #include <linux/ioctl.h>
+#endif
 
 #if 0
 #include <linux/msm_audio.h>
