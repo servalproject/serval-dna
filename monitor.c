@@ -627,7 +627,7 @@ int monitor_call_status(vomp_call_state *call)
 int monitor_announce_peer(unsigned char *sid)
 {
   unsigned char msg[1024];
-  snprintf((char *)msg,1024,"\nnewpeer %s\n",overlay_render_sid(sid));
+  snprintf((char *)msg,1024,"\nnewpeer:%s\n",overlay_render_sid(sid));
   monitor_tell_clients(msg,strlen((char *)msg),MONITOR_PEERS);
   return 0;
 }
