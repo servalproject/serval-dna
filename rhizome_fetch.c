@@ -456,7 +456,7 @@ int rhizome_fetch_poll()
 {
   int rn;
   if (debug&DEBUG_RHIZOME) WHYF("Checking %d active fetch requests",
-		    rhizome_file_fetch_queue_count);
+				rhizome_file_fetch_queue_count);
   for(rn=0;rn<rhizome_file_fetch_queue_count;rn++)
     {
       rhizome_file_fetch_record *q=&file_fetch_queue[rn];
@@ -469,6 +469,8 @@ int rhizome_fetch_poll()
       switch(q->state) 
 	{
 	case RHIZOME_FETCH_SENDINGHTTPREQUEST:
+	  WHYF("sending http request (%d of %d bytes sent)",
+	       q->request_ofs,q->request_len);
 	  bytes=write(q->socket,&q->request[q->request_ofs],
 			  q->request_len-q->request_ofs);
 	  if (bytes>0) {
@@ -484,13 +486,16 @@ int rhizome_fetch_poll()
 	      q->request_len=0; q->request_ofs=0;
 	      q->state=RHIZOME_FETCH_RXHTTPHEADERS;
 	    }
+	  } else if (errno!=EAGAIN) {
+	    WHY("Got error while sending HTTP request.  Closing.");
+	    q->close=1;
 	  }
 	  break;
 	case RHIZOME_FETCH_RXFILE:
 	  /* Keep reading until we have the promised amount of data */
 	  if (debug&DEBUG_RHIZOME) 
-	    WHYF("receiving rhizome fetch file body (current offset=%d)\n",
-		    q->file_ofs);
+	    WHYF("receiving rhizome fetch file body (current offset=%d of %d)\n",
+		 q->file_ofs,q->file_len);
 	  
 	  sigPipeFlag=0;
 	  
@@ -516,7 +521,11 @@ int rhizome_fetch_poll()
 		continue;
 	      }
 	    q->file_ofs+=bytes;
-	  }	  
+	  } else if (bytes==0) {
+	    WHY("Got zero bytes, assume socket dead.");
+	    q->close=1;
+	    continue;
+	  }
 	  if (q->file_ofs>=q->file_len)
 	    {
 	      /* got all of file */

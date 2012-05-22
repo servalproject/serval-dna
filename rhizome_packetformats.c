@@ -352,6 +352,7 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	else
 	  {
 	    if (debug&DEBUG_RHIZOME) WHY("Unverified manifest has errors - so not processing any further.");
+	    rhizome_ignore_bundle(m);
 	  }
 	if (m) rhizome_manifest_free(m);
 	m=NULL;
