@@ -913,9 +913,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   }
   
   int q=OQ_ORDINARY;
-  if (mdp->out.src.port==MDP_PORT_VOMP
-      ||mdp->out.src.port==MDP_PORT_DNALOOKUP
-      ||mdp->out.dst.port==MDP_PORT_DNALOOKUP) {
+  if (mdp->out.src.port==MDP_PORT_VOMP) {
     q=OQ_ISOCHRONOUS_VOICE;
     rhizome_saw_voice_traffic();
   }
