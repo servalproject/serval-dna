@@ -299,6 +299,147 @@ int rhizome_queue_ignore_manifest(rhizome_manifest *m,
 
 }
 
+typedef struct rhizome_candidates {
+  rhizome_manifest *manifest;
+  long long size;
+  /* XXX Need group memberships/priority level here */
+  int priority;
+} rhizome_candidates;
+
+rhizome_candidates candidates[MAX_CANDIDATES];
+int candidate_count=0;
+
+/* sort indicated candidate from starting position down
+   (or up) */
+int rhizome_position_candidate(int position)
+{
+  while(position<candidate_count&&position>=0) {
+    rhizome_candidates *c1=&candidates[position];
+    rhizome_candidates *c2=&candidates[position+1];
+    if (c1->priority>c2->priority
+	||(c1->priority==c2->priority
+	   &&c1->size>c2->size))
+      {
+	rhizome_candidates c=*c1;
+	*c1=*c2;
+	*c2=c;
+	position++;
+      } 
+    else {
+      /* doesn't need moving down, but does it need moving up? */
+      if (!position) return 0;
+      rhizome_candidates *c0=&candidates[position-1];
+      if (c1->priority<c0->priority
+	  ||(c1->priority==c0->priority
+	     &&c1->size<c0->size))
+	{
+	  rhizome_candidates c=*c1;
+	  *c1=*c2;
+	  *c2=c;
+	  position--;
+	} 
+      else return 0;   
+    }
+  }
+  return 0;
+}
+
+int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
+				  struct sockaddr_in *peerip)
+{
+  /* must free manifest when done with it */
+
+  if (rhizome_manifest_version_cache_lookup(m)) {
+    /* We already have this version or newer */
+    if (debug&DEBUG_RHIZOMESYNC) {
+      WHYF("manifest id=%s, version=%lld\n",
+	   rhizome_manifest_get(m,"id",NULL,0),
+	   rhizome_manifest_get_ll(m,"version"));
+      WHY("We already have that manifest or newer.\n");
+    }
+    rhizome_manifest_free(m);
+    return -1;
+  } else {
+    if (debug&DEBUG_RHIZOMESYNC) {
+      WHYF("manifest id=%s, version=%lld is new to us.\n",
+	   rhizome_manifest_get(m,"id",NULL,0),
+	   rhizome_manifest_get_ll(m,"version"));
+    }
+  }
+
+  char *id=rhizome_manifest_get(m,"id",NULL,0);
+  long long filesize=rhizome_manifest_get_ll(m,"filesize");
+  int priority=100; /* normal priority */
+  int i;
+
+  /* work out where to put it in the list */
+  for(i=0;i<candidate_count;i++)
+    {
+      /* If this manifest is already in the list, stop.
+         (also replace older manifest versions with newer ones,
+          which can upset the ordering.) */
+      if (!strcmp(id,rhizome_manifest_get(candidates[i].manifest,"id",NULL,0)))
+	{
+	  /* duplicate.
+	     XXX - Check versions! We should replace older with newer,
+	     and then update position in queue based on size */
+	  long long list_version=rhizome_manifest_get_ll(candidates[i].manifest,
+							 "version");
+	  long long this_version=rhizome_manifest_get_ll(m,"version");
+	  if (list_version>=this_version) {
+	    /* this version is older than the one in the list,
+	       so don't list this one */
+	    rhizome_manifest_free(m);
+	    return 0; 
+	  } else {
+	    /* replace listed version with this newer version */
+	    rhizome_manifest_free(candidates[i].manifest);
+	    candidates[i].manifest=m;
+	    /* update position in list */
+	    rhizome_position_candidate(i);
+	    return 0;
+	  }
+	}
+
+      /* if we have a higher priority file than the one at this
+	 point in the list, stop, and we will shuffle the rest of
+	 the list down. */
+      if (candidates[i].priority>priority
+	  ||(candidates[i].priority==priority
+	     &&candidates[i].size>filesize))
+	break;
+    }
+  if (i>=MAX_CANDIDATES) {
+    /* our list is already full of higher-priority items */
+    rhizome_manifest_free(m);
+    return -1;
+  }
+  if (candidate_count==MAX_CANDIDATES) {
+    /* release manifest structure for whoever we are bumping from the list */
+    rhizome_manifest_free(candidates[MAX_CANDIDATES-1].manifest);
+    candidates[MAX_CANDIDATES-1].manifest=NULL;
+  }
+  /* shuffle down */
+  bcopy(&candidates[i],
+	&candidates[i+1],
+	&candidates[MAX_CANDIDATES]-&candidates[i+1]);
+  /* put new candidate in */
+  candidates[i].manifest=m;
+  candidates[i].size=filesize;
+  candidates[i].priority=priority;
+  /* update candidate count */
+  if (candidate_count<MAX_CANDIDATES) candidate_count++;
+
+  int j;
+  WHY("Rhizome priorities fetch list now:");
+  for(j=0;j<candidate_count;j++)
+    WHYF("%02d:%s*:size=%lld, priority=%d",
+	 j,overlay_render_sid_prefix(candidates[i].manifest->cryptoSignPublic,8),
+	 candidates[i].size,candidates[i].priority);
+
+  return 0;
+}
+
 int rhizome_queue_manifest_import(rhizome_manifest *m,
 				  struct sockaddr_in *peerip)
 {

@@ -276,7 +276,6 @@ int rhizome_manifest_set_ll(rhizome_manifest *m,char *var,long long value)
   return rhizome_manifest_set(m,var,svalue);
 }
 
-#define MAX_RHIZOME_MANIFESTS 16
 rhizome_manifest manifests[MAX_RHIZOME_MANIFESTS];
 char manifest_free[MAX_RHIZOME_MANIFESTS];
 int manifest_first_free=-1;

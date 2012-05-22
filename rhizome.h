@@ -253,3 +253,9 @@ int rhizome_queue_ignore_manifest(rhizome_manifest *m,
 				  struct sockaddr_in *peerip,int timeout);
 int rhizome_ignore_manifest_check(rhizome_manifest *m,
 				  struct sockaddr_in *peerip);
+
+/* one manifest is required per candidate, plus a few spare.
+   so MAX_RHIZOME_MANIFESTS must be > MAX_CANDIDATES. 
+*/
+#define MAX_RHIZOME_MANIFESTS 24
+#define MAX_CANDIDATES 16

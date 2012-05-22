@@ -393,8 +393,8 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	    
 	    /* Add manifest to import queue. We need to know originating IPv4 address
 	       so that we can transfer by HTTP. */
-	    if (rhizome_queue_manifest_import(m,(struct sockaddr_in *)f->recvaddr))
-	      rhizome_manifest_free(m);
+	    rhizome_suggest_queue_manifest_import
+	      (m,(struct sockaddr_in *)f->recvaddr);	  
 	  }
 	}
 	else
