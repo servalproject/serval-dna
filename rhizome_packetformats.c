@@ -337,10 +337,25 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	   energy, everytime we see a manifest that we already have).
 	   In fact, it would be better here to do a really rough and ready parser
 	   to get the id and version fields out, and avoid the memory copies that
-	   otherwise happen. */
+	   otherwise happen. 
+	   But we do need to make sure that at least one signature is there.
+	*/	
 	m=rhizome_read_manifest_file((char *)&f->payload->bytes[ofs],
 				     manifest_length,RHIZOME_DONTVERIFY);
-	int importManifest=0;
+	/* Crude signature presence test */
+	for(i=m->manifest_all_bytes-1;i>0;i++)
+	  if (!m->manifestdata[i]) {
+	    /* A null in the middle says we have a signature */
+	    break;
+	  }
+	if (!i) {
+	  /* ignore the announcement, but don't ignore other people
+	     offering the same manifest */
+	  WHY("Ignoring manifest announcment with no signature");
+	  rhizome_manifest_free(m);	  
+	  return 0;
+	}
+	int importManifest=0;	
 	if (rhizome_ignore_manifest_check(m,(struct sockaddr_in *)f->recvaddr))
 	  {
 	    /* Ignoring manifest that has caused us problems recently */
