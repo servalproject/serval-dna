@@ -80,6 +80,7 @@ int strbuf_vsprintf(strbuf sb, const char *fmt, va_list ap)
   int n;
   if (sb->start && sb->current < sb->end) {
     n = vsnprintf(sb->current, sb->end - sb->current + 1, fmt, ap2);
+    *sb->end = '\0';
   } else {
     char tmp[1];
     n = vsnprintf(tmp, sizeof tmp, fmt, ap2);

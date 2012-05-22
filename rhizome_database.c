@@ -64,6 +64,7 @@ int form_rhizome_datastore_path(char * buf, size_t bufsiz, const char *fmt, ...)
   va_list ap2;
   va_copy(ap2, ap);
   strbuf_sprintf(b, fmt, ap2);
+  va_end(ap2);
   va_end(ap);
   if (strbuf_overrun(b)) {
       WHY("Path buffer overrun");
@@ -158,6 +159,7 @@ long long sqlite_exec_int64(char *sqlformat,...)
 
   vsnprintf(sqlstatement,8192,sqlformat,ap2); sqlstatement[8191]=0;
 
+  va_end(ap2);
   va_end(ap);
 
   sqlite3_stmt *statement;

@@ -376,6 +376,7 @@ int cli_printf(const char *fmt, ...)
   } else
 #endif
     ret = vfprintf(stdout, fmt, ap2);
+  va_end(ap2);
   va_end(ap);
   return ret;
 }
