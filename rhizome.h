@@ -259,3 +259,6 @@ int rhizome_ignore_manifest_check(rhizome_manifest *m,
 */
 #define MAX_RHIZOME_MANIFESTS 24
 #define MAX_CANDIDATES 16
+
+int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
+					  struct sockaddr_in *peerip);
