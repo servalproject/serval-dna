@@ -355,7 +355,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
   int i;
 
   if (0) WHYF("Rhizome considering %s (size=%lld, priority=%d)",
-       id,filesize,priority);
+	      id,filesize,priority);
 
   if (rhizome_manifest_version_cache_lookup(m)) {
     /* We already have this version or newer */
@@ -426,8 +426,8 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
   } else candidate_count++;
   /* shuffle down */
   int bytes=(candidate_count-(i+1))*sizeof(rhizome_candidates);
-  WHYF("Moving slot %d to slot %d (%d bytes = %d slots)",
-       i,i+1,bytes,bytes/sizeof(rhizome_candidates));
+  if (0) WHYF("Moving slot %d to slot %d (%d bytes = %d slots)",
+	      i,i+1,bytes,bytes/sizeof(rhizome_candidates));
   bcopy(&candidates[i],
 	&candidates[i+1],
 	bytes);
@@ -438,12 +438,14 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
   candidates[i].peer=*peerip;
 
   int j;
-  WHY("Rhizome priorities fetch list now:");
-  for(j=0;j<candidate_count;j++)
-    WHYF("%02d:%s:size=%lld, priority=%d",
-	 j,
-	 rhizome_manifest_get(candidates[j].manifest,"id",NULL,0),
-	 candidates[j].size,candidates[j].priority);
+  if (0) {
+    WHY("Rhizome priorities fetch list now:");
+    for(j=0;j<candidate_count;j++)
+      WHYF("%02d:%s:size=%lld, priority=%d",
+	   j,
+	   rhizome_manifest_get(candidates[j].manifest,"id",NULL,0),
+	   candidates[j].size,candidates[j].priority);
+  }
 
   return 0;
 }
@@ -818,8 +820,12 @@ int rhizome_fetch_poll()
 		       q->manifest->manifest_all_bytes);
 		}
 		q->manifest->finalised=1;
+		WHYF("finalised=%d",q->manifest->finalised);
 		q->manifest->manifest_bytes=q->manifest->manifest_all_bytes;
 		if (!rhizome_write_manifest_file(q->manifest,filename)) {
+		  WHYF("finalised=%d",q->manifest->finalised);
+		  q->manifest->finalised=1;
+		  WHYF("finalised=%d",q->manifest->finalised);
 		  rhizome_bundle_import(q->manifest, NULL, id,
 					NULL /* no additional groups */,
 					q->manifest->ttl - 1 /* TTL */,

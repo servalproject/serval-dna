@@ -196,7 +196,7 @@ int monitor_poll()
 #endif
       != -1
   ) {
-    WHYF("ignored_length=%d",ignored_length);
+    if (0) WHYF("ignored_length=%d",ignored_length);
     int res = fcntl(s,F_SETFL, O_NONBLOCK);
     if (res) { close(s); continue; }
 #if defined(HAVE_LINUX_STRUCT_UCRED)
@@ -221,8 +221,8 @@ int monitor_poll()
     otheruid = ucred.cr_uid;
 #endif
     if (otheruid&&(otheruid!=getuid())) {
-      WHYF("monitor.socket client has wrong uid (%d versus %d)",
-	   otheruid,getuid());
+      if (0) WHYF("monitor.socket client has wrong uid (%d versus %d)",
+		  otheruid,getuid());
       write(s,"\nCLOSE:Incorrect UID\n",strlen("\nCLOSE:Incorrect UID\n"));
       close(s); continue;
     }

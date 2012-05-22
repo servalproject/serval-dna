@@ -321,15 +321,10 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
       rhizome_manifest_add_group(m_in, groups[i]);
   }
 
-  WHYF("bytes=%d, all_bytes=%d",m_in->manifest_bytes,m_in->manifest_all_bytes);
-  dump("importing manifest",m_in->manifestdata,m_in->manifest_all_bytes);
-
   /* Finish completing the manifest */
   if (m_in->finalised==0)
     if (rhizome_manifest_finalise(m_in, signP, author))
       return WHY("Failed to finalise manifest.\n");
-
-  dump("between finalise and store",m_in->manifestdata,m_in->manifest_all_bytes);
 
   /* Okay, it is written, and can be put directly into the rhizome database now */
   if (rhizome_store_bundle(m_in, filename) == -1)

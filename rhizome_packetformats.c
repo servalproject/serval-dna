@@ -165,7 +165,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	snprintf(query,1024,"SELECT BAR,ROWID FROM MANIFESTS LIMIT %d,%d",
 		 bundle_offset[pass],slots);
 	break;
-      }      
+      }
 
       switch (sqlite3_prepare_v2(rhizome_db,query,-1,&statement,NULL))
 	{
@@ -305,9 +305,9 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 {
   if (!f) return -1;
-  if (0&&debug&DEBUG_RHIZOME) {
+  if (debug&DEBUG_RHIZOME) {
     WHYF("rhizome f->bytecount=%d",f->payload->length);
-    dump("payload",f->payload->bytes,f->payload->length);
+    //    dump("payload",f->payload->bytes,f->payload->length);
   }
 
   int ofs=0;
@@ -344,6 +344,9 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	if (rhizome_ignore_manifest_check(m,(struct sockaddr_in *)f->recvaddr))
 	  {
 	    /* Ignoring manifest that has caused us problems recently */
+	    WHYF("Ignoring manifest with errors: %s",
+		 rhizome_manifest_get(m,"id",NULL,0)
+		 );
 	  }
 	else if (m&&(!m->errors))
 	  {
@@ -352,7 +355,7 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	      /* We already have this version or newer */
 	      if (debug&DEBUG_RHIZOMESYNC) {
 		WHYF("manifest id=%s, version=%lld",
-			rhizome_manifest_get(m,"id",NULL,0),
+		     rhizome_manifest_get(m,"id",NULL,0),
 			rhizome_manifest_get_ll(m,"version"));
 		WHY("We already have that manifest or newer.");
 	      }
