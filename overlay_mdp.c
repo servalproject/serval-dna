@@ -917,6 +917,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       ||mdp->out.src.port==MDP_PORT_DNALOOKUP
       ||mdp->out.dst.port==MDP_PORT_DNALOOKUP) {
     q=OQ_ISOCHRONOUS_VOICE;
+    rhizome_saw_voice_traffic();
   }
   if (overlay_payload_enqueue(q,frame,0))
     {
