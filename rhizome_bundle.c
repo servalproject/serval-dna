@@ -87,7 +87,7 @@ rhizome_manifest *rhizome_read_manifest_file(const char *filename, int bufferP, 
 	}
       } else {
 	char buf[80];
-	WARNF("Skipping malformed line in manifest file %s: %s", bufferP ? "<buffer>" : filename, catv(line, buf, sizeof buf));
+	if (0) WARNF("Skipping malformed line in manifest file %s: %s", bufferP ? "<buffer>" : filename, catv(line, buf, sizeof buf));
       }
     }
   /* The null byte gets included in the check sum */

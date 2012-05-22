@@ -230,7 +230,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 		 with ob_append_byte() ??? */		
 	      ob_setbyte(e,e->length,(blob_bytes>>8)&0xff);
 	      ob_setbyte(e,e->length+1,(blob_bytes>>0)&0xff);
-	      if (debug&DEBUG_RHIZOME)
+	      if (0&&debug&DEBUG_RHIZOME)
 		WHYF("length bytes written at offset 0x%x",e->length);
 	    }
 	    if (frameFull) { 
@@ -285,7 +285,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
   if (blob) sqlite3_blob_close(blob); blob=NULL;
   if (statement) sqlite3_finalize(statement); statement=NULL;
   
-  if (debug&DEBUG_RHIZOME) WHYF("Appended %d rhizome advertisements to packet using %d bytes.",bundles_advertised,bytes_used);
+  if (0&&debug&DEBUG_RHIZOME) WHYF("Appended %d rhizome advertisements to packet using %d bytes.",bundles_advertised,bytes_used);
   int rfs_value=1+8+1+1+1+bytes_used;
   if (rfs_value<0xfa)
     ob_setbyte(e,rfs_offset,rfs_value);
