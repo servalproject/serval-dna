@@ -187,7 +187,7 @@ int overlay_interface_init_socket(int interface,struct sockaddr_in src_addr,stru
 
   I(fd)=socket(PF_INET,SOCK_DGRAM,0);
   if (I(fd)<0) {
-    return WHY("Could not create UDP socket for interface");
+    return WHYF("Could not create UDP socket for interface: %s",strerror(errno));
   } else 
     WHYF("interface #%d fd=%d",interface,I(fd));
 
