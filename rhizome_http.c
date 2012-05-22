@@ -69,7 +69,7 @@ void sigPipeHandler(int signal)
 
 void sigIoHandler(int signal)
 {
-  printf("sigio\n");
+  WHY("sigio");
   sigIoFlag++;
   return;
 }
@@ -84,7 +84,7 @@ int rhizome_server_start()
   struct sockaddr_in address;
   int on=1;
 
-  if (debug&DEBUG_RHIZOME) fprintf(stderr,"Trying to start rhizome server.\n");
+  if (debug&DEBUG_RHIZOME) WHYF("Trying to start rhizome server.");
 
   /* Catch broken pipe signals */
   signal(SIGPIPE,sigPipeHandler);
@@ -109,7 +109,7 @@ int rhizome_server_start()
     {
       close(rhizome_server_socket);
       rhizome_server_socket=-1000;
-      if (debug&DEBUG_RHIZOME)  WHY("bind() failed starting rhizome http server\n");
+      if (debug&DEBUG_RHIZOME)  WHY("bind() failed starting rhizome http server");
       return -1;
     }
 
@@ -125,7 +125,7 @@ int rhizome_server_start()
     {
       close(rhizome_server_socket);
       rhizome_server_socket=-1;
-      return WHY("listen() failed starting rhizome http server\n");
+      return WHY("listen() failed starting rhizome http server");
     }
 
   return 0;
@@ -146,7 +146,7 @@ int rhizome_server_poll()
 
   /* Process the existing requests.
      XXX - should use poll or select here */
-  if (debug&DEBUG_RHIZOME) printf("Checking %d active connections\n",
+  if (debug&DEBUG_RHIZOME) WHYF("Checking %d active connections",
 		    rhizome_server_live_request_count);
   for(rn=0;rn<rhizome_server_live_request_count;rn++)
     {
@@ -156,7 +156,7 @@ int rhizome_server_poll()
 	case RHIZOME_HTTP_REQUEST_RECEIVING:
 	  /* Keep reading until we have two CR/LFs in a row */
 	  r->request[r->request_length]=0;
-	  fprintf(stderr,"http request so far: [%s]\n",r->request);
+	  WHYF("http request so far: [%s]",r->request);
 	  
 	  sigPipeFlag=0;
 	  
@@ -208,8 +208,7 @@ int rhizome_server_poll()
 	  /* Socket already has request -- so just try to send some data. */
 	  rhizome_server_http_send_bytes(rn,r);
 	  break;
-      }
-      WHY("Processing live HTTP requests not implemented.");
+      }      
     }
 
   /* Deal with any new requests */
@@ -264,7 +263,7 @@ int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
   if (rhizome_server_socket>-1)
     {
       if (debug&DEBUG_IO) {
-	fprintf(stderr,"rhizome http server is poll() slot #%d (fd %d)\n",
+	WHYF("rhizome http server is poll() slot #%d (fd %d)",
 		*fdcount,rhizome_server_socket);
       }
       fds[*fdcount].fd=rhizome_server_socket;
@@ -276,7 +275,7 @@ int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
     {
       if ((*fdcount)>=fdmax) return -1;
       if (debug&DEBUG_IO) {
-	fprintf(stderr,"rhizome http request #%d is poll() slot #%d (fd %d)\n",
+	WHYF("rhizome http request #%d is poll() slot #%d (fd %d)",
 		i,*fdcount,rhizome_live_http_requests[i]->socket); }
       fds[*fdcount].fd=rhizome_live_http_requests[i]->socket;
       switch(rhizome_live_http_requests[i]->request_type) {
@@ -342,7 +341,7 @@ int rhizome_server_sql_query_http_response(int rn,rhizome_http_request *r,
   long long response_bytes=256+r->source_count*r->source_record_size;
   rhizome_server_http_response_header(r,200,"servalproject.org/rhizome-list", 
 				      response_bytes);
-  printf("headers consumed %d bytes.\n",r->buffer_length);
+  WHYF("headers consumed %d bytes.",r->buffer_length);
 
   /* Clear and prepare response header */
   bzero(&r->buffer[r->buffer_length],256);
@@ -350,7 +349,7 @@ int rhizome_server_sql_query_http_response(int rn,rhizome_http_request *r,
   r->buffer[r->buffer_length]=0x01; /* type of response (list) */
   r->buffer[r->buffer_length+1]=0x01; /* version of response */
 
-  printf("Found %lld records.\n",r->source_count);
+  WHYF("Found %lld records.",r->source_count);
   /* Number of records we intend to return */
   r->buffer[r->buffer_length+4]=(r->source_count>>0)&0xff;
   r->buffer[r->buffer_length+5]=(r->source_count>>8)&0xff;
@@ -371,7 +370,7 @@ int rhizome_server_sql_query_http_response(int rn,rhizome_http_request *r,
   r->blob_column=strdup(column);
   r->blob_table=strdup(table);
 
-  printf("buffer_length=%d\n",r->buffer_length);
+  WHYF("buffer_length=%d",r->buffer_length);
 
   /* Populate spare space in buffer with rows of data */
   return rhizome_server_sql_query_fill_buffer(rn,r);
@@ -381,7 +380,7 @@ int rhizome_server_sql_query_fill_buffer(int rn,rhizome_http_request *r)
 {
   unsigned char blob_value[r->source_record_size*2+1];
 
-  printf("populating with sql rows at offset %d\n",r->buffer_length);
+  WHYF("populating with sql rows at offset %d",r->buffer_length);
   if (r->source_index>=r->source_count)
     {
       /* All done */
@@ -390,7 +389,7 @@ int rhizome_server_sql_query_fill_buffer(int rn,rhizome_http_request *r)
 
   int record_count=(r->buffer_size-r->buffer_length)/r->source_record_size;
   if (record_count<1) {
-    printf("r->buffer_size=%d, r->buffer_length=%d, r->source_record_size=%d\n",
+    WHYF("r->buffer_size=%d, r->buffer_length=%d, r->source_record_size=%d",
 	   r->buffer_size, r->buffer_length, r->source_record_size);
     return WHY("Not enough space to fit any records");
   }
@@ -427,7 +426,7 @@ int rhizome_server_sql_query_fill_buffer(int rn,rhizome_http_request *r)
       switch(column_type) {
       case SQLITE_TEXT:	value=sqlite3_column_text(statement, 0); break;
       case SQLITE_BLOB:
-	printf("table='%s',col='%s',rowid=%lld\n",
+	WHYF("table='%s',col='%s',rowid=%lld",
 	       r->blob_table,r->blob_column,
 	       sqlite3_column_int64(statement,1));
 	if (sqlite3_blob_open(rhizome_db,"main",r->blob_table,r->blob_column,
@@ -453,7 +452,7 @@ int rhizome_server_sql_query_fill_buffer(int rn,rhizome_http_request *r)
       default:
 	/* improper column type, so don't include in report */
 	WHY("Bad column type");
-	printf("colunnt_type=%d\n",column_type);
+	WHYF("colunnt_type=%d",column_type);
 	continue;
       }
       if (r->source_flags&1) {
@@ -468,7 +467,7 @@ int rhizome_server_sql_query_fill_buffer(int rn,rhizome_http_request *r)
 	bcopy(value,&r->buffer[r->buffer_length],r->source_record_size);
       r->buffer_length+=r->source_record_size;
       
-      printf("wrote row %lld, buffer_length=%d\n",
+      WHYF("wrote row %lld, buffer_length=%d",
 	     r->source_index,r->buffer_length);
     }
   sqlite3_finalize(statement);
@@ -496,21 +495,21 @@ int rhizome_server_parse_http_request(int rn,rhizome_http_request *r)
 		     strlen("GET /rhizome/groups HTTP/1.")))
       {
 	/* Return the list of known groups */
-	printf("get /rhizome/groups (list of groups)\n");
+	WHYF("get /rhizome/groups (list of groups)");
 	rhizome_server_sql_query_http_response(rn,r,"id","groups","from groups",32,1);
       }
     else if (!strncasecmp(r->request,"GET /rhizome/files HTTP/1.",
 		     strlen("GET /rhizome/files HTTP/1.")))
       {
 	/* Return the list of known files */
-	printf("get /rhizome/files (list of files)\n");
+	WHYF("get /rhizome/files (list of files)");
 	rhizome_server_sql_query_http_response(rn,r,"id","files","from files",32,1);
       }
     else if (!strncasecmp(r->request,"GET /rhizome/bars HTTP/1.",
 		     strlen("GET /rhizome/bars HTTP/1.")))
       {
 	/* Return the list of known files */
-	printf("get /rhizome/bars (list of BARs)\n");
+	WHYF("get /rhizome/bars (list of BARs)");
 	rhizome_server_sql_query_http_response(rn,r,"bar","manifests","from manifests",32,0);
       }
     else if (sscanf(r->request,"GET /rhizome/file/%s HTTP/1.",
@@ -520,7 +519,7 @@ int rhizome_server_parse_http_request(int rn,rhizome_http_request *r)
 	int dud=0;
 	int i;
 	hexFilter(id);
-	printf("get /rhizome/file/ [%s]\n",id);
+	WHYF("get /rhizome/file/ [%s]",id);
 	WHY("Check for range: header, and return 206 if returning partial content");
 	for(i=0;i<strlen(id);i++) if ((id[i]<'0')||(id[i]>'f')||(id[i]=='\'')) dud++;
 	if (dud) rhizome_server_simple_http_response(r,400,"<html><h1>That doesn't look like hex to me.</h1></html>\r\n");
@@ -555,7 +554,7 @@ int rhizome_server_parse_http_request(int rn,rhizome_http_request *r)
       {
 	/* Stream the specified manifest */
 	hexFilter(id);
-	printf("get /rhizome/manifest/ [%s]\n",id);
+	WHYF("get /rhizome/manifest/ [%s]",id);
 	rhizome_server_simple_http_response(r,400,"<html><h1>A specific manifest</h1></html>\r\n");      }
     else 
       rhizome_server_simple_http_response(r,400,"<html><h1>Sorry, couldn't parse your request.</h1></html>\r\n");
@@ -613,7 +612,7 @@ int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r)
   int bytes;
   fcntl(r->socket,F_SETFL,fcntl(r->socket, F_GETFL, NULL)|O_NONBLOCK);
 
-  if (debug&DEBUG_RHIZOME) fprintf(stderr,"Request #%d, type=0x%x\n",rn,r->request_type);
+  if (debug&DEBUG_RHIZOME) WHYF("Request #%d, type=0x%x\n",rn,r->request_type);
 
   /* Flush anything out of the buffer if present, before doing any further
      processing */
@@ -622,7 +621,7 @@ int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r)
       bytes=r->buffer_length-r->buffer_offset;
       bytes=write(r->socket,&r->buffer[r->buffer_offset],bytes);
       if (bytes>0) {
-	fprintf(stderr,"wrote %d bytes\n",bytes);
+	WHYF("wrote %d bytes\n",bytes);
 	dump("bytes written",&r->buffer[r->buffer_offset],bytes);
 	r->buffer_offset+=bytes;
 	if (r->buffer_offset>=r->buffer_length) {
@@ -633,7 +632,7 @@ int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r)
 	    WHY("Finished sending data");
 	    return rhizome_server_close_http_request(rn);	  
 	  } else {
-	    if (debug&DEBUG_RHIZOME) { fprintf(stderr,"request type = 0x%x after sending buffer.\n",
+	    if (debug&DEBUG_RHIZOME) { WHYF("request type = 0x%x after sending buffer.",
 				   r->request_type);
 	    }
 	  }
