@@ -50,7 +50,7 @@ int autoAnswerP=1;
 int pipeAudio=1;
 int reflectAudio=0;
 int syntheticAudio=0;
-int showReceived=0;
+int showReceived=1;
 int interactiveP=1;
 int recordCodec=VOMP_CODEC_PCM;
 int recordCodecBlockSamples=320;
@@ -133,7 +133,6 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
 
   int base_fd_count=fdcount;
   while(1) {
-    WHY("pollloop");
     fdcount=base_fd_count;
     if (audev&&audev->poll_fds) fdcount+=audev->poll_fds(&fds[fdcount],128-fdcount);
     poll(fds,fdcount,1000);
