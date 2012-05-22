@@ -36,6 +36,11 @@ int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, cons
 
   char filename[1024];
   char manifestname[1024];
+
+  /* make sure import path exists */
+  snprintf(filename,1024,"%s/import",rhizome_datastore_path());
+  mkdirs(filename,0700);
+
   if (!FORM_RHIZOME_DATASTORE_PATH(filename, "import/file.%s", bundle)
    || !FORM_RHIZOME_DATASTORE_PATH(manifestname, "import/manifest.%s", bundle))
     return WHY("Manifest bundle name too long");
@@ -67,6 +72,7 @@ int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, cons
 				);
   unlink(filename);
   if (ret == -1) {
+    WHY("rhizome_add_manifest() failed");
     unlink(manifestname);
   } else {
     /* >>> For testing, write manifest file back to disk and leave it there */
