@@ -23,6 +23,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define RHIZOME_HTTP_PORT 4110
 
+extern long long rhizome_voice_timeout;
+
 typedef struct rhizome_http_request {
   int socket;
   long long last_activity; /* time of last activity in ms */

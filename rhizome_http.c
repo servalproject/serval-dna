@@ -131,6 +131,8 @@ int rhizome_server_start()
   return 0;
 }
 
+int rhizome_poll_httpP=0;
+
 int rhizome_server_poll()
 {
   struct sockaddr addr;
@@ -138,6 +140,8 @@ int rhizome_server_poll()
   int sock;
   int rn;
   
+  if (!rhizome_poll_httpP) return 0;
+
   /* Having the starting of the server here is helpful in that
      if the port is taken by someone else, we will grab it fairly
      swiftly once it becomes available. */
@@ -255,10 +259,22 @@ int rhizome_server_free_http_request(rhizome_http_request *r)
   return 0;
 }
 
+long long rhizome_last_http_send=0;
 int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
 {
   int i;
   if ((*fdcount)>=fdmax) return -1;
+  rhizome_poll_httpP=0;
+  /* Don't send quickly during voice calls */
+  long long now=overlay_gettime_ms();
+  if (now<rhizome_voice_timeout)
+    {
+      /* only send data once per 500ms during calls */
+      if ((rhizome_last_http_send+500)>now)
+	return 0;
+    }
+  rhizome_last_http_send=now;
+  rhizome_poll_httpP=1;
 
   if (rhizome_server_socket>-1)
     {

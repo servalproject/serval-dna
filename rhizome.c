@@ -369,3 +369,13 @@ int rhizome_hex_to_bytes(const char *in,unsigned char *out,int hexChars)
   return 0;
 }
 
+/* When voice traffic is being carried, we need to throttle Rhizome down
+   to a more sensible level.  Or possibly even supress it entirely.
+ */
+long long rhizome_voice_timeout=0;
+int rhizome_saw_voice_traffic()
+{
+  /* We are in "voice mode" for a second after sending a voice frame */
+  rhizome_voice_timeout=overlay_gettime_ms()+1000;
+  return 0;
+}

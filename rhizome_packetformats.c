@@ -73,6 +73,22 @@ int bundles_available=-1;
 int bundle_offset[2]={0,0};
 int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 {
+  int voice_mode=0;
+
+  /* behave differently during voice mode.
+     Basically don't encourage people to grab stuff from us, but keep
+     just enough activity going so that it is possible to send a (small)
+     message/file during a call. 
+
+     XXX Eventually only advertise small/recently changed files during voice calls.
+     We need to change manifest table to include payload length to make our life
+     easy here (also would let us order advertisements by size of payload).
+     For now, we will just advertised only occassionally.
+ */
+  long long now=overlay_gettime_ms();
+  if (now<rhizome_voice_timeout) voice_mode=1;
+  if (voice_mode) if (random()&3) return 0;
+
   int pass;
   int bytes=e->sizeLimit-e->length;
   int overhead=1+8+1+3+1+1+1; /* maximum overhead */

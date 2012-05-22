@@ -426,8 +426,22 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
   return 0;
 }
   
+long long rhizome_last_fetch=0;
+int rhizome_poll_fetchP=0;
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
 {
+  /* Don't fetch quickly during voice calls */
+  rhizome_poll_fetchP=0;
+  long long now=overlay_gettime_ms();
+  if (now<rhizome_voice_timeout)
+    {
+      /* only fetch data once per 500ms during calls */
+      if ((rhizome_last_fetch+500)>now)
+	return 0;
+    }
+  rhizome_last_fetch=now;
+  rhizome_poll_fetchP=1;
+
   int i;
   if ((*fdcount)>=fdmax) return -1;
 
@@ -451,10 +465,10 @@ int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
    return 0;
 }
 
-
 int rhizome_fetch_poll()
 {
   int rn;
+  if (!rhizome_poll_fetchP) return 0;
   if (debug&DEBUG_RHIZOME) WHYF("Checking %d active fetch requests",
 				rhizome_file_fetch_queue_count);
   for(rn=0;rn<rhizome_file_fetch_queue_count;rn++)

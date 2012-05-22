@@ -245,10 +245,14 @@ int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP)
      Complain if there are too many frames in the queue.
   */
   if (q==OQ_ISOCHRONOUS_VOICE&&(!forceBroadcastP)) {
-    /* Dispatch voice data immediately. */
+    /* Dispatch voice data immediately.
+       Also tell Rhizome to back off a bit, so that voice traffic
+       can get through. */
     int interface=-1;
     int nexthoplen=SID_SIZE;
     int broadcast=overlay_address_is_broadcast(p->destination);
+
+    rhizome_saw_voice_traffic();
 
     overlay_abbreviate_clear_most_recent_address();
     
