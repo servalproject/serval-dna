@@ -301,6 +301,7 @@ int rhizome_queue_ignore_manifest(rhizome_manifest *m,
 
 typedef struct rhizome_candidates {
   rhizome_manifest *manifest;
+  struct sockaddr_in peer;
   long long size;
   /* XXX Need group memberships/priority level here */
   int priority;
@@ -353,7 +354,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
   int priority=100; /* normal priority */
   int i;
 
-  WHYF("Rhizome considering %s (size=%lld, priority=%d)",
+  if (0) WHYF("Rhizome considering %s (size=%lld, priority=%d)",
        id,filesize,priority);
 
   if (rhizome_manifest_version_cache_lookup(m)) {
@@ -367,7 +368,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
     rhizome_manifest_free(m);
     return -1;
   } else {
-    if (1||debug&DEBUG_RHIZOMESYNC) {
+    if (debug&DEBUG_RHIZOMESYNC) {
       WHYF("manifest id=%s, version=%lld is new to us.\n",
 	   rhizome_manifest_get(m,"id",NULL,0),
 	   rhizome_manifest_get_ll(m,"version"));
@@ -434,6 +435,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
   candidates[i].manifest=m;
   candidates[i].size=filesize;
   candidates[i].priority=priority;
+  candidates[i].peer=*peerip;
 
   int j;
   WHY("Rhizome priorities fetch list now:");
@@ -442,6 +444,28 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
 	 j,
 	 rhizome_manifest_get(candidates[j].manifest,"id",NULL,0),
 	 candidates[j].size,candidates[j].priority);
+
+  return 0;
+}
+
+int rhizome_enqueue_suggestions()
+{
+  int i;
+  for(i=0;i<candidate_count;i++)
+    {
+      if (rhizome_file_fetch_queue_count>=MAX_QUEUED_FILES) 
+	break;
+      rhizome_queue_manifest_import(candidates[i].manifest,&candidates[i].peer);
+      candidates[i].manifest=NULL;
+    }
+  if (i) {
+    /* now shuffle up */
+    int bytes=(candidate_count-i)*sizeof(rhizome_candidates);
+    WHYF("Moving slot %d to slot 0 (%d bytes = %d slots)",
+	 i,bytes,bytes/sizeof(rhizome_candidates));
+    bcopy(&candidates[i],&candidates[0],bytes);
+    candidate_count-=i;
+  }
 
   return 0;
 }
@@ -685,10 +709,19 @@ int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
    return 0;
 }
 
+long long rhizome_last_fetch_enqueue_time=0;
+
 int rhizome_fetch_poll()
 {
   int rn;
   if (!rhizome_poll_fetchP) return 0;
+
+  if (rhizome_last_fetch_enqueue_time<overlay_gettime_ms())
+    {
+      rhizome_enqueue_suggestions();
+      rhizome_last_fetch_enqueue_time=overlay_gettime_ms();
+    }
+
   if (0&&debug&DEBUG_RHIZOME) WHYF("Checking %d active fetch requests",
 				rhizome_file_fetch_queue_count);
   for(rn=0;rn<rhizome_file_fetch_queue_count;rn++)
