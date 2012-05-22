@@ -120,8 +120,9 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
      second.
   */
   
-  if (debug&DEBUG_RHIZOME)
-    WHY("Group handling not completely thought out here yet.");
+  if (debug&DEBUG_RHIZOME) {
+#warning    WHY("Group handling not completely thought out here yet.");
+  }
 
   /* Get number of bundles available if required */
   bundles_available=sqlite_exec_int64("SELECT COUNT(BAR) FROM MANIFESTS;");
@@ -130,7 +131,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
   if (bundles_available==-1||(bundle_offset[1]>=bundles_available)) 
     bundle_offset[1]=0;
   if(0)
-    fprintf(stderr,"%d bundles in database (%d %d), slots=%d.\n",bundles_available,
+    WHYF("%d bundles in database (%d %d), slots=%d.",bundles_available,
 	    bundle_offset[0],bundle_offset[1],slots);
   
   sqlite3_stmt *statement=NULL;
@@ -179,7 +180,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	    int blob_bytes=sqlite3_blob_bytes(blob);
 	    if (pass&&(blob_bytes!=RHIZOME_BAR_BYTES)) {
 	      if (debug&DEBUG_RHIZOME) 
-		fprintf(stderr,"Found a BAR that is the wrong size - ignoring\n");
+		WHY("Found a BAR that is the wrong size - ignoring");
 	      sqlite3_blob_close(blob); blob=NULL;
 	      continue;
 	    }
@@ -187,7 +188,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	    /* Only include manifests that are <=1KB inline.
 	       Longer ones are only advertised by BAR */
 	    if (blob_bytes>1024) { 
-	      fprintf(stderr,"blob>1k - ignoring\n");
+	      WHY("blob>1k - ignoring");
 	      sqlite3_blob_close(blob); blob=NULL;
 	      continue;
 	    }
@@ -198,12 +199,12 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	    int overhead=0;
 	    int frameFull=0;
 	    if (!pass) overhead=2;
-	    if (0) printf("e=%p, e->bytes=%p,e->length=%d, e->allocSize=%d\n",
+	    if (0) WHYF("e=%p, e->bytes=%p,e->length=%d, e->allocSize=%d",
 		   e,e->bytes,e->length,e->allocSize);	    
 	    
 	    if (ob_makespace(e,overhead+2+blob_bytes)) {
 	      if (debug&DEBUG_RHIZOME) 
-		fprintf(stderr,"Stopped cramming %s into Rhizome advertisement frame.\n",
+		WHYF("Stopped cramming %s into Rhizome advertisement frame.",
 			pass?"BARs":"manifests");
 	      frameFull=1;
 	    }
@@ -214,7 +215,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	      ob_setbyte(e,e->length,(blob_bytes>>8)&0xff);
 	      ob_setbyte(e,e->length+1,(blob_bytes>>0)&0xff);
 	      if (debug&DEBUG_RHIZOME)
-		fprintf(stderr,"length bytes written at offset 0x%x\n",e->length);
+		WHYF("length bytes written at offset 0x%x",e->length);
 	    }
 	    if (frameFull) { 
 	      sqlite3_blob_close(blob); blob=NULL;
@@ -228,10 +229,11 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	    if (sqlite3_blob_read(blob,&e->bytes[e->length+overhead],blob_bytes,0)
 		!=SQLITE_OK) {
 	      if (!pass) {
-		fprintf(stderr,"  Manifest:\n");
-		int i;
-		for(i=0;i<blob_bytes;i++) fprintf(stderr,"%c",e->bytes[e->length+overhead+i]);
-		
+		if (0) {
+		  WHY("  Manifest:");
+		  int i;
+		  for(i=0;i<blob_bytes;i++) WHYF("  %c",e->bytes[e->length+overhead+i]);
+		}
 	      }
 	      if (debug&DEBUG_RHIZOME) WHY("Couldn't read from blob");
 	      sqlite3_blob_close(blob); blob=NULL;
@@ -267,7 +269,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
   if (blob) sqlite3_blob_close(blob); blob=NULL;
   if (statement) sqlite3_finalize(statement); statement=NULL;
   
-  if (debug&DEBUG_RHIZOME) printf("Appended %d rhizome advertisements to packet using %d bytes.\n",bundles_advertised,bytes_used);
+  if (debug&DEBUG_RHIZOME) WHYF("Appended %d rhizome advertisements to packet using %d bytes.",bundles_advertised,bytes_used);
   int rfs_value=1+8+1+1+1+bytes_used;
   if (rfs_value<0xfa)
     ob_setbyte(e,rfs_offset,rfs_value);
@@ -287,8 +289,8 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 {
   if (!f) return -1;
-  if (debug&DEBUG_RHIZOME) {
-    WHYF("rhizome f->bytecount=%d\n",f->payload->length);
+  if (0&&debug&DEBUG_RHIZOME) {
+    WHYF("rhizome f->bytecount=%d",f->payload->length);
     dump("payload",f->payload->bytes,f->payload->length);
   }
 
@@ -330,15 +332,15 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	    if (rhizome_manifest_version_cache_lookup(m)) {
 	      /* We already have this version or newer */
 	      if (debug&DEBUG_RHIZOMESYNC) {
-		fprintf(stderr,"manifest id=%s, version=%lld\n",
+		WHYF("manifest id=%s, version=%lld",
 			rhizome_manifest_get(m,"id",NULL,0),
 			rhizome_manifest_get_ll(m,"version"));
-		WHY("We already have that manifest or newer.\n");
+		WHY("We already have that manifest or newer.");
 	      }
 	      importManifest=0;
 	    } else {
 	      if (debug&DEBUG_RHIZOMESYNC) {
-		fprintf(stderr,"manifest id=%s, version=%lld is new to us.\n",
+		WHYF("manifest id=%s, version=%lld is new to us.",
 			rhizome_manifest_get(m,"id",NULL,0),
 			rhizome_manifest_get_ll(m,"version"));
 	      }
@@ -349,7 +351,7 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	  }
 	else
 	  {
-	    if (debug&DEBUG_RHIZOME) fprintf(stderr,"Unverified manifest has errors - so not processing any further.\n");
+	    if (debug&DEBUG_RHIZOME) WHY("Unverified manifest has errors - so not processing any further.");
 	  }
 	if (m) rhizome_manifest_free(m);
 	m=NULL;
@@ -361,10 +363,10 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	  m=rhizome_read_manifest_file((char *)&f->payload->bytes[ofs],
 				       manifest_length,RHIZOME_VERIFY);
 	  if (m->errors) {
-	    if (debug&DEBUG_RHIZOME) fprintf(stderr,"Verifying manifest %s revealed errors -- not storing.\n",manifest_id);
+	    if (debug&DEBUG_RHIZOME) WHYF("Verifying manifest %s revealed errors -- not storing.",manifest_id);
 	    rhizome_manifest_free(m);	  
 	  } else {
-	    if (debug&DEBUG_RHIZOME) fprintf(stderr,"Verifying manifest %s revealed no errors -- will try to store.\n",manifest_id);
+	    if (debug&DEBUG_RHIZOME) WHYF("Verifying manifest %s revealed no errors -- will try to store.",manifest_id);
 	    
 	    /* Add manifest to import queue. We need to know originating IPv4 address
 	       so that we can transfer by HTTP. */
