@@ -28,7 +28,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
    file and object buffers and lifetimes.
 */
 
-int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, const char *bundle,
+int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, 
+			  const char *bundle,
 			  char *groups[], int ttl,
 			  int verifyP, int checkFileP, int signP)
 {
@@ -60,7 +61,7 @@ int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, cons
     if (!m)
       return WHY("Could not read manifest file.");
   } else {
-    if (debug&DEBUG_RHIZOMESYNC)
+    if (1||debug&DEBUG_RHIZOMESYNC)
       fprintf(stderr,"Importing direct from manifest structure hashP=%d\n",m->fileHashedP);
   }
 
@@ -235,7 +236,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
 
   /* Fill in the manifest so that duplicate detection can be performed, and to avoid redundant work
      by rhizome_manifest_finalise() below. */
-  if (checkFileP) {
+  if (checkFileP&&m_in->finalised==0) {
     rhizome_manifest_set(m_in, "filehash", m_in->fileHexHash);
   }
 
@@ -320,9 +321,15 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
       rhizome_manifest_add_group(m_in, groups[i]);
   }
 
+  WHYF("bytes=%d, all_bytes=%d",m_in->manifest_bytes,m_in->manifest_all_bytes);
+  dump("importing manifest",m_in->manifestdata,m_in->manifest_all_bytes);
+
   /* Finish completing the manifest */
-  if (rhizome_manifest_finalise(m_in, signP, author))
-    return WHY("Failed to finalise manifest.\n");
+  if (m_in->finalised==0)
+    if (rhizome_manifest_finalise(m_in, signP, author))
+      return WHY("Failed to finalise manifest.\n");
+
+  dump("between finalise and store",m_in->manifestdata,m_in->manifest_all_bytes);
 
   /* Okay, it is written, and can be put directly into the rhizome database now */
   if (rhizome_store_bundle(m_in, filename) == -1)
