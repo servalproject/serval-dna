@@ -219,9 +219,9 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 		   e,e->bytes,e->length,e->allocSize);	    
 	    
 	    if (ob_makespace(e,overhead+2+blob_bytes)) {
-	      if (debug&DEBUG_RHIZOME) 
+	      if (0&&debug&DEBUG_RHIZOME) 
 		WHYF("Stopped cramming %s into Rhizome advertisement frame.",
-			pass?"BARs":"manifests");
+		     pass?"BARs":"manifests");
 	      frameFull=1;
 	    }
 	    if (!pass) {
