@@ -344,9 +344,8 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	if (rhizome_ignore_manifest_check(m,(struct sockaddr_in *)f->recvaddr))
 	  {
 	    /* Ignoring manifest that has caused us problems recently */
-	    WHYF("Ignoring manifest with errors: %s",
-		 rhizome_manifest_get(m,"id",NULL,0)
-		 );
+	    if (0) WHYF("Ignoring manifest with errors: %s",
+			rhizome_manifest_get(m,"id",NULL,0));
 	  }
 	else if (m&&(!m->errors))
 	  {
