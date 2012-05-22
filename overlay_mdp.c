@@ -1162,10 +1162,6 @@ int overlay_mdp_client_socket_path_len=-1;
 
 int overlay_mdp_client_init()
 {
-  if (mdp_named_socket!=-1) {
-    WHY("WARNING: server asked to open client socket!");
-    sleep(10);
-  }
   if (mdp_client_socket==-1) {
     /* Open socket to MDP server (thus connection is always local) */
     if (0) WHY("Use of abstract name space socket for Linux not implemented");

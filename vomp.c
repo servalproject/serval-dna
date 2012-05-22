@@ -272,7 +272,12 @@ int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
 	call->recent_sample_rotor%=VOMP_MAX_RECENT_SAMPLES;
 	}
       }
-
+      
+      /* XXX Here we act as our own client. This used to be able to block.
+	 We should really refactor overlay_mdp_poll() so that we can deliver
+	 the frame directly.
+         Make sure that we don't want (just drop the message if there is
+         congestion) */
       overlay_mdp_send(&mdp,0,0);
       
       call->local.sequence++;
