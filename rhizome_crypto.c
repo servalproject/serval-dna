@@ -140,7 +140,7 @@ int rhizome_bk_xor(const char *author,
 */
 int rhizome_extract_privatekey(rhizome_manifest *m,const char *authorHex)
 {
-  if (!authorHex) return WHY("No author SID supplied");
+  if (!authorHex) return -1; // WHY("No author SID supplied");
   char *bk = rhizome_manifest_get(m, "BK", NULL, 0);
   if (!bk) return WHY("Cannot obtain private key as manifest lacks BK field");
   

@@ -61,8 +61,8 @@ int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out,
     if (!m)
       return WHY("Could not read manifest file.");
   } else {
-    if (1||debug&DEBUG_RHIZOMESYNC)
-      fprintf(stderr,"Importing direct from manifest structure hashP=%d\n",m->fileHashedP);
+    if (debug&DEBUG_RHIZOMESYNC)
+      WHYF("Importing direct from manifest structure hashP=%d\n",m->fileHashedP);
   }
 
   /* Add the manifest and its associated file to the Rhizome database. */

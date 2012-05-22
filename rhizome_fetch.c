@@ -463,8 +463,8 @@ int rhizome_enqueue_suggestions()
   if (i) {
     /* now shuffle up */
     int bytes=(candidate_count-i)*sizeof(rhizome_candidates);
-    WHYF("Moving slot %d to slot 0 (%d bytes = %d slots)",
-	 i,bytes,bytes/sizeof(rhizome_candidates));
+    if (0) WHYF("Moving slot %d to slot 0 (%d bytes = %d slots)",
+		i,bytes,bytes/sizeof(rhizome_candidates));
     bcopy(&candidates[i],&candidates[0],bytes);
     candidate_count-=i;
   }
@@ -820,12 +820,8 @@ int rhizome_fetch_poll()
 		       q->manifest->manifest_all_bytes);
 		}
 		q->manifest->finalised=1;
-		WHYF("finalised=%d",q->manifest->finalised);
 		q->manifest->manifest_bytes=q->manifest->manifest_all_bytes;
 		if (!rhizome_write_manifest_file(q->manifest,filename)) {
-		  WHYF("finalised=%d",q->manifest->finalised);
-		  q->manifest->finalised=1;
-		  WHYF("finalised=%d",q->manifest->finalised);
 		  rhizome_bundle_import(q->manifest, NULL, id,
 					NULL /* no additional groups */,
 					q->manifest->ttl - 1 /* TTL */,
@@ -850,7 +846,6 @@ int rhizome_fetch_poll()
 	  errno=0;
 	  bytes=read(q->socket,&q->request[q->request_len],
 		     1024-q->request_len-1);
-	  WHYF("Read %d bytes",bytes);
 
 	  /* If we got some data, see if we have found the end of the HTTP request */
 	  if (bytes>0) {
@@ -976,8 +971,9 @@ int rhizome_fetch_poll()
 	/* Reduce count of open connections */	
 	rhizome_file_fetch_queue_count--;
 
-	WHYF("Released rhizome fetch slot (%d remaining)",
-	     rhizome_file_fetch_queue_count);
+	if (debug&DEBUG_RHIZOME) 
+	  WHYF("Released rhizome fetch slot (%d remaining)",
+	       rhizome_file_fetch_queue_count);
       }
     }
 
