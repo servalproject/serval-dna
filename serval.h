@@ -764,23 +764,25 @@ long long debugFlagMask(const char *flagname);
 char *catv(const char *data, char *buf, size_t len);
 int dump(char *name,unsigned char *addr,int len);
 
+
+char *trimbuildpath(char *s);
 #define FATALF(F,...)       do { logMessage(LOG_LEVEL_FATAL, "%s:%d:%s()  " F, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__); exit(-1); } while(1)
 #define FATAL(X)            FATALF("%s", (X))
 #define FATAL_perror(X)     FATALF("%s: %s [errno=%d]", (X), strerror(errno), errno)
 
-#define WHY(X)              setReason("%s:%d:%s()  %s",__FILE__,__LINE__,__FUNCTION__,X)
-#define WHYNULL(X)          (setReason("%s:%d:%s()  %s",__FILE__,__LINE__,__FUNCTION__,X), NULL)
-#define WHYF(F,...)         setReason("%s:%d:%s()  " F, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
-#define WHY_perror(X)       setReason("%s:%d:%s()  %s: %s [errno=%d]", __FILE__, __LINE__, __FUNCTION__, X, strerror(errno), errno)
+#define WHY(X)              setReason("%s:%d:%s()  %s",trimbuildpath(__FILE__),__LINE__,__FUNCTION__,X)
+#define WHYNULL(X)          (setReason("%s:%d:%s()  %s",trimbuildpath(__FILE__),__LINE__,__FUNCTION__,X), NULL)
+#define WHYF(F,...)         setReason("%s:%d:%s()  " F,trimbuildpath(__FILE__), __LINE__, __FUNCTION__, ##__VA_ARGS__)
+#define WHY_perror(X)       setReason("%s:%d:%s()  %s: %s [errno=%d]", trimbuildpath(__FILE__), __LINE__, __FUNCTION__, X, strerror(errno), errno)
 
-#define WARNF(F,...)        logMessage(LOG_LEVEL_WARN, "%s:%d:%s()  " F, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
+#define WARNF(F,...)        logMessage(LOG_LEVEL_WARN, "%s:%d:%s()  " F, trimbuildpath(__FILE__), __LINE__, __FUNCTION__, ##__VA_ARGS__)
 #define WARN(X)             WARNF("%s", (X))
 #define WARN_perror(X)      WARNF("%s: %s [errno=%d]", (X), strerror(errno), errno)
 
-#define INFOF(F,...)        logMessage(LOG_LEVEL_INFO, "%s:%d:%s()  " F, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
+#define INFOF(F,...)        logMessage(LOG_LEVEL_INFO, "%s:%d:%s()  " F,trimbuildpath( __FILE__), __LINE__, __FUNCTION__, ##__VA_ARGS__)
 #define INFO(X)             INFOF("%s", (X))
 
-#define DEBUGF(F,...)       logMessage(LOG_LEVEL_DEBUG, "%s:%d:%s()  " F, __FILE__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
+#define DEBUGF(F,...)       logMessage(LOG_LEVEL_DEBUG, "%s:%d:%s()  " F, trimbuildpath(__FILE__), __LINE__, __FUNCTION__, ##__VA_ARGS__)
 #define DEBUG(X)            DEBUGF("%s", (X))
 #define DEBUG_perror(X)     DEBUGF("%s: %s [errno=%d]", (X), strerror(errno), errno)
 #define D DEBUG("D")
