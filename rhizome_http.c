@@ -150,8 +150,8 @@ int rhizome_server_poll()
 
   /* Process the existing requests.
      XXX - should use poll or select here */
-  if (debug&DEBUG_RHIZOME) WHYF("Checking %d active connections",
-		    rhizome_server_live_request_count);
+  if (0&&debug&DEBUG_RHIZOME) WHYF("Checking %d active connections",
+				   rhizome_server_live_request_count);
   for(rn=0;rn<rhizome_server_live_request_count;rn++)
     {
       rhizome_http_request *r=rhizome_live_http_requests[rn];

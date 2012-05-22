@@ -315,7 +315,6 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
   int manifest_length;
   rhizome_manifest *m=NULL;
 
-
   if (ad_frame_type==1)
     {
       /* Extract whole manifests */
@@ -342,7 +341,11 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	m=rhizome_read_manifest_file((char *)&f->payload->bytes[ofs],
 				     manifest_length,RHIZOME_DONTVERIFY);
 	int importManifest=0;
-	if (m&&(!m->errors))
+	if (rhizome_ignore_manifest_check(m,(struct sockaddr_in *)f->recvaddr))
+	  {
+	    /* Ignoring manifest that has caused us problems recently */
+	  }
+	else if (m&&(!m->errors))
 	  {
 	    /* Manifest is okay, so see if it is worth storing */
 	    if (rhizome_manifest_version_cache_lookup(m)) {
@@ -368,9 +371,12 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	else
 	  {
 	    if (debug&DEBUG_RHIZOME) WHY("Unverified manifest has errors - so not processing any further.");
+	    /* Don't waste any time on this manifest in future attempts for at least
+	       a minute. */
+	    rhizome_queue_ignore_manifest(m,(struct sockaddr_in*)f->recvaddr,60000);
 	  }
 	if (m) rhizome_manifest_free(m);
-	m=NULL;
+	m=NULL;	
 
 	if (importManifest) {
 	  /* Okay, so the manifest looks like it is potentially interesting to us,
@@ -380,6 +386,7 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 				       manifest_length,RHIZOME_VERIFY);
 	  if (m->errors) {
 	    if (debug&DEBUG_RHIZOME) WHYF("Verifying manifest %s revealed errors -- not storing.",manifest_id);
+	    rhizome_queue_ignore_manifest(m,(struct sockaddr_in*)f->recvaddr,60000);
 	    rhizome_manifest_free(m);	  
 	  } else {
 	    if (debug&DEBUG_RHIZOME) WHYF("Verifying manifest %s revealed no errors -- will try to store.",manifest_id);

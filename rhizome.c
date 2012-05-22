@@ -376,6 +376,10 @@ long long rhizome_voice_timeout=0;
 int rhizome_saw_voice_traffic()
 {
   /* We are in "voice mode" for a second after sending a voice frame */
-  rhizome_voice_timeout=overlay_gettime_ms()+1000;
+  if (rhizome_voice_timeout<overlay_gettime_ms()) {
+    WHY("Suppressing Rhizome due to voice traffic");
+    rhizome_voice_timeout=overlay_gettime_ms()+1000;
+  }
+    
   return 0;
 }

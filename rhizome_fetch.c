@@ -226,6 +226,79 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
 
 }
 
+typedef struct ignored_manifest {
+  unsigned char bid[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
+  struct sockaddr_in peer;
+  long long timeout;
+} ignored_manifest;
+
+#define IGNORED_BIN_SIZE 8
+#define IGNORED_BIN_COUNT 64
+#define IGNORED_BIN_BITS 6
+typedef struct ignored_manifest_bin {
+  int bins_used;
+  ignored_manifest m[IGNORED_BIN_SIZE];
+} ignored_manifest_bin;
+
+typedef struct ignored_manifest_cache {
+  ignored_manifest_bin bins[IGNORED_BIN_COUNT];
+} ignored_manifest_cache;
+
+/* used uninitialised, since the probability of
+   a collision is exceedingly remote */
+ignored_manifest_cache ignored;
+
+int rhizome_ignore_manifest_check(rhizome_manifest *m,
+				  struct sockaddr_in *peerip)
+{
+  int i;
+
+  int bin = m->cryptoSignPublic[0]>>(8-IGNORED_BIN_BITS);
+  int slot;
+  for(slot=0;slot<IGNORED_BIN_SIZE;i++)
+    {
+      if (!memcmp(ignored.bins[bin].m[slot].bid,
+		  m->cryptoSignPublic,
+		  crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES))
+	{
+	  if (ignored.bins[bin].m[slot].timeout>overlay_gettime_ms())
+	    return 1;
+	  else 
+	    return 0;
+	}
+    }
+  return 0;
+}
+
+int rhizome_queue_ignore_manifest(rhizome_manifest *m,
+				  struct sockaddr_in *peerip,int timeout)
+{
+  /* The supplied manifest from a given IP has errors, so remember 
+     that it isn't worth considering */
+  int i;
+
+  int bin = m->cryptoSignPublic[0]>>(8-IGNORED_BIN_BITS);
+  int slot;
+  for(slot=0;slot<IGNORED_BIN_SIZE;i++)
+    {
+      if (!memcmp(ignored.bins[bin].m[slot].bid,
+		  m->cryptoSignPublic,
+		  crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES))
+	break;
+    }
+  if (slot>=IGNORED_BIN_SIZE) slot=random()%IGNORED_BIN_SIZE;
+  bcopy(&m->cryptoSignPublic[0],
+	&ignored.bins[bin].m[slot].bid[0],
+	crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+  /* ignore for a while */
+  ignored.bins[bin].m[slot].timeout=overlay_gettime_ms()+timeout;
+  bcopy(peerip,
+	&ignored.bins[bin].m[slot].peer,
+	sizeof(struct sockaddr_in));
+  return 0;
+
+}
+
 int rhizome_queue_manifest_import(rhizome_manifest *m,
 				  struct sockaddr_in *peerip)
 {
@@ -469,7 +542,7 @@ int rhizome_fetch_poll()
 {
   int rn;
   if (!rhizome_poll_fetchP) return 0;
-  if (debug&DEBUG_RHIZOME) WHYF("Checking %d active fetch requests",
+  if (0&&debug&DEBUG_RHIZOME) WHYF("Checking %d active fetch requests",
 				rhizome_file_fetch_queue_count);
   for(rn=0;rn<rhizome_file_fetch_queue_count;rn++)
     {

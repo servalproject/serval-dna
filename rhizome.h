@@ -249,3 +249,7 @@ int rhizome_bk_xor(const char *author,
 		   unsigned char bkin[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES],
 		   unsigned char bkout[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]);
 int rhizome_extract_privatekey(rhizome_manifest *m,const char *authorHex);
+int rhizome_queue_ignore_manifest(rhizome_manifest *m,
+				  struct sockaddr_in *peerip,int timeout);
+int rhizome_ignore_manifest_check(rhizome_manifest *m,
+				  struct sockaddr_in *peerip);
