@@ -801,10 +801,10 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
   if (sqlite3_prepare_v2(rhizome_db, sqlcmd, strlen(sqlcmd) + 1, &statement, &cmdtail) != SQLITE_OK) {
     ret = WHY(sqlite3_errmsg(rhizome_db));
   } else {
-    if (debug & DEBUG_RHIZOME) DEBUGF("fileHexHash = \"%s\"", m->fileHexHash);
     char filehash[RHIZOME_FILEHASH_STRLEN + 1];
     strncpy(filehash, m->fileHexHash, sizeof filehash);
     str_toupper_inplace(filehash);
+    if (debug & DEBUG_RHIZOME) DEBUGF("filehash=\"%s\"", filehash);
     sqlite3_bind_text(statement, 1, filehash, -1, SQLITE_STATIC);
     if (m->version != -1)
       sqlite3_bind_int64(statement, 2, m->version);

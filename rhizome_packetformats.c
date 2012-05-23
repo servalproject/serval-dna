@@ -319,7 +319,8 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
     {
       /* Extract whole manifests */
       while(ofs<f->payload->length) {
-	char *manifest_id=NULL;
+	char manifest_id_buf[RHIZOME_MANIFEST_ID_STRLEN + 1];
+	char *manifest_id = NULL;
 	manifest_length=(f->payload->bytes[ofs]<<8)+f->payload->bytes[ofs+1];
 	if (manifest_length>=0xff00) {
 	  ofs++;
@@ -383,7 +384,7 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	      importManifest=1;
 	    }
 
-	    manifest_id=rhizome_manifest_get(m,"id",NULL,0);
+	    manifest_id = rhizome_manifest_get(m, "id", manifest_id_buf, sizeof manifest_id_buf);
 	  }
 	else
 	  {
@@ -402,17 +403,16 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	  m=rhizome_read_manifest_file((char *)&f->payload->bytes[ofs],
 				       manifest_length,RHIZOME_VERIFY);
 	  if (m->errors) {
-	    if (debug&DEBUG_RHIZOME) WHYF("Verifying manifest %s revealed errors -- not storing.",manifest_id);
+	    if (debug&DEBUG_RHIZOME) WHYF("Verifying manifest %s revealed errors -- not storing.", manifest_id);
 	    rhizome_queue_ignore_manifest(m,(struct sockaddr_in*)f->recvaddr,60000);
 	    rhizome_manifest_free(m);	  
 	  } else {
-	    if (debug&DEBUG_RHIZOME) WHYF("Verifying manifest %s revealed no errors -- will try to store.",manifest_id);
+	    if (debug&DEBUG_RHIZOME) WHYF("Verifying manifest %s revealed no errors -- will try to store.", manifest_id);
 	    
 	    /* Add manifest to import queue. We need to know originating IPv4 address
 	       so that we can transfer by HTTP. */
 	    if (0) WHY("Suggesting fetching of a bundle");
-	    rhizome_suggest_queue_manifest_import
-	      (m,(struct sockaddr_in *)f->recvaddr);	  
+	    rhizome_suggest_queue_manifest_import(m,(struct sockaddr_in *)f->recvaddr);	  
 	  }
 	}
 	else

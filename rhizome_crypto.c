@@ -95,7 +95,7 @@ int rhizome_bk_xor(const char *author,
   if (stowSid(authorSid,0,author)) return WHYF("stowSid(%s) failed", author);
   int cn=0,in=0,kp=0;
   if (!keyring_find_sid(keyring,&cn,&in,&kp,authorSid)) 
-    return WHY("keyring_find_sid() couldn't find that SID.  Have you unlocked that identity?");
+    return WHYF("keyring_find_sid() couldn't find %s.  Have you unlocked that identity?", author);
   for(kp=0;kp<keyring->contexts[cn]->identities[in]->keypair_count;kp++)
     if (keyring->contexts[cn]->identities[in]->keypairs[kp]->type==KEYTYPE_RHIZOME)
       break;

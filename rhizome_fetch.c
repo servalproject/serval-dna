@@ -354,22 +354,22 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
   int priority=100; /* normal priority */
   int i;
 
-  if (0) WHYF("Rhizome considering %s (size=%lld, priority=%d)",
+  if (0) DEBUGF("Rhizome considering %s (size=%lld, priority=%d)",
 	      id,filesize,priority);
 
   if (rhizome_manifest_version_cache_lookup(m)) {
     /* We already have this version or newer */
     if (1||debug&DEBUG_RHIZOMESYNC) {
-      WHYF("manifest id=%s, version=%lld\n",
+      DEBUGF("manifest id=%s, version=%lld\n",
 	   rhizome_manifest_get(m,"id",NULL,0),
 	   rhizome_manifest_get_ll(m,"version"));
-      WHY("We already have that manifest or newer.\n");
+      DEBUG("We already have that manifest or newer.\n");
     }
     rhizome_manifest_free(m);
     return -1;
   } else {
     if (debug&DEBUG_RHIZOMESYNC) {
-      WHYF("manifest id=%s, version=%lld is new to us.\n",
+      DEBUGF("manifest id=%s, version=%lld is new to us.\n",
 	   rhizome_manifest_get(m,"id",NULL,0),
 	   rhizome_manifest_get_ll(m,"version"));
     }
@@ -426,7 +426,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
   } else candidate_count++;
   /* shuffle down */
   int bytes=(candidate_count-(i+1))*sizeof(rhizome_candidates);
-  if (0) WHYF("Moving slot %d to slot %d (%d bytes = %d slots)",
+  if (0) DEBUGF("Moving slot %d to slot %d (%d bytes = %d slots)",
 	      i,i+1,bytes,bytes/sizeof(rhizome_candidates));
   bcopy(&candidates[i],
 	&candidates[i+1],
@@ -439,9 +439,9 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
 
   int j;
   if (0) {
-    WHY("Rhizome priorities fetch list now:");
+    DEBUG("Rhizome priorities fetch list now:");
     for(j=0;j<candidate_count;j++)
-      WHYF("%02d:%s:size=%lld, priority=%d",
+      DEBUGF("%02d:%s:size=%lld, priority=%d",
 	   j,
 	   rhizome_manifest_get(candidates[j].manifest,"id",NULL,0),
 	   candidates[j].size,candidates[j].priority);
@@ -463,7 +463,7 @@ int rhizome_enqueue_suggestions()
   if (i) {
     /* now shuffle up */
     int bytes=(candidate_count-i)*sizeof(rhizome_candidates);
-    if (0) WHYF("Moving slot %d to slot 0 (%d bytes = %d slots)",
+    if (0) DEBUGF("Moving slot %d to slot 0 (%d bytes = %d slots)",
 		i,bytes,bytes/sizeof(rhizome_candidates));
     bcopy(&candidates[i],&candidates[0],bytes);
     candidate_count-=i;
@@ -494,15 +494,15 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
   if (rhizome_manifest_version_cache_lookup(m)) {
     /* We already have this version or newer */
     if (debug&DEBUG_RHIZOMESYNC) {
-      WHYF("manifest id=%s, version=%lld\n",
+      DEBUGF("manifest id=%s, version=%lld\n",
 	   rhizome_manifest_get(m,"id",NULL,0),
 	   rhizome_manifest_get_ll(m,"version"));
-      WHY("We already have that manifest or newer.\n");
+      DEBUG("We already have that manifest or newer.\n");
     }
     return -1;
   } else {
     if (debug&DEBUG_RHIZOMESYNC) {
-      WHYF("manifest id=%s, version=%lld is new to us.\n",
+      DEBUGF("manifest id=%s, version=%lld is new to us.\n",
 	   rhizome_manifest_get(m,"id",NULL,0),
 	   rhizome_manifest_get_ll(m,"version"));
     }
@@ -510,7 +510,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
 
   /* Don't queue if queue slots already full */
   if (rhizome_file_fetch_queue_count>=MAX_QUEUED_FILES) {
-    if (debug&DEBUG_RHIZOME) WHY("Already busy fetching files");
+    if (debug&DEBUG_RHIZOME) DEBUG("Already busy fetching files");
     return -1;
   }
   /* Don't queue if already queued */
@@ -520,7 +520,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
       *q=&file_fetch_queue[i];
     if (!strcasecmp(id,rhizome_manifest_get(q->manifest,"id",NULL,0))) {
 	if (debug&DEBUG_RHIZOMESYNC)
-	  WHYF("Already have %s in the queue.\n",id);
+	  DEBUGF("Already have %s in the queue.\n",id);
 	return -1;
       }
   }
@@ -532,7 +532,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
   long long filesize=rhizome_manifest_get_ll(m,"filesize");
 
   if (debug&DEBUG_RHIZOMESYNC) 
-    WHYF("Getting ready to fetch file %s for manifest %s\n",filehash,rhizome_manifest_get(m,"id",NULL,0));
+    DEBUGF("Getting ready to fetch file %s for manifest %s\n",filehash,rhizome_manifest_get(m,"id",NULL,0));
 
   if (filesize > 0 && filehash[0])
     {  
@@ -553,7 +553,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
 	    if (j==crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)
 	      {
 		/* We are already fetching this manifest */
-		if (debug&DEBUG_RHIZOME) WHYF("Already fetching manifest\n");
+		if (debug&DEBUG_RHIZOME) DEBUGF("Already fetching manifest\n");
 		return -1;
 	      }
 	    for(j=0;j<=RHIZOME_FILEHASH_STRLEN;j++)
@@ -561,7 +561,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
 	    if (j==RHIZOME_FILEHASH_STRLEN + 1)
 	      {
 		/* We are already fetching this file */
-		if (debug&DEBUG_RHIZOME) WHYF("Already fetching file %s\n",
+		if (debug&DEBUG_RHIZOME) DEBUGF("Already fetching file %s\n",
 						 filehash);
 		return -1;
 	      }
@@ -579,7 +579,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
 	    if ((errno!=EINPROGRESS)&&(r!=0)) {	      
 	      WHY_perror("connect");
 	      close (sock);
-	      if (debug&DEBUG_RHIZOME) WHY("Failed to open socket to peer's rhizome web server");
+	      if (debug&DEBUG_RHIZOME) DEBUG("Failed to open socket to peer's rhizome web server");
 	      return -1;
 	    }
 	    
@@ -638,9 +638,13 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
       else
 	{
 	  if (debug&DEBUG_RHIZOMESYNC) 
-	    WHYF("We already have the file for this manifest; importing from manifest alone.\n");
-	  m->finalised=1;
+	    DEBUGF("We already have the file for this manifest; importing from manifest alone.\n");
+	  const char *filehash = rhizome_manifest_get(m, "filehash", NULL, 0);
+	  if (filehash == NULL)
+	    return WHY("Manifest missing filehash");
+	  strncpy(m->fileHexHash, filehash, sizeof m->fileHexHash);
 	  m->fileHashedP=1;
+	  m->finalised=1;
 	  m->manifest_bytes=m->manifest_all_bytes;
 	  const char *id = rhizome_manifest_get(m, "id", NULL, 0);
 	  if (id == NULL)
@@ -687,7 +691,7 @@ int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
     {
       if ((*fdcount)>=fdmax) return -1;
       if (debug&DEBUG_RHIZOMESYNC) {
-	WHYF("rhizome file fetch request #%d is poll() slot #%d (fd %d)\n",
+	DEBUGF("rhizome file fetch request #%d is poll() slot #%d (fd %d)\n",
 	     i,*fdcount,file_fetch_queue[i].socket); }
       fds[*fdcount].fd=file_fetch_queue[i].socket;
       switch(file_fetch_queue[i].state) {
@@ -716,7 +720,7 @@ int rhizome_fetch_poll()
       rhizome_last_fetch_enqueue_time=overlay_gettime_ms();
     }
 
-  if (0&&debug&DEBUG_RHIZOME) WHYF("Checking %d active fetch requests",
+  if (0&&debug&DEBUG_RHIZOME) DEBUGF("Checking %d active fetch requests",
 				rhizome_file_fetch_queue_count);
   for(rn=0;rn<rhizome_file_fetch_queue_count;rn++)
     {
@@ -730,7 +734,7 @@ int rhizome_fetch_poll()
       switch(q->state) 
 	{
 	case RHIZOME_FETCH_SENDINGHTTPREQUEST:
-	  WHYF("sending http request (%d of %d bytes sent)",
+	  DEBUGF("sending http request (%d of %d bytes sent)",
 	       q->request_ofs,q->request_len);
 	  bytes=write(q->socket,&q->request[q->request_ofs],
 			  q->request_len-q->request_ofs);
@@ -741,8 +745,8 @@ int rhizome_fetch_poll()
 	      /* Sent all of request.  Switch to listening for HTTP response headers.
 	       */
 	      if (debug&DEBUG_RHIZOME) {
-		WHYF("Sent http request to fetch file. (%d of %d bytes)\n",q->request_ofs,q->request_len);	      
-		WHYF("sent [%s]\n",q->request);
+		DEBUGF("Sent http request to fetch file. (%d of %d bytes)\n",q->request_ofs,q->request_len);	      
+		DEBUGF("sent [%s]\n",q->request);
 	      }
 	      q->request_len=0; q->request_ofs=0;
 	      q->state=RHIZOME_FETCH_RXHTTPHEADERS;
@@ -755,7 +759,7 @@ int rhizome_fetch_poll()
 	case RHIZOME_FETCH_RXFILE:
 	  /* Keep reading until we have the promised amount of data */
 	  if (debug&DEBUG_RHIZOME) 
-	    WHYF("receiving rhizome fetch file body (current offset=%d of %d)\n",
+	    DEBUGF("receiving rhizome fetch file body (current offset=%d of %d)\n",
 		 q->file_ofs,q->file_len);
 	  
 	  sigPipeFlag=0;
@@ -770,14 +774,14 @@ int rhizome_fetch_poll()
 	    action=1;
 
 	    if (debug&DEBUG_RHIZOME) 
-	      WHYF("Read %d bytes; we now have %d of %d bytes.\n",
+	      DEBUGF("Read %d bytes; we now have %d of %d bytes.\n",
 		      bytes,q->file_ofs+bytes,q->file_len);
 
 	    if (bytes>(q->file_len-q->file_ofs))
 	      bytes=q->file_len-q->file_ofs;
 	    if (fwrite(buffer,bytes,1,q->file)!=1)
 	      {
-		if (debug&DEBUG_RHIZOME) WHYF("Failed writing %d bytes to file. @ offset %d\n",bytes,q->file_ofs);
+		if (debug&DEBUG_RHIZOME) DEBUGF("Failed writing %d bytes to file. @ offset %d\n",bytes,q->file_ofs);
 		q->close=1;
 		continue;
 	      }
@@ -791,7 +795,7 @@ int rhizome_fetch_poll()
 	    {
 	      /* got all of file */
 	      q->close=1;
-	      if (debug&DEBUG_RHIZOME) WHYF("Received all of file via rhizome -- now to import it\n");
+	      if (debug&DEBUG_RHIZOME) DEBUGF("Received all of file via rhizome -- now to import it\n");
 	      {
 		fclose(q->file); q->file=NULL;
 		const char *id = rhizome_manifest_get(q->manifest, "id", NULL, 0);
@@ -802,8 +806,8 @@ int rhizome_fetch_poll()
 		  return -1;
 		/* Do really write the manifest unchanged */
 		if (debug&DEBUG_RHIZOME) {
-		  WHYF("manifest has %d signatories\n",q->manifest->sig_count);
-		  WHYF("manifest id = %s, len=%d\n",
+		  DEBUGF("manifest has %d signatories\n",q->manifest->sig_count);
+		  DEBUGF("manifest id = %s, len=%d\n",
 			  rhizome_manifest_get(q->manifest,"id",NULL,0),
 			  q->manifest->manifest_bytes);
 		  dump("manifest",&q->manifest->manifestdata[0],
@@ -829,7 +833,7 @@ int rhizome_fetch_poll()
 	  break;
 	case RHIZOME_FETCH_RXHTTPHEADERS:
 	  /* Keep reading until we have two CR/LFs in a row */
-	  if (debug&DEBUG_RHIZOME) WHY("receiving rhizome fetch http headers");
+	  if (debug&DEBUG_RHIZOME) DEBUG("receiving rhizome fetch http headers");
 	  
 	  sigPipeFlag=0;
 	  
@@ -869,23 +873,23 @@ int rhizome_fetch_poll()
 	      /* Get HTTP result code */
 	      char *s=strstr(q->request,"HTTP/1.0 ");
 	      if (!s) { 
-		if (debug&DEBUG_RHIZOME) WHYF("HTTP response lacked HTTP/1.0 response code.\n");
+		if (debug&DEBUG_RHIZOME) DEBUGF("HTTP response lacked HTTP/1.0 response code.\n");
 		q->close=1; continue; }
 	      int http_response_code=strtoll(&s[9],NULL,10);
 	      if (http_response_code!=200) {
-		if (debug&DEBUG_RHIZOME) WHYF("Rhizome web server returned %d != 200 OK\n",http_response_code);
+		if (debug&DEBUG_RHIZOME) DEBUGF("Rhizome web server returned %d != 200 OK\n",http_response_code);
 		q->close=1; continue;
 	      }
 	      /* Get content length */
 	      s=strstr(q->request,"Content-length: ");
 	      if (!s) {
 		if (debug&DEBUG_RHIZOME) 
-		  WHYF("Missing Content-Length: header.\n");
+		  DEBUGF("Missing Content-Length: header.\n");
 		q->close=1; continue; }
 	      q->file_len=strtoll(&s[16],NULL,10);
 	      if (q->file_len<0) {
 		if (debug&DEBUG_RHIZOME) 
-		  WHYF("Illegal file size (%d).\n",q->file_len);
+		  DEBUGF("Illegal file size (%d).\n",q->file_len);
 		q->close=1; continue; }
 
 	      /* Okay, we have both, and are all set.
@@ -897,14 +901,14 @@ int rhizome_fetch_poll()
 		if (fwrite(&q->request[i+1],fileRxBytes,1,q->file)!=1)
 		  {
 		    if (debug&DEBUG_RHIZOME) 
-		      WHYF("Failed writing initial %d bytes to file.\n",
+		      DEBUGF("Failed writing initial %d bytes to file.\n",
 			      fileRxBytes);	       
 		    q->close=1;
 		    continue;
 		  }
 	      q->file_ofs=fileRxBytes;
 	      if (debug&DEBUG_RHIZOME) 
-		WHYF("Read %d initial bytes of %d total\n",
+		DEBUGF("Read %d initial bytes of %d total\n",
 			q->file_ofs,q->file_len);
 	      q->state=RHIZOME_FETCH_RXFILE;
 	    }
@@ -917,7 +921,7 @@ int rhizome_fetch_poll()
 	  if (!action) {
 	    if (time(0)-q->last_action>RHIZOME_IDLE_TIMEOUT) {
 	      if (debug&DEBUG_RHIZOME) 
-		WHY("Closing connection due to inactivity timeout.");
+		DEBUG("Closing connection due to inactivity timeout.");
 	      q->close=1;
 	      continue;
 	    }
@@ -926,14 +930,14 @@ int rhizome_fetch_poll()
 	  if (sigPipeFlag||((bytes==0)&&(errno==0))) {
 	    /* broken pipe, so close connection */
 	    if (debug&DEBUG_RHIZOME) 
-	      WHY("Closing rhizome fetch connection due to sigpipe");
+	      DEBUG("Closing rhizome fetch connection due to sigpipe");
 	    q->close=1;
 	    continue;
 	  }	 
 	  break;
 	default:
 	  if (debug&DEBUG_RHIZOME) 
-	    WHY("Closing rhizome fetch connection due to illegal/unimplemented state.");
+	    DEBUG("Closing rhizome fetch connection due to illegal/unimplemented state.");
 	  q->close=1;
 	  break;
 	}
@@ -962,7 +966,7 @@ int rhizome_fetch_poll()
 	rhizome_file_fetch_queue_count--;
 
 	if (debug&DEBUG_RHIZOME) 
-	  WHYF("Released rhizome fetch slot (%d remaining)",
+	  DEBUGF("Released rhizome fetch slot (%d remaining)",
 	       rhizome_file_fetch_queue_count);
       }
     }
