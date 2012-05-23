@@ -62,22 +62,18 @@ void vlogMessage(int level, char *fmt, va_list ap)
   fprintf(stderr, "%s: %s\n", levelstr, buf);
 }
 
-int build_path_len=-1;
-char *trimbuildpath(char *s)
+const char *trimbuildpath(const char *s)
 {
-  if (build_path_len==-1) {
-    /* Find common path prefix so that we can get rid of the build path
-       when reporting file names in logs */
-    int lastSlash=0;
-    int i=0;
-    for(i=0;i<strlen(__FILE__)&&i<strlen(s);i++)
-      if (__FILE__[i]!=s[i]) break;
-      else if (s[i]=='/') lastSlash=i;
-
-    build_path_len=lastSlash;
+  /* Remove common path prefix */
+  int lastsep = 0;
+  int i;
+  for (i = 0; __FILE__[i] && s[i]; ++i) {
+    if (i && s[i - 1] == '/')
+      lastsep = i;
+    if (__FILE__[i] != s[i])
+      break;
   }
-
-  return &s[build_path_len];
+  return &s[lastsep];
 }
 
 int setReason(char *fmt, ...)
