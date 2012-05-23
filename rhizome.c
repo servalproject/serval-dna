@@ -64,7 +64,7 @@ int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out,
       return WHY("Could not read manifest file.");
   } else {
     if (debug&DEBUG_RHIZOMESYNC)
-      WHYF("Importing direct from manifest structure hashP=%d\n",m->fileHashedP);
+      WHYF("Importing direct from manifest structure fileHashedP=%d", m->fileHashedP);
   }
 
   /* Add the manifest and its associated file to the Rhizome database. */
@@ -221,10 +221,10 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
 
   /* Compute hash of payload unless we know verification has already failed */
   if (checkFileP || signP) {
-    char hexhash[RHIZOME_FILEHASH_STRLEN + 1];
-    if (rhizome_hash_file(filename, hexhash))
+    char hexhashbuf[RHIZOME_FILEHASH_STRLEN + 1];
+    if (rhizome_hash_file(filename, hexhashbuf))
       return WHY("Could not hash file.");
-    memcpy(&m_in->fileHexHash[0], &hexhash[0], sizeof hexhash);
+    memcpy(&m_in->fileHexHash[0], &hexhashbuf[0], sizeof hexhashbuf);
     m_in->fileHashedP = 1;
   }
 
