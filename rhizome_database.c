@@ -57,11 +57,11 @@ int rhizome_set_datastore_path(const char *path)
 
 int form_rhizome_datastore_path(char * buf, size_t bufsiz, const char *fmt, ...)
 {
+  va_list ap;
   strbuf b = strbuf_local(buf, bufsiz);
   strbuf_sprintf(b, "%s/", rhizome_datastore_path());  
-  va_list ap;
   va_start(ap, fmt);
-  strbuf_sprintf(b, fmt, ap);
+  strbuf_vsprintf(b, fmt, ap);
   va_end(ap);
   if (strbuf_overrun(b)) {
       WHY("Path buffer overrun");
