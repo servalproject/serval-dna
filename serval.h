@@ -425,6 +425,7 @@ int isTransactionInCache(unsigned char *transaction_id);
 void insertTransactionInCache(unsigned char *transaction_id);
 
 int hexvalue(unsigned char c);
+char *str_toupper_inplace(char *s);
 int packetOk(int interface,unsigned char *packet,int len,
 	     unsigned char *transaction_id, int recvttl,
 	     struct sockaddr *recvaddr,int recvaddrlen,int parseP);

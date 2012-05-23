@@ -154,7 +154,7 @@ rhizome_manifest *rhizome_read_manifest_file(const char *filename, int bufferP, 
 int rhizome_strn_is_file_hash(const char *text)
 {
   int i;
-  for (i = 0; i != SHA512_DIGEST_LENGTH * 2; ++i)
+  for (i = 0; i != RHIZOME_FILEHASH_STRLEN; ++i)
     if (!isxdigit(text[i]))
       return 0;
   return 1;
@@ -163,7 +163,7 @@ int rhizome_strn_is_file_hash(const char *text)
 int rhizome_str_is_file_hash(const char *text)
 {
   size_t len = strlen(text);
-  return len == SHA512_DIGEST_LENGTH * 2 && rhizome_strn_is_file_hash(text);
+  return len == RHIZOME_FILEHASH_STRLEN && rhizome_strn_is_file_hash(text);
 }
 
 int rhizome_hash_file(const char *filename,char *hash_out)
@@ -192,6 +192,7 @@ int rhizome_hash_file(const char *filename,char *hash_out)
       SHA512_Update(&context, buffer, r);
   }
   SHA512_End(&context, (char *)hash_out);
+  str_toupper_inplace(hash_out);
   fclose(f);
   return 0;
 }

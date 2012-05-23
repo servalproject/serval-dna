@@ -156,10 +156,11 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
 			 int verifyP, // verify that file's hash is consistent with manifest
 			 int checkFileP,
 			 int signP,
-			 const char *author // NULL to make an unauthored manifest
+			 const char *author // NULL or zero-length to make an unauthored manifest
 			)
 {
   if (m_out) *m_out = NULL;
+  if (author && !author[0]) author = NULL;
 
   /* Ensure manifest meets basic sanity checks. */
   const char *service = rhizome_manifest_get(m_in, "service", NULL, 0);
@@ -180,7 +181,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
       return WHY("Manifest contains invalid 'sender' field");
     /* If the author was not specified, use the 'sender' as the author, otherwise ensure that they
        match. */
-    if (!author || !author[0])
+    if (!author)
       author = sender;
     else if (strcasecmp(author, sender))
       return WHYF("Author inconsistent with sender: author=%s, sender=%s", author, sender);
@@ -189,6 +190,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
     if (!validateSid(recipient))
       return WHY("Manifest contains invalid 'recipient' field");
   }
+  if (debug & DEBUG_RHIZOME) DEBUGF("author='%s'", author ? author : "(null)");
 
   /* Keep payload file name handy for later */
   m_in->dataFileName = strdup(filename);
@@ -217,10 +219,10 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
 
   /* Compute hash of payload unless we know verification has already failed */
   if (checkFileP || signP) {
-    char hexhash[SHA512_DIGEST_STRING_LENGTH];
+    char hexhash[RHIZOME_FILEHASH_STRLEN + 1];
     if (rhizome_hash_file(filename, hexhash))
       return WHY("Could not hash file.");
-    memcpy(&m_in->fileHexHash[0], &hexhash[0], SHA512_DIGEST_STRING_LENGTH);
+    memcpy(&m_in->fileHexHash[0], &hexhash[0], sizeof hexhash);
     m_in->fileHashedP = 1;
   }
 
@@ -269,12 +271,13 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
   }
 
   /* If the manifest already has an ID */
-  char *id = NULL;
-  if ((id = rhizome_manifest_get(m_in, "id", NULL, 0))) {
+  char id[SID_STRLEN + 1];
+  if (rhizome_manifest_get(m_in, "id", id, SID_STRLEN + 1)) {
+    str_toupper_inplace(id);
     /* Discard the new manifest unless it is newer than the most recent known version with the same ID */
     long long storedversion = sqlite_exec_int64("SELECT version from manifests where id='%s';", id);
     if (debug & DEBUG_RHIZOME)
-      fprintf(stderr, "Found existing version=%lld, new version=%lld\n", storedversion, m_in->version);
+      DEBUGF("Found existing version=%lld, new version=%lld", storedversion, m_in->version);
     if (m_in->version < storedversion) {
       return WHY("Newer version exists");
     }
@@ -283,7 +286,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
     }
     /* Check if we know its private key */
     rhizome_hex_to_bytes(id, m_in->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
-    if (!rhizome_extract_privatekey(m_in, author))
+    if (rhizome_extract_privatekey(m_in, author) == 0)
       m_in->haveSecret=1;
   } else {
     /* The manifest had no ID (256 bit random string being a public key in the NaCl CryptoSign
@@ -293,7 +296,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
        manifests on receiver nodes works easily.  We might implement something that strips the id
        variable out of the manifest when sending it, or some other scheme to avoid sending all the
        extra bytes. */
-    id = rhizome_bytes_to_hex(m_in->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+    rhizome_bytes_to_hex_upper(m_in->cryptoSignPublic, id, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
     rhizome_manifest_set(m_in, "id", id);
     if (author) {
       /* Set the BK using the provided authorship information.
@@ -303,11 +306,12 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
          The nice thing about this specification is that:
          privateKey = BK XOR sha512(RS##BID), so the same function can be used
 	 to encrypt and decrypt the BK field. */
-      int len=crypto_sign_edwards25519sha512batch_SECRETKEYBYTES;
-      unsigned char bkbytes[len];
-      if (!rhizome_bk_xor(author, m_in->cryptoSignPublic, m_in->cryptoSignSecret, bkbytes)) {
-	if (debug&DEBUG_RHIZOME) DEBUGF("set BK='%s'", rhizome_bytes_to_hex(bkbytes,len));
-	rhizome_manifest_set(m_in, "BK", rhizome_bytes_to_hex(bkbytes,len));
+      unsigned char bkbytes[RHIZOME_BUNDLE_KEY_BYTES];
+      if (rhizome_bk_xor(author, m_in->cryptoSignPublic, m_in->cryptoSignSecret, bkbytes) == 0) {
+	char bkhex[RHIZOME_BUNDLE_KEY_STRLEN + 1];
+	rhizome_bytes_to_hex_upper(bkbytes, bkhex, RHIZOME_BUNDLE_KEY_BYTES);
+	if (debug&DEBUG_RHIZOME) DEBUGF("set BK=%s", bkhex);
+	rhizome_manifest_set(m_in, "BK", bkhex);
       } else {
 	return WHY("Failed to set BK");
       }
@@ -341,7 +345,9 @@ int rhizome_bundle_push_update(char *id,long long version,unsigned char *data,in
   return WHY("Not implemented");
 }
 
-char nybltochar(int nybl)
+/** Return the uppercase hex digit for a given nybble value 0..15.
+ */
+char nybltochar_upper(int nybl)
 {
   if (nybl<0) return '?';
   if (nybl>15) return '?';

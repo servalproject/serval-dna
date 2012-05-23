@@ -92,7 +92,7 @@ int rhizome_bk_xor(const char *author,
     return WHY("BK needs to be longer than it can be");
 
   unsigned char authorSid[SID_SIZE];
-  if (stowSid(authorSid,0,author)) return WHY("stowSid() failed");
+  if (stowSid(authorSid,0,author)) return WHYF("stowSid(%s) failed", author);
   int cn=0,in=0,kp=0;
   if (!keyring_find_sid(keyring,&cn,&in,&kp,authorSid)) 
     return WHY("keyring_find_sid() couldn't find that SID.  Have you unlocked that identity?");
@@ -117,11 +117,6 @@ int rhizome_bk_xor(const char *author,
   int i;
   for(i=0;i<len;i++)
     bkout[i]=bkin[i]^hash[i];
-  if (0) WHYF("%s* ^ %s* = %s*",
-	      rhizome_bytes_to_hex(bkin,8),
-	      rhizome_bytes_to_hex(hash,8),
-	      rhizome_bytes_to_hex(bkout,8));
-
   bzero(&buffer[0],combined_len);
   bzero(&hash[0],crypto_hash_sha512_BYTES);
 
@@ -174,11 +169,13 @@ int rhizome_extract_privatekey(rhizome_manifest *m,const char *authorHex)
     ge25519_scalarmult_base(&gepk, &scsk);
     ge25519_pack(pk, &gepk);
     bzero(&scsk,sizeof(scsk));
-    if (memcmp(pk, m->cryptoSignPublic, 
-	       crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)) {
+    if (memcmp(pk, m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)) {
       if (0) {
-	WHYF("  stored public key = %s*",rhizome_bytes_to_hex(m->cryptoSignPublic,8));
-	WHYF("computed public key = %s*",rhizome_bytes_to_hex(pk,8));
+	char hex[17];
+	rhizome_bytes_to_hex_upper(m->cryptoSignPublic, hex, 8);
+	WHYF("  stored public key = %s*", hex);
+	rhizome_bytes_to_hex_upper(pk, hex, 8);
+	WHYF("computed public key = %s*", hex);
       }
       return WHY("BID secret key decoded from BK was not valid");     
     } else

@@ -539,12 +539,17 @@ int monitor_announce_bundle(rhizome_manifest *m)
 {
   int i;
   char msg[1024];
-  snprintf(msg,1024,"\nBUNDLE:%s:%lld:%lld:%s\n",
-	   /* XXX bit of a hack here, since SIDs and 
-	      cryptosign public keys have the same length */
+  const char *service = rhizome_manifest_get(m, "service", NULL, 0);
+  const char *sender = rhizome_manifest_get(m, "sender", NULL, 0);
+  const char *recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
+  snprintf(msg,1024,"\nBUNDLE:%s:%s:%lld:%lld:%s:%s:%s\n",
+	   /* XXX bit of a hack here, since SIDs and cryptosign public keys have the same length */
 	   overlay_render_sid(m->cryptoSignPublic),
+	   service ? service : "",
 	   m->version,
 	   m->fileLength,
+	   sender,
+	   recipient,
 	   m->dataFileName?m->dataFileName:"");
   for(i=0;i<monitor_socket_count;i++)
     {

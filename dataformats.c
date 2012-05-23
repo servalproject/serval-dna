@@ -155,6 +155,13 @@ int stowBytes(unsigned char *packet, const char *in,int count)
   return 0;
 }
 
+char *str_toupper_inplace(char *str)
+{
+  register char *s;
+  for (s = str; *s; ++s)
+    *s = toupper(*s);
+  return str;
+}
 
 int hexvalue(unsigned char c)
 {

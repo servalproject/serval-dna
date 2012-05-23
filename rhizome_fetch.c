@@ -28,7 +28,7 @@ extern int sigIoFlag;
 typedef struct rhizome_file_fetch_record {
   int socket; /* if non-zero this is the socket to read from */
   rhizome_manifest *manifest;
-  char fileid[SHA512_DIGEST_STRING_LENGTH];
+  char fileid[RHIZOME_FILEHASH_STRLEN + 1];
   FILE *file;
   
   int close;
@@ -525,24 +525,20 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
       }
   }
 
-  char *filehash=rhizome_manifest_get(m,"filehash",NULL,0);
+  char filehash[RHIZOME_FILEHASH_STRLEN + 1];
+  if (!rhizome_manifest_get(m, "filehash", filehash, sizeof filehash))
+    filehash[0] = '\0';
+  str_toupper_inplace(filehash);
   long long filesize=rhizome_manifest_get_ll(m,"filesize");
 
   if (debug&DEBUG_RHIZOMESYNC) 
     WHYF("Getting ready to fetch file %s for manifest %s\n",filehash,rhizome_manifest_get(m,"id",NULL,0));
 
-  if (filesize>0&&(filehash!=NULL))
+  if (filesize > 0 && filehash[0])
     {  
-      if (strlen(filehash)!=SHA512_DIGEST_STRING_LENGTH-1)
-	{
-	  return WHY("File hash is wrong length");
-	}
-
-      int gotfile=
-	sqlite_exec_int64("SELECT COUNT(*) FROM FILES WHERE ID='%s';",
-			  rhizome_safe_encode((unsigned char *)filehash,
-					      strlen(filehash)));
-			    
+      if (!rhizome_str_is_file_hash(filehash))
+	return WHYF("Invalid file hash: ", filehash);
+      int gotfile= sqlite_exec_int64("SELECT COUNT(*) FROM FILES WHERE ID='%s';", filehash);
       if (gotfile!=1) {
 	/* We need to get the file */
 	
@@ -560,9 +556,9 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
 		if (debug&DEBUG_RHIZOME) WHYF("Already fetching manifest\n");
 		return -1;
 	      }
-	    for(j=0;j<SHA512_DIGEST_STRING_LENGTH;j++)
+	    for(j=0;j<=RHIZOME_FILEHASH_STRLEN;j++)
 	      if (filehash[j]!=file_fetch_queue[i].fileid[j]) break;
-	    if (j==SHA512_DIGEST_STRING_LENGTH)
+	    if (j==RHIZOME_FILEHASH_STRLEN + 1)
 	      {
 		/* We are already fetching this file */
 		if (debug&DEBUG_RHIZOME) WHYF("Already fetching file %s\n",
@@ -591,8 +587,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
 	      *q=&file_fetch_queue[rhizome_file_fetch_queue_count];
 	    q->manifest=m;
 	    q->socket=sock;
-	    strncpy(q->fileid,
-		    filehash,SHA512_DIGEST_STRING_LENGTH);
+	    strncpy(q->fileid, filehash, RHIZOME_FILEHASH_STRLEN + 1);
 	    snprintf(q->request,1024,"GET /rhizome/file/%s HTTP/1.0\r\n\r\n",
 		     q->fileid);
 	    q->request_len=strlen(q->request);

@@ -331,17 +331,15 @@ int rhizome_drop_stored_file(char *id,int maximum_priority)
  */
 int rhizome_store_bundle(rhizome_manifest *m, const char *associated_filename)
 {
-  char sqlcmd[1024];
-  const char *cmdtail;
-  int i;
-
-  char manifestid[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES * 2 + 1];
-  strncpy(manifestid,rhizome_manifest_get(m,"id",NULL,0),64);
-  manifestid[64]=0;
-  for(i=0;i<64;i++)
-    manifestid[i]=toupper(manifestid[i]);
-
   if (!m->finalised) return WHY("Manifest was not finalised");
+
+  char manifestid[RHIZOME_MANIFEST_ID_STRLEN + 1];
+  rhizome_manifest_get(m, "id", manifestid, sizeof manifestid);
+  str_toupper_inplace(manifestid);
+
+  char filehash[RHIZOME_FILEHASH_STRLEN + 1];
+  strncpy(filehash, m->fileHexHash, sizeof filehash);
+  str_toupper_inplace(filehash);
 
   /* remove any old version of the manifest */
   if (sqlite_exec_int64("SELECT COUNT(*) FROM MANIFESTS WHERE id='%s';",manifestid)>0)
@@ -354,8 +352,7 @@ int rhizome_store_bundle(rhizome_manifest *m, const char *associated_filename)
 
       char sql[1024];
       sqlite3_stmt *statement;
-      snprintf(sql,1024,"SELECT fileid from filemanifests where manifestid='%s';",
-	       manifestid);
+      snprintf(sql,1024,"SELECT fileid from filemanifests where manifestid='%s';", manifestid);
       if (sqlite3_prepare_v2(rhizome_db,sql,strlen(sql)+1,&statement,NULL)!=SQLITE_OK)
 	{
 	  WHY("sqlite3_prepare_v2() failed");
@@ -380,6 +377,7 @@ int rhizome_store_bundle(rhizome_manifest *m, const char *associated_filename)
 
   /* Store manifest */
   if (debug & DEBUG_RHIZOME) DEBUGF("Writing into manifests table");
+  char sqlcmd[1024];
   snprintf(sqlcmd,1024,
 	   "INSERT INTO MANIFESTS(id,manifest,version,inserttime,bar) VALUES('%s',?,%lld,%lld,?);",
 	   manifestid, m->version, gettime_ms());
@@ -396,6 +394,7 @@ int rhizome_store_bundle(rhizome_manifest *m, const char *associated_filename)
     }
   }
 
+  const char *cmdtail;
   sqlite3_stmt *statement;
   if (sqlite3_prepare_v2(rhizome_db,sqlcmd,strlen(sqlcmd)+1,&statement,&cmdtail) 
       != SQLITE_OK) {
@@ -433,9 +432,7 @@ int rhizome_store_bundle(rhizome_manifest *m, const char *associated_filename)
   }
 
   /* Create relationship between file and manifest */
-  long long r=sqlite_exec_int64("INSERT INTO FILEMANIFESTS(manifestid,fileid) VALUES('%s','%s');",
-				 manifestid,
-				 m->fileHexHash);
+  long long r=sqlite_exec_int64("INSERT INTO FILEMANIFESTS(manifestid,fileid) VALUES('%s','%s');", manifestid, filehash);
   if (r<0) {
     WHY(sqlite3_errmsg(rhizome_db));
     return WHY("SQLite3 failed to insert row in filemanifests.");
@@ -470,7 +467,7 @@ int rhizome_store_bundle(rhizome_manifest *m, const char *associated_filename)
 
   /* Store the file */
   if (m->fileLength>0) 
-    if (rhizome_store_file(associated_filename,m->fileHexHash,m->fileHighestPriority)) 
+    if (rhizome_store_file(associated_filename, filehash, m->fileHighestPriority)) 
       return WHY("Could not store associated file");						   
 
   /* Get things consistent */
@@ -503,38 +500,6 @@ int rhizome_finish_sqlstatement(sqlite3_stmt *statement)
 
   if (dud)  return WHY("SQLite3 could not complete statement.");
   return 0;
-}
-
-/* Like sqlite_encode_binary(), but with a fixed rotation to make comparison of
-   string prefixes easier.  Also, returns string directly for convenience.
-   The rotoring through four return strings is so that this function can be used
-   safely inline in sprintf() type functions, which makes composition of sql statements
-   easier. */
-int rse_rotor=0;
-char rse_out[8][129];
-char *rhizome_safe_encode(unsigned char *in,int len)
-{
-  char *r=rse_out[rse_rotor];
-  rse_rotor++;
-  rse_rotor&=7;
-
-  int i,o=0;
-
-  for(i=0;i<len;i++)
-    {
-      if (o<=127)
-	switch(in[i])
-	  {
-	  case 0x00: case 0x01: case '\'':
-	    r[o++]=0x01;
-	    r[o++]=in[i]^0x80;
-	    break;
-	  default:
-	    r[o++]=in[i];
-	  }
-    }
-  r[128]=0;
-  return r;
 }
 
 int rhizome_list_manifests(const char *service, const char *sender_sid, const char *recipient_sid, int limit, int offset)
@@ -639,7 +604,7 @@ int rhizome_store_file(const char *file,char *hash,int priority)
   }
 
   /* Get hash of file if not supplied */
-  char hexhash[SHA512_DIGEST_STRING_LENGTH];
+  char hexhash[RHIZOME_FILEHASH_STRLEN + 1];
   if (!hash)
     {
       /* Hash the file */
@@ -647,6 +612,7 @@ int rhizome_store_file(const char *file,char *hash,int priority)
       SHA512_Init(&c);
       SHA512_Update(&c,addr,stat.st_size);
       SHA512_End(&c,hexhash);
+      str_toupper_inplace(hexhash);
       hash=hexhash;
     }
 
@@ -776,22 +742,12 @@ int rhizome_store_file(const char *file,char *hash,int priority)
   return 0;
 }
 
-char *rhizome_bytes_to_hex(unsigned char *in,int byteCount)
+void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCount)
 {
   int i=0;
-
-  if (byteCount>64) return "<too long>";
-
-  rse_rotor++;
-  rse_rotor&=7;
-
-  for(i=0;i<byteCount*2;i++)
-    {
-      int d=nybltochar((in[i>>1]>>(4-4*(i&1)))&0xf);
-      rse_out[rse_rotor][i]=d;
-    }
-  rse_out[rse_rotor][i]=0;
-  return rse_out[rse_rotor++];
+  for(i = 0; i != byteCount * 2 ; ++i)
+    out[i] = nybltochar_upper((in[i >> 1] >> (4 - 4 * (i & 1))) & 0xf);
+  out[i] = '\0';
 }
 
 int rhizome_update_file_priority(char *fileid)
@@ -853,7 +809,10 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
     ret = WHY(sqlite3_errmsg(rhizome_db));
   } else {
     if (debug & DEBUG_RHIZOME) DEBUGF("fileHexHash = \"%s\"", m->fileHexHash);
-    sqlite3_bind_text(statement, 1, m->fileHexHash, -1, SQLITE_STATIC);
+    char filehash[RHIZOME_FILEHASH_STRLEN + 1];
+    strncpy(filehash, m->fileHexHash, sizeof filehash);
+    str_toupper_inplace(filehash);
+    sqlite3_bind_text(statement, 1, filehash, -1, SQLITE_STATIC);
     if (m->version != -1)
       sqlite3_bind_int64(statement, 2, m->version);
     size_t rows = 0;
@@ -896,7 +855,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
 	      q_manifestid, q_version, blob_version);
 	++inconsistent;
       }
-      if (!blob_filehash && strcmp(blob_filehash, m->fileHexHash)) {
+      if (!blob_filehash && strcasecmp(blob_filehash, m->fileHexHash)) {
 	WARNF("MANIFESTS row id=%s joined to FILES row id=%s has inconsistent blob: blob.filehash=%s -- skipped",
 	      q_manifestid, m->fileHexHash, blob_filehash);
 	++inconsistent;
@@ -934,7 +893,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
 	}
 	if (ret == 1) {
 	  rhizome_hex_to_bytes(q_manifestid, blob_m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
-	  memcpy(blob_m->fileHexHash, m->fileHexHash, SHA512_DIGEST_STRING_LENGTH);
+	  memcpy(blob_m->fileHexHash, m->fileHexHash, RHIZOME_FILEHASH_STRLEN + 1);
 	  blob_m->fileHashedP = 1;
 	  blob_m->fileLength = m->fileLength;
 	  blob_m->version = q_version;
@@ -973,7 +932,11 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
     sqlite3_finalize(statement);
     ret = WHY(sqlite3_errmsg(rhizome_db));
   } else {
-    sqlite3_bind_text(statement, 1, manifestid, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES * 2, SQLITE_STATIC);
+    char manifestIdUpper[RHIZOME_MANIFEST_ID_STRLEN + 1];
+    strncpy(manifestIdUpper, manifestid, sizeof manifestIdUpper);
+    manifestIdUpper[RHIZOME_MANIFEST_ID_STRLEN] = '\0';
+    str_toupper_inplace(manifestIdUpper);
+    sqlite3_bind_text(statement, 1, manifestIdUpper, -1, SQLITE_STATIC);
     while (sqlite3_step(statement) == SQLITE_ROW) {
       if (!(   sqlite3_column_count(statement) == 4
 	    && sqlite3_column_type(statement, 0) == SQLITE_TEXT
@@ -1000,7 +963,7 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
 	  if (blob_filehash == NULL)
 	    ret = WHY("Manifest is missing 'filehash' field");
 	  else {
-	    memcpy(m->fileHexHash, blob_filehash, SHA512_DIGEST_STRING_LENGTH);
+	    memcpy(m->fileHexHash, blob_filehash, RHIZOME_FILEHASH_STRLEN + 1);
 	    m->fileHashedP = 1;
 	  }
 	  long long blob_version = rhizome_manifest_get_ll(m, "version");
@@ -1059,7 +1022,11 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath)
     sqlite3_finalize(statement);
     ret = WHY(sqlite3_errmsg(rhizome_db));
   } else {
-    sqlite3_bind_text(statement, 1, fileid, SHA512_DIGEST_LENGTH * 2, SQLITE_STATIC);
+    char fileIdUpper[RHIZOME_FILEHASH_STRLEN + 1];
+    strncpy(fileIdUpper, fileid, sizeof fileIdUpper);
+    fileIdUpper[RHIZOME_FILEHASH_STRLEN] = '\0';
+    str_toupper_inplace(fileIdUpper);
+    sqlite3_bind_text(statement, 1, fileIdUpper, -1, SQLITE_STATIC);
     while (sqlite3_step(statement) == SQLITE_ROW) {
       if (!(   sqlite3_column_count(statement) == 3
 	    && sqlite3_column_type(statement, 0) == SQLITE_TEXT

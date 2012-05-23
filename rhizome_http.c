@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <signal.h>
+#include <ctype.h>
 
 #include "serval.h"
 #include "rhizome.h"
@@ -305,22 +306,13 @@ int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
    return 0;
 }
 
-int hexFilter(char *s)
+void hexFilter(char *s)
 {
-  int l=strlen(s);
-  int i;
-  int o=0;
-  int e=0;
-  for(i=0;i<l;i++)
-    {
-      if ((s[i]>='0'&&s[i]<='9')
-	  ||(s[i]>='a'&&s[i]<='f')
-	  ||(s[i]>='A'&&s[i]<='F'))
-	s[o++]=s[i];
-      else e++;
-    }
-  s[o]=0;
-  return -e;
+  char *t;
+  for (t = s; *s; ++s)
+    if (isxdigit(*s))
+      *t++ = *s;
+  *t = '\0';
 }
 
 int rhizome_server_sql_query_http_response(int rn,rhizome_http_request *r,
@@ -528,8 +520,7 @@ int rhizome_server_parse_http_request(int rn,rhizome_http_request *r)
 	WHYF("get /rhizome/bars (list of BARs)");
 	rhizome_server_sql_query_http_response(rn,r,"bar","manifests","from manifests",32,0);
       }
-    else if (sscanf(r->request,"GET /rhizome/file/%s HTTP/1.",
-	       id)==1)
+    else if (sscanf(r->request,"GET /rhizome/file/%s HTTP/1.", id)==1)
       {
 	/* Stream the specified file */
 	int dud=0;
@@ -537,16 +528,15 @@ int rhizome_server_parse_http_request(int rn,rhizome_http_request *r)
 	hexFilter(id);
 	WHYF("get /rhizome/file/ [%s]",id);
 	WHY("Check for range: header, and return 206 if returning partial content");
-	for(i=0;i<strlen(id);i++) if ((id[i]<'0')||(id[i]>'f')||(id[i]=='\'')) dud++;
+	for(i=0;i<strlen(id);i++) if (!isxdigit(id[i])) dud++;
 	if (dud) rhizome_server_simple_http_response(r,400,"<html><h1>That doesn't look like hex to me.</h1></html>\r\n");
 	else {
+	  str_toupper_inplace(id);
 	  long long rowid = sqlite_exec_int64("select rowid from files where id='%s';",id);
 	  sqlite3_blob *blob;
 	  if (rowid>=0) 
-	    if (sqlite3_blob_open(rhizome_db,"main","files","data",rowid,0,&blob)
-		!=SQLITE_OK)
+	    if (sqlite3_blob_open(rhizome_db,"main","files","data",rowid,0,&blob) !=SQLITE_OK)
 	      rowid=-1;
-
 	  if (rowid<0) {
 	    rhizome_server_simple_http_response(r,404,"<html><h1>Sorry, can't find that here.</h1></html>\r\n");
 	    WHY("File not found / blob not opened");
@@ -565,13 +555,13 @@ int rhizome_server_parse_http_request(int rn,rhizome_http_request *r)
 	  }
 	}
       }
-    else if (sscanf(r->request,"GET /rhizome/manifest/%s HTTP/1.",
-	       id)==1)
+    else if (sscanf(r->request,"GET /rhizome/manifest/%s HTTP/1.", id)==1)
       {
 	/* Stream the specified manifest */
 	hexFilter(id);
 	WHYF("get /rhizome/manifest/ [%s]",id);
-	rhizome_server_simple_http_response(r,400,"<html><h1>A specific manifest</h1></html>\r\n");      }
+	rhizome_server_simple_http_response(r,400,"<html><h1>A specific manifest</h1></html>\r\n");
+      }
     else 
       rhizome_server_simple_http_response(r,400,"<html><h1>Sorry, couldn't parse your request.</h1></html>\r\n");
   }

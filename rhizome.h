@@ -21,6 +21,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "sha2.h"
 #include <sys/stat.h>
 
+#define RHIZOME_MANIFEST_ID_BYTES       crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES
+#define RHIZOME_MANIFEST_ID_STRLEN      (RHIZOME_MANIFEST_ID_BYTES * 2)
+#define RHIZOME_BUNDLE_KEY_BYTES        crypto_sign_edwards25519sha512batch_SECRETKEYBYTES
+#define RHIZOME_BUNDLE_KEY_STRLEN       (RHIZOME_BUNDLE_KEY_BYTES  * 2)
+#define RHIZOME_FILEHASH_BYTES          SHA512_DIGEST_LENGTH
+#define RHIZOME_FILEHASH_STRLEN         (RHIZOME_FILEHASH_BYTES * 2)
+
 #define RHIZOME_HTTP_PORT 4110
 
 extern long long rhizome_voice_timeout;
@@ -201,7 +208,6 @@ int rhizome_manifest_pack_variables(rhizome_manifest *m);
 int rhizome_store_bundle(rhizome_manifest *m, const char *associated_filename);
 int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid);
 int rhizome_store_file(const char *file,char *hash,int priortity);
-char *rhizome_safe_encode(unsigned char *in,int len);
 int rhizome_finish_sqlstatement(sqlite3_stmt *statement);
 int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, const char *bundle,
 			  char *groups[], int ttl,
@@ -211,7 +217,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in, rhizome_manifest **m_out, const
 			 int verifyP, int checkFileP, int signP,
 			 const char *author);
 int rhizome_manifest_finalise(rhizome_manifest *m,int signP,const char *author);
-char *rhizome_bytes_to_hex(unsigned char *in,int byteCount);
+void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCount);
 int rhizome_hex_to_bytes(const char *in,unsigned char *out,int hexChars);
 int rhizome_find_privatekey(rhizome_manifest *m);
 rhizome_signature *rhizome_sign_hash(rhizome_manifest *m,const char *author);
@@ -231,7 +237,7 @@ long long sqlite_exec_int64(char *sqlformat,...);
 int rhizome_update_file_priority(char *fileid);
 int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found);
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
-char nybltochar(int n);
+char nybltochar_upper(int n);
 int rhizome_queue_manifest_import(rhizome_manifest *m,struct sockaddr_in *peerip);
 int rhizome_list_manifests(const char *service, const char *sender_sid, const char *recipient_sid, int limit, int offset);
 int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp);

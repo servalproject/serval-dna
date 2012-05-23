@@ -1119,7 +1119,7 @@ int app_rhizome_hash_file(int argc, const char *const *argv, struct command_line
 {
   const char *filepath;
   cli_arg(argc, argv, o, "filepath", &filepath, NULL, "");
-  char hexhash[SHA512_DIGEST_STRING_LENGTH];
+  char hexhash[RHIZOME_FILEHASH_STRLEN + 1];
   if (rhizome_hash_file(filepath, hexhash))
     return -1;
   cli_puts(hexhash);
@@ -1206,19 +1206,16 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
     ret = WHY("Could not overwrite manifest file.");
   service = rhizome_manifest_get(mout, "service", NULL, 0);
   if (service) {
-    cli_puts("service"); cli_delim(":");
-    cli_puts(service); cli_delim("\n");
+    cli_puts("service"); cli_delim(":");    cli_puts(service); cli_delim("\n");
   }
-  cli_puts("manifestid"); cli_delim(":");
-  cli_puts(rhizome_bytes_to_hex(mout->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)); cli_delim("\n");
-  cli_puts("filehash"); cli_delim(":");
-  cli_puts(mout->fileHexHash); cli_delim("\n");
-  cli_puts("filesize"); cli_delim(":");
-  cli_printf("%lld", mout->fileLength); cli_delim("\n");
+  char bid[RHIZOME_MANIFEST_ID_STRLEN + 1];
+  rhizome_bytes_to_hex_upper(mout->cryptoSignPublic, bid, RHIZOME_MANIFEST_ID_BYTES);
+  cli_puts("manifestid"); cli_delim(":");   cli_puts(bid); cli_delim("\n");
+  cli_puts("filehash"); cli_delim(":");	    cli_puts(mout->fileHexHash); cli_delim("\n");
+  cli_puts("filesize"); cli_delim(":");	    cli_printf("%lld", mout->fileLength); cli_delim("\n");
   const char *name = rhizome_manifest_get(mout, "name", NULL, 0);
   if (name) {
-    cli_puts("name"); cli_delim(":");
-    cli_puts(name); cli_delim("\n");
+    cli_puts("name"); cli_delim(":");	    cli_puts(name); cli_delim("\n");
   }
   rhizome_manifest_free(m);
   if (mout != m)
