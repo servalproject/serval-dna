@@ -359,25 +359,29 @@ int cli_puts(const char *str)
 int cli_printf(const char *fmt, ...)
 {
   int ret = 0;
-  va_list ap,ap2;
-  va_start(ap,fmt);
-  va_copy(ap2,ap);
+  va_list ap;
 #ifdef HAVE_JNI_H
   if (jni_env) {
     size_t avail = outv_limit - outv_current;
-    int count = vsnprintf(outv_current, avail, fmt, ap2);
+    va_start(ap, fmt);
+    int count = vsnprintf(outv_current, avail, fmt, ap);
+    va_end(ap);
     if (count >= avail) {
       if (outv_growbuf(count) == -1)
 	return -1;
-      vsprintf(outv_current, fmt, ap2);
+      va_start(ap, fmt);
+      vsprintf(outv_current, fmt, ap);
+      va_end(ap);
     }
     outv_current += count;
     ret = count;
   } else
 #endif
-    ret = vfprintf(stdout, fmt, ap2);
-  va_end(ap2);
-  va_end(ap);
+  {
+    va_start(ap, fmt);
+    ret = vfprintf(stdout, fmt, ap);
+    va_end(ap);
+  }
   return ret;
 }
 

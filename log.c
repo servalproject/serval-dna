@@ -37,11 +37,8 @@ void logMessage(int level, char *fmt, ...)
 
 void vlogMessage(int level, char *fmt, va_list ap)
 {
-  va_list ap2;
   char buf[8192];
-  va_copy(ap2, ap);
-  vsnprintf(buf, sizeof buf, fmt, ap2);
-  va_end(ap2);
+  vsnprintf(buf, sizeof buf, fmt, ap);
   buf[sizeof buf - 1] = '\0';
 #ifdef ANDROID
   int alevel = ANDROID_LOG_UNKNOWN;

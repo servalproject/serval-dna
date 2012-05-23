@@ -75,19 +75,16 @@ int strbuf_sprintf(strbuf sb, const char *fmt, ...)
 
 int strbuf_vsprintf(strbuf sb, const char *fmt, va_list ap)
 {
-  va_list ap2;
-  va_copy(ap2, ap);
   int n;
   if (sb->start && sb->current < sb->end) {
-    n = vsnprintf(sb->current, sb->end - sb->current + 1, fmt, ap2);
+    n = vsnprintf(sb->current, sb->end - sb->current + 1, fmt, ap);
     *sb->end = '\0';
   } else {
     char tmp[1];
-    n = vsnprintf(tmp, sizeof tmp, fmt, ap2);
+    n = vsnprintf(tmp, sizeof tmp, fmt, ap);
   }
   if (n != -1)
     sb->current += n;
-  va_end(ap2);
   return n;
 }
 
