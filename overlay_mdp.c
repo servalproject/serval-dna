@@ -1270,6 +1270,12 @@ int overlay_mdp_recv(overlay_mdp_frame *mdp,int *ttl)
       if ((sb1.st_ino!=sb2.st_ino)||(sb1.st_dev!=sb2.st_dev))
 	return WHY("Reply did not come from server");
     }
+    
+    int expected_len = overlay_mdp_relevant_bytes(mdp);
+    
+    if (len < expected_len){
+      return WHYF("Expected packet length of %d, received only %d bytes", expected_len, len);
+    }
     /* Valid packet received */
     return 0;
   } else 
