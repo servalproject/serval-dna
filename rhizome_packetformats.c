@@ -343,8 +343,12 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	*/	
 	m=rhizome_read_manifest_file((char *)&f->payload->bytes[ofs],
 				     manifest_length,RHIZOME_DONTVERIFY);
+	if (!m) {
+	  WHY("Out of manifests");
+	  return 0;
+	}
 	/* Crude signature presence test */
-	for(i=m->manifest_all_bytes-1;i>0;i++)
+	for(i=m->manifest_all_bytes-1;i>0;i--)
 	  if (!m->manifestdata[i]) {
 	    /* A null in the middle says we have a signature */
 	    break;
