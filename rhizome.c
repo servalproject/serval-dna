@@ -33,13 +33,16 @@ int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out,
 			  char *groups[], int ttl,
 			  int verifyP, int checkFileP, int signP)
 {
+  if (debug&DEBUG_RHIZOMESYNC)
+    DEBUGF("rhizome_bundle_import(m_in=%p, m_out=%p, bundle=%s, groups=%p, ttl=%d, verifyP=%d, checkFileP=%d, signP=%d)",
+	  m_in, m_out, bundle ? bundle : "(null)", groups, ttl, verifyP, checkFileP, signP);
   if (m_out) *m_out = NULL;
 
   char filename[1024];
   char manifestname[1024];
 
   /* make sure import path exists */
-  if (!create_rhizome_import_dir())
+  if (create_rhizome_import_dir() == -1)
     return -1;
 
   if (!FORM_RHIZOME_IMPORT_PATH(filename, "file.%s", bundle)
@@ -54,7 +57,7 @@ int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out,
       return WHY("Could not read manifest file.");
   } else {
     if (debug&DEBUG_RHIZOMESYNC)
-      WHYF("Importing direct from manifest structure fileHashedP=%d", m->fileHashedP);
+      DEBUGF("Importing direct from manifest structure fileHashedP=%d", m->fileHashedP);
   }
 
   /* Add the manifest and its associated file to the Rhizome database. */

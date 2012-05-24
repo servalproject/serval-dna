@@ -806,7 +806,7 @@ int rhizome_fetch_poll()
 		}
 		q->manifest->finalised=1;
 		q->manifest->manifest_bytes=q->manifest->manifest_all_bytes;
-		if (!rhizome_write_manifest_file(q->manifest,filename)) {
+		if (rhizome_write_manifest_file(q->manifest,filename) != -1) {
 		  rhizome_bundle_import(q->manifest, NULL, id,
 					NULL /* no additional groups */,
 					q->manifest->ttl - 1 /* TTL */,
@@ -815,7 +815,6 @@ int rhizome_fetch_poll()
 					0 /* do not sign it, just keep existing signatures */);
 		  q->manifest=NULL;
 		} else {
-		  WHY("rhizome_write_manifest_file() failed");
 		  rhizome_manifest_free(q->manifest);
 		  q->manifest=NULL;
 		}
