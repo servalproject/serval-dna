@@ -360,16 +360,16 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
   if (rhizome_manifest_version_cache_lookup(m)) {
     /* We already have this version or newer */
     if (1||debug&DEBUG_RHIZOMESYNC) {
-      DEBUGF("manifest id=%s, version=%lld\n",
+      DEBUGF("manifest id=%s, version=%lld",
 	   rhizome_manifest_get(m,"id",NULL,0),
 	   rhizome_manifest_get_ll(m,"version"));
-      DEBUG("We already have that manifest or newer.\n");
+      DEBUG("We already have that manifest or newer.");
     }
     rhizome_manifest_free(m);
     return -1;
   } else {
     if (debug&DEBUG_RHIZOMESYNC) {
-      DEBUGF("manifest id=%s, version=%lld is new to us.\n",
+      DEBUGF("manifest id=%s, version=%lld is new to us.",
 	   rhizome_manifest_get(m,"id",NULL,0),
 	   rhizome_manifest_get_ll(m,"version"));
     }
@@ -472,8 +472,7 @@ int rhizome_enqueue_suggestions()
   return 0;
 }
 
-int rhizome_queue_manifest_import(rhizome_manifest *m,
-				  struct sockaddr_in *peerip)
+int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peerip)
 {
   int i;
 
@@ -494,15 +493,15 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
   if (rhizome_manifest_version_cache_lookup(m)) {
     /* We already have this version or newer */
     if (debug&DEBUG_RHIZOMESYNC) {
-      DEBUGF("manifest id=%s, version=%lld\n",
+      DEBUGF("manifest id=%s, version=%lld",
 	   rhizome_manifest_get(m,"id",NULL,0),
 	   rhizome_manifest_get_ll(m,"version"));
-      DEBUG("We already have that manifest or newer.\n");
+      DEBUG("We already have that manifest or newer.");
     }
     return -1;
   } else {
     if (debug&DEBUG_RHIZOMESYNC) {
-      DEBUGF("manifest id=%s, version=%lld is new to us.\n",
+      DEBUGF("manifest id=%s, version=%lld is new to us.",
 	   rhizome_manifest_get(m,"id",NULL,0),
 	   rhizome_manifest_get_ll(m,"version"));
     }
@@ -515,33 +514,35 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
   }
   /* Don't queue if already queued */
   char *id=rhizome_manifest_get(m,"id",NULL,0);
+  if (!rhizome_str_is_manifest_id(id))
+    return WHYF("Invalid manifest ID: %s", id);
   for(i=0;i<rhizome_file_fetch_queue_count;i++) {
     rhizome_file_fetch_record 
       *q=&file_fetch_queue[i];
     if (!strcasecmp(id,rhizome_manifest_get(q->manifest,"id",NULL,0))) {
 	if (debug&DEBUG_RHIZOMESYNC)
-	  DEBUGF("Already have %s in the queue.\n",id);
+	  DEBUGF("Already have %s in the queue.",id);
 	return -1;
       }
   }
 
-  char filehash[RHIZOME_FILEHASH_STRLEN + 1];
-  if (!rhizome_manifest_get(m, "filehash", filehash, sizeof filehash))
-    filehash[0] = '\0';
-  str_toupper_inplace(filehash);
-  long long filesize=rhizome_manifest_get_ll(m,"filesize");
+  if (!rhizome_manifest_get(m, "filehash", m->fileHexHash, sizeof m->fileHexHash))
+    return WHY("Manifest missing filehash");
+  if (!rhizome_str_is_file_hash(m->fileHexHash))
+    return WHYF("Invalid file hash: %s", m->fileHexHash);
+  str_toupper_inplace(m->fileHexHash);
+  m->fileHashedP = 1;
+
+  long long filesize = rhizome_manifest_get_ll(m, "filesize");
 
   if (debug&DEBUG_RHIZOMESYNC) 
-    DEBUGF("Getting ready to fetch file %s for manifest %s\n",filehash,rhizome_manifest_get(m,"id",NULL,0));
+    DEBUGF("Getting ready to fetch file %s for manifest %s", m->fileHexHash, id);
 
-  if (filesize > 0 && filehash[0])
-    {  
-      if (!rhizome_str_is_file_hash(filehash))
-	return WHYF("Invalid file hash: ", filehash);
-      int gotfile= sqlite_exec_int64("SELECT COUNT(*) FROM FILES WHERE ID='%s';", filehash);
+  if (filesize > 0 && m->fileHexHash[0])
+    {
+      int gotfile= sqlite_exec_int64("SELECT COUNT(*) FROM FILES WHERE ID='%s';", m->fileHexHash);
       if (gotfile!=1) {
 	/* We need to get the file */
-	
 	/* Discard request if the same manifest is already queued for reception.   
 	 */
 	int i,j;
@@ -553,16 +554,15 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
 	    if (j==crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)
 	      {
 		/* We are already fetching this manifest */
-		if (debug&DEBUG_RHIZOME) DEBUGF("Already fetching manifest\n");
+		if (debug&DEBUG_RHIZOME) DEBUGF("Already fetching manifest");
 		return -1;
 	      }
 	    for(j=0;j<=RHIZOME_FILEHASH_STRLEN;j++)
-	      if (filehash[j]!=file_fetch_queue[i].fileid[j]) break;
+	      if (m->fileHexHash[j]!=file_fetch_queue[i].fileid[j]) break;
 	    if (j==RHIZOME_FILEHASH_STRLEN + 1)
 	      {
 		/* We are already fetching this file */
-		if (debug&DEBUG_RHIZOME) DEBUGF("Already fetching file %s\n",
-						 filehash);
+		if (debug&DEBUG_RHIZOME) DEBUGF("Already fetching file %s", m->fileHexHash);
 		return -1;
 	      }
 	  }
@@ -587,7 +587,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
 	      *q=&file_fetch_queue[rhizome_file_fetch_queue_count];
 	    q->manifest=m;
 	    q->socket=sock;
-	    strncpy(q->fileid, filehash, RHIZOME_FILEHASH_STRLEN + 1);
+	    strncpy(q->fileid, m->fileHexHash, RHIZOME_FILEHASH_STRLEN + 1);
 	    snprintf(q->request,1024,"GET /rhizome/file/%s HTTP/1.0\r\n\r\n",
 		     q->fileid);
 	    q->request_len=strlen(q->request);
@@ -605,13 +605,10 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
 	      close(sock);
 	      return WHY("Manifest missing ID");
 	    }
-	    char filename[1024];
-	    if (!FORM_RHIZOME_DATASTORE_PATH(filename, "import", id)) {
-	      close(sock);
+	    if (create_rhizome_import_dir() == -1)
 	      return -1;
-	    }
-	    mkdirs(filename, 0700);
-	    if (!FORM_RHIZOME_DATASTORE_PATH(filename, "import/file.%s", id)) {
+	    char filename[1024];
+	    if (!FORM_RHIZOME_IMPORT_PATH(filename, "file.%s", id)) {
 	      close(sock);
 	      return -1;
 	    }
@@ -638,19 +635,13 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
       else
 	{
 	  if (debug&DEBUG_RHIZOMESYNC) 
-	    DEBUGF("We already have the file for this manifest; importing from manifest alone.\n");
-	  const char *filehash = rhizome_manifest_get(m, "filehash", NULL, 0);
-	  if (filehash == NULL)
-	    return WHY("Manifest missing filehash");
-	  strncpy(m->fileHexHash, filehash, sizeof m->fileHexHash);
-	  m->fileHashedP=1;
-	  m->finalised=1;
-	  m->manifest_bytes=m->manifest_all_bytes;
-	  const char *id = rhizome_manifest_get(m, "id", NULL, 0);
-	  if (id == NULL)
-	    return WHY("Manifest missing ID");
+	    DEBUGF("We already have the file for this manifest; importing from manifest alone.");
+	  m->finalised = 1;
+	  m->manifest_bytes = m->manifest_all_bytes;
+	  if (create_rhizome_import_dir() == -1)
+	    return -1;
 	  char filename[1024];
-	  if (!FORM_RHIZOME_DATASTORE_PATH(filename, "import/manifest.%s", id))
+	  if (!FORM_RHIZOME_IMPORT_PATH(filename, "manifest.%s", id))
 	    return -1;
 	  if (!rhizome_write_manifest_file(m, filename)) {
 	    rhizome_bundle_import(m, NULL, id,
@@ -659,15 +650,14 @@ int rhizome_queue_manifest_import(rhizome_manifest *m,
 				  1 /* do verify */,
 				  0 /* don't check hash of file (since we are using the databse stored copy) */,
 				  0 /* do not sign it, just keep existing
-				       signatures */);		  
-	    
+				       signatures */);
 	  }
 	}
     }
-  
+
   return 0;
 }
-  
+
 long long rhizome_last_fetch=0;
 int rhizome_poll_fetchP=0;
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
@@ -691,7 +681,7 @@ int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
     {
       if ((*fdcount)>=fdmax) return -1;
       if (debug&DEBUG_RHIZOMESYNC) {
-	DEBUGF("rhizome file fetch request #%d is poll() slot #%d (fd %d)\n",
+	DEBUGF("rhizome file fetch request #%d is poll() slot #%d (fd %d)",
 	     i,*fdcount,file_fetch_queue[i].socket); }
       fds[*fdcount].fd=file_fetch_queue[i].socket;
       switch(file_fetch_queue[i].state) {
@@ -745,8 +735,8 @@ int rhizome_fetch_poll()
 	      /* Sent all of request.  Switch to listening for HTTP response headers.
 	       */
 	      if (debug&DEBUG_RHIZOME) {
-		DEBUGF("Sent http request to fetch file. (%d of %d bytes)\n",q->request_ofs,q->request_len);	      
-		DEBUGF("sent [%s]\n",q->request);
+		DEBUGF("Sent http request to fetch file. (%d of %d bytes)",q->request_ofs,q->request_len);	      
+		DEBUGF("sent [%s]",q->request);
 	      }
 	      q->request_len=0; q->request_ofs=0;
 	      q->state=RHIZOME_FETCH_RXHTTPHEADERS;
@@ -759,7 +749,7 @@ int rhizome_fetch_poll()
 	case RHIZOME_FETCH_RXFILE:
 	  /* Keep reading until we have the promised amount of data */
 	  if (debug&DEBUG_RHIZOME) 
-	    DEBUGF("receiving rhizome fetch file body (current offset=%d of %d)\n",
+	    DEBUGF("receiving rhizome fetch file body (current offset=%d of %d)",
 		 q->file_ofs,q->file_len);
 	  
 	  sigPipeFlag=0;
@@ -774,14 +764,14 @@ int rhizome_fetch_poll()
 	    action=1;
 
 	    if (debug&DEBUG_RHIZOME) 
-	      DEBUGF("Read %d bytes; we now have %d of %d bytes.\n",
+	      DEBUGF("Read %d bytes; we now have %d of %d bytes.",
 		      bytes,q->file_ofs+bytes,q->file_len);
 
 	    if (bytes>(q->file_len-q->file_ofs))
 	      bytes=q->file_len-q->file_ofs;
 	    if (fwrite(buffer,bytes,1,q->file)!=1)
 	      {
-		if (debug&DEBUG_RHIZOME) DEBUGF("Failed writing %d bytes to file. @ offset %d\n",bytes,q->file_ofs);
+		if (debug&DEBUG_RHIZOME) DEBUGF("Failed writing %d bytes to file. @ offset %d",bytes,q->file_ofs);
 		q->close=1;
 		continue;
 	      }
@@ -795,19 +785,21 @@ int rhizome_fetch_poll()
 	    {
 	      /* got all of file */
 	      q->close=1;
-	      if (debug&DEBUG_RHIZOME) DEBUGF("Received all of file via rhizome -- now to import it\n");
+	      if (debug&DEBUG_RHIZOME) DEBUGF("Received all of file via rhizome -- now to import it");
 	      {
 		fclose(q->file); q->file=NULL;
 		const char *id = rhizome_manifest_get(q->manifest, "id", NULL, 0);
 		if (id == NULL)
 		  return WHY("Manifest missing ID");
+		if (create_rhizome_import_dir() == -1)
+		  return -1;
 		char filename[1024];
-		if (!FORM_RHIZOME_DATASTORE_PATH(filename,"import/manifest.%s", id))
+		if (!FORM_RHIZOME_IMPORT_PATH(filename,"manifest.%s", id))
 		  return -1;
 		/* Do really write the manifest unchanged */
 		if (debug&DEBUG_RHIZOME) {
-		  DEBUGF("manifest has %d signatories\n",q->manifest->sig_count);
-		  DEBUGF("manifest id = %s, len=%d\n",
+		  DEBUGF("manifest has %d signatories",q->manifest->sig_count);
+		  DEBUGF("manifest id = %s, len=%d",
 			  rhizome_manifest_get(q->manifest,"id",NULL,0),
 			  q->manifest->manifest_bytes);
 		  dump("manifest",&q->manifest->manifestdata[0],
@@ -873,23 +865,23 @@ int rhizome_fetch_poll()
 	      /* Get HTTP result code */
 	      char *s=strstr(q->request,"HTTP/1.0 ");
 	      if (!s) { 
-		if (debug&DEBUG_RHIZOME) DEBUGF("HTTP response lacked HTTP/1.0 response code.\n");
+		if (debug&DEBUG_RHIZOME) DEBUGF("HTTP response lacked HTTP/1.0 response code.");
 		q->close=1; continue; }
 	      int http_response_code=strtoll(&s[9],NULL,10);
 	      if (http_response_code!=200) {
-		if (debug&DEBUG_RHIZOME) DEBUGF("Rhizome web server returned %d != 200 OK\n",http_response_code);
+		if (debug&DEBUG_RHIZOME) DEBUGF("Rhizome web server returned %d != 200 OK",http_response_code);
 		q->close=1; continue;
 	      }
 	      /* Get content length */
 	      s=strstr(q->request,"Content-length: ");
 	      if (!s) {
 		if (debug&DEBUG_RHIZOME) 
-		  DEBUGF("Missing Content-Length: header.\n");
+		  DEBUGF("Missing Content-Length: header.");
 		q->close=1; continue; }
 	      q->file_len=strtoll(&s[16],NULL,10);
 	      if (q->file_len<0) {
 		if (debug&DEBUG_RHIZOME) 
-		  DEBUGF("Illegal file size (%d).\n",q->file_len);
+		  DEBUGF("Illegal file size (%d).",q->file_len);
 		q->close=1; continue; }
 
 	      /* Okay, we have both, and are all set.
@@ -901,14 +893,14 @@ int rhizome_fetch_poll()
 		if (fwrite(&q->request[i+1],fileRxBytes,1,q->file)!=1)
 		  {
 		    if (debug&DEBUG_RHIZOME) 
-		      DEBUGF("Failed writing initial %d bytes to file.\n",
+		      DEBUGF("Failed writing initial %d bytes to file.",
 			      fileRxBytes);	       
 		    q->close=1;
 		    continue;
 		  }
 	      q->file_ofs=fileRxBytes;
 	      if (debug&DEBUG_RHIZOME) 
-		DEBUGF("Read %d initial bytes of %d total\n",
+		DEBUGF("Read %d initial bytes of %d total",
 			q->file_ofs,q->file_len);
 	      q->state=RHIZOME_FETCH_RXFILE;
 	    }

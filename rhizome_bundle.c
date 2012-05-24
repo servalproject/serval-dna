@@ -443,12 +443,20 @@ int rhizome_manifest_sign(rhizome_manifest *m,const char *author)
 
 int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename)
 {
+  if (debug & DEBUG_RHIZOME) DEBUGF("write manifest (%d bytes) to %s", m->manifest_all_bytes, filename);
   if (!m) return WHY("Manifest is null.");
   if (!m->finalised) return WHY("Manifest must be finalised before it can be written.");
-  FILE *f=fopen(filename,"w");
-  int r=fwrite(m->manifestdata,m->manifest_all_bytes,1,f);
-  fclose(f);
-  if (r!=1) return WHY("Failed to fwrite() manifest file.");
+  FILE *f = fopen(filename, "w");
+  if (f == NULL) {
+    WHY_perror("fopen");
+    return WHYF("Cannot write manifest to %s", filename);
+  }
+  int r1 = fwrite(m->manifestdata, m->manifest_all_bytes, 1, f);
+  int r2 = fclose(f);
+  if (r1 != 1)
+    return WHYF("fwrite(%s) returned %d", filename, r1);
+  if (r2 == EOF)
+    return WHYF("fclose(%s) returned %d", filename, r2);
   return 0;
 }
 

@@ -170,15 +170,21 @@ typedef struct rhizome_manifest {
 #define     RHIZOME_SERVICE_MESHMS  "MeshMS1"
 
 extern long long rhizome_space;
-const char *rhizome_datastore_path();
+
 int rhizome_set_datastore_path(const char *path);
+
+const char *rhizome_datastore_path();
 int form_rhizome_datastore_path(char * buf, size_t bufsiz, const char *fmt, ...);
 int create_rhizome_datastore_dir();
 
+int form_rhizome_import_path(char * buf, size_t bufsiz, const char *fmt, ...);
+int create_rhizome_import_dir();
+
 /* Handy statement for forming the path of a rhizome store file in a char buffer whose declaration
  * is in scope (so that sizeof(buf) will work).  Evaluates to true if the pathname fitted into
- * the provided buffer, false (0) otherwise (after printing a message to stderr).  */
+ * the provided buffer, false (0) otherwise (after logging an error).  */
 #define FORM_RHIZOME_DATASTORE_PATH(buf,fmt,...) (form_rhizome_datastore_path((buf), sizeof(buf), (fmt), ##__VA_ARGS__))
+#define FORM_RHIZOME_IMPORT_PATH(buf,fmt,...) (form_rhizome_import_path((buf), sizeof(buf), (fmt), ##__VA_ARGS__))
 
 extern sqlite3 *rhizome_db;
 

@@ -39,22 +39,12 @@ int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out,
   char manifestname[1024];
 
   /* make sure import path exists */
-  snprintf(filename,1024,"%s/import",rhizome_datastore_path());
-  mkdirs(filename,0700);
+  if (!create_rhizome_import_dir())
+    return -1;
 
-  if (!FORM_RHIZOME_DATASTORE_PATH(filename, "import/file.%s", bundle)
-   || !FORM_RHIZOME_DATASTORE_PATH(manifestname, "import/manifest.%s", bundle))
+  if (!FORM_RHIZOME_IMPORT_PATH(filename, "file.%s", bundle)
+   || !FORM_RHIZOME_IMPORT_PATH(manifestname, "manifest.%s", bundle))
     return WHY("Manifest bundle name too long");
-  /*
-  FORM_RHIZOME_DATASTORE_PATH() works now, so remove this code. -- AB
-  WHYF("bundle='%s'",bundle);
-  WHYF("filename='%s'",filename);
-  WHYF("manifestname='%s'",manifestname);
-  snprintf(filename,1024,"%s/import/file.%s",rhizome_datastore_path(),bundle);
-  snprintf(manifestname,1024,"%s/import/manifest.%s",rhizome_datastore_path(),bundle);
-  WHYF("PGS filename='%s'",filename);
-  WHYF("PGS manifestname='%s'",manifestname);
-  */
 
   /* Read manifest file if no manifest was given */
   rhizome_manifest *m = m_in;

@@ -59,10 +59,32 @@ int form_rhizome_datastore_path(char * buf, size_t bufsiz, const char *fmt, ...)
 {
   va_list ap;
   strbuf b = strbuf_local(buf, bufsiz);
-  strbuf_sprintf(b, "%s/", rhizome_datastore_path());  
-  va_start(ap, fmt);
-  strbuf_vsprintf(b, fmt, ap);
-  va_end(ap);
+  strbuf_puts(b, rhizome_datastore_path());  
+  if (fmt) {
+    va_start(ap, fmt);
+    if (*strbuf_substr(b, -1) != '/')
+      strbuf_putc(b, '/');
+    strbuf_vsprintf(b, fmt, ap);
+    va_end(ap);
+  }
+  if (strbuf_overrun(b)) {
+      WHY("Path buffer overrun");
+      return 0;
+  }
+  return 1;
+}
+
+int form_rhizome_import_path(char * buf, size_t bufsiz, const char *fmt, ...)
+{
+  va_list ap;
+  strbuf b = strbuf_local(buf, bufsiz);
+  strbuf_sprintf(b, "%s/import", rhizome_datastore_path());
+  if (fmt) {
+    va_start(ap, fmt);
+    strbuf_putc(b, '/');
+    strbuf_vsprintf(b, fmt, ap);
+    va_end(ap);
+  }
   if (strbuf_overrun(b)) {
       WHY("Path buffer overrun");
       return 0;
@@ -74,6 +96,15 @@ int create_rhizome_datastore_dir()
 {
   if (debug & DEBUG_RHIZOME) DEBUGF("mkdirs(%s, 0700)", rhizome_datastore_path());
   return mkdirs(rhizome_datastore_path(), 0700);
+}
+
+int create_rhizome_import_dir()
+{
+  char dirname[1024];
+  if (!form_rhizome_import_path(dirname, sizeof dirname, NULL))
+    return -1;
+  if (debug & DEBUG_RHIZOME) DEBUGF("mkdirs(%s, 0700)", dirname);
+  return mkdirs(dirname, 0700);
 }
 
 sqlite3 *rhizome_db=NULL;
