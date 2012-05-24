@@ -813,11 +813,9 @@ int rhizome_fetch_poll()
 					1 /* do verify */,
 					1 /* do check hash of file */,
 					0 /* do not sign it, just keep existing signatures */);
-		  q->manifest=NULL;
-		} else {
-		  rhizome_manifest_free(q->manifest);
-		  q->manifest=NULL;
 		}
+		rhizome_manifest_free(q->manifest);
+		q->manifest=NULL;
 	      }
 	    }
 	  break;
