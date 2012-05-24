@@ -200,7 +200,7 @@ static void complainCommandLine(const char *prefix, int argc, const char *const 
 	strbuf_puts(b, arg);
       }
   }
-  setReason("%s%s%s", prefix, strbuf_str(b), strbuf_overrun(b) ? "..." : "");
+  WHYF("%s%s%s", prefix, strbuf_str(b), strbuf_overrun(b) ? "..." : "");
 }
 
 /* args[] excludes command name (unless hardlinks are used to use first words 
@@ -250,9 +250,9 @@ int parseCommandLine(int argc, const char *const *args)
 	   that the call is ambiguous. */
 	if (cli_call>=0) ambiguous++;
 	if (ambiguous==1) {
-	  setReason("Ambiguous command line call:");
+	  WHY("Ambiguous command line call:");
 	  complainCommandLine("   ", argc, args);
-	  setReason("Matches the following known command line calls:");
+	  WHY("Matches the following known command line calls:");
 	  complainCommandLine("   ", argc, command_line_options[cli_call].words);
 	}
 	if (ambiguous) {
@@ -266,7 +266,7 @@ int parseCommandLine(int argc, const char *const *args)
   if (ambiguous) return -1;
   /* Complain if we found no matching calls */
   if (cli_call<0) {
-    setReason("Unknown command line call:");
+    WHY("Unknown command line call:");
     complainCommandLine("   ", argc, args);
     return cli_usage();
   }
@@ -1369,9 +1369,9 @@ int app_keyring_add(int argc, const char *const *argv, struct command_line_optio
   if (!k)
     return -1;
   if (keyring_create_identity(k,k->contexts[0],(char *)pin)==NULL)
-    return setReason("Could not create new identity (keyring_create_identity() failed)");
+    return WHY("Could not create new identity (keyring_create_identity() failed)");
   if (keyring_commit(k))
-    return setReason("Could not write new identity (keyring_commit() failed)");
+    return WHY("Could not write new identity (keyring_commit() failed)");
   keyring_free(k);
   return 0;
 }

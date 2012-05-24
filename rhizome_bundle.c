@@ -287,8 +287,7 @@ const char *manifest_free_sourcefiles[MAX_RHIZOME_MANIFESTS];
 const char *manifest_free_functions[MAX_RHIZOME_MANIFESTS];
 int manifest_free_lines[MAX_RHIZOME_MANIFESTS];
 
-rhizome_manifest *_rhizome_new_manifest(const char *filename,const char *funcname,
-					int line)
+rhizome_manifest *_rhizome_new_manifest(const char *filename, const char *funcname, int line)
 {
   if (manifest_first_free<0) {
     /* Setup structures */
@@ -309,15 +308,15 @@ rhizome_manifest *_rhizome_new_manifest(const char *filename,const char *funcnam
   if (manifest_first_free>=MAX_RHIZOME_MANIFESTS)
     {
       int i;
-      fprintf(stderr,"%s:%d:%s() call to rhizome_new_manifest() could not be serviced.\n   (no free manifest records, this probably indicates a memory leak.)\n",
-	      filename,line,funcname);
-      fprintf(stderr,"   Manifest Slot# | Last allocated by\n");
+      logMessage(LOG_LEVEL_ERROR, filename, line, funcname, "%s(): no free manifest records, this probably indicates a memory leak", __FUNCTION__);
+      WHYF("   Manifest Slot# | Last allocated by");
       for(i=0;i<MAX_RHIZOME_MANIFESTS;i++) {
-	fprintf(stderr,"   %-14d | %s:%d in %s()\n",
+	WHYF("   %-14d | %s:%d in %s()",
 		i,
 		manifest_alloc_sourcefiles[i],
 		manifest_alloc_lines[i],
-		manifest_alloc_functions[i]);
+		manifest_alloc_functions[i]
+	    );
       }     
       return NULL;
     }
@@ -353,19 +352,21 @@ void _rhizome_manifest_free(const char *sourcefile,const char *funcname,int line
   int mid=m->manifest_record_number;
 
   if (m!=&manifests[mid]) {
-    fprintf(stderr,"%s:%d:%s() called rhizome_manifest_free() and asked to free"
-	    " manifest %p, which claims to be manifest slot #%d (%p), but isn't.\n",
-	    sourcefile,line,funcname,m,mid,&manifests[mid]);
+    logMessage(LOG_LEVEL_ERROR, sourcefile, line, funcname,
+	"%s(): asked to free manifest %p, which claims to be manifest slot #%d (%p), but isn't",
+	__FUNCTION__, m, mid, &manifests[mid]
+      );
     exit(-1);
   }
 
   if (manifest_free[mid]) {
-    fprintf(stderr,"%s:%d:%s() called rhizome_manifest_free() and asked to free"
-	    " manifest slot #%d (%p), which has already been freed at %s:%d:%s().\n",
-	    sourcefile,line,funcname,mid,m,
-	    manifest_free_sourcefiles[mid],
-	    manifest_free_lines[mid],
-	    manifest_free_functions[mid]);
+    logMessage(LOG_LEVEL_ERROR, sourcefile, line, funcname,
+	"%s(): asked to free manifest slot #%d (%p), which was already freed at %s:%d:%s()",
+	__FUNCTION__, mid, m,
+	manifest_free_sourcefiles[mid],
+	manifest_free_lines[mid],
+	manifest_free_functions[mid]
+      );
     exit(-1);
   }
 
@@ -471,12 +472,12 @@ int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid)
   return WHY("Not implemented.");
 }
 
-int rhizome_manifest_dump(rhizome_manifest *m,char *msg)
+int rhizome_manifest_dump(rhizome_manifest *m, const char *msg)
 {
   int i;
-  fprintf(stderr,"Dumping manifest %s:\n",msg);
+  WHYF("Dumping manifest %s:", msg);
   for(i=0;i<m->var_count;i++)
-    fprintf(stderr,"[%s]=[%s]\n",m->vars[i],m->values[i]);
+    WHYF("[%s]=[%s]\n", m->vars[i], m->values[i]);
   return 0;
 }
 

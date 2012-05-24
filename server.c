@@ -125,14 +125,15 @@ int server_pid()
 {
   const char *instancepath = serval_instancepath();
   struct stat st;
-  if (stat(instancepath, &st) == -1)
-    return setReason(
-	"Instance path '%s' non existant or not accessable: %s [errno=%d]"
+  if (stat(instancepath, &st) == -1) {
+    WHY_perror("stat");
+    return WHYF("Instance path '%s' non existant or not accessable"
 	" (Set SERVALINSTANCE_PATH to specify an alternate location)",
-	instancepath, strerror(errno), errno
+	instancepath
       );
+  }
   if ((st.st_mode & S_IFMT) != S_IFDIR)
-    return setReason("Instance path '%s' is not a directory", instancepath);
+    return WHYF("Instance path '%s' is not a directory", instancepath);
   char filename[1024];
   if (!FORM_SERVAL_INSTANCE_PATH(filename, PIDFILE_NAME))
     return -1;
@@ -526,7 +527,7 @@ int processRequest(unsigned char *packet,int len,
 	      }
 	      break;
 	    case ACTION_SET:
-	      setReason("You can only set keyring variables locally");
+	      WHY("You can only set keyring variables locally");
 	      return respondSimple(NULL,ACTION_ERROR,
 				   (unsigned char *)"Would be insecure",
 				   0,transaction_id,recvttl,
@@ -625,7 +626,7 @@ int processRequest(unsigned char *packet,int len,
 		      dlen=0;		      
 		      if (packageVariableSegment(data,&dlen,&r,offset,
 						 MAX_DATA_BYTES+16))
-			return setReason("packageVariableSegment() failed.");
+			return WHY("packageVariableSegment() failed.");
 		      responding_id = keyring->contexts[cn]->identities[in];
 
 		      /* Remember that we need to send this new packet */
@@ -690,7 +691,7 @@ int processRequest(unsigned char *packet,int len,
 			fake.response=uri;
 			
 			if (packageVariableSegment(data,&dlen,&fake,offset,MAX_DATA_BYTES+16))
-			  return setReason("packageVariableSegment() of gateway URI failed.");
+			  return WHY("packageVariableSegment() of gateway URI failed.");
 			
 			WHY("Gateway claims to be 1st identity, when it should probably have its own identity");
 			respondSimple(keyring->contexts[0]->identities[0],
@@ -707,7 +708,7 @@ int processRequest(unsigned char *packet,int len,
 	      }
 	      break;
 	    default:
-	      setReason("Asked to perform unsupported action");
+	      WHY("Asked to perform unsupported action");
 	      if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"Asked to perform unsipported action at Packet offset = 0x%x\n",pofs);
 	      if (debug&DEBUG_PACKETFORMATS) dump("Packet",packet,len);
 	      return WHY("Asked to perform unsupported action.");
@@ -751,10 +752,10 @@ int respondSimple(keyring_identity *id,
     return WHY("packetMakeHeader() failed.");
   if (id)
     { if (packetSetSidFromId(packet,8000,packet_len,id)) 
-	return setReason("invalid SID in reply"); }
+	return WHY("invalid SID in reply"); }
   else 
     { if (packetSetDid(packet,8000,packet_len,"")) 
-	return setReason("Could not set empty DID in reply"); }  
+	return WHY("Could not set empty DID in reply"); }  
 
   CHECK_PACKET_LEN(1+1+action_len);
   packet[(*packet_len)++]=action;
@@ -863,14 +864,14 @@ int simpleServerMode()
       if (debug&DEBUG_PACKETRX) dump("recvaddr",(unsigned char *)&recvaddr,recvaddrlen);
       if (debug&DEBUG_PACKETRX) dump("packet",(unsigned char *)buffer,len);
       if (dropPacketP(len)) {
-	if (debug&DEBUG_SIMULATION) fprintf(stderr,"Simulation mode: Dropped packet due to simulated link parameters.\n");
+	if (debug&DEBUG_SIMULATION) DEBUG("Simulation mode: Dropped packet due to simulated link parameters.");
 	continue;
       }
       /* Simple server mode doesn't really use interface numbers, so lie and say interface -1 */
       if (packetOk(-1,buffer,len,NULL,ttl,&recvaddr,recvaddrlen,1)) { 
-	if (debug&DEBUG_PACKETFORMATS) setReason("Ignoring invalid packet");
+	if (debug&DEBUG_PACKETFORMATS) DEBUG("Ignoring invalid packet");
       }
-      if (debug&DEBUG_PACKETRX) fprintf(stderr,"Finished processing packet, waiting for next one.\n");
+      if (debug&DEBUG_PACKETRX) DEBUG("Finished processing packet, waiting for next one.");
     }
   }
   return 0;

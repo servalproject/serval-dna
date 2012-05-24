@@ -27,17 +27,17 @@ int packetSetMySid(char *sid)
   /* Set SID identity if not the first SID in the HLR */
 
  
-  return setReason("Not implemented");
+  return WHY("Not implemented");
 }
 
 int packetGetPrivateKeyForSid()
 {
-  return setReason("Not implemented");
+  return WHY("Not implemented");
 }
 
 int packetClearPrivateKeys()
 {
-  return setReason("Not implemented");
+  return WHY("Not implemented");
 }
 
 int packetDecipher(unsigned char *packet,int len,int cipher)
@@ -62,7 +62,7 @@ int packetDecipher(unsigned char *packet,int len,int cipher)
     /* encrypt and sign, i.e., crypto_box() */
     return 0;
   default:
-    return setReason("Unknown packet cipher");
+    return WHY("Unknown packet cipher");
   }
 }
 
@@ -73,7 +73,7 @@ int packetEncipher(unsigned char *packet,int maxlen,int *len,int cryptoflags)
 
   if (cryptoflags) 
     {
-      return setReason("Unknown packet cipher"); 
+      return WHY("Unknown packet cipher"); 
     }
   else return 0; /* plain text */
 }

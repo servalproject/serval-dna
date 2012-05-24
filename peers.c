@@ -32,10 +32,10 @@ int additionalPeer(char *peer)
 {
   struct in_addr pa;
 
-  if (nom_peer_count>255) return setReason("Too many peers.  You can only nominate 255 peers in this version.");
+  if (nom_peer_count>255) return WHY("Too many peers.  You can only nominate 255 peers in this version.");
 
   pa.s_addr=inet_addr(peer);
-  if (pa.s_addr==INADDR_NONE) return setReason("Invalid peer address specified.");
+  if (pa.s_addr==INADDR_NONE) return WHY("Invalid peer address specified.");
   nominated_peers[nom_peer_count++]=pa;
 
   return 0;

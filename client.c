@@ -274,7 +274,7 @@ int requestNewHLR(char *did,char *pin,char *sid,
       return -1;
     }
  
-  return setReason("Request creation of new HLR not implemented");
+  return WHY("Request creation of new HLR not implemented");
 }
 
 /* Some data types can end in @ if they require the address of the sender to be appended for correct local interpretation */
@@ -366,7 +366,7 @@ int getReplyPackets(int method,int peer,int batchP,struct response_set *response
     if (!recvaddr) recvaddr=&reply_recvaddr;
 
     len=recvwithttl(sock,buffer,sizeof(buffer),&ttl,recvaddr,&recvaddrlen);
-    if (len<=0) return setReason("Unable to receive packet.");
+    if (len<=0) return WHY("Unable to receive packet.");
 
     if (recvaddr) {
       client_port=((struct sockaddr_in *)recvaddr)->sin_port;
@@ -384,7 +384,7 @@ int getReplyPackets(int method,int peer,int batchP,struct response_set *response
     if (!packetOk(-1,buffer,len,transaction_id,ttl,recvaddr,recvaddrlen,0)) {
       /* Packet passes tests - extract responses and append them to the end of the response list */
       if (extractResponses(client_addr,buffer,len,responses)) 
-	return setReason("Problem extracting response fields from reply packets");
+	return WHY("Problem extracting response fields from reply packets");
       if (method==REQ_SERIAL||method==REQ_FIRSTREPLY) {
 	if (!batchP) return 0;
 	/* In batch mode we need ACTION_DONE to mark end of transmission. 
@@ -406,7 +406,7 @@ int getReplyPackets(int method,int peer,int batchP,struct response_set *response
 	if (debug&DEBUG_DNARESPONSES) printf("Waiting for more packets, since called with policy %d\n",method);
       }
     } else {
-      if (debug&(DEBUG_PACKETRX|DEBUG_DNARESPONSES)) setReason("Ignoring invalid packet");
+      if (debug&(DEBUG_PACKETRX|DEBUG_DNARESPONSES)) WHY("Ignoring invalid packet");
     }      
   }
 }
@@ -446,7 +446,7 @@ int writeItem(char *sid,int var_id,int instance,unsigned char *value,
 			flags|((o>value_start)?SET_FRAGMENT:0),recvttl,NULL))
 	    {
 	      if (debug&DEBUG_DNAVARS) fprintf(stderr,"   - writing installment failed\n");
-	      return setReason("Failure during multi-packet write of long-value");
+	      return WHY("Failure during multi-packet write of long-value");
 	    }
 	}
       printf("OK:%s\n",sid);
@@ -538,7 +538,7 @@ int peerAddress(char *did,char *sid,int flags)
     }
   else {
     if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"%s() failed at line %d\n",__FUNCTION__,__LINE__);
-    return setReason("You must request items by DID or SID, not neither, nor both");
+    return WHY("You must request items by DID or SID, not neither, nor both");
   }
 
       
@@ -620,7 +620,7 @@ int requestItem(char *did,char *sid,char *item,int instance,
     }
   else {
     if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
-    return setReason("You must request items by DID or SID, not neither, nor both");
+    return WHY("You must request items by DID or SID, not neither, nor both");
   }
 
       
@@ -752,7 +752,7 @@ int requestItem(char *did,char *sid,char *item,int instance,
 				  }
 				  if (packetSetSid(packet,8000,&packet_len,sid)) {
 				    if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"requestItem() failed at line %d\n",__LINE__);
-				    return setReason("SID went mouldy during multi-packet get");
+				    return WHY("SID went mouldy during multi-packet get");
 				  }
 				}
 			      

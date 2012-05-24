@@ -71,7 +71,7 @@ int readRoutingTable(struct in_addr peers[],int *peer_count,int peer_max){
       }
     ERROR:
       fclose(fp);
-      return setReason("Unable to parse routing table");
+      return WHY("Unable to parse routing table");
     }
     
     if (!(flgs & RTF_UP)) { /* Skip interfaces that are down. */
@@ -123,7 +123,7 @@ int readArpTable(struct in_addr peers[],int *peer_count,int peer_max){
       }
     ERROR:
       fclose(fp);
-      return setReason("Unable to parse arp table");
+      return WHY("Unable to parse arp table");
     }
         
     if (*peer_count<peer_max)	peers[(*peer_count)++].s_addr=d;
@@ -203,17 +203,17 @@ int getBatmanPeerList(char *socket_path,struct in_addr peers[],int *peer_count,i
   sock=socket(AF_LOCAL,SOCK_STREAM,0);
   memset(&socket_address,0,sizeof(struct sockaddr_un));
   socket_address.sun_family=AF_LOCAL;
-  if (strlen(socket_path)>256) return setReason("BATMAN socket path too long");
+  if (strlen(socket_path)>256) return WHY("BATMAN socket path too long");
   strcpy(socket_address.sun_path,socket_path);
 
   /* Connect the socket */
   if (connect(sock,(struct sockaddr*)&socket_address,sizeof(socket_address))<0)
-    return setReason("connect() to BATMAN socket failed.");
+    return WHY("connect() to BATMAN socket failed.");
 
   memset(&cmd[0],0,30);
   snprintf(cmd,30,"d:%c",1);  
   if (write(sock,cmd,30)!=30)
-    { close(sock); return setReason("write() command failed to BATMAN socket."); }
+    { close(sock); return WHY("write() command failed to BATMAN socket."); }
 
   fds.fd=sock;
   fds.events=POLLIN;
@@ -227,10 +227,10 @@ int getBatmanPeerList(char *socket_path,struct in_addr peers[],int *peer_count,i
       case 0: if (debug&DEBUG_PEERS) fprintf(stderr,"BATMAN did not respond to peer enquiry.\n");
 	close(sock);
 	if (tries++<=3) goto askagain;
-	return setReason("No response from BATMAN.");
+	return WHY("No response from BATMAN.");
       default: /* some sort of error, e.g., lost connection */
 	close(sock);
-	return setReason("poll() of BATMAN socket failed.");
+	return WHY("poll() of BATMAN socket failed.");
 	}
       
       res=read(sock,&buf[bytes],16383-bytes); close(sock);
@@ -245,9 +245,9 @@ int getBatmanPeerList(char *socket_path,struct in_addr peers[],int *peer_count,i
 	    close(sock);
 	    bytes=0;
 	    if (tries++<=3) goto askagain;
-	    else return setReason("failed to read() from BATMAN socket (too many tries).");
+	    else return WHY("failed to read() from BATMAN socket (too many tries).");
 	  }
-	return setReason("failed to read() from BATMAN socket.");
+	return WHY("failed to read() from BATMAN socket.");
       }
       if (!res) return 0;
       if (debug&DEBUG_PEERS) fprintf(stderr,"BATMAN has responded with %d bytes.\n",res);

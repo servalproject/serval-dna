@@ -27,19 +27,19 @@ int debug = 0;
 #include <android/log.h> 
 #endif
 
-void logMessage(int level, char *fmt, ...)
+void logMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, ...)
 {
   va_list ap;
   va_start(ap, fmt);
-  vlogMessage(level, fmt, ap);
+  vlogMessage(level, file, line, function, fmt, ap);
   va_end(ap);
 }
 
-void vlogMessage(int level, char *fmt, va_list ap)
+void vlogMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, va_list ap)
 {
-  char buf[8192];
-  vsnprintf(buf, sizeof buf, fmt, ap);
-  buf[sizeof buf - 1] = '\0';
+  strbuf b = strbuf_alloca(8192);
+  strbuf_sprintf(b, "%s:%u:%s()  ", file ? trimbuildpath(file) : "NULL", line, function ? function : "NULL");
+  strbuf_vsprintf(b, fmt, ap);
 #ifdef ANDROID
   int alevel = ANDROID_LOG_UNKNOWN;
   switch (level) {
@@ -49,7 +49,7 @@ void vlogMessage(int level, char *fmt, va_list ap)
     case LOG_LEVEL_WARN:  alevel = ANDROID_LOG_WARN; break;
     case LOG_LEVEL_DEBUG: alevel = ANDROID_LOG_DEBUG; break;
   }
-  __android_log_print(alevel, "servald", "%s", buf);
+  __android_log_print(alevel, "servald", "%s", strbuf_str(b));
 #endif
   const char *levelstr = "UNKNOWN";
   switch (level) {
@@ -59,7 +59,7 @@ void vlogMessage(int level, char *fmt, va_list ap)
     case LOG_LEVEL_WARN:  levelstr = "WARN"; break;
     case LOG_LEVEL_DEBUG: levelstr = "DEBUG"; break;
   }
-  fprintf(stderr, "%s: %s\n", levelstr, buf);
+  fprintf(stderr, "%s: %s\n", levelstr, strbuf_str(b));
 }
 
 const char *trimbuildpath(const char *path)
@@ -74,15 +74,6 @@ const char *trimbuildpath(const char *path)
       break;
   }
   return &path[lastsep];
-}
-
-int setReason(char *fmt, ...)
-{
-  va_list ap;
-  va_start(ap, fmt);
-  vlogMessage(LOG_LEVEL_ERROR, fmt, ap);
-  va_end(ap);
-  return -1;
 }
 
 int dump(char *name, unsigned char *addr, int len)

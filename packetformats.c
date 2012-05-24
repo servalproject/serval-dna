@@ -30,7 +30,7 @@ int process_packet(unsigned char *packet,int len,
   did[0]=0; sid[0]=0;
 
   /* Get DID or SID */
-  if (packetGetID(packet,len,did,sid)) return setReason("Could not parse DID or SID");
+  if (packetGetID(packet,len,did,sid)) return WHY("Could not parse DID or SID");
   
   /* Check for PIN */
   if (!isFieldZeroP(packet,OFS_PINFIELD,16))
@@ -41,10 +41,10 @@ int process_packet(unsigned char *packet,int len,
       if (debug&DEBUG_SECURITY) fprintf(stderr,"A PIN has been supplied.\n");
       
       /* Can only authenticate by SID, not DID (since DIDs are ambiguous) */
-      if (packet[OFS_SIDDIDFIELD]!=1) return setReason("You can only authenticate against a SID");
+      if (packet[OFS_SIDDIDFIELD]!=1) return WHY("You can only authenticate against a SID");
    
       /* XXX check authentication */
-      return setReason("Authentication not yet supported");
+      return WHY("Authentication not yet supported");
     }
   else 
     {
@@ -63,7 +63,7 @@ int packetOk(int interface,unsigned char *packet,int len,
 	     unsigned char *transaction_id,int ttl,
 	     struct sockaddr *recvaddr,int recvaddrlen,int parseP)
 {
-  if (len<HEADERFIELDS_LEN) return setReason("Packet is too short");
+  if (len<HEADERFIELDS_LEN) return WHY("Packet is too short");
 
   if (packet[0]==0x41&&packet[1]==0x10) 
     {
@@ -79,10 +79,10 @@ int packetOk(int interface,unsigned char *packet,int len,
 	}
       else
 	/* We ignore overlay mesh packets in simple server mode, which is indicated by interface==-1 */
-	return setReason("Ignoring overlay mesh packet");
+	return WHY("Ignoring overlay mesh packet");
     }
 
-  return setReason("Packet type not recognised.");
+  return WHY("Packet type not recognised.");
 }
 
 int packetOkDNA(unsigned char *packet,int len,unsigned char *transaction_id,
@@ -98,13 +98,13 @@ int packetOkDNA(unsigned char *packet,int len,unsigned char *transaction_id,
   version=(packet[2]<<8)|packet[3];
   length=(packet[4]<<8)|packet[5];
   cipher=(packet[6]<<8)|packet[7];
-  if (version!=1) return setReason("Unknown packet format version");
-  if (cipher!=0) return setReason("Unknown packet cipher");
-  if (length!=len) return setReason("Packet length incorrect");
+  if (version!=1) return WHY("Unknown packet format version");
+  if (cipher!=0) return WHY("Unknown packet cipher");
+  if (length!=len) return WHY("Packet length incorrect");
 
   if (cipher) 
 	  if (packetDecipher(packet,len,cipher)) 
-		  return setReason("Could not decipher packet");
+		  return WHY("Could not decipher packet");
 
   /* Make sure the transaction ID matches */
   if (transaction_id)
@@ -112,7 +112,7 @@ int packetOkDNA(unsigned char *packet,int len,unsigned char *transaction_id,
       int i;
 	  for(i=0;i<TRANSID_SIZE;i++)
 		if (packet[OFS_TRANSIDFIELD+i]!=transaction_id[i])
-		  return setReason("transaction ID mismatch");
+		  return WHY("transaction ID mismatch");
     }
   
   /* Unrotate the payload */
@@ -199,7 +199,7 @@ int packetSetSid(unsigned char *packet,int packet_maxlen,int *packet_len,char *s
 
   if (strlen(sid)!=64) {
     if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"Invalid SID: [%s] - should be 64 hex digits\n",sid);
-    return setReason("SID must consist of 64 hex digits");
+    return WHY("SID must consist of 64 hex digits");
   }
 
   packet[ofs++]=0x01; /* SID */
@@ -317,18 +317,18 @@ int packetAddVariableRequest(unsigned char *packet,int packet_maxlen,int *packet
   /* Sanity check the request */
   if (!vars[itemId].name) {
     if (debug&(DEBUG_DNAVARS|DEBUG_PACKETFORMATS)) fprintf(stderr,"`%s' is not a known HLR variable.\n",item);
-    return setReason("Requested unknown HLR variable");
+    return WHY("Requested unknown HLR variable");
   }
   itemId=vars[itemId].id;
-  if (instance<-1) return setReason("Asked for illegal variable value instance (<-1)");
-  if (instance>0xfe) return setReason("Asked for illegal variable value instance (>0xfe)");
+  if (instance<-1) return WHY("Asked for illegal variable value instance (<-1)");
+  if (instance>0xfe) return WHY("Asked for illegal variable value instance (>0xfe)");
   if ((instance!=-1)&&(itemId<0x80)&&instance) { 
-    return setReason("Asked for secondary value of single-value variable for read");
+    return WHY("Asked for secondary value of single-value variable for read");
   }
-  if (start_offset<0||start_offset>0xffff) return setReason("Asked for illegal variable value starting offset");
+  if (start_offset<0||start_offset>0xffff) return WHY("Asked for illegal variable value starting offset");
   if (bytes<0||(start_offset+bytes)>0xffff) {
     if (debug&(DEBUG_PACKETFORMATS|DEBUG_DNAVARS)) fprintf(stderr,"Asked for %d bytes at offset %d\n",bytes,start_offset);
-    return setReason("Asked for illegal variable value ending offset");
+    return WHY("Asked for illegal variable value ending offset");
   }
   
   /* Add request to the packet */
@@ -360,12 +360,12 @@ int packetAddVariableWrite(unsigned char *packet,int packet_maxlen,
 
   /* Sanity check */
   if (itemId&0x80) {
-    if (instance<0) return setReason("Asked for illegal variable value instance (<0)");
-    if (instance>0xfe) return setReason("Asked for illegal variable value instance (>0xfe)");
+    if (instance<0) return WHY("Asked for illegal variable value instance (<0)");
+    if (instance>0xfe) return WHY("Asked for illegal variable value instance (>0xfe)");
   }
-  if ((itemId<0x80)&&instance&&(instance!=-1)) return setReason("Asked for secondary value of single-value variable for write");
-  if (start_offset<0||start_offset>0xffff) return setReason("Asked for illegal variable value starting offset");
-  if (max_offset<0||max_offset>0xffff) return setReason("Asked for illegal variable value ending offset");
+  if ((itemId<0x80)&&instance&&(instance!=-1)) return WHY("Asked for secondary value of single-value variable for write");
+  if (start_offset<0||start_offset>0xffff) return WHY("Asked for illegal variable value starting offset");
+  if (max_offset<0||max_offset>0xffff) return WHY("Asked for illegal variable value ending offset");
   
   /* Add request to the packet */
   CHECK_PACKET_LEN(1+1+((itemId&0x80)?1:0)+2+2+1);
@@ -394,7 +394,7 @@ int extractRequest(unsigned char *packet,int *packet_ofs,int packet_len,
 		   int *start_offset,int *bytes,int *flags)
 {
   if (*packet_ofs<0||(*packet_ofs)+6>=packet_len) 
-    return setReason("mal-formed request packet (packet too short/bad offset)");
+    return WHY("mal-formed request packet (packet too short/bad offset)");
 
   *itemId=packet[(*packet_ofs)++];
 
@@ -413,7 +413,7 @@ int extractRequest(unsigned char *packet,int *packet_ofs,int packet_len,
   if (*packet_ofs<0||(*packet_ofs)+(*bytes)>=packet_len)
     {
       if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"Packet offset is %d, length is %d, and asked for %d bytes.\n",*packet_ofs,packet_len,*bytes);
-      return setReason("mal-formed request packet (too short for claimed data)");
+      return WHY("mal-formed request packet (too short for claimed data)");
     }
 
   bcopy(&packet[*packet_ofs],value,*bytes);
@@ -433,7 +433,7 @@ int extractResponses(struct in_addr sender,unsigned char *buffer,int len,struct 
     {
       /* XXX should allocate responses from a temporary and bounded slab of memory */
       struct response *r=calloc(sizeof(struct response),1);
-      if (!r) exit(setReason("calloc() failed."));
+      if (!r) exit(WHY("calloc() failed."));
       
       r->code=buffer[ofs];
       r->sender=sender;
@@ -491,7 +491,7 @@ int extractResponses(struct in_addr sender,unsigned char *buffer,int len,struct 
 	  free(r);
 	  if (debug&(DEBUG_DNARESPONSES|DEBUG_PACKETFORMATS)) fprintf(stderr,"Encountered unimplemented response code 0x%02x @ 0x%x\n",buffer[ofs],ofs);
 	  fixResponses(responses);
-	  return setReason("Encountered unimplemented response type");
+	  return WHY("Encountered unimplemented response type");
 	}
       ofs++;
       if (r->response_len) {
@@ -499,7 +499,7 @@ int extractResponses(struct in_addr sender,unsigned char *buffer,int len,struct 
 	unsigned char *rr;
 	if (r->response) rr=r->response; else rr=&buffer[ofs];
 	r->response=malloc(r->response_len+1);
-	if (!r->response) exit(setReason("malloc() failed."));
+	if (!r->response) exit(WHY("malloc() failed."));
 	bcopy(&rr[0],r->response,r->response_len);
 	r->response[r->response_len]=0;
 	ofs+=r->response_len;
@@ -541,7 +541,7 @@ int packageVariableSegment(unsigned char *data,int *dlen,
   int bytes;
   int dlen_in=*dlen;
 
-  if ((buffer_size-(*dlen))<8) return setReason("Insufficient buffer space for packageVariableSegment()");
+  if ((buffer_size-(*dlen))<8) return WHY("Insufficient buffer space for packageVariableSegment()");
 
   /* Figure out how many bytes we need to package */
   bytes=buffer_size-(*dlen)-8;
@@ -580,7 +580,7 @@ int packageVariableSegment(unsigned char *data,int *dlen,
 int unpackageVariableSegment(unsigned char *data,int dlen,int flags,struct response *r)
 {
   r->response_len=0;
-  if (dlen<7) return setReason("unpackageVariableSegment() fed insufficient data");
+  if (dlen<7) return WHY("unpackageVariableSegment() fed insufficient data");
   
   r->var_id=data[r->response_len++];
   if (r->var_id&0x80) r->var_instance=data[r->response_len++]; else r->var_instance=0;
@@ -601,7 +601,7 @@ int unpackageVariableSegment(unsigned char *data,int dlen,int flags,struct respo
 
   if (flags!=WITHOUTDATA)
     if (r->response_len>dlen) 
-      return setReason("unpackageVariableSegment() fed insufficient or corrupt data");
+      return WHY("unpackageVariableSegment() fed insufficient or corrupt data");
   
   return 0;
 }

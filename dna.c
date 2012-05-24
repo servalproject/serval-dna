@@ -257,7 +257,7 @@ int parseAssignment(unsigned char *text,int *var_id,unsigned char *value,int *va
   int tlen=strlen((char *)text);
 
   if (tlen>3072) {
-    return setReason("Variable assignment string is too long, use =@file to read value from a file");
+    return WHY("Variable assignment string is too long, use =@file to read value from a file");
   }
 
   /* Identify which variable */
@@ -267,7 +267,7 @@ int parseAssignment(unsigned char *text,int *var_id,unsigned char *value,int *va
   /* Go through known keyring variables */
   if (!strcasecmp((char *)text,"did")) *var_id=KEYTYPE_DID;
 
-  if (*var_id==-1) return setReason("Illegal variable name in assignment");
+  if (*var_id==-1) return WHY("Illegal variable name in assignment");
 
   i++;
   switch(text[i])
@@ -276,10 +276,10 @@ int parseAssignment(unsigned char *text,int *var_id,unsigned char *value,int *va
       i++;
       while(i<tlen) {
 	int b=hexvalue(text[i++])<<4;
-	if (i>=tlen) return setReason("Variable value has an odd number of hex digits.");
+	if (i>=tlen) return WHY("Variable value has an odd number of hex digits.");
 	b|=hexvalue(text[i++]);
-	if (b<0) return setReason("That doesn't look like hex to me");
-	if (vlen>=max_len) return setReason("Variable hex value too long");
+	if (b<0) return WHY("That doesn't look like hex to me");
+	if (vlen>=max_len) return WHY("Variable hex value too long");
 	value[vlen++]=b;
       }
       *value_len=vlen;
@@ -291,10 +291,10 @@ int parseAssignment(unsigned char *text,int *var_id,unsigned char *value,int *va
 	int flen;
 	fseek(f,0,SEEK_END);
 	flen=ftell(f);
-	if (flen>max_len) return setReason("Variable value from file too long");
+	if (flen>max_len) return WHY("Variable value from file too long");
 	fseek(f,0,SEEK_SET);
 	vlen=fread(value,1,flen,f);
-	if (vlen!=flen) return setReason("Could not read all of file");
+	if (vlen!=flen) return WHY("Could not read all of file");
 	fclose(f);
 	*value_len=vlen;
 	return 0;
@@ -302,7 +302,7 @@ int parseAssignment(unsigned char *text,int *var_id,unsigned char *value,int *va
       break;
     default: /* literal string */
       vlen=strlen((char *)&text[i]);
-      if (vlen>max_len) return setReason("Variable value too long");
+      if (vlen>max_len) return WHY("Variable value too long");
       bcopy(&text[i],value,vlen);
       *value_len=vlen;
       return 0;

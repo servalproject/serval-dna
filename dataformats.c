@@ -40,7 +40,7 @@ int extractDid(unsigned char *packet,int *ofs,char *did)
 	}
       if (highP) highP=0; else { (*ofs)++; highP=1; }
     }
-  if (d>63) return setReason("DID too long");
+  if (d>63) return WHY("DID too long");
   did[d]=0;
 
   return 0;
@@ -65,7 +65,7 @@ int stowDid(unsigned char *packet,int *ofs,char *did)
 	case '#': nybl=0xb; break;
 	case '+': nybl=0xc; break;
 	default:
-	  setReason("Illegal digits in DID number");
+	  WHY("Illegal digits in DID number");
 	  return -1;
 	}
       if (highP) { packet[*ofs]=nybl<<4; highP=0; }
@@ -77,7 +77,7 @@ int stowDid(unsigned char *packet,int *ofs,char *did)
     }
   if (d>=DID_MAXSIZE)
     {
-      setReason("DID number too long");
+      WHY("DID number too long");
       return -1;
     }
   /* Append end of number code, filling the whole byte for fast and easy comparison */
@@ -168,7 +168,7 @@ int hexvalue(unsigned char c)
   if (c>='0'&&c<='9') return c-'0';
   if (c>='A'&&c<='F') return c-'A'+10;
   if (c>='a'&&c<='f') return c-'a'+10;
-  return setReason("Invalid hex digit in SID");
+  return WHY("Invalid hex digit in SID");
 }
 
 int packetGetID(unsigned char *packet,int len,char *did,char *sid)
@@ -179,22 +179,22 @@ int packetGetID(unsigned char *packet,int len,char *did,char *sid)
     {
     case 0: /* DID */
       ofs++;
-      if (extractDid(packet,&ofs,did)) return setReason("Could not decode DID");
+      if (extractDid(packet,&ofs,did)) return WHY("Could not decode DID");
       if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"Decoded DID as %s\n",did);
       return 0;
       break;
     case 1: /* SID */
       ofs++;
-      if (len<(OFS_SIDDIDFIELD+SID_SIZE)) return setReason("Packet too short");
-      if (extractSid(packet,&ofs,sid)) return setReason("Could not decode SID");
+      if (len<(OFS_SIDDIDFIELD+SID_SIZE)) return WHY("Packet too short");
+      if (extractSid(packet,&ofs,sid)) return WHY("Could not decode SID");
       return 0;
       break;
     default: /* no idea */
-      return setReason("Unknown ID key");
+      return WHY("Unknown ID key");
       break;
     }
   
-  return setReason("Impossible event #1 just occurred");
+  return WHY("Impossible event #1 just occurred");
 }
 
 /*
