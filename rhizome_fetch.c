@@ -612,17 +612,17 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	      return -1;
 	    }
 	    q->manifest->dataFileName = strdup(filename);
-	    q->file=fopen(filename,"w");
+	    q->file=fopen(q->manifest->dataFileName,"w");
 	    if (!q->file) {
 	      WHY_perror("fopen");
 	      if (debug&DEBUG_RHIZOME)
-		DEBUGF("Could not open '%s' to write received file.", filename);
+		DEBUGF("Could not open '%s' to write received file.", q->manifest->dataFileName);
 	      close(sock);
 	      return -1;
 	    }
 	    rhizome_file_fetch_queue_count++;
-	    if (debug&DEBUG_RHIZOME) DEBUGF("Queued file for fetching (%d in queue)",
-					    rhizome_file_fetch_queue_count);
+	    if (debug&DEBUG_RHIZOME) DEBUGF("Queued file for fetching into %s (%d in queue)",
+					    q->manifest->dataFileName, rhizome_file_fetch_queue_count);
 	    return 0;
 	  }
 	else

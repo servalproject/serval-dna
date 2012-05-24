@@ -154,6 +154,13 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
 			 const char *author // NULL or zero-length to make an unauthored manifest
 			)
 {
+  if (debug&DEBUG_RHIZOMESYNC)
+    DEBUGF("rhizome_add_manifest(m_in=%p, m_out=%p, filename=%s, groups=%p, ttl=%d, verifyP=%d, checkFileP=%d, signP=%d, author=%s)",
+	  m_in, m_out,
+	  filename ? filename : "NULL",
+	  groups, ttl, verifyP, checkFileP, signP,
+	  author ? author : "NULL"
+	);
   if (m_out) *m_out = NULL;
   if (author && !author[0]) author = NULL;
 
@@ -200,6 +207,8 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
     if (lstat(filename,&stat))
       return WHYF("Could not stat() payload file '%s'",filename);
     m_in->fileLength = stat.st_size;
+    if (debug & DEBUG_RHIZOME)
+      DEBUGF("filename=%s, fileLength=%lld", filename, m_in->fileLength);
     long long mfilesize = rhizome_manifest_get_ll(m_in, "filesize");
     if (mfilesize != -1 && mfilesize != m_in->fileLength) {
       WHYF("Manifest.filesize (%lld) != actual file size (%lld)", mfilesize, m_in->fileLength);
