@@ -135,8 +135,10 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
   int slot;
   int i;
 
-  char *id=rhizome_manifest_get(m,"id",NULL,0);
-  if (!id) return 1; // dodgy manifest, so don't suggest that we want to RX it.
+  char id[RHIZOME_MANIFEST_ID_STRLEN + 1];
+  if (!rhizome_manifest_get(m, "id", id, sizeof id))
+    return 1; // dodgy manifest, so don't suggest that we want to RX it.
+  str_toupper_inplace(id);
 
   /* Work out bin number in cache */
   for(i=0;i<RHIZOME_VERSION_CACHE_NYBLS;i++)
@@ -198,14 +200,11 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
      a fairly large cache here.
  */
   unsigned long long manifest_version=rhizome_manifest_get_ll(m,"version");
-  if (sqlite_exec_int64("select count(*) from manifests"
-			" where id='%s' and version>=%lld",
+  if (sqlite_exec_int64("select count(*) from manifests where id='%s' and version>=%lld",
 			id,manifest_version)>0) {
     /* Okay, so we have a stored version which is newer, so update the cache
        using a random replacement strategy. */
-    unsigned long long stored_version
-      =sqlite_exec_int64("select version from manifests where id='%s'",
-			 id);
+    unsigned long long stored_version = sqlite_exec_int64("select version from manifests where id='%s'", id);
 
     slot=random()%RHIZOME_VERSION_CACHE_ASSOCIATIVITY;
     unsigned char *entry=rhizome_manifest_version_cache[bin][slot];
