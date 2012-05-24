@@ -62,18 +62,18 @@ void vlogMessage(int level, char *fmt, va_list ap)
   fprintf(stderr, "%s: %s\n", levelstr, buf);
 }
 
-const char *trimbuildpath(const char *s)
+const char *trimbuildpath(const char *path)
 {
   /* Remove common path prefix */
   int lastsep = 0;
   int i;
-  for (i = 0; __FILE__[i] && s[i]; ++i) {
-    if (i && s[i - 1] == '/')
+  for (i = 0; __FILE__[i] && path[i]; ++i) {
+    if (i && path[i - 1] == '/')
       lastsep = i;
-    if (__FILE__[i] != s[i])
+    if (__FILE__[i] != path[i])
       break;
   }
-  return &s[lastsep];
+  return &path[lastsep];
 }
 
 int setReason(char *fmt, ...)
