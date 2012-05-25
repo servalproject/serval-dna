@@ -715,7 +715,7 @@ int server_probe(int *pid)
   snprintf(&addr.sun_path[1],100,"org.servalproject.servald.monitor.socket");
   int len = 1+strlen(&addr.sun_path[1]) + sizeof(addr.sun_family);
   char *p=(char *)&addr;
-  printf("last char='%c' %02x\n",p[len-1],p[len-1]);
+  if (0) DEBUGF("last char='%c' %02x\n",p[len-1],p[len-1]);
 
   if (connect(fd, (struct sockaddr*)&addr, len) == -1) {
     close(fd);

@@ -783,7 +783,7 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
   cli_puts(instancepath);
   cli_delim("\n");
   int pid=-1;
-  int status=server_probe(&pid);
+  server_probe(&pid);
   if (pid<0) pid = server_pid();
   // If there is no pidfile, then there is no server process to stop.
   if (pid <= 0)
@@ -838,7 +838,6 @@ int app_server_status(int argc, const char *const *argv, struct command_line_opt
     return -1;
   int pid=-1;
   int status=server_probe(&pid);
-
   cli_puts("instancepath");
   cli_delim(":");
   cli_puts(serval_instancepath());
