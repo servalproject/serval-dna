@@ -305,11 +305,6 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 {
   if (!f) return -1;
-  if (debug&DEBUG_RHIZOMESYNC) {
-    DEBUGF("rhizome f->bytecount=%d",f->payload->length);
-    //    dump("payload",f->payload->bytes,f->payload->length);
-  }
-
   int ofs=0;
   int ad_frame_type=f->payload->bytes[ofs++];
   int manifest_length;
@@ -319,8 +314,6 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
     {
       /* Extract whole manifests */
       while(ofs<f->payload->length) {
-	char manifest_id_buf[RHIZOME_MANIFEST_ID_STRLEN + 1];
-	char *manifest_id = NULL;
 	manifest_length=(f->payload->bytes[ofs]<<8)+f->payload->bytes[ofs+1];
 	if (manifest_length>=0xff00) {
 	  ofs++;
@@ -351,6 +344,11 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	  rhizome_manifest_free(m);
 	  return 0;
 	}
+	char manifest_id_buf[RHIZOME_MANIFEST_ID_STRLEN + 1];
+	char *manifest_id = rhizome_manifest_get(m, "id", manifest_id_buf, sizeof manifest_id_buf);
+	long long version = rhizome_manifest_get_ll(m, "version");
+	if (debug & DEBUG_RHIZOMESYNC) DEBUGF("manifest id=%s version=%lld", manifest_id ? manifest_id : "NULL", version);
+
 	/* Crude signature presence test */
 	for(i=m->manifest_all_bytes-1;i>0;i--)
 	  if (!m->manifestdata[i]) {
@@ -368,31 +366,19 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	if (rhizome_ignore_manifest_check(m,(struct sockaddr_in *)f->recvaddr))
 	  {
 	    /* Ignoring manifest that has caused us problems recently */
-	    if (0) WARNF("Ignoring manifest with errors: %s",
-			rhizome_manifest_get(m,"id",NULL,0));
+	    if (0) WARNF("Ignoring manifest with errors: %s", manifest_id);
 	  }
 	else if (m&&(!m->errors))
 	  {
 	    /* Manifest is okay, so see if it is worth storing */
 	    if (rhizome_manifest_version_cache_lookup(m)) {
 	      /* We already have this version or newer */
-	      if (debug&DEBUG_RHIZOMESYNC) {
-		DEBUGF("manifest id=%s, version=%lld",
-		     rhizome_manifest_get(m,"id",NULL,0),
-			rhizome_manifest_get_ll(m,"version"));
-		DEBUG("We already have that manifest or newer.");
-	      }
+	      if (debug&DEBUG_RHIZOMESYNC) DEBUG("We already have that manifest or newer.");
 	      importManifest=0;
 	    } else {
-	      if (debug&DEBUG_RHIZOMESYNC) {
-		DEBUGF("manifest id=%s, version=%lld is new to us.",
-			rhizome_manifest_get(m,"id",NULL,0),
-			rhizome_manifest_get_ll(m,"version"));
-	      }
+	      if (debug&DEBUG_RHIZOMESYNC) DEBUG("Not seen before.");
 	      importManifest=1;
 	    }
-
-	    manifest_id = rhizome_manifest_get(m, "id", manifest_id_buf, sizeof manifest_id_buf);
 	  }
 	else
 	  {
