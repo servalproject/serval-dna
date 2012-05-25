@@ -1073,6 +1073,7 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
 #define DEBUG_RHIZOMESYNC           (1 << 21)
 #define DEBUG_PACKETTX              (1 << 22)
 #define DEBUG_PACKETCONSTRUCTION    (1 << 23)
+#define DEBUG_MANIFESTS             (1 << 24)
 
 int serval_packetvisualise(FILE *f,char *message,unsigned char *packet,int plen);
 

@@ -247,7 +247,7 @@ int rhizome_update_file_priority(char *fileid);
 int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found);
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
 char nybltochar_upper(int n);
-int rhizome_queue_manifest_import(rhizome_manifest *m,struct sockaddr_in *peerip);
+int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peerip, int *manifest_kept);
 int rhizome_list_manifests(const char *service, const char *sender_sid, const char *recipient_sid, int limit, int offset);
 int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp);
 int rhizome_retrieve_file(const char *fileid, const char *filepath);

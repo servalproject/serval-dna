@@ -288,6 +288,16 @@ const char *manifest_free_sourcefiles[MAX_RHIZOME_MANIFESTS];
 const char *manifest_free_functions[MAX_RHIZOME_MANIFESTS];
 int manifest_free_lines[MAX_RHIZOME_MANIFESTS];
 
+static void _log_manifest_trace(const char *filename, const char *funcname, int line, const char *operation)
+{
+  int count_free = 0;
+  int i;
+  for (i = 0; i != MAX_RHIZOME_MANIFESTS; ++i)
+    if (manifest_free[i])
+      ++count_free;
+  logMessage(LOG_LEVEL_DEBUG, filename, line, funcname, "%s(): count_free = %d", operation, count_free);
+}
+
 rhizome_manifest *_rhizome_new_manifest(const char *filename, const char *funcname, int line)
 {
   if (manifest_first_free<0) {
@@ -337,10 +347,10 @@ rhizome_manifest *_rhizome_new_manifest(const char *filename, const char *funcna
   manifest_free_lines[manifest_first_free]=-1;
 
   /* Work out where next free manifest record lives */
-  for(;manifest_first_free<MAX_RHIZOME_MANIFESTS
-	&&(!manifest_free[manifest_first_free]);
-      manifest_first_free++)
-    continue;
+  for (; manifest_first_free < MAX_RHIZOME_MANIFESTS && !manifest_free[manifest_first_free]; ++manifest_first_free)
+    ;
+
+  if (debug & DEBUG_MANIFESTS) _log_manifest_trace(filename, funcname, line, __FUNCTION__);
 
   return m;
 }
@@ -389,6 +399,8 @@ void _rhizome_manifest_free(const char *sourcefile,const char *funcname,int line
   manifest_free_functions[mid]=funcname;
   manifest_free_lines[mid]=line;
   if (mid<manifest_first_free) manifest_first_free=mid;
+
+  if (debug & DEBUG_MANIFESTS) _log_manifest_trace(sourcefile, funcname, line, __FUNCTION__);
 
   return;
 }

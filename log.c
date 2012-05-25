@@ -148,6 +148,7 @@ long long debugFlagMask(const char *flagname) {
   else if (!strcasecmp(flagname,"monitorroutes"))	return DEBUG_OVERLAYROUTEMONITOR;
   else if (!strcasecmp(flagname,"queues"))		return DEBUG_QUEUES;
   else if (!strcasecmp(flagname,"broadcasts"))		return DEBUG_BROADCASTS;
+  else if (!strcasecmp(flagname,"manifests"))		return DEBUG_MANIFESTS;
   WARNF("Unsupported debug flag '%s'", flagname);
   return 0;
 }

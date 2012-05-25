@@ -378,13 +378,12 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
          (also replace older manifest versions with newer ones,
           which can upset the ordering.) */
       if (candidates[i].manifest==NULL) continue;
-      if (!strcmp(id,rhizome_manifest_get(candidates[i].manifest,"id",NULL,0)))
+      if (!strcasecmp(id,rhizome_manifest_get(candidates[i].manifest,"id",NULL,0)))
 	  {
 	    /* duplicate.
 	       XXX - Check versions! We should replace older with newer,
 	       and then update position in queue based on size */
-	  long long list_version=rhizome_manifest_get_ll(candidates[i].manifest,
-							 "version");
+	  long long list_version=rhizome_manifest_get_ll(candidates[i].manifest, "version");
 	  long long this_version=rhizome_manifest_get_ll(m,"version");
 	  if (list_version>=this_version) {
 	    /* this version is older than the one in the list,
@@ -452,8 +451,12 @@ int rhizome_enqueue_suggestions()
     {
       if (rhizome_file_fetch_queue_count>=MAX_QUEUED_FILES) 
 	break;
-      rhizome_queue_manifest_import(candidates[i].manifest,&candidates[i].peer);
-      candidates[i].manifest=NULL;
+      int manifest_kept = 0;
+      rhizome_queue_manifest_import(candidates[i].manifest,&candidates[i].peer, &manifest_kept);
+      if (!manifest_kept) {
+	rhizome_manifest_free(candidates[i].manifest);
+	candidates[i].manifest = NULL;
+      }
     }
   if (i) {
     /* now shuffle up */
@@ -467,8 +470,9 @@ int rhizome_enqueue_suggestions()
   return 0;
 }
 
-int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peerip)
+int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peerip, int *manifest_kept)
 {
+  *manifest_kept = 0;
   int i;
 
   /* Do the quick rejection tests first, before the more expensive once,
@@ -580,7 +584,8 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	    
 	    rhizome_file_fetch_record 
 	      *q=&file_fetch_queue[rhizome_file_fetch_queue_count];
-	    q->manifest=m;
+	    q->manifest = m;
+	    *manifest_kept = 1;
 	    q->socket=sock;
 	    strncpy(q->fileid, m->fileHexHash, RHIZOME_FILEHASH_STRLEN + 1);
 	    snprintf(q->request,1024,"GET /rhizome/file/%s HTTP/1.0\r\n\r\n",

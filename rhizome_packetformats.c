@@ -402,8 +402,7 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	    rhizome_queue_ignore_manifest(m,(struct sockaddr_in*)f->recvaddr,60000);
 	  }
 	if (m) rhizome_manifest_free(m);
-	m=NULL;	
-
+	m=NULL;
 	if (importManifest) {
 	  /* Okay, so the manifest looks like it is potentially interesting to us,
 	     i.e., we don't already have it or a later version of it.
@@ -412,29 +411,27 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	    WHY("Out of manifests");
 	  else if (rhizome_read_manifest_file(m, (char *)&f->payload->bytes[ofs], manifest_length, RHIZOME_VERIFY) == -1) {
 	    WHY("Error importing manifest body");
-	    rhizome_manifest_free(m);	  
+	    rhizome_manifest_free(m);
 	    m = NULL;
 	  } else if (m->errors) {
 	    if (debug&DEBUG_RHIZOME) DEBUGF("Verifying manifest %s revealed errors -- not storing.", manifest_id);
 	    rhizome_queue_ignore_manifest(m,(struct sockaddr_in*)f->recvaddr,60000);
-	    rhizome_manifest_free(m);	  
+	    rhizome_manifest_free(m);
 	    m = NULL;
 	  } else {
 	    if (debug&DEBUG_RHIZOME) DEBUGF("Verifying manifest %s revealed no errors -- will try to store.", manifest_id);
 	    /* Add manifest to import queue. We need to know originating IPv4 address
 	       so that we can transfer by HTTP. */
 	    if (0) DEBUG("Suggesting fetching of a bundle");
-	    rhizome_suggest_queue_manifest_import(m,(struct sockaddr_in *)f->recvaddr);	  
+	    rhizome_suggest_queue_manifest_import(m,(struct sockaddr_in *)f->recvaddr);
 	  }
 	}
-	
 	if (!manifest_length) {
 	  WHY("Infinite loop in packet decoding");
 	  break;
 	}
 	ofs+=manifest_length;
       }
-      
     }
   
   return 0;
