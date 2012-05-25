@@ -89,7 +89,7 @@ int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out,
   return ret;
 }
 
-int rhizome_manifest_sanity_check(rhizome_manifest *m_in)
+int rhizome_manifest_check_sanity(rhizome_manifest *m_in)
 {
   /* Ensure manifest meets basic sanity checks. */
   const char *service = rhizome_manifest_get(m_in, "service", NULL, 0);
@@ -113,6 +113,8 @@ int rhizome_manifest_sanity_check(rhizome_manifest *m_in)
       return WHY("MeshMS Manifest missing 'recipient' field");
     if (!validateSid(recipient))
       return WHY("MeshMS Manifest contains invalid 'recipient' field");
+  } else {
+    return WHY("Invalid service type");
   }
   if (debug & DEBUG_RHIZOME) DEBUGF("sender='%s'", sender ? sender : "(null)");
 
@@ -266,7 +268,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
   /* Store time to live, clamped to within legal range */
   m_in->ttl = ttl < 0 ? 0 : ttl > 254 ? 254 : ttl;
 
-  if (rhizome_manifest_sanity_check(m_in))
+  if (rhizome_manifest_check_sanity(m_in))
     return WHY("Sanity checks on manifest failed");
 
   if (rhizome_manifest_check_file(m_in))

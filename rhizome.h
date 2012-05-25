@@ -221,6 +221,7 @@ int rhizome_finish_sqlstatement(sqlite3_stmt *statement);
 int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, 
 			  const char *bundle, int ttl);
 
+int rhizome_manifest_check_sanity(rhizome_manifest *m_in);
 int rhizome_manifest_check_file(rhizome_manifest *m_in);
 int rhizome_manifest_check_duplicate(rhizome_manifest *m_in,rhizome_manifest **m_out);
 
