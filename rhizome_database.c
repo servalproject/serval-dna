@@ -575,12 +575,7 @@ int rhizome_finish_sqlstatement(sqlite3_stmt *statement)
 int rhizome_list_manifests(const char *service, const char *sender_sid, const char *recipient_sid, int limit, int offset)
 {
   strbuf b = strbuf_alloca(1024);
-  strbuf_sprintf(b,
-      "SELECT files.id, files.length, manifests.id, manifests.manifest, manifests.version, manifests.inserttime"
-      " FROM files, filemanifests, manifests"
-      " WHERE files.id = filemanifests.fileid AND filemanifests.manifestid = manifests.id AND files.datavalid <> 0"
-      " ORDER BY files.id ASC"
-    );
+  strbuf_sprintf(b, "SELECT id, manifest, version, inserttime FROM manifests ORDER BY inserttime DESC");
   if (limit)
     strbuf_sprintf(b, " LIMIT %u", limit);
   if (offset)
@@ -606,13 +601,11 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
     cli_puts("name"); cli_delim("\n");
     while (sqlite3_step(statement) == SQLITE_ROW) {
       ++rows;
-      if (!(   sqlite3_column_count(statement) == 6
+      if (!(   sqlite3_column_count(statement) == 4
 	    && sqlite3_column_type(statement, 0) == SQLITE_TEXT
-	    && sqlite3_column_type(statement, 1) == SQLITE_INTEGER
-	    && sqlite3_column_type(statement, 2) == SQLITE_TEXT
-	    && sqlite3_column_type(statement, 3) == SQLITE_BLOB
-	    && sqlite3_column_type(statement, 4) == SQLITE_INTEGER
-	    && sqlite3_column_type(statement, 5) == SQLITE_INTEGER
+	    && sqlite3_column_type(statement, 1) == SQLITE_BLOB
+	    && sqlite3_column_type(statement, 2) == SQLITE_INTEGER
+	    && sqlite3_column_type(statement, 3) == SQLITE_INTEGER
       )) { 
 	ret = WHY("Incorrect statement column");
 	break;
@@ -622,12 +615,17 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
 	ret = WHY("Out of manifests");
 	break;
       }
-      const char *q_manifestid = (const char *) sqlite3_column_text(statement, 2);
-      const char *manifestblob = (char *) sqlite3_column_blob(statement, 3);
-      size_t manifestblobsize = sqlite3_column_bytes(statement, 3); // must call after sqlite3_column_blob()
+      const char *q_manifestid = (const char *) sqlite3_column_text(statement, 0);
+      const char *manifestblob = (char *) sqlite3_column_blob(statement, 1);
+      size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
+      long long q_version = sqlite3_column_int64(statement, 2);
+      long long q_inserttime = sqlite3_column_int64(statement, 3);
       if (rhizome_read_manifest_file(m, manifestblob, manifestblobsize, 0) == -1) {
 	WARNF("MANIFESTS row id=%s has invalid manifest blob -- skipped", q_manifestid);
       } else {
+	long long blob_version = rhizome_manifest_get_ll(m, "version");
+	if (blob_version != q_version)
+	  WARNF("MANIFESTS row id=%s version=%lld does not match manifest blob.version=%lld", q_manifestid, q_version, blob_version);
 	int match = 1;
 	const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
 	if (service[0] && !(blob_service && strcasecmp(service, blob_service) == 0))
@@ -645,12 +643,14 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
 	if (match) {
 	  const char *blob_name = rhizome_manifest_get(m, "name", NULL, 0);
 	  long long blob_date = rhizome_manifest_get_ll(m, "date");
+	  const char *blob_filehash = rhizome_manifest_get(m, "filehash", NULL, 0);
+	  long long blob_filesize = rhizome_manifest_get_ll(m, "filesize");
 	  cli_puts(blob_service ? blob_service : ""); cli_delim(":");
-	  cli_puts((const char *)sqlite3_column_text(statement, 0)); cli_delim(":");
+	  cli_puts(blob_filehash ? blob_filehash : ""); cli_delim(":");
 	  cli_puts(q_manifestid); cli_delim(":");
-	  cli_printf("%lld", (long long) sqlite3_column_int64(statement, 4)); cli_delim(":");
-	  cli_printf("%lld", (long long) sqlite3_column_int64(statement, 5)); cli_delim(":");
-	  cli_printf("%u", sqlite3_column_int(statement, 1)); cli_delim(":");
+	  cli_printf("%lld", blob_version); cli_delim(":");
+	  cli_printf("%lld", q_inserttime); cli_delim(":");
+	  cli_printf("%u", blob_filesize); cli_delim(":");
 	  cli_printf("%lld", blob_date); cli_delim(":");
 	  cli_puts(blob_name ? blob_name : ""); cli_delim("\n");
 	}
