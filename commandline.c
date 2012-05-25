@@ -1194,7 +1194,8 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   if (rhizome_manifest_bind_id(m,authorSid))
     return WHY("Could not bind manifest to an ID");
 #warning need to sanely determine whether to encrypt a file
-  int encryptP=1;
+#warning payload encryption disabled for now
+  int encryptP=0;
   if (rhizome_manifest_bind_file(m,filepath,encryptP))
     return WHYF("Could not bind manifest to file '%s'",filepath);
   

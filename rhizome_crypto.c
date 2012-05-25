@@ -194,11 +194,12 @@ rhizome_signature *rhizome_sign_hash(rhizome_manifest *m,const char *author)
   unsigned char *hash=m->manifesthash;
   unsigned char *publicKeyBytes=m->cryptoSignPublic;
   
-  if (rhizome_extract_privatekey(m,author))
-    {
-      WHY("Cannot find secret key to sign manifest data.");
-      return NULL;
-    }
+  if (!m->haveSecret)
+    if (rhizome_extract_privatekey(m,author))
+      {
+	WHY("Cannot find secret key to sign manifest data.");
+	return NULL;
+      }
 
   /* Signature is formed by running crypto_sign_edwards25519sha512batch() on the 
      hash of the manifest.  The signature actually contains the hash, so to save

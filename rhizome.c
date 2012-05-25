@@ -142,7 +142,7 @@ int rhizome_manifest_bind_id(rhizome_manifest *m_in,const char *author)
   char id[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2+1];
   rhizome_bytes_to_hex_upper(m_in->cryptoSignPublic, id, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
   rhizome_manifest_set(m_in, "id", id);
-  if (author) {
+  if (author&&author[0]) {
     /* Set the BK using the provided authorship information.
        Serval Security Framework defines BK as being:
        BK = privateKey XOR sha512(RS##BID), where BID = cryptoSignPublic, 
