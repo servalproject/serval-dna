@@ -1190,9 +1190,12 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   }
 
   /* bind an ID for the manifest, and also bind the file.
-     Then finalise the manifest. */
-  if (rhizome_manifest_bind_id(m,authorSid))
-    return WHY("Could not bind manifest to an ID");
+     Then finalise the manifest.
+
+     But if the manifest already contains an ID, don't override it. */
+  if (rhizome_manifest_get(m, "id", NULL, 0)==NULL)
+    if (rhizome_manifest_bind_id(m,authorSid))
+      return WHY("Could not bind manifest to an ID");
 #warning need to sanely determine whether to encrypt a file
 #warning payload encryption disabled for now
   int encryptP=0;
@@ -1204,9 +1207,11 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   rhizome_manifest *mout = NULL;
   if (debug & DEBUG_RHIZOME) DEBUGF("rhizome_add_manifest(author='%s')", authorSid);
 
+  int ret=0;
   if (rhizome_manifest_check_duplicate(m,&mout)==2)
     {
       /* duplicate */
+      ret=2;
     } else {
     /* not duplicate, so finalise and add to database */
     if (rhizome_manifest_finalise(m)) {
@@ -1222,7 +1227,6 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   /* If successfully added, overwrite the manifest file so that the Java component that is
      invoking this command can read it to obtain feedback on the result. */
   rhizome_manifest *mwritten=mout?mout:m;
-  int ret=0;
   if (manifestpath[0] 
       && rhizome_write_manifest_file(mwritten, manifestpath) == -1)
     ret = WHY("Could not overwrite manifest file.");
