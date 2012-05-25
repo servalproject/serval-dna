@@ -248,7 +248,8 @@ double rhizome_manifest_get_double(rhizome_manifest *m,char *var,double default_
 int chartonybl(int c);
 int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs);
 int rhizome_update_file_priority(char *fileid);
-int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found);
+int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found,
+			   int checkVersionP);
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
 char nybltochar_upper(int n);
 int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peerip, int *manifest_kept);

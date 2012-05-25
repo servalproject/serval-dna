@@ -890,7 +890,8 @@ int rhizome_update_file_priority(char *fileid)
 
    @author Andrew Bettison <andrew@servalproject.com>
  */
-int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
+int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found,
+			   int checkVersionP)
 {
   if (!m->fileHashedP)
     return WHY("Manifest payload is not hashed");
@@ -917,13 +918,14 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
       "SELECT manifests.id, manifests.manifest, manifests.version FROM filemanifests, manifests"
       " WHERE filemanifests.manifestid = manifests.id AND filemanifests.fileid = ?"
     );
-  if (m->version != -1 && s < &sqlcmd[sizeof sqlcmd])
+  if (checkVersionP && s < &sqlcmd[sizeof sqlcmd])
     s += snprintf(s, sqlcmd + sizeof(sqlcmd) - s, " AND manifests.version = ?");
   if (s >= &sqlcmd[sizeof sqlcmd])
     return WHY("SQL command too long");
   int ret = 0;
   sqlite3_stmt *statement;
   const char *cmdtail;
+  if (debug&DEBUG_RHIZOME) WHYF("sql query: %s",sqlcmd);
   if (sqlite3_prepare_v2(rhizome_db, sqlcmd, strlen(sqlcmd) + 1, &statement, &cmdtail) != SQLITE_OK) {
     ret = WHY(sqlite3_errmsg(rhizome_db));
   } else {
@@ -932,7 +934,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
     str_toupper_inplace(filehash);
     if (debug & DEBUG_RHIZOME) DEBUGF("filehash=\"%s\"", filehash);
     sqlite3_bind_text(statement, 1, filehash, -1, SQLITE_STATIC);
-    if (m->version != -1)
+    if (checkVersionP)
       sqlite3_bind_int64(statement, 2, m->version);
     size_t rows = 0;
     while (sqlite3_step(statement) == SQLITE_ROW) {
@@ -976,7 +978,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
 	  WARNF("MANIFESTS row id=%s has inconsistent blob with id=%s -- skipped", q_manifestid, blob_id);
 	  ++inconsistent;
 	}
-	if (blob_version != -1 && blob_version != q_version) {
+	if (checkVersionP && blob_version != q_version) {
 	  WARNF("MANIFESTS row id=%s has inconsistent blob: manifests.version=%lld, blob.version=%lld -- skipped",
 		q_manifestid, q_version, blob_version);
 	  ++inconsistent;
@@ -991,7 +993,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
 		q_manifestid, m->fileLength, blob_filesize);
 	  ++inconsistent;
 	}
-	if (m->version != -1 && q_version != m->version) {
+	if (checkVersionP && q_version != m->version) {
 	  WARNF("SELECT query with version=%lld returned incorrect row: manifests.version=%lld -- skipped", m->version, q_version);
 	  ++inconsistent;
 	}

@@ -236,9 +236,10 @@ int rhizome_manifest_check_file(rhizome_manifest *m_in)
    (Debounce!) */
 int rhizome_manifest_check_duplicate(rhizome_manifest *m_in,rhizome_manifest **m_out)
 {
+  WHY("Checking for duplicate");
   if (m_out) *m_out = NULL; 
   rhizome_manifest *dupm = NULL;
-  if (rhizome_find_duplicate(m_in, &dupm) == -1)
+  if (rhizome_find_duplicate(m_in, &dupm,0 /* version doesn't matter */) == -1)
     return WHY("Errors encountered searching for duplicate manifest");
   if (dupm) {
     /* If the caller wants the duplicate manifest, it must be finalised, otherwise discarded. */
@@ -247,8 +248,10 @@ int rhizome_manifest_check_duplicate(rhizome_manifest *m_in,rhizome_manifest **m
     }
     else
       rhizome_manifest_free(dupm);
+    WHY("Found a duplicate");
     return 2;
   }
+  WHY("No duplicate found");
   return 0;
 }
 
