@@ -174,6 +174,8 @@ int rhizome_opendb()
 
 /* 
    Convenience wrapper for executing an SQL command that returns a single int64 value 
+   Returns -1 if an error occurs, otherwise the value of the column in the first row.
+   If there are no rows, return zero.
  */
 long long sqlite_exec_int64(char *sqlformat,...)
 {
@@ -187,8 +189,7 @@ long long sqlite_exec_int64(char *sqlformat,...)
   va_end(ap);
 
   sqlite3_stmt *statement;
-  switch (sqlite3_prepare_v2(rhizome_db,sqlstatement,-1,&statement,NULL))
-    {
+  switch (sqlite3_prepare_v2(rhizome_db,sqlstatement,-1,&statement,NULL)) {
     case SQLITE_OK: case SQLITE_DONE: case SQLITE_ROW:
       break;
     default:
@@ -198,19 +199,64 @@ long long sqlite_exec_int64(char *sqlformat,...)
       WHY(sqlstatement);
       WHY(sqlite3_errmsg(rhizome_db));
       return WHY("Could not prepare sql statement.");
+  }
+  if (sqlite3_step(statement) == SQLITE_ROW) {
+    int n = sqlite3_column_count(statement);
+    if (n != 1) {
+      sqlite3_finalize(statement);
+      return WHYF("Incorrect column count %d (should be 1)", n);
     }
-   if (sqlite3_step(statement) == SQLITE_ROW)
-     {
-       if (sqlite3_column_count(statement)!=1) {
-	 sqlite3_finalize(statement);
-	 return -1;
-       }
-       long long result= sqlite3_column_int64(statement,0);
-       sqlite3_finalize(statement);
-       return result;
-     }
-   sqlite3_finalize(statement);
-   return 0;
+    long long result= sqlite3_column_int64(statement, 0);
+    sqlite3_finalize(statement);
+    return result;
+  }
+  sqlite3_finalize(statement);
+  return 0;
+}
+
+/* 
+   Convenience wrapper for executing an SQL command that returns a single text value.
+   Returns -1 if an error occurs, otherwise the number of rows that were found:
+    0 means no rows, nothing is appended to the strbuf
+    1 means exactly one row, and the its column is appended to the strbuf
+    2 more than one row, and the first row's column is appended to the strbuf
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+int sqlite_exec_strbuf(strbuf sb, char *sqlformat,...)
+{
+  if (!rhizome_db) rhizome_opendb();
+  strbuf stmt = strbuf_alloca(8192);
+  va_list ap;
+  va_start(ap, sqlformat);
+  strbuf_vsprintf(stmt, sqlformat, ap);
+  va_end(ap);
+  sqlite3_stmt *statement;
+  switch (sqlite3_prepare_v2(rhizome_db, strbuf_str(stmt), -1, &statement,NULL)) {
+    case SQLITE_OK: case SQLITE_DONE: case SQLITE_ROW:
+      break;
+    default:
+      sqlite3_finalize(statement);
+      sqlite3_close(rhizome_db);
+      rhizome_db=NULL;
+      WHY(strbuf_str(stmt));
+      WHY(sqlite3_errmsg(rhizome_db));
+      return WHY("Could not prepare sql statement.");
+  }
+  int rows = 0;
+  if (sqlite3_step(statement) == SQLITE_ROW) {
+    int n = sqlite3_column_count(statement);
+    if (n != 1) {
+      sqlite3_finalize(statement);
+      return WHYF("Incorrect column count %d (should be 1)", n);
+    }
+    strbuf_puts(sb, (const char *)sqlite3_column_text(statement, 0));
+    sqlite3_finalize(statement);
+    ++rows;
+  }
+  if (sqlite3_step(statement) == SQLITE_ROW)
+    ++rows;
+  sqlite3_finalize(statement);
+  return rows;
 }
 
 long long rhizome_database_used_bytes()
@@ -763,6 +809,19 @@ int rhizome_store_file(const char *file,char *hash,int priority)
       return WHY("SQLite3 failed write all blob data");
   }
 
+  return 0;
+}
+
+int rhizome_clean_payload(const char *fileidhex)
+{
+  /* See if the file has any referents, and if not, delete it */
+  int count = sqlite_exec_int64("SELECT COUNT(*) FROM FILEMANIFESTS WHERE fileid='%s';", fileidhex); 
+  if (count == -1)
+    return -1;
+  if (count == 0) {
+    if (sqlite_exec_int64("DELETE FROM FILES WHERE id='%s';", fileidhex) == -1)
+      return -1;
+  }
   return 0;
 }
 

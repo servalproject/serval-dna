@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <sqlite3.h>
 #include "sha2.h"
+#include "strbuf.h"
 #include <sys/stat.h>
 
 #define RHIZOME_MANIFEST_ID_BYTES       crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES
@@ -213,7 +214,8 @@ rhizome_manifest *_rhizome_new_manifest(const char *file,const char *func,int li
 int rhizome_manifest_pack_variables(rhizome_manifest *m);
 int rhizome_store_bundle(rhizome_manifest *m, const char *associated_filename);
 int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid);
-int rhizome_store_file(const char *file,char *hash,int priortity);
+int rhizome_store_file(const char *file,char *hash,int priority);
+int rhizome_clean_payload(const char *fileidhex);
 int rhizome_finish_sqlstatement(sqlite3_stmt *statement);
 int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, const char *bundle,
 			  char *groups[], int ttl,
@@ -233,6 +235,7 @@ int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r);
 int rhizome_server_parse_http_request(int rn,rhizome_http_request *r);
 int rhizome_server_simple_http_response(rhizome_http_request *r,int result, char *response);
 long long sqlite_exec_int64(char *sqlformat,...);
+int sqlite_exec_strbuf(strbuf sb, char *sqlformat,...);
 int rhizome_server_http_response_header(rhizome_http_request *r,int result,
 					char *mime_type,unsigned long long bytes);
 int rhizome_server_sql_query_fill_buffer(int rn,rhizome_http_request *r);

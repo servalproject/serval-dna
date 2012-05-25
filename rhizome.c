@@ -276,6 +276,8 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
 
   /* If the manifest already has an ID */
   char id[SID_STRLEN + 1];
+  char ofilehash[RHIZOME_FILEHASH_STRLEN + 1];
+  ofilehash[0] = '\0';
   if (rhizome_manifest_get(m_in, "id", id, SID_STRLEN + 1)) {
     str_toupper_inplace(id);
     /* Discard the new manifest unless it is newer than the most recent known version with the same ID */
@@ -292,6 +294,10 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
     rhizome_hex_to_bytes(id, m_in->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
     if (rhizome_extract_privatekey(m_in, author) == 0)
       m_in->haveSecret=1;
+    strbuf b = strbuf_local(ofilehash, sizeof ofilehash);
+    sqlite_exec_strbuf(b, "SELECT fileid from filemanifests where manifestid='%s';", id);
+    if (strbuf_overrun(b))
+      return WHYF("fileid too long: '%s'", strbuf_str(b));
   } else {
     /* The manifest had no ID (256 bit random string being a public key in the NaCl CryptoSign
        crypto system), so create one. */
@@ -319,7 +325,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
       } else {
 	return WHY("Failed to set BK");
       }
-    }   
+    }
   }
 
   /* Add group memberships */
@@ -332,11 +338,15 @@ int rhizome_add_manifest(rhizome_manifest *m_in,
   /* Finish completing the manifest */
   if (m_in->finalised==0)
     if (rhizome_manifest_finalise(m_in, signP, author))
-      return WHY("Failed to finalise manifest.\n");
+      return WHY("Failed to finalise manifest");
 
   /* Okay, it is written, and can be put directly into the rhizome database now */
   if (rhizome_store_bundle(m_in, filename) == -1)
-    return WHY("rhizome_store_bundle() failed.");
+    return WHY("Failed to store manifest and payload");
+
+  /* If there was a prior payload, remove it from the database if it is no longer needed */
+  if (ofilehash[0] && strcasecmp(ofilehash, m_in->fileHexHash) != 0 && rhizome_clean_payload(ofilehash) == -1)
+    return WHYF("Failed to clean old payload fileid=%s", ofilehash);
 
   monitor_announce_bundle(m_in);
   if (m_out) *m_out = m_in;
