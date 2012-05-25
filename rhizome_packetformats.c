@@ -344,10 +344,14 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	  rhizome_manifest_free(m);
 	  return 0;
 	}
-	char manifest_id_buf[RHIZOME_MANIFEST_ID_STRLEN + 1];
-	char *manifest_id = rhizome_manifest_get(m, "id", manifest_id_buf, sizeof manifest_id_buf);
+	char manifest_id[RHIZOME_MANIFEST_ID_STRLEN + 1];
+	if (rhizome_manifest_get(m, "id", manifest_id, sizeof manifest_id) == NULL) {
+	  WHY("Manifest does not contain 'id' field");
+	  rhizome_manifest_free(m);
+	  return 0;
+	}
 	long long version = rhizome_manifest_get_ll(m, "version");
-	if (debug & DEBUG_RHIZOMESYNC) DEBUGF("manifest id=%s version=%lld", manifest_id ? manifest_id : "NULL", version);
+	if (debug & DEBUG_RHIZOMESYNC) DEBUGF("manifest id=%s version=%lld", manifest_id, version);
 
 	/* Crude signature presence test */
 	for(i=m->manifest_all_bytes-1;i>0;i--)

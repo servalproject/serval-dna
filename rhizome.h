@@ -234,15 +234,15 @@ int rhizome_server_close_http_request(int i);
 int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r);
 int rhizome_server_parse_http_request(int rn,rhizome_http_request *r);
 int rhizome_server_simple_http_response(rhizome_http_request *r,int result, char *response);
-long long sqlite_exec_int64(char *sqlformat,...);
-int sqlite_exec_strbuf(strbuf sb, char *sqlformat,...);
+long long sqlite_exec_void(const char *sqlformat,...);
+long long sqlite_exec_int64(const char *sqlformat,...);
+int sqlite_exec_strbuf(strbuf sb, const char *sqlformat,...);
 int rhizome_server_http_response_header(rhizome_http_request *r,int result,
 					char *mime_type,unsigned long long bytes);
 int rhizome_server_sql_query_fill_buffer(int rn,rhizome_http_request *r);
 double rhizome_manifest_get_double(rhizome_manifest *m,char *var,double default_value);
 int chartonybl(int c);
 int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs);
-long long sqlite_exec_int64(char *sqlformat,...);
 int rhizome_update_file_priority(char *fileid);
 int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found);
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);

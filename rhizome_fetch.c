@@ -137,7 +137,7 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
 
   char id[RHIZOME_MANIFEST_ID_STRLEN + 1];
   if (!rhizome_manifest_get(m, "id", id, sizeof id))
-    return 1; // dodgy manifest, so don't suggest that we want to RX it.
+    return -3; // dodgy manifest, we don't want to receive it
   str_toupper_inplace(id);
 
   /* Work out bin number in cache */
@@ -199,30 +199,28 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
      and require regular database queries, and that memory allowing, we should use
      a fairly large cache here.
  */
-  unsigned long long manifest_version=rhizome_manifest_get_ll(m,"version");
+  long long manifest_version = rhizome_manifest_get_ll(m, "version");
   if (sqlite_exec_int64("select count(*) from manifests where id='%s' and version>=%lld",
 			id,manifest_version)>0) {
     /* Okay, so we have a stored version which is newer, so update the cache
        using a random replacement strategy. */
-    unsigned long long stored_version = sqlite_exec_int64("select version from manifests where id='%s'", id);
-
+    long long stored_version = sqlite_exec_int64("select version from manifests where id='%s'", id);
+    if (stored_version == -1)
+      return -4; // database is broken, we can't receive it
     slot=random()%RHIZOME_VERSION_CACHE_ASSOCIATIVITY;
     unsigned char *entry=rhizome_manifest_version_cache[bin][slot];
-    unsigned long long *cached_version=(unsigned long long *)&entry[24];
+    long long *cached_version=(long long *)&entry[24];
     *cached_version=stored_version;
     for(i=0;i<24;i++)
       {
 	int byte=(chartonybl(id[(i*2)])<<4)|chartonybl(id[(i*2)+1]);
 	entry[i]=byte;
       }
-    
     /* Finally, say that it isn't worth RXing this manifest */
-    if (stored_version>manifest_version) return -2; else return -1;
-  } else {
-    /* At best we hold an older version of this manifest */
-    return 0;
+    return stored_version > manifest_version ? -2 : -1;
   }
-
+  /* At best we hold an older version of this manifest */
+  return 0;
 }
 
 typedef struct ignored_manifest {

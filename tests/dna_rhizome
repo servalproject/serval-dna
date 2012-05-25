@@ -304,6 +304,7 @@ setup_AddThenExtractFile() {
    setup_servald_rhizome
    echo "A test file" >file1
    executeOk $servald rhizome add file $sid '' file1 file1.manifest
+   tfw_cat --stderr
    executeOk $servald rhizome list
    assert_rhizome_list file1
    extract_manifest_filehash filehash file1.manifest

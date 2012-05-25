@@ -173,45 +173,88 @@ int rhizome_opendb()
 }
 
 /* 
+   Convenience wrapper for executing an SQL command that returns a no value.
+   Returns -1 if an error occurs, otherwise zero.
+ */
+long long sqlite_exec_void(const char *sqlformat,...)
+{
+  if (!rhizome_db) rhizome_opendb();
+  strbuf stmt = strbuf_alloca(8192);
+  va_list ap;
+  va_start(ap, sqlformat);
+  strbuf_vsprintf(stmt, sqlformat, ap);
+  va_end(ap);
+  if (strbuf_overrun(stmt))
+    return WHYF("Sql statement overrun: %s", strbuf_str(stmt));
+  sqlite3_stmt *statement;
+  switch (sqlite3_prepare_v2(rhizome_db, strbuf_str(stmt), -1, &statement, NULL)) {
+    case SQLITE_OK: case SQLITE_DONE:
+      break;
+    default:
+      WHY(strbuf_str(stmt));
+      WHY(sqlite3_errmsg(rhizome_db));
+      sqlite3_finalize(statement);
+      sqlite3_close(rhizome_db);
+      rhizome_db=NULL;
+      return WHYF("Sql statement prepare: %s -- closed database", strbuf_str(stmt));
+  }
+  int stepcode;
+  while ((stepcode = sqlite3_step(statement)) == SQLITE_ROW)
+    ;
+  switch (stepcode) {
+    case SQLITE_OK:
+    case SQLITE_DONE:
+    case SQLITE_ROW:
+      break;
+    default:
+      WHY(strbuf_str(stmt));
+      WHY(sqlite3_errmsg(rhizome_db));
+      sqlite3_finalize(statement);
+      return WHYF("Sql statement step: %s", strbuf_str(stmt));
+  }
+  sqlite3_finalize(statement);
+  return 0;
+}
+
+/* 
    Convenience wrapper for executing an SQL command that returns a single int64 value 
    Returns -1 if an error occurs, otherwise the value of the column in the first row.
    If there are no rows, return zero.
  */
-long long sqlite_exec_int64(char *sqlformat,...)
+long long sqlite_exec_int64(const char *sqlformat,...)
 {
   if (!rhizome_db) rhizome_opendb();
-
-  char sqlstatement[8192];
-
+  strbuf stmt = strbuf_alloca(8192);
   va_list ap;
   va_start(ap, sqlformat);
-  vsnprintf(sqlstatement,8192,sqlformat,ap); sqlstatement[8191]=0;
+  strbuf_vsprintf(stmt, sqlformat, ap);
   va_end(ap);
-
+  if (strbuf_overrun(stmt))
+    return WHYF("sql statement too long: %s", strbuf_str(stmt));
   sqlite3_stmt *statement;
-  switch (sqlite3_prepare_v2(rhizome_db,sqlstatement,-1,&statement,NULL)) {
+  switch (sqlite3_prepare_v2(rhizome_db, strbuf_str(stmt), -1, &statement, NULL)) {
     case SQLITE_OK: case SQLITE_DONE: case SQLITE_ROW:
       break;
     default:
+      WHY(strbuf_str(stmt));
+      WHY(sqlite3_errmsg(rhizome_db));
       sqlite3_finalize(statement);
       sqlite3_close(rhizome_db);
       rhizome_db=NULL;
-      WHY(sqlstatement);
-      WHY(sqlite3_errmsg(rhizome_db));
-      return WHY("Could not prepare sql statement.");
+      return WHYF("Could not prepare sql statement: %s -- closed database", strbuf_str(stmt));
   }
   if (sqlite3_step(statement) == SQLITE_ROW) {
     int n = sqlite3_column_count(statement);
     if (n != 1) {
       sqlite3_finalize(statement);
-      return WHYF("Incorrect column count %d (should be 1)", n);
+      return WHYF("Incorrect column count %d (should be 1): %s", n, strbuf_str(stmt));
     }
     long long result= sqlite3_column_int64(statement, 0);
     sqlite3_finalize(statement);
     return result;
   }
   sqlite3_finalize(statement);
-  return 0;
+  return WHYF("No rows found: %s", strbuf_str(stmt));
 }
 
 /* 
@@ -222,7 +265,7 @@ long long sqlite_exec_int64(char *sqlformat,...)
     2 more than one row, and the first row's column is appended to the strbuf
    @author Andrew Bettison <andrew@servalproject.com>
  */
-int sqlite_exec_strbuf(strbuf sb, char *sqlformat,...)
+int sqlite_exec_strbuf(strbuf sb, const char *sqlformat,...)
 {
   if (!rhizome_db) rhizome_opendb();
   strbuf stmt = strbuf_alloca(8192);
@@ -230,6 +273,8 @@ int sqlite_exec_strbuf(strbuf sb, char *sqlformat,...)
   va_start(ap, sqlformat);
   strbuf_vsprintf(stmt, sqlformat, ap);
   va_end(ap);
+  if (strbuf_overrun(stmt))
+    return WHYF("sql statement too long: %s", strbuf_str(stmt));
   sqlite3_stmt *statement;
   switch (sqlite3_prepare_v2(rhizome_db, strbuf_str(stmt), -1, &statement,NULL)) {
     case SQLITE_OK: case SQLITE_DONE: case SQLITE_ROW:
@@ -261,9 +306,9 @@ int sqlite_exec_strbuf(strbuf sb, char *sqlformat,...)
 
 long long rhizome_database_used_bytes()
 {
-  long long db_page_size=sqlite_exec_int64("PRAGMA page_size;");
-  long long db_page_count=sqlite_exec_int64("PRAGMA page_count;");
-  long long db_free_page_count=sqlite_exec_int64("PRAGMA free_count;");
+  long long db_page_size=sqlite_exec_void("PRAGMA page_size;");
+  long long db_page_count=sqlite_exec_void("PRAGMA page_count;");
+  long long db_free_page_count=sqlite_exec_void("PRAGMA free_count;");
   return db_page_size*(db_page_count-db_free_page_count);
 }
 
@@ -362,18 +407,18 @@ int rhizome_drop_stored_file(char *id,int maximum_priority)
 	cannot_drop=1;
       } else {
 	printf("removing stale filemanifests, manifests, groupmemberships\n");
-	sqlite_exec_int64("delete from filemanifests where manifestid='%s';",id);
-	sqlite_exec_int64("delete from manifests where manifestid='%s';",id);
-	sqlite_exec_int64("delete from keypairs where public='%s';",id);
-	sqlite_exec_int64("delete from groupmemberships where manifestid='%s';",id);	
+	sqlite_exec_void("delete from filemanifests where manifestid='%s';",id);
+	sqlite_exec_void("delete from manifests where manifestid='%s';",id);
+	sqlite_exec_void("delete from keypairs where public='%s';",id);
+	sqlite_exec_void("delete from groupmemberships where manifestid='%s';",id);	
       }
     }
   sqlite3_finalize(statement);
 
   if (!cannot_drop) {
     printf("cleaning up filemanifests, manifests\n");
-    sqlite_exec_int64("delete from filemanifests where fileid='%s';",id);
-    sqlite_exec_int64("delete from files where id='%s';",id);
+    sqlite_exec_void("delete from filemanifests where fileid='%s';",id);
+    sqlite_exec_void("delete from files where id='%s';",id);
   }
   return 0;
 }
@@ -418,31 +463,14 @@ int rhizome_store_bundle(rhizome_manifest *m, const char *associated_filename)
 	 Remove old manifest entry, and replace with new one.
 	 But we do need to check if the file referenced by the old one is still needed,
 	 and if it's priority is right */
-      sqlite_exec_int64("DELETE FROM MANIFESTS WHERE id='%s';",manifestid);
-
-      char sql[1024];
-      sqlite3_stmt *statement;
-      snprintf(sql,1024,"SELECT fileid from filemanifests where manifestid='%s';", manifestid);
-      if (sqlite3_prepare_v2(rhizome_db,sql,strlen(sql)+1,&statement,NULL)!=SQLITE_OK)
-	{
-	  WHY("sqlite3_prepare_v2() failed");
-	  WHY(sql);
-	  WHY(sqlite3_errmsg(rhizome_db));
-	}
-      else
-	{
-	  while ( sqlite3_step(statement)== SQLITE_ROW)
-	    {
-	      const unsigned char *fileid;
-	      if (sqlite3_column_type(statement,0)==SQLITE_TEXT) {
-		fileid=sqlite3_column_text(statement,0);
-		rhizome_update_file_priority((char *)fileid);
-	      }
-	    }
-	  sqlite3_finalize(statement);
-	}      
-      sqlite_exec_int64("DELETE FROM FILEMANIFESTS WHERE manifestid='%s';",manifestid);
-
+      sqlite_exec_void("DELETE FROM MANIFESTS WHERE id='%s';",manifestid);
+      strbuf b = strbuf_alloca(RHIZOME_FILEHASH_STRLEN + 1);
+      if (sqlite_exec_strbuf(b, "SELECT fileid from filemanifests where manifestid='%s';", manifestid) == -1)
+	return -1;
+      if (strbuf_overrun(b))
+	return WHYF("got over-long fileid from database: %s", strbuf_str(b));
+      rhizome_update_file_priority(strbuf_str(b));
+      sqlite_exec_void("DELETE FROM FILEMANIFESTS WHERE manifestid='%s';",manifestid);
     }
 
   /* Store manifest */
@@ -466,19 +494,18 @@ int rhizome_store_bundle(rhizome_manifest *m, const char *associated_filename)
 
   const char *cmdtail;
   sqlite3_stmt *statement;
-  if (sqlite3_prepare_v2(rhizome_db,sqlcmd,strlen(sqlcmd)+1,&statement,&cmdtail) 
-      != SQLITE_OK) {
+  if (sqlite3_prepare_v2(rhizome_db,sqlcmd,strlen(sqlcmd)+1,&statement,&cmdtail) != SQLITE_OK) {
+    WHY(sqlite3_errmsg(rhizome_db));
     sqlite3_finalize(statement);
-    WHY("*** Insert into manifests failed.");
-    return WHY(sqlite3_errmsg(rhizome_db));
+    return WHY("Insert into manifests failed.");
   }
 
   /* Bind manifest data to data field */
   if (sqlite3_bind_blob(statement,1,m->manifestdata,m->manifest_bytes,SQLITE_TRANSIENT)!=SQLITE_OK)
     {
+      WHY(sqlite3_errmsg(rhizome_db));
       sqlite3_finalize(statement);
-    WHY("*** Insert into manifests failed (2).");
-      return WHY(sqlite3_errmsg(rhizome_db));
+      return WHY("Insert into manifests failed.");
     }
 
   /* Bind BAR to data field */
@@ -488,21 +515,19 @@ int rhizome_store_bundle(rhizome_manifest *m, const char *associated_filename)
   if (sqlite3_bind_blob(statement,2,bar,RHIZOME_BAR_BYTES,SQLITE_TRANSIENT)
       !=SQLITE_OK)
     {
+      WHY(sqlite3_errmsg(rhizome_db));
       sqlite3_finalize(statement);
-    WHY("*** Insert into manifests failed (3).");
-      return WHY(sqlite3_errmsg(rhizome_db));
+      return WHY("Insert into manifests failed.");
     }
 
-  if (rhizome_finish_sqlstatement(statement)) {
-    WHY("*** Insert into manifests failed (4).");
+  if (rhizome_finish_sqlstatement(statement))
     return WHY("SQLite3 failed to insert row for manifest");
-  }
   else {
     if (debug & DEBUG_RHIZOME) DEBUGF("Insert into manifests apparently worked.");
   }
 
   /* Create relationship between file and manifest */
-  long long r=sqlite_exec_int64("INSERT INTO FILEMANIFESTS(manifestid,fileid) VALUES('%s','%s');", manifestid, filehash);
+  long long r=sqlite_exec_void("INSERT INTO FILEMANIFESTS(manifestid,fileid) VALUES('%s','%s');", manifestid, filehash);
   if (r<0) {
     WHY(sqlite3_errmsg(rhizome_db));
     return WHY("SQLite3 failed to insert row in filemanifests.");
@@ -516,9 +541,9 @@ int rhizome_store_bundle(rhizome_manifest *m, const char *associated_filename)
     if (closed<1) closed=0;
     int ciphered=rhizome_manifest_get_ll(m,"cipheredgroup");
     if (ciphered<1) ciphered=0;
-    sqlite_exec_int64("delete from grouplist where id='%s';",manifestid);
+    sqlite_exec_void("delete from grouplist where id='%s';",manifestid);
     int storedP
-      =sqlite_exec_int64("insert into grouplist(id,closed,ciphered,priority) VALUES('%s',%d,%d,%d);",
+      =sqlite_exec_void("insert into grouplist(id,closed,ciphered,priority) VALUES('%s',%d,%d,%d);",
 			 manifestid,closed,ciphered,RHIZOME_PRIORITY_DEFAULT);
     if (storedP<0) return WHY("Failed to insert group manifest into grouplist table.");
   }
@@ -528,7 +553,7 @@ int rhizome_store_bundle(rhizome_manifest *m, const char *associated_filename)
     int dud=0;
     for(g=0;g<m->group_count;g++)
       {
-	if (sqlite_exec_int64("INSERT INTO GROUPMEMBERSHIPS(manifestid,groupid) VALUES('%s','%s');",
+	if (sqlite_exec_void("INSERT INTO GROUPMEMBERSHIPS(manifestid,groupid) VALUES('%s','%s');",
 			   manifestid, m->groups[g])<0)
 	  dud++;
       }
@@ -739,9 +764,10 @@ int rhizome_store_file(const char *file,char *hash,int priority)
   if (sqlite3_prepare_v2(rhizome_db,sqlcmd,strlen(sqlcmd)+1,&statement,&cmdtail) 
       != SQLITE_OK)
     {
-      close(fd);
+      WHY(sqlite3_errmsg(rhizome_db));   
       sqlite3_finalize(statement);
-      return WHY(sqlite3_errmsg(rhizome_db));
+      close(fd);
+      return WHY("sqlite3_prepare_v2() failed");
     }
   
   /* Bind appropriate sized zero-filled blob to data field */
@@ -750,8 +776,8 @@ int rhizome_store_file(const char *file,char *hash,int priority)
   if ((r=sqlite3_bind_zeroblob(statement,1,stat.st_size))!=SQLITE_OK)
     {
       dud++;
-      WHY("sqlite3_bind_zeroblob() failed");
       WHY(sqlite3_errmsg(rhizome_db));   
+      WHY("sqlite3_bind_zeroblob() failed");
     }
 
   /* Do actual insert, and abort if it fails */
@@ -767,20 +793,20 @@ int rhizome_store_file(const char *file,char *hash,int priority)
 
   if (sqlite3_finalize(statement)) dud++;
   if (dud) {
-    close(fd);
     if (sqlite3_finalize(statement)!=SQLITE_OK)
       {
-	WHY("sqlite3_finalize() failed");
 	WHY(sqlite3_errmsg(rhizome_db));
+	WHY("sqlite3_finalize() failed");
       }
+    close(fd);
     return WHY("SQLite3 failed to insert row for file");
   }
 
   /* Get rowid for inserted row, so that we can modify the blob */
   int rowid=sqlite3_last_insert_rowid(rhizome_db);
   if (rowid<1) {
-    close(fd);
     WHY(sqlite3_errmsg(rhizome_db));
+    close(fd);
     return WHY("SQLite3 failed return rowid of inserted row");
   }
 
@@ -790,8 +816,8 @@ int rhizome_store_file(const char *file,char *hash,int priority)
 			&blob) != SQLITE_OK)
     {
       WHY(sqlite3_errmsg(rhizome_db));
-      close(fd);
       sqlite3_blob_close(blob);
+      close(fd);
       return WHY("SQLite3 failed to open file blob for writing");
     }
 
@@ -805,13 +831,11 @@ int rhizome_store_file(const char *file,char *hash,int priority)
       }
   }
   
-  close(fd);
   sqlite3_blob_close(blob);
+  close(fd);
 
   /* Mark file as up-to-date */
-  sqlite_exec_int64("UPDATE FILES SET datavalid=1 WHERE id='%s';",
-	   hash);
-
+  sqlite_exec_void("UPDATE FILES SET datavalid=1 WHERE id='%s';", hash);
 
   if (dud) {
       WHY(sqlite3_errmsg(rhizome_db));
@@ -824,11 +848,11 @@ int rhizome_store_file(const char *file,char *hash,int priority)
 int rhizome_clean_payload(const char *fileidhex)
 {
   /* See if the file has any referents, and if not, delete it */
-  int count = sqlite_exec_int64("SELECT COUNT(*) FROM FILEMANIFESTS WHERE fileid='%s';", fileidhex); 
+  long long count = sqlite_exec_int64("SELECT COUNT(*) FROM FILEMANIFESTS WHERE fileid='%s';", fileidhex); 
   if (count == -1)
     return -1;
   if (count == 0) {
-    if (sqlite_exec_int64("DELETE FROM FILES WHERE id='%s';", fileidhex) == -1)
+    if (sqlite_exec_void("DELETE FROM FILES WHERE id='%s';", fileidhex) == -1)
       return -1;
   }
   return 0;
@@ -852,8 +876,7 @@ int rhizome_update_file_priority(char *fileid)
     /* It has referrers, so workout the highest priority of any referrer */
         int highestPriority=sqlite_exec_int64("SELECT max(grouplist.priority) FROM MANIFESTS,FILEMANIFESTS,GROUPMEMBERSHIPS,GROUPLIST where manifests.id=filemanifests.manifestid AND groupmemberships.manifestid=manifests.id AND groupmemberships.groupid=grouplist.id AND filemanifests.fileid='%s';",fileid);
     if (highestPriority>=0)
-      sqlite_exec_int64("UPDATE files set highestPriority=%d WHERE id='%s';",
-			highestPriority,fileid);
+      sqlite_exec_void("UPDATE files set highestPriority=%d WHERE id='%s';", highestPriority,fileid);
   }
   return 0;
 }
@@ -1124,15 +1147,16 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath)
   const char *cmdtail;
   int ret = 0;
   if (sqlite3_prepare_v2(rhizome_db, sqlcmd, strlen(sqlcmd) + 1, &statement, &cmdtail) != SQLITE_OK) {
-    sqlite3_finalize(statement);
     ret = WHY(sqlite3_errmsg(rhizome_db));
+    sqlite3_finalize(statement);
   } else {
     char fileIdUpper[RHIZOME_FILEHASH_STRLEN + 1];
     strncpy(fileIdUpper, fileid, sizeof fileIdUpper);
     fileIdUpper[RHIZOME_FILEHASH_STRLEN] = '\0';
     str_toupper_inplace(fileIdUpper);
     sqlite3_bind_text(statement, 1, fileIdUpper, -1, SQLITE_STATIC);
-    while (sqlite3_step(statement) == SQLITE_ROW) {
+    int stepcode;
+    while ((stepcode = sqlite3_step(statement)) == SQLITE_ROW) {
       if (!(   sqlite3_column_count(statement) == 3
 	    && sqlite3_column_type(statement, 0) == SQLITE_TEXT
 	    && sqlite3_column_type(statement, 1) == SQLITE_BLOB
@@ -1155,18 +1179,25 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath)
 	if (filepath) {
 	  int fd = open(filepath, O_WRONLY | O_CREAT | O_TRUNC, 0775);
 	  if (fd == -1) {
-	    ret = WHYF("Cannot open %s for write/create", filepath);
 	    WHY_perror("open");
+	    ret = WHYF("Cannot open %s for write/create", filepath);
 	  } else if (write(fd, fileblob, length) != length) {
-	    ret = WHYF("Error writing %lld bytes to %s ", (long long) length, filepath);
 	    WHY_perror("write");
-	  } else if (close(fd) == -1) {
-	    ret = WHYF("Error flushing to %s ", filepath);
+	    ret = WHYF("Error writing %lld bytes to %s ", (long long) length, filepath);
+	  }
+	  if (fd != -1 && close(fd) == -1) {
 	    WHY_perror("close");
+	    ret = WHYF("Error flushing to %s ", filepath);
 	  }
 	}
       }
       break;
+    }
+    switch (stepcode) {
+      case SQLITE_OK: break;
+      case SQLITE_DONE: break;
+      case SQLITE_ROW: WARNF("Found more than one row: %s", sqlcmd); break;
+      default: ret = WHY(sqlite3_errmsg(rhizome_db)); break;;
     }
   }
   sqlite3_finalize(statement);

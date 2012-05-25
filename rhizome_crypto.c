@@ -48,7 +48,7 @@ int rhizome_manifest_createid(rhizome_manifest *m)
 #ifdef DEPRECATED
 int rhizome_store_keypair_bytes(unsigned char *p,unsigned char *s) {
   /* XXX TODO Secrets should be encrypted using a keyring password. */
-  if (sqlite_exec_int64("INSERT INTO KEYPAIRS(public,private) VALUES('%s','%s');",
+  if (sqlite_exec_void("INSERT INTO KEYPAIRS(public,private) VALUES('%s','%s');",
 			rhizome_bytes_to_hex(p,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES),
 			rhizome_bytes_to_hex(s,crypto_sign_edwards25519sha512batch_SECRETKEYBYTES))<0)
     return WHY("Failed to store key pair.");
