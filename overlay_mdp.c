@@ -218,7 +218,7 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
     mdp_bindings_initialised=1;
   }
 
-  DEBUG("Doesn't authenticate source address on multi-SID installations like an OpenBTS:mesh gateway)");
+//  DEBUG("Doesn't authenticate source address on multi-SID installations like an OpenBTS:mesh gateway)");
   
   /* Make sure source address is either all zeros (listen on all), or a valid
      local address */

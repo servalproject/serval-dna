@@ -1367,6 +1367,8 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
 	 mdp->nodeinfo.sid_prefix_length
 	 );
 
+  mdp->nodeinfo.foundP=0;
+  
   /* check if it is a local identity */
   int cn,in,kp;
   for(cn=0;cn<keyring->context_count;cn++)
