@@ -1236,7 +1236,7 @@ int app_rhizome_extract_manifest(int argc, const char *const *argv, struct comma
 {
   const char *manifestid, *manifestpath;
   if (cli_arg(argc, argv, o, "manifestid", &manifestid, cli_manifestid, NULL)
-   || cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "") == -1)
+   || cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, NULL) == -1)
     return -1;
   /* Ensure the Rhizome database exists and is open */
   if (create_serval_instance_dir() == -1)
@@ -1249,14 +1249,14 @@ int app_rhizome_extract_manifest(int argc, const char *const *argv, struct comma
   switch (ret) {
     case 0: ret = 1; break;
     case 1: ret = 0;
-      if (manifestpath[0]) {
+      if (manifestpath) {
 	/* If the manifest has been read in from database, the blob is there,
 	   and we can lie and say we are finalised and just want to write it
 	   out.  XXX really should have a dirty/clean flag, so that write
 	   works is clean but not finalised. */
 	m->finalised=1;
 	if (rhizome_write_manifest_file(m, manifestpath) == -1)
-	  ret = WHY("Could not overwrite manifest file.");
+	  ret = -1;
       }
       break;
     case -1: break;

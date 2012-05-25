@@ -1066,22 +1066,23 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath)
       if (fileblobsize != length)
 	ret = WHY("File length does not match blob size");
       else {
-	int fd = open(filepath, O_WRONLY | O_CREAT | O_TRUNC, 0775);
-	if (fd == -1) {
-	  ret = WHYF("Cannot open %s for write/create", filepath);
-	  WHY_perror("open");
-	} else if (write(fd, fileblob, length) != length) {
-	  ret = WHYF("Error writing %lld bytes to %s ", (long long) length, filepath);
-	  WHY_perror("write");
-	} else if (close(fd) == -1) {
-	  ret = WHYF("Error flushing to %s ", filepath);
-	  WHY_perror("close");
-	} else {
-	  ret = 1;
-	  cli_puts("filehash"); cli_delim(":");
-	  cli_puts((const char *)sqlite3_column_text(statement, 0)); cli_delim("\n");
-	  cli_puts("filesize"); cli_delim(":");
-	  cli_printf("%lld", length); cli_delim("\n");
+	cli_puts("filehash"); cli_delim(":");
+	cli_puts((const char *)sqlite3_column_text(statement, 0)); cli_delim("\n");
+	cli_puts("filesize"); cli_delim(":");
+	cli_printf("%lld", length); cli_delim("\n");
+	ret = 1;
+	if (filepath) {
+	  int fd = open(filepath, O_WRONLY | O_CREAT | O_TRUNC, 0775);
+	  if (fd == -1) {
+	    ret = WHYF("Cannot open %s for write/create", filepath);
+	    WHY_perror("open");
+	  } else if (write(fd, fileblob, length) != length) {
+	    ret = WHYF("Error writing %lld bytes to %s ", (long long) length, filepath);
+	    WHY_perror("write");
+	  } else if (close(fd) == -1) {
+	    ret = WHYF("Error flushing to %s ", filepath);
+	    WHY_perror("close");
+	  }
 	}
       }
       break;
