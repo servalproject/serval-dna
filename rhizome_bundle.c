@@ -21,7 +21,71 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include <stdlib.h>
 
-int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bufferP, int flags)
+int rhizome_manifest_verify(rhizome_manifest *m)
+{
+  int end_of_text=0;
+
+  /* find end of manifest body and start of signatures */
+  while(m->manifestdata[end_of_text]&&end_of_text<m->manifest_all_bytes)
+    end_of_text++;
+  end_of_text++; /* include null byte in body for verification purposes */
+
+  /* Calculate hash of the text part of the file, as we need to couple this with
+     each signature block to */
+  crypto_hash_sha512(m->manifesthash,m->manifestdata,end_of_text);
+  
+  /* Read signature blocks from file. */
+  int ofs=end_of_text;
+  while(ofs<m->manifest_all_bytes) {
+    if (debug & DEBUG_RHIZOME) DEBUGF("ofs=0x%x, m->manifest_bytes=0x%x", ofs,m->manifest_all_bytes);
+    if (rhizome_manifest_extract_signature(m,&ofs)) break;
+  }
+  
+  if (m->sig_count==0) {
+    m->errors++;
+  }
+  
+  /* Make sure that id variable is correct */
+  {
+    char *id=rhizome_manifest_get(m,"id",NULL,0);
+    if (!id) { 
+      WARN("Manifest lacks 'id' field");
+      m->errors++;
+    }
+    else {
+      unsigned char manifest_bytes[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
+      rhizome_hex_to_bytes(id,manifest_bytes,
+			   crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
+      if ((m->sig_count==0)||
+	  memcmp(&m->signatories[0][0],manifest_bytes,
+		 crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES))
+	{
+	  if (debug&DEBUG_RHIZOME) {
+	    if (m->sig_count>0) {	      
+	      DEBUGF("Manifest id variable does not match first signature block (signature key is %s)",
+		     /* XXX bit of a hack that relies on SIDs and signing public keys being the same length */
+		     overlay_render_sid(&m->signatories[0][0])
+		     );
+	    } else {
+	      DEBUG("Manifest has no signature blocks, but should have self-signature block");
+	    }
+	  }
+	  m->errors++;
+	  m->selfSigned=0;
+	} else m->selfSigned=1;
+    }
+  }
+  
+  /* Mark as finalised, as it is all read and intact,
+     unless of course it has errors, or is lacking a self-signature. */
+  if (!m->errors) m->finalised=1;
+  else WHY("Verified a manifest that has errors, so marking as not finalised");
+
+  if (m->errors) return WHY("Manifest verification failed");
+  else return 0;
+}
+
+int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bufferP)
 {
   if (bufferP>MAX_MANIFEST_BYTES) return WHY("Buffer too big");
   if (!m) return WHY("Null manifest");
@@ -97,55 +161,8 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
   /* Remember where the text ends */
   int end_of_text=ofs;
 
-  if (flags&RHIZOME_VERIFY) {
-    /* Calculate hash of the text part of the file, as we need to couple this with
-       each signature block to */
-    crypto_hash_sha512(m->manifesthash,m->manifestdata,end_of_text);
-    
-    /* Read signature blocks from file. */
-    while(ofs<m->manifest_bytes) {
-      if (debug & DEBUG_RHIZOME) DEBUGF("ofs=0x%x, m->manifest_bytes=0x%x", ofs,m->manifest_bytes);
-      rhizome_manifest_extract_signature(m,&ofs);
-    }
-    
-    if (m->sig_count==0) {
-      m->errors++;
-    }
-
-    /* Make sure that id variable is correct */
-    {
-      char *id=rhizome_manifest_get(m,"id",NULL,0);
-      if (!id) { 
-	WARN("Manifest lacks 'id' field");
-	m->errors++;
-      }
-      else {
-	unsigned char manifest_bytes[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
-	rhizome_hex_to_bytes(id,manifest_bytes,
-			     crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
-	if ((m->sig_count==0)||
-	    memcmp(&m->signatories[0][0],manifest_bytes,
-		   crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES))
-	  {
-	    if (debug&DEBUG_RHIZOME) {
-	      if (m->sig_count>0) {	      
-		DEBUGF("Manifest id variable does not match first signature block (signature key is %s)",
-			/* XXX bit of a hack that relies on SIDs and signing public keys being the same length */
-			overlay_render_sid(&m->signatories[0][0])
-		      );
-	      } else {
-		DEBUG("Manifest has no signature blocks, but should have self-signature block");
-	      }
-	    }
-	    m->errors++;
-	    m->selfSigned=0;
-	  } else m->selfSigned=1;
-      }
-    }
-    
-    if (debug&DEBUG_RHIZOME) 
-      DEBUG("Group membership determination not implemented (see which signatories are groups? what about manifests signed by groups we don't yet know about?)");
-  }
+  if (debug&DEBUG_RHIZOME) 
+    DEBUG("Group membership determination not implemented (see which signatories are groups? what about manifests signed by groups we don't yet know about?)");
   
   m->manifest_bytes=end_of_text;
 

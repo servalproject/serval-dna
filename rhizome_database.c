@@ -647,7 +647,7 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
       size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
       long long q_version = sqlite3_column_int64(statement, 2);
       long long q_inserttime = sqlite3_column_int64(statement, 3);
-      if (rhizome_read_manifest_file(m, manifestblob, manifestblobsize, 0) == -1) {
+      if (rhizome_read_manifest_file(m, manifestblob, manifestblobsize) == -1) {
 	WARNF("MANIFESTS row id=%s has invalid manifest blob -- skipped", q_manifestid);
       } else {
 	long long blob_version = rhizome_manifest_get_ll(m, "version");
@@ -962,8 +962,10 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found,
 	ret = WHY("Out of manifests");
 	break;
       }
-      if (rhizome_read_manifest_file(blob_m, manifestblob, manifestblobsize, 0) == -1) {
+      if (rhizome_read_manifest_file(blob_m, manifestblob, manifestblobsize) == -1) {
 	WARNF("MANIFESTS row id=%s has invalid manifest blob -- skipped", q_manifestid);
+      } else if (rhizome_manifest_verify(m)) {
+	WARNF("MANIFESTS row id=%s fails verification -- skipped", q_manifestid);
       } else {
 	const char *blob_service = rhizome_manifest_get(blob_m, "service", NULL, 0);
 	const char *blob_id = rhizome_manifest_get(blob_m, "id", NULL, 0);
@@ -1084,7 +1086,7 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
 	if (m == NULL) {
 	  WARNF("MANIFESTS row id=%s has invalid manifest blob -- skipped", q_manifestid);
 	  ret = WHY("Out of manifests");
-	} else if (rhizome_read_manifest_file(m, manifestblob, manifestblobsize, 0) == -1) {
+	} else if (rhizome_read_manifest_file(m, manifestblob, manifestblobsize) == -1) {
 	  WARNF("MANIFESTS row id=%s has invalid manifest blob -- skipped", q_manifestid);
 	  ret = WHY("Invalid manifest blob from database");
 	} else {

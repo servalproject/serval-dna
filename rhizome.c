@@ -53,9 +53,12 @@ int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out,
     m = rhizome_new_manifest();
     if (!m)
       return WHY("Out of manifests.");
-    if (rhizome_read_manifest_file(m, manifestname, 0 /* file not buffer */, RHIZOME_VERIFY) == -1) {
+    if (rhizome_read_manifest_file(m, manifestname, 0 /* file not buffer */) == -1) {
       rhizome_manifest_free(m);
       return WHY("Could not read manifest file.");
+    } else if (rhizome_manifest_verify(m)) {
+      rhizome_manifest_free(m);
+      return WHY("Could not verify manifest file.");
     }
   } else {
     if (debug&DEBUG_RHIZOMESYNC)

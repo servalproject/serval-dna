@@ -238,7 +238,7 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
   unsigned char publicKey[256];
   if (!m) return WHY("NULL pointer passed in as manifest");
 
-  if ((*ofs)>=m->manifest_bytes) return 0;
+  if ((*ofs)>=m->manifest_all_bytes) return 0;
 
   int len=m->manifestdata[*ofs];
   if (!len) { 

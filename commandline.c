@@ -1153,7 +1153,10 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
     return WHY("Manifest struct could not be allocated -- not added to rhizome");
   if (manifestpath[0] && access(manifestpath, R_OK) == 0) {
     if (debug & DEBUG_RHIZOME) DEBUGF("reading manifest from %s", manifestpath);
-    if (rhizome_read_manifest_file(m, manifestpath, 0, 0) == -1) { // no verify
+    /* Don't verify the manifest, because it will fail if it is incomplete.
+       This is okay, because we fill in any missing bits and sanity check before
+       trying to write it out. */
+    if (rhizome_read_manifest_file(m, manifestpath, 0) == -1) {
       rhizome_manifest_free(m);
       return WHY("Manifest file could not be loaded -- not added to rhizome");
     }
@@ -1210,7 +1213,8 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   int ret=0;
   if (rhizome_manifest_check_duplicate(m,&mout)==2)
     {
-      /* duplicate */
+      /* duplicate found -- verify it so that we can write it out later */
+      rhizome_manifest_verify(mout);
       ret=2;
     } else {
     /* not duplicate, so finalise and add to database */

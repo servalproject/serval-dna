@@ -200,7 +200,7 @@ int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename);
 int rhizome_manifest_selfsign(rhizome_manifest *m);
 int rhizome_drop_stored_file(char *id,int maximum_priority);
 int rhizome_manifest_priority(char *id);
-int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bufferPAndSize, int flags);
+int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bufferPAndSize);
 int rhizome_hash_file(rhizome_manifest *m, const char *filename,char *hash_out);
 char *rhizome_manifest_get(const rhizome_manifest *m, const char *var, char *out, int maxlen);
 long long  rhizome_manifest_get_ll(rhizome_manifest *m, const char *var);

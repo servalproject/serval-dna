@@ -339,7 +339,8 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	  WHY("Out of manifests");
 	  return 0;
 	}
-	if (rhizome_read_manifest_file(m, (char *)&f->payload->bytes[ofs], manifest_length, RHIZOME_DONTVERIFY) == -1) {
+	if (rhizome_read_manifest_file(m, (char *)&f->payload->bytes[ofs], 
+				       manifest_length) == -1) {
 	  WHY("Error importing manifest body");
 	  rhizome_manifest_free(m);
 	  return 0;
@@ -399,8 +400,12 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	     Now reread the manifest, this time verifying signatures */
 	  if ((m = rhizome_new_manifest()) == NULL)
 	    WHY("Out of manifests");
-	  else if (rhizome_read_manifest_file(m, (char *)&f->payload->bytes[ofs], manifest_length, RHIZOME_VERIFY) == -1) {
+	  else if (rhizome_read_manifest_file(m, (char *)&f->payload->bytes[ofs], manifest_length) == -1) {
 	    WHY("Error importing manifest body");
+	    rhizome_manifest_free(m);
+	    m = NULL;
+	  } else if (rhizome_manifest_verify(m)) {
+	    WHY("Error verifying manifest body when importing");
 	    rhizome_manifest_free(m);
 	    m = NULL;
 	  } else if (m->errors) {
