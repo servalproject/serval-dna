@@ -250,11 +250,9 @@ ignored_manifest_cache ignored;
 int rhizome_ignore_manifest_check(rhizome_manifest *m,
 				  struct sockaddr_in *peerip)
 {
-  int i;
-
   int bin = m->cryptoSignPublic[0]>>(8-IGNORED_BIN_BITS);
   int slot;
-  for(slot=0;slot<IGNORED_BIN_SIZE;i++)
+  for(slot = 0; slot != IGNORED_BIN_SIZE; ++slot)
     {
       if (!memcmp(ignored.bins[bin].m[slot].bid,
 		  m->cryptoSignPublic,
@@ -274,11 +272,9 @@ int rhizome_queue_ignore_manifest(rhizome_manifest *m,
 {
   /* The supplied manifest from a given IP has errors, so remember 
      that it isn't worth considering */
-  int i;
-
   int bin = m->cryptoSignPublic[0]>>(8-IGNORED_BIN_BITS);
   int slot;
-  for(slot=0;slot<IGNORED_BIN_SIZE;i++)
+  for(slot = 0; slot != IGNORED_BIN_SIZE; ++slot)
     {
       if (!memcmp(ignored.bins[bin].m[slot].bid,
 		  m->cryptoSignPublic,
