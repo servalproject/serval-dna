@@ -345,7 +345,7 @@ _tfw_shellarg() {
    _tfw_shopt -s extglob
    for arg; do
       case "$arg" in
-      +([A-Za-z_0-9.,+\/-])) shellarg+=("$arg");;
+      +([A-Za-z_0-9.,:=+\/-])) shellarg+=("$arg");;
       *) shellarg+=("'${arg//'/'\\''}'");;
       esac
    done
