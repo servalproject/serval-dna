@@ -21,25 +21,26 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include <stdlib.h>
 
-rhizome_manifest *rhizome_read_manifest_file(const char *filename, int bufferP, int flags)
+int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bufferP, int flags)
 {
-  if (bufferP>MAX_MANIFEST_BYTES) return NULL;
-
-  rhizome_manifest *m = rhizome_new_manifest();
-  if (!m) return NULL;
+  if (bufferP>MAX_MANIFEST_BYTES) return WHY("Buffer too big");
+  if (!m) return WHY("Null manifest");
 
   if (bufferP) {
     m->manifest_bytes=bufferP;
     memcpy(m->manifestdata, filename, m->manifest_bytes);
   } else {
-    FILE *f=fopen(filename,"r");
-    if (!f) {
-      WHYF("Could not open manifest file %s for reading.", filename); 
-      rhizome_manifest_free(m);
-      return NULL;
-    }
-    m->manifest_bytes = fread(m->manifestdata,1,MAX_MANIFEST_BYTES,f);
-    fclose(f);
+    FILE *f = fopen(filename, "r");
+    if (f == NULL)
+      return WHYF("Could not open manifest file %s for reading.", filename); 
+    m->manifest_bytes = fread(m->manifestdata, 1, MAX_MANIFEST_BYTES, f);
+    int ret = 0;
+    if (m->manifest_bytes == -1)
+      ret = WHY_perror("fread");
+    if (fclose(f) == EOF)
+      ret = WHY_perror("fclose");
+    if (ret == -1)
+      return -1;
   }
 
   m->manifest_all_bytes=m->manifest_bytes;
@@ -148,7 +149,7 @@ rhizome_manifest *rhizome_read_manifest_file(const char *filename, int bufferP, 
   
   m->manifest_bytes=end_of_text;
 
-  return m;
+  return 0;
 }
 
 int rhizome_strn_is_file_hash(const char *text)
@@ -309,9 +310,9 @@ rhizome_manifest *_rhizome_new_manifest(const char *filename, const char *funcna
     {
       int i;
       logMessage(LOG_LEVEL_ERROR, filename, line, funcname, "%s(): no free manifest records, this probably indicates a memory leak", __FUNCTION__);
-      WHYF("   Manifest Slot# | Last allocated by");
+      WHYF("   Slot# | Last allocated by");
       for(i=0;i<MAX_RHIZOME_MANIFESTS;i++) {
-	WHYF("   %-14d | %s:%d in %s()",
+	WHYF("   %-5d | %s:%d in %s()",
 		i,
 		manifest_alloc_sourcefiles[i],
 		manifest_alloc_lines[i],

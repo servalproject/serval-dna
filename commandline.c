@@ -1146,19 +1146,19 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
     return -1;
   /* Create a new manifest that will represent the file.  If a manifest file was supplied, then read
    * it, otherwise create a blank manifest. */
-  rhizome_manifest *m = NULL;
   int manifest_file_supplied = 0;
+  rhizome_manifest *m = rhizome_new_manifest();
+  if (!m)
+    return WHY("Manifest struct could not be allocated -- not added to rhizome");
   if (manifestpath[0] && access(manifestpath, R_OK) == 0) {
     if (debug & DEBUG_RHIZOME) DEBUGF("reading manifest from %s", manifestpath);
-    m = rhizome_read_manifest_file(manifestpath, 0, 0); // no verify
-    if (!m)
+    if (rhizome_read_manifest_file(m, manifestpath, 0, 0) == -1) { // no verify
+      rhizome_manifest_free(m);
       return WHY("Manifest file could not be loaded -- not added to rhizome");
+    }
     manifest_file_supplied = 1;
   } else {
-    if (debug & DEBUG_RHIZOME) DEBUGF("manifest file %s does not exist", manifestpath);
-    m = rhizome_new_manifest();
-    if (!m)
-      return WHY("Manifest struct could not be allocated -- not added to rhizome");
+    if (debug & DEBUG_RHIZOME) DEBUGF("manifest file %s does not exist -- creating new manifest", manifestpath);
   }
   /* Fill in a few missing manifest fields, to make it easier to use when adding new files:
       - the default service is FILE

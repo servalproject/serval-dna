@@ -617,36 +617,45 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
 	ret = WHY("Incorrect statement column");
 	break;
       }
+      rhizome_manifest *m = rhizome_new_manifest();
+      if (m == NULL) {
+	ret = WHY("Out of manifests");
+	break;
+      }
+      const char *q_manifestid = (const char *) sqlite3_column_text(statement, 2);
       const char *manifestblob = (char *) sqlite3_column_blob(statement, 3);
       size_t manifestblobsize = sqlite3_column_bytes(statement, 3); // must call after sqlite3_column_blob()
-      rhizome_manifest *m = rhizome_read_manifest_file(manifestblob, manifestblobsize, 0);
-      const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
-      int match = 1;
-      if (service[0] && !(blob_service && strcasecmp(service, blob_service) == 0))
-	match = 0;
-      if (match && sender_sid[0]) {
-	const char *blob_sender = rhizome_manifest_get(m, "sender", NULL, 0);
-	if (!(blob_sender && strcasecmp(sender_sid, blob_sender) == 0))
+      if (rhizome_read_manifest_file(m, manifestblob, manifestblobsize, 0) == -1) {
+	WARNF("MANIFESTS row id=%s has invalid manifest blob -- skipped", q_manifestid);
+      } else {
+	int match = 1;
+	const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
+	if (service[0] && !(blob_service && strcasecmp(service, blob_service) == 0))
 	  match = 0;
+	if (match && sender_sid[0]) {
+	  const char *blob_sender = rhizome_manifest_get(m, "sender", NULL, 0);
+	  if (!(blob_sender && strcasecmp(sender_sid, blob_sender) == 0))
+	    match = 0;
+	}
+	if (match && recipient_sid[0]) {
+	  const char *blob_recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
+	  if (!(blob_recipient && strcasecmp(recipient_sid, blob_recipient) == 0))
+	    match = 0;
+	}
+	if (match) {
+	  const char *blob_name = rhizome_manifest_get(m, "name", NULL, 0);
+	  long long blob_date = rhizome_manifest_get_ll(m, "date");
+	  cli_puts(blob_service ? blob_service : ""); cli_delim(":");
+	  cli_puts((const char *)sqlite3_column_text(statement, 0)); cli_delim(":");
+	  cli_puts(q_manifestid); cli_delim(":");
+	  cli_printf("%lld", (long long) sqlite3_column_int64(statement, 4)); cli_delim(":");
+	  cli_printf("%lld", (long long) sqlite3_column_int64(statement, 5)); cli_delim(":");
+	  cli_printf("%u", sqlite3_column_int(statement, 1)); cli_delim(":");
+	  cli_printf("%lld", blob_date); cli_delim(":");
+	  cli_puts(blob_name ? blob_name : ""); cli_delim("\n");
+	}
       }
-      if (match && recipient_sid[0]) {
-	const char *blob_recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
-	if (!(blob_recipient && strcasecmp(recipient_sid, blob_recipient) == 0))
-	  match = 0;
-      }
-      if (match) {
-	const char *blob_name = rhizome_manifest_get(m, "name", NULL, 0);
-	long long blob_date = rhizome_manifest_get_ll(m, "date");
-	cli_puts(blob_service ? blob_service : ""); cli_delim(":");
-	cli_puts((const char *)sqlite3_column_text(statement, 0)); cli_delim(":");
-	cli_puts((const char *)sqlite3_column_text(statement, 2)); cli_delim(":");
-	cli_printf("%lld", (long long) sqlite3_column_int64(statement, 4)); cli_delim(":");
-	cli_printf("%lld", (long long) sqlite3_column_int64(statement, 5)); cli_delim(":");
-	cli_printf("%u", sqlite3_column_int(statement, 1)); cli_delim(":");
-	cli_printf("%lld", blob_date); cli_delim(":");
-	cli_puts(blob_name ? blob_name : ""); cli_delim("\n");
-      }
-      rhizome_manifest_free(m);
+      if (m) rhizome_manifest_free(m);
     }
   }
   sqlite3_finalize(statement);
@@ -919,75 +928,83 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
       const char *manifestblob = (char *) sqlite3_column_blob(statement, 1);
       size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
       long long q_version = sqlite3_column_int64(statement, 2);
-      rhizome_manifest *blob_m = rhizome_read_manifest_file(manifestblob, manifestblobsize, 0);
-      const char *blob_service = rhizome_manifest_get(blob_m, "service", NULL, 0);
-      const char *blob_id = rhizome_manifest_get(blob_m, "id", NULL, 0);
-      long long blob_version = rhizome_manifest_get_ll(blob_m, "version");
-      const char *blob_filehash = rhizome_manifest_get(blob_m, "filehash", NULL, 0);
-      long long blob_filesize = rhizome_manifest_get_ll(blob_m, "filesize");
-      if (debug & DEBUG_RHIZOME)
-	DEBUGF("Consider manifest.service=%s manifest.id=%s manifest.version=%lld", blob_service, q_manifestid, blob_version);
-      /* Perform consistency checks, because we're paranoid. */
-      int inconsistent = 0;
-      if (blob_id && strcasecmp(blob_id, q_manifestid)) {
-	WARNF("MANIFESTS row id=%s has inconsistent blob with id=%s -- skipped", q_manifestid, blob_id);
-	++inconsistent;
+      rhizome_manifest *blob_m = rhizome_new_manifest();
+      if (blob_m == NULL) {
+	ret = WHY("Out of manifests");
+	break;
       }
-      if (blob_version != -1 && blob_version != q_version) {
-	WARNF("MANIFESTS row id=%s has inconsistent blob: manifests.version=%lld, blob.version=%lld -- skipped",
-	      q_manifestid, q_version, blob_version);
-	++inconsistent;
-      }
-      if (!blob_filehash && strcasecmp(blob_filehash, m->fileHexHash)) {
-	WARNF("MANIFESTS row id=%s joined to FILES row id=%s has inconsistent blob: blob.filehash=%s -- skipped",
-	      q_manifestid, m->fileHexHash, blob_filehash);
-	++inconsistent;
-      }
-      if (blob_filesize != -1 && blob_filesize != m->fileLength) {
-	WARNF("MANIFESTS row id=%s joined to FILES row id=%s has inconsistent blob: known file size %lld, blob.filesize=%lld -- skipped",
-	      q_manifestid, m->fileLength, blob_filesize);
-	++inconsistent;
-      }
-      if (m->version != -1 && q_version != m->version) {
-	WARNF("SELECT query with version=%lld returned incorrect row: manifests.version=%lld -- skipped", m->version, q_version);
-	++inconsistent;
-      }
-      if (blob_service == NULL) {
-	WARNF("MANIFESTS row id=%s has blob with no 'service' -- skipped", q_manifestid, blob_id);
-	++inconsistent;
-      }
-      if (!inconsistent) {
-	strbuf b = strbuf_alloca(1024);
-	if (strcasecmp(service, RHIZOME_SERVICE_FILE) == 0) {
-	  const char *blob_name = rhizome_manifest_get(blob_m, "name", NULL, 0);
-	  if (blob_name && !strcmp(blob_name, name)) {
-	    if (debug & DEBUG_RHIZOME)
-	      strbuf_sprintf(b, " name=\"%s\"", blob_name);
-	    ret = 1;
+      if (rhizome_read_manifest_file(blob_m, manifestblob, manifestblobsize, 0) == -1) {
+	WARNF("MANIFESTS row id=%s has invalid manifest blob -- skipped", q_manifestid);
+      } else {
+	const char *blob_service = rhizome_manifest_get(blob_m, "service", NULL, 0);
+	const char *blob_id = rhizome_manifest_get(blob_m, "id", NULL, 0);
+	long long blob_version = rhizome_manifest_get_ll(blob_m, "version");
+	const char *blob_filehash = rhizome_manifest_get(blob_m, "filehash", NULL, 0);
+	long long blob_filesize = rhizome_manifest_get_ll(blob_m, "filesize");
+	if (debug & DEBUG_RHIZOME)
+	  DEBUGF("Consider manifest.service=%s manifest.id=%s manifest.version=%lld", blob_service, q_manifestid, blob_version);
+	/* Perform consistency checks, because we're paranoid. */
+	int inconsistent = 0;
+	if (blob_id && strcasecmp(blob_id, q_manifestid)) {
+	  WARNF("MANIFESTS row id=%s has inconsistent blob with id=%s -- skipped", q_manifestid, blob_id);
+	  ++inconsistent;
+	}
+	if (blob_version != -1 && blob_version != q_version) {
+	  WARNF("MANIFESTS row id=%s has inconsistent blob: manifests.version=%lld, blob.version=%lld -- skipped",
+		q_manifestid, q_version, blob_version);
+	  ++inconsistent;
+	}
+	if (!blob_filehash && strcasecmp(blob_filehash, m->fileHexHash)) {
+	  WARNF("MANIFESTS row id=%s joined to FILES row id=%s has inconsistent blob: blob.filehash=%s -- skipped",
+		q_manifestid, m->fileHexHash, blob_filehash);
+	  ++inconsistent;
+	}
+	if (blob_filesize != -1 && blob_filesize != m->fileLength) {
+	  WARNF("MANIFESTS row id=%s joined to FILES row id=%s has inconsistent blob: known file size %lld, blob.filesize=%lld -- skipped",
+		q_manifestid, m->fileLength, blob_filesize);
+	  ++inconsistent;
+	}
+	if (m->version != -1 && q_version != m->version) {
+	  WARNF("SELECT query with version=%lld returned incorrect row: manifests.version=%lld -- skipped", m->version, q_version);
+	  ++inconsistent;
+	}
+	if (blob_service == NULL) {
+	  WARNF("MANIFESTS row id=%s has blob with no 'service' -- skipped", q_manifestid, blob_id);
+	  ++inconsistent;
+	}
+	if (!inconsistent) {
+	  strbuf b = strbuf_alloca(1024);
+	  if (strcasecmp(service, RHIZOME_SERVICE_FILE) == 0) {
+	    const char *blob_name = rhizome_manifest_get(blob_m, "name", NULL, 0);
+	    if (blob_name && !strcmp(blob_name, name)) {
+	      if (debug & DEBUG_RHIZOME)
+		strbuf_sprintf(b, " name=\"%s\"", blob_name);
+	      ret = 1;
+	    }
+	  } else if (strcasecmp(service, RHIZOME_SERVICE_FILE) == 0) {
+	    const char *blob_sender = rhizome_manifest_get(blob_m, "sender", NULL, 0);
+	    const char *blob_recipient = rhizome_manifest_get(blob_m, "recipient", NULL, 0);
+	    if (blob_sender && !strcasecmp(blob_sender, sender) && blob_recipient && !strcasecmp(blob_recipient, recipient)) {
+	      if (debug & DEBUG_RHIZOME)
+		strbuf_sprintf(b, " sender=%s recipient=%s", blob_sender, blob_recipient);
+	      ret = 1;
+	    }
 	  }
-	} else if (strcasecmp(service, RHIZOME_SERVICE_FILE) == 0) {
-	  const char *blob_sender = rhizome_manifest_get(blob_m, "sender", NULL, 0);
-	  const char *blob_recipient = rhizome_manifest_get(blob_m, "recipient", NULL, 0);
-	  if (blob_sender && !strcasecmp(blob_sender, sender) && blob_recipient && !strcasecmp(blob_recipient, recipient)) {
-	    if (debug & DEBUG_RHIZOME)
-	      strbuf_sprintf(b, " sender=%s recipient=%s", blob_sender, blob_recipient);
-	    ret = 1;
+	  if (ret == 1) {
+	    rhizome_hex_to_bytes(q_manifestid, blob_m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
+	    memcpy(blob_m->fileHexHash, m->fileHexHash, RHIZOME_FILEHASH_STRLEN + 1);
+	    blob_m->fileHashedP = 1;
+	    blob_m->fileLength = m->fileLength;
+	    blob_m->version = q_version;
+	    *found = blob_m;
+	    DEBUGF("Found duplicate payload: service=%s%s version=%llu hexhash=%s",
+		    blob_service, strbuf_str(b), blob_m->version, blob_m->fileHexHash
+		  );
+	    break;
 	  }
 	}
-	if (ret == 1) {
-	  rhizome_hex_to_bytes(q_manifestid, blob_m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
-	  memcpy(blob_m->fileHexHash, m->fileHexHash, RHIZOME_FILEHASH_STRLEN + 1);
-	  blob_m->fileHashedP = 1;
-	  blob_m->fileLength = m->fileLength;
-	  blob_m->version = q_version;
-	  *found = blob_m;
-	  DEBUGF("Found duplicate payload: service=%s%s version=%llu hexhash=%s",
-		  blob_service, strbuf_str(b), blob_m->version, blob_m->fileHexHash
-		);
-	  break;
-	}
       }
-      rhizome_manifest_free(blob_m);
+      if (blob_m) rhizome_manifest_free(blob_m);
     }
   }
   sqlite3_finalize(statement);
@@ -1030,11 +1047,16 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
 	ret = WHY("Incorrect statement column");
 	break;
       }
+      const char *q_manifestid = (const char *) sqlite3_column_text(statement, 0);
       const char *manifestblob = (char *) sqlite3_column_blob(statement, 1);
       size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
       if (mp) {
-	m = rhizome_read_manifest_file(manifestblob, manifestblobsize, 0);
+	m = rhizome_new_manifest();
 	if (m == NULL) {
+	  WARNF("MANIFESTS row id=%s has invalid manifest blob -- skipped", q_manifestid);
+	  ret = WHY("Out of manifests");
+	} else if (rhizome_read_manifest_file(m, manifestblob, manifestblobsize, 0) == -1) {
+	  WARNF("MANIFESTS row id=%s has invalid manifest blob -- skipped", q_manifestid);
 	  ret = WHY("Invalid manifest blob from database");
 	} else {
 	  ret = 1;
@@ -1063,7 +1085,7 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
 	    cli_puts("service"); cli_delim(":");
 	    cli_puts(blob_service); cli_delim("\n");
 	    cli_puts("manifestid"); cli_delim(":");
-	    cli_puts((const char *)sqlite3_column_text(statement, 0)); cli_delim("\n");
+	    cli_puts(q_manifestid); cli_delim("\n");
 	    cli_puts("version"); cli_delim(":");
 	    cli_printf("%lld", (long long) sqlite3_column_int64(statement, 2)); cli_delim("\n");
 	    cli_puts("inserttime"); cli_delim(":");
