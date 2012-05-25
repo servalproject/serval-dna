@@ -27,8 +27,6 @@ int usage(char *complaint)
   fprintf(stderr,"usage:\n");
   fprintf(stderr,"   dna [-v <flags>] -S [-f keyring file] [-N interface,...] [-G gateway specification] [-r rhizome path]\n");
   fprintf(stderr,"or\n");
-  fprintf(stderr,"   dna -r <rhizome path> -M <manifest name>\n");
-  fprintf(stderr,"or\n");
   fprintf(stderr,"   dna <-d|-s> id -A\n");
   fprintf(stderr,"or\n");
   fprintf(stderr,"   dna <-d|-s> id [-p pin] [-i variable instance] <-R variable[=value]>\n");
@@ -93,27 +91,13 @@ int parseOldCommandLine(int argc, char **argv)
   const char *rhizome_path = NULL;
   WARNF("The use of the old command line structure is being deprecated.");
   WARNF("Type '%s help' to learn about the new command line structure.", argv[0]);
-  while ((c = getopt(argc,argv,"Ab:B:E:G:I:Sf:d:i:l:L:mnp:P:r:s:t:v:R:W:U:D:CO:M:N:")) != -1) {
+  while ((c = getopt(argc,argv,"Ab:B:E:G:I:Sf:d:i:l:L:mnp:P:r:s:t:v:R:W:U:D:CO:N:")) != -1) {
       switch(c)
 	{
 	case 'S': serverMode=1; break;
 	case 'r': /* Enable rhizome */
 	  if (rhizome_path) return WHY("-r specified more than once");
 	  rhizome_path = optarg;
-	  break;
-	case 'M': /* Distribute specified manifest and file pair using Rhizome. */
-	  /* This option assumes that the manifest is locally produced, and will
-	     create any appropriate signatures, replacing any old signatures on the
-	     manifest.
-	     A different calling would be required to import an existing pre-signed
-	     manifest */
-	  return rhizome_bundle_import(NULL, NULL, optarg,
-				       NULL /* no groups - XXX should allow them */,
-				       255 /* ttl - XXX should read from somewhere,
-					      e.g., bar if being imported */,
-				       0 /* int verifyP */, 
-				       1 /* int checkFileP */, 
-				       1 /* int signP */);
 	  break;
 	case 'm': returnMultiVars=1; break;
 	case 'N': /* Ask for overlay network to setup one or more interfaces */

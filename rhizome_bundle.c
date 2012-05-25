@@ -167,13 +167,17 @@ int rhizome_str_is_file_hash(const char *text)
   return len == RHIZOME_FILEHASH_STRLEN && rhizome_strn_is_file_hash(text);
 }
 
-int rhizome_hash_file(const char *filename,char *hash_out)
+int rhizome_hash_file(rhizome_manifest *m,const char *filename,char *hash_out)
 {
   /* Gnarf! NaCl's crypto_hash() function needs the whole file passed in in one
      go.  Trouble is, we need to run Serval DNA on filesystems that lack mmap(),
      and may be very resource constrained. Thus we need a streamable SHA-512
      implementation.
   */
+#warning need to implement encryption
+  if (m&&m->payloadEncryption) 
+    return WHY("Encryption of payloads not implemented");
+
   FILE *f = fopen(filename, "r");
   if (!f) {
     WHY_perror("fopen");
@@ -431,12 +435,20 @@ int rhizome_manifest_pack_variables(rhizome_manifest *m)
   return 0;
 }
 
-/* Sign this manifest using our own private CryptoSign key.
-   We may have multiple identities at any given point, so tell 
-   which one we should be using. */
-int rhizome_manifest_sign(rhizome_manifest *m,const char *author)
+/* Sign this manifest using our it's own BID secret key.
+   */
+#warning need to also allow signing by other parties (including SASes) instead of just self-signing.
+int rhizome_manifest_selfsign(rhizome_manifest *m)
 {
-  rhizome_signature *sig=rhizome_sign_hash(m,author);
+  if (!m->haveSecret) return WHY("Need private key to sign manifest");
+
+  /* XXX we have to pass it in as hex, but then we just turn it into bytes
+     anyway. */
+  char secret[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES*2+1];
+  rhizome_bytes_to_hex_upper(m->cryptoSignSecret,secret,
+			     crypto_sign_edwards25519sha512batch_SECRETKEYBYTES);
+
+  rhizome_signature *sig=rhizome_sign_hash(m,secret);
 
   if (!sig) return WHY("rhizome_sign_hash() failed.");
 
@@ -494,11 +506,11 @@ int rhizome_manifest_dump(rhizome_manifest *m, const char *msg)
   return 0;
 }
 
-int rhizome_manifest_finalise(rhizome_manifest *m,int signP,const char *author)
+int rhizome_manifest_finalise(rhizome_manifest *m)
 {
   /* set fileHexHash */
   if (!m->fileHashedP) {
-    if (rhizome_hash_file(m->dataFileName,m->fileHexHash))
+    if (rhizome_hash_file(m,m->dataFileName,m->fileHexHash))
       return WHY("rhizome_hash_file() failed during finalisation of manifest.");
     m->fileHashedP=1;
 
@@ -528,10 +540,12 @@ int rhizome_manifest_finalise(rhizome_manifest *m,int signP,const char *author)
     m->version = rhizome_manifest_get_ll(m,"version");
 
   /* Convert to final form for signing and writing to disk */
-  rhizome_manifest_pack_variables(m);
+  if (rhizome_manifest_pack_variables(m))
+    return WHY("Could not convert manifest to wire format");
 
   /* Sign it */
-  if (signP) rhizome_manifest_sign(m,author);
+  if (rhizome_manifest_selfsign(m))
+    return WHY("Could not sign manifest");
 
   /* mark manifest as finalised */
   m->finalised=1;

@@ -131,9 +131,6 @@ typedef struct rhizome_manifest {
 
   int errors; /* if non-zero, then manifest should not be trusted */
 
-  /* Absolute path of the file associated with the manifest */
-  char *dataFileName;
-
   /* Set non-zero after variables have been packed and
      signature blocks appended.
      All fields below may not be valid until the manifest has been finalised */
@@ -148,6 +145,10 @@ typedef struct rhizome_manifest {
   int fileHashedP;
   char fileHexHash[SHA512_DIGEST_STRING_LENGTH];
   int fileHighestPriority;
+  /* Absolute path of the file associated with the manifest */
+  char *dataFileName;
+  /* Whether the paylaod is encrypted or not */
+  int payloadEncryption; 
 
   /* Whether we have the secret for this manifest on hand */
   int haveSecret;
@@ -196,11 +197,11 @@ int rhizome_str_is_manifest_id(const char *text);
 int rhizome_strn_is_file_hash(const char *text);
 int rhizome_str_is_file_hash(const char *text);
 int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename);
-int rhizome_manifest_sign(rhizome_manifest *m,const char *authoring_sid);
+int rhizome_manifest_selfsign(rhizome_manifest *m);
 int rhizome_drop_stored_file(char *id,int maximum_priority);
 int rhizome_manifest_priority(char *id);
 int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bufferPAndSize, int flags);
-int rhizome_hash_file(const char *filename,char *hash_out);
+int rhizome_hash_file(rhizome_manifest *m, const char *filename,char *hash_out);
 char *rhizome_manifest_get(const rhizome_manifest *m, const char *var, char *out, int maxlen);
 long long  rhizome_manifest_get_ll(rhizome_manifest *m, const char *var);
 int rhizome_manifest_set_ll(rhizome_manifest *m,char *var,long long value);
@@ -212,19 +213,22 @@ void _rhizome_manifest_free(const char *sourcefile,const char *funcname,int line
 rhizome_manifest *_rhizome_new_manifest(const char *file,const char *func,int line);
 #define rhizome_new_manifest() _rhizome_new_manifest(__FILE__,__FUNCTION__,__LINE__)
 int rhizome_manifest_pack_variables(rhizome_manifest *m);
-int rhizome_store_bundle(rhizome_manifest *m, const char *associated_filename);
+int rhizome_store_bundle(rhizome_manifest *m);
 int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid);
-int rhizome_store_file(const char *file,char *hash,int priority);
 int rhizome_clean_payload(const char *fileidhex);
+int rhizome_store_file(rhizome_manifest *m);
 int rhizome_finish_sqlstatement(sqlite3_stmt *statement);
-int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, const char *bundle,
-			  char *groups[], int ttl,
-			  int verifyP, int checkFileP, int signP);
-int rhizome_add_manifest(rhizome_manifest *m_in, rhizome_manifest **m_out, const char *filename,
-			 char *groups[], int ttl,
-			 int verifyP, int checkFileP, int signP,
-			 const char *author);
-int rhizome_manifest_finalise(rhizome_manifest *m,int signP,const char *author);
+int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, 
+			  const char *bundle, int ttl);
+
+int rhizome_manifest_check_file(rhizome_manifest *m_in);
+int rhizome_manifest_check_duplicate(rhizome_manifest *m_in,rhizome_manifest **m_out);
+
+int rhizome_manifest_bind_id(rhizome_manifest *m_in,const char *author);
+int rhizome_manifest_bind_file(rhizome_manifest *m_in,const char *filename,int encryptP);
+int rhizome_manifest_finalise(rhizome_manifest *m);
+int rhizome_add_manifest(rhizome_manifest *m_in,int ttl);
+
 void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCount);
 int rhizome_hex_to_bytes(const char *in,unsigned char *out,int hexChars);
 int rhizome_find_privatekey(rhizome_manifest *m);

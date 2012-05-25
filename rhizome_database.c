@@ -444,7 +444,7 @@ int rhizome_drop_stored_file(char *id,int maximum_priority)
   We need to also need to create the appropriate row(s) in the MANIFESTS, FILES, 
   FILEMANIFESTS and GROUPMEMBERSHIPS tables, and possibly GROUPLIST as well.
  */
-int rhizome_store_bundle(rhizome_manifest *m, const char *associated_filename)
+int rhizome_store_bundle(rhizome_manifest *m)
 {
   if (!m->finalised) return WHY("Manifest was not finalised");
 
@@ -562,7 +562,7 @@ int rhizome_store_bundle(rhizome_manifest *m, const char *associated_filename)
 
   /* Store the file */
   if (m->fileLength>0) 
-    if (rhizome_store_file(associated_filename, filehash, m->fileHighestPriority)) 
+    if (rhizome_store_file(m)) 
       return WHY("Could not store associated file");						   
 
   /* Get things consistent */
@@ -696,8 +696,17 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
 
 /* The following function just stores the file (or silently returns if it already exists).
    The relationships of manifests to this file are the responsibility of the caller. */
-int rhizome_store_file(const char *file,char *hash,int priority)
+int rhizome_store_file(rhizome_manifest *m)
 {
+  const char *file=m->dataFileName;
+  const char *hash=m->fileHexHash;
+  int priority=m->fileHighestPriority;
+  if (m->payloadEncryption) 
+    return WHY("Writing encrypted payloads not implemented");
+
+  if (!m->fileHashedP)
+    return WHY("Cannot store bundle file until it has been hashed");
+
   int fd=open(file,O_RDONLY);
   if (fd<0) return WHY("Could not open associated file");
   
@@ -713,19 +722,6 @@ int rhizome_store_file(const char *file,char *hash,int priority)
     close(fd);
     return WHY("mmap() of associated file failed.");
   }
-
-  /* Get hash of file if not supplied */
-  char hexhash[RHIZOME_FILEHASH_STRLEN + 1];
-  if (!hash)
-    {
-      /* Hash the file */
-      SHA512_CTX c;
-      SHA512_Init(&c);
-      SHA512_Update(&c,addr,stat.st_size);
-      SHA512_End(&c,hexhash);
-      str_toupper_inplace(hexhash);
-      hash=hexhash;
-    }
 
   /* INSERT INTO FILES(id as text, data blob, length integer, highestpriority integer).
    BUT, we have to do this incrementally so that we can handle blobs larger than available memory. 
@@ -828,6 +824,7 @@ int rhizome_store_file(const char *file,char *hash,int priority)
       return WHY("SQLite3 failed to open file blob for writing");
     }
 
+#warning encrypt sections of file as we write them here
   {
     long long i;
     for(i=0;i<stat.st_size;i+=65536)

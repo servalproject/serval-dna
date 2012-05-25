@@ -1120,10 +1120,12 @@ int cli_optional_sid(const char *arg)
 
 int app_rhizome_hash_file(int argc, const char *const *argv, struct command_line_option *o)
 {
+  /* compute hash of file. We do this without a manifest, so it will necessarily
+     return the hash of the file unencrypted. */
   const char *filepath;
   cli_arg(argc, argv, o, "filepath", &filepath, NULL, "");
   char hexhash[RHIZOME_FILEHASH_STRLEN + 1];
-  if (rhizome_hash_file(filepath, hexhash))
+  if (rhizome_hash_file(NULL,filepath, hexhash))
     return -1;
   cli_puts(hexhash);
   cli_delim("\n");
@@ -1186,37 +1188,54 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
       if (debug & DEBUG_RHIZOME) DEBUGF("manifest contains name=\"%s\"", name);
     }
   }
+
+  /* bind an ID for the manifest, and also bind the file.
+     Then finalise the manifest. */
+  if (rhizome_manifest_bind_id(m,authorSid))
+    return WHY("Could not bind manifest to an ID");
+#warning need to sanely determine whether to encrypt a file
+  int encryptP=1;
+  if (rhizome_manifest_bind_file(m,filepath,encryptP))
+    return WHYF("Could not bind manifest to file '%s'",filepath);
+  
   /* Add the manifest and its associated file to the Rhizome database, generating an "id" in the
    * process */
   rhizome_manifest *mout = NULL;
   if (debug & DEBUG_RHIZOME) DEBUGF("rhizome_add_manifest(author='%s')", authorSid);
-  int ret = rhizome_add_manifest(
-		m, &mout, filepath,
-		NULL, // no groups - XXX should allow them
-		255, // ttl - XXX should read from somewhere
-		manifest_file_supplied, // int verifyP
-		1, // int checkFileP
-		1, // int signP
-		authorSid[0] ? authorSid : NULL // SID of author as hex, so that they can modify the bundle later
-    );
-  if (ret == -1)
-    return WHY("Manifest not added to Rhizome database");
-  if (!(ret == 0 || ret == 2))
-    return WHYF("Unexpected return value ret=%d", ret);
+
+  if (rhizome_manifest_check_duplicate(m,&mout)==2)
+    {
+      /* duplicate */
+    } else {
+    /* not duplicate, so finalise and add to database */
+    if (rhizome_manifest_finalise(m)) {
+      rhizome_manifest_free(m);
+      return WHY("Could not finalise manifest");
+    }
+    if (rhizome_add_manifest(m,255 /* TTL */)) {
+      rhizome_manifest_free(m);
+      return WHY("Manifest not added to Rhizome database");
+    }
+  }
+
   /* If successfully added, overwrite the manifest file so that the Java component that is
      invoking this command can read it to obtain feedback on the result. */
-  if (manifestpath[0] && rhizome_write_manifest_file(mout, manifestpath) == -1)
+  rhizome_manifest *mwritten=mout?mout:m;
+  int ret=0;
+  if (manifestpath[0] 
+      && rhizome_write_manifest_file(mwritten, manifestpath) == -1)
     ret = WHY("Could not overwrite manifest file.");
-  service = rhizome_manifest_get(mout, "service", NULL, 0);
+  service = rhizome_manifest_get(mwritten, "service", NULL, 0);
   if (service) {
     cli_puts("service"); cli_delim(":");    cli_puts(service); cli_delim("\n");
   }
   char bid[RHIZOME_MANIFEST_ID_STRLEN + 1];
-  rhizome_bytes_to_hex_upper(mout->cryptoSignPublic, bid, RHIZOME_MANIFEST_ID_BYTES);
+  rhizome_bytes_to_hex_upper(mwritten->cryptoSignPublic, bid, 
+			     RHIZOME_MANIFEST_ID_BYTES);
   cli_puts("manifestid"); cli_delim(":");   cli_puts(bid); cli_delim("\n");
-  cli_puts("filehash"); cli_delim(":");	    cli_puts(mout->fileHexHash); cli_delim("\n");
-  cli_puts("filesize"); cli_delim(":");	    cli_printf("%lld", mout->fileLength); cli_delim("\n");
-  const char *name = rhizome_manifest_get(mout, "name", NULL, 0);
+  cli_puts("filehash"); cli_delim(":");	    cli_puts(mwritten->fileHexHash); cli_delim("\n");
+  cli_puts("filesize"); cli_delim(":");	    cli_printf("%lld", mwritten->fileLength); cli_delim("\n");
+  const char *name = rhizome_manifest_get(mwritten, "name", NULL, 0);
   if (name) {
     cli_puts("name"); cli_delim(":");	    cli_puts(name); cli_delim("\n");
   }

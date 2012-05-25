@@ -634,21 +634,13 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	{
 	  if (debug&DEBUG_RHIZOMESYNC) 
 	    DEBUGF("We already have the file for this manifest; importing from manifest alone.");
-	  m->finalised = 1;
-	  m->manifest_bytes = m->manifest_all_bytes;
 	  if (create_rhizome_import_dir() == -1)
 	    return -1;
 	  char filename[1024];
 	  if (!FORM_RHIZOME_IMPORT_PATH(filename, "manifest.%s", id))
 	    return -1;
 	  if (!rhizome_write_manifest_file(m, filename)) {
-	    rhizome_bundle_import(m, NULL, id,
-				  NULL /* no additional groups */,
-				  m->ttl-1 /* TTL */,
-				  1 /* do verify */,
-				  0 /* don't check hash of file (since we are using the databse stored copy) */,
-				  0 /* do not sign it, just keep existing
-				       signatures */);
+	    rhizome_bundle_import(m, NULL, id, m->ttl-1);
 	  }
 	}
     }
@@ -807,11 +799,7 @@ int rhizome_fetch_poll()
 		q->manifest->manifest_bytes=q->manifest->manifest_all_bytes;
 		if (rhizome_write_manifest_file(q->manifest,filename) != -1) {
 		  rhizome_bundle_import(q->manifest, NULL, id,
-					NULL /* no additional groups */,
-					q->manifest->ttl - 1 /* TTL */,
-					1 /* do verify */,
-					1 /* do check hash of file */,
-					0 /* do not sign it, just keep existing signatures */);
+					q->manifest->ttl - 1 /* TTL */);
 		}
 		rhizome_manifest_free(q->manifest);
 		q->manifest=NULL;
