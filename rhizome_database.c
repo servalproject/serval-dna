@@ -1149,7 +1149,8 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath)
 {
   long long count=sqlite_exec_int64("SELECT COUNT(*) FROM files WHERE id = '%s' AND datavalid != 0",fileid);
   if (count<1) {
-    return WHY("No such file ID in the database");
+    WHY("No such file ID in the database");
+    return 0; /* 0 files returned */
   } else if (count>1) {
     WARNF("There is more than one file in the database with ID=%s",fileid);
   }
@@ -1170,21 +1171,23 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath)
     sqlite3_bind_text(statement, 1, fileIdUpper, -1, SQLITE_STATIC);
     int stepcode = sqlite3_step(statement);
     if (stepcode != SQLITE_ROW) {
-      ret = WHY("Query for file yielded no results, even though it should have");
+      WHY("Query for file yielded no results, even though it should have");
+      ret = 0; /* no files returned */
     } else if (!(   sqlite3_column_count(statement) == 3
 		    && sqlite3_column_type(statement, 0) == SQLITE_TEXT
 		    && sqlite3_column_type(statement, 1) == SQLITE_BLOB
 		    && sqlite3_column_type(statement, 2) == SQLITE_INTEGER
 		    )) { 
-      ret = WHY("Incorrect statement column");
+      WHY("Incorrect statement column");
+      ret = 0; /* no files returned */
     } else {
 #warning This won't work for large blobs.  It also won't allow for decryption
       const char *fileblob = (char *) sqlite3_column_blob(statement, 1);
       size_t fileblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
       long long length = sqlite3_column_int64(statement, 2);
-      if (fileblobsize != length)
-	ret = WHY("File length does not match blob size");
-      else {
+      if (fileblobsize != length) {
+	ret = 0; WHY("File length does not match blob size");
+      } else {
 	cli_puts("filehash"); cli_delim(":");
 	cli_puts((const char *)sqlite3_column_text(statement, 0)); cli_delim("\n");
 	cli_puts("filesize"); cli_delim(":");
@@ -1201,7 +1204,7 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath)
 	  }
 	  if (fd != -1 && close(fd) == -1) {
 	    WHY_perror("close");
-	    ret = WHYF("Error flushing to %s ", filepath);
+	    ret = 0; WHYF("Error flushing to %s ", filepath);
 	  }
 	}
       }
