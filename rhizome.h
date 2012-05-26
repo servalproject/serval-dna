@@ -218,7 +218,7 @@ int rhizome_manifest_pack_variables(rhizome_manifest *m);
 int rhizome_store_bundle(rhizome_manifest *m);
 int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid);
 int rhizome_clean_payload(const char *fileidhex);
-int rhizome_store_file(rhizome_manifest *m);
+int rhizome_store_file(rhizome_manifest *m,const unsigned char *key);
 int rhizome_finish_sqlstatement(sqlite3_stmt *statement);
 int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, 
 			  const char *bundle, int ttl);

@@ -566,8 +566,9 @@ int rhizome_store_bundle(rhizome_manifest *m)
   }
 
   /* Store the file */
+#warning need to implement passing of encryption key for file here
   if (m->fileLength>0) 
-    if (rhizome_store_file(m)) 
+    if (rhizome_store_file(m,NULL)) 
       return WHY("Could not store associated file");						   
 
   /* Get things consistent */
@@ -701,7 +702,7 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
 
 /* The following function just stores the file (or silently returns if it already exists).
    The relationships of manifests to this file are the responsibility of the caller. */
-int rhizome_store_file(rhizome_manifest *m)
+int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
 {
   const char *file=m->dataFileName;
   const char *hash=m->fileHexHash;
@@ -829,14 +830,25 @@ int rhizome_store_file(rhizome_manifest *m)
       return WHY("SQLite3 failed to open file blob for writing");
     }
 
-#warning encrypt sections of file as we write them here
+  unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
+  bzero(nonce,crypto_stream_xsalsa20_NONCEBYTES);
+  unsigned char buffer[RHIZOME_CRYPT_PAGE_SIZE];  
+
   {
     long long i;
-    for(i=0;i<stat.st_size;i+=65536)
+    for(i=0;i<stat.st_size;i+=RHIZOME_CRYPT_PAGE_SIZE)
       {
-	int n=65536;
+	int n=RHIZOME_CRYPT_PAGE_SIZE;
 	if (i+n>stat.st_size) n=stat.st_size-i;
-	if (sqlite3_blob_write(blob,&addr[i],n,i) !=SQLITE_OK) dud++;
+	if (key) {
+	  /* calculate block nonce */
+	  int j; for(j=0;j<8;j++) nonce[i]=(i>>(j*8))&0xff;
+	  crypto_stream_xsalsa20_xor(&addr[i],&buffer[0],count,
+				     nonce,key);
+	  if (sqlite3_blob_write(blob,&buffer[0],n,i) !=SQLITE_OK) dud++;
+	}
+	else 
+	  if (sqlite3_blob_write(blob,&addr[i],n,i) !=SQLITE_OK) dud++;
       }
   }
   
@@ -1180,7 +1192,6 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath,
       WHY("Incorrect statement column");
       ret = 0; /* no files returned */
     } else {
-#warning This won't work for large blobs.  It also won't allow for decryption
       long long length = sqlite3_column_int64(statement, 2);
       long long rowid = sqlite3_column_int64(statement, 1);
       if (sqlite3_blob_open(rhizome_db,"main","files","data",rowid,
