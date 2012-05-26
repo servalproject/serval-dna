@@ -29,6 +29,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define RHIZOME_FILEHASH_BYTES          SHA512_DIGEST_LENGTH
 #define RHIZOME_FILEHASH_STRLEN         (RHIZOME_FILEHASH_BYTES * 2)
 
+#define RHIZOME_CRYPT_PAGE_SIZE 4096
+
 #define RHIZOME_HTTP_PORT 4110
 
 extern long long rhizome_voice_timeout;
@@ -248,7 +250,7 @@ int rhizome_server_sql_query_fill_buffer(int rn,rhizome_http_request *r);
 double rhizome_manifest_get_double(rhizome_manifest *m,char *var,double default_value);
 int chartonybl(int c);
 int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs);
-int rhizome_update_file_priority(char *fileid);
+int rhizome_update_file_priority(const char *fileid);
 int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found,
 			   int checkVersionP);
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
@@ -256,7 +258,8 @@ char nybltochar_upper(int n);
 int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peerip, int *manifest_kept);
 int rhizome_list_manifests(const char *service, const char *sender_sid, const char *recipient_sid, int limit, int offset);
 int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp);
-int rhizome_retrieve_file(const char *fileid, const char *filepath);
+int rhizome_retrieve_file(const char *fileid, const char *filepath,
+			  const unsigned char *key);
 
 #define RHIZOME_DONTVERIFY 0
 #define RHIZOME_VERIFY 1

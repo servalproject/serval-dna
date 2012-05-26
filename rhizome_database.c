@@ -863,7 +863,7 @@ void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCoun
   out[i] = '\0';
 }
 
-int rhizome_update_file_priority(char *fileid)
+int rhizome_update_file_priority(const char *fileid)
 {
   /* Drop if no references */
   int referrers=sqlite_exec_int64("SELECT COUNT(*) FROM FILEMANIFESTS WHERE fileid='%s';",fileid);
@@ -1141,8 +1141,10 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
  * Returns 0 if file is not found.
  * Returns -1 on error.
  */
-int rhizome_retrieve_file(const char *fileid, const char *filepath)
+int rhizome_retrieve_file(const char *fileid, const char *filepath,
+			  const unsigned char *key)
 {
+  sqlite3_blob *blob=NULL;
   rhizome_update_file_priority(fileid);
   long long count=sqlite_exec_int64("SELECT COUNT(*) FROM files WHERE id = '%s' AND datavalid != 0",fileid);
   if (count<1) {
@@ -1152,7 +1154,7 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath)
     WARNF("There is more than one file in the database with ID=%s",fileid);
   }
   char sqlcmd[1024];
-  int n = snprintf(sqlcmd, sizeof(sqlcmd), "SELECT id, data, length FROM files WHERE id = ? AND datavalid != 0");
+  int n = snprintf(sqlcmd, sizeof(sqlcmd), "SELECT id, rowid, length FROM files WHERE id = ? AND datavalid != 0");
   if (n >= sizeof(sqlcmd))
     { WHY("SQL command too long"); return 0; }
   sqlite3_stmt *statement;
@@ -1172,41 +1174,83 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath)
       ret = 0; /* no files returned */
     } else if (!(   sqlite3_column_count(statement) == 3
 		    && sqlite3_column_type(statement, 0) == SQLITE_TEXT
-		    && sqlite3_column_type(statement, 1) == SQLITE_BLOB
+		    && sqlite3_column_type(statement, 1) == SQLITE_INTEGER
 		    && sqlite3_column_type(statement, 2) == SQLITE_INTEGER
 		    )) { 
       WHY("Incorrect statement column");
       ret = 0; /* no files returned */
     } else {
 #warning This won't work for large blobs.  It also won't allow for decryption
-      const char *fileblob = (char *) sqlite3_column_blob(statement, 1);
-      size_t fileblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
       long long length = sqlite3_column_int64(statement, 2);
-      if (fileblobsize != length) {
-	ret = 0; WHY("File length does not match blob size");
-      } else {
-	cli_puts("filehash"); cli_delim(":");
-	cli_puts((const char *)sqlite3_column_text(statement, 0)); cli_delim("\n");
-	cli_puts("filesize"); cli_delim(":");
-	cli_printf("%lld", length); cli_delim("\n");
-	ret = 1;
-	if (filepath&&filepath[0]) {
-	  int fd = open(filepath, O_WRONLY | O_CREAT | O_TRUNC, 0775);
-	  if (fd == -1) {
-	    WHY_perror("open");
-	    ret = WHYF("Cannot open %s for write/create", filepath);
-	  } else if (write(fd, fileblob, length) != length) {
-	    WHY_perror("write");
-	    ret = WHYF("Error writing %lld bytes to %s ", (long long) length, filepath);
-	  }
-	  if (fd != -1 && close(fd) == -1) {
-	    WHY_perror("close");
-	    ret = 0; WHYF("Error flushing to %s ", filepath);
-	  }
+      long long rowid = sqlite3_column_int64(statement, 1);
+      if (sqlite3_blob_open(rhizome_db,"main","files","data",rowid,
+			    0 /* read only */,&blob)!=SQLITE_OK) {
+	ret =0;
+	WHY("Could not open blob for reading");
+      }
+      
+      cli_puts("filehash"); cli_delim(":");
+      cli_puts((const char *)sqlite3_column_text(statement, 0)); cli_delim("\n");
+      cli_puts("filesize"); cli_delim(":");
+      cli_printf("%lld", length); cli_delim("\n");
+      ret = 1;
+      if (filepath&&filepath[0]) {
+	int fd = open(filepath, O_WRONLY | O_CREAT | O_TRUNC, 0775);
+	if (fd == -1) {
+	  WHY_perror("open");
+	  ret = WHYF("Cannot open %s for write/create", filepath);
+	} else {
+	  /* read from blob and write to disk, decrypting if necessary as
+	     we go.
+	     Each 4KB block of data has a nonce which is fed with the key
+	     into crypto_stream_xsalsa20().  The nonce is the file address
+	     divided by 4KB.  This approach is used as it allows us to append
+	     to files easily, without having to get the XOR stream for the whole
+	     file, and without the cipher on existing bytes having to change.
+	     Both of these are important properties for journal bundles, such as
+	     will be used by MeshMS.  For non-journal bundles where it is important
+	     that changing the payload changes the encryption key (so that the XOR
+	     between any two versions of the payload cannot be easily obtained).
+	     We will do this by having journal manifests identified, causing the
+	     key to be locked, rather than based on the version number.
+	     But anyway, we are supplied with the key here, so all we need to do
+	     is do the block counting and call crypto_stream_xsalsa20().
+	  */
+	  long long offset;
+	  unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
+	  bzero(nonce,crypto_stream_xsalsa20_NONCEBYTES);
+	  unsigned char buffer[RHIZOME_CRYPT_PAGE_SIZE];
+	  for(offset=0;offset<length;offset+=RHIZOME_CRYPT_PAGE_SIZE)
+	    {
+	      long long count=length-offset;
+	      if (count>RHIZOME_CRYPT_PAGE_SIZE) count=RHIZOME_CRYPT_PAGE_SIZE;
+	      if(sqlite3_blob_read(blob,&buffer[0],count,offset)!=SQLITE_OK) {
+		ret =0;
+		WHYF("Error reading %lld bytes of data from blob at offset 0x%llx",
+		     count, offset);
+		WHYF("sqlite says: %s",sqlite3_errmsg(rhizome_db));
+	      }
+	      if (key) {
+		/* calculate block nonce */
+		int i; for(i=0;i<8;i++) nonce[i]=(offset>>(i*8))&0xff;
+		crypto_stream_xsalsa20_xor(&buffer[0],&buffer[0],count,
+					   nonce,key);
+	      }
+	      if (write(fd,buffer,count)!=count) {
+		ret =0;
+		WHY("Failed to write data to file");
+	      }
+	    } 
+	  sqlite3_blob_close(blob); blob=NULL;
+	}
+	if (fd != -1 && close(fd) == -1) {
+	  WHY_perror("close");
+	  ret = 0; WHYF("Error flushing to %s ", filepath);
 	}
       }
     }
   }
+  if (blob) sqlite3_blob_close(blob);
   sqlite3_finalize(statement);
   return ret;
 }

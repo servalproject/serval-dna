@@ -1323,8 +1323,11 @@ int app_rhizome_extract_file(int argc, const char *const *argv, struct command_l
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
-  /* Extract the file from the database */
-  int ret = rhizome_retrieve_file(fileid, filepath);
+  /* Extract the file from the database.
+     We don't provide a decryption key here, because we don't know it.
+     (We probably should allow the user to provide one).
+  */
+  int ret = rhizome_retrieve_file(fileid, filepath,NULL);
   switch (ret) {
     case 0: ret = 1; break;
     case 1: ret = 0; break;
