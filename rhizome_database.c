@@ -615,7 +615,7 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
     ret = WHY(sqlite3_errmsg(rhizome_db));
   } else {
     size_t rows = 0;
-    cli_puts("8"); cli_delim("\n"); // number of columns
+    cli_puts("10"); cli_delim(":"); // number of columns
     cli_puts("service"); cli_delim(":");
     cli_puts("id"); cli_delim(":");
     cli_puts("version"); cli_delim(":");
@@ -623,7 +623,9 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
     cli_puts("_inserttime"); cli_delim(":");
     cli_puts("filesize"); cli_delim(":");
     cli_puts("filehash"); cli_delim(":");
-    cli_puts("name"); cli_delim("\n");
+    cli_puts("name"); cli_delim(":");
+    cli_puts("sender"); cli_delim(":");
+    cli_puts("recipient"); cli_delim("\n");
     while (sqlite3_step(statement) == SQLITE_ROW) {
       ++rows;
       if (!(   sqlite3_column_count(statement) == 4
@@ -655,16 +657,19 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
 	const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
 	if (service[0] && !(blob_service && strcasecmp(service, blob_service) == 0))
 	  match = 0;
+	
+	const char *blob_sender = rhizome_manifest_get(m, "sender", NULL, 0);
+	const char *blob_recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
+	
 	if (match && sender_sid[0]) {
-	  const char *blob_sender = rhizome_manifest_get(m, "sender", NULL, 0);
 	  if (!(blob_sender && strcasecmp(sender_sid, blob_sender) == 0))
 	    match = 0;
 	}
 	if (match && recipient_sid[0]) {
-	  const char *blob_recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
 	  if (!(blob_recipient && strcasecmp(recipient_sid, blob_recipient) == 0))
 	    match = 0;
 	}
+	
 	if (match) {
 	  const char *blob_name = rhizome_manifest_get(m, "name", NULL, 0);
 	  long long blob_date = rhizome_manifest_get_ll(m, "date");
@@ -677,7 +682,9 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
 	  cli_printf("%lld", q_inserttime); cli_delim(":");
 	  cli_printf("%u", blob_filesize); cli_delim(":");
 	  cli_puts(blob_filehash ? blob_filehash : ""); cli_delim(":");
-	  cli_puts(blob_name ? blob_name : ""); cli_delim("\n");
+	  cli_puts(blob_name ? blob_name : ""); cli_delim(":");
+	  cli_puts(blob_sender ? blob_sender : ""); cli_delim(":");
+	  cli_puts(blob_recipient ? blob_recipient : ""); cli_delim("\n");
 	}
       }
       if (m) rhizome_manifest_free(m);
