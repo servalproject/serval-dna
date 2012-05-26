@@ -167,8 +167,7 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
   /* Remember where the text ends */
   int end_of_text=ofs;
 
-  if (debug&DEBUG_RHIZOME) 
-    DEBUG("Group membership determination not implemented (see which signatories are groups? what about manifests signed by groups we don't yet know about?)");
+#warning    DEBUG("Group membership determination not implemented (see which signatories are groups? what about manifests signed by groups we don't yet know about?)");
   
   m->manifest_bytes=end_of_text;
 

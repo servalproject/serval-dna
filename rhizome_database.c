@@ -1147,6 +1147,12 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
  */
 int rhizome_retrieve_file(const char *fileid, const char *filepath)
 {
+  long long count=sqlite_exec_int64("SELECT COUNT(*) FROM files WHERE id = '%s' AND datavalid != 0",fileid);
+  if (count<1) {
+    return WHY("No such file ID in the database");
+  } else if (count>1) {
+    WARNF("There is more than one file in the database with ID=%s",fileid);
+  }
   char sqlcmd[1024];
   int n = snprintf(sqlcmd, sizeof(sqlcmd), "SELECT id, data, length FROM files WHERE id = ? AND datavalid != 0");
   if (n >= sizeof(sqlcmd))
@@ -1156,23 +1162,23 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath)
   int ret = 0;
   if (sqlite3_prepare_v2(rhizome_db, sqlcmd, strlen(sqlcmd) + 1, &statement, &cmdtail) != SQLITE_OK) {
     ret = WHY(sqlite3_errmsg(rhizome_db));
-    sqlite3_finalize(statement);
   } else {
     char fileIdUpper[RHIZOME_FILEHASH_STRLEN + 1];
     strncpy(fileIdUpper, fileid, sizeof fileIdUpper);
     fileIdUpper[RHIZOME_FILEHASH_STRLEN] = '\0';
     str_toupper_inplace(fileIdUpper);
     sqlite3_bind_text(statement, 1, fileIdUpper, -1, SQLITE_STATIC);
-    int stepcode;
-    while ((stepcode = sqlite3_step(statement)) == SQLITE_ROW) {
-      if (!(   sqlite3_column_count(statement) == 3
-	    && sqlite3_column_type(statement, 0) == SQLITE_TEXT
-	    && sqlite3_column_type(statement, 1) == SQLITE_BLOB
-	    && sqlite3_column_type(statement, 2) == SQLITE_INTEGER
-      )) { 
-	ret = WHY("Incorrect statement column");
-	break;
-      }
+    int stepcode = sqlite3_step(statement);
+    if (stepcode != SQLITE_ROW) {
+      ret = WHY("Query for file yielded no results, even though it should have");
+    } else if (!(   sqlite3_column_count(statement) == 3
+		    && sqlite3_column_type(statement, 0) == SQLITE_TEXT
+		    && sqlite3_column_type(statement, 1) == SQLITE_BLOB
+		    && sqlite3_column_type(statement, 2) == SQLITE_INTEGER
+		    )) { 
+      ret = WHY("Incorrect statement column");
+    } else {
+#warning This won't work for large blobs.  It also won't allow for decryption
       const char *fileblob = (char *) sqlite3_column_blob(statement, 1);
       size_t fileblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
       long long length = sqlite3_column_int64(statement, 2);
@@ -1199,15 +1205,9 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath)
 	  }
 	}
       }
-      break;
-    }
-    switch (stepcode) {
-      case SQLITE_OK: break;
-      case SQLITE_DONE: break;
-      case SQLITE_ROW: WARNF("Found more than one row: %s", sqlcmd); break;
-      default: ret = WHY(sqlite3_errmsg(rhizome_db)); break;;
     }
   }
   sqlite3_finalize(statement);
   return ret;
 }
+  
