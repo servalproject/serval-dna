@@ -94,8 +94,12 @@ rhizome_file_fetch_record file_fetch_queue[MAX_QUEUED_FILES];
 #define RHIZOME_VERSION_CACHE_SHIFT 1
 #define RHIZOME_VERSION_CACHE_SIZE 128
 #define RHIZOME_VERSION_CACHE_ASSOCIATIVITY 16
-unsigned char rhizome_manifest_version_cache
-[RHIZOME_VERSION_CACHE_SIZE][RHIZOME_VERSION_CACHE_ASSOCIATIVITY][32];
+typedef struct rhizome_manifest_version_cache_slot {
+  unsigned char idprefix[24];
+  long long version;
+} rhizome_manifest_version_cache_slot;
+rhizome_manifest_version_cache_slot rhizome_manifest_version_cache
+[RHIZOME_VERSION_CACHE_SIZE][RHIZOME_VERSION_CACHE_ASSOCIATIVITY];
 
 int rhizome_manifest_version_cache_store(rhizome_manifest *m)
 {
@@ -115,15 +119,15 @@ int rhizome_manifest_version_cache_store(rhizome_manifest *m)
   bin=bin>>RHIZOME_VERSION_CACHE_SHIFT;
 
   slot=random()%RHIZOME_VERSION_CACHE_ASSOCIATIVITY;
-  unsigned char *entry=rhizome_manifest_version_cache[bin][slot];
-  unsigned long long *cached_version=(unsigned long long *)&entry[24];
+  rhizome_manifest_version_cache_slot *entry
+    =&rhizome_manifest_version_cache[bin][slot];
   unsigned long long manifest_version = rhizome_manifest_get_ll(m,"version");
 
-  *cached_version=manifest_version;
+  entry->version=manifest_version;
   for(i=0;i<24;i++)
     {
       int byte=(chartonybl(id[(i*2)])<<4)|chartonybl(id[(i*2)+1]);
-      entry[i]=byte;
+      entry->idprefix[i]=byte;
     }
 
   return 0;
@@ -150,25 +154,25 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
   
   for(slot=0;slot<RHIZOME_VERSION_CACHE_ASSOCIATIVITY;slot++)
     {
-      unsigned char *entry=rhizome_manifest_version_cache[bin][slot];
+      rhizome_manifest_version_cache_slot *entry
+	=&rhizome_manifest_version_cache[bin][slot];
       for(i=0;i<24;i++)
 	{
 	  int byte=
 	    (chartonybl(id[(i*2)+RHIZOME_VERSION_CACHE_NYBLS])<<4)
 	    |chartonybl(id[(i*2)+RHIZOME_VERSION_CACHE_NYBLS+1]);
-	  if (byte!=entry[i]) break;
+	  if (byte!=entry->idprefix[i]) break;
 	}
       if (i==24) {
 	/* Entries match -- so check version */
-	unsigned long long rev = rhizome_manifest_get_ll(m,"version");
-	unsigned long long *cached_rev=(unsigned long long *)&entry[24];
-	if (rev<*cached_rev) {
+	unsigned long long rev = rhizome_manifest_get_ll(m,"version");	
+	if (rev<entry->version) {
 	  /* the presented manifest is older than we have.
 	     This allows the caller to know that they can tell whoever gave them the
-	     manifest it's time to get with the times.  May or not every be
+	     manifest it's time to get with the times.  May or not ever be
 	     implemented, but it would be nice. XXX */
 	  return -2;
-	} else if (rev<=*cached_rev) {
+	} else if (rev<=entry->version) {
 	  /* the presented manifest is already stored. */	   
 	  return -1;
 	} else {
@@ -208,13 +212,13 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
     if (stored_version == -1)
       return -4; // database is broken, we can't receive it
     slot=random()%RHIZOME_VERSION_CACHE_ASSOCIATIVITY;
-    unsigned char *entry=rhizome_manifest_version_cache[bin][slot];
-    long long *cached_version=(long long *)&entry[24];
-    *cached_version=stored_version;
+    rhizome_manifest_version_cache_slot *entry
+      =&rhizome_manifest_version_cache[bin][slot];
+    entry->version=stored_version;
     for(i=0;i<24;i++)
       {
 	int byte=(chartonybl(id[(i*2)])<<4)|chartonybl(id[(i*2)+1]);
-	entry[i]=byte;
+	entry->idprefix[i]=byte;
       }
     /* Finally, say that it isn't worth RXing this manifest */
     return stored_version > manifest_version ? -2 : -1;
@@ -347,7 +351,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
   int priority=100; /* normal priority */
   int i;
 
-  if (0) DEBUGF("Rhizome considering %s (size=%lld, priority=%d)",
+  if (1) DEBUGF("Rhizome considering %s (size=%lld, priority=%d)",
 	      id,filesize,priority);
 
   if (rhizome_manifest_version_cache_lookup(m)) {
@@ -361,7 +365,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
     rhizome_manifest_free(m);
     return -1;
   } else {
-    if (debug&DEBUG_RHIZOMESYNC) {
+    if (1||debug&DEBUG_RHIZOMESYNC) {
       DEBUGF("manifest id=%s, version=%lld is new to us.",
 	   rhizome_manifest_get(m,"id",NULL,0),
 	   rhizome_manifest_get_ll(m,"version"));
