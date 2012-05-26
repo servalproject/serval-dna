@@ -170,7 +170,7 @@ int rhizome_extract_privatekey(rhizome_manifest *m,const char *authorHex)
     ge25519_pack(pk, &gepk);
     bzero(&scsk,sizeof(scsk));
     if (memcmp(pk, m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)) {
-      if (0) {
+      if (1) {
 	char hex[17];
 	rhizome_bytes_to_hex_upper(m->cryptoSignPublic, hex, 8);
 	WHYF("  stored public key = %s*", hex);
@@ -178,8 +178,10 @@ int rhizome_extract_privatekey(rhizome_manifest *m,const char *authorHex)
 	WHYF("computed public key = %s*", hex);
       }
       return WHY("BID secret key decoded from BK was not valid");     
-    } else
+    } else {
+      m->haveSecret=1;
       return 0;
+    }
 #else //!ge25519
     /* XXX Need to test key by signing and testing signature validity. */
     /* For the time being barf so that the caller does not think we have a validated BK

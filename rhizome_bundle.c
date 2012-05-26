@@ -148,6 +148,12 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 	  */
 	  m->vars[m->var_count]=strdup(var);
 	  m->values[m->var_count]=strdup(value);
+	  if (!strcasecmp(var,"ID"))
+	    {
+	      /* Parse hex string of ID into public key */
+	      rhizome_hex_to_bytes(value,m->cryptoSignPublic,
+				   crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
+	    }
 	  m->var_count++;
 	}
       } else {

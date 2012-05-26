@@ -1196,14 +1196,27 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
      Then finalise the manifest.
 
      But if the manifest already contains an ID, don't override it. */
-  if (rhizome_manifest_get(m, "id", NULL, 0)==NULL)
-    if (rhizome_manifest_bind_id(m,authorSid))
+  if (rhizome_manifest_get(m, "id", NULL, 0)==NULL) {
+    if (rhizome_manifest_bind_id(m,authorSid)) {
+      rhizome_manifest_free(m); m=NULL;
       return WHY("Could not bind manifest to an ID");
+    }
+  } else {
+    /* User supplied manifest has a BID, so see if we can extract the
+       private key from a BK entry */
+    if (rhizome_extract_privatekey(m,authorSid))
+      {
+	rhizome_manifest_free(m); m=NULL;
+	return WHY("Could not extract BID secret key. Does the manifest have a BK, did you supply the correct author SID?");
+      }
+  }
 #warning need to sanely determine whether to encrypt a file
 #warning payload encryption disabled for now
   int encryptP=0;
-  if (rhizome_manifest_bind_file(m,filepath,encryptP))
+  if (rhizome_manifest_bind_file(m,filepath,encryptP)) {
+    rhizome_manifest_free(m);
     return WHYF("Could not bind manifest to file '%s'",filepath);
+  }
   
   /* Add the manifest and its associated file to the Rhizome database, generating an "id" in the
    * process */
