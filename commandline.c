@@ -611,10 +611,10 @@ void confSetDebugFlags()
 		}
 	      } else {
 		if (flag) {
-		  DEBUGF("Set debug.%s", flagname);
+		  // DEBUGF("Set debug.%s", flagname);
 		  setmask |= mask;
 		} else {
-		  DEBUGF("Clear debug.%s", flagname);
+		  // DEBUGF("Clear debug.%s", flagname);
 		  clearmask |= mask;
 		}
 	      }
