@@ -377,7 +377,10 @@ int rhizome_drop_stored_file(char *id,int maximum_priority)
   sqlite3_stmt *statement;
   int cannot_drop=0;
 
-  if (strlen(id)>70) return -1;
+  if (strlen(id)>(crypto_hash_sha512_BYTES*2+1)) {
+    WHY("File ID is wrong length");
+    return -1;
+  }
 
   snprintf(sql,1024,"select manifests.id from manifests,filemanifests where manifests.id==filemanifests.manifestid and filemanifests.fileid='%s'",
 	   id);
@@ -404,6 +407,7 @@ int rhizome_drop_stored_file(char *id,int maximum_priority)
          However, we will keep iterating, as we can still drop any other manifests pointing to this file
 	 that are lower priority, and thus free up a little space. */
       if (rhizome_manifest_priority((char *)id)>maximum_priority) {
+	WHYF("Cannot drop due to manifest %s",id);
 	cannot_drop=1;
       } else {
 	printf("removing stale filemanifests, manifests, groupmemberships\n");
@@ -416,7 +420,6 @@ int rhizome_drop_stored_file(char *id,int maximum_priority)
   sqlite3_finalize(statement);
 
   if (!cannot_drop) {
-    printf("cleaning up filemanifests, manifests\n");
     sqlite_exec_void("delete from filemanifests where fileid='%s';",id);
     sqlite_exec_void("delete from files where id='%s';",id);
   }
@@ -469,8 +472,10 @@ int rhizome_store_bundle(rhizome_manifest *m)
 	return -1;
       if (strbuf_overrun(b))
 	return WHYF("got over-long fileid from database: %s", strbuf_str(b));
-      rhizome_update_file_priority(strbuf_str(b));
       sqlite_exec_void("DELETE FROM FILEMANIFESTS WHERE manifestid='%s';",manifestid);
+      /* File check must occur AFTER we drop the manifest, otherwise we think
+	 that it has a reference still */
+      rhizome_update_file_priority(strbuf_str(b));
     }
 
   /* Store manifest */
@@ -849,18 +854,6 @@ int rhizome_store_file(rhizome_manifest *m)
   return 0;
 }
 
-int rhizome_clean_payload(const char *fileidhex)
-{
-  /* See if the file has any referents, and if not, delete it */
-  long long count = sqlite_exec_int64("SELECT COUNT(*) FROM FILEMANIFESTS WHERE fileid='%s';", fileidhex); 
-  if (count == -1)
-    return -1;
-  if (count == 0) {
-    if (sqlite_exec_void("DELETE FROM FILES WHERE id='%s';", fileidhex) == -1)
-      return -1;
-  }
-  return 0;
-}
 
 void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCount)
 {
@@ -874,9 +867,12 @@ int rhizome_update_file_priority(char *fileid)
 {
   /* Drop if no references */
   int referrers=sqlite_exec_int64("SELECT COUNT(*) FROM FILEMANIFESTS WHERE fileid='%s';",fileid);
-  if (referrers==0)
+  WHYF("%d references point to %s",referrers,fileid);
+
+  if (referrers==0) {
+    WHYF("About to drop file %s",fileid);
     rhizome_drop_stored_file(fileid,RHIZOME_PRIORITY_HIGHEST+1);
-  if (referrers>0) {
+  } else if (referrers>0) {
     /* It has referrers, so workout the highest priority of any referrer */
         int highestPriority=sqlite_exec_int64("SELECT max(grouplist.priority) FROM MANIFESTS,FILEMANIFESTS,GROUPMEMBERSHIPS,GROUPLIST where manifests.id=filemanifests.manifestid AND groupmemberships.manifestid=manifests.id AND groupmemberships.groupid=grouplist.id AND filemanifests.fileid='%s';",fileid);
     if (highestPriority>=0)
@@ -1147,6 +1143,7 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
  */
 int rhizome_retrieve_file(const char *fileid, const char *filepath)
 {
+  rhizome_update_file_priority(fileid);
   long long count=sqlite_exec_int64("SELECT COUNT(*) FROM files WHERE id = '%s' AND datavalid != 0",fileid);
   if (count<1) {
     WHY("No such file ID in the database");
@@ -1157,7 +1154,7 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath)
   char sqlcmd[1024];
   int n = snprintf(sqlcmd, sizeof(sqlcmd), "SELECT id, data, length FROM files WHERE id = ? AND datavalid != 0");
   if (n >= sizeof(sqlcmd))
-    return WHY("SQL command too long");
+    { WHY("SQL command too long"); return 0; }
   sqlite3_stmt *statement;
   const char *cmdtail;
   int ret = 0;
@@ -1193,7 +1190,7 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath)
 	cli_puts("filesize"); cli_delim(":");
 	cli_printf("%lld", length); cli_delim("\n");
 	ret = 1;
-	if (filepath) {
+	if (filepath&&filepath[0]) {
 	  int fd = open(filepath, O_WRONLY | O_CREAT | O_TRUNC, 0775);
 	  if (fd == -1) {
 	    WHY_perror("open");
