@@ -1322,7 +1322,7 @@ int app_rhizome_extract_file(int argc, const char *const *argv, struct command_l
     return -1;
 
   /* Read key if is available */
-  cli_arg(argc, argv, 0, "key", &keyhex,NULL,NULL);
+  //  cli_arg(argc, argv, 0, "key", &keyhex,NULL,NULL);
   
   /* Ensure the Rhizome database exists and is open */
   if (create_serval_instance_dir() == -1)
