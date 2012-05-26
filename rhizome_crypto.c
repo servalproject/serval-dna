@@ -31,6 +31,12 @@ int rhizome_strn_is_manifest_id(const char *id)
   return 1;
 }
 
+int rhizome_str_is_bundle_crypt_key(const char *id)
+{
+  size_t len = strlen(id);
+  return len == RHIZOME_CRYPT_KEY_BYTES * 2 && rhizome_strn_is_manifest_id(id);
+}
+
 int rhizome_str_is_manifest_id(const char *id)
 {
   size_t len = strlen(id);

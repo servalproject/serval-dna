@@ -30,6 +30,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define RHIZOME_FILEHASH_STRLEN         (RHIZOME_FILEHASH_BYTES * 2)
 
 #define RHIZOME_CRYPT_PAGE_SIZE 4096
+#define RHIZOME_CRYPT_KEY_BYTES crypto_stream_xsalsa20_ref_KEYBYTES
 
 #define RHIZOME_HTTP_PORT 4110
 
