@@ -35,7 +35,7 @@ int rhizome_manifest_verify(rhizome_manifest *m)
   crypto_hash_sha512(m->manifesthash,m->manifestdata,end_of_text);
   
   /* Read signature blocks from file. */
-  int ofs=end_of_text;
+  int ofs=end_of_text;  
   while(ofs<m->manifest_all_bytes) {
     if (debug & DEBUG_RHIZOME) DEBUGF("ofs=0x%x, m->manifest_bytes=0x%x", ofs,m->manifest_all_bytes);
     if (rhizome_manifest_extract_signature(m,&ofs)) break;

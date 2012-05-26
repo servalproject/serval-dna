@@ -964,7 +964,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found,
       }
       if (rhizome_read_manifest_file(blob_m, manifestblob, manifestblobsize) == -1) {
 	WARNF("MANIFESTS row id=%s has invalid manifest blob -- skipped", q_manifestid);
-      } else if (rhizome_manifest_verify(m)) {
+      } else if (rhizome_manifest_verify(blob_m)) {
 	WARNF("MANIFESTS row id=%s fails verification -- skipped", q_manifestid);
       } else {
 	const char *blob_service = rhizome_manifest_get(blob_m, "service", NULL, 0);
