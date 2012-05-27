@@ -857,11 +857,11 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
       {
 	int n=RHIZOME_CRYPT_PAGE_SIZE;
 	if (i+n>m->fileLength) n=m->fileLength-i;
-	SHA512_Update(&context, &addr[i], count);
+	SHA512_Update(&context, &addr[i], n);
 	if (key) {
 	  /* calculate block nonce */
 	  int j; for(j=0;j<8;j++) nonce[i]=(i>>(j*8))&0xff;
-	  crypto_stream_xsalsa20_xor(&addr[i],&buffer[0],count,
+	  crypto_stream_xsalsa20_xor(&addr[i],&buffer[0],n,
 				     nonce,key);
 	  if (sqlite3_blob_write(blob,&buffer[0],n,i) !=SQLITE_OK) dud++;
 	}
@@ -877,6 +877,7 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
 
   if (strcasecmp(hash_out,hash))
     {
+      WHYF("Computed hash = %s",hash_out);
       return WHY("File hash does not match -- has file been modified while being stored?");
     }
 
