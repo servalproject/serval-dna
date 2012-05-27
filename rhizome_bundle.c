@@ -152,7 +152,13 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 	    {
 	      /* Parse hex string of ID into public key */
 	      rhizome_hex_to_bytes(value,m->cryptoSignPublic,
-				   crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
+				   crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2);
+	    }
+	  if ((!strcasecmp(var,"ID"))||(!strcasecmp(var,"FILEHASH"))) {
+	      /* Also force to upper case to avoid case sensitive comparison problems later. */
+	    int i;
+	    for(i=0;i<strlen(m->vars[m->var_count]);i++)
+	      m->values[m->var_count][i]=toupper(m->values[m->var_count][i]);
 	    }
 	  m->var_count++;
 	}

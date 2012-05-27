@@ -375,9 +375,12 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
     return -1;
   } else {
     if (1||debug&DEBUG_RHIZOMESYNC) {
-      DEBUGF("manifest id=%s, version=%lld is new to us.",
-	   rhizome_manifest_get(m,"id",NULL,0),
-	   rhizome_manifest_get_ll(m,"version"));
+      long long stored_version
+	=sqlite_exec_int64("select version from manifests where id='%s'",id);
+      DEBUGF("manifest id=%s, version=%lld is new to us (we only have version %lld).",
+	     rhizome_manifest_get(m,"id",NULL,0),
+	     rhizome_manifest_get_ll(m,"version"),
+	     stored_version);
     }
   }
 
