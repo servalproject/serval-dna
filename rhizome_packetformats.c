@@ -146,9 +146,9 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
     bundle_offset[0]=0;
   if (bundles_available==-1||(bundle_offset[1]>=bundles_available)) 
     bundle_offset[1]=0;
-  if(1)
+  if(0)
     DEBUGF("%d bundles in database (%d %d), slots=%d.",bundles_available,
-	    bundle_offset[0],bundle_offset[1],slots);
+	   bundle_offset[0],bundle_offset[1],slots);
   
   sqlite3_stmt *statement=NULL;
   sqlite3_blob *blob=NULL;
