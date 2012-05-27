@@ -451,6 +451,18 @@ int rhizome_store_bundle(rhizome_manifest *m)
 {
   if (!m->finalised) return WHY("Manifest was not finalised");
 
+  if (m->haveSecret) {
+    /* We used to store the secret in the database, but we don't anymore, as we use 
+     the BK field in the manifest. So nothing to do here. */
+  } else {
+    /* We don't have the secret for this manifest, so only allow updates if 
+     the self-signature is valid */
+    if (!m->selfSigned) {
+      WHY("*** Insert into manifests failed (-2).");
+      return WHY("Manifest is not signed, and I don't have the key.  Manifest might be forged or corrupt.");
+    }
+  }
+  
   char manifestid[RHIZOME_MANIFEST_ID_STRLEN + 1];
   rhizome_manifest_get(m, "id", manifestid, sizeof manifestid);
   str_toupper_inplace(manifestid);
@@ -459,6 +471,47 @@ int rhizome_store_bundle(rhizome_manifest *m)
   strncpy(filehash, m->fileHexHash, sizeof filehash);
   str_toupper_inplace(filehash);
 
+  
+  /* process should be;
+   
+   BEGIN TRANSACTION;
+   
+   try{
+     // insert new file contents, if not already there
+     
+     // dont risk losing the old manifest if something fails
+     UPDATE MANIFESTS 
+     SET manifest = ?,
+      version = ?,
+      insserttime = ?,
+      bar = ?
+     WHERE id = ?;
+   
+     if (no rows updated){
+       INSERT INTO MANIFESTS (id,manifest,version,inserttime,bar)
+       VALUES (?,?,?,?,?);
+     }
+   
+     // remove reference to any old file versions
+     DELETE FROM FILEMANIFESTS 
+     WHERE manifestid=? 
+     AND fileid != ?;
+     
+     // remove unreferenced files
+     DELETE FROM FILES f
+     AND NOT EXISTS(
+	SELECT  1
+	FROM FILEMANIFESTS fm
+	AND fm.fileid = f.id
+     );
+     
+     COMMIT;
+   }catch (){
+     // if one step fails, all fail.
+     ROLLBACK;
+   }
+  */
+  
   /* remove any old version of the manifest */
   if (sqlite_exec_int64("SELECT COUNT(*) FROM MANIFESTS WHERE id='%s';",manifestid)>0)
     {
@@ -484,18 +537,6 @@ int rhizome_store_bundle(rhizome_manifest *m)
   snprintf(sqlcmd,1024,
 	   "INSERT INTO MANIFESTS(id,manifest,version,inserttime,bar) VALUES('%s',?,%lld,%lld,?);",
 	   manifestid, m->version, gettime_ms());
-
-  if (m->haveSecret) {
-    /* We used to store the secret in the database, but we don't anymore, as we use 
-       the BK field in the manifest. So nothing to do here. */
-  } else {
-    /* We don't have the secret for this manifest, so only allow updates if 
-       the self-signature is valid */
-    if (!m->selfSigned) {
-      WHY("*** Insert into manifests failed (-2).");
-      return WHY("Manifest is not signed, and I don't have the key.  Manifest might be forged or corrupt.");
-    }
-  }
 
   const char *cmdtail;
   sqlite3_stmt *statement;
