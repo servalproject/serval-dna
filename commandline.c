@@ -97,6 +97,7 @@ static int outv_end_field()
     jni_exception = 1;
     return WHY("Exception thrown from CallBooleanMethod()");
   }
+  (*jni_env)->DeleteLocalRef(jni_env, str);
   return 0;
 }
 
