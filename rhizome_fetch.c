@@ -361,7 +361,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
   int i;
 
   if (1) DEBUGF("Rhizome considering %s (size=%lld, priority=%d)",
-	      id,filesize,priority);
+		id,filesize,priority);
 
   if (rhizome_manifest_version_cache_lookup(m)) {
     /* We already have this version or newer */
@@ -502,7 +502,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 
   if (rhizome_manifest_version_cache_lookup(m)) {
     /* We already have this version or newer */
-    if (debug&DEBUG_RHIZOMESYNC) {
+    if (1||debug&DEBUG_RHIZOMESYNC) {
       DEBUGF("manifest id=%s, version=%lld",
 	   rhizome_manifest_get(m,"id",NULL,0),
 	   rhizome_manifest_get_ll(m,"version"));
@@ -510,7 +510,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
     }
     return -1;
   } else {
-    if (debug&DEBUG_RHIZOMESYNC) {
+    if (1||debug&DEBUG_RHIZOMESYNC) {
       DEBUGF("manifest id=%s, version=%lld is new to us.",
 	   rhizome_manifest_get(m,"id",NULL,0),
 	   rhizome_manifest_get_ll(m,"version"));
@@ -519,7 +519,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 
   /* Don't queue if queue slots already full */
   if (rhizome_file_fetch_queue_count>=MAX_QUEUED_FILES) {
-    if (debug&DEBUG_RHIZOME) DEBUG("Already busy fetching files");
+    if (1||debug&DEBUG_RHIZOME) DEBUG("Already busy fetching files");
     return -1;
   }
   /* Don't queue if already queued */
@@ -530,7 +530,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
     rhizome_file_fetch_record 
       *q=&file_fetch_queue[i];
     if (!strcasecmp(id,rhizome_manifest_get(q->manifest,"id",NULL,0))) {
-	if (debug&DEBUG_RHIZOMESYNC)
+	if (1||debug&DEBUG_RHIZOMESYNC)
 	  DEBUGF("Already have %s in the queue.",id);
 	return -1;
       }
@@ -545,12 +545,14 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 
   long long filesize = rhizome_manifest_get_ll(m, "filesize");
 
-  if (debug&DEBUG_RHIZOMESYNC) 
+  if (1||debug&DEBUG_RHIZOMESYNC) 
     DEBUGF("Getting ready to fetch file %s for manifest %s", m->fileHexHash, id);
 
   if (filesize > 0 && m->fileHexHash[0])
     {
-      int gotfile= sqlite_exec_int64("SELECT COUNT(*) FROM FILES WHERE ID='%s';", m->fileHexHash);
+      int gotfile= sqlite_exec_int64("SELECT COUNT(*) FROM FILES WHERE ID='%s' and datavalid=1;", m->fileHexHash);
+      WHYF("SELECT COUNT(*) FROM FILES WHERE ID='%s' and datavalid=1; returned %d", m->fileHexHash,
+	   gotfile);
       if (gotfile!=1) {
 	/* We need to get the file */
 	/* Discard request if the same manifest is already queued for reception.   
@@ -564,7 +566,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	    if (j==crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)
 	      {
 		/* We are already fetching this manifest */
-		if (debug&DEBUG_RHIZOME) DEBUGF("Already fetching manifest");
+		if (1||debug&DEBUG_RHIZOME) DEBUGF("Already fetching manifest");
 		return -1;
 	      }
 	    for(j=0;j<=RHIZOME_FILEHASH_STRLEN;j++)
@@ -572,7 +574,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	    if (j==RHIZOME_FILEHASH_STRLEN + 1)
 	      {
 		/* We are already fetching this file */
-		if (debug&DEBUG_RHIZOME) DEBUGF("Already fetching file %s", m->fileHexHash);
+		if (1||debug&DEBUG_RHIZOME) DEBUGF("Already fetching file %s", m->fileHexHash);
 		return -1;
 	      }
 	  }
@@ -627,13 +629,13 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	    q->file=fopen(q->manifest->dataFileName,"w");
 	    if (!q->file) {
 	      WHY_perror("fopen");
-	      if (debug&DEBUG_RHIZOME)
+	      if (1||debug&DEBUG_RHIZOME)
 		DEBUGF("Could not open '%s' to write received file.", q->manifest->dataFileName);
 	      close(sock);
 	      return -1;
 	    }
 	    rhizome_file_fetch_queue_count++;
-	    if (debug&DEBUG_RHIZOME) DEBUGF("Queued file for fetching into %s (%d in queue)",
+	    if (1||debug&DEBUG_RHIZOME) DEBUGF("Queued file for fetching into %s (%d in queue)",
 					    q->manifest->dataFileName, rhizome_file_fetch_queue_count);
 	    return 0;
 	  }
@@ -645,7 +647,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
       }
       else
 	{
-	  if (debug&DEBUG_RHIZOMESYNC) 
+	  if (1||debug&DEBUG_RHIZOMESYNC) 
 	    DEBUGF("We already have the file for this manifest; importing from manifest alone.");
 	  if (create_rhizome_import_dir() == -1)
 	    return -1;
@@ -727,8 +729,8 @@ int rhizome_fetch_poll()
       switch(q->state) 
 	{
 	case RHIZOME_FETCH_SENDINGHTTPREQUEST:
-	  DEBUGF("sending http request (%d of %d bytes sent)",
-	       q->request_ofs,q->request_len);
+	  DEBUGF("sending http request (%d of %d bytes sent): %s",
+		 q->request_ofs,q->request_len,q->request);
 	  bytes=write(q->socket,&q->request[q->request_ofs],
 			  q->request_len-q->request_ofs);
 	  if (bytes>0) {

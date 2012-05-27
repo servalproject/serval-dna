@@ -202,6 +202,13 @@ int rhizome_manifest_bind_file(rhizome_manifest *m_in,const char *filename,int e
 
 int rhizome_manifest_check_file(rhizome_manifest *m_in)
 {
+  int gotfile= sqlite_exec_int64("SELECT COUNT(*) FROM FILES WHERE ID='%s' and datavalid=1;",
+				 m_in->fileHexHash);
+  if (gotfile==1) {
+    WHYF("Skipping file checks for bundle, as file is already in the database");
+    return 0;
+  }
+
   /* Find out whether the payload is expected to be encrypted or not */
   m_in->payloadEncryption=rhizome_manifest_get_ll(m_in, "crypt");
   
@@ -302,7 +309,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
       return WHY("Newer version exists");
     }
     if (m_in->version == storedversion) {
-      return WHY("Same version exists");
+      return WHY("Same version of manifest exists, not adding");
     }
 
     strbuf b = strbuf_local(ofilehash, sizeof ofilehash);
