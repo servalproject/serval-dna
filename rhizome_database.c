@@ -706,6 +706,7 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
 {
   const char *file=m->dataFileName;
   const char *hash=m->fileHexHash;
+  char hash_out[crypto_hash_sha512_BYTES*2+1];
   int priority=m->fileHighestPriority;
   if (m->payloadEncryption) 
     return WHY("Writing encrypted payloads not implemented");
@@ -720,6 +721,12 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
   if (fstat(fd,&stat)) {
     close(fd);
     return WHY("Could not stat() associated file");
+  }
+  if (stat.st_size<m->fileLength) {
+    return WHYF("File has shrunk, so cannot be stored.");
+  } else if (stat.st_size>m->fileLength) {
+    WARNF("File has grown by %lld bytes. I will just store the original number of bytes so that the hash (hopefully) matches",stat.st_size-m->fileLength);
+    return -1;
   }
 
   unsigned char *addr =
@@ -768,7 +775,7 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
   sqlite3_exec(rhizome_db,"DELETE FROM FILES WHERE datavalid=0;",NULL,NULL,NULL);
 
   snprintf(sqlcmd,1024,"INSERT INTO FILES(id,data,length,highestpriority,datavalid) VALUES('%s',?,%lld,%d,0);",
-	   hash,(long long)stat.st_size,priority);
+	   hash,(long long)m->fileLength,priority);
   sqlite3_stmt *statement;
   if (sqlite3_prepare_v2(rhizome_db,sqlcmd,strlen(sqlcmd)+1,&statement,&cmdtail) 
       != SQLITE_OK)
@@ -782,7 +789,7 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
   /* Bind appropriate sized zero-filled blob to data field */
   int dud=0;
   int r;
-  if ((r=sqlite3_bind_zeroblob(statement,1,stat.st_size))!=SQLITE_OK)
+  if ((r=sqlite3_bind_zeroblob(statement,1,m->fileLength))!=SQLITE_OK)
     {
       dud++;
       WHY(sqlite3_errmsg(rhizome_db));   
@@ -834,12 +841,23 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
   bzero(nonce,crypto_stream_xsalsa20_NONCEBYTES);
   unsigned char buffer[RHIZOME_CRYPT_PAGE_SIZE];  
 
+  /* Calculate hash of file as we go, so that we can report if
+     the contents have changed during import.  This is also why we
+     use the m->fileLength instead of size returned by stat, in case
+     the file has been appended, e.g., if a journal is being appended to
+     by a separate process.  This has already been shown to happen with
+     Serval Maps, and it is also quite possible with MeshMS and other
+     services. */
   {
+    SHA512_CTX context;
+    SHA512_Init(&context);
+
     long long i;
-    for(i=0;i<stat.st_size;i+=RHIZOME_CRYPT_PAGE_SIZE)
+    for(i=0;i<m->fileLength;i+=RHIZOME_CRYPT_PAGE_SIZE)
       {
 	int n=RHIZOME_CRYPT_PAGE_SIZE;
-	if (i+n>stat.st_size) n=stat.st_size-i;
+	if (i+n>m->fileLength) n=m->fileLength-i;
+	SHA512_Update(&context, &addr[i], count);
 	if (key) {
 	  /* calculate block nonce */
 	  int j; for(j=0;j<8;j++) nonce[i]=(i>>(j*8))&0xff;
@@ -850,10 +868,17 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
 	else 
 	  if (sqlite3_blob_write(blob,&addr[i],n,i) !=SQLITE_OK) dud++;
       }
+     SHA512_End(&context, (char *)hash_out);
+     str_toupper_inplace(hash_out);
   }
   
   sqlite3_blob_close(blob);
   close(fd);
+
+  if (strcasecmp(hash_out,hash))
+    {
+      return WHY("File hash does not match -- has file been modified while being stored?");
+    }
 
   /* Mark file as up-to-date */
   sqlite_exec_void("UPDATE FILES SET datavalid=1 WHERE id='%s';", hash);
