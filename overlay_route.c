@@ -428,10 +428,10 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
       if (best_o>-1) {
 	return 0;
       } else {
-	return WHYF("No open path to %s",overlay_render_sid(d));
+	return -1; // WHYF("No open path to %s",overlay_render_sid(d));
       }
     } else {
-      return WHYF("No open path to %s",overlay_render_sid(d));
+      return -1; // WHYF("No open path to %s",overlay_render_sid(d));
     }
   }
 }
@@ -681,7 +681,8 @@ overlay_neighbour *overlay_route_get_neighbour_structure(unsigned char *packed_s
   }  
 
   overlay_node *n=overlay_route_find_node(packed_sid,prefixLen,createP);
-  if (!n) { WHY("Could not find node record for observed node"); return NULL; }
+  if (!n) { // WHY("Could not find node record for observed node"); 
+    return NULL; }
 
   /* Check if node is already a neighbour, or if not, make it one */
   if (!n->neighbour_id) if (overlay_route_make_neighbour(n)) { WHY("overlay_route_make_neighbour() failed"); return NULL; }
