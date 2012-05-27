@@ -141,7 +141,8 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
 
   char id[RHIZOME_MANIFEST_ID_STRLEN + 1];
   if (!rhizome_manifest_get(m, "id", id, sizeof id))
-    return -3; // dodgy manifest, we don't want to receive it
+    // dodgy manifest, we don't want to receive it
+    return WHY("Ignoring bad manifest (no ID field)");
   str_toupper_inplace(id);
 
   /* Work out bin number in cache */
@@ -159,13 +160,14 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
       for(i=0;i<24;i++)
 	{
 	  int byte=
-	    (chartonybl(id[(i*2)+RHIZOME_VERSION_CACHE_NYBLS])<<4)
-	    |chartonybl(id[(i*2)+RHIZOME_VERSION_CACHE_NYBLS+1]);
+	    (chartonybl(id[(i*2)])<<4)
+	    |chartonybl(id[(i*2)+1]);
 	  if (byte!=entry->idprefix[i]) break;
 	}
       if (i==24) {
 	/* Entries match -- so check version */
 	unsigned long long rev = rhizome_manifest_get_ll(m,"version");	
+	WHYF("cached version same or newer (%lld)",entry->version);
 	if (rev<entry->version) {
 	  /* the presented manifest is older than we have.
 	     This allows the caller to know that they can tell whoever gave them the
@@ -179,8 +181,11 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
 	  /* the presented manifest is newer than we have */
 	  return 0;
 	}	  
+      } else {
       }
     }
+
+  WHY("Not in manifest cache");
 
   /* Not in cache, so all is well, well, maybe.
      What we do know is that it is unlikely to be in the database, so it probably
@@ -208,9 +213,12 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
 			id,manifest_version)>0) {
     /* Okay, so we have a stored version which is newer, so update the cache
        using a random replacement strategy. */
+
     long long stored_version = sqlite_exec_int64("select version from manifests where id='%s'", id);
     if (stored_version == -1)
-      return -4; // database is broken, we can't receive it
+      return WHY("database error reading stored manifest version"); // database is broken, we can't confirm that it is here
+    WHYF("stored version=%lld, manifest_version=%lld (not fetching; remembering in cache)",
+	 stored_version,manifest_version);
     slot=random()%RHIZOME_VERSION_CACHE_ASSOCIATIVITY;
     rhizome_manifest_version_cache_slot *entry
       =&rhizome_manifest_version_cache[bin][slot];
@@ -223,7 +231,8 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
     /* Finally, say that it isn't worth RXing this manifest */
     return stored_version > manifest_version ? -2 : -1;
   }
-  /* At best we hold an older version of this manifest */
+  /* At best we hold an older version of this manifest, and at worst we
+     don't hold any copy. */
   return 0;
 }
 

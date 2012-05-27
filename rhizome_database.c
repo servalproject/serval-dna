@@ -371,7 +371,7 @@ int rhizome_make_space(int group_priority, long long bytes)
 /* Drop the specified file from storage, and any manifests that reference it, 
    provided that none of those manifests are being retained at a higher priority
    than the maximum specified here. */
-int rhizome_drop_stored_file(char *id,int maximum_priority)
+int rhizome_drop_stored_file(const char *id,int maximum_priority)
 {
   char sql[1024];
   sqlite3_stmt *statement;
@@ -1160,7 +1160,11 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath,
   rhizome_update_file_priority(fileid);
   long long count=sqlite_exec_int64("SELECT COUNT(*) FROM files WHERE id = '%s' AND datavalid != 0",fileid);
   if (count<1) {
-    WHY("No such file ID in the database");
+    char id[9];
+    int i;
+    for(i=0;i<8;i++) id[i]=fileid[i];
+    id[8]=0;
+    WHYF("No such file ID %s* in the database",id);
     return 0; /* 0 files returned */
   } else if (count>1) {
     WARNF("There is more than one file in the database with ID=%s",fileid);

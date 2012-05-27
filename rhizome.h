@@ -201,7 +201,7 @@ int rhizome_strn_is_file_hash(const char *text);
 int rhizome_str_is_file_hash(const char *text);
 int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename);
 int rhizome_manifest_selfsign(rhizome_manifest *m);
-int rhizome_drop_stored_file(char *id,int maximum_priority);
+int rhizome_drop_stored_file(const char *id,int maximum_priority);
 int rhizome_manifest_priority(char *id);
 int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bufferPAndSize);
 int rhizome_hash_file(rhizome_manifest *m, const char *filename,char *hash_out);
@@ -224,6 +224,7 @@ int rhizome_finish_sqlstatement(sqlite3_stmt *statement);
 int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, 
 			  const char *bundle, int ttl);
 
+int rhizome_manifest_verify(rhizome_manifest *m);
 int rhizome_manifest_check_sanity(rhizome_manifest *m_in);
 int rhizome_manifest_check_file(rhizome_manifest *m_in);
 int rhizome_manifest_check_duplicate(rhizome_manifest *m_in,rhizome_manifest **m_out);

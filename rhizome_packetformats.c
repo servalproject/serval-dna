@@ -146,7 +146,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
     bundle_offset[0]=0;
   if (bundles_available==-1||(bundle_offset[1]>=bundles_available)) 
     bundle_offset[1]=0;
-  if(0)
+  if(1)
     DEBUGF("%d bundles in database (%d %d), slots=%d.",bundles_available,
 	    bundle_offset[0],bundle_offset[1],slots);
   
@@ -166,6 +166,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 		 bundle_offset[pass],slots);
 	break;
       }
+      WHYF("sql query: %s",query);
 
       switch (sqlite3_prepare_v2(rhizome_db,query,-1,&statement,NULL))
 	{
@@ -204,8 +205,9 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	    /* Only include manifests that are <=1KB inline.
 	       Longer ones are only advertised by BAR */
 	    if (blob_bytes>1024) { 
-	      WARN("blob>1k - ignoring");
+	      if (0) WARN("blob>1k - ignoring");
 	      sqlite3_blob_close(blob); blob=NULL;
+	      bundle_offset[pass]++;
 	      continue;
 	    }
 
@@ -219,12 +221,21 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 		   e,e->bytes,e->length,e->allocSize);	    
 	    
 	    if (ob_makespace(e,overhead+2+blob_bytes)) {
-	      if (0&&debug&DEBUG_RHIZOME) 
-		DEBUGF("Stopped cramming %s into Rhizome advertisement frame.",
-		     pass?"BARs":"manifests");
+	      if (0||debug&DEBUG_RHIZOME) {
+		rhizome_manifest *m=rhizome_new_manifest();
+		char mdata[blob_bytes]; mdata[0]=0; mdata[1]=0;
+		sqlite3_blob_read(blob,&mdata[0],blob_bytes,0);
+		rhizome_read_manifest_file(m,mdata, blob_bytes);
+		long long version = rhizome_manifest_get_ll(m, "version");
+		DEBUGF("Stop cramming %s advertisements: not enough space for %s*:v%lld (%d bytes, size limit=%d, used=%d)",
+		       pass?"BARs":"manifests",
+		       overlay_render_sid_prefix(m->cryptoSignPublic,8),
+		       version,
+		       blob_bytes,e->sizeLimit,e->length);
+		rhizome_manifest_free(m);
+	      }
 	      frameFull=1;
-	    }
-	    if (!pass) {
+	    } else if (!pass) {
 	      /* put manifest length field and manifest ID */
 	      /* XXX why on earth is this being done this way, instead of 
 		 with ob_append_byte() ??? */		
@@ -244,19 +255,24 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	    }
 	    if (sqlite3_blob_read(blob,&e->bytes[e->length+overhead],blob_bytes,0)
 		!=SQLITE_OK) {
-	      if (!pass) {
-		if (0) {
-		  DEBUG("  Manifest:");
-		  int i;
-		  for(i=0;i<blob_bytes;i++) DEBUGF("  %c",e->bytes[e->length+overhead+i]);
-		}
-	      }
 	      if (debug&DEBUG_RHIZOME) DEBUG("Couldn't read from blob");
 	      sqlite3_blob_close(blob); blob=NULL;
-	    dump("buffer (225)",(unsigned char *)e,sizeof(*e));
 	    
 	      continue;
 	    }
+
+	    /* debug: show which BID/version combos we are advertising */
+	    if (0&&(!pass)) {
+	      rhizome_manifest *m=rhizome_new_manifest();
+	      rhizome_read_manifest_file
+		(m, (char *)&e->bytes[e->length+overhead], blob_bytes);
+	      long long version = rhizome_manifest_get_ll(m, "version");
+	      WHYF("Advertising manifest %s* version %lld",
+		   overlay_render_sid_prefix(m->cryptoSignPublic,8),
+		   version);
+	      rhizome_manifest_free(m);
+	    }
+
 	    e->length+=overhead+blob_bytes;
 	    if (e->length>e->allocSize) {
 	      WHY("e->length > e->size");
@@ -265,7 +281,8 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	    }
 	    bytes_used+=overhead+blob_bytes;
 	    bundles_advertised++;
-	    bundle_offset[pass]=sqlite3_column_int64(statement,1);
+	    bundle_offset[pass]++;
+	    //	    bundle_offset[pass]=sqlite3_column_int64(statement,1);
 	    
 	    sqlite3_blob_close(blob); blob=NULL;
 	  }
@@ -345,14 +362,17 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	  rhizome_manifest_free(m);
 	  return 0;
 	}
-	char manifest_id[RHIZOME_MANIFEST_ID_STRLEN + 1];
-	if (rhizome_manifest_get(m, "id", manifest_id, sizeof manifest_id) == NULL) {
+	char manifest_id_prefix[RHIZOME_MANIFEST_ID_STRLEN + 1];
+	if (rhizome_manifest_get(m, "id", manifest_id_prefix, sizeof manifest_id_prefix) == NULL) {
 	  WHY("Manifest does not contain 'id' field");
 	  rhizome_manifest_free(m);
 	  return 0;
 	}
+	/* trim manifest ID to a prefix for ease of debugging 
+	   (that is the only use of this */
+	manifest_id_prefix[8]=0; 
 	long long version = rhizome_manifest_get_ll(m, "version");
-	if (debug & DEBUG_RHIZOMESYNC) DEBUGF("manifest id=%s version=%lld", manifest_id, version);
+	if (0||debug & DEBUG_RHIZOMESYNC) DEBUGF("manifest id=%s* version=%lld", manifest_id_prefix, version);
 
 	/* Crude signature presence test */
 	for(i=m->manifest_all_bytes-1;i>0;i--)
@@ -371,7 +391,7 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	if (rhizome_ignore_manifest_check(m,(struct sockaddr_in *)f->recvaddr))
 	  {
 	    /* Ignoring manifest that has caused us problems recently */
-	    if (0) WARNF("Ignoring manifest with errors: %s", manifest_id);
+	    if (1) WARNF("Ignoring manifest with errors: %s*", manifest_id_prefix);
 	  }
 	else if (m&&(!m->errors))
 	  {
@@ -409,12 +429,12 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	    rhizome_manifest_free(m);
 	    m = NULL;
 	  } else if (m->errors) {
-	    if (debug&DEBUG_RHIZOME) DEBUGF("Verifying manifest %s revealed errors -- not storing.", manifest_id);
+	    if (debug&DEBUG_RHIZOME) DEBUGF("Verifying manifest %s* revealed errors -- not storing.", manifest_id_prefix);
 	    rhizome_queue_ignore_manifest(m,(struct sockaddr_in*)f->recvaddr,60000);
 	    rhizome_manifest_free(m);
 	    m = NULL;
 	  } else {
-	    if (debug&DEBUG_RHIZOME) DEBUGF("Verifying manifest %s revealed no errors -- will try to store.", manifest_id);
+	    if (debug&DEBUG_RHIZOME) DEBUGF("Verifying manifest %s* revealed no errors -- will try to store.", manifest_id_prefix);
 	    /* Add manifest to import queue. We need to know originating IPv4 address
 	       so that we can transfer by HTTP. */
 	    if (0) DEBUG("Suggesting fetching of a bundle");
