@@ -40,13 +40,12 @@ setup_servald_rhizome() {
 }
 
 assert_rhizome_list() {
-   assertStdoutLineCount '==' $(($# + 2))
-   assertStdoutIs --line=1 -e '8\n'
-   assertStdoutIs --line=2 -e 'service:id:version:date:_inserttime:filesize:filehash:name\n'
+   assertStdoutLineCount '==' $(($# + 1))
+   assertStdoutIs --line=1 -e '10:service:id:version:date:_inserttime:filesize:filehash:name:sender:recipient\n'
    local filename
    for filename; do
       unpack_manifest_for_grep "$filename"
-      assertStdoutGrep --matches=1 "^$re_service:$re_manifestid:.*:$re_filehash:$re_name\$"
+      assertStdoutGrep --matches=1 "^$re_service:$re_manifestid:.*:$re_filehash:$re_name:$re_sender:$re_recipient\$"
    done
 }
 
@@ -75,6 +74,8 @@ unpack_manifest_for_grep() {
       re_manifestid=$(sed -n -e '/^id=/s///p' "$filename.manifest")
       # TODO should escape grep metacharacters, although service names should be tame
       re_service=$(sed -n -e '/^service=/s///p' "$filename.manifest")
+      re_sender=$(sed -n -e '/^sender=/s///p' "$filename.manifest")
+      re_recipient=$(sed -n -e '/^recipient=/s///p' "$filename.manifest")
       case "$re_service" in
       file)
          # TODO should escape grep metacharacters
@@ -523,7 +524,7 @@ setup_AddMeshMSMissingSender() {
    echo "Message1" >file1
    echo -e "service=MeshMS1\nrecipient=$sid1" >file1.manifest
 }
-test_AddMeshMSMissingSender() {
+test_AddMeshMSMissingSender() {   
    execute $servald rhizome add file $sid '' file1 file1.manifest
    assertExitStatus '!=' 0
 }
