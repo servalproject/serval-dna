@@ -167,7 +167,7 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
       if (i==24) {
 	/* Entries match -- so check version */
 	unsigned long long rev = rhizome_manifest_get_ll(m,"version");	
-	WHYF("cached version same or newer (%lld)",entry->version);
+	if (0) WHYF("cached version same or newer (%lld)",entry->version);
 	if (rev<entry->version) {
 	  /* the presented manifest is older than we have.
 	     This allows the caller to know that they can tell whoever gave them the

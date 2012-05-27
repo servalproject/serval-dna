@@ -166,7 +166,6 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 		 bundle_offset[pass],slots);
 	break;
       }
-      WHYF("sql query: %s",query);
 
       switch (sqlite3_prepare_v2(rhizome_db,query,-1,&statement,NULL))
 	{
