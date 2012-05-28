@@ -144,6 +144,15 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
     // dodgy manifest, we don't want to receive it
     return WHY("Ignoring bad manifest (no ID field)");
   str_toupper_inplace(id);
+  m->version = rhizome_manifest_get_ll(m, "version");
+  
+  // skip the cache for now
+  long long dbVersion = sqlite_exec_int64("SELECT version FROM MANIFESTS WHERE id='%s';", id);
+  if (dbVersion >= m->version){
+    WHYF("We already have %s (%lld vs %lld)", id, dbVersion, m->version);
+    return -1;
+  }
+  return 0;
 
   /* Work out bin number in cache */
   for(i=0;i<RHIZOME_VERSION_CACHE_NYBLS;i++)
@@ -378,8 +387,8 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
       long long stored_version
 	=sqlite_exec_int64("select version from manifests where id='%s'",id);
       DEBUGF("manifest id=%s, version=%lld is new to us (we only have version %lld).",
-	     rhizome_manifest_get(m,"id",NULL,0),
-	     rhizome_manifest_get_ll(m,"version"),
+	     id,
+	     m->version,
 	     stored_version);
     }
   }

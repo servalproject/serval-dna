@@ -139,37 +139,39 @@ int rhizome_opendb()
   }
 
   /* Create tables if required */
-  if (sqlite3_exec(rhizome_db,"PRAGMA auto_vacuum=2;",NULL,NULL,NULL)) {
-      WARNF("SQLite could enable incremental vacuuming: %s", sqlite3_errmsg(rhizome_db));
-  }
-  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS GROUPLIST(id text not null primary key, closed integer,ciphered integer,priority integer);",NULL,NULL,NULL))
+  if (sqlite3_exec(rhizome_db,
+		   "PRAGMA auto_vacuum=2;"
+		   "CREATE TABLE IF NOT EXISTS GROUPLIST(id text not null primary key, closed integer,ciphered integer,priority integer);"
+		   
+		   "CREATE TABLE IF NOT EXISTS MANIFESTS(id text not null primary key, manifest blob, version integer,inserttime integer, bar blob);"
+		   
+		   "CREATE TABLE IF NOT EXISTS FILES(id text not null primary key, data blob, length integer, highestpriority integer, datavalid integer);"
+		   
+		   "DROP TABLE IF EXISTS FILEMANIFESTS;"
+		   "CREATE TABLE IF NOT EXISTS GROUPMEMBERSHIPS(manifestid text not null, groupid text not null);"
+		   "CREATE TABLE IF NOT EXISTS VERIFICATIONS(sid text not null, did text, name text, starttime integer, endtime integer, signature blob);"
+		   
+		   ,NULL,NULL,NULL))
     {
-      return WHYF("SQLite could not create GROUPLIST table: %s", sqlite3_errmsg(rhizome_db));
+      return WHYF("Failed to create required schema: %s", sqlite3_errmsg(rhizome_db));
     }
-  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS MANIFESTS(id text not null primary key, manifest blob, version integer,inserttime integer, bar blob);",NULL,NULL,NULL))
-    {
-      return WHYF("SQLite could not create MANIFESTS table: %s", sqlite3_errmsg(rhizome_db));
-    }
-  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS FILES(id text not null primary key, data blob, length integer, highestpriority integer, datavalid integer);",NULL,NULL,NULL))
-    {
-      return WHYF("SQLite could not create FILES table: %s", sqlite3_errmsg(rhizome_db));
-    }
-  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS FILEMANIFESTS(fileid text not null, manifestid text not null);",NULL,NULL,NULL))
-    {
-      return WHYF("SQLite could not create FILEMANIFESTS table: %s", sqlite3_errmsg(rhizome_db));
-    }
-  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS GROUPMEMBERSHIPS(manifestid text not null, groupid text not null);",NULL,NULL,NULL))
-    {
-      return WHYF("SQLite could not create GROUPMEMBERSHIPS table: %s", sqlite3_errmsg(rhizome_db));
-    }
-  if (sqlite3_exec(rhizome_db,"CREATE TABLE IF NOT EXISTS VERIFICATIONS(sid text not null, did text, name text, starttime integer, endtime integer, signature blob);",
-		   NULL,NULL,NULL))
-    {
-      return WHYF("SQLite could not create VERIFICATIONS table: %s", sqlite3_errmsg(rhizome_db));
-    }
+  // no easy way to tell if these columns already exist, should probably create some kind of schema version table
+  // running this a second time will fail.
+  sqlite3_exec(rhizome_db,
+    "ALTER TABLE MANIFESTS ADD COLUMN filesize text;"
+    "ALTER TABLE MANIFESTS ADD COLUMN filehash text;"
+    "ALTER TABLE FILES ADD inserttime integer;"
+	       ,NULL,NULL,NULL);
   
-  /* XXX Setup special groups, e.g., Serval Software and Serval Optional Data */
-
+  if (sqlite3_exec(rhizome_db,
+    "CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_HASH ON MANIFESTS(filehash);"
+    "DELETE FROM MANIFESTS WHERE filehash IS NULL;"
+    "DELETE FROM FILES WHERE NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);"
+    "DELETE FROM MANIFESTS WHERE NOT EXISTS( SELECT  1 FROM FILES WHERE MANIFESTS.filehash = FILES.id);"
+		   ,NULL,NULL,NULL)){
+    return WHYF("Failed to create required schema: %s", sqlite3_errmsg(rhizome_db));
+  }
+  
   return 0;
 }
 
@@ -378,7 +380,7 @@ int rhizome_drop_stored_file(const char *id,int maximum_priority)
     return -1;
   }
 
-  snprintf(sql,1024,"select manifests.id from manifests,filemanifests where manifests.id==filemanifests.manifestid and filemanifests.fileid='%s'",
+  snprintf(sql,1024,"select id from manifests where filehash='%s'",
 	   id);
   if(sqlite3_prepare_v2(rhizome_db,sql, -1, &statement, NULL) != SQLITE_OK )
     {
@@ -408,9 +410,8 @@ int rhizome_drop_stored_file(const char *id,int maximum_priority)
 	WHYF("Cannot drop due to manifest %s",id);
 	cannot_drop=1;
       } else {
-	printf("removing stale filemanifests, manifests, groupmemberships\n");
-	sqlite_exec_void("delete from filemanifests where manifestid='%s';",manifestId);
-	sqlite_exec_void("delete from manifests where manifestid='%s';",manifestId);
+	printf("removing stale manifests, groupmemberships\n");
+	sqlite_exec_void("delete from manifests where id='%s';",manifestId);
 	sqlite_exec_void("delete from keypairs where public='%s';",manifestId);
 	sqlite_exec_void("delete from groupmemberships where manifestid='%s';",manifestId);
       }
@@ -418,7 +419,6 @@ int rhizome_drop_stored_file(const char *id,int maximum_priority)
   sqlite3_finalize(statement);
 
   if (!cannot_drop) {
-    sqlite_exec_void("delete from filemanifests where fileid='%s';",id);
     sqlite_exec_void("delete from files where id='%s';",id);
   }
   return 0;
@@ -477,7 +477,7 @@ int sqlite3_step_retry(sqlite3_stmt *stmt){
   substitute bytes in the blog progressively.
 
   We need to also need to create the appropriate row(s) in the MANIFESTS, FILES, 
-  FILEMANIFESTS and GROUPMEMBERSHIPS tables, and possibly GROUPLIST as well.
+   and GROUPMEMBERSHIPS tables, and possibly GROUPLIST as well.
  */
 int rhizome_store_bundle(rhizome_manifest *m)
 {
@@ -525,31 +525,23 @@ int rhizome_store_bundle(rhizome_manifest *m)
   if (!rhizome_db) rhizome_opendb();
   sql_ret = sqlite3_exec_retry(rhizome_db, "BEGIN TRANSACTION;", NULL, NULL, &err);
   
-  if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_prepare_v2_retry(rhizome_db, "INSERT OR REPLACE INTO MANIFESTS(id,manifest,version,inserttime,bar) VALUES(?,?,?,?,?);", -1, &stmt, NULL);
+  if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_prepare_v2_retry(rhizome_db, "INSERT OR REPLACE INTO MANIFESTS(id,manifest,version,inserttime,bar,filesize,filehash) VALUES(?,?,?,?,?,?,?);", -1, &stmt, NULL);
   if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_bind_text(stmt, 1, manifestid, -1, SQLITE_TRANSIENT);
   if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_bind_blob(stmt, 2, m->manifestdata, m->manifest_bytes, SQLITE_TRANSIENT);
   if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_bind_int64(stmt, 3, m->version);
   if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_bind_int64(stmt, 4, gettime_ms());
   if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_bind_blob(stmt, 5, bar, RHIZOME_BAR_BYTES, SQLITE_TRANSIENT);
-  if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_step_retry(stmt);
-  if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_finalize(stmt);
-  
-  // delete all other file manifest records
-  if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_prepare_v2_retry(rhizome_db, "DELETE FROM FILEMANIFESTS WHERE manifestid=? AND fileid != ?;", -1, &stmt, NULL);
-  if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_bind_text(stmt, 1, manifestid, -1, SQLITE_TRANSIENT);
-  if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_bind_text(stmt, 2, filehash, -1, SQLITE_TRANSIENT);
-  if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_step_retry(stmt);
-  if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_finalize(stmt);
-  
-  if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_prepare_v2_retry(rhizome_db, "INSERT OR IGNORE INTO FILEMANIFESTS (manifestid, fileid) VALUES (?, ?);", -1, &stmt, NULL);
-  if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_bind_text(stmt, 1, manifestid, -1, SQLITE_TRANSIENT);
-  if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_bind_text(stmt, 2, filehash, -1, SQLITE_TRANSIENT);
+  if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_bind_int64(stmt, 6, m->fileLength);
+  if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_bind_text(stmt, 7, filehash, -1, SQLITE_TRANSIENT);
   if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_step_retry(stmt);
   if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_finalize(stmt);
   
   // we might need to leave the old file around for a bit
   // clean out unreferenced files first
-  if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_exec_retry(rhizome_db, "DELETE FROM FILES WHERE NOT EXISTS( SELECT  1 FROM FILEMANIFESTS WHERE FILEMANIFESTS.fileid = FILES.id);", NULL, NULL, &err);
+  if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_prepare_v2_retry(rhizome_db, "DELETE FROM FILES WHERE inserttime < ? AND NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);", -1, &stmt, NULL);
+  if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_bind_int64(stmt, 1, gettime_ms() - 60000);
+  if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_step_retry(stmt);
+  if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_finalize(stmt);
   
   if (rhizome_manifest_get(m,"isagroup",NULL,0)!=NULL) {
     int closed=rhizome_manifest_get_ll(m,"closedgroup");
@@ -780,17 +772,14 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
       }
     close(fd);
     return 0;
-  } else if (count>1) {
-    /* This should never happen! */
-    return WHY("Duplicate records for a file in the rhizome database.  Database probably corrupt.");
   }
 
   /* Okay, so there are no records that match, but we should delete any half-baked record (with datavalid=0) so that the insert below doesn't fail.
    Don't worry about the return result, since it might not delete any records. */
   sqlite3_exec(rhizome_db,"DELETE FROM FILES WHERE datavalid=0;",NULL,NULL,NULL);
 
-  snprintf(sqlcmd,1024,"INSERT INTO FILES(id,data,length,highestpriority,datavalid) VALUES('%s',?,%lld,%d,0);",
-	   hash,(long long)m->fileLength,priority);
+  snprintf(sqlcmd,1024,"INSERT OR REPLACE INTO FILES(id,data,length,highestpriority,datavalid,inserttime) VALUES('%s',?,%lld,%d,0,%lld);",
+	   hash,(long long)m->fileLength,priority,gettime_ms());
   sqlite3_stmt *statement;
   if (sqlite3_prepare_v2(rhizome_db,sqlcmd,strlen(sqlcmd)+1,&statement,&cmdtail) 
       != SQLITE_OK)
@@ -920,19 +909,10 @@ void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCoun
 
 int rhizome_update_file_priority(const char *fileid)
 {
-  /* Drop if no references */
-  int referrers=sqlite_exec_int64("SELECT COUNT(*) FROM FILEMANIFESTS WHERE fileid='%s';",fileid);
-  WHYF("%d references point to %s",referrers,fileid);
-
-  if (referrers==0) {
-    WHYF("About to drop file %s",fileid);
-    rhizome_drop_stored_file(fileid,RHIZOME_PRIORITY_HIGHEST+1);
-  } else if (referrers>0) {
-    /* It has referrers, so workout the highest priority of any referrer */
-        int highestPriority=sqlite_exec_int64("SELECT max(grouplist.priority) FROM MANIFESTS,FILEMANIFESTS,GROUPMEMBERSHIPS,GROUPLIST where manifests.id=filemanifests.manifestid AND groupmemberships.manifestid=manifests.id AND groupmemberships.groupid=grouplist.id AND filemanifests.fileid='%s';",fileid);
-    if (highestPriority>=0)
-      sqlite_exec_void("UPDATE files set highestPriority=%d WHERE id='%s';", highestPriority,fileid);
-  }
+  /* work out the highest priority of any referrer */
+  int highestPriority=sqlite_exec_int64("SELECT max(grouplist.priority) FROM MANIFESTS,GROUPMEMBERSHIPS,GROUPLIST where manifests.filehash='%s' AND groupmemberships.manifestid=manifests.id AND groupmemberships.groupid=grouplist.id;",fileid);
+  if (highestPriority>=0)
+    sqlite_exec_void("UPDATE files set highestPriority=%d WHERE id='%s';", highestPriority,fileid);
   return 0;
 }
 
@@ -966,11 +946,11 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found,
   char sqlcmd[1024];
   char *s = sqlcmd;
   s += snprintf(s, &sqlcmd[sizeof sqlcmd] - s,
-      "SELECT manifests.id, manifests.manifest, manifests.version FROM filemanifests, manifests"
-      " WHERE filemanifests.manifestid = manifests.id AND filemanifests.fileid = ?"
+      "SELECT id, manifest, version FROM manifests"
+      " WHERE filehash = ?"
     );
   if (checkVersionP && s < &sqlcmd[sizeof sqlcmd])
-    s += snprintf(s, sqlcmd + sizeof(sqlcmd) - s, " AND manifests.version = ?");
+    s += snprintf(s, sqlcmd + sizeof(sqlcmd) - s, " AND version = ?");
   if (s >= &sqlcmd[sizeof sqlcmd])
     return WHY("SQL command too long");
   int ret = 0;
@@ -1201,17 +1181,6 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath,
 {
   sqlite3_blob *blob=NULL;
   rhizome_update_file_priority(fileid);
-  long long count=sqlite_exec_int64("SELECT COUNT(*) FROM files WHERE id = '%s' AND datavalid != 0",fileid);
-  if (count<1) {
-    char id[9];
-    int i;
-    for(i=0;i<8;i++) id[i]=fileid[i];
-    id[8]=0;
-    WHYF("No such file ID %s* in the database",id);
-    return 0; /* 0 files returned */
-  } else if (count>1) {
-    WARNF("There is more than one file in the database with ID=%s",fileid);
-  }
   char sqlcmd[1024];
   int n = snprintf(sqlcmd, sizeof(sqlcmd), "SELECT id, rowid, length FROM files WHERE id = ? AND datavalid != 0");
   if (n >= sizeof(sqlcmd))
@@ -1229,7 +1198,7 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath,
     sqlite3_bind_text(statement, 1, fileIdUpper, -1, SQLITE_STATIC);
     int stepcode = sqlite3_step(statement);
     if (stepcode != SQLITE_ROW) {
-      WHY("Query for file yielded no results, even though it should have");
+      WHY("File not found");
       ret = 0; /* no files returned */
     } else if (!(   sqlite3_column_count(statement) == 3
 		    && sqlite3_column_type(statement, 0) == SQLITE_TEXT
