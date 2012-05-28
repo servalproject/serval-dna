@@ -1499,6 +1499,7 @@ int encodeAndDispatchRecordedAudio(int fd,int callSessionToken,
 				   unsigned char *sampleData,
 				   int sampleBytes);
 int scrapeProcNetRoute();
+int lsif();
 int bufferAudioForPlayback(int codec,long long start_time,long long end_time,
 			   unsigned char *data,int dataLen);
 int startAudio();

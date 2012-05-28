@@ -70,50 +70,61 @@ int monitor_setup_sockets()
   struct sockaddr_un name;
   int len;
   
+  bzero(&name, sizeof(name));
   name.sun_family = AF_UNIX;
   
-  if (monitor_named_socket==-1) {
-    /* ignore SIGPIPE so that we don't explode */
-    signal(SIGPIPE, SIG_IGN);
-
-    name.sun_path[0]=0;
-    snprintf(&name.sun_path[1],100,"org.servalproject.servald.monitor.socket");
-    if (name.sun_path[0]) unlink(&name.sun_path[0]);    
-    /* DONT include the null if forming an abstract socket, but DO include it
-       if forming a file-system */
-    len = 1+strlen(&name.sun_path[1]) + sizeof(name.sun_family);
-    monitor_named_socket = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (monitor_named_socket>-1) {
-      int dud=0;
-      int r=bind(monitor_named_socket, (struct sockaddr *)&name, len);
-      if (r) { dud=1; r=0; WHY_perror("bind"); }
-      r=listen(monitor_named_socket,MAX_MONITOR_SOCKETS);
-      if (r) { dud=1; r=0; WHY_perror("listen");
-      }
-      if (dud) {
-	close(monitor_named_socket);
-	monitor_named_socket=-1;
-	return -1;
-      }
-
-      int reuseP=1;
-      if(setsockopt( monitor_named_socket, SOL_SOCKET, SO_REUSEADDR, 
-		     &reuseP, sizeof(reuseP)) < 0)
-	{
-	  WHY("Could not indicate reuse addresses. Not necessarily a problem (yet)");
-	  WHY_perror("setsockopt");
-	}
-
-      int send_buffer_size=64*1024;    
-      int res = setsockopt(monitor_named_socket, SOL_SOCKET, SO_RCVBUF, 
-		       &send_buffer_size, sizeof(send_buffer_size));
-      if (res) WHY_perror("setsockopt");
-      else if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) WHY("Monitor server socket setup");
-    }
+  if (monitor_named_socket!=-1)
+      return 0;
+  
+  /* ignore SIGPIPE so that we don't explode */
+  signal(SIGPIPE, SIG_IGN);
+  if ((monitor_named_socket = socket(AF_UNIX, SOCK_STREAM, 0))==-1) {
+    WHY_perror("socket");
+    goto error;
   }
+
+#ifdef linux
+  /* Use abstract namespace as Android has no writable FS which supports sockets */
+  name.sun_path[0]=0;
+  /* XXX: 104 comes from OSX sys/un.h - no #define (note Linux has UNIX_PATH_MAX and it's 108(!)) */
+  snprintf(&name.sun_path[1],104-2,"org.servalproject.servald.monitor.socket");
+  /* Doesn't include trailing nul */
+  len = 1+strlen(&name.sun_path[1]) + sizeof(name.sun_family);
+#else
+  snprintf(name.sun_path,104-1,"%s/org.servalproject.servald.monitor.socket",serval_instancepath());
+  unlink(name.sun_path);
+  /* Includes trailing nul */
+  len = 1+strlen(&name.sun_path) + sizeof(name.sun_family);
+#endif
+
+  if(bind(monitor_named_socket, (struct sockaddr *)&name, len)==-1) {
+    WHY_perror("bind");
+    goto error;
+  }
+  if(listen(monitor_named_socket,MAX_MONITOR_SOCKETS)==-1) {
+    WHY_perror("listen");
+    goto error;
+  }
+
+  int reuseP=1;
+  if(setsockopt(monitor_named_socket, SOL_SOCKET, SO_REUSEADDR, 
+		&reuseP, sizeof(reuseP)) < 0) {
+    WHY_perror("setsockopt");
+    WHY("Could not indicate reuse addresses. Not necessarily a problem (yet)");
+  }
+  
+  int send_buffer_size=64*1024;    
+  if(setsockopt(monitor_named_socket, SOL_SOCKET, SO_RCVBUF, 
+		&send_buffer_size, sizeof(send_buffer_size))==-1)
+    WHY_perror("setsockopt");
+  if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) WHY("Monitor server socket setup");
 
   return 0;
   
+  error:
+  close(monitor_named_socket);
+  monitor_named_socket=-1;
+  return -1;
 }
 
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax)

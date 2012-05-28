@@ -596,12 +596,13 @@ int overlay_interface_discover()
     r=r->next;
   }
 
-#ifdef ANDROID
-  /* Use alternative linux-only method to find and register interfaces. */
+#ifdef SIOCGIFCONF
   lsif();
 #endif
-  /* /proc based approach */
+
+#ifdef linux
   scrapeProcNetRoute();
+#endif
 
 #ifdef HAVE_IFADDRS_H
   struct ifaddrs *ifaddr,*ifa;

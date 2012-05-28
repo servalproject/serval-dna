@@ -61,6 +61,7 @@
 #define SIOCGIFBRDADDR OSIOCGIFBRDADDR
 #endif
 
+#ifdef linux
 /* for when all other options fail, as can happen on Android,
    if the permissions for the socket-based method are broken.
    Down side is that it while it gets the interface name and
@@ -97,8 +98,9 @@ int scrapeProcNetRoute()
   fclose(f);
   return 0;
 }
+#endif
 
-#ifdef ANDROID
+#ifdef SIOCGIFCONF
 int lsif(void)
 {
   char            buf[8192] = {0};
