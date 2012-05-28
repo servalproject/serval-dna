@@ -175,24 +175,27 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
 	}
       if (i==24) {
 	/* Entries match -- so check version */
-	unsigned long long rev = rhizome_manifest_get_ll(m,"version");	
-	if (0) WHYF("cached version %lld vs manifest version %lld",
+	long long rev = rhizome_manifest_get_ll(m,"version");	
+	if (1) WHYF("cached version %lld vs manifest version %lld",
 		    entry->version,rev);
 	if (rev>entry->version) {
 	  /* If we only have an old version, try refreshing the cache 
 	     by querying the database */
 	  entry->version = sqlite_exec_int64("select version from manifests where id='%s'", id);
+	  WHYF("Refreshed stored version from database: entry->version=%lld",
+	       entry->version);
 	}
 	if (rev<entry->version) {
 	  /* the presented manifest is older than we have.
 	     This allows the caller to know that they can tell whoever gave them the
 	     manifest it's time to get with the times.  May or not ever be
 	     implemented, but it would be nice. XXX */
-	  WHY("cached version is NEWER than presented version");
+	  WHYF("cached version is NEWER than presented version (%lld is newer than %lld)",
+	      entry->version,rev);
 	  return -2;
 	} else if (rev<=entry->version) {
 	  /* the presented manifest is already stored. */	   
-	  if (0) WHY("cached version is NEWER/SAME as presented version");
+	  if (1) WHY("cached version is NEWER/SAME as presented version");
 	  return -1;
 	} else {
 	  /* the presented manifest is newer than we have */
