@@ -689,12 +689,13 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
 	  long long blob_date = rhizome_manifest_get_ll(m, "date");
 	  const char *blob_filehash = rhizome_manifest_get(m, "filehash", NULL, 0);
 	  long long blob_filesize = rhizome_manifest_get_ll(m, "filesize");
+	  WHYF("Manifest payload size = %lld",blob_filesize);
 	  cli_puts(blob_service ? blob_service : ""); cli_delim(":");
 	  cli_puts(q_manifestid); cli_delim(":");
 	  cli_printf("%lld", blob_version); cli_delim(":");
 	  cli_printf("%lld", blob_date); cli_delim(":");
 	  cli_printf("%lld", q_inserttime); cli_delim(":");
-	  cli_printf("%u", blob_filesize); cli_delim(":");
+	  cli_printf("%lld", blob_filesize); cli_delim(":");
 	  cli_puts(blob_filehash ? blob_filehash : ""); cli_delim(":");
 	  cli_puts(blob_name ? blob_name : ""); cli_delim(":");
 	  cli_puts(blob_sender ? blob_sender : ""); cli_delim(":");
