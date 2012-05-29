@@ -94,7 +94,7 @@ int monitor_setup_sockets()
   snprintf(name.sun_path,104-1,"%s/org.servalproject.servald.monitor.socket",serval_instancepath());
   unlink(name.sun_path);
   /* Includes trailing nul */
-  len = 1+strlen(&name.sun_path) + sizeof(name.sun_family);
+  len = 1+strlen(name.sun_path) + sizeof(name.sun_family);
 #endif
 
   if(bind(monitor_named_socket, (struct sockaddr *)&name, len)==-1) {
