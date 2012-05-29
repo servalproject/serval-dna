@@ -313,7 +313,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
     }
 
     strbuf b = strbuf_local(ofilehash, sizeof ofilehash);
-    sqlite_exec_strbuf(b, "SELECT fileid from filemanifests where manifestid='%s';", id);
+    sqlite_exec_strbuf(b, "SELECT filehash from manifests where id='%s';", id);
     if (strbuf_overrun(b))
       return WHYF("fileid too long: '%s'", strbuf_str(b));
   } else {

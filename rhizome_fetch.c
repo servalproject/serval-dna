@@ -144,6 +144,15 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
     // dodgy manifest, we don't want to receive it
     return WHY("Ignoring bad manifest (no ID field)");
   str_toupper_inplace(id);
+  m->version = rhizome_manifest_get_ll(m, "version");
+  
+  // skip the cache for now
+  long long dbVersion = sqlite_exec_int64("SELECT version FROM MANIFESTS WHERE id='%s';", id);
+  if (dbVersion >= m->version){
+    WHYF("We already have %s (%lld vs %lld)", id, dbVersion, m->version);
+    return -1;
+  }
+  return 0;
 
   /* Work out bin number in cache */
   for(i=0;i<RHIZOME_VERSION_CACHE_NYBLS;i++)
@@ -166,19 +175,31 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
 	}
       if (i==24) {
 	/* Entries match -- so check version */
-	unsigned long long rev = rhizome_manifest_get_ll(m,"version");	
-	if (0) WHYF("cached version same or newer (%lld)",entry->version);
+	long long rev = rhizome_manifest_get_ll(m,"version");	
+	if (1) WHYF("cached version %lld vs manifest version %lld",
+		    entry->version,rev);
+	if (rev>entry->version) {
+	  /* If we only have an old version, try refreshing the cache 
+	     by querying the database */
+	  entry->version = sqlite_exec_int64("select version from manifests where id='%s'", id);
+	  WHYF("Refreshed stored version from database: entry->version=%lld",
+	       entry->version);
+	}
 	if (rev<entry->version) {
 	  /* the presented manifest is older than we have.
 	     This allows the caller to know that they can tell whoever gave them the
 	     manifest it's time to get with the times.  May or not ever be
 	     implemented, but it would be nice. XXX */
+	  WHYF("cached version is NEWER than presented version (%lld is newer than %lld)",
+	      entry->version,rev);
 	  return -2;
 	} else if (rev<=entry->version) {
 	  /* the presented manifest is already stored. */	   
+	  if (1) WHY("cached version is NEWER/SAME as presented version");
 	  return -1;
 	} else {
 	  /* the presented manifest is newer than we have */
+	  WHY("cached version is older than presented version");
 	  return 0;
 	}	  
       } else {
@@ -362,6 +383,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
 
   if (1) DEBUGF("Rhizome considering %s (size=%lld, priority=%d)",
 		id,filesize,priority);
+  m->version=rhizome_manifest_get_ll(m,"version");
 
   if (rhizome_manifest_version_cache_lookup(m)) {
     /* We already have this version or newer */
@@ -378,8 +400,8 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
       long long stored_version
 	=sqlite_exec_int64("select version from manifests where id='%s'",id);
       DEBUGF("manifest id=%s, version=%lld is new to us (we only have version %lld).",
-	     rhizome_manifest_get(m,"id",NULL,0),
-	     rhizome_manifest_get_ll(m,"version"),
+	     id,
+	     m->version,
 	     stored_version);
     }
   }

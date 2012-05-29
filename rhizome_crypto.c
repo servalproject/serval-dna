@@ -22,6 +22,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdlib.h>
 #include <ctype.h>
 
+/* Work out the encrypt/decrypt key for the supplied manifest.
+   If the manifest is not encrypted, then return NULL.
+*/
+unsigned char *rhizome_bundle_shared_secret(rhizome_manifest *m)
+{
+  return NULL;
+}
+
 int rhizome_strn_is_manifest_id(const char *id)
 {
   int i;
