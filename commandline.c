@@ -1316,8 +1316,6 @@ int cli_fileid(const char *arg)
 int app_rhizome_extract_file(int argc, const char *const *argv, struct command_line_option *o)
 {
   const char *fileid, *filepath;
-  char *keyhex=NULL;
-  unsigned char *key[RHIZOME_CRYPT_KEY_BYTES];
   if (cli_arg(argc, argv, o, "fileid", &fileid, cli_fileid, NULL)
    || cli_arg(argc, argv, o, "filepath", &filepath, NULL, "") == -1)
     return -1;
