@@ -68,7 +68,7 @@ HDRS=	fifo.h \
 	sqlite-amalgamation-3070900/sqlite3.h
 
 LDFLAGS=@LDFLAGS@ @PORTAUDIO_LIBS@ @SRC_LIBS@ @SPANDSP_LIBS@ @CODEC2_LIBS@ @PTHREAD_LIBS@
-CFLAGS=	@CPPFLAGS@ @CFLAGS@ @PORTAUDIO_CFLAGS@ @SRC_CFLAGS@ @SPANDSP_CFLAGS@ @PTHREAD_CFLAGS@ $(VOIPTEST_CFLAGS)
+CFLAGS=	@CPPFLAGS@ @CFLAGS@ @PORTAUDIO_CFLAGS@ @SRC_CFLAGS@ @SPANDSP_CFLAGS@ @PTHREAD_CFLAGS@ $(VOIPTEST_CFLAGS) -Wall -Wno-unused-value
 DEFS=	@DEFS@
 
 
@@ -76,11 +76,11 @@ all:	serval.c dna libservald.so
 
 sqlite3.o:	sqlite3.c
 	@echo CC $<
-	@$(CC) $(CFLAGS) $(DEFS) -Wall -c $<
+	@$(CC) $(CFLAGS) $(DEFS) -c $<
 
 %.o:	%.c $(HDRS)
 	@echo CC $<
-	@$(CC) $(CFLAGS) $(DEFS) -Wall -c $<
+	@$(CC) $(CFLAGS) $(DEFS) -c $<
 
 dna:	$(OBJS)
 	@echo LINK $@
