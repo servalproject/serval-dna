@@ -30,25 +30,40 @@ unsigned char *rhizome_bundle_shared_secret(rhizome_manifest *m)
   return NULL;
 }
 
-int rhizome_strn_is_manifest_id(const char *id)
+static inline int _is_xsubstring(const char *text, int len)
 {
-  int i;
-  for (i = 0; i != crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES * 2; ++i)
-    if (!isxdigit(id[i]))
+  while (len--)
+    if (!isxdigit(*text++))
       return 0;
   return 1;
 }
 
-int rhizome_str_is_bundle_crypt_key(const char *id)
+static inline int _is_xstring(const char *text, int len)
 {
-  size_t len = strlen(id);
-  return len == RHIZOME_CRYPT_KEY_BYTES * 2 && rhizome_strn_is_manifest_id(id);
+  while (len--)
+    if (!isxdigit(*text++))
+      return 0;
+  return *text == '\0';
+}
+
+int rhizome_strn_is_manifest_id(const char *id)
+{
+  return _is_xsubstring(id, RHIZOME_MANIFEST_ID_STRLEN);
 }
 
 int rhizome_str_is_manifest_id(const char *id)
 {
-  size_t len = strlen(id);
-  return len == crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES * 2 && rhizome_strn_is_manifest_id(id);
+  return _is_xstring(id, RHIZOME_MANIFEST_ID_STRLEN);
+}
+
+int rhizome_strn_is_bundle_crypt_key(const char *key)
+{
+  return _is_xstring(key, RHIZOME_CRYPT_KEY_STRLEN);
+}
+
+int rhizome_str_is_bundle_crypt_key(const char *key)
+{
+  return _is_xsubstring(key, RHIZOME_CRYPT_KEY_STRLEN);
 }
 
 int rhizome_manifest_createid(rhizome_manifest *m)

@@ -29,8 +29,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define RHIZOME_FILEHASH_BYTES          SHA512_DIGEST_LENGTH
 #define RHIZOME_FILEHASH_STRLEN         (RHIZOME_FILEHASH_BYTES * 2)
 
-#define RHIZOME_CRYPT_PAGE_SIZE 4096
-#define RHIZOME_CRYPT_KEY_BYTES crypto_stream_xsalsa20_ref_KEYBYTES
+#define RHIZOME_CRYPT_KEY_BYTES         crypto_stream_xsalsa20_ref_KEYBYTES
+#define RHIZOME_CRYPT_KEY_STRLEN        (RHIZOME_CRYPT_KEY_BYTES * 2)
+#define RHIZOME_CRYPT_PAGE_SIZE         4096
 
 #define RHIZOME_HTTP_PORT 4110
 
@@ -197,6 +198,8 @@ int rhizome_opendb();
 int rhizome_manifest_createid(rhizome_manifest *m);
 int rhizome_strn_is_manifest_id(const char *text);
 int rhizome_str_is_manifest_id(const char *text);
+int rhizome_strn_is_bundle_crypt_key(const char *text);
+int rhizome_str_is_bundle_crypt_key(const char *text);
 int rhizome_strn_is_file_hash(const char *text);
 int rhizome_str_is_file_hash(const char *text);
 int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename);

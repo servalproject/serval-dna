@@ -1313,16 +1313,21 @@ int cli_fileid(const char *arg)
   return rhizome_str_is_file_hash(arg);
 }
 
+int cli_bundlekey(const char *arg)
+{
+  return rhizome_str_is_bundle_crypt_key(arg);
+}
+
 int app_rhizome_extract_file(int argc, const char *const *argv, struct command_line_option *o)
 {
-  const char *fileid, *filepath;
+  const char *fileid, *filepath, *keyhex;
+  unsigned char key[RHIZOME_CRYPT_KEY_STRLEN + 1];
   if (cli_arg(argc, argv, o, "fileid", &fileid, cli_fileid, NULL)
    || cli_arg(argc, argv, o, "filepath", &filepath, NULL, "") == -1)
     return -1;
-
-  /* Read key if is available */
-  //  cli_arg(argc, argv, 0, "key", &keyhex,NULL,NULL);
-  
+  cli_arg(argc, argv, o, "key", &keyhex, cli_bundlekey, NULL);
+  if (keyhex && stowBytes(key, keyhex, RHIZOME_CRYPT_KEY_BYTES) == -1)
+    return -1;
   /* Ensure the Rhizome database exists and is open */
   if (create_serval_instance_dir() == -1)
     return -1;
@@ -1332,7 +1337,7 @@ int app_rhizome_extract_file(int argc, const char *const *argv, struct command_l
      We don't provide a decryption key here, because we don't know it.
      (We probably should allow the user to provide one).
   */
-  int ret = rhizome_retrieve_file(fileid, filepath,NULL);
+  int ret = rhizome_retrieve_file(fileid, filepath, keyhex ? key : NULL);
   switch (ret) {
     case 0: ret = 1; break;
     case 1: ret = 0; break;
@@ -1697,7 +1702,7 @@ command_line_option command_line_options[]={
    "List all manifests and files in Rhizome"},
   {app_rhizome_extract_manifest,{"rhizome","extract","manifest","<manifestid>","[<manifestpath>]",NULL},CLIFLAG_STANDALONE,
    "Extract a manifest from Rhizome and write it to the given path"},
-  {app_rhizome_extract_file,{"rhizome","extract","file","<fileid>","[<filepath>]",NULL},CLIFLAG_STANDALONE,
+  {app_rhizome_extract_file,{"rhizome","extract","file","<fileid>","[<filepath>]","[<key>]",NULL},CLIFLAG_STANDALONE,
    "Extract a file from Rhizome and write it to the given path"},
   {app_keyring_create,{"keyring","create",NULL},0,
    "Create a new keyring file."},
