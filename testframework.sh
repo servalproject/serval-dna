@@ -854,6 +854,7 @@ _tfw_errorexit() {
    teardown) [ $_tfw_status -lt 254 ] && _tfw_status=254;;
    *) exit 254;;
    esac
+   return 254
 }
 
 # A "fatal" event stops the entire test run, and generally indicates an
