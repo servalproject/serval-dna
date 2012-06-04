@@ -72,7 +72,7 @@ CFLAGS=	@CPPFLAGS@ @CFLAGS@ @PORTAUDIO_CFLAGS@ @SRC_CFLAGS@ @SPANDSP_CFLAGS@ @PT
 DEFS=	@DEFS@
 
 
-all:	serval.c dna libservald.so
+all:	dna libservald.so
 
 sqlite3.o:	sqlite3.c
 	@echo CC $<
@@ -89,12 +89,6 @@ dna:	$(OBJS)
 libservald.so: $(OBJS)
 	@echo LINK $@
 	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(OBJS) $(LDFLAGS)
-
-serval.c:	$(SRCS) $(HDRS)
-	@echo CREATE $@
-	@cat serval.h >$@
-	@echo '#include <sys/mman.h>' >>$@
-	@cat $(SRCS) | grep -v "#include" | sed -e 's/inet_ntoa/ast_inet_ntoa/g' >>$@
 
 testserver: dna
 	clear
@@ -120,4 +114,4 @@ testbigset: testget
 	clear
 	./dna -vvv -s `cat testget | cut -f2 -d: | tail -1` -i 0 -W note=@411.txt
 clean:
-	@rm -f $(OBJS) serval.c dna libservald.so
+	@rm -f $(OBJS) dna libservald.so
