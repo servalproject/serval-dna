@@ -23,26 +23,27 @@ source "${0%/*}/../testdefs.sh"
 
 setup() {
    setup_servald
+   set_instance
 }
 
 doc_GetCreateInstanceDir="Get creates instance directory"
 setup_GetCreateInstanceDir() {
-   setup_servald --no-mkdir
-   assert [ ! -d $SERVALINSTANCE_PATH ]
+   setup
+   assert [ ! -d "$SERVALINSTANCE_PATH" ]
 }
 test_GetCreateInstanceDir() {
    executeOk $servald config get
-   assert [ -d $SERVALINSTANCE_PATH ]
+   assert [ -d "$SERVALINSTANCE_PATH" ]
 }
 
 doc_SetCreateInstanceDir="Set creates instance directory"
 setup_SetCreateInstanceDir() {
-   setup_servald --no-mkdir
-   assert [ ! -d $SERVALINSTANCE_PATH ]
+   setup
+   assert [ ! -d "$SERVALINSTANCE_PATH" ]
 }
 test_SetCreateInstanceDir() {
    executeOk $servald config set foo bar
-   assert [ -d $SERVALINSTANCE_PATH ]
+   assert [ -d "$SERVALINSTANCE_PATH" ]
 }
 
 doc_GetNull="Get an unset config item"
