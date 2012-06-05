@@ -865,11 +865,10 @@ _tfw_failexit() {
 _tfw_errormsg() {
    [ $# -eq 0 ] && set -- "(no message)"
    local -i up=1
-   while true; do
-      case ${FUNCNAME[$up]} in
-      _tfw_*) let up=up+1;;
-      *) break;;
-      esac
+   local -i top=${#FUNCNAME[*]}
+   let top=top-1
+   while [ $up -lt $top -a "${BASH_SOURCE[$up]}" == "${BASH_SOURCE[0]}" ]; do
+      let up=up+1
    done
    echo "ERROR in ${FUNCNAME[$up]}: $*"
 }

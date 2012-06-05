@@ -105,7 +105,7 @@ int rhizome_manifest_check_sanity(rhizome_manifest *m_in)
       return WHY("Manifest missing 'date' field");
   if (strcasecmp(service, RHIZOME_SERVICE_FILE) == 0) {
     const char *name = rhizome_manifest_get(m_in, "name", NULL, 0);
-    if (name == NULL || !name[0])
+    if (name == NULL)
       return WHY("Manifest missing 'name' field");
   } else if (strcasecmp(service, RHIZOME_SERVICE_MESHMS) == 0) {
     if (sender == NULL || !sender[0])
@@ -178,11 +178,14 @@ int rhizome_manifest_bind_file(rhizome_manifest *m_in,const char *filename,int e
   if (encryptP) rhizome_manifest_set_ll(m_in,"crypt",1); 
   else rhizome_manifest_set_ll(m_in,"crypt",0);
 
-  /* Get length of payload */
-  struct stat stat;
-  if (lstat(filename,&stat))
-    return WHYF("Could not stat() payload file '%s'",filename);
-  m_in->fileLength = stat.st_size;
+  /* Get length of payload.  An empty filename means empty payload. */
+  if (filename[0]) {
+    struct stat stat;
+    if (lstat(filename,&stat))
+      return WHYF("Could not stat() payload file '%s'",filename);
+    m_in->fileLength = stat.st_size;
+  } else
+    m_in->fileLength = 0;
   if (debug & DEBUG_RHIZOME)
     DEBUGF("filename=%s, fileLength=%lld", filename, m_in->fileLength);
   rhizome_manifest_set_ll(m_in,"filesize",m_in->fileLength);
@@ -214,10 +217,13 @@ int rhizome_manifest_check_file(rhizome_manifest *m_in)
   
   /* Check payload file is accessible and discover its length, then check that it matches
      the file size stored in the manifest */
-  struct stat stat;
-  if (lstat(m_in->dataFileName,&stat))
-    return WHYF("Could not stat() payload file '%s'",m_in->dataFileName);
-  m_in->fileLength = stat.st_size;
+  if (m_in->dataFileName[0]) {
+    struct stat stat;
+    if (lstat(m_in->dataFileName,&stat))
+      return WHYF("Could not stat() payload file '%s'",m_in->dataFileName);
+    m_in->fileLength = stat.st_size;
+  } else
+    m_in->fileLength = 0;
   if (debug & DEBUG_RHIZOME)
     DEBUGF("filename=%s, fileLength=%lld", m_in->dataFileName, m_in->fileLength);
   long long mfilesize = rhizome_manifest_get_ll(m_in, "filesize");

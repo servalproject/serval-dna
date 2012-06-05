@@ -514,7 +514,7 @@ int rhizome_store_bundle(rhizome_manifest *m)
 
   // we should add the file in the same transaction, but closing the blob seems to cause some issues.
   /* Store the file */
-#warning need to implement passing of encryption key for file here
+  // TODO encrypted payloads - pass encryption key here
   if (m->fileLength>0){
     if (rhizome_store_file(m,NULL)){
       WHY("Could not store file");
@@ -724,10 +724,14 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
     return WHY("Cannot store bundle file until it has been hashed");
 
   int fd=open(file,O_RDONLY);
-  if (fd<0) return WHY("Could not open associated file");
+  if (fd == -1) {
+    WHY_perror("open");
+    return WHY("Could not open associated file");
+  }
   
   struct stat stat;
   if (fstat(fd,&stat)) {
+    WHY_perror("fstat");
     close(fd);
     return WHY("Could not stat() associated file");
   }
@@ -737,9 +741,9 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
     WARNF("File has grown by %lld bytes. I will just store the original number of bytes so that the hash (hopefully) matches",stat.st_size-m->fileLength);
   }
 
-  unsigned char *addr =
-    mmap(NULL, m->fileLength, PROT_READ, MAP_FILE|MAP_SHARED, fd, 0);
+  unsigned char *addr = mmap(NULL, m->fileLength, PROT_READ, MAP_FILE|MAP_SHARED, fd, 0);
   if (addr==MAP_FAILED) {
+    WHY_perror("mmap");
     close(fd);
     return WHY("mmap() of associated file failed.");
   }

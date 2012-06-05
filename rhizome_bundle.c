@@ -202,31 +202,33 @@ int rhizome_hash_file(rhizome_manifest *m,const char *filename,char *hash_out)
      and may be very resource constrained. Thus we need a streamable SHA-512
      implementation.
   */
-#warning need to implement encryption
-  if (m&&m->payloadEncryption) 
+  // TODO encrypted payloads
+  if (m && m->payloadEncryption) 
     return WHY("Encryption of payloads not implemented");
 
-  FILE *f = fopen(filename, "r");
-  if (!f) {
-    WHY_perror("fopen");
-    return WHYF("Could not open %s to calculate SHA512 hash.", filename);
-  }
   SHA512_CTX context;
   SHA512_Init(&context);
-  while (!feof(f)) {
-    unsigned char buffer[8192];
-    int r = fread(buffer, 1, 8192, f);
-    if (r == -1) {
-      WHY_perror("fread");
-      fclose(f);
-      return WHYF("Error reading %s to calculate SHA512 hash", filename);
+  if (filename[0]) {
+    FILE *f = fopen(filename, "r");
+    if (!f) {
+      WHY_perror("fopen");
+      return WHYF("Could not open %s to calculate SHA512 hash.", filename);
     }
-    if (r > 0)
-      SHA512_Update(&context, buffer, r);
+    while (!feof(f)) {
+      unsigned char buffer[8192];
+      int r = fread(buffer, 1, 8192, f);
+      if (r == -1) {
+	WHY_perror("fread");
+	fclose(f);
+	return WHYF("Error reading %s to calculate SHA512 hash", filename);
+      }
+      if (r > 0)
+	SHA512_Update(&context, buffer, r);
+    }
+    fclose(f);
   }
   SHA512_End(&context, (char *)hash_out);
   str_toupper_inplace(hash_out);
-  fclose(f);
   return 0;
 }
 
@@ -543,11 +545,15 @@ int rhizome_manifest_finalise(rhizome_manifest *m)
     m->fileHashedP=1;
 
     /* set fileLength */
-    struct stat stat;
-    if (lstat(m->dataFileName,&stat)) {
-      return WHY("Could not stat() associated file");
-    }
-    m->fileLength=stat.st_size;
+    if (m->dataFileName[0]) {
+      struct stat stat;
+      if (lstat(m->dataFileName, &stat)) {
+	WHY_perror("lstat");
+	return WHY("Could not stat() associated file");
+      }
+      m->fileLength = stat.st_size;
+    } else
+      m->fileLength = 0;
   }
   
   /* Set file hash and size information */

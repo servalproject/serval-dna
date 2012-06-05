@@ -69,7 +69,8 @@ assert_rhizome_list() {
 }
 
 assert_stdout_add_file() {
-   local filename="$1"
+   [ $# -ge 1 ] || error "missing filename arg"
+   local filename="${1}"
    unpack_manifest_for_grep "$filename"
    assertStdoutLineCount '==' 6
    assertStdoutGrep --matches=1 "^service:$re_service\$"
@@ -83,7 +84,11 @@ assert_stdout_add_file() {
 unpack_manifest_for_grep() {
    local filename="$1"
    re_service="$rexp_service"
-   re_size=$(( $(cat "$filename" | wc -c) + 0 ))
+   if [ -n "$filename" ]; then
+      re_size=$(( $(cat "$filename" | wc -c) + 0 ))
+   else
+      re_size=0
+   fi
    compute_filehash re_filehash "$filename"
    re_manifestid="$rexp_manifestid"
    re_secret="$rexp_bundlesecret"
@@ -277,6 +282,26 @@ test_AddManifest() {
    assertGrep file1.manifest "^id=$re_manifestid\$"
    assertGrep file1.manifest "^filehash=$re_filehash\$"
    assertGrep file1.manifest "^filesize=$re_size\$"
+}
+
+doc_AddEmpty="Add with empty payload"
+setup_AddEmpty() {
+   setup_servald_rhizome
+   executeOk $servald rhizome list
+   assert_rhizome_list
+}
+test_AddEmpty() {
+   executeOk $servald rhizome add file $sid '' '' .manifest
+   tfw_cat --stdout --stderr -v .manifest
+   assert_stdout_add_file ''
+   assertGrep .manifest '^service=file$'
+   assertGrep .manifest "^BK=$rexp_bundlekey\$"
+   assertGrep .manifest '^name=$'
+   assertGrep .manifest "^version=$rexp_version\$"
+   assertGrep .manifest "^date=$rexp_date\$"
+   assertGrep .manifest "^id=$re_manifestid\$"
+   assertGrep .manifest "^filehash=$re_filehash\$"
+   assertGrep .manifest '^filesize=0$'
 }
 
 doc_AddThenList="List contains one file after one add"
