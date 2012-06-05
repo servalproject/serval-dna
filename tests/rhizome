@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Tests for Serval DNA rhizome operations.
+# Tests for Serval rhizome operations.
 #
 # Copyright 2012 Paul Gardner-Stephen
 #
@@ -8,12 +8,12 @@
 # modify it under the terms of the GNU General Public License
 # as published by the Free Software Foundation; either version 2
 # of the License, or (at your option) any later version.
-# 
+#
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
@@ -22,7 +22,8 @@ source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 
 setup_servald_rhizome() {
-   setup_servald "$@"
+   setup_servald
+   set_instance
    executeOk $servald config set debug.rhizome on
    executeOk $servald keyring add
    executeOk $servald keyring add
@@ -66,20 +67,20 @@ unpack_manifest_for_grep() {
    re_size=$(( $(cat "$filename" | wc -c) + 0 ))
    compute_filehash re_filehash "$filename"
    re_manifestid='[0-9a-fA-F]\{64\}'
-   re_name="${filename##*/}" # TODO should escape grep metacharacters
+   re_name=$(escape_grep_basic "${filename##*/}")
    # If there is a manifest file that looks like it matches this payload
    # file, then use its file hash to check the rhizome list output.
    local filehash=$(sed -n -e '/^filehash=/s///p' "$filename.manifest" 2>/dev/null)
    if [ "$filehash" = "$re_filehash" ]; then
       re_manifestid=$(sed -n -e '/^id=/s///p' "$filename.manifest")
-      # TODO should escape grep metacharacters, although service names should be tame
       re_service=$(sed -n -e '/^service=/s///p' "$filename.manifest")
+      re_service=$(escape_grep_basic "$re_service")
       re_sender=$(sed -n -e '/^sender=/s///p' "$filename.manifest")
       re_recipient=$(sed -n -e '/^recipient=/s///p' "$filename.manifest")
       case "$re_service" in
       file)
-         # TODO should escape grep metacharacters
          re_name=$(sed -n -e '/^name=/s///p' "$filename.manifest")
+         re_name=$(escape_grep_basic "$re_name")
          ;;
       *)
          re_name=
@@ -524,7 +525,7 @@ setup_AddMeshMSMissingSender() {
    echo "Message1" >file1
    echo -e "service=MeshMS1\nrecipient=$sid1" >file1.manifest
 }
-test_AddMeshMSMissingSender() {   
+test_AddMeshMSMissingSender() {
    execute $servald rhizome add file $sid '' file1 file1.manifest
    assertExitStatus '!=' 0
 }

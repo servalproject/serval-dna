@@ -149,6 +149,39 @@ realpath() {
    _tfw_abspath -P "$1"
 }
 
+# Escape all grep(1) basic regular expression metacharacters.
+escape_grep_basic() {
+   local re="$1"
+   local nil=''
+   re="${re//[\\]/\\\\$nil}"
+   re="${re//./\\.}"
+   re="${re//\*/\\*}"
+   re="${re//^/\\^}"
+   re="${re//\$/\\$}"
+   re="${re//\[/\\[}"
+   re="${re//\]/\\]}"
+   echo "$re"
+}
+
+# Escape all egrep(1) extended regular expression metacharacters.
+escape_grep_extended() {
+   local re="$1"
+   local nil=''
+   re="${re//[\\]/\\\\$nil}"
+   re="${re//./\\.}"
+   re="${re//\*/\\*}"
+   re="${re//\?/\\?}"
+   re="${re//+/\\+}"
+   re="${re//^/\\^}"
+   re="${re//\$/\\$}"
+   re="${re//(/\\(}"
+   re="${re//)/\\)}"
+   re="${re//|/\\|}"
+   re="${re//\[/\\[}"
+   re="${re//{/\\{}"
+   echo "$re"
+}
+
 execute() {
    echo -n "# execute "; _tfw_shellarg "$@"
    _tfw_getopts execute "$@"
