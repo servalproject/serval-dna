@@ -4,6 +4,10 @@ testdefs_sh=$(abspath "${BASH_SOURCE[0]}")
 servald_source_root="${testdefs_sh%/*}"
 servald_build_root="$servald_source_root"
 
+# Some useful regular expressions.  These must work in grep(1) as basic
+# expressions, and also in sed(1).
+rexp_sid='[0-9a-fA-F]\{64\}'
+
 # Utility function for creating DNA fixtures:
 #  - Create a temporary directory to contain all servald-related files
 #  - set $servald variable (executable under test)
@@ -27,7 +31,7 @@ set_instance() {
    *) set_instance_vars "default"; return 1;;
    esac
 }
-   
+
 # Utility function:
 #  - set all the instance variables and environment variables and create the
 #    instance directory for the given instance name
@@ -37,7 +41,7 @@ set_instance_vars() {
    mkdir -p "$instance_dir"
    export instance_servald_log="$instance_dir/servald.log"
    export SERVALINSTANCE_PATH="$instance_dir/servald"
-   export instance_servald_pidfile="$SERVALINSTANCE_PATH/servald.pid" 
+   export instance_servald_pidfile="$SERVALINSTANCE_PATH/servald.pid"
 }
 
 # Utility function for setting up DNA JNI fixtures:

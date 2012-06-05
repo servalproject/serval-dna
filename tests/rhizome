@@ -21,6 +21,16 @@
 source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 
+# Some useful regular expressions.  These must work for grep(1) (as basic
+# expressions) and also in sed(1).
+rexp_service='[A-Za-z0-9_]\+'
+rexp_manifestid='[0-9a-fA-F]\{64\}'
+rexp_bundlekey='[0-9a-fA-F]\{128\}'
+rexp_bundlesecret="$rexp_bundlekey"
+rexp_filehash='[0-9a-fA-F]\{128\}'
+rexp_version='[0-9]\{1,\}'
+rexp_date='[0-9]\{1,\}'
+
 setup_servald_rhizome() {
    setup_servald
    set_instance
@@ -30,43 +40,53 @@ setup_servald_rhizome() {
    executeOk $servald keyring add
    executeOk $servald keyring add
    executeOk $servald keyring list
-   sid=$(replayStdout | sed -ne '1s/^\([0-9a-fA-F]\{64\}\):.*$/\1/p')
-   sid1=$(replayStdout | sed -ne '2s/^\([0-9a-fA-F]\{64\}\):.*$/\1/p')
-   sid2=$(replayStdout | sed -ne '3s/^\([0-9a-fA-F]\{64\}\):.*$/\1/p')
-   sid3=$(replayStdout | sed -ne '4s/^\([0-9a-fA-F]\{64\}\):.*$/\1/p')
+   tfw_cat --stdout
+   sid=$(replayStdout | sed -ne "1s/^\($rexp_sid\):.*\$/\1/p")
+   sid1=$(replayStdout | sed -ne "2s/^\($rexp_sid\):.*\$/\1/p")
+   sid2=$(replayStdout | sed -ne "3s/^\($rexp_sid\):.*\$/\1/p")
+   sid3=$(replayStdout | sed -ne "4s/^\($rexp_sid\):.*\$/\1/p")
    assert --message='main identity known' [ -n "$sid" ]
    assert --message='identity 1 known' [ -n "$sid1" ]
    assert --message='identity 2 known' [ -n "$sid2" ]
    assert --message='identity 3 known' [ -n "$sid3" ]
+   assert [ $sid != $sid1 ]
+   assert [ $sid != $sid2 ]
+   assert [ $sid != $sid3 ]
+   assert [ $sid1 != $sid2 ]
+   assert [ $sid1 != $sid3 ]
+   assert [ $sid2 != $sid3 ]
 }
 
 assert_rhizome_list() {
-   assertStdoutLineCount '==' $(($# + 1))
-   assertStdoutIs --line=1 -e '10:service:id:version:date:_inserttime:filesize:filehash:name:sender:recipient\n'
+   assertStdoutLineCount '==' $(($# + 2))
+   assertStdoutIs --line=1 -e '10\n'
+   assertStdoutIs --line=2 -e 'service:id:version:date:_inserttime:filesize:filehash:sender:recipient:name\n'
    local filename
    for filename; do
       unpack_manifest_for_grep "$filename"
-      assertStdoutGrep --matches=1 "^$re_service:$re_manifestid:.*:$re_filehash:$re_name:$re_sender:$re_recipient\$"
+      assertStdoutGrep --matches=1 "^$re_service:$re_manifestid:.*:$re_filehash:$re_sender:$re_recipient:$re_name\$"
    done
 }
 
 assert_stdout_add_file() {
    local filename="$1"
    unpack_manifest_for_grep "$filename"
-   assertStdoutLineCount '==' 5
+   assertStdoutLineCount '==' 6
    assertStdoutGrep --matches=1 "^service:$re_service\$"
    assertStdoutGrep --matches=1 "^name:${2:-$re_name}\$"
    assertStdoutGrep --matches=1 "^manifestid:$re_manifestid\$"
+   assertStdoutGrep --matches=1 "^secret:$re_secret\$"
    assertStdoutGrep --matches=1 "^filehash:$re_filehash\$"
    assertStdoutGrep --matches=1 "^filesize:$re_size\$"
 }
 
 unpack_manifest_for_grep() {
    local filename="$1"
-   re_service='[A-Za-z0-9_]\+'
+   re_service="$rexp_service"
    re_size=$(( $(cat "$filename" | wc -c) + 0 ))
    compute_filehash re_filehash "$filename"
-   re_manifestid='[0-9a-fA-F]\{64\}'
+   re_manifestid="$rexp_manifestid"
+   re_secret="$rexp_bundlesecret"
    re_name=$(escape_grep_basic "${filename##*/}")
    # If there is a manifest file that looks like it matches this payload
    # file, then use its file hash to check the rhizome list output.
@@ -108,6 +128,23 @@ strip_signatures() {
    done
 }
 
+extract_stdout_keyvalue() {
+   local _var="$1"
+   local _label="$2"
+   local _rexp="$3"
+   local _value=$(replayStdout | sed -n -e "/^$_label:$_rexp\$/s/^$_label://p")
+   assert --message="stdout contains valid '$_label:' line" --stdout [ -n "$_value" ]
+   [ -n "$_var" ] && eval $_var=$_value
+}
+
+extract_stdout_secret() {
+   extract_stdout_keyvalue "$1" secret "$rexp_bundlesecret"
+}
+
+extract_stdout_BK() {
+   extract_stdout_keyvalue "$1" BK "$rexp_bundlekey"
+}
+
 extract_manifest() {
    local _var="$1"
    local _manifestfile="$2"
@@ -121,23 +158,23 @@ extract_manifest() {
 }
 
 extract_manifest_service() {
-   extract_manifest "$1" "$2" service '[0-9a-zA-Z]\+'
+   extract_manifest "$1" "$2" service "$rexp_service"
 }
 
 extract_manifest_id() {
-   extract_manifest "$1" "$2" id '[0-9a-fA-F]\{64\}'
+   extract_manifest "$1" "$2" id "$rexp_manifestid"
 }
 
 extract_manifest_BK() {
-   extract_manifest "$1" "$2" BK '[0-9a-fA-F]\{128\}'
+   extract_manifest "$1" "$2" BK "$rexp_bundlekey"
 }
 
 extract_manifest_filehash() {
-   extract_manifest "$1" "$2" filehash '[0-9a-fA-F]\{128\}'
+   extract_manifest "$1" "$2" filehash "$rexp_filehash"
 }
 
 extract_manifest_version() {
-   extract_manifest "$1" "$2" version '[0-9]\{1,\}'
+   extract_manifest "$1" "$2" version "$rexp_version"
 }
 
 compute_filehash() {
@@ -184,6 +221,17 @@ test_AddNoManifest() {
    assert_stdout_add_file file1
 }
 
+doc_AddNoAuthor="Add with no author makes manifest without BK"
+setup_AddNoAuthor() {
+   setup_servald_rhizome
+   echo "A test file" >file1
+}
+test_AddNoAuthor() {
+   executeOk $servald rhizome add file '' '' file1 file1.manifest
+   assert_stdout_add_file file1
+   assertGrep --matches=0 file1.manifest '^BK='
+}
+
 doc_AddNonExistManifest="Add with non-existent manifest file"
 setup_AddNonExistManifest() {
    setup_servald_rhizome
@@ -199,10 +247,10 @@ test_AddNonExistManifest() {
    assert [ -r file1.manifest ]
    tfw_cat -v file1.manifest
    assertGrep file1.manifest '^service=file$'
-   assertGrep file1.manifest '^BK=[0-9a-fA-F]\+$'
+   assertGrep file1.manifest "^BK=$rexp_bundlekey\$"
    assertGrep file1.manifest '^name=file1$'
-   assertGrep file1.manifest '^date=[0-9]\+$'
-   assertGrep file1.manifest '^version=[0-9]\+$'
+   assertGrep file1.manifest "^date=$rexp_date\$"
+   assertGrep file1.manifest "^version=$rexp_version\$"
    assertGrep file1.manifest "^id=$re_manifestid\$"
    assertGrep file1.manifest "^filehash=$re_filehash\$"
    assertGrep file1.manifest "^filesize=$re_size\$"
@@ -222,9 +270,9 @@ test_AddManifest() {
    tfw_cat --stdout --stderr -v file1.manifest
    assert_stdout_add_file file1 wah
    assertGrep file1.manifest '^service=file$'
-   assertGrep file1.manifest '^BK=[0-9a-fA-F]\+$'
+   assertGrep file1.manifest "^BK=$rexp_bundlekey\$"
    assertGrep file1.manifest '^name=wah$'
-   assertGrep file1.manifest '^version=[0-9]\+$'
+   assertGrep file1.manifest "^version=$rexp_version\$"
    assertGrep file1.manifest '^date=12345$'
    assertGrep file1.manifest "^id=$re_manifestid\$"
    assertGrep file1.manifest "^filehash=$re_filehash\$"
@@ -357,8 +405,10 @@ setup_AddDuplicate() {
    echo "A test file, second version" >file1_2
    # Add first file
    executeOk $servald rhizome add file $sid '' file1 file1.manifest
+   extract_stdout_secret file1_secret
    # Add second file
    executeOk $servald rhizome add file $sid '' file2 file2.manifest
+   extract_stdout_secret file2_secret
    # Make sure they are both in the list.
    executeOk $servald rhizome list
    assert_rhizome_list file1 file2
@@ -437,6 +487,34 @@ test_AddUpdateNewVersion() {
    assert_stdout_add_file file1_2 file1
    assert_manifest_newer file1.manifest file1_2.manifest
    # Rhizome store contents reflect new payload.
+   executeOk $servald rhizome list
+   assert_rhizome_list file1_2 file2
+}
+
+doc_AddUpdateNoAuthor="Cannot add new payload to authorless manifest"
+setup_AddUpdateNoAuthor() {
+   setup_AddUpdateNewVersion
+   sed -i -e '/^BK=/d' file1_2.manifest
+}
+test_AddUpdateNoAuthor() {
+   tfw_cat -v file1_2.manifest
+   execute $servald rhizome add file $sid '' file1_2 file1_2.manifest
+   tfw_cat --stderr
+   assertExitStatus '!=' 0
+   # Rhizome store contents have old payload.
+   executeOk $servald rhizome list
+   assert_rhizome_list file1 file2
+}
+
+doc_AddUpdateNoAuthorWithSecret="Add new payload to authorless manifest with bundle secret"
+setup_AddUpdateNoAuthorWithSecret() {
+   setup_AddUpdateNoAuthor
+}
+test_AddUpdateNoAuthorWithSecret() {
+   tfw_cat -v file1_2.manifest
+   executeOk $servald rhizome add file $sid '' file1_2 file1_2.manifest "$file1_secret"
+   tfw_cat --stderr
+   # Rhizome store contents have new payload.
    executeOk $servald rhizome list
    assert_rhizome_list file1_2 file2
 }

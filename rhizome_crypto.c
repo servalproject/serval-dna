@@ -56,14 +56,24 @@ int rhizome_str_is_manifest_id(const char *id)
   return _is_xstring(id, RHIZOME_MANIFEST_ID_STRLEN);
 }
 
+int rhizome_strn_is_bundle_key(const char *key)
+{
+  return _is_xsubstring(key, RHIZOME_BUNDLE_KEY_STRLEN);
+}
+
+int rhizome_str_is_bundle_key(const char *key)
+{
+  return _is_xstring(key, RHIZOME_BUNDLE_KEY_STRLEN);
+}
+
 int rhizome_strn_is_bundle_crypt_key(const char *key)
 {
-  return _is_xstring(key, RHIZOME_CRYPT_KEY_STRLEN);
+  return _is_xsubstring(key, RHIZOME_CRYPT_KEY_STRLEN);
 }
 
 int rhizome_str_is_bundle_crypt_key(const char *key)
 {
-  return _is_xsubstring(key, RHIZOME_CRYPT_KEY_STRLEN);
+  return _is_xstring(key, RHIZOME_CRYPT_KEY_STRLEN);
 }
 
 int rhizome_manifest_createid(rhizome_manifest *m)
@@ -162,7 +172,7 @@ int rhizome_bk_xor(const char *author,
    the supplied SID is correct.
 
 */
-int rhizome_extract_privatekey(rhizome_manifest *m,const char *authorHex)
+int rhizome_extract_privatekey(rhizome_manifest *m, const char *authorHex)
 {
   if (!authorHex) return -1; // WHY("No author SID supplied");
   char *bk = rhizome_manifest_get(m, "BK", NULL, 0);
@@ -177,11 +187,16 @@ int rhizome_extract_privatekey(rhizome_manifest *m,const char *authorHex)
 		     bkBytes,
 		     m->cryptoSignSecret))
     return WHY("rhizome_bk_xor() failed");
+  return rhizome_verify_bundle_privatekey(m);
 
-  /* Verify validity of key.
-     XXX This is a pretty ugly way to do it, but NaCl offers no API to
-     do this cleanly. */
-  {
+}
+
+/* Verify the validity of the manifest's sccret key.
+   XXX This is a pretty ugly way to do it, but NaCl offers no API to
+   do this cleanly.
+ */
+int rhizome_verify_bundle_privatekey(rhizome_manifest *m)
+{
 #ifdef HAVE_CRYPTO_SIGN_NACL_GE25519_H
 #  include "crypto_sign_edwards25519sha512batch_ref/ge25519.h"
 #else
@@ -190,34 +205,35 @@ int rhizome_extract_privatekey(rhizome_manifest *m,const char *authorHex)
 #  endif
 #endif
 #ifdef ge25519
-    unsigned char *sk=m->cryptoSignSecret;
-    unsigned char pk[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
-    sc25519 scsk;
-    ge25519 gepk;
-    sc25519_from32bytes(&scsk,sk);
-    ge25519_scalarmult_base(&gepk, &scsk);
-    ge25519_pack(pk, &gepk);
-    bzero(&scsk,sizeof(scsk));
-    if (memcmp(pk, m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)) {
-      if (1) {
-	char hex[17];
-	rhizome_bytes_to_hex_upper(m->cryptoSignPublic, hex, 8);
-	WHYF("  stored public key = %s*", hex);
-	rhizome_bytes_to_hex_upper(pk, hex, 8);
-	WHYF("computed public key = %s*", hex);
-      }
-      return WHY("BID secret key decoded from BK was not valid");     
-    } else {
-      m->haveSecret=1;
-      return 0;
+  unsigned char *sk=m->cryptoSignSecret;
+  unsigned char pk[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
+  sc25519 scsk;
+  ge25519 gepk;
+  sc25519_from32bytes(&scsk,sk);
+  ge25519_scalarmult_base(&gepk, &scsk);
+  ge25519_pack(pk, &gepk);
+  bzero(&scsk,sizeof(scsk));
+  if (memcmp(pk, m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)) {
+    m->haveSecret=0;
+    if (1) {
+      char hex[17];
+      rhizome_bytes_to_hex_upper(m->cryptoSignPublic, hex, 8);
+      WHYF("  stored public key = %s*", hex);
+      rhizome_bytes_to_hex_upper(pk, hex, 8);
+      WHYF("computed public key = %s*", hex);
     }
-#else //!ge25519
-    /* XXX Need to test key by signing and testing signature validity. */
-    /* For the time being barf so that the caller does not think we have a validated BK
-       when in fact we do not. */
-    return WHY("ge25519 function not available");
-#endif //!ge25519
+    return WHY("BID secret key decoded from BK was not valid");     
+  } else {
+    m->haveSecret=1;
+    return 0;
   }
+#else //!ge25519
+  /* XXX Need to test key by signing and testing signature validity. */
+  /* For the time being barf so that the caller does not think we have a validated BK
+      when in fact we do not. */
+  m->haveSecret=0;
+  return WHY("ge25519 function not available");
+#endif //!ge25519
 }
 
 rhizome_signature *rhizome_sign_hash(rhizome_manifest *m,const char *author)

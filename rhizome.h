@@ -198,6 +198,8 @@ int rhizome_opendb();
 int rhizome_manifest_createid(rhizome_manifest *m);
 int rhizome_strn_is_manifest_id(const char *text);
 int rhizome_str_is_manifest_id(const char *text);
+int rhizome_strn_is_bundle_key(const char *text);
+int rhizome_str_is_bundle_key(const char *text);
 int rhizome_strn_is_bundle_crypt_key(const char *text);
 int rhizome_str_is_bundle_crypt_key(const char *text);
 int rhizome_strn_is_file_hash(const char *text);
@@ -279,6 +281,7 @@ int rhizome_bk_xor(const char *author,
 		   unsigned char bkout[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]);
 unsigned char *rhizome_bundle_shared_secret(rhizome_manifest *m);
 int rhizome_extract_privatekey(rhizome_manifest *m,const char *authorHex);
+int rhizome_verify_bundle_privatekey(rhizome_manifest *m);
 int rhizome_queue_ignore_manifest(rhizome_manifest *m,
 				  struct sockaddr_in *peerip,int timeout);
 int rhizome_ignore_manifest_check(rhizome_manifest *m,

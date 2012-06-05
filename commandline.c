@@ -1114,11 +1114,6 @@ int app_config_get(int argc, const char *const *argv, struct command_line_option
   return 0;
 }
 
-int cli_optional_sid(const char *arg)
-{
-  return !arg[0] || validateSid(arg);
-}
-
 int app_rhizome_hash_file(int argc, const char *const *argv, struct command_line_option *o)
 {
   /* compute hash of file. We do this without a manifest, so it will necessarily
@@ -1133,13 +1128,29 @@ int app_rhizome_hash_file(int argc, const char *const *argv, struct command_line
   return 0;
 }
 
+int cli_optional_sid(const char *arg)
+{
+  return !arg[0] || validateSid(arg);
+}
+
+int cli_optional_bundle_key(const char *arg)
+{
+  return !arg[0] || rhizome_str_is_bundle_key(arg);
+}
+
 int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_option *o)
 {
-  const char *filepath, *manifestpath, *authorSid, *pin;
+  const char *filepath, *manifestpath, *authorSid, *pin, *bskhex;
   cli_arg(argc, argv, o, "filepath", &filepath, NULL, "");
-  cli_arg(argc, argv, o, "author_sid", &authorSid, cli_optional_sid, "");
+  if (cli_arg(argc, argv, o, "author_sid", &authorSid, cli_optional_sid, "") == -1)
+    return -1;
   cli_arg(argc, argv, o, "pin", &pin, NULL, "");
   cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "");
+  if (cli_arg(argc, argv, o, "bsk", &bskhex, cli_optional_bundle_key, "") == -1)
+    return -1;
+  unsigned char bsk[RHIZOME_BUNDLE_KEY_STRLEN + 1];
+  if (bskhex[0] && stowBytes(bsk, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
+    return -1;
   if (create_serval_instance_dir() == -1)
     return -1;
   if (!(keyring = keyring_open_with_pins((char *)pin)))
@@ -1193,23 +1204,29 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
     }
   }
 
-  /* bind an ID for the manifest, and also bind the file.
-     Then finalise the manifest.
-
+  /* Bind an ID to the manifest, and also bind the file.  Then finalise the manifest.
      But if the manifest already contains an ID, don't override it. */
   if (rhizome_manifest_get(m, "id", NULL, 0)==NULL) {
-    if (rhizome_manifest_bind_id(m,authorSid)) {
-      rhizome_manifest_free(m); m=NULL;
+    if (rhizome_manifest_bind_id(m, authorSid)) {
+      rhizome_manifest_free(m);
+      m = NULL;
       return WHY("Could not bind manifest to an ID");
+    }
+  } else if (bskhex[0]) {
+    memcpy(m->cryptoSignSecret, bsk, RHIZOME_BUNDLE_KEY_BYTES);
+    if (rhizome_verify_bundle_privatekey(m) == -1) {
+      rhizome_manifest_free(m);
+      m = NULL;
+      return WHY("Incorrect BID secret key.");
     }
   } else {
     /* User supplied manifest has a BID, so see if we can extract the
        private key from a BK entry */
-    if (rhizome_extract_privatekey(m,authorSid))
-      {
-	rhizome_manifest_free(m); m=NULL;
-	return WHY("Could not extract BID secret key. Does the manifest have a BK, did you supply the correct author SID?");
-      }
+    if (rhizome_extract_privatekey(m,authorSid) == -1) {
+      rhizome_manifest_free(m);
+      m = NULL;
+      return WHY("Could not extract BID secret key. Does the manifest have a BK, did you supply the correct author SID?");
+    }
   }
 #warning need to sanely determine whether to encrypt a file
 #warning payload encryption disabled for now
@@ -1252,10 +1269,16 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   if (service) {
     cli_puts("service"); cli_delim(":");    cli_puts(service); cli_delim("\n");
   }
-  char bid[RHIZOME_MANIFEST_ID_STRLEN + 1];
-  rhizome_bytes_to_hex_upper(mwritten->cryptoSignPublic, bid, 
-			     RHIZOME_MANIFEST_ID_BYTES);
-  cli_puts("manifestid"); cli_delim(":");   cli_puts(bid); cli_delim("\n");
+  {
+    char bid[RHIZOME_MANIFEST_ID_STRLEN + 1];
+    rhizome_bytes_to_hex_upper(mwritten->cryptoSignPublic, bid, RHIZOME_MANIFEST_ID_BYTES);
+    cli_puts("manifestid"); cli_delim(":");   cli_puts(bid); cli_delim("\n");
+  }
+  {
+    char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
+    rhizome_bytes_to_hex_upper(mwritten->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
+    cli_puts("secret"); cli_delim(":");       cli_puts(secret); cli_delim("\n");
+  }
   cli_puts("filehash"); cli_delim(":");	    cli_puts(mwritten->fileHexHash); cli_delim("\n");
   cli_puts("filesize"); cli_delim(":");	    cli_printf("%lld", mwritten->fileLength); cli_delim("\n");
   const char *name = rhizome_manifest_get(mwritten, "name", NULL, 0);
@@ -1313,20 +1336,20 @@ int cli_fileid(const char *arg)
   return rhizome_str_is_file_hash(arg);
 }
 
-int cli_bundlekey(const char *arg)
+int cli_optional_bundle_crypt_key(const char *arg)
 {
-  return rhizome_str_is_bundle_crypt_key(arg);
+  return !arg[0] || rhizome_str_is_bundle_crypt_key(arg);
 }
 
 int app_rhizome_extract_file(int argc, const char *const *argv, struct command_line_option *o)
 {
   const char *fileid, *filepath, *keyhex;
-  unsigned char key[RHIZOME_CRYPT_KEY_STRLEN + 1];
   if (cli_arg(argc, argv, o, "fileid", &fileid, cli_fileid, NULL)
    || cli_arg(argc, argv, o, "filepath", &filepath, NULL, "") == -1)
     return -1;
-  cli_arg(argc, argv, o, "key", &keyhex, cli_bundlekey, NULL);
-  if (keyhex && stowBytes(key, keyhex, RHIZOME_CRYPT_KEY_BYTES) == -1)
+  cli_arg(argc, argv, o, "key", &keyhex, cli_optional_bundle_crypt_key, "");
+  unsigned char key[RHIZOME_CRYPT_KEY_STRLEN + 1];
+  if (keyhex[0] && stowBytes(key, keyhex, RHIZOME_CRYPT_KEY_BYTES) == -1)
     return -1;
   /* Ensure the Rhizome database exists and is open */
   if (create_serval_instance_dir() == -1)
@@ -1337,7 +1360,7 @@ int app_rhizome_extract_file(int argc, const char *const *argv, struct command_l
      We don't provide a decryption key here, because we don't know it.
      (We probably should allow the user to provide one).
   */
-  int ret = rhizome_retrieve_file(fileid, filepath, keyhex ? key : NULL);
+  int ret = rhizome_retrieve_file(fileid, filepath, keyhex[0] ? key : NULL);
   switch (ret) {
     case 0: ret = 1; break;
     case 1: ret = 0; break;
@@ -1696,7 +1719,7 @@ command_line_option command_line_options[]={
    "Get specified configuration variable."},
   {app_rhizome_hash_file,{"rhizome","hash","file","<filepath>",NULL},CLIFLAG_STANDALONE,
    "Compute the Rhizome hash of a file"},
-  {app_rhizome_add_file,{"rhizome","add","file","<author_sid>","<pin>","<filepath>","[<manifestpath>]",NULL},CLIFLAG_STANDALONE,
+  {app_rhizome_add_file,{"rhizome","add","file","<author_sid>","<pin>","<filepath>","[<manifestpath>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,
    "Add a file to Rhizome and optionally write its manifest to the given path"},
   {app_rhizome_list,{"rhizome","list","[<service>]","[<sender_sid>]","[<recipient_sid>]","[<offset>]","[<limit>]",NULL},CLIFLAG_STANDALONE,
    "List all manifests and files in Rhizome"},
