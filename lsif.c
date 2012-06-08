@@ -184,34 +184,45 @@ lsif(void) {
 #endif
 
 #ifdef HAVE_IFADDRS_H
-int doifaddrs(void) {
-  struct ifaddrs *ifaddr,*ifa;
-  int family;
+int
+doifaddrs(void) {
+  struct ifaddrs	*ifaddr, *ifa;
+  char			addrtxt[INET_ADDRSTRLEN], bcasttxt[INET_ADDRSTRLEN];
+  char 			*name;
+  struct sockaddr_in	local, netmask, broadcast;
   
   if (debug & DEBUG_OVERLAYINTERFACES) INFOF("called");
   
-  if (getifaddrs(&ifaddr) == -1)  {
-    WHY_perror("getifaddr()");
-    return WHY("getifaddrs() failed");
-  }
+  if (getifaddrs(&ifaddr) == -1)
+    return WHY_perror("getifaddr()");
 
-  /* Check through actual network interfaces */
-  for (ifa=ifaddr;ifa!=NULL;ifa=ifa->ifa_next) {
-    family=ifa->ifa_addr->sa_family;
-    switch(family) {
-    case AF_INET: 
-      {
-	unsigned char *name=(unsigned char *)ifa->ifa_name;
-	struct sockaddr_in local=*(struct sockaddr_in *)ifa->ifa_addr;
-	struct sockaddr_in netmask=*(struct sockaddr_in *)ifa->ifa_netmask;
-	struct sockaddr_in broadcast=local;
-	broadcast.sin_addr.s_addr|=(~netmask.sin_addr.s_addr);
-	if (debug&DEBUG_OVERLAYINTERFACES) printf("%s: %08x %08x %08x\n",name,local.sin_addr.s_addr,netmask.sin_addr.s_addr,broadcast.sin_addr.s_addr);
-	overlay_interface_register(name,local,broadcast);
-
-	break;
-      }
+  for (ifa = ifaddr; ifa != NULL ; ifa = ifa->ifa_next) {
+    /* We're only interested in IPv4 addresses */
+    if (ifa->ifa_addr->sa_family != AF_INET) {
+      if (debug & DEBUG_OVERLAYINTERFACES) INFOF("Skipping non-AF_INET address on %s", ifa->ifa_name);
+      continue;
     }
+    
+    /* Not broadcast? Not interested.. */
+    if ((ifa->ifa_flags & IFF_BROADCAST) == 0) {
+      if (debug & DEBUG_OVERLAYINTERFACES) INFOF("Skipping non-broadcast address on %s", ifa->ifa_name);
+      continue;
+    }
+
+    name = ifa->ifa_name;
+    local = *(struct sockaddr_in *)ifa->ifa_addr;
+    netmask = *(struct sockaddr_in *)ifa->ifa_netmask;
+    broadcast = local;
+  
+    /* Compute broadcast address */
+    broadcast.sin_addr.s_addr |= (~netmask.sin_addr.s_addr);
+
+    assert(inet_ntop(AF_INET, (const void *)&local.sin_addr, addrtxt, INET_ADDRSTRLEN) != NULL);
+    assert(inet_ntop(AF_INET, (const void *)&broadcast.sin_addr, bcasttxt, INET_ADDRSTRLEN) != NULL);
+
+    if (debug & DEBUG_OVERLAYINTERFACES) INFOF("name=%s addr=%s broad=%s", name, addrtxt, bcasttxt);
+
+    overlay_interface_register(name,local,broadcast);
   }
   freeifaddrs(ifaddr);
 
