@@ -699,10 +699,8 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
 	const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
 	if (service[0] && !(blob_service && strcasecmp(service, blob_service) == 0))
 	  match = 0;
-	
 	const char *blob_sender = rhizome_manifest_get(m, "sender", NULL, 0);
 	const char *blob_recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
-	
 	if (match && sender_sid[0]) {
 	  if (!(blob_sender && strcasecmp(sender_sid, blob_sender) == 0))
 	    match = 0;
@@ -711,7 +709,6 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
 	  if (!(blob_recipient && strcasecmp(recipient_sid, blob_recipient) == 0))
 	    match = 0;
 	}
-	
 	if (match) {
 	  const char *blob_name = rhizome_manifest_get(m, "name", NULL, 0);
 	  long long blob_date = rhizome_manifest_get_ll(m, "date");
@@ -938,10 +935,7 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
 
 void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCount)
 {
-  int i=0;
-  for(i = 0; i != byteCount * 2 ; ++i)
-    out[i] = nybltochar_upper((in[i >> 1] >> (4 - 4 * (i & 1))) & 0xf);
-  out[i] = '\0';
+  (void) tohex(out, in, byteCount);
 }
 
 int rhizome_update_file_priority(const char *fileid)

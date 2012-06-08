@@ -1314,7 +1314,7 @@ unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
   return NULL;
 }
 
-int keyring_find_sid(keyring_file *k,int *cn,int *in,int *kp,unsigned char *sid)
+int keyring_find_sid(keyring_file *k,int *cn,int *in,int *kp, const unsigned char *sid)
 {
   if (keyring_sanitise_position(k,cn,in,kp)) return 0;
 

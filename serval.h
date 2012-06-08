@@ -256,7 +256,7 @@ int keyring_set_did(keyring_identity *id,char *did,char *name);
 int keyring_sanitise_position(keyring_file *k,int *cn,int *in,int *kp);
 int keyring_next_identity(keyring_file *k,int *cn,int *in,int *kp);
 int keyring_find_did(keyring_file *k,int *cn,int *in,int *kp,char *did);
-int keyring_find_sid(keyring_file *k,int *cn,int *in,int *kp,unsigned char *sid);
+int keyring_find_sid(keyring_file *k,int *cn,int *in,int *kp, const unsigned char *sid);
 unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
 					unsigned char **sas_public);
 unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid);
@@ -385,8 +385,6 @@ extern struct mphlr_variable vars[];
 #define ACTION_PAD 0xfe
 #define ACTION_EOT 0xff
 
-extern int hexdigit[16];
-
 /* Make sure we have space to put bytes of the packet as we go along */
 #define CHECK_PACKET_LEN(B) {if (((*packet_len)+(B))>=packet_maxlen) { return WHY("Packet composition ran out of space."); } }
 
@@ -399,9 +397,12 @@ int confParseBoolean(const char *text, const char *option_name);
 
 int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
 		struct sockaddr *recvaddr,unsigned int *recvaddrlen);
+
+char *tohex(char *dstHex, const unsigned char *srcBinary, size_t bytes);
+size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t bytes);
+int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t bytes);
 int validateSid(const char *sid);
 int stowSid(unsigned char *packet, int ofs, const char *sid);
-int stowBytes(unsigned char *packet, const char *in,int count);
 int stowDid(unsigned char *packet,int *ofs,char *did);
 int isFieldZeroP(unsigned char *packet,int start,int count);
 void srandomdev();
@@ -762,6 +763,9 @@ void vlogMessage(int level, const char *file, unsigned int line, const char *fun
 long long debugFlagMask(const char *flagname);
 char *catv(const char *data, char *buf, size_t len);
 int dump(char *name,unsigned char *addr,int len);
+
+#define alloca_tohex(buf,len)   tohex((char *)alloca((len)*2+1), (buf), (len))
+#define alloca_tohex_sid(sid)   alloca_tohex((sid), SID_SIZE)
 
 const char *trimbuildpath(const char *s);
 

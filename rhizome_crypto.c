@@ -121,7 +121,7 @@ int rhizome_find_keypair_bytes(unsigned char *p,unsigned char *s) {
 }
 #endif
 
-int rhizome_bk_xor(const char *author,
+int rhizome_bk_xor(const unsigned char *authorSid, // binary
 		   unsigned char bid[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES],
 		   unsigned char bkin[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES],
 		   unsigned char bkout[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES])
@@ -130,11 +130,9 @@ int rhizome_bk_xor(const char *author,
       crypto_hash_sha512_BYTES)
     return WHY("BK needs to be longer than it can be");
 
-  unsigned char authorSid[SID_SIZE];
-  if (stowSid(authorSid,0,author)) return WHYF("stowSid(%s) failed", author);
   int cn=0,in=0,kp=0;
   if (!keyring_find_sid(keyring,&cn,&in,&kp,authorSid)) 
-    return WHYF("keyring_find_sid() couldn't find %s.  Have you unlocked that identity?", author);
+    return WHYF("keyring_find_sid() couldn't find %s.  Have you unlocked that identity?", alloca_tohex_sid(authorSid));
   for(kp=0;kp<keyring->contexts[cn]->identities[in]->keypair_count;kp++)
     if (keyring->contexts[cn]->identities[in]->keypairs[kp]->type==KEYTYPE_RHIZOME)
       break;
@@ -172,23 +170,19 @@ int rhizome_bk_xor(const char *author,
    the supplied SID is correct.
 
 */
-int rhizome_extract_privatekey(rhizome_manifest *m, const char *authorHex)
+int rhizome_extract_privatekey(rhizome_manifest *m, const unsigned char *authorSid)
 {
-  if (!authorHex) return -1; // WHY("No author SID supplied");
   char *bk = rhizome_manifest_get(m, "BK", NULL, 0);
-  if (!bk) return WHY("Cannot obtain private key as manifest lacks BK field");
-  
-  unsigned char bkBytes[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES];
-  if (stowBytes(bkBytes,bk,crypto_sign_edwards25519sha512batch_SECRETKEYBYTES))
-    return WHY("Failed to make packed version of BK.  Is it a valid hex string of the correct length?");
-
-  if (rhizome_bk_xor(authorHex,
+  if (!bk) return WHY("missing BK field");
+  unsigned char bkBytes[RHIZOME_BUNDLE_KEY_BYTES];
+  if (fromhexstr(bkBytes, bk, RHIZOME_BUNDLE_KEY_BYTES) == -1)
+    return WHYF("invalid BK field: %s", bk);
+  if (rhizome_bk_xor(authorSid,
 		     m->cryptoSignPublic,
 		     bkBytes,
 		     m->cryptoSignSecret))
     return WHY("rhizome_bk_xor() failed");
   return rhizome_verify_bundle_privatekey(m);
-
 }
 
 /* Verify the validity of the manifest's sccret key.
@@ -236,17 +230,15 @@ int rhizome_verify_bundle_privatekey(rhizome_manifest *m)
 #endif //!ge25519
 }
 
-rhizome_signature *rhizome_sign_hash(rhizome_manifest *m,const char *author)
+rhizome_signature *rhizome_sign_hash(rhizome_manifest *m, const unsigned char *authorSid)
 {
   unsigned char *hash=m->manifesthash;
   unsigned char *publicKeyBytes=m->cryptoSignPublic;
   
-  if (!m->haveSecret)
-    if (rhizome_extract_privatekey(m,author))
-      {
-	WHY("Cannot find secret key to sign manifest data.");
-	return NULL;
-      }
+  if (!m->haveSecret && rhizome_extract_privatekey(m, authorSid) == -1) {
+    WHY("Cannot find secret key to sign manifest data.");
+    return NULL;
+  }
 
   /* Signature is formed by running crypto_sign_edwards25519sha512batch() on the 
      hash of the manifest.  The signature actually contains the hash, so to save

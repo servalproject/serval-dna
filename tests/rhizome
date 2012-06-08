@@ -64,7 +64,7 @@ assert_rhizome_list() {
    local filename
    for filename; do
       unpack_manifest_for_grep "$filename"
-      assertStdoutGrep --matches=1 "^$re_service:$re_manifestid:.*:$re_filehash:$re_sender:$re_recipient:$re_name\$"
+      assertStdoutGrep --matches=1 "^$re_service:$re_manifestid:.*:$re_filesize:$re_filehash:$re_sender:$re_recipient:$re_name\$"
    done
 }
 
@@ -78,19 +78,20 @@ assert_stdout_add_file() {
    assertStdoutGrep --matches=1 "^manifestid:$re_manifestid\$"
    assertStdoutGrep --matches=1 "^secret:$re_secret\$"
    assertStdoutGrep --matches=1 "^filehash:$re_filehash\$"
-   assertStdoutGrep --matches=1 "^filesize:$re_size\$"
+   assertStdoutGrep --matches=1 "^filesize:$re_filesize\$"
 }
 
 unpack_manifest_for_grep() {
    local filename="$1"
    re_service="$rexp_service"
    if [ -n "$filename" ]; then
-      re_size=$(( $(cat "$filename" | wc -c) + 0 ))
+      re_filesize=$(( $(cat "$filename" | wc -c) + 0 ))
    else
-      re_size=0
+      re_filesize=0
    fi
    compute_filehash re_filehash "$filename"
    re_manifestid="$rexp_manifestid"
+   re_version="$rexp_version"
    re_secret="$rexp_bundlesecret"
    re_name=$(escape_grep_basic "${filename##*/}")
    # If there is a manifest file that looks like it matches this payload
@@ -98,6 +99,7 @@ unpack_manifest_for_grep() {
    local filehash=$(sed -n -e '/^filehash=/s///p' "$filename.manifest" 2>/dev/null)
    if [ "$filehash" = "$re_filehash" ]; then
       re_manifestid=$(sed -n -e '/^id=/s///p' "$filename.manifest")
+      re_version=$(sed -n -e '/^version=/s///p' "$filename.manifest")
       re_service=$(sed -n -e '/^service=/s///p' "$filename.manifest")
       re_service=$(escape_grep_basic "$re_service")
       re_sender=$(sed -n -e '/^sender=/s///p' "$filename.manifest")
@@ -255,10 +257,10 @@ test_AddNonExistManifest() {
    assertGrep file1.manifest "^BK=$rexp_bundlekey\$"
    assertGrep file1.manifest '^name=file1$'
    assertGrep file1.manifest "^date=$rexp_date\$"
-   assertGrep file1.manifest "^version=$rexp_version\$"
+   assertGrep file1.manifest "^version=$re_version\$"
    assertGrep file1.manifest "^id=$re_manifestid\$"
    assertGrep file1.manifest "^filehash=$re_filehash\$"
-   assertGrep file1.manifest "^filesize=$re_size\$"
+   assertGrep file1.manifest "^filesize=$re_filesize\$"
 }
 
 doc_AddManifest="Add with minimal manifest file"
@@ -277,11 +279,11 @@ test_AddManifest() {
    assertGrep file1.manifest '^service=file$'
    assertGrep file1.manifest "^BK=$rexp_bundlekey\$"
    assertGrep file1.manifest '^name=wah$'
-   assertGrep file1.manifest "^version=$rexp_version\$"
+   assertGrep file1.manifest "^version=$re_version\$"
    assertGrep file1.manifest '^date=12345$'
    assertGrep file1.manifest "^id=$re_manifestid\$"
    assertGrep file1.manifest "^filehash=$re_filehash\$"
-   assertGrep file1.manifest "^filesize=$re_size\$"
+   assertGrep file1.manifest "^filesize=$re_filesize\$"
 }
 
 doc_AddEmpty="Add with empty payload"
@@ -297,7 +299,7 @@ test_AddEmpty() {
    assertGrep .manifest '^service=file$'
    assertGrep .manifest "^BK=$rexp_bundlekey\$"
    assertGrep .manifest '^name=$'
-   assertGrep .manifest "^version=$rexp_version\$"
+   assertGrep .manifest "^version=$re_version\$"
    assertGrep .manifest "^date=$rexp_date\$"
    assertGrep .manifest "^id=$re_manifestid\$"
    assertGrep .manifest "^filehash=$re_filehash\$"

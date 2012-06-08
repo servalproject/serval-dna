@@ -18,8 +18,38 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include <ctype.h>
 
-int hexdigit[16]={'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
+char hexdigit[16] = {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
+
+char *tohex(char *dstHex, const unsigned char *srcBinary, size_t bytes)
+{
+  char *p;
+  for (p = dstHex; bytes--; ++srcBinary) {
+    *p++ = hexdigit[*srcBinary >> 4];
+    *p++ = hexdigit[*srcBinary & 0xf];
+  }
+  *p = '\0';
+  return dstHex;
+}
+
+size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t bytes)
+{
+  size_t count = 0;
+  while (count != bytes) {
+    unsigned char high = hexvalue(*srcHex++);
+    if (high & 0xf0) return -1;
+    unsigned char low = hexvalue(*srcHex++);
+    if (low & 0xf0) return -1;
+    dstBinary[count++] = (high << 4) + low;
+  }
+  return count;
+}
+
+int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t bytes)
+{
+  return (fromhex(dstBinary, srcHex, bytes) == bytes && srcHex[bytes * 2] == '\0') ? 0 : -1;
+}
 
 int extractDid(unsigned char *packet,int *ofs,char *did)
 {
@@ -91,67 +121,47 @@ int stowDid(unsigned char *packet,int *ofs,char *did)
   return 0;
 }
 
-int extractSid(unsigned char *packet,int *ofs,char *sid)
+int extractSid(unsigned char *packet, int *ofs,char *sid)
 {
-  int i=0;
-  int d=0;
-  for(i=0;i<SID_SIZE;i++)
-    {
-      sid[d++]=hexdigit[packet[*ofs]>>4];
-      sid[d++]=hexdigit[packet[*ofs]&0xf];
-      (*ofs)++;
-    }
-  sid[d]=0;
+  (void) tohex(sid, packet + *ofs, SID_SIZE);
+  *ofs += SID_SIZE;
   return 0;
 }
 
 int validateSid(const char *sid)
 {
   if (!sid) {
-    WHY("SID == NULL");
+    WHY("invalid SID == NULL");
     return 0;
   }
-  if (!strcasecmp(sid,"broadcast")) return 1;
-  size_t n = strlen(sid);
-  if (n != SID_STRLEN)
-    { WHYF("Invalid SID (strlen is %u, should be %u)", n, SID_STRLEN); return 0; }
-  const char *s;
-  for (s = sid; *s; ++s)
-    if (hexvalue(*s) == -1)
-      { WHY("SID contains non-hex character"); return 0; }
+  if (strcasecmp(sid, "broadcast") == 0)
+    return 1;
+  const char *s = sid;
+  const char *e = sid + SID_STRLEN;
+  while (s != e && isxdigit(*s))
+    ++s;
+  if (s != e) {
+    if (*s)
+      WHYF("invalid SID, contains non-hex character 0x%02x at offset %d", *s, s - sid);
+    else
+      WHYF("invalid SID, too short (strlen %d)", s - sid);
+    return 0;
+  }
+  if (*s) {
+    WHYF("invalid SID, too long");
+    return 0;
+  }
   return 1;
 }
 
 int stowSid(unsigned char *packet, int ofs, const char *sid)
 {
-
-  int i;
-  if (debug&DEBUG_PACKETFORMATS)
-    printf("Stowing SID \"%s\"\n", sid);
-  if (!validateSid(sid))
-    return WHY("Invalid SID passed in");
-  if (!strcasecmp(sid,"broadcast"))
-    for(i=0;i<32;i++) packet[ofs++]=0xff;
-  else
-    for(i = 0; i != SID_SIZE; ++i) {
-      packet[ofs] = hexvalue(sid[i<<1]) << 4;
-      packet[ofs++] |= hexvalue(sid[(i<<1)+1]);
-    }
-  return 0;
-}
-
-int stowBytes(unsigned char *packet, const char *in,int count)
-{
-  int ofs=0;
-  if (strlen(in)!=(count*2)) 
-    return WHY("Input string is wrong length");
-  int i;
-  for(i = 0; i != count; ++i) {
-    if(hexvalue(in[i<<1])<0) return WHYF("Non-hex char at position %d",i<<1);
-    if(hexvalue(in[(i<<1)+1])<0) return WHYF("Non-hex char at position %d",(i<<1)+1);
-    packet[ofs] = hexvalue(in[i<<1]) << 4;
-    packet[ofs++] |= hexvalue(in[(i<<1)+1]);
-  }
+  if (debug & DEBUG_PACKETFORMATS)
+    printf("stowing SID \"%s\"\n", sid);
+  if (strcasecmp(sid,"broadcast") == 0)
+    memset(packet + ofs, 0xff, SID_SIZE);
+  else if (fromhex(packet + ofs, sid, SID_SIZE) != SID_SIZE || sid[SID_STRLEN] != '\0')
+    return WHY("invalid SID");
   return 0;
 }
 
@@ -165,10 +175,10 @@ char *str_toupper_inplace(char *str)
 
 int hexvalue(unsigned char c)
 {
-  if (c>='0'&&c<='9') return c-'0';
-  if (c>='A'&&c<='F') return c-'A'+10;
-  if (c>='a'&&c<='f') return c-'a'+10;
-  return WHY("Invalid hex digit in SID");
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  return -1;
 }
 
 int packetGetID(unsigned char *packet,int len,char *did,char *sid)
