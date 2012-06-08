@@ -92,7 +92,7 @@ int scrapeProcNetRoute()
 	if (!(d&(~m))) {
 	  local.sin_addr.s_addr=d;
 	  broadcast.sin_addr.s_addr=d|~m;
-	  overlay_interface_register((unsigned char *)name,local,broadcast);
+	  overlay_interface_register(name,local,broadcast);
 	}
       }
 

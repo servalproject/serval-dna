@@ -492,7 +492,7 @@ int overlay_sendto(struct sockaddr_in *recipientaddr,unsigned char *bytes,int le
     return len;
 }
 
-int overlay_interface_register(unsigned char *name,
+int overlay_interface_register(char *name,
 			       struct sockaddr_in local,
 			       struct sockaddr_in broadcast)
 {

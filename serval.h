@@ -1443,7 +1443,7 @@ int overlay_mdp_getmyaddr(int index,unsigned char *sid);
 int overlay_mdp_bind(unsigned char *localaddr,int port); 
 int overlay_route_node_info(overlay_mdp_frame *mdp,
 			    struct sockaddr_un *addr,int addrlen);
-int overlay_interface_register(unsigned char *name,
+int overlay_interface_register(char *name,
 			       struct sockaddr_in local,
 			       struct sockaddr_in broadcast);
 int overlay_queue_dump(overlay_txqueue *q);
