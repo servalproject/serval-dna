@@ -623,10 +623,9 @@ typedef struct overlay_interface {
   int sequence_number;
   /* XXX need recent packet buffers to support the above */
 
-  /* Broadcast address and netmask, if known */
-  /* We really only case about distinct broadcast addresses on interfaces.
-     Also simplifies aliases on interfaces.
-     struct sockaddr_in local_address; */
+  /* Broadcast address and netmask, if known
+     We really only case about distinct broadcast addresses on interfaces.
+     Also simplifies aliases on interfaces. */
   struct sockaddr_in broadcast_address;
 
   /* Not necessarily the real MTU, but the largest frame size we are willing to TX on this interface.
@@ -1500,6 +1499,7 @@ int encodeAndDispatchRecordedAudio(int fd,int callSessionToken,
 				   int sampleBytes);
 int scrapeProcNetRoute();
 int lsif();
+int doifaddrs();
 int bufferAudioForPlayback(int codec,long long start_time,long long end_time,
 			   unsigned char *data,int dataLen);
 int startAudio();

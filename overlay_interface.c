@@ -556,6 +556,8 @@ int overlay_interface_register(unsigned char *name,
 time_t overlay_last_interface_discover_time=0;
 int overlay_interface_discover()
 {
+  int have_route;
+  
   /* Don't waste too much time and effort on interface discovery,
      especially if we can't attach to a given interface for some reason. */
   if (overlay_last_interface_discover_time>time(0))
@@ -595,45 +597,27 @@ int overlay_interface_discover()
     }
     r=r->next;
   }
+  have_route = 1;
+  
+#ifdef HAVE_IFADDRS_H
+  if (have_route != 0)
+    have_route = doifaddrs();
+#endif
 
 #ifdef SIOCGIFCONF
-  lsif();
+  if (have_route != 0)
+    have_route = lsif();
 #endif
 
 #ifdef linux
-  scrapeProcNetRoute();
+  if (have_route != 0)
+    have_route = scrapeProcNetRoute();
 #endif
 
-#ifdef HAVE_IFADDRS_H
-  struct ifaddrs *ifaddr,*ifa;
-  int family;
+  if (have_route != 0) {
+    FATAL("Unable to get any routing information");
+  }
   
-  if (getifaddrs(&ifaddr) == -1)  {
-    WHY_perror("getifaddr()");
-    return WHY("getifaddrs() failed");
-  }
-
-  /* Check through actual network interfaces */
-  for (ifa=ifaddr;ifa!=NULL;ifa=ifa->ifa_next) {
-    family=ifa->ifa_addr->sa_family;
-    switch(family) {
-    case AF_INET: 
-      {
-	unsigned char *name=(unsigned char *)ifa->ifa_name;
-	struct sockaddr_in local=*(struct sockaddr_in *)ifa->ifa_addr;
-	struct sockaddr_in netmask=*(struct sockaddr_in *)ifa->ifa_netmask;
-	struct sockaddr_in broadcast=local;
-	broadcast.sin_addr.s_addr|=(~netmask.sin_addr.s_addr);
-	if (debug&DEBUG_OVERLAYINTERFACES) printf("%s: %08x %08x %08x\n",name,local.sin_addr.s_addr,netmask.sin_addr.s_addr,broadcast.sin_addr.s_addr);
-	overlay_interface_register(name,local,broadcast);
-
-	break;
-      }
-    }
-  }
-  freeifaddrs(ifaddr);
-#endif
-
   return 0;
 }
 
