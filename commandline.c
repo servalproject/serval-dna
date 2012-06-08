@@ -1298,6 +1298,74 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   return ret;
 }
 
+int app_rhizome_import_bundle(int argc, const char *const *argv, struct command_line_option *o)
+{
+  const char *filepath, *manifestpath;
+  cli_arg(argc, argv, o, "filepath", &filepath, NULL, "");
+  cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "");
+  if (rhizome_opendb() == -1)
+    return -1;
+  rhizome_manifest *m = rhizome_new_manifest();
+  if (!m)
+    return WHY("Out of manifests.");
+  int status = -1;
+  if (rhizome_read_manifest_file(m, manifestpath, 0) == -1) {
+    status = WHY("could not read manifest file");
+  } else if (rhizome_manifest_verify(m) == -1) {
+    status = WHY("Could not verify manifest file.");
+  } else {
+    /* Add the manifest and its associated file to the Rhizome database. */
+    m->dataFileName = strdup(filepath);
+    if (rhizome_manifest_check_file(m))
+      status = WHY("file does not belong to manifest");
+    else {
+      int ret = rhizome_manifest_check_duplicate(m, NULL);
+      if (ret == -1)
+	status = WHY("rhizome_manifest_check_duplicate() failed");
+      else if (ret) {
+	INFO("Duplicate found in store");
+	status = 1;
+      } else if (rhizome_add_manifest(m, 1) == -1) { // ttl = 1
+	status = WHY("rhizome_add_manifest() failed");
+      } else {
+	status = 0;
+      }
+      if (status != -1) {
+	const char *service = rhizome_manifest_get(m, "service", NULL, 0);
+	if (service) {
+	  cli_puts("service");
+	  cli_delim(":");
+	  cli_puts(service);
+	  cli_delim("\n");
+	}
+	{
+	  cli_puts("manifestid");
+	  cli_delim(":");
+	  cli_puts(alloca_tohex(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES));
+	  cli_delim("\n");
+	}
+	cli_puts("filehash");
+	cli_delim(":");
+	cli_puts(m->fileHexHash);
+	cli_delim("\n");
+	cli_puts("filesize");
+	cli_delim(":");
+	cli_printf("%lld", m->fileLength);
+	cli_delim("\n");
+	const char *name = rhizome_manifest_get(m, "name", NULL, 0);
+	if (name) {
+	  cli_puts("name");
+	  cli_delim(":");
+	  cli_puts(name);
+	  cli_delim("\n");
+	}
+      }
+    }
+  }
+  rhizome_manifest_free(m);
+  return status;
+}
+
 int cli_manifestid(const char *arg)
 {
   return rhizome_str_is_manifest_id(arg);
@@ -1387,7 +1455,8 @@ int cli_uint(const char *arg)
 
 int app_rhizome_list(int argc, const char *const *argv, struct command_line_option *o)
 {
-  const char *service, *sender_sid, *recipient_sid, *offset, *limit;
+  const char *pin, *service, *sender_sid, *recipient_sid, *offset, *limit;
+  cli_arg(argc, argv, o, "pin,pin...", &pin, NULL, "");
   cli_arg(argc, argv, o, "service", &service, NULL, "");
   cli_arg(argc, argv, o, "sender_sid", &sender_sid, cli_optional_sid, "");
   cli_arg(argc, argv, o, "recipient_sid", &recipient_sid, cli_optional_sid, "");
@@ -1395,6 +1464,8 @@ int app_rhizome_list(int argc, const char *const *argv, struct command_line_opti
   cli_arg(argc, argv, o, "limit", &limit, cli_uint, "0");
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
+    return -1;
+  if (!(keyring = keyring_open_with_pins(pin)))
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
@@ -1404,7 +1475,7 @@ int app_rhizome_list(int argc, const char *const *argv, struct command_line_opti
 int app_keyring_create(int argc, const char *const *argv, struct command_line_option *o)
 {
   const char *pin;
-  cli_arg(argc, argv, o, "pin,pin ...", &pin, NULL, "");
+  cli_arg(argc, argv, o, "pin,pin...", &pin, NULL, "");
   if (!keyring_open_with_pins(pin))
     return -1;
   return 0;
@@ -1413,7 +1484,7 @@ int app_keyring_create(int argc, const char *const *argv, struct command_line_op
 int app_keyring_list(int argc, const char *const *argv, struct command_line_option *o)
 {
   const char *pin;
-  cli_arg(argc, argv, o, "pin,pin ...", &pin, NULL, "");
+  cli_arg(argc, argv, o, "pin,pin...", &pin, NULL, "");
   keyring_file *k = keyring_open_with_pins(pin);
   if (!k)
     return -1;
@@ -1470,7 +1541,7 @@ int app_keyring_set_did(int argc, const char *const *argv, struct command_line_o
   if (strlen(did)>31) return WHY("DID too long (31 digits max)");
   if (strlen(name)>63) return WHY("Name too long (31 char max)");
 
-  if (!(keyring = keyring_open_with_pins((char *)pin)))
+  if (!(keyring = keyring_open_with_pins(pin)))
     return -1;
 
   unsigned char packedSid[SID_SIZE];
@@ -1728,7 +1799,9 @@ command_line_option command_line_options[]={
    "Compute the Rhizome hash of a file"},
   {app_rhizome_add_file,{"rhizome","add","file","<author_sid>","<pin>","<filepath>","[<manifestpath>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,
    "Add a file to Rhizome and optionally write its manifest to the given path"},
-  {app_rhizome_list,{"rhizome","list","[<service>]","[<sender_sid>]","[<recipient_sid>]","[<offset>]","[<limit>]",NULL},CLIFLAG_STANDALONE,
+  {app_rhizome_import_bundle,{"rhizome","import","bundle","<filepath>","<manifestpath>",NULL},CLIFLAG_STANDALONE,
+   "Import a payload/manifest pair into Rhizome"},
+  {app_rhizome_list,{"rhizome","list","<pin,pin...>","[<service>]","[<sender_sid>]","[<recipient_sid>]","[<offset>]","[<limit>]",NULL},CLIFLAG_STANDALONE,
    "List all manifests and files in Rhizome"},
   {app_rhizome_extract_manifest,{"rhizome","extract","manifest","<manifestid>","[<manifestpath>]",NULL},CLIFLAG_STANDALONE,
    "Extract a manifest from Rhizome and write it to the given path"},
@@ -1736,7 +1809,7 @@ command_line_option command_line_options[]={
    "Extract a file from Rhizome and write it to the given path"},
   {app_keyring_create,{"keyring","create",NULL},0,
    "Create a new keyring file."},
-  {app_keyring_list,{"keyring","list","[<pin,pin ...>]",NULL},CLIFLAG_STANDALONE,
+  {app_keyring_list,{"keyring","list","[<pin,pin...>]",NULL},CLIFLAG_STANDALONE,
    "List identites in specified key ring that can be accessed using the specified PINs"},
   {app_keyring_add,{"keyring","add","[<pin>]",NULL},CLIFLAG_STANDALONE,
    "Create a new identity in the keyring protected by the provided PIN"},

@@ -239,6 +239,7 @@ int rhizome_manifest_check_file(rhizome_manifest *m_in)
   if (rhizome_hash_file(m_in,m_in->dataFileName, hexhashbuf))
     return WHY("Could not hash file.");
   memcpy(&m_in->fileHexHash[0], &hexhashbuf[0], sizeof hexhashbuf);
+  m_in->fileHashedP = 1;
   
   /* Check that payload hash matches manifest */
   const char *mhexhash = rhizome_manifest_get(m_in, "filehash", NULL, 0);

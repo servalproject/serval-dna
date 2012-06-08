@@ -253,10 +253,12 @@ keyring_file *keyring_open_with_pins(const char *pinlist);
 int keyring_enter_pin(keyring_file *k, const char *pin);
 int keyring_enter_pins(keyring_file *k, const char *pinlist);
 int keyring_set_did(keyring_identity *id,char *did,char *name);
-int keyring_sanitise_position(keyring_file *k,int *cn,int *in,int *kp);
-int keyring_next_identity(keyring_file *k,int *cn,int *in,int *kp);
-int keyring_find_did(keyring_file *k,int *cn,int *in,int *kp,char *did);
-int keyring_find_sid(keyring_file *k,int *cn,int *in,int *kp, const unsigned char *sid);
+int keyring_sanitise_position(const keyring_file *k,int *cn,int *in,int *kp);
+int keyring_next_keytype(const keyring_file *k, int *cn, int *in, int *kp, int keytype);
+int keyring_next_identity(const keyring_file *k,int *cn,int *in,int *kp);
+int keyring_identity_find_keytype(const keyring_file *k, int cn, int in, int keytype);
+int keyring_find_did(const keyring_file *k,int *cn,int *in,int *kp,char *did);
+int keyring_find_sid(const keyring_file *k,int *cn,int *in,int *kp, const unsigned char *sid);
 unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
 					unsigned char **sas_public);
 unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid);

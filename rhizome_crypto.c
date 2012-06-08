@@ -121,42 +121,45 @@ int rhizome_find_keypair_bytes(unsigned char *p,unsigned char *s) {
 }
 #endif
 
+/*
+   Return -1 if an error occurs.
+   Return 0 if the author's private key is located and the XOR is performed successfully.
+   Return 1 if the author's identity is not in the keyring.
+   Return 2 if the author's identity is in the keyring but has no rhizome secret.
+*/
 int rhizome_bk_xor(const unsigned char *authorSid, // binary
 		   unsigned char bid[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES],
 		   unsigned char bkin[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES],
 		   unsigned char bkout[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES])
 {
-  if (crypto_sign_edwards25519sha512batch_SECRETKEYBYTES>
-      crypto_hash_sha512_BYTES)
+  if (crypto_sign_edwards25519sha512batch_SECRETKEYBYTES > crypto_hash_sha512_BYTES)
     return WHY("BK needs to be longer than it can be");
-
   int cn=0,in=0,kp=0;
-  if (!keyring_find_sid(keyring,&cn,&in,&kp,authorSid)) 
-    return WHYF("keyring_find_sid() couldn't find %s.  Have you unlocked that identity?", alloca_tohex_sid(authorSid));
-  for(kp=0;kp<keyring->contexts[cn]->identities[in]->keypair_count;kp++)
-    if (keyring->contexts[cn]->identities[in]->keypairs[kp]->type==KEYTYPE_RHIZOME)
-      break;
-  if (kp>=keyring->contexts[cn]->identities[in]->keypair_count)
-    return WHY("Identity has no Rhizome Secret");
+  if (!keyring_find_sid(keyring,&cn,&in,&kp,authorSid)) {
+    if (debug & DEBUG_RHIZOME) DEBUG("identity not in keyring");
+    return 1;
+  }
+  kp = keyring_identity_find_keytype(keyring, cn, in, KEYTYPE_RHIZOME);
+  if (kp == -1) {
+    if (debug & DEBUG_RHIZOME) DEBUG("identity has no Rhizome Secret");
+    return 2;
+  }
   int rs_len=keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key_len;
-  unsigned char *rs=keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key;
   if (rs_len<16||rs_len>1024)
-    return WHYF("Rhizome Secret is too short or too long (length=%d)",rs_len);
-
+    return WHYF("invalid Rhizome Secret: length=%d", rs_len);
+  unsigned char *rs=keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key;
   int combined_len=rs_len+crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES;
   unsigned char buffer[combined_len];
   bcopy(&rs[0],&buffer[0],rs_len);
   bcopy(&bid[0],&buffer[rs_len],crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
   unsigned char hash[crypto_hash_sha512_BYTES];
   crypto_hash_sha512(hash,buffer,combined_len);
-
   int len=crypto_sign_edwards25519sha512batch_SECRETKEYBYTES;
   int i;
   for(i=0;i<len;i++)
     bkout[i]=bkin[i]^hash[i];
   bzero(&buffer[0],combined_len);
   bzero(&hash[0],crypto_hash_sha512_BYTES);
-
   return 0;
 }
 
@@ -177,12 +180,52 @@ int rhizome_extract_privatekey(rhizome_manifest *m, const unsigned char *authorS
   unsigned char bkBytes[RHIZOME_BUNDLE_KEY_BYTES];
   if (fromhexstr(bkBytes, bk, RHIZOME_BUNDLE_KEY_BYTES) == -1)
     return WHYF("invalid BK field: %s", bk);
-  if (rhizome_bk_xor(authorSid,
-		     m->cryptoSignPublic,
-		     bkBytes,
-		     m->cryptoSignSecret))
-    return WHY("rhizome_bk_xor() failed");
-  return rhizome_verify_bundle_privatekey(m);
+  switch (rhizome_bk_xor(authorSid, m->cryptoSignPublic, bkBytes, m->cryptoSignSecret)) {
+    case -1:
+      return WHY("rhizome_bk_xor() failed");
+    case 0:
+      return rhizome_verify_bundle_privatekey(m);
+    default:
+      return WHYF("Rhizome secret for %s not found. (Have you unlocked the identity?)", alloca_tohex_sid(authorSid));
+  }
+}
+
+/*
+   Test to see if the given manifest was created (signed) by any unlocked identity currently in the
+   keyring.
+   Returns -1 if an error occurs, eg, the manifest contains an invalid BK field.
+   Return 0 if the manifest's BK field was produced by any currently unlocked SID.
+   Returns 1 if the manifest has no BK field.
+   Returns 2 otherwise.
+ */
+int rhizome_is_self_signed(rhizome_manifest *m)
+{
+  char *bk = rhizome_manifest_get(m, "BK", NULL, 0);
+  if (!bk) {
+    if (debug & DEBUG_RHIZOME) DEBUGF("missing BK field");
+    return 1;
+  }
+  unsigned char bkBytes[RHIZOME_BUNDLE_KEY_BYTES];
+  if (fromhexstr(bkBytes, bk, RHIZOME_BUNDLE_KEY_BYTES) == -1)
+    return WHYF("invalid BK field: %s", bk);
+  int cn = 0, in = 0, kp = 0;
+  for (; keyring_next_identity(keyring, &cn, &in, &kp); ++kp) {
+    const unsigned char *authorSid = keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key;
+    if (debug & DEBUG_RHIZOME) DEBUGF("try identity %s", alloca_tohex(authorSid, SID_SIZE));
+    int rkp = keyring_identity_find_keytype(keyring, cn, in, KEYTYPE_RHIZOME);
+    if (rkp != -1) {
+      switch (rhizome_bk_xor(authorSid, m->cryptoSignPublic, bkBytes, m->cryptoSignSecret)) {
+	case -1:
+	  return WHY("rhizome_bk_xor() failed");
+	case 0:
+	  D;
+	  if (rhizome_verify_bundle_privatekey(m))
+	    return 0; // bingo
+	  break;
+      }
+    }
+  }
+  return 2; // not self signed
 }
 
 /* Verify the validity of the manifest's sccret key.
@@ -207,20 +250,16 @@ int rhizome_verify_bundle_privatekey(rhizome_manifest *m)
   ge25519_scalarmult_base(&gepk, &scsk);
   ge25519_pack(pk, &gepk);
   bzero(&scsk,sizeof(scsk));
-  if (memcmp(pk, m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)) {
-    m->haveSecret=0;
-    if (1) {
-      char hex[17];
-      rhizome_bytes_to_hex_upper(m->cryptoSignPublic, hex, 8);
-      WHYF("  stored public key = %s*", hex);
-      rhizome_bytes_to_hex_upper(pk, hex, 8);
-      WHYF("computed public key = %s*", hex);
-    }
-    return WHY("BID secret key decoded from BK was not valid");     
-  } else {
-    m->haveSecret=1;
-    return 0;
+  if (memcmp(pk, m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES) == 0) {
+    m->haveSecret = 1;
+    return 0; // valid
   }
+  m->haveSecret = 0;
+  if (1) {
+    DEBUGF("  stored public key = %s*", alloca_tohex(m->cryptoSignPublic, 8));
+    DEBUGF("computed public key = %s*", alloca_tohex(pk, 8));
+  }
+  return 1; // invalid
 #else //!ge25519
   /* XXX Need to test key by signing and testing signature validity. */
   /* For the time being barf so that the caller does not think we have a validated BK

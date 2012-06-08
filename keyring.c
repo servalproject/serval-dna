@@ -1042,7 +1042,7 @@ int keyring_set_did(keyring_identity *id,char *did,char *name)
   return 0;
 }
 
-int keyring_find_did(keyring_file *k,int *cn,int *in,int *kp,char *did)
+int keyring_find_did(const keyring_file *k,int *cn,int *in,int *kp,char *did)
 {
   if (keyring_sanitise_position(k,cn,in,kp)) return 0;
 
@@ -1069,21 +1069,31 @@ int keyring_find_did(keyring_file *k,int *cn,int *in,int *kp,char *did)
   return 0;
 }
 
-int keyring_next_identity(keyring_file *k,int *cn,int *in,int *kp)
+int keyring_identity_find_keytype(const keyring_file *k, int cn, int in, int keytype)
 {
-  if (keyring_sanitise_position(k,cn,in,kp)) return 0;
+  int kp;
+  for (kp = 0; kp < keyring->contexts[cn]->identities[in]->keypair_count; ++kp)
+    if (keyring->contexts[cn]->identities[in]->keypairs[kp]->type == keytype)
+      return kp;
+  return -1;
+}
 
-  while(1) {
-    if (k->contexts[*cn]->identities[*in]->keypairs[*kp]->type==KEYTYPE_CRYPTOBOX)
+int keyring_next_keytype(const keyring_file *k, int *cn, int *in, int *kp, int keytype)
+{
+  while (!keyring_sanitise_position(k, cn, in, kp)) {
+    if (k->contexts[*cn]->identities[*in]->keypairs[*kp]->type == keytype)
       return 1;
-
-    (*kp)++;
-    if (keyring_sanitise_position(k,cn,in,kp)) return 0;
+    ++*kp;
   }
   return 0;
 }
 
-int keyring_sanitise_position(keyring_file *k,int *cn,int *in,int *kp)
+int keyring_next_identity(const keyring_file *k, int *cn, int *in, int *kp)
+{
+  return keyring_next_keytype(k, cn, in, kp, KEYTYPE_CRYPTOBOX);
+}
+
+int keyring_sanitise_position(const keyring_file *k,int *cn,int *in,int *kp)
 {
   if (!k) return 1;
   /* Sanity check passed in position */
@@ -1314,7 +1324,7 @@ unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
   return NULL;
 }
 
-int keyring_find_sid(keyring_file *k,int *cn,int *in,int *kp, const unsigned char *sid)
+int keyring_find_sid(const keyring_file *k,int *cn,int *in,int *kp, const unsigned char *sid)
 {
   if (keyring_sanitise_position(k,cn,in,kp)) return 0;
 

@@ -281,6 +281,7 @@ int rhizome_bk_xor(const unsigned char *authorSid, // binary
 unsigned char *rhizome_bundle_shared_secret(rhizome_manifest *m);
 int rhizome_extract_privatekey(rhizome_manifest *m, const unsigned char *authorSid);
 int rhizome_verify_bundle_privatekey(rhizome_manifest *m);
+int rhizome_is_self_signed(rhizome_manifest *m);
 int rhizome_queue_ignore_manifest(rhizome_manifest *m,
 				  struct sockaddr_in *peerip,int timeout);
 int rhizome_ignore_manifest_check(rhizome_manifest *m,

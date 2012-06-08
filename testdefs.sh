@@ -51,6 +51,7 @@ set_instance() {
 #    script
 set_instance_vars() {
    instance_name="${1:-default}"
+   echo "# set instance = $instance_name"
    export instance_dir="$TFWTMP/instance/$instance_name"
    mkdir -p "$instance_dir"
    export instance_servald_log="$instance_dir/servald.log"
