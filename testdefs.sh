@@ -9,7 +9,7 @@ servald_build_root="$servald_source_root"
 rexp_sid='[0-9a-fA-F]\{64\}'
 
 # Utility function for creating DNA fixtures:
-#  - Create a temporary directory to contain all servald-related files
+#  - create a temporary directory to contain all servald-related files
 #  - set $servald variable (executable under test)
 #  - set SERVALINSTANCE_PATH environment variable
 #  - mkdir $SERVALINSTANCE_PATH unless --no-mkdir option given
@@ -19,6 +19,14 @@ setup_servald() {
       error "servald executable not present: $servald"
       return 1
    fi
+}
+
+# Utility function for running servald and asserting no errors:
+#  - executes $servald with the given arguments
+#  - asserts that standard error contains no error messages
+executeOk_servald() {
+   executeOk --executable="$servald" "$@"
+   assertStderrGrep --matches=0 '^ERROR:'
 }
 
 # Utility function:

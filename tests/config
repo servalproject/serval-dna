@@ -32,7 +32,7 @@ setup_GetCreateInstanceDir() {
    assert [ ! -d "$SERVALINSTANCE_PATH" ]
 }
 test_GetCreateInstanceDir() {
-   executeOk $servald config get
+   executeOk_servald config get
    assert [ -d "$SERVALINSTANCE_PATH" ]
 }
 
@@ -42,29 +42,29 @@ setup_SetCreateInstanceDir() {
    assert [ ! -d "$SERVALINSTANCE_PATH" ]
 }
 test_SetCreateInstanceDir() {
-   executeOk $servald config set foo bar
+   executeOk_servald config set foo bar
    assert [ -d "$SERVALINSTANCE_PATH" ]
 }
 
 doc_GetNull="Get an unset config item"
 test_GetNull() {
-   executeOk $servald config get foo
+   executeOk_servald config get foo
    assertStdoutLineCount '==' 0
 }
 
 doc_SetGet="Set and get a single config item"
 test_SetGet() {
-   executeOk $servald config set foo bar
-   executeOk $servald config get foo
+   executeOk_servald config set foo bar
+   executeOk_servald config get foo
    assertStdoutLineCount '==' 1
    assertStdoutGrep --stdout --stderr --matches=1 '^foo=bar$'
 }
 
 doc_GetAll="Get all config items"
 test_GetAll() {
-   executeOk $servald config set foo bar
-   executeOk $servald config set hello world
-   executeOk $servald config get
+   executeOk_servald config set foo bar
+   executeOk_servald config set hello world
+   executeOk_servald config get
    assertStdoutLineCount '==' 2
    assertStdoutGrep --stdout --matches=1 '^foo=bar$'
    assertStdoutGrep --stdout --matches=1 '^hello=world$'
@@ -72,54 +72,54 @@ test_GetAll() {
 
 doc_SetTwice="Set a single config item twice"
 test_SetTwice() {
-   executeOk $servald config set foo bar
-   executeOk $servald config get foo
+   executeOk_servald config set foo bar
+   executeOk_servald config get foo
    assertStdoutLineCount '==' 1
    assertStdoutGrep --stdout --stderr --matches=1 '^foo=bar$'
-   executeOk $servald config set foo wah
-   executeOk $servald config get foo
+   executeOk_servald config set foo wah
+   executeOk_servald config get foo
    assertStdoutLineCount '==' 1
    assertStdoutGrep --stdout --stderr --matches=1 '^foo=wah$'
 }
 
 doc_DelNull="Delete an unset config item"
 test_DelNull() {
-   executeOk $servald config del foo
+   executeOk_servald config del foo
    assertStdoutLineCount '==' 0
 }
 
 doc_Del="Delete single config item"
 test_Del() {
-   executeOk $servald config set foo bar
-   executeOk $servald config set hello world
-   executeOk $servald config get
+   executeOk_servald config set foo bar
+   executeOk_servald config set hello world
+   executeOk_servald config get
    assertStdoutLineCount '==' 2
-   executeOk $servald config del foo
-   executeOk $servald config get
+   executeOk_servald config del foo
+   executeOk_servald config get
    assertStdoutLineCount '==' 1
-   executeOk $servald config get foo
+   executeOk_servald config get foo
    assertStdoutLineCount '==' 0
 }
 
 doc_CaseInsensitive="Config item names are case insensitive"
 test_CaseInsensitive() {
-   executeOk $servald config set foo bar
-   executeOk $servald config get foo
+   executeOk_servald config set foo bar
+   executeOk_servald config get foo
    assertStdoutLineCount '==' 1
    assertStdoutGrep --stdout --stderr --matches=1 '^foo=bar$'
-   executeOk $servald config get Foo
+   executeOk_servald config get Foo
    assertStdoutLineCount '==' 1
    assertStdoutGrep --stdout --stderr --matches=1 '^foo=bar$'
-   executeOk $servald config set FOO wah
-   executeOk $servald config get foo
+   executeOk_servald config set FOO wah
+   executeOk_servald config get foo
    assertStdoutLineCount '==' 1
    assertStdoutGrep --stdout --stderr --matches=1 '^FOO=wah$'
 }
 
 doc_DotsInNames="Config item names can have internal dots"
 test_DotsInNames() {
-   executeOk $servald config set foo.bar yes
-   executeOk $servald config get foo.bar
+   executeOk_servald config set foo.bar yes
+   executeOk_servald config get foo.bar
    assertStdoutLineCount '==' 1
    assertStdoutGrep --stdout --stderr --matches=1 '^foo\.bar=yes$'
    execute $servald config set foo. yes
@@ -128,37 +128,37 @@ test_DotsInNames() {
    assertExitStatus '!=' 0
    execute $servald config set foo..bar yes
    assertExitStatus '!=' 0
-   executeOk $servald config set foo.x.bar yes
-   executeOk $servald config get foo.x.bar
+   executeOk_servald config set foo.x.bar yes
+   executeOk_servald config get foo.x.bar
    assertStdoutLineCount '==' 1
    assertStdoutGrep --stdout --stderr --matches=1 '^foo\.x\.bar=yes$'
 }
 
 doc_DebugFlags="Debug config options affect verbosity"
 test_DebugFlags() {
-   executeOk $servald echo one two three
+   executeOk_servald echo one two three
    assertStderrGrep --matches=0 '\<echo:argv\['
-   executeOk $servald config set debug.verbose true
-   executeOk $servald echo one two three
+   executeOk_servald config set debug.verbose true
+   executeOk_servald echo one two three
    assertStderrGrep --matches=3 '\<echo:argv\['
-   executeOk $servald config set debug.verbose false
-   executeOk $servald echo one two three
+   executeOk_servald config set debug.verbose false
+   executeOk_servald echo one two three
    assertStderrGrep --matches=0 '\<echo:argv\['
 }
 
 doc_DebugFlagAll="Debug config options override debug.all"
 test_DebugFlagAll() {
-   executeOk $servald config set debug.all yes
-   executeOk $servald echo one two three
+   executeOk_servald config set debug.all yes
+   executeOk_servald echo one two three
    assertStderrGrep --matches=3 '\<echo:argv\['
-   executeOk $servald config set debug.verbose false
-   executeOk $servald echo one two three
+   executeOk_servald config set debug.verbose false
+   executeOk_servald echo one two three
    assertStderrGrep --matches=0 '\<echo:argv\['
-   executeOk $servald config set debug.verbose true
-   executeOk $servald echo one two three
+   executeOk_servald config set debug.verbose true
+   executeOk_servald echo one two three
    assertStderrGrep --matches=3 '\<echo:argv\['
-   executeOk $servald config set debug.all off
-   executeOk $servald echo one two three
+   executeOk_servald config set debug.all off
+   executeOk_servald echo one two three
    assertStderrGrep --matches=3 '\<echo:argv\['
 }
 

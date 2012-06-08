@@ -182,6 +182,12 @@ escape_grep_extended() {
    echo "$re"
 }
 
+# Executes its arguments as a command:
+#  - captures the standard output and error in temporary files for later
+#    examination
+#  - captures the exit status for later assertions
+#  - sets the $executed variable to a description of the command that was
+#    executed
 execute() {
    echo -n "# execute "; _tfw_shellarg "$@"
    _tfw_getopts execute "$@"
@@ -245,14 +251,14 @@ tfw_cat() {
    for file; do
       case $file in
       --stdout) 
-         echo "#--- ${header:-stdout of ${_tfw_execute_argv0##*/}} ---"
+         echo "#--- ${header:-stdout of $executed} ---"
          cat $show_nonprinting $_tfw_tmp/stdout
          echo "#---"
          header=
          show_nonprinting=
          ;;
       --stderr) 
-         echo "#--- ${header:-stderr of ${_tfw_execute_argv0##*/}} ---"
+         echo "#--- ${header:-stderr of $executed} ---"
          cat $show_nonprinting $_tfw_tmp/stderr
          echo "#---"
          header=
@@ -274,7 +280,7 @@ tfw_cat() {
 assertExitStatus() {
    _tfw_getopts assertexitstatus "$@"
    shift $_tfw_getopts_shift
-   [ -z "$_tfw_message" ] && _tfw_message="exit status of ${_tfw_execute_argv0##*/} ($_tfw_exitStatus) $*"
+   [ -z "$_tfw_message" ] && _tfw_message="exit status of $executed ($_tfw_exitStatus) $*"
    _tfw_assertExpr "$_tfw_exitStatus" "$@" || _tfw_failexit
    echo "# assert $_tfw_message"
    return 0
@@ -283,7 +289,7 @@ assertExitStatus() {
 assertRealTime() {
    _tfw_getopts assertrealtime "$@"
    shift $_tfw_getopts_shift
-   [ -z "$_tfw_message" ] && _tfw_message="real execution time of ${_tfw_execute_argv0##*/} ($realtime) $*"
+   [ -z "$_tfw_message" ] && _tfw_message="real execution time of $executed ($realtime) $*"
    _tfw_assertExpr "$realtime" "$@" || _tfw_failexit
    echo "# assert $_tfw_message"
    return 0
@@ -495,18 +501,19 @@ _tfw_teardown() {
    rm -rf $_tfw_tmp
 }
 
+# Executes $_tfw_executable with the given arguments.
 _tfw_execute() {
-   _tfw_execute_argv0="$1"
-   { time -p "$@" >$_tfw_tmp/stdout 2>$_tfw_tmp/stderr ; } 2>$_tfw_tmp/times
+   executed=$(_tfw_shellarg "${_tfw_executable##*/}" "$@")
+   { time -p "$_tfw_executable" "$@" >$_tfw_tmp/stdout 2>$_tfw_tmp/stderr ; } 2>$_tfw_tmp/times
    _tfw_exitStatus=$?
    # Deal with exit status.
    if [ -n "$_tfw_opt_exit_status" ]; then
-      _tfw_message="exit status of ${_tfw_execute_argv0##*/} ($_tfw_exitStatus) is $_tfw_opt_exit_status"
+      _tfw_message="exit status of $executed ($_tfw_exitStatus) is $_tfw_opt_exit_status"
       _tfw_dump_stderr_on_fail=true
       _tfw_assert [ "$_tfw_exitStatus" -eq "$_tfw_opt_exit_status" ] || _tfw_failexit
       echo "# assert $_tfw_message"
    else
-      echo "# exit status of ${_tfw_execute_argv0##*/} = $_tfw_exitStatus"
+      echo "# exit status of $executed = $_tfw_exitStatus"
    fi
    # Parse execution time report.
    if ! _tfw_parse_times_to_milliseconds real realtime_ms ||
@@ -570,6 +577,7 @@ _tfw_dump_on_fail() {
 _tfw_getopts() {
    local context="$1"
    shift
+   _tfw_executable=
    _tfw_message=
    _tfw_opt_dump_on_fail=()
    _tfw_opt_error_on_fail=false
@@ -583,6 +591,10 @@ _tfw_getopts() {
       *:--stderr) _tfw_dump_on_fail --stderr;;
       assert*:--dump-on-fail=*) _tfw_dump_on_fail "${1#*=}";;
       execute:--exit-status=*) _tfw_opt_exit_status="${1#*=}";;
+      execute*:--executable=*)
+         _tfw_executable="${1#*=}"
+         [ -z "$_tfw_executable" ] && _tfw_error "missing value: $1"
+         ;;
       assert*:--error-on-fail) _tfw_opt_error_on_fail=true;;
       assert*:--message=*) _tfw_message="${1#*=}";;
       assertgrep:--matches=*) _tfw_opt_matches="${1#*=}";;
@@ -594,6 +606,16 @@ _tfw_getopts() {
       let _tfw_getopts_shift=_tfw_getopts_shift+1
       shift
    done
+   case "$context" in
+   execute*)
+      if [ -z "$_tfw_executable" ]; then
+         _tfw_executable="$1"
+         let _tfw_getopts_shift=_tfw_getopts_shift+1
+         shift
+      fi
+      [ -z "$_tfw_executable" ] && _tfw_error "missing executable argument"
+      ;;
+   esac
 }
 
 _tfw_expr_to_awkexpr() {
@@ -659,7 +681,7 @@ _tfw_assert_stdxxx_is() {
       ;;
    esac
    _tfw_shopt_restore
-   local message="${_tfw_message:-${_tfw_opt_line:+line $_tfw_opt_line of }$qual of ${_tfw_execute_argv0##*/} is $*}"
+   local message="${_tfw_message:-${_tfw_opt_line:+line $_tfw_opt_line of }$qual of $executed is $*}"
    echo -n "$@" >$_tfw_tmp/stdxxx_is.tmp
    if ! cmp --quiet $_tfw_tmp/stdxxx_is.tmp "$_tfw_tmp/content"; then
       _tfw_failmsg "assertion failed: $message"
@@ -695,7 +717,7 @@ _tfw_assert_stdxxx_grep() {
       _tfw_error "incorrect arguments"
       return 254
    fi
-   _tfw_assert_grep "$qual of ${_tfw_execute_argv0##*/}" $_tfw_tmp/$qual "$@"
+   _tfw_assert_grep "$qual of $executed" $_tfw_tmp/$qual "$@"
 }
 
 _tfw_assert_grep() {

@@ -73,7 +73,7 @@ typedef struct rhizome_http_request {
 
   /* The source specification data which are used in different ways by different 
      request types */
-  unsigned char source[1024];
+  char source[1024];
   long long source_index;
   long long source_count;
   int source_record_size;
@@ -249,7 +249,7 @@ int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r);
 int rhizome_server_parse_http_request(int rn,rhizome_http_request *r);
 int rhizome_server_simple_http_response(rhizome_http_request *r,int result, char *response);
 int sqlite_exec_void(const char *sqlformat,...);
-long long sqlite_exec_int64(const char *sqlformat,...);
+int sqlite_exec_int64(long long *result, const char *sqlformat,...);
 int sqlite_exec_strbuf(strbuf sb, const char *sqlformat,...);
 int rhizome_server_http_response_header(rhizome_http_request *r,int result,
 					char *mime_type,unsigned long long bytes);

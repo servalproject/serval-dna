@@ -113,8 +113,17 @@ sqlite3 *rhizome_db=NULL;
 /* XXX Requires a messy join that might be slow. */
 int rhizome_manifest_priority(char *id)
 {
-  long long result = sqlite_exec_int64("select max(grouplist.priorty) from grouplist,manifests,groupmemberships where manifests.id='%s' and grouplist.id=groupmemberships.groupid and groupmemberships.manifestid=manifests.id;",id);
-  return result;
+  long long result = 0;
+  if (sqlite_exec_int64(&result,
+	"select max(grouplist.priorty) from grouplist,manifests,groupmemberships"
+	" where manifests.id='%s'"
+	"   and grouplist.id=groupmemberships.groupid"
+	"   and groupmemberships.manifestid=manifests.id;",
+	id
+      ) == -1
+  )
+    return -1;
+  return (int) result;
 }
 
 int rhizome_opendb()
@@ -201,8 +210,10 @@ int sqlite_exec_void(const char *sqlformat,...)
       return -1;
   }
   int stepcode;
+  int rows = 0;
   while ((stepcode = sqlite3_step(statement)) == SQLITE_ROW)
-    ;
+    ++rows;
+  if (rows) WARNF("query unexpectedly returned %d row%s", rows, rows == 1 ? "" : "s");
   switch (stepcode) {
     case SQLITE_OK:
     case SQLITE_DONE:
@@ -218,12 +229,15 @@ int sqlite_exec_void(const char *sqlformat,...)
   return 0;
 }
 
-/* 
-   Convenience wrapper for executing an SQL command that returns a single int64 value 
-   Returns -1 if an error occurs, otherwise the value of the column in the first row.
-   If there are no rows, return zero.
+/*
+   Convenience wrapper for executing an SQL command that returns a single int64 value.
+   Returns -1 if an error occurs.
+   If no row is found, then returns 0 and does not alter *result.
+   If exactly one row is found, the assigns its value to *result and returns 1.
+   If more than one row is found, then assigns the value of the first row to *result and returns the
+   number of rows.
  */
-long long sqlite_exec_int64(const char *sqlformat,...)
+int sqlite_exec_int64(long long *result, const char *sqlformat,...)
 {
   if (!rhizome_db) rhizome_opendb();
   strbuf stmt = strbuf_alloca(8192);
@@ -243,18 +257,30 @@ long long sqlite_exec_int64(const char *sqlformat,...)
       sqlite3_finalize(statement);
       return -1;
   }
-  if (sqlite3_step(statement) == SQLITE_ROW) {
+  int stepcode;
+  int rowcount = 0;
+  if ((stepcode = sqlite3_step(statement)) == SQLITE_ROW) {
     int n = sqlite3_column_count(statement);
     if (n != 1) {
       sqlite3_finalize(statement);
       return WHYF("Incorrect column count %d (should be 1): %s", n, strbuf_str(stmt));
     }
-    long long result= sqlite3_column_int64(statement, 0);
-    sqlite3_finalize(statement);
-    return result;
+    *result = sqlite3_column_int64(statement, 0);
+    rowcount = 1;
+    while ((stepcode = sqlite3_step(statement)) == SQLITE_ROW)
+      ++rowcount;
+  }
+  switch (stepcode) {
+    case SQLITE_OK: case SQLITE_DONE:
+      break;
+    default:
+      WHY(strbuf_str(stmt));
+      WHY(sqlite3_errmsg(rhizome_db));
+      sqlite3_finalize(statement);
+      return -1;
   }
   sqlite3_finalize(statement);
-  return WHY("No rows found");
+  return rowcount;
 }
 
 /* 
@@ -380,8 +406,7 @@ int rhizome_drop_stored_file(const char *id,int maximum_priority)
     return -1;
   }
 
-  snprintf(sql,1024,"select id from manifests where filehash='%s'",
-	   id);
+  snprintf(sql,1024,"select id from manifests where filehash='%s'", id);
   if(sqlite3_prepare_v2(rhizome_db,sql, -1, &statement, NULL) != SQLITE_OK )
     {
       WHYF("SQLite error running query '%s': %s",sql,sqlite3_errmsg(rhizome_db));
@@ -406,8 +431,11 @@ int rhizome_drop_stored_file(const char *id,int maximum_priority)
 	 If so, we cannot drop the manifest or the file.
          However, we will keep iterating, as we can still drop any other manifests pointing to this file
 	 that are lower priority, and thus free up a little space. */
-      if (rhizome_manifest_priority((char *)manifestId)>maximum_priority) {
-	WHYF("Cannot drop due to manifest %s",id);
+      int priority = rhizome_manifest_priority((char *)manifestId);
+      if (priority == -1)
+	WHYF("Cannot drop due to error, manifestId=%s", manifestId);
+      else if (priority > maximum_priority) {
+	WHYF("Cannot drop due to manifest %s", manifestId);
 	cannot_drop=1;
       } else {
 	printf("removing stale manifests, groupmemberships\n");
@@ -689,7 +717,7 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
 	  long long blob_date = rhizome_manifest_get_ll(m, "date");
 	  const char *blob_filehash = rhizome_manifest_get(m, "filehash", NULL, 0);
 	  long long blob_filesize = rhizome_manifest_get_ll(m, "filesize");
-	  WHYF("Manifest payload size = %lld",blob_filesize);
+	  DEBUGF("Manifest payload size = %lld",blob_filesize);
 	  cli_puts(blob_service ? blob_service : ""); cli_delim(":");
 	  cli_puts(q_manifestid); cli_delim(":");
 	  cli_printf("%lld", blob_version); cli_delim(":");
@@ -761,20 +789,24 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
   const char *cmdtail;
 
   /* See if the file is already stored, and if so, don't bother storing it again */
-  int count=sqlite_exec_int64("SELECT COUNT(*) FROM FILES WHERE id='%s' AND datavalid<>0;",hash); 
-  if (count==1) {
+  long long count = 0;
+  if (sqlite_exec_int64(&count, "SELECT COUNT(*) FROM FILES WHERE id='%s' AND datavalid<>0;", hash) < 1) {
+    close(fd);
+    return WHY("Failed to count stored files");
+  }
+  if (count >= 1) {
     /* File is already stored, so just update the highestPriority field if required. */
-    long long storedPriority = sqlite_exec_int64("SELECT highestPriority FROM FILES WHERE id='%s' AND datavalid!=0",hash);
-    if (storedPriority<priority)
-      {
-	snprintf(sqlcmd,1024,"UPDATE FILES SET highestPriority=%d WHERE id='%s';",
-		 priority,hash);
-	if (sqlite3_exec(rhizome_db,sqlcmd,NULL,NULL,NULL)!=SQLITE_OK) {
-	  close(fd);
-	  WHY(sqlite3_errmsg(rhizome_db));
-	  return WHY("SQLite failed to update highestPriority field for stored file.");
-	}
+    long long storedPriority = -1;
+    if (sqlite_exec_int64(&storedPriority, "SELECT highestPriority FROM FILES WHERE id='%s' AND datavalid!=0", hash) == -1) {
+      close(fd);
+      return WHY("Failed to select highest priority");
+    }
+    if (storedPriority<priority) {
+      if (sqlite_exec_void("UPDATE FILES SET highestPriority=%d WHERE id='%s';", priority, hash) == -1) {
+	close(fd);
+	return WHY("SQLite failed to update highestPriority field for stored file.");
       }
+    }
     close(fd);
     return 0;
   }
@@ -915,9 +947,16 @@ void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCoun
 int rhizome_update_file_priority(const char *fileid)
 {
   /* work out the highest priority of any referrer */
-  int highestPriority=sqlite_exec_int64("SELECT max(grouplist.priority) FROM MANIFESTS,GROUPMEMBERSHIPS,GROUPLIST where manifests.filehash='%s' AND groupmemberships.manifestid=manifests.id AND groupmemberships.groupid=grouplist.id;",fileid);
-  if (highestPriority>=0)
-    sqlite_exec_void("UPDATE files set highestPriority=%d WHERE id='%s';", highestPriority,fileid);
+  long long highestPriority = -1;
+  if (sqlite_exec_int64(&highestPriority,
+	"SELECT max(grouplist.priority) FROM MANIFESTS,GROUPMEMBERSHIPS,GROUPLIST"
+	" where manifests.filehash='%s'"
+	"   AND groupmemberships.manifestid=manifests.id"
+	"   AND groupmemberships.groupid=grouplist.id;",
+	fileid) == -1)
+    return -1;
+  if (highestPriority >= 0)
+    return sqlite_exec_void("UPDATE files set highestPriority=%lld WHERE id='%s';", highestPriority, fileid);
   return 0;
 }
 
@@ -961,7 +1000,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found,
   int ret = 0;
   sqlite3_stmt *statement;
   const char *cmdtail;
-  if (debug&DEBUG_RHIZOME) WHYF("sql query: %s",sqlcmd);
+  if (debug&DEBUG_RHIZOME) DEBUGF("sql query: %s",sqlcmd);
   if (sqlite3_prepare_v2(rhizome_db, sqlcmd, strlen(sqlcmd) + 1, &statement, &cmdtail) != SQLITE_OK) {
     ret = WHY(sqlite3_errmsg(rhizome_db));
   } else {
@@ -1185,7 +1224,10 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath,
 			  const unsigned char *key)
 {
   sqlite3_blob *blob=NULL;
-  rhizome_update_file_priority(fileid);
+  if (rhizome_update_file_priority(fileid) == -1) {
+    WHY("Failed to update file priority");
+    return 0;
+  }
   char sqlcmd[1024];
   int n = snprintf(sqlcmd, sizeof(sqlcmd), "SELECT id, rowid, length FROM files WHERE id = ? AND datavalid != 0");
   if (n >= sizeof(sqlcmd))

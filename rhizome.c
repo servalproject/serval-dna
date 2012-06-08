@@ -205,10 +205,13 @@ int rhizome_manifest_bind_file(rhizome_manifest *m_in,const char *filename,int e
 
 int rhizome_manifest_check_file(rhizome_manifest *m_in)
 {
-  int gotfile= sqlite_exec_int64("SELECT COUNT(*) FROM FILES WHERE ID='%s' and datavalid=1;",
-				 m_in->fileHexHash);
-  if (gotfile==1) {
-    WHYF("Skipping file checks for bundle, as file is already in the database");
+  long long gotfile = 0;
+  if (sqlite_exec_int64(&gotfile, "SELECT COUNT(*) FROM FILES WHERE ID='%s' and datavalid=1;", m_in->fileHexHash) != 1) {
+    WHYF("Failed to count files");
+    return 0;
+  }
+  if (gotfile) {
+    DEBUGF("Skipping file checks for bundle, as file is already in the database");
     return 0;
   }
 
@@ -254,7 +257,7 @@ int rhizome_manifest_check_file(rhizome_manifest *m_in)
    (Debounce!) */
 int rhizome_manifest_check_duplicate(rhizome_manifest *m_in,rhizome_manifest **m_out)
 {
-  WHY("Checking for duplicate");
+  if (debug & DEBUG_RHIZOME) DEBUG("Checking for duplicate");
   if (m_out) *m_out = NULL; 
   rhizome_manifest *dupm = NULL;
   if (rhizome_find_duplicate(m_in, &dupm,0 /* version doesn't matter */) == -1)
@@ -266,10 +269,10 @@ int rhizome_manifest_check_duplicate(rhizome_manifest *m_in,rhizome_manifest **m
     }
     else
       rhizome_manifest_free(dupm);
-    WHY("Found a duplicate");
+    if (debug & DEBUG_RHIZOME) DEBUG("Found a duplicate");
     return 2;
   }
-  WHY("No duplicate found");
+  if (debug & DEBUG_RHIZOME) DEBUG("No duplicate found");
   return 0;
 }
 
@@ -308,16 +311,23 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
   if (rhizome_manifest_get(m_in, "id", id, SID_STRLEN + 1)) {
     str_toupper_inplace(id);
     /* Discard the new manifest unless it is newer than the most recent known version with the same ID */
-    long long storedversion = sqlite_exec_int64("SELECT version from manifests where id='%s';", id);
-    if (debug & DEBUG_RHIZOME)
-      DEBUGF("Found existing version=%lld, new version=%lld", storedversion, m_in->version);
-    if (m_in->version < storedversion) {
-      return WHY("Newer version exists");
+    long long storedversion = -1;
+    switch (sqlite_exec_int64(&storedversion, "SELECT version from manifests where id='%s';", id)) {
+      case -1:
+	return WHY("Select failed");
+      case 0:
+	if (debug & DEBUG_RHIZOME) DEBUG("No existing manifest");
+	break;
+      case 1:
+	if (debug & DEBUG_RHIZOME) DEBUGF("Found existing version=%lld, new version=%lld", storedversion, m_in->version);
+	if (m_in->version < storedversion)
+	  return WHY("Newer version exists");
+	if (m_in->version == storedversion)
+	  return WHY("Same version of manifest exists, not adding");
+	break;
+      default:
+	return WHY("Select found too many rows!");
     }
-    if (m_in->version == storedversion) {
-      return WHY("Same version of manifest exists, not adding");
-    }
-
     strbuf b = strbuf_local(ofilehash, sizeof ofilehash);
     sqlite_exec_strbuf(b, "SELECT filehash from manifests where id='%s';", id);
     if (strbuf_overrun(b))
@@ -331,7 +341,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
   if (rhizome_store_bundle(m_in) == -1)
     return WHY("rhizome_store_bundle() failed.");
 
-  WHYF("Announcing arrival of manifest %s* version %lld",
+  DEBUGF("Announcing arrival of manifest %s* version %lld",
        overlay_render_sid_prefix(m_in->cryptoSignPublic,8),m_in->version);
   monitor_announce_bundle(m_in);
   return 0;

@@ -147,11 +147,11 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
   m->version = rhizome_manifest_get_ll(m, "version");
   
   // skip the cache for now
-  long long dbVersion = sqlite_exec_int64("SELECT version FROM MANIFESTS WHERE id='%s';", id);
-  if (dbVersion >= m->version){
-    WHYF("We already have %s (%lld vs %lld)", id, dbVersion, m->version);
-    return -1;
-  }
+  long long dbVersion = -1;
+  if (sqlite_exec_int64(&dbVersion, "SELECT version FROM MANIFESTS WHERE id='%s';", id) == -1)
+    return WHY("Select failure");
+  if (dbVersion >= m->version)
+    return WHYF("We already have %s (%lld vs %lld)", id, dbVersion, m->version);
   return 0;
 
   /* Work out bin number in cache */
@@ -175,17 +175,16 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
 	}
       if (i==24) {
 	/* Entries match -- so check version */
-	long long rev = rhizome_manifest_get_ll(m,"version");	
-	if (1) WHYF("cached version %lld vs manifest version %lld",
-		    entry->version,rev);
-	if (rev>entry->version) {
-	  /* If we only have an old version, try refreshing the cache 
+	long long rev = rhizome_manifest_get_ll(m,"version");
+	if (1) DEBUGF("cached version %lld vs manifest version %lld", entry->version,rev);
+	if (rev > entry->version) {
+	  /* If we only have an old version, try refreshing the cache
 	     by querying the database */
-	  entry->version = sqlite_exec_int64("select version from manifests where id='%s'", id);
-	  WHYF("Refreshed stored version from database: entry->version=%lld",
-	       entry->version);
+	  if (sqlite_exec_int64(&entry->version, "select version from manifests where id='%s'", id) != 1)
+	    return WHY("failed to select stored manifest version");
+	  DEBUGF("Refreshed stored version from database: entry->version=%lld", entry->version);
 	}
-	if (rev<entry->version) {
+	if (rev < entry->version) {
 	  /* the presented manifest is older than we have.
 	     This allows the caller to know that they can tell whoever gave them the
 	     manifest it's time to get with the times.  May or not ever be
@@ -195,18 +194,17 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
 	  return -2;
 	} else if (rev<=entry->version) {
 	  /* the presented manifest is already stored. */	   
-	  if (1) WHY("cached version is NEWER/SAME as presented version");
+	  if (1) DEBUG("cached version is NEWER/SAME as presented version");
 	  return -1;
 	} else {
 	  /* the presented manifest is newer than we have */
-	  WHY("cached version is older than presented version");
+	  DEBUG("cached version is older than presented version");
 	  return 0;
-	}	  
-      } else {
+	}
       }
     }
 
-  WHY("Not in manifest cache");
+  DEBUG("Not in manifest cache");
 
   /* Not in cache, so all is well, well, maybe.
      What we do know is that it is unlikely to be in the database, so it probably
@@ -230,27 +228,34 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
      a fairly large cache here.
  */
   long long manifest_version = rhizome_manifest_get_ll(m, "version");
-  if (sqlite_exec_int64("select count(*) from manifests where id='%s' and version>=%lld",
-			id,manifest_version)>0) {
-    /* Okay, so we have a stored version which is newer, so update the cache
-       using a random replacement strategy. */
-
-    long long stored_version = sqlite_exec_int64("select version from manifests where id='%s'", id);
-    if (stored_version == -1)
-      return WHY("database error reading stored manifest version"); // database is broken, we can't confirm that it is here
-    WHYF("stored version=%lld, manifest_version=%lld (not fetching; remembering in cache)",
-	 stored_version,manifest_version);
-    slot=random()%RHIZOME_VERSION_CACHE_ASSOCIATIVITY;
-    rhizome_manifest_version_cache_slot *entry
-      =&rhizome_manifest_version_cache[bin][slot];
-    entry->version=stored_version;
-    for(i=0;i<24;i++)
-      {
-	int byte=(chartonybl(id[(i*2)])<<4)|chartonybl(id[(i*2)+1]);
-	entry->idprefix[i]=byte;
+  long long count;
+  switch (sqlite_exec_int64(&count, "select count(*) from manifests where id='%s' and version>=%lld", id, manifest_version)) {
+    case -1:
+      return WHY("database error reading stored manifest version");
+    case 1:
+      if (count) {
+	/* Okay, we have a stored version which is newer, so update the cache
+	  using a random replacement strategy. */
+	long long stored_version;
+	if (sqlite_exec_int64(&stored_version, "select version from manifests where id='%s'", id) < 1)
+	  return WHY("database error reading stored manifest version"); // database is broken, we can't confirm that it is here
+	DEBUGF("stored version=%lld, manifest_version=%lld (not fetching; remembering in cache)",
+	    stored_version,manifest_version);
+	slot=random()%RHIZOME_VERSION_CACHE_ASSOCIATIVITY;
+	rhizome_manifest_version_cache_slot *entry
+	  =&rhizome_manifest_version_cache[bin][slot];
+	entry->version=stored_version;
+	for(i=0;i<24;i++)
+	  {
+	    int byte=(chartonybl(id[(i*2)])<<4)|chartonybl(id[(i*2)+1]);
+	    entry->idprefix[i]=byte;
+	  }
+	/* Finally, say that it isn't worth RXing this manifest */
+	return stored_version > manifest_version ? -2 : -1;
       }
-    /* Finally, say that it isn't worth RXing this manifest */
-    return stored_version > manifest_version ? -2 : -1;
+      break;
+    default:
+      return WHY("bad select result");
   }
   /* At best we hold an older version of this manifest, and at worst we
      don't hold any copy. */
@@ -397,12 +402,12 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
     return -1;
   } else {
     if (1||debug&DEBUG_RHIZOMESYNC) {
-      long long stored_version
-	=sqlite_exec_int64("select version from manifests where id='%s'",id);
-      DEBUGF("manifest id=%s, version=%lld is new to us (we only have version %lld).",
-	     id,
-	     m->version,
-	     stored_version);
+      long long stored_version;
+      if (sqlite_exec_int64(&stored_version, "select version from manifests where id='%s'",id) > 0)
+	DEBUGF("manifest id=%s, version=%lld is new to us (we only have version %lld).",
+	      id,
+	      m->version,
+	      stored_version);
     }
   }
 
@@ -575,9 +580,9 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 
   if (filesize > 0 && m->fileHexHash[0])
     {
-      int gotfile= sqlite_exec_int64("SELECT COUNT(*) FROM FILES WHERE ID='%s' and datavalid=1;", m->fileHexHash);
-      WHYF("SELECT COUNT(*) FROM FILES WHERE ID='%s' and datavalid=1; returned %d", m->fileHexHash,
-	   gotfile);
+      long long gotfile = 0;
+      if (sqlite_exec_int64(&gotfile, "SELECT COUNT(*) FROM FILES WHERE ID='%s' and datavalid=1;", m->fileHexHash) != 1)
+	return WHY("select failed");
       if (gotfile!=1) {
 	/* We need to get the file */
 	/* Discard request if the same manifest is already queued for reception.   

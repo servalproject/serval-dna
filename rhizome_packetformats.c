@@ -135,13 +135,14 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
      and energy asking the database much the same questions possibly many times per
      second.
   */
-  
-  if (debug&DEBUG_RHIZOME) {
-#warning    DEBUG("Group handling not completely thought out here yet.");
-  }
+
+  // TODO Group handling not completely thought out here yet.
 
   /* Get number of bundles available if required */
-  bundles_available=sqlite_exec_int64("SELECT COUNT(BAR) FROM MANIFESTS;");
+  long long tmp = 0;
+  if (sqlite_exec_int64(&tmp, "SELECT COUNT(BAR) FROM MANIFESTS;") != 1)
+    return WHY("Could not count BARs for advertisement");
+  bundles_available = (int) tmp;
   if (bundles_available==-1||(bundle_offset[0]>=bundles_available)) 
     bundle_offset[0]=0;
   if (bundles_available==-1||(bundle_offset[1]>=bundles_available)) 

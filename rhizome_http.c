@@ -328,23 +328,16 @@ int rhizome_server_sql_query_http_response(int rn,rhizome_http_request *r,
      the body, although encryption is not yet implemented here.
  */
 
-  char query[1024];
-
   if (r->buffer) { free(r->buffer); r->buffer=NULL; }
   r->buffer_size=16384;
   r->buffer=malloc(r->buffer_size);
   if (!r->buffer) return WHY("malloc() failed to allocate response buffer");
   r->buffer_length=0;
   r->buffer_offset=0;
-
-  snprintf(query,1024,"SELECT COUNT(*) %s",query_body);
-  query[1023]=0;
-
   r->source_record_size=bytes_per_row;
-  r->source_count=sqlite_exec_int64(query);
+  r->source_count = 0;
+  sqlite_exec_int64(&r->source_count, "SELECT COUNT(*) %s", query_body);
 
-  if (r->source_count<1) r->source_count=0;
-    
   /* Work out total response length */
   long long response_bytes=256+r->source_count*r->source_record_size;
   rhizome_server_http_response_header(r,200,"servalproject.org/rhizome-list", 
@@ -370,15 +363,16 @@ int rhizome_server_sql_query_http_response(int rn,rhizome_http_request *r,
   WHY("no function yet exists to obtain our public key?");
 
   /* build templated query */
-  snprintf(query,1024,"SELECT %s,rowid %s",column,query_body);
-  query[1023]=0;
-  bcopy(query,r->source,1024);
+  strbuf b = strbuf_local(r->source, sizeof r->source);
+  strbuf_sprintf(b, "SELECT %s,rowid %s", column, query_body);
+  if (strbuf_overrun(b))
+    WHYF("SQL query overrun: %s", strbuf_str(b));
   r->source_index=0;
   r->source_flags=dehexP;
   r->blob_column=strdup(column);
   r->blob_table=strdup(table);
 
-  WHYF("buffer_length=%d",r->buffer_length);
+  DEBUGF("buffer_length=%d",r->buffer_length);
 
   /* Populate spare space in buffer with rows of data */
   return rhizome_server_sql_query_fill_buffer(rn,r);
@@ -532,7 +526,8 @@ int rhizome_server_parse_http_request(int rn,rhizome_http_request *r)
 	if (dud) rhizome_server_simple_http_response(r,400,"<html><h1>That doesn't look like hex to me.</h1></html>\r\n");
 	else {
 	  str_toupper_inplace(id);
-	  long long rowid = sqlite_exec_int64("select rowid from files where id='%s';",id);
+	  long long rowid = -1;
+	  sqlite_exec_int64(&rowid, "select rowid from files where id='%s';", id);
 	  sqlite3_blob *blob;
 	  if (rowid>=0) 
 	    if (sqlite3_blob_open(rhizome_db,"main","files","data",rowid,0,&blob) !=SQLITE_OK)
