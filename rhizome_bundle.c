@@ -471,15 +471,7 @@ int rhizome_manifest_pack_variables(rhizome_manifest *m)
 int rhizome_manifest_selfsign(rhizome_manifest *m)
 {
   if (!m->haveSecret) return WHY("Need private key to sign manifest");
-
-  /* XXX we have to pass it in as hex, but then we just turn it into bytes
-     anyway. */
-  char secret[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES*2+1];
-  rhizome_bytes_to_hex_upper(m->cryptoSignSecret,secret,
-			     crypto_sign_edwards25519sha512batch_SECRETKEYBYTES);
-
-  rhizome_signature *sig=rhizome_sign_hash(m,secret);
-
+  rhizome_signature *sig = rhizome_sign_hash(m, m->cryptoSignSecret);
   if (!sig) return WHY("rhizome_sign_hash() failed.");
 
   /* Append signature to end of manifest data */

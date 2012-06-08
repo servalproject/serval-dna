@@ -136,18 +136,17 @@ int rhizome_manifest_check_sanity(rhizome_manifest *m_in)
     by joining the parent group.
 */
 
-int rhizome_manifest_bind_id(rhizome_manifest *m_in,const char *author)
+int rhizome_manifest_bind_id(rhizome_manifest *m_in, const unsigned char *authorSid)
 {
   rhizome_manifest_createid(m_in);
-
   /* The ID is implicit in transit, but we need to store it in the file, so that reimporting
      manifests on receiver nodes works easily.  We might implement something that strips the id
      variable out of the manifest when sending it, or some other scheme to avoid sending all the
      extra bytes. */
-  char id[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2+1];
-  rhizome_bytes_to_hex_upper(m_in->cryptoSignPublic, id, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+  char id[RHIZOME_MANIFEST_ID_STRLEN + 1];
+  rhizome_bytes_to_hex_upper(m_in->cryptoSignPublic, id, RHIZOME_MANIFEST_ID_BYTES);
   rhizome_manifest_set(m_in, "id", id);
-  if (author&&author[0]) {
+  if (authorSid) {
     /* Set the BK using the provided authorship information.
        Serval Security Framework defines BK as being:
        BK = privateKey XOR sha512(RS##BID), where BID = cryptoSignPublic, 
@@ -156,9 +155,9 @@ int rhizome_manifest_bind_id(rhizome_manifest *m_in,const char *author)
        privateKey = BK XOR sha512(RS##BID), so the same function can be used
        to encrypt and decrypt the BK field. */
     unsigned char bkbytes[RHIZOME_BUNDLE_KEY_BYTES];
-    if (rhizome_bk_xor(author, m_in->cryptoSignPublic, m_in->cryptoSignSecret, bkbytes) == 0) {
+    if (rhizome_bk_xor(authorSid, m_in->cryptoSignPublic, m_in->cryptoSignSecret, bkbytes) == 0) {
       char bkhex[RHIZOME_BUNDLE_KEY_STRLEN + 1];
-      rhizome_bytes_to_hex_upper(bkbytes, bkhex, RHIZOME_BUNDLE_KEY_BYTES);
+      (void) tohex(bkhex, bkbytes, RHIZOME_BUNDLE_KEY_BYTES);
       if (debug&DEBUG_RHIZOME) DEBUGF("set BK=%s", bkhex);
       rhizome_manifest_set(m_in, "BK", bkhex);
     } else {
@@ -351,16 +350,6 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
 int rhizome_bundle_push_update(char *id,long long version,unsigned char *data,int appendP)
 {
   return WHY("Not implemented");
-}
-
-/** Return the uppercase hex digit for a given nybble value 0..15.
- */
-char nybltochar_upper(int nybl)
-{
-  if (nybl<0) return '?';
-  if (nybl>15) return '?';
-  if (nybl<10) return '0'+nybl;
-  return 'A'+nybl-10;
 }
 
 int chartonybl(int c)

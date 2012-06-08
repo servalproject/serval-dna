@@ -1140,17 +1140,20 @@ int cli_optional_bundle_key(const char *arg)
 
 int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_option *o)
 {
-  const char *filepath, *manifestpath, *authorSid, *pin, *bskhex;
+  const char *filepath, *manifestpath, *authorSidHex, *pin, *bskhex;
   cli_arg(argc, argv, o, "filepath", &filepath, NULL, "");
-  if (cli_arg(argc, argv, o, "author_sid", &authorSid, cli_optional_sid, "") == -1)
+  if (cli_arg(argc, argv, o, "author_sid", &authorSidHex, cli_optional_sid, "") == -1)
     return -1;
   cli_arg(argc, argv, o, "pin", &pin, NULL, "");
   cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "");
   if (cli_arg(argc, argv, o, "bsk", &bskhex, cli_optional_bundle_key, "") == -1)
     return -1;
-  unsigned char bsk[RHIZOME_BUNDLE_KEY_STRLEN + 1];
-  if (bskhex[0] && stowBytes(bsk, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
-    return -1;
+  unsigned char authorSid[SID_SIZE];
+  if (authorSidHex[0] && fromhexstr(authorSid, authorSidHex, SID_SIZE) == -1)
+    return WHYF("invalid author_sid: %s", authorSidHex);
+  unsigned char bsk[RHIZOME_BUNDLE_KEY_BYTES];
+  if (bskhex[0] && fromhexstr(bsk, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
+    return WHYF("invalid bsk: %s", bskhex);
   if (create_serval_instance_dir() == -1)
     return -1;
   if (!(keyring = keyring_open_with_pins((char *)pin)))
@@ -1206,8 +1209,8 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
 
   /* Bind an ID to the manifest, and also bind the file.  Then finalise the manifest.
      But if the manifest already contains an ID, don't override it. */
-  if (rhizome_manifest_get(m, "id", NULL, 0)==NULL) {
-    if (rhizome_manifest_bind_id(m, authorSid)) {
+  if (rhizome_manifest_get(m, "id", NULL, 0) == NULL) {
+    if (rhizome_manifest_bind_id(m, authorSidHex[0] ? authorSid : NULL)) {
       rhizome_manifest_free(m);
       m = NULL;
       return WHY("Could not bind manifest to an ID");
@@ -1219,14 +1222,18 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
       m = NULL;
       return WHY("Incorrect BID secret key.");
     }
-  } else {
+  } else if (authorSidHex[0]) {
     /* User supplied manifest has a BID, so see if we can extract the
        private key from a BK entry */
-    if (rhizome_extract_privatekey(m,authorSid) == -1) {
+    if (rhizome_extract_privatekey(m, authorSid) == -1) {
       rhizome_manifest_free(m);
       m = NULL;
-      return WHY("Could not extract BID secret key. Does the manifest have a BK, did you supply the correct author SID?");
+      return WHY("Could not extract BID secret key. Does the manifest have a BK?");
     }
+  } else {
+    rhizome_manifest_free(m);
+    m = NULL;
+    return WHY("Author SID not specified");
   }
 #warning need to sanely determine whether to encrypt a file
 #warning payload encryption disabled for now
@@ -1239,7 +1246,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   /* Add the manifest and its associated file to the Rhizome database, generating an "id" in the
    * process */
   rhizome_manifest *mout = NULL;
-  if (debug & DEBUG_RHIZOME) DEBUGF("rhizome_add_manifest(author='%s')", authorSid);
+  if (debug & DEBUG_RHIZOME) DEBUGF("rhizome_add_manifest(author='%s')", authorSidHex);
 
   int ret=0;
   if (rhizome_manifest_check_duplicate(m,&mout)==2)
@@ -1349,7 +1356,7 @@ int app_rhizome_extract_file(int argc, const char *const *argv, struct command_l
     return -1;
   cli_arg(argc, argv, o, "key", &keyhex, cli_optional_bundle_crypt_key, "");
   unsigned char key[RHIZOME_CRYPT_KEY_STRLEN + 1];
-  if (keyhex[0] && stowBytes(key, keyhex, RHIZOME_CRYPT_KEY_BYTES) == -1)
+  if (keyhex[0] && fromhexstr(key, keyhex, RHIZOME_CRYPT_KEY_BYTES) == -1)
     return -1;
   /* Ensure the Rhizome database exists and is open */
   if (create_serval_instance_dir() == -1)
