@@ -9,10 +9,7 @@ servald_build_root="$servald_source_root"
 rexp_sid='[0-9a-fA-F]\{64\}'
 
 # Utility function for creating DNA fixtures:
-#  - create a temporary directory to contain all servald-related files
 #  - set $servald variable (executable under test)
-#  - set SERVALINSTANCE_PATH environment variable
-#  - mkdir $SERVALINSTANCE_PATH unless --no-mkdir option given
 setup_servald() {
    servald=$(abspath "$servald_build_root/dna") # The DNA executable under test
    if ! [ -x "$servald" ]; then
@@ -31,8 +28,14 @@ executeOk_servald() {
 
 # Utility function:
 #  - set up environment and normal variables for the given instance name
-#  - if the argument is not an instance name, then use the default instance name
-#    and return 1, otherwise return 0
+#  - if the argument is not an instance name, then use the "default" instance
+#    name and return 1, otherwise return 0
+# Can be used for functions that take an optional instance name as their
+# first argument:
+#     func() {
+#        set_instance "$1" && shift
+#        ...
+#     }
 set_instance() {
    case "$1" in
    [A-Z]|default) set_instance_vars "$1"; return 0;;
@@ -41,8 +44,11 @@ set_instance() {
 }
 
 # Utility function:
-#  - set all the instance variables and environment variables and create the
-#    instance directory for the given instance name
+#  - create a temporary directory to contain all per-instance test files
+#  - set SERVALINSTANCE_PATH environment variable to name a directory within
+#    the per-instance test directory (but do not create it)
+#  - set other environment variables to support other functions defined in this
+#    script
 set_instance_vars() {
    instance_name="${1:-default}"
    export instance_dir="$TFWTMP/instance/$instance_name"
