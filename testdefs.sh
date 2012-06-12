@@ -23,7 +23,7 @@ setup_servald() {
 #  - asserts that standard error contains no error messages
 executeOk_servald() {
    executeOk --executable="$servald" "$@"
-   assertStderrGrep --matches=0 '^ERROR:'
+   assertStderrGrep --matches=0 --message='stderr of $executed contains no error messages' '^ERROR:'
 }
 
 # Utility function:

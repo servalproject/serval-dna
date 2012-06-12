@@ -1206,7 +1206,14 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
       if (debug & DEBUG_RHIZOME) DEBUGF("manifest contains name=\"%s\"", name);
     }
   }
-
+  /* If the author was not specified on the command-line, then the manifest's "sender"
+      field is used, if present. */
+  const char *sender = NULL;
+  if (!authorSidHex[0] && (sender = rhizome_manifest_get(m, "sender", NULL, 0)) != NULL) {
+    if (fromhexstr(authorSid, sender, SID_SIZE) == -1)
+      return WHYF("invalid sender: %s", sender);
+    authorSidHex = sender;
+  }
   /* Bind an ID to the manifest, and also bind the file.  Then finalise the manifest.
      But if the manifest already contains an ID, don't override it. */
   if (rhizome_manifest_get(m, "id", NULL, 0) == NULL) {
@@ -1216,24 +1223,25 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
       return WHY("Could not bind manifest to an ID");
     }
   } else if (bskhex[0]) {
+    /* Modifying an existing bundle.  If the caller provides the bundle secret key, then ensure that
+       it corresponds to the bundle's public key (its bundle ID), otherwise the caller cannot modify
+       the bundle. */
     memcpy(m->cryptoSignSecret, bsk, RHIZOME_BUNDLE_KEY_BYTES);
     if (rhizome_verify_bundle_privatekey(m) == -1) {
       rhizome_manifest_free(m);
       m = NULL;
       return WHY("Incorrect BID secret key.");
     }
-  } else if (authorSidHex[0]) {
-    /* User supplied manifest has a BID, so see if we can extract the
-       private key from a BK entry */
-    if (rhizome_extract_privatekey(m, authorSid) == -1) {
-      rhizome_manifest_free(m);
-      m = NULL;
-      return WHY("Could not extract BID secret key. Does the manifest have a BK?");
-    }
-  } else {
+  } else if (!authorSidHex[0]) {
+    /* In order to modify an existing bundle, the author must be known. */
     rhizome_manifest_free(m);
     m = NULL;
     return WHY("Author SID not specified");
+  } else if (rhizome_extract_privatekey(m, authorSid) == -1) {
+    /* Only the original author can modify an existing bundle. */
+    rhizome_manifest_free(m);
+    m = NULL;
+    return WHY("Could not extract BID secret key. Does the manifest have a BK?");
   }
 #warning need to sanely determine whether to encrypt a file
 #warning payload encryption disabled for now

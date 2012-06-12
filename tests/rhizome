@@ -21,6 +21,8 @@
 source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 
+shopt -s extglob
+
 # Some useful regular expressions.  These must work for grep(1) (as basic
 # expressions) and also in sed(1).
 rexp_service='[A-Za-z0-9_]\+'
@@ -28,6 +30,7 @@ rexp_manifestid='[0-9a-fA-F]\{64\}'
 rexp_bundlekey='[0-9a-fA-F]\{128\}'
 rexp_bundlesecret="$rexp_bundlekey"
 rexp_filehash='[0-9a-fA-F]\{128\}'
+rexp_filesize='[0-9]\{1,\}'
 rexp_version='[0-9]\{1,\}'
 rexp_date='[0-9]\{1,\}'
 
@@ -89,42 +92,51 @@ assert_rhizome_list() {
    assertStdoutIs --stderr --line=2 -e 'service:id:version:date:_inserttime:_selfsigned:filesize:filehash:sender:recipient:name\n'
    local filename
    for filename; do
+      re__selfsigned=1
+      case "$filename" in
+      *!) filename="${filename%!}"; re__selfsigned=0;;
+      esac
       unpack_manifest_for_grep "$filename"
-      assertStdoutGrep --stderr --matches=1 "^$re_service:$re_manifestid:.*:1:$re_filesize:$re_filehash:$re_sender:$re_recipient:$re_name\$"
+      assertStdoutGrep --stderr --matches=1 "^$re_service:$re_manifestid:.*:$re__selfsigned:$re_filesize:$re_filehash:$re_sender:$re_recipient:$re_name\$"
    done
 }
 
 assert_stdout_add_file() {
    [ $# -ge 1 ] || error "missing filename arg"
    local filename="${1}"
+   shift
    unpack_manifest_for_grep "$filename"
-   assertStdoutGrep --matches=1 "^service:$re_service\$"
-   assertStdoutGrep --matches=1 "^manifestid:$re_manifestid\$"
-   assertStdoutGrep --matches=1 "^secret:$re_secret\$"
-   assertStdoutGrep --matches=1 "^filehash:$re_filehash\$"
-   assertStdoutGrep --matches=1 "^filesize:$re_filesize\$"
-   if [ $# -ge 2 ] || replayStdout | grep -q '^service=file$'; then
-      assertStdoutGrep --matches=1 "^name:${2:-$re_name}\$"
-      assertStdoutLineCount '==' 6
-   else
-      assertStdoutLineCount '==' 5
+   opt_name=false
+   if replayStdout | grep -q '^service:file$'; then
+      opt_name=true
    fi
+   fieldnames='service|manifestid|secret|filehash|filesize|name'
+   for arg; do
+      case "$arg" in
+      !+($fieldnames))
+         fieldname="${arg#!}"
+         eval opt_$fieldname=false
+         ;;
+      +($fieldnames)=*)
+         value="${arg#*=}"
+         fieldname="${arg%%=*}"
+         assertStdoutGrep --matches=1 "^$fieldname:$value\$"
+         ;;
+      *)
+         error "unsupported argument: $arg"
+         ;;
+      esac
+   done
+   ${opt_service:-true} && assertStdoutGrep --matches=1 "^service:$re_service\$"
+   ${opt_manifestid:-true} && assertStdoutGrep --matches=1 "^manifestid:$re_manifestid\$"
+   ${opt_secret:-true} && assertStdoutGrep --matches=1 "^secret:$re_secret\$"
+   ${opt_filehash:-true} && assertStdoutGrep --matches=1 "^filehash:$re_filehash\$"
+   ${opt_filesize:-true} && assertStdoutGrep --matches=1 "^filesize:$re_filesize\$"
 }
 
 assert_stdout_import_bundle() {
-   [ $# -ge 1 ] || error "missing filename arg"
-   local filename="${1}"
-   unpack_manifest_for_grep "$filename"
-   assertStdoutGrep --matches=1 "^service:$re_service\$"
-   assertStdoutGrep --matches=1 "^manifestid:$re_manifestid\$"
-   assertStdoutGrep --matches=1 "^filehash:$re_filehash\$"
-   assertStdoutGrep --matches=1 "^filesize:$re_filesize\$"
-   if [ $# -ge 2 ] || replayStdout | grep -q '^service=file$'; then
-      assertStdoutGrep --matches=1 "^name:${2:-$re_name}\$"
-      assertStdoutLineCount '==' 5
-   else
-      assertStdoutLineCount '==' 4
-   fi
+   # Output of "import bundle" is the same as "add file" but without the secret.
+   assert_stdout_add_file "$@" '!secret'
 }
 
 unpack_manifest_for_grep() {
@@ -314,7 +326,7 @@ setup_AddManifest() {
 test_AddManifest() {
    executeOk_servald rhizome add file $sid '' file1 file1.manifest
    tfw_cat --stdout --stderr -v file1.manifest
-   assert_stdout_add_file file1 wah
+   assert_stdout_add_file file1 name=wah
    assert_manifest_complete file1.manifest
    assertGrep file1.manifest '^service=file$'
    assertGrep file1.manifest '^name=wah$'
@@ -331,7 +343,7 @@ test_AddEmpty() {
    executeOk_servald rhizome add file $sid '' '' .manifest
    tfw_cat --stdout --stderr -v .manifest
    assert_stdout_add_file ''
-   assert_manifest_complete file1.manifest
+   assert_manifest_complete .manifest
    assertGrep .manifest '^service=file$'
    assertGrep .manifest '^name=$'
    assertGrep .manifest '^filesize=0$'
@@ -542,7 +554,7 @@ setup_AddUpdateNewVersion() {
 test_AddUpdateNewVersion() {
    tfw_cat -v file1_2.manifest
    executeOk_servald rhizome add file $sid '' file1_2 file1_2.manifest
-   assert_stdout_add_file file1_2 file1
+   assert_stdout_add_file file1_2 name=file1
    assert_manifest_newer file1.manifest file1_2.manifest
    # Rhizome store contents reflect new payload.
    executeOk_servald rhizome list ''
@@ -574,7 +586,7 @@ test_AddUpdateNoAuthorWithSecret() {
    tfw_cat --stderr
    # Rhizome store contents have new payload.
    executeOk_servald rhizome list ''
-   assert_rhizome_list file1_2 file2
+   assert_rhizome_list file1_2! file2
 }
 
 doc_AddUpdateAutoVersion="Add new payload to existing manifest with automatic version"
@@ -604,14 +616,16 @@ test_AddUnsupportedService() {
    assertExitStatus '!=' 0
 }
 
-doc_AddMeshMSCreate="First add MeshMS creates manifest"
-setup_AddMeshMSCreate() {
+doc_MeshMSAddCreate="First add MeshMS creates manifest"
+setup_MeshMSAddCreate() {
    setup_servald_rhizome
    echo "Message1" >file1
    echo -e "service=MeshMS1\nsender=$sid\nrecipient=$sid1" >file1.manifest
 }
-test_AddMeshMSCreate() {
+test_MeshMSAddCreate() {
    executeOk_servald rhizome add file $sid '' file1 file1.manifest
+   assert_stdout_add_file file1
+   assert_manifest_complete file1.manifest
    executeOk_servald rhizome list ''
    assert_rhizome_list file1
    extract_manifest_filehash filehash file1.manifest
@@ -619,14 +633,16 @@ test_AddMeshMSCreate() {
    assert diff file1 file1x
 }
 
-doc_AddMeshMSGrow="Subsequent add MeshMS updates manifest and removes old payload"
-setup_AddMeshMSGrow() {
+doc_MeshMSAddGrow="Subsequent add MeshMS updates manifest and removes old payload"
+setup_MeshMSAddGrow() {
    setup_servald_rhizome
    echo "Message1" >file1
    echo -e "service=MeshMS1\nsender=$sid\nrecipient=$sid1" >file1.manifest
 }
-test_AddMeshMSGrow() {
+test_MeshMSAddGrow() {
    executeOk_servald rhizome add file $sid '' file1 file1.manifest
+   assert_stdout_add_file file1
+   assert_manifest_complete file1.manifest
    executeOk_servald rhizome list ''
    assert_rhizome_list file1
    extract_manifest_id id file1.manifest
@@ -655,37 +671,37 @@ test_AddMeshMSGrow() {
    done
 }
 
-doc_AddMeshMSMissingSender="Add MeshMS without sender fails"
-setup_AddMeshMSMissingSender() {
+doc_MeshMSAddMissingSender="Add MeshMS without sender fails"
+setup_MeshMSAddMissingSender() {
    setup_servald_rhizome
    echo "Message1" >file1
    echo -e "service=MeshMS1\nrecipient=$sid1" >file1.manifest
 }
-test_AddMeshMSMissingSender() {
+test_MeshMSAddMissingSender() {
    execute $servald rhizome add file $sid '' file1 file1.manifest
    assertExitStatus '!=' 0
 }
 
-doc_AddMeshMSMissingRecipient="Add MeshMS without recipient fails"
-setup_AddMeshMSMissingRecipient() {
+doc_MeshMSAddMissingRecipient="Add MeshMS without recipient fails"
+setup_MeshMSAddMissingRecipient() {
    setup_servald_rhizome
    executeOk_servald rhizome list ''
    assert_rhizome_list
    echo "Message1" >file1
    echo -e "service=MeshMS1\nsender=$sid" >file1.manifest
 }
-test_AddMeshMSMissingRecipient() {
+test_MeshMSAddMissingRecipient() {
    execute $servald rhizome add file $sid '' file1 file1.manifest
    assertExitStatus '!=' 0
 }
 
-doc_AddMeshMSMissingAuthor="Add MeshMS without author uses sender"
-setup_AddMeshMSMissingAuthor() {
+doc_MeshMSAddMissingAuthor="Add MeshMS without author uses sender"
+setup_MeshMSAddMissingAuthor() {
    setup_servald_rhizome
    echo "Message1" >file1
    echo -e "service=MeshMS1\nsender=$sid\nrecipient=$sid1" >file1.manifest
 }
-test_AddMeshMSMissingAuthor() {
+test_MeshMSAddMissingAuthor() {
    executeOk_servald rhizome add file '' '' file1 file1.manifest
    assert_stdout_add_file file1
    assert_manifest_complete file1.manifest
@@ -693,8 +709,8 @@ test_AddMeshMSMissingAuthor() {
    assert_rhizome_list file1
 }
 
-doc_ListMeshMSFilter="List MeshMS manifests by filter"
-setup_ListMeshMSFilter() {
+doc_MeshMSListFilter="List MeshMS manifests by filter"
+setup_MeshMSListFilter() {
    setup_servald_rhizome
    echo "Message1" >file1
    echo -e "service=MeshMS1\nsender=$sid\nrecipient=$sid1" >file1.manifest
@@ -705,13 +721,21 @@ setup_ListMeshMSFilter() {
    echo "Message3" >file4
    echo -e "service=MeshMS1\nsender=$sid1\nrecipient=$sid2" >file4.manifest
    executeOk_servald rhizome add file '' '' file1 file1.manifest
+   assert_stdout_add_file file1
+   assert_manifest_complete file1.manifest
    executeOk_servald rhizome add file '' '' file2 file2.manifest
+   assert_stdout_add_file file2
+   assert_manifest_complete file2.manifest
    executeOk_servald rhizome add file '' '' file3 file3.manifest
+   assert_stdout_add_file file3
+   assert_manifest_complete file3.manifest
    executeOk_servald rhizome add file '' '' file4 file4.manifest
+   assert_stdout_add_file file4
+   assert_manifest_complete file4.manifest
    executeOk_servald rhizome list ''
    assert_rhizome_list file1 file2 file3 file4
 }
-test_ListMeshMSFilter() {
+test_MeshMSListFilter() {
    executeOk_servald rhizome list '' file
    assert_rhizome_list
    executeOk_servald rhizome list '' MeshMS1
