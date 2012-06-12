@@ -671,7 +671,7 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
     ret = WHY(sqlite3_errmsg(rhizome_db));
   } else {
     size_t rows = 0;
-    cli_puts("10"); cli_delim("\n"); // number of columns
+    cli_puts("11"); cli_delim("\n"); // number of columns
     cli_puts("service"); cli_delim(":");
     cli_puts("id"); cli_delim(":");
     cli_puts("version"); cli_delim(":");
