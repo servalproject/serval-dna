@@ -146,87 +146,106 @@ int rhizome_opendb()
     DEBUGF("serval.conf:rhizome_kb=%.f", rhizome_kb);
     DEBUGF("Rhizome will use %lldB of storage for its database.", rhizome_space);
   }
-
-  /* Create tables if required */
-  if (sqlite3_exec(rhizome_db,
-		   "PRAGMA auto_vacuum=2;"
-		   "CREATE TABLE IF NOT EXISTS GROUPLIST(id text not null primary key, closed integer,ciphered integer,priority integer);"
-		   
-		   "CREATE TABLE IF NOT EXISTS MANIFESTS(id text not null primary key, manifest blob, version integer,inserttime integer, bar blob);"
-		   
-		   "CREATE TABLE IF NOT EXISTS FILES(id text not null primary key, data blob, length integer, highestpriority integer, datavalid integer);"
-		   
-		   "DROP TABLE IF EXISTS FILEMANIFESTS;"
-		   "CREATE TABLE IF NOT EXISTS GROUPMEMBERSHIPS(manifestid text not null, groupid text not null);"
-		   "CREATE TABLE IF NOT EXISTS VERIFICATIONS(sid text not null, did text, name text, starttime integer, endtime integer, signature blob);"
-		   
-		   ,NULL,NULL,NULL))
-    {
-      return WHYF("Failed to create required schema: %s", sqlite3_errmsg(rhizome_db));
-    }
-  // no easy way to tell if these columns already exist, should probably create some kind of schema version table
-  // running this a second time will fail.
-  sqlite3_exec(rhizome_db,
-    "ALTER TABLE MANIFESTS ADD COLUMN filesize text;"
-    "ALTER TABLE MANIFESTS ADD COLUMN filehash text;"
-    "ALTER TABLE FILES ADD inserttime integer;"
-	       ,NULL,NULL,NULL);
-  
-  if (sqlite3_exec(rhizome_db,
-    "CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_HASH ON MANIFESTS(filehash);"
-    "DELETE FROM MANIFESTS WHERE filehash IS NULL;"
-    "DELETE FROM FILES WHERE NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);"
-    "DELETE FROM MANIFESTS WHERE NOT EXISTS( SELECT  1 FROM FILES WHERE MANIFESTS.filehash = FILES.id);"
-		   ,NULL,NULL,NULL)){
-    return WHYF("Failed to create required schema: %s", sqlite3_errmsg(rhizome_db));
+  /* Create tables as required */
+  if (	sqlite_exec_void("PRAGMA auto_vacuum=2;") == -1
+    ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS GROUPLIST(id text not null primary key, closed integer,ciphered integer,priority integer);") == -1
+    ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS MANIFESTS(id text not null primary key, manifest blob, version integer,inserttime integer, bar blob);") == -1
+    ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS FILES(id text not null primary key, data blob, length integer, highestpriority integer, datavalid integer);") == -1
+    ||	sqlite_exec_void("DROP TABLE IF EXISTS FILEMANIFESTS;") == -1
+    ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS GROUPMEMBERSHIPS(manifestid text not null, groupid text not null);") == -1
+    ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS VERIFICATIONS(sid text not null, did text, name text, starttime integer, endtime integer, signature blob);") == -1
+  ) {
+    return WHY("Failed to create schema");
   }
-  
+  // No easy way to tell if these columns already exist, should probably create some kind of schema
+  // version table.  Running these a second time will fail.
+  sqlite_exec_void_loglevel(LOG_LEVEL_INFO, "ALTER TABLE MANIFESTS ADD COLUMN filesize text;");
+  sqlite_exec_void_loglevel(LOG_LEVEL_INFO, "ALTER TABLE MANIFESTS ADD COLUMN filehash text;");
+  sqlite_exec_void_loglevel(LOG_LEVEL_INFO, "ALTER TABLE FILES ADD inserttime integer;");
+  /* Upgrade schema */
+  if (	sqlite_exec_void("CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_HASH ON MANIFESTS(filehash);") == -1
+    ||	sqlite_exec_void("DELETE FROM MANIFESTS WHERE filehash IS NULL;") == -1
+    ||	sqlite_exec_void("DELETE FROM FILES WHERE NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);") == -1
+    ||	sqlite_exec_void("DELETE FROM MANIFESTS WHERE NOT EXISTS( SELECT  1 FROM FILES WHERE MANIFESTS.filehash = FILES.id);") == -1
+  ) {
+    return WHY("Failed to create schema");
+  }
   return 0;
 }
 
-/* 
-   Convenience wrapper for executing an SQL command that returns a no value.
-   Returns -1 if an error occurs, otherwise zero.
+/*
+   Convenience wrapper for preparing an SQL command.
+   Returns -1 if an error occurs (logged as an error), otherwise zero with the prepared
+   statement in *statement.
  */
-int sqlite_exec_void(const char *sqlformat,...)
+int sqlite_prepare(sqlite3_stmt **statement, const strbuf stmt)
 {
-  if (!rhizome_db) rhizome_opendb();
-  strbuf stmt = strbuf_alloca(8192);
-  va_list ap;
-  va_start(ap, sqlformat);
-  strbuf_vsprintf(stmt, sqlformat, ap);
-  va_end(ap);
+  return sqlite_prepare_loglevel(LOG_LEVEL_ERROR, statement, stmt);
+}
+
+int sqlite_prepare_loglevel(int log_level, sqlite3_stmt **statement, const strbuf stmt)
+{
   if (strbuf_overrun(stmt))
     return WHYF("Sql statement overrun: %s", strbuf_str(stmt));
-  sqlite3_stmt *statement;
-  
-  switch (sqlite3_prepare_v2(rhizome_db, strbuf_str(stmt), -1, &statement, NULL)) {
+  if (!rhizome_db && rhizome_opendb() == -1)
+    return -1;
+  switch (sqlite3_prepare_v2(rhizome_db, strbuf_str(stmt), -1, statement, NULL)) {
     case SQLITE_OK: case SQLITE_DONE:
       break;
     default:
-      WHY(strbuf_str(stmt));
-      WHY(sqlite3_errmsg(rhizome_db));
-      sqlite3_finalize(statement);
+      LOGF(log_level, "%s in %s", sqlite3_errmsg(rhizome_db), strbuf_str(stmt));
+      sqlite3_finalize(*statement);
       return -1;
   }
-  int stepcode;
-  int rows = 0;
-  while ((stepcode = sqlite3_step(statement)) == SQLITE_ROW)
-    ++rows;
-  if (rows) WARNF("query unexpectedly returned %d row%s", rows, rows == 1 ? "" : "s");
-  switch (stepcode) {
-    case SQLITE_OK:
-    case SQLITE_DONE:
-    case SQLITE_ROW:
-      break;
-    default:
-      WHY(strbuf_str(stmt));
-      WHY(sqlite3_errmsg(rhizome_db));
-      sqlite3_finalize(statement);
-      return -1;
-  }
-  sqlite3_finalize(statement);
   return 0;
+}
+
+/*
+   Convenience wrapper for executing an SQL command that returns a no value.
+   If an error occurs then logs it at error level and returns -1.  Otherwise returns zero.
+ */
+int sqlite_exec_void(const char *sqlformat, ...)
+{
+  strbuf stmt = strbuf_alloca(8192);
+  strbuf_va_printf(stmt, sqlformat);
+  return sqlite_exec_void_strbuf_loglevel(LOG_LEVEL_ERROR, stmt);
+}
+
+int sqlite_exec_void_loglevel(int log_level, const char *sqlformat, ...)
+{
+  strbuf stmt = strbuf_alloca(8192);
+  strbuf_va_printf(stmt, sqlformat);
+  return sqlite_exec_void_strbuf_loglevel(log_level, stmt);
+}
+
+/*
+   Convenience wrapper for executing an SQL command that returns a no value.
+   If an error occurs then logs it at the given level and returns -1.  Otherwise returns zero.
+ */
+int sqlite_exec_void_strbuf_loglevel(int log_level, const strbuf stmt)
+{
+  sqlite3_stmt *statement;
+  int ret = sqlite_prepare_loglevel(log_level, &statement, stmt);
+  if (ret != -1) {
+    int stepcode;
+    int rows = 0;
+    while ((stepcode = sqlite3_step(statement)) == SQLITE_ROW)
+      ++rows;
+    if (rows) WARNF("void query unexpectedly returned %d row%s", rows, rows == 1 ? "" : "s");
+    switch (stepcode) {
+      case SQLITE_OK:
+      case SQLITE_DONE:
+      case SQLITE_ROW:
+	ret = 0;
+	break;
+      default:
+	ret = -1;
+	LOGF(log_level, "%s in %s", sqlite3_errmsg(rhizome_db), strbuf_str(stmt));
+	break;
+    }
+    sqlite3_finalize(statement);
+  }
+  return ret;
 }
 
 /*
@@ -239,48 +258,37 @@ int sqlite_exec_void(const char *sqlformat,...)
  */
 int sqlite_exec_int64(long long *result, const char *sqlformat,...)
 {
-  if (!rhizome_db) rhizome_opendb();
   strbuf stmt = strbuf_alloca(8192);
-  va_list ap;
-  va_start(ap, sqlformat);
-  strbuf_vsprintf(stmt, sqlformat, ap);
-  va_end(ap);
-  if (strbuf_overrun(stmt))
-    return WHYF("sql statement too long: %s", strbuf_str(stmt));
+  strbuf_va_printf(stmt, sqlformat);
   sqlite3_stmt *statement;
-  switch (sqlite3_prepare_v2(rhizome_db, strbuf_str(stmt), -1, &statement, NULL)) {
-    case SQLITE_OK: case SQLITE_DONE: case SQLITE_ROW:
-      break;
-    default:
-      WHY(strbuf_str(stmt));
-      WHY(sqlite3_errmsg(rhizome_db));
-      sqlite3_finalize(statement);
-      return -1;
-  }
-  int stepcode;
-  int rowcount = 0;
-  if ((stepcode = sqlite3_step(statement)) == SQLITE_ROW) {
-    int n = sqlite3_column_count(statement);
-    if (n != 1) {
-      sqlite3_finalize(statement);
-      return WHYF("Incorrect column count %d (should be 1): %s", n, strbuf_str(stmt));
+  int ret = sqlite_prepare(&statement, stmt);
+  if (ret != -1) {
+    int rowcount = 0;
+    int stepcode = sqlite3_step(statement);
+    if (stepcode == SQLITE_ROW) {
+      int n = sqlite3_column_count(statement);
+      if (n != 1)
+	ret = WHYF("Incorrect column count %d (should be 1): %s", n, strbuf_str(stmt));
+      else {
+	rowcount = 1;
+	*result = sqlite3_column_int64(statement, 0);
+	while ((stepcode = sqlite3_step(statement)) == SQLITE_ROW)
+	  ++rowcount;
+      }
     }
-    *result = sqlite3_column_int64(statement, 0);
-    rowcount = 1;
-    while ((stepcode = sqlite3_step(statement)) == SQLITE_ROW)
-      ++rowcount;
+    if (ret != -1) {
+      switch (stepcode) {
+	case SQLITE_OK: case SQLITE_DONE:
+	  ret = rowcount;
+	  break;
+	default:
+	  ret = WHYF("%s in %s", sqlite3_errmsg(rhizome_db), strbuf_str(stmt));
+	  break;
+      }
+    }
+    sqlite3_finalize(statement);
   }
-  switch (stepcode) {
-    case SQLITE_OK: case SQLITE_DONE:
-      break;
-    default:
-      WHY(strbuf_str(stmt));
-      WHY(sqlite3_errmsg(rhizome_db));
-      sqlite3_finalize(statement);
-      return -1;
-  }
-  sqlite3_finalize(statement);
-  return rowcount;
+  return ret;
 }
 
 /* 
@@ -293,47 +301,52 @@ int sqlite_exec_int64(long long *result, const char *sqlformat,...)
  */
 int sqlite_exec_strbuf(strbuf sb, const char *sqlformat,...)
 {
-  if (!rhizome_db) rhizome_opendb();
   strbuf stmt = strbuf_alloca(8192);
-  va_list ap;
-  va_start(ap, sqlformat);
-  strbuf_vsprintf(stmt, sqlformat, ap);
-  va_end(ap);
-  if (strbuf_overrun(stmt))
-    return WHYF("sql statement too long: %s", strbuf_str(stmt));
+  strbuf_va_printf(stmt, sqlformat);
   sqlite3_stmt *statement;
-  switch (sqlite3_prepare_v2(rhizome_db, strbuf_str(stmt), -1, &statement,NULL)) {
-    case SQLITE_OK: case SQLITE_DONE: case SQLITE_ROW:
-      break;
-    default:
-      sqlite3_finalize(statement);
-      WHY(strbuf_str(stmt));
-      WHY(sqlite3_errmsg(rhizome_db));
-      return WHY("Could not prepare sql statement.");
-  }
-  int rows = 0;
-  if (sqlite3_step(statement) == SQLITE_ROW) {
-    int n = sqlite3_column_count(statement);
-    if (n != 1) {
-      sqlite3_finalize(statement);
-      return WHYF("Incorrect column count %d (should be 1)", n);
+  int ret = sqlite_prepare(&statement, stmt);
+  if (ret != -1) {
+    int rowcount = 0;
+    int stepcode = sqlite3_step(statement);
+    if (stepcode == SQLITE_ROW) {
+      int n = sqlite3_column_count(statement);
+      if (n != 1)
+	ret = WHYF("Incorrect column count %d (should be 1): %s", n, strbuf_str(stmt));
+      else {
+	rowcount = 1;
+	strbuf_puts(sb, (const char *)sqlite3_column_text(statement, 0));
+	while ((stepcode = sqlite3_step(statement)) == SQLITE_ROW)
+	  ++rowcount;
+      }
     }
-    strbuf_puts(sb, (const char *)sqlite3_column_text(statement, 0));
+    if (ret != -1) {
+      switch (stepcode) {
+	case SQLITE_OK: case SQLITE_DONE:
+	  ret = rowcount;
+	  break;
+	default:
+	  ret = -1;
+	  WHY(strbuf_str(stmt));
+	  WHY(sqlite3_errmsg(rhizome_db));
+	  break;
+      }
+    }
     sqlite3_finalize(statement);
-    ++rows;
   }
-  if (sqlite3_step(statement) == SQLITE_ROW)
-    ++rows;
-  sqlite3_finalize(statement);
-  return rows;
+  return ret;
 }
 
 long long rhizome_database_used_bytes()
 {
-  long long db_page_size=sqlite_exec_void("PRAGMA page_size;");
-  long long db_page_count=sqlite_exec_void("PRAGMA page_count;");
-  long long db_free_page_count=sqlite_exec_void("PRAGMA free_count;");
-  return db_page_size*(db_page_count-db_free_page_count);
+  long long db_page_size;
+  long long db_page_count;
+  long long db_free_page_count;
+  if (	sqlite_exec_int64(&db_page_size, "PRAGMA page_size;") == -1LL
+    ||  sqlite_exec_int64(&db_page_count, "PRAGMA page_count;") == -1LL
+    ||	sqlite_exec_int64(&db_free_page_count, "PRAGMA free_count;") == -1LL
+  )
+    return WHY("Cannot measure database used bytes");
+  return db_page_size * (db_page_count - db_free_page_count);
 }
 
 int rhizome_make_space(int group_priority, long long bytes)
@@ -343,7 +356,8 @@ int rhizome_make_space(int group_priority, long long bytes)
   /* Asked for impossibly large amount */
   if (bytes>=(rhizome_space-65536)) return -1;
 
-  long long db_used=rhizome_database_used_bytes(); 
+  long long db_used = rhizome_database_used_bytes();
+  if (db_used == -1)
   
   /* If there is already enough space now, then do nothing more */
   if (db_used<=(rhizome_space-bytes-65536)) return 0;

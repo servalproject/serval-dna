@@ -85,7 +85,7 @@ typedef const struct strbuf *const_strbuf;
  */
 #define SIZEOF_STRBUF (sizeof(struct strbuf))
 
-/** Convenience function for allocating a strbuf and its backing buffer on the
+/** Convenience macro for allocating a strbuf and its backing buffer on the
  * stack within the calling function.  The returned strbuf is only valid for
  * the duration of the function, so it must not be returned.  See alloca(3) for
  * more information.
@@ -96,14 +96,37 @@ typedef const struct strbuf *const_strbuf;
  *          strbuf_puts(b, " some more text");
  *          printf("%s\n", strbuf_str(b));
  *      }
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
  */
 #define strbuf_alloca(size) strbuf_make(alloca(SIZEOF_STRBUF + size), SIZEOF_STRBUF + size)
 
 
-/** Allocate a strbuf for use within the calling function, using a
- * caller-supplied backing buffer.  The returned strbuf is only valid for the
- * duration of the function, so it must not be returned.  See alloca(3) for
+/** Convenience macro for filling a strbuf from the calling function's
+ * printf(3)-like variadic arguments.  The returned strbuf is only valid for
+ * the duration of the function, so it must not be returned.  See alloca(3) for
  * more information.
+ *
+ *      #include <stdarg.h>
+ *
+ *      void funcf(const char *format, ...) {
+ *          strbuf b = strbuf_alloca_fmtargs(1024, format);
+ *          ...
+ *      }
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+#define strbuf_va_printf(sb,fmt) do { \
+            va_list __strbuf_ap; \
+            va_start(__strbuf_ap, fmt); \
+            strbuf_vsprintf(sb, fmt, __strbuf_ap); \
+            va_end(__strbuf_ap); \
+        } while (0)
+
+/** Convenience macro to allocate a strbuf for use within the calling function,
+ * based on a caller-supplied backing buffer.  The returned strbuf is only valid
+ * for the duration of the function, so it must not be returned.  See alloca(3)
+ * for more information.  However, the backing buffer may have any scope.
  *
  *      void func(char *buf, size_t len) {
  *          strbuf b = strbuf_local(buf, len);
@@ -111,6 +134,8 @@ typedef const struct strbuf *const_strbuf;
  *          strbuf_puts(b, " some more text");
  *          printf("%s\n", strbuf_str(b));
  *      }
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
  */
 #define strbuf_local(buf,len) strbuf_init(alloca(SIZEOF_STRBUF), (buf), (len))
 

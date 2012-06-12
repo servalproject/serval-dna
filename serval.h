@@ -754,6 +754,7 @@ typedef struct overlay_txqueue {
 #define OQ_MAX 5
 extern overlay_txqueue overlay_tx[OQ_MAX];
 
+#define LOG_LEVEL_SILENT    (-1)
 #define LOG_LEVEL_DEBUG     (0)
 #define LOG_LEVEL_INFO      (1)
 #define LOG_LEVEL_WARN      (2)

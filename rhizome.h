@@ -248,7 +248,11 @@ int rhizome_server_close_http_request(int i);
 int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r);
 int rhizome_server_parse_http_request(int rn,rhizome_http_request *r);
 int rhizome_server_simple_http_response(rhizome_http_request *r,int result, char *response);
+int sqlite_prepare(sqlite3_stmt **statement, const strbuf stmt);
+int sqlite_prepare_loglevel(int log_level, sqlite3_stmt **statement, const strbuf stmt);
 int sqlite_exec_void(const char *sqlformat,...);
+int sqlite_exec_void_loglevel(int log_level, const char *sqlformat, ...);
+int sqlite_exec_void_strbuf_loglevel(int log_level, const strbuf stmt);
 int sqlite_exec_int64(long long *result, const char *sqlformat,...);
 int sqlite_exec_strbuf(strbuf sb, const char *sqlformat,...);
 int rhizome_server_http_response_header(rhizome_http_request *r,int result,
