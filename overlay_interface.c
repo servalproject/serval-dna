@@ -178,57 +178,61 @@ int overlay_interface_args(const char *arg)
   return 0;     
 }
 
-int overlay_interface_init_socket(int interface,struct sockaddr_in src_addr,struct sockaddr_in broadcast)
-{
+int
+overlay_interface_init_socket(int interface, struct sockaddr_in src_addr, struct sockaddr_in broadcast) {
 #define I(X) overlay_interfaces[interface].X
-  //  I(local_address)=src_addr;
-  I(broadcast_address)=broadcast;
-  I(fileP)=0;
+  I(broadcast_address) = broadcast;
+  I(fileP) = 0;
 
-  I(fd)=socket(PF_INET,SOCK_DGRAM,0);
+  I(fd) = socket(PF_INET,SOCK_DGRAM,0);
   if (I(fd)<0) {
-    return WHYF("Could not create UDP socket for interface: %s",strerror(errno));
+      WHY_perror("socket()");
+      WHYF("Could not create UDP socket for interface: %s",strerror(errno));
+      goto error;
   } else 
     WHYF("interface #%d fd=%d",interface,I(fd));
 
-  int reuseP=1;
-  if(setsockopt( I(fd), SOL_SOCKET, SO_REUSEADDR, &reuseP, sizeof(reuseP)) < 0)
-    {
-      WHY("Could not mark socket to reuse addresses. Not necessarily a problem (yet)");
-      WHY_perror("setsockopt");
+  int reuseP = 1;
+  if (setsockopt(I(fd), SOL_SOCKET, SO_REUSEADDR, &reuseP, sizeof(reuseP)) < 0) {
+      WHY_perror("setsockopt(SO_REUSEADR)");
+      goto error;
     }
-
-  int broadcastP=1;
-  if(setsockopt(I(fd), SOL_SOCKET, SO_BROADCAST, &broadcastP, sizeof(broadcastP)) < 0) {
-    WHY("Could not enable broadcast reception for socket.  This is really bad.");
+#ifdef SO_REUSEPORT
+  if (setsockopt(I(fd), SOL_SOCKET, SO_REUSEPORT, &reuseP, sizeof(reuseP)) < 0) {
+      WHY_perror("setsockopt(SO_REUSEPORT)");
+      goto error;
+    }
+#endif
+  int broadcastP = 1;
+  if (setsockopt(I(fd), SOL_SOCKET, SO_BROADCAST, &broadcastP, sizeof(broadcastP)) < 0) {
     WHY_perror("setsockopt");
-    close(I(fd)); I(fd)=0;
-    return WHY("setsockopt() failed");
-  } else
-    WHYF("Interface #%d broadcast flag = %d",interface,broadcastP);
+    goto error;
+  }
 
   /* Automatically close socket on calls to exec().
      This makes life easier when we restart with an exec after receiving
      a bad signal. */
-  fcntl(I(fd), F_SETFL,
-	fcntl(I(fd), F_GETFL, NULL)|O_CLOEXEC);
-
+  fcntl(I(fd), F_SETFL, fcntl(I(fd), F_GETFL, NULL) | O_CLOEXEC);
 
   broadcast.sin_family = AF_INET;
-  broadcast.sin_port = htons( I(port) );
+  broadcast.sin_port = htons(I(port));
   /* XXX Is this right? Are we really setting the local side address?
      I was in a plane when at the time, so couldn't Google it.
   */
-  if (debug&DEBUG_PACKETRX) fprintf(stderr,"src_addr=%08x\n",(unsigned int)broadcast.sin_addr.s_addr);
-  if(bind(I(fd),(struct sockaddr *)&broadcast,sizeof(broadcast))) {
+  if (debug&DEBUG_PACKETRX) fprintf(stderr,"src_addr=%08x\n",(unsigned int)src_addr.sin_addr.s_addr);
+  if (bind(I(fd),(struct sockaddr *)&src_addr,sizeof(src_addr))) {
     WHY_perror("bind");
-    close(I(fd));
-    I(fd)=-1;
-    return WHY("MP HLR server could not bind to requested UDP port (bind() failed)");
+    WHY("MP HLR server could not bind to requested UDP port (bind() failed)");
+    goto error;
   }
-  if (debug&(DEBUG_PACKETRX|DEBUG_IO)) fprintf(stderr,"Bound to port 0x%04x\n",broadcast.sin_port);
+  if (debug&(DEBUG_PACKETRX|DEBUG_IO)) fprintf(stderr,"Bound to port 0x%04x\n",src_addr.sin_port);
 
   return 0;
+
+  error:
+  close(I(fd));
+  I(fd)=-1;
+  return -1;
 #undef I
 }
 
@@ -492,70 +496,79 @@ int overlay_sendto(struct sockaddr_in *recipientaddr,unsigned char *bytes,int le
     return len;
 }
 
-int overlay_interface_register(unsigned char *name,
-			       struct sockaddr_in local,
-			       struct sockaddr_in broadcast)
-{
-  /* Now register the interface, or update the existing interface registration */
-  struct interface_rules *r=interface_filter,*me=NULL;
+/* Register the interface, or update the existing interface registration */
+int
+overlay_interface_register(char *name,
+			   struct sockaddr_in local,
+			   struct sockaddr_in broadcast) {
+  struct interface_rules	*r, *me;
+  int				i;
+
+  /* See if the interface is listed in the filter */
+  me = NULL;
+  r = interface_filter;
   while(r) {
-    if (!strcasecmp((char *)name,r->namespec)) me=r;
-    if (!r->namespec[0]) me=r;
-    r=r->next;
+    if (!strcasecmp(name, r->namespec))
+      me = r;
+
+    r = r->next;
   }
-  if (me&&(!me->excludeP)) {
-    if (debug&DEBUG_OVERLAYINTERFACES)
-      fprintf(stderr,"Interface %s is interesting.\n",name);
-    /* We should register or update this interface. */
-    int i;
-    for(i=0;i<overlay_interface_count;i++) if (!strcasecmp(overlay_interfaces[i].name,(char *)name)) break;
-    if (i<overlay_interface_count) {
-      /* We already know about this interface, so just update it.
-         We actually only care about the broadcast address for the overlay mesh.
-         this is a good thing, because it turns out to be pretty hard to discover
-	 your own IP address on Android. */
-      if ( /* ((overlay_interfaces[i].local_address.sin_addr.s_addr&0xffffffff)
-	      ==(local.sin_addr.s_addr&0xffffffff))&& */
-	  ((overlay_interfaces[i].broadcast_address.sin_addr.s_addr&0xffffffff)
-	   ==(broadcast.sin_addr.s_addr&0xffffffff)))
-	{
-	  /* Mark it as being seen */
-	  overlay_interfaces[i].observed=1;
-	  return 0;
-	}
-      else
-	if (0)
-	  {
-	    /* Interface has changed.
-	       This old approach has problems for machines with multiple IP 
-	       addresses on a given interface, so now we allow multiple
-	       interfaces on the same underlying network adaptor. */
-	    WHYF("Interface changed %08llx.%08llx vs %08llx.%08llx",
-		 /* overlay_interfaces[i].local_address.sin_addr.s_addr */0,
-		 overlay_interfaces[i].broadcast_address.sin_addr.s_addr,
-		 local.sin_addr.s_addr,
-		 broadcast.sin_addr.s_addr);
-	    close(overlay_interfaces[i].fd);
-	    overlay_interfaces[i].fd=-1;
-	    if (overlay_interface_init_socket(i,local,broadcast))
-	      WHY("Could not reinitialise changed interface");
-	  }
+
+  if (me == NULL || me->excludeP) {
+    if (debug & DEBUG_OVERLAYINTERFACES)
+      INFOF("Interface %s is not interesting.",name);
+    return 0;
+  }
+
+  /* Search in the exist list of interfaces */
+  for(i = 0; i < overlay_interface_count; i++)
+    if (!strcasecmp(overlay_interfaces[i].name, name))
+      break;
+  
+  if (i < overlay_interface_count) {
+    /* We already know about this interface, so just update it. */
+
+    /* Check if the broadcast address is the same
+       TODO: This only applies on Linux because only there can you bind to the bcast addr
+       DOC 20120608
+    */
+    if ((overlay_interfaces[i].broadcast_address.sin_addr.s_addr & 0xffffffff)
+	== (broadcast.sin_addr.s_addr & 0xffffffff)) {
+      /* Same address, mark it as being seen */
+      overlay_interfaces[i].observed = 1;
+      return 0;
+    } else {
+      if (0) {
+	/* Interface has changed.
+	   TODO: We should register each address we understand in a list and check them.
+	   DOC 20120608 */
+	INFOF("Interface changed %08llx.%08llx vs %08llx.%08llx",
+	      /* overlay_interfaces[i].local_address.sin_addr.s_addr */0,
+	      overlay_interfaces[i].broadcast_address.sin_addr.s_addr,
+	      local.sin_addr.s_addr,
+	      broadcast.sin_addr.s_addr);
+	close(overlay_interfaces[i].fd);
+	overlay_interfaces[i].fd = -1;
+	if (overlay_interface_init_socket(i, local, broadcast))
+	  INFOF("Could not reinitialise changed interface %s", name);
+      }
     }
-    else {
-      /* New interface, so register it */
-      if (overlay_interface_init((char *)name,local,broadcast,
-				 me->speed_in_bits,me->port,me->type))
-	WHY("Could not initialise newly seen interface");
-      else
-	if (debug&DEBUG_OVERLAYINTERFACES) fprintf(stderr,"Registered interface %s\n",name);
-    }	    
+  } else {
+    /* New interface, so register it */
+    if (overlay_interface_init(name,local, broadcast, me->speed_in_bits, me->port, me->type))
+      WHYF("Could not initialise newly seen interface %s", name);
+    else
+      if (debug & DEBUG_OVERLAYINTERFACES) INFOF("Registered interface %s", name);
   }
+
   return 0;
 }
   
 time_t overlay_last_interface_discover_time=0;
 int overlay_interface_discover()
 {
+  int have_route;
+  
   /* Don't waste too much time and effort on interface discovery,
      especially if we can't attach to a given interface for some reason. */
   if (overlay_last_interface_discover_time>time(0))
@@ -595,45 +608,27 @@ int overlay_interface_discover()
     }
     r=r->next;
   }
+  have_route = 1;
+  
+#ifdef HAVE_IFADDRS_H
+  if (have_route != 0)
+    have_route = doifaddrs();
+#endif
 
 #ifdef SIOCGIFCONF
-  lsif();
+  if (have_route != 0)
+    have_route = lsif();
 #endif
 
 #ifdef linux
-  scrapeProcNetRoute();
+  if (have_route != 0)
+    have_route = scrapeProcNetRoute();
 #endif
 
-#ifdef HAVE_IFADDRS_H
-  struct ifaddrs *ifaddr,*ifa;
-  int family;
+  if (have_route != 0) {
+    FATAL("Unable to get any routing information");
+  }
   
-  if (getifaddrs(&ifaddr) == -1)  {
-    WHY_perror("getifaddr()");
-    return WHY("getifaddrs() failed");
-  }
-
-  /* Check through actual network interfaces */
-  for (ifa=ifaddr;ifa!=NULL;ifa=ifa->ifa_next) {
-    family=ifa->ifa_addr->sa_family;
-    switch(family) {
-    case AF_INET: 
-      {
-	unsigned char *name=(unsigned char *)ifa->ifa_name;
-	struct sockaddr_in local=*(struct sockaddr_in *)ifa->ifa_addr;
-	struct sockaddr_in netmask=*(struct sockaddr_in *)ifa->ifa_netmask;
-	struct sockaddr_in broadcast=local;
-	broadcast.sin_addr.s_addr|=(~netmask.sin_addr.s_addr);
-	if (debug&DEBUG_OVERLAYINTERFACES) printf("%s: %08x %08x %08x\n",name,local.sin_addr.s_addr,netmask.sin_addr.s_addr,broadcast.sin_addr.s_addr);
-	overlay_interface_register(name,local,broadcast);
-
-	break;
-      }
-    }
-  }
-  freeifaddrs(ifaddr);
-#endif
-
   return 0;
 }
 
@@ -936,35 +931,33 @@ int overlay_tick_interface(int i, long long now)
 
 
 
-int overlay_check_ticks()
-{
+int
+overlay_check_ticks(void) {
   /* Check if any interface(s) are due for a tick */
   int i;
   
   /* Check for changes to interfaces */
   overlay_interface_discover();
   
-  long long now=overlay_gettime_ms();
+  long long now = overlay_gettime_ms();
 
   /* Now check if the next tick time for the interfaces is no later than that time.
      If so, trigger a tick on the interface. */
-  if (debug&DEBUG_OVERLAYINTERFACES) fprintf(stderr,"Examining %d interfaces.\n",overlay_interface_count);
-  for(i=0;i<overlay_interface_count;i++)
-    {
+  if (debug & DEBUG_OVERLAYINTERFACES) INFOF("Examining %d interfaces.",overlay_interface_count);
+  for(i = 0; i < overlay_interface_count; i++) {
       /* Only tick live interfaces */
-      if (overlay_interfaces[i].observed>0)
-	{
-	  if (debug&DEBUG_VERBOSE_IO)fprintf(stderr,"Interface %s ticks every %dms, last at %lld.\n",overlay_interfaces[i].name,
-		  overlay_interfaces[i].tick_ms,overlay_interfaces[i].last_tick_ms);
-	  if (now>=overlay_interfaces[i].last_tick_ms+overlay_interfaces[i].tick_ms)
-	    {
+      if (overlay_interfaces[i].observed > 0) {
+	  if (debug & DEBUG_VERBOSE_IO) INFOF("Interface %s ticks every %dms, last at %lld.",
+					      overlay_interfaces[i].name,
+					      overlay_interfaces[i].tick_ms,
+					      overlay_interfaces[i].last_tick_ms);
+	  if (now >= overlay_interfaces[i].last_tick_ms + overlay_interfaces[i].tick_ms) {
 	      /* This interface is due for a tick */
-	      overlay_tick_interface(i,now);
-	      overlay_interfaces[i].last_tick_ms=now;
-	    }
-	}
-      else
-	if (debug&DEBUG_VERBOSE_IO)fprintf(stderr,"Interface %s is awol.\n",overlay_interfaces[i].name);
+	      overlay_tick_interface(i, now);
+	      overlay_interfaces[i].last_tick_ms = now;
+	  }
+      } else
+	  if (debug & DEBUG_VERBOSE_IO) INFOF("Interface %s is awol.", overlay_interfaces[i].name);
     }
   
   return 0;
