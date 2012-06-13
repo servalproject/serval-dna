@@ -159,9 +159,10 @@ int rhizome_opendb()
   }
   // No easy way to tell if these columns already exist, should probably create some kind of schema
   // version table.  Running these a second time will fail.
-  sqlite_exec_void_loglevel(LOG_LEVEL_INFO, "ALTER TABLE MANIFESTS ADD COLUMN filesize text;");
-  sqlite_exec_void_loglevel(LOG_LEVEL_INFO, "ALTER TABLE MANIFESTS ADD COLUMN filehash text;");
-  sqlite_exec_void_loglevel(LOG_LEVEL_INFO, "ALTER TABLE FILES ADD inserttime integer;");
+  int loglevel = (debug & DEBUG_RHIZOME) ? LOG_LEVEL_DEBUG : LOG_LEVEL_SILENT;
+  sqlite_exec_void_loglevel(loglevel, "ALTER TABLE MANIFESTS ADD COLUMN filesize text;");
+  sqlite_exec_void_loglevel(loglevel, "ALTER TABLE MANIFESTS ADD COLUMN filehash text;");
+  sqlite_exec_void_loglevel(loglevel, "ALTER TABLE FILES ADD inserttime integer;");
   /* Upgrade schema */
   if (	sqlite_exec_void("CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_HASH ON MANIFESTS(filehash);") == -1
     ||	sqlite_exec_void("DELETE FROM MANIFESTS WHERE filehash IS NULL;") == -1
@@ -676,8 +677,8 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
     cli_puts("id"); cli_delim(":");
     cli_puts("version"); cli_delim(":");
     cli_puts("date"); cli_delim(":");
-    cli_puts("_inserttime"); cli_delim(":");
-    cli_puts("_selfsigned"); cli_delim(":");
+    cli_puts(".inserttime"); cli_delim(":");
+    cli_puts(".selfsigned"); cli_delim(":");
     cli_puts("filesize"); cli_delim(":");
     cli_puts("filehash"); cli_delim(":");
     cli_puts("sender"); cli_delim(":");

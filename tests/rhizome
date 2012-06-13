@@ -89,7 +89,7 @@ assert_manifest_complete() {
 assert_rhizome_list() {
    assertStdoutLineCount '==' $(($# + 2))
    assertStdoutIs --stderr --line=1 -e '11\n'
-   assertStdoutIs --stderr --line=2 -e 'service:id:version:date:_inserttime:_selfsigned:filesize:filehash:sender:recipient:name\n'
+   assertStdoutIs --stderr --line=2 -e 'service:id:version:date:.inserttime:.selfsigned:filesize:filehash:sender:recipient:name\n'
    local filename
    for filename; do
       re__selfsigned=1
