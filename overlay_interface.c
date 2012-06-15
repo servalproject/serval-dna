@@ -185,7 +185,6 @@ overlay_interface_init_socket(int interface, struct sockaddr_in src_addr, struct
 
 #define I(X) overlay_interfaces[interface].X
   I(broadcast_address) = broadcast;
-  I(src_address) = src_addr;
   I(fileP) = 0;
 
   I(fd) = socket(PF_INET,SOCK_DGRAM,0);
