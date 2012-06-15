@@ -1,3 +1,5 @@
+@PGS/20120615
+
 Sometimes it is helpful to run more than one servald instance on a given machine
 for debugging purposes.  To make this easier, there is a dummy interface driver
 that servald knows about.  To use it:
@@ -8,3 +10,7 @@ that servald knows about.  To use it:
    % servald config set interfaces "+eth0,+>../dummynet0"
 
 3. Run each servald instance.  They should now use the dummy network.
+
+NOTE: Because dummynets are files, not sockets, poll/select does not work on them.  As a result the main overlay loop has slightly different behaviour and timing characteristics when a dummynet is in use.
+
+TODO: Convert dummynet interface to use a unixdomain socket, and a simple dummynet server that reflects packets among the clients connected, so that all socket semantics (including use of poll/select) are preserved.
