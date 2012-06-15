@@ -37,9 +37,11 @@ void logMessage(int level, const char *file, unsigned int line, const char *func
 
 void vlogMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, va_list ap)
 {
+  va_list ap2;
   strbuf b = strbuf_alloca(8192);
   strbuf_sprintf(b, "%s:%u:%s()  ", file ? trimbuildpath(file) : "NULL", line, function ? function : "NULL");
-  strbuf_vsprintf(b, fmt, ap);
+  va_copy(ap2, ap);
+  strbuf_vsprintf(b, fmt, ap2);
 #ifdef ANDROID
   int alevel = ANDROID_LOG_UNKNOWN;
   switch (level) {

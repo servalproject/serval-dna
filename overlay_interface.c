@@ -217,6 +217,11 @@ overlay_interface_init_socket(int interface, struct sockaddr_in src_addr, struct
      a bad signal. */
   fcntl(I(fd), F_SETFL, fcntl(I(fd), F_GETFL, NULL) | O_CLOEXEC);
 
+  /*  @PGS/20120615
+      Use the broadcast address, so that we can reliably receive broadcast 
+      traffic on all platforms. BUT on OSX we really need a non-broadcast socket
+      to send from, because you cannot send from a broadcast socket on OSX it seems.
+  */
   broadcast.sin_family = AF_INET;
   broadcast.sin_port = htons(I(port));
   if (bind(I(fd), (struct sockaddr *)&broadcast, sizeof(broadcast))) {
