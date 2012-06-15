@@ -37,29 +37,31 @@ void logMessage(int level, const char *file, unsigned int line, const char *func
 
 void vlogMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, va_list ap)
 {
-  strbuf b = strbuf_alloca(8192);
-  strbuf_sprintf(b, "%s:%u:%s()  ", file ? trimbuildpath(file) : "NULL", line, function ? function : "NULL");
-  strbuf_vsprintf(b, fmt, ap);
+  if (level != LOG_LEVEL_SILENT) {
+    strbuf b = strbuf_alloca(8192);
+    strbuf_sprintf(b, "%s:%u:%s()  ", file ? trimbuildpath(file) : "NULL", line, function ? function : "NULL");
+    strbuf_vsprintf(b, fmt, ap);
 #ifdef ANDROID
-  int alevel = ANDROID_LOG_UNKNOWN;
-  switch (level) {
-    case LOG_LEVEL_FATAL: alevel = ANDROID_LOG_FATAL; break;
-    case LOG_LEVEL_ERROR: alevel = ANDROID_LOG_ERROR; break;
-    case LOG_LEVEL_INFO:  alevel = ANDROID_LOG_INFO; break;
-    case LOG_LEVEL_WARN:  alevel = ANDROID_LOG_WARN; break;
-    case LOG_LEVEL_DEBUG: alevel = ANDROID_LOG_DEBUG; break;
-  }
-  __android_log_print(alevel, "servald", "%s", strbuf_str(b));
+    int alevel = ANDROID_LOG_UNKNOWN;
+    switch (level) {
+      case LOG_LEVEL_FATAL: alevel = ANDROID_LOG_FATAL; break;
+      case LOG_LEVEL_ERROR: alevel = ANDROID_LOG_ERROR; break;
+      case LOG_LEVEL_INFO:  alevel = ANDROID_LOG_INFO; break;
+      case LOG_LEVEL_WARN:  alevel = ANDROID_LOG_WARN; break;
+      case LOG_LEVEL_DEBUG: alevel = ANDROID_LOG_DEBUG; break;
+    }
+    __android_log_print(alevel, "servald", "%s", strbuf_str(b));
 #endif
-  const char *levelstr = "UNKNOWN";
-  switch (level) {
-    case LOG_LEVEL_FATAL: levelstr = "FATAL"; break;
-    case LOG_LEVEL_ERROR: levelstr = "ERROR"; break;
-    case LOG_LEVEL_INFO:  levelstr = "INFO"; break;
-    case LOG_LEVEL_WARN:  levelstr = "WARN"; break;
-    case LOG_LEVEL_DEBUG: levelstr = "DEBUG"; break;
+    const char *levelstr = "UNKNOWN";
+    switch (level) {
+      case LOG_LEVEL_FATAL: levelstr = "FATAL"; break;
+      case LOG_LEVEL_ERROR: levelstr = "ERROR"; break;
+      case LOG_LEVEL_INFO:  levelstr = "INFO"; break;
+      case LOG_LEVEL_WARN:  levelstr = "WARN"; break;
+      case LOG_LEVEL_DEBUG: levelstr = "DEBUG"; break;
+    }
+    fprintf(stderr, "%s: %s\n", levelstr, strbuf_str(b));
   }
-  fprintf(stderr, "%s: %s\n", levelstr, strbuf_str(b));
 }
 
 const char *trimbuildpath(const char *path)
