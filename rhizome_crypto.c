@@ -148,16 +148,20 @@ int rhizome_bk_xor(const unsigned char *authorSid, // binary
   if (rs_len<16||rs_len>1024)
     return WHYF("invalid Rhizome Secret: length=%d", rs_len);
   unsigned char *rs=keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key;
+  if (debug & DEBUG_RHIZOME) DEBUGF("   RS %s", alloca_tohex(rs, rs_len));
+  if (debug & DEBUG_RHIZOME) DEBUGF("  bid %s", alloca_tohex(bid, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES));
   int combined_len=rs_len+crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES;
   unsigned char buffer[combined_len];
   bcopy(&rs[0],&buffer[0],rs_len);
   bcopy(&bid[0],&buffer[rs_len],crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
   unsigned char hash[crypto_hash_sha512_BYTES];
   crypto_hash_sha512(hash,buffer,combined_len);
-  int len=crypto_sign_edwards25519sha512batch_SECRETKEYBYTES;
+  if (debug & DEBUG_RHIZOME) DEBUGF(" hash %s", alloca_tohex(hash, sizeof hash));
+  if (debug & DEBUG_RHIZOME) DEBUGF(" bkin %s", alloca_tohex(bkin, crypto_sign_edwards25519sha512batch_SECRETKEYBYTES));
   int i;
-  for(i=0;i<len;i++)
+  for(i = 0; i != crypto_sign_edwards25519sha512batch_SECRETKEYBYTES; ++i)
     bkout[i]=bkin[i]^hash[i];
+  if (debug & DEBUG_RHIZOME) DEBUGF("bkout %s", alloca_tohex(bkout, crypto_sign_edwards25519sha512batch_SECRETKEYBYTES));
   bzero(&buffer[0],combined_len);
   bzero(&hash[0],crypto_hash_sha512_BYTES);
   return 0;
@@ -166,6 +170,8 @@ int rhizome_bk_xor(const unsigned char *authorSid, // binary
 /* See if the manifest has a BK entry, and if so, use it to obtain the 
    private key for the BID.  Decoding BK's relies on the provision of
    the appropriate SID.
+
+   Return 0 if the private key was extracted, 1 if not.  Return -1 if an error occurs.
 
    XXX Note that this function is not able to verify that the private key
    is correct, as there is no exposed API in NaCl for calculating the
@@ -205,21 +211,24 @@ int rhizome_is_self_signed(rhizome_manifest *m)
     if (debug & DEBUG_RHIZOME) DEBUGF("missing BK field");
     return 1;
   }
+  if (debug & DEBUG_RHIZOME) DEBUGF("   BK %s", bk);
   unsigned char bkBytes[RHIZOME_BUNDLE_KEY_BYTES];
   if (fromhexstr(bkBytes, bk, RHIZOME_BUNDLE_KEY_BYTES) == -1)
     return WHYF("invalid BK field: %s", bk);
   int cn = 0, in = 0, kp = 0;
   for (; keyring_next_identity(keyring, &cn, &in, &kp); ++kp) {
     const unsigned char *authorSid = keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key;
-    if (debug & DEBUG_RHIZOME) DEBUGF("try identity %s", alloca_tohex(authorSid, SID_SIZE));
+    if (debug & DEBUG_RHIZOME) DEBUGF("identity %s", alloca_tohex(authorSid, SID_SIZE));
     int rkp = keyring_identity_find_keytype(keyring, cn, in, KEYTYPE_RHIZOME);
     if (rkp != -1) {
+      if (debug & DEBUG_RHIZOME) DEBUGF("   RS %s", alloca_tohex(
+	      keyring->contexts[cn]->identities[in]->keypairs[rkp]->private_key,
+	      keyring->contexts[cn]->identities[in]->keypairs[rkp]->private_key_len));
       switch (rhizome_bk_xor(authorSid, m->cryptoSignPublic, bkBytes, m->cryptoSignSecret)) {
 	case -1:
 	  return WHY("rhizome_bk_xor() failed");
 	case 0:
-	  D;
-	  if (rhizome_verify_bundle_privatekey(m))
+	  if (rhizome_verify_bundle_privatekey(m) == 0)
 	    return 0; // bingo
 	  break;
       }
@@ -229,6 +238,7 @@ int rhizome_is_self_signed(rhizome_manifest *m)
 }
 
 /* Verify the validity of the manifest's sccret key.
+   Return 0 if valid, 1 if not.  Return -1 if an error occurs.
    XXX This is a pretty ugly way to do it, but NaCl offers no API to
    do this cleanly.
  */
@@ -255,7 +265,7 @@ int rhizome_verify_bundle_privatekey(rhizome_manifest *m)
     return 0; // valid
   }
   m->haveSecret = 0;
-  if (1) {
+  if (debug & DEBUG_RHIZOME) {
     DEBUGF("  stored public key = %s*", alloca_tohex(m->cryptoSignPublic, 8));
     DEBUGF("computed public key = %s*", alloca_tohex(pk, 8));
   }
@@ -274,7 +284,7 @@ rhizome_signature *rhizome_sign_hash(rhizome_manifest *m, const unsigned char *a
   unsigned char *hash=m->manifesthash;
   unsigned char *publicKeyBytes=m->cryptoSignPublic;
   
-  if (!m->haveSecret && rhizome_extract_privatekey(m, authorSid) == -1) {
+  if (!m->haveSecret && rhizome_extract_privatekey(m, authorSid)) {
     WHY("Cannot find secret key to sign manifest data.");
     return NULL;
   }

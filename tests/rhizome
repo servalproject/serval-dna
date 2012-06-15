@@ -779,7 +779,7 @@ test_ImportForeignBundle() {
    executeOk_servald rhizome import bundle fileA fileA.manifest
    assert_stdout_import_bundle fileA
    executeOk_servald rhizome list ''
-   assert_rhizome_list fileA
+   assert_rhizome_list fileA!
 }
 
 runTests "$@"

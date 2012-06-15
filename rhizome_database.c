@@ -132,12 +132,13 @@ int rhizome_opendb()
 
   if (create_rhizome_datastore_dir() == -1)
     return WHY("No Directory");
-  char dbname[1024];
-  if (!FORM_RHIZOME_DATASTORE_PATH(dbname, "rhizome.db"))
+  char dbpath[1024];
+  if (!FORM_RHIZOME_DATASTORE_PATH(dbpath, "rhizome.db"))
     return WHY("Invalid path");
 
-  if (sqlite3_open(dbname,&rhizome_db))
-    return WHYF("SQLite could not open database: %s", sqlite3_errmsg(rhizome_db));
+  if (sqlite3_open(dbpath,&rhizome_db))
+    return WHYF("SQLite could not open database %s: %s", dbpath, sqlite3_errmsg(rhizome_db));
+  int loglevel = (debug & DEBUG_RHIZOME) ? LOG_LEVEL_DEBUG : LOG_LEVEL_SILENT;
 
   /* Read Rhizome configuration */
   double rhizome_kb = atof(confValueGet("rhizome_kb", "1024"));
@@ -147,8 +148,8 @@ int rhizome_opendb()
     DEBUGF("Rhizome will use %lldB of storage for its database.", rhizome_space);
   }
   /* Create tables as required */
-  if (	sqlite_exec_void("PRAGMA auto_vacuum=2;") == -1
-    ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS GROUPLIST(id text not null primary key, closed integer,ciphered integer,priority integer);") == -1
+  sqlite_exec_void_loglevel(loglevel, "PRAGMA auto_vacuum=2;");
+  if (	sqlite_exec_void("CREATE TABLE IF NOT EXISTS GROUPLIST(id text not null primary key, closed integer,ciphered integer,priority integer);") == -1
     ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS MANIFESTS(id text not null primary key, manifest blob, version integer,inserttime integer, bar blob);") == -1
     ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS FILES(id text not null primary key, data blob, length integer, highestpriority integer, datavalid integer);") == -1
     ||	sqlite_exec_void("DROP TABLE IF EXISTS FILEMANIFESTS;") == -1
@@ -159,18 +160,14 @@ int rhizome_opendb()
   }
   // No easy way to tell if these columns already exist, should probably create some kind of schema
   // version table.  Running these a second time will fail.
-  int loglevel = (debug & DEBUG_RHIZOME) ? LOG_LEVEL_DEBUG : LOG_LEVEL_SILENT;
   sqlite_exec_void_loglevel(loglevel, "ALTER TABLE MANIFESTS ADD COLUMN filesize text;");
   sqlite_exec_void_loglevel(loglevel, "ALTER TABLE MANIFESTS ADD COLUMN filehash text;");
   sqlite_exec_void_loglevel(loglevel, "ALTER TABLE FILES ADD inserttime integer;");
-  /* Upgrade schema */
-  if (	sqlite_exec_void("CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_HASH ON MANIFESTS(filehash);") == -1
-    ||	sqlite_exec_void("DELETE FROM MANIFESTS WHERE filehash IS NULL;") == -1
-    ||	sqlite_exec_void("DELETE FROM FILES WHERE NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);") == -1
-    ||	sqlite_exec_void("DELETE FROM MANIFESTS WHERE NOT EXISTS( SELECT  1 FROM FILES WHERE MANIFESTS.filehash = FILES.id);") == -1
-  ) {
-    return WHY("Failed to create schema");
-  }
+  /* Clean out database, but if this fails keep going (database may be read-only). */
+  sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_HASH ON MANIFESTS(filehash);");
+  sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM MANIFESTS WHERE filehash IS NULL;");
+  sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM FILES WHERE NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);");
+  sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM MANIFESTS WHERE NOT EXISTS( SELECT  1 FROM FILES WHERE MANIFESTS.filehash = FILES.id);");
   return 0;
 }
 
@@ -731,7 +728,7 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
 	  const char *blob_filehash = rhizome_manifest_get(m, "filehash", NULL, 0);
 	  long long blob_filesize = rhizome_manifest_get_ll(m, "filesize");
 	  int self_signed = rhizome_is_self_signed(m) ? 0 : 1;
-	  DEBUGF("Manifest payload size = %lld",blob_filesize);
+	  if (debug & DEBUG_RHIZOME) DEBUGF("manifest payload size = %lld", blob_filesize);
 	  cli_puts(blob_service ? blob_service : ""); cli_delim(":");
 	  cli_puts(q_manifestid); cli_delim(":");
 	  cli_printf("%lld", blob_version); cli_delim(":");
