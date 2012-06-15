@@ -17,6 +17,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include <assert.h>
 #include <time.h>
 #include "serval.h"
 
@@ -180,17 +181,20 @@ int overlay_interface_args(const char *arg)
 
 int
 overlay_interface_init_socket(int interface, struct sockaddr_in src_addr, struct sockaddr_in broadcast) {
+  char			srctxt[INET_ADDRSTRLEN];
+
 #define I(X) overlay_interfaces[interface].X
   I(broadcast_address) = broadcast;
+  I(src_address) = src_addr;
   I(fileP) = 0;
 
   I(fd) = socket(PF_INET,SOCK_DGRAM,0);
-  if (I(fd)<0) {
+  if (I(fd) < 0) {
       WHY_perror("socket()");
       WHYF("Could not create UDP socket for interface: %s",strerror(errno));
       goto error;
   } else 
-    WHYF("interface #%d fd=%d",interface,I(fd));
+    INFOF("interface #%d fd=%d",interface, I(fd));
 
   int reuseP = 1;
   if (setsockopt(I(fd), SOL_SOCKET, SO_REUSEADDR, &reuseP, sizeof(reuseP)) < 0) {
@@ -216,16 +220,13 @@ overlay_interface_init_socket(int interface, struct sockaddr_in src_addr, struct
 
   broadcast.sin_family = AF_INET;
   broadcast.sin_port = htons(I(port));
-  /* XXX Is this right? Are we really setting the local side address?
-     I was in a plane when at the time, so couldn't Google it.
-  */
-  if (debug&DEBUG_PACKETRX) fprintf(stderr,"src_addr=%08x\n",(unsigned int)src_addr.sin_addr.s_addr);
-  if (bind(I(fd),(struct sockaddr *)&src_addr,sizeof(src_addr))) {
+  if (bind(I(fd), (struct sockaddr *)&broadcast, sizeof(broadcast))) {
     WHY_perror("bind");
     WHY("MP HLR server could not bind to requested UDP port (bind() failed)");
     goto error;
   }
-  if (debug&(DEBUG_PACKETRX|DEBUG_IO)) fprintf(stderr,"Bound to port 0x%04x\n",src_addr.sin_port);
+  assert(inet_ntop(AF_INET, (const void *)&broadcast.sin_addr, srctxt, INET_ADDRSTRLEN) != NULL);
+  if (debug & (DEBUG_PACKETRX | DEBUG_IO)) INFOF("Bound to %s:%d", srctxt, ntohs(broadcast.sin_port));
 
   return 0;
 
@@ -360,7 +361,6 @@ int overlay_rx_messages()
 	  } else {
 	    /* Read from UDP socket */
 	    int recvttl=1;
-	    errno=0;
 	    plen=recvwithttl(overlay_interfaces[i].fd,packet,sizeof(packet),
 			     &recvttl,&src_addr,&addrlen);
 	    if (plen<0) { 
@@ -564,69 +564,72 @@ overlay_interface_register(char *name,
   return 0;
 }
   
-time_t overlay_last_interface_discover_time=0;
-int overlay_interface_discover()
-{
-  int have_route;
-  
-  /* Don't waste too much time and effort on interface discovery,
-     especially if we can't attach to a given interface for some reason. */
-  if (overlay_last_interface_discover_time>time(0))
-    overlay_last_interface_discover_time=time(0);
-  if ((time(0)-overlay_last_interface_discover_time)<2) return 0;
-  overlay_last_interface_discover_time=time(0);
+static time_t overlay_last_interface_discover_time = 0;
+int
+overlay_interface_discover(void) {
+  int				no_route, i;
+  time_t			now;
+  struct interface_rules	*r;
+  struct sockaddr_in		dummyaddr;
+   
+    /* Don't waste too much time and effort on interface discovery,
+       especially if we can't attach to a given interface for some reason. */
+    now = time(NULL);
+    if (overlay_last_interface_discover_time > now)
+      overlay_last_interface_discover_time = now;
 
-  /* The Android ndk doesn't have ifaddrs.h, so we have to use the netlink interface.
-     However, netlink is only available on Linux, so for BSD systems, e.g., Mac, we
-     need to use the ifaddrs method.
+    if ((now - overlay_last_interface_discover_time) < 2)
+      return 0;
 
-     Also, ifaddrs will work on non-linux systems which is considered critical.
-  */
+    overlay_last_interface_discover_time = now;
 
   /* Mark all interfaces as not observed, so that we know if we need to cull any */
-  int i;
-  for(i=0;i<overlay_interface_count;i++) overlay_interfaces[i].observed--;
+  for(i = 0; i < overlay_interface_count; i++)
+    overlay_interfaces[i].observed = 0;
 
   /* Check through for any virtual dummy interfaces */
-  struct interface_rules *r=interface_filter;
-  while(r) {
-    if (r->namespec[0]=='>') {
-      for(i=0;i<overlay_interface_count;i++) if (!strcasecmp(overlay_interfaces[i].name,r->namespec)) break;
-      if (i<overlay_interface_count)
-	/* We already know about this interface, so just update it */
-	overlay_interfaces[i].observed=1;
-      else {
-	/* New interface, so register it */
-	struct sockaddr_in dummyaddr;
-	if (overlay_interface_init(r->namespec,dummyaddr,dummyaddr,
-				   1000000,PORT_DNA,OVERLAY_INTERFACE_WIFI))
-	  { if (debug&DEBUG_OVERLAYINTERFACES)
-	      WHY("Could not initialise newly seen interface"); }
-	else
-	  if (debug&DEBUG_OVERLAYINTERFACES) fprintf(stderr,"Registered interface %s\n",r->namespec);
-      }	          
+  for (r = interface_filter; r != NULL; r = r->next) {
+    if (r->namespec[0] != '>')
+      continue;
+    
+    for(i = 0; i < overlay_interface_count; i++)
+      if (!strcasecmp(overlay_interfaces[i].name,r->namespec))
+	break;
+
+    if (i < overlay_interface_count)
+      /* We already know about this interface, so just update it */
+      overlay_interfaces[i].observed = 1;
+    else {
+      /* New interface, so register it */
+      if (overlay_interface_init(r->namespec,dummyaddr,dummyaddr,
+				 1000000,PORT_DNA,OVERLAY_INTERFACE_WIFI)) {
+	if (debug & DEBUG_OVERLAYINTERFACES) WHYF("Could not initialise newly seen interface %s", r->namespec);
+      }
+      else
+	if (debug & DEBUG_OVERLAYINTERFACES) INFOF("Registered interface %s",r->namespec);
     }
-    r=r->next;
   }
-  have_route = 1;
+
+  /* Look for real interfaces */
+  no_route = 1;
   
 #ifdef HAVE_IFADDRS_H
-  if (have_route != 0)
-    have_route = doifaddrs();
+  if (no_route != 0)
+    no_route = doifaddrs();
 #endif
 
 #ifdef SIOCGIFCONF
-  if (have_route != 0)
-    have_route = lsif();
+  if (no_route != 0)
+    no_route = lsif();
 #endif
 
 #ifdef linux
-  if (have_route != 0)
-    have_route = scrapeProcNetRoute();
+  if (no_route != 0)
+    no_route = scrapeProcNetRoute();
 #endif
 
-  if (have_route != 0) {
-    FATAL("Unable to get any routing information");
+  if (no_route != 0) {
+    FATAL("Unable to get any interface information");
   }
   
   return 0;
