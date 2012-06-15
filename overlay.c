@@ -136,8 +136,7 @@ int overlayServerMode()
 
     for(i=0;i<overlay_interface_count;i++)
       {
-	/* Make socket non-blocking so that poll() behaves correctly.
-	   We then set non-blocking before actually reading from it */
+	/* Make socket blocking so that poll() behaves correctly. */	
 	fcntl(overlay_interfaces[i].fd, F_SETFL,
 	      fcntl(overlay_interfaces[i].fd, F_GETFL, NULL)&(~O_NONBLOCK));	
 
