@@ -520,8 +520,8 @@ int monitor_process_data(int index)
 
   if (vomp_sample_size(c->sample_codec)!=c->data_offset)
     return 
-      WHYF("Ignoring sample block of incorrect size (expected %d, got %d bytes)",
-	   vomp_sample_size(c->sample_codec)!=c->data_offset);
+      WHYF("Ignoring sample block of incorrect size (expected %d, got %d bytes for codec %d)",
+	   vomp_sample_size(c->sample_codec), c->data_offset, c->sample_codec);
 
   fcntl(c->socket,F_SETFL,
 	fcntl(c->socket, F_GETFL, NULL)|O_NONBLOCK);
