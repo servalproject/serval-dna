@@ -88,7 +88,7 @@ void _TIMING_CHECK(const char *file,const char *func,int line)
 {
   long long now=overlay_gettime_ms();
   if (last_valid) {
-    if (now-last_time>5) {
+    if (now-last_time>10) {
       // More than 5ms spent in a given task, complain
       char msg[1024];
       snprintf(msg,1024,"Spent %lldms between %s:%d in %s() and here",
@@ -104,6 +104,19 @@ void _TIMING_CHECK(const char *file,const char *func,int line)
   last_time=now;
 }
 
+long long last_loop_time=0;
+void LOOP_END()
+{
+  long long now = overlay_gettime_ms();
+  if (last_loop_time!=0 && now - last_loop_time>15){
+    DEBUGF("Last loop took %lldms",now - last_loop_time);
+  }
+}
+
+void LOOP_START()
+{
+  last_loop_time = overlay_gettime_ms();
+}
 
 int overlayMode=0;
 
@@ -146,6 +159,7 @@ int overlayServerMode()
 
   struct pollfd fds[128];
   int fdcount;
+  int r;
 
   /* Create structures to use 1MB of RAM for testing */
   overlay_route_init(1);
@@ -213,26 +227,31 @@ int overlayServerMode()
     int vomp_tick_time=vomp_tick_interval();
     if (ms>vomp_tick_time) ms=vomp_tick_time;
 
-    TIMING_CHECK();
-    if (debug&DEBUG_VERBOSE_IO)
-      DEBUGF("Waiting via poll() for up to %lldms", ms);
-    TIMING_PAUSE();
-    int r = poll(fds, fdcount, ms);
-    TIMING_CHECK();
-    if (r == -1)
-      WHY_perror("poll");
-    else if (debug&DEBUG_VERBOSE_IO) {
-      DEBUGF("poll() says %d file descriptors are ready", r);
-      int i;
-      for(i=0;i<fdcount;i++)
-	if (fds[i].revents)
-	  DEBUGF("fd #%d is ready (0x%x)\n", fds[i].fd, fds[i].revents);
-    }
-    /* Do high-priority audio handling first */
-    TIMING_CHECK();
-    vomp_tick();
-    TIMING_CHECK();
+    LOOP_END();
+    
+    if (ms>0){
+      TIMING_CHECK();
+      if (debug&DEBUG_VERBOSE_IO)
+	DEBUGF("Waiting via poll() for up to %lldms", ms);
+      TIMING_PAUSE();
+      
+      r = poll(fds, fdcount, ms);
+      
+      TIMING_CHECK();
+      if (r == -1)
+	WHY_perror("poll");
+      else if (debug&DEBUG_VERBOSE_IO) {
+	DEBUGF("poll() says %d file descriptors are ready", r);
+	int i;
+	for(i=0;i<fdcount;i++)
+	  if (fds[i].revents)
+	    DEBUGF("fd #%d is ready (0x%x)\n", fds[i].fd, fds[i].revents);
+      }
+    }else
+      r=0;
 
+    LOOP_START();
+    
     if (r > 0) {
       /* We have data, so try to receive it */
       if (debug&DEBUG_IO) {
@@ -257,39 +276,28 @@ int overlayServerMode()
       overlay_rx_messages();
       TIMING_CHECK();
       if (rhizome_enabled()) {
-	TIMING_CHECK();
 	rhizome_server_poll();
 	TIMING_CHECK();
 	rhizome_fetch_poll();
 	TIMING_CHECK();
-	overlay_mdp_poll();
-	TIMING_CHECK();
-	monitor_poll();
-	TIMING_CHECK();
       }
+      overlay_mdp_poll();
+      TIMING_CHECK();
+      monitor_poll();
+      TIMING_CHECK();
     } else {
       /* No data before tick occurred, so do nothing.
 	 Well, for now let's just check anyway. */
       if (debug&DEBUG_IO) fprintf(stderr,"poll() timeout.\n");
+      
+      /* Do high-priority audio handling first */
       TIMING_CHECK();
-      overlay_rx_messages();
+      vomp_tick();
       TIMING_CHECK();
-      if (rhizome_enabled()) {
-	TIMING_CHECK();
-	rhizome_server_poll();
-	TIMING_CHECK();
-	rhizome_fetch_poll();
-	TIMING_CHECK();
-	overlay_mdp_poll();
-	TIMING_CHECK();
-	monitor_poll();
-	TIMING_CHECK();
-      }
+      /* Check if we need to trigger any ticks on any interfaces */
+      overlay_check_ticks();
+      TIMING_CHECK();
     }
-    TIMING_CHECK();
-    /* Check if we need to trigger any ticks on any interfaces */
-    overlay_check_ticks();
-    TIMING_CHECK();
   }
 
   return 0;

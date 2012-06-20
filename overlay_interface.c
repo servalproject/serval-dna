@@ -291,105 +291,91 @@ int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockadd
 int overlay_rx_messages()
 {
   int i;
-
+  
   /* Grab packets, unpackage and dispatch frames to consumers */
   /* XXX Okay, so how are we managing out-of-process consumers?
-     They need some way to register their interest in listening to a port.
-  */
+   They need some way to register their interest in listening to a port.
+   */
   unsigned char packet[16384];
   int plen=0;
-  int c[OVERLAY_MAX_INTERFACES];
-  int count=0;
   
-  /* Look at all interfaces */
-  for(i=0;i<overlay_interface_count;i++) { c[i]=(overlay_interfaces[i].observed>0); count+=c[i]; }
-
-  /* Grab packets from interfaces in round-robin fashion until all have been grabbed,
-     or until we have spent too long (maybe 10ms?) */
-  int now = overlay_gettime_ms();
-  while(count>0)
-    {
-      for(i=0;i<overlay_interface_count;i++)
+  /* Grab one packet from each interface in round-robin fashion */
+  for(i=0;i<overlay_interface_count;i++)
+  {
+    struct sockaddr src_addr;
+    unsigned int addrlen=sizeof(src_addr);
+    unsigned char transaction_id[8];
+    
+    overlay_last_interface_number=i;
+    
+    /* Set socket non-blocking before we try to read from it */
+    fcntl(overlay_interfaces[i].fd, F_SETFL,
+	  fcntl(overlay_interfaces[i].fd, F_GETFL, NULL)|O_NONBLOCK);
+    
+    if (overlay_interfaces[i].fileP) {
+      /* Read from dummy interface file */
+      long long length=lseek(overlay_interfaces[i].fd,0,SEEK_END);
+      if (overlay_interfaces[i].offset>=length)
+      {
+	if (debug&DEBUG_OVERLAYINTERFACES) 		  
+	  fprintf(stderr,"At end of input on dummy interface #%d\n",i);
+      }
+      else
+      {
+	lseek(overlay_interfaces[i].fd,overlay_interfaces[i].offset,SEEK_SET);
+	if (debug&DEBUG_OVERLAYINTERFACES) 
+	  fprintf(stderr,"Reading from interface #%d log at offset %d, end of file at %lld.\n",i,
+		  overlay_interfaces[i].offset,length);
+	if (read(overlay_interfaces[i].fd,&packet[0],2048)==2048)
 	{
-	  struct sockaddr src_addr;
-	  unsigned int addrlen=sizeof(src_addr);
-	  unsigned char transaction_id[8];
-	  
-	  overlay_last_interface_number=i;
-
-	  /* Set socket non-blocking before we try to read from it */
-	  fcntl(overlay_interfaces[i].fd, F_SETFL,
-		fcntl(overlay_interfaces[i].fd, F_GETFL, NULL)|O_NONBLOCK);
-
-	  if (overlay_interfaces[i].fileP) {
-	    /* Read from dummy interface file */
-	    long long length=lseek(overlay_interfaces[i].fd,0,SEEK_END);
-	    if (overlay_interfaces[i].offset>=length)
-	      {
-		if (debug&DEBUG_OVERLAYINTERFACES) 		  
-		  fprintf(stderr,"At end of input on dummy interface #%d\n",i);
-	      }
-	    else
-	      {
-		lseek(overlay_interfaces[i].fd,overlay_interfaces[i].offset,SEEK_SET);
-		if (debug&DEBUG_OVERLAYINTERFACES) 
-		  fprintf(stderr,"Reading from interface #%d log at offset %d, end of file at %lld.\n",i,
-			  overlay_interfaces[i].offset,length);
-		if (read(overlay_interfaces[i].fd,&packet[0],2048)==2048)
-		  {
-		    overlay_interfaces[i].offset+=2048;
-		    plen=2048-128;		    
-		    plen=packet[110]+(packet[111]<<8);
-		    if (plen>(2048-128)) plen=-1;
-		    if (debug&DEBUG_PACKETRX) {
-		      fflush(stdout);
-		      serval_packetvisualise(stderr,
-					     "Read from dummy interface",
-					     &packet[128],plen);
-		      fflush(stderr); 
-		    }
-		    bzero(&transaction_id[0],8);
-		    bzero(&src_addr,sizeof(src_addr));
-		    if ((plen>=0)&&(packet[0]==0x01)&&!(packet[1]|packet[2]|packet[3])) {
-		      { if (packetOk(i,&packet[128],plen,transaction_id,
-				     -1 /* fake TTL */,
-				     &src_addr,addrlen,1)) 
-			  WHY("Malformed or unsupported packet from dummy interface (packetOK() failed)"); } }
-		    else WHY("Invalid packet version in dummy interface");
-		  }
-		else { 
-		  if (debug&DEBUG_IO) fprintf(stderr,"Read NOTHING from dummy interface\n");
-		  c[i]=0; count--; 
-		}
-	      }
-	  } else {
-	    /* Read from UDP socket */
-	    int recvttl=1;
-	    plen=recvwithttl(overlay_interfaces[i].fd,packet,sizeof(packet),
-			     &recvttl,&src_addr,&addrlen);
-	    if (plen<0) { 
-	      c[i]=0; count--; 
-	    } else {
-	      /* We have a frame from this interface */
-	      if (debug&DEBUG_PACKETRX) {
-		fflush(stdout);
-		serval_packetvisualise(stderr,"Read from real interface",
-				       packet,plen);
-		fflush(stderr);
-	      }
-	      if (debug&DEBUG_OVERLAYINTERFACES)fprintf(stderr,"Received %d bytes on interface #%d (%s)\n",plen,i,overlay_interfaces[i].name);
-	      
-	      if (packetOk(i,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
-		WHY("Malformed packet");
-		serval_packetvisualise(stderr,"Malformed packet", packet,plen);
-	      }
-	    }
+	  overlay_interfaces[i].offset+=2048;
+	  plen=2048-128;		    
+	  plen=packet[110]+(packet[111]<<8);
+	  if (plen>(2048-128)) plen=-1;
+	  if (debug&DEBUG_PACKETRX) {
+	    fflush(stdout);
+	    serval_packetvisualise(stderr,
+				   "Read from dummy interface",
+				   &packet[128],plen);
+	    fflush(stderr); 
 	  }
+	  bzero(&transaction_id[0],8);
+	  bzero(&src_addr,sizeof(src_addr));
+	  if ((plen>=0)&&(packet[0]==0x01)&&!(packet[1]|packet[2]|packet[3])) {
+	    { if (packetOk(i,&packet[128],plen,transaction_id,
+			   -1 /* fake TTL */,
+			   &src_addr,addrlen,1)) 
+	      WHY("Malformed or unsupported packet from dummy interface (packetOK() failed)"); } }
+	  else WHY("Invalid packet version in dummy interface");
 	}
-      /* Don't sit here forever, or else we will never send any packets */
-      if (overlay_gettime_ms()>(now+10)) break;
+	else { 
+	  if (debug&DEBUG_IO) fprintf(stderr,"Read NOTHING from dummy interface\n");
+	}
+      }
+    } else {
+      /* Read from UDP socket */
+      int recvttl=1;
+      plen=recvwithttl(overlay_interfaces[i].fd,packet,sizeof(packet),
+		       &recvttl,&src_addr,&addrlen);
+      if (plen>=0) { 
+	/* We have a frame from this interface */
+	if (debug&DEBUG_PACKETRX) {
+	  fflush(stdout);
+	  serval_packetvisualise(stderr,"Read from real interface",
+				 packet,plen);
+	  fflush(stderr);
+	}
+	if (debug&DEBUG_OVERLAYINTERFACES)
+	  fprintf(stderr,"Received %d bytes on interface #%d (%s)\n",plen,i,overlay_interfaces[i].name);
+	  
+	if (packetOk(i,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
+	  WHY("Malformed packet");	  
+	  serval_packetvisualise(stderr,"Malformed packet", packet,plen);
+	}
+      }
     }
-
+  }
+  
   return 0;
 }
 

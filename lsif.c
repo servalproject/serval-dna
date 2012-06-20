@@ -112,7 +112,7 @@ int scrapeProcNetRoute()
 
 int
 lsif(void) {
-  char            buf[8192], addrtxt[INET_ADDRSTRLEN], bcasttxt[INET_ADDRSTRLEN];
+  char            buf[8192];
   struct ifconf   ifc;
   int             sck, nInterfaces, ofs;
   struct ifreq    *ifr;
@@ -165,12 +165,14 @@ lsif(void) {
     bcopy(&ifr->ifr_ifru.ifru_addr, &local, sizeof(local));      
     bcopy(&ifr->ifr_ifru.ifru_broadaddr, &broadcast ,sizeof(broadcast));
 
-    assert(inet_ntop(AF_INET, (const void *)&local.sin_addr, addrtxt, INET_ADDRSTRLEN) != NULL);
-    assert(inet_ntop(AF_INET, (const void *)&broadcast.sin_addr, bcasttxt, INET_ADDRSTRLEN) != NULL);
-      
-    if (debug & DEBUG_OVERLAYINTERFACES) INFOF("name=%s addr=%s, broad=%s\n",
+    if (debug & DEBUG_OVERLAYINTERFACES) {
+      char addrtxt[INET_ADDRSTRLEN], bcasttxt[INET_ADDRSTRLEN];
+      assert(inet_ntop(AF_INET, (const void *)&local.sin_addr, addrtxt, INET_ADDRSTRLEN) != NULL);
+      assert(inet_ntop(AF_INET, (const void *)&broadcast.sin_addr, bcasttxt, INET_ADDRSTRLEN) != NULL);
+      INFOF("name=%s addr=%s, broad=%s\n",
 					     ifr->ifr_name,
 					     addrtxt, bcasttxt);
+    }
     overlay_interface_register(ifr->ifr_name, local, broadcast);
     nInterfaces++;
   }
@@ -187,7 +189,6 @@ lsif(void) {
 int
 doifaddrs(void) {
   struct ifaddrs	*ifaddr, *ifa;
-  char			addrtxt[INET_ADDRSTRLEN], bcasttxt[INET_ADDRSTRLEN];
   char 			*name;
   struct sockaddr_in	local, netmask, broadcast;
   
@@ -217,10 +218,12 @@ doifaddrs(void) {
     /* Compute broadcast address */
     broadcast.sin_addr.s_addr |= (~netmask.sin_addr.s_addr);
 
-    assert(inet_ntop(AF_INET, (const void *)&local.sin_addr, addrtxt, INET_ADDRSTRLEN) != NULL);
-    assert(inet_ntop(AF_INET, (const void *)&broadcast.sin_addr, bcasttxt, INET_ADDRSTRLEN) != NULL);
-
-    if (debug & DEBUG_OVERLAYINTERFACES) INFOF("name=%s addr=%s broad=%s", name, addrtxt, bcasttxt);
+    if (debug & DEBUG_OVERLAYINTERFACES){
+      char			addrtxt[INET_ADDRSTRLEN], bcasttxt[INET_ADDRSTRLEN];
+      assert(inet_ntop(AF_INET, (const void *)&local.sin_addr, addrtxt, INET_ADDRSTRLEN) != NULL);
+      assert(inet_ntop(AF_INET, (const void *)&broadcast.sin_addr, bcasttxt, INET_ADDRSTRLEN) != NULL);
+      INFOF("name=%s addr=%s broad=%s", name, addrtxt, bcasttxt);
+    }
 
     overlay_interface_register(name,local,broadcast);
   }
