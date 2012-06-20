@@ -426,8 +426,10 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
   if (create_serval_instance_dir() == -1)
     return -1;
 
-  int sid_count=0;
-  unsigned char sids[128][SID_SIZE];
+  int uri_count=0;
+#define MAXREPLIES 256
+#define MAXURILEN 256
+  char uris[MAXREPLIES][MAXURILEN];
 
   const char *did;
   if (cli_arg(argc, argv, o, "did", &did, NULL, "*") == -1)
@@ -484,19 +486,28 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 		    WHYF("       Error message: %s", mdp.error.message);
 		  }
 		else if ((rx.packetTypeAndFlags&MDP_TYPE_MASK)==MDP_TX) {
-		  /* Display match unless it is a duplicate.
-		     XXX - For wildcard searches, each sid will only show up once. */
-		  int i;
-		  for(i=0;i<sid_count;i++)
-		    if (!memcmp(&rx.in.src.sid[0],&sids[i][0],SID_SIZE))
-		      break;		  
-		  if (i==sid_count) {
-		    cli_puts(overlay_render_sid(&rx.in.src.sid[0])); cli_delim(":");
-		    cli_puts((char *)&rx.in.payload[0]); cli_delim(":");
-		    cli_puts((char *)&rx.in.payload[32]); cli_delim("\n");
-		    if (sid_count<128) {
-		      bcopy(&rx.in.src.sid[0],&sids[i][0],SID_SIZE);
-		      sid_count++;
+		  /* Extract DID, Name, URI from response. */
+		  if (strlen((char *)rx.in.payload)<512) {
+		    char did[512];
+		    char name[512];
+		    char uri[512];
+		    /* Check if reply is validly formatted */
+		    if (sscanf((char *)rx.in.payload,"%[^\n]\n%[^\n]\n%400s",
+			       did,name,uri)==3) {
+		      /* Have we seen this response before? */
+		      int i;
+		      for(i=0;i<uri_count;i++)
+			if (!strcmp(uri,uris[i])) break;
+		      if (i==uri_count) {
+			/* Not previously seen, so report it */
+			cli_puts(uri); cli_delim(":");
+			cli_puts(did); cli_delim(":");
+			cli_puts(name); cli_delim("\n");
+			/* Remember that we have seen it */
+			if (uri_count<MAXREPLIES&&strlen(uri)<MAXURILEN) {
+			  strcpy(uris[uri_count++],uri);
+			}
+		      }
 		    }
 		  }
 		}

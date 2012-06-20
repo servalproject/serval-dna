@@ -518,28 +518,24 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 		  ->private_key_len>64) 
 		/* skip excessively long DID records */
 		continue;
-	      /* copy SID out into source address of frame */
 	      /* and null-terminated DID */
-	      bcopy(&keyring->contexts[cn]->identities[in]->keypairs[0]
-		    ->public_key[0],&mdp->out.src.sid[0],SID_SIZE);
-	      bcopy(keyring->contexts[cn]->identities[in]->keypairs[kp]
-		    ->private_key,&mdp->out.payload[0],
-		    keyring->contexts[cn]->identities[in]->keypairs[kp]
-		    ->private_key_len);
-	      bcopy(keyring->contexts[cn]->identities[in]->keypairs[kp]
-		    ->public_key,&mdp->out.payload[keyring
-						    ->contexts[cn]
-						    ->identities[in]
-						    ->keypairs[kp]
-						    ->private_key_len],
-		    keyring->contexts[cn]->identities[in]->keypairs[kp]
-		    ->private_key_len);
-	      /* set length */
-	      mdp->out.payload_length=
+	      unsigned char *unpackedDid=
 		keyring->contexts[cn]->identities[in]->keypairs[kp]
-		->private_key_len
-		+keyring->contexts[cn]->identities[in]->keypairs[kp]
-		->public_key_len;
+		->private_key;
+	      unsigned char *packedSid=
+		keyring->contexts[cn]->identities[in]->keypairs[0]
+		->public_key;
+	      char *name=
+		(char *)keyring->contexts[cn]->identities[in]->keypairs[kp]
+		->public_key;
+	      /* copy SID out into source address of frame */	      
+	      bcopy(packedSid,&mdp->out.src.sid[0],SID_SIZE);
+	      /* and build reply as did\nname\nURI<NUL> */
+	      snprintf((char *)&mdp->out.payload[0],512,"%s\n%s\nsid://%s/%s",
+		       unpackedDid,name,overlay_render_sid(packedSid),
+		       unpackedDid);
+	      mdp->out.payload_length=strlen((char *)mdp->out.payload)+1;
+	      
 	      /* mark as outgoing MDP message */
 	      mdp->packetTypeAndFlags&=MDP_FLAG_MASK;
 	      mdp->packetTypeAndFlags|=MDP_TX;
