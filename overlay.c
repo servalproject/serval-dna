@@ -84,7 +84,7 @@ void TIMING_PAUSE()
 }
 
 /* @PGS/20120615 */
-void TIMING_CHECK(const char *file,const char *func,int line)
+void _TIMING_CHECK(const char *file,const char *func,int line)
 {
   long long now=overlay_gettime_ms();
   if (last_valid) {
@@ -103,7 +103,6 @@ void TIMING_CHECK(const char *file,const char *func,int line)
   last_line=line;
   last_time=now;
 }
-#define TIMING_CHECK() TIMING_CHECK(__FILE__,__FUNCTION__,__LINE__)
 
 
 int overlayMode=0;

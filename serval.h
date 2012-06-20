@@ -114,6 +114,11 @@ struct in_addr {
 /* bzero(3) is deprecated in favour of memset(3). */
 #define bzero(addr,len) memset((addr), 0, (len))
 
+/* @PGS/20120615 */
+#define TIMING_CHECK() _TIMING_CHECK(__FILE__,__FUNCTION__,__LINE__)
+void _TIMING_CHECK(const char *file,const char *func,int line);
+void TIMING_PAUSE();
+
 /* UDP Port numbers for various Serval services.
  The overlay mesh works over DNA */
 #define PORT_DNA 4110
