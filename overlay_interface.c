@@ -774,6 +774,7 @@ int overlay_queue_dump(overlay_txqueue *q)
 int overlay_tick_interface(int i, long long now)
 {
   int frame_pax=0;
+  overlay_buffer *e=NULL;
 #define MAX_FRAME_PAX 1024
   overlay_frame *pax[MAX_FRAME_PAX];
 
@@ -789,7 +790,7 @@ int overlay_tick_interface(int i, long long now)
   /* Get a buffer ready, and limit it's size appropriately.
      XXX size limit should be reduced from MTU.
      XXX we should also take account of the volume of data likely to be in the TX buffer. */  
-  overlay_buffer *e=ob_new(overlay_interfaces[i].mtu);
+  e=ob_new(overlay_interfaces[i].mtu);
   if (!e) return WHY("ob_new() failed");
   ob_limitsize(e,overlay_interfaces[i].mtu/4);
 
@@ -798,7 +799,7 @@ int overlay_tick_interface(int i, long long now)
   unsigned char bytes[]={/* Magic */ 'O',0x10,
 			 /* Version */ 0x00,0x01};
   if (ob_append_bytes(e,bytes,4)) {
-    ob_free(e);
+    ob_free(e);   
     return WHY("ob_append_bytes() refused to append magic bytes.");
   }
 
@@ -926,9 +927,13 @@ TIMING_CHECK();
 	      }
 	    }
 	}
+      if (e) ob_free(e); e=NULL;
       return 0;
     }
-  else return WHY("overlay_broadcast_ensemble() failed");
+  else {
+    if (e) ob_free(e); e=NULL;
+    return WHY("overlay_broadcast_ensemble() failed");
+  }
   TIMING_CHECK();
 }
 
