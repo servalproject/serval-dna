@@ -509,6 +509,7 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 	  bcopy(&mdp->out.src.sid[0],&srcsid[0],SID_SIZE);
 	  /* now switch addresses around for any replies */
 	  overlay_mdp_swap_src_dst(mdp);
+	  int results=0;
 	  while(keyring_find_did(keyring,&cn,&in,&kp,did))
 	    {
 	      /* package DID and Name into reply (we include the DID because
@@ -542,8 +543,21 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 	      overlay_mdp_dispatch(mdp,0 /* system generated */,
 				   NULL,0);
 	      kp++;
-	      
+	      results++;
 	    }
+	  if (!results) {
+	    /* No local results, so see if servald has been configured to use
+	       a DNA-helper that can provide additional mappings.  This provides
+	       a generalised interface for resolving telephone numbers into URIs.
+	       The first use will be for resolving DIDs to SIP addresses for
+	       OpenBTS boxes run by the OTI/Commotion project. 
+
+	       The helper is run asynchronously, and the replies will be delivered
+	       when results become available, so this function will return
+	       immediately, so as not to cause blockages and delays in servald.
+	    */
+	    dna_helper_enqueue(did,mdp->out.dst.sid);
+	  }
 	  /* and switch addresses back around in case the caller was planning on
 	     using MDP structure again (this happens if there is a loop-back reply
 	     and the frame needs sending on, as happens with broadcasts.  MDP ping

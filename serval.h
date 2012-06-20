@@ -1519,3 +1519,7 @@ int stopAudio();
 #define SERVER_NOTRUNNING 3
 #define SERVER_RUNNING 4
 int server_probe(int *pid);
+
+int dna_helper_enqueue(char *did, unsigned char *requestorSid);
+int dna_return_resolution(overlay_mdp_frame *mdp, unsigned char *fromSid,
+			  const char *did,const char *name,const char *uri);

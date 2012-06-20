@@ -1678,8 +1678,7 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 	  continue;
 	}
 	
-	{	    
-	  int bytes=m2.in.payload_length;
+	{	    	  
 	  char did[512];
 	  char name[512];
 	  char uri[512];

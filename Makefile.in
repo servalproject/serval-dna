@@ -45,6 +45,7 @@ SRCS=	main.c \
 	lsif.c \
 	monitor.c \
 	monitor-cli.c \
+	dna_helper.c \
 	codecs.c \
 	audiodevices.c \
 	audio_msm_g1.c \

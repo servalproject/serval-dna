@@ -48,6 +48,6 @@ int bufferAudioForPlayback(int codec,long long start_time,long long end_time,
      decode codecs etc here. */
 
   /* send audio to device */
-  int bytesWritten=audev->write(&data[0],dataLen);
+  //  int bytesWritten=audev->write(&data[0],dataLen);
   return 0;
 }
