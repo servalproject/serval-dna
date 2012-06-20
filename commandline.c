@@ -1601,7 +1601,7 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 
   mdp.packetTypeAndFlags=MDP_NODEINFO;
   if (argc>3) resolveDid=1;
-  mdp.nodeinfo.resolve_did=0; // so we know that we don't have a result yet.
+  mdp.nodeinfo.resolve_did=1; // Request resolution of DID and Name by local server if it can.
 
   /* get SID or SID prefix 
      XXX - Doesn't correctly handle odd-lengthed SID prefixes (ignores last digit).
