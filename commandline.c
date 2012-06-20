@@ -1680,16 +1680,19 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 	
 	{	    
 	  int bytes=m2.in.payload_length;
-	  
-	  if ((bytes+1)>=sizeof(mdp.nodeinfo.did)+sizeof(mdp.nodeinfo.name)){
-	    WHYF("Result is too large");
-	    continue;
+	  char did[512];
+	  char name[512];
+	  char uri[512];
+	  bzero(did,32); bzero(name,64);
+	  /* Check if reply is validly formatted */
+	  if (sscanf((char *)m2.in.payload,"%[^\n]\n%[^\n]\n%400s",
+		     did,name,uri)==3) {
+	    did[31]=0;
+	    bcopy(&did[0],&mdp.nodeinfo.did[0],32);
+	    bcopy(&name[0],&mdp.nodeinfo.name[0],64);
+	    mdp.nodeinfo.resolve_did=1;
+	    break;
 	  }
-	  bcopy(&m2.in.payload[0],&mdp.nodeinfo.did[0],32);
-	  bcopy(&m2.in.payload[32],&mdp.nodeinfo.name[0],64);
-	  mdp.nodeinfo.did[bytes]=0;
-	  mdp.nodeinfo.resolve_did=1;
-	  break;
 	}
       }
     }
