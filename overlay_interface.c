@@ -791,6 +791,8 @@ int overlay_tick_interface(int i, long long now)
 #define MAX_FRAME_PAX 1024
   overlay_frame *pax[MAX_FRAME_PAX];
 
+  TIMING_CHECK();
+
   if (overlay_interfaces[i].bits_per_second<1) {
     /* An interface with no speed budget is for listening only, so doesn't get ticked */
     return 0;
@@ -827,6 +829,7 @@ int overlay_tick_interface(int i, long long now)
         Give priority to newly observed nodes so that good news travels quickly to help roaming.
 	XXX - Don't forget about PONGing reachability reports to allow use of monodirectional links.
   */
+TIMING_CHECK();
   overlay_stuff_packet_from_queue(i,e,OQ_MESH_MANAGEMENT,now,pax,&frame_pax,MAX_FRAME_PAX);
 
   /* We previously limited manifest space to 3/4 of MTU, but that causes problems for
@@ -835,22 +838,29 @@ int overlay_tick_interface(int i, long long now)
 #warning reduce to <= mtu*3/4 once we have compacty binary canonical manifest format
   ob_limitsize(e,overlay_interfaces[i].mtu*4/4);
 
+TIMING_CHECK();
+
   /* Add advertisements for ROUTES not Rhizome bundles.
      Rhizome bundle advertisements are lower priority */
   overlay_route_add_advertisements(i,e);
   
   ob_limitsize(e,overlay_interfaces[i].mtu);
 
+  TIMING_CHECK();
+
   /* 4. XXX Add lower-priority queued data */
   overlay_stuff_packet_from_queue(i,e,OQ_ISOCHRONOUS_VIDEO,now,pax,&frame_pax,MAX_FRAME_PAX);
   overlay_stuff_packet_from_queue(i,e,OQ_ORDINARY,now,pax,&frame_pax,MAX_FRAME_PAX);
   overlay_stuff_packet_from_queue(i,e,OQ_OPPORTUNISTIC,now,pax,&frame_pax,MAX_FRAME_PAX);
   /* 5. XXX Fill the packet up to a suitable size with anything that seems a good idea */
+  TIMING_CHECK();
   if (rhizome_enabled())
     overlay_rhizome_add_advertisements(i,e);
 
   if (debug&DEBUG_PACKETCONSTRUCTION)
     dump("assembled packet",&e->bytes[0],e->length);
+
+  TIMING_CHECK();
 
   /* Now send the frame.  This takes the form of a special DNA packet with a different
      service code, which we setup earlier. */
@@ -933,7 +943,7 @@ int overlay_tick_interface(int i, long long now)
       return 0;
     }
   else return WHY("overlay_broadcast_ensemble() failed");
-
+  TIMING_CHECK();
 }
 
 
@@ -943,15 +953,18 @@ overlay_check_ticks(void) {
   /* Check if any interface(s) are due for a tick */
   int i;
   
+  TIMING_CHECK();
   /* Check for changes to interfaces */
   overlay_interface_discover();
-  
+  TIMING_CHECK();
+
   long long now = overlay_gettime_ms();
 
   /* Now check if the next tick time for the interfaces is no later than that time.
      If so, trigger a tick on the interface. */
   if (debug & DEBUG_OVERLAYINTERFACES) INFOF("Examining %d interfaces.",overlay_interface_count);
   for(i = 0; i < overlay_interface_count; i++) {
+    TIMING_CHECK();
       /* Only tick live interfaces */
       if (overlay_interfaces[i].observed > 0) {
 	  if (debug & DEBUG_VERBOSE_IO) INFOF("Interface %s ticks every %dms, last at %lld.",
@@ -959,12 +972,16 @@ overlay_check_ticks(void) {
 					      overlay_interfaces[i].tick_ms,
 					      overlay_interfaces[i].last_tick_ms);
 	  if (now >= overlay_interfaces[i].last_tick_ms + overlay_interfaces[i].tick_ms) {
-	      /* This interface is due for a tick */
-	      overlay_tick_interface(i, now);
-	      overlay_interfaces[i].last_tick_ms = now;
+	    TIMING_CHECK();
+	    
+	    /* This interface is due for a tick */
+	    overlay_tick_interface(i, now);
+	    TIMING_CHECK();
+	    overlay_interfaces[i].last_tick_ms = now;
 	  }
       } else
-	  if (debug & DEBUG_VERBOSE_IO) INFOF("Interface %s is awol.", overlay_interfaces[i].name);
+	if (debug & DEBUG_VERBOSE_IO) INFOF("Interface %s is awol.", overlay_interfaces[i].name);
+      TIMING_CHECK();	
     }
   
   return 0;

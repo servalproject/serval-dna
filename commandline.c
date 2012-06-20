@@ -1551,6 +1551,34 @@ int app_test_rfs(int argc, const char *const *argv, struct command_line_option *
   return 0;
 }
 
+int app_crypt_test(int argc, const char *const *argv, struct command_line_option *o)
+{
+  unsigned char nonce[crypto_box_curve25519xsalsa20poly1305_NONCEBYTES];
+  unsigned char k[crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES];
+
+  unsigned char plain_block[65536];
+
+  urandombytes(nonce,sizeof(nonce));
+  urandombytes(k,sizeof(k));
+
+  int len,i;
+
+  overlay_gettime_ms();
+
+  for(len=16;len<=65536;len*=2) {
+    unsigned long long start=overlay_gettime_ms();
+    for (i=0;i<1000;i++) {
+      bzero(&plain_block[0],crypto_box_curve25519xsalsa20poly1305_ZEROBYTES);
+      crypto_box_curve25519xsalsa20poly1305_afternm
+	(plain_block,plain_block,len,nonce,k);
+    }
+    unsigned long long end=overlay_gettime_ms();
+    printf("%d bytes - 100 tests took %lldms - mean time = %.2fms\n",
+	   len,end-start,(end-start)*1.0/i);
+  }
+  return 0;
+}
+
 int app_node_info(int argc, const char *const *argv, struct command_line_option *o)
 {
   const char *sid;
@@ -1764,6 +1792,8 @@ command_line_option command_line_options[]={
    "Test RFS field calculation"},
   {app_monitor_cli,{"monitor","[<sid>]",NULL},0,
    "Interactive servald monitor interface.  Specify SID to auto-dial that peer and insert dummy audio data"},
+  {app_crypt_test,{"crypt","test",NULL},0,
+   "Run cryptography speed test"},
 #ifdef HAVE_VOIPTEST
   {app_pa_phone,{"phone",NULL},0,
    "Run phone test application"},
