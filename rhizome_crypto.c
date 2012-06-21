@@ -148,20 +148,15 @@ int rhizome_bk_xor(const unsigned char *authorSid, // binary
   if (rs_len<16||rs_len>1024)
     return WHYF("invalid Rhizome Secret: length=%d", rs_len);
   unsigned char *rs=keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key;
-  if (debug & DEBUG_RHIZOME) DEBUGF("   RS %s", alloca_tohex(rs, rs_len));
-  if (debug & DEBUG_RHIZOME) DEBUGF("  bid %s", alloca_tohex(bid, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES));
   int combined_len=rs_len+crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES;
   unsigned char buffer[combined_len];
   bcopy(&rs[0],&buffer[0],rs_len);
   bcopy(&bid[0],&buffer[rs_len],crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
   unsigned char hash[crypto_hash_sha512_BYTES];
   crypto_hash_sha512(hash,buffer,combined_len);
-  if (debug & DEBUG_RHIZOME) DEBUGF(" hash %s", alloca_tohex(hash, sizeof hash));
-  if (debug & DEBUG_RHIZOME) DEBUGF(" bkin %s", alloca_tohex(bkin, crypto_sign_edwards25519sha512batch_SECRETKEYBYTES));
   int i;
   for(i = 0; i != crypto_sign_edwards25519sha512batch_SECRETKEYBYTES; ++i)
     bkout[i]=bkin[i]^hash[i];
-  if (debug & DEBUG_RHIZOME) DEBUGF("bkout %s", alloca_tohex(bkout, crypto_sign_edwards25519sha512batch_SECRETKEYBYTES));
   bzero(&buffer[0],combined_len);
   bzero(&hash[0],crypto_hash_sha512_BYTES);
   return 0;
@@ -191,9 +186,8 @@ int rhizome_extract_privatekey(rhizome_manifest *m, const unsigned char *authorS
       return WHY("rhizome_bk_xor() failed");
     case 0:
       return rhizome_verify_bundle_privatekey(m);
-    default:
-      return WHYF("Rhizome secret for %s not found. (Have you unlocked the identity?)", alloca_tohex_sid(authorSid));
   }
+  return WHYF("Rhizome secret for %s not found. (Have you unlocked the identity?)", alloca_tohex_sid(authorSid));
 }
 
 /*
@@ -211,19 +205,15 @@ int rhizome_is_self_signed(rhizome_manifest *m)
     if (debug & DEBUG_RHIZOME) DEBUGF("missing BK field");
     return 1;
   }
-  if (debug & DEBUG_RHIZOME) DEBUGF("   BK %s", bk);
   unsigned char bkBytes[RHIZOME_BUNDLE_KEY_BYTES];
   if (fromhexstr(bkBytes, bk, RHIZOME_BUNDLE_KEY_BYTES) == -1)
     return WHYF("invalid BK field: %s", bk);
   int cn = 0, in = 0, kp = 0;
   for (; keyring_next_identity(keyring, &cn, &in, &kp); ++kp) {
     const unsigned char *authorSid = keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key;
-    if (debug & DEBUG_RHIZOME) DEBUGF("identity %s", alloca_tohex(authorSid, SID_SIZE));
+    //if (debug & DEBUG_RHIZOME) DEBUGF("identity %s", alloca_tohex(authorSid, SID_SIZE));
     int rkp = keyring_identity_find_keytype(keyring, cn, in, KEYTYPE_RHIZOME);
     if (rkp != -1) {
-      if (debug & DEBUG_RHIZOME) DEBUGF("   RS %s", alloca_tohex(
-	      keyring->contexts[cn]->identities[in]->keypairs[rkp]->private_key,
-	      keyring->contexts[cn]->identities[in]->keypairs[rkp]->private_key_len));
       switch (rhizome_bk_xor(authorSid, m->cryptoSignPublic, bkBytes, m->cryptoSignSecret)) {
 	case -1:
 	  return WHY("rhizome_bk_xor() failed");
