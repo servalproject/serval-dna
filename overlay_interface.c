@@ -276,9 +276,13 @@ int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockadd
       snprintf(dummyfile,1024,"%s",&name[1]);
     } else
       /* Relative to instance path */
-      if (!FORM_SERVAL_INSTANCE_PATH(dummyfile, &name[1]) || (I(fd) = open(dummyfile,O_APPEND|O_RDWR)) < 1) {
-	return WHY("could not open dummy interface file for append");
-      }
+      if (!FORM_SERVAL_INSTANCE_PATH(dummyfile, &name[1]))
+	return WHY("could not form dummy interfance name");
+    
+    if ((I(fd) = open(dummyfile,O_APPEND|O_RDWR)) < 1) {
+      return WHY("could not open dummy interface file for append");
+    }
+
     /* Seek to end of file as initial reading point */
     I(offset)=lseek(I(fd),0,SEEK_END); /* socket gets reused to hold file offset */
     /* XXX later add pretend location information so that we can decide which "packets" to receive
@@ -428,9 +432,14 @@ int overlay_broadcast_ensemble(int interface_number,
   if (overlay_interfaces[interface_number].fileP)
     {
       char buf[2048];
+      bzero(&buf[0],128);
       /* Version information */
       buf[0]=1; buf[1]=0; 
       buf[2]=0; buf[3]=0;
+      /* PID of creator */
+      buf[4]=getpid()&0xff; buf[5]=getpid()>>8;
+
+      /* TODO make a structure for all this stuff */
       /* bytes 4-5  = half-power beam height (uint16) */
       /* bytes 6-7  = half-power beam width (uint16) */
       /* bytes 8-11 = range in metres, centre beam (uint32) */
