@@ -235,6 +235,7 @@ int overlayServerMode()
 	DEBUGF("Waiting via poll() for up to %lldms", ms);
       TIMING_PAUSE();
       
+      if (ms>15000) ms=15000;
       r = poll(fds, fdcount, ms);
       
       TIMING_CHECK();
