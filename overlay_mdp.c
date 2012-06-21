@@ -1158,7 +1158,7 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
     mdp->packetTypeAndFlags=MDP_ERROR;
     mdp->error.error=1;
     snprintf(mdp->error.message,128,"Timeout waiting for reply to MDP packet (packet was successfully sent).");    
-    return WHY("Timeout waiting for server response");
+    return -1; /* WHY("Timeout waiting for server response"); */
   }
 
 
