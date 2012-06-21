@@ -476,10 +476,22 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
       }
     if (match>-1) {      
       struct sockaddr_un addr;
+      printf("unix domain socket '%s'\n",mdp_bindings_sockets[match]);
       bcopy(mdp_bindings_sockets[match],&addr.sun_path[0],mdp_bindings_socket_name_lengths[match]);
       addr.sun_family=AF_UNIX;
-      int r=sendto(mdp_named_socket,mdp,overlay_mdp_relevant_bytes(mdp),0,(struct sockaddr*)&addr,sizeof(addr));
-      if (r==overlay_mdp_relevant_bytes(mdp)) return 0;
+      errno=0;
+      int len=overlay_mdp_relevant_bytes(mdp);
+      int r=sendto(mdp_named_socket,mdp,len,0,(struct sockaddr*)&addr,sizeof(addr));
+      if (r==overlay_mdp_relevant_bytes(mdp)) {	
+	dump("Sent to MDP client",(unsigned char *)mdp,len);
+	perror("errno after sendto()");
+	return 0;
+      }
+      if (errno==ENOENT) {
+	/* far-end of socket has died, so drop binding */
+	printf("Closing dead MDP client '%s'\n",mdp_bindings_sockets[match]);
+	overlay_mdp_releasebindings(&addr,mdp_bindings_socket_name_lengths[match]);
+      }
       WHY_perror("sendto(e)");
       return WHY("Failed to pass received MDP frame to client");
     } else {
@@ -505,13 +517,23 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 	  /* make sure it is null terminated */
 	  did[pll]=0; 
 	  /* remember source sid for putting back later */
-	  unsigned char srcsid[32];
-	  bcopy(&mdp->out.src.sid[0],&srcsid[0],SID_SIZE);
-	  /* now switch addresses around for any replies */
-	  overlay_mdp_swap_src_dst(mdp);
+	  overlay_mdp_frame mdpreply;
+
 	  int results=0;
 	  while(keyring_find_did(keyring,&cn,&in,&kp,did))
 	    {
+	      bzero(&mdpreply,sizeof(mdpreply));
+
+	      /* mark as outgoing MDP message */
+	      mdp->packetTypeAndFlags&=MDP_FLAG_MASK;
+	      mdp->packetTypeAndFlags|=MDP_TX;
+	      
+	      /* Set source and destination addresses */
+	      bcopy(&mdp->out.dst.sid,mdpreply.out.src.sid,SID_SIZE);
+	      bcopy(&mdp->out.src.sid,mdpreply.out.dst.sid,SID_SIZE);
+	      mdpreply.out.src.port=mdp->out.dst.port;
+	      mdpreply.out.dst.port=mdp->out.src.port;
+
 	      /* package DID and Name into reply (we include the DID because
 		 it could be a wild-card DID search, but the SID is implied 
 		 in the source address of our reply). */
@@ -530,18 +552,15 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 		(char *)keyring->contexts[cn]->identities[in]->keypairs[kp]
 		->public_key;
 	      /* copy SID out into source address of frame */	      
-	      bcopy(packedSid,&mdp->out.src.sid[0],SID_SIZE);
+	      bcopy(packedSid,&mdpreply.out.src.sid[0],SID_SIZE);
 	      /* and build reply as did\nname\nURI<NUL> */
-	      snprintf((char *)&mdp->out.payload[0],512,"%s\n%s\nsid://%s/%s",
+	      snprintf((char *)&mdpreply.out.payload[0],512,"%s\n%s\nsid://%s/%s",
 		       unpackedDid,name,overlay_render_sid(packedSid),
 		       unpackedDid);
-	      mdp->out.payload_length=strlen((char *)mdp->out.payload)+1;
+	      mdpreply.out.payload_length=strlen((char *)mdpreply.out.payload)+1;
 	      
-	      /* mark as outgoing MDP message */
-	      mdp->packetTypeAndFlags&=MDP_FLAG_MASK;
-	      mdp->packetTypeAndFlags|=MDP_TX;
-	      overlay_mdp_dispatch(mdp,0 /* system generated */,
-				   NULL,0);
+	      /* deliver reply */
+	      overlay_mdp_dispatch(&mdpreply,0 /* system generated */,NULL,0);
 	      kp++;
 	      results++;
 	    }
@@ -556,18 +575,8 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 	       when results become available, so this function will return
 	       immediately, so as not to cause blockages and delays in servald.
 	    */
-	    dna_helper_enqueue(did,mdp->out.dst.sid);
+	    dna_helper_enqueue(did,mdp->out.src.sid);
 	  }
-	  /* and switch addresses back around in case the caller was planning on
-	     using MDP structure again (this happens if there is a loop-back reply
-	     and the frame needs sending on, as happens with broadcasts.  MDP ping
-	     is a simple application where this occurs).
-	     Similarly restore destination address & MDP payload content and
-	     length */
-	  overlay_mdp_swap_src_dst(mdp);
-	  bcopy(&srcsid[0],&mdp->out.src.sid[0],SID_SIZE);
-	  bcopy(&did[0],&mdp->out.payload[0],pll);
-	  mdp->out.payload_length=pll;
 	  return 0;
 	}
 	break;
@@ -610,7 +619,8 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
       default:
 	/* Unbound socket.  We won't be sending ICMP style connection refused
 	   messages, partly because they are a waste of bandwidth. */
-	return WHY("Received packet for which no listening process exists");
+	return WHYF("Received packet for which no listening process exists (MDP ports: src=%d, dst=%d",
+		    mdp->out.src.port,mdp->out.dst.port);
       }
     }
     break;
@@ -682,6 +692,8 @@ int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,int userGeneratedFrameP,
 
   printf("addr=%s port=%u (0x%x)\n",
 	 overlay_render_sid(src->sid),src->port,src->port);
+  if (recvaddr) printf("recvaddr='%s'\n",
+	 recvaddr->sun_path);
   return WHY("No such socket binding:unix domain socket tuple exists -- someone might be trying to spoof someone else's connection");
 }
 
@@ -1150,6 +1162,7 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
     snprintf(mdp->error.message,128,"Timeout waiting for reply to MDP packet (packet was successfully sent).");    
     return WHY("Timeout waiting for server response");
   }
+
 
   int ttl=-1;
   if (!overlay_mdp_recv(mdp,&ttl)) {
