@@ -54,6 +54,7 @@ setup_servald_instance() {
 setup_servald_instances() {
    setup_servald
    DUMMYNET=/tmp/dummy
+   rm $DUMMYNET
    touch $DUMMYNET
    assert [ -e $DUMMYNET ]
    setup_servald_instance A $DUMMYNET
