@@ -525,8 +525,7 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 	      bzero(&mdpreply,sizeof(mdpreply));
 
 	      /* mark as outgoing MDP message */
-	      mdp->packetTypeAndFlags&=MDP_FLAG_MASK;
-	      mdp->packetTypeAndFlags|=MDP_TX;
+	      mdpreply.packetTypeAndFlags=MDP_TX;
 	      
 	      /* Set source and destination addresses */
 	      bcopy(&mdp->out.dst.sid,mdpreply.out.src.sid,SID_SIZE);
