@@ -43,6 +43,39 @@ int dna_helper_stdout=-1;
 
 int dna_helper_start(const char *command)
 {
+  int stdin_fds[2];
+  int stdout_fds[2];
+
+  if (pipe(stdin_fds)) return -1;
+  if (pipe(stdout_fds)) {
+    close(stdin_fds[0]); close(stdin_fds[1]); 
+    return -1;
+  }
+
+  int pid=-1;
+  if ((pid=fork())!=0) {
+    /* Child, should exec() to become helper after installing file descriptors. */
+    if (dup2(stdin_fds[1],0)) exit(-1); /* replace stdin */
+    if (dup2(stdout_fds[0],1)) exit(-1); /* replace stdout */
+    if (dup2(stdout_fds[0],2)) exit(-1); /* replace stderr */
+    execl(command,command,NULL);
+    /* execl() should never return, since it replaces this process with a new
+       one. Thus something bad must have happened. */      
+    exit(-1);
+  } else {
+    if (pid==-1) {
+      /* fork failed */
+      close(stdin_fds[0]); close(stdin_fds[1]); 
+      close(stdout_fds[0]); close(stdout_fds[1]); 
+      return -1;
+    } else {
+      /* Parent, should put file descriptors into place for use */
+      dna_helper_stdin=stdin_fds[0];
+      dna_helper_stdout=stdout_fds[1];
+      return 0;
+    }
+  }
+
   return -1;
 }
 
