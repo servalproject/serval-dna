@@ -41,6 +41,32 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 int dna_helper_stdin=-1;
 int dna_helper_stdout=-1;
 
+int parseDnaReply(unsigned char *bytes,int count,
+		  char *did,char *name,char *uri)
+{
+  bzero(did,32); bzero(name,64);
+  bzero(uri,512);
+  int i,l;
+
+  l=0;
+  for(i=0;i<511&&i<count&&bytes[i]!=0x0a;i++)
+    did[l++]=bytes[i];
+  did[l]=0;
+  if (i>=count||i>=511) return WHY("DNA response does not contain name field");
+  l=0; i++;
+  for(;i<511&&i<count&&bytes[i]!=0x0a;i++)
+    name[l++]=bytes[i];
+  name[l]=0;
+  if (i>=count||i>=511) return WHY("DNA response does not contain URI field");
+  l=0; i++;
+  for(;i<511&&i<count&&bytes[i]!=0;i++)
+    uri[l++]=bytes[i];
+  uri[l]=0;
+  /* DEBUGF("did='%s', name='%s', uri='%s'",did,name,uri); */
+
+  return 0;
+}
+
 int dna_helper_start(const char *command)
 {
   int stdin_fds[2];

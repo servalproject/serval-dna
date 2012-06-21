@@ -491,24 +491,24 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 		    char did[512];
 		    char name[512];
 		    char uri[512];
-		    /* Check if reply is validly formatted */
-		    if (sscanf((char *)rx.in.payload,"%[^\n]\n%[^\n]\n%400s",
-			       did,name,uri)==3) {
-		      /* Have we seen this response before? */
-		      int i;
-		      for(i=0;i<uri_count;i++)
-			if (!strcmp(uri,uris[i])) break;
-		      if (i==uri_count) {
-			/* Not previously seen, so report it */
-			cli_puts(uri); cli_delim(":");
-			cli_puts(did); cli_delim(":");
-			cli_puts(name); cli_delim("\n");
-			/* Remember that we have seen it */
-			if (uri_count<MAXREPLIES&&strlen(uri)<MAXURILEN) {
-			  strcpy(uris[uri_count++],uri);
+		    if (!parseDnaReply(rx.in.payload,rx.in.payload_length,
+				       did,name,uri))
+		      {
+			/* Have we seen this response before? */
+			int i;
+			for(i=0;i<uri_count;i++)
+			  if (!strcmp(uri,uris[i])) break;
+			if (i==uri_count) {
+			  /* Not previously seen, so report it */
+			  cli_puts(uri); cli_delim(":");
+			  cli_puts(did); cli_delim(":");
+			  cli_puts(name); cli_delim("\n");
+			  /* Remember that we have seen it */
+			  if (uri_count<MAXREPLIES&&strlen(uri)<MAXURILEN) {
+			    strcpy(uris[uri_count++],uri);
+			  }
 			}
 		      }
-		    }
 		  }
 		}
 		else WHYF("packettype=0x%x",rx.packetTypeAndFlags);
@@ -1682,16 +1682,15 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 	  char did[512];
 	  char name[512];
 	  char uri[512];
-	  bzero(did,32); bzero(name,64);
-	  /* Check if reply is validly formatted */
-	  if (sscanf((char *)m2.in.payload,"%[^\n]\n%[^\n]\n%400s",
-		     did,name,uri)==3) {
-	    did[31]=0;
-	    bcopy(&did[0],&mdp.nodeinfo.did[0],32);
-	    bcopy(&name[0],&mdp.nodeinfo.name[0],64);
-	    mdp.nodeinfo.resolve_did=1;
-	    break;
-	  }
+	  if (!parseDnaReply(m2.in.payload,m2.in.payload_length,
+			     did,name,uri))
+	    {
+	      /* Got a good DNA reply, copy it into place */
+	      bcopy(did,mdp.nodeinfo.did,32);
+	      bcopy(name,mdp.nodeinfo.name,64);
+	      mdp.nodeinfo.resolve_did=1;
+	      break;
+	    }
 	}
       }
     }
