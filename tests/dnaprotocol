@@ -48,13 +48,14 @@ setup_servald_instance() {
    start_servald_server
 }
 
-doc_ServerStartCreateInstanceDir="DNA lookup of wildcard finds self"
-setup_ServerStartCreateInstanceDir() {
+doc_DNAWildcardSearchFindsSelf="DNA lookup of wildcard finds self"
+setup_DNAWildcardSearchFindsSelf() {
    setup
 }
-test_ServerStartCreateInstanceDir() {
+test_DNAWildcardSearchFindsSelf() {
    setup_servald_instance
    executeOk_servald dna lookup "\*"
+   assertStdoutLineCount '==' 1 
 }
 
 runTests "$@"
