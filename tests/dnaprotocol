@@ -35,12 +35,11 @@ teardown() {
 }
 
 setup_servald_instance() {
-   setup_servald
-   set_instance A
+   set_instance $1
    touch "$SERVALINSTANCE_PATH/dummynet"
-   executeOk_servald config set interfaces "+>dummynet"
-   executeOk_servald config set monitor.socket "org.servalproject.servald.monitor.socket.A"
-   executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.A"
+   executeOk_servald config set interfaces "+>$2"
+   executeOk_servald config set monitor.socket "org.servalproject.servald.monitor.socket.$1"
+   executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.$1"
    executeOk_servald keyring add
    assert [ -e "$SERVALINSTANCE_PATH/serval.keyring" ]
    executeOk_servald keyring list
@@ -48,26 +47,33 @@ setup_servald_instance() {
    sid=$(replayStdout | sed -ne "1s/^\($rexp_sid\):.*\$/\1/p")
    assert --message='main identity known' [ -n "$sid" ]
    executeOk_servald set did $sid 5550001 "Agent Smith"
-   start_servald_server A
+   start_servald_server $1
    executeOk_servald status
    tfw_cat --stdout
-   INSTANCEPATH_A=$SERVALINSTANCE_PATH
+}
 
-   set_instance B
-   executeOk_servald config set interfaces "+>$INSTANCEPATH_A/dummynet"
-   executeOk_servald config set monitor.socket "org.servalproject.servald.monitor.socket.B"
-   executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.B"
-   executeOk_servald keyring add
-   assert [ -e "$SERVALINSTANCE_PATH/serval.keyring" ]
-   executeOk_servald keyring list
-   tfw_cat --stdout
-   sid=$(replayStdout | sed -ne "1s/^\($rexp_sid\):.*\$/\1/p")
-   assert --message='main identity known' [ -n "$sid" ]
-   executeOk_servald set did $sid 5552662 "Neo"
-   echo "# A/B Instance Paths: $SERVALINSTANCE_PATH $INSTANCEPATH_A"
-   tfw_cat --stdout
-   start_servald_server B
-   executeOk_servald status
+setup_servald_instances() {
+   setup_servald
+   setup_servald_instance A dummynet
+   DUMMYNET=$SERVALINSTANCE_PATH/dummynet
+   setup_servald_instance B $DUMMYNET
+
+   # Now make sure that they can see each other
+   sleep 2.5 # Should be plenty of time
+   set_instance A
+   echo "Dummynet file $DUMMYNET after 5 seconds: "`ls -l $DUMMYNET`
+   executeOk_servald id peers
+   assertStdoutLineCount '==' 1   
+}
+
+doc_MultipleServalDTest="Can start multiple servald instances communicating via a dummy interface"
+
+setup_MultipleServalDTest() {
+   setup
+}
+
+test_MultipleServalDTest() {
+   setup_servald_instances
 }
 
 doc_DNAWildcardSearchFindsSelf="DNA lookup of wildcard finds self (star method)"
@@ -75,7 +81,7 @@ setup_DNAWildcardSearchFindsSelf() {
    setup
 }
 test_DNAWildcardSearchFindsSelf() {
-   setup_servald_instance
+   setup_servald_instances
    executeOk_servald dna lookup "*"
    assertStdoutLineCount '==' 1 
 }
@@ -85,7 +91,7 @@ setup_DNAWildcardSearchFindsSelfEmpty() {
    setup
 }
 test_DNAWildcardSearchFindsSelfEmpty() {
-   setup_servald_instance
+   setup_servald_instances
    executeOk_servald dna lookup ""
    assertStdoutLineCount '==' 1 
 }

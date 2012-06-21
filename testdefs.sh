@@ -190,13 +190,16 @@ signal_all_servald_processes() {
 #    first SIGTERM then SIGHUP and finally SIGKILL
 #  - assert that no more servald processes are running
 kill_all_servald_processes() {
-   if signal_all_servald_processes TERM; then
-      sleep 2
-      if signal_all_servald_processes HUP; then
-         sleep 2
+# PGS 20120621 - Made fast so that tests can be run quickly
+# TODO: Make this better by checking that things really have died, and take
+# exactly the time required, rather than using fixed delays
+#   if signal_all_servald_processes TERM; then
+#      sleep 2
+#      if signal_all_servald_processes HUP; then
+#         sleep 2
          signal_all_servald_processes KILL
-      fi
-   fi
+#      fi
+#   fi
 }
 
 # Utility function:
