@@ -1532,3 +1532,4 @@ void sigPipeHandler(int signal);
 void sigIoHandler(int signal);
 
 #define DEFAULT_MONITOR_SOCKET_NAME "org.servalproject.servald.monitor.socket"
+#define DEFAULT_MDP_SOCKET_NAME "org.servalproject.servald.mdp.socket"

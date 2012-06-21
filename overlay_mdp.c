@@ -42,7 +42,8 @@ int overlay_mdp_setup_sockets()
     /* XXX The 100 should be replaced with the actual maximum allowed.
        Apparently POSIX requires it to be at least 100, but I would still feel
        more comfortable with using the appropriate constant. */
-    snprintf(&name.sun_path[1],100,"org.servalproject.mesh.overlay.mdp");
+    snprintf(&name.sun_path[1],100,
+	     confValueGet("mdp.socket",DEFAULT_MDP_SOCKET_NAME);
     len = 1+strlen(&name.sun_path[1]) + sizeof(name.sun_family);
     
     mdp_abstract_socket = socket(AF_UNIX, SOCK_DGRAM, 0);

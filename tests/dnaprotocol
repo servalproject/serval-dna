@@ -28,7 +28,8 @@ setup() {
 }
 
 teardown() {
-   stop_all_servald_servers
+# TODO Disabled until stopping multiple-instances are supported
+# TODO  stop_all_servald_servers
    kill_all_servald_processes
    assert_no_servald_processes
 }
@@ -39,6 +40,7 @@ setup_servald_instance() {
    touch "$SERVALINSTANCE_PATH/dummynet"
    executeOk_servald config set interfaces "+>dummynet"
    executeOk_servald config set monitor.socket "org.servalproject.servald.monitor.socket.A"
+   executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.A"
    executeOk_servald keyring add
    assert [ -e "$SERVALINSTANCE_PATH/serval.keyring" ]
    executeOk_servald keyring list
@@ -54,6 +56,7 @@ setup_servald_instance() {
    set_instance B
    executeOk_servald config set interfaces "+>$INSTANCEPATH_A/dummynet"
    executeOk_servald config set monitor.socket "org.servalproject.servald.monitor.socket.B"
+   executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.B"
    executeOk_servald keyring add
    assert [ -e "$SERVALINSTANCE_PATH/serval.keyring" ]
    executeOk_servald keyring list
