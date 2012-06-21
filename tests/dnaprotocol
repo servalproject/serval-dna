@@ -105,5 +105,25 @@ test_DNAWildcardSearchFindsSelfEmpty() {
    assertStdoutGrep --matches=1 "^sid://$SIDB/5550001:5550001:Agent B Smith$"
 }
 
+doc_DNASpecificLookup="DNA Lookup by phone number"
+setup_DNASpecificLookup() {
+   setup
+}
+test_DNASpecificLookup() {
+   setup_servald_instances
+   set_instance A
+   # Make sure we get no false positives
+   executeOk_servald dna lookup "5551234"
+   assertStdoutLineCount '==' 0
+   executeOk_servald dna lookup "555000"
+   assertStdoutLineCount '==' 0
+   executeOk_servald dna lookup "55500011"
+   assertStdoutLineCount '==' 0
+   # Make sure we get the right results, and no duplicates
+   executeOk_servald dna lookup "5550001"
+   assertStdoutLineCount '==' 2
+   assertStdoutGrep --matches=1 "^sid://$SIDA/5550001:5550001:Agent A Smith$"
+   assertStdoutGrep --matches=1 "^sid://$SIDB/5550001:5550001:Agent B Smith$"
+}
 
 runTests "$@"
