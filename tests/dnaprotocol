@@ -38,6 +38,7 @@ setup_servald_instance() {
    set_instance A
    touch "$SERVALINSTANCE_PATH/dummynet"
    executeOk_servald config set interfaces "+>dummynet"
+   executeOk_servald config set monitor.socket "org.servalproject.servald.monitor.socket.A"
    executeOk_servald keyring add
    assert [ -e "$SERVALINSTANCE_PATH/serval.keyring" ]
    executeOk_servald keyring list
@@ -46,10 +47,13 @@ setup_servald_instance() {
    assert --message='main identity known' [ -n "$sid" ]
    executeOk_servald set did $sid 5550001 "Agent Smith"
    start_servald_server A
+   executeOk_servald status
+   tfw_cat --stdout
    INSTANCEPATH_A=$SERVALINSTANCE_PATH
 
    set_instance B
    executeOk_servald config set interfaces "+>$INSTANCEPATH_A/dummynet"
+   executeOk_servald config set monitor.socket "org.servalproject.servald.monitor.socket.B"
    executeOk_servald keyring add
    assert [ -e "$SERVALINSTANCE_PATH/serval.keyring" ]
    executeOk_servald keyring list
@@ -57,7 +61,10 @@ setup_servald_instance() {
    sid=$(replayStdout | sed -ne "1s/^\($rexp_sid\):.*\$/\1/p")
    assert --message='main identity known' [ -n "$sid" ]
    executeOk_servald set did $sid 5552662 "Neo"
+   echo "# A/B Instance Paths: $SERVALINSTANCE_PATH $INSTANCEPATH_A"
+   tfw_cat --stdout
    start_servald_server B
+   executeOk_servald status
 }
 
 doc_DNAWildcardSearchFindsSelf="DNA lookup of wildcard finds self (star method)"

@@ -1530,3 +1530,5 @@ extern int sigPipeFlag;
 extern int sigIoFlag;
 void sigPipeHandler(int signal);
 void sigIoHandler(int signal);
+
+#define DEFAULT_MONITOR_SOCKET_NAME "org.servalproject.servald.monitor.socket"
