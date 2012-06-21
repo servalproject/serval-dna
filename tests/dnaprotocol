@@ -35,7 +35,7 @@ teardown() {
 
 setup_servald_instance() {
    setup_servald
-   set_instance
+   set_instance A
    touch "$SERVALINSTANCE_PATH/dummynet"
    executeOk_servald config set interfaces "+>dummynet"
    executeOk_servald keyring add
@@ -44,8 +44,20 @@ setup_servald_instance() {
    tfw_cat --stdout
    sid=$(replayStdout | sed -ne "1s/^\($rexp_sid\):.*\$/\1/p")
    assert --message='main identity known' [ -n "$sid" ]
-   executeOk_servald set did $sid 1234567 "Agent Smith"
-   start_servald_server
+   executeOk_servald set did $sid 5550001 "Agent Smith"
+   start_servald_server A
+   INSTANCEPATH_A=$SERVALINSTANCE_PATH
+
+   set_instance B
+   executeOk_servald config set interfaces "+>$INSTANCEPATH_A/dummynet"
+   executeOk_servald keyring add
+   assert [ -e "$SERVALINSTANCE_PATH/serval.keyring" ]
+   executeOk_servald keyring list
+   tfw_cat --stdout
+   sid=$(replayStdout | sed -ne "1s/^\($rexp_sid\):.*\$/\1/p")
+   assert --message='main identity known' [ -n "$sid" ]
+   executeOk_servald set did $sid 5552662 "Neo"
+   start_servald_server B
 }
 
 doc_DNAWildcardSearchFindsSelf="DNA lookup of wildcard finds self (star method)"
