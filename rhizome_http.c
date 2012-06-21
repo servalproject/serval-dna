@@ -31,8 +31,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
 int rhizome_server_socket=-1;
-int sigPipeFlag=0;
-int sigIoFlag=0;
 
 rhizome_http_request *rhizome_live_http_requests[RHIZOME_SERVER_MAX_LIVE_REQUESTS];
 int rhizome_server_live_request_count=0;
@@ -61,19 +59,6 @@ unsigned char favicon_bytes[]={
 ,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 ,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 int favicon_len=318;
-
-void sigPipeHandler(int signal)
-{
-  sigPipeFlag++;
-  return;
-}
-
-void sigIoHandler(int signal)
-{
-  WHY("sigio");
-  sigIoFlag++;
-  return;
-}
 
 int rhizome_server_start()
 {
