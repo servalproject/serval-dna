@@ -36,7 +36,6 @@ teardown() {
 
 setup_servald_instance() {
    set_instance $1
-   touch "$SERVALINSTANCE_PATH/dummynet"
    executeOk_servald config set interfaces "+>$2"
    executeOk_servald config set monitor.socket "org.servalproject.servald.monitor.socket.$1"
    executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.$1"
@@ -46,7 +45,7 @@ setup_servald_instance() {
    tfw_cat --stdout
    sid=$(replayStdout | sed -ne "1s/^\($rexp_sid\):.*\$/\1/p")
    assert --message='main identity known' [ -n "$sid" ]
-   executeOk_servald set did $sid 5550001 "Agent Smith"
+   executeOk_servald set did $sid 5550001 "Agent $1 Smith"
    start_servald_server $1
    executeOk_servald status
    tfw_cat --stdout
@@ -54,16 +53,18 @@ setup_servald_instance() {
 
 setup_servald_instances() {
    setup_servald
-   setup_servald_instance A dummynet
-   DUMMYNET=$SERVALINSTANCE_PATH/dummynet
+   DUMMYNET=/tmp/dummy
+   touch $DUMMYNET
+   assert [ -e $DUMMYNET ]
+   setup_servald_instance A $DUMMYNET
    setup_servald_instance B $DUMMYNET
 
    # Now make sure that they can see each other
-   sleep 2.5 # Should be plenty of time
+   sleep 5 # Should be plenty of time
    set_instance A
    echo "Dummynet file $DUMMYNET after 5 seconds: "`ls -l $DUMMYNET`
    executeOk_servald id peers
-   assertStdoutLineCount '==' 1   
+   assertStdoutLineCount '==' 1
 }
 
 doc_MultipleServalDTest="Can start multiple servald instances communicating via a dummy interface"
@@ -76,24 +77,30 @@ test_MultipleServalDTest() {
    setup_servald_instances
 }
 
-doc_DNAWildcardSearchFindsSelf="DNA lookup of wildcard finds self (star method)"
+doc_DNAWildcardSearchFindsSelf="DNA lookup of wildcard finds (star method)"
 setup_DNAWildcardSearchFindsSelf() {
    setup
 }
 test_DNAWildcardSearchFindsSelf() {
    setup_servald_instances
+   set_instance A
    executeOk_servald dna lookup "*"
-   assertStdoutLineCount '==' 1 
+   assertStdoutLineCount '==' 2
+   assertStdoutGrep --matches=1 "^sid://.*/5550001:5550001:Agent A Smith$"
+   assertStdoutGrep --matches=1 "^sid://.*/5550001:5550001:Agent B Smith$"
 }
 
-doc_DNAWildcardSearchFindsSelfEmpty="DNA lookup of wildcard finds self (empty query method)"
+doc_DNAWildcardSearchFindsSelfEmpty="DNA lookup of wildcard (empty query method)"
 setup_DNAWildcardSearchFindsSelfEmpty() {
    setup
 }
 test_DNAWildcardSearchFindsSelfEmpty() {
    setup_servald_instances
+   set_instance A
    executeOk_servald dna lookup ""
-   assertStdoutLineCount '==' 1 
+   assertStdoutLineCount '==' 2 
+   assertStdoutGrep --matches=1 "^sid://.*/5550001:5550001:Agent A Smith$"
+   assertStdoutGrep --matches=1 "^sid://.*/5550001:5550001:Agent B Smith$"
 }
 
 
