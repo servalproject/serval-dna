@@ -1437,18 +1437,19 @@ int app_keyring_list(int argc, const char *const *argv, struct command_line_opti
       {
 	int kpn;
 	keypair *kp;
-	unsigned char *sid=NULL,*did=NULL;
+	unsigned char *sid=NULL,*did=NULL,*name=NULL;
 	for(kpn=0;kpn<k->contexts[cn]->identities[in]->keypair_count;kpn++)
 	  {
 	    kp=k->contexts[cn]->identities[in]->keypairs[kpn];
 	    if (kp->type==KEYTYPE_CRYPTOBOX) sid=kp->public_key;
-	    if (kp->type==KEYTYPE_DID) did=kp->private_key;
+	    if (kp->type==KEYTYPE_DID) { did=kp->private_key; name=kp->public_key; }
 	  }
-	if (sid||did) {
-	    int i;
-	    if (sid) for(i=0;i<SID_SIZE;i++) cli_printf("%02x",sid[i]);
+	if (sid||did) {	 
+	    if (sid) cli_printf("%s",overlay_render_sid(sid));
 	    cli_delim(":");
 	    if (did) cli_puts((char*)did);
+	    cli_delim(":");
+	    if (name) cli_puts((char*)name);
 	    cli_delim("\n");
 	}
       }

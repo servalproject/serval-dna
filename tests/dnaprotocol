@@ -57,7 +57,9 @@ setup_servald_instances() {
    touch $DUMMYNET
    assert [ -e $DUMMYNET ]
    setup_servald_instance A $DUMMYNET
+   SIDA=$sid
    setup_servald_instance B $DUMMYNET
+   SIDB=$sid
 
    # Now make sure that they can see each other
    sleep 5 # Should be plenty of time
@@ -86,8 +88,8 @@ test_DNAWildcardSearchFindsSelf() {
    set_instance A
    executeOk_servald dna lookup "*"
    assertStdoutLineCount '==' 2
-   assertStdoutGrep --matches=1 "^sid://.*/5550001:5550001:Agent A Smith$"
-   assertStdoutGrep --matches=1 "^sid://.*/5550001:5550001:Agent B Smith$"
+   assertStdoutGrep --matches=1 "^sid://$SIDA/5550001:5550001:Agent A Smith$"
+   assertStdoutGrep --matches=1 "^sid://$SIDB/5550001:5550001:Agent B Smith$"
 }
 
 doc_DNAWildcardSearchFindsSelfEmpty="DNA lookup of wildcard (empty query method)"
@@ -99,8 +101,8 @@ test_DNAWildcardSearchFindsSelfEmpty() {
    set_instance A
    executeOk_servald dna lookup ""
    assertStdoutLineCount '==' 2 
-   assertStdoutGrep --matches=1 "^sid://.*/5550001:5550001:Agent A Smith$"
-   assertStdoutGrep --matches=1 "^sid://.*/5550001:5550001:Agent B Smith$"
+   assertStdoutGrep --matches=1 "^sid://$SIDA/5550001:5550001:Agent A Smith$"
+   assertStdoutGrep --matches=1 "^sid://$SIDB/5550001:5550001:Agent B Smith$"
 }
 
 
