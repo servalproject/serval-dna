@@ -48,14 +48,25 @@ setup_servald_instance() {
    start_servald_server
 }
 
-doc_DNAWildcardSearchFindsSelf="DNA lookup of wildcard finds self"
+doc_DNAWildcardSearchFindsSelf="DNA lookup of wildcard finds self (star method)"
 setup_DNAWildcardSearchFindsSelf() {
    setup
 }
 test_DNAWildcardSearchFindsSelf() {
    setup_servald_instance
-   executeOk_servald dna lookup "\*"
+   executeOk_servald dna lookup "*"
    assertStdoutLineCount '==' 1 
 }
+
+doc_DNAWildcardSearchFindsSelfEmpty="DNA lookup of wildcard finds self (empty query method)"
+setup_DNAWildcardSearchFindsSelfEmpty() {
+   setup
+}
+test_DNAWildcardSearchFindsSelfEmpty() {
+   setup_servald_instance
+   executeOk_servald dna lookup ""
+   assertStdoutLineCount '==' 1 
+}
+
 
 runTests "$@"

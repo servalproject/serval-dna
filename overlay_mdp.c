@@ -483,8 +483,6 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
       int len=overlay_mdp_relevant_bytes(mdp);
       int r=sendto(mdp_named_socket,mdp,len,0,(struct sockaddr*)&addr,sizeof(addr));
       if (r==overlay_mdp_relevant_bytes(mdp)) {	
-	dump("Sent to MDP client",(unsigned char *)mdp,len);
-	perror("errno after sendto()");
 	return 0;
       }
       if (errno==ENOENT) {
@@ -1097,7 +1095,7 @@ int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
 	 end of the string, to avoid information leaks */
       len=&mdp->error.message[0]-(char *)mdp;
       len+=strlen(mdp->error.message)+1;      
-      INFOF("mdp return/error code: %d:%s",mdp->error.error,mdp->error.message);
+      if (mdp->error.error) INFOF("mdp return/error code: %d:%s",mdp->error.error,mdp->error.message);
       break;
     case MDP_VOMPEVENT:
       /* XXX too hard to work out precisely for now. */
