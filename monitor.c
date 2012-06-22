@@ -89,7 +89,7 @@ int monitor_setup_sockets()
   /* Doesn't include trailing nul */
   len = 1+strlen(&name.sun_path[1]) + sizeof(name.sun_family);
 #else
-  snprintf(name.sun_path,104-1,"%s/",
+  snprintf(name.sun_path,104-1,"%s/%s",
 	   serval_instancepath(),
 	   confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME));
   unlink(name.sun_path);
