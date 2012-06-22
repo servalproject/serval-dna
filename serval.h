@@ -827,7 +827,7 @@ int overlay_interface_init_socket(int i,struct sockaddr_in src_addr,struct socka
 void overlay_interface_discover();
 long long overlay_time_until_next_tick();
 int overlay_rx_messages();
-int overlay_check_ticks();
+void overlay_check_ticks();
 int overlay_add_selfannouncement();
 int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b);
 int overlay_interface_args(const char *arg);
@@ -1427,7 +1427,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 int vomp_mdp_received(overlay_mdp_frame *mdp);
 char *vomp_describe_state(int state);
 char *vomp_describe_codec(int c);
-int vomp_tick();
+void vomp_tick();
 int vomp_tick_interval();
 int vomp_sample_size(int c);
 int vomp_codec_timespan(int c);

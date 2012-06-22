@@ -169,17 +169,15 @@ int overlayServerMode()
       based on load/route table size etc) */
   fd_setalarm(overlay_route_tick,1000,1000);
 
-  while(1) {
-    
+  /* Start scheduling interface ticks */
+  fd_setalarm(overlay_check_ticks,1,500);
+
+  /* Keep an eye on VoMP calls so that we can expire stale ones etc */
+  fd_setalarm(vomp_tick,1000,1000);
+
+  while(1) {    
     /* Check for activitiy and respond to it */
     fd_poll();
-
-    /* Work out how long we can wait before we need to tick */
-    memabuseCheck();
-
-    vomp_tick();
-
-    overlay_check_ticks();
   }
 
   return 0;

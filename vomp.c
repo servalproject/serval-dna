@@ -1457,7 +1457,7 @@ int app_vomp_monitor(int argc, const char *const *argv, struct command_line_opti
   return overlay_mdp_client_done();
 }
 
-int vomp_tick()
+void vomp_tick()
 {
   /* Send any reminder packets for call state, and also process any audio. */
   unsigned long long now=overlay_gettime_ms();

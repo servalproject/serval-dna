@@ -975,16 +975,10 @@ TIMING_CHECK();
 
 
 
-int
-overlay_check_ticks(void) {
+void overlay_check_ticks(void) {
   /* Check if any interface(s) are due for a tick */
   int i;
   
-  TIMING_CHECK();
-  /* Check for changes to interfaces */
-  overlay_interface_discover();
-  TIMING_CHECK();
-
   long long now = overlay_gettime_ms();
 
   /* Now check if the next tick time for the interfaces is no later than that time.
@@ -1011,6 +1005,9 @@ overlay_check_ticks(void) {
       TIMING_CHECK();	
     }
   
+  /* Update interval until next tick */
+  fd_setalarm(overlay_check_ticks,overlay_time_until_next_tick(),500);
+
   return 0;
 }
 
