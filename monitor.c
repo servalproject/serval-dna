@@ -124,50 +124,13 @@ int monitor_setup_sockets()
     WHY_perror("setsockopt");
   if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) WHY("Monitor server socket setup");
 
+  fd_watch(monitor_named_socket,monitor_poll,POLL_IN);
   return 0;
   
   error:
   fd_teardown(monitor_named_socket);
   monitor_named_socket=-1;
   return -1;
-}
-
-int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
-{
-  /* Make sure sockets are open */
-  monitor_setup_sockets();
-
-  /* This block should work, but in reality it doesn't.
-     poll() on linux is ALWAYS claiming that accept() can be
-     run.  So we just have to check it whenever some other fd triggers
-     poll to break, which fortunately is fairly often. */
-  if ((*fdcount)>=fdmax) return -1;
-  if (monitor_named_socket>-1)
-    {
-      if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) {
-	WHYF("Monitor named unix domain socket is poll() slot #%d (fd %d)\n",
-	     *fdcount,monitor_named_socket);
-      }
-      fds[*fdcount].fd=monitor_named_socket;
-      fds[*fdcount].events=POLLIN;
-      (*fdcount)++;
-    }
-
-  int i;
-  if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) 
-    WHYF("looking at %d monitor clients",monitor_socket_count);
-  for(i=0;i<monitor_socket_count;i++) {
-    if ((*fdcount)>=fdmax) return -1;
-    if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) {
-      WHYF("Monitor named unix domain client socket is poll() slot #%d (fd %d)\n",
-	  *fdcount,monitor_sockets[i].socket);
-      }
-      fds[*fdcount].fd=monitor_sockets[i].socket;
-      fds[*fdcount].events=POLLIN;
-      (*fdcount)++;
-  }
-
-  return 0;
 }
 
 void monitor_poll(int ignored_fd)

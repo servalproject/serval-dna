@@ -147,8 +147,9 @@ int overlayServerMode()
   /* Create structures to use 1MB of RAM for testing */
   overlay_route_init(1);
 
-  /* Setup up MDP unix domain sockets */
+  /* Setup up MDP & monitor interface unix domain sockets */
   overlay_mdp_setup_sockets();
+  monitor_setup_sockets();
 
   /* Get rhizome server started BEFORE populating fd list so that
      the server's listen socket is in the list for poll() */
