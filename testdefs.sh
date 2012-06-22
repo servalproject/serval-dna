@@ -28,7 +28,7 @@ setup_servald() {
 #  - asserts that standard error contains no error messages
 executeOk_servald() {
    executeOk --executable="$servald" "$@"
-   assertStderrGrep --matches=0 --message='stderr of $executed contains no error messages' '^ERROR:'
+   assertStderrGrep --matches=0 --message="stderr of $executed contains no error messages" '^ERROR:'
 }
 
 # Utility function:
@@ -147,8 +147,8 @@ start_servald_server() {
    done
    assert --message="a new servald process is running" --dump-on-fail="$instance_servald_log" [ -n "$new_pids" ]
    assert --message="servald pidfile process is running" --dump-on-fail="$instance_servald_log" $pidfile_running
-   echo "# Started servald server process $instance_name, pid=$servald_pid"
    assert --message="servald log file $instance_servald_log is present" [ -r "$instance_servald_log" ]
+   echo "# Started servald server process $instance_name, pid=$servald_pid"
    pop_instance
 }
 
@@ -292,7 +292,7 @@ assert_no_servald_processes() {
 assert_servald_server_no_errors() {
    push_instance
    set_instance_fromarg "$1" && shift
-   assertGrep --matches=0 --message='stderr of $servald_basename $instance_name contains no error messages' "$instance_servald_log" '^ERROR:'
+   assertGrep --matches=0 --message="stderr of $servald_basename $instance_name contains no error messages" "$instance_servald_log" '^ERROR:'
    pop_instance
 }
 
@@ -303,7 +303,7 @@ assert_all_servald_servers_no_errors() {
    if pushd "$TFWTMP/instance" >/dev/null; then
       for name in *; do
          set_instance "+$name"
-         assertGrep --matches=0 --message='stderr of $servald_basename $instance_name contains no error messages' "$instance_servald_log" '^ERROR:'
+         assertGrep --matches=0 --message="stderr of $servald_basename $instance_name contains no error messages" "$instance_servald_log" '^ERROR:'
       done
       popd >/dev/null
    fi
