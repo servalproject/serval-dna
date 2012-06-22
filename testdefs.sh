@@ -148,6 +148,7 @@ start_servald_server() {
    assert --message="a new servald process is running" --dump-on-fail="$instance_servald_log" [ -n "$new_pids" ]
    assert --message="servald pidfile process is running" --dump-on-fail="$instance_servald_log" $pidfile_running
    echo "# Started servald server process $instance_name, pid=$servald_pid"
+   assert --message="servald log file $instance_servald_log is present" [ -r "$instance_servald_log" ]
    pop_instance
 }
 
@@ -241,7 +242,6 @@ wait_all_servald_processes() {
    while get_servald_pids; do
       kill -0 $sleep_pid 2>/dev/null || return 1
       sleep 0.1
-      _tfw_echo -n .
    done
    kill -TERM $sleep_pid 2>/dev/null
    return 0
@@ -290,5 +290,23 @@ assert_no_servald_processes() {
 # Assertion function:
 #  - assert the given instance's servald server log contains no errors
 assert_servald_server_no_errors() {
-   assertStderrGrep --matches=0 --message='stderr of $executed contains no error messages' '^ERROR:'
+   push_instance
+   set_instance_fromarg "$1" && shift
+   assertGrep --matches=0 --message='stderr of $servald_basename $instance_name contains no error messages' "$instance_servald_log" '^ERROR:'
+   pop_instance
 }
+
+# Assertion function:
+#  - assert that all instances of servald server logs contain no errors
+assert_all_servald_servers_no_errors() {
+   push_instance
+   if pushd "$TFWTMP/instance" >/dev/null; then
+      for name in *; do
+         set_instance "+$name"
+         assertGrep --matches=0 --message='stderr of $servald_basename $instance_name contains no error messages' "$instance_servald_log" '^ERROR:'
+      done
+      popd >/dev/null
+   fi
+   pop_instance
+}
+
