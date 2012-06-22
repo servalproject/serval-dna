@@ -17,6 +17,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include <assert.h>
 #include <time.h>
 #include "serval.h"
 
@@ -113,7 +114,7 @@ int overlay_interface_arg(char *arg)
   if (!r) return WHY("calloc(struct interface rules),1) failed");
 
 
-  if (sscanf(arg,"%[+-]%n%[^=+-]%n=%[^:]%n:%d%n:%[^:]%n",
+  if (sscanf(arg,"%[+-]%n%[^=:,]%n=%[^:]%n:%d%n:%[^:]%n",
 	     sign,&n,interface_name,&n,typestring,&n,&port,&n,speed,&n)>=1)
     {
       if (n<strlen(arg)) { free(r); return WHY("Extra junk at end of interface specification"); }
@@ -180,17 +181,19 @@ int overlay_interface_args(const char *arg)
 
 int
 overlay_interface_init_socket(int interface, struct sockaddr_in src_addr, struct sockaddr_in broadcast) {
+  char			srctxt[INET_ADDRSTRLEN];
+
 #define I(X) overlay_interfaces[interface].X
   I(broadcast_address) = broadcast;
   I(fileP) = 0;
 
   I(fd) = socket(PF_INET,SOCK_DGRAM,0);
-  if (I(fd)<0) {
+  if (I(fd) < 0) {
       WHY_perror("socket()");
       WHYF("Could not create UDP socket for interface: %s",strerror(errno));
       goto error;
   } else 
-    WHYF("interface #%d fd=%d",interface,I(fd));
+    INFOF("interface #%d fd=%d",interface, I(fd));
 
   int reuseP = 1;
   if (setsockopt(I(fd), SOL_SOCKET, SO_REUSEADDR, &reuseP, sizeof(reuseP)) < 0) {
@@ -214,18 +217,20 @@ overlay_interface_init_socket(int interface, struct sockaddr_in src_addr, struct
      a bad signal. */
   fcntl(I(fd), F_SETFL, fcntl(I(fd), F_GETFL, NULL) | O_CLOEXEC);
 
+  /*  @PGS/20120615
+      Use the broadcast address, so that we can reliably receive broadcast 
+      traffic on all platforms. BUT on OSX we really need a non-broadcast socket
+      to send from, because you cannot send from a broadcast socket on OSX it seems.
+  */
   broadcast.sin_family = AF_INET;
   broadcast.sin_port = htons(I(port));
-  /* XXX Is this right? Are we really setting the local side address?
-     I was in a plane when at the time, so couldn't Google it.
-  */
-  if (debug&DEBUG_PACKETRX) fprintf(stderr,"src_addr=%08x\n",(unsigned int)src_addr.sin_addr.s_addr);
-  if (bind(I(fd),(struct sockaddr *)&src_addr,sizeof(src_addr))) {
+  if (bind(I(fd), (struct sockaddr *)&broadcast, sizeof(broadcast))) {
     WHY_perror("bind");
     WHY("MP HLR server could not bind to requested UDP port (bind() failed)");
     goto error;
   }
-  if (debug&(DEBUG_PACKETRX|DEBUG_IO)) fprintf(stderr,"Bound to port 0x%04x\n",src_addr.sin_port);
+  assert(inet_ntop(AF_INET, (const void *)&broadcast.sin_addr, srctxt, INET_ADDRSTRLEN) != NULL);
+  if (debug & (DEBUG_PACKETRX | DEBUG_IO)) INFOF("Bound to %s:%d", srctxt, ntohs(broadcast.sin_port));
 
   return 0;
 
@@ -266,9 +271,18 @@ int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockadd
   if (name[0]=='>') {
     I(fileP)=1;
     char dummyfile[1024];
-    if (!FORM_SERVAL_INSTANCE_PATH(dummyfile, &name[1]) || (I(fd) = open(dummyfile,O_APPEND|O_RDWR)) < 1) {
+    if (name[1]=='/') {
+      /* Absolute path */
+      snprintf(dummyfile,1024,"%s",&name[1]);
+    } else
+      /* Relative to instance path */
+      if (!FORM_SERVAL_INSTANCE_PATH(dummyfile, &name[1]))
+	return WHY("could not form dummy interfance name");
+    
+    if ((I(fd) = open(dummyfile,O_APPEND|O_RDWR)) < 1) {
       return WHY("could not open dummy interface file for append");
     }
+
     /* Seek to end of file as initial reading point */
     I(offset)=lseek(I(fd),0,SEEK_END); /* socket gets reused to hold file offset */
     /* XXX later add pretend location information so that we can decide which "packets" to receive
@@ -360,7 +374,6 @@ int overlay_rx_messages()
 	  } else {
 	    /* Read from UDP socket */
 	    int recvttl=1;
-	    errno=0;
 	    plen=recvwithttl(overlay_interfaces[i].fd,packet,sizeof(packet),
 			     &recvttl,&src_addr,&addrlen);
 	    if (plen<0) { 
@@ -433,9 +446,14 @@ int overlay_broadcast_ensemble(int interface_number,
   if (overlay_interfaces[interface_number].fileP)
     {
       char buf[2048];
+      bzero(&buf[0],128);
       /* Version information */
       buf[0]=1; buf[1]=0; 
       buf[2]=0; buf[3]=0;
+      /* PID of creator */
+      buf[4]=getpid()&0xff; buf[5]=getpid()>>8;
+
+      /* TODO make a structure for all this stuff */
       /* bytes 4-5  = half-power beam height (uint16) */
       /* bytes 6-7  = half-power beam width (uint16) */
       /* bytes 8-11 = range in metres, centre beam (uint32) */
@@ -564,69 +582,72 @@ overlay_interface_register(char *name,
   return 0;
 }
   
-time_t overlay_last_interface_discover_time=0;
-int overlay_interface_discover()
-{
-  int have_route;
-  
-  /* Don't waste too much time and effort on interface discovery,
-     especially if we can't attach to a given interface for some reason. */
-  if (overlay_last_interface_discover_time>time(0))
-    overlay_last_interface_discover_time=time(0);
-  if ((time(0)-overlay_last_interface_discover_time)<2) return 0;
-  overlay_last_interface_discover_time=time(0);
+static time_t overlay_last_interface_discover_time = 0;
+int
+overlay_interface_discover(void) {
+  int				no_route, i;
+  time_t			now;
+  struct interface_rules	*r;
+  struct sockaddr_in		dummyaddr;
+   
+    /* Don't waste too much time and effort on interface discovery,
+       especially if we can't attach to a given interface for some reason. */
+    now = time(NULL);
+    if (overlay_last_interface_discover_time > now)
+      overlay_last_interface_discover_time = now;
 
-  /* The Android ndk doesn't have ifaddrs.h, so we have to use the netlink interface.
-     However, netlink is only available on Linux, so for BSD systems, e.g., Mac, we
-     need to use the ifaddrs method.
+    if ((now - overlay_last_interface_discover_time) < 2)
+      return 0;
 
-     Also, ifaddrs will work on non-linux systems which is considered critical.
-  */
+    overlay_last_interface_discover_time = now;
 
   /* Mark all interfaces as not observed, so that we know if we need to cull any */
-  int i;
-  for(i=0;i<overlay_interface_count;i++) overlay_interfaces[i].observed--;
+  for(i = 0; i < overlay_interface_count; i++)
+    overlay_interfaces[i].observed = 0;
 
   /* Check through for any virtual dummy interfaces */
-  struct interface_rules *r=interface_filter;
-  while(r) {
-    if (r->namespec[0]=='>') {
-      for(i=0;i<overlay_interface_count;i++) if (!strcasecmp(overlay_interfaces[i].name,r->namespec)) break;
-      if (i<overlay_interface_count)
-	/* We already know about this interface, so just update it */
-	overlay_interfaces[i].observed=1;
-      else {
-	/* New interface, so register it */
-	struct sockaddr_in dummyaddr;
-	if (overlay_interface_init(r->namespec,dummyaddr,dummyaddr,
-				   1000000,PORT_DNA,OVERLAY_INTERFACE_WIFI))
-	  { if (debug&DEBUG_OVERLAYINTERFACES)
-	      WHY("Could not initialise newly seen interface"); }
-	else
-	  if (debug&DEBUG_OVERLAYINTERFACES) fprintf(stderr,"Registered interface %s\n",r->namespec);
-      }	          
+  for (r = interface_filter; r != NULL; r = r->next) {
+    if (r->namespec[0] != '>')
+      continue;
+    
+    for(i = 0; i < overlay_interface_count; i++)
+      if (!strcasecmp(overlay_interfaces[i].name,r->namespec))
+	break;
+
+    if (i < overlay_interface_count)
+      /* We already know about this interface, so just update it */
+      overlay_interfaces[i].observed = 1;
+    else {
+      /* New interface, so register it */
+      if (overlay_interface_init(r->namespec,dummyaddr,dummyaddr,
+				 1000000,PORT_DNA,OVERLAY_INTERFACE_WIFI)) {
+	if (debug & DEBUG_OVERLAYINTERFACES) WHYF("Could not initialise newly seen interface %s", r->namespec);
+      }
+      else
+	if (debug & DEBUG_OVERLAYINTERFACES) INFOF("Registered interface %s",r->namespec);
     }
-    r=r->next;
   }
-  have_route = 1;
+
+  /* Look for real interfaces */
+  no_route = 1;
   
 #ifdef HAVE_IFADDRS_H
-  if (have_route != 0)
-    have_route = doifaddrs();
+  if (no_route != 0)
+    no_route = doifaddrs();
 #endif
 
 #ifdef SIOCGIFCONF
-  if (have_route != 0)
-    have_route = lsif();
+  if (no_route != 0)
+    no_route = lsif();
 #endif
 
 #ifdef linux
-  if (have_route != 0)
-    have_route = scrapeProcNetRoute();
+  if (no_route != 0)
+    no_route = scrapeProcNetRoute();
 #endif
 
-  if (have_route != 0) {
-    FATAL("Unable to get any routing information");
+  if (no_route != 0) {
+    FATAL("Unable to get any interface information");
   }
   
   return 0;
@@ -781,8 +802,11 @@ int overlay_queue_dump(overlay_txqueue *q)
 int overlay_tick_interface(int i, long long now)
 {
   int frame_pax=0;
+  overlay_buffer *e=NULL;
 #define MAX_FRAME_PAX 1024
   overlay_frame *pax[MAX_FRAME_PAX];
+
+  TIMING_CHECK();
 
   if (overlay_interfaces[i].bits_per_second<1) {
     /* An interface with no speed budget is for listening only, so doesn't get ticked */
@@ -794,7 +818,7 @@ int overlay_tick_interface(int i, long long now)
   /* Get a buffer ready, and limit it's size appropriately.
      XXX size limit should be reduced from MTU.
      XXX we should also take account of the volume of data likely to be in the TX buffer. */  
-  overlay_buffer *e=ob_new(overlay_interfaces[i].mtu);
+  e=ob_new(overlay_interfaces[i].mtu);
   if (!e) return WHY("ob_new() failed");
   ob_limitsize(e,overlay_interfaces[i].mtu/4);
 
@@ -803,7 +827,7 @@ int overlay_tick_interface(int i, long long now)
   unsigned char bytes[]={/* Magic */ 'O',0x10,
 			 /* Version */ 0x00,0x01};
   if (ob_append_bytes(e,bytes,4)) {
-    ob_free(e);
+    ob_free(e);   
     return WHY("ob_append_bytes() refused to append magic bytes.");
   }
 
@@ -820,6 +844,7 @@ int overlay_tick_interface(int i, long long now)
         Give priority to newly observed nodes so that good news travels quickly to help roaming.
 	XXX - Don't forget about PONGing reachability reports to allow use of monodirectional links.
   */
+TIMING_CHECK();
   overlay_stuff_packet_from_queue(i,e,OQ_MESH_MANAGEMENT,now,pax,&frame_pax,MAX_FRAME_PAX);
 
   /* We previously limited manifest space to 3/4 of MTU, but that causes problems for
@@ -828,22 +853,29 @@ int overlay_tick_interface(int i, long long now)
 #warning reduce to <= mtu*3/4 once we have compacty binary canonical manifest format
   ob_limitsize(e,overlay_interfaces[i].mtu*4/4);
 
+TIMING_CHECK();
+
   /* Add advertisements for ROUTES not Rhizome bundles.
      Rhizome bundle advertisements are lower priority */
   overlay_route_add_advertisements(i,e);
   
   ob_limitsize(e,overlay_interfaces[i].mtu);
 
+  TIMING_CHECK();
+
   /* 4. XXX Add lower-priority queued data */
   overlay_stuff_packet_from_queue(i,e,OQ_ISOCHRONOUS_VIDEO,now,pax,&frame_pax,MAX_FRAME_PAX);
   overlay_stuff_packet_from_queue(i,e,OQ_ORDINARY,now,pax,&frame_pax,MAX_FRAME_PAX);
   overlay_stuff_packet_from_queue(i,e,OQ_OPPORTUNISTIC,now,pax,&frame_pax,MAX_FRAME_PAX);
   /* 5. XXX Fill the packet up to a suitable size with anything that seems a good idea */
+  TIMING_CHECK();
   if (rhizome_enabled())
     overlay_rhizome_add_advertisements(i,e);
 
   if (debug&DEBUG_PACKETCONSTRUCTION)
     dump("assembled packet",&e->bytes[0],e->length);
+
+  TIMING_CHECK();
 
   /* Now send the frame.  This takes the form of a special DNA packet with a different
      service code, which we setup earlier. */
@@ -923,10 +955,14 @@ int overlay_tick_interface(int i, long long now)
 	      }
 	    }
 	}
+      if (e) ob_free(e); e=NULL;
       return 0;
     }
-  else return WHY("overlay_broadcast_ensemble() failed");
-
+  else {
+    if (e) ob_free(e); e=NULL;
+    return WHY("overlay_broadcast_ensemble() failed");
+  }
+  TIMING_CHECK();
 }
 
 
@@ -936,15 +972,18 @@ overlay_check_ticks(void) {
   /* Check if any interface(s) are due for a tick */
   int i;
   
+  TIMING_CHECK();
   /* Check for changes to interfaces */
   overlay_interface_discover();
-  
+  TIMING_CHECK();
+
   long long now = overlay_gettime_ms();
 
   /* Now check if the next tick time for the interfaces is no later than that time.
      If so, trigger a tick on the interface. */
   if (debug & DEBUG_OVERLAYINTERFACES) INFOF("Examining %d interfaces.",overlay_interface_count);
   for(i = 0; i < overlay_interface_count; i++) {
+    TIMING_CHECK();
       /* Only tick live interfaces */
       if (overlay_interfaces[i].observed > 0) {
 	  if (debug & DEBUG_VERBOSE_IO) INFOF("Interface %s ticks every %dms, last at %lld.",
@@ -952,12 +991,16 @@ overlay_check_ticks(void) {
 					      overlay_interfaces[i].tick_ms,
 					      overlay_interfaces[i].last_tick_ms);
 	  if (now >= overlay_interfaces[i].last_tick_ms + overlay_interfaces[i].tick_ms) {
-	      /* This interface is due for a tick */
-	      overlay_tick_interface(i, now);
-	      overlay_interfaces[i].last_tick_ms = now;
+	    TIMING_CHECK();
+	    
+	    /* This interface is due for a tick */
+	    overlay_tick_interface(i, now);
+	    TIMING_CHECK();
+	    overlay_interfaces[i].last_tick_ms = now;
 	  }
       } else
-	  if (debug & DEBUG_VERBOSE_IO) INFOF("Interface %s is awol.", overlay_interfaces[i].name);
+	if (debug & DEBUG_VERBOSE_IO) INFOF("Interface %s is awol.", overlay_interfaces[i].name);
+      TIMING_CHECK();	
     }
   
   return 0;

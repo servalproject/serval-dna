@@ -70,6 +70,41 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 
+/* @PGS/20120615 */
+int last_valid=0;
+int last_line;
+const char *last_file;
+const char *last_func;
+long long last_time;
+
+/* @PGS/20120615 */
+void TIMING_PAUSE()
+{
+  last_valid=0;
+}
+
+/* @PGS/20120615 */
+void _TIMING_CHECK(const char *file,const char *func,int line)
+{
+  long long now=overlay_gettime_ms();
+  if (last_valid) {
+    if (now-last_time>5) {
+      // More than 5ms spent in a given task, complain
+      char msg[1024];
+      snprintf(msg,1024,"Spent %lldms between %s:%d in %s() and here",
+	       now-last_time,last_file,last_line,last_func);
+      logMessage(LOG_LEVEL_WARN,file,line,func,"%s",msg);
+    }
+  }
+
+  last_valid=1;
+  last_file=file;
+  last_func=func;
+  last_line=line;
+  last_time=now;
+}
+
+
 int overlayMode=0;
 
 overlay_txqueue overlay_tx[OQ_MAX];
@@ -121,23 +156,31 @@ int overlayServerMode()
 
   while(1) {
 
+    TIMING_CHECK();
+
     server_shutdown_check();
+
+    TIMING_CHECK();
 
     /* Work out how long we can wait before we need to tick */
     long long ms=overlay_time_until_next_tick();
     memabuseCheck();
+    TIMING_CHECK();
     //int filesPresent=0;
     fds[0].fd=sock; fds[0].events=POLLIN;
     fdcount=1;
     rhizome_server_get_fds(fds,&fdcount,128);
+    TIMING_CHECK();
     rhizome_fetching_get_fds(fds,&fdcount,128);
+    TIMING_CHECK();
     overlay_mdp_get_fds(fds,&fdcount,128);
+    TIMING_CHECK();
     monitor_get_fds(fds,&fdcount,128);
+    TIMING_CHECK();
 
     for(i=0;i<overlay_interface_count;i++)
       {
-	/* Make socket non-blocking so that poll() behaves correctly.
-	   We then set non-blocking before actually reading from it */
+	/* Make socket blocking so that poll() behaves correctly. */	
 	fcntl(overlay_interfaces[i].fd, F_SETFL,
 	      fcntl(overlay_interfaces[i].fd, F_GETFL, NULL)&(~O_NONBLOCK));	
 
@@ -159,7 +202,8 @@ int overlayServerMode()
 	  if (ms>5) ms=5;
 	}
       }
-    
+    TIMING_CHECK();
+
     /* Progressively update link scores to neighbours etc, and find out how long before
        we should next tick the route table.
        Basically the faster the CPU and the sparser the route table, the less often we
@@ -169,9 +213,15 @@ int overlayServerMode()
     int vomp_tick_time=vomp_tick_interval();
     if (ms>vomp_tick_time) ms=vomp_tick_time;
 
+    TIMING_CHECK();
     if (debug&DEBUG_VERBOSE_IO)
       DEBUGF("Waiting via poll() for up to %lldms", ms);
+    TIMING_PAUSE();
+    /* Sanity check maximum poll timeout */
+    if (ms<1) ms=1;
+    if (ms>15000) ms=15000;
     int r = poll(fds, fdcount, ms);
+    TIMING_CHECK();
     if (r == -1)
       WHY_perror("poll");
     else if (debug&DEBUG_VERBOSE_IO) {
@@ -182,7 +232,9 @@ int overlayServerMode()
 	  DEBUGF("fd #%d is ready (0x%x)\n", fds[i].fd, fds[i].revents);
     }
     /* Do high-priority audio handling first */
+    TIMING_CHECK();
     vomp_tick();
+    TIMING_CHECK();
 
     if (r > 0) {
       /* We have data, so try to receive it */
@@ -204,27 +256,43 @@ int overlayServerMode()
 	  
 	}
       }
+      TIMING_CHECK();
       overlay_rx_messages();
+      TIMING_CHECK();
       if (rhizome_enabled()) {
+	TIMING_CHECK();
 	rhizome_server_poll();
+	TIMING_CHECK();
 	rhizome_fetch_poll();
+	TIMING_CHECK();
 	overlay_mdp_poll();
+	TIMING_CHECK();
 	monitor_poll();
+	TIMING_CHECK();
       }
     } else {
       /* No data before tick occurred, so do nothing.
 	 Well, for now let's just check anyway. */
       if (debug&DEBUG_IO) fprintf(stderr,"poll() timeout.\n");
+      TIMING_CHECK();
       overlay_rx_messages();
+      TIMING_CHECK();
       if (rhizome_enabled()) {
+	TIMING_CHECK();
 	rhizome_server_poll();
+	TIMING_CHECK();
 	rhizome_fetch_poll();
+	TIMING_CHECK();
 	overlay_mdp_poll();
+	TIMING_CHECK();
 	monitor_poll();
+	TIMING_CHECK();
       }
     }
+    TIMING_CHECK();
     /* Check if we need to trigger any ticks on any interfaces */
     overlay_check_ticks();
+    TIMING_CHECK();
   }
 
   return 0;

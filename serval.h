@@ -114,6 +114,11 @@ struct in_addr {
 /* bzero(3) is deprecated in favour of memset(3). */
 #define bzero(addr,len) memset((addr), 0, (len))
 
+/* @PGS/20120615 */
+#define TIMING_CHECK() _TIMING_CHECK(__FILE__,__FUNCTION__,__LINE__)
+void _TIMING_CHECK(const char *file,const char *func,int line);
+void TIMING_PAUSE();
+
 /* UDP Port numbers for various Serval services.
  The overlay mesh works over DNA */
 #define PORT_DNA 4110
@@ -1517,3 +1522,17 @@ int stopAudio();
 #define SERVER_NOTRUNNING 3
 #define SERVER_RUNNING 4
 int server_probe(int *pid);
+
+int dna_helper_enqueue(char *did, unsigned char *requestorSid);
+int dna_return_resolution(overlay_mdp_frame *mdp, unsigned char *fromSid,
+			  const char *did,const char *name,const char *uri);
+int parseDnaReply(unsigned char *bytes,int count,
+		  char *did,char *name,char *uri);
+
+extern int sigPipeFlag;
+extern int sigIoFlag;
+void sigPipeHandler(int signal);
+void sigIoHandler(int signal);
+
+#define DEFAULT_MONITOR_SOCKET_NAME "org.servalproject.servald.monitor.socket"
+#define DEFAULT_MDP_SOCKET_NAME "org.servalproject.servald.mdp.socket"

@@ -84,14 +84,19 @@ int monitor_setup_sockets()
   }
 
 #ifdef linux
-  /* Use abstract namespace as Android has no writable FS which supports sockets */
+  /* Use abstract namespace as Android has no writable FS which supports sockets.
+     Abstract namespace is just plain better, anyway, as no dead files end up
+     hanging around. */
   name.sun_path[0]=0;
   /* XXX: 104 comes from OSX sys/un.h - no #define (note Linux has UNIX_PATH_MAX and it's 108(!)) */
-  snprintf(&name.sun_path[1],104-2,"org.servalproject.servald.monitor.socket");
+  snprintf(&name.sun_path[1],104-2,
+	   confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME));
   /* Doesn't include trailing nul */
   len = 1+strlen(&name.sun_path[1]) + sizeof(name.sun_family);
 #else
-  snprintf(name.sun_path,104-1,"%s/org.servalproject.servald.monitor.socket",serval_instancepath());
+  snprintf(name.sun_path,104-1,"%s/",
+	   serval_instancepath(),
+	   confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME));
   unlink(name.sun_path);
   /* Includes trailing nul */
   len = 1+strlen(name.sun_path) + sizeof(name.sun_family);
@@ -520,8 +525,8 @@ int monitor_process_data(int index)
 
   if (vomp_sample_size(c->sample_codec)!=c->data_offset)
     return 
-      WHYF("Ignoring sample block of incorrect size (expected %d, got %d bytes)",
-	   vomp_sample_size(c->sample_codec)!=c->data_offset);
+      WHYF("Ignoring sample block of incorrect size (expected %d, got %d bytes for codec %d)",
+	   vomp_sample_size(c->sample_codec), c->data_offset, c->sample_codec);
 
   fcntl(c->socket,F_SETFL,
 	fcntl(c->socket, F_GETFL, NULL)|O_NONBLOCK);
@@ -723,7 +728,8 @@ int server_probe(int *pid)
   memset(&addr, 0, sizeof(addr));
   addr.sun_family = AF_UNIX;
   addr.sun_path[0]=0;
-  snprintf(&addr.sun_path[1],100,"org.servalproject.servald.monitor.socket");
+  snprintf(&addr.sun_path[1],100,
+	   confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME));
   int len = 1+strlen(&addr.sun_path[1]) + sizeof(addr.sun_family);
   char *p=(char *)&addr;
   if (0) DEBUGF("last char='%c' %02x\n",p[len-1],p[len-1]);

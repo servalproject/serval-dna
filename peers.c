@@ -192,7 +192,7 @@ int sendToPeers(unsigned char *packet,int packet_len,int method,int peerId,struc
 
   bzero(&peer_addr, sizeof(peer_addr));
   peer_addr.sin_family=AF_INET;
-  peer_addr.sin_port = htons(4110);
+  peer_addr.sin_port = htons(PORT_DNA);
 
   if (method==REQ_PARALLEL) i=0; else { i=peerId; maxPeer=i; }
   for(;i<=maxPeer;i++)

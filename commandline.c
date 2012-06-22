@@ -426,8 +426,10 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
   if (create_serval_instance_dir() == -1)
     return -1;
 
-  int sid_count=0;
-  unsigned char sids[128][SID_SIZE];
+  int uri_count=0;
+#define MAXREPLIES 256
+#define MAXURILEN 256
+  char uris[MAXREPLIES][MAXURILEN];
 
   const char *did;
   if (cli_arg(argc, argv, o, "did", &did, NULL, "*") == -1)
@@ -484,20 +486,29 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 		    WHYF("       Error message: %s", mdp.error.message);
 		  }
 		else if ((rx.packetTypeAndFlags&MDP_TYPE_MASK)==MDP_TX) {
-		  /* Display match unless it is a duplicate.
-		     XXX - For wildcard searches, each sid will only show up once. */
-		  int i;
-		  for(i=0;i<sid_count;i++)
-		    if (!memcmp(&rx.in.src.sid[0],&sids[i][0],SID_SIZE))
-		      break;		  
-		  if (i==sid_count) {
-		    cli_puts(overlay_render_sid(&rx.in.src.sid[0])); cli_delim(":");
-		    cli_puts((char *)&rx.in.payload[0]); cli_delim(":");
-		    cli_puts((char *)&rx.in.payload[32]); cli_delim("\n");
-		    if (sid_count<128) {
-		      bcopy(&rx.in.src.sid[0],&sids[i][0],SID_SIZE);
-		      sid_count++;
-		    }
+		  /* Extract DID, Name, URI from response. */
+		  if (strlen((char *)rx.in.payload)<512) {
+		    char did[512];
+		    char name[512];
+		    char uri[512];
+		    if (!parseDnaReply(rx.in.payload,rx.in.payload_length,
+				       did,name,uri))
+		      {
+			/* Have we seen this response before? */
+			int i;
+			for(i=0;i<uri_count;i++)
+			  if (!strcmp(uri,uris[i])) break;
+			if (i==uri_count) {
+			  /* Not previously seen, so report it */
+			  cli_puts(uri); cli_delim(":");
+			  cli_puts(did); cli_delim(":");
+			  cli_puts(name); cli_delim("\n");
+			  /* Remember that we have seen it */
+			  if (uri_count<MAXREPLIES&&strlen(uri)<MAXURILEN) {
+			    strcpy(uris[uri_count++],uri);
+			  }
+			}
+		      }
 		  }
 		}
 		else WHYF("packettype=0x%x",rx.packetTypeAndFlags);
@@ -1505,18 +1516,19 @@ int app_keyring_list(int argc, const char *const *argv, struct command_line_opti
       {
 	int kpn;
 	keypair *kp;
-	unsigned char *sid=NULL,*did=NULL;
+	unsigned char *sid=NULL,*did=NULL,*name=NULL;
 	for(kpn=0;kpn<k->contexts[cn]->identities[in]->keypair_count;kpn++)
 	  {
 	    kp=k->contexts[cn]->identities[in]->keypairs[kpn];
 	    if (kp->type==KEYTYPE_CRYPTOBOX) sid=kp->public_key;
-	    if (kp->type==KEYTYPE_DID) did=kp->private_key;
+	    if (kp->type==KEYTYPE_DID) { did=kp->private_key; name=kp->public_key; }
 	  }
-	if (sid||did) {
-	    int i;
-	    if (sid) for(i=0;i<SID_SIZE;i++) cli_printf("%02x",sid[i]);
+	if (sid||did) {	 
+	    if (sid) cli_printf("%s",overlay_render_sid(sid));
 	    cli_delim(":");
 	    if (did) cli_puts((char*)did);
+	    cli_delim(":");
+	    if (name) cli_puts((char*)name);
 	    cli_delim("\n");
 	}
       }
@@ -1630,6 +1642,34 @@ int app_test_rfs(int argc, const char *const *argv, struct command_line_option *
   return 0;
 }
 
+int app_crypt_test(int argc, const char *const *argv, struct command_line_option *o)
+{
+  unsigned char nonce[crypto_box_curve25519xsalsa20poly1305_NONCEBYTES];
+  unsigned char k[crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES];
+
+  unsigned char plain_block[65536];
+
+  urandombytes(nonce,sizeof(nonce));
+  urandombytes(k,sizeof(k));
+
+  int len,i;
+
+  overlay_gettime_ms();
+
+  for(len=16;len<=65536;len*=2) {
+    unsigned long long start=overlay_gettime_ms();
+    for (i=0;i<1000;i++) {
+      bzero(&plain_block[0],crypto_box_curve25519xsalsa20poly1305_ZEROBYTES);
+      crypto_box_curve25519xsalsa20poly1305_afternm
+	(plain_block,plain_block,len,nonce,k);
+    }
+    unsigned long long end=overlay_gettime_ms();
+    printf("%d bytes - 100 tests took %lldms - mean time = %.2fms\n",
+	   len,end-start,(end-start)*1.0/i);
+  }
+  return 0;
+}
+
 int app_node_info(int argc, const char *const *argv, struct command_line_option *o)
 {
   const char *sid;
@@ -1641,7 +1681,7 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 
   mdp.packetTypeAndFlags=MDP_NODEINFO;
   if (argc>3) resolveDid=1;
-  mdp.nodeinfo.resolve_did=0; // so we know that we don't have a result yet.
+  mdp.nodeinfo.resolve_did=1; // Request resolution of DID and Name by local server if it can.
 
   /* get SID or SID prefix 
      XXX - Doesn't correctly handle odd-lengthed SID prefixes (ignores last digit).
@@ -1718,18 +1758,19 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 	  continue;
 	}
 	
-	{	    
-	  int bytes=m2.in.payload_length;
-	  
-	  if ((bytes+1)>=sizeof(mdp.nodeinfo.did)+sizeof(mdp.nodeinfo.name)){
-	    WHYF("Result is too large");
-	    continue;
-	  }
-	  bcopy(&m2.in.payload[0],&mdp.nodeinfo.did[0],32);
-	  bcopy(&m2.in.payload[32],&mdp.nodeinfo.name[0],64);
-	  mdp.nodeinfo.did[bytes]=0;
-	  mdp.nodeinfo.resolve_did=1;
-	  break;
+	{	    	  
+	  char did[512];
+	  char name[512];
+	  char uri[512];
+	  if (!parseDnaReply(m2.in.payload,m2.in.payload_length,
+			     did,name,uri))
+	    {
+	      /* Got a good DNA reply, copy it into place */
+	      bcopy(did,mdp.nodeinfo.did,32);
+	      bcopy(name,mdp.nodeinfo.name,64);
+	      mdp.nodeinfo.resolve_did=1;
+	      break;
+	    }
 	}
       }
     }
@@ -1845,6 +1886,8 @@ command_line_option command_line_options[]={
    "Test RFS field calculation"},
   {app_monitor_cli,{"monitor","[<sid>]",NULL},0,
    "Interactive servald monitor interface.  Specify SID to auto-dial that peer and insert dummy audio data"},
+  {app_crypt_test,{"crypt","test",NULL},0,
+   "Run cryptography speed test"},
 #ifdef HAVE_VOIPTEST
   {app_pa_phone,{"phone",NULL},0,
    "Run phone test application"},
