@@ -24,7 +24,6 @@ source "${0%/*}/../testdefs.sh"
 setup() {
    setup_servald
    assert_no_servald_processes
-   set_instance
 }
 
 teardown() {

@@ -23,7 +23,6 @@ source "${0%/*}/../testdefs.sh"
 
 setup() {
    setup_servald
-   set_instance
 }
 
 doc_GetCreateInstanceDir="Get creates instance directory"

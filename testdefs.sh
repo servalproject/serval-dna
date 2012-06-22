@@ -4,18 +4,23 @@ testdefs_sh=$(abspath "${BASH_SOURCE[0]}")
 servald_source_root="${testdefs_sh%/*}"
 servald_build_root="$servald_source_root"
 
+declare -a instance_stack=()
+
 # Some useful regular expressions.  These must work in grep(1) as basic
 # expressions, and also in sed(1).
 rexp_sid='[0-9a-fA-F]\{64\}'
 
-# Utility function for creating DNA fixtures:
+# Utility function for creating servald fixtures:
 #  - set $servald variable (executable under test)
+#  - set the current instance to be "Z"
 setup_servald() {
-   servald=$(abspath "$servald_build_root/dna") # The DNA executable under test
+   servald=$(abspath "$servald_build_root/dna") # The servald executable under test
    if ! [ -x "$servald" ]; then
       error "servald executable not present: $servald"
       return 1
    fi
+   servald_basename="${servald##*/}"
+   set_instance +Z
 }
 
 # Utility function for running servald and asserting no errors:
@@ -27,20 +32,40 @@ executeOk_servald() {
 }
 
 # Utility function:
-#  - set up environment and normal variables for the given instance name
-#  - if the argument is not an instance name, then use the "default" instance
-#    name and return 1, otherwise return 0
-# Can be used for functions that take an optional instance name as their
+#  - if the argument is a prefixed instance name "+X", then call set_instance
+#    "X" and return 0, otherwise leave the current instance unchanged and return 1
+# Designed for use in functions that take an optional instance name as their
 # first argument:
 #     func() {
-#        set_instance "$1" && shift
+#        push_instance
+#        set_instance_fromarg "$1" && shift
 #        ...
+#        pop_instance
 #     }
-set_instance() {
+# would be invoked as:
+#     func +A blah blah
+#     func +B wow wow
+#     func foo bar
+set_instance_fromarg() {
    case "$1" in
-   [A-Z]|default) set_instance_vars "$1"; return 0;;
-   *) set_instance_vars "default"; return 1;;
+   +[A-Z]) set_instance "$1"; return 0;;
    esac
+   return 1
+}
+
+# Utility function:
+#  - push the current instance on the instance stack
+push_instance() {
+   instance_stack+=("$instance_name")
+}
+
+# Utility function:
+#  - pop an instance off the instance stack
+pop_instance() {
+   local n=${#instance_stack[*]}
+   [ $n -eq 0 ] && error "instance stack underflow"
+   let --n
+   unset instance_stack[$n]
 }
 
 # Utility function:
@@ -49,17 +74,27 @@ set_instance() {
 #    the per-instance test directory (but do not create it)
 #  - set other environment variables to support other functions defined in this
 #    script
-set_instance_vars() {
-   instance_name="${1:-default}"
-   echo "# set instance = $instance_name"
-   export instance_dir="$TFWTMP/instance/$instance_name"
-   mkdir -p "$instance_dir"
-   export instance_servald_log="$instance_dir/servald.log"
-   export SERVALINSTANCE_PATH="$instance_dir/servald"
-   export instance_servald_pidfile="$SERVALINSTANCE_PATH/servald.pid"
+set_instance() {
+   case "$1" in
+   '')
+      error "missing instance name argument"
+      ;;
+   +[A-Z])
+      instance_name="${1#+}"
+      echo "# set instance = $instance_name"
+      export instance_dir="$TFWTMP/instance/$instance_name"
+      mkdir -p "$instance_dir"
+      export instance_servald_log="$instance_dir/servald.log"
+      export SERVALINSTANCE_PATH="$instance_dir/servald"
+      export instance_servald_pidfile="$SERVALINSTANCE_PATH/servald.pid"
+      ;;
+   *)
+      error "malformed instance name argument, must be in form +[A-Z]"
+      ;;
+   esac
 }
 
-# Utility function for setting up DNA JNI fixtures:
+# Utility function for setting up servald JNI fixtures:
 #  - check that libservald.so is present
 #  - set LD_LIBRARY_PATH so that libservald.so can be found
 setup_servald_so() {
@@ -67,14 +102,15 @@ setup_servald_so() {
    export LD_LIBRARY_PATH="$servald_build_root"
 }
 
-# Utility function for setting up a fixture with a DNA server process:
+# Utility function for setting up a fixture with a servald server process:
 #  - Ensure that no servald processes are running
 #  - Start a servald server process
 #  - Ensure that it is still running after one second
 start_servald_server() {
-   set_instance "$1" && shift
+   push_instance
+   set_instance_fromarg "$1" && shift
    executeOk $servald config set logfile "$instance_servald_log"
-   # Start DNA server
+   # Start servald server
    local -a before_pids
    local -a after_pids
    get_servald_pids before_pids
@@ -112,11 +148,16 @@ start_servald_server() {
    assert --message="a new servald process is running" --dump-on-fail="$instance_servald_log" [ -n "$new_pids" ]
    assert --message="servald pidfile process is running" --dump-on-fail="$instance_servald_log" $pidfile_running
    echo "# Started servald server process $instance_name, pid=$servald_pid"
+   pop_instance
 }
 
+# Utility function:
+#  - stop a servald server process instance in an orderly fashion
+#  - cat its log file into the test log
 stop_servald_server() {
-   set_instance "$1" && shift
-   # Stop DNA server
+   push_instance
+   set_instance_fromarg "$1" && shift
+   # Stop servald server
    servald_pid=$(cat "$instance_servald_pidfile")
    local -a before_pids
    local -a after_pids
@@ -152,21 +193,24 @@ stop_servald_server() {
          echo "# ended servald process: pid=$bpid"
       fi
    done
+   pop_instance
 }
 
-# Utility function for tearing down DNA fixtures:
-#  - Kill all servald server process instances in an orderly fashion
-#  - Cat any servald log file into the test log
+# Utility function for tearing down servald fixtures:
+#  - stop all servald server process instances in an orderly fashion
 stop_all_servald_servers() {
+   push_instance
    if pushd "$TFWTMP/instance" >/dev/null; then
       for name in *; do
-         stop_servald_server "$name"
+         set_instance "+$name"
+         stop_servald_server
       done
       popd >/dev/null
    fi
+   pop_instance
 }
 
-# Utility function for tearing down DNA fixtures:
+# Utility function for tearing down servald fixtures:
 #  - send a given signal to all running servald processes, identified by name
 #  - return 1 if no processes were present, 0 if any signal was sent
 signal_all_servald_processes() {
@@ -186,7 +230,7 @@ signal_all_servald_processes() {
    return $ret
 }
 
-# Utility function for tearing down DNA fixtures:
+# Utility function for tearing down servald fixtures:
 #  - wait while any servald processes remain
 #  - return 0 if no processes are present
 #  - 1 if the timeout elapses first
@@ -203,7 +247,7 @@ wait_all_servald_processes() {
    return 0
 }
 
-# Utility function for tearing down DNA fixtures:
+# Utility function for tearing down servald fixtures:
 #  - terminate all running servald processes, identified by name, by sending
 #    two SIGHUPs 100ms apart, then another SIGHUP after 2 seconds, finally
 #    SIGKILL after 2 seconds
@@ -223,22 +267,28 @@ kill_all_servald_processes() {
 #  - return 0 if there are any servald processes running, 1 if not
 get_servald_pids() {
    local var="$1"
-   local servald_basename="${servald##*/}"
-   if [ -z "$servald_basename" ]; then
+   if [ -z "$servald" ]; then
       error "\$servald is not set"
       return 1
    fi
    local mypid=$$
-   local pids=$(ps -u$UID | awk -v mypid="$mypid" -v servald="$servald_basename" '$1 != mypid && $4 == servald {print $1}')
+   # XXX The following line will not find any PIDs if there are spaces in "$servald".
+   local pids=$(ps -u$UID -o pid,args | awk -v mypid="$mypid" -v servald="$servald" '$1 != mypid && $2 == servald {print $1}')
    [ -n "$var" ] && eval "$var=($pids)"
    [ -n "$pids" ]
 }
 
 # Assertion function:
-#  - assert there are no existing DNA server processes
+#  - assert there are no existing servald server processes
 assert_no_servald_processes() {
    local pids
    get_servald_pids pids
    assert --message="$servald_basename process(es) running: $pids" [ -z "$pids" ]
    return 0
+}
+
+# Assertion function:
+#  - assert the given instance's servald server log contains no errors
+assert_servald_server_no_errors() {
+   assertStderrGrep --matches=0 --message='stderr of $executed contains no error messages' '^ERROR:'
 }

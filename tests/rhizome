@@ -36,14 +36,14 @@ rexp_date='[0-9]\{1,\}'
 
 setup_servald_rhizome() {
    setup_servald
-   set_instance A
+   set_instance +A
    executeOk_servald config set debug.rhizome on
    executeOk_servald keyring add
    executeOk_servald keyring list
    tfw_cat --stdout
    othersid=$(replayStdout | sed -ne "1s/^\($rexp_sid\):.*\$/\1/p")
    assert --message='other identity known' [ -n "$othersid" ]
-   set_instance
+   set_instance +B
    executeOk_servald config set debug.rhizome on
    executeOk_servald keyring add
    executeOk_servald keyring add
@@ -769,11 +769,11 @@ test_MeshMSListFilter() {
 doc_ImportForeignBundle="Can import a bundle created by another instance"
 setup_ImportForeignBundle() {
    setup_servald_rhizome
-   set_instance A
+   set_instance +A
    echo "Hello from A" >fileA
    executeOk_servald rhizome add file $othersid '' fileA fileA.manifest
    assert_stdout_add_file fileA
-   set_instance
+   set_instance +B
 }
 test_ImportForeignBundle() {
    executeOk_servald rhizome import bundle fileA fileA.manifest
