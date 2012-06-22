@@ -189,6 +189,7 @@ overlay_interface_init_socket(int interface, struct sockaddr_in src_addr, struct
 
   I(fd) = socket(PF_INET,SOCK_DGRAM,0);
   fd_watch(I(fd),overlay_interface_poll,POLL_IN);
+  WHYF("Watching fd#%d for interface #%d",I(fd),interface);
   if (I(fd) < 0) {
       WHY_perror("socket()");
       WHYF("Could not create UDP socket for interface: %s",strerror(errno));
@@ -271,7 +272,6 @@ int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockadd
 
   if (name[0]=='>') {
     I(fileP)=1;
-    fd_setalarm(overlay_dummy_poll,10,10);
     char dummyfile[1024];
     if (name[1]=='/') {
       /* Absolute path */
@@ -295,6 +295,7 @@ int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockadd
   }
 
   overlay_interface_count++;
+  fd_setalarm(overlay_dummy_poll,10,10);
 #undef I
   return 0;
 }
@@ -350,7 +351,7 @@ void overlay_dummy_poll()
   unsigned char packet[16384];
   int plen=0;
   int c[OVERLAY_MAX_INTERFACES];
-  int count=0;
+  int count=1;
   int dummys=0;
 
   /* Check for input on any dummy interfaces that are attached to ordinary
@@ -625,7 +626,7 @@ void overlay_interface_discover(void) {
       /* We already know about this interface, so just update it */
       overlay_interfaces[i].observed = 1;
     else {
-      /* New interface, so register it */
+      /* New interface, so register it */      
       if (overlay_interface_init(r->namespec,dummyaddr,dummyaddr,
 				 1000000,PORT_DNA,OVERLAY_INTERFACE_WIFI)) {
 	if (debug & DEBUG_OVERLAYINTERFACES) WHYF("Could not initialise newly seen interface %s", r->namespec);
