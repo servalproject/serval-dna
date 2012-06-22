@@ -371,7 +371,7 @@ monitor_new_socket(int s) {
     c->state = MONITOR_STATE_COMMAND;
     monitor_socket_count++;
     WRITE_STR(s,"\nMONITOR:You are talking to servald\n");
-    WHYF("Got %d clients", monitor_socket_count);
+    INFOF("Got %d clients", monitor_socket_count);
   }
     
   fcntl(monitor_named_socket,F_SETFL,
