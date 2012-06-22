@@ -115,9 +115,13 @@ struct in_addr {
 #define bzero(addr,len) memset((addr), 0, (len))
 
 /* @PGS/20120615 */
+#ifdef DO_TIMING_CHECKS
 #define TIMING_CHECK() _TIMING_CHECK(__FILE__,__FUNCTION__,__LINE__)
 void _TIMING_CHECK(const char *file,const char *func,int line);
 void TIMING_PAUSE();
+#else
+#define TIMING_CHECK()
+#endif
 
 /* UDP Port numbers for various Serval services.
  The overlay mesh works over DNA */
