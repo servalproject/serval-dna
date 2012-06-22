@@ -409,6 +409,12 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
        send back a connection refused type message? Silence is probably the
        more prudent path.
     */
+
+    WHYF("Received packet with listener (MDP ports: src=%s*:%d, dst=%d)",
+	 overlay_render_sid_prefix(mdp->out.src.sid,7),
+	 mdp->out.src.port,mdp->out.dst.port);
+
+
     if ((!overlay_address_is_local(mdp->out.dst.sid))
 	&&(!overlay_address_is_broadcast(mdp->out.dst.sid)))
       {
@@ -448,7 +454,7 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
       }
     if (match>-1) {      
       struct sockaddr_un addr;
-      printf("unix domain socket '%s'\n",mdp_bindings_sockets[match]);
+
       bcopy(mdp_bindings_sockets[match],&addr.sun_path[0],mdp_bindings_socket_name_lengths[match]);
       addr.sun_family=AF_UNIX;
       errno=0;

@@ -54,7 +54,7 @@ setup_servald_instance() {
 
 setup_servald_instances() {
    setup_servald
-   DUMMYNET=/tmp/dummy
+   DUMMYNET=`pwd`/dummy.dat
    rm $DUMMYNET
    touch $DUMMYNET
    assert [ -e $DUMMYNET ]
@@ -63,7 +63,7 @@ setup_servald_instances() {
    setup_servald_instance +B $DUMMYNET
    SIDB=$sid
    # Now make sure that they can see each other
-   sleep 5 # Should be plenty of time
+   sleep 10 # Should be plenty of time
    set_instance +A
    echo "Dummynet file $DUMMYNET after 5 seconds: "`ls -l $DUMMYNET`
    executeOk_servald id peers

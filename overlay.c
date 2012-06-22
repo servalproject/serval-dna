@@ -96,7 +96,7 @@ int overlayServerMode()
   int i;
   for(i=0;i<OQ_MAX;i++) {
     overlay_tx[i].maxLength=100;
-    overlay_tx[i].latencyTarget=5000; /* Keep packets in queue for 5 seconds by default */
+    overlay_tx[i].latencyTarget=1000; /* Keep packets in queue for 1 second by default */
   }
   /* But expire voice/video call packets much sooner, as they just aren't any use if late */
   overlay_tx[OQ_ISOCHRONOUS_VOICE].latencyTarget=500;
@@ -286,7 +286,8 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	if (!broadcast) {
 	  if (overlay_get_nexthop(f->destination,f->nexthop,&len,
 				  &f->nexthop_interface))
-	    WHY("Could not find next hop for host - dropping frame");
+	    WHYF("Could not find next hop for %s* - dropping frame",
+		 overlay_render_sid_prefix(f->destination,7));
 	  dontForward=1;
 	}
 	f->ttl--;

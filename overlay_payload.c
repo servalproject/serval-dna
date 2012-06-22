@@ -244,6 +244,9 @@ int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP)
 
      Complain if there are too many frames in the queue.
   */
+  WHYF("Enqueuing packet for %s* (q[%d]length = %d)",
+       overlay_render_sid_prefix(p->destination,7),
+       q,overlay_tx[q].length);
   if (q==OQ_ISOCHRONOUS_VOICE&&(!forceBroadcastP)) {
     /* Dispatch voice data immediately.
        Also tell Rhizome to back off a bit, so that voice traffic
@@ -311,7 +314,8 @@ int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP)
 
   if (0) dump_payload(p,"queued for delivery");
 
-  if (overlay_tx[q].length>=overlay_tx[q].maxLength) return WHY("Queue congested");
+  if (overlay_tx[q].length>=overlay_tx[q].maxLength) 
+    return WHYF("Queue #%d congested (size = %d)",q,overlay_tx[q].maxLength);
 
   if (0) dump_queue("before",q);
   

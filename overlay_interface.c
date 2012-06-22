@@ -313,27 +313,30 @@ void overlay_interface_poll(int fd)
       if (overlay_interfaces[i].fd!=fd) continue;
       
       /* Read from UDP socket */
-      int recvttl=1;
-      fcntl(overlay_interfaces[i].fd, F_SETFL, 
-	    fcntl(overlay_interfaces[i].fd, F_GETFL, NULL)|O_NONBLOCK);
-      plen=recvwithttl(overlay_interfaces[i].fd,packet,sizeof(packet),
-		       &recvttl,&src_addr,&addrlen);
-      if (plen<1) { 
-	/* No more packets */
-	return;
-      } else {
-	/* We have a frame from this interface */
-	if (debug&DEBUG_PACKETRX) {
-	  fflush(stdout);
-	  serval_packetvisualise(stderr,"Read from real interface",
-				 packet,plen);
-	  fflush(stderr);
-	}
-	if (debug&DEBUG_OVERLAYINTERFACES)fprintf(stderr,"Received %d bytes on interface #%d (%s)\n",plen,i,overlay_interfaces[i].name);
-	
-	if (packetOk(i,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
-	  WHY("Malformed packet");
-	  serval_packetvisualise(stderr,"Malformed packet", packet,plen);
+      plen=1;
+      while (plen>0) {
+	int recvttl=1;
+	fcntl(overlay_interfaces[i].fd, F_SETFL, 
+	      fcntl(overlay_interfaces[i].fd, F_GETFL, NULL)|O_NONBLOCK);
+	plen=recvwithttl(overlay_interfaces[i].fd,packet,sizeof(packet),
+			 &recvttl,&src_addr,&addrlen);
+	if (plen<1) { 
+	  /* No more packets */
+	  return;
+	} else {
+	  /* We have a frame from this interface */
+	  if (debug&DEBUG_PACKETRX) {
+	    fflush(stdout);
+	    serval_packetvisualise(stderr,"Read from real interface",
+				   packet,plen);
+	    fflush(stderr);
+	  }
+	  if (debug&DEBUG_OVERLAYINTERFACES)fprintf(stderr,"Received %d bytes on interface #%d (%s)\n",plen,i,overlay_interfaces[i].name);
+	  
+	  if (packetOk(i,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
+	    WHY("Malformed packet");
+	    serval_packetvisualise(stderr,"Malformed packet", packet,plen);
+	  }
 	}
       }
       return;
@@ -822,7 +825,7 @@ int overlay_tick_interface(int i, long long now)
     return 0;
   }
     
-  if (debug&DEBUG_OVERLAYINTERFACES) fprintf(stderr,"Ticking interface #%d\n",i);
+  WHYF("Ticking interface #%d\n",i);
   
   /* Get a buffer ready, and limit it's size appropriately.
      XXX size limit should be reduced from MTU.
@@ -929,8 +932,10 @@ int overlay_tick_interface(int i, long long now)
 	    {	      
 	      if ((*p)->dequeue) {
 		{
-		  if (0) printf("dequeuing %p%s NOW\n",
-				*p,(*p)->isBroadcast?" (broadcast)":" (unicast)");	  
+		  WHYF("dequeuing %s* -> %s* NOW (queue length=%d)",
+		       overlay_render_sid_prefix((*p)->source,7),
+		       overlay_render_sid_prefix((*p)->destination,7),
+		       overlay_tx[q].length);
 		  t=*p;
 		  *p=t->next;
 		  if (overlay_tx[q].last==t) overlay_tx[q].last=t->prev;
@@ -979,7 +984,7 @@ void overlay_check_ticks(void) {
   for(i = 0; i < overlay_interface_count; i++) {
       /* Only tick live interfaces */
       if (overlay_interfaces[i].observed > 0) {
-	  if (debug & DEBUG_VERBOSE_IO) INFOF("Interface %s ticks every %dms, last at %lld.",
+	  if (1||debug & DEBUG_VERBOSE_IO) INFOF("Interface %s ticks every %dms, last at %lld.",
 					      overlay_interfaces[i].name,
 					      overlay_interfaces[i].tick_ms,
 					      overlay_interfaces[i].last_tick_ms);
@@ -990,7 +995,7 @@ void overlay_check_ticks(void) {
 	    overlay_interfaces[i].last_tick_ms = now;
 	  }
       } else
-	if (debug & DEBUG_VERBOSE_IO) INFOF("Interface %s is awol.", overlay_interfaces[i].name);
+	if (1||debug & DEBUG_VERBOSE_IO) INFOF("Interface %s is awol.", overlay_interfaces[i].name);
     }
   
   /* Update interval until next tick */
@@ -1010,14 +1015,21 @@ long long overlay_time_until_next_tick()
   for(i=0;i<overlay_interface_count;i++)
     if (overlay_interfaces[i].observed>0)
     {
-      if (debug&DEBUG_VERBOSE_IO) fprintf(stderr,"Interface %s ticks every %dms, last at T-%lldms.\n",overlay_interfaces[i].name,
-		  overlay_interfaces[i].tick_ms,now-overlay_interfaces[i].last_tick_ms);
+      long long thistick=
+	overlay_interfaces[i].tick_ms
+	-(now-overlay_interfaces[i].last_tick_ms);
 
-      long long thistick=(overlay_interfaces[i].last_tick_ms+overlay_interfaces[i].tick_ms)-now;
+      WHYF("Interface %s ticks every %dms, last at T-%lldms, next needed in %lldms.\n",
+	   overlay_interfaces[i].name,
+	   overlay_interfaces[i].tick_ms,now-overlay_interfaces[i].last_tick_ms,
+	   thistick);
+
       if (thistick<0) thistick=0;
       if (thistick<nexttick) nexttick=thistick;
+      WHYF("nexttick is now %lldms",nexttick);
     }
 
+  WHYF("Next tick required in %lldms",nexttick);
   return nexttick;
 }
 

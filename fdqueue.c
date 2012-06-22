@@ -144,6 +144,7 @@ int fd_checkalarms()
   TIMING_PAUSE(); 
   for(i=0;i<alarmcount;i++)
     {
+      now=overlay_gettime_ms();
       if (alarms[i].next_alarm&&alarms[i].next_alarm<=now) {
 	_TIMING_CHECK(__FILE__,fd_funcname(alarms[i].func),-1);
 	alarms[i].func();
