@@ -659,154 +659,104 @@ int cli_absolute_path(const char *arg)
   return arg[0] == '/' && arg[1] != '\0';
 }
 
-int app_server_start(int argc, const char *const *argv, struct command_line_option *o)
-{
-  /* Process optional arguments */
-  int pid=-1;
-  int status=server_probe(&pid);
-  switch(status) {
-  case SERVER_NOTRESPONDING: 
-    /* server is not responding, and we have been asked to start,
-       so try to kill it?
-    */
-    WHYF("Serval process already running (pid=%d), but no responding.", pid);
-    if (pid>-1) {
-      kill(pid,SIGHUP); sleep(1);
-      status=server_probe(&pid);
-      if (status!=SERVER_NOTRUNNING) {
-	WHY("Tried to stop stuck servald process, but attempt failed.");
-	return -1;
-      }
-      WHY("Killed stuck servald process, so will try to start");
-      pid=-1;
-    }
-    break;
-  case SERVER_NOTRUNNING:
-    /* all is well */
-    break;
-  case SERVER_RUNNING:
-    /* instance running */
-    break;
-  default:
-    /* no idea what is going on, so try to start anyway */
-    break;
-  }
+int
+app_server_start(int argc, const char *const *argv, struct command_line_option *o) {
+  int		pid, foregroundP, ret;
+  const char	*execpath, *interfaces;
 
-  const char *execpath;
-  int foregroundP = (argc >= 2 && !strcasecmp(argv[1], "foreground"));
-  if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1
-   || cli_arg(argc, argv, o, "exec path", &execpath, cli_absolute_path, NULL) == -1)
+  /* Process optional arguments */
+  foregroundP = (argc >= 2 && !strcasecmp(argv[1], "foreground"));
+  if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1 ||
+      cli_arg(argc, argv, o, "exec path", &execpath, cli_absolute_path, NULL) == -1) {
+    WHY("Couldn't determine instance path and exec path");
     return -1;
+  }
+  
   /* Create the instance directory if it does not yet exist */
-  if (create_serval_instance_dir() == -1)
+  if (create_serval_instance_dir() == -1) {
+    WHY_perror("Couldn't create instance directory");
     return -1;
+  }
+  
   /* Now that we know our instance path, we can ask for the default set of
      network interfaces that we will take interest in. */
-  const char *interfaces = confValueGet("interfaces", "");
+  interfaces = confValueGet("interfaces", "");
   if (!interfaces[0])
     WHY("No network interfaces configured (empty 'interfaces' config setting)");
+
   overlay_interface_args(interfaces);
-  if (pid==-1) pid = server_pid();
+
+  pid = server_pid();
   if (pid < 0)
     return -1;
-  int ret = 1;
+
+  ret = 1;
   if (pid > 0) {
-    WHYF("Serval process already running (pid=%d)", pid);
-  } else {
-    /* Start the Serval process.  All server settings will be read by the server process from the
-       instance directory when it starts up.  */
-    if (server_remove_stopfile() == -1)
-      return -1;
-    if (rhizome_opendb() == -1)
-      return -1;
-    overlayMode = 1;
-    if (foregroundP)
-      return server(NULL);
-    int cpid;
-    switch ((cpid = fork())) {
-      case -1:
-	return WHY_perror("fork");
-      case 0: {
-	/* Child process.  Fork then exit, to disconnect daemon from parent process, so that
-	   when daemon exits it does not live on as a zombie. N.B. Do not return from within this
-	   process; that will unroll the JNI call stack and cause havoc.  Use exit().  */
-	switch (fork()) {
-	  case -1:
-	    exit(WHY_perror("fork"));
-	  case 0: {
-	    /* Grandchild process.  Disconnect from current directory, disconnect standard i/o
-	       streams, and start a new process group so that if we are being started by an adb
-	       shell session, then we don't receive a SIGHUP when the adb shell process ends.  */
-	    chdir("/");
-	    close(0);
-	    open("/dev/null", O_RDONLY);
-	    close(1);
-	    open("/dev/null", O_WRONLY);
-	    close(2);
-	    open("/dev/null", O_WRONLY);
-	    setpgrp();
-	    /* The execpath option is provided so that a JNI call to "start" can be made which
-	       creates a new server daemon process with the correct argv[0].  Otherwise, the servald
-	       process appears as a process with argv[0] = "org.servalproject". */
-	    if (execpath) {
-	      execl(execpath, execpath, "start", "foreground", NULL);
-	      exit(-1);
-	    }
-	    exit(server(NULL));
-	  }
-	}
-	exit(0); // Parent is waitpid()-ing for this.
-      }
-    }
-    /* Parent process.  Wait for the child process to fork the grandchild then die. */
-    waitpid(cpid, NULL, 0);
-    /* Allow a few seconds for the grandchild process to report for duty. */
-    long long timeout = gettime_ms() + 5000;
-    do {
-      struct timespec delay;
-      delay.tv_sec = 0;
-      delay.tv_nsec = 200000000; // 200 ms = 5 Hz
-      nanosleep(&delay, NULL);
-    } while ((pid = server_pid()) == 0 && gettime_ms() < timeout);
-    if (pid == -1)
-      return -1;
-    if (pid == 0)
-      return WHY("Server process did not start");
-    ret = 0;
+    return WHYF("Serval process already running (pid=%d)", pid);
   }
+  
+  /* Start the Serval process.  All server settings will be read by the server process from the
+     instance directory when it starts up.  */
+  if (server_remove_stopfile() == -1)
+    return -1;
+  if (rhizome_opendb() == -1)
+    return -1;
+
+  overlayMode = 1;
+
+  if (foregroundP)
+    return server(NULL);
+
   cli_puts("instancepath");
   cli_delim(":");
   cli_puts(serval_instancepath());
   cli_delim("\n");
-  cli_puts("pid");
-  cli_delim(":");
-  cli_printf("%d", pid);
-  cli_delim("\n");
+
+  if (daemon(0, 0) != 0)
+    FATAL_perror("daemon");
+
+  /* The execpath option is provided so that a JNI call to "start" can be made which
+     creates a new server daemon process with the correct argv[0].  Otherwise, the servald
+     process appears as a process with argv[0] = "org.servalproject". */
+  if (execpath) {
+    execl(execpath, execpath, "start", "foreground", NULL);
+    exit(-1);
+  }
+  
+  exit(server(NULL));
+  
   return ret;
 }
 
-int app_server_stop(int argc, const char *const *argv, struct command_line_option *o)
-{
+int
+app_server_stop(int argc, const char *const *argv, struct command_line_option *o) {
+  int			pid, tries, running;
+  const char		*instancepath;
+  long long		timeout;
+  struct timespec 	delay;
+
   if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1)
-    return -1;
-  const char *instancepath = serval_instancepath();
+    return WHY("Unable to determine instance path");
+  
+  instancepath = serval_instancepath();
   cli_puts("instancepath");
   cli_delim(":");
   cli_puts(instancepath);
   cli_delim("\n");
-  int pid=-1;
-  server_probe(&pid);
-  if (pid<0) pid = server_pid();
-  // If there is no pidfile, then there is no server process to stop.
+
+  pid = server_pid();
+  /* Not running, nothing to stop */
   if (pid <= 0)
     return 1;
-  // Otherwise, we have a server process to stop, so get to work.
+
+  /* Set the stop file and signal the process */
   cli_puts("pid");
   cli_delim(":");
   cli_printf("%d", pid);
   cli_delim("\n");
-  int tries = 0;
-  int running = pid;
+
+  tries = 0;
+  running = pid;
   while (running == pid) {
     if (tries >= 5)
       return WHYF(
@@ -828,9 +778,8 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
       return WHYF("Error sending SIGHUP to Servald pid=%d for instance '%s'", pid, instancepath);
     }
     /* Allow a few seconds for the process to die. */
-    long long timeout = gettime_ms() + 2000;
+    timeout = gettime_ms() + 2000;
     do {
-      struct timespec delay;
       delay.tv_sec = 0;
       delay.tv_nsec = 200000000; // 200 ms = 5 Hz
       nanosleep(&delay, NULL);
@@ -844,31 +793,30 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
   return 0;
 }
 
-int app_server_status(int argc, const char *const *argv, struct command_line_option *o)
-{
+int
+app_server_status(int argc, const char *const *argv, struct command_line_option *o) {
+  int	pid;
+  
   if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1)
-    return -1;
-  int pid=-1;
-  int status=server_probe(&pid);
+    return WHY("Unable to determine instance path");
+
+  pid = server_pid();
+  
   cli_puts("instancepath");
   cli_delim(":");
   cli_puts(serval_instancepath());
   cli_delim("\n");
   cli_puts("status");
   cli_delim(":");
-  switch(status) {
-  case SERVER_NOTRESPONDING: cli_puts("not responding"); break;
-  case SERVER_NOTRUNNING: cli_puts("stopped"); break;
-  case SERVER_RUNNING: cli_puts("running"); break;
-  case SERVER_UNKNOWN: default: cli_puts("unknown"); break;
-  }
+  cli_printf("%s", pid > 0 ? "running" : "stopped");
   cli_delim("\n");
-  if (pid>-1) {
+  if (pid > 0) {
     cli_puts("pid");
     cli_delim(":");
     cli_printf("%d", pid);
     cli_delim("\n");
   }
+  
   return pid > 0 ? 0 : 1;
 }
 

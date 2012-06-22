@@ -31,11 +31,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define SO_PEERCRED LOCAL_PEERCRED
 #endif
 
-/* really shouldn't need more than 2:
-   1 for rhizome
-   1 for VoMP call 
-   but spares never hurt, and the cost is low
-*/
 #define MONITOR_LINE_LENGTH 160
 #define MONITOR_DATA_SIZE MAX_AUDIO_BYTES
 struct monitor_context {
@@ -713,76 +708,4 @@ int monitor_tell_clients(unsigned char *msg,int msglen,int mask)
       }
     }
   return 0;
-}
-
-/* Check if there is a running server, and whether it is responding or not.
- */
-int server_probe(int *pid)
-{
-  int fd=-1;
-  struct sockaddr_un addr;
-  if ( (fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-    return SERVER_UNKNOWN; 
-  }
-
-  memset(&addr, 0, sizeof(addr));
-  addr.sun_family = AF_UNIX;
-  addr.sun_path[0]=0;
-  snprintf(&addr.sun_path[1],100,
-	   confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME));
-  int len = 1+strlen(&addr.sun_path[1]) + sizeof(addr.sun_family);
-  char *p=(char *)&addr;
-  if (0) DEBUGF("last char='%c' %02x\n",p[len-1],p[len-1]);
-
-  if (connect(fd, (struct sockaddr*)&addr, len) == -1) {
-    close(fd);
-    return SERVER_NOTRUNNING;
-  }
-  
-  /* Give the server 2 seconds to send us something */
-  struct pollfd fds[1];
-  fds[0].fd=fd;
-  fds[0].events=POLLIN;
-  poll(fds,1,2000);
-  
-  fcntl(fd,F_SETFL,fcntl(fd, F_GETFL, NULL)|O_NONBLOCK);
-
-  *pid=-1;
-  if (pid!=NULL) {
-#if defined(HAVE_LINUX_STRUCT_UCRED)
-    struct ucred ucred;
-#elif defined(HAVE_BSD_STRUCT_UCRED)
-    struct xucred ucred;
-#else
-#error "Unknown ucred struct"
-#endif
-    socklen_t len=sizeof(ucred);
-    int res=getsockopt(fd,SOL_SOCKET,SO_PEERCRED,&ucred,&len);
-    if (len>sizeof(ucred)) {
-      WHYF("This is likely to be bad (memory overrun by getsockopt())");
-    }
-    if (res) { 
-      WHY("Failed to read credentials of monitor.socket client");
-    } else {
-#if defined(HAVE_LINUX_STRUCT_UCRED)
-      *pid = ucred.pid;
-#elif defined(HAVE_BSD_STRUCT_UCRED)
-#warning cannot get PID from ucred on BSD
-      *pid = -1;
-#endif
-    }
-  }
-  
-  char buff[1024];
-  int bytes=read(fd,buff,1024);
-  close(fd);
-  if (bytes<0) {
-    return SERVER_NOTRESPONDING;
-  } else if (bytes==0) {
-    // Could just be really busy.
-    return SERVER_NOTRESPONDING;
-  } else {
-    return SERVER_RUNNING;
-  }
-
 }
