@@ -110,8 +110,6 @@ int fd_checkalarms()
   for(i=0;i<alarmcount;i++)
     {
       if (alarms[i].next_alarm<=now) {
-	WHYF("Alarm callback triggered for %s()",
-	     fd_funcname(alarms[i].func));
 	alarms[i].func();
 	if (!alarms[i].repeat_every) {
 	  /* Alarm was one-shot, so erase alarm */
@@ -140,16 +138,12 @@ int fd_poll()
   if (ms<1) ms=1;
 
   /* Wait for action or timeout */
-  WHYF("polling for up to %dms",ms);
   int r=poll(fds, fdcount, ms);
-  WHYF("poll() reports action on %d file descriptors",r);
 
   /* If file descriptors are ready, then call the appropriate functions */
   if (r>0) {
     for(i=0;i<fdcount;i++)
       if (fds[i].revents) {
-	fprintf(stderr,"Action on fd#%d, calling %s\n",
-		fds[i].fd,fd_funcname(fd_functions[fds[i].fd]));
 	fd_functions[fds[i].fd](fds[i].fd);
       }
   }
