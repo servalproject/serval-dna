@@ -1544,6 +1544,7 @@ int fd_setalarm(void (*func),long long first_alarm_in,int repeat_every);
 int fd_teardown(int fd);
 int fd_watch(int fd,void (*func)(int fd),int events);
 int fd_list();
+char *fd_funcname(void *addr);
 
 int rhizome_server_start();
 void rhizome_enqueue_suggestions();

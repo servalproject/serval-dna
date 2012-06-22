@@ -172,7 +172,6 @@ int overlayServerMode()
   while(1) {
     
     /* Check for activitiy and respond to it */
-    fd_list();
     fd_poll();
 
     /* Work out how long we can wait before we need to tick */

@@ -110,6 +110,8 @@ int fd_checkalarms()
   for(i=0;i<alarmcount;i++)
     {
       if (alarms[i].next_alarm<=now) {
+	WHYF("Alarm callback triggered for %s()",
+	     fd_funcname(alarms[i].func));
 	alarms[i].func();
 	if (!alarms[i].repeat_every) {
 	  /* Alarm was one-shot, so erase alarm */
@@ -146,7 +148,8 @@ int fd_poll()
   if (r>0) {
     for(i=0;i<fdcount;i++)
       if (fds[i].revents) {
-	fprintf(stderr,"Action on fd#%d\n",fds[i].fd);
+	fprintf(stderr,"Action on fd#%d, calling %s\n",
+		fds[i].fd,fd_funcname(fd_functions[fds[i].fd]));
 	fd_functions[fds[i].fd](fds[i].fd);
       }
   }
@@ -179,19 +182,26 @@ func_descriptions func_names[]={
   {NULL,NULL}
 };
 
+char *fd_funcname(void *addr)
+{
+  int j;
+  char *funcname="unknown";
+  for(j=0;func_names[j].addr;j++)
+    if (func_names[j].addr==addr)
+      funcname=func_names[j].description;
+  return funcname;
+}
+
 int fd_list()
 {
   long long now=overlay_gettime_ms();
-  int i,j;
+  int i;
   fprintf(stderr,"\n");
   fprintf(stderr,"List of timed callbacks:\n");
   fprintf(stderr,"------------------------\n");
   for(i=0;i<alarmcount;i++) {
-    char *funcname="unknown";
-    for(j=0;func_names[j].addr;j++)
-      if (func_names[j].addr==alarms[i].func)
-	funcname=func_names[j].description;
-    fprintf(stderr,"%s() in %lldms ",funcname,alarms[i].next_alarm-now);
+    fprintf(stderr,"%s() in %lldms ",fd_funcname(alarms[i].func),
+	    alarms[i].next_alarm-now);
     if (alarms[i].repeat_every) fprintf(stderr,"and every %lldms",
 					alarms[i].repeat_every);
     fprintf(stderr,"\n");
@@ -200,7 +210,6 @@ int fd_list()
   fprintf(stderr,"List of watched file descriptors:\n");
   fprintf(stderr,"---------------------------------\n");
   for(i=0;i<fdcount;i++) {
-    char *funcname="unknown";
     char *eventdesc="<somethinged>";
     if ((fds[i].events&POLL_IN)&&(fds[i].events&POLL_OUT)) 
       eventdesc="read or written";
@@ -209,11 +218,8 @@ int fd_list()
     else if (fds[i].events&POLL_OUT)
       eventdesc="written";
 
-    for(j=0;func_names[j].addr;j++)
-      if (func_names[j].addr==fd_functions[fds[i].fd])
-	funcname=func_names[j].description;
-    fprintf(stderr,"%s() when fd#%d can be %s\n",funcname,fds[i].fd,
-	    eventdesc);
+    fprintf(stderr,"%s() when fd#%d can be %s\n",
+	    fd_funcname(fd_functions[fds[i].fd]),fds[i].fd,eventdesc);
   }
   return 0;
 }
