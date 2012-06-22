@@ -77,7 +77,7 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
   memset(&addr, 0, sizeof(addr));
   addr.sun_family = AF_UNIX;
   addr.sun_path[0]=0;
-  snprintf(&addr.sun_path[1],100,
+  snprintf(&addr.sun_path[1],100,"%s",
 	   confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME));
   int len = 1+strlen(&addr.sun_path[1]) + sizeof(addr.sun_family);
   char *p=(char *)&addr;
