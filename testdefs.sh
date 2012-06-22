@@ -180,31 +180,47 @@ signal_all_servald_processes() {
          echo "# Sent SIG$sig to servald process pid=$pid"
          ret=0
       else
-         error "# servald process pid=$pid not running -- SIG$sig not sent"
+         echo "# servald process pid=$pid not running -- SIG$sig not sent"
       fi
    done
    return $ret
 }
 
 # Utility function for tearing down DNA fixtures:
+#  - wait while any servald processes remain
+#  - return 0 if no processes are present
+#  - 1 if the timeout elapses first
+wait_all_servald_processes() {
+   local timeout="${1:-1000000}"
+   sleep $timeout &
+   sleep_pid=$!
+   while get_servald_pids; do
+      kill -0 $sleep_pid 2>/dev/null || return 1
+      sleep 0.1
+      _tfw_echo -n .
+   done
+   kill -TERM $sleep_pid 2>/dev/null
+   return 0
+}
+
+# Utility function for tearing down DNA fixtures:
 #  - terminate all running servald processes, identified by name, by sending
-#    first SIGTERM then SIGHUP and finally SIGKILL
-#  - assert that no more servald processes are running
+#    two SIGHUPs 100ms apart, then another SIGHUP after 2 seconds, finally
+#    SIGKILL after 2 seconds
+#  - return 0 if no more processes are running, nonzero otherwise
 kill_all_servald_processes() {
-# PGS 20120621 - Made fast so that tests can be run quickly
-# TODO: Make this better by checking that things really have died, and take
-# exactly the time required, rather than using fixed delays
-#   if signal_all_servald_processes TERM; then
-#      sleep 2
-#      if signal_all_servald_processes HUP; then
-#         sleep 2
-         signal_all_servald_processes KILL
-#      fi
-#   fi
+   for delay in 0.1 2 2; do
+      signal_all_servald_processes HUP || return 0
+      wait_all_servald_processes $delay && return 0
+   done
+   signal_all_servald_processes KILL || return 0
+   return 1
 }
 
 # Utility function:
-#  - return the PIDs of all servald processes the current user is running
+#  - return the PIDs of all servald processes the current user is running in the
+#    named array variable (if no name given, do not set any variable)
+#  - return 0 if there are any servald processes running, 1 if not
 get_servald_pids() {
    local var="$1"
    local servald_basename="${servald##*/}"
@@ -212,7 +228,8 @@ get_servald_pids() {
       error "\$servald is not set"
       return 1
    fi
-   local pids=$(ps -u$UID | awk -v servald="$servald_basename" '$4 == servald {print $1}')
+   local mypid=$$
+   local pids=$(ps -u$UID | awk -v mypid="$mypid" -v servald="$servald_basename" '$1 != mypid && $4 == servald {print $1}')
    [ -n "$var" ] && eval "$var=($pids)"
    [ -n "$pids" ]
 }
