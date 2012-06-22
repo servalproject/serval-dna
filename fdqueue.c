@@ -35,6 +35,40 @@ struct pollfd fds[MAX_WATCHED_FDS];
 int fdcount=0;
 void(*fd_functions[MAX_WATCHED_FDS])(int fd);  
 
+/* @PGS/20120615 */
+int last_valid=0;
+int last_line;
+const char *last_file;
+const char *last_func;
+long long last_time;
+
+/* @PGS/20120615 */
+void TIMING_PAUSE()
+{
+  last_valid=0;
+}
+
+/* @PGS/20120615 */
+void _TIMING_CHECK(const char *file,const char *func,int line)
+{
+  long long now=overlay_gettime_ms();
+  if (last_valid) {
+    if (now-last_time>5) {
+      // More than 5ms spent in a given task, complain
+      char msg[1024];
+      snprintf(msg,1024,"Spent %lldms between %s:%d in %s() and here",
+	       now-last_time,last_file,last_line,last_func);
+      logMessage(LOG_LEVEL_WARN,file,line,func,"%s",msg);
+    }
+  }
+
+  last_valid=1;
+  last_file=file;
+  last_func=func;
+  last_line=line;
+  last_time=now;
+}
+
 int fd_watch(int fd,void (*func)(int fd),int events)
 {
   if (fd<0||fd>=MAX_WATCHED_FDS) 
@@ -107,10 +141,14 @@ int fd_checkalarms()
 
   long long next_alarm_in=15000;
 
+  TIMING_PAUSE(); 
   for(i=0;i<alarmcount;i++)
     {
-      if (alarms[i].next_alarm<=now) {
+      if (alarms[i].next_alarm&&alarms[i].next_alarm<=now) {
+	_TIMING_CHECK(__FILE__,fd_funcname(alarms[i].func),-1);
 	alarms[i].func();
+	TIMING_CHECK();
+	TIMING_PAUSE();
 	if (!alarms[i].repeat_every) {
 	  /* Alarm was one-shot, so erase alarm */
 	  fd_setalarm(alarms[i].func,0,0);
@@ -137,14 +175,18 @@ int fd_poll()
   /* Make sure we don't have any silly timeouts that will make us wait for ever. */
   if (ms<1) ms=1;
 
-  /* Wait for action or timeout */
+  TIMING_PAUSE();
+    /* Wait for action or timeout */
   int r=poll(fds, fdcount, ms);
 
   /* If file descriptors are ready, then call the appropriate functions */
   if (r>0) {
     for(i=0;i<fdcount;i++)
       if (fds[i].revents) {
+	_TIMING_CHECK(__FILE__,fd_funcname(fd_functions[fds[i].fd]),-1);
 	fd_functions[fds[i].fd](fds[i].fd);
+	TIMING_CHECK();
+	TIMING_PAUSE();
       }
   }
 
@@ -161,13 +203,14 @@ typedef struct func_descriptions {
 } func_descriptions;
 
 func_descriptions func_names[]={
+  {overlay_check_ticks,"overlay_check_ticks"},
   {overlay_dummy_poll,"overlay_dummy_poll"},
-  {overlay_interface_poll,"overlay_interface_poll"},
   {overlay_interface_discover,"overlay_interface_discover"},
   {overlay_route_tick,"overlay_route_tick"},
   {rhizome_enqueue_suggestions,"rhizome_enqueue_suggestions"},
   {server_shutdown_check,"server_shutdown_check"},
   {monitor_client_poll,"monitor_client_poll"},
+  {monitor_poll,"monitor_poll"},
   {overlay_interface_poll,"overlay_interface_poll"},
   {overlay_mdp_poll,"overlay_mdp_poll"},
   {rhizome_client_poll,"rhizome_client_poll"},

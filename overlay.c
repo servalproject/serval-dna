@@ -70,41 +70,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 
-/* @PGS/20120615 */
-int last_valid=0;
-int last_line;
-const char *last_file;
-const char *last_func;
-long long last_time;
-
-/* @PGS/20120615 */
-void TIMING_PAUSE()
-{
-  last_valid=0;
-}
-
-/* @PGS/20120615 */
-void _TIMING_CHECK(const char *file,const char *func,int line)
-{
-  long long now=overlay_gettime_ms();
-  if (last_valid) {
-    if (now-last_time>5) {
-      // More than 5ms spent in a given task, complain
-      char msg[1024];
-      snprintf(msg,1024,"Spent %lldms between %s:%d in %s() and here",
-	       now-last_time,last_file,last_line,last_func);
-      logMessage(LOG_LEVEL_WARN,file,line,func,"%s",msg);
-    }
-  }
-
-  last_valid=1;
-  last_file=file;
-  last_func=func;
-  last_line=line;
-  last_time=now;
-}
-
-
 int overlayMode=0;
 
 overlay_txqueue overlay_tx[OQ_MAX];

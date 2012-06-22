@@ -295,7 +295,7 @@ int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockadd
   }
 
   overlay_interface_count++;
-  fd_setalarm(overlay_dummy_poll,10,10);
+  fd_setalarm(overlay_dummy_poll,100,100);
 #undef I
   return 0;
 }
@@ -314,6 +314,8 @@ void overlay_interface_poll(int fd)
       
       /* Read from UDP socket */
       int recvttl=1;
+      fcntl(overlay_interfaces[i].fd, F_SETFL, 
+	    fcntl(overlay_interfaces[i].fd, F_GETFL, NULL)|O_NONBLOCK);
       plen=recvwithttl(overlay_interfaces[i].fd,packet,sizeof(packet),
 		       &recvttl,&src_addr,&addrlen);
       if (plen<1) { 
@@ -362,6 +364,7 @@ void overlay_dummy_poll()
   int now = overlay_gettime_ms();
   while(count>0)
     {
+      count=0;
       for(i=0;i<overlay_interface_count;i++)
 	{
 	  struct sockaddr src_addr;
@@ -375,13 +378,13 @@ void overlay_dummy_poll()
 	    long long length=lseek(overlay_interfaces[i].fd,0,SEEK_END);
 	    if (overlay_interfaces[i].offset>=length)
 	      {
-		if (debug&DEBUG_OVERLAYINTERFACES) 		  
+		if (1||debug&DEBUG_OVERLAYINTERFACES) 		  
 		  fprintf(stderr,"At end of input on dummy interface #%d\n",i);
 	      }
 	    else
 	      {
 		lseek(overlay_interfaces[i].fd,overlay_interfaces[i].offset,SEEK_SET);
-		if (debug&DEBUG_OVERLAYINTERFACES) 
+		if (1||debug&DEBUG_OVERLAYINTERFACES) 
 		  fprintf(stderr,"Reading from interface #%d log at offset %d, end of file at %lld.\n",i,
 			  overlay_interfaces[i].offset,length);
 		if (read(overlay_interfaces[i].fd,&packet[0],2048)==2048)
