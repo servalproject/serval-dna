@@ -170,7 +170,7 @@ int overlayServerMode()
   fd_setalarm(overlay_route_tick,1000,1000);
 
   while(1) {
-
+    
     /* Check for activitiy and respond to it */
     fd_list();
     fd_poll();
