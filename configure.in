@@ -39,16 +39,6 @@ dnl Math library functions for spandsp
 AC_CHECK_HEADERS([math.h], [INSERT_MATH_HEADER="#include <math.h>"])
 AC_CHECK_HEADERS([float.h])
 
-dnl Check for Linux version of struct ucred
-AC_CHECK_MEMBER(struct ucred.uid,
-    [AC_DEFINE([HAVE_LINUX_STRUCT_UCRED], 1)],,
-    [#include <sys/socket.h>])
-
-dnl Check for BSD version of struct ucred
-AC_CHECK_MEMBER(struct xucred.cr_uid,
-    [AC_DEFINE([HAVE_BSD_STRUCT_UCRED], 1)],,
-    [#include <sys/ucred.h>])
-
 dnl Check for a working Java compiler, keep going if unsuccessful.
 dnl *** Kludge: override AC_MSG_ERROR because AC_PROG_JAVAC does not have
 dnl *** [if-found] and [if-not-found] action parameters.

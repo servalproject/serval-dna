@@ -31,6 +31,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define SO_PEERCRED LOCAL_PEERCRED
 #endif
 
+#define WRITE_STR(fd, str)	write(fd, str, strlen(str))
+
 #define MONITOR_LINE_LENGTH 160
 #define MONITOR_DATA_SIZE MAX_AUDIO_BYTES
 struct monitor_context {
@@ -58,6 +60,7 @@ long long monitor_last_update_time=0;
 
 int monitor_process_command(int index,char *cmd);
 int monitor_process_data(int index);
+static void monitor_new_socket(int s);
 
 int monitor_named_socket=-1;
 int monitor_setup_sockets()
@@ -165,122 +168,75 @@ int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
   return 0;
 }
 
-int monitor_poll()
-{
-  int s;
-  unsigned char buffer[1024];
-  struct sockaddr *ignored_address=(struct sockaddr *)&buffer[0];
-  socklen_t ignored_length=sizeof(ignored_address);
-
+int
+monitor_poll(void) {
+  int				bytes, i, m, s;
+  socklen_t			addrlen;
+  long long			now;
+  char				msg[128];
+  struct monitor_context *c;
+  
   /* tell all monitor clients about status of all calls periodically */
-  long long now=overlay_gettime_ms();
-  char msg[128];
-  int m;
-  if (monitor_last_update_time>(now+1000)) {
+  now = overlay_gettime_ms();
+  if (monitor_last_update_time > (now + 1000)) {
     WHY("Fixed run away monitor_last_update_time");
-    monitor_last_update_time=now+1000;
+    monitor_last_update_time = now + 1000;
   }
-  if (now>(monitor_last_update_time+1000)) {
+
+  if (now > (monitor_last_update_time + 1000)) {
     // WHY("Send keep alives");
-    monitor_last_update_time=now;
-    int i;
-    for(i=0;i<vomp_call_count;i++) {
+    monitor_last_update_time = now;
+    for(i = 0; i < vomp_call_count; i++) {
       /* Push out any undelivered status changes */
       monitor_call_status(&vomp_call_states[i]);
       WHYF("Sending keepalives for call #%d",i);
       
       /* And let far-end know that call is still alive */
-      snprintf(msg,128,"\nKEEPALIVE:%06x\n",vomp_call_states[i].local.session);
-      for(m=0;m<monitor_socket_count;m++)
-	write(monitor_sockets[m].socket,msg,strlen(msg));
+      snprintf(msg,sizeof(msg) -1,"\nKEEPALIVE:%06x\n", vomp_call_states[i].local.session);
+      for(m = 0;m < monitor_socket_count; m++)
+	WRITE_STR(monitor_sockets[m].socket,msg);
     }
   }
 
   /* Check for new connections */
-  fcntl(monitor_named_socket,F_SETFL,
-	fcntl(monitor_named_socket, F_GETFL, NULL)|O_NONBLOCK);
+  fcntl(monitor_named_socket, F_SETFL,
+	fcntl(monitor_named_socket, F_GETFL, NULL) | O_NONBLOCK);
+  /* We don't care about the peer's address */
+  addrlen = 0;
   while (
 #ifdef HAVE_LINUX_IF_H
-	 (s = accept4(monitor_named_socket,ignored_address,&ignored_length,O_NONBLOCK))
+	 (s = accept4(monitor_named_socket, NULL, &addrlen,O_NONBLOCK))
 #else
-	 (s = accept(monitor_named_socket,ignored_address,&ignored_length))
+	 (s = accept(monitor_named_socket,NULL, &addrlen))
 #endif
       != -1
   ) {
-    if (0) WHYF("ignored_length=%d",ignored_length);
-    int res = fcntl(s,F_SETFL, O_NONBLOCK);
-    if (res) { close(s); continue; }
-#if defined(HAVE_LINUX_STRUCT_UCRED)
-    struct ucred ucred;
-#elif defined(HAVE_BSD_STRUCT_UCRED)
-    struct xucred ucred;
-#else
-#error "Unknown ucred struct"
-#endif
-    uid_t otheruid;
-    socklen_t len=sizeof(ucred);
-    res = getsockopt(s,SOL_SOCKET,SO_PEERCRED,&ucred,&len);
-    if (len>sizeof(ucred)) {
-      WHYF("This is likely to be bad (memory overrun by getsockopt())");
-    }
-    if (res) { 
-      WHY("Failed to read credentials of monitor.socket client");
-      close(s); continue; }
-#if defined(HAVE_LINUX_STRUCT_UCRED)
-    otheruid = ucred.uid;
-#elif defined(HAVE_BSD_STRUCT_UCRED)
-    otheruid = ucred.cr_uid;
-#endif
-    if (otheruid&&(otheruid!=getuid())) {
-      if (0) WHYF("monitor.socket client has wrong uid (%d versus %d)",
-		  otheruid,getuid());
-      write(s,"\nCLOSE:Incorrect UID\n",strlen("\nCLOSE:Incorrect UID\n"));
-      close(s); continue;
-    }
-    else if (monitor_socket_count>=MAX_MONITOR_SOCKETS
-	     ||monitor_socket_count<0) {
-      write(s,"\nCLOSE:All sockets busy\n",strlen("\nCLOSE:All sockets busy\n"));
-      close(s);
-    } else {
-      struct monitor_context *c=&monitor_sockets[monitor_socket_count];
-      c->socket=s;
-      c->line_length=0;
-      c->state=MONITOR_STATE_COMMAND;
-      monitor_socket_count++;
-      write(s,"\nMONITOR:You are talking to servald\n",
-	    strlen("\nMONITOR:You are talking to servald\n"));
-      WHYF("Got %d clients",monitor_socket_count);
-    }
-    
-    ignored_length=sizeof(ignored_address);
-    fcntl(monitor_named_socket,F_SETFL,
-	  fcntl(monitor_named_socket, F_GETFL, NULL)|O_NONBLOCK);
+  addrlen = 0;
+
+    monitor_new_socket(s);
   }
-  if (errno != EAGAIN) WHY_perror("accept");
+  if (errno != EAGAIN)
+    WHY_perror("accept");
 
   /* Read from any open connections */
-  int i;
-  for(i=0;i<monitor_socket_count;i++) {
+  for(i = 0;i < monitor_socket_count; i++) {
   nextInSameSlot:
-    errno=0;
-    int bytes;
-    struct monitor_context *c=&monitor_sockets[i];
+    c = &monitor_sockets[i];
     fcntl(c->socket,F_SETFL,
-	  fcntl(c->socket, F_GETFL, NULL)|O_NONBLOCK);
+	  fcntl(c->socket, F_GETFL, NULL) | O_NONBLOCK);
     switch(c->state) {
     case MONITOR_STATE_COMMAND:
-      bytes=1;
-      while(bytes==1) {
-	if (c->line_length>=MONITOR_LINE_LENGTH) {
+      bytes = 1;
+      while(bytes == 1) {
+	if (c->line_length >= MONITOR_LINE_LENGTH) {
 	  /* line too long */
-	  c->line[MONITOR_LINE_LENGTH-1]=0;
-	  monitor_process_command(i,c->line);
-	  bytes=-1;
+	  c->line[MONITOR_LINE_LENGTH-1] = 0;
+	  monitor_process_command(i, c->line);
+	  bytes = -1;
 	  break;
 	}
-	errno=0;
-	bytes=read(c->socket,&c->line[c->line_length],1);
-	if (bytes<1) {
+	bytes = read(c->socket, &c->line[c->line_length], 1);
+	if (bytes < 1) {
 	  switch(errno) {
 	  case EINTR:
 	  case ENOTRECOVERABLE:
@@ -293,9 +249,9 @@ int monitor_poll()
 	    WHY_perror("read");
 	    /* all other errors; close socket */
 	    WHYF("Tearing down monitor client #%d due to errno=%d (%s)",
-		 i,errno,strerror(errno)?strerror(errno):"<unknown error>");
+		 i, errno, strerror(errno));
 	    close(c->socket);
-	    if (i==monitor_socket_count-1) {
+	    if (i == monitor_socket_count - 1) {
 	      monitor_socket_count--;
 	      continue;
 	    } else {
@@ -307,38 +263,36 @@ int monitor_poll()
 	    }
 	  }
 	}
-	if (bytes>0&&(c->line[c->line_length]!='\r')) 
-	  {
-	    c->line_length+=bytes;
-	    if (c->line[c->line_length-1]=='\n') {
+	if (bytes > 0 && (c->line[c->line_length] != '\r')) {
+	    c->line_length += bytes;
+	    if (c->line[c->line_length-1] == '\n') {
 	      /* got command */
-	      c->line[c->line_length-1]=0; /* trim new line for easier parsing */
-	      monitor_process_command(i,c->line);
+	      c->line[c->line_length-1] = 0; /* trim new line for easier parsing */
+	      monitor_process_command(i, c->line);
 	      break;
 	    }
 	  }
       }
       break;
     case MONITOR_STATE_DATA:
-      errno=0;
-      bytes=read(c->socket,
-		 &c->buffer[c->data_offset],
-		 c->data_expected-c->data_offset);
-      if (bytes<1) {
+      bytes = read(c->socket,
+		   &c->buffer[c->data_offset],
+		   c->data_expected-c->data_offset);
+      if (bytes < 1) {
 	switch(errno) {
 	case EAGAIN: case EINTR: 
 	  /* transient errors */
 	  break;
 	default:
 	  /* all other errors; close socket */
-	    WHYF("Tearing down monitor client #%d due to errno=%d",
-		 i,errno);
+	    WHYF("Tearing down monitor client #%d due to errno=%d (%s)",
+		 i, errno, strerror(errno));
 	    close(c->socket);
-	    if (i==monitor_socket_count-1) {
+	    if (i == monitor_socket_count - 1) {
 	      monitor_socket_count--;
 	      continue;
 	    } else {
-	      bcopy(&monitor_sockets[monitor_socket_count-1],
+	      bcopy(&monitor_sockets[monitor_socket_count - 1],
 		    &monitor_sockets[i],
 		    sizeof(struct monitor_context));
 	      monitor_socket_count--;
@@ -346,22 +300,88 @@ int monitor_poll()
 	    }
 	}
       } else {
-	c->data_offset+=bytes;
-	if (c->data_offset>=c->data_expected)
+	c->data_offset += bytes;
+	if (c->data_offset >= c->data_expected)
 	  {
 	    /* we have the binary data we were expecting. */
 	    monitor_process_data(i);
-	    c->state=MONITOR_STATE_COMMAND;
+	    c->state = MONITOR_STATE_COMMAND;
 	  }
       }
       break;
     default:
-      c->state=MONITOR_STATE_COMMAND;
+      c->state = MONITOR_STATE_COMMAND;
       WHY("fixed monitor connection state");
     }
       
   }
   return 0;
+}
+
+static void
+monitor_new_socket(int s) {
+#ifdef linux
+  struct ucred			ucred;
+  socklen_t			len;
+#else
+  gid_t				othergid;
+#endif
+  int				res;
+  uid_t				otheruid;
+  struct monitor_context	*c;
+
+#ifndef HAVE_LINUX_IF_H
+  if ((res = fcntl(s, F_SETFL, O_NONBLOCK)) == -1) {
+    WHY_perror("fcntl()");
+    goto error;
+    }
+#endif
+
+#ifdef linux
+  len = sizeof(ucred);
+  res = getsockopt(s, SOL_SOCKET, SO_PEERCRED, &ucred, &len);
+  if (res) { 
+    WHY_perror("getsockopt(SO_PEERCRED)");
+    goto error;
+  }
+  if (len < sizeof(ucred)) {
+    WHYF("getsockopt(SO_PEERCRED) returned the wrong size (Got %d expected %d)", len, sizeof(ucred));
+    goto error;
+  }
+  otheruid = ucred.uid;
+#else
+  if (getpeereid(s, &otheruid, &othergid) != 0) {
+    WHY_perror("getpeereid()");
+    goto error;
+  }
+#endif
+
+  if (otheruid != getuid()) {
+    WHYF("monitor.socket client has wrong uid (%d versus %d)", otheruid,getuid());
+    WRITE_STR(s, "\nCLOSE:Incorrect UID\n");
+    goto error;
+  } else if (monitor_socket_count >= MAX_MONITOR_SOCKETS
+	     ||monitor_socket_count < 0) {
+    WRITE_STR(s, "\nCLOSE:All sockets busy\n");
+    goto error;
+  } else {
+    c = &monitor_sockets[monitor_socket_count];
+    c->socket = s;
+    c->line_length = 0;
+    c->state = MONITOR_STATE_COMMAND;
+    monitor_socket_count++;
+    WRITE_STR(s,"\nMONITOR:You are talking to servald\n");
+    WHYF("Got %d clients", monitor_socket_count);
+  }
+    
+  fcntl(monitor_named_socket,F_SETFL,
+	fcntl(monitor_named_socket, F_GETFL, NULL)|O_NONBLOCK);
+
+  return;
+  
+  error:
+    close(s);
+    return;
 }
 
 int monitor_process_command(int index,char *cmd) 
@@ -379,8 +399,7 @@ int monitor_process_command(int index,char *cmd)
 	fcntl(c->socket, F_GETFL, NULL)|O_NONBLOCK);
 
   if (strlen(cmd)>MONITOR_LINE_LENGTH) {
-    write(c->socket,"\nERROR:Command too long\n",
-	  strlen("\nERROR:Command too long\n"));
+    WRITE_STR(c->socket,"\nERROR:Command too long\n");
     return -1;
   }
 
@@ -450,8 +469,7 @@ int monitor_process_command(int index,char *cmd)
     int cn=0,in=0,kp=0;
     if(!keyring_next_identity(keyring,&cn,&in,&kp))
       {
-	snprintf(msg,1024,"\nERROR:no local identity, so cannot place call\n");
-	write(c->socket,msg,strlen(msg));
+	WRITE_STR(c->socket,"\nERROR:no local identity, so cannot place call\n");
       }
     else {
       bcopy(keyring->contexts[cn]->identities[in]
@@ -492,7 +510,7 @@ int monitor_process_command(int index,char *cmd)
       int digit=vomp_parse_dtmf_digit(digits[i]);
       if (digit<0) {
 	snprintf(msg,1024,"\nERROR: invalid DTMF digit 0x%02x\n",digit);
-	write(c->socket,msg,strlen(msg));
+	WRITE_STR(c->socket,msg);
       }
       mdp.vompevent.audio_bytes[mdp.vompevent.audio_sample_bytes]
 	=(digit<<4); /* 80ms standard tone duration, so that it is a multiple
@@ -507,7 +525,7 @@ int monitor_process_command(int index,char *cmd)
 	fcntl(c->socket, F_GETFL, NULL)|O_NONBLOCK);
 
   snprintf(msg,1024,"\nMONITORSTATUS:%d\n",c->flags);
-  write(c->socket,msg,strlen(msg));
+  WRITE_STR(c->socket,msg);
 
   return 0;
 }
@@ -528,7 +546,7 @@ int monitor_process_data(int index)
 
   vomp_call_state *call=vomp_find_call_by_session(c->sample_call_session_token);
   if (!call) {
-    write(c->socket,"\nERROR:No such call\n",strlen("\nERROR:No such call\n"));
+    WRITE_STR(c->socket,"\nERROR:No such call\n");
     return -1;
   }
 
@@ -570,7 +588,7 @@ int monitor_announce_bundle(rhizome_manifest *m)
 	errno=0;
 	fcntl(monitor_sockets[i].socket,F_SETFL,
 	      fcntl(monitor_sockets[i].socket, F_GETFL, NULL)|O_NONBLOCK);
-	write(monitor_sockets[i].socket,msg,strlen(msg));
+	WRITE_STR(monitor_sockets[i].socket,msg);
 	if (errno&&(errno!=EINTR)&&(errno!=EAGAIN)) {
 	  /* error sending update, so kill monitor socket */
 	  WHYF("Tearing down monitor client #%d due to errno=%d",
@@ -618,7 +636,7 @@ int monitor_call_status(vomp_call_state *call)
 	errno=0;
 	fcntl(monitor_sockets[i].socket,F_SETFL,
 	      fcntl(monitor_sockets[i].socket, F_GETFL, NULL)|O_NONBLOCK);
-	write(monitor_sockets[i].socket,msg,strlen(msg));
+	WRITE_STR(monitor_sockets[i].socket,msg);
 	if (errno&&(errno!=EINTR)&&(errno!=EAGAIN)) {
 	  /* error sending update, so kill monitor socket */
 	  WHYF("Tearing down monitor client #%d due to errno=%d",
@@ -688,7 +706,7 @@ int monitor_tell_clients(unsigned char *msg,int msglen,int mask)
       errno=0;
       fcntl(monitor_sockets[i].socket,F_SETFL,
 	    fcntl(monitor_sockets[i].socket, F_GETFL, NULL)|O_NONBLOCK);
-      write(monitor_sockets[i].socket,msg,msglen);
+      WRITE_STR(monitor_sockets[i].socket,msg);
       // WHYF("Writing AUDIOPACKET to client");
       if (errno&&(errno!=EINTR)&&(errno!=EAGAIN)) {
 	/* error sending update, so kill monitor socket */
