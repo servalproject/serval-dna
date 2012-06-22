@@ -40,6 +40,7 @@ setup_ServerStartCreateInstanceDir() {
 test_ServerStartCreateInstanceDir() {
    start_servald_server
    assert [ -d "$SERVALINSTANCE_PATH" ]
+   assert_servald_server_no_errors
 }
 
 runTests "$@"

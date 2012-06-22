@@ -21,11 +21,24 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf.h"
 #include <ctype.h>
 
+FILE *logfile = NULL;
 int debug = 0;
 
 #ifdef ANDROID
 #include <android/log.h> 
 #endif
+
+int start_logging()
+{
+  if (logfile == NULL) {
+    const char *logpath = confValueGet("logfile", NULL);
+    if (logpath)
+      logfile = fopen(logpath, "a");
+  }
+  if (logfile == NULL)
+    logfile = stderr;
+  return 0;
+}
 
 void logMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, ...)
 {
@@ -60,7 +73,9 @@ void vlogMessage(int level, const char *file, unsigned int line, const char *fun
       case LOG_LEVEL_WARN:  levelstr = "WARN"; break;
       case LOG_LEVEL_DEBUG: levelstr = "DEBUG"; break;
     }
-    fprintf(stderr, "%s: %s\n", levelstr, strbuf_str(b));
+    if (logfile == NULL)
+      start_logging();
+    fprintf(logfile, "%s: %s\n", levelstr, strbuf_str(b));
   }
 }
 
@@ -80,17 +95,21 @@ const char *trimbuildpath(const char *path)
 
 int dump(char *name, unsigned char *addr, int len)
 {
+  char buf[100];
   int i,j;
-  fprintf(stderr,"Dump of %s\n",name);
-  for(i=0;i<len;i+=16) 
-    {
-      fprintf(stderr,"  %04x :",i);
-      for(j=0;j<16&&(i+j)<len;j++) fprintf(stderr," %02x",addr[i+j]);
-      for(;j<16;j++) fprintf(stderr,"   ");
-      fprintf(stderr,"    ");
-      for(j=0;j<16&&(i+j)<len;j++) fprintf(stderr,"%c",addr[i+j]>=' '&&addr[i+j]<0x7f?addr[i+j]:'.');
-      fprintf(stderr,"\n");
-    }
+  DEBUGF("Dump of %s", name);
+  for(i = 0; i < len; i += 16) {
+    strbuf b = strbuf_local(buf, sizeof buf);
+    strbuf_sprintf(b, "  %04x :", i);
+    for (j = 0; j < 16 && i + j < len; j++)
+      strbuf_sprintf(b, " %02x", addr[i + j]);
+    for (; j < 16; j++)
+      strbuf_puts(b, "   ");
+    strbuf_puts(b, "    ");
+    for (j = 0; j < 16 && i + j < len; j++)
+      strbuf_sprintf(b, "%c", addr[i+j] >= ' ' && addr[i+j] < 0x7f ? addr[i+j] : '.');
+    DEBUG(strbuf_str(b));
+  }
   return 0;
 }
 
@@ -111,16 +130,18 @@ char *catv(const char *data, char *buf, size_t len)
 int dumpResponses(struct response_set *responses)
 {
   struct response *r;
-  if (!responses) {fprintf(stderr,"Response set is NULL\n"); return 0; }
-  fprintf(stderr,"Response set claims to contain %d entries.\n",responses->response_count);
-  r=responses->responses;
-  while(r)
-    {
-      fprintf(stderr,"  response code 0x%02x\n",r->code);
-      if (r->next)
-	if (r->next->prev!=r) fprintf(stderr,"    !! response chain is broken\n");
-      r=r->next;
-    }
+  if (!responses) {
+    DEBUG("Response set is NULL");
+    return 0;
+  }
+  DEBUGF("Response set claims to contain %d entries.", responses->response_count);
+  r = responses->responses;
+  while(r) {
+    DEBUGF("  response code 0x%02x", r->code);
+    if (r->next && r->next->prev != r)
+      DEBUG("    !! response chain is broken");
+    r = r->next;
+  }
   return 0;
 }
 

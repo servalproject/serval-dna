@@ -725,68 +725,79 @@ _tfw_assert_grep() {
    local file="$2"
    local pattern="$3"
    local message=
-   local matches=$(( $(grep --regexp="$pattern" "$file" | wc -l) + 0 ))
-   local done=false
-   local ret=0
-   _tfw_shopt -s extglob
-   case "$_tfw_opt_matches" in
-   '')
-      done=true
-      message="${_tfw_message:-$label contains a line matching \"$pattern\"}"
-      if [ $matches -ne 0 ]; then
-         echo "# assert $message"
-      else
-         _tfw_failmsg "assertion failed: $message"
-         ret=1
-      fi
-      ;;
-   esac
-   case "$_tfw_opt_matches" in
-   +([0-9]))
-      done=true
-      local s=$([ $_tfw_opt_matches -ne 1 ] && echo s)
-      message="${_tfw_message:-$label contains exactly $_tfw_opt_matches line$s matching \"$pattern\"}"
-      if [ $matches -eq $_tfw_opt_matches ]; then
-         echo "# assert $message"
-      else
-         _tfw_failmsg "assertion failed: $message"
-         ret=1
-      fi
-      ;;
-   esac
-   case "$_tfw_opt_matches" in
-   +([0-9])-*([0-9]))
-      done=true
-      local bound=${_tfw_opt_matches%-*}
-      local s=$([ $bound -ne 1 ] && echo s)
-      message="${_tfw_message:-$label contains at least $bound line$s matching \"$pattern\"}"
-      if [ $matches -ge $bound ]; then
-         echo "# assert $message"
-      else
-         _tfw_failmsg "assertion failed: $message"
-         ret=1
-      fi
-      ;;
-   esac
-   case "$_tfw_opt_matches" in
-   *([0-9])-+([0-9]))
-      done=true
-      local bound=${_tfw_opt_matches#*-}
-      local s=$([ $bound -ne 1 ] && echo s)
-      message="${_tfw_message:-$label contains at most $bound line$s matching \"$pattern\"}"
-      if [ $matches -le $bound ]; then
-         echo "# assert $message"
-      else
-         _tfw_failmsg "assertion failed: $message"
-         ret=1
-      fi
-      ;;
-   esac
-   if ! $done; then
-      _tfw_error "unsupported value for --matches=$_tfw_opt_matches"
+   if ! [ -e "$file" ]; then
+      _tfw_error "$file does not exist"
       ret=254
+   elif ! [ -f "$file" ]; then
+      _tfw_error "$file is not a regular file"
+      ret=254
+   elif ! [ -r "$file" ]; then
+      _tfw_error "$file is not readable"
+      ret=254
+   else
+      local matches=$(( $(grep --regexp="$pattern" "$file" | wc -l) + 0 ))
+      local done=false
+      local ret=0
+      _tfw_shopt -s extglob
+      case "$_tfw_opt_matches" in
+      '')
+         done=true
+         message="${_tfw_message:-$label contains a line matching \"$pattern\"}"
+         if [ $matches -ne 0 ]; then
+            echo "# assert $message"
+         else
+            _tfw_failmsg "assertion failed: $message"
+            ret=1
+         fi
+         ;;
+      esac
+      case "$_tfw_opt_matches" in
+      +([0-9]))
+         done=true
+         local s=$([ $_tfw_opt_matches -ne 1 ] && echo s)
+         message="${_tfw_message:-$label contains exactly $_tfw_opt_matches line$s matching \"$pattern\"}"
+         if [ $matches -eq $_tfw_opt_matches ]; then
+            echo "# assert $message"
+         else
+            _tfw_failmsg "assertion failed: $message"
+            ret=1
+         fi
+         ;;
+      esac
+      case "$_tfw_opt_matches" in
+      +([0-9])-*([0-9]))
+         done=true
+         local bound=${_tfw_opt_matches%-*}
+         local s=$([ $bound -ne 1 ] && echo s)
+         message="${_tfw_message:-$label contains at least $bound line$s matching \"$pattern\"}"
+         if [ $matches -ge $bound ]; then
+            echo "# assert $message"
+         else
+            _tfw_failmsg "assertion failed: $message"
+            ret=1
+         fi
+         ;;
+      esac
+      case "$_tfw_opt_matches" in
+      *([0-9])-+([0-9]))
+         done=true
+         local bound=${_tfw_opt_matches#*-}
+         local s=$([ $bound -ne 1 ] && echo s)
+         message="${_tfw_message:-$label contains at most $bound line$s matching \"$pattern\"}"
+         if [ $matches -le $bound ]; then
+            echo "# assert $message"
+         else
+            _tfw_failmsg "assertion failed: $message"
+            ret=1
+         fi
+         ;;
+      esac
+      if ! $done; then
+         _tfw_error "unsupported value for --matches=$_tfw_opt_matches"
+         ret=254
+      fi
+      _tfw_shopt_restore
    fi
-   _tfw_shopt_restore
    if [ $ret -ne 0 ]; then
       _tfw_backtrace
    fi
