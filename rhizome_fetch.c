@@ -485,7 +485,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
   return 0;
 }
 
-int rhizome_enqueue_suggestions()
+void rhizome_enqueue_suggestions()
 {
   int i;
   for(i=0;i<candidate_count;i++)
@@ -508,7 +508,7 @@ int rhizome_enqueue_suggestions()
     candidate_count-=i;
   }
 
-  return 0;
+  return;
 }
 
 int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peerip, int *manifest_kept)
@@ -664,6 +664,8 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	      close(sock);
 	      return -1;
 	    }
+	    /* Watch for activity on the socket */
+	    fd_watch(q->socket,rhizome_fetch_poll,POLL_OUT);
 	    rhizome_file_fetch_queue_count++;
 	    if (1||debug&DEBUG_RHIZOME) DEBUGF("Queued file for fetching into %s (%d in queue)",
 					    q->manifest->dataFileName, rhizome_file_fetch_queue_count);
@@ -693,65 +695,15 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
   return 0;
 }
 
-long long rhizome_last_fetch=0;
-int rhizome_poll_fetchP=0;
-int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
-{
-  /* Don't fetch quickly during voice calls */
-  rhizome_poll_fetchP=0;
-  long long now=overlay_gettime_ms();
-  if (now<rhizome_voice_timeout)
-    {
-      /* only fetch data once per 500ms during calls */
-      if ((rhizome_last_fetch+500)>now)
-	return 0;
-    }
-  rhizome_last_fetch=now;
-  rhizome_poll_fetchP=1;
-
-  int i;
-  if ((*fdcount)>=fdmax) return -1;
-
-  for(i=0;i<rhizome_file_fetch_queue_count;i++)
-    {
-      if ((*fdcount)>=fdmax) return -1;
-      if (debug&DEBUG_RHIZOMESYNC) {
-	DEBUGF("rhizome file fetch request #%d is poll() slot #%d (fd %d)",
-	     i,*fdcount,file_fetch_queue[i].socket); }
-      fds[*fdcount].fd=file_fetch_queue[i].socket;
-      switch(file_fetch_queue[i].state) {
-      case RHIZOME_FETCH_SENDINGHTTPREQUEST:
-	fds[*fdcount].events=POLLOUT; break;
-      case RHIZOME_FETCH_RXHTTPHEADERS:
-      case RHIZOME_FETCH_RXFILE:      
-      default:
-	fds[*fdcount].events=POLLIN; break;
-      }
-      (*fdcount)++;    
-    }
-   return 0;
-}
-
-long long rhizome_last_fetch_enqueue_time=0;
-
-int rhizome_fetch_poll()
+void rhizome_fetch_poll(int fd)
 {
   int rn;
-  if (!rhizome_poll_fetchP) return 0;
-
-  if (rhizome_last_fetch_enqueue_time<overlay_gettime_ms())
-    {
-      rhizome_enqueue_suggestions();
-      rhizome_last_fetch_enqueue_time=overlay_gettime_ms();
-    }
-
-  if (0&&debug&DEBUG_RHIZOME) DEBUGF("Checking %d active fetch requests",
-				rhizome_file_fetch_queue_count);
   for(rn=0;rn<rhizome_file_fetch_queue_count;rn++)
     {
-      rhizome_file_fetch_record *q=&file_fetch_queue[rn];
       int action=0;
       int bytes;
+      rhizome_file_fetch_record *q=&file_fetch_queue[rn];
+      if (q->socket!=fd) continue;
 	  
       /* Make socket non-blocking */
       fcntl(q->socket,F_SETFL,fcntl(q->socket, F_GETFL, NULL)|O_NONBLOCK);
@@ -775,6 +727,7 @@ int rhizome_fetch_poll()
 	      }
 	      q->request_len=0; q->request_ofs=0;
 	      q->state=RHIZOME_FETCH_RXHTTPHEADERS;
+	      fd_watch(q->socket,rhizome_fetch_poll,POLL_IN);
 	    }
 	  } else if (errno!=EAGAIN) {
 	    WHY("Got error while sending HTTP request.  Closing.");
@@ -825,12 +778,12 @@ int rhizome_fetch_poll()
 		fclose(q->file); q->file=NULL;
 		const char *id = rhizome_manifest_get(q->manifest, "id", NULL, 0);
 		if (id == NULL)
-		  return WHY("Manifest missing ID");
+		  { WHY("Manifest missing ID"); return; }
 		if (create_rhizome_import_dir() == -1)
-		  return -1;
+		  return;
 		char filename[1024];
 		if (!FORM_RHIZOME_IMPORT_PATH(filename,"manifest.%s", id))
-		  return -1;
+		  return;
 		/* Do really write the manifest unchanged */
 		if (debug&DEBUG_RHIZOME) {
 		  DEBUGF("manifest has %d signatories",q->manifest->sig_count);
@@ -977,6 +930,9 @@ int rhizome_fetch_poll()
 	  rhizome_manifest_free(file_fetch_queue[i].manifest);
 	file_fetch_queue[i].manifest=NULL;
 	
+	/* close socket and stop watching it */
+	fd_teardown(file_fetch_queue[i].socket);
+
 	/* reshuffle higher numbered slot down if required */
 	if (i<(rhizome_file_fetch_queue_count-1))
 	  bcopy(&file_fetch_queue[rhizome_file_fetch_queue_count-1],
@@ -990,7 +946,5 @@ int rhizome_fetch_poll()
 	       rhizome_file_fetch_queue_count);
       }
     }
-
-
-  return 0;
+  return;
 }

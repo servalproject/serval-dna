@@ -824,8 +824,7 @@ long long parse_quantity(char *q);
 int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockaddr_in broadcast,
 			   int speed_in_bits,int port,int type);
 int overlay_interface_init_socket(int i,struct sockaddr_in src_addr,struct sockaddr_in broadcast);
-int overlay_interface_discover();
-int overlay_interface_discover();
+void overlay_interface_discover();
 long long overlay_time_until_next_tick();
 int overlay_rx_messages();
 int overlay_check_ticks();
@@ -1038,7 +1037,7 @@ int overlay_route_record_link(long long now,unsigned char *to,
 			      unsigned char *via,int sender_interface,
 			      unsigned int s1,unsigned int s2,int score,int gateways_en_route);
 int overlay_route_dump();
-int overlay_route_tick();
+void overlay_route_tick();
 int overlay_route_tick_neighbour(int neighbour_id,long long now);
 int overlay_route_tick_node(int bin,int slot,long long now);
 int overlay_route_add_advertisements(int interface,overlay_buffer *e);
@@ -1054,7 +1053,7 @@ int overlay_route_saw_advertisements(int i,overlay_frame *f, long long now);
 int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now);
 int overlay_route_please_advertise(overlay_node *n);
 int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
-int rhizome_server_poll();
+void rhizome_server_poll(int ignored_file_descriptor);
 int rhizome_saw_voice_traffic();
 int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long now);
 
@@ -1093,7 +1092,7 @@ int overlay_address_is_broadcast(unsigned char *a);
 int overlay_broadcast_generate_address(unsigned char *a);
 int overlay_abbreviate_unset_current_sender();
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
-int rhizome_fetch_poll();
+void rhizome_fetch_poll(int fd);
 int rhizome_opendb();
 
 typedef struct dna_identity_status {
@@ -1157,7 +1156,7 @@ int mkdirsn(const char *path, size_t len, mode_t mode);
 #define FORM_SERVAL_INSTANCE_PATH(buf, path) (form_serval_instance_path(buf, sizeof(buf), (path)))
 
 int overlay_mdp_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
-int overlay_mdp_poll();
+void overlay_mdp_poll();
 int overlay_mdp_reply_error(int sock,
 			    struct sockaddr_un *recvaddr,int recvaddrlen,
 			    int error_number,char *message);
@@ -1477,7 +1476,8 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 
 int monitor_setup_sockets();
-int monitor_poll();
+void monitor_poll(int ignored_fd);
+void monitor_client_poll(int ignored_fd);
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int monitor_call_status(vomp_call_state *call);
 int monitor_send_audio(vomp_call_state *call,overlay_mdp_frame *audio);
@@ -1536,3 +1536,18 @@ void sigIoHandler(int signal);
 
 #define DEFAULT_MONITOR_SOCKET_NAME "org.servalproject.servald.monitor.socket"
 #define DEFAULT_MDP_SOCKET_NAME "org.servalproject.servald.mdp.socket"
+
+/* Event queue handling functions */
+int fd_poll();
+int fd_checkalarms();
+int fd_setalarm(void (*func),long long first_alarm_in,int repeat_every);
+int fd_teardown(int fd);
+int fd_watch(int fd,void (*func)(int fd),int events);
+int fd_list();
+
+int rhizome_server_start();
+void rhizome_enqueue_suggestions();
+int overlay_mdp_setup_sockets();
+void overlay_interface_poll(int fd);
+void overlay_dummy_poll();
+void rhizome_client_poll(int fd);

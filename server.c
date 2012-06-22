@@ -209,8 +209,7 @@ int server(char *backing_file)
   fprintf(f,"%d\n", server_getpid);
   fclose(f);
 
-  if (!overlayMode) simpleServerMode();
-  else overlayServerMode();
+  overlayServerMode();
 
   return 0;
 }
@@ -806,73 +805,6 @@ int createServerSocket()
     WHYF("MP HLR server could not bind to UDP port %d", PORT_DNA);
     WHY_perror("bind");
     exit(-3);
-  }
-  return 0;
-}
-
-extern int sigIoFlag;
-extern int rhizome_server_socket;
-int simpleServerMode()
-{
-  while(1) {
-    struct sockaddr recvaddr;
-    socklen_t recvaddrlen=sizeof(recvaddr);
-    struct pollfd fds[128];
-    int fdcount;
-    int len;
-    int r;
-
-    server_shutdown_check();
-
-    bzero((void *)&recvaddr,sizeof(recvaddr));
-
-    /* Get rhizome server started BEFORE populating fd list so that
-       the server's listen socket is in the list for poll() */
-    if (rhizome_enabled()) rhizome_server_poll();
-
-    /* Get list of file descripters to watch */
-    fds[0].fd=sock; fds[0].events=POLLIN;
-    fdcount=1;
-    rhizome_server_get_fds(fds,&fdcount,128);
-    if (debug&DEBUG_IO) {
-      printf("poll()ing file descriptors:");
-      { int i;
-	for(i=0;i<fdcount;i++) { printf(" %d",fds[i].fd); } }
-      printf("\n");
-    }
-    
-    /* Wait patiently for packets to arrive. */
-    if (rhizome_enabled()) rhizome_server_poll();
-    while ((r=poll(fds,fdcount,100000))<1) {
-      if (sigIoFlag) { sigIoFlag=0; break; }
-      sleep(0);
-    }
-    if (rhizome_enabled()) rhizome_server_poll();
-
-    unsigned char buffer[16384];
-    int ttl=-1; // unknown
-
-    if (fds[0].revents&POLLIN) {
-      
-      len=recvwithttl(sock,buffer,sizeof(buffer),&ttl,&recvaddr,&recvaddrlen);
-
-
-      client_port=((struct sockaddr_in*)&recvaddr)->sin_port;
-      client_addr=((struct sockaddr_in*)&recvaddr)->sin_addr;
-      
-      if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"Received packet from %s:%d (len=%d).\n",inet_ntoa(client_addr),client_port,len);
-      if (debug&DEBUG_PACKETRX) dump("recvaddr",(unsigned char *)&recvaddr,recvaddrlen);
-      if (debug&DEBUG_PACKETRX) dump("packet",(unsigned char *)buffer,len);
-      if (dropPacketP(len)) {
-	if (debug&DEBUG_SIMULATION) DEBUG("Simulation mode: Dropped packet due to simulated link parameters.");
-	continue;
-      }
-      /* Simple server mode doesn't really use interface numbers, so lie and say interface -1 */
-      if (packetOk(-1,buffer,len,NULL,ttl,&recvaddr,recvaddrlen,1)) { 
-	if (debug&DEBUG_PACKETFORMATS) DEBUG("Ignoring invalid packet");
-      }
-      if (debug&DEBUG_PACKETRX) DEBUG("Finished processing packet, waiting for next one.");
-    }
   }
   return 0;
 }

@@ -1511,8 +1511,3 @@ int vomp_tick()
   return 0;
 }
 
-int vomp_tick_interval()
-{
-  /* Work out the number of milliseconds until the next vomp tick is required. */
-  return 1000;
-}

@@ -127,7 +127,7 @@ int monitor_setup_sockets()
   return 0;
   
   error:
-  close(monitor_named_socket);
+  fd_teardown(monitor_named_socket);
   monitor_named_socket=-1;
   return -1;
 }
@@ -170,7 +170,7 @@ int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
   return 0;
 }
 
-int monitor_poll()
+void monitor_poll(int ignored_fd)
 {
   int s;
   unsigned char buffer[1024];
@@ -214,7 +214,7 @@ int monitor_poll()
   ) {
     if (0) WHYF("ignored_length=%d",ignored_length);
     int res = fcntl(s,F_SETFL, O_NONBLOCK);
-    if (res) { close(s); continue; }
+    if (res) { fd_teardown(s); continue; }
 #if defined(HAVE_LINUX_STRUCT_UCRED)
     struct ucred ucred;
 #elif defined(HAVE_BSD_STRUCT_UCRED)
@@ -230,7 +230,7 @@ int monitor_poll()
     }
     if (res) { 
       WHY("Failed to read credentials of monitor.socket client");
-      close(s); continue; }
+      fd_teardown(s); continue; }
 #if defined(HAVE_LINUX_STRUCT_UCRED)
     otheruid = ucred.uid;
 #elif defined(HAVE_BSD_STRUCT_UCRED)
@@ -240,12 +240,12 @@ int monitor_poll()
       if (0) WHYF("monitor.socket client has wrong uid (%d versus %d)",
 		  otheruid,getuid());
       write(s,"\nCLOSE:Incorrect UID\n",strlen("\nCLOSE:Incorrect UID\n"));
-      close(s); continue;
+      fd_teardown(s); continue;
     }
     else if (monitor_socket_count>=MAX_MONITOR_SOCKETS
 	     ||monitor_socket_count<0) {
       write(s,"\nCLOSE:All sockets busy\n",strlen("\nCLOSE:All sockets busy\n"));
-      close(s);
+      fd_teardown(s);
     } else {
       struct monitor_context *c=&monitor_sockets[monitor_socket_count];
       c->socket=s;
@@ -255,6 +255,7 @@ int monitor_poll()
       write(s,"\nMONITOR:You are talking to servald\n",
 	    strlen("\nMONITOR:You are talking to servald\n"));
       WHYF("Got %d clients",monitor_socket_count);
+      fd_watch(c->socket,monitor_client_poll,POLL_IN);
     }
     
     ignored_length=sizeof(ignored_address);
@@ -262,7 +263,10 @@ int monitor_poll()
 	  fcntl(monitor_named_socket, F_GETFL, NULL)|O_NONBLOCK);
   }
   if (errno != EAGAIN) WHY_perror("accept");
+}
 
+void monitor_client_poll(int fd)
+{
   /* Read from any open connections */
   int i;
   for(i=0;i<monitor_socket_count;i++) {
@@ -270,6 +274,7 @@ int monitor_poll()
     errno=0;
     int bytes;
     struct monitor_context *c=&monitor_sockets[i];
+    if (c->socket!=fd) continue;
     fcntl(c->socket,F_SETFL,
 	  fcntl(c->socket, F_GETFL, NULL)|O_NONBLOCK);
     switch(c->state) {
@@ -299,7 +304,7 @@ int monitor_poll()
 	    /* all other errors; close socket */
 	    WHYF("Tearing down monitor client #%d due to errno=%d (%s)",
 		 i,errno,strerror(errno)?strerror(errno):"<unknown error>");
-	    close(c->socket);
+	    fd_teardown(c->socket);	    
 	    if (i==monitor_socket_count-1) {
 	      monitor_socket_count--;
 	      continue;
@@ -338,7 +343,7 @@ int monitor_poll()
 	  /* all other errors; close socket */
 	    WHYF("Tearing down monitor client #%d due to errno=%d",
 		 i,errno);
-	    close(c->socket);
+	    fd_teardown(c->socket);
 	    if (i==monitor_socket_count-1) {
 	      monitor_socket_count--;
 	      continue;
@@ -366,7 +371,7 @@ int monitor_poll()
     }
       
   }
-  return 0;
+  return;
 }
 
 int monitor_process_command(int index,char *cmd) 
@@ -580,7 +585,7 @@ int monitor_announce_bundle(rhizome_manifest *m)
 	  /* error sending update, so kill monitor socket */
 	  WHYF("Tearing down monitor client #%d due to errno=%d",
 	       i,errno);
-	  close(monitor_sockets[i].socket);
+	  fd_teardown(monitor_sockets[i].socket);
 	  if (i==monitor_socket_count-1) {
 	    monitor_socket_count--;
 	    continue;
@@ -628,7 +633,7 @@ int monitor_call_status(vomp_call_state *call)
 	  /* error sending update, so kill monitor socket */
 	  WHYF("Tearing down monitor client #%d due to errno=%d",
 	       i,errno);
-	  close(monitor_sockets[i].socket);
+	  fd_teardown(monitor_sockets[i].socket);
 	  if (i==monitor_socket_count-1) {
 	    monitor_socket_count--;
 	    continue;
@@ -699,7 +704,7 @@ int monitor_tell_clients(unsigned char *msg,int msglen,int mask)
 	/* error sending update, so kill monitor socket */
 	WHYF("Tearing down monitor client #%d due to errno=%d",
 	     i,errno);
-	close(monitor_sockets[i].socket);
+	fd_teardown(monitor_sockets[i].socket);
 	if (i==monitor_socket_count-1) {
 	  monitor_socket_count--;
 	  continue;
@@ -735,7 +740,7 @@ int server_probe(int *pid)
   if (0) DEBUGF("last char='%c' %02x\n",p[len-1],p[len-1]);
 
   if (connect(fd, (struct sockaddr*)&addr, len) == -1) {
-    close(fd);
+    fd_teardown(fd);
     return SERVER_NOTRUNNING;
   }
   
@@ -775,7 +780,7 @@ int server_probe(int *pid)
   
   char buff[1024];
   int bytes=read(fd,buff,1024);
-  close(fd);
+  fd_teardown(fd);
   if (bytes<0) {
     return SERVER_NOTRESPONDING;
   } else if (bytes==0) {

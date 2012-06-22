@@ -93,7 +93,7 @@ int rhizome_server_start()
   if (bind(rhizome_server_socket, (struct sockaddr *) &address,
 	   sizeof(address)) < 0) 
     {
-      close(rhizome_server_socket);
+      fd_teardown(rhizome_server_socket);
       rhizome_server_socket=-1000;
       if (debug&DEBUG_RHIZOME)  WHY("bind() failed starting rhizome http server");
       return -1;
@@ -103,44 +103,32 @@ int rhizome_server_start()
   if (rc < 0)
   {
     perror("ioctl() failed");
-    close(rhizome_server_socket);
+    fd_teardown(rhizome_server_socket);
+    rhizome_server_socket=-1;
     exit(-1);
   }
 
   if (listen(rhizome_server_socket,20))
     {
-      close(rhizome_server_socket);
+      fd_teardown(rhizome_server_socket);
       rhizome_server_socket=-1;
       return WHY("listen() failed starting rhizome http server");
     }
 
+  /* Add Rhizome HTTPd server to list of file descriptors to watch */
+  fd_watch(rhizome_server_socket,rhizome_server_poll,POLL_IN);
+
   return 0;
 }
 
-int rhizome_poll_httpP=0;
-
-int rhizome_server_poll()
+void rhizome_client_poll(int fd)
 {
-  struct sockaddr addr;
-  unsigned int addr_len=0;
-  int sock;
   int rn;
-  
-  if (!rhizome_poll_httpP) return 0;
 
-  /* Having the starting of the server here is helpful in that
-     if the port is taken by someone else, we will grab it fairly
-     swiftly once it becomes available. */
-  if (rhizome_server_socket<0) rhizome_server_start();
-  if (rhizome_server_socket<0) return 0;
-
-  /* Process the existing requests.
-     XXX - should use poll or select here */
-  if (0&&debug&DEBUG_RHIZOME) WHYF("Checking %d active connections",
-				   rhizome_server_live_request_count);
   for(rn=0;rn<rhizome_server_live_request_count;rn++)
     {
       rhizome_http_request *r=rhizome_live_http_requests[rn];
+      if (r->socket!=fd) continue;
       switch(r->request_type) 
 	{
 	case RHIZOME_HTTP_REQUEST_RECEIVING:
@@ -198,8 +186,22 @@ int rhizome_server_poll()
 	  /* Socket already has request -- so just try to send some data. */
 	  rhizome_server_http_send_bytes(rn,r);
 	  break;
-      }      
+      }
+      /* We have processed the connection that has activity, so we can return
+         immediately */
+      return;
     }
+
+  
+  return;
+}
+
+
+void rhizome_server_poll(int ignored_file_descriptor)
+{
+  struct sockaddr addr;
+  unsigned int addr_len=0;
+  int sock;
 
   /* Deal with any new requests */
   /* Make socket non-blocking */
@@ -214,17 +216,18 @@ int rhizome_server_poll()
       /* We are now trying to read the HTTP request */
       request->request_type=RHIZOME_HTTP_REQUEST_RECEIVING;
       rhizome_live_http_requests[rhizome_server_live_request_count++]=request;	   
+      /* Watch for input */
+      fd_watch(request->socket,rhizome_client_poll,POLL_IN);
     }
 
   fcntl(rhizome_server_socket,F_SETFL,
 	fcntl(rhizome_server_socket, F_GETFL, NULL)&(~O_NONBLOCK));
-  
-  return 0;
 }
 
 int rhizome_server_close_http_request(int i)
 {
-  close(rhizome_live_http_requests[i]->socket);
+  fd_teardown(rhizome_live_http_requests[i]->socket);
+
   rhizome_server_free_http_request(rhizome_live_http_requests[i]);
   /* Make it null, so that if we are the list in the list, the following
      assignment still yields the correct behaviour */
@@ -243,52 +246,6 @@ int rhizome_server_free_http_request(rhizome_http_request *r)
   
   free(r);
   return 0;
-}
-
-long long rhizome_last_http_send=0;
-int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
-{
-  int i;
-  if ((*fdcount)>=fdmax) return -1;
-  rhizome_poll_httpP=0;
-  /* Don't send quickly during voice calls */
-  long long now=overlay_gettime_ms();
-  if (now<rhizome_voice_timeout)
-    {
-      /* only send data once per 500ms during calls */
-      if ((rhizome_last_http_send+500)>now)
-	return 0;
-    }
-  rhizome_last_http_send=now;
-  rhizome_poll_httpP=1;
-
-  if (rhizome_server_socket>-1)
-    {
-      if (debug&DEBUG_IO) {
-	WHYF("rhizome http server is poll() slot #%d (fd %d)",
-		*fdcount,rhizome_server_socket);
-      }
-      fds[*fdcount].fd=rhizome_server_socket;
-      fds[*fdcount].events=POLLIN;
-      (*fdcount)++;
-    }
-
-  for(i=0;i<rhizome_server_live_request_count;i++)
-    {
-      if ((*fdcount)>=fdmax) return -1;
-      if (debug&DEBUG_IO) {
-	WHYF("rhizome http request #%d is poll() slot #%d (fd %d)",
-		i,*fdcount,rhizome_live_http_requests[i]->socket); }
-      fds[*fdcount].fd=rhizome_live_http_requests[i]->socket;
-      switch(rhizome_live_http_requests[i]->request_type) {
-      case RHIZOME_HTTP_REQUEST_RECEIVING:
-	fds[*fdcount].events=POLLIN; break;
-      default:
-	fds[*fdcount].events=POLLOUT; break;
-      }
-      (*fdcount)++;    
-    }
-   return 0;
 }
 
 void hexFilter(char *s)
@@ -466,6 +423,9 @@ int rhizome_server_sql_query_fill_buffer(int rn,rhizome_http_request *r)
 int rhizome_server_parse_http_request(int rn,rhizome_http_request *r)
 {
   char id[1024];
+
+  /* Switching to writing, so update the call-back */
+  fd_watch(r->socket,rhizome_client_poll,POLL_OUT);	
   
   /* Clear request type flags */
   r->request_type=0;
@@ -502,6 +462,7 @@ int rhizome_server_parse_http_request(int rn,rhizome_http_request *r)
     else if (sscanf(r->request,"GET /rhizome/file/%s HTTP/1.", id)==1)
       {
 	/* Stream the specified file */
+
 	int dud=0;
 	int i;
 	hexFilter(id);
