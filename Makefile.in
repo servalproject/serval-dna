@@ -51,7 +51,8 @@ SRCS=	main.c \
 	audiodevices.c \
 	audio_msm_g1.c \
 	audio_alsa.c \
-	audio_reflector.c
+	audio_reflector.c \
+	socket.c
 
 HAVE_VOIPTEST=	@HAVE_VOIPTEST@
 ifeq ($(HAVE_VOIPTEST), 1)
@@ -76,6 +77,7 @@ CFLAGS+=-Wall -Wno-unused-value
 #CFLAGS+=-Wunreachable-code
 #CFLAGS+=-O0
 CFLAGS+=-DDO_TIMING_CHECKS
+#CFLAGS+=-DUSE_ABSTRACT_NAMESPACE
 
 DEFS=	@DEFS@
 

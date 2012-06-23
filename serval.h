@@ -1166,8 +1166,7 @@ int overlay_mdp_poll();
 int overlay_mdp_reply_error(int sock,
 			    struct sockaddr_un *recvaddr,int recvaddrlen,
 			    int error_number,char *message);
-extern int mdp_abstract_socket;
-extern int mdp_named_socket;
+extern int mdp_socket;
 
 
 typedef struct sockaddr_mdp {
@@ -1539,5 +1538,12 @@ extern int sigIoFlag;
 void sigPipeHandler(int signal);
 void sigIoHandler(int signal);
 
+#ifdef USE_ABSTRACT_NAMESPACE
+/* Long ones for abstract name space */
 #define DEFAULT_MONITOR_SOCKET_NAME "org.servalproject.servald.monitor.socket"
 #define DEFAULT_MDP_SOCKET_NAME "org.servalproject.servald.mdp.socket"
+#else
+/* Short ones elsewhere */
+#define DEFAULT_MONITOR_SOCKET_NAME "monitor.socket"
+#define DEFAULT_MDP_SOCKET_NAME "mdp.socket"
+#endif

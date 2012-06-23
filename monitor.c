@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "socket.h"
 #include "rhizome.h"
 #include <sys/stat.h>
 
@@ -62,71 +63,49 @@ int monitor_process_command(int index,char *cmd);
 int monitor_process_data(int index);
 static void monitor_new_socket(int s);
 
-int monitor_named_socket=-1;
-int monitor_setup_sockets()
-{
-  struct sockaddr_un name;
-  int len;
+int monitor_named_socket = -1;
+int
+monitor_setup_sockets(void) {
+  int reuseP, send_buffer_size;
   
-  bzero(&name, sizeof(name));
-  name.sun_family = AF_UNIX;
-  
-  if (monitor_named_socket!=-1)
+  if (monitor_named_socket != -1)
       return 0;
   
   /* ignore SIGPIPE so that we don't explode */
   signal(SIGPIPE, SIG_IGN);
-  if ((monitor_named_socket = socket(AF_UNIX, SOCK_STREAM, 0))==-1) {
-    WHY_perror("socket");
-    goto error;
-  }
 
-#ifdef linux
-  /* Use abstract namespace as Android has no writable FS which supports sockets.
-     Abstract namespace is just plain better, anyway, as no dead files end up
-     hanging around. */
-  name.sun_path[0]=0;
-  /* XXX: 104 comes from OSX sys/un.h - no #define (note Linux has UNIX_PATH_MAX and it's 108(!)) */
-  snprintf(&name.sun_path[1],104-2,
-	   confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME));
-  /* Doesn't include trailing nul */
-  len = 1+strlen(&name.sun_path[1]) + sizeof(name.sun_family);
-#else
-  snprintf(name.sun_path,104-1,"%s/%s",
-	   serval_instancepath(),
-	   confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME));
-  unlink(name.sun_path);
-  /* Includes trailing nul */
-  len = 1+strlen(name.sun_path) + sizeof(name.sun_family);
-#endif
-
-  if(bind(monitor_named_socket, (struct sockaddr *)&name, len)==-1) {
+  if ((monitor_named_socket = socket_bind(confValueGet("monitor.socket", DEFAULT_MONITOR_SOCKET_NAME))) == -1) {
     WHY_perror("bind");
     goto error;
   }
-  if(listen(monitor_named_socket,MAX_MONITOR_SOCKETS)==-1) {
+
+  if (listen(monitor_named_socket,MAX_MONITOR_SOCKETS) == -1) {
     WHY_perror("listen");
     goto error;
   }
 
-  int reuseP=1;
-  if(setsockopt(monitor_named_socket, SOL_SOCKET, SO_REUSEADDR, 
-		&reuseP, sizeof(reuseP)) < 0) {
+  reuseP = 1;
+  if (setsockopt(monitor_named_socket, SOL_SOCKET, SO_REUSEADDR, 
+		 &reuseP, sizeof(reuseP)) < 0) {
     WHY_perror("setsockopt");
-    WHY("Could not indicate reuse addresses. Not necessarily a problem (yet)");
+    goto error;
   }
   
-  int send_buffer_size=64*1024;    
-  if(setsockopt(monitor_named_socket, SOL_SOCKET, SO_RCVBUF, 
-		&send_buffer_size, sizeof(send_buffer_size))==-1)
+  send_buffer_size = 64 * 1024;
+  if (setsockopt(monitor_named_socket, SOL_SOCKET, SO_RCVBUF, 
+		 &send_buffer_size, sizeof(send_buffer_size)) == -1) {
     WHY_perror("setsockopt");
-  if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) WHY("Monitor server socket setup");
+    goto error;
+  }
+  
+  if (debug & (DEBUG_IO | DEBUG_VERBOSE_IO)) WHY("Monitor server socket setup");
 
   return 0;
   
   error:
   close(monitor_named_socket);
-  monitor_named_socket=-1;
+  monitor_named_socket = -1;
+
   return -1;
 }
 
