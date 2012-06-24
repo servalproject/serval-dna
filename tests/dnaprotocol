@@ -37,8 +37,8 @@ setup_servald_instance() {
    push_instance
    set_instance "$1"
    executeOk_servald config set interfaces "+>$2"
-   executeOk_servald config set monitor.socket "org.servalproject.servald.monitor.socket.$1"
-   executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.$1"
+   executeOk_servald config set monitor.socket "monitor.socket.$1"
+   executeOk_servald config set mdp.socket "mdp.socket.$1"
    executeOk_servald keyring add
    assert [ -e "$SERVALINSTANCE_PATH/serval.keyring" ]
    executeOk_servald keyring list

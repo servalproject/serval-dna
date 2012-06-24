@@ -78,7 +78,8 @@ socket_setname(struct sockaddr_un *sockname, const char *name, socklen_t *len) {
 #ifdef USE_ABSTRACT_NAMESPACE
   sockname->sun_path[0] = 0;
   /* Note: -2 here not -1 because sprintf will put the trailling nul in */
-  *len = snprintf(sockname->sun_path + 1, sizeof(sockname->sun_path) - 2, "%s", name);
+  *len = snprintf(sockname->sun_path + 1, sizeof(sockname->sun_path) - 2, "%s.%s", 
+		  DEFAULT_ABSTRACT_PREFIX, name);
   if (*len > sizeof(sockname->sun_path) - 2)
     FATALF("Socket path too long (%d > %d)", *len, sizeof(sockname->sun_path) - 2);
 

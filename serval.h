@@ -1541,11 +1541,9 @@ void sigPipeHandler(int signal);
 void sigIoHandler(int signal);
 
 #ifdef USE_ABSTRACT_NAMESPACE
-/* Long ones for abstract name space */
-#define DEFAULT_MONITOR_SOCKET_NAME "org.servalproject.servald.monitor.socket"
-#define DEFAULT_MDP_SOCKET_NAME "org.servalproject.servald.mdp.socket"
-#else
-/* Short ones elsewhere */
+#define DEFAULT_ABSTRACT_PREFIX "org.servalproject.servald"
+#endif
+
 #define DEFAULT_MONITOR_SOCKET_NAME "monitor.socket"
 #define DEFAULT_MDP_SOCKET_NAME "mdp.socket"
-#endif
+
