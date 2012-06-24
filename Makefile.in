@@ -68,7 +68,8 @@ HDRS=	fifo.h \
 	serval.h \
 	strbuf.h \
 	sha2.h \
-	sqlite-amalgamation-3070900/sqlite3.h
+	sqlite-amalgamation-3070900/sqlite3.h \
+	socket.h
 
 LDFLAGS=@LDFLAGS@ @PORTAUDIO_LIBS@ @SRC_LIBS@ @SPANDSP_LIBS@ @CODEC2_LIBS@ @PTHREAD_LIBS@
 
