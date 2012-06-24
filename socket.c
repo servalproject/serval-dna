@@ -39,14 +39,23 @@
  * more than one servald on a given system.
 */
 int
-socket_bind(const char *name) {
-  int			s, oerrno;
+socket_bind(const char *name, int reuse) {
+    int			s, oerrno, reuseP;
   struct sockaddr_un	sockname;
   socklen_t		len;
   
   if ((s = socket(AF_UNIX, SOCK_STREAM, 0)) == -1)
     return -1;
 
+  if (reuse) {
+      reuseP = 1;
+      if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, 
+		    &reuseP, sizeof(reuseP)) < 0) {
+	  close(s);
+	  return -1;
+      }
+  }
+      
   socket_setname(&sockname, name, &len);
   unlink(sockname.sun_path);
 

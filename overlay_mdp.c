@@ -21,27 +21,16 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/stat.h>
 
 int mdp_socket = -1;
-int overlay_mdp_setup_sockets()
-{
-  struct sockaddr_un	name;
-  socklen_t		len;
-  int			reuseP, send_buffer_size;
+int
+overlay_mdp_setup_sockets(void) {
+  int			send_buffer_size;
   
   if (mdp_socket != -1)
       return 0;
 
-  socket_setname(&name, confValueGet("mdp.socket", DEFAULT_MDP_SOCKET_NAME), &len);
-  
-  mdp_socket = socket(AF_UNIX, SOCK_DGRAM, 0);
-  reuseP = 1;
-  if(setsockopt(mdp_socket, SOL_SOCKET, SO_REUSEADDR, 
-		&reuseP, sizeof(reuseP)) < 0) {
-	  WARN_perror("setsockopt");
-	  goto error;
-  }
-  if (bind(mdp_socket, (struct sockaddr *)&name, len) == -1) {
-      WARN_perror("bind");
-      goto error;
+  if ((mdp_socket = socket_bind(confValueGet("mdp.socket", DEFAULT_MDP_SOCKET_NAME), 1)) == -1) {
+    WHY_perror("socket_bind");
+    goto error;
   }
   
   send_buffer_size = 64 * 1024;    
