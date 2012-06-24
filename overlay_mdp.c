@@ -1175,10 +1175,15 @@ int overlay_mdp_client_init()
   return -1;
 }
 
+void
+overlay_mdp_server_done(void) {
+  socket_done(confValueGet("mdp.socket", DEFAULT_MDP_SOCKET_NAME));
+}
+
 int
 overlay_mdp_client_done(void) {
   overlay_mdp_frame	mdp;
-
+  
   if (mdp_client_socket != -1) {
     /* Tell MDP server to release all our bindings */
     mdp.packetTypeAndFlags=MDP_GOODBYE;

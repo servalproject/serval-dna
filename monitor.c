@@ -109,6 +109,12 @@ monitor_setup_sockets(void) {
   return -1;
 }
 
+void
+monitor_cleanup_sockets(void) {
+  socket_done(confValueGet("monitor.socket", DEFAULT_MONITOR_SOCKET_NAME));
+}
+
+
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
 {
   /* Make sure sockets are open */

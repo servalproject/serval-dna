@@ -289,13 +289,10 @@ void serverCleanUp()
   char filename[1024];
   if (FORM_SERVAL_INSTANCE_PATH(filename, PIDFILE_NAME))
     unlink(filename);
-  if (mdp_client_socket==-1) {
-    if (FORM_SERVAL_INSTANCE_PATH(filename, "mdp.socket")) {
-      unlink(filename);
-    }
-  } else {
-    overlay_mdp_client_done();
-  }
+
+  overlay_mdp_server_done();
+  overlay_mdp_client_done();
+  monitor_cleanup_sockets();
 }
 
 static void signame(char *buf, size_t len, int signal)
