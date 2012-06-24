@@ -40,7 +40,7 @@
 */
 int
 socket_bind(const char *name, int type, int reuse) {
-    int			s, oerrno, reuseP;
+  int			s, oerrno, reuseP;
   struct sockaddr_un	sockname;
   socklen_t		len;
   
