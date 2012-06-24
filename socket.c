@@ -39,12 +39,12 @@
  * more than one servald on a given system.
 */
 int
-socket_bind(const char *name, int reuse) {
+socket_bind(const char *name, int type, int reuse) {
     int			s, oerrno, reuseP;
   struct sockaddr_un	sockname;
   socklen_t		len;
   
-  if ((s = socket(AF_UNIX, SOCK_STREAM, 0)) == -1)
+  if ((s = socket(AF_UNIX, type, 0)) == -1)
     return -1;
 
   if (reuse) {

@@ -74,7 +74,8 @@ monitor_setup_sockets(void) {
   /* ignore SIGPIPE so that we don't explode */
   signal(SIGPIPE, SIG_IGN);
 
-  if ((monitor_named_socket = socket_bind(confValueGet("monitor.socket", DEFAULT_MONITOR_SOCKET_NAME), 0)) == -1) {
+  if ((monitor_named_socket = socket_bind(confValueGet("monitor.socket", DEFAULT_MONITOR_SOCKET_NAME), 
+					  SOCK_STREAM, 0)) == -1) {
     WHY_perror("bind");
     goto error;
   }

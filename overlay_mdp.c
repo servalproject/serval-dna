@@ -28,7 +28,7 @@ overlay_mdp_setup_sockets(void) {
   if (mdp_socket != -1)
       return 0;
 
-  if ((mdp_socket = socket_bind(confValueGet("mdp.socket", DEFAULT_MDP_SOCKET_NAME), 1)) == -1) {
+  if ((mdp_socket = socket_bind(confValueGet("mdp.socket", DEFAULT_MDP_SOCKET_NAME), SOCK_DGRAM, 1)) == -1) {
     WHY_perror("socket_bind");
     goto error;
   }
