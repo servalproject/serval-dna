@@ -409,7 +409,7 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
       }
     if (match>-1) {      
       struct sockaddr_un addr;
-      printf("unix domain socket '%s'\n",mdp_bindings_sockets[match]);
+      //INFOF("unix domain socket '%s'\n",mdp_bindings_sockets[match]);
       bcopy(mdp_bindings_sockets[match],&addr.sun_path[0],mdp_bindings_socket_name_lengths[match]);
       addr.sun_family=AF_UNIX;
       errno=0;
