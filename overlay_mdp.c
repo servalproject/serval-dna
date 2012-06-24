@@ -409,7 +409,7 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
       }
     if (match>-1) {      
       struct sockaddr_un addr;
-      //INFOF("unix domain socket '%s'\n",mdp_bindings_sockets[match]);
+      //INFOF("unix domain socket '%s'",mdp_bindings_sockets[match]);
       bcopy(mdp_bindings_sockets[match],&addr.sun_path[0],mdp_bindings_socket_name_lengths[match]);
       addr.sun_family=AF_UNIX;
       errno=0;
@@ -420,7 +420,7 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
       }
       if (errno==ENOENT) {
 	/* far-end of socket has died, so drop binding */
-	printf("Closing dead MDP client '%s'\n",mdp_bindings_sockets[match]);
+	INFOF("Closing dead MDP client '%s'",mdp_bindings_sockets[match]);
 	overlay_mdp_releasebindings(&addr,mdp_bindings_socket_name_lengths[match]);
       }
       WHY_perror("sendto(e)");
@@ -620,10 +620,10 @@ int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,int userGeneratedFrameP,
     }      
   } 
 
-  printf("addr=%s port=%u (0x%x)\n",
-	 overlay_render_sid(src->sid),src->port,src->port);
-  if (recvaddr) printf("recvaddr='%s'\n",
-	 recvaddr->sun_path);
+  INFOF("addr=%s port=%u (0x%x)",
+	overlay_render_sid(src->sid),src->port,src->port);
+  if (recvaddr) INFOF("recvaddr='%s'",
+		      recvaddr->sun_path);
   return WHY("No such socket binding:unix domain socket tuple exists -- someone might be trying to spoof someone else's connection");
 }
 
@@ -751,8 +751,8 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 	dump("nonce",nonce,crypto_box_curve25519xsalsa20poly1305_NONCEBYTES);
 	dump("plain text",&plain[16],cipher_len-16);
 	dump("cipher text",cipher_text,cipher_len-16);	
-	printf("frame->payload->length=%d,cipher_len-16=%d,cipher_offset=%d\n",
-	       frame->payload->length,cipher_len-16,cipher_offset);
+	INFOF("frame->payload->length=%d,cipher_len-16=%d,cipher_offset=%d",
+	      frame->payload->length,cipher_len-16,cipher_offset);
 	dump("frame",&frame->payload->bytes[0],
 	     frame->payload->length);
       }
@@ -1266,10 +1266,10 @@ int overlay_mdp_bind(unsigned char *localaddr,int port)
   int result=overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000);
   if (result) {
     if (mdp.packetTypeAndFlags==MDP_ERROR)
-      fprintf(stderr,"Could not bind to MDP port %d: error=%d, message='%s'\n",
-	      port,mdp.error.error,mdp.error.message);
+      WHYF("Could not bind to MDP port %d: error=%d, message='%s'",
+	    port,mdp.error.error,mdp.error.message);
     else
-      fprintf(stderr,"Could not bind to MDP port %d (no reason given)\n",port);
+      WHYF("Could not bind to MDP port %d (no reason given)",port);
     return -1;
   }
   return 0;
@@ -1288,12 +1288,12 @@ int overlay_mdp_getmyaddr(int index,unsigned char *sid)
   if (result) {
     if (a.packetTypeAndFlags==MDP_ERROR)
       {
-	fprintf(stderr,"Could not get list of local MDP addresses\n");
-	fprintf(stderr,"  MDP Server error #%d: '%s'\n",
-		a.error.error,a.error.message);
+	WHYF("Could not get list of local MDP addresses");
+	WHYF("  MDP Server error #%d: '%s'",
+	     a.error.error,a.error.message);
       }
     else
-      fprintf(stderr,"Could not get list of local MDP addresses\n");
+      WARNF("Could not get list of local MDP addresses");
     return WHY("Failed to get local address list");
   }
   if ((a.packetTypeAndFlags&MDP_TYPE_MASK)!=MDP_ADDRLIST)
