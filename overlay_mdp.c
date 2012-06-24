@@ -1210,12 +1210,16 @@ int overlay_mdp_client_poll(long long timeout_ms)
 
 int overlay_mdp_recv(overlay_mdp_frame *mdp,int *ttl) 
 {
-  char mdp_socket_name[101];
-  if (!FORM_SERVAL_INSTANCE_PATH(mdp_socket_name, "mdp.socket"))
-    return WHY("Could not find mdp socket");
+  struct sockaddr_un mdpname;
+  socklen_t mdplen;
+  
+  socket_setname(&mdpname, confValueGet("mdp.socket", DEFAULT_MDP_SOCKET_NAME), &mdplen);
+
   /* Check if reply available */
   fcntl(mdp_client_socket, F_SETFL, fcntl(mdp_client_socket, F_GETFL, NULL)|O_NONBLOCK); 
+  /* XXX: Why not just pass in a struct sockaddr_un? DOC 2012/06/24 */
   unsigned char recvaddrbuffer[1024];
+  bzero(recvaddrbuffer, sizeof(recvaddrbuffer));
   struct sockaddr *recvaddr=(struct sockaddr *)recvaddrbuffer;
   unsigned int recvaddrlen=sizeof(recvaddrbuffer);
   struct sockaddr_un *recvaddr_un;
@@ -1223,24 +1227,23 @@ int overlay_mdp_recv(overlay_mdp_frame *mdp,int *ttl)
   int len = recvwithttl(mdp_client_socket,(unsigned char *)mdp,
 		    sizeof(overlay_mdp_frame),ttl,recvaddr,&recvaddrlen);
   recvaddr_un=(struct sockaddr_un *)recvaddr;
-  /* Null terminate received address so that the stat() call below can succeed */
-  if (recvaddrlen<1024) recvaddrbuffer[recvaddrlen]=0;
+
   if (len>0) {
-#ifndef USE_ABSTRACT_NAMESPACE
     /* Make sure recvaddr matches who we sent it to */
-    if (strncmp(mdp_socket_name, recvaddr_un->sun_path, sizeof(recvaddr_un->sun_path))) {
+#ifndef USE_ABSTRACT_NAMESPACE
+    if (strncmp(mdpname.sun_path, recvaddr_un->sun_path, sizeof(recvaddr_un->sun_path))) {
       /* Okay, reply was PROBABLY not from the server, but on OSX if the path
 	 has a symlink in it, it is resolved in the reply path, but might not
 	 be in the request path (mdp_socket_name), thus we need to stat() and
 	 compare inode numbers etc */
       struct stat sb1,sb2;
-      if (stat(mdp_socket_name,&sb1)) return WHY("stat(mdp_socket_name) failed, so could not verify that reply came from MDP server");
+      if (stat(mdpname.sun_path,&sb1)) return WHY("stat(mdp_socket_name) failed, so could not verify that reply came from MDP server");
       if (stat(recvaddr_un->sun_path,&sb2)) return WHY("stat(ra->sun_path) failed, so could not verify that reply came from MDP server");
       if ((sb1.st_ino!=sb2.st_ino)||(sb1.st_dev!=sb2.st_dev))
 	return WHY("Reply did not come from server");
     }
 #endif
-    
+    /* XXX: Should check abstract namespace socket - DOC 2012/06/24 */
     int expected_len = overlay_mdp_relevant_bytes(mdp);
     
     if (len < expected_len){
