@@ -415,6 +415,7 @@ int vomp_call_destroy(vomp_call_state *call)
 	  call->local.did,call->remote.did);
 
   /* tell everyone the call has died */
+  call->local.state=VOMP_STATE_CALLENDED; call->remote.state=VOMP_STATE_CALLENDED;
   vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED,NULL);
 
   /* now release the call structure */
