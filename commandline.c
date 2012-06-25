@@ -661,7 +661,7 @@ int cli_absolute_path(const char *arg)
 
 int
 app_server_start(int argc, const char *const *argv, struct command_line_option *o) {
-  int		pid, foregroundP, ret, fd;
+  int		pid, foregroundP, fd;
   const char	*execpath, *interfaces;
   pid_t		newgrp, cpid;
   
@@ -691,7 +691,6 @@ app_server_start(int argc, const char *const *argv, struct command_line_option *
   if (pid < 0)
     return WHY("Failed to get server PID");
 
-  ret = 1;
   if (pid > 0) {
     WHYF("Serval process already running (pid=%d)", pid);
     return 0;
@@ -940,7 +939,7 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
 		     overlay_render_sid(mdp.in.src.sid),(*rxseq)-firstSeq+1,delay,
 		     mdp.packetTypeAndFlags&MDP_NOCRYPT?"":" ENCRYPTED",
 		     mdp.packetTypeAndFlags&MDP_NOSIGN?"":" SIGNED");
-	     #warning put duplicate pong detection here so that stats work properly
+	      // TODO Put duplicate pong detection here so that stats work properly.
 	      rx_count++;
 	      rx_ms+=delay;
 	      if (rx_mintime>delay||rx_mintime==-1) rx_mintime=delay;
@@ -1150,7 +1149,6 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
     return -1;
   /* Create a new manifest that will represent the file.  If a manifest file was supplied, then read
    * it, otherwise create a blank manifest. */
-  int manifest_file_supplied = 0;
   rhizome_manifest *m = rhizome_new_manifest();
   if (!m)
     return WHY("Manifest struct could not be allocated -- not added to rhizome");
@@ -1163,7 +1161,6 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
       rhizome_manifest_free(m);
       return WHY("Manifest file could not be loaded -- not added to rhizome");
     }
-    manifest_file_supplied = 1;
   } else {
     if (debug & DEBUG_RHIZOME) DEBUGF("manifest file %s does not exist -- creating new manifest", manifestpath);
   }
@@ -1231,14 +1228,11 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
     m = NULL;
     return WHY("Could not extract BID secret key. Does the manifest have a BK?");
   }
-#warning need to sanely determine whether to encrypt a file
-#warning payload encryption disabled for now
-  int encryptP=0;
-  if (rhizome_manifest_bind_file(m,filepath,encryptP)) {
+  int encryptP = 0; // TODO Determine here whether payload is to be encrypted.
+  if (rhizome_manifest_bind_file(m, filepath, encryptP)) {
     rhizome_manifest_free(m);
     return WHYF("Could not bind manifest to file '%s'",filepath);
   }
-  
   /* Add the manifest and its associated file to the Rhizome database, generating an "id" in the
    * process */
   rhizome_manifest *mout = NULL;
