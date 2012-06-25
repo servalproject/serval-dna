@@ -1490,7 +1490,7 @@ int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int monitor_call_status(vomp_call_state *call);
 int monitor_send_audio(vomp_call_state *call,overlay_mdp_frame *audio);
 int monitor_announce_peer(unsigned char *sid);
-int monitor_tell_clients(unsigned char *msg,int msglen,int mask);
+int monitor_tell_clients(char *msg, int msglen, int mask);
 extern int monitor_socket_count;
 
 

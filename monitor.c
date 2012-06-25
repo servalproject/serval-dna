@@ -660,9 +660,9 @@ int monitor_call_status(vomp_call_state *call)
 
 int monitor_announce_peer(unsigned char *sid)
 {
-  unsigned char msg[1024];
-  snprintf((char *)msg,1024,"\nNEWPEER:%s\n",overlay_render_sid(sid));
-  monitor_tell_clients(msg,strlen((char *)msg),MONITOR_PEERS);
+  char msg[1024];
+  int n = snprintf(msg, sizeof msg, "\nNEWPEER:%s\n",overlay_render_sid(sid));
+  monitor_tell_clients(msg, n, MONITOR_PEERS);
   return 0;
 }
 
@@ -670,14 +670,13 @@ int monitor_send_audio(vomp_call_state *call,overlay_mdp_frame *audio)
 {
   if (0) WHYF("Tell call monitor about audio for call %06x:%06x",
 	      call->local.session,call->remote.session);
-
   int sample_bytes=vomp_sample_size(audio->vompevent.audio_sample_codec);
-  unsigned char msg[1024+MAX_AUDIO_BYTES];
+  char msg[1024 + MAX_AUDIO_BYTES];
   /* All commands followed by binary data start with *len:, so that 
      they can be easily parsed at the far end, even if not supported.
      Put newline at start of these so that receiving data in command
      mode doesn't confuse the parser.  */
-  snprintf((char *)msg,1024,
+  int msglen = snprintf(msg, 1024,
 	   "\n*%d:AUDIOPACKET:%06x:%06x:%d:%d:%d:%lld:%lld\n",
 	   sample_bytes,
 	   call->local.session,call->remote.session,
@@ -685,17 +684,13 @@ int monitor_send_audio(vomp_call_state *call,overlay_mdp_frame *audio)
 	   audio->vompevent.audio_sample_codec,
 	   audio->vompevent.audio_sample_starttime,
 	   audio->vompevent.audio_sample_endtime);
-  int msglen=strlen((char *)msg);
-  bcopy(&audio->vompevent.audio_bytes[0],
-	&msg[msglen],sample_bytes);
+  bcopy(&audio->vompevent.audio_bytes[0], &msg[msglen], sample_bytes);
   msglen+=sample_bytes;
-
-  monitor_tell_clients(msg,msglen,MONITOR_VOMP);
-
+  monitor_tell_clients(msg, msglen, MONITOR_VOMP);
   return 0;
 }
 
-int monitor_tell_clients(unsigned char *msg,int msglen,int mask)
+int monitor_tell_clients(char *msg, int msglen, int mask)
 {
   int i;
   for(i=0;i<monitor_socket_count;i++)
