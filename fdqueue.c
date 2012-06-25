@@ -373,7 +373,8 @@ int fd_showstats()
   fd_showstat(&total,&total,"TOTAL");
   INFOF("servald function time statistics:");
   for(i=0;i<func_count;i++)
-    fd_showstat(&total,&called_funcs[i],called_func_names[i]);
+    if (called_funcs[i].calls)
+      fd_showstat(&total,&called_funcs[i],called_func_names[i]);
 
   return 0;
 }
