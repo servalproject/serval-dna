@@ -69,6 +69,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "strbuf.h"
 
 /* @PGS/20120615 */
 int last_valid=0;
@@ -90,10 +91,9 @@ void _TIMING_CHECK(const char *file,const char *func,int line)
   if (last_valid) {
     if (now-last_time>5) {
       // More than 5ms spent in a given task, complain
-      char msg[1024];
-      snprintf(msg,1024,"Spent %lldms between %s:%d in %s() and here",
-	       now-last_time,last_file,last_line,last_func);
-      logMessage(LOG_LEVEL_WARN,file,line,func,"%s",msg);
+      logMessage(LOG_LEVEL_WARN, file, line, func,
+	  "Spent %lldms between %s:%d in %s() and here",
+	  now - last_time, last_file, last_line, last_func);
     }
   }
 
@@ -115,8 +115,8 @@ int overlayServerMode()
 {
   /* In overlay mode we need to listen to all of our sockets, and also to
      send periodic traffic. This means we need to */
-  fprintf(stderr,"Running in overlay mode.\n");
-  
+  INFO("Running in overlay mode.");
+
   /* Get keyring available for use.
      Required for MDP, and very soon as a complete replacement for the
      HLR for DNA lookups, even in non-overlay mode. */
@@ -187,10 +187,10 @@ int overlayServerMode()
 	if ((!overlay_interfaces[i].fileP)&&(fdcount<128))
 	  {
     	    if (debug&DEBUG_IO) {
-	      fprintf(stderr,"Interface %s is poll() slot #%d (fd %d)\n",      
-		      overlay_interfaces[i].name,
-		      fdcount,
-		      overlay_interfaces[i].fd);
+	      DEBUGF("Interface %s is poll() slot #%d (fd %d)",
+		     overlay_interfaces[i].name,
+		     fdcount,
+		     overlay_interfaces[i].fd);
 	    }
 	    fds[fdcount].fd=overlay_interfaces[i].fd;
 	    fds[fdcount].events=POLLRDNORM;
@@ -239,21 +239,21 @@ int overlayServerMode()
     if (r > 0) {
       /* We have data, so try to receive it */
       if (debug&DEBUG_IO) {
-	fprintf(stderr,"poll() reports %d fds ready\n",r);
+	DEBUGF("poll() reports %d fds ready", r);
 	int i;
 	for(i=0;i<fdcount;i++) {
-	  if (fds[i].revents) 
-	    {
-	      fprintf(stderr,"   #%d (fd %d): %d (",i,fds[i].fd,fds[i].revents);
-	      if ((fds[i].revents&POLL_IN)==POLL_IN) fprintf(stderr,"POLL_IN,");
-	      if ((fds[i].revents&POLLRDNORM)==POLLRDNORM) fprintf(stderr,"POLLRDNORM,");
-	      if ((fds[i].revents&POLL_OUT)==POLL_OUT) fprintf(stderr,"POLL_OUT,");
-	      if ((fds[i].revents&POLL_ERR)==POLL_ERR) fprintf(stderr,"POLL_ERR,");
-	      if ((fds[i].revents&POLL_HUP)==POLL_HUP) fprintf(stderr,"POLL_HUP,");
-	      if ((fds[i].revents&POLLNVAL)==POLLNVAL) fprintf(stderr,"POLL_NVAL,");
-	      fprintf(stderr,")\n");
-	    }
-	  
+	  if (fds[i].revents) {
+	    strbuf b = strbuf_alloca(120);
+	    strbuf_sprintf(b, "   #%d (fd %d): %d (",i,fds[i].fd,fds[i].revents);
+	    if ((fds[i].revents&POLL_IN)==POLL_IN) strbuf_puts(b, "POLL_IN,");
+	    if ((fds[i].revents&POLLRDNORM)==POLLRDNORM) strbuf_puts(b, "POLLRDNORM,");
+	    if ((fds[i].revents&POLL_OUT)==POLL_OUT) strbuf_puts(b, "POLL_OUT,");
+	    if ((fds[i].revents&POLL_ERR)==POLL_ERR) strbuf_puts(b, "POLL_ERR,");
+	    if ((fds[i].revents&POLL_HUP)==POLL_HUP) strbuf_puts(b, "POLL_HUP,");
+	    if ((fds[i].revents&POLLNVAL)==POLLNVAL) strbuf_puts(b, "POLL_NVAL,");
+	    strbuf_puts(b, ")");
+	    DEBUG(strbuf_str(b));
+	  }
 	}
       }
       TIMING_CHECK();
@@ -273,7 +273,7 @@ int overlayServerMode()
     } else {
       /* No data before tick occurred, so do nothing.
 	 Well, for now let's just check anyway. */
-      if (debug&DEBUG_IO) fprintf(stderr,"poll() timeout.\n");
+      if (debug&DEBUG_IO) DEBUGF("poll() timeout");
       TIMING_CHECK();
       overlay_rx_messages();
       TIMING_CHECK();
@@ -307,7 +307,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
   if (f->source_address_status==OA_RESOLVED&&overlay_address_is_local(f->source))
       return WHY("Dropping frame claiming to come from myself.");
 
-  if (debug&DEBUG_OVERLAYFRAMES) fprintf(stderr,">>> Received frame (type=%02x, bytes=%d)\n",f->type,f->payload?f->payload->length:-1);
+  if (debug&DEBUG_OVERLAYFRAMES) DEBUGF(">>> Received frame (type=%02x, bytes=%d)",f->type,f->payload?f->payload->length:-1);
 
   /* First order of business is whether the nexthop address has been resolved.
      If not, we need to think about asking for it to be resolved.
@@ -361,14 +361,24 @@ int overlay_frame_process(int interface,overlay_frame *f)
     /* It's for us, so resolve the addresses */
     if (overlay_frame_resolve_addresses(interface,f))
       return WHY("Failed to resolve destination and sender addresses in frame");
-    broadcast=overlay_address_is_broadcast(f->destination);    
+    broadcast=overlay_address_is_broadcast(f->destination);
     if (debug&DEBUG_OVERLAYFRAMES) {
-      fprintf(stderr,"Destination for this frame is (resolve code=%d): ",f->destination_address_status);
-      if (f->destination_address_status==OA_RESOLVED) for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",f->destination[i]); else fprintf(stderr,"???");
-      fprintf(stderr,"\n");
-      fprintf(stderr,"Source for this frame is (resolve code=%d): ",f->source_address_status);
-      if (f->source_address_status==OA_RESOLVED) for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",f->source[i]); else fprintf(stderr,"???");
-      fprintf(stderr,"\n");
+      strbuf b = strbuf_alloca(1024);
+      strbuf_sprintf(b, "Destination for this frame is (resolve code=%d): ", f->destination_address_status);
+      if (f->destination_address_status==OA_RESOLVED)
+	for(i=0;i<SID_SIZE;i++)
+	  strbuf_sprintf(b, "%02x", f->destination[i]);
+      else
+	strbuf_puts(b, "???");
+      DEBUG(strbuf_str(b));
+      strbuf_reset(b);
+      strbuf_sprintf(b, "Source for this frame is (resolve code=%d): ", f->source_address_status);
+      if (f->source_address_status==OA_RESOLVED)
+	for(i=0;i<SID_SIZE;i++)
+	  strbuf_sprintf(b, "%02x", f->source[i]);
+      else
+	strbuf_puts(b, "???");
+      DEBUG(strbuf_str(b));
     }
 
     if (f->source_address_status!=OA_RESOLVED) {
@@ -395,14 +405,13 @@ int overlay_frame_process(int interface,overlay_frame *f)
   }
 
   if (debug&DEBUG_OVERLAYFRAMES) {
-    fprintf(stderr,"This frame does%s have me listed as next hop.\n",forMe?"":" not");
-    fprintf(stderr,"This frame is%s for me.\n",ultimatelyForMe?"":" not");
-    fprintf(stderr,"This frame is%s%s broadcast.\n",
-	    broadcast?"":" not",duplicateBroadcast?" a duplicate":"");
+    DEBUGF("This frame does%s have me listed as next hop.", forMe?"":" not");
+    DEBUGF("This frame is%s for me.", ultimatelyForMe?"":" not");
+    DEBUGF("This frame is%s%s broadcast.", broadcast?"":" not",duplicateBroadcast?" a duplicate":"");
   }
 
   if (duplicateBroadcast) {
-    if (0) WHY("Packet is duplicate broadcast");
+    if (0) DEBUG("Packet is duplicate broadcast");
     return 0;
   }
 
@@ -428,9 +437,9 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	  // forward that either.
 	  if (debug&DEBUG_BROADCASTS)
 	    if (duplicateBroadcast)
-	      fprintf(stderr,"Dropping broadcast frame (BPI seen before)\n");
+	      DEBUG("Dropping broadcast frame (BPI seen before)");
 	} else {
-	if (debug&DEBUG_OVERLAYFRAMES) fprintf(stderr,"\nForwarding frame.\n");
+	if (debug&DEBUG_OVERLAYFRAMES) DEBUG("Forwarding frame");
 	int dontForward=0;
 	if (!broadcast) {
 	  if (overlay_get_nexthop(f->destination,f->nexthop,&len,
@@ -441,7 +450,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	f->ttl--;
 
 	if (0)
-	  printf("considering forwarding frame to %s (forme=%d, bcast=%d, dup=%d)\n",
+	  DEBUGF("considering forwarding frame to %s (forme=%d, bcast=%d, dup=%d)",
 		 overlay_render_sid(f->destination),ultimatelyForMe,broadcast,
 		 duplicateBroadcast);
 
@@ -451,20 +460,18 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	       not to be a duplicate, then we don't need to test the destination
 	       address for being a duplicate broadcast. */
 	    int sameAsNextHop=1,i;
-	    for(i=0;i<SID_SIZE;i++) 
+	    for(i=0;i<SID_SIZE;i++)
 	      if (f->nexthop[i]!=f->destination[i])
 		{ sameAsNextHop=0; break; }
 
 	    if ((!sameAsNextHop)&&overlay_broadcast_drop_check(f->destination))
 	      duplicateBroadcast=1;
-	    if (duplicateBroadcast)
-	      { 
-		printf("reject src is %s\n",overlay_render_sid(f->source));
-		printf("reject nexthop is %s\n",overlay_render_sid(f->nexthop));
-		printf("reject destination is %s\n",
-		       overlay_render_sid(f->destination));		
-		return WHY("Not forwarding or reading duplicate broadcast");
-	      }
+	    if (duplicateBroadcast) {
+	      DEBUGF("reject src is %s", overlay_render_sid(f->source));
+	      DEBUGF("reject nexthop is %s", overlay_render_sid(f->nexthop));
+	      DEBUGF("reject destination is %s", overlay_render_sid(f->destination));
+	      return WHY("Not forwarding or reading duplicate broadcast");
+	    }
 	  }
 
 	if (!dontForward) {
@@ -516,18 +523,16 @@ int overlay_frame_process(int interface,overlay_frame *f)
     case OF_TYPE_DATA:
     case OF_TYPE_DATA_VOICE:
       if (0) {
-	WHY("saw mdp containing frame");
-	printf("  src = %s\n",overlay_render_sid(f->source));
-	printf("  nxt = %s\n",overlay_render_sid(f->nexthop));
-	printf("  dst = %s\n",overlay_render_sid(f->destination));
-	fflush(stdout);
-	dump("payload",&f->payload->bytes[0],f->payload->length);
-	fflush(stdout);
+	DEBUG("saw mdp containing frame");
+	DEBUGF("  src = %s\n",overlay_render_sid(f->source));
+	DEBUGF("  nxt = %s\n",overlay_render_sid(f->nexthop));
+	DEBUGF("  dst = %s\n",overlay_render_sid(f->destination));
+	dump("payload", f->payload->bytes, f->payload->length);
       }
       overlay_saw_mdp_containing_frame(interface,f,now);
       break;
     default:
-      fprintf(stderr,"Unsupported f->type=0x%x\n",f->type);
+      DEBUGF("Unsupported f->type=0x%x",f->type);
       return WHY("Support for that f->type not yet implemented");
       break;
     }
