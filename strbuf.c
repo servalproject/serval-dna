@@ -26,8 +26,14 @@ static inline size_t min(size_t a, size_t b) {
 
 strbuf strbuf_init(strbuf sb, char *buffer, size_t size)
 {
-  sb->start = sb->current = buffer;
+  sb->start = buffer;
   sb->end = sb->start + size - 1;
+  return strbuf_reset(sb);
+}
+
+strbuf strbuf_reset(strbuf sb)
+{
+  sb->current = sb->start;
   if (sb->start && sb->end >= sb->start) {
     *sb->start = '\0';
     *sb->end = '\0'; // should never get overwritten

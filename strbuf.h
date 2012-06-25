@@ -184,6 +184,20 @@ __STRBUF_INLINE strbuf strbuf_make(char *buffer, size_t size) {
 }
 
 
+/** Reset a strbuf.  The current position is set to the start of the buffer, so
+ * the next append will write at the start of the buffer.  The prior contents
+ * of the buffer are forgotten and will be overwritten.
+ *
+ * Immediately following strbuf_reset(sb), the following properties hold:
+ *      strbuf_len(sb) == 0
+ *      strbuf_count(sb) == 0
+ *      strbuf_str()[0] == '\0'
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+strbuf strbuf_reset(strbuf sb);
+
+
 /** Append a null-terminated string to the strbuf up to a maximum number,
  * truncating if necessary to avoid buffer overrun, and terminating with a nul
  * which is not counted in the maximum.  Return a pointer to the strbuf so that
@@ -256,6 +270,7 @@ strbuf strbuf_putc(strbuf sb, char ch);
  */
 int strbuf_sprintf(strbuf sb, const char *fmt, ...);
 int strbuf_vsprintf(strbuf sb, const char *fmt, va_list ap);
+
 
 /** Return a pointer to the current null-terminated string in the strbuf.
  *
