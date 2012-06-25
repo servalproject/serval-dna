@@ -689,11 +689,12 @@ app_server_start(int argc, const char *const *argv, struct command_line_option *
 
   pid = server_pid();
   if (pid < 0)
-    return -1;
+    return WHY("Failed to get server PID");
 
   ret = 1;
   if (pid > 0) {
-    return WHYF("Serval process already running (pid=%d)", pid);
+    WHYF("Serval process already running (pid=%d)", pid);
+    return 0;
   }
   
   /* Start the Serval process.  All server settings will be read by the server process from the
