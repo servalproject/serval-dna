@@ -314,7 +314,9 @@ void overlay_interface_poll(int fd)
       
       /* Read from UDP socket */
       plen=1;
-      while (plen>0) {
+      /* Read only one packet per call to share resources more fairly, and also
+	 enable stats to accurately count packets received */
+      //      while (plen>0) {
 	int recvttl=1;
 	fcntl(overlay_interfaces[i].fd, F_SETFL, 
 	      fcntl(overlay_interfaces[i].fd, F_GETFL, NULL)|O_NONBLOCK);
@@ -338,7 +340,7 @@ void overlay_interface_poll(int fd)
 	    serval_packetvisualise(stderr,"Malformed packet", packet,plen);
 	  }
 	}
-      }
+	// }
       return;
     }
 
