@@ -475,9 +475,6 @@ int hlrSetVariable(unsigned char *hlr,int hofs,int varid,int varinstance,
 		   unsigned char *value,int len);
 int extractDid(unsigned char *packet,int *ofs,char *did);
 char *hlrSid(unsigned char *hlr, int ofs, char *sid);
-int writeItem(char *sid,int var_id,int instance,unsigned char *value,
-	      int value_start,int value_length,int flags, 
-	      int recvttl,struct sockaddr *recvaddr);
 int packetAddVariableWrite(unsigned char *packet,int packet_maxlen,int *packet_len,
 			   int itemId,int instance,unsigned char *value,int start_offset,int value_len,int flags);
 int processRequest(unsigned char *packet,int len,struct sockaddr *sender,int sender_len,
@@ -499,7 +496,6 @@ int readRoutingTable(struct in_addr peers[],int *peer_count,int peer_max);
 int readBatmanPeerFile(char *file_path,struct in_addr peers[],int *peer_count,int peer_max);
 int getBatmanPeerList(char *socket_path,struct in_addr peers[],int *peer_count,int peer_max);
 int hlrDump(unsigned char *hlr,int hofs);
-int peerAddress(char *did,char *sid,int flags);
 int fixResponses(struct response_set *responses);
 int importHlr(char *textfile);
 int exportHlr(unsigned char *hlr,char *text);

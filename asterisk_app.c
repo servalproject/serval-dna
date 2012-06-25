@@ -67,11 +67,8 @@ static char *handle_cli_sdnalookup(int fd, int argc, char *argv[])
 
    did=argv[3];
 
-   if (requestItem(did,sid,"locations",instance,buffer,sizeof(buffer),&len,NULL))
-     {
-       ast_cli(fd,"Serval DNA Lookup: requestItem() failed (len=%d).\n\n",len);
-       return RESULT_FAILURE;
-     }
+   ast_cli(fd,"Serval DNA Lookup: NOT IMPLEMENTED\n\n",len);
+   return RESULT_FAILURE;
    
    buffer[len]=0;
    ast_cli(fd,"%s resolves to %s (len=%d)\n",did,buffer,len);
@@ -199,12 +196,10 @@ static int sdnalookup_exec(struct ast_channel *chan, void *data)
      (b) retrieve the SID for the DID for further use
      (c) fetch the voicesig as well if requested 
   */
-  if (requestItem(did,sid,"locations",instance,buffer,sizeof(buffer),&len,NULL))
-    {
-      pbx_builtin_setvar_helper(chan,"SNASTATUS","FAILED");
-      if (debug) fprintf(stderr,"SDNASTATUS=FAILED\n");
-      return -1;
-    }
+  // NOT IMPLEMENTED
+  pbx_builtin_setvar_helper(chan,"SNASTATUS","FAILED");
+  if (debug) fprintf(stderr,"SDNASTATUS=FAILED\n");
+  return -1;
 
   /* It worked, so set appropriate variables and return happily */
   pbx_builtin_setvar_helper(chan,"SNADID",did);

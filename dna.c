@@ -27,21 +27,12 @@ int usage(char *complaint)
   fprintf(stderr,"usage:\n");
   fprintf(stderr,"   dna [-v <flags>] -S [-f keyring file] [-N interface,...] [-G gateway specification] [-r rhizome path]\n");
   fprintf(stderr,"or\n");
-  fprintf(stderr,"   dna <-d|-s> id -A\n");
-  fprintf(stderr,"or\n");
-  fprintf(stderr,"   dna <-d|-s> id [-p pin] [-i variable instance] <-R variable[=value]>\n");
-  fprintf(stderr,"       [-v <flags>] [-t request timeout in ms] [-O output file name template]\n");
-  fprintf(stderr,"or\n");
-  fprintf(stderr,"   dna <-d|-s> id [-p pin] [-i variable instance] <-W|-U|-D variable[=[$|@]value]>\n");
-  fprintf(stderr,"       [-v <flags>] [-t request timeout in ms]\n");
-  fprintf(stderr,"or\n");
   fprintf(stderr,"   dna [-v <flags>] [-t timeout] -d did -C\n");
   fprintf(stderr,"or\n");
   fprintf(stderr,"   dna [-v <flags>] -f <keyring file> -E <export.txt>\n");
 
   fprintf(stderr,"\n");
   fprintf(stderr,"       -v - Set verbosity.\n");
-  fprintf(stderr,"       -A - Ask for address of subscriber.\n");
   fprintf(stderr,"       -b - Specify BATMAN socket to obtain peer list (flaky).\n");
   fprintf(stderr,"       -l - Specify BATMAN socket to obtain peer list (better, but requires Serval patched BATMAN).\n");
   fprintf(stderr,"       -L - Log mesh statistics to specified file.\n");
@@ -50,23 +41,15 @@ int usage(char *complaint)
   fprintf(stderr,"       -n - Do not detach from foreground in server mode.\n");
   fprintf(stderr,"       -S - Run in server mode.\n");
   fprintf(stderr,"       -f - Location of keyring file.\n");
-  fprintf(stderr,"       -d - Search by Direct Inward Dial (DID) number.\n");
-  fprintf(stderr,"       -s - Search by Subscriber ID (SID) number.\n");
   fprintf(stderr,"       -p - Specify additional DNA nodes to query.\n");
   fprintf(stderr,"       -P - Authenticate using the supplied pin.\n");
   fprintf(stderr,"       -r - Enable Rhizome store-and-forward transport using the specified data store directory.\n");
   fprintf(stderr,"            To limit the storage: echo space=[KB] > path/rhizome.conf\n");
-  fprintf(stderr,"       -R - Read a variable value.\n");
   fprintf(stderr,"       -O - Place read variable value into files using argument as a template.\n");
   fprintf(stderr,"            The following template codes can be used (interpretted by sprintf):\n");
   fprintf(stderr,"               %%1$s - Subscriber ID\n");
   fprintf(stderr,"               %%2$d - Variable ID (0-255)\n");
   fprintf(stderr,"               %%3$d - Variable instance number (0-255)\n");
-  fprintf(stderr,"       -W - Write a variable value, keeping previous values.\n");
-  fprintf(stderr,"       -U - Update a variable value, replacing the previous value.\n");
-  fprintf(stderr,"       -D - Delete a variable value.\n");
-  fprintf(stderr,"            $value means interpret value as hexidecimal bytes.\n");
-  fprintf(stderr,"            @value means read value from file called value.\n");
   fprintf(stderr,"       -C - Request the creation of a new subscriber with the specified DID.\n");
   fprintf(stderr,"       -t - Specify the request timeout period.\n");
   fprintf(stderr,"       -G - Offer gateway services.  Argument specifies locations of necessary files.\n");
@@ -82,8 +65,6 @@ int parseOldCommandLine(int argc, char **argv)
 {
   int c;
   //char *pin=NULL;
-  char *did=NULL;
-  char *sid=NULL;
   char *keyring_file=NULL;
   int instance=-1;
   int foregroundMode=0;
@@ -91,7 +72,7 @@ int parseOldCommandLine(int argc, char **argv)
   const char *rhizome_path = NULL;
   WARNF("The use of the old command line structure is being deprecated.");
   WARNF("Type '%s help' to learn about the new command line structure.", argv[0]);
-  while ((c = getopt(argc,argv,"Ab:B:E:G:I:Sf:d:i:l:L:mnp:P:r:s:t:v:R:W:U:D:CO:N:")) != -1) {
+  while ((c = getopt(argc,argv,"b:B:E:G:I:Sf:i:l:L:mnp:P:r:t:v:CO:N:")) != -1) {
       switch(c)
 	{
 	case 'S': serverMode=1; break;
@@ -139,49 +120,11 @@ int parseOldCommandLine(int argc, char **argv)
 	  //pin=strdup(optarg);
 	  clientMode=1;
 	  break;
-	case 'd': /* Ask by DID */
-	  clientMode=1;
-	  did=strdup(optarg);
-	  break;
-	case 's': /* Ask by subscriber ID */
-	  clientMode=1;
-	  sid=strdup(optarg);
-	  break;
 	case 't': /* request timeout (ms) */
 	  dnatimeout=atoi(optarg);
 	  break;
 	case 'v': /* set verbosity */
 	  debug |= debugFlagMask(optarg);
-	  break;
-	case 'A': /* get address (IP or otherwise) of a given peer */
-	  peerAddress(did,sid,3 /* 1 = print list of addresses to stdout, 2 = set peer list to responders */);
-	  break;
-	case 'R': /* read a variable */
-	  {	    
-	    unsigned char buffer[65535];
-	    int len=0;
-	    requestItem(did,sid,(char *)optarg,instance,buffer,sizeof(buffer),&len,NULL);
-	  }
-	  break;
-	case 'W': /* write a variable */
-	  {	    
-	    int var_id;
-	    unsigned char value[65536];
-	    int value_len=65535;
-	    if (parseAssignment((unsigned char *)optarg,&var_id,value,&value_len)) return -1;
-	    value[value_len]=0;
-	    return writeItem(did?did:sid,var_id,instance,value,0,value_len,SET_NOREPLACE,-1,NULL);
-	  }
-	  break;
-	case 'U': /* write or update a variable */
-	  {	    
-	    int var_id;
-	    unsigned char value[65536];
-	    int value_len=65535;
-	    if (parseAssignment((unsigned char *)optarg,&var_id,value,&value_len)) return -1;
-	    value[value_len]=0;
-	    return writeItem(did?did:sid,var_id,instance,value,0,value_len,SET_REPLACE,-1,NULL);
-	  }
 	  break;
 	case 'C': /* create a new keyring entry */
 	  return WHY("Entries in new keyring format must be used with new command line framework.");
