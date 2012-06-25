@@ -150,8 +150,10 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
   long long dbVersion = -1;
   if (sqlite_exec_int64(&dbVersion, "SELECT version FROM MANIFESTS WHERE id='%s';", id) == -1)
     return WHY("Select failure");
-  if (dbVersion >= m->version)
-    return WHYF("We already have %s (%lld vs %lld)", id, dbVersion, m->version);
+  if (dbVersion >= m->version) {
+    if (0) WHYF("We already have %s (%lld vs %lld)", id, dbVersion, m->version);
+    return -1;
+  }
   return 0;
 
   /* Work out bin number in cache */

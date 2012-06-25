@@ -410,9 +410,10 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
        more prudent path.
     */
 
-    WHYF("Received packet with listener (MDP ports: src=%s*:%d, dst=%d)",
-	 overlay_render_sid_prefix(mdp->out.src.sid,7),
-	 mdp->out.src.port,mdp->out.dst.port);
+    if (0)
+      WHYF("Received packet with listener (MDP ports: src=%s*:%d, dst=%d)",
+	   overlay_render_sid_prefix(mdp->out.src.sid,7),
+	   mdp->out.src.port,mdp->out.dst.port);
 
 
     if ((!overlay_address_is_local(mdp->out.dst.sid))
