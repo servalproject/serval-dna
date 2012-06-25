@@ -221,62 +221,6 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
   return 0;
 }
 
-/* Create a new HLR entry on a peer.
-   Should always try localhost as first peer, which is why
-   sendToPeers() does it that way.  We just have to remember to
-   ask for serialised attempts, rather than all at once.
-*/
-int requestNewHLR(char *did,char *pin,char *sid,
-		  int recvttl,struct sockaddr *recvaddr)
-{
-  unsigned char packet[8000];
-  int packet_len=0;
-  struct response_set responses;
-  unsigned char transaction_id[TRANSID_SIZE];
-
-  bzero(&responses,sizeof(responses));
-
-  /* Prepare the request packet */
-  if (packetMakeHeader(packet,8000,&packet_len,NULL,CRYPT_PUBLIC)) return -1;
-  bcopy(&packet[OFS_TRANSIDFIELD],transaction_id,TRANSID_SIZE);
-  if (packetSetDid(packet,8000,&packet_len,did)) return -1;
-  if (packetAddHLRCreateRequest(packet,8000,&packet_len)) return -1;
-  if (packetFinalise(packet,8000,recvttl,&packet_len,CRYPT_PUBLIC)) return -1;
-
-  /* Send it to peers, starting with ourselves, one at a time until one succeeds.
-     XXX - This could take a while if we have long timeouts for each. */
-  if (packetSendRequest(REQ_SERIAL,packet,packet_len,NONBATCH,
-			transaction_id,recvaddr,&responses)) return -1;
-
-  /* Extract response */
-  if (debug&DEBUG_DNARESPONSES) dumpResponses(&responses);
-  if (!responses.response_count) {
-    printf("NOREPLY\n");
-    return -1;
-  }
-  switch(responses.responses->code)
-    {
-    case ACTION_DECLINED:
-      printf("DECLINED\n");
-      return -1;
-      break;
-    case ACTION_OKAY:
-      {
-	char sid[SID_STRLEN+1];
-	int ofs=0;
-	extractSid(&responses.responses->sid[0],&ofs,&sid[0]);
-	printf("OK:%s\n",sid);
-      }
-      return 0;
-      break;
-    default:
-      printf("ERROR:Unknown response 0x%02x\n",responses.responses->code);
-      return -1;
-    }
- 
-  return WHY("Request creation of new HLR not implemented");
-}
-
 /* Some data types can end in @ if they require the address of the sender to be appended for correct local interpretation */
 int fixResponses(struct response_set *responses)
 {

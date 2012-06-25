@@ -192,20 +192,6 @@ int packetSetDid(unsigned char *packet,int packet_maxlen,int *packet_len,char *d
   return stowDid(packet,&ofs,did);
 }
 
-int packetSetSid(unsigned char *packet,int packet_maxlen,int *packet_len,char *sid)
-{
-  /* Convert and store hex formatted sid */
-  int ofs=OFS_SIDDIDFIELD; /* where the DID/subscriber ID gets written */
-
-  if (strlen(sid)!=64) {
-    if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"Invalid SID: [%s] - should be 64 hex digits\n",sid);
-    return WHY("SID must consist of 64 hex digits");
-  }
-
-  packet[ofs++]=0x01; /* SID */
-  return stowSid(packet,ofs,sid);
-}
-
 int packetSetSidFromId(unsigned char *packet,int packet_maxlen,int *packet_len,
 		       keyring_identity *id)
 {

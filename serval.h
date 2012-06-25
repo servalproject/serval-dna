@@ -426,9 +426,6 @@ int respondSimple(keyring_identity *id,
 		  int action,unsigned char *action_text,int action_len,
 		  unsigned char *transaction_id,int recvttl,
 		  struct sockaddr *recvaddr,int cryptoFlags);
-int requestItem(char *did,char *sid,char *item,int instance,unsigned char *buffer,int buffer_length,int *len,
-		unsigned char *transaction_id);
-int requestNewHLR(char *did,char *pin,char *sid,int recvttl,struct sockaddr *recvaddr);
 long long gettime_ms();
 int server_pid();
 void server_save_argv(int argc, const char *const *argv);
@@ -448,8 +445,6 @@ int process_packet(unsigned char *packet,int len,
 		   int recvttl,struct sockaddr *sender,int sender_len);
 int packetMakeHeader(unsigned char *packet,int packet_maxlen,int *packet_len,unsigned char *transaction_id,int cryptoflags);
 int packetSetDid(unsigned char *packet,int packet_maxlen,int *packet_len,char *did);
-// Deprecated
-// int packetSetSid(unsigned char *packet,int packet_maxlen,int *packet_len,char *sid);
 int packetSetSidFromId(unsigned char *packet,int packet_maxlen,int *packet_len,
 		       keyring_identity *id);
 int packetFinalise(unsigned char *packet,int packet_maxlen,int recvttl,
