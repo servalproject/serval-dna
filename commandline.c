@@ -661,9 +661,10 @@ int cli_absolute_path(const char *arg)
 
 int
 app_server_start(int argc, const char *const *argv, struct command_line_option *o) {
-  int		pid, foregroundP, ret;
+  int		pid, foregroundP, ret, fd;
   const char	*execpath, *interfaces;
-
+  pid_t		newgrp, cpid;
+  
   /* Process optional arguments */
   foregroundP = (argc >= 2 && !strcasecmp(argv[1], "foreground"));
   if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1 ||
@@ -706,14 +707,43 @@ app_server_start(int argc, const char *const *argv, struct command_line_option *
 
   if (foregroundP)
     return server(NULL);
-
+  
   cli_puts("instancepath");
   cli_delim(":");
   cli_puts(serval_instancepath());
   cli_delim("\n");
 
-  if (daemon(0, 0) != 0)
-    FATAL_perror("daemon");
+  switch (cpid = fork()) {
+    case -1:
+      return WHY_perror("fork");
+    case 0:
+      /* Child */
+      break;
+    default:
+      /* Return, don't exit otherwise the JNI stack get broken
+       * This is why we don't call daemon()
+       */
+      cli_puts("pid");
+      cli_delim(":");
+      cli_printf("%d", pid);
+      cli_delim("\n");
+
+      return 0;
+  }
+
+  if ((fd = open("/dev/null", O_RDWR, 0)) == -1)
+    return WHY_perror("open");
+
+  if ((newgrp = setsid()) == -1)
+    return WHY_perror("setsid");
+
+  (void)chdir("/");
+
+  (void)dup2(fd, 0);
+  (void)dup2(fd, 1);
+  (void)dup2(fd, 2);
+  if (fd > 2)
+    (void)close(fd);
 
   /* The execpath option is provided so that a JNI call to "start" can be made which
      creates a new server daemon process with the correct argv[0].  Otherwise, the servald
@@ -724,8 +754,6 @@ app_server_start(int argc, const char *const *argv, struct command_line_option *
   }
   
   exit(server(NULL));
-  
-  return ret;
 }
 
 int
