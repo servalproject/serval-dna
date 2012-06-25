@@ -353,28 +353,6 @@ int rhizome_bundle_push_update(char *id,long long version,unsigned char *data,in
   return WHY("Not implemented");
 }
 
-int chartonybl(int c)
-{
-  if (c>='A'&&c<='F') return 0x0a+(c-'A');
-  if (c>='a'&&c<='f') return 0x0a+(c-'a');
-  if (c>='0'&&c<='9') return 0x00+(c-'0');
-  return 0;
-}
-
-int rhizome_hex_to_bytes(const char *in,unsigned char *out,int hexChars)
-{
-  int i;
-
-  for(i=0;i<hexChars;i++)
-    {
-      int byte=i>>1;
-      int nybl=chartonybl(in[i]);
-      out[byte]=out[byte]<<4;
-      out[byte]|=nybl;
-    }
-  return 0;
-}
-
 /* When voice traffic is being carried, we need to throttle Rhizome down
    to a more sensible level.  Or possibly even supress it entirely.
  */

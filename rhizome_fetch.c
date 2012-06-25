@@ -113,7 +113,7 @@ int rhizome_manifest_version_cache_store(rhizome_manifest *m)
   /* Work out bin number in cache */
   for(i=0;i<RHIZOME_VERSION_CACHE_NYBLS;i++)
     {
-      int nybl=chartonybl(id[i]);
+      int nybl=hexvalue(id[i]);
       bin=(bin<<4)|nybl;
     }
   bin=bin>>RHIZOME_VERSION_CACHE_SHIFT;
@@ -126,7 +126,7 @@ int rhizome_manifest_version_cache_store(rhizome_manifest *m)
   entry->version=manifest_version;
   for(i=0;i<24;i++)
     {
-      int byte=(chartonybl(id[(i*2)])<<4)|chartonybl(id[(i*2)+1]);
+      int byte=(hexvalue(id[(i*2)])<<4)|hexvalue(id[(i*2)+1]);
       entry->idprefix[i]=byte;
     }
 
@@ -157,7 +157,7 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
   /* Work out bin number in cache */
   for(i=0;i<RHIZOME_VERSION_CACHE_NYBLS;i++)
     {
-      int nybl=chartonybl(id[i]);
+      int nybl=hexvalue(id[i]);
       bin=(bin<<4)|nybl;
     }
   bin=bin>>RHIZOME_VERSION_CACHE_SHIFT;
@@ -169,8 +169,8 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
       for(i=0;i<24;i++)
 	{
 	  int byte=
-	    (chartonybl(id[(i*2)])<<4)
-	    |chartonybl(id[(i*2)+1]);
+	    (hexvalue(id[(i*2)])<<4)
+	    |hexvalue(id[(i*2)+1]);
 	  if (byte!=entry->idprefix[i]) break;
 	}
       if (i==24) {
@@ -247,7 +247,7 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
 	entry->version=stored_version;
 	for(i=0;i<24;i++)
 	  {
-	    int byte=(chartonybl(id[(i*2)])<<4)|chartonybl(id[(i*2)+1]);
+	    int byte=(hexvalue(id[(i*2)])<<4)|hexvalue(id[(i*2)+1]);
 	    entry->idprefix[i]=byte;
 	  }
 	/* Finally, say that it isn't worth RXing this manifest */

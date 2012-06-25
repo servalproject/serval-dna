@@ -1034,7 +1034,10 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found,
       }
       const char *q_manifestid = (const char *) sqlite3_column_text(statement, 0);
       size_t manifestidsize = sqlite3_column_bytes(statement, 0); // must call after sqlite3_column_text()
-      if (manifestidsize != crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES * 2) {
+      unsigned char manifest_id[RHIZOME_MANIFEST_ID_BYTES];
+      if (  manifestidsize != crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES * 2
+	||  fromhexstr(manifest_id, q_manifestid, RHIZOME_MANIFEST_ID_BYTES) == -1
+      ) {
 	ret = WHYF("Malformed manifest.id from query: %s", q_manifestid);
 	break;
       }
@@ -1106,7 +1109,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found,
 	    }
 	  }
 	  if (ret == 1) {
-	    rhizome_hex_to_bytes(q_manifestid, blob_m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
+	    memcpy(blob_m->cryptoSignPublic, manifest_id, RHIZOME_MANIFEST_ID_BYTES);
 	    memcpy(blob_m->fileHexHash, m->fileHexHash, RHIZOME_FILEHASH_STRLEN + 1);
 	    blob_m->fileHashedP = 1;
 	    blob_m->fileLength = m->fileLength;
@@ -1135,6 +1138,9 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found,
  */
 int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
 {
+  unsigned char manifest_id[RHIZOME_MANIFEST_ID_BYTES];
+  if (fromhexstr(manifest_id, manifestid, RHIZOME_MANIFEST_ID_BYTES) == -1)
+    return WHY("Invalid manifest ID");
   char sqlcmd[1024];
   int n = snprintf(sqlcmd, sizeof(sqlcmd), "SELECT id, manifest, version, inserttime FROM manifests WHERE id = ?");
   if (n >= sizeof(sqlcmd))
@@ -1148,9 +1154,7 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
     ret = WHY(sqlite3_errmsg(rhizome_db));
   } else {
     char manifestIdUpper[RHIZOME_MANIFEST_ID_STRLEN + 1];
-    strncpy(manifestIdUpper, manifestid, sizeof manifestIdUpper);
-    manifestIdUpper[RHIZOME_MANIFEST_ID_STRLEN] = '\0';
-    str_toupper_inplace(manifestIdUpper);
+    tohex(manifestIdUpper, manifest_id, RHIZOME_MANIFEST_ID_BYTES);
     sqlite3_bind_text(statement, 1, manifestIdUpper, -1, SQLITE_STATIC);
     while (sqlite3_step(statement) == SQLITE_ROW) {
       if (!(   sqlite3_column_count(statement) == 4
@@ -1158,7 +1162,7 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
 	    && sqlite3_column_type(statement, 1) == SQLITE_BLOB
 	    && sqlite3_column_type(statement, 2) == SQLITE_INTEGER
 	    && sqlite3_column_type(statement, 3) == SQLITE_INTEGER
-      )) { 
+      )) {
 	ret = WHY("Incorrect statement column");
 	break;
       }
@@ -1175,7 +1179,7 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
 	  ret = WHY("Invalid manifest blob from database");
 	} else {
 	  ret = 1;
-	  rhizome_hex_to_bytes(manifestid, m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
+	  memcpy(m->cryptoSignPublic, manifest_id, RHIZOME_MANIFEST_ID_BYTES);
 	  const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
 	  if (blob_service == NULL)
 	    ret = WHY("Manifest is missing 'service' field");

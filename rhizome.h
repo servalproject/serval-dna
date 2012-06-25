@@ -240,7 +240,6 @@ int rhizome_manifest_finalise(rhizome_manifest *m);
 int rhizome_add_manifest(rhizome_manifest *m_in,int ttl);
 
 void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCount);
-int rhizome_hex_to_bytes(const char *in,unsigned char *out,int hexChars);
 int rhizome_find_privatekey(rhizome_manifest *m);
 rhizome_signature *rhizome_sign_hash(rhizome_manifest *m, const unsigned char *authorSid);
 int rhizome_server_free_http_request(rhizome_http_request *r);
@@ -259,7 +258,6 @@ int rhizome_server_http_response_header(rhizome_http_request *r,int result,
 					char *mime_type,unsigned long long bytes);
 int rhizome_server_sql_query_fill_buffer(int rn,rhizome_http_request *r);
 double rhizome_manifest_get_double(rhizome_manifest *m,char *var,double default_value);
-int chartonybl(int c);
 int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs);
 int rhizome_update_file_priority(const char *fileid);
 int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found,

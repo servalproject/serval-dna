@@ -409,9 +409,14 @@ int confParseBoolean(const char *text, const char *option_name);
 int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
 		struct sockaddr *recvaddr,unsigned int *recvaddrlen);
 
+int is_xsubstring(const char *text, int len);
+int is_xstring(const char *text, int len);
 char *tohex(char *dstHex, const unsigned char *srcBinary, size_t bytes);
 size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t bytes);
 int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t bytes);
+int hexvalue(char c);
+char *str_toupper_inplace(char *s);
+
 int validateSid(const char *sid);
 int stowSid(unsigned char *packet, int ofs, const char *sid);
 int stowDid(unsigned char *packet,int *ofs,char *did);
@@ -436,8 +441,6 @@ void serverCleanUp();
 int isTransactionInCache(unsigned char *transaction_id);
 void insertTransactionInCache(unsigned char *transaction_id);
 
-int hexvalue(unsigned char c);
-char *str_toupper_inplace(char *s);
 int packetOk(int interface,unsigned char *packet,int len,
 	     unsigned char *transaction_id, int recvttl,
 	     struct sockaddr *recvaddr,int recvaddrlen,int parseP);

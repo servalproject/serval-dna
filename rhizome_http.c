@@ -448,7 +448,7 @@ int rhizome_server_sql_query_fill_buffer(int rn,rhizome_http_request *r)
 	for(i=0;i<r->source_record_size;i++)
 	  /* convert the two nybls and make a byte */
 	  r->buffer[r->buffer_length+i]
-	    =(chartonybl(value[i<<1])<<4)|chartonybl(value[(i<<1)+1]);
+	    =(hexvalue(value[i<<1])<<4)|hexvalue(value[(i<<1)+1]);
       } else
 	/* direct binary value */
 	bcopy(value,&r->buffer[r->buffer_length],r->source_record_size);

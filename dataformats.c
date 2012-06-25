@@ -18,9 +18,44 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "rhizome.h"
 #include <ctype.h>
 
 char hexdigit[16] = {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
+
+static inline int _is_xsubstring(const char *text, int len)
+{
+  while (len--)
+    if (!isxdigit(*text++))
+      return 0;
+  return 1;
+}
+
+static inline int _is_xstring(const char *text, int len)
+{
+  while (len--)
+    if (!isxdigit(*text++))
+      return 0;
+  return *text == '\0';
+}
+
+/* Return true iff 'len' bytes starting at 'text' are hex digits, upper or lower case.
+   Does not check the following byte.
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+int is_xsubstring(const char *text, int len)
+{
+  return _is_xsubstring(text, len);
+}
+
+/* Return true iff the nul-terminated string 'text' has length 'len' and consists only of hex
+   digits, upper or lower case.
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+int is_xstring(const char *text, int len)
+{
+  return _is_xstring(text, len);
+}
 
 char *tohex(char *dstHex, const unsigned char *srcBinary, size_t bytes)
 {
@@ -49,6 +84,46 @@ size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t bytes)
 int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t bytes)
 {
   return (fromhex(dstBinary, srcHex, bytes) == bytes && srcHex[bytes * 2] == '\0') ? 0 : -1;
+}
+
+int rhizome_strn_is_manifest_id(const char *id)
+{
+  return _is_xsubstring(id, RHIZOME_MANIFEST_ID_STRLEN);
+}
+
+int rhizome_str_is_manifest_id(const char *id)
+{
+  return _is_xstring(id, RHIZOME_MANIFEST_ID_STRLEN);
+}
+
+int rhizome_strn_is_bundle_key(const char *key)
+{
+  return _is_xsubstring(key, RHIZOME_BUNDLE_KEY_STRLEN);
+}
+
+int rhizome_str_is_bundle_key(const char *key)
+{
+  return _is_xstring(key, RHIZOME_BUNDLE_KEY_STRLEN);
+}
+
+int rhizome_strn_is_bundle_crypt_key(const char *key)
+{
+  return _is_xsubstring(key, RHIZOME_CRYPT_KEY_STRLEN);
+}
+
+int rhizome_str_is_bundle_crypt_key(const char *key)
+{
+  return _is_xstring(key, RHIZOME_CRYPT_KEY_STRLEN);
+}
+
+int rhizome_strn_is_file_hash(const char *hash)
+{
+  return _is_xsubstring(hash, RHIZOME_FILEHASH_STRLEN);
+}
+
+int rhizome_str_is_file_hash(const char *hash)
+{
+  return _is_xstring(hash, RHIZOME_FILEHASH_STRLEN);
 }
 
 int extractDid(unsigned char *packet,int *ofs,char *did)
@@ -173,7 +248,7 @@ char *str_toupper_inplace(char *str)
   return str;
 }
 
-int hexvalue(unsigned char c)
+int hexvalue(char c)
 {
   if (c >= '0' && c <= '9') return c - '0';
   if (c >= 'A' && c <= 'F') return c - 'A' + 10;

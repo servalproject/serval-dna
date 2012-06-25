@@ -47,35 +47,31 @@ int rhizome_manifest_verify(rhizome_manifest *m)
   
   /* Make sure that id variable is correct */
   {
-    char *id=rhizome_manifest_get(m,"id",NULL,0);
-    if (!id) { 
+    unsigned char manifest_id[RHIZOME_MANIFEST_ID_BYTES];
+    char *id = rhizome_manifest_get(m,"id",NULL,0);
+    if (!id) {
       WARN("Manifest lacks 'id' field");
       m->errors++;
-    }
-    else {
-      unsigned char manifest_bytes[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
-      rhizome_hex_to_bytes(id,manifest_bytes,
-			   crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2); 
-      if ((m->sig_count==0)||
-	  memcmp(&m->signatories[0][0],manifest_bytes,
-		 crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES))
-	{
-	  if (debug&DEBUG_RHIZOME) {
-	    if (m->sig_count>0) {	      
-	      DEBUGF("Manifest id variable does not match first signature block (signature key is %s)",
-		     /* XXX bit of a hack that relies on SIDs and signing public keys being the same length */
-		     overlay_render_sid(&m->signatories[0][0])
-		     );
-	    } else {
-	      DEBUG("Manifest has no signature blocks, but should have self-signature block");
-	    }
-	  }
-	  m->errors++;
-	  m->selfSigned=0;
-	} else m->selfSigned=1;
+    } else if (fromhexstr(manifest_id, id, RHIZOME_MANIFEST_ID_BYTES) == -1) {
+      WARN("Invalid manifest 'id' field");
+      m->errors++;
+    } else if (m->sig_count == 0 || memcmp(m->signatories[0], manifest_id, RHIZOME_MANIFEST_ID_BYTES) != 0) {
+      if (debug&DEBUG_RHIZOME) {
+	if (m->sig_count>0) {
+	  DEBUGF("Manifest id variable does not match first signature block (signature key is %s)",
+		  alloca_tohex(m->signatories[0], crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)
+		  );
+	} else {
+	  DEBUG("Manifest has no signature blocks, but should have self-signature block");
+	}
+      }
+      m->errors++;
+      m->selfSigned=0;
+    } else {
+      m->selfSigned=1;
     }
   }
-  
+
   /* Mark as finalised, as it is all read and intact,
      unless of course it has errors, or is lacking a self-signature. */
   if (!m->errors) m->finalised=1;
@@ -146,25 +142,26 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 	    DEBUGF("read manifest line: %s=%s", var, catv(value, buf, sizeof buf));
 	  }
 	  */
-	  m->vars[m->var_count]=strdup(var);
-	  m->values[m->var_count]=strdup(value);
-	  if (!strcasecmp(var,"ID"))
-	    {
-	      /* Parse hex string of ID into public key */
-	      rhizome_hex_to_bytes(value,m->cryptoSignPublic,
-				   crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES*2);
+	  m->vars[m->var_count] = strdup(var);
+	  m->values[m->var_count] = strdup(value);
+	  if (strcasecmp(var,"id") == 0) {
+	    str_toupper_inplace(m->values[m->var_count]);
+	    /* Parse hex string of ID into public key, and force to upper case. */
+	    if (fromhexstr(m->cryptoSignPublic, value, RHIZOME_MANIFEST_ID_BYTES) == -1) {
+	      WARNF("Invalid manifest id: %s", value);
+	      m->errors++;
 	    }
-	  if ((!strcasecmp(var,"ID"))||(!strcasecmp(var,"FILEHASH"))) {
-	      /* Also force to upper case to avoid case sensitive comparison problems later. */
-	    int i;
-	    for(i=0;i<strlen(m->vars[m->var_count]);i++)
-	      m->values[m->var_count][i]=toupper(m->values[m->var_count][i]);
-	    }
+	  } else if (strcasecmp(var,"filehash") == 0 || strcasecmp(var,"BK") == 0) {
+	    /* Force to upper case to avoid case sensitive comparison problems later. */
+	    str_toupper_inplace(m->values[m->var_count]);
+	  }
 	  m->var_count++;
 	}
       } else {
-	char buf[80];
-	if (0) WARNF("Skipping malformed line in manifest file %s: %s", bufferP ? "<buffer>" : filename, catv(line, buf, sizeof buf));
+	if (debug & DEBUG_RHIZOME) {
+	  char buf[80];
+	  DEBUGF("Skipping malformed line in manifest file %s: %s", bufferP ? "<buffer>" : filename, catv(line, buf, sizeof buf));
+	}
       }
     }
   /* The null byte gets included in the check sum */
@@ -178,21 +175,6 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
   m->manifest_bytes=end_of_text;
 
   return 0;
-}
-
-int rhizome_strn_is_file_hash(const char *text)
-{
-  int i;
-  for (i = 0; i != RHIZOME_FILEHASH_STRLEN; ++i)
-    if (!isxdigit(text[i]))
-      return 0;
-  return 1;
-}
-
-int rhizome_str_is_file_hash(const char *text)
-{
-  size_t len = strlen(text);
-  return len == RHIZOME_FILEHASH_STRLEN && rhizome_strn_is_file_hash(text);
 }
 
 int rhizome_hash_file(rhizome_manifest *m,const char *filename,char *hash_out)

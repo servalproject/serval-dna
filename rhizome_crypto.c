@@ -30,52 +30,6 @@ unsigned char *rhizome_bundle_shared_secret(rhizome_manifest *m)
   return NULL;
 }
 
-static inline int _is_xsubstring(const char *text, int len)
-{
-  while (len--)
-    if (!isxdigit(*text++))
-      return 0;
-  return 1;
-}
-
-static inline int _is_xstring(const char *text, int len)
-{
-  while (len--)
-    if (!isxdigit(*text++))
-      return 0;
-  return *text == '\0';
-}
-
-int rhizome_strn_is_manifest_id(const char *id)
-{
-  return _is_xsubstring(id, RHIZOME_MANIFEST_ID_STRLEN);
-}
-
-int rhizome_str_is_manifest_id(const char *id)
-{
-  return _is_xstring(id, RHIZOME_MANIFEST_ID_STRLEN);
-}
-
-int rhizome_strn_is_bundle_key(const char *key)
-{
-  return _is_xsubstring(key, RHIZOME_BUNDLE_KEY_STRLEN);
-}
-
-int rhizome_str_is_bundle_key(const char *key)
-{
-  return _is_xstring(key, RHIZOME_BUNDLE_KEY_STRLEN);
-}
-
-int rhizome_strn_is_bundle_crypt_key(const char *key)
-{
-  return _is_xsubstring(key, RHIZOME_CRYPT_KEY_STRLEN);
-}
-
-int rhizome_str_is_bundle_crypt_key(const char *key)
-{
-  return _is_xstring(key, RHIZOME_CRYPT_KEY_STRLEN);
-}
-
 int rhizome_manifest_createid(rhizome_manifest *m)
 {
   m->haveSecret=1;
@@ -109,11 +63,12 @@ int rhizome_find_keypair_bytes(unsigned char *p,unsigned char *s) {
   if ( sqlite3_step(statement) == SQLITE_ROW ) {
     if (sqlite3_column_type(statement,0)==SQLITE_TEXT) {
       const unsigned char *hex=sqlite3_column_text(statement,0);
-      rhizome_hex_to_bytes((char *)hex,s,
-			   crypto_sign_edwards25519sha512batch_SECRETKEYBYTES*2);
-      /* XXX TODO Decrypt secret using a keyring password */
       sqlite3_finalize(statement);
-      return 0;
+      if (fromhexstr(s, (const char *)hex, crypto_sign_edwards25519sha512batch_SECRETKEYBYTES) != -1) {
+	/* XXX TODO Decrypt secret using a keyring password */
+	return 0;
+      }
+      return WHY("Database contains invalid secret key");
     }
   }
   sqlite3_finalize(statement);
