@@ -58,7 +58,7 @@ long long monitor_last_update_time=0;
 
 int monitor_process_command(int index,char *cmd);
 int monitor_process_data(int index);
-static void monitor_new_socket(int s);
+static void monitor_new_client(int s);
 
 int monitor_named_socket=-1;
 int monitor_setup_sockets()
@@ -118,62 +118,25 @@ int monitor_setup_sockets()
     WHY_perror("setsockopt");
   if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) WHY("Monitor server socket setup");
 
+  fd_watch(monitor_named_socket,monitor_poll,POLL_IN);
   return 0;
   
   error:
-  close(monitor_named_socket);
+  fd_teardown(monitor_named_socket);
   monitor_named_socket=-1;
   return -1;
 }
 
-int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
+void monitor_poll(int ignored_fd)
 {
-  /* Make sure sockets are open */
-  monitor_setup_sockets();
+  int s,i,m;
+  unsigned char buffer[1024];
+  char msg[1024];
+  struct sockaddr *ignored_address=(struct sockaddr *)&buffer[0];
+  socklen_t ignored_length=sizeof(ignored_address);
 
-  /* This block should work, but in reality it doesn't.
-     poll() on linux is ALWAYS claiming that accept() can be
-     run.  So we just have to check it whenever some other fd triggers
-     poll to break, which fortunately is fairly often. */
-  if ((*fdcount)>=fdmax) return -1;
-  if (monitor_named_socket>-1)
-    {
-      if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) {
-	WHYF("Monitor named unix domain socket is poll() slot #%d (fd %d)\n",
-	     *fdcount,monitor_named_socket);
-      }
-      fds[*fdcount].fd=monitor_named_socket;
-      fds[*fdcount].events=POLLIN;
-      (*fdcount)++;
-    }
-
-  int i;
-  if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) 
-    WHYF("looking at %d monitor clients",monitor_socket_count);
-  for(i=0;i<monitor_socket_count;i++) {
-    if ((*fdcount)>=fdmax) return -1;
-    if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) {
-      WHYF("Monitor named unix domain client socket is poll() slot #%d (fd %d)\n",
-	  *fdcount,monitor_sockets[i].socket);
-      }
-      fds[*fdcount].fd=monitor_sockets[i].socket;
-      fds[*fdcount].events=POLLIN;
-      (*fdcount)++;
-  }
-
-  return 0;
-}
-
-int
-monitor_poll(void) {
-  int				bytes, i, m, s;
-  socklen_t			addrlen;
-  long long			now;
-  char				msg[128];
-  struct monitor_context *c;
-  
   /* tell all monitor clients about status of all calls periodically */
-  now = overlay_gettime_ms();
+  long long now = overlay_gettime_ms();
   if (monitor_last_update_time > (now + 1000)) {
     WHY("Fixed run away monitor_last_update_time");
     monitor_last_update_time = now + 1000;
@@ -198,26 +161,31 @@ monitor_poll(void) {
   fcntl(monitor_named_socket, F_SETFL,
 	fcntl(monitor_named_socket, F_GETFL, NULL) | O_NONBLOCK);
   /* We don't care about the peer's address */
-  addrlen = 0;
+  ignored_length = 0;
   while (
 #ifdef HAVE_LINUX_IF_H
-	 (s = accept4(monitor_named_socket, NULL, &addrlen,O_NONBLOCK))
+	 (s = accept4(monitor_named_socket, NULL, &ignored_length,O_NONBLOCK))
 #else
-	 (s = accept(monitor_named_socket,NULL, &addrlen))
+	 (s = accept(monitor_named_socket,NULL, &ignored_length))
 #endif
       != -1
   ) {
-  addrlen = 0;
-
-    monitor_new_socket(s);
+    monitor_new_client(s);
   }
   if (errno != EAGAIN)
     WHY_perror("accept");
+}
 
+void monitor_client_poll(int fd)
+{
   /* Read from any open connections */
+  int i;
   for(i = 0;i < monitor_socket_count; i++) {
   nextInSameSlot:
-    c = &monitor_sockets[i];
+    errno=0;
+    int bytes;
+    struct monitor_context *c=&monitor_sockets[i];
+    if (c->socket!=fd) continue;
     fcntl(c->socket,F_SETFL,
 	  fcntl(c->socket, F_GETFL, NULL) | O_NONBLOCK);
     switch(c->state) {
@@ -245,9 +213,9 @@ monitor_poll(void) {
 	    WHY_perror("read");
 	    /* all other errors; close socket */
 	    WHYF("Tearing down monitor client #%d due to errno=%d (%s)",
-		 i, errno, strerror(errno));
-	    close(c->socket);
-	    if (i == monitor_socket_count - 1) {
+		 i,errno,strerror(errno)?strerror(errno):"<unknown error>");
+	    fd_teardown(c->socket);	    
+	    if (i==monitor_socket_count-1) {
 	      monitor_socket_count--;
 	      continue;
 	    } else {
@@ -281,10 +249,10 @@ monitor_poll(void) {
 	  break;
 	default:
 	  /* all other errors; close socket */
-	    WHYF("Tearing down monitor client #%d due to errno=%d (%s)",
-		 i, errno, strerror(errno));
-	    close(c->socket);
-	    if (i == monitor_socket_count - 1) {
+	    WHYF("Tearing down monitor client #%d due to errno=%d",
+		 i,errno);
+	    fd_teardown(c->socket);
+	    if (i==monitor_socket_count-1) {
 	      monitor_socket_count--;
 	      continue;
 	    } else {
@@ -311,11 +279,10 @@ monitor_poll(void) {
     }
       
   }
-  return 0;
+  return;
 }
-
-static void
-monitor_new_socket(int s) {
+ 
+static void monitor_new_client(int s) {
 #ifdef linux
   struct ucred			ucred;
   socklen_t			len;
@@ -589,7 +556,7 @@ int monitor_announce_bundle(rhizome_manifest *m)
 	  /* error sending update, so kill monitor socket */
 	  WHYF("Tearing down monitor client #%d due to errno=%d",
 	       i,errno);
-	  close(monitor_sockets[i].socket);
+	  fd_teardown(monitor_sockets[i].socket);
 	  if (i==monitor_socket_count-1) {
 	    monitor_socket_count--;
 	    continue;
@@ -637,7 +604,7 @@ int monitor_call_status(vomp_call_state *call)
 	  /* error sending update, so kill monitor socket */
 	  WHYF("Tearing down monitor client #%d due to errno=%d",
 	       i,errno);
-	  close(monitor_sockets[i].socket);
+	  fd_teardown(monitor_sockets[i].socket);
 	  if (i==monitor_socket_count-1) {
 	    monitor_socket_count--;
 	    continue;
@@ -703,7 +670,7 @@ int monitor_tell_clients(char *msg, int msglen, int mask)
 	/* error sending update, so kill monitor socket */
 	WHYF("Tearing down monitor client #%d due to errno=%d",
 	     i,errno);
-	close(monitor_sockets[i].socket);
+	fd_teardown(monitor_sockets[i].socket);
 	if (i==monitor_socket_count-1) {
 	  monitor_socket_count--;
 	  continue;

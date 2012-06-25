@@ -188,6 +188,8 @@ overlay_interface_init_socket(int interface, struct sockaddr_in src_addr, struct
   I(fileP) = 0;
 
   I(fd) = socket(PF_INET,SOCK_DGRAM,0);
+  fd_watch(I(fd),overlay_interface_poll,POLL_IN);
+  WHYF("Watching fd#%d for interface #%d",I(fd),interface);
   if (I(fd) < 0) {
       WHY_perror("socket()");
       WHYF("Could not create UDP socket for interface: %s",strerror(errno));
@@ -235,7 +237,7 @@ overlay_interface_init_socket(int interface, struct sockaddr_in src_addr, struct
   return 0;
 
   error:
-  close(I(fd));
+  fd_teardown(I(fd));
   I(fd)=-1;
   return -1;
 #undef I
@@ -293,11 +295,59 @@ int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockadd
   }
 
   overlay_interface_count++;
+  fd_setalarm(overlay_dummy_poll,10,10);
 #undef I
   return 0;
 }
 
-int overlay_rx_messages()
+void overlay_interface_poll(int fd)
+{
+  int i;
+  int plen=0;
+  unsigned char packet[16384];
+
+  for(i=0;i<overlay_interface_count;i++)
+    {
+      struct sockaddr src_addr;
+      unsigned int addrlen=sizeof(src_addr);
+      if (overlay_interfaces[i].fd!=fd) continue;
+      
+      /* Read from UDP socket */
+      plen=1;
+      /* Read only one packet per call to share resources more fairly, and also
+	 enable stats to accurately count packets received */
+      //      while (plen>0) {
+	int recvttl=1;
+	fcntl(overlay_interfaces[i].fd, F_SETFL, 
+	      fcntl(overlay_interfaces[i].fd, F_GETFL, NULL)|O_NONBLOCK);
+	plen=recvwithttl(overlay_interfaces[i].fd,packet,sizeof(packet),
+			 &recvttl,&src_addr,&addrlen);
+	if (plen<1) { 
+	  /* No more packets */
+	  return;
+	} else {
+	  /* We have a frame from this interface */
+	  if (debug&DEBUG_PACKETRX) {
+	    fflush(stdout);
+	    serval_packetvisualise(stderr,"Read from real interface",
+				   packet,plen);
+	    fflush(stderr);
+	  }
+	  if (debug&DEBUG_OVERLAYINTERFACES)fprintf(stderr,"Received %d bytes on interface #%d (%s)\n",plen,i,overlay_interfaces[i].name);
+	  
+	  if (packetOk(i,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
+	    WHY("Malformed packet");
+	    serval_packetvisualise(stderr,"Malformed packet", packet,plen);
+	  }
+	}
+	// }
+      return;
+    }
+
+  return;
+}
+
+void overlay_dummy_poll()
 {
   int i;
 
@@ -308,30 +358,28 @@ int overlay_rx_messages()
   unsigned char packet[16384];
   int plen=0;
   int c[OVERLAY_MAX_INTERFACES];
-  int count=0;
-  
-  /* Look at all interfaces */
-  for(i=0;i<overlay_interface_count;i++) { c[i]=(overlay_interfaces[i].observed>0); count+=c[i]; }
+  int count=1;
+  int dummys=0;
 
-  /* Grab packets from interfaces in round-robin fashion until all have been grabbed,
-     or until we have spent too long (maybe 10ms?) */
+  /* Check for input on any dummy interfaces that are attached to ordinary
+     files.  We have to do it this way, because poll() says that ordinary
+     files are always ready for reading, even if at EOF.
+
+     Also, make sure we don't spend too much time here */
   int now = overlay_gettime_ms();
   while(count>0)
     {
+      count=0;
       for(i=0;i<overlay_interface_count;i++)
 	{
 	  struct sockaddr src_addr;
 	  unsigned int addrlen=sizeof(src_addr);
-	  unsigned char transaction_id[8];
-	  
-	  overlay_last_interface_number=i;
-
-	  /* Set socket non-blocking before we try to read from it */
-	  fcntl(overlay_interfaces[i].fd, F_SETFL,
-		fcntl(overlay_interfaces[i].fd, F_GETFL, NULL)|O_NONBLOCK);
+	  unsigned char transaction_id[8];	  
 
 	  if (overlay_interfaces[i].fileP) {
+	    dummys++;
 	    /* Read from dummy interface file */
+	    overlay_last_interface_number=i;
 	    long long length=lseek(overlay_interfaces[i].fd,0,SEEK_END);
 	    if (overlay_interfaces[i].offset>=length)
 	      {
@@ -372,34 +420,16 @@ int overlay_rx_messages()
 		}
 	      }
 	  } else {
-	    /* Read from UDP socket */
-	    int recvttl=1;
-	    plen=recvwithttl(overlay_interfaces[i].fd,packet,sizeof(packet),
-			     &recvttl,&src_addr,&addrlen);
-	    if (plen<0) { 
-	      c[i]=0; count--; 
-	    } else {
-	      /* We have a frame from this interface */
-	      if (debug&DEBUG_PACKETRX) {
-		fflush(stdout);
-		serval_packetvisualise(stderr,"Read from real interface",
-				       packet,plen);
-		fflush(stderr);
-	      }
-	      if (debug&DEBUG_OVERLAYINTERFACES)fprintf(stderr,"Received %d bytes on interface #%d (%s)\n",plen,i,overlay_interfaces[i].name);
-	      
-	      if (packetOk(i,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
-		WHY("Malformed packet");
-		serval_packetvisualise(stderr,"Malformed packet", packet,plen);
-	      }
-	    }
 	  }
 	}
       /* Don't sit here forever, or else we will never send any packets */
       if (overlay_gettime_ms()>(now+10)) break;
     }
 
-  return 0;
+  /* Stop watching dummy nets if there are none active */
+  if (!dummys) fd_setalarm(overlay_dummy_poll,0,0);
+
+  return ;
 }
 
 int overlay_tx_messages()
@@ -565,7 +595,7 @@ overlay_interface_register(char *name,
 	      overlay_interfaces[i].broadcast_address.sin_addr.s_addr,
 	      local.sin_addr.s_addr,
 	      broadcast.sin_addr.s_addr);
-	close(overlay_interfaces[i].fd);
+	fd_teardown(overlay_interfaces[i].fd);
 	overlay_interfaces[i].fd = -1;
 	if (overlay_interface_init_socket(i, local, broadcast))
 	  INFOF("Could not reinitialise changed interface %s", name);
@@ -582,25 +612,11 @@ overlay_interface_register(char *name,
   return 0;
 }
   
-static time_t overlay_last_interface_discover_time = 0;
-int
-overlay_interface_discover(void) {
+void overlay_interface_discover(void) {
   int				no_route, i;
-  time_t			now;
   struct interface_rules	*r;
   struct sockaddr_in		dummyaddr;
    
-    /* Don't waste too much time and effort on interface discovery,
-       especially if we can't attach to a given interface for some reason. */
-    now = time(NULL);
-    if (overlay_last_interface_discover_time > now)
-      overlay_last_interface_discover_time = now;
-
-    if ((now - overlay_last_interface_discover_time) < 2)
-      return 0;
-
-    overlay_last_interface_discover_time = now;
-
   /* Mark all interfaces as not observed, so that we know if we need to cull any */
   for(i = 0; i < overlay_interface_count; i++)
     overlay_interfaces[i].observed = 0;
@@ -618,7 +634,7 @@ overlay_interface_discover(void) {
       /* We already know about this interface, so just update it */
       overlay_interfaces[i].observed = 1;
     else {
-      /* New interface, so register it */
+      /* New interface, so register it */      
       if (overlay_interface_init(r->namespec,dummyaddr,dummyaddr,
 				 1000000,PORT_DNA,OVERLAY_INTERFACE_WIFI)) {
 	if (debug & DEBUG_OVERLAYINTERFACES) WHYF("Could not initialise newly seen interface %s", r->namespec);
@@ -650,7 +666,7 @@ overlay_interface_discover(void) {
     FATAL("Unable to get any interface information");
   }
   
-  return 0;
+  return;
 }
 
 int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,overlay_frame *pax[],int *frame_pax,int frame_max_pax) 
@@ -806,14 +822,12 @@ int overlay_tick_interface(int i, long long now)
 #define MAX_FRAME_PAX 1024
   overlay_frame *pax[MAX_FRAME_PAX];
 
-  TIMING_CHECK();
-
   if (overlay_interfaces[i].bits_per_second<1) {
     /* An interface with no speed budget is for listening only, so doesn't get ticked */
     return 0;
   }
     
-  if (debug&DEBUG_OVERLAYINTERFACES) fprintf(stderr,"Ticking interface #%d\n",i);
+  if (0) WHYF("Ticking interface #%d\n",i);
   
   /* Get a buffer ready, and limit it's size appropriately.
      XXX size limit should be reduced from MTU.
@@ -844,7 +858,6 @@ int overlay_tick_interface(int i, long long now)
         Give priority to newly observed nodes so that good news travels quickly to help roaming.
 	XXX - Don't forget about PONGing reachability reports to allow use of monodirectional links.
   */
-TIMING_CHECK();
   overlay_stuff_packet_from_queue(i,e,OQ_MESH_MANAGEMENT,now,pax,&frame_pax,MAX_FRAME_PAX);
 
   /* We previously limited manifest space to 3/4 of MTU, but that causes problems for
@@ -853,29 +866,22 @@ TIMING_CHECK();
 #warning reduce to <= mtu*3/4 once we have compacty binary canonical manifest format
   ob_limitsize(e,overlay_interfaces[i].mtu*4/4);
 
-TIMING_CHECK();
-
   /* Add advertisements for ROUTES not Rhizome bundles.
      Rhizome bundle advertisements are lower priority */
   overlay_route_add_advertisements(i,e);
   
   ob_limitsize(e,overlay_interfaces[i].mtu);
 
-  TIMING_CHECK();
-
   /* 4. XXX Add lower-priority queued data */
   overlay_stuff_packet_from_queue(i,e,OQ_ISOCHRONOUS_VIDEO,now,pax,&frame_pax,MAX_FRAME_PAX);
   overlay_stuff_packet_from_queue(i,e,OQ_ORDINARY,now,pax,&frame_pax,MAX_FRAME_PAX);
   overlay_stuff_packet_from_queue(i,e,OQ_OPPORTUNISTIC,now,pax,&frame_pax,MAX_FRAME_PAX);
   /* 5. XXX Fill the packet up to a suitable size with anything that seems a good idea */
-  TIMING_CHECK();
   if (rhizome_enabled())
     overlay_rhizome_add_advertisements(i,e);
 
   if (debug&DEBUG_PACKETCONSTRUCTION)
     dump("assembled packet",&e->bytes[0],e->length);
-
-  TIMING_CHECK();
 
   /* Now send the frame.  This takes the form of a special DNA packet with a different
      service code, which we setup earlier. */
@@ -928,8 +934,11 @@ TIMING_CHECK();
 	    {	      
 	      if ((*p)->dequeue) {
 		{
-		  if (0) printf("dequeuing %p%s NOW\n",
-				*p,(*p)->isBroadcast?" (broadcast)":" (unicast)");	  
+		  if (debug&DEBUG_QUEUES)
+		    WHYF("dequeuing %s* -> %s* NOW (queue length=%d)",
+			 overlay_render_sid_prefix((*p)->source,7),
+			 overlay_render_sid_prefix((*p)->destination,7),
+			 overlay_tx[q].length);
 		  t=*p;
 		  *p=t->next;
 		  if (overlay_tx[q].last==t) overlay_tx[q].last=t->prev;
@@ -962,48 +971,40 @@ TIMING_CHECK();
     if (e) ob_free(e); e=NULL;
     return WHY("overlay_broadcast_ensemble() failed");
   }
-  TIMING_CHECK();
 }
 
 
 
-int
-overlay_check_ticks(void) {
+void overlay_check_ticks(void) {
   /* Check if any interface(s) are due for a tick */
   int i;
   
-  TIMING_CHECK();
-  /* Check for changes to interfaces */
-  overlay_interface_discover();
-  TIMING_CHECK();
-
   long long now = overlay_gettime_ms();
 
   /* Now check if the next tick time for the interfaces is no later than that time.
      If so, trigger a tick on the interface. */
   if (debug & DEBUG_OVERLAYINTERFACES) INFOF("Examining %d interfaces.",overlay_interface_count);
   for(i = 0; i < overlay_interface_count; i++) {
-    TIMING_CHECK();
       /* Only tick live interfaces */
       if (overlay_interfaces[i].observed > 0) {
 	  if (debug & DEBUG_VERBOSE_IO) INFOF("Interface %s ticks every %dms, last at %lld.",
 					      overlay_interfaces[i].name,
 					      overlay_interfaces[i].tick_ms,
-					      overlay_interfaces[i].last_tick_ms);
+						 overlay_interfaces[i].last_tick_ms);
 	  if (now >= overlay_interfaces[i].last_tick_ms + overlay_interfaces[i].tick_ms) {
-	    TIMING_CHECK();
 	    
 	    /* This interface is due for a tick */
 	    overlay_tick_interface(i, now);
-	    TIMING_CHECK();
 	    overlay_interfaces[i].last_tick_ms = now;
 	  }
       } else
 	if (debug & DEBUG_VERBOSE_IO) INFOF("Interface %s is awol.", overlay_interfaces[i].name);
-      TIMING_CHECK();	
     }
   
-  return 0;
+  /* Update interval until next tick */
+  fd_setalarm(overlay_check_ticks,overlay_time_until_next_tick(),500);
+
+  return;
 }
 
 long long overlay_time_until_next_tick()
@@ -1017,14 +1018,22 @@ long long overlay_time_until_next_tick()
   for(i=0;i<overlay_interface_count;i++)
     if (overlay_interfaces[i].observed>0)
     {
-      if (debug&DEBUG_VERBOSE_IO) fprintf(stderr,"Interface %s ticks every %dms, last at T-%lldms.\n",overlay_interfaces[i].name,
-		  overlay_interfaces[i].tick_ms,now-overlay_interfaces[i].last_tick_ms);
+      long long thistick=
+	overlay_interfaces[i].tick_ms
+	-(now-overlay_interfaces[i].last_tick_ms);
+      
+      if (0)
+	WHYF("Interface %s ticks every %dms, last at T-%lldms, next needed in %lldms.\n",
+	     overlay_interfaces[i].name,
+	     overlay_interfaces[i].tick_ms,now-overlay_interfaces[i].last_tick_ms,
+	     thistick);
 
-      long long thistick=(overlay_interfaces[i].last_tick_ms+overlay_interfaces[i].tick_ms)-now;
       if (thistick<0) thistick=0;
       if (thistick<nexttick) nexttick=thistick;
+      if (0) WHYF("nexttick is now %lldms",nexttick);
     }
 
+  if (0) WHYF("Next tick required in %lldms",nexttick);
   return nexttick;
 }
 

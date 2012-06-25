@@ -1259,7 +1259,7 @@ int overlay_route_tick_next_neighbour_id=0;
 int overlay_route_tick_neighbour_bundle_size=1;
 int overlay_route_tick_next_node_bin_id=0;
 int overlay_route_tick_node_bundle_size=1;
-int overlay_route_tick()
+void overlay_route_tick()
 {
   int n;
 
@@ -1326,7 +1326,11 @@ int overlay_route_tick()
   int interval=5000/ticks;
 
   if (debug&DEBUG_OVERLAYROUTING) fprintf(stderr,"route tick interval = %dms (%d ticks per 5sec, neigh=%lldms, node=%lldms)\n",interval,ticks,neighbour_time,node_time);
-  return interval;
+
+  /* Update callback interval based on how much work we have to do */
+  fd_setalarm(overlay_route_tick,interval,interval);
+
+  return;
 }
 
 /* Ticking neighbours is easy; we just pretend we have heard from them again,

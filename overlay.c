@@ -70,41 +70,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 
-/* @PGS/20120615 */
-int last_valid=0;
-int last_line;
-const char *last_file;
-const char *last_func;
-long long last_time;
-
-/* @PGS/20120615 */
-void TIMING_PAUSE()
-{
-  last_valid=0;
-}
-
-/* @PGS/20120615 */
-void _TIMING_CHECK(const char *file,const char *func,int line)
-{
-  long long now=overlay_gettime_ms();
-  if (last_valid) {
-    if (now-last_time>5) {
-      // More than 5ms spent in a given task, complain
-      char msg[1024];
-      snprintf(msg,1024,"Spent %lldms between %s:%d in %s() and here",
-	       now-last_time,last_file,last_line,last_func);
-      logMessage(LOG_LEVEL_WARN,file,line,func,"%s",msg);
-    }
-  }
-
-  last_valid=1;
-  last_file=file;
-  last_func=func;
-  last_line=line;
-  last_time=now;
-}
-
-
 int overlayMode=0;
 
 overlay_txqueue overlay_tx[OQ_MAX];
@@ -131,7 +96,7 @@ int overlayServerMode()
   int i;
   for(i=0;i<OQ_MAX;i++) {
     overlay_tx[i].maxLength=100;
-    overlay_tx[i].latencyTarget=5000; /* Keep packets in queue for 5 seconds by default */
+    overlay_tx[i].latencyTarget=1000; /* Keep packets in queue for 1 second by default */
   }
   /* But expire voice/video call packets much sooner, as they just aren't any use if late */
   overlay_tx[OQ_ISOCHRONOUS_VOICE].latencyTarget=500;
@@ -144,155 +109,44 @@ int overlayServerMode()
      of wifi latency anyway, so we'll live with it.  Larger values will affect voice transport,
      and smaller values would affect CPU and energy use, and make the simulation less realistic. */
 
-  struct pollfd fds[128];
-  int fdcount;
-
   /* Create structures to use 1MB of RAM for testing */
   overlay_route_init(1);
 
+  /* Setup up MDP & monitor interface unix domain sockets */
+  overlay_mdp_setup_sockets();
+  monitor_setup_sockets();
+
   /* Get rhizome server started BEFORE populating fd list so that
      the server's listen socket is in the list for poll() */
-  if (rhizome_enabled()) rhizome_server_poll();
+  if (rhizome_enabled()) rhizome_server_start();
+  /* Pick next rhizome files to grab every few seconds
+     from the priority list continuously being built from observed
+     bundle announcements */
+  fd_setalarm(rhizome_enqueue_suggestions,3000,3000);
 
-  while(1) {
+  /* Periodically check for new interfaces */
+  fd_setalarm(overlay_interface_discover,1,5000);
 
-    TIMING_CHECK();
+  /* Periodically check for server shut down */
+  fd_setalarm(server_shutdown_check,1,1000);
 
-    server_shutdown_check();
+  /* Periodically update route table.
+     (Alarm interval is dynamically updated by overlay_route_tick()
+      based on load/route table size etc) */
+  fd_setalarm(overlay_route_tick,1000,1000);
 
-    TIMING_CHECK();
+  /* Start scheduling interface ticks */
+  fd_setalarm(overlay_check_ticks,1,500);
 
-    /* Work out how long we can wait before we need to tick */
-    long long ms=overlay_time_until_next_tick();
-    memabuseCheck();
-    TIMING_CHECK();
-    //int filesPresent=0;
-    fds[0].fd=sock; fds[0].events=POLLIN;
-    fdcount=1;
-    rhizome_server_get_fds(fds,&fdcount,128);
-    TIMING_CHECK();
-    rhizome_fetching_get_fds(fds,&fdcount,128);
-    TIMING_CHECK();
-    overlay_mdp_get_fds(fds,&fdcount,128);
-    TIMING_CHECK();
-    monitor_get_fds(fds,&fdcount,128);
-    TIMING_CHECK();
+  /* Keep an eye on VoMP calls so that we can expire stale ones etc */
+  fd_setalarm(vomp_tick,1000,1000);
 
-    for(i=0;i<overlay_interface_count;i++)
-      {
-	/* Make socket blocking so that poll() behaves correctly. */	
-	fcntl(overlay_interfaces[i].fd, F_SETFL,
-	      fcntl(overlay_interfaces[i].fd, F_GETFL, NULL)&(~O_NONBLOCK));	
+  /* Show CPU usage stats periodically */
+  fd_setalarm(fd_periodicstats,3000,3000);
 
-	if ((!overlay_interfaces[i].fileP)&&(fdcount<128))
-	  {
-    	    if (debug&DEBUG_IO) {
-	      fprintf(stderr,"Interface %s is poll() slot #%d (fd %d)\n",      
-		      overlay_interfaces[i].name,
-		      fdcount,
-		      overlay_interfaces[i].fd);
-	    }
-	    fds[fdcount].fd=overlay_interfaces[i].fd;
-	    fds[fdcount].events=POLLRDNORM;
-	    fds[fdcount].revents=0;
-	    fdcount++;
-	  }
-	if (overlay_interfaces[i].fileP) {
-	  //filesPresent=1;
-	  if (ms>5) ms=5;
-	}
-      }
-    TIMING_CHECK();
-
-    /* Progressively update link scores to neighbours etc, and find out how long before
-       we should next tick the route table.
-       Basically the faster the CPU and the sparser the route table, the less often we
-       will need to tick in order to keep each tick nice and fast. */
-    int route_tick_interval=overlay_route_tick();
-    if (ms>route_tick_interval) ms=route_tick_interval;
-    int vomp_tick_time=vomp_tick_interval();
-    if (ms>vomp_tick_time) ms=vomp_tick_time;
-
-    TIMING_CHECK();
-    if (debug&DEBUG_VERBOSE_IO)
-      DEBUGF("Waiting via poll() for up to %lldms", ms);
-    TIMING_PAUSE();
-    /* Sanity check maximum poll timeout */
-    if (ms<1) ms=1;
-    if (ms>15000) ms=15000;
-    int r = poll(fds, fdcount, ms);
-    TIMING_CHECK();
-    if (r == -1)
-      WHY_perror("poll");
-    else if (debug&DEBUG_VERBOSE_IO) {
-      DEBUGF("poll() says %d file descriptors are ready", r);
-      int i;
-      for(i=0;i<fdcount;i++)
-	if (fds[i].revents)
-	  DEBUGF("fd #%d is ready (0x%x)\n", fds[i].fd, fds[i].revents);
-    }
-    /* Do high-priority audio handling first */
-    TIMING_CHECK();
-    vomp_tick();
-    TIMING_CHECK();
-
-    if (r > 0) {
-      /* We have data, so try to receive it */
-      if (debug&DEBUG_IO) {
-	fprintf(stderr,"poll() reports %d fds ready\n",r);
-	int i;
-	for(i=0;i<fdcount;i++) {
-	  if (fds[i].revents) 
-	    {
-	      fprintf(stderr,"   #%d (fd %d): %d (",i,fds[i].fd,fds[i].revents);
-	      if ((fds[i].revents&POLL_IN)==POLL_IN) fprintf(stderr,"POLL_IN,");
-	      if ((fds[i].revents&POLLRDNORM)==POLLRDNORM) fprintf(stderr,"POLLRDNORM,");
-	      if ((fds[i].revents&POLL_OUT)==POLL_OUT) fprintf(stderr,"POLL_OUT,");
-	      if ((fds[i].revents&POLL_ERR)==POLL_ERR) fprintf(stderr,"POLL_ERR,");
-	      if ((fds[i].revents&POLL_HUP)==POLL_HUP) fprintf(stderr,"POLL_HUP,");
-	      if ((fds[i].revents&POLLNVAL)==POLLNVAL) fprintf(stderr,"POLL_NVAL,");
-	      fprintf(stderr,")\n");
-	    }
-	  
-	}
-      }
-      TIMING_CHECK();
-      overlay_rx_messages();
-      TIMING_CHECK();
-      if (rhizome_enabled()) {
-	TIMING_CHECK();
-	rhizome_server_poll();
-	TIMING_CHECK();
-	rhizome_fetch_poll();
-	TIMING_CHECK();
-	overlay_mdp_poll();
-	TIMING_CHECK();
-	monitor_poll();
-	TIMING_CHECK();
-      }
-    } else {
-      /* No data before tick occurred, so do nothing.
-	 Well, for now let's just check anyway. */
-      if (debug&DEBUG_IO) fprintf(stderr,"poll() timeout.\n");
-      TIMING_CHECK();
-      overlay_rx_messages();
-      TIMING_CHECK();
-      if (rhizome_enabled()) {
-	TIMING_CHECK();
-	rhizome_server_poll();
-	TIMING_CHECK();
-	rhizome_fetch_poll();
-	TIMING_CHECK();
-	overlay_mdp_poll();
-	TIMING_CHECK();
-	monitor_poll();
-	TIMING_CHECK();
-      }
-    }
-    TIMING_CHECK();
-    /* Check if we need to trigger any ticks on any interfaces */
-    overlay_check_ticks();
-    TIMING_CHECK();
+  while(1) {    
+    /* Check for activitiy and respond to it */
+    fd_poll();
   }
 
   return 0;
@@ -435,7 +289,8 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	if (!broadcast) {
 	  if (overlay_get_nexthop(f->destination,f->nexthop,&len,
 				  &f->nexthop_interface))
-	    WHY("Could not find next hop for host - dropping frame");
+	    WHYF("Could not find next hop for %s* - dropping frame",
+		 overlay_render_sid_prefix(f->destination,7));
 	  dontForward=1;
 	}
 	f->ttl--;

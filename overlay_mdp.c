@@ -72,6 +72,8 @@ int overlay_mdp_setup_sockets()
       int send_buffer_size=64*1024;    
       int res = setsockopt(mdp_abstract_socket, SOL_SOCKET, SO_SNDBUF, 
 		       &send_buffer_size, sizeof(send_buffer_size));
+
+      fd_watch(mdp_abstract_socket,overlay_mdp_poll,POLL_IN);
     } 
   }
 #endif
@@ -104,43 +106,12 @@ int overlay_mdp_setup_sockets()
 		       &send_buffer_size, sizeof(send_buffer_size));
       if (res)
 	WHY_perror("setsockopt");
+      fd_watch(mdp_named_socket,overlay_mdp_poll,POLL_IN);
     }
   }
 
   return 0;
   
-}
-
-int overlay_mdp_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
-{
-  /* Make sure sockets are open */
-  overlay_mdp_setup_sockets();
-
-  if ((*fdcount)>=fdmax) return -1;
-  if (mdp_abstract_socket>-1)
-    {
-      if (debug&DEBUG_IO) {
-	fprintf(stderr,"MDP abstract name space socket is poll() slot #%d (fd %d)\n",
-		*fdcount,mdp_abstract_socket);
-      }
-      fds[*fdcount].fd=mdp_abstract_socket;
-      fds[*fdcount].events=POLLIN;
-      (*fdcount)++;
-    }
-  if ((*fdcount)>=fdmax) return -1;
-  if (mdp_named_socket>-1)
-    {
-      if (debug&DEBUG_IO) {
-	fprintf(stderr,"MDP named unix domain socket is poll() slot #%d (fd %d)\n",
-		*fdcount,mdp_named_socket);
-      }
-      fds[*fdcount].fd=mdp_named_socket;
-      fds[*fdcount].events=POLLIN;
-      (*fdcount)++;
-    }
-
-
-  return 0;
 }
 
 #define MDP_MAX_BINDINGS 100
@@ -438,6 +409,13 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
        send back a connection refused type message? Silence is probably the
        more prudent path.
     */
+
+    if (0)
+      WHYF("Received packet with listener (MDP ports: src=%s*:%d, dst=%d)",
+	   overlay_render_sid_prefix(mdp->out.src.sid,7),
+	   mdp->out.src.port,mdp->out.dst.port);
+
+
     if ((!overlay_address_is_local(mdp->out.dst.sid))
 	&&(!overlay_address_is_broadcast(mdp->out.dst.sid)))
       {
@@ -477,7 +455,7 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
       }
     if (match>-1) {      
       struct sockaddr_un addr;
-      printf("unix domain socket '%s'\n",mdp_bindings_sockets[match]);
+
       bcopy(mdp_bindings_sockets[match],&addr.sun_path[0],mdp_bindings_socket_name_lengths[match]);
       addr.sun_family=AF_UNIX;
       errno=0;
@@ -948,7 +926,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   }
 }
 
-int overlay_mdp_poll()
+void overlay_mdp_poll()
 {
   unsigned char buffer[16384];
   int ttl;
@@ -972,11 +950,14 @@ int overlay_mdp_poll()
 
       switch(mdp->packetTypeAndFlags&MDP_TYPE_MASK) {
       case MDP_GOODBYE:
-	return overlay_mdp_releasebindings(recvaddr_un,recvaddrlen);
+	overlay_mdp_releasebindings(recvaddr_un,recvaddrlen);
+	return;
       case MDP_VOMPEVENT:
-	return vomp_mdp_event(mdp,recvaddr_un,recvaddrlen);
+	vomp_mdp_event(mdp,recvaddr_un,recvaddrlen);
+	return;
       case MDP_NODEINFO:
-	return overlay_route_node_info(mdp,recvaddr_un,recvaddrlen);
+	overlay_route_node_info(mdp,recvaddr_un,recvaddrlen);
+	return;
       case MDP_GETADDRS:
 	{
 	  overlay_mdp_frame mdpreply;
@@ -1035,17 +1016,20 @@ int overlay_mdp_poll()
 	  mdpreply.addrlist.server_sid_count=count;
 
 	  /* Send back to caller */
-	  return overlay_mdp_reply(mdp_named_socket,
-				   (struct sockaddr_un *)recvaddr,recvaddrlen,
-				   &mdpreply);
+	  overlay_mdp_reply(mdp_named_socket,
+			    (struct sockaddr_un *)recvaddr,recvaddrlen,
+			    &mdpreply);
+	  return;
 	}
 	break;
       case MDP_TX: /* Send payload (and don't treat it as system privileged) */
-	return overlay_mdp_dispatch(mdp,1,(struct sockaddr_un*)recvaddr,recvaddrlen);
+	overlay_mdp_dispatch(mdp,1,(struct sockaddr_un*)recvaddr,recvaddrlen);
+	return;
 	break;
       case MDP_BIND: /* Bind to port */
-	return overlay_mdp_process_bind_request(mdp_named_socket,mdp,
-						recvaddr_un,recvaddrlen);
+	overlay_mdp_process_bind_request(mdp_named_socket,mdp,
+					 recvaddr_un,recvaddrlen);
+	return;
 	break;
       default:
 	/* Client is not allowed to send any other frame type */
@@ -1066,7 +1050,7 @@ int overlay_mdp_poll()
 	  fcntl(mdp_named_socket, F_GETFL, NULL)&(~O_NONBLOCK)); 
   }
 
-  return 0;
+  return;
 }
 
 int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp) 

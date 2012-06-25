@@ -693,6 +693,16 @@ app_server_start(int argc, const char *const *argv, struct command_line_option *
 
   if (pid > 0) {
     WHYF("Serval process already running (pid=%d)", pid);
+    /* BatPhone expects to see a pid here, anyway */
+    cli_puts("instancepath");
+    cli_delim(":");
+    cli_puts(serval_instancepath());
+    cli_delim("\n");
+    cli_puts("pid");
+    cli_delim(":");
+    cli_printf("%d", pid);
+    cli_delim("\n");
+
     return 0;
   }
   
