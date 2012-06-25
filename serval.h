@@ -1371,7 +1371,7 @@ typedef struct vomp_sample_block {
   unsigned char bytes[1024];
 } vomp_sample_block;
 
-#define VOMP_MAX_RECENT_SAMPLES 8
+#define VOMP_MAX_RECENT_SAMPLES 2
 typedef struct vomp_call_state {
   vomp_call_half local;
   vomp_call_half remote;
