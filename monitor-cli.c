@@ -26,37 +26,31 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 
-char cmd[1024];
-int cmdLen=0;
-int cmdOfs=0;
-int dataBytesExpected=0;
-unsigned char data[65536];
-int dataBytes=0;
+static char cmd[1024];
+static int cmdLen=0;
+static int cmdOfs=0;
+static int dataBytesExpected=0;
+static unsigned char data[65536];
+static int dataBytes=0;
 
 #define STATE_CMD 1
 #define STATE_DATA 2
-int state=STATE_CMD;
+static int state=STATE_CMD;
 
-int fd;
-int writeLine(char *msg)
-{
-  write(fd,msg,strlen(msg));
-  return 0;
-}
+static int fd;
 
-int processChar(int c);
+static int processChar(int c);
 
-int autoAnswerP=1;
-int pipeAudio=1;
-int reflectAudio=0;
-int syntheticAudio=0;
-int showReceived=1;
-int interactiveP=1;
-int recordCodec=VOMP_CODEC_PCM;
-int recordCodecBlockSamples=320;
-int recordCodecTimespan=20;
-int callSessionToken=0;
-int fast_audio=0;
+static int autoAnswerP=1;
+static int pipeAudio=1;
+static int reflectAudio=0;
+static int syntheticAudio=0;
+static int showReceived=1;
+static int interactiveP=1;
+static int recordCodec=VOMP_CODEC_PCM;
+static int recordCodecTimespan=20;
+static int callSessionToken=0;
+static int fast_audio=0;
 
 int app_monitor_cli(int argc, const char *const *argv, struct command_line_option *o)
 {
@@ -112,13 +106,13 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
     fdcount++;
   }  
 
-  writeLine("monitor vomp\n");
-  writeLine("monitor rhizome\n");
+  WRITE_STR(fd, "monitor vomp\n");
+  WRITE_STR(fd, "monitor rhizome\n");
 
   if (sid!=NULL&&sid[0]) {
     char msg[1024];
     snprintf(msg,1024,"call %s 5551 5552\n",argv[1]);
-    writeLine(msg);
+    WRITE_STR(fd, msg);
   }
 
   char line[1024];
@@ -238,12 +232,12 @@ int processLine(char *cmd,unsigned char *data,int dataLen)
       if (l_state<5&&l_id&&pipeAudio) {
 	// Take control of audio for this call, and let the java side know
 	snprintf(msg,1024,"FASTAUDIO:%x:1\n",l_id);
-	writeLine(msg);
+	WRITE_STR(fd, msg);
       }
       if (l_state==4&&autoAnswerP) {
 	// We are ringing, so pickup
 	sprintf(msg,"pickup %x\n",l_id);
-	writeLine(msg);
+	WRITE_STR(fd, msg);
       }
       if (l_state==5) {
 	if (fast_audio) {	  
@@ -271,7 +265,7 @@ int processLine(char *cmd,unsigned char *data,int dataLen)
 		"qwertyuiopasdfghjklzxcvbnm123456"
 		"qwertyuiopasdfghjklzxcvbnm123456"
 		"qwertyuiopasdfghjklzxcvbnm123456",l_id,counter++);
-	writeLine(buffer);
+	WRITE_STR(fd, buffer);
 	printf("< *320:AUDIO:%x:8\\n<320 bytes>\n",l_id);
       }
   }

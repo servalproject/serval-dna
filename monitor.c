@@ -31,8 +31,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define SO_PEERCRED LOCAL_PEERCRED
 #endif
 
-#define WRITE_STR(fd, str)	write(fd, str, strlen(str))
-
 #define MONITOR_LINE_LENGTH 160
 #define MONITOR_DATA_SIZE MAX_AUDIO_BYTES
 struct monitor_context {

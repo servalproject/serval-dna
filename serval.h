@@ -1535,3 +1535,6 @@ void sigIoHandler(int signal);
 
 #define DEFAULT_MONITOR_SOCKET_NAME "org.servalproject.servald.monitor.socket"
 #define DEFAULT_MDP_SOCKET_NAME "org.servalproject.servald.mdp.socket"
+
+#define WRITE_STR(fd, str)	write(fd, str, strlen(str))
+
