@@ -725,7 +725,7 @@ app_server_start(int argc, const char *const *argv, struct command_line_option *
        */
       cli_puts("pid");
       cli_delim(":");
-      cli_printf("%d", pid);
+      cli_printf("%d", cpid);
       cli_delim("\n");
 
       return 0;
