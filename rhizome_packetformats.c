@@ -74,6 +74,7 @@ int bundle_offset[2]={0,0};
 int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 {
   int voice_mode=0;
+  unsigned short int http_port = RHIZOME_HTTP_PORT;
 
   /* behave differently during voice mode.
      Basically don't encourage people to grab stuff from us, but keep
@@ -105,7 +106,9 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 
   if (ob_append_byte(e,OF_TYPE_RHIZOME_ADVERT))
     return WHY("could not add rhizome bundle advertisement header");
-  ob_append_byte(e,1); /* TTL */
+  ob_append_byte(e,2); /* type */
+  ob_append_short(e, http_port); /* our HTTP server port */
+
   int rfs_offset=e->length; /* remember where the RFS byte gets stored 
 			       so that we can patch it later */
   ob_append_byte(e,1+8+1+1+1+RHIZOME_BAR_BYTES*slots_used/* RFS */);
@@ -324,11 +327,18 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
   if (!f) return -1;
   int ofs=0;
   int ad_frame_type=f->payload->bytes[ofs++];
+  struct sockaddr_in httpaddr = *(struct sockaddr_in *)f->recvaddr;
+  httpaddr.sin_port = RHIZOME_HTTP_PORT;
   int manifest_length;
   rhizome_manifest *m=NULL;
 
-  if (ad_frame_type==1)
-    {
+  switch (ad_frame_type) {
+    case 2:
+      /* The same as type=1, but includes the source HTTP port number */
+      httpaddr.sin_port = (f->payload->bytes[ofs] << 8) + f->payload->bytes[ofs + 1];
+      ofs += 2;
+      // FALL THROUGH ...
+    case 1:
       /* Extract whole manifests */
       while(ofs<f->payload->length) {
 	manifest_length=(f->payload->bytes[ofs]<<8)+f->payload->bytes[ofs+1];
@@ -388,7 +398,7 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	  return 0;
 	}
 	int importManifest=0;	
-	if (rhizome_ignore_manifest_check(m,(struct sockaddr_in *)f->recvaddr))
+	if (rhizome_ignore_manifest_check(m, &httpaddr))
 	  {
 	    /* Ignoring manifest that has caused us problems recently */
 	    if (1) WARNF("Ignoring manifest with errors: %s*", manifest_id_prefix);
@@ -410,7 +420,7 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	    if (debug&DEBUG_RHIZOME) DEBUG("Unverified manifest has errors - so not processing any further.");
 	    /* Don't waste any time on this manifest in future attempts for at least
 	       a minute. */
-	    rhizome_queue_ignore_manifest(m,(struct sockaddr_in*)f->recvaddr,60000);
+	    rhizome_queue_ignore_manifest(m, &httpaddr, 60000);
 	  }
 	if (m) rhizome_manifest_free(m);
 	m=NULL;
@@ -430,7 +440,7 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	    m = NULL;
 	  } else if (m->errors) {
 	    if (debug&DEBUG_RHIZOME) DEBUGF("Verifying manifest %s* revealed errors -- not storing.", manifest_id_prefix);
-	    rhizome_queue_ignore_manifest(m,(struct sockaddr_in*)f->recvaddr,60000);
+	    rhizome_queue_ignore_manifest(m, &httpaddr, 60000);
 	    rhizome_manifest_free(m);
 	    m = NULL;
 	  } else {
@@ -438,7 +448,7 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	    /* Add manifest to import queue. We need to know originating IPv4 address
 	       so that we can transfer by HTTP. */
 	    if (0) DEBUG("Suggesting fetching of a bundle");
-	    rhizome_suggest_queue_manifest_import(m,(struct sockaddr_in *)f->recvaddr);
+	    rhizome_suggest_queue_manifest_import(m, &httpaddr);
 	  }
 	}
 	if (!manifest_length) {
@@ -447,6 +457,7 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	}
 	ofs+=manifest_length;
       }
+      break;
     }
   
   return 0;

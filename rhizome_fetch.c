@@ -616,7 +616,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	    fcntl(sock,F_SETFL, O_NONBLOCK);
 	    struct sockaddr_in peeraddr;
 	    bcopy(peerip,&peeraddr,sizeof(peeraddr));
-	    peeraddr.sin_port=htons(RHIZOME_HTTP_PORT);
+	    //peeraddr.sin_port=htons(RHIZOME_HTTP_PORT);
 	    int r=connect(sock,(struct sockaddr*)&peeraddr,sizeof(peeraddr));
 	    if ((errno!=EINPROGRESS)&&(r!=0)) {	      
 	      WHY_perror("connect");

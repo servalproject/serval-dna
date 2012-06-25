@@ -287,16 +287,19 @@ int isOverlayPacket(FILE *f,unsigned char *packet,int *ofs,int len)
 	  {
 	    int i,j,k;
 	    int rhizome_ad_frame_type=frame[0];
+	    unsigned short int http_port = 0;
 	    fprintf(f,"%sRhizome bundle advertisement frame, version %d\n",indent(8),rhizome_ad_frame_type);
-	    if (rhizome_ad_frame_type>2) 
-	      fprintf(f,"%sWARNING: Version is newer than I understand.\n",indent(10));
 	    i=1;
-	    if (rhizome_ad_frame_type==1) {
-	      /* Frame contains whole manifest(s) */
-	      fprintf(f,"%sBundle Manifest(s) (i=%d, frame_len=%d):\n",
-		      indent(8),i,frame_len);
-	      while(i<frame_len)
-		{		  
+	    switch (rhizome_ad_frame_type) {
+	      case 2:
+		http_port = (frame[i] << 8) + frame[i+1];
+		i += 2;
+		fprintf(f,"%sHTTP port = %d\n", indent(8), http_port);
+		// FALL THROUGH ...
+	      case 1:
+		/* Frame contains whole manifest(s) */
+		fprintf(f,"%sBundle Manifest(s) (i=%d, frame_len=%d):\n", indent(8),i,frame_len);
+		while(i<frame_len) {		  
 		  int manifest_len=(frame[i]<<8)+frame[i+1];
 		  /* Check for end of manifests */
 		  if (manifest_len>=0xff00) { i+=1; break; }
@@ -311,7 +314,7 @@ int isOverlayPacket(FILE *f,unsigned char *packet,int *ofs,int len)
 			for(;j<16;j++) fprintf(f,"   ");
 			fprintf(f,"    ");
 			for(j=0;j<16&&(i+j)<frame_len;j++) fprintf(f,"%c",frame[i+j]>=' '
-							     &&frame[i+j]<0x7c?frame[i+j]:'.');
+							    &&frame[i+j]<0x7c?frame[i+j]:'.');
 			fprintf(f,"\n");
 		      }
 		    i=frame_len;
@@ -374,6 +377,10 @@ int isOverlayPacket(FILE *f,unsigned char *packet,int *ofs,int len)
 		    }
 		  i+=manifest_len;
 		}
+		break;
+	      default:
+		fprintf(f,"%sWARNING: Version is newer than I understand.\n",indent(10));
+		break;
 	    }
 
 	    fprintf(f,"%sBundle Advertisement Records (BARs):\n",indent(8));

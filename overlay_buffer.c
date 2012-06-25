@@ -160,9 +160,7 @@ int ob_bcopy(overlay_buffer *b,int from, int to, int len)
 int ob_append_byte(overlay_buffer *b,unsigned char byte)
 {
   if (ob_makespace(b,1)) return WHY("ob_makespace() failed");
-  
-  bcopy(&byte,&b->bytes[b->length],1);
-  b->length++;
+  b->bytes[b->length++] = byte;
   return 0;
 }
 
