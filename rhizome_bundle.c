@@ -170,8 +170,8 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
   /* Remember where the text ends */
   int end_of_text=ofs;
 
-#warning    DEBUG("Group membership determination not implemented (see which signatories are groups? what about manifests signed by groups we don't yet know about?)");
-  
+  // TODO Determine group membership here.
+
   m->manifest_bytes=end_of_text;
 
   return 0;
@@ -448,8 +448,8 @@ int rhizome_manifest_pack_variables(rhizome_manifest *m)
 }
 
 /* Sign this manifest using our it's own BID secret key.
-   */
-#warning need to also allow signing by other parties (including SASes) instead of just self-signing.
+   TODO: need a third-party signing primitive, eg, to support signing with SAS.
+ */
 int rhizome_manifest_selfsign(rhizome_manifest *m)
 {
   if (!m->haveSecret) return WHY("Need private key to sign manifest");
