@@ -1538,6 +1538,13 @@ void sigIoHandler(int signal);
 
 #define WRITE_STR(fd, str)	write(fd, str, strlen(str))
 
+int rhizome_server_start();
+void rhizome_enqueue_suggestions();
+int overlay_mdp_setup_sockets();
+void overlay_interface_poll(int fd);
+void overlay_dummy_poll();
+void rhizome_client_poll(int fd);
+
 /* Event queue handling functions */
 int fd_poll();
 int fd_checkalarms();
@@ -1548,10 +1555,11 @@ int fd_list();
 char *fd_funcname(void *addr);
 int fd_showstats();
 void fd_periodicstats();
+int fd_next_funcid();
+int fd_func_exit(int funcid);
+int fd_func_enter(int funcid);
+int fd_next_funcid(const char *funcname);
 
-int rhizome_server_start();
-void rhizome_enqueue_suggestions();
-int overlay_mdp_setup_sockets();
-void overlay_interface_poll(int fd);
-void overlay_dummy_poll();
-void rhizome_client_poll(int fd);
+#define IN() static int _func_id=-1; if (_func_id<0) _func_id=fd_next_funcid(__FUNCTION__); fd_func_enter(_func_id);
+#define OUT() fd_func_exit(_func_id);
+#define RETURN(X) { OUT() return(X); }

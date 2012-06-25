@@ -154,12 +154,13 @@ int overlayServerMode()
 
 int overlay_frame_process(int interface,overlay_frame *f)
 {
-  if (!f) return WHY("f==NULL");
+  IN();
+  if (!f) RETURN(WHY("f==NULL"));
 
   long long now=overlay_gettime_ms();
 
   if (f->source_address_status==OA_RESOLVED&&overlay_address_is_local(f->source))
-      return WHY("Dropping frame claiming to come from myself.");
+    RETURN(WHY("Dropping frame claiming to come from myself."));
 
   if (debug&DEBUG_OVERLAYFRAMES) fprintf(stderr,">>> Received frame (type=%02x, bytes=%d)\n",f->type,f->payload?f->payload->length:-1);
 
@@ -176,13 +177,13 @@ int overlay_frame_process(int interface,overlay_frame *f)
     {
     case OA_UNINITIALISED:
       /* Um? Right. */
-      return WHY("frame passed with ununitialised nexthop address");
+      RETURN(WHY("frame passed with ununitialised nexthop address"));
       break;
     case OA_RESOLVED:
       /* Great, we have the address, so we can get on with things */
       break;
     case OA_PLEASEEXPLAIN:
-      return -1; //  WHY("Address cannot be resolved -- aborting packet processing.");
+      RETURN(-1); //  WHY("Address cannot be resolved -- aborting packet processing.");
       /* XXX Should send a please explain to get this address resolved. */
       break;
     case OA_UNSUPPORTED:
@@ -194,7 +195,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	 to itself. */
       WHY("Packet with unsupported address format");
       overlay_interface_repeat_abbreviation_policy[interface]=1;
-      return -1;
+      RETURN(-1);
       break;
     }
 
@@ -214,7 +215,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
   if (forMe) {
     /* It's for us, so resolve the addresses */
     if (overlay_frame_resolve_addresses(interface,f))
-      return WHY("Failed to resolve destination and sender addresses in frame");
+      RETURN(WHY("Failed to resolve destination and sender addresses in frame"));
     broadcast=overlay_address_is_broadcast(f->destination);    
     if (debug&DEBUG_OVERLAYFRAMES) {
       fprintf(stderr,"Destination for this frame is (resolve code=%d): ",f->destination_address_status);
@@ -227,7 +228,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
 
     if (f->source_address_status!=OA_RESOLVED) {
       if (debug&DEBUG_OVERLAYFRAMES) WHY("Source address could not be resolved, so dropping frame.");
-      return -1;
+      RETURN(-1);
     }
     if (overlay_address_is_local(f->source))
       {
@@ -235,7 +236,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	   you hear everything you send. */
 	if (debug&DEBUG_OVERLAYROUTING) 
 	  WHY("Dropping frame claiming to come from myself.");
-	return -1;
+	RETURN(-1);
       }
 
     if (f->destination_address_status==OA_RESOLVED) {
@@ -244,7 +245,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
       if (overlay_address_is_local(f->destination)) ultimatelyForMe=1;
     } else {
       if (debug&DEBUG_OVERLAYFRAMES) WHY("Destination address could not be resolved, so dropping frame.");
-      return WHY("could not resolve destination address");
+      RETURN(WHY("could not resolve destination address"));
     }
   }
 
@@ -257,12 +258,12 @@ int overlay_frame_process(int interface,overlay_frame *f)
 
   if (duplicateBroadcast) {
     if (0) WHY("Packet is duplicate broadcast");
-    return 0;
+    RETURN(0);
   }
 
   /* Not for us? Then just ignore it */
   if (!forMe) {
-    return 0;
+    RETURN(0);
   }
 
   /* Is this a frame we have to forward on? */
@@ -318,7 +319,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
 		printf("reject nexthop is %s\n",overlay_render_sid(f->nexthop));
 		printf("reject destination is %s\n",
 		       overlay_render_sid(f->destination));		
-		return WHY("Not forwarding or reading duplicate broadcast");
+		RETURN(WHY("Not forwarding or reading duplicate broadcast"));
 	      }
 	  }
 
@@ -350,7 +351,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	/* If the frame was a broadcast frame, then we need to hang around
 	   so that we can process it, since we are one of the recipients.
 	   Otherwise, return triumphant. */
-	if (!broadcast) return 0;
+	if (!broadcast) RETURN(0);
       }
     }
 
@@ -383,10 +384,10 @@ int overlay_frame_process(int interface,overlay_frame *f)
       break;
     default:
       fprintf(stderr,"Unsupported f->type=0x%x\n",f->type);
-      return WHY("Support for that f->type not yet implemented");
+      RETURN(WHY("Support for that f->type not yet implemented"));
       break;
     }
 
-  return 0;
+  RETURN(0);
 }
 

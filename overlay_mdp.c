@@ -273,58 +273,49 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
   return overlay_mdp_reply_ok(sock,recvaddr,recvaddrlen,"Port bound");
 }
 
-int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long now)
+unsigned char *overlay_mdp_decrypt(overlay_frame *f,overlay_mdp_frame *mdp,
+				   int *len)
 {
-  /* Take frame source and destination and use them to populate mdp->in->{src,dst}
-     SIDs.
-     Take ports from mdp frame itself.
-     Take payload from mdp frame itself.
-  */
-  overlay_mdp_frame mdp;
+  IN();
 
-  /* Get source and destination addresses */
-  bcopy(&f->destination[0],&mdp.in.dst.sid[0],SID_SIZE);
-  bcopy(&f->source[0],&mdp.in.src.sid[0],SID_SIZE);
-
-  int len=f->payload->length;
+  *len=f->payload->length;
   unsigned char *b = NULL;
-  unsigned char plain_block[len+16];
+  unsigned char plain_block[(*len)+16];
 
-  if (len<10) return WHY("Invalid MDP frame");
-
-  /* copy crypto flags from frame so that we know if we need to decrypt or verify it */
   switch(f->modifiers&OF_CRYPTO_BITS)  {
   case 0: 
     /* get payload */
     b=&f->payload->bytes[0];
-    len=f->payload->length;
-    mdp.packetTypeAndFlags|=MDP_NOCRYPT|MDP_NOSIGN; break;    
+    *len=f->payload->length;
+    mdp->packetTypeAndFlags|=MDP_NOCRYPT|MDP_NOSIGN; break;    
   case OF_CRYPTO_CIPHERED:
-    return WHY("decryption not implemented");
-    mdp.packetTypeAndFlags|=MDP_NOSIGN; break;
+    WHY("decryption not implemented");
+    RETURN(NULL);
+    mdp->packetTypeAndFlags|=MDP_NOSIGN; break;
   case OF_CRYPTO_SIGNED:
     {
       /* This call below will dispatch the request for the SAS if we don't
 	 already have it.  In the meantime, we just drop the frame if the SAS
 	 is not available. */
-      unsigned char *key=keyring_find_sas_public(keyring,mdp.out.src.sid);
-      if (!key) return WHY("SAS key not currently on record, so cannot verify");
+      unsigned char *key=keyring_find_sas_public(keyring,mdp->out.src.sid);
+      if (!key) { WHY("SAS key not currently on record, so cannot verify");
+	RETURN(NULL); }
 
       /* get payload and following compacted signature */
       b=&f->payload->bytes[0];
-      len=f->payload->length-crypto_sign_edwards25519sha512batch_BYTES;
+      *len=f->payload->length-crypto_sign_edwards25519sha512batch_BYTES;
 
       /* get hash */
       unsigned char hash[crypto_hash_sha512_BYTES];
-      crypto_hash_sha512(hash,b,len);
+      crypto_hash_sha512(hash,b,*len);
 
       /* reconstitute signature by putting hash between two halves of signature */
       unsigned char signature[crypto_hash_sha512_BYTES
 			      +crypto_sign_edwards25519sha512batch_BYTES];
-      bcopy(&b[len],&signature[0],32);
-      crypto_hash_sha512(&signature[32],b,len);
+      bcopy(&b[*len],&signature[0],32);
+      crypto_hash_sha512(&signature[32],b,*len);
       if (0) dump("hash for verification",hash,crypto_hash_sha512_BYTES);
-      bcopy(&b[len+32],&signature[32+crypto_hash_sha512_BYTES],32);
+      bcopy(&b[(*len)+32],&signature[32+crypto_hash_sha512_BYTES],32);
       
       /* verify signature */
       unsigned char m[crypto_hash_sha512_BYTES];
@@ -333,24 +324,27 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
 	=crypto_sign_edwards25519sha512batch_open(m,&mlen,
 						  signature,sizeof(signature),
 						  key);
-      if (result) return WHY("Signature verification failed: incorrect signature");
-      else if (0) DEBUG("signature check passed");
+      if (result) {
+	WHY("Signature verification failed: incorrect signature");
+        RETURN(NULL);
+      } else if (1) DEBUG("signature check passed");
     }    
-    mdp.packetTypeAndFlags|=MDP_NOCRYPT; break;
+    mdp->packetTypeAndFlags|=MDP_NOCRYPT; break;
   case OF_CRYPTO_CIPHERED|OF_CRYPTO_SIGNED:
     {
       if (0) {
 	fflush(stderr);
 	printf("crypted MDP frame for %s\n",
-	       overlay_render_sid(mdp.out.dst.sid));
+	       overlay_render_sid(mdp->out.dst.sid));
 	fflush(stdout);
       }
 
-      unsigned char *k=keyring_get_nm_bytes(&mdp.out.dst,&mdp.out.src);
+      unsigned char *k=keyring_get_nm_bytes(&mdp->out.dst,&mdp->out.src);
       unsigned char *nonce=&f->payload->bytes[0];
       int nb=crypto_box_curve25519xsalsa20poly1305_NONCEBYTES;
       int zb=crypto_box_curve25519xsalsa20poly1305_ZEROBYTES;
-      if (!k) return WHY("I don't have the private key required to decrypt that");
+      if (!k) { WHY("I don't have the private key required to decrypt that");
+	RETURN(NULL); }
       bzero(&plain_block[0],crypto_box_curve25519xsalsa20poly1305_ZEROBYTES-16);
       int cipher_len=f->payload->length-nb;
       bcopy(&f->payload->bytes[nb],&plain_block[16],cipher_len);
@@ -360,17 +354,42 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
 	dump("cipher block",&plain_block[16],cipher_len); 
       }
       if (crypto_box_curve25519xsalsa20poly1305_open_afternm
-	  (plain_block,plain_block,cipher_len+16,nonce,k))
-	return WHYF("crypto_box_open_afternm() failed (forged or corrupted packet of %d bytes)",cipher_len+16);
+	  (plain_block,plain_block,cipher_len+16,nonce,k)) {
+	WHYF("crypto_box_open_afternm() failed (forged or corrupted packet of %d bytes)",cipher_len+16);
+	RETURN(NULL);
+      }
       if (0) dump("plain block",&plain_block[zb],cipher_len-16);
       b=&plain_block[zb];
-      len=cipher_len-16;
+      *len=cipher_len-16;
       break;
     }    
   }
+  RETURN(b);
+}
+
+int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long now)
+{
+  IN();
+  /* Take frame source and destination and use them to populate mdp->in->{src,dst}
+     SIDs.
+     Take ports from mdp frame itself.
+     Take payload from mdp frame itself.
+  */
+  overlay_mdp_frame mdp;
+  int len=f->payload->length;
+
+  /* Get source and destination addresses */
+  bcopy(&f->destination[0],&mdp.in.dst.sid[0],SID_SIZE);
+  bcopy(&f->source[0],&mdp.in.src.sid[0],SID_SIZE);
+
+  if (len<10) RETURN(WHY("Invalid MDP frame"));
+
+  /* copy crypto flags from frame so that we know if we need to decrypt or verify it */
+  unsigned char *b = overlay_mdp_decrypt(f,&mdp,&len);
+  if (!b) RETURN(-1);
 
   int version=(b[0]<<8)+b[1];
-  if (version!=0x0101) return WHY("Saw unsupported MDP frame version");
+  if (version!=0x0101) RETURN(WHY("Saw unsupported MDP frame version"));
 
   /* Indicate MDP message type */
   mdp.packetTypeAndFlags=MDP_TX;
@@ -385,7 +404,7 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
   bcopy(&b[10],&mdp.in.payload[0],mdp.in.payload_length);
 
   /* and do something with it! */
-  return overlay_saw_mdp_frame(interface,&mdp,now);
+  RETURN(overlay_saw_mdp_frame(interface,&mdp,now));
 }
 
 int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp)
@@ -399,6 +418,7 @@ int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp)
 
 int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 {
+  IN();
   int i;
   int match=-1;
 
@@ -419,7 +439,7 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
     if ((!overlay_address_is_local(mdp->out.dst.sid))
 	&&(!overlay_address_is_broadcast(mdp->out.dst.sid)))
       {
-	return WHY("Asked to process an MDP packet that was not addressed to this node.");
+	RETURN(WHY("Asked to process an MDP packet that was not addressed to this node."));
       }
     
     for(i=0;i<MDP_MAX_BINDINGS;i++)
@@ -462,25 +482,26 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
       int len=overlay_mdp_relevant_bytes(mdp);
       int r=sendto(mdp_named_socket,mdp,len,0,(struct sockaddr*)&addr,sizeof(addr));
       if (r==overlay_mdp_relevant_bytes(mdp)) {	
-	return 0;
+	RETURN(0);
       }
+      WHY("didn't send mdp packet");
       if (errno==ENOENT) {
 	/* far-end of socket has died, so drop binding */
 	printf("Closing dead MDP client '%s'\n",mdp_bindings_sockets[match]);
 	overlay_mdp_releasebindings(&addr,mdp_bindings_socket_name_lengths[match]);
       }
       WHY_perror("sendto(e)");
-      return WHY("Failed to pass received MDP frame to client");
+      RETURN(WHY("Failed to pass received MDP frame to client"));
     } else {
       /* No socket is bound, ignore the packet ... except for magic sockets */
       switch(mdp->out.dst.port) {
       case MDP_PORT_VOMP:
-	return vomp_mdp_received(mdp);
+	RETURN(vomp_mdp_received(mdp));
       case MDP_PORT_KEYMAPREQUEST:
 	/* Either respond with the appropriate SAS, or record this one if it
 	   verfies out okay. */
 	DEBUG("key mapping request");
-	return keyring_mapping_request(keyring,mdp);
+	RETURN(keyring_mapping_request(keyring,mdp));
       case MDP_PORT_DNALOOKUP: /* attempt to resolve DID to SID */
 	{
 	  int cn=0,in=0,kp=0;
@@ -488,8 +509,8 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 	  int pll=mdp->out.payload_length;
 	  if (pll>64) pll=64;
 	  /* get did from the packet */
-	  if (mdp->out.payload_length<1)
-	    return WHY("Empty DID in DNA resolution request");
+	  if (mdp->out.payload_length<1) {
+	    RETURN(WHY("Empty DID in DNA resolution request")); }
 	  bcopy(&mdp->out.payload[0],&did[0],pll);
 	  /* make sure it is null terminated */
 	  did[pll]=0; 
@@ -553,7 +574,8 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 	    */
 	    dna_helper_enqueue(did,mdp->out.src.sid);
 	  }
-	  return 0;
+	  RETURN(0);
+	  DEBUG("Got here");
 	}
 	break;
       case MDP_PORT_ECHO: /* well known ECHO port for TCP/UDP and now MDP */
@@ -564,7 +586,9 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 	  /* Swap addresses */
 	  overlay_mdp_swap_src_dst(mdp);
 
-	  if (mdp->out.dst.port==MDP_PORT_ECHO) return WHY("echo loop averted");
+	  if (mdp->out.dst.port==MDP_PORT_ECHO) {
+	    RETURN(WHY("echo loop averted"));
+	  }
 	  /* If the packet was sent to broadcast, then replace broadcast address
 	     with our local address. For now just responds with first local address */
 	  if (overlay_address_is_broadcast(mdp->out.src.sid))
@@ -589,23 +613,23 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
 	     and the frame needs sending on, as happens with broadcasts.  MDP ping
 	     is a simple application where this occurs). */
 	  overlay_mdp_swap_src_dst(mdp);
-
+	  
 	}
 	break;
       default:
 	/* Unbound socket.  We won't be sending ICMP style connection refused
 	   messages, partly because they are a waste of bandwidth. */
-	return WHYF("Received packet for which no listening process exists (MDP ports: src=%d, dst=%d",
-		    mdp->out.src.port,mdp->out.dst.port);
+	RETURN(WHYF("Received packet for which no listening process exists (MDP ports: src=%d, dst=%d",
+		    mdp->out.src.port,mdp->out.dst.port));
       }
     }
     break;
   default:
-    return WHYF("We should only see MDP_TX frames here (MDP message type = 0x%x)",
-		mdp->packetTypeAndFlags);
+    RETURN(WHYF("We should only see MDP_TX frames here (MDP message type = 0x%x)",
+		mdp->packetTypeAndFlags));
   }
 
-  return WHY("Not implemented");
+  RETURN(0);
 }
 
 int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,int userGeneratedFrameP,
@@ -682,17 +706,18 @@ int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,int userGeneratedFrameP,
 int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 			 struct sockaddr_un *recvaddr,int recvaddrlen)
 {
+  IN();
   /* Work out if destination is broadcast or not */
   int broadcast=1;
   
   if (overlay_mdp_sanitytest_sourceaddr(&mdp->out.src,userGeneratedFrameP,
 					recvaddr,recvaddrlen))
-    return overlay_mdp_reply_error
-      (mdp_named_socket,
-       (struct sockaddr_un *)recvaddr,
-       recvaddrlen,8,
-       "Source address is invalid (you must bind to a source address before"
-       " you can send packets");
+    RETURN(overlay_mdp_reply_error
+	   (mdp_named_socket,
+	    (struct sockaddr_un *)recvaddr,
+	    recvaddrlen,8,
+	    "Source address is invalid (you must bind to a source address before"
+	    " you can send packets"));
   
   if (!overlay_address_is_broadcast(mdp->out.dst.sid)) broadcast=0;
   
@@ -704,7 +729,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       if (!broadcast) {
 	/* Is local, and is not broadcast, so shouldn't get sent out
 	   on the wire. */
-	return 0;
+	RETURN(0);
       }
     }
   
@@ -713,14 +738,14 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
      NaCl cryptobox keys can be used for signing. */	
   if (broadcast) {
     if (!(mdp->packetTypeAndFlags&MDP_NOCRYPT))
-      return overlay_mdp_reply_error(mdp_named_socket,
+      RETURN(overlay_mdp_reply_error(mdp_named_socket,
 				     recvaddr,recvaddrlen,5,
-				     "Broadcast packets cannot be encrypted ");  }
+				     "Broadcast packets cannot be encrypted "));  }
   
   /* Prepare the overlay frame for dispatch */
   struct overlay_frame *frame;
   frame=calloc(sizeof(overlay_frame),1);
-  if (!frame) return WHY_perror("calloc");
+  if (!frame) RETURN(WHY_perror("calloc"));
   /* give voice packets priority */
   if (mdp->out.dst.port==MDP_PORT_VOMP) frame->type=OF_TYPE_DATA_VOICE;
   else frame->type=OF_TYPE_DATA;
@@ -749,7 +774,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       unsigned char nonce[crypto_box_curve25519xsalsa20poly1305_NONCEBYTES];
       if (urandombytes(nonce,crypto_box_curve25519xsalsa20poly1305_NONCEBYTES)) {
 	op_free(frame);
-	return WHY("urandombytes() failed to generate nonce");
+	RETURN(WHY("urandombytes() failed to generate nonce"));
       }
       fe|= ob_append_bytes(frame->payload,nonce,crypto_box_curve25519xsalsa20poly1305_NONCEBYTES);
       /* generate plain message with zero bytes and get ready to cipher it */
@@ -777,16 +802,16 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       /* get pre-computed PKxSK bytes (the slow part of auth-cryption that can be
 	 retained and reused, and use that to do the encryption quickly. */
       unsigned char *k=keyring_get_nm_bytes(&mdp->out.src,&mdp->out.dst);
-      if (!k) { op_free(frame); return WHY("could not compute Curve25519(NxM)"); }
+      if (!k) { op_free(frame); RETURN(WHY("could not compute Curve25519(NxM)")); }
       /* Get pointer to place in frame where the ciphered text needs to go */
       int cipher_offset=frame->payload->length;
       unsigned char *cipher_text=ob_append_space(frame->payload,cipher_len);
       if (fe||(!cipher_text))
-	{ op_free(frame); return WHY("could not make space for ciphered text"); }
+	{ op_free(frame); RETURN(WHY("could not make space for ciphered text")); }
       /* Actually authcrypt the payload */
       if (crypto_box_curve25519xsalsa20poly1305_afternm
 	  (cipher_text,plain,cipher_len,nonce,k))
-	{ op_free(frame); return WHY("crypto_box_afternm() failed"); }
+	{ op_free(frame); RETURN(WHY("crypto_box_afternm() failed")); }
       /* now shuffle down 16 bytes to get rid of the temporary space that crypto_box
 	 uses. */
       bcopy(&cipher_text[16],&cipher_text[0],cipher_len-16);
@@ -811,7 +836,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
     */
     frame->modifiers=OF_CRYPTO_CIPHERED; 
     op_free(frame);
-    return WHY("ciphered MDP packets not implemented");
+    RETURN(WHY("ciphered MDP packets not implemented"));
     break;
   case MDP_NOCRYPT: 
     /* Payload is sent unencrypted, but signed.
@@ -834,7 +859,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 			  +mdp->out.payload_length);
     {
       unsigned char *key=keyring_find_sas_private(keyring,mdp->out.src.sid,NULL);
-      if (!key) { op_free(frame); return WHY("could not find signing key"); }
+      if (!key) { op_free(frame); RETURN(WHY("could not find signing key")); }
       
       /* Build plain-text that includes header and hash it so that
          we can sign that hash. */
@@ -864,7 +889,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       crypto_sign_edwards25519sha512batch(signature,&sig_len,
 					  hash,crypto_hash_sha512_BYTES,
 					  key);
-      if (!sig_len) { op_free(frame); return WHY("Signing MDP frame failed"); }
+      if (!sig_len) { op_free(frame); RETURN(WHY("Signing MDP frame failed")); }
       /* chop hash out of middle of signature since it has to be recomputed
 	 at the far end, anyway, as described above. */
       bcopy(&signature[32+64],&signature[32],32);
@@ -918,11 +943,11 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   if (overlay_payload_enqueue(q,frame,0))
     {
       if (frame) op_free(frame);
-      return WHY("Error enqueuing frame");
+      RETURN(WHY("Error enqueuing frame"));
     }
   else {
     if (debug&DEBUG_OVERLAYINTERFACES) DEBUG("queued frame");
-    return 0;
+    RETURN(0);
   }
 }
 

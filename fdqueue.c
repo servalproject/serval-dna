@@ -252,6 +252,19 @@ func_descriptions func_names[]={
   {NULL,NULL}
 };
 
+#define MAX_FUNCS 1024
+struct callback_stats called_funcs[MAX_FUNCS];
+const char *called_func_names[MAX_FUNCS];
+int func_count=0;
+
+#define MAX_CALL_DEPTH 128
+struct {
+  int func_id;
+  int enter_time;
+  int child_time;
+} call_stack[MAX_CALL_DEPTH];
+int call_stack_depth=0;
+
 char *fd_funcname(void *addr)
 {
   int j;
@@ -299,7 +312,7 @@ int fd_tallystats(struct callback_stats *total,struct callback_stats *a)
   return 0;
 }
 
-int fd_showstat(struct callback_stats *total, struct callback_stats *a, char *msg)
+int fd_showstat(struct callback_stats *total, struct callback_stats *a, const char *msg)
 {
   WHYF("%lldms (%2.1f%%) in %d calls (max %lldms, avg %.1fms) : %s",
        a->total_time,a->total_time*100.0/total->total_time,
@@ -325,6 +338,9 @@ int fd_clearstats()
     fd_clearstat(&alarms[i].stats);
   for(i=0;i<fdcount;i++)
     fd_clearstat(&fd_stats[fds[i].fd]);
+  for(i=0;i<func_count;i++)
+    fd_clearstat(&called_funcs[i]);
+
   return 0;
 }
 
@@ -355,6 +371,10 @@ int fd_showstats()
     fd_showstat(&total,&fd_stats[fds[i].fd],desc);
   }
   fd_showstat(&total,&total,"TOTAL");
+  INFOF("servald function time statistics:");
+  for(i=0;i<func_count;i++)
+    fd_showstat(&total,&called_funcs[i],called_func_names[i]);
+
   return 0;
 }
 
@@ -363,3 +383,40 @@ void fd_periodicstats()
   fd_showstats();
   fd_clearstats();  
 }
+
+int fd_next_funcid(const char *funcname)
+{
+  if (func_count>=MAX_FUNCS) return MAX_FUNCS-1;
+  fd_clearstat(&called_funcs[func_count]);
+  called_func_names[func_count]=funcname;
+  return func_count++;
+}
+
+int fd_func_enter(int funcid)
+{
+  if (call_stack_depth>=MAX_CALL_DEPTH) return 0;
+  call_stack[call_stack_depth].func_id=funcid;
+  call_stack[call_stack_depth].enter_time=overlay_gettime_ms();
+  call_stack[call_stack_depth].child_time=0;
+  call_stack_depth++;
+  return 0;
+}
+
+int fd_func_exit(int funcid)
+{
+  if (funcid!=call_stack[call_stack_depth-1].func_id)
+    exit(WHYF("func_id mismatch: entered through %s(), but exited through %s()",
+	      called_func_names[call_stack[call_stack_depth-1].func_id],
+	      called_func_names[funcid]));
+
+  long long elapsed=overlay_gettime_ms()-call_stack[call_stack_depth-1].enter_time;
+  long long self_elapsed=elapsed-call_stack[call_stack_depth-1].child_time;
+  if (call_stack_depth>1) {
+    int d=call_stack_depth-2;
+    call_stack[d].child_time+=elapsed;
+  }
+  fd_update_stats(&called_funcs[funcid],self_elapsed);
+  call_stack_depth--;
+  return 0;
+}
+
