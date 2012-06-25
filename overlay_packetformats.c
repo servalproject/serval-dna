@@ -128,8 +128,8 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,
       f.type=packet[ofs]&OF_TYPE_BITS;
       f.modifiers=packet[ofs]&OF_MODIFIER_BITS;
 
-      if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"f.type=0x%02x, f.modifiers=0x%02x, ofs=%d\n",
-			   f.type,f.modifiers,ofs);
+      if (debug&DEBUG_PACKETFORMATS)
+	DEBUGF("f.type=0x%02x, f.modifiers=0x%02x, ofs=%d", f.type, f.modifiers, ofs);
 
       switch(packet[ofs]&OF_TYPE_BITS)
 	{
@@ -167,7 +167,7 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,
 
       /* Decode length of remainder of frame */
       f.rfs=rfs_decode(packet,&ofs);
-      if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"f.rfs=%d, ofs=%d\n",f.rfs,ofs);
+      if (debug&DEBUG_PACKETFORMATS) DEBUGF("f.rfs=%d, ofs=%d", f.rfs, ofs);
 
       if (!f.rfs) {
 	/* Zero length -- assume we fell off the end of the packet */
@@ -180,8 +180,7 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,
       f.nexthop_address_status=overlay_abbreviate_expand_address(interface,packet,&offset,f.nexthop,&alen);
       if (debug&DEBUG_PACKETFORMATS) {
 	if (f.nexthop_address_status==OA_RESOLVED)
-	  fprintf(stderr,"next hop address is %s\n",
-		  overlay_render_sid(f.nexthop));
+	  DEBUGF("next hop address is %s", overlay_render_sid(f.nexthop));
       }
 
       /* Now just make the rest of the frame available via the received frame structure, as the
@@ -193,8 +192,7 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,
       if (f.bytecount<0) {
 	f.bytecount=0;
 	WHY("negative residual byte count after extracting addresses from frame header");
-	if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"f.rfs=%d, offset=%d, ofs=%d\n",
-			     f.rfs,offset,ofs);
+	if (debug&DEBUG_PACKETFORMATS) DEBUGF("f.rfs=%d, offset=%d, ofs=%d", f.rfs, offset, ofs);
 	return WHY("negative residual byte count after extracting addresses from frame header");
       }
 
@@ -203,7 +201,7 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,
       
       /* Skip the rest of the bytes in this frame so that we can examine the next one in this
 	 ensemble */
-      if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"next ofs=%d, f.rfs=%d, len=%d\n",ofs,f.rfs,len);
+      if (debug&DEBUG_PACKETFORMATS) DEBUGF("next ofs=%d, f.rfs=%d, len=%d", ofs, f.rfs, len);
       ofs+=f.rfs;
     }
 
@@ -221,12 +219,7 @@ int overlay_frame_resolve_addresses(int interface,overlay_frame *f)
   alen=0;
   f->source_address_status=overlay_abbreviate_expand_address(interface,f->bytes,&offset,f->source,&alen);
   if (debug&DEBUG_OVERLAYABBREVIATIONS)
-    {
-      fprintf(stderr,"Wrote %d bytes into source address: \n",alen);
-      int i;
-      for(i=0;i<32;i++) fprintf(stderr,"%02X",f->source[i]);
-      fprintf(stderr,"\n");
-    }
+    DEBUGF("Wrote %d bytes into source address: %s", alen, alloca_tohex(f->source, alen));
 
   /* Copy payload into overlay_buffer structure */
   if (f->bytecount-offset<0) return WHY("Abbreviated ddresses run past end of packet");
@@ -328,7 +321,7 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
     return WHY("ob_append_int() could not add high sequence number to self-announcement");
   overlay_interfaces[interface].last_tick_ms=overlay_sequence_number;
   if (debug&DEBUG_OVERLAYINTERFACES)
-    fprintf(stderr,"last tick seq# = %lld\n",overlay_interfaces[interface].last_tick_ms);
+    DEBUGF("last tick seq# = %lld", overlay_interfaces[interface].last_tick_ms);
 
   /* A byte that indicates which interface we are sending over */
   if (ob_append_byte(b,interface))
