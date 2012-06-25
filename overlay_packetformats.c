@@ -199,13 +199,18 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,
       }
 
       /* Finally process the frame */
+      long long now=overlay_gettime_ms();
       overlay_frame_process(interface,&f);
+      long long elapsed=overlay_gettime_ms()-now;
+      if (0) INFOF("overlay_frame_process (type=%d, len=%d) took %lldms",
+		   f.type,f.bytecount,elapsed);
       
       /* Skip the rest of the bytes in this frame so that we can examine the next one in this
 	 ensemble */
       if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"next ofs=%d, f.rfs=%d, len=%d\n",ofs,f.rfs,len);
       ofs+=f.rfs;
     }
+  if (0) INFOF("Finished processing overlay packet");
 
   return 0;
 }
