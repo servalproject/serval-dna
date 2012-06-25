@@ -25,6 +25,10 @@ int main(int argc, char **argv)
   WSADATA wsa_data;
   WSAStartup(MAKEWORD(1,1), &wsa_data);
 #endif
+  /* Setup signal handlers */
+  signal(SIGPIPE,sigPipeHandler);
+  signal(SIGIO,sigIoHandler);
+
   memabuseInit();
   srandomdev();
   server_save_argv(argc, (const char*const*)argv);

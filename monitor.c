@@ -74,8 +74,6 @@ int monitor_setup_sockets()
   if (monitor_named_socket!=-1)
       return 0;
   
-  /* ignore SIGPIPE so that we don't explode */
-  signal(SIGPIPE, SIG_IGN);
   if ((monitor_named_socket = socket(AF_UNIX, SOCK_STREAM, 0))==-1) {
     WHY_perror("socket");
     goto error;

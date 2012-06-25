@@ -72,10 +72,6 @@ int rhizome_server_start()
 
   if (debug&DEBUG_RHIZOME) WHYF("Trying to start rhizome server.");
 
-  /* Catch broken pipe signals */
-  signal(SIGPIPE,sigPipeHandler);
-  signal(SIGIO,sigIoHandler);
-
   rhizome_server_socket=socket(AF_INET,SOCK_STREAM,0);
   if (rhizome_server_socket<0)
     {
