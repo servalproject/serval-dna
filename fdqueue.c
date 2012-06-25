@@ -20,11 +20,19 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include <poll.h>
 
+struct callback_stats {
+  long long max_time;
+  long long total_time;
+  int calls;
+};
+
 #define MAX_ALARMS 128
 typedef struct callback_alarm {
   void (*func)();
   long long next_alarm;
   long long repeat_every;
+
+  struct callback_stats stats;
 } callback_alarm;
 
 callback_alarm alarms[MAX_ALARMS];
@@ -34,6 +42,9 @@ int alarmcount=0;
 struct pollfd fds[MAX_WATCHED_FDS];
 int fdcount=0;
 void(*fd_functions[MAX_WATCHED_FDS])(int fd);  
+struct callback_stats fd_stats[MAX_WATCHED_FDS];
+
+struct callback_stats poll_stats={0,0,0};
 
 /* @PGS/20120615 */
 int last_valid=0;
@@ -79,6 +90,11 @@ int fd_watch(int fd,void (*func)(int fd),int events)
   
   fds[fdcount].fd=fd;
   fds[fdcount++].events=events;
+  if (func!=fd_functions[fd]) {
+    fd_stats[fd].max_time=0;
+    fd_stats[fd].total_time=0;
+    fd_stats[fd].calls=0;
+  }
   fd_functions[fd]=func;
 
   return 0;
@@ -126,12 +142,24 @@ int fd_setalarm(void (*func),long long first_alarm_in,int repeat_every)
     return 0;
   } else {
     /* Create new alarm, or update existing one */
+    if (alarms[i].func!=func) {      
+      alarms[i].stats.calls=0;
+      alarms[i].stats.max_time=0;
+      alarms[i].stats.total_time=0;
+    }
     alarms[i].func=func;
     alarms[i].next_alarm=overlay_gettime_ms()+first_alarm_in;
     alarms[i].repeat_every=repeat_every;
     if (i>=alarmcount) alarmcount=i+1;
     return 0;
   }
+}
+
+void fd_update_stats(struct callback_stats *s,long long elapsed)
+{
+  s->total_time+=elapsed;
+  if (elapsed>s->max_time) s->max_time=elapsed;
+  s->calls++;
 }
 
 int fd_checkalarms()
@@ -144,12 +172,12 @@ int fd_checkalarms()
   TIMING_PAUSE(); 
   for(i=0;i<alarmcount;i++)
     {
-      now=overlay_gettime_ms();
+
       if (alarms[i].next_alarm&&alarms[i].next_alarm<=now) {
-	_TIMING_CHECK(__FILE__,fd_funcname(alarms[i].func),-1);
+	now=overlay_gettime_ms();
 	alarms[i].func();
-	TIMING_CHECK();
-	TIMING_PAUSE();
+	long long elapsed=overlay_gettime_ms()-now;
+	fd_update_stats(&alarms[i].stats,elapsed);
 	if (!alarms[i].repeat_every) {
 	  /* Alarm was one-shot, so erase alarm */
 	  fd_setalarm(alarms[i].func,0,0);
@@ -175,19 +203,21 @@ int fd_poll()
   int ms=fd_checkalarms();
   /* Make sure we don't have any silly timeouts that will make us wait for ever. */
   if (ms<1) ms=1;
-
-  TIMING_PAUSE();
-    /* Wait for action or timeout */
+  
+  /* Wait for action or timeout */
+  long long now=overlay_gettime_ms();
   int r=poll(fds, fdcount, ms);
+  long long elapsed=overlay_gettime_ms()-now;
+  fd_update_stats(&poll_stats,elapsed);
 
   /* If file descriptors are ready, then call the appropriate functions */
   if (r>0) {
     for(i=0;i<fdcount;i++)
       if (fds[i].revents) {
-	_TIMING_CHECK(__FILE__,fd_funcname(fd_functions[fds[i].fd]),-1);
+	long long now=overlay_gettime_ms();
 	fd_functions[fds[i].fd](fds[i].fd);
-	TIMING_CHECK();
-	TIMING_PAUSE();
+	long long elapsed=overlay_gettime_ms()-now;
+	fd_update_stats(&fd_stats[fds[i].fd],elapsed);
       }
   }
 
@@ -217,6 +247,8 @@ func_descriptions func_names[]={
   {rhizome_client_poll,"rhizome_client_poll"},
   {rhizome_fetch_poll,"rhizome_fetch_poll"},
   {rhizome_server_poll,"rhizome_server_poll"},
+  {fd_periodicstats,"fd_periodicstats"},
+  {vomp_tick,"vomp_tick"},
   {NULL,NULL}
 };
 
@@ -234,19 +266,16 @@ int fd_list()
 {
   long long now=overlay_gettime_ms();
   int i;
-  fprintf(stderr,"\n");
-  fprintf(stderr,"List of timed callbacks:\n");
-  fprintf(stderr,"------------------------\n");
+  INFOF("List of timed callbacks:");
+  INFOF("------------------------");
   for(i=0;i<alarmcount;i++) {
-    fprintf(stderr,"%s() in %lldms ",fd_funcname(alarms[i].func),
-	    alarms[i].next_alarm-now);
-    if (alarms[i].repeat_every) fprintf(stderr,"and every %lldms",
-					alarms[i].repeat_every);
-    fprintf(stderr,"\n");
+    INFOF(alarms[i].repeat_every?"() in %lldms and every %lldms":"%s() in %lldms%*",
+	  fd_funcname(alarms[i].func),
+	  alarms[i].next_alarm-now,alarms[i].repeat_every);
   }
 
-  fprintf(stderr,"List of watched file descriptors:\n");
-  fprintf(stderr,"---------------------------------\n");
+  INFOF("List of watched file descriptors:");
+  INFOF("---------------------------------");
   for(i=0;i<fdcount;i++) {
     char *eventdesc="<somethinged>";
     if ((fds[i].events&POLL_IN)&&(fds[i].events&POLL_OUT)) 
@@ -256,8 +285,81 @@ int fd_list()
     else if (fds[i].events&POLL_OUT)
       eventdesc="written";
 
-    fprintf(stderr,"%s() when fd#%d can be %s\n",
-	    fd_funcname(fd_functions[fds[i].fd]),fds[i].fd,eventdesc);
+    INFOF("%s() when fd#%d can be %s",
+	  fd_funcname(fd_functions[fds[i].fd]),fds[i].fd,eventdesc);
   }
   return 0;
+}
+
+int fd_tallystats(struct callback_stats *total,struct callback_stats *a)
+{
+  total->total_time+=a->total_time;
+  total->calls+=a->calls;
+  if (a->max_time>total->max_time) total->max_time=a->max_time;
+  return 0;
+}
+
+int fd_showstat(struct callback_stats *total, struct callback_stats *a, char *msg)
+{
+  WHYF("%lldms (%2.1f%%) in %d calls (max %lldms, avg %.1fms) : %s",
+       a->total_time,a->total_time*100.0/total->total_time,
+       a->calls,
+       a->max_time,a->total_time*1.00/a->calls,
+       msg);
+  return 0;
+}
+
+int fd_clearstat(struct callback_stats *s)
+{
+  s->calls=0;
+  s->max_time=0;
+  s->total_time=0;
+  return 0;
+}
+
+int fd_clearstats()
+{
+  int i;
+  fd_clearstat(&poll_stats);
+  for(i=0;i<alarmcount;i++)
+    fd_clearstat(&alarms[i].stats);
+  for(i=0;i<fdcount;i++)
+    fd_clearstat(&fd_stats[fds[i].fd]);
+  return 0;
+}
+
+int fd_showstats()
+{
+  int i;
+  struct callback_stats total={0,0,0};
+
+  /* Get total time spent doing everything */
+  fd_tallystats(&total,&poll_stats);
+  for(i=0;i<alarmcount;i++)
+    fd_tallystats(&total,&alarms[i].stats);
+  for(i=0;i<fdcount;i++)
+    fd_tallystats(&total,&fd_stats[fds[i].fd]);
+
+  /* Now show stats */
+  INFOF("servald time usage stats:");
+  fd_showstat(&total,&poll_stats,"Idle (in poll)");
+  for(i=0;i<alarmcount;i++) {
+    char desc[1024];
+    snprintf(desc,1024,"%s() alarm callback",fd_funcname(alarms[i].func));
+    fd_showstat(&total,&alarms[i].stats,desc);
+  }
+  for(i=0;i<fdcount;i++) {
+    char desc[1024];
+    snprintf(desc,1024,"%s() fd#%d callback",
+	     fd_funcname(fd_functions[fds[i].fd]),fds[i].fd);
+    fd_showstat(&total,&fd_stats[fds[i].fd],desc);
+  }
+  fd_showstat(&total,&total,"TOTAL");
+  return 0;
+}
+
+void fd_periodicstats()
+{
+  fd_showstats();
+  fd_clearstats();  
 }

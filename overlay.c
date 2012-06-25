@@ -141,6 +141,9 @@ int overlayServerMode()
   /* Keep an eye on VoMP calls so that we can expire stale ones etc */
   fd_setalarm(vomp_tick,1000,1000);
 
+  /* Show CPU usage stats periodically */
+  fd_setalarm(fd_periodicstats,3000,3000);
+
   while(1) {    
     /* Check for activitiy and respond to it */
     fd_poll();
