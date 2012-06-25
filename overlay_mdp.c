@@ -327,7 +327,7 @@ unsigned char *overlay_mdp_decrypt(overlay_frame *f,overlay_mdp_frame *mdp,
       if (result) {
 	WHY("Signature verification failed: incorrect signature");
         RETURN(NULL);
-      } else if (1) DEBUG("signature check passed");
+      } else if (0) DEBUG("signature check passed");
     }    
     mdp->packetTypeAndFlags|=MDP_NOCRYPT; break;
   case OF_CRYPTO_CIPHERED|OF_CRYPTO_SIGNED:

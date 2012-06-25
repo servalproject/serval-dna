@@ -1131,7 +1131,7 @@ unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
 	if (sas_public) 
 	  *sas_public=
 	    k->contexts[cn]->identities[in]->keypairs[kp]->public_key;
-	WHYF("Found SAS entry for %s*",overlay_render_sid_prefix(sid,7));
+	if (0) WHYF("Found SAS entry for %s*",overlay_render_sid_prefix(sid,7));
 	RETURN(k->contexts[cn]->identities[in]->keypairs[kp]->private_key);
       }
 
@@ -1185,8 +1185,6 @@ int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req)
     if (crypto_sign_edwards25519sha512batch
 	(&req->out.payload[1+keybytes],&slen,req->out.dst.sid,SID_SIZE,sas_priv))
       return WHY("crypto_sign() failed");
-    dump("SAS reply before compaction",
-	 &req->out.payload[1+keybytes],slen);
     /* chop the SID out of the signature, since it can be reinserted on reception */
     bcopy(&req->out.payload[1+keybytes+32+SID_SIZE],
 	  &req->out.payload[1+keybytes+32],sigbytes-32);
@@ -1226,8 +1224,6 @@ int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req)
 	bcopy(&compactsignature[0],&signature[0],32);
 	bcopy(&req->out.src.sid[0],&signature[32],SID_SIZE);
 	bcopy(&compactsignature[32],&signature[32+SID_SIZE],32);
-	dump("SAS reply after decompaction",
-	     signature,siglen);
 
 	int r=crypto_sign_edwards25519sha512batch_open(plain,&plain_len,
 						       signature,siglen,
@@ -1293,7 +1289,8 @@ unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
     {
       if (memcmp(sid,sid_sas_mappings[i].sid,SID_SIZE)) continue;
       if (sid_sas_mappings[i].validP) 
-	{ WHYF("Found SAS public entry for %s*",overlay_render_sid_prefix(sid,7));
+	{ if (0) 
+	    WHYF("Found SAS public entry for %s*",overlay_render_sid_prefix(sid,7));
 	  RETURN(sid_sas_mappings[i].sas_public); }
       /* Don't flood the network with mapping requests */
       if (((now-sid_sas_mappings[i].last_request_time_in_ms)<1000)
