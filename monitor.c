@@ -651,6 +651,7 @@ int monitor_send_audio(vomp_call_state *call,overlay_mdp_frame *audio)
 	   audio->vompevent.audio_sample_endtime);
   bcopy(&audio->vompevent.audio_bytes[0], &msg[msglen], sample_bytes);
   msglen+=sample_bytes;
+  msg[msglen++]='\n';
   monitor_tell_clients(msg, msglen, MONITOR_VOMP);
   return 0;
 }
@@ -666,7 +667,7 @@ int monitor_tell_clients(char *msg, int msglen, int mask)
       errno=0;
       fcntl(monitor_sockets[i].socket,F_SETFL,
 	    fcntl(monitor_sockets[i].socket, F_GETFL, NULL)|O_NONBLOCK);
-      WRITE_STR(monitor_sockets[i].socket,msg);
+      write(monitor_sockets[i].socket, msg, msglen);
       // WHYF("Writing AUDIOPACKET to client");
       if (errno&&(errno!=EINTR)&&(errno!=EAGAIN)) {
 	/* error sending update, so kill monitor socket */
