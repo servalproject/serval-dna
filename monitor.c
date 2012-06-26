@@ -340,6 +340,8 @@ static void monitor_new_client(int s) {
   fcntl(monitor_named_socket,F_SETFL,
 	fcntl(monitor_named_socket, F_GETFL, NULL)|O_NONBLOCK);
 
+  fd_watch(s, monitor_client_poll, POLL_IN);
+  
   return;
   
   error:
