@@ -133,7 +133,6 @@ int rhizome_bk_xor(const unsigned char *authorSid, // binary
 int rhizome_extract_privatekey(rhizome_manifest *m, const unsigned char *authorSid)
 {
   IN();
-  char desc[1024];
   char *bk = rhizome_manifest_get(m, "BK", NULL, 0);
   if (!bk) { RETURN(WHY("missing BK field")); }
   unsigned char bkBytes[RHIZOME_BUNDLE_KEY_BYTES];
@@ -270,12 +269,71 @@ rhizome_signature *rhizome_sign_hash(rhizome_manifest *m, const unsigned char *a
   RETURN(out);
 }
 
+typedef struct manifest_signature_block_cache {
+  unsigned char manifest_hash[crypto_hash_sha512_BYTES];
+  unsigned char signature_bytes[256];
+  int signature_length;
+  int signature_valid;
+} manifest_signature_block_cache;
+
+#define SIG_CACHE_SIZE 1024
+manifest_signature_block_cache sig_cache[SIG_CACHE_SIZE];
+
+int rhizome_manifest_lookup_signature_validity(unsigned char *hash,unsigned char *sig,int sig_len)
+{
+  IN();
+  unsigned int slot=0;
+  int i;
+
+  for(i=0;i<crypto_hash_sha512_BYTES;i++) {
+    slot=(slot<<1)+(slot&0x80000000?1:0);
+    slot+=hash[i];
+  }
+  for(i=0;i<sig_len;i++) {
+    slot=(slot<<1)+(slot&0x80000000?1:0);
+    slot+=sig[i];
+  }
+  slot%=SIG_CACHE_SIZE;
+
+  int replace=0;
+  if (sig_cache[slot].signature_length!=sig_len) replace=1;
+  for(i=0;i<crypto_hash_sha512_BYTES;i++)
+    if (hash[i]!=sig_cache[i].manifest_hash[i]) { replace=1; break; }
+  for(i=0;i<sig_len;i++)
+    if (sig[i]!=sig_cache[i].signature_bytes[i]) { replace=1; break; }
+
+  if (replace) {
+    for(i=0;i<crypto_hash_sha512_BYTES;i++)
+      sig_cache[i].manifest_hash[i]=hash[i];
+    for(i=0;i<sig_len;i++)
+      sig_cache[i].signature_bytes[i]=sig[i];
+    sig_cache[i].signature_length=sig_len;
+
+    unsigned char sigBuf[256];
+    unsigned char verifyBuf[256];
+    unsigned char publicKey[256];
+
+    /* Reconstitute signature by putting manifest hash between the two
+       32-byte halves */
+    bcopy(&sig[0],&sigBuf[0],32);
+    bcopy(hash,&sigBuf[32],crypto_hash_sha512_BYTES);
+    bcopy(&sig[32],&sigBuf[96],32);
+
+    /* Get public key of signatory */
+    bcopy(&sig[64],&publicKey[0],crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+
+    unsigned long long mlen=0;
+    sig_cache[i].signature_valid=
+      crypto_sign_edwards25519sha512batch_open(verifyBuf,&mlen,&sigBuf[0],128,
+					       publicKey)
+      ? -1 : 0;
+  }
+  RETURN(sig_cache[i].signature_valid);
+}
+
 int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
 {
   IN();
-  unsigned char sigBuf[256];
-  unsigned char verifyBuf[256];
-  unsigned char publicKey[256];
   if (!m) { RETURN(WHY("NULL pointer passed in as manifest")); }
 
   if ((*ofs)>=m->manifest_all_bytes) { RETURN(0); }
@@ -290,11 +348,18 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
   /* Each signature type is required to have a different length to detect it.
      At present only crypto_sign_edwards25519sha512batch() signatures are
      supported. */
+  int r;
   if (m->sig_count<MAX_MANIFEST_VARS)
     switch(len) 
       {
       case 0x61: /* crypto_sign_edwards25519sha512batch() */
 	/* Reconstitute signature block */
+	r=rhizome_manifest_lookup_signature_validity
+	  (m->manifesthash,&m->manifestdata[(*ofs)+1],96);
+#ifdef DEPRECATED
+	unsigned char sigBuf[256];
+	unsigned char verifyBuf[256];
+	unsigned char publicKey[256];
 	bcopy(&m->manifestdata[(*ofs)+1],&sigBuf[0],32);
 	bcopy(&m->manifesthash[0],&sigBuf[32],crypto_hash_sha512_BYTES);
 	bcopy(&m->manifestdata[(*ofs)+1+32],&sigBuf[96],32);
@@ -305,6 +370,7 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
 	int r=crypto_sign_edwards25519sha512batch_open(verifyBuf,&mlen,&sigBuf[0],128,
 						       publicKey);
 	fflush(stdout); fflush(stderr);
+#endif
 	if (r) {
 	  (*ofs)+=len;
 	  m->errors++;
@@ -318,7 +384,7 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
 	    (*ofs)+=len;
 	    RETURN(WHY("malloc() failed when reading signature block"));
 	  }
-	  bcopy(&publicKey[0],m->signatories[m->sig_count],
+	  bcopy(&m->manifestdata[(*ofs)+1+64],m->signatories[m->sig_count],
 		crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
 	  m->sig_count++;
 	  if (debug&DEBUG_RHIZOME) DEBUG("Signature passed.");

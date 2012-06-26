@@ -438,6 +438,8 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
 	    /* replace listed version with this newer version */
 	    if (rhizome_manifest_verify(m)) {
 	      WHY("Error verifying manifest when considering queuing for import");
+	      /* Don't waste time looking at this manifest again for a while */
+	      rhizome_queue_ignore_manifest(m,peerip,60000);
 	      rhizome_manifest_free(m);
 	      RETURN(-1);
 	    }
@@ -466,6 +468,8 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
 
   if (rhizome_manifest_verify(m)) {
     WHY("Error verifying manifest when considering queuing for import");
+    /* Don't waste time looking at this manifest again for a while */
+    rhizome_queue_ignore_manifest(m,peerip,60000);
     rhizome_manifest_free(m);
     RETURN(-1);
   }
