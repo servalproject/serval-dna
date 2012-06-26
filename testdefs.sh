@@ -118,9 +118,10 @@ setup_servald_so() {
 }
 
 # Utility function for setting up a fixture with a servald server process:
-#  - Ensure that no servald processes are running
-#  - Start a servald server process
-#  - Ensure that it is still running after one second
+#  - start a servald server process
+#  - assert that the pidfile is created and correct
+#  - set $servald_pid to the PID of the started server process
+#  - assert that the reported PID is actually a running servald process
 start_servald_server() {
    push_instance
    set_instance_fromarg "$1" && shift

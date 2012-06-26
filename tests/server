@@ -77,13 +77,27 @@ test_StartNoErrors() {
    tfw_cat "$instance_servald_log"
 }
 
-doc_StartStopStart="Start and stop server with slow startup"
-setup_StartStopStart() {
+doc_StartStart="Start server while already running"
+setup_StartStart() {
+   setup
+   executeOk_servald config set interfaces "+"
+   start_servald_server
+}
+test_StartStart() {
+   execute --exit-status=10 $servald start
+   extract_stdout_keyvalue start_instance_path instancepath '.*'
+   extract_stdout_keyvalue start_pid pid '[0-9]\+'
+   assert [ "$start_instance_path" = "$SERVALINSTANCE_PATH" ]
+   assert [ "$servald_pid" = "$start_pid" ]
+}
+
+doc_StartStopFast="Stop server before it finishes starting"
+setup_StartStopFast() {
    setup
    executeOk_servald config set interfaces "+"
    export SERVALD_SERVER_START_DELAY=250
 }
-test_StartStopStart() {
+test_StartStopFast() {
    start_servald_server
    stop_servald_server
 }
