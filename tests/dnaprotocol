@@ -27,8 +27,7 @@ setup() {
 }
 
 teardown() {
-# TODO Disabled until stopping multiple-instances are supported
-# TODO  stop_all_servald_servers
+   stop_all_servald_servers
    kill_all_servald_processes
    assert_no_servald_processes
 }

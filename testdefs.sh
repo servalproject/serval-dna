@@ -268,7 +268,7 @@ stop_all_servald_servers() {
    if pushd "$TFWTMP/instance" >/dev/null; then
       for name in *; do
          set_instance "+$name"
-         stop_servald_server
+         get_servald_server_pidfile && stop_servald_server
       done
       popd >/dev/null
    fi
