@@ -725,51 +725,37 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
     overlayMode = 1;
     if (foregroundP)
       return server(NULL);
-    int cpid;
-    switch ((cpid = fork())) {
+    switch (fork()) {
       case -1:
-	/* Main process.  First fork failed.  There is no child process. */
+	/* Main process.  Fork failed.  There is no child process. */
 	return WHY_perror("fork");
       case 0: {
-	/* Child process.  Fork again then exit, to disconnect daemon from parent process, so that
-	   when daemon exits it does not live on as a zombie. N.B. Do not return from within this
-	   process; that will unroll the JNI call stack and cause havoc.  Use _exit().  */
-	switch (fork()) {
-	  case -1:
-	    /* Child process.  Second fork failed. There is no grandchild process. */
-	    _exit(WHY_perror("fork"));
-	  case 0: {
-	    /* Grandchild process.  Disconnect from current directory, disconnect standard i/o
-	       streams, and start a new process group so that if we are being started by an adb
-	       shell session, then we don't receive a SIGHUP when the adb shell process ends.  */
-	    int fd;
-	    if ((fd = open("/dev/null", O_RDWR, 0)) == -1)
-	      exit(WHY_perror("open"));
-	    if (setsid() == -1)
-	      exit(WHY_perror("setsid"));
-	    (void)chdir("/");
-	    (void)dup2(fd, 0);
-	    (void)dup2(fd, 1);
-	    (void)dup2(fd, 2);
-	    if (fd > 2)
-	      (void)close(fd);
-	    /* The execpath option is provided so that a JNI call to "start" can be made which
-	       creates a new server daemon process with the correct argv[0].  Otherwise, the servald
-	       process appears as a process with argv[0] = "org.servalproject". */
-	    if (execpath) {
-	      execl(execpath, execpath, "start", "foreground", NULL);
-	      _exit(-1);
-	    }
-	    _exit(server(NULL));
-	  }
+	/* Child process.  Disconnect from current directory, disconnect standard I/O
+	   streams, and start a new process group so that if we are being started by an adb
+	   shell session, then we don't receive a SIGHUP when the adb shell process ends.  */
+	int fd;
+	if ((fd = open("/dev/null", O_RDWR, 0)) == -1)
+	  _exit(WHY_perror("open"));
+	if (setsid() == -1)
+	  _exit(WHY_perror("setsid"));
+	(void)chdir("/");
+	(void)dup2(fd, 0);
+	(void)dup2(fd, 1);
+	(void)dup2(fd, 2);
+	if (fd > 2)
+	  (void)close(fd);
+	/* The execpath option is provided so that a JNI call to "start" can be made which
+	   creates a new server daemon process with the correct argv[0].  Otherwise, the servald
+	   process appears as a process with argv[0] = "org.servalproject". */
+	if (execpath) {
+	  execl(execpath, execpath, "start", "foreground", NULL);
+	  _exit(-1);
 	}
-	/* Child process.  Second fork succeeded. There is a grandchild process. */
-	_exit(0); // Main process is waitpid()-ing for this.
+	_exit(server(NULL));
+	// NOT REACHED
       }
     }
-    /* Main process.  Wait for the child process to fork the grandchild then die. */
-    waitpid(cpid, NULL, 0);
-    /* Allow a few seconds for the grandchild process to report for duty. */
+    /* Main process.  Allow a few seconds for the child process to report for duty. */
     long long timeout = gettime_ms() + 5000;
     do {
       struct timespec delay;
