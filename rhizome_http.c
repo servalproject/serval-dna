@@ -30,7 +30,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
  */
 
-int rhizome_server_socket=-1;
+static int rhizome_server_socket = -1;
+static long long rhizome_server_last_start_attempt = -1;
 
 rhizome_http_request *rhizome_live_http_requests[RHIZOME_SERVER_MAX_LIVE_REQUESTS];
 int rhizome_server_live_request_count=0;
@@ -60,55 +61,66 @@ unsigned char favicon_bytes[]={
 ,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 int favicon_len=318;
 
-int rhizome_server_start()
+/* Start the Rhizome HTTP server by creating a socket, binding it to an available port, and
+   marking it as passive.  If called repeatedly and frequently, this function will only try to start
+   the server after a certain time has elapsed since the last attempt.
+   Return -1 if an error occurs (message logged).
+   Return 0 if the server was started.
+   Return 1 if the server is already started successfully.
+   Return 2 if the server was not started because it is too soon since last failed attempt.
+ */
+static int rhizome_http_server_start()
 {
-  if (rhizome_server_socket>-1) return 0;
+  if (rhizome_server_socket != -1)
+    return 1;
 
-  /* Only try to start http server periodically */
-  if (rhizome_server_socket<-1) { rhizome_server_socket++; return -1; }
+  /* Only try to start http server every five seconds. */
+  long long now_ms = gettime_ms();
+  if (now_ms < rhizome_server_last_start_attempt + 5000)
+    return 2;
+  rhizome_server_last_start_attempt  = now_ms;
+  if (debug&DEBUG_RHIZOME)
+    DEBUGF("Starting rhizome HTTP server");
+
+  rhizome_server_socket = socket(AF_INET,SOCK_STREAM,0);
+  if (rhizome_server_socket == -1) {
+    WHY_perror("socket");
+    return WHY("Failed to start rhizome HTTP server");
+  }
+
+  int on=1;
+  if (setsockopt(rhizome_server_socket, SOL_SOCKET, SO_REUSEADDR, (char *)&on, sizeof(on)) == -1) {
+    WHY_perror("setsockopt(REUSEADDR)");
+    close(rhizome_server_socket);
+    rhizome_server_socket = -1;
+    return WHY("Failed to start rhizome HTTP server");
+  }
 
   struct sockaddr_in address;
-  int on=1;
-
-  if (debug&DEBUG_RHIZOME) WHYF("Trying to start rhizome server.");
-
-  rhizome_server_socket=socket(AF_INET,SOCK_STREAM,0);
-  if (rhizome_server_socket<0)
-    {
-      rhizome_server_socket=-1000;
-      return WHY("socket() failed starting rhizome http server");
-    }
-
-  setsockopt(rhizome_server_socket, SOL_SOCKET,  SO_REUSEADDR,
-                  (char *)&on, sizeof(on));
-
   bzero((char *) &address, sizeof(address));
   address.sin_family = AF_INET;
   address.sin_addr.s_addr = INADDR_ANY;
   address.sin_port = htons(RHIZOME_HTTP_PORT);
-  if (bind(rhizome_server_socket, (struct sockaddr *) &address,
-	   sizeof(address)) < 0) 
-    {
-      close(rhizome_server_socket);
-      rhizome_server_socket=-1000;
-      if (debug&DEBUG_RHIZOME)  WHY("bind() failed starting rhizome http server");
-      return -1;
-    }
-
-  int rc = ioctl(rhizome_server_socket, FIONBIO, (char *)&on);
-  if (rc < 0)
-  {
-    perror("ioctl() failed");
+  if (bind(rhizome_server_socket, (struct sockaddr *) &address, sizeof(address)) == -1) {
+    WHY_perror("bind");
     close(rhizome_server_socket);
-    exit(-1);
+    rhizome_server_socket = -1;
+    return WHY("Failed to start rhizome HTTP server");
   }
 
-  if (listen(rhizome_server_socket,20))
-    {
-      close(rhizome_server_socket);
-      rhizome_server_socket=-1;
-      return WHY("listen() failed starting rhizome http server");
-    }
+  if (ioctl(rhizome_server_socket, FIONBIO, (char *)&on) == -1) {
+    WHY_perror("ioctl(FIONBIO)");
+    close(rhizome_server_socket);
+    rhizome_server_socket = -1;
+    return WHY("Failed to start rhizome HTTP server");
+  }
+
+  if (listen(rhizome_server_socket, 20) == -1) {
+    WHY_perror("listen");
+    close(rhizome_server_socket);
+    rhizome_server_socket = -1;
+    return WHY("Failed to start rhizome HTTP server");
+  }
 
   return 0;
 }
@@ -127,8 +139,8 @@ int rhizome_server_poll()
   /* Having the starting of the server here is helpful in that
      if the port is taken by someone else, we will grab it fairly
      swiftly once it becomes available. */
-  if (rhizome_server_socket<0) rhizome_server_start();
-  if (rhizome_server_socket<0) return 0;
+  if (rhizome_server_socket == -1 && rhizome_http_server_start())
+    return 0;
 
   /* Process the existing requests.
      XXX - should use poll or select here */

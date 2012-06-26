@@ -811,7 +811,7 @@ int createServerSocket()
 }
 
 extern int sigIoFlag;
-extern int rhizome_server_socket;
+
 int simpleServerMode()
 {
   while(1) {
