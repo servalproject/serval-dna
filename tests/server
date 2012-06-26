@@ -27,22 +27,65 @@ setup() {
 }
 
 teardown() {
-   stop_all_servald_servers
+   get_servald_server_pidfile && stop_servald_server
    kill_all_servald_processes
    assert_no_servald_processes
 }
 
-doc_ServerStartCreateInstanceDir="Starting server creates instance directory"
-setup_ServerStartCreateInstanceDir() {
+doc_StartCreateInstanceDir="Starting server creates instance directory"
+setup_StartCreateInstanceDir() {
    setup
    assert [ ! -d "$SERVALINSTANCE_PATH" ]
 }
-test_ServerStartCreateInstanceDir() {
-   start_servald_server
+test_StartCreateInstanceDir() {
+   executeOk $servald start
    assert [ -d "$SERVALINSTANCE_PATH" ]
+}
+
+doc_StartLogfile="Starting server gives no errors"
+setup_StartLogfile() {
+   setup
+   executeOk_servald config set logfile "$PWD/log"
+}
+test_StartLogfile() {
+   executeOk $servald start
+   sleep 0.1
+   assert [ -s log ]
+   tfw_cat log
+}
+
+doc_StartNoInterfaces="Starting server with no configured interfaces gives error"
+setup_StartNoInterfaces() {
+   setup
+}
+test_StartNoInterfaces() {
+   start_servald_server
+   sleep 0.1
+   assertGrep --message="log contains 'no interfaces' error message" "$instance_servald_log" '^ERROR:.*interfaces'
+   tfw_cat "$instance_servald_log"
+}
+
+doc_StartNoErrors="Starting server on all interfaces gives no errors"
+setup_StartNoErrors() {
+   setup
+   executeOk_servald config set interfaces "+"
+}
+test_StartNoErrors() {
+   start_servald_server
    sleep 0.1
    assert_servald_server_no_errors
    tfw_cat "$instance_servald_log"
+}
+
+doc_StartStopStart="Start and stop server with slow startup"
+setup_StartStopStart() {
+   setup
+   executeOk_servald config set interfaces "+"
+   export SERVALD_SERVER_START_DELAY=250
+}
+test_StartStopStart() {
+   start_servald_server
+   stop_servald_server
 }
 
 runTests "$@"

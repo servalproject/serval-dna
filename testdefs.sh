@@ -1,5 +1,7 @@
 # Common definitions for all test suites in test/*
 
+shopt -s extglob
+
 testdefs_sh=$(abspath "${BASH_SOURCE[0]}")
 servald_source_root="${testdefs_sh%/*}"
 servald_build_root="$servald_source_root"
@@ -9,6 +11,17 @@ declare -a instance_stack=()
 # Some useful regular expressions.  These must work in grep(1) as basic
 # expressions, and also in sed(1).
 rexp_sid='[0-9a-fA-F]\{64\}'
+
+# Utility function for extracting information from the output of servald
+# commands that return "key:value\n" pairs.
+extract_stdout_keyvalue() {
+   local _var="$1"
+   local _label="$2"
+   local _rexp="$3"
+   local _value=$(replayStdout | sed -n -e "/^$_label:$_rexp\$/s/^$_label://p")
+   assert --message="stdout contains valid '$_label:' line" --stdout [ -n "$_value" ]
+   [ -n "$_var" ] && eval $_var=$_value
+}
 
 # Utility function for creating servald fixtures:
 #  - set $servald variable (executable under test)
@@ -20,6 +33,8 @@ setup_servald() {
       return 1
    fi
    servald_basename="${servald##*/}"
+   unset SERVALD_OUTPUT_DELIMITER
+   unset SERVALD_SERVER_START_DELAY
    set_instance +Z
 }
 
@@ -81,7 +96,7 @@ set_instance() {
       ;;
    +[A-Z])
       instance_name="${1#+}"
-      echo "# set instance = $instance_name"
+      tfw_log "# set instance = $instance_name"
       export instance_dir="$TFWTMP/instance/$instance_name"
       mkdir -p "$instance_dir"
       export instance_servald_log="$instance_dir/servald.log"
@@ -114,16 +129,18 @@ start_servald_server() {
    local -a before_pids
    local -a after_pids
    get_servald_pids before_pids
-   echo "# before_pids=$before_pids"
-   unset SERVALD_OUTPUT_DELIMITER
+   tfw_log "# before_pids=$before_pids"
    executeOk $servald start "$@"
-   tfw_cat --stdout
+   extract_stdout_keyvalue start_instance_path instancepath '.*'
+   extract_stdout_keyvalue start_pid pid '[0-9]\+'
+   assert [ "$start_instance_path" = "$SERVALINSTANCE_PATH" ]
    get_servald_pids after_pids
-   echo "# after_pids=$after_pids"
+   tfw_log "# after_pids=$after_pids"
+   assert_servald_server_pidfile servald_pid
    # Assert that the servald pid file is present.
    assert --message="servald pidfile was created" [ -s "$instance_servald_pidfile" ]
-   servald_pid=$(cat "$instance_servald_pidfile")
    assert --message="servald pidfile contains a valid pid" --dump-on-fail="$instance_servald_log" kill -0 "$servald_pid"
+   assert --message="servald start command returned correct pid" [ "$start_pid" -eq "$servald_pid" ]
    # Assert that there is at least one new servald process running.
    local apid bpid
    local new_pids=
@@ -137,18 +154,18 @@ start_servald_server() {
          fi
       done
       if [ "$apid" -eq "$servald_pid" ]; then
-         echo "# started servald process: pid=$servald_pid"
+         tfw_log "# started servald process: pid=$servald_pid"
          new_pids="$new_pids $apid"
          pidfile_running=true
       elif $isnew; then
-         echo "# unknown new servald process: pid=$apid"
+         tfw_log "# unknown new servald process: pid=$apid"
          new_pids="$new_pids $apid"
       fi
    done
    assert --message="a new servald process is running" --dump-on-fail="$instance_servald_log" [ -n "$new_pids" ]
    assert --message="servald pidfile process is running" --dump-on-fail="$instance_servald_log" $pidfile_running
    assert --message="servald log file $instance_servald_log is present" [ -r "$instance_servald_log" ]
-   echo "# Started servald server process $instance_name, pid=$servald_pid"
+   tfw_log "# Started servald server process $instance_name, pid=$servald_pid"
    pop_instance
 }
 
@@ -159,17 +176,21 @@ stop_servald_server() {
    push_instance
    set_instance_fromarg "$1" && shift
    # Stop servald server
-   servald_pid=$(cat "$instance_servald_pidfile")
+   get_servald_server_pidfile servald_pid
    local -a before_pids
    local -a after_pids
    get_servald_pids before_pids
-   echo "# before_pids=$before_pids"
-   unset SERVALD_OUTPUT_DELIMITER
-   executeOk $servald stop "$@"
-   tfw_cat --stdout
-   echo "# Stopped servald server process $instance_name, pid=${servald_pid:-unknown}"
+   tfw_log "# before_pids=$before_pids"
+   execute $servald stop "$@"
+   extract_stdout_keyvalue stop_instance_path instancepath '.*'
+   assert [ "$stop_instance_path" = "$SERVALINSTANCE_PATH" ]
+   if [ -n "$servald_pid" ]; then
+      extract_stdout_keyvalue stop_pid pid '[0-9]\+'
+      assert [ "$stop_pid" = "$servald_pid" ]
+   fi
+   tfw_log "# Stopped servald server process $instance_name, pid=${servald_pid:-unknown}"
    get_servald_pids after_pids
-   echo "# after_pids=$after_pids"
+   tfw_log "# after_pids=$after_pids"
    # Assert that the servald pid file is gone.
    assert --message="servald pidfile was removed" [ ! -e "$instance_servald_pidfile" ]
    # Assert that the servald process identified by the pidfile is no longer running.
@@ -191,10 +212,52 @@ stop_servald_server() {
          fi
       done
       if $isgone; then
-         echo "# ended servald process: pid=$bpid"
+         tfw_log "# ended servald process: pid=$bpid"
       fi
    done
    pop_instance
+}
+
+# Utility function:
+#  - test whether the pidfile for a given server instance exists and is valid
+#  - if it exists and is valid, set named variable to PID (and second named
+#    variable to path of pidfile) and return 0
+#  - otherwise return 1
+get_servald_server_pidfile() {
+   local _pidvar="$1"
+   local _pidfilevar="$2"
+   push_instance
+   set_instance_fromarg "$1" && shift
+   local _pidfile="$instance_servald_pidfile"
+   pop_instance
+   [ -n "$_pidfilevar" ] && eval $_pidfilevar="$_pidfile"
+   local _pid=$(cat "$_pidfile" 2>/dev/null)
+   case "$_pid" in
+   +([0-9]))
+      [ -n "$_pidvar" ] && eval $_pidvar="$_pid"
+      return 0
+      ;;
+   '')
+      if [ -e "$_pidfile" ]; then
+         tfw_log "# empty pidfile $_pidfile"
+      else
+         tfw_log "# missing pidfile $_pidfile"
+      fi
+      ;;
+   *)
+      tfw_log "# invalid pidfile $_pidfile"
+      tfw_cat "$_pidfile"
+      ;;
+   esac
+   return 1
+}
+
+# Assertion function:
+#  - asserts that the servald server pidfile exists and contains a valid PID
+#  - does NOT check whether a process with that PID exists or whether that
+#    process is a servald process
+assert_servald_server_pidfile() {
+   assert get_servald_server_pidfile "$@"
 }
 
 # Utility function for tearing down servald fixtures:
@@ -222,10 +285,10 @@ signal_all_servald_processes() {
    local ret=1
    for pid in $servald_pids; do
       if kill -$sig "$pid"; then
-         echo "# Sent SIG$sig to servald process pid=$pid"
+         tfw_log "# Sent SIG$sig to servald process pid=$pid"
          ret=0
       else
-         echo "# servald process pid=$pid not running -- SIG$sig not sent"
+         tfw_log "# servald process pid=$pid not running -- SIG$sig not sent"
       fi
    done
    return $ret

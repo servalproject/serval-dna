@@ -160,6 +160,20 @@ void server_save_argv(int argc, const char *const *argv)
 
 int server(char *backing_file)
 {
+  /* For testing, it can be very helpful to delay the start of the server
+     process, for example to check that the start/stop logic is robust.
+   */
+  const char *delay = getenv("SERVALD_SERVER_START_DELAY");
+  if (delay) {
+    long ms = atoi(delay);
+    if (ms > 0) {
+      struct timespec ts;
+      ts.tv_sec = ms / 1000;
+      ts.tv_nsec = (ms % 1000) * 1000000;
+      nanosleep(&ts, NULL);
+    }
+  }
+
   serverMode = 1;
 
   /* Catch sigsegv and other crash signals so that we can relaunch ourselves */

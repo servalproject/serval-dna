@@ -193,15 +193,6 @@ strip_signatures() {
    done
 }
 
-extract_stdout_keyvalue() {
-   local _var="$1"
-   local _label="$2"
-   local _rexp="$3"
-   local _value=$(replayStdout | sed -n -e "/^$_label:$_rexp\$/s/^$_label://p")
-   assert --message="stdout contains valid '$_label:' line" --stdout [ -n "$_value" ]
-   [ -n "$_var" ] && eval $_var=$_value
-}
-
 extract_stdout_secret() {
    extract_stdout_keyvalue "$1" secret "$rexp_bundlesecret"
 }
@@ -219,7 +210,7 @@ extract_manifest() {
    assert --message="$_manifestfile contains valid '$_label=' line" \
           --dump-on-fail="$_manifestfile" \
           [ -n "$_value" ]
-   [ -n "$_var" ] && eval $_var=$_value
+   [ -n "$_var" ] && eval $_var="$_value"
 }
 
 extract_manifest_service() {
@@ -248,7 +239,7 @@ compute_filehash() {
    local _hash=$($servald rhizome hash file "$_file") || error "$servald failed to compute file hash"
    [ -z "${_hash//[0-9a-fA-F]/}" ] || error "file hash contains non-hex: $_hash"
    [ "${#_hash}" -eq 128 ] || error "file hash incorrect length: $_hash"
-   [ -n "$_var" ] && eval $_var=$_hash
+   [ -n "$_var" ] && eval $_var="$_hash"
 }
 
 doc_InitialEmptyList="Initial list is empty"
