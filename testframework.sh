@@ -37,6 +37,7 @@
 #   assertRealTime --message='ran in under half a second' '<=' 0.5
 #   assertStdoutIs ""
 #   assertStderrIs ""
+#   tfw_cat arg1
 # }
 # doc_feature2='Feature two fails with status 1'
 # setup_feature2() {
@@ -204,6 +205,11 @@ executeOk() {
    _tfw_execute "$@"
 }
 
+# Executes its arguments as a command in the current shell process (not in a
+# child process), so that side effects like functions setting variables will
+# have effect.
+#  - if the exit status is non-zero, then fails the current test
+#  - otherwise, logs a message indicating the assertion passed
 assert() {
    _tfw_getopts assert "$@"
    shift $_tfw_getopts_shift
@@ -245,6 +251,19 @@ fatal() {
    _tfw_fatalexit
 }
 
+# Append a message to the test case's stdout log.  A normal 'echo' to stdout
+# will also do this, but tfw_log will work even in a context that stdout (fd 1)
+# is redirected.
+tfw_log() {
+   cat >&$_tfw_log_fd <<EOF
+$*
+EOF
+}
+
+# Append the contents of a file to the test case's stdout log.  A normal 'cat'
+# to stdout would also do this, but tfw_cat echoes header and footer delimiter
+# lines around to content to help distinguish it, and also works even in a
+# context that stdout (fd 1) is redirected.
 tfw_cat() {
    local header=
    local show_nonprinting=
@@ -274,7 +293,7 @@ tfw_cat() {
          show_nonprinting=
          ;;
       esac
-   done
+   done >&$_tfw_log_fd
 }
 
 assertExitStatus() {
@@ -433,8 +452,9 @@ _tfw_setup() {
    _tfw_phase=setup
    _tfw_tmp=/tmp/_tfw-$$
    mkdir $_tfw_tmp
-   exec <&- 5>&1 5>&2 >$_tfw_tmp/log.stdout 2>$_tfw_tmp/log.stderr 6>$_tfw_tmp/log.xtrace
-   BASH_XTRACEFD=6
+   exec <&- 5>&1 5>&2 6>$_tfw_tmp/log.stdout 1>&6 2>$_tfw_tmp/log.stderr 7>$_tfw_tmp/log.xtrace
+   BASH_XTRACEFD=7
+   _tfw_log_fd=6
    _tfw_stdout=5
    _tfw_stderr=5
    if $_tfw_verbose; then
@@ -511,16 +531,16 @@ _tfw_execute() {
       _tfw_message="exit status of $executed ($_tfw_exitStatus) is $_tfw_opt_exit_status"
       _tfw_dump_stderr_on_fail=true
       _tfw_assert [ "$_tfw_exitStatus" -eq "$_tfw_opt_exit_status" ] || _tfw_failexit
-      echo "# assert $_tfw_message"
+      tfw_log "# assert $_tfw_message"
    else
-      echo "# exit status of $executed = $_tfw_exitStatus"
+      tfw_log "# exit status of $executed = $_tfw_exitStatus"
    fi
    # Parse execution time report.
    if ! _tfw_parse_times_to_milliseconds real realtime_ms ||
       ! _tfw_parse_times_to_milliseconds user usertime_ms ||
       ! _tfw_parse_times_to_milliseconds sys systime_ms
    then
-      echo '# malformed output from time:'
+      tfw_log '# malformed output from time:'
       tfw_cat --header=times -v $_tfw_tmp/times
    fi
    return 0
@@ -688,7 +708,7 @@ _tfw_assert_stdxxx_is() {
       _tfw_backtrace
       return 1
    fi
-   echo "# assert $message"
+   tfw_log "# assert $message"
    return 0
 }
 
@@ -704,7 +724,7 @@ _tfw_assert_stdxxx_linecount() {
    local lineCount=$(( $(cat $_tfw_tmp/$qual | wc -l) + 0 ))
    [ -z "$_tfw_message" ] && _tfw_message="$qual line count ($lineCount) $*"
    _tfw_assertExpr "$lineCount" "$@" || _tfw_failexit
-   echo "# assert $_tfw_message"
+   tfw_log "# assert $_tfw_message"
    return 0
 }
 
@@ -744,7 +764,7 @@ _tfw_assert_grep() {
          done=true
          message="${_tfw_message:-$label contains a line matching \"$pattern\"}"
          if [ $matches -ne 0 ]; then
-            echo "# assert $message"
+            tfw_log "# assert $message"
          else
             _tfw_failmsg "assertion failed: $message"
             ret=1
@@ -757,7 +777,7 @@ _tfw_assert_grep() {
          local s=$([ $_tfw_opt_matches -ne 1 ] && echo s)
          message="${_tfw_message:-$label contains exactly $_tfw_opt_matches line$s matching \"$pattern\"}"
          if [ $matches -eq $_tfw_opt_matches ]; then
-            echo "# assert $message"
+            tfw_log "# assert $message"
          else
             _tfw_failmsg "assertion failed: $message"
             ret=1
@@ -771,7 +791,7 @@ _tfw_assert_grep() {
          local s=$([ $bound -ne 1 ] && echo s)
          message="${_tfw_message:-$label contains at least $bound line$s matching \"$pattern\"}"
          if [ $matches -ge $bound ]; then
-            echo "# assert $message"
+            tfw_log "# assert $message"
          else
             _tfw_failmsg "assertion failed: $message"
             ret=1
@@ -785,7 +805,7 @@ _tfw_assert_grep() {
          local s=$([ $bound -ne 1 ] && echo s)
          message="${_tfw_message:-$label contains at most $bound line$s matching \"$pattern\"}"
          if [ $matches -le $bound ]; then
-            echo "# assert $message"
+            tfw_log "# assert $message"
          else
             _tfw_failmsg "assertion failed: $message"
             ret=1
@@ -854,27 +874,27 @@ _tfw_failmsg() {
    case $_tfw_phase in
    testcase)
       if ! $_tfw_opt_error_on_fail; then
-         echo "FAIL: $*"
+         tfw_log "FAIL: $*"
          return 0;
       fi
       ;;
    esac
-   echo "ERROR: $*"
+   tfw_log "ERROR: $*"
 }
 
 _tfw_backtrace() {
-   echo '#--- backtrace ---'
+   tfw_log '#--- backtrace ---'
    local -i up=1
    while [ "${BASH_SOURCE[$up]}" == "${BASH_SOURCE[0]}" ]; do
       let up=up+1
    done
    local -i i=0
    while [ $up -lt ${#FUNCNAME[*]} -a "${BASH_SOURCE[$up]}" != "${BASH_SOURCE[0]}" ]; do
-      echo "[$i] ${FUNCNAME[$(($up-1))]}() called from ${FUNCNAME[$up]}() at line ${BASH_LINENO[$(($up-1))]} of ${BASH_SOURCE[$up]}"
+      tfw_log "[$i] ${FUNCNAME[$(($up-1))]}() called from ${FUNCNAME[$up]}() at line ${BASH_LINENO[$(($up-1))]} of ${BASH_SOURCE[$up]}"
       let up=up+1
       let i=i+1
    done
-   echo '#---'
+   tfw_log '#---'
 }
 
 _tfw_failexit() {
@@ -903,7 +923,7 @@ _tfw_errormsg() {
    while [ $up -lt $top -a "${BASH_SOURCE[$up]}" == "${BASH_SOURCE[0]}" ]; do
       let up=up+1
    done
-   echo "ERROR in ${FUNCNAME[$up]}: $*"
+   tfw_log "ERROR in ${FUNCNAME[$up]}: $*"
 }
 
 _tfw_error() {
