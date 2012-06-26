@@ -55,19 +55,29 @@
 # runTests "$@"
 
 usage() {
-   echo "Usage: ${0##*/} [-t|--trace] [-v|--verbose] [--filter=prefix] [--]"
+   echo -n "\
+Usage: ${0##*/} [options] [--]
+Options:
+   -t, --trace             Enable shell "set -x" tracing during tests, output to test log
+   -v, --verbose           Send test log to output during execution
+   -E, --stop-on-error     Do not execute any tests after an ERROR occurs
+   -F, --stop-on-failure   Do not execute any tests after a FAIL occurs
+   --filter=PREFIX         Only execute tests whose names start with PREFIX
+"
 }
 
 runTests() {
    _tfw_stdout=1
    _tfw_stderr=2
    _tfw_checkBashVersion
-   _tfw_trace=false
-   _tfw_verbose=false
    _tfw_invoking_script=$(abspath "${BASH_SOURCE[1]}")
    _tfw_suite_name="${_tfw_invoking_script##*/}"
    _tfw_cwd=$(abspath "$PWD")
    _tfw_logfile="$_tfw_cwd/test.$_tfw_suite_name.log"
+   _tfw_trace=false
+   _tfw_verbose=false
+   _tfw_stop_on_error=false
+   _tfw_stop_on_failure=false
    local allargs="$*"
    local filter=
    while [ $# -ne 0 ]; do
@@ -76,6 +86,8 @@ runTests() {
       -t|--trace) _tfw_trace=true;;
       -v|--verbose) _tfw_verbose=true;;
       --filter=*) filter="${1#*=}";;
+      -E|--stop-on-error) _tfw_stop_on_error=true;;
+      -F|--stop-on-failure) _tfw_stop_on_failure=true;;
       --) shift; break;;
       --*) _tfw_fatal "unsupported option: $1";;
       *) _tfw_fatal "spurious argument: $1";;
@@ -112,10 +124,22 @@ runTests() {
          )
          local stat=$?
          case $stat in
-         255) exit 255;; # _tfw_fatal was called
-         254) _tfw_echo " ERROR";; # _tfw_failexit was called in setup or teardown or _tfw_error was called anywhere
-         0) _tfw_echo " PASS"; let passcount=passcount+1;;
-         *) _tfw_echo " FAIL";;
+         255)
+            # _tfw_fatal was called
+            exit 255;;
+         254)
+            # _tfw_failexit was called in setup or teardown or _tfw_error was called anywhere
+            _tfw_echo " ERROR"
+            $_tfw_stop_on_error && break
+            ;; 
+         0)
+            _tfw_echo " PASS"
+            let passcount=passcount+1
+            ;;
+         *)
+            _tfw_echo " FAIL"
+            $_tfw_stop_on_failure && break
+            ;;
          esac
       fi
    done
