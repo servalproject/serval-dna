@@ -1157,19 +1157,13 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
     }
   }
 
-  /* Wait for a reply until timeout */
-  struct pollfd fds[1];
-  int fdcount=1;
-  fds[0].fd=mdp_client_socket; fds[0].events=POLLIN;
-  result = poll(fds,fdcount,timeout_ms);
-  if (result==0) {
+  if (overlay_mdp_client_poll(timeout_ms)<=0){
     /* Timeout */
     mdp->packetTypeAndFlags=MDP_ERROR;
     mdp->error.error=1;
     snprintf(mdp->error.message,128,"Timeout waiting for reply to MDP packet (packet was successfully sent).");    
     return -1; /* WHY("Timeout waiting for server response"); */
   }
-
 
   int ttl=-1;
   if (!overlay_mdp_recv(mdp,&ttl)) {
