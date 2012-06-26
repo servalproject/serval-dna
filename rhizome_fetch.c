@@ -379,9 +379,11 @@ int rhizome_position_candidate(int position)
   return 0;
 }
 
+/* Verifies manifests as late as possible to avoid wasting time. */
 int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
 				  struct sockaddr_in *peerip)
 {
+  IN();
   /* must free manifest when done with it */
   char *id=rhizome_manifest_get(m,"id",NULL,0);
   long long filesize=rhizome_manifest_get_ll(m,"filesize");
@@ -401,7 +403,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
       DEBUG("We already have that manifest or newer.");
     }
     rhizome_manifest_free(m);
-    return -1;
+    RETURN(-1);
   } else {
     if (1||debug&DEBUG_RHIZOMESYNC) {
       long long stored_version;
@@ -412,7 +414,6 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
 	      stored_version);
     }
   }
-
 
   /* work out where to put it in the list */
   for(i=0;i<candidate_count;i++)
@@ -432,14 +433,20 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
 	    /* this version is older than the one in the list,
 	       so don't list this one */
 	    rhizome_manifest_free(m);
-	    return 0; 
+	    RETURN(0); 
 	  } else {
 	    /* replace listed version with this newer version */
+	    if (rhizome_manifest_verify(m)) {
+	      WHY("Error verifying manifest when considering queuing for import");
+	      rhizome_manifest_free(m);
+	      RETURN(-1);
+	    }
+
 	    rhizome_manifest_free(candidates[i].manifest);
 	    candidates[i].manifest=m;
 	    /* update position in list */
 	    rhizome_position_candidate(i);
-	    return 0;
+	    RETURN(0);
 	  }
 	}
 
@@ -454,8 +461,15 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
   if (i>=MAX_CANDIDATES) {
     /* our list is already full of higher-priority items */
     rhizome_manifest_free(m);
-    return -1;
+    RETURN(-1);
   }
+
+  if (rhizome_manifest_verify(m)) {
+    WHY("Error verifying manifest when considering queuing for import");
+    rhizome_manifest_free(m);
+    RETURN(-1);
+  }
+
   if (candidate_count==MAX_CANDIDATES) {
     /* release manifest structure for whoever we are bumping from the list */
     rhizome_manifest_free(candidates[MAX_CANDIDATES-1].manifest);
@@ -484,7 +498,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
 	   candidates[j].size,candidates[j].priority);
   }
 
-  return 0;
+  RETURN(0);
 }
 
 void rhizome_enqueue_suggestions()

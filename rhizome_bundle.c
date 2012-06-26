@@ -42,6 +42,7 @@ int rhizome_manifest_verify(rhizome_manifest *m)
   }
   
   if (m->sig_count==0) {
+    WHYF("Manifest has zero valid signatures");
     m->errors++;
   }
   

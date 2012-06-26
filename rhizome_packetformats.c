@@ -427,10 +427,12 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	    WHY("Error importing manifest body");
 	    rhizome_manifest_free(m);
 	    m = NULL;
-	  } else if (rhizome_manifest_verify(m)) {
-	    WHY("Error verifying manifest body when importing");
-	    rhizome_manifest_free(m);
-	    m = NULL;
+	    /* PGS @20120626 - Used to verify manifest here, which is before
+	       checking if we already have the bundle or newer.  Trouble is
+	       that signature verification is VERY expensive (~400ms on the ideos
+	       phones), so we now defer it to inside 
+	       rhizome_suggest_queue_manifest_import(), where it only gets called
+	       after checking that it is worth adding to the queue. */
 	  } else if (m->errors) {
 	    if (debug&DEBUG_RHIZOME) DEBUGF("Verifying manifest %s* revealed errors -- not storing.", manifest_id_prefix);
 	    rhizome_queue_ignore_manifest(m,(struct sockaddr_in*)f->recvaddr,60000);
