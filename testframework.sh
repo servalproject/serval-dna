@@ -60,11 +60,50 @@ Usage: ${0##*/} [options] [--]
 Options:
    -t, --trace             Enable shell "set -x" tracing during tests, output to test log
    -v, --verbose           Send test log to output during execution
+   -j, --jobs              Run all tests in parallel (by default runs as --jobs=1)
+   --jobs=N                Run tests in parallel, at most N at a time
    -E, --stop-on-error     Do not execute any tests after an ERROR occurs
    -F, --stop-on-failure   Do not execute any tests after a FAIL occurs
    --filter=PREFIX         Only execute tests whose names start with PREFIX
 "
 }
+
+# Internal utility for setting shopt variables and restoring their original
+# value:
+#     _tfw_shopt -s extglob -u extdebug
+#     ...
+#     _tfw_shopt_restore
+_tfw_shopt() {
+   if [ -n "$_tfw_shopt_orig" ]; then
+      _tfw_fatal "unrestored shopt settings: $_tfw_shopt_orig"
+   fi
+   _tfw_shopt_orig=
+   local op=s
+   while [ $# -ne 0 ]
+   do
+      case "$1" in
+      -s) op=s;;
+      -u) op=u;;
+      *)
+         local opt="$1"
+         _tfw_shopt_orig="${restore:+$restore; }shopt -$(shopt -q $opt && echo s || echo u) $opt"
+         shopt -$op $opt
+         ;;
+      esac
+      shift
+   done
+}
+_tfw_shopt_restore() {
+   if [ -n "$_tfw_shopt_orig" ]; then
+      eval "$_tfw_shopt_orig"
+      _tfw_shopt_orig=
+   fi
+}
+_tfw_shopt_orig=
+declare -a _tfw_running_pids
+
+# The rest of this file is parsed for extended glob patterns.
+_tfw_shopt -s extglob
 
 runTests() {
    _tfw_stdout=1
@@ -73,19 +112,28 @@ runTests() {
    _tfw_invoking_script=$(abspath "${BASH_SOURCE[1]}")
    _tfw_suite_name="${_tfw_invoking_script##*/}"
    _tfw_cwd=$(abspath "$PWD")
-   _tfw_logfile="$_tfw_cwd/test.$_tfw_suite_name.log"
+   _tfw_tmpdir="${TFW_TMPDIR:-${TMPDIR:-/tmp}}/_tfw-$$"
+   trap '_tfw_status=$?; rm -rf "$_tfw_tmpdir"; exit $_tfw_status' EXIT SIGHUP SIGINT SIGTERM
+   rm -rf "$_tfw_tmpdir"
+   mkdir -p "$_tfw_tmpdir" || return $?
+   _tfw_logdir="$_tfw_cwd/testlog/$_tfw_suite_name"
    _tfw_trace=false
    _tfw_verbose=false
    _tfw_stop_on_error=false
    _tfw_stop_on_failure=false
    local allargs="$*"
-   local filter=
+   local -a filters=()
+   local njobs=1
+   _tfw_shopt -s extglob
    while [ $# -ne 0 ]; do
       case "$1" in
       --help) usage; exit 0;;
       -t|--trace) _tfw_trace=true;;
       -v|--verbose) _tfw_verbose=true;;
-      --filter=*) filter="${1#*=}";;
+      --filter=*) filters+=("${1#*=}");;
+      -j|--jobs) njobs=0;;
+      --jobs=+([0-9])) njobs="${1#*=}";;
+      --jobs=*) _tfw_fatal "invalid option: $1";;
       -E|--stop-on-error) _tfw_stop_on_error=true;;
       -F|--stop-on-failure) _tfw_stop_on_failure=true;;
       --) shift; break;;
@@ -93,26 +141,48 @@ runTests() {
       *) _tfw_fatal "spurious argument: $1";;
       esac
       shift
-   # Kick off the log file.
    done
-   {
-      date
-      echo "$0 $allargs"
-   } >$_tfw_logfile
-   # Iterate through all test cases.
-   local testcount=0
-   local passcount=0
-   local testName
-   for testName in `_tfw_find_tests`
-   do
-      _tfw_test_name="$testName"
-      if [ -z "$filter" -o "${_tfw_test_name#$filter}" != "$_tfw_test_name" ]; then
-         let testcount=testcount+1
+   _tfw_shopt_restore
+   # Create an empty results directory.
+   _tfw_results_dir="$_tfw_tmpdir/results"
+   mkdir "$_tfw_results_dir" || return $?
+   # Create an empty log directory.
+   mkdir -p "$_tfw_logdir" || return $?
+   rm -f "$_tfw_logdir"/*
+   # Enumerate all the test cases.
+   _tfw_find_tests "${filters[@]}"
+   # Iterate through all test cases, starting a new test whenever the number of
+   # running tests is less than the job limit.
+   _tfw_passcount=0
+   _tfw_failcount=0
+   _tfw_errorcount=0
+   _tfw_fatalcount=0
+   _tfw_running_pids=()
+   local testNumber
+   for ((testNumber = 1; testNumber <= ${#_tfw_tests[*]}; ++testNumber)); do
+      testName="${_tfw_tests[$(($testNumber - 1))]}"
+      # Wait for any existing child process to finish.
+      while [ $njobs -ne 0 -a ${#_tfw_running_pids[*]} -ge $njobs ]; do
+         _tfw_harvest_processes
+      done
+      [ $_tfw_fatalcount -ne 0 ] && break
+      $_tfw_stop_on_error && [ $_tfw_errorcount -ne 0 ] && break
+      $_tfw_stop_on_failure && [ $_tfw_failcount -ne 0 ] && break
+      # Start the next test in a child process.
+      local docvar="doc_$testName"
+      echo -n "$testNumber. ${!docvar:-$testName}..."
+      [ $njobs -ne 1 ] && echo
+      (
+         echo "$testNumber $testName" >"$_tfw_results_dir/$BASHPID"
+         _tfw_tmp=/tmp/_tfw-$BASHPID
+         trap '_tfw_status=$?; rm -rf "$_tfw_tmp"; exit $_tfw_status' EXIT SIGHUP SIGINT SIGTERM
+         local start_time=$(_tfw_timestamp)
+         local finish_time=unknown
          (
-            local docvar="doc_$_tfw_test_name"
-            _tfw_echo -n "$testcount. ${!docvar:-$_tfw_test_name}..."
-            trap '_tfw_status=$?; _tfw_teardown; exit $_tfw_status' 0 1 2 15
+            _tfw_test_name="$testName"
+            trap '_tfw_status=$?; _tfw_teardown; exit $_tfw_status' EXIT SIGHUP SIGINT SIGTERM
             _tfw_result=ERROR
+            mkdir $_tfw_tmp || exit 255
             _tfw_setup
             _tfw_result=FAIL
             _tfw_phase=testcase
@@ -120,32 +190,95 @@ runTests() {
             $_tfw_trace && set -x
             test_$_tfw_test_name
             _tfw_result=PASS
-            exit 0
+            case $_tfw_result in
+            PASS) exit 0;;
+            FAIL) exit 1;;
+            ERROR) exit 254;;
+            esac
+            exit 255
          )
          local stat=$?
+         finish_time=$(_tfw_timestamp)
+         local result=FATAL
          case $stat in
-         255)
-            # _tfw_fatal was called
-            exit 255;;
-         254)
-            # _tfw_failexit was called in setup or teardown or _tfw_error was called anywhere
-            _tfw_echo " ERROR"
-            $_tfw_stop_on_error && break
+         254) result=ERROR;; 
+         1) result=FAIL;;
+         0) result=PASS;; 
+         esac
+         echo "$testNumber $testName $result" >"$_tfw_results_dir/$BASHPID"
+         {
+            echo "Name:     $testName"
+            echo "Result:   $result"
+            echo "Started:  $start_time"
+            echo "Finished: $finish_time"
+            echo '++++++++++ log.stdout ++++++++++'
+            cat $_tfw_tmp/log.stdout
+            echo '++++++++++'
+            echo '++++++++++ log.stderr ++++++++++'
+            cat $_tfw_tmp/log.stderr
+            echo '++++++++++'
+            if $_tfw_trace; then
+               echo '++++++++++ log.xtrace ++++++++++'
+               cat $_tfw_tmp/log.xtrace
+               echo '++++++++++'
+            fi
+         } >"$_tfw_logdir/$testNumber.$testName.$result"
+         exit 0
+      ) &
+      _tfw_running_pids+=($!)
+   done
+   # Wait for all child processes to finish.
+   while [ ${#_tfw_running_pids[*]} -ne 0 ]; do
+      _tfw_harvest_processes
+   done
+   # Clean up working directory.
+   rm -rf "$_tfw_tmpdir"
+   trap - EXIT SIGHUP SIGINT SIGTERM
+   # Echo result summary and exit with success if no failures or errors.
+   s=$([ ${#_tfw_tests[*]} -eq 1 ] || echo s)
+   echo "${#_tfw_tests[*]} test$s, $_tfw_passcount pass, $_tfw_failcount fail, $_tfw_errorcount error"
+   [ $_tfw_fatalcount -eq 0 -a $_tfw_failcount -eq 0 -a $_tfw_errorcount -eq 0 ]
+}
+
+_tfw_harvest_processes() {
+   trap 'kill $spid 2>/dev/null' SIGCHLD
+   sleep 1 &
+   spid=$!
+   set -m
+   wait $spid 2>/dev/null
+   trap - SIGCHLD
+   local -a surviving_pids=()
+   local pid
+   for pid in ${_tfw_running_pids[*]}; do
+      if kill -0 $pid 2>/dev/null; then
+         surviving_pids+=($pid)
+      elif [ -s "$_tfw_results_dir/$pid" ]; then
+         set -- $(<"$_tfw_results_dir/$pid")
+         local testNumber="$1"
+         local testName="$2"
+         local result="$3"
+         case "$result" in
+         ERROR)
+            let _tfw_errorcount=_tfw_errorcount+1
             ;; 
-         0)
-            _tfw_echo " PASS"
-            let passcount=passcount+1
+         PASS)
+            let _tfw_passcount=_tfw_passcount+1
+            ;;
+         FAIL)
+            let _tfw_failcount=_tfw_failcount+1
             ;;
          *)
-            _tfw_echo " FAIL"
-            $_tfw_stop_on_failure && break
+            result=FATAL
+            let _tfw_fatalcount=_tfw_fatalcount+1
             ;;
          esac
+         [ $njobs -ne 1 ] && echo -n "$testNumber. ..."
+         echo " $result"
+      else
+         _tfw_echoerr "${BASH_SOURCE[1]}: child process $pid terminated without result"
       fi
    done
-   s=$([ $testcount -eq 1 ] || echo s)
-   _tfw_echo "$testcount test$s, $passcount passed"
-   [ $passcount -eq $testcount ]
+   _tfw_running_pids=(${surviving_pids[*]})
 }
 
 # The following functions can be overridden by a test script to provide a
@@ -384,40 +517,6 @@ assertGrep() {
 # Internal (private) functions that are not to be invoked directly from test
 # scripts.
 
-# Utility for setting shopt variables and restoring their original value:
-#     _tfw_shopt -s extglob -u extdebug
-#     ...
-#     _tfw_shopt_restore
-_tfw_shopt() {
-   if [ -n "$_tfw_shopt_orig" ]; then
-      _tfw_fatal "unrestored shopt settings: $_tfw_shopt_orig"
-   fi
-   _tfw_shopt_orig=
-   local op=s
-   while [ $# -ne 0 ]
-   do
-      case "$1" in
-      -s) op=s;;
-      -u) op=u;;
-      *)
-         local opt="$1"
-         _tfw_shopt_orig="${restore:+$restore; }shopt -$(shopt -q $opt && echo s || echo u) $opt"
-         shopt -$op $opt
-         ;;
-      esac
-      shift
-   done
-}
-_tfw_shopt_restore() {
-   if [ -n "$_tfw_shopt_orig" ]; then
-      eval "$_tfw_shopt_orig"
-      _tfw_shopt_orig=
-   fi
-}
-
-# The rest of this file is parsed for extended glob patterns.
-_tfw_shopt -s extglob
-
 # Add shell quotation to the given arguments, so that when expanded using
 # 'eval', the exact same argument results.  This makes argument handling fully
 # immune to spaces and shell metacharacters.
@@ -472,10 +571,12 @@ _tfw_abspath() {
    esac
 }
 
+_tfw_timestamp() {
+   date '+%Y-%m-%d %H:%M:%S.%N'
+}
+
 _tfw_setup() {
    _tfw_phase=setup
-   _tfw_tmp=/tmp/_tfw-$$
-   mkdir $_tfw_tmp
    exec <&- 5>&1 5>&2 6>$_tfw_tmp/log.stdout 1>&6 2>$_tfw_tmp/log.stderr 7>$_tfw_tmp/log.xtrace
    BASH_XTRACEFD=7
    _tfw_log_fd=6
@@ -483,9 +584,11 @@ _tfw_setup() {
    _tfw_stderr=5
    if $_tfw_verbose; then
       # These tail processes will die when the test case's subshell exits.
-      tail --pid=$$ --follow $_tfw_tmp/log.stdout >&$_tfw_stdout 2>/dev/null &
-      tail --pid=$$ --follow $_tfw_tmp/log.stderr >&$_tfw_stderr 2>/dev/null &
+      tail --pid=$BASHPID --follow $_tfw_tmp/log.stdout >&$_tfw_stdout 2>/dev/null &
+      tail --pid=$BASHPID --follow $_tfw_tmp/log.stderr >&$_tfw_stderr 2>/dev/null &
    fi
+   export TFWVAR=$_tfw_tmp/var
+   mkdir $TFWVAR
    export TFWTMP=$_tfw_tmp/tmp
    mkdir $TFWTMP
    cd $TFWTMP
@@ -525,24 +628,6 @@ _tfw_teardown() {
       ;;
    esac
    echo '# END TEARDOWN'
-   {
-      local banner="==================== $_tfw_test_name ===================="
-      echo "$banner"
-      echo "TEST RESULT: $_tfw_result"
-      echo '++++++++++ log.stdout ++++++++++'
-      cat $_tfw_tmp/log.stdout
-      echo '++++++++++'
-      echo '++++++++++ log.stderr ++++++++++'
-      cat $_tfw_tmp/log.stderr
-      echo '++++++++++'
-      if $_tfw_trace; then
-         echo '++++++++++ log.xtrace ++++++++++'
-         cat $_tfw_tmp/log.xtrace
-         echo '++++++++++'
-      fi
-      echo "${banner//[^=]/=}"
-   } >>$_tfw_logfile
-   rm -rf $_tfw_tmp
 }
 
 # Executes $_tfw_executable with the given arguments.
@@ -848,11 +933,6 @@ _tfw_assert_grep() {
    return $ret
 }
 
-# Write to the real stdout of the test script.
-_tfw_echo() {
-   echo "$@" >&$_tfw_stdout
-}
-
 # Write a message to the real stderr of the test script, so the user sees it
 # immediately.  Also write the message to the test log, so it can be recovered
 # later.
@@ -877,15 +957,29 @@ _tfw_checkBashVersion() {
    _tfw_fatal "unsupported Bash version: $BASH_VERSION"
 }
 
-# Return a list of test names in the order that the test_TestName functions were
-# defined.
+# Return a list of test names in the _tfw_tests array variable, in the order
+# that the test_TestName functions were defined.
 _tfw_find_tests() {
+   _tfw_tests=()
    _tfw_shopt -s extdebug
-   builtin declare -F |
-      sed -n -e '/^declare -f test_./s/^declare -f test_//p' |
-      while read name; do builtin declare -F "test_$name"; done |
-      sort --key 2,2n --key 3,3 |
-      sed -e 's/^test_//' -e 's/[    ].*//'
+   local name
+   local filter
+   for name in $(builtin declare -F |
+         sed -n -e '/^declare -f test_./s/^declare -f test_//p' |
+         while read name; do builtin declare -F "test_$name"; done |
+         sort --key 2,2n --key 3,3 |
+         sed -e 's/^test_//' -e 's/[    ].*//')
+   do
+      if [ $# -eq 0 ]; then
+         _tfw_tests+=("$name")
+      else
+         for filter; do
+            case "$_tfw_test_name" in
+            "$filter"*) _tfw_tests+=("$name"); break;;
+            esac
+         done
+      fi
+   done
    _tfw_shopt_restore
 }
 
