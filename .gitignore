@@ -19,3 +19,4 @@ serval.c
 dna
 *.so
 test.*.log
+testlog
