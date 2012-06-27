@@ -5,6 +5,7 @@ shopt -s extglob
 testdefs_sh=$(abspath "${BASH_SOURCE[0]}")
 servald_source_root="${testdefs_sh%/*}"
 servald_build_root="$servald_source_root"
+servald_build_executable="$servald_source_root/dna"
 
 declare -a instance_stack=()
 
@@ -27,12 +28,15 @@ extract_stdout_keyvalue() {
 #  - set $servald variable (executable under test)
 #  - set the current instance to be "Z"
 setup_servald() {
-   servald=$(abspath "$servald_build_root/dna") # The servald executable under test
-   if ! [ -x "$servald" ]; then
+   export SERVALD_VAR=$TFWVAR/servald
+   mkdir $SERVALD_VAR
+   servald_basename=servald
+   servald=$SERVALD_VAR/$servald_basename # The servald executable under test
+   if ! [ -x "$servald_build_executable" ]; then
       error "servald executable not present: $servald"
       return 1
    fi
-   servald_basename="${servald##*/}"
+   ln -f -s "$servald_build_executable" $servald
    unset SERVALD_OUTPUT_DELIMITER
    unset SERVALD_SERVER_START_DELAY
    set_instance +Z
@@ -42,7 +46,7 @@ setup_servald() {
 #  - executes $servald with the given arguments
 #  - asserts that standard error contains no error messages
 executeOk_servald() {
-   executeOk --executable="$servald" "$@"
+   executeOk --executable=$servald "$@"
    assertStderrGrep --matches=0 --message="stderr of $executed contains no error messages" '^ERROR:'
 }
 
@@ -326,8 +330,8 @@ kill_all_servald_processes() {
 }
 
 # Utility function:
-#  - return the PIDs of all servald processes the current user is running in the
-#    named array variable (if no name given, do not set any variable)
+#  - return the PIDs of all servald processes the current test is running, by
+#    assigning to the named array variable if given
 #  - return 0 if there are any servald processes running, 1 if not
 get_servald_pids() {
    local var="$1"
