@@ -1092,6 +1092,7 @@ int overlay_broadcast_generate_address(unsigned char *a);
 int overlay_abbreviate_unset_current_sender();
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 void rhizome_fetch_poll(int fd);
+int rhizome_check_connections();
 int rhizome_opendb();
 
 typedef struct dna_identity_status {
@@ -1563,3 +1564,7 @@ int fd_next_funcid(const char *funcname);
 #define IN() static int _func_id=-1; if (_func_id<0) _func_id=fd_next_funcid(__FUNCTION__); fd_func_enter(_func_id);
 #define OUT() fd_func_exit(_func_id);
 #define RETURN(X) { OUT() return(X); }
+
+#define SET_NONBLOCKING(X) fcntl(X,F_SETFL,fcntl(X, F_GETFL, NULL)|O_NONBLOCK);
+#define SET_BLOCKING(X) fcntl(X,F_SETFL,fcntl(X, F_GETFL, NULL)&(~O_NONBLOCK));
+

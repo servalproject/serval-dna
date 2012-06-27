@@ -132,11 +132,9 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
     if (audev&&audev->poll_fds) fdcount+=audev->poll_fds(&fds[fdcount],128-fdcount);
     poll(fds,fdcount,1000);
 
-    fcntl(fd,F_SETFL,
-	  fcntl(fd, F_GETFL, NULL)|O_NONBLOCK);
+    SET_NONBLOCKING(fd);
     if (interactiveP) 
-      fcntl(STDIN_FILENO,F_SETFL,
-	    fcntl(STDIN_FILENO, F_GETFL, NULL)|O_NONBLOCK);
+      SET_NONBLOCKING(STDIN_FILENO);
     
     int bytes;
     int i;
@@ -184,10 +182,8 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
 	audioRecordBufferBytes-=audioRecordBufferOffset;
       }
     
-    fcntl(fd,F_SETFL,
-	  fcntl(fd, F_GETFL, NULL)&~O_NONBLOCK);
-    fcntl(STDIN_FILENO,F_SETFL,
-	  fcntl(STDIN_FILENO, F_GETFL, NULL)&~O_NONBLOCK);   
+    SET_BLOCKING(fd);
+    SET_BLOCKING(STDIN_FILENO);
   }
   
   return 0;

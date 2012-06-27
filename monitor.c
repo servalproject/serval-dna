@@ -118,7 +118,7 @@ int monitor_setup_sockets()
     WHY_perror("setsockopt");
   if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) WHY("Monitor server socket setup");
 
-  fd_watch(monitor_named_socket,monitor_poll,POLL_IN);
+  fd_watch(monitor_named_socket,monitor_poll,POLLIN);
   return 0;
   
   error:
@@ -158,8 +158,6 @@ void monitor_poll(int ignored_fd)
   }
 
   /* Check for new connections */
-  fcntl(monitor_named_socket, F_SETFL,
-	fcntl(monitor_named_socket, F_GETFL, NULL) | O_NONBLOCK);
   /* We don't care about the peer's address */
   ignored_length = 0;
   while (
@@ -186,8 +184,7 @@ void monitor_client_poll(int fd)
     int bytes;
     struct monitor_context *c=&monitor_sockets[i];
     if (c->socket!=fd) continue;
-    fcntl(c->socket,F_SETFL,
-	  fcntl(c->socket, F_GETFL, NULL) | O_NONBLOCK);
+    
     switch(c->state) {
     case MONITOR_STATE_COMMAND:
       bytes = 1;
@@ -293,12 +290,7 @@ static void monitor_new_client(int s) {
   uid_t				otheruid;
   struct monitor_context	*c;
 
-#ifndef HAVE_LINUX_IF_H
-  if ((res = fcntl(s, F_SETFL, O_NONBLOCK)) == -1) {
-    WHY_perror("fcntl()");
-    goto error;
-    }
-#endif
+  SET_NONBLOCKING(s);
 
 #ifdef linux
   len = sizeof(ucred);
@@ -337,10 +329,7 @@ static void monitor_new_client(int s) {
     INFOF("Got %d clients", monitor_socket_count);
   }
     
-  fcntl(monitor_named_socket,F_SETFL,
-	fcntl(monitor_named_socket, F_GETFL, NULL)|O_NONBLOCK);
-
-  fd_watch(s, monitor_client_poll, POLL_IN);
+  fd_watch(s, monitor_client_poll, POLLIN);
   
   return;
   
@@ -355,17 +344,17 @@ int monitor_process_command(int index,char *cmd)
   char sid[MONITOR_LINE_LENGTH],localDid[MONITOR_LINE_LENGTH];
   char remoteDid[MONITOR_LINE_LENGTH],digits[MONITOR_LINE_LENGTH];
   overlay_mdp_frame mdp;
+  
+  IN();
+  
   mdp.packetTypeAndFlags=MDP_VOMPEVENT;  
 
   struct monitor_context *c=&monitor_sockets[index];
   c->line_length=0;
 
-  fcntl(c->socket,F_SETFL,
-	fcntl(c->socket, F_GETFL, NULL)|O_NONBLOCK);
-
   if (strlen(cmd)>MONITOR_LINE_LENGTH) {
     WRITE_STR(c->socket,"\nERROR:Command too long\n");
-    return -1;
+    RETURN(-1);
   }
 
   char msg[1024];
@@ -388,7 +377,7 @@ int monitor_process_command(int index,char *cmd)
 	  /* Start getting sample */
 	  c->sample_call_session_token=callSessionToken;
 	  c->sample_codec=sampleType;
-	  return 0;
+	  RETURN(0);
 	}
     }
   }
@@ -486,13 +475,10 @@ int monitor_process_command(int index,char *cmd)
     
   }
 
-  fcntl(c->socket,F_SETFL,
-	fcntl(c->socket, F_GETFL, NULL)|O_NONBLOCK);
-
   snprintf(msg,1024,"\nMONITORSTATUS:%d\n",c->flags);
   WRITE_STR(c->socket,msg);
 
-  return 0;
+  RETURN(0);
 }
 
 int monitor_process_data(int index) 
@@ -505,9 +491,6 @@ int monitor_process_data(int index)
     return 
       WHYF("Ignoring sample block of incorrect size (expected %d, got %d bytes for codec %d)",
 	   vomp_sample_size(c->sample_codec), c->data_offset, c->sample_codec);
-
-  fcntl(c->socket,F_SETFL,
-	fcntl(c->socket, F_GETFL, NULL)|O_NONBLOCK);
 
   vomp_call_state *call=vomp_find_call_by_session(c->sample_call_session_token);
   if (!call) {
@@ -551,9 +534,12 @@ int monitor_announce_bundle(rhizome_manifest *m)
 	continue;
       nextInSameSlot:
 	errno=0;
-	fcntl(monitor_sockets[i].socket,F_SETFL,
-	      fcntl(monitor_sockets[i].socket, F_GETFL, NULL)|O_NONBLOCK);
+      
+      SET_NONBLOCKING(monitor_sockets[i].socket);
 	WRITE_STR(monitor_sockets[i].socket,msg);
+      
+      SET_BLOCKING(monitor_sockets[i].socket);
+      
 	if (errno&&(errno!=EINTR)&&(errno!=EAGAIN)) {
 	  /* error sending update, so kill monitor socket */
 	  WHYF("Tearing down monitor client #%d due to errno=%d",
@@ -579,6 +565,7 @@ int monitor_call_status(vomp_call_state *call)
   int i;
   char msg[1024];
   int show=0;
+  IN();
   if (call->local.state>call->local.last_state) show=1;
   if (call->remote.state>call->remote.last_state) show=1;
   call->local.last_state=call->local.state;
@@ -599,9 +586,9 @@ int monitor_call_status(vomp_call_state *call)
 	  continue;
       nextInSameSlot:
 	errno=0;
-	fcntl(monitor_sockets[i].socket,F_SETFL,
-	      fcntl(monitor_sockets[i].socket, F_GETFL, NULL)|O_NONBLOCK);
+	SET_NONBLOCKING(monitor_sockets[i].socket);
 	WRITE_STR(monitor_sockets[i].socket,msg);
+	SET_BLOCKING(monitor_sockets[i].socket);
 	if (errno&&(errno!=EINTR)&&(errno!=EAGAIN)) {
 	  /* error sending update, so kill monitor socket */
 	  WHYF("Tearing down monitor client #%d due to errno=%d",
@@ -620,7 +607,7 @@ int monitor_call_status(vomp_call_state *call)
 	}
       }
   }
-  return 0;
+  RETURN(0);
 }
 
 int monitor_announce_peer(unsigned char *sid)
@@ -659,15 +646,16 @@ int monitor_send_audio(vomp_call_state *call,overlay_mdp_frame *audio)
 int monitor_tell_clients(char *msg, int msglen, int mask)
 {
   int i;
+  IN();
   for(i=0;i<monitor_socket_count;i++)
     {
       if (!(monitor_sockets[i].flags&mask))
 	continue;
     nextInSameSlot:
       errno=0;
-      fcntl(monitor_sockets[i].socket,F_SETFL,
-	    fcntl(monitor_sockets[i].socket, F_GETFL, NULL)|O_NONBLOCK);
+      SET_NONBLOCKING(monitor_sockets[i].socket);
       write(monitor_sockets[i].socket, msg, msglen);
+      SET_BLOCKING(monitor_sockets[i].socket);
       // WHYF("Writing AUDIOPACKET to client");
       if (errno&&(errno!=EINTR)&&(errno!=EAGAIN)) {
 	/* error sending update, so kill monitor socket */
@@ -686,5 +674,5 @@ int monitor_tell_clients(char *msg, int msglen, int mask)
 	}
       }
     }
-  return 0;
+  RETURN(0);
 }

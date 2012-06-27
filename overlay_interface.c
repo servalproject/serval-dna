@@ -188,7 +188,7 @@ overlay_interface_init_socket(int interface, struct sockaddr_in src_addr, struct
   I(fileP) = 0;
 
   I(fd) = socket(PF_INET,SOCK_DGRAM,0);
-  fd_watch(I(fd),overlay_interface_poll,POLL_IN);
+  fd_watch(I(fd),overlay_interface_poll,POLLIN);
   WHYF("Watching fd#%d for interface #%d",I(fd),interface);
   if (I(fd) < 0) {
       WHY_perror("socket()");
@@ -318,8 +318,6 @@ void overlay_interface_poll(int fd)
 	 enable stats to accurately count packets received */
       //      while (plen>0) {
 	int recvttl=1;
-	fcntl(overlay_interfaces[i].fd, F_SETFL, 
-	      fcntl(overlay_interfaces[i].fd, F_GETFL, NULL)|O_NONBLOCK);
 	plen=recvwithttl(overlay_interfaces[i].fd,packet,sizeof(packet),
 			 &recvttl,&src_addr,&addrlen);
 	if (plen<1) { 

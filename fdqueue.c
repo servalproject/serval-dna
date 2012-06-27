@@ -88,8 +88,16 @@ int fd_watch(int fd,void (*func)(int fd),int events)
   if (fdcount>=MAX_WATCHED_FDS)
     return WHYF("Currently watching too many file descriptors.  This should never happen; report a bug.");
   
-  fds[fdcount].fd=fd;
-  fds[fdcount++].events=events;
+  int i;
+  for(i=0;i<fdcount;i++)
+    if (fds[i].fd==fd)
+      break;
+      
+  fds[i].fd=fd;
+  fds[i].events=events;
+  if (i==fdcount)
+    fdcount++;
+  
   if (func!=fd_functions[fd]) {
     fd_stats[fd].max_time=0;
     fd_stats[fd].total_time=0;
@@ -215,7 +223,15 @@ int fd_poll()
     for(i=0;i<fdcount;i++)
       if (fds[i].revents) {
 	long long now=overlay_gettime_ms();
+	
+	/* Make socket non-blocking */
+	SET_NONBLOCKING(fds[i].fd);
+	
 	fd_functions[fds[i].fd](fds[i].fd);
+	
+	/* Make socket blocking again */
+	SET_BLOCKING(fds[i].fd);
+	
 	long long elapsed=overlay_gettime_ms()-now;
 	fd_update_stats(&fd_stats[fds[i].fd],elapsed);
       }
@@ -249,6 +265,7 @@ func_descriptions func_names[]={
   {rhizome_server_poll,"rhizome_server_poll"},
   {fd_periodicstats,"fd_periodicstats"},
   {vomp_tick,"vomp_tick"},
+  {rhizome_check_connections,"rhizome_check_connections"},
   {NULL,NULL}
 };
 
@@ -291,11 +308,11 @@ int fd_list()
   INFOF("---------------------------------");
   for(i=0;i<fdcount;i++) {
     char *eventdesc="<somethinged>";
-    if ((fds[i].events&POLL_IN)&&(fds[i].events&POLL_OUT)) 
+    if ((fds[i].events&POLLIN)&&(fds[i].events&POLLOUT)) 
       eventdesc="read or written";
-    else if (fds[i].events&POLL_IN)
+    else if (fds[i].events&POLLIN)
       eventdesc="read";
-    else if (fds[i].events&POLL_OUT)
+    else if (fds[i].events&POLLOUT)
       eventdesc="written";
 
     INFOF("%s() when fd#%d can be %s",
@@ -366,8 +383,10 @@ int fd_showstats()
   }
   for(i=0;i<fdcount;i++) {
     char desc[1024];
-    snprintf(desc,1024,"%s() fd#%d callback",
-	     fd_funcname(fd_functions[fds[i].fd]),fds[i].fd);
+    snprintf(desc,1024,"%s() fd#%d %s%scallback",
+	     fd_funcname(fd_functions[fds[i].fd]),fds[i].fd,
+	     fds[i].events&POLLIN?"IN ":"",
+	     fds[i].events&POLLOUT?"OUT ":"");
     fd_showstat(&total,&fd_stats[fds[i].fd],desc);
   }
   fd_showstat(&total,&total,"TOTAL");

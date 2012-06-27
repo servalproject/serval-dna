@@ -112,7 +112,7 @@ int rhizome_server_start()
     }
 
   /* Add Rhizome HTTPd server to list of file descriptors to watch */
-  fd_watch(rhizome_server_socket,rhizome_server_poll,POLL_IN);
+  fd_watch(rhizome_server_socket,rhizome_server_poll,POLLIN);
 
   return 0;
 }
@@ -130,12 +130,8 @@ void rhizome_client_poll(int fd)
 	case RHIZOME_HTTP_REQUEST_RECEIVING:
 	  /* Keep reading until we have two CR/LFs in a row */
 	  r->request[r->request_length]=0;
-	  WHYF("http request so far: [%s]",r->request);
 	  
 	  sigPipeFlag=0;
-	  
-	  /* Make socket non-blocking */
-	  fcntl(r->socket,F_SETFL,fcntl(r->socket, F_GETFL, NULL)|O_NONBLOCK);
 	  
 	  errno=0;
 	  int bytes=read(r->socket,&r->request[r->request_length],
@@ -149,7 +145,8 @@ void rhizome_client_poll(int fd)
 	    r->request_length+=bytes;
 	    if (r->request_length<RHIZOME_HTTP_REQUEST_MAXLEN)
 	      r->request[r->request_length]=0;
-	    dump("request",(unsigned char *)r->request,r->request_length);
+	    if (0)
+	      dump("request",(unsigned char *)r->request,r->request_length);
 	    for(;i<(r->request_length+bytes);i++)
 	      {
 		switch(r->request[i]) {
@@ -168,9 +165,6 @@ void rhizome_client_poll(int fd)
 	    r->request_length+=bytes;
 	  } 
 
-	  /* Make socket blocking again for poll()/select() */
-	  fcntl(r->socket,F_SETFL,fcntl(r->socket, F_GETFL, NULL)&(~O_NONBLOCK));
-	  
 	  if (sigPipeFlag||((bytes==0)&&(errno==0))) {
 	    /* broken pipe, so close connection */
 	    WHY("Closing connection due to sigpipe");
@@ -200,30 +194,27 @@ void rhizome_server_poll(int ignored_file_descriptor)
   int sock;
 
   /* Deal with any new requests */
-  /* Make socket non-blocking */
-  fcntl(rhizome_server_socket,F_SETFL,
-	fcntl(rhizome_server_socket, F_GETFL, NULL)|O_NONBLOCK);
 
   while ((rhizome_server_live_request_count<RHIZOME_SERVER_MAX_LIVE_REQUESTS)
 	 &&((sock=accept(rhizome_server_socket,&addr,&addr_len))>-1))
     {
+      DEBUG("Acceptted HTTP connection");
       rhizome_http_request *request = calloc(sizeof(rhizome_http_request),1);	
       request->socket=sock;
       /* We are now trying to read the HTTP request */
       request->request_type=RHIZOME_HTTP_REQUEST_RECEIVING;
       rhizome_live_http_requests[rhizome_server_live_request_count++]=request;	   
       /* Watch for input */
-      fd_watch(request->socket,rhizome_client_poll,POLL_IN);
+      fd_watch(request->socket,rhizome_client_poll,POLLIN);
     }
 
-  fcntl(rhizome_server_socket,F_SETFL,
-	fcntl(rhizome_server_socket, F_GETFL, NULL)&(~O_NONBLOCK));
 }
 
 int rhizome_server_close_http_request(int i)
 {
   fd_teardown(rhizome_live_http_requests[i]->socket);
 
+  DEBUG("HTTP connection closed");
   rhizome_server_free_http_request(rhizome_live_http_requests[i]);
   /* Make it null, so that if we are the list in the list, the following
      assignment still yields the correct behaviour */
@@ -237,9 +228,7 @@ int rhizome_server_close_http_request(int i)
 int rhizome_server_free_http_request(rhizome_http_request *r)
 {
   if (r->buffer&&r->buffer_size) free(r->buffer);
-  if (r->blob_table) free(r->blob_table);
-  if (r->blob_column) free(r->blob_column);
-  
+  if (r->blob) sqlite3_blob_close(r->blob);
   free(r);
   return 0;
 }
@@ -307,16 +296,14 @@ int rhizome_server_sql_query_http_response(int rn,rhizome_http_request *r,
     WHYF("SQL query overrun: %s", strbuf_str(b));
   r->source_index=0;
   r->source_flags=dehexP;
-  r->blob_column=strdup(column);
-  r->blob_table=strdup(table);
 
   DEBUGF("buffer_length=%d",r->buffer_length);
 
   /* Populate spare space in buffer with rows of data */
-  return rhizome_server_sql_query_fill_buffer(rn,r);
+  return rhizome_server_sql_query_fill_buffer(rn, r, table, column);
 }
 
-int rhizome_server_sql_query_fill_buffer(int rn,rhizome_http_request *r)
+int rhizome_server_sql_query_fill_buffer(int rn,rhizome_http_request *r, char *table, char *column)
 {
   unsigned char blob_value[r->source_record_size*2+1];
 
@@ -367,9 +354,9 @@ int rhizome_server_sql_query_fill_buffer(int rn,rhizome_http_request *r)
       case SQLITE_TEXT:	value=sqlite3_column_text(statement, 0); break;
       case SQLITE_BLOB:
 	WHYF("table='%s',col='%s',rowid=%lld",
-	       r->blob_table,r->blob_column,
+	       table, column,
 	       sqlite3_column_int64(statement,1));
-	if (sqlite3_blob_open(rhizome_db,"main",r->blob_table,r->blob_column,
+	if (sqlite3_blob_open(rhizome_db,"main",table,column,
 			      sqlite3_column_int64(statement,1) /* rowid */,
 			      0 /* read only */,&blob)!=SQLITE_OK)
 	  {
@@ -421,7 +408,7 @@ int rhizome_server_parse_http_request(int rn,rhizome_http_request *r)
   char id[1024];
 
   /* Switching to writing, so update the call-back */
-  fd_watch(r->socket,rhizome_client_poll,POLL_OUT);	
+  fd_watch(r->socket,rhizome_client_poll,POLLOUT);	
   
   /* Clear request type flags */
   r->request_type=0;
@@ -463,31 +450,28 @@ int rhizome_server_parse_http_request(int rn,rhizome_http_request *r)
 	int i;
 	hexFilter(id);
 	WHYF("get /rhizome/file/ [%s]",id);
-	WHY("Check for range: header, and return 206 if returning partial content");
+	
+	// Check for range: header, and return 206 if returning partial content
 	for(i=0;i<strlen(id);i++) if (!isxdigit(id[i])) dud++;
 	if (dud) rhizome_server_simple_http_response(r,400,"<html><h1>That doesn't look like hex to me.</h1></html>\r\n");
 	else {
 	  str_toupper_inplace(id);
 	  long long rowid = -1;
 	  sqlite_exec_int64(&rowid, "select rowid from files where id='%s';", id);
-	  sqlite3_blob *blob;
 	  if (rowid>=0) 
-	    if (sqlite3_blob_open(rhizome_db,"main","files","data",rowid,0,&blob) !=SQLITE_OK)
+	    if (sqlite3_blob_open(rhizome_db,"main","files","data",rowid,0,&r->blob) !=SQLITE_OK)
 	      rowid=-1;
+	  
 	  if (rowid<0) {
 	    rhizome_server_simple_http_response(r,404,"<html><h1>Sorry, can't find that here.</h1></html>\r\n");
 	    WHY("File not found / blob not opened");
 	  }
 	  else {
-	    r->blob_table=strdup("files");
-	    r->blob_column=strdup("data");
-	    r->blob_rowid=rowid;
-	    r->source_index=0;	    
-	    r->blob_end=sqlite3_blob_bytes(blob);
+	    r->source_index=0;
+	    r->blob_end=sqlite3_blob_bytes(r->blob);
 	    rhizome_server_http_response_header(r,200,"application/binary",
-						r->blob_end-r->source_index);
+						r->blob_end - r->source_index);
 	    r->request_type|=RHIZOME_HTTP_REQUEST_BLOB;
-	    sqlite3_blob_close(blob);
 	    WHY("opened blob and file -- but still need to send file body.");
 	  }
 	}
@@ -533,7 +517,7 @@ int rhizome_server_simple_http_response(rhizome_http_request *r,int result, char
   r->buffer_size=strlen(response)+strlen("HTTP/1.0 000 \r\n\r\n")+strlen(httpResultString(A_VALUE_GREATER_THAN_FOUR))+100;
 
   r->buffer=(unsigned char *)malloc(r->buffer_size);
-  snprintf((char *)r->buffer,r->buffer_size,"HTTP/1.0 %03d %s\r\nContent-type: text/html\r\nContent-length: %d\r\n\r\n%s",result,httpResultString(result),(int)strlen(response),response);
+  snprintf((char *)r->buffer,r->buffer_size,"HTTP/1.0 %03d %s\r\nContent-type: text/html\r\nContent-length: %lld\r\n\r\n%s",result,httpResultString(result),(int)strlen(response),response);
   
   r->buffer_size=strlen((char *)r->buffer)+1;
   r->buffer_length=r->buffer_size-1;
@@ -551,120 +535,131 @@ int rhizome_server_simple_http_response(rhizome_http_request *r,int result, char
 */
 int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r)
 {
-  sqlite3_blob *blob;
-  int bytes;
-  fcntl(r->socket,F_SETFL,fcntl(r->socket, F_GETFL, NULL)|O_NONBLOCK);
-
   if (debug&DEBUG_RHIZOME) WHYF("Request #%d, type=0x%x\n",rn,r->request_type);
 
-  /* Flush anything out of the buffer if present, before doing any further
-     processing */
-  if (r->request_type&RHIZOME_HTTP_REQUEST_FROMBUFFER)
-    {
-      bytes=r->buffer_length-r->buffer_offset;
-      bytes=write(r->socket,&r->buffer[r->buffer_offset],bytes);
-      if (bytes>0) {
-	WHYF("wrote %d bytes\n",bytes);
-	dump("bytes written",&r->buffer[r->buffer_offset],bytes);
-	r->buffer_offset+=bytes;
-	if (r->buffer_offset>=r->buffer_length) {
-	  /* Our work is done. close socket and go home */
-	  r->request_type&=~RHIZOME_HTTP_REQUEST_FROMBUFFER;
-	  r->buffer_offset=0; r->buffer_length=0;
-	  if (!r->request_type) {
-	    WHY("Finished sending data");
-	    return rhizome_server_close_http_request(rn);	  
-	  } else {
-	    if (debug&DEBUG_RHIZOME) { WHYF("request type = 0x%x after sending buffer.",
-				   r->request_type);
-	    }
-	  }
-	} else {
-	  /* Still more stuff in the buffer, so return now */
+  // keep writing until the write would block or we run out of data
+  while(r->request_type){
+    
+    /* Flush anything out of the buffer if present, before doing any further
+       processing */
+    if (r->request_type&RHIZOME_HTTP_REQUEST_FROMBUFFER)
+      {
+	int bytes=r->buffer_length-r->buffer_offset;
+	bytes=write(r->socket,&r->buffer[r->buffer_offset],bytes);
+	if (bytes<=0){
+	  // stop writing when the tcp buffer is full
+	  // TODO errors?
 	  return 1;
 	}
+	
+	DEBUGF("wrote %d bytes\n",bytes);
+	if (0)
+	  dump("bytes written",&r->buffer[r->buffer_offset],bytes);
+	r->buffer_offset+=bytes;
+	  
+	if (r->buffer_offset>=r->buffer_length) {
+	  /* Buffer's cleared */
+	  r->request_type&=~RHIZOME_HTTP_REQUEST_FROMBUFFER;
+	  r->buffer_offset=0; r->buffer_length=0;
+	}
+	
+	// go around the loop again to work out what we should do next
+	continue;
+	
       }
-    }
 
-  switch(r->request_type&(~RHIZOME_HTTP_REQUEST_FROMBUFFER))
-    {
-    case RHIZOME_HTTP_REQUEST_FAVICON:
-      if (r->buffer_size<favicon_len) {
-	free(r->buffer);
-	r->buffer_size=0;
-	r->buffer=malloc(favicon_len);
-	if (!r->buffer) r->request_type=0;
-      }
-      if (r->buffer)
+    switch(r->request_type&(~RHIZOME_HTTP_REQUEST_FROMBUFFER))
       {
-	  int i;
-	  for(i=0;i<favicon_len;i++)
-	    r->buffer[i]=favicon_bytes[i];
-	  r->buffer_length=i;
-	  printf("buffer_length for favicon is %d\n",r->buffer_length);
-	  r->request_type=RHIZOME_HTTP_REQUEST_FROMBUFFER;
-      }
-      
-      break;
-    case RHIZOME_HTTP_REQUEST_BLOB:
-      /* Get more data from the file and put it in the buffer */
-      r->buffer_length=r->blob_end-r->source_index;
-      if (r->buffer_length<=0) {
-	/* end of blob reached */
-	r->request_type=0; break;
-      }
-      if (r->buffer_size<65536) {
-	free(r->buffer); r->buffer=malloc(65536);
-	if (!r->buffer) {
-	  if (debug&DEBUG_RHIZOME) WHY("malloc() failed");
-	  r->request_type=0; break;
+      case RHIZOME_HTTP_REQUEST_FAVICON:
+	if (r->buffer_size<favicon_len) {
+	  free(r->buffer);
+	  r->buffer_size=0;
+	  r->buffer=malloc(favicon_len);
+	  if (!r->buffer) r->request_type=0;
 	}
-	r->buffer_size=65536;
-      }
-      if (r->buffer_length>r->buffer_size) r->buffer_length=r->buffer_size;
-      if (sqlite3_blob_open(rhizome_db,"main",r->blob_table,r->blob_column,
-			    r->blob_rowid,0,&blob)==SQLITE_OK)
+	if (r->buffer)
 	{
-	  if(sqlite3_blob_read(blob,&r->buffer[0],r->buffer_length,r->source_index)
-	     ==SQLITE_OK)
-	    {
-	      r->request_type|=RHIZOME_HTTP_REQUEST_FROMBUFFER;
-	      r->source_index+=r->buffer_length;
-	    }
-	  else
-	    r->request_type=0;
-	  sqlite3_blob_close(blob);
+	    int i;
+	    for(i=0;i<favicon_len;i++)
+	      r->buffer[i]=favicon_bytes[i];
+	    r->buffer_length=i;
+	    printf("buffer_length for favicon is %d\n",r->buffer_length);
+	    r->request_type=RHIZOME_HTTP_REQUEST_FROMBUFFER;
 	}
-      else
+	
+	break;
+      case RHIZOME_HTTP_REQUEST_BLOB:
 	{
-	  if (debug&DEBUG_RHIZOME) WHY("could not open blob to send more data");
+	  /* Get more data from the file and put it in the buffer */
+	  int read_size = 65536;
+	  if (r->blob_end-r->source_index < read_size)
+	    read_size = r->blob_end-r->source_index;
+	    
 	  r->request_type=0;
+	  if (read_size>0){
+	    
+	    if (r->buffer_size < read_size) {
+	      if (r->buffer)
+		free(r->buffer);
+	      r->buffer=malloc(read_size);
+	      if (!r->buffer) {
+		if (debug&DEBUG_RHIZOME) WHY("malloc() failed");
+		r->request_type=0; break;
+	      }
+	      r->buffer_size=read_size;
+	    }
+	      
+	    if(sqlite3_blob_read(r->blob,&r->buffer[0],read_size,r->source_index)
+	       ==SQLITE_OK)
+	      {
+		r->buffer_length = read_size;
+		r->source_index+=read_size;
+		r->request_type|=RHIZOME_HTTP_REQUEST_FROMBUFFER;
+		
+		DEBUGF("Read bytes from DB blob (%lld, %lld)", r->source_index, r->blob_end);
+	      }
+	  }
+	    
+	  if (r->source_index >= r->blob_end){
+	    sqlite3_blob_close(r->blob);
+	    r->blob=0;
+	    DEBUG("Closed blob handle");
+	  }else
+	    r->request_type|=RHIZOME_HTTP_REQUEST_BLOB;
 	}
-      break;
-    case RHIZOME_HTTP_REQUEST_FROMBUFFER:
-      /* This really shouldn't happen! */
-      
-      return WHY("Something impossible happened.");
-      break;
-    default:
-      WHY("sending data from this type of HTTP request not implemented");
-      break;
-    }
-
+	break;
+	  
+      default:
+	WHY("sending data from this type of HTTP request not implemented");
+	r->request_type=0;
+	break;
+      }
+  }
   if (!r->request_type) return rhizome_server_close_http_request(rn);	  
-
-  fcntl(r->socket,F_SETFL,fcntl(r->socket, F_GETFL, NULL)&(~O_NONBLOCK));
   return 1;
 }
 
 int rhizome_server_http_response_header(rhizome_http_request *r,int result,
 					char *mime_type,unsigned long long bytes)
 {
-  if (!r->buffer) {
-    r->buffer_size=bytes+strlen("HTTP/1.0 000 \r\n\r\n")+strlen(httpResultString(A_VALUE_GREATER_THAN_FOUR))+100;
-    r->buffer=(unsigned char *)malloc(r->buffer_size);
+  int min_buff = strlen("HTTP/1.0 000 \r\nContent-type: \r\nContent-length: \r\n\r\n")
+    +strlen(httpResultString(result))
+    +strlen(mime_type)+20;
+  
+  if (min_buff+bytes > 65536){
+    min_buff = 65536;
+  }else{
+    min_buff += bytes;
   }
-  snprintf((char *)r->buffer,r->buffer_size,"HTTP/1.0 %03d \r\nContent-type: %s\r\nContent-length: %lld\r\n\r\n",result,mime_type,bytes);
+  
+  if (r->buffer_size < min_buff) {
+    if (r->buffer)
+      free(r->buffer);
+    r->buffer=(unsigned char *)malloc(min_buff);
+    r->buffer_size=min_buff;
+  }
+  
+  snprintf((char *)r->buffer,r->buffer_size,"HTTP/1.0 %03d %s\r\nContent-type: %s\r\nContent-length: %lld\r\n\r\n",result,httpResultString(result),mime_type,bytes);
   
   r->buffer_length=strlen((char *)r->buffer);
   r->buffer_offset=0;

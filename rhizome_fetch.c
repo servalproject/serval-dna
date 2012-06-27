@@ -31,20 +31,21 @@ typedef struct rhizome_file_fetch_record {
   char fileid[RHIZOME_FILEHASH_STRLEN + 1];
   FILE *file;
   
-  int close;
-
   char request[1024];
   int request_len;
   int request_ofs;
   
-  int file_len;
-  int file_ofs;
+  long long file_len;
+  long long file_ofs;
 
   int state;
   int last_action;
-#define RHIZOME_FETCH_SENDINGHTTPREQUEST 1
-#define RHIZOME_FETCH_RXHTTPHEADERS 2
-#define RHIZOME_FETCH_RXFILE 3
+  
+#define RHIZOME_FETCH_CONNECTING 1
+#define RHIZOME_FETCH_SENDINGHTTPREQUEST 2
+#define RHIZOME_FETCH_RXHTTPHEADERS 3
+#define RHIZOME_FETCH_RXFILE 4
+  
 } rhizome_file_fetch_record;
 
 /* List of queued transfers */
@@ -633,15 +634,16 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	  {
 	    /* Transfer via HTTP over IPv4 */
 	    int sock = socket(AF_INET,SOCK_STREAM,0);
-	    fcntl(sock,F_SETFL, O_NONBLOCK);
+	    SET_NONBLOCKING(sock);
 	    struct sockaddr_in peeraddr;
 	    bcopy(peerip,&peeraddr,sizeof(peeraddr));
 	    peeraddr.sin_port=htons(RHIZOME_HTTP_PORT);
+	    DEBUG("Initiating HTTP connection for transfer");
 	    int r=connect(sock,(struct sockaddr*)&peeraddr,sizeof(peeraddr));
 	    if ((errno!=EINPROGRESS)&&(r!=0)) {	      
+	      WHY("Failed to open socket to peer's rhizome web server");
 	      WHY_perror("connect");
 	      close (sock);
-	      if (debug&DEBUG_RHIZOME) DEBUG("Failed to open socket to peer's rhizome web server");
 	      return -1;
 	    }
 	    
@@ -655,10 +657,9 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 		     q->fileid);
 	    q->request_len=strlen(q->request);
 	    q->request_ofs=0;
-	    q->state=RHIZOME_FETCH_SENDINGHTTPREQUEST;
+	    q->state=RHIZOME_FETCH_CONNECTING;
 	    q->file_len=-1;
 	    q->file_ofs=0;
-	    q->close=0;
 	    q->last_action=time(0);
 	    /* XXX Don't forget to implement resume */
 #define RHIZOME_IDLE_TIMEOUT 10
@@ -685,7 +686,9 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	      return -1;
 	    }
 	    /* Watch for activity on the socket */
-	    fd_watch(q->socket,rhizome_fetch_poll,POLL_OUT);
+	    fd_watch(q->socket,rhizome_fetch_poll,POLLIN|POLLOUT);
+	    fd_setalarm(rhizome_check_connections,50,500);
+
 	    rhizome_file_fetch_queue_count++;
 	    if (1||debug&DEBUG_RHIZOME) DEBUGF("Queued file for fetching into %s (%d in queue)",
 					    q->manifest->dataFileName, rhizome_file_fetch_queue_count);
@@ -715,256 +718,268 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
   return 0;
 }
 
+int rhizome_fetch_close(int i){
+  /* Free ephemeral data */
+  if (file_fetch_queue[i].file) fclose(file_fetch_queue[i].file);
+  file_fetch_queue[i].file=NULL;
+  if (file_fetch_queue[i].manifest) 
+    rhizome_manifest_free(file_fetch_queue[i].manifest);
+  file_fetch_queue[i].manifest=NULL;
+  
+  /* close socket and stop watching it */
+  fd_teardown(file_fetch_queue[i].socket);
+  
+  /* reshuffle higher numbered slot down if required */
+  if (i<(rhizome_file_fetch_queue_count-1))
+    bcopy(&file_fetch_queue[rhizome_file_fetch_queue_count-1],
+	  &file_fetch_queue[i],sizeof(rhizome_file_fetch_record));
+  
+  /* Reduce count of open connections */	
+  rhizome_file_fetch_queue_count--;
+  
+  if (debug&DEBUG_RHIZOME) 
+    DEBUGF("Released rhizome fetch slot (%d used)",
+	   rhizome_file_fetch_queue_count);
+}
+
+void rhizome_fetch_write(rhizome_file_fetch_record *q, int i){
+  int bytes;
+  bytes=write(q->socket,&q->request[q->request_ofs],
+	      q->request_len-q->request_ofs);
+  if (bytes>0) {
+    q->last_action=time(0);
+    q->request_ofs+=bytes;
+    DEBUGF("Sent HTTP request (%d of %d): %s",
+	   q->request_ofs,q->request_len,q->request);
+    
+    if (q->request_ofs>=q->request_len) {
+      /* Sent all of request.  Switch to listening for HTTP response headers.
+       */
+      q->request_len=0; q->request_ofs=0;
+      q->state=RHIZOME_FETCH_RXHTTPHEADERS;
+      fd_watch(q->socket,rhizome_fetch_poll,POLLIN);
+    }else if(q->state==RHIZOME_FETCH_CONNECTING)
+      q->state = RHIZOME_FETCH_SENDINGHTTPREQUEST;
+  } else if (errno!=EAGAIN) {
+    WHY("Got error while sending HTTP request.  Closing.");
+    rhizome_fetch_close(i);
+  }
+}
+
+void rhizome_fetch_handle(rhizome_file_fetch_record *q, int i)
+{
+  switch(q->state) 
+    {
+    case RHIZOME_FETCH_CONNECTING:
+    case RHIZOME_FETCH_SENDINGHTTPREQUEST:
+      rhizome_fetch_write(q, i);
+      break;
+    case RHIZOME_FETCH_RXFILE:
+      /* Keep reading until we have the promised amount of data */
+      
+      sigPipeFlag=0;
+      
+      errno=0;
+      char buffer[8192];
+
+      int bytes=read(q->socket,buffer,8192);
+      
+      /* If we got some data, see if we have found the end of the HTTP request */
+      if (bytes>0) {
+	q->last_action=time(0);
+
+	if (bytes>(q->file_len-q->file_ofs))
+	  bytes=q->file_len-q->file_ofs;
+	if (fwrite(buffer,bytes,1,q->file)!=1)
+	  {
+	    if (debug&DEBUG_RHIZOME) DEBUGF("Failed writing %d bytes to file. @ offset %d",bytes,q->file_ofs);
+	    rhizome_fetch_close(i);
+	    return;
+	  }
+	q->file_ofs+=bytes;
+	DEBUGF("Transferred (%lld of %lld)",
+	       q->file_ofs,q->file_len);
+	
+      } else if (bytes==0) {
+	WHY("Got zero bytes, assume socket dead.");
+	rhizome_fetch_close(i);
+	return;
+      }
+      if (q->file_ofs>=q->file_len)
+	{
+	  /* got all of file */
+	  if (debug&DEBUG_RHIZOME) DEBUGF("Received all of file via rhizome -- now to import it");
+	  {
+	    fclose(q->file); q->file=NULL;
+	    const char *id = rhizome_manifest_get(q->manifest, "id", NULL, 0);
+	    if (id == NULL)
+	      { WHY("Manifest missing ID"); return; }
+	    if (create_rhizome_import_dir() == -1)
+	      return;
+	    char filename[1024];
+	    if (!FORM_RHIZOME_IMPORT_PATH(filename,"manifest.%s", id))
+	      return;
+	    /* Do really write the manifest unchanged */
+	    if (debug&DEBUG_RHIZOME) {
+	      DEBUGF("manifest has %d signatories",q->manifest->sig_count);
+	      DEBUGF("manifest id = %s, len=%d",
+		      rhizome_manifest_get(q->manifest,"id",NULL,0),
+		      q->manifest->manifest_bytes);
+	      dump("manifest",&q->manifest->manifestdata[0],
+		   q->manifest->manifest_all_bytes);
+	    }
+	    q->manifest->finalised=1;
+	    q->manifest->manifest_bytes=q->manifest->manifest_all_bytes;
+	    if (rhizome_write_manifest_file(q->manifest,filename) != -1) {
+	      rhizome_bundle_import(q->manifest, NULL, id,
+				    q->manifest->ttl - 1 /* TTL */);
+	    }
+	    rhizome_manifest_free(q->manifest);
+	    q->manifest=NULL;
+	  }
+	  rhizome_fetch_close(i);
+	  return;
+	}
+      break;
+    case RHIZOME_FETCH_RXHTTPHEADERS:
+      /* Keep reading until we have two CR/LFs in a row */
+      sigPipeFlag=0;
+      
+      errno=0;
+      bytes=read(q->socket,&q->request[q->request_len],
+		 1024-q->request_len-1);
+
+      /* If we got some data, see if we have found the end of the HTTP request */
+      if (bytes>0) {
+	int lfcount=0;
+	int i=q->request_len-160;
+	q->last_action=time(0);
+	if (i<0) i=0;
+	q->request_len+=bytes;
+	if (q->request_len<1024)
+	  q->request[q->request_len]=0;
+	
+	for(;i<(q->request_len+bytes);i++)
+	  {
+	    switch(q->request[i]) {
+	    case '\n': lfcount++; break;
+	    case '\r': /* ignore CR */ break;
+	    case 0: /* ignore NUL (telnet inserts them) */ break;
+	    default: lfcount=0; break;
+	    }
+	    if (lfcount==2) break;
+	  }
+	
+	DEBUGF("Received headers (%d bytes)", lfcount==2?i:q->request_len);
+	if (debug&DEBUG_RHIZOME)
+	  dump("http reply headers",(unsigned char *)q->request,lfcount==2?i:q->request_len);
+	
+	if (lfcount==2) {
+	  /* We have the response headers, so parse.
+	     (we may also have some bytes of content, so we need to be a little
+	     careful) */
+
+	  /* Terminate string at end of headers */
+	  q->request[i]=0;
+
+	  /* Get HTTP result code */
+	  char *s=strstr(q->request,"HTTP/1.0 ");
+	  if (!s) { 
+	    if (debug&DEBUG_RHIZOME) DEBUGF("HTTP response lacked HTTP/1.0 response code.");
+	    rhizome_fetch_close(i);
+	    return;
+	  }
+	  int http_response_code=strtoll(&s[9],NULL,10);
+	  if (http_response_code!=200) {
+	    if (debug&DEBUG_RHIZOME) DEBUGF("Rhizome web server returned %d != 200 OK",http_response_code);
+	    rhizome_fetch_close(i);
+	    return;
+	  }
+	  /* Get content length */
+	  s=strstr(q->request,"Content-length: ");
+	  if (!s) {
+	    if (debug&DEBUG_RHIZOME) 
+	      DEBUGF("Missing Content-Length: header.");
+	    rhizome_fetch_close(i);
+	    return;
+	  }
+	  q->file_len=strtoll(&s[16],NULL,10);
+	  
+	  if (q->file_len<0) {
+	    if (debug&DEBUG_RHIZOME) 
+	      DEBUGF("Illegal file size (%d).",q->file_len);
+	    rhizome_fetch_close(i);
+	    return;
+	  }
+
+	  /* Okay, we have both, and are all set.
+	     File is already open, so just write out any initial bytes of the
+	     file we read, and update state flag.
+	  */
+	  int fileRxBytes=q->request_len-(i+1);
+	  if (fileRxBytes>0)
+	    if (fwrite(&q->request[i+1],fileRxBytes,1,q->file)!=1)
+	      {
+		if (debug&DEBUG_RHIZOME) 
+		  DEBUGF("Failed writing initial %d bytes to file.",
+			  fileRxBytes);	       
+		rhizome_fetch_close(i);
+		return;
+	      }
+	  q->file_ofs=fileRxBytes;
+	  DEBUGF("Transferred (%lld of %lld)",
+		 q->file_ofs,q->file_len);
+	  q->state=RHIZOME_FETCH_RXFILE;
+	}
+	
+      } 
+      
+      if (sigPipeFlag||((bytes==0)&&(errno==0))) {
+	/* broken pipe, so close connection */
+	if (debug&DEBUG_RHIZOME) 
+	  DEBUG("Closing rhizome fetch connection due to sigpipe");
+	rhizome_fetch_close(i);
+	return;
+      }	 
+      break;
+    default:
+      if (debug&DEBUG_RHIZOME) 
+	DEBUG("Closing rhizome fetch connection due to illegal/unimplemented state.");
+      rhizome_fetch_close(i);
+      return;
+    }
+  return;
+}
+
 void rhizome_fetch_poll(int fd)
 {
   int rn;
   for(rn=0;rn<rhizome_file_fetch_queue_count;rn++)
-    {
-      int action=0;
-      int bytes;
-      rhizome_file_fetch_record *q=&file_fetch_queue[rn];
-      if (q->socket!=fd) continue;
-	  
-      /* Make socket non-blocking */
-      fcntl(q->socket,F_SETFL,fcntl(q->socket, F_GETFL, NULL)|O_NONBLOCK);
-
-      switch(q->state) 
-	{
-	case RHIZOME_FETCH_SENDINGHTTPREQUEST:
-	  DEBUGF("sending http request (%d of %d bytes sent): %s",
-		 q->request_ofs,q->request_len,q->request);
-	  bytes=write(q->socket,&q->request[q->request_ofs],
-			  q->request_len-q->request_ofs);
-	  if (bytes>0) {
-	    action=1;
-	    q->request_ofs+=bytes;
-	    if (q->request_ofs>=q->request_len) {
-	      /* Sent all of request.  Switch to listening for HTTP response headers.
-	       */
-	      if (debug&DEBUG_RHIZOME) {
-		DEBUGF("Sent http request to fetch file. (%d of %d bytes)",q->request_ofs,q->request_len);	      
-		DEBUGF("sent [%s]",q->request);
-	      }
-	      q->request_len=0; q->request_ofs=0;
-	      q->state=RHIZOME_FETCH_RXHTTPHEADERS;
-	      fd_watch(q->socket,rhizome_fetch_poll,POLL_IN);
-	    }
-	  } else if (errno!=EAGAIN) {
-	    WHY("Got error while sending HTTP request.  Closing.");
-	    q->close=1;
-	  }
-	  break;
-	case RHIZOME_FETCH_RXFILE:
-	  /* Keep reading until we have the promised amount of data */
-	  if (debug&DEBUG_RHIZOME) 
-	    DEBUGF("receiving rhizome fetch file body (current offset=%d of %d)",
-		 q->file_ofs,q->file_len);
-	  
-	  sigPipeFlag=0;
-	  
-	  errno=0;
-	  char buffer[8192];
-
-	  int bytes=read(q->socket,buffer,8192);
-	  
-	  /* If we got some data, see if we have found the end of the HTTP request */
-	  if (bytes>0) {
-	    action=1;
-
-	    if (debug&DEBUG_RHIZOME) 
-	      DEBUGF("Read %d bytes; we now have %d of %d bytes.",
-		      bytes,q->file_ofs+bytes,q->file_len);
-
-	    if (bytes>(q->file_len-q->file_ofs))
-	      bytes=q->file_len-q->file_ofs;
-	    if (fwrite(buffer,bytes,1,q->file)!=1)
-	      {
-		if (debug&DEBUG_RHIZOME) DEBUGF("Failed writing %d bytes to file. @ offset %d",bytes,q->file_ofs);
-		q->close=1;
-		continue;
-	      }
-	    q->file_ofs+=bytes;
-	  } else if (bytes==0) {
-	    WHY("Got zero bytes, assume socket dead.");
-	    q->close=1;
-	    continue;
-	  }
-	  if (q->file_ofs>=q->file_len)
-	    {
-	      /* got all of file */
-	      q->close=1;
-	      if (debug&DEBUG_RHIZOME) DEBUGF("Received all of file via rhizome -- now to import it");
-	      {
-		fclose(q->file); q->file=NULL;
-		const char *id = rhizome_manifest_get(q->manifest, "id", NULL, 0);
-		if (id == NULL)
-		  { WHY("Manifest missing ID"); return; }
-		if (create_rhizome_import_dir() == -1)
-		  return;
-		char filename[1024];
-		if (!FORM_RHIZOME_IMPORT_PATH(filename,"manifest.%s", id))
-		  return;
-		/* Do really write the manifest unchanged */
-		if (debug&DEBUG_RHIZOME) {
-		  DEBUGF("manifest has %d signatories",q->manifest->sig_count);
-		  DEBUGF("manifest id = %s, len=%d",
-			  rhizome_manifest_get(q->manifest,"id",NULL,0),
-			  q->manifest->manifest_bytes);
-		  dump("manifest",&q->manifest->manifestdata[0],
-		       q->manifest->manifest_all_bytes);
-		}
-		q->manifest->finalised=1;
-		q->manifest->manifest_bytes=q->manifest->manifest_all_bytes;
-		if (rhizome_write_manifest_file(q->manifest,filename) != -1) {
-		  rhizome_bundle_import(q->manifest, NULL, id,
-					q->manifest->ttl - 1 /* TTL */);
-		}
-		rhizome_manifest_free(q->manifest);
-		q->manifest=NULL;
-	      }
-	    }
-	  break;
-	case RHIZOME_FETCH_RXHTTPHEADERS:
-	  /* Keep reading until we have two CR/LFs in a row */
-	  if (debug&DEBUG_RHIZOME) DEBUG("receiving rhizome fetch http headers");
-	  
-	  sigPipeFlag=0;
-	  
-	  errno=0;
-	  bytes=read(q->socket,&q->request[q->request_len],
-		     1024-q->request_len-1);
-
-	  /* If we got some data, see if we have found the end of the HTTP request */
-	  if (bytes>0) {
-	    action=1;
-	    int lfcount=0;
-	    int i=q->request_len-160;
-	    if (i<0) i=0;
-	    q->request_len+=bytes;
-	    if (q->request_len<1024)
-	      q->request[q->request_len]=0;
-	    if (debug&DEBUG_RHIZOME)
-	      dump("http reply headers",(unsigned char *)q->request,q->request_len);
-	    for(;i<(q->request_len+bytes);i++)
-	      {
-		switch(q->request[i]) {
-		case '\n': lfcount++; break;
-		case '\r': /* ignore CR */ break;
-		case 0: /* ignore NUL (telnet inserts them) */ break;
-		default: lfcount=0; break;
-		}
-		if (lfcount==2) break;
-	      }
-	    if (lfcount==2) {
-	      /* We have the response headers, so parse.
-	         (we may also have some extra bytes, so we need to be a little
-		 careful) */
-
-	      /* Terminate string at end of headers */
-	      q->request[i]=0;
-
-	      /* Get HTTP result code */
-	      char *s=strstr(q->request,"HTTP/1.0 ");
-	      if (!s) { 
-		if (debug&DEBUG_RHIZOME) DEBUGF("HTTP response lacked HTTP/1.0 response code.");
-		q->close=1; continue; }
-	      int http_response_code=strtoll(&s[9],NULL,10);
-	      if (http_response_code!=200) {
-		if (debug&DEBUG_RHIZOME) DEBUGF("Rhizome web server returned %d != 200 OK",http_response_code);
-		q->close=1; continue;
-	      }
-	      /* Get content length */
-	      s=strstr(q->request,"Content-length: ");
-	      if (!s) {
-		if (debug&DEBUG_RHIZOME) 
-		  DEBUGF("Missing Content-Length: header.");
-		q->close=1; continue; }
-	      q->file_len=strtoll(&s[16],NULL,10);
-	      if (q->file_len<0) {
-		if (debug&DEBUG_RHIZOME) 
-		  DEBUGF("Illegal file size (%d).",q->file_len);
-		q->close=1; continue; }
-
-	      /* Okay, we have both, and are all set.
-		 File is already open, so just write out any initial bytes of the
-		 file we read, and update state flag.
-	      */
-	      int fileRxBytes=q->request_len-(i+1);
-	      if (fileRxBytes>0)
-		if (fwrite(&q->request[i+1],fileRxBytes,1,q->file)!=1)
-		  {
-		    if (debug&DEBUG_RHIZOME) 
-		      DEBUGF("Failed writing initial %d bytes to file.",
-			      fileRxBytes);	       
-		    q->close=1;
-		    continue;
-		  }
-	      q->file_ofs=fileRxBytes;
-	      if (debug&DEBUG_RHIZOME) 
-		DEBUGF("Read %d initial bytes of %d total",
-			q->file_ofs,q->file_len);
-	      q->state=RHIZOME_FETCH_RXFILE;
-	    }
-	    
-	    q->request_len+=bytes;
-	  } 
-	  
-	  /* Give up fairly quickly if there is no action, because the peer may
-	     have moved out of range. */
-	  if (!action) {
-	    if (time(0)-q->last_action>RHIZOME_IDLE_TIMEOUT) {
-	      if (debug&DEBUG_RHIZOME) 
-		DEBUG("Closing connection due to inactivity timeout.");
-	      q->close=1;
-	      continue;
-	    }
-	  } else q->last_action=time(0);
-	  
-	  if (sigPipeFlag||((bytes==0)&&(errno==0))) {
-	    /* broken pipe, so close connection */
-	    if (debug&DEBUG_RHIZOME) 
-	      DEBUG("Closing rhizome fetch connection due to sigpipe");
-	    q->close=1;
-	    continue;
-	  }	 
-	  break;
-	default:
-	  if (debug&DEBUG_RHIZOME) 
-	    DEBUG("Closing rhizome fetch connection due to illegal/unimplemented state.");
-	  q->close=1;
-	  break;
-	}
-      
-      /* Make socket blocking again for poll()/select() */
-      fcntl(q->socket,F_SETFL,fcntl(q->socket, F_GETFL, NULL)&(~O_NONBLOCK));
+  {
+    int bytes;
+    rhizome_file_fetch_record *q=&file_fetch_queue[rn];
+    
+    if (q->socket==fd){
+      rhizome_fetch_handle(q, rn);
+      return;
     }
-  
+  }  
+}
+
+int rhizome_check_connections(){
   int i;
   for(i=rhizome_file_fetch_queue_count-1;i>=0;i--)
-    {
-      if (file_fetch_queue[i].close) {
-	/* Free ephemeral data */
-	if (file_fetch_queue[i].file) fclose(file_fetch_queue[i].file);
-	file_fetch_queue[i].file=NULL;
-	if (file_fetch_queue[i].manifest) 
-	  rhizome_manifest_free(file_fetch_queue[i].manifest);
-	file_fetch_queue[i].manifest=NULL;
-	
-	/* close socket and stop watching it */
-	fd_teardown(file_fetch_queue[i].socket);
-
-	/* reshuffle higher numbered slot down if required */
-	if (i<(rhizome_file_fetch_queue_count-1))
-	  bcopy(&file_fetch_queue[rhizome_file_fetch_queue_count-1],
-		&file_fetch_queue[i],sizeof(rhizome_file_fetch_record));
-	
-	/* Reduce count of open connections */	
-	rhizome_file_fetch_queue_count--;
-
-	if (debug&DEBUG_RHIZOME) 
-	  DEBUGF("Released rhizome fetch slot (%d remaining)",
-	       rhizome_file_fetch_queue_count);
-      }
+  {
+    if (time(0) - file_fetch_queue[i].last_action > RHIZOME_IDLE_TIMEOUT) {
+      if (debug&DEBUG_RHIZOME) 
+	DEBUG("Closing connection due to inactivity timeout.");
+      rhizome_fetch_close(i);
+      continue;
     }
-  return;
+  }
+  
+  if (rhizome_file_fetch_queue_count==0)
+    fd_setalarm(rhizome_check_connections,0,0);
 }
+
+

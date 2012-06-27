@@ -71,8 +71,6 @@ int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
   msg.msg_controllen = sizeof(struct cmsghdr)*16;
   msg.msg_flags = 0;
 
-  fcntl(sock,F_SETFL, O_NONBLOCK);
-
   int len = recvmsg(sock,&msg,0);
 
   if (0&&debug&DEBUG_PACKETRX) {

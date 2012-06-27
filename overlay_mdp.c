@@ -73,7 +73,7 @@ int overlay_mdp_setup_sockets()
       int res = setsockopt(mdp_abstract_socket, SOL_SOCKET, SO_SNDBUF, 
 		       &send_buffer_size, sizeof(send_buffer_size));
 
-      fd_watch(mdp_abstract_socket,overlay_mdp_poll,POLL_IN);
+      fd_watch(mdp_abstract_socket,overlay_mdp_poll,POLLIN);
     } 
   }
 #endif
@@ -106,7 +106,7 @@ int overlay_mdp_setup_sockets()
 		       &send_buffer_size, sizeof(send_buffer_size));
       if (res)
 	WHY_perror("setsockopt");
-      fd_watch(mdp_named_socket,overlay_mdp_poll,POLL_IN);
+      fd_watch(mdp_named_socket,overlay_mdp_poll,POLLIN);
     }
   }
 
@@ -963,10 +963,11 @@ void overlay_mdp_poll()
   if (mdp_named_socket>-1) {
     ttl=-1;
     bzero((void *)recvaddrbuffer,sizeof(recvaddrbuffer));
-    fcntl(mdp_named_socket, F_SETFL, 
-	  fcntl(mdp_named_socket, F_GETFL, NULL)|O_NONBLOCK); 
+    
+    SET_NONBLOCKING(mdp_named_socket);
     int len = recvwithttl(mdp_named_socket,buffer,sizeof(buffer),&ttl,
 			  recvaddr,&recvaddrlen);
+    SET_BLOCKING(mdp_named_socket);
     recvaddr_un=(struct sockaddr_un *)recvaddr;
 
     if (len>0) {
@@ -1067,12 +1068,12 @@ void overlay_mdp_poll()
 	/* We ignore the result of the following, because it is just sending an
 	   error message back to the client.  If this fails, where would we report
 	   the error to? My point exactly. */
+	SET_NONBLOCKING(mdp_named_socket);
 	sendto(mdp_named_socket,mdp,len,0,(struct sockaddr *)recvaddr,recvaddrlen);
+	SET_BLOCKING(mdp_named_socket);
       }
     }
 
-    fcntl(mdp_named_socket, F_SETFL, 
-	  fcntl(mdp_named_socket, F_GETFL, NULL)&(~O_NONBLOCK)); 
   }
 
   return;
@@ -1142,10 +1143,10 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
   if (!FORM_SERVAL_INSTANCE_PATH(name.sun_path, "mdp.socket"))
     return -1;
 
-  fcntl(mdp_client_socket, F_SETFL,
-	fcntl(mdp_client_socket, F_GETFL, NULL)|O_NONBLOCK);
+  SET_NONBLOCKING(mdp_client_socket);
   int result=sendto(mdp_client_socket, mdp, len, 0,
 		    (struct sockaddr *)&name, sizeof(struct sockaddr_un));
+  SET_BLOCKING(mdp_client_socket);
   if (result<0) {
     mdp->packetTypeAndFlags=MDP_ERROR;
     mdp->error.error=1;
@@ -1270,17 +1271,21 @@ int overlay_mdp_client_poll(long long timeout_ms)
 int overlay_mdp_recv(overlay_mdp_frame *mdp,int *ttl) 
 {
   char mdp_socket_name[101];
-  if (!FORM_SERVAL_INSTANCE_PATH(mdp_socket_name, "mdp.socket"))
-    return WHY("Could not find mdp socket");
-  /* Check if reply available */
-  fcntl(mdp_client_socket, F_SETFL, fcntl(mdp_client_socket, F_GETFL, NULL)|O_NONBLOCK); 
   unsigned char recvaddrbuffer[1024];
   struct sockaddr *recvaddr=(struct sockaddr *)recvaddrbuffer;
   unsigned int recvaddrlen=sizeof(recvaddrbuffer);
   struct sockaddr_un *recvaddr_un;
+  
+  if (!FORM_SERVAL_INSTANCE_PATH(mdp_socket_name, "mdp.socket"))
+    return WHY("Could not find mdp socket");
   mdp->packetTypeAndFlags=0;
+  
+  /* Check if reply available */
+  SET_NONBLOCKING(mdp_client_socket);
   int len = recvwithttl(mdp_client_socket,(unsigned char *)mdp,
 		    sizeof(overlay_mdp_frame),ttl,recvaddr,&recvaddrlen);
+  SET_BLOCKING(mdp_client_socket);
+  
   recvaddr_un=(struct sockaddr_un *)recvaddr;
   /* Null terminate received address so that the stat() call below can succeed */
   if (recvaddrlen<1024) recvaddrbuffer[recvaddrlen]=0;
