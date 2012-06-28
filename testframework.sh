@@ -109,6 +109,7 @@ runTests() {
    _tfw_stdout=1
    _tfw_stderr=2
    _tfw_checkBashVersion
+   _tfw_checkTerminfo
    _tfw_invoking_script=$(abspath "${BASH_SOURCE[1]}")
    _tfw_suite_name="${_tfw_invoking_script##*/}"
    _tfw_cwd=$(abspath "$PWD")
@@ -158,6 +159,7 @@ runTests() {
    _tfw_errorcount=0
    _tfw_fatalcount=0
    _tfw_running_pids=()
+   _tfw_test_number_watermark=0
    local testNumber
    for ((testNumber = 1; testNumber <= ${#_tfw_tests[*]}; ++testNumber)); do
       testName="${_tfw_tests[$(($testNumber - 1))]}"
@@ -169,8 +171,7 @@ runTests() {
       $_tfw_stop_on_error && [ $_tfw_errorcount -ne 0 ] && break
       $_tfw_stop_on_failure && [ $_tfw_failcount -ne 0 ] && break
       # Start the next test in a child process.
-      local docvar="doc_$testName"
-      echo -n "$testNumber. ${!docvar:-$testName}..."
+      _tfw_echo_intro $testNumber $testName
       [ $njobs -ne 1 ] && echo
       (
          echo "$testNumber $testName" >"$_tfw_results_dir/$BASHPID"
@@ -240,6 +241,12 @@ runTests() {
    [ $_tfw_fatalcount -eq 0 -a $_tfw_failcount -eq 0 -a $_tfw_errorcount -eq 0 ]
 }
 
+_tfw_echo_intro() {
+   local docvar="doc_$2"
+   echo -n "$1. ${!docvar:-$2}..."
+   [ $1 -gt $_tfw_test_number_watermark ] && _tfw_test_number_watermark=$1
+}
+
 _tfw_harvest_processes() {
    trap 'kill $spid 2>/dev/null' SIGCHLD
    sleep 1 &
@@ -272,8 +279,20 @@ _tfw_harvest_processes() {
             let _tfw_fatalcount=_tfw_fatalcount+1
             ;;
          esac
-         [ $njobs -ne 1 ] && echo -n "$testNumber. ..."
-         echo " $result"
+         local lines
+         if [ $njobs -eq 1 ]; then
+            echo " $result"
+         elif lines=$($_tfw_tput lines); then
+            local travel=$(($_tfw_test_number_watermark - $testNumber + 1))
+            if [ $travel -gt 0 -a $travel -lt $lines ] && $_tfw_tput cuu $travel ; then
+               _tfw_echo_intro $testNumber $testName
+               echo " $result"
+               $_tfw_tput cud $(($_tfw_test_number_watermark - $testNumber))
+            fi
+         else
+            _tfw_echo_intro $testNumber $testName
+            echo "$testNumber. ... $result"
+         fi
       else
          _tfw_echoerr "${BASH_SOURCE[1]}: child process $pid terminated without result"
       fi
@@ -955,6 +974,13 @@ _tfw_checkBashVersion() {
       fi
    fi
    _tfw_fatal "unsupported Bash version: $BASH_VERSION"
+}
+
+_tfw_checkTerminfo() {
+   _tfw_tput=false
+   case $(type -p tput) in
+   */tput) _tfw_tput=tput;;
+   esac
 }
 
 # Return a list of test names in the _tfw_tests array variable, in the order
