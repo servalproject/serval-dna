@@ -281,23 +281,55 @@ _tfw_harvest_processes() {
          esac
          local lines
          if [ $njobs -eq 1 ]; then
-            echo " $result"
+            echo -n " "
+            _tfw_echo_result "$result"
+            echo
          elif lines=$($_tfw_tput lines); then
             local travel=$(($_tfw_test_number_watermark - $testNumber + 1))
             if [ $travel -gt 0 -a $travel -lt $lines ] && $_tfw_tput cuu $travel ; then
                _tfw_echo_intro $testNumber $testName
-               echo " $result"
+               echo -n " "
+               _tfw_echo_result "$result"
+               echo
                $_tfw_tput cud $(($_tfw_test_number_watermark - $testNumber))
             fi
          else
             _tfw_echo_intro $testNumber $testName
-            echo "$testNumber. ... $result"
+            echo -n "$testNumber. ... "
+            _tfw_echo_result "$result"
+            echo
          fi
       else
          _tfw_echoerr "${BASH_SOURCE[1]}: child process $pid terminated without result"
       fi
    done
    _tfw_running_pids=(${surviving_pids[*]})
+}
+
+_tfw_echo_result() {
+   local result="$1"
+   case "$result" in
+   ERROR | FATAL)
+      $_tfw_tput setf 4
+      $_tfw_tput rev
+      echo -n "$result"
+      $_tfw_tput sgr0
+      $_tfw_tput op
+      ;; 
+   PASS)
+      $_tfw_tput setf 2
+      echo -n "$result"
+      $_tfw_tput op
+      ;;
+   FAIL)
+      $_tfw_tput setf 4
+      echo -n "$result"
+      $_tfw_tput op
+      ;;
+   *)
+      echo -n "$result"
+      ;;
+   esac
 }
 
 # The following functions can be overridden by a test script to provide a
