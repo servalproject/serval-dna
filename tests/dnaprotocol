@@ -35,9 +35,12 @@ teardown() {
 setup_servald_instance() {
    push_instance
    set_instance "$1"
+   executeOk_servald config set debug.interfaces Yes
+   executeOk_servald config set debug.packetformats Yes
    executeOk_servald config set interfaces "+>$2"
-   executeOk_servald config set monitor.socket "org.servalproject.servald.monitor.socket.$1"
-   executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.$1"
+   executeOk_servald config set monitor.socket "org.servalproject.servald.monitor.socket.$instance_name"
+   executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.$instance_name"
+   executeOk_servald config set mdp.selfannounce.ticks_per_full_address 1
    executeOk_servald keyring add
    assert [ -e "$SERVALINSTANCE_PATH/serval.keyring" ]
    executeOk_servald keyring list
@@ -52,19 +55,17 @@ setup_servald_instance() {
 }
 
 setup_servald_instances() {
-   setup_servald
-   DUMMYNET=/tmp/dummy
-   rm $DUMMYNET
-   touch $DUMMYNET
-   assert [ -e $DUMMYNET ]
+   DUMMYNET=$PWD/dummy
+   >$DUMMYNET
    setup_servald_instance +A $DUMMYNET
    SIDA=$sid
    setup_servald_instance +B $DUMMYNET
    SIDB=$sid
    # Now make sure that they can see each other
-   sleep 5 # Should be plenty of time
+   secs=5
+   sleep $secs # Should be plenty of time
+   echo "Dummynet file after $secs seconds: "`ls -l $DUMMYNET`
    set_instance +A
-   echo "Dummynet file $DUMMYNET after 5 seconds: "`ls -l $DUMMYNET`
    executeOk_servald id peers
    assertStdoutLineCount '==' 1
 }

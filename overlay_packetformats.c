@@ -191,7 +191,6 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,
       f.bytecount=f.rfs-(offset-ofs);
       if (f.bytecount<0) {
 	f.bytecount=0;
-	WHY("negative residual byte count after extracting addresses from frame header");
 	if (debug&DEBUG_PACKETFORMATS) DEBUGF("f.rfs=%d, offset=%d, ofs=%d", f.rfs, offset, ofs);
 	return WHY("negative residual byte count after extracting addresses from frame header");
       }
@@ -261,7 +260,12 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
   if (ob_append_bytes(b,&c,1))
     return WHY("ob_append_bytes() could not add self-announcement header");
 
-  int send_prefix=(overlay_interfaces[interface].ticks_since_sent_full_address<4);
+  static int ticks_per_full_address = -1;
+  if (ticks_per_full_address == -1) {
+    ticks_per_full_address = confValueGetInt64("mdp.selfannounce.ticks_per_full_address", 4);
+    INFOF("ticks_per_full_address = %d", ticks_per_full_address);
+  }
+  int send_prefix=(overlay_interfaces[interface].ticks_since_sent_full_address < ticks_per_full_address);
 
   /* A TTL for this frame.
      XXX - BATMAN uses various TTLs, but I think that it may just be better to have all TTL=1,
