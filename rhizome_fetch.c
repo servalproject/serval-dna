@@ -749,8 +749,6 @@ void rhizome_fetch_write(rhizome_file_fetch_record *q, int i){
   if (bytes>0) {
     q->last_action=time(0);
     q->request_ofs+=bytes;
-    DEBUGF("Sent HTTP request (%d of %d): %s",
-	   q->request_ofs,q->request_len,q->request);
     
     if (q->request_ofs>=q->request_len) {
       /* Sent all of request.  Switch to listening for HTTP response headers.
@@ -797,8 +795,6 @@ void rhizome_fetch_handle(rhizome_file_fetch_record *q, int i)
 	    return;
 	  }
 	q->file_ofs+=bytes;
-	DEBUGF("Transferred (%lld of %lld)",
-	       q->file_ofs,q->file_len);
 	
       } else if (bytes==0) {
 	WHY("Got zero bytes, assume socket dead.");
@@ -870,7 +866,6 @@ void rhizome_fetch_handle(rhizome_file_fetch_record *q, int i)
 	    if (lfcount==2) break;
 	  }
 	
-	DEBUGF("Received headers (%d bytes)", lfcount==2?i:q->request_len);
 	if (debug&DEBUG_RHIZOME)
 	  dump("http reply headers",(unsigned char *)q->request,lfcount==2?i:q->request_len);
 	

@@ -198,7 +198,6 @@ void rhizome_server_poll(int ignored_file_descriptor)
   while ((rhizome_server_live_request_count<RHIZOME_SERVER_MAX_LIVE_REQUESTS)
 	 &&((sock=accept(rhizome_server_socket,&addr,&addr_len))>-1))
     {
-      DEBUG("Acceptted HTTP connection");
       rhizome_http_request *request = calloc(sizeof(rhizome_http_request),1);	
       request->socket=sock;
       /* We are now trying to read the HTTP request */
@@ -214,7 +213,6 @@ int rhizome_server_close_http_request(int i)
 {
   fd_teardown(rhizome_live_http_requests[i]->socket);
 
-  DEBUG("HTTP connection closed");
   rhizome_server_free_http_request(rhizome_live_http_requests[i]);
   /* Make it null, so that if we are the list in the list, the following
      assignment still yields the correct behaviour */
@@ -394,8 +392,6 @@ int rhizome_server_sql_query_fill_buffer(int rn,rhizome_http_request *r, char *t
 	bcopy(value,&r->buffer[r->buffer_length],r->source_record_size);
       r->buffer_length+=r->source_record_size;
       
-      WHYF("wrote row %lld, buffer_length=%d",
-	     r->source_index,r->buffer_length);
     }
   sqlite3_finalize(statement);
 
@@ -472,7 +468,6 @@ int rhizome_server_parse_http_request(int rn,rhizome_http_request *r)
 	    rhizome_server_http_response_header(r,200,"application/binary",
 						r->blob_end - r->source_index);
 	    r->request_type|=RHIZOME_HTTP_REQUEST_BLOB;
-	    WHY("opened blob and file -- but still need to send file body.");
 	  }
 	}
       }
@@ -552,7 +547,6 @@ int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r)
 	  return 1;
 	}
 	
-	DEBUGF("wrote %d bytes\n",bytes);
 	if (0)
 	  dump("bytes written",&r->buffer[r->buffer_offset],bytes);
 	r->buffer_offset+=bytes;
@@ -615,15 +609,12 @@ int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r)
 		r->buffer_length = read_size;
 		r->source_index+=read_size;
 		r->request_type|=RHIZOME_HTTP_REQUEST_FROMBUFFER;
-		
-		DEBUGF("Read bytes from DB blob (%lld, %lld)", r->source_index, r->blob_end);
 	      }
 	  }
 	    
 	  if (r->source_index >= r->blob_end){
 	    sqlite3_blob_close(r->blob);
 	    r->blob=0;
-	    DEBUG("Closed blob handle");
 	  }else
 	    r->request_type|=RHIZOME_HTTP_REQUEST_BLOB;
 	}
