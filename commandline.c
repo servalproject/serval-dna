@@ -585,6 +585,19 @@ int confValueGetBoolean(const char *var, int defaultValue)
   return defaultValue;
 }
 
+int64_t confValueGetInt64(const char *var, int64_t defaultValue)
+{
+  const char *start = confValueGet(var, NULL);
+  if (!start)
+    return defaultValue;
+  const char *end = start;
+  long long value = strtoll(start, (char **)&end, 10);
+  if (*start && !*end && end != start)
+    return value;
+  WARNF("Config option %s: '%s' is not an integer, using default value %lld", var, start, (long long) defaultValue);
+  return defaultValue;
+}
+
 void confSetDebugFlags()
 {
   char filename[1024];
