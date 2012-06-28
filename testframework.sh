@@ -989,7 +989,6 @@ _tfw_find_tests() {
    _tfw_tests=()
    _tfw_shopt -s extdebug
    local name
-   local filter
    for name in $(builtin declare -F |
          sed -n -e '/^declare -f test_./s/^declare -f test_//p' |
          while read name; do builtin declare -F "test_$name"; done |
@@ -999,8 +998,9 @@ _tfw_find_tests() {
       if [ $# -eq 0 ]; then
          _tfw_tests+=("$name")
       else
+         local filter
          for filter; do
-            case "$_tfw_test_name" in
+            case "$name" in
             "$filter"*) _tfw_tests+=("$name"); break;;
             esac
          done
