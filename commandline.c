@@ -591,8 +591,8 @@ void confSetDebugFlags()
   if (FORM_SERVAL_INSTANCE_PATH(filename, "serval.conf")) {
     FILE *f = fopen(filename, "r");
     if (f) {
-      long long setmask = 0;
-      long long clearmask = 0;
+      unsigned int setmask = 0;
+      unsigned int clearmask = 0;
       int setall = 0;
       int clearall = 0;
       char line[1024];
@@ -612,13 +612,13 @@ void confSetDebugFlags()
 	      ++q;
 	    *q = '\0';
 	    if ((flag = confParseBoolean(p + 1, flagname)) != -1) {
-	      long long mask = debugFlagMask(flagname);
-	      if (mask == -1) {
+	      unsigned int mask = debugFlagMask(flagname);
+	      if (mask == DEBUG_ALL) {
 		if (flag) {
-		  DEBUGF("Set all debug flags");
+		  // DEBUGF("Set all debug flags");
 		  setall = 1;
 		} else {
-		  DEBUGF("Clear all debug flags");
+		  // DEBUGF("Clear all debug flags");
 		  clearall = 1;
 		}
 	      } else {
@@ -637,7 +637,10 @@ void confSetDebugFlags()
 	fgets(line, sizeof line, f);
       }
       fclose(f);
-      if (setall) debug = -1; else if (clearall) debug = 0;
+      if (setall)
+	debug = -1;
+      else if (clearall)
+	debug = 0;
       debug &= ~clearmask;
       debug |= setmask;
     }

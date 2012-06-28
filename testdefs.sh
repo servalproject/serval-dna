@@ -39,6 +39,7 @@ setup_servald() {
    ln -f -s "$servald_build_executable" $servald
    unset SERVALD_OUTPUT_DELIMITER
    unset SERVALD_SERVER_START_DELAY
+   servald_instances_dir="$SERVALD_VAR/instance"
    set_instance +Z
 }
 
@@ -101,11 +102,11 @@ set_instance() {
    +[A-Z])
       instance_name="${1#+}"
       tfw_log "# set instance = $instance_name"
-      export instance_dir="$TFWTMP/instance/$instance_name"
+      export instance_dir="${servald_instances_dir?:}/$instance_name"
       mkdir -p "$instance_dir"
-      export instance_servald_log="$instance_dir/servald.log"
       export SERVALINSTANCE_PATH="$instance_dir/servald"
-      export instance_servald_pidfile="$SERVALINSTANCE_PATH/servald.pid"
+      instance_servald_log="$instance_dir/servald.log"
+      instance_servald_pidfile="$SERVALINSTANCE_PATH/servald.pid"
       ;;
    *)
       error "malformed instance name argument, must be in form +[A-Z]"
@@ -129,13 +130,12 @@ setup_servald_so() {
 start_servald_server() {
    push_instance
    set_instance_fromarg "$1" && shift
-   executeOk $servald config set logfile "$instance_servald_log"
    # Start servald server
    local -a before_pids
    local -a after_pids
    get_servald_pids before_pids
    tfw_log "# before_pids=$before_pids"
-   executeOk $servald start "$@"
+   SERVALD_LOG_FILE="$instance_servald_log" executeOk $servald start "$@"
    extract_stdout_keyvalue start_instance_path instancepath '.*'
    extract_stdout_keyvalue start_pid pid '[0-9]\+'
    assert [ "$start_instance_path" = "$SERVALINSTANCE_PATH" ]
@@ -269,7 +269,7 @@ assert_servald_server_pidfile() {
 #  - stop all servald server process instances in an orderly fashion
 stop_all_servald_servers() {
    push_instance
-   if pushd "$TFWTMP/instance" >/dev/null; then
+   if pushd "${servald_instances_dir?:}" >/dev/null; then
       for name in *; do
          set_instance "+$name"
          get_servald_server_pidfile && stop_servald_server
@@ -368,7 +368,7 @@ assert_servald_server_no_errors() {
 #  - assert that all instances of servald server logs contain no errors
 assert_all_servald_servers_no_errors() {
    push_instance
-   if pushd "$TFWTMP/instance" >/dev/null; then
+   if pushd "${servald_instances_dir?:}" >/dev/null; then
       for name in *; do
          set_instance "+$name"
          assertGrep --matches=0 --message="stderr of $servald_basename $instance_name contains no error messages" "$instance_servald_log" '^ERROR:'

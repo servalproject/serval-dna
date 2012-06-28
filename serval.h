@@ -150,7 +150,6 @@ void TIMING_PAUSE();
 /* Limit packet payloads to minimise packet loss of big packets in mesh networks */
 #define MAX_DATA_BYTES 256
 
-extern int debug;
 extern int dnatimeout;
 extern int hlr_size;
 extern unsigned char *hlr;
@@ -764,10 +763,10 @@ extern overlay_txqueue overlay_tx[OQ_MAX];
 #define LOG_LEVEL_ERROR     (3)
 #define LOG_LEVEL_FATAL     (4)
 
-int start_logging();
+extern unsigned int debug;
 void logMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, ...);
 void vlogMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, va_list);
-long long debugFlagMask(const char *flagname);
+unsigned int debugFlagMask(const char *flagname);
 char *catv(const char *data, char *buf, size_t len);
 int dump(char *name,unsigned char *addr,int len);
 
@@ -776,9 +775,9 @@ int dump(char *name,unsigned char *addr,int len);
 
 const char *trimbuildpath(const char *s);
 
-#define LOGF(L,F,...)       logMessage(L, __FILE__, __LINE__, __FUNCTION__, F, ##__VA_ARGS__)
+#define LOGF(L,F,...)       (logMessage(L, __FILE__, __LINE__, __FUNCTION__, F, ##__VA_ARGS__))
 
-#define FATALF(F,...)       do { logMessage(LOG_LEVEL_FATAL, __FILE__, __LINE__, __FUNCTION__, F, ##__VA_ARGS__); exit(-1); } while (1)
+#define FATALF(F,...)       do { LOGF(LOG_LEVEL_FATAL, F, ##__VA_ARGS__); exit(-1); } while (1)
 #define FATAL(X)            FATALF("%s", (X))
 #define FATAL_perror(X)     FATALF("%s: %s [errno=%d]", (X), strerror(errno), errno)
 
@@ -787,14 +786,14 @@ const char *trimbuildpath(const char *s);
 #define WHYNULL(X)          (LOGF(LOG_LEVEL_ERROR, "%s", X), NULL)
 #define WHY_perror(X)       WHYF("%s: %s [errno=%d]", (X), strerror(errno), errno)
 
-#define WARNF(F,...)        logMessage(LOG_LEVEL_WARN, __FILE__, __LINE__, __FUNCTION__, F, ##__VA_ARGS__)
+#define WARNF(F,...)        LOGF(LOG_LEVEL_WARN, F, ##__VA_ARGS__)
 #define WARN(X)             WARNF("%s", (X))
 #define WARN_perror(X)      WARNF("%s: %s [errno=%d]", (X), strerror(errno), errno)
 
-#define INFOF(F,...)        logMessage(LOG_LEVEL_INFO, __FILE__, __LINE__, __FUNCTION__, F, ##__VA_ARGS__)
+#define INFOF(F,...)        LOGF(LOG_LEVEL_INFO, F, ##__VA_ARGS__)
 #define INFO(X)             INFOF("%s", (X))
 
-#define DEBUGF(F,...)       logMessage(LOG_LEVEL_DEBUG, __FILE__, __LINE__, __FUNCTION__, F, ##__VA_ARGS__)
+#define DEBUGF(F,...)       LOGF(LOG_LEVEL_DEBUG, F, ##__VA_ARGS__)
 #define DEBUG(X)            DEBUGF("%s", (X))
 #define DEBUG_perror(X)     DEBUGF("%s: %s [errno=%d]", (X), strerror(errno), errno)
 #define D DEBUG("D")
@@ -1059,6 +1058,7 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
 
 #include "nacl.h"
 
+#define DEBUG_ALL                   (~0)
 #define DEBUG_PACKETRX              (1 << 0)
 #define DEBUG_OVERLAYINTERFACES     (1 << 1)
 #define DEBUG_VERBOSE               (1 << 2)

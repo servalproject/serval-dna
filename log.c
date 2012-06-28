@@ -22,21 +22,28 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <ctype.h>
 
 FILE *logfile = NULL;
-int debug = 0;
+unsigned int debug = 0;
 
 #ifdef ANDROID
 #include <android/log.h> 
 #endif
 
-int start_logging()
+static int start_logging()
 {
-  if (logfile == NULL) {
-    const char *logpath = confValueGet("logfile", NULL);
-    if (logpath)
-      logfile = fopen(logpath, "a");
-  }
-  if (logfile == NULL)
+  const char *logpath = getenv("SERVALD_LOG_FILE");
+  if (!logpath)
+    logpath = confValueGet("logfile", NULL);
+  if (!logpath) {
     logfile = stderr;
+    INFO("No logfile configured -- logging to stderr");
+  }
+  else if ((logfile = fopen(logpath, "a")))
+    setlinebuf(logfile);
+  else {
+    logfile = stderr;
+    WARN_perror("fopen");
+    WARNF("Cannot append to %s -- falling back to stderr", logpath);
+  }
   return 0;
 }
 
@@ -73,9 +80,8 @@ void vlogMessage(int level, const char *file, unsigned int line, const char *fun
       case LOG_LEVEL_WARN:  levelstr = "WARN"; break;
       case LOG_LEVEL_DEBUG: levelstr = "DEBUG"; break;
     }
-    if (logfile == NULL)
-      start_logging();
-    fprintf(logfile, "%s: %s\n", levelstr, strbuf_str(b));
+    if (logfile || start_logging() == 0)
+      fprintf(logfile, "%s: [%d] %s\n", levelstr, getpid(), strbuf_str(b));
   }
 }
 
@@ -145,8 +151,8 @@ int dumpResponses(struct response_set *responses)
   return 0;
 }
 
-long long debugFlagMask(const char *flagname) {
-  if	  (!strcasecmp(flagname,"all"))			return -1;
+unsigned int debugFlagMask(const char *flagname) {
+  if	  (!strcasecmp(flagname,"all"))			return DEBUG_ALL;
   else if (!strcasecmp(flagname,"interfaces"))		return DEBUG_OVERLAYINTERFACES;
   else if (!strcasecmp(flagname,"rx"))			return DEBUG_PACKETRX;
   else if (!strcasecmp(flagname,"tx"))			return DEBUG_PACKETTX;
