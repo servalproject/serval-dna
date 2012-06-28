@@ -234,12 +234,12 @@ int server(char *backing_file)
 void server_shutdown_check()
 {
   if (servalShutdown) {
-    WHY("Shutdown flag set -- terminating with cleanup");
+    INFO("Shutdown flag set -- terminating with cleanup");
     serverCleanUp();
     exit(0);
   }
   if (server_check_stopfile() == 1) {
-    WHY("Shutdown file exists -- terminating with cleanup");
+    INFO("Shutdown file exists -- terminating with cleanup");
     serverCleanUp();
     exit(0);
   }
@@ -251,7 +251,7 @@ void server_shutdown_check()
   if (server_pid_time_ms == 0 || time_ms - server_pid_time_ms > 1000) {
     server_pid_time_ms = time_ms;
     if (server_pid() != server_getpid) {
-      WHYF("Server pid file no longer contains pid=%d -- shutting down without cleanup", server_getpid);
+      WARNF("Server pid file no longer contains pid=%d -- shutting down without cleanup", server_getpid);
       exit(1);
     }
   }

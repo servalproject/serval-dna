@@ -230,7 +230,7 @@ overlay_interface_init_socket(int interface, struct sockaddr_in src_addr, struct
     goto error;
   }
   assert(inet_ntop(AF_INET, (const void *)&broadcast.sin_addr, srctxt, INET_ADDRSTRLEN) != NULL);
-  if (debug & (DEBUG_PACKETRX | DEBUG_IO)) INFOF("Bound to %s:%d", srctxt, ntohs(broadcast.sin_port));
+  if (debug & (DEBUG_PACKETRX | DEBUG_IO)) DEBUGF("Bound to %s:%d", srctxt, ntohs(broadcast.sin_port));
 
   return 0;
 
@@ -534,7 +534,7 @@ overlay_interface_register(char *name,
 
   if (me == NULL || me->excludeP) {
     if (debug & DEBUG_OVERLAYINTERFACES)
-      INFOF("Interface %s is not interesting.",name);
+      DEBUGF("Interface %s is not interesting.",name);
     return 0;
   }
 
@@ -576,7 +576,7 @@ overlay_interface_register(char *name,
     if (overlay_interface_init(name,local, broadcast, me->speed_in_bits, me->port, me->type))
       WHYF("Could not initialise newly seen interface %s", name);
     else
-      if (debug & DEBUG_OVERLAYINTERFACES) INFOF("Registered interface %s", name);
+      if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("Registered interface %s", name);
   }
 
   return 0;
@@ -624,7 +624,7 @@ overlay_interface_discover(void) {
 	if (debug & DEBUG_OVERLAYINTERFACES) WHYF("Could not initialise newly seen interface %s", r->namespec);
       }
       else
-	if (debug & DEBUG_OVERLAYINTERFACES) INFOF("Registered interface %s",r->namespec);
+	if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("Registered interface %s",r->namespec);
     }
   }
 
@@ -981,12 +981,12 @@ overlay_check_ticks(void) {
 
   /* Now check if the next tick time for the interfaces is no later than that time.
      If so, trigger a tick on the interface. */
-  if (debug & DEBUG_OVERLAYINTERFACES) INFOF("Examining %d interfaces.",overlay_interface_count);
+  if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("Examining %d interfaces.",overlay_interface_count);
   for(i = 0; i < overlay_interface_count; i++) {
     TIMING_CHECK();
       /* Only tick live interfaces */
       if (overlay_interfaces[i].observed > 0) {
-	  if (debug & DEBUG_VERBOSE_IO) INFOF("Interface %s ticks every %dms, last at %lld.",
+	  if (debug & DEBUG_VERBOSE_IO) DEBUGF("Interface %s ticks every %dms, last at %lld.",
 					      overlay_interfaces[i].name,
 					      overlay_interfaces[i].tick_ms,
 					      overlay_interfaces[i].last_tick_ms);
@@ -999,7 +999,7 @@ overlay_check_ticks(void) {
 	    overlay_interfaces[i].last_tick_ms = now;
 	  }
       } else
-	if (debug & DEBUG_VERBOSE_IO) INFOF("Interface %s is awol.", overlay_interfaces[i].name);
+	if (debug & DEBUG_VERBOSE_IO) DEBUGF("Interface %s is awol.", overlay_interfaces[i].name);
       TIMING_CHECK();	
     }
   

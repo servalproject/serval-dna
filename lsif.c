@@ -71,7 +71,7 @@
 */
 int scrapeProcNetRoute()
 {
-  if (debug & DEBUG_OVERLAYINTERFACES) INFO("called");
+  if (debug & DEBUG_OVERLAYINTERFACES) DEBUG("called");
 
   FILE *f=fopen("/proc/net/route","r");
   if (!f) return fprintf(stderr,"Can't read from /proc/net/route\n");
@@ -118,7 +118,7 @@ lsif(void) {
   struct ifreq    *ifr;
   struct sockaddr_in local, broadcast;
 
-  if (debug & DEBUG_OVERLAYINTERFACES) INFO("called");
+  if (debug & DEBUG_OVERLAYINTERFACES) DEBUG("called");
 
   /* Get a socket handle. */
   sck = socket(PF_INET, SOCK_DGRAM, 0);
@@ -144,7 +144,7 @@ lsif(void) {
 
     /* We're only interested in IPv4 addresses */
     if (ifr->ifr_ifru.ifru_addr.sa_family != AF_INET) {
-      if (debug & DEBUG_OVERLAYINTERFACES) INFOF("Skipping non-AF_INET address on %s", ifr->ifr_name);
+      if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("Skipping non-AF_INET address on %s", ifr->ifr_name);
       continue;
     }
   
@@ -154,7 +154,7 @@ lsif(void) {
 
     /* Not broadcast? Not interested.. */
     if ((ifr->ifr_ifru.ifru_flags & IFF_BROADCAST) == 0) {
-      if (debug & DEBUG_OVERLAYINTERFACES) INFOF("Skipping non-broadcast address on %s", ifr->ifr_name);
+      if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("Skipping non-broadcast address on %s", ifr->ifr_name);
       continue;
     }
       
@@ -169,7 +169,7 @@ lsif(void) {
       char addrtxt[INET_ADDRSTRLEN], bcasttxt[INET_ADDRSTRLEN];
       assert(inet_ntop(AF_INET, (const void *)&local.sin_addr, addrtxt, INET_ADDRSTRLEN) != NULL);
       assert(inet_ntop(AF_INET, (const void *)&broadcast.sin_addr, bcasttxt, INET_ADDRSTRLEN) != NULL);
-      INFOF("name=%s addr=%s, broad=%s\n",
+      DEBUGF("name=%s addr=%s, broad=%s\n",
 					     ifr->ifr_name,
 					     addrtxt, bcasttxt);
     }
@@ -177,7 +177,7 @@ lsif(void) {
     nInterfaces++;
   }
   
-  if (debug & DEBUG_OVERLAYINTERFACES) INFOF("Examined %d interface addresses\n", nInterfaces);
+  if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("Examined %d interface addresses\n", nInterfaces);
 
   close(sck); 
   return 0;
@@ -192,7 +192,7 @@ doifaddrs(void) {
   char 			*name;
   struct sockaddr_in	local, netmask, broadcast;
   
-  if (debug & DEBUG_OVERLAYINTERFACES) INFOF("called");
+  if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("called");
   
   if (getifaddrs(&ifaddr) == -1)
     return WHY_perror("getifaddr()");
@@ -200,13 +200,13 @@ doifaddrs(void) {
   for (ifa = ifaddr; ifa != NULL ; ifa = ifa->ifa_next) {
     /* We're only interested in IPv4 addresses */
     if (ifa->ifa_addr->sa_family != AF_INET) {
-      if (debug & DEBUG_OVERLAYINTERFACES) INFOF("Skipping non-AF_INET address on %s", ifa->ifa_name);
+      if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("Skipping non-AF_INET address on %s", ifa->ifa_name);
       continue;
     }
     
     /* Not broadcast? Not interested.. */
     if ((ifa->ifa_flags & IFF_BROADCAST) == 0) {
-      if (debug & DEBUG_OVERLAYINTERFACES) INFOF("Skipping non-broadcast address on %s", ifa->ifa_name);
+      if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("Skipping non-broadcast address on %s", ifa->ifa_name);
       continue;
     }
 
@@ -222,7 +222,7 @@ doifaddrs(void) {
       char			addrtxt[INET_ADDRSTRLEN], bcasttxt[INET_ADDRSTRLEN];
       assert(inet_ntop(AF_INET, (const void *)&local.sin_addr, addrtxt, INET_ADDRSTRLEN) != NULL);
       assert(inet_ntop(AF_INET, (const void *)&broadcast.sin_addr, bcasttxt, INET_ADDRSTRLEN) != NULL);
-      INFOF("name=%s addr=%s broad=%s", name, addrtxt, bcasttxt);
+      DEBUGF("name=%s addr=%s broad=%s", name, addrtxt, bcasttxt);
     }
 
     overlay_interface_register(name,local,broadcast);

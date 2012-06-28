@@ -116,7 +116,7 @@ int monitor_setup_sockets()
   if(setsockopt(monitor_named_socket, SOL_SOCKET, SO_RCVBUF, 
 		&send_buffer_size, sizeof(send_buffer_size))==-1)
     WHY_perror("setsockopt");
-  if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) WHY("Monitor server socket setup");
+  if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) DEBUG("Monitor server socket setup");
 
   return 0;
   
@@ -139,7 +139,7 @@ int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
   if (monitor_named_socket>-1)
     {
       if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) {
-	WHYF("Monitor named unix domain socket is poll() slot #%d (fd %d)\n",
+	DEBUGF("Monitor named unix domain socket is poll() slot #%d (fd %d)\n",
 	     *fdcount,monitor_named_socket);
       }
       fds[*fdcount].fd=monitor_named_socket;
@@ -149,11 +149,11 @@ int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
 
   int i;
   if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) 
-    WHYF("looking at %d monitor clients",monitor_socket_count);
+    DEBUGF("looking at %d monitor clients",monitor_socket_count);
   for(i=0;i<monitor_socket_count;i++) {
     if ((*fdcount)>=fdmax) return -1;
     if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) {
-      WHYF("Monitor named unix domain client socket is poll() slot #%d (fd %d)\n",
+      DEBUGF("Monitor named unix domain client socket is poll() slot #%d (fd %d)\n",
 	  *fdcount,monitor_sockets[i].socket);
       }
       fds[*fdcount].fd=monitor_sockets[i].socket;
@@ -175,17 +175,17 @@ monitor_poll(void) {
   /* tell all monitor clients about status of all calls periodically */
   now = overlay_gettime_ms();
   if (monitor_last_update_time > (now + 1000)) {
-    WHY("Fixed run away monitor_last_update_time");
+    INFO("Fixed run away monitor_last_update_time");
     monitor_last_update_time = now + 1000;
   }
 
   if (now > (monitor_last_update_time + 1000)) {
-    // WHY("Send keep alives");
+    // DEBUG("Send keep alives");
     monitor_last_update_time = now;
     for(i = 0; i < vomp_call_count; i++) {
       /* Push out any undelivered status changes */
       monitor_call_status(&vomp_call_states[i]);
-      WHYF("Sending keepalives for call #%d",i);
+      INFOF("Sending keepalives for call #%d",i);
       
       /* And let far-end know that call is still alive */
       snprintf(msg,sizeof(msg) -1,"\nKEEPALIVE:%06x\n", vomp_call_states[i].local.session);
@@ -207,12 +207,16 @@ monitor_poll(void) {
 #endif
       != -1
   ) {
-  addrlen = 0;
-
+    addrlen = 0;
     monitor_new_socket(s);
   }
-  if (errno != EAGAIN)
+  if (errno != EAGAIN) {
+#ifdef HAVE_LINUX_IF_H
+    WHY_perror("accept4(O_NONBLOCK)");
+#else
     WHY_perror("accept");
+#endif
+  }
 
   /* Read from any open connections */
   for(i = 0;i < monitor_socket_count; i++) {
@@ -307,7 +311,7 @@ monitor_poll(void) {
       break;
     default:
       c->state = MONITOR_STATE_COMMAND;
-      WHY("fixed monitor connection state");
+      INFO("fixed monitor connection state");
     }
       
   }
@@ -447,7 +451,7 @@ int monitor_process_command(int index,char *cmd)
 	}
     }
   else if (sscanf(cmd,"call %s %s %s",sid,localDid,remoteDid)==3) {
-    WHY("here");
+    DEBUG("here");
     if (sid[0]=='*') {
       /* For testing, pick a peer and call them */
       int bin,slot;
@@ -474,7 +478,7 @@ int monitor_process_command(int index,char *cmd)
       stowSid(&mdp.vompevent.remote_sid[0],0,sid);
       vomp_mdp_event(&mdp,NULL,0);
     }
-    WHY("here");
+    DEBUG("here");
   } 
   else if (sscanf(cmd,"status %x",&callSessionToken)==1) {
     int i;
@@ -532,10 +536,11 @@ int monitor_process_data(int index)
   struct monitor_context *c=&monitor_sockets[index];
   c->state=MONITOR_STATE_COMMAND;
 
-  if (vomp_sample_size(c->sample_codec)!=c->data_offset)
-    return 
-      WHYF("Ignoring sample block of incorrect size (expected %d, got %d bytes for codec %d)",
+  if (vomp_sample_size(c->sample_codec)!=c->data_offset) {
+      WARNF("Ignoring sample block of incorrect size (expected %d, got %d bytes for codec %d)",
 	   vomp_sample_size(c->sample_codec), c->data_offset, c->sample_codec);
+    return -1;
+  }
 
   fcntl(c->socket,F_SETFL,
 	fcntl(c->socket, F_GETFL, NULL)|O_NONBLOCK);
@@ -555,7 +560,7 @@ int monitor_process_data(int index)
 	vomp_sample_size(c->sample_codec));
   mdp.vompevent.audio_sample_bytes=vomp_sample_size(c->sample_codec);
 
-  if (overlay_mdp_send(&mdp,0,0)) WHY("Send audio failed.");
+  if (overlay_mdp_send(&mdp,0,0)) WARN("Send audio failed.");
 
   return 0;
 }
@@ -587,8 +592,8 @@ int monitor_announce_bundle(rhizome_manifest *m)
 	WRITE_STR(monitor_sockets[i].socket,msg);
 	if (errno&&(errno!=EINTR)&&(errno!=EAGAIN)) {
 	  /* error sending update, so kill monitor socket */
-	  WHYF("Tearing down monitor client #%d due to errno=%d",
-	       i,errno);
+	  WHY_perror("write");
+	  INFOF("Tearing down monitor client #%d", i);
 	  close(monitor_sockets[i].socket);
 	  if (i==monitor_socket_count-1) {
 	    monitor_socket_count--;
@@ -615,7 +620,7 @@ int monitor_call_status(vomp_call_state *call)
   call->local.last_state=call->local.state;
   call->remote.last_state=call->remote.state;
   if (show) {
-    if (0) WHYF("sending call status to monitor");
+    if (0) DEBUG("sending call status to monitor");
     snprintf(msg,1024,"\nCALLSTATUS:%06x:%06x:%d:%d:%d:%s:%s:%s:%s\n",
 	     call->local.session,call->remote.session,
 	     call->local.state,call->remote.state,
@@ -635,8 +640,8 @@ int monitor_call_status(vomp_call_state *call)
 	WRITE_STR(monitor_sockets[i].socket,msg);
 	if (errno&&(errno!=EINTR)&&(errno!=EAGAIN)) {
 	  /* error sending update, so kill monitor socket */
-	  WHYF("Tearing down monitor client #%d due to errno=%d",
-	       i,errno);
+	  WHY_perror("write");
+	  INFOF("Tearing down monitor client #%d", i);
 	  close(monitor_sockets[i].socket);
 	  if (i==monitor_socket_count-1) {
 	    monitor_socket_count--;
@@ -664,7 +669,7 @@ int monitor_announce_peer(unsigned char *sid)
 
 int monitor_send_audio(vomp_call_state *call,overlay_mdp_frame *audio)
 {
-  if (0) WHYF("Tell call monitor about audio for call %06x:%06x",
+  if (0) DEBUGF("Tell call monitor about audio for call %06x:%06x",
 	      call->local.session,call->remote.session);
   int sample_bytes=vomp_sample_size(audio->vompevent.audio_sample_codec);
   char msg[1024 + MAX_AUDIO_BYTES];
@@ -698,11 +703,11 @@ int monitor_tell_clients(char *msg, int msglen, int mask)
       fcntl(monitor_sockets[i].socket,F_SETFL,
 	    fcntl(monitor_sockets[i].socket, F_GETFL, NULL)|O_NONBLOCK);
       WRITE_STR(monitor_sockets[i].socket,msg);
-      // WHYF("Writing AUDIOPACKET to client");
+      // DEBUGF("Writing AUDIOPACKET to client");
       if (errno&&(errno!=EINTR)&&(errno!=EAGAIN)) {
 	/* error sending update, so kill monitor socket */
-	WHYF("Tearing down monitor client #%d due to errno=%d",
-	     i,errno);
+	WHY_perror("write");
+	INFOF("Tearing down monitor client #%d", i);
 	close(monitor_sockets[i].socket);
 	if (i==monitor_socket_count-1) {
 	  monitor_socket_count--;
