@@ -764,6 +764,8 @@ extern overlay_txqueue overlay_tx[OQ_MAX];
 #define LOG_LEVEL_FATAL     (4)
 
 extern unsigned int debug;
+FILE *open_logging();
+void close_logging();
 void logMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, ...);
 void vlogMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, va_list);
 unsigned int debugFlagMask(const char *flagname);

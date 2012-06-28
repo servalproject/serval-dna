@@ -21,30 +21,40 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf.h"
 #include <ctype.h>
 
-FILE *logfile = NULL;
 unsigned int debug = 0;
+static FILE *logfile = NULL;
 
 #ifdef ANDROID
 #include <android/log.h> 
 #endif
 
-static int start_logging()
+FILE *open_logging()
 {
-  const char *logpath = getenv("SERVALD_LOG_FILE");
-  if (!logpath)
-    logpath = confValueGet("logfile", NULL);
-  if (!logpath) {
-    logfile = stderr;
-    INFO("No logfile configured -- logging to stderr");
+  if (!logfile) {
+    const char *logpath = getenv("SERVALD_LOG_FILE");
+    if (!logpath)
+      logpath = confValueGet("logfile", NULL);
+    if (!logpath) {
+      logfile = stderr;
+      INFO("No logfile configured -- logging to stderr");
+    } else if ((logfile = fopen(logpath, "a"))) {
+      setlinebuf(logfile);
+      INFOF("Logging to %s (fd %d)", logpath, fileno(logfile));
+    } else {
+      logfile = stderr;
+      WARN_perror("fopen");
+      WARNF("Cannot append to %s -- falling back to stderr", logpath);
+    }
   }
-  else if ((logfile = fopen(logpath, "a")))
-    setlinebuf(logfile);
-  else {
-    logfile = stderr;
-    WARN_perror("fopen");
-    WARNF("Cannot append to %s -- falling back to stderr", logpath);
+  return logfile;
+}
+
+void close_logging()
+{
+  if (logfile) {
+    fclose(logfile);
+    logfile = NULL;
   }
-  return 0;
 }
 
 void logMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, ...)
@@ -80,7 +90,7 @@ void vlogMessage(int level, const char *file, unsigned int line, const char *fun
       case LOG_LEVEL_WARN:  levelstr = "WARN"; break;
       case LOG_LEVEL_DEBUG: levelstr = "DEBUG"; break;
     }
-    if (logfile || start_logging() == 0)
+    if (logfile || open_logging())
       fprintf(logfile, "%s: [%d] %s\n", levelstr, getpid(), strbuf_str(b));
   }
 }

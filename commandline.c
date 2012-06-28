@@ -638,7 +638,7 @@ void confSetDebugFlags()
       }
       fclose(f);
       if (setall)
-	debug = -1;
+	debug = DEBUG_ALL;
       else if (clearall)
 	debug = 0;
       debug &= ~clearmask;
@@ -716,9 +716,10 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
     return -1;
   int ret = -1;
   if (pid > 0) {
-    INFOF("Serval process already running (pid=%d)", pid);
+    INFOF("Server already running (pid=%d)", pid);
     ret = 10;
   } else {
+    INFOF("Starting server %s", execpath ? execpath : "without exec");
     /* Start the Serval process.  All server settings will be read by the server process from the
        instance directory when it starts up.  */
     if (server_remove_stopfile() == -1)
@@ -733,9 +734,11 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
 	/* Main process.  Fork failed.  There is no child process. */
 	return WHY_perror("fork");
       case 0: {
-	/* Child process.  Disconnect from current directory, disconnect standard I/O
-	   streams, and start a new process group so that if we are being started by an adb
-	   shell session, then we don't receive a SIGHUP when the adb shell process ends.  */
+	/* Child process.  Close logfile (so that it gets re-opened again on demand, with our
+	   own file pointer), disconnect from current directory, disconnect standard I/O streams,
+	   and start a new process group so that if we are being started by an adb shell session,
+	   then we don't receive a SIGHUP when the adb shell process ends.  */
+	close_logging();
 	int fd;
 	if ((fd = open("/dev/null", O_RDWR, 0)) == -1)
 	  _exit(WHY_perror("open"));
@@ -803,6 +806,8 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
   /* Not running, nothing to stop */
   if (pid <= 0)
     return 1;
+
+  INFOF("Stopping server (pid=%d)", pid);
 
   /* Set the stop file and signal the process */
   cli_puts("pid");

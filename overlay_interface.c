@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <assert.h>
 #include <time.h>
 #include "serval.h"
+#include "strbuf.h"
 
 #ifdef HAVE_IFADDRS_H
 #include <ifaddrs.h>
@@ -189,7 +190,7 @@ overlay_interface_init_socket(int interface, struct sockaddr_in src_addr, struct
 
   I(fd) = socket(PF_INET,SOCK_DGRAM,0);
   if (I(fd) < 0) {
-      WHY_perror("socket()");
+      WHY_perror("socket");
       WHYF("Could not create UDP socket for interface: %s",strerror(errno));
       goto error;
   } else 
@@ -316,6 +317,7 @@ int overlay_rx_messages()
   /* Grab packets from interfaces in round-robin fashion until all have been grabbed,
      or until we have spent too long (maybe 10ms?) */
   int now = overlay_gettime_ms();
+  int then = now + 10;
   while(count>0)
     {
       for(i=0;i<overlay_interface_count;i++)
@@ -332,17 +334,16 @@ int overlay_rx_messages()
 
 	  if (overlay_interfaces[i].fileP) {
 	    /* Read from dummy interface file */
-	    long long length=lseek(overlay_interfaces[i].fd,0,SEEK_END);
-	    if (overlay_interfaces[i].offset>=length)
-	      {
+	    long long length=lseek(overlay_interfaces[i].fd, (off_t)0, SEEK_END);
+	    if (overlay_interfaces[i].offset > length) {
 		if (debug&DEBUG_OVERLAYINTERFACES) 		  
-		  fprintf(stderr,"At end of input on dummy interface #%d\n",i);
-	      }
-	    else
+		  DEBUGF("Past end of input on dummy interface #%d",i);
+	    }
+	    else if (overlay_interfaces[i].offset < length)
 	      {
-		lseek(overlay_interfaces[i].fd,overlay_interfaces[i].offset,SEEK_SET);
+		lseek(overlay_interfaces[i].fd, overlay_interfaces[i].offset, SEEK_SET);
 		if (debug&DEBUG_OVERLAYINTERFACES) 
-		  fprintf(stderr,"Reading from interface #%d log at offset %d, end of file at %lld.\n",i,
+		  DEBUGF("Reading from interface #%d log at offset %d, end of file at %lld",i,
 			  overlay_interfaces[i].offset,length);
 		if (read(overlay_interfaces[i].fd,&packet[0],2048)==2048)
 		  {
@@ -351,11 +352,9 @@ int overlay_rx_messages()
 		    plen=packet[110]+(packet[111]<<8);
 		    if (plen>(2048-128)) plen=-1;
 		    if (debug&DEBUG_PACKETRX) {
-		      fflush(stdout);
-		      serval_packetvisualise(stderr,
+		      serval_packetvisualise(open_logging(),
 					     "Read from dummy interface",
 					     &packet[128],plen);
-		      fflush(stderr); 
 		    }
 		    bzero(&transaction_id[0],8);
 		    bzero(&src_addr,sizeof(src_addr));
@@ -367,7 +366,7 @@ int overlay_rx_messages()
 		    else WHY("Invalid packet version in dummy interface");
 		  }
 		else { 
-		  if (debug&DEBUG_IO) fprintf(stderr,"Read NOTHING from dummy interface\n");
+		  if (debug&DEBUG_IO) DEBUG("Read NOTHING from dummy interface");
 		  c[i]=0; count--; 
 		}
 	      }
@@ -381,22 +380,20 @@ int overlay_rx_messages()
 	    } else {
 	      /* We have a frame from this interface */
 	      if (debug&DEBUG_PACKETRX) {
-		fflush(stdout);
-		serval_packetvisualise(stderr,"Read from real interface",
+		serval_packetvisualise(open_logging(),"Read from real interface",
 				       packet,plen);
-		fflush(stderr);
 	      }
-	      if (debug&DEBUG_OVERLAYINTERFACES)fprintf(stderr,"Received %d bytes on interface #%d (%s)\n",plen,i,overlay_interfaces[i].name);
+	      if (debug&DEBUG_OVERLAYINTERFACES) DEBUGF("Received %d bytes on interface #%d (%s)",plen,i,overlay_interfaces[i].name);
 	      
 	      if (packetOk(i,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
 		WHY("Malformed packet");
-		serval_packetvisualise(stderr,"Malformed packet", packet,plen);
+		serval_packetvisualise(open_logging(),"Malformed packet", packet,plen);
 	      }
 	    }
 	  }
 	}
       /* Don't sit here forever, or else we will never send any packets */
-      if (overlay_gettime_ms()>(now+10)) break;
+      if (overlay_gettime_ms()>then) break;
     }
 
   return 0;
@@ -428,8 +425,8 @@ int overlay_broadcast_ensemble(int interface_number,
 
   if (debug&DEBUG_PACKETTX)
     {
-      fprintf(stderr,"Sending this packet via interface #%d\n",interface_number);
-      serval_packetvisualise(stdout,NULL,bytes,len);
+      DEBUGF("Sending this packet via interface #%d",interface_number);
+      serval_packetvisualise(open_logging(),NULL,bytes,len);
     }
 
   memset(&s, '\0', sizeof(struct sockaddr_in));
@@ -439,7 +436,7 @@ int overlay_broadcast_ensemble(int interface_number,
   else {
     s = overlay_interfaces[interface_number].broadcast_address;
     s.sin_family = AF_INET;
-    if (debug&DEBUG_PACKETTX) fprintf(stderr,"Port=%d\n",overlay_interfaces[interface_number].port);
+    if (debug&DEBUG_PACKETTX) DEBUGF("Port=%d",overlay_interfaces[interface_number].port);
     s.sin_port = htons( overlay_interfaces[interface_number].port );
   }
 
@@ -471,7 +468,7 @@ int overlay_broadcast_ensemble(int interface_number,
       /* bytes 112-127 reserved for future use */
 
       if (len>2048-128) {
-	WHY("Truncating long packet to fit within 1920 byte limit for dummy interface");
+	WARN("Truncating long packet to fit within 1920 byte limit for dummy interface");
 	len=2048-128;
       }
 
@@ -507,7 +504,7 @@ int overlay_broadcast_ensemble(int interface_number,
    interface they came in. */
 int overlay_sendto(struct sockaddr_in *recipientaddr,unsigned char *bytes,int len)
 {
-  if (debug&DEBUG_PACKETTX) fprintf(stderr,"Sending %d bytes.\n",len);
+  if (debug&DEBUG_PACKETTX) DEBUGF("Sending %d bytes",len);
   if(overlay_broadcast_ensemble(overlay_last_interface_number,recipientaddr,bytes,len)) 
     return -1;
   else 
@@ -621,7 +618,7 @@ overlay_interface_discover(void) {
       /* New interface, so register it */
       if (overlay_interface_init(r->namespec,dummyaddr,dummyaddr,
 				 1000000,PORT_DNA,OVERLAY_INTERFACE_WIFI)) {
-	if (debug & DEBUG_OVERLAYINTERFACES) WHYF("Could not initialise newly seen interface %s", r->namespec);
+	if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("Could not initialise newly seen interface %s", r->namespec);
       }
       else
 	if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("Registered interface %s",r->namespec);
@@ -655,12 +652,12 @@ overlay_interface_discover(void) {
 
 int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,overlay_frame *pax[],int *frame_pax,int frame_max_pax) 
 {
-  if (0) printf("Stuffing from queue #%d on interface #%d\n",q,i);
+  if (0) DEBUGF("Stuffing from queue #%d on interface #%d",q,i);
   overlay_frame **p=&overlay_tx[q].first;
-  if (0) printf("A p=%p, *p=%p, queue=%d\n",p,*p,q);
+  if (0) DEBUGF("A p=%p, *p=%p, queue=%d",p,*p,q);
   while(p&&(*p))
     {
-      if (0) printf("B p=%p, *p=%p, queue=%d\n",p,*p,q);
+      if (0) DEBUGF("B p=%p, *p=%p, queue=%d",p,*p,q);
 
       /* Throw away any stale frames */
       overlay_frame *pp;
@@ -669,7 +666,7 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,
       
       if (!pp) break;
       
-      if (0) printf("now=%lld, *p=%p, q=%d, overlay_tx[q]=%p\n",
+      if (0) DEBUGF("now=%lld, *p=%p, q=%d, overlay_tx[q]=%p",
 	     now,*p,q,&overlay_tx[q]);
       if (0) overlay_queue_dump(&overlay_tx[q]);
       if (now>((*p)->enqueued_at+overlay_tx[q].latencyTarget)) {
@@ -678,13 +675,13 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,
 	/* Get pointer to stale entry */
 	overlay_frame *stale=*p;
 	if (0) 
-	  fprintf(stderr,"Removing stale frame at %p (now=%lld, expiry=%lld)\n",
+	  DEBUGF("Removing stale frame at %p (now=%lld, expiry=%lld)",
 		  stale,
 		  now,((*p)->enqueued_at+overlay_tx[q].latencyTarget));
-	if (0) printf("now=%lld, *p=%p, q=%d, overlay_tx[q]=%p\n",
+	if (0) DEBUGF("now=%lld, *p=%p, q=%d, overlay_tx[q]=%p",
 		      now,*p,q,&overlay_tx[q]);
 	/* Make ->next pointer that points to the stale node skip the stale node */
-	if (0) printf("p=%p, stale=%p, stale->next=%p\n",p,stale,stale->next);
+	if (0) DEBUGF("p=%p, stale=%p, stale->next=%p",p,stale,stale->next);
 	*p=stale->next;	
 	/* If there is an entry after the stale now, make it's prev point to the 
 	   node before the stale node */
@@ -717,14 +714,14 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,
 				      &next_hop_interface);
 	    if (!r) {
 	      if (next_hop_interface==i) {
-		if (0) printf("unicast pax %p\n",*p);
+		if (0) DEBUGF("unicast pax %p",*p);
 		dontSend=0; } else {
 		if (0) 
-		  printf("Packet should go via interface #%d, but I am interface #%d\n",next_hop_interface,i);
+		  DEBUGF("Packet should go via interface #%d, but I am interface #%d",next_hop_interface,i);
 	      }
 	    } else {
-	      WHY("bummer, I couldn't find an open route to that node");
-	      printf("sid=%s\n",overlay_render_sid((*p)->destination));
+	      DEBUG("bummer, I couldn't find an open route to that node");
+	      DEBUGF("sid=%s",overlay_render_sid((*p)->destination));
 	    }
 	  } else if (!(*p)->broadcast_sent_via[i])
 	    {
@@ -734,7 +731,7 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,
 		 once they have been sent via all open interfaces (or gone stale) */
 	      dontSend=0;
 	      (*p)->broadcast_sent_via[i]=1;
-	      if (0) printf("broadcast pax %p\n",*p);
+	      if (0) DEBUGF("broadcast pax %p",*p);
 	    }
 	  
 	  if (dontSend==0) {   
@@ -745,9 +742,8 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,
 		/* Add payload to list of payloads we are sending with this frame so that we can dequeue them
 		   if we send them. */
 		if (0) {
-		  printf("  paxed#%d %p%s\n",*frame_pax,*p,
+		  DEBUGF("  paxed#%d %p%s",*frame_pax,*p,
 			 (*p)->isBroadcast?"(broadcast)":"");
-		  fflush(stdout);
 		  dump("payload of pax",(*p)->payload->bytes,(*p)->payload->length);
 		}
 		pax[(*frame_pax)++]=*p;
@@ -755,47 +751,47 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,
 	  }
 	}
 
-      if (0) printf("C p=%p, *p=%p, queue=%d\n",p,*p,q);
+      if (0) DEBUGF("C p=%p, *p=%p, queue=%d",p,*p,q);
 
       if (*p) 
 	/* Consider next in queue */
 	p=&(*p)->next;
 
-      if (0) printf("D p=%p, *p=%p, queue=%d\n",p,p?*p:NULL,q);
+      if (0) DEBUGF("D p=%p, *p=%p, queue=%d",p,p?*p:NULL,q);
     }
-  if (0) printf("returning from stuffing\n");
+  if (0) DEBUG("returning from stuffing");
   return 0;
 }
 
 int overlay_queue_dump(overlay_txqueue *q)
 {
+  strbuf b = strbuf_alloca(8192);
   struct overlay_frame *f;
-
-  fprintf(stderr,"overlay_txqueue @ 0x%p\n",q);
-  fprintf(stderr,"  length=%d\n",q->length);
-  fprintf(stderr,"  maxLenght=%d\n",q->maxLength);
-  fprintf(stderr,"  latencyTarget=%d milli-seconds\n",q->latencyTarget);
-  fprintf(stderr,"  first=%p\n",q->first);
+  strbuf_sprintf(b,"overlay_txqueue @ 0x%p\n",q);
+  strbuf_sprintf(b,"  length=%d\n",q->length);
+  strbuf_sprintf(b,"  maxLenght=%d\n",q->maxLength);
+  strbuf_sprintf(b,"  latencyTarget=%d milli-seconds\n",q->latencyTarget);
+  strbuf_sprintf(b,"  first=%p\n",q->first);
   f=q->first;
   while(f) {
-    fprintf(stderr,"    %p: ->next=%p, ->prev=%p ->dequeue=%d\n",
+    strbuf_sprintf(b,"    %p: ->next=%p, ->prev=%p ->dequeue=%d\n",
 	    f,f->next,f->prev,f->dequeue);
     if (f==f->next) {
-      fprintf(stderr,"        LOOP!\n"); break;
+      strbuf_sprintf(b,"        LOOP!\n"); break;
     }
     f=f->next;
   }
-
-  fprintf(stderr,"  last=%p\n",q->last);
+  strbuf_sprintf(b,"  last=%p\n",q->last);
   f=q->last;
   while(f) {
-    fprintf(stderr,"    %p: ->next=%p, ->prev=%p\n",
+    strbuf_sprintf(b,"    %p: ->next=%p, ->prev=%p\n",
 	    f,f->next,f->prev);
     if (f==f->prev) {
-      fprintf(stderr,"        LOOP!\n"); break;
+      strbuf_sprintf(b,"        LOOP!\n"); break;
     }
     f=f->prev;
   }
+  DEBUG(strbuf_str(b));
   return 0;
 }
 
@@ -813,7 +809,7 @@ int overlay_tick_interface(int i, long long now)
     return 0;
   }
     
-  if (debug&DEBUG_OVERLAYINTERFACES) fprintf(stderr,"Ticking interface #%d\n",i);
+  if (debug&DEBUG_OVERLAYINTERFACES) DEBUGF("Ticking interface #%d",i);
   
   /* Get a buffer ready, and limit it's size appropriately.
      XXX size limit should be reduced from MTU.
@@ -880,12 +876,12 @@ TIMING_CHECK();
   /* Now send the frame.  This takes the form of a special DNA packet with a different
      service code, which we setup earlier. */
   if (debug&DEBUG_OVERLAYINTERFACES) 
-    fprintf(stderr,"Sending %d byte tick packet\n",e->length);
+    DEBUGF("Sending %d byte tick packet",e->length);
   if (!overlay_broadcast_ensemble(i,NULL,e->bytes,e->length))
     {
       overlay_update_sequence_number();
       if (debug&DEBUG_OVERLAYINTERFACES)
-	fprintf(stderr,"Successfully transmitted tick frame #%lld on interface #%d (%d bytes)\n",
+	DEBUGF("Successfully transmitted tick frame #%lld on interface #%d (%d bytes)",
 	      (long long)overlay_sequence_number,i,e->length);
 
       /* De-queue the passengers who were aboard.
@@ -897,10 +893,10 @@ TIMING_CHECK();
 	{
 	  overlay_frame *p=pax[j];
 	  if (0) 
-	    printf("dequeue %p ?%s\n",p,p->isBroadcast?" (broadcast)":" (unicast)");
+	    DEBUGF("dequeue %p ?%s",p,p->isBroadcast?" (broadcast)":" (unicast)");
 	  if (!p->isBroadcast)
 	    {
-	      if (0) printf("yes\n");
+	      if (0) DEBUG("yes");
 	      p->dequeue=1;
 	    }
 	  else {
@@ -928,7 +924,7 @@ TIMING_CHECK();
 	    {	      
 	      if ((*p)->dequeue) {
 		{
-		  if (0) printf("dequeuing %p%s NOW\n",
+		  if (0) DEBUGF("dequeuing %p%s NOW",
 				*p,(*p)->isBroadcast?" (broadcast)":" (unicast)");	  
 		  t=*p;
 		  *p=t->next;
@@ -938,7 +934,7 @@ TIMING_CHECK();
 		  if (t->next) t->next->prev=t->prev;
 		  if (debug&DEBUG_QUEUES)
 		    { 
-		      fprintf(stderr,"** dequeued pax @ %p\n",t);
+		      DEBUGF("** dequeued pax @ %p",t);
 		      overlay_queue_dump(&overlay_tx[q]);
 		    }
 		  if (op_free(t)) {
@@ -1013,11 +1009,11 @@ long long overlay_time_until_next_tick()
   long long now=overlay_gettime_ms();
 
   int i;
-  if (debug&DEBUG_VERBOSE_IO)fprintf(stderr,"Tick-check on %d interfaces at %lldms\n",overlay_interface_count,now);
+  if (debug&DEBUG_VERBOSE_IO) DEBUGF("Tick-check on %d interfaces at %lldms",overlay_interface_count,now);
   for(i=0;i<overlay_interface_count;i++)
     if (overlay_interfaces[i].observed>0)
     {
-      if (debug&DEBUG_VERBOSE_IO) fprintf(stderr,"Interface %s ticks every %dms, last at T-%lldms.\n",overlay_interfaces[i].name,
+      if (debug&DEBUG_VERBOSE_IO) DEBUGF("Interface %s ticks every %dms, last at T-%lldms",overlay_interfaces[i].name,
 		  overlay_interfaces[i].tick_ms,now-overlay_interfaces[i].last_tick_ms);
 
       long long thistick=(overlay_interfaces[i].last_tick_ms+overlay_interfaces[i].tick_ms)-now;
