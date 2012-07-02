@@ -174,8 +174,9 @@ runTests() {
       _tfw_echo_intro $testNumber $testName
       [ $njobs -ne 1 ] && echo
       (
-         echo "$testNumber $testName" >"$_tfw_results_dir/$BASHPID"
-         _tfw_tmp=/tmp/_tfw-$BASHPID
+         _tfw_unique=$BASHPID
+         echo "$testNumber $testName" >"$_tfw_results_dir/$_tfw_unique"
+         _tfw_tmp=/tmp/_tfw-$_tfw_unique
          trap '_tfw_status=$?; rm -rf "$_tfw_tmp"; exit $_tfw_status' EXIT SIGHUP SIGINT SIGTERM
          local start_time=$(_tfw_timestamp)
          local finish_time=unknown
@@ -206,7 +207,7 @@ runTests() {
          1) result=FAIL;;
          0) result=PASS;; 
          esac
-         echo "$testNumber $testName $result" >"$_tfw_results_dir/$BASHPID"
+         echo "$testNumber $testName $result" >"$_tfw_results_dir/$_tfw_unique"
          {
             echo "Name:     $testName"
             echo "Result:   $result"
@@ -638,6 +639,7 @@ _tfw_setup() {
       tail --pid=$BASHPID --follow $_tfw_tmp/log.stdout >&$_tfw_stdout 2>/dev/null &
       tail --pid=$BASHPID --follow $_tfw_tmp/log.stderr >&$_tfw_stderr 2>/dev/null &
    fi
+   export TFWUNIQUE=$_tfw_unique
    export TFWVAR=$_tfw_tmp/var
    mkdir $TFWVAR
    export TFWTMP=$_tfw_tmp/tmp
