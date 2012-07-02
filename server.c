@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/stat.h>
 
 #include "serval.h"
+#include "strbuf.h"
 
 #define PIDFILE_NAME	  "servald.pid"
 #define STOPFILE_NAME	  "servald.stop"
@@ -76,7 +77,7 @@ int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
   int len = recvmsg(sock,&msg,0);
 
   if (0&&debug&DEBUG_PACKETRX) {
-    fprintf(stderr,"recvmsg returned %d bytes (flags=%d,msg_controllen=%d)\n",
+    DEBUGF("recvmsg returned %d bytes (flags=%d,msg_controllen=%d)",
 	    len,msg.msg_flags,msg.msg_controllen);
     dump("received data",buffer,len);
   }
@@ -92,16 +93,15 @@ int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
 	    ((cmsg->cmsg_type == IP_RECVTTL) ||(cmsg->cmsg_type == IP_TTL))
 	    &&(cmsg->cmsg_len) ){
 	  if (debug&DEBUG_PACKETRX)
-	    fprintf(stderr,"  TTL (%p) data location resolves to %p\n",
-		    ttl,CMSG_DATA(cmsg));
+	    DEBUGF("  TTL (%p) data location resolves to %p", ttl,CMSG_DATA(cmsg));
 	  if (CMSG_DATA(cmsg)) {
 	    *ttl = *(unsigned char *) CMSG_DATA(cmsg);
 	    if (debug&DEBUG_PACKETRX)
-	      fprintf(stderr,"  TTL of packet is %d\n",*ttl);
+	      DEBUGF("  TTL of packet is %d", *ttl);
 	  } 
 	} else {
 	  if (debug&DEBUG_PACKETRX)
-	    fprintf(stderr,"I didn't expect to see level=%02x, type=%02x\n",
+	    DEBUGF("I didn't expect to see level=%02x, type=%02x",
 		    cmsg->cmsg_level,cmsg->cmsg_type);
 	}	 
       }
@@ -481,7 +481,7 @@ int processRequest(unsigned char *packet,int len,
 
   while(pofs<len)
     {
-      if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"  processRequest: len=%d, pofs=%d, pofs_prev=%d\n",len,pofs,prev_pofs);
+      if (debug&DEBUG_DNAREQUESTS) DEBUGF("  processRequest: len=%d, pofs=%d, pofs_prev=%d",len,pofs,prev_pofs);
       /* Avoid infinite loops */
       if (pofs<=prev_pofs) break;
       prev_pofs=pofs;
@@ -490,12 +490,12 @@ int processRequest(unsigned char *packet,int len,
 	{
 	  /* Creating an HLR requires an initial DID number and definitely no SID -
 	     you can't choose a SID. */
-	  if (debug&DEBUG_HLR) fprintf(stderr,"Creating a new HLR record. did='%s', sid='%s'\n",did,sid);
+	  if (debug&DEBUG_HLR) DEBUGF("Creating a new HLR record. did='%s', sid='%s'",did,sid);
 	  if (!did[0]) return respondSimple(NULL,ACTION_DECLINED,NULL,0,transaction_id,recvttl,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
 	  if (sid[0])  
 	    return respondSimple(NULL,ACTION_DECLINED,NULL,0,transaction_id,
 				 recvttl,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
-	  if (debug&DEBUG_HLR) fprintf(stderr,"Verified that create request supplies DID but not SID\n");
+	  if (debug&DEBUG_HLR) DEBUG("Verified that create request supplies DID but not SID");
 	  
 	  /* Creating an identity is nice and easy now with the new keyring */
 	  keyring_identity *id=keyring_create_identity(keyring,keyring->contexts[0],
@@ -513,7 +513,7 @@ int processRequest(unsigned char *packet,int len,
 	}
       else
 	{
-	  if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"Looking at action code 0x%02x @ packet offset 0x%x\n",
+	  if (debug&DEBUG_DNAREQUESTS) DEBUGF("Looking at action code 0x%02x @ packet offset 0x%x",
 			       packet[pofs],pofs);
 	  switch(packet[pofs])
 	    {
@@ -568,9 +568,9 @@ int processRequest(unsigned char *packet,int len,
 
 		pofs+=2;
 
-		if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"Processing ACTION_GET (var_id=%02x, instance=%02x, pofs=0x%x, len=%d)\n",var_id,instance,pofs,len);
+		if (debug&DEBUG_DNAREQUESTS) DEBUGF("Processing ACTION_GET (var_id=%02x, instance=%02x, pofs=0x%x, len=%d)",var_id,instance,pofs,len);
 
-		if (debug&DEBUG_HLR) fprintf(stderr,"Looking for identities with sid='%s' / did='%s'\n",(sid&&sid[0])?sid:"null",did?did:"null");
+		if (debug&DEBUG_HLR) DEBUGF("Looking for identities with sid='%s' / did='%s'",(sid&&sid[0])?sid:"null",did?did:"null");
 		  
 		/* Keyring only has DIDs in it for now.
 		   Location is implied, so we allow that */
@@ -723,14 +723,14 @@ int processRequest(unsigned char *packet,int len,
 	      break;
 	    default:
 	      WHY("Asked to perform unsupported action");
-	      if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"Asked to perform unsipported action at Packet offset = 0x%x\n",pofs);
+	      if (debug&DEBUG_PACKETFORMATS) DEBUGF("Asked to perform unsipported action at Packet offset = 0x%x",pofs);
 	      if (debug&DEBUG_PACKETFORMATS) dump("Packet",packet,len);
 	      return WHY("Asked to perform unsupported action.");
 	    }	   
 	}
     }
   
-  if (debug&DEBUG_HLR) fprintf(stderr,"Searched %d HLR entries.\n",records_searched);
+  if (debug&DEBUG_HLR) DEBUGF("Searched %d HLR entries",records_searched);
 
   return 0;
 }
@@ -781,7 +781,7 @@ int respondSimple(keyring_identity *id,
   if (packetFinalise(packet,8000,recvttl,packet_len,cryptoFlags))
     return WHY("packetFinalise() failed.");
 
-  if (debug&DEBUG_DNARESPONSES) fprintf(stderr,"Sending response of %d bytes.\n",*packet_len);
+  if (debug&DEBUG_DNARESPONSES) DEBUGF("Sending response of %d bytes",*packet_len);
 
   if (packetSendRequest(REQ_REPLY,packet,*packet_len,NONBATCH,transaction_id,recvaddr,NULL)) 
     return WHY("packetSendRequest() failed.");
@@ -849,10 +849,11 @@ int simpleServerMode()
     fdcount=1;
     rhizome_server_get_fds(fds,&fdcount,128);
     if (debug&DEBUG_IO) {
-      printf("poll()ing file descriptors:");
-      { int i;
-	for(i=0;i<fdcount;i++) { printf(" %d",fds[i].fd); } }
-      printf("\n");
+      strbuf b = strbuf_alloca(fdcount * 6);
+      int i;
+      for (i = 0;i < fdcount; ++i)
+	strbuf_sprintf(b, " %d", fds[i].fd);
+      DEBUGF("poll()ing file descriptors: %s", strbuf_str(b));
     }
     
     /* Wait patiently for packets to arrive. */
@@ -874,7 +875,7 @@ int simpleServerMode()
       client_port=((struct sockaddr_in*)&recvaddr)->sin_port;
       client_addr=((struct sockaddr_in*)&recvaddr)->sin_addr;
       
-      if (debug&DEBUG_DNAREQUESTS) fprintf(stderr,"Received packet from %s:%d (len=%d).\n",inet_ntoa(client_addr),client_port,len);
+      if (debug&DEBUG_DNAREQUESTS) DEBUGF("Received packet from %s:%d (len=%d)",inet_ntoa(client_addr),client_port,len);
       if (debug&DEBUG_PACKETRX) dump("recvaddr",(unsigned char *)&recvaddr,recvaddrlen);
       if (debug&DEBUG_PACKETRX) dump("packet",(unsigned char *)buffer,len);
       if (dropPacketP(len)) {
@@ -898,7 +899,7 @@ int memabuseInitP=0;
 int memabuseInit()
 {
   if (memabuseInitP) {
-    fprintf(stderr,"WARNING: memabuseInit() called more than once.\n");
+    WARN("memabuseInit() called more than once");
     return memabuseCheck();
   }
 
@@ -906,7 +907,7 @@ int memabuseInit()
   int i;
   for(i=0;i<65536;i++) {
     groundzero[i]=zero[i];
-    printf("%04x\n",i);
+    //printf("%04x\n",i);
   }
   memabuseInitP=1;
   return 0;
@@ -924,13 +925,13 @@ int _memabuseCheck(const char *func,const char *file,const int line)
     }
   
   if (lastAddr>0) {
-    fprintf(stderr,"WARNING: Memory corruption in first 64KB of RAM detected.\n");
-    fprintf(stderr,"         Changed bytes exist in range 0x%04x - 0x%04x\n",firstAddr,lastAddr);
+    WARN("Memory corruption in first 64KB of RAM detected");
+    DEBUGF("         Changed bytes exist in range 0x%04x - 0x%04x",firstAddr,lastAddr);
     dump("Changed memory content",&zero[firstAddr],lastAddr-firstAddr+1);
     dump("Initial memory content",&groundzero[firstAddr],lastAddr-firstAddr+1);
     sleep(1);
   } else {
-    fprintf(stderr,"All's well at %s() %s:%d\n",func,file,line);
+    DEBUGF("All's well at %s() %s:%d",func,file,line);
   }
   
   return 0;

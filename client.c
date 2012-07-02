@@ -48,9 +48,9 @@ int packetSendFollowup(struct in_addr destination,
 
   if (!serverMode) {
     sock=socket(PF_INET,SOCK_DGRAM,0);
-    if (sock<0) {
-      fprintf(stderr,"Could not create UDP socket.\n");
-      exit(-3);
+    if (sock == -1) {
+      WHY_perror("socket");
+      FATAL("Could not create UDP socket");
     }
     r=1;
     setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &r, sizeof(r));
@@ -58,10 +58,10 @@ int packetSendFollowup(struct in_addr destination,
   
   r=sendto(sock,packet,packet_len,0,(struct sockaddr *)&peer_addr,sizeof(peer_addr));
   if (r<packet_len)	{
-    if (debug&DEBUG_PACKETTX) fprintf(stderr,"Could not send to %s (r=%d, packet_len=%d)\n",inet_ntoa(destination),r,packet_len);
+    if (debug&DEBUG_PACKETTX) DEBUGF("Could not send to %s (r=%d, packet_len=%d)",inet_ntoa(destination),r,packet_len);
     perror("sendto(a)");
   } else {
-    if (debug&DEBUG_PACKETTX) fprintf(stderr,"Sent request to client %s\n",inet_ntoa(destination));
+    if (debug&DEBUG_PACKETTX) DEBUGF("Sent request to client %s",inet_ntoa(destination));
   }
   return 0;
 }
@@ -82,9 +82,9 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
      If in server mode, then we already have a socket available to us and appropriately bound */
   if (!serverMode) {
     sock=socket(PF_INET,SOCK_DGRAM,0);
-    if (sock<0) {
-      fprintf(stderr,"Could not create UDP socket.\n");
-      exit(-3);
+    if (sock == -1) {
+      WHY_perror("socket");
+      FATAL("Could not create UDP socket");
     }
     i=1;
     setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &i, sizeof(i));
@@ -99,11 +99,11 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
       else
 	r=sendto(sock,packet,packet_len,0,recvaddr,sizeof(struct sockaddr_in));
       if (r<packet_len)	{
-	if (debug&DEBUG_PACKETTX) fprintf(stderr,"Could not send to client %s (packet=%p,len=%d,sock=%d)\n",
+	if (debug&DEBUG_PACKETTX) DEBUGF("Could not send to client %s (packet=%p,len=%d,sock=%d)",
 			   inet_ntoa(client_addr),packet,packet_len,sock);
 	perror("sendto(b)");
       } else {
-	if (debug&DEBUG_PACKETTX) fprintf(stderr,"Sent request to client %s\n",inet_ntoa(client_addr));
+	if (debug&DEBUG_PACKETTX) DEBUGF("Sent request to client %s",inet_ntoa(client_addr));
       }
       return 0;
     }
@@ -152,7 +152,7 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
 	  {
 	    /* Wait for response */
 	    int r=getReplyPackets(method,i,batchP,responses,transaction_id,recvaddr,timeout_remaining);
-	    if (r&&debug>1) fprintf(stderr,"getReplyPackets(): Returned on timeout\n");
+	    if (r && (debug & DEBUG_DNARESPONSES)) DEBUG("returned on timeout");
 	    
 	    switch(method)
 	      {
@@ -162,7 +162,7 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
 		    peers and so tests that we wait if not all peers have responded) */
 		break;
 	      case REQ_FIRSTREPLY:
-		if (debug&DEBUG_DNARESPONSES) fprintf(stderr,"Returning with first reply (REQ_FIRSTREPLY)\n");
+		if (debug&DEBUG_DNARESPONSES) DEBUGF("Returning with first reply (REQ_FIRSTREPLY)");
 		if (!r) return 0;
 		break;
 	      case REQ_SERIAL:
@@ -175,7 +175,7 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
 		    {
 		      if (rr->checked) break;
 		      if (debug&DEBUG_DNARESPONSES) 
-			fprintf(stderr,"Got a response code 0x%02x, checking if that is what we need.\n",rr->code);
+			DEBUGF("Got a response code 0x%02x, checking if that is what we need",rr->code);
 		      switch (rr->code)
 			{
 			case ACTION_OKAY: case ACTION_DATA:
@@ -214,9 +214,9 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
       }
       cumulative_timeout+=this_timeout;
     }
-  if (debug&DEBUG_DNARESPONSES) if (cumulative_timeout>=dnatimeout) 
-		 fprintf(stderr,"Request timed out after retries (timeout=%d, elapsed=%d).\n",
-			 dnatimeout,cumulative_timeout);
+  if ((debug&DEBUG_DNARESPONSES) && cumulative_timeout>=dnatimeout) 
+    DEBUGF("Request timed out after retries (timeout=%d, elapsed=%d)",
+	    dnatimeout,cumulative_timeout);
 
   return 0;
 }
@@ -226,7 +226,7 @@ int fixResponses(struct response_set *responses)
 {
   struct response *rr;
 
-  if (debug&DEBUG_DNARESPONSES) fprintf(stderr,"Fixing response set\n");
+  if (debug&DEBUG_DNARESPONSES) DEBUG("Fixing response set");
 
   if (!responses) return -1;
 
@@ -234,12 +234,12 @@ int fixResponses(struct response_set *responses)
   while(rr)
     {
       if (debug&DEBUG_DNARESPONSES)
-	fprintf(stderr,"  len=%d, rr->code=%02x, rr->var_id=%02x\n",
+	DEBUGF("  len=%d, rr->code=%02x, rr->var_id=%02x",
 		rr->value_bytes,rr->code,rr->var_id);
       if (rr->value_bytes>0&&rr->code==ACTION_DATA&&rr->var_id==VAR_LOCATIONS)
 	{
 	  if (debug&DEBUG_DNARESPONSES) 
-	    fprintf(stderr,"  response='%s'\n",rr->response);
+	    DEBUGF("  response='%s'",rr->response);
 	  if (rr->response[rr->value_bytes-1]=='@')
 	    {
 	      /* Append response with IP address of sender */
@@ -247,7 +247,7 @@ int fixResponses(struct response_set *responses)
 	      int alen=strlen(addr);
 	      char *new = malloc(rr->value_bytes+alen+1);
 	      if (debug&DEBUG_DNARESPONSES) 
-		fprintf(stderr,"Fixing LOCATIONS response '%s' received from '%s (0x%08x)'\n",
+		DEBUGF("Fixing LOCATIONS response '%s' received from '%s (0x%08x)'",
 				   rr->response,addr,(unsigned int)rr->sender.s_addr);
 	      if (!new) return -1;
 	      bcopy(rr->response,new,rr->value_bytes);
@@ -257,7 +257,7 @@ int fixResponses(struct response_set *responses)
 	      rr->value_len+=alen;
 	      rr->value_bytes+=alen;
 	      new[rr->value_len]=0; /* Make sure it is null terminated */
-	      if (debug&DEBUG_DNARESPONSES) fprintf(stderr,"Response string now '%s'\n",rr->response);
+	      if (debug&DEBUG_DNARESPONSES) DEBUGF("Response string now '%s'",rr->response);
 	    }
 	}
       rr=rr->next;
@@ -280,7 +280,7 @@ int getReplyPackets(int method,int peer,int batchP,struct response_set *response
   int to=timeout;
   int len;
   
-  if (debug&DEBUG_DNARESPONSES) printf("getReplyPackets(policy=%d)\n",method);
+  if (debug&DEBUG_DNARESPONSES) DEBUGF("getReplyPackets(policy=%d)",method);
   
   /* Work out when the timeout will expire */
   gettimeofday(&t,NULL); 
@@ -316,13 +316,13 @@ int getReplyPackets(int method,int peer,int batchP,struct response_set *response
       client_port=((struct sockaddr_in *)recvaddr)->sin_port;
       client_addr=((struct sockaddr_in *)recvaddr)->sin_addr;
       
-      if (debug&DEBUG_DNARESPONSES) fprintf(stderr,"Received reply from %s (len=%d).\n",inet_ntoa(client_addr),len);
+      if (debug&DEBUG_DNARESPONSES) DEBUGF("Received reply from %s (len=%d)",inet_ntoa(client_addr),len);
       if (debug&DEBUG_DNARESPONSES) dump("recvaddr",(unsigned char *)&sender,recvaddrlen);
       if (debug&DEBUG_DNARESPONSES) dump("packet",(unsigned char *)buffer,len);
     }
 
     if (dropPacketP(len)) {
-      if (debug&DEBUG_SIMULATION) fprintf(stderr,"Simulation mode: Dropped packet due to simulated link parameters.\n");
+      if (debug&DEBUG_SIMULATION) DEBUGF("Simulation mode: Dropped packet due to simulated link parameters");
       continue;
     }
     if (!packetOk(-1,buffer,len,transaction_id,ttl,recvaddr,recvaddrlen,0)) {
@@ -347,10 +347,10 @@ int getReplyPackets(int method,int peer,int batchP,struct response_set *response
 	}
       }
       else {
-	if (debug&DEBUG_DNARESPONSES) printf("Waiting for more packets, since called with policy %d\n",method);
+	if (debug&DEBUG_DNARESPONSES) DEBUGF("Waiting for more packets, since called with policy %d",method);
       }
     } else {
-      if (debug&(DEBUG_PACKETRX|DEBUG_DNARESPONSES)) WHY("Ignoring invalid packet");
+      if (debug&(DEBUG_PACKETRX|DEBUG_DNARESPONSES)) DEBUG("Ignoring invalid packet");
     }      
   }
 }
