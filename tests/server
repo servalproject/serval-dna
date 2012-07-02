@@ -26,6 +26,13 @@ setup() {
    assert_no_servald_processes
 }
 
+setup_interfaces() {
+   >$TFWTMP/dummy
+   executeOk_servald config set interfaces "+>$TFWTMP/dummy"
+   executeOk_servald config set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name"
+   executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name"
+}
+
 teardown() {
    get_servald_server_pidfile && stop_servald_server
    kill_all_servald_processes
@@ -65,10 +72,10 @@ test_StartNoInterfaces() {
    tfw_cat "$instance_servald_log"
 }
 
-doc_StartNoErrors="Starting server on all interfaces gives no errors"
+doc_StartNoErrors="Starting server on dummy interface gives no errors"
 setup_StartNoErrors() {
    setup
-   executeOk_servald config set interfaces "+"
+   setup_interfaces
 }
 test_StartNoErrors() {
    start_servald_server
@@ -80,7 +87,7 @@ test_StartNoErrors() {
 doc_StartStart="Start server while already running"
 setup_StartStart() {
    setup
-   executeOk_servald config set interfaces "+"
+   setup_interfaces
    start_servald_server
 }
 test_StartStart() {
@@ -94,7 +101,7 @@ test_StartStart() {
 doc_StartStopFast="Stop server before it finishes starting"
 setup_StartStopFast() {
    setup
-   executeOk_servald config set interfaces "+"
+   setup_interfaces
    export SERVALD_SERVER_START_DELAY=250
 }
 test_StartStopFast() {
