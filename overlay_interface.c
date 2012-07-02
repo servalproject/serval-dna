@@ -260,13 +260,23 @@ int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockadd
   I(bits_per_second)=speed_in_bits;
   I(port)=port;
   I(type)=type;
-  I(tick_ms)=500;
   I(last_tick_ms)=0;
   I(fd)=0;
-  switch(type) {
-  case OVERLAY_INTERFACE_PACKETRADIO: I(tick_ms)=15000; break;
-  case OVERLAY_INTERFACE_ETHERNET: I(tick_ms)=500; break;
-  case OVERLAY_INTERFACE_WIFI: I(tick_ms)=500; break;
+  switch (type) {
+  case OVERLAY_INTERFACE_PACKETRADIO:
+    I(tick_ms) = confValueGetInt64Range("mdp.packetradio.tick_ms", 15000LL, 1LL, 3600000LL);
+    break;
+  case OVERLAY_INTERFACE_ETHERNET:
+    I(tick_ms) = confValueGetInt64Range("mdp.ethernet.tick_ms", 500LL, 1LL, 3600000LL);
+    break;
+  case OVERLAY_INTERFACE_WIFI:
+    I(tick_ms) = confValueGetInt64Range("mdp.wifi.tick_ms", 500LL, 1LL, 3600000LL);
+    break;
+  case OVERLAY_INTERFACE_UNKNOWN:
+    I(tick_ms) = confValueGetInt64Range("mdp.unknown.tick_ms", 500LL, 1LL, 3600000LL);
+    break;
+  default:
+    return WHYF("Unsupported interface type %d", type);
   }
 
   if (name[0]=='>') {

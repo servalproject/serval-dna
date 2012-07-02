@@ -403,6 +403,7 @@ extern int sock;
 const char *confValueGet(const char *var, const char *defaultValue);
 int confValueGetBoolean(const char *var, int defaultValue);
 int64_t confValueGetInt64(const char *var, int64_t defaultValue);
+int64_t confValueGetInt64Range(const char *var, int64_t defaultValue, int64_t rangemin, int64_t rangemax);
 void confSetDebugFlags();
 int confParseBoolean(const char *text, const char *option_name);
 

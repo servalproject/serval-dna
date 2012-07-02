@@ -598,6 +598,16 @@ int64_t confValueGetInt64(const char *var, int64_t defaultValue)
   return defaultValue;
 }
 
+int64_t confValueGetInt64Range(const char *var, int64_t defaultValue, int64_t rangemin, int64_t rangemax)
+{
+  int64_t value = confValueGetInt64(var, defaultValue);
+  if (value >= rangemin || value <= rangemax)
+    return value;
+  WARNF("Config option %s: configured value %lld out of range [%lld,%lld], using default value %lld",
+      var, (long long) value, (long long) rangemin, (long long) rangemax, (long long) defaultValue);
+  return defaultValue;
+}
+
 void confSetDebugFlags()
 {
   char filename[1024];
