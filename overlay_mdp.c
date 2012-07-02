@@ -19,8 +19,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include <sys/stat.h>
 
-int mdp_abstract_socket=-1;
-int mdp_named_socket=-1;
+struct sched_ent mdp_abstract;
+struct sched_ent mdp_named;
+
 int overlay_mdp_setup_sockets()
 {
   struct sockaddr_un name;
@@ -31,9 +32,9 @@ int overlay_mdp_setup_sockets()
 #ifndef HAVE_LINUX_IF_H
   /* Abstrack name space (i.e., non-file represented) unix domain sockets are a
      linux-only thing. */
-  mdp_abstract_socket = -1;
+  mdp_abstract.poll.fd = -1;
 #else
-  if (mdp_abstract_socket==-1) {
+  if (mdp_abstract.function==NULL) {
     /* Abstract name space unix sockets is a special Linux thing, which is
        convenient for us because Android is Linux, but does not have a shared
        writable path that is on a UFS partition, so we cannot use traditional
@@ -46,17 +47,17 @@ int overlay_mdp_setup_sockets()
 	     confValueGet("mdp.socket",DEFAULT_MDP_SOCKET_NAME));
     len = 1+strlen(&name.sun_path[1]) + sizeof(name.sun_family);
     
-    mdp_abstract_socket = socket(AF_UNIX, SOCK_DGRAM, 0);
-    if (mdp_abstract_socket>-1) {
+    mdp_abstract.poll.fd = socket(AF_UNIX, SOCK_DGRAM, 0);
+    if (mdp_abstract.poll.fd>-1) {
       int dud=0;
       int reuseP=1;
-      if(setsockopt( mdp_abstract_socket, SOL_SOCKET, SO_REUSEADDR, 
+      if(setsockopt( mdp_abstract.poll.fd, SOL_SOCKET, SO_REUSEADDR, 
 		     &reuseP, sizeof(reuseP)) < 0)
 	{
 	  WARN_perror("setsockopt");
 	  WARN("Could not indicate reuse addresses. Not necessarily a problem (yet)");
 	}
-      int r=bind(mdp_abstract_socket, (struct sockaddr *)&name, len);
+      int r=bind(mdp_abstract.poll.fd, (struct sockaddr *)&name, len);
       if (r) {
 	WARN_perror("bind");
 	dud=1;
@@ -64,49 +65,56 @@ int overlay_mdp_setup_sockets()
 	WARN("bind() of abstract name space socket failed (not an error on non-linux systems");
       }
       if (dud) {
-	close(mdp_abstract_socket);
-	mdp_abstract_socket=-1;
+	close(mdp_abstract.poll.fd);
+	mdp_abstract.poll.fd=-1;
 	WHY("Could not open abstract name-space socket (only a problem on Linux).");
       }
       
       int send_buffer_size=64*1024;    
-      int res = setsockopt(mdp_abstract_socket, SOL_SOCKET, SO_SNDBUF, 
+      int res = setsockopt(mdp_abstract.poll.fd, SOL_SOCKET, SO_SNDBUF, 
 		       &send_buffer_size, sizeof(send_buffer_size));
 
-      fd_watch(mdp_abstract_socket,overlay_mdp_poll,POLLIN);
+      mdp_abstract.function = overlay_mdp_poll;
+      mdp_abstract.stats.name = "overlay_mdp_poll";
+      mdp_abstract.poll.events = POLLIN;
+      watch(&mdp_abstract);
     } 
   }
 #endif
-  if (mdp_named_socket==-1) {
+  if (mdp_named.function==NULL) {
     if (!form_serval_instance_path(&name.sun_path[0], 100, "mdp.socket")) {
       return WHY("Cannot construct name of unix domain socket.");
     }
     unlink(&name.sun_path[0]);
     len = 0+strlen(&name.sun_path[0]) + sizeof(name.sun_family)+1;
-    mdp_named_socket = socket(AF_UNIX, SOCK_DGRAM, 0);
-    if (mdp_named_socket>-1) {
+    mdp_named.poll.fd = socket(AF_UNIX, SOCK_DGRAM, 0);
+    if (mdp_named.poll.fd>-1) {
       int dud=0;
       int reuseP=1;
-      if(setsockopt( mdp_named_socket, SOL_SOCKET, SO_REUSEADDR, 
+      if(setsockopt( mdp_named.poll.fd, SOL_SOCKET, SO_REUSEADDR, 
 		     &reuseP, sizeof(reuseP)) < 0)
 	{
 	  WARN_perror("setsockopt");
 	  WARN("Could not indicate reuse addresses. Not necessarily a problem (yet)");
 	}
-      int r=bind(mdp_named_socket, (struct sockaddr *)&name, len);
+      int r=bind(mdp_named.poll.fd, (struct sockaddr *)&name, len);
       if (r) { dud=1; r=0; WHY("bind() of named unix domain socket failed"); }
       if (dud) {
-	close(mdp_named_socket);
-	mdp_named_socket=-1;
+	close(mdp_named.poll.fd);
+	mdp_named.poll.fd=-1;
 	WHY("Could not open named unix domain socket.");
       }
 
       int send_buffer_size=64*1024;    
-      int res = setsockopt(mdp_named_socket, SOL_SOCKET, SO_RCVBUF, 
+      int res = setsockopt(mdp_named.poll.fd, SOL_SOCKET, SO_RCVBUF, 
 		       &send_buffer_size, sizeof(send_buffer_size));
       if (res)
 	WHY_perror("setsockopt");
-      fd_watch(mdp_named_socket,overlay_mdp_poll,POLLIN);
+      
+      mdp_named.function = overlay_mdp_poll;
+      mdp_named.stats.name = "overlay_mdp_poll";
+      mdp_named.poll.events = POLLIN;
+      watch(&mdp_named);
     }
   }
 
@@ -367,7 +375,7 @@ unsigned char *overlay_mdp_decrypt(overlay_frame *f,overlay_mdp_frame *mdp,
   RETURN(b);
 }
 
-int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long now)
+int overlay_saw_mdp_containing_frame(overlay_frame *f,long long now)
 {
   IN();
   /* Take frame source and destination and use them to populate mdp->in->{src,dst}
@@ -404,7 +412,7 @@ int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long no
   bcopy(&b[10],&mdp.in.payload[0],mdp.in.payload_length);
 
   /* and do something with it! */
-  RETURN(overlay_saw_mdp_frame(interface,&mdp,now));
+  RETURN(overlay_saw_mdp_frame(&mdp,now));
 }
 
 int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp)
@@ -416,7 +424,7 @@ int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp)
   return 0;
 }
 
-int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
+int overlay_saw_mdp_frame(overlay_mdp_frame *mdp,long long now)
 {
   IN();
   int i;
@@ -480,7 +488,7 @@ int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now)
       addr.sun_family=AF_UNIX;
       errno=0;
       int len=overlay_mdp_relevant_bytes(mdp);
-      int r=sendto(mdp_named_socket,mdp,len,0,(struct sockaddr*)&addr,sizeof(addr));
+      int r=sendto(mdp_named.poll.fd,mdp,len,0,(struct sockaddr*)&addr,sizeof(addr));
       if (r==overlay_mdp_relevant_bytes(mdp)) {	
 	RETURN(0);
       }
@@ -713,7 +721,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   if (overlay_mdp_sanitytest_sourceaddr(&mdp->out.src,userGeneratedFrameP,
 					recvaddr,recvaddrlen))
     RETURN(overlay_mdp_reply_error
-	   (mdp_named_socket,
+	   (mdp_named.poll.fd,
 	    (struct sockaddr_un *)recvaddr,
 	    recvaddrlen,8,
 	    "Source address is invalid (you must bind to a source address before"
@@ -724,8 +732,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   if (overlay_address_is_local(mdp->out.dst.sid)||broadcast)
     {
       /* Packet is addressed such that we should process it. */
-      overlay_saw_mdp_frame(-1 /* not received on a network interface */,
-			    mdp,overlay_gettime_ms());
+      overlay_saw_mdp_frame(mdp,overlay_gettime_ms());
       if (!broadcast) {
 	/* Is local, and is not broadcast, so shouldn't get sent out
 	   on the wire. */
@@ -738,7 +745,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
      NaCl cryptobox keys can be used for signing. */	
   if (broadcast) {
     if (!(mdp->packetTypeAndFlags&MDP_NOCRYPT))
-      RETURN(overlay_mdp_reply_error(mdp_named_socket,
+      RETURN(overlay_mdp_reply_error(mdp_named.poll.fd,
 				     recvaddr,recvaddrlen,5,
 				     "Broadcast packets cannot be encrypted "));  }
   
@@ -951,7 +958,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   }
 }
 
-void overlay_mdp_poll()
+void overlay_mdp_poll(struct sched_ent *alarm)
 {
   unsigned char buffer[16384];
   int ttl;
@@ -960,122 +967,114 @@ void overlay_mdp_poll()
   socklen_t recvaddrlen=sizeof(recvaddrbuffer);
   struct sockaddr_un *recvaddr_un=NULL;
 
-  if (mdp_named_socket>-1) {
-    ttl=-1;
-    bzero((void *)recvaddrbuffer,sizeof(recvaddrbuffer));
-    
-    SET_NONBLOCKING(mdp_named_socket);
-    int len = recvwithttl(mdp_named_socket,buffer,sizeof(buffer),&ttl,
-			  recvaddr,&recvaddrlen);
-    SET_BLOCKING(mdp_named_socket);
-    recvaddr_un=(struct sockaddr_un *)recvaddr;
+  ttl=-1;
+  bzero((void *)recvaddrbuffer,sizeof(recvaddrbuffer));
+  
+  int len = recvwithttl(alarm->poll.fd,buffer,sizeof(buffer),&ttl,
+			recvaddr,&recvaddrlen);
+  recvaddr_un=(struct sockaddr_un *)recvaddr;
 
-    if (len>0) {
-      /* Look at overlay_mdp_frame we have received */
-      overlay_mdp_frame *mdp=(overlay_mdp_frame *)&buffer[0];      
+  if (len>0) {
+    /* Look at overlay_mdp_frame we have received */
+    overlay_mdp_frame *mdp=(overlay_mdp_frame *)&buffer[0];      
 
-      switch(mdp->packetTypeAndFlags&MDP_TYPE_MASK) {
-      case MDP_GOODBYE:
-	overlay_mdp_releasebindings(recvaddr_un,recvaddrlen);
-	return;
-      case MDP_VOMPEVENT:
-	vomp_mdp_event(mdp,recvaddr_un,recvaddrlen);
-	return;
-      case MDP_NODEINFO:
-	overlay_route_node_info(mdp,recvaddr_un,recvaddrlen);
-	return;
-      case MDP_GETADDRS:
-	{
-	  overlay_mdp_frame mdpreply;
-	  
-	  /* Work out which SIDs to get ... */
-	  int sid_num=mdp->addrlist.first_sid;
-	  int max_sid=mdp->addrlist.last_sid;
-	  int max_sids=mdp->addrlist.frame_sid_count;
-	  /* ... and constrain list for sanity */
-	  if (sid_num<0) sid_num=0;
-	  if (max_sids>MDP_MAX_SID_REQUEST) max_sids=MDP_MAX_SID_REQUEST;
-	  if (max_sids<0) max_sids=0;
-	  
-	  /* Prepare reply packet */
-	  mdpreply.packetTypeAndFlags=MDP_ADDRLIST;
-	  mdpreply.addrlist.first_sid=sid_num;
-	  mdpreply.addrlist.last_sid=max_sid;
-	  mdpreply.addrlist.frame_sid_count=max_sids;
-	  
-	  /* Populate with SIDs */
-	  int i=0;
-	  int count=0;
-	  if (mdp->addrlist.selfP) {
-	    /* from self */
-	    int cn=0,in=0,kp=0;
-	    while(keyring_next_identity(keyring,&cn,&in,&kp)) {	    
-	      if (count>=sid_num&&(i<max_sids))
-		bcopy(keyring->contexts[cn]->identities[in]
-		      ->keypairs[kp]->public_key,
-		      mdpreply.addrlist.sids[i++],SID_SIZE);
-	      in++; kp=0;
-	      count++;
-	      if (i>=max_sids) break;
-	    }
-	  } else {
-	    /* from peer list */
-	    int bin,slot;
-	    i=0;
-	    count=0;
-	    for(bin=0;bin<overlay_bin_count;bin++)
-	      for(slot=0;slot<overlay_bin_size;slot++)
-		{
-		  if ((!overlay_nodes[bin][slot].sid[0]) 
-		      ||(overlay_nodes[bin][slot].best_link_score<1))
-		    { 
-		      continue; }
-		  if ((count>=sid_num)&&(i<max_sids)) {
-		    bcopy(overlay_nodes[bin][slot].sid,
-			  mdpreply.addrlist.sids[i++],SID_SIZE);
-		  }
-		  count++;
-		}
+    switch(mdp->packetTypeAndFlags&MDP_TYPE_MASK) {
+    case MDP_GOODBYE:
+      overlay_mdp_releasebindings(recvaddr_un,recvaddrlen);
+      return;
+    case MDP_VOMPEVENT:
+      vomp_mdp_event(mdp,recvaddr_un,recvaddrlen);
+      return;
+    case MDP_NODEINFO:
+      overlay_route_node_info(mdp,recvaddr_un,recvaddrlen);
+      return;
+    case MDP_GETADDRS:
+      {
+	overlay_mdp_frame mdpreply;
+	
+	/* Work out which SIDs to get ... */
+	int sid_num=mdp->addrlist.first_sid;
+	int max_sid=mdp->addrlist.last_sid;
+	int max_sids=mdp->addrlist.frame_sid_count;
+	/* ... and constrain list for sanity */
+	if (sid_num<0) sid_num=0;
+	if (max_sids>MDP_MAX_SID_REQUEST) max_sids=MDP_MAX_SID_REQUEST;
+	if (max_sids<0) max_sids=0;
+	
+	/* Prepare reply packet */
+	mdpreply.packetTypeAndFlags=MDP_ADDRLIST;
+	mdpreply.addrlist.first_sid=sid_num;
+	mdpreply.addrlist.last_sid=max_sid;
+	mdpreply.addrlist.frame_sid_count=max_sids;
+	
+	/* Populate with SIDs */
+	int i=0;
+	int count=0;
+	if (mdp->addrlist.selfP) {
+	  /* from self */
+	  int cn=0,in=0,kp=0;
+	  while(keyring_next_identity(keyring,&cn,&in,&kp)) {	    
+	    if (count>=sid_num&&(i<max_sids))
+	      bcopy(keyring->contexts[cn]->identities[in]
+		    ->keypairs[kp]->public_key,
+		    mdpreply.addrlist.sids[i++],SID_SIZE);
+	    in++; kp=0;
+	    count++;
+	    if (i>=max_sids) break;
 	  }
-	  mdpreply.addrlist.frame_sid_count=i;
-	  mdpreply.addrlist.last_sid=sid_num+i-1;
-	  mdpreply.addrlist.server_sid_count=count;
-
-	  /* Send back to caller */
-	  overlay_mdp_reply(mdp_named_socket,
-			    (struct sockaddr_un *)recvaddr,recvaddrlen,
-			    &mdpreply);
-	  return;
+	} else {
+	  /* from peer list */
+	  int bin,slot;
+	  i=0;
+	  count=0;
+	  for(bin=0;bin<overlay_bin_count;bin++)
+	    for(slot=0;slot<overlay_bin_size;slot++)
+	      {
+		if ((!overlay_nodes[bin][slot].sid[0]) 
+		    ||(overlay_nodes[bin][slot].best_link_score<1))
+		  { 
+		    continue; }
+		if ((count>=sid_num)&&(i<max_sids)) {
+		  bcopy(overlay_nodes[bin][slot].sid,
+			mdpreply.addrlist.sids[i++],SID_SIZE);
+		}
+		count++;
+	      }
 	}
-	break;
-      case MDP_TX: /* Send payload (and don't treat it as system privileged) */
-	overlay_mdp_dispatch(mdp,1,(struct sockaddr_un*)recvaddr,recvaddrlen);
+	mdpreply.addrlist.frame_sid_count=i;
+	mdpreply.addrlist.last_sid=sid_num+i-1;
+	mdpreply.addrlist.server_sid_count=count;
+
+	/* Send back to caller */
+	overlay_mdp_reply(alarm->poll.fd,
+			  (struct sockaddr_un *)recvaddr,recvaddrlen,
+			  &mdpreply);
 	return;
-	break;
-      case MDP_BIND: /* Bind to port */
-	overlay_mdp_process_bind_request(mdp_named_socket,mdp,
-					 recvaddr_un,recvaddrlen);
-	return;
-	break;
-      default:
-	/* Client is not allowed to send any other frame type */
-	WHY("Illegal frame type.");
-	mdp->packetTypeAndFlags=MDP_ERROR;
-	mdp->error.error=2;
-	snprintf(mdp->error.message,128,"Illegal request type.  Clients may use only MDP_TX or MDP_BIND.");
-	int len=4+4+strlen(mdp->error.message)+1;
-	errno=0;
-	/* We ignore the result of the following, because it is just sending an
-	   error message back to the client.  If this fails, where would we report
-	   the error to? My point exactly. */
-	SET_NONBLOCKING(mdp_named_socket);
-	sendto(mdp_named_socket,mdp,len,0,(struct sockaddr *)recvaddr,recvaddrlen);
-	SET_BLOCKING(mdp_named_socket);
       }
+      break;
+    case MDP_TX: /* Send payload (and don't treat it as system privileged) */
+      overlay_mdp_dispatch(mdp,1,(struct sockaddr_un*)recvaddr,recvaddrlen);
+      return;
+      break;
+    case MDP_BIND: /* Bind to port */
+      overlay_mdp_process_bind_request(alarm->poll.fd,mdp,
+				       recvaddr_un,recvaddrlen);
+      return;
+      break;
+    default:
+      /* Client is not allowed to send any other frame type */
+      WHY("Illegal frame type.");
+      mdp->packetTypeAndFlags=MDP_ERROR;
+      mdp->error.error=2;
+      snprintf(mdp->error.message,128,"Illegal request type.  Clients may use only MDP_TX or MDP_BIND.");
+      int len=4+4+strlen(mdp->error.message)+1;
+      errno=0;
+      /* We ignore the result of the following, because it is just sending an
+	 error message back to the client.  If this fails, where would we report
+	 the error to? My point exactly. */
+      sendto(alarm->poll.fd,mdp,len,0,(struct sockaddr *)recvaddr,recvaddrlen);
     }
-
   }
-
   return;
 }
 

@@ -25,15 +25,70 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "rhizome.h"
 
+typedef struct rhizome_http_request {
+  struct sched_ent alarm;
+  long long initiate_time; /* time connection was initiated */
+  
+  /* The HTTP request as currently received */
+  int request_length;
+#define RHIZOME_HTTP_REQUEST_MAXLEN 1024
+  char request[RHIZOME_HTTP_REQUEST_MAXLEN];
+  
+  /* Nature of the request */
+  int request_type;
+#define RHIZOME_HTTP_REQUEST_RECEIVING -1
+#define RHIZOME_HTTP_REQUEST_FROMBUFFER 1
+#define RHIZOME_HTTP_REQUEST_FILE 2
+#define RHIZOME_HTTP_REQUEST_SUBSCRIBEDGROUPLIST 4
+#define RHIZOME_HTTP_REQUEST_ALLGROUPLIST 8
+#define RHIZOME_HTTP_REQUEST_BUNDLESINGROUP 16
+  // manifests are small enough to send from a buffer
+  // #define RHIZOME_HTTP_REQUEST_BUNDLEMANIFEST 32
+  // for anything too big, we can just use a blob
+#define RHIZOME_HTTP_REQUEST_BLOB 64
+#define RHIZOME_HTTP_REQUEST_FAVICON 128
+  
+  /* Local buffer of data to be sent.
+   If a RHIZOME_HTTP_REQUEST_FROMBUFFER, then the buffer is sent, and when empty
+   the request is closed.
+   Else emptying the buffer triggers a request to fetch more data.  Only if no
+   more data is provided do we then close the request. */
+  unsigned char *buffer;
+  int buffer_size; // size
+  int buffer_length; // number of bytes loaded into buffer
+  int buffer_offset; // where we are between [0,buffer_length)
+  
+  /* The source specification data which are used in different ways by different 
+   request types */
+  char source[1024];
+  long long source_index;
+  long long source_count;
+  int source_record_size;
+  unsigned int source_flags;
+  
+  sqlite3_blob *blob;
+  /* source_index used for offset in blob */
+  long long blob_end; 
+  
+} rhizome_http_request;
+
+int rhizome_server_free_http_request(rhizome_http_request *r);
+int rhizome_server_http_send_bytes(rhizome_http_request *r);
+int rhizome_server_parse_http_request(rhizome_http_request *r);
+int rhizome_server_simple_http_response(rhizome_http_request *r,int result, char *response);
+int rhizome_server_http_response_header(rhizome_http_request *r,int result,
+					char *mime_type,unsigned long long bytes);
+int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, char *column);
+
+#define RHIZOME_SERVER_MAX_LIVE_REQUESTS 32
+
+
 /*
   HTTP server and client code for rhizome transfers.
 
  */
 
 int rhizome_server_socket=-1;
-
-rhizome_http_request *rhizome_live_http_requests[RHIZOME_SERVER_MAX_LIVE_REQUESTS];
-int rhizome_server_live_request_count=0;
 
 // Format icon data using:
 //   od -vt u1 ~/Downloads/favicon.ico | cut -c9- | sed 's/  */,/g'
@@ -59,6 +114,8 @@ unsigned char favicon_bytes[]={
 ,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 ,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 int favicon_len=318;
+
+struct sched_ent server_alarm;
 
 int rhizome_server_start()
 {
@@ -89,8 +146,8 @@ int rhizome_server_start()
   if (bind(rhizome_server_socket, (struct sockaddr *) &address,
 	   sizeof(address)) < 0) 
     {
-      fd_teardown(rhizome_server_socket);
-      rhizome_server_socket=-1000;
+      close(rhizome_server_socket);
+      rhizome_server_socket=-1;
       if (debug&DEBUG_RHIZOME)  WHY("bind() failed starting rhizome http server");
       return -1;
     }
@@ -99,95 +156,99 @@ int rhizome_server_start()
   if (rc < 0)
   {
     perror("ioctl() failed");
-    fd_teardown(rhizome_server_socket);
+    close(rhizome_server_socket);
     rhizome_server_socket=-1;
     exit(-1);
   }
 
   if (listen(rhizome_server_socket,20))
     {
-      fd_teardown(rhizome_server_socket);
+      close(rhizome_server_socket);
       rhizome_server_socket=-1;
       return WHY("listen() failed starting rhizome http server");
     }
 
   /* Add Rhizome HTTPd server to list of file descriptors to watch */
-  fd_watch(rhizome_server_socket,rhizome_server_poll,POLLIN);
+  server_alarm.function = rhizome_server_poll;
+  server_alarm.stats.name="rhizome_server_poll";
+  server_alarm.poll.fd = rhizome_server_socket;
+  server_alarm.poll.events = POLLIN;
+  watch(&server_alarm);
 
   return 0;
 }
 
-void rhizome_client_poll(int fd)
+void rhizome_client_poll(struct sched_ent *alarm)
 {
-  int rn;
-
-  for(rn=0;rn<rhizome_server_live_request_count;rn++)
-    {
-      rhizome_http_request *r=rhizome_live_http_requests[rn];
-      if (r->socket!=fd) continue;
-      switch(r->request_type) 
-	{
-	case RHIZOME_HTTP_REQUEST_RECEIVING:
-	  /* Keep reading until we have two CR/LFs in a row */
-	  r->request[r->request_length]=0;
-	  
-	  sigPipeFlag=0;
-	  
-	  errno=0;
-	  int bytes=read(r->socket,&r->request[r->request_length],
-			 RHIZOME_HTTP_REQUEST_MAXLEN-r->request_length-1);
-	  
-	  /* If we got some data, see if we have found the end of the HTTP request */
-	  if (bytes>0) {
-	    int i=r->request_length-160;
-	    int lfcount=0;
-	    if (i<0) i=0;
-	    r->request_length+=bytes;
-	    if (r->request_length<RHIZOME_HTTP_REQUEST_MAXLEN)
-	      r->request[r->request_length]=0;
-	    if (0)
-	      dump("request",(unsigned char *)r->request,r->request_length);
-	    for(;i<(r->request_length+bytes);i++)
-	      {
-		switch(r->request[i]) {
-		case '\n': lfcount++; break;
-		case '\r': /* ignore CR */ break;
-		case 0: /* ignore NUL (telnet inserts them) */ break;
-		default: lfcount=0; break;
-		}
-		if (lfcount==2) break;
-	      }
-	    if (lfcount==2) {
-	      /* We have the request. Now parse it to see if we can respond to it */
-	      rhizome_server_parse_http_request(rn,r);
-	    }
-	    
-	    r->request_length+=bytes;
-	  } 
-
-	  if (sigPipeFlag||((bytes==0)&&(errno==0))) {
-	    /* broken pipe, so close connection */
-	    WHY("Closing connection due to sigpipe");
-	    rhizome_server_close_http_request(rn);
-	    continue;
-	  }	 
-	  break;
-	default:
-	  /* Socket already has request -- so just try to send some data. */
-	  rhizome_server_http_send_bytes(rn,r);
-	  break;
-      }
-      /* We have processed the connection that has activity, so we can return
-         immediately */
-      return;
-    }
-
+  rhizome_http_request *r=(rhizome_http_request *)alarm;
   
+  if (alarm->poll.revents==0){
+    rhizome_server_free_http_request(r);
+    return;
+  }
+  
+  switch(r->request_type)
+    {
+    case RHIZOME_HTTP_REQUEST_RECEIVING:
+      /* Keep reading until we have two CR/LFs in a row */
+      r->request[r->request_length]=0;
+      
+      sigPipeFlag=0;
+      
+      errno=0;
+      int bytes=read(r->alarm.poll.fd,&r->request[r->request_length],
+		     RHIZOME_HTTP_REQUEST_MAXLEN-r->request_length-1);
+      
+      /* If we got some data, see if we have found the end of the HTTP request */
+      if (bytes>0) {
+	// reset inactivity timer
+	r->alarm.alarm = overlay_gettime_ms()+RHIZOME_IDLE_TIMEOUT;
+	unschedule(&r->alarm);
+	schedule(&r->alarm);
+	
+	int i=r->request_length-160;
+	int lfcount=0;
+	if (i<0) i=0;
+	r->request_length+=bytes;
+	if (r->request_length<RHIZOME_HTTP_REQUEST_MAXLEN)
+	  r->request[r->request_length]=0;
+	if (0)
+	  dump("request",(unsigned char *)r->request,r->request_length);
+	for(;i<(r->request_length+bytes);i++)
+	  {
+	    switch(r->request[i]) {
+	    case '\n': lfcount++; break;
+	    case '\r': /* ignore CR */ break;
+	    case 0: /* ignore NUL (telnet inserts them) */ break;
+	    default: lfcount=0; break;
+	    }
+	    if (lfcount==2) break;
+	  }
+	if (lfcount==2) {
+	  /* We have the request. Now parse it to see if we can respond to it */
+	  rhizome_server_parse_http_request(r);
+	}
+	
+	r->request_length+=bytes;
+      } 
+
+      if (sigPipeFlag||((bytes==0)&&(errno==0))) {
+	/* broken pipe, so close connection */
+	WHY("Closing connection due to sigpipe");
+	rhizome_server_free_http_request(r);
+	return;
+      }	 
+      break;
+    default:
+      /* Socket already has request -- so just try to send some data. */
+      rhizome_server_http_send_bytes(r);
+      break;
+  }
   return;
 }
 
 
-void rhizome_server_poll(int ignored_file_descriptor)
+void rhizome_server_poll(struct sched_ent *alarm)
 {
   struct sockaddr addr;
   unsigned int addr_len=0;
@@ -195,36 +256,30 @@ void rhizome_server_poll(int ignored_file_descriptor)
 
   /* Deal with any new requests */
 
-  while ((rhizome_server_live_request_count<RHIZOME_SERVER_MAX_LIVE_REQUESTS)
-	 &&((sock=accept(rhizome_server_socket,&addr,&addr_len))>-1))
+  while ((sock=accept(rhizome_server_socket,&addr,&addr_len))>-1)
     {
       rhizome_http_request *request = calloc(sizeof(rhizome_http_request),1);	
-      request->socket=sock;
+      
       /* We are now trying to read the HTTP request */
       request->request_type=RHIZOME_HTTP_REQUEST_RECEIVING;
-      rhizome_live_http_requests[rhizome_server_live_request_count++]=request;	   
-      /* Watch for input */
-      fd_watch(request->socket,rhizome_client_poll,POLLIN);
+      request->alarm.function = rhizome_client_poll;
+      request->alarm.stats.name="rhizome_client_poll";
+      request->alarm.poll.fd=sock;
+      request->alarm.poll.events=POLLIN;
+      request->alarm.alarm = overlay_gettime_ms()+RHIZOME_IDLE_TIMEOUT;
+      // watch for the incoming http request
+      watch(&request->alarm);
+      // set an inactivity timeout to close the connection
+      schedule(&request->alarm);
     }
 
 }
 
-int rhizome_server_close_http_request(int i)
-{
-  fd_teardown(rhizome_live_http_requests[i]->socket);
-
-  rhizome_server_free_http_request(rhizome_live_http_requests[i]);
-  /* Make it null, so that if we are the list in the list, the following
-     assignment still yields the correct behaviour */
-  rhizome_live_http_requests[i]=NULL;
-  rhizome_live_http_requests[i]=
-    rhizome_live_http_requests[rhizome_server_live_request_count-1];
-  rhizome_server_live_request_count--;
-  return 0;
-}
-
 int rhizome_server_free_http_request(rhizome_http_request *r)
 {
+  unwatch(&r->alarm);
+  unschedule(&r->alarm);
+  close(r->alarm.poll.fd);
   if (r->buffer&&r->buffer_size) free(r->buffer);
   if (r->blob) sqlite3_blob_close(r->blob);
   free(r);
@@ -240,7 +295,7 @@ void hexFilter(char *s)
   *t = '\0';
 }
 
-int rhizome_server_sql_query_http_response(int rn,rhizome_http_request *r,
+int rhizome_server_sql_query_http_response(rhizome_http_request *r,
 					   char *column,char *table,char *query_body,
 					   int bytes_per_row,int dehexP)
 {
@@ -298,10 +353,10 @@ int rhizome_server_sql_query_http_response(int rn,rhizome_http_request *r,
   DEBUGF("buffer_length=%d",r->buffer_length);
 
   /* Populate spare space in buffer with rows of data */
-  return rhizome_server_sql_query_fill_buffer(rn, r, table, column);
+  return rhizome_server_sql_query_fill_buffer(r, table, column);
 }
 
-int rhizome_server_sql_query_fill_buffer(int rn,rhizome_http_request *r, char *table, char *column)
+int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, char *column)
 {
   unsigned char blob_value[r->source_record_size*2+1];
 
@@ -399,12 +454,13 @@ int rhizome_server_sql_query_fill_buffer(int rn,rhizome_http_request *r, char *t
 }
 
 
-int rhizome_server_parse_http_request(int rn,rhizome_http_request *r)
+int rhizome_server_parse_http_request(rhizome_http_request *r)
 {
   char id[1024];
 
   /* Switching to writing, so update the call-back */
-  fd_watch(r->socket,rhizome_client_poll,POLLOUT);	
+  r->alarm.poll.events=POLLOUT;
+  watch(&r->alarm);
   
   /* Clear request type flags */
   r->request_type=0;
@@ -422,21 +478,21 @@ int rhizome_server_parse_http_request(int rn,rhizome_http_request *r)
       {
 	/* Return the list of known groups */
 	WHYF("get /rhizome/groups (list of groups)");
-	rhizome_server_sql_query_http_response(rn,r,"id","groups","from groups",32,1);
+	rhizome_server_sql_query_http_response(r,"id","groups","from groups",32,1);
       }
     else if (!strncasecmp(r->request,"GET /rhizome/files HTTP/1.",
 		     strlen("GET /rhizome/files HTTP/1.")))
       {
 	/* Return the list of known files */
 	WHYF("get /rhizome/files (list of files)");
-	rhizome_server_sql_query_http_response(rn,r,"id","files","from files",32,1);
+	rhizome_server_sql_query_http_response(r,"id","files","from files",32,1);
       }
     else if (!strncasecmp(r->request,"GET /rhizome/bars HTTP/1.",
 		     strlen("GET /rhizome/bars HTTP/1.")))
       {
 	/* Return the list of known files */
 	WHYF("get /rhizome/bars (list of BARs)");
-	rhizome_server_sql_query_http_response(rn,r,"bar","manifests","from manifests",32,0);
+	rhizome_server_sql_query_http_response(r,"bar","manifests","from manifests",32,0);
       }
     else if (sscanf(r->request,"GET /rhizome/file/%s HTTP/1.", id)==1)
       {
@@ -485,7 +541,7 @@ int rhizome_server_parse_http_request(int rn,rhizome_http_request *r)
     rhizome_server_simple_http_response(r,400,"<html><h1>Sorry, your request was too long.</h1></html>\r\n");
   
   /* Try sending data immediately. */
-  rhizome_server_http_send_bytes(rn,r);
+  rhizome_server_http_send_bytes(r);
 
   return 0;
 }
@@ -509,10 +565,10 @@ char *httpResultString(int id) {
 int rhizome_server_simple_http_response(rhizome_http_request *r,int result, char *response)
 {
   if (r->buffer) free(r->buffer);
-  r->buffer_size=strlen(response)+strlen("HTTP/1.0 000 \r\n\r\n")+strlen(httpResultString(A_VALUE_GREATER_THAN_FOUR))+100;
+  r->buffer_size=strlen(response)+strlen("HTTP/1.0 000 \r\n\r\nContent-type: text/html\r\nContent-length: 0000\r\n\r\n")+strlen(httpResultString(result))+strlen(response)+100;
 
   r->buffer=(unsigned char *)malloc(r->buffer_size);
-  snprintf((char *)r->buffer,r->buffer_size,"HTTP/1.0 %03d %s\r\nContent-type: text/html\r\nContent-length: %lld\r\n\r\n%s",result,httpResultString(result),(int)strlen(response),response);
+  snprintf((char *)r->buffer,r->buffer_size,"HTTP/1.0 %03d %s\r\nContent-type: text/html\r\nContent-length: %d\r\n\r\n%s",result,httpResultString(result),(int)strlen(response),response);
   
   r->buffer_size=strlen((char *)r->buffer)+1;
   r->buffer_length=r->buffer_size-1;
@@ -528,10 +584,8 @@ int rhizome_server_simple_http_response(rhizome_http_request *r,int result, char
   0: connection finished.
   <0: an error occurred.
 */
-int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r)
+int rhizome_server_http_send_bytes(rhizome_http_request *r)
 {
-  if (debug&DEBUG_RHIZOME) WHYF("Request #%d, type=0x%x\n",rn,r->request_type);
-
   // keep writing until the write would block or we run out of data
   while(r->request_type){
     
@@ -540,7 +594,7 @@ int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r)
     if (r->request_type&RHIZOME_HTTP_REQUEST_FROMBUFFER)
       {
 	int bytes=r->buffer_length-r->buffer_offset;
-	bytes=write(r->socket,&r->buffer[r->buffer_offset],bytes);
+	bytes=write(r->alarm.poll.fd,&r->buffer[r->buffer_offset],bytes);
 	if (bytes<=0){
 	  // stop writing when the tcp buffer is full
 	  // TODO errors?
@@ -551,6 +605,11 @@ int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r)
 	  dump("bytes written",&r->buffer[r->buffer_offset],bytes);
 	r->buffer_offset+=bytes;
 	  
+	// reset inactivity timer
+	r->alarm.alarm = overlay_gettime_ms()+RHIZOME_IDLE_TIMEOUT;
+	unschedule(&r->alarm);
+	schedule(&r->alarm);
+	
 	if (r->buffer_offset>=r->buffer_length) {
 	  /* Buffer's cleared */
 	  r->request_type&=~RHIZOME_HTTP_REQUEST_FROMBUFFER;
@@ -626,7 +685,7 @@ int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r)
 	break;
       }
   }
-  if (!r->request_type) return rhizome_server_close_http_request(rn);	  
+  if (!r->request_type) return rhizome_server_free_http_request(r);	  
   return 1;
 }
 

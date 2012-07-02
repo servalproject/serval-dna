@@ -185,20 +185,7 @@ int server(char *backing_file)
   signal(SIGINT, signal_handler);
   signal(SIGQUIT, signal_handler);
 
-  if (overlayMode)
-    {
-      /* Now find and initialise all the suitable network interfaces, i.e., 
-	 those running IPv4.
-	 Packet radio dongles will get discovered later as the interfaces get probed.
-
-	 This will setup the sockets for the server to communicate on each interface.
-	 
-	 XXX - Problems may persist where the same address is used on multiple interfaces,
-	 but otherwise hopefully it will allow us to bridge multiple networks.
-      */
-      overlay_interface_discover();
-    }
-  else
+  if (!overlayMode)
     {
       /* Create a simple socket for listening on if we are not in overlay mesh mode. */
       createServerSocket();     
@@ -228,7 +215,7 @@ int server(char *backing_file)
 
 /* Called periodically by the server process in its main loop.
  */
-void server_shutdown_check()
+void server_shutdown_check(struct sched_ent *alarm)
 {
   if (servalShutdown) {
     WHY("Shutdown flag set -- terminating with cleanup");
@@ -251,6 +238,10 @@ void server_shutdown_check()
       WHYF("Server pid file no longer contains pid=%d -- shutting down without cleanup", server_getpid);
       exit(1);
     }
+  }
+  if (alarm){
+    alarm->alarm = overlay_gettime_ms()+1000;
+    schedule(alarm);
   }
 }
 
@@ -430,7 +421,7 @@ void signal_handler(int signal)
       /* Terminate the server process.  The shutting down should be done from the main-line code
 	 rather than here, so we first try to tell the mainline code to do so.  If, however, this is
 	 not the first time we have been asked to shut down, then we will do it here. */
-      server_shutdown_check();
+      server_shutdown_check(NULL);
       WHY("Asking Serval process to shutdown cleanly");
       servalShutdown = 1;
       return;
@@ -440,8 +431,8 @@ void signal_handler(int signal)
   if (sock>-1) close(sock);
   int i;
   for(i=0;i<overlay_interface_count;i++)
-    if (overlay_interfaces[i].fd>-1)
-      close(overlay_interfaces[i].fd);
+    if (overlay_interfaces[i].alarm.poll.fd>-1)
+      close(overlay_interfaces[i].alarm.poll.fd);
   execv(exec_args[0],exec_args);
   /* Quit if the exec() fails */
   exit(-3);

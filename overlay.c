@@ -112,6 +112,11 @@ int overlayServerMode()
   /* Create structures to use 1MB of RAM for testing */
   overlay_route_init(1);
 
+#define SCHEDULE(X, Y) struct sched_ent _sched_##X; bzero(&_sched_##X, sizeof(struct sched_ent)); _sched_##X.function=X;_sched_##X.stats.name="" #X "";_sched_##X.alarm=overlay_gettime_ms()+Y; schedule(&_sched_##X);
+  
+  /* Periodically check for server shut down */
+  SCHEDULE(server_shutdown_check, 0);
+  
   /* Setup up MDP & monitor interface unix domain sockets */
   overlay_mdp_setup_sockets();
   monitor_setup_sockets();
@@ -119,32 +124,30 @@ int overlayServerMode()
   /* Get rhizome server started BEFORE populating fd list so that
      the server's listen socket is in the list for poll() */
   if (rhizome_enabled()) rhizome_server_start();
+  
   /* Pick next rhizome files to grab every few seconds
      from the priority list continuously being built from observed
      bundle announcements */
-  fd_setalarm(rhizome_enqueue_suggestions,3000,3000);
+  SCHEDULE(rhizome_enqueue_suggestions, 3000);
 
   /* Periodically check for new interfaces */
-  fd_setalarm(overlay_interface_discover,1,5000);
-
-  /* Periodically check for server shut down */
-  fd_setalarm(server_shutdown_check,1,1000);
-
-  /* Periodically update route table.
-     (Alarm interval is dynamically updated by overlay_route_tick()
-      based on load/route table size etc) */
-  fd_setalarm(overlay_route_tick,1000,1000);
+  SCHEDULE(overlay_interface_discover, 1);
 
   /* Start scheduling interface ticks */
-  fd_setalarm(overlay_check_ticks,1,500);
+  SCHEDULE(overlay_check_ticks, 2);
+  
+  /* Periodically update route table. */
+  SCHEDULE(overlay_route_tick, 100);
 
   /* Keep an eye on VoMP calls so that we can expire stale ones etc */
-  fd_setalarm(vomp_tick,1000,1000);
+  SCHEDULE(vomp_tick, 1000);
 
   /* Show CPU usage stats periodically */
-  fd_setalarm(fd_periodicstats,3000,3000);
+  SCHEDULE(fd_periodicstats, 3000);
 
-  while(1) {    
+#undef SCHEDULE
+  
+  while(1) {
     /* Check for activitiy and respond to it */
     fd_poll();
   }
@@ -152,7 +155,7 @@ int overlayServerMode()
   return 0;
 }
 
-int overlay_frame_process(int interface,overlay_frame *f)
+int overlay_frame_process(struct overlay_interface *interface,overlay_frame *f)
 {
   IN();
   if (!f) RETURN(WHY("f==NULL"));
@@ -188,13 +191,13 @@ int overlay_frame_process(int interface,overlay_frame *f)
       break;
     case OA_UNSUPPORTED:
     default:
+	// TODO tell the sender
       /* If we don't support the address format, we should probably tell
 	 the sender. Again, we queue this up, and cancel it if someone else
 	 tells them in the meantime to avoid an Opposition Event (like a Hanson
 	 Event, but repeatedly berating any node that holds a different policy
 	 to itself. */
       WHY("Packet with unsupported address format");
-      overlay_interface_repeat_abbreviation_policy[interface]=1;
       RETURN(-1);
       break;
     }
@@ -214,7 +217,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
 
   if (forMe) {
     /* It's for us, so resolve the addresses */
-    if (overlay_frame_resolve_addresses(interface,f))
+    if (overlay_frame_resolve_addresses(f))
       RETURN(WHY("Failed to resolve destination and sender addresses in frame"));
     broadcast=overlay_address_is_broadcast(f->destination);    
     if (debug&DEBUG_OVERLAYFRAMES) {
@@ -355,19 +358,20 @@ int overlay_frame_process(int interface,overlay_frame *f)
       }
     }
 
+  int id = (interface - overlay_interfaces);
   switch(f->type)
     {
     case OF_TYPE_SELFANNOUNCE:
-      overlay_route_saw_selfannounce(interface,f,now);
+      overlay_route_saw_selfannounce(f,now);
       break;
     case OF_TYPE_SELFANNOUNCE_ACK:
-      overlay_route_saw_selfannounce_ack(interface,f,now);
+      overlay_route_saw_selfannounce_ack(f,now);
       break;
     case OF_TYPE_NODEANNOUNCE:
-      overlay_route_saw_advertisements(interface,f,now);
+      overlay_route_saw_advertisements(id,f,now);
       break;
     case OF_TYPE_RHIZOME_ADVERT:
-      overlay_rhizome_saw_advertisements(interface,f,now);
+      overlay_rhizome_saw_advertisements(id,f,now);
       break;
     case OF_TYPE_DATA:
     case OF_TYPE_DATA_VOICE:
@@ -380,7 +384,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	dump("payload",&f->payload->bytes[0],f->payload->length);
 	fflush(stdout);
       }
-      overlay_saw_mdp_containing_frame(interface,f,now);
+      overlay_saw_mdp_containing_frame(f,now);
       break;
     default:
       fprintf(stderr,"Unsupported f->type=0x%x\n",f->type);

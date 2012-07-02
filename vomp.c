@@ -321,7 +321,7 @@ int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
     long long now=overlay_gettime_ms();
     for(i=0;i<vomp_interested_usock_count;i++)
       if (vomp_interested_expiries[i]>=now) {
-	overlay_mdp_reply(mdp_named_socket,
+	overlay_mdp_reply(mdp_named.poll.fd,
 			  vomp_interested_usocks[i],
 			  vomp_interested_usock_lengths[i],
 			  &mdp);
@@ -475,7 +475,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	      if (!memcmp(recvaddr->sun_path,
 			  vomp_interested_usocks[i],recvaddrlen))
 		/* found it -- so we are already monitoring this one */
-		return overlay_mdp_reply_error(mdp_named_socket,recvaddr,recvaddrlen,
+		return overlay_mdp_reply_error(mdp_named.poll.fd,recvaddr,recvaddrlen,
 					       0,"Success");
 	    if (vomp_interested_expiries[i]<now) candidate=i;
 	  }
@@ -488,7 +488,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	  }
 	  vomp_interested_usocks[i]=malloc(recvaddrlen);
 	  if (!vomp_interested_usocks[i])
-	    return overlay_mdp_reply_error(mdp_named_socket, recvaddr,recvaddrlen,
+	    return overlay_mdp_reply_error(mdp_named.poll.fd, recvaddr,recvaddrlen,
 					   4002,"Out of memory");
 	  bcopy(recvaddr,vomp_interested_usocks[i],
 		recvaddrlen);
@@ -506,10 +506,10 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	  }
 		
 	  return overlay_mdp_reply_error
-	    (mdp_named_socket,recvaddr,recvaddrlen,0,"Success");	     
+	    (mdp_named.poll.fd,recvaddr,recvaddrlen,0,"Success");	     
 	} else {
 	  return overlay_mdp_reply_error
-	    (mdp_named_socket,recvaddr,recvaddrlen,
+	    (mdp_named.poll.fd,recvaddr,recvaddrlen,
 	     4003,"Too many listeners (try again in a minute?)");
 	}
       }
@@ -537,12 +537,12 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 		    }
 		  vomp_interested_usock_count--;
 		  return overlay_mdp_reply_error
-		    (mdp_named_socket,recvaddr,recvaddrlen,
+		    (mdp_named.poll.fd,recvaddr,recvaddrlen,
 		     0,"Success. You have been removed.");
 		}
 	  }
 	return overlay_mdp_reply_error
-	  (mdp_named_socket,recvaddr,recvaddrlen,
+	  (mdp_named.poll.fd,recvaddr,recvaddrlen,
 	   0,"Success. You were never listening.");
       }
       break;
@@ -586,7 +586,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	    }
 	  }
 	
-	return overlay_mdp_reply(mdp_named_socket,recvaddr,recvaddrlen,&mdpreply);
+	return overlay_mdp_reply(mdp_named.poll.fd,recvaddr,recvaddrlen,&mdpreply);
       }
       break;
     case VOMPEVENT_DIAL: 
@@ -594,12 +594,12 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	 These need to be passed to the node being called to provide caller id,
 	 and potentially handle call-routing, e.g., if it is a gateway.
          */
-      fprintf(stderr,"DIAL Request!\n");
+      DEBUG("DIAL Request!\n");
       {
 	/* Populate call structure */
 	if (vomp_call_count>=VOMP_MAX_CALLS) 
 	  return overlay_mdp_reply_error
-	    (mdp_named_socket,recvaddr,recvaddrlen,4004,
+	    (mdp_named.poll.fd,recvaddr,recvaddrlen,4004,
 	     "All call slots in use");
 	int slot=vomp_call_count++;
 	vomp_call_state *call=&vomp_call_states[slot];
@@ -619,10 +619,10 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	  {
 	    if (urandombytes((unsigned char *)&call->local.session,sizeof(int)))
 	      return overlay_mdp_reply_error
-		(mdp_named_socket,recvaddr,recvaddrlen,4005,
+		(mdp_named.poll.fd,recvaddr,recvaddrlen,4005,
 		 "Insufficient entropy");
 	    call->local.session&=VOMP_SESSION_MASK;
-	    printf("session=0x%08x\n",call->local.session);
+	    DEBUGF("session=0x%08x\n",call->local.session);
 	    int i;
 	    for(i=0;i<vomp_call_count;i++)
 	      if (i!=slot) 
@@ -639,7 +639,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	WHY("sending MDP reply back");
 	dump("recvaddr",(unsigned char *)recvaddr,recvaddrlen);
 	int result= overlay_mdp_reply_error 
-	  (mdp_named_socket,recvaddr,recvaddrlen,0, "Success");
+	  (mdp_named.poll.fd,recvaddr,recvaddrlen,0, "Success");
 	if (result) WHY("Failed to send MDP reply");
 	return result;
       }
@@ -651,12 +651,12 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	  =vomp_find_call_by_session(mdp->vompevent.call_session_token);
 	if (!call) 
 	  return overlay_mdp_reply_error
-	    (mdp_named_socket,recvaddr,recvaddrlen,4006,
+	    (mdp_named.poll.fd,recvaddr,recvaddrlen,4006,
 	     "No such call");
 	if (call->local.state==VOMP_STATE_INCALL) vomp_call_stop_audio(call);
 	call->local.state=VOMP_STATE_CALLENDED;
 	monitor_call_status(call);
-	overlay_mdp_reply_error(mdp_named_socket,
+	overlay_mdp_reply_error(mdp_named.poll.fd,
 				recvaddr,recvaddrlen,0,"Success");
 	return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED,NULL);
       }
@@ -668,7 +668,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	  =vomp_find_call_by_session(mdp->vompevent.call_session_token);
 	if (!call) 
 	  return overlay_mdp_reply_error
-	    (mdp_named_socket,recvaddr,recvaddrlen,4006,
+	    (mdp_named.poll.fd,recvaddr,recvaddrlen,4006,
 	     "No such call");
 	if (call->local.state==VOMP_STATE_RINGINGIN) {
 	  call->local.state=VOMP_STATE_INCALL;
@@ -676,11 +676,11 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	  call->ringing=0;
 	  /* state machine does job of starting audio stream, just tell everyone about
 	     the changed state. */
-	  overlay_mdp_reply_error(mdp_named_socket,
+	  overlay_mdp_reply_error(mdp_named.poll.fd,
 				  recvaddr,recvaddrlen,0,"Success");
 	  return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED,NULL);
 	} else {
-	  overlay_mdp_reply_error(mdp_named_socket,
+	  overlay_mdp_reply_error(mdp_named.poll.fd,
 				  recvaddr,recvaddrlen,4009,
 				  "Call is not RINGINGIN, so cannot be picked up");
 	}
@@ -700,7 +700,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
       break;
     default:
       /* didn't understand it, so respond with an error */
-      return overlay_mdp_reply_error(mdp_named_socket,
+      return overlay_mdp_reply_error(mdp_named.poll.fd,
 				     recvaddr,recvaddrlen,4001,
 				     "Invalid VOMPEVENT request (use DIAL,HANGUP,CALLREJECT,AUDIOSTREAMING,REGISTERINTERST,WITHDRAWINTERST only)"); 
 
@@ -1458,7 +1458,7 @@ int app_vomp_monitor(int argc, const char *const *argv, struct command_line_opti
   return overlay_mdp_client_done();
 }
 
-void vomp_tick()
+void vomp_tick(struct sched_ent *alarm)
 {
   /* Send any reminder packets for call state, and also process any audio. */
   unsigned long long now=overlay_gettime_ms();
@@ -1508,7 +1508,9 @@ void vomp_tick()
 	    i--;
 	    break;
 	  }
-    }    
+    }
+  alarm->alarm = overlay_gettime_ms()+1000;
+  schedule(alarm);
   return;
 }
 

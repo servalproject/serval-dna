@@ -37,56 +37,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 extern long long rhizome_voice_timeout;
 
-typedef struct rhizome_http_request {
-  int socket;
-  long long last_activity; /* time of last activity in ms */
-  long long initiate_time; /* time connection was initiated */
-
-  /* The HTTP request as currently received */
-  int request_length;
-#define RHIZOME_HTTP_REQUEST_MAXLEN 1024
-  char request[RHIZOME_HTTP_REQUEST_MAXLEN];
-
-  /* Nature of the request */
-  int request_type;
-#define RHIZOME_HTTP_REQUEST_RECEIVING -1
-#define RHIZOME_HTTP_REQUEST_FROMBUFFER 1
-#define RHIZOME_HTTP_REQUEST_FILE 2
-#define RHIZOME_HTTP_REQUEST_SUBSCRIBEDGROUPLIST 4
-#define RHIZOME_HTTP_REQUEST_ALLGROUPLIST 8
-#define RHIZOME_HTTP_REQUEST_BUNDLESINGROUP 16
-  // manifests are small enough to send from a buffer
-  // #define RHIZOME_HTTP_REQUEST_BUNDLEMANIFEST 32
-  // for anything too big, we can just use a blob
-#define RHIZOME_HTTP_REQUEST_BLOB 64
-#define RHIZOME_HTTP_REQUEST_FAVICON 128
-
-  /* Local buffer of data to be sent.
-     If a RHIZOME_HTTP_REQUEST_FROMBUFFER, then the buffer is sent, and when empty
-     the request is closed.
-     Else emptying the buffer triggers a request to fetch more data.  Only if no
-     more data is provided do we then close the request. */
-  unsigned char *buffer;
-  int buffer_size; // size
-  int buffer_length; // number of bytes loaded into buffer
-  int buffer_offset; // where we are between [0,buffer_length)
-
-  /* The source specification data which are used in different ways by different 
-     request types */
-  char source[1024];
-  long long source_index;
-  long long source_count;
-  int source_record_size;
-  unsigned int source_flags;
-
-  sqlite3_blob *blob;
-  /* source_index used for offset in blob */
-  long long blob_end; 
-
-} rhizome_http_request;
-
-#define RHIZOME_SERVER_MAX_LIVE_REQUESTS 32
-
 #define RHIZOME_PRIORITY_HIGHEST RHIZOME_PRIORITY_SERVAL_CORE
 #define RHIZOME_PRIORITY_SERVAL_CORE 5
 #define RHIZOME_PRIORITY_SUBSCRIBED 4
@@ -94,6 +44,8 @@ typedef struct rhizome_http_request {
 #define RHIZOME_PRIORITY_DEFAULT 2
 #define RHIZOME_PRIORITY_SERVAL_BULK 1
 #define RHIZOME_PRIORITY_NOTINTERESTED 0
+
+#define RHIZOME_IDLE_TIMEOUT 10000
 
 typedef struct rhizome_signature {
   unsigned char signature[crypto_sign_edwards25519sha512batch_BYTES
@@ -240,11 +192,6 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl);
 void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCount);
 int rhizome_find_privatekey(rhizome_manifest *m);
 rhizome_signature *rhizome_sign_hash(rhizome_manifest *m, const unsigned char *authorSid);
-int rhizome_server_free_http_request(rhizome_http_request *r);
-int rhizome_server_close_http_request(int i);
-int rhizome_server_http_send_bytes(int rn,rhizome_http_request *r);
-int rhizome_server_parse_http_request(int rn,rhizome_http_request *r);
-int rhizome_server_simple_http_response(rhizome_http_request *r,int result, char *response);
 int sqlite_prepare(sqlite3_stmt **statement, const strbuf stmt);
 int sqlite_prepare_loglevel(int log_level, sqlite3_stmt **statement, const strbuf stmt);
 int sqlite_exec_void(const char *sqlformat,...);
@@ -252,9 +199,6 @@ int sqlite_exec_void_loglevel(int log_level, const char *sqlformat, ...);
 int sqlite_exec_void_strbuf_loglevel(int log_level, const strbuf stmt);
 int sqlite_exec_int64(long long *result, const char *sqlformat,...);
 int sqlite_exec_strbuf(strbuf sb, const char *sqlformat,...);
-int rhizome_server_http_response_header(rhizome_http_request *r,int result,
-					char *mime_type,unsigned long long bytes);
-int rhizome_server_sql_query_fill_buffer(int rn,rhizome_http_request *r, char *table, char *column);
 double rhizome_manifest_get_double(rhizome_manifest *m,char *var,double default_value);
 int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs);
 int rhizome_update_file_priority(const char *fileid);
@@ -295,6 +239,4 @@ int rhizome_ignore_manifest_check(rhizome_manifest *m,
 
 int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
 					  struct sockaddr_in *peerip);
-void rhizome_enqueue_suggestions();
-void rhizome_fetch_poll(int fd);
 

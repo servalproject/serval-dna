@@ -43,8 +43,7 @@ struct interface_rules *interface_filter=NULL;
 
 unsigned int overlay_sequence_number=0;
 
-/* Do we need to repeat our abbreviation policy? */
-int overlay_interface_repeat_abbreviation_policy[OVERLAY_MAX_INTERFACES]={1};
+long long overlay_next_tick();
 
 /* Return milliseconds since server started.  First call will always return zero.
    Must use long long, not time_t, as time_t can be 32bits, which is too small for
@@ -187,29 +186,28 @@ overlay_interface_init_socket(int interface, struct sockaddr_in src_addr, struct
   I(broadcast_address) = broadcast;
   I(fileP) = 0;
 
-  I(fd) = socket(PF_INET,SOCK_DGRAM,0);
-  fd_watch(I(fd),overlay_interface_poll,POLLIN);
-  WHYF("Watching fd#%d for interface #%d",I(fd),interface);
-  if (I(fd) < 0) {
+  I(alarm.poll.fd) = socket(PF_INET,SOCK_DGRAM,0);
+  
+  if (I(alarm.poll.fd) < 0) {
       WHY_perror("socket()");
       WHYF("Could not create UDP socket for interface: %s",strerror(errno));
       goto error;
   } else 
-    INFOF("interface #%d fd=%d",interface, I(fd));
+    INFOF("interface #%d fd=%d",interface, I(alarm.poll.fd));
 
   int reuseP = 1;
-  if (setsockopt(I(fd), SOL_SOCKET, SO_REUSEADDR, &reuseP, sizeof(reuseP)) < 0) {
+  if (setsockopt(I(alarm.poll.fd), SOL_SOCKET, SO_REUSEADDR, &reuseP, sizeof(reuseP)) < 0) {
       WHY_perror("setsockopt(SO_REUSEADR)");
       goto error;
     }
 #ifdef SO_REUSEPORT
-  if (setsockopt(I(fd), SOL_SOCKET, SO_REUSEPORT, &reuseP, sizeof(reuseP)) < 0) {
+  if (setsockopt(I(alarm.poll.fd), SOL_SOCKET, SO_REUSEPORT, &reuseP, sizeof(reuseP)) < 0) {
       WHY_perror("setsockopt(SO_REUSEPORT)");
       goto error;
     }
 #endif
   int broadcastP = 1;
-  if (setsockopt(I(fd), SOL_SOCKET, SO_BROADCAST, &broadcastP, sizeof(broadcastP)) < 0) {
+  if (setsockopt(I(alarm.poll.fd), SOL_SOCKET, SO_BROADCAST, &broadcastP, sizeof(broadcastP)) < 0) {
     WHY_perror("setsockopt");
     goto error;
   }
@@ -217,7 +215,7 @@ overlay_interface_init_socket(int interface, struct sockaddr_in src_addr, struct
   /* Automatically close socket on calls to exec().
      This makes life easier when we restart with an exec after receiving
      a bad signal. */
-  fcntl(I(fd), F_SETFL, fcntl(I(fd), F_GETFL, NULL) | O_CLOEXEC);
+  fcntl(I(alarm.poll.fd), F_SETFL, fcntl(I(alarm.poll.fd), F_GETFL, NULL) | O_CLOEXEC);
 
   /*  @PGS/20120615
       Use the broadcast address, so that we can reliably receive broadcast 
@@ -226,7 +224,7 @@ overlay_interface_init_socket(int interface, struct sockaddr_in src_addr, struct
   */
   broadcast.sin_family = AF_INET;
   broadcast.sin_port = htons(I(port));
-  if (bind(I(fd), (struct sockaddr *)&broadcast, sizeof(broadcast))) {
+  if (bind(I(alarm.poll.fd), (struct sockaddr *)&broadcast, sizeof(broadcast))) {
     WHY_perror("bind");
     WHY("MP HLR server could not bind to requested UDP port (bind() failed)");
     goto error;
@@ -234,11 +232,16 @@ overlay_interface_init_socket(int interface, struct sockaddr_in src_addr, struct
   assert(inet_ntop(AF_INET, (const void *)&broadcast.sin_addr, srctxt, INET_ADDRSTRLEN) != NULL);
   if (debug & (DEBUG_PACKETRX | DEBUG_IO)) INFOF("Bound to %s:%d", srctxt, ntohs(broadcast.sin_port));
 
+  I(alarm.poll.events)=POLLIN;
+  I(alarm.function) = overlay_interface_poll;
+  I(alarm.stats.name)="overlay_interface_poll";
+  watch(&I(alarm));
+  
   return 0;
 
   error:
-  fd_teardown(I(fd));
-  I(fd)=-1;
+  close(I(alarm.poll.fd));
+  I(alarm.poll.fd)=-1;
   return -1;
 #undef I
 }
@@ -256,14 +259,13 @@ int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockadd
   /* Pick a reasonable default MTU.
      This will ultimately get tuned by the bandwidth and other properties of the interface */
   I(mtu)=1200;
-
   I(observed)=1;
   I(bits_per_second)=speed_in_bits;
   I(port)=port;
   I(type)=type;
   I(tick_ms)=500;
   I(last_tick_ms)=0;
-  I(fd)=0;
+  I(alarm.poll.fd)=0;
   switch(type) {
   case OVERLAY_INTERFACE_PACKETRADIO: I(tick_ms)=15000; break;
   case OVERLAY_INTERFACE_ETHERNET: I(tick_ms)=500; break;
@@ -281,151 +283,119 @@ int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockadd
       if (!FORM_SERVAL_INSTANCE_PATH(dummyfile, &name[1]))
 	return WHY("could not form dummy interfance name");
     
-    if ((I(fd) = open(dummyfile,O_APPEND|O_RDWR)) < 1) {
+    if ((I(alarm.poll.fd) = open(dummyfile,O_APPEND|O_RDWR)) < 1) {
       return WHY("could not open dummy interface file for append");
     }
 
     /* Seek to end of file as initial reading point */
-    I(offset)=lseek(I(fd),0,SEEK_END); /* socket gets reused to hold file offset */
+    I(offset)=lseek(I(alarm.poll.fd),0,SEEK_END); /* socket gets reused to hold file offset */
     /* XXX later add pretend location information so that we can decide which "packets" to receive
        based on closeness */    
+    
+    // schedule an alarm for this interface
+    I(alarm.function)=overlay_dummy_poll;
+    I(alarm.alarm)=overlay_gettime_ms()+10;
+    I(alarm.stats.name)="overlay_dummy_poll";
+    schedule(&I(alarm));
   } else {
     if (overlay_interface_init_socket(overlay_interface_count,src_addr,broadcast))
       return WHY("overlay_interface_init_socket() failed");    
   }
 
   overlay_interface_count++;
-  fd_setalarm(overlay_dummy_poll,10,10);
 #undef I
   return 0;
 }
 
-void overlay_interface_poll(int fd)
+void overlay_interface_poll(struct sched_ent *alarm)
 {
-  int i;
+  struct overlay_interface *interface = (overlay_interface *)alarm;
   int plen=0;
   unsigned char packet[16384];
 
-  for(i=0;i<overlay_interface_count;i++)
-    {
-      struct sockaddr src_addr;
-      unsigned int addrlen=sizeof(src_addr);
-      if (overlay_interfaces[i].fd!=fd) continue;
-      
-      /* Read from UDP socket */
-      plen=1;
-      /* Read only one packet per call to share resources more fairly, and also
-	 enable stats to accurately count packets received */
-      //      while (plen>0) {
-	int recvttl=1;
-	plen=recvwithttl(overlay_interfaces[i].fd,packet,sizeof(packet),
-			 &recvttl,&src_addr,&addrlen);
-	if (plen<1) { 
-	  /* No more packets */
-	  return;
-	} else {
-	  /* We have a frame from this interface */
-	  if (debug&DEBUG_PACKETRX) {
-	    fflush(stdout);
-	    serval_packetvisualise(stderr,"Read from real interface",
-				   packet,plen);
-	    fflush(stderr);
-	  }
-	  if (debug&DEBUG_OVERLAYINTERFACES)fprintf(stderr,"Received %d bytes on interface #%d (%s)\n",plen,i,overlay_interfaces[i].name);
-	  
-	  if (packetOk(i,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
-	    WHY("Malformed packet");
-	    serval_packetvisualise(stderr,"Malformed packet", packet,plen);
-	  }
-	}
-	// }
-      return;
+  struct sockaddr src_addr;
+  unsigned int addrlen=sizeof(src_addr);
+  
+  /* Read only one UDP packet per call to share resources more fairly, and also
+     enable stats to accurately count packets received */
+  int recvttl=1;
+  plen=recvwithttl(alarm->poll.fd,packet,sizeof(packet),
+		   &recvttl,&src_addr,&addrlen);
+  if (plen<1) { 
+    return;
+  } else {
+    /* We have a frame from this interface */
+    if (debug&DEBUG_PACKETRX) {
+      fflush(stdout);
+      serval_packetvisualise(stderr,"Read from real interface",
+			     packet,plen);
+      fflush(stderr);
     }
-
+    if (debug&DEBUG_OVERLAYINTERFACES)DEBUGF("Received %d bytes on interface %s\n",plen,interface->name);
+    
+    if (packetOk(interface,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
+      WHY("Malformed packet");
+      serval_packetvisualise(stderr,"Malformed packet", packet,plen);
+    }
+  }
   return;
 }
 
-void overlay_dummy_poll()
+void overlay_dummy_poll(struct sched_ent *alarm)
 {
-  int i;
-
+  overlay_interface *interface = (overlay_interface *)alarm;
   /* Grab packets, unpackage and dispatch frames to consumers */
   /* XXX Okay, so how are we managing out-of-process consumers?
      They need some way to register their interest in listening to a port.
   */
   unsigned char packet[16384];
   int plen=0;
-  int c[OVERLAY_MAX_INTERFACES];
-  int count=1;
-  int dummys=0;
+  struct sockaddr src_addr;
+  unsigned int addrlen=sizeof(src_addr);
+  unsigned char transaction_id[8];	  
 
-  /* Check for input on any dummy interfaces that are attached to ordinary
-     files.  We have to do it this way, because poll() says that ordinary
-     files are always ready for reading, even if at EOF.
-
-     Also, make sure we don't spend too much time here */
-  int now = overlay_gettime_ms();
-  while(count>0)
+  /* Read from dummy interface file */
+  long long length=lseek(alarm->poll.fd,0,SEEK_END);
+  if (interface->offset>=length)
     {
-      count=0;
-      for(i=0;i<overlay_interface_count;i++)
-	{
-	  struct sockaddr src_addr;
-	  unsigned int addrlen=sizeof(src_addr);
-	  unsigned char transaction_id[8];	  
-
-	  if (overlay_interfaces[i].fileP) {
-	    dummys++;
-	    /* Read from dummy interface file */
-	    overlay_last_interface_number=i;
-	    long long length=lseek(overlay_interfaces[i].fd,0,SEEK_END);
-	    if (overlay_interfaces[i].offset>=length)
-	      {
-		if (debug&DEBUG_OVERLAYINTERFACES) 		  
-		  fprintf(stderr,"At end of input on dummy interface #%d\n",i);
-	      }
-	    else
-	      {
-		lseek(overlay_interfaces[i].fd,overlay_interfaces[i].offset,SEEK_SET);
-		if (debug&DEBUG_OVERLAYINTERFACES) 
-		  fprintf(stderr,"Reading from interface #%d log at offset %d, end of file at %lld.\n",i,
-			  overlay_interfaces[i].offset,length);
-		if (read(overlay_interfaces[i].fd,&packet[0],2048)==2048)
-		  {
-		    overlay_interfaces[i].offset+=2048;
-		    plen=2048-128;		    
-		    plen=packet[110]+(packet[111]<<8);
-		    if (plen>(2048-128)) plen=-1;
-		    if (debug&DEBUG_PACKETRX) {
-		      fflush(stdout);
-		      serval_packetvisualise(stderr,
-					     "Read from dummy interface",
-					     &packet[128],plen);
-		      fflush(stderr); 
-		    }
-		    bzero(&transaction_id[0],8);
-		    bzero(&src_addr,sizeof(src_addr));
-		    if ((plen>=0)&&(packet[0]==0x01)&&!(packet[1]|packet[2]|packet[3])) {
-		      { if (packetOk(i,&packet[128],plen,transaction_id,
-				     -1 /* fake TTL */,
-				     &src_addr,addrlen,1)) 
-			  WHY("Malformed or unsupported packet from dummy interface (packetOK() failed)"); } }
-		    else WHY("Invalid packet version in dummy interface");
-		  }
-		else { 
-		  if (debug&DEBUG_IO) fprintf(stderr,"Read NOTHING from dummy interface\n");
-		  c[i]=0; count--; 
-		}
-	      }
-	  } else {
-	  }
-	}
-      /* Don't sit here forever, or else we will never send any packets */
-      if (overlay_gettime_ms()>(now+10)) break;
+      if (debug&DEBUG_OVERLAYINTERFACES) 		  
+	DEBUGF("At end of input on dummy interface %s\n",interface->name);
     }
-
-  /* Stop watching dummy nets if there are none active */
-  if (!dummys) fd_setalarm(overlay_dummy_poll,0,0);
+  else
+    {
+      lseek(alarm->poll.fd,interface->offset,SEEK_SET);
+      if (debug&DEBUG_OVERLAYINTERFACES) 
+	DEBUGF("Reading from interface %s log at offset %d, end of file at %lld.\n",interface->name,
+		interface->offset,length);
+      if (read(alarm->poll.fd,&packet[0],2048)==2048)
+	{
+	  interface->offset+=2048;
+	  plen=2048-128;		    
+	  plen=packet[110]+(packet[111]<<8);
+	  if (plen>(2048-128)) plen=-1;
+	  if (debug&DEBUG_PACKETRX) {
+	    fflush(stdout);
+	    serval_packetvisualise(stderr,
+				   "Read from dummy interface",
+				   &packet[128],plen);
+	    fflush(stderr); 
+	  }
+	  bzero(&transaction_id[0],8);
+	  bzero(&src_addr,sizeof(src_addr));
+	  if ((plen>=0)&&(packet[0]==0x01)&&!(packet[1]|packet[2]|packet[3])) {
+	    { if (packetOk(interface,&packet[128],plen,transaction_id,
+			   -1 /* fake TTL */,
+			   &src_addr,addrlen,1)) 
+		WHY("Malformed or unsupported packet from dummy interface (packetOK() failed)"); } }
+	  else WHY("Invalid packet version in dummy interface");
+	}
+      else { 
+	if (debug&DEBUG_IO) fprintf(stderr,"Read NOTHING from dummy interface\n");
+      }
+    }
+  
+  alarm->alarm = overlay_gettime_ms()+10;
+  schedule(alarm);
 
   return ;
 }
@@ -509,7 +479,7 @@ int overlay_broadcast_ensemble(int interface_number,
 
       bzero(&buf[128+len],2048-(128+len));
       bcopy(bytes,&buf[128],len);
-      if (write(overlay_interfaces[interface_number].fd,buf,2048)!=2048)
+      if (write(overlay_interfaces[interface_number].alarm.poll.fd,buf,2048)!=2048)
 	{
 	  WHY_perror("write");
 	  return WHY("write() failed");
@@ -519,7 +489,8 @@ int overlay_broadcast_ensemble(int interface_number,
     }
   else
     {
-      if(sendto(overlay_interfaces[interface_number].fd, bytes, len, 0, (struct sockaddr *)&s, sizeof(struct sockaddr_in)) != len)
+      if(sendto(overlay_interfaces[interface_number].alarm.poll.fd, 
+		bytes, len, 0, (struct sockaddr *)&s, sizeof(struct sockaddr_in)) != len)
 	{
 	  /* Failed to send */
 	  WHY_perror("sendto(c)");
@@ -593,8 +564,9 @@ overlay_interface_register(char *name,
 	      overlay_interfaces[i].broadcast_address.sin_addr.s_addr,
 	      local.sin_addr.s_addr,
 	      broadcast.sin_addr.s_addr);
-	fd_teardown(overlay_interfaces[i].fd);
-	overlay_interfaces[i].fd = -1;
+	unwatch(&overlay_interfaces[i].alarm);
+	close(overlay_interfaces[i].alarm.poll.fd);
+	overlay_interfaces[i].alarm.poll.fd = -1;
 	if (overlay_interface_init_socket(i, local, broadcast))
 	  INFOF("Could not reinitialise changed interface %s", name);
       }
@@ -610,7 +582,7 @@ overlay_interface_register(char *name,
   return 0;
 }
   
-void overlay_interface_discover(void) {
+void overlay_interface_discover(struct sched_ent *alarm){
   int				no_route, i;
   struct interface_rules	*r;
   struct sockaddr_in		dummyaddr;
@@ -664,6 +636,8 @@ void overlay_interface_discover(void) {
     FATAL("Unable to get any interface information");
   }
   
+  alarm->alarm = overlay_gettime_ms()+5000;
+  schedule(alarm);
   return;
 }
 
@@ -866,7 +840,7 @@ int overlay_tick_interface(int i, long long now)
 
   /* Add advertisements for ROUTES not Rhizome bundles.
      Rhizome bundle advertisements are lower priority */
-  overlay_route_add_advertisements(i,e);
+  overlay_route_add_advertisements(e);
   
   ob_limitsize(e,overlay_interfaces[i].mtu);
 
@@ -971,9 +945,7 @@ int overlay_tick_interface(int i, long long now)
   }
 }
 
-
-
-void overlay_check_ticks(void) {
+void overlay_check_ticks(struct sched_ent *alarm) {
   /* Check if any interface(s) are due for a tick */
   int i;
   
@@ -1000,16 +972,17 @@ void overlay_check_ticks(void) {
     }
   
   /* Update interval until next tick */
-  fd_setalarm(overlay_check_ticks,overlay_time_until_next_tick(),500);
+  alarm->alarm = overlay_next_tick();
+  schedule(alarm);
 
   return;
 }
 
-long long overlay_time_until_next_tick()
+long long overlay_next_tick()
 {
   /* By default only tick once per day */
-  long long nexttick=86400*1000;
   long long now=overlay_gettime_ms();
+  long long nexttick=86400*1000;
 
   int i;
   if (debug&DEBUG_VERBOSE_IO)fprintf(stderr,"Tick-check on %d interfaces at %lldms\n",overlay_interface_count,now);
@@ -1032,7 +1005,7 @@ long long overlay_time_until_next_tick()
     }
 
   if (0) WHYF("Next tick required in %lldms",nexttick);
-  return nexttick;
+  return now + nexttick;
 }
 
 long long parse_quantity(char *q)

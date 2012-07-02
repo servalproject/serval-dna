@@ -329,10 +329,10 @@ int overlay_abbreviate_address(unsigned char *in,unsigned char *out,int *ofs)
 
 }
 
-int overlay_abbreviate_expand_address(int interface,unsigned char *in,int *inofs,unsigned char *out,int *ofs)
+int overlay_abbreviate_expand_address(unsigned char *in,int *inofs,unsigned char *out,int *ofs)
 {
   int bytes=0,r;
-  if (debug&DEBUG_OVERLAYABBREVIATIONS) fprintf(stderr,"Address first byte/abbreviation code=%02x (input offset=%d)\n",in[*inofs],*inofs);
+  if (debug&DEBUG_OVERLAYABBREVIATIONS) DEBUGF("Address first byte/abbreviation code=%02x (input offset=%d)\n",in[*inofs],*inofs);
   switch(in[*inofs])
     {
     case OA_CODE_02: case OA_CODE_04: case OA_CODE_0C:
@@ -345,14 +345,14 @@ int overlay_abbreviate_expand_address(int interface,unsigned char *in,int *inofs
 			selfannounce in this packet.  Naturally it cannot be 
 			used to encode the sender's address there ;) */
       (*inofs)++;
-      if (debug&DEBUG_OVERLAYABBREVIATIONS) fprintf(stderr,"Resolving OA_CODE_SELF.\n");
+      if (debug&DEBUG_OVERLAYABBREVIATIONS) DEBUGF("Resolving OA_CODE_SELF.\n");
       if (overlay_abbreviate_current_sender_set) {
 	bcopy(&overlay_abbreviate_current_sender.b[0],&out[*ofs],SID_SIZE);
 	overlay_abbreviate_set_most_recent_address(&out[*ofs]);
 	(*ofs)+=SID_SIZE;
 	return OA_RESOLVED;
       } else {
-	if (debug&DEBUG_OVERLAYABBREVIATIONS) fprintf(stderr,"Cannot resolve OA_CODE_SELF until we can resolve sender's address.\n");
+	if (debug&DEBUG_OVERLAYABBREVIATIONS) DEBUGF("Cannot resolve OA_CODE_SELF until we can resolve sender's address.\n");
 	return OA_UNINITIALISED;
       }
     case OA_CODE_INDEX: /* single byte index look up */

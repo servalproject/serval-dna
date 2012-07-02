@@ -24,6 +24,7 @@ SRCS=	main.c \
 	overlay_payload.c \
 	overlay_route.c \
 	packetformats.c \
+	performance_timing.c \
 	peers.c \
 	randombytes.c \
 	responses.c \

@@ -26,7 +26,7 @@ extern int sigIoFlag;
 
 
 typedef struct rhizome_file_fetch_record {
-  int socket; /* if non-zero this is the socket to read from */
+  struct sched_ent alarm;
   rhizome_manifest *manifest;
   char fileid[RHIZOME_FILEHASH_STRLEN + 1];
   FILE *file;
@@ -39,7 +39,6 @@ typedef struct rhizome_file_fetch_record {
   long long file_ofs;
 
   int state;
-  int last_action;
   
 #define RHIZOME_FETCH_CONNECTING 1
 #define RHIZOME_FETCH_SENDINGHTTPREQUEST 2
@@ -506,7 +505,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
   RETURN(0);
 }
 
-void rhizome_enqueue_suggestions()
+void rhizome_enqueue_suggestions(struct sched_ent *alarm)
 {
   int i;
   for(i=0;i<candidate_count;i++)
@@ -528,7 +527,8 @@ void rhizome_enqueue_suggestions()
     bcopy(&candidates[i],&candidates[0],bytes);
     candidate_count-=i;
   }
-
+  alarm->alarm = overlay_gettime_ms() + 3000;
+  schedule(alarm);
   return;
 }
 
@@ -651,7 +651,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	      *q=&file_fetch_queue[rhizome_file_fetch_queue_count];
 	    q->manifest = m;
 	    *manifest_kept = 1;
-	    q->socket=sock;
+	    q->alarm.poll.fd=sock;
 	    strncpy(q->fileid, m->fileHexHash, RHIZOME_FILEHASH_STRLEN + 1);
 	    snprintf(q->request,1024,"GET /rhizome/file/%s HTTP/1.0\r\n\r\n",
 		     q->fileid);
@@ -660,9 +660,8 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	    q->state=RHIZOME_FETCH_CONNECTING;
 	    q->file_len=-1;
 	    q->file_ofs=0;
-	    q->last_action=time(0);
+	    
 	    /* XXX Don't forget to implement resume */
-#define RHIZOME_IDLE_TIMEOUT 10
 	    /* XXX We should stream file straight into the database */
 	    const char *id = rhizome_manifest_get(q->manifest, "id", NULL, 0);
 	    if (id == NULL) {
@@ -686,8 +685,13 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	      return -1;
 	    }
 	    /* Watch for activity on the socket */
-	    fd_watch(q->socket,rhizome_fetch_poll,POLLIN|POLLOUT);
-	    fd_setalarm(rhizome_check_connections,50,500);
+	    q->alarm.function=rhizome_fetch_poll;
+	    q->alarm.stats.name="rhizome_fetch_poll";
+	    q->alarm.poll.events=POLLIN|POLLOUT;
+	    watch(&q->alarm);
+	    /* And schedule a timeout alarm */
+	    q->alarm.alarm=overlay_gettime_ms() + RHIZOME_IDLE_TIMEOUT;
+	    schedule(&q->alarm);
 
 	    rhizome_file_fetch_queue_count++;
 	    if (1||debug&DEBUG_RHIZOME) DEBUGF("Queued file for fetching into %s (%d in queue)",
@@ -718,21 +722,19 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
   return 0;
 }
 
-int rhizome_fetch_close(int i){
+int rhizome_fetch_close(rhizome_file_fetch_record *q){
   /* Free ephemeral data */
-  if (file_fetch_queue[i].file) fclose(file_fetch_queue[i].file);
-  file_fetch_queue[i].file=NULL;
-  if (file_fetch_queue[i].manifest) 
-    rhizome_manifest_free(file_fetch_queue[i].manifest);
-  file_fetch_queue[i].manifest=NULL;
+  if (q->file) fclose(q->file);
+  q->file=NULL;
+  if (q->manifest) 
+    rhizome_manifest_free(q->manifest);
+  q->manifest=NULL;
   
   /* close socket and stop watching it */
-  fd_teardown(file_fetch_queue[i].socket);
-  
-  /* reshuffle higher numbered slot down if required */
-  if (i<(rhizome_file_fetch_queue_count-1))
-    bcopy(&file_fetch_queue[rhizome_file_fetch_queue_count-1],
-	  &file_fetch_queue[i],sizeof(rhizome_file_fetch_record));
+  unwatch(&q->alarm);
+  unschedule(&q->alarm);
+  close(q->alarm.poll.fd);
+  q->alarm.poll.fd=-1;
   
   /* Reduce count of open connections */	
   rhizome_file_fetch_queue_count--;
@@ -740,14 +742,19 @@ int rhizome_fetch_close(int i){
   if (debug&DEBUG_RHIZOME) 
     DEBUGF("Released rhizome fetch slot (%d used)",
 	   rhizome_file_fetch_queue_count);
+  return 0;
 }
 
-void rhizome_fetch_write(rhizome_file_fetch_record *q, int i){
+void rhizome_fetch_write(rhizome_file_fetch_record *q){
   int bytes;
-  bytes=write(q->socket,&q->request[q->request_ofs],
+  bytes=write(q->alarm.poll.fd,&q->request[q->request_ofs],
 	      q->request_len-q->request_ofs);
   if (bytes>0) {
-    q->last_action=time(0);
+    
+    // reset timeout
+    unschedule(&q->alarm);
+    q->alarm.alarm=overlay_gettime_ms() + RHIZOME_IDLE_TIMEOUT;
+    schedule(&q->alarm);
     q->request_ofs+=bytes;
     
     if (q->request_ofs>=q->request_len) {
@@ -755,22 +762,31 @@ void rhizome_fetch_write(rhizome_file_fetch_record *q, int i){
        */
       q->request_len=0; q->request_ofs=0;
       q->state=RHIZOME_FETCH_RXHTTPHEADERS;
-      fd_watch(q->socket,rhizome_fetch_poll,POLLIN);
+      q->alarm.poll.events=POLLIN;
+      watch(&q->alarm);
     }else if(q->state==RHIZOME_FETCH_CONNECTING)
       q->state = RHIZOME_FETCH_SENDINGHTTPREQUEST;
   } else if (errno!=EAGAIN) {
     WHY("Got error while sending HTTP request.  Closing.");
-    rhizome_fetch_close(i);
+    rhizome_fetch_close(q);
   }
 }
 
-void rhizome_fetch_handle(rhizome_file_fetch_record *q, int i)
+void rhizome_fetch_poll(struct sched_ent *alarm)
 {
+  rhizome_file_fetch_record *q=(rhizome_file_fetch_record *)alarm;
+  
+  if (alarm->poll.revents==0){
+    // timeout, close the socket
+    rhizome_fetch_close(q);
+    return;
+  }
+  
   switch(q->state) 
     {
     case RHIZOME_FETCH_CONNECTING:
     case RHIZOME_FETCH_SENDINGHTTPREQUEST:
-      rhizome_fetch_write(q, i);
+      rhizome_fetch_write(q);
       break;
     case RHIZOME_FETCH_RXFILE:
       /* Keep reading until we have the promised amount of data */
@@ -780,25 +796,29 @@ void rhizome_fetch_handle(rhizome_file_fetch_record *q, int i)
       errno=0;
       char buffer[8192];
 
-      int bytes=read(q->socket,buffer,8192);
+      int bytes=read(q->alarm.poll.fd,buffer,8192);
       
       /* If we got some data, see if we have found the end of the HTTP request */
       if (bytes>0) {
-	q->last_action=time(0);
+	
+	// reset timeout
+	unschedule(&q->alarm);
+	q->alarm.alarm=overlay_gettime_ms() + RHIZOME_IDLE_TIMEOUT;
+	schedule(&q->alarm);
 
 	if (bytes>(q->file_len-q->file_ofs))
 	  bytes=q->file_len-q->file_ofs;
 	if (fwrite(buffer,bytes,1,q->file)!=1)
 	  {
 	    if (debug&DEBUG_RHIZOME) DEBUGF("Failed writing %d bytes to file. @ offset %d",bytes,q->file_ofs);
-	    rhizome_fetch_close(i);
+	    rhizome_fetch_close(q);
 	    return;
 	  }
 	q->file_ofs+=bytes;
 	
       } else if (bytes==0) {
 	WHY("Got zero bytes, assume socket dead.");
-	rhizome_fetch_close(i);
+	rhizome_fetch_close(q);
 	return;
       }
       if (q->file_ofs>=q->file_len)
@@ -833,7 +853,7 @@ void rhizome_fetch_handle(rhizome_file_fetch_record *q, int i)
 	    rhizome_manifest_free(q->manifest);
 	    q->manifest=NULL;
 	  }
-	  rhizome_fetch_close(i);
+	  rhizome_fetch_close(q);
 	  return;
 	}
       break;
@@ -842,14 +862,19 @@ void rhizome_fetch_handle(rhizome_file_fetch_record *q, int i)
       sigPipeFlag=0;
       
       errno=0;
-      bytes=read(q->socket,&q->request[q->request_len],
+      bytes=read(q->alarm.poll.fd,&q->request[q->request_len],
 		 1024-q->request_len-1);
 
       /* If we got some data, see if we have found the end of the HTTP request */
       if (bytes>0) {
 	int lfcount=0;
 	int i=q->request_len-160;
-	q->last_action=time(0);
+	
+	// reset timeout
+	unschedule(&q->alarm);
+	q->alarm.alarm=overlay_gettime_ms() + RHIZOME_IDLE_TIMEOUT;
+	schedule(&q->alarm);
+	
 	if (i<0) i=0;
 	q->request_len+=bytes;
 	if (q->request_len<1024)
@@ -881,13 +906,13 @@ void rhizome_fetch_handle(rhizome_file_fetch_record *q, int i)
 	  char *s=strstr(q->request,"HTTP/1.0 ");
 	  if (!s) { 
 	    if (debug&DEBUG_RHIZOME) DEBUGF("HTTP response lacked HTTP/1.0 response code.");
-	    rhizome_fetch_close(i);
+	    rhizome_fetch_close(q);
 	    return;
 	  }
 	  int http_response_code=strtoll(&s[9],NULL,10);
 	  if (http_response_code!=200) {
 	    if (debug&DEBUG_RHIZOME) DEBUGF("Rhizome web server returned %d != 200 OK",http_response_code);
-	    rhizome_fetch_close(i);
+	    rhizome_fetch_close(q);
 	    return;
 	  }
 	  /* Get content length */
@@ -895,7 +920,7 @@ void rhizome_fetch_handle(rhizome_file_fetch_record *q, int i)
 	  if (!s) {
 	    if (debug&DEBUG_RHIZOME) 
 	      DEBUGF("Missing Content-Length: header.");
-	    rhizome_fetch_close(i);
+	    rhizome_fetch_close(q);
 	    return;
 	  }
 	  q->file_len=strtoll(&s[16],NULL,10);
@@ -903,7 +928,7 @@ void rhizome_fetch_handle(rhizome_file_fetch_record *q, int i)
 	  if (q->file_len<0) {
 	    if (debug&DEBUG_RHIZOME) 
 	      DEBUGF("Illegal file size (%d).",q->file_len);
-	    rhizome_fetch_close(i);
+	    rhizome_fetch_close(q);
 	    return;
 	  }
 
@@ -918,7 +943,7 @@ void rhizome_fetch_handle(rhizome_file_fetch_record *q, int i)
 		if (debug&DEBUG_RHIZOME) 
 		  DEBUGF("Failed writing initial %d bytes to file.",
 			  fileRxBytes);	       
-		rhizome_fetch_close(i);
+		rhizome_fetch_close(q);
 		return;
 	      }
 	  q->file_ofs=fileRxBytes;
@@ -933,48 +958,15 @@ void rhizome_fetch_handle(rhizome_file_fetch_record *q, int i)
 	/* broken pipe, so close connection */
 	if (debug&DEBUG_RHIZOME) 
 	  DEBUG("Closing rhizome fetch connection due to sigpipe");
-	rhizome_fetch_close(i);
+	rhizome_fetch_close(q);
 	return;
       }	 
       break;
     default:
       if (debug&DEBUG_RHIZOME) 
 	DEBUG("Closing rhizome fetch connection due to illegal/unimplemented state.");
-      rhizome_fetch_close(i);
+      rhizome_fetch_close(q);
       return;
     }
   return;
 }
-
-void rhizome_fetch_poll(int fd)
-{
-  int rn;
-  for(rn=0;rn<rhizome_file_fetch_queue_count;rn++)
-  {
-    int bytes;
-    rhizome_file_fetch_record *q=&file_fetch_queue[rn];
-    
-    if (q->socket==fd){
-      rhizome_fetch_handle(q, rn);
-      return;
-    }
-  }  
-}
-
-int rhizome_check_connections(){
-  int i;
-  for(i=rhizome_file_fetch_queue_count-1;i>=0;i--)
-  {
-    if (time(0) - file_fetch_queue[i].last_action > RHIZOME_IDLE_TIMEOUT) {
-      if (debug&DEBUG_RHIZOME) 
-	DEBUG("Closing connection due to inactivity timeout.");
-      rhizome_fetch_close(i);
-      continue;
-    }
-  }
-  
-  if (rhizome_file_fetch_queue_count==0)
-    fd_setalarm(rhizome_check_connections,0,0);
-}
-
-
