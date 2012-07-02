@@ -61,8 +61,8 @@ int monitor_process_data(struct monitor_context *c);
 static void monitor_new_client(int s);
 
 struct sched_ent named_socket;
-struct callback_stats named_stats;
-struct callback_stats client_stats;
+struct profile_total named_stats;
+struct profile_total client_stats;
 
 int monitor_setup_sockets()
 {

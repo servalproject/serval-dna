@@ -47,7 +47,7 @@ typedef struct rhizome_file_fetch_record {
   
 } rhizome_file_fetch_record;
 
-struct callback_stats fetch_stats;
+struct profile_total fetch_stats;
 
 /* List of queued transfers */
 #define MAX_QUEUED_FILES 4

@@ -114,7 +114,7 @@ int overlayServerMode()
 
 #define SCHEDULE(X, Y) \
 struct sched_ent _sched_##X; \
-struct callback_stats _stats_##X; \
+struct profile_total _stats_##X; \
 bzero(&_sched_##X, sizeof(struct sched_ent)); \
 _sched_##X.stats = &_stats_##X; \
 _sched_##X.function=X;\

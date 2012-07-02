@@ -41,8 +41,8 @@ struct interface_rules {
 
 struct interface_rules *interface_filter=NULL;
 
-struct callback_stats interface_poll_stats;
-struct callback_stats dummy_poll_stats;
+struct profile_total interface_poll_stats;
+struct profile_total dummy_poll_stats;
 
 unsigned int overlay_sequence_number=0;
 

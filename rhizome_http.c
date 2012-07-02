@@ -83,9 +83,9 @@ int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, c
 #define RHIZOME_SERVER_MAX_LIVE_REQUESTS 32
 
 struct sched_ent server_alarm;
-struct callback_stats server_stats;
+struct profile_total server_stats;
 
-struct callback_stats connection_stats;
+struct profile_total connection_stats;
 
 /*
   HTTP server and client code for rhizome transfers.

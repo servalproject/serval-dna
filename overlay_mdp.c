@@ -21,7 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 struct sched_ent mdp_abstract;
 struct sched_ent mdp_named;
-struct callback_stats mdp_stats;
+struct profile_total mdp_stats;
 
 int overlay_mdp_setup_sockets()
 {

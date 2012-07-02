@@ -19,23 +19,23 @@
 
 #include "serval.h"
 
-struct callback_stats *stats_head=NULL;
+struct profile_total *stats_head=NULL;
 struct call_stats *current_call=NULL;
 
-void fd_clearstat(struct callback_stats *s){
+void fd_clearstat(struct profile_total *s){
   s->max_time = 0;
   s->total_time = 0;
   s->calls = 0;
 }
 
-void fd_update_stats(struct callback_stats *s,long long elapsed)
+void fd_update_stats(struct profile_total *s,long long elapsed)
 {
   s->total_time+=elapsed;
   if (elapsed>s->max_time) s->max_time=elapsed;
   s->calls++;
 }
 
-int fd_tallystats(struct callback_stats *total,struct callback_stats *a)
+int fd_tallystats(struct profile_total *total,struct profile_total *a)
 {
   total->total_time+=a->total_time;
   total->calls+=a->calls;
@@ -43,7 +43,7 @@ int fd_tallystats(struct callback_stats *total,struct callback_stats *a)
   return 0;
 }
 
-int fd_showstat(struct callback_stats *total, struct callback_stats *a)
+int fd_showstat(struct profile_total *total, struct profile_total *a)
 {
   INFOF("%lldms (%2.1f%%) in %d calls (max %lldms, avg %.1fms) : %s",
        a->total_time,a->total_time*100.0/total->total_time,
@@ -54,14 +54,14 @@ int fd_showstat(struct callback_stats *total, struct callback_stats *a)
 }
 
 // sort the list of call times
-struct callback_stats *sort(struct callback_stats *list){
-  struct callback_stats *first = list;
+struct profile_total *sort(struct profile_total *list){
+  struct profile_total *first = list;
   // the left hand list will contain all items that took longer than the first item
-  struct callback_stats *left_head = NULL;
-  struct callback_stats *left_tail = NULL;
+  struct profile_total *left_head = NULL;
+  struct profile_total *left_tail = NULL;
   // the right hand list will contain all items that took less time than the first item
-  struct callback_stats *right_head = NULL;
-  struct callback_stats *right_tail = NULL;
+  struct profile_total *right_head = NULL;
+  struct profile_total *right_tail = NULL;
   
   // most of the cpu time is likely to be the same offenders
   // don't sort a list that's already sorted
@@ -130,7 +130,7 @@ struct callback_stats *sort(struct callback_stats *list){
 
 int fd_clearstats()
 {
-  struct callback_stats *stats = stats_head;
+  struct profile_total *stats = stats_head;
   while(stats!=NULL){
     fd_clearstat(stats);
     stats = stats->_next;
@@ -140,11 +140,11 @@ int fd_clearstats()
 
 int fd_showstats()
 {
-  struct callback_stats total={NULL, 0, "Total", 0,0,0};
+  struct profile_total total={NULL, 0, "Total", 0,0,0};
   
   stats_head = sort(stats_head);
   
-  struct callback_stats *stats = stats_head;
+  struct profile_total *stats = stats_head;
   while(stats!=NULL){
     /* Get total time spent doing everything */
     fd_tallystats(&total,stats);
@@ -182,7 +182,7 @@ int fd_func_enter(struct call_stats *this_call)
   return 0;
 }
 
-int fd_func_exit(struct call_stats *this_call, struct callback_stats *aggregate_stats)
+int fd_func_exit(struct call_stats *this_call, struct profile_total *aggregate_stats)
 {
   if (current_call != this_call)
     WHYF("stack mismatch, exited through %s()",aggregate_stats->name);

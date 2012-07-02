@@ -479,8 +479,8 @@ struct call_stats{
   struct call_stats *prev;
 };
 
-struct callback_stats {
-  struct callback_stats *_next;
+struct profile_total {
+  struct profile_total *_next;
   int _initialised;
   const char *name;
   long long max_time;
@@ -500,7 +500,7 @@ struct sched_ent{
   void *context;
   struct pollfd poll;
   long long alarm;
-  struct callback_stats *stats;
+  struct profile_total *stats;
   int _poll_index;
 };
 
@@ -1575,10 +1575,10 @@ void rhizome_server_poll(struct sched_ent *alarm);
 
 /* function timing routines */
 int fd_checkalarms();
-int fd_func_exit(struct call_stats *this_call, struct callback_stats *call_stats);
+int fd_func_exit(struct call_stats *this_call, struct profile_total *call_stats);
 int fd_func_enter(struct call_stats *this_call);
 
-#define IN() static struct callback_stats _aggregate_stats={NULL,0,__FUNCTION__,0,0,0}; struct call_stats _this_call; fd_func_enter(&_this_call);
+#define IN() static struct profile_total _aggregate_stats={NULL,0,__FUNCTION__,0,0,0}; struct call_stats _this_call; fd_func_enter(&_this_call);
 #define OUT() fd_func_exit(&_this_call, &_aggregate_stats);
 #define RETURN(X) { OUT() return(X); }
 

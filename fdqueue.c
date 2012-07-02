@@ -25,7 +25,7 @@ struct pollfd fds[MAX_WATCHED_FDS];
 int fdcount=0;
 struct sched_ent *fd_callbacks[MAX_WATCHED_FDS];
 struct sched_ent *next_alarm=NULL;
-struct callback_stats poll_stats={NULL,0,"Idle (in poll)",0,0,0};
+struct profile_total poll_stats={NULL,0,"Idle (in poll)",0,0,0};
 
 void list_alarms(){
   long long now=overlay_gettime_ms();
@@ -129,7 +129,7 @@ int unwatch(struct sched_ent *alarm){
 
 void call_alarm(struct sched_ent *alarm, int revents){
   struct call_stats call_stats;
-  struct callback_stats *stats = alarm->stats;
+  struct profile_total *stats = alarm->stats;
   
   if (stats)
     fd_func_enter(&call_stats);
