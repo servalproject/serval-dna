@@ -34,12 +34,16 @@ void list_alarms(){
   
   INFO("Alarms;");
   while(alarm){
-    INFOF("%s in %lldms", alarm->stats.name, alarm->alarm - now);
+    INFOF("%s in %lldms", 
+	  (alarm->stats?alarm->stats->name:"Unnamed"), 
+	  alarm->alarm - now);
     alarm = alarm->_next;
   }
   INFO("File handles;");
   for (i=0;i<fdcount;i++)
-    INFOF("%s watching #%d", fd_callbacks[i]->stats.name, fds[i].fd);
+    INFOF("%s watching #%d", 
+	  (fd_callbacks[i]->stats?fd_callbacks[i]->stats->name:"Unnamed"), 
+	  fds[i].fd);
 }
 
 // add an alarm to the list of scheduled function calls.
@@ -72,12 +76,15 @@ int schedule(struct sched_ent *alarm){
 int unschedule(struct sched_ent *alarm){
   struct sched_ent *prev = alarm->_prev;
   struct sched_ent *next = alarm->_next;
-  if (prev!=NULL)
+  
+  if (prev)
     prev->_next = next;
   else if(next_alarm==alarm)
     next_alarm = next;
-  if (next!=NULL)
+  
+  if (next)
     next->_prev = prev;
+  
   alarm->_prev = NULL;
   alarm->_next = NULL;
   return 0;
@@ -87,9 +94,9 @@ int unschedule(struct sched_ent *alarm){
 int watch(struct sched_ent *alarm){
   if (alarm->_poll_index>=0 && fd_callbacks[alarm->_poll_index]==alarm){
     // updating event flags
-    INFOF("Updating watch %s, #%d for %d", alarm->stats.name, alarm->poll.fd, alarm->poll.events);
+    INFOF("Updating watch %s, #%d for %d", (alarm->stats?alarm->stats->name:"Unnamed"), alarm->poll.fd, alarm->poll.events);
   }else{
-    INFOF("Adding watch %s, #%d for %d", alarm->stats.name, alarm->poll.fd, alarm->poll.events);
+    INFOF("Adding watch %s, #%d for %d", (alarm->stats?alarm->stats->name:"Unnamed"), alarm->poll.fd, alarm->poll.events);
     if (fdcount>=MAX_WATCHED_FDS)
       return WHY("Too many file handles to watch");
     fd_callbacks[fdcount]=alarm;
@@ -116,18 +123,22 @@ int unwatch(struct sched_ent *alarm){
   fds[fdcount].fd=-1;
   fd_callbacks[fdcount]=NULL;
   alarm->_poll_index=-1;
-  INFOF("%s stopped watching #%d for %d", alarm->stats.name, alarm->poll.fd, alarm->poll.events);
+  INFOF("%s stopped watching #%d for %d", (alarm->stats?alarm->stats->name:"Unnamed"), alarm->poll.fd, alarm->poll.events);
   return 0;
 }
 
 void call_alarm(struct sched_ent *alarm, int revents){
   struct call_stats call_stats;
-  fd_func_enter(&call_stats);
+  struct callback_stats *stats = alarm->stats;
+  
+  if (stats)
+    fd_func_enter(&call_stats);
   
   alarm->poll.revents = revents;
   alarm->function(alarm);
   
-  fd_func_exit(&call_stats, &alarm->stats);
+  if (stats)
+    fd_func_exit(&call_stats, stats);
 }
 
 int fd_checkalarms()

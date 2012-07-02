@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 struct sched_ent mdp_abstract;
 struct sched_ent mdp_named;
+struct callback_stats mdp_stats;
 
 int overlay_mdp_setup_sockets()
 {
@@ -112,7 +113,8 @@ int overlay_mdp_setup_sockets()
 	WHY_perror("setsockopt");
       
       mdp_named.function = overlay_mdp_poll;
-      mdp_named.stats.name = "overlay_mdp_poll";
+      mdp_stats.name="overlay_mdp_poll";
+      mdp_named.stats = &mdp_stats;
       mdp_named.poll.events = POLLIN;
       watch(&mdp_named);
     }

@@ -47,6 +47,8 @@ typedef struct rhizome_file_fetch_record {
   
 } rhizome_file_fetch_record;
 
+struct callback_stats fetch_stats;
+
 /* List of queued transfers */
 #define MAX_QUEUED_FILES 4
 int rhizome_file_fetch_queue_count=0;
@@ -684,9 +686,11 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	      close(sock);
 	      return -1;
 	    }
+	    
 	    /* Watch for activity on the socket */
 	    q->alarm.function=rhizome_fetch_poll;
-	    q->alarm.stats.name="rhizome_fetch_poll";
+	    fetch_stats.name="rhizome_fetch_poll";
+	    q->alarm.stats=&fetch_stats;
 	    q->alarm.poll.events=POLLIN|POLLOUT;
 	    watch(&q->alarm);
 	    /* And schedule a timeout alarm */

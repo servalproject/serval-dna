@@ -500,7 +500,7 @@ struct sched_ent{
   void *context;
   struct pollfd poll;
   long long alarm;
-  struct callback_stats stats;
+  struct callback_stats *stats;
   int _poll_index;
 };
 

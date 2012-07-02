@@ -82,6 +82,10 @@ int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, c
 
 #define RHIZOME_SERVER_MAX_LIVE_REQUESTS 32
 
+struct sched_ent server_alarm;
+struct callback_stats server_stats;
+
+struct callback_stats connection_stats;
 
 /*
   HTTP server and client code for rhizome transfers.
@@ -115,7 +119,6 @@ unsigned char favicon_bytes[]={
 ,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 int favicon_len=318;
 
-struct sched_ent server_alarm;
 
 int rhizome_server_start()
 {
@@ -170,7 +173,8 @@ int rhizome_server_start()
 
   /* Add Rhizome HTTPd server to list of file descriptors to watch */
   server_alarm.function = rhizome_server_poll;
-  server_alarm.stats.name="rhizome_server_poll";
+  server_stats.name="rhizome_server_poll";
+  server_alarm.stats=&server_stats;
   server_alarm.poll.fd = rhizome_server_socket;
   server_alarm.poll.events = POLLIN;
   watch(&server_alarm);
@@ -228,8 +232,6 @@ void rhizome_client_poll(struct sched_ent *alarm)
 	  /* We have the request. Now parse it to see if we can respond to it */
 	  rhizome_server_parse_http_request(r);
 	}
-	
-	r->request_length+=bytes;
       } 
 
       if (sigPipeFlag||((bytes==0)&&(errno==0))) {
@@ -263,7 +265,8 @@ void rhizome_server_poll(struct sched_ent *alarm)
       /* We are now trying to read the HTTP request */
       request->request_type=RHIZOME_HTTP_REQUEST_RECEIVING;
       request->alarm.function = rhizome_client_poll;
-      request->alarm.stats.name="rhizome_client_poll";
+      connection_stats.name="rhizome_client_poll";
+      request->alarm.stats=&connection_stats;
       request->alarm.poll.fd=sock;
       request->alarm.poll.events=POLLIN;
       request->alarm.alarm = overlay_gettime_ms()+RHIZOME_IDLE_TIMEOUT;

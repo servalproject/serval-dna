@@ -191,16 +191,17 @@ int fd_func_exit(struct call_stats *this_call, struct callback_stats *aggregate_
   long long elapsed=now - this_call->enter_time;
   current_call = this_call->prev;
   
+  if (!aggregate_stats->_initialised){
+    aggregate_stats->_initialised=1;
+    aggregate_stats->_next = stats_head;
+    fd_clearstat(aggregate_stats);
+    stats_head = aggregate_stats;
+  }
+  
   if (current_call)
     current_call->child_time+=elapsed;
   
   fd_update_stats(aggregate_stats, (elapsed - this_call->child_time));
-  
-  if (!aggregate_stats->_initialised){
-    aggregate_stats->_initialised=1;
-    aggregate_stats->_next = stats_head;
-    stats_head = aggregate_stats;
-  }
   
   return 0;
 }

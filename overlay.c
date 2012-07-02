@@ -112,7 +112,15 @@ int overlayServerMode()
   /* Create structures to use 1MB of RAM for testing */
   overlay_route_init(1);
 
-#define SCHEDULE(X, Y) struct sched_ent _sched_##X; bzero(&_sched_##X, sizeof(struct sched_ent)); _sched_##X.function=X;_sched_##X.stats.name="" #X "";_sched_##X.alarm=overlay_gettime_ms()+Y; schedule(&_sched_##X);
+#define SCHEDULE(X, Y) \
+struct sched_ent _sched_##X; \
+struct callback_stats _stats_##X; \
+bzero(&_sched_##X, sizeof(struct sched_ent)); \
+_sched_##X.stats = &_stats_##X; \
+_sched_##X.function=X;\
+_stats_##X.name="" #X "";\
+_sched_##X.alarm=overlay_gettime_ms()+Y;\
+schedule(&_sched_##X);
   
   /* Periodically check for server shut down */
   SCHEDULE(server_shutdown_check, 0);

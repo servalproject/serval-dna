@@ -61,6 +61,9 @@ int monitor_process_data(struct monitor_context *c);
 static void monitor_new_client(int s);
 
 struct sched_ent named_socket;
+struct callback_stats named_stats;
+struct callback_stats client_stats;
+
 int monitor_setup_sockets()
 {
   struct sockaddr_un name;
@@ -117,7 +120,8 @@ int monitor_setup_sockets()
   if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) WHY("Monitor server socket setup");
 
   named_socket.function=monitor_poll;
-  named_socket.stats.name="monitor_poll";
+  named_stats.name="monitor_poll";
+  named_socket.stats=&named_stats;
   named_socket.poll.fd=sock;
   named_socket.poll.events=POLLIN;
   watch(&named_socket);
@@ -318,7 +322,8 @@ static void monitor_new_client(int s) {
   
   c = &monitor_sockets[monitor_socket_count++];
   c->alarm.function = monitor_client_poll;
-  c->alarm.stats.name="monitor_client_poll";
+  client_stats.name = "monitor_client_poll";
+  c->alarm.stats=&client_stats;
   c->alarm.poll.fd = s;
   c->alarm.poll.events=POLLIN;
   c->line_length = 0;

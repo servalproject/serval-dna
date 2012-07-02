@@ -41,6 +41,9 @@ struct interface_rules {
 
 struct interface_rules *interface_filter=NULL;
 
+struct callback_stats interface_poll_stats;
+struct callback_stats dummy_poll_stats;
+
 unsigned int overlay_sequence_number=0;
 
 long long overlay_next_tick();
@@ -234,7 +237,9 @@ overlay_interface_init_socket(int interface, struct sockaddr_in src_addr, struct
 
   I(alarm.poll.events)=POLLIN;
   I(alarm.function) = overlay_interface_poll;
-  I(alarm.stats.name)="overlay_interface_poll";
+  
+  interface_poll_stats.name="overlay_interface_poll";
+  I(alarm.stats)=&interface_poll_stats;
   watch(&I(alarm));
   
   return 0;
@@ -295,7 +300,8 @@ int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockadd
     // schedule an alarm for this interface
     I(alarm.function)=overlay_dummy_poll;
     I(alarm.alarm)=overlay_gettime_ms()+10;
-    I(alarm.stats.name)="overlay_dummy_poll";
+    dummy_poll_stats.name="overlay_dummy_poll";
+    I(alarm.stats)=&dummy_poll_stats;
     schedule(&I(alarm));
   } else {
     if (overlay_interface_init_socket(overlay_interface_count,src_addr,broadcast))
