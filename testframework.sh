@@ -399,14 +399,14 @@ escape_grep_extended() {
 #  - sets the $executed variable to a description of the command that was
 #    executed
 execute() {
-   echo -n "# execute "; _tfw_shellarg "$@"
+   tfw_log "# execute" $(_tfw_shellarg "$@")
    _tfw_getopts execute "$@"
    shift $_tfw_getopts_shift
    _tfw_execute "$@"
 }
 
 executeOk() {
-   echo -n "# executeOk "; _tfw_shellarg "$@"
+   tfw_log "# executeOk" $(_tfw_shellarg "$@")
    _tfw_getopts executeok "$@"
    _tfw_opt_exit_status=0
    _tfw_dump_on_fail --stderr
@@ -423,7 +423,7 @@ assert() {
    _tfw_getopts assert "$@"
    shift $_tfw_getopts_shift
    _tfw_assert "$@" || _tfw_failexit
-   echo -n "# assert "; _tfw_shellarg "$@"
+   tfw_log "# assert" $(_tfw_shellarg "$@")
    return 0
 }
 
@@ -433,7 +433,7 @@ assertExpr() {
    local awkexpr=$(_tfw_expr_to_awkexpr "$@")
    _tfw_message="${_tfw_message+$_tfw_message }($awkexpr)"
    _tfw_assert _tfw_eval_awkexpr "$awkexpr" || _tfw_failexit
-   echo -n "# assertExpr "; _tfw_shellarg "$awkexpr"
+   tfw_log "# assertExpr" $(_tfw_shellarg "$awkexpr")
    return 0
 }
 
@@ -464,8 +464,9 @@ fatal() {
 # will also do this, but tfw_log will work even in a context that stdout (fd 1)
 # is redirected.
 tfw_log() {
+   local ts=$(_tfw_timestamp)
    cat >&$_tfw_log_fd <<EOF
-$*
+${ts##* } $*
 EOF
 }
 
@@ -479,25 +480,25 @@ tfw_cat() {
    for file; do
       case $file in
       --stdout) 
-         echo "#--- ${header:-stdout of $executed} ---"
+         tfw_log "#--- ${header:-stdout of $executed} ---"
          cat $show_nonprinting $_tfw_tmp/stdout
-         echo "#---"
+         tfw_log "#---"
          header=
          show_nonprinting=
          ;;
       --stderr) 
-         echo "#--- ${header:-stderr of $executed} ---"
+         tfw_log "#--- ${header:-stderr of $executed} ---"
          cat $show_nonprinting $_tfw_tmp/stderr
-         echo "#---"
+         tfw_log "#---"
          header=
          show_nonprinting=
          ;;
       --header=*) header="${1#*=}";;
       -v|--show-nonprinting) show_nonprinting=-v;;
       *)
-         echo "#--- ${header:-$file} ---"
+         tfw_log "#--- ${header:-$file} ---"
          cat $show_nonprinting "$file"
-         echo "#---"
+         tfw_log "#---"
          header=
          show_nonprinting=
          ;;
@@ -510,7 +511,7 @@ assertExitStatus() {
    shift $_tfw_getopts_shift
    [ -z "$_tfw_message" ] && _tfw_message="exit status of $executed ($_tfw_exitStatus) $*"
    _tfw_assertExpr "$_tfw_exitStatus" "$@" || _tfw_failexit
-   echo "# assert $_tfw_message"
+   tfw_log "# assert $_tfw_message"
    return 0
 }
 
@@ -519,7 +520,7 @@ assertRealTime() {
    shift $_tfw_getopts_shift
    [ -z "$_tfw_message" ] && _tfw_message="real execution time of $executed ($realtime) $*"
    _tfw_assertExpr "$realtime" "$@" || _tfw_failexit
-   echo "# assert $_tfw_message"
+   tfw_log "# assert $_tfw_message"
    return 0
 }
 
@@ -624,7 +625,8 @@ _tfw_abspath() {
 }
 
 _tfw_timestamp() {
-   date '+%Y-%m-%d %H:%M:%S.%N'
+   local ts=$(date '+%Y-%m-%d %H:%M:%S.%N')
+   echo "${ts%[0-9][0-9][0-9][0-9][0-9][0-9]}"
 }
 
 _tfw_setup() {
@@ -645,42 +647,42 @@ _tfw_setup() {
    export TFWTMP=$_tfw_tmp/tmp
    mkdir $TFWTMP
    cd $TFWTMP
-   echo '# SETUP'
+   tfw_log '# SETUP'
    case `type -t setup_$_tfw_test_name` in
    function)
-      echo "# call setup_$_tfw_test_name()"
+      tfw_log "# call setup_$_tfw_test_name()"
       $_tfw_trace && set -x
       setup_$_tfw_test_name $_tfw_test_name
       set +x
       ;;
    *)
-      echo "# call setup($_tfw_test_name)"
+      tfw_log "# call setup($_tfw_test_name)"
       $_tfw_trace && set -x
       setup $_tfw_test_name
       set +x
       ;;
    esac
-   echo '# END SETUP'
+   tfw_log '# END SETUP'
 }
 
 _tfw_teardown() {
    _tfw_phase=teardown
-   echo '# TEARDOWN'
+   tfw_log '# TEARDOWN'
    case `type -t teardown_$_tfw_test_name` in
    function)
-      echo "# call teardown_$_tfw_test_name()"
+      tfw_log "# call teardown_$_tfw_test_name()"
       $_tfw_trace && set -x
       teardown_$_tfw_test_name
       set +x
       ;;
    *)
-      echo "# call teardown($_tfw_test_name)"
+      tfw_log "# call teardown($_tfw_test_name)"
       $_tfw_trace && set -x
       teardown $_tfw_test_name
       set +x
       ;;
    esac
-   echo '# END TEARDOWN'
+   tfw_log '# END TEARDOWN'
 }
 
 # Executes $_tfw_executable with the given arguments.

@@ -65,7 +65,7 @@ setup_servald_instances() {
    # Now make sure that they can see each other
    secs=1
    sleep $secs # Should be plenty of time
-   echo "Dummynet file after $secs seconds: "`ls -l $DUMMYNET`
+   tfw_log "# Dummynet file after $secs seconds: "`ls -l $DUMMYNET`
    set_instance +A
    executeOk_servald id peers
    assertStdoutLineCount '==' 1
