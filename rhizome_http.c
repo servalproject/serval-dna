@@ -96,12 +96,18 @@ static int rhizome_http_server_start()
     return WHY("Failed to start rhizome HTTP server");
   }
 
+  /* Starting at the default port, look for a free port to bind to. */
   struct sockaddr_in address;
   bzero((char *) &address, sizeof(address));
   address.sin_family = AF_INET;
   address.sin_addr.s_addr = INADDR_ANY;
-  address.sin_port = htons(RHIZOME_HTTP_PORT);
-  if (bind(rhizome_server_socket, (struct sockaddr *) &address, sizeof(address)) == -1) {
+  int port = RHIZOME_HTTP_PORT;
+  int result = -1;
+  do {
+    address.sin_port = htons(port);
+    result = bind(rhizome_server_socket, (struct sockaddr *) &address, sizeof(address));
+  } while (result == -1 && errno == EADDRINUSE && ++port <= RHIZOME_HTTP_PORT_MAX);
+  if (result == -1) {
     WHY_perror("bind");
     close(rhizome_server_socket);
     rhizome_server_socket = -1;
@@ -122,6 +128,7 @@ static int rhizome_http_server_start()
     return WHY("Failed to start rhizome HTTP server");
   }
 
+  INFOF("Started Rhizome HTTP server on port %d", port);
   return 0;
 }
 
