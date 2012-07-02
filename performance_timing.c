@@ -53,6 +53,81 @@ int fd_showstat(struct callback_stats *total, struct callback_stats *a)
   return 0;
 }
 
+// sort the list of call times
+struct callback_stats *sort(struct callback_stats *list){
+  struct callback_stats *first = list;
+  // the left hand list will contain all items that took longer than the first item
+  struct callback_stats *left_head = NULL;
+  struct callback_stats *left_tail = NULL;
+  // the right hand list will contain all items that took less time than the first item
+  struct callback_stats *right_head = NULL;
+  struct callback_stats *right_tail = NULL;
+  
+  // most of the cpu time is likely to be the same offenders
+  // don't sort a list that's already sorted
+  int left_already_sorted = 1;
+  int right_already_sorted = 1;
+  
+  if (!list)
+    return NULL;
+  
+  list = list->_next;
+  first->_next = NULL;
+  
+  // split the list into two sub-lists based on the time of the first entry
+  while(list){
+    if (list->total_time > first->total_time){
+      if (left_tail){
+	left_tail->_next = list;
+	if (list->total_time > left_tail->total_time)
+	  left_already_sorted = 0;
+      }else
+	left_head=list;
+      left_tail=list;
+    }else{
+      if (right_tail){
+	right_tail->_next = list;
+	if (list->total_time > right_tail->total_time)
+	  right_already_sorted = 0;
+      }else
+	right_head=list;
+      right_tail=list;
+    }
+    list = list->_next;
+  }
+  
+  // sort the left sub-list
+  if (left_tail){
+    left_tail->_next=NULL;
+    
+    if (!left_already_sorted){
+      left_head = sort(left_head);
+      
+      // find the tail again
+      left_tail = left_head;
+      while(left_tail->_next)
+	left_tail = left_tail->_next;
+    }
+    
+    // add the first item after the left list
+    left_tail->_next = first;
+  }else
+    left_head = first;
+  
+  left_tail = first;
+    
+  // sort the right sub-list
+  if (right_tail){
+    right_tail->_next=NULL;
+    
+    if (!right_already_sorted)
+      right_head = sort(right_head);
+    left_tail->_next = right_head;
+  }
+  
+  return left_head;
+}
+
 int fd_clearstats()
 {
   struct callback_stats *stats = stats_head;
@@ -66,6 +141,8 @@ int fd_clearstats()
 int fd_showstats()
 {
   struct callback_stats total={NULL, 0, "Total", 0,0,0};
+  
+  stats_head = sort(stats_head);
   
   struct callback_stats *stats = stats_head;
   while(stats!=NULL){
