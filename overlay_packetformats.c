@@ -252,20 +252,20 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
      XXX - But this functionality really needs to move up a level to whole frame composition.
   */
 
-  unsigned char c;
   unsigned char *sid=overlay_get_my_sid();
 
   /* Header byte */
-  c=OF_TYPE_SELFANNOUNCE;
-  if (ob_append_bytes(b,&c,1))
-    return WHY("ob_append_bytes() could not add self-announcement header");
+  if (ob_append_byte(b, OF_TYPE_SELFANNOUNCE))
+    return WHY("Could not add self-announcement header");
 
   static int ticks_per_full_address = -1;
   if (ticks_per_full_address == -1) {
-    ticks_per_full_address = confValueGetInt64("mdp.selfannounce.ticks_per_full_address", 4);
+    ticks_per_full_address = confValueGetInt64Range("mdp.selfannounce.ticks_per_full_address", 4LL, 1LL, 1000000LL);
     INFOF("ticks_per_full_address = %d", ticks_per_full_address);
   }
-  int send_prefix=(overlay_interfaces[interface].ticks_since_sent_full_address < ticks_per_full_address);
+  int send_prefix = ++overlay_interfaces[interface].ticks_since_sent_full_address < ticks_per_full_address;
+  if (!send_prefix)
+      overlay_interfaces[interface].ticks_since_sent_full_address = 0;
 
   /* A TTL for this frame.
      XXX - BATMAN uses various TTLs, but I think that it may just be better to have all TTL=1,
@@ -273,27 +273,29 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
      newly arrived nodes somewhat (or at least reserve some slots for them), then we can still
      get the good news travels fast property of BATMAN, but without having to flood in the formal
      sense. */
-  c=1;
-  if (ob_append_bytes(b,&c,1))
-    return WHY("ob_append_bytes() could not add TTL to self-announcement");
+  if (ob_append_byte(b,1))
+    return WHY("Could not add TTL to self-announcement");
   
   /* Add space for Remaining Frame Size field.  This will always be a single byte
      for self-announcments as they are always <256 bytes. */
-  c=1+8+1+(send_prefix?(1+7):SID_SIZE)+4+4+1;
-  if (ob_append_bytes(b,&c,1))
-    return WHY("ob_append_bytes() could not add RFS for self-announcement frame");
+  if (ob_append_byte(b,1+8+1+(send_prefix?(1+7):SID_SIZE)+4+4+1))
+    return WHY("Could not add RFS for self-announcement frame");
 
   /* Add next-hop address.  Always link-local broadcast for self-announcements */
-  c=OA_CODE_BROADCAST;
-  if (ob_append_bytes(b,&c,1))
-    return WHY("ob_append_bytes() could not add self-announcement header");
-  { int i; for(i=0;i<8;i++) ob_append_byte(b,random()&0xff); } /* BPI for broadcast */
-  
+  if (ob_append_byte(b,OA_CODE_BROADCAST))
+    return WHY("Could not add self-announcement header");
+  /* BPI for broadcast */
+  {
+      int i;
+      for(i=0;i<8;i++)
+	if (ob_append_byte(b,random()&0xff))
+	  return WHYF("Could not add next-hop address byte %d", i);
+  }
+
   /* Add final destination.  Always broadcast for self-announcments.
      As we have just referenced the broadcast address, we can encode it in a single byte */
-  c=OA_CODE_PREVIOUS;
-  if (ob_append_bytes(b,&c,1))
-    return WHY("ob_append_bytes() could not add self-announcement header");
+  if (ob_append_byte(b, OA_CODE_PREVIOUS))
+    return WHY("Could not add self-announcement header");
 
   /* Add our SID to the announcement as sender
      We can likely get away with abbreviating our own address much of the time, since these
@@ -303,33 +305,29 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
      a uselessly short address. So instead we will use a simple scheme where we will send our
      address in full an arbitrary 1 in 4 times.
   */
-  if (overlay_interfaces[interface].ticks_since_sent_full_address>3)
-    { if (ob_append_bytes(b,sid,SID_SIZE)) return WHY("Could not append SID to self-announcement"); 
-      overlay_interfaces[interface].ticks_since_sent_full_address=0;
-    }
-  else
-    {
-      c=OA_CODE_PREFIX7;
-      if (ob_append_bytes(b,&c,1)) return WHY("ob_append_bytes() could not add address format code.");
-      if (ob_append_bytes(b,sid,7)) return WHY("Could not append SID prefix to self-announcement"); 
-      overlay_interfaces[interface].ticks_since_sent_full_address++;
-    }
+  if (send_prefix) {
+    if (ob_append_byte(b, OA_CODE_PREFIX7)) return WHY("Could not add address format code.");
+    if (ob_append_bytes(b,sid,7)) return WHY("Could not append SID prefix to self-announcement"); 
+  }
+  else {
+    if (ob_append_bytes(b,sid,SID_SIZE)) return WHY("Could not append SID to self-announcement"); 
+  }
   /* Make note that this is the most recent address we have set */
   overlay_abbreviate_set_most_recent_address(sid);
       
   /* Sequence number range.  Based on one tick per milli-second. */
   overlay_update_sequence_number();
   if (ob_append_int(b,overlay_interfaces[interface].last_tick_ms))
-    return WHY("ob_append_int() could not add low sequence number to self-announcement");
+    return WHY("Could not add low sequence number to self-announcement");
   if (ob_append_int(b,overlay_sequence_number))
-    return WHY("ob_append_int() could not add high sequence number to self-announcement");
+    return WHY("Could not add high sequence number to self-announcement");
   overlay_interfaces[interface].last_tick_ms=overlay_sequence_number;
   if (debug&DEBUG_OVERLAYINTERFACES)
     DEBUGF("last tick seq# = %lld", overlay_interfaces[interface].last_tick_ms);
 
   /* A byte that indicates which interface we are sending over */
   if (ob_append_byte(b,interface))
-    return WHY("ob_append_int() could not add interface number to self-announcement");
+    return WHY("Could not add interface number to self-announcement");
 
   return 0;
 }
