@@ -92,7 +92,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 
   int pass;
   int bytes=e->sizeLimit-e->length;
-  int overhead=1+8+1+3+1+1+1; /* maximum overhead */
+  int overhead=1+11+1+2+2; /* maximum overhead */
   int slots=(bytes-overhead)/RHIZOME_BAR_BYTES;
   if (slots>30) slots=30;
   int slots_used=0;
@@ -106,14 +106,13 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 
   if (ob_append_byte(e,OF_TYPE_RHIZOME_ADVERT))
     return WHY("could not add rhizome bundle advertisement header");
-  ob_append_byte(e,2); /* type */
-  ob_append_short(e, http_port); /* our HTTP server port */
+  ob_append_byte(e, 1); /* TTL (1 byte) */
 
   int rfs_offset=e->length; /* remember where the RFS byte gets stored 
 			       so that we can patch it later */
-  ob_append_byte(e,1+8+1+1+1+RHIZOME_BAR_BYTES*slots_used/* RFS */);
+  ob_append_byte(e,1+11+1+2+RHIZOME_BAR_BYTES*slots_used/* RFS */);
 
-  /* Stuff in dummy address fields */
+  /* Stuff in dummy address fields (11 bytes) */
   ob_append_byte(e,OA_CODE_BROADCAST);
   { int i; for(i=0;i<8;i++) ob_append_byte(e,random()&0xff); } /* BPI for broadcast */
   ob_append_byte(e,OA_CODE_PREVIOUS);
@@ -121,10 +120,15 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 
   /* Randomly choose whether to advertise manifests or BARs first. */
   int skipmanifests=random()&1;
-  /* Version of rhizome advert block:
+  /* Version of rhizome advert block (1 byte):
      1 = manifests then BARs,
-     2 = BARs only */
-  ob_append_byte(e,1+skipmanifests);
+     2 = BARs only,
+     3 = HTTP port then manifests then BARs,
+     4 = HTTP port then BARs only
+   */
+  ob_append_byte(e,3+skipmanifests);
+  /* Rhizome HTTP server port number (2 bytes) */
+  ob_append_short(e, http_port);
 
   /* XXX Should add priority bundles here.
      XXX Should prioritise bundles for subscribed groups, Serval-authorised files
@@ -306,7 +310,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
   if (statement) sqlite3_finalize(statement); statement=NULL;
   
   if (0&&debug&DEBUG_RHIZOME) DEBUGF("Appended %d rhizome advertisements to packet using %d bytes.",bundles_advertised,bytes_used);
-  int rfs_value=1+8+1+1+1+bytes_used;
+  int rfs_value=1+11+1+2+bytes_used;
   if (rfs_value<0xfa)
     ob_setbyte(e,rfs_offset,rfs_value);
   else
@@ -333,7 +337,7 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
   rhizome_manifest *m=NULL;
 
   switch (ad_frame_type) {
-    case 2:
+    case 3:
       /* The same as type=1, but includes the source HTTP port number */
       httpaddr.sin_port = (f->payload->bytes[ofs] << 8) + f->payload->bytes[ofs + 1];
       ofs += 2;

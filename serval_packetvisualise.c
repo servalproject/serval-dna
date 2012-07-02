@@ -287,23 +287,36 @@ int isOverlayPacket(FILE *f,unsigned char *packet,int *ofs,int len)
 	  {
 	    int i,j,k;
 	    int rhizome_ad_frame_type=frame[0];
-	    unsigned short int http_port = 0;
 	    fprintf(f,"%sRhizome bundle advertisement frame, version %d\n",indent(8),rhizome_ad_frame_type);
+	    unsigned short int http_port = 0;
 	    i=1;
 	    switch (rhizome_ad_frame_type) {
-	      case 2:
+	      case 3:
+	      case 4:
 		http_port = (frame[i] << 8) + frame[i+1];
 		i += 2;
 		fprintf(f,"%sHTTP port = %d\n", indent(8), http_port);
-		// FALL THROUGH ...
+		break;
+	    }
+	    switch (rhizome_ad_frame_type) {
+	      case 2:
+	      case 4:
+		fprintf(f,"%sBundle BAR(s) (i=%d, frame_len=%d):\n", indent(8),i,frame_len);
+		break;
 	      case 1:
+	      case 3:
 		/* Frame contains whole manifest(s) */
 		fprintf(f,"%sBundle Manifest(s) (i=%d, frame_len=%d):\n", indent(8),i,frame_len);
 		while(i<frame_len) {		  
-		  int manifest_len=(frame[i]<<8)+frame[i+1];
 		  /* Check for end of manifests */
-		  if (manifest_len>=0xff00) { i+=1; break; }
-		  else i+=2;
+		  if (frame[i] == 0xff) { i+=1; break; }
+		  /* Check remaining bytes */
+		  int manifest_len=(frame[i]<<8)+frame[i+1];
+		  i+=2;
+		  if (i > frame_len) {
+		    fprintf(f,"%sERROR: Unexpected end of Frame -- skipping rest of frame.\n",indent(10));
+		    break;
+		  }
 		  if (manifest_len>(frame_len-i)) {
 		    fprintf(f,"%sERROR: Manifest extends for 0x%x bytes, but frame contains only 0x%x more bytes -- skipping rest of frame.\n",indent(10),manifest_len,frame_len-i);
 		    int j;
