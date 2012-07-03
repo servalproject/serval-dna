@@ -50,7 +50,6 @@ void list_alarms(){
 // simply populate .alarm with the absolute time, and .function with the method to call.
 // on calling .poll.revents will be zero.
 int schedule(struct sched_ent *alarm){
-  long long now=overlay_gettime_ms();
   struct sched_ent *node = next_alarm, *last = NULL;
   while(node!=NULL){
     if (node->alarm > alarm->alarm)

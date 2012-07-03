@@ -148,9 +148,6 @@ schedule(&_sched_##X);
   /* Periodically update route table. */
   SCHEDULE(overlay_route_tick, 100);
 
-  /* Keep an eye on VoMP calls so that we can expire stale ones etc */
-  SCHEDULE(vomp_tick, 1000);
-
   /* Show CPU usage stats periodically */
   SCHEDULE(fd_periodicstats, 3000);
 

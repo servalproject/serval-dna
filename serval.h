@@ -1097,6 +1097,12 @@ int overlay_saw_mdp_containing_frame(overlay_frame *f,long long now);
 #define DEBUG_PACKETCONSTRUCTION    (1 << 23)
 #define DEBUG_MANIFESTS             (1 << 24)
 
+/* bitmask values for monitor_tell_clients */
+#define MONITOR_VOMP (1<<0)
+#define MONITOR_RHIZOME (1<<1)
+#define MONITOR_PEERS (1<<2)
+
+
 int serval_packetvisualise(FILE *f,char *message,unsigned char *packet,int plen);
 
 int overlay_broadcast_drop_check(unsigned char *a);
@@ -1377,6 +1383,7 @@ typedef struct vomp_sample_block {
 
 #define VOMP_MAX_RECENT_SAMPLES 2
 typedef struct vomp_call_state {
+  struct sched_ent alarm;
   vomp_call_half local;
   vomp_call_half remote;
   int ringing;
@@ -1384,7 +1391,6 @@ typedef struct vomp_call_state {
   unsigned long long create_time;
   unsigned long long last_activity;
   unsigned long long audio_clock;
-  long long  next_status_time;
   int audio_started;
   int last_sent_status;
   unsigned char remote_codec_list[256];
@@ -1563,7 +1569,6 @@ void rhizome_enqueue_suggestions(struct sched_ent *alarm);
 void server_shutdown_check(struct sched_ent *alarm);
 void overlay_mdp_poll(struct sched_ent *alarm);
 void fd_periodicstats(struct sched_ent *alarm);
-void vomp_tick(struct sched_ent *alarm);
 void rhizome_check_connections(struct sched_ent *alarm);
 
 void monitor_client_poll(struct sched_ent *alarm);

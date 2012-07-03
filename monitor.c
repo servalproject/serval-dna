@@ -35,9 +35,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define MONITOR_DATA_SIZE MAX_AUDIO_BYTES
 struct monitor_context {
   struct sched_ent alarm;
-#define MONITOR_VOMP (1<<0)
-#define MONITOR_RHIZOME (1<<1)
-#define MONITOR_PEERS (1<<2)
   int flags;
   char line[MONITOR_LINE_LENGTH];
   int line_length;
@@ -54,7 +51,6 @@ struct monitor_context {
 #define MAX_MONITOR_SOCKETS 8
 int monitor_socket_count=0;
 struct monitor_context monitor_sockets[MAX_MONITOR_SOCKETS];
-long long monitor_last_update_time=0;
 
 int monitor_process_command(struct monitor_context *c);
 int monitor_process_data(struct monitor_context *c);
@@ -134,33 +130,10 @@ int monitor_setup_sockets()
 
 void monitor_poll(struct sched_ent *alarm)
 {
-  int s,i,m;
+  int s;
   unsigned char buffer[1024];
-  char msg[1024];
   struct sockaddr *ignored_address=(struct sockaddr *)&buffer[0];
   socklen_t ignored_length=sizeof(ignored_address);
-
-  /* tell all monitor clients about status of all calls periodically */
-  long long now = overlay_gettime_ms();
-  if (monitor_last_update_time > (now + 1000)) {
-    INFO("Fixed run away monitor_last_update_time");
-    monitor_last_update_time = now + 1000;
-  }
-
-  if (now > (monitor_last_update_time + 1000)) {
-    // DEBUG("Send keep alives");
-    monitor_last_update_time = now;
-    for(i = 0; i < vomp_call_count; i++) {
-      /* Push out any undelivered status changes */
-      monitor_call_status(&vomp_call_states[i]);
-      INFOF("Sending keepalives for call #%d",i);
-      
-      /* And let far-end know that call is still alive */
-      snprintf(msg,sizeof(msg) -1,"\nKEEPALIVE:%06x\n", vomp_call_states[i].local.session);
-      for(m = 0;m < monitor_socket_count; m++)
-	WRITE_STR(monitor_sockets[m].alarm.poll.fd,msg);
-    }
-  }
 
   /* Check for new connections */
   /* We don't care about the peer's address */
@@ -285,10 +258,10 @@ static void monitor_new_client(int s) {
 #ifdef linux
   struct ucred			ucred;
   socklen_t			len;
+  int				res;
 #else
   gid_t				othergid;
 #endif
-  int				res;
   uid_t				otheruid;
   struct monitor_context	*c;
 
