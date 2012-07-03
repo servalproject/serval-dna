@@ -1576,6 +1576,8 @@ void rhizome_fetch_poll(struct sched_ent *alarm);
 void rhizome_server_poll(struct sched_ent *alarm);
 
 /* function timing routines */
+int fd_clearstats();
+int fd_showstats();
 int fd_checkalarms();
 int fd_func_exit(struct call_stats *this_call, struct profile_total *call_stats);
 int fd_func_enter(struct call_stats *this_call);
