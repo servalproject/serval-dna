@@ -561,9 +561,10 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp,long long now)
 	      /* copy SID out into source address of frame */	      
 	      bcopy(packedSid,&mdpreply.out.src.sid[0],SID_SIZE);
 	      /* and build reply as did\nname\nURI<NUL> */
-	      snprintf((char *)&mdpreply.out.payload[0],512,"%s\n%s\nsid://%s/%s",
-		       unpackedDid,name,overlay_render_sid(packedSid),
-		       unpackedDid);
+	      snprintf((char *)&mdpreply.out.payload[0],512,"%s|sid://%s/%s|%s|%s|",
+		       overlay_render_sid(packedSid),
+		       overlay_render_sid(packedSid),unpackedDid,
+		       unpackedDid,name);
 	      mdpreply.out.payload_length=strlen((char *)mdpreply.out.payload)+1;
 	      
 	      /* deliver reply */

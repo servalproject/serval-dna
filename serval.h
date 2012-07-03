@@ -1539,9 +1539,8 @@ int server_probe(int *pid);
 int dna_helper_enqueue(char *did, unsigned char *requestorSid);
 int dna_return_resolution(overlay_mdp_frame *mdp, unsigned char *fromSid,
 			  const char *did,const char *name,const char *uri);
-int parseDnaReply(unsigned char *bytes,int count,
-		  char *did,char *name,char *uri);
-
+int parseDnaReply(unsigned char *bytes, int count, 
+	      char *sidhex, char *did, char *name, char *uri);
 extern int sigPipeFlag;
 extern int sigIoFlag;
 void sigPipeHandler(int signal);

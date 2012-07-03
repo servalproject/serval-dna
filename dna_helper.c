@@ -42,26 +42,47 @@ static int dna_helper_stdin = -1;
 static int dna_helper_stdout = -1;
 
 int
-parseDnaReply(unsigned char *bytes, int count, char *did, char *name, char *uri) {
+parseDnaReply(unsigned char *bytes, int count, 
+	      char *sidhex, char *did, char *name, char *uri) {
+  bzero(sidhex, SID_SIZE*2+1);
   bzero(did, SID_SIZE);
   bzero(name,64);
   bzero(uri,512);
-  int i,l;
+  int i,l,maxlen;
 
   l=0;
-  for(i=0;i<511&&i<count&&bytes[i]!=0x0a;i++)
-    did[l++]=bytes[i];
-  did[l]=0;
-  if (i>=count||i>=511) return WHY("DNA response does not contain name field");
-  l=0; i++;
-  for(;i<511&&i<count&&bytes[i]!=0x0a;i++)
-    name[l++]=bytes[i];
-  name[l]=0;
-  if (i>=count||i>=511) return WHY("DNA response does not contain URI field");
-  l=0; i++;
-  for(;i<511&&i<count&&bytes[i]!=0;i++)
+  
+  /* Replies look like: TOKEN|URI|DID|CALLERID| */
+
+  maxlen=SID_SIZE*2+1;
+  for(i=0;l<maxlen&&i<count&&bytes[i]!='|';i++)
+    sidhex[l++]=bytes[i];
+  sidhex[l]=0;
+
+  if (l>=count) return WHY("DNA helper response does not contain URI field");
+  if (l>=maxlen) return WHY("DNA helper response SID field too long");
+  l=0; i++; maxlen=511;
+  for(;l<maxlen&&i<count&&bytes[i]!='|';i++)
     uri[l++]=bytes[i];
   uri[l]=0;
+
+  if (l>=count) return WHY("DNA helper response does not contain DID field");
+  if (l>=maxlen) return WHY("DNA helper response URI field too long");
+  l=0; i++; maxlen=SID_SIZE;
+  for(;l<maxlen&&i<count&&bytes[i]!='|';i++)
+    did[l++]=bytes[i];
+  did[l]=0;
+
+  if (l>=count) return WHY("DNA helper response does not contain CALLERID field");
+  if (l>=maxlen) return WHY("DNA helper response DID field too long");
+  l=0; i++; maxlen=SID_SIZE;
+  for(;l<maxlen&&i<count&&bytes[i]!='|';i++)
+    name[l++]=bytes[i];
+  name[l]=0;
+
+  if (l>=count) return WHY("DNA helper response does not contain terminator");
+  if (l>=maxlen) return WHY("DNA helper response CALLERID field too long");
+  
   /* DEBUGF("did='%s', name='%s', uri='%s'",did,name,uri); */
 
   return 0;

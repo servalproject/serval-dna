@@ -1,0 +1,225 @@
+#!/bin/bash
+
+# Tests for Serval DNA server operations.
+#
+# Copyright 2012 Paul Gardner-Stephen
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+
+setup() {
+   setup_servald
+   assert_no_servald_processes
+}
+
+teardown() {
+# TODO Disabled until stopping multiple-instances are supported
+# TODO  stop_all_servald_servers
+   kill_all_servald_processes
+   assert_no_servald_processes
+}
+
+setup_servald_instance() {
+    cat > $SERVALINSTANCE_PATH/dnahelper <<EOF
+#!/usr/bin/env python
+# Sample DNA Helper application for testing
+
+import sys;
+
+def main():    
+    print "STARTED"
+    while True:
+        line = sys.stdin.readline().strip()
+        if line == "":
+            # EOF detection is broken :(
+            break
+        s = line.split('|')
+        if len(s) != 3:
+            print "ERROR"
+            continue
+        (token, number, xxx) = s
+
+        if number == "12345":
+            # Multiple results (SID/VoMP results)
+            print "%s|sid:%s|%s|%s|" % (token, token, number, "Agent A. Smith")
+            print "%s|sid:%s|%s|%s|" % (token, token, number, "Agent B. Smith")
+        if number == "5551234":
+            # Single result, SIP URI
+            print "%s|sip://5551234@10.1.2.3|%s|%s|" % (token, number, "Will Smith")
+        if number == "5551001":
+            # Empty URI field
+            print "%s||%s|%s|" % (token, number, "Empty URI") 
+        if number == "5551002":
+            # Empty DID field
+            print "%s|sip://123@1.2.3.4||%s|" % (token, "Empty DID") 
+        if number == "5551003":
+            # Empty CALLERID field
+            print "%s|sip://empty-callerid@1.2.3.4|%s||" % (token, number)
+        if number == "5551004":
+            # Excessively long callerid
+            print "%s|sip://long-callerid@1.2.3.4|%s|askjdhfkjashdfkljahsdflkjhasdljkfhasldjkfhaslkjdfhalskdjfhklajsdhflkajsdhflkjasdhflkjashdflkjashdflkjahsdflkjahsdfjklhasdljkfhasjkdfhakljsdfhklajsdhflkjashdfljkashdflkjashdf|" % (token, number)
+        if number == "5551005":
+            # Excessively long DID
+            print "%s|sip://long-did@1.2.3.4|askjdhfkjashdfkljahsdflkjhasdljkfhasldjkfhaslkjdfhalskdjfhklajsdhflkajsdhflkjasdhflkjashdflkjashdflkjahsdflkjahsdfjklhasdljkfhasjkdfhakljsdfhklajsdhflkjashdfljkashdflkjashdf|%s|" % (token, "Agent Smith")
+        if number == "5551006":
+            # Excessively long URI
+            print "%s|sip://askjdhfkjashdfkljahsdflkjhasdljkfhasldjkfhaslkjdfhalskdjfhklajsdhflkajsdhflkjasdhflkjashdflkjashdflkjahsdflkjahsdfjklhasdljkfhasjkdfhakljsdfhklajsdhflkjashdfljkashdflkjashdfasdjfkjahsdfjkhasdfkjlhasjldkfhajksdhflkjasdhfkljashdfkljahsdfkljhasdfkljhasdlkjfhasdlkjfhaslkjdfhakljsdhfklajshdfkljashdfljkashdflkjashdflkjahsdfkjlahsdflkjhasdfljkhasdkfjlhaslkdjfhaslkjdfhaklsjdfhaklsjdhflkajsdhflkjasdhflkjashdfljkashdfkljashdflkjashdflkjashdflkjashdflkjashdflkjashdfljkahsdflkjahsdfjklahsdfljkahsdflkjhasdflkjhasdjkfhaskjdlfhaslkjdfhaskljdfhasljkdfhalskdfhalkjsdhflkjasdhflkjahsdflkjahsdflkjahsdflkjhasdflkjahsdflkjahsdflkjahsdfkljashdflkajshdflkajsdhflaksjdfhalksjdfhlasdkjfh|%s|%s|" % (token,  number, "Agent Smith")
+        if number == "5551007":
+            # Incorrect token
+            print "cheeseburger|sip://incorrect-token@1.2.3.4|%s||" % (token, number)    
+
+        print "DONE"
+        
+if __name__ == "__main__":
+    main()
+
+EOF
+
+
+   push_instance
+   set_instance "$1"
+   executeOk_servald config set interfaces "+>$2"
+   executeOk_servald config set dna.helper "$SERVALINSTANCE_PATH/dnahelper"
+   executeOk_servald config set monitor.socket "org.servalproject.servald.monitor.socket.$1"
+   executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.$1"
+   executeOk_servald keyring add
+   assert [ -e "$SERVALINSTANCE_PATH/serval.keyring" ]
+   executeOk_servald keyring list
+   tfw_cat --stdout
+   sid=$(replayStdout | sed -ne "1s/^\($rexp_sid\):.*\$/\1/p")
+   assert --message='main identity known' [ -n "$sid" ]
+   executeOk_servald set did $sid 5550001 "Agent $instance_name Smith"
+   start_servald_server
+   executeOk_servald status
+   tfw_cat --stdout
+   pop_instance
+}
+
+setup_servald_instances() {
+   setup_servald
+   DUMMYNET=`pwd`/dummy.dat
+   rm $DUMMYNET
+   touch $DUMMYNET
+   assert [ -e $DUMMYNET ]
+   setup_servald_instance +A $DUMMYNET
+   SIDA=$sid
+   setup_servald_instance +B $DUMMYNET
+   SIDB=$sid
+   # Now make sure that they can see each other
+   sleep 10 # Should be plenty of time
+   set_instance +A
+   echo "Dummynet file $DUMMYNET after 5 seconds: "`ls -l $DUMMYNET`
+   executeOk_servald id peers
+   assertStdoutLineCount '==' 1
+}
+
+doc_MultipleServalDTest="Start two servald instances with dummy interface"
+
+setup_MultipleServalDTest() {
+   setup
+}
+
+test_MultipleServalDTest() {
+   setup_servald_instances
+}
+
+doc_DNAWildcardSearchFindsSelf="DNA lookup of wildcard finds (star method)"
+setup_DNAWildcardSearchFindsSelf() {
+   setup
+   setup_servald_instances
+   set_instance +A
+}
+test_DNAWildcardSearchFindsSelf() {
+   executeOk_servald dna lookup "*"
+   assertStdoutLineCount '==' 2
+   assertStdoutGrep --matches=1 "^sid://$SIDA/5550001:5550001:Agent A Smith$"
+   assertStdoutGrep --matches=1 "^sid://$SIDB/5550001:5550001:Agent B Smith$"
+}
+
+doc_DNAWildcardSearchFindsSelfEmpty="DNA lookup of wildcard (empty query method)"
+setup_DNAWildcardSearchFindsSelfEmpty() {
+   setup
+   setup_servald_instances
+   set_instance +A
+}
+test_DNAWildcardSearchFindsSelfEmpty() {
+   executeOk_servald dna lookup ""
+   assertStdoutLineCount '==' 2 
+   assertStdoutGrep --matches=1 "^sid://$SIDA/5550001:5550001:Agent A Smith$"
+   assertStdoutGrep --matches=1 "^sid://$SIDB/5550001:5550001:Agent B Smith$"
+}
+
+doc_DNASpecificLookup="DNA Lookup by phone number"
+setup_DNASpecificLookup() {
+   setup
+   setup_servald_instances
+   set_instance +A
+}
+test_DNASpecificLookup() {
+   # Make sure we get no false positives
+   executeOk_servald dna lookup "5551234"
+   assertStdoutLineCount '==' 0
+   executeOk_servald dna lookup "555000"
+   assertStdoutLineCount '==' 0
+   executeOk_servald dna lookup "55500011"
+   assertStdoutLineCount '==' 0
+   # Make sure we get the right results, and no duplicates
+   executeOk_servald dna lookup "5550001"
+   assertStdoutLineCount '==' 2
+   assertStdoutGrep --matches=1 "^sid://$SIDA/5550001:5550001:Agent A Smith$"
+   assertStdoutGrep --matches=1 "^sid://$SIDB/5550001:5550001:Agent B Smith$"
+}
+
+doc_DNANodeInfoLocalResolution="'node info' auto-resolves for local identities"
+setup_DNANodeInfoLocalResolution() {
+   setup
+   setup_servald_instances
+   set_instance +A
+}
+test_DNANodeInfoLocalResolution() {
+   # node info for a local identity returns DID/Name since it is free, even
+   # if it isn't asked for.
+   executeOk_servald node info $SIDA
+   assertStdoutLineCount '==' 1
+   assertStdoutGrep --matches=1 "Agent A Smith"
+   assertStdoutGrep --matches=0 "did-not-resolved"
+}
+
+doc_DNANodeInfoRemoteResolution="'node info' for remote identities"
+setup_DNANodeInfoRemoteResolution() {
+   setup
+   setup_servald_instances
+   set_instance +A
+}
+test_DNANodeInfoRemoteResolution() {
+   # if resolvedid is not specified for a remote identity, then don't resolve
+   # it.
+   executeOk_servald node info $SIDB
+   assertStdoutLineCount '==' 1
+   assertStdoutGrep --matches=0 "Agent B Smith"
+   assertStdoutGrep --matches=1 "did-not-resolved"
+
+   # But if it resolvedid is specified, then do resolve it using DNA
+   executeOk_servald node info $SIDB resolvedid
+   assertStdoutLineCount '==' 1
+   assertStdoutGrep --matches=1 "Agent B Smith"
+   assertStdoutGrep --matches=0 "did-not-resolved"
+
+}
+
+
+runTests "$@"

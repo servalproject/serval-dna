@@ -496,11 +496,12 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 		else if ((rx.packetTypeAndFlags&MDP_TYPE_MASK)==MDP_TX) {
 		  /* Extract DID, Name, URI from response. */
 		  if (strlen((char *)rx.in.payload)<512) {
+		    char sidhex[512];
 		    char did[512];
 		    char name[512];
 		    char uri[512];
 		    if (!parseDnaReply(rx.in.payload,rx.in.payload_length,
-				       did,name,uri))
+				       sidhex,did,name,uri))
 		      {
 			/* Have we seen this response before? */
 			int i;
@@ -1805,11 +1806,12 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 	}
 	
 	{	    	  
+	  char sidhex[512];
 	  char did[512];
 	  char name[512];
 	  char uri[512];
 	  if (!parseDnaReply(m2.in.payload,m2.in.payload_length,
-			     did,name,uri))
+			     sidhex,did,name,uri))
 	  {
 	    /* Got a good DNA reply, copy it into place */
 	    bcopy(did,mdp.nodeinfo.did,32);
