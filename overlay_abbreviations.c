@@ -230,7 +230,7 @@ int overlay_abbreviate_append_address(overlay_buffer *b,unsigned char *a)
   int r=overlay_abbreviate_address(a,&b->bytes[b->length],&count);
   if (debug&DEBUG_PACKETCONSTRUCTION) {
     fprintf(stderr,"address %s abbreviates as shown in this ",
-	    overlay_render_sid(a));
+	    alloca_tohex_sid(a));
     dump(NULL,&b->bytes[b->length],count);
   }
   if (r) return r;
@@ -553,7 +553,7 @@ int overlay_abbreviate_set_most_recent_address(unsigned char *in)
 {
   bcopy(in,&overlay_abbreviate_previous_address.b[0],SID_SIZE);
   if (debug&DEBUG_OVERLAYABBREVIATIONS) fprintf(stderr,"Most recent address=%s\n",
-		       overlay_render_sid(in));
+		       alloca_tohex_sid(in));
   return 0;
 }
 

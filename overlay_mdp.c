@@ -325,7 +325,7 @@ unsigned char *overlay_mdp_decrypt(overlay_frame *f,overlay_mdp_frame *mdp,
       if (0) {
 	fflush(stderr);
 	printf("crypted MDP frame for %s\n",
-	       overlay_render_sid(mdp->out.dst.sid));
+	       alloca_tohex_sid(mdp->out.dst.sid));
 	fflush(stdout);
       }
 
@@ -542,8 +542,8 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp,long long now)
 	      bcopy(packedSid,&mdpreply.out.src.sid[0],SID_SIZE);
 	      /* and build reply as did\nname\nURI<NUL> */
 	      snprintf((char *)&mdpreply.out.payload[0],512,"%s|sid://%s/%s|%s|%s|",
-		       overlay_render_sid(packedSid),
-		       overlay_render_sid(packedSid),unpackedDid,
+		       alloca_tohex_sid(packedSid),
+		       alloca_tohex_sid(packedSid),unpackedDid,
 		       unpackedDid,name);
 	      mdpreply.out.payload_length=strlen((char *)mdpreply.out.payload)+1;
 	      
@@ -682,7 +682,7 @@ int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,int userGeneratedFrameP,
   } 
 
   printf("addr=%s port=%u (0x%x)\n",
-	 overlay_render_sid(src->sid),src->port,src->port);
+	 alloca_tohex_sid(src->sid),src->port,src->port);
   if (recvaddr) printf("recvaddr='%s'\n",
 	 recvaddr->sun_path);
   return WHY("No such socket binding:unix domain socket tuple exists -- someone might be trying to spoof someone else's connection");
@@ -1330,7 +1330,7 @@ int overlay_mdp_getmyaddr(int index,unsigned char *sid)
   }
   if ((a.packetTypeAndFlags&MDP_TYPE_MASK)!=MDP_ADDRLIST)
     return WHY("MDP Server returned something other than an address list");
-  if (0) DEBUGF("local addr 0 = %s",overlay_render_sid(a.addrlist.sids[0]));
+  if (0) DEBUGF("local addr 0 = %s",alloca_tohex_sid(a.addrlist.sids[0]));
   bcopy(&a.addrlist.sids[0][0],sid,SID_SIZE);
   return 0;
 }

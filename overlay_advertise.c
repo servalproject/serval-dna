@@ -186,7 +186,7 @@ int overlay_route_saw_advertisements(int i,overlay_frame *f, long long now)
   }
   int sender_score=sender->best_link_score;
   if (debug&DEBUG_OVERLAYROUTEMONITOR)
-    DEBUGF("score to reach %s is %d", overlay_render_sid(f->source),sender_score);
+    DEBUGF("score to reach %s is %d", alloca_tohex_sid(f->source),sender_score);
 
   while(ofs<f->payload->length)
     {

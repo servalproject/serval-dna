@@ -316,7 +316,7 @@ int overlay_frame_process(struct overlay_interface *interface,overlay_frame *f)
 
 	if (0)
 	  DEBUGF("considering forwarding frame to %s (forme=%d, bcast=%d, dup=%d)",
-		 overlay_render_sid(f->destination),ultimatelyForMe,broadcast,
+		 alloca_tohex_sid(f->destination),ultimatelyForMe,broadcast,
 		 duplicateBroadcast);
 
 	if (overlay_address_is_broadcast(f->destination))
@@ -332,9 +332,9 @@ int overlay_frame_process(struct overlay_interface *interface,overlay_frame *f)
 	    if ((!sameAsNextHop)&&overlay_broadcast_drop_check(f->destination))
 	      duplicateBroadcast=1;
 	    if (duplicateBroadcast) {
-	      DEBUGF("reject src is %s", overlay_render_sid(f->source));
-	      DEBUGF("reject nexthop is %s", overlay_render_sid(f->nexthop));
-	      DEBUGF("reject destination is %s", overlay_render_sid(f->destination));
+	      DEBUGF("reject src is %s", alloca_tohex_sid(f->source));
+	      DEBUGF("reject nexthop is %s", alloca_tohex_sid(f->nexthop));
+	      DEBUGF("reject destination is %s", alloca_tohex_sid(f->destination));
 	      RETURN(WHY("Not forwarding or reading duplicate broadcast"));
 	    }
 	  }
@@ -390,9 +390,9 @@ int overlay_frame_process(struct overlay_interface *interface,overlay_frame *f)
     case OF_TYPE_DATA_VOICE:
       if (0) {
 	DEBUG("saw mdp containing frame");
-	DEBUGF("  src = %s\n",overlay_render_sid(f->source));
-	DEBUGF("  nxt = %s\n",overlay_render_sid(f->nexthop));
-	DEBUGF("  dst = %s\n",overlay_render_sid(f->destination));
+	DEBUGF("  src = %s\n", alloca_tohex_sid(f->source));
+	DEBUGF("  nxt = %s\n", alloca_tohex_sid(f->nexthop));
+	DEBUGF("  dst = %s\n", alloca_tohex_sid(f->destination));
 	dump("payload", f->payload->bytes, f->payload->length);
       }
       overlay_saw_mdp_containing_frame(f,now);

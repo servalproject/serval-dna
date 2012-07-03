@@ -725,7 +725,7 @@ int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,
 	      }
 	    } else {
 	      DEBUG("bummer, I couldn't find an open route to that node");
-	      DEBUGF("sid=%s",overlay_render_sid((*p)->destination));
+	      DEBUGF("sid=%s", alloca_tohex_sid((*p)->destination));
 	    }
 	  } else if (!(*p)->broadcast_sent_via[i])
 	    {

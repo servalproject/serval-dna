@@ -180,7 +180,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       f.nexthop_address_status=overlay_abbreviate_expand_address(packet,&offset,f.nexthop,&alen);
       if (debug&DEBUG_PACKETFORMATS) {
 	if (f.nexthop_address_status==OA_RESOLVED)
-	  DEBUGF("next hop address is %s", overlay_render_sid(f.nexthop));
+	  DEBUGF("next hop address is %s", alloca_tohex_sid(f.nexthop));
       }
 
       /* Now just make the rest of the frame available via the received frame structure, as the

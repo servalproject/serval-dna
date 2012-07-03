@@ -395,11 +395,11 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
     if (neh->scores[*interface]<1) {
       if (debug&DEBUG_OVERLAYROUTING) {
 	*interface=-1;
-	DEBUGF("No open path to %s",overlay_render_sid(neh->node->sid));
+	DEBUGF("No open path to %s",alloca_tohex_sid(neh->node->sid));
       }
       return -1;
     }
-    if (0) DEBUGF("nexthop is %s",overlay_render_sid(nexthop));
+    if (0) DEBUGF("nexthop is %s",alloca_tohex_sid(nexthop));
     return 0;
   } else {
     /* Is not a direct neighbour.
@@ -428,10 +428,10 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
       if (best_o>-1) {
 	return 0;
       } else {
-	return -1; // WHYF("No open path to %s",overlay_render_sid(d));
+	return -1; // WHYF("No open path to %s",alloca_tohex_sid(d));
       }
     } else {
-      return -1; // WHYF("No open path to %s",overlay_render_sid(d));
+      return -1; // WHYF("No open path to %s",alloca_tohex_sid(d));
     }
   }
 }
@@ -704,7 +704,7 @@ int overlay_route_i_can_hear_node(unsigned char *who,int sender_interface,
 				  long long now)
 {
   if (0) DEBUGF("I can hear node %s (but I really only care who can hear me)",
-	      overlay_render_sid(who));
+	      alloca_tohex_sid(who));
   return 0;
 }
 
@@ -1010,17 +1010,8 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
 
 int ors_rotor=0;
 char ors_out[4][SID_STRLEN+1];
-char *overlay_render_sid(unsigned char *sid)
-{
-  int zero=0;
-  ors_rotor++;
-  ors_rotor&=3;
-  extractSid(sid,&zero,ors_out[ors_rotor]);
-  ors_out[ors_rotor][SID_STRLEN] = '\0';
-  return ors_out[ors_rotor];
-}
 
-char *overlay_render_sid_prefix(unsigned char *sid,int l)
+char *overlay_render_sid_prefix(const unsigned char *sid,int l)
 {
   int zero=0;
 
@@ -1074,7 +1065,7 @@ int overlay_route_saw_selfannounce_ack(overlay_frame *f,long long now)
   if (f->source_address_status==OA_RESOLVED&&
       f->destination_address_status==OA_RESOLVED) {
     if (0) DEBUGF("f->source=%s, f->destination=%s",
-		overlay_render_sid(f->source),overlay_render_sid(f->destination));
+		alloca_tohex_sid(f->source),alloca_tohex_sid(f->destination));
     overlay_route_record_link(now,f->source,f->source,iface,s1,s2,
 			      0 /* no associated score */,
 			      0 /* no gateways in between */);
@@ -1093,7 +1084,7 @@ int overlay_route_record_link(long long now,unsigned char *to,
   int i,slot=-1;
 
   if (0) DEBUGF("to=%s, via=%s, iface=%d, s1=%d, s2=%d",
-	      overlay_render_sid(to),overlay_render_sid(via),
+	      alloca_tohex_sid(to),alloca_tohex_sid(via),
 	      sender_interface,s1,s2);
  
 
@@ -1102,16 +1093,16 @@ int overlay_route_record_link(long long now,unsigned char *to,
   /* Don't record routes to ourselves */
   if (overlay_address_is_local(to)) {
     if (0) DEBUGF("Ignoring self announce ack addressed to me (%s).",
-		overlay_render_sid(to));
+		alloca_tohex_sid(to));
     return 0;
   }
-  else if (0) DEBUGF("Recording link to %s",overlay_render_sid(to));
+  else if (0) DEBUGF("Recording link to %s",alloca_tohex_sid(to));
 
   for(i=0;i<SID_SIZE;i++) if (to[i]!=via[i]) break;
   if (i==SID_SIZE)
     {
       /* It's a neighbour observation */
-      if (0) DEBUGF("%s is my neighbour",overlay_render_sid(to));
+      if (0) DEBUGF("%s is my neighbour",alloca_tohex_sid(to));
       overlay_route_node_can_hear_me(to,sender_interface,s1,s2,now);
     }
 

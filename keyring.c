@@ -1200,8 +1200,8 @@ int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req)
     DEBUG("Sent SID:SAS mapping mutual-signature");
     printf("%d byte reply is from %s:%u\n           to %s:%u\n",
 	   req->out.payload_length,
-	   overlay_render_sid(req->out.src.sid),req->out.src.port,
-	   overlay_render_sid(req->out.dst.sid),req->out.dst.port);
+	   alloca_tohex_sid(req->out.src.sid),req->out.src.port,
+	   alloca_tohex_sid(req->out.dst.sid),req->out.dst.port);
     return overlay_mdp_dispatch(req,1,NULL,0);
   } else {
     /* It's probably a response. */
@@ -1254,8 +1254,8 @@ int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req)
 	      crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
 	fprintf(stderr,"Mapping #%d (count=%d) SID=%s to SAS=%s*\n",i,
 		sid_sas_mapping_count,
-		overlay_render_sid(sid_sas_mappings[i].sid),
-		overlay_render_sid(sid_sas_mappings[i].sas_public));
+		alloca_tohex_sid(sid_sas_mappings[i].sid),
+		alloca_tohex_sid(sid_sas_mappings[i].sas_public));
 	sid_sas_mappings[i].validP=1;
 	sid_sas_mappings[i].last_request_time_in_ms=0;
 	DEBUG("Stored mapping");
@@ -1302,7 +1302,7 @@ unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
          record. */
       break;
     }
-  WHYF("Asking for SAS mapping for %s",overlay_render_sid(sid));
+  WHYF("Asking for SAS mapping for %s", alloca_tohex_sid(sid));
 
   /* allocate mapping slot or replace one at random, depending on how full things
      are */

@@ -944,9 +944,7 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
   }
 
   /* XXX Eventually we should try to resolve SID to phone number and vice versa */
-  printf("MDP PING %s (%s): 12 data bytes\n",
-	 overlay_render_sid(ping_sid),
-	 overlay_render_sid(ping_sid));
+  printf("MDP PING %s (%s): 12 data bytes\n", alloca_tohex_sid(ping_sid), alloca_tohex_sid(ping_sid));
 
   long long rx_mintime=-1;
   long long rx_maxtime=-1;
@@ -1000,7 +998,7 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
 	      long long *txtime=(long long *)&mdp.in.payload[4];
 	      long long delay=overlay_gettime_ms()-*txtime;
 	      printf("%s: seq=%d time=%lld ms%s%s\n",
-		     overlay_render_sid(mdp.in.src.sid),(*rxseq)-firstSeq+1,delay,
+		     alloca_tohex_sid(mdp.in.src.sid),(*rxseq)-firstSeq+1,delay,
 		     mdp.packetTypeAndFlags&MDP_NOCRYPT?"":" ENCRYPTED",
 		     mdp.packetTypeAndFlags&MDP_NOSIGN?"":" SIGNED");
 	      // TODO Put duplicate pong detection here so that stats work properly.
@@ -1031,7 +1029,7 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
 	rx_stddev=sqrtf(rx_stddev);
 
 	/* XXX Report final statistics before going */
-	fprintf(stderr,"--- %s ping statistics ---\n",overlay_render_sid(ping_sid));
+	fprintf(stderr,"--- %s ping statistics ---\n", alloca_tohex_sid(ping_sid));
 	fprintf(stderr,"%lld packets transmitted, %lld packets received, %3.1f%% packet loss\n",
 		tx_count,rx_count,tx_count?(tx_count-rx_count)*100.0/tx_count:0);
 	fprintf(stderr,"round-trip min/avg/max/stddev%s = %lld/%.3f/%lld/%.3f ms\n",
@@ -1559,7 +1557,7 @@ int app_keyring_list(int argc, const char *const *argv, struct command_line_opti
 	    if (kp->type==KEYTYPE_DID) { did=kp->private_key; name=kp->public_key; }
 	  }
 	if (sid||did) {	 
-	    if (sid) cli_printf("%s",overlay_render_sid(sid));
+	    if (sid) cli_printf("%s", alloca_tohex_sid(sid));
 	    cli_delim(":");
 	    if (did) cli_puts((char*)did);
 	    cli_delim(":");
@@ -1647,7 +1645,7 @@ int app_id_self(int argc, const char *const *argv, struct command_line_option *o
     int i;
     for(i=0;i<a.addrlist.frame_sid_count;i++) {
       count++;
-      cli_printf("%s",overlay_render_sid(a.addrlist.sids[i])); cli_delim("\n");
+      cli_printf("%s", alloca_tohex_sid(a.addrlist.sids[i])); cli_delim("\n");
     }
     /* get ready to ask for next block of SIDs */
     a.packetTypeAndFlags=MDP_GETADDRS;
@@ -1801,7 +1799,7 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 	
 	// we might receive a late response from an ealier request, ignore it
 	if (memcmp(&m2.in.src.sid[0],&mdp.nodeinfo.sid[0],SID_SIZE)){
-	  WHYF("Unexpected result from SID %s", overlay_render_sid(m2.in.src.sid));
+	  WHYF("Unexpected result from SID %s", alloca_tohex_sid(m2.in.src.sid));
 	  continue;
 	}
 	
@@ -1828,7 +1826,7 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
   cli_printf("%d",mdp.nodeinfo.index); cli_delim(":");
   cli_printf("%d",mdp.nodeinfo.count); cli_delim(":");
   cli_printf("%s",mdp.nodeinfo.foundP?"found":"noresult"); cli_delim(":");
-  cli_printf("%s",overlay_render_sid(mdp.nodeinfo.sid)); cli_delim(":");
+  cli_printf("%s", alloca_tohex_sid(mdp.nodeinfo.sid)); cli_delim(":");
   cli_printf("%s",mdp.nodeinfo.resolve_did?mdp.nodeinfo.did:"did-not-resolved"); 
   cli_delim(":");
   cli_printf("%s",mdp.nodeinfo.localP?"self":"peer"); cli_delim(":");

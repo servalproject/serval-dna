@@ -389,10 +389,9 @@ int monitor_process_command(struct monitor_context *c)
       for(bin=0;bin<overlay_bin_count;bin++)
 	for(slot=0;slot<overlay_bin_size;slot++)
 	  {
-	    if (!overlay_nodes[bin][slot].sid[0]) 
-	      { 
-		continue; }
-	    strcpy(sid,overlay_render_sid(overlay_nodes[bin][slot].sid));
+	    if (!overlay_nodes[bin][slot].sid[0])
+	      continue;
+	    tohex(sid, overlay_nodes[bin][slot].sid, SID_SIZE);
 	    break;
 	  }
     }
@@ -403,9 +402,8 @@ int monitor_process_command(struct monitor_context *c)
 	WRITE_STR(c->alarm.poll.fd,"\nERROR:no local identity, so cannot place call\n");
       }
     else {
-      bcopy(keyring->contexts[cn]->identities[in]
-	    ->keypairs[kp]->public_key,
-	    &mdp.vompevent.local_sid[0],SID_SIZE);
+      bcopy(keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key,
+	    &mdp.vompevent.local_sid[0], SID_SIZE);
       stowSid(&mdp.vompevent.remote_sid[0],0,sid);
       vomp_mdp_event(&mdp,NULL,0);
     }
@@ -498,7 +496,7 @@ int monitor_announce_bundle(rhizome_manifest *m)
   const char *recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
   snprintf(msg,1024,"\nBUNDLE:%s:%s:%lld:%lld:%s:%s:%s\n",
 	   /* XXX bit of a hack here, since SIDs and cryptosign public keys have the same length */
-	   overlay_render_sid(m->cryptoSignPublic),
+	   alloca_tohex_sid(m->cryptoSignPublic),
 	   service ? service : "",
 	   m->version,
 	   m->fileLength,
@@ -542,8 +540,8 @@ int monitor_call_status(vomp_call_state *call)
 	     call->local.session,call->remote.session,
 	     call->local.state,call->remote.state,
 	     call->fast_audio,
-	     overlay_render_sid(call->local.sid),
-	     overlay_render_sid(call->remote.sid),
+	     alloca_tohex_sid(call->local.sid),
+	     alloca_tohex_sid(call->remote.sid),
 	     call->local.did,call->remote.did);
     msg[1023]=0;
     for(i=monitor_socket_count -1;i>=0;i--)
@@ -568,7 +566,7 @@ int monitor_call_status(vomp_call_state *call)
 int monitor_announce_peer(const unsigned char *sid)
 {
   char msg[1024];
-  int n = snprintf(msg, sizeof msg, "\nNEWPEER:%s\n",overlay_render_sid(sid));
+  int n = snprintf(msg, sizeof msg, "\nNEWPEER:%s\n", alloca_tohex_sid(sid));
   monitor_tell_clients(msg, n, MONITOR_PEERS);
   return 0;
 }

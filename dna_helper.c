@@ -166,7 +166,7 @@ dna_helper_enqueue(char *did, unsigned char *requestorSid) {
      which will include the requestor's SID.
   */
   bzero(buffer, sizeof(buffer));
-  if (snprintf(buffer, sizeof(buffer) - 1, "%s|%s|\n", overlay_render_sid(requestorSid), did) > 
+  if (snprintf(buffer, sizeof(buffer) - 1, "%s|%s|\n", alloca_tohex_sid(requestorSid), did) > 
       sizeof(buffer) - 1)
     return WHY("Command to helper is too long");
     

@@ -724,7 +724,7 @@ int packageVariableSegment(unsigned char *data,int *dlen,
 int packetDecipher(unsigned char *packet,int len,int cipher);
 int safeZeroField(unsigned char *packet,int start,int count);
 int unpackageVariableSegment(unsigned char *data,int dlen,int flags,struct response *r);
-int extractSid(unsigned char *packet,int *ofs,char *sid);
+int extractSid(const unsigned char *packet,int *ofs, char *sid);
 int hlrSetVariable(unsigned char *hlr,int hofs,int varid,int varinstance,
 		   unsigned char *value,int len);
 int extractDid(unsigned char *packet,int *ofs,char *did);
@@ -1045,7 +1045,6 @@ long long overlay_time_in_ms();
 int overlay_abbreviate_lookup_sender_id();
 int ob_dump(overlay_buffer *b,char *desc);
 unsigned int ob_get_int(overlay_buffer *b,int offset);
-char *overlay_render_sid(unsigned char *sid);
 int overlay_route_record_link(long long now,unsigned char *to,
 			      unsigned char *via,int sender_interface,
 			      unsigned int s1,unsigned int s2,int score,int gateways_en_route);
@@ -1344,8 +1343,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 int ob_bcopy(overlay_buffer *b,int from, int to, int len);
 int ob_setbyte(overlay_buffer *b,int ofs,unsigned char value);
 
-char *overlay_render_sid(unsigned char *sid);
-char *overlay_render_sid_prefix(unsigned char *sid,int l);
+char *overlay_render_sid_prefix(const unsigned char *sid,int l);
 int dump_payload(overlay_frame *p,char *message);
 
 int urandombytes(unsigned char *x,unsigned long long xlen);

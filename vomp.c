@@ -1072,9 +1072,9 @@ int dump_vomp_status()
   for(i=0;i<vomp_call_count;i++)
     {
       printf("%s/%06x\n-> %s/%06x\n   (%s -> %s)\n",
-	     overlay_render_sid(vomp_call_states[i].local.sid),
+	     alloca_tohex_sid(vomp_call_states[i].local.sid),
 	     vomp_call_states[i].local.session,
-	     overlay_render_sid(vomp_call_states[i].remote.sid),
+	     alloca_tohex_sid(vomp_call_states[i].remote.sid),
 	     vomp_call_states[i].remote.session,
 	     vomp_call_states[i].local.did,
 	     vomp_call_states[i].remote.did);
@@ -1231,9 +1231,8 @@ int app_vomp_dial(int argc, const char *const *argv, struct command_line_option 
   mdp.vompevent.flags=VOMPEVENT_DIAL;
   if (overlay_mdp_getmyaddr(0,&mdp.vompevent.local_sid[0])) return -1;
   stowSid(&mdp.vompevent.remote_sid[0],0,sid);
-  printf("local_sid=%s\n",overlay_render_sid(mdp.vompevent.local_sid));
-  printf("remote_sid=%s from %s\n",
-	 overlay_render_sid(mdp.vompevent.remote_sid),sid);
+  printf("local_sid=%s\n",alloca_tohex_sid(mdp.vompevent.local_sid));
+  printf("remote_sid=%s from %s\n", alloca_tohex_sid(mdp.vompevent.remote_sid),sid);
 
   if (overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000))
     {

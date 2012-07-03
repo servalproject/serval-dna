@@ -196,7 +196,7 @@ int stowDid(unsigned char *packet,int *ofs,char *did)
   return 0;
 }
 
-int extractSid(unsigned char *packet, int *ofs,char *sid)
+int extractSid(const unsigned char *packet, int *ofs, char *sid)
 {
   (void) tohex(sid, packet + *ofs, SID_SIZE);
   *ofs += SID_SIZE;

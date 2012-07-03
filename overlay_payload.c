@@ -82,7 +82,7 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
 
   if (p->nexthop_address_status!=OA_RESOLVED) {
     if (0) WHYF("next hop is NOT resolved for packet to %s",
-		overlay_render_sid(p->destination));
+		alloca_tohex_sid(p->destination));
     if (overlay_address_is_broadcast(p->destination)) {
       /* Broadcast frames are broadcast rather than unicast to next hop.
 	 Just check if the broadcast frame should be dropped first. */
@@ -101,7 +101,7 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
     }
   } else {
     if (0) WHYF("next hop IS resolved for packet to %s",
-		overlay_render_sid(p->destination));
+		alloca_tohex_sid(p->destination));
   }
 
 
@@ -223,10 +223,10 @@ int dump_payload(overlay_frame *p,char *message)
   fflush(stdout);
   fprintf(stderr,
 	  "+++++\nFrame from %s to %s of type 0x%02x %s:\n",
-	  overlay_render_sid(p->source),
-	  overlay_render_sid(p->destination),p->type,
+	  alloca_tohex_sid(p->source),
+	  alloca_tohex_sid(p->destination),p->type,
 	  message?message:"");
-  fprintf(stderr," next hop is %s\n",overlay_render_sid(p->nexthop));
+  fprintf(stderr," next hop is %s\n",alloca_tohex_sid(p->nexthop));
   fflush(stderr);
   if (p->payload) dump("payload contents",
 		       &p->payload->bytes[0],p->payload->length);   
