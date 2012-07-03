@@ -59,7 +59,7 @@ int process_packet(unsigned char *packet,int len,
   return 0;
 }
 
-int packetOk(int interface,unsigned char *packet,int len,
+int packetOk(struct overlay_interface *interface, unsigned char *packet,int len,
 	     unsigned char *transaction_id,int ttl,
 	     struct sockaddr *recvaddr,int recvaddrlen,int parseP)
 {
@@ -72,7 +72,7 @@ int packetOk(int interface,unsigned char *packet,int len,
 
   if (packet[0]==0x4F&&packet[1]==0x10) 
     {
-      if (interface>-1)
+      if (interface!=NULL)
 	{
 	  return packetOkOverlay(interface,packet,len,transaction_id,ttl,
 				 recvaddr,recvaddrlen,parseP);

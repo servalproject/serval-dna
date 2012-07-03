@@ -48,7 +48,6 @@ int client_port;
 void signal_handler(int signal);
 int getKeyring(char *s);
 int createServerSocket();
-int simpleServerMode();
 
 int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
 		struct sockaddr *recvaddr,unsigned int *recvaddrlen)
@@ -71,8 +70,6 @@ int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
   msg.msg_control = &cmsgcmsg[0];
   msg.msg_controllen = sizeof(struct cmsghdr)*16;
   msg.msg_flags = 0;
-
-  fcntl(sock,F_SETFL, O_NONBLOCK);
 
   int len = recvmsg(sock,&msg,0);
 
@@ -187,20 +184,7 @@ int server(char *backing_file)
   signal(SIGINT, signal_handler);
   signal(SIGQUIT, signal_handler);
 
-  if (overlayMode)
-    {
-      /* Now find and initialise all the suitable network interfaces, i.e., 
-	 those running IPv4.
-	 Packet radio dongles will get discovered later as the interfaces get probed.
-
-	 This will setup the sockets for the server to communicate on each interface.
-	 
-	 XXX - Problems may persist where the same address is used on multiple interfaces,
-	 but otherwise hopefully it will allow us to bridge multiple networks.
-      */
-      overlay_interface_discover();
-    }
-  else
+  if (!overlayMode)
     {
       /* Create a simple socket for listening on if we are not in overlay mesh mode. */
       createServerSocket();     
@@ -223,15 +207,14 @@ int server(char *backing_file)
   fprintf(f,"%d\n", server_getpid);
   fclose(f);
 
-  if (!overlayMode) simpleServerMode();
-  else overlayServerMode();
+  overlayServerMode();
 
   return 0;
 }
 
 /* Called periodically by the server process in its main loop.
  */
-void server_shutdown_check()
+void server_shutdown_check(struct sched_ent *alarm)
 {
   if (servalShutdown) {
     INFO("Shutdown flag set -- terminating with cleanup");
@@ -254,6 +237,10 @@ void server_shutdown_check()
       WARNF("Server pid file no longer contains pid=%d -- shutting down without cleanup", server_getpid);
       exit(1);
     }
+  }
+  if (alarm){
+    alarm->alarm = overlay_gettime_ms()+1000;
+    schedule(alarm);
   }
 }
 
@@ -433,7 +420,7 @@ void signal_handler(int signal)
       /* Terminate the server process.  The shutting down should be done from the main-line code
 	 rather than here, so we first try to tell the mainline code to do so.  If, however, this is
 	 not the first time we have been asked to shut down, then we will do it here. */
-      server_shutdown_check();
+      server_shutdown_check(NULL);
       WHY("Asking Serval process to shutdown cleanly");
       servalShutdown = 1;
       return;
@@ -443,8 +430,8 @@ void signal_handler(int signal)
   if (sock>-1) close(sock);
   int i;
   for(i=0;i<overlay_interface_count;i++)
-    if (overlay_interfaces[i].fd>-1)
-      close(overlay_interfaces[i].fd);
+    if (overlay_interfaces[i].alarm.poll.fd>-1)
+      close(overlay_interfaces[i].alarm.poll.fd);
   execv(exec_args[0],exec_args);
   /* Quit if the exec() fails */
   exit(-3);
@@ -820,74 +807,6 @@ int createServerSocket()
     WHYF("MP HLR server could not bind to UDP port %d", PORT_DNA);
     WHY_perror("bind");
     exit(-3);
-  }
-  return 0;
-}
-
-extern int sigIoFlag;
-
-int simpleServerMode()
-{
-  while(1) {
-    struct sockaddr recvaddr;
-    socklen_t recvaddrlen=sizeof(recvaddr);
-    struct pollfd fds[128];
-    int fdcount;
-    int len;
-    int r;
-
-    server_shutdown_check();
-
-    bzero((void *)&recvaddr,sizeof(recvaddr));
-
-    /* Get rhizome server started BEFORE populating fd list so that
-       the server's listen socket is in the list for poll() */
-    if (rhizome_enabled()) rhizome_server_poll();
-
-    /* Get list of file descripters to watch */
-    fds[0].fd=sock; fds[0].events=POLLIN;
-    fdcount=1;
-    rhizome_server_get_fds(fds,&fdcount,128);
-    if (debug&DEBUG_IO) {
-      strbuf b = strbuf_alloca(fdcount * 6);
-      int i;
-      for (i = 0;i < fdcount; ++i)
-	strbuf_sprintf(b, " %d", fds[i].fd);
-      DEBUGF("poll()ing file descriptors: %s", strbuf_str(b));
-    }
-    
-    /* Wait patiently for packets to arrive. */
-    if (rhizome_enabled()) rhizome_server_poll();
-    while ((r=poll(fds,fdcount,100000))<1) {
-      if (sigIoFlag) { sigIoFlag=0; break; }
-      sleep(0);
-    }
-    if (rhizome_enabled()) rhizome_server_poll();
-
-    unsigned char buffer[16384];
-    int ttl=-1; // unknown
-
-    if (fds[0].revents&POLLIN) {
-      
-      len=recvwithttl(sock,buffer,sizeof(buffer),&ttl,&recvaddr,&recvaddrlen);
-
-
-      client_port=((struct sockaddr_in*)&recvaddr)->sin_port;
-      client_addr=((struct sockaddr_in*)&recvaddr)->sin_addr;
-      
-      if (debug&DEBUG_DNAREQUESTS) DEBUGF("Received packet from %s:%d (len=%d)",inet_ntoa(client_addr),client_port,len);
-      if (debug&DEBUG_PACKETRX) dump("recvaddr",(unsigned char *)&recvaddr,recvaddrlen);
-      if (debug&DEBUG_PACKETRX) dump("packet",(unsigned char *)buffer,len);
-      if (dropPacketP(len)) {
-	if (debug&DEBUG_SIMULATION) DEBUG("Simulation mode: Dropped packet due to simulated link parameters.");
-	continue;
-      }
-      /* Simple server mode doesn't really use interface numbers, so lie and say interface -1 */
-      if (packetOk(-1,buffer,len,NULL,ttl,&recvaddr,recvaddrlen,1)) { 
-	if (debug&DEBUG_PACKETFORMATS) DEBUG("Ignoring invalid packet");
-      }
-      if (debug&DEBUG_PACKETRX) DEBUG("Finished processing packet, waiting for next one.");
-    }
   }
   return 0;
 }

@@ -418,7 +418,7 @@ int audio_msm_g1_poll_fds(struct pollfd *fds,int slots)
   int count=0;
   if (playFd>-1&&slots>0) {
     fds[count].fd=playFd;
-    fds[count].events=POLL_IN;
+    fds[count].events=POLLIN;
     count++; slots--;
   }
   return count;

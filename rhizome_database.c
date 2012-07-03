@@ -130,14 +130,19 @@ int rhizome_opendb()
 {
   if (rhizome_db) return 0;
 
-  if (create_rhizome_datastore_dir() == -1)
-    return WHY("No Directory");
+  IN();
+  
+  if (create_rhizome_datastore_dir() == -1){
+    RETURN(WHY("No Directory"));
+  }
   char dbpath[1024];
-  if (!FORM_RHIZOME_DATASTORE_PATH(dbpath, "rhizome.db"))
-    return WHY("Invalid path");
+  if (!FORM_RHIZOME_DATASTORE_PATH(dbpath, "rhizome.db")){
+    RETURN(WHY("Invalid path"));
+  }
 
-  if (sqlite3_open(dbpath,&rhizome_db))
-    return WHYF("SQLite could not open database %s: %s", dbpath, sqlite3_errmsg(rhizome_db));
+  if (sqlite3_open(dbpath,&rhizome_db)){
+    RETURN(WHYF("SQLite could not open database %s: %s", dbpath, sqlite3_errmsg(rhizome_db)));
+  }
   int loglevel = (debug & DEBUG_RHIZOME) ? LOG_LEVEL_DEBUG : LOG_LEVEL_SILENT;
 
   /* Read Rhizome configuration */
@@ -156,7 +161,7 @@ int rhizome_opendb()
     ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS GROUPMEMBERSHIPS(manifestid text not null, groupid text not null);") == -1
     ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS VERIFICATIONS(sid text not null, did text, name text, starttime integer, endtime integer, signature blob);") == -1
   ) {
-    return WHY("Failed to create schema");
+    RETURN(WHY("Failed to create schema"));
   }
   // No easy way to tell if these columns already exist, should probably create some kind of schema
   // version table.  Running these a second time will fail.
@@ -168,7 +173,7 @@ int rhizome_opendb()
   sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM MANIFESTS WHERE filehash IS NULL;");
   sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM FILES WHERE NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);");
   sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM MANIFESTS WHERE NOT EXISTS( SELECT  1 FROM FILES WHERE MANIFESTS.filehash = FILES.id);");
-  return 0;
+  RETURN(0);
 }
 
 /*

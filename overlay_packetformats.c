@@ -26,7 +26,7 @@ struct sockaddr_in loopback = {
   .sin_addr.s_addr=0x0100007f
 };
 
-int packetOkOverlay(int interface,unsigned char *packet,int len,
+int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet,int len,
 		    unsigned char *transaction_id,int recvttl,
 		    struct sockaddr *recvaddr,int recvaddrlen,int parseP)
 {
@@ -106,7 +106,7 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,
   if (recvaddr->sa_family==AF_INET)
     f.recvaddr=recvaddr; 
   else {
-    if (overlay_interfaces[interface].fileP) {
+    if (interface->fileP) {
       /* dummy interface, so tell to use 0.0.0.0 */
       f.recvaddr=(struct sockaddr *)&loopback;
     } else 
@@ -177,7 +177,7 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,
       /* Now extract the next hop address */
       int alen=0;
       int offset=ofs;
-      f.nexthop_address_status=overlay_abbreviate_expand_address(interface,packet,&offset,f.nexthop,&alen);
+      f.nexthop_address_status=overlay_abbreviate_expand_address(packet,&offset,f.nexthop,&alen);
       if (debug&DEBUG_PACKETFORMATS) {
 	if (f.nexthop_address_status==OA_RESOLVED)
 	  DEBUGF("next hop address is %s", overlay_render_sid(f.nexthop));
@@ -196,27 +196,32 @@ int packetOkOverlay(int interface,unsigned char *packet,int len,
       }
 
       /* Finally process the frame */
+      long long now=overlay_gettime_ms();
       overlay_frame_process(interface,&f);
+      long long elapsed=overlay_gettime_ms()-now;
+      if (0) INFOF("overlay_frame_process (type=%d, len=%d) took %lldms",
+		   f.type,f.bytecount,elapsed);
       
       /* Skip the rest of the bytes in this frame so that we can examine the next one in this
 	 ensemble */
       if (debug&DEBUG_PACKETFORMATS) DEBUGF("next ofs=%d, f.rfs=%d, len=%d", ofs, f.rfs, len);
       ofs+=f.rfs;
     }
+  if (0) INFOF("Finished processing overlay packet");
 
   return 0;
 }
 
-int overlay_frame_resolve_addresses(int interface,overlay_frame *f)
+int overlay_frame_resolve_addresses(overlay_frame *f)
 {
   /* Get destination and source addresses and set pointers to payload appropriately */
   int alen=0;
   int offset=0;
 
   overlay_abbreviate_set_most_recent_address(f->nexthop);
-  f->destination_address_status=overlay_abbreviate_expand_address(interface,f->bytes,&offset,f->destination,&alen);
+  f->destination_address_status=overlay_abbreviate_expand_address(f->bytes,&offset,f->destination,&alen);
   alen=0;
-  f->source_address_status=overlay_abbreviate_expand_address(interface,f->bytes,&offset,f->source,&alen);
+  f->source_address_status=overlay_abbreviate_expand_address(f->bytes,&offset,f->source,&alen);
   if (debug&DEBUG_OVERLAYABBREVIATIONS)
     DEBUGF("Wrote %d bytes into source address: %s", alen, alloca_tohex(f->source, alen));
 
@@ -307,14 +312,14 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
   */
   if (send_prefix) {
     if (ob_append_byte(b, OA_CODE_PREFIX7)) return WHY("Could not add address format code.");
-    if (ob_append_bytes(b,sid,7)) return WHY("Could not append SID prefix to self-announcement"); 
+    if (ob_append_bytes(b,sid,7)) return WHY("Could not append SID prefix to self-announcement");
   }
   else {
-    if (ob_append_bytes(b,sid,SID_SIZE)) return WHY("Could not append SID to self-announcement"); 
+    if (ob_append_bytes(b,sid,SID_SIZE)) return WHY("Could not append SID to self-announcement");
   }
   /* Make note that this is the most recent address we have set */
   overlay_abbreviate_set_most_recent_address(sid);
-      
+
   /* Sequence number range.  Based on one tick per milli-second. */
   overlay_update_sequence_number();
   if (ob_append_int(b,overlay_interfaces[interface].last_tick_ms))

@@ -1118,10 +1118,12 @@ int keyring_sanitise_position(const keyring_file *k,int *cn,int *in,int *kp)
 unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
 					unsigned char **sas_public)
 {
+  IN();
   int cn=0,in=0,kp=0;
 
-  if (!keyring_find_sid(k,&cn,&in,&kp,sid)) 
-    return WHYNULL("Could not find SID in keyring, so can't find SAS");
+  if (!keyring_find_sid(k,&cn,&in,&kp,sid)) {
+    RETURN(WHYNULL("Could not find SID in keyring, so can't find SAS"));
+  }
 
   for(kp=0;kp<k->contexts[cn]->identities[in]->keypair_count;kp++)
     if (k->contexts[cn]->identities[in]->keypairs[kp]->type==KEYTYPE_CRYPTOSIGN)
@@ -1129,10 +1131,11 @@ unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
 	if (sas_public) 
 	  *sas_public=
 	    k->contexts[cn]->identities[in]->keypairs[kp]->public_key;
-	return k->contexts[cn]->identities[in]->keypairs[kp]->private_key;
+	if (0) WHYF("Found SAS entry for %s*",overlay_render_sid_prefix(sid,7));
+	RETURN(k->contexts[cn]->identities[in]->keypairs[kp]->private_key);
       }
 
-  return WHYNULL("Identity lacks SAS");
+  RETURN(WHYNULL("Identity lacks SAS"));
 }
 
 struct sid_sas_mapping {
@@ -1201,6 +1204,8 @@ int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req)
     return overlay_mdp_dispatch(req,1,NULL,0);
   } else {
     /* It's probably a response. */
+    WHYF("Received %d byte key mapping response",
+	 req->out.payload_length);
     switch(req->out.payload[0]) {
     case KEYTYPE_CRYPTOSIGN:
       {
@@ -1219,6 +1224,7 @@ int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req)
 	bcopy(&compactsignature[0],&signature[0],32);
 	bcopy(&req->out.src.sid[0],&signature[32],SID_SIZE);
 	bcopy(&compactsignature[32],&signature[32+SID_SIZE],32);
+
 	int r=crypto_sign_edwards25519sha512batch_open(plain,&plain_len,
 						       signature,siglen,
 						       sas_public);
@@ -1276,19 +1282,26 @@ unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
      For now we will just use a non-persistent cache for safety (and it happens
      to be easy to implement as well :)
   */
+  IN();
   int i;
   long long now=overlay_gettime_ms();
   for(i=0;i<sid_sas_mapping_count;i++)
     {
       if (memcmp(sid,sid_sas_mappings[i].sid,SID_SIZE)) continue;
-      if (sid_sas_mappings[i].validP) return sid_sas_mappings[i].sas_public;      
+      if (sid_sas_mappings[i].validP) 
+	{ if (0) 
+	    WHYF("Found SAS public entry for %s*",overlay_render_sid_prefix(sid,7));
+	  RETURN(sid_sas_mappings[i].sas_public); }
       /* Don't flood the network with mapping requests */
-      if ((now-sid_sas_mappings[i].last_request_time_in_ms)<1000) return NULL;
+      if (((now-sid_sas_mappings[i].last_request_time_in_ms)<1000)
+	  &&((now-sid_sas_mappings[i].last_request_time_in_ms)>=0))
+	{ WHYF("Too soon to ask for SAS mapping again."); RETURN(NULL); }
       /* we can request again, so fall out to where we do that.
          i is set to this mapping, so the request process will update this
          record. */
       break;
     }
+  WHYF("Asking for SAS mapping for %s",overlay_render_sid(sid));
 
   /* allocate mapping slot or replace one at random, depending on how full things
      are */
@@ -1304,7 +1317,7 @@ unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
   sid_sas_mappings[i].validP=0;
   sid_sas_mappings[i].last_request_time_in_ms=now;
 
-  /* request mapping. */
+  /* request mapping (send request auth-crypted). */
   overlay_mdp_frame mdp;
   mdp.packetTypeAndFlags=MDP_TX;
   bcopy(&sid[0],&mdp.out.dst.sid[0],SID_SIZE);
@@ -1316,12 +1329,14 @@ unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
       ==KEYTYPE_CRYPTOBOX)		  
     bcopy(keyring->contexts[0]->identities[0]->keypairs[0]->public_key,
 	  mdp.out.src.sid,SID_SIZE);
-  else return WHYNULL("couldn't request SAS (I don't know who I am)");
+  else { RETURN(WHYNULL("couldn't request SAS (I don't know who I am)")); }
   mdp.out.payload_length=1;
   mdp.out.payload[0]=KEYTYPE_CRYPTOSIGN;
-  overlay_mdp_dispatch(&mdp,0 /* system generated */,
-		       NULL,0);
-  return NULL;
+  if (overlay_mdp_dispatch(&mdp,0 /* system generated */,
+			   NULL,0))
+    { RETURN(WHYNULL("Failed to send SAS resolution request")); }
+  WHYF("Dispatched SAS resolution request");
+  RETURN(NULL); 
 }
 
 int keyring_find_sid(const keyring_file *k,int *cn,int *in,int *kp, const unsigned char *sid)
@@ -1434,9 +1449,10 @@ struct nm_record nm_cache[NM_CACHE_SLOTS];
 
 unsigned char *keyring_get_nm_bytes(sockaddr_mdp *known,sockaddr_mdp *unknown)
 {
-  if (!known) return WHYNULL("known pub key is null");
-  if (!unknown) return WHYNULL("unknown pub key is null");
-  if (!keyring) return WHYNULL("keyring is null");
+  IN();
+  if (!known) { RETURN(WHYNULL("known pub key is null")); }
+  if (!unknown) { RETURN(WHYNULL("unknown pub key is null")); }
+  if (!keyring) { RETURN(WHYNULL("keyring is null")); }
 
   int i;
 
@@ -1447,14 +1463,14 @@ unsigned char *keyring_get_nm_bytes(sockaddr_mdp *known,sockaddr_mdp *unknown)
 	       crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES)) continue;
       if (memcmp(nm_cache[i].unknown_key,unknown->sid,
 	       crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES)) continue;
-      return nm_cache[i].nm_bytes;
+      { RETURN(nm_cache[i].nm_bytes); }
     }
 
   /* Not in the cache, so prepare to cache it (or return failure if known is not
      in fact a known key */
   int cn=0,in=0,kp=0;
   if (!keyring_find_sid(keyring,&cn,&in,&kp,known->sid))
-    return WHYNULL("known key is not in fact known.");
+    { RETURN(WHYNULL("known key is not in fact known.")); }
 
   /* work out where to store it */
   if (nm_slots_used<NM_CACHE_SLOTS) {
@@ -1475,5 +1491,5 @@ unsigned char *keyring_get_nm_bytes(sockaddr_mdp *known,sockaddr_mdp *unknown)
 						 ->identities[in]
 						 ->keypairs[kp]->private_key);
 						 
-  return nm_cache[i].nm_bytes;
+  RETURN(nm_cache[i].nm_bytes);
 }

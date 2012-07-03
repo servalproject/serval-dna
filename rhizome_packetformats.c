@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
 {
+  IN();
   /* BAR = Bundle Advertisement Record.
      Basically a 32byte precis of a given manifest, that includes version, time-to-live
      and geographic bounding box information that is used to help manage flooding of
@@ -38,7 +39,7 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
      16 bits - max longitude (-180 - +180).
  */
 
-  if (!m) return WHY("null manifest passed in");
+  if (!m) { RETURN(WHY("null manifest passed in")); }
 
   int i;
 
@@ -66,13 +67,14 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
   v=(maxLat+90)*(65535/180); bar[28]=(v>>8)&0xff; bar[29]=(v>>0)&0xff;
   v=(maxLong+180)*(65535/360); bar[30]=(v>>8)&0xff; bar[31]=(v>>0)&0xff;
   
-  return 0;
+  RETURN(0);
 }
 
 int bundles_available=-1;
 int bundle_offset[2]={0,0};
 int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 {
+  IN();
   int voice_mode=0;
   unsigned short int http_port = RHIZOME_HTTP_PORT;
 
@@ -88,7 +90,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
  */
   long long now=overlay_gettime_ms();
   if (now<rhizome_voice_timeout) voice_mode=1;
-  if (voice_mode) if (random()&3) return 0;
+  if (voice_mode) if (random()&3) { RETURN(0); }
 
   int pass;
   int bytes=e->sizeLimit-e->length;
@@ -100,12 +102,12 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
   int bytes_available=bytes-overhead-1 /* one byte held for expanding RFS */;
   int bundles_advertised=0;
 
-  if (slots<1) return WHY("No room for node advertisements");
+  if (slots<1) { RETURN(WHY("No room for node advertisements")); }
 
-  if (!rhizome_db) return WHY("Rhizome not enabled");
+  if (!rhizome_db) { RETURN(WHY("Rhizome not enabled")); }
 
   if (ob_append_byte(e,OF_TYPE_RHIZOME_ADVERT))
-    return WHY("could not add rhizome bundle advertisement header");
+    RETURN(WHY("could not add rhizome bundle advertisement header"));
   ob_append_byte(e, 1); /* TTL (1 byte) */
 
   int rfs_offset=e->length; /* remember where the RFS byte gets stored 
@@ -148,7 +150,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
   /* Get number of bundles available if required */
   long long tmp = 0;
   if (sqlite_exec_int64(&tmp, "SELECT COUNT(BAR) FROM MANIFESTS;") != 1)
-    return WHY("Could not count BARs for advertisement");
+    { RETURN(WHY("Could not count BARs for advertisement")); }
   bundles_available = (int) tmp;
   if (bundles_available==-1||(bundle_offset[0]>=bundles_available)) 
     bundle_offset[0]=0;
@@ -184,7 +186,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	  sqlite3_close(rhizome_db); rhizome_db=NULL;
 	  WHY(query);
 	  WHY(sqlite3_errmsg(rhizome_db));
-	  return WHY("Could not prepare sql statement for fetching BARs for advertisement.");
+	  RETURN(WHY("Could not prepare sql statement for fetching BARs for advertisement."));
 	}
       while((bytes_used<bytes_available)&&(sqlite3_step(statement)==SQLITE_ROW)&&
 	    (e->length+RHIZOME_BAR_BYTES<=e->sizeLimit))
@@ -323,12 +325,13 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
       e->length++;
     }
   
-  return 0;
+  RETURN(0);
 }
 
 int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 {
-  if (!f) return -1;
+  IN();
+  if (!f) { RETURN(-1); }
   int ofs=0;
   int ad_frame_type=f->payload->bytes[ofs++];
   struct sockaddr_in httpaddr = *(struct sockaddr_in *)f->recvaddr;
@@ -368,19 +371,19 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	m = rhizome_new_manifest();
 	if (!m) {
 	  WHY("Out of manifests");
-	  return 0;
+	  RETURN(0);
 	}
 	if (rhizome_read_manifest_file(m, (char *)&f->payload->bytes[ofs], 
 				       manifest_length) == -1) {
 	  WHY("Error importing manifest body");
 	  rhizome_manifest_free(m);
-	  return 0;
+	  RETURN(0);
 	}
 	char manifest_id_prefix[RHIZOME_MANIFEST_ID_STRLEN + 1];
 	if (rhizome_manifest_get(m, "id", manifest_id_prefix, sizeof manifest_id_prefix) == NULL) {
 	  WHY("Manifest does not contain 'id' field");
 	  rhizome_manifest_free(m);
-	  return 0;
+	  RETURN(0);
 	}
 	/* trim manifest ID to a prefix for ease of debugging 
 	   (that is the only use of this */
@@ -399,7 +402,7 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	     offering the same manifest */
 	  WARN("Ignoring manifest announcment with no signature");
 	  rhizome_manifest_free(m);
-	  return 0;
+	  RETURN(0);
 	}
 	int importManifest=0;	
 	if (rhizome_ignore_manifest_check(m, &httpaddr))
@@ -438,10 +441,12 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	    WHY("Error importing manifest body");
 	    rhizome_manifest_free(m);
 	    m = NULL;
-	  } else if (rhizome_manifest_verify(m)) {
-	    WHY("Error verifying manifest body when importing");
-	    rhizome_manifest_free(m);
-	    m = NULL;
+	    /* PGS @20120626 - Used to verify manifest here, which is before
+	       checking if we already have the bundle or newer.  Trouble is
+	       that signature verification is VERY expensive (~400ms on the ideos
+	       phones), so we now defer it to inside 
+	       rhizome_suggest_queue_manifest_import(), where it only gets called
+	       after checking that it is worth adding to the queue. */
 	  } else if (m->errors) {
 	    if (debug&DEBUG_RHIZOME) DEBUGF("Verifying manifest %s* revealed errors -- not storing.", manifest_id_prefix);
 	    rhizome_queue_ignore_manifest(m, &httpaddr, 60000);
@@ -463,6 +468,5 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
       }
       break;
     }
-  
-  return 0;
+  RETURN(0);
 }

@@ -1746,24 +1746,37 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
     if (overlay_mdp_bind(srcsid,port)) port=0;
 
     if (port) {    
-      int i;
-      for(i=0;i<(3000/125);i++) {
-	m2.packetTypeAndFlags=MDP_TX;
-	m2.out.src.port=port;
-	bcopy(&srcsid[0],&m2.out.src.sid[0],SID_SIZE);
-	bcopy(&mdp.nodeinfo.sid[0],&m2.out.dst.sid[0],SID_SIZE);
-	m2.out.dst.port=MDP_PORT_DNALOOKUP;
-	/* search for any DID */
-	m2.out.payload[0]=0;
-	m2.out.payload_length=1;
-
-	if (overlay_mdp_send(&m2,MDP_AWAITREPLY,125)){
-	  if (0) {
-	    WHY("Poll for DNA number resolution failed");
-	    if (m2.packetTypeAndFlags==MDP_ERROR) 
-	      WHYF("error.error=%d, error.message=%s",m2.error.error,m2.error.message);
-	  }
-	  
+      unsigned long long now = overlay_gettime_ms();
+      unsigned long long timeout = now+3000;
+      unsigned long long next_send = now;
+      
+      while(now < timeout){
+	now=overlay_gettime_ms();
+	
+	if (now >= next_send){
+	  m2.packetTypeAndFlags=MDP_TX;
+	  m2.out.src.port=port;
+	  bcopy(&srcsid[0],&m2.out.src.sid[0],SID_SIZE);
+	  bcopy(&mdp.nodeinfo.sid[0],&m2.out.dst.sid[0],SID_SIZE);
+	  m2.out.dst.port=MDP_PORT_DNALOOKUP;
+	  /* search for any DID */
+	  m2.out.payload[0]=0;
+	  m2.out.payload_length=1;
+	  overlay_mdp_send(&m2,0,0);
+	  next_send+=125;
+	  continue;
+	}
+	
+	long long timeout_ms = (next_send>timeout?timeout:next_send) - now;
+	if (overlay_mdp_client_poll(timeout_ms)<=0)
+	  continue;
+	
+	int ttl=-1;
+	if (overlay_mdp_recv(&m2,&ttl))
+	  continue;
+	
+	if ((m2.packetTypeAndFlags&MDP_TYPE_MASK)==MDP_ERROR){
+	  // TODO log error?
 	  continue;
 	}
 	
@@ -1777,8 +1790,7 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 	  continue;
 	}
 	
-	// we might receive a response from an ealier request
-	// TODO, don't send another query just yet, we should try to receieve another response first
+	// we might receive a late response from an ealier request, ignore it
 	if (memcmp(&m2.in.src.sid[0],&mdp.nodeinfo.sid[0],SID_SIZE)){
 	  WHYF("Unexpected result from SID %s", overlay_render_sid(m2.in.src.sid));
 	  continue;
@@ -1790,13 +1802,13 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 	  char uri[512];
 	  if (!parseDnaReply(m2.in.payload,m2.in.payload_length,
 			     did,name,uri))
-	    {
-	      /* Got a good DNA reply, copy it into place */
-	      bcopy(did,mdp.nodeinfo.did,32);
-	      bcopy(name,mdp.nodeinfo.name,64);
-	      mdp.nodeinfo.resolve_did=1;
-	      break;
-	    }
+	  {
+	    /* Got a good DNA reply, copy it into place */
+	    bcopy(did,mdp.nodeinfo.did,32);
+	    bcopy(name,mdp.nodeinfo.name,64);
+	    mdp.nodeinfo.resolve_did=1;
+	    break;
+	  }
 	}
       }
     }

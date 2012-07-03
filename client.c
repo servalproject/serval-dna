@@ -325,7 +325,7 @@ int getReplyPackets(int method,int peer,int batchP,struct response_set *response
       if (debug&DEBUG_SIMULATION) DEBUGF("Simulation mode: Dropped packet due to simulated link parameters");
       continue;
     }
-    if (!packetOk(-1,buffer,len,transaction_id,ttl,recvaddr,recvaddrlen,0)) {
+    if (!packetOk(NULL,buffer,len,transaction_id,ttl,recvaddr,recvaddrlen,0)) {
       /* Packet passes tests - extract responses and append them to the end of the response list */
       if (extractResponses(client_addr,buffer,len,responses)) 
 	return WHY("Problem extracting response fields from reply packets");

@@ -22,7 +22,8 @@ SERVALD_SRC_FILES = \
         serval-dna/gateway.c       \
         serval-dna/overlay.c       \
         serval-dna/overlay_broadcast.c \
-        serval-dna/packetformats.c \
+        serval-dna/performance_timing.c \
+	serval-dna/packetformats.c \
         serval-dna/peers.c         \
 	serval-dna/randombytes.c \
 	serval-dna/rhizome.c \
@@ -44,6 +45,7 @@ SERVALD_SRC_FILES = \
 	serval-dna/lsif.c \
 	serval-dna/dna_helper.c \
 	serval-dna/sighandlers.c \
+	serval-dna/fdqueue.c \
 	serval-dna/monitor.c \
 	serval-dna/monitor-cli.c \
 	serval-dna/codecs.c \

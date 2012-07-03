@@ -114,15 +114,6 @@ struct in_addr {
 /* bzero(3) is deprecated in favour of memset(3). */
 #define bzero(addr,len) memset((addr), 0, (len))
 
-/* @PGS/20120615 */
-#ifdef DO_TIMING_CHECKS
-#define TIMING_CHECK() _TIMING_CHECK(__FILE__,__FUNCTION__,__LINE__)
-void _TIMING_CHECK(const char *file,const char *func,int line);
-void TIMING_PAUSE();
-#else
-#define TIMING_CHECK()
-#endif
-
 /* UDP Port numbers for various Serval services.
  The overlay mesh works over DNA */
 #define PORT_DNA 4110
@@ -400,6 +391,276 @@ extern struct mphlr_variable vars[];
 
 extern int sock;
 
+#define OVERLAY_MAX_INTERFACES 16
+
+typedef struct overlay_address_table {
+  unsigned char epoch;
+  char sids[256][SID_SIZE];
+  /* 0x00 = not set, which thus limits us to using only 255 (0x01-0xff) of the indexes for
+   storing addresses.
+   By spending an extra 256 bytes we reduce, but not eliminate the problem of collisions.
+   Will think about a complete solution later.
+   */
+  unsigned char byfirstbyte[256][2];
+  /* next free entry in sid[] */
+  unsigned char next_free;
+} overlay_address_table;
+
+typedef struct sid {
+  unsigned char b[SID_SIZE];
+} sid;
+
+typedef struct overlay_address_cache {
+  int size;
+  int shift; /* Used to calculat lookup function, which is (b[0].b[1].b[2]>>shift) */
+  sid *sids; /* one entry per bucket, to keep things simple. */
+  /* XXX Should have a means of changing the hash function so that naughty people can't try
+   to force our cache to flush with duplicate addresses? 
+   But we must use only the first 24 bits of the address due to abbreviation policies, 
+   so our options are limited.
+   For now the hash will be the first k bits.
+   */
+} overlay_address_cache;
+
+extern sid overlay_abbreviate_current_sender;
+
+typedef struct overlay_frame {
+  struct overlay_frame *prev;
+  struct overlay_frame *next;
+  
+  unsigned int type;
+  unsigned int modifiers;
+  
+  unsigned char ttl;
+  unsigned char dequeue;
+  
+  /* Mark which interfaces the frame has been sent on,
+   so that we can ensure that broadcast frames get sent
+   exactly once on each interface */
+  int isBroadcast;
+  unsigned char broadcast_sent_via[OVERLAY_MAX_INTERFACES];
+  
+  unsigned char nexthop[32];
+  int nexthop_address_status;
+  int nexthop_interface; /* which interface the next hop should be attempted on */
+  
+  unsigned char destination[32];
+  int destination_address_status;
+  
+  unsigned char source[32];
+  int source_address_status;
+  
+  /* IPv4 node frame was received from (if applicable) */
+  struct sockaddr *recvaddr;
+  
+  /* Frame content from destination address onwards */
+  int bytecount;
+  unsigned char *bytes;
+  
+  /* Actual payload */
+  struct overlay_buffer *payload;
+  
+  int rfs; /* remainder of frame size */
+  
+  long long enqueued_at;
+  
+} overlay_frame;
+
+
+#define CRYPT_CIPHERED 1
+#define CRYPT_SIGNED 2
+#define CRYPT_PUBLIC 4
+
+struct call_stats{
+  long long enter_time;
+  long long child_time;
+  struct call_stats *prev;
+};
+
+struct profile_total {
+  struct profile_total *_next;
+  int _initialised;
+  const char *name;
+  long long max_time;
+  long long total_time;
+  int calls;
+};
+
+struct sched_ent;
+
+typedef void (*ALARM_FUNCP) (struct sched_ent *alarm);
+
+struct sched_ent{
+  struct sched_ent *_next;
+  struct sched_ent *_prev;
+  
+  ALARM_FUNCP function;
+  void *context;
+  struct pollfd poll;
+  long long alarm;
+  struct profile_total *stats;
+  int _poll_index;
+};
+
+
+extern int overlayMode;
+#define OVERLAY_INTERFACE_UNKNOWN 0
+#define OVERLAY_INTERFACE_ETHERNET 1
+#define OVERLAY_INTERFACE_WIFI 2
+#define OVERLAY_INTERFACE_PACKETRADIO 3
+
+typedef struct overlay_interface {
+  struct sched_ent alarm;
+  char name[80];
+  int offset;
+  int fileP;
+  int bits_per_second;
+  int port;
+  int type;
+  /* Number of milli-seconds per tick for this interface, which is basically related to the     
+   the typical TX range divided by the maximum expected speed of nodes in the network.
+   This means that short-range communications has a higher bandwidth requirement than
+   long-range communications because the tick interval has to be shorter to still allow
+   fast-convergence time to allow for mobility.
+   
+   For wifi (nominal range 100m) it is usually 500ms.
+   For ~100K ISM915MHz (nominal range 1000m) it will probably be about 5000ms.
+   For ~10K ISM915MHz (nominal range ~3000m) it will probably be about 15000ms.
+   These figures will be refined over time, and we will allow people to set them per-interface.
+   */
+  int tick_ms; /* milliseconds per tick */
+  
+  /* The time of the last tick on this interface in milli seconds */
+  long long last_tick_ms;
+  /* How many times have we abbreviated our address since we last announced it in full? */
+  int ticks_since_sent_full_address;
+  
+  /* sequence number of last packet sent on this interface.
+   Used to allow NACKs that can request retransmission of recent packets.
+   */
+  int sequence_number;
+  /* XXX need recent packet buffers to support the above */
+  
+  /* Broadcast address and netmask, if known
+   We really only case about distinct broadcast addresses on interfaces.
+   Also simplifies aliases on interfaces. */
+  struct sockaddr_in broadcast_address;
+  
+  /* Not necessarily the real MTU, but the largest frame size we are willing to TX on this interface.
+   For radio links the actual maximum and the maximum that is likely to be delivered reliably are
+   potentially two quite different values. */
+  int mtu;
+  
+  /* If the interface still exists on the local machine.
+   If not, it we keep track of it for a few seconds before purging it, incase of flapping, e.g.,
+   due to DHCP renewal */
+  int observed;  
+} overlay_interface;
+
+/* Maximum interface count is rather arbitrary.
+ Memory consumption is O(n) with respect to this parameter, so let's not make it too big for now.
+ */
+extern overlay_interface overlay_interfaces[OVERLAY_MAX_INTERFACES];
+extern int overlay_last_interface_number; // used to remember where a packet came from
+extern unsigned int overlay_sequence_number;
+
+/*
+ For each peer we need to keep track of the routes that we know to reach it.
+ 
+ We want to use static sized data structures as much as we can to keep things efficient by
+ allowing computed memory address lookups instead of following linked lists and other 
+ non-deterministic means.
+ 
+ The tricky part of doing all this is that each interface may have a different maximum number
+ of peers based on the bandwidth of the link, as we do not want mesh traffic to consume all
+ available bandwidth.  In particular, we need to reserve at least enough bandwidth for one
+ call.
+ 
+ Related to this, if we are in a mesh larger than the per-interface limit allows, then we need to
+ only track the highest-scoring peers.  This sounds simple, but how to we tell when to replace a
+ low-scoring peer with another one which has a better reachability score, if we are not tracking 
+ the reachability score of that node?
+ 
+ The answer to this is that we track as many nodes as we can, but only announce the highest
+ scoring nodes on each interface as bandwidth allows.
+ 
+ This also keeps our memory usage fixed.
+ 
+ XXX - At present we are setting OVERLAY_MAX_PEERS at compile time.
+ With a bit of work we can change this to be a run-time option.
+ 
+ Memory consumption of OVERLAY_MAX_PEERS=n is O(n^2).
+ XXX We could and should improve this down the track by only monitoring the top k routes, and replacing the worst route
+ option when a better one comes along.  This would get the memory usage down to O(n).
+ 
+ */
+#define OVERLAY_MAX_PEERS 500
+
+typedef struct overlay_peer {
+  unsigned char address[SIDDIDFIELD_LEN];
+  
+  /* Scores and score update times for reaching this node via various interfaces */
+  int known_routes[OVERLAY_MAX_INTERFACES];
+  unsigned short scores[OVERLAY_MAX_INTERFACES][OVERLAY_MAX_PEERS];
+  
+  /* last_regeneration is the time that this peer was created/replaced with another peer.
+   lastupdate[] indicates the time that another peer's reachability report
+   caused us to update our score to reach via that peer.
+   If lastupdate[x][y] is older than last_regeneration[y], then we must
+   ignore the entry, because the lastupdate[x][y] entry references a previous
+   generation of that peer, i.e., not to the peer we think it does.
+   
+   This slight convolution allows us to replace peers without having to touch the
+   records of every other peer in our list.
+   */
+  int last_regeneration;
+  unsigned int lastupdate[OVERLAY_MAX_INTERFACES][OVERLAY_MAX_PEERS];
+} overlay_peer;
+
+extern overlay_peer overlay_peers[OVERLAY_MAX_PEERS];
+
+typedef struct overlay_buffer {
+  unsigned char *bytes;
+  int length;
+  int allocSize;
+  int checkpointLength;
+  int sizeLimit;
+  int var_length_offset;
+  int var_length_bytes;
+} overlay_buffer;
+
+int ob_unlimitsize(overlay_buffer *b);
+
+
+typedef struct overlay_txqueue {
+  struct overlay_frame *first;
+  struct overlay_frame *last;
+  int length; /* # frames in queue */
+  int maxLength; /* max # frames in queue before we consider ourselves congested */
+  
+  /* Latency target in ms for this traffic class.
+   Frames older than the latency target will get dropped. */
+  int latencyTarget;
+  
+  /* XXX Need to initialise these:
+   Real-time queue for voice (<200ms ?)
+   Real-time queue for video (<200ms ?) (lower priority than voice)
+   Ordinary service queue (<3 sec ?)
+   Rhizome opportunistic queue (infinity)
+   
+   (Mesh management doesn't need a queue, as each overlay packet is tagged with some mesh management information)
+   */
+} overlay_txqueue;
+
+
+#define OQ_ISOCHRONOUS_VOICE 0
+#define OQ_MESH_MANAGEMENT 1
+#define OQ_ISOCHRONOUS_VIDEO 2
+#define OQ_ORDINARY 3
+#define OQ_OPPORTUNISTIC 4
+#define OQ_MAX 5
+extern overlay_txqueue overlay_tx[OQ_MAX];
+
 const char *confValueGet(const char *var, const char *defaultValue);
 int confValueGetBoolean(const char *var, int defaultValue);
 int64_t confValueGetInt64(const char *var, int64_t defaultValue);
@@ -431,7 +692,6 @@ long long gettime_ms();
 int server_pid();
 void server_save_argv(int argc, const char *const *argv);
 int server(char *backing_file);
-void server_shutdown_check();
 int server_create_stopfile();
 int server_remove_stopfile();
 int server_check_stopfile();
@@ -439,7 +699,7 @@ void serverCleanUp();
 int isTransactionInCache(unsigned char *transaction_id);
 void insertTransactionInCache(unsigned char *transaction_id);
 
-int packetOk(int interface,unsigned char *packet,int len,
+int packetOk(struct overlay_interface *interface,unsigned char *packet,int len,
 	     unsigned char *transaction_id, int recvttl,
 	     struct sockaddr *recvaddr,int recvaddrlen,int parseP);
 int process_packet(unsigned char *packet,int len,
@@ -500,7 +760,7 @@ int runCommand(char *cmd);
 int asteriskObtainGateway(char *requestor_sid,char *did,char *uri_out);
 int packetOkDNA(unsigned char *packet,int len,unsigned char *transaction_id,
 		int recvttl,struct sockaddr *recvaddr,int recvaddrlen,int parseP);
-int packetOkOverlay(int interface,unsigned char *packet,int len,
+int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet,int len,
 		    unsigned char *transaction_id,int recvttl,
 		    struct sockaddr *recvaddr,int recvaddrlen,int parseP);
 int prepareGateway(char *gatewayspec);
@@ -509,254 +769,8 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
 		      struct response_set *responses);
 int readArpTable(struct in_addr peers[],int *peer_count,int peer_max);
 
-#define OVERLAY_MAX_INTERFACES 16
-
-typedef struct overlay_address_table {
-  unsigned char epoch;
-  char sids[256][SID_SIZE];
-  /* 0x00 = not set, which thus limits us to using only 255 (0x01-0xff) of the indexes for
-     storing addresses.
-     By spending an extra 256 bytes we reduce, but not eliminate the problem of collisions.
-     Will think about a complete solution later.
-  */
-  unsigned char byfirstbyte[256][2];
-  /* next free entry in sid[] */
-  unsigned char next_free;
-} overlay_address_table;
-
-typedef struct sid {
-  unsigned char b[SID_SIZE];
-} sid;
-
-typedef struct overlay_address_cache {
-  int size;
-  int shift; /* Used to calculat lookup function, which is (b[0].b[1].b[2]>>shift) */
-  sid *sids; /* one entry per bucket, to keep things simple. */
-  /* XXX Should have a means of changing the hash function so that naughty people can't try
-     to force our cache to flush with duplicate addresses? 
-     But we must use only the first 24 bits of the address due to abbreviation policies, 
-     so our options are limited.
-     For now the hash will be the first k bits.
-  */
-} overlay_address_cache;
-
-extern sid overlay_abbreviate_current_sender;
-
-typedef struct overlay_frame {
-  struct overlay_frame *prev;
-  struct overlay_frame *next;
-
-  unsigned int type;
-  unsigned int modifiers;
-
-  unsigned char ttl;
-  unsigned char dequeue;
-
-  /* Mark which interfaces the frame has been sent on,
-     so that we can ensure that broadcast frames get sent
-     exactly once on each interface */
-  int isBroadcast;
-  unsigned char broadcast_sent_via[OVERLAY_MAX_INTERFACES];
-
-  unsigned char nexthop[32];
-  int nexthop_address_status;
-  int nexthop_interface; /* which interface the next hop should be attempted on */
-
-  unsigned char destination[32];
-  int destination_address_status;
-
-  unsigned char source[32];
-  int source_address_status;
-
-  /* IPv4 node frame was received from (if applicable) */
-  struct sockaddr *recvaddr;
-
-  /* Frame content from destination address onwards */
-  int bytecount;
-  unsigned char *bytes;
-
-  /* Actual payload */
-  struct overlay_buffer *payload;
-
-  int rfs; /* remainder of frame size */
-  
-  long long enqueued_at;
-
-} overlay_frame;
-
-int overlay_frame_process(int interface,overlay_frame *f);
-int overlay_frame_resolve_addresses(int interface,overlay_frame *f);
-
-
-#define CRYPT_CIPHERED 1
-#define CRYPT_SIGNED 2
-#define CRYPT_PUBLIC 4
-
-extern int overlayMode;
-#define OVERLAY_INTERFACE_UNKNOWN 0
-#define OVERLAY_INTERFACE_ETHERNET 1
-#define OVERLAY_INTERFACE_WIFI 2
-#define OVERLAY_INTERFACE_PACKETRADIO 3
-
-typedef struct overlay_interface {
-  char name[80];
-  int fd;
-  int offset;
-  int fileP;
-  int bits_per_second;
-  int port;
-  int type;
-  /* Number of milli-seconds per tick for this interface, which is basically related to the     
-     the typical TX range divided by the maximum expected speed of nodes in the network.
-     This means that short-range communications has a higher bandwidth requirement than
-     long-range communications because the tick interval has to be shorter to still allow
-     fast-convergence time to allow for mobility.
-
-     For wifi (nominal range 100m) it is usually 500ms.
-     For ~100K ISM915MHz (nominal range 1000m) it will probably be about 5000ms.
-     For ~10K ISM915MHz (nominal range ~3000m) it will probably be about 15000ms.
-     These figures will be refined over time, and we will allow people to set them per-interface.
-  */
-  int tick_ms; /* milliseconds per tick */
-
-  /* The time of the last tick on this interface in milli seconds */
-  long long last_tick_ms;
-  /* How many times have we abbreviated our address since we last announced it in full? */
-  int ticks_since_sent_full_address;
-
-  /* sequence number of last packet sent on this interface.
-     Used to allow NACKs that can request retransmission of recent packets.
-  */
-  int sequence_number;
-  /* XXX need recent packet buffers to support the above */
-
-  /* Broadcast address and netmask, if known
-     We really only case about distinct broadcast addresses on interfaces.
-     Also simplifies aliases on interfaces. */
-  struct sockaddr_in broadcast_address;
-
-  /* Not necessarily the real MTU, but the largest frame size we are willing to TX on this interface.
-     For radio links the actual maximum and the maximum that is likely to be delivered reliably are
-     potentially two quite different values. */
-  int mtu;
-
-  /* If the interface still exists on the local machine.
-     If not, it we keep track of it for a few seconds before purging it, incase of flapping, e.g.,
-     due to DHCP renewal */
-  int observed;  
-} overlay_interface;
-
-/* Maximum interface count is rather arbitrary.
-   Memory consumption is O(n) with respect to this parameter, so let's not make it too big for now.
-*/
-extern overlay_interface overlay_interfaces[OVERLAY_MAX_INTERFACES];
-extern int overlay_last_interface_number; // used to remember where a packet came from
-extern unsigned int overlay_sequence_number;
-
-/* Has someone sent us an abbreviation of an unknown type recently? If so remind them
-   that we don't accept these.
-   XXX - This method assumes bidirectional links.  We should consider sending direct
-   to the perpetuator. We will deal with that in time, the main thing is that we have
-   a message type that can be used for the purpose.
-*/
-extern int overlay_interface_repeat_abbreviation_policy[OVERLAY_MAX_INTERFACES];
-
-/*
-  For each peer we need to keep track of the routes that we know to reach it.
-
-  We want to use static sized data structures as much as we can to keep things efficient by
-  allowing computed memory address lookups instead of following linked lists and other 
-  non-deterministic means.
-
-  The tricky part of doing all this is that each interface may have a different maximum number
-  of peers based on the bandwidth of the link, as we do not want mesh traffic to consume all
-  available bandwidth.  In particular, we need to reserve at least enough bandwidth for one
-  call.
-
-  Related to this, if we are in a mesh larger than the per-interface limit allows, then we need to
-  only track the highest-scoring peers.  This sounds simple, but how to we tell when to replace a
-  low-scoring peer with another one which has a better reachability score, if we are not tracking 
-  the reachability score of that node?
-
-  The answer to this is that we track as many nodes as we can, but only announce the highest
-  scoring nodes on each interface as bandwidth allows.
-
-  This also keeps our memory usage fixed.
-
-  XXX - At present we are setting OVERLAY_MAX_PEERS at compile time.
-  With a bit of work we can change this to be a run-time option.
-
-  Memory consumption of OVERLAY_MAX_PEERS=n is O(n^2).
-  XXX We could and should improve this down the track by only monitoring the top k routes, and replacing the worst route
-  option when a better one comes along.  This would get the memory usage down to O(n).
-
- */
-#define OVERLAY_MAX_PEERS 500
-
-typedef struct overlay_peer {
-  unsigned char address[SIDDIDFIELD_LEN];
-
-  /* Scores and score update times for reaching this node via various interfaces */
-  int known_routes[OVERLAY_MAX_INTERFACES];
-  unsigned short scores[OVERLAY_MAX_INTERFACES][OVERLAY_MAX_PEERS];
-
-  /* last_regeneration is the time that this peer was created/replaced with another peer.
-     lastupdate[] indicates the time that another peer's reachability report
-     caused us to update our score to reach via that peer.
-     If lastupdate[x][y] is older than last_regeneration[y], then we must
-     ignore the entry, because the lastupdate[x][y] entry references a previous
-     generation of that peer, i.e., not to the peer we think it does.
-     
-     This slight convolution allows us to replace peers without having to touch the
-     records of every other peer in our list.
-  */
-  int last_regeneration;
-  unsigned int lastupdate[OVERLAY_MAX_INTERFACES][OVERLAY_MAX_PEERS];
-} overlay_peer;
-
-extern overlay_peer overlay_peers[OVERLAY_MAX_PEERS];
-
-typedef struct overlay_buffer {
-  unsigned char *bytes;
-  int length;
-  int allocSize;
-  int checkpointLength;
-  int sizeLimit;
-  int var_length_offset;
-  int var_length_bytes;
-} overlay_buffer;
-
-int ob_unlimitsize(overlay_buffer *b);
-
-
-typedef struct overlay_txqueue {
-  struct overlay_frame *first;
-  struct overlay_frame *last;
-  int length; /* # frames in queue */
-  int maxLength; /* max # frames in queue before we consider ourselves congested */
-
-  /* Latency target in ms for this traffic class.
-     Frames older than the latency target will get dropped. */
-  int latencyTarget;
-  
-  /* XXX Need to initialise these:
-     Real-time queue for voice (<200ms ?)
-     Real-time queue for video (<200ms ?) (lower priority than voice)
-     Ordinary service queue (<3 sec ?)
-     Rhizome opportunistic queue (infinity)
-     
-     (Mesh management doesn't need a queue, as each overlay packet is tagged with some mesh management information)
-  */
-} overlay_txqueue;
-
-
-#define OQ_ISOCHRONOUS_VOICE 0
-#define OQ_MESH_MANAGEMENT 1
-#define OQ_ISOCHRONOUS_VIDEO 2
-#define OQ_ORDINARY 3
-#define OQ_OPPORTUNISTIC 4
-#define OQ_MAX 5
-extern overlay_txqueue overlay_tx[OQ_MAX];
+int overlay_frame_process(struct overlay_interface *interface,overlay_frame *f);
+int overlay_frame_resolve_addresses(overlay_frame *f);
 
 #define LOG_LEVEL_SILENT    (-1)
 #define LOG_LEVEL_DEBUG     (0)
@@ -826,11 +840,9 @@ long long parse_quantity(char *q);
 int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockaddr_in broadcast,
 			   int speed_in_bits,int port,int type);
 int overlay_interface_init_socket(int i,struct sockaddr_in src_addr,struct sockaddr_in broadcast);
-int overlay_interface_discover();
-int overlay_interface_discover();
 long long overlay_time_until_next_tick();
 int overlay_rx_messages();
-int overlay_check_ticks();
+
 int overlay_add_selfannouncement();
 int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b);
 int overlay_interface_args(const char *arg);
@@ -900,7 +912,7 @@ extern unsigned char *overlay_local_identities[OVERLAY_MAX_LOCAL_IDENTITIES];
 int overlay_abbreviate_address(unsigned char *in,unsigned char *out,int *ofs);
 int overlay_abbreviate_append_address(overlay_buffer *b,unsigned char *a);
 
-int overlay_abbreviate_expand_address(int interface,unsigned char *in,int *inofs,unsigned char *out,int *ofs);
+int overlay_abbreviate_expand_address(unsigned char *in,int *inofs,unsigned char *out,int *ofs);
 int overlay_abbreviate_cache_address(unsigned char *sid);
 int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *ofs,
 				    int prefix_bytes,int index_bytes);
@@ -1012,10 +1024,10 @@ extern overlay_neighbour *overlay_neighbours;
 
 long long overlay_gettime_ms();
 int overlay_route_init(int mb_ram);
-int overlay_route_saw_selfannounce_ack(int interface,overlay_frame *f,long long now);
+int overlay_route_saw_selfannounce_ack(overlay_frame *f,long long now);
 int overlay_route_recalc_node_metrics(overlay_node *n,long long now);
 int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now);
-int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now);
+int overlay_route_saw_selfannounce(overlay_frame *f,long long now);
 overlay_node *overlay_route_find_node(unsigned char *sid,int prefixLen,int createP);
 unsigned int overlay_route_hash_sid(unsigned char *sid);
 int overlay_route_init(int mb_ram);
@@ -1040,10 +1052,9 @@ int overlay_route_record_link(long long now,unsigned char *to,
 			      unsigned char *via,int sender_interface,
 			      unsigned int s1,unsigned int s2,int score,int gateways_en_route);
 int overlay_route_dump();
-int overlay_route_tick();
 int overlay_route_tick_neighbour(int neighbour_id,long long now);
 int overlay_route_tick_node(int bin,int slot,long long now);
-int overlay_route_add_advertisements(int interface,overlay_buffer *e);
+int overlay_route_add_advertisements(overlay_buffer *e);
 int ovleray_route_please_advertise(overlay_node *n);
 int overlay_abbreviate_set_current_sender(unsigned char *in);
 
@@ -1056,9 +1067,8 @@ int overlay_route_saw_advertisements(int i,overlay_frame *f, long long now);
 int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now);
 int overlay_route_please_advertise(overlay_node *n);
 int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
-int rhizome_server_poll();
 int rhizome_saw_voice_traffic();
-int overlay_saw_mdp_containing_frame(int interface,overlay_frame *f,long long now);
+int overlay_saw_mdp_containing_frame(overlay_frame *f,long long now);
 
 #include "nacl.h"
 
@@ -1096,7 +1106,6 @@ int overlay_address_is_broadcast(unsigned char *a);
 int overlay_broadcast_generate_address(unsigned char *a);
 int overlay_abbreviate_unset_current_sender();
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
-int rhizome_fetch_poll();
 int rhizome_opendb();
 
 typedef struct dna_identity_status {
@@ -1160,12 +1169,11 @@ int mkdirsn(const char *path, size_t len, mode_t mode);
 #define FORM_SERVAL_INSTANCE_PATH(buf, path) (form_serval_instance_path(buf, sizeof(buf), (path)))
 
 int overlay_mdp_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
-int overlay_mdp_poll();
 int overlay_mdp_reply_error(int sock,
 			    struct sockaddr_un *recvaddr,int recvaddrlen,
 			    int error_number,char *message);
-extern int mdp_abstract_socket;
-extern int mdp_named_socket;
+extern struct sched_ent mdp_abstract;
+extern struct sched_ent mdp_named;
 
 
 typedef struct sockaddr_mdp {
@@ -1321,7 +1329,7 @@ int overlay_mdp_recv(overlay_mdp_frame *mdp,int *ttl);
 int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms);
 
 /* Server-side MDP functions */
-int overlay_saw_mdp_frame(int interface, overlay_mdp_frame *mdp,long long now);
+int overlay_saw_mdp_frame(overlay_mdp_frame *mdp,long long now);
 int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp);
 int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
 			  overlay_mdp_frame *mdpreply);
@@ -1431,7 +1439,6 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 int vomp_mdp_received(overlay_mdp_frame *mdp);
 char *vomp_describe_state(int state);
 char *vomp_describe_codec(int c);
-int vomp_tick();
 int vomp_tick_interval();
 int vomp_sample_size(int c);
 int vomp_codec_timespan(int c);
@@ -1480,7 +1487,6 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 
 int monitor_setup_sockets();
-int monitor_poll();
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int monitor_call_status(vomp_call_state *call);
 int monitor_send_audio(vomp_call_state *call,overlay_mdp_frame *audio);
@@ -1542,3 +1548,41 @@ void sigIoHandler(int signal);
 
 #define WRITE_STR(fd, str)	write(fd, str, strlen(str))
 
+int rhizome_http_server_start();
+int overlay_mdp_setup_sockets();
+
+int schedule(struct sched_ent *alarm);
+int unschedule(struct sched_ent *alarm);
+int watch(struct sched_ent *alarm);
+int unwatch(struct sched_ent *alarm);
+int fd_poll();
+
+void overlay_interface_discover(struct sched_ent *alarm);
+void overlay_check_ticks(struct sched_ent *alarm);
+void overlay_dummy_poll(struct sched_ent *alarm);
+void overlay_route_tick(struct sched_ent *alarm);
+void rhizome_enqueue_suggestions(struct sched_ent *alarm);
+void server_shutdown_check(struct sched_ent *alarm);
+void overlay_mdp_poll(struct sched_ent *alarm);
+void fd_periodicstats(struct sched_ent *alarm);
+void vomp_tick(struct sched_ent *alarm);
+void rhizome_check_connections(struct sched_ent *alarm);
+
+void monitor_client_poll(struct sched_ent *alarm);
+void monitor_poll(struct sched_ent *alarm);
+void overlay_interface_poll(struct sched_ent *alarm);
+void rhizome_client_poll(struct sched_ent *alarm);
+void rhizome_fetch_poll(struct sched_ent *alarm);
+void rhizome_server_poll(struct sched_ent *alarm);
+
+/* function timing routines */
+int fd_checkalarms();
+int fd_func_exit(struct call_stats *this_call, struct profile_total *call_stats);
+int fd_func_enter(struct call_stats *this_call);
+
+#define IN() static struct profile_total _aggregate_stats={NULL,0,__FUNCTION__,0,0,0}; struct call_stats _this_call; fd_func_enter(&_this_call);
+#define OUT() fd_func_exit(&_this_call, &_aggregate_stats);
+#define RETURN(X) { OUT() return(X); }
+
+#define SET_NONBLOCKING(X) fcntl(X,F_SETFL,fcntl(X, F_GETFL, NULL)|O_NONBLOCK);
+#define SET_BLOCKING(X) fcntl(X,F_SETFL,fcntl(X, F_GETFL, NULL)&(~O_NONBLOCK));

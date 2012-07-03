@@ -50,6 +50,7 @@
 #if __MACH__
 #include <net/if_dl.h>
 #endif
+#include <net/if.h>
 
 /* On platforms that have variable length 
    ifreq use the old fixed length interface instead */

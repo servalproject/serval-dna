@@ -24,6 +24,7 @@ SRCS=	main.c \
 	overlay_payload.c \
 	overlay_route.c \
 	packetformats.c \
+	performance_timing.c \
 	peers.c \
 	randombytes.c \
 	responses.c \
@@ -47,6 +48,7 @@ SRCS=	main.c \
 	monitor-cli.c \
 	dna_helper.c \
 	sighandlers.c \
+	fdqueue.c \
 	codecs.c \
 	audiodevices.c \
 	audio_msm_g1.c \

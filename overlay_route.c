@@ -694,7 +694,7 @@ overlay_neighbour *overlay_route_get_neighbour_structure(unsigned char *packed_s
 
 int overlay_route_i_can_hear_node(unsigned char *who,int sender_interface,
 				  unsigned int s1,unsigned int s2,
-				  int receiver_interface,long long now)
+				  long long now)
 {
   if (0) WHYF("I can hear node %s (but I really only care who can hear me)",
 	      overlay_render_sid(who));
@@ -789,7 +789,7 @@ int overlay_print_address(FILE *f,char *prefix,unsigned char *s,char *suffix)
 }
 
 
-int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now)
+int overlay_route_saw_selfannounce(overlay_frame *f,long long now)
 {
   if (overlay_address_is_local(f->source)) return 0;
 
@@ -818,7 +818,7 @@ int overlay_route_saw_selfannounce(int interface,overlay_frame *f,long long now)
     dump("Payload",&f->payload->bytes[0],f->payload->length);
   }
 
-  overlay_route_i_can_hear_node(f->source,sender_interface,s1,s2,interface,now);
+  overlay_route_i_can_hear_node(f->source,sender_interface,s1,s2,now);
 
   /* Ignore self-announcements from ourself. */
   if (overlay_address_is_local(&f->source[0]))
@@ -1059,7 +1059,7 @@ char *overlay_render_sid_prefix(unsigned char *sid,int l)
    These link scores should get stored in our node list as compared to our neighbour list,
    with the node itself listed as the nexthop that the score is associated with.
 */
-int overlay_route_saw_selfannounce_ack(int interface,overlay_frame *f,long long now)
+int overlay_route_saw_selfannounce_ack(overlay_frame *f,long long now)
 {
   if (0) WHYF("processing selfannounce ack (payload length=%d)",f->payload->length);
   if (!overlay_neighbours) {
@@ -1259,14 +1259,14 @@ int overlay_route_tick_next_neighbour_id=0;
 int overlay_route_tick_neighbour_bundle_size=1;
 int overlay_route_tick_next_node_bin_id=0;
 int overlay_route_tick_node_bundle_size=1;
-int overlay_route_tick()
+void overlay_route_tick(struct sched_ent *alarm)
 {
   int n;
 
   long long start_time=overlay_gettime_ms();
 
   if (debug&DEBUG_OVERLAYROUTING) 
-    fprintf(stderr,"Neighbours: %d@%d, Nodes: %d@%d\n",
+    DEBUGF("Neighbours: %d@%d, Nodes: %d@%d\n",
 	    overlay_route_tick_neighbour_bundle_size,overlay_route_tick_next_neighbour_id,
 	    overlay_route_tick_node_bundle_size,overlay_route_tick_next_node_bin_id);
 
@@ -1326,7 +1326,11 @@ int overlay_route_tick()
   int interval=5000/ticks;
 
   if (debug&DEBUG_OVERLAYROUTING) fprintf(stderr,"route tick interval = %dms (%d ticks per 5sec, neigh=%lldms, node=%lldms)\n",interval,ticks,neighbour_time,node_time);
-  return interval;
+
+  /* Update callback interval based on how much work we have to do */
+  alarm->alarm = overlay_gettime_ms()+interval;
+  schedule(alarm);
+  return;
 }
 
 /* Ticking neighbours is easy; we just pretend we have heard from them again,
@@ -1498,7 +1502,5 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
 	  }
       }
 
-  return overlay_mdp_reply(mdp_named_socket,addr,addrlen,mdp);
-
-  return 0;
+  return overlay_mdp_reply(mdp_named.poll.fd,addr,addrlen,mdp);
 }

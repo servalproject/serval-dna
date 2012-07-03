@@ -34,11 +34,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define MONITOR_LINE_LENGTH 160
 #define MONITOR_DATA_SIZE MAX_AUDIO_BYTES
 struct monitor_context {
+  struct sched_ent alarm;
 #define MONITOR_VOMP (1<<0)
 #define MONITOR_RHIZOME (1<<1)
 #define MONITOR_PEERS (1<<2)
   int flags;
-  int socket;
   char line[MONITOR_LINE_LENGTH];
   int line_length;
 #define MONITOR_STATE_COMMAND 1
@@ -56,23 +56,24 @@ int monitor_socket_count=0;
 struct monitor_context monitor_sockets[MAX_MONITOR_SOCKETS];
 long long monitor_last_update_time=0;
 
-int monitor_process_command(int index,char *cmd);
-int monitor_process_data(int index);
-static void monitor_new_socket(int s);
+int monitor_process_command(struct monitor_context *c);
+int monitor_process_data(struct monitor_context *c);
+static void monitor_new_client(int s);
 
-int monitor_named_socket=-1;
+struct sched_ent named_socket;
+struct profile_total named_stats;
+struct profile_total client_stats;
+
 int monitor_setup_sockets()
 {
   struct sockaddr_un name;
   int len;
+  int sock;
   
   bzero(&name, sizeof(name));
   name.sun_family = AF_UNIX;
   
-  if (monitor_named_socket!=-1)
-      return 0;
-  
-  if ((monitor_named_socket = socket(AF_UNIX, SOCK_STREAM, 0))==-1) {
+  if ((sock = socket(AF_UNIX, SOCK_STREAM, 0))==-1) {
     WHY_perror("socket");
     goto error;
   }
@@ -96,84 +97,51 @@ int monitor_setup_sockets()
   len = 1+strlen(name.sun_path) + sizeof(name.sun_family);
 #endif
 
-  if(bind(monitor_named_socket, (struct sockaddr *)&name, len)==-1) {
+  if(bind(sock, (struct sockaddr *)&name, len)==-1) {
     WHY_perror("bind");
     goto error;
   }
-  if(listen(monitor_named_socket,MAX_MONITOR_SOCKETS)==-1) {
+  if(listen(sock,MAX_MONITOR_SOCKETS)==-1) {
     WHY_perror("listen");
     goto error;
   }
 
   int reuseP=1;
-  if(setsockopt(monitor_named_socket, SOL_SOCKET, SO_REUSEADDR, 
+  if(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, 
 		&reuseP, sizeof(reuseP)) < 0) {
     WHY_perror("setsockopt");
     WHY("Could not indicate reuse addresses. Not necessarily a problem (yet)");
   }
   
   int send_buffer_size=64*1024;    
-  if(setsockopt(monitor_named_socket, SOL_SOCKET, SO_RCVBUF, 
+  if(setsockopt(sock, SOL_SOCKET, SO_RCVBUF, 
 		&send_buffer_size, sizeof(send_buffer_size))==-1)
     WHY_perror("setsockopt");
   if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) DEBUG("Monitor server socket setup");
 
+  named_socket.function=monitor_poll;
+  named_stats.name="monitor_poll";
+  named_socket.stats=&named_stats;
+  named_socket.poll.fd=sock;
+  named_socket.poll.events=POLLIN;
+  watch(&named_socket);
   return 0;
   
   error:
-  close(monitor_named_socket);
-  monitor_named_socket=-1;
+  close(sock);
   return -1;
 }
 
-int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax)
+void monitor_poll(struct sched_ent *alarm)
 {
-  /* Make sure sockets are open */
-  monitor_setup_sockets();
+  int s,i,m;
+  unsigned char buffer[1024];
+  char msg[1024];
+  struct sockaddr *ignored_address=(struct sockaddr *)&buffer[0];
+  socklen_t ignored_length=sizeof(ignored_address);
 
-  /* This block should work, but in reality it doesn't.
-     poll() on linux is ALWAYS claiming that accept() can be
-     run.  So we just have to check it whenever some other fd triggers
-     poll to break, which fortunately is fairly often. */
-  if ((*fdcount)>=fdmax) return -1;
-  if (monitor_named_socket>-1)
-    {
-      if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) {
-	DEBUGF("Monitor named unix domain socket is poll() slot #%d (fd %d)\n",
-	     *fdcount,monitor_named_socket);
-      }
-      fds[*fdcount].fd=monitor_named_socket;
-      fds[*fdcount].events=POLLIN;
-      (*fdcount)++;
-    }
-
-  int i;
-  if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) 
-    DEBUGF("looking at %d monitor clients",monitor_socket_count);
-  for(i=0;i<monitor_socket_count;i++) {
-    if ((*fdcount)>=fdmax) return -1;
-    if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) {
-      DEBUGF("Monitor named unix domain client socket is poll() slot #%d (fd %d)\n",
-	  *fdcount,monitor_sockets[i].socket);
-      }
-      fds[*fdcount].fd=monitor_sockets[i].socket;
-      fds[*fdcount].events=POLLIN;
-      (*fdcount)++;
-  }
-
-  return 0;
-}
-
-int
-monitor_poll(void) {
-  int				bytes, i, m, s;
-  socklen_t			addrlen;
-  long long			now;
-  char				msg[128];
-  struct monitor_context *c;
-  
   /* tell all monitor clients about status of all calls periodically */
-  now = overlay_gettime_ms();
+  long long now = overlay_gettime_ms();
   if (monitor_last_update_time > (now + 1000)) {
     INFO("Fixed run away monitor_last_update_time");
     monitor_last_update_time = now + 1000;
@@ -190,25 +158,22 @@ monitor_poll(void) {
       /* And let far-end know that call is still alive */
       snprintf(msg,sizeof(msg) -1,"\nKEEPALIVE:%06x\n", vomp_call_states[i].local.session);
       for(m = 0;m < monitor_socket_count; m++)
-	WRITE_STR(monitor_sockets[m].socket,msg);
+	WRITE_STR(monitor_sockets[m].alarm.poll.fd,msg);
     }
   }
 
   /* Check for new connections */
-  fcntl(monitor_named_socket, F_SETFL,
-	fcntl(monitor_named_socket, F_GETFL, NULL) | O_NONBLOCK);
   /* We don't care about the peer's address */
-  addrlen = 0;
+  ignored_length = 0;
   while (
 #ifdef HAVE_LINUX_IF_H
-	 (s = accept4(monitor_named_socket, NULL, &addrlen,O_NONBLOCK))
+	 (s = accept4(alarm->poll.fd, NULL, &ignored_length,O_NONBLOCK))
 #else
-	 (s = accept(monitor_named_socket,NULL, &addrlen))
+	 (s = accept(alarm->poll.fd,NULL, &ignored_length))
 #endif
       != -1
   ) {
-    addrlen = 0;
-    monitor_new_socket(s);
+    monitor_new_client(s);
   }
   if (errno != EAGAIN) {
 #ifdef HAVE_LINUX_IF_H
@@ -217,109 +182,106 @@ monitor_poll(void) {
     WHY_perror("accept");
 #endif
   }
-
-  /* Read from any open connections */
-  for(i = 0;i < monitor_socket_count; i++) {
-  nextInSameSlot:
-    c = &monitor_sockets[i];
-    fcntl(c->socket,F_SETFL,
-	  fcntl(c->socket, F_GETFL, NULL) | O_NONBLOCK);
-    switch(c->state) {
-    case MONITOR_STATE_COMMAND:
-      bytes = 1;
-      while(bytes == 1) {
-	if (c->line_length >= MONITOR_LINE_LENGTH) {
-	  /* line too long */
-	  c->line[MONITOR_LINE_LENGTH-1] = 0;
-	  monitor_process_command(i, c->line);
-	  bytes = -1;
-	  break;
-	}
-	bytes = read(c->socket, &c->line[c->line_length], 1);
-	if (bytes < 1) {
-	  switch(errno) {
-	  case EINTR:
-	  case ENOTRECOVERABLE:
-	    /* transient errors */
-	    WHY_perror("read");
-	    break;
-	  case EAGAIN:
-	    break;
-	  default:
-	    WHY_perror("read");
-	    /* all other errors; close socket */
-	    WHYF("Tearing down monitor client #%d due to errno=%d (%s)",
-		 i, errno, strerror(errno));
-	    close(c->socket);
-	    if (i == monitor_socket_count - 1) {
-	      monitor_socket_count--;
-	      continue;
-	    } else {
-	      bcopy(&monitor_sockets[monitor_socket_count-1],
-		    &monitor_sockets[i],
-		    sizeof(struct monitor_context));
-	      monitor_socket_count--;
-	      goto nextInSameSlot;
-	    }
-	  }
-	}
-	if (bytes > 0 && (c->line[c->line_length] != '\r')) {
-	    c->line_length += bytes;
-	    if (c->line[c->line_length-1] == '\n') {
-	      /* got command */
-	      c->line[c->line_length-1] = 0; /* trim new line for easier parsing */
-	      monitor_process_command(i, c->line);
-	      break;
-	    }
-	  }
-      }
-      break;
-    case MONITOR_STATE_DATA:
-      bytes = read(c->socket,
-		   &c->buffer[c->data_offset],
-		   c->data_expected-c->data_offset);
-      if (bytes < 1) {
-	switch(errno) {
-	case EAGAIN: case EINTR: 
-	  /* transient errors */
-	  break;
-	default:
-	  /* all other errors; close socket */
-	    WHYF("Tearing down monitor client #%d due to errno=%d (%s)",
-		 i, errno, strerror(errno));
-	    close(c->socket);
-	    if (i == monitor_socket_count - 1) {
-	      monitor_socket_count--;
-	      continue;
-	    } else {
-	      bcopy(&monitor_sockets[monitor_socket_count - 1],
-		    &monitor_sockets[i],
-		    sizeof(struct monitor_context));
-	      monitor_socket_count--;
-	      goto nextInSameSlot;
-	    }
-	}
-      } else {
-	c->data_offset += bytes;
-	if (c->data_offset >= c->data_expected)
-	  {
-	    /* we have the binary data we were expecting. */
-	    monitor_process_data(i);
-	    c->state = MONITOR_STATE_COMMAND;
-	  }
-      }
-      break;
-    default:
-      c->state = MONITOR_STATE_COMMAND;
-      INFO("fixed monitor connection state");
-    }
-      
-  }
-  return 0;
 }
 
-static void
-monitor_new_socket(int s) {
+void monitor_client_close(struct monitor_context *c){
+  struct monitor_context *last;
+  
+  unwatch(&c->alarm);
+  close(c->alarm.poll.fd);
+  c->alarm.poll.fd=-1;
+  
+  monitor_socket_count--;
+  last = &monitor_sockets[monitor_socket_count];
+  if (last != c){
+    unwatch(&last->alarm);
+    bcopy(last, c,
+	  sizeof(struct monitor_context));
+    watch(&c->alarm);
+  }
+}
+
+void monitor_client_poll(struct sched_ent *alarm)
+{
+  /* Read from any open connections */
+  struct monitor_context *c=(struct monitor_context *)alarm;
+  errno=0;
+  int bytes;
+  
+  switch(c->state) {
+  case MONITOR_STATE_COMMAND:
+    bytes = 1;
+    while(bytes == 1) {
+      if (c->line_length >= MONITOR_LINE_LENGTH) {
+	/* line too long */
+	c->line[MONITOR_LINE_LENGTH-1] = 0;
+	monitor_process_command(c);
+	bytes = -1;
+	break;
+      }
+      bytes = read(c->alarm.poll.fd, &c->line[c->line_length], 1);
+      if (bytes < 1) {
+	switch(errno) {
+	case EINTR:
+	case ENOTRECOVERABLE:
+	  /* transient errors */
+	  WHY_perror("read");
+	  break;
+	case EAGAIN:
+	  break;
+	default:
+	  WHY_perror("read");
+	  /* all other errors; close socket */
+	  INFO("Tearing down monitor client");
+	  monitor_client_close(c);
+	  return;
+	}
+      }
+      if (bytes > 0 && (c->line[c->line_length] != '\r')) {
+	  c->line_length += bytes;
+	  if (c->line[c->line_length-1] == '\n') {
+	    /* got command */
+	    c->line[c->line_length-1] = 0; /* trim new line for easier parsing */
+	    monitor_process_command(c);
+	    break;
+	  }
+	}
+    }
+    break;
+  case MONITOR_STATE_DATA:
+    bytes = read(c->alarm.poll.fd,
+		 &c->buffer[c->data_offset],
+		 c->data_expected-c->data_offset);
+    if (bytes < 1) {
+      switch(errno) {
+      case EAGAIN: case EINTR: 
+	/* transient errors */
+	break;
+      default:
+	/* all other errors; close socket */
+	  WHYF("Tearing down monitor client due to errno=%d",
+	       errno);
+	  monitor_client_close(c);
+	  return;
+      }
+    } else {
+      c->data_offset += bytes;
+      if (c->data_offset >= c->data_expected)
+	{
+	  /* we have the binary data we were expecting. */
+	  monitor_process_data(c);
+	  c->state = MONITOR_STATE_COMMAND;
+	}
+    }
+    break;
+  default:
+    c->state = MONITOR_STATE_COMMAND;
+    WHY("fixed monitor connection state");
+  }
+  return;
+}
+ 
+static void monitor_new_client(int s) {
 #ifdef linux
   struct ucred			ucred;
   socklen_t			len;
@@ -330,12 +292,7 @@ monitor_new_socket(int s) {
   uid_t				otheruid;
   struct monitor_context	*c;
 
-#ifndef HAVE_LINUX_IF_H
-  if ((res = fcntl(s, F_SETFL, O_NONBLOCK)) == -1) {
-    WHY_perror("fcntl()");
-    goto error;
-    }
-#endif
+  SET_NONBLOCKING(s);
 
 #ifdef linux
   len = sizeof(ucred);
@@ -360,23 +317,25 @@ monitor_new_socket(int s) {
     WHYF("monitor.socket client has wrong uid (%d versus %d)", otheruid,getuid());
     WRITE_STR(s, "\nCLOSE:Incorrect UID\n");
     goto error;
-  } else if (monitor_socket_count >= MAX_MONITOR_SOCKETS
+  }
+  if (monitor_socket_count >= MAX_MONITOR_SOCKETS
 	     ||monitor_socket_count < 0) {
     WRITE_STR(s, "\nCLOSE:All sockets busy\n");
     goto error;
-  } else {
-    c = &monitor_sockets[monitor_socket_count];
-    c->socket = s;
-    c->line_length = 0;
-    c->state = MONITOR_STATE_COMMAND;
-    monitor_socket_count++;
-    WRITE_STR(s,"\nMONITOR:You are talking to servald\n");
-    INFOF("Got %d clients", monitor_socket_count);
   }
-    
-  fcntl(monitor_named_socket,F_SETFL,
-	fcntl(monitor_named_socket, F_GETFL, NULL)|O_NONBLOCK);
-
+  
+  c = &monitor_sockets[monitor_socket_count++];
+  c->alarm.function = monitor_client_poll;
+  client_stats.name = "monitor_client_poll";
+  c->alarm.stats=&client_stats;
+  c->alarm.poll.fd = s;
+  c->alarm.poll.events=POLLIN;
+  c->line_length = 0;
+  c->state = MONITOR_STATE_COMMAND;
+  WRITE_STR(s,"\nMONITOR:You are talking to servald\n");
+  INFOF("Got %d clients", monitor_socket_count);
+  watch(&c->alarm);  
+  
   return;
   
   error:
@@ -384,23 +343,22 @@ monitor_new_socket(int s) {
     return;
 }
 
-int monitor_process_command(int index,char *cmd) 
+int monitor_process_command(struct monitor_context *c) 
 {
   int callSessionToken,sampleType,bytes;
   char sid[MONITOR_LINE_LENGTH],localDid[MONITOR_LINE_LENGTH];
   char remoteDid[MONITOR_LINE_LENGTH],digits[MONITOR_LINE_LENGTH];
   overlay_mdp_frame mdp;
+  char *cmd = c->line;
+  IN();
+  
   mdp.packetTypeAndFlags=MDP_VOMPEVENT;  
 
-  struct monitor_context *c=&monitor_sockets[index];
   c->line_length=0;
 
-  fcntl(c->socket,F_SETFL,
-	fcntl(c->socket, F_GETFL, NULL)|O_NONBLOCK);
-
   if (strlen(cmd)>MONITOR_LINE_LENGTH) {
-    WRITE_STR(c->socket,"\nERROR:Command too long\n");
-    return -1;
+    WRITE_STR(c->alarm.poll.fd,"\nERROR:Command too long\n");
+    RETURN(-1);
   }
 
   char msg[1024];
@@ -423,7 +381,7 @@ int monitor_process_command(int index,char *cmd)
 	  /* Start getting sample */
 	  c->sample_call_session_token=callSessionToken;
 	  c->sample_codec=sampleType;
-	  return 0;
+	  RETURN(0);
 	}
     }
   }
@@ -469,7 +427,7 @@ int monitor_process_command(int index,char *cmd)
     int cn=0,in=0,kp=0;
     if(!keyring_next_identity(keyring,&cn,&in,&kp))
       {
-	WRITE_STR(c->socket,"\nERROR:no local identity, so cannot place call\n");
+	WRITE_STR(c->alarm.poll.fd,"\nERROR:no local identity, so cannot place call\n");
       }
     else {
       bcopy(keyring->contexts[cn]->identities[in]
@@ -510,7 +468,7 @@ int monitor_process_command(int index,char *cmd)
       int digit=vomp_parse_dtmf_digit(digits[i]);
       if (digit<0) {
 	snprintf(msg,1024,"\nERROR: invalid DTMF digit 0x%02x\n",digit);
-	WRITE_STR(c->socket,msg);
+	WRITE_STR(c->alarm.poll.fd,msg);
       }
       mdp.vompevent.audio_bytes[mdp.vompevent.audio_sample_bytes]
 	=(digit<<4); /* 80ms standard tone duration, so that it is a multiple
@@ -521,19 +479,15 @@ int monitor_process_command(int index,char *cmd)
     
   }
 
-  fcntl(c->socket,F_SETFL,
-	fcntl(c->socket, F_GETFL, NULL)|O_NONBLOCK);
-
   snprintf(msg,1024,"\nMONITORSTATUS:%d\n",c->flags);
-  WRITE_STR(c->socket,msg);
+  WRITE_STR(c->alarm.poll.fd,msg);
 
-  return 0;
+  RETURN(0);
 }
 
-int monitor_process_data(int index) 
+int monitor_process_data(struct monitor_context *c) 
 {
   /* Called when we have received an entire data sample */
-  struct monitor_context *c=&monitor_sockets[index];
   c->state=MONITOR_STATE_COMMAND;
 
   if (vomp_sample_size(c->sample_codec)!=c->data_offset) {
@@ -542,12 +496,9 @@ int monitor_process_data(int index)
     return -1;
   }
 
-  fcntl(c->socket,F_SETFL,
-	fcntl(c->socket, F_GETFL, NULL)|O_NONBLOCK);
-
   vomp_call_state *call=vomp_find_call_by_session(c->sample_call_session_token);
   if (!call) {
-    WRITE_STR(c->socket,"\nERROR:No such call\n");
+    WRITE_STR(c->alarm.poll.fd,"\nERROR:No such call\n");
     return -1;
   }
 
@@ -581,32 +532,24 @@ int monitor_announce_bundle(rhizome_manifest *m)
 	   sender,
 	   recipient,
 	   m->dataFileName?m->dataFileName:"");
-  for(i=0;i<monitor_socket_count;i++)
+  for(i=monitor_socket_count -1;i>=0;i--)
     {
       if (!(monitor_sockets[i].flags&MONITOR_RHIZOME))
 	continue;
-      nextInSameSlot:
-	errno=0;
-	fcntl(monitor_sockets[i].socket,F_SETFL,
-	      fcntl(monitor_sockets[i].socket, F_GETFL, NULL)|O_NONBLOCK);
-	WRITE_STR(monitor_sockets[i].socket,msg);
-	if (errno&&(errno!=EINTR)&&(errno!=EAGAIN)) {
-	  /* error sending update, so kill monitor socket */
-	  WHY_perror("write");
-	  INFOF("Tearing down monitor client #%d", i);
-	  close(monitor_sockets[i].socket);
-	  if (i==monitor_socket_count-1) {
-	    monitor_socket_count--;
-	    continue;
-	  } else {
-	    bcopy(&monitor_sockets[monitor_socket_count-1],
-		  &monitor_sockets[i],
-		  sizeof(struct monitor_context));
-	    monitor_socket_count--;
-	    goto nextInSameSlot;
-	  }
-	}
+      errno=0;
+      
+      SET_NONBLOCKING(monitor_sockets[i].alarm.poll.fd);
+      WRITE_STR(monitor_sockets[i].alarm.poll.fd,msg);
+      
+      SET_BLOCKING(monitor_sockets[i].alarm.poll.fd);
+      
+      if (errno&&(errno!=EINTR)&&(errno!=EAGAIN)) {
+	/* error sending update, so kill monitor socket */
+	WHY_perror("write");
+	INFO("Tearing down monitor client");
+	monitor_client_close(&monitor_sockets[i]);
       }
+    }
   return 0;
 }
 
@@ -615,6 +558,7 @@ int monitor_call_status(vomp_call_state *call)
   int i;
   char msg[1024];
   int show=0;
+  IN();
   if (call->local.state>call->local.last_state) show=1;
   if (call->remote.state>call->remote.last_state) show=1;
   call->local.last_state=call->local.state;
@@ -629,34 +573,23 @@ int monitor_call_status(vomp_call_state *call)
 	     overlay_render_sid(call->remote.sid),
 	     call->local.did,call->remote.did);
     msg[1023]=0;
-    for(i=0;i<monitor_socket_count;i++)
+    for(i=monitor_socket_count -1;i>=0;i--)
       {
 	if (!(monitor_sockets[i].flags&MONITOR_VOMP))
 	  continue;
-      nextInSameSlot:
 	errno=0;
-	fcntl(monitor_sockets[i].socket,F_SETFL,
-	      fcntl(monitor_sockets[i].socket, F_GETFL, NULL)|O_NONBLOCK);
-	WRITE_STR(monitor_sockets[i].socket,msg);
+	SET_NONBLOCKING(monitor_sockets[i].alarm.poll.fd);
+	WRITE_STR(monitor_sockets[i].alarm.poll.fd,msg);
+	SET_BLOCKING(monitor_sockets[i].alarm.poll.fd);
 	if (errno&&(errno!=EINTR)&&(errno!=EAGAIN)) {
 	  /* error sending update, so kill monitor socket */
 	  WHY_perror("write");
 	  INFOF("Tearing down monitor client #%d", i);
-	  close(monitor_sockets[i].socket);
-	  if (i==monitor_socket_count-1) {
-	    monitor_socket_count--;
-	    continue;
-	  } else {
-	    bcopy(&monitor_sockets[monitor_socket_count-1],
-		  &monitor_sockets[i],
-		  sizeof(struct monitor_context));
-	    monitor_socket_count--;
-	    goto nextInSameSlot;
-	  }
+	  monitor_client_close(&monitor_sockets[i]);
 	}
       }
   }
-  return 0;
+  RETURN(0);
 }
 
 int monitor_announce_peer(unsigned char *sid)
@@ -687,6 +620,7 @@ int monitor_send_audio(vomp_call_state *call,overlay_mdp_frame *audio)
 	   audio->vompevent.audio_sample_endtime);
   bcopy(&audio->vompevent.audio_bytes[0], &msg[msglen], sample_bytes);
   msglen+=sample_bytes;
+  msg[msglen++]='\n';
   monitor_tell_clients(msg, msglen, MONITOR_VOMP);
   return 0;
 }
@@ -694,32 +628,22 @@ int monitor_send_audio(vomp_call_state *call,overlay_mdp_frame *audio)
 int monitor_tell_clients(char *msg, int msglen, int mask)
 {
   int i;
-  for(i=0;i<monitor_socket_count;i++)
+  IN();
+  for(i=monitor_socket_count -1;i>=0;i--)
     {
       if (!(monitor_sockets[i].flags&mask))
 	continue;
-    nextInSameSlot:
       errno=0;
-      fcntl(monitor_sockets[i].socket,F_SETFL,
-	    fcntl(monitor_sockets[i].socket, F_GETFL, NULL)|O_NONBLOCK);
-      WRITE_STR(monitor_sockets[i].socket,msg);
-      // DEBUGF("Writing AUDIOPACKET to client");
+      SET_NONBLOCKING(monitor_sockets[i].alarm.poll.fd);
+      write(monitor_sockets[i].alarm.poll.fd, msg, msglen);
+      SET_BLOCKING(monitor_sockets[i].alarm.poll.fd);
+      // WHYF("Writing AUDIOPACKET to client");
       if (errno&&(errno!=EINTR)&&(errno!=EAGAIN)) {
 	/* error sending update, so kill monitor socket */
 	WHY_perror("write");
 	INFOF("Tearing down monitor client #%d", i);
-	close(monitor_sockets[i].socket);
-	if (i==monitor_socket_count-1) {
-	  monitor_socket_count--;
-	  continue;
-	} else {
-	  bcopy(&monitor_sockets[monitor_socket_count-1],
-		&monitor_sockets[i],
-		sizeof(struct monitor_context));
-	  monitor_socket_count--;
-	  goto nextInSameSlot;
-	}
+	monitor_client_close(&monitor_sockets[i]);
       }
     }
-  return 0;
+  RETURN(0);
 }

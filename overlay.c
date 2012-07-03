@@ -71,40 +71,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "strbuf.h"
 
-/* @PGS/20120615 */
-int last_valid=0;
-int last_line;
-const char *last_file;
-const char *last_func;
-long long last_time;
-
-/* @PGS/20120615 */
-void TIMING_PAUSE()
-{
-  last_valid=0;
-}
-
-/* @PGS/20120615 */
-void _TIMING_CHECK(const char *file,const char *func,int line)
-{
-  long long now=overlay_gettime_ms();
-  if (last_valid) {
-    if (now-last_time>5) {
-      // More than 5ms spent in a given task, complain
-      logMessage(LOG_LEVEL_WARN, file, line, func,
-	  "Spent %lldms between %s:%d in %s() and here",
-	  now - last_time, last_file, last_line, last_func);
-    }
-  }
-
-  last_valid=1;
-  last_file=file;
-  last_func=func;
-  last_line=line;
-  last_time=now;
-}
-
-
 int overlayMode=0;
 
 overlay_txqueue overlay_tx[OQ_MAX];
@@ -131,7 +97,7 @@ int overlayServerMode()
   int i;
   for(i=0;i<OQ_MAX;i++) {
     overlay_tx[i].maxLength=100;
-    overlay_tx[i].latencyTarget=5000; /* Keep packets in queue for 5 seconds by default */
+    overlay_tx[i].latencyTarget=1000; /* Keep packets in queue for 1 second by default */
   }
   /* But expire voice/video call packets much sooner, as they just aren't any use if late */
   overlay_tx[OQ_ISOCHRONOUS_VOICE].latencyTarget=500;
@@ -144,168 +110,69 @@ int overlayServerMode()
      of wifi latency anyway, so we'll live with it.  Larger values will affect voice transport,
      and smaller values would affect CPU and energy use, and make the simulation less realistic. */
 
-  struct pollfd fds[128];
-  int fdcount;
-
   /* Create structures to use 1MB of RAM for testing */
   overlay_route_init(1);
 
+#define SCHEDULE(X, Y) \
+struct sched_ent _sched_##X; \
+struct profile_total _stats_##X; \
+bzero(&_sched_##X, sizeof(struct sched_ent)); \
+_sched_##X.stats = &_stats_##X; \
+_sched_##X.function=X;\
+_stats_##X.name="" #X "";\
+_sched_##X.alarm=overlay_gettime_ms()+Y;\
+schedule(&_sched_##X);
+  
+  /* Periodically check for server shut down */
+  SCHEDULE(server_shutdown_check, 0);
+  
+  /* Setup up MDP & monitor interface unix domain sockets */
+  overlay_mdp_setup_sockets();
+  monitor_setup_sockets();
+
   /* Get rhizome server started BEFORE populating fd list so that
      the server's listen socket is in the list for poll() */
-  if (rhizome_enabled()) rhizome_server_poll();
+  if (rhizome_enabled()) rhizome_http_server_start();
+  
+  /* Pick next rhizome files to grab every few seconds
+     from the priority list continuously being built from observed
+     bundle announcements */
+  SCHEDULE(rhizome_enqueue_suggestions, 3000);
 
+  /* Periodically check for new interfaces */
+  SCHEDULE(overlay_interface_discover, 1);
+
+  /* Start scheduling interface ticks */
+  SCHEDULE(overlay_check_ticks, 2);
+  
+  /* Periodically update route table. */
+  SCHEDULE(overlay_route_tick, 100);
+
+  /* Keep an eye on VoMP calls so that we can expire stale ones etc */
+  SCHEDULE(vomp_tick, 1000);
+
+  /* Show CPU usage stats periodically */
+  SCHEDULE(fd_periodicstats, 3000);
+
+#undef SCHEDULE
+  
   while(1) {
-
-    TIMING_CHECK();
-
-    server_shutdown_check();
-
-    TIMING_CHECK();
-
-    /* Work out how long we can wait before we need to tick */
-    long long ms=overlay_time_until_next_tick();
-    memabuseCheck();
-    TIMING_CHECK();
-    //int filesPresent=0;
-    fds[0].fd=sock; fds[0].events=POLLIN;
-    fdcount=1;
-    rhizome_server_get_fds(fds,&fdcount,128);
-    TIMING_CHECK();
-    rhizome_fetching_get_fds(fds,&fdcount,128);
-    TIMING_CHECK();
-    overlay_mdp_get_fds(fds,&fdcount,128);
-    TIMING_CHECK();
-    monitor_get_fds(fds,&fdcount,128);
-    TIMING_CHECK();
-
-    for(i=0;i<overlay_interface_count;i++)
-      {
-	/* Make socket blocking so that poll() behaves correctly. */	
-	fcntl(overlay_interfaces[i].fd, F_SETFL,
-	      fcntl(overlay_interfaces[i].fd, F_GETFL, NULL)&(~O_NONBLOCK));	
-
-	if ((!overlay_interfaces[i].fileP)&&(fdcount<128))
-	  {
-    	    if (debug&DEBUG_IO) {
-	      DEBUGF("Interface %s is poll() slot #%d (fd %d)",
-		     overlay_interfaces[i].name,
-		     fdcount,
-		     overlay_interfaces[i].fd);
-	    }
-	    fds[fdcount].fd=overlay_interfaces[i].fd;
-	    fds[fdcount].events=POLLRDNORM;
-	    fds[fdcount].revents=0;
-	    fdcount++;
-	  }
-	if (overlay_interfaces[i].fileP) {
-	  //filesPresent=1;
-	  if (ms>5) ms=5;
-	}
-      }
-    TIMING_CHECK();
-
-    /* Progressively update link scores to neighbours etc, and find out how long before
-       we should next tick the route table.
-       Basically the faster the CPU and the sparser the route table, the less often we
-       will need to tick in order to keep each tick nice and fast. */
-    int route_tick_interval=overlay_route_tick();
-    if (ms>route_tick_interval) ms=route_tick_interval;
-    int vomp_tick_time=vomp_tick_interval();
-    if (ms>vomp_tick_time) ms=vomp_tick_time;
-
-    TIMING_CHECK();
-    if (debug&DEBUG_VERBOSE_IO)
-      DEBUGF("Waiting via poll() for up to %lldms", ms);
-    TIMING_PAUSE();
-    /* Sanity check maximum poll timeout */
-    if (ms<1) ms=1;
-    if (ms>15000) ms=15000;
-    int r = poll(fds, fdcount, ms);
-    TIMING_CHECK();
-    if (r == -1)
-      WHY_perror("poll");
-    else if (debug&DEBUG_VERBOSE_IO) {
-      DEBUGF("poll() says %d file descriptors are ready", r);
-      int i;
-      for(i=0;i<fdcount;i++)
-	if (fds[i].revents)
-	  DEBUGF("fd #%d is ready (0x%x)\n", fds[i].fd, fds[i].revents);
-    }
-    /* Do high-priority audio handling first */
-    TIMING_CHECK();
-    vomp_tick();
-    TIMING_CHECK();
-
-    if (r > 0) {
-      /* We have data, so try to receive it */
-      if (debug&DEBUG_IO) {
-	DEBUGF("poll() reports %d fds ready", r);
-	int i;
-	for(i=0;i<fdcount;i++) {
-	  if (fds[i].revents) {
-	    strbuf b = strbuf_alloca(120);
-	    strbuf_sprintf(b, "   #%d (fd %d): %d (",i,fds[i].fd,fds[i].revents);
-	    if ((fds[i].revents&POLL_IN)==POLL_IN) strbuf_puts(b, "POLL_IN,");
-	    if ((fds[i].revents&POLLRDNORM)==POLLRDNORM) strbuf_puts(b, "POLLRDNORM,");
-	    if ((fds[i].revents&POLL_OUT)==POLL_OUT) strbuf_puts(b, "POLL_OUT,");
-	    if ((fds[i].revents&POLL_ERR)==POLL_ERR) strbuf_puts(b, "POLL_ERR,");
-	    if ((fds[i].revents&POLL_HUP)==POLL_HUP) strbuf_puts(b, "POLL_HUP,");
-	    if ((fds[i].revents&POLLNVAL)==POLLNVAL) strbuf_puts(b, "POLL_NVAL,");
-	    strbuf_puts(b, ")");
-	    DEBUG(strbuf_str(b));
-	  }
-	}
-      }
-      TIMING_CHECK();
-      overlay_rx_messages();
-      TIMING_CHECK();
-      if (rhizome_enabled()) {
-	TIMING_CHECK();
-	rhizome_server_poll();
-	TIMING_CHECK();
-	rhizome_fetch_poll();
-	TIMING_CHECK();
-	overlay_mdp_poll();
-	TIMING_CHECK();
-	monitor_poll();
-	TIMING_CHECK();
-      }
-    } else {
-      /* No data before tick occurred, so do nothing.
-	 Well, for now let's just check anyway. */
-      if (debug&DEBUG_IO) DEBUGF("poll() timeout");
-      TIMING_CHECK();
-      overlay_rx_messages();
-      TIMING_CHECK();
-      if (rhizome_enabled()) {
-	TIMING_CHECK();
-	rhizome_server_poll();
-	TIMING_CHECK();
-	rhizome_fetch_poll();
-	TIMING_CHECK();
-	overlay_mdp_poll();
-	TIMING_CHECK();
-	monitor_poll();
-	TIMING_CHECK();
-      }
-    }
-    TIMING_CHECK();
-    /* Check if we need to trigger any ticks on any interfaces */
-    overlay_check_ticks();
-    TIMING_CHECK();
+    /* Check for activitiy and respond to it */
+    fd_poll();
   }
 
   return 0;
 }
 
-int overlay_frame_process(int interface,overlay_frame *f)
+int overlay_frame_process(struct overlay_interface *interface,overlay_frame *f)
 {
-  if (!f) return WHY("f==NULL");
+  IN();
+  if (!f) RETURN(WHY("f==NULL"));
 
   long long now=overlay_gettime_ms();
 
   if (f->source_address_status==OA_RESOLVED&&overlay_address_is_local(f->source))
-      return WHY("Dropping frame claiming to come from myself.");
+    RETURN(WHY("Dropping frame claiming to come from myself."));
 
   if (debug&DEBUG_OVERLAYFRAMES) DEBUGF(">>> Received frame (type=%02x, bytes=%d)",f->type,f->payload?f->payload->length:-1);
 
@@ -322,25 +189,25 @@ int overlay_frame_process(int interface,overlay_frame *f)
     {
     case OA_UNINITIALISED:
       /* Um? Right. */
-      return WHY("frame passed with ununitialised nexthop address");
+      RETURN(WHY("frame passed with ununitialised nexthop address"));
       break;
     case OA_RESOLVED:
       /* Great, we have the address, so we can get on with things */
       break;
     case OA_PLEASEEXPLAIN:
-      return -1; //  WHY("Address cannot be resolved -- aborting packet processing.");
+      RETURN(-1); //  WHY("Address cannot be resolved -- aborting packet processing.");
       /* XXX Should send a please explain to get this address resolved. */
       break;
     case OA_UNSUPPORTED:
     default:
+	// TODO tell the sender
       /* If we don't support the address format, we should probably tell
 	 the sender. Again, we queue this up, and cancel it if someone else
 	 tells them in the meantime to avoid an Opposition Event (like a Hanson
 	 Event, but repeatedly berating any node that holds a different policy
 	 to itself. */
       WHY("Packet with unsupported address format");
-      overlay_interface_repeat_abbreviation_policy[interface]=1;
-      return -1;
+      RETURN(-1);
       break;
     }
 
@@ -359,8 +226,8 @@ int overlay_frame_process(int interface,overlay_frame *f)
 
   if (forMe) {
     /* It's for us, so resolve the addresses */
-    if (overlay_frame_resolve_addresses(interface,f))
-      return WHY("Failed to resolve destination and sender addresses in frame");
+    if (overlay_frame_resolve_addresses(f))
+      RETURN(WHY("Failed to resolve destination and sender addresses in frame"));
     broadcast=overlay_address_is_broadcast(f->destination);
     if (debug&DEBUG_OVERLAYFRAMES) {
       strbuf b = strbuf_alloca(1024);
@@ -383,7 +250,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
 
     if (f->source_address_status!=OA_RESOLVED) {
       if (debug&DEBUG_OVERLAYFRAMES) WHY("Source address could not be resolved, so dropping frame.");
-      return -1;
+      RETURN(-1);
     }
     if (overlay_address_is_local(f->source))
       {
@@ -391,7 +258,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	   you hear everything you send. */
 	if (debug&DEBUG_OVERLAYROUTING) 
 	  WHY("Dropping frame claiming to come from myself.");
-	return -1;
+	RETURN(-1);
       }
 
     if (f->destination_address_status==OA_RESOLVED) {
@@ -400,7 +267,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
       if (overlay_address_is_local(f->destination)) ultimatelyForMe=1;
     } else {
       if (debug&DEBUG_OVERLAYFRAMES) WHY("Destination address could not be resolved, so dropping frame.");
-      return WHY("could not resolve destination address");
+      RETURN(WHY("could not resolve destination address"));
     }
   }
 
@@ -412,12 +279,12 @@ int overlay_frame_process(int interface,overlay_frame *f)
 
   if (duplicateBroadcast) {
     if (0) DEBUG("Packet is duplicate broadcast");
-    return 0;
+    RETURN(0);
   }
 
   /* Not for us? Then just ignore it */
   if (!forMe) {
-    return 0;
+    RETURN(0);
   }
 
   /* Is this a frame we have to forward on? */
@@ -444,7 +311,8 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	if (!broadcast) {
 	  if (overlay_get_nexthop(f->destination,f->nexthop,&len,
 				  &f->nexthop_interface))
-	    WHY("Could not find next hop for host - dropping frame");
+	    WHYF("Could not find next hop for %s* - dropping frame",
+		 overlay_render_sid_prefix(f->destination,7));
 	  dontForward=1;
 	}
 	f->ttl--;
@@ -470,7 +338,7 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	      DEBUGF("reject src is %s", overlay_render_sid(f->source));
 	      DEBUGF("reject nexthop is %s", overlay_render_sid(f->nexthop));
 	      DEBUGF("reject destination is %s", overlay_render_sid(f->destination));
-	      return WHY("Not forwarding or reading duplicate broadcast");
+	      RETURN(WHY("Not forwarding or reading duplicate broadcast"));
 	    }
 	  }
 
@@ -502,23 +370,24 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	/* If the frame was a broadcast frame, then we need to hang around
 	   so that we can process it, since we are one of the recipients.
 	   Otherwise, return triumphant. */
-	if (!broadcast) return 0;
+	if (!broadcast) RETURN(0);
       }
     }
 
+  int id = (interface - overlay_interfaces);
   switch(f->type)
     {
     case OF_TYPE_SELFANNOUNCE:
-      overlay_route_saw_selfannounce(interface,f,now);
+      overlay_route_saw_selfannounce(f,now);
       break;
     case OF_TYPE_SELFANNOUNCE_ACK:
-      overlay_route_saw_selfannounce_ack(interface,f,now);
+      overlay_route_saw_selfannounce_ack(f,now);
       break;
     case OF_TYPE_NODEANNOUNCE:
-      overlay_route_saw_advertisements(interface,f,now);
+      overlay_route_saw_advertisements(id,f,now);
       break;
     case OF_TYPE_RHIZOME_ADVERT:
-      overlay_rhizome_saw_advertisements(interface,f,now);
+      overlay_rhizome_saw_advertisements(id,f,now);
       break;
     case OF_TYPE_DATA:
     case OF_TYPE_DATA_VOICE:
@@ -529,14 +398,14 @@ int overlay_frame_process(int interface,overlay_frame *f)
 	DEBUGF("  dst = %s\n",overlay_render_sid(f->destination));
 	dump("payload", f->payload->bytes, f->payload->length);
       }
-      overlay_saw_mdp_containing_frame(interface,f,now);
+      overlay_saw_mdp_containing_frame(f,now);
       break;
     default:
       DEBUGF("Unsupported f->type=0x%x",f->type);
-      return WHY("Support for that f->type not yet implemented");
+      RETURN(WHY("Support for that f->type not yet implemented"));
       break;
     }
 
-  return 0;
+  RETURN(0);
 }
 

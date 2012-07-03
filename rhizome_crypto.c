@@ -87,21 +87,22 @@ int rhizome_bk_xor(const unsigned char *authorSid, // binary
 		   unsigned char bkin[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES],
 		   unsigned char bkout[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES])
 {
+  IN();
   if (crypto_sign_edwards25519sha512batch_SECRETKEYBYTES > crypto_hash_sha512_BYTES)
-    return WHY("BK needs to be longer than it can be");
+    { RETURN(WHY("BK needs to be longer than it can be")); }
   int cn=0,in=0,kp=0;
   if (!keyring_find_sid(keyring,&cn,&in,&kp,authorSid)) {
     if (debug & DEBUG_RHIZOME) DEBUG("identity not in keyring");
-    return 1;
+    { RETURN(1); }
   }
   kp = keyring_identity_find_keytype(keyring, cn, in, KEYTYPE_RHIZOME);
   if (kp == -1) {
     if (debug & DEBUG_RHIZOME) DEBUG("identity has no Rhizome Secret");
-    return 2;
+    RETURN(2);
   }
   int rs_len=keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key_len;
   if (rs_len<16||rs_len>1024)
-    return WHYF("invalid Rhizome Secret: length=%d", rs_len);
+    { RETURN(WHYF("invalid Rhizome Secret: length=%d", rs_len)); }
   unsigned char *rs=keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key;
   int combined_len=rs_len+crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES;
   unsigned char buffer[combined_len];
@@ -114,7 +115,7 @@ int rhizome_bk_xor(const unsigned char *authorSid, // binary
     bkout[i]=bkin[i]^hash[i];
   bzero(&buffer[0],combined_len);
   bzero(&hash[0],crypto_hash_sha512_BYTES);
-  return 0;
+  RETURN(0);
 }
 
 /* See if the manifest has a BK entry, and if so, use it to obtain the 
@@ -131,18 +132,19 @@ int rhizome_bk_xor(const unsigned char *authorSid, // binary
 */
 int rhizome_extract_privatekey(rhizome_manifest *m, const unsigned char *authorSid)
 {
+  IN();
   char *bk = rhizome_manifest_get(m, "BK", NULL, 0);
-  if (!bk) return WHY("missing BK field");
+  if (!bk) { RETURN(WHY("missing BK field")); }
   unsigned char bkBytes[RHIZOME_BUNDLE_KEY_BYTES];
   if (fromhexstr(bkBytes, bk, RHIZOME_BUNDLE_KEY_BYTES) == -1)
-    return WHYF("invalid BK field: %s", bk);
+    { RETURN(WHYF("invalid BK field: %s", bk)); }
   switch (rhizome_bk_xor(authorSid, m->cryptoSignPublic, bkBytes, m->cryptoSignSecret)) {
     case -1:
-      return WHY("rhizome_bk_xor() failed");
+      RETURN(WHY("rhizome_bk_xor() failed"));
     case 0:
-      return rhizome_verify_bundle_privatekey(m);
+      RETURN(rhizome_verify_bundle_privatekey(m));
   }
-  return WHYF("Rhizome secret for %s not found. (Have you unlocked the identity?)", alloca_tohex_sid(authorSid));
+  RETURN(WHYF("Rhizome secret for %s not found. (Have you unlocked the identity?)", alloca_tohex_sid(authorSid)));
 }
 
 /*
@@ -155,14 +157,15 @@ int rhizome_extract_privatekey(rhizome_manifest *m, const unsigned char *authorS
  */
 int rhizome_is_self_signed(rhizome_manifest *m)
 {
+  IN();
   char *bk = rhizome_manifest_get(m, "BK", NULL, 0);
   if (!bk) {
     if (debug & DEBUG_RHIZOME) DEBUGF("missing BK field");
-    return 1;
+    RETURN(1);
   }
   unsigned char bkBytes[RHIZOME_BUNDLE_KEY_BYTES];
   if (fromhexstr(bkBytes, bk, RHIZOME_BUNDLE_KEY_BYTES) == -1)
-    return WHYF("invalid BK field: %s", bk);
+    { RETURN(WHYF("invalid BK field: %s", bk)); }
   int cn = 0, in = 0, kp = 0;
   for (; keyring_next_identity(keyring, &cn, &in, &kp); ++kp) {
     const unsigned char *authorSid = keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key;
@@ -171,15 +174,15 @@ int rhizome_is_self_signed(rhizome_manifest *m)
     if (rkp != -1) {
       switch (rhizome_bk_xor(authorSid, m->cryptoSignPublic, bkBytes, m->cryptoSignSecret)) {
 	case -1:
-	  return WHY("rhizome_bk_xor() failed");
+	  RETURN(WHY("rhizome_bk_xor() failed"));
 	case 0:
 	  if (rhizome_verify_bundle_privatekey(m) == 0)
-	    return 0; // bingo
+	    RETURN(0); // bingo
 	  break;
       }
     }
   }
-  return 2; // not self signed
+  RETURN(2); // not self signed
 }
 
 /* Verify the validity of the manifest's sccret key.
@@ -189,6 +192,7 @@ int rhizome_is_self_signed(rhizome_manifest *m)
  */
 int rhizome_verify_bundle_privatekey(rhizome_manifest *m)
 {
+  IN();
 #ifdef HAVE_CRYPTO_SIGN_NACL_GE25519_H
 #  include "crypto_sign_edwards25519sha512batch_ref/ge25519.h"
 #else
@@ -207,31 +211,32 @@ int rhizome_verify_bundle_privatekey(rhizome_manifest *m)
   bzero(&scsk,sizeof(scsk));
   if (memcmp(pk, m->cryptoSignPublic, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES) == 0) {
     m->haveSecret = 1;
-    return 0; // valid
+    RETURN(0); // valid
   }
   m->haveSecret = 0;
   if (debug & DEBUG_RHIZOME) {
     DEBUGF("  stored public key = %s*", alloca_tohex(m->cryptoSignPublic, 8));
     DEBUGF("computed public key = %s*", alloca_tohex(pk, 8));
   }
-  return 1; // invalid
+  RETURN(1); // invalid
 #else //!ge25519
   /* XXX Need to test key by signing and testing signature validity. */
   /* For the time being barf so that the caller does not think we have a validated BK
       when in fact we do not. */
   m->haveSecret=0;
-  return WHY("ge25519 function not available");
+  RETURN(WHY("ge25519 function not available"));
 #endif //!ge25519
 }
 
 rhizome_signature *rhizome_sign_hash(rhizome_manifest *m, const unsigned char *authorSid)
 {
+  IN();
   unsigned char *hash=m->manifesthash;
   unsigned char *publicKeyBytes=m->cryptoSignPublic;
   
   if (!m->haveSecret && rhizome_extract_privatekey(m, authorSid)) {
     WHY("Cannot find secret key to sign manifest data.");
-    return NULL;
+    RETURN(NULL);
   }
 
   /* Signature is formed by running crypto_sign_edwards25519sha512batch() on the 
@@ -245,7 +250,7 @@ rhizome_signature *rhizome_sign_hash(rhizome_manifest *m, const unsigned char *a
 					    &hash[0],mLen,m->cryptoSignSecret);
   if (r) {
     WHY("crypto_sign() failed.");
-    return NULL;
+    RETURN(NULL);
   }
 
   rhizome_signature *out=calloc(sizeof(rhizome_signature),1);
@@ -261,33 +266,100 @@ rhizome_signature *rhizome_sign_hash(rhizome_manifest *m, const unsigned char *a
 
   out->signature[0]=out->signatureLength;
 
-  return out;
+  RETURN(out);
+}
+
+typedef struct manifest_signature_block_cache {
+  unsigned char manifest_hash[crypto_hash_sha512_BYTES];
+  unsigned char signature_bytes[256];
+  int signature_length;
+  int signature_valid;
+} manifest_signature_block_cache;
+
+#define SIG_CACHE_SIZE 1024
+manifest_signature_block_cache sig_cache[SIG_CACHE_SIZE];
+
+int rhizome_manifest_lookup_signature_validity(unsigned char *hash,unsigned char *sig,int sig_len)
+{
+  IN();
+  unsigned int slot=0;
+  int i;
+
+  for(i=0;i<crypto_hash_sha512_BYTES;i++) {
+    slot=(slot<<1)+(slot&0x80000000?1:0);
+    slot+=hash[i];
+  }
+  for(i=0;i<sig_len;i++) {
+    slot=(slot<<1)+(slot&0x80000000?1:0);
+    slot+=sig[i];
+  }
+  slot%=SIG_CACHE_SIZE;
+
+  int replace=0;
+  if (sig_cache[slot].signature_length!=sig_len) replace=1;
+  for(i=0;i<crypto_hash_sha512_BYTES;i++)
+    if (hash[i]!=sig_cache[i].manifest_hash[i]) { replace=1; break; }
+  for(i=0;i<sig_len;i++)
+    if (sig[i]!=sig_cache[i].signature_bytes[i]) { replace=1; break; }
+
+  if (replace) {
+    for(i=0;i<crypto_hash_sha512_BYTES;i++)
+      sig_cache[i].manifest_hash[i]=hash[i];
+    for(i=0;i<sig_len;i++)
+      sig_cache[i].signature_bytes[i]=sig[i];
+    sig_cache[i].signature_length=sig_len;
+
+    unsigned char sigBuf[256];
+    unsigned char verifyBuf[256];
+    unsigned char publicKey[256];
+
+    /* Reconstitute signature by putting manifest hash between the two
+       32-byte halves */
+    bcopy(&sig[0],&sigBuf[0],32);
+    bcopy(hash,&sigBuf[32],crypto_hash_sha512_BYTES);
+    bcopy(&sig[32],&sigBuf[96],32);
+
+    /* Get public key of signatory */
+    bcopy(&sig[64],&publicKey[0],crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+
+    unsigned long long mlen=0;
+    sig_cache[i].signature_valid=
+      crypto_sign_edwards25519sha512batch_open(verifyBuf,&mlen,&sigBuf[0],128,
+					       publicKey)
+      ? -1 : 0;
+  }
+  RETURN(sig_cache[i].signature_valid);
 }
 
 int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
 {
-  unsigned char sigBuf[256];
-  unsigned char verifyBuf[256];
-  unsigned char publicKey[256];
-  if (!m) return WHY("NULL pointer passed in as manifest");
+  IN();
+  if (!m) { RETURN(WHY("NULL pointer passed in as manifest")); }
 
-  if ((*ofs)>=m->manifest_all_bytes) return 0;
+  if ((*ofs)>=m->manifest_all_bytes) { RETURN(0); }
 
   int len=m->manifestdata[*ofs];
   if (!len) { 
     (*ofs)=m->manifest_bytes;
     m->errors++;
-    return WHY("Zero byte signature blocks are not allowed, assuming signature section corrupt.");
+    RETURN(WHY("Zero byte signature blocks are not allowed, assuming signature section corrupt."));
   }
 
   /* Each signature type is required to have a different length to detect it.
      At present only crypto_sign_edwards25519sha512batch() signatures are
      supported. */
+  int r;
   if (m->sig_count<MAX_MANIFEST_VARS)
     switch(len) 
       {
       case 0x61: /* crypto_sign_edwards25519sha512batch() */
 	/* Reconstitute signature block */
+	r=rhizome_manifest_lookup_signature_validity
+	  (m->manifesthash,&m->manifestdata[(*ofs)+1],96);
+#ifdef DEPRECATED
+	unsigned char sigBuf[256];
+	unsigned char verifyBuf[256];
+	unsigned char publicKey[256];
 	bcopy(&m->manifestdata[(*ofs)+1],&sigBuf[0],32);
 	bcopy(&m->manifesthash[0],&sigBuf[32],crypto_hash_sha512_BYTES);
 	bcopy(&m->manifestdata[(*ofs)+1+32],&sigBuf[96],32);
@@ -298,10 +370,11 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
 	int r=crypto_sign_edwards25519sha512batch_open(verifyBuf,&mlen,&sigBuf[0],128,
 						       publicKey);
 	fflush(stdout); fflush(stderr);
+#endif
 	if (r) {
 	  (*ofs)+=len;
 	  m->errors++;
-	  return WHY("Error in signature block (verification failed).");
+	  RETURN(WHY("Error in signature block (verification failed)."));
 	} else {
 	  /* Signature block passes, so add to list of signatures */
 	  m->signatureTypes[m->sig_count]=len;
@@ -309,9 +382,9 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
 	    =malloc(crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
 	  if(!m->signatories[m->sig_count]) {
 	    (*ofs)+=len;
-	    return WHY("malloc() failed when reading signature block");
+	    RETURN(WHY("malloc() failed when reading signature block"));
 	  }
-	  bcopy(&publicKey[0],m->signatories[m->sig_count],
+	  bcopy(&m->manifestdata[(*ofs)+1+64],m->signatories[m->sig_count],
 		crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
 	  m->sig_count++;
 	  if (debug&DEBUG_RHIZOME) DEBUG("Signature passed.");
@@ -320,7 +393,7 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
       default:
 	(*ofs)+=len;
 	m->errors++;
-	return WHY("Encountered illegal or malformed signature block");
+	RETURN(WHY("Encountered illegal or malformed signature block"));
       }
   else
     {
@@ -330,5 +403,5 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
     }
 
   (*ofs)+=len;
-  return 0;
+  RETURN(0);
 }

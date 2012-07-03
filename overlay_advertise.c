@@ -55,7 +55,7 @@ int overlay_route_please_advertise(overlay_node *n)
   else return 1;
 }
 
-int overlay_route_add_advertisements(int interface,overlay_buffer *e)
+int overlay_route_add_advertisements(overlay_buffer *e)
 {
   /* Construct a route advertisement frame and append it to e.
      
