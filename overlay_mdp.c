@@ -50,31 +50,20 @@ int overlay_mdp_setup_sockets()
     
     mdp_abstract.poll.fd = socket(AF_UNIX, SOCK_DGRAM, 0);
     if (mdp_abstract.poll.fd>-1) {
-      int dud=0;
       int reuseP=1;
-      if(setsockopt( mdp_abstract.poll.fd, SOL_SOCKET, SO_REUSEADDR, 
-		     &reuseP, sizeof(reuseP)) < 0)
-	{
-	  WARN_perror("setsockopt");
-	  WARN("Could not indicate reuse addresses. Not necessarily a problem (yet)");
-	}
-      int r=bind(mdp_abstract.poll.fd, (struct sockaddr *)&name, len);
-      if (r) {
+      if (setsockopt( mdp_abstract.poll.fd, SOL_SOCKET, SO_REUSEADDR, &reuseP, sizeof(reuseP)) == -1) {
+	WARN_perror("setsockopt(SO_REUSEADDR)");
+	WARN("Could not set socket reuse addresses");
+      }
+      if (bind(mdp_abstract.poll.fd, (struct sockaddr *)&name, len) == -1) {
 	WARN_perror("bind");
-	dud=1;
-	r=0;
-	WARN("bind() of abstract name space socket failed (not an error on non-linux systems");
-      }
-      if (dud) {
 	close(mdp_abstract.poll.fd);
-	mdp_abstract.poll.fd=-1;
-	WHY("Could not open abstract name-space socket (only a problem on Linux).");
+	mdp_abstract.poll.fd = -1;
+	WARN("bind of abstract name space socket failed (not a problem on non-linux systems)");
       }
-      
       int send_buffer_size=64*1024;    
-      int res = setsockopt(mdp_abstract.poll.fd, SOL_SOCKET, SO_SNDBUF, 
-		       &send_buffer_size, sizeof(send_buffer_size));
-
+      if (setsockopt(mdp_abstract.poll.fd, SOL_SOCKET, SO_SNDBUF, &send_buffer_size, sizeof(send_buffer_size)) == -1)
+	WARN_perror("setsockopt(SO_SNDBUF)");
       mdp_abstract.function = overlay_mdp_poll;
       mdp_abstract.stats.name = "overlay_mdp_poll";
       mdp_abstract.poll.events = POLLIN;
@@ -83,35 +72,26 @@ int overlay_mdp_setup_sockets()
   }
 #endif
   if (mdp_named.function==NULL) {
-    if (!form_serval_instance_path(&name.sun_path[0], 100, "mdp.socket")) {
+    if (!form_serval_instance_path(&name.sun_path[0], 100, "mdp.socket"))
       return WHY("Cannot construct name of unix domain socket.");
-    }
     unlink(&name.sun_path[0]);
     len = 0+strlen(&name.sun_path[0]) + sizeof(name.sun_family)+1;
     mdp_named.poll.fd = socket(AF_UNIX, SOCK_DGRAM, 0);
     if (mdp_named.poll.fd>-1) {
-      int dud=0;
       int reuseP=1;
-      if(setsockopt( mdp_named.poll.fd, SOL_SOCKET, SO_REUSEADDR, 
-		     &reuseP, sizeof(reuseP)) < 0)
-	{
-	  WARN_perror("setsockopt");
-	  WARN("Could not indicate reuse addresses. Not necessarily a problem (yet)");
-	}
-      int r=bind(mdp_named.poll.fd, (struct sockaddr *)&name, len);
-      if (r) { dud=1; r=0; WHY("bind() of named unix domain socket failed"); }
-      if (dud) {
-	close(mdp_named.poll.fd);
-	mdp_named.poll.fd=-1;
-	WHY("Could not open named unix domain socket.");
+      if(setsockopt( mdp_named.poll.fd, SOL_SOCKET, SO_REUSEADDR, &reuseP, sizeof(reuseP)) == -1) {
+	WARN_perror("setsockopt(SO_REUSEADDR)");
+	WARN("Could not set socket reuse addresses");
       }
-
+      if (bind(mdp_named.poll.fd, (struct sockaddr *)&name, len) == -1) {
+	WARN_perror("bind");
+	close(mdp_named.poll.fd);
+	mdp_named.poll.fd = -1;
+	WARN("Could not bind named unix domain socket");
+      }
       int send_buffer_size=64*1024;    
-      int res = setsockopt(mdp_named.poll.fd, SOL_SOCKET, SO_RCVBUF, 
-		       &send_buffer_size, sizeof(send_buffer_size));
-      if (res)
-	WHY_perror("setsockopt");
-      
+      if (setsockopt(mdp_named.poll.fd, SOL_SOCKET, SO_RCVBUF, &send_buffer_size, sizeof(send_buffer_size)) == -1)
+	WARN_perror("setsockopt(SO_RCVBUF)");
       mdp_named.function = overlay_mdp_poll;
       mdp_stats.name="overlay_mdp_poll";
       mdp_named.stats = &mdp_stats;
@@ -1026,22 +1006,13 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 	  }
 	} else {
 	  /* from peer list */
-	  int bin,slot;
-	  i=0;
-	  count=0;
-	  for(bin=0;bin<overlay_bin_count;bin++)
-	    for(slot=0;slot<overlay_bin_size;slot++)
-	      {
-		if ((!overlay_nodes[bin][slot].sid[0]) 
-		    ||(overlay_nodes[bin][slot].best_link_score<1))
-		  { 
-		    continue; }
-		if ((count>=sid_num)&&(i<max_sids)) {
-		  bcopy(overlay_nodes[bin][slot].sid,
-			mdpreply.addrlist.sids[i++],SID_SIZE);
-		}
-		count++;
-	      }
+	  i = count = 0;
+	  int bin, slot;
+	  for (bin = 0;bin < overlay_bin_count; ++bin)
+	    for (slot = 0;slot < overlay_bin_size; ++slot)
+	      if (overlay_nodes[bin][slot].sid[0] && overlay_nodes[bin][slot].best_link_score >= 1)
+		if (count++ >= sid_num && i < max_sids)
+		  bcopy(overlay_nodes[bin][slot].sid, mdpreply.addrlist.sids[i++], SID_SIZE);
 	}
 	mdpreply.addrlist.frame_sid_count=i;
 	mdpreply.addrlist.last_sid=sid_num+i-1;
@@ -1225,10 +1196,9 @@ int overlay_mdp_client_init()
     }
 
     int send_buffer_size=128*1024;
-    int res = setsockopt(mdp_client_socket, SOL_SOCKET, SO_RCVBUF, 
-			 &send_buffer_size, sizeof(send_buffer_size));
-    if (res) WHYF("setsockopt() failed: errno=%d",errno);
-
+    if (setsockopt(mdp_client_socket, SOL_SOCKET, SO_RCVBUF, 
+			 &send_buffer_size, sizeof(send_buffer_size)) == -1)
+      WARN_perror("setsockopt");
   }
   
   return 0;
