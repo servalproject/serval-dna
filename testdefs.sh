@@ -5,7 +5,7 @@ shopt -s extglob
 testdefs_sh=$(abspath "${BASH_SOURCE[0]}")
 servald_source_root="${testdefs_sh%/*}"
 servald_build_root="$servald_source_root"
-servald_build_executable="$servald_source_root/dna"
+servald_build_executable="$servald_build_root/dna"
 
 declare -a instance_stack=()
 
