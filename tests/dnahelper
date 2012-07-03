@@ -127,7 +127,7 @@ setup_servald_instances() {
    assertStdoutLineCount '==' 1
 }
 
-doc_MultipleServalDTest="Start two servald instances with dummy interface"
+doc_MultipleServalDTest="Start two servald instances with dna helpers"
 
 setup_MultipleServalDTest() {
    setup
@@ -136,90 +136,5 @@ setup_MultipleServalDTest() {
 test_MultipleServalDTest() {
    setup_servald_instances
 }
-
-doc_DNAWildcardSearchFindsSelf="DNA lookup of wildcard finds (star method)"
-setup_DNAWildcardSearchFindsSelf() {
-   setup
-   setup_servald_instances
-   set_instance +A
-}
-test_DNAWildcardSearchFindsSelf() {
-   executeOk_servald dna lookup "*"
-   assertStdoutLineCount '==' 2
-   assertStdoutGrep --matches=1 "^sid://$SIDA/5550001:5550001:Agent A Smith$"
-   assertStdoutGrep --matches=1 "^sid://$SIDB/5550001:5550001:Agent B Smith$"
-}
-
-doc_DNAWildcardSearchFindsSelfEmpty="DNA lookup of wildcard (empty query method)"
-setup_DNAWildcardSearchFindsSelfEmpty() {
-   setup
-   setup_servald_instances
-   set_instance +A
-}
-test_DNAWildcardSearchFindsSelfEmpty() {
-   executeOk_servald dna lookup ""
-   assertStdoutLineCount '==' 2 
-   assertStdoutGrep --matches=1 "^sid://$SIDA/5550001:5550001:Agent A Smith$"
-   assertStdoutGrep --matches=1 "^sid://$SIDB/5550001:5550001:Agent B Smith$"
-}
-
-doc_DNASpecificLookup="DNA Lookup by phone number"
-setup_DNASpecificLookup() {
-   setup
-   setup_servald_instances
-   set_instance +A
-}
-test_DNASpecificLookup() {
-   # Make sure we get no false positives
-   executeOk_servald dna lookup "5551234"
-   assertStdoutLineCount '==' 0
-   executeOk_servald dna lookup "555000"
-   assertStdoutLineCount '==' 0
-   executeOk_servald dna lookup "55500011"
-   assertStdoutLineCount '==' 0
-   # Make sure we get the right results, and no duplicates
-   executeOk_servald dna lookup "5550001"
-   assertStdoutLineCount '==' 2
-   assertStdoutGrep --matches=1 "^sid://$SIDA/5550001:5550001:Agent A Smith$"
-   assertStdoutGrep --matches=1 "^sid://$SIDB/5550001:5550001:Agent B Smith$"
-}
-
-doc_DNANodeInfoLocalResolution="'node info' auto-resolves for local identities"
-setup_DNANodeInfoLocalResolution() {
-   setup
-   setup_servald_instances
-   set_instance +A
-}
-test_DNANodeInfoLocalResolution() {
-   # node info for a local identity returns DID/Name since it is free, even
-   # if it isn't asked for.
-   executeOk_servald node info $SIDA
-   assertStdoutLineCount '==' 1
-   assertStdoutGrep --matches=1 "Agent A Smith"
-   assertStdoutGrep --matches=0 "did-not-resolved"
-}
-
-doc_DNANodeInfoRemoteResolution="'node info' for remote identities"
-setup_DNANodeInfoRemoteResolution() {
-   setup
-   setup_servald_instances
-   set_instance +A
-}
-test_DNANodeInfoRemoteResolution() {
-   # if resolvedid is not specified for a remote identity, then don't resolve
-   # it.
-   executeOk_servald node info $SIDB
-   assertStdoutLineCount '==' 1
-   assertStdoutGrep --matches=0 "Agent B Smith"
-   assertStdoutGrep --matches=1 "did-not-resolved"
-
-   # But if it resolvedid is specified, then do resolve it using DNA
-   executeOk_servald node info $SIDB resolvedid
-   assertStdoutLineCount '==' 1
-   assertStdoutGrep --matches=1 "Agent B Smith"
-   assertStdoutGrep --matches=0 "did-not-resolved"
-
-}
-
 
 runTests "$@"
