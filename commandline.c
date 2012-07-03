@@ -211,6 +211,10 @@ int parseCommandLine(int argc, const char *const *args)
   int i;
   int ambiguous=0;
   int cli_call=-1;
+  
+  fd_clearstats();
+
+  IN();
   for(i=0;command_line_options[i].function;i++)
     {
       int j;
@@ -277,6 +281,10 @@ int parseCommandLine(int argc, const char *const *args)
   int result=command_line_options[cli_call].function(argc, args, &command_line_options[cli_call]);
   /* clean up after ourselves */
   overlay_mdp_client_done();
+  OUT();
+  //TODO debug flag for method profiling
+  if (1)
+    fd_showstats();
   return result;
 }
 

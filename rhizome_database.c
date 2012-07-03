@@ -658,6 +658,7 @@ int rhizome_finish_sqlstatement(sqlite3_stmt *statement)
 
 int rhizome_list_manifests(const char *service, const char *sender_sid, const char *recipient_sid, int limit, int offset)
 {
+  IN();
   strbuf b = strbuf_alloca(1024);
   strbuf_sprintf(b, "SELECT id, manifest, version, inserttime FROM manifests ORDER BY inserttime DESC");
   if (limit)
@@ -665,7 +666,7 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
   if (offset)
     strbuf_sprintf(b, " OFFSET %u", offset);
   if (strbuf_overrun(b))
-    return WHYF("SQL command too long: ", strbuf_str(b));
+    RETURN(WHYF("SQL command too long: ", strbuf_str(b)));
   sqlite3_stmt *statement;
   const char *cmdtail;
   int ret = 0;
@@ -751,7 +752,7 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
     }
   }
   sqlite3_finalize(statement);
-  return ret;
+  RETURN(ret);
 }
 
 /* The following function just stores the file (or silently returns if it already exists).

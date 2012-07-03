@@ -84,8 +84,9 @@ int rhizome_manifest_verify(rhizome_manifest *m)
 
 int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bufferP)
 {
-  if (bufferP>MAX_MANIFEST_BYTES) return WHY("Buffer too big");
-  if (!m) return WHY("Null manifest");
+  IN();
+  if (bufferP>MAX_MANIFEST_BYTES) RETURN(WHY("Buffer too big"));
+  if (!m) RETURN(WHY("Null manifest"));
 
   if (bufferP) {
     m->manifest_bytes=bufferP;
@@ -93,7 +94,7 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
   } else {
     FILE *f = fopen(filename, "r");
     if (f == NULL)
-      return WHYF("Could not open manifest file %s for reading.", filename); 
+      RETURN(WHYF("Could not open manifest file %s for reading.", filename)); 
     m->manifest_bytes = fread(m->manifestdata, 1, MAX_MANIFEST_BYTES, f);
     int ret = 0;
     if (m->manifest_bytes == -1)
@@ -101,7 +102,7 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
     if (fclose(f) == EOF)
       ret = WHY_perror("fclose");
     if (ret == -1)
-      return -1;
+      RETURN(-1);
   }
 
   m->manifest_all_bytes=m->manifest_bytes;
@@ -175,7 +176,7 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 
   m->manifest_bytes=end_of_text;
 
-  return 0;
+  RETURN(0);
 }
 
 int rhizome_hash_file(rhizome_manifest *m,const char *filename,char *hash_out)

@@ -739,7 +739,8 @@ int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
    We might find more than one. */
 int keyring_enter_pin(keyring_file *k, const char *pin)
 {
-  if (!k) return -1;
+  IN();
+  if (!k) RETURN(-1);
   if (!pin) pin="";
 
   int slot;
@@ -777,7 +778,7 @@ int keyring_enter_pin(keyring_file *k, const char *pin)
     }
   
   /* Tell the caller how many identities we found */
-  return identitiesFound;
+  RETURN(identitiesFound);
   
 }
 
@@ -1385,15 +1386,16 @@ int keyring_enter_pins(keyring_file *k, const char *pinlist)
 keyring_file *keyring_open_with_pins(const char *pinlist)
 {
   keyring_file *k = NULL;
+  IN();
   if (create_serval_instance_dir() == -1)
-    return NULL;
+    RETURN(NULL);
   char keyringFile[1024];
   if (!FORM_SERVAL_INSTANCE_PATH(keyringFile, "serval.keyring"))
-    return NULL;
+    RETURN(NULL);
   if ((k = keyring_open(keyringFile)) == NULL)
-    return NULL;
+    RETURN(NULL);
   keyring_enter_pins(k,pinlist);
-  return k;
+  RETURN(k);
 }
 
 /* If no identities, create an initial identity with a phone number.
