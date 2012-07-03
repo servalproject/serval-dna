@@ -1026,8 +1026,8 @@ int overlay_route_saw_selfannounce_ack(overlay_frame *f,long long now);
 int overlay_route_recalc_node_metrics(overlay_node *n,long long now);
 int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now);
 int overlay_route_saw_selfannounce(overlay_frame *f,long long now);
-overlay_node *overlay_route_find_node(unsigned char *sid,int prefixLen,int createP);
-unsigned int overlay_route_hash_sid(unsigned char *sid);
+overlay_node *overlay_route_find_node(const unsigned char *sid,int prefixLen,int createP);
+unsigned int overlay_route_hash_sid(const unsigned char *sid);
 int overlay_route_init(int mb_ram);
 overlay_neighbour *overlay_route_get_neighbour_structure(unsigned char *packed_sid, 
 							 int prefixLen,int createP);
@@ -1494,7 +1494,7 @@ int monitor_setup_sockets();
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int monitor_call_status(vomp_call_state *call);
 int monitor_send_audio(vomp_call_state *call,overlay_mdp_frame *audio);
-int monitor_announce_peer(unsigned char *sid);
+int monitor_announce_peer(const unsigned char *sid);
 int monitor_tell_clients(char *msg, int msglen, int mask);
 extern int monitor_socket_count;
 

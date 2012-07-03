@@ -404,8 +404,7 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
   } else {
     /* Is not a direct neighbour.
        XXX - Very simplistic for now. */
-    overlay_node 
-      *n=overlay_route_find_node(d,SID_SIZE,0 /* don't create if missing */ );
+    overlay_node *n=overlay_route_find_node(d,SID_SIZE,0 /* don't create if missing */ );
     if (n) {
       int o;
       int best_score=0;
@@ -437,7 +436,7 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
   }
 }
 
-unsigned int overlay_route_hash_sid(unsigned char *sid)
+unsigned int overlay_route_hash_sid(const unsigned char *sid)
 {
   /* Calculate the bin number of an address (sid) from the sid. */
   if (!overlay_route_hash_bytes) return WHY("overlay_route_hash_bytes==0");
@@ -464,48 +463,53 @@ unsigned int overlay_route_hash_sid(unsigned char *sid)
   return bin;
 }
 
-overlay_node *overlay_route_find_node(unsigned char *sid,int prefixLen,int createP)
+overlay_node *overlay_route_find_node(const unsigned char *sid, int prefixLen, int createP)
 {
-  int bin_number=overlay_route_hash_sid(sid);
-  int free_slot=-1;
-  int slot;
+  int bin_number = overlay_route_hash_sid(sid);
+  if (bin_number < 0) {
+    WHY("negative bin number");
+    return NULL;
+  }
 
-  if (bin_number<0) { WHY("negative bin number"); return NULL; }
+  int free_slot = -1;
+  {
+    int slot;
+    for (slot = 0; slot < overlay_bin_size; slot++)
+      if (memcmp(sid, overlay_nodes[bin_number][slot].sid, prefixLen) == 0)
+	return &overlay_nodes[bin_number][slot];
+      else if (overlay_nodes[bin_number][slot].sid[0]==0)
+	free_slot = slot;
+  }
 
-  for(slot=0;slot<overlay_bin_size;slot++)
-    {
-      if (!memcmp(sid,&overlay_nodes[bin_number][slot].sid[0],prefixLen))
-	{
-	  /* Found it */
-	  return &overlay_nodes[bin_number][slot];
-	}
-      else if (overlay_nodes[bin_number][slot].sid[0]==0) free_slot=slot;
-    }
- 
   /* Didn't find it */
   if (!createP) return NULL;
 
-  if (free_slot==-1)
-    {
-      /* Displace one of the others in the bin so we can go there */
-      int i;
-      for(i=0;i<OVERLAY_MAX_OBSERVATIONS;i++)
-	overlay_nodes[bin_number][free_slot].observations[i].observed_score=0;
-      overlay_nodes[bin_number][free_slot].neighbour_id=0;
-      overlay_nodes[bin_number][free_slot].most_recent_observation_id=0;
-      overlay_nodes[bin_number][free_slot].best_link_score=0;
-      overlay_nodes[bin_number][free_slot].best_observation=0;
-      for(i=0;i<OVERLAY_MAX_INTERFACES;i++) {
-	overlay_nodes[bin_number][free_slot].most_recent_advertisment[i]=0;
-	overlay_nodes[bin_number][free_slot].most_recent_advertised_score[i]=0;
-      }
+  if (free_slot == -1) {
+    /* Evict */
+    WARN("overlay_nodes[] eviction NOT IMPLEMENTED");
+    return NULL;
+    int i;
+    for(i=0;i<OVERLAY_MAX_OBSERVATIONS;i++)
+      overlay_nodes[bin_number][free_slot].observations[i].observed_score=0;
+    overlay_nodes[bin_number][free_slot].neighbour_id=0;
+    overlay_nodes[bin_number][free_slot].most_recent_observation_id=0;
+    overlay_nodes[bin_number][free_slot].best_link_score=0;
+    overlay_nodes[bin_number][free_slot].best_observation=0;
+    for(i=0;i<OVERLAY_MAX_INTERFACES;i++) {
+      overlay_nodes[bin_number][free_slot].most_recent_advertisment[i]=0;
+      overlay_nodes[bin_number][free_slot].most_recent_advertised_score[i]=0;
     }
+  }
+
+  bcopy(sid, overlay_nodes[bin_number][free_slot].sid, SID_SIZE);
 
   /* Ask for newly discovered node to be advertised */
-  overlay_route_please_advertise(&overlay_nodes[bin_number][slot]);
+  overlay_route_please_advertise(&overlay_nodes[bin_number][free_slot]);
   monitor_announce_peer(sid);
 
-  bcopy(sid,overlay_nodes[bin_number][free_slot].sid,SID_SIZE);
+  // This info message is used by tests; don't alter or remove it.
+  INFOF("ADD OVERLAY NODE sid=%s slot=%d", alloca_tohex_sid(sid), free_slot);
+
   return &overlay_nodes[bin_number][free_slot];
 }
 
@@ -682,8 +686,10 @@ overlay_neighbour *overlay_route_get_neighbour_structure(unsigned char *packed_s
   }  
 
   overlay_node *n=overlay_route_find_node(packed_sid,prefixLen,createP);
-  if (!n) { // WHY("Could not find node record for observed node"); 
-    return NULL; }
+  if (!n) {
+    // WHY("Could not find node record for observed node"); 
+    return NULL;
+  }
 
   /* Check if node is already a neighbour, or if not, make it one */
   if (!n->neighbour_id) if (overlay_route_make_neighbour(n)) { WHY("overlay_route_make_neighbour() failed"); return NULL; }

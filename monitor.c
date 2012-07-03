@@ -565,7 +565,7 @@ int monitor_call_status(vomp_call_state *call)
   RETURN(0);
 }
 
-int monitor_announce_peer(unsigned char *sid)
+int monitor_announce_peer(const unsigned char *sid)
 {
   char msg[1024];
   int n = snprintf(msg, sizeof msg, "\nNEWPEER:%s\n",overlay_render_sid(sid));

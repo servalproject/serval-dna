@@ -179,7 +179,11 @@ int overlay_route_saw_advertisements(int i,overlay_frame *f, long long now)
   int ofs=0;
 
   /* lookup score of current sender */
-  overlay_node *sender=overlay_route_find_node(f->source,SID_SIZE,0);
+  overlay_node *sender = overlay_route_find_node(f->source, SID_SIZE, 0);
+  if (sender == NULL) {
+    WARNF("Cannot advertise %s -- overlay node not found", alloca_tohex_sid(f->source));
+    return -1;
+  }
   int sender_score=sender->best_link_score;
   if (debug&DEBUG_OVERLAYROUTEMONITOR)
     DEBUGF("score to reach %s is %d", overlay_render_sid(f->source),sender_score);
