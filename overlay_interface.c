@@ -47,8 +47,6 @@ struct profile_total dummy_poll_stats;
 
 unsigned int overlay_sequence_number=0;
 
-long long overlay_next_tick();
-
 /* Return milliseconds since server started.  First call will always return zero.
    Must use long long, not time_t, as time_t can be 32bits, which is too small for
    milli-seconds since 1970. */
@@ -962,62 +960,39 @@ void overlay_check_ticks(struct sched_ent *alarm) {
   int i;
   
   long long now = overlay_gettime_ms();
+  /* By default only tick once per day */
+  long long nexttick=now + 86400*1000;
 
   /* Now check if the next tick time for the interfaces is no later than that time.
      If so, trigger a tick on the interface. */
   if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("Examining %d interfaces.",overlay_interface_count);
   for(i = 0; i < overlay_interface_count; i++) {
-      /* Only tick live interfaces */
-      if (overlay_interfaces[i].observed > 0) {
-	  if (debug & DEBUG_VERBOSE_IO) DEBUGF("Interface %s ticks every %dms, last at %lld.",
-					      overlay_interfaces[i].name,
-					      overlay_interfaces[i].tick_ms,
-						 overlay_interfaces[i].last_tick_ms);
-	  if (now >= overlay_interfaces[i].last_tick_ms + overlay_interfaces[i].tick_ms) {
-	    
-	    /* This interface is due for a tick */
-	    overlay_tick_interface(i, now);
-	    overlay_interfaces[i].last_tick_ms = now;
-	  }
-      } else
-	if (debug & DEBUG_VERBOSE_IO) DEBUGF("Interface %s is awol.", overlay_interfaces[i].name);
-    }
+    /* Only tick live interfaces */
+    if (overlay_interfaces[i].observed > 0) {
+      if (debug & DEBUG_VERBOSE_IO) DEBUGF("Interface %s ticks every %dms, last at %lld.",
+					  overlay_interfaces[i].name,
+					  overlay_interfaces[i].tick_ms,
+					     overlay_interfaces[i].last_tick_ms);
+      
+      long long thistick=overlay_interfaces[i].last_tick_ms + overlay_interfaces[i].tick_ms;
+      if (now >= thistick) {
+	
+	/* This interface is due for a tick */
+	overlay_tick_interface(i, now);
+	overlay_interfaces[i].last_tick_ms = now;
+	thistick=now + overlay_interfaces[i].tick_ms;
+      }
+      if (thistick<nexttick) nexttick=thistick;
+    } else
+      if (debug & DEBUG_VERBOSE_IO) DEBUGF("Interface %s is awol.", overlay_interfaces[i].name);
+  
+  }
   
   /* Update interval until next tick */
-  alarm->alarm = overlay_next_tick();
+  alarm->alarm = nexttick;
   schedule(alarm);
 
   return;
-}
-
-long long overlay_next_tick()
-{
-  /* By default only tick once per day */
-  long long now=overlay_gettime_ms();
-  long long nexttick=86400*1000;
-
-  int i;
-  if (debug&DEBUG_VERBOSE_IO) DEBUGF("Tick-check on %d interfaces at %lldms",overlay_interface_count,now);
-  for(i=0;i<overlay_interface_count;i++)
-    if (overlay_interfaces[i].observed>0)
-    {
-      long long thistick=
-	overlay_interfaces[i].tick_ms
-	-(now-overlay_interfaces[i].last_tick_ms);
-      
-      if (0)
-	DEBUGF("Interface %s ticks every %dms, last at T-%lldms, next needed in %lldms",
-	     overlay_interfaces[i].name,
-	     overlay_interfaces[i].tick_ms,now-overlay_interfaces[i].last_tick_ms,
-	     thistick);
-
-      if (thistick<0) thistick=0;
-      if (thistick<nexttick) nexttick=thistick;
-      if (0) WHYF("nexttick is now %lldms",nexttick);
-    }
-
-  if (0) WHYF("Next tick required in %lldms",nexttick);
-  return now + nexttick;
 }
 
 long long parse_quantity(char *q)
