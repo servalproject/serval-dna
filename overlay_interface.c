@@ -331,29 +331,22 @@ void overlay_interface_poll(struct sched_ent *alarm)
   unsigned char packet[16384];
 
   struct sockaddr src_addr;
-  unsigned int addrlen=sizeof(src_addr);
+  socklen_t addrlen = sizeof(src_addr);
   
   /* Read only one UDP packet per call to share resources more fairly, and also
      enable stats to accurately count packets received */
   int recvttl=1;
-  plen=recvwithttl(alarm->poll.fd,packet,sizeof(packet),
-		   &recvttl,&src_addr,&addrlen);
-  if (plen<1) { 
-    return;
-  } else {
+  plen = recvwithttl(alarm->poll.fd,packet, sizeof(packet), &recvttl, &src_addr, &addrlen);
+  if (plen != -1) {
     /* We have a frame from this interface */
-    if (debug&DEBUG_PACKETRX) {
-      serval_packetvisualise(open_logging(),"Read from real interface",
-			     packet,plen);
-    }
+    if (debug&DEBUG_PACKETRX)
+      serval_packetvisualise(open_logging(),"Read from real interface", packet,plen);
     if (debug&DEBUG_OVERLAYINTERFACES) DEBUGF("Received %d bytes on interface %s",plen,interface->name);
-    
     if (packetOk(interface,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
       WHY("Malformed packet");
       serval_packetvisualise(open_logging(), "Malformed packet", packet,plen);
     }
   }
-  return;
 }
 
 void overlay_dummy_poll(struct sched_ent *alarm)
@@ -366,7 +359,7 @@ void overlay_dummy_poll(struct sched_ent *alarm)
   unsigned char packet[16384];
   int plen=0;
   struct sockaddr src_addr;
-  unsigned int addrlen=sizeof(src_addr);
+  size_t addrlen = sizeof(src_addr);
   unsigned char transaction_id[8];
 
   /* Read from dummy interface file */
@@ -380,30 +373,33 @@ void overlay_dummy_poll(struct sched_ent *alarm)
     {
       lseek(alarm->poll.fd,interface->offset,SEEK_SET);
       if (debug&DEBUG_OVERLAYINTERFACES)
-	DEBUGF("Reading from interface %s log at offset %d, end of file at %lld",interface->name,
-		interface->offset,length);
-      if (read(alarm->poll.fd,&packet[0],2048)==2048)
-	{
-	  interface->offset+=2048;
-	  plen=2048-128;
-	  plen=packet[110]+(packet[111]<<8);
-	  if (plen>(2048-128)) plen=-1;
-	  if (debug&DEBUG_PACKETRX) {
-	    serval_packetvisualise(open_logging(),
-				   "Read from dummy interface",
-				   &packet[128],plen);
-	  }
+	DEBUGF("Read interface %s (size=%lld) at offset=%d",interface->name, length, interface->offset);
+      ssize_t nread = read(alarm->poll.fd,&packet[0],2048);
+      if (nread == -1)
+	WHY_perror("read");
+      else {
+	interface->offset += nread;
+	if (nread == 2048) {
+	  plen = packet[110]+(packet[111]<<8);
+	  if (plen > nread - 128)
+	    plen = -1;
+	  if (debug&DEBUG_PACKETRX)
+	    serval_packetvisualise(open_logging(), "Read from dummy interface", &packet[128], plen);
 	  bzero(&transaction_id[0],8);
 	  bzero(&src_addr,sizeof(src_addr));
-	  if ((plen>=0)&&(packet[0]==0x01)&&!(packet[1]|packet[2]|packet[3])) {
-	    { if (packetOk(interface,&packet[128],plen,transaction_id,
-			   -1 /* fake TTL */,
-			   &src_addr,addrlen,1)) 
-		WHY("Malformed or unsupported packet from dummy interface (packetOK() failed)"); } }
-	  else WHY("Invalid packet version in dummy interface");
+	  if (plen >= 4) {
+	    if (packet[0] == 0x01 && packet[1] == 0 && packet[2] == 0 && packet[3] == 0) {
+	      if (packetOk(interface,&packet[128],plen,transaction_id, -1 /* fake TTL */, &src_addr,addrlen,1) == -1)
+		WARN("Unsupported packet from dummy interface");
+	    } else {
+	      WARNF("Unsupported packet version from dummy interface: %02x %02x %02x %02x", packet[0], packet[1], packet[2], packet[3]);
+	    }
+	  } else {
+	    WARNF("Invalid packet from dummy interface: plen=%lld", (long long) plen);
+	  }
 	}
-      else {
-	if (debug&DEBUG_IO) DEBUG("Read NOTHING from dummy interface");
+	else
+	  WARNF("Read %lld bytes from dummy interface", nread);
       }
     }
   
@@ -443,18 +439,20 @@ int overlay_broadcast_ensemble(int interface_number,
       serval_packetvisualise(open_logging(),NULL,bytes,len);
     }
 
+  overlay_interface *interface = &overlay_interfaces[interface_number];
+
   memset(&s, '\0', sizeof(struct sockaddr_in));
   if (recipientaddr) {
     bcopy(recipientaddr,&s,sizeof(struct sockaddr_in));
   }
   else {
-    s = overlay_interfaces[interface_number].broadcast_address;
+    s = interface->broadcast_address;
     s.sin_family = AF_INET;
-    if (debug&DEBUG_PACKETTX) DEBUGF("Port=%d",overlay_interfaces[interface_number].port);
-    s.sin_port = htons( overlay_interfaces[interface_number].port );
+    if (debug&DEBUG_PACKETTX) DEBUGF("Port=%d",interface->port);
+    s.sin_port = htons(interface->port);
   }
 
-  if (overlay_interfaces[interface_number].fileP)
+  if (interface->fileP)
     {
       char buf[2048];
       bzero(&buf[0],128);
@@ -492,26 +490,29 @@ int overlay_broadcast_ensemble(int interface_number,
 
       bzero(&buf[128+len],2048-(128+len));
       bcopy(bytes,&buf[128],len);
-      if (write(overlay_interfaces[interface_number].alarm.poll.fd,buf,2048)!=2048)
-	{
-	  WHY_perror("write");
-	  return WHY("write() failed");
-	}
-      else
-	return 0;
+      /* This lseek() is unneccessary because the dummy file is opened in O_APPEND mode.  It's
+	 only purpose is to find out the offset to print in the DEBUG statement.  It is vulnerable
+	 to a race condition with other processes appending to the same file. */
+      off_t fsize = lseek(interface->alarm.poll.fd, (off_t) 0, SEEK_END);
+      if (fsize == -1)
+	return WHY_perror("lseek");
+      interface->offset = fsize;
+      if (debug&DEBUG_OVERLAYINTERFACES)
+	DEBUGF("Write to interface %s at offset=%d", interface->name, interface->offset);
+      ssize_t nwrite = write(interface->alarm.poll.fd, buf, 2048);
+      if (nwrite == -1)
+	return WHY_perror("write");
+      interface->offset += nwrite;
+      if (nwrite != 2048)
+	return WHYF("only wrote %lld of %lld bytes", nwrite, 2048);
+      return 0;
     }
   else
     {
-      if(sendto(overlay_interfaces[interface_number].alarm.poll.fd, 
+      if(sendto(interface->alarm.poll.fd, 
 		bytes, len, 0, (struct sockaddr *)&s, sizeof(struct sockaddr_in)) != len)
-	{
-	  /* Failed to send */
-	  WHY_perror("sendto(c)");
-	  return WHY("sendto() failed");
-	}
-      else
-	/* Sent okay */
-	return 0;
+	  return WHY_perror("sendto(c)");
+      return 0;
     }
 }
 
@@ -520,10 +521,9 @@ int overlay_broadcast_ensemble(int interface_number,
 int overlay_sendto(struct sockaddr_in *recipientaddr,unsigned char *bytes,int len)
 {
   if (debug&DEBUG_PACKETTX) DEBUGF("Sending %d bytes",len);
-  if(overlay_broadcast_ensemble(overlay_last_interface_number,recipientaddr,bytes,len)) 
+  if (overlay_broadcast_ensemble(overlay_last_interface_number,recipientaddr,bytes,len) == -1) 
     return -1;
-  else 
-    return len;
+  return len;
 }
 
 /* Register the interface, or update the existing interface registration */
@@ -871,7 +871,7 @@ int overlay_tick_interface(int i, long long now)
      service code, which we setup earlier. */
   if (debug&DEBUG_OVERLAYINTERFACES) 
     DEBUGF("Sending %d byte tick packet",e->length);
-  if (!overlay_broadcast_ensemble(i,NULL,e->bytes,e->length))
+  if (overlay_broadcast_ensemble(i,NULL,e->bytes,e->length) != -1)
     {
       overlay_update_sequence_number();
       if (debug&DEBUG_OVERLAYINTERFACES)

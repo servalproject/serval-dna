@@ -668,8 +668,7 @@ int64_t confValueGetInt64Range(const char *var, int64_t defaultValue, int64_t ra
 void confSetDebugFlags();
 int confParseBoolean(const char *text, const char *option_name);
 
-int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
-		struct sockaddr *recvaddr,unsigned int *recvaddrlen);
+ssize_t recvwithttl(int sock, unsigned char *buffer, size_t bufferlen, int *ttl, struct sockaddr *recvaddr, socklen_t *recvaddrlen);
 
 int is_xsubstring(const char *text, int len);
 int is_xstring(const char *text, int len);
@@ -699,11 +698,10 @@ void serverCleanUp();
 int isTransactionInCache(unsigned char *transaction_id);
 void insertTransactionInCache(unsigned char *transaction_id);
 
-int packetOk(struct overlay_interface *interface,unsigned char *packet,int len,
+int packetOk(struct overlay_interface *interface,unsigned char *packet, size_t len,
 	     unsigned char *transaction_id, int recvttl,
-	     struct sockaddr *recvaddr,int recvaddrlen,int parseP);
-int process_packet(unsigned char *packet,int len,
-		   int recvttl,struct sockaddr *sender,int sender_len);
+	     struct sockaddr *recvaddr, size_t recvaddrlen,int parseP);
+int process_packet(unsigned char *packet, size_t len, int recvttl,struct sockaddr *sender, size_t sender_len);
 int packetMakeHeader(unsigned char *packet,int packet_maxlen,int *packet_len,unsigned char *transaction_id,int cryptoflags);
 int packetSetDid(unsigned char *packet,int packet_maxlen,int *packet_len,char *did);
 int packetSetSidFromId(unsigned char *packet,int packet_maxlen,int *packet_len,
@@ -743,7 +741,7 @@ int hlrGetVariable(unsigned char *hlr,int hofs,int varid,int varinstance,
 		   unsigned char *value,int *len);
 int dumpResponses(struct response_set *responses);
 int eraseLastResponse(struct response_set *responses);
-int dropPacketP(int packet_len);
+int dropPacketP(size_t packet_len);
 int clearResponses(struct response_set *responses);
 int responseFromPeerP(struct response_set *responses,int peerId);
 int responseFromPeer(struct response_set *responses,int peerId);
@@ -759,10 +757,10 @@ int openHlrFile(char *backing_file,int size);
 int runCommand(char *cmd);
 int asteriskObtainGateway(char *requestor_sid,char *did,char *uri_out);
 int packetOkDNA(unsigned char *packet,int len,unsigned char *transaction_id,
-		int recvttl,struct sockaddr *recvaddr,int recvaddrlen,int parseP);
-int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet,int len,
+		int recvttl,struct sockaddr *recvaddr, size_t recvaddrlen,int parseP);
+int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,
 		    unsigned char *transaction_id,int recvttl,
-		    struct sockaddr *recvaddr,int recvaddrlen,int parseP);
+		    struct sockaddr *recvaddr, size_t recvaddrlen,int parseP);
 int prepareGateway(char *gatewayspec);
 int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP,
 		      unsigned char *transaction_id,struct sockaddr *recvaddr,
@@ -786,7 +784,7 @@ void logMessage(int level, const char *file, unsigned int line, const char *func
 void vlogMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, va_list);
 unsigned int debugFlagMask(const char *flagname);
 char *catv(const char *data, char *buf, size_t len);
-int dump(char *name,unsigned char *addr,int len);
+int dump(char *name, unsigned char *addr, size_t len);
 
 #define alloca_tohex(buf,len)   tohex((char *)alloca((len)*2+1), (buf), (len))
 #define alloca_tohex_sid(sid)   alloca_tohex((sid), SID_SIZE)

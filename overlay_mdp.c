@@ -972,8 +972,7 @@ void overlay_mdp_poll(struct sched_ent *alarm)
   ttl=-1;
   bzero((void *)recvaddrbuffer,sizeof(recvaddrbuffer));
   
-  int len = recvwithttl(alarm->poll.fd,buffer,sizeof(buffer),&ttl,
-			recvaddr,&recvaddrlen);
+  ssize_t len = recvwithttl(alarm->poll.fd,buffer,sizeof(buffer),&ttl, recvaddr, &recvaddrlen);
   recvaddr_un=(struct sockaddr_un *)recvaddr;
 
   if (len>0) {
@@ -1283,8 +1282,7 @@ int overlay_mdp_recv(overlay_mdp_frame *mdp,int *ttl)
   
   /* Check if reply available */
   SET_NONBLOCKING(mdp_client_socket);
-  int len = recvwithttl(mdp_client_socket,(unsigned char *)mdp,
-		    sizeof(overlay_mdp_frame),ttl,recvaddr,&recvaddrlen);
+  ssize_t len = recvwithttl(mdp_client_socket,(unsigned char *)mdp, sizeof(overlay_mdp_frame),ttl,recvaddr,&recvaddrlen);
   SET_BLOCKING(mdp_client_socket);
   
   recvaddr_un=(struct sockaddr_un *)recvaddr;
@@ -1307,7 +1305,7 @@ int overlay_mdp_recv(overlay_mdp_frame *mdp,int *ttl)
     int expected_len = overlay_mdp_relevant_bytes(mdp);
     
     if (len < expected_len){
-      return WHYF("Expected packet length of %d, received only %d bytes", expected_len, len);
+      return WHYF("Expected packet length of %d, received only %lld bytes", expected_len, (long long) len);
     }
     /* Valid packet received */
     return 0;

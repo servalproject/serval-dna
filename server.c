@@ -49,8 +49,8 @@ void signal_handler(int signal);
 int getKeyring(char *s);
 int createServerSocket();
 
-int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
-		struct sockaddr *recvaddr,unsigned int *recvaddrlen)
+ssize_t recvwithttl(int sock,unsigned char *buffer, size_t bufferlen,int *ttl,
+		    struct sockaddr *recvaddr, socklen_t *recvaddrlen)
 {
   struct msghdr msg;
   struct iovec iov[1];
@@ -71,12 +71,13 @@ int recvwithttl(int sock,unsigned char *buffer,int bufferlen,int *ttl,
   msg.msg_controllen = sizeof(struct cmsghdr)*16;
   msg.msg_flags = 0;
 
-  int len = recvmsg(sock,&msg,0);
+  ssize_t len = recvmsg(sock,&msg,0);
+  if (len == -1 && errno != EAGAIN && errno != EWOULDBLOCK)
+    return WHY_perror("recvmsg");
 
   if (0&&debug&DEBUG_PACKETRX) {
-    DEBUGF("recvmsg returned %d bytes (flags=%d,msg_controllen=%d)",
-	    len,msg.msg_flags,msg.msg_controllen);
-    dump("received data",buffer,len);
+    DEBUGF("recvmsg returned %lld (flags=%d, msg_controllen=%d)", (long long) len, msg.msg_flags, msg.msg_controllen);
+    dump("received data", buffer, len);
   }
   
   struct cmsghdr *cmsg;
@@ -199,8 +200,8 @@ int server(char *backing_file)
     return -1;
   FILE *f=fopen(filename,"w");
   if (!f) {
-    WHYF("Could not write to PID file %s", filename);
     WHY_perror("fopen");
+    WHYF("Could not write to PID file %s", filename);
     return -1;
   }
   server_getpid = getpid();
@@ -250,8 +251,10 @@ int server_create_stopfile()
   if (!FORM_SERVAL_INSTANCE_PATH(stopfile, STOPFILE_NAME))
     return -1;
   FILE *f;
-  if ((f = fopen(stopfile, "w")) == NULL)
-    return WHYF("Could not create stopfile '%s': %s [errno=%d]", stopfile, strerror(errno), errno);
+  if ((f = fopen(stopfile, "w")) == NULL) {
+    WHY_perror("fopen");
+    return WHYF("Could not create stopfile '%s'", stopfile);
+  }
   fclose(f);
   return 0;
 }
@@ -264,7 +267,8 @@ int server_remove_stopfile()
   if (unlink(stopfile) == -1) {
     if (errno == ENOENT)
       return 0;
-    return WHYF("Could not unlink stopfile '%s': %s [errno=%d]", stopfile, strerror(errno), errno);
+    WHY_perror("unlink");
+    return WHYF("Could not unlink stopfile '%s'", stopfile);
   }
   return 1;
 }
@@ -279,7 +283,8 @@ int server_check_stopfile()
     return 1;
   if (r == -1 && errno == ENOENT)
     return 0;
-  WHYF("Access check for stopfile '%s' failed: %s [errno=%d]", stopfile, strerror(errno), errno);
+  WHY_perror("access");
+  WHYF("Cannot access stopfile '%s'", stopfile);
   return -1;
 }
 
@@ -410,7 +415,7 @@ void signal_handler(int signal)
 {
   char buf[80];
   signame(buf, sizeof(buf), signal);
-  WHYF("Caught %s", buf);
+  INFOF("Caught %s", buf);
   switch (signal) {
     case SIGQUIT:
       serverCleanUp();
@@ -426,7 +431,7 @@ void signal_handler(int signal)
       return;
   }
   /* oops - caught a bad signal -- exec() ourselves fresh */
-  WHY("Respawning");
+  INFO("Respawning");
   if (sock>-1) close(sock);
   int i;
   for(i=0;i<overlay_interface_count;i++)
@@ -709,7 +714,6 @@ int processRequest(unsigned char *packet,int len,
 	      }
 	      break;
 	    default:
-	      WHY("Asked to perform unsupported action");
 	      if (debug&DEBUG_PACKETFORMATS) DEBUGF("Asked to perform unsipported action at Packet offset = 0x%x",pofs);
 	      if (debug&DEBUG_PACKETFORMATS) dump("Packet",packet,len);
 	      return WHY("Asked to perform unsupported action.");
@@ -782,8 +786,8 @@ int createServerSocket()
   
   sock=socket(PF_INET,SOCK_DGRAM,0);
   if (sock<0) {
-    WHY("Could not create UDP socket.");
     WHY_perror("socket");
+    WHY("Could not create UDP socket.");
     exit(-3);
   }
   
@@ -804,8 +808,8 @@ int createServerSocket()
   bind_addr.sin_port = htons( PORT_DNA );
   bind_addr.sin_addr.s_addr = htonl( INADDR_ANY );
   if(bind(sock,(struct sockaddr *)&bind_addr,sizeof(bind_addr))) {
-    WHYF("MP HLR server could not bind to UDP port %d", PORT_DNA);
     WHY_perror("bind");
+    WHYF("MP HLR server could not bind to UDP port %d", PORT_DNA);
     exit(-3);
   }
   return 0;

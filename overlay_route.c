@@ -18,6 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "strbuf.h"
 
 /*
   Here we implement the actual routing algorithm which is heavily based on BATMAN.
@@ -252,7 +253,7 @@ int overlay_route_init(int mb_ram)
 
   /* Try to catch one observed behaviour when memory corruption has occurred. */
   if (overlay_route_initP) {
-    fprintf(stderr,"ERROR: overlay_route_init() multiply called.\n");
+    WHY("multiply called");
     sleep(3600);
   }
   overlay_route_initP=1;
@@ -262,7 +263,7 @@ int overlay_route_init(int mb_ram)
   srandomdev();
 
   /* Generate hash ordering function */
-  fprintf(stderr,"Generating byte-order for hash function:");
+  strbuf b = strbuf_alloca(12 * 32);
   for(i=0;i<32;i++) {
     j=0;
     overlay_route_hash_order[i]=random()&31;
@@ -270,9 +271,9 @@ int overlay_route_init(int mb_ram)
       overlay_route_hash_order[i]=random()&31;
       for(j=0;j<i;j++) if (overlay_route_hash_order[i]==overlay_route_hash_order[j]) break;
     }
-    fprintf(stderr," %d",overlay_route_hash_order[i]);
+    strbuf_sprintf(b, " %d", overlay_route_hash_order[i]);
   }
-  fprintf(stderr,"\n");
+  DEBUGF("Generating byte-order for hash function:%s", strbuf_str(b));
   overlay_route_hash_bytes=16;
 
   int associativity=4;
@@ -293,7 +294,7 @@ int overlay_route_init(int mb_ram)
   {
     space=(sizeof(overlay_neighbour*)*1024LL*mb_ram)+sizeof(overlay_node)*bin_count*associativity*1LL;
     int percent=100LL*space/(mb_ram*1048576LL);
-    fprintf(stderr,"Using %d%% of %dMB RAM allows for %d bins with %d-way associativity and %d direct neighbours.\n",
+    INFOF("Using %d%% of %dMB RAM allows for %d bins with %d-way associativity and %d direct neighbours",
 	    percent,mb_ram,bin_count,associativity,1024*mb_ram);
   }
 
@@ -322,17 +323,17 @@ int overlay_route_init(int mb_ram)
   overlay_max_neighbours=1024*mb_ram;
   overlay_bin_count=bin_count;
   overlay_bin_size=associativity;
-  fprintf(stderr,"Node (%dbins) and neighbour tables allocated.\n",bin_count);
+  INFOF("Node (%dbins) and neighbour tables allocated",bin_count);
 
   /* Work out number of bytes required to represent the bin number.
      Used for calculation of sid hash */
   overlay_bin_bytes=1;
   while(bin_count&0xffffff00) {
-    fprintf(stderr,"bin_count=0x%08x, overlay_bin_bytes=%d\n",bin_count,overlay_bin_bytes);
+    INFOF("bin_count=0x%08x, overlay_bin_bytes=%d",bin_count,overlay_bin_bytes);
     overlay_bin_bytes++;
     bin_count=bin_count>>8;
   }
-  fprintf(stderr,"bin_count=0x%08x, overlay_bin_bytes=%d\n",bin_count,overlay_bin_bytes);
+  INFOF("bin_count=0x%08x, overlay_bin_bytes=%d",bin_count,overlay_bin_bytes);
 
   return 0;
 }
@@ -394,11 +395,11 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
     if (neh->scores[*interface]<1) {
       if (debug&DEBUG_OVERLAYROUTING) {
 	*interface=-1;
-	WHYF("No open path to %s\n",overlay_render_sid(neh->node->sid));
+	DEBUGF("No open path to %s",overlay_render_sid(neh->node->sid));
       }
       return -1;
     }
-    if (0) printf("nexthop is %s\n",overlay_render_sid(nexthop));
+    if (0) DEBUGF("nexthop is %s",overlay_render_sid(nexthop));
     return 0;
   } else {
     /* Is not a direct neighbour.
@@ -452,13 +453,13 @@ unsigned int overlay_route_hash_sid(unsigned char *sid)
   /* Mask out extranous bits to return only a valid bin number */
   bin&=(overlay_bin_count-1);
   if (debug&DEBUG_OVERLAYROUTING) {
+    DEBUGF("Address %s resolves to bin #%d", alloca_tohex_sid(sid), bin);
     int zeroes=0;
-    fprintf(stderr,"The following address resolves to bin #%d\n",bin);
-    for(i=0;i<SID_SIZE;i++) { fprintf(stderr,"%02x",sid[i]); if (!sid[i]) zeroes++; }
-    fprintf(stderr,"\n");
-    if (zeroes>8) {
-      fprintf(stderr,"Looks like corrupt memory or packet to me!\n");
-    }
+    for (i=0;i<SID_SIZE;i++)
+      if (!sid[i])
+	zeroes++;
+    if (zeroes>8)
+      DEBUG("Looks like corrupt memory or packet!");
   }
   return bin;
 }
@@ -574,7 +575,7 @@ int overlay_route_ack_selfannounce(overlay_frame *f,
       out->ttl=2;
       out->isBroadcast=1;
       if (debug&DEBUG_OVERLAYROUTING) 
-	WHY("Broadcasting ack to selfannounce for hithero unroutable node");
+	DEBUG("Broadcasting ack to selfannounce for hithero unroutable node");
     } else out->isBroadcast=0;
   }
 
@@ -696,7 +697,7 @@ int overlay_route_i_can_hear_node(unsigned char *who,int sender_interface,
 				  unsigned int s1,unsigned int s2,
 				  long long now)
 {
-  if (0) WHYF("I can hear node %s (but I really only care who can hear me)",
+  if (0) DEBUGF("I can hear node %s (but I really only care who can hear me)",
 	      overlay_render_sid(who));
   return 0;
 }
@@ -713,7 +714,7 @@ int overlay_route_node_can_hear_me(unsigned char *who,int sender_interface,
   /* Ignore traffic from ourselves. */
   if (overlay_address_is_local(who)) 
     {
-      WHY("I can hear myself. How odd");
+      DEBUGF("I can hear myself. How odd");
       return 0;
     }
 
@@ -741,7 +742,7 @@ int overlay_route_node_can_hear_me(unsigned char *who,int sender_interface,
     {
       if (neh->observations[obs_index].sender_interface==sender_interface)
 	{
-	  if (0) WHYF("merging observation in slot #%d",obs_index);
+	  if (0) DEBUGF("merging observation in slot #%d",obs_index);
 	  if (!neh->observations[obs_index].s1)
 	    neh->observations[obs_index].s1=neh->observations[obs_index].s2; 
 	  neh->observations[obs_index].s2=s2;
@@ -759,7 +760,7 @@ int overlay_route_node_can_hear_me(unsigned char *who,int sender_interface,
     /* Replace oldest observation with this one */
     obs_index=neh->most_recent_observation_id+1;
     if (obs_index>=OVERLAY_MAX_OBSERVATIONS) obs_index=0;
-    if (0) WHYF("storing observation in slot #%d",obs_index);
+    if (0) DEBUGF("storing observation in slot #%d",obs_index);
     neh->observations[obs_index].valid=0;
     neh->observations[obs_index].time_ms=now;
     neh->observations[obs_index].s1=s1;
@@ -779,16 +780,6 @@ int overlay_route_node_can_hear_me(unsigned char *who,int sender_interface,
   return 0;
 }
 
-int overlay_print_address(FILE *f,char *prefix,unsigned char *s,char *suffix)
-{
-  int i;
-  fprintf(f,"%s",prefix);
-  for(i=0;i<SID_SIZE;i++) fprintf(f,"%02x",s[i]);
-  fprintf(f,"%s",suffix);
-  return 0;
-}
-
-
 int overlay_route_saw_selfannounce(overlay_frame *f,long long now)
 {
   if (overlay_address_is_local(f->source)) return 0;
@@ -806,7 +797,7 @@ int overlay_route_saw_selfannounce(overlay_frame *f,long long now)
 
   /* Ignore self announcements from ourselves */
   if (overlay_address_is_local(f->source)) {
-    if(0) WHY("Ignoring selfannouncement from myself");
+    if(0) DEBUG("Ignoring selfannouncement from myself");
     return 0;
   }
 
@@ -814,7 +805,7 @@ int overlay_route_saw_selfannounce(overlay_frame *f,long long now)
   s2=ntohl(*((int*)&f->payload->bytes[4]));
   sender_interface=f->payload->bytes[8];
   if (debug&DEBUG_OVERLAYROUTING) {
-    fprintf(stderr,"Received self-announcement for sequence range [%08x,%08x] from interface %d\n",s1,s2,sender_interface);
+    DEBUGF("Received self-announcement for sequence range [%08x,%08x] from interface %d",s1,s2,sender_interface);
     dump("Payload",&f->payload->bytes[0],f->payload->length);
   }
 
@@ -915,7 +906,7 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
 
   /* Only update every half-second */
   if ((now-n->last_metric_update)<500) {
-    if (0) WHYF("refusing to update metric too often (last at %lldms, now=%lldms)",
+    if (0) DEBUGF("refusing to update metric too often (last at %lldms, now=%lldms)",
 		n->last_metric_update,now);
     return 0;
   }
@@ -944,8 +935,7 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
 
       /* Check the observation age, and ignore if too old */
       int obs_age=now-n->observations[i].time_ms;
-      if (0) WHYF("tallying obs: %dms old, %dms long",
-	   obs_age,interval);
+      if (0) DEBUGF("tallying obs: %dms old, %dms long", obs_age,interval);
       if (obs_age>200000) continue;
 
       /* Ignore very large intervals (>1hour) as being likely to be erroneous.
@@ -957,7 +947,7 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
       */
       if (interval<3600000) {
 	if (debug&DEBUG_VERBOSE_IO) 
-	  fprintf(stderr,"adding %dms (interface %d '%s')\n",
+	  DEBUGF("adding %dms (interface %d '%s')",
 		  interval,n->observations[i].sender_interface,
 		  overlay_interfaces[n->observations[i].sender_interface].name);
 
@@ -971,7 +961,7 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
 	else
 	  {
 	    WHY("Invalid interface ID in observation");
-	    fprintf(stderr,"XXXXXXX adding %dms (interface %d)\n",interval,n->observations[i].sender_interface);
+	    DEBUGF("XXXXXXX adding %dms (interface %d)",interval,n->observations[i].sender_interface);
 	  }
       }
 
@@ -1005,7 +995,7 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
     if (score<0) score=0;
 
     n->scores[i]=score;
-    if ((debug&DEBUG_OVERLAYROUTING)&&score) fprintf(stderr,"Neighbour score on interface #%d = %d (observations for %dms)\n",i,score,ms_observed_200sec[i]);
+    if ((debug&DEBUG_OVERLAYROUTING)&&score) DEBUGF("Neighbour score on interface #%d = %d (observations for %dms)",i,score,ms_observed_200sec[i]);
   }
   
   return 0;
@@ -1061,9 +1051,9 @@ char *overlay_render_sid_prefix(unsigned char *sid,int l)
 */
 int overlay_route_saw_selfannounce_ack(overlay_frame *f,long long now)
 {
-  if (0) WHYF("processing selfannounce ack (payload length=%d)",f->payload->length);
+  if (0) DEBUGF("processing selfannounce ack (payload length=%d)",f->payload->length);
   if (!overlay_neighbours) {
-    if (0) WHY("no neighbours, so returning immediately");
+    if (0) DEBUG("no neighbours, so returning immediately");
     return 0;
   }
 
@@ -1077,7 +1067,7 @@ int overlay_route_saw_selfannounce_ack(overlay_frame *f,long long now)
   // Call something like the following for each link
   if (f->source_address_status==OA_RESOLVED&&
       f->destination_address_status==OA_RESOLVED) {
-    if (0) WHYF("f->source=%s, f->destination=%s",
+    if (0) DEBUGF("f->source=%s, f->destination=%s",
 		overlay_render_sid(f->source),overlay_render_sid(f->destination));
     overlay_route_record_link(now,f->source,f->source,iface,s1,s2,
 			      0 /* no associated score */,
@@ -1096,7 +1086,7 @@ int overlay_route_record_link(long long now,unsigned char *to,
 {
   int i,slot=-1;
 
-  if (0) WHYF("to=%s, via=%s, iface=%d, s1=%d, s2=%d",
+  if (0) DEBUGF("to=%s, via=%s, iface=%d, s1=%d, s2=%d",
 	      overlay_render_sid(to),overlay_render_sid(via),
 	      sender_interface,s1,s2);
  
@@ -1105,28 +1095,27 @@ int overlay_route_record_link(long long now,unsigned char *to,
 
   /* Don't record routes to ourselves */
   if (overlay_address_is_local(to)) {
-    if (0) WHYF("Ignoring self announce ack addressed to me (%s).",
+    if (0) DEBUGF("Ignoring self announce ack addressed to me (%s).",
 		overlay_render_sid(to));
     return 0;
   }
-  else if (0) WHYF("Recording link to %s",overlay_render_sid(to));
+  else if (0) DEBUGF("Recording link to %s",overlay_render_sid(to));
 
   for(i=0;i<SID_SIZE;i++) if (to[i]!=via[i]) break;
   if (i==SID_SIZE)
     {
       /* It's a neighbour observation */
-      if (0) WHYF("%s is my neighbour",overlay_render_sid(to));
+      if (0) DEBUGF("%s is my neighbour",overlay_render_sid(to));
       overlay_route_node_can_hear_me(to,sender_interface,s1,s2,now);
     }
 
   if (!score) {
-    if (0) WHY("non-scoring report, so done");
+    if (0) DEBUG("non-scoring report, so done");
     return 0;
   }
 
-  fprintf(stderr,"route_record_link(0x%llx,%s*,",
-	  now,overlay_render_sid_prefix(to,7));
-  fprintf(stderr,"%s*,0x%08x-0x%08x,%d)\n",
+  DEBUGF("route_record_link(0x%llx,%s*,%s*,0x%08x-0x%08x,%d)",
+	  now,overlay_render_sid_prefix(to,7),
 	  overlay_render_sid_prefix(via,7),s1,s2,score);
   
   overlay_node *n=overlay_route_find_node(to,SID_SIZE,1 /* create node if missing */);
@@ -1190,8 +1179,9 @@ int overlay_route_dump()
 {
   int bin,slot,o,n,i;
   long long now=overlay_gettime_ms();
+  strbuf b = strbuf_alloca(8192);
 
-  fprintf(stderr,"\nOverlay Local Identities\n------------------------\n");
+  strbuf_sprintf(b,"Overlay Local Identities\n------------------------\n");
   int cn,in,kp;
   for(cn=0;cn<keyring->context_count;cn++)
     for(in=0;in<keyring->contexts[cn]->identity_count;in++)
@@ -1200,33 +1190,36 @@ int overlay_route_dump()
 	    ==KEYTYPE_CRYPTOBOX)
 	  {
 	    for(i=0;i<SID_SIZE;i++)
-	      fprintf(stderr,"%02x",keyring->contexts[cn]->identities[in]
+	      strbuf_sprintf(b,"%02x",keyring->contexts[cn]->identities[in]
 		      ->keypairs[kp]->public_key[i]);
-	    fprintf(stderr,"\n");
+	    strbuf_sprintf(b,"\n");
 	  }
+  DEBUG(strbuf_str(b));
 
-  fprintf(stderr,"\nOverlay Neighbour Table\n------------------------\n");
+  strbuf_reset(b);
+  strbuf_sprintf(b,"\nOverlay Neighbour Table\n------------------------\n");
   for(n=0;n<overlay_neighbour_count;n++)
     if (overlay_neighbours[n].node)
       {
-	fprintf(stderr,"  %s* : %lldms ago :",
+	strbuf_sprintf(b,"  %s* : %lldms ago :",
 		overlay_render_sid_prefix(overlay_neighbours[n].node->sid,7),
 		(now-overlay_neighbours[n].last_observation_time_ms));
 	for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
 	  if (overlay_neighbours[n].scores[i]) 
-	    fprintf(stderr," %d(via #%d)",
+	    strbuf_sprintf(b," %d(via #%d)",
 		    overlay_neighbours[n].scores[i],i);
-	fprintf(stderr,"\n");
+	strbuf_sprintf(b,"\n");
       }
+  DEBUG(strbuf_str(b));
   
-  fprintf(stderr,"Overlay Mesh Route Table\n------------------------\n");
-  
+  strbuf_reset(b);
+  strbuf_sprintf(b,"Overlay Mesh Route Table\n------------------------\n");
   for(bin=0;bin<overlay_bin_count;bin++)
     for(slot=0;slot<overlay_bin_size;slot++)
       {
 	if (!overlay_nodes[bin][slot].sid[0]) continue;
 	
-	fprintf(stderr,"  %s* : %d :",overlay_render_sid_prefix(overlay_nodes[bin][slot].sid,7),
+	strbuf_sprintf(b,"  %s* : %d :",overlay_render_sid_prefix(overlay_nodes[bin][slot].sid,7),
 		overlay_nodes[bin][slot].best_link_score);
 	for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++)
 	  {
@@ -1234,13 +1227,14 @@ int overlay_route_dump()
 	      {
 		overlay_node_observation *ob=&overlay_nodes[bin][slot].observations[o];
 		if (ob->corrected_score)
-		  fprintf(stderr," %d/%d via %s*",
+		  strbuf_sprintf(b," %d/%d via %s*",
 			  ob->corrected_score,ob->gateways_en_route,
 			  overlay_render_sid_prefix(ob->sender_prefix,7));			
 	      }
 	  }       
-	fprintf(stderr,"\n");
+	strbuf_sprintf(b,"\n");
       }
+  DEBUG(strbuf_str(b));
   return 0;
 }
 
@@ -1266,7 +1260,7 @@ void overlay_route_tick(struct sched_ent *alarm)
   long long start_time=overlay_gettime_ms();
 
   if (debug&DEBUG_OVERLAYROUTING) 
-    DEBUGF("Neighbours: %d@%d, Nodes: %d@%d\n",
+    DEBUGF("Neighbours: %d@%d, Nodes: %d@%d",
 	    overlay_route_tick_neighbour_bundle_size,overlay_route_tick_next_neighbour_id,
 	    overlay_route_tick_node_bundle_size,overlay_route_tick_next_node_bin_id);
 
@@ -1325,7 +1319,7 @@ void overlay_route_tick(struct sched_ent *alarm)
   if (ticks>5000) ticks=5000;
   int interval=5000/ticks;
 
-  if (debug&DEBUG_OVERLAYROUTING) fprintf(stderr,"route tick interval = %dms (%d ticks per 5sec, neigh=%lldms, node=%lldms)\n",interval,ticks,neighbour_time,node_time);
+  if (debug&DEBUG_OVERLAYROUTING) DEBUGF("route tick interval = %dms (%d ticks per 5sec, neigh=%lldms, node=%lldms)",interval,ticks,neighbour_time,node_time);
 
   /* Update callback interval based on how much work we have to do */
   alarm->alarm = overlay_gettime_ms()+interval;
@@ -1366,7 +1360,7 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
   long long now=overlay_gettime_ms();
 
   if (0) 
-    WHYF("Looking for node %s* (prefix len=0x%x)",
+    DEBUGF("Looking for node %s* (prefix len=0x%x)",
 	 overlay_render_sid_prefix(mdp->nodeinfo.sid,
 				   mdp->nodeinfo.sid_prefix_length),
 	 mdp->nodeinfo.sid_prefix_length

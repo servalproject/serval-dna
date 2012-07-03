@@ -25,9 +25,10 @@ double simulatedBER=0;
   We use this function to simulate a lossy link so that we can easily bench-test the
   retransmission protocols.
  */
-int dropPacketP(int packet_len)
+int dropPacketP(size_t packet_len)
 {
-  int i,b;
+  size_t i;
+  int b;
 
   long berThreshold=0x7fffffff*simulatedBER;
 

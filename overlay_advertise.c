@@ -182,8 +182,7 @@ int overlay_route_saw_advertisements(int i,overlay_frame *f, long long now)
   overlay_node *sender=overlay_route_find_node(f->source,SID_SIZE,0);
   int sender_score=sender->best_link_score;
   if (debug&DEBUG_OVERLAYROUTEMONITOR)
-    fprintf(stderr,"score to reach %s is %d\n",
-	    overlay_render_sid(f->source),sender_score);
+    DEBUGF("score to reach %s is %d", overlay_render_sid(f->source),sender_score);
 
   while(ofs<f->payload->length)
     {
@@ -215,7 +214,7 @@ int overlay_route_saw_advertisements(int i,overlay_frame *f, long long now)
 				      score,gateways_en_route);
 	  } else if (r==OA_PLEASEEXPLAIN) {
 	    /* Unresolved address -- ask someone to resolve it for us. */
-#warning	    WHY("Dispatch PLEASEEXPLAIN not implemented");
+	    WARN("Dispatch PLEASEEXPLAIN not implemented");
 	  }
 	}
 					  

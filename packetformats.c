@@ -19,8 +19,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 
-int process_packet(unsigned char *packet,int len,
-		   int recvttl,struct sockaddr *sender,int sender_len)
+int process_packet(unsigned char *packet, size_t len,
+		   int recvttl,struct sockaddr *sender, size_t sender_len)
 {
   //int authenticatedP=0;
   char did[128];
@@ -59,9 +59,9 @@ int process_packet(unsigned char *packet,int len,
   return 0;
 }
 
-int packetOk(struct overlay_interface *interface, unsigned char *packet,int len,
+int packetOk(struct overlay_interface *interface, unsigned char *packet, size_t len,
 	     unsigned char *transaction_id,int ttl,
-	     struct sockaddr *recvaddr,int recvaddrlen,int parseP)
+	     struct sockaddr *recvaddr, size_t recvaddrlen,int parseP)
 {
   if (len<HEADERFIELDS_LEN) return WHY("Packet is too short");
 
@@ -87,7 +87,7 @@ int packetOk(struct overlay_interface *interface, unsigned char *packet,int len,
 
 int packetOkDNA(unsigned char *packet,int len,unsigned char *transaction_id,
 		int recvttl,
-		struct sockaddr *recvaddr,int recvaddrlen,int parseP)
+		struct sockaddr *recvaddr, size_t recvaddrlen, int parseP)
 {
   /* Make sure that the packet is meant for us, and is not mal-formed */
   int version;

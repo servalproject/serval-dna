@@ -26,9 +26,9 @@ struct sockaddr_in loopback = {
   .sin_addr.s_addr=0x0100007f
 };
 
-int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet,int len,
+int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,
 		    unsigned char *transaction_id,int recvttl,
-		    struct sockaddr *recvaddr,int recvaddrlen,int parseP)
+		    struct sockaddr *recvaddr, size_t recvaddrlen, int parseP)
 {
   /* 
      Overlay packets are ensembles contain one or more frames each of which 
@@ -270,7 +270,7 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
   }
   int send_prefix = ++overlay_interfaces[interface].ticks_since_sent_full_address < ticks_per_full_address;
   if (!send_prefix)
-      overlay_interfaces[interface].ticks_since_sent_full_address = 0;
+    overlay_interfaces[interface].ticks_since_sent_full_address = 0;
 
   /* A TTL for this frame.
      XXX - BATMAN uses various TTLs, but I think that it may just be better to have all TTL=1,

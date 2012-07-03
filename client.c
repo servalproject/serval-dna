@@ -278,7 +278,6 @@ int getReplyPackets(int method,int peer,int batchP,struct response_set *response
   int timeout_secs;
   int timeout_usecs;
   int to=timeout;
-  int len;
   
   if (debug&DEBUG_DNARESPONSES) DEBUGF("getReplyPackets(policy=%d)",method);
   
@@ -291,7 +290,7 @@ int getReplyPackets(int method,int peer,int batchP,struct response_set *response
   while(1) {
     unsigned char buffer[16384];
     struct sockaddr sender;
-    socklen_t recvaddrlen=sizeof(struct sockaddr);
+    socklen_t recvaddrlen = sizeof(struct sockaddr);
     struct pollfd fds;
     
     if (recvaddr) bzero((void *)recvaddr,sizeof(struct sockaddr));
@@ -309,16 +308,16 @@ int getReplyPackets(int method,int peer,int batchP,struct response_set *response
     int ttl=-1;
     if (!recvaddr) recvaddr=&reply_recvaddr;
 
-    len=recvwithttl(sock,buffer,sizeof(buffer),&ttl,recvaddr,&recvaddrlen);
-    if (len<=0) return WHY("Unable to receive packet.");
+    ssize_t len = recvwithttl(sock,buffer,sizeof(buffer),&ttl,recvaddr,&recvaddrlen);
+    if (len == -1)
+      return WHY("Unable to receive packet.");
 
     if (recvaddr) {
       client_port=((struct sockaddr_in *)recvaddr)->sin_port;
       client_addr=((struct sockaddr_in *)recvaddr)->sin_addr;
-      
-      if (debug&DEBUG_DNARESPONSES) DEBUGF("Received reply from %s (len=%d)",inet_ntoa(client_addr),len);
-      if (debug&DEBUG_DNARESPONSES) dump("recvaddr",(unsigned char *)&sender,recvaddrlen);
-      if (debug&DEBUG_DNARESPONSES) dump("packet",(unsigned char *)buffer,len);
+      if (debug&DEBUG_DNARESPONSES) DEBUGF("Received reply from %s (len=%lld)", inet_ntoa(client_addr), (long long) len);
+      if (debug&DEBUG_DNARESPONSES) dump("recvaddr", (unsigned char *)&sender, recvaddrlen);
+      if (debug&DEBUG_DNARESPONSES) dump("packet", (unsigned char *)buffer, len);
     }
 
     if (dropPacketP(len)) {

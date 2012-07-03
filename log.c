@@ -109,14 +109,15 @@ const char *trimbuildpath(const char *path)
   return &path[lastsep];
 }
 
-int dump(char *name, unsigned char *addr, int len)
+int dump(char *name, unsigned char *addr, size_t len)
 {
   char buf[100];
-  int i,j;
+  size_t i;
   DEBUGF("Dump of %s", name);
   for(i = 0; i < len; i += 16) {
     strbuf b = strbuf_local(buf, sizeof buf);
     strbuf_sprintf(b, "  %04x :", i);
+    int j;
     for (j = 0; j < 16 && i + j < len; j++)
       strbuf_sprintf(b, " %02x", addr[i + j]);
     for (; j < 16; j++)

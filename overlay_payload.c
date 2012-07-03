@@ -288,7 +288,7 @@ int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP)
     if (debug&DEBUG_OVERLAYINTERFACES) 
       WHYF("Sending %d byte voice packet",b->length);
   nextinterface:
-    if (!overlay_broadcast_ensemble(interface,NULL,b->bytes,b->length))
+    if (overlay_broadcast_ensemble(interface,NULL,b->bytes,b->length) != -1)
       {
 	overlay_update_sequence_number();
 	if (debug&DEBUG_OVERLAYINTERFACES)
