@@ -1064,60 +1064,67 @@ int overlay_route_record_link(long long now,unsigned char *to,
 			      unsigned int s1,unsigned int s2,int score,
 			      int gateways_en_route)
 {
-  int i,slot=-1;
-
-  if (0) DEBUGF("to=%s, via=%s, iface=%d, s1=%d, s2=%d",
-	      alloca_tohex_sid(to),alloca_tohex_sid(via),
-	      sender_interface,s1,s2);
+  if (debug & DEBUG_OVERLAYROUTING)
+    DEBUGF("to=%s, via=%s, sender_interface=%d, s1=%d, s2=%d score=%d gateways_en_route=%d",
+	alloca_tohex_sid(to), alloca_tohex_sid(via), sender_interface, s1, s2,
+	score, gateways_en_route
+      );
  
-
   if (sender_interface>OVERLAY_MAX_INTERFACES) return 0;
 
   /* Don't record routes to ourselves */
   if (overlay_address_is_local(to)) {
-    if (0) DEBUGF("Ignoring self announce ack addressed to me (%s).",
-		alloca_tohex_sid(to));
-    return 0;
-  }
-  else if (0) DEBUGF("Recording link to %s",alloca_tohex_sid(to));
-
-  for(i=0;i<SID_SIZE;i++) if (to[i]!=via[i]) break;
-  if (i==SID_SIZE)
-    {
-      /* It's a neighbour observation */
-      if (0) DEBUGF("%s is my neighbour",alloca_tohex_sid(to));
-      overlay_route_node_can_hear_me(to,sender_interface,s1,s2,now);
-    }
-
-  if (!score) {
-    if (0) DEBUG("non-scoring report, so done");
+    if (debug & DEBUG_OVERLAYROUTING)
+      DEBUGF("Ignore self announce ack addressed to me (%s)", alloca_tohex_sid(to));
     return 0;
   }
 
-  DEBUGF("route_record_link(0x%llx,%s*,%s*,0x%08x-0x%08x,%d)",
-	  now, alloca_tohex(to, 7), alloca_tohex(via, 7), s1, s2, score);
-  
-  overlay_node *n=overlay_route_find_node(to,SID_SIZE,1 /* create node if missing */);
-  if (!n) return WHY("Could not find or create entry for node");
-  
-  for(i=0;i<OVERLAY_MAX_OBSERVATIONS;i++)
-    {
-      /* Take note of where we can find space for a fresh observation */
-      if ((slot==-1)&&(!n->observations[i].observed_score)) slot=i;
-      
-      /* If the intermediate host ("via") address and interface numbers match, 
-	 then overwrite old observation with new one */
-      if (!memcmp(via,n->observations[i].sender_prefix,OVERLAY_SENDER_PREFIX_LENGTH))
-	{
-	  /* Bingo - update this one */
-	  slot=i;
-	  break;
-	}
+  if (memcmp(to, via, SID_SIZE) == 0) {
+    /* It's a neighbour observation */
+    if (debug & DEBUG_OVERLAYROUTING)
+      DEBUGF("%s is my neighbour", alloca_tohex_sid(to));
+    overlay_route_node_can_hear_me(to,sender_interface,s1,s2,now);
+  }
+
+  if (score == 0) {
+    if (debug & DEBUG_OVERLAYROUTING)
+      DEBUG("non-scoring report");
+    return 0;
+  }
+
+  overlay_node *n = overlay_route_find_node(to, SID_SIZE, 1 /* create node if missing */);
+  if (!n)
+    return WHY("Could not create entry for node");
+  int slot = -1;
+  int i;
+  for (i = 0; i < OVERLAY_MAX_OBSERVATIONS; ++i) {
+    /* Take note of where we can find space for a fresh observation */
+    if (slot == -1 && n->observations[i].observed_score == 0)
+      slot = i;
+    /* If the intermediate host ("via") address and interface numbers match, then overwrite old
+       observation with new one */
+    if (memcmp(via, n->observations[i].sender_prefix, OVERLAY_SENDER_PREFIX_LENGTH) == 0) {
+      slot = i;
+      break;
     }
+  }
   /* If in doubt, replace a random slot.
-     XXX - we should probably replace the lowest scoring slot instead,
-     but random will work well enough for now. */
-  if (slot==-1) slot=random()%OVERLAY_MAX_OBSERVATIONS;
+     XXX - we should probably replace the lowest scoring slot instead, but random will work well
+     enough for now. */
+  if (slot == -1) {
+    slot = random() % OVERLAY_MAX_OBSERVATIONS;
+    if (debug & DEBUG_OVERLAYROUTING)
+      DEBUGF("allocate observation slot=%d", slot);
+  } else {
+    if (debug & DEBUG_OVERLAYROUTING)
+      DEBUGF("overwrite observation slot=%d (sender_prefix=%s interface=%u observed_score=%u rx_time=%lld)",
+	  slot,
+	  alloca_tohex(n->observations[slot].sender_prefix, OVERLAY_SENDER_PREFIX_LENGTH),
+	  n->observations[slot].interface,
+	  n->observations[slot].observed_score,
+	  n->observations[slot].rx_time
+	);
+  }
 
   n->observations[slot].observed_score=0;
   n->observations[slot].gateways_en_route=gateways_en_route;
@@ -1141,7 +1148,8 @@ int overlay_route_record_link(long long now,unsigned char *to,
 
   overlay_route_recalc_node_metrics(n,now);
   
-  if (debug&DEBUG_OVERLAYROUTEMONITOR) overlay_route_dump();
+  if (debug & DEBUG_OVERLAYROUTEMONITOR)
+    overlay_route_dump();
   
   return 0;
 }
