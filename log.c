@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 unsigned int debug = 0;
 static FILE *logfile = NULL;
+static int opening = 0;
 
 #ifdef ANDROID
 #include <android/log.h> 
@@ -31,19 +32,26 @@ static FILE *logfile = NULL;
 FILE *open_logging()
 {
   if (!logfile) {
-    const char *logpath = getenv("SERVALD_LOG_FILE");
-    if (!logpath)
-      logpath = confValueGet("logfile", NULL);
-    if (!logpath) {
+    if (opening) {
       logfile = stderr;
-      INFO("No logfile configured -- logging to stderr");
-    } else if ((logfile = fopen(logpath, "a"))) {
-      setlinebuf(logfile);
-      INFOF("Logging to %s (fd %d)", logpath, fileno(logfile));
+      INFO("Premature logging to stderr");
     } else {
-      logfile = stderr;
-      WARN_perror("fopen");
-      WARNF("Cannot append to %s -- falling back to stderr", logpath);
+      ++opening;
+      const char *logpath = getenv("SERVALD_LOG_FILE");
+      if (!logpath)
+	logpath = confValueGet("logfile", NULL);
+      if (!logpath) {
+	logfile = stderr;
+	INFO("No logfile configured -- logging to stderr");
+      } else if ((logfile = fopen(logpath, "a"))) {
+	setlinebuf(logfile);
+	INFOF("Logging to %s (fd %d)", logpath, fileno(logfile));
+      } else {
+	logfile = stderr;
+	WARN_perror("fopen");
+	WARNF("Cannot append to %s -- falling back to stderr", logpath);
+      }
+      --opening;
     }
   }
   return logfile;
@@ -190,7 +198,6 @@ unsigned int debugFlagMask(const char *flagname) {
   else if (!strcasecmp(flagname,"broadcasts"))		return DEBUG_BROADCASTS;
   else if (!strcasecmp(flagname,"manifests"))		return DEBUG_MANIFESTS;
   else if (!strcasecmp(flagname,"mdprequests"))		return DEBUG_MDPREQUESTS;
-  WARNF("Unsupported debug flag '%s'", flagname);
   return 0;
 }
 

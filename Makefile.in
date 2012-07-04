@@ -5,6 +5,7 @@ SRCS=	main.c \
 	commandline.c \
 	dataformats.c \
 	dna.c \
+	conf.c \
 	log.c \
 	mkdir.c \
 	strbuf.c \

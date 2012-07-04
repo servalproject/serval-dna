@@ -667,6 +667,11 @@ int64_t confValueGetInt64(const char *var, int64_t defaultValue);
 int64_t confValueGetInt64Range(const char *var, int64_t defaultValue, int64_t rangemin, int64_t rangemax);
 void confSetDebugFlags();
 int confParseBoolean(const char *text, const char *option_name);
+int confValueSet(const char *var, const char *value);
+int confWrite();
+int confVarCount();
+const char *confVar(unsigned int index);
+const char *confValue(unsigned int index);
 
 ssize_t recvwithttl(int sock, unsigned char *buffer, size_t bufferlen, int *ttl, struct sockaddr *recvaddr, socklen_t *recvaddrlen);
 
@@ -800,6 +805,7 @@ const char *trimbuildpath(const char *s);
 #define WHYF(F,...)         (LOGF(LOG_LEVEL_ERROR, F, ##__VA_ARGS__), -1)
 #define WHY(X)              WHYF("%s", (X))
 #define WHYNULL(X)          (LOGF(LOG_LEVEL_ERROR, "%s", X), NULL)
+#define WHYF_perror(F,...)  WHYF(F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno)
 #define WHY_perror(X)       WHYF("%s: %s [errno=%d]", (X), strerror(errno), errno)
 
 #define WARNF(F,...)        LOGF(LOG_LEVEL_WARN, F, ##__VA_ARGS__)
@@ -1465,6 +1471,8 @@ int cli_putchar(char c);
 int cli_puts(const char *str);
 int cli_printf(const char *fmt, ...);
 int cli_delim(const char *opt);
+
+int is_configvarname(const char *arg);
 
 int overlay_mdp_getmyaddr(int index,unsigned char *sid);
 int overlay_mdp_bind(unsigned char *localaddr,int port); 

@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/wait.h>
 #include <math.h>
 #include <string.h>
+#include <ctype.h>
 #ifdef HAVE_STRINGS_H
 #include <strings.h>
 #endif
@@ -534,161 +535,6 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
   return 0;
 }
 
-int confValueRotor=0;
-char confValue[4][128];
-const char *confValueGet(const char *var, const char *defaultValue)
-{
-  if (!var) return defaultValue;
-  int varLen=strlen(var);
-
-  char filename[1024];
-  if (!FORM_SERVAL_INSTANCE_PATH(filename, "serval.conf")) {
-    WARNF("Using default value of %s: %s", var, defaultValue);
-    return defaultValue;
-  }
-  FILE *f = fopen(filename,"r");
-  if (!f) {
-    if (defaultValue)
-      WARNF("Cannot open serval.conf, using default value of %s: %s", var, defaultValue);
-    return defaultValue;
-  }
-
-  char line[1024];
-  line[0] = '\0';
-  fgets(line, sizeof line, f);
-  while (line[0]) {
-    if (!strncasecmp(line, var, varLen) && line[varLen] == '=') {
-      fclose(f);
-      size_t len = strlen(&line[varLen + 1]);
-      if (len > sizeof confValue[0])
-	return defaultValue;
-      if (len && line[varLen + len] == '\n')
-	line[varLen + len--] = '\0';
-      if (len && line[varLen + len] == '\r')
-	line[varLen + len--] = '\0';
-      /* The rotor is used to pick which of four buffers to return in.
-	  This allows the use of up to four calls to confValueGet() in
-	  a single string formatting exercise, without unexpected side
-	  effect. */
-      confValueRotor++;
-      confValueRotor &= 3;
-      strcpy(&confValue[confValueRotor][0], &line[varLen + 1]);
-      return &confValue[confValueRotor][0];
-    }
-    line[0] = '\0';
-    fgets(line, sizeof line, f);
-  }
-  fclose(f);
-  return defaultValue;
-}
-
-int confValueGetBoolean(const char *var, int defaultValue)
-{
-  const char *value = confValueGet(var, NULL);
-  if (!value)
-    return defaultValue;
-  int flag = confParseBoolean(value, var);
-  if (flag >= 0)
-    return flag;
-  WARNF("Config option %s: using default value %s", var, defaultValue ? "true" : "false");
-  return defaultValue;
-}
-
-int64_t confValueGetInt64(const char *var, int64_t defaultValue)
-{
-  const char *start = confValueGet(var, NULL);
-  if (!start)
-    return defaultValue;
-  const char *end = start;
-  long long value = strtoll(start, (char **)&end, 10);
-  if (*start && !*end && end != start)
-    return value;
-  WARNF("Config option %s: '%s' is not an integer, using default value %lld", var, start, (long long) defaultValue);
-  return defaultValue;
-}
-
-int64_t confValueGetInt64Range(const char *var, int64_t defaultValue, int64_t rangemin, int64_t rangemax)
-{
-  int64_t value = confValueGetInt64(var, defaultValue);
-  if (value >= rangemin || value <= rangemax)
-    return value;
-  WARNF("Config option %s: configured value %lld out of range [%lld,%lld], using default value %lld",
-      var, (long long) value, (long long) rangemin, (long long) rangemax, (long long) defaultValue);
-  return defaultValue;
-}
-
-void confSetDebugFlags()
-{
-  char filename[1024];
-  if (FORM_SERVAL_INSTANCE_PATH(filename, "serval.conf")) {
-    FILE *f = fopen(filename, "r");
-    if (f) {
-      unsigned int setmask = 0;
-      unsigned int clearmask = 0;
-      int setall = 0;
-      int clearall = 0;
-      char line[1024];
-      line[0] = '\0';
-      fgets(line, sizeof line, f);
-      while (line[0]) {
-	if (!strncasecmp(line, "debug.", 6)) {
-	  char *flagname = line + 6;
-	  char *p = flagname;
-	  while (*p && *p != '=')
-	    ++p;
-	  int flag;
-	  if (*p) {
-	    *p = '\0';
-	    char *q = p + 1;
-	    while (*q && *q != '\n')
-	      ++q;
-	    *q = '\0';
-	    if ((flag = confParseBoolean(p + 1, flagname)) != -1) {
-	      unsigned int mask = debugFlagMask(flagname);
-	      if (mask == DEBUG_ALL) {
-		if (flag) {
-		  // DEBUGF("Set all debug flags");
-		  setall = 1;
-		} else {
-		  // DEBUGF("Clear all debug flags");
-		  clearall = 1;
-		}
-	      } else {
-		if (flag) {
-		  // DEBUGF("Set debug.%s", flagname);
-		  setmask |= mask;
-		} else {
-		  // DEBUGF("Clear debug.%s", flagname);
-		  clearmask |= mask;
-		}
-	      }
-	    }
-	  }
-	}
-	line[0] = '\0';
-	fgets(line, sizeof line, f);
-      }
-      fclose(f);
-      if (setall)
-	debug = DEBUG_ALL;
-      else if (clearall)
-	debug = 0;
-      debug &= ~clearmask;
-      debug |= setmask;
-    }
-  }
-}
-
-int confParseBoolean(const char *text, const char *option_name)
-{
-  if (!strcasecmp(text, "on") || !strcasecmp(text, "yes") || !strcasecmp(text, "true") || !strcmp(text, "1"))
-    return 1;
-  if (!strcasecmp(text, "off") || !strcasecmp(text, "no") || !strcasecmp(text, "false") || !strcmp(text, "0"))
-    return 0;
-  WARNF("Config option %s: invalid boolean value '%s'", option_name, text);
-  return -1;
-}
-
 int cli_absolute_path(const char *arg)
 {
   return arg[0] == '/' && arg[1] != '\0';
@@ -1048,118 +894,54 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
   return 0;
 }
 
-static int set_variable(const char *var, const char *val)
-{
-  char conffile[1024];
-  FILE *in;
-  if (!FORM_SERVAL_INSTANCE_PATH(conffile, "serval.conf") ||
-      !((in = fopen(conffile, "r")) || (in = fopen(conffile, "w")))
-    ) {
-    if (var)
-      return WHY("could not read configuration file.");
-    return -1;
-  }
-
-  char tempfile[1024];
-  FILE *out;
-  if (!FORM_SERVAL_INSTANCE_PATH(tempfile, "serval.conf.temp") ||
-      !(out = fopen(tempfile, "w"))
-    ) {
-    fclose(in);
-    return WHY("could not write temporary file.");
-  }
-
-  /* Read and write lines of config file, replacing the variable in question
-     if required.  If the variable didn't already exist, then write it out at
-     the end. */
-  char line[1024];
-  int found=0;
-  int varlen=strlen(var);
-  line[0]=0; fgets(line,1024,in);
-  while(line[0]) {
-    if (!strncasecmp(var, line, varlen) && line[varlen] == '=') {
-      if (!found && val)
-	fprintf(out, "%s=%s\n", var, val);
-      found = 1;
-    } else
-      fprintf(out,"%s",line);
-    line[0]=0; fgets(line,1024,in);
-  }
-  if (!found && val)
-    fprintf(out, "%s=%s\n", var, val);
-  fclose(in); fclose(out);
-
-  if (rename(tempfile,conffile)) {
-    return WHYF("Failed to rename \"%s\" to \"%s\".", tempfile, conffile);
-  }
-
-  return 0;
-}
-
-int cli_configvarname(const char *arg)
-{
-  if (arg[0] == '\0')
-    return 0;
-  if (!(isalnum(arg[0]) || arg[0] == '_'))
-    return 0;
-  const char *s = arg + 1;
-  for (; *s; ++s)
-    if (!(isalnum(*s) || *s == '_' || (*s == '.' && s[-1] != '.')))
-      return 0;
-  return s[-1] != '.';
-}
-
 int app_config_set(int argc, const char *const *argv, struct command_line_option *o)
 {
   const char *var, *val;
-  if (	cli_arg(argc, argv, o, "variable", &var, cli_configvarname, NULL)
+  if (	cli_arg(argc, argv, o, "variable", &var, is_configvarname, NULL)
      || cli_arg(argc, argv, o, "value", &val, NULL, ""))
     return -1;
   if (create_serval_instance_dir() == -1)
     return -1;
-  return set_variable(var, val);
+  return confValueSet(var, val) == -1 ? -1 : confWrite();
 }
 
 int app_config_del(int argc, const char *const *argv, struct command_line_option *o)
 {
   const char *var;
-  if (cli_arg(argc, argv, o, "variable", &var, cli_configvarname, NULL))
+  if (cli_arg(argc, argv, o, "variable", &var, is_configvarname, NULL))
     return -1;
   if (create_serval_instance_dir() == -1)
     return -1;
-  return set_variable(var, NULL);
+  return confValueSet(var, NULL) == -1 ? -1 : confWrite();
 }
 
 int app_config_get(int argc, const char *const *argv, struct command_line_option *o)
 {
   const char *var;
-  if (cli_arg(argc, argv, o, "variable", &var, cli_configvarname, NULL) == -1)
+  if (cli_arg(argc, argv, o, "variable", &var, is_configvarname, NULL) == -1)
     return -1;
   if (create_serval_instance_dir() == -1)
     return -1;
-  char conffile[1024];
-  FILE *in;
-  if (!FORM_SERVAL_INSTANCE_PATH(conffile, "serval.conf") ||
-      !((in = fopen(conffile, "r")) || (in = fopen(conffile, "w")))
-    ) {
-    return WHY("could not read configuration file.");
-  }
-  /* Read lines of config file. */
-  char line[1024];
-  int varlen = var ? strlen(var) : 0;
-  line[0]=0; fgets(line,1024,in);
-  while(line[0]) {
-    if (varlen == 0) {
-      fputs(line, stdout);
+  if (var) {
+    const char *value = confValueGet(var, NULL);
+    if (value) {
+      cli_puts(var);
+      cli_delim("=");
+      cli_puts(value);
+      cli_delim("\n");
     }
-    else if (!strncasecmp(var, line, varlen) && line[varlen] == '=') {
-      fputs(line, stdout);
-      break;
+  } else {
+    int n = confVarCount();
+    if (n == -1)
+      return -1;
+    unsigned int i;
+    for (i = 0; i != n; ++i) {
+      cli_puts(confVar(i));
+      cli_delim("=");
+      cli_puts(confValue(i));
+      cli_delim("\n");
     }
-    line[0]=0;
-    fgets(line,1024,in);
   }
-  fclose(in);
   return 0;
 }
 

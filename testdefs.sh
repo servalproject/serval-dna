@@ -40,6 +40,7 @@ setup_servald() {
    ln -f -s "$servald_build_executable" $servald
    unset SERVALD_OUTPUT_DELIMITER
    unset SERVALD_SERVER_START_DELAY
+   unset SERVALD_LOG_FILE
    servald_instances_dir="$SERVALD_VAR/instance"
    set_instance +Z
 }
