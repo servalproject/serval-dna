@@ -37,7 +37,7 @@ start_servald_instance() {
    set_instance "$1"
    executeOk_servald config set debug.interfaces Yes
    executeOk_servald config set debug.packetformats No
-   executeOk_servald config set debug.routing No
+   executeOk_servald config set debug.routing Yes
    executeOk_servald config set debug.tx No
    executeOk_servald config set debug.rx No
    executeOk_servald config set debug.mdprequests Yes
@@ -68,21 +68,23 @@ start_servald_instances() {
    SIDB=$sid
    LOGB="$log"
    # Now wait until they see each other.
-   sleep 30 &
+   local timeout_seconds=30
+   local timeout_retry_seconds=0.25
+   sleep $timeout_seconds &
    local timeout_pid=$!
    tfw_log "Wait for instances to see each other"
    while ! grep "^INFO:.*ADD OVERLAY NODE sid=$SIDB" "$LOGA" || ! grep "^INFO:.*ADD OVERLAY NODE sid=$SIDA" "$LOGB"; do
       kill -0 $timeout_pid 2>/dev/null || fail "timeout"
-      tfw_log "Sleep"
-      sleep 0.1
+      tfw_log "sleep $timeout_retry_seconds"
+      sleep $timeout_retry_seconds
    done
    tfw_log "# Dummynet file:" $(ls -l $DUMMYNET)
    set_instance +A
-   executeOk_servald id peers
+   executeOk_servald id allpeers
    assertStdoutLineCount '==' 1
    assertStdoutGrep "$SIDB"
    set_instance +B
-   executeOk_servald id peers
+   executeOk_servald id allpeers
    assertStdoutLineCount '==' 1
    assertStdoutGrep "$SIDA"
    set_instance +A

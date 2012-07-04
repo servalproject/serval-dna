@@ -976,11 +976,11 @@ void overlay_mdp_poll(struct sched_ent *alarm)
       return;
     case MDP_GETADDRS:
       if (debug & DEBUG_MDPREQUESTS)
-	DEBUGF("MDP_GETADDRS first_sid=%u last_sid=%u frame_sid_count=%u selfP=%d",
+	DEBUGF("MDP_GETADDRS first_sid=%u last_sid=%u frame_sid_count=%u mode=%d",
 	    mdp->addrlist.first_sid,
 	    mdp->addrlist.last_sid,
 	    mdp->addrlist.frame_sid_count,
-	    mdp->addrlist.selfP
+	    mdp->addrlist.mode
 	  );
       {
 	overlay_mdp_frame mdpreply;
@@ -995,48 +995,55 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 	if (max_sids<0) max_sids=0;
 	
 	/* Prepare reply packet */
-	mdpreply.packetTypeAndFlags=MDP_ADDRLIST;
-	mdpreply.addrlist.first_sid=sid_num;
-	mdpreply.addrlist.last_sid=max_sid;
-	mdpreply.addrlist.frame_sid_count=max_sids;
+	mdpreply.packetTypeAndFlags = MDP_ADDRLIST;
+	mdpreply.addrlist.mode = mdp->addrlist.mode;
+	mdpreply.addrlist.first_sid = sid_num;
+	mdpreply.addrlist.last_sid = max_sid;
+	mdpreply.addrlist.frame_sid_count = max_sids;
 	
 	/* Populate with SIDs */
 	int i=0;
 	int count=0;
-	if (mdp->addrlist.selfP) {
-	  /* from self */
-	  int cn=0,in=0,kp=0;
-	  while(keyring_next_identity(keyring,&cn,&in,&kp)) {	    
-	    if (count>=sid_num&&(i<max_sids))
-	      bcopy(keyring->contexts[cn]->identities[in]
-		    ->keypairs[kp]->public_key,
-		    mdpreply.addrlist.sids[i++],SID_SIZE);
-	    in++; kp=0;
-	    count++;
-	    if (i>=max_sids) break;
+	switch (mdp->addrlist.mode) {
+	case MDP_ADDRLIST_MODE_SELF: {
+	    int cn=0,in=0,kp=0;
+	    while(keyring_next_identity(keyring,&cn,&in,&kp)) {	    
+	      if (count>=sid_num&&(i<max_sids))
+		bcopy(keyring->contexts[cn]->identities[in]
+		      ->keypairs[kp]->public_key,
+		      mdpreply.addrlist.sids[i++],SID_SIZE);
+	      in++; kp=0;
+	      count++;
+	      if (i>=max_sids)
+		break;
+	    }
 	  }
-	} else {
-	  /* from peer list */
-	  i = count = 0;
-	  int bin, slot;
-	  for (bin = 0; bin < overlay_bin_count; ++bin) {
-	    for (slot = 0; slot < overlay_bin_size; ++slot) {
-	      const unsigned char *sid = overlay_nodes[bin][slot].sid;
-	      if (sid[0]) {
-		const char *sidhex = alloca_tohex_sid(sid);
-		int score = overlay_nodes[bin][slot].best_link_score;
-		if (debug & DEBUG_MDPREQUESTS) DEBUGF("bin=%d slot=%d sid=%s best_link_score=%d", bin, slot, sidhex, score);
-		if (score >= 1) {
-		  if (count++ >= sid_num && i < max_sids) {
-		    if (debug & DEBUG_MDPREQUESTS) DEBUGF("send sid=%s", sidhex);
-		    memcpy(mdpreply.addrlist.sids[i++], sid, SID_SIZE);
-		  } else {
-		    if (debug & DEBUG_MDPREQUESTS) DEBUGF("skip sid=%s", sidhex);
+	  break;
+	case MDP_ADDRLIST_MODE_ROUTABLE_PEERS:
+	case MDP_ADDRLIST_MODE_ALL_PEERS: {
+	    /* from peer list */
+	    i = count = 0;
+	    int bin, slot;
+	    for (bin = 0; bin < overlay_bin_count; ++bin) {
+	      for (slot = 0; slot < overlay_bin_size; ++slot) {
+		const unsigned char *sid = overlay_nodes[bin][slot].sid;
+		if (sid[0]) {
+		  const char *sidhex = alloca_tohex_sid(sid);
+		  int score = overlay_nodes[bin][slot].best_link_score;
+		  if (debug & DEBUG_MDPREQUESTS) DEBUGF("bin=%d slot=%d sid=%s best_link_score=%d", bin, slot, sidhex, score);
+		  if (mdp->addrlist.mode == MDP_ADDRLIST_MODE_ALL_PEERS || score >= 1) {
+		    if (count++ >= sid_num && i < max_sids) {
+		      if (debug & DEBUG_MDPREQUESTS) DEBUGF("send sid=%s", sidhex);
+		      memcpy(mdpreply.addrlist.sids[i++], sid, SID_SIZE);
+		    } else {
+		      if (debug & DEBUG_MDPREQUESTS) DEBUGF("skip sid=%s", sidhex);
+		    }
 		  }
 		}
 	      }
 	    }
 	  }
+	  break;
 	}
 	mdpreply.addrlist.frame_sid_count=i;
 	mdpreply.addrlist.last_sid=sid_num+i-1;
@@ -1345,7 +1352,7 @@ int overlay_mdp_getmyaddr(int index,unsigned char *sid)
   overlay_mdp_frame a;
 
   a.packetTypeAndFlags=MDP_GETADDRS;
-  a.addrlist.selfP=1;
+  a.addrlist.mode = MDP_ADDRLIST_MODE_SELF;
   a.addrlist.first_sid=index;
   a.addrlist.last_sid=0x7fffffff;
   a.addrlist.frame_sid_count=MDP_MAX_SID_REQUEST;

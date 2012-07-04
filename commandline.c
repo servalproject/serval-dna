@@ -1621,9 +1621,13 @@ int app_id_self(int argc, const char *const *argv, struct command_line_option *o
 
   a.packetTypeAndFlags=MDP_GETADDRS;
   if (!strcasecmp(argv[1],"self"))
-    a.addrlist.selfP=1; /* get own identities, not those of peers */
+    a.addrlist.mode = MDP_ADDRLIST_MODE_SELF; /* get own identities */
+  else if (!strcasecmp(argv[1],"allpeers"))
+    a.addrlist.mode = MDP_ADDRLIST_MODE_ALL_PEERS; /* get all known peers */
+  else if (!strcasecmp(argv[1],"peers"))
+    a.addrlist.mode = MDP_ADDRLIST_MODE_ROUTABLE_PEERS; /* get routable (reachable) peers */
   else
-    a.addrlist.selfP=0; /* get peer list */
+    return WHYF("unsupported arg '%s'", argv[1]);
   a.addrlist.first_sid=-1;
   a.addrlist.last_sid=0x7fffffff;
   a.addrlist.frame_sid_count=MDP_MAX_SID_REQUEST;
@@ -1923,9 +1927,11 @@ command_line_option command_line_options[]={
   {app_vomp_dial,{"vomp","dial","<sid>","<did>","[<callerid>]",NULL},0,
    "Attempt to dial the specified sid and did."},
   {app_id_self,{"id","self",NULL},0,
-   "Return my own identity(s) as SIDs"},
+   "Return my own identity(s) as URIs"},
   {app_id_self,{"id","peers",NULL},0,
-   "Return identity of known peers as SIDs"},
+   "Return identity of known routable peers as URIs"},
+  {app_id_self,{"id","allpeers",NULL},0,
+   "Return identity of all known peers as URIs"},
   {app_node_info,{"node","info","<sid>","[getdid]",NULL},0,
    "Return information about SID, and optionally ask for DID resolution via network"},
   {app_test_rfs,{"test","rfs",NULL},0,

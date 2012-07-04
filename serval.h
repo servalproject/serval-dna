@@ -1220,12 +1220,15 @@ typedef struct overlay_mdp_error {
 #define MDP_GETADDRS 5
 #define MDP_ADDRLIST 6
 typedef struct overlay_mdp_addrlist {
-  int selfP;
+// These are back-compatible with the old values of 'mode' when it was 'selfP'
+#define MDP_ADDRLIST_MODE_ROUTABLE_PEERS 0
+#define MDP_ADDRLIST_MODE_SELF 1
+#define MDP_ADDRLIST_MODE_ALL_PEERS 2
+  int mode;
   unsigned int server_sid_count;
   unsigned int first_sid;
   unsigned int last_sid;
-  unsigned int frame_sid_count; /* how many of the following 59 slots are
-				    populated */
+  unsigned int frame_sid_count; /* how many of the following 59 slots are populated */
   /* 59*32 < (MDP_MTU-100), so up to 59 SIDs in a single reply.
      Multiple replies can be used to respond with more. */
 #define MDP_MAX_SID_REQUEST 59
