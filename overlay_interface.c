@@ -847,7 +847,7 @@ int overlay_tick_interface(int i, long long now)
   /* We previously limited manifest space to 3/4 of MTU, but that causes problems for
      MeshMS journal manifests, at least until we move to a compact binary format.
      So for now, allow allow rest of packet to get used */
-#warning reduce to <= mtu*3/4 once we have compacty binary canonical manifest format
+  // TODO reduce to <= mtu*3/4 once we have compact binary canonical manifest format
   ob_limitsize(e,overlay_interfaces[i].mtu*4/4);
 
   /* Add advertisements for ROUTES not Rhizome bundles.
