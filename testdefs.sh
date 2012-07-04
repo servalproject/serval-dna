@@ -6,6 +6,7 @@ testdefs_sh=$(abspath "${BASH_SOURCE[0]}")
 servald_source_root="${testdefs_sh%/*}"
 servald_build_root="$servald_source_root"
 servald_build_executable="$servald_build_root/dna"
+export TFW_LOGDIR="${TFW_LOGDIR:-$servald_build_root/testlog}"
 
 declare -a instance_stack=()
 

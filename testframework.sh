@@ -117,7 +117,7 @@ runTests() {
    trap '_tfw_status=$?; rm -rf "$_tfw_tmpdir"; exit $_tfw_status' EXIT SIGHUP SIGINT SIGTERM
    rm -rf "$_tfw_tmpdir"
    mkdir -p "$_tfw_tmpdir" || return $?
-   _tfw_logdir="$_tfw_cwd/testlog/$_tfw_suite_name"
+   _tfw_logdir="${TFW_LOGDIR:-$_tfw_cwd/testlog}/$_tfw_suite_name"
    _tfw_trace=false
    _tfw_verbose=false
    _tfw_stop_on_error=false
