@@ -24,17 +24,23 @@ source "${0%/*}/../testdefs.sh"
 setup() {
    setup_servald
    assert_no_servald_processes
+   setup_dnahelper
 }
 
 teardown() {
-# TODO Disabled until stopping multiple-instances are supported
-# TODO  stop_all_servald_servers
+   stop_all_servald_servers
    kill_all_servald_processes
    assert_no_servald_processes
 }
 
-setup_servald_instance() {
-    cat > $SERVALINSTANCE_PATH/dnahelper <<EOF
+# Called by start_servald_instances immediately before starting the server
+# process in each instance.
+configure_servald_server() {
+   executeOk_servald config set dna.helper "$TFWTMP/dnahelper"
+}
+
+setup_dnahelper() {
+    cat >"$TFWTMP/dnahelper" <<EOF
 #!/usr/bin/env python
 # Sample DNA Helper application for testing
 
@@ -88,53 +94,11 @@ if __name__ == "__main__":
     main()
 
 EOF
-
-
-   push_instance
-   set_instance "$1"
-   executeOk_servald config set interfaces "+>$2"
-   executeOk_servald config set dna.helper "$SERVALINSTANCE_PATH/dnahelper"
-   executeOk_servald config set monitor.socket "org.servalproject.servald.monitor.socket.$1"
-   executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.$1"
-   executeOk_servald keyring add
-   assert [ -e "$SERVALINSTANCE_PATH/serval.keyring" ]
-   executeOk_servald keyring list
-   tfw_cat --stdout
-   sid=$(replayStdout | sed -ne "1s/^\($rexp_sid\):.*\$/\1/p")
-   assert --message='main identity known' [ -n "$sid" ]
-   executeOk_servald set did $sid 5550001 "Agent $instance_name Smith"
-   start_servald_server
-   executeOk_servald status
-   tfw_cat --stdout
-   pop_instance
 }
 
-setup_servald_instances() {
-   setup_servald
-   DUMMYNET=`pwd`/dummy.dat
-   rm $DUMMYNET
-   touch $DUMMYNET
-   assert [ -e $DUMMYNET ]
-   setup_servald_instance +A $DUMMYNET
-   SIDA=$sid
-   setup_servald_instance +B $DUMMYNET
-   SIDB=$sid
-   # Now make sure that they can see each other
-   sleep 10 # Should be plenty of time
-   set_instance +A
-   echo "Dummynet file $DUMMYNET after 5 seconds: "`ls -l $DUMMYNET`
-   executeOk_servald id peers
-   assertStdoutLineCount '==' 1
-}
-
-doc_MultipleServalDTest="Start two servald instances with dna helpers"
-
-setup_MultipleServalDTest() {
-   setup
-}
-
-test_MultipleServalDTest() {
-   setup_servald_instances
+doc_MultiServer="Start three servald servers with dna helper"
+test_MultiServer() {
+   start_servald_instances +A +B +C
 }
 
 runTests "$@"

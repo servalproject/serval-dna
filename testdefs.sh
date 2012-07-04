@@ -101,7 +101,8 @@ set_instance() {
       ;;
    +[A-Z])
       instance_name="${1#+}"
-      tfw_log "# set instance = $instance_name"
+      instance_number=$((36#$instance_name - 9))
+      tfw_log "# set instance = $instance_name, number = $instance_number"
       export instance_dir="${servald_instances_dir?:}/$instance_name"
       mkdir -p "$instance_dir"
       export SERVALINSTANCE_PATH="$instance_dir/servald"
@@ -378,3 +379,93 @@ assert_all_servald_servers_no_errors() {
    pop_instance
 }
 
+# Utility function
+#  - create an identity
+#  - assign a phone number (DID) and name to the new identity, use defaults
+#    if not specified by arg1 and arg2
+#  - set the SID variable to the SID of the new identity
+#  - set the NUMBER variable to the phone number of the new identity
+#  - set the NAME variable to the name of the new identity
+create_identity() {
+   executeOk_servald keyring add
+   assert [ -e "$SERVALINSTANCE_PATH/serval.keyring" ]
+   executeOk_servald keyring list
+   SID=$(replayStdout | sed -ne "1s/^\($rexp_sid\):.*\$/\1/p")
+   assert --message='main identity known' [ -n "$SID" ]
+   NUMBER="${1-$((5550000 + $instance_number))}"
+   NAME="${2-Agent $instance_name Smith}"
+   executeOk_servald set did $SID "$NUMBER" "$NAME"
+   tfw_log "Identity $instance_name: $SID $NUMBER $NAME"
+}
+
+# Utility function, to be overridden as needed:
+#  - set up the configuration immediately prior to starting a servald server
+#    process
+#  - called by start_servald_instances
+configure_servald_server() {
+   :
+}
+
+# Utility function:
+#  - start a set of servald server processes running on a shared dummy interface
+#    and with its own private monitor and MDP abstract socket names
+#  - set variable DUMMYNET to the full path name of shared dummy interface
+#  - set variables SIDx to the SID of instance x: SIDA, SIDB, etc.
+#  - set variables LOGx to the full path of server log file for instance x: LOGA,
+#    LOGB, etc,
+#  - wait for all instances to detect each other
+#  - assert that all instances are in each others' peer lists
+start_servald_instances() {
+   push_instance
+   tfw_log "# start servald instances $*"
+   DUMMYNET=$SERVALD_VAR/dummy
+   >$DUMMYNET
+   local I J
+   for I; do
+      set_instance $I
+      create_identity
+      executeOk_servald config set interfaces "+>$DUMMYNET"
+      executeOk_servald config set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name"
+      executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name"
+      configure_servald_server
+      start_servald_server
+      eval SID${I#+}="$SID"
+      eval LOG${I#+}="$instance_servald_log"
+   done
+   # Now wait until they see each other.
+   local timeout_seconds=30
+   local timeout_retry_seconds=0.25
+   sleep $timeout_seconds &
+   local timeout_pid=$!
+   tfw_log "# wait for instances to see each other"
+   while true; do
+      local allseen=true
+      for I; do
+         for J; do
+            [ $I = $J ] && continue
+            local logvar=LOG${I#+}
+            local sidvar=SID${J#+}
+            if ! grep "ADD OVERLAY NODE sid=${!sidvar}" "${!logvar}"; then
+               allseen=false
+               break 2
+            fi
+         done
+      done
+      $allseen && break
+      kill -0 $timeout_pid 2>/dev/null || fail "timeout"
+      tfw_log "sleep $timeout_retry_seconds"
+      sleep $timeout_retry_seconds
+   done
+   tfw_log "# dummynet file:" $(ls -l $DUMMYNET)
+   for I; do
+      set_instance $I
+      executeOk_servald id allpeers
+      assertStdoutLineCount '==' $(($# - 1))
+      for J; do
+         [ $I = $J ] && continue
+         local sidvar=SID${J#+}
+         assertStdoutGrep "${!sidvar}"
+      done
+   done
+   pop_instance
+}
