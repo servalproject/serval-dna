@@ -1132,7 +1132,7 @@ unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
 	if (sas_public) 
 	  *sas_public=
 	    k->contexts[cn]->identities[in]->keypairs[kp]->public_key;
-	if (0) WHYF("Found SAS entry for %s*",overlay_render_sid_prefix(sid,7));
+	if (0) DEBUGF("Found SAS entry for %s*", alloca_tohex(sid, 7));
 	RETURN(k->contexts[cn]->identities[in]->keypairs[kp]->private_key);
       }
 
@@ -1289,10 +1289,10 @@ unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
   for(i=0;i<sid_sas_mapping_count;i++)
     {
       if (memcmp(sid,sid_sas_mappings[i].sid,SID_SIZE)) continue;
-      if (sid_sas_mappings[i].validP) 
-	{ if (0) 
-	    WHYF("Found SAS public entry for %s*",overlay_render_sid_prefix(sid,7));
-	  RETURN(sid_sas_mappings[i].sas_public); }
+      if (sid_sas_mappings[i].validP) {
+	if (0) DEBUGF("Found SAS public entry for %s*", alloca_tohex(sid, 7));
+	RETURN(sid_sas_mappings[i].sas_public);
+      }
       /* Don't flood the network with mapping requests */
       if (((now-sid_sas_mappings[i].last_request_time_in_ms)<1000)
 	  &&((now-sid_sas_mappings[i].last_request_time_in_ms)>=0))

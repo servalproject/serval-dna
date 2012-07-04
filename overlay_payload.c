@@ -246,7 +246,7 @@ int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP)
   */
   if (0)
     WHYF("Enqueuing packet for %s* (q[%d]length = %d)",
-	 overlay_render_sid_prefix(p->destination,7),
+	 alloca_tohex(p->destination, 7),
 	 q,overlay_tx[q].length);
   if (q==OQ_ISOCHRONOUS_VOICE&&(!forceBroadcastP)) {
     /* Dispatch voice data immediately.

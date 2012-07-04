@@ -238,7 +238,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 		long long version = rhizome_manifest_get_ll(m, "version");
 		DEBUGF("Stop cramming %s advertisements: not enough space for %s*:v%lld (%d bytes, size limit=%d, used=%d)",
 		       pass?"BARs":"manifests",
-		       overlay_render_sid_prefix(m->cryptoSignPublic,8),
+		       alloca_tohex(m->cryptoSignPublic, 8),
 		       version,
 		       blob_bytes,e->sizeLimit,e->length);
 		rhizome_manifest_free(m);
@@ -277,7 +277,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 		(m, (char *)&e->bytes[e->length+overhead], blob_bytes);
 	      long long version = rhizome_manifest_get_ll(m, "version");
 	      WHYF("Advertising manifest %s* version %lld",
-		   overlay_render_sid_prefix(m->cryptoSignPublic,8),
+		   alloca_tohex(m->cryptoSignPublic, 8),
 		   version);
 	      rhizome_manifest_free(m);
 	    }

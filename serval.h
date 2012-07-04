@@ -1343,7 +1343,6 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 int ob_bcopy(overlay_buffer *b,int from, int to, int len);
 int ob_setbyte(overlay_buffer *b,int ofs,unsigned char value);
 
-char *overlay_render_sid_prefix(const unsigned char *sid,int l);
 int dump_payload(overlay_frame *p,char *message);
 
 int urandombytes(unsigned char *x,unsigned long long xlen);

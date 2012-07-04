@@ -1198,8 +1198,8 @@ int app_vomp_status(int argc, const char *const *argv, struct command_line_optio
 		      mdp2.vompevent.call_session_token);
 	    else {
 	      fprintf(stderr,"%s* -> %s* (%s -> %s)",
-		      overlay_render_sid_prefix(mdp2.vompevent.local_sid,6),
-		      overlay_render_sid_prefix(mdp2.vompevent.remote_sid,6),
+		      alloca_tohex(mdp2.vompevent.local_sid, 6),
+		      alloca_tohex(mdp2.vompevent.remote_sid, 6),
 		      strlen(mdp2.vompevent.local_did)
 		      ?mdp2.vompevent.local_did:"<no local number>",
 		      strlen(mdp2.vompevent.remote_did)

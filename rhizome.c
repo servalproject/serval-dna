@@ -342,7 +342,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
     return WHY("rhizome_store_bundle() failed.");
 
   DEBUGF("Announcing arrival of manifest %s* version %lld",
-       overlay_render_sid_prefix(m_in->cryptoSignPublic,8),m_in->version);
+       alloca_tohex(m_in->cryptoSignPublic, 8), m_in->version);
   monitor_announce_bundle(m_in);
   return 0;
 }

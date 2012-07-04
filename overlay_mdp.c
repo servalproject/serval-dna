@@ -422,7 +422,7 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp,long long now)
 
     if (0)
       WHYF("Received packet with listener (MDP ports: src=%s*:%d, dst=%d)",
-	   overlay_render_sid_prefix(mdp->out.src.sid,7),
+	   alloca_tohex(mdp->out.src.sid, 7),
 	   mdp->out.src.port,mdp->out.dst.port);
 
 

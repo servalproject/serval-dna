@@ -920,8 +920,8 @@ int overlay_tick_interface(int i, long long now)
 		{
 		  if (debug&DEBUG_QUEUES)
 		    DEBUGF("dequeuing %s* -> %s* NOW (queue length=%d)",
-			 overlay_render_sid_prefix((*p)->source,7),
-			 overlay_render_sid_prefix((*p)->destination,7),
+			 alloca_tohex((*p)->source, 7),
+			 alloca_tohex((*p)->destination, 7),
 			 overlay_tx[q].length);
 		  t=*p;
 		  *p=t->next;

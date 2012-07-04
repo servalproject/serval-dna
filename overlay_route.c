@@ -1008,23 +1008,6 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
   
 }
 
-int ors_rotor=0;
-char ors_out[4][SID_STRLEN+1];
-
-char *overlay_render_sid_prefix(const unsigned char *sid,int l)
-{
-  int zero=0;
-
-  if (l<0) l=0;
-  if (l>SID_STRLEN) l=SID_STRLEN;
-  ors_rotor++;
-  ors_rotor&=3;
-  extractSid(sid,&zero,ors_out[ors_rotor]);
-  ors_out[ors_rotor][l]=0;
-  return ors_out[ors_rotor];
-}
-
-
 /* 
    Self-announcement acks bounce back to the self-announcer from immediate neighbours
    who report the link score they have calculated based on listening to self-announces
@@ -1112,8 +1095,7 @@ int overlay_route_record_link(long long now,unsigned char *to,
   }
 
   DEBUGF("route_record_link(0x%llx,%s*,%s*,0x%08x-0x%08x,%d)",
-	  now,overlay_render_sid_prefix(to,7),
-	  overlay_render_sid_prefix(via,7),s1,s2,score);
+	  now, alloca_tohex(to, 7), alloca_tohex(via, 7), s1, s2, score);
   
   overlay_node *n=overlay_route_find_node(to,SID_SIZE,1 /* create node if missing */);
   if (!n) return WHY("Could not find or create entry for node");
@@ -1199,8 +1181,8 @@ int overlay_route_dump()
     if (overlay_neighbours[n].node)
       {
 	strbuf_sprintf(b,"  %s* : %lldms ago :",
-		overlay_render_sid_prefix(overlay_neighbours[n].node->sid,7),
-		(now-overlay_neighbours[n].last_observation_time_ms));
+		alloca_tohex(overlay_neighbours[n].node->sid, 7),
+		now - overlay_neighbours[n].last_observation_time_ms);
 	for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
 	  if (overlay_neighbours[n].scores[i]) 
 	    strbuf_sprintf(b," %d(via #%d)",
@@ -1216,7 +1198,7 @@ int overlay_route_dump()
       {
 	if (!overlay_nodes[bin][slot].sid[0]) continue;
 	
-	strbuf_sprintf(b,"  %s* : %d :",overlay_render_sid_prefix(overlay_nodes[bin][slot].sid,7),
+	strbuf_sprintf(b,"  %s* : %d :", alloca_tohex(overlay_nodes[bin][slot].sid, 7),
 		overlay_nodes[bin][slot].best_link_score);
 	for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++)
 	  {
@@ -1226,7 +1208,7 @@ int overlay_route_dump()
 		if (ob->corrected_score)
 		  strbuf_sprintf(b," %d/%d via %s*",
 			  ob->corrected_score,ob->gateways_en_route,
-			  overlay_render_sid_prefix(ob->sender_prefix,7));			
+			  alloca_tohex(ob->sender_prefix, 7));
 	      }
 	  }       
 	strbuf_sprintf(b,"\n");
@@ -1358,8 +1340,7 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
 
   if (0) 
     DEBUGF("Looking for node %s* (prefix len=0x%x)",
-	 overlay_render_sid_prefix(mdp->nodeinfo.sid,
-				   mdp->nodeinfo.sid_prefix_length),
+	 alloca_tohex(mdp->nodeinfo.sid, mdp->nodeinfo.sid_prefix_length),
 	 mdp->nodeinfo.sid_prefix_length
 	 );
 

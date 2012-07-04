@@ -309,7 +309,7 @@ int overlay_frame_process(struct overlay_interface *interface,overlay_frame *f)
 	  if (overlay_get_nexthop(f->destination,f->nexthop,&len,
 				  &f->nexthop_interface))
 	    WHYF("Could not find next hop for %s* - dropping frame",
-		 overlay_render_sid_prefix(f->destination,7));
+		 alloca_tohex(f->destination, 7));
 	  dontForward=1;
 	}
 	f->ttl--;
