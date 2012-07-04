@@ -959,18 +959,29 @@ void overlay_mdp_poll(struct sched_ent *alarm)
   if (len>0) {
     /* Look at overlay_mdp_frame we have received */
     overlay_mdp_frame *mdp=(overlay_mdp_frame *)&buffer[0];      
+    unsigned int mdp_type = mdp->packetTypeAndFlags & MDP_TYPE_MASK;
 
-    switch(mdp->packetTypeAndFlags&MDP_TYPE_MASK) {
+    switch (mdp_type) {
     case MDP_GOODBYE:
+      if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_GOODBYE");
       overlay_mdp_releasebindings(recvaddr_un,recvaddrlen);
       return;
     case MDP_VOMPEVENT:
+      if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_VOMPEVENT");
       vomp_mdp_event(mdp,recvaddr_un,recvaddrlen);
       return;
     case MDP_NODEINFO:
+      if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_NODEINFO");
       overlay_route_node_info(mdp,recvaddr_un,recvaddrlen);
       return;
     case MDP_GETADDRS:
+      if (debug & DEBUG_MDPREQUESTS)
+	DEBUGF("MDP_GETADDRS first_sid=%u last_sid=%u frame_sid_count=%u selfP=%d",
+	    mdp->addrlist.first_sid,
+	    mdp->addrlist.last_sid,
+	    mdp->addrlist.frame_sid_count,
+	    mdp->addrlist.selfP
+	  );
       {
 	overlay_mdp_frame mdpreply;
 	
@@ -1008,15 +1019,36 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 	  /* from peer list */
 	  i = count = 0;
 	  int bin, slot;
-	  for (bin = 0;bin < overlay_bin_count; ++bin)
-	    for (slot = 0;slot < overlay_bin_size; ++slot)
-	      if (overlay_nodes[bin][slot].sid[0] && overlay_nodes[bin][slot].best_link_score >= 1)
-		if (count++ >= sid_num && i < max_sids)
-		  bcopy(overlay_nodes[bin][slot].sid, mdpreply.addrlist.sids[i++], SID_SIZE);
+	  for (bin = 0; bin < overlay_bin_count; ++bin) {
+	    for (slot = 0; slot < overlay_bin_size; ++slot) {
+	      const unsigned char *sid = overlay_nodes[bin][slot].sid;
+	      if (sid[0]) {
+		const char *sidhex = alloca_tohex_sid(sid);
+		int score = overlay_nodes[bin][slot].best_link_score;
+		if (debug & DEBUG_MDPREQUESTS) DEBUGF("bin=%d slot=%d sid=%s best_link_score=%d", bin, slot, sidhex, score);
+		if (score >= 1) {
+		  if (count++ >= sid_num && i < max_sids) {
+		    if (debug & DEBUG_MDPREQUESTS) DEBUGF("send sid=%s", sidhex);
+		    memcpy(mdpreply.addrlist.sids[i++], sid, SID_SIZE);
+		  } else {
+		    if (debug & DEBUG_MDPREQUESTS) DEBUGF("skip sid=%s", sidhex);
+		  }
+		}
+	      }
+	    }
+	  }
 	}
 	mdpreply.addrlist.frame_sid_count=i;
 	mdpreply.addrlist.last_sid=sid_num+i-1;
 	mdpreply.addrlist.server_sid_count=count;
+
+	if (debug & DEBUG_MDPREQUESTS)
+	  DEBUGF("reply MDP_ADDRLIST first_sid=%u last_sid=%u frame_sid_count=%u server_sid_count=%u",
+	      mdpreply.addrlist.first_sid,
+	      mdpreply.addrlist.last_sid,
+	      mdpreply.addrlist.frame_sid_count,
+	      mdpreply.addrlist.server_sid_count
+	    );
 
 	/* Send back to caller */
 	overlay_mdp_reply(alarm->poll.fd,
@@ -1026,17 +1058,18 @@ void overlay_mdp_poll(struct sched_ent *alarm)
       }
       break;
     case MDP_TX: /* Send payload (and don't treat it as system privileged) */
+      if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_TX");
       overlay_mdp_dispatch(mdp,1,(struct sockaddr_un*)recvaddr,recvaddrlen);
       return;
       break;
     case MDP_BIND: /* Bind to port */
-      overlay_mdp_process_bind_request(alarm->poll.fd,mdp,
-				       recvaddr_un,recvaddrlen);
+      if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_BIND");
+      overlay_mdp_process_bind_request(alarm->poll.fd,mdp, recvaddr_un, recvaddrlen);
       return;
       break;
     default:
       /* Client is not allowed to send any other frame type */
-      WHY("Illegal frame type.");
+      WARNF("Unsupported MDP frame type: %d", mdp_type);
       mdp->packetTypeAndFlags=MDP_ERROR;
       mdp->error.error=2;
       snprintf(mdp->error.message,128,"Illegal request type.  Clients may use only MDP_TX or MDP_BIND.");

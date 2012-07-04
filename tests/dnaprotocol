@@ -40,6 +40,7 @@ start_servald_instance() {
    executeOk_servald config set debug.routing No
    executeOk_servald config set debug.tx No
    executeOk_servald config set debug.rx No
+   executeOk_servald config set debug.mdprequests Yes
    executeOk_servald config set interfaces "+>$2"
    executeOk_servald config set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name"
    executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name"

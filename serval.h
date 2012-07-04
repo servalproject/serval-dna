@@ -1095,6 +1095,7 @@ int overlay_saw_mdp_containing_frame(overlay_frame *f,long long now);
 #define DEBUG_PACKETTX              (1 << 22)
 #define DEBUG_PACKETCONSTRUCTION    (1 << 23)
 #define DEBUG_MANIFESTS             (1 << 24)
+#define DEBUG_MDPREQUESTS           (1 << 25)
 
 /* bitmask values for monitor_tell_clients */
 #define MONITOR_VOMP (1<<0)

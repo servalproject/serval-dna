@@ -189,6 +189,7 @@ unsigned int debugFlagMask(const char *flagname) {
   else if (!strcasecmp(flagname,"queues"))		return DEBUG_QUEUES;
   else if (!strcasecmp(flagname,"broadcasts"))		return DEBUG_BROADCASTS;
   else if (!strcasecmp(flagname,"manifests"))		return DEBUG_MANIFESTS;
+  else if (!strcasecmp(flagname,"mdprequests"))		return DEBUG_MDPREQUESTS;
   WARNF("Unsupported debug flag '%s'", flagname);
   return 0;
 }
