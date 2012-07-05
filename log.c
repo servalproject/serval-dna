@@ -23,7 +23,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 unsigned int debug = 0;
 static FILE *logfile = NULL;
-static int opening = 0;
+
+/* The logbuf is used to accumulate log messages before the log file is open and ready for
+   writing.
+ */
+static char _log_buf[8192];
+static struct strbuf logbuf = STRUCT_STRBUF_EMPTY;
 
 #ifdef ANDROID
 #include <android/log.h> 
@@ -32,26 +37,24 @@ static int opening = 0;
 FILE *open_logging()
 {
   if (!logfile) {
-    if (opening) {
+    const char *logpath = getenv("SERVALD_LOG_FILE");
+    if (!logpath) {
+      // If the configuration is locked (eg, it called WHY() or DEBUG() while initialising, which
+      // led back to here) then return NULL to indicate the message cannot be logged.
+      if (confLocked())
+	return NULL;
+      logpath = confValueGet("logfile", NULL);
+    }
+    if (!logpath) {
       logfile = stderr;
-      INFO("Premature logging to stderr");
+      INFO("No logfile configured -- logging to stderr");
+    } else if ((logfile = fopen(logpath, "a"))) {
+      setlinebuf(logfile);
+      INFOF("Logging to %s (fd %d)", logpath, fileno(logfile));
     } else {
-      ++opening;
-      const char *logpath = getenv("SERVALD_LOG_FILE");
-      if (!logpath)
-	logpath = confValueGet("logfile", NULL);
-      if (!logpath) {
-	logfile = stderr;
-	INFO("No logfile configured -- logging to stderr");
-      } else if ((logfile = fopen(logpath, "a"))) {
-	setlinebuf(logfile);
-	INFOF("Logging to %s (fd %d)", logpath, fileno(logfile));
-      } else {
-	logfile = stderr;
-	WARN_perror("fopen");
-	WARNF("Cannot append to %s -- falling back to stderr", logpath);
-      }
-      --opening;
+      logfile = stderr;
+      WARN_perror("fopen");
+      WARNF("Cannot append to %s -- falling back to stderr", logpath);
     }
   }
   return logfile;
@@ -76,9 +79,22 @@ void logMessage(int level, const char *file, unsigned int line, const char *func
 void vlogMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, va_list ap)
 {
   if (level != LOG_LEVEL_SILENT) {
-    strbuf b = strbuf_alloca(8192);
-    strbuf_sprintf(b, "%s:%u:%s()  ", file ? trimbuildpath(file) : "NULL", line, function ? function : "NULL");
-    strbuf_vsprintf(b, fmt, ap);
+    if (strbuf_is_empty(&logbuf))
+      strbuf_init(&logbuf, _log_buf, sizeof _log_buf);
+#ifndef ANDROID
+    const char *levelstr = "UNKNOWN";
+    switch (level) {
+      case LOG_LEVEL_FATAL: levelstr = "FATAL"; break;
+      case LOG_LEVEL_ERROR: levelstr = "ERROR"; break;
+      case LOG_LEVEL_INFO:  levelstr = "INFO"; break;
+      case LOG_LEVEL_WARN:  levelstr = "WARN"; break;
+      case LOG_LEVEL_DEBUG: levelstr = "DEBUG"; break;
+    }
+    strbuf_sprintf(&logbuf, "%s: [%d] ", levelstr, getpid());
+#endif
+    strbuf_sprintf(&logbuf, "%s:%u:%s()  ", file ? trimbuildpath(file) : "NULL", line, function ? function : "NULL");
+    strbuf_vsprintf(&logbuf, fmt, ap);
+    strbuf_puts(&logbuf, "\n");
 #ifdef ANDROID
     int alevel = ANDROID_LOG_UNKNOWN;
     switch (level) {
@@ -88,18 +104,14 @@ void vlogMessage(int level, const char *file, unsigned int line, const char *fun
       case LOG_LEVEL_WARN:  alevel = ANDROID_LOG_WARN; break;
       case LOG_LEVEL_DEBUG: alevel = ANDROID_LOG_DEBUG; break;
     }
-    __android_log_print(alevel, "servald", "%s", strbuf_str(b));
-#endif
-    const char *levelstr = "UNKNOWN";
-    switch (level) {
-      case LOG_LEVEL_FATAL: levelstr = "FATAL"; break;
-      case LOG_LEVEL_ERROR: levelstr = "ERROR"; break;
-      case LOG_LEVEL_INFO:  levelstr = "INFO"; break;
-      case LOG_LEVEL_WARN:  levelstr = "WARN"; break;
-      case LOG_LEVEL_DEBUG: levelstr = "DEBUG"; break;
+    __android_log_print(alevel, "servald", "%s", strbuf_str(&logbuf));
+#else
+    FILE *logf = open_logging();
+    if (logf) {
+      fputs(strbuf_str(&logbuf), logf);
+      strbuf_reset(&logbuf);
     }
-    if (logfile || open_logging())
-      fprintf(logfile, "%s: [%d] %s\n", levelstr, getpid(), strbuf_str(b));
+#endif
   }
 }
 

@@ -108,11 +108,11 @@ test_CaseInsensitive() {
    assertStdoutGrep --stdout --stderr --matches=1 '^foo=bar$'
    executeOk_servald config get Foo
    assertStdoutLineCount '==' 1
-   assertStdoutGrep --stdout --stderr --matches=1 '^foo=bar$'
+   assertStdoutGrep --stdout --stderr --matches=1 '^Foo=bar$'
    executeOk_servald config set FOO wah
    executeOk_servald config get foo
    assertStdoutLineCount '==' 1
-   assertStdoutGrep --stdout --stderr --matches=1 '^FOO=wah$'
+   assertStdoutGrep --stdout --stderr --matches=1 '^foo=wah$'
 }
 
 doc_DotsInNames="Config item names can have internal dots"

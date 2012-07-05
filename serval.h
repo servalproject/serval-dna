@@ -661,6 +661,7 @@ typedef struct overlay_txqueue {
 #define OQ_MAX 5
 extern overlay_txqueue overlay_tx[OQ_MAX];
 
+int confLocked();
 const char *confValueGet(const char *var, const char *defaultValue);
 int confValueGetBoolean(const char *var, int defaultValue);
 int64_t confValueGetInt64(const char *var, int64_t defaultValue);

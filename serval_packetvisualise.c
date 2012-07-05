@@ -532,6 +532,9 @@ int isDNAPacket(FILE *f,unsigned char *packet,int *ofs,int len)
 
 int serval_packetvisualise(FILE *f,char *message,unsigned char *packet,int len)
 {
+  if (f == NULL)
+    return -1;
+
   if (message) fprintf(f,"%s:\n",message);
 
   int i,j;

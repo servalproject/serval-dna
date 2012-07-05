@@ -61,6 +61,7 @@ static char *config_buffer_end = NULL;
 static unsigned int confc = 0;
 static char *confvar[MAX_CONFIG_VARS];
 static char *confvalue[MAX_CONFIG_VARS];
+static int reading = 0;
 
 static char *grow_config_buffer(size_t needed)
 {
@@ -70,7 +71,6 @@ static char *grow_config_buffer(size_t needed)
   if (newsize > cursize) {
     // Round up to nearest multiple of CONFIG_BUFFER_ALLOCSIZE.
     newsize = newsize + CONFIG_BUFFER_ALLOCSIZE - ((newsize - 1) % CONFIG_BUFFER_ALLOCSIZE + 1);
-    DEBUGF("newsize=%llu", (unsigned long long) newsize);
     char *newbuf = realloc(config_buffer, newsize);
     if (newbuf == NULL) {
       WHYF_perror("realloc(%llu)", newsize);
@@ -91,12 +91,13 @@ static char *grow_config_buffer(size_t needed)
   return ret;
 }
 
-static int read_config()
+static int _read_config()
 {
   char conffile[1024];
   if (!FORM_SERVAL_INSTANCE_PATH(conffile, "serval.conf"))
     return -1;
   size_t size = 0;
+  confc = 0;
   FILE *f = fopen(conffile, "r");
   if (f == NULL) {
     if (errno != ENOENT)
@@ -123,7 +124,6 @@ static int read_config()
       fclose(f);
       return -1;
     }
-    confc = 0;
     if (fread(config_buffer, size, 1, f) != 1) {
       if (ferror(f))
 	WHYF_perror("fread(%s, %llu)", conffile, (unsigned long long) size);
@@ -165,12 +165,12 @@ static int read_config()
 	  while (c < e && *c != '\r' && *c != '\n')
 	    ++c;
 	  if (c < e && *c == '\n') {
-	    ++confc;
 	    *c++ = '\0';
+	    ++confc;
 	  } else if (c < e - 1 && *c == '\r' && c[1] == '\n') {
+	    *c++ = '\0';
+	    *c++ = '\0';
 	    ++confc;
-	    *c++ = '\0';
-	    *c++ = '\0';
 	  } else {
 	    problem = "missing end-of-line";
 	  }
@@ -188,6 +188,26 @@ static int read_config()
   if (problem)
     return WHYF("Error in %s at line %u: %s%s", conffile, linenum, problem, extra);
   return 0;
+}
+
+/* Set a flag while reading config, to avoid infinite recursion between here and logging
+   that could be caused by any WHY() or WARN() or DEBUG() invoked in _read_config().  The
+   problem is that on the first log message, the logging system calls confValueGet() to
+   discover the path of the log file, and that will return here.
+ */
+static int read_config()
+{
+  if (reading)
+    return -1;
+  reading = 1;
+  int ret = _read_config();
+  reading = 0;
+  return ret;
+}
+
+int confLocked()
+{
+  return reading;
 }
 
 int confVarCount()
@@ -291,18 +311,18 @@ void confSetDebugFlags()
 	  if (flag != -1) {
 	    if (mask == DEBUG_ALL) {
 	      if (flag) {
-		DEBUGF("Set all debug flags");
+		//DEBUGF("Set all debug flags");
 		setall = 1;
 	      } else {
-		DEBUGF("Clear all debug flags");
+		//DEBUGF("Clear all debug flags");
 		clearall = 1;
 	      }
 	    } else {
 	      if (flag) {
-		DEBUGF("Set %s", var);
+		//DEBUGF("Set %s", var);
 		setmask |= mask;
 	      } else {
-		DEBUGF("Clear %s", var);
+		//DEBUGF("Clear %s", var);
 		clearmask |= mask;
 	      }
 	    }
@@ -337,22 +357,22 @@ int confValueSet(const char *var, const char *value)
     return WHYF("Cannot %s %s: invalid variable name", value ? "set" : "delete", var);
   if (value == NULL) {
     unsigned int i;
-    for (i = 0; i != confc; ++i)
-      DEBUGF("var=%s confvar[%u]=%s", var, i, confvar[i]);
+    for (i = 0; i < confc; ++i) {
       if (strcasecmp(var, confvar[i]) == 0) {
-	DEBUGF("found");
 	--confc;
-	for (; i != confc; ++i) {
-	  confvar[i] = confvar[i + i];
-	  confvalue[i] = confvalue[i + i];
+	for (; i < confc; ++i) {
+	  confvar[i] = confvar[i + 1];
+	  confvalue[i] = confvalue[i + 1];
 	}
+	return 0;
       }
+    }
   } else {
     if (confc >= MAX_CONFIG_VARS)
       return WHYF("Cannot set %s: too many variables", var);
     size_t valuelen = strlen(value);
     unsigned int i;
-    for (i = 0; i != confc; ++i)
+    for (i = 0; i != confc; ++i) {
       if (strcasecmp(var, confvar[i]) == 0) {
 	char *valueptr = confvalue[i];
 	if (valuelen > strlen(valueptr)) {
@@ -363,6 +383,7 @@ int confValueSet(const char *var, const char *value)
 	confvalue[i] = strcpy(valueptr, value);
 	return 0;
       }
+    }
     size_t varlen = strlen(var);
     char *buf = grow_config_buffer(varlen + 1 + valuelen + 1);
     if (buf == NULL)
