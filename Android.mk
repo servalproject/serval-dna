@@ -14,6 +14,7 @@ SERVALD_SRC_FILES = \
         serval-dna/ciphers.c       \
         serval-dna/client.c        \
 	serval-dna/commandline.c   \
+	serval-dna/conf.c   \
         serval-dna/dataformats.c   \
         serval-dna/dna.c           \
         serval-dna/log.c           \
