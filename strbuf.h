@@ -78,6 +78,18 @@ struct strbuf {
     char *current;
 };
 
+/* Static constant for initialising a struct strbuf to empty:
+ *      struct strbuf ssb = STRUCT_STRBUF_EMPTY;
+ * Immediately following this assignment, the following properties hold:
+ *      strbuf_is_empty(&ssb)
+ *      strbuf_len(&ssb) == 0
+ *      strbuf_count(&ssb) == 0
+ *      strbuf_str(&ssb) == NULL
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+#define STRUCT_STRBUF_EMPTY ((struct strbuf){NULL, (char *)NULL - 1, NULL})
+
 typedef struct strbuf *strbuf;
 typedef const struct strbuf *const_strbuf;
 
@@ -110,7 +122,8 @@ typedef const struct strbuf *const_strbuf;
  *      #include <stdarg.h>
  *
  *      void funcf(const char *format, ...) {
- *          strbuf b = strbuf_alloca_fmtargs(1024, format);
+ *          strbuf b = strbuf_alloca(1024);
+ *          strbuf_va_printf(b, format);
  *          ...
  *      }
  *
@@ -152,9 +165,10 @@ typedef const struct strbuf *const_strbuf;
  *      strbuf_count(sb) == 0
  *      b == NULL || b[0] == '\0'
  *
- * If the 'buffer' argument is NULL, the strbuf operations will all act as
- * usual with the sole exception that no chars will be copied into a backing
- * buffer.  This allows strbuf to be used for summing the lengths of strings.
+ * If the 'buffer' argument is NULL, the strbuf is marked as "empty" and all
+ * subsequent strbuf operations will all act as usual with the sole exception
+ * that no chars will be copied into a backing buffer.  This allows strbuf to
+ * be used for summing the lengths of strings.
  *
  * If the 'size' argument is zero, then strbuf does not write into its backing
  * buffer, not even a terminating nul.
@@ -175,7 +189,7 @@ strbuf strbuf_init(strbuf sb, char *buffer, size_t size);
  *      strbuf_size(sb) == len - SIZEOF_STRBUF;
  *      strbuf_len(sb) == 0
  *      strbuf_count(sb) == 0
- *      strbuf_str()[0] == '\0'
+ *      strbuf_str(sb)[0] == '\0'
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
@@ -191,7 +205,7 @@ __STRBUF_INLINE strbuf strbuf_make(char *buffer, size_t size) {
  * Immediately following strbuf_reset(sb), the following properties hold:
  *      strbuf_len(sb) == 0
  *      strbuf_count(sb) == 0
- *      strbuf_str()[0] == '\0'
+ *      strbuf_str(sb) == NULL || strbuf_str(sb)[0] == '\0'
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
@@ -295,6 +309,16 @@ __STRBUF_INLINE char *strbuf_str(const_strbuf sb) {
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 char *strbuf_substr(const_strbuf sb, int offset);
+
+
+/** Return true if the given strbuf is "empty", ie, not modified since being
+ * initialised to STRUCT_STRBUF_EMPTY or with strbuf_init(sb, NULL, 0);
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+__STRBUF_INLINE size_t strbuf_is_empty(const_strbuf sb) {
+  return sb->start == NULL && sb->end == sb->start - 1 && sb->current == NULL;
+}
 
 
 /** Return the size of the backing buffer.
