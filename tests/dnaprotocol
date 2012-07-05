@@ -61,7 +61,7 @@ test_LookupWildcard() {
    executeOk_servald dna lookup "*"
    assertStdoutLineCount '==' 2
    assertStdoutGrep --matches=1 "^sid://$SIDA/5550001:5550001:Agent A Smith$"
-   assertStdoutGrep --matches=1 "^sid://$SIDB/5550001:5550001:Agent B Smith$"
+   assertStdoutGrep --matches=1 "^sid://$SIDB/5550002:5550002:Agent B Smith$"
 }
 
 doc_LookupEmpty="Lookup by empty string"
@@ -69,23 +69,23 @@ test_LookupEmpty() {
    executeOk_servald dna lookup ""
    assertStdoutLineCount '==' 2 
    assertStdoutGrep --matches=1 "^sid://$SIDA/5550001:5550001:Agent A Smith$"
-   assertStdoutGrep --matches=1 "^sid://$SIDB/5550001:5550001:Agent B Smith$"
+   assertStdoutGrep --matches=1 "^sid://$SIDB/5550002:5550002:Agent B Smith$"
 }
 
 doc_LookupNumber="Lookup by phone number"
 test_LookupNumber() {
-   # Make sure we get no false positives
    executeOk_servald dna lookup "5551234"
    assertStdoutLineCount '==' 0
    executeOk_servald dna lookup "555000"
    assertStdoutLineCount '==' 0
    executeOk_servald dna lookup "55500011"
    assertStdoutLineCount '==' 0
-   # Make sure we get the right results, and no duplicates
    executeOk_servald dna lookup "5550001"
-   assertStdoutLineCount '==' 2
+   assertStdoutLineCount '==' 1
    assertStdoutGrep --matches=1 "^sid://$SIDA/5550001:5550001:Agent A Smith$"
-   assertStdoutGrep --matches=1 "^sid://$SIDB/5550001:5550001:Agent B Smith$"
+   executeOk_servald dna lookup "5550002"
+   assertStdoutLineCount '==' 1
+   assertStdoutGrep --matches=1 "^sid://$SIDB/5550002:5550002:Agent B Smith$"
 }
 
 doc_NodeinfoLocal="Node info auto-resolves for local identities"
