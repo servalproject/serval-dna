@@ -275,7 +275,8 @@ int vomp_send_status_remote_audio(vomp_call_state *call, int audio_codec, char *
       rotor--; if (rotor<0) rotor+=VOMP_MAX_RECENT_SAMPLES;
       rotor%=VOMP_MAX_RECENT_SAMPLES;
       
-      if ((!sb[rotor].endtime)||(sb[rotor].endtime==call->audio_clock+1)) break;
+      // stop if we've run out of samples before we ran out of bytes
+      if ((!sb[rotor].endtime)||(sb[rotor].endtime+1==call->audio_clock)) break;
     }
     call->recent_sample_rotor++;
     call->recent_sample_rotor%=VOMP_MAX_RECENT_SAMPLES;
