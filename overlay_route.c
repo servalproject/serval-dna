@@ -393,10 +393,10 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
       if (neh->scores[i]>neh->scores[*interface]) *interface=i;
     }
     if (neh->scores[*interface]<1) {
-      if (debug&DEBUG_OVERLAYROUTING) {
-	*interface=-1;
-	DEBUGF("No open path to %s",alloca_tohex_sid(neh->node->sid));
-      }
+      
+      if (1||debug&DEBUG_OVERLAYROUTING)
+	DEBUGF("No open path to %s, neighbour score <=0",alloca_tohex_sid(neh->node->sid));
+      
       return -1;
     }
     if (0) DEBUGF("nexthop is %s",alloca_tohex_sid(nexthop));
@@ -428,10 +428,14 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
       if (best_o>-1) {
 	return 0;
       } else {
-	return -1; // WHYF("No open path to %s",alloca_tohex_sid(d));
+	if (1||debug&DEBUG_OVERLAYROUTING)
+	  DEBUGF("No open path to %s, no good neighbour observations",alloca_tohex_sid(d));
+	return -1;
       }
     } else {
-      return -1; // WHYF("No open path to %s",alloca_tohex_sid(d));
+      if (1||debug&DEBUG_OVERLAYROUTING)
+	DEBUGF("No open path to %s, unknown peer",alloca_tohex_sid(d));
+      return -1;
     }
   }
 }

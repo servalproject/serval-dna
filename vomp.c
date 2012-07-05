@@ -83,6 +83,7 @@ vomp_call_state *vomp_create_call(unsigned char *remote_sid,
 				  int remote_state,
 				  int local_state){
   
+  int i;
   if (!local_session)
     local_session=vomp_generate_session_id();
   
@@ -97,15 +98,20 @@ vomp_call_state *vomp_create_call(unsigned char *remote_sid,
   call->remote.session=remote_session;
   call->local.state=local_state;
   call->remote.state=remote_state;
+  call->last_sent_status=-1;
   call->create_time=overlay_gettime_ms();
   call->last_activity=call->create_time;
+  
+  // fill sample cache with invalid times
+  for (i=0;i<VOMP_MAX_RECENT_SAMPLES *4;i++)
+    call->seen_samples[i]=0xFFFFFFFF;
+  
   call->alarm.alarm = call->create_time+VOMP_CALL_STATUS_INTERVAL;
   call->alarm.function = vomp_process_tick;
   vomp_stats.name="vomp_process_tick";
   call->alarm.stats=&vomp_stats;
   schedule(&call->alarm);
   WHYF("Returning new call #%d",local_session);
-  monitor_call_status(call);
   return call;
 }
 
@@ -163,181 +169,210 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
       
       return call;
     }
-
-  /* not in the list.  So allocate a slot, but only if the call is in progress. */
-  if (recvr_state==VOMP_STATE_CALLENDED&&sender_state==VOMP_STATE_CALLENDED)
-    return NULL;
   
-  return vomp_create_call(remote_sid, local_sid, sender_session, recvr_session, VOMP_STATE_NOCALL, VOMP_STATE_NOCALL);
+  /* Don't create a call record if either party has ended it */
+  if (sender_state==VOMP_STATE_CALLENDED || recvr_state==VOMP_STATE_CALLENDED)
+    return NULL;
+
+  /* Only create a call record if either party is in CALLPREP state */
+  if (sender_state==VOMP_STATE_CALLPREP || recvr_state==VOMP_STATE_CALLPREP)
+    return vomp_create_call(remote_sid, local_sid, sender_session, recvr_session, VOMP_STATE_NOCALL, VOMP_STATE_NOCALL);
+  
+  return NULL;
 }
 
 /* send updated call status to end-point and to any interested listeners as
    appropriate */
 
-int vomp_send_status(vomp_call_state *call,int flags,overlay_mdp_frame *arg)
+int vomp_send_status_remote_audio(vomp_call_state *call, int audio_codec, char *audio, int audio_length)
 {
-  if (flags&VOMP_TELLREMOTE) {
-    int combined_status=(call->remote.state<<4)|call->local.state;
-    if (call->last_sent_status!=combined_status
-	||(flags&VOMP_FORCETELLREMOTE)==VOMP_FORCETELLREMOTE
-	||flags&VOMP_SENDAUDIO)
-      {
-      call->last_sent_status=combined_status;
-
-      overlay_mdp_frame mdp;
-      bzero(&mdp,sizeof(mdp));
-      mdp.packetTypeAndFlags=MDP_TX;
-      bcopy(call->local.sid,mdp.out.src.sid,SID_SIZE);
-      mdp.out.src.port=MDP_PORT_VOMP;
-      bcopy(call->remote.sid,mdp.out.dst.sid,SID_SIZE);
-      mdp.out.dst.port=MDP_PORT_VOMP;
-      
-      mdp.out.payload[0]=0x01; /* Normal VoMP frame */
-      mdp.out.payload[1]=combined_status;
-      mdp.out.payload[2]=(call->remote.sequence>>8)&0xff;
-      mdp.out.payload[3]=(call->remote.sequence>>0)&0xff;
-      mdp.out.payload[4]=(call->local.sequence>>8)&0xff;
-      mdp.out.payload[5]=(call->local.sequence>>0)&0xff;
-      unsigned long long call_millis=overlay_gettime_ms()-call->create_time;
-      mdp.out.payload[6]=(call_millis>>8)&0xff;
-      mdp.out.payload[7]=(call_millis>>0)&0xff;
-      mdp.out.payload[8]=(call->remote.session>>16)&0xff;
-      mdp.out.payload[9]=(call->remote.session>>8)&0xff;
-      mdp.out.payload[10]=(call->remote.session>>0)&0xff;
-      mdp.out.payload[11]=(call->local.session>>16)&0xff;
-      mdp.out.payload[12]=(call->local.session>>8)&0xff;
-      mdp.out.payload[13]=(call->local.session>>0)&0xff;
-      
-      mdp.out.payload_length=14;
-      
-      if ((!call->remote.session)||(flags&VOMP_TELLCODECS)) {
-	/* Also include list of supported codecs */
-	if (0) WHY("Including codec list");
-	int i;
-	for(i=0;i<256;i++)
-	  if (vomp_local_codec_list[i]) {
-	    mdp.out.payload[mdp.out.payload_length++]=i;
-	    if (0) WHYF("  I support the %s codec",vomp_describe_codec(i));
-	  }
-	mdp.out.payload[mdp.out.payload_length++]=0;
-	if (0) WHYF("mdp frame with codec list is %d bytes",mdp.out.payload_length);
-      }
-
-      if (flags&VOMP_SENDAUDIO) {
-	if (0) WHYF("got %d sample bytes, expecting %d",
-		    arg->vompevent.audio_sample_bytes,
-		    vomp_sample_size(arg->vompevent.audio_sample_codec));
-	if (vomp_sample_size(arg->vompevent.audio_sample_codec)
-	    ==arg->vompevent.audio_sample_bytes) {
-        unsigned short  *len=&mdp.out.payload_length;
-	unsigned char *p=&mdp.out.payload[0];
-
-	// WHY("Including audio sample block");
-
-	/* record sample in recent list.
-	   XXX - What timestamp to attach to the sample?
-	   Two obvious choices:
-	   1. The sample is for the most recent n milliseconds; or
-	   2. The sample is for the next n milliseconds following the
-	   last sample.
-
-	   Option 1 introduces all sorts of problems with sample production
-	   jitter, where as option 2 has no such problems, but simply requires the
-	   producer of audio to ensure that they provide exactly the right amount
-	   of audio, or risk the call getting out of sync.  This is a fairly
-	   reasonable expectation, or else things go to pot.
-
-	   Note that in-call slew is the responsibility of the player, not the
-	   recorder of audio.  Basically if the audio queue starts to bank up,
-	   then the player needs to drop samples.
-	*/
-	vomp_sample_block *sb=call->recent_samples;
-	int rotor=call->recent_sample_rotor%VOMP_MAX_RECENT_SAMPLES;
-	sb[rotor].codec=arg->vompevent.audio_sample_codec;
-	sb[rotor].endtime=call->audio_clock+vomp_codec_timespan(sb[rotor].codec)-1;
-	sb[rotor].starttime=call->audio_clock;
-	call->audio_clock=sb[rotor].endtime+1;
-	bcopy(&arg->vompevent.audio_bytes[0],&sb[rotor].bytes[0],
-	      vomp_sample_size(sb[rotor].codec));
-	
-	/* write the sample end-time in milliseconds since call establishment */
-	p[(*len)++]=(call->audio_clock>>24)&0xff;
-	p[(*len)++]=(call->audio_clock>>16)&0xff;
-	p[(*len)++]=(call->audio_clock>>8)&0xff;
-	p[(*len)++]=(call->audio_clock>>0)&0xff;	
-
-	/* stuff frame with most recent sample blocks as a form of preemptive
-	   retransmission. But don't make the packets too large. */
-	while (((*len)+1+vomp_sample_size(sb[rotor].codec))
-	       <VOMP_STUFF_BYTES) {
-	  p[(*len)++]=sb[rotor].codec;
-	  bcopy(&sb[rotor].bytes[0],&p[*len],vomp_sample_size(sb[rotor].codec));
-	  (*len)+=vomp_sample_size(sb[rotor].codec);
-	  
-	  rotor--; if (rotor<0) rotor+=VOMP_MAX_RECENT_SAMPLES;
-	  rotor%=VOMP_MAX_RECENT_SAMPLES;
-	  
-	  if ((!sb[rotor].endtime)||(sb[rotor].endtime==call->audio_clock+1)) break;
-	}
-	call->recent_sample_rotor++;
-	call->recent_sample_rotor%=VOMP_MAX_RECENT_SAMPLES;
-	}
-      }
-      
-      /* XXX Here we act as our own client. This used to be able to block.
-	 We should really refactor overlay_mdp_poll() so that we can deliver
-	 the frame directly.
-         Make sure that we don't want (just drop the message if there is
-         congestion) */
-      overlay_mdp_send(&mdp,0,0);
-      
-      call->local.sequence++;
-    }
-  }
-  if (flags&VOMP_TELLINTERESTED) {
-    overlay_mdp_frame mdp;
-    bzero(&mdp,sizeof(mdp));
-    mdp.packetTypeAndFlags=MDP_VOMPEVENT;
-    mdp.vompevent.call_session_token=call->local.session;
-    mdp.vompevent.last_activity=call->last_activity;
-    if (call->ringing) mdp.vompevent.flags|=VOMPEVENT_RINGING;
-    if (call->local.state==VOMP_STATE_CALLENDED) 
-      mdp.vompevent.flags|=VOMPEVENT_CALLENDED;
-    if (call->remote.state==VOMPEVENT_CALLENDED)
-      mdp.vompevent.flags|=VOMPEVENT_CALLREJECT;
-    if (call->audio_started) 
-      mdp.vompevent.flags|=VOMPEVENT_AUDIOSTREAMING;
-    if (flags&VOMP_NEWCALL)
-      mdp.vompevent.flags|=VOMPEVENT_CALLCREATED;
-    mdp.vompevent.local_state=call->local.state;
-    mdp.vompevent.remote_state=call->remote.state;
-    monitor_call_status(call);
-
-    bcopy(&call->remote_codec_list[0],&mdp.vompevent.supported_codecs[0],256);
-
-    if (flags&VOMP_SENDAUDIO) {
-      if (0) WHYF("Frame contains audio (codec=%s)",
-		  vomp_describe_codec(arg->vompevent.audio_sample_codec));
-      bcopy(&arg->vompevent.audio_bytes[0],
-	    &mdp.vompevent.audio_bytes[0],
-	    vomp_sample_size(arg->vompevent.audio_sample_codec));
-      mdp.vompevent.audio_sample_codec=arg->vompevent.audio_sample_codec;
-      mdp.vompevent.audio_sample_bytes=arg->vompevent.audio_sample_bytes;
-      mdp.vompevent.audio_sample_starttime=arg->vompevent.audio_sample_starttime;
-      mdp.vompevent.audio_sample_endtime=arg->vompevent.audio_sample_endtime;
-      monitor_send_audio(call,arg);
-    }
-    
+  overlay_mdp_frame mdp;
+  
+  bzero(&mdp,sizeof(mdp));
+  mdp.packetTypeAndFlags=MDP_TX;
+  bcopy(call->local.sid,mdp.out.src.sid,SID_SIZE);
+  mdp.out.src.port=MDP_PORT_VOMP;
+  bcopy(call->remote.sid,mdp.out.dst.sid,SID_SIZE);
+  mdp.out.dst.port=MDP_PORT_VOMP;
+  
+  mdp.out.payload[0]=0x01; /* Normal VoMP frame */
+  mdp.out.payload[1]=(call->remote.state<<4)|call->local.state;
+  mdp.out.payload[2]=(call->remote.sequence>>8)&0xff;
+  mdp.out.payload[3]=(call->remote.sequence>>0)&0xff;
+  mdp.out.payload[4]=(call->local.sequence>>8)&0xff;
+  mdp.out.payload[5]=(call->local.sequence>>0)&0xff;
+  unsigned long long call_millis=overlay_gettime_ms()-call->create_time;
+  mdp.out.payload[6]=(call_millis>>8)&0xff;
+  mdp.out.payload[7]=(call_millis>>0)&0xff;
+  mdp.out.payload[8]=(call->remote.session>>16)&0xff;
+  mdp.out.payload[9]=(call->remote.session>>8)&0xff;
+  mdp.out.payload[10]=(call->remote.session>>0)&0xff;
+  mdp.out.payload[11]=(call->local.session>>16)&0xff;
+  mdp.out.payload[12]=(call->local.session>>8)&0xff;
+  mdp.out.payload[13]=(call->local.session>>0)&0xff;
+  
+  mdp.out.payload_length=14;
+  
+  if (call->local.state<VOMP_STATE_RINGINGOUT
+      &&call->remote.state<VOMP_STATE_RINGINGOUT){
+    /* Also include list of supported codecs */
+    if (0) WHY("Including codec list");
     int i;
-    long long now=overlay_gettime_ms();
-    for(i=0;i<vomp_interested_usock_count;i++)
-      if (vomp_interested_expiries[i]>=now) {
-	overlay_mdp_reply(mdp_named.poll.fd,
-			  vomp_interested_usocks[i],
-			  vomp_interested_usock_lengths[i],
-			  &mdp);
-      }   
+    for(i=0;i<256;i++)
+      if (vomp_local_codec_list[i]) {
+	mdp.out.payload[mdp.out.payload_length++]=i;
+	if (0) WHYF("  I support the %s codec",vomp_describe_codec(i));
+      }
+    mdp.out.payload[mdp.out.payload_length++]=0;
+    if (0) WHYF("mdp frame with codec list is %d bytes",mdp.out.payload_length);
   }
+
+  if (call->local.state==VOMP_STATE_INCALL && audio && audio_length && vomp_sample_size(audio_codec)==audio_length) {
+    unsigned short  *len=&mdp.out.payload_length;
+    unsigned char *p=&mdp.out.payload[0];
+
+    // WHY("Including audio sample block");
+
+    /* record sample in recent list.
+       XXX - What timestamp to attach to the sample?
+       Two obvious choices:
+       1. The sample is for the most recent n milliseconds; or
+       2. The sample is for the next n milliseconds following the
+       last sample.
+
+       Option 1 introduces all sorts of problems with sample production
+       jitter, where as option 2 has no such problems, but simply requires the
+       producer of audio to ensure that they provide exactly the right amount
+       of audio, or risk the call getting out of sync.  This is a fairly
+       reasonable expectation, or else things go to pot.
+
+       Note that in-call slew is the responsibility of the player, not the
+       recorder of audio.  Basically if the audio queue starts to bank up,
+       then the player needs to drop samples.
+    */
+    vomp_sample_block *sb=call->recent_samples;
+    int rotor=call->recent_sample_rotor%VOMP_MAX_RECENT_SAMPLES;
+    sb[rotor].codec=audio_codec;
+    sb[rotor].endtime=call->audio_clock+vomp_codec_timespan(sb[rotor].codec)-1;
+    sb[rotor].starttime=call->audio_clock;
+    call->audio_clock=sb[rotor].endtime+1;
+    bcopy(audio,&sb[rotor].bytes[0],audio_length);
+    
+    /* write the sample end-time in milliseconds since call establishment */
+    p[(*len)++]=(call->audio_clock>>24)&0xff;
+    p[(*len)++]=(call->audio_clock>>16)&0xff;
+    p[(*len)++]=(call->audio_clock>>8)&0xff;
+    p[(*len)++]=(call->audio_clock>>0)&0xff;	
+
+    /* stuff frame with most recent sample blocks as a form of preemptive
+       retransmission. But don't make the packets too large. */
+    while (((*len)+1+audio_length)
+	   <VOMP_STUFF_BYTES) {
+      p[(*len)++]=sb[rotor].codec;
+      bcopy(&sb[rotor].bytes[0],&p[*len],vomp_sample_size(sb[rotor].codec));
+      (*len)+=vomp_sample_size(sb[rotor].codec);
+      
+      rotor--; if (rotor<0) rotor+=VOMP_MAX_RECENT_SAMPLES;
+      rotor%=VOMP_MAX_RECENT_SAMPLES;
+      
+      if ((!sb[rotor].endtime)||(sb[rotor].endtime==call->audio_clock+1)) break;
+    }
+    call->recent_sample_rotor++;
+    call->recent_sample_rotor%=VOMP_MAX_RECENT_SAMPLES;
+  }
+  
+  /* XXX Here we act as our own client. This used to be able to block.
+     We should really refactor overlay_mdp_poll() so that we can deliver
+     the frame directly.
+     Make sure that we don't want (just drop the message if there is
+     congestion) */
+  
+  overlay_mdp_dispatch(&mdp,1,NULL,0);
+  
+  call->local.sequence++;
+  return 0;
+}
+
+int vomp_send_status_remote(vomp_call_state *call){
+  return vomp_send_status_remote_audio(call, 0, NULL, 0);
+}
+
+int vomp_send_mdp_status_audio(vomp_call_state *call, int audio_codec, unsigned int start_time, unsigned int end_time, char *audio, int audio_length){
+  if (audio && audio_length && vomp_sample_size(audio_codec)!=audio_length)
+    return WHY("Audio frame is the wrong length");
+  
+  overlay_mdp_frame mdp;
+  
+  DEBUG("Sending mdp client packet");
+  
+  bzero(&mdp,sizeof(mdp));
+  mdp.packetTypeAndFlags=MDP_VOMPEVENT;
+  mdp.vompevent.call_session_token=call->local.session;
+  mdp.vompevent.last_activity=call->last_activity;
+  if (call->ringing) mdp.vompevent.flags|=VOMPEVENT_RINGING;
+  if (call->local.state==VOMP_STATE_CALLENDED) 
+    mdp.vompevent.flags|=VOMPEVENT_CALLENDED;
+  if (call->remote.state==VOMPEVENT_CALLENDED)
+    mdp.vompevent.flags|=VOMPEVENT_CALLREJECT;
+  if (call->audio_started) 
+    mdp.vompevent.flags|=VOMPEVENT_AUDIOSTREAMING;
+  // TODO ???
+  //mdp.vompevent.flags|=VOMPEVENT_CALLCREATED;
+  mdp.vompevent.local_state=call->local.state;
+  mdp.vompevent.remote_state=call->remote.state;
+
+  bcopy(&call->remote_codec_list[0],&mdp.vompevent.supported_codecs[0],256);
+
+  if (audio && audio_length) {
+    if (0) WHYF("Frame contains audio (codec=%s)",
+		vomp_describe_codec(audio_codec));
+    bcopy(audio,
+	  &mdp.vompevent.audio_bytes[0],
+	  audio_length);
+    mdp.vompevent.audio_sample_codec=audio_codec;
+    mdp.vompevent.audio_sample_bytes=audio_length;
+    mdp.vompevent.audio_sample_starttime=start_time;
+    mdp.vompevent.audio_sample_endtime=end_time;
+  }
+  
+  int i;
+  long long now=overlay_gettime_ms();
+  for(i=0;i<vomp_interested_usock_count;i++)
+    if (vomp_interested_expiries[i]>=now) {
+      overlay_mdp_reply(mdp_named.poll.fd,
+			vomp_interested_usocks[i],
+			vomp_interested_usock_lengths[i],
+			&mdp);
+    }   
+  return 0;
+}
+
+int vomp_send_mdp_status(vomp_call_state *call){
+  return vomp_send_mdp_status_audio(call,0,0,0,NULL,0);
+}
+
+// send call state updates if required.
+int vomp_update(vomp_call_state *call){
+  int combined_status=(call->remote.state<<4)|call->local.state;
+  
+  if (call->last_sent_status==combined_status)
+    return 0;
+  
+  DEBUGF("Call state changed to %d %d, sending updates",call->local.state, call->remote.state);
+  
+  call->last_sent_status=combined_status;
+  
+  // tell the remote party
+  vomp_send_status_remote(call);
+  
+  // tell monitor clients
+  if (monitor_socket_count)
+    monitor_call_status(call);
+  
+  // tell mdp clients
+  if (vomp_interested_usock_count)
+    vomp_send_mdp_status(call);
+
   return 0;
 }
 
@@ -347,19 +382,37 @@ int vomp_call_start_audio(vomp_call_state *call)
   return WHY("Not implemented");
 }
 
-int vomp_process_audio(vomp_call_state *call,overlay_mdp_frame *mdp)
+// check a small circular buffer of recently seen audio
+// we're not trying to be perfect here, we still expect all clients to reorder and filter duplicates
+int vomp_audio_already_seen(vomp_call_state *call, unsigned int end_time){
+  int i;
+  for(i=0;i<VOMP_MAX_RECENT_SAMPLES *4;i++)
+    if (call->seen_samples[i]==end_time)
+      return 1;
+  call->seen_samples[call->sample_pos]=end_time;
+  call->sample_pos++;
+  if (call->sample_pos>=VOMP_MAX_RECENT_SAMPLES *4)
+    call->sample_pos=0;
+  return 0;
+}
+
+int vomp_process_audio(vomp_call_state *call,unsigned int sender_duration,overlay_mdp_frame *mdp)
 {
   int ofs=14;
   // if (mdp->in.payload_length>14)
   //  WHYF("got here (payload has %d bytes)",mdp->in.payload_length);
 
   /* Get end time marker for sample block collection */
-  unsigned int e=0;
+  unsigned int e=0, s=0, duration;
   e=mdp->in.payload[ofs++]<<24;
   e|=mdp->in.payload[ofs++]<<16;
   e|=mdp->in.payload[ofs++]<<8;
   e|=mdp->in.payload[ofs++]<<0;
-
+  
+  sender_duration = (e&0xFFFF0000)|sender_duration;
+  if (0)
+    DEBUGF("Jitter %d, %d",sender_duration -e,(overlay_gettime_ms()-call->create_time)-e);
+  
   while(ofs<mdp->in.payload_length)
     {
       int codec=mdp->in.payload[ofs];
@@ -367,21 +420,26 @@ int vomp_process_audio(vomp_call_state *call,overlay_mdp_frame *mdp)
       if (!codec||vomp_sample_size(codec)<0) break;
       if ((ofs+1+vomp_sample_size(codec))>mdp->in.payload_length) break;
 
-      overlay_mdp_frame arg;
-      arg.vompevent.audio_sample_codec=codec;
-      arg.vompevent.audio_sample_bytes=vomp_sample_size(codec);
-      bcopy(&mdp->in.payload[ofs+1],&arg.vompevent.audio_bytes[0],
-	    arg.vompevent.audio_sample_bytes);     
-      arg.vompevent.audio_sample_endtime=e;
       /* work out start-time from end-time less duration of included sample(s).
          XXX - Assumes only non-adaptive codecs. */
-      e-=vomp_codec_timespan(codec);
-      arg.vompevent.audio_sample_starttime=e+1;
+      s = e-vomp_codec_timespan(codec)+1;
 
       /* Pass audio frame to all registered listeners */
-      vomp_send_status(call,VOMP_TELLINTERESTED|VOMP_SENDAUDIO,&arg);
+      if (!vomp_audio_already_seen(call, e)){
+	if (vomp_interested_usock_count)
+	  vomp_send_mdp_status_audio(call, codec, s, e,
+			       &mdp->in.payload[ofs+1],
+			       vomp_sample_size(codec)
+			       );
 	
+	if (monitor_socket_count)
+	  monitor_send_audio(call, codec, s, e,
+			     &mdp->in.payload[ofs+1],
+			     vomp_sample_size(codec)
+			     );
+      }
       ofs+=1+vomp_sample_size(codec);
+      e=s-1;
     }
   return 0;
 }
@@ -401,33 +459,19 @@ int vomp_call_start_ringing(vomp_call_state *call)
   return 0;
 }
 
-int vomp_call_rejected(vomp_call_state *call)
-{  
-  /* state number change is handled elsewhere, we just need to make sure
-     that things are tidy. */
-  if (call->audio_started) vomp_call_stop_audio(call);
-  if (call->ringing) call->ringing=0;
-  return 0;
-}
-
-int vomp_call_error(vomp_call_state *call)
-{
-  if (call->audio_started) vomp_call_stop_audio(call);
-  if (call->ringing) call->ringing=0;
-  return 0;
-}
-
 int vomp_call_destroy(vomp_call_state *call)
 {
   /* do some general clean ups */
   if (call->audio_started) vomp_call_stop_audio(call);
+  if (call->ringing) call->ringing=0;
 
   fprintf(stderr,"Destroying call %s <--> %s\n",
 	  call->local.did,call->remote.did);
 
   /* tell everyone the call has died */
   call->local.state=VOMP_STATE_CALLENDED; call->remote.state=VOMP_STATE_CALLENDED;
-  vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED,NULL);
+  
+  vomp_update(call);
 
   /* now release the call structure */
   int i = (call - vomp_call_states);
@@ -440,6 +484,63 @@ int vomp_call_destroy(vomp_call_state *call)
 	  call,
 	  sizeof(vomp_call_state));
     schedule(&call->alarm);
+  }
+  return 0;
+}
+
+int vomp_dial(unsigned char *local_sid, unsigned char *remote_sid, char *local_did, char *remote_did){
+  /* TODO use local_did and remote_did start putting the call together.
+   These need to be passed to the node being called to provide caller id,
+   and potentially handle call-routing, e.g., if it is a gateway.
+   */
+  DEBUG("Dialing\n");
+  
+  if (vomp_call_count>=VOMP_MAX_CALLS)
+    return WHY("All call slots in use");
+  
+  /* allocate unique call session token, which is how the client will
+   refer to this call during its life */
+  vomp_call_state *call=vomp_create_call(
+					 remote_sid,
+					 local_sid,
+					 0,
+					 0,
+					 VOMP_STATE_NOCALL,
+					 VOMP_STATE_CALLPREP
+					 );
+  
+  // remember that we initiated this call, not the other party
+  call->initiated_call = 1;
+  
+  /* send status update to remote, thus causing call to be created
+   (hopefully) at far end. */
+  vomp_update(call);
+  
+  return 0;
+}
+
+int vomp_pickup(vomp_call_state *call){
+  if (call){
+    WHY("Picking up");
+    if (call->local.state!=VOMP_STATE_RINGINGIN)
+      return WHY("Call is not ringing");
+    
+    call->local.state=VOMP_STATE_INCALL;
+    call->create_time=overlay_gettime_ms();
+    call->ringing=0;
+    /* state machine does job of starting audio stream, just tell everyone about
+     the changed state. */
+    vomp_update(call);
+  }
+  return 0;
+}
+
+int vomp_hangup(vomp_call_state *call){
+  if (call){
+    WHY("Hanging up");
+    if (call->local.state==VOMP_STATE_INCALL) vomp_call_stop_audio(call);
+    call->local.state=VOMP_STATE_CALLENDED;
+    vomp_update(call);
   }
   return 0;
 }
@@ -467,7 +568,9 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
      transported audio.  In particular we inform when the call state changes,
      including if any error has occurred.
   */
-  fprintf(stderr,"Flags=0x%x\n",mdp->vompevent.flags);
+  if (0)
+    DEBUGF("Flags=0x%x\n",mdp->vompevent.flags);
+  
   switch(mdp->vompevent.flags)
     {
     case VOMPEVENT_REGISTERINTEREST:
@@ -595,33 +698,16 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	return overlay_mdp_reply(mdp_named.poll.fd,recvaddr,recvaddrlen,&mdpreply);
       }
       break;
-    case VOMPEVENT_DIAL: 
-      /* pull local_did and remote_did and start putting the call together.
-	 These need to be passed to the node being called to provide caller id,
-	 and potentially handle call-routing, e.g., if it is a gateway.
-         */
-      DEBUG("DIAL Request!\n");
-      {
-	/* Populate call structure */
-	if (vomp_call_count>=VOMP_MAX_CALLS) 
-	  return overlay_mdp_reply_error
-	    (mdp_named.poll.fd,recvaddr,recvaddrlen,4004,
-	     "All call slots in use");
-	
-	/* allocate unique call session token, which is how the client will
-	 refer to this call during its life */
-	vomp_call_state *call=vomp_create_call(
-					       mdp->vompevent.remote_sid,
-					       mdp->vompevent.local_sid,
-					       0,
-					       0,
-					       VOMP_STATE_NOCALL,
-					       VOMP_STATE_CALLPREP
-					       );
-	
-	/* send status update to remote, thus causing call to be created
-	   (hopefully) at far end. */
-	vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED,NULL);
+    case VOMPEVENT_DIAL:
+      if (vomp_dial(
+	mdp->vompevent.local_sid,
+	mdp->vompevent.remote_sid,
+	NULL,
+	NULL))
+	return overlay_mdp_reply_error
+	      (mdp_named.poll.fd,recvaddr,recvaddrlen,4004,
+	       "Unable to place call");
+      else{
 	int result= overlay_mdp_reply_error 
 	  (mdp_named.poll.fd,recvaddr,recvaddrlen,0, "Success");
 	if (result) WHY("Failed to send MDP reply");
@@ -630,44 +716,35 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
       break;
     case VOMPEVENT_CALLREJECT: /* hangup is the same */
       {
-	WHY("Hanging up");
 	vomp_call_state *call
 	  =vomp_find_call_by_session(mdp->vompevent.call_session_token);
 	if (!call) 
 	  return overlay_mdp_reply_error
 	    (mdp_named.poll.fd,recvaddr,recvaddrlen,4006,
 	     "No such call");
-	if (call->local.state==VOMP_STATE_INCALL) vomp_call_stop_audio(call);
-	call->local.state=VOMP_STATE_CALLENDED;
-	monitor_call_status(call);
-	overlay_mdp_reply_error(mdp_named.poll.fd,
+	
+	vomp_hangup(call);
+	
+	return overlay_mdp_reply_error(mdp_named.poll.fd,
 				recvaddr,recvaddrlen,0,"Success");
-	return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED,NULL);
       }
       break;
     case VOMPEVENT_PICKUP: 
       {
-	WHY("Picking up");
 	vomp_call_state *call
 	  =vomp_find_call_by_session(mdp->vompevent.call_session_token);
 	if (!call) 
 	  return overlay_mdp_reply_error
 	    (mdp_named.poll.fd,recvaddr,recvaddrlen,4006,
 	     "No such call");
-	if (call->local.state==VOMP_STATE_RINGINGIN) {
-	  call->local.state=VOMP_STATE_INCALL;
-	  monitor_call_status(call);
-	  call->ringing=0;
-	  /* state machine does job of starting audio stream, just tell everyone about
-	     the changed state. */
-	  overlay_mdp_reply_error(mdp_named.poll.fd,
+	
+	if (vomp_pickup(call))
+	  return overlay_mdp_reply_error(mdp_named.poll.fd,
+					 recvaddr,recvaddrlen,4009,
+					 "Call is not RINGINGIN, so cannot be picked up");
+	else
+	  return overlay_mdp_reply_error(mdp_named.poll.fd,
 				  recvaddr,recvaddrlen,0,"Success");
-	  return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED,NULL);
-	} else {
-	  overlay_mdp_reply_error(mdp_named.poll.fd,
-				  recvaddr,recvaddrlen,4009,
-				  "Call is not RINGINGIN, so cannot be picked up");
-	}
       }
       break;
     case VOMPEVENT_AUDIOPACKET: /* user supplying audio */
@@ -676,8 +753,10 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	vomp_call_state *call
 	  =vomp_find_call_by_session(mdp->vompevent.call_session_token);
 	if (call) {
-	  // WHY("pushing audio sample out");
-	  return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_SENDAUDIO,mdp);
+	  return vomp_send_status_remote_audio(call, 
+					       mdp->vompevent.audio_sample_codec,
+					       &mdp->vompevent.audio_bytes[0],
+					       vomp_sample_size(mdp->vompevent.audio_sample_codec));
 	}
 	else WHY("audio packet had invalid call session token");
       }
@@ -708,9 +787,26 @@ int vomp_extract_remote_codec_list(vomp_call_state *call,overlay_mdp_frame *mdp)
 		  vomp_describe_codec(mdp->in.payload[14+i]));
       call->remote_codec_list[mdp->in.payload[14+i]]=1;
     }  
+  // TODO send codec list to monitor clients
   return 0;
 }
 
+/*
+Simplified call state lifecycle;
+ 
+ (we dial)
+ > CALLPREP + codecs
+ < NOCALL + codecs
+ > RINGOUT
+ < RINGIN (they start ringing)
+   (we start "they are ringing" tone)
+ (they pickup)
+ < INCALL
+ > INCALL
+ (either hangup, or state error)
+ > CALLENDED
+ < CALLENDED
+ */
 
 /* At this point we know the MDP frame is addressed to the VoMP port, but 
    we have not inspected the contents. As these frames are wire-format, we
@@ -733,315 +829,179 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
       int recvr_state=mdp->in.payload[1]>>4;
       int sender_state=mdp->in.payload[1]&0xf;
       unsigned int recvr_session=
-	(mdp->in.payload[8]<<16)+(mdp->in.payload[9]<<8)+mdp->in.payload[10];
+	(mdp->in.payload[8]<<16)|(mdp->in.payload[9]<<8)|mdp->in.payload[10];
       unsigned int sender_session=
-	(mdp->in.payload[11]<<16)+(mdp->in.payload[12]<<8)+mdp->in.payload[13];
+	(mdp->in.payload[11]<<16)|(mdp->in.payload[12]<<8)|mdp->in.payload[13];
       int sender_seq=(mdp->in.payload[4]<<8)+mdp->in.payload[5];
       
-      if (!recvr_session) {
-	/* wants to create a call session.
-	   Main aim here: replay protection. An adversary should not be able to
-	   replay previous VoMP packets to cause any action.  We do this by
-	   allocating a new session number for each call.  As an adversary may be
-	   trying to use such replays to cause a denial of service attack we need
-	   to be able to track multiple potential session numbers even from the
-	   same SID. */
-	WHY("recvr_session==0, creating call.");
+      // cyclic ~1 minute timer...
+      unsigned int sender_duration = (mdp->in.payload[6]<<8) | mdp->in.payload[7];
+      
+      /* wants to create a call session.
+       Main aim here: replay protection. An adversary should not be able to
+       replay previous VoMP packets to cause any action.  We do this by
+       allocating a new session number for each call.  As an adversary may be
+       trying to use such replays to cause a denial of service attack we need
+       to be able to track multiple potential session numbers even from the
+       same SID. */
+      
+      call=vomp_find_or_create_call(mdp->in.src.sid,mdp->in.dst.sid,
+				    sender_session,recvr_session,
+				    sender_state,recvr_state);
+      
+      if (!call)
+	return WHY("Unable to find or create call");
+      
+      if (!recvr_session)
+	WHY("recvr_session==0, created call.");
+      
+      
+      // TODO ignore state changes if sequence is stale?
+      // TODO ignore state changes that seem to go backwards?
+      
+      if ((!vomp_interested_usock_count)
+	  &&(!monitor_socket_count))
+	{
+	/* No registered listener, so we cannot answer the call, so just reject
+	   it. */
+	  if (0) WHYF("Rejecting call due to lack of a listener: states=%d,%d",
+	       call->local.state,sender_state);
 
-	call=vomp_find_or_create_call(mdp->in.src.sid,mdp->in.dst.sid,
-				      sender_session,recvr_session,
-				      sender_state,recvr_state);
-	if (!call) {
-	  /* could not allocate a call slot, so do nothing */
-	  return WHY("No free call slots");
-	}
-	if (0) {
-	  WHYF("Far end is in state %s",vomp_describe_state(sender_state));
-	  WHYF("I am in state %s",vomp_describe_state(call->local.state));
-	}
-
-	/* We have a session number.  Send a status update back to sender */
-	call->last_activity=overlay_gettime_ms();
-	call->remote.sequence=sender_seq;
-	call->remote.state=sender_state;
-	monitor_call_status(call);
-	return vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLCODECS,NULL);
-      } else {
-	if (0) WHY("recvr_session!=0, looking for existing call");
-	/* A VoMP packet for a call apparently already in progress */
-	call=vomp_find_or_create_call(mdp->in.src.sid,mdp->in.dst.sid,
-				      sender_session,recvr_session,
-				      sender_state,recvr_state);
-	if (!call) {
-	  return WHY("VoMP frame does not correspond to an active call - stale traffic or replay attack?");
-	}
-
-	if ((!vomp_interested_usock_count)
-	    &&(!monitor_socket_count))
-	  {
-	  /* No registered listener, so we cannot answer the call, so just reject
-	     it. */
-	    if (0) WHYF("Rejecting call due to lack of a listener: states=%d,%d",
-		 call->local.state,call->remote.state);
-
-	  call->local.state=VOMP_STATE_CALLENDED;
-	  monitor_call_status(call);
-	  if (call->remote.state<VOMP_STATE_CALLENDED)
-	    vomp_send_status(call,VOMP_TELLREMOTE,NULL);
-	  /* now let the state machine progress to destroy the call */
-	}
-
-	if (0) {
-	  WHYF("Far end is in state %s",vomp_describe_state(sender_state));
-	  WHYF("I am in state %s",vomp_describe_state(call->local.state));
-	}
-
-	/* Consider states: our actual state, sender state, what the sender thinks
-	   our state is, and what we think the sender's state is.  But largely it
-	   breaks down to what we think our state is, and what they think their 
-	   state is.  That leaves us with just 6X6=36 cases. */
-	int combined_state=call->local.state<<3;
-	combined_state|=sender_state;
-	call->remote.state=sender_state;
-	monitor_call_status(call);
-	switch(combined_state) {
-	case (VOMP_STATE_NOCALL<<3)|VOMP_STATE_NOCALL:
-	  /* We both think that we are not yet in a call, and we have session numbers
-	     at each end. Presumably waiting for further state synchronisation.
-	     Do nothing (not even send anything back, as that results in the peer 
-	     doing the same, as they are in the same state as us) */
-	  return 0;
-	  break;
-	case (VOMP_STATE_NOCALL<<3)|VOMP_STATE_CALLPREP:
-	  /* The remote party is in the call-prep state, while we think no call
-	     is in progress.  Yet we have supplied them with a session number.
-	     This is probably a state that should not occur, since when they 
-	     received the session # they should have moved to RINGINGOUT. 
-	     No action is required, but we probably shouldn't count it towards
-	     valid call activity, so don't touch the recent activity timer.
-	     Just return.
-
-	     What we do need to do is decode the list of offered codecs, and tell
-	     any registered listener.
-	  */
-	  vomp_extract_remote_codec_list(call,mdp);
-	  return 0;
-	case (VOMP_STATE_NOCALL<<3)|VOMP_STATE_RINGINGOUT:
-	  /* We have have issued a session, but think that no call is in progress.
-	     The remote party is now indicating that they are trying to ring us.
-	     So change our state to RINGINGIN, but don't yet flag this to the user
-	     until we both have acknowledged this (when I am RINGINGIN and they are
-	     RINGINGOUT). */
-	  call->local.state=VOMP_STATE_RINGINGIN;
-	  monitor_call_status(call);
-	  vomp_extract_remote_codec_list(call,mdp);
-	  break;
-	case (VOMP_STATE_NOCALL<<3)|VOMP_STATE_RINGINGIN:
-	  /* We think there is no call, while the remote end thinks that we are
-	     ringing them. This could be because we hung the call up.  That's okay.
-	     We just keep persisting, because once they acknowledge this, we will
-	     both move to CALLENDED and hang up */
-	  call->local.state=VOMP_STATE_CALLENDED;
-	  monitor_call_status(call);
-	  break;
-	case (VOMP_STATE_NOCALL<<3)|VOMP_STATE_INCALL:
-	  /* As above, a call has probably been hung up by us, but the far end has
-	     not yet realised.  Nothing to do here, except wait for states to
-	     synchronise. */
-	  break;
-	case (VOMP_STATE_NOCALL<<3)|VOMP_STATE_CALLENDED:
-	  /* Far end has given up on the call, so also move to CALLENDED */
-	  call->local.state=VOMP_STATE_CALLENDED;
-	  monitor_call_status(call);
-	  break;
-	case (VOMP_STATE_CALLPREP<<3)|VOMP_STATE_NOCALL:
-	  /* We are getting ready to ring, and the other end has issued a session
-	     number, but nothing else.  This means that we can now proceed to 
-	     the RINGINGOUT state, and wait for acknowledgement of that from the
-	     far end. But we don't start ringing until the far end acknowledges
-	     the state change. */
-	  call->local.state=VOMP_STATE_RINGINGOUT;
-	  monitor_call_status(call);
-	  vomp_extract_remote_codec_list(call,mdp);
-	  break;
-	case (VOMP_STATE_CALLPREP<<3)|VOMP_STATE_CALLPREP:
-	  /* we are both in callprep stage, so we are both trying to ring each 
-	     other!  This would take some pretty special timing to happen, but
-	     let's not prevent it.  We move to RINGINGOUT (as they probably will
-	     as well). */
-	  call->local.state=VOMP_STATE_RINGINGOUT;
-	  monitor_call_status(call);
-	  vomp_extract_remote_codec_list(call,mdp);
-	  break;
-	case (VOMP_STATE_CALLPREP<<3)|VOMP_STATE_RINGINGOUT:
-	  /* We are trying to call them, and they are trying to call us, again
-	     this seems a very unlikely situation.  But the appropriate action is
-	     clear: get ready to start ringing. */
-	  call->local.state=VOMP_STATE_RINGINGIN;
-	  monitor_call_status(call);
-	  vomp_extract_remote_codec_list(call,mdp);
-	  break;
-	case (VOMP_STATE_CALLPREP<<3)|VOMP_STATE_RINGINGIN:
-	  /* We are trying to call them, and they think we are trying to call them.
-	     They seem to have guessed our next move, which is fine.  We move to
-	     RINGINGOUT. */
-	  call->local.state=VOMP_STATE_RINGINGOUT;
-	  monitor_call_status(call);
-	  vomp_extract_remote_codec_list(call,mdp);
-	  break;
-	case (VOMP_STATE_CALLPREP<<3)|VOMP_STATE_INCALL:
-	  /* We are trying to call them, and they think we are already in a call.
-	     This shouldn't happen either, but appropriate action is that we move
-	     to in-call, and start handling audio. If audio is not available, we
-	     can switch to engaged tone by sending a single VOMP_CODEC_ENGAGED
-	     audio frame. Call-waiting not currently supported. */
-	  call->local.state=VOMP_STATE_INCALL;
-	  monitor_call_status(call);
-	  if (vomp_call_start_audio(call)) call->local.codec=VOMP_CODEC_ENGAGED;  
-	  break;
-	case (VOMP_STATE_CALLPREP<<3)|VOMP_STATE_CALLENDED:
-	  /* far end says no call */
-	  call->local.state=VOMP_STATE_CALLENDED;
-	  monitor_call_status(call);	
-	  break;
-	case (VOMP_STATE_RINGINGOUT<<3)|VOMP_STATE_NOCALL:
-	  /* We are calling them, and they have not yet answered, wait for
-	     synchronisation. */
-	  call->local.state=VOMP_STATE_RINGINGOUT;
-	  monitor_call_status(call);
-	  vomp_extract_remote_codec_list(call,mdp);
-	  break;
-	case (VOMP_STATE_RINGINGOUT<<3)|VOMP_STATE_CALLPREP:
-	  /* we are calling them, and they are getting ready to call us, so wait
-	     for synchronisation */
-	  vomp_extract_remote_codec_list(call,mdp);
-	  break;
-	case (VOMP_STATE_RINGINGOUT<<3)|VOMP_STATE_RINGINGOUT:
-	  /* we are each calling each other, so move to INCALL and start audio */
-	  vomp_extract_remote_codec_list(call,mdp);
-	  call->local.state=VOMP_STATE_INCALL;
-	  monitor_call_status(call);
-	  if (vomp_call_start_audio(call)) call->local.codec=VOMP_CODEC_ENGAGED;  
-	  break;
-	case (VOMP_STATE_RINGINGOUT<<3)|VOMP_STATE_RINGINGIN:
-	  /* we are calling them and they are calling us, so keep on ringing.
-	     Or if we haven't started making noise, then do so. */
-	  if (!call->ringing) vomp_call_start_ringing(call);
-	  vomp_extract_remote_codec_list(call,mdp);
-	  break;   
-	case (VOMP_STATE_RINGINGOUT<<3)|VOMP_STATE_INCALL:
-	  /* we are calling them, and they have entered the call, so we should enter
-	     the call as well. */
-	  call->local.state=VOMP_STATE_INCALL;
-	  monitor_call_status(call);
-	  call->ringing=0;
-	  if (vomp_call_start_audio(call)) call->local.codec=VOMP_CODEC_ENGAGED;  
-	  break;
-	case (VOMP_STATE_RINGINGOUT<<3)|VOMP_STATE_CALLENDED:
-	  /* Other end has rejected call */
-	  vomp_call_rejected(call);
-	  call->local.state=VOMP_STATE_CALLENDED;
-	  monitor_call_status(call);
-	  break;
-	case (VOMP_STATE_RINGINGIN<<3)|VOMP_STATE_NOCALL:
-	  /* we are ringing and they think there is no call, so move to CALLENDED */
-	  call->local.state=VOMP_STATE_CALLENDED;
-	  monitor_call_status(call);
-	  vomp_call_error(call);
-	  break;
-	case (VOMP_STATE_RINGINGIN<<3)|VOMP_STATE_CALLPREP:
-	  /* er, causaility loop here.  We are ringing before they have started 
-	     ringing us.  I guess we should stop ringing. Should we also abort the
-	     call? */
-	  call->local.state=VOMP_STATE_CALLENDED;
-	  monitor_call_status(call);
-	  vomp_call_error(call);
-	  break;
-	case (VOMP_STATE_RINGINGIN<<3)|VOMP_STATE_RINGINGOUT:
-	  /* we are ringing and they are ringing us.  Make sure we are ringing. */
-	  if (!call->ringing) vomp_call_start_ringing(call);
-	  vomp_extract_remote_codec_list(call,mdp);
-	  break;
-	case (VOMP_STATE_RINGINGIN<<3)|VOMP_STATE_RINGINGIN:
-	  /* er, we both think that the other is calling us. */
-	  call->local.state=VOMP_STATE_CALLENDED;
-	  monitor_call_status(call);
-	  vomp_call_error(call);
-	  break;
-	case (VOMP_STATE_RINGINGIN<<3)|VOMP_STATE_INCALL:
-	  /* we think they are ringing us, but they think the call has
-	     started. I guess we just keep ringing. */
-	  if (!call->ringing) vomp_call_start_ringing(call);
-	  break;
-	case (VOMP_STATE_RINGINGIN<<3)|VOMP_STATE_CALLENDED:
-	  /* the far end has rejected our attempt to call them */
-	  vomp_call_rejected(call);
-	  call->local.state=VOMP_STATE_CALLENDED;
-	  monitor_call_status(call);
-	  break;
-	case (VOMP_STATE_INCALL<<3)|VOMP_STATE_NOCALL:
-	  /* this shouldn't happen */
-	  call->local.state=VOMP_STATE_CALLENDED;
-	  monitor_call_status(call);
-	  vomp_call_error(call);
-	  break;
-	case (VOMP_STATE_INCALL<<3)|VOMP_STATE_CALLPREP:
-	  /* this shouldn't happen either */
-	  call->local.state=VOMP_STATE_CALLENDED;
-	  monitor_call_status(call);
-	  vomp_call_error(call);
-	  break;
-	case (VOMP_STATE_INCALL<<3)|VOMP_STATE_RINGINGOUT:
-	  /* we think the call is in progress, but the far end hasn't realised
-	     we have picked up yet.  Nothing to do here. */
-	  break;
-	case (VOMP_STATE_INCALL<<3)|VOMP_STATE_RINGINGIN:
-	case (VOMP_STATE_INCALL<<3)|VOMP_STATE_INCALL:
-	  /* play any audio that they have sent us. */
-	  if (!call->audio_started) {
-	    if (vomp_call_start_audio(call)) call->local.codec=VOMP_CODEC_ENGAGED;
-	  }
-	  vomp_process_audio(call,mdp);
-	  break;
-	case (VOMP_STATE_INCALL<<3)|VOMP_STATE_CALLENDED:
-	  /* far end hung up */
-	  vomp_call_stop_audio(call);
-	  call->local.state=VOMP_STATE_CALLENDED;
-	  monitor_call_status(call);
-	  break;
-	case (VOMP_STATE_CALLENDED<<3)|VOMP_STATE_NOCALL:
-	case (VOMP_STATE_CALLENDED<<3)|VOMP_STATE_CALLPREP:
-	case (VOMP_STATE_CALLENDED<<3)|VOMP_STATE_RINGINGOUT:
-	case (VOMP_STATE_CALLENDED<<3)|VOMP_STATE_RINGINGIN:
-	case (VOMP_STATE_CALLENDED<<3)|VOMP_STATE_INCALL:
-	  /* For all of these states wait for the far end to synchronise,
-	     but don't touch the call timer */
-	  return 0;
-	case (VOMP_STATE_CALLENDED<<3)|VOMP_STATE_CALLENDED:
-	  /* We both agree the call is done.  Destroy call.
-	     But make sure that we have confidence that the end of the call
-	     has propagated to both ends before destroying */
-	  if (call->remote.state==VOMP_STATE_CALLENDED
-	      &&call->local.state==VOMP_STATE_CALLENDED)
-	    return vomp_call_destroy(call);
-	}
-	
-	/* touch call timer if the current state has not vetoed by returning */
-	call->last_activity=overlay_gettime_ms();
-	/* and then send an update to the call status */
-	if (call->local.state<VOMP_STATE_INCALL
-	    &&call->remote.state<VOMP_STATE_INCALL)
-	  vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED|VOMP_TELLCODECS,
-			   NULL);
-	else
-	  vomp_send_status(call,VOMP_TELLREMOTE|VOMP_TELLINTERESTED,NULL);
+	call->local.state=VOMP_STATE_CALLENDED;
+	/* now let the state machine progress to destroy the call */
       }
+
+      if (call->local.state < VOMP_STATE_RINGINGOUT && sender_state < VOMP_STATE_RINGINGOUT){
+	// the other party should have given us their list of supported codecs
+	vomp_extract_remote_codec_list(call,mdp);
+      }
+      
+      if (sender_state==VOMP_STATE_CALLENDED){
+	/* For whatever reason, the far end has given up on the call, 
+	   so we must also move to CALLENDED no matter what state we were in */
+	
+	if (call->audio_started) vomp_call_stop_audio(call);
+	if (call->ringing) call->ringing=0;
+	call->local.state=VOMP_STATE_CALLENDED;
+      }
+      
+      /* Consider states: our actual state, sender state, what the sender thinks
+	 our state is, and what we think the sender's state is.  But largely it
+	 breaks down to what we think our state is, and what they think their 
+	 state is.  That leaves us with just 6X6=36 cases. 
+       */
+      int combined_state=call->local.state<<3 | sender_state;
+      
+      switch(combined_state) {
+      case (VOMP_STATE_NOCALL<<3)|VOMP_STATE_CALLPREP:
+	/* The remote party is in the call-prep state tryng to dial us. 
+	   We'll send them our codec list, then they can tell us to ring.
+	*/
+	break;
+	  
+      case (VOMP_STATE_RINGINGIN<<3)|VOMP_STATE_RINGINGOUT:
+	/* they are ringing us and we are ringing.  Lets keep doing that. */
+      case (VOMP_STATE_NOCALL<<3)|VOMP_STATE_RINGINGOUT:
+	/* We have have issued a session, the remote party is now indicating 
+	   that they would like us to start ringing.
+	   So change our state to RINGINGIN. */
+	  
+	if (call->initiated_call)
+	  // hey, quit it, we were trying to call you.
+	  call->local.state=VOMP_STATE_CALLENDED;
+	else{
+	  // TODO fail the call if we can't find a codec you know
+	  call->local.state=VOMP_STATE_RINGINGIN;
+	  if (!call->ringing) vomp_call_start_ringing(call);
+	}
+	break;
+	  
+      case (VOMP_STATE_CALLPREP<<3)|VOMP_STATE_NOCALL:
+      case (VOMP_STATE_CALLPREP<<3)|VOMP_STATE_CALLPREP:
+	/* We are getting ready to ring, and the other end has issued a session
+	   number, (and may be calling us at the same time).  
+	   Now is the time to ring out.
+	   However, until the remote party has acknowledged with RINGIN, 
+	   don't indicate their ringing state to the user.
+	 */
+	if (call->initiated_call){
+	  // TODO fail the call if we can't agree on codec's
+	  call->local.state=VOMP_STATE_RINGINGOUT;
+	}else{
+	  call->local.state=VOMP_STATE_CALLENDED;
+	}
+	break;
+	  
+      case (VOMP_STATE_RINGINGOUT<<3)|VOMP_STATE_NOCALL:
+      case (VOMP_STATE_RINGINGOUT<<3)|VOMP_STATE_CALLPREP:
+	/* We are calling them, and they have not yet answered, just wait */
+	break;
+	  
+      case (VOMP_STATE_RINGINGOUT<<3)|VOMP_STATE_RINGINGIN:
+	/* we are calling them and they have acknowledged it. 
+	   Now we can play a tone to indicate they are ringing */
+	break;
+	  
+      case (VOMP_STATE_RINGINGOUT<<3)|VOMP_STATE_RINGINGOUT:
+	/* Woah, we're trying to dial each other?? That must have been well timed. 
+	 Jump to INCALL and start audio */
+	call->local.state=VOMP_STATE_INCALL;
+	// reset create time when call is established
+	call->create_time=overlay_gettime_ms();
+	break;
+	  
+      case (VOMP_STATE_INCALL<<3)|VOMP_STATE_RINGINGOUT:
+	/* we think the call is in progress, but the far end hasn't replied yet
+	 Just wait. */
+	break;
+	  
+      case (VOMP_STATE_RINGINGOUT<<3)|VOMP_STATE_INCALL:
+	/* They have answered, we can jump to incall as well */
+	call->local.state=VOMP_STATE_INCALL;
+	// reset create time when call is established
+	call->create_time=overlay_gettime_ms();
+	call->ringing=0;
+	// Fall through
+      case (VOMP_STATE_INCALL<<3)|VOMP_STATE_INCALL:
+	/* play any audio that they have sent us. */
+	if (!call->audio_started) {
+	  if (vomp_call_start_audio(call)) call->local.codec=VOMP_CODEC_ENGAGED;
+	}
+	vomp_process_audio(call,sender_duration,mdp);
+	break;
+	  
+      case (VOMP_STATE_CALLENDED<<3)|VOMP_STATE_NOCALL:
+      case (VOMP_STATE_CALLENDED<<3)|VOMP_STATE_CALLPREP:
+      case (VOMP_STATE_CALLENDED<<3)|VOMP_STATE_RINGINGOUT:
+      case (VOMP_STATE_CALLENDED<<3)|VOMP_STATE_RINGINGIN:
+      case (VOMP_STATE_CALLENDED<<3)|VOMP_STATE_INCALL:
+      case (VOMP_STATE_CALLENDED<<3)|VOMP_STATE_CALLENDED:
+	/* If we ended the call, we'll wait for the far end to reply before destroying it */
+	break;
+	  
+      default:
+	/*
+	  Any state not explicitly listed above is considered invalid and possibly stale, 
+	  the packet will be completely ignored.
+	*/
+	return 0;
+      }
+      
+      call->remote.sequence=sender_seq;
+      call->remote.state=sender_state;
+      call->last_activity=overlay_gettime_ms();
+      
+      // TODO if we hear a stale echo of our state should we force another outgoing packet now?
+      // will that always cause 2 outgoing packets?
+      
+      /* send an update to the call status if required */
+      vomp_update(call);
+      
+      if (call->remote.state==VOMP_STATE_CALLENDED
+	  &&call->local.state==VOMP_STATE_CALLENDED)
+	return vomp_call_destroy(call);
     }
     return 0;
-    break;
-  case 0x02: /* codec selection, lists set of acceptable codec formats,
-		and may thus cause change of codec, including during the call */
-    return WHY("Codec selection not implemented");
     break;
   default:
     /* unsupported VoMP frame */
@@ -1448,16 +1408,6 @@ void vomp_process_tick(struct sched_ent *alarm){
   
   vomp_call_state *call = (vomp_call_state *)alarm;
   
-  /* Push out any undelivered status changes */
-  monitor_call_status(call);
-  
-  /* tell the other party we are still here */
-  vomp_send_status(call,VOMP_FORCETELLREMOTE,NULL);
-  
-  /* tell local monitor clients the call is still alive */
-  len = snprintf(msg,sizeof(msg) -1,"\nKEEPALIVE:%06x\n", call->local.session);
-  monitor_tell_clients(msg, len, MONITOR_VOMP);
-  
   /* See if any calls need to begin expiring
    (current timeout is set at 2 minutes) */
   if (call->local.state<VOMP_STATE_INCALL
@@ -1476,10 +1426,8 @@ void vomp_process_tick(struct sched_ent *alarm){
        Keep call structure hanging around for a bit so that we can
        synchonrise with the far end if possible. */
       call->local.state=VOMP_STATE_CALLENDED;
-      monitor_call_status(call);
-      vomp_send_status(call, VOMP_TELLREMOTE|VOMP_TELLINTERESTED,NULL);
-      call->last_activity=now;
       vomp_call_stop_audio(call);
+      call->last_activity=now;
       break;
     default:	    
       /* Call timed out while not actually in progress, so just immmediately
@@ -1487,6 +1435,16 @@ void vomp_process_tick(struct sched_ent *alarm){
       vomp_call_destroy(call);
       return;
   }
+  
+  /* update everyone if the state has changed */
+  vomp_update(call);
+  /* force a packet to the other party. We are still here */
+  vomp_send_status_remote(call);
+  
+  /* tell local monitor clients the call is still alive */
+  len = snprintf(msg,sizeof(msg) -1,"\nKEEPALIVE:%06x\n", call->local.session);
+  monitor_tell_clients(msg, len, MONITOR_VOMP);
+  
   alarm->alarm = overlay_gettime_ms() + VOMP_CALL_STATUS_INTERVAL;
   schedule(alarm);
 }

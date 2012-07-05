@@ -266,10 +266,8 @@ int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP)
     } else {
       if (overlay_get_nexthop(p->destination,p->nexthop,&nexthoplen,
 			      &interface)) {
-	return WHY("Failed to resolve nexthop for voice packet");
-      }
-      if (interface==-1&&(!broadcast)) {
-	return WHY("Failed to determine interface for sending voice packet");
+	// (we don't need another log message here)
+	return -1;
       }
     }
 
