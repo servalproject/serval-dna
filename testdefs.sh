@@ -1,4 +1,19 @@
-# Common definitions for all test suites in test/*
+# Common definitions for all test suites.
+# Copyright 2012 The Serval Project, Inc.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 shopt -s extglob
 
@@ -13,16 +28,30 @@ declare -a instance_stack=()
 # Some useful regular expressions.  These must work in grep(1) as basic
 # expressions, and also in sed(1).
 rexp_sid='[0-9a-fA-F]\{64\}'
+rexp_did='[0-9+#]\{5,\}'
+
+# Utility function for extracting information from the output of servald
+# commands that return "key:value\n" pairs.
+extract_stdout_keyvalue_optional() {
+   local _var="$1"
+   local _label="$2"
+   local _rexp="$3"
+   local _line=$(replayStdout | grep "^$_label:")
+   local _value=
+   local _return=1
+   if [ -n "$_line" ]; then
+      _value="${_line#*:}"
+      _return=0
+   fi
+   [ -n "$_var" ] && eval $_var="$_value"
+   return $_return
+}
 
 # Utility function for extracting information from the output of servald
 # commands that return "key:value\n" pairs.
 extract_stdout_keyvalue() {
-   local _var="$1"
    local _label="$2"
-   local _rexp="$3"
-   local _value=$(replayStdout | sed -n -e "/^$_label:$_rexp\$/s/^$_label://p")
-   assert --message="stdout contains valid '$_label:' line" --stdout [ -n "$_value" ]
-   [ -n "$_var" ] && eval $_var=$_value
+   assert --message="stdout of ($executed) contains valid '$_label:' line" --stdout extract_stdout_keyvalue_optional "$@"
 }
 
 # Utility function for creating servald fixtures:
@@ -50,7 +79,7 @@ setup_servald() {
 #  - asserts that standard error contains no error messages
 executeOk_servald() {
    executeOk --executable=$servald "$@"
-   assertStderrGrep --matches=0 --message="stderr of $executed contains no error messages" '^ERROR:'
+   assertStderrGrep --matches=0 --message="stderr of ($executed) contains no error messages" '^ERROR:'
 }
 
 # Utility function:
