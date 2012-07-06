@@ -1322,31 +1322,22 @@ int app_keyring_list(int argc, const char *const *argv, struct command_line_opti
   keyring_file *k = keyring_open_with_pins(pin);
   if (!k)
     return -1;
-
-  int cn=0;
-  int in=0;
-
-  for(cn=0;cn<k->context_count;cn++)
-    for(in=0;in<k->contexts[cn]->identity_count;in++)
-      {
-	int kpn;
-	keypair *kp;
-	unsigned char *sid=NULL,*did=NULL,*name=NULL;
-	for(kpn=0;kpn<k->contexts[cn]->identities[in]->keypair_count;kpn++)
-	  {
-	    kp=k->contexts[cn]->identities[in]->keypairs[kpn];
-	    if (kp->type==KEYTYPE_CRYPTOBOX) sid=kp->public_key;
-	    if (kp->type==KEYTYPE_DID) { did=kp->private_key; name=kp->public_key; }
-	  }
-	if (sid||did) {	 
-	    if (sid) cli_printf("%s", alloca_tohex_sid(sid));
-	    cli_delim(":");
-	    if (did) cli_puts((char*)did);
-	    cli_delim(":");
-	    if (name) cli_puts((char*)name);
-	    cli_delim("\n");
-	}
+  int cn, in;
+  for (cn = 0; cn < k->context_count; ++cn)
+    for (in = 0; in < k->contexts[cn]->identity_count; ++in) {
+      const unsigned char *sid = NULL;
+      const char *did = NULL;
+      const char *name = NULL;
+      keyring_identity_extract(k->contexts[cn]->identities[in], &sid, &did, &name);
+      if (sid || did) {	 
+	  if (sid) cli_printf("%s", alloca_tohex_sid(sid));
+	  cli_delim(":");
+	  if (did) cli_puts(did);
+	  cli_delim(":");
+	  if (name) cli_puts(name);
+	  cli_delim("\n");
       }
+    }
   return 0;
  }
 
@@ -1357,10 +1348,39 @@ int app_keyring_add(int argc, const char *const *argv, struct command_line_optio
   keyring_file *k = keyring_open_with_pins("");
   if (!k)
     return -1;
-  if (keyring_create_identity(k,k->contexts[0],(char *)pin)==NULL)
-    return WHY("Could not create new identity (keyring_create_identity() failed)");
-  if (keyring_commit(k))
-    return WHY("Could not write new identity (keyring_commit() failed)");
+  const keyring_identity *id = keyring_create_identity(k, k->contexts[0], pin);
+  if (id == NULL) {
+    keyring_free(k);
+    return WHY("Could not create new identity");
+  }
+  const unsigned char *sid = NULL;
+  const char *did = "";
+  const char *name = "";
+  keyring_identity_extract(id, &sid, &did, &name);
+  if (!sid) {
+    keyring_free(k);
+    return WHY("New identity has no SID");
+  }
+  if (keyring_commit(k) == -1) {
+    keyring_free(k);
+    return WHY("Could not write new identity");
+  }
+  cli_puts("sid");
+  cli_delim(":");
+  cli_printf("%s", alloca_tohex_sid(sid));
+  cli_delim("\n");
+  if (did) {
+    cli_puts("did");
+    cli_delim(":");
+    cli_puts(did);
+    cli_delim("\n");
+  }
+  if (name) {
+    cli_puts("name");
+    cli_delim(":");
+    cli_puts(name);
+    cli_delim("\n");
+  }
   keyring_free(k);
   return 0;
 }

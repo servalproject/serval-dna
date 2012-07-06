@@ -490,8 +490,7 @@ int processRequest(unsigned char *packet,int len,
 	  if (debug&DEBUG_HLR) DEBUG("Verified that create request supplies DID but not SID");
 	  
 	  /* Creating an identity is nice and easy now with the new keyring */
-	  keyring_identity *id=keyring_create_identity(keyring,keyring->contexts[0],
-						       "");
+	  keyring_identity *id=keyring_create_identity(keyring,keyring->contexts[0], "");
 	  if (id) keyring_set_did(id,did,"Mr. Smith");
 	  if (id==NULL||keyring_commit(keyring))
 	    return respondSimple(NULL,ACTION_DECLINED,NULL,0,transaction_id,recvttl,

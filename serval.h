@@ -263,9 +263,9 @@ unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
 unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid);
 
 int keyring_commit(keyring_file *k);
-keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c,
-					  char *pin);
+keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, const char *pin);
 int keyring_seed(keyring_file *k);
+void keyring_identity_extract(const keyring_identity *id, const unsigned char **sidp, const char **didp, const char **namep);
 
 /* Packet format:
 

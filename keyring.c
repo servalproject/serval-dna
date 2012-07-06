@@ -787,8 +787,7 @@ int keyring_enter_pin(keyring_file *k, const char *pin)
    The crypto_box and crypto_sign key pairs are automatically created, and the PKR
    is packed and written to a hithero unallocated slot which is then marked full. 
 */
-keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c,
-					  char *pin)
+keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, const char *pin)
 {
   /* Check obvious abort conditions early */
   if (!k) { WHY("keyring is NULL"); return NULL; }
@@ -1340,30 +1339,37 @@ unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
   RETURN(NULL); 
 }
 
-int keyring_find_sid(const keyring_file *k,int *cn,int *in,int *kp, const unsigned char *sid)
+int keyring_find_sid(const keyring_file *k, int *cn, int *in, int *kp, const unsigned char *sid)
 {
-  if (keyring_sanitise_position(k,cn,in,kp)) return 0;
-
-  while (1) {
-    /* we know we have a sane position, so see if it is interesting */
-
-    if (k->contexts[*cn]->identities[*in]->keypairs[*kp]->type==KEYTYPE_CRYPTOBOX)
-      {
-	/* Compare SIDs */
-	if (!memcmp(sid,(char *)k->contexts[*cn]->identities[*in]
-		  ->keypairs[*kp]->public_key,SID_SIZE))
-	  {
-	    /* match */
-	    return 1;
-	  }
-      }
-    (*kp)++;
-    if (keyring_sanitise_position(k,cn,in,kp)) return 0;
-  }
-
+  for (; !keyring_sanitise_position(k, cn, in, kp); ++*kp)
+    if (k->contexts[*cn]->identities[*in]->keypairs[*kp]->type == KEYTYPE_CRYPTOBOX
+      && memcmp(sid, k->contexts[*cn]->identities[*in]->keypairs[*kp]->public_key, SID_SIZE) == 0)
+      return 1;
   return 0;
 }
 
+void keyring_identity_extract(const keyring_identity *id, const unsigned char **sidp, const char **didp, const char **namep)
+{
+  int todo = (sidp ? 1 : 0) | (didp ? 2 : 0) || (namep ? 4 : 0);
+  int kpn;
+  for (kpn = 0; todo && kpn < id->keypair_count; ++kpn) {
+    keypair *kp = id->keypairs[kpn];
+    switch (kp->type) {
+    case KEYTYPE_CRYPTOBOX:
+      if (sidp)
+	*sidp = kp->public_key;
+      todo &= ~1;
+      break;
+    case KEYTYPE_DID:
+      if (didp)
+	*didp = (const char *) kp->private_key;
+      if (namep)
+	*namep = (const char *) kp->public_key;
+      todo &= ~6;
+      break;
+    }
+  }
+}
 
 int keyring_enter_pins(keyring_file *k, const char *pinlist)
 {
