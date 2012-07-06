@@ -1048,7 +1048,6 @@ int overlay_frame_set_neighbour_as_source(overlay_frame *f,overlay_neighbour *n)
 int overlay_frame_set_neighbour_as_destination(overlay_frame *f,overlay_neighbour *n);
 int overlay_frame_set_broadcast_as_destination(overlay_frame *f);
 int overlay_broadcast_generate_address(unsigned char *a);
-int overlay_update_sequence_number();
 int packetEncipher(unsigned char *packet,int maxlen,int *len,int cryptoflags);
 int overlayServerMode();
 int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP);
@@ -1592,7 +1591,6 @@ int unwatch(struct sched_ent *alarm);
 int fd_poll();
 
 void overlay_interface_discover(struct sched_ent *alarm);
-void overlay_check_ticks(struct sched_ent *alarm);
 void overlay_dummy_poll(struct sched_ent *alarm);
 void overlay_route_tick(struct sched_ent *alarm);
 void rhizome_enqueue_suggestions(struct sched_ent *alarm);

@@ -288,10 +288,9 @@ int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP)
   nextinterface:
     if (overlay_broadcast_ensemble(interface,NULL,b->bytes,b->length) != -1)
       {
-	overlay_update_sequence_number();
 	if (debug&DEBUG_OVERLAYINTERFACES)
-	  WHYF("Voice frame #%lld sent on interface #%d (%d bytes)",
-	       (long long)overlay_sequence_number,interface,b->length);
+	  WHYF("Voice frame sent on interface #%d (%d bytes)",
+	       interface,b->length);
 	ob_free(b);
 	return 0;
       } else {

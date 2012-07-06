@@ -258,6 +258,7 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
   */
 
   unsigned char *sid=overlay_get_my_sid();
+  long long now = overlay_gettime_ms();
 
   /* Header byte */
   if (ob_append_byte(b, OF_TYPE_SELFANNOUNCE))
@@ -321,12 +322,12 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
   overlay_abbreviate_set_most_recent_address(sid);
 
   /* Sequence number range.  Based on one tick per milli-second. */
-  overlay_update_sequence_number();
+  
   if (ob_append_int(b,overlay_interfaces[interface].last_tick_ms))
     return WHY("Could not add low sequence number to self-announcement");
-  if (ob_append_int(b,overlay_sequence_number))
+  if (ob_append_int(b,now))
     return WHY("Could not add high sequence number to self-announcement");
-  overlay_interfaces[interface].last_tick_ms=overlay_sequence_number;
+  overlay_interfaces[interface].last_tick_ms=now;
   if (debug&DEBUG_OVERLAYINTERFACES)
     DEBUGF("last tick seq# = %lld", overlay_interfaces[interface].last_tick_ms);
 

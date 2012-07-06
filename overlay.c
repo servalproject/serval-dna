@@ -147,9 +147,6 @@ schedule(&_sched_##X);
   /* Periodically check for new interfaces */
   SCHEDULE(overlay_interface_discover, 1);
 
-  /* Start scheduling interface ticks */
-  SCHEDULE(overlay_check_ticks, 2);
-  
   /* Periodically update route table. */
   SCHEDULE(overlay_route_tick, 100);
 

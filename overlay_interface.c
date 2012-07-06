@@ -45,7 +45,8 @@ struct interface_rules *interface_filter=NULL;
 struct profile_total interface_poll_stats;
 struct profile_total dummy_poll_stats;
 
-unsigned int overlay_sequence_number=0;
+int overlay_tick_interface(int i, long long now);
+
 
 /* Return milliseconds since server started.  First call will always return zero.
    Must use long long, not time_t, as time_t can be 32bits, which is too small for
@@ -61,13 +62,6 @@ long long overlay_gettime_ms()
     now= gettime_ms()-overlay_sequence_start_time;
 
   return now;
-}
-
-int overlay_update_sequence_number()
-{
-  long long now=overlay_gettime_ms();
-  overlay_sequence_number=now&0xffffffff;
-  return 0;
 }
 
 int overlay_interface_type(char *s)
@@ -240,6 +234,10 @@ overlay_interface_init_socket(int interface, struct sockaddr_in src_addr, struct
   interface_poll_stats.name="overlay_interface_poll";
   I(alarm.stats)=&interface_poll_stats;
   watch(&I(alarm));
+
+  // run the first tick asap
+  I(alarm.alarm)=overlay_gettime_ms();
+  schedule(&I(alarm));
   
   return 0;
 
@@ -330,6 +328,16 @@ void overlay_interface_poll(struct sched_ent *alarm)
 
   struct sockaddr src_addr;
   socklen_t addrlen = sizeof(src_addr);
+
+  if (alarm->poll.revents==0){
+    // tick the interface
+    unsigned long long now = overlay_gettime_ms();
+    int i = (interface - overlay_interfaces);
+    overlay_tick_interface(i, now);
+    alarm->alarm=now+interface->tick_ms;
+    schedule(alarm);
+    return;
+  }
   
   /* Read only one UDP packet per call to share resources more fairly, and also
      enable stats to accurately count packets received */
@@ -359,7 +367,14 @@ void overlay_dummy_poll(struct sched_ent *alarm)
   struct sockaddr src_addr;
   size_t addrlen = sizeof(src_addr);
   unsigned char transaction_id[8];
+  unsigned long long now = overlay_gettime_ms();
 
+  if (interface->last_tick_ms + interface->tick_ms <+ now){
+    // tick the interface
+    int i = (interface - overlay_interfaces);
+    overlay_tick_interface(i, now);
+  }
+  
   /* Read from dummy interface file */
   long long length=lseek(alarm->poll.fd,0,SEEK_END);
   if (interface->offset>=length)
@@ -405,24 +420,6 @@ void overlay_dummy_poll(struct sched_ent *alarm)
   schedule(alarm);
 
   return ;
-}
-
-int overlay_tx_messages()
-{
-  /* Check out the various queues, and add payloads to a new frame and send it out. */
-  /* XXX We may want to throttle the maximum packets/sec or KB/sec */
-
-  /* How are we going to pick and choose things from the various priority queues?
-     We could simply pick the top item from each queue in round-robin until the 
-     frame is filled. That would be a start.  We could certainly get more intelligent
-     and stuff lots of little frames from a high priority queue in if that makes sense, 
-     especially if they look like getting delayed a bit.  Perhaps we just reserve the first
-     n bytes for the first queue, the first n+k bytes for the first two queues and so on?
-  */
-
-  /* XXX Go through queue and separate into per-interface queues? */
-  
-  return WHY("not implemented");
 }
 
 int overlay_broadcast_ensemble(int interface_number,
@@ -871,10 +868,9 @@ int overlay_tick_interface(int i, long long now)
     DEBUGF("Sending %d byte tick packet",e->length);
   if (overlay_broadcast_ensemble(i,NULL,e->bytes,e->length) != -1)
     {
-      overlay_update_sequence_number();
       if (debug&DEBUG_OVERLAYINTERFACES)
-	DEBUGF("Successfully transmitted tick frame #%lld on interface #%d (%d bytes)",
-	      (long long)overlay_sequence_number,i,e->length);
+	DEBUGF("Successfully transmitted tick frame on interface #%d (%d bytes)",
+	      i,e->length);
 
       /* De-queue the passengers who were aboard.
 	 One round of marking, and then one round of culling from the queue. */
@@ -953,46 +949,6 @@ int overlay_tick_interface(int i, long long now)
     if (e) ob_free(e); e=NULL;
     return WHY("overlay_broadcast_ensemble() failed");
   }
-}
-
-void overlay_check_ticks(struct sched_ent *alarm) {
-  /* Check if any interface(s) are due for a tick */
-  int i;
-  
-  long long now = overlay_gettime_ms();
-  /* By default only tick once per day */
-  long long nexttick=now + 86400*1000;
-
-  /* Now check if the next tick time for the interfaces is no later than that time.
-     If so, trigger a tick on the interface. */
-  if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("Examining %d interfaces.",overlay_interface_count);
-  for(i = 0; i < overlay_interface_count; i++) {
-    /* Only tick live interfaces */
-    if (overlay_interfaces[i].observed > 0) {
-      if (debug & DEBUG_VERBOSE_IO) DEBUGF("Interface %s ticks every %dms, last at %lld.",
-					  overlay_interfaces[i].name,
-					  overlay_interfaces[i].tick_ms,
-					     overlay_interfaces[i].last_tick_ms);
-      
-      long long thistick=overlay_interfaces[i].last_tick_ms + overlay_interfaces[i].tick_ms;
-      if (now >= thistick) {
-	
-	/* This interface is due for a tick */
-	overlay_tick_interface(i, now);
-	overlay_interfaces[i].last_tick_ms = now;
-	thistick=now + overlay_interfaces[i].tick_ms;
-      }
-      if (thistick<nexttick) nexttick=thistick;
-    } else
-      if (debug & DEBUG_VERBOSE_IO) DEBUGF("Interface %s is awol.", overlay_interfaces[i].name);
-  
-  }
-  
-  /* Update interval until next tick */
-  alarm->alarm = nexttick;
-  schedule(alarm);
-
-  return;
 }
 
 long long parse_quantity(char *q)
