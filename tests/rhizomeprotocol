@@ -1,0 +1,63 @@
+#!/bin/bash
+
+# Tests for Serval rhizome protocol.
+#
+# Copyright 2012 Paul Gardner-Stephen
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+source "${0%/*}/../testdefs_rhizome.sh"
+
+shopt -s extglob
+
+teardown() {
+   stop_all_servald_servers
+   kill_all_servald_processes
+   assert_no_servald_processes
+   tfw_cat $LOGA $LOGB
+}
+
+setup_rhizome() {
+   set_instance +A
+   create_rhizome_identities 1
+   set_instance +B
+   create_rhizome_identities 1
+}
+
+# Called by start_servald_instances.
+configure_servald_server() {
+   executeOk_servald config set debug.rhizome on
+}
+
+doc_FileTransferNew="Initial list is empty"
+setup_FileTransferNew() {
+   setup_servald
+   setup_rhizome
+   assert_no_servald_processes
+   start_servald_instances +A +B
+   set_instance +A
+   echo 'File one' >file1
+   executeOk_servald rhizome add file '' '' file1 file1.manifest
+}
+test_FileTransferNew() {
+   sleep 10
+   set_instance +B
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file1
+}
+
+runTests "$@"
