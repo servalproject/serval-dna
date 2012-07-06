@@ -321,12 +321,9 @@ int monitor_process_command(struct monitor_context *c)
   int callSessionToken,sampleType,bytes;
   char sid[MONITOR_LINE_LENGTH],localDid[MONITOR_LINE_LENGTH];
   char remoteDid[MONITOR_LINE_LENGTH],digits[MONITOR_LINE_LENGTH];
-  overlay_mdp_frame mdp;
   char *cmd = c->line;
   IN();
   
-  mdp.packetTypeAndFlags=MDP_VOMPEVENT;  
-
   c->line_length=0;
 
   if (strlen(cmd)>MONITOR_LINE_LENGTH) {
@@ -384,32 +381,36 @@ int monitor_process_command(struct monitor_context *c)
     }
   else if (sscanf(cmd,"call %s %s %s",sid,localDid,remoteDid)==3) {
     DEBUG("here");
+    int gotSid = 0;
     if (sid[0]=='*') {
-      /* For testing, pick a peer and call them */
-      int bin,slot;
-      for(bin=0;bin<overlay_bin_count;bin++)
-	for(slot=0;slot<overlay_bin_size;slot++)
-	  {
-	    if (!overlay_nodes[bin][slot].sid[0])
-	      continue;
-	    tohex(sid, overlay_nodes[bin][slot].sid, SID_SIZE);
+      /* For testing, pick any peer and call them */
+      int bin, slot;
+      for (bin = 0; bin < overlay_bin_count; bin++)
+	for (slot = 0; slot < overlay_bin_size; slot++) {
+	  if (overlay_nodes[bin][slot].sid[0]) {
+	    memcpy(sid, overlay_nodes[bin][slot].sid, SID_SIZE);
+	    gotSid = 1;
 	    break;
 	  }
-    }else{
+	}
+      if (!gotSid)
+	WRITE_STR(c->alarm.poll.fd,"\nERROR:no known peers, so cannot place call\n");
+    } else {
       // pack the binary representation of the sid into the same buffer.
-      stowSid(sid,0,sid);
+      if (stowSid((unsigned char*)sid, 0, sid) == -1)
+	WRITE_STR(c->alarm.poll.fd,"\nERROR:invalid SID, so cannot place call\n");
+      else
+	gotSid = 1;
     }
-
-    int cn=0,in=0,kp=0;
-    if(!keyring_next_identity(keyring,&cn,&in,&kp))
-      {
+    if (gotSid) {
+      int cn=0, in=0, kp=0;
+      if (!keyring_next_identity(keyring, &cn, &in, &kp))
 	WRITE_STR(c->alarm.poll.fd,"\nERROR:no local identity, so cannot place call\n");
+      else {
+	vomp_dial(keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key, (unsigned char *)sid, localDid, remoteDid);
       }
-    else {
-      vomp_dial(keyring->contexts[cn]->identities[in]
-		->keypairs[kp]->public_key, sid, localDid, remoteDid);
     }
-  } 
+  }
   else if (sscanf(cmd,"status %x",&callSessionToken)==1) {
     int i;
     for(i=0;i<vomp_call_count;i++)
@@ -427,10 +428,6 @@ int monitor_process_command(struct monitor_context *c)
   } else if (sscanf(cmd,"dtmf %x %s",&callSessionToken,digits)==2) {
     vomp_call_state *call=vomp_find_call_by_session(callSessionToken);
     if (call){
-      /* One digit per sample block. */
-      mdp.vompevent.audio_sample_codec=VOMP_CODEC_DTMF;
-      mdp.vompevent.audio_sample_bytes=1;
-      
       int i;
       for(i=0;i<strlen(digits);i++) {
 	int digit=vomp_parse_dtmf_digit(digits[i]);
@@ -438,12 +435,10 @@ int monitor_process_command(struct monitor_context *c)
 	  snprintf(msg,1024,"\nERROR: invalid DTMF digit 0x%02x\n",digit);
 	  WRITE_STR(c->alarm.poll.fd,msg);
 	}
-	
 	/* 80ms standard tone duration, so that it is a multiple
 	 of the majority of codec time units (70ms is the nominal
 	 DTMF tone length for most systems). */
-	
-	char code = digit <<4;
+	unsigned char code = digit <<4;
 	vomp_send_status_remote_audio(call, VOMP_CODEC_DTMF, &code, 1);
       }
     }

@@ -68,10 +68,15 @@ char *tohex(char *dstHex, const unsigned char *srcBinary, size_t bytes)
   return dstHex;
 }
 
-size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t bytes)
+/* Convert nbinary*2 ASCII hex characters [0-9A-Fa-f] to nbinary bytes of data.  Can be used to
+   perform the conversion in-place, eg, fromhex(buf, (char*)buf, n);  Returns -1 if a non-hex-digit
+   character is encountered, otherwise returns the number of binary bytes produced (= nbinary).
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t nbinary)
 {
   size_t count = 0;
-  while (count != bytes) {
+  while (count != nbinary) {
     unsigned char high = hexvalue(*srcHex++);
     if (high & 0xf0) return -1;
     unsigned char low = hexvalue(*srcHex++);
@@ -81,9 +86,15 @@ size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t bytes)
   return count;
 }
 
-int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t bytes)
+/* Convert nbinary*2 ASCII hex characters [0-9A-Fa-f] followed by a nul '\0' character to nbinary bytes of data.  Can be used to
+   perform the conversion in-place, eg, fromhex(buf, (char*)buf, n);  Returns -1 if a non-hex-digit
+   character is encountered or the character immediately following the last hex digit is not a nul,
+   otherwise returns zero.
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary)
 {
-  return (fromhex(dstBinary, srcHex, bytes) == bytes && srcHex[bytes * 2] == '\0') ? 0 : -1;
+  return (fromhex(dstBinary, srcHex, nbinary) == nbinary && srcHex[nbinary * 2] == '\0') ? 0 : -1;
 }
 
 int rhizome_strn_is_manifest_id(const char *id)

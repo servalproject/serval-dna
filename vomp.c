@@ -184,7 +184,7 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
 /* send updated call status to end-point and to any interested listeners as
    appropriate */
 
-int vomp_send_status_remote_audio(vomp_call_state *call, int audio_codec, char *audio, int audio_length)
+int vomp_send_status_remote_audio(vomp_call_state *call, int audio_codec, const unsigned char *audio, int audio_length)
 {
   overlay_mdp_frame mdp;
   
@@ -298,7 +298,7 @@ int vomp_send_status_remote(vomp_call_state *call){
   return vomp_send_status_remote_audio(call, 0, NULL, 0);
 }
 
-int vomp_send_mdp_status_audio(vomp_call_state *call, int audio_codec, unsigned int start_time, unsigned int end_time, char *audio, int audio_length){
+int vomp_send_mdp_status_audio(vomp_call_state *call, int audio_codec, unsigned int start_time, unsigned int end_time, const unsigned char *audio, int audio_length){
   if (audio && audio_length && vomp_sample_size(audio_codec)!=audio_length)
     return WHY("Audio frame is the wrong length");
   
@@ -404,7 +404,7 @@ int vomp_process_audio(vomp_call_state *call,unsigned int sender_duration,overla
   //  WHYF("got here (payload has %d bytes)",mdp->in.payload_length);
 
   /* Get end time marker for sample block collection */
-  unsigned int e=0, s=0, duration;
+  unsigned int e=0, s=0;
   e=mdp->in.payload[ofs++]<<24;
   e|=mdp->in.payload[ofs++]<<16;
   e|=mdp->in.payload[ofs++]<<8;

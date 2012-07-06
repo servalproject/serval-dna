@@ -1455,6 +1455,7 @@ int vomp_parse_dtmf_digit(char c);
 int vomp_dial(unsigned char *local_sid, unsigned char *remote_sid, char *local_did, char *remote_did);
 int vomp_pickup(vomp_call_state *call);
 int vomp_hangup(vomp_call_state *call);
+int vomp_send_status_remote_audio(vomp_call_state *call, int audio_codec, const unsigned char *audio, int audio_length);
 
 
 typedef struct command_line_option {
