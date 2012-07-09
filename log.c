@@ -105,6 +105,7 @@ void vlogMessage(int level, const char *file, unsigned int line, const char *fun
       case LOG_LEVEL_DEBUG: alevel = ANDROID_LOG_DEBUG; break;
     }
     __android_log_print(alevel, "servald", "%s", strbuf_str(&logbuf));
+    strbuf_reset(&logbuf);
 #else
     FILE *logf = open_logging();
     if (logf) {
