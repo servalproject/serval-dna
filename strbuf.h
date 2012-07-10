@@ -311,6 +311,34 @@ __STRBUF_INLINE char *strbuf_str(const_strbuf sb) {
 char *strbuf_substr(const_strbuf sb, int offset);
 
 
+/** Truncate the string in the strbuf to a given offset.  If the offset is
+ * negative, then it is taken from the end of the string, ie, the length of the
+ * string is added to it.  If the string is shorter than the given offset, then
+ * it is unchanged.  Otherwise, a terminating nul char is written at the offset
+ * and the string's length truncated accordingly.  Return a pointer to the
+ * strbuf so that operations can be chained in a single line.
+ *
+ * After the operation:
+ *      len = strbuf_len(sb);
+ *      strbuf_trunc(sb, off);
+ * the following invariants hold:
+ * where len <= off, sb is unchanged;
+ * where 0 <= off < len:
+ *      strbuf_count(sb) == off
+ *      strbuf_len(sb) == off
+ * where -len <= off < 0:
+ *      strbuf_count(sb) == len + off
+ *      strbuf_len(sb) == len + off
+ * where off < -len:
+ *      strbuf_count(sb) == 0
+ *      strbuf_len(sb) == 0
+ *      strbuf_str(sb)[0] == '\0'
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+strbuf strbuf_trunc(strbuf sb, int offset);
+
+
 /** Return true if the given strbuf is "empty", ie, not modified since being
  * initialised to STRUCT_STRBUF_EMPTY or with strbuf_init(sb, NULL, 0);
  *

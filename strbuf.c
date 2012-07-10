@@ -98,7 +98,7 @@ char *strbuf_substr(const_strbuf sb, int offset)
 {
   char *s;
   if (offset < 0) {
-    s = sb->end + offset;
+    s = (sb->current < sb->end ? sb->current : sb->end) + offset;
     if (s < sb->start)
       s = sb->start;
   } else {
@@ -107,4 +107,20 @@ char *strbuf_substr(const_strbuf sb, int offset)
       s = sb->end;
   }
   return s;
+}
+
+strbuf strbuf_trunc(strbuf sb, int offset)
+{
+  char *s;
+  if (offset < 0) {
+    s = (sb->current < sb->end ? sb->current : sb->end) + offset;
+    if (s < sb->start)
+      s = sb->start;
+  } else {
+    s = sb->start + offset;
+    if (s > sb->end)
+      s = sb->end;
+  }
+  sb->current = s;
+  return sb;
 }
