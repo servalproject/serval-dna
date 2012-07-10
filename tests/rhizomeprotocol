@@ -41,6 +41,9 @@ setup_rhizome() {
 # Called by start_servald_instances.
 configure_servald_server() {
    executeOk_servald config set debug.rhizome on
+   executeOk_servald config set debug.rhizomesync on
+   executeOk_servald config set mdp.wifi.tick_ms 100
+   executeOk_servald config set mdp.selfannounce.ticks_per_full_address 1
 }
 
 doc_FileTransferNew="Initial list is empty"
