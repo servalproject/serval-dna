@@ -19,37 +19,49 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 
-int set_nonblock(int fd)
+int _set_nonblock(int fd, const char *file, unsigned int line, const char *function)
 {
   int flags;
-  if ((flags = fcntl(fd, F_GETFL, NULL)) == -1)
-    return WHY_perror("fcntl(F_GETFL)");
-  if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1)
-    return WHY_perror("fcntl(F_SETFL)");
+  if ((flags = fcntl(fd, F_GETFL, NULL)) == -1) {
+    logMessage_perror(LOG_LEVEL_ERROR, file, line, function, "set_nonblock: fcntl(%d,F_GETFL,NULL)", fd);
+    return -1;
+  }
+  if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
+    logMessage_perror(LOG_LEVEL_ERROR, file, line, function, "set_nonblock: fcntl(%d,F_SETFL,0x%x|O_NONBLOCK)", fd, flags);
+    return -1;
+  }
   return 0;
 }
 
-int set_block(int fd)
+int _set_block(int fd, const char *file, unsigned int line, const char *function)
 {
   int flags;
-  if ((flags = fcntl(fd, F_GETFL, NULL)) == -1)
-    return WHY_perror("fcntl(F_GETFL)");
-  if (fcntl(fd, F_SETFL, flags & ~O_NONBLOCK) == -1)
-    return WHY_perror("fcntl(F_SETFL)");
+  if ((flags = fcntl(fd, F_GETFL, NULL)) == -1) {
+    logMessage_perror(LOG_LEVEL_ERROR, file, line, function, "set_block: fcntl(%d,F_GETFL,NULL)", fd);
+    return -1;
+  }
+  if (fcntl(fd, F_SETFL, flags & ~O_NONBLOCK) == -1) {
+    logMessage_perror(LOG_LEVEL_ERROR, file, line, function, "set_block: fcntl(%d,F_SETFL,0x%x&~O_NONBLOCK)", fd, flags);
+    return -1;
+  }
   return 0;
 }
 
-int write_all(int fd, const char *buf, size_t len)
+int _write_all(int fd, const char *buf, size_t len, const char *file, unsigned int line, const char *function)
 {
   ssize_t written = write(fd, buf, len);
-  if (written == -1)
-    return WHY_perror("write");
-  if (written != len)
-    return WHYF("write(%u bytes) returned %d", len, written);
+  if (written == -1) {
+    logMessage_perror(LOG_LEVEL_ERROR, file, line, function, "write_all: write(%d,%p,%lu)", fd, buf, (unsigned long)len);
+    return -1;
+  }
+  if (written != len) {
+    logMessage(LOG_LEVEL_ERROR, file, line, function, "write_all: write(%d,%p,%lu) returned %ld", fd, buf, (unsigned long)len, (long)written);
+    return -1;
+  }
   return written;
 }
 
-int write_nonblock(int fd, const char *buf, size_t len)
+int _write_nonblock(int fd, const char *buf, size_t len, const char *file, unsigned int line, const char *function)
 {
   ssize_t written = write(fd, buf, len);
   if (written == -1) {
@@ -58,25 +70,28 @@ int write_nonblock(int fd, const char *buf, size_t len)
       case EINTR:
 	return 0;
     }
-    return WHY_perror("write");
+    logMessage_perror(LOG_LEVEL_ERROR, file, line, function, "write_nonblock: write(%d,%p,%lu)", fd, buf, (unsigned long)len);
+    return -1;
   }
   return written;
 }
 
-int write_all_nonblock(int fd, const char *buf, size_t len)
+int _write_all_nonblock(int fd, const char *buf, size_t len, const char *file, unsigned int line, const char *function)
 {
-  ssize_t written = write_nonblock(fd, buf, len);
-  if (written != -1 && written != len)
-    return WHYF("write(%u bytes) returned %d", len, written);
+  ssize_t written = _write_nonblock(fd, buf, len, file, line, function);
+  if (written != -1 && written != len) {
+    logMessage(LOG_LEVEL_ERROR, file, line, function, "write_all_nonblock: write(%d,%p,%lu) returned %ld", fd, buf, (unsigned long)len, (long)written);
+    return -1;
+  }
   return written;
 }
 
-int write_str(int fd, const char *str)
+int _write_str(int fd, const char *str, const char *file, unsigned int line, const char *function)
 {
-  return write_all(fd, str, strlen(str));
+  return _write_all(fd, str, strlen(str), file, line, function);
 }
 
-int write_str_nonblock(int fd, const char *str)
+int _write_str_nonblock(int fd, const char *str, const char *file, unsigned int line, const char *function)
 {
-  return write_all_nonblock(fd, str, strlen(str));
+  return _write_all_nonblock(fd, str, strlen(str), file, line, function);
 }

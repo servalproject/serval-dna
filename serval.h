@@ -798,6 +798,8 @@ int dump(char *name, unsigned char *addr, size_t len);
 const char *trimbuildpath(const char *s);
 
 #define LOGF(L,F,...)       (logMessage(L, __FILE__, __LINE__, __FUNCTION__, F, ##__VA_ARGS__))
+#define logMessage_perror(L,file,line,func,F,...) \
+                            (logMessage(L, file, line, func, F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno))
 
 #define FATALF(F,...)       do { LOGF(LOG_LEVEL_FATAL, F, ##__VA_ARGS__); exit(-1); } while (1)
 #define FATAL(X)            FATALF("%s", (X))
@@ -1560,13 +1562,21 @@ void sigIoHandler(int signal);
 #define DEFAULT_MONITOR_SOCKET_NAME "org.servalproject.servald.monitor.socket"
 #define DEFAULT_MDP_SOCKET_NAME "org.servalproject.servald.mdp.socket"
 
-int set_nonblock(int fd);
-int set_block(int fd);
-int write_all(int fd, const char *buf, size_t len);
-int write_nonblock(int fd, const char *buf, size_t len);
-int write_all_nonblock(int fd, const char *buf, size_t len);
-int write_str(int fd, const char *str);
-int write_str_nonblock(int fd, const char *str);
+#define set_nonblock(fd)                (_set_nonblock(fd, __FILE__, __LINE__, __FUNCTION__))
+#define set_block(fd)                   (_set_block(fd, __FILE__, __LINE__, __FUNCTION__))
+#define write_all(fd,buf,len)           (_write_all(fd, buf, len, __FILE__, __LINE__, __FUNCTION__))
+#define write_nonblock(fd,buf,len)      (_write_nonblock(fd, buf, len, __FILE__, __LINE__, __FUNCTION__))
+#define write_all_nonblock(fd,buf,len)  (_write_all_nonblock(fd, buf, len, __FILE__, __LINE__, __FUNCTION__))
+#define write_str(fd,str)               (_write_str(fd, str, __FILE__, __LINE__, __FUNCTION__))
+#define write_str_nonblock(fd,str)      (_write_str_nonblock(fd, str, __FILE__, __LINE__, __FUNCTION__))
+
+int _set_nonblock(int fd, const char *file, unsigned int line, const char *function);
+int _set_block(int fd, const char *file, unsigned int line, const char *function);
+int _write_all(int fd, const char *buf, size_t len, const char *file, unsigned int line, const char *function);
+int _write_nonblock(int fd, const char *buf, size_t len, const char *file, unsigned int line, const char *function);
+int _write_all_nonblock(int fd, const char *buf, size_t len, const char *file, unsigned int line, const char *function);
+int _write_str(int fd, const char *str, const char *file, unsigned int line, const char *function);
+int _write_str_nonblock(int fd, const char *str, const char *file, unsigned int line, const char *function);
 
 int rhizome_http_server_start();
 int overlay_mdp_setup_sockets();
