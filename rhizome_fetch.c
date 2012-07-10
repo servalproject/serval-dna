@@ -755,17 +755,16 @@ int rhizome_fetch_close(rhizome_file_fetch_record *q){
 }
 
 void rhizome_fetch_write(rhizome_file_fetch_record *q){
-  int bytes;
-  bytes=write(q->alarm.poll.fd,&q->request[q->request_ofs],
-	      q->request_len-q->request_ofs);
-  if (bytes>0) {
-    
+  int bytes = write_nonblock(q->alarm.poll.fd, &q->request[q->request_ofs], q->request_len-q->request_ofs);
+  if (bytes == -1) {
+    WHY("Got error while sending HTTP request.  Closing.");
+    rhizome_fetch_close(q);
+  } else {
     // reset timeout
     unschedule(&q->alarm);
     q->alarm.alarm=overlay_gettime_ms() + RHIZOME_IDLE_TIMEOUT;
     schedule(&q->alarm);
     q->request_ofs+=bytes;
-    
     if (q->request_ofs>=q->request_len) {
       /* Sent all of request.  Switch to listening for HTTP response headers.
        */
@@ -775,9 +774,6 @@ void rhizome_fetch_write(rhizome_file_fetch_record *q){
       watch(&q->alarm);
     }else if(q->state==RHIZOME_FETCH_CONNECTING)
       q->state = RHIZOME_FETCH_SENDINGHTTPREQUEST;
-  } else if (errno!=EAGAIN) {
-    WHY("Got error while sending HTTP request.  Closing.");
-    rhizome_fetch_close(q);
   }
 }
 
