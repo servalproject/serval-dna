@@ -47,21 +47,23 @@ int _set_block(int fd, const char *file, unsigned int line, const char *function
   return 0;
 }
 
-int _write_all(int fd, const char *buf, size_t len, const char *file, unsigned int line, const char *function)
+int _write_all(int fd, const void *buf, size_t len, const char *file, unsigned int line, const char *function)
 {
   ssize_t written = write(fd, buf, len);
   if (written == -1) {
-    logMessage_perror(LOG_LEVEL_ERROR, file, line, function, "write_all: write(%d,%p,%lu)", fd, buf, (unsigned long)len);
+    logMessage_perror(LOG_LEVEL_ERROR, file, line, function, "write_all: write(%d,%p %s,%lu)",
+	fd, buf, alloca_toprint(buf, 30), (unsigned long)len);
     return -1;
   }
   if (written != len) {
-    logMessage(LOG_LEVEL_ERROR, file, line, function, "write_all: write(%d,%p,%lu) returned %ld", fd, buf, (unsigned long)len, (long)written);
+    logMessage(LOG_LEVEL_ERROR, file, line, function, "write_all: write(%d,%p %s,%lu) returned %ld",
+	fd, buf, alloca_toprint(buf, 30), (unsigned long)len, (long)written);
     return -1;
   }
   return written;
 }
 
-int _write_nonblock(int fd, const char *buf, size_t len, const char *file, unsigned int line, const char *function)
+int _write_nonblock(int fd, const void *buf, size_t len, const char *file, unsigned int line, const char *function)
 {
   ssize_t written = write(fd, buf, len);
   if (written == -1) {
@@ -70,17 +72,19 @@ int _write_nonblock(int fd, const char *buf, size_t len, const char *file, unsig
       case EINTR:
 	return 0;
     }
-    logMessage_perror(LOG_LEVEL_ERROR, file, line, function, "write_nonblock: write(%d,%p,%lu)", fd, buf, (unsigned long)len);
+    logMessage_perror(LOG_LEVEL_ERROR, file, line, function, "write_nonblock: write(%d,%p %s,%lu)",
+	fd, buf, alloca_toprint(buf, 30), (unsigned long)len);
     return -1;
   }
   return written;
 }
 
-int _write_all_nonblock(int fd, const char *buf, size_t len, const char *file, unsigned int line, const char *function)
+int _write_all_nonblock(int fd, const void *buf, size_t len, const char *file, unsigned int line, const char *function)
 {
   ssize_t written = _write_nonblock(fd, buf, len, file, line, function);
   if (written != -1 && written != len) {
-    logMessage(LOG_LEVEL_ERROR, file, line, function, "write_all_nonblock: write(%d,%p,%lu) returned %ld", fd, buf, (unsigned long)len, (long)written);
+    logMessage(LOG_LEVEL_ERROR, file, line, function, "write_all_nonblock: write(%d,%p %s,%lu) returned %ld",
+	fd, buf, alloca_toprint(buf, 30), (unsigned long)len, (long)written);
     return -1;
   }
   return written;

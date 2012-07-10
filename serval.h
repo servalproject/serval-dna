@@ -791,7 +791,9 @@ void vlogMessage(int level, const char *file, unsigned int line, const char *fun
 unsigned int debugFlagMask(const char *flagname);
 char *catv(const char *data, char *buf, size_t len);
 int dump(char *name, unsigned char *addr, size_t len);
+char *toprint(char *dstPrint, const unsigned char *srcStr, size_t dstBytes);
 
+#define alloca_toprint(buf,len) toprint((char *)alloca((len) + 1), (buf), (len) + 1)
 #define alloca_tohex(buf,len)   tohex((char *)alloca((len)*2+1), (buf), (len))
 #define alloca_tohex_sid(sid)   alloca_tohex((sid), SID_SIZE)
 
@@ -1572,9 +1574,9 @@ void sigIoHandler(int signal);
 
 int _set_nonblock(int fd, const char *file, unsigned int line, const char *function);
 int _set_block(int fd, const char *file, unsigned int line, const char *function);
-int _write_all(int fd, const char *buf, size_t len, const char *file, unsigned int line, const char *function);
-int _write_nonblock(int fd, const char *buf, size_t len, const char *file, unsigned int line, const char *function);
-int _write_all_nonblock(int fd, const char *buf, size_t len, const char *file, unsigned int line, const char *function);
+int _write_all(int fd, const void *buf, size_t len, const char *file, unsigned int line, const char *function);
+int _write_nonblock(int fd, const void *buf, size_t len, const char *file, unsigned int line, const char *function);
+int _write_all_nonblock(int fd, const void *buf, size_t len, const char *file, unsigned int line, const char *function);
 int _write_str(int fd, const char *str, const char *file, unsigned int line, const char *function);
 int _write_str_nonblock(int fd, const char *str, const char *file, unsigned int line, const char *function);
 

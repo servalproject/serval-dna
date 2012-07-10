@@ -214,3 +214,26 @@ unsigned int debugFlagMask(const char *flagname) {
   return 0;
 }
 
+char *toprint(char *dstPrint, const unsigned char *srcStr, size_t dstBytes)
+{
+  strbuf b = strbuf_local(dstPrint, dstBytes);
+  strbuf_putc(b, '"');
+  for (; *srcStr || !strbuf_overrun(b); ++srcStr) {
+    if (*srcStr == '\n')
+      strbuf_puts(b, "\\n");
+    else if (*srcStr == '\r')
+      strbuf_puts(b, "\\r");
+    else if (*srcStr == '\t')
+      strbuf_puts(b, "\\t");
+    else if (isprint(*srcStr))
+      strbuf_putc(b, *srcStr);
+    else
+      strbuf_sprintf(b, "\\x%02x", *srcStr);
+  }
+  strbuf_putc(b, '"');
+  if (strbuf_overrun(b)) {
+    strbuf_trunc(b, -4);
+    strbuf_puts(b, "\"...");
+  }
+  return dstPrint;
+}
