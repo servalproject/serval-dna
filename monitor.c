@@ -265,7 +265,8 @@ static void monitor_new_client(int s) {
   uid_t				otheruid;
   struct monitor_context	*c;
 
-  SET_NONBLOCKING(s);
+  if (set_nonblock(s) == -1)
+    goto error;
 
 #ifdef linux
   len = sizeof(ucred);
@@ -288,12 +289,12 @@ static void monitor_new_client(int s) {
 
   if (otheruid != getuid()) {
     WHYF("monitor.socket client has wrong uid (%d versus %d)", otheruid,getuid());
-    WRITE_STR(s, "\nCLOSE:Incorrect UID\n");
+    write_str(s, "\nCLOSE:Incorrect UID\n");
     goto error;
   }
   if (monitor_socket_count >= MAX_MONITOR_SOCKETS
 	     ||monitor_socket_count < 0) {
-    WRITE_STR(s, "\nCLOSE:All sockets busy\n");
+    write_str(s, "\nCLOSE:All sockets busy\n");
     goto error;
   }
   
@@ -305,7 +306,7 @@ static void monitor_new_client(int s) {
   c->alarm.poll.events=POLLIN;
   c->line_length = 0;
   c->state = MONITOR_STATE_COMMAND;
-  WRITE_STR(s,"\nMONITOR:You are talking to servald\n");
+  write_str(s,"\nMONITOR:You are talking to servald\n");
   INFOF("Got %d clients", monitor_socket_count);
   watch(&c->alarm);  
   
@@ -327,7 +328,7 @@ int monitor_process_command(struct monitor_context *c)
   c->line_length=0;
 
   if (strlen(cmd)>MONITOR_LINE_LENGTH) {
-    WRITE_STR(c->alarm.poll.fd,"\nERROR:Command too long\n");
+    write_str(c->alarm.poll.fd,"\nERROR:Command too long\n");
     RETURN(-1);
   }
 
@@ -394,18 +395,18 @@ int monitor_process_command(struct monitor_context *c)
 	  }
 	}
       if (!gotSid)
-	WRITE_STR(c->alarm.poll.fd,"\nERROR:no known peers, so cannot place call\n");
+	write_str(c->alarm.poll.fd,"\nERROR:no known peers, so cannot place call\n");
     } else {
       // pack the binary representation of the sid into the same buffer.
       if (stowSid((unsigned char*)sid, 0, sid) == -1)
-	WRITE_STR(c->alarm.poll.fd,"\nERROR:invalid SID, so cannot place call\n");
+	write_str(c->alarm.poll.fd,"\nERROR:invalid SID, so cannot place call\n");
       else
 	gotSid = 1;
     }
     if (gotSid) {
       int cn=0, in=0, kp=0;
       if (!keyring_next_identity(keyring, &cn, &in, &kp))
-	WRITE_STR(c->alarm.poll.fd,"\nERROR:no local identity, so cannot place call\n");
+	write_str(c->alarm.poll.fd,"\nERROR:no local identity, so cannot place call\n");
       else {
 	vomp_dial(keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key, (unsigned char *)sid, localDid, remoteDid);
       }
@@ -433,7 +434,7 @@ int monitor_process_command(struct monitor_context *c)
 	int digit=vomp_parse_dtmf_digit(digits[i]);
 	if (digit<0) {
 	  snprintf(msg,1024,"\nERROR: invalid DTMF digit 0x%02x\n",digit);
-	  WRITE_STR(c->alarm.poll.fd,msg);
+	  write_str(c->alarm.poll.fd,msg);
 	}
 	/* 80ms standard tone duration, so that it is a multiple
 	 of the majority of codec time units (70ms is the nominal
@@ -445,7 +446,7 @@ int monitor_process_command(struct monitor_context *c)
   }
 
   snprintf(msg,1024,"\nMONITORSTATUS:%d\n",c->flags);
-  WRITE_STR(c->alarm.poll.fd,msg);
+  write_str(c->alarm.poll.fd,msg);
 
   RETURN(0);
 }
@@ -464,7 +465,7 @@ int monitor_process_data(struct monitor_context *c)
 
   vomp_call_state *call=vomp_find_call_by_session(c->sample_call_session_token);
   if (!call) {
-    WRITE_STR(c->alarm.poll.fd,"\nERROR:No such call\n");
+    write_str(c->alarm.poll.fd,"\nERROR:No such call\n");
     RETURN(-1);
   }
 
@@ -489,24 +490,17 @@ int monitor_announce_bundle(rhizome_manifest *m)
 	   sender,
 	   recipient,
 	   m->dataFileName?m->dataFileName:"");
-  for(i=monitor_socket_count -1;i>=0;i--)
-    {
-      if (!(monitor_sockets[i].flags&MONITOR_RHIZOME))
-	continue;
-      errno=0;
-      
-      SET_NONBLOCKING(monitor_sockets[i].alarm.poll.fd);
-      WRITE_STR(monitor_sockets[i].alarm.poll.fd,msg);
-      
-      SET_BLOCKING(monitor_sockets[i].alarm.poll.fd);
-      
-      if (errno&&(errno!=EINTR)&&(errno!=EAGAIN)) {
-	/* error sending update, so kill monitor socket */
-	WHY_perror("write");
+  for(i=monitor_socket_count -1;i>=0;i--) {
+    if (monitor_sockets[i].flags & MONITOR_RHIZOME) {
+      if ( set_nonblock(monitor_sockets[i].alarm.poll.fd) == -1
+	|| write_str_nonblock(monitor_sockets[i].alarm.poll.fd, msg) == -1
+	|| set_block(monitor_sockets[i].alarm.poll.fd) == -1
+      ) {
 	INFO("Tearing down monitor client");
 	monitor_client_close(&monitor_sockets[i]);
       }
     }
+  }
   return 0;
 }
 
@@ -523,21 +517,17 @@ int monitor_call_status(vomp_call_state *call)
 	   alloca_tohex_sid(call->remote.sid),
 	   call->local.did,call->remote.did);
   msg[1023]=0;
-  for(i=monitor_socket_count -1;i>=0;i--)
-    {
-      if (!(monitor_sockets[i].flags&MONITOR_VOMP))
-	continue;
-      errno=0;
-      SET_NONBLOCKING(monitor_sockets[i].alarm.poll.fd);
-      WRITE_STR(monitor_sockets[i].alarm.poll.fd,msg);
-      SET_BLOCKING(monitor_sockets[i].alarm.poll.fd);
-      if (errno&&(errno!=EINTR)&&(errno!=EAGAIN)) {
-	/* error sending update, so kill monitor socket */
-	WHY_perror("write");
-	INFOF("Tearing down monitor client #%d", i);
-	monitor_client_close(&monitor_sockets[i]);
-      }
+  for(i=monitor_socket_count -1;i>=0;i--) {
+    if (!(monitor_sockets[i].flags&MONITOR_VOMP))
+      continue;
+    if ( set_nonblock(monitor_sockets[i].alarm.poll.fd) == -1
+      || write_str_nonblock(monitor_sockets[i].alarm.poll.fd, msg) == -1
+      || set_block(monitor_sockets[i].alarm.poll.fd) == -1
+    ) {
+      INFOF("Tearing down monitor client #%d", i);
+      monitor_client_close(&monitor_sockets[i]);
     }
+  }
   RETURN(0);
 }
 
@@ -577,21 +567,17 @@ int monitor_tell_clients(char *msg, int msglen, int mask)
 {
   int i;
   IN();
-  for(i=monitor_socket_count -1;i>=0;i--)
-    {
-      if (!(monitor_sockets[i].flags&mask))
-	continue;
-      errno=0;
-      SET_NONBLOCKING(monitor_sockets[i].alarm.poll.fd);
-      write(monitor_sockets[i].alarm.poll.fd, msg, msglen);
-      SET_BLOCKING(monitor_sockets[i].alarm.poll.fd);
-      // WHYF("Writing AUDIOPACKET to client");
-      if (errno&&(errno!=EINTR)&&(errno!=EAGAIN)) {
-	/* error sending update, so kill monitor socket */
-	WHY_perror("write");
+  for(i=monitor_socket_count -1;i>=0;i--) {
+    if (monitor_sockets[i].flags & mask) {
+      // DEBUG("Writing AUDIOPACKET to client");
+      if ( set_nonblock(monitor_sockets[i].alarm.poll.fd) == -1
+	|| write_all_nonblock(monitor_sockets[i].alarm.poll.fd, msg, msglen) == -1
+	|| set_block(monitor_sockets[i].alarm.poll.fd) == -1
+      ) {
 	INFOF("Tearing down monitor client #%d", i);
 	monitor_client_close(&monitor_sockets[i]);
       }
     }
+  }
   RETURN(0);
 }

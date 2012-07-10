@@ -1560,7 +1560,13 @@ void sigIoHandler(int signal);
 #define DEFAULT_MONITOR_SOCKET_NAME "org.servalproject.servald.monitor.socket"
 #define DEFAULT_MDP_SOCKET_NAME "org.servalproject.servald.mdp.socket"
 
-#define WRITE_STR(fd, str)	write(fd, str, strlen(str))
+int set_nonblock(int fd);
+int set_block(int fd);
+int write_all(int fd, const char *buf, size_t len);
+int write_nonblock(int fd, const char *buf, size_t len);
+int write_all_nonblock(int fd, const char *buf, size_t len);
+int write_str(int fd, const char *str);
+int write_str_nonblock(int fd, const char *str);
 
 int rhizome_http_server_start();
 int overlay_mdp_setup_sockets();
@@ -1598,6 +1604,3 @@ int fd_func_enter(struct call_stats *this_call);
 #define IN() static struct profile_total _aggregate_stats={NULL,0,__FUNCTION__,0,0,0}; struct call_stats _this_call; fd_func_enter(&_this_call);
 #define OUT() fd_func_exit(&_this_call, &_aggregate_stats);
 #define RETURN(X) { OUT() return(X); }
-
-#define SET_NONBLOCKING(X) fcntl(X,F_SETFL,fcntl(X, F_GETFL, NULL)|O_NONBLOCK);
-#define SET_BLOCKING(X) fcntl(X,F_SETFL,fcntl(X, F_GETFL, NULL)&(~O_NONBLOCK));

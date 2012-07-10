@@ -177,12 +177,11 @@ int fd_poll()
   if (r>0) {
     for(i=0;i<fdcount;i++)
       if (fds[i].revents) {
-	/* Make socket non-blocking */
-	SET_NONBLOCKING(fds[i].fd);
+	/* Call the alarm callback with the socket in non-blocking mode */
+	set_nonblock(fds[i].fd);
 	call_alarm(fd_callbacks[i], fds[i].revents);
-	
-	/* Make socket blocking again */
-	SET_BLOCKING(fds[i].fd);
+	if (fds[i].fd != -1)
+	  set_block(fds[i].fd);
       }
   }
 

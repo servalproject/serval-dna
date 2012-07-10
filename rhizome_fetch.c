@@ -635,22 +635,27 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	if (peerip)
 	  {
 	    /* Transfer via HTTP over IPv4 */
-	    int sock = socket(AF_INET,SOCK_STREAM,0);
-	    SET_NONBLOCKING(sock);
-	    struct sockaddr_in peeraddr;
-	    bcopy(peerip,&peeraddr,sizeof(peeraddr));
-	    //peeraddr.sin_port=htons(RHIZOME_HTTP_PORT);
-	    DEBUG("Initiating HTTP connection for transfer");
-	    int r=connect(sock,(struct sockaddr*)&peeraddr,sizeof(peeraddr));
-	    if ((errno!=EINPROGRESS)&&(r!=0)) {	      
-	      WHY("Failed to open socket to peer's rhizome web server");
-	      WHY_perror("connect");
-	      close (sock);
+	    int sock = socket(AF_INET, SOCK_STREAM, 0);
+	    if (sock == -1)
+	      return WHY_perror("socket");
+	    if (set_nonblock(sock) == -1) {
+	      close(sock);
 	      return -1;
 	    }
-	    
-	    rhizome_file_fetch_record 
-	      *q=&file_fetch_queue[rhizome_file_fetch_queue_count];
+	    INFOF("HTTP CONNECT family=%u port=%u addr=%u.%u.%u.%u",
+		peerip->sin_family, peerip->sin_port,
+		((unsigned char*)&peerip->sin_addr.s_addr)[0],
+		((unsigned char*)&peerip->sin_addr.s_addr)[1],
+		((unsigned char*)&peerip->sin_addr.s_addr)[2],
+		((unsigned char*)&peerip->sin_addr.s_addr)[3]
+	      );
+	    if (connect(sock, (struct sockaddr*)peerip, sizeof *peerip) == -1 && errno != EINPROGRESS) {
+	      WHY_perror("connect");
+	      WHY("Failed to open socket to peer's rhizome web server");
+	      close(sock);
+	      return -1;
+	    }
+	    rhizome_file_fetch_record *q=&file_fetch_queue[rhizome_file_fetch_queue_count];
 	    q->manifest = m;
 	    *manifest_kept = 1;
 	    q->alarm.poll.fd=sock;

@@ -171,7 +171,7 @@ dna_helper_enqueue(char *did, unsigned char *requestorSid) {
     return WHY("Command to helper is too long");
     
   sigPipeFlag = 0;
-  WRITE_STR(dna_helper_stdin, buffer);
+  write_str(dna_helper_stdin, buffer);
 
   if (sigPipeFlag) {
     /* Assume broken pipe due to dead helper.

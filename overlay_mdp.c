@@ -1155,10 +1155,10 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
   if (!FORM_SERVAL_INSTANCE_PATH(name.sun_path, "mdp.socket"))
     return -1;
 
-  SET_NONBLOCKING(mdp_client_socket);
+  set_nonblock(mdp_client_socket);
   int result=sendto(mdp_client_socket, mdp, len, 0,
 		    (struct sockaddr *)&name, sizeof(struct sockaddr_un));
-  SET_BLOCKING(mdp_client_socket);
+  set_block(mdp_client_socket);
   if (result<0) {
     mdp->packetTypeAndFlags=MDP_ERROR;
     mdp->error.error=1;
@@ -1295,9 +1295,9 @@ int overlay_mdp_recv(overlay_mdp_frame *mdp,int *ttl)
   mdp->packetTypeAndFlags=0;
   
   /* Check if reply available */
-  SET_NONBLOCKING(mdp_client_socket);
+  set_nonblock(mdp_client_socket);
   ssize_t len = recvwithttl(mdp_client_socket,(unsigned char *)mdp, sizeof(overlay_mdp_frame),ttl,recvaddr,&recvaddrlen);
-  SET_BLOCKING(mdp_client_socket);
+  set_block(mdp_client_socket);
   
   recvaddr_un=(struct sockaddr_un *)recvaddr;
   /* Null terminate received address so that the stat() call below can succeed */

@@ -18,6 +18,7 @@ SERVALD_SRC_FILES = \
         serval-dna/dataformats.c   \
         serval-dna/dna.c           \
         serval-dna/log.c           \
+        serval-dna/net.c           \
         serval-dna/mkdir.c         \
         serval-dna/strbuf.c         \
         serval-dna/gateway.c       \

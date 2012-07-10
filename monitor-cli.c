@@ -106,13 +106,13 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
     fdcount++;
   }  
 
-  WRITE_STR(fd, "monitor vomp\n");
-  WRITE_STR(fd, "monitor rhizome\n");
+  write_str(fd, "monitor vomp\n");
+  write_str(fd, "monitor rhizome\n");
 
   if (sid!=NULL&&sid[0]) {
     char msg[1024];
     snprintf(msg,1024,"call %s 5551 5552\n",argv[1]);
-    WRITE_STR(fd, msg);
+    write_str(fd, msg);
   }
 
   char line[1024];
@@ -132,9 +132,9 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
     if (audev&&audev->poll_fds) fdcount+=audev->poll_fds(&fds[fdcount],128-fdcount);
     poll(fds,fdcount,1000);
 
-    SET_NONBLOCKING(fd);
+    set_nonblock(fd);
     if (interactiveP) 
-      SET_NONBLOCKING(STDIN_FILENO);
+      set_nonblock(STDIN_FILENO);
     
     int bytes;
     int i;
@@ -182,8 +182,9 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
 	audioRecordBufferBytes-=audioRecordBufferOffset;
       }
     
-    SET_BLOCKING(fd);
-    SET_BLOCKING(STDIN_FILENO);
+    set_block(fd);
+    if (interactiveP) 
+      set_block(STDIN_FILENO);
   }
   
   return 0;
@@ -228,12 +229,12 @@ int processLine(char *cmd,unsigned char *data,int dataLen)
       if (l_state<5&&l_id&&pipeAudio) {
 	// Take control of audio for this call, and let the java side know
 	snprintf(msg,1024,"FASTAUDIO:%x:1\n",l_id);
-	WRITE_STR(fd, msg);
+	write_str(fd, msg);
       }
       if (l_state==4&&autoAnswerP) {
 	// We are ringing, so pickup
 	sprintf(msg,"pickup %x\n",l_id);
-	WRITE_STR(fd, msg);
+	write_str(fd, msg);
       }
       if (l_state==5) {
 	if (fast_audio) {	  
@@ -261,7 +262,7 @@ int processLine(char *cmd,unsigned char *data,int dataLen)
 		"qwertyuiopasdfghjklzxcvbnm123456"
 		"qwertyuiopasdfghjklzxcvbnm123456"
 		"qwertyuiopasdfghjklzxcvbnm123456",l_id,counter++);
-	WRITE_STR(fd, buffer);
+	write_str(fd, buffer);
 	printf("< *320:AUDIO:%x:8\\n<320 bytes>\n",l_id);
       }
   }
