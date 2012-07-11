@@ -464,30 +464,9 @@ start_servald_instances() {
       eval LOG${I#+}="$instance_servald_log"
    done
    # Now wait until they see each other.
-   local timeout_seconds=30
-   local timeout_retry_seconds=0.25
-   sleep $timeout_seconds &
-   local timeout_pid=$!
-   tfw_log "# wait for instances to see each other"
-   while true; do
-      local allseen=true
-      for I; do
-         for J; do
-            [ $I = $J ] && continue
-            local logvar=LOG${I#+}
-            local sidvar=SID${J#+}
-            if ! grep "ADD OVERLAY NODE sid=${!sidvar}" "${!logvar}"; then
-               allseen=false
-               break 2
-            fi
-         done
-      done
-      $allseen && break
-      kill -0 $timeout_pid 2>/dev/null || fail "timeout"
-      tfw_log "sleep $timeout_retry_seconds"
-      sleep $timeout_retry_seconds
-   done
+   wait_until --sleep=0.25 instances_see_each_other "$@"
    tfw_log "# dummynet file:" $(ls -l $DUMMYNET)
+   # Assert that all instances report complete all-peer lists.
    for I; do
       set_instance $I
       executeOk_servald id allpeers
@@ -499,4 +478,19 @@ start_servald_instances() {
       done
    done
    pop_instance
+}
+
+instances_see_each_other() {
+   local I J
+   for I; do
+      for J; do
+         [ $I = $J ] && continue
+         local logvar=LOG${I#+}
+         local sidvar=SID${J#+}
+         if ! grep "ADD OVERLAY NODE sid=${!sidvar}" "${!logvar}"; then
+            return 1
+         fi
+      done
+   done
+   return 0
 }

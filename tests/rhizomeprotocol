@@ -38,7 +38,7 @@ setup_rhizome() {
    create_rhizome_identities 1
 }
 
-# Called by start_servald_instances.
+# Called by start_servald_instances for each instance.
 configure_servald_server() {
    executeOk_servald config set debug.rhizome on
    executeOk_servald config set debug.rhizomesync on
@@ -52,26 +52,15 @@ setup_FileTransferNew() {
    setup_rhizome
    assert_no_servald_processes
    start_servald_instances +A +B
-   set_instance +A
    echo 'File one' >file1
+   set_instance +A
    executeOk_servald rhizome add file '' '' file1 file1.manifest
    extract_manifest_id BID file1.manifest
    extract_manifest_version VERSION file1.manifest
+   set_instance +B
 }
 test_FileTransferNew() {
-   sleep 30 &
-   local timeout_pid=$!
-   local timeout_retry_seconds=1
-   tfw_log "# wait for manifest to arrive"
-   while true; do
-      if grep "RHIZOME ADD MANIFEST service=file bid=$BID version=$VERSION" "$LOGB"; then
-         break
-      fi
-      kill -0 $timeout_pid 2>/dev/null || fail "timeout"
-      tfw_log "sleep $timeout_retry_seconds"
-      sleep $timeout_retry_seconds
-   done
-   set_instance +B
+   wait_until grep "RHIZOME ADD MANIFEST service=file bid=$BID version=$VERSION" "$LOGB"
    executeOk_servald rhizome list ''
    assert_rhizome_list file1!
 }
