@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 #include "strbuf.h"
+#include "strbuf_helpers.h"
 #include <poll.h>
 
 #define MAX_WATCHED_FDS 128
@@ -170,15 +171,20 @@ int fd_poll()
   {
     struct call_stats call_stats;
     fd_func_enter(&call_stats);
-    strbuf b = strbuf_alloca(1024);
-    int i;
-    for (i = 0; i < fdcount; ++i) {
-      if (i)
-	strbuf_puts(b, ", ");
-      strbuf_sprintf(b, "%d:%04x:%04x", fds[i].fd, fds[i].events, fds[i].revents);
-    }
     r = poll(fds, fdcount, ms);
-    DEBUGF("poll(fds=(%s), fdcount=%d, ms=%d) = %d", strbuf_str(b), fdcount, ms, r);
+    if (debug & DEBUG_IO) {
+      strbuf b = strbuf_alloca(1024);
+      int i;
+      for (i = 0; i < fdcount; ++i) {
+	if (i)
+	  strbuf_puts(b, ", ");
+	strbuf_sprintf(b, "%d:", fds[i].fd);
+	strbuf_append_poll_events(b, fds[i].events);
+	strbuf_putc(b, ':');
+	strbuf_append_poll_events(b, fds[i].revents);
+      }
+      DEBUGF("poll(fds=(%s), fdcount=%d, ms=%d) = %d", strbuf_str(b), fdcount, ms, r);
+    }
     fd_func_exit(&call_stats, &poll_stats);
   }
 
