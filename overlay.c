@@ -69,6 +69,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "rhizome.h"
 #include "strbuf.h"
 
 int overlayMode=0;
@@ -82,6 +83,10 @@ int overlayServerMode()
   /* In overlay mode we need to listen to all of our sockets, and also to
      send periodic traffic. This means we need to */
   INFO("Running in overlay mode.");
+
+  /* Make sure rhizome configured settings are known. */
+  if (rhizome_fetch_interval_ms < 1)
+    rhizome_configure();
 
   /* Get keyring available for use.
      Required for MDP, and very soon as a complete replacement for the
@@ -137,7 +142,7 @@ schedule(&_sched_##X);
   /* Pick next rhizome files to grab every few seconds
      from the priority list continuously being built from observed
      bundle announcements */
-  SCHEDULE(rhizome_enqueue_suggestions, 3000);
+  SCHEDULE(rhizome_enqueue_suggestions, rhizome_fetch_interval_ms);
 
   /* Periodically check for new interfaces */
   SCHEDULE(overlay_interface_discover, 1);

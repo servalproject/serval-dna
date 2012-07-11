@@ -21,6 +21,26 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include <stdlib.h>
 
+static int rhizome_enabled_flag = -1; // unknown
+int rhizome_fetch_interval_ms = -1;
+
+/* Configure rhizome.
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+int rhizome_configure()
+{
+  rhizome_enabled_flag = confValueGetBoolean("rhizome.enable", 1);
+  rhizome_fetch_interval_ms = (int) confValueGetInt64Range("rhizome.fetch_interval_ms", 3000, 1, 3600000);
+  return 0;
+}
+
+int rhizome_enabled()
+{
+  if (rhizome_enabled_flag < 0)
+    rhizome_configure();
+  return rhizome_enabled_flag;
+}
+
 /* Import a bundle from the inbox folder.  The bundle is contained a pair of files, one containing
    the manifest and the optional other containing the payload.
 

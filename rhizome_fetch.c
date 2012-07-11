@@ -529,7 +529,7 @@ void rhizome_enqueue_suggestions(struct sched_ent *alarm)
     bcopy(&candidates[i],&candidates[0],bytes);
     candidate_count-=i;
   }
-  alarm->alarm = overlay_gettime_ms() + 3000;
+  alarm->alarm = overlay_gettime_ms() + rhizome_fetch_interval_ms;
   schedule(alarm);
   return;
 }
@@ -721,7 +721,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
       }
       else
 	{
-	  if (1||debug&DEBUG_RHIZOMESYNC) 
+	  if (debug&DEBUG_RHIZOMESYNC) 
 	    DEBUGF("We already have the file for this manifest; importing from manifest alone.");
 	  if (create_rhizome_import_dir() == -1)
 	    return -1;

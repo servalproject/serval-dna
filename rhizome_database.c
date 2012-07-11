@@ -24,15 +24,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 long long rhizome_space=0;
 static const char *rhizome_thisdatastore_path = NULL;
-static int rhizome_enabled_flag = -1; // unknown
-#define SQLITE_CODE_OK(code) (code==SQLITE_OK || code==SQLITE_DONE)
 
-int rhizome_enabled()
-{
-  if (rhizome_enabled_flag < 0)
-    rhizome_enabled_flag = confValueGetBoolean("rhizome.enable", 1);
-  return rhizome_enabled_flag;
-}
+#define SQLITE_CODE_OK(code) (code==SQLITE_OK || code==SQLITE_DONE)
 
 const char *rhizome_datastore_path()
 {

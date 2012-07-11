@@ -127,6 +127,9 @@ typedef struct rhizome_manifest {
 #define     RHIZOME_SERVICE_MESHMS  "MeshMS1"
 
 extern long long rhizome_space;
+extern int rhizome_fetch_interval_ms;
+
+int rhizome_configure();
 
 int rhizome_set_datastore_path(const char *path);
 
