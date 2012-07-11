@@ -20,9 +20,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "strbuf.h"
 #include <ctype.h>
+#include <sys/time.h>
+#include <time.h>
 
 unsigned int debug = 0;
 static FILE *logfile = NULL;
+static int log_pid = 1;
+static int log_time = 1;
 
 /* The logbuf is used to accumulate log messages before the log file is open and ready for
    writing.
@@ -37,13 +41,16 @@ static struct strbuf logbuf = STRUCT_STRBUF_EMPTY;
 FILE *open_logging()
 {
   if (!logfile) {
+#ifndef ANDROID
+    log_pid = log_time = 0;
+#endif
     const char *logpath = getenv("SERVALD_LOG_FILE");
     if (!logpath) {
       // If the configuration is locked (eg, it called WHY() or DEBUG() while initialising, which
       // led back to here) then return NULL to indicate the message cannot be logged.
       if (confLocked())
 	return NULL;
-      logpath = confValueGet("logfile", NULL);
+      logpath = confValueGet("log.file", NULL);
     }
     if (!logpath) {
       logfile = stderr;
@@ -79,19 +86,35 @@ void logMessage(int level, const char *file, unsigned int line, const char *func
 void vlogMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, va_list ap)
 {
   if (level != LOG_LEVEL_SILENT) {
+#ifndef ANDROID
+    FILE *logf = open_logging();
+    const char *levelstr = "UNKWN:";
+    switch (level) {
+      case LOG_LEVEL_FATAL: levelstr = "FATAL:"; break;
+      case LOG_LEVEL_ERROR: levelstr = "ERROR:"; break;
+      case LOG_LEVEL_INFO:  levelstr = "INFO:"; break;
+      case LOG_LEVEL_WARN:  levelstr = "WARN:"; break;
+      case LOG_LEVEL_DEBUG: levelstr = "DEBUG:"; break;
+    }
+#endif
     if (strbuf_is_empty(&logbuf))
       strbuf_init(&logbuf, _log_buf, sizeof _log_buf);
-#ifndef ANDROID
-    const char *levelstr = "UNKNOWN";
-    switch (level) {
-      case LOG_LEVEL_FATAL: levelstr = "FATAL"; break;
-      case LOG_LEVEL_ERROR: levelstr = "ERROR"; break;
-      case LOG_LEVEL_INFO:  levelstr = "INFO"; break;
-      case LOG_LEVEL_WARN:  levelstr = "WARN"; break;
-      case LOG_LEVEL_DEBUG: levelstr = "DEBUG"; break;
+    strbuf_sprintf(&logbuf, "%-6s ", levelstr);
+    if (log_pid)
+      strbuf_sprintf(&logbuf, "[%5u] ", getpid());
+    if (log_time) {
+      struct timeval tv;
+      if (gettimeofday(&tv, NULL) == -1) {
+	strbuf_puts(&logbuf, "NOTIME______");
+      } else {
+	struct tm tm;
+	char buf[20];
+	if (strftime(buf, sizeof buf, "%T", localtime_r(&tv.tv_sec, &tm)) == 0)
+	  strbuf_puts(&logbuf, "EMPTYTIME___");
+	else
+	  strbuf_sprintf(&logbuf, "%s.%03u ", buf, tv.tv_usec / 1000);
+      }
     }
-    strbuf_sprintf(&logbuf, "%s: [%d] ", levelstr, getpid());
-#endif
     strbuf_sprintf(&logbuf, "%s:%u:%s()  ", file ? trimbuildpath(file) : "NULL", line, function ? function : "NULL");
     strbuf_vsprintf(&logbuf, fmt, ap);
     strbuf_puts(&logbuf, "\n");
@@ -107,9 +130,10 @@ void vlogMessage(int level, const char *file, unsigned int line, const char *fun
     __android_log_print(alevel, "servald", "%s", strbuf_str(&logbuf));
     strbuf_reset(&logbuf);
 #else
-    FILE *logf = open_logging();
     if (logf) {
       fputs(strbuf_str(&logbuf), logf);
+      if (strbuf_overrun(&logbuf))
+	fputs("OVERRUN\n", logf);
       strbuf_reset(&logbuf);
     }
 #endif
