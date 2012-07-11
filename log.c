@@ -214,26 +214,32 @@ unsigned int debugFlagMask(const char *flagname) {
   return 0;
 }
 
-char *toprint(char *dstPrint, const unsigned char *srcStr, size_t dstBytes)
+/* Format a buffer of data as a printable representation, eg: "Abc\x0b\n\0", for display
+   in log messages.
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+char *toprint(char *dstStr, size_t dstChars, const unsigned char *srcBuf, size_t srcBytes)
 {
-  strbuf b = strbuf_local(dstPrint, dstBytes);
+  strbuf b = strbuf_local(dstStr, dstChars);
   strbuf_putc(b, '"');
-  for (; *srcStr || !strbuf_overrun(b); ++srcStr) {
-    if (*srcStr == '\n')
+  for (; srcBytes && !strbuf_overrun(b); ++srcBuf, --srcBytes) {
+    if (*srcBuf == '\0')
+      strbuf_puts(b, "\\0");
+    else if (*srcBuf == '\n')
       strbuf_puts(b, "\\n");
-    else if (*srcStr == '\r')
+    else if (*srcBuf == '\r')
       strbuf_puts(b, "\\r");
-    else if (*srcStr == '\t')
+    else if (*srcBuf == '\t')
       strbuf_puts(b, "\\t");
-    else if (isprint(*srcStr))
-      strbuf_putc(b, *srcStr);
+    else if (isprint(*srcBuf))
+      strbuf_putc(b, *srcBuf);
     else
-      strbuf_sprintf(b, "\\x%02x", *srcStr);
+      strbuf_sprintf(b, "\\x%02x", *srcBuf);
   }
   strbuf_putc(b, '"');
   if (strbuf_overrun(b)) {
     strbuf_trunc(b, -4);
     strbuf_puts(b, "\"...");
   }
-  return dstPrint;
+  return dstStr;
 }

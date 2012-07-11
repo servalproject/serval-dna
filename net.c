@@ -52,12 +52,12 @@ int _write_all(int fd, const void *buf, size_t len, const char *file, unsigned i
   ssize_t written = write(fd, buf, len);
   if (written == -1) {
     logMessage_perror(LOG_LEVEL_ERROR, file, line, function, "write_all: write(%d,%p %s,%lu)",
-	fd, buf, alloca_toprint(buf, 30), (unsigned long)len);
+	fd, buf, alloca_toprint(30, buf, len), (unsigned long)len);
     return -1;
   }
   if (written != len) {
     logMessage(LOG_LEVEL_ERROR, file, line, function, "write_all: write(%d,%p %s,%lu) returned %ld",
-	fd, buf, alloca_toprint(buf, 30), (unsigned long)len, (long)written);
+	fd, buf, alloca_toprint(30, buf, len), (unsigned long)len, (long)written);
     return -1;
   }
   return written;
@@ -73,7 +73,7 @@ int _write_nonblock(int fd, const void *buf, size_t len, const char *file, unsig
 	return 0;
     }
     logMessage_perror(LOG_LEVEL_ERROR, file, line, function, "write_nonblock: write(%d,%p %s,%lu)",
-	fd, buf, alloca_toprint(buf, 30), (unsigned long)len);
+	fd, buf, alloca_toprint(30, buf, len), (unsigned long)len);
     return -1;
   }
   return written;
@@ -84,7 +84,7 @@ int _write_all_nonblock(int fd, const void *buf, size_t len, const char *file, u
   ssize_t written = _write_nonblock(fd, buf, len, file, line, function);
   if (written != -1 && written != len) {
     logMessage(LOG_LEVEL_ERROR, file, line, function, "write_all_nonblock: write(%d,%p %s,%lu) returned %ld",
-	fd, buf, alloca_toprint(buf, 30), (unsigned long)len, (long)written);
+	fd, buf, alloca_toprint(30, buf, len), (unsigned long)len, (long)written);
     return -1;
   }
   return written;
