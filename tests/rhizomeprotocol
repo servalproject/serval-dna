@@ -49,7 +49,21 @@ configure_servald_server() {
    executeOk_servald config set rhizome.fetch_interval_ms 100
 }
 
-doc_FileTransferNew="Initial list is empty"
+# Predicate function:
+#  - return true if the file bundle identified by $BID and $VERSION has been
+#    received by all the given instances
+#  - does this by examining the server log files of the respective instances
+#    for tell-tale INFO messages
+bundle_received_by() {
+   local I
+   for I; do
+      logvar="LOG${I#+}"
+      grep "RHIZOME ADD MANIFEST service=file bid=$BID version=$VERSION" "${!logvar}" || return 1
+   done
+   return 0
+}
+
+doc_FileTransferNew="One new bundle single transfer"
 setup_FileTransferNew() {
    setup_servald
    setup_rhizome
@@ -63,9 +77,31 @@ setup_FileTransferNew() {
    set_instance +B
 }
 test_FileTransferNew() {
-   wait_until grep "RHIZOME ADD MANIFEST service=file bid=$BID version=$VERSION" "$LOGB"
+   wait_until bundle_received_by +B
    executeOk_servald rhizome list ''
    assert_rhizome_list file1!
+}
+
+doc_FileMultiTransferNew="One new bundle multi transfer"
+setup_FileMultiTransferNew() {
+   setup_servald
+   setup_rhizome
+   assert_no_servald_processes
+   start_servald_instances +A +B +C +D +E
+   echo 'File one' >file1
+   set_instance +A
+   executeOk_servald rhizome add file '' '' file1 file1.manifest
+   extract_manifest_id BID file1.manifest
+   extract_manifest_version VERSION file1.manifest
+}
+test_FileMultiTransferNew() {
+   wait_until bundle_received_by +B +C +D +E
+   local I
+   for I in +B +C +D +E; do
+      set_instance $I
+      executeOk_servald rhizome list ''
+      assert_rhizome_list file1!
+   done
 }
 
 runTests "$@"
