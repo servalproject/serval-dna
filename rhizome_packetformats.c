@@ -335,14 +335,14 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
   int ofs=0;
   int ad_frame_type=f->payload->bytes[ofs++];
   struct sockaddr_in httpaddr = *(struct sockaddr_in *)f->recvaddr;
-  httpaddr.sin_port = RHIZOME_HTTP_PORT;
+  httpaddr.sin_port = htons(RHIZOME_HTTP_PORT);
   int manifest_length;
   rhizome_manifest *m=NULL;
 
   switch (ad_frame_type) {
     case 3:
       /* The same as type=1, but includes the source HTTP port number */
-      httpaddr.sin_port = (f->payload->bytes[ofs] << 8) + f->payload->bytes[ofs + 1];
+      httpaddr.sin_port = htons((f->payload->bytes[ofs] << 8) + f->payload->bytes[ofs + 1]);
       ofs += 2;
       // FALL THROUGH ...
     case 1:

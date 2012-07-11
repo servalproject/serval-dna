@@ -270,7 +270,6 @@ void rhizome_client_poll(struct sched_ent *alarm)
 
 void rhizome_server_poll(struct sched_ent *alarm)
 {
-  if (debug & DEBUG_RHIZOMESYNC) D;
   struct sockaddr addr;
   unsigned int addr_len = sizeof addr;
   int sock;

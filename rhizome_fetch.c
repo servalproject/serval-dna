@@ -598,7 +598,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 
   long long filesize = rhizome_manifest_get_ll(m, "filesize");
 
-  if (1||debug&DEBUG_RHIZOMESYNC) 
+  if (debug & DEBUG_RHIZOMESYNC) 
     DEBUGF("Getting ready to fetch file %s for manifest %s", m->fileHexHash, id);
 
   if (filesize > 0 && m->fileHexHash[0])
@@ -642,32 +642,38 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	      close(sock);
 	      return -1;
 	    }
+	    struct sockaddr_in addr = *peerip;
+	    addr.sin_family = AF_INET;
 	    INFOF("HTTP CONNECT family=%u port=%u addr=%u.%u.%u.%u",
-		peerip->sin_family, peerip->sin_port,
-		((unsigned char*)&peerip->sin_addr.s_addr)[0],
-		((unsigned char*)&peerip->sin_addr.s_addr)[1],
-		((unsigned char*)&peerip->sin_addr.s_addr)[2],
-		((unsigned char*)&peerip->sin_addr.s_addr)[3]
+		addr.sin_family, ntohs(addr.sin_port),
+		((unsigned char*)&addr.sin_addr.s_addr)[0],
+		((unsigned char*)&addr.sin_addr.s_addr)[1],
+		((unsigned char*)&addr.sin_addr.s_addr)[2],
+		((unsigned char*)&addr.sin_addr.s_addr)[3]
 	      );
-	    if (connect(sock, (struct sockaddr*)peerip, sizeof *peerip) == -1 && errno != EINPROGRESS) {
-	      WHY_perror("connect");
-	      WHY("Failed to open socket to peer's rhizome web server");
-	      close(sock);
-	      return -1;
+	    if (connect(sock, (struct sockaddr*)&addr, sizeof addr) == -1) {
+	      if (errno == EINPROGRESS) {
+		if (debug & DEBUG_RHIZOMESYNC)
+		  DEBUGF("connect() returned EINPROGRESS");
+	      } else {
+		WHY_perror("connect");
+		WHY("Failed to open socket to peer's rhizome web server");
+		close(sock);
+		return -1;
+	      }
 	    }
 	    rhizome_file_fetch_record *q=&file_fetch_queue[rhizome_file_fetch_queue_count];
 	    q->manifest = m;
 	    *manifest_kept = 1;
 	    q->alarm.poll.fd=sock;
 	    strncpy(q->fileid, m->fileHexHash, RHIZOME_FILEHASH_STRLEN + 1);
-	    snprintf(q->request,1024,"GET /rhizome/file/%s HTTP/1.0\r\n\r\n",
-		     q->fileid);
+	    snprintf(q->request,1024,"GET /rhizome/file/%s HTTP/1.0\r\n\r\n", q->fileid);
 	    q->request_len=strlen(q->request);
 	    q->request_ofs=0;
 	    q->state=RHIZOME_FETCH_CONNECTING;
 	    q->file_len=-1;
 	    q->file_ofs=0;
-	    
+
 	    /* XXX Don't forget to implement resume */
 	    /* XXX We should stream file straight into the database */
 	    const char *id = rhizome_manifest_get(q->manifest, "id", NULL, 0);
