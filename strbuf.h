@@ -318,21 +318,26 @@ char *strbuf_substr(const_strbuf sb, int offset);
  * and the string's length truncated accordingly.  Return a pointer to the
  * strbuf so that operations can be chained in a single line.
  *
- * After the operation:
+ * After the operations:
+ *      count = strbuf_count(sb);
  *      len = strbuf_len(sb);
  *      strbuf_trunc(sb, off);
  * the following invariants hold:
- * where len <= off, sb is unchanged;
- * where 0 <= off < len:
+ *  if count <= off, sb is unchanged:
+ *      strbuf_count(sb) == count
+ *      strbuf_len(sb) == len
+ *  if len <= off < count:
+ *      strbuf_count(sb) == off
+ *      strbuf_len(sb) == len
+ *  if 0 <= off < len:
  *      strbuf_count(sb) == off
  *      strbuf_len(sb) == off
- * where -len <= off < 0:
+ *  if -len <= off < 0:
  *      strbuf_count(sb) == len + off
  *      strbuf_len(sb) == len + off
- * where off < -len:
+ *  if off < -len:
  *      strbuf_count(sb) == 0
  *      strbuf_len(sb) == 0
- *      strbuf_str(sb)[0] == '\0'
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
