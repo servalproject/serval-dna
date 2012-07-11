@@ -122,6 +122,7 @@ runTests() {
    _tfw_verbose=false
    _tfw_stop_on_error=false
    _tfw_stop_on_failure=false
+   _tfw_default_timeout=60
    local allargs="$*"
    local -a filters=()
    local njobs=1
@@ -412,6 +413,29 @@ executeOk() {
    _tfw_dump_on_fail --stderr
    shift $_tfw_getopts_shift
    _tfw_execute "$@"
+}
+
+# Wait until a given condition is met:
+#  - can specify the timeout with --timeout=SECONDS
+#  - can specify the sleep interval with --sleep=SECONDS
+#  - the condition is a command that is executed repeatedly until returns zero
+#    status 
+# where SECONDS may be fractional, eg, 1.5
+wait_until() {
+   tfw_log "# wait_until" $(_tfw_shellarg "$@")
+   local start=$SECONDS
+   _tfw_getopts wait_until "$@"
+   shift $_tfw_getopts_shift
+   sleep ${_tfw_opt_timeout:-$_tfw_default_timeout} &
+   local timeout_pid=$!
+   while true; do
+      "$@" && break
+      kill -0 $timeout_pid 2>/dev/null || fail "timeout"
+      sleep ${_tfw_opt_sleep:-1}
+   done
+   local end=$SECONDS
+   tfw_log "# waited for" $((end - start)) "seconds"
+   return 0
 }
 
 # Executes its arguments as a command in the current shell process (not in a
@@ -767,23 +791,31 @@ _tfw_getopts() {
    _tfw_opt_dump_on_fail=()
    _tfw_opt_error_on_fail=false
    _tfw_opt_exit_status=
+   _tfw_opt_timeout=
+   _tfw_opt_sleep=
    _tfw_opt_matches=
    _tfw_opt_line=
    _tfw_getopts_shift=0
+   _tfw_shopt -s extglob
    while [ $# -ne 0 ]; do
       case "$context:$1" in
       *:--stdout) _tfw_dump_on_fail --stdout;;
       *:--stderr) _tfw_dump_on_fail --stderr;;
       assert*:--dump-on-fail=*) _tfw_dump_on_fail "${1#*=}";;
-      execute:--exit-status=*) _tfw_opt_exit_status="${1#*=}";;
-      execute*:--executable=*)
-         _tfw_executable="${1#*=}"
-         [ -z "$_tfw_executable" ] && _tfw_error "missing value: $1"
-         ;;
+      execute:--exit-status=+([0-9])) _tfw_opt_exit_status="${1#*=}";;
+      execute:--exit-status=*) _tfw_error "invalid value: $1";;
+      execute*:--executable=) _tfw_error "missing value: $1";;
+      execute*:--executable=*) _tfw_executable="${1#*=}";;
+      wait_until:--timeout=@(+([0-9])?(.+([0-9]))|*([0-9]).+([0-9]))) _tfw_opt_timeout="${1#*=}";;
+      wait_until:--timeout=*) _tfw_error "invalid value: $1";;
+      wait_until:--sleep=@(+([0-9])?(.+([0-9]))|*([0-9]).+([0-9]))) _tfw_opt_sleep="${1#*=}";;
+      wait_until:--sleep=*) _tfw_error "invalid value: $1";;
       assert*:--error-on-fail) _tfw_opt_error_on_fail=true;;
       assert*:--message=*) _tfw_message="${1#*=}";;
-      assertgrep:--matches=*) _tfw_opt_matches="${1#*=}";;
-      assertfilecontent:--line=*) _tfw_opt_line="${1#*=}";;
+      assertgrep:--matches=+([0-9])) _tfw_opt_matches="${1#*=}";;
+      assertgrep:--matches=*) _tfw_error "invalid value: $1";; 
+      assertfilecontent:--line=+([0-9])) _tfw_opt_line="${1#*=}";;
+      assertfilecontent:--line=*) _tfw_error "invalid value: $1";; 
       *:--) let _tfw_getopts_shift=_tfw_getopts_shift+1; shift; break;;
       *:--*) _tfw_error "unsupported option: $1";;
       *) break;;
@@ -801,6 +833,8 @@ _tfw_getopts() {
       [ -z "$_tfw_executable" ] && _tfw_error "missing executable argument"
       ;;
    esac
+   _tfw_shopt_restore
+   return 0
 }
 
 _tfw_expr_to_awkexpr() {
@@ -850,22 +884,10 @@ _tfw_assert_stdxxx_is() {
       _tfw_error "incorrect arguments"
       return 254
    fi
-   _tfw_shopt -s extglob
    case "$_tfw_opt_line" in
-   +([0-9]))
-      sed -n -e "${_tfw_opt_line}p" "$_tfw_tmp/$qual" >"$_tfw_tmp/content"
-      ;;
-   '')
-      ln -f "$_tfw_tmp/$qual" "$_tfw_tmp/content"
-      ;;
-   *)
-      _tfw_error "unsupported value for --line=$_tfw_opt_line"
-      _tfw_backtrace
-      _tfw_shopt_restore
-      return 254
-      ;;
+   '') ln -f "$_tfw_tmp/$qual" "$_tfw_tmp/content";;
+   *) sed -n -e "${_tfw_opt_line}p" "$_tfw_tmp/$qual" >"$_tfw_tmp/content";;
    esac
-   _tfw_shopt_restore
    local message="${_tfw_message:-${_tfw_opt_line:+line $_tfw_opt_line of }$qual of ($executed) is $*}"
    echo -n "$@" >$_tfw_tmp/stdxxx_is.tmp
    if ! cmp --quiet $_tfw_tmp/stdxxx_is.tmp "$_tfw_tmp/content"; then
