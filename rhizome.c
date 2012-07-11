@@ -341,8 +341,13 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
   if (rhizome_store_bundle(m_in) == -1)
     return WHY("rhizome_store_bundle() failed.");
 
-  DEBUGF("Announcing arrival of manifest %s* version %lld",
-       alloca_tohex(m_in->cryptoSignPublic, 8), m_in->version);
+  // This message used in tests; do not modify or remove.
+  const char *service = rhizome_manifest_get(m_in, "service", NULL, 0);
+  INFOF("RHIZOME ADD MANIFEST service=%s bid=%s version=%lld",
+      service ? service : "NULL",
+      alloca_tohex_sid(m_in->cryptoSignPublic),
+      m_in->version
+    );
   monitor_announce_bundle(m_in);
   return 0;
 }
