@@ -25,8 +25,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 unsigned int debug = 0;
 static FILE *logfile = NULL;
-static int log_pid = 1;
-static int log_time = 1;
+static int flag_show_pid = -1;
+static int flag_show_time = -1;
 
 /* The logbuf is used to accumulate log messages before the log file is open and ready for
    writing.
@@ -41,9 +41,6 @@ static struct strbuf logbuf = STRUCT_STRBUF_EMPTY;
 FILE *open_logging()
 {
   if (!logfile) {
-#ifdef ANDROID
-    log_pid = log_time = 0;
-#endif
     const char *logpath = getenv("SERVALD_LOG_FILE");
     if (!logpath) {
       // If the configuration is locked (eg, it called WHY() or DEBUG() while initialising, which
@@ -65,6 +62,20 @@ FILE *open_logging()
     }
   }
   return logfile;
+}
+
+static int show_pid()
+{
+  if (flag_show_pid < 0 && !confLocked())
+    flag_show_pid = confValueGetBoolean("log.show_pid", 0);
+  return flag_show_pid;
+}
+
+static int show_time()
+{
+  if (flag_show_time < 0 && !confLocked())
+    flag_show_time = confValueGetBoolean("log.show_time", 0);
+  return flag_show_time;
 }
 
 void close_logging()
@@ -89,7 +100,6 @@ void vlogMessage(int level, const char *file, unsigned int line, const char *fun
     if (strbuf_is_empty(&logbuf))
       strbuf_init(&logbuf, _log_buf, sizeof _log_buf);
 #ifndef ANDROID
-    FILE *logf = open_logging();
     const char *levelstr = "UNKWN:";
     switch (level) {
       case LOG_LEVEL_FATAL: levelstr = "FATAL:"; break;
@@ -100,9 +110,9 @@ void vlogMessage(int level, const char *file, unsigned int line, const char *fun
     }
     strbuf_sprintf(&logbuf, "%-6s ", levelstr);
 #endif
-    if (log_pid)
+    if (show_pid())
       strbuf_sprintf(&logbuf, "[%5u] ", getpid());
-    if (log_time) {
+    if (show_time()) {
       struct timeval tv;
       if (gettimeofday(&tv, NULL) == -1) {
 	strbuf_puts(&logbuf, "NOTIME______");
@@ -130,6 +140,7 @@ void vlogMessage(int level, const char *file, unsigned int line, const char *fun
     __android_log_print(alevel, "servald", "%s", strbuf_str(&logbuf));
     strbuf_reset(&logbuf);
 #else
+    FILE *logf = open_logging();
     if (logf) {
       fputs(strbuf_str(&logbuf), logf);
       if (strbuf_overrun(&logbuf))
