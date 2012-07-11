@@ -60,7 +60,7 @@ test_FileTransferNew() {
    sleep 10
    set_instance +B
    executeOk_servald rhizome list ''
-   assert_rhizome_list file1
+   assert_rhizome_list file1!
 }
 
 runTests "$@"
