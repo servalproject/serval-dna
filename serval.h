@@ -643,6 +643,12 @@ typedef struct overlay_txqueue {
   int length; /* # frames in queue */
   int maxLength; /* max # frames in queue before we consider ourselves congested */
   
+  /* wait until first->enqueued_at+transmit_delay before trying to force the transmission of a packet */
+  int transmit_delay;
+  
+  /* if servald is busy, wait this long before trying to force the transmission of a packet */
+  int grace_period;
+  
   /* Latency target in ms for this traffic class.
    Frames older than the latency target will get dropped. */
   int latencyTarget;
@@ -864,7 +870,8 @@ int overlay_sendto(struct sockaddr_in *recipientaddr,unsigned char *bytes,int le
 int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e);
 int overlay_add_local_identity(unsigned char *s);
 int overlay_address_is_local(unsigned char *s);
-void overlay_send_packet();
+void overlay_update_queue_schedule(overlay_txqueue *queue, overlay_frame *frame);
+void overlay_send_packet(struct sched_ent *alarm);
 
 extern int overlay_interface_count;
 

@@ -51,6 +51,9 @@ struct outgoing_packet{
   overlay_buffer *buffer;
 };
 
+struct sched_ent next_packet;
+struct profile_total send_packet;
+
 int overlay_tick_interface(int i, long long now);
 
 unsigned char magic_header[]={/* Magic */ 'O',0x10,
@@ -753,6 +756,37 @@ void overlay_init_packet(struct outgoing_packet *packet, int interface){
   ob_append_bytes(packet->buffer,magic_header,4);
 }
 
+// update the alarm time and return 1 if changed
+int overlay_calc_queue_time(overlay_txqueue *queue, overlay_frame *frame){
+  int ret=0;
+  long long int send_time;
+  
+  if (frame->nexthop_address_status==OA_UNINITIALISED)
+    overlay_resolve_next_hop(frame);
+  if (frame->nexthop_address_status!=OA_RESOLVED)
+    return 0;
+  
+  // when is the next packet from this queue due?
+  send_time=queue->first->enqueued_at + queue->transmit_delay;
+  if (next_packet.alarm==0 || send_time < next_packet.alarm){
+    next_packet.alarm=send_time;
+    ret = 1;
+  }
+  
+  // how long can we wait if the server is busy?
+  send_time += queue->grace_period;
+  if (next_packet.deadline==0 || send_time < next_packet.deadline){
+    next_packet.deadline=send_time;
+    ret = 1;
+  }
+  if (!next_packet.function){
+    next_packet.function=overlay_send_packet;
+    send_packet.name="overlay_send_packet";
+    next_packet.stats=&send_packet;
+  }
+  return ret;
+}
+
 void overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, long long now){
   overlay_frame *frame = queue->first;
   
@@ -838,6 +872,8 @@ void overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue
     }
     
   skip:
+    // if we can't send the payload now, check when we should try
+    overlay_calc_queue_time(queue, frame);
     frame = frame->next;
   }
 }
@@ -846,12 +882,19 @@ void overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue
 int overlay_fill_send_packet(struct outgoing_packet *packet, long long now){
   int i;
   IN();
+  // while we're looking at queues, work out when to schedule another packet
+  unschedule(&next_packet);
+  next_packet.alarm=0;
+  next_packet.deadline=0;
   
   for (i=0;i<OQ_MAX;i++){
     overlay_txqueue *queue=&overlay_tx[i];
     
     overlay_stuff_packet(packet, queue, now);
   }
+  
+  if (next_packet.alarm)
+    schedule(&next_packet);
   
   if(packet->buffer){
     // send the packet
@@ -870,11 +913,21 @@ int overlay_fill_send_packet(struct outgoing_packet *packet, long long now){
   RETURN(0);
 }
 
-void overlay_send_packet(){
+// when the queue timer elapses, send a packet
+void overlay_send_packet(struct sched_ent *alarm){
   struct outgoing_packet packet;
   bzero(&packet, sizeof(struct outgoing_packet));
   
   overlay_fill_send_packet(&packet, overlay_gettime_ms());
+}
+
+// update time for next alarm and reschedule
+void overlay_update_queue_schedule(overlay_txqueue *queue, overlay_frame *frame){
+  if (overlay_calc_queue_time(queue, frame)){
+    unschedule(&next_packet);
+    DEBUGF("Scheduled next packet in %dms", next_packet.alarm - overlay_gettime_ms());
+    schedule(&next_packet);
+  }
 }
 
 int overlay_tick_interface(int i, long long now)

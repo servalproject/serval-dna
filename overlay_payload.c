@@ -280,11 +280,13 @@ int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP)
   if (!overlay_tx[q].first) overlay_tx[q].first=p;
   overlay_tx[q].length++;
 
+  overlay_update_queue_schedule(&overlay_tx[q], p);
+  
   if (0) dump_queue("after",q);
 
   if (q==OQ_ISOCHRONOUS_VOICE&&(!forceBroadcastP)) {
     // Send a packet now
-    overlay_send_packet();
+    overlay_send_packet(NULL);
   }
   
   return 0;
