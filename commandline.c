@@ -761,7 +761,7 @@ int app_server_status(int argc, const char *const *argv, struct command_line_opt
 int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *o)
 {
   const char *sid;
-  if (cli_arg(argc, argv, o, "SID|broadcast", &sid, validateSid, "broadcast") == -1)
+  if (cli_arg(argc, argv, o, "SID|broadcast", &sid, str_is_subscriber_id, "broadcast") == -1)
     return -1;
 
   overlay_mdp_frame mdp;
@@ -961,7 +961,7 @@ int app_rhizome_hash_file(int argc, const char *const *argv, struct command_line
 
 int cli_optional_sid(const char *arg)
 {
-  return !arg[0] || validateSid(arg);
+  return !arg[0] || str_is_subscriber_id(arg);
 }
 
 int cli_optional_bundle_key(const char *arg)

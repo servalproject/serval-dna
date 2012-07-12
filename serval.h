@@ -685,7 +685,9 @@ int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t bytes);
 int hexvalue(char c);
 char *str_toupper_inplace(char *s);
 
-int validateSid(const char *sid);
+int str_is_subscriber_id(const char *sid);
+int strn_is_subscriber_id(const char *sid, size_t *lenp);
+
 int stowSid(unsigned char *packet, int ofs, const char *sid);
 int stowDid(unsigned char *packet,int *ofs,char *did);
 int isFieldZeroP(unsigned char *packet,int start,int count);

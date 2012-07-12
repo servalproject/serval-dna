@@ -97,6 +97,26 @@ int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary)
   return (fromhex(dstBinary, srcHex, nbinary) == nbinary && srcHex[nbinary * 2] == '\0') ? 0 : -1;
 }
 
+int str_is_subscriber_id(const char *sid)
+{
+  return strcasecmp(sid, "broadcast") == 0 || _is_xstring(sid, SID_STRLEN);
+}
+
+int strn_is_subscriber_id(const char *sid, size_t *lenp)
+{
+  if (strncasecmp(sid, "broadcast", 9) == 0) {
+    if (lenp)
+      *lenp = 9;
+    return 1;
+  }
+  if (_is_xsubstring(sid, SID_STRLEN)) {
+    if (lenp)
+      *lenp = SID_STRLEN;
+    return 1;
+  }
+  return 0;
+}
+
 int rhizome_strn_is_manifest_id(const char *id)
 {
   return _is_xsubstring(id, RHIZOME_MANIFEST_ID_STRLEN);
@@ -212,32 +232,6 @@ int extractSid(const unsigned char *packet, int *ofs, char *sid)
   (void) tohex(sid, packet + *ofs, SID_SIZE);
   *ofs += SID_SIZE;
   return 0;
-}
-
-int validateSid(const char *sid)
-{
-  if (!sid) {
-    WHY("invalid SID == NULL");
-    return 0;
-  }
-  if (strcasecmp(sid, "broadcast") == 0)
-    return 1;
-  const char *s = sid;
-  const char *e = sid + SID_STRLEN;
-  while (s != e && isxdigit(*s))
-    ++s;
-  if (s != e) {
-    if (*s)
-      WHYF("invalid SID, contains non-hex character 0x%02x at offset %d", *s, s - sid);
-    else
-      WHYF("invalid SID, too short (strlen %d)", s - sid);
-    return 0;
-  }
-  if (*s) {
-    WHYF("invalid SID, too long");
-    return 0;
-  }
-  return 1;
 }
 
 int stowSid(unsigned char *packet, int ofs, const char *sid)
