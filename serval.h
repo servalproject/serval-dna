@@ -967,6 +967,9 @@ int overlay_abbreviate_clear_most_recent_address();
 #define RFS_PLUS1018 0xfd
 #define RFS_PLUS1274 0xfe
 #define RFS_3BYTE 0xff
+
+#define COMPUTE_RFS_LENGTH -1
+
 int rfs_length(int l);
 int rfs_encode(int l,unsigned char *b);
 int rfs_decode(unsigned char *b,int *offset);

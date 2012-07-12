@@ -94,9 +94,8 @@ int overlay_route_add_advertisements(overlay_buffer *e)
   if (ob_append_byte(e,OF_TYPE_NODEANNOUNCE))
     return WHY("could not add node advertisement header");
   ob_append_byte(e,1); /* TTL */
-  int rfs_offset=e->length; /* remember where the RFS byte gets stored 
-			       so that we can patch it later */
-  ob_append_byte(e,1+8+1+1+8*slots_used/* RFS */);
+  
+  ob_append_rfs(e,1+8+1+1+8*slots_used);
 
   /* Stuff in dummy address fields */
   ob_append_byte(e,OA_CODE_BROADCAST);
@@ -159,7 +158,7 @@ int overlay_route_add_advertisements(overlay_buffer *e)
       if (oad_bin==bin&&oad_slot==slot) break;
     }
   
-  ob_setbyte(e,rfs_offset,1+8+1+1+8*slots_used);
+  ob_patch_rfs(e,COMPUTE_RFS_LENGTH);
 
   return 0;
 }

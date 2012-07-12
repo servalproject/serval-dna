@@ -109,9 +109,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
     RETURN(WHY("could not add rhizome bundle advertisement header"));
   ob_append_byte(e, 1); /* TTL (1 byte) */
 
-  int rfs_offset=e->length; /* remember where the RFS byte gets stored 
-			       so that we can patch it later */
-  ob_append_byte(e,1+11+1+2+RHIZOME_BAR_BYTES*slots_used/* RFS */);
+  ob_append_rfs(e,1+11+1+2+RHIZOME_BAR_BYTES*slots_used/* RFS */);
 
   /* Stuff in dummy address fields (11 bytes) */
   ob_append_byte(e,OA_CODE_BROADCAST);
@@ -311,18 +309,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
   if (statement) sqlite3_finalize(statement); statement=NULL;
   
   if (0&&debug&DEBUG_RHIZOME) DEBUGF("Appended %d rhizome advertisements to packet using %d bytes.",bundles_advertised,bytes_used);
-  int rfs_value=1+11+1+2+bytes_used;
-  if (rfs_value<0xfa)
-    ob_setbyte(e,rfs_offset,rfs_value);
-  else
-    {
-      ob_makespace(e,1);
-      ob_bcopy(e,rfs_offset,rfs_offset+1,
-	    e->length-rfs_offset);
-      ob_setbyte(e,rfs_offset,0xfa+(rfs_value-250)/256);
-      ob_setbyte(e,rfs_offset+1,(rfs_value-250)&0xff);
-      e->length++;
-    }
+  ob_patch_rfs(e, COMPUTE_RFS_LENGTH);
   
   RETURN(0);
 }

@@ -174,6 +174,9 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 	break;
       }
 
+      if (f.rfs > len - ofs)
+	return WHYF("Payload length %d is too long for the remaining packet buffer %d", f.rfs, len - ofs);
+      
       /* Now extract the next hop address */
       int alen=0;
       int offset=ofs;
@@ -196,11 +199,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       }
 
       /* Finally process the frame */
-      long long now=overlay_gettime_ms();
       overlay_frame_process(interface,&f);
-      long long elapsed=overlay_gettime_ms()-now;
-      if (0) INFOF("overlay_frame_process (type=%d, len=%d) took %lldms",
-		   f.type,f.bytecount,elapsed);
       
       /* Skip the rest of the bytes in this frame so that we can examine the next one in this
 	 ensemble */
@@ -284,7 +283,7 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
   
   /* Add space for Remaining Frame Size field.  This will always be a single byte
      for self-announcments as they are always <256 bytes. */
-  if (ob_append_byte(b,1+8+1+(send_prefix?(1+7):SID_SIZE)+4+4+1))
+  if (ob_append_rfs(b,1+8+1+(send_prefix?(1+7):SID_SIZE)+4+4+1))
     return WHY("Could not add RFS for self-announcement frame");
 
   /* Add next-hop address.  Always link-local broadcast for self-announcements */
@@ -335,6 +334,8 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
   if (ob_append_byte(b,interface))
     return WHY("Could not add interface number to self-announcement");
 
+  ob_patch_rfs(b, COMPUTE_RFS_LENGTH);
+  
   return 0;
 }
 

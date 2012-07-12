@@ -215,7 +215,7 @@ int ob_append_rfs(overlay_buffer *b,int l)
   if (l<0||l>0xffff) return -1;
 
   /* First work out how long the field needs to be, then write dummy bytes
-     and use ob_patch_length to set the value.  That way we have only one
+     and use ob_patch_rfs to set the value.  That way we have only one
      lot of code that does the encoding. */
 
   b->var_length_offset=b->length;
@@ -287,6 +287,10 @@ int ob_indel_space(overlay_buffer *b,int offset,int shift)
 
 int ob_patch_rfs(overlay_buffer *b,int l)
 {
+  if (l==COMPUTE_RFS_LENGTH){
+    // assume the payload has been written, we can now calculate the actual length
+    l = b->length - (b->var_length_offset + b->var_length_bytes);
+  }
   if (l<0||l>0xffff) return -1;
 
   /* Adjust size of field */
