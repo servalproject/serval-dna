@@ -108,73 +108,181 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
   m->manifest_all_bytes=m->manifest_bytes;
 
   /* Parse out variables, signature etc */
-  int ofs=0;
-  while((ofs<m->manifest_bytes)&&(m->manifestdata[ofs]))
-    {
-      int i;
-      char line[1024],var[1024],value[1024];
-      while((ofs<m->manifest_bytes)&&
-	    (m->manifestdata[ofs]==0x0a||
-	     m->manifestdata[ofs]==0x09||
-	     m->manifestdata[ofs]==0x20||
-	     m->manifestdata[ofs]==0x0d)) ofs++;
-      for(i=0;(i<(m->manifest_bytes-ofs))
-	    &&(i<1023)
-	    &&(m->manifestdata[ofs+i]!=0x00)
-	    &&(m->manifestdata[ofs+i]!=0x0d)
-	    &&(m->manifestdata[ofs+i]!=0x0a);i++)
-	    line[i]=m->manifestdata[ofs+i];
-      ofs+=i;
-      line[i]=0;
-      /* Ignore blank lines */
-      if (line[0]==0) continue;
-      /* Ignore comment lines */
-      if (line[0] == '#' || line[0] == '!') continue;
-      /* Parse property lines */
-      /* This could be improved to parse Java's Properties.store() output, by handling backlash
-         escapes and continuation lines */
-      if (sscanf(line,"%[^=]=%[^\n\r]", var, value)==2) {
-	if (rhizome_manifest_get(m,var,NULL,0)) {
-	  WARNF("Ill formed manifest file, duplicate variable \"%s\"-- keeping first value)", var);
-	  m->errors++;
-	} else if (m->var_count<MAX_MANIFEST_VARS) {
-	  /*`
-	  if (debug & DEBUG_RHIZOME) {
-	    char buf[80];
-	    DEBUGF("read manifest line: %s=%s", var, catv(value, buf, sizeof buf));
-	  }
-	  */
-	  m->vars[m->var_count] = strdup(var);
-	  m->values[m->var_count] = strdup(value);
-	  if (strcasecmp(var,"id") == 0) {
-	    str_toupper_inplace(m->values[m->var_count]);
-	    /* Parse hex string of ID into public key, and force to upper case. */
-	    if (fromhexstr(m->cryptoSignPublic, value, RHIZOME_MANIFEST_ID_BYTES) == -1) {
-	      WARNF("Invalid manifest id: %s", value);
-	      m->errors++;
-	    }
-	  } else if (strcasecmp(var,"filehash") == 0 || strcasecmp(var,"BK") == 0) {
+  int have_service = 0;
+  int have_id = 0;
+  int have_version = 0;
+  int have_date = 0;
+  int have_filesize = 0;
+  int have_filehash = 0;
+  int ofs = 0;
+  while (ofs < m->manifest_bytes && m->manifestdata[ofs]) {
+    char line[1024];
+    int limit = ofs + sizeof line - 1;
+    if (limit > m->manifest_bytes)
+      limit = m->manifest_bytes;
+    char *p = line;
+    while (ofs < limit && !(m->manifestdata[ofs] == '\0' || m->manifestdata[ofs] == '\n' || m->manifestdata[ofs] == '\r'))
+	  *p++ = m->manifestdata[ofs++];
+    *p = '\0';
+    if (m->manifestdata[ofs] == '\r')
+      ++ofs;
+    if (m->manifestdata[ofs] == '\n')
+      ++ofs;
+    /* Ignore blank lines */
+    if (line[0] == '\0')
+      continue;
+    /* Ignore comment lines */
+    if (line[0] == '#' || line[0] == '!')
+      continue;
+    /* Parse field=value lines */
+    size_t linelen = p - line;
+    p = strchr(line, '=');
+    if (p == NULL || p == line) {
+      m->errors++;
+      WARNF(bufferP ? "Malformed manifest line in buffer %p: %s"
+		    : "Malformed manifest line in file %s: %s",
+	  filename, alloca_toprint(80, (unsigned char *)line, linelen));
+    } else {
+      *p++ = '\0';
+      char *var = line;
+      char *value = p;
+      if (rhizome_manifest_get(m, var, NULL, 0)) {
+	WARNF("Ill formed manifest file, duplicate variable \"%s\"", var);
+	m->errors++;
+      } else if (m->var_count >= MAX_MANIFEST_VARS) {
+	WARN("Ill formed manifest file, too many variables");
+	m->errors++;
+      } else {
+	m->vars[m->var_count] = strdup(var);
+	m->values[m->var_count] = strdup(value);
+	if (strcasecmp(var, "id") == 0) {
+	  have_id = 1;
+	  if (fromhexstr(m->cryptoSignPublic, value, RHIZOME_MANIFEST_ID_BYTES) == -1) {
+	    WARNF("Invalid manifest id: %s", value);
+	    m->errors++;
+	  } else {
 	    /* Force to upper case to avoid case sensitive comparison problems later. */
 	    str_toupper_inplace(m->values[m->var_count]);
 	  }
-	  m->var_count++;
+	} else if (strcasecmp(var, "filehash") == 0) {
+	  have_filehash = 1;
+	  if (!rhizome_str_is_file_hash(value)) {
+	    WARNF("Invalid filehash: %s", value);
+	    m->errors++;
+	  } else {
+	    /* Force to upper case to avoid case sensitive comparison problems later. */
+	    str_toupper_inplace(m->values[m->var_count]);
+	    strcpy(m->fileHexHash, m->values[m->var_count]);
+	    m->fileHashedP = 1;
+	  }
+	} else if (strcasecmp(var, "BK") == 0) {
+	  if (!rhizome_str_is_bundle_key(value)) {
+	    WARNF("Invalid BK: %s", value);
+	    m->errors++;
+	  } else {
+	    /* Force to upper case to avoid case sensitive comparison problems later. */
+	    str_toupper_inplace(m->values[m->var_count]);
+	  }
+	} else if (strcasecmp(var, "filesize") == 0) {
+	  have_filesize = 1;
+	  char *ep = value;
+	  long long filesize = strtoll(value, &ep, 10);
+	  if (ep == value || *ep || filesize < 0) {
+	    WARNF("Invalid filesize: %s", value);
+	    m->errors++;
+	  } else {
+	    m->fileLength = filesize;
+	  }
+	} else if (strcasecmp(var, "service") == 0) {
+	  have_service = 1;
+	  if ( strcasecmp(value, RHIZOME_SERVICE_FILE) == 0
+	    || strcasecmp(value, RHIZOME_SERVICE_MESHMS) == 0) {
+	  } else {
+	    INFOF("Unsupported service: %s", value);
+	    // This is not an error... older rhizome nodes must carry newer manifests.
+	  }
+	} else if (strcasecmp(var, "version") == 0) {
+	  have_version = 1;
+	  char *ep = value;
+	  long long version = strtoll(value, &ep, 10);
+	  if (ep == value || *ep || version < 0) {
+	    WARNF("Invalid version: %s", value);
+	    m->errors++;
+	  } else {
+	    m->version = version;
+	  }
+	} else if (strcasecmp(var, "date") == 0) {
+	  have_date = 1;
+	  char *ep = value;
+	  long long date = strtoll(value, &ep, 10);
+	  if (ep == value || *ep || date < 0) {
+	    WARNF("Invalid date: %s", value);
+	    m->errors++;
+	  }
+	  // TODO: store date in manifest struct
+	} else if (strcasecmp(var, "sender") == 0 || strcasecmp(var, "recipient") == 0) {
+	  if (!str_is_subscriber_id(value)) {
+	    WARNF("Invalid %s: %s", var, value);
+	    m->errors++;
+	  } else {
+	    /* Force to upper case to avoid case sensitive comparison problems later. */
+	    str_toupper_inplace(m->values[m->var_count]);
+	  }
+	} else if (strcasecmp(var, "name") == 0) {
+	  if (value[0] == '\0') {
+	    WARNF("Empty name", value);
+	    m->errors++;
+	  }
+	  // TODO: complain if service is not MeshMS
+	} else if (strcasecmp(var, "crypt") == 0) {
+	  if (!(strcmp(value, "0") == 0 || strcmp(value, "1") == 0)) {
+	    WARNF("Invalid crypt: %s", value);
+	    m->errors++;
+	  } else {
+	    m->payloadEncryption = atoi(value);
+	  }
+	} else {
+	  INFOF("Unsupported field: %s=%s", var, value);
+	  // This is not an error... older rhizome nodes must carry newer manifests.
 	}
-      } else {
-	if (debug & DEBUG_RHIZOME) {
-	  char buf[80];
-	  DEBUGF("Skipping malformed line in manifest file %s: %s", bufferP ? "<buffer>" : filename, catv(line, buf, sizeof buf));
-	}
+	m->var_count++;
       }
     }
+  }
   /* The null byte gets included in the check sum */
-  if (ofs<m->manifest_bytes) ofs++;
+  if (ofs < m->manifest_bytes)
+    ++ofs;
 
   /* Remember where the text ends */
   int end_of_text=ofs;
+  m->manifest_bytes = end_of_text;
+
+  if (!have_service) {
+    WARNF("Missing service field");
+    m->errors++;
+  }
+  if (!have_id) {
+    WARNF("Missing manifest id field");
+    m->errors++;
+  }
+  if (!have_version) {
+    WARNF("Missing version field");
+    m->errors++;
+  }
+  if (!have_date) {
+    WARNF("Missing date field");
+    m->errors++;
+  }
+  if (!have_filesize) {
+    WARNF("Missing filesize field");
+    m->errors++;
+  }
+  if (!have_filehash && m->fileLength != 0) {
+    WARNF("Missing filehash field");
+    m->errors++;
+  }
 
   // TODO Determine group membership here.
-
-  m->manifest_bytes=end_of_text;
 
   RETURN(0);
 }

@@ -151,6 +151,7 @@ extern sqlite3 *rhizome_db;
 
 int rhizome_opendb();
 int rhizome_manifest_createid(rhizome_manifest *m);
+
 int rhizome_strn_is_manifest_id(const char *text);
 int rhizome_str_is_manifest_id(const char *text);
 int rhizome_strn_is_bundle_key(const char *text);
@@ -159,6 +160,9 @@ int rhizome_strn_is_bundle_crypt_key(const char *text);
 int rhizome_str_is_bundle_crypt_key(const char *text);
 int rhizome_strn_is_file_hash(const char *text);
 int rhizome_str_is_file_hash(const char *text);
+
+#define alloca_tohex_bid(bid)           alloca_tohex((bid), RHIZOME_MANIFEST_ID_BYTES)
+
 int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename);
 int rhizome_manifest_selfsign(rhizome_manifest *m);
 int rhizome_drop_stored_file(const char *id,int maximum_priority);

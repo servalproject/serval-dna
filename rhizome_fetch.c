@@ -382,8 +382,7 @@ int rhizome_position_candidate(int position)
 }
 
 /* Verifies manifests as late as possible to avoid wasting time. */
-int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
-				  struct sockaddr_in *peerip)
+int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peerip)
 {
   IN();
   /* must free manifest when done with it */
@@ -392,29 +391,22 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
   int priority=100; /* normal priority */
   int i;
 
-  if (1) DEBUGF("Rhizome considering %s (size=%lld, priority=%d)",
-		id,filesize,priority);
-  m->version=rhizome_manifest_get_ll(m,"version");
+  m->version = rhizome_manifest_get_ll(m,"version");
+
+  if (debug & DEBUG_RHIZOME_RX)
+    DEBUGF("Considering manifest import bid=%s version=%lld size=%lld priority=%d:", id, m->version, filesize, priority);
 
   if (rhizome_manifest_version_cache_lookup(m)) {
-    /* We already have this version or newer */
-    if (1||debug&DEBUG_RHIZOMESYNC) {
-      DEBUGF("manifest id=%s, version=%lld",
-	   rhizome_manifest_get(m,"id",NULL,0),
-	   rhizome_manifest_get_ll(m,"version"));
-      DEBUG("We already have that manifest or newer.");
-    }
+    if (debug & DEBUG_RHIZOME_RX)
+      DEBUG("   already have that version or newer");
     rhizome_manifest_free(m);
     RETURN(-1);
-  } else {
-    if (1||debug&DEBUG_RHIZOMESYNC) {
-      long long stored_version;
-      if (sqlite_exec_int64(&stored_version, "select version from manifests where id='%s'",id) > 0)
-	DEBUGF("manifest id=%s, version=%lld is new to us (we only have version %lld).",
-	      id,
-	      m->version,
-	      stored_version);
-    }
+  }
+
+  if (debug & DEBUG_RHIZOME_RX) {
+    long long stored_version;
+    if (sqlite_exec_int64(&stored_version, "select version from manifests where id='%s'",id) > 0)
+      DEBUGF("   is new (have version %lld)", stored_version);
   }
 
   /* work out where to put it in the list */
@@ -537,7 +529,9 @@ void rhizome_enqueue_suggestions(struct sched_ent *alarm)
 int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peerip, int *manifest_kept)
 {
   *manifest_kept = 0;
-  int i;
+
+  const char *bid = alloca_tohex_bid(m->cryptoSignPublic);
+  long long filesize = rhizome_manifest_get_ll(m, "filesize");
 
   /* Do the quick rejection tests first, before the more expensive once,
      like querying the database for manifests. 
@@ -553,40 +547,33 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
      the cache slot number to implicitly store the first bits.
   */
 
+  if (debug & DEBUG_RHIZOME_RX)
+    DEBUGF("Fetching manifest bid=%s version=%lld size=%lld:", bid, m->version, filesize);
+
   if (rhizome_manifest_version_cache_lookup(m)) {
     /* We already have this version or newer */
-    if (1||debug&DEBUG_RHIZOMESYNC) {
-      DEBUGF("manifest id=%s, version=%lld",
-	   rhizome_manifest_get(m,"id",NULL,0),
-	   rhizome_manifest_get_ll(m,"version"));
-      DEBUG("We already have that manifest or newer.");
-    }
-    return -1;
-  } else {
-    if (1||debug&DEBUG_RHIZOMESYNC) {
-      DEBUGF("manifest id=%s, version=%lld is new to us.",
-	   rhizome_manifest_get(m,"id",NULL,0),
-	   rhizome_manifest_get_ll(m,"version"));
-    }
+    if (debug & DEBUG_RHIZOME_RX)
+      DEBUG("   already have that version or newer");
+    return 1;
   }
+  if (debug & DEBUG_RHIZOME_RX)
+    DEBUGF("   is new");
 
   /* Don't queue if queue slots already full */
-  if (rhizome_file_fetch_queue_count>=MAX_QUEUED_FILES) {
-    if (1||debug&DEBUG_RHIZOME) DEBUG("Already busy fetching files");
-    return -1;
+  if (rhizome_file_fetch_queue_count >= MAX_QUEUED_FILES) {
+    if (debug & DEBUG_RHIZOME_RX)
+      DEBUG("   all fetch queue slots full");
+    return 2;
   }
+
   /* Don't queue if already queued */
-  char *id=rhizome_manifest_get(m,"id",NULL,0);
-  if (!rhizome_str_is_manifest_id(id))
-    return WHYF("Invalid manifest ID: %s", id);
-  for(i=0;i<rhizome_file_fetch_queue_count;i++) {
-    rhizome_file_fetch_record 
-      *q=&file_fetch_queue[i];
-    if (!strcasecmp(id,rhizome_manifest_get(q->manifest,"id",NULL,0))) {
-	if (1||debug&DEBUG_RHIZOMESYNC)
-	  DEBUGF("Already have %s in the queue.",id);
-	return -1;
-      }
+  int i;
+  for (i = 0; i < rhizome_file_fetch_queue_count; ++i) {
+    if (memcmp(m->cryptoSignPublic, file_fetch_queue[i].manifest->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES) == 0) {
+      if (debug & DEBUG_RHIZOME_RX)
+	DEBUGF("   manifest fetch already queued");
+      return 3;
+    }
   }
 
   if (!rhizome_manifest_get(m, "filehash", m->fileHexHash, sizeof m->fileHexHash))
@@ -596,143 +583,122 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
   str_toupper_inplace(m->fileHexHash);
   m->fileHashedP = 1;
 
-  long long filesize = rhizome_manifest_get_ll(m, "filesize");
+  if (filesize > 0 && m->fileHexHash[0]) {
+    if (debug & DEBUG_RHIZOME_RX) 
+      DEBUGF("   Getting ready to fetch filehash=%s for bid=%s", m->fileHexHash, bid);
 
-  if (debug & DEBUG_RHIZOMESYNC) 
-    DEBUGF("Getting ready to fetch file %s for manifest %s", m->fileHexHash, id);
-
-  if (filesize > 0 && m->fileHexHash[0])
-    {
-      long long gotfile = 0;
-      if (sqlite_exec_int64(&gotfile, "SELECT COUNT(*) FROM FILES WHERE ID='%s' and datavalid=1;", m->fileHexHash) != 1)
-	return WHY("select failed");
-      if (gotfile!=1) {
-	/* We need to get the file */
-	/* Discard request if the same manifest is already queued for reception.   
-	 */
-	int i,j;
-	for(i=0;i<rhizome_file_fetch_queue_count;i++)
-	  {
-	    for(j=0;j<crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES;j++)
-	      if (m->cryptoSignPublic[j]
-		  !=file_fetch_queue[i].manifest->cryptoSignPublic[j]) break;
-	    if (j==crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)
-	      {
-		/* We are already fetching this manifest */
-		if (1||debug&DEBUG_RHIZOME) DEBUGF("Already fetching manifest");
-		return -1;
-	      }
-	    for(j=0;j<=RHIZOME_FILEHASH_STRLEN;j++)
-	      if (m->fileHexHash[j]!=file_fetch_queue[i].fileid[j]) break;
-	    if (j==RHIZOME_FILEHASH_STRLEN + 1)
-	      {
-		/* We are already fetching this file */
-		if (1||debug&DEBUG_RHIZOME) DEBUGF("Already fetching file %s", m->fileHexHash);
-		return -1;
-	      }
-	  }
-
-	if (peerip)
-	  {
-	    /* Transfer via HTTP over IPv4 */
-	    int sock = socket(AF_INET, SOCK_STREAM, 0);
-	    if (sock == -1)
-	      return WHY_perror("socket");
-	    if (set_nonblock(sock) == -1) {
-	      close(sock);
-	      return -1;
-	    }
-	    struct sockaddr_in addr = *peerip;
-	    addr.sin_family = AF_INET;
-	    INFOF("HTTP CONNECT family=%u port=%u addr=%u.%u.%u.%u",
-		addr.sin_family, ntohs(addr.sin_port),
-		((unsigned char*)&addr.sin_addr.s_addr)[0],
-		((unsigned char*)&addr.sin_addr.s_addr)[1],
-		((unsigned char*)&addr.sin_addr.s_addr)[2],
-		((unsigned char*)&addr.sin_addr.s_addr)[3]
-	      );
-	    if (connect(sock, (struct sockaddr*)&addr, sizeof addr) == -1) {
-	      if (errno == EINPROGRESS) {
-		if (debug & DEBUG_RHIZOMESYNC)
-		  DEBUGF("connect() returned EINPROGRESS");
-	      } else {
-		WHY_perror("connect");
-		WHY("Failed to open socket to peer's rhizome web server");
-		close(sock);
-		return -1;
-	      }
-	    }
-	    rhizome_file_fetch_record *q=&file_fetch_queue[rhizome_file_fetch_queue_count];
-	    q->manifest = m;
-	    *manifest_kept = 1;
-	    q->alarm.poll.fd=sock;
-	    strncpy(q->fileid, m->fileHexHash, RHIZOME_FILEHASH_STRLEN + 1);
-	    snprintf(q->request,1024,"GET /rhizome/file/%s HTTP/1.0\r\n\r\n", q->fileid);
-	    q->request_len=strlen(q->request);
-	    q->request_ofs=0;
-	    q->state=RHIZOME_FETCH_CONNECTING;
-	    q->file_len=-1;
-	    q->file_ofs=0;
-
-	    /* XXX Don't forget to implement resume */
-	    /* XXX We should stream file straight into the database */
-	    const char *id = rhizome_manifest_get(q->manifest, "id", NULL, 0);
-	    if (id == NULL) {
-	      close(sock);
-	      return WHY("Manifest missing ID");
-	    }
-	    if (create_rhizome_import_dir() == -1)
-	      return -1;
-	    char filename[1024];
-	    if (!FORM_RHIZOME_IMPORT_PATH(filename, "file.%s", id)) {
-	      close(sock);
-	      return -1;
-	    }
-	    q->manifest->dataFileName = strdup(filename);
-	    q->file=fopen(q->manifest->dataFileName,"w");
-	    if (!q->file) {
-	      WHY_perror("fopen");
-	      if (1||debug&DEBUG_RHIZOME)
-		DEBUGF("Could not open '%s' to write received file.", q->manifest->dataFileName);
-	      close(sock);
-	      return -1;
-	    }
-	    
-	    /* Watch for activity on the socket */
-	    q->alarm.function=rhizome_fetch_poll;
-	    fetch_stats.name="rhizome_fetch_poll";
-	    q->alarm.stats=&fetch_stats;
-	    q->alarm.poll.events=POLLIN|POLLOUT;
-	    watch(&q->alarm);
-	    /* And schedule a timeout alarm */
-	    q->alarm.alarm=overlay_gettime_ms() + RHIZOME_IDLE_TIMEOUT;
-	    schedule(&q->alarm);
-
-	    rhizome_file_fetch_queue_count++;
-	    if (1||debug&DEBUG_RHIZOME) DEBUGF("Queued file for fetching into %s (%d in queue)",
-					    q->manifest->dataFileName, rhizome_file_fetch_queue_count);
-	    return 0;
-	  }
-	else
-	  {
-	    /* Transfer via overlay */
-	    return WHY("Rhizome fetching via overlay not implemented");
-	  }
+    long long gotfile = 0;
+    if (sqlite_exec_int64(&gotfile, "SELECT COUNT(*) FROM FILES WHERE ID='%s' and datavalid=1;", m->fileHexHash) != 1)
+      return WHY("select failed");
+    if (gotfile == 0) {
+      /* We need to get the file, unless already queued */
+      int i;
+      for (i = 0; i < rhizome_file_fetch_queue_count; ++i) {
+	if (strcasecmp(m->fileHexHash, file_fetch_queue[i].fileid) == 0) {
+	  if (debug & DEBUG_RHIZOME_RX)
+	    DEBUGF("Payload fetch already queued, slot %d filehash=%s", m->fileHexHash);
+	  return 0;
+	}
       }
-      else
-	{
-	  if (debug&DEBUG_RHIZOMESYNC) 
-	    DEBUGF("We already have the file for this manifest; importing from manifest alone.");
-	  if (create_rhizome_import_dir() == -1)
+
+      if (peerip) {
+	/* Transfer via HTTP over IPv4 */
+	int sock = socket(AF_INET, SOCK_STREAM, 0);
+	if (sock == -1)
+	  return WHY_perror("socket");
+	if (set_nonblock(sock) == -1) {
+	  close(sock);
+	  return -1;
+	}
+	struct sockaddr_in addr = *peerip;
+	addr.sin_family = AF_INET;
+	INFOF("HTTP CONNECT family=%u port=%u addr=%u.%u.%u.%u",
+	    addr.sin_family, ntohs(addr.sin_port),
+	    ((unsigned char*)&addr.sin_addr.s_addr)[0],
+	    ((unsigned char*)&addr.sin_addr.s_addr)[1],
+	    ((unsigned char*)&addr.sin_addr.s_addr)[2],
+	    ((unsigned char*)&addr.sin_addr.s_addr)[3]
+	  );
+	if (connect(sock, (struct sockaddr*)&addr, sizeof addr) == -1) {
+	  if (errno == EINPROGRESS) {
+	    if (debug & DEBUG_RHIZOME_RX)
+	      DEBUGF("connect() returned EINPROGRESS");
+	  } else {
+	    WHY_perror("connect");
+	    WHY("Failed to open socket to peer's rhizome web server");
+	    close(sock);
 	    return -1;
-	  char filename[1024];
-	  if (!FORM_RHIZOME_IMPORT_PATH(filename, "manifest.%s", id))
-	    return -1;
-	  if (!rhizome_write_manifest_file(m, filename)) {
-	    rhizome_bundle_import(m, NULL, id, m->ttl-1);
 	  }
 	}
+	rhizome_file_fetch_record *q=&file_fetch_queue[rhizome_file_fetch_queue_count];
+	q->manifest = m;
+	*manifest_kept = 1;
+	q->alarm.poll.fd=sock;
+	strncpy(q->fileid, m->fileHexHash, RHIZOME_FILEHASH_STRLEN + 1);
+	snprintf(q->request,1024,"GET /rhizome/file/%s HTTP/1.0\r\n\r\n", q->fileid);
+	q->request_len=strlen(q->request);
+	q->request_ofs=0;
+	q->state=RHIZOME_FETCH_CONNECTING;
+	q->file_len=-1;
+	q->file_ofs=0;
+
+	/* XXX Don't forget to implement resume */
+	/* XXX We should stream file straight into the database */
+	const char *id = rhizome_manifest_get(q->manifest, "id", NULL, 0);
+	if (id == NULL) {
+	  close(sock);
+	  return WHY("Manifest missing ID");
+	}
+	if (create_rhizome_import_dir() == -1)
+	  return -1;
+	char filename[1024];
+	if (!FORM_RHIZOME_IMPORT_PATH(filename, "file.%s", id)) {
+	  close(sock);
+	  return -1;
+	}
+	q->manifest->dataFileName = strdup(filename);
+	if ((q->file = fopen(q->manifest->dataFileName, "w")) == NULL) {
+	  WHY_perror("fopen");
+	  if (debug & DEBUG_RHIZOME_RX)
+	    DEBUGF("Could not open '%s' to write received file", q->manifest->dataFileName);
+	  close(sock);
+	  return -1;
+	}
+	
+	/* Watch for activity on the socket */
+	q->alarm.function=rhizome_fetch_poll;
+	fetch_stats.name="rhizome_fetch_poll";
+	q->alarm.stats=&fetch_stats;
+	q->alarm.poll.events=POLLIN|POLLOUT;
+	watch(&q->alarm);
+	/* And schedule a timeout alarm */
+	q->alarm.alarm=overlay_gettime_ms() + RHIZOME_IDLE_TIMEOUT;
+	schedule(&q->alarm);
+
+	rhizome_file_fetch_queue_count++;
+	if (debug & DEBUG_RHIZOME_RX)
+	  DEBUGF("Queued file for fetching into %s (%d in queue)",
+	      q->manifest->dataFileName, rhizome_file_fetch_queue_count);
+	return 0;
+      } else {
+	/* TODO: fetch via overlay */
+	return WHY("Rhizome fetching via overlay not implemented");
+      }
     }
+    else
+      {
+	if (debug & DEBUG_RHIZOME_RX) 
+	  DEBUGF("We already have the file for this manifest; importing from manifest alone.");
+	if (create_rhizome_import_dir() == -1)
+	  return -1;
+	char filename[1024];
+	if (!FORM_RHIZOME_IMPORT_PATH(filename, "manifest.%s", bid))
+	  return -1;
+	if (!rhizome_write_manifest_file(m, filename)) {
+	  rhizome_bundle_import(m, NULL, bid, m->ttl-1);
+	}
+      }
+  }
 
   return 0;
 }
@@ -754,9 +720,8 @@ int rhizome_fetch_close(rhizome_file_fetch_record *q){
   /* Reduce count of open connections */	
   rhizome_file_fetch_queue_count--;
   
-  if (debug&DEBUG_RHIZOME) 
-    DEBUGF("Released rhizome fetch slot (%d used)",
-	   rhizome_file_fetch_queue_count);
+  if (debug & DEBUG_RHIZOME_RX) 
+    DEBUGF("Released rhizome fetch slot (%d used)", rhizome_file_fetch_queue_count);
   return 0;
 }
 
@@ -821,23 +786,29 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	  bytes=q->file_len-q->file_ofs;
 	if (fwrite(buffer,bytes,1,q->file)!=1)
 	  {
-	    if (debug&DEBUG_RHIZOME) DEBUGF("Failed writing %d bytes to file. @ offset %d",bytes,q->file_ofs);
+	    if (debug & DEBUG_RHIZOME_RX)
+	      DEBUGF("Failed to write %d bytes to file @ offset %d", bytes, q->file_ofs);
 	    rhizome_fetch_close(q);
 	    return;
 	  }
 	q->file_ofs+=bytes;
 	
       } else if (bytes==0) {
-	WHY("Got zero bytes, assume socket dead.");
+	if (debug & DEBUG_RHIZOME_RX)
+	  DEBUG("Got zero bytes, assume socket dead.");
 	rhizome_fetch_close(q);
 	return;
       }
       if (q->file_ofs>=q->file_len)
 	{
 	  /* got all of file */
-	  if (debug&DEBUG_RHIZOME) DEBUGF("Received all of file via rhizome -- now to import it");
+	  if (debug & DEBUG_RHIZOME_RX)
+	    DEBUGF("Received all of file via rhizome -- now to import it");
 	  {
-	    fclose(q->file); q->file=NULL;
+	    fclose(q->file);
+	    q->file = NULL;
+	    // TODO: We already have the manifest struct in memory, should import the bundle
+	    // directly from that, not by writing it to a file and re-reading it!
 	    const char *id = rhizome_manifest_get(q->manifest, "id", NULL, 0);
 	    if (id == NULL)
 	      { WHY("Manifest missing ID"); return; }
@@ -847,10 +818,10 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	    if (!FORM_RHIZOME_IMPORT_PATH(filename,"manifest.%s", id))
 	      return;
 	    /* Do really write the manifest unchanged */
-	    if (debug&DEBUG_RHIZOME) {
+	    if (debug & DEBUG_RHIZOME_RX) {
 	      DEBUGF("manifest has %d signatories",q->manifest->sig_count);
-	      DEBUGF("manifest id = %s, len=%d",
-		      rhizome_manifest_get(q->manifest,"id",NULL,0),
+	      DEBUGF("manifest bid=%s len=%d",
+		      rhizome_manifest_get(q->manifest, "id", NULL, 0),
 		      q->manifest->manifest_bytes);
 	      dump("manifest",&q->manifest->manifestdata[0],
 		   q->manifest->manifest_all_bytes);
@@ -862,7 +833,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 				    q->manifest->ttl - 1 /* TTL */);
 	    }
 	    rhizome_manifest_free(q->manifest);
-	    q->manifest=NULL;
+	    q->manifest = NULL;
 	  }
 	  rhizome_fetch_close(q);
 	  return;
