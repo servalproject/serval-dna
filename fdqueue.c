@@ -27,6 +27,7 @@ struct pollfd fds[MAX_WATCHED_FDS];
 int fdcount=0;
 struct sched_ent *fd_callbacks[MAX_WATCHED_FDS];
 struct sched_ent *next_alarm=NULL;
+struct sched_ent *next_deadline=NULL;
 struct profile_total poll_stats={NULL,0,"Idle (in poll)",0,0,0};
 
 void list_alarms(){
@@ -48,11 +49,46 @@ void list_alarms(){
 	  fds[i].fd);
 }
 
+int deadline(struct sched_ent *alarm){
+  struct sched_ent *node = next_deadline, *last = NULL;
+  if (alarm->deadline < alarm->alarm)
+    alarm->deadline = alarm->alarm;
+  
+  while(node!=NULL){
+    if (node->alarm > alarm->alarm)
+      break;
+    last = node;
+    node = node->_next;
+  }
+  if (last == NULL){
+    next_deadline = alarm;
+  }else{
+    last->_next=alarm;
+  }
+  alarm->_prev = last;
+  if(node!=NULL)
+    node->_prev = alarm;
+  alarm->_next = node;
+  return 0;
+}
+
+
 // add an alarm to the list of scheduled function calls.
 // simply populate .alarm with the absolute time, and .function with the method to call.
 // on calling .poll.revents will be zero.
 int schedule(struct sched_ent *alarm){
   struct sched_ent *node = next_alarm, *last = NULL;
+  
+  if (!alarm->function)
+    return WHY("Can't schedule if you haven't set the function pointer");
+  
+  if (alarm->deadline < alarm->alarm)
+    alarm->deadline = alarm->alarm;
+  
+  // if the alarm has already expired, move straight to the deadline queue
+  if (alarm->alarm <= overlay_gettime_ms())
+    return deadline(alarm);
+  
   while(node!=NULL){
     if (node->alarm > alarm->alarm)
       break;
@@ -82,6 +118,8 @@ int unschedule(struct sched_ent *alarm){
     prev->_next = next;
   else if(next_alarm==alarm)
     next_alarm = next;
+  else if(next_deadline==alarm)
+    next_deadline = next;
   
   if (next)
     next->_prev = prev;
@@ -93,6 +131,9 @@ int unschedule(struct sched_ent *alarm){
 
 // start watching a file handle, call this function again if you wish to change the event mask
 int watch(struct sched_ent *alarm){
+  if (!alarm->function)
+    return WHY("Can't watch if you haven't set the function pointer");
+  
   if (alarm->_poll_index>=0 && fd_callbacks[alarm->_poll_index]==alarm){
     // updating event flags
     INFOF("Updating watch %s, #%d for %d", (alarm->stats?alarm->stats->name:"Unnamed"), alarm->poll.fd, alarm->poll.events);
@@ -130,46 +171,45 @@ int unwatch(struct sched_ent *alarm){
 
 void call_alarm(struct sched_ent *alarm, int revents){
   struct call_stats call_stats;
-  struct profile_total *stats = alarm->stats;
+  call_stats.totals = alarm->stats;
   
-  if (stats)
+  if (call_stats.totals)
     fd_func_enter(&call_stats);
   
   alarm->poll.revents = revents;
   alarm->function(alarm);
   
-  if (stats)
-    fd_func_exit(&call_stats, stats);
-}
-
-int fd_checkalarms()
-{
-  long long now=overlay_gettime_ms();
-  if (next_alarm!=NULL&&next_alarm->alarm <=now){
-    struct sched_ent *alarm = next_alarm;
-    unschedule(alarm);
-    call_alarm(alarm, 0);
-    now=overlay_gettime_ms();
-  }
-  
-  if (next_alarm)
-    return next_alarm->alarm - now;
-  return 15000;
+  if (call_stats.totals)
+    fd_func_exit(&call_stats);
 }
 
 int fd_poll()
 {
   int i, r;
+  int ms=60000;
+  long long now=overlay_gettime_ms();
   
-  /* See if any alarms have expired before we do anything.
-     This also returns the time to the next alarm that is due. */
-  int ms=fd_checkalarms();
-  /* Make sure we don't have any silly timeouts that will make us wait for ever. */
+  /* move alarms that have elapsed to the deadline queue */
+  while (next_alarm!=NULL&&next_alarm->alarm <=now){
+    struct sched_ent *alarm = next_alarm;
+    unschedule(alarm);
+    deadline(alarm);
+  }
+  
+  /* work out how long we can block in poll */
+  if (next_deadline)
+    ms = 0;
+  else if (next_alarm){
+    ms = next_alarm->alarm - now;
+  }
+  
+  /* Make sure we don't have any silly timeouts that will make us wait forever. */
   if (ms<0) ms=0;
   
-  /* Wait for action or timeout */
+  /* check if any file handles have activity */
   {
     struct call_stats call_stats;
+    call_stats.totals=&poll_stats;
     fd_func_enter(&call_stats);
     r = poll(fds, fdcount, ms);
     if (debug & DEBUG_IO) {
@@ -185,9 +225,18 @@ int fd_poll()
       }
       DEBUGF("poll(fds=(%s), fdcount=%d, ms=%d) = %d", strbuf_str(b), fdcount, ms, r);
     }
-    fd_func_exit(&call_stats, &poll_stats);
+    fd_func_exit(&call_stats);
+    now=overlay_gettime_ms();
   }
-
+  
+  /* call one alarm function, but only if its deadline time has elapsed OR there is no file activity */
+  if (next_deadline && (next_deadline->deadline <=now || (r==0))){
+    struct sched_ent *alarm = next_deadline;
+    unschedule(alarm);
+    call_alarm(alarm, 0);
+    now=overlay_gettime_ms();
+  }
+  
   /* If file descriptors are ready, then call the appropriate functions */
   if (r>0) {
     for(i=0;i<fdcount;i++)
@@ -199,6 +248,5 @@ int fd_poll()
 	  set_block(fds[i].fd);
       }
   }
-
   return 0;
 }

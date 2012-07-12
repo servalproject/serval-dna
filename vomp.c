@@ -1447,5 +1447,6 @@ void vomp_process_tick(struct sched_ent *alarm){
   monitor_tell_clients(msg, len, MONITOR_VOMP);
   
   alarm->alarm = overlay_gettime_ms() + VOMP_CALL_STATUS_INTERVAL;
+  alarm->deadline = alarm->alarm + VOMP_CALL_STATUS_INTERVAL/2;
   schedule(alarm);
 }

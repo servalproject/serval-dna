@@ -522,6 +522,7 @@ void rhizome_enqueue_suggestions(struct sched_ent *alarm)
     candidate_count-=i;
   }
   alarm->alarm = overlay_gettime_ms() + rhizome_fetch_interval_ms;
+  alarm->deadline = alarm->alarm + rhizome_fetch_interval_ms*3;
   schedule(alarm);
   return;
 }
@@ -673,6 +674,8 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	watch(&q->alarm);
 	/* And schedule a timeout alarm */
 	q->alarm.alarm=overlay_gettime_ms() + RHIZOME_IDLE_TIMEOUT;
+	q->alarm.deadline = q->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
+
 	schedule(&q->alarm);
 
 	rhizome_file_fetch_queue_count++;
@@ -734,6 +737,7 @@ void rhizome_fetch_write(rhizome_file_fetch_record *q){
     // reset timeout
     unschedule(&q->alarm);
     q->alarm.alarm=overlay_gettime_ms() + RHIZOME_IDLE_TIMEOUT;
+    q->alarm.deadline = q->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
     schedule(&q->alarm);
     q->request_ofs+=bytes;
     if (q->request_ofs>=q->request_len) {
@@ -780,6 +784,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	// reset timeout
 	unschedule(&q->alarm);
 	q->alarm.alarm=overlay_gettime_ms() + RHIZOME_IDLE_TIMEOUT;
+	q->alarm.deadline = q->alarm.alarm+RHIZOME_IDLE_TIMEOUT;
 	schedule(&q->alarm);
 
 	if (bytes>(q->file_len-q->file_ofs))
@@ -855,6 +860,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	// reset timeout
 	unschedule(&q->alarm);
 	q->alarm.alarm=overlay_gettime_ms() + RHIZOME_IDLE_TIMEOUT;
+	q->alarm.deadline = q->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
 	schedule(&q->alarm);
 	
 	if (i<0) i=0;

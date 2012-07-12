@@ -241,6 +241,7 @@ void server_shutdown_check(struct sched_ent *alarm)
   }
   if (alarm){
     alarm->alarm = overlay_gettime_ms()+1000;
+    alarm->deadline = alarm->alarm+5000;
     schedule(alarm);
   }
 }
@@ -416,6 +417,7 @@ void signal_handler(int signal)
   char buf[80];
   signame(buf, sizeof(buf), signal);
   INFOF("Caught %s", buf);
+  dump_stack();
   switch (signal) {
     case SIGQUIT:
       serverCleanUp();

@@ -1314,6 +1314,7 @@ void overlay_route_tick(struct sched_ent *alarm)
 
   /* Update callback interval based on how much work we have to do */
   alarm->alarm = overlay_gettime_ms()+interval;
+  alarm->deadline = alarm->alarm+100;
   schedule(alarm);
   return;
 }

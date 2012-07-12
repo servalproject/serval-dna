@@ -25,14 +25,8 @@ struct call_stats *current_call=NULL;
 void fd_clearstat(struct profile_total *s){
   s->max_time = 0;
   s->total_time = 0;
+  s->child_time = 0;
   s->calls = 0;
-}
-
-void fd_update_stats(struct profile_total *s,long long elapsed)
-{
-  s->total_time+=elapsed;
-  if (elapsed>s->max_time) s->max_time=elapsed;
-  s->calls++;
 }
 
 int fd_tallystats(struct profile_total *total,struct profile_total *a)
@@ -45,10 +39,13 @@ int fd_tallystats(struct profile_total *total,struct profile_total *a)
 
 int fd_showstat(struct profile_total *total, struct profile_total *a)
 {
-  INFOF("%lldms (%2.1f%%) in %d calls (max %lldms, avg %.1fms) : %s",
-       a->total_time,a->total_time*100.0/total->total_time,
+  INFOF("%lldms (%2.1f%%) in %d calls (max %lldms, avg %.1fms, +child avg %.1fms) : %s",
+       a->total_time,
+       a->total_time*100.0/total->total_time,
        a->calls,
-       a->max_time,a->total_time*1.00/a->calls,
+       a->max_time,
+       a->total_time*1.00/a->calls,
+       (a->total_time+a->child_time)*1.00/a->calls,
        a->name);
   return 0;
 }
@@ -170,7 +167,17 @@ void fd_periodicstats(struct sched_ent *alarm)
   fd_showstats();
   fd_clearstats();  
   alarm->alarm = overlay_gettime_ms()+3000;
+  alarm->deadline = alarm->alarm+1000;
   schedule(alarm);
+}
+
+void dump_stack(){
+  struct call_stats *call = current_call;
+  while(call){
+    if (call->totals)
+      INFOF("%s",call->totals->name);
+    call=call->prev;
+  }
 }
 
 int fd_func_enter(struct call_stats *this_call)
@@ -182,26 +189,34 @@ int fd_func_enter(struct call_stats *this_call)
   return 0;
 }
 
-int fd_func_exit(struct call_stats *this_call, struct profile_total *aggregate_stats)
+int fd_func_exit(struct call_stats *this_call)
 {
   if (current_call != this_call)
-    WHYF("stack mismatch, exited through %s()",aggregate_stats->name);
+    WHYF("stack mismatch, exited through %s()",this_call->totals->name);
   
   long long now = overlay_gettime_ms();
   long long elapsed=now - this_call->enter_time;
   current_call = this_call->prev;
   
-  if (!aggregate_stats->_initialised){
-    aggregate_stats->_initialised=1;
-    aggregate_stats->_next = stats_head;
-    fd_clearstat(aggregate_stats);
-    stats_head = aggregate_stats;
+  if (this_call->totals && !this_call->totals->_initialised){
+    this_call->totals->_initialised=1;
+    this_call->totals->_next = stats_head;
+    fd_clearstat(this_call->totals);
+    stats_head = this_call->totals;
   }
   
   if (current_call)
     current_call->child_time+=elapsed;
   
-  fd_update_stats(aggregate_stats, (elapsed - this_call->child_time));
+  elapsed-=this_call->child_time;
+  
+  if (this_call->totals){
+    this_call->totals->total_time+=elapsed;
+    this_call->totals->child_time+=this_call->child_time;
+    this_call->totals->calls++;
+    
+    if (elapsed>this_call->totals->max_time) this_call->totals->max_time=elapsed;
+  }
   
   return 0;
 }

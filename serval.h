@@ -472,19 +472,21 @@ typedef struct overlay_frame {
 #define CRYPT_SIGNED 2
 #define CRYPT_PUBLIC 4
 
-struct call_stats{
-  long long enter_time;
-  long long child_time;
-  struct call_stats *prev;
-};
-
 struct profile_total {
   struct profile_total *_next;
   int _initialised;
   const char *name;
   long long max_time;
   long long total_time;
+  long long child_time;
   int calls;
+};
+
+struct call_stats{
+  long long enter_time;
+  long long child_time;
+  struct profile_total *totals;
+  struct call_stats *prev;
 };
 
 struct sched_ent;
@@ -498,7 +500,10 @@ struct sched_ent{
   ALARM_FUNCP function;
   void *context;
   struct pollfd poll;
+  // when we should first consider the alarm
   long long alarm;
+  // the order we will prioritise the alarm
+  long long deadline;
   struct profile_total *stats;
   int _poll_index;
 };
@@ -1610,9 +1615,14 @@ void rhizome_server_poll(struct sched_ent *alarm);
 int fd_clearstats();
 int fd_showstats();
 int fd_checkalarms();
-int fd_func_exit(struct call_stats *this_call, struct profile_total *call_stats);
+int fd_func_exit(struct call_stats *this_call);
 int fd_func_enter(struct call_stats *this_call);
+void dump_stack();
 
-#define IN() static struct profile_total _aggregate_stats={NULL,0,__FUNCTION__,0,0,0}; struct call_stats _this_call; fd_func_enter(&_this_call);
-#define OUT() fd_func_exit(&_this_call, &_aggregate_stats);
+#define IN() static struct profile_total _aggregate_stats={NULL,0,__FUNCTION__,0,0,0}; \
+    struct call_stats _this_call; \
+    _this_call.totals=&_aggregate_stats; \
+    fd_func_enter(&_this_call);
+
+#define OUT() fd_func_exit(&_this_call);
 #define RETURN(X) { OUT() return(X); }

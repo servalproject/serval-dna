@@ -118,18 +118,20 @@ int overlayServerMode()
   /* Create structures to use 1MB of RAM for testing */
   overlay_route_init(1);
 
-#define SCHEDULE(X, Y) \
+#define SCHEDULE(X, Y, D) \
 struct sched_ent _sched_##X; \
 struct profile_total _stats_##X; \
 bzero(&_sched_##X, sizeof(struct sched_ent)); \
+bzero(&_stats_##X, sizeof(struct profile_total)); \
 _sched_##X.stats = &_stats_##X; \
 _sched_##X.function=X;\
 _stats_##X.name="" #X "";\
 _sched_##X.alarm=overlay_gettime_ms()+Y;\
+_sched_##X.deadline=_sched_##X.alarm+D;\
 schedule(&_sched_##X);
   
   /* Periodically check for server shut down */
-  SCHEDULE(server_shutdown_check, 0);
+  SCHEDULE(server_shutdown_check, 0, 100);
   
   /* Setup up MDP & monitor interface unix domain sockets */
   overlay_mdp_setup_sockets();
@@ -142,16 +144,16 @@ schedule(&_sched_##X);
   /* Pick next rhizome files to grab every few seconds
      from the priority list continuously being built from observed
      bundle announcements */
-  SCHEDULE(rhizome_enqueue_suggestions, rhizome_fetch_interval_ms);
+  SCHEDULE(rhizome_enqueue_suggestions, rhizome_fetch_interval_ms, rhizome_fetch_interval_ms*3);
 
   /* Periodically check for new interfaces */
-  SCHEDULE(overlay_interface_discover, 1);
+  SCHEDULE(overlay_interface_discover, 1, 100);
 
   /* Periodically update route table. */
-  SCHEDULE(overlay_route_tick, 100);
+  SCHEDULE(overlay_route_tick, 100, 100);
 
   /* Show CPU usage stats periodically */
-  SCHEDULE(fd_periodicstats, 3000);
+  SCHEDULE(fd_periodicstats, 3000, 500);
 
 #undef SCHEDULE
   

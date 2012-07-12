@@ -237,6 +237,7 @@ overlay_interface_init_socket(int interface, struct sockaddr_in src_addr, struct
 
   // run the first tick asap
   I(alarm.alarm)=overlay_gettime_ms();
+  I(alarm.deadline)=I(alarm.alarm)+10;
   schedule(&I(alarm));
   
   return 0;
@@ -307,6 +308,7 @@ int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockadd
     // schedule an alarm for this interface
     I(alarm.function)=overlay_dummy_poll;
     I(alarm.alarm)=overlay_gettime_ms()+10;
+    I(alarm.deadline)=I(alarm.alarm);
     dummy_poll_stats.name="overlay_dummy_poll";
     I(alarm.stats)=&dummy_poll_stats;
     schedule(&I(alarm));
@@ -335,6 +337,7 @@ void overlay_interface_poll(struct sched_ent *alarm)
     int i = (interface - overlay_interfaces);
     overlay_tick_interface(i, now);
     alarm->alarm=now+interface->tick_ms;
+    alarm->deadline=alarm->alarm+interface->tick_ms/2;
     schedule(alarm);
     return;
   }
@@ -369,7 +372,7 @@ void overlay_dummy_poll(struct sched_ent *alarm)
   unsigned char transaction_id[8];
   unsigned long long now = overlay_gettime_ms();
 
-  if (interface->last_tick_ms + interface->tick_ms <+ now){
+  if (interface->last_tick_ms + interface->tick_ms <= now){
     // tick the interface
     int i = (interface - overlay_interfaces);
     overlay_tick_interface(i, now);
@@ -379,6 +382,15 @@ void overlay_dummy_poll(struct sched_ent *alarm)
   long long length=lseek(alarm->poll.fd,0,SEEK_END);
   if (interface->offset>=length)
     {
+      /* if there's no input, while we want to check for more soon,
+	 we need to allow all other low priority alarms to fire first,
+	 otherwise we'll dominate the scheduler without accomplishing anything */
+      
+      alarm->alarm = overlay_gettime_ms()+20;
+      alarm->deadline = alarm->alarm + 10000;
+      
+      if (alarm->alarm > interface->last_tick_ms + interface->tick_ms)
+	alarm->alarm = interface->last_tick_ms + interface->tick_ms;
       if (debug&DEBUG_OVERLAYINTERFACES)
 	DEBUGF("At end of input on dummy interface %s", interface->name);
     }
@@ -414,9 +426,14 @@ void overlay_dummy_poll(struct sched_ent *alarm)
 	else
 	  WARNF("Read %lld bytes from dummy interface", nread);
       }
+      
+      /* keep reading new packets as fast as possible, 
+	 but don't prevent other high priority alarms */
+      alarm->alarm = overlay_gettime_ms();
+      alarm->deadline = alarm->alarm + 200;
+      
     }
   
-  alarm->alarm = overlay_gettime_ms()+10;
   schedule(alarm);
 
   return ;
@@ -645,6 +662,7 @@ void overlay_interface_discover(struct sched_ent *alarm){
   }
   
   alarm->alarm = overlay_gettime_ms()+5000;
+  alarm->deadline = alarm->alarm + 10000;
   schedule(alarm);
   return;
 }
