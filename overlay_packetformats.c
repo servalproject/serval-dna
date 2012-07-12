@@ -99,10 +99,8 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   int ofs;
   overlay_frame f;
 
-  f.payload=NULL;
-  f.bytes=NULL;
-  f.bytecount=0;
-  f.prev=NULL; f.next=NULL;
+  bzero(&f,sizeof(overlay_frame));
+  
   if (recvaddr->sa_family==AF_INET)
     f.recvaddr=recvaddr; 
   else {
@@ -139,25 +137,15 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 	  f.modifiers=0;
 	  ofs+=3;
 	  break;
+	    
 	case OF_TYPE_EXTENDED12:
 	  /* Eat the next byte and then skip over this reserved frame type */
 	  f.type=OF_TYPE_FLAG_E12|(packet[ofs]&OF_MODIFIER_BITS)|(packet[ofs+1]<<4);
 	  f.modifiers=0;
 	  ofs+=2;
 	  break;
-	case OF_TYPE_NODEANNOUNCE:
-	case OF_TYPE_IDENTITYENQUIRY:
-	case OF_TYPE_RESERVED_09:
-	case OF_TYPE_RESERVED_0a:
-	case OF_TYPE_RESERVED_0b:
-	case OF_TYPE_RESERVED_0c:
-	case OF_TYPE_RESERVED_0d:
-	case OF_TYPE_SELFANNOUNCE:
-	case OF_TYPE_SELFANNOUNCE_ACK:
-	case OF_TYPE_DATA:
-	case OF_TYPE_DATA_VOICE:
-	case OF_TYPE_RHIZOME_ADVERT:
-	case OF_TYPE_PLEASEEXPLAIN:
+	    
+	default:
 	  /* No extra bytes to deal with here */
 	  ofs++;
 	  break;
@@ -194,7 +182,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       f.bytecount=f.rfs-(offset-ofs);
       if (f.bytecount<0) {
 	f.bytecount=0;
-	if (debug&DEBUG_PACKETFORMATS) DEBUGF("f.rfs=%d, offset=%d, ofs=%d", f.rfs, offset, ofs);
+	if (debug&DEBUG_PACKETFORMATS) DEBUGF("f.rfs=%02x, offset=%02x, ofs=%02x", f.rfs, offset, ofs);
 	return WHY("negative residual byte count after extracting addresses from frame header");
       }
 

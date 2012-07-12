@@ -433,7 +433,6 @@ typedef struct overlay_frame {
   unsigned int modifiers;
   
   unsigned char ttl;
-  unsigned char dequeue;
   
   /* Mark which interfaces the frame has been sent on,
    so that we can ensure that broadcast frames get sent
@@ -860,12 +859,12 @@ int overlay_rx_messages();
 int overlay_add_selfannouncement();
 int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b);
 int overlay_interface_args(const char *arg);
-int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
-			int *interface);
+int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *interface);
 int overlay_sendto(struct sockaddr_in *recipientaddr,unsigned char *bytes,int len);
 int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e);
 int overlay_add_local_identity(unsigned char *s);
 int overlay_address_is_local(unsigned char *s);
+void overlay_send_packet();
 
 extern int overlay_interface_count;
 

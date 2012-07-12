@@ -363,8 +363,7 @@ int overlay_route_init(int mb_ram)
    nodes that are only indirectly connected. Indeed, the two are somewhat interconnected as
    an indirect route may be required to get a self-announce ack back to the sender.
 */
-int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
-			int *interface)
+int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *interface)
 {
   int i;
   
@@ -376,32 +375,29 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
 
   if (!overlay_neighbours) return WHY("I have no neighbours");
 
-  overlay_neighbour *neh=overlay_route_get_neighbour_structure(d,SID_SIZE,
+  overlay_neighbour *direct_neighbour=overlay_route_get_neighbour_structure(d,SID_SIZE,
 							       0 /* don't create if 
 								    missing */);
 
-  if (neh) {
+  if (direct_neighbour) {
     /* Is a direct neighbour.
        So in the absence of any better indirect route, we pick the interface that
        we can hear this neighbour on the most reliably, and then send the frame 
        via that interface and directly addressed to the recipient. */
     bcopy(d,nexthop,SID_SIZE);
-    (*nexthoplen)=SID_SIZE;
 
     *interface=0;
     for(i=1;i<OVERLAY_MAX_INTERFACES;i++) {
-      if (neh->scores[i]>neh->scores[*interface]) *interface=i;
+      if (direct_neighbour->scores[i]>direct_neighbour->scores[*interface]) *interface=i;
     }
-    if (neh->scores[*interface]<1) {
-      
-      if (1||debug&DEBUG_OVERLAYROUTING)
-	DEBUGF("No open path to %s, neighbour score <=0",alloca_tohex_sid(neh->node->sid));
-      
-      return -1;
-    }
+    if (direct_neighbour->scores[*interface]>0) {
     if (0) DEBUGF("nexthop is %s",alloca_tohex_sid(nexthop));
     return 0;
-  } else {
+    }
+    // otherwise fall through
+  }
+  
+  {
     /* Is not a direct neighbour.
        XXX - Very simplistic for now. */
     overlay_node *n=overlay_route_find_node(d,SID_SIZE,0 /* don't create if missing */ );
@@ -411,13 +407,13 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *nexthoplen,
       int best_o=-1;
       for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++) {
 	int score=n->observations[o].observed_score;
-	overlay_neighbour *neh
+	overlay_neighbour *neighbour
 	  =overlay_route_get_neighbour_structure
 	  (n->observations[o].sender_prefix,OVERLAY_SENDER_PREFIX_LENGTH,0);
-	if (neh) {
+	if (neighbour && neighbour!=direct_neighbour) {
 	  for(i=1;i<OVERLAY_MAX_INTERFACES;i++) {
-	    if (neh->scores[i]*score>best_score) {
-	      bcopy(&neh->node->sid[0],&nexthop[0],SID_SIZE);
+	    if (neighbour->scores[i]*score>best_score) {
+	      bcopy(&neighbour->node->sid[0],&nexthop[0],SID_SIZE);
 	      *interface=i;
 	      best_o=o;
 	      best_score=score;
@@ -570,15 +566,13 @@ int overlay_route_ack_selfannounce(overlay_frame *f,
   out->nexthop_address_status=OA_UNINITIALISED;
   {
     unsigned char nexthop[SID_SIZE];
-    int len=0;
     int next_hop_interface=-1;
-    int r=overlay_get_nexthop(out->destination,nexthop,&len,
-			      &next_hop_interface);
+    int r=overlay_get_nexthop(out->destination,nexthop,&next_hop_interface);
     if (r) {
       /* no open path, so convert to broadcast */
       int i;
       for(i=0;i<(SID_SIZE-8);i++) out->nexthop[i]=0xff;
-      for(i=24;i<SID_SIZE;i++) out->nexthop[i]=random()&0xff;
+      for(i=(SID_SIZE-8);i<SID_SIZE;i++) out->nexthop[i]=random()&0xff;
       out->nexthop_address_status=OA_RESOLVED;
       out->ttl=2;
       out->isBroadcast=1;

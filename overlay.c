@@ -292,7 +292,6 @@ int overlay_frame_process(struct overlay_interface *interface,overlay_frame *f)
   if (((!ultimatelyForMe)||broadcast)&&(f->ttl>1))
     {
       /* Yes, it is. */
-      int len=0;      
 
       if (broadcast&&(!duplicateBroadcast)&&
 	  ((f->type==OF_TYPE_SELFANNOUNCE)
@@ -310,8 +309,7 @@ int overlay_frame_process(struct overlay_interface *interface,overlay_frame *f)
 	if (debug&DEBUG_OVERLAYFRAMES) DEBUG("Forwarding frame");
 	int dontForward=0;
 	if (!broadcast) {
-	  if (overlay_get_nexthop(f->destination,f->nexthop,&len,
-				  &f->nexthop_interface))
+	  if (overlay_get_nexthop(f->destination,f->nexthop,&f->nexthop_interface))
 	    WHYF("Could not find next hop for %s* - dropping frame",
 		 alloca_tohex(f->destination, 7));
 	  dontForward=1;

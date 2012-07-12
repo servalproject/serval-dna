@@ -66,19 +66,19 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
      Will pick a next hop if one has not been chosen.
   */
 
-  int nexthoplen=0;
-
-  overlay_buffer *headers=ob_new(256);
+  int i;
+  overlay_buffer *headers;
+  
+  headers=ob_new(256);
 
   if (!headers) return WHY("could not allocate overlay buffer for headers");
-  if (!p) return WHY("p is NULL");
-  if (!b) return WHY("b is NULL");
 
+  ob_checkpoint(b);
+  
   if (debug&DEBUG_PACKETCONSTRUCTION)
     dump_payload(p,"package_fmt1 stuffing into packet");
 
   /* Build header */
-  int fail=0;
 
   if (p->nexthop_address_status!=OA_RESOLVED) {
     if (0) WHYF("next hop is NOT resolved for packet to %s",
@@ -86,16 +86,18 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
     if (overlay_address_is_broadcast(p->destination)) {
       /* Broadcast frames are broadcast rather than unicast to next hop.
 	 Just check if the broadcast frame should be dropped first. */
-      if (overlay_broadcast_drop_check(p->destination))
-	return WHY("This broadcast packet ID has been seen recently");
-      int i;
+      if (overlay_broadcast_drop_check(p->destination)){
+	WHY("This broadcast packet ID has been seen recently");
+	goto cleanup;
+      }
+      
       /* Copy the broadcast address exactly so that we preserve the BPI */
       for(i=0;i<SID_SIZE;i++) p->nexthop[i]=p->destination[i];
       p->nexthop_address_status=OA_RESOLVED;
     } else {
-      if (overlay_get_nexthop((unsigned char *)p->destination,p->nexthop,&nexthoplen,&p->nexthop_interface)) {
-	fail++;
-	return WHY("could not determine next hop address for payload");
+      if (overlay_get_nexthop((unsigned char *)p->destination,p->nexthop,&p->nexthop_interface)) {
+	WHY("could not determine next hop address for payload");
+	goto cleanup;
       }
       else p->nexthop_address_status=OA_RESOLVED;
     }
@@ -107,27 +109,29 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
 
   if (p->source[0]<0x10) {
     // Make sure that addresses do not overload the special address spaces of 0x00*-0x0f*
-    fail++;
-    return WHY("packet source address begins with reserved value 0x00-0x0f");
+    WHY("packet source address begins with reserved value 0x00-0x0f");
+    goto cleanup;
   }
   if (p->destination[0]<0x10) {
     // Make sure that addresses do not overload the special address spaces of 0x00*-0x0f*
-    fail++;
-    return WHY("packet destination address begins with reserved value 0x00-0x0f");
+    WHY("packet destination address begins with reserved value 0x00-0x0f");
+    goto cleanup;
   }
   if (p->nexthop[0]<0x10) {
     // Make sure that addresses do not overload the special address spaces of 0x00*-0x0f*
-    fail++;
-    return WHY("packet nexthop address begins with reserved value 0x00-0x0f");
+    WHY("packet nexthop address begins with reserved value 0x00-0x0f");
+    goto cleanup;
   }
 
   /* Write fields into binary structure in correct order */
 
   /* Write out type field byte(s) */
-  if (!fail) if (op_append_type(headers,p)) fail++;
+  if (op_append_type(headers,p))
+    goto cleanup;    
 
   /* Write out TTL */
-  if (!fail) if (ob_append_byte(headers,p->ttl)) fail++;
+  if (ob_append_byte(headers,p->ttl))
+    goto cleanup;
 
   /* Length.  This is the fun part, because we cannot calculate how many bytes we need until
      we have abbreviated the addresses, and the length encoding we use varies according to the
@@ -135,55 +139,52 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
      we rely on context for abbreviating the addresses.  So we write it initially and then patch it
      after.
   */
-  if (!fail) {
-    int max_len=((SID_SIZE+3)*3+headers->length+p->payload->length);
-    if (debug&DEBUG_PACKETCONSTRUCTION) 
-      fprintf(stderr,"Appending RFS for max_len=%d\n",max_len);
-    ob_append_rfs(headers,max_len);
-    
-    int addrs_start=headers->length;
-    
-    /* Write out addresses as abbreviated as possible */
-    overlay_abbreviate_append_address(headers,p->nexthop);
-    overlay_abbreviate_set_most_recent_address(p->nexthop);
-    overlay_abbreviate_append_address(headers,p->destination);
-    overlay_abbreviate_set_most_recent_address(p->destination);
-    overlay_abbreviate_append_address(headers,p->source);
-    overlay_abbreviate_set_most_recent_address(p->source);
-    
-    int addrs_len=headers->length-addrs_start;
-    int actual_len=addrs_len+p->payload->length;
-    if (debug&DEBUG_PACKETCONSTRUCTION) 
-      fprintf(stderr,"Patching RFS for actual_len=%d\n",actual_len);
-    ob_patch_rfs(headers,actual_len);
-  }
-
-  if (fail) {
-    ob_free(headers);
-    return WHY("failure count was non-zero");
-  }
+  int max_len=((SID_SIZE+3)*3+headers->length+p->payload->length);
+  if (debug&DEBUG_PACKETCONSTRUCTION) 
+    DEBUGF("Appending RFS for max_len=%d\n",max_len);
+  ob_append_rfs(headers,max_len);
+  
+  int addrs_start=headers->length;
+  
+  /* Write out addresses as abbreviated as possible */
+  overlay_abbreviate_append_address(headers,p->nexthop);
+  overlay_abbreviate_set_most_recent_address(p->nexthop);
+  overlay_abbreviate_append_address(headers,p->destination);
+  overlay_abbreviate_set_most_recent_address(p->destination);
+  overlay_abbreviate_append_address(headers,p->source);
+  overlay_abbreviate_set_most_recent_address(p->source);
+  
+  int addrs_len=headers->length-addrs_start;
+  int actual_len=addrs_len+p->payload->length;
+  if (debug&DEBUG_PACKETCONSTRUCTION) 
+    DEBUGF("Patching RFS for actual_len=%d\n",actual_len);
+  ob_patch_rfs(headers,actual_len);
 
   /* Write payload format plus total length of header bits */
   if (ob_makespace(b,2+headers->length+p->payload->length)) {
     /* Not enough space free in output buffer */
-    ob_free(headers);
     if (debug&DEBUG_PACKETFORMATS)
-      WHY("Could not make enough space free in output buffer");
-    return -1;
+      DEBUGF("Could not make enough space free in output buffer");
+    goto cleanup;
   }
   
   /* Package up headers and payload */
-  ob_checkpoint(b);
-  if (ob_append_bytes(b,headers->bytes,headers->length)) 
-    { fail++; WHY("could not append header"); }
-  if (ob_append_bytes(b,p->payload->bytes,p->payload->length)) 
-    { fail++; WHY("could not append payload"); }
+  if (ob_append_bytes(b,headers->bytes,headers->length)) {
+    WHY("could not append header");
+    goto cleanup;
+  }
+  if (ob_append_bytes(b,p->payload->bytes,p->payload->length)) {
+    WHY("could not append payload"); 
+    goto cleanup;
+  }
 
-  /* XXX SIGN &/or ENCRYPT */
-  
   ob_free(headers);
+  return 0;
   
-  if (fail) { ob_rewind(b); return WHY("failure count was non-zero"); } else return 0;
+cleanup:
+  ob_free(headers);
+  ob_rewind(b);
+  return -1;
 }
   
 overlay_buffer *overlay_payload_unpackage(overlay_frame *b) {
@@ -248,64 +249,6 @@ int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP)
     WHYF("Enqueuing packet for %s* (q[%d]length = %d)",
 	 alloca_tohex(p->destination, 7),
 	 q,overlay_tx[q].length);
-  if (q==OQ_ISOCHRONOUS_VOICE&&(!forceBroadcastP)) {
-    /* Dispatch voice data immediately.
-       Also tell Rhizome to back off a bit, so that voice traffic
-       can get through. */
-    int interface=-1;
-    int nexthoplen=SID_SIZE;
-    int broadcast=overlay_address_is_broadcast(p->destination);
-
-    rhizome_saw_voice_traffic();
-    
-    overlay_abbreviate_clear_most_recent_address();
-    
-    if (broadcast) {
-      bcopy(p->destination,p->nexthop,SID_SIZE);
-      interface=0;
-    } else {
-      if (overlay_get_nexthop(p->destination,p->nexthop,&nexthoplen,
-			      &interface)) {
-	// (we don't need another log message here)
-	return -1;
-      }
-    }
-
-    overlay_buffer *b=ob_new(overlay_interfaces[interface].mtu);
-    unsigned char bytes[]={/* Magic */ 'O',0x10,
-			   /* Version */ 0x00,0x01};
-    if (ob_append_bytes(b,bytes,4)) {
-      ob_free(b);
-      return WHY("ob_append_bytes() refused to append magic bytes.");
-    }
-    if (overlay_frame_package_fmt1(p,b)) {
-      ob_free(b);
-      return WHY("could not package voice frame for immediate dispatch");
-    }
-
-    if (debug&DEBUG_OVERLAYINTERFACES) 
-      WHYF("Sending %d byte voice packet",b->length);
-  nextinterface:
-    if (overlay_broadcast_ensemble(interface,NULL,b->bytes,b->length) != -1)
-      {
-	if (debug&DEBUG_OVERLAYINTERFACES)
-	  WHYF("Voice frame sent on interface #%d (%d bytes)",
-	       interface,b->length);
-	ob_free(b);
-	return 0;
-      } else {
-      WHYF("Failed to send voice frame on interface #%d (%d bytes)",
-	   interface,b->length);
-      ob_free(b);
-      return -1;
-    }
-
-    if (broadcast) {
-      interface++;
-      if (interface<overlay_interface_count) goto nextinterface;
-    }
-    
-  }
   
   if (q<0||q>=OQ_MAX) return WHY("Invalid queue specified");
   if (!p) return WHY("Cannot queue NULL");
@@ -336,9 +279,14 @@ int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP)
   overlay_tx[q].last=p;
   if (!overlay_tx[q].first) overlay_tx[q].first=p;
   overlay_tx[q].length++;
-  
+
   if (0) dump_queue("after",q);
 
+  if (q==OQ_ISOCHRONOUS_VOICE&&(!forceBroadcastP)) {
+    // Send a packet now
+    overlay_send_packet();
+  }
+  
   return 0;
 }
 

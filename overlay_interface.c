@@ -45,7 +45,16 @@ struct interface_rules *interface_filter=NULL;
 struct profile_total interface_poll_stats;
 struct profile_total dummy_poll_stats;
 
+struct outgoing_packet{
+  overlay_interface *interface;
+  int i;
+  overlay_buffer *buffer;
+};
+
 int overlay_tick_interface(int i, long long now);
+
+unsigned char magic_header[]={/* Magic */ 'O',0x10,
+  /* Version */ 0x00,0x01};
 
 
 /* Return milliseconds since server started.  First call will always return zero.
@@ -667,117 +676,25 @@ void overlay_interface_discover(struct sched_ent *alarm){
   return;
 }
 
-int overlay_stuff_packet_from_queue(int i,overlay_buffer *e,int q,long long now,overlay_frame *pax[],int *frame_pax,int frame_max_pax) 
-{
-  if (0) DEBUGF("Stuffing from queue #%d on interface #%d",q,i);
-  overlay_frame **p=&overlay_tx[q].first;
-  if (0) DEBUGF("A p=%p, *p=%p, queue=%d",p,*p,q);
-  while(p&&(*p))
-    {
-      if (0) DEBUGF("B p=%p, *p=%p, queue=%d",p,*p,q);
-
-      /* Throw away any stale frames */
-      overlay_frame *pp;
-
-      if (p) pp=*p;
-      
-      if (!pp) break;
-      
-      if (0) DEBUGF("now=%lld, *p=%p, q=%d, overlay_tx[q]=%p",
-	     now,*p,q,&overlay_tx[q]);
-      if (0) overlay_queue_dump(&overlay_tx[q]);
-      if (now>((*p)->enqueued_at+overlay_tx[q].latencyTarget)) {
-	/* Stale, so remove from queue. */
-
-	/* Get pointer to stale entry */
-	overlay_frame *stale=*p;
-	if (0) 
-	  DEBUGF("Removing stale frame at %p (now=%lld, expiry=%lld)",
-		  stale,
-		  now,((*p)->enqueued_at+overlay_tx[q].latencyTarget));
-	if (0) DEBUGF("now=%lld, *p=%p, q=%d, overlay_tx[q]=%p",
-		      now,*p,q,&overlay_tx[q]);
-	/* Make ->next pointer that points to the stale node skip the stale node */
-	if (0) DEBUGF("p=%p, stale=%p, stale->next=%p",p,stale,stale->next);
-	*p=stale->next;	
-	/* If there is an entry after the stale now, make it's prev point to the 
-	   node before the stale node */
-	if (*p) (*p)->prev=stale->prev;
-	if (overlay_tx[q].first==stale) overlay_tx[q].first=stale->next;
-	if (overlay_tx[q].last==stale) overlay_tx[q].last=stale->prev;
-	op_free(stale);
-	overlay_tx[q].length--;
-      }
-      else
-	{
-	  /* We keep trying to queue frames in case they will fit, as not all
-	     frames are of equal size.  This means that lower bit-rate codecs will
-	     get higher priority, which is probably not all bad.  The only hard
-	     limit is the maximum number of payloads we allow in a frame, which is
-	     set so high as to be irrelevant, even on loopback or gigabit ethernet
-	     interface */
-
-	  /* Filter for those which should be sent via this interface.
-	     To do that we need to know the nexthop, and the best route to the
-	     next hop. */
-	  int dontSend=1;
-
-	  /* See if this interface has the best path to this node */
-	  if (!(*p)->isBroadcast) {
-	    unsigned char nexthop[SID_SIZE];
-	    int len=0;
-	    int next_hop_interface=-1;
-	    int r=overlay_get_nexthop((*p)->destination,nexthop,&len,
-				      &next_hop_interface);
-	    if (!r) {
-	      if (next_hop_interface==i) {
-		if (0) DEBUGF("unicast pax %p",*p);
-		dontSend=0; } else {
-		if (0) 
-		  DEBUGF("Packet should go via interface #%d, but I am interface #%d",next_hop_interface,i);
-	      }
-	    } else {
-	      DEBUG("bummer, I couldn't find an open route to that node");
-	      DEBUGF("sid=%s", alloca_tohex_sid((*p)->destination));
-	    }
-	  } else if (!(*p)->broadcast_sent_via[i])
-	    {
-	      /* Broadcast frames are easy to work out if they go via this interface, 
-		 just make sure that they haven't been previously sent via this
-		 interface. We then have some magic that only dequeues broadcast packets
-		 once they have been sent via all open interfaces (or gone stale) */
-	      dontSend=0;
-	      (*p)->broadcast_sent_via[i]=1;
-	      if (0) DEBUGF("broadcast pax %p",*p);
-	    }
-	  
-	  if (dontSend==0) {   
-	    /* Try sending by this queue */
-	    if (*frame_pax>=frame_max_pax) break;
-	    if (!overlay_frame_package_fmt1(*p,e))
-	      {
-		/* Add payload to list of payloads we are sending with this frame so that we can dequeue them
-		   if we send them. */
-		if (0) {
-		  DEBUGF("  paxed#%d %p%s",*frame_pax,*p,
-			 (*p)->isBroadcast?"(broadcast)":"");
-		  dump("payload of pax",(*p)->payload->bytes,(*p)->payload->length);
-		}
-		pax[(*frame_pax)++]=*p;
-	      }
-	  }
-	}
-
-      if (0) DEBUGF("C p=%p, *p=%p, queue=%d",p,*p,q);
-
-      if (*p) 
-	/* Consider next in queue */
-	p=&(*p)->next;
-
-      if (0) DEBUGF("D p=%p, *p=%p, queue=%d",p,p?*p:NULL,q);
-    }
-  if (0) DEBUG("returning from stuffing");
-  return 0;
+/* remove and free a payload from the queue */
+overlay_frame *overlay_queue_remove(overlay_txqueue *queue, overlay_frame *frame){
+  overlay_frame *prev = frame->prev;
+  overlay_frame *next = frame->next;
+  if (prev)
+    prev->next = next;
+  else if(frame == queue->first)
+    queue->first = next;
+    
+  if (next)
+    next->prev = prev;
+  else if(frame == queue->last)
+    queue->last = prev;
+  
+  queue->length--;
+  
+  op_free(frame);
+  
+  return next;
 }
 
 int overlay_queue_dump(overlay_txqueue *q)
@@ -791,8 +708,8 @@ int overlay_queue_dump(overlay_txqueue *q)
   strbuf_sprintf(b,"  first=%p\n",q->first);
   f=q->first;
   while(f) {
-    strbuf_sprintf(b,"    %p: ->next=%p, ->prev=%p ->dequeue=%d\n",
-	    f,f->next,f->prev,f->dequeue);
+    strbuf_sprintf(b,"    %p: ->next=%p, ->prev=%p\n",
+	    f,f->next,f->prev);
     if (f==f->next) {
       strbuf_sprintf(b,"        LOOP!\n"); break;
     }
@@ -812,161 +729,184 @@ int overlay_queue_dump(overlay_txqueue *q)
   return 0;
 }
 
+int overlay_resolve_next_hop(overlay_frame *frame){
+  if (frame->nexthop_address_status==OA_RESOLVED)
+    return 0;
+  
+  if (frame->isBroadcast)
+    bcopy(&frame->destination,&frame->nexthop,SID_SIZE);
+  else if (overlay_get_nexthop((unsigned char *)frame->destination,frame->nexthop,&frame->nexthop_interface)){
+    // TODO new code?
+    frame->nexthop_address_status=OA_UNSUPPORTED;
+    return -1;
+  }
+  
+  frame->nexthop_address_status=OA_RESOLVED;
+  return 0;
+}
+
+void overlay_init_packet(struct outgoing_packet *packet, int interface){
+  packet->i = interface;
+  packet->interface = &overlay_interfaces[packet->i];
+  packet->buffer=ob_new(packet->interface->mtu);
+  ob_limitsize(packet->buffer, packet->interface->mtu);
+  ob_append_bytes(packet->buffer,magic_header,4);
+}
+
+void overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, long long now){
+  overlay_frame *frame = queue->first;
+  
+  // TODO stop when the packet is nearly full?
+  
+  while(frame){
+    int drop =0;
+    frame->isBroadcast = overlay_address_is_broadcast(frame->destination);
+    
+    if (frame->enqueued_at + queue->latencyTarget < now)
+      drop=1;
+    else if(frame->isBroadcast)
+      drop=overlay_broadcast_drop_check(frame->destination);
+    
+    if (drop){
+      DEBUG("Dropping frame due to expiry timeout");
+      frame = overlay_queue_remove(queue, frame);
+      continue;
+    }
+    
+    if (overlay_resolve_next_hop(frame))
+      goto skip;
+    
+    if (!packet->buffer){
+      // use the interface of the first payload we find
+      if (frame->isBroadcast){
+	// find an interface that we haven't broadcast on yet
+	int i;
+	for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
+	{
+	  if (overlay_interfaces[i].observed>0)
+	    if (!frame->broadcast_sent_via[i]){
+	      overlay_init_packet(packet, i);
+	      break;
+	    }
+	}
+	
+	if (!packet->buffer){
+	  // oh dear, why is this broadcast still in the queue?
+	  frame = overlay_queue_remove(queue, frame);
+	  continue;
+	}
+      }else{
+	overlay_init_packet(packet, frame->nexthop_interface);
+      }
+      
+    }else{
+      // make sure this payload can be sent via this interface
+      if (frame->isBroadcast){
+	if (frame->broadcast_sent_via[packet->i]){
+	  goto skip;
+	}
+      }else if(packet->i != frame->nexthop_interface){
+	goto skip;
+      }
+    }
+    
+    if (overlay_frame_package_fmt1(frame, packet->buffer))
+      // payload was not queued
+      goto skip;
+    
+    // mark the payload as sent
+    int keep_payload = 0;
+    
+    if (frame->isBroadcast){
+      int i;
+      frame->broadcast_sent_via[packet->i]=1;
+      
+      // check if there is still a broadcast to be sent      
+      for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
+      {
+	if (overlay_interfaces[i].observed>0)
+	  if (!frame->broadcast_sent_via[i]){
+	    keep_payload=1;
+	    break;
+	  }
+      }
+    }
+    
+    if (!keep_payload){
+      frame = overlay_queue_remove(queue, frame);
+      continue;
+    }
+    
+  skip:
+    frame = frame->next;
+  }
+}
+
+// fill a packet from our outgoing queues and send it
+int overlay_fill_send_packet(struct outgoing_packet *packet, long long now){
+  int i;
+  IN();
+  
+  for (i=0;i<OQ_MAX;i++){
+    overlay_txqueue *queue=&overlay_tx[i];
+    
+    overlay_stuff_packet(packet, queue, now);
+  }
+  
+  if(packet->buffer){
+    // send the packet
+    if (packet->buffer->length>=HEADERFIELDS_LEN){
+      if (debug&DEBUG_PACKETCONSTRUCTION)
+	dump("assembled packet",&packet->buffer->bytes[0],packet->buffer->length);
+      
+      if (debug&DEBUG_OVERLAYINTERFACES) 
+	DEBUGF("Sending %d byte packet",packet->buffer->length);
+      
+      overlay_broadcast_ensemble(packet->i,NULL,packet->buffer->bytes,packet->buffer->length);
+    }
+    ob_free(packet->buffer);
+    RETURN(1);
+  }
+  RETURN(0);
+}
+
+void overlay_send_packet(){
+  struct outgoing_packet packet;
+  bzero(&packet, sizeof(struct outgoing_packet));
+  
+  overlay_fill_send_packet(&packet, overlay_gettime_ms());
+}
+
 int overlay_tick_interface(int i, long long now)
 {
-  int frame_pax=0;
-  overlay_buffer *e=NULL;
-#define MAX_FRAME_PAX 1024
-  overlay_frame *pax[MAX_FRAME_PAX];
+  struct outgoing_packet packet;
+  IN();
 
   if (overlay_interfaces[i].bits_per_second<1) {
     /* An interface with no speed budget is for listening only, so doesn't get ticked */
-    return 0;
+    RETURN(0);
   }
 
+  // initialise the packet buffer
+  bzero(&packet, sizeof(struct outgoing_packet));
+  overlay_init_packet(&packet, i);
+  
   if (debug&DEBUG_OVERLAYINTERFACES) DEBUGF("Ticking interface #%d",i);
-
-  /* Get a buffer ready, and limit it's size appropriately.
-     XXX size limit should be reduced from MTU.
-     XXX we should also take account of the volume of data likely to be in the TX buffer. */  
-  e=ob_new(overlay_interfaces[i].mtu);
-  if (!e) return WHY("ob_new() failed");
-  ob_limitsize(e,overlay_interfaces[i].mtu/4);
-
-  /* 0. Setup Serval Mesh frame header. We do not use an explicit length field for these, as the various
-     component payloads are all self-authenticating, or at least that is the theory. */
-  unsigned char bytes[]={/* Magic */ 'O',0x10,
-			 /* Version */ 0x00,0x01};
-  if (ob_append_bytes(e,bytes,4)) {
-    ob_free(e);   
-    return WHY("ob_append_bytes() refused to append magic bytes.");
-  }
 
   /* 1. Send announcement about ourselves, including one SID that we host if we host more than one SID
      (the first SID we host becomes our own identity, saving a little bit of data here).
   */
-  overlay_add_selfannouncement(i,e);
+  overlay_add_selfannouncement(i,packet.buffer);
   
-  /* 2. Add any queued high-priority isochronous data (i.e. voice) to the frame. */
-  overlay_stuff_packet_from_queue(i,e,OQ_ISOCHRONOUS_VOICE,now,pax,&frame_pax,MAX_FRAME_PAX);
-
-  ob_limitsize(e,overlay_interfaces[i].mtu/2);
-  /* 3. Add some mesh reachability reports (unlike BATMAN we announce reachability to peers progressively).
-        Give priority to newly observed nodes so that good news travels quickly to help roaming.
-	XXX - Don't forget about PONGing reachability reports to allow use of monodirectional links.
-  */
-  overlay_stuff_packet_from_queue(i,e,OQ_MESH_MANAGEMENT,now,pax,&frame_pax,MAX_FRAME_PAX);
-
-  /* We previously limited manifest space to 3/4 of MTU, but that causes problems for
-     MeshMS journal manifests, at least until we move to a compact binary format.
-     So for now, allow allow rest of packet to get used */
-  // TODO reduce to <= mtu*3/4 once we have compact binary canonical manifest format
-  ob_limitsize(e,overlay_interfaces[i].mtu*4/4);
-
-  /* Add advertisements for ROUTES not Rhizome bundles.
-     Rhizome bundle advertisements are lower priority */
-  overlay_route_add_advertisements(e);
+  /* Add advertisements for ROUTES */
+  overlay_route_add_advertisements(packet.buffer);
   
-  ob_limitsize(e,overlay_interfaces[i].mtu);
-
-  /* 4. XXX Add lower-priority queued data */
-  overlay_stuff_packet_from_queue(i,e,OQ_ISOCHRONOUS_VIDEO,now,pax,&frame_pax,MAX_FRAME_PAX);
-  overlay_stuff_packet_from_queue(i,e,OQ_ORDINARY,now,pax,&frame_pax,MAX_FRAME_PAX);
-  overlay_stuff_packet_from_queue(i,e,OQ_OPPORTUNISTIC,now,pax,&frame_pax,MAX_FRAME_PAX);
-  /* 5. XXX Fill the packet up to a suitable size with anything that seems a good idea */
   if (rhizome_enabled() && rhizome_http_server_running())
-    overlay_rhizome_add_advertisements(i,e);
-
-  if (debug&DEBUG_PACKETCONSTRUCTION)
-    dump("assembled packet",&e->bytes[0],e->length);
-
-  /* Now send the frame.  This takes the form of a special DNA packet with a different
-     service code, which we setup earlier. */
-  if (debug&DEBUG_OVERLAYINTERFACES) 
-    DEBUGF("Sending %d byte tick packet",e->length);
-  if (overlay_broadcast_ensemble(i,NULL,e->bytes,e->length) != -1)
-    {
-      if (debug&DEBUG_OVERLAYINTERFACES)
-	DEBUGF("Successfully transmitted tick frame on interface #%d (%d bytes)",
-	      i,e->length);
-
-      /* De-queue the passengers who were aboard.
-	 One round of marking, and then one round of culling from the queue. */
-      int j,q;
-      
-      /* Mark frames that can be dequeued */
-      for(j=0;j<frame_pax;j++)
-	{
-	  overlay_frame *p=pax[j];
-	  if (0) 
-	    DEBUGF("dequeue %p ?%s",p,p->isBroadcast?" (broadcast)":" (unicast)");
-	  if (!p->isBroadcast)
-	    {
-	      if (0) DEBUG("yes");
-	      p->dequeue=1;
-	    }
-	  else {
-	    int i;
-	    int workLeft=0;
-	    for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
-	      {
-		if (overlay_interfaces[i].observed>0)
-		  if (!p->broadcast_sent_via[i])
-		    { 
-		      workLeft=1; 
-		      break;
-		    }
-	      }
-	    if (!workLeft) p->dequeue=1;
-	  }
-	}
-
-      /* Visit queues and dequeue all that we can */
-      for(q=0;q<OQ_MAX;q++)
-	{
-	  overlay_frame **p=&overlay_tx[q].first;
-	  overlay_frame *t;
-	  while(p&&(*p))
-	    {	      
-	      if ((*p)->dequeue) {
-		{
-		  if (debug&DEBUG_QUEUES)
-		    DEBUGF("dequeuing %s* -> %s* NOW (queue length=%d)",
-			 alloca_tohex((*p)->source, 7),
-			 alloca_tohex((*p)->destination, 7),
-			 overlay_tx[q].length);
-		  t=*p;
-		  *p=t->next;
-		  if (overlay_tx[q].last==t) overlay_tx[q].last=t->prev;
-		  if (overlay_tx[q].first==t) overlay_tx[q].first=t->next;
-		  if (t->prev) t->prev->next=t->next;
-		  if (t->next) t->next->prev=t->prev;
-		  if (debug&DEBUG_QUEUES)
-		    { 
-		      DEBUGF("** dequeued pax @ %p",t);
-		      overlay_queue_dump(&overlay_tx[q]);
-		    }
-		  if (op_free(t)) {
-		    overlay_queue_dump(&overlay_tx[q]);
-		    WHY("op_free() failed");
-		    if (debug&DEBUG_QUEUES) exit(WHY("Queue structures corrupt"));
-		  }
-		  overlay_tx[q].length--;
-		}
-	      } else {
-		/* only skip ahead if we haven't dequeued something */
-		if (!(*p)) break;
-		p=&(*p)->next;
-	      }
-	    }
-	}
-      if (e) ob_free(e); e=NULL;
-      return 0;
-    }
-  else {
-    if (e) ob_free(e); e=NULL;
-    return WHY("overlay_broadcast_ensemble() failed");
-  }
+    overlay_rhizome_add_advertisements(i,packet.buffer);
+  
+  /* Stuff more payloads from queues and send it */
+  overlay_fill_send_packet(&packet, now);
+  RETURN(0);
 }
 
 long long parse_quantity(char *q)
