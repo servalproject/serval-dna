@@ -717,10 +717,7 @@ int packetSetSidFromId(unsigned char *packet,int packet_maxlen,int *packet_len,
 		       keyring_identity *id);
 int packetFinalise(unsigned char *packet,int packet_maxlen,int recvttl,
 		   int *packet_len,int cryptoflags);
-int packetAddHLRCreateRequest(unsigned char *packet,int packet_maxlen,int *packet_len);
 int extractResponses(struct in_addr sender,unsigned char *buffer,int len,struct response_set *responses);
-int packetAddVariableRequest(unsigned char *packet,int packet_maxlen,int *packet_len,
-                             char *item,int instance,int start_offset,int max_offset);
 int packetGetID(unsigned char *packet,int len,char *did,char *sid);
 int getPeerList();
 int sendToPeers(unsigned char *packet,int packet_len,int method,int peerId,struct response_set *responses);
@@ -738,8 +735,6 @@ int hlrSetVariable(unsigned char *hlr,int hofs,int varid,int varinstance,
 		   unsigned char *value,int len);
 int extractDid(unsigned char *packet,int *ofs,char *did);
 char *hlrSid(unsigned char *hlr, int ofs, char *sid);
-int packetAddVariableWrite(unsigned char *packet,int packet_maxlen,int *packet_len,
-			   int itemId,int instance,unsigned char *value,int start_offset,int value_len,int flags);
 int processRequest(unsigned char *packet,int len,struct sockaddr *sender,int sender_len,
 		   unsigned char *transaction_id,int recvttl,char *did,char *sid);
 
@@ -1093,10 +1088,10 @@ int overlay_saw_mdp_containing_frame(overlay_frame *f,long long now);
 #define DEBUG_DNARESPONSES          (1 << 5)
 #define DEBUG_DNAREQUESTS           (1 << 6)
 #define DEBUG_SIMULATION            (1 << 7)
-#define DEBUG_DNAVARS               (1 << 8)
+#define DEBUG_RHIZOME_RX            (1 << 8)
 #define DEBUG_PACKETFORMATS         (1 << 9)
 #define DEBUG_GATEWAY               (1 << 10)
-#define DEBUG_HLR                   (1 << 11)
+#define DEBUG_HLR                   (1 << 11) // Deprecated, TODO: delete
 #define DEBUG_IO                    (1 << 12)
 #define DEBUG_OVERLAYFRAMES         (1 << 13)
 #define DEBUG_OVERLAYABBREVIATIONS  (1 << 14)

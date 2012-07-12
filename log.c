@@ -229,7 +229,6 @@ unsigned int debugFlagMask(const char *flagname) {
   else if (!strcasecmp(flagname,"dnaresponses"))	return DEBUG_DNARESPONSES;
   else if (!strcasecmp(flagname,"dnarequests"))		return DEBUG_DNAREQUESTS;
   else if (!strcasecmp(flagname,"simulation"))		return DEBUG_SIMULATION;
-  else if (!strcasecmp(flagname,"dnavars"))		return DEBUG_DNAVARS;
   else if (!strcasecmp(flagname,"packetformats"))	return DEBUG_PACKETFORMATS;
   else if (!strcasecmp(flagname,"packetconstruction"))	return DEBUG_PACKETCONSTRUCTION;
   else if (!strcasecmp(flagname,"gateway"))		return DEBUG_GATEWAY;
@@ -241,6 +240,7 @@ unsigned int debugFlagMask(const char *flagname) {
   else if (!strcasecmp(flagname,"security"))		return DEBUG_SECURITY;
   else if (!strcasecmp(flagname,"rhizome"))	        return DEBUG_RHIZOME;
   else if (!strcasecmp(flagname,"rhizomesync"))		return DEBUG_RHIZOMESYNC;
+  else if (!strcasecmp(flagname,"rhizomerx"))		return DEBUG_RHIZOME_RX;
   else if (!strcasecmp(flagname,"monitorroutes"))	return DEBUG_OVERLAYROUTEMONITOR;
   else if (!strcasecmp(flagname,"queues"))		return DEBUG_QUEUES;
   else if (!strcasecmp(flagname,"broadcasts"))		return DEBUG_BROADCASTS;
