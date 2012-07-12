@@ -76,7 +76,6 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 {
   IN();
   int voice_mode=0;
-  unsigned short int http_port = RHIZOME_HTTP_PORT;
 
   /* behave differently during voice mode.
      Basically don't encourage people to grab stuff from us, but keep
@@ -130,7 +129,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
    */
   ob_append_byte(e,3+skipmanifests);
   /* Rhizome HTTP server port number (2 bytes) */
-  ob_append_short(e, http_port);
+  ob_append_short(e, rhizome_http_server_port);
 
   /* XXX Should add priority bundles here.
      XXX Should prioritise bundles for subscribed groups, Serval-authorised files

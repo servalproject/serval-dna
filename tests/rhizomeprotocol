@@ -28,7 +28,6 @@ teardown() {
    stop_all_servald_servers
    kill_all_servald_processes
    assert_no_servald_processes
-   tfw_cat $LOGA $LOGB
 }
 
 setup_rhizome() {

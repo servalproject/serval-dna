@@ -155,6 +155,7 @@ extern int returnMultiVars;
 extern char *gatewayspec;
 
 int rhizome_enabled();
+int rhizome_http_server_running();
 const char *rhizome_datastore_path();
 
 extern struct in_addr client_addr;

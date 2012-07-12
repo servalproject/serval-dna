@@ -89,9 +89,9 @@ struct profile_total connection_stats;
 
 /*
   HTTP server and client code for rhizome transfers.
-
  */
 
+unsigned short rhizome_http_server_port = 0;
 static int rhizome_server_socket = -1;
 static long long rhizome_server_last_start_attempt = -1;
 
@@ -120,6 +120,11 @@ unsigned char favicon_bytes[]={
 ,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 int favicon_len=318;
 
+int rhizome_http_server_running()
+{
+  return rhizome_server_socket != -1;
+}
+
 /* Start the Rhizome HTTP server by creating a socket, binding it to an available port, and
    marking it as passive.  If called repeatedly and frequently, this function will only try to start
    the server after a certain time has elapsed since the last attempt.
@@ -141,54 +146,62 @@ int rhizome_http_server_start()
   if (debug&DEBUG_RHIZOME)
     DEBUGF("Starting rhizome HTTP server");
 
-  rhizome_server_socket = socket(AF_INET,SOCK_STREAM,0);
-  if (rhizome_server_socket == -1) {
-    WHY_perror("socket");
-    return WHY("Failed to start rhizome HTTP server");
-  }
-
-  int on=1;
-  if (setsockopt(rhizome_server_socket, SOL_SOCKET, SO_REUSEADDR, (char *)&on, sizeof(on)) == -1) {
-    WHY_perror("setsockopt(REUSEADDR)");
-    close(rhizome_server_socket);
-    rhizome_server_socket = -1;
-    return WHY("Failed to start rhizome HTTP server");
-  }
-
-  /* Starting at the default port, look for a free port to bind to. */
-  struct sockaddr_in address;
-  bzero((char *) &address, sizeof(address));
-  address.sin_family = AF_INET;
-  address.sin_addr.s_addr = INADDR_ANY;
-  int port = RHIZOME_HTTP_PORT;
-  int result = -1;
-  do {
+  unsigned short port;
+  for (port = RHIZOME_HTTP_PORT; port <= RHIZOME_HTTP_PORT_MAX; ++port) {
+    /* Create a new socket, reusable and non-blocking. */
+    if (rhizome_server_socket == -1) {
+      rhizome_server_socket = socket(AF_INET,SOCK_STREAM,0);
+      if (rhizome_server_socket == -1) {
+	WHY_perror("socket");
+	goto error;
+      }
+      int on=1;
+      if (setsockopt(rhizome_server_socket, SOL_SOCKET, SO_REUSEADDR, (char *)&on, sizeof(on)) == -1) {
+	WHY_perror("setsockopt(REUSEADDR)");
+	goto error;
+      }
+      if (ioctl(rhizome_server_socket, FIONBIO, (char *)&on) == -1) {
+	WHY_perror("ioctl(FIONBIO)");
+	goto error;
+      }
+    }
+    /* Bind it to the next port we want to try. */
+    struct sockaddr_in address;
+    bzero((char *) &address, sizeof(address));
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(port);
-    result = bind(rhizome_server_socket, (struct sockaddr *) &address, sizeof(address));
-  } while (result == -1 && errno == EADDRINUSE && ++port <= RHIZOME_HTTP_PORT_MAX);
-  if (result == -1) {
-    WHY_perror("bind");
+    if (bind(rhizome_server_socket, (struct sockaddr *) &address, sizeof(address)) == -1) {
+      if (errno != EADDRINUSE) {
+	WHY_perror("bind");
+	goto error;
+      }
+    } else {
+      /* We bound to a port.  The battle is half won.  Now we have to successfully listen on that
+	port, which could also fail with EADDRINUSE, in which case we have to scrap the socket and
+	create a new one, because once bound, a socket stays bound.
+      */
+      if (listen(rhizome_server_socket, 20) != -1)
+	goto success;
+      if (errno != EADDRINUSE) {
+	WHY_perror("listen");
+	goto error;
+      }
+      close(rhizome_server_socket);
+      rhizome_server_socket = -1;
+    }
+  }
+  WHYF("No ports available in range %u to %u", RHIZOME_HTTP_PORT, RHIZOME_HTTP_PORT_MAX);
+error:
+  if (rhizome_server_socket != -1) {
     close(rhizome_server_socket);
     rhizome_server_socket = -1;
-    return WHY("Failed to start rhizome HTTP server");
   }
+  return WHY("Failed to start rhizome HTTP server");
 
-  if (ioctl(rhizome_server_socket, FIONBIO, (char *)&on) == -1) {
-    WHY_perror("ioctl(FIONBIO)");
-    close(rhizome_server_socket);
-    rhizome_server_socket = -1;
-    return WHY("Failed to start rhizome HTTP server");
-  }
-
-  if (listen(rhizome_server_socket, 20) == -1) {
-    WHY_perror("listen");
-    close(rhizome_server_socket);
-    rhizome_server_socket = -1;
-    return WHY("Failed to start rhizome HTTP server");
-  }
-
+success:
   INFOF("Started Rhizome HTTP server on port %d, fd = %d", port, rhizome_server_socket);
-
+  rhizome_http_server_port = port;
   /* Add Rhizome HTTPd server to list of file descriptors to watch */
   server_alarm.function = rhizome_server_poll;
   server_stats.name="rhizome_server_poll";
@@ -196,8 +209,8 @@ int rhizome_http_server_start()
   server_alarm.poll.fd = rhizome_server_socket;
   server_alarm.poll.events = POLLIN;
   watch(&server_alarm);
-
   return 0;
+
 }
 
 void rhizome_client_poll(struct sched_ent *alarm)

@@ -128,6 +128,7 @@ typedef struct rhizome_manifest {
 
 extern long long rhizome_space;
 extern int rhizome_fetch_interval_ms;
+extern unsigned short rhizome_http_server_port;
 
 int rhizome_configure();
 
