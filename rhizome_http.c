@@ -267,7 +267,8 @@ void rhizome_client_poll(struct sched_ent *alarm)
 
       if (sigPipeFlag||((bytes==0)&&(errno==0))) {
 	/* broken pipe, so close connection */
-	WHY("Closing connection due to sigpipe");
+	if (debug & DEBUG_RHIZOMESYNC)
+	  DEBUG("Closing connection due to sigpipe");
 	rhizome_server_free_http_request(r);
 	return;
       }	 
@@ -355,7 +356,7 @@ int rhizome_server_sql_query_http_response(rhizome_http_request *r,
   if (r->buffer) { free(r->buffer); r->buffer=NULL; }
   r->buffer_size=16384;
   r->buffer=malloc(r->buffer_size);
-  if (!r->buffer) return WHY("malloc() failed to allocate response buffer");
+  if (!r->buffer) return WHY_perror("malloc");
   r->buffer_length=0;
   r->buffer_offset=0;
   r->source_record_size=bytes_per_row;
@@ -366,7 +367,8 @@ int rhizome_server_sql_query_http_response(rhizome_http_request *r,
   long long response_bytes=256+r->source_count*r->source_record_size;
   rhizome_server_http_response_header(r,200,"servalproject.org/rhizome-list", 
 				      response_bytes);
-  WHYF("headers consumed %d bytes.",r->buffer_length);
+  if (debug & DEBUG_RHIZOMESYNC)
+    DEBUGF("headers consumed %d bytes",r->buffer_length);
 
   /* Clear and prepare response header */
   bzero(&r->buffer[r->buffer_length],256);
@@ -374,7 +376,8 @@ int rhizome_server_sql_query_http_response(rhizome_http_request *r,
   r->buffer[r->buffer_length]=0x01; /* type of response (list) */
   r->buffer[r->buffer_length+1]=0x01; /* version of response */
 
-  WHYF("Found %lld records.",r->source_count);
+  if (debug & DEBUG_RHIZOMESYNC)
+    DEBUGF("Found %lld records",r->source_count);
   /* Number of records we intend to return */
   r->buffer[r->buffer_length+4]=(r->source_count>>0)&0xff;
   r->buffer[r->buffer_length+5]=(r->source_count>>8)&0xff;
@@ -384,7 +387,7 @@ int rhizome_server_sql_query_http_response(rhizome_http_request *r,
   r->buffer_length+=256;
 
   /* copy our public key in to bytes 32+ */
-  WHY("no function yet exists to obtain our public key?");
+  // TODO get out public key (SID) from keyring and copy into response packet
 
   /* build templated query */
   strbuf b = strbuf_local(r->source, sizeof r->source);
@@ -404,7 +407,8 @@ int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, c
 {
   unsigned char blob_value[r->source_record_size*2+1];
 
-  WHYF("populating with sql rows at offset %d",r->buffer_length);
+  if (debug & DEBUG_RHIZOMESYNC)
+    DEBUGF("populating with sql rows at offset %d",r->buffer_length);
   if (r->source_index>=r->source_count)
     {
       /* All done */
@@ -413,7 +417,8 @@ int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, c
 
   int record_count=(r->buffer_size-r->buffer_length)/r->source_record_size;
   if (record_count<1) {
-    WHYF("r->buffer_size=%d, r->buffer_length=%d, r->source_record_size=%d",
+    if (debug & DEBUG_RHIZOMESYNC)
+      DEBUGF("r->buffer_size=%d, r->buffer_length=%d, r->source_record_size=%d",
 	   r->buffer_size, r->buffer_length, r->source_record_size);
     return WHY("Not enough space to fit any records");
   }
@@ -422,7 +427,8 @@ int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, c
   snprintf(query,1024,"%s LIMIT %lld,%d",r->source,r->source_index,record_count);
 
   sqlite3_stmt *statement;
-  WHY(query);
+  if (debug & DEBUG_RHIZOMESYNC)
+    DEBUG(query);
   switch (sqlite3_prepare_v2(rhizome_db,query,-1,&statement,NULL))
     {
     case SQLITE_OK: case SQLITE_DONE: case SQLITE_ROW:
@@ -450,9 +456,8 @@ int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, c
       switch(column_type) {
       case SQLITE_TEXT:	value=sqlite3_column_text(statement, 0); break;
       case SQLITE_BLOB:
-	WHYF("table='%s',col='%s',rowid=%lld",
-	       table, column,
-	       sqlite3_column_int64(statement,1));
+	if (debug & DEBUG_RHIZOMESYNC)
+	  DEBUGF("table='%s',col='%s',rowid=%lld", table, column, sqlite3_column_int64(statement,1));
 	if (sqlite3_blob_open(rhizome_db,"main",table,column,
 			      sqlite3_column_int64(statement,1) /* rowid */,
 			      0 /* read only */,&blob)!=SQLITE_OK)
@@ -469,14 +474,12 @@ int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, c
 	  sqlite3_blob_close(blob);
 	  continue;
 	}
-	WHY("Did read blob");
 	value=blob_value;
 	sqlite3_blob_close(blob);
 	break;
       default:
 	/* improper column type, so don't include in report */
-	WHY("Bad column type");
-	WHYF("colunnt_type=%d",column_type);
+	WHYF("Bad column type %d", column_type);
 	continue;
       }
       if (r->source_flags&1) {
@@ -521,31 +524,33 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
 		     strlen("GET /rhizome/groups HTTP/1.")))
       {
 	/* Return the list of known groups */
-	WHYF("get /rhizome/groups (list of groups)");
+	if (debug & DEBUG_RHIZOMESYNC)
+	  DEBUGF("GET /rhizome/groups");
 	rhizome_server_sql_query_http_response(r,"id","groups","from groups",32,1);
       }
     else if (!strncasecmp(r->request,"GET /rhizome/files HTTP/1.",
 		     strlen("GET /rhizome/files HTTP/1.")))
       {
 	/* Return the list of known files */
-	WHYF("get /rhizome/files (list of files)");
+	if (debug & DEBUG_RHIZOMESYNC)
+	  DEBUGF("GET /rhizome/files");
 	rhizome_server_sql_query_http_response(r,"id","files","from files",32,1);
       }
-    else if (!strncasecmp(r->request,"GET /rhizome/bars HTTP/1.",
-		     strlen("GET /rhizome/bars HTTP/1.")))
+    else if (!strncasecmp(r->request,"GET /rhizome/bars HTTP/1.", strlen("GET /rhizome/bars HTTP/1.")))
       {
 	/* Return the list of known files */
-	WHYF("get /rhizome/bars (list of BARs)");
+	if (debug & DEBUG_RHIZOMESYNC)
+	  DEBUGF("GET /rhizome/bars");
 	rhizome_server_sql_query_http_response(r,"bar","manifests","from manifests",32,0);
       }
     else if (sscanf(r->request,"GET /rhizome/file/%s HTTP/1.", id)==1)
       {
 	/* Stream the specified file */
-
 	int dud=0;
 	int i;
 	hexFilter(id);
-	WHYF("get /rhizome/file/ [%s]",id);
+	if (debug & DEBUG_RHIZOMESYNC)
+	  DEBUGF("GET /rhizome/file/%s", id);
 	
 	// Check for range: header, and return 206 if returning partial content
 	for(i=0;i<strlen(id);i++) if (!isxdigit(id[i])) dud++;
@@ -560,7 +565,8 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
 	  
 	  if (rowid<0) {
 	    rhizome_server_simple_http_response(r,404,"<html><h1>Sorry, can't find that here.</h1></html>\r\n");
-	    WHY("File not found / blob not opened");
+	    if (debug & DEBUG_RHIZOMESYNC)
+	      DEBUG("File not found / blob not opened");
 	  }
 	  else {
 	    r->source_index=0;
@@ -575,10 +581,11 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
       {
 	/* Stream the specified manifest */
 	hexFilter(id);
-	WHYF("get /rhizome/manifest/ [%s]",id);
+	if (debug & DEBUG_RHIZOMESYNC)
+	  DEBUGF("GET /rhizome/manifest/%s",id);
 	rhizome_server_simple_http_response(r,400,"<html><h1>A specific manifest</h1></html>\r\n");
       }
-    else 
+    else
       rhizome_server_simple_http_response(r,400,"<html><h1>Sorry, couldn't parse your request.</h1></html>\r\n");
   }
   else 
@@ -680,10 +687,10 @@ int rhizome_server_http_send_bytes(rhizome_http_request *r)
 	    for(i=0;i<favicon_len;i++)
 	      r->buffer[i]=favicon_bytes[i];
 	    r->buffer_length=i;
-	    printf("buffer_length for favicon is %d\n",r->buffer_length);
+	    if (debug & DEBUG_RHIZOMESYNC)
+	      DEBUGF("favicon buffer_length=%d\n", r->buffer_length);
 	    r->request_type=RHIZOME_HTTP_REQUEST_FROMBUFFER;
 	}
-	
 	break;
       case RHIZOME_HTTP_REQUEST_BLOB:
 	{
@@ -700,7 +707,7 @@ int rhizome_server_http_send_bytes(rhizome_http_request *r)
 		free(r->buffer);
 	      r->buffer=malloc(read_size);
 	      if (!r->buffer) {
-		if (debug&DEBUG_RHIZOME) WHY("malloc() failed");
+		WHY_perror("malloc");
 		r->request_type=0; break;
 	      }
 	      r->buffer_size=read_size;
