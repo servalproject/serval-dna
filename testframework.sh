@@ -175,7 +175,7 @@ runTests() {
       _tfw_echo_intro $testNumber $testName
       [ $njobs -ne 1 ] && echo
       (
-         _tfw_unique=$BASHPID
+         _tfw_unique=$!
          echo "$testNumber $testName" >"$_tfw_results_dir/$_tfw_unique"
          _tfw_tmp=/tmp/_tfw-$_tfw_unique
          trap '_tfw_status=$?; rm -rf "$_tfw_tmp"; exit $_tfw_status' EXIT SIGHUP SIGINT SIGTERM

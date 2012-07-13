@@ -88,7 +88,7 @@ struct strbuf {
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-#define STRUCT_STRBUF_EMPTY ((struct strbuf){NULL, (char *)NULL - 1, NULL})
+#define STRUCT_STRBUF_EMPTY ((struct strbuf){NULL, NULL, NULL})
 
 typedef struct strbuf *strbuf;
 typedef const struct strbuf *const_strbuf;
@@ -350,7 +350,7 @@ strbuf strbuf_trunc(strbuf sb, int offset);
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 __STRBUF_INLINE size_t strbuf_is_empty(const_strbuf sb) {
-  return sb->start == NULL && sb->end == sb->start - 1 && sb->current == NULL;
+  return sb->start == NULL && sb->end == NULL && sb->current == NULL;
 }
 
 
