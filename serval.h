@@ -1565,6 +1565,7 @@ void sigIoHandler(int signal);
 
 #define set_nonblock(fd)                (_set_nonblock(fd, __FILE__, __LINE__, __FUNCTION__))
 #define set_block(fd)                   (_set_block(fd, __FILE__, __LINE__, __FUNCTION__))
+#define read_nonblock(fd,buf,len)       (_read_nonblock(fd, buf, len, __FILE__, __LINE__, __FUNCTION__))
 #define write_all(fd,buf,len)           (_write_all(fd, buf, len, __FILE__, __LINE__, __FUNCTION__))
 #define write_nonblock(fd,buf,len)      (_write_nonblock(fd, buf, len, __FILE__, __LINE__, __FUNCTION__))
 #define write_all_nonblock(fd,buf,len)  (_write_all_nonblock(fd, buf, len, __FILE__, __LINE__, __FUNCTION__))
@@ -1573,6 +1574,7 @@ void sigIoHandler(int signal);
 
 int _set_nonblock(int fd, const char *file, unsigned int line, const char *function);
 int _set_block(int fd, const char *file, unsigned int line, const char *function);
+int _read_nonblock(int fd, void *buf, size_t len, const char *file, unsigned int line, const char *function);
 int _write_all(int fd, const void *buf, size_t len, const char *file, unsigned int line, const char *function);
 int _write_nonblock(int fd, const void *buf, size_t len, const char *file, unsigned int line, const char *function);
 int _write_all_nonblock(int fd, const void *buf, size_t len, const char *file, unsigned int line, const char *function);

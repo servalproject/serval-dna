@@ -47,6 +47,25 @@ int _set_block(int fd, const char *file, unsigned int line, const char *function
   return 0;
 }
 
+int _read_nonblock(int fd, void *buf, size_t len, const char *file, unsigned int line, const char *function)
+{
+  ssize_t nread = read(fd, buf, len);
+  if (nread == -1) {
+    switch (errno) {
+      case EINTR:
+      case EAGAIN:
+#if defined(EWOULDBLOCK) && EWOULDBLOCK != EAGAIN
+      case EWOULDBLOCK:
+#endif
+	return 0;
+    }
+    logMessage_perror(LOG_LEVEL_ERROR, file, line, function, "read_nonblock: read(%d,%p,%lu)",
+	fd, buf, (unsigned long)len);
+    return -1;
+  }
+  return nread;
+}
+
 int _write_all(int fd, const void *buf, size_t len, const char *file, unsigned int line, const char *function)
 {
   ssize_t written = write(fd, buf, len);
@@ -68,8 +87,11 @@ int _write_nonblock(int fd, const void *buf, size_t len, const char *file, unsig
   ssize_t written = write(fd, buf, len);
   if (written == -1) {
     switch (errno) {
-      case EAGAIN:
       case EINTR:
+      case EAGAIN:
+#if defined(EWOULDBLOCK) && EWOULDBLOCK != EAGAIN
+      case EWOULDBLOCK:
+#endif
 	return 0;
     }
     logMessage_perror(LOG_LEVEL_ERROR, file, line, function, "write_nonblock: write(%d,%p %s,%lu)",
