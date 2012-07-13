@@ -29,23 +29,16 @@ struct sched_ent *fd_callbacks[MAX_WATCHED_FDS];
 struct sched_ent *next_alarm=NULL;
 struct profile_total poll_stats={NULL,0,"Idle (in poll)",0,0,0};
 
-void list_alarms(){
-  long long now=overlay_gettime_ms();
-  struct sched_ent *alarm = next_alarm;
+void list_alarms() {
+  DEBUG("Alarms;");
+  long long now = overlay_gettime_ms();
+  struct sched_ent *alarm;
+  for (alarm = next_alarm; alarm; alarm = alarm->_next)
+    DEBUGF("%s in %lldms", (alarm->stats ? alarm->stats->name : "Unnamed"), alarm->alarm - now);
+  DEBUG("File handles;");
   int i;
-  
-  INFO("Alarms;");
-  while(alarm){
-    INFOF("%s in %lldms", 
-	  (alarm->stats?alarm->stats->name:"Unnamed"), 
-	  alarm->alarm - now);
-    alarm = alarm->_next;
-  }
-  INFO("File handles;");
-  for (i=0;i<fdcount;i++)
-    INFOF("%s watching #%d", 
-	  (fd_callbacks[i]->stats?fd_callbacks[i]->stats->name:"Unnamed"), 
-	  fds[i].fd);
+  for (i = 0; i < fdcount; ++i)
+    DEBUGF("%s watching #%d", (fd_callbacks[i]->stats ? fd_callbacks[i]->stats->name : "Unnamed"), fds[i].fd);
 }
 
 // add an alarm to the list of scheduled function calls.
@@ -95,9 +88,11 @@ int unschedule(struct sched_ent *alarm){
 int watch(struct sched_ent *alarm){
   if (alarm->_poll_index>=0 && fd_callbacks[alarm->_poll_index]==alarm){
     // updating event flags
-    INFOF("Updating watch %s, #%d for %d", (alarm->stats?alarm->stats->name:"Unnamed"), alarm->poll.fd, alarm->poll.events);
+    if (debug & DEBUG_IO)
+      DEBUGF("Updating watch %s, #%d for %d", (alarm->stats?alarm->stats->name:"Unnamed"), alarm->poll.fd, alarm->poll.events);
   }else{
-    INFOF("Adding watch %s, #%d for %d", (alarm->stats?alarm->stats->name:"Unnamed"), alarm->poll.fd, alarm->poll.events);
+    if (debug & DEBUG_IO)
+      DEBUGF("Adding watch %s, #%d for %d", (alarm->stats?alarm->stats->name:"Unnamed"), alarm->poll.fd, alarm->poll.events);
     if (fdcount>=MAX_WATCHED_FDS)
       return WHY("Too many file handles to watch");
     fd_callbacks[fdcount]=alarm;
@@ -124,7 +119,8 @@ int unwatch(struct sched_ent *alarm){
   fds[fdcount].fd=-1;
   fd_callbacks[fdcount]=NULL;
   alarm->_poll_index=-1;
-  INFOF("%s stopped watching #%d for %d", (alarm->stats?alarm->stats->name:"Unnamed"), alarm->poll.fd, alarm->poll.events);
+  if (debug & DEBUG_IO)
+    DEBUGF("%s stopped watching #%d for %d", (alarm->stats?alarm->stats->name:"Unnamed"), alarm->poll.fd, alarm->poll.events);
   return 0;
 }
 
