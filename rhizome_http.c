@@ -225,30 +225,15 @@ void rhizome_client_poll(struct sched_ent *alarm)
       /* Keep reading until we have two CR/LFs in a row */
       r->request[r->request_length] = '\0';
       sigPipeFlag=0;
-      int bytes = read_nonblock(r->alarm.poll.fd, &r->request[r->request_length], RHIZOME_HTTP_REQUEST_MAXLEN - r->request_length - 1);
+      int bytes = read_nonblock(r->alarm.poll.fd, &r->request[r->request_length], RHIZOME_HTTP_REQUEST_MAXLEN - r->request_length);
       /* If we got some data, see if we have found the end of the HTTP request */
       if (bytes > 0) {
 	// reset inactivity timer
 	r->alarm.alarm = overlay_gettime_ms() + RHIZOME_IDLE_TIMEOUT;
 	unschedule(&r->alarm);
 	schedule(&r->alarm);
-	int i = r->request_length - 160;
-	if (i<0) i=0;
-	r->request_length+=bytes;
-	if (r->request_length<RHIZOME_HTTP_REQUEST_MAXLEN)
-	  r->request[r->request_length]=0;
-	if (0)
-	  dump("request", (unsigned char *)r->request,r->request_length);
-	int lfcount;
-	for(lfcount = 0; lfcount < 2 && i < r->request_length + bytes; ++i) {
-	  switch (r->request[i]) {
-	  case '\n': ++lfcount; break;
-	  case '\r': break;
-	  case '\0': break; // ignore NUL (telnet inserts them)
-	  default: lfcount = 0; break;
-	  }
-	}
-	if (lfcount == 2) {
+	r->request_length += bytes;
+	if (http_header_complete(r->request, r->request_length, bytes + 4)) {
 	  /* We have the request. Now parse it to see if we can respond to it */
 	  rhizome_server_parse_http_request(r);
 	}
@@ -272,7 +257,6 @@ void rhizome_client_poll(struct sched_ent *alarm)
   }
   return;
 }
-
 
 void rhizome_server_poll(struct sched_ent *alarm)
 {
@@ -498,15 +482,56 @@ static int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *t
   return 0;  
 }
 
-static int strcmp_prefix(char *str, const char *prefix, char **afterp)
+int http_header_complete(const char *buf, size_t len, size_t tail)
 {
-  while (*prefix && *str && *prefix == *str)
-    ++prefix, ++str;
-  if (*prefix)
-    return (unsigned char)*str - (unsigned char)*prefix;
+  const char *bufend = buf + len;
+  if (tail < len)
+    buf = bufend - tail;
+  int count = 0;
+  for (; count < 2 && buf != bufend; ++buf) {
+    switch (*buf) {
+      case '\n': ++count; break;
+      case '\r': break;
+      case '\0': break; // ignore NUL (telnet inserts them)
+      default: count = 0; break;
+    }
+  }
+  return count == 2;
+}
+
+/* Check if a given string starts with a given sub-string.  If so, return 1 and, if afterp is not
+   NULL, set *afterp to point to the character immediately following the substring.  Otherwise
+   return 0.
+   This function is used to parse HTTP headers and responses, which are typically not
+   nul-terminated, but are held in a buffer which has an associated length.  To avoid this function
+   running past the end of the buffer, the caller must ensure that the buffer contains a sub-string
+   that is not part of the sub-string being sought, eg, "\r\n\r\n" as detected by
+   http_header_complete().  This guarantees that this function will return nonzero before running
+   past the end of the buffer.
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+int str_startswith(char *str, const char *substring, char **afterp)
+{
+  while (*substring && *substring == *str)
+    ++substring, ++str;
+  if (*substring)
+    return 0;
   if (afterp)
     *afterp = str;
-  return 0;
+  return 1;
+}
+
+/* Case-insensitive form of str_startswith().
+ */
+int strcase_startswith(char *str, const char *substring, char **afterp)
+{
+  while (*substring && *str && toupper(*substring) == toupper(*str))
+    ++substring, ++str;
+  if (*substring)
+    return 0;
+  if (afterp)
+    *afterp = str;
+  return 1;
 }
 
 static int rhizome_server_parse_http_request(rhizome_http_request *r)
@@ -514,18 +539,30 @@ static int rhizome_server_parse_http_request(rhizome_http_request *r)
   /* Switching to writing, so update the call-back */
   r->alarm.poll.events=POLLOUT;
   watch(&r->alarm);
-  
-  /* Clear request type flags */
-  r->request_type=0;
-  char path[1024];
-  if (sscanf(r->request, "GET %1024s HTTP/1.%*1[01]%*[\r\n]", path) != 1) {
-    if (debug & DEBUG_RHIZOME_TX)
-      DEBUGF("Received malformed HTTP request: %s", alloca_toprint(120, (unsigned char *)r->request, r->request_length));
-    rhizome_server_simple_http_response(r, 400, "<html><h1>Malformed request</h1></html>\r\n");
-  } else {
+  // Start building up a response.
+  r->request_type = 0;
+  // Parse the HTTP "GET" line.
+  char *path = NULL;
+  size_t pathlen = 0;
+  if (str_startswith(r->request, "GET ", &path)) {
+    char *p;
+    // This loop is guaranteed to terminate before the end of the buffer, because we know that the
+    // buffer contains at least "\n\n" and maybe "\r\n\r\n" at the end of the header block.
+    for (p = path; !isspace(*p); ++p)
+      ;
+    pathlen = p - path;
+    if ( str_startswith(p, " HTTP/1.", &p)
+      && (str_startswith(p, "0", &p) || str_startswith(p, "1", &p))
+      && (str_startswith(p, "\r\n", &p) || str_startswith(p, "\n", &p))
+    )
+      path[pathlen] = '\0';
+    else
+      path = NULL;
+  }
+  if (path) {
     char *id = NULL;
     if (debug & DEBUG_RHIZOME_TX)
-      DEBUGF("GET %s", path);
+      DEBUGF("GET %s", alloca_toprint(1024, (unsigned char *)path, pathlen));
     if (strcmp(path, "/favicon.ico") == 0) {
       r->request_type = RHIZOME_HTTP_REQUEST_FAVICON;
       rhizome_server_http_response_header(r, 200, "image/vnd.microsoft.icon", favicon_len);
@@ -538,7 +575,7 @@ static int rhizome_server_parse_http_request(rhizome_http_request *r)
     } else if (strcmp(path, "/rhizome/bars") == 0) {
       /* Return the list of known BARs */
       rhizome_server_sql_query_http_response(r, "bar", "manifests", "from manifests", 32, 0);
-    } else if (strcmp_prefix(path, "/rhizome/file/", &id) == 0) {
+    } else if (str_startswith(path, "/rhizome/file/", &id)) {
       /* Stream the specified payload */
       if (!rhizome_str_is_file_hash(id)) {
 	rhizome_server_simple_http_response(r, 400, "<html><h1>Invalid payload ID</h1></html>\r\n");
@@ -558,12 +595,16 @@ static int rhizome_server_parse_http_request(rhizome_http_request *r)
 	  r->request_type |= RHIZOME_HTTP_REQUEST_BLOB;
 	}
       }
-    } else if (strcmp_prefix(path, "/rhizome/manifest/", &id) == 0) {
-      /* TODO: Stream the specified manifest */
+    } else if (str_startswith(path, "/rhizome/manifest/", &id)) {
+      // TODO: Stream the specified manifest
       rhizome_server_simple_http_response(r, 500, "<html><h1>Not implemented</h1></html>\r\n");
     } else {
       rhizome_server_simple_http_response(r, 404, "<html><h1>Not found</h1></html>\r\n");
     }
+  } else {
+    if (debug & DEBUG_RHIZOME_TX)
+      DEBUGF("Received malformed HTTP request: %s", alloca_toprint(120, (unsigned char *)r->request, r->request_length));
+    rhizome_server_simple_http_response(r, 400, "<html><h1>Malformed request</h1></html>\r\n");
   }
   
   /* Try sending data immediately. */

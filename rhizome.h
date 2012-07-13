@@ -163,6 +163,10 @@ int rhizome_str_is_file_hash(const char *text);
 
 #define alloca_tohex_bid(bid)           alloca_tohex((bid), RHIZOME_MANIFEST_ID_BYTES)
 
+int http_header_complete(const char *buf, size_t len, size_t tail);
+int str_startswith(char *str, const char *substring, char **afterp);
+int strcase_startswith(char *str, const char *substring, char **afterp);
+
 int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename);
 int rhizome_manifest_selfsign(rhizome_manifest *m);
 int rhizome_drop_stored_file(const char *id,int maximum_priority);
@@ -248,4 +252,3 @@ int rhizome_ignore_manifest_check(rhizome_manifest *m,
 
 int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
 					  struct sockaddr_in *peerip);
-

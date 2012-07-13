@@ -817,127 +817,130 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
     return;
   }
   
-  switch(q->state) 
-    {
+  switch(q->state) {
     case RHIZOME_FETCH_CONNECTING:
     case RHIZOME_FETCH_SENDINGHTTPREQUEST:
       rhizome_fetch_write(q);
       break;
-    case RHIZOME_FETCH_RXFILE:
-      /* Keep reading until we have the promised amount of data */
-      
-      sigPipeFlag=0;
-      
-      errno=0;
-      char buffer[8192];
-
-      int bytes=read(q->alarm.poll.fd,buffer,8192);
-      
-      /* If we got some data, see if we have found the end of the HTTP request */
-      if (bytes>0)
-	rhizome_write_content(q, buffer, bytes);
-	
-      break;
-    case RHIZOME_FETCH_RXHTTPHEADERS:
-      /* Keep reading until we have two CR/LFs in a row */
-      sigPipeFlag=0;
-      
-      errno=0;
-      bytes=read(q->alarm.poll.fd,&q->request[q->request_len],
-		 1024-q->request_len-1);
-
-      if (sigPipeFlag||((bytes==0)&&(errno==0))) {
-	/* broken pipe, so close connection */
-	if (debug&DEBUG_RHIZOME) 
-	  DEBUG("Closing rhizome fetch connection due to sigpipe");
-	rhizome_fetch_close(q);
-	return;
-      }	 
-	
-      /* If we got some data, see if we have found the end of the HTTP request */
-      if (bytes>0) {
-	int lfcount=0;
-	int i=q->request_len-160;
-	
-	// reset timeout
-	unschedule(&q->alarm);
-	q->alarm.alarm=overlay_gettime_ms() + RHIZOME_IDLE_TIMEOUT;
-	schedule(&q->alarm);
-	
-	if (i<0) i=0;
-	q->request_len+=bytes;
-	if (q->request_len<1024)
-	  q->request[q->request_len]=0;
-	
-	for(;i<(q->request_len+bytes);i++)
-	  {
-	    switch(q->request[i]) {
-	    case '\n': lfcount++; break;
-	    case '\r': /* ignore CR */ break;
-	    case 0: /* ignore NUL (telnet inserts them) */ break;
-	    default: lfcount=0; break;
-	    }
-	    if (lfcount==2) break;
-	  }
-	
-	if (debug&DEBUG_RHIZOME)
-	  dump("http reply headers",(unsigned char *)q->request,lfcount==2?i:q->request_len);
-	
-	if (lfcount==2) {
-	  /* We have the response headers, so parse.
-	     (we may also have some bytes of content, so we need to be a little
-	     careful) */
-
-	  /* Terminate string at end of headers */
-	  q->request[i]=0;
-
-	  /* Get HTTP result code */
-	  char *s=strstr(q->request,"HTTP/1.0 ");
-	  if (!s) { 
-	    if (debug&DEBUG_RHIZOME) DEBUGF("HTTP response lacked HTTP/1.0 response code.");
-	    rhizome_fetch_close(q);
-	    return;
-	  }
-	  int http_response_code=strtoll(&s[9],NULL,10);
-	  if (http_response_code!=200) {
-	    if (debug&DEBUG_RHIZOME) DEBUGF("Rhizome web server returned %d != 200 OK",http_response_code);
-	    rhizome_fetch_close(q);
-	    return;
-	  }
-	  /* Get content length */
-	  s=strstr(q->request,"Content-length: ");
-	  if (!s) {
-	    if (debug&DEBUG_RHIZOME) 
-	      DEBUGF("Missing Content-Length: header.");
-	    rhizome_fetch_close(q);
-	    return;
-	  }
-	  q->file_len=strtoll(&s[16],NULL,10);
-	  
-	  if (q->file_len<0) {
-	    if (debug&DEBUG_RHIZOME) 
-	      DEBUGF("Illegal file size (%d).",q->file_len);
-	    rhizome_fetch_close(q);
-	    return;
-	  }
-
-	  /* Okay, we have both, and are all set.
-	     File is already open, so just write out any initial bytes of the
-	     file we read, and update state flag.
-	  */
-	  
-	  q->state=RHIZOME_FETCH_RXFILE;
-	  int fileRxBytes=q->request_len-(i+1);
-	  
-	  if (fileRxBytes>0)
-	    rhizome_write_content(q, &q->request[i+1], fileRxBytes);
-
+    case RHIZOME_FETCH_RXFILE: {
+	/* Keep reading until we have the promised amount of data */
+	char buffer[8192];
+	sigPipeFlag = 0;
+	int bytes = read_nonblock(q->alarm.poll.fd, buffer, sizeof buffer);
+	/* If we got some data, see if we have found the end of the HTTP request */
+	if (bytes > 0) {
+	  rhizome_write_content(q, buffer, bytes);
+	} else {
+	  if (debug & DEBUG_RHIZOME_RX)
+	    DEBUG("Empty read, closing connection");
+	  rhizome_fetch_close(q);
+	  return;
 	}
-      } 
-      
+	if (sigPipeFlag) {
+	  if (debug & DEBUG_RHIZOME_RX)
+	    DEBUG("Received SIGPIPE, closing connection");
+	  rhizome_fetch_close(q);
+	  return;
+	}
+      }
+      break;
+    case RHIZOME_FETCH_RXHTTPHEADERS: {
+	/* Keep reading until we have two CR/LFs in a row */
+	sigPipeFlag = 0;
+	int bytes = read_nonblock(q->alarm.poll.fd, &q->request[q->request_len], 1024 - q->request_len - 1);
+	/* If we got some data, see if we have found the end of the HTTP reply */
+	if (bytes > 0) {
+	  // reset timeout
+	  unschedule(&q->alarm);
+	  q->alarm.alarm = overlay_gettime_ms() + RHIZOME_IDLE_TIMEOUT;
+	  schedule(&q->alarm);
+	  q->request_len += bytes;
+	  if (http_header_complete(q->request, q->request_len, bytes + 4)) {
+	    if (debug & DEBUG_RHIZOME_RX)
+	      DEBUGF("Got HTTP reply: %s", alloca_toprint(160, (unsigned char *)q->request, q->request_len));
+	    /* We have all the reply headers, so parse them, taking care of any following bytes of
+	      content. */
+	    char *p = NULL;
+	    if (!str_startswith(q->request, "HTTP/1.0 ", &p)) {
+	      if (debug&DEBUG_RHIZOME_RX)
+		DEBUGF("Malformed HTTP reply: missing HTTP/1.0 preamble");
+	      rhizome_fetch_close(q);
+	      return;
+	    }
+	    int http_response_code = 0;
+	    char *nump;
+	    for (nump = p; isdigit(*p); ++p)
+	      http_response_code = http_response_code * 10 + *p - '0';
+	    if (p == nump || *p != ' ') {
+	      if (debug&DEBUG_RHIZOME_RX)
+		DEBUGF("Malformed HTTP reply: missing decimal status code");
+	      rhizome_fetch_close(q);
+	      return;
+	    }
+	    if (http_response_code != 200) {
+	      if (debug & DEBUG_RHIZOME_RX)
+		DEBUGF("Failed HTTP request: rhizome server returned %d != 200 OK", http_response_code);
+	      rhizome_fetch_close(q);
+	      return;
+	    }
+	    // This loop will terminate, because http_header_complete() above found at least
+	    // "\n\n" at the end of the header, and probably "\r\n\r\n".
+	    while (*p++ != '\n')
+	      ;
+	    // Iterate over header lines until the last blank line.
+	    long long content_length = -1;
+	    while (*p != '\r' && *p != '\n') {
+	      if (strcase_startswith(p, "Content-Length:", &p)) {
+		while (*p == ' ')
+		  ++p;
+		content_length = 0;
+		for (nump = p; isdigit(*p); ++p)
+		  content_length = content_length * 10 + *p - '0';
+		if (p == nump || (*p != '\r' && *p != '\n')) {
+		  if (debug & DEBUG_RHIZOME_RX)  {
+		    DEBUGF("Invalid HTTP reply: malformed Content-Length header");
+		    rhizome_fetch_close(q);
+		    return;
+		  }
+		}
+	      }
+	      while (*p++ != '\n')
+		;
+	    }
+	    if (*p == '\r')
+	      ++p;
+	    ++p; // skip '\n' at end of blank line
+	    if (content_length == -1) {
+	      if (debug & DEBUG_RHIZOME_RX)
+		DEBUGF("Invalid HTTP reply: missing Content-Length header");
+	      rhizome_fetch_close(q);
+	      return;
+	    }
+	    q->file_len = content_length;
+	    /* We have all we need.  The file is already open, so just write out any initial bytes of
+	      the body we read.
+	    */
+	    q->state = RHIZOME_FETCH_RXFILE;
+	    int content_bytes = q->request + q->request_len - p;
+	    if (content_bytes > 0)
+	      rhizome_write_content(q, p, content_bytes);
+	  }
+	} else {
+	  if (debug & DEBUG_RHIZOME_RX)
+	    DEBUG("Empty read, closing connection");
+	  rhizome_fetch_close(q);
+	  return;
+	}
+	if (sigPipeFlag) {
+	  if (debug & DEBUG_RHIZOME_RX)
+	    DEBUG("Received SIGPIPE, closing connection");
+	  rhizome_fetch_close(q);
+	  return;
+	}
+      }
       break;
     default:
-      if (debug&DEBUG_RHIZOME) 
+      if (debug & DEBUG_RHIZOME_RX) 
 	DEBUG("Closing rhizome fetch connection due to illegal/unimplemented state.");
       rhizome_fetch_close(q);
       return;
