@@ -266,7 +266,9 @@ char *toprint(char *dstStr, size_t dstChars, const unsigned char *srcBuf, size_t
       strbuf_puts(b, "\\r");
     else if (*srcBuf == '\t')
       strbuf_puts(b, "\\t");
-    else if (isprint(*srcBuf))
+    else if (*srcBuf == '\\')
+      strbuf_puts(b, "\\\\");
+    else if (*srcBuf >= ' ' && *srcBuf <= '~')
       strbuf_putc(b, *srcBuf);
     else
       strbuf_sprintf(b, "\\x%02x", *srcBuf);
