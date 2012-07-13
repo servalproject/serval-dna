@@ -388,7 +388,7 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	   (that is the only use of this */
 	manifest_id_prefix[8]=0; 
 	long long version = rhizome_manifest_get_ll(m, "version");
-	if (0||debug & DEBUG_RHIZOMESYNC) DEBUGF("manifest id=%s* version=%lld", manifest_id_prefix, version);
+	if (debug & DEBUG_RHIZOME_RX) DEBUGF("manifest id=%s* version=%lld", manifest_id_prefix, version);
 
 	/* Crude signature presence test */
 	for(i=m->manifest_all_bytes-1;i>0;i--)
@@ -414,16 +414,16 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	    /* Manifest is okay, so see if it is worth storing */
 	    if (rhizome_manifest_version_cache_lookup(m)) {
 	      /* We already have this version or newer */
-	      if (debug&DEBUG_RHIZOMESYNC) DEBUG("We already have that manifest or newer.");
+	      if (debug & DEBUG_RHIZOME_RX) DEBUG("We already have that manifest or newer.");
 	      importManifest=0;
 	    } else {
-	      if (debug&DEBUG_RHIZOMESYNC) DEBUG("Not seen before.");
+	      if (debug & DEBUG_RHIZOME_RX) DEBUG("Not seen before.");
 	      importManifest=1;
 	    }
 	  }
 	else
 	  {
-	    if (debug&DEBUG_RHIZOME) DEBUG("Unverified manifest has errors - so not processing any further.");
+	    if (debug & DEBUG_RHIZOME) DEBUG("Unverified manifest has errors - so not processing any further.");
 	    /* Don't waste any time on this manifest in future attempts for at least
 	       a minute. */
 	    rhizome_queue_ignore_manifest(m, &httpaddr, 60000);

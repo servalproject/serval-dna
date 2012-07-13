@@ -821,6 +821,7 @@ const char *trimbuildpath(const char *s);
 
 #define DEBUGF(F,...)       LOGF(LOG_LEVEL_DEBUG, F, ##__VA_ARGS__)
 #define DEBUG(X)            DEBUGF("%s", (X))
+#define DEBUGF_perror(F,...) DEBUGF(F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno)
 #define DEBUG_perror(X)     DEBUGF("%s: %s [errno=%d]", (X), strerror(errno), errno)
 #define D DEBUG("D")
 
@@ -1101,7 +1102,7 @@ int overlay_saw_mdp_containing_frame(overlay_frame *f,long long now);
 #define DEBUG_OVERLAYROUTEMONITOR   (1 << 18)
 #define DEBUG_QUEUES                (1 << 19)
 #define DEBUG_BROADCASTS            (1 << 20)
-#define DEBUG_RHIZOMESYNC           (1 << 21)
+#define DEBUG_RHIZOME_TX            (1 << 21)
 #define DEBUG_PACKETTX              (1 << 22)
 #define DEBUG_PACKETCONSTRUCTION    (1 << 23)
 #define DEBUG_MANIFESTS             (1 << 24)

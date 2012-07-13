@@ -51,7 +51,7 @@ int rhizome_enabled()
 int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, 
 			  const char *bundle, int ttl)
 {
-  if (debug&DEBUG_RHIZOMESYNC)
+  if (debug & DEBUG_RHIZOME)
     DEBUGF("rhizome_bundle_import(m_in=%p, m_out=%p, bundle=%s, ttl=%d)",
 	  m_in, m_out, bundle ? bundle : "(null)", ttl);
   if (m_out) *m_out = NULL;
@@ -80,9 +80,6 @@ int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out,
       rhizome_manifest_free(m);
       return WHY("Could not verify manifest file.");
     }
-  } else {
-    if (debug&DEBUG_RHIZOMESYNC)
-      DEBUGF("Importing direct from manifest structure fileHashedP=%d", m->fileHashedP);
   }
 
   /* Add the manifest and its associated file to the Rhizome database. */
@@ -299,7 +296,7 @@ int rhizome_manifest_check_duplicate(rhizome_manifest *m_in,rhizome_manifest **m
 
 int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
 {
-  if (debug&DEBUG_RHIZOMESYNC)
+  if (debug & DEBUG_RHIZOME)
     DEBUGF("rhizome_add_manifest(m_in=%p, ttl=%d)",m_in, ttl);
 
   if (m_in->finalised==0)
