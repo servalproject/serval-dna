@@ -65,6 +65,11 @@ Options:
    -E, --stop-on-error     Do not execute any tests after an ERROR occurs
    -F, --stop-on-failure   Do not execute any tests after a FAIL occurs
    --filter=PREFIX         Only execute tests whose names start with PREFIX
+   --filter=N              Only execute test number N
+   --filter=M-N            Only execute tests with numbers in range M-N inclusive
+   --filter=-N             Only execute tests with numbers <= N
+   --filter=N-             Only execute tests with numbers >= N
+   --filter=M,N,...        Only execute tests with number M or N or ...
 "
 }
 
@@ -155,6 +160,7 @@ runTests() {
    _tfw_find_tests "${filters[@]}"
    # Iterate through all test cases, starting a new test whenever the number of
    # running tests is less than the job limit.
+   _tfw_testcount=0
    _tfw_passcount=0
    _tfw_failcount=0
    _tfw_errorcount=0
@@ -162,8 +168,12 @@ runTests() {
    _tfw_running_pids=()
    _tfw_test_number_watermark=0
    local testNumber
+   local testPosition=0
    for ((testNumber = 1; testNumber <= ${#_tfw_tests[*]}; ++testNumber)); do
       testName="${_tfw_tests[$(($testNumber - 1))]}"
+      [ -z "$testName" ] && continue
+      let ++testPosition
+      let ++_tfw_testcount
       # Wait for any existing child process to finish.
       while [ $njobs -ne 0 -a ${#_tfw_running_pids[*]} -ge $njobs ]; do
          _tfw_harvest_processes
@@ -172,11 +182,11 @@ runTests() {
       $_tfw_stop_on_error && [ $_tfw_errorcount -ne 0 ] && break
       $_tfw_stop_on_failure && [ $_tfw_failcount -ne 0 ] && break
       # Start the next test in a child process.
-      _tfw_echo_intro $testNumber $testName
+      _tfw_echo_intro $testPosition $testNumber $testName
       [ $njobs -ne 1 ] && echo
       (
          _tfw_unique=$BASHPID
-         echo "$testNumber $testName" >"$_tfw_results_dir/$_tfw_unique"
+         echo "$testPosition $testNumber $testName" >"$_tfw_results_dir/$_tfw_unique"
          _tfw_tmp=/tmp/_tfw-$_tfw_unique
          trap '_tfw_status=$?; rm -rf "$_tfw_tmp"; exit $_tfw_status' EXIT SIGHUP SIGINT SIGTERM
          local start_time=$(_tfw_timestamp)
@@ -208,7 +218,7 @@ runTests() {
          1) result=FAIL;;
          0) result=PASS;; 
          esac
-         echo "$testNumber $testName $result" >"$_tfw_results_dir/$_tfw_unique"
+         echo "$testPosition $testNumber $testName $result" >"$_tfw_results_dir/$_tfw_unique"
          {
             echo "Name:     $testName"
             echo "Result:   $result"
@@ -238,14 +248,14 @@ runTests() {
    rm -rf "$_tfw_tmpdir"
    trap - EXIT SIGHUP SIGINT SIGTERM
    # Echo result summary and exit with success if no failures or errors.
-   s=$([ ${#_tfw_tests[*]} -eq 1 ] || echo s)
-   echo "${#_tfw_tests[*]} test$s, $_tfw_passcount pass, $_tfw_failcount fail, $_tfw_errorcount error"
+   s=$([ $_tfw_testcount -eq 1 ] || echo s)
+   echo "$_tfw_testcount test$s, $_tfw_passcount pass, $_tfw_failcount fail, $_tfw_errorcount error"
    [ $_tfw_fatalcount -eq 0 -a $_tfw_failcount -eq 0 -a $_tfw_errorcount -eq 0 ]
 }
 
 _tfw_echo_intro() {
-   local docvar="doc_$2"
-   echo -n "$1. ${!docvar:-$2}..."
+   local docvar="doc_$3"
+   echo -n "$2. ${!docvar:-$3}..."
    [ $1 -gt $_tfw_test_number_watermark ] && _tfw_test_number_watermark=$1
 }
 
@@ -263,9 +273,10 @@ _tfw_harvest_processes() {
          surviving_pids+=($pid)
       elif [ -s "$_tfw_results_dir/$pid" ]; then
          set -- $(<"$_tfw_results_dir/$pid")
-         local testNumber="$1"
-         local testName="$2"
-         local result="$3"
+         local testPosition="$1"
+         local testNumber="$2"
+         local testName="$3"
+         local result="$4"
          case "$result" in
          ERROR)
             let _tfw_errorcount=_tfw_errorcount+1
@@ -287,13 +298,13 @@ _tfw_harvest_processes() {
             _tfw_echo_result "$result"
             echo
          elif lines=$($_tfw_tput lines); then
-            local travel=$(($_tfw_test_number_watermark - $testNumber + 1))
+            local travel=$(($_tfw_test_number_watermark - $testPosition + 1))
             if [ $travel -gt 0 -a $travel -lt $lines ] && $_tfw_tput cuu $travel ; then
-               _tfw_echo_intro $testNumber $testName
+               _tfw_echo_intro $testPosition $testNumber $testName
                echo -n " "
                _tfw_echo_result "$result"
                echo
-               travel=$(($_tfw_test_number_watermark - $testNumber))
+               travel=$(($_tfw_test_number_watermark - $testPosition))
                [ $travel -gt 0 ] && $_tfw_tput cud $travel
             fi
          else
@@ -1043,27 +1054,76 @@ _tfw_checkTerminfo() {
 }
 
 # Return a list of test names in the _tfw_tests array variable, in the order
-# that the test_TestName functions were defined.
+# that the test_TestName functions were defined.  Test names must start with
+# an alphabetic character (not numeric or '_').
 _tfw_find_tests() {
    _tfw_tests=()
    _tfw_shopt -s extdebug
    local name
    for name in $(builtin declare -F |
-         sed -n -e '/^declare -f test_./s/^declare -f test_//p' |
+         sed -n -e '/^declare -f test_[A-Za-z]/s/^declare -f test_//p' |
          while read name; do builtin declare -F "test_$name"; done |
          sort --key 2,2n --key 3,3 |
          sed -e 's/^test_//' -e 's/[    ].*//')
    do
+      local number=$((${#_tfw_tests[*]} + 1))
+      local testName=
       if [ $# -eq 0 ]; then
-         _tfw_tests+=("$name")
+         testName="$name"
       else
          local filter
          for filter; do
-            case "$name" in
-            "$filter"*) _tfw_tests+=("$name"); break;;
+            case "$filter" in
+            +([0-9]))
+               if [ $number -eq $filter ]; then
+                  testName="$name"
+                  break
+               fi
+               ;;
+            +([0-9])*(,+([0-9])))
+               local oIFS="$IFS"
+               IFS=,
+               local -a numbers=($filter)
+               IFS="$oIFS"
+               local n
+               for n in ${numbers[*]}; do
+                  if [ $number -eq $n ]; then
+                     testName="$name"
+                     break 2
+                  fi
+               done
+               ;;
+            +([0-9])-)
+               local start=${filter%-}
+               if [ $number -ge $start ]; then
+                  testName="$name"
+                  break
+               fi
+               ;;
+            -+([0-9]))
+               local end=${filter#-}
+               if [ $number -le $end ]; then
+                  testName="$name"
+                  break
+               fi
+               ;;
+            +([0-9])-+([0-9]))
+               local start=${filter%-*}
+               local end=${filter#*-}
+               if [ $number -ge $start -a $number -le $end ]; then
+                  testName="$name"
+                  break
+               fi
+               ;;
+            *)
+               case "$name" in
+               "$filter"*) testName="$name"; break;;
+               esac
+               ;;
             esac
          done
       fi
+      _tfw_tests+=("$testName")
    done
    _tfw_shopt_restore
 }
