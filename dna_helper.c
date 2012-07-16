@@ -93,6 +93,8 @@ dna_helper_start(const char *command, const char *arg) {
   int	stdin_fds[2], stdout_fds[2];
   pid_t	pid;
   
+  DEBUG("Starting DNA helper");
+
   if (pipe(stdin_fds))
     return WHY_perror("pipe");
 
@@ -102,7 +104,7 @@ dna_helper_start(const char *command, const char *arg) {
     return WHY_perror("pipe");
   }
 
-  if ((pid = fork()) != 0) {
+  if ((pid = fork()) == 0) {
     /* Child, should exec() to become helper after installing file descriptors. */
     if (dup2(stdin_fds[1], 0)) /* replace stdin */
       exit(-1);
@@ -111,6 +113,7 @@ dna_helper_start(const char *command, const char *arg) {
     if (dup2(stdout_fds[0], 2)) /* replace stderr */
       exit(-1);
     execl(command, command, arg, NULL);
+    DEBUG("execl() failed");
     abort(); /* Can't get here */
   } else {
     if (pid == -1) {
@@ -145,6 +148,7 @@ dna_helper_enqueue(char *did, unsigned char *requestorSid) {
       /* Check if we have a helper configured. If not, then set
 	 dna_helper_stdin to magic value of -2 so that we don't waste time
 	 in future looking up the dna helper configuration value. */
+      DEBUG("We have no DNA helper configured");
       dna_helper_stdin = -2; 
       return -1;
     }
@@ -154,9 +158,11 @@ dna_helper_enqueue(char *did, unsigned char *requestorSid) {
 
     /* Okay, so we have a helper configured.
        Run it */
-    if (dna_helper_start(dna_helper, dna_helper_arg) < 0)
+    if (dna_helper_start(dna_helper, dna_helper_arg) < 0) {
       /* Something broke, bail out */
+      DEBUG("Failed to start dna helper");
       return -1;
+    }
   }
 
   /* Write request to dna helper.
@@ -186,6 +192,7 @@ dna_helper_enqueue(char *did, unsigned char *requestorSid) {
     close(dna_helper_stdout);
     dna_helper_stdin = -1;
     dna_helper_stdout = -1;
+    DEBUG("Sigpipe encountered");
     return -1;
   }
 
