@@ -165,7 +165,7 @@ int rhizome_opendb()
   sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_HASH ON MANIFESTS(filehash);");
   sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM MANIFESTS WHERE filehash IS NULL;");
   sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM FILES WHERE NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);");
-  sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM MANIFESTS WHERE NOT EXISTS( SELECT  1 FROM FILES WHERE MANIFESTS.filehash = FILES.id);");
+  sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM MANIFESTS WHERE filehash != '' AND NOT EXISTS( SELECT  1 FROM FILES WHERE MANIFESTS.filehash = FILES.id);");
   RETURN(0);
 }
 
@@ -527,21 +527,14 @@ int rhizome_store_bundle(rhizome_manifest *m)
   } else {
     /* We don't have the secret for this manifest, so only allow updates if 
      the self-signature is valid */
-    if (!m->selfSigned) {
-      WHY("*** Insert into manifests failed (-2).");
+    if (!m->selfSigned)
       return WHY("Manifest is not signed, and I don't have the key.  Manifest might be forged or corrupt.");
-    }
   }
   
   char manifestid[RHIZOME_MANIFEST_ID_STRLEN + 1];
   rhizome_manifest_get(m, "id", manifestid, sizeof manifestid);
   str_toupper_inplace(manifestid);
 
-  char filehash[RHIZOME_FILEHASH_STRLEN + 1];
-  strncpy(filehash, m->fileHexHash, sizeof filehash);
-  str_toupper_inplace(filehash);
-
-  
   char *err;
   int sql_ret;
   sqlite3_stmt *stmt;
@@ -550,14 +543,21 @@ int rhizome_store_bundle(rhizome_manifest *m)
   unsigned char bar[RHIZOME_BAR_BYTES];
   rhizome_manifest_to_bar(m,bar);
 
-  // we should add the file in the same transaction, but closing the blob seems to cause some issues.
   /* Store the file */
-  // TODO encrypted payloads - pass encryption key here
-  if (m->fileLength>0){
-    if (rhizome_store_file(m,NULL)){
+  char filehash[RHIZOME_FILEHASH_STRLEN + 1];
+  if (m->fileLength > 0) {
+    if (!m->fileHashedP)
+      return WHY("Manifest payload hash unknown");
+    strncpy(filehash, m->fileHexHash, sizeof filehash);
+    str_toupper_inplace(filehash);
+    // TODO encrypted payloads - pass encryption key here
+    // We should add the file in the same transaction, but closing the blob seems to cause some issues.
+    if (rhizome_store_file(m, NULL)) {
       WHY("Could not store file");
       sql_ret = 1;
     }
+  } else {
+    filehash[0] = '\0';
   }
   
   if (!rhizome_db) rhizome_opendb();
@@ -697,6 +697,7 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
 	break;
       }
       const char *q_manifestid = (const char *) sqlite3_column_text(statement, 0);
+      DEBUGF("id = %s", q_manifestid);
       const char *manifestblob = (char *) sqlite3_column_blob(statement, 1);
       size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
       long long q_version = sqlite3_column_int64(statement, 2);
@@ -976,8 +977,6 @@ int rhizome_update_file_priority(const char *fileid)
 int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found,
 			   int checkVersionP)
 {
-  if (!m->fileHashedP)
-    return WHY("Manifest payload is not hashed");
   const char *service = rhizome_manifest_get(m, "service", NULL, 0);
   const char *name = NULL;
   const char *sender = NULL;
@@ -996,29 +995,37 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found,
     return WHYF("Unsupported service '%s'", service);
   }
   char sqlcmd[1024];
-  char *s = sqlcmd;
-  s += snprintf(s, &sqlcmd[sizeof sqlcmd] - s,
-      "SELECT id, manifest, version FROM manifests"
-      " WHERE filehash = ?"
-    );
-  if (checkVersionP && s < &sqlcmd[sizeof sqlcmd])
-    s += snprintf(s, sqlcmd + sizeof(sqlcmd) - s, " AND version = ?");
-  if (s >= &sqlcmd[sizeof sqlcmd])
-    return WHY("SQL command too long");
+  strbuf b = strbuf_local(sqlcmd, sizeof sqlcmd);
+  strbuf_puts(b, "SELECT id, manifest, version FROM manifests WHERE ");
+  if (m->fileLength != 0) {
+    if (!m->fileHashedP)
+      return WHY("Manifest payload is not hashed");
+    strbuf_puts(b, "filehash = ?");
+  } else
+    strbuf_puts(b, "filesize = 0");
+  if (checkVersionP)
+    strbuf_puts(b, " AND version = ?");
+  if (strbuf_overrun(b))
+    return WHYF("SQL command too long: %s", strbuf_str(b));
   int ret = 0;
   sqlite3_stmt *statement;
   const char *cmdtail;
-  if (debug&DEBUG_RHIZOME) DEBUGF("sql query: %s",sqlcmd);
+  if (debug & DEBUG_RHIZOME)
+    DEBUGF("sql query: %s", sqlcmd);
   if (sqlite3_prepare_v2(rhizome_db, sqlcmd, strlen(sqlcmd) + 1, &statement, &cmdtail) != SQLITE_OK) {
     ret = WHY(sqlite3_errmsg(rhizome_db));
   } else {
+    int field = 1;
     char filehash[RHIZOME_FILEHASH_STRLEN + 1];
-    strncpy(filehash, m->fileHexHash, sizeof filehash);
-    str_toupper_inplace(filehash);
-    if (debug & DEBUG_RHIZOME) DEBUGF("filehash=\"%s\"", filehash);
-    sqlite3_bind_text(statement, 1, filehash, -1, SQLITE_STATIC);
+    if (m->fileLength != 0) {
+      strncpy(filehash, m->fileHexHash, sizeof filehash);
+      str_toupper_inplace(filehash);
+      if (debug & DEBUG_RHIZOME)
+	DEBUGF("filehash=\"%s\"", filehash);
+      sqlite3_bind_text(statement, field++, filehash, -1, SQLITE_STATIC);
+    }
     if (checkVersionP)
-      sqlite3_bind_int64(statement, 2, m->version);
+      sqlite3_bind_int64(statement, field++, m->version);
     size_t rows = 0;
     while (sqlite3_step(statement) == SQLITE_ROW) {
       ++rows;
@@ -1071,15 +1078,23 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found,
 		q_manifestid, q_version, blob_version);
 	  ++inconsistent;
 	}
-	if (!blob_filehash && strcasecmp(blob_filehash, m->fileHexHash)) {
-	  WARNF("MANIFESTS row id=%s joined to FILES row id=%s has inconsistent blob: blob.filehash=%s -- skipped",
-		q_manifestid, m->fileHexHash, blob_filehash);
-	  ++inconsistent;
-	}
 	if (blob_filesize != -1 && blob_filesize != m->fileLength) {
 	  WARNF("MANIFESTS row id=%s joined to FILES row id=%s has inconsistent blob: known file size %lld, blob.filesize=%lld -- skipped",
 		q_manifestid, m->fileHexHash, m->fileLength, blob_filesize);
 	  ++inconsistent;
+	}
+	if (m->fileLength != 0) {
+	  if (!blob_filehash && strcasecmp(blob_filehash, m->fileHexHash)) {
+	    WARNF("MANIFESTS row id=%s joined to FILES row id=%s has inconsistent blob: blob.filehash=%s -- skipped",
+		  q_manifestid, m->fileHexHash, blob_filehash);
+	    ++inconsistent;
+	  }
+	} else {
+	  if (!blob_filehash) {
+	    WARNF("MANIFESTS row id=%s joined to FILES row id=%s has inconsistent blob: blob.filehash should be absent -- skipped",
+		  q_manifestid, m->fileHexHash);
+	    ++inconsistent;
+	  }
 	}
 	if (checkVersionP && q_version != m->version) {
 	  WARNF("SELECT query with version=%lld returned incorrect row: manifests.version=%lld -- skipped", m->version, q_version);
@@ -1182,23 +1197,30 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
 	  const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
 	  if (blob_service == NULL)
 	    ret = WHY("Manifest is missing 'service' field");
+	  long long filesizeq = rhizome_manifest_get_ll(m, "filesize");
+	  if (filesizeq == -1)
+	    ret = WHY("Manifest is missing 'filesize' field");
+	  else
+	    m->fileLength = filesizeq;
 	  const char *blob_filehash = rhizome_manifest_get(m, "filehash", NULL, 0);
-	  if (blob_filehash == NULL)
-	    ret = WHY("Manifest is missing 'filehash' field");
-	  else {
-	    memcpy(m->fileHexHash, blob_filehash, RHIZOME_FILEHASH_STRLEN + 1);
-	    m->fileHashedP = 1;
+	  if (m->fileLength != 0) {
+	    if (blob_filehash == NULL)
+	      ret = WHY("Manifest is missing 'filehash' field");
+	    else {
+	      memcpy(m->fileHexHash, blob_filehash, RHIZOME_FILEHASH_STRLEN + 1);
+	      m->fileHashedP = 1;
+	    }
+	  } else {
+	    if (blob_filehash != NULL)
+	      WARN("Manifest contains spurious 'filehash' field");
+	    m->fileHexHash[0] = '\0';
+	    m->fileHashedP = 0;
 	  }
 	  long long blob_version = rhizome_manifest_get_ll(m, "version");
 	  if (blob_version == -1)
 	    ret = WHY("Manifest is missing 'version' field");
 	  else
 	    m->version = blob_version;
-	  long long filesizeq = rhizome_manifest_get_ll(m, "filesize");
-	  if (filesizeq == -1)
-	    ret = WHY("Manifest is missing 'filesize' field");
-	  else
-	    m->fileLength = filesizeq;
 	  if (ret == 1) {
 	    cli_puts("service"); cli_delim(":");
 	    cli_puts(blob_service); cli_delim("\n");
@@ -1208,10 +1230,12 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
 	    cli_printf("%lld", (long long) sqlite3_column_int64(statement, 2)); cli_delim("\n");
 	    cli_puts("inserttime"); cli_delim(":");
 	    cli_printf("%lld", (long long) sqlite3_column_int64(statement, 3)); cli_delim("\n");
-	    cli_puts("filehash"); cli_delim(":");
-	    cli_puts(m->fileHexHash); cli_delim("\n");
 	    cli_puts("filesize"); cli_delim(":");
 	    cli_printf("%lld", (long long) m->fileLength); cli_delim("\n");
+	    if (m->fileLength != 0) {
+	      cli_puts("filehash"); cli_delim(":");
+	      cli_puts(m->fileHexHash); cli_delim("\n");
+	    }
 	    // Could write the manifest blob to the CLI output here, but that would require the output to
 	    // support byte[] fields as well as String fields.
 	  }

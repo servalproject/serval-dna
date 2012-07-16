@@ -83,7 +83,7 @@ int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out,
   }
 
   /* Add the manifest and its associated file to the Rhizome database. */
-  m->dataFileName=strdup(filename);
+  m->dataFileName = strdup(filename);
   if (rhizome_manifest_check_file(m))
     return WHY("File does not belong to manifest");
   int ret=rhizome_manifest_check_duplicate(m,NULL);
@@ -207,15 +207,19 @@ int rhizome_manifest_bind_file(rhizome_manifest *m_in,const char *filename,int e
     DEBUGF("filename=%s, fileLength=%lld", filename, m_in->fileLength);
   rhizome_manifest_set_ll(m_in,"filesize",m_in->fileLength);
 
-  /* Compute hash of payload */
-  char hexhashbuf[RHIZOME_FILEHASH_STRLEN + 1];
-  if (rhizome_hash_file(m_in,filename, hexhashbuf))
-    return WHY("Could not hash file.");
-  memcpy(&m_in->fileHexHash[0], &hexhashbuf[0], sizeof hexhashbuf);
-  
-  /* Store hash of payload */
-  rhizome_manifest_set(m_in, "filehash", m_in->fileHexHash);
-  m_in->fileHashedP=1;
+  /* Compute hash of non-empty payload */
+  if (m_in->fileLength != 0) {
+    char hexhashbuf[RHIZOME_FILEHASH_STRLEN + 1];
+    if (rhizome_hash_file(m_in,filename, hexhashbuf))
+      return WHY("Could not hash file.");
+    memcpy(&m_in->fileHexHash[0], &hexhashbuf[0], sizeof hexhashbuf);
+    rhizome_manifest_set(m_in, "filehash", m_in->fileHexHash);
+    m_in->fileHashedP = 1;
+  } else {
+    m_in->fileHexHash[0] = '\0';
+    rhizome_manifest_del(m_in, "filehash");
+    m_in->fileHashedP = 0;
+  }
   
   return 0;
 }
@@ -237,34 +241,43 @@ int rhizome_manifest_check_file(rhizome_manifest *m_in)
   
   /* Check payload file is accessible and discover its length, then check that it matches
      the file size stored in the manifest */
+  long long mfilesize = rhizome_manifest_get_ll(m_in, "filesize");
+  m_in->fileLength = 0;
   if (m_in->dataFileName[0]) {
     struct stat stat;
-    if (lstat(m_in->dataFileName,&stat))
-      return WHYF("Could not stat() payload file '%s'",m_in->dataFileName);
-    m_in->fileLength = stat.st_size;
-  } else
-    m_in->fileLength = 0;
+    if (lstat(m_in->dataFileName,&stat) == -1) {
+      if (errno != ENOENT || mfilesize != 0)
+	return WHYF_perror("stat(%s)", m_in->dataFileName);
+    } else {
+      m_in->fileLength = stat.st_size;
+    }
+  }
   if (debug & DEBUG_RHIZOME)
     DEBUGF("filename=%s, fileLength=%lld", m_in->dataFileName, m_in->fileLength);
-  long long mfilesize = rhizome_manifest_get_ll(m_in, "filesize");
   if (mfilesize != -1 && mfilesize != m_in->fileLength) {
     WHYF("Manifest.filesize (%lld) != actual file size (%lld)", mfilesize, m_in->fileLength);
     return -1;
   }
 
-  /* Compute hash of payload */
-  char hexhashbuf[RHIZOME_FILEHASH_STRLEN + 1];
-  if (rhizome_hash_file(m_in,m_in->dataFileName, hexhashbuf))
-    return WHY("Could not hash file.");
-  memcpy(&m_in->fileHexHash[0], &hexhashbuf[0], sizeof hexhashbuf);
-  m_in->fileHashedP = 1;
-  
-  /* Check that payload hash matches manifest */
+  /* If payload is empty, ensure manifest has not file hash, otherwis compute the hash of the
+     payload and check that it matches manifest. */
   const char *mhexhash = rhizome_manifest_get(m_in, "filehash", NULL, 0);
-  if (!mhexhash) return WHY("manifest contains no file hash");
-  if (mhexhash && strcmp(m_in->fileHexHash, mhexhash)) {
-    WHYF("Manifest.filehash (%s) does not match payload hash (%s)", mhexhash, m_in->fileHexHash);
-    return -1;
+  if (m_in->fileLength != 0) {
+    char hexhashbuf[RHIZOME_FILEHASH_STRLEN + 1];
+    if (rhizome_hash_file(m_in,m_in->dataFileName, hexhashbuf))
+      return WHY("Could not hash file.");
+    memcpy(&m_in->fileHexHash[0], &hexhashbuf[0], sizeof hexhashbuf);
+    m_in->fileHashedP = 1;
+    if (!mhexhash) return WHY("manifest contains no file hash");
+    if (mhexhash && strcmp(m_in->fileHexHash, mhexhash)) {
+      WHYF("Manifest.filehash (%s) does not match payload hash (%s)", mhexhash, m_in->fileHexHash);
+      return -1;
+    }
+  } else {
+    if (mhexhash != NULL) {
+      WHYF("Manifest.filehash (%s) should be absent for empty payload", mhexhash);
+      return -1;
+    }
   }
 
   return 0;
@@ -324,8 +337,6 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
 
   /* If the manifest already has an ID */
   char id[SID_STRLEN + 1];
-  char ofilehash[RHIZOME_FILEHASH_STRLEN + 1];
-  ofilehash[0] = '\0';
   if (rhizome_manifest_get(m_in, "id", id, SID_STRLEN + 1)) {
     str_toupper_inplace(id);
     /* Discard the new manifest unless it is newer than the most recent known version with the same ID */
@@ -346,10 +357,6 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
       default:
 	return WHY("Select found too many rows!");
     }
-    strbuf b = strbuf_local(ofilehash, sizeof ofilehash);
-    sqlite_exec_strbuf(b, "SELECT filehash from manifests where id='%s';", id);
-    if (strbuf_overrun(b))
-      return WHYF("fileid too long: '%s'", strbuf_str(b));
   } else {
     /* no manifest ID */
     return WHY("Manifest does not have an ID");   

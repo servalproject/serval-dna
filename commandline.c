@@ -1108,23 +1108,43 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
     ret = WHY("Could not overwrite manifest file.");
   service = rhizome_manifest_get(mwritten, "service", NULL, 0);
   if (service) {
-    cli_puts("service"); cli_delim(":");    cli_puts(service); cli_delim("\n");
+    cli_puts("service");
+    cli_delim(":");
+    cli_puts(service);
+    cli_delim("\n");
   }
   {
     char bid[RHIZOME_MANIFEST_ID_STRLEN + 1];
     rhizome_bytes_to_hex_upper(mwritten->cryptoSignPublic, bid, RHIZOME_MANIFEST_ID_BYTES);
-    cli_puts("manifestid"); cli_delim(":");   cli_puts(bid); cli_delim("\n");
+    cli_puts("manifestid");
+    cli_delim(":");
+    cli_puts(bid);
+    cli_delim("\n");
   }
   {
     char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
     rhizome_bytes_to_hex_upper(mwritten->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
-    cli_puts("secret"); cli_delim(":");       cli_puts(secret); cli_delim("\n");
+    cli_puts("secret");
+    cli_delim(":");
+    cli_puts(secret);
+    cli_delim("\n");
   }
-  cli_puts("filehash"); cli_delim(":");	    cli_puts(mwritten->fileHexHash); cli_delim("\n");
-  cli_puts("filesize"); cli_delim(":");	    cli_printf("%lld", mwritten->fileLength); cli_delim("\n");
+  cli_puts("filesize");
+  cli_delim(":");
+  cli_printf("%lld", mwritten->fileLength);
+  cli_delim("\n");
+  if (mwritten->fileLength != 0) {
+    cli_puts("filehash");
+    cli_delim(":");
+    cli_puts(mwritten->fileHexHash);
+    cli_delim("\n");
+  }
   const char *name = rhizome_manifest_get(mwritten, "name", NULL, 0);
   if (name) {
-    cli_puts("name"); cli_delim(":");	    cli_puts(name); cli_delim("\n");
+    cli_puts("name");
+    cli_delim(":");
+    cli_puts(name);
+    cli_delim("\n");
   }
   rhizome_manifest_free(m);
   if (mout != m)
@@ -1178,14 +1198,16 @@ int app_rhizome_import_bundle(int argc, const char *const *argv, struct command_
 	  cli_puts(alloca_tohex(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES));
 	  cli_delim("\n");
 	}
-	cli_puts("filehash");
-	cli_delim(":");
-	cli_puts(m->fileHexHash);
-	cli_delim("\n");
 	cli_puts("filesize");
 	cli_delim(":");
 	cli_printf("%lld", m->fileLength);
 	cli_delim("\n");
+	if (m->fileLength != 0) {
+	  cli_puts("filehash");
+	  cli_delim(":");
+	  cli_puts(m->fileHexHash);
+	  cli_delim("\n");
+	}
 	const char *name = rhizome_manifest_get(m, "name", NULL, 0);
 	if (name) {
 	  cli_puts("name");

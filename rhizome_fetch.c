@@ -381,20 +381,41 @@ int rhizome_position_candidate(int position)
   return 0;
 }
 
+void rhizome_import_received_bundle(struct rhizome_manifest *m)
+{
+  // TODO: We already have the manifest struct in memory, should import the bundle
+  // directly from that, not by writing it to a file and re-reading it!
+  const char *id = rhizome_manifest_get(m, "id", NULL, 0);
+  if (id == NULL) {
+    WHY("Manifest missing ID");
+    return;
+  }
+  if (create_rhizome_import_dir() == -1)
+    return;
+  char filename[1024];
+  if (!FORM_RHIZOME_IMPORT_PATH(filename, "manifest.%s", id))
+    return;
+  /* Do really write the manifest unchanged */
+  m->finalised = 1;
+  m->manifest_bytes = m->manifest_all_bytes;
+  if (debug & DEBUG_RHIZOME_RX) {
+    DEBUGF("manifest bid=%s len=%d has %d signatories", id, m->manifest_bytes, m->sig_count);
+    dump("manifest", m->manifestdata, m->manifest_all_bytes);
+  }
+  if (rhizome_write_manifest_file(m, filename) != -1)
+    rhizome_bundle_import(m, NULL, id, m->ttl - 1 /* TTL */);
+}
+
 /* Verifies manifests as late as possible to avoid wasting time. */
 int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peerip)
 {
   IN();
   /* must free manifest when done with it */
-  char *id=rhizome_manifest_get(m,"id",NULL,0);
-  long long filesize=rhizome_manifest_get_ll(m,"filesize");
+  char *id = rhizome_manifest_get(m, "id", NULL, 0);
   int priority=100; /* normal priority */
-  int i;
-
-  m->version = rhizome_manifest_get_ll(m,"version");
 
   if (debug & DEBUG_RHIZOME_RX)
-    DEBUGF("Considering manifest import bid=%s version=%lld size=%lld priority=%d:", id, m->version, filesize, priority);
+    DEBUGF("Considering manifest import bid=%s version=%lld size=%lld priority=%d:", id, m->version, m->fileLength, priority);
 
   if (rhizome_manifest_version_cache_lookup(m)) {
     if (debug & DEBUG_RHIZOME_RX)
@@ -409,7 +430,20 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, struct sockaddr_i
       DEBUGF("   is new (have version %lld)", stored_version);
   }
 
+  if (m->fileLength == 0) {
+    if (rhizome_manifest_verify(m) != 0) {
+      WHY("Error verifying manifest when considering for import");
+      /* Don't waste time looking at this manifest again for a while */
+      rhizome_queue_ignore_manifest(m, peerip, 60000);
+      rhizome_manifest_free(m);
+      RETURN(-1);
+    }
+    rhizome_import_received_bundle(m);
+    RETURN(0);
+  }
+
   /* work out where to put it in the list */
+  int i;
   for(i=0;i<candidate_count;i++)
     {
       /* If this manifest is already in the list, stop.
@@ -421,11 +455,9 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, struct sockaddr_i
 	    /* duplicate.
 	       XXX - Check versions! We should replace older with newer,
 	       and then update position in queue based on size */
-	  long long list_version=rhizome_manifest_get_ll(candidates[i].manifest, "version");
-	  long long this_version=rhizome_manifest_get_ll(m,"version");
-	  if (list_version>=this_version) {
-	    /* this version is older than the one in the list,
-	       so don't list this one */
+	  long long list_version = rhizome_manifest_get_ll(candidates[i].manifest, "version");
+	  if (list_version >= m->version) {
+	    /* this version is older than the one in the list, so don't list this one */
 	    rhizome_manifest_free(m);
 	    RETURN(0); 
 	  } else {
@@ -451,7 +483,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, struct sockaddr_i
 	 the list down. */
       if (candidates[i].priority>priority
 	  ||(candidates[i].priority==priority
-	     &&candidates[i].size>filesize))
+	     &&candidates[i].size>m->fileLength))
 	break;
     }
   if (i>=MAX_CANDIDATES) {
@@ -482,7 +514,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, struct sockaddr_i
 	bytes);
   /* put new candidate in */
   candidates[i].manifest=m;
-  candidates[i].size=filesize;
+  candidates[i].size=m->fileLength;
   candidates[i].priority=priority;
   candidates[i].peer=*peerip;
 
@@ -766,37 +798,11 @@ void rhizome_write_content(rhizome_file_fetch_record *q, char *buffer, int bytes
     /* got all of file */
     if (debug & DEBUG_RHIZOME_RX)
       DEBUGF("Received all of file via rhizome -- now to import it");
-    {
-      fclose(q->file);
-      q->file = NULL;
-      // TODO: We already have the manifest struct in memory, should import the bundle
-      // directly from that, not by writing it to a file and re-reading it!
-      const char *id = rhizome_manifest_get(q->manifest, "id", NULL, 0);
-      if (id == NULL)
-      { WHY("Manifest missing ID"); return; }
-      if (create_rhizome_import_dir() == -1)
-	return;
-      char filename[1024];
-      if (!FORM_RHIZOME_IMPORT_PATH(filename,"manifest.%s", id))
-	return;
-      /* Do really write the manifest unchanged */
-      if (debug & DEBUG_RHIZOME_RX) {
-	DEBUGF("manifest has %d signatories",q->manifest->sig_count);
-	DEBUGF("manifest bid=%s len=%d",
-	       rhizome_manifest_get(q->manifest, "id", NULL, 0),
-	       q->manifest->manifest_bytes);
-	dump("manifest",&q->manifest->manifestdata[0],
-	     q->manifest->manifest_all_bytes);
-      }
-      q->manifest->finalised=1;
-      q->manifest->manifest_bytes=q->manifest->manifest_all_bytes;
-      if (rhizome_write_manifest_file(q->manifest,filename) != -1) {
-	rhizome_bundle_import(q->manifest, NULL, id,
-			      q->manifest->ttl - 1 /* TTL */);
-      }
-      rhizome_manifest_free(q->manifest);
-      q->manifest = NULL;
-    }
+    fclose(q->file);
+    q->file = NULL;
+    rhizome_import_received_bundle(q->manifest);
+    rhizome_manifest_free(q->manifest);
+    q->manifest = NULL;
     rhizome_fetch_close(q);
     return;
   }
