@@ -88,6 +88,11 @@ parseDnaReply(unsigned char *bytes, int count,
   return 0;
 }
 
+void dna_helper_monitor(int fd)
+{
+  return;
+}
+
 static int
 dna_helper_start(const char *command, const char *arg) {
   int	stdin_fds[2], stdout_fds[2];
@@ -128,6 +133,9 @@ dna_helper_start(const char *command, const char *arg) {
       /* Parent, should put file descriptors into place for use */
       dna_helper_stdin = stdin_fds[0];
       dna_helper_stdout = stdout_fds[1];
+
+      /* Need to watch dna_helper_stdout */
+      // XXX fd_watch(dna_helper_stdout,dna_helper_monitor,POLL_IN);
       return 0;
     }
   }
