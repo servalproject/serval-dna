@@ -28,6 +28,8 @@ rexp_date='[0-9]\{1,\}'
 
 # Utility function:
 #  - create N identities in the current instance (I)
+#  - set variable SID to SID of first identity
+#  - set variable SID{I} to SID of first identity, eg, SIDA
 #  - set variables SID{I}{1..N} to SIDs of identities, eg, SIDA1, SIDA2...
 #  - set variables DID{I}{1..N} to DIDs of identities, eg, DIDA1, DIDA2...
 #  - set variables NAME{I}{1..N} to names of identities, eg, NAMEA1, NAMEA2...
@@ -47,6 +49,10 @@ create_rhizome_identities() {
       local namevar=NAME$instance_name$i
       extract_stdout_keyvalue $sidvar sid "$rexp_sid"
       tfw_log "$sidvar=${!sidvar}"
+      if [ $i -eq 1 ]; then
+         SID="${!sidvar}"
+         eval SID$instance_name="$SID"
+      fi
       extract_stdout_keyvalue_optional DID$instance_name$i did "$rexp_did" && tfw_log "$didvar=${!didvar}"
       extract_stdout_keyvalue_optional NAME$instance_name$i name ".*" && tfw_log "$namevar=${!namevar}"
    done
@@ -74,15 +80,19 @@ assert_manifest_complete() {
    assertGrep "$manifest" "^BK=$rexp_bundlekey\$"
    assertGrep "$manifest" "^date=$rexp_date\$"
    assertGrep "$manifest" "^version=$rexp_version\$"
-   assertGrep "$manifest" "^filehash=$rexp_filehash\$"
    assertGrep "$manifest" "^filesize=$rexp_filesize\$"
+   if grep -q '^filesize=0$' "$manifest"; then
+      assertGrep --matches=0 "$manifest" "^filehash="
+   else
+      assertGrep "$manifest" "^filehash=$rexp_filehash\$"
+   fi
    if grep -q '^service=file$' "$manifest"; then
       assertGrep "$manifest" "^name="
    fi
 }
 
 assert_rhizome_list() {
-   assertStdoutLineCount '==' $(($# + 2))
+   assertStdoutLineCount --stderr '==' $(($# + 2))
    assertStdoutIs --stderr --line=1 -e '11\n'
    assertStdoutIs --stderr --line=2 -e 'service:id:version:date:.inserttime:.selfsigned:filesize:filehash:sender:recipient:name\n'
    local filename
@@ -105,7 +115,7 @@ assert_stdout_add_file() {
    if replayStdout | grep -q '^service:file$'; then
       opt_name=true
    fi
-   fieldnames='service|manifestid|secret|filehash|filesize|name'
+   fieldnames='service|manifestid|secret|filesize|filehash|name'
    for arg; do
       case "$arg" in
       !+($fieldnames))
@@ -125,8 +135,12 @@ assert_stdout_add_file() {
    ${opt_service:-true} && assertStdoutGrep --matches=1 "^service:$re_service\$"
    ${opt_manifestid:-true} && assertStdoutGrep --matches=1 "^manifestid:$re_manifestid\$"
    ${opt_secret:-true} && assertStdoutGrep --matches=1 "^secret:$re_secret\$"
-   ${opt_filehash:-true} && assertStdoutGrep --matches=1 "^filehash:$re_filehash\$"
    ${opt_filesize:-true} && assertStdoutGrep --matches=1 "^filesize:$re_filesize\$"
+   if replayStdout | grep -q '^filesize:0$'; then
+      assertStdoutGrep --matches=0 "^filehash:"
+   else
+      ${opt_filehash:-true} && assertStdoutGrep --matches=1 "^filehash:$re_filehash\$"
+   fi
 }
 
 assert_stdout_import_bundle() {
@@ -137,16 +151,19 @@ assert_stdout_import_bundle() {
 unpack_manifest_for_grep() {
    local filename="$1"
    re_service="$rexp_service"
-   if [ -n "$filename" ]; then
-      re_filesize=$(( $(cat "$filename" | wc -c) + 0 ))
-   else
-      re_filesize=0
-   fi
-   compute_filehash re_filehash "$filename"
    re_manifestid="$rexp_manifestid"
    re_version="$rexp_version"
    re_secret="$rexp_bundlesecret"
    re_name=$(escape_grep_basic "${filename##*/}")
+   local filesize=$(sed -n -e '/^filesize=/s///p' "$filename.manifest" 2>/dev/null)
+   if [ "$filesize" = 0 ]; then
+      re_filesize=0
+      re_filehash=
+      re_name="\($re_name\)\{0,1\}"
+   else
+      re_filesize=$(( $(cat "$filename" | wc -c) + 0 ))
+      compute_filehash re_filehash "$filename"
+   fi
    # If there is a manifest file that looks like it matches this payload
    # file, then use its file hash to check the rhizome list '' output.
    local filehash=$(sed -n -e '/^filehash=/s///p' "$filename.manifest" 2>/dev/null)
