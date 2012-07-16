@@ -93,6 +93,8 @@ void dna_helper_monitor(int fd)
   return;
 }
 
+struct sched_ent dna_helper_sched;
+
 static int
 dna_helper_start(const char *command, const char *arg) {
   int	stdin_fds[2], stdout_fds[2];
@@ -135,7 +137,9 @@ dna_helper_start(const char *command, const char *arg) {
       dna_helper_stdout = stdout_fds[1];
 
       /* Need to watch dna_helper_stdout */
-      // XXX fd_watch(dna_helper_stdout,dna_helper_monitor,POLL_IN);
+      // XXX need to initialise structure before calling watch
+      // XXX watch(&dna_helper_sched);
+      // XXX need to add unwatch() when we detect that the process has died.
       return 0;
     }
   }
