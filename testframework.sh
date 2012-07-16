@@ -293,10 +293,10 @@ _tfw_harvest_processes() {
                echo -n " "
                _tfw_echo_result "$result"
                echo
-               $_tfw_tput cud $(($_tfw_test_number_watermark - $testNumber))
+               travel=$(($_tfw_test_number_watermark - $testNumber))
+               [ $travel -gt 0 ] && $_tfw_tput cud $travel
             fi
          else
-            _tfw_echo_intro $testNumber $testName
             echo -n "$testNumber. ... "
             _tfw_echo_result "$result"
             echo
