@@ -63,17 +63,21 @@ bundle_received_by() {
    return 0
 }
 
-doc_FileTransferNew="One new bundle single transfer"
-setup_FileTransferNew() {
+setup_file_one() {
    setup_servald
    setup_rhizome
    assert_no_servald_processes
-   start_servald_instances +A +B
    echo 'File one' >file1
    set_instance +A
-   executeOk_servald rhizome add file '' '' file1 file1.manifest
+   executeOk_servald rhizome add file $SIDA '' file1 file1.manifest
    extract_manifest_id BID file1.manifest
    extract_manifest_version VERSION file1.manifest
+}
+
+doc_FileTransferNew="One new bundle transfers to one node"
+setup_FileTransferNew() {
+   setup_file_one
+   start_servald_instances +A +B
    set_instance +B
 }
 test_FileTransferNew() {
@@ -82,17 +86,10 @@ test_FileTransferNew() {
    assert_rhizome_list file1!
 }
 
-doc_FileMultiTransferNew="One new bundle multi transfer"
+doc_FileMultiTransferNew="One new bundle transfers to four nodes"
 setup_FileMultiTransferNew() {
-   setup_servald
-   setup_rhizome
-   assert_no_servald_processes
+   setup_file_one
    start_servald_instances +A +B +C +D +E
-   echo 'File one' >file1
-   set_instance +A
-   executeOk_servald rhizome add file '' '' file1 file1.manifest
-   extract_manifest_id BID file1.manifest
-   extract_manifest_version VERSION file1.manifest
 }
 test_FileMultiTransferNew() {
    wait_until bundle_received_by +B +C +D +E
@@ -102,6 +99,27 @@ test_FileMultiTransferNew() {
       executeOk_servald rhizome list ''
       assert_rhizome_list file1!
    done
+}
+
+doc_FileTransferDelete="One bundle deletion transfers to one node"
+setup_FileTransferDelete() {
+   setup_file_one
+   start_servald_instances +A +B
+   wait_until bundle_received_by +B
+   set_instance +A
+   >file1_2
+   sed -e '/^date=/d;/^filehash=/d;/^filesize=/d;/^version=/d' file1.manifest >file1_2.manifest
+   echo 'filesize=0' >>file1_2.manifest
+   executeOk_servald rhizome add file $SIDA '' '' file1_2.manifest
+   extract_manifest_version VERSION file1_2.manifest
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file1_2
+}
+test_FileTransferDelete() {
+   wait_until bundle_received_by +B
+   set_instance +B
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file1_2!
 }
 
 runTests "$@"
