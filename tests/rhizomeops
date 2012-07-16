@@ -140,6 +140,8 @@ test_AddEmpty() {
    assertGrep .manifest '^service=file$'
    assertGrep .manifest '^name=$'
    assertGrep .manifest '^filesize=0$'
+   executeOk_servald rhizome list ''
+   assert_rhizome_list ''
 }
 
 doc_AddThenList="List contains one file after one add"
