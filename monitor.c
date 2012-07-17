@@ -539,6 +539,14 @@ int monitor_announce_peer(const unsigned char *sid)
   return 0;
 }
 
+int monitor_announce_unreachable_peer(const unsigned char *sid)
+{
+  char msg[1024];
+  int n = snprintf(msg, sizeof msg, "\nOLDPEER:%s\n", alloca_tohex_sid(sid));
+  monitor_tell_clients(msg, n, MONITOR_PEERS);
+  return 0;
+}
+
 int monitor_send_audio(vomp_call_state *call, int audio_codec, unsigned int start_time, unsigned int end_time, const unsigned char *audio, int audio_length)
 {
   if (0) DEBUGF("Tell call monitor about audio for call %06x:%06x",

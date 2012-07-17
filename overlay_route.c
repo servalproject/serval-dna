@@ -523,10 +523,6 @@ overlay_node *overlay_route_find_node(const unsigned char *sid, int prefixLen, i
 
   bcopy(sid, overlay_nodes[bin_number][free_slot].sid, SID_SIZE);
 
-  /* Ask for newly discovered node to be advertised */
-  overlay_route_please_advertise(&overlay_nodes[bin_number][free_slot]);
-  monitor_announce_peer(sid);
-
   // This info message is used by tests; don't alter or remove it.
   INFOF("ADD OVERLAY NODE sid=%s slot=%d", alloca_tohex_sid(sid), free_slot);
 
@@ -867,9 +863,19 @@ int overlay_route_recalc_node_metrics(overlay_node *n,long long now)
      if it goes down, we probably don't need to say anything at all.
   */
   int diff=best_score-n->best_link_score;
-  if (diff>0) { 
+  if (diff>0) {
     overlay_route_please_advertise(n);
     if (debug&DEBUG_OVERLAYROUTEMONITOR) overlay_route_dump();
+  }
+  
+  if (n->best_link_score && !best_score){
+    INFOF("PEER UNREACHABLE, sid=%s", alloca_tohex_sid(n->sid));
+    monitor_announce_unreachable_peer(n->sid);
+  }else if(best_score && !n->best_link_score){
+    INFOF("PEER REACHABLE, sid=%s", alloca_tohex_sid(n->sid));
+    /* Make sure node is advertised soon */
+    overlay_route_please_advertise(n);
+    monitor_announce_peer(n->sid);
   }
   
   /* Remember new reachability information */
@@ -980,6 +986,9 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
   /* From the sum of observations calculate the metrics.
      We want the score to climb quickly and then plateu.
   */
+  
+  int scoreChanged=0;
+  
   for(i=0;i<OVERLAY_MAX_INTERFACES;i++) {
     int score;
     if (ms_observed_200sec[i]>200000) ms_observed_200sec[i]=200000;
@@ -1001,10 +1010,15 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
       if (score>255) score=255;
     }
 
-    n->scores[i]=score;
+    if (n->scores[i]!=score){
+      scoreChanged=1;
+      n->scores[i]=score;
+    }
     if ((debug&DEBUG_OVERLAYROUTING)&&score)
       DEBUGF("Neighbour score on interface #%d = %d (observations for %dms)",i,score,ms_observed_200sec[i]);
   }
+  if (scoreChanged)
+    overlay_route_recalc_node_metrics(n->node, now);
   
   return 0;
   
