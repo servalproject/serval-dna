@@ -697,7 +697,6 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
 	break;
       }
       const char *q_manifestid = (const char *) sqlite3_column_text(statement, 0);
-      DEBUGF("id = %s", q_manifestid);
       const char *manifestblob = (char *) sqlite3_column_blob(statement, 1);
       size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
       long long q_version = sqlite3_column_int64(statement, 2);
@@ -1079,20 +1078,20 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found,
 	  ++inconsistent;
 	}
 	if (blob_filesize != -1 && blob_filesize != m->fileLength) {
-	  WARNF("MANIFESTS row id=%s joined to FILES row id=%s has inconsistent blob: known file size %lld, blob.filesize=%lld -- skipped",
-		q_manifestid, m->fileHexHash, m->fileLength, blob_filesize);
+	  WARNF("MANIFESTS row id=%s has inconsistent blob: known file size %lld, blob.filesize=%lld -- skipped",
+		q_manifestid, m->fileLength, blob_filesize);
 	  ++inconsistent;
 	}
 	if (m->fileLength != 0) {
 	  if (!blob_filehash && strcasecmp(blob_filehash, m->fileHexHash)) {
-	    WARNF("MANIFESTS row id=%s joined to FILES row id=%s has inconsistent blob: blob.filehash=%s -- skipped",
+	    WARNF("MANIFESTS row id=%s has inconsistent blob: manifests.filehash=%s, blob.filehash=%s -- skipped",
 		  q_manifestid, m->fileHexHash, blob_filehash);
 	    ++inconsistent;
 	  }
 	} else {
-	  if (!blob_filehash) {
-	    WARNF("MANIFESTS row id=%s joined to FILES row id=%s has inconsistent blob: blob.filehash should be absent -- skipped",
-		  q_manifestid, m->fileHexHash);
+	  if (blob_filehash) {
+	    WARNF("MANIFESTS row id=%s has inconsistent blob: blob.filehash should be absent -- skipped",
+		  q_manifestid);
 	    ++inconsistent;
 	  }
 	}
