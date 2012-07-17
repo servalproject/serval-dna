@@ -697,7 +697,6 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
 	break;
       }
       const char *q_manifestid = (const char *) sqlite3_column_text(statement, 0);
-      DEBUGF("id = %s", q_manifestid);
       const char *manifestblob = (char *) sqlite3_column_blob(statement, 1);
       size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
       long long q_version = sqlite3_column_int64(statement, 2);
