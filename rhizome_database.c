@@ -1078,20 +1078,20 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found,
 	  ++inconsistent;
 	}
 	if (blob_filesize != -1 && blob_filesize != m->fileLength) {
-	  WARNF("MANIFESTS row id=%s joined to FILES row id=%s has inconsistent blob: known file size %lld, blob.filesize=%lld -- skipped",
-		q_manifestid, m->fileHexHash, m->fileLength, blob_filesize);
+	  WARNF("MANIFESTS row id=%s has inconsistent blob: known file size %lld, blob.filesize=%lld -- skipped",
+		q_manifestid, m->fileLength, blob_filesize);
 	  ++inconsistent;
 	}
 	if (m->fileLength != 0) {
 	  if (!blob_filehash && strcasecmp(blob_filehash, m->fileHexHash)) {
-	    WARNF("MANIFESTS row id=%s joined to FILES row id=%s has inconsistent blob: blob.filehash=%s -- skipped",
+	    WARNF("MANIFESTS row id=%s has inconsistent blob: manifests.filehash=%s, blob.filehash=%s -- skipped",
 		  q_manifestid, m->fileHexHash, blob_filehash);
 	    ++inconsistent;
 	  }
 	} else {
-	  if (!blob_filehash) {
-	    WARNF("MANIFESTS row id=%s joined to FILES row id=%s has inconsistent blob: blob.filehash should be absent -- skipped",
-		  q_manifestid, m->fileHexHash);
+	  if (blob_filehash) {
+	    WARNF("MANIFESTS row id=%s has inconsistent blob: blob.filehash should be absent -- skipped",
+		  q_manifestid);
 	    ++inconsistent;
 	  }
 	}
