@@ -237,6 +237,10 @@ extract_manifest_BK() {
    extract_manifest "$1" "$2" BK "$rexp_bundlekey"
 }
 
+extract_manifest_filesize() {
+   extract_manifest "$1" "$2" filesize "$rexp_filesize"
+}
+
 extract_manifest_filehash() {
    extract_manifest "$1" "$2" filehash "$rexp_filehash"
 }
