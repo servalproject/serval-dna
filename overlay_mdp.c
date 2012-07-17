@@ -922,7 +922,6 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
     overlay_frame_set_broadcast_as_destination(frame);
   else{
     bcopy(&mdp->out.dst.sid[0],frame->destination,SID_SIZE);
-    frame->destination_address_status=OA_RESOLVED;
   }
   
   int q=OQ_ORDINARY;

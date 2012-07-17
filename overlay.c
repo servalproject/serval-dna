@@ -182,238 +182,124 @@ int overlay_frame_process(struct overlay_interface *interface,overlay_frame *f)
 
   long long now=overlay_gettime_ms();
 
-  if (f->source_address_status==OA_RESOLVED&&overlay_address_is_local(f->source))
-    RETURN(WHY("Dropping frame claiming to come from myself."));
+  if (debug&DEBUG_OVERLAYFRAMES)
+    DEBUGF(">>> Received frame (type=%02x, bytes=%d)",f->type,f->payload?f->payload->length:-1);
 
-  if (debug&DEBUG_OVERLAYFRAMES) DEBUGF(">>> Received frame (type=%02x, bytes=%d)",f->type,f->payload?f->payload->length:-1);
-
-  /* First order of business is whether the nexthop address has been resolved.
-     If not, we need to think about asking for it to be resolved.
-     The trouble is that we do not want to trigger a Hanson Event (a storm of
-     please explains/resolution requests). Yet, we do not want to delay 
-     communications unnecessarily.  
-
-     The simple solution for now is to queue the address for resolution request
-     in our next tick.  If we see another resolution request for the same
-     address in the mean time, then we can cancel our request */
-  switch (f->nexthop_address_status)
-    {
-    case OA_UNINITIALISED:
-      /* Um? Right. */
-      RETURN(WHY("frame passed with ununitialised nexthop address"));
-      break;
-    case OA_RESOLVED:
-      /* Great, we have the address, so we can get on with things */
-      break;
-    case OA_PLEASEEXPLAIN:
-      RETURN(-1); //  WHY("Address cannot be resolved -- aborting packet processing.");
-      /* XXX Should send a please explain to get this address resolved. */
-      break;
-    case OA_UNSUPPORTED:
-    default:
-	// TODO tell the sender
-      /* If we don't support the address format, we should probably tell
-	 the sender. Again, we queue this up, and cancel it if someone else
-	 tells them in the meantime to avoid an Opposition Event (like a Hanson
-	 Event, but repeatedly berating any node that holds a different policy
-	 to itself. */
-      WHY("Packet with unsupported address format");
-      RETURN(-1);
-      break;
+  // only examine payloads that are broadcasts, or where I'm the next hop
+  if (overlay_address_is_broadcast(f->nexthop)) {
+    if (overlay_broadcast_drop_check(f->nexthop)){
+      if (debug&DEBUG_OVERLAYFRAMES)
+	DEBUGF("Dropping frame, duplicate broadcast %s", alloca_tohex_sid(f->nexthop));
+      RETURN(0);
     }
-
-  /* Okay, nexthop is valid, so let's see if it is us */
-  int forMe=0,i;
+  }else if (!overlay_address_is_local(f->nexthop)){
+    if (debug&DEBUG_OVERLAYFRAMES)
+      DEBUGF("Dropping frame, not addressed to me %s", alloca_tohex_sid(f->nexthop));
+    RETURN(0);
+  }
+  
+  int broadcast=overlay_address_is_broadcast(f->destination);
   int ultimatelyForMe=0;
-  int broadcast=0;
-  int nhbroadcast=overlay_address_is_broadcast(f->nexthop);
-  int duplicateBroadcast=0;
-
-  if (nhbroadcast) {
-    if (overlay_broadcast_drop_check(f->nexthop)) duplicateBroadcast=1;
-    
-    forMe=1; }
-  if (overlay_address_is_local(f->nexthop)) forMe=1;
-
-  if (forMe) {
-    /* It's for us, so resolve the addresses */
-    if (overlay_frame_resolve_addresses(f))
-      RETURN(WHY("Failed to resolve destination and sender addresses in frame"));
-    broadcast=overlay_address_is_broadcast(f->destination);
-    if (debug&DEBUG_OVERLAYFRAMES) {
-      strbuf b = strbuf_alloca(1024);
-      strbuf_sprintf(b, "Destination for this frame is (resolve code=%d): ", f->destination_address_status);
-      if (f->destination_address_status==OA_RESOLVED)
-	for(i=0;i<SID_SIZE;i++)
-	  strbuf_sprintf(b, "%02x", f->destination[i]);
-      else
-	strbuf_puts(b, "???");
-      DEBUG(strbuf_str(b));
-      strbuf_reset(b);
-      strbuf_sprintf(b, "Source for this frame is (resolve code=%d): ", f->source_address_status);
-      if (f->source_address_status==OA_RESOLVED)
-	for(i=0;i<SID_SIZE;i++)
-	  strbuf_sprintf(b, "%02x", f->source[i]);
-      else
-	strbuf_puts(b, "???");
-      DEBUG(strbuf_str(b));
-    }
-
-    if (f->source_address_status!=OA_RESOLVED) {
-      if (debug&DEBUG_OVERLAYFRAMES) WHY("Source address could not be resolved, so dropping frame.");
-      RETURN(-1);
-    }
-    if (overlay_address_is_local(f->source))
-      {
-	/* not that noteworthy, as when listening to a broadcast socket
-	   you hear everything you send. */
-	if (debug&DEBUG_OVERLAYROUTING) 
-	  WHY("Dropping frame claiming to come from myself.");
-	RETURN(-1);
-      }
-
-    if (f->destination_address_status==OA_RESOLVED) {
-      if (overlay_address_is_broadcast(f->destination))	
-	{ ultimatelyForMe=1; broadcast=1; }
-      if (overlay_address_is_local(f->destination)) ultimatelyForMe=1;
-    } else {
-      if (debug&DEBUG_OVERLAYFRAMES) WHY("Destination address could not be resolved, so dropping frame.");
-      RETURN(WHY("could not resolve destination address"));
-    }
+  
+  if (broadcast){
+    ultimatelyForMe = 1;
+    // Note that we assume a broadcast destination address is the same as the broadcast nexthop address
+    // we should decide to drop the packet based on the nexthop address.
+  }else{
+    if (overlay_address_is_local(f->destination))
+      ultimatelyForMe = 1;
   }
-
-  if (debug&DEBUG_OVERLAYFRAMES) {
-    DEBUGF("This frame does%s have me listed as next hop.", forMe?"":" not");
-    DEBUGF("This frame is%s for me.", ultimatelyForMe?"":" not");
-    DEBUGF("This frame is%s%s broadcast.", broadcast?"":" not",duplicateBroadcast?" a duplicate":"");
-  }
-
-  if (duplicateBroadcast) {
-    if (0) DEBUG("Packet is duplicate broadcast");
-    RETURN(0);
-  }
-
-  /* Not for us? Then just ignore it */
-  if (!forMe) {
-    RETURN(0);
-  }
+  
+  f->ttl--;
+  
+  // Never ever forward these types
+  if ((f->type==OF_TYPE_SELFANNOUNCE)
+      ||(f->type==OF_TYPE_RHIZOME_ADVERT))
+    f->ttl=0;
 
   /* Is this a frame we have to forward on? */
-  if (((!ultimatelyForMe)||broadcast)&&(f->ttl>1))
+  if (((!ultimatelyForMe)||broadcast)&&(f->ttl>0))
     {
       /* Yes, it is. */
 
-      if (broadcast&&(!duplicateBroadcast)&&
-	  ((f->type==OF_TYPE_SELFANNOUNCE)
-	   ||(f->type==OF_TYPE_RHIZOME_ADVERT)
-	   ))
-	{
-	  // Don't forward broadcast self-announcement packets as that is O(n^2) with
-	  // traffic.  We have other means to propagating the mesh topology information.
-	  // Similarly, rhizome advertisement traffic is always link local, so don't 
-	  // forward that either.
-	  if (debug&DEBUG_BROADCASTS)
-	    if (duplicateBroadcast)
-	      DEBUG("Dropping broadcast frame (BPI seen before)");
-	} else {
-	if (debug&DEBUG_OVERLAYFRAMES) DEBUG("Forwarding frame");
-	int dontForward=0;
-	if (!broadcast) {
-	  if (overlay_get_nexthop(f->destination,f->nexthop,&f->nexthop_interface))
-	    WHYF("Could not find next hop for %s* - dropping frame",
-		 alloca_tohex(f->destination, 7));
-	  dontForward=1;
-	}
-	f->ttl--;
+      int forward=1;
+      
+      if (!broadcast)
+      {
+	if (overlay_get_nexthop(f->destination,f->nexthop,&f->nexthop_interface))
+	  WHYF("Could not find next hop for %s* - dropping frame",
+	       alloca_tohex(f->destination, 7));
+	forward=0;
+      }
 
-	if (0)
-	  DEBUGF("considering forwarding frame to %s (forme=%d, bcast=%d, dup=%d)",
-		 alloca_tohex_sid(f->destination),ultimatelyForMe,broadcast,
-		 duplicateBroadcast);
+      if (0)
+	DEBUGF("considering forwarding frame to %s (forme=%d, bcast=%d)",
+	       alloca_tohex_sid(f->destination),ultimatelyForMe,broadcast);
 
-	if (overlay_address_is_broadcast(f->destination))
-	  {
-	    /* if nexthop and destination address are the same, and nexthop was shown
-	       not to be a duplicate, then we don't need to test the destination
-	       address for being a duplicate broadcast. */
-	    int sameAsNextHop=1,i;
-	    for(i=0;i<SID_SIZE;i++)
-	      if (f->nexthop[i]!=f->destination[i])
-		{ sameAsNextHop=0; break; }
 
-	    if ((!sameAsNextHop)&&overlay_broadcast_drop_check(f->destination))
-	      duplicateBroadcast=1;
-	    if (duplicateBroadcast) {
-	      DEBUGF("reject src is %s", alloca_tohex_sid(f->source));
-	      DEBUGF("reject nexthop is %s", alloca_tohex_sid(f->nexthop));
-	      DEBUGF("reject destination is %s", alloca_tohex_sid(f->destination));
-	      RETURN(WHY("Not forwarding or reading duplicate broadcast"));
-	    }
+      if (forward) {
+	if (debug&DEBUG_OVERLAYFRAMES)
+	  DEBUG("Forwarding frame");
+	
+	/* Queue frame for dispatch.
+	   Don't forget to put packet in the correct queue based on type.
+	   (e.g., mesh management, voice, video, ordinary or opportunistic).
+
+	   But the really important bit is to clone the frame, since the
+	   structure we are looking at here must be left as is and returned
+	   to the caller to do as they please */	  
+	overlay_frame *qf=op_dup(f);
+	if (!qf) WHY("Could not clone frame for queuing");
+	else {
+	  int qn=OQ_ORDINARY;
+	  /* Make sure voice traffic gets priority */
+	  if ((qf->type&OF_TYPE_BITS)==OF_TYPE_DATA_VOICE) {
+	    qn=OQ_ISOCHRONOUS_VOICE;
+	    rhizome_saw_voice_traffic();
 	  }
-
-	if (!dontForward) {
-	  /* Queue frame for dispatch.
-	     Don't forget to put packet in the correct queue based on type.
-	     (e.g., mesh management, voice, video, ordinary or opportunistic).
-
-	     But the really important bit is to clone the frame, since the
-	     structure we are looking at here must be left as is and returned
-	     to the caller to do as they please */	  
-	  overlay_frame *qf=op_dup(f);
-	  if (!qf) WHY("Could not clone frame for queuing");
-	  else {
-	    int qn=OQ_ORDINARY;
-	    /* Make sure voice traffic gets priority */
-	    if ((qf->type&OF_TYPE_BITS)==OF_TYPE_DATA_VOICE) {
-	      qn=OQ_ISOCHRONOUS_VOICE;
-	      rhizome_saw_voice_traffic();
-	    }
-	    if (0) WHY("queuing frame for forwarding");
-	    if (overlay_payload_enqueue(qn,qf,0)) {
-	      WHY("failed to enqueue forwarded payload");
-	      op_free(qf);
-	    }
+	  if (0) WHY("queuing frame for forwarding");
+	  if (overlay_payload_enqueue(qn,qf,0)) {
+	    WHY("failed to enqueue forwarded payload");
+	    op_free(qf);
 	  }
 	}
-
-	/* If the frame was a broadcast frame, then we need to hang around
-	   so that we can process it, since we are one of the recipients.
-	   Otherwise, return triumphant. */
-	if (!broadcast) RETURN(0);
       }
     }
 
-  int id = (interface - overlay_interfaces);
-  switch(f->type)
-    {
-    case OF_TYPE_SELFANNOUNCE:
-      overlay_route_saw_selfannounce(f,now);
-      break;
-    case OF_TYPE_SELFANNOUNCE_ACK:
-      overlay_route_saw_selfannounce_ack(f,now);
-      break;
-    case OF_TYPE_NODEANNOUNCE:
-      overlay_route_saw_advertisements(id,f,now);
-      break;
-    case OF_TYPE_RHIZOME_ADVERT:
-      overlay_rhizome_saw_advertisements(id,f,now);
-      break;
-    case OF_TYPE_DATA:
-    case OF_TYPE_DATA_VOICE:
-      if (0) {
-	DEBUG("saw mdp containing frame");
-	DEBUGF("  src = %s\n", alloca_tohex_sid(f->source));
-	DEBUGF("  nxt = %s\n", alloca_tohex_sid(f->nexthop));
-	DEBUGF("  dst = %s\n", alloca_tohex_sid(f->destination));
-	dump("payload", f->payload->bytes, f->payload->length);
+  // process payloads with broadcast or our sid as destination
+  if (ultimatelyForMe){
+    int id = (interface - overlay_interfaces);
+    switch(f->type)
+      {
+      case OF_TYPE_SELFANNOUNCE:
+	overlay_route_saw_selfannounce(f,now);
+	break;
+      case OF_TYPE_SELFANNOUNCE_ACK:
+	overlay_route_saw_selfannounce_ack(f,now);
+	break;
+      case OF_TYPE_NODEANNOUNCE:
+	overlay_route_saw_advertisements(id,f,now);
+	break;
+      case OF_TYPE_RHIZOME_ADVERT:
+	overlay_rhizome_saw_advertisements(id,f,now);
+	break;
+      case OF_TYPE_DATA:
+      case OF_TYPE_DATA_VOICE:
+	if (0) {
+	  DEBUG("saw mdp containing frame");
+	  DEBUGF("  src = %s\n", alloca_tohex_sid(f->source));
+	  DEBUGF("  nxt = %s\n", alloca_tohex_sid(f->nexthop));
+	  DEBUGF("  dst = %s\n", alloca_tohex_sid(f->destination));
+	  dump("payload", f->payload->bytes, f->payload->length);
+	}
+	overlay_saw_mdp_containing_frame(f,now);
+	break;
+      default:
+	DEBUGF("Unsupported f->type=0x%x",f->type);
+	RETURN(WHY("Support for that f->type not yet implemented"));
+	break;
       }
-      overlay_saw_mdp_containing_frame(f,now);
-      break;
-    default:
-      DEBUGF("Unsupported f->type=0x%x",f->type);
-      RETURN(WHY("Support for that f->type not yet implemented"));
-      break;
-    }
+  }
 
   RETURN(0);
 }

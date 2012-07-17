@@ -365,7 +365,8 @@ void overlay_interface_poll(struct sched_ent *alarm)
     if (debug&DEBUG_OVERLAYINTERFACES) DEBUGF("Received %d bytes on interface %s",plen,interface->name);
     if (packetOk(interface,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
       WHY("Malformed packet");
-      serval_packetvisualise(open_logging(), "Malformed packet", packet,plen);
+      // Do we really want to attempt to parse it again?
+      //serval_packetvisualise(open_logging(), "Malformed packet", packet,plen);
     }
   }
 }
@@ -456,7 +457,7 @@ int overlay_broadcast_ensemble(int interface_number,
 			       unsigned char *bytes,int len)
 {
   struct sockaddr_in s;
-
+  
   if (debug&DEBUG_PACKETTX)
     {
       DEBUGF("Sending this packet via interface #%d",interface_number);
@@ -733,19 +734,20 @@ int overlay_queue_dump(overlay_txqueue *q)
 }
 
 int overlay_resolve_next_hop(overlay_frame *frame){
+  IN();
   if (frame->nexthop_address_status==OA_RESOLVED)
-    return 0;
+    RETURN(0);
   
   if (frame->isBroadcast)
     bcopy(&frame->destination,&frame->nexthop,SID_SIZE);
   else if (overlay_get_nexthop((unsigned char *)frame->destination,frame->nexthop,&frame->nexthop_interface)){
     // TODO new code?
     frame->nexthop_address_status=OA_UNSUPPORTED;
-    return -1;
+    RETURN(-1);
   }
   
   frame->nexthop_address_status=OA_RESOLVED;
-  return 0;
+  RETURN(0);
 }
 
 void overlay_init_packet(struct outgoing_packet *packet, int interface){
@@ -754,6 +756,9 @@ void overlay_init_packet(struct outgoing_packet *packet, int interface){
   packet->buffer=ob_new(packet->interface->mtu);
   ob_limitsize(packet->buffer, packet->interface->mtu);
   ob_append_bytes(packet->buffer,magic_header,4);
+  
+  overlay_abbreviate_clear_most_recent_address();
+  overlay_abbreviate_unset_current_sender();
 }
 
 // update the alarm time and return 1 if changed
@@ -908,6 +913,7 @@ int overlay_fill_send_packet(struct outgoing_packet *packet, long long now){
       overlay_broadcast_ensemble(packet->i,NULL,packet->buffer->bytes,packet->buffer->length);
     }
     ob_free(packet->buffer);
+    overlay_abbreviate_clear_most_recent_address();
     RETURN(1);
   }
   RETURN(0);
@@ -925,7 +931,6 @@ void overlay_send_packet(struct sched_ent *alarm){
 void overlay_update_queue_schedule(overlay_txqueue *queue, overlay_frame *frame){
   if (overlay_calc_queue_time(queue, frame)){
     unschedule(&next_packet);
-    DEBUGF("Scheduled next packet in %dms", next_packet.alarm - overlay_gettime_ms());
     schedule(&next_packet);
   }
 }

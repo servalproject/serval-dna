@@ -173,7 +173,7 @@ int overlay_abbreviate_cache_address(unsigned char *sid)
   /* Work out the index in the cache where this address would go.
      The XOR 1 is to make sure that all zeroes address doesn't live in index 0,
      which would otherwise result in it being detected as already present. */
-  int index=(((sid[0]<<16)|(sid[0]<<8)|sid[2])>>cache->shift)^1;
+  int index=(((sid[0]<<16)|(sid[1]<<8)|sid[2])>>cache->shift)^1;
 
   /* Does the stored address match the one we have been passed? */
   if (!memcmp(sid,&cache->sids[index].b[0],SID_SIZE))
@@ -183,10 +183,7 @@ int overlay_abbreviate_cache_address(unsigned char *sid)
   /* Not yet in cache, so store it */
   bcopy(sid,&cache->sids[index].b[0],SID_SIZE);
   if (debug&DEBUG_OVERLAYABBREVIATIONS) {
-    fprintf(stderr,"Cached address ");
-    int i;
-    for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",cache->sids[index].b[i]);
-    fprintf(stderr,"\n");
+    DEBUGF("Cached address %s", alloca_tohex_sid(sid));
   }
 
   return 0;
@@ -235,6 +232,7 @@ int overlay_abbreviate_append_address(overlay_buffer *b,unsigned char *a)
   }
   if (r) return r;
   b->length+=count;
+  overlay_abbreviate_set_most_recent_address(a);
   return 0;
 }
 
@@ -246,11 +244,25 @@ int overlay_abbreviate_address(unsigned char *in,unsigned char *out,int *ofs)
   if (!in) return WHY("in==NULL");
   if (in[0]<0x10) return WHY("Invalid address - 0x00-0x0f are reserved prefixes.");
 
+  /* Is this the same as the current sender? */
+  if (overlay_abbreviate_current_sender_set){
+    for(i=0;i<SID_SIZE;i++)
+      if (in[i]!=overlay_abbreviate_current_sender.b[i])
+	break;
+    if (i==SID_SIZE) {
+      out[(*ofs)++]=OA_CODE_SELF; 
+      return 0;
+    } 
+  }
+  
   /* Try repeating previous address */
-  for(i=0;i<SID_SIZE;i++) if (in[i]!=overlay_abbreviate_previous_address.b[i]) break;
+  for(i=0;i<SID_SIZE;i++)
+    if (in[i]!=overlay_abbreviate_previous_address.b[i])
+      break;
   if (i==SID_SIZE) { 
     out[(*ofs)++]=OA_CODE_PREVIOUS; 
-    return 0; } 
+    return 0;
+  } 
 
   /* Is it a broadcast address? */
   if (overlay_address_is_broadcast(in)) {
@@ -332,7 +344,8 @@ int overlay_abbreviate_address(unsigned char *in,unsigned char *out,int *ofs)
 int overlay_abbreviate_expand_address(unsigned char *in,int *inofs,unsigned char *out,int *ofs)
 {
   int bytes=0,r;
-  if (debug&DEBUG_OVERLAYABBREVIATIONS) DEBUGF("Address first byte/abbreviation code=%02x (input offset=%d)\n",in[*inofs],*inofs);
+  if (debug&DEBUG_OVERLAYABBREVIATIONS)
+    DEBUGF("Address first byte/abbreviation code=%02x (input offset=%d)\n",in[*inofs],*inofs);
   switch(in[*inofs])
     {
     case OA_CODE_02: case OA_CODE_04: case OA_CODE_0C:
@@ -352,7 +365,7 @@ int overlay_abbreviate_expand_address(unsigned char *in,int *inofs,unsigned char
 	(*ofs)+=SID_SIZE;
 	return OA_RESOLVED;
       } else {
-	if (debug&DEBUG_OVERLAYABBREVIATIONS) DEBUGF("Cannot resolve OA_CODE_SELF until we can resolve sender's address.\n");
+	WARN("Cannot resolve OA_CODE_SELF if the packet doesn't start with a self announcement.\n");
 	return OA_UNINITIALISED;
       }
     case OA_CODE_INDEX: /* single byte index look up */
@@ -361,7 +374,8 @@ int overlay_abbreviate_expand_address(unsigned char *in,int *inofs,unsigned char
       r=overlay_abbreviate_cache_lookup(overlay_neighbours[overlay_abbreviate_current_sender_id].one_byte_index_address_prefixes[in[*inofs]],
 				      out,ofs,OVERLAY_SENDER_PREFIX_LENGTH,0);
       (*inofs)++;
-      overlay_abbreviate_set_most_recent_address(&out[*ofs]);
+      if (r==OA_RESOLVED)
+	overlay_abbreviate_set_most_recent_address(&out[*ofs]);
       (*inofs)++;
       return r;
     case OA_CODE_PREVIOUS: /* Same as last address */
@@ -374,13 +388,15 @@ int overlay_abbreviate_expand_address(unsigned char *in,int *inofs,unsigned char
       if (in[*inofs]==0x09) bytes=1;
       r=overlay_abbreviate_cache_lookup(&in[(*inofs)+1],out,ofs,3,bytes);
       (*inofs)+=1+3+bytes;
-      overlay_abbreviate_set_most_recent_address(&out[(*ofs)-SID_SIZE]);
+      if (r==OA_RESOLVED)
+	overlay_abbreviate_set_most_recent_address(&out[(*ofs)-SID_SIZE]);
       return r;
     case OA_CODE_PREFIX7: case OA_CODE_PREFIX7_INDEX1: /* 7-byte prefix */
       if (in[*inofs]==OA_CODE_PREFIX7_INDEX1) bytes=1;
       r=overlay_abbreviate_cache_lookup(&in[(*inofs)+1],out,ofs,7,bytes);
       (*inofs)+=1+7+bytes;
-      overlay_abbreviate_set_most_recent_address(&out[(*ofs)-SID_SIZE]);
+      if (r==OA_RESOLVED)
+	overlay_abbreviate_set_most_recent_address(&out[(*ofs)-SID_SIZE]);
       return r;
     case OA_CODE_PREFIX11: case OA_CODE_PREFIX11_INDEX1: case OA_CODE_PREFIX11_INDEX2: /* 11-byte prefix */
       bytes=0;
@@ -388,7 +404,8 @@ int overlay_abbreviate_expand_address(unsigned char *in,int *inofs,unsigned char
       if (in[*inofs]==OA_CODE_PREFIX11_INDEX2) bytes=2;
       r=overlay_abbreviate_cache_lookup(&in[(*inofs)+1],out,ofs,11,bytes);
       (*inofs)+=1+11+bytes;
-      overlay_abbreviate_set_most_recent_address(&out[(*ofs)-SID_SIZE]);
+      if (r==OA_RESOLVED)
+	overlay_abbreviate_set_most_recent_address(&out[(*ofs)-SID_SIZE]);
       return r;
     case OA_CODE_BROADCAST: /* broadcast */
       memset(&out[*ofs],0xff,SID_SIZE-8);
@@ -396,7 +413,7 @@ int overlay_abbreviate_expand_address(unsigned char *in,int *inofs,unsigned char
       /* Copy Broadcast Packet Identifier */
       { int i; for(i=0;i<8;i++) out[(*ofs)+24+i]=in[(*inofs)+i]; }
       if (debug&DEBUG_BROADCASTS) 
-	fprintf(stderr,"Expanded broadcast address with "
+	DEBUGF("Expanded broadcast address with "
 		"BPI=%02X%02X%02X%02X%02X%02X%02X%02X\n",
 		in[(*inofs)+0],in[(*inofs)+1],in[(*inofs)+2],in[(*inofs)+3],
 		in[(*inofs)+4],in[(*inofs)+5],in[(*inofs)+6],in[(*inofs)+7]);
@@ -411,7 +428,7 @@ int overlay_abbreviate_expand_address(unsigned char *in,int *inofs,unsigned char
       bcopy(&in[*inofs],&out[*ofs],SID_SIZE);
       if (bytes) overlay_abbreviate_remember_index(bytes,&in[*inofs],&in[(*inofs)+SID_SIZE]);
       overlay_abbreviate_cache_address(&in[*inofs]);
-      overlay_abbreviate_set_most_recent_address(&out[*ofs]);
+      overlay_abbreviate_set_most_recent_address(&in[*inofs]);
       (*inofs)+=SID_SIZE+bytes;
       return OA_RESOLVED;
     }
@@ -419,6 +436,8 @@ int overlay_abbreviate_expand_address(unsigned char *in,int *inofs,unsigned char
 
 int overlay_abbreviate_lookup_sender_id()
 {
+  if (!overlay_abbreviate_current_sender_set)
+    return WHY("Sender has not been set");
   overlay_neighbour *neh=overlay_route_get_neighbour_structure(overlay_abbreviate_current_sender.b,SID_SIZE,1 /* create if needed */);
   if (!neh) { overlay_abbreviate_current_sender_id=-1; return WHY("Could not find sender in neighbour list"); }
   /* Okay, so the following is a little tortuous in asking our parent who we are instead of just knowing, 
@@ -457,7 +476,7 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
   if (!cache) return OA_PLEASEEXPLAIN; /* No cache? Then ask for address in full */  
 
   /* Work out the index in the cache where this address would live */
-  int index=(((in[0]<<16)|(in[0]<<8)|in[2])>>cache->shift)^1;
+  int index=(((in[0]<<16)|(in[1]<<8)|in[2])>>cache->shift)^1;
 
   int i;
   if (debug&DEBUG_OVERLAYABBREVIATIONS) {
@@ -469,7 +488,7 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
   if (in[0]<0x10) {
     /* Illegal address */
     if (debug&DEBUG_OVERLAYABBREVIATIONS)
-      fprintf(stderr,"Passed an illegal address (first byte <0x10)\n");
+      DEBUGF("Passed an illegal address (first byte <0x10)");
     return OA_UNSUPPORTED;
   }
 
@@ -488,7 +507,7 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
 			  ->keypairs[kp]->public_key,prefix_bytes))
 		  {
 		    if (debug&DEBUG_OVERLAYABBREVIATIONS) 
-		      WHY("Found reference to local address.");
+		      DEBUG("Found reference to local address.");
 		    bcopy(&keyring->contexts[cn]->identities[id]
 			  ->keypairs[kp]->public_key[0],&out[(*ofs)],SID_SIZE);
 		    (*ofs)+=SID_SIZE;
@@ -497,7 +516,7 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
 	      }    
       
       if (debug&DEBUG_OVERLAYABBREVIATIONS) 
-	WHY("Encountered unresolvable address -- are we asking for explanation?");
+	DEBUG("Encountered unresolvable address -- are we asking for explanation?");
       return OA_PLEASEEXPLAIN;
     }
   
@@ -505,11 +524,9 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
      colliding prefixes and ask the sender to resolve them for us, or better yet dynamically
      size the prefix length based on whether any given short prefix has collided */
 
-if (debug&DEBUG_OVERLAYABBREVIATIONS) { 
-    /* It is here, so let's return it */
-    fprintf(stderr,"I think I looked up the following: ");
-    for(i=0;i<SID_SIZE;i++) fprintf(stderr,"%02x",cache->sids[index].b[i]);
-    fprintf(stderr,"\n");
+  /* It is here, so let's return it */
+  if (debug&DEBUG_OVERLAYABBREVIATIONS) { 
+    DEBUGF("I think I looked up the following: %s", alloca_tohex_sid(cache->sids[index].b));
   }
 
   bcopy(&cache->sids[index].b[0],&out[(*ofs)],SID_SIZE);

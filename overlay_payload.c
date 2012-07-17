@@ -148,11 +148,8 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
   
   /* Write out addresses as abbreviated as possible */
   overlay_abbreviate_append_address(headers,p->nexthop);
-  overlay_abbreviate_set_most_recent_address(p->nexthop);
   overlay_abbreviate_append_address(headers,p->destination);
-  overlay_abbreviate_set_most_recent_address(p->destination);
   overlay_abbreviate_append_address(headers,p->source);
-  overlay_abbreviate_set_most_recent_address(p->source);
   
   int addrs_len=headers->length-addrs_start;
   int actual_len=addrs_len+p->payload->length;
@@ -332,8 +329,6 @@ int overlay_frame_set_neighbour_as_source(overlay_frame *f,overlay_neighbour *n)
 {
   if (!n) return WHY("Neighbour was null");
   bcopy(n->node->sid,f->source,SID_SIZE);
-  f->source_address_status=OA_RESOLVED;
-
   return 0;
 }
 
@@ -341,16 +336,12 @@ int overlay_frame_set_neighbour_as_destination(overlay_frame *f,overlay_neighbou
 {
   if (!n) return WHY("Neighbour was null");
   bcopy(n->node->sid,f->destination,SID_SIZE);
-  f->destination_address_status=OA_RESOLVED;
-
   return 0;
 }
 
 int overlay_frame_set_broadcast_as_destination(overlay_frame *f)
 {  
   overlay_broadcast_generate_address(f->destination);
-  f->destination_address_status=OA_RESOLVED;
-
   return 0;
 }
 
@@ -378,8 +369,5 @@ int overlay_frame_set_me_as_source(overlay_frame *f)
   unsigned char *sid=overlay_get_my_sid();
   if (!sid) return WHY("overlay_get_my_sid() failed.");
   bcopy(sid,f->source,SID_SIZE);
-
-  f->source_address_status=OA_RESOLVED;
-
   return 0;
 }

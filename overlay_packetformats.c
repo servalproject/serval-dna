@@ -18,7 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
-
+#include "strbuf.h"
 
 struct sockaddr_in loopback = {
   .sin_family=0,
@@ -101,9 +101,12 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 
   bzero(&f,sizeof(overlay_frame));
   
-  if (recvaddr->sa_family==AF_INET)
+  if (recvaddr->sa_family==AF_INET){
     f.recvaddr=recvaddr; 
-  else {
+    if (debug&DEBUG_OVERLAYFRAMES)
+      DEBUG("Received overlay packet");
+    
+  } else {
     if (interface->fileP) {
       /* dummy interface, so tell to use 0.0.0.0 */
       f.recvaddr=(struct sockaddr *)&loopback;
@@ -114,20 +117,17 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 
   overlay_abbreviate_unset_current_sender();
 
+  // TODO put sender of packet and sequence number in envelope header
+  // Then we can quickly drop reflected broadcast packets
+  // currently we see annoying errors as we attempt to parse each payload
+  // plus with a sequence number we can detect dropped packets and nack them for retransmission
+  
   /* Skip magic bytes and version */
   for(ofs=4;ofs<len;)
     {
-      /* Clear out the data structure ready for next frame */
-      f.nexthop_address_status=OA_UNINITIALISED;
-      f.destination_address_status=OA_UNINITIALISED;
-      f.source_address_status=OA_UNINITIALISED;
-
       /* Get normal form of packet type and modifiers */
       f.type=packet[ofs]&OF_TYPE_BITS;
       f.modifiers=packet[ofs]&OF_MODIFIER_BITS;
-
-      if (debug&DEBUG_PACKETFORMATS)
-	DEBUGF("f.type=0x%02x, f.modifiers=0x%02x, ofs=%d", f.type, f.modifiers, ofs);
 
       switch(packet[ofs]&OF_TYPE_BITS)
 	{
@@ -162,63 +162,124 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 	break;
       }
 
-      if (f.rfs > len - ofs)
-	return WHYF("Payload length %d is too long for the remaining packet buffer %d", f.rfs, len - ofs);
+      int payloadStart = ofs;
+      int nextPayload = ofs+f.rfs;
+      
+      if (nextPayload > len){
+	WHYF("Payload length %d is too long for the remaining packet buffer %d", f.rfs, len - ofs);
+	break;
+      }
+      
+      /* Always attempt to resolve all of the addresses in a packet, or we could fail to understand an important payload 
+       eg, peer sends two payloads travelling in opposite directions;
+          [Next, Dest, Sender] forwarding a payload we just send, so Sender == Me
+          [Next, Dest, Sender] delivering a payload to us so Next == Me
+       
+       But Next would be encoded as OA_CODE_PREVIOUS, so we must parse all three addresses, 
+       even if Next is obviously not intended for us
+       */
       
       /* Now extract the next hop address */
       int alen=0;
-      int offset=ofs;
-      f.nexthop_address_status=overlay_abbreviate_expand_address(packet,&offset,f.nexthop,&alen);
-      if (debug&DEBUG_PACKETFORMATS) {
-	if (f.nexthop_address_status==OA_RESOLVED)
-	  DEBUGF("next hop address is %s", alloca_tohex_sid(f.nexthop));
+      int nexthop_address_status=overlay_abbreviate_expand_address(packet,&ofs,f.nexthop,&alen);
+      if (ofs>nextPayload){
+	WARN("Next hop address didn't fit in payload");
+	break;
       }
-
-      /* Now just make the rest of the frame available via the received frame structure, as the
-	 frame may not be for us, so there is no point wasting time and energy if we don't have
-	 to.
-      */
-      f.bytes=&packet[offset];
-      f.bytecount=f.rfs-(offset-ofs);
-      if (f.bytecount<0) {
-	f.bytecount=0;
-	if (debug&DEBUG_PACKETFORMATS) DEBUGF("f.rfs=%02x, offset=%02x, ofs=%02x", f.rfs, offset, ofs);
-	return WHY("negative residual byte count after extracting addresses from frame header");
-      }
-
-      /* Finally process the frame */
-      overlay_frame_process(interface,&f);
       
-      /* Skip the rest of the bytes in this frame so that we can examine the next one in this
-	 ensemble */
-      if (debug&DEBUG_PACKETFORMATS) DEBUGF("next ofs=%d, f.rfs=%d, len=%d", ofs, f.rfs, len);
-      ofs+=f.rfs;
+      alen=0;
+      int destination_address_status=overlay_abbreviate_expand_address(packet,&ofs,f.destination,&alen);
+      if (ofs>nextPayload){
+	WARN("Destination address didn't fit in payload");
+	break;
+      }
+      
+      alen=0;
+      int source_address_status=overlay_abbreviate_expand_address(packet,&ofs,f.source,&alen);
+      if (ofs>nextPayload){
+	WARN("Source address didn't fit in payload");
+	break;
+      }
+      
+      // TODO respond with OA_PLEASEEXPLAIN's?
+      
+      if (debug&DEBUG_OVERLAYFRAMES) {
+	DEBUGF("Type=0x%02x", f.type);
+	strbuf b = strbuf_alloca(1024);
+	strbuf_sprintf(b, "Next Hop for this frame is (resolve code=%d): ", nexthop_address_status);
+	if (nexthop_address_status==OA_RESOLVED)
+	  strbuf_sprintf(b, "%s", alloca_tohex_sid(f.nexthop));
+	else
+	  strbuf_puts(b, "???");
+	DEBUG(strbuf_str(b));
+	strbuf_reset(b);
+	strbuf_sprintf(b, "Destination for this frame is (resolve code=%d): ", destination_address_status);
+	if (destination_address_status==OA_RESOLVED)
+	  strbuf_sprintf(b, "%s", alloca_tohex_sid(f.destination));
+	else
+	  strbuf_puts(b, "???");
+	DEBUG(strbuf_str(b));
+	strbuf_reset(b);
+	strbuf_sprintf(b, "Source for this frame is (resolve code=%d): ", source_address_status);
+	if (source_address_status==OA_RESOLVED)
+	  strbuf_sprintf(b, "%s", alloca_tohex_sid(f.source));
+	else
+	  strbuf_puts(b, "???");
+	DEBUG(strbuf_str(b));
+      }
+      
+      if (f.nexthop[0]==0 || f.destination[0]==0 || f.source[0]==0){
+	WHY("Addresses expanded incorrectly");
+	dump("Addresses expanded incorrectly", &packet[payloadStart], ofs - payloadStart);
+	break;
+      }
+      
+      if (nexthop_address_status!=OA_RESOLVED
+	  || destination_address_status!=OA_RESOLVED
+	  || source_address_status!=OA_RESOLVED){
+	WARN("Unable to resolve all payload addresses");
+	// we have to stop now as we can't be certain about the destination of any other payloads in this packet.
+	break;
+      }
+	
+      /* not that noteworthy, as when listening to a broadcast socket
+       you hear everything you send. */
+      if (overlay_address_is_local(f.source)){
+	// skip the remainder of any packet that we know we sent
+	// TODO add our id to the header
+	if (f.type==OF_TYPE_SELFANNOUNCE)
+	  break;
+      }else{
+	
+	// TODO refactor all packet parsing to only allocate additional memory for the payload
+	// if it needs to be queued for forwarding.
+	if (!f.payload)
+	  f.payload=ob_new(nextPayload - ofs); 
+	else 
+	  f.payload->length=0;
+	
+	if (!f.payload){
+	  WHY("calloc(overlay_buffer) failed.");
+	  break;
+	}
+	
+	if (ob_append_bytes(f.payload,&packet[ofs],nextPayload - ofs)){
+	  WHY("ob_append_bytes() failed.");
+	  break;
+	}
+	
+	/* Finally process the frame */
+	overlay_frame_process(interface,&f);
+      }
+      
+      /* Jump to the next payload offset */
+      ofs = nextPayload;
     }
   if (0) INFOF("Finished processing overlay packet");
 
-  return 0;
-}
-
-int overlay_frame_resolve_addresses(overlay_frame *f)
-{
-  /* Get destination and source addresses and set pointers to payload appropriately */
-  int alen=0;
-  int offset=0;
-
-  overlay_abbreviate_set_most_recent_address(f->nexthop);
-  f->destination_address_status=overlay_abbreviate_expand_address(f->bytes,&offset,f->destination,&alen);
-  alen=0;
-  f->source_address_status=overlay_abbreviate_expand_address(f->bytes,&offset,f->source,&alen);
-  if (debug&DEBUG_OVERLAYABBREVIATIONS)
-    DEBUGF("Wrote %d bytes into source address: %s", alen, alloca_tohex(f->source, alen));
-
-  /* Copy payload into overlay_buffer structure */
-  if (f->bytecount-offset<0) return WHY("Abbreviated ddresses run past end of packet");
-  if (!f->payload) f->payload=ob_new(f->bytecount-offset); else f->payload->length=0;
-  if (!f->payload) return WHY("calloc(overlay_buffer) failed.");
-  if (ob_append_bytes(f->payload,&f->bytes[offset],f->bytecount-offset)) 
-    return WHY("ob_append_bytes() failed.");
-
+  if (f.payload)
+    ob_free(f.payload);
+  
   return 0;
 }
 
@@ -307,7 +368,9 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
   }
   /* Make note that this is the most recent address we have set */
   overlay_abbreviate_set_most_recent_address(sid);
-
+  /* And the sender for any other addresses in this packet */
+  overlay_abbreviate_set_current_sender(sid);
+  
   /* Sequence number range.  Based on one tick per milli-second. */
   
   if (ob_append_int(b,overlay_interfaces[interface].last_tick_ms))

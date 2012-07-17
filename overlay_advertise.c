@@ -101,7 +101,9 @@ int overlay_route_add_advertisements(overlay_buffer *e)
   ob_append_byte(e,OA_CODE_BROADCAST);
   for(i=0;i<8;i++) ob_append_byte(e,random()&0xff); /* random BPI */
   ob_append_byte(e,OA_CODE_PREVIOUS);
-  ob_append_byte(e,OA_CODE_SELF);
+  
+  overlay_abbreviate_clear_most_recent_address();
+  overlay_abbreviate_append_address(e, overlay_get_my_sid());
   
   while (slots>0&&oad_request_count) {
       oad_request_count--;
@@ -195,32 +197,41 @@ int overlay_route_saw_advertisements(int i,overlay_frame *f, long long now)
 	=overlay_abbreviate_cache_lookup(&f->payload->bytes[ofs],to,&out_len,
 					 6 /* prefix length */,
 					 0 /* no index code to process */);
+      if (r==OA_PLEASEEXPLAIN) {
+	/* Unresolved address -- TODO ask someone to resolve it for us. */
+	WARN("Dispatch PLEASEEXPLAIN not implemented");
+	goto next;
+      }
+      
       int score=f->payload->bytes[6];
       int gateways_en_route=f->payload->bytes[7];
 
+      /* Don't record routes to ourselves */
+      if (overlay_address_is_local(to)) {
+	if (debug & DEBUG_OVERLAYROUTING)
+	  DEBUGF("Ignore announcement about me (%s)", alloca_tohex_sid(to));
+	goto next;
+      }
       
       /* Don't let nodes advertise paths to themselves!
 	 (paths to self get detected through selfannouncements and selfannouncement acks) */
-      if (memcmp(&overlay_abbreviate_current_sender.b[0],to,SID_SIZE))
-	{
-	  /* Discount score by score to sender */
-	  score*=sender_score;
-	  score=score>>8;
-	  
-	  if (r==OA_RESOLVED) {
-	    /* File it */
-	    overlay_route_record_link(now,to,&overlay_abbreviate_current_sender.b[0],
-				      i,
-				      /* time range that this advertisement covers.
-				         XXX - Make it up for now. */
-				      now-2500,now,
-				      score,gateways_en_route);
-	  } else if (r==OA_PLEASEEXPLAIN) {
-	    /* Unresolved address -- ask someone to resolve it for us. */
-	    WARN("Dispatch PLEASEEXPLAIN not implemented");
-	  }
-	}
-					  
+      if (!memcmp(&overlay_abbreviate_current_sender.b[0],to,SID_SIZE)){
+	if (debug & DEBUG_OVERLAYROUTING)
+	  DEBUGF("Ignore announcement about neighbour (%s)", alloca_tohex_sid(to));
+	goto next;
+      }
+      
+      if (r==OA_RESOLVED) {
+	/* File it */
+	overlay_route_record_link(now,to,&overlay_abbreviate_current_sender.b[0],
+				  i,
+				  /* time range that this advertisement covers.
+				     XXX - Make it up for now. */
+				  now-2500,now,
+				  score,gateways_en_route);
+      } 
+      
+    next:			  
       ofs+=8;
     }
   

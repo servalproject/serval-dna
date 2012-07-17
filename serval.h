@@ -445,19 +445,13 @@ typedef struct overlay_frame {
   int nexthop_interface; /* which interface the next hop should be attempted on */
   
   unsigned char destination[32];
-  int destination_address_status;
-  
   unsigned char source[32];
-  int source_address_status;
   
   /* IPv4 node frame was received from (if applicable) */
   struct sockaddr *recvaddr;
   
-  /* Frame content from destination address onwards */
-  int bytecount;
-  unsigned char *bytes;
-  
   /* Actual payload */
+  // TODO refactor *all* packet parsing so that the payload is not copied or allocated unless it must be forwarded.
   struct overlay_buffer *payload;
   
   int rfs; /* remainder of frame size */
