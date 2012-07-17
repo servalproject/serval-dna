@@ -795,7 +795,7 @@ char *catv(const char *data, char *buf, size_t len);
 int dump(char *name, unsigned char *addr, size_t len);
 char *toprint(char *dstStr, size_t dstChars, const unsigned char *srcBuf, size_t srcBytes);
 
-#define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca((dstlen) + 1), (dstlen) + 1, (buf), (len) + 1)
+#define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca((dstlen) + 1), (dstlen) + 1, (buf), (len))
 
 #define alloca_tohex(buf,len)           tohex((char *)alloca((len)*2+1), (buf), (len))
 #define alloca_tohex_sid(sid)           alloca_tohex((sid), SID_SIZE)

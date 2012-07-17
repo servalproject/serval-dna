@@ -281,6 +281,10 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
     WARNF("Missing filehash field");
     m->errors++;
   }
+  if (have_filehash && m->fileLength == 0) {
+    WARNF("Spurious filehash field");
+    m->errors++;
+  }
 
   // TODO Determine group membership here.
 
@@ -370,13 +374,33 @@ double rhizome_manifest_get_double(rhizome_manifest *m,char *var,double default_
   return default_value;
 }
 
+/* @author Andrew Bettison <andrew@servalproject.com>
+ */
+int rhizome_manifest_del(rhizome_manifest *m, const char *var)
+{
+  int ret = 0;
+  int i;
+  for (i = 0; i < m->var_count; ++i)
+    if (strcmp(m->vars[i], var) == 0) {
+      free(m->vars[i]); 
+      free(m->values[i]); 
+      --m->var_count;
+      m->finalised = 0;
+      ret = 1;
+      break;
+    }
+  for (; i < m->var_count; ++i) {
+    m->vars[i] = m->vars[i + 1];
+    m->values[i] = m->values[i + 1];
+  }
+  return ret;
+}
 
 int rhizome_manifest_set(rhizome_manifest *m, const char *var, const char *value)
 {
+  if (!m)
+    return WHY("m == NULL");
   int i;
-
-  if (!m) return -1;
-
   for(i=0;i<m->var_count;i++)
     if (!strcmp(m->vars[i],var)) {
       free(m->values[i]); 
@@ -384,14 +408,12 @@ int rhizome_manifest_set(rhizome_manifest *m, const char *var, const char *value
       m->finalised=0;
       return 0;
     }
-
-  if (m->var_count>=MAX_MANIFEST_VARS) return -1;
-  
+  if (m->var_count >= MAX_MANIFEST_VARS)
+    return WHY("no more manifest vars");
   m->vars[m->var_count]=strdup(var);
   m->values[m->var_count]=strdup(value);
   m->var_count++;
   m->finalised=0;
-
   return 0;
 }
 
@@ -622,27 +644,31 @@ int rhizome_manifest_dump(rhizome_manifest *m, const char *msg)
 
 int rhizome_manifest_finalise(rhizome_manifest *m)
 {
-  /* set fileHexHash */
-  if (!m->fileHashedP) {
-    if (rhizome_hash_file(m,m->dataFileName,m->fileHexHash))
-      return WHY("rhizome_hash_file() failed during finalisation of manifest.");
-    m->fileHashedP=1;
+  /* set fileLength and "filesize" var */
+  if (m->dataFileName[0]) {
+    struct stat stat;
+    if (lstat(m->dataFileName, &stat)) {
+      WHY_perror("lstat");
+      return WHY("Could not stat() associated file");
+    }
+    m->fileLength = stat.st_size;
+  } else
+    m->fileLength = 0;
+  rhizome_manifest_set_ll(m, "filesize", m->fileLength);
 
-    /* set fileLength */
-    if (m->dataFileName[0]) {
-      struct stat stat;
-      if (lstat(m->dataFileName, &stat)) {
-	WHY_perror("lstat");
-	return WHY("Could not stat() associated file");
-      }
-      m->fileLength = stat.st_size;
-    } else
-      m->fileLength = 0;
+  /* set fileHexHash and "filehash" var */
+  if (m->fileLength != 0) {
+    if (!m->fileHashedP) {
+      if (rhizome_hash_file(m, m->dataFileName, m->fileHexHash))
+	return WHY("rhizome_hash_file() failed during finalisation of manifest.");
+      m->fileHashedP = 1;
+    }
+    rhizome_manifest_set(m, "filehash", m->fileHexHash);
+  } else {
+    m->fileHexHash[0] = '\0';
+    m->fileHashedP = 0;
+    rhizome_manifest_del(m, "filehash");
   }
-  
-  /* Set file hash and size information */
-  rhizome_manifest_set(m,"filehash",m->fileHexHash);
-  rhizome_manifest_set_ll(m,"filesize",m->fileLength);
 
   /* set fileHighestPriority based on group associations.
      XXX - Should probably be set as groups are added */

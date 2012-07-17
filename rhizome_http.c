@@ -72,13 +72,12 @@ typedef struct rhizome_http_request {
   
 } rhizome_http_request;
 
-int rhizome_server_free_http_request(rhizome_http_request *r);
-int rhizome_server_http_send_bytes(rhizome_http_request *r);
-int rhizome_server_parse_http_request(rhizome_http_request *r);
-int rhizome_server_simple_http_response(rhizome_http_request *r,int result, char *response);
-int rhizome_server_http_response_header(rhizome_http_request *r,int result,
-					char *mime_type,unsigned long long bytes);
-int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, char *column);
+static int rhizome_server_free_http_request(rhizome_http_request *r);
+static int rhizome_server_http_send_bytes(rhizome_http_request *r);
+static int rhizome_server_parse_http_request(rhizome_http_request *r);
+static int rhizome_server_simple_http_response(rhizome_http_request *r, int result, const char *response);
+static int rhizome_server_http_response_header(rhizome_http_request *r, int result, const char *mime_type, unsigned long long bytes);
+static int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, char *column);
 
 #define RHIZOME_SERVER_MAX_LIVE_REQUESTS 32
 
@@ -226,7 +225,7 @@ void rhizome_client_poll(struct sched_ent *alarm)
       /* Keep reading until we have two CR/LFs in a row */
       r->request[r->request_length] = '\0';
       sigPipeFlag=0;
-      int bytes = read_nonblock(r->alarm.poll.fd, &r->request[r->request_length], RHIZOME_HTTP_REQUEST_MAXLEN - r->request_length - 1);
+      int bytes = read_nonblock(r->alarm.poll.fd, &r->request[r->request_length], RHIZOME_HTTP_REQUEST_MAXLEN - r->request_length);
       /* If we got some data, see if we have found the end of the HTTP request */
       if (bytes > 0) {
 	// reset inactivity timer
@@ -234,23 +233,8 @@ void rhizome_client_poll(struct sched_ent *alarm)
 	r->alarm.deadline = r->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
 	unschedule(&r->alarm);
 	schedule(&r->alarm);
-	int i = r->request_length - 160;
-	if (i<0) i=0;
-	r->request_length+=bytes;
-	if (r->request_length<RHIZOME_HTTP_REQUEST_MAXLEN)
-	  r->request[r->request_length]=0;
-	if (0)
-	  dump("request", (unsigned char *)r->request,r->request_length);
-	int lfcount;
-	for(lfcount = 0; lfcount < 2 && i < r->request_length + bytes; ++i) {
-	  switch (r->request[i]) {
-	  case '\n': ++lfcount; break;
-	  case '\r': break;
-	  case '\0': break; // ignore NUL (telnet inserts them)
-	  default: lfcount = 0; break;
-	  }
-	}
-	if (lfcount == 2) {
+	r->request_length += bytes;
+	if (http_header_complete(r->request, r->request_length, bytes + 4)) {
 	  /* We have the request. Now parse it to see if we can respond to it */
 	  rhizome_server_parse_http_request(r);
 	}
@@ -275,7 +259,6 @@ void rhizome_client_poll(struct sched_ent *alarm)
   return;
 }
 
-
 void rhizome_server_poll(struct sched_ent *alarm)
 {
   struct sockaddr addr;
@@ -284,7 +267,8 @@ void rhizome_server_poll(struct sched_ent *alarm)
   while ((sock = accept(rhizome_server_socket, &addr, &addr_len)) != -1) {
     if (addr.sa_family == AF_INET) {
       struct sockaddr_in *peerip = (struct sockaddr_in *)&addr;
-      INFOF("HTTP ACCEPT addrlen=%u family=%u port=%u addr=%u.%u.%u.%u",
+      if (debug & DEBUG_RHIZOME_TX)
+	DEBUGF("HTTP ACCEPT addrlen=%u family=%u port=%u addr=%u.%u.%u.%u",
 	  addr_len, peerip->sin_family, peerip->sin_port,
 	  ((unsigned char*)&peerip->sin_addr.s_addr)[0],
 	  ((unsigned char*)&peerip->sin_addr.s_addr)[1],
@@ -292,41 +276,49 @@ void rhizome_server_poll(struct sched_ent *alarm)
 	  ((unsigned char*)&peerip->sin_addr.s_addr)[3]
 	);
     } else {
-      INFOF("HTTP ACCEPT addrlen=%u family=%u data=%s",
+      if (debug & DEBUG_RHIZOME_TX)
+	DEBUGF("HTTP ACCEPT addrlen=%u family=%u data=%s",
 	  addr_len, addr.sa_family, alloca_tohex((unsigned char *)addr.sa_data, sizeof addr.sa_data));
     }
-    rhizome_http_request *request = calloc(sizeof(rhizome_http_request),1);	
-    /* We are now trying to read the HTTP request */
-    request->request_type=RHIZOME_HTTP_REQUEST_RECEIVING;
-    request->alarm.function = rhizome_client_poll;
-    connection_stats.name="rhizome_client_poll";
-    request->alarm.stats=&connection_stats;
-    request->alarm.poll.fd=sock;
-    request->alarm.poll.events=POLLIN;
-    request->alarm.alarm = overlay_gettime_ms()+RHIZOME_IDLE_TIMEOUT;
-    request->alarm.deadline = request->alarm.alarm+RHIZOME_IDLE_TIMEOUT;
-    // watch for the incoming http request
-    watch(&request->alarm);
-    // set an inactivity timeout to close the connection
-    schedule(&request->alarm);
+    rhizome_http_request *request = calloc(sizeof(rhizome_http_request), 1);
+    if (request == NULL) {
+      WHYF_perror("calloc(%u, 1)", sizeof(rhizome_http_request));
+      WHY("Cannot respond to request, out of memory");
+    } else {
+      /* We are now trying to read the HTTP request */
+      request->request_type=RHIZOME_HTTP_REQUEST_RECEIVING;
+      request->alarm.function = rhizome_client_poll;
+      connection_stats.name="rhizome_client_poll";
+      request->alarm.stats=&connection_stats;
+      request->alarm.poll.fd=sock;
+      request->alarm.poll.events=POLLIN;
+      request->alarm.alarm = overlay_gettime_ms()+RHIZOME_IDLE_TIMEOUT;
+      request->alarm.deadline = request->alarm.alarm+RHIZOME_IDLE_TIMEOUT;
+      // watch for the incoming http request
+      watch(&request->alarm);
+      // set an inactivity timeout to close the connection
+      schedule(&request->alarm);
+    }
   }
   if (errno != EAGAIN) {
     WARN_perror("accept");
   }
 }
 
-int rhizome_server_free_http_request(rhizome_http_request *r)
+static int rhizome_server_free_http_request(rhizome_http_request *r)
 {
   unwatch(&r->alarm);
   unschedule(&r->alarm);
   close(r->alarm.poll.fd);
-  if (r->buffer&&r->buffer_size) free(r->buffer);
-  if (r->blob) sqlite3_blob_close(r->blob);
+  if (r->buffer)
+    free(r->buffer);
+  if (r->blob)
+    sqlite3_blob_close(r->blob);
   free(r);
   return 0;
 }
 
-int rhizome_server_sql_query_http_response(rhizome_http_request *r,
+static int rhizome_server_sql_query_http_response(rhizome_http_request *r,
 					   char *column,char *table,char *query_body,
 					   int bytes_per_row,int dehexP)
 {
@@ -339,10 +331,17 @@ int rhizome_server_sql_query_http_response(rhizome_http_request *r,
      the body, although encryption is not yet implemented here.
  */
 
-  if (r->buffer) { free(r->buffer); r->buffer=NULL; }
-  r->buffer_size=16384;
-  r->buffer=malloc(r->buffer_size);
-  if (!r->buffer) return WHY_perror("malloc");
+  if (r->buffer == NULL || r->buffer_size < 16384) {
+    if (r->buffer)
+      free(r->buffer);
+    r->buffer_size = 16384;
+    r->buffer = malloc(r->buffer_size);
+    if (r->buffer == NULL) {
+      r->buffer_size = 0;
+      WHY_perror("malloc");
+      return WHY("Cannot send response, out of memory");
+    }
+  }
   r->buffer_length=0;
   r->buffer_offset=0;
   r->source_record_size=bytes_per_row;
@@ -351,10 +350,9 @@ int rhizome_server_sql_query_http_response(rhizome_http_request *r,
 
   /* Work out total response length */
   long long response_bytes=256+r->source_count*r->source_record_size;
-  rhizome_server_http_response_header(r,200,"servalproject.org/rhizome-list", 
-				      response_bytes);
+  rhizome_server_http_response_header(r, 200, "servalproject.org/rhizome-list", response_bytes);
   if (debug & DEBUG_RHIZOME_TX)
-    DEBUGF("headers consumed %d bytes",r->buffer_length);
+    DEBUGF("headers consumed %d bytes", r->buffer_length);
 
   /* Clear and prepare response header */
   bzero(&r->buffer[r->buffer_length],256);
@@ -389,7 +387,7 @@ int rhizome_server_sql_query_http_response(rhizome_http_request *r,
   return rhizome_server_sql_query_fill_buffer(r, table, column);
 }
 
-int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, char *column)
+static int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, char *column)
 {
   unsigned char blob_value[r->source_record_size*2+1];
 
@@ -486,37 +484,90 @@ int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, c
   return 0;  
 }
 
-static int strcmp_prefix(char *str, const char *prefix, char **afterp)
+int http_header_complete(const char *buf, size_t len, size_t tail)
 {
-  while (*prefix && *str && *prefix == *str)
-    ++prefix, ++str;
-  if (*prefix)
-    return (unsigned char)*str - (unsigned char)*prefix;
-  if (afterp)
-    *afterp = str;
-  return 0;
+  const char *bufend = buf + len;
+  if (tail < len)
+    buf = bufend - tail;
+  int count = 0;
+  for (; count < 2 && buf != bufend; ++buf) {
+    switch (*buf) {
+      case '\n': ++count; break;
+      case '\r': break;
+      case '\0': break; // ignore NUL (telnet inserts them)
+      default: count = 0; break;
+    }
+  }
+  return count == 2;
 }
 
-int rhizome_server_parse_http_request(rhizome_http_request *r)
+/* Check if a given string starts with a given sub-string.  If so, return 1 and, if afterp is not
+   NULL, set *afterp to point to the character immediately following the substring.  Otherwise
+   return 0.
+   This function is used to parse HTTP headers and responses, which are typically not
+   nul-terminated, but are held in a buffer which has an associated length.  To avoid this function
+   running past the end of the buffer, the caller must ensure that the buffer contains a sub-string
+   that is not part of the sub-string being sought, eg, "\r\n\r\n" as detected by
+   http_header_complete().  This guarantees that this function will return nonzero before running
+   past the end of the buffer.
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+int str_startswith(char *str, const char *substring, char **afterp)
+{
+  while (*substring && *substring == *str)
+    ++substring, ++str;
+  if (*substring)
+    return 0;
+  if (afterp)
+    *afterp = str;
+  return 1;
+}
+
+/* Case-insensitive form of str_startswith().
+ */
+int strcase_startswith(char *str, const char *substring, char **afterp)
+{
+  while (*substring && *str && toupper(*substring) == toupper(*str))
+    ++substring, ++str;
+  if (*substring)
+    return 0;
+  if (afterp)
+    *afterp = str;
+  return 1;
+}
+
+static int rhizome_server_parse_http_request(rhizome_http_request *r)
 {
   /* Switching to writing, so update the call-back */
   r->alarm.poll.events=POLLOUT;
   watch(&r->alarm);
-  
-  /* Clear request type flags */
-  r->request_type=0;
-  char path[1024];
-  if (sscanf(r->request, "GET %1024s HTTP/1.%*1[01]%*[\r\n]", path) != 1) {
-    if (debug & DEBUG_RHIZOME_TX)
-      DEBUGF("Received malformed HTTP request: %s", alloca_toprint(120, (unsigned char *)r->request, r->request_length));
-    rhizome_server_simple_http_response(r, 400, "<html><h1>Malformed request</h1></html>\r\n");
-  } else {
+  // Start building up a response.
+  r->request_type = 0;
+  // Parse the HTTP "GET" line.
+  char *path = NULL;
+  size_t pathlen = 0;
+  if (str_startswith(r->request, "GET ", &path)) {
+    char *p;
+    // This loop is guaranteed to terminate before the end of the buffer, because we know that the
+    // buffer contains at least "\n\n" and maybe "\r\n\r\n" at the end of the header block.
+    for (p = path; !isspace(*p); ++p)
+      ;
+    pathlen = p - path;
+    if ( str_startswith(p, " HTTP/1.", &p)
+      && (str_startswith(p, "0", &p) || str_startswith(p, "1", &p))
+      && (str_startswith(p, "\r\n", &p) || str_startswith(p, "\n", &p))
+    )
+      path[pathlen] = '\0';
+    else
+      path = NULL;
+  }
+  if (path) {
     char *id = NULL;
     if (debug & DEBUG_RHIZOME_TX)
-      DEBUGF("GET %s", path);
+      DEBUGF("GET %s", alloca_toprint(1024, (unsigned char *)path, pathlen));
     if (strcmp(path, "/favicon.ico") == 0) {
       r->request_type = RHIZOME_HTTP_REQUEST_FAVICON;
-      rhizome_server_http_response_header(r, 200, "image/vnd.microsoft.icon", favicon_len);	
+      rhizome_server_http_response_header(r, 200, "image/vnd.microsoft.icon", favicon_len);
     } else if (strcmp(path, "/rhizome/groups") == 0) {
       /* Return the list of known groups */
       rhizome_server_sql_query_http_response(r, "id", "groups", "from groups", 32, 1);
@@ -526,7 +577,7 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
     } else if (strcmp(path, "/rhizome/bars") == 0) {
       /* Return the list of known BARs */
       rhizome_server_sql_query_http_response(r, "bar", "manifests", "from manifests", 32, 0);
-    } else if (strcmp_prefix(path, "/rhizome/file/", &id) == 0) {
+    } else if (str_startswith(path, "/rhizome/file/", &id)) {
       /* Stream the specified payload */
       if (!rhizome_str_is_file_hash(id)) {
 	rhizome_server_simple_http_response(r, 400, "<html><h1>Invalid payload ID</h1></html>\r\n");
@@ -546,12 +597,16 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
 	  r->request_type |= RHIZOME_HTTP_REQUEST_BLOB;
 	}
       }
-    } else if (strcmp_prefix(path, "/rhizome/manifest/", &id) == 0) {
-      /* TODO: Stream the specified manifest */
+    } else if (str_startswith(path, "/rhizome/manifest/", &id)) {
+      // TODO: Stream the specified manifest
       rhizome_server_simple_http_response(r, 500, "<html><h1>Not implemented</h1></html>\r\n");
     } else {
       rhizome_server_simple_http_response(r, 404, "<html><h1>Not found</h1></html>\r\n");
     }
+  } else {
+    if (debug & DEBUG_RHIZOME_TX)
+      DEBUGF("Received malformed HTTP request: %s", alloca_toprint(120, (unsigned char *)r->request, r->request_length));
+    rhizome_server_simple_http_response(r, 400, "<html><h1>Malformed request</h1></html>\r\n");
   }
   
   /* Try sending data immediately. */
@@ -562,34 +617,80 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
 
 
 /* Return appropriate message for HTTP response codes, both known and unknown. */
-#define A_VALUE_GREATER_THAN_FOUR (2+3)
-char *httpResultString(int id) {
-  switch (id) {
-  case 200: return "OK"; break;
-  case 206: return "Partial Content"; break;
-  case 404: return "Not found"; break;
-  default: 
-  case A_VALUE_GREATER_THAN_FOUR:
-    if (id>4) return "A suffusion of yellow";
-    /* The following MUST be the longest string returned by this function */
-    else return "THE JUDGEMENT OF KING WEN: Chun Signifies Difficulties At Outset, As Of Blade Of Grass Pushing Up Against Stone.";
+static const char *httpResultString(int response_code) {
+  switch (response_code) {
+  case 200: return "OK";
+  case 206: return "Partial Content";
+  case 404: return "Not found";
+  case 500: return "Internal server error";
+  default:  return "A suffusion of yellow";
   }
 }
 
-int rhizome_server_simple_http_response(rhizome_http_request *r,int result, char *response)
+struct http_response {
+  unsigned int result_code;
+  const char * content_type;
+  unsigned long long content_length;
+  const char * body;
+};
+
+static strbuf strbuf_build_http_response(strbuf sb, const struct http_response *h)
 {
-  if (r->buffer) free(r->buffer);
-  r->buffer_size=strlen(response)+strlen("HTTP/1.0 000 \r\n\r\nContent-type: text/html\r\nContent-length: 0000\r\n\r\n")+strlen(httpResultString(result))+strlen(response)+100;
+  strbuf_sprintf(sb, "HTTP/1.0 %03u %s\r\n", h->result_code, httpResultString(h->result_code));
+  strbuf_sprintf(sb, "Content-type: %s\r\n", h->content_type);
+  strbuf_sprintf(sb, "Content-length: %llu\r\n", h->content_length);
+  strbuf_puts(sb, "\r\n");
+  if (h->body)
+    strbuf_puts(sb, h->body);
+  return sb;
+}
 
-  r->buffer=(unsigned char *)malloc(r->buffer_size);
-  snprintf((char *)r->buffer,r->buffer_size,"HTTP/1.0 %03d %s\r\nContent-type: text/html\r\nContent-length: %d\r\n\r\n%s",result,httpResultString(result),(int)strlen(response),response);
-  
-  r->buffer_size=strlen((char *)r->buffer)+1;
-  r->buffer_length=r->buffer_size-1;
-  r->buffer_offset=0;
-
-  r->request_type=RHIZOME_HTTP_REQUEST_FROMBUFFER;
+static int rhizome_server_set_response(rhizome_http_request *r, const struct http_response *h)
+{
+  strbuf b = strbuf_local((char *) r->buffer, r->buffer_size);
+  strbuf_build_http_response(b, h);
+  if (r->buffer == NULL || strbuf_overrun(b)) {
+    // Need a bigger buffer
+    if (r->buffer)
+      free(r->buffer);
+    r->buffer_size = strbuf_count(b) + 1;
+    r->buffer = malloc(r->buffer_size);
+    if (r->buffer == NULL) {
+      WHYF_perror("malloc(%u)", r->buffer_size);
+      r->buffer_size = 0;
+      return WHY("Cannot send response, out of memory");
+    }
+    strbuf_init(b, (char *) r->buffer, r->buffer_size);
+    strbuf_build_http_response(b, h);
+    if (strbuf_overrun(b))
+      return WHYF("Bug! Cannot send response, buffer not big enough");
+  }
+  r->buffer_length = strbuf_len(b);
+  r->buffer_offset = 0;
+  r->request_type |= RHIZOME_HTTP_REQUEST_FROMBUFFER;
+  if (debug & DEBUG_RHIZOME_TX)
+    DEBUGF("Sending HTTP response: %s", alloca_toprint(120, r->buffer, r->buffer_length));
   return 0;
+}
+
+static int rhizome_server_simple_http_response(rhizome_http_request *r, int result, const char *response)
+{
+  struct http_response hr;
+  hr.result_code = result;
+  hr.content_type = "text/html";
+  hr.content_length = strlen(response);
+  hr.body = response;
+  return rhizome_server_set_response(r, &hr);
+}
+
+static int rhizome_server_http_response_header(rhizome_http_request *r, int result, const char *mime_type, unsigned long long bytes)
+{
+  struct http_response hr;
+  hr.result_code = result;
+  hr.content_type = mime_type;
+  hr.content_length = bytes;
+  hr.body = NULL;
+  return rhizome_server_set_response(r, &hr);
 }
 
 /*
@@ -598,7 +699,7 @@ int rhizome_server_simple_http_response(rhizome_http_request *r,int result, char
   0: connection finished.
   <0: an error occurred.
 */
-int rhizome_server_http_send_bytes(rhizome_http_request *r)
+static int rhizome_server_http_send_bytes(rhizome_http_request *r)
 {
   // keep writing until the write would block or we run out of data
   while(r->request_type){
@@ -703,33 +804,3 @@ int rhizome_server_http_send_bytes(rhizome_http_request *r)
   if (!r->request_type) return rhizome_server_free_http_request(r);	  
   return 1;
 }
-
-int rhizome_server_http_response_header(rhizome_http_request *r,int result,
-					char *mime_type,unsigned long long bytes)
-{
-  int min_buff = strlen("HTTP/1.0 000 \r\nContent-type: \r\nContent-length: \r\n\r\n")
-    +strlen(httpResultString(result))
-    +strlen(mime_type)+20;
-  
-  if (min_buff+bytes > 65536){
-    min_buff = 65536;
-  }else{
-    min_buff += bytes;
-  }
-  
-  if (r->buffer_size < min_buff) {
-    if (r->buffer)
-      free(r->buffer);
-    r->buffer=(unsigned char *)malloc(min_buff);
-    r->buffer_size=min_buff;
-  }
-  
-  snprintf((char *)r->buffer,r->buffer_size,"HTTP/1.0 %03d %s\r\nContent-type: %s\r\nContent-length: %lld\r\n\r\n",result,httpResultString(result),mime_type,bytes);
-  
-  r->buffer_length=strlen((char *)r->buffer);
-  r->buffer_offset=0;
-
-  r->request_type|=RHIZOME_HTTP_REQUEST_FROMBUFFER;
-  return 0;
-}
-	    

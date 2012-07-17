@@ -381,20 +381,41 @@ int rhizome_position_candidate(int position)
   return 0;
 }
 
+void rhizome_import_received_bundle(struct rhizome_manifest *m)
+{
+  // TODO: We already have the manifest struct in memory, should import the bundle
+  // directly from that, not by writing it to a file and re-reading it!
+  const char *id = rhizome_manifest_get(m, "id", NULL, 0);
+  if (id == NULL) {
+    WHY("Manifest missing ID");
+    return;
+  }
+  if (create_rhizome_import_dir() == -1)
+    return;
+  char filename[1024];
+  if (!FORM_RHIZOME_IMPORT_PATH(filename, "manifest.%s", id))
+    return;
+  /* Do really write the manifest unchanged */
+  m->finalised = 1;
+  m->manifest_bytes = m->manifest_all_bytes;
+  if (debug & DEBUG_RHIZOME_RX) {
+    DEBUGF("manifest bid=%s len=%d has %d signatories", id, m->manifest_bytes, m->sig_count);
+    dump("manifest", m->manifestdata, m->manifest_all_bytes);
+  }
+  if (rhizome_write_manifest_file(m, filename) != -1)
+    rhizome_bundle_import(m, NULL, id, m->ttl - 1 /* TTL */);
+}
+
 /* Verifies manifests as late as possible to avoid wasting time. */
 int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peerip)
 {
   IN();
   /* must free manifest when done with it */
-  char *id=rhizome_manifest_get(m,"id",NULL,0);
-  long long filesize=rhizome_manifest_get_ll(m,"filesize");
+  char *id = rhizome_manifest_get(m, "id", NULL, 0);
   int priority=100; /* normal priority */
-  int i;
-
-  m->version = rhizome_manifest_get_ll(m,"version");
 
   if (debug & DEBUG_RHIZOME_RX)
-    DEBUGF("Considering manifest import bid=%s version=%lld size=%lld priority=%d:", id, m->version, filesize, priority);
+    DEBUGF("Considering manifest import bid=%s version=%lld size=%lld priority=%d:", id, m->version, m->fileLength, priority);
 
   if (rhizome_manifest_version_cache_lookup(m)) {
     if (debug & DEBUG_RHIZOME_RX)
@@ -409,7 +430,20 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, struct sockaddr_i
       DEBUGF("   is new (have version %lld)", stored_version);
   }
 
+  if (m->fileLength == 0) {
+    if (rhizome_manifest_verify(m) != 0) {
+      WHY("Error verifying manifest when considering for import");
+      /* Don't waste time looking at this manifest again for a while */
+      rhizome_queue_ignore_manifest(m, peerip, 60000);
+      rhizome_manifest_free(m);
+      RETURN(-1);
+    }
+    rhizome_import_received_bundle(m);
+    RETURN(0);
+  }
+
   /* work out where to put it in the list */
+  int i;
   for(i=0;i<candidate_count;i++)
     {
       /* If this manifest is already in the list, stop.
@@ -421,11 +455,9 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, struct sockaddr_i
 	    /* duplicate.
 	       XXX - Check versions! We should replace older with newer,
 	       and then update position in queue based on size */
-	  long long list_version=rhizome_manifest_get_ll(candidates[i].manifest, "version");
-	  long long this_version=rhizome_manifest_get_ll(m,"version");
-	  if (list_version>=this_version) {
-	    /* this version is older than the one in the list,
-	       so don't list this one */
+	  long long list_version = rhizome_manifest_get_ll(candidates[i].manifest, "version");
+	  if (list_version >= m->version) {
+	    /* this version is older than the one in the list, so don't list this one */
 	    rhizome_manifest_free(m);
 	    RETURN(0); 
 	  } else {
@@ -451,7 +483,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, struct sockaddr_i
 	 the list down. */
       if (candidates[i].priority>priority
 	  ||(candidates[i].priority==priority
-	     &&candidates[i].size>filesize))
+	     &&candidates[i].size>m->fileLength))
 	break;
     }
   if (i>=MAX_CANDIDATES) {
@@ -482,7 +514,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, struct sockaddr_i
 	bytes);
   /* put new candidate in */
   candidates[i].manifest=m;
-  candidates[i].size=filesize;
+  candidates[i].size=m->fileLength;
   candidates[i].priority=priority;
   candidates[i].peer=*peerip;
 
@@ -770,37 +802,11 @@ void rhizome_write_content(rhizome_file_fetch_record *q, char *buffer, int bytes
     /* got all of file */
     if (debug & DEBUG_RHIZOME_RX)
       DEBUGF("Received all of file via rhizome -- now to import it");
-    {
-      fclose(q->file);
-      q->file = NULL;
-      // TODO: We already have the manifest struct in memory, should import the bundle
-      // directly from that, not by writing it to a file and re-reading it!
-      const char *id = rhizome_manifest_get(q->manifest, "id", NULL, 0);
-      if (id == NULL)
-      { WHY("Manifest missing ID"); return; }
-      if (create_rhizome_import_dir() == -1)
-	return;
-      char filename[1024];
-      if (!FORM_RHIZOME_IMPORT_PATH(filename,"manifest.%s", id))
-	return;
-      /* Do really write the manifest unchanged */
-      if (debug & DEBUG_RHIZOME_RX) {
-	DEBUGF("manifest has %d signatories",q->manifest->sig_count);
-	DEBUGF("manifest bid=%s len=%d",
-	       rhizome_manifest_get(q->manifest, "id", NULL, 0),
-	       q->manifest->manifest_bytes);
-	dump("manifest",&q->manifest->manifestdata[0],
-	     q->manifest->manifest_all_bytes);
-      }
-      q->manifest->finalised=1;
-      q->manifest->manifest_bytes=q->manifest->manifest_all_bytes;
-      if (rhizome_write_manifest_file(q->manifest,filename) != -1) {
-	rhizome_bundle_import(q->manifest, NULL, id,
-			      q->manifest->ttl - 1 /* TTL */);
-      }
-      rhizome_manifest_free(q->manifest);
-      q->manifest = NULL;
-    }
+    fclose(q->file);
+    q->file = NULL;
+    rhizome_import_received_bundle(q->manifest);
+    rhizome_manifest_free(q->manifest);
+    q->manifest = NULL;
     rhizome_fetch_close(q);
     return;
   }
@@ -822,128 +828,131 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
     return;
   }
   
-  switch(q->state) 
-    {
+  switch(q->state) {
     case RHIZOME_FETCH_CONNECTING:
     case RHIZOME_FETCH_SENDINGHTTPREQUEST:
       rhizome_fetch_write(q);
       break;
-    case RHIZOME_FETCH_RXFILE:
-      /* Keep reading until we have the promised amount of data */
-      
-      sigPipeFlag=0;
-      
-      errno=0;
-      char buffer[8192];
-
-      int bytes=read(q->alarm.poll.fd,buffer,8192);
-      
-      /* If we got some data, see if we have found the end of the HTTP request */
-      if (bytes>0)
-	rhizome_write_content(q, buffer, bytes);
-	
-      break;
-    case RHIZOME_FETCH_RXHTTPHEADERS:
-      /* Keep reading until we have two CR/LFs in a row */
-      sigPipeFlag=0;
-      
-      errno=0;
-      bytes=read(q->alarm.poll.fd,&q->request[q->request_len],
-		 1024-q->request_len-1);
-
-      if (sigPipeFlag||((bytes==0)&&(errno==0))) {
-	/* broken pipe, so close connection */
-	if (debug&DEBUG_RHIZOME) 
-	  DEBUG("Closing rhizome fetch connection due to sigpipe");
-	rhizome_fetch_close(q);
-	return;
-      }	 
-	
-      /* If we got some data, see if we have found the end of the HTTP request */
-      if (bytes>0) {
-	int lfcount=0;
-	int i=q->request_len-160;
-	
-	// reset timeout
-	unschedule(&q->alarm);
-	q->alarm.alarm=overlay_gettime_ms() + RHIZOME_IDLE_TIMEOUT;
-	q->alarm.deadline = q->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
-	schedule(&q->alarm);
-	
-	if (i<0) i=0;
-	q->request_len+=bytes;
-	if (q->request_len<1024)
-	  q->request[q->request_len]=0;
-	
-	for(;i<(q->request_len+bytes);i++)
-	  {
-	    switch(q->request[i]) {
-	    case '\n': lfcount++; break;
-	    case '\r': /* ignore CR */ break;
-	    case 0: /* ignore NUL (telnet inserts them) */ break;
-	    default: lfcount=0; break;
-	    }
-	    if (lfcount==2) break;
-	  }
-	
-	if (debug&DEBUG_RHIZOME)
-	  dump("http reply headers",(unsigned char *)q->request,lfcount==2?i:q->request_len);
-	
-	if (lfcount==2) {
-	  /* We have the response headers, so parse.
-	     (we may also have some bytes of content, so we need to be a little
-	     careful) */
-
-	  /* Terminate string at end of headers */
-	  q->request[i]=0;
-
-	  /* Get HTTP result code */
-	  char *s=strstr(q->request,"HTTP/1.0 ");
-	  if (!s) { 
-	    if (debug&DEBUG_RHIZOME) DEBUGF("HTTP response lacked HTTP/1.0 response code.");
-	    rhizome_fetch_close(q);
-	    return;
-	  }
-	  int http_response_code=strtoll(&s[9],NULL,10);
-	  if (http_response_code!=200) {
-	    if (debug&DEBUG_RHIZOME) DEBUGF("Rhizome web server returned %d != 200 OK",http_response_code);
-	    rhizome_fetch_close(q);
-	    return;
-	  }
-	  /* Get content length */
-	  s=strstr(q->request,"Content-length: ");
-	  if (!s) {
-	    if (debug&DEBUG_RHIZOME) 
-	      DEBUGF("Missing Content-Length: header.");
-	    rhizome_fetch_close(q);
-	    return;
-	  }
-	  q->file_len=strtoll(&s[16],NULL,10);
-	  
-	  if (q->file_len<0) {
-	    if (debug&DEBUG_RHIZOME) 
-	      DEBUGF("Illegal file size (%d).",q->file_len);
-	    rhizome_fetch_close(q);
-	    return;
-	  }
-
-	  /* Okay, we have both, and are all set.
-	     File is already open, so just write out any initial bytes of the
-	     file we read, and update state flag.
-	  */
-	  
-	  q->state=RHIZOME_FETCH_RXFILE;
-	  int fileRxBytes=q->request_len-(i+1);
-	  
-	  if (fileRxBytes>0)
-	    rhizome_write_content(q, &q->request[i+1], fileRxBytes);
-
+    case RHIZOME_FETCH_RXFILE: {
+	/* Keep reading until we have the promised amount of data */
+	char buffer[8192];
+	sigPipeFlag = 0;
+	int bytes = read_nonblock(q->alarm.poll.fd, buffer, sizeof buffer);
+	/* If we got some data, see if we have found the end of the HTTP request */
+	if (bytes > 0) {
+	  rhizome_write_content(q, buffer, bytes);
+	} else {
+	  if (debug & DEBUG_RHIZOME_RX)
+	    DEBUG("Empty read, closing connection");
+	  rhizome_fetch_close(q);
+	  return;
 	}
-      } 
-      
+	if (sigPipeFlag) {
+	  if (debug & DEBUG_RHIZOME_RX)
+	    DEBUG("Received SIGPIPE, closing connection");
+	  rhizome_fetch_close(q);
+	  return;
+	}
+      }
+      break;
+    case RHIZOME_FETCH_RXHTTPHEADERS: {
+	/* Keep reading until we have two CR/LFs in a row */
+	sigPipeFlag = 0;
+	int bytes = read_nonblock(q->alarm.poll.fd, &q->request[q->request_len], 1024 - q->request_len - 1);
+	/* If we got some data, see if we have found the end of the HTTP reply */
+	if (bytes > 0) {
+	  // reset timeout
+	  unschedule(&q->alarm);
+	  q->alarm.alarm = overlay_gettime_ms() + RHIZOME_IDLE_TIMEOUT;
+	  q->alarm.deadline = q->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
+	  schedule(&q->alarm);
+	  q->request_len += bytes;
+	  if (http_header_complete(q->request, q->request_len, bytes + 4)) {
+	    if (debug & DEBUG_RHIZOME_RX)
+	      DEBUGF("Got HTTP reply: %s", alloca_toprint(160, (unsigned char *)q->request, q->request_len));
+	    /* We have all the reply headers, so parse them, taking care of any following bytes of
+	      content. */
+	    char *p = NULL;
+	    if (!str_startswith(q->request, "HTTP/1.0 ", &p)) {
+	      if (debug&DEBUG_RHIZOME_RX)
+		DEBUGF("Malformed HTTP reply: missing HTTP/1.0 preamble");
+	      rhizome_fetch_close(q);
+	      return;
+	    }
+	    int http_response_code = 0;
+	    char *nump;
+	    for (nump = p; isdigit(*p); ++p)
+	      http_response_code = http_response_code * 10 + *p - '0';
+	    if (p == nump || *p != ' ') {
+	      if (debug&DEBUG_RHIZOME_RX)
+		DEBUGF("Malformed HTTP reply: missing decimal status code");
+	      rhizome_fetch_close(q);
+	      return;
+	    }
+	    if (http_response_code != 200) {
+	      if (debug & DEBUG_RHIZOME_RX)
+		DEBUGF("Failed HTTP request: rhizome server returned %d != 200 OK", http_response_code);
+	      rhizome_fetch_close(q);
+	      return;
+	    }
+	    // This loop will terminate, because http_header_complete() above found at least
+	    // "\n\n" at the end of the header, and probably "\r\n\r\n".
+	    while (*p++ != '\n')
+	      ;
+	    // Iterate over header lines until the last blank line.
+	    long long content_length = -1;
+	    while (*p != '\r' && *p != '\n') {
+	      if (strcase_startswith(p, "Content-Length:", &p)) {
+		while (*p == ' ')
+		  ++p;
+		content_length = 0;
+		for (nump = p; isdigit(*p); ++p)
+		  content_length = content_length * 10 + *p - '0';
+		if (p == nump || (*p != '\r' && *p != '\n')) {
+		  if (debug & DEBUG_RHIZOME_RX)  {
+		    DEBUGF("Invalid HTTP reply: malformed Content-Length header");
+		    rhizome_fetch_close(q);
+		    return;
+		  }
+		}
+	      }
+	      while (*p++ != '\n')
+		;
+	    }
+	    if (*p == '\r')
+	      ++p;
+	    ++p; // skip '\n' at end of blank line
+	    if (content_length == -1) {
+	      if (debug & DEBUG_RHIZOME_RX)
+		DEBUGF("Invalid HTTP reply: missing Content-Length header");
+	      rhizome_fetch_close(q);
+	      return;
+	    }
+	    q->file_len = content_length;
+	    /* We have all we need.  The file is already open, so just write out any initial bytes of
+	      the body we read.
+	    */
+	    q->state = RHIZOME_FETCH_RXFILE;
+	    int content_bytes = q->request + q->request_len - p;
+	    if (content_bytes > 0)
+	      rhizome_write_content(q, p, content_bytes);
+	  }
+	} else {
+	  if (debug & DEBUG_RHIZOME_RX)
+	    DEBUG("Empty read, closing connection");
+	  rhizome_fetch_close(q);
+	  return;
+	}
+	if (sigPipeFlag) {
+	  if (debug & DEBUG_RHIZOME_RX)
+	    DEBUG("Received SIGPIPE, closing connection");
+	  rhizome_fetch_close(q);
+	  return;
+	}
+      }
       break;
     default:
-      if (debug&DEBUG_RHIZOME) 
+      if (debug & DEBUG_RHIZOME_RX) 
 	DEBUG("Closing rhizome fetch connection due to illegal/unimplemented state.");
       rhizome_fetch_close(q);
       return;

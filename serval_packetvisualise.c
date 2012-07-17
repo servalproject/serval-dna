@@ -14,6 +14,26 @@ char *indent(int n)
 int senderSet=0;
 unsigned char senderAddress[32];
 
+#ifdef STANDALONE
+int main(int argc,char **argv)
+{
+  int i,n;
+  int len;
+  unsigned char buff[8192];
+
+  for(n=0;n<1024;n++)
+    {
+      int i;
+      len=random()%8192;
+      for(i=0;i<len;i++) buff[i]=random()&0xff;
+      
+      serval_packetvisualise(stdout,"Fuzz Test",buff,len);
+    }
+  return 0;
+}
+
+#endif
+
 int serval_packetvisualise_renderaddress(FILE *f,unsigned char *packet,int *ofs,int senderP)
 {
 

@@ -563,6 +563,7 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp,long long now)
 	       when results become available, so this function will return
 	       immediately, so as not to cause blockages and delays in servald.
 	    */
+	    DEBUGF("Asking DNA helper to resolve '%s'",did);
 	    dna_helper_enqueue(did,mdp->out.src.sid);
 	  }
 	  RETURN(0);
