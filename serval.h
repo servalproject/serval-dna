@@ -866,6 +866,7 @@ int overlay_add_local_identity(unsigned char *s);
 int overlay_address_is_local(unsigned char *s);
 void overlay_update_queue_schedule(overlay_txqueue *queue, overlay_frame *frame);
 void overlay_send_packet(struct sched_ent *alarm);
+int overlay_resolve_next_hop(overlay_frame *frame);
 
 extern int overlay_interface_count;
 
