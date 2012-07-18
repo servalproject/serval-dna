@@ -487,7 +487,7 @@ instances_see_each_other() {
          [ $I = $J ] && continue
          local logvar=LOG${I#+}
          local sidvar=SID${J#+}
-         if ! grep "PEER REACHABLE, sid=${!sidvar}" "${!logvar}"; then
+         if ! grep "ADD OVERLAY NODE sid=${!sidvar}" "${!logvar}"; then
             return 1
          fi
       done

@@ -21,11 +21,23 @@
 source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 
+is_reachable() {
+  local sidvar=SID${1#+}
+  if ! grep "PEER REACHABLE, sid=${!sidvar}" "$instance_servald_log"; then
+    return 1
+  fi
+  echo "PEER REACHABLE, sid=${!sidvar} from $SID"
+  return 0
+}
+
 setup() {
    setup_servald
    assert_no_servald_processes
    start_servald_instances +A +B
+   set_instance +B
+   wait_until --sleep=0.25 is_reachable +A
    set_instance +A
+   wait_until --sleep=0.25 is_reachable +B
 }
 
 teardown() {
@@ -47,7 +59,7 @@ configure_servald_server() {
    executeOk_servald config set debug.mdprequests Yes
 }
 
-doc_MultiServer="Start three servald servers with dummy interface"
+doc_MultiServer="Start three servald servers with dummy interfaces"
 setup_MultiServer() {
    setup_servald
    assert_no_servald_processes
