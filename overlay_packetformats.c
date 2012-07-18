@@ -31,30 +31,26 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 		    struct sockaddr *recvaddr, size_t recvaddrlen, int parseP)
 {
   /* 
-     Overlay packets are ensembles contain one or more frames each of which 
-     should be handled separately.
-
-     There are two main types of enclosed frame.
-
-     1. Announcement frames which contain information that helps to maintain the
-     operation of the mesh.
-
-     and
-
-     2. Data frames that contain messages directed to nodes on the mesh.
-
-     In both instances we allow the contained addresses to be shortened to save bandwidth,
-     especially for low-bandwidth links.
-
-     All frames have the following fields:
-
+     This function decodes overlay packets which have been assembled for delivery overy IP networks.
+     IP based wireless networks have a high, but limited rate of packets that can be sent. In order 
+     to increase throughput of small payloads, we ammend many payloads together and have used a scheme 
+     to compress common network identifiers.
+   
+     A different network type may have very different constraints on the number and size of packets,
+     and may need a different encoding scheme to use the bandwidth efficiently.
+   
+     The current structure of an overlay packet is as follows;
+     Fixed header [0x4F, 0x10]
+     Version [0x00, 0x01]
+     
+     Each frame within the packet has the following fields:
      Frame type (8-24bits)
      TTL (8bits)
      Remaining frame size (RFS) (see overlay_payload.c or overlay_buffer.c for explanation of format)
      Next hop (variable length due to address abbreviation)
-     Destination (variable length due to address abbreviation)*
-     Source (variable length due to address abbreviation)*
-     Payload (length = RFS- len(frame type) - len(next hop)*
+     Destination (variable length due to address abbreviation)
+     Source (variable length due to address abbreviation)
+     Payload (length = RFS- len(frame type) - len(next hop)
 
      This structure is intended to allow relaying nodes to quickly ignore frames that are
      not addressed to them as either the next hop or final destination.
@@ -62,26 +58,17 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
      The RFS field uses additional bytes to encode the length of longer frames.  
      This provides us with a slight space saving for the common case of short frames.
      
-     * Indicates fields that may be encrypted.  The source and destination addresses can
-     be encrypted for paranoid traffic so that only the hops along the route know who is
-     talking to whom.  This is not totally secure, but does prevent collateral eaves dropping
-     of frames by 4th parties.  Paranoid communities could elect to only use nodes they trust
-     to carry the frame.  And finally, the frame payload itself can be enciphered with the 
-     final destination's public key, so that it is not possible even for the relaying 3rd
-     parties to observe the content.  
+     The frame payload itself can be enciphered with the final destination's public key, so 
+     that it is not possible for the relaying 3rd parties to observe the content.  
 
      Naturally some information will leak simply based on the size, periodicity and other 
      characteristics of the traffic, and some 3rd parties may be malevolent, so noone should
      assume that this provides complete security.
 
-     Paranoid mode introduces a bandwidth cost of one signature, and a potentially substantial
-     energy cost of requiring every node along the delivery path to decrypt and reencrypt the
-     frame.
-
-     It would also be possible to design a super-paranoid mode where source routing is used with
-     concentric shells of encryption so that each hop can only work out the next hop to send it
-     to.  However, that would result in rather large frames, and require an on-demand routing
-     approach which may well betray more information than the super-paranoid mode would hide.
+     It would be possible to design a super-paranoid mode where onion routing is used with
+     concentric shells of encryption so that each hop can only work out the next node to send it
+     to.  However, that would result in rather large frames, which may well betray more information 
+     than the super-paranoid mode would hide.
 
      Note also that it is possible to dispatch frames on a local link which are addressed to
      broadcast, but are enciphered.  In that situation only the intended recipient can
@@ -92,8 +79,6 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
      optionally with an anonymous source address to provide some plausible deniability for both
      sending and reception if combined with a randomly selected TTL to give the impression of
      the source having received the frame from elsewhere.
-
-
   */
 
   int ofs;
@@ -253,32 +238,20 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 	
 	// TODO refactor all packet parsing to only allocate additional memory for the payload
 	// if it needs to be queued for forwarding.
-	if (!f.payload)
-	  f.payload=ob_new(nextPayload - ofs); 
-	else 
-	  f.payload->length=0;
 	
-	if (!f.payload){
-	  WHY("calloc(overlay_buffer) failed.");
-	  break;
-	}
-	
-	if (ob_append_bytes(f.payload,&packet[ofs],nextPayload - ofs)){
-	  WHY("ob_append_bytes() failed.");
-	  break;
-	}
+	f.payload = ob_static(&packet[ofs], nextPayload - ofs);
+	ob_setlength(f.payload, nextPayload - ofs);
 	
 	/* Finally process the frame */
 	overlay_frame_process(interface,&f);
+	
+	ob_free(f.payload);
       }
       
       /* Jump to the next payload offset */
       ofs = nextPayload;
     }
   if (0) INFOF("Finished processing overlay packet");
-
-  if (f.payload)
-    ob_free(f.payload);
   
   return 0;
 }

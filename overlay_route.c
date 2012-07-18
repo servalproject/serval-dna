@@ -804,13 +804,11 @@ int overlay_route_saw_selfannounce(overlay_frame *f,long long now)
      ensemble */
   overlay_abbreviate_set_current_sender(f->source);
 
-  s1=ntohl(*((int*)&f->payload->bytes[0]));
-  s2=ntohl(*((int*)&f->payload->bytes[4]));
-  sender_interface=f->payload->bytes[8];
-  if (debug&DEBUG_OVERLAYROUTING) {
+  s1=ob_get_int(f->payload, 0);
+  s2=ob_get_int(f->payload, 4);
+  sender_interface=ob_getbyte(f->payload, 8);
+  if (debug&DEBUG_OVERLAYROUTING)
     DEBUGF("Received self-announcement for sequence range [%08x,%08x] from interface %d",s1,s2,sender_interface);
-    dump("Payload",&f->payload->bytes[0],f->payload->length);
-  }
 
   overlay_route_i_can_hear_node(f->source,sender_interface,s1,s2,now);
 
@@ -1061,7 +1059,7 @@ int overlay_route_saw_selfannounce_ack(overlay_frame *f,long long now)
 
   unsigned int s1=ob_get_int(f->payload,0);
   unsigned int s2=ob_get_int(f->payload,4);
-  int iface=f->payload->bytes[8];
+  int iface=ob_getbyte(f->payload,8);
 
   // Call something like the following for each link
   overlay_route_node_can_hear_me(f->source,iface,s1,s2,now);
