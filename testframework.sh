@@ -192,8 +192,17 @@ runTests() {
       echo "$testPosition $testNumber $testName" >"$_tfw_results_dir/$testName"
       (
          _tfw_test_name="$testName"
-         _tfw_unique=$testNumber
-         _tfw_tmp=/tmp/_tfw-$_tfw_suite_name-$_tfw_test_name
+         # Pick a unique decimal number that must not coincide with other tests
+         # being run concurrently, _including tests being run in other test
+         # scripts by other users on the same host_.  We cannot simply use
+         # $testNumber.  The subshell process ID is ideal.  We don't use
+         # $BASHPID because MacOS only has Bash-3.2, and $BASHPID was introduced
+         # in Bash-4.
+         _tfw_unique=$($BASH -c 'echo $PPID')
+         # All files created by this test belong inside a temporary directory.
+         # The path name must be kept short because it is used to construct
+         # named socket paths, which have a limited length.
+         _tfw_tmp=/tmp/_tfw-$_tfw_unique
          trap '_tfw_status=$?; rm -rf "$_tfw_tmp"; exit $_tfw_status' EXIT SIGHUP SIGINT SIGTERM
          local start_time=$(_tfw_timestamp)
          local finish_time=unknown
@@ -266,12 +275,16 @@ _tfw_echo_intro() {
 }
 
 _tfw_harvest_processes() {
+   # <incantation>
+   # This is the only way known to get the effect of a 'wait' builtin that will
+   # return when _any_ child dies or after a one-second timeout.
    trap 'kill $spid 2>/dev/null' SIGCHLD
    sleep 1 &
    spid=$!
    set -m
    wait $spid 2>/dev/null
    trap - SIGCHLD
+   # </incantation>
    local -a surviving_pids=()
    local pid
    for pid in ${_tfw_running_pids[*]}; do
@@ -436,7 +449,7 @@ executeOk() {
 #  - can specify the timeout with --timeout=SECONDS
 #  - can specify the sleep interval with --sleep=SECONDS
 #  - the condition is a command that is executed repeatedly until returns zero
-#    status 
+#    status
 # where SECONDS may be fractional, eg, 1.5
 wait_until() {
    tfw_log "# wait_until" $(_tfw_shellarg "$@")
@@ -640,7 +653,7 @@ _tfw_abspath() {
    */)
       builtin echo $(_tfw_abspath $cdopt "${1%/}")/
       ;;
-   /*/*) 
+   /*/*)
       if [ -d "$1" ]; then
          (CDPATH= builtin cd $cdopt "$1" && builtin echo "$PWD")
       else
