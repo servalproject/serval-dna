@@ -17,7 +17,11 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include <sys/types.h>
+#include <sys/wait.h>
 #include "serval.h"
+#include "strbuf.h"
+#include "strbuf_helpers.h"
 
 /*
   The challenge with making an interface for calling an external program to 
@@ -38,80 +42,58 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
   main loop.
  */
 
+static pid_t dna_helper_pid = -1;
 static int dna_helper_stdin = -1;
 static int dna_helper_stdout = -1;
 
 int
-parseDnaReply(unsigned char *bytes, int count, 
-	      char *sidhex, char *did, char *name, char *uri) {
-  bzero(sidhex, SID_SIZE*2+1);
-  bzero(did, SID_SIZE);
-  bzero(name,64);
-  bzero(uri,512);
-  int i,l,maxlen;
-
-  l=0;
-  
-  /* Replies look like: TOKEN|URI|DID|CALLERID| */
-
-  maxlen=SID_SIZE*2+1;
-  for(i=0;l<maxlen&&i<count&&bytes[i]!='|';i++)
-    sidhex[l++]=bytes[i];
-  sidhex[l]=0;
-
-  if (l>=count) return WHY("DNA helper response does not contain URI field");
-  if (l>=maxlen) return WHY("DNA helper response SID field too long");
-  l=0; i++; maxlen=511;
-  for(;l<maxlen&&i<count&&bytes[i]!='|';i++)
-    uri[l++]=bytes[i];
-  uri[l]=0;
-
-  if (l>=count) return WHY("DNA helper response does not contain DID field");
-  if (l>=maxlen) return WHY("DNA helper response URI field too long");
-  l=0; i++; maxlen=SID_SIZE;
-  for(;l<maxlen&&i<count&&bytes[i]!='|';i++)
-    did[l++]=bytes[i];
-  did[l]=0;
-
-  if (l>=count) return WHY("DNA helper response does not contain CALLERID field");
-  if (l>=maxlen) return WHY("DNA helper response DID field too long");
-  l=0; i++; maxlen=SID_SIZE;
-  for(;l<maxlen&&i<count&&bytes[i]!='|';i++)
-    name[l++]=bytes[i];
-  name[l]=0;
-
-  if (l>=count) return WHY("DNA helper response does not contain terminator");
-  if (l>=maxlen) return WHY("DNA helper response CALLERID field too long");
-  
-  /* DEBUGF("did='%s', name='%s', uri='%s'",did,name,uri); */
-
+parseDnaReply(const unsigned char *bytes, int count, 
+	      char *sidhex, char *did, char *name, char *uri)
+{
+  /* Replies look like: TOKEN|URI|DID|NAME| */
+  const unsigned char *b = bytes;
+  const unsigned char *e = bytes + count;
+  char *p, *q;
+  for (p = sidhex, q = sidhex + SID_STRLEN; b != e && *b != '|' && p != q; ++p, ++b)
+    *p = *b;
+  *p = '\0';
+  if (b == e || *b++ != '|')
+    return -1;
+  for (p = uri, q = uri + 511; b != e && *b != '|' && p != q; ++p, ++b)
+    *p = *b;
+  *p = '\0';
+  if (b == e || *b++ != '|')
+    return -1;
+  for (p = did, q = did + DID_MAXSIZE; b != e && *b != '|' && p != q; ++p, ++b)
+    *p = *b;
+  *p = '\0';
+  if (b == e || *b++ != '|')
+    return -1;
+  for (p = name, q = name + 63; b != e && *b != '|' && p != q; ++p, ++b)
+    *p = *b;
+  *p = '\0';
+  if (b == e || *b != '|')
+    return -1;
   return 0;
 }
 
-void dna_helper_monitor(int fd)
-{
-  return;
-}
+static struct sched_ent dna_helper_sched;
 
-struct sched_ent dna_helper_sched;
+void dna_helper_monitor(struct sched_ent *alarm);
 
 static int
-dna_helper_start(const char *command, const char *arg) {
-  int	stdin_fds[2], stdout_fds[2];
-  pid_t	pid;
-  
-  DEBUG("Starting DNA helper");
-
+dna_helper_start(const char *command, const char *arg)
+{
+  int stdin_fds[2], stdout_fds[2];
   if (pipe(stdin_fds))
     return WHY_perror("pipe");
-
   if (pipe(stdout_fds)) {
     close(stdin_fds[0]);
     close(stdin_fds[1]); 
     return WHY_perror("pipe");
   }
-
-  if ((pid = fork()) == 0) {
+  switch (dna_helper_pid = fork()) {
+  case 0:
     /* Child, should exec() to become helper after installing file descriptors. */
     if (dup2(stdin_fds[1], 0)) /* replace stdin */
       exit(-1);
@@ -120,77 +102,111 @@ dna_helper_start(const char *command, const char *arg) {
     if (dup2(stdout_fds[0], 2)) /* replace stderr */
       exit(-1);
     execl(command, command, arg, NULL);
-    DEBUG("execl() failed");
+    WHYF_perror("execl(%s, %s, %s, NULL)", command, command, arg ? arg : "NULL");
     abort(); /* Can't get here */
-  } else {
-    if (pid == -1) {
-      /* fork failed */
-      WHY_perror("fork");
-      close(stdin_fds[0]);
-      close(stdin_fds[1]); 
-      close(stdout_fds[0]);
-      close(stdout_fds[1]); 
-      return -1;
-    } else {
-      /* Parent, should put file descriptors into place for use */
-      dna_helper_stdin = stdin_fds[0];
-      dna_helper_stdout = stdout_fds[1];
-
-      /* Need to watch dna_helper_stdout */
-      // XXX need to initialise structure before calling watch
-      // XXX watch(&dna_helper_sched);
-      // XXX need to add unwatch() when we detect that the process has died.
-      return 0;
-    }
+    break;
+  case -1:
+    /* fork failed */
+    WHY_perror("fork");
+    close(stdin_fds[0]);
+    close(stdin_fds[1]); 
+    close(stdout_fds[0]);
+    close(stdout_fds[1]); 
+    return -1;
+  default:
+    /* Parent, should put file descriptors into place for use */
+    INFOF("Started DNA helper, pid=%u: %s %s", dna_helper_pid, command, arg ? arg : "");
+    dna_helper_stdin = stdin_fds[0];
+    dna_helper_stdout = stdout_fds[1];
+    dna_helper_sched.function = dna_helper_monitor;
+    dna_helper_sched.context = NULL;
+    dna_helper_sched.poll.fd = dna_helper_stdout;
+    dna_helper_sched.poll.events = POLLIN;
+    dna_helper_sched.alarm = overlay_gettime_ms() + 1000;
+    dna_helper_sched.stats = NULL;
+    watch(&dna_helper_sched);
+    schedule(&dna_helper_sched);
+    return 0;
   }
   return -1;
 }
 
-int
-dna_helper_enqueue(char *did, unsigned char *requestorSid) {
-  const char	*dna_helper, *dna_helper_arg;
-  char		buffer[1024];
-  
-  if (dna_helper_stdin == -2)
-    return -1;
+static int
+dna_helper_harvest()
+{
+  D;
+  if (dna_helper_pid > 0) {
+    int status;
+    pid_t pid = waitpid(dna_helper_pid, &status, WNOHANG);
+    if (pid == dna_helper_pid) {
+      strbuf b = strbuf_alloca(80);
+      INFOF("DNA helper pid=%u %s", pid, strbuf_str(strbuf_append_exit_status(b, status)));
+      unschedule(&dna_helper_sched);
+      unwatch(&dna_helper_sched);
+      dna_helper_pid = -1;
+      return 1;
+    } else if (pid == -1) {
+      return WHYF_perror("waitpid(%d, WNOHANG)", dna_helper_pid);
+    } else if (pid) {
+      return WHYF("waitpid(%d, WNOHANG) returned %d", dna_helper_pid, pid);
+    }
+  }
+  return 0;
+}
 
-  if (dna_helper_stdin == -1) {
-      dna_helper = confValueGet("dna.helper", NULL);
-    if (!dna_helper || !dna_helper[0]) {
+void dna_helper_monitor(struct sched_ent *alarm)
+{
+  if (alarm != &dna_helper_sched) {
+    WHY("Alarm not for me");
+    return;
+  }
+  if (dna_helper_sched.poll.revents & POLLIN) {
+    unsigned char buffer[1024];
+    if (read_nonblock(dna_helper_sched.poll.fd, buffer, sizeof buffer) != -1) {
+      DEBUGF("Got DNA helper reply %s", alloca_toprint(160, buffer, sizeof buffer));
+    }
+  }
+  if (dna_helper_harvest() <= 0) {
+    dna_helper_sched.alarm = overlay_gettime_ms() + 1000;
+    schedule(alarm);
+  }
+}
+
+int
+dna_helper_enqueue(char *did, unsigned char *requestorSid)
+{
+  if (dna_helper_pid == 0)
+    return -1;
+  if (dna_helper_pid == -1) {
+    const char *dna_helper_executable = confValueGet("dna.helper.executable", NULL);
+    const char *dna_helper_arg1 = confValueGet("dna.helper.argv.1", NULL);
+    if (!dna_helper_executable || !dna_helper_executable[0]) {
       /* Check if we have a helper configured. If not, then set
-	 dna_helper_stdin to magic value of -2 so that we don't waste time
+	 dna_helper_pid to magic value of 0 so that we don't waste time
 	 in future looking up the dna helper configuration value. */
-      DEBUG("We have no DNA helper configured");
-      dna_helper_stdin = -2; 
+      INFO("No DNA helper configured");
+      dna_helper_pid = 0; 
       return -1;
     }
-    
-    /* Look for optional argument */
-    dna_helper_arg = confValueGet("dna.helperarg", NULL);
-
-    /* Okay, so we have a helper configured.
-       Run it */
-    if (dna_helper_start(dna_helper, dna_helper_arg) < 0) {
+    if (dna_helper_start(dna_helper_executable, dna_helper_arg1) < 0) {
       /* Something broke, bail out */
       DEBUG("Failed to start dna helper");
       return -1;
     }
   }
-
   /* Write request to dna helper.
      Request takes form:  SID-of-Requestor|DID|\n
      By passing the requestor's SID to the helper, we don't need to maintain
      any state, as all we have to do is wait for responses from the helper,
      which will include the requestor's SID.
   */
-  bzero(buffer, sizeof(buffer));
-  if (snprintf(buffer, sizeof(buffer) - 1, "%s|%s|\n", alloca_tohex_sid(requestorSid), did) > 
-      sizeof(buffer) - 1)
-    return WHY("Command to helper is too long");
-    
+  char buffer[1024];
+  strbuf b = strbuf_local(buffer, sizeof buffer);
+  strbuf_sprintf(b, "%s|%s|\n", alloca_tohex_sid(requestorSid), did);
+  if (strbuf_overrun(b))
+    return WHY("DNA helper buffer overrun");
   sigPipeFlag = 0;
-  write_str(dna_helper_stdin, buffer);
-
+  write_all(dna_helper_stdin, strbuf_str(b), strbuf_len(b));
   if (sigPipeFlag) {
     /* Assume broken pipe due to dead helper.
        Next request will cause it to be restarted.
@@ -200,14 +216,14 @@ dna_helper_enqueue(char *did, unsigned char *requestorSid) {
        in quick succession so that we don't waste lots of time with a buggy or
        suicidal helper.
     */
+    WARN("Got SIGPIPE from DNA helper");
     close(dna_helper_stdin);
     close(dna_helper_stdout);
     dna_helper_stdin = -1;
     dna_helper_stdout = -1;
-    DEBUG("Sigpipe encountered");
+    dna_helper_harvest();
     return -1;
   }
-
   return 0;
 }
 

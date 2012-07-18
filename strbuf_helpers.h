@@ -27,4 +27,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 strbuf strbuf_append_poll_events(strbuf sb, short events);
 
+/* Append a textual description of a process exit status as produced by wait(2)
+ * and waitpid(2).
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+strbuf strbuf_append_exit_status(strbuf sb, int status);
+
 #endif //__STRBUF_HELPERS_H__

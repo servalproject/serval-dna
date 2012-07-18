@@ -497,28 +497,28 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 		else if ((rx.packetTypeAndFlags&MDP_TYPE_MASK)==MDP_TX) {
 		  /* Extract DID, Name, URI from response. */
 		  if (strlen((char *)rx.in.payload)<512) {
-		    char sidhex[512];
-		    char did[512];
-		    char name[512];
+		    char sidhex[SID_STRLEN + 1];
+		    char did[DID_MAXSIZE + 1];
+		    char name[64];
 		    char uri[512];
-		    if (!parseDnaReply(rx.in.payload,rx.in.payload_length,
-				       sidhex,did,name,uri))
-		      {
-			/* Have we seen this response before? */
-			int i;
-			for(i=0;i<uri_count;i++)
-			  if (!strcmp(uri,uris[i])) break;
-			if (i==uri_count) {
-			  /* Not previously seen, so report it */
-			  cli_puts(uri); cli_delim(":");
-			  cli_puts(did); cli_delim(":");
-			  cli_puts(name); cli_delim("\n");
-			  /* Remember that we have seen it */
-			  if (uri_count<MAXREPLIES&&strlen(uri)<MAXURILEN) {
-			    strcpy(uris[uri_count++],uri);
-			  }
+		    if (!parseDnaReply(rx.in.payload, rx.in.payload_length, sidhex, did, name, uri)) {
+		      /* Have we seen this response before? */
+		      int i;
+		      for(i=0;i<uri_count;i++)
+			if (!strcmp(uri,uris[i])) break;
+		      if (i==uri_count) {
+			/* Not previously seen, so report it */
+			cli_puts(uri); cli_delim(":");
+			cli_puts(did); cli_delim(":");
+			cli_puts(name); cli_delim("\n");
+			/* Remember that we have seen it */
+			if (uri_count<MAXREPLIES&&strlen(uri)<MAXURILEN) {
+			  strcpy(uris[uri_count++],uri);
 			}
 		      }
+		    } else {
+		      WHYF("Received malformed DNA reply: %s", alloca_toprint(160, rx.in.payload, rx.in.payload_length));
+		    }
 		  }
 		}
 		else WHYF("packettype=0x%x",rx.packetTypeAndFlags);
@@ -1632,18 +1632,18 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 	}
 	
 	{	    	  
-	  char sidhex[512];
-	  char did[512];
-	  char name[512];
+	  char sidhex[SID_STRLEN + 1];
+	  char did[DID_MAXSIZE + 1];
+	  char name[64];
 	  char uri[512];
-	  if (!parseDnaReply(m2.in.payload,m2.in.payload_length,
-			     sidhex,did,name,uri))
-	  {
+	  if (parseDnaReply(m2.in.payload, m2.in.payload_length, sidhex, did, name, uri) != -1) {
 	    /* Got a good DNA reply, copy it into place */
 	    bcopy(did,mdp.nodeinfo.did,32);
 	    bcopy(name,mdp.nodeinfo.name,64);
 	    mdp.nodeinfo.resolve_did=1;
 	    break;
+	  } else {
+	    WHYF("Received malformed DNA reply: %s", alloca_toprint(160, m2.in.payload, m2.in.payload_length));
 	  }
 	}
       }

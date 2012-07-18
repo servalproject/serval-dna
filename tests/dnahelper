@@ -24,7 +24,6 @@ source "${0%/*}/../testdefs.sh"
 setup() {
    setup_servald
    assert_no_servald_processes
-   setup_dnahelper
 }
 
 teardown() {
@@ -36,17 +35,18 @@ teardown() {
 # Called by start_servald_instances immediately before starting the server
 # process in each instance.
 configure_servald_server() {
-   executeOk_servald config set dna.helper "$TFWTMP/dnahelper"
+   executeOk_servald config set log.show_pid on
+   executeOk_servald config set log.show_time on
+   executeOk_servald config set dna.helper.executable "$TFWTMP/dnahelper"
 }
 
 setup_dnahelper() {
-    cat >"$TFWTMP/dnahelper" <<EOF
+   dnahelper="$TFWTMP/dnahelper"
+   cat >"$dnahelper" <<EOF
 #!/usr/bin/env python
 # Sample DNA Helper application for testing
-
-import sys;
-
-def main():    
+import sys
+def main():
     print "STARTED"
     while True:
         line = sys.stdin.readline().strip()
@@ -58,7 +58,6 @@ def main():
             print "ERROR"
             continue
         (token, number, xxx) = s
-
         if number == "12345":
             # Multiple results (SID/VoMP results)
             print "%s|sid:%s|%s|%s|" % (token, token, number, "Agent A. Smith")
@@ -68,37 +67,40 @@ def main():
             print "%s|sip://5551234@10.1.2.3|%s|%s|" % (token, number, "Will Smith")
         if number == "5551001":
             # Empty URI field
-            print "%s||%s|%s|" % (token, number, "Empty URI") 
+            print "%s||%s|%s|" % (token, number, "Empty URI")
         if number == "5551002":
             # Empty DID field
-            print "%s|sip://123@1.2.3.4||%s|" % (token, "Empty DID") 
+            print "%s|sip://123@1.2.3.4||%s|" % (token, "Empty DID")
         if number == "5551003":
             # Empty CALLERID field
             print "%s|sip://empty-callerid@1.2.3.4|%s||" % (token, number)
         if number == "5551004":
             # Excessively long callerid
-            print "%s|sip://long-callerid@1.2.3.4|%s|askjdhfkjashdfkljahsdflkjhasdljkfhasldjkfhaslkjdfhalskdjfhklajsdhflkajsdhflkjasdhflkjashdflkjashdflkjahsdflkjahsdfjklhasdljkfhasjkdfhakljsdfhklajsdhflkjashdfljkashdflkjashdf|" % (token, number)
+            print "%s|sip://long-callerid@1.2.3.4|%s|%s|" % (token, 'x' * 200, number)
         if number == "5551005":
             # Excessively long DID
-            print "%s|sip://long-did@1.2.3.4|askjdhfkjashdfkljahsdflkjhasdljkfhasldjkfhaslkjdfhalskdjfhklajsdhflkajsdhflkjasdhflkjashdflkjashdflkjahsdflkjahsdfjklhasdljkfhasjkdfhakljsdfhklajsdhflkjashdfljkashdflkjashdf|%s|" % (token, "Agent Smith")
+            print "%s|sip://long-did@1.2.3.4|%s|%s|" % (token, 'x' * 200, "Agent Smith")
         if number == "5551006":
             # Excessively long URI
-            print "%s|sip://askjdhfkjashdfkljahsdflkjhasdljkfhasldjkfhaslkjdfhalskdjfhklajsdhflkajsdhflkjasdhflkjashdflkjashdflkjahsdflkjahsdfjklhasdljkfhasjkdfhakljsdfhklajsdhflkjashdfljkashdflkjashdfasdjfkjahsdfjkhasdfkjlhasjldkfhajksdhflkjasdhfkljashdfkljahsdfkljhasdfkljhasdlkjfhasdlkjfhaslkjdfhakljsdhfklajshdfkljashdfljkashdflkjashdflkjahsdfkjlahsdflkjhasdfljkhasdkfjlhaslkdjfhaslkjdfhaklsjdfhaklsjdhflkajsdhflkjasdhflkjashdfljkashdfkljashdflkjashdflkjashdflkjashdflkjashdflkjashdfljkahsdflkjahsdfjklahsdfljkahsdflkjhasdflkjhasdjkfhaskjdlfhaslkjdfhaskljdfhasljkdfhalskdfhalkjsdhflkjasdhflkjahsdflkjahsdflkjahsdflkjhasdflkjahsdflkjahsdflkjahsdfkljashdflkajshdflkajsdhflaksjdfhalksjdfhlasdkjfh|%s|%s|" % (token,  number, "Agent Smith")
+            print "%s|sip://%s|%s|%s|" % (token, 'x' * 1000, number, "Agent Smith")
         if number == "5551007":
             # Incorrect token
-            print "cheeseburger|sip://incorrect-token@1.2.3.4|%s||" % (token, number)    
-
+            print "cheeseburger|sip://incorrect-token@1.2.3.4|%s||" % (token, number)
         print "DONE"
-        
 if __name__ == "__main__":
     main()
-
 EOF
+   chmod 0755 "$dnahelper"
 }
 
-doc_MultiServer="Start three servald servers with dna helper"
-test_MultiServer() {
-   start_servald_instances +A +B +C
+doc_Simple="Simple DNA helper test"
+setup_Simple() {
+   setup
+   setup_dnahelper
+   start_servald_instances +A
+}
+test_Simple() {
+   executeOk_servald dna lookup 12345
 }
 
 runTests "$@"

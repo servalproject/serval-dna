@@ -16,8 +16,9 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include "serval.h"
 #include <sys/stat.h>
+#include "serval.h"
+#include "strbuf.h"
 
 struct sched_ent mdp_abstract;
 struct sched_ent mdp_named;
@@ -539,14 +540,12 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp,long long now)
 		(char *)keyring->contexts[cn]->identities[in]->keypairs[kp]
 		->public_key;
 	      /* copy SID out into source address of frame */	      
-	      bcopy(packedSid,&mdpreply.out.src.sid[0],SID_SIZE);
-	      /* and build reply as did\nname\nURI<NUL> */
-	      snprintf((char *)&mdpreply.out.payload[0],512,"%s|sid://%s/%s|%s|%s|",
-		       alloca_tohex_sid(packedSid),
-		       alloca_tohex_sid(packedSid),unpackedDid,
-		       unpackedDid,name);
-	      mdpreply.out.payload_length=strlen((char *)mdpreply.out.payload)+1;
-	      
+	      bcopy(packedSid, &mdpreply.out.src.sid[0], SID_SIZE);
+	      /* build reply as TOKEN|URI|DID|NAME|<NUL> */
+	      strbuf b = strbuf_local((char *)mdpreply.out.payload, sizeof mdpreply.out.payload);
+	      const char *sidhex = alloca_tohex_sid(packedSid);
+	      strbuf_sprintf(b, "%s|sid://%s/%s|%s|%s|", sidhex, sidhex, unpackedDid, unpackedDid, name);
+	      mdpreply.out.payload_length = strbuf_len(b) + 1;
 	      /* deliver reply */
 	      overlay_mdp_dispatch(&mdpreply,0 /* system generated */,NULL,0);
 	      kp++;
