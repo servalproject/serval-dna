@@ -29,10 +29,21 @@ overlay_buffer *ob_new(int size)
   return ret;
 }
 
+// index an existing static buffer.
+// and allow other callers to use the ob_ convenience methods for reading and writing up to size bytes.
+overlay_buffer *ob_static(unsigned char *bytes, int size){
+  overlay_buffer *ret=calloc(sizeof(overlay_buffer),1);
+  if (!ret) return NULL;
+  ret->bytes = bytes;
+  ret->allocSize =-1;
+  ret->sizeLimit=size;
+  return ret;
+}
+
 int ob_free(overlay_buffer *b)
 {
   if (!b) return WHY("Asked to free NULL");
-  if (b->bytes) free(b->bytes);
+  if (b->bytes && b->allocSize>0) free(b->bytes);
   b->bytes=NULL;
   b->allocSize=0;
   b->sizeLimit=0;
@@ -54,12 +65,20 @@ int ob_rewind(overlay_buffer *b)
   return 0;
 }
 
+int ob_setlength(overlay_buffer *b,int bytes){
+  if (bytes > b->sizeLimit) return WHY("Length exceeds size limit");
+  if (b->allocSize>=0 && bytes > b->allocSize) return WHY("Length exceeds allocated size");
+  b->length=bytes;
+  return 0;
+}
+
 int ob_limitsize(overlay_buffer *b,int bytes)
 {
   if (!b) return WHY("Asked to limit size of NULL");
   if (b->length>bytes) return WHY("Length of data in buffer already exceeds size limit");
   if (b->checkpointLength>bytes) return WHY("Checkpointed length of data in buffer already exceeds size limit");
-  if (bytes<0) return WHY("Cant limit buffer to a negative size");
+  if (bytes<0) return WHY("Can't limit buffer to a negative size");
+  if (b->allocSize<0) return WHY("Can't change the limit of a static buffer");
   b->sizeLimit=bytes;
   return 0;
 }
@@ -67,21 +86,24 @@ int ob_limitsize(overlay_buffer *b,int bytes)
 int ob_unlimitsize(overlay_buffer *b)
 {
   if (!b) return WHY("b is NULL");
+  if (b->allocSize<0) return WHY("Can't change the limit of a static buffer");
   b->sizeLimit=-1;
   return 0;
 }
 
 int ob_makespace(overlay_buffer *b,int bytes)
 {
-  if (b->sizeLimit!=-1) {
-    if (b->length+bytes>b->sizeLimit) {
-      if (debug&DEBUG_PACKETFORMATS) WHY("Asked to make space beyond size limit");
-      return -1; 
-    }
+  if (b->sizeLimit!=-1 && b->length+bytes>b->sizeLimit) {
+    if (debug&DEBUG_PACKETFORMATS) WHY("Asked to make space beyond size limit");
+    return -1; 
   }
 
+  if (b->allocSize<0){
+    return WHY("Can't resize a static buffer");
+  }
+  
   if (0)
-    printf("ob_makespace(%p,%d)\n  b->bytes=%p,b->length=%d,b->allocSize=%d\n",
+    DEBUGF("ob_makespace(%p,%d)\n  b->bytes=%p,b->length=%d,b->allocSize=%d\n",
 	   b,bytes,b->bytes,b->length,b->allocSize);
 
   if (b->length+bytes>=b->allocSize)
@@ -135,27 +157,14 @@ int ob_makespace(overlay_buffer *b,int bytes)
     return 0;
 }
 
-int ob_setbyte(overlay_buffer *b,int ofs,unsigned char value)
-{
-  if (ofs<0||ofs>=b->allocSize) {
-    fprintf(stderr,"ERROR: Asked to set byte %d in overlay buffer %p, which has only %d allocated bytes.\n",
-	    ofs,b,b->allocSize);
-    return -1;
-  }
-  b->bytes[ofs]=value;
-  return 0;
-}
 
-int ob_bcopy(overlay_buffer *b,int from, int to, int len)
-{
-  if (from<0||to<0||len<0||(from+len)>=b->allocSize||(to+len)>=b->allocSize)
-    {
-      fprintf(stderr,"call to ob_bcopy would corrupt memory.  Aborting.\n");
-      exit(-1);
-    }
-  bcopy(&b->bytes[from],&b->bytes[to],len); 
-  return 0;
-}
+
+/*
+ Functions that append data and increase the size of the buffer if possible / required
+ */
+
+
+
 
 int ob_append_byte(overlay_buffer *b,unsigned char byte)
 {
@@ -194,11 +203,62 @@ int ob_append_int(overlay_buffer *b,unsigned int v)
   return ob_append_bytes(b,(unsigned char *)&s,sizeof(unsigned int));
 }
 
+int ob_append_rfs(overlay_buffer *b,int l)
+{
+  /* Encode the specified length and append it to the buffer */
+  if (l<0||l>0xffff) return -1;
+  
+  /* First work out how long the field needs to be, then write dummy bytes
+   and use ob_patch_rfs to set the value.  That way we have only one
+   lot of code that does the encoding. */
+  
+  b->var_length_offset=b->length;
+  b->var_length_bytes=rfs_length(l);
+  
+  unsigned char c[3]={0,0,0};
+  if (ob_append_bytes(b,c,b->var_length_bytes)) {
+    b->var_length_offset=0;
+    return -1;
+  }
+  
+  return ob_patch_rfs(b,l);
+  
+}
+
+
+
+/*
+ Functions that read / write data within the existing length limit
+ */
+
+
+
+int test_offset(overlay_buffer *b,int start,int length){
+  if (!b) FATAL("b is NULL");
+  if (start<0) FATALF("passed illegal offset %d",start);
+  if (b->sizeLimit>=0 && start+length>b->sizeLimit) FATALF("passed offset too large %d", start+length);
+  if (b->allocSize>=0 && start+length>b->allocSize) FATALF("passed offset too large %d", start+length);
+  return 0;
+}
+
+int ob_setbyte(overlay_buffer *b,int ofs,unsigned char value)
+{
+  test_offset(b, ofs, 1);
+  b->bytes[ofs]=value;
+  return 0;
+}
+
+int ob_getbyte(overlay_buffer *b,int ofs)
+{
+  test_offset(b, ofs, 1);
+  if (ofs >= b->length) FATALF("passed offset too large %d", ofs);
+  return b->bytes[ofs];
+}
+
 unsigned int ob_get_int(overlay_buffer *b,int offset)
 {
-  if (!b) return WHY("b is NULL");
-  if (offset<0) return WHY("passed illegal offset (<0)");
-  if ((offset+sizeof(unsigned int))>b->length) return WHY("passed offset too large");
+  // TODO unsigned -1? FATAL?
+  test_offset(b, offset, sizeof(unsigned int));
 
   // Some platforms require alignment
   if (((uintptr_t)&b->bytes[offset])&3) {
@@ -207,28 +267,6 @@ unsigned int ob_get_int(overlay_buffer *b,int offset)
     return ntohl(bb.ui32);
   } else
     return ntohl(*((uint32_t*)&b->bytes[offset]));
-}
-
-int ob_append_rfs(overlay_buffer *b,int l)
-{
-  /* Encode the specified length and append it to the buffer */
-  if (l<0||l>0xffff) return -1;
-
-  /* First work out how long the field needs to be, then write dummy bytes
-     and use ob_patch_rfs to set the value.  That way we have only one
-     lot of code that does the encoding. */
-
-  b->var_length_offset=b->length;
-  b->var_length_bytes=rfs_length(l);
-
-  unsigned char c[3]={0,0,0};
-  if (ob_append_bytes(b,c,b->var_length_bytes)) {
-    b->var_length_offset=0;
-    return -1;
-  }
-
-  return ob_patch_rfs(b,l);
-
 }
 
 int rfs_length(int l)

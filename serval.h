@@ -620,9 +620,13 @@ extern overlay_peer overlay_peers[OVERLAY_MAX_PEERS];
 
 typedef struct overlay_buffer {
   unsigned char *bytes;
+  // position of data read / written
   int length;
+  // allocated size of buffer
   int allocSize;
+  // remembered position for rewinding
   int checkpointLength;
+  // maximum allowed bytes for reading / writing
   int sizeLimit;
   int var_length_offset;
   int var_length_bytes;
@@ -830,9 +834,11 @@ const char *trimbuildpath(const char *s);
 #define D DEBUG("D")
 
 overlay_buffer *ob_new(int size);
+overlay_buffer *ob_static(unsigned char *bytes, int size);
 int ob_free(overlay_buffer *b);
 int ob_checkpoint(overlay_buffer *b);
 int ob_rewind(overlay_buffer *b);
+int ob_setlength(overlay_buffer *b,int bytes);
 int ob_limitsize(overlay_buffer *b,int bytes);
 int ob_unlimitsize(overlay_buffer *b);
 int ob_makespace(overlay_buffer *b,int bytes);
@@ -844,6 +850,10 @@ int ob_append_int(overlay_buffer *b,unsigned int v);
 int ob_patch_rfs(overlay_buffer *b,int l);
 int ob_indel_space(overlay_buffer *b,int offset,int shift);
 int ob_append_rfs(overlay_buffer *b,int l);
+int ob_setbyte(overlay_buffer *b,int ofs,unsigned char value);
+int ob_getbyte(overlay_buffer *b,int ofs);
+int ob_dump(overlay_buffer *b,char *desc);
+unsigned int ob_get_int(overlay_buffer *b,int offset);
 
 int op_free(overlay_frame *p);
 overlay_frame *op_dup(overlay_frame *f);
@@ -1062,8 +1072,6 @@ int overlayServerMode();
 int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP);
 long long overlay_time_in_ms();
 int overlay_abbreviate_lookup_sender_id();
-int ob_dump(overlay_buffer *b,char *desc);
-unsigned int ob_get_int(overlay_buffer *b,int offset);
 int overlay_route_record_link(long long now,unsigned char *to,
 			      unsigned char *via,int sender_interface,
 			      unsigned int s1,unsigned int s2,int score,int gateways_en_route);
@@ -1362,9 +1370,6 @@ int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
 int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp);
 int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 		     struct sockaddr_un *recvaddr,int recvaddlen);
-
-int ob_bcopy(overlay_buffer *b,int from, int to, int len);
-int ob_setbyte(overlay_buffer *b,int ofs,unsigned char value);
 
 int dump_payload(overlay_frame *p,char *message);
 
