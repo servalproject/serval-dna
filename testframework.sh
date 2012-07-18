@@ -150,6 +150,9 @@ runTests() {
       shift
    done
    _tfw_shopt_restore
+   if $_tfw_verbose && [ $njobs -ne 1 ]; then
+      _tfw_fatal "--verbose is incompatible with --jobs=$njobs"
+   fi
    # Create an empty results directory.
    _tfw_results_dir="$_tfw_tmpdir/results"
    mkdir "$_tfw_results_dir" || return $?
@@ -183,23 +186,34 @@ runTests() {
       $_tfw_stop_on_failure && [ $_tfw_failcount -ne 0 ] && break
       # Start the next test in a child process.
       _tfw_echo_intro $testPosition $testNumber $testName
-      [ $njobs -ne 1 ] && echo
+      if $_tfw_verbose || [ $njobs -ne 1 ]; then
+         echo
+      fi
+      echo "$testPosition $testNumber $testName" >"$_tfw_results_dir/$testName"
       (
-         _tfw_unique=$!
-         echo "$testPosition $testNumber $testName" >"$_tfw_results_dir/$_tfw_unique"
+         _tfw_test_name="$testName"
+         # Pick a unique decimal number that must not coincide with other tests
+         # being run concurrently, _including tests being run in other test
+         # scripts by other users on the same host_.  We cannot simply use
+         # $testNumber.  The subshell process ID is ideal.  We don't use
+         # $BASHPID because MacOS only has Bash-3.2, and $BASHPID was introduced
+         # in Bash-4.
+         _tfw_unique=$($BASH -c 'echo $PPID')
+         # All files created by this test belong inside a temporary directory.
+         # The path name must be kept short because it is used to construct
+         # named socket paths, which have a limited length.
          _tfw_tmp=/tmp/_tfw-$_tfw_unique
          trap '_tfw_status=$?; rm -rf "$_tfw_tmp"; exit $_tfw_status' EXIT SIGHUP SIGINT SIGTERM
          local start_time=$(_tfw_timestamp)
          local finish_time=unknown
          (
-            _tfw_test_name="$testName"
             trap '_tfw_status=$?; _tfw_teardown; exit $_tfw_status' EXIT SIGHUP SIGINT SIGTERM
             _tfw_result=ERROR
             mkdir $_tfw_tmp || exit 255
             _tfw_setup
             _tfw_result=FAIL
             _tfw_phase=testcase
-            echo "# call test_$_tfw_test_name()"
+            tfw_log "# CALL test_$_tfw_test_name()"
             $_tfw_trace && set -x
             test_$_tfw_test_name
             _tfw_result=PASS
@@ -214,11 +228,11 @@ runTests() {
          finish_time=$(_tfw_timestamp)
          local result=FATAL
          case $stat in
-         254) result=ERROR;; 
+         254) result=ERROR;;
          1) result=FAIL;;
-         0) result=PASS;; 
+         0) result=PASS;;
          esac
-         echo "$testPosition $testNumber $testName $result" >"$_tfw_results_dir/$_tfw_unique"
+         echo "$testPosition $testNumber $testName $result" >"$_tfw_results_dir/$testName"
          {
             echo "Name:     $testName"
             echo "Result:   $result"
@@ -239,6 +253,7 @@ runTests() {
          exit 0
       ) &
       _tfw_running_pids+=($!)
+      ln -s "$_tfw_results_dir/$testName" "$_tfw_results_dir/pid-$!"
    done
    # Wait for all child processes to finish.
    while [ ${#_tfw_running_pids[*]} -ne 0 ]; do
@@ -260,19 +275,23 @@ _tfw_echo_intro() {
 }
 
 _tfw_harvest_processes() {
+   # <incantation>
+   # This is the only way known to get the effect of a 'wait' builtin that will
+   # return when _any_ child dies or after a one-second timeout.
    trap 'kill $spid 2>/dev/null' SIGCHLD
    sleep 1 &
    spid=$!
    set -m
    wait $spid 2>/dev/null
    trap - SIGCHLD
+   # </incantation>
    local -a surviving_pids=()
    local pid
    for pid in ${_tfw_running_pids[*]}; do
       if kill -0 $pid 2>/dev/null; then
          surviving_pids+=($pid)
-      elif [ -s "$_tfw_results_dir/$pid" ]; then
-         set -- $(<"$_tfw_results_dir/$pid")
+      elif [ -s "$_tfw_results_dir/pid-$pid" ]; then
+         set -- $(<"$_tfw_results_dir/pid-$pid")
          local testPosition="$1"
          local testNumber="$2"
          local testName="$3"
@@ -293,11 +312,11 @@ _tfw_harvest_processes() {
             ;;
          esac
          local lines
-         if [ $njobs -eq 1 ]; then
+         if ! $_tfw_verbose && [ $njobs -eq 1 ]; then
             echo -n " "
             _tfw_echo_result "$result"
             echo
-         elif lines=$($_tfw_tput lines); then
+         elif ! $_tfw_verbose && lines=$($_tfw_tput lines); then
             local travel=$(($_tfw_test_number_watermark - $testPosition + 1))
             if [ $travel -gt 0 -a $travel -lt $lines ] && $_tfw_tput cuu $travel ; then
                _tfw_echo_intro $testPosition $testNumber $testName
@@ -430,7 +449,7 @@ executeOk() {
 #  - can specify the timeout with --timeout=SECONDS
 #  - can specify the sleep interval with --sleep=SECONDS
 #  - the condition is a command that is executed repeatedly until returns zero
-#    status 
+#    status
 # where SECONDS may be fractional, eg, 1.5
 wait_until() {
    tfw_log "# wait_until" $(_tfw_shellarg "$@")
@@ -634,7 +653,7 @@ _tfw_abspath() {
    */)
       builtin echo $(_tfw_abspath $cdopt "${1%/}")/
       ;;
-   /*/*) 
+   /*/*)
       if [ -d "$1" ]; then
          (CDPATH= builtin cd $cdopt "$1" && builtin echo "$PWD")
       else
@@ -673,9 +692,12 @@ _tfw_setup() {
    _tfw_stdout=5
    _tfw_stderr=5
    if $_tfw_verbose; then
-      # These tail processes will die when the test case's subshell exits.
-      tail --pid=$BASHPID --follow $_tfw_tmp/log.stdout >&$_tfw_stdout 2>/dev/null &
-      tail --pid=$BASHPID --follow $_tfw_tmp/log.stderr >&$_tfw_stderr 2>/dev/null &
+      # Find the PID of the current subshell process.  Cannot use $BASHPID
+      # because MacOS only has Bash-3.2, and $BASHPID was introduced in Bash-4.
+      local mypid=$($BASH -c 'echo $PPID')
+      # These tail processes will die when the current subshell exits.
+      tail --pid=$mypid --follow $_tfw_tmp/log.stdout >&$_tfw_stdout 2>/dev/null &
+      tail --pid=$mypid --follow $_tfw_tmp/log.stderr >&$_tfw_stderr 2>/dev/null &
    fi
    export TFWUNIQUE=$_tfw_unique
    export TFWVAR=$_tfw_tmp/var
