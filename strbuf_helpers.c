@@ -76,7 +76,9 @@ strbuf strbuf_append_exit_status(strbuf sb, int status)
 #endif
   } else if (WIFSTOPPED(status))
     strbuf_sprintf(sb, "stopped by signal %u (%s)", WSTOPSIG(status), strsignal(WSTOPSIG(status)));
+#ifdef WIFCONTINUED
   else if (WIFCONTINUED(status))
     strbuf_sprintf(sb, "continued by signal %u (SIGCONT)", SIGCONT);
+#endif
   return sb;
 }

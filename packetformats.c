@@ -296,7 +296,7 @@ int extractRequest(unsigned char *packet,int *packet_ofs,int packet_len,
   *bytes|=packet[(*packet_ofs)++];
 
   *flags=packet[(*packet_ofs)++];
-  if (debug&DEBUG_DNAREQUESTS) printf("Write flags = 0x%02x\n",*flags);
+  if (debug&DEBUG_PACKETFORMATS) printf("Write flags = 0x%02x\n",*flags);
 
   if (*packet_ofs<0||(*packet_ofs)+(*bytes)>=packet_len)
     {

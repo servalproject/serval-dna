@@ -503,6 +503,7 @@ struct sched_ent{
   int _poll_index;
 };
 
+#define STRUCT_SCHED_ENT_UNUSED ((struct sched_ent){NULL, NULL, NULL, NULL, {-1, 0, 0}, 0LL, NULL, -1})
 
 extern int overlayMode;
 #define OVERLAY_INTERFACE_UNKNOWN 0
@@ -782,6 +783,7 @@ int overlay_frame_resolve_addresses(overlay_frame *f);
 #define LOG_LEVEL_FATAL     (4)
 
 extern unsigned int debug;
+void set_logging(FILE *f);
 FILE *open_logging();
 void close_logging();
 void logMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, ...);
@@ -789,41 +791,47 @@ void vlogMessage(int level, const char *file, unsigned int line, const char *fun
 unsigned int debugFlagMask(const char *flagname);
 char *catv(const char *data, char *buf, size_t len);
 int dump(char *name, unsigned char *addr, size_t len);
-char *toprint(char *dstStr, size_t dstChars, const unsigned char *srcBuf, size_t srcBytes);
+char *toprint(char *dstStr, ssize_t dstStrLen, const unsigned char *srcBuf, size_t srcBytes);
+size_t toprint_strlen(ssize_t dstStrLen, const unsigned char *srcBuf, size_t srcBytes);
 
-#define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca((dstlen) + 1), (dstlen) + 1, (buf), (len))
+#define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca(toprint_strlen((dstlen), (buf), (len)) + 1), (dstlen), (buf), (len))
 
 #define alloca_tohex(buf,len)           tohex((char *)alloca((len)*2+1), (buf), (len))
 #define alloca_tohex_sid(sid)           alloca_tohex((sid), SID_SIZE)
 
 const char *trimbuildpath(const char *s);
 
-#define LOGF(L,F,...)       (logMessage(L, __FILE__, __LINE__, __FUNCTION__, F, ##__VA_ARGS__))
 #define logMessage_perror(L,file,line,func,F,...) \
                             (logMessage(L, file, line, func, F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno))
 
+#define LOGF(L,F,...)       logMessage(L, __FILE__, __LINE__, __FUNCTION__, F, ##__VA_ARGS__)
+#define LOGF_perror(L,F,...) logMessage_perror(L, __FILE__, __LINE__, __FUNCTION__, F, ##__VA_ARGS__)
+#define LOG_perror(L,X)     LOGF_perror(L, "%s", (X))
+
 #define FATALF(F,...)       do { LOGF(LOG_LEVEL_FATAL, F, ##__VA_ARGS__); exit(-1); } while (1)
 #define FATAL(X)            FATALF("%s", (X))
-#define FATAL_perror(X)     FATALF("%s: %s [errno=%d]", (X), strerror(errno), errno)
+#define FATALF_perror(F,...) do { LOGF_perror(LOG_LEVEL_FATAL, F, ##__VA_ARGS__); exit(-1); } while (1)
+#define FATAL_perror(X)     FATALF_perror("%s", (X))
 
 #define WHYF(F,...)         (LOGF(LOG_LEVEL_ERROR, F, ##__VA_ARGS__), -1)
 #define WHY(X)              WHYF("%s", (X))
 #define WHYNULL(X)          (LOGF(LOG_LEVEL_ERROR, "%s", X), NULL)
-#define WHYF_perror(F,...)  WHYF(F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno)
-#define WHY_perror(X)       WHYF("%s: %s [errno=%d]", (X), strerror(errno), errno)
+#define WHYF_perror(F,...)  (LOGF_perror(LOG_LEVEL_ERROR, F, ##__VA_ARGS__), -1)
+#define WHY_perror(X)       WHYF_perror("%s", (X))
 
 #define WARNF(F,...)        LOGF(LOG_LEVEL_WARN, F, ##__VA_ARGS__)
 #define WARN(X)             WARNF("%s", (X))
-#define WARN_perror(X)      WARNF("%s: %s [errno=%d]", (X), strerror(errno), errno)
+#define WARNF_perror(F,...) LOGF_perror(LOG_LEVEL_WARN, F, ##__VA_ARGS__)
+#define WARN_perror(X)      WARNF_perror("%s", (X))
 
 #define INFOF(F,...)        LOGF(LOG_LEVEL_INFO, F, ##__VA_ARGS__)
 #define INFO(X)             INFOF("%s", (X))
 
 #define DEBUGF(F,...)       LOGF(LOG_LEVEL_DEBUG, F, ##__VA_ARGS__)
 #define DEBUG(X)            DEBUGF("%s", (X))
-#define DEBUGF_perror(F,...) DEBUGF(F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno)
-#define DEBUG_perror(X)     DEBUGF("%s: %s [errno=%d]", (X), strerror(errno), errno)
-#define D DEBUG("D")
+#define DEBUGF_perror(F,...) LOGF_perror(LOG_LEVEL_DEBUG, F, ##__VA_ARGS__)
+#define DEBUG_perror(X)     DEBUGF_perror("%s", (X))
+#define D                   DEBUG("D")
 
 overlay_buffer *ob_new(int size);
 int ob_free(overlay_buffer *b);
@@ -1087,7 +1095,7 @@ int overlay_saw_mdp_containing_frame(overlay_frame *f,long long now);
 #define DEBUG_VERBOSE_IO            (1 << 3)
 #define DEBUG_PEERS                 (1 << 4)
 #define DEBUG_DNARESPONSES          (1 << 5)
-#define DEBUG_DNAREQUESTS           (1 << 6)
+#define DEBUG_DNAHELPER             (1 << 6)
 #define DEBUG_SIMULATION            (1 << 7)
 #define DEBUG_RHIZOME_RX            (1 << 8)
 #define DEBUG_PACKETFORMATS         (1 << 9)
@@ -1574,12 +1582,12 @@ void sigIoHandler(int signal);
 
 int _set_nonblock(int fd, const char *file, unsigned int line, const char *function);
 int _set_block(int fd, const char *file, unsigned int line, const char *function);
-int _read_nonblock(int fd, void *buf, size_t len, const char *file, unsigned int line, const char *function);
-int _write_all(int fd, const void *buf, size_t len, const char *file, unsigned int line, const char *function);
-int _write_nonblock(int fd, const void *buf, size_t len, const char *file, unsigned int line, const char *function);
-int _write_all_nonblock(int fd, const void *buf, size_t len, const char *file, unsigned int line, const char *function);
-int _write_str(int fd, const char *str, const char *file, unsigned int line, const char *function);
-int _write_str_nonblock(int fd, const char *str, const char *file, unsigned int line, const char *function);
+ssize_t _read_nonblock(int fd, void *buf, size_t len, const char *file, unsigned int line, const char *function);
+ssize_t _write_all(int fd, const void *buf, size_t len, const char *file, unsigned int line, const char *function);
+ssize_t _write_nonblock(int fd, const void *buf, size_t len, const char *file, unsigned int line, const char *function);
+ssize_t _write_all_nonblock(int fd, const void *buf, size_t len, const char *file, unsigned int line, const char *function);
+ssize_t _write_str(int fd, const char *str, const char *file, unsigned int line, const char *function);
+ssize_t _write_str_nonblock(int fd, const char *str, const char *file, unsigned int line, const char *function);
 
 int rhizome_http_server_start();
 int overlay_mdp_setup_sockets();
@@ -1599,6 +1607,8 @@ void server_shutdown_check(struct sched_ent *alarm);
 void overlay_mdp_poll(struct sched_ent *alarm);
 void fd_periodicstats(struct sched_ent *alarm);
 void rhizome_check_connections(struct sched_ent *alarm);
+
+int dna_helper_shutdown();
 
 void monitor_client_poll(struct sched_ent *alarm);
 void monitor_poll(struct sched_ent *alarm);

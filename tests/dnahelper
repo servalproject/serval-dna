@@ -37,7 +37,8 @@ teardown() {
 configure_servald_server() {
    executeOk_servald config set log.show_pid on
    executeOk_servald config set log.show_time on
-   executeOk_servald config set dna.helper.executable "$TFWTMP/dnahelper"
+   executeOk_servald config set debug.dnahelper on
+   executeOk_servald config set dna.helper.executable "$dnahelper"
 }
 
 setup_dnahelper() {
@@ -47,50 +48,70 @@ setup_dnahelper() {
 # Sample DNA Helper application for testing
 import sys
 def main():
-    print "STARTED"
-    while True:
-        line = sys.stdin.readline().strip()
-        if line == "":
-            # EOF detection is broken :(
-            break
-        s = line.split('|')
-        if len(s) != 3:
-            print "ERROR"
-            continue
-        (token, number, xxx) = s
-        if number == "12345":
-            # Multiple results (SID/VoMP results)
-            print "%s|sid:%s|%s|%s|" % (token, token, number, "Agent A. Smith")
-            print "%s|sid:%s|%s|%s|" % (token, token, number, "Agent B. Smith")
-        if number == "5551234":
-            # Single result, SIP URI
-            print "%s|sip://5551234@10.1.2.3|%s|%s|" % (token, number, "Will Smith")
-        if number == "5551001":
-            # Empty URI field
-            print "%s||%s|%s|" % (token, number, "Empty URI")
-        if number == "5551002":
-            # Empty DID field
-            print "%s|sip://123@1.2.3.4||%s|" % (token, "Empty DID")
-        if number == "5551003":
-            # Empty CALLERID field
-            print "%s|sip://empty-callerid@1.2.3.4|%s||" % (token, number)
-        if number == "5551004":
-            # Excessively long callerid
-            print "%s|sip://long-callerid@1.2.3.4|%s|%s|" % (token, 'x' * 200, number)
-        if number == "5551005":
-            # Excessively long DID
-            print "%s|sip://long-did@1.2.3.4|%s|%s|" % (token, 'x' * 200, "Agent Smith")
-        if number == "5551006":
-            # Excessively long URI
-            print "%s|sip://%s|%s|%s|" % (token, 'x' * 1000, number, "Agent Smith")
-        if number == "5551007":
-            # Incorrect token
-            print "cheeseburger|sip://incorrect-token@1.2.3.4|%s||" % (token, number)
-        print "DONE"
+   print "STARTED"
+   sys.stdout.flush()
+   while True:
+      sys.stderr.write("wah\n")
+      line = sys.stdin.readline().strip()
+      if line == "":
+         # EOF detection is broken :(
+         break
+      s = line.split('|')
+      if len(s) != 3:
+         print "ERROR"
+         continue
+      (token, number, xxx) = s
+      if number == "12345":
+         # Multiple results (SID/VoMP results)
+         print "%s|sid:%s|%s|%s|" % (token, token, number, "Agent A. Smith")
+         print "%s|sid:%s|%s|%s|" % (token, token, number, "Agent B. Smith")
+      elif number == "5551234":
+         # Single result, SIP URI
+         print "%s|sip://5551234@10.1.2.3|%s|%s|" % (token, number, "Will Smith")
+      elif number == "5551001":
+         # Empty URI field
+         print "%s||%s|%s|" % (token, number, "Empty URI")
+      elif number == "5551002":
+         # Empty DID field
+         print "%s|sip://123@1.2.3.4||%s|" % (token, "Empty DID")
+      elif number == "5551003":
+         # Empty CALLERID field
+         print "%s|sip://empty-callerid@1.2.3.4|%s||" % (token, number)
+      elif number == "5551004":
+         # Excessively long callerid
+         print "%s|sip://long-callerid@1.2.3.4|%s|%s|" % (token, 'x' * 200, number)
+      elif number == "5551005":
+         # Excessively long DID
+         print "%s|sip://long-did@1.2.3.4|%s|%s|" % (token, 'x' * 200, "Agent Smith")
+      elif number == "5551006":
+         # Excessively long URI
+         print "%s|sip://%s|%s|%s|" % (token, 'x' * 1000, number, "Agent Smith")
+      elif number == "5551007":
+         # Incorrect token
+         print "cheeseburger|sip://incorrect-token@1.2.3.4|%s||" % (token, number)
+      elif number == "11111":
+         print "%s|A|%s|B|" % (token, number)
+      print "DONE"
+      sys.stdout.flush()
 if __name__ == "__main__":
-    main()
+   main()
 EOF
    chmod 0755 "$dnahelper"
+   executeOk "$dnahelper" <<EOF
+ToKeN|11111|
+EOF
+   assertStdoutIs -e "STARTED\nToKeN|A|11111|B|\nDONE\n"
+}
+
+doc_ExecError="Non-existent DNA helper executable"
+setup_ExecError() {
+   setup
+   dnahelper=/non/existent
+   assert [ ! -e "$dnahelper" ]
+   start_servald_instances +A
+}
+test_ExecError() {
+   executeOk_servald dna lookup 12345
 }
 
 doc_Simple="Simple DNA helper test"
