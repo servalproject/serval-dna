@@ -69,6 +69,24 @@ strbuf strbuf_puts(strbuf sb, const char *text)
   return sb;
 }
 
+strbuf strbuf_tohex(strbuf sb, const unsigned char *data, size_t len)
+{
+  static char hexdigit[16] = {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
+  char *p = sb->current;
+  sb->current += len * 2;
+  if (sb->start) {
+    char *e = sb->current < sb->end ? sb->current : sb->end;
+    // The following loop could overwrite the '\0' at *sp->end.
+    for (; p < e; ++data) {
+      *p++ = hexdigit[*data >> 4];
+      *p++ = hexdigit[*data & 0xf];
+    }
+    // This will restore the '\0' at *sp->end if it was overwritten.
+    *e = '\0';
+  }
+  return sb;
+}
+
 strbuf strbuf_putc(strbuf sb, char ch)
 {
   if (sb->start && sb->current < sb->end) {

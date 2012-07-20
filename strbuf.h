@@ -254,6 +254,23 @@ strbuf strbuf_ncat(strbuf sb, const char *text, size_t len);
 strbuf strbuf_puts(strbuf sb, const char *text);
 
 
+/** Append binary data strbuf, in uppercase hexadecimal format, truncating if
+ * necessary to avoid buffer overrun.  Return a pointer to the strbuf.
+ *
+ * After these operations:
+ *      n = strbuf_len(sb);
+ *      c = strbuf_count(sb);
+ *      strbuf_tohex(data, len);
+ * the following invariants hold:
+ *      strbuf_count(sb) == c + len * 2
+ *      strbuf_len(sb) >= n
+ *      strbuf_len(sb) <= n + len * 2
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+strbuf strbuf_tohex(strbuf sb, const unsigned char *data, size_t len);
+
+
 /** Append a single character to the strbuf if there is space, and place a
  * terminating nul after it.  Return a pointer to the strbuf so that
  * concatenations can be chained in a single line.
