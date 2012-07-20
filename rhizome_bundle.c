@@ -141,7 +141,7 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
       m->errors++;
       WARNF(bufferP ? "Malformed manifest line in buffer %p: %s"
 		    : "Malformed manifest line in file %s: %s",
-	  filename, alloca_toprint(80, (unsigned char *)line, linelen));
+	  filename, alloca_toprint(80, line, linelen));
     } else {
       *p++ = '\0';
       char *var = line;

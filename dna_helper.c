@@ -44,16 +44,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
 int
-parseDnaReply(const unsigned char *bytes, int count, 
-	      char *sidhex, char *did, char *name, char *uri)
+parseDnaReply(const char *bytes, size_t count, unsigned char *sid, char *did, char *name, char *uri)
 {
-  /* Replies look like: TOKEN|URI|DID|NAME| */
-  const unsigned char *b = bytes;
-  const unsigned char *e = bytes + count;
+  /* Replies look like: TOKEN|URI|DID|NAME| where TOKEN is a SID in hex format */
+  const char *b = bytes;
+  const char *e = bytes + count;
   char *p, *q;
-  for (p = sidhex, q = sidhex + SID_STRLEN; b != e && *b != '|' && p != q; ++p, ++b)
-    *p = *b;
-  *p = '\0';
+  if (count < SID_STRLEN || fromhex(sid, bytes, SID_SIZE) == -1)
+    return -1;
+  b += SID_STRLEN;
   if (b == e || *b++ != '|')
     return -1;
   for (p = uri, q = uri + 511; b != e && *b != '|' && p != q; ++p, ++b)
@@ -86,42 +85,55 @@ static struct sched_ent sched_harvester = STRUCT_SCHED_ENT_UNUSED;
 static struct sched_ent sched_errors = STRUCT_SCHED_ENT_UNUSED;
 static struct sched_ent schedrestart = STRUCT_SCHED_ENT_UNUSED;
 
-static char request_buffer[1024];
-static size_t request_length = 0;
+// This buffer must hold "SID|DID|\n\0"
+static char request_buffer[SID_STRLEN + DID_MAXSIZE + 4];
+static char *request_bufptr = NULL;
+static char *request_bufend = NULL;
+overlay_mdp_data_frame request_mdp_data;
 
-void monitor_requests(struct sched_ent *alarm);
-void monitor_replies(struct sched_ent *alarm);
-void monitor_errors(struct sched_ent *alarm);
-void harvester(struct sched_ent *alarm);
+static int awaiting_reply = 0;
+static int discarding_until_nl = 0;
+static char reply_buffer[2048];
+static char *reply_bufend = NULL;
+
+static void monitor_requests(struct sched_ent *alarm);
+static void monitor_replies(struct sched_ent *alarm);
+static void monitor_errors(struct sched_ent *alarm);
+static void harvester(struct sched_ent *alarm);
+static void restart_delayer(struct sched_ent *alarm);
 
 static void
 dna_helper_close_pipes()
 {
-  if (debug & DEBUG_DNAHELPER)
-    DEBUG("Closing DNA helper pipes");
+  if (dna_helper_stdin != -1) {
+    if (debug & DEBUG_DNAHELPER)
+      DEBUGF("Closing DNA helper stdin pipe fd=%d", dna_helper_stdin);
+    close(dna_helper_stdin);
+    dna_helper_stdin = -1;
+  }
   if (sched_requests.poll.fd != -1) {
     unwatch(&sched_requests);
     sched_requests.poll.fd = -1;
   }
-  if (dna_helper_stdin != -1) {
-    close(dna_helper_stdin);
-    dna_helper_stdin = -1;
+  if (dna_helper_stdout != -1) {
+    if (debug & DEBUG_DNAHELPER)
+      DEBUGF("Closing DNA helper stdout pipe fd=%d", dna_helper_stdout);
+    close(dna_helper_stdout);
+    dna_helper_stdout = -1;
   }
   if (sched_replies.poll.fd != -1) {
     unwatch(&sched_replies);
     sched_replies.poll.fd = -1;
   }
-  if (dna_helper_stdout != -1) {
-    close(dna_helper_stdout);
-    dna_helper_stdout = -1;
+  if (dna_helper_stderr != -1) {
+    if (debug & DEBUG_DNAHELPER)
+      DEBUGF("Closing DNA helper stderr pipe fd=%d", dna_helper_stderr);
+    close(dna_helper_stderr);
+    dna_helper_stderr = -1;
   }
   if (sched_errors.poll.fd != -1) {
     unwatch(&sched_errors);
     sched_errors.poll.fd = -1;
-  }
-  if (dna_helper_stderr != -1) {
-    close(dna_helper_stderr);
-    dna_helper_stderr = -1;
   }
 }
 
@@ -193,7 +205,7 @@ dna_helper_start(const char *command, const char *arg)
       );
     sched_requests.function = monitor_requests;
     sched_requests.context = NULL;
-    sched_requests.poll.fd = dna_helper_stdin;
+    sched_requests.poll.fd = -1;
     sched_requests.poll.events = POLLOUT;
     sched_requests.stats = NULL;
     sched_replies.function = monitor_replies;
@@ -209,6 +221,9 @@ dna_helper_start(const char *command, const char *arg)
     sched_harvester.function = harvester;
     sched_harvester.stats = NULL;
     sched_harvester.alarm = overlay_gettime_ms() + 1000;
+    reply_bufend = reply_buffer;
+    discarding_until_nl = 0;
+    awaiting_reply = 0;
     watch(&sched_replies);
     watch(&sched_errors);
     schedule(&sched_harvester);
@@ -218,7 +233,7 @@ dna_helper_start(const char *command, const char *arg)
 }
 
 static int
-dna_helper_stop()
+dna_helper_kill()
 {
   if (dna_helper_pid > 0) {
     if (debug & DEBUG_DNAHELPER)
@@ -259,7 +274,7 @@ int dna_helper_shutdown()
   if (debug & DEBUG_DNAHELPER)
     DEBUG("Shutting down DNA helper");
   dna_helper_close_pipes();
-  switch (dna_helper_stop()) {
+  switch (dna_helper_kill()) {
   case -1:
     return -1;
   case 0:
@@ -269,15 +284,7 @@ int dna_helper_shutdown()
   }
 }
 
-void dna_helper_restart(struct sched_ent *alarm)
-{
-  if (debug & DEBUG_DNAHELPER)
-    DEBUG("Re-enable DNA helper restart");
-  if (dna_helper_pid == 0)
-    dna_helper_pid = -1;
-}
-
-void monitor_requests(struct sched_ent *alarm)
+static void monitor_requests(struct sched_ent *alarm)
 {
   if (debug & DEBUG_DNAHELPER) {
     DEBUGF("sched_requests.poll.revents=%s",
@@ -285,35 +292,97 @@ void monitor_requests(struct sched_ent *alarm)
       );
   }
   if (sched_requests.poll.revents & (POLLHUP | POLLERR)) {
-    WARN("DNA helper stdin closed -- stopping DNA helper");
+    if (debug & DEBUG_DNAHELPER)
+      DEBUGF("Closing DNA helper stdin fd=%d", dna_helper_stdin);
     close(dna_helper_stdin);
     dna_helper_stdin = -1;
     unwatch(&sched_requests);
     sched_requests.poll.fd = -1;
-    dna_helper_stop();
+    dna_helper_kill();
   }
   else if (sched_requests.poll.revents & POLLOUT) {
-    unwatch(&sched_requests);
-    sched_requests.poll.fd = -1;
-    if (request_length) {
-      sigPipeFlag = 0;
-      if (write_all(dna_helper_stdin, request_buffer, request_length) == request_length) {
-	// Request sent successfully.  Start watching for reply.
-	request_length = 0;
-      } else if (sigPipeFlag) {
-	/* Broken pipe is probably due to a dead helper, but make sure the helper is dead, just to be
-	   sure.  It will be harvested at the next harvester() timeout, and restarted on the first
-	   request that arrives after a suitable pause has elapsed.  Losing the current request is not
-	   a big problem, because DNA preemptively retries.
-	*/
-	WARN("Got SIGPIPE from DNA helper -- stopping DNA helper");
-	dna_helper_stop();
+    if (request_bufptr) {
+      if (request_bufptr < request_bufend) {
+	size_t remaining = request_bufend - request_bufptr;
+	sigPipeFlag = 0;
+	ssize_t written = write_nonblock(dna_helper_stdin, request_bufptr, remaining);
+	if (sigPipeFlag) {
+	  /* Broken pipe is probably due to a dead helper, but make sure the helper is dead, just to be
+	    sure.  It will be harvested at the next harvester() timeout, and restarted on the first
+	    request that arrives after a suitable pause has elapsed.  Losing the current request is not
+	    a big problem, because DNA preemptively retries.
+	  */
+	  WARN("Got SIGPIPE from DNA helper -- stopping DNA helper");
+	  dna_helper_kill();
+	} else if (written > 0) {
+	  request_bufptr += written;
+	}
       }
+      if (request_bufptr >= request_bufend) {
+	// Request sent successfully.  Start watching for reply.
+	request_bufptr = request_bufend = NULL;
+	awaiting_reply = 1;
+      }
+    }
+    // If no request to send, stop monitoring the helper's stdin pipe.
+    if (!request_bufptr) {
+      unwatch(&sched_requests);
+      sched_requests.poll.fd = -1;
     }
   }
 }
 
-void monitor_replies(struct sched_ent *alarm)
+static char *strnstr(char *haystack, size_t haystack_len, const char *needle)
+{
+  size_t needle_len = strlen(needle);
+  for (; haystack_len >= needle_len; ++haystack, --haystack_len) {
+    if (strncmp(haystack, needle, needle_len) == 0)
+      return haystack;
+  }
+  return NULL;
+}
+
+void handle_reply_line(const char *bufp, size_t len)
+{
+  if (!dna_helper_started) {
+    if (len == 8 && strncmp(bufp, "STARTED\n", 8) == 0) {
+      if (debug & DEBUG_DNAHELPER)
+	DEBUGF("Got DNA helper STARTED ACK");
+      dna_helper_started = 1;
+      // Start sending request if there is one pending.
+      if (request_bufptr) {
+	sched_requests.poll.fd = dna_helper_stdin;
+	watch(&sched_requests);
+      }
+    } else {
+      WHYF("Malformed DNA helper start ACK %s", alloca_toprint(-1, bufp, len));
+      dna_helper_kill();
+    }
+  } else if (awaiting_reply) {
+    if (len == 5 && strncmp(bufp, "DONE\n", 5) == 0) {
+      if (debug & DEBUG_DNAHELPER)
+	DEBUG("DNA helper reply DONE");
+      awaiting_reply = 0;
+      // Done
+    } else {
+      unsigned char sid[SID_SIZE];
+      char did[DID_MAXSIZE + 1];
+      char name[64];
+      char uri[512];
+      if (parseDnaReply(bufp, len, sid, did, name, uri) != -1) {
+	if (debug & DEBUG_DNAHELPER)
+	  DEBUGF("DNA helper reply %s", alloca_toprint(-1, bufp, len));
+	overlay_mdp_dnalookup_reply(&request_mdp_data, sid, uri, did, name);
+      } else {
+	WARNF("DNA helper invalid reply %s", alloca_toprint(-1, bufp, len));
+      }
+    }
+  } else {
+    WARNF("DNA helper spurious reply %s", alloca_toprint(-1, bufp, len));
+  }
+}
+
+static void monitor_replies(struct sched_ent *alarm)
 {
   if (debug & DEBUG_DNAHELPER) {
     DEBUGF("sched_replies.poll.revents=%s",
@@ -321,28 +390,41 @@ void monitor_replies(struct sched_ent *alarm)
       );
   }
   if (sched_replies.poll.revents & POLLIN) {
-    if (dna_helper_started) {
-      unsigned char buffer[1024];
-      ssize_t nread = read_nonblock(sched_replies.poll.fd, buffer, sizeof buffer);
-      if (nread > 0) {
-	if (debug & DEBUG_DNAHELPER)
-	  DEBUGF("DNA helper reply %s", alloca_toprint(-1, buffer, nread));
-	// TODO parse and send DNA reply
-      }
-    } else {
-      unsigned char buffer[8];
-      ssize_t nread = read_nonblock(sched_replies.poll.fd, buffer, sizeof buffer);
-      if (nread > 0) {
-	if (nread == sizeof buffer && strncmp((const char *)buffer, "STARTED\n", sizeof buffer) == 0)
-	  dna_helper_started = 1;
-	else {
-	  WHYF("Unexpected DNA helper ACK %s", alloca_toprint(-1, buffer, nread));
-	  dna_helper_stop();
+    size_t remaining = reply_buffer + sizeof reply_buffer - reply_bufend;
+    ssize_t nread = read_nonblock(sched_replies.poll.fd, reply_bufend, remaining);
+    if (nread > 0) {
+      char *bufp = reply_buffer;
+      char *readp = reply_bufend;
+      reply_bufend += nread;
+      char *nl;
+      while (nread > 0 && (nl = strnstr(readp, nread, "\n"))) {
+	size_t len = nl - bufp + 1;
+	if (discarding_until_nl) {
+	  if (debug & DEBUG_DNAHELPER)
+	    DEBUGF("Discarding %s", alloca_toprint(-1, bufp, len));
+	  discarding_until_nl = 0;
+	} else {
+	  handle_reply_line(bufp, len);
 	}
+	readp = bufp = nl + 1;
+	nread = reply_bufend - readp;
+      }
+      if (bufp != reply_buffer) {
+	size_t len = reply_bufend - bufp;
+	memmove(reply_buffer, bufp, len);
+	reply_bufend = reply_buffer + len;
+      } else if (reply_bufend >= reply_buffer + sizeof reply_buffer) {
+	WHY("DNA helper reply buffer overrun");
+	if (debug & DEBUG_DNAHELPER)
+	  DEBUGF("Discarding %s", alloca_toprint(-1, reply_buffer, sizeof reply_buffer));
+	reply_bufend = reply_buffer;
+	discarding_until_nl = 1;
       }
     }
   }
   if (sched_replies.poll.revents & (POLLHUP | POLLERR)) {
+    if (debug & DEBUG_DNAHELPER)
+      DEBUGF("Closing DNA helper stdout fd=%d", dna_helper_stdout);
     close(dna_helper_stdout);
     dna_helper_stdout = -1;
     unwatch(&sched_replies);
@@ -350,7 +432,7 @@ void monitor_replies(struct sched_ent *alarm)
   }
 }
 
-void monitor_errors(struct sched_ent *alarm)
+static void monitor_errors(struct sched_ent *alarm)
 {
   if (debug & DEBUG_DNAHELPER) {
     DEBUGF("sched_errors.poll.revents=%s",
@@ -358,20 +440,22 @@ void monitor_errors(struct sched_ent *alarm)
       );
   }
   if (sched_errors.poll.revents & POLLIN) {
-    unsigned char buffer[1024];
+    char buffer[1024];
     ssize_t nread = read_nonblock(sched_errors.poll.fd, buffer, sizeof buffer);
     if (nread > 0 && (debug & DEBUG_DNAHELPER))
       DEBUGF("DNA helper stderr %s", alloca_toprint(-1, buffer, nread));
   }
   if (sched_errors.poll.revents & (POLLHUP | POLLERR)) {
-    close(dna_helper_stdout);
-    dna_helper_stdout = -1;
+    if (debug & DEBUG_DNAHELPER)
+      DEBUGF("Closing DNA helper stderr fd=%d", dna_helper_stderr);
+    close(dna_helper_stderr);
+    dna_helper_stderr = -1;
     unwatch(&sched_errors);
     sched_errors.poll.fd = -1;
   }
 }
 
-void harvester(struct sched_ent *alarm)
+static void harvester(struct sched_ent *alarm)
 {
   // While the helper process appears to still be running, keep calling this function.
   // Otherwise, wait a while before re-starting the helper.
@@ -379,22 +463,34 @@ void harvester(struct sched_ent *alarm)
     sched_harvester.alarm = overlay_gettime_ms() + 1000;
     schedule(&sched_harvester);
   } else {
-    const int delay_ms = 2000;
+    const int delay_ms = 500;
     if (debug & DEBUG_DNAHELPER)
       DEBUGF("DNA helper has died, pausing %d ms before restart", delay_ms);
-    dna_helper_pid = 0;
-    schedrestart.function = dna_helper_restart;
+    dna_helper_pid = 0; // Will be set to -1 after delay
+    schedrestart.function = restart_delayer;
     schedrestart.alarm = overlay_gettime_ms() + delay_ms;
     schedule(&schedrestart);
   }
 }
 
-int
-dna_helper_enqueue(char *did, unsigned char *requestorSid)
+static void restart_delayer(struct sched_ent *alarm)
 {
+  if (dna_helper_pid == 0) {
+    if (debug & DEBUG_DNAHELPER)
+      DEBUG("Re-enable DNA helper restart");
+    dna_helper_pid = -1;
+  }
+}
+
+int
+dna_helper_enqueue(overlay_mdp_frame *mdp, const char *did, const unsigned char *requestorSid)
+{
+  if (debug & DEBUG_DNAHELPER)
+    DEBUGF("DNA helper request did=%s sid=%s", did, alloca_tohex_sid(requestorSid));
   if (dna_helper_pid == 0)
-    return -1;
-  if (dna_helper_pid == -1) {
+    return 0;
+  // Only try to restart a DNA helper process if the previous one is well and truly gone.
+  if (dna_helper_pid == -1 && dna_helper_stdin == -1 && dna_helper_stdout == -1 && dna_helper_stderr == -1) {
     const char *dna_helper_executable = confValueGet("dna.helper.executable", NULL);
     const char *dna_helper_arg1 = confValueGet("dna.helper.argv.1", NULL);
     if (!dna_helper_executable || !dna_helper_executable[0]) {
@@ -403,9 +499,9 @@ dna_helper_enqueue(char *did, unsigned char *requestorSid)
 	 in future looking up the dna helper configuration value. */
       INFO("No DNA helper configured");
       dna_helper_pid = 0;
-      return -1;
+      return 0;
     }
-    if (dna_helper_start(dna_helper_executable, dna_helper_arg1) < 0) {
+    if (dna_helper_start(dna_helper_executable, dna_helper_arg1) == -1) {
       /* Something broke, bail out */
       WHY("Failed to start DNA helper");
       return -1;
@@ -417,36 +513,35 @@ dna_helper_enqueue(char *did, unsigned char *requestorSid)
      any state, as all we have to do is wait for responses from the helper,
      which will include the requestor's SID.
   */
-  if (request_length) {
-    WARN("DNA helper request already pending -- dropping new request");
-  } else {
-    strbuf b = strbuf_local(request_buffer, sizeof request_buffer);
-    strbuf_sprintf(b, "%s|%s|\n", alloca_tohex_sid(requestorSid), did);
-    if (strbuf_overrun(b))
-      return WHY("DNA helper request buffer overrun -- request not sent");
-    else {
-      request_length = strbuf_len(b);
-      watch(&sched_requests);
-    }
+  if (dna_helper_stdin == -1)
+    return 0;
+  if (request_bufptr && request_bufptr != request_buffer) {
+    WARNF("Partially sent DNA helper request %s -- dropping new request", request_buffer);
+    return 0;
   }
-  return 0;
-}
-
-int dna_return_resolution(overlay_mdp_frame *mdp, unsigned char *fromSid,
-			  const char *did,const char *name, const char *uri) {
-  /* copy SID out into source address of frame */	      
-  bcopy(fromSid,&mdp->out.src.sid[0],SID_SIZE);
-  
-  /* and build reply as did\nname\nURI<NUL> */
-  snprintf((char *)&mdp->out.payload[0],512,"%s\n%s\n%s",
-	   did,name,uri);
-  mdp->out.payload_length=strlen((char *)mdp->out.payload)+1;
-
-  /* Dispatch response */
-  mdp->packetTypeAndFlags&=MDP_FLAG_MASK;
-  mdp->packetTypeAndFlags|=MDP_TX;
-  overlay_mdp_dispatch(mdp,0 /* system generated */,
-		       NULL,0);
-
-  return 0;
+  char buffer[sizeof request_buffer];
+  strbuf b = strbuf_local(request_bufptr == request_buffer ? buffer : request_buffer, sizeof buffer);
+  strbuf_tohex(b, requestorSid, SID_SIZE);
+  strbuf_putc(b, '|');
+  strbuf_puts(b, did);
+  strbuf_putc(b, '|');
+  strbuf_putc(b, '\n');
+  if (strbuf_overrun(b)) {
+    WHYF("DNA helper request buffer overrun: %s -- request not sent", strbuf_str(b));
+    request_bufptr = request_bufend = NULL;
+  } else {
+    if (strbuf_str(b) != request_buffer) {
+      if (strcmp(strbuf_str(b), request_buffer) != 0)
+	WARNF("Overwriting unsent DNA helper request %s", request_buffer);
+      strcpy(request_buffer, strbuf_str(b));
+    }
+    request_bufptr = request_buffer;
+    request_bufend = request_buffer + strbuf_len(b);
+    request_mdp_data = mdp->out;
+  }
+  if (dna_helper_started) {
+    sched_requests.poll.fd = dna_helper_stdin;
+    watch(&sched_requests);
+  }
+  return 1;
 }

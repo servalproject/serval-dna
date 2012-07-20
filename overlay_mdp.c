@@ -503,51 +503,26 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp,long long now)
 	  if (mdp->out.payload_length<1) {
 	    RETURN(WHY("Empty DID in DNA resolution request")); }
 	  bcopy(&mdp->out.payload[0],&did[0],pll);
-	  /* make sure it is null terminated */
 	  did[pll]=0; 
-	  /* remember source sid for putting back later */
-	  overlay_mdp_frame mdpreply;
-
 	  int results=0;
 	  while(keyring_find_did(keyring,&cn,&in,&kp,did))
 	    {
-	      bzero(&mdpreply,sizeof(mdpreply));
-
-	      /* mark as outgoing MDP message */
-	      mdpreply.packetTypeAndFlags=MDP_TX;
-	      
-	      /* Set source and destination addresses */
-	      bcopy(&mdp->out.dst.sid,mdpreply.out.src.sid,SID_SIZE);
-	      bcopy(&mdp->out.src.sid,mdpreply.out.dst.sid,SID_SIZE);
-	      mdpreply.out.src.port=mdp->out.dst.port;
-	      mdpreply.out.dst.port=mdp->out.src.port;
-
 	      /* package DID and Name into reply (we include the DID because
 		 it could be a wild-card DID search, but the SID is implied 
 		 in the source address of our reply). */
-	      if (keyring->contexts[cn]->identities[in]->keypairs[kp]
-		  ->private_key_len>64) 
+	      if (keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key_len > DID_MAXSIZE) 
 		/* skip excessively long DID records */
 		continue;
-	      /* and null-terminated DID */
-	      unsigned char *unpackedDid=
-		keyring->contexts[cn]->identities[in]->keypairs[kp]
-		->private_key;
-	      unsigned char *packedSid=
-		keyring->contexts[cn]->identities[in]->keypairs[0]
-		->public_key;
-	      char *name=
-		(char *)keyring->contexts[cn]->identities[in]->keypairs[kp]
-		->public_key;
-	      /* copy SID out into source address of frame */	      
-	      bcopy(packedSid, &mdpreply.out.src.sid[0], SID_SIZE);
-	      /* build reply as TOKEN|URI|DID|NAME|<NUL> */
-	      strbuf b = strbuf_local((char *)mdpreply.out.payload, sizeof mdpreply.out.payload);
-	      const char *sidhex = alloca_tohex_sid(packedSid);
-	      strbuf_sprintf(b, "%s|sid://%s/%s|%s|%s|", sidhex, sidhex, unpackedDid, unpackedDid, name);
-	      mdpreply.out.payload_length = strbuf_len(b) + 1;
-	      /* deliver reply */
-	      overlay_mdp_dispatch(&mdpreply,0 /* system generated */,NULL,0);
+	      const unsigned char *packedSid = keyring->contexts[cn]->identities[in]->keypairs[0]->public_key;
+	      const char *unpackedDid = (const char *) keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key;
+	      const char *name = (const char *)keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key;
+	      // URI is sid://SIDHEX/DID
+	      strbuf b = strbuf_alloca(SID_STRLEN + DID_MAXSIZE + 10);
+	      strbuf_puts(b, "sid://");
+	      strbuf_tohex(b, packedSid, SID_SIZE);
+	      strbuf_putc(b, '/');
+	      strbuf_puts(b, unpackedDid);
+	      overlay_mdp_dnalookup_reply(&mdp->out, packedSid, strbuf_str(b), unpackedDid, name);
 	      kp++;
 	      results++;
 	    }
@@ -562,8 +537,7 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp,long long now)
 	       when results become available, so this function will return
 	       immediately, so as not to cause blockages and delays in servald.
 	    */
-	    DEBUGF("Asking DNA helper to resolve '%s'",did);
-	    dna_helper_enqueue(did,mdp->out.src.sid);
+	    dna_helper_enqueue(mdp, did, mdp->out.src.sid);
 	  }
 	  RETURN(0);
 	  DEBUG("Got here");
@@ -621,6 +595,26 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp,long long now)
   }
 
   RETURN(0);
+}
+
+int overlay_mdp_dnalookup_reply(const overlay_mdp_data_frame *mdpd, const unsigned char *sid, const char *uri, const char *did, const char *name)
+{
+  overlay_mdp_frame mdpreply;
+  bzero(&mdpreply, sizeof mdpreply);
+  mdpreply.packetTypeAndFlags = MDP_TX; // outgoing MDP message
+  bcopy(mdpd->src.sid, mdpreply.out.dst.sid, SID_SIZE);
+  mdpreply.out.dst.port = mdpd->src.port;
+  mdpreply.out.src.port = mdpd->dst.port;
+  bcopy(sid, mdpreply.out.src.sid, SID_SIZE);
+  /* build reply as TOKEN|URI|DID|NAME|<NUL> */
+  strbuf b = strbuf_local((char *)mdpreply.out.payload, sizeof mdpreply.out.payload);
+  strbuf_tohex(b, sid, SID_SIZE);
+  strbuf_sprintf(b, "|%s|%s|%s|", uri, did, name);
+  if (strbuf_overrun(b))
+    return WHY("MDP payload overrun");
+  mdpreply.out.payload_length = strbuf_len(b) + 1;
+  /* deliver reply */
+  return overlay_mdp_dispatch(&mdpreply, 0 /* system generated */, NULL, 0);
 }
 
 int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,int userGeneratedFrameP,

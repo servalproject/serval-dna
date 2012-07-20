@@ -791,8 +791,8 @@ void vlogMessage(int level, const char *file, unsigned int line, const char *fun
 unsigned int debugFlagMask(const char *flagname);
 char *catv(const char *data, char *buf, size_t len);
 int dump(char *name, unsigned char *addr, size_t len);
-char *toprint(char *dstStr, ssize_t dstStrLen, const unsigned char *srcBuf, size_t srcBytes);
-size_t toprint_strlen(ssize_t dstStrLen, const unsigned char *srcBuf, size_t srcBytes);
+char *toprint(char *dstStr, ssize_t dstStrLen, const char *srcBuf, size_t srcBytes);
+size_t toprint_strlen(ssize_t dstStrLen, const char *srcBuf, size_t srcBytes);
 
 #define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca(toprint_strlen((dstlen), (buf), (len)) + 1), (dstlen), (buf), (len))
 
@@ -1362,6 +1362,7 @@ int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
 int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp);
 int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 		     struct sockaddr_un *recvaddr,int recvaddlen);
+int overlay_mdp_dnalookup_reply(const overlay_mdp_data_frame *mdpd, const unsigned char *sid, const char *uri, const char *did, const char *name);
 
 int ob_bcopy(overlay_buffer *b,int from, int to, int len);
 int ob_setbyte(overlay_buffer *b,int ofs,unsigned char value);
@@ -1559,10 +1560,11 @@ int stopAudio();
 #define SERVER_RUNNING 4
 int server_probe(int *pid);
 
-int dna_helper_enqueue(char *did, unsigned char *requestorSid);
+int dna_helper_shutdown();
+int dna_helper_enqueue(overlay_mdp_frame *mdp, const char *did, const unsigned char *requestorSid);
 int dna_return_resolution(overlay_mdp_frame *mdp, unsigned char *fromSid,
 			  const char *did,const char *name,const char *uri);
-int parseDnaReply(const unsigned char *bytes, int count, char *sidhex, char *did, char *name, char *uri);
+int parseDnaReply(const char *bytes, size_t count, unsigned char *sid, char *did, char *name, char *uri);
 extern int sigPipeFlag;
 extern int sigIoFlag;
 void sigPipeHandler(int signal);
@@ -1607,8 +1609,6 @@ void server_shutdown_check(struct sched_ent *alarm);
 void overlay_mdp_poll(struct sched_ent *alarm);
 void fd_periodicstats(struct sched_ent *alarm);
 void rhizome_check_connections(struct sched_ent *alarm);
-
-int dna_helper_shutdown();
 
 void monitor_client_poll(struct sched_ent *alarm);
 void monitor_poll(struct sched_ent *alarm);

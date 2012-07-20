@@ -261,7 +261,7 @@ unsigned int debugFlagMask(const char *flagname) {
   return 0;
 }
 
-static strbuf _toprint(strbuf sb, const unsigned char *srcBuf, size_t srcBytes)
+static strbuf _toprint(strbuf sb, const char *srcBuf, size_t srcBytes)
 {
   strbuf_putc(sb, '"');
   for (; srcBytes && !strbuf_overrun(sb); ++srcBuf, --srcBytes) {
@@ -293,7 +293,7 @@ static strbuf _toprint(strbuf sb, const unsigned char *srcBuf, size_t srcBytes)
    hold the representation of the entire srcBuf.
    @author Andrew Bettison <andrew@servalproject.com>
  */
-char *toprint(char *dstStr, ssize_t dstStrLen, const unsigned char *srcBuf, size_t srcBytes)
+char *toprint(char *dstStr, ssize_t dstStrLen, const char *srcBuf, size_t srcBytes)
 {
   return strbuf_str(_toprint(strbuf_local(dstStr, (dstStrLen == -1 ? 2 + srcBytes * 4 : dstStrLen) + 1), srcBuf, srcBytes));
 }
@@ -303,7 +303,7 @@ char *toprint(char *dstStr, ssize_t dstStrLen, const unsigned char *srcBuf, size
    dstStrLen.
    @author Andrew Bettison <andrew@servalproject.com>
  */
-size_t toprint_strlen(ssize_t dstStrLen, const unsigned char *srcBuf, size_t srcBytes)
+size_t toprint_strlen(ssize_t dstStrLen, const char *srcBuf, size_t srcBytes)
 {
   return dstStrLen == -1 ? strbuf_count(_toprint(strbuf_local(NULL, 0), srcBuf, srcBytes)) : dstStrLen;
 }

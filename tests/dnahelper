@@ -51,7 +51,7 @@ def main():
    print "STARTED"
    sys.stdout.flush()
    while True:
-      sys.stderr.write("wah\n")
+      #sys.stderr.write("wah\n")
       line = sys.stdin.readline().strip()
       if line == "":
          # EOF detection is broken :(
@@ -122,6 +122,7 @@ setup_Simple() {
 }
 test_Simple() {
    executeOk_servald dna lookup 12345
+   tfw_cat --stdout --stderr
 }
 
 runTests "$@"
