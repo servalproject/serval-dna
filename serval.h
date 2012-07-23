@@ -299,7 +299,7 @@ void keyring_identity_extract(const keyring_identity *id, const unsigned char **
    get - 8 bit variable value
 
 */
-#define SID_SIZE 32 
+#define SID_SIZE 32
 #define DID_MINSIZE 5
 #define DID_MAXSIZE 32
 #define SIDDIDFIELD_LEN (SID_SIZE+1)

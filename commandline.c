@@ -430,7 +430,7 @@ int app_echo(int argc, const char *const *argv, struct command_line_option *o)
 
 int cli_lookup_did(const char *text)
 {
-  return text[0] == '\0' || strcmp(text, "*") || str_is_did(text);
+  return text[0] == '\0' || strcmp(text, "*") == 0 || str_is_did(text);
 }
 
 int app_dna_lookup(int argc, const char *const *argv, struct command_line_option *o)
@@ -1421,7 +1421,7 @@ int app_keyring_set_did(int argc, const char *const *argv, struct command_line_o
 {
   const char *sid, *did, *pin, *name;
   cli_arg(argc, argv, o, "sid", &sid, str_is_subscriber_id, "");
-  cli_arg(argc, argv, o, "did", &did, str_is_did, "");
+  cli_arg(argc, argv, o, "did", &did, cli_optional_did, "");
   cli_arg(argc, argv, o, "name", &name, NULL, "");
   cli_arg(argc, argv, o, "pin", &pin, NULL, "");
 

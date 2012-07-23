@@ -1,6 +1,6 @@
-/* 
+/*
 Serval Distributed Numbering Architecture (DNA)
-Copyright (C) 2010 Paul Gardner-Stephen 
+Copyright (C) 2010 Paul Gardner-Stephen
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -164,19 +164,16 @@ int str_is_did(const char *did)
   return strn_is_did(did, &len) && did[len] == '\0';
 }
 
+int is_didchar(char c)
+{
+  return isdigit(c) || c == '*' || c == '#' || c == '+';
+}
+
 int strn_is_did(const char *did, size_t *lenp)
 {
   int i;
-  for (i = 0; i < DID_MAXSIZE; ++i) {
-    switch (did[i]) {
-      case '0': case '1': case '2': case '3': case '4':
-      case '5': case '6': case '7': case '8': case '9':
-      case '*': case '#': case '+':
-	break;
-      default:
-	return 0;
-    }
-  }
+  for (i = 0; i < DID_MAXSIZE && is_didchar(did[i]); ++i)
+    ;
   if (i < DID_MINSIZE)
     return 0;
   if (lenp)
