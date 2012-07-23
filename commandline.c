@@ -428,6 +428,11 @@ int app_echo(int argc, const char *const *argv, struct command_line_option *o)
   return 0;
 }
 
+int cli_lookup_did(const char *text)
+{
+  return text[0] == '\0' || strcmp(text, "*") || str_is_did(text);
+}
+
 int app_dna_lookup(int argc, const char *const *argv, struct command_line_option *o)
 {
   int i;
@@ -441,7 +446,7 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
   char uris[MAXREPLIES][MAXURILEN];
 
   const char *did;
-  if (cli_arg(argc, argv, o, "did", &did, NULL, "*") == -1)
+  if (cli_arg(argc, argv, o, "did", &did, cli_lookup_did, "*") == -1)
     return -1;
 
   /* Bind to MDP socket and await confirmation */
@@ -1407,15 +1412,19 @@ int app_keyring_add(int argc, const char *const *argv, struct command_line_optio
   return 0;
 }
 
+int cli_optional_did(const char *text)
+{
+  return text[0] == '\0' || str_is_did(text);
+}
+
 int app_keyring_set_did(int argc, const char *const *argv, struct command_line_option *o)
 {
   const char *sid, *did, *pin, *name;
-  cli_arg(argc, argv, o, "sid", &sid, NULL, "");
-  cli_arg(argc, argv, o, "did", &did, NULL, "");
+  cli_arg(argc, argv, o, "sid", &sid, str_is_subscriber_id, "");
+  cli_arg(argc, argv, o, "did", &did, str_is_did, "");
   cli_arg(argc, argv, o, "name", &name, NULL, "");
   cli_arg(argc, argv, o, "pin", &pin, NULL, "");
 
-  if (strlen(did)>31) return WHY("DID too long (31 digits max)");
   if (strlen(name)>63) return WHY("Name too long (31 char max)");
 
   if (!(keyring = keyring_open_with_pins(pin)))

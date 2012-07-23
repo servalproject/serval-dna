@@ -99,7 +99,8 @@ int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary)
 
 int str_is_subscriber_id(const char *sid)
 {
-  return strcasecmp(sid, "broadcast") == 0 || _is_xstring(sid, SID_STRLEN);
+  size_t len = 0;
+  return strn_is_subscriber_id(sid, &len) && sid[len] == '\0';
 }
 
 int strn_is_subscriber_id(const char *sid, size_t *lenp)
@@ -155,6 +156,32 @@ int rhizome_strn_is_file_hash(const char *hash)
 int rhizome_str_is_file_hash(const char *hash)
 {
   return _is_xstring(hash, RHIZOME_FILEHASH_STRLEN);
+}
+
+int str_is_did(const char *did)
+{
+  size_t len = 0;
+  return strn_is_did(did, &len) && did[len] == '\0';
+}
+
+int strn_is_did(const char *did, size_t *lenp)
+{
+  int i;
+  for (i = 0; i < DID_MAXSIZE; ++i) {
+    switch (did[i]) {
+      case '0': case '1': case '2': case '3': case '4':
+      case '5': case '6': case '7': case '8': case '9':
+      case '*': case '#': case '+':
+	break;
+      default:
+	return 0;
+    }
+  }
+  if (i < DID_MINSIZE)
+    return 0;
+  if (lenp)
+    *lenp = i;
+  return 1;
 }
 
 int extractDid(unsigned char *packet,int *ofs,char *did)

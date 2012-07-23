@@ -300,6 +300,7 @@ void keyring_identity_extract(const keyring_identity *id, const unsigned char **
 
 */
 #define SID_SIZE 32 
+#define DID_MINSIZE 5
 #define DID_MAXSIZE 32
 #define SIDDIDFIELD_LEN (SID_SIZE+1)
 #define PINFIELD_LEN 32
@@ -688,6 +689,8 @@ char *str_toupper_inplace(char *s);
 
 int str_is_subscriber_id(const char *sid);
 int strn_is_subscriber_id(const char *sid, size_t *lenp);
+int str_is_did(const char *did);
+int strn_is_did(const char *did, size_t *lenp);
 
 int stowSid(unsigned char *packet, int ofs, const char *sid);
 int stowDid(unsigned char *packet,int *ofs,char *did);

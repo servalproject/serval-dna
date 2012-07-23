@@ -43,64 +43,78 @@ configure_servald_server() {
 
 setup_dnahelper() {
    dnahelper="$TFWTMP/dnahelper"
-   cat >"$dnahelper" <<EOF
-#!/usr/bin/env python
-# Sample DNA Helper application for testing
-import sys
-def main():
-   print "STARTED"
-   sys.stdout.flush()
-   while True:
-      #sys.stderr.write("wah\n")
-      line = sys.stdin.readline().strip()
-      if line == "":
-         # EOF detection is broken :(
-         break
-      s = line.split('|')
-      if len(s) != 3:
-         print "ERROR"
-         continue
-      (token, number, xxx) = s
-      if number == "12345":
-         # Multiple results (SID/VoMP results)
-         print "%s|sid:%s|%s|%s|" % (token, token, number, "Agent A. Smith")
-         print "%s|sid:%s|%s|%s|" % (token, token, number, "Agent B. Smith")
-      elif number == "5551234":
-         # Single result, SIP URI
-         print "%s|sip://5551234@10.1.2.3|%s|%s|" % (token, number, "Will Smith")
-      elif number == "5551001":
-         # Empty URI field
-         print "%s||%s|%s|" % (token, number, "Empty URI")
-      elif number == "5551002":
-         # Empty DID field
-         print "%s|sip://123@1.2.3.4||%s|" % (token, "Empty DID")
-      elif number == "5551003":
-         # Empty CALLERID field
-         print "%s|sip://empty-callerid@1.2.3.4|%s||" % (token, number)
-      elif number == "5551004":
-         # Excessively long callerid
-         print "%s|sip://long-callerid@1.2.3.4|%s|%s|" % (token, 'x' * 200, number)
-      elif number == "5551005":
-         # Excessively long DID
-         print "%s|sip://long-did@1.2.3.4|%s|%s|" % (token, 'x' * 200, "Agent Smith")
-      elif number == "5551006":
-         # Excessively long URI
-         print "%s|sip://%s|%s|%s|" % (token, 'x' * 1000, number, "Agent Smith")
-      elif number == "5551007":
-         # Incorrect token
-         print "cheeseburger|sip://incorrect-token@1.2.3.4|%s||" % (token, number)
-      elif number == "11111":
-         print "%s|A|%s|B|" % (token, number)
-      print "DONE"
-      sys.stdout.flush()
-if __name__ == "__main__":
-   main()
+   cat >"$dnahelper" <<'EOF'
+#!/bin/sh
+echo STARTED
+while read line
+do
+   token="${line%%|*}"
+   line="${line#*|}"
+   did="${line%%|*}"
+   line="${line#*|}"
+   case "$token|$did|$line" in
+   '|'*'|')
+      echo "empty token" >&2
+      ;;
+   *'||')
+      echo "empty DID" >&2
+      ;;
+   *'|00000|')
+      echo "$token|A|$did|B|"
+      ;;
+   *'|00001|')
+      echo "$token|sip://$token@10.1.0.1|$did|Joe A. Bloggs|"
+      ;;
+   *'|00002|')
+      echo "$token|sip://$token@10.1.0.1|$did|Joe A. Bloggs|"
+      sleep 0.1
+      echo "$token|sip://$token@10.1.0.2|$did|Joe B. Bloggs|"
+      sleep 0.1
+      ;;
+   *'|00003|')
+      echo "$token|sip://$token@10.1.0.1|$did|Joe A. Bloggs|"
+      sleep 0.1
+      echo "$token|sip://$token@10.1.0.2|$did|Joe B. Bloggs|"
+      sleep 0.1
+      echo "$token|sip://$token@10.1.0.3|$did|Joe C. Bloggs|"
+      sleep 0.1
+      ;;
+   *'|00004|')
+      # Empty URI
+      echo "$token||$did|Eccles|"
+      ;;
+   # Test malformed URI
+   # Test mismatched token
+   # Test empty token
+   # Test long token
+   # Test empty DID
+   # Test mismatched DID
+   # Test long DID
+   # Test malformed line
+   # Test long reply
+   # Test DONE timeout
+   # Test die
+   # Test fork and die
+   *'|'*'|')
+      ;;
+   *)
+      echo "garbage line" >&2
+      ;;
+   esac
+   echo DONE
+done
 EOF
    chmod 0755 "$dnahelper"
    executeOk "$dnahelper" <<EOF
-ToKeN|11111|
+ToKeN|00000|
 EOF
-   assertStdoutIs -e "STARTED\nToKeN|A|11111|B|\nDONE\n"
+   assertStdoutIs -e "STARTED\nToKeN|A|00000|B|\nDONE\n"
+}
+
+setup_single_instance() {
+   setup
+   setup_dnahelper
+   start_servald_instances +A
 }
 
 doc_ExecError="Non-existent DNA helper executable"
@@ -114,15 +128,40 @@ test_ExecError() {
    executeOk_servald dna lookup 12345
 }
 
-doc_Simple="Simple DNA helper test"
-setup_Simple() {
-   setup
-   setup_dnahelper
-   start_servald_instances +A
+doc_OneReply="DNA helper returns one line"
+setup_OneReply() {
+   setup_single_instance
 }
-test_Simple() {
-   executeOk_servald dna lookup 12345
-   tfw_cat --stdout --stderr
+test_OneReply() {
+   executeOk_servald dna lookup 00001
+   assertStdoutIs -e "sip://$SIDA@10.1.0.1:00001:Joe A. Bloggs\n"
+}
+
+doc_TwoReplies="DNA helper returns two lines"
+setup_TwoReplies() {
+   setup_single_instance
+}
+test_TwoReplies() {
+   executeOk_servald dna lookup 00002
+   assertStdoutIs -e "sip://$SIDA@10.1.0.1:00002:Joe A. Bloggs\nsip://$SIDA@10.1.0.2:00002:Joe B. Bloggs\n"
+}
+
+doc_ThreeReplies="DNA helper returns three lines"
+setup_ThreeReplies() {
+   setup_single_instance
+}
+test_ThreeReplies() {
+   executeOk_servald dna lookup 00003
+   assertStdoutIs -e "sip://$SIDA@10.1.0.1:00003:Joe A. Bloggs\nsip://$SIDA@10.1.0.2:00003:Joe B. Bloggs\nsip://$SIDA@10.1.0.3:00003:Joe C. Bloggs\n"
+}
+
+doc_EmptyURI="DNA helper returns empry URI"
+setup_EmptyURI() {
+   setup_single_instance
+}
+test_EmptyURI() {
+   executeOk_servald dna lookup 00004
+   assertStdoutIs ""
 }
 
 runTests "$@"
