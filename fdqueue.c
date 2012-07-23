@@ -96,6 +96,7 @@ int watch(struct sched_ent *alarm){
     if (fdcount>=MAX_WATCHED_FDS)
       return WHY("Too many file handles to watch");
     fd_callbacks[fdcount]=alarm;
+    alarm->poll.revents = 0;
     alarm->_poll_index=fdcount;
     fdcount++;
   }

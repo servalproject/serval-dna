@@ -361,3 +361,45 @@ int safeZeroField(unsigned char *packet,int start,int count)
   return 0;
 }
 
+int is_uri_char_scheme(char c)
+{
+  return isalpha(c) || isdigit(c) || c == '+' || c == '-' || c == '.';
+}
+
+int is_uri_char_unreserved(char c)
+{
+  return isalpha(c) || isdigit(c) || c == '-' || c == '.' || c == '_' || c == '~';
+}
+
+int is_uri_char_reserved(char c)
+{
+  switch (c) {
+    case ':': case '/': case '?': case '#': case '[': case ']': case '@':
+    case '!': case '$': case '&': case '\'': case '(': case ')':
+    case '*': case '+': case ',': case ';': case '=':
+      return 1;
+  }
+  return 0;
+}
+
+/* Return true if the string resembles a URI.
+   Based on RFC-3986 generic syntax, assuming nothing about the hierarchical part.
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+int str_is_uri(const char *uri)
+{
+  const char *p = uri;
+  // Scheme is ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )
+  if (!isalpha(*p++))
+    return 0;
+  while (is_uri_char_scheme(*p))
+    ++p;
+  // Scheme is followed by colon ":".
+  if (*p++ != ':')
+    return 0;
+  // Hierarchical part must contain only valid characters.
+  const char *q = p;
+  while (is_uri_char_unreserved(*p) || is_uri_char_reserved(*p))
+    ++p;
+  return p != q && *p == '\0';
+}

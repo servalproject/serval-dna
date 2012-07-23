@@ -691,6 +691,7 @@ int str_is_subscriber_id(const char *sid);
 int strn_is_subscriber_id(const char *sid, size_t *lenp);
 int str_is_did(const char *did);
 int strn_is_did(const char *did, size_t *lenp);
+int str_is_uri(const char *uri);
 
 int stowSid(unsigned char *packet, int ofs, const char *sid);
 int stowDid(unsigned char *packet,int *ofs,char *did);
@@ -1567,7 +1568,7 @@ int dna_helper_shutdown();
 int dna_helper_enqueue(overlay_mdp_frame *mdp, const char *did, const unsigned char *requestorSid);
 int dna_return_resolution(overlay_mdp_frame *mdp, unsigned char *fromSid,
 			  const char *did,const char *name,const char *uri);
-int parseDnaReply(const char *bytes, size_t count, unsigned char *sid, char *did, char *name, char *uri);
+int parseDnaReply(const char *buf, size_t len, char *token, char *did, char *name, char *uri, const char **bufp);
 extern int sigPipeFlag;
 extern int sigIoFlag;
 void sigPipeHandler(int signal);
