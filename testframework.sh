@@ -921,7 +921,7 @@ _tfw_assert_stdxxx_is() {
    '') ln -f "$_tfw_tmp/$qual" "$_tfw_tmp/content";;
    *) sed -n -e "${_tfw_opt_line}p" "$_tfw_tmp/$qual" >"$_tfw_tmp/content";;
    esac
-   local message="${_tfw_message:-${_tfw_opt_line:+line $_tfw_opt_line of }$qual of ($executed) is $*}"
+   local message="${_tfw_message:-${_tfw_opt_line:+line $_tfw_opt_line of }$qual of ($executed) is $(_tfw_shellarg "$@")}"
    echo -n "$@" >$_tfw_tmp/stdxxx_is.tmp
    if ! cmp --quiet $_tfw_tmp/stdxxx_is.tmp "$_tfw_tmp/content"; then
       _tfw_failmsg "assertion failed: $message"
