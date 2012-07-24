@@ -44,6 +44,13 @@ configure_servald_server() {
 }
 
 setup_dnahelper() {
+   export SID_JOE_A=1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEA
+   export SID_JOE_B=1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEB
+   export SID_JOE_C=1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEC
+   export SID_JOE_D=1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDED
+   export SID_JOE_E=1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEE
+   export SID_JOE_F=1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF
+   export SID_ECCLES=1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDE0
    dnahelper="$TFWTMP/dnahelper"
    cat >"$dnahelper" <<'EOF'
 #!/bin/sh
@@ -62,23 +69,27 @@ do
       echo "empty DID" >&2
       ;;
    *'|00000|')
+      # For verification during setup
       echo "$token|A|$did|B|"
       ;;
    *'|00001|')
-      echo "$token|sip://$token@10.1.0.1|$did|Joe A. Bloggs|"
+      # One valid reply
+      echo "$token|sip://$SID_JOE_A@10.1.1.1|$did|Joe A. Bloggs|"
       ;;
    *'|00002|')
-      echo "$token|sip://$token@10.1.0.1|$did|Joe A. Bloggs|"
+      # Two valid replies
+      echo "$token|sip://$SID_JOE_A@10.1.1.1|$did|Joe A. Bloggs|"
       sleep 0.1
-      echo "$token|sip://$token@10.1.0.2|$did|Joe B. Bloggs|"
+      echo "$token|sip://$SID_JOE_B@10.1.1.1|$did|Joe B. Bloggs|"
       sleep 0.1
       ;;
    *'|00003|')
-      echo "$token|sip://$token@10.1.0.1|$did|Joe A. Bloggs|"
+      # Three valid replies
+      echo "$token|sip://$SID_JOE_A@10.1.1.1|$did|Joe A. Bloggs|"
       sleep 0.1
-      echo "$token|sip://$token@10.1.0.2|$did|Joe B. Bloggs|"
+      echo "$token|sip://$SID_JOE_B@10.1.1.1|$did|Joe B. Bloggs|"
       sleep 0.1
-      echo "$token|sip://$token@10.1.0.3|$did|Joe C. Bloggs|"
+      echo "$token|sip://$SID_JOE_C@10.1.1.1|$did|Joe C. Bloggs|"
       sleep 0.1
       ;;
    *'|00004|')
@@ -99,59 +110,59 @@ do
       ;;
    *'|000061|')
       # Mismatched token
-      echo "1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF|did://$token/$did|$did|Eccles|"
+      echo "$SID_ECCLES|did://$SID_ECCLES/$did|$did|Eccles|"
       ;;
    *'|000062|')
       # Empty token
-      echo "|did://$token/$did|$did|Eccles|"
+      echo "|did://$SID_ECCLES/$did|$did|Eccles|"
       ;;
    *'|000063|')
-      # Invalid token (not SID)
-      echo "1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEX|did://$token/$did|$did|Eccles|"
+      # Invalid token (not a SID)
+      echo "1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEX|did://$SID_ECCLES/$did|$did|Eccles|"
       ;;
    *'|000064|')
       # Long token
-      echo "1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF0|did://$token/$did|$did|Eccles|"
+      echo "1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF0|did://$SID_ECCLES/$did|$did|Eccles|"
       ;;
    *'|000065|')
       # Short token
-      echo "1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDE|did://$token/$did|$did|Eccles|"
+      echo "1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDE|did://$SID_ECCLES/$did|$did|Eccles|"
       ;;
    *'|000071|')
       # Mismatched DID
-      echo "$token|sip://$token/$did|99999|Eccles|"
+      echo "$token|sip://$SID_ECCLES/$did|99999|Eccles|"
       ;;
    *'|000072|')
       # Empty DID
-      echo "$token|sip://$token/$did||Eccles|"
+      echo "$token|sip://$SID_ECCLES/$did||Eccles|"
       ;;
    *'|000073|')
       # Invalid DID
-      echo "$token|sip://$token/$did|9999X|Eccles|"
+      echo "$token|sip://$SID_ECCLES/$did|9999X|Eccles|"
       ;;
    *'|000074|')
       # Long DID
-      echo "$token|sip://$token/$did|123456789012345678901234567890123|Eccles|"
+      echo "$token|sip://$SID_ECCLES/$did|123456789012345678901234567890123|Eccles|"
       ;;
    *'|000075|')
       # Short DID
-      echo "$token|sip://$token/$did|9999|Eccles|"
+      echo "$token|sip://$SID_ECCLES/$did|9999|Eccles|"
       ;;
    *'|000081|')
       # Malformed reply, missing final delimiter
-      echo "$token|sip://$token/$did|9999|Eccles"
+      echo "$token|sip://$SID_ECCLES/$did|9999|Eccles"
       ;;
    *'|000082|')
       # Malformed reply, long name
-      echo "$token|sip://$token/$did|9999|Abcd efgh ijkl mnop qrst uvwx yzab cdef ghij klmn opqr stuv wxyz abcd efgh ijkl|"
+      echo "$token|sip://$SID_ECCLES/$did|9999|Abcd efgh ijkl mnop qrst uvwx yzab cdef ghij klmn opqr stuv wxyz abcd efgh ijkl|"
       ;;
    *'|000083|')
       # Malformed reply, empty line
       echo
       ;;
    *'|000084|')
-      # Malformed reply, missing \n (so missing "DONE\n" line)
-      echo -n "$token|sip://$token@10.1.0.1|$did|Joe A. Bloggs|"
+      # Malformed reply, missing \n (which swallows the following DONE line)
+      echo -n "$token|sip://$SID_JOE_A@10.1.1.1|$did|Joe A. Bloggs|"
       ;;
    *'|000085|')
       # Malformed reply, line too long
@@ -170,6 +181,17 @@ do
       echo
       ;;
    *'|00009|')
+      # Take too long to respond
+      sleep 2
+      echo "$token|sip://$SID_JOE_D@10.1.1.1|$did|Joe D. Bloggs|"
+      ;;
+   *'|00010|')
+      # Spurious output after DONE
+      echo "$token|sip://$SID_JOE_E@10.1.1.1|$did|Joe E. Bloggs|"
+      echo DONE
+      echo "$token|sip://$SID_JOE_F@10.1.1.1|$did|Joe F. Bloggs|"
+      ;;
+   *'|00011|')
       # Die unexpectedly
       echo "goodbye cruel world" >&2
       exit 42
@@ -206,19 +228,19 @@ test_ExecError() {
 doc_ReplyOk1="DNA helper returns one valid reply"
 test_ReplyOk1() {
    executeOk_servald dna lookup 00001
-   assertStdoutIs -e "sip://$SIDA@10.1.0.1:00001:Joe A. Bloggs\n"
+   assertStdoutIs -e "sip://$SID_JOE_A@10.1.1.1:00001:Joe A. Bloggs\n"
 }
 
 doc_ReplyOk2="DNA helper returns two valid replies"
 test_ReplyOk2() {
    executeOk_servald dna lookup 00002
-   assertStdoutIs -e "sip://$SIDA@10.1.0.1:00002:Joe A. Bloggs\nsip://$SIDA@10.1.0.2:00002:Joe B. Bloggs\n"
+   assertStdoutIs -e "sip://$SID_JOE_A@10.1.1.1:00002:Joe A. Bloggs\nsip://$SID_JOE_B@10.1.1.1:00002:Joe B. Bloggs\n"
 }
 
 doc_ReplyOk3="DNA helper returns three valid replies"
 test_ReplyOk3() {
    executeOk_servald dna lookup 00003
-   assertStdoutIs -e "sip://$SIDA@10.1.0.1:00003:Joe A. Bloggs\nsip://$SIDA@10.1.0.2:00003:Joe B. Bloggs\nsip://$SIDA@10.1.0.3:00003:Joe C. Bloggs\n"
+   assertStdoutIs -e "sip://$SID_JOE_A@10.1.1.1:00003:Joe A. Bloggs\nsip://$SID_JOE_B@10.1.1.1:00003:Joe B. Bloggs\nsip://$SID_JOE_C@10.1.1.1:00003:Joe C. Bloggs\n"
 }
 
 doc_UriEmpty="DNA helper returns empty URI"
@@ -348,14 +370,33 @@ test_ReplyInvalidMissingNewline() {
    assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*reply timeout'
 }
 
+doc_HelperTimeout="DNA helper process takes too long to reply and is restarted"
+test_HelperTimeout() {
+   executeOk_servald dna lookup 00009
+   assertStdoutIs ""
+   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*reply timeout'
+   assertGrep "$LOGA" 'INFO:.*DNAHELPER.*process.*terminated by signal 15'
+   executeOk_servald dna lookup 00001
+   assertStdoutIs -e "sip://$SID_JOE_A@10.1.1.1:00001:Joe A. Bloggs\n"
+}
+
+doc_ReplySpurious="DNA helper spurious output after DONE is ignored"
+test_ReplySpurious() {
+   executeOk_servald dna lookup 00010
+   assertStdoutIs -e "sip://$SID_JOE_E@10.1.1.1:00010:Joe E. Bloggs\n"
+   assertGrep "$LOGA" 'WARN:.*DNAHELPER.*spurious output'
+   executeOk_servald dna lookup 00001
+   assertStdoutIs -e "sip://$SID_JOE_A@10.1.1.1:00001:Joe A. Bloggs\n"
+}
+
 doc_HelperDies="DNA helper process dies unexpectedly and is restarted"
 test_HelperDies() {
-   executeOk_servald dna lookup 00009
+   executeOk_servald dna lookup 00011
    assertStdoutIs ""
    assertGrep "$LOGA" 'INFO:.*DNAHELPER.*process.*exited normally with status 42'
    assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*"goodbye cruel world\\n"'
    executeOk_servald dna lookup 00001
-   assertStdoutIs -e "sip://$SIDA@10.1.0.1:00001:Joe A. Bloggs\n"
+   assertStdoutIs -e "sip://$SID_JOE_A@10.1.1.1:00001:Joe A. Bloggs\n"
 }
 
 runTests "$@"

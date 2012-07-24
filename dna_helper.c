@@ -85,7 +85,8 @@ static struct sched_ent sched_requests = STRUCT_SCHED_ENT_UNUSED;
 static struct sched_ent sched_replies = STRUCT_SCHED_ENT_UNUSED;
 static struct sched_ent sched_harvester = STRUCT_SCHED_ENT_UNUSED;
 static struct sched_ent sched_errors = STRUCT_SCHED_ENT_UNUSED;
-static struct sched_ent schedrestart = STRUCT_SCHED_ENT_UNUSED;
+static struct sched_ent sched_restart = STRUCT_SCHED_ENT_UNUSED;
+static struct sched_ent sched_timeout = STRUCT_SCHED_ENT_UNUSED;
 
 // This buffer must hold "SID|DID|\n\0"
 static char request_buffer[SID_STRLEN + DID_MAXSIZE + 4];
@@ -104,6 +105,7 @@ static void monitor_replies(struct sched_ent *alarm);
 static void monitor_errors(struct sched_ent *alarm);
 static void harvester(struct sched_ent *alarm);
 static void restart_delayer(struct sched_ent *alarm);
+static void reply_timeout(struct sched_ent *alarm);
 
 static void
 dna_helper_close_pipes()
@@ -211,6 +213,9 @@ dna_helper_start(const char *command, const char *arg)
     sched_requests.poll.fd = -1;
     sched_requests.poll.events = POLLOUT;
     sched_requests.stats = NULL;
+    sched_timeout.function = reply_timeout;
+    sched_timeout.context = NULL;
+    sched_timeout.stats = NULL;
     sched_replies.function = monitor_replies;
     sched_replies.context = NULL;
     sched_replies.poll.fd = dna_helper_stdout;
@@ -238,6 +243,10 @@ dna_helper_start(const char *command, const char *arg)
 static int
 dna_helper_kill()
 {
+  if (awaiting_reply) {
+    unschedule(&sched_timeout);
+    awaiting_reply = 0;
+  }
   if (dna_helper_pid > 0) {
     if (debug & DEBUG_DNAHELPER)
       DEBUGF("DNAHELPER sending SIGTERM to pid=%d", dna_helper_pid);
@@ -262,6 +271,10 @@ dna_helper_harvest(int blocking)
       INFOF("DNAHELPER process pid=%u %s", pid, strbuf_str(strbuf_append_exit_status(b, status)));
       unschedule(&sched_harvester);
       dna_helper_pid = -1;
+      if (awaiting_reply) {
+	unschedule(&sched_timeout);
+	awaiting_reply = 0;
+      }
       return 1;
     } else if (pid == -1) {
       return WHYF_perror("waitpid(%d, %s)", dna_helper_pid, blocking ? "0" : "WNOHANG");
@@ -318,6 +331,8 @@ static void monitor_requests(struct sched_ent *alarm)
 	  INFO("DNAHELPER got SIGPIPE on write -- stopping process");
 	  dna_helper_kill();
 	} else if (written > 0) {
+	  if (debug & DEBUG_DNAHELPER)
+	    DEBUGF("DNAHELPER wrote request %s", alloca_toprint(-1, request_bufptr, written));
 	  request_bufptr += written;
 	}
       }
@@ -325,6 +340,8 @@ static void monitor_requests(struct sched_ent *alarm)
 	// Request sent successfully.  Start watching for reply.
 	request_bufptr = request_bufend = NULL;
 	awaiting_reply = 1;
+	sched_timeout.alarm = overlay_gettime_ms() + 1500;
+	schedule(&sched_timeout);
       }
     }
     // If no request to send, stop monitoring the helper's stdin pipe.
@@ -365,8 +382,8 @@ void handle_reply_line(const char *bufp, size_t len)
     if (len == 5 && strncmp(bufp, "DONE\n", 5) == 0) {
       if (debug & DEBUG_DNAHELPER)
 	DEBUG("DNAHELPER reply DONE");
+      unschedule(&sched_timeout);
       awaiting_reply = 0;
-      // Done
     } else {
       char sidhex[SID_STRLEN + 1];
       char did[DID_MAXSIZE + 1];
@@ -490,9 +507,9 @@ static void harvester(struct sched_ent *alarm)
     if (debug & DEBUG_DNAHELPER)
       DEBUGF("DNAHELPER process died, pausing %d ms before restart", delay_ms);
     dna_helper_pid = 0; // Will be set to -1 after delay
-    schedrestart.function = restart_delayer;
-    schedrestart.alarm = overlay_gettime_ms() + delay_ms;
-    schedule(&schedrestart);
+    sched_restart.function = restart_delayer;
+    sched_restart.alarm = overlay_gettime_ms() + delay_ms;
+    schedule(&sched_restart);
   }
 }
 
@@ -502,6 +519,14 @@ static void restart_delayer(struct sched_ent *alarm)
     if (debug & DEBUG_DNAHELPER)
       DEBUG("DNAHELPER re-enable restart");
     dna_helper_pid = -1;
+  }
+}
+
+static void reply_timeout(struct sched_ent *alarm)
+{
+  if (awaiting_reply) {
+    WHY("DNAHELPER reply timeout");
+    dna_helper_kill();
   }
 }
 
@@ -539,7 +564,11 @@ dna_helper_enqueue(overlay_mdp_frame *mdp, const char *did, const unsigned char 
   if (dna_helper_stdin == -1)
     return 0;
   if (request_bufptr && request_bufptr != request_buffer) {
-    WARNF("DNAHELPER partially sent request %s -- dropping new request", request_buffer);
+    WARNF("DNAHELPER currently sending request %s -- dropping new request", request_buffer);
+    return 0;
+  }
+  if (awaiting_reply) {
+    WARNF("DNAHELPER currently awaiting reply -- dropping new request", request_buffer);
     return 0;
   }
   char buffer[sizeof request_buffer];
