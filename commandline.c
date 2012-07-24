@@ -50,6 +50,10 @@ int cli_usage() {
   return -1;
 }
 
+/* Remember the name by which this program was invoked.
+*/
+const char *exec_argv0 = NULL;
+
 /* Data structures for accumulating output of a single JNI call.
 */
 
@@ -160,7 +164,7 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servald_ServalD_rawCommand(JNIEnv 
     outv_current = outv_buffer;
     // Execute the command.
     jni_env = env;
-    status = parseCommandLine(argc, argv);
+    status = parseCommandLine(NULL, argc, argv);
     jni_env = NULL;
   }
   // Release argv Java string buffers.
@@ -205,9 +209,10 @@ static void complainCommandLine(const char *prefix, int argc, const char *const 
   WHYF("%s%s%s", prefix, strbuf_str(b), strbuf_overrun(b) ? "..." : "");
 }
 
-/* args[] excludes command name (unless hardlinks are used to use first words 
-   of command sequences as alternate names of the command. */
-int parseCommandLine(int argc, const char *const *args)
+/* The argc and argv arguments must be passed verbatim from main(argc, argv), so argv[0] is path to
+   executable.
+*/
+int parseCommandLine(const char *argv0, int argc, const char *const *args)
 {
   int i;
   int ambiguous=0;
@@ -216,6 +221,7 @@ int parseCommandLine(int argc, const char *const *args)
   fd_clearstats();
 
   IN();
+  exec_argv0 = argv0;
   for(i=0;command_line_options[i].function;i++)
     {
       int j;
@@ -579,6 +585,11 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
   if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1
    || cli_arg(argc, argv, o, "exec path", &execpath, cli_absolute_path, NULL) == -1)
     return -1;
+  if (execpath == NULL) {
+    if (jni_env)
+      return WHY("Must supply <exec path> argument when invoked via JNI");
+    execpath = exec_argv0;
+  }
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
     return -1;
@@ -593,7 +604,9 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
   if (pid < 0)
     return -1;
   int ret = -1;
-  if (pid > 0) {
+  // If the pidfile identifies this process, it probably means we are re-spawning after a SEGV, so
+  // go ahead and do the fork/exec.
+  if (pid > 0 && pid != getpid()) {
     INFOF("Server already running (pid=%d)", pid);
     ret = 10;
   } else {
@@ -622,7 +635,10 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
 	  _exit(WHY_perror("open"));
 	if (setsid() == -1)
 	  _exit(WHY_perror("setsid"));
-	(void)chdir("/");
+	const char *dir = getenv("SERVALD_SERVER_CHDIR");
+	if (!dir)
+	  dir = confValueGet("server.chdir", "/");
+	(void)chdir(dir);
 	(void)dup2(fd, 0);
 	(void)dup2(fd, 1);
 	(void)dup2(fd, 2);

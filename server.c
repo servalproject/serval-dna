@@ -25,11 +25,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 #include "strbuf.h"
+#include "strbuf_helpers.h"
 
 #define PIDFILE_NAME	  "servald.pid"
 #define STOPFILE_NAME	  "servald.stop"
 
-char *exec_args[128];
+#define EXEC_NARGS 20
+char *exec_args[EXEC_NARGS + 1];
 int exec_argc = 0;
 
 int serverMode=0;
@@ -151,9 +153,9 @@ int server_pid()
 void server_save_argv(int argc, const char *const *argv)
 {
     /* Save our argv[] to use for relaunching */
-    for (exec_argc = 0; exec_argc != argc; ++exec_argc)
+    for (exec_argc = 0; exec_argc < argc && exec_argc < EXEC_NARGS; ++exec_argc)
       exec_args[exec_argc] = strdup(argv[exec_argc]);
-    exec_args[exec_argc] = 0;
+    exec_args[exec_argc] = NULL;
 }
 
 int server(char *backing_file)
@@ -433,14 +435,19 @@ void signal_handler(int signal)
       return;
   }
   /* oops - caught a bad signal -- exec() ourselves fresh */
-  INFO("Respawning");
-  if (sock>-1) close(sock);
+  if (sock>-1)
+    close(sock);
   int i;
   for(i=0;i<overlay_interface_count;i++)
     if (overlay_interfaces[i].alarm.poll.fd>-1)
       close(overlay_interfaces[i].alarm.poll.fd);
-  execv(exec_args[0],exec_args);
+  strbuf b = strbuf_alloca(1024);
+  for (i = 0; i < exec_argc; ++i)
+    strbuf_append_shell_quotemeta(strbuf_puts(b, i ? " " : ""), exec_args[i]);
+  INFOF("Respawning %s", strbuf_str(b));
+  execv(exec_args[0], exec_args);
   /* Quit if the exec() fails */
+  WHY_perror("execv");
   exit(-3);
 } 
 

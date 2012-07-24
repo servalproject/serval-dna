@@ -78,7 +78,7 @@ setup_servald() {
 #  - executes $servald with the given arguments
 #  - asserts that standard error contains no error messages
 executeOk_servald() {
-   executeOk --executable=$servald "$@"
+   executeOk --core-backtrace --executable=$servald "$@"
    assertStderrGrep --matches=0 --message="stderr of ($executed) contains no error messages" '^ERROR:'
 }
 
@@ -167,7 +167,7 @@ start_servald_server() {
    local -a after_pids
    get_servald_pids before_pids
    tfw_log "# before_pids=$before_pids"
-   SERVALD_LOG_FILE="$instance_servald_log" executeOk $servald start "$@"
+   SERVALD_SERVER_CHDIR="$instance_dir" SERVALD_LOG_FILE="$instance_servald_log" executeOk --core-backtrace $servald start "$@"
    extract_stdout_keyvalue start_instance_path instancepath '.*'
    extract_stdout_keyvalue start_pid pid '[0-9]\+'
    assert [ "$start_instance_path" = "$SERVALINSTANCE_PATH" ]
@@ -218,7 +218,7 @@ stop_servald_server() {
    local -a after_pids
    get_servald_pids before_pids
    tfw_log "# before_pids=$before_pids"
-   execute $servald stop "$@"
+   execute --core-backtrace $servald stop "$@"
    extract_stdout_keyvalue stop_instance_path instancepath '.*'
    assert [ "$stop_instance_path" = "$SERVALINSTANCE_PATH" ]
    if [ -n "$servald_pid" ]; then
@@ -239,6 +239,11 @@ stop_servald_server() {
    fi
    # Append the server log file to the test log.
    [ -s "$instance_servald_log" ] && tfw_cat "$instance_servald_log"
+   # Append a core dump backtrace to the test log.
+   if [ -s "$instance_dir/core" ]; then
+      tfw_core_backtrace "$servald" "$instance_dir/core"
+      rm -f "$instance_dir/core"
+   fi
    # Check there is at least one fewer servald processes running.
    for bpid in ${before_pids[*]}; do
       local isgone=true

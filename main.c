@@ -37,7 +37,7 @@ int main(int argc, char **argv)
   if (argc > 1 && argv[1][0] == '-')
     status = parseOldCommandLine(argc, argv);
   else
-    status = parseCommandLine(argc - 1, (const char*const*)&argv[1]);
+    status = parseCommandLine(argv[0], argc - 1, (const char*const*)&argv[1]);
 #if defined WIN32
   WSACleanup();
 #endif

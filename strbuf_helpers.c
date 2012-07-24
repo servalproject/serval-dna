@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "strbuf_helpers.h"
 #include <poll.h>
+#include <ctype.h>
 
 strbuf strbuf_append_poll_events(strbuf sb, short events)
 {
@@ -59,5 +60,31 @@ strbuf strbuf_append_poll_events(strbuf sb, short events)
   }
   if (!n)
     strbuf_putc(sb, '0');
+  return sb;
+}
+
+static int is_shellmeta(char c)
+{
+  return !(isalnum(c) || c == '.' || c == '-' || c == '/' || c == ':' || c == '+' || c == '_' || c == ',');
+}
+
+strbuf strbuf_append_shell_quotemeta(strbuf sb, const char *word)
+{
+  const char *p;
+  int hasmeta = 0;
+  for (p = word; *p && !hasmeta; ++p)
+    if (is_shellmeta(*p))
+      hasmeta = 1;
+  if (hasmeta) {
+    strbuf_putc(sb, '\'');
+    for (p = word; *p; ++p)
+      if (*p == '\'')
+	strbuf_puts(sb, "'\\''");
+      else
+	strbuf_putc(sb, *p);
+    strbuf_putc(sb, '\'');
+  } else {
+    strbuf_puts(sb, word);
+  }
   return sb;
 }

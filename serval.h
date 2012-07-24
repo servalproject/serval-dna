@@ -1165,7 +1165,7 @@ typedef struct dna_identity_status {
   int uniqueDidAndName;
 } dna_identity_status;
 
-int parseCommandLine(int argc, const char *const *argv);
+int parseCommandLine(const char *argv0, int argc, const char *const *argv);
 
 int parseOldCommandLine(int argc, char **argv);
 int parseAssignment(unsigned char *text, int *var_id, unsigned char *value, int *value_len);

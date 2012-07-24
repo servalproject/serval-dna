@@ -27,4 +27,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 strbuf strbuf_append_poll_events(strbuf sb, short events);
 
+/* Append a string with shell metacharacters and spaces quoted.
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+strbuf strbuf_append_shell_quotemeta(strbuf sb, const char *word);
+
 #endif //__STRBUF_HELPERS_H__
