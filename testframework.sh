@@ -561,6 +561,14 @@ tfw_cat() {
    done >&$_tfw_log_fd
 }
 
+tfw_core_backtrace() {
+   local executable="$1"
+   local corefile="$2"
+   tfw_log "#--- gdb backtrace from $executable $corefile ---"
+   echo backtrace | gdb -batch "$executable" "$corefile"
+   tfw_log "#---"
+}
+
 assertExitStatus() {
    _tfw_getopts assertexitstatus "$@"
    shift $_tfw_getopts_shift
@@ -746,8 +754,16 @@ _tfw_teardown() {
 # Executes $_tfw_executable with the given arguments.
 _tfw_execute() {
    executed=$(_tfw_shellarg "${_tfw_executable##*/}" "$@")
+   if $_tfw_opt_core_backtrace; then
+      ulimit -S -c unlimited
+      rm -f core
+   fi
    { time -p "$_tfw_executable" "$@" >$_tfw_tmp/stdout 2>$_tfw_tmp/stderr ; } 2>$_tfw_tmp/times
    _tfw_exitStatus=$?
+   # Deal with core dump.
+   if $_tfw_opt_core_backtrace && [ -s core ]; then
+      tfw_core_backtrace "$_tfw_executable" core
+   fi
    # Deal with exit status.
    if [ -n "$_tfw_opt_exit_status" ]; then
       _tfw_message="exit status ($_tfw_exitStatus) of ($executed) is $_tfw_opt_exit_status"
@@ -820,6 +836,7 @@ _tfw_getopts() {
    local context="$1"
    shift
    _tfw_executable=
+   _tfw_opt_core_backtrace=false
    _tfw_message=
    _tfw_opt_dump_on_fail=()
    _tfw_opt_error_on_fail=false
@@ -839,6 +856,7 @@ _tfw_getopts() {
       execute:--exit-status=*) _tfw_error "invalid value: $1";;
       execute*:--executable=) _tfw_error "missing value: $1";;
       execute*:--executable=*) _tfw_executable="${1#*=}";;
+      execute*:--core-backtrace) _tfw_opt_core_backtrace=true;;
       wait_until:--timeout=@(+([0-9])?(.+([0-9]))|*([0-9]).+([0-9]))) _tfw_opt_timeout="${1#*=}";;
       wait_until:--timeout=*) _tfw_error "invalid value: $1";;
       wait_until:--sleep=@(+([0-9])?(.+([0-9]))|*([0-9]).+([0-9]))) _tfw_opt_sleep="${1#*=}";;
