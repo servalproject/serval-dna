@@ -450,7 +450,8 @@ int overlay_abbreviate_remember_index(int index_byte_count,unsigned char *sid_to
   if (index_byte_count>1) index=(index<<8)|index_bytes[1];
 
   /* Lookup sender's neighbour ID */
-  if (overlay_abbreviate_current_sender_id==-1) overlay_abbreviate_lookup_sender_id();
+  if (overlay_abbreviate_current_sender_id == -1 && overlay_abbreviate_lookup_sender_id() == -1)
+    return WHY("could not lookup neighbour ID of packet sender");
 
   if (debug&DEBUG_OVERLAYABBREVIATIONS) {
     DEBUGF("index=%d", index);
