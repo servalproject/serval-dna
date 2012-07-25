@@ -309,6 +309,7 @@ void serverCleanUp()
   } else {
     overlay_mdp_client_done();
   }
+  dna_helper_shutdown();
 }
 
 static void signame(char *buf, size_t len, int signal)
@@ -486,7 +487,7 @@ int processRequest(unsigned char *packet,int len,
 
   while(pofs<len)
     {
-      if (debug&DEBUG_DNAREQUESTS) DEBUGF("  processRequest: len=%d, pofs=%d, pofs_prev=%d",len,pofs,prev_pofs);
+      if (debug&DEBUG_DNARESPONSES) DEBUGF("  processRequest: len=%d, pofs=%d, pofs_prev=%d",len,pofs,prev_pofs);
       /* Avoid infinite loops */
       if (pofs<=prev_pofs) break;
       prev_pofs=pofs;
@@ -517,7 +518,7 @@ int processRequest(unsigned char *packet,int len,
 	}
       else
 	{
-	  if (debug&DEBUG_DNAREQUESTS) DEBUGF("Looking at action code 0x%02x @ packet offset 0x%x",
+	  if (debug&DEBUG_DNARESPONSES) DEBUGF("Looking at action code 0x%02x @ packet offset 0x%x",
 			       packet[pofs],pofs);
 	  switch(packet[pofs])
 	    {
@@ -572,7 +573,7 @@ int processRequest(unsigned char *packet,int len,
 
 		pofs+=2;
 
-		if (debug&DEBUG_DNAREQUESTS) DEBUGF("Processing ACTION_GET (var_id=%02x, instance=%02x, pofs=0x%x, len=%d)",var_id,instance,pofs,len);
+		if (debug&DEBUG_DNARESPONSES) DEBUGF("Processing ACTION_GET (var_id=%02x, instance=%02x, pofs=0x%x, len=%d)",var_id,instance,pofs,len);
 
 		if (debug&DEBUG_HLR) DEBUGF("Looking for identities with sid='%s' / did='%s'",(sid&&sid[0])?sid:"null",did?did:"null");
 		  

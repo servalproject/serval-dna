@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "strbuf.h"
 #include <stdlib.h>
+#include <stdio.h>
 #include <ctype.h>
 #include <sys/time.h>
 #include <sys/types.h>
@@ -39,8 +40,19 @@ static char _log_buf[8192];
 static struct strbuf logbuf = STRUCT_STRBUF_EMPTY;
 
 #ifdef ANDROID
-#include <android/log.h> 
+#include <android/log.h>
 #endif
+
+void set_logging(FILE *f)
+{
+  logfile = f;
+  if (f == stdout)
+    INFO("Logging to stdout");
+  else if (f == stderr)
+    INFO("Logging to stderr");
+  else if (f != NULL)
+    INFOF("Logging to stream with fd=%d", fileno(f));
+}
 
 FILE *open_logging()
 {
@@ -231,7 +243,7 @@ unsigned int debugFlagMask(const char *flagname) {
   else if (!strcasecmp(flagname,"verbio"))		return DEBUG_VERBOSE_IO;
   else if (!strcasecmp(flagname,"peers"))		return DEBUG_PEERS;
   else if (!strcasecmp(flagname,"dnaresponses"))	return DEBUG_DNARESPONSES;
-  else if (!strcasecmp(flagname,"dnarequests"))		return DEBUG_DNAREQUESTS;
+  else if (!strcasecmp(flagname,"dnahelper"))		return DEBUG_DNAHELPER;
   else if (!strcasecmp(flagname,"simulation"))		return DEBUG_SIMULATION;
   else if (!strcasecmp(flagname,"packetformats"))	return DEBUG_PACKETFORMATS;
   else if (!strcasecmp(flagname,"packetconstruction"))	return DEBUG_PACKETCONSTRUCTION;
@@ -251,40 +263,54 @@ unsigned int debugFlagMask(const char *flagname) {
   else if (!strcasecmp(flagname,"manifests"))		return DEBUG_MANIFESTS;
   else if (!strcasecmp(flagname,"mdprequests"))		return DEBUG_MDPREQUESTS;
   else if (!strcasecmp(flagname,"timing"))		return DEBUG_TIMING;
-	
   return 0;
 }
 
+static strbuf _toprint(strbuf sb, const char *srcBuf, size_t srcBytes)
+{
+  strbuf_putc(sb, '"');
+  for (; srcBytes && !strbuf_overrun(sb); ++srcBuf, --srcBytes) {
+    if (*srcBuf == '\0')
+      strbuf_puts(sb, "\\0");
+    else if (*srcBuf == '\n')
+      strbuf_puts(sb, "\\n");
+    else if (*srcBuf == '\r')
+      strbuf_puts(sb, "\\r");
+    else if (*srcBuf == '\t')
+      strbuf_puts(sb, "\\t");
+    else if (*srcBuf == '\\')
+      strbuf_puts(sb, "\\\\");
+    else if (*srcBuf >= ' ' && *srcBuf <= '~')
+      strbuf_putc(sb, *srcBuf);
+    else
+      strbuf_sprintf(sb, "\\x%02x", *srcBuf);
+  }
+  strbuf_putc(sb, '"');
+  if (strbuf_overrun(sb)) {
+    strbuf_trunc(sb, -4);
+    strbuf_puts(sb, "\"...");
+  }
+  return sb;
+}
+
 /* Format a buffer of data as a printable representation, eg: "Abc\x0b\n\0", for display
-   in log messages.
+   in log messages.  If dstStrLen == -1 then assumes the dstStr buffer is large enough to
+   hold the representation of the entire srcBuf.
    @author Andrew Bettison <andrew@servalproject.com>
  */
-char *toprint(char *dstStr, size_t dstChars, const unsigned char *srcBuf, size_t srcBytes)
+char *toprint(char *dstStr, ssize_t dstStrLen, const char *srcBuf, size_t srcBytes)
 {
-  strbuf b = strbuf_local(dstStr, dstChars);
-  strbuf_putc(b, '"');
-  for (; srcBytes && !strbuf_overrun(b); ++srcBuf, --srcBytes) {
-    if (*srcBuf == '\0')
-      strbuf_puts(b, "\\0");
-    else if (*srcBuf == '\n')
-      strbuf_puts(b, "\\n");
-    else if (*srcBuf == '\r')
-      strbuf_puts(b, "\\r");
-    else if (*srcBuf == '\t')
-      strbuf_puts(b, "\\t");
-    else if (*srcBuf == '\\')
-      strbuf_puts(b, "\\\\");
-    else if (*srcBuf >= ' ' && *srcBuf <= '~')
-      strbuf_putc(b, *srcBuf);
-    else
-      strbuf_sprintf(b, "\\x%02x", *srcBuf);
-  }
-  strbuf_putc(b, '"');
-  if (strbuf_overrun(b)) {
-    strbuf_trunc(b, -4);
-    strbuf_puts(b, "\"...");
-  }
-  return dstStr;
+  return strbuf_str(_toprint(strbuf_local(dstStr, (dstStrLen == -1 ? 2 + srcBytes * 4 : dstStrLen) + 1), srcBuf, srcBytes));
+}
+
+/* Compute the length of the printable string produced by toprint().  If dstStrLen == -1 then
+   returns the exact number of characters in the printable representation, otherwise returns
+   dstStrLen.
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+size_t toprint_strlen(ssize_t dstStrLen, const char *srcBuf, size_t srcBytes)
+{
+  return dstStrLen == -1 ? strbuf_count(_toprint(strbuf_local(NULL, 0), srcBuf, srcBytes)) : dstStrLen;
 }
 
 /* Read the symbolic link into the supplied buffer and add a terminating nul.  Return -1 if the

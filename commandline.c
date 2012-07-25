@@ -434,6 +434,11 @@ int app_echo(int argc, const char *const *argv, struct command_line_option *o)
   return 0;
 }
 
+int cli_lookup_did(const char *text)
+{
+  return text[0] == '\0' || strcmp(text, "*") == 0 || str_is_did(text);
+}
+
 int app_dna_lookup(int argc, const char *const *argv, struct command_line_option *o)
 {
   int i;
@@ -447,7 +452,7 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
   char uris[MAXREPLIES][MAXURILEN];
 
   const char *did;
-  if (cli_arg(argc, argv, o, "did", &did, NULL, "*") == -1)
+  if (cli_arg(argc, argv, o, "did", &did, cli_lookup_did, "*") == -1)
     return -1;
 
   /* Bind to MDP socket and await confirmation */
@@ -503,28 +508,32 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 		else if ((rx.packetTypeAndFlags&MDP_TYPE_MASK)==MDP_TX) {
 		  /* Extract DID, Name, URI from response. */
 		  if (strlen((char *)rx.in.payload)<512) {
-		    char sidhex[512];
-		    char did[512];
-		    char name[512];
+		    char sidhex[SID_STRLEN + 1];
+		    char did[DID_MAXSIZE + 1];
+		    char name[64];
 		    char uri[512];
-		    if (!parseDnaReply(rx.in.payload,rx.in.payload_length,
-				       sidhex,did,name,uri))
-		      {
-			/* Have we seen this response before? */
-			int i;
-			for(i=0;i<uri_count;i++)
-			  if (!strcmp(uri,uris[i])) break;
-			if (i==uri_count) {
-			  /* Not previously seen, so report it */
-			  cli_puts(uri); cli_delim(":");
-			  cli_puts(did); cli_delim(":");
-			  cli_puts(name); cli_delim("\n");
-			  /* Remember that we have seen it */
-			  if (uri_count<MAXREPLIES&&strlen(uri)<MAXURILEN) {
-			    strcpy(uris[uri_count++],uri);
-			  }
+		    if ( !parseDnaReply((char *)rx.in.payload, rx.in.payload_length, sidhex, did, name, uri, NULL)
+		      || !str_is_subscriber_id(sidhex)
+		      || !str_is_did(did)
+		      || !str_is_uri(uri)
+		    ) {
+		      WHYF("Received malformed DNA reply: %s", alloca_toprint(160, (const char *)rx.in.payload, rx.in.payload_length));
+		    } else {
+		      /* Have we seen this response before? */
+		      int i;
+		      for(i=0;i<uri_count;i++)
+			if (!strcmp(uri,uris[i])) break;
+		      if (i==uri_count) {
+			/* Not previously seen, so report it */
+			cli_puts(uri); cli_delim(":");
+			cli_puts(did); cli_delim(":");
+			cli_puts(name); cli_delim("\n");
+			/* Remember that we have seen it */
+			if (uri_count<MAXREPLIES&&strlen(uri)<MAXURILEN) {
+			  strcpy(uris[uri_count++],uri);
 			}
 		      }
+		    }
 		  }
 		}
 		else WHYF("packettype=0x%x",rx.packetTypeAndFlags);
@@ -1423,15 +1432,19 @@ int app_keyring_add(int argc, const char *const *argv, struct command_line_optio
   return 0;
 }
 
+int cli_optional_did(const char *text)
+{
+  return text[0] == '\0' || str_is_did(text);
+}
+
 int app_keyring_set_did(int argc, const char *const *argv, struct command_line_option *o)
 {
   const char *sid, *did, *pin, *name;
-  cli_arg(argc, argv, o, "sid", &sid, NULL, "");
-  cli_arg(argc, argv, o, "did", &did, NULL, "");
+  cli_arg(argc, argv, o, "sid", &sid, str_is_subscriber_id, "");
+  cli_arg(argc, argv, o, "did", &did, cli_optional_did, "");
   cli_arg(argc, argv, o, "name", &name, NULL, "");
   cli_arg(argc, argv, o, "pin", &pin, NULL, "");
 
-  if (strlen(did)>31) return WHY("DID too long (31 digits max)");
   if (strlen(name)>63) return WHY("Name too long (31 char max)");
 
   if (!(keyring = keyring_open_with_pins(pin)))
@@ -1647,14 +1660,18 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 	  continue;
 	}
 	
-	{	    	  
-	  char sidhex[512];
-	  char did[512];
-	  char name[512];
+	{
+	  char sidhex[SID_STRLEN + 1];
+	  char did[DID_MAXSIZE + 1];
+	  char name[64];
 	  char uri[512];
-	  if (!parseDnaReply(m2.in.payload,m2.in.payload_length,
-			     sidhex,did,name,uri))
-	  {
+	  if ( !parseDnaReply((char *)m2.in.payload, m2.in.payload_length, sidhex, did, name, uri, NULL)
+	    || !str_is_subscriber_id(sidhex)
+	    || !str_is_did(did)
+	    || !str_is_uri(uri)
+	  ) {
+	    WHYF("Received malformed DNA reply: %s", alloca_toprint(160, (const char *)m2.in.payload, m2.in.payload_length));
+	  } else {
 	    /* Got a good DNA reply, copy it into place */
 	    bcopy(did,mdp.nodeinfo.did,32);
 	    bcopy(name,mdp.nodeinfo.name,64);

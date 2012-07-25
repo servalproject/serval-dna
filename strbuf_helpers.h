@@ -32,4 +32,10 @@ strbuf strbuf_append_poll_events(strbuf sb, short events);
  */
 strbuf strbuf_append_shell_quotemeta(strbuf sb, const char *word);
 
+/* Append a textual description of a process exit status as produced by wait(2)
+ * and waitpid(2).
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+strbuf strbuf_append_exit_status(strbuf sb, int status);
+
 #endif //__STRBUF_HELPERS_H__

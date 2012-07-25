@@ -20,6 +20,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf_helpers.h"
 #include <poll.h>
 #include <ctype.h>
+#include <string.h>
+#include <sys/wait.h>
 
 strbuf strbuf_append_poll_events(strbuf sb, short events)
 {
@@ -86,5 +88,24 @@ strbuf strbuf_append_shell_quotemeta(strbuf sb, const char *word)
   } else {
     strbuf_puts(sb, word);
   }
+  return sb;
+}
+
+strbuf strbuf_append_exit_status(strbuf sb, int status)
+{
+  if (WIFEXITED(status))
+    strbuf_sprintf(sb, "exited normally with status %u", WEXITSTATUS(status));
+  else if (WIFSIGNALED(status)) {
+    strbuf_sprintf(sb, "terminated by signal %u (%s)", WTERMSIG(status), strsignal(WTERMSIG(status)));
+#ifdef WCOREDUMP
+    if (WCOREDUMP(status))
+      strbuf_puts(sb, " and dumped core");
+#endif
+  } else if (WIFSTOPPED(status))
+    strbuf_sprintf(sb, "stopped by signal %u (%s)", WSTOPSIG(status), strsignal(WSTOPSIG(status)));
+#ifdef WIFCONTINUED
+  else if (WIFCONTINUED(status))
+    strbuf_sprintf(sb, "continued by signal %u (SIGCONT)", SIGCONT);
+#endif
   return sb;
 }

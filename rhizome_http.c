@@ -564,7 +564,7 @@ static int rhizome_server_parse_http_request(rhizome_http_request *r)
   if (path) {
     char *id = NULL;
     if (debug & DEBUG_RHIZOME_TX)
-      DEBUGF("GET %s", alloca_toprint(1024, (unsigned char *)path, pathlen));
+      DEBUGF("GET %s", alloca_toprint(1024, path, pathlen));
     if (strcmp(path, "/favicon.ico") == 0) {
       r->request_type = RHIZOME_HTTP_REQUEST_FAVICON;
       rhizome_server_http_response_header(r, 200, "image/vnd.microsoft.icon", favicon_len);
@@ -605,7 +605,7 @@ static int rhizome_server_parse_http_request(rhizome_http_request *r)
     }
   } else {
     if (debug & DEBUG_RHIZOME_TX)
-      DEBUGF("Received malformed HTTP request: %s", alloca_toprint(120, (unsigned char *)r->request, r->request_length));
+      DEBUGF("Received malformed HTTP request: %s", alloca_toprint(120, (const char *)r->request, r->request_length));
     rhizome_server_simple_http_response(r, 400, "<html><h1>Malformed request</h1></html>\r\n");
   }
   
@@ -669,7 +669,7 @@ static int rhizome_server_set_response(rhizome_http_request *r, const struct htt
   r->buffer_offset = 0;
   r->request_type |= RHIZOME_HTTP_REQUEST_FROMBUFFER;
   if (debug & DEBUG_RHIZOME_TX)
-    DEBUGF("Sending HTTP response: %s", alloca_toprint(120, r->buffer, r->buffer_length));
+    DEBUGF("Sending HTTP response: %s", alloca_toprint(120, (const char *)r->buffer, r->buffer_length));
   return 0;
 }
 

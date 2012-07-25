@@ -25,6 +25,7 @@ setup() {
    setup_servald
    assert_no_servald_processes
    setup_dnahelper
+   start_servald_instances +A
 }
 
 teardown() {
@@ -36,69 +37,366 @@ teardown() {
 # Called by start_servald_instances immediately before starting the server
 # process in each instance.
 configure_servald_server() {
-   executeOk_servald config set dna.helper "$TFWTMP/dnahelper"
+   executeOk_servald config set log.show_pid on
+   executeOk_servald config set log.show_time on
+   executeOk_servald config set debug.dnahelper on
+   executeOk_servald config set dna.helper.executable "$dnahelper"
 }
 
 setup_dnahelper() {
-    cat >"$TFWTMP/dnahelper" <<EOF
-#!/usr/bin/env python
-# Sample DNA Helper application for testing
-
-import sys;
-
-def main():    
-    print "STARTED"
-    while True:
-        line = sys.stdin.readline().strip()
-        if line == "":
-            # EOF detection is broken :(
-            break
-        s = line.split('|')
-        if len(s) != 3:
-            print "ERROR"
-            continue
-        (token, number, xxx) = s
-
-        if number == "12345":
-            # Multiple results (SID/VoMP results)
-            print "%s|sid:%s|%s|%s|" % (token, token, number, "Agent A. Smith")
-            print "%s|sid:%s|%s|%s|" % (token, token, number, "Agent B. Smith")
-        if number == "5551234":
-            # Single result, SIP URI
-            print "%s|sip://5551234@10.1.2.3|%s|%s|" % (token, number, "Will Smith")
-        if number == "5551001":
-            # Empty URI field
-            print "%s||%s|%s|" % (token, number, "Empty URI") 
-        if number == "5551002":
-            # Empty DID field
-            print "%s|sip://123@1.2.3.4||%s|" % (token, "Empty DID") 
-        if number == "5551003":
-            # Empty CALLERID field
-            print "%s|sip://empty-callerid@1.2.3.4|%s||" % (token, number)
-        if number == "5551004":
-            # Excessively long callerid
-            print "%s|sip://long-callerid@1.2.3.4|%s|askjdhfkjashdfkljahsdflkjhasdljkfhasldjkfhaslkjdfhalskdjfhklajsdhflkajsdhflkjasdhflkjashdflkjashdflkjahsdflkjahsdfjklhasdljkfhasjkdfhakljsdfhklajsdhflkjashdfljkashdflkjashdf|" % (token, number)
-        if number == "5551005":
-            # Excessively long DID
-            print "%s|sip://long-did@1.2.3.4|askjdhfkjashdfkljahsdflkjhasdljkfhasldjkfhaslkjdfhalskdjfhklajsdhflkajsdhflkjasdhflkjashdflkjashdflkjahsdflkjahsdfjklhasdljkfhasjkdfhakljsdfhklajsdhflkjashdfljkashdflkjashdf|%s|" % (token, "Agent Smith")
-        if number == "5551006":
-            # Excessively long URI
-            print "%s|sip://askjdhfkjashdfkljahsdflkjhasdljkfhasldjkfhaslkjdfhalskdjfhklajsdhflkajsdhflkjasdhflkjashdflkjashdflkjahsdflkjahsdfjklhasdljkfhasjkdfhakljsdfhklajsdhflkjashdfljkashdflkjashdfasdjfkjahsdfjkhasdfkjlhasjldkfhajksdhflkjasdhfkljashdfkljahsdfkljhasdfkljhasdlkjfhasdlkjfhaslkjdfhakljsdhfklajshdfkljashdfljkashdflkjashdflkjahsdfkjlahsdflkjhasdfljkhasdkfjlhaslkdjfhaslkjdfhaklsjdfhaklsjdhflkajsdhflkjasdhflkjashdfljkashdfkljashdflkjashdflkjashdflkjashdflkjashdflkjashdfljkahsdflkjahsdfjklahsdfljkahsdflkjhasdflkjhasdjkfhaskjdlfhaslkjdfhaskljdfhasljkdfhalskdfhalkjsdhflkjasdhflkjahsdflkjahsdflkjahsdflkjhasdflkjahsdflkjahsdflkjahsdfkljashdflkajshdflkajsdhflaksjdfhalksjdfhlasdkjfh|%s|%s|" % (token,  number, "Agent Smith")
-        if number == "5551007":
-            # Incorrect token
-            print "cheeseburger|sip://incorrect-token@1.2.3.4|%s||" % (token, number)    
-
-        print "DONE"
-        
-if __name__ == "__main__":
-    main()
-
+   export SID_JOE_A=1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEA
+   export SID_JOE_B=1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEB
+   export SID_JOE_C=1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEC
+   export SID_JOE_D=1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDED
+   export SID_JOE_E=1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEE
+   export SID_JOE_F=1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF
+   export SID_ECCLES=1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDE0
+   dnahelper="$TFWTMP/dnahelper"
+   cat >"$dnahelper" <<'EOF'
+#!/bin/sh
+echo STARTED
+while read line
+do
+   token="${line%%|*}"
+   line="${line#*|}"
+   did="${line%%|*}"
+   line="${line#*|}"
+   case "$token|$did|$line" in
+   '|'*'|')
+      echo "empty token" >&2
+      ;;
+   *'||')
+      echo "empty DID" >&2
+      ;;
+   *'|00000|')
+      # For verification during setup
+      echo "$token|A|$did|B|"
+      ;;
+   *'|00001|')
+      # One valid reply
+      echo "$token|sip://$SID_JOE_A@10.1.1.1|$did|Joe A. Bloggs|"
+      ;;
+   *'|00002|')
+      # Two valid replies
+      echo "$token|sip://$SID_JOE_A@10.1.1.1|$did|Joe A. Bloggs|"
+      sleep 0.1
+      echo "$token|sip://$SID_JOE_B@10.1.1.1|$did|Joe B. Bloggs|"
+      sleep 0.1
+      ;;
+   *'|00003|')
+      # Three valid replies
+      echo "$token|sip://$SID_JOE_A@10.1.1.1|$did|Joe A. Bloggs|"
+      sleep 0.1
+      echo "$token|sip://$SID_JOE_B@10.1.1.1|$did|Joe B. Bloggs|"
+      sleep 0.1
+      echo "$token|sip://$SID_JOE_C@10.1.1.1|$did|Joe C. Bloggs|"
+      sleep 0.1
+      ;;
+   *'|00004|')
+      # Empty URI
+      echo "$token||$did|Eccles|"
+      ;;
+   *'|000051|')
+      # Malformed URI
+      echo "$token|Bluebottle|$did|Eccles|"
+      ;;
+   *'|000052|')
+      # Malformed URI
+      echo "$token|sip://Sea goon|$did|Eccles|"
+      ;;
+   *'|000053|')
+      # Malformed URI
+      echo "$token|sip:|$did|Eccles|"
+      ;;
+   *'|000061|')
+      # Mismatched token
+      echo "$SID_ECCLES|did://$SID_ECCLES/$did|$did|Eccles|"
+      ;;
+   *'|000062|')
+      # Empty token
+      echo "|did://$SID_ECCLES/$did|$did|Eccles|"
+      ;;
+   *'|000063|')
+      # Invalid token (not a SID)
+      echo "1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEX|did://$SID_ECCLES/$did|$did|Eccles|"
+      ;;
+   *'|000064|')
+      # Long token
+      echo "1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF0|did://$SID_ECCLES/$did|$did|Eccles|"
+      ;;
+   *'|000065|')
+      # Short token
+      echo "1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDE|did://$SID_ECCLES/$did|$did|Eccles|"
+      ;;
+   *'|000071|')
+      # Mismatched DID
+      echo "$token|sip://$SID_ECCLES/$did|99999|Eccles|"
+      ;;
+   *'|000072|')
+      # Empty DID
+      echo "$token|sip://$SID_ECCLES/$did||Eccles|"
+      ;;
+   *'|000073|')
+      # Invalid DID
+      echo "$token|sip://$SID_ECCLES/$did|9999X|Eccles|"
+      ;;
+   *'|000074|')
+      # Long DID
+      echo "$token|sip://$SID_ECCLES/$did|123456789012345678901234567890123|Eccles|"
+      ;;
+   *'|000075|')
+      # Short DID
+      echo "$token|sip://$SID_ECCLES/$did|9999|Eccles|"
+      ;;
+   *'|000081|')
+      # Malformed reply, missing final delimiter
+      echo "$token|sip://$SID_ECCLES/$did|9999|Eccles"
+      ;;
+   *'|000082|')
+      # Malformed reply, long name
+      echo "$token|sip://$SID_ECCLES/$did|9999|Abcd efgh ijkl mnop qrst uvwx yzab cdef ghij klmn opqr stuv wxyz abcd efgh ijkl|"
+      ;;
+   *'|000083|')
+      # Malformed reply, empty line
+      echo
+      ;;
+   *'|000084|')
+      # Malformed reply, missing \n (which swallows the following DONE line)
+      echo -n "$token|sip://$SID_JOE_A@10.1.1.1|$did|Joe A. Bloggs|"
+      ;;
+   *'|000085|')
+      # Malformed reply, line too long
+      for i in 1 2 3 4 5 6 7 8 9 0; do
+         echo -n 1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
+         echo -n 1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
+         echo -n 1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
+         echo -n 1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
+         echo -n 1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
+         echo -n 1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
+         echo -n 1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
+         echo -n 1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
+         echo -n 1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
+         echo -n 1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
+      done
+      echo
+      ;;
+   *'|00009|')
+      # Take too long to respond
+      sleep 2
+      echo "$token|sip://$SID_JOE_D@10.1.1.1|$did|Joe D. Bloggs|"
+      ;;
+   *'|00010|')
+      # Spurious output after DONE
+      echo "$token|sip://$SID_JOE_E@10.1.1.1|$did|Joe E. Bloggs|"
+      echo DONE
+      echo "$token|sip://$SID_JOE_F@10.1.1.1|$did|Joe F. Bloggs|"
+      ;;
+   *'|00011|')
+      # Die unexpectedly
+      echo "goodbye cruel world" >&2
+      exit 42
+      ;;
+   *'|'*'|')
+      echo "token=$token did=$did line=$line" >&2
+      ;;
+   *)
+      echo "garbage line" >&2
+      ;;
+   esac
+   echo DONE
+done
 EOF
+   chmod 0755 "$dnahelper"
+   executeOk "$dnahelper" <<EOF
+ToKeN|00000|
+EOF
+   assertStdoutIs -e "STARTED\nToKeN|A|00000|B|\nDONE\n"
 }
 
-doc_MultiServer="Start three servald servers with dna helper"
-test_MultiServer() {
-   start_servald_instances +A +B +C
+doc_ExecError="Non-existent DNA helper executable"
+setup_ExecError() {
+   setup_servald
+   assert_no_servald_processes
+   dnahelper=/non/existent
+   assert [ ! -e "$dnahelper" ]
+   start_servald_instances +A
+}
+test_ExecError() {
+   executeOk_servald dna lookup 12345
+}
+
+doc_ReplyOk1="DNA helper returns one valid reply"
+test_ReplyOk1() {
+   executeOk_servald dna lookup 00001
+   assertStdoutIs -e "sip://$SID_JOE_A@10.1.1.1:00001:Joe A. Bloggs\n"
+}
+
+doc_ReplyOk2="DNA helper returns two valid replies"
+test_ReplyOk2() {
+   executeOk_servald dna lookup 00002
+   assertStdoutIs -e "sip://$SID_JOE_A@10.1.1.1:00002:Joe A. Bloggs\nsip://$SID_JOE_B@10.1.1.1:00002:Joe B. Bloggs\n"
+}
+
+doc_ReplyOk3="DNA helper returns three valid replies"
+test_ReplyOk3() {
+   executeOk_servald dna lookup 00003
+   assertStdoutIs -e "sip://$SID_JOE_A@10.1.1.1:00003:Joe A. Bloggs\nsip://$SID_JOE_B@10.1.1.1:00003:Joe B. Bloggs\nsip://$SID_JOE_C@10.1.1.1:00003:Joe C. Bloggs\n"
+}
+
+doc_UriEmpty="DNA helper returns empty URI"
+test_UriEmpty() {
+   executeOk_servald dna lookup 00004
+   assertStdoutIs ""
+   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*empty URI'
+}
+
+doc_UriInvalid1="DNA helper returns invalid URI, missing scheme"
+test_UriInvalid1() {
+   executeOk_servald dna lookup 000051
+   assertStdoutIs ""
+   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*Bluebottle.*invalid URI'
+}
+
+doc_UriInvalid2="DNA helper returns invalid URI, invalid char"
+test_UriInvalid2() {
+   executeOk_servald dna lookup 000052
+   assertStdoutIs ""
+   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*sip://Sea goon.*invalid URI'
+}
+
+doc_UriInvalid3="DNA helper returns invalid URI, empty hierarchical part"
+test_UriInvalid3() {
+   executeOk_servald dna lookup 000053
+   assertStdoutIs ""
+   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*sip:.*invalid URI'
+}
+
+doc_TokenMismatch="DNA helper returns mismatched token"
+test_TokenMismatch() {
+   executeOk_servald dna lookup 000061
+   assertStdoutIs ""
+   assertGrep --matches=0 "$LOGA" 'ERROR:.*DNAHELPER'
+}
+
+doc_TokenEmpty="DNA helper returns empty token"
+test_TokenEmpty() {
+   executeOk_servald dna lookup 000062
+   assertStdoutIs ""
+   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*empty token'
+}
+
+doc_TokenInvalid="DNA helper returns invalid token"
+test_TokenInvalid() {
+   executeOk_servald dna lookup 000063
+   assertStdoutIs ""
+   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*invalid token'
+}
+
+doc_TokenInvalidLong="DNA helper returns invalid token, too long"
+test_TokenInvalidLong() {
+   executeOk_servald dna lookup 000064
+   assertStdoutIs ""
+   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*reply.*invalid'
+}
+
+doc_TokenInvalidShort="DNA helper returns invalid token, too short"
+test_TokenInvalidShort() {
+   executeOk_servald dna lookup 000065
+   assertStdoutIs ""
+   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*invalid token'
+}
+
+doc_DidMismatch="DNA helper returns mismatched DID"
+test_DidMismatch() {
+   executeOk_servald dna lookup 000071
+   assertStdoutIs ""
+   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*mismatched DID'
+}
+
+doc_DidEmpty="DNA helper returns empty DID"
+test_DidEmpty() {
+   executeOk_servald dna lookup 000072
+   assertStdoutIs ""
+   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*empty DID'
+}
+
+doc_DidInvalid="DNA helper returns invalid DID"
+test_DidInvalid() {
+   executeOk_servald dna lookup 000073
+   assertStdoutIs ""
+   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*invalid DID'
+}
+
+doc_DidInvalidLong="DNA helper returns invalid DID, too long"
+test_DidInvalidLong() {
+   executeOk_servald dna lookup 000074
+   assertStdoutIs ""
+   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*reply.*invalid'
+}
+
+doc_DidInvalidShort="DNA helper returns invalid DID, too short"
+test_DidInvalidShort() {
+   executeOk_servald dna lookup 000075
+   assertStdoutIs ""
+   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*invalid DID'
+}
+
+doc_ReplyInvalidMissingDelim="DNA helper returns invalid reply, missing delimiter"
+test_ReplyInvalidMissingDelim() {
+   executeOk_servald dna lookup 000081
+   assertStdoutIs ""
+   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*reply.*invalid'
+}
+
+doc_ReplyInvalidLongName="DNA helper returns invalid reply, name too long"
+test_ReplyInvalidLongName() {
+   executeOk_servald dna lookup 000082
+   assertStdoutIs ""
+   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*reply.*invalid'
+}
+
+doc_ReplyInvalidEmpty="DNA helper returns invalid reply, empty line"
+test_ReplyInvalidEmpty() {
+   executeOk_servald dna lookup 000083
+   assertStdoutIs ""
+   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*reply "\\n" invalid'
+}
+
+doc_ReplyInvalidMissingNewline="DNA helper returns invalid reply, missing newline"
+test_ReplyInvalidMissingNewline() {
+   executeOk_servald dna lookup 000084
+   assertStdoutIs ""
+   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*reply.*spurious'
+   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*reply timeout'
+}
+
+doc_HelperTimeout="DNA helper process takes too long to reply and is restarted"
+test_HelperTimeout() {
+   executeOk_servald dna lookup 00009
+   assertStdoutIs ""
+   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*reply timeout'
+   assertGrep "$LOGA" 'INFO:.*DNAHELPER.*process.*terminated by signal 15'
+   executeOk_servald dna lookup 00001
+   assertStdoutIs -e "sip://$SID_JOE_A@10.1.1.1:00001:Joe A. Bloggs\n"
+}
+
+doc_ReplySpurious="DNA helper spurious output after DONE is ignored"
+test_ReplySpurious() {
+   executeOk_servald dna lookup 00010
+   assertStdoutIs -e "sip://$SID_JOE_E@10.1.1.1:00010:Joe E. Bloggs\n"
+   assertGrep "$LOGA" 'WARN:.*DNAHELPER.*spurious output'
+   executeOk_servald dna lookup 00001
+   assertStdoutIs -e "sip://$SID_JOE_A@10.1.1.1:00001:Joe A. Bloggs\n"
+}
+
+doc_HelperDies="DNA helper process dies unexpectedly and is restarted"
+test_HelperDies() {
+   executeOk_servald dna lookup 00011
+   assertStdoutIs ""
+   assertGrep "$LOGA" 'INFO:.*DNAHELPER.*process.*exited normally with status 42'
+   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*"goodbye cruel world\\n"'
+   executeOk_servald dna lookup 00001
+   assertStdoutIs -e "sip://$SID_JOE_A@10.1.1.1:00001:Joe A. Bloggs\n"
 }
 
 runTests "$@"

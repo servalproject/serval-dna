@@ -869,7 +869,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	  q->request_len += bytes;
 	  if (http_header_complete(q->request, q->request_len, bytes + 4)) {
 	    if (debug & DEBUG_RHIZOME_RX)
-	      DEBUGF("Got HTTP reply: %s", alloca_toprint(160, (unsigned char *)q->request, q->request_len));
+	      DEBUGF("Got HTTP reply: %s", alloca_toprint(160, q->request, q->request_len));
 	    /* We have all the reply headers, so parse them, taking care of any following bytes of
 	      content. */
 	    char *p = NULL;

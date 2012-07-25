@@ -1,6 +1,6 @@
-/* 
+/*
 Serval Distributed Numbering Architecture (DNA)
-Copyright (C) 2010 Paul Gardner-Stephen 
+Copyright (C) 2010 Paul Gardner-Stephen
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -99,7 +99,8 @@ int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary)
 
 int str_is_subscriber_id(const char *sid)
 {
-  return strcasecmp(sid, "broadcast") == 0 || _is_xstring(sid, SID_STRLEN);
+  size_t len = 0;
+  return strn_is_subscriber_id(sid, &len) && sid[len] == '\0';
 }
 
 int strn_is_subscriber_id(const char *sid, size_t *lenp)
@@ -155,6 +156,29 @@ int rhizome_strn_is_file_hash(const char *hash)
 int rhizome_str_is_file_hash(const char *hash)
 {
   return _is_xstring(hash, RHIZOME_FILEHASH_STRLEN);
+}
+
+int str_is_did(const char *did)
+{
+  size_t len = 0;
+  return strn_is_did(did, &len) && did[len] == '\0';
+}
+
+int is_didchar(char c)
+{
+  return isdigit(c) || c == '*' || c == '#' || c == '+';
+}
+
+int strn_is_did(const char *did, size_t *lenp)
+{
+  int i;
+  for (i = 0; i < DID_MAXSIZE && is_didchar(did[i]); ++i)
+    ;
+  if (i < DID_MINSIZE)
+    return 0;
+  if (lenp)
+    *lenp = i;
+  return 1;
 }
 
 int extractDid(unsigned char *packet,int *ofs,char *did)
@@ -337,3 +361,45 @@ int safeZeroField(unsigned char *packet,int start,int count)
   return 0;
 }
 
+int is_uri_char_scheme(char c)
+{
+  return isalpha(c) || isdigit(c) || c == '+' || c == '-' || c == '.';
+}
+
+int is_uri_char_unreserved(char c)
+{
+  return isalpha(c) || isdigit(c) || c == '-' || c == '.' || c == '_' || c == '~';
+}
+
+int is_uri_char_reserved(char c)
+{
+  switch (c) {
+    case ':': case '/': case '?': case '#': case '[': case ']': case '@':
+    case '!': case '$': case '&': case '\'': case '(': case ')':
+    case '*': case '+': case ',': case ';': case '=':
+      return 1;
+  }
+  return 0;
+}
+
+/* Return true if the string resembles a URI.
+   Based on RFC-3986 generic syntax, assuming nothing about the hierarchical part.
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+int str_is_uri(const char *uri)
+{
+  const char *p = uri;
+  // Scheme is ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )
+  if (!isalpha(*p++))
+    return 0;
+  while (is_uri_char_scheme(*p))
+    ++p;
+  // Scheme is followed by colon ":".
+  if (*p++ != ':')
+    return 0;
+  // Hierarchical part must contain only valid characters.
+  const char *q = p;
+  while (is_uri_char_unreserved(*p) || is_uri_char_reserved(*p))
+    ++p;
+  return p != q && *p == '\0';
+}

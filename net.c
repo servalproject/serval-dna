@@ -47,7 +47,7 @@ int _set_block(int fd, const char *file, unsigned int line, const char *function
   return 0;
 }
 
-int _read_nonblock(int fd, void *buf, size_t len, const char *file, unsigned int line, const char *function)
+ssize_t _read_nonblock(int fd, void *buf, size_t len, const char *file, unsigned int line, const char *function)
 {
   ssize_t nread = read(fd, buf, len);
   if (nread == -1) {
@@ -66,7 +66,7 @@ int _read_nonblock(int fd, void *buf, size_t len, const char *file, unsigned int
   return nread;
 }
 
-int _write_all(int fd, const void *buf, size_t len, const char *file, unsigned int line, const char *function)
+ssize_t _write_all(int fd, const void *buf, size_t len, const char *file, unsigned int line, const char *function)
 {
   ssize_t written = write(fd, buf, len);
   if (written == -1) {
@@ -82,7 +82,7 @@ int _write_all(int fd, const void *buf, size_t len, const char *file, unsigned i
   return written;
 }
 
-int _write_nonblock(int fd, const void *buf, size_t len, const char *file, unsigned int line, const char *function)
+ssize_t _write_nonblock(int fd, const void *buf, size_t len, const char *file, unsigned int line, const char *function)
 {
   ssize_t written = write(fd, buf, len);
   if (written == -1) {
@@ -101,7 +101,7 @@ int _write_nonblock(int fd, const void *buf, size_t len, const char *file, unsig
   return written;
 }
 
-int _write_all_nonblock(int fd, const void *buf, size_t len, const char *file, unsigned int line, const char *function)
+ssize_t _write_all_nonblock(int fd, const void *buf, size_t len, const char *file, unsigned int line, const char *function)
 {
   ssize_t written = _write_nonblock(fd, buf, len, file, line, function);
   if (written != -1 && written != len) {
@@ -112,12 +112,12 @@ int _write_all_nonblock(int fd, const void *buf, size_t len, const char *file, u
   return written;
 }
 
-int _write_str(int fd, const char *str, const char *file, unsigned int line, const char *function)
+ssize_t _write_str(int fd, const char *str, const char *file, unsigned int line, const char *function)
 {
   return _write_all(fd, str, strlen(str), file, line, function);
 }
 
-int _write_str_nonblock(int fd, const char *str, const char *file, unsigned int line, const char *function)
+ssize_t _write_str_nonblock(int fd, const char *str, const char *file, unsigned int line, const char *function)
 {
   return _write_all_nonblock(fd, str, strlen(str), file, line, function);
 }
