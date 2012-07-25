@@ -26,7 +26,6 @@ is_reachable() {
   if ! grep "PEER REACHABLE, sid=${!sidvar}" "$instance_servald_log"; then
     return 1
   fi
-  echo "PEER REACHABLE, sid=${!sidvar} from $SID"
   return 0
 }
 
@@ -79,7 +78,7 @@ test_LookupWildcard() {
 doc_LookupEmpty="Lookup by empty string"
 test_LookupEmpty() {
    executeOk_servald dna lookup ""
-   assertStdoutLineCount '==' 2 
+   assertStdoutLineCount '==' 2
    assertStdoutGrep --matches=1 "^sid://$SIDA/5550001:5550001:Agent A Smith$"
    assertStdoutGrep --matches=1 "^sid://$SIDB/5550002:5550002:Agent B Smith$"
 }
