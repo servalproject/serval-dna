@@ -860,9 +860,9 @@ overlay_frame *op_dup(overlay_frame *f);
 
 long long parse_quantity(char *q);
 
-int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockaddr_in broadcast,
+int overlay_interface_init(char *name,struct sockaddr_in *src_addr,struct sockaddr_in *broadcast,
 			   int speed_in_bits,int port,int type);
-int overlay_interface_init_socket(int i,struct sockaddr_in src_addr,struct sockaddr_in broadcast);
+int overlay_interface_init_socket(int i,struct sockaddr_in *src_addr,struct sockaddr_in *broadcast);
 long long overlay_time_until_next_tick();
 int overlay_rx_messages();
 
@@ -1499,8 +1499,8 @@ int overlay_mdp_bind(unsigned char *localaddr,int port);
 int overlay_route_node_info(overlay_mdp_frame *mdp,
 			    struct sockaddr_un *addr,int addrlen);
 int overlay_interface_register(char *name,
-			       struct sockaddr_in local,
-			       struct sockaddr_in broadcast);
+			       struct sockaddr_in *local,
+			       struct sockaddr_in *broadcast);
 int overlay_queue_dump(overlay_txqueue *q);
 int overlay_broadcast_ensemble(int interface_number,
 			       struct sockaddr_in *recipientaddr /* NULL == broadcast */,

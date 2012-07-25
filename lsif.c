@@ -93,7 +93,7 @@ int scrapeProcNetRoute()
 	if (!(d&(~m))) {
 	  local.sin_addr.s_addr=d;
 	  broadcast.sin_addr.s_addr=d|~m;
-	  overlay_interface_register(name,local,broadcast);
+	  overlay_interface_register(name,&local,&broadcast);
 	}
       }
 
@@ -117,7 +117,7 @@ lsif(void) {
   struct ifconf   ifc;
   int             sck, nInterfaces, ofs;
   struct ifreq    *ifr;
-  struct sockaddr_in local, broadcast;
+  struct sockaddr_in local, *broadcast;
 
   if (debug & DEBUG_OVERLAYINTERFACES) DEBUG("called");
 
@@ -139,7 +139,8 @@ lsif(void) {
   /* Iterate through the list of interfaces. */
   nInterfaces = 0;
   ofs = 0;
-  while (ofs < ifc.ifc_len) {
+  
+  while (ofs < ifc.ifc_len && ofs < sizeof(buf)) {
     ifr = (struct ifreq *)(ifc.ifc_ifcu.ifcu_buf + ofs);
     ofs += _SIZEOF_ADDR_IFREQ(*ifr);
 
@@ -149,32 +150,30 @@ lsif(void) {
       continue;
     }
   
+    bcopy(&ifr->ifr_ifru.ifru_addr, &local, sizeof(struct sockaddr_in));
+    
     /* Get interface flags */
     if (ioctl(sck, SIOCGIFFLAGS, ifr) == -1)
       FATAL_perror("ioctl(SIOCGIFFLAGS)");
-
+    
     /* Not broadcast? Not interested.. */
     if ((ifr->ifr_ifru.ifru_flags & IFF_BROADCAST) == 0) {
       if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("Skipping non-broadcast address on %s", ifr->ifr_name);
       continue;
     }
-      
+    
     /* Get broadcast address */
     if (ioctl(sck, SIOCGIFBRDADDR, ifr, sizeof(*ifr)) == -1)
       FATAL_perror("ioctl(SIOCGIFBRDADDR)");
 
-    bcopy(&ifr->ifr_ifru.ifru_addr, &local, sizeof(local));      
-    bcopy(&ifr->ifr_ifru.ifru_broadaddr, &broadcast ,sizeof(broadcast));
+    broadcast = (struct sockaddr_in *)&ifr->ifr_ifru.ifru_broadaddr;
 
     if (debug & DEBUG_OVERLAYINTERFACES) {
-      char addrtxt[INET_ADDRSTRLEN], bcasttxt[INET_ADDRSTRLEN];
-      assert(inet_ntop(AF_INET, (const void *)&local.sin_addr, addrtxt, INET_ADDRSTRLEN) != NULL);
-      assert(inet_ntop(AF_INET, (const void *)&broadcast.sin_addr, bcasttxt, INET_ADDRSTRLEN) != NULL);
-      DEBUGF("name=%s addr=%s, broad=%s\n",
-					     ifr->ifr_name,
-					     addrtxt, bcasttxt);
+      // note, inet_ntop doesn't seem to behave on android
+      DEBUGF("%s address: %s", ifr->ifr_name, inet_ntoa(local.sin_addr));
+      DEBUGF("%s broadcast address: %s", ifr->ifr_name, inet_ntoa(broadcast->sin_addr));
     }
-    overlay_interface_register(ifr->ifr_name, local, broadcast);
+    overlay_interface_register(ifr->ifr_name, &local, broadcast);
     nInterfaces++;
   }
   
@@ -226,7 +225,7 @@ doifaddrs(void) {
       DEBUGF("name=%s addr=%s broad=%s", name, addrtxt, bcasttxt);
     }
 
-    overlay_interface_register(name,local,broadcast);
+    overlay_interface_register(name,&local,&broadcast);
   }
   freeifaddrs(ifaddr);
 

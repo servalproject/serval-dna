@@ -187,11 +187,11 @@ int overlay_interface_args(const char *arg)
 }
 
 int
-overlay_interface_init_socket(int interface, struct sockaddr_in src_addr, struct sockaddr_in broadcast) {
+overlay_interface_init_socket(int interface, struct sockaddr_in *src_addr, struct sockaddr_in *broadcast) {
   char			srctxt[INET_ADDRSTRLEN];
 
 #define I(X) overlay_interfaces[interface].X
-  I(broadcast_address) = broadcast;
+  bcopy(broadcast, &I(broadcast_address), sizeof(struct sockaddr_in));
   I(fileP) = 0;
 
   I(alarm.poll.fd) = socket(PF_INET,SOCK_DGRAM,0);
@@ -230,15 +230,15 @@ overlay_interface_init_socket(int interface, struct sockaddr_in src_addr, struct
       traffic on all platforms. BUT on OSX we really need a non-broadcast socket
       to send from, because you cannot send from a broadcast socket on OSX it seems.
   */
-  broadcast.sin_family = AF_INET;
-  broadcast.sin_port = htons(I(port));
-  if (bind(I(alarm.poll.fd), (struct sockaddr *)&broadcast, sizeof(broadcast))) {
+  I(broadcast_address.sin_family) = AF_INET;
+  I(broadcast_address.sin_port) = htons(I(port));
+  if (bind(I(alarm.poll.fd), (const struct sockaddr *)&I(broadcast_address), sizeof(I(broadcast_address)))) {
     WHY_perror("bind");
     WHY("MP HLR server could not bind to requested UDP port (bind() failed)");
     goto error;
   }
-  assert(inet_ntop(AF_INET, (const void *)&broadcast.sin_addr, srctxt, INET_ADDRSTRLEN) != NULL);
-  if (debug & (DEBUG_PACKETRX | DEBUG_IO)) DEBUGF("Bound to %s:%d", srctxt, ntohs(broadcast.sin_port));
+  assert(inet_ntop(AF_INET, (const void *)&I(broadcast_address.sin_addr), srctxt, INET_ADDRSTRLEN) != NULL);
+  if (debug & (DEBUG_PACKETRX | DEBUG_IO)) DEBUGF("Bound to %s:%d", srctxt, ntohs(I(broadcast_address.sin_port)));
 
   I(alarm.poll.events)=POLLIN;
   I(alarm.function) = overlay_interface_poll;
@@ -261,7 +261,7 @@ overlay_interface_init_socket(int interface, struct sockaddr_in src_addr, struct
 #undef I
 }
 
-int overlay_interface_init(char *name,struct sockaddr_in src_addr,struct sockaddr_in broadcast,
+int overlay_interface_init(char *name,struct sockaddr_in *src_addr,struct sockaddr_in *broadcast,
 			   int speed_in_bits,int port,int type)
 {
   /* Too many interfaces */
@@ -554,8 +554,8 @@ int overlay_sendto(struct sockaddr_in *recipientaddr,unsigned char *bytes,int le
 /* Register the interface, or update the existing interface registration */
 int
 overlay_interface_register(char *name,
-			   struct sockaddr_in local,
-			   struct sockaddr_in broadcast) {
+			   struct sockaddr_in *local,
+			   struct sockaddr_in *broadcast) {
   struct interface_rules	*r, *me;
   int				i;
 
@@ -588,7 +588,7 @@ overlay_interface_register(char *name,
        DOC 20120608
     */
     if ((overlay_interfaces[i].broadcast_address.sin_addr.s_addr & 0xffffffff)
-	== (broadcast.sin_addr.s_addr & 0xffffffff)) {
+	== (broadcast->sin_addr.s_addr & 0xffffffff)) {
       /* Same address, mark it as being seen */
       overlay_interfaces[i].observed = 1;
       return 0;
@@ -600,8 +600,8 @@ overlay_interface_register(char *name,
 	INFOF("Interface changed %08llx.%08llx vs %08llx.%08llx",
 	      /* overlay_interfaces[i].local_address.sin_addr.s_addr */0,
 	      overlay_interfaces[i].broadcast_address.sin_addr.s_addr,
-	      local.sin_addr.s_addr,
-	      broadcast.sin_addr.s_addr);
+	      local->sin_addr.s_addr,
+	      broadcast->sin_addr.s_addr);
 	unwatch(&overlay_interfaces[i].alarm);
 	close(overlay_interfaces[i].alarm.poll.fd);
 	overlay_interfaces[i].alarm.poll.fd = -1;
@@ -611,7 +611,7 @@ overlay_interface_register(char *name,
     }
   } else {
     /* New interface, so register it */
-    if (overlay_interface_init(name,local, broadcast, me->speed_in_bits, me->port, me->type))
+    if (overlay_interface_init(name, local, broadcast, me->speed_in_bits, me->port, me->type))
       WHYF("Could not initialise newly seen interface %s", name);
     else
       if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("Registered interface %s", name);
@@ -643,7 +643,7 @@ void overlay_interface_discover(struct sched_ent *alarm){
       overlay_interfaces[i].observed = 1;
     else {
       /* New interface, so register it */      
-      if (overlay_interface_init(r->namespec,dummyaddr,dummyaddr,
+      if (overlay_interface_init(r->namespec,&dummyaddr,&dummyaddr,
 				 1000000,PORT_DNA,OVERLAY_INTERFACE_WIFI)) {
 	if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("Could not initialise newly seen interface %s", r->namespec);
       }
