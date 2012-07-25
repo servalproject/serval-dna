@@ -289,8 +289,8 @@ int parseCommandLine(const char *argv0, int argc, const char *const *args)
   /* clean up after ourselves */
   overlay_mdp_client_done();
   OUT();
-  //TODO debug flag for method profiling
-  if (1)
+  
+  if (debug&DEBUG_TIMING)
     fd_showstats();
   return result;
 }

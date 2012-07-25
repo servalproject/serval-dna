@@ -128,9 +128,9 @@ int overlayServerMode()
   /* Create structures to use 1MB of RAM for testing */
   overlay_route_init(1);
 
-#define SCHEDULE(X, Y, D) \
-struct sched_ent _sched_##X; \
-struct profile_total _stats_##X; \
+#define SCHEDULE(X, Y, D) { \
+static struct sched_ent _sched_##X; \
+static struct profile_total _stats_##X; \
 bzero(&_sched_##X, sizeof(struct sched_ent)); \
 bzero(&_stats_##X, sizeof(struct profile_total)); \
 _sched_##X.stats = &_stats_##X; \
@@ -138,7 +138,7 @@ _sched_##X.function=X;\
 _stats_##X.name="" #X "";\
 _sched_##X.alarm=overlay_gettime_ms()+Y;\
 _sched_##X.deadline=_sched_##X.alarm+D;\
-schedule(&_sched_##X);
+schedule(&_sched_##X); }
   
   /* Periodically check for server shut down */
   SCHEDULE(server_shutdown_check, 0, 100);
@@ -163,7 +163,9 @@ schedule(&_sched_##X);
   SCHEDULE(overlay_route_tick, 100, 100);
 
   /* Show CPU usage stats periodically */
-  SCHEDULE(fd_periodicstats, 3000, 500);
+  if (debug&DEBUG_TIMING){
+    SCHEDULE(fd_periodicstats, 3000, 500);
+  }
 
 #undef SCHEDULE
   
