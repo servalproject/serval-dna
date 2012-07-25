@@ -564,9 +564,11 @@ tfw_cat() {
 tfw_core_backtrace() {
    local executable="$1"
    local corefile="$2"
+   echo backtrace >"$_tfw_tmpdir/backtrace.gdb"
    tfw_log "#--- gdb backtrace from $executable $corefile ---"
-   echo backtrace | gdb -batch "$executable" "$corefile"
+   gdb -n -batch -x "$_tfw_tmpdir/backtrace.gdb" "$executable" "$corefile" </dev/null
    tfw_log "#---"
+   rm -f "$_tfw_tmpdir/backtrace.gdb"
 }
 
 assertExitStatus() {
