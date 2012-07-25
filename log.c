@@ -26,6 +26,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <time.h>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
 
 unsigned int debug = 0;
 
@@ -315,21 +318,21 @@ size_t toprint_strlen(ssize_t dstStrLen, const char *srcBuf, size_t srcBytes)
 
 /* Read the symbolic link into the supplied buffer and add a terminating nul.  Return -1 if the
  * buffer is too short to hold the link content and the nul.  If readlink(2) returns an error, then
- * logs it and returns -1.  Otherwise, returns the number of bytes read, excluding the terminating
- * nul, ie, returns what readlink(2) returns.  If the 'len' argument is given as zero, then returns
- * the number of bytes that would be read, by calling lstat(2) instead of readlink(2).  Beware of
- * the following race condition: a symbolic link may be altered between calling the lstat(2) and
- * readlink(2), so the following apparently overflow-proof code may still fail from a buffer
- * overflow in the second call to read_symlink():
+ * logs it and returns -1.  Otherwise, returns the number of bytes read, including the terminating
+ * nul, ie, returns what readlink(2) returns plus one.  If the 'len' argument is given as zero, then
+ * returns the number of bytes that would be read, by calling lstat(2) instead of readlink(2), plus
+ * one for the terminating nul.  Beware of the following race condition: a symbolic link may be
+ * altered between calling the lstat(2) and readlink(2), so the following apparently overflow-proof
+ * code may still fail from a buffer overflow in the second call to read_symlink():
  *
  *    char *readlink_malloc(const char *path) {
  *	ssize_t len = read_symlink(path, NULL, 0);
  *	if (len == -1)
  *	  return NULL;
- *	char *buf = malloc(len + 1);
+ *	char *buf = malloc(len);
  *	if (buf == NULL)
  *	  return NULL;
- *	if (read_symlink(path, buf, len + 1) == -1) {
+ *	if (read_symlink(path, buf, len) == -1) {
  *	  free(buf);
  *	  return NULL;
  *	}
@@ -359,6 +362,12 @@ ssize_t get_self_executable_path(char *buf, size_t len)
 {
 #ifdef linux
   return read_symlink("/proc/self/exe", buf, len);
+#endif
+#ifdef __APPLE__
+  // Mac OS X
+  // TODO: Not tested
+  uint32_t bufsize = len;
+  return _NSGetExecutablePath(buf, &bufsize) == -1 && len ? -1 : bufsize;
 #endif
   return WHYF("Not implemented");
 }
