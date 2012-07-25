@@ -186,37 +186,44 @@ int overlay_interface_args(const char *arg)
   return 0;     
 }
 
+void overlay_interface_close(overlay_interface *interface){
+  INFOF("Interface %s is down", interface->name);
+  unschedule(&interface->alarm);
+  unwatch(&interface->alarm);
+  close(interface->alarm.poll.fd);
+  interface->alarm.poll.fd=-1;
+  interface->state=INTERFACE_STATE_DOWN;
+}
+
 int
-overlay_interface_init_socket(int interface, struct sockaddr_in *src_addr, struct sockaddr_in *broadcast) {
+overlay_interface_init_socket(int interface) {
   char			srctxt[INET_ADDRSTRLEN];
 
 #define I(X) overlay_interfaces[interface].X
-  bcopy(broadcast, &I(broadcast_address), sizeof(struct sockaddr_in));
   I(fileP) = 0;
 
   I(alarm.poll.fd) = socket(PF_INET,SOCK_DGRAM,0);
   
   if (I(alarm.poll.fd) < 0) {
-      WHY_perror("socket");
-      WHYF("Could not create UDP socket for interface: %s",strerror(errno));
-      goto error;
-  } else 
-    INFOF("interface #%d fd=%d",interface, I(alarm.poll.fd));
+    WHY_perror("socket");
+    WHYF("Could not create UDP socket for interface: %s",strerror(errno));
+    goto error;
+  } 
 
   int reuseP = 1;
   if (setsockopt(I(alarm.poll.fd), SOL_SOCKET, SO_REUSEADDR, &reuseP, sizeof(reuseP)) < 0) {
-      WHY_perror("setsockopt(SO_REUSEADR)");
-      goto error;
-    }
+    WHY_perror("setsockopt(SO_REUSEADR)");
+    goto error;
+  }
 #ifdef SO_REUSEPORT
   if (setsockopt(I(alarm.poll.fd), SOL_SOCKET, SO_REUSEPORT, &reuseP, sizeof(reuseP)) < 0) {
-      WHY_perror("setsockopt(SO_REUSEPORT)");
-      goto error;
-    }
+    WHY_perror("setsockopt(SO_REUSEPORT)");
+    goto error;
+  }
 #endif
   int broadcastP = 1;
   if (setsockopt(I(alarm.poll.fd), SOL_SOCKET, SO_BROADCAST, &broadcastP, sizeof(broadcastP)) < 0) {
-    WHY_perror("setsockopt");
+    WHY_perror("setsockopt(SO_BROADCAST)");
     goto error;
   }
 
@@ -225,6 +232,17 @@ overlay_interface_init_socket(int interface, struct sockaddr_in *src_addr, struc
      a bad signal. */
   fcntl(I(alarm.poll.fd), F_SETFL, fcntl(I(alarm.poll.fd), F_GETFL, NULL) | O_CLOEXEC);
 
+#ifdef SO_BINDTODEVICE
+  /*
+   Limit incoming and outgoing packets to this interface, no matter what the routing table says.
+   This should allow for a device with multiple interfaces on the same subnet.
+   Don't abort if this fails, just log it.
+   */
+  if (setsockopt(I(alarm.poll.fd), SOL_SOCKET, SO_BINDTODEVICE, I(name), strlen(I(name))+1) < 0) {
+    WHY_perror("setsockopt(SO_BINDTODEVICE)");
+  }
+#endif
+  
   /*  @PGS/20120615
       Use the broadcast address, so that we can reliably receive broadcast 
       traffic on all platforms. BUT on OSX we really need a non-broadcast socket
@@ -252,11 +270,13 @@ overlay_interface_init_socket(int interface, struct sockaddr_in *src_addr, struc
   I(alarm.deadline)=I(alarm.alarm)+10;
   schedule(&I(alarm));
   
+  I(state)=INTERFACE_STATE_UP;
+  
+  INFOF("Interface %s addr %s, is up",I(name), inet_ntoa(I(broadcast_address.sin_addr)));
   return 0;
 
   error:
-  close(I(alarm.poll.fd));
-  I(alarm.poll.fd)=-1;
+  overlay_interface_close(&overlay_interfaces[interface]);
   return -1;
 #undef I
 }
@@ -274,7 +294,7 @@ int overlay_interface_init(char *name,struct sockaddr_in *src_addr,struct sockad
   /* Pick a reasonable default MTU.
      This will ultimately get tuned by the bandwidth and other properties of the interface */
   I(mtu)=1200;
-  I(observed)=1;
+  I(state)=INTERFACE_STATE_DOWN;
   I(bits_per_second)=speed_in_bits;
   I(port)=port;
   I(type)=type;
@@ -324,8 +344,14 @@ int overlay_interface_init(char *name,struct sockaddr_in *src_addr,struct sockad
     dummy_poll_stats.name="overlay_dummy_poll";
     I(alarm.stats)=&dummy_poll_stats;
     schedule(&I(alarm));
+    
+    I(state)=INTERFACE_STATE_UP;
+    INFOF("Dummy interface %s is up",I(name));
+    
   } else {
-    if (overlay_interface_init_socket(overlay_interface_count,src_addr,broadcast))
+    bcopy(src_addr, &I(address), sizeof(struct sockaddr_in));
+    bcopy(broadcast, &I(broadcast_address), sizeof(struct sockaddr_in));
+    if (overlay_interface_init_socket(overlay_interface_count))
       return WHY("overlay_interface_init_socket() failed");    
   }
 
@@ -344,13 +370,17 @@ void overlay_interface_poll(struct sched_ent *alarm)
   socklen_t addrlen = sizeof(src_addr);
 
   if (alarm->poll.revents==0){
-    // tick the interface
-    unsigned long long now = overlay_gettime_ms();
-    int i = (interface - overlay_interfaces);
-    overlay_tick_interface(i, now);
-    alarm->alarm=now+interface->tick_ms;
-    alarm->deadline=alarm->alarm+interface->tick_ms/2;
-    schedule(alarm);
+    
+    if (interface->state==INTERFACE_STATE_UP){
+      // tick the interface
+      unsigned long long now = overlay_gettime_ms();
+      int i = (interface - overlay_interfaces);
+      overlay_tick_interface(i, now);
+      alarm->alarm=now+interface->tick_ms;
+      alarm->deadline=alarm->alarm+interface->tick_ms/2;
+      schedule(alarm);
+    }
+    
     return;
   }
   
@@ -358,16 +388,20 @@ void overlay_interface_poll(struct sched_ent *alarm)
      enable stats to accurately count packets received */
   int recvttl=1;
   plen = recvwithttl(alarm->poll.fd,packet, sizeof(packet), &recvttl, &src_addr, &addrlen);
-  if (plen != -1) {
-    /* We have a frame from this interface */
-    if (debug&DEBUG_PACKETRX)
-      serval_packetvisualise(open_logging(),"Read from real interface", packet,plen);
-    if (debug&DEBUG_OVERLAYINTERFACES) DEBUGF("Received %d bytes on interface %s",plen,interface->name);
-    if (packetOk(interface,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
-      WHY("Malformed packet");
-      // Do we really want to attempt to parse it again?
-      //serval_packetvisualise(open_logging(), "Malformed packet", packet,plen);
-    }
+  if (plen == -1) {
+    WHY_perror("recvwithttl(c)");
+    overlay_interface_close(interface);
+    return;
+  }
+  
+  /* We have a frame from this interface */
+  if (debug&DEBUG_PACKETRX)
+    serval_packetvisualise(open_logging(),"Read from real interface", packet,plen);
+  if (debug&DEBUG_OVERLAYINTERFACES) DEBUGF("Received %d bytes on interface %s",plen,interface->name);
+  if (packetOk(interface,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
+    WHY("Malformed packet");
+    // Do we really want to attempt to parse it again?
+    //serval_packetvisualise(open_logging(), "Malformed packet", packet,plen);
   }
 }
 
@@ -404,8 +438,6 @@ void overlay_dummy_poll(struct sched_ent *alarm)
       
       if (alarm->alarm > interface->last_tick_ms + interface->tick_ms)
 	alarm->alarm = interface->last_tick_ms + interface->tick_ms;
-      if (debug&DEBUG_OVERLAYINTERFACES)
-	DEBUGF("At end of input on dummy interface %s", interface->name);
     }
   else
     {
@@ -466,6 +498,9 @@ int overlay_broadcast_ensemble(int interface_number,
 
   overlay_interface *interface = &overlay_interfaces[interface_number];
 
+  if (interface->state!=INTERFACE_STATE_UP){
+    return WHYF("Cannot send to interface %s as it is down", interface->name);
+  }
   memset(&s, '\0', sizeof(struct sockaddr_in));
   if (recipientaddr) {
     bcopy(recipientaddr,&s,sizeof(struct sockaddr_in));
@@ -535,8 +570,11 @@ int overlay_broadcast_ensemble(int interface_number,
   else
     {
       if(sendto(interface->alarm.poll.fd, 
-		bytes, len, 0, (struct sockaddr *)&s, sizeof(struct sockaddr_in)) != len)
-	  return WHY_perror("sendto(c)");
+		bytes, len, 0, (struct sockaddr *)&s, sizeof(struct sockaddr_in)) != len){
+	WHY_perror("sendto(c)");
+	overlay_interface_close(interface);
+	return -1;
+      }
       return 0;
     }
 }
@@ -575,104 +613,115 @@ overlay_interface_register(char *name,
     return 0;
   }
 
-  /* Search in the exist list of interfaces */
-  for(i = 0; i < overlay_interface_count; i++)
-    if (!strcasecmp(overlay_interfaces[i].name, name))
-      break;
+  int found_interface= -1;
   
-  if (i < overlay_interface_count) {
-    /* We already know about this interface, so just update it. */
-
-    /* Check if the broadcast address is the same
-       TODO: This only applies on Linux because only there can you bind to the bcast addr
-       DOC 20120608
-    */
+  /* Search in the exist list of interfaces */
+  for(i = 0; i < overlay_interface_count; i++){
+    int broadcast_match = 0;
+    int name_match =0;
+    
     if ((overlay_interfaces[i].broadcast_address.sin_addr.s_addr & 0xffffffff)
-	== (broadcast->sin_addr.s_addr & 0xffffffff)) {
-      /* Same address, mark it as being seen */
-      overlay_interfaces[i].observed = 1;
-      return 0;
-    } else {
-      if (0) {
-	/* Interface has changed.
-	   TODO: We should register each address we understand in a list and check them.
-	   DOC 20120608 */
-	INFOF("Interface changed %08llx.%08llx vs %08llx.%08llx",
-	      /* overlay_interfaces[i].local_address.sin_addr.s_addr */0,
-	      overlay_interfaces[i].broadcast_address.sin_addr.s_addr,
-	      local->sin_addr.s_addr,
-	      broadcast->sin_addr.s_addr);
-	unwatch(&overlay_interfaces[i].alarm);
-	close(overlay_interfaces[i].alarm.poll.fd);
-	overlay_interfaces[i].alarm.poll.fd = -1;
-	if (overlay_interface_init_socket(i, local, broadcast))
-	  INFOF("Could not reinitialise changed interface %s", name);
-      }
+	== (broadcast->sin_addr.s_addr & 0xffffffff)){
+      broadcast_match = 1;
     }
-  } else {
-    /* New interface, so register it */
-    if (overlay_interface_init(name, local, broadcast, me->speed_in_bits, me->port, me->type))
-      WHYF("Could not initialise newly seen interface %s", name);
-    else
-      if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("Registered interface %s", name);
+    
+    name_match = !strcasecmp(overlay_interfaces[i].name, name);
+    
+    if (name_match && broadcast_match){
+      // mark this interface as still alive
+      if (overlay_interfaces[i].state==INTERFACE_STATE_DETECTING)
+	overlay_interfaces[i].state=INTERFACE_STATE_UP;
+      
+      // try to bring the interface back up again
+      if (overlay_interfaces[i].state==INTERFACE_STATE_DOWN){
+	bcopy(local, &overlay_interfaces[i].address, sizeof(struct sockaddr_in));
+	overlay_interface_init_socket(i);
+      }
+      
+      // we already know about this interface, and it's up so stop looking immediately
+      return 0;
+    }
+    
+    // remember this slot to bring the interface back up again, even if the address has changed
+    if (name_match && overlay_interfaces[i].state==INTERFACE_STATE_DOWN)
+      found_interface=i;
   }
+  
+  if (found_interface>=0){
+    bcopy(local, &overlay_interfaces[i].address, sizeof(struct sockaddr_in));
+    bcopy(broadcast, &overlay_interfaces[i].broadcast_address, sizeof(struct sockaddr_in));
+    return overlay_interface_init_socket(i);
+  }
+  
+  
+  /* New interface, so register it */
+  if (overlay_interface_init(name, local, broadcast, me->speed_in_bits, me->port, me->type))
+    return WHYF("Could not initialise newly seen interface %s", name);
+  else
+    if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("Registered interface %s", name);
 
   return 0;
 }
   
 void overlay_interface_discover(struct sched_ent *alarm){
-  int				no_route, i;
+  int				i;
   struct interface_rules	*r;
   struct sockaddr_in		dummyaddr;
-   
-  /* Mark all interfaces as not observed, so that we know if we need to cull any */
+  int detect_real_interfaces = 0;
+  
+  /* Mark all UP interfaces as DETECTING, so we can tell which interfaces are new, and which are dead */
   for(i = 0; i < overlay_interface_count; i++)
-    overlay_interfaces[i].observed = 0;
+    if (overlay_interfaces[i].state==INTERFACE_STATE_UP)
+      overlay_interfaces[i].state=INTERFACE_STATE_DETECTING;
 
   /* Check through for any virtual dummy interfaces */
   for (r = interface_filter; r != NULL; r = r->next) {
-    if (r->namespec[0] != '>')
+    if (r->namespec[0] != '>'){
+      detect_real_interfaces = 1;
       continue;
+    }
     
     for(i = 0; i < overlay_interface_count; i++)
-      if (!strcasecmp(overlay_interfaces[i].name,r->namespec))
+      if (!strcasecmp(overlay_interfaces[i].name,r->namespec)){
+	if (overlay_interfaces[i].state==INTERFACE_STATE_DETECTING)
+	  overlay_interfaces[i].state=INTERFACE_STATE_UP;
 	break;
-
-    if (i < overlay_interface_count)
-      /* We already know about this interface, so just update it */
-      overlay_interfaces[i].observed = 1;
-    else {
-      /* New interface, so register it */      
-      if (overlay_interface_init(r->namespec,&dummyaddr,&dummyaddr,
-				 1000000,PORT_DNA,OVERLAY_INTERFACE_WIFI)) {
-	if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("Could not initialise newly seen interface %s", r->namespec);
       }
-      else
-	if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("Registered interface %s",r->namespec);
+
+    if (i >= overlay_interface_count){
+      /* New interface, so register it */      
+      overlay_interface_init(r->namespec,&dummyaddr,&dummyaddr,1000000,PORT_DNA,OVERLAY_INTERFACE_WIFI);
     }
   }
 
   /* Look for real interfaces */
-  no_route = 1;
-  
+  if (detect_real_interfaces){
+    int no_route = 1;
+    
 #ifdef HAVE_IFADDRS_H
-  if (no_route != 0)
-    no_route = doifaddrs();
+    if (no_route != 0)
+      no_route = doifaddrs();
 #endif
 
 #ifdef SIOCGIFCONF
-  if (no_route != 0)
-    no_route = lsif();
+    if (no_route != 0)
+      no_route = lsif();
 #endif
 
 #ifdef linux
-  if (no_route != 0)
-    no_route = scrapeProcNetRoute();
+    if (no_route != 0)
+      no_route = scrapeProcNetRoute();
 #endif
 
-  if (no_route != 0) {
-    FATAL("Unable to get any interface information");
+    if (no_route != 0) {
+      FATAL("Unable to get any interface information");
+    }
   }
+  
+  // detect if any interfaces have gone away and need to be closed
+  for(i = 0; i < overlay_interface_count; i++)
+    if (overlay_interfaces[i].state==INTERFACE_STATE_DETECTING)
+      overlay_interface_close(&overlay_interfaces[i]);
   
   alarm->alarm = overlay_gettime_ms()+5000;
   alarm->deadline = alarm->alarm + 10000;
@@ -822,7 +871,7 @@ void overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue
 	int i;
 	for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
 	{
-	  if (overlay_interfaces[i].observed>0)
+	  if (overlay_interfaces[i].state==INTERFACE_STATE_UP)
 	    if (!frame->broadcast_sent_via[i]){
 	      overlay_init_packet(packet, i);
 	      break;
@@ -863,7 +912,7 @@ void overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue
       // check if there is still a broadcast to be sent      
       for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
       {
-	if (overlay_interfaces[i].observed>0)
+	if (overlay_interfaces[i].state==INTERFACE_STATE_UP)
 	  if (!frame->broadcast_sent_via[i]){
 	    keep_payload=1;
 	    break;
@@ -940,8 +989,9 @@ int overlay_tick_interface(int i, long long now)
   struct outgoing_packet packet;
   IN();
 
-  if (overlay_interfaces[i].bits_per_second<1) {
-    /* An interface with no speed budget is for listening only, so doesn't get ticked */
+  /* An interface with no speed budget is for listening only, so doesn't get ticked */
+  if (overlay_interfaces[i].bits_per_second<1
+      || overlay_interfaces[i].state!=INTERFACE_STATE_UP) {
     RETURN(0);
   }
 

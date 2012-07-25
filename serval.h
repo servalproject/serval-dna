@@ -508,6 +508,11 @@ extern int overlayMode;
 #define OVERLAY_INTERFACE_WIFI 2
 #define OVERLAY_INTERFACE_PACKETRADIO 3
 
+#define INTERFACE_STATE_FREE 0
+#define INTERFACE_STATE_UP 1
+#define INTERFACE_STATE_DOWN 2
+#define INTERFACE_STATE_DETECTING 3
+
 typedef struct overlay_interface {
   struct sched_ent alarm;
   char name[80];
@@ -540,9 +545,11 @@ typedef struct overlay_interface {
   int sequence_number;
   /* XXX need recent packet buffers to support the above */
   
-  /* Broadcast address and netmask, if known
+  /* We need to make sure that interface name and broadcast address is unique for all interfaces that are UP.
+   We bind a separate socket per interface / broadcast address Broadcast address and netmask, if known
    We really only case about distinct broadcast addresses on interfaces.
    Also simplifies aliases on interfaces. */
+  struct sockaddr_in address;
   struct sockaddr_in broadcast_address;
   
   /* Not necessarily the real MTU, but the largest frame size we are willing to TX on this interface.
@@ -550,10 +557,11 @@ typedef struct overlay_interface {
    potentially two quite different values. */
   int mtu;
   
-  /* If the interface still exists on the local machine.
-   If not, it we keep track of it for a few seconds before purging it, incase of flapping, e.g.,
-   due to DHCP renewal */
-  int observed;  
+  /* Use one of the INTERFACE_STATE_* constants to indicate the state of this interface. 
+     If the interface stops working or disappears, it will be marked as DOWN and the socket closed.
+     But if it comes back up again, we should try to reuse this structure, even if the broadcast address has changed.
+   */
+  int state;  
 } overlay_interface;
 
 /* Maximum interface count is rather arbitrary.
@@ -862,7 +870,7 @@ long long parse_quantity(char *q);
 
 int overlay_interface_init(char *name,struct sockaddr_in *src_addr,struct sockaddr_in *broadcast,
 			   int speed_in_bits,int port,int type);
-int overlay_interface_init_socket(int i,struct sockaddr_in *src_addr,struct sockaddr_in *broadcast);
+int overlay_interface_init_socket(int i);
 long long overlay_time_until_next_tick();
 int overlay_rx_messages();
 

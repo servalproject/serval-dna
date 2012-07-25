@@ -133,6 +133,7 @@ lsif(void) {
   ifc.ifc_buf = buf;
   if(ioctl(sck, SIOCGIFCONF, &ifc) < 0) {
     WHY_perror("ioctl(SIOCGIFCONF)");
+    close(sck);
     return 1;
   }
 
@@ -163,8 +164,10 @@ lsif(void) {
     }
     
     /* Get broadcast address */
-    if (ioctl(sck, SIOCGIFBRDADDR, ifr, sizeof(*ifr)) == -1)
-      FATAL_perror("ioctl(SIOCGIFBRDADDR)");
+    if (ioctl(sck, SIOCGIFBRDADDR, ifr, sizeof(*ifr)) == -1){
+      WHY_perror("ioctl(SIOCGIFBRDADDR)");
+      continue;
+    }
 
     broadcast = (struct sockaddr_in *)&ifr->ifr_ifru.ifru_broadaddr;
 
@@ -177,7 +180,7 @@ lsif(void) {
     nInterfaces++;
   }
   
-  if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("Examined %d interface addresses\n", nInterfaces);
+  if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("Examined %d interface addresses", nInterfaces);
 
   close(sck); 
   return 0;

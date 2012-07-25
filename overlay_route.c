@@ -401,7 +401,8 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *interface)
 
     *interface=0;
     for(i=1;i<OVERLAY_MAX_INTERFACES;i++) {
-      if (direct_neighbour->scores[i]>direct_neighbour->scores[*interface]) *interface=i;
+      if (overlay_interfaces[i].state==INTERFACE_STATE_UP &&
+	  direct_neighbour->scores[i]>direct_neighbour->scores[*interface]) *interface=i;
     }
     if (direct_neighbour->scores[*interface]>0) {
       bcopy(d,nexthop,SID_SIZE);
@@ -430,7 +431,8 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *interface)
       overlay_route_recalc_neighbour_metrics(neighbour, now);
       
       for(i=1;i<OVERLAY_MAX_INTERFACES;i++) {
-	if (neighbour->scores[i]*score>best_score) {
+	if (overlay_interfaces[i].state==INTERFACE_STATE_UP &&
+	    neighbour->scores[i]*score>best_score) {
 	  bcopy(&neighbour->node->sid[0],&nexthop[0],SID_SIZE);
 	  *interface=i;
 	  best_o=o;
@@ -847,7 +849,8 @@ int overlay_route_recalc_node_metrics(overlay_node *n,long long now)
       int i;
       for(i=0;i<overlay_interface_count;i++)
 	{
-	  if (overlay_neighbours[n->neighbour_id].scores[i]>best_score)
+	  if (overlay_interfaces[i].state==INTERFACE_STATE_UP && 
+	      overlay_neighbours[n->neighbour_id].scores[i]>best_score)
 	    {
 	      best_score=overlay_neighbours[n->neighbour_id].scores[i];
 	      best_observation=-1;
@@ -935,50 +938,45 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
      Also, we might like to take into account the interface we received 
      the announcements on. */
   for(i=0;i<OVERLAY_MAX_OBSERVATIONS;i++) {
-    if (n->observations[i].valid&&n->observations[i].s1) {
-      /* Work out the interval covered by the observation.
-	 The times are represented as lowest 32 bits of a 64-bit 
-	 millisecond clock.  This introduces modulo problems, 
-	 however by using 32-bit modulo arithmatic here, we avoid
-	 most of them. */
-      unsigned int interval=n->observations[i].s2-n->observations[i].s1;      
+    if (!n->observations[i].valid ||
+	!n->observations[i].s1 ||
+	n->observations[i].sender_interface>=OVERLAY_MAX_INTERFACES ||
+	overlay_interfaces[n->observations[i].sender_interface].state!=INTERFACE_STATE_UP)
+      continue;
+      
+    /* Work out the interval covered by the observation.
+       The times are represented as lowest 32 bits of a 64-bit 
+       millisecond clock.  This introduces modulo problems, 
+       however by using 32-bit modulo arithmatic here, we avoid
+       most of them. */
+    unsigned int interval=n->observations[i].s2-n->observations[i].s1;      
+    
+    /* Check the observation age, and ignore if too old */
+    int obs_age=now-n->observations[i].time_ms;
+    if (debug&DEBUG_OVERLAYROUTING)
+      DEBUGF("tallying obs: %dms old, %dms long", obs_age,interval);
+    
+    /* Ignore very large intervals (>1hour) as being likely to be erroneous.
+     (or perhaps a clock wrap due to the modulo arithmatic)
+     
+     One tick per hour should be well and truly slow enough to do
+     50KB per 12 hours, which is the minimum traffic charge rate 
+     on an expensive BGAN satellite link. 	 
+     */
+    if (interval>=3600000 || obs_age>200000)
+      continue;
 
-      /* Check the observation age, and ignore if too old */
-      int obs_age=now-n->observations[i].time_ms;
-      if (debug&DEBUG_OVERLAYROUTING)
-	DEBUGF("tallying obs: %dms old, %dms long", obs_age,interval);
-      if (obs_age>200000) continue;
+    if (debug&DEBUG_OVERLAYROUTING) 
+      DEBUGF("adding %dms (interface %d '%s')",
+	      interval,n->observations[i].sender_interface,
+	      overlay_interfaces[n->observations[i].sender_interface].name);
 
-      /* Ignore very large intervals (>1hour) as being likely to be erroneous.
-	 (or perhaps a clock wrap due to the modulo arithmatic)
-
-	 One tick per hour should be well and truly slow enough to do
-	 50KB per 12 hours, which is the minimum traffic charge rate 
-	 on an expensive BGAN satellite link. 	 
-      */
-      if (interval<3600000) {
-	if (debug&DEBUG_OVERLAYROUTING) 
-	  DEBUGF("adding %dms (interface %d '%s')",
-		  interval,n->observations[i].sender_interface,
-		  overlay_interfaces[n->observations[i].sender_interface].name);
-
-	/* sender_interface is unsigned, so a single-sided test is sufficient for bounds checking */
-	if (n->observations[i].sender_interface<OVERLAY_MAX_INTERFACES)
-	  {
-	    ms_observed_200sec[n->observations[i].sender_interface]+=interval;
-	    if (obs_age<=5000){
-	      ms_observed_5sec[n->observations[i].sender_interface]+=(interval>5000?5000:interval);
-	    }
-	  }
-	else
-	  {
-	    WHY("Invalid interface ID in observation");
-	    DEBUGF("XXXXXXX adding %dms (interface %d)",interval,n->observations[i].sender_interface);
-	  }
-      }
-
-      if (n->observations[i].time_ms>most_recent_observation) most_recent_observation=n->observations[i].time_ms;
+    ms_observed_200sec[n->observations[i].sender_interface]+=interval;
+    if (obs_age<=5000){
+      ms_observed_5sec[n->observations[i].sender_interface]+=(interval>5000?5000:interval);
     }
+
+    if (n->observations[i].time_ms>most_recent_observation) most_recent_observation=n->observations[i].time_ms;
   }
 
   /* From the sum of observations calculate the metrics.
