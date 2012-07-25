@@ -35,6 +35,7 @@ char *exec_args[EXEC_NARGS + 1];
 int exec_argc = 0;
 
 int serverMode=0;
+int serverRespawnOnSignal = 0;
 int servalShutdown = 0;
 
 static int server_getpid = 0;
@@ -175,13 +176,16 @@ int server(char *backing_file)
   }
 
   serverMode = 1;
+  serverRespawnOnSignal = confValueGetBoolean("server.respawn_on_signal", 0);
 
   /* Catch sigsegv and other crash signals so that we can relaunch ourselves */
-  signal(SIGSEGV, signal_handler);
-  signal(SIGFPE, signal_handler);
-  signal(SIGILL, signal_handler);
-  signal(SIGBUS, signal_handler);
-  signal(SIGABRT, signal_handler);
+  if (serverRespawnOnSignal) {
+    signal(SIGSEGV, signal_handler);
+    signal(SIGFPE, signal_handler);
+    signal(SIGILL, signal_handler);
+    signal(SIGBUS, signal_handler);
+    signal(SIGABRT, signal_handler);
+  }
   /* Catch SIGHUP etc so that we can respond to requests to do things */
   signal(SIGHUP, signal_handler);
   signal(SIGINT, signal_handler);
