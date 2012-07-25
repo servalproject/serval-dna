@@ -806,6 +806,7 @@ unsigned int debugFlagMask(const char *flagname);
 char *catv(const char *data, char *buf, size_t len);
 int dump(char *name, unsigned char *addr, size_t len);
 char *toprint(char *dstStr, size_t dstChars, const unsigned char *srcBuf, size_t srcBytes);
+int log_backtrace();
 
 #define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca((dstlen) + 1), (dstlen) + 1, (buf), (len))
 

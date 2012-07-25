@@ -19,11 +19,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 #include "strbuf.h"
+#include <stdlib.h>
 #include <ctype.h>
 #include <sys/time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 #include <time.h>
 
 unsigned int debug = 0;
+
 static FILE *logfile = NULL;
 static int flag_show_pid = -1;
 static int flag_show_time = -1;
@@ -281,4 +285,117 @@ char *toprint(char *dstStr, size_t dstChars, const unsigned char *srcBuf, size_t
     strbuf_puts(b, "\"...");
   }
   return dstStr;
+}
+
+/* Read the symbolic link into the supplied buffer and add a terminating nul.  Return -1 if the
+ * buffer is too short to hold the link content and the nul.  If readlink(2) returns an error, then
+ * logs it and returns -1.  Otherwise, returns the number of bytes read, excluding the terminating
+ * nul, ie, returns what readlink(2) returns.  If the 'len' argument is given as zero, then returns
+ * the number of bytes that would be read, by calling lstat(2) instead of readlink(2).  Beware of
+ * the following race condition: a symbolic link may be altered between calling the lstat(2) and
+ * readlink(2), so the following apparently overflow-proof code may still fail from a buffer
+ * overflow in the second call to read_symlink():
+ *
+ *    char *readlink_malloc(const char *path) {
+ *	ssize_t len = read_symlink(path, NULL, 0);
+ *	if (len == -1)
+ *	  return NULL;
+ *	char *buf = malloc(len + 1);
+ *	if (buf == NULL)
+ *	  return NULL;
+ *	if (read_symlink(path, buf, len + 1) == -1) {
+ *	  free(buf);
+ *	  return NULL;
+ *	}
+ *	return buf;
+ *    }
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+ssize_t read_symlink(const char *path, char *buf, size_t len)
+{
+  if (len == 0) {
+    struct stat stat;
+    if (lstat(path, &stat) == -1)
+      return WHYF_perror("lstat(%s)", path);
+    return stat.st_size;
+  }
+  ssize_t nr = readlink(path, buf, len);
+  if (nr == -1)
+    return WHYF_perror("readlink(%s)", path);
+  if (nr >= len)
+    return WHYF("buffer overrun from readlink(%s, len=%lu)", path, (unsigned long) len);
+  buf[nr] = '\0';
+  return nr;
+}
+
+ssize_t get_self_executable_path(char *buf, size_t len)
+{
+#ifdef linux
+  return read_symlink("/proc/self/exe", buf, len);
+#endif
+  return WHYF("Not implemented");
+}
+
+int log_backtrace()
+{
+  open_logging();
+  char execpath[160];
+  if (get_self_executable_path(execpath, sizeof execpath) == -1)
+    return WHY("cannot log backtrace: own executable path unknown");
+  char tempfile[] = "/tmp/servalXXXXXX.gdb";
+  int tmpfd = mkstemps(tempfile, 4);
+  if (tmpfd == -1)
+    return WHY_perror("mkstemps");
+  if (write_str(tmpfd, "backtrace\n") == -1) {
+    close(tmpfd);
+    unlink(tempfile);
+    return -1;
+  }
+  if (close(tmpfd) == -1) {
+    WHY_perror("close");
+    unlink(tempfile);
+    return -1;
+  }
+  char pidstr[12];
+  snprintf(pidstr, sizeof pidstr, "%u", getpid());
+  int stdout_fds[2];
+  if (pipe(stdout_fds) == -1)
+    return WHY_perror("pipe");
+  pid_t child_pid;
+  switch (child_pid = fork()) {
+  case -1: // error
+    WHY_perror("fork");
+    close(stdout_fds[0]);
+    close(stdout_fds[1]);
+    return WHY("cannot log backtrace: fork failed");
+  case 0: // child
+    if (dup2(stdout_fds[1], 1) == -1)
+      _exit(-1);
+    close(0);
+    if (open("/dev/null", O_RDONLY) != 0)
+      _exit(-2);
+    close(stdout_fds[0]);
+    close(2);
+    execlp("gdb", "gdb", "-n", "-batch", "-x", tempfile, execpath, pidstr, NULL);
+    do { _exit(-3); } while (1);
+    break;
+  }
+  // parent
+  close(stdout_fds[1]);
+  char buf[16384];
+  size_t len = 0;
+  ssize_t nr;
+  while (len < sizeof buf - 1 && (nr = read(stdout_fds[0], buf + len, sizeof buf - 1 - len)) > 0)
+    len += nr;
+  buf[len] = '\0';
+  if (nr == -1)
+    WHY_perror("read");
+  close(stdout_fds[0]);
+  int status = 0;
+  if (waitpid(child_pid, &status, 0) == -1)
+    WHY_perror("waitpid");
+  DEBUGF("gdb backtrace status=0x%x\n%s", status, buf);
+  unlink(tempfile);
+  return 0;
 }
