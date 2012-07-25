@@ -155,10 +155,7 @@ int overlay_abbreviate_prepare_cache()
   while(cache->size>>(cache->shift+1)) cache->shift++;
   
   if ((1<<cache->shift)!=cache->size)
-    {
-      fprintf(stderr,"cache->size=%d, shift=%d\n",cache->size,cache->shift);
-      exit(WHY("OVERLAY_ADDRESS_CACHE_SIZE must be a power of two."));
-    }
+    exit(WHYF("OVERLAY_ADDRESS_CACHE_SIZE must be a power of two: cache->size=%d, shift=%d", cache->size, cache->shift));
 
   cache->shift=24-cache->shift;
 
@@ -226,9 +223,8 @@ int overlay_abbreviate_append_address(overlay_buffer *b,unsigned char *a)
   ob_makespace(b,SID_SIZE+3);
   int r=overlay_abbreviate_address(a,&b->bytes[b->length],&count);
   if (debug&DEBUG_PACKETCONSTRUCTION) {
-    fprintf(stderr,"address %s abbreviates as shown in this ",
-	    alloca_tohex_sid(a));
-    dump(NULL,&b->bytes[b->length],count);
+    DEBUGF("address %s abbreviates as shown in this", alloca_tohex_sid(a));
+    dump(NULL, &b->bytes[b->length], count);
   }
   if (r) return r;
   b->length+=count;
@@ -370,7 +366,8 @@ int overlay_abbreviate_expand_address(unsigned char *in,int *inofs,unsigned char
       }
     case OA_CODE_INDEX: /* single byte index look up */
       /* Lookup sender's neighbour ID */
-      if (overlay_abbreviate_current_sender_id==-1) if (overlay_abbreviate_lookup_sender_id()) return WHY("could not lookup neighbour ID of packet sender");
+      if (overlay_abbreviate_current_sender_id == -1 && overlay_abbreviate_lookup_sender_id() == -1)
+	return WHY("could not lookup neighbour ID of packet sender");
       r=overlay_abbreviate_cache_lookup(overlay_neighbours[overlay_abbreviate_current_sender_id].one_byte_index_address_prefixes[in[*inofs]],
 				      out,ofs,OVERLAY_SENDER_PREFIX_LENGTH,0);
       (*inofs)++;
@@ -449,19 +446,15 @@ int overlay_abbreviate_lookup_sender_id()
 
 int overlay_abbreviate_remember_index(int index_byte_count,unsigned char *sid_to_remember,unsigned char *index_bytes)
 {
-  int zero=0;
-  char sid[SID_STRLEN+1];
   int index=index_bytes[0];
   if (index_byte_count>1) index=(index<<8)|index_bytes[1];
 
   /* Lookup sender's neighbour ID */
   if (overlay_abbreviate_current_sender_id==-1) overlay_abbreviate_lookup_sender_id();
 
-  sid[0]=0; extractSid(sid_to_remember,&zero,sid);
   if (debug&DEBUG_OVERLAYABBREVIATIONS) {
-    fprintf(stderr,"index=%d\n",index);
-    fprintf(stderr,"We need to remember that the sender #%d has assigned index #%d to the following:\n      [%s]\n",
-	  overlay_abbreviate_current_sender_id,index,sid);
+    DEBUGF("index=%d", index);
+    DEBUGF("remember that sender #%d has assigned index #%d to sid=[%s]", overlay_abbreviate_current_sender_id, index, alloca_tohex_sid(sid_to_remember));
   }
 
   bcopy(sid_to_remember,overlay_neighbours[overlay_abbreviate_current_sender_id].one_byte_index_address_prefixes[index],OVERLAY_SENDER_PREFIX_LENGTH);
@@ -478,12 +471,8 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
   /* Work out the index in the cache where this address would live */
   int index=(((in[0]<<16)|(in[1]<<8)|in[2])>>cache->shift)^1;
 
-  int i;
-  if (debug&DEBUG_OVERLAYABBREVIATIONS) {
-    fprintf(stderr,"Looking in cache slot #%d for: ",index);
-    for(i=0;i<prefix_bytes;i++) fprintf(stderr,"%02x",in[i]);
-    fprintf(stderr,"*\n");
-  }
+  if (debug&DEBUG_OVERLAYABBREVIATIONS)
+    DEBUGF("looking in cache slot #%d for: %s*", index, alloca_tohex(in, prefix_bytes));
 
   if (in[0]<0x10) {
     /* Illegal address */
@@ -525,9 +514,8 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
      size the prefix length based on whether any given short prefix has collided */
 
   /* It is here, so let's return it */
-  if (debug&DEBUG_OVERLAYABBREVIATIONS) { 
-    DEBUGF("I think I looked up the following: %s", alloca_tohex_sid(cache->sids[index].b));
-  }
+  if (debug&DEBUG_OVERLAYABBREVIATIONS)
+    DEBUGF("I think I looked up the following sid=%s", alloca_tohex_sid(cache->sids[index].b));
 
   bcopy(&cache->sids[index].b[0],&out[(*ofs)],SID_SIZE);
   (*ofs)+=SID_SIZE;
@@ -542,13 +530,8 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
     (*ofs)+=index_bytes;
   }
   if (debug&DEBUG_OVERLAYABBREVIATIONS)
-  {
-    int i;
-    fprintf(stderr,"OA_RESOLVED returned for ");
-    for(i=0;i<32;i++) fprintf(stderr,"%02X",cache->sids[index].b[i]);
-    fprintf(stderr,"\n");
-  }
-  
+    DEBUGF("OA_RESOLVED returned for sid=%s", alloca_tohex_sid(cache->sids[index].b));
+
   return OA_RESOLVED;
 }
 
@@ -569,8 +552,8 @@ int overlay_abbreviate_unset_current_sender()
 int overlay_abbreviate_set_most_recent_address(unsigned char *in)
 {
   bcopy(in,&overlay_abbreviate_previous_address.b[0],SID_SIZE);
-  if (debug&DEBUG_OVERLAYABBREVIATIONS) fprintf(stderr,"Most recent address=%s\n",
-		       alloca_tohex_sid(in));
+  if (debug&DEBUG_OVERLAYABBREVIATIONS)
+    DEBUGF("Most recent address=%s", alloca_tohex_sid(in));
   return 0;
 }
 
@@ -579,7 +562,7 @@ int overlay_abbreviate_clear_most_recent_address()
   /* make previous address invalid (first byte must be >0x0f to be valid) */
   overlay_abbreviate_previous_address.b[0]=0x00;
 
-  if (debug&DEBUG_OVERLAYABBREVIATIONS) 
-    fprintf(stderr,"Cleared most recent address\n");
+  if (debug&DEBUG_OVERLAYABBREVIATIONS)
+    DEBUG("Cleared most recent address");
   return 0;
 }
