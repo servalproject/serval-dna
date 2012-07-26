@@ -22,11 +22,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 /*
     A strbuf provides a convenient set of primitives for assembling a
-    null-terminated string in a fixed-size, caller-provided backing buffer,
+    nul-terminated string in a fixed-size, caller-provided backing buffer,
     using a sequence of append operations.
 
     An append operation that would overflow the buffer is truncated, and the
-    result null-terminated.  Once a truncation has occurred, the "overrun"
+    result nul-terminated.  Once a truncation has occurred, the "overrun"
     property of the strbuf is true until the next strbuf_init(), and all
     subsequent appends will be fully truncated, ie, nothing more will be
     appended to the buffer.
@@ -212,7 +212,7 @@ __STRBUF_INLINE strbuf strbuf_make(char *buffer, size_t size) {
 strbuf strbuf_reset(strbuf sb);
 
 
-/** Append a null-terminated string to the strbuf up to a maximum number,
+/** Append a nul-terminated string to the strbuf up to a maximum number,
  * truncating if necessary to avoid buffer overrun, and terminating with a nul
  * which is not counted in the maximum.  Return a pointer to the strbuf so that
  * concatenations can be chained in a single line: eg,
@@ -235,7 +235,7 @@ strbuf strbuf_reset(strbuf sb);
 strbuf strbuf_ncat(strbuf sb, const char *text, size_t len);
 
 
-/** Append a null-terminated string to the strbuf, truncating if necessary to
+/** Append a nul-terminated string to the strbuf, truncating if necessary to
  * avoid buffer overrun.  Return a pointer to the strbuf so that concatenations
  * can be chained in a single line: strbuf_puts(strbuf_puts(sb, "a"), "b");
  *
@@ -303,7 +303,7 @@ int strbuf_sprintf(strbuf sb, const char *fmt, ...);
 int strbuf_vsprintf(strbuf sb, const char *fmt, va_list ap);
 
 
-/** Return a pointer to the current null-terminated string in the strbuf.
+/** Return a pointer to the current nul-terminated string in the strbuf.
  *
  * This is the same as the 'buffer' argument passed to the most recent
  * strbuf_init().  If the caller still has that pointer, then can safely use it
@@ -313,6 +313,16 @@ int strbuf_vsprintf(strbuf sb, const char *fmt, va_list ap);
  */
 __STRBUF_INLINE char *strbuf_str(const_strbuf sb) {
   return sb->start;
+}
+
+
+/** Return a pointer to the nul-terminator at the end of the string in the
+ * strbuf.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+__STRBUF_INLINE char *strbuf_end(const_strbuf sb) {
+  return sb->current < sb->end ? sb->current : sb->end;
 }
 
 
