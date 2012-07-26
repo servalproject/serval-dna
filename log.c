@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 #include "strbuf.h"
+#include "strbuf_helpers.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>
@@ -127,24 +128,36 @@ void vlogMessage(int level, const char *file, unsigned int line, const char *fun
       case LOG_LEVEL_WARN:  levelstr = "WARN:"; break;
       case LOG_LEVEL_DEBUG: levelstr = "DEBUG:"; break;
     }
-    strbuf_sprintf(&logbuf, "%-6s ", levelstr);
+    strbuf_sprintf(&logbuf, "%-6s", levelstr);
 #endif
+    const char *bufp = strbuf_end(&logbuf);
     if (show_pid())
-      strbuf_sprintf(&logbuf, "[%5u] ", getpid());
+      strbuf_sprintf(&logbuf, " [%5u]", getpid());
     if (show_time()) {
       struct timeval tv;
       if (gettimeofday(&tv, NULL) == -1) {
-	strbuf_puts(&logbuf, "NOTIME______");
+	strbuf_puts(&logbuf, " NOTIME______");
       } else {
 	struct tm tm;
 	char buf[20];
 	if (strftime(buf, sizeof buf, "%T", localtime_r(&tv.tv_sec, &tm)) == 0)
-	  strbuf_puts(&logbuf, "EMPTYTIME___");
+	  strbuf_puts(&logbuf, " EMPTYTIME___");
 	else
-	  strbuf_sprintf(&logbuf, "%s.%03u ", buf, tv.tv_usec / 1000);
+	  strbuf_sprintf(&logbuf, " %s.%03u", buf, tv.tv_usec / 1000);
       }
     }
-    strbuf_sprintf(&logbuf, "%s:%u:%s()  ", file ? trimbuildpath(file) : "NULL", line, function ? function : "NULL");
+    if (file) {
+      strbuf_sprintf(&logbuf, " %s", trimbuildpath(file));
+      if (line)
+	strbuf_sprintf(&logbuf, ":%u", line);
+      if (function)
+	strbuf_sprintf(&logbuf, ":%s()", function);
+    } else if (function) {
+      strbuf_sprintf(&logbuf, " %s()", function);
+    }
+    if (bufp != strbuf_end(&logbuf))
+      strbuf_putc(&logbuf, ' ');
+    strbuf_putc(&logbuf, ' ');
     strbuf_vsprintf(&logbuf, fmt, ap);
     strbuf_puts(&logbuf, "\n");
 #ifdef ANDROID
@@ -372,7 +385,7 @@ ssize_t get_self_executable_path(char *buf, size_t len)
   return WHYF("Not implemented");
 }
 
-int log_backtrace()
+int log_backtrace(const char *file, unsigned int line, const char *function)
 {
   open_logging();
   char execpath[160];
@@ -405,32 +418,67 @@ int log_backtrace()
     close(stdout_fds[1]);
     return WHY("cannot log backtrace: fork failed");
   case 0: // child
-    if (dup2(stdout_fds[1], 1) == -1)
+    if (dup2(stdout_fds[1], 1) == -1 || dup2(stdout_fds[1], 2) == -1) {
+      perror("dup2");
       _exit(-1);
+    }
     close(0);
-    if (open("/dev/null", O_RDONLY) != 0)
+    if (open("/dev/null", O_RDONLY) != 0) {
+      perror("open(\"/dev/null\")");
       _exit(-2);
+    }
     close(stdout_fds[0]);
-    close(2);
     execlp("gdb", "gdb", "-n", "-batch", "-x", tempfile, execpath, pidstr, NULL);
+    perror("execlp(\"gdb\")");
     do { _exit(-3); } while (1);
     break;
   }
   // parent
   close(stdout_fds[1]);
-  char buf[16384];
-  size_t len = 0;
+  logMessage(LOG_LEVEL_DEBUG, file, line, function, "GDB BACKTRACE");
+  char buf[1024];
+  char *const bufe = buf + sizeof buf;
+  char *linep = buf;
+  char *readp = buf;
   ssize_t nr;
-  while (len < sizeof buf - 1 && (nr = read(stdout_fds[0], buf + len, sizeof buf - 1 - len)) > 0)
-    len += nr;
-  buf[len] = '\0';
+  while ((nr = read(stdout_fds[0], readp, bufe - readp)) > 0) {
+    char *p = readp;
+    readp = readp + nr;
+    for (; p < readp; ++p)
+      if (*p == '\n' || *p == '\0') {
+	*p = '\0';
+	logMessage(LOG_LEVEL_DEBUG, NULL, 0, NULL, "%s", linep);
+	linep = p + 1;
+      }
+    if (readp >= bufe && linep == buf) {
+      // Line does not fit into buffer.
+      char t = bufe[-1];
+      bufe[-1] = '\0';
+      logMessage(LOG_LEVEL_DEBUG, NULL, 0, NULL, "%s", buf);
+      buf[0] = t;
+      readp = buf + 1;
+    } else if (readp + 120 >= bufe && linep != buf) {
+      // Buffer low on space.
+      if (linep < readp)
+	memmove(buf, linep, readp - linep);
+      readp -= linep - buf;
+      linep = buf;
+    }
+    // Invariant: readp < bufe
+  }
   if (nr == -1)
     WHY_perror("read");
+  if (readp > linep) {
+    *readp = '\0';
+    logMessage(LOG_LEVEL_DEBUG, NULL, 0, NULL, "%s", linep);
+  }
   close(stdout_fds[0]);
   int status = 0;
   if (waitpid(child_pid, &status, 0) == -1)
     WHY_perror("waitpid");
-  DEBUGF("gdb backtrace status=0x%x\n%s", status, buf);
+  strbuf b = strbuf_local(buf, sizeof buf);
+  strbuf_append_exit_status(b, status);
+  logMessage(LOG_LEVEL_DEBUG, NULL, 0, NULL, "gdb %s", buf);
   unlink(tempfile);
   return 0;
 }

@@ -811,7 +811,7 @@ void vlogMessage(int level, const char *file, unsigned int line, const char *fun
 unsigned int debugFlagMask(const char *flagname);
 char *catv(const char *data, char *buf, size_t len);
 int dump(char *name, unsigned char *addr, size_t len);
-int log_backtrace();
+int log_backtrace(const char *file, unsigned int line, const char *function);
 char *toprint(char *dstStr, ssize_t dstStrLen, const char *srcBuf, size_t srcBytes);
 size_t toprint_strlen(ssize_t dstStrLen, const char *srcBuf, size_t srcBytes);
 
@@ -853,6 +853,8 @@ const char *trimbuildpath(const char *s);
 #define DEBUGF_perror(F,...) LOGF_perror(LOG_LEVEL_DEBUG, F, ##__VA_ARGS__)
 #define DEBUG_perror(X)     DEBUGF_perror("%s", (X))
 #define D                   DEBUG("D")
+
+#define BACKTRACE           log_backtrace(__FILE__, __LINE__, __FUNCTION__)
 
 overlay_buffer *ob_new(int size);
 overlay_buffer *ob_static(unsigned char *bytes, int size);
