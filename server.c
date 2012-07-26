@@ -17,6 +17,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include <signal.h>
 #include <time.h>
 #include <unistd.h>
 #include <sys/socket.h>
@@ -35,7 +36,7 @@ char *exec_args[EXEC_NARGS + 1];
 int exec_argc = 0;
 
 int serverMode=0;
-int serverRespawnOnSignal = 0;
+int serverRespawnOnCrash = 0;
 int servalShutdown = 0;
 
 static int server_getpid = 0;
@@ -49,6 +50,7 @@ struct in_addr client_addr;
 int client_port;
 
 void signal_handler(int signal);
+void crash_handler(int signal);
 int getKeyring(char *s);
 int createServerSocket();
 
@@ -176,20 +178,29 @@ int server(char *backing_file)
   }
 
   serverMode = 1;
-  serverRespawnOnSignal = confValueGetBoolean("server.respawn_on_signal", 0);
+  serverRespawnOnCrash = confValueGetBoolean("server.respawn_on_crash", 0);
 
-  /* Catch sigsegv and other crash signals so that we can relaunch ourselves */
-  if (serverRespawnOnSignal) {
-    signal(SIGSEGV, signal_handler);
-    signal(SIGFPE, signal_handler);
-    signal(SIGILL, signal_handler);
-    signal(SIGBUS, signal_handler);
-    signal(SIGABRT, signal_handler);
-  }
-  /* Catch SIGHUP etc so that we can respond to requests to do things */
-  signal(SIGHUP, signal_handler);
-  signal(SIGINT, signal_handler);
-  signal(SIGQUIT, signal_handler);
+  /* Catch crash signals so that we can log a backtrace before expiring. */
+  struct sigaction sig;
+  sig.sa_handler = crash_handler;
+  sigemptyset(&sig.sa_mask); // Don't block any signals during handler
+  sig.sa_flags = SA_NODEFER | SA_RESETHAND; // So the signal handler can kill the process by re-sending the same signal to itself
+  sigaction(SIGSEGV, &sig, NULL);
+  sigaction(SIGFPE, &sig, NULL);
+  sigaction(SIGILL, &sig, NULL);
+  sigaction(SIGBUS, &sig, NULL);
+  sigaction(SIGABRT, &sig, NULL);
+
+  /* Catch SIGHUP etc so that we can respond to requests to do things, eg, shut down. */
+  sig.sa_handler = signal_handler;
+  sigemptyset(&sig.sa_mask); // Block the same signals during handler
+  sigaddset(&sig.sa_mask, SIGHUP);
+  sigaddset(&sig.sa_mask, SIGINT);
+  sigaddset(&sig.sa_mask, SIGQUIT);
+  sig.sa_flags = 0;
+  sigaction(SIGHUP, &sig, NULL);
+  sigaction(SIGINT, &sig, NULL);
+  sigaction(SIGQUIT, &sig, NULL);
 
   if (!overlayMode)
     {
@@ -424,11 +435,7 @@ void signal_handler(int signal)
   char buf[80];
   signame(buf, sizeof(buf), signal);
   INFOF("Caught %s", buf);
-  dump_stack();
   switch (signal) {
-    case SIGQUIT:
-      serverCleanUp();
-      exit(0);
     case SIGHUP:
     case SIGINT:
       /* Terminate the server process.  The shutting down should be done from the main-line code
@@ -439,21 +446,43 @@ void signal_handler(int signal)
       servalShutdown = 1;
       return;
   }
-  /* oops - caught a bad signal -- exec() ourselves fresh */
-  if (sock>-1)
-    close(sock);
-  int i;
-  for(i=0;i<overlay_interface_count;i++)
-    if (overlay_interfaces[i].alarm.poll.fd>-1)
-      close(overlay_interfaces[i].alarm.poll.fd);
-  strbuf b = strbuf_alloca(1024);
-  for (i = 0; i < exec_argc; ++i)
-    strbuf_append_shell_quotemeta(strbuf_puts(b, i ? " " : ""), exec_args[i]);
-  INFOF("Respawning %s", strbuf_str(b));
-  execv(exec_args[0], exec_args);
-  /* Quit if the exec() fails */
-  WHY_perror("execv");
-  exit(-3);
+  serverCleanUp();
+  exit(0);
+}
+
+void crash_handler(int signal)
+{
+  char buf[80];
+  signame(buf, sizeof(buf), signal);
+  WHYF("Caught %s", buf);
+  dump_stack();
+  BACKTRACE;
+  if (serverRespawnOnCrash) {
+    if (sock>-1)
+      close(sock);
+    int i;
+    for(i=0;i<overlay_interface_count;i++)
+      if (overlay_interfaces[i].alarm.poll.fd>-1)
+	close(overlay_interfaces[i].alarm.poll.fd);
+    char execpath[160];
+    if (get_self_executable_path(execpath, sizeof execpath) != -1) {
+      strbuf b = strbuf_alloca(1024);
+      for (i = 0; i < exec_argc; ++i)
+	strbuf_append_shell_quotemeta(strbuf_puts(b, i ? " " : ""), exec_args[i]);
+      INFOF("Respawning %s as %s", execpath, strbuf_str(b));
+      execv(execpath, exec_args);
+      /* Quit if the exec() fails */
+      WHY_perror("execv");
+    } else {
+      WHY("Cannot respawn");
+    }
+  }
+  // Now die of the same signal, so that our exit status reflects the cause.
+  INFOF("Re-sending signal %d to self", signal);
+  kill(getpid(), signal);
+  // If that didn't work, then die normally.
+  INFOF("exit(%d)", -signal);
+  exit(-signal);
 } 
 
 int getKeyring(char *backing_file)

@@ -814,6 +814,7 @@ int dump(char *name, unsigned char *addr, size_t len);
 int log_backtrace(const char *file, unsigned int line, const char *function);
 char *toprint(char *dstStr, ssize_t dstStrLen, const char *srcBuf, size_t srcBytes);
 size_t toprint_strlen(ssize_t dstStrLen, const char *srcBuf, size_t srcBytes);
+ssize_t get_self_executable_path(char *buf, size_t len);
 
 #define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca(toprint_strlen((dstlen), (buf), (len)) + 1), (dstlen), (buf), (len))
 
