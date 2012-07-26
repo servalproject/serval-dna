@@ -120,6 +120,7 @@ void vlogMessage(int level, const char *file, unsigned int line, const char *fun
     if (strbuf_is_empty(&logbuf))
       strbuf_init(&logbuf, _log_buf, sizeof _log_buf);
 #ifndef ANDROID
+    FILE *logf = open_logging();
     const char *levelstr = "UNKWN:";
     switch (level) {
       case LOG_LEVEL_FATAL: levelstr = "FATAL:"; break;
@@ -172,7 +173,6 @@ void vlogMessage(int level, const char *file, unsigned int line, const char *fun
     __android_log_print(alevel, "servald", "%s", strbuf_str(&logbuf));
     strbuf_reset(&logbuf);
 #else
-    FILE *logf = open_logging();
     if (logf) {
       fputs(strbuf_str(&logbuf), logf);
       if (strbuf_overrun(&logbuf))
