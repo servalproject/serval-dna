@@ -70,6 +70,19 @@ static int is_shellmeta(char c)
   return !(isalnum(c) || c == '.' || c == '-' || c == '/' || c == ':' || c == '+' || c == '_' || c == ',');
 }
 
+strbuf strbuf_append_shell_quote(strbuf sb, const char *word)
+{
+  strbuf_putc(sb, '\'');
+  const char *p;
+  for (p = word; *p; ++p)
+    if (*p == '\'')
+      strbuf_puts(sb, "'\\''");
+    else
+      strbuf_putc(sb, *p);
+  strbuf_putc(sb, '\'');
+  return sb;
+}
+
 strbuf strbuf_append_shell_quotemeta(strbuf sb, const char *word)
 {
   const char *p;
@@ -77,17 +90,10 @@ strbuf strbuf_append_shell_quotemeta(strbuf sb, const char *word)
   for (p = word; *p && !hasmeta; ++p)
     if (is_shellmeta(*p))
       hasmeta = 1;
-  if (hasmeta) {
-    strbuf_putc(sb, '\'');
-    for (p = word; *p; ++p)
-      if (*p == '\'')
-	strbuf_puts(sb, "'\\''");
-      else
-	strbuf_putc(sb, *p);
-    strbuf_putc(sb, '\'');
-  } else {
+  if (!word[0] || hasmeta)
+    strbuf_append_shell_quote(sb, word);
+  else
     strbuf_puts(sb, word);
-  }
   return sb;
 }
 
