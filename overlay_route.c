@@ -832,6 +832,9 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
   int best_score=0;
   int best_observation=-1;
 
+  if (n->sid[0]==0)
+    return 0;
+  
   for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++)
     {
       if (n->observations[o].observed_score)
