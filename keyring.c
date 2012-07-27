@@ -247,8 +247,10 @@ void keyring_free_identity(keyring_identity *id)
   if (id->PKRPin) {
     /* Wipe pin before freeing (slightly tricky since this is a variable length string */
     for(i=0;id->PKRPin[i];i++) {
-      fprintf(stderr,"clearing PIN char '%c'\n",id->PKRPin[i]);
-      id->PKRPin[i]=' '; }
+      if (debug & DEBUG_KEYRING)
+	DEBUGF("clearing PIN char '%c'", id->PKRPin[i]);
+      id->PKRPin[i]=' ';
+    }
     i=0;
     
     free(id->PKRPin); id->PKRPin=NULL;
@@ -973,23 +975,22 @@ int keyring_commit(keyring_file *k)
 				  k->contexts[cn]->KeyRingPin,
 				  k->contexts[cn]->identities[in]->PKRPin))
 	    errorCount++;
-	  else 
-	    {
-	      /* Store */
-	      off_t file_offset
-		=KEYRING_PAGE_SIZE
-		*k->contexts[cn]->identities[in]->slot;
-	      if (!file_offset) {
-		fprintf(stderr,"ID %d:%d has slot=0\n",
-			cn,in);
-	      }
-	      else if (fseeko(k->file,file_offset,SEEK_SET))
-		errorCount++;
-	      else
-		if (fwrite(pkr,KEYRING_PAGE_SIZE,1,k->file)!=1)
-		  errorCount++;		
+	  else {
+	    /* Store */
+	    off_t file_offset
+	      =KEYRING_PAGE_SIZE
+	      *k->contexts[cn]->identities[in]->slot;
+	    if (!file_offset) {
+	      if (debug * DEBUG_KEYRING)
+		DEBUGF("ID %d:%d has slot=0", cn,in);
 	    }
-	}	
+	    else if (fseeko(k->file,file_offset,SEEK_SET))
+	      errorCount++;
+	    else
+	      if (fwrite(pkr,KEYRING_PAGE_SIZE,1,k->file)!=1)
+		errorCount++;
+	  }
+	}
       }
 
   if (errorCount) WHY("One or more errors occurred while commiting keyring to disk");
@@ -1006,7 +1007,8 @@ int keyring_set_did(keyring_identity *id,char *did,char *name)
   int i;
   for(i=0;i<id->keypair_count;i++)
     if (id->keypairs[i]->type==KEYTYPE_DID) {
-      DEBUG("Identity contains DID");
+      if (debug & DEBUG_KEYRING)
+	DEBUG("Identity contains DID");
       break;
     }
 
@@ -1026,7 +1028,8 @@ int keyring_set_did(keyring_identity *id,char *did,char *name)
     id->keypairs[i]->public_key=packedName;
     id->keypairs[i]->public_key_len=64;
     id->keypair_count++;
-    DEBUG("Created DID record for identity");
+    if (debug & DEBUG_KEYRING)
+      DEBUG("Created DID record for identity");
   }
   
   /* Store DID unpacked for ease of searching */
@@ -1131,7 +1134,8 @@ unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
 	if (sas_public) 
 	  *sas_public=
 	    k->contexts[cn]->identities[in]->keypairs[kp]->public_key;
-	if (0) DEBUGF("Found SAS entry for %s*", alloca_tohex(sid, 7));
+	if (debug & DEBUG_KEYRING)
+	  DEBUGF("Found SAS entry for %s*", alloca_tohex(sid, 7));
 	RETURN(k->contexts[cn]->identities[in]->keypairs[kp]->private_key);
       }
 
@@ -1196,11 +1200,13 @@ int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req)
       +slen;
     overlay_mdp_swap_src_dst(req);
     req->packetTypeAndFlags=MDP_TX; /* crypt and sign */
-    DEBUG("Sent SID:SAS mapping mutual-signature");
-    printf("%d byte reply is from %s:%u\n           to %s:%u\n",
-	   req->out.payload_length,
-	   alloca_tohex_sid(req->out.src.sid),req->out.src.port,
-	   alloca_tohex_sid(req->out.dst.sid),req->out.dst.port);
+    if (debug & DEBUG_KEYRING) {
+      DEBUG("Sent SID:SAS mapping mutual-signature");
+      DEBUGF("%d byte reply from %s:%u to %s:%u",
+	    req->out.payload_length,
+	    alloca_tohex_sid(req->out.src.sid),req->out.src.port,
+	    alloca_tohex_sid(req->out.dst.sid),req->out.dst.port);
+    }
     return overlay_mdp_dispatch(req,1,NULL,0);
   } else {
     /* It's probably a response. */
@@ -1228,16 +1234,16 @@ int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req)
 	int r=crypto_sign_edwards25519sha512batch_open(plain,&plain_len,
 						       signature,siglen,
 						       sas_public);
-	if (r) 
-	  return 
-	    WHY("Verification of signed SID in key mapping assertion failed");
+	if (r)
+	  return WHY("Verification of signed SID in key mapping assertion failed");
 	/* These next two tests should never be able to fail, but let's just 
 	   check anyway. */
-	if (plain_len!=SID_SIZE) 
+	if (plain_len!=SID_SIZE)
 	  return WHY("key mapping signed block is wrong length");
 	if (memcmp(plain,req->out.src.sid,SID_SIZE))
 	  return WHY("key mapping signed block is for wrong SID");
-	DEBUG("Key mapping looks valid");
+	if (debug & DEBUG_KEYRING)
+	  DEBUG("Key mapping looks valid");
 
 	/* work out where to put it */
 	int i;
@@ -1251,15 +1257,17 @@ int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req)
 	bcopy(&req->out.src.sid,&sid_sas_mappings[i].sid[0],SID_SIZE);
 	bcopy(sas_public,&sid_sas_mappings[i].sas_public[0],
 	      crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
-	fprintf(stderr,"Mapping #%d (count=%d) SID=%s to SAS=%s*\n",i,
-		sid_sas_mapping_count,
-		alloca_tohex_sid(sid_sas_mappings[i].sid),
-		alloca_tohex_sid(sid_sas_mappings[i].sas_public));
+	if (debug & DEBUG_KEYRING)
+	  DEBUGF("Mapping #%d (count=%d) SID=%s to SAS=%s*\n",i,
+		  sid_sas_mapping_count,
+		  alloca_tohex_sid(sid_sas_mappings[i].sid),
+		  alloca_tohex_sid(sid_sas_mappings[i].sas_public));
 	sid_sas_mappings[i].validP=1;
 	sid_sas_mappings[i].last_request_time_in_ms=0;
-	DEBUG("Stored mapping");
+	if (debug & DEBUG_KEYRING)
+	  DEBUG("Stored mapping");
 	return 0;
-      }      
+      }
       break;
     default:
       WARN("Key mapping response for unknown key type. Oh well.");
@@ -1289,7 +1297,8 @@ unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
     {
       if (memcmp(sid,sid_sas_mappings[i].sid,SID_SIZE)) continue;
       if (sid_sas_mappings[i].validP) {
-	if (0) DEBUGF("Found SAS public entry for %s*", alloca_tohex(sid, 7));
+	if (debug & DEBUG_KEYRING)
+	  DEBUGF("Found SAS public entry for %s*", alloca_tohex(sid, 7));
 	RETURN(sid_sas_mappings[i].sas_public);
       }
       /* Don't flood the network with mapping requests */

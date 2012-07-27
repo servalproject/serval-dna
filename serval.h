@@ -1132,7 +1132,7 @@ int overlay_saw_mdp_containing_frame(overlay_frame *f,long long now);
 #define DEBUG_RHIZOME_RX            (1 << 8)
 #define DEBUG_PACKETFORMATS         (1 << 9)
 #define DEBUG_GATEWAY               (1 << 10)
-#define DEBUG_HLR                   (1 << 11) // Deprecated, TODO: delete
+#define DEBUG_KEYRING               (1 << 11)
 #define DEBUG_IO                    (1 << 12)
 #define DEBUG_OVERLAYFRAMES         (1 << 13)
 #define DEBUG_OVERLAYABBREVIATIONS  (1 << 14)

@@ -509,261 +509,244 @@ int processRequest(unsigned char *packet,int len,
 		   unsigned char *transaction_id,int recvttl, char *did,char *sid)
 {
   /* Find HLR entry by DID or SID, unless creating */
-  int records_searched=0;
-  
   int prev_pofs=0;
   int pofs=OFS_PAYLOAD;
 
-  while(pofs<len)
-    {
-      if (debug&DEBUG_DNARESPONSES) DEBUGF("  processRequest: len=%d, pofs=%d, pofs_prev=%d",len,pofs,prev_pofs);
-      /* Avoid infinite loops */
-      if (pofs<=prev_pofs) break;
-      prev_pofs=pofs;
+  while (pofs < len) {
+    if (debug & DEBUG_DNARESPONSES)
+      DEBUGF("len=%d, pofs=%d, pofs_prev=%d",len,pofs,prev_pofs);
+    /* Avoid infinite loops */
+    if (pofs<=prev_pofs) break;
+    prev_pofs=pofs;
 
-      if (packet[pofs]==ACTION_CREATEHLR)
-	{
-	  /* Creating an HLR requires an initial DID number and definitely no SID -
-	     you can't choose a SID. */
-	  if (debug&DEBUG_HLR) DEBUGF("Creating a new HLR record. did='%s', sid='%s'",did,sid);
-	  if (!did[0]) return respondSimple(NULL,ACTION_DECLINED,NULL,0,transaction_id,recvttl,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
-	  if (sid[0])  
-	    return respondSimple(NULL,ACTION_DECLINED,NULL,0,transaction_id,
-				 recvttl,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
-	  if (debug&DEBUG_HLR) DEBUG("Verified that create request supplies DID but not SID");
+    if (debug & DEBUG_DNARESPONSES)
+      DEBUGF("action code 0x%02x @ packet offset 0x%x", packet[pofs], pofs);
+    switch (packet[pofs]) {
+    case ACTION_CREATEHLR: {
+	/* Creating an HLR requires an initial DID number and definitely no SID -
+	    you can't choose a SID. */
+	if (debug & DEBUG_DNARESPONSES)
+	  DEBUGF("Creating a new HLR record. did='%s', sid='%s'",did,sid);
+	if (!did[0] || sid[0])
+	  return respondSimple(NULL, ACTION_DECLINED, NULL, 0, transaction_id, recvttl, sender, CRYPT_CIPHERED|CRYPT_SIGNED);
+	if (debug & DEBUG_DNARESPONSES)
+	  DEBUG("Verified that create request supplies DID but not SID");
+	/* Creating an identity is nice and easy now with the new keyring */
+	keyring_identity *id=keyring_create_identity(keyring,keyring->contexts[0], "");
+	if (id)
+	  keyring_set_did(id, did, "Mr. Smith");
+	if (id==NULL||keyring_commit(keyring))
+	  return respondSimple(NULL, ACTION_DECLINED, NULL, 0, transaction_id, recvttl, sender, CRYPT_CIPHERED|CRYPT_SIGNED);
+	else
+	  return respondSimple(id, ACTION_OKAY, NULL, 0, transaction_id, recvttl, sender, CRYPT_CIPHERED|CRYPT_SIGNED);	
+	pofs += 1;
+	pofs += 1 + SID_SIZE;
+      }
+      break;
+    case ACTION_PAD: /* Skip padding */
+      pofs++;
+      pofs+=1+packet[pofs];
+      break;
+    case ACTION_EOT:  /* EOT */
+      pofs=len;
+      break;
+    case ACTION_STATS: {
+      /* short16 variable id,
+	  int32 value */
+	pofs++;
+	short field=packet[pofs+1]+(packet[pofs]<<8);
+	int value=packet[pofs+5]+(packet[pofs+4]<<8)+(packet[pofs+3]<<16)+(packet[pofs+2]<<24);
+	pofs+=6;
+	if (instrumentation_file)
+	  {
+	    if (!i_f) { if (strcmp(instrumentation_file,"-")) i_f=fopen(instrumentation_file,"a"); else i_f=stdout; }
+	    if (i_f) fprintf(i_f,"%ld:%02x%02x%02x%02x:%d:%d\n",time(0),sender->sa_data[0],sender->sa_data[1],sender->sa_data[2],sender->sa_data[3],field,value);
+	    if (i_f) fflush(i_f);
+	  }
+      }
+      break;
+    case ACTION_SET:
+      WHY("You can only set keyring variables locally");
+      return respondSimple(NULL,ACTION_ERROR,
+			    (unsigned char *)"Would be insecure",
+			    0,transaction_id,recvttl,
+			    sender,CRYPT_CIPHERED|CRYPT_SIGNED);
+      break;
+    case ACTION_GET: {
+	/* Limit transfer size to MAX_DATA_BYTES, plus an allowance for variable packing. */
+	unsigned char data[MAX_DATA_BYTES+16];
+	int dlen=0;
+	int sendDone=0;
+
+	if (debug&DEBUG_DNARESPONSES)
+	  dump("Request bytes", &packet[pofs], 8);
+
+	pofs++;
+	int var_id=packet[pofs];
+	int instance=-1;
+	if (var_id&0x80) instance=packet[++pofs];
+	if (instance==0xff) instance=-1;
+	pofs++;
+	int offset=(packet[pofs]<<8)+packet[pofs+1]; pofs+=2;
+	keyring_identity *responding_id=NULL;
+
+	pofs+=2;
+
+	if (debug&DEBUG_DNARESPONSES) {
+	  DEBUGF("Processing ACTION_GET (var_id=%02x, instance=%02x, pofs=0x%x, len=%d)",var_id,instance,pofs,len);
+	  DEBUGF("Looking for identities with sid=%s did='%s'", (sid&&sid[0])?sid:"null",did?did:"null");
+	}
 	  
-	  /* Creating an identity is nice and easy now with the new keyring */
-	  keyring_identity *id=keyring_create_identity(keyring,keyring->contexts[0], "");
-	  if (id) keyring_set_did(id,did,"Mr. Smith");
-	  if (id==NULL||keyring_commit(keyring))
-	    return respondSimple(NULL,ACTION_DECLINED,NULL,0,transaction_id,recvttl,
-				 sender,CRYPT_CIPHERED|CRYPT_SIGNED);
-	  else
-	    return respondSimple(id,ACTION_OKAY,NULL,0,transaction_id,recvttl,
-				 sender,CRYPT_CIPHERED|CRYPT_SIGNED);	
-	  	  
-	  pofs+=1;
-	  pofs+=1+SID_SIZE;
+	/* Keyring only has DIDs in it for now.  Location is implied, so we allow that */
+	switch (var_id) {
+	case VAR_DIDS:
+	case VAR_LOCATIONS:
+	  break;
+	default:
+	  return respondSimple(NULL,ACTION_ERROR,
+				(unsigned char *)"Unsupported variable",
+				0,transaction_id,recvttl,
+				sender,CRYPT_CIPHERED|CRYPT_SIGNED);
 	}
-      else
+
 	{
-	  if (debug&DEBUG_DNARESPONSES) DEBUGF("Looking at action code 0x%02x @ packet offset 0x%x",
-			       packet[pofs],pofs);
-	  switch(packet[pofs])
-	    {
-	    case ACTION_PAD: /* Skip padding */
-	      pofs++;
-	      pofs+=1+packet[pofs];
-	      break;
-	    case ACTION_EOT:  /* EOT */
-	      pofs=len;
-	      break;
-	    case ACTION_STATS:
-	      /* short16 variable id,
-		 int32 value */
-	      {
-		pofs++;
-		short field=packet[pofs+1]+(packet[pofs]<<8);
-		int value=packet[pofs+5]+(packet[pofs+4]<<8)+(packet[pofs+3]<<16)+(packet[pofs+2]<<24);
-		pofs+=6;
-		if (instrumentation_file)
-		  {
-		    if (!i_f) { if (strcmp(instrumentation_file,"-")) i_f=fopen(instrumentation_file,"a"); else i_f=stdout; }
-		    if (i_f) fprintf(i_f,"%ld:%02x%02x%02x%02x:%d:%d\n",time(0),sender->sa_data[0],sender->sa_data[1],sender->sa_data[2],sender->sa_data[3],field,value);
-		    if (i_f) fflush(i_f);
-		  }
+	  int cn=0,in=0,kp=0;
+	  int found=0;
+	  int count=0;
+	  while(cn<keyring->context_count) {
+	    found=0;
+	    if (sid&&sid[0]) {
+	      unsigned char packedSid[SID_SIZE];
+	      stowSid(packedSid,0,sid);
+	      found=keyring_find_sid(keyring,&cn,&in,&kp,packedSid);
+	    } else {
+	      found=keyring_find_did(keyring,&cn,&in,&kp,did);
+	    }
+
+	    struct response r;
+	    unsigned char packedDid[64];
+
+	    if (found&&(instance==-1||instance==count)) {
+	      /* We have a matching identity/DID, now see what variable
+		  they want.
+		  VAR_DIDS and VAR_LOCATIONS are the only ones we support
+		  with the new keyring file format for now. */
+	      r.var_id=var_id;
+	      r.var_instance=instance;
+	      switch(var_id) {
+	      case VAR_DIDS:
+		/* We need to pack the DID before sending off */
+		r.value_len=0;
+		stowDid(packedDid,&r.value_len,
+			(char *)keyring->contexts[cn]->identities[in]
+			->keypairs[kp]->private_key);
+		r.response=packedDid;
+		break;
+	      case VAR_LOCATIONS:
+		r.response=(unsigned char *)"4000@";
+		r.value_len=strlen((char *)r.response);		      
+		break;
 	      }
-	      break;
-	    case ACTION_SET:
-	      WHY("You can only set keyring variables locally");
-	      return respondSimple(NULL,ACTION_ERROR,
-				   (unsigned char *)"Would be insecure",
-				   0,transaction_id,recvttl,
-				   sender,CRYPT_CIPHERED|CRYPT_SIGNED);
-	      
-	      break;
-	    case ACTION_GET:
-	      {
-		/* Limit transfer size to MAX_DATA_BYTES, plus an allowance for variable packing. */
-		unsigned char data[MAX_DATA_BYTES+16];
-		int dlen=0;
-		int sendDone=0;
 
-		if (debug&DEBUG_HLR) dump("Request bytes",&packet[pofs],8);
+	      /* For multiple packet responses, we want to tag only the
+		  last one with DONE, so we queue up the most recently generated
+		  packet, and only dispatch it when we are about to produce 
+		  another.  Then at the end of the loop, if we have a packet
+		  waiting we simply mark that with with DONE, and everything
+		  falls into place. */
+	      if (sendDone>0)
+		/* Send previous packet */
+		respondSimple(responding_id,ACTION_DATA,data,dlen,
+			      transaction_id,recvttl,sender,
+			      CRYPT_CIPHERED|CRYPT_SIGNED);		      
+	      /* Prepare new packet */
+	      dlen=0;		      
+	      if (packageVariableSegment(data,&dlen,&r,offset, MAX_DATA_BYTES+16))
+		return WHY("packageVariableSegment() failed.");
+	      responding_id = keyring->contexts[cn]->identities[in];
 
-		pofs++;
-		int var_id=packet[pofs];
-		int instance=-1;
-		if (var_id&0x80) instance=packet[++pofs];
-		if (instance==0xff) instance=-1;
-		pofs++;
-		int offset=(packet[pofs]<<8)+packet[pofs+1]; pofs+=2;
-		keyring_identity *responding_id=NULL;
+	      /* Remember that we need to send this new packet */
+	      sendDone++;
 
-		pofs+=2;
-
-		if (debug&DEBUG_DNARESPONSES) DEBUGF("Processing ACTION_GET (var_id=%02x, instance=%02x, pofs=0x%x, len=%d)",var_id,instance,pofs,len);
-
-		if (debug&DEBUG_HLR) DEBUGF("Looking for identities with sid='%s' / did='%s'",(sid&&sid[0])?sid:"null",did?did:"null");
-		  
-		/* Keyring only has DIDs in it for now.
-		   Location is implied, so we allow that */
-		switch(var_id) {
-		case VAR_DIDS:
-		case VAR_LOCATIONS:
-		  break;
-		default:
-		  return respondSimple(NULL,ACTION_ERROR,
-				       (unsigned char *)"Unsupported variable",
-				       0,transaction_id,recvttl,
-				       sender,CRYPT_CIPHERED|CRYPT_SIGNED);
-
-		}
-
-		{		  
-		  int cn=0,in=0,kp=0;
-		  int found=0;
-		  int count=0;
-		  while(cn<keyring->context_count) {
-		    found=0;
-		    if (sid&&sid[0]) {
-		      unsigned char packedSid[SID_SIZE];
-		      stowSid(packedSid,0,sid);
-		      found=keyring_find_sid(keyring,&cn,&in,&kp,packedSid);
-		    } else {
-		      found=keyring_find_did(keyring,&cn,&in,&kp,did);
-		    }
-
-		    struct response r;
-		    unsigned char packedDid[64];
-
-		    if (found&&(instance==-1||instance==count)) {
-		      /* We have a matching identity/DID, now see what variable
-			 they want.
-			 VAR_DIDS and VAR_LOCATIONS are the only ones we support
-			 with the new keyring file format for now. */
-		      r.var_id=var_id;
-		      r.var_instance=instance;
-		      switch(var_id) {
-		      case VAR_DIDS:
-			/* We need to pack the DID before sending off */
-			r.value_len=0;
-			stowDid(packedDid,&r.value_len,
-				(char *)keyring->contexts[cn]->identities[in]
-				->keypairs[kp]->private_key);
-			r.response=packedDid;
-			break;
-		      case VAR_LOCATIONS:
-			r.response=(unsigned char *)"4000@";
-			r.value_len=strlen((char *)r.response);		      
-			break;
-		      }
-
-		      /* For multiple packet responses, we want to tag only the
-			 last one with DONE, so we queue up the most recently generated
-			 packet, and only dispatch it when we are about to produce 
-			 another.  Then at the end of the loop, if we have a packet
-			 waiting we simply mark that with with DONE, and everything
-			 falls into place. */
-		      if (sendDone>0)
-			/* Send previous packet */
-			respondSimple(responding_id,ACTION_DATA,data,dlen,
-				      transaction_id,recvttl,sender,
-				      CRYPT_CIPHERED|CRYPT_SIGNED);		      
-		      /* Prepare new packet */
-		      dlen=0;		      
-		      if (packageVariableSegment(data,&dlen,&r,offset,
-						 MAX_DATA_BYTES+16))
-			return WHY("packageVariableSegment() failed.");
-		      responding_id = keyring->contexts[cn]->identities[in];
-
-		      /* Remember that we need to send this new packet */
-		      sendDone++;
-
-		      count++;
-		    }
-		    
-		    /* look for next record.
-		       Here the placing of DONE at the end of the response stream 
-		       becomes challenging, as we may be responding as multiple
-		       identities.  This means we have to DONE after each identity. */
-		    int lastin=in,lastcn=cn;		    
-		    kp++;
-		    keyring_sanitise_position(keyring,&cn,&in,&kp);
-		    if (lastin!=in||lastcn!=cn) {
-		      /* moved off last identity, so send waiting packet if there is
-			 one. */
-		      if (sendDone)
-			{
-			  data[dlen++]=ACTION_DONE;
-			  data[dlen++]=sendDone&0xff;
-			  respondSimple(responding_id,ACTION_DATA,data,dlen,
-					transaction_id,
-					recvttl,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
-			}
-		      sendDone=0;
-		      
-		    }
-		    
-		  }
-		}
-
-		/* Now, see if we have a final queued packet which needs marking with
-		   DONE and then sending. */
-		if (sendDone)
-		  {
-		    data[dlen++]=ACTION_DONE;
-		    data[dlen++]=sendDone&0xff;
-		    respondSimple(responding_id,ACTION_DATA,data,dlen,transaction_id,
-				  recvttl,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
-		  }
-		
-		if (gatewayspec&&(var_id==VAR_LOCATIONS)&&did&&strlen(did))
-		  {
-		    /* We are a gateway, so offer connection via the gateway as well */
-		    unsigned char data[MAX_DATA_BYTES+16];
-		    int dlen=0;
-		    struct response fake;
-		    unsigned char uri[1024];
-		    
-		    /* We use asterisk to provide the gateway service,
-		       so we need to create a temporary extension in extensions.conf,
-		       ask asterisk to re-read extensions.conf, and then make sure it has
-		       a functional SIP gateway.
-		    */
-		    if (!asteriskObtainGateway(sid,did,(char *)uri))
-		      {
-			
-			fake.value_len=strlen((char *)uri);
-			fake.var_id=var_id;
-			fake.response=uri;
-			
-			if (packageVariableSegment(data,&dlen,&fake,offset,MAX_DATA_BYTES+16))
-			  return WHY("packageVariableSegment() of gateway URI failed.");
-			
-			WHY("Gateway claims to be 1st identity, when it should probably have its own identity");
-			respondSimple(keyring->contexts[0]->identities[0],
-				      ACTION_DATA,data,dlen,
-				      transaction_id,recvttl,sender,
-				      CRYPT_CIPHERED|CRYPT_SIGNED);
-		      }
-		    else
-		      {
-			  /* Should we indicate the gateway is not available? */
-			}
-		    }
-	      
+	      count++;
+	    }
+	    
+	    /* look for next record.
+		Here the placing of DONE at the end of the response stream 
+		becomes challenging, as we may be responding as multiple
+		identities.  This means we have to DONE after each identity. */
+	    int lastin=in,lastcn=cn;		    
+	    kp++;
+	    keyring_sanitise_position(keyring,&cn,&in,&kp);
+	    if (lastin!=in||lastcn!=cn) {
+	      /* moved off last identity, so send waiting packet if there is
+		  one. */
+	      if (sendDone) {
+		data[dlen++]=ACTION_DONE;
+		data[dlen++]=sendDone&0xff;
+		respondSimple(responding_id,ACTION_DATA,data,dlen,
+			      transaction_id,
+			      recvttl,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
 	      }
-	      break;
-	    default:
-	      if (debug&DEBUG_PACKETFORMATS) DEBUGF("Asked to perform unsipported action at Packet offset = 0x%x",pofs);
-	      if (debug&DEBUG_PACKETFORMATS) dump("Packet",packet,len);
-	      return WHY("Asked to perform unsupported action.");
-	    }	   
+	      sendDone=0;
+	    }
+	  }
 	}
+
+	/* Now, see if we have a final queued packet which needs marking with
+	    DONE and then sending. */
+	if (sendDone) {
+	  data[dlen++]=ACTION_DONE;
+	  data[dlen++]=sendDone&0xff;
+	  respondSimple(responding_id,ACTION_DATA,data,dlen,transaction_id,
+			recvttl,sender,CRYPT_CIPHERED|CRYPT_SIGNED);
+	}
+	
+	if (gatewayspec&&(var_id==VAR_LOCATIONS)&&did&&strlen(did))
+	  {
+	    /* We are a gateway, so offer connection via the gateway as well */
+	    unsigned char data[MAX_DATA_BYTES+16];
+	    int dlen=0;
+	    struct response fake;
+	    unsigned char uri[1024];
+	    
+	    /* We use asterisk to provide the gateway service,
+		so we need to create a temporary extension in extensions.conf,
+		ask asterisk to re-read extensions.conf, and then make sure it has
+		a functional SIP gateway.
+	    */
+	    if (!asteriskObtainGateway(sid,did,(char *)uri))
+	      {
+		
+		fake.value_len=strlen((char *)uri);
+		fake.var_id=var_id;
+		fake.response=uri;
+		
+		if (packageVariableSegment(data,&dlen,&fake,offset,MAX_DATA_BYTES+16))
+		  return WHY("packageVariableSegment() of gateway URI failed.");
+		
+		WHY("Gateway claims to be 1st identity, when it should probably have its own identity");
+		respondSimple(keyring->contexts[0]->identities[0],
+			      ACTION_DATA,data,dlen,
+			      transaction_id,recvttl,sender,
+			      CRYPT_CIPHERED|CRYPT_SIGNED);
+	      }
+	    else
+	      {
+		  /* Should we indicate the gateway is not available? */
+		}
+	    }
+      
+      }
+      break;
+    default:
+      if (debug & DEBUG_PACKETFORMATS) {
+	DEBUGF("Asked to perform unsipported action at Packet offset = 0x%x", pofs);
+        dump("Packet", packet, len);
+      }
+      return WHY("unsupported action");
     }
-  
-  if (debug&DEBUG_HLR) DEBUGF("Searched %d HLR entries",records_searched);
+  }
 
   return 0;
 }

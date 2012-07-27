@@ -264,7 +264,7 @@ unsigned int debugFlagMask(const char *flagname) {
   else if (!strcasecmp(flagname,"packetformats"))	return DEBUG_PACKETFORMATS;
   else if (!strcasecmp(flagname,"packetconstruction"))	return DEBUG_PACKETCONSTRUCTION;
   else if (!strcasecmp(flagname,"gateway"))		return DEBUG_GATEWAY;
-  else if (!strcasecmp(flagname,"hlr"))			return DEBUG_HLR;
+  else if (!strcasecmp(flagname,"keyring"))		return DEBUG_KEYRING;
   else if (!strcasecmp(flagname,"sockio"))		return DEBUG_IO;
   else if (!strcasecmp(flagname,"frames"))		return DEBUG_OVERLAYFRAMES;
   else if (!strcasecmp(flagname,"abbreviations"))	return DEBUG_OVERLAYABBREVIATIONS;
