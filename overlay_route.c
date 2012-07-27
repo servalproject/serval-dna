@@ -749,29 +749,27 @@ int overlay_route_node_can_hear_me(unsigned char *who,int sender_interface,
   /* See if this observation is contiguous with a previous one, if so, merge.
      This not only reduces the number of observation slots we need, but dramatically speeds up
      the scanning of recent observations when re-calculating observation scores. */
-  while (neh->observations[obs_index].valid && (neh->observations[obs_index].s2>=(s1-1)))
-    {
-      if (neh->observations[obs_index].sender_interface==sender_interface)
-	{
-	  if (debug&DEBUG_OVERLAYROUTING)
-	    DEBUGF("merging observation in slot #%d",obs_index);
-	  merge=1;
-	  break;
-	}
-
-      obs_index--;
-      if (obs_index<0) obs_index=OVERLAY_MAX_OBSERVATIONS-1;
+  while (neh->observations[obs_index].valid && neh->observations[obs_index].s2 >= s1 - 1) {
+    if (neh->observations[obs_index].sender_interface == sender_interface) {
+      if (debug&DEBUG_OVERLAYROUTING)
+	DEBUGF("merging observation into slot #%d s1=%u s2=%u", obs_index, neh->observations[obs_index].s1, neh->observations[obs_index].s2);
+      s1 = neh->observations[obs_index].s1;
+      merge=1;
+      break;
     }
-
+    if (--obs_index < 0)
+      obs_index = OVERLAY_MAX_OBSERVATIONS - 1;
+  }
   if (!merge) {
     /* Replace oldest observation with this one */
-    obs_index=neh->most_recent_observation_id+1;
-    if (obs_index>=OVERLAY_MAX_OBSERVATIONS) obs_index=0;
-    if (debug&DEBUG_OVERLAYROUTING)
-      DEBUGF("storing observation in slot #%d",obs_index);
-    neh->observations[obs_index].s1=s1;
+    obs_index = neh->most_recent_observation_id + 1;
+    if (obs_index >= OVERLAY_MAX_OBSERVATIONS)
+      obs_index = 0;
   }
   
+  if (debug&DEBUG_OVERLAYROUTING)
+    DEBUGF("assign observation slot #%d: s1=%u s2=%u time_ms=%lld", obs_index, s1, s2, now);
+  neh->observations[obs_index].s1=s1;
   neh->observations[obs_index].s2=s2;
   neh->observations[obs_index].sender_interface=sender_interface;
   neh->observations[obs_index].time_ms=now;
@@ -916,14 +914,21 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
   if (debug&DEBUG_OVERLAYROUTING)
     DEBUGF("Updating neighbour metrics for %s", alloca_tohex_sid(n->node->sid));
   
-  /* Only update every half-second */
-  if ((now-n->last_metric_update)<500) {
+  /* At most one update per half second */
+  if (n->last_metric_update == 0) {
     if (debug&DEBUG_OVERLAYROUTING)
-      DEBUGF("refusing to update metric too often (last at %lldms, now=%lldms)",
-		n->last_metric_update,now);
-    return 0;
+      DEBUG("last update was never");
+  } else {
+    long long ago = now - n->last_metric_update;
+    if (ago < 500) {
+      if (debug&DEBUG_OVERLAYROUTING)
+	DEBUGF("last update was %lldms ago -- skipping", ago);
+      return 0;
+    }
+    if (debug&DEBUG_OVERLAYROUTING)
+      DEBUGF("last update was %lldms ago", ago);
   }
-  n->last_metric_update=now;
+  n->last_metric_update = now;
 
   /* Somewhere to remember how many milliseconds we have seen */
   int ms_observed_5sec[OVERLAY_MAX_INTERFACES];
@@ -939,7 +944,6 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
      the announcements on. */
   for(i=0;i<OVERLAY_MAX_OBSERVATIONS;i++) {
     if (!n->observations[i].valid ||
-	!n->observations[i].s1 ||
 	n->observations[i].sender_interface>=OVERLAY_MAX_INTERFACES ||
 	overlay_interfaces[n->observations[i].sender_interface].state!=INTERFACE_STATE_UP)
       continue;
