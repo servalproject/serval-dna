@@ -223,9 +223,8 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
        return an error */
     if (!(mdp->packetTypeAndFlags&MDP_FORCE))
       {
-	fprintf(stderr,"Port already in use.\n");
-	return overlay_mdp_reply_error(sock,recvaddr,recvaddrlen,3,
-				       "Port already in use");
+	WHY("Port already in use");
+	return overlay_mdp_reply_error(sock,recvaddr,recvaddrlen,3, "Port already in use");
       }
     else {
       /* Cause existing binding to be replaced.
@@ -323,12 +322,7 @@ unsigned char *overlay_mdp_decrypt(overlay_frame *f,overlay_mdp_frame *mdp,
     mdp->packetTypeAndFlags|=MDP_NOCRYPT; break;
   case OF_CRYPTO_CIPHERED|OF_CRYPTO_SIGNED:
     {
-      if (0) {
-	fflush(stderr);
-	printf("crypted MDP frame for %s\n",
-	       alloca_tohex_sid(mdp->out.dst.sid));
-	fflush(stdout);
-      }
+      if (0) DEBUGF("crypted MDP frame for %s", alloca_tohex_sid(mdp->out.dst.sid));
 
       unsigned char *k=keyring_get_nm_bytes(&mdp->out.dst,&mdp->out.src);
       unsigned char *nonce=&f->payload->bytes[0];
@@ -388,8 +382,7 @@ int overlay_saw_mdp_containing_frame(overlay_frame *f,long long now)
   /* extract MDP port numbers */
   mdp.in.src.port=(b[2]<<24)+(b[3]<<16)+(b[4]<<8)+b[5];
   mdp.in.dst.port=(b[6]<<24)+(b[7]<<16)+(b[8]<<8)+b[9];
-  if (0) fprintf(stderr,
-	  "RX mdp dst.port=%d, src.port=%d\n",mdp.in.dst.port,mdp.in.src.port);  
+  if (0) DEBUGF("RX mdp dst.port=%d, src.port=%d", mdp.in.dst.port, mdp.in.src.port);  
 
   mdp.in.payload_length=len-10;
   bcopy(&b[10],&mdp.in.payload[0],mdp.in.payload_length);
@@ -1023,7 +1016,8 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 		if (sid[0]) {
 		  const char *sidhex = alloca_tohex_sid(sid);
 		  int score = overlay_nodes[bin][slot].best_link_score;
-		  if (debug & DEBUG_MDPREQUESTS) DEBUGF("bin=%d slot=%d sid=%s best_link_score=%d", bin, slot, sidhex, score);
+		  if (debug & DEBUG_MDPREQUESTS)
+		    DEBUGF("bin=%d slot=%d sid=%s best_link_score=%d", bin, slot, sidhex, score);
 		  if (mdp->addrlist.mode == MDP_ADDRLIST_MODE_ALL_PEERS || score >= 1) {
 		    if (count++ >= sid_num && i < max_sids) {
 		      if (debug & DEBUG_MDPREQUESTS) DEBUGF("send sid=%s", sidhex);
@@ -1038,9 +1032,9 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 	  }
 	  break;
 	}
-	mdpreply.addrlist.frame_sid_count=i;
-	mdpreply.addrlist.last_sid=sid_num+i-1;
-	mdpreply.addrlist.server_sid_count=count;
+	mdpreply.addrlist.frame_sid_count = i;
+	mdpreply.addrlist.last_sid = sid_num + i - 1;
+	mdpreply.addrlist.server_sid_count = count;
 
 	if (debug & DEBUG_MDPREQUESTS)
 	  DEBUGF("reply MDP_ADDRLIST first_sid=%u last_sid=%u frame_sid_count=%u server_sid_count=%u",
@@ -1331,10 +1325,10 @@ int overlay_mdp_bind(unsigned char *localaddr,int port)
   int result=overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000);
   if (result) {
     if (mdp.packetTypeAndFlags==MDP_ERROR)
-      fprintf(stderr,"Could not bind to MDP port %d: error=%d, message='%s'\n",
+      WHYF("Could not bind to MDP port %d: error=%d, message='%s'",
 	      port,mdp.error.error,mdp.error.message);
     else
-      fprintf(stderr,"Could not bind to MDP port %d (no reason given)\n",port);
+      WHYF("Could not bind to MDP port %d (no reason given)",port);
     return -1;
   }
   return 0;
@@ -1351,14 +1345,8 @@ int overlay_mdp_getmyaddr(int index,unsigned char *sid)
   a.addrlist.frame_sid_count=MDP_MAX_SID_REQUEST;
   int result=overlay_mdp_send(&a,MDP_AWAITREPLY,5000);
   if (result) {
-    if (a.packetTypeAndFlags==MDP_ERROR)
-      {
-	fprintf(stderr,"Could not get list of local MDP addresses\n");
-	fprintf(stderr,"  MDP Server error #%d: '%s'\n",
-		a.error.error,a.error.message);
-      }
-    else
-      fprintf(stderr,"Could not get list of local MDP addresses\n");
+    if (a.packetTypeAndFlags == MDP_ERROR)
+	DEBUGF("MDP Server error #%d: '%s'", a.error.error, a.error.message);
     return WHY("Failed to get local address list");
   }
   if ((a.packetTypeAndFlags&MDP_TYPE_MASK)!=MDP_ADDRLIST)
