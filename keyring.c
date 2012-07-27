@@ -689,9 +689,9 @@ int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
 
   /* 1. Read slot. */
   if (fseeko(k->file,slot_number*KEYRING_PAGE_SIZE,SEEK_SET))
-    return WHY("fseeko() failed");
+    return WHY_perror("fseeko");
   if (fread(&slot[0],KEYRING_PAGE_SIZE,1,k->file)!=1)
-    return WHY("read() failed");
+    return WHY_perror("fread");
   /* 2. Decrypt data from slot. */
   if (keyring_munge_block(slot,KEYRING_PAGE_SIZE,
 			  k->contexts[0]->KeyRingSalt,
@@ -801,7 +801,7 @@ keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, co
   if (!pin) pin="";
 
   keyring_identity *id=calloc(sizeof(keyring_identity),1);
-  if (!id) { WHY("calloc() failed"); return NULL; }
+  if (!id) { WHY_perror("calloc"); return NULL; }
   
   /* Store pin */
   id->PKRPin=strdup(pin);
@@ -1017,12 +1017,12 @@ int keyring_set_did(keyring_identity *id,char *did,char *name)
   /* allocate if needed */
   if (i>=id->keypair_count) {
     id->keypairs[i]=calloc(sizeof(keypair),1);
-    if (!id->keypairs[i]) return WHY("calloc() failed");
+    if (!id->keypairs[i]) return WHY_perror("calloc");
     id->keypairs[i]->type=KEYTYPE_DID;
     unsigned char *packedDid=calloc(32,1);
-    if (!packedDid) return WHY("calloc() failed");
+    if (!packedDid) return WHY_perror("calloc");
     unsigned char *packedName=calloc(64,1);
-    if (!packedName) return WHY("calloc() failed");
+    if (!packedName) return WHY_perror("calloc");
     id->keypairs[i]->private_key=packedDid;
     id->keypairs[i]->private_key_len=32;
     id->keypairs[i]->public_key=packedName;
@@ -1210,8 +1210,8 @@ int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req)
     return overlay_mdp_dispatch(req,1,NULL,0);
   } else {
     /* It's probably a response. */
-    WHYF("Received %d byte key mapping response",
-	 req->out.payload_length);
+    if (debug & DEBUG_KEYRING)
+      DEBUGF("Received %d byte key mapping response", req->out.payload_length);
     switch(req->out.payload[0]) {
     case KEYTYPE_CRYPTOSIGN:
       {
@@ -1304,13 +1304,14 @@ unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
       /* Don't flood the network with mapping requests */
       if (((now-sid_sas_mappings[i].last_request_time_in_ms)<1000)
 	  &&((now-sid_sas_mappings[i].last_request_time_in_ms)>=0))
-	{ WHYF("Too soon to ask for SAS mapping again."); RETURN(NULL); }
+	{ RETURN(WHYNULL("Too soon to ask for SAS mapping again.")); }
       /* we can request again, so fall out to where we do that.
          i is set to this mapping, so the request process will update this
          record. */
       break;
     }
-  WHYF("Asking for SAS mapping for %s", alloca_tohex_sid(sid));
+  if (debug & DEBUG_KEYRING)
+    DEBUGF("Asking for SAS mapping for %s", alloca_tohex_sid(sid));
 
   /* allocate mapping slot or replace one at random, depending on how full things
      are */
@@ -1344,7 +1345,8 @@ unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
   if (overlay_mdp_dispatch(&mdp,0 /* system generated */,
 			   NULL,0))
     { RETURN(WHYNULL("Failed to send SAS resolution request")); }
-  WHYF("Dispatched SAS resolution request");
+  if (debug & DEBUG_KEYRING)
+    DEBUGF("Dispatched SAS resolution request");
   RETURN(NULL); 
 }
 
