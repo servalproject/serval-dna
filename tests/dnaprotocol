@@ -22,11 +22,8 @@ source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 
 is_reachable() {
-  local sidvar=SID${1#+}
-  if ! grep "PEER REACHABLE, sid=${!sidvar}" "$instance_servald_log"; then
-    return 1
-  fi
-  return 0
+  local sidvar="SID${1#+}"
+  grep "PEER REACHABLE, sid=${!sidvar}" "$instance_servald_log"
 }
 
 setup() {
@@ -48,6 +45,8 @@ teardown() {
 # Called by start_servald_instances immediately before starting the server
 # process in each instance.
 configure_servald_server() {
+   executeOk_servald config set log.show_pid on
+   executeOk_servald config set log.show_time on
    executeOk_servald config set mdp.wifi.tick_ms 100
    executeOk_servald config set mdp.selfannounce.ticks_per_full_address 1
    executeOk_servald config set debug.interfaces Yes
