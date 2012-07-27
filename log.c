@@ -106,84 +106,7 @@ void close_logging()
   }
 }
 
-void logMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, ...)
-{
-  va_list ap;
-  va_start(ap, fmt);
-  vlogMessage(level, file, line, function, fmt, ap);
-  va_end(ap);
-}
-
-void vlogMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, va_list ap)
-{
-  if (level != LOG_LEVEL_SILENT) {
-    if (strbuf_is_empty(&logbuf))
-      strbuf_init(&logbuf, _log_buf, sizeof _log_buf);
-#ifndef ANDROID
-    FILE *logf = open_logging();
-    const char *levelstr = "UNKWN:";
-    switch (level) {
-      case LOG_LEVEL_FATAL: levelstr = "FATAL:"; break;
-      case LOG_LEVEL_ERROR: levelstr = "ERROR:"; break;
-      case LOG_LEVEL_INFO:  levelstr = "INFO:"; break;
-      case LOG_LEVEL_WARN:  levelstr = "WARN:"; break;
-      case LOG_LEVEL_DEBUG: levelstr = "DEBUG:"; break;
-    }
-    strbuf_sprintf(&logbuf, "%-6s", levelstr);
-#endif
-    const char *bufp = strbuf_end(&logbuf);
-    if (show_pid())
-      strbuf_sprintf(&logbuf, " [%5u]", getpid());
-    if (show_time()) {
-      struct timeval tv;
-      if (gettimeofday(&tv, NULL) == -1) {
-	strbuf_puts(&logbuf, " NOTIME______");
-      } else {
-	struct tm tm;
-	char buf[20];
-	if (strftime(buf, sizeof buf, "%T", localtime_r(&tv.tv_sec, &tm)) == 0)
-	  strbuf_puts(&logbuf, " EMPTYTIME___");
-	else
-	  strbuf_sprintf(&logbuf, " %s.%03u", buf, tv.tv_usec / 1000);
-      }
-    }
-    if (file) {
-      strbuf_sprintf(&logbuf, " %s", trimbuildpath(file));
-      if (line)
-	strbuf_sprintf(&logbuf, ":%u", line);
-      if (function)
-	strbuf_sprintf(&logbuf, ":%s()", function);
-    } else if (function) {
-      strbuf_sprintf(&logbuf, " %s()", function);
-    }
-    if (bufp != strbuf_end(&logbuf))
-      strbuf_putc(&logbuf, ' ');
-    strbuf_putc(&logbuf, ' ');
-    strbuf_vsprintf(&logbuf, fmt, ap);
-    strbuf_puts(&logbuf, "\n");
-#ifdef ANDROID
-    int alevel = ANDROID_LOG_UNKNOWN;
-    switch (level) {
-      case LOG_LEVEL_FATAL: alevel = ANDROID_LOG_FATAL; break;
-      case LOG_LEVEL_ERROR: alevel = ANDROID_LOG_ERROR; break;
-      case LOG_LEVEL_INFO:  alevel = ANDROID_LOG_INFO; break;
-      case LOG_LEVEL_WARN:  alevel = ANDROID_LOG_WARN; break;
-      case LOG_LEVEL_DEBUG: alevel = ANDROID_LOG_DEBUG; break;
-    }
-    __android_log_print(alevel, "servald", "%s", strbuf_str(&logbuf));
-    strbuf_reset(&logbuf);
-#else
-    if (logf) {
-      fputs(strbuf_str(&logbuf), logf);
-      if (strbuf_overrun(&logbuf))
-	fputs("OVERRUN\n", logf);
-      strbuf_reset(&logbuf);
-    }
-#endif
-  }
-}
-
-const char *trimbuildpath(const char *path)
+static const char *_trimbuildpath(const char *path)
 {
   /* Remove common path prefix */
   int lastsep = 0;
@@ -195,6 +118,108 @@ const char *trimbuildpath(const char *path)
       break;
   }
   return &path[lastsep];
+}
+
+static int _log_prepare(int level, const char *file, unsigned int line, const char *function)
+{
+  if (level == LOG_LEVEL_SILENT)
+    return 0;
+  if (strbuf_is_empty(&logbuf))
+    strbuf_init(&logbuf, _log_buf, sizeof _log_buf);
+#ifndef ANDROID
+  open_logging(); // Put initial INFO message at start of log file
+  const char *levelstr = "UNKWN:";
+  switch (level) {
+    case LOG_LEVEL_FATAL: levelstr = "FATAL:"; break;
+    case LOG_LEVEL_ERROR: levelstr = "ERROR:"; break;
+    case LOG_LEVEL_INFO:  levelstr = "INFO:"; break;
+    case LOG_LEVEL_WARN:  levelstr = "WARN:"; break;
+    case LOG_LEVEL_DEBUG: levelstr = "DEBUG:"; break;
+  }
+  strbuf_sprintf(&logbuf, "%-6.6s ", levelstr);
+#endif
+  if (show_pid())
+    strbuf_sprintf(&logbuf, "[%5u] ", getpid());
+  if (show_time()) {
+    struct timeval tv;
+    if (gettimeofday(&tv, NULL) == -1) {
+      strbuf_puts(&logbuf, "NOTIME______ ");
+    } else {
+      struct tm tm;
+      char buf[20];
+      if (strftime(buf, sizeof buf, "%T", localtime_r(&tv.tv_sec, &tm)) == 0)
+	strbuf_puts(&logbuf, "EMPTYTIME___ ");
+      else
+	strbuf_sprintf(&logbuf, "%s.%03u ", buf, tv.tv_usec / 1000);
+    }
+  }
+  if (file) {
+    strbuf_sprintf(&logbuf, "%s", _trimbuildpath(file));
+    if (line)
+      strbuf_sprintf(&logbuf, ":%u", line);
+    if (function)
+      strbuf_sprintf(&logbuf, ":%s()", function);
+    strbuf_putc(&logbuf, ' ');
+  } else if (function) {
+    strbuf_sprintf(&logbuf, "%s() ", function);
+  }
+  strbuf_putc(&logbuf, ' ');
+  return 1;
+}
+
+static void _log_finish(int level)
+{
+#ifdef ANDROID
+  int alevel = ANDROID_LOG_UNKNOWN;
+  switch (level) {
+    case LOG_LEVEL_FATAL: alevel = ANDROID_LOG_FATAL; break;
+    case LOG_LEVEL_ERROR: alevel = ANDROID_LOG_ERROR; break;
+    case LOG_LEVEL_INFO:  alevel = ANDROID_LOG_INFO; break;
+    case LOG_LEVEL_WARN:  alevel = ANDROID_LOG_WARN; break;
+    case LOG_LEVEL_DEBUG: alevel = ANDROID_LOG_DEBUG; break;
+  }
+  __android_log_print(alevel, "servald", "%s", strbuf_str(&logbuf));
+  strbuf_reset(&logbuf);
+#else
+  FILE *logf = open_logging();
+  if (logf) {
+    fprintf(logf, "%s\n%s", strbuf_str(&logbuf), strbuf_overrun(&logbuf) ? "LOG OVERRUN\n" : "");
+    strbuf_reset(&logbuf);
+  }
+#endif
+}
+
+void logArgv(int level, const char *file, unsigned int line, const char *function, const char *label, int argc, const char *const *argv)
+{
+  if (_log_prepare(level, file, line, function)) {
+    strbuf_puts(&logbuf, label);
+    int i;
+    for (i = 0; i < argc; ++i) {
+      if (i)
+	strbuf_putc(&logbuf, ' ');
+      if (argv[i])
+	strbuf_toprint_quoted(&logbuf, '"', argv[i]);
+      else
+	strbuf_puts(&logbuf, "NULL");
+    }
+    _log_finish(level);
+  }
+}
+
+void logMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  vlogMessage(level, file, line, function, fmt, ap);
+  va_end(ap);
+}
+
+void vlogMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, va_list ap)
+{
+  if (_log_prepare(level, file, line, function)) {
+    strbuf_vsprintf(&logbuf, fmt, ap);
+    _log_finish(level);
+  }
 }
 
 int dump(char *name, unsigned char *addr, size_t len)
@@ -282,33 +307,6 @@ unsigned int debugFlagMask(const char *flagname) {
   return 0;
 }
 
-static strbuf _toprint(strbuf sb, const char *srcBuf, size_t srcBytes)
-{
-  strbuf_putc(sb, '"');
-  for (; srcBytes && !strbuf_overrun(sb); ++srcBuf, --srcBytes) {
-    if (*srcBuf == '\0')
-      strbuf_puts(sb, "\\0");
-    else if (*srcBuf == '\n')
-      strbuf_puts(sb, "\\n");
-    else if (*srcBuf == '\r')
-      strbuf_puts(sb, "\\r");
-    else if (*srcBuf == '\t')
-      strbuf_puts(sb, "\\t");
-    else if (*srcBuf == '\\')
-      strbuf_puts(sb, "\\\\");
-    else if (*srcBuf >= ' ' && *srcBuf <= '~')
-      strbuf_putc(sb, *srcBuf);
-    else
-      strbuf_sprintf(sb, "\\x%02x", *srcBuf);
-  }
-  strbuf_putc(sb, '"');
-  if (strbuf_overrun(sb)) {
-    strbuf_trunc(sb, -4);
-    strbuf_puts(sb, "\"...");
-  }
-  return sb;
-}
-
 /* Format a buffer of data as a printable representation, eg: "Abc\x0b\n\0", for display
    in log messages.  If dstStrLen == -1 then assumes the dstStr buffer is large enough to
    hold the representation of the entire srcBuf.
@@ -316,7 +314,7 @@ static strbuf _toprint(strbuf sb, const char *srcBuf, size_t srcBytes)
  */
 char *toprint(char *dstStr, ssize_t dstStrLen, const char *srcBuf, size_t srcBytes)
 {
-  return strbuf_str(_toprint(strbuf_local(dstStr, (dstStrLen == -1 ? 2 + srcBytes * 4 : dstStrLen) + 1), srcBuf, srcBytes));
+  return strbuf_str(strbuf_toprint_quoted_len(strbuf_local(dstStr, (dstStrLen == -1 ? 2 + srcBytes * 4 : dstStrLen) + 1), '"', srcBuf, srcBytes));
 }
 
 /* Compute the length of the printable string produced by toprint().  If dstStrLen == -1 then
@@ -326,7 +324,7 @@ char *toprint(char *dstStr, ssize_t dstStrLen, const char *srcBuf, size_t srcByt
  */
 size_t toprint_strlen(ssize_t dstStrLen, const char *srcBuf, size_t srcBytes)
 {
-  return dstStrLen == -1 ? strbuf_count(_toprint(strbuf_local(NULL, 0), srcBuf, srcBytes)) : dstStrLen;
+  return dstStrLen == -1 ? strbuf_count(strbuf_toprint_quoted_len(strbuf_local(NULL, 0), '"', srcBuf, srcBytes)) : dstStrLen;
 }
 
 /* Read the symbolic link into the supplied buffer and add a terminating nul.  Return -1 if the

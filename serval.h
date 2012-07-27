@@ -805,6 +805,7 @@ extern unsigned int debug;
 void set_logging(FILE *f);
 FILE *open_logging();
 void close_logging();
+void logArgv(int level, const char *file, unsigned int line, const char *function, const char *label, int argc, const char *const *argv);
 void logMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, ...);
 void vlogMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, va_list);
 unsigned int debugFlagMask(const char *flagname);
@@ -819,8 +820,6 @@ ssize_t get_self_executable_path(char *buf, size_t len);
 
 #define alloca_tohex(buf,len)           tohex((char *)alloca((len)*2+1), (buf), (len))
 #define alloca_tohex_sid(sid)           alloca_tohex((sid), SID_SIZE)
-
-const char *trimbuildpath(const char *s);
 
 #define logMessage_perror(L,file,line,func,F,...) \
                             (logMessage(L, file, line, func, F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno))
@@ -839,6 +838,7 @@ const char *trimbuildpath(const char *s);
 #define WHYNULL(X)          (LOGF(LOG_LEVEL_ERROR, "%s", X), NULL)
 #define WHYF_perror(F,...)  (LOGF_perror(LOG_LEVEL_ERROR, F, ##__VA_ARGS__), -1)
 #define WHY_perror(X)       WHYF_perror("%s", (X))
+#define WHY_argv(X,ARGC,ARGV) logArgv(LOG_LEVEL_ERROR, __FILE__, __LINE__, __FUNCTION__, (X), (ARGC), (ARGV))
 
 #define WARNF(F,...)        LOGF(LOG_LEVEL_WARN, F, ##__VA_ARGS__)
 #define WARN(X)             WARNF("%s", (X))
@@ -852,6 +852,7 @@ const char *trimbuildpath(const char *s);
 #define DEBUG(X)            DEBUGF("%s", (X))
 #define DEBUGF_perror(F,...) LOGF_perror(LOG_LEVEL_DEBUG, F, ##__VA_ARGS__)
 #define DEBUG_perror(X)     DEBUGF_perror("%s", (X))
+#define DEBUG_argv(X,ARGC,ARGV) logArgv(LOG_LEVEL_DEBUG, __FILE__, __LINE__, __FUNCTION__, (X), (ARGC), (ARGV))
 #define D                   DEBUG("D")
 
 #define BACKTRACE           log_backtrace(__FILE__, __LINE__, __FUNCTION__)
