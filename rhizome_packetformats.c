@@ -340,8 +340,8 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	  ofs++;
 	  break;
 	}
-	if (ofs+manifest_length>f->payload->length) {
-	  WHY("Illegal manifest length field in rhizome advertisement frame.");
+	if (manifest_length>f->payload->length - ofs) {
+	  WHYF("Illegal manifest length field in rhizome advertisement frame %d vs %d.", manifest_length, f->payload->length - ofs);
 	  break;
 	}
 

@@ -390,11 +390,6 @@ time_ms_t rhizome_voice_timeout = -1;
 int rhizome_saw_voice_traffic()
 {
   /* We are in "voice mode" for a second after sending a voice frame */
-  time_ms_t now = gettime_ms();
-  if (rhizome_voice_timeout < now) {
-    INFO("Suppressing Rhizome due to voice traffic");
-    rhizome_voice_timeout = now + 1000;
-  }
-    
+  rhizome_voice_timeout=gettime_ms()+1000;
   return 0;
 }
