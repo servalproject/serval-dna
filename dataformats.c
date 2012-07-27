@@ -294,7 +294,7 @@ int packetGetID(unsigned char *packet,int len,char *did,char *sid)
     case 0: /* DID */
       ofs++;
       if (extractDid(packet,&ofs,did)) return WHY("Could not decode DID");
-      if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"Decoded DID as %s\n",did);
+      if (debug&DEBUG_PACKETFORMATS) DEBUGF("Decoded DID as %s", did);
       return 0;
       break;
     case 1: /* SID */
@@ -333,8 +333,8 @@ int isFieldZeroP(unsigned char *packet,int start,int count)
     }
 
   if (debug&DEBUG_PACKETFORMATS) {
-    if (mod) fprintf(stderr,"Field [%d,%d) is non-zero (mod=0x%02x)\n",start,start+count,mod);
-    else fprintf(stderr,"Field [%d,%d) is zero\n",start,start+count);
+    if (mod) DEBUGF("Field [%d,%d) is non-zero (mod=0x%02x)",start,start+count,mod);
+    else DEBUGF("Field [%d,%d) is zero",start,start+count);
   }
 
   if (mod) return 0; else return 1;
@@ -346,8 +346,7 @@ int safeZeroField(unsigned char *packet,int start,int count)
   int i;
 
   if (debug&DEBUG_PACKETFORMATS)
-    fprintf(stderr,"Known plain-text counter-measure: safe-zeroing [%d,%d)\n",
-	    start,start+count);
+    DEBUGF("Known plain-text counter-measure: safe-zeroing [%d,%d)", start,start+count);
   
   for(i=start;i<(start+count-1);i++)
     {

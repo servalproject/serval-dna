@@ -30,7 +30,8 @@ int process_packet(unsigned char *packet, size_t len,
   did[0]=0; sid[0]=0;
 
   /* Get DID or SID */
-  if (packetGetID(packet,len,did,sid)) return WHY("Could not parse DID or SID");
+  if (packetGetID(packet,len,did,sid) == -1)
+    return WHY("Could not parse DID or SID");
   
   /* Check for PIN */
   if (!isFieldZeroP(packet,OFS_PINFIELD,16))
@@ -38,7 +39,7 @@ int process_packet(unsigned char *packet, size_t len,
       /* Authentication has been attempted.
 	 If it is incorrect, then we need to return with ACTION_DECLINED
       */
-      if (debug&DEBUG_SECURITY) fprintf(stderr,"A PIN has been supplied.\n");
+      if (debug&DEBUG_SECURITY) DEBUG("A PIN has been supplied");
       
       /* Can only authenticate by SID, not DID (since DIDs are ambiguous) */
       if (packet[OFS_SIDDIDFIELD]!=1) return WHY("You can only authenticate against a SID");
@@ -50,7 +51,7 @@ int process_packet(unsigned char *packet, size_t len,
     {
       /* No attempt at authentication was made */
       //authenticatedP=0;
-      if (debug&DEBUG_SECURITY) fprintf(stderr,"No PIN was supplied.\n");
+      if (debug&DEBUG_SECURITY) DEBUG("No PIN was supplied");
     }
 
   if (serverMode) return processRequest(packet,len,sender,sender_len,transaction_id,
