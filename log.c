@@ -192,7 +192,10 @@ static void _log_finish(int level)
 void logArgv(int level, const char *file, unsigned int line, const char *function, const char *label, int argc, const char *const *argv)
 {
   if (_log_prepare(level, file, line, function)) {
-    strbuf_puts(&logbuf, label);
+    if (label) {
+      strbuf_puts(&logbuf, label);
+      strbuf_putc(&logbuf, ' ');
+    }
     int i;
     for (i = 0; i < argc; ++i) {
       if (i)

@@ -185,28 +185,7 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servald_ServalD_rawCommand(JNIEnv 
 
 static void complainCommandLine(const char *prefix, int argc, const char *const *argv)
 {
-  strbuf b = strbuf_alloca(1024);
-  int i;
-  for (i = 0; !strbuf_overrun(b) && i != argc; ++i) {
-      const char *arg = argv[i];
-      if (i)
-	strbuf_putc(b, ' ');
-      if (!arg[0] || strchr(arg, '\'') || strchr(arg, ' ')) {
-	strbuf_putc(b, '\'');
-	for (; *arg && !strbuf_overrun(b); ++arg) {
-	  if (*arg == '\\')
-	    strbuf_puts(b, "\\\\");
-	  else if (*arg == '\'')
-	    strbuf_puts(b, "\\'");
-	  else
-	    strbuf_putc(b, *arg);
-	}
-	strbuf_putc(b, '\'');
-      } else {
-	strbuf_puts(b, arg);
-      }
-  }
-  WHYF("%s%s%s", prefix, strbuf_str(b), strbuf_overrun(b) ? "..." : "");
+  WHY_argv(prefix, argc, argv);
 }
 
 /* The argc and argv arguments must be passed verbatim from main(argc, argv), so argv[0] is path to
@@ -424,6 +403,7 @@ int cli_delim(const char *opt)
 
 int app_echo(int argc, const char *const *argv, struct command_line_option *o)
 {
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   int i;
   for (i = 1; i < argc; ++i) {
     if (debug & DEBUG_VERBOSE)
@@ -441,6 +421,7 @@ int cli_lookup_did(const char *text)
 
 int app_dna_lookup(int argc, const char *const *argv, struct command_line_option *o)
 {
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   int i;
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
@@ -557,6 +538,7 @@ int cli_absolute_path(const char *arg)
 
 int app_server_start(int argc, const char *const *argv, struct command_line_option *o)
 {
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   /* Process optional arguments */
   int pid=-1;
 #if 0
@@ -691,6 +673,7 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
 
 int app_server_stop(int argc, const char *const *argv, struct command_line_option *o)
 {
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   int			pid, tries, running;
   const char		*instancepath;
   long long		timeout;
@@ -758,6 +741,7 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
 
 int app_server_status(int argc, const char *const *argv, struct command_line_option *o)
 {
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   int	pid;
 
   if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1)
@@ -785,6 +769,7 @@ int app_server_status(int argc, const char *const *argv, struct command_line_opt
 
 int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *o)
 {
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *sid;
   if (cli_arg(argc, argv, o, "SID|broadcast", &sid, str_is_subscriber_id, "broadcast") == -1)
     return -1;
@@ -921,6 +906,7 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
 
 int app_config_set(int argc, const char *const *argv, struct command_line_option *o)
 {
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *var, *val;
   if (	cli_arg(argc, argv, o, "variable", &var, is_configvarname, NULL)
      || cli_arg(argc, argv, o, "value", &val, NULL, ""))
@@ -932,6 +918,7 @@ int app_config_set(int argc, const char *const *argv, struct command_line_option
 
 int app_config_del(int argc, const char *const *argv, struct command_line_option *o)
 {
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *var;
   if (cli_arg(argc, argv, o, "variable", &var, is_configvarname, NULL))
     return -1;
@@ -942,6 +929,7 @@ int app_config_del(int argc, const char *const *argv, struct command_line_option
 
 int app_config_get(int argc, const char *const *argv, struct command_line_option *o)
 {
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *var;
   if (cli_arg(argc, argv, o, "variable", &var, is_configvarname, NULL) == -1)
     return -1;
@@ -972,6 +960,7 @@ int app_config_get(int argc, const char *const *argv, struct command_line_option
 
 int app_rhizome_hash_file(int argc, const char *const *argv, struct command_line_option *o)
 {
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   /* compute hash of file. We do this without a manifest, so it will necessarily
      return the hash of the file unencrypted. */
   const char *filepath;
@@ -996,6 +985,7 @@ int cli_optional_bundle_key(const char *arg)
 
 int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_option *o)
 {
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *filepath, *manifestpath, *authorSidHex, *pin, *bskhex;
   cli_arg(argc, argv, o, "filepath", &filepath, NULL, "");
   if (cli_arg(argc, argv, o, "author_sid", &authorSidHex, cli_optional_sid, "") == -1)
@@ -1179,6 +1169,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
 
 int app_rhizome_import_bundle(int argc, const char *const *argv, struct command_line_option *o)
 {
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *filepath, *manifestpath;
   cli_arg(argc, argv, o, "filepath", &filepath, NULL, "");
   cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "");
@@ -1254,6 +1245,7 @@ int cli_manifestid(const char *arg)
 
 int app_rhizome_extract_manifest(int argc, const char *const *argv, struct command_line_option *o)
 {
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *manifestid, *manifestpath;
   if (cli_arg(argc, argv, o, "manifestid", &manifestid, cli_manifestid, NULL)
    || cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, NULL) == -1)
@@ -1299,6 +1291,7 @@ int cli_optional_bundle_crypt_key(const char *arg)
 
 int app_rhizome_extract_file(int argc, const char *const *argv, struct command_line_option *o)
 {
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *fileid, *filepath, *keyhex;
   if (cli_arg(argc, argv, o, "fileid", &fileid, cli_fileid, NULL)
    || cli_arg(argc, argv, o, "filepath", &filepath, NULL, "") == -1)
@@ -1336,6 +1329,7 @@ int cli_uint(const char *arg)
 
 int app_rhizome_list(int argc, const char *const *argv, struct command_line_option *o)
 {
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *pin, *service, *sender_sid, *recipient_sid, *offset, *limit;
   cli_arg(argc, argv, o, "pin,pin...", &pin, NULL, "");
   cli_arg(argc, argv, o, "service", &service, NULL, "");
@@ -1355,6 +1349,7 @@ int app_rhizome_list(int argc, const char *const *argv, struct command_line_opti
 
 int app_keyring_create(int argc, const char *const *argv, struct command_line_option *o)
 {
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *pin;
   cli_arg(argc, argv, o, "pin,pin...", &pin, NULL, "");
   if (!keyring_open_with_pins(pin))
@@ -1364,6 +1359,7 @@ int app_keyring_create(int argc, const char *const *argv, struct command_line_op
 
 int app_keyring_list(int argc, const char *const *argv, struct command_line_option *o)
 {
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *pin;
   cli_arg(argc, argv, o, "pin,pin...", &pin, NULL, "");
   keyring_file *k = keyring_open_with_pins(pin);
@@ -1390,6 +1386,7 @@ int app_keyring_list(int argc, const char *const *argv, struct command_line_opti
 
 int app_keyring_add(int argc, const char *const *argv, struct command_line_option *o)
 {
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *pin;
   cli_arg(argc, argv, o, "pin", &pin, NULL, "");
   keyring_file *k = keyring_open_with_pins("");
@@ -1439,6 +1436,7 @@ int cli_optional_did(const char *text)
 
 int app_keyring_set_did(int argc, const char *const *argv, struct command_line_option *o)
 {
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *sid, *did, *pin, *name;
   cli_arg(argc, argv, o, "sid", &sid, str_is_subscriber_id, "");
   cli_arg(argc, argv, o, "did", &did, cli_optional_did, "");
@@ -1467,6 +1465,7 @@ int app_keyring_set_did(int argc, const char *const *argv, struct command_line_o
 
 int app_id_self(int argc, const char *const *argv, struct command_line_option *o)
 {
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   /* List my own identities */
   overlay_mdp_frame a;
   int result;
@@ -1513,6 +1512,7 @@ int app_id_self(int argc, const char *const *argv, struct command_line_option *o
 
 int app_test_rfs(int argc, const char *const *argv, struct command_line_option *o)
 {
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   unsigned char bytes[8];
   int i;
   
@@ -1534,6 +1534,7 @@ int app_test_rfs(int argc, const char *const *argv, struct command_line_option *
 
 int app_crypt_test(int argc, const char *const *argv, struct command_line_option *o)
 {
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   unsigned char nonce[crypto_box_curve25519xsalsa20poly1305_NONCEBYTES];
   unsigned char k[crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES];
 
@@ -1562,6 +1563,7 @@ int app_crypt_test(int argc, const char *const *argv, struct command_line_option
 
 int app_node_info(int argc, const char *const *argv, struct command_line_option *o)
 {
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *sid;
   cli_arg(argc, argv, o, "sid", &sid, NULL, "");
 
