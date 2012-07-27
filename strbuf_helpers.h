@@ -22,6 +22,30 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "strbuf.h"
 
+/* Append a representation of the given chars in a given buffer (including nul
+ * chars) in printable format, ie, with non-printable characters expanded to \n
+ * \r \t \0 \\ \xHH.
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+strbuf strbuf_toprint_len(strbuf sb, const char *buf, size_t len);
+
+/* Equivalent to strbuf_toprint_len(sb, str, strlen(str)).
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+strbuf strbuf_toprint(strbuf sb, const char *str);
+
+/* Same as strbuf_toprint_len, but also delimits the appended printable text
+ * with a given quote character and escapes that quotation char with a
+ * backslash within the text.
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+strbuf strbuf_toprint_quoted_len(strbuf sb, char quote, const char *buf, size_t len);
+
+/* Equivalent to strbuf_toprint_quoted_len(sb, str, strlen(str)).
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+strbuf strbuf_toprint_quoted(strbuf sb, char quote, const char *str);
+
 /* Append a symbolic representation of the poll(2) event flags.
  * @author Andrew Bettison <andrew@servalproject.com>
  */

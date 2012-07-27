@@ -23,6 +23,84 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <string.h>
 #include <sys/wait.h>
 
+static inline strbuf _toprint(strbuf sb, char c)
+{
+  if (c == '\0')
+    strbuf_puts(sb, "\\0");
+  else if (c == '\n')
+    strbuf_puts(sb, "\\n");
+  else if (c == '\r')
+    strbuf_puts(sb, "\\r");
+  else if (c == '\t')
+    strbuf_puts(sb, "\\t");
+  else if (c == '\\')
+    strbuf_puts(sb, "\\\\");
+  else if (c >= ' ' && c <= '~')
+    strbuf_putc(sb, c);
+  else
+    strbuf_sprintf(sb, "\\x%02x", c);
+  return sb;
+}
+
+static strbuf inline _overrun(strbuf sb, const char *suffix)
+{
+  if (strbuf_overrun(sb)) {
+    strbuf_trunc(sb, -strlen(suffix));
+    strbuf_puts(sb, suffix);
+  }
+  return sb;
+}
+
+static strbuf inline _overrun_quote(strbuf sb, char quote, const char *suffix)
+{
+  if (strbuf_overrun(sb)) {
+    strbuf_trunc(sb, -strlen(suffix) - 1);
+    strbuf_putc(sb, quote);
+    strbuf_puts(sb, suffix);
+  }
+  return sb;
+}
+
+strbuf strbuf_toprint_len(strbuf sb, const char *buf, size_t len)
+{
+  for (; len && !strbuf_overrun(sb); ++buf, --len)
+    _toprint(sb, *buf);
+  return _overrun(sb, "...");
+}
+
+strbuf strbuf_toprint(strbuf sb, const char *str)
+{
+  for (; *str && !strbuf_overrun(sb); ++str)
+    _toprint(sb, *str);
+  return _overrun(sb, "...");
+}
+
+strbuf strbuf_toprint_quoted_len(strbuf sb, char quote, const char *buf, size_t len)
+{
+  strbuf_putc(sb, quote);
+  for (; len && !strbuf_overrun(sb); ++buf, --len)
+    if (*buf == quote) {
+      strbuf_putc(sb, '\\');
+      strbuf_putc(sb, quote);
+    } else
+      _toprint(sb, *buf);
+  strbuf_putc(sb, quote);
+  return _overrun_quote(sb, quote, "...");
+}
+
+strbuf strbuf_toprint_quoted(strbuf sb, char quote, const char *str)
+{
+  strbuf_putc(sb, quote);
+  for (; *str && !strbuf_overrun(sb); ++str)
+    if (*str == quote) {
+      strbuf_putc(sb, '\\');
+      strbuf_putc(sb, quote);
+    } else
+      _toprint(sb, *str);
+  strbuf_putc(sb, quote);
+  return _overrun_quote(sb, quote, "...");
+}
+
 strbuf strbuf_append_poll_events(strbuf sb, short events)
 {
   static struct { short flags; const char *name; } symbols[] = {
