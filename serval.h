@@ -1191,9 +1191,6 @@ typedef struct dna_identity_status {
 
 int parseCommandLine(const char *argv0, int argc, const char *const *argv);
 
-int parseOldCommandLine(int argc, char **argv);
-int parseAssignment(unsigned char *text, int *var_id, unsigned char *value, int *value_len);
-
 dna_identity_status *dnacache_lookup(char *did,char *name,char *sid);
 dna_identity_status *dnacache_lookup_next();
 int dnacache_update_verification(char *did,char *sid,char *name,

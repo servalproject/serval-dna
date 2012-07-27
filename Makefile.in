@@ -4,7 +4,6 @@ SRCS=	main.c \
 	client.c \
 	commandline.c \
 	dataformats.c \
-	dna.c \
 	conf.c \
 	log.c \
 	net.c \

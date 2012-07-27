@@ -32,12 +32,7 @@ int main(int argc, char **argv)
   memabuseInit();
   srandomdev();
   server_save_argv(argc, (const char*const*)argv);
-  int status = 0;
-  /* If first argument starts with a dash, assume it is for the old command line parser. */
-  if (argc > 1 && argv[1][0] == '-')
-    status = parseOldCommandLine(argc, argv);
-  else
-    status = parseCommandLine(argv[0], argc - 1, (const char*const*)&argv[1]);
+  int status = parseCommandLine(argv[0], argc - 1, (const char*const*)&argv[1]);
 #if defined WIN32
   WSACleanup();
 #endif
