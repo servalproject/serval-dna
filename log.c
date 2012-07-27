@@ -60,6 +60,9 @@ void set_logging(FILE *f)
 
 FILE *open_logging()
 {
+#ifdef ANDROID
+  return NULL;
+#endif
   if (!logfile) {
     const char *logpath = getenv("SERVALD_LOG_FILE");
     if (!logpath) {
@@ -126,8 +129,8 @@ static int _log_prepare(int level, const char *file, unsigned int line, const ch
     return 0;
   if (strbuf_is_empty(&logbuf))
     strbuf_init(&logbuf, _log_buf, sizeof _log_buf);
-#ifndef ANDROID
   open_logging(); // Put initial INFO message at start of log file
+#ifndef ANDROID
   const char *levelstr = "UNKWN:";
   switch (level) {
     case LOG_LEVEL_FATAL: levelstr = "FATAL:"; break;
@@ -392,7 +395,9 @@ int log_backtrace(const char *file, unsigned int line, const char *function)
   char execpath[160];
   if (get_self_executable_path(execpath, sizeof execpath) == -1)
     return WHY("cannot log backtrace: own executable path unknown");
-  char tempfile[] = "/tmp/servalXXXXXX.gdb";
+  char tempfile[512];
+  if (!FORM_SERVAL_INSTANCE_PATH(tempfile, "servalXXXXXX.gdb"))
+    return -1;
   int tmpfd = mkstemps(tempfile, 4);
   if (tmpfd == -1)
     return WHY_perror("mkstemps");

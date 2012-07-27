@@ -601,7 +601,10 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
     INFOF("Server already running (pid=%d)", pid);
     ret = 10;
   } else {
-    INFOF("Starting server %s", execpath ? execpath : "without exec");
+    if (foregroundP)
+      INFOF("Foreground server process %s", execpath ? execpath : "without exec");
+    else
+      INFOF("Starting background server %s", execpath ? execpath : "without exec");
     /* Start the Serval process.  All server settings will be read by the server process from the
        instance directory when it starts up.  */
     if (server_remove_stopfile() == -1)

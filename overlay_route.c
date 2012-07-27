@@ -273,7 +273,8 @@ int overlay_route_init(int mb_ram)
     }
     strbuf_sprintf(b, " %d", overlay_route_hash_order[i]);
   }
-  DEBUGF("Generating byte-order for hash function:%s", strbuf_str(b));
+  if (debug&DEBUG_OVERLAYROUTING)
+    DEBUGF("Generating byte-order for hash function:%s", strbuf_str(b));
   overlay_route_hash_bytes=16;
 
   int associativity=4;
@@ -294,46 +295,53 @@ int overlay_route_init(int mb_ram)
   {
     space=(sizeof(overlay_neighbour*)*1024LL*mb_ram)+sizeof(overlay_node)*bin_count*associativity*1LL;
     int percent=100LL*space/(mb_ram*1048576LL);
-    INFOF("Using %d%% of %dMB RAM allows for %d bins with %d-way associativity and %d direct neighbours",
-	    percent,mb_ram,bin_count,associativity,1024*mb_ram);
+    if (debug&DEBUG_OVERLAYROUTING)
+      DEBUGF("Using %d%% of %dMB RAM allows for %d bins with %d-way associativity and %d direct neighbours",
+	      percent,mb_ram,bin_count,associativity,1024*mb_ram);
   }
 
   /* Now allocate the structures */
 
   overlay_nodes=calloc(sizeof(overlay_node*),bin_count);
-  if (!overlay_nodes) return WHY("calloc() failed.");
+  if (!overlay_nodes) return WHY_perror("calloc");
 
   overlay_neighbours=calloc(sizeof(overlay_neighbour),1024*mb_ram);
   if (!overlay_neighbours) {
+    WHY_perror("calloc");
     free(overlay_nodes);
-    return WHY("calloc() failed.");
+    return -1;
   }
 
   for(i=0;i<bin_count;i++)
     {
       overlay_nodes[i]=calloc(sizeof(overlay_node),associativity);
       if (!overlay_nodes[i]) {
+	WHY_perror("calloc");
 	while(--i>=0) free(overlay_nodes[i]);
 	free(overlay_nodes);
 	free(overlay_neighbours);
-	return WHY("calloc() failed.");
+	return -1;
       }
     }
 
   overlay_max_neighbours=1024*mb_ram;
   overlay_bin_count=bin_count;
   overlay_bin_size=associativity;
-  INFOF("Node (%dbins) and neighbour tables allocated",bin_count);
+
+  if (debug&DEBUG_OVERLAYROUTING)
+    DEBUGF("Node (%d bins) and neighbour tables allocated",bin_count);
 
   /* Work out number of bytes required to represent the bin number.
      Used for calculation of sid hash */
   overlay_bin_bytes=1;
   while(bin_count&0xffffff00) {
-    INFOF("bin_count=0x%08x, overlay_bin_bytes=%d",bin_count,overlay_bin_bytes);
+    if (debug&DEBUG_OVERLAYROUTING)
+      DEBUGF("bin_count=0x%08x, overlay_bin_bytes=%d",bin_count,overlay_bin_bytes);
     overlay_bin_bytes++;
     bin_count=bin_count>>8;
   }
-  INFOF("bin_count=0x%08x, overlay_bin_bytes=%d",bin_count,overlay_bin_bytes);
+  if (debug&DEBUG_OVERLAYROUTING)
+    DEBUGF("bin_count=0x%08x, overlay_bin_bytes=%d",bin_count,overlay_bin_bytes);
 
   return 0;
 }
