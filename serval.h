@@ -779,7 +779,6 @@ int fixResponses(struct response_set *responses);
 int importHlr(char *textfile);
 int exportHlr(unsigned char *hlr,char *text);
 int openHlrFile(char *backing_file,int size);
-int runCommand(char *cmd);
 int asteriskObtainGateway(char *requestor_sid,char *did,char *uri_out);
 int packetOkDNA(unsigned char *packet,int len,unsigned char *transaction_id,
 		int recvttl,struct sockaddr *recvaddr, size_t recvaddrlen,int parseP);
