@@ -354,7 +354,7 @@ static void monitor_requests(struct sched_ent *alarm)
   }
 }
 
-static char *strnstr(char *haystack, size_t haystack_len, const char *needle)
+static char *srv_strnstr(char *haystack, size_t haystack_len, const char *needle)
 {
   size_t needle_len = strlen(needle);
   for (; haystack_len >= needle_len; ++haystack, --haystack_len) {
@@ -438,7 +438,7 @@ static void monitor_replies(struct sched_ent *alarm)
       char *readp = reply_bufend;
       reply_bufend += nread;
       char *nl;
-      while (nread > 0 && (nl = strnstr(readp, nread, "\n"))) {
+      while (nread > 0 && (nl = srv_strnstr(readp, nread, "\n"))) {
 	size_t len = nl - bufp + 1;
 	if (discarding_until_nl) {
 	  if (debug & DEBUG_DNAHELPER)
