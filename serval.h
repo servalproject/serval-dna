@@ -341,7 +341,6 @@ typedef struct overlay_frame {
   
 } overlay_frame;
 
-
 struct profile_total {
   struct profile_total *_next;
   int _initialised;
