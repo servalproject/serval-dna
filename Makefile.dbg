@@ -1,0 +1,3 @@
+#CFLAGS+=-Wunreachable-code
+#CFLAGS+=-O0
+#CFLAGS+=-DUSE_ABSTRACT_NAMESPACE
