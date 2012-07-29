@@ -17,7 +17,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include "serval.h"
+#include "log.h"
+#include "conf.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
 #include <stdlib.h>
@@ -30,6 +31,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
 #endif
+#include <unistd.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 unsigned int debug = 0;
 

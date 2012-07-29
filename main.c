@@ -39,30 +39,6 @@ int main(int argc, char **argv)
   return status;
 }
 
-const char *thisinstancepath = NULL;
-
-const char *serval_instancepath()
-{
-  if (thisinstancepath)
-    return thisinstancepath;
-  const char *instancepath = getenv("SERVALINSTANCE_PATH");
-  if (!instancepath)
-    instancepath = DEFAULT_INSTANCE_PATH;
-  return instancepath;
-}
-
-int form_serval_instance_path(char *buf, size_t bufsiz, const char *path)
-{
-  if (snprintf(buf, bufsiz, "%s/%s", serval_instancepath(), path) < bufsiz)
-    return 1;
-  WHYF("Cannot form pathname \"%s/%s\" -- buffer too small (%lu bytes)", serval_instancepath(), path, (unsigned long)bufsiz);
-  return 0;
-}
-
-int create_serval_instance_dir() {
-  return mkdirs(serval_instancepath(), 0700);
-}
-
 #if 0
 #include <execinfo.h>
 #define MAX_DEPTH 64

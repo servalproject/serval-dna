@@ -105,11 +105,10 @@ struct in_addr {
 #include <ctype.h>
 #include <sys/stat.h>
 
-#ifdef ANDROID
-#define DEFAULT_INSTANCE_PATH "/data/data/org.servalproject/var/serval-node"
-#else
-#define DEFAULT_INSTANCE_PATH "/var/serval-node"
-#endif
+#include "constants.h"
+#include "log.h"
+#include "conf.h"
+
 
 /* bzero(3) is deprecated in favour of memset(3). */
 #define bzero(addr,len) memset((addr), 0, (len))
@@ -170,6 +169,8 @@ struct mphlr_variable {
   char *name;
   char *desc;
 };
+
+extern struct mphlr_variable vars[];
 
 extern char *outputtemplate;
 extern char *instrumentation_file;
@@ -268,132 +269,10 @@ keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, co
 int keyring_seed(keyring_file *k);
 void keyring_identity_extract(const keyring_identity *id, const unsigned char **sidp, const char **didp, const char **namep);
 
-/* Packet format:
-
-   16 bit - Magic value 0x4110
-   16 bit - Version number (0001 initially)
-   16 bit - Payload length
-   16 bit - Cipher method (0000 = clear text)
-   
-   Ciphered payload follows:
-   (needs to have no predictable data to protect against known plain-text attacks)
-   
-   64bit transaction id (random)
-   8bit - payload rotation (random, to help protect encryption from cribs)
-
-   Remainder of payload, after correcting for rotation:
-   
-   33byte did|subscriber id
-   16byte salt
-   16byte hash of PIN+salt
-   
-   Remainder of packet is interpretted as a series of operations
-
-   8 bit operation: 
-   00 = get, 01 = set, 02 = delete, 03 = update,
-   80 = decline, 81 = okay (+optional result),
-   f0 = xfer HLR record
-   fe = random padding follows (to help protect cryptography from cribs)
-   ff = end of transaction
-   
-   get - 8 bit variable value
-
-*/
-#define SID_SIZE 32
-#define DID_MINSIZE 5
-#define DID_MAXSIZE 32
-#define SIDDIDFIELD_LEN (SID_SIZE+1)
-#define PINFIELD_LEN 32
-#define HEADERFIELDS_LEN (2+2+2+2+8+1)
-#define OFS_TRANSIDFIELD (2+2+2+2)
-#define TRANSID_SIZE 8
-#define OFS_ROTATIONFIELD (OFS_TRANSIDFIELD+TRANSID_SIZE)
-#define OFS_SIDDIDFIELD HEADERFIELDS_LEN
-#define OFS_PINFIELD (OFS_SIDDIDFIELD+SIDDIDFIELD_LEN)
-#define OFS_PAYLOAD (OFS_PINFIELD+16+16)
-
-#define SID_STRLEN (SID_SIZE*2)
-
-struct response {
-  int code;
-  unsigned char sid[SID_SIZE];
-  struct in_addr sender;
-  int recvttl;
-  unsigned char *response;
-  int response_len;
-  int var_id;
-  int var_instance;
-  int value_len;
-  int value_offset;
-  int value_bytes;
-  struct response *next,*prev;
-
-  /* who sent it? */
-  unsigned short peer_id;
-  /* have we checked it to see if it allows us to stop requesting? */
-  unsigned char checked;
-};
-
-struct response_set {
-  struct response *responses;
-  struct response *last_response;
-  int response_count;
-
-  /* Bit mask of peers who have replied */
-  unsigned char *reply_bitmask;
-};
-
-/* Array of variables that can be placed in an MPHLR */
-#define VAR_EOR 0x00
-#define VAR_CREATETIME 0x01
-#define VAR_CREATOR 0x02
-#define VAR_REVISION 0x03
-#define VAR_REVISOR 0x04
-#define VAR_PIN 0x05
-#define VAR_VOICESIG 0x08
-#define VAR_HLRMASTER 0x0f
-#define VAR_NAME 0x10
-#define VAR_DIDS 0x80
-#define VAR_LOCATIONS 0x81
-#define VAR_IEMIS 0x82
-#define VAR_TEMIS 0x83
-#define VAR_CALLS_IN 0x90
-#define VAR_CALLS_MISSED 0x91
-#define VAR_CALLS_OUT 0x92
-#define VAR_SMESSAGES 0xa0
-#define VAR_DID2SUBSCRIBER 0xb0
-#define VAR_HLRBACKUPS 0xf0
-#define VAR_NOTE 0xff
-extern struct mphlr_variable vars[];
-
-#define ACTION_GET 0x00
-#define ACTION_SET 0x01
-#define ACTION_DEL 0x02
-#define ACTION_INSERT 0x03
-#define ACTION_DIGITALTELEGRAM 0x04
-#define ACTION_CREATEHLR 0x0f
-
-#define ACTION_STATS 0x40
-
-#define ACTION_DONE 0x7e
-#define ACTION_ERROR 0x7f
-
-#define ACTION_DECLINED 0x80
-#define ACTION_OKAY 0x81
-#define ACTION_DATA 0x82
-#define ACTION_WROTE 0x83
-
-#define ACTION_XFER 0xf0
-#define ACTION_RECVTTL 0xfd
-#define ACTION_PAD 0xfe
-#define ACTION_EOT 0xff
-
 /* Make sure we have space to put bytes of the packet as we go along */
 #define CHECK_PACKET_LEN(B) {if (((*packet_len)+(B))>=packet_maxlen) { return WHY("Packet composition ran out of space."); } }
 
 extern int sock;
-
-#define OVERLAY_MAX_INTERFACES 16
 
 typedef struct overlay_address_table {
   unsigned char epoch;
@@ -462,10 +341,6 @@ typedef struct overlay_frame {
 } overlay_frame;
 
 
-#define CRYPT_CIPHERED 1
-#define CRYPT_SIGNED 2
-#define CRYPT_PUBLIC 4
-
 struct profile_total {
   struct profile_total *_next;
   int _initialised;
@@ -505,10 +380,6 @@ struct sched_ent{
 #define STRUCT_SCHED_ENT_UNUSED ((struct sched_ent){NULL, NULL, NULL, NULL, {-1, 0, 0}, 0LL, 0LL, NULL, -1})
 
 extern int overlayMode;
-#define OVERLAY_INTERFACE_UNKNOWN 0
-#define OVERLAY_INTERFACE_ETHERNET 1
-#define OVERLAY_INTERFACE_WIFI 2
-#define OVERLAY_INTERFACE_PACKETRADIO 3
 
 #define INTERFACE_STATE_FREE 0
 #define INTERFACE_STATE_UP 1
@@ -573,37 +444,6 @@ extern overlay_interface overlay_interfaces[OVERLAY_MAX_INTERFACES];
 extern int overlay_last_interface_number; // used to remember where a packet came from
 extern unsigned int overlay_sequence_number;
 
-/*
- For each peer we need to keep track of the routes that we know to reach it.
- 
- We want to use static sized data structures as much as we can to keep things efficient by
- allowing computed memory address lookups instead of following linked lists and other 
- non-deterministic means.
- 
- The tricky part of doing all this is that each interface may have a different maximum number
- of peers based on the bandwidth of the link, as we do not want mesh traffic to consume all
- available bandwidth.  In particular, we need to reserve at least enough bandwidth for one
- call.
- 
- Related to this, if we are in a mesh larger than the per-interface limit allows, then we need to
- only track the highest-scoring peers.  This sounds simple, but how to we tell when to replace a
- low-scoring peer with another one which has a better reachability score, if we are not tracking 
- the reachability score of that node?
- 
- The answer to this is that we track as many nodes as we can, but only announce the highest
- scoring nodes on each interface as bandwidth allows.
- 
- This also keeps our memory usage fixed.
- 
- XXX - At present we are setting OVERLAY_MAX_PEERS at compile time.
- With a bit of work we can change this to be a run-time option.
- 
- Memory consumption of OVERLAY_MAX_PEERS=n is O(n^2).
- XXX We could and should improve this down the track by only monitoring the top k routes, and replacing the worst route
- option when a better one comes along.  This would get the memory usage down to O(n).
- 
- */
-#define OVERLAY_MAX_PEERS 500
 
 typedef struct overlay_peer {
   unsigned char address[SIDDIDFIELD_LEN];
@@ -672,26 +512,7 @@ typedef struct overlay_txqueue {
 } overlay_txqueue;
 
 
-#define OQ_ISOCHRONOUS_VOICE 0
-#define OQ_MESH_MANAGEMENT 1
-#define OQ_ISOCHRONOUS_VIDEO 2
-#define OQ_ORDINARY 3
-#define OQ_OPPORTUNISTIC 4
-#define OQ_MAX 5
 extern overlay_txqueue overlay_tx[OQ_MAX];
-
-int confLocked();
-const char *confValueGet(const char *var, const char *defaultValue);
-int confValueGetBoolean(const char *var, int defaultValue);
-int64_t confValueGetInt64(const char *var, int64_t defaultValue);
-int64_t confValueGetInt64Range(const char *var, int64_t defaultValue, int64_t rangemin, int64_t rangemax);
-void confSetDebugFlags();
-int confParseBoolean(const char *text, const char *option_name);
-int confValueSet(const char *var, const char *value);
-int confWrite();
-int confVarCount();
-const char *confVar(unsigned int index);
-const char *confValue(unsigned int index);
 
 ssize_t recvwithttl(int sock, unsigned char *buffer, size_t bufferlen, int *ttl, struct sockaddr *recvaddr, socklen_t *recvaddrlen);
 
@@ -794,68 +615,10 @@ int readArpTable(struct in_addr peers[],int *peer_count,int peer_max);
 int overlay_frame_process(struct overlay_interface *interface,overlay_frame *f);
 int overlay_frame_resolve_addresses(overlay_frame *f);
 
-#define LOG_LEVEL_SILENT    (-1)
-#define LOG_LEVEL_DEBUG     (0)
-#define LOG_LEVEL_INFO      (1)
-#define LOG_LEVEL_WARN      (2)
-#define LOG_LEVEL_ERROR     (3)
-#define LOG_LEVEL_FATAL     (4)
-
-extern unsigned int debug;
-void set_logging(FILE *f);
-FILE *open_logging();
-void close_logging();
-void logArgv(int level, const char *file, unsigned int line, const char *function, const char *label, int argc, const char *const *argv);
-void logMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, ...);
-void vlogMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, va_list);
-unsigned int debugFlagMask(const char *flagname);
-char *catv(const char *data, char *buf, size_t len);
-int dump(char *name, unsigned char *addr, size_t len);
-int log_backtrace(const char *file, unsigned int line, const char *function);
-char *toprint(char *dstStr, ssize_t dstStrLen, const char *srcBuf, size_t srcBytes);
-size_t toprint_strlen(ssize_t dstStrLen, const char *srcBuf, size_t srcBytes);
-ssize_t get_self_executable_path(char *buf, size_t len);
-
 #define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca(toprint_strlen((dstlen), (buf), (len)) + 1), (dstlen), (buf), (len))
 
 #define alloca_tohex(buf,len)           tohex((char *)alloca((len)*2+1), (buf), (len))
 #define alloca_tohex_sid(sid)           alloca_tohex((sid), SID_SIZE)
-
-#define logMessage_perror(L,file,line,func,F,...) \
-                            (logMessage(L, file, line, func, F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno))
-
-#define LOGF(L,F,...)       logMessage(L, __FILE__, __LINE__, __FUNCTION__, F, ##__VA_ARGS__)
-#define LOGF_perror(L,F,...) logMessage_perror(L, __FILE__, __LINE__, __FUNCTION__, F, ##__VA_ARGS__)
-#define LOG_perror(L,X)     LOGF_perror(L, "%s", (X))
-
-#define FATALF(F,...)       do { LOGF(LOG_LEVEL_FATAL, F, ##__VA_ARGS__); exit(-1); } while (1)
-#define FATAL(X)            FATALF("%s", (X))
-#define FATALF_perror(F,...) do { LOGF_perror(LOG_LEVEL_FATAL, F, ##__VA_ARGS__); exit(-1); } while (1)
-#define FATAL_perror(X)     FATALF_perror("%s", (X))
-
-#define WHYF(F,...)         (LOGF(LOG_LEVEL_ERROR, F, ##__VA_ARGS__), -1)
-#define WHY(X)              WHYF("%s", (X))
-#define WHYNULL(X)          (LOGF(LOG_LEVEL_ERROR, "%s", X), NULL)
-#define WHYF_perror(F,...)  (LOGF_perror(LOG_LEVEL_ERROR, F, ##__VA_ARGS__), -1)
-#define WHY_perror(X)       WHYF_perror("%s", (X))
-#define WHY_argv(X,ARGC,ARGV) logArgv(LOG_LEVEL_ERROR, __FILE__, __LINE__, __FUNCTION__, (X), (ARGC), (ARGV))
-
-#define WARNF(F,...)        LOGF(LOG_LEVEL_WARN, F, ##__VA_ARGS__)
-#define WARN(X)             WARNF("%s", (X))
-#define WARNF_perror(F,...) LOGF_perror(LOG_LEVEL_WARN, F, ##__VA_ARGS__)
-#define WARN_perror(X)      WARNF_perror("%s", (X))
-
-#define INFOF(F,...)        LOGF(LOG_LEVEL_INFO, F, ##__VA_ARGS__)
-#define INFO(X)             INFOF("%s", (X))
-
-#define DEBUGF(F,...)       LOGF(LOG_LEVEL_DEBUG, F, ##__VA_ARGS__)
-#define DEBUG(X)            DEBUGF("%s", (X))
-#define DEBUGF_perror(F,...) LOGF_perror(LOG_LEVEL_DEBUG, F, ##__VA_ARGS__)
-#define DEBUG_perror(X)     DEBUGF_perror("%s", (X))
-#define DEBUG_argv(X,ARGC,ARGV) logArgv(LOG_LEVEL_DEBUG, __FILE__, __LINE__, __FUNCTION__, (X), (ARGC), (ARGV))
-#define D                   DEBUG("D")
-
-#define BACKTRACE           log_backtrace(__FILE__, __LINE__, __FUNCTION__)
 
 overlay_buffer *ob_new(int size);
 overlay_buffer *ob_static(unsigned char *bytes, int size);
@@ -904,60 +667,9 @@ int overlay_resolve_next_hop(overlay_frame *frame);
 
 extern int overlay_interface_count;
 
-#define OVERLAY_MAX_LOCAL_IDENTITIES 256
 extern int overlay_local_identity_count;
 extern unsigned char *overlay_local_identities[OVERLAY_MAX_LOCAL_IDENTITIES];
 
-/* Overlay mesh packet codes */
-#define OF_TYPE_BITS 0xf0
-#define OF_TYPE_SELFANNOUNCE 0x10 /* BATMAN style announcement frames */
-#define OF_TYPE_SELFANNOUNCE_ACK 0x20 /* BATMAN style "I saw your announcment" frames */
-#define OF_TYPE_DATA 0x30 /* Ordinary data frame.
-		        Upto MTU bytes of payload.
-			32 bit channel/port indicator for each end. 
-		        */
-#define OF_TYPE_DATA_VOICE 0x40 /* Voice data frame. 
-			      Limited to 255 bytes of payload. 
-			      1 byte channel/port indicator for each end */
-#define OF_TYPE_RHIZOME_ADVERT 0x50 /* Advertisment of file availability via Rhizome */
-#define OF_TYPE_PLEASEEXPLAIN 0x60 /* Request for resolution of an abbreviated address */
-#define OF_TYPE_NODEANNOUNCE 0x70
-#define OF_TYPE_IDENTITYENQUIRY 0x80
-#define OF_TYPE_RESERVED_09 0x90
-#define OF_TYPE_RESERVED_0a 0xa0
-#define OF_TYPE_RESERVED_0b 0xb0
-#define OF_TYPE_RESERVED_0c 0xc0
-#define OF_TYPE_RESERVED_0d 0xd0
-#define OF_TYPE_EXTENDED12 0xe0 /* modifier bits and next byte provide 12 bits extended format
-				   (for future expansion, just allows us to skip the frame) */
-#define OF_TYPE_EXTENDED20 0xf0 /* modifier bits and next 2 bytes provide 20 bits extended format
-				 (for future expansion, just allows us to skip the frame) */
-/* Flags used to control the interpretation of the resolved type field */
-#define OF_TYPE_FLAG_BITS 0xf0000000
-#define OF_TYPE_FLAG_NORMAL 0x0
-#define OF_TYPE_FLAG_E12 0x10000000
-#define OF_TYPE_FLAG_E20 0x20000000
-
-/* Modifiers that indicate the disposition of the frame */
-#define OF_MODIFIER_BITS 0x0f
-
-/* Crypto/security options */
-#define OF_CRYPTO_BITS 0x0c
-#define OF_CRYPTO_NONE 0x00
-#define OF_CRYPTO_CIPHERED 0x04 /* Encrypted frame */
-#define OF_CRYPTO_SIGNED 0x08   /* signed frame */
-/* The following was previously considered, but is not being implemented at this
-   time.
-   #define OF_CRYPTO_PARANOID 0x0c Encrypted and digitally signed frame, with final destination address also encrypted. */
-
-/* Data compression */
-#define OF_COMPRESS_BITS 0x03
-#define OF_COMPRESS_NONE 0x00
-#define OF_COMPRESS_GZIP 0x01     /* Frame compressed with gzip */
-#define OF_COMPRESS_BZIP2 0x02    /* bzip2 */
-#define OF_COMPRESS_RESERVED 0x03 /* Reserved for another compression system */
-
-#define OVERLAY_ADDRESS_CACHE_SIZE 1024
 int overlay_abbreviate_address(unsigned char *in,unsigned char *out,int *ofs);
 int overlay_abbreviate_append_address(overlay_buffer *b,unsigned char *a);
 
@@ -969,41 +681,6 @@ int overlay_abbreviate_remember_index(int index_byte_count,unsigned char *in,uns
 extern int overlay_abbreviate_repeat_policy;
 int overlay_abbreviate_set_most_recent_address(unsigned char *in);
 int overlay_abbreviate_clear_most_recent_address();
-
-/* Return codes for resolution of abbreviated addressses */
-#define OA_UNINITIALISED 0 /* Nothing has been written into the field */
-#define OA_RESOLVED 1      /* We expanded the abbreviation successfully */
-#define OA_PLEASEEXPLAIN 2 /* We need the sender to explain their abbreviation */
-#define OA_UNSUPPORTED 3   /* We cannot expand the abbreviation as we do not understand this code */
-
-/* Codes used to describe abbreviated addresses.
-   Values 0x10 - 0xff are the first byte of, and implicit indicators of addresses written in full */
-#define OA_CODE_SELF 0x00
-#define OA_CODE_INDEX 0x01
-#define OA_CODE_02 0x02
-#define OA_CODE_PREVIOUS 0x03
-#define OA_CODE_04 0x04
-#define OA_CODE_PREFIX3 0x05
-#define OA_CODE_PREFIX7 0x06
-#define OA_CODE_PREFIX11 0x07
-#define OA_CODE_FULL_INDEX1 0x08
-#define OA_CODE_PREFIX3_INDEX1 0x09
-#define OA_CODE_PREFIX7_INDEX1 0x0a
-#define OA_CODE_PREFIX11_INDEX1 0x0b
-#define OA_CODE_0C 0x0c
-#define OA_CODE_PREFIX11_INDEX2 0x0d
-#define OA_CODE_FULL_INDEX2 0x0e
-/* The TTL field in a frame is used to differentiate between link-local and wide-area broadcasts */
-#define OA_CODE_BROADCAST 0x0f
-
-#define RFS_PLUS250 0xfa
-#define RFS_PLUS456 0xfb
-#define RFS_PLUS762 0xfc
-#define RFS_PLUS1018 0xfd
-#define RFS_PLUS1274 0xfe
-#define RFS_3BYTE 0xff
-
-#define COMPUTE_RFS_LENGTH -1
 
 int rfs_length(int l);
 int rfs_encode(int l,unsigned char *b);
@@ -1024,7 +701,6 @@ typedef struct overlay_neighbour_observation {
   unsigned char valid;
 } overlay_neighbour_observation;
 
-#define OVERLAY_SENDER_PREFIX_LENGTH 12
 typedef struct overlay_node_observation {
   unsigned char observed_score; /* serves as validty check also */
   unsigned char corrected_score;
@@ -1035,12 +711,6 @@ typedef struct overlay_node_observation {
   unsigned char sender_prefix[OVERLAY_SENDER_PREFIX_LENGTH];
 } overlay_node_observation;
 
-/* Keep track of last 32 observations of a node.
-   Hopefully this is enough, if not, we will increase.
-   To keep the requirement down we will collate contigious neighbour observations on each interface.
-   For node observations we can just replace old observations with new ones. 
-*/
-#define OVERLAY_MAX_OBSERVATIONS 32
 
 typedef struct overlay_node {
   unsigned char sid[SID_SIZE];
@@ -1120,41 +790,6 @@ int overlay_saw_mdp_containing_frame(overlay_frame *f,long long now);
 
 #include "nacl.h"
 
-#define DEBUG_ALL                   (~0)
-#define DEBUG_PACKETRX              (1 << 0)
-#define DEBUG_OVERLAYINTERFACES     (1 << 1)
-#define DEBUG_VERBOSE               (1 << 2)
-#define DEBUG_VERBOSE_IO            (1 << 3)
-#define DEBUG_PEERS                 (1 << 4)
-#define DEBUG_DNARESPONSES          (1 << 5)
-#define DEBUG_DNAHELPER             (1 << 6)
-#define DEBUG_SIMULATION            (1 << 7)
-#define DEBUG_RHIZOME_RX            (1 << 8)
-#define DEBUG_PACKETFORMATS         (1 << 9)
-#define DEBUG_GATEWAY               (1 << 10)
-#define DEBUG_KEYRING               (1 << 11)
-#define DEBUG_IO                    (1 << 12)
-#define DEBUG_OVERLAYFRAMES         (1 << 13)
-#define DEBUG_OVERLAYABBREVIATIONS  (1 << 14)
-#define DEBUG_OVERLAYROUTING        (1 << 15)
-#define DEBUG_SECURITY              (1 << 16)
-#define DEBUG_RHIZOME               (1 << 17)
-#define DEBUG_OVERLAYROUTEMONITOR   (1 << 18)
-#define DEBUG_QUEUES                (1 << 19)
-#define DEBUG_BROADCASTS            (1 << 20)
-#define DEBUG_RHIZOME_TX            (1 << 21)
-#define DEBUG_PACKETTX              (1 << 22)
-#define DEBUG_PACKETCONSTRUCTION    (1 << 23)
-#define DEBUG_MANIFESTS             (1 << 24)
-#define DEBUG_MDPREQUESTS           (1 << 25)
-#define DEBUG_TIMING						(1 << 26)
-
-/* bitmask values for monitor_tell_clients */
-#define MONITOR_VOMP (1<<0)
-#define MONITOR_RHIZOME (1<<1)
-#define MONITOR_PEERS (1<<2)
-
-
 int serval_packetvisualise(FILE *f,char *message,unsigned char *packet,int plen);
 
 int overlay_broadcast_drop_check(unsigned char *a);
@@ -1173,16 +808,10 @@ typedef struct dna_identity_status {
   time_t startofvalidity;
   time_t endofvalidity;
   int verifier_count;
-#define MAX_SIGNATURES 16
   /* Dynamically allocate these so that we don't waste a memory
      (well, if we are talking about running on a feature phone, 4KB per entry
      (16*256 bytes) is best avoided if we can.) */
   unsigned char *verifiers[MAX_SIGNATURES];
-#define IDENTITY_VERIFIED (1<<0)
-#define IDENTITY_VERIFIEDBYME (1<<1)
-#define IDENTITY_NOTVERIFIED (1<<2)
-  /* The value below is for caching negative results */
-#define IDENTITY_UNKNOWN (1<<3)
   int verificationStatus;
 
   /* Set if we know that there are no duplicates of this DID/name
@@ -1213,14 +842,6 @@ const char *serval_instancepath();
 int form_serval_instance_path(char * buf, size_t bufsiz, const char *path);
 int create_serval_instance_dir();
 
-int mkdirs(const char *path, mode_t mode);
-int mkdirsn(const char *path, size_t len, mode_t mode);
-
-/* Handy statement for forming a path to an instance file in a char buffer whose declaration
- * is in scope (so that sizeof(buf) will work).  Evaluates to true if the pathname fitted into
- * the provided buffer, false (0) otherwise (after printing a message to stderr).  */
-#define FORM_SERVAL_INSTANCE_PATH(buf, path) (form_serval_instance_path(buf, sizeof(buf), (path)))
-
 int overlay_mdp_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int overlay_mdp_reply_error(int sock,
 			    struct sockaddr_un *recvaddr,int recvaddrlen,
@@ -1235,62 +856,32 @@ typedef struct sockaddr_mdp {
 } sockaddr_mdp;
 unsigned char *keyring_get_nm_bytes(sockaddr_mdp *priv,sockaddr_mdp *pub);
 
-#define MDP_PORT_ECHO 0x00000007
-#define MDP_PORT_KEYMAPREQUEST 0x10000001
-#define MDP_PORT_VOMP 0x10000002
-#define MDP_PORT_DNALOOKUP 0x10000003
-
-#define MDP_TYPE_MASK 0xff
-#define MDP_FLAG_MASK 0xff00
-#define MDP_FORCE 0x0100
-#define MDP_NOCRYPT 0x0200
-#define MDP_NOSIGN 0x0400
-#define MDP_TX 1
 typedef struct overlay_mdp_data_frame {
   sockaddr_mdp src;
   sockaddr_mdp dst;
   unsigned short payload_length;
-#define MDP_MTU 2000
   unsigned char payload[MDP_MTU-100];
 } overlay_mdp_data_frame;
 
-#define MDP_BIND 3
 typedef struct overlay_mdp_bind_request {
   unsigned int port_number;
   unsigned char sid[SID_SIZE];
 } overlay_mdp_bind_request;
 
-#define MDP_ERROR 4
 typedef struct overlay_mdp_error {
   unsigned int error;
   char message[128];
 } overlay_mdp_error;
 
-#define MDP_GETADDRS 5
-#define MDP_ADDRLIST 6
 typedef struct overlay_mdp_addrlist {
-// These are back-compatible with the old values of 'mode' when it was 'selfP'
-#define MDP_ADDRLIST_MODE_ROUTABLE_PEERS 0
-#define MDP_ADDRLIST_MODE_SELF 1
-#define MDP_ADDRLIST_MODE_ALL_PEERS 2
   int mode;
   unsigned int server_sid_count;
   unsigned int first_sid;
   unsigned int last_sid;
   unsigned int frame_sid_count; /* how many of the following 59 slots are populated */
-  /* 59*32 < (MDP_MTU-100), so up to 59 SIDs in a single reply.
-     Multiple replies can be used to respond with more. */
-#define MDP_MAX_SID_REQUEST 59
   unsigned char sids[MDP_MAX_SID_REQUEST][SID_SIZE];
 } overlay_mdp_addrlist;
 
-#define MDP_VOMPEVENT 7
-#define VOMP_MAX_CALLS 16
-/* Maximum amount of audio to cram into a VoMP audio packet.
-   More lets us include preemptive retransmissions.
-   Less reduces the chance of packets getting lost, and reduces
-   the bandwidth used. */
-#define VOMP_STUFF_BYTES 800
 /* elements sorted by size for alignment */
 typedef struct overlay_mdp_vompevent {
   /* Once a call has been established, this is how the MDP/VoMP server
@@ -1299,20 +890,6 @@ typedef struct overlay_mdp_vompevent {
   unsigned long long audio_sample_endtime;
   unsigned long long audio_sample_starttime;
   unsigned long long last_activity;
-#define VOMPEVENT_RINGING (1<<0)
-#define VOMPEVENT_CALLENDED (1<<1)
-#define VOMPEVENT_CALLREJECT (1<<2)
-#define VOMPEVENT_HANGUP VOMPEVENT_CALLREJECT
-#define VOMPEVENT_TIMEOUT (1<<3)
-#define VOMPEVENT_ERROR (1<<4)
-#define VOMPEVENT_AUDIOSTREAMING (1<<5)
-#define VOMPEVENT_DIAL (1<<6)
-#define VOMPEVENT_REGISTERINTEREST (1<<7)
-#define VOMPEVENT_WITHDRAWINTEREST (1<<8)
-#define VOMPEVENT_CALLCREATED (1<<9)
-#define VOMPEVENT_PICKUP (1<<10)
-#define VOMPEVENT_CALLINFO (1<<11)
-#define VOMPEVENT_AUDIOPACKET (1<<12)
   unsigned int flags;
   unsigned short audio_sample_bytes;
   unsigned char audio_sample_codec;  
@@ -1334,12 +911,10 @@ typedef struct overlay_mdp_vompevent {
       unsigned int other_calls_sessions[VOMP_MAX_CALLS];
       unsigned char other_calls_states[VOMP_MAX_CALLS];
     };
-#define MAX_AUDIO_BYTES 1024
     unsigned char audio_bytes[MAX_AUDIO_BYTES];
   };
 } overlay_mdp_vompevent;
 
-#define MDP_NODEINFO 8
 typedef struct overlay_mdp_nodeinfo {
   unsigned char sid[SID_SIZE];
   int sid_prefix_length; /* allow wildcard matching */
@@ -1356,9 +931,7 @@ typedef struct overlay_mdp_nodeinfo {
   int count; /* number of matching records */
 } overlay_mdp_nodeinfo;
 
-#define MDP_GOODBYE 9
 typedef struct overlay_mdp_frame {
-#define MDP_AWAITREPLY 9999
   unsigned int packetTypeAndFlags;
   union {
     overlay_mdp_data_frame out;
@@ -1415,7 +988,6 @@ typedef struct vomp_call_half {
   unsigned char state;
   unsigned char codec;
   unsigned int session;
-#define VOMP_SESSION_MASK 0xffffff
   unsigned int sequence;
   /* the following is from call creation, not start of audio flow */
   unsigned long long milliseconds_since_call_start;
@@ -1428,7 +1000,6 @@ typedef struct vomp_sample_block {
   unsigned char bytes[1024];
 } vomp_sample_block;
 
-#define VOMP_MAX_RECENT_SAMPLES 2
 typedef struct vomp_call_state {
   struct sched_ent alarm;
   vomp_call_half local;
@@ -1454,33 +1025,6 @@ extern int vomp_call_count;
 extern int vomp_active_call;
 extern vomp_call_state vomp_call_states[VOMP_MAX_CALLS];
 
-
-#define VOMP_CODEC_NONE 0x00
-#define VOMP_CODEC_CODEC2_2400 0x01
-#define VOMP_CODEC_CODEC2_1400 0x02
-#define VOMP_CODEC_GSMHALF 0x03
-#define VOMP_CODEC_GSMFULL 0x04
-#define VOMP_CODEC_16SIGNED 0x05
-#define VOMP_CODEC_8ULAW 0x06
-#define VOMP_CODEC_8ALAW 0x07
-#define VOMP_CODEC_PCM 0x08
-#define VOMP_CODEC_DTMF 0x80
-#define VOMP_CODEC_ENGAGED 0x81
-#define VOMP_CODEC_ONHOLD 0x82
-#define VOMP_CODEC_CALLERID 0x83
-#define VOMP_CODEC_CODECSISUPPORT 0xfe
-#define VOMP_CODEC_CHANGEYOURCODECTO 0xff
-
-#define VOMP_STATE_NOCALL 1
-#define VOMP_STATE_CALLPREP 2
-#define VOMP_STATE_RINGINGOUT 3
-#define VOMP_STATE_RINGINGIN 4
-#define VOMP_STATE_INCALL 5
-#define VOMP_STATE_CALLENDED 6
-
-/* in milliseconds of inactivity */
-#define VOMP_CALL_TIMEOUT 120000
-#define VOMP_CALL_STATUS_INTERVAL 1000
 
 vomp_call_state *vomp_find_call_by_session(int session_token);
 int vomp_mdp_event(overlay_mdp_frame *mdp,
@@ -1597,9 +1141,6 @@ extern int sigPipeFlag;
 extern int sigIoFlag;
 void sigPipeHandler(int signal);
 void sigIoHandler(int signal);
-
-#define DEFAULT_MONITOR_SOCKET_NAME "org.servalproject.servald.monitor.socket"
-#define DEFAULT_MDP_SOCKET_NAME "org.servalproject.servald.mdp.socket"
 
 #define set_nonblock(fd)                (_set_nonblock(fd, __FILE__, __LINE__, __FUNCTION__))
 #define set_block(fd)                   (_set_block(fd, __FILE__, __LINE__, __FUNCTION__))

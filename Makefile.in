@@ -72,6 +72,10 @@ HDRS=	fifo.h \
 	strbuf.h \
 	strbuf_helpers.h \
 	sha2.h \
+	conf.h \
+	log.h \
+	constants.h \
+	monitor-client.h \
 	sqlite-amalgamation-3070900/sqlite3.h
 
 LDFLAGS=@LDFLAGS@ @PORTAUDIO_LIBS@ @SRC_LIBS@ @SPANDSP_LIBS@ @CODEC2_LIBS@ @PTHREAD_LIBS@
@@ -84,7 +88,7 @@ CFLAGS+=-DDO_TIMING_CHECKS
 
 DEFS=	@DEFS@
 
-all:	dna
+all:	servald libmonitorclient.so
 
 sqlite3.o:	sqlite3.c
 	@echo CC $<
@@ -94,7 +98,7 @@ sqlite3.o:	sqlite3.c
 	@echo CC $<
 	@$(CC) $(CFLAGS) $(DEFS) -c $<
 
-dna:	$(OBJS)
+servald:	$(OBJS)
 	@echo LINK $@
 	@$(CC) $(CFLAGS) -Wall -o $@ $(OBJS) $(LDFLAGS)
 
@@ -104,28 +108,10 @@ libservald.so: $(OBJS)
 	@echo LINK $@
 	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(OBJS) $(LDFLAGS)
 
-testserver: dna
-	clear
-	rm hlr.dat
-	./dna -vvv -S 1 -f hlr.dat
+libmonitorclient.so: monitor-client.o conf.o log.o strbuf.o mkdir.o
+	@echo LINK $@
+	@$(CC) $(CFLAGS) -Wall -shared -o $@ monitor-client.o conf.o log.o strbuf.o mkdir.o $(LDFLAGS)
 
-testcreate: dna
-	clear
-	./dna -vvv -d 0427679796 -C
-	@touch testcreate
 
-testget:	dna testcreate
-	clear
-	./dna -vvv -d 0427679796 -R dids | tee testget
-
-testset:	dna testget
-	clear
-	# Try writing a value to a variable
-	echo "short value" >shortvalue.txt
-	./dna -vvv -s `cat testget | cut -f2 -d: | tail -1` -i 0 -W note=@shortvalue.txt
-
-testbigset: testget
-	clear
-	./dna -vvv -s `cat testget | cut -f2 -d: | tail -1` -i 0 -W note=@411.txt
 clean:
-	@rm -f $(OBJS) dna libservald.so
+	@rm -f $(OBJS) servald libservald.so

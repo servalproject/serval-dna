@@ -19,7 +19,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <stdio.h>
 #include <ctype.h>
-#include "serval.h"
+#include "conf.h"
+#include "log.h"
 
 /* This predicate function defines the constraints on configuration option names.
    Valid:
@@ -419,4 +420,28 @@ int confWrite()
     }
   }
   return 0;
+}
+
+const char *thisinstancepath = NULL;
+
+const char *serval_instancepath()
+{
+  if (thisinstancepath)
+    return thisinstancepath;
+  const char *instancepath = getenv("SERVALINSTANCE_PATH");
+  if (!instancepath)
+    instancepath = DEFAULT_INSTANCE_PATH;
+  return instancepath;
+}
+
+int form_serval_instance_path(char *buf, size_t bufsiz, const char *path)
+{
+  if (snprintf(buf, bufsiz, "%s/%s", serval_instancepath(), path) < bufsiz)
+    return 1;
+  WHYF("Cannot form pathname \"%s/%s\" -- buffer too small (%lu bytes)", serval_instancepath(), path, (unsigned long)bufsiz);
+  return 0;
+}
+
+int create_serval_instance_dir() {
+  return mkdirs(serval_instancepath(), 0700);
 }
