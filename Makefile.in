@@ -57,6 +57,14 @@ SRCS=	main.c \
 	audio_alsa.c \
 	audio_reflector.c
 
+MONITORCLIENTSRCS=conf.c \
+	log.c \
+	mkdir.c \
+	monitor-client.c \
+	net.c \
+	strbuf.c \
+	strbuf_helpers.c
+
 HAVE_VOIPTEST=	@HAVE_VOIPTEST@
 ifeq ($(HAVE_VOIPTEST), 1)
 SRCS+=	pa_phone.c
@@ -64,6 +72,8 @@ VOIPTEST_CFLAGS=-DHAVE_VOIPTEST=1
 endif
 
 OBJS=	$(SRCS:.c=.o)
+
+MONITORCLIENTOBJS=	$(MONITORCLIENTSRCS:.c=.o)
 
 HDRS=	fifo.h \
 	Makefile \
@@ -108,10 +118,9 @@ libservald.so: $(OBJS)
 	@echo LINK $@
 	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(OBJS) $(LDFLAGS)
 
-libmonitorclient.so: monitor-client.o conf.o log.o strbuf.o mkdir.o
+libmonitorclient.so: $(MONITORCLIENTOBJS)
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -shared -o $@ monitor-client.o conf.o log.o strbuf.o mkdir.o $(LDFLAGS)
-
+	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(MONITORCLIENTOBJS) $(LDFLAGS)
 
 clean:
 	@rm -f $(OBJS) servald libservald.so
