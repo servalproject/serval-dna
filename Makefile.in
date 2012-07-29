@@ -1,20 +1,29 @@
-SRCS=	main.c \
-        batman.c \
+SRCS=	\
+	audiodevices.c \
+	audio_alsa.c \
+	audio_msm_g1.c \
+	audio_reflector.c \
+	batman.c \
 	ciphers.c \
 	client.c \
+	codecs.c \
 	commandline.c \
-	dataformats.c \
 	conf.c \
-	log.c \
-	net.c \
-	mkdir.c \
-	strbuf.c \
-	strbuf_helpers.c \
+	dataformats.c \
+	dna_helper.c \
 	dna_identity.c \
 	encode.c \
+	fdqueue.c \
 	fifo.c \
 	gateway.c \
 	keyring.c \
+	log.c \
+	lsif.c \
+	main.c \
+	mkdir.c \
+	monitor.c \
+	monitor-cli.c \
+	net.c \
 	overlay.c \
 	overlay_abbreviations.c \
 	overlay_advertise.c \
@@ -40,22 +49,14 @@ SRCS=	main.c \
 	serval_packetvisualise.c \
 	server.c \
 	sha2.c \
+	sighandlers.c \
 	simulate.c \
 	sqlite3.c \
 	srandomdev.c \
+	strbuf.c \
+	strbuf_helpers.c \
 	trans_cache.c \
-	vomp.c \
-	lsif.c \
-	monitor.c \
-	monitor-cli.c \
-	dna_helper.c \
-	sighandlers.c \
-	fdqueue.c \
-	codecs.c \
-	audiodevices.c \
-	audio_msm_g1.c \
-	audio_alsa.c \
-	audio_reflector.c
+	vomp.c
 
 MONITORCLIENTSRCS=conf.c \
 	log.c \
