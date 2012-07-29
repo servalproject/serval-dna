@@ -35,7 +35,7 @@ int monitor_client_open()
   /* XXX - On non-linux systems, we need to use a regular named socket */
   addr.sun_path[0]=0;
   snprintf(&addr.sun_path[1],100,
-	   confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME));
+	   "%s", confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME));
   int len = 1+strlen(&addr.sun_path[1]) + sizeof(addr.sun_family);
   char *p=(char *)&addr;
   printf("last char='%c' %02x\n",p[len-1],p[len-1]);
