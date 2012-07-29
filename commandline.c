@@ -571,11 +571,14 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
     break;
   }
 #endif
-  const char *execpath;
+  const char *execpath, *instancepath;
   int foregroundP = (argc >= 2 && !strcasecmp(argv[1], "foreground"));
-  if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1
+  if (cli_arg(argc, argv, o, "instance path", &instancepath, cli_absolute_path, NULL) == -1
    || cli_arg(argc, argv, o, "exec path", &execpath, cli_absolute_path, NULL) == -1)
     return -1;
+  if (instancepath != NULL)
+    serval_setinstancepath(instancepath);
+  
   if (execpath == NULL) {
     if (jni_env)
       return WHY("Must supply <exec path> argument when invoked via JNI");
@@ -682,9 +685,11 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
   long long		timeout;
   struct timespec 	delay;
 
-  if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1)
+  if (cli_arg(argc, argv, o, "instance path", &instancepath, cli_absolute_path, NULL) == -1)
     return WHY("Unable to determine instance path");
-
+  if (instancepath != NULL)
+    serval_setinstancepath(instancepath);
+  
   instancepath = serval_instancepath();
   cli_puts("instancepath");
   cli_delim(":");
@@ -746,10 +751,14 @@ int app_server_status(int argc, const char *const *argv, struct command_line_opt
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   int	pid;
-
-  if (cli_arg(argc, argv, o, "instance path", &thisinstancepath, cli_absolute_path, NULL) == -1)
+  const char *instancepath;
+  
+  if (cli_arg(argc, argv, o, "instance path", &instancepath, cli_absolute_path, NULL) == -1)
     return WHY("Unable to determine instance path");
 
+  if (instancepath != NULL)
+    serval_setinstancepath(instancepath);
+  
   pid = server_pid();
 
   cli_puts("instancepath");

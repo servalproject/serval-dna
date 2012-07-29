@@ -422,7 +422,7 @@ int confWrite()
   return 0;
 }
 
-const char *thisinstancepath = NULL;
+static char *thisinstancepath = NULL;
 
 const char *serval_instancepath()
 {
@@ -432,6 +432,14 @@ const char *serval_instancepath()
   if (!instancepath)
     instancepath = DEFAULT_INSTANCE_PATH;
   return instancepath;
+}
+
+void serval_setinstancepath(const char *instancepath)
+{
+  if (thisinstancepath == NULL)
+    free(thisinstancepath);
+  
+  thisinstancepath = strdup(instancepath);
 }
 
 int form_serval_instance_path(char *buf, size_t bufsiz, const char *path)

@@ -837,8 +837,6 @@ int _memabuseCheck(const char *func,const char *file,const int line);
 #define memabuseCheck() /* */
 #endif
 
-const char *thisinstancepath;
-const char *serval_instancepath();
 int form_serval_instance_path(char * buf, size_t bufsiz, const char *path);
 int create_serval_instance_dir();
 

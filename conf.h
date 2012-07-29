@@ -50,4 +50,6 @@ int form_serval_instance_path(char *buf, size_t bufsiz, const char *path);
 const char *trimbuildpath(const char *s);
 int mkdirs(const char *path, mode_t mode);
 int mkdirsn(const char *path, size_t len, mode_t mode);
+const char *serval_instancepath();
+void serval_setinstancepath(const char *instancepath);
 
