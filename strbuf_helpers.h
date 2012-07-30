@@ -1,6 +1,6 @@
 /*
 Serval string buffer helper functions.
-Copyright (C) 2012 The Serval Project
+Copyright (C) 2012 Serval Project Inc.
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -51,13 +51,25 @@ strbuf strbuf_toprint_quoted(strbuf sb, char quote, const char *str);
  */
 strbuf strbuf_append_poll_events(strbuf sb, short events);
 
-/* Append a string as a quoted shell word.
+/* Append a nul-terminated string as a single-quoted shell word which, if
+ * expanded in a shell command line, would evaluate to the original string.
+ * Eg:
+ *    "abc"     ->  "'abc'"
+ *    ""        ->  "''"
+ *    "O'Toole" ->  "'O'\''Toole'"
+ *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 strbuf strbuf_append_shell_quote(strbuf sb, const char *word);
 
-/* Append a string as a shell word, quoted if it contains shell metacharacters
- * or spaces.
+/* Append a nul-terminated string as a shell word, quoted if it contains shell
+ * metacharacters or spaces.  In other words, is acts like
+ * str_append_shell_quote() but only if needed. Eg:
+ *      "abc"     ->  "abc"
+ *      "a b c "  ->  "'a b c '"
+ *      "$abc"    ->  "'$abc'"
+ *      ""        ->  "''"
+ *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 strbuf strbuf_append_shell_quotemeta(strbuf sb, const char *word);
