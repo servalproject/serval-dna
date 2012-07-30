@@ -99,7 +99,7 @@ vomp_call_state *vomp_create_call(unsigned char *remote_sid,
   call->local.state=local_state;
   call->remote.state=remote_state;
   call->last_sent_status=-1;
-  call->create_time=overlay_gettime_ms();
+  call->create_time=gettime_ms();
   call->last_activity=call->create_time;
   
   // fill sample cache with invalid times
@@ -201,7 +201,7 @@ int vomp_send_status_remote_audio(vomp_call_state *call, int audio_codec, const 
   mdp.out.payload[3]=(call->remote.sequence>>0)&0xff;
   mdp.out.payload[4]=(call->local.sequence>>8)&0xff;
   mdp.out.payload[5]=(call->local.sequence>>0)&0xff;
-  unsigned long long call_millis=overlay_gettime_ms()-call->create_time;
+  unsigned long long call_millis=gettime_ms()-call->create_time;
   mdp.out.payload[6]=(call_millis>>8)&0xff;
   mdp.out.payload[7]=(call_millis>>0)&0xff;
   mdp.out.payload[8]=(call->remote.session>>16)&0xff;
@@ -337,7 +337,7 @@ int vomp_send_mdp_status_audio(vomp_call_state *call, int audio_codec, unsigned 
   }
   
   int i;
-  long long now=overlay_gettime_ms();
+  long long now=gettime_ms();
   for(i=0;i<vomp_interested_usock_count;i++)
     if (vomp_interested_expiries[i]>=now) {
       overlay_mdp_reply(mdp_named.poll.fd,
@@ -412,7 +412,7 @@ int vomp_process_audio(vomp_call_state *call,unsigned int sender_duration,overla
   
   sender_duration = (e&0xFFFF0000)|sender_duration;
   if (0)
-    DEBUGF("Jitter %d, %d",sender_duration -e,(overlay_gettime_ms()-call->create_time)-e);
+    DEBUGF("Jitter %d, %d",sender_duration -e,(gettime_ms()-call->create_time)-e);
   
   while(ofs<mdp->in.payload_length)
     {
@@ -527,7 +527,7 @@ int vomp_pickup(vomp_call_state *call){
       return WHY("Call is not ringing");
     
     call->local.state=VOMP_STATE_INCALL;
-    call->create_time=overlay_gettime_ms();
+    call->create_time=gettime_ms();
     call->ringing=0;
     /* state machine does job of starting audio stream, just tell everyone about
      the changed state. */
@@ -580,7 +580,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
       {
 	int i;
 	int candidate=-1;
-	long long now=overlay_gettime_ms();
+	long long now=gettime_ms();
 	for(i=0;i<vomp_interested_usock_count;i++)
 	  {
 	    if (vomp_interested_usock_lengths[i]==recvaddrlen)
@@ -605,7 +605,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	  bcopy(recvaddr,vomp_interested_usocks[i],
 		recvaddrlen);
 	  vomp_interested_usock_lengths[i]=recvaddrlen;
-	  vomp_interested_expiries[i]=overlay_gettime_ms()+60000;
+	  vomp_interested_expiries[i]=gettime_ms()+60000;
 	  if (i==vomp_interested_usock_count) vomp_interested_usock_count++;
 
 	  if (mdp->vompevent.supported_codecs[0]) {
@@ -948,7 +948,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	 Jump to INCALL and start audio */
 	call->local.state=VOMP_STATE_INCALL;
 	// reset create time when call is established
-	call->create_time=overlay_gettime_ms();
+	call->create_time=gettime_ms();
 	break;
 	  
       case (VOMP_STATE_INCALL<<3)|VOMP_STATE_RINGINGOUT:
@@ -960,7 +960,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	/* They have answered, we can jump to incall as well */
 	call->local.state=VOMP_STATE_INCALL;
 	// reset create time when call is established
-	call->create_time=overlay_gettime_ms();
+	call->create_time=gettime_ms();
 	call->ringing=0;
 	// Fall through
       case (VOMP_STATE_INCALL<<3)|VOMP_STATE_INCALL:
@@ -990,7 +990,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
       
       call->remote.sequence=sender_seq;
       call->remote.state=sender_state;
-      call->last_activity=overlay_gettime_ms();
+      call->last_activity=gettime_ms();
       
       // TODO if we hear a stale echo of our state should we force another outgoing packet now?
       // will that always cause 2 outgoing packets?
@@ -1405,7 +1405,7 @@ int app_vomp_monitor(int argc, const char *const *argv, struct command_line_opti
 void vomp_process_tick(struct sched_ent *alarm){
   char msg[32];
   int len;
-  unsigned long long now = overlay_gettime_ms();
+  unsigned long long now = gettime_ms();
   
   vomp_call_state *call = (vomp_call_state *)alarm;
   
@@ -1446,7 +1446,7 @@ void vomp_process_tick(struct sched_ent *alarm){
   len = snprintf(msg,sizeof(msg) -1,"\nKEEPALIVE:%06x\n", call->local.session);
   monitor_tell_clients(msg, len, MONITOR_VOMP);
   
-  alarm->alarm = overlay_gettime_ms() + VOMP_CALL_STATUS_INTERVAL;
+  alarm->alarm = gettime_ms() + VOMP_CALL_STATUS_INTERVAL;
   alarm->deadline = alarm->alarm + VOMP_CALL_STATUS_INTERVAL/2;
   schedule(alarm);
 }

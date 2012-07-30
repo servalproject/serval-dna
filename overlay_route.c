@@ -396,7 +396,7 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *interface)
     return -1;
   }
   
-  long long now = overlay_gettime_ms();
+  long long now = gettime_ms();
   overlay_neighbour *direct_neighbour=NULL;
   
   if (n->neighbour_id){
@@ -1169,7 +1169,7 @@ int overlay_address_is_local(unsigned char *s)
 int overlay_route_dump()
 {
   int bin,slot,o,n,i;
-  long long now=overlay_gettime_ms();
+  long long now=gettime_ms();
   strbuf b = strbuf_alloca(8192);
 
   strbuf_sprintf(b,"Overlay Local Identities\n------------------------\n");
@@ -1248,7 +1248,7 @@ void overlay_route_tick(struct sched_ent *alarm)
 {
   int n;
 
-  long long start_time=overlay_gettime_ms();
+  long long start_time=gettime_ms();
 
   if (debug&DEBUG_OVERLAYROUTING) 
     DEBUGF("Neighbours: %d@%d, Nodes: %d@%d",
@@ -1269,7 +1269,7 @@ void overlay_route_tick(struct sched_ent *alarm)
 
   /* Tweak neighbour bundle size to spread it out over the required time.
      XXX Does this behave correctly when there are no neighbours? */
-  long long neighbour_time=overlay_gettime_ms()-start_time;
+  long long neighbour_time=gettime_ms()-start_time;
   if (neighbour_time>2) overlay_route_tick_neighbour_bundle_size/=neighbour_time;
   else if (neighbour_time==0) overlay_route_tick_neighbour_bundle_size*=2;
   if (overlay_route_tick_neighbour_bundle_size<1) overlay_route_tick_neighbour_bundle_size=1;
@@ -1292,7 +1292,7 @@ void overlay_route_tick(struct sched_ent *alarm)
   /* Tweak neighbour bundle size to spread it out over the required time.
      Allow 2ms here instead of 1ms, as neighbour processing may have taken the
      bulk of the tick. */
-  long long node_time=overlay_gettime_ms()-neighbour_time-start_time;
+  long long node_time=gettime_ms()-neighbour_time-start_time;
   if (node_time>1) overlay_route_tick_node_bundle_size/=node_time;
   else if (node_time==0) overlay_route_tick_node_bundle_size*=2;
   if (overlay_route_tick_node_bundle_size<1) overlay_route_tick_node_bundle_size=1;
@@ -1316,7 +1316,7 @@ void overlay_route_tick(struct sched_ent *alarm)
   if (debug&DEBUG_OVERLAYROUTING) DEBUGF("route tick interval = %dms (%d ticks per 5sec, neigh=%lldms, node=%lldms)",interval,ticks,neighbour_time,node_time);
 
   /* Update callback interval based on how much work we have to do */
-  alarm->alarm = overlay_gettime_ms()+interval;
+  alarm->alarm = gettime_ms()+interval;
   alarm->deadline = alarm->alarm+100;
   schedule(alarm);
   return;
@@ -1353,7 +1353,7 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
 			    struct sockaddr_un *addr,int addrlen)
 {
   int bin,slot,n;
-  long long now=overlay_gettime_ms();
+  long long now=gettime_ms();
 
   if (0) 
     DEBUGF("Looking for node %s* (prefix len=0x%x)",
@@ -1431,7 +1431,7 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
 		mdp->nodeinfo.localP=0;
 		mdp->nodeinfo.neighbourP=1;
 		mdp->nodeinfo.time_since_last_observation
-		  =overlay_gettime_ms()
+		  =gettime_ms()
 		  -overlay_neighbours[n].last_observation_time_ms;
 		mdp->nodeinfo.score=-1;
 		mdp->nodeinfo.interface_number=-1;
@@ -1466,7 +1466,7 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
 		mdp->nodeinfo.foundP=1;
 		mdp->nodeinfo.localP=0;
 		mdp->nodeinfo.neighbourP=0;
-		mdp->nodeinfo.time_since_last_observation=overlay_gettime_ms();
+		mdp->nodeinfo.time_since_last_observation=gettime_ms();
 		mdp->nodeinfo.score=-1;
 		mdp->nodeinfo.interface_number=-1;
 		mdp->nodeinfo.resolve_did=0;

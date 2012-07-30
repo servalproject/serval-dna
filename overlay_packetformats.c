@@ -279,7 +279,7 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
   */
 
   unsigned char *sid=overlay_get_my_sid();
-  long long now = overlay_gettime_ms();
+  long long now = gettime_ms();
 
   /* Header byte */
   if (ob_append_byte(b, OF_TYPE_SELFANNOUNCE))

@@ -229,7 +229,7 @@ void rhizome_client_poll(struct sched_ent *alarm)
       /* If we got some data, see if we have found the end of the HTTP request */
       if (bytes > 0) {
 	// reset inactivity timer
-	r->alarm.alarm = overlay_gettime_ms() + RHIZOME_IDLE_TIMEOUT;
+	r->alarm.alarm = gettime_ms() + RHIZOME_IDLE_TIMEOUT;
 	r->alarm.deadline = r->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
 	unschedule(&r->alarm);
 	schedule(&r->alarm);
@@ -292,7 +292,7 @@ void rhizome_server_poll(struct sched_ent *alarm)
       request->alarm.stats=&connection_stats;
       request->alarm.poll.fd=sock;
       request->alarm.poll.events=POLLIN;
-      request->alarm.alarm = overlay_gettime_ms()+RHIZOME_IDLE_TIMEOUT;
+      request->alarm.alarm = gettime_ms()+RHIZOME_IDLE_TIMEOUT;
       request->alarm.deadline = request->alarm.alarm+RHIZOME_IDLE_TIMEOUT;
       // watch for the incoming http request
       watch(&request->alarm);
@@ -721,7 +721,7 @@ static int rhizome_server_http_send_bytes(rhizome_http_request *r)
 	r->buffer_offset+=bytes;
 	  
 	// reset inactivity timer
-	r->alarm.alarm = overlay_gettime_ms()+RHIZOME_IDLE_TIMEOUT;
+	r->alarm.alarm = gettime_ms()+RHIZOME_IDLE_TIMEOUT;
 	r->alarm.deadline = r->alarm.alarm+RHIZOME_IDLE_TIMEOUT;
 	unschedule(&r->alarm);
 	schedule(&r->alarm);

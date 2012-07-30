@@ -299,7 +299,7 @@ int rhizome_ignore_manifest_check(rhizome_manifest *m,
 		  m->cryptoSignPublic,
 		  crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES))
 	{
-	  if (ignored.bins[bin].m[slot].timeout>overlay_gettime_ms())
+	  if (ignored.bins[bin].m[slot].timeout>gettime_ms())
 	    return 1;
 	  else 
 	    return 0;
@@ -327,7 +327,7 @@ int rhizome_queue_ignore_manifest(rhizome_manifest *m,
 	&ignored.bins[bin].m[slot].bid[0],
 	crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
   /* ignore for a while */
-  ignored.bins[bin].m[slot].timeout=overlay_gettime_ms()+timeout;
+  ignored.bins[bin].m[slot].timeout=gettime_ms()+timeout;
   bcopy(peerip,
 	&ignored.bins[bin].m[slot].peer,
 	sizeof(struct sockaddr_in));
@@ -553,7 +553,7 @@ void rhizome_enqueue_suggestions(struct sched_ent *alarm)
     bcopy(&candidates[i],&candidates[0],bytes);
     candidate_count-=i;
   }
-  alarm->alarm = overlay_gettime_ms() + rhizome_fetch_interval_ms;
+  alarm->alarm = gettime_ms() + rhizome_fetch_interval_ms;
   alarm->deadline = alarm->alarm + rhizome_fetch_interval_ms*3;
   schedule(alarm);
   return;
@@ -705,7 +705,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	q->alarm.poll.events=POLLIN|POLLOUT;
 	watch(&q->alarm);
 	/* And schedule a timeout alarm */
-	q->alarm.alarm=overlay_gettime_ms() + RHIZOME_IDLE_TIMEOUT;
+	q->alarm.alarm=gettime_ms() + RHIZOME_IDLE_TIMEOUT;
 	q->alarm.deadline = q->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
 
 	schedule(&q->alarm);
@@ -768,7 +768,7 @@ void rhizome_fetch_write(rhizome_file_fetch_record *q){
   } else {
     // reset timeout
     unschedule(&q->alarm);
-    q->alarm.alarm=overlay_gettime_ms() + RHIZOME_IDLE_TIMEOUT;
+    q->alarm.alarm=gettime_ms() + RHIZOME_IDLE_TIMEOUT;
     q->alarm.deadline = q->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
     schedule(&q->alarm);
     q->request_ofs+=bytes;
@@ -813,7 +813,7 @@ void rhizome_write_content(rhizome_file_fetch_record *q, char *buffer, int bytes
   
   // reset timeout due to activity
   unschedule(&q->alarm);
-  q->alarm.alarm=overlay_gettime_ms() + RHIZOME_IDLE_TIMEOUT;
+  q->alarm.alarm=gettime_ms() + RHIZOME_IDLE_TIMEOUT;
   q->alarm.deadline = q->alarm.alarm+RHIZOME_IDLE_TIMEOUT;
   schedule(&q->alarm);
 }
@@ -863,7 +863,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	if (bytes > 0) {
 	  // reset timeout
 	  unschedule(&q->alarm);
-	  q->alarm.alarm = overlay_gettime_ms() + RHIZOME_IDLE_TIMEOUT;
+	  q->alarm.alarm = gettime_ms() + RHIZOME_IDLE_TIMEOUT;
 	  q->alarm.deadline = q->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
 	  schedule(&q->alarm);
 	  q->request_len += bytes;

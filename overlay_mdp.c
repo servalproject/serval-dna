@@ -259,7 +259,7 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
   mdp_bindings_socket_name_lengths[free]=recvaddrlen-2;
   memcpy(&mdp_bindings_sockets[free][0],&recvaddr->sun_path[0],
 	 mdp_bindings_socket_name_lengths[free]);
-  mdp_bindings_time[free]=overlay_gettime_ms();
+  mdp_bindings_time[free]=gettime_ms();
   return overlay_mdp_reply_ok(sock,recvaddr,recvaddrlen,"Port bound");
 }
 
@@ -702,7 +702,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   if (overlay_address_is_local(mdp->out.dst.sid)||broadcast)
     {
       /* Packet is addressed such that we should process it. */
-      overlay_saw_mdp_frame(mdp,overlay_gettime_ms());
+      overlay_saw_mdp_frame(mdp,gettime_ms());
       if (!broadcast) {
 	/* Is local, and is not broadcast, so shouldn't get sent out
 	   on the wire. */

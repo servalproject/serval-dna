@@ -32,7 +32,7 @@ struct profile_total poll_stats={NULL,0,"Idle (in poll)",0,0,0};
 
 void list_alarms() {
   DEBUG("Alarms;");
-  long long now = overlay_gettime_ms();
+  long long now = gettime_ms();
   struct sched_ent *alarm;
   for (alarm = next_alarm; alarm; alarm = alarm->_next)
     DEBUGF("%s in %lldms", (alarm->stats ? alarm->stats->name : "Unnamed"), alarm->alarm - now);
@@ -79,7 +79,7 @@ int schedule(struct sched_ent *alarm){
     alarm->deadline = alarm->alarm;
   
   // if the alarm has already expired, move straight to the deadline queue
-  if (alarm->alarm <= overlay_gettime_ms())
+  if (alarm->alarm <= gettime_ms())
     return deadline(alarm);
   
   while(node!=NULL){
@@ -184,7 +184,7 @@ int fd_poll()
 {
   int i, r;
   int ms=60000;
-  long long now=overlay_gettime_ms();
+  long long now=gettime_ms();
   
   /* move alarms that have elapsed to the deadline queue */
   while (next_alarm!=NULL&&next_alarm->alarm <=now){
@@ -223,7 +223,7 @@ int fd_poll()
       DEBUGF("poll(fds=(%s), fdcount=%d, ms=%d) = %d", strbuf_str(b), fdcount, ms, r);
     }
     fd_func_exit(&call_stats);
-    now=overlay_gettime_ms();
+    now=gettime_ms();
   }
   
   /* call one alarm function, but only if its deadline time has elapsed OR there is no file activity */
@@ -231,7 +231,7 @@ int fd_poll()
     struct sched_ent *alarm = next_deadline;
     unschedule(alarm);
     call_alarm(alarm, 0);
-    now=overlay_gettime_ms();
+    now=gettime_ms();
   }
   
   /* If file descriptors are ready, then call the appropriate functions */

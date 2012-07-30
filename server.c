@@ -255,7 +255,7 @@ void server_shutdown_check(struct sched_ent *alarm)
     }
   }
   if (alarm){
-    alarm->alarm = overlay_gettime_ms()+1000;
+    alarm->alarm = gettime_ms()+1000;
     alarm->deadline = alarm->alarm+5000;
     schedule(alarm);
   }

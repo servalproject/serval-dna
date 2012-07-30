@@ -87,7 +87,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
      easy here (also would let us order advertisements by size of payload).
      For now, we will just advertised only occassionally.
  */
-  long long now=overlay_gettime_ms();
+  long long now=gettime_ms();
   if (now<rhizome_voice_timeout) voice_mode=1;
   if (voice_mode) if (random()&3) { RETURN(0); }
 

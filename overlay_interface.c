@@ -60,22 +60,6 @@ unsigned char magic_header[]={/* Magic */ 'O',0x10,
   /* Version */ 0x00,0x01};
 
 
-/* Return milliseconds since server started.  First call will always return zero.
-   Must use long long, not time_t, as time_t can be 32bits, which is too small for
-   milli-seconds since 1970. */
-long long overlay_sequence_start_time = 0;
-long long overlay_gettime_ms()
-{
-  long long now;
-  if (!overlay_sequence_start_time) {
-    overlay_sequence_start_time = gettime_ms();
-    now = 0;
-  } else
-    now= gettime_ms()-overlay_sequence_start_time;
-
-  return now;
-}
-
 int overlay_interface_type(char *s)
 {
   if (!strcasecmp(s,"ethernet")) return OVERLAY_INTERFACE_ETHERNET;
@@ -266,7 +250,7 @@ overlay_interface_init_socket(int interface) {
   watch(&I(alarm));
 
   // run the first tick asap
-  I(alarm.alarm)=overlay_gettime_ms();
+  I(alarm.alarm)=gettime_ms();
   I(alarm.deadline)=I(alarm.alarm)+10;
   schedule(&I(alarm));
   
@@ -339,7 +323,7 @@ int overlay_interface_init(char *name,struct sockaddr_in *src_addr,struct sockad
     
     // schedule an alarm for this interface
     I(alarm.function)=overlay_dummy_poll;
-    I(alarm.alarm)=overlay_gettime_ms()+10;
+    I(alarm.alarm)=gettime_ms()+10;
     I(alarm.deadline)=I(alarm.alarm);
     dummy_poll_stats.name="overlay_dummy_poll";
     I(alarm.stats)=&dummy_poll_stats;
@@ -373,7 +357,7 @@ void overlay_interface_poll(struct sched_ent *alarm)
     
     if (interface->state==INTERFACE_STATE_UP){
       // tick the interface
-      unsigned long long now = overlay_gettime_ms();
+      unsigned long long now = gettime_ms();
       int i = (interface - overlay_interfaces);
       overlay_tick_interface(i, now);
       alarm->alarm=now+interface->tick_ms;
@@ -417,7 +401,7 @@ void overlay_dummy_poll(struct sched_ent *alarm)
   struct sockaddr src_addr;
   size_t addrlen = sizeof(src_addr);
   unsigned char transaction_id[8];
-  unsigned long long now = overlay_gettime_ms();
+  unsigned long long now = gettime_ms();
 
   if (interface->last_tick_ms + interface->tick_ms <= now){
     // tick the interface
@@ -433,7 +417,7 @@ void overlay_dummy_poll(struct sched_ent *alarm)
 	 we need to allow all other low priority alarms to fire first,
 	 otherwise we'll dominate the scheduler without accomplishing anything */
       
-      alarm->alarm = overlay_gettime_ms()+20;
+      alarm->alarm = gettime_ms()+20;
       alarm->deadline = alarm->alarm + 10000;
       
       if (alarm->alarm > interface->last_tick_ms + interface->tick_ms)
@@ -474,7 +458,7 @@ void overlay_dummy_poll(struct sched_ent *alarm)
       
       /* keep reading new packets as fast as possible, 
 	 but don't prevent other high priority alarms */
-      alarm->alarm = overlay_gettime_ms();
+      alarm->alarm = gettime_ms();
       alarm->deadline = alarm->alarm + 200;
       
     }
@@ -723,7 +707,7 @@ void overlay_interface_discover(struct sched_ent *alarm){
     if (overlay_interfaces[i].state==INTERFACE_STATE_DETECTING)
       overlay_interface_close(&overlay_interfaces[i]);
   
-  alarm->alarm = overlay_gettime_ms()+5000;
+  alarm->alarm = gettime_ms()+5000;
   alarm->deadline = alarm->alarm + 10000;
   schedule(alarm);
   return;
@@ -973,7 +957,7 @@ void overlay_send_packet(struct sched_ent *alarm){
   struct outgoing_packet packet;
   bzero(&packet, sizeof(struct outgoing_packet));
   
-  overlay_fill_send_packet(&packet, overlay_gettime_ms());
+  overlay_fill_send_packet(&packet, gettime_ms());
 }
 
 // update time for next alarm and reschedule

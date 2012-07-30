@@ -1292,7 +1292,7 @@ unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
   */
   IN();
   int i;
-  long long now=overlay_gettime_ms();
+  long long now=gettime_ms();
   for(i=0;i<sid_sas_mapping_count;i++)
     {
       if (memcmp(sid,sid_sas_mappings[i].sid,SID_SIZE)) continue;

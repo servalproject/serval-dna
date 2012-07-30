@@ -271,7 +271,7 @@ int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP)
   if (l) l->next=p;
   p->prev=l;
   p->next=NULL;
-  p->enqueued_at=overlay_gettime_ms();
+  p->enqueued_at=gettime_ms();
 
   overlay_tx[q].last=p;
   if (!overlay_tx[q].first) overlay_tx[q].first=p;

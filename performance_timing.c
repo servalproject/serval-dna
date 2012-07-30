@@ -166,7 +166,7 @@ void fd_periodicstats(struct sched_ent *alarm)
 {
   fd_showstats();
   fd_clearstats();  
-  alarm->alarm = overlay_gettime_ms()+3000;
+  alarm->alarm = gettime_ms()+3000;
   alarm->deadline = alarm->alarm+1000;
   schedule(alarm);
 }
@@ -182,7 +182,7 @@ void dump_stack(){
 
 int fd_func_enter(struct call_stats *this_call)
 {
-  this_call->enter_time=overlay_gettime_ms();
+  this_call->enter_time=gettime_ms();
   this_call->child_time=0;
   this_call->prev = current_call;
   current_call = this_call;
@@ -194,7 +194,7 @@ int fd_func_exit(struct call_stats *this_call)
   if (current_call != this_call)
     WHYF("stack mismatch, exited through %s()",this_call->totals->name);
   
-  long long now = overlay_gettime_ms();
+  long long now = gettime_ms();
   long long elapsed=now - this_call->enter_time;
   current_call = this_call->prev;
   

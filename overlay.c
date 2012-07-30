@@ -136,7 +136,7 @@ bzero(&_stats_##X, sizeof(struct profile_total)); \
 _sched_##X.stats = &_stats_##X; \
 _sched_##X.function=X;\
 _stats_##X.name="" #X "";\
-_sched_##X.alarm=overlay_gettime_ms()+Y;\
+_sched_##X.alarm=gettime_ms()+Y;\
 _sched_##X.deadline=_sched_##X.alarm+D;\
 schedule(&_sched_##X); }
   
@@ -182,7 +182,7 @@ int overlay_frame_process(struct overlay_interface *interface,overlay_frame *f)
   IN();
   if (!f) RETURN(WHY("f==NULL"));
 
-  long long now=overlay_gettime_ms();
+  long long now=gettime_ms();
 
   if (debug&DEBUG_OVERLAYFRAMES)
     DEBUGF(">>> Received frame (type=%02x, bytes=%d)",f->type,f->payload?f->payload->length:-1);

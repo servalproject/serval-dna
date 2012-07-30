@@ -449,12 +449,12 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 
   /* Now repeatedly send resolution request and collect results until we reach
      timeout. */
-  unsigned long long timeout=overlay_gettime_ms()+3000;
+  unsigned long long timeout=gettime_ms()+3000;
   unsigned long long last_tx=0;
   
-  while(timeout>overlay_gettime_ms())
+  while(timeout>gettime_ms())
     {
-      unsigned long long now=overlay_gettime_ms();
+      unsigned long long now=gettime_ms();
       if ((last_tx+125)<now)
 	{ 
 	  mdp.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT;
@@ -522,7 +522,7 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 	      }
 	  }
 	if (servalShutdown) break;
-	short_timeout=125-(overlay_gettime_ms()-now);
+	short_timeout=125-(gettime_ms()-now);
       }
       if (servalShutdown) break;
     }
@@ -835,7 +835,7 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
     int *seq=(int *)&mdp.out.payload;
     *seq=sequence_number;
     long long *txtime=(long long *)&mdp.out.payload[4];
-    *txtime=overlay_gettime_ms();
+    *txtime=gettime_ms();
     
     int res=overlay_mdp_send(&mdp,0,0);
     if (res) {
@@ -846,11 +846,11 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
 
     /* Now look for replies until one second has passed, and print any replies
        with appropriate information as required */
-    long long now=overlay_gettime_ms();
+    long long now=gettime_ms();
     long long timeout=now+1000;
 
     while(now<timeout) {
-      long long timeout_ms=timeout-overlay_gettime_ms();
+      long long timeout_ms=timeout-gettime_ms();
       int result = overlay_mdp_client_poll(timeout_ms);
 
       if (result>0) {
@@ -864,7 +864,7 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
 	    {
 	      int *rxseq=(int *)&mdp.in.payload;
 	      long long *txtime=(long long *)&mdp.in.payload[4];
-	      long long delay=overlay_gettime_ms()-*txtime;
+	      long long delay=gettime_ms()-*txtime;
 	      printf("%s: seq=%d time=%lld ms%s%s\n",
 		     alloca_tohex_sid(mdp.in.src.sid),(*rxseq)-firstSeq+1,delay,
 		     mdp.packetTypeAndFlags&MDP_NOCRYPT?"":" ENCRYPTED",
@@ -883,7 +883,7 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
 	  }
 	}
       }
-      now=overlay_gettime_ms();
+      now=gettime_ms();
       if (servalShutdown) {
 
 	float rx_stddev=0;
@@ -1557,16 +1557,16 @@ int app_crypt_test(int argc, const char *const *argv, struct command_line_option
 
   int len,i;
 
-  overlay_gettime_ms();
+  gettime_ms();
 
   for(len=16;len<=65536;len*=2) {
-    unsigned long long start=overlay_gettime_ms();
+    unsigned long long start=gettime_ms();
     for (i=0;i<1000;i++) {
       bzero(&plain_block[0],crypto_box_curve25519xsalsa20poly1305_ZEROBYTES);
       crypto_box_curve25519xsalsa20poly1305_afternm
 	(plain_block,plain_block,len,nonce,k);
     }
-    unsigned long long end=overlay_gettime_ms();
+    unsigned long long end=gettime_ms();
     printf("%d bytes - 100 tests took %lldms - mean time = %.2fms\n",
 	   len,end-start,(end-start)*1.0/i);
   }
@@ -1624,12 +1624,12 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
     if (overlay_mdp_bind(srcsid,port)) port=0;
 
     if (port) {    
-      unsigned long long now = overlay_gettime_ms();
+      unsigned long long now = gettime_ms();
       unsigned long long timeout = now+3000;
       unsigned long long next_send = now;
       
       while(now < timeout){
-	now=overlay_gettime_ms();
+	now=gettime_ms();
 	
 	if (now >= next_send){
 	  m2.packetTypeAndFlags=MDP_TX;

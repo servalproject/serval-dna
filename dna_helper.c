@@ -228,7 +228,7 @@ dna_helper_start(const char *command, const char *arg)
     sched_errors.stats = NULL;
     sched_harvester.function = harvester;
     sched_harvester.stats = NULL;
-    sched_harvester.alarm = overlay_gettime_ms() + 1000;
+    sched_harvester.alarm = gettime_ms() + 1000;
     sched_harvester.deadline = sched_harvester.alarm + 1000;
     reply_bufend = reply_buffer;
     discarding_until_nl = 0;
@@ -341,7 +341,7 @@ static void monitor_requests(struct sched_ent *alarm)
 	// Request sent successfully.  Start watching for reply.
 	request_bufptr = request_bufend = NULL;
 	awaiting_reply = 1;
-	sched_timeout.alarm = overlay_gettime_ms() + 1500;
+	sched_timeout.alarm = gettime_ms() + 1500;
 	sched_timeout.deadline = sched_timeout.alarm + 3000;
 	schedule(&sched_timeout);
       }
@@ -502,7 +502,7 @@ static void harvester(struct sched_ent *alarm)
   // While the helper process appears to still be running, keep calling this function.
   // Otherwise, wait a while before re-starting the helper.
   if (dna_helper_harvest(0) <= 0) {
-    sched_harvester.alarm = overlay_gettime_ms() + 1000;
+    sched_harvester.alarm = gettime_ms() + 1000;
     sched_harvester.deadline = sched_harvester.alarm + 1000;
     schedule(&sched_harvester);
   } else {
@@ -511,7 +511,7 @@ static void harvester(struct sched_ent *alarm)
       DEBUGF("DNAHELPER process died, pausing %d ms before restart", delay_ms);
     dna_helper_pid = 0; // Will be set to -1 after delay
     sched_restart.function = restart_delayer;
-    sched_restart.alarm = overlay_gettime_ms() + delay_ms;
+    sched_restart.alarm = gettime_ms() + delay_ms;
     sched_restart.deadline = sched_restart.alarm + 500;
     schedule(&sched_restart);
   }
