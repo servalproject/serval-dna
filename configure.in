@@ -88,6 +88,9 @@ AC_CHECK_HEADERS(
     alsa/asoundlib.h \
 )
 
+dnl Lazy way of checking for Linux
+AC_CHECK_HEADER(linux/if.h, AC_DEFINE([USE_ABSTRACT_NAMESPACE]))
+
 echo "Fetching and building NaCl if required."
 echo "(this can take HOURS to build depending on your architecture,"
 echo " but fortunately it only needs to happen once.)"

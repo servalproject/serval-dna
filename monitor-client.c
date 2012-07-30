@@ -17,26 +17,21 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "monitor-client.h"
-
+#include "socket.h"
 
 /* Open monitor interface abstract domain named socket */
 int monitor_client_open()
 {
   int fd;
   struct sockaddr_un addr;
-
+  socklen_t len;
+  
   if ( (fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
     perror("socket");
     exit(-1);
   }
 
-  memset(&addr, 0, sizeof(addr));
-  addr.sun_family = AF_UNIX;
-  /* XXX - On non-linux systems, we need to use a regular named socket */
-  addr.sun_path[0]=0;
-  snprintf(&addr.sun_path[1],100,
-	   "%s", confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME));
-  int len = 1+strlen(&addr.sun_path[1]) + sizeof(addr.sun_family);
+  socket_setname(&addr, confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME), &len);
   char *p=(char *)&addr;
   printf("last char='%c' %02x\n",p[len-1],p[len-1]);
 

@@ -18,87 +18,46 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <sys/stat.h>
 #include "serval.h"
+#include "socket.h"
 #include "strbuf.h"
 
-struct sched_ent mdp_abstract;
-struct sched_ent mdp_named;
-struct profile_total mdp_stats;
+static char overlay_mdp_client_socket_path[1024] = { 0 };
+
+struct sched_ent mdp_sock;
+static struct profile_total mdp_stats;
 
 int overlay_mdp_setup_sockets()
 {
   struct sockaddr_un name;
-  int len;
+  socklen_t len;
   
   name.sun_family = AF_UNIX;
   
-#ifndef HAVE_LINUX_IF_H
-  /* Abstrack name space (i.e., non-file represented) unix domain sockets are a
-     linux-only thing. */
-  mdp_abstract.poll.fd = -1;
-#else
-  if (mdp_abstract.function==NULL) {
-    /* Abstract name space unix sockets is a special Linux thing, which is
-       convenient for us because Android is Linux, but does not have a shared
-       writable path that is on a UFS partition, so we cannot use traditional
-       named unix domain sockets. So the abstract name space gives us a solution. */
-    name.sun_path[0]=0;
-    /* XXX The 100 should be replaced with the actual maximum allowed.
-       Apparently POSIX requires it to be at least 100, but I would still feel
-       more comfortable with using the appropriate constant. */
-    snprintf(&name.sun_path[1],100,
-	     confValueGet("mdp.socket",DEFAULT_MDP_SOCKET_NAME));
-    len = 1+strlen(&name.sun_path[1]) + sizeof(name.sun_family);
+  if (mdp_sock.function != NULL)
+    return 0;
+  
+  socket_setname(&name, confValueGet("mdp.socket",DEFAULT_MDP_SOCKET_NAME), &len);
     
-    mdp_abstract.poll.fd = socket(AF_UNIX, SOCK_DGRAM, 0);
-    if (mdp_abstract.poll.fd>-1) {
-      int reuseP=1;
-      if (setsockopt( mdp_abstract.poll.fd, SOL_SOCKET, SO_REUSEADDR, &reuseP, sizeof(reuseP)) == -1) {
-	WARN_perror("setsockopt(SO_REUSEADDR)");
-	WARN("Could not set socket reuse addresses");
-      }
-      if (bind(mdp_abstract.poll.fd, (struct sockaddr *)&name, len) == -1) {
-	WARN_perror("bind");
-	close(mdp_abstract.poll.fd);
-	mdp_abstract.poll.fd = -1;
-	WARN("bind of abstract name space socket failed (not a problem on non-linux systems)");
-      }
-      int send_buffer_size=64*1024;    
-      if (setsockopt(mdp_abstract.poll.fd, SOL_SOCKET, SO_SNDBUF, &send_buffer_size, sizeof(send_buffer_size)) == -1)
-	WARN_perror("setsockopt(SO_SNDBUF)");
-      mdp_abstract.function = overlay_mdp_poll;
-      mdp_abstract.stats.name = "overlay_mdp_poll";
-      mdp_abstract.poll.events = POLLIN;
-      watch(&mdp_abstract);
-    } 
-  }
-#endif
-  if (mdp_named.function==NULL) {
-    if (!form_serval_instance_path(&name.sun_path[0], 100, "mdp.socket"))
-      return WHY("Cannot construct name of unix domain socket.");
-    unlink(&name.sun_path[0]);
-    len = 0+strlen(&name.sun_path[0]) + sizeof(name.sun_family)+1;
-    mdp_named.poll.fd = socket(AF_UNIX, SOCK_DGRAM, 0);
-    if (mdp_named.poll.fd>-1) {
-      int reuseP=1;
-      if(setsockopt( mdp_named.poll.fd, SOL_SOCKET, SO_REUSEADDR, &reuseP, sizeof(reuseP)) == -1) {
-	WARN_perror("setsockopt(SO_REUSEADDR)");
-	WARN("Could not set socket reuse addresses");
-      }
-      if (bind(mdp_named.poll.fd, (struct sockaddr *)&name, len) == -1) {
-	WARN_perror("bind");
-	close(mdp_named.poll.fd);
-	mdp_named.poll.fd = -1;
-	WARN("Could not bind named unix domain socket");
-      }
-      int send_buffer_size=64*1024;    
-      if (setsockopt(mdp_named.poll.fd, SOL_SOCKET, SO_RCVBUF, &send_buffer_size, sizeof(send_buffer_size)) == -1)
-	WARN_perror("setsockopt(SO_RCVBUF)");
-      mdp_named.function = overlay_mdp_poll;
-      mdp_stats.name="overlay_mdp_poll";
-      mdp_named.stats = &mdp_stats;
-      mdp_named.poll.events = POLLIN;
-      watch(&mdp_named);
+  mdp_sock.poll.fd = socket(AF_UNIX, SOCK_DGRAM, 0);
+  if (mdp_sock.poll.fd>-1) {
+    int reuseP=1;
+    if (setsockopt( mdp_sock.poll.fd, SOL_SOCKET, SO_REUSEADDR, &reuseP, sizeof(reuseP)) == -1) {
+      WARN_perror("setsockopt(SO_REUSEADDR)");
+      WARN("Could not set socket reuse addresses");
     }
+    if (bind(mdp_sock.poll.fd, (struct sockaddr *)&name, len) == -1) {
+      WARN_perror("bind");
+      close(mdp_sock.poll.fd);
+      mdp_sock.poll.fd = -1;
+      WARN("bind of abstract name space socket failed (not a problem on non-linux systems)");
+    }
+    int send_buffer_size=64*1024;    
+    if (setsockopt(mdp_sock.poll.fd, SOL_SOCKET, SO_SNDBUF, &send_buffer_size, sizeof(send_buffer_size)) == -1)
+      WARN_perror("setsockopt(SO_SNDBUF)");
+    mdp_sock.function = overlay_mdp_poll;
+    mdp_sock.stats->name = "overlay_mdp_poll";
+    mdp_sock.poll.events = POLLIN;
+    watch(&mdp_sock);
   }
 
   return 0;
@@ -464,7 +423,7 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp,long long now)
       addr.sun_family=AF_UNIX;
       errno=0;
       int len=overlay_mdp_relevant_bytes(mdp);
-      int r=sendto(mdp_named.poll.fd,mdp,len,0,(struct sockaddr*)&addr,sizeof(addr));
+      int r=sendto(mdp_sock.poll.fd,mdp,len,0,(struct sockaddr*)&addr,sizeof(addr));
       if (r==overlay_mdp_relevant_bytes(mdp)) {	
 	RETURN(0);
       }
@@ -691,7 +650,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   if (overlay_mdp_sanitytest_sourceaddr(&mdp->out.src,userGeneratedFrameP,
 					recvaddr,recvaddrlen))
     RETURN(overlay_mdp_reply_error
-	   (mdp_named.poll.fd,
+	   (mdp_sock.poll.fd,
 	    (struct sockaddr_un *)recvaddr,
 	    recvaddrlen,8,
 	    "Source address is invalid (you must bind to a source address before"
@@ -715,7 +674,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
      NaCl cryptobox keys can be used for signing. */	
   if (broadcast) {
     if (!(mdp->packetTypeAndFlags&MDP_NOCRYPT))
-      RETURN(overlay_mdp_reply_error(mdp_named.poll.fd,
+      RETURN(overlay_mdp_reply_error(mdp_sock.poll.fd,
 				     recvaddr,recvaddrlen,5,
 				     "Broadcast packets cannot be encrypted "));  }
   
@@ -1125,8 +1084,9 @@ int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
 int mdp_client_socket=-1;
 int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
 {
-  int len=4;
- 
+  socklen_t socklen;
+  int len;
+  
   if (mdp_client_socket==-1) 
       if (overlay_mdp_client_init() != 0)
 	  return -1;
@@ -1138,13 +1098,12 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
 
   /* Construct name of socket to send to. */
   struct sockaddr_un name;
-  name.sun_family = AF_UNIX;
-  if (!FORM_SERVAL_INSTANCE_PATH(name.sun_path, "mdp.socket"))
-    return -1;
 
+  socket_setname(&name, confValueGet("mdp.socket",DEFAULT_MDP_SOCKET_NAME), &socklen);
+  
   set_nonblock(mdp_client_socket);
   int result=sendto(mdp_client_socket, mdp, len, 0,
-		    (struct sockaddr *)&name, sizeof(struct sockaddr_un));
+		    (struct sockaddr *)&name, socklen);
   set_block(mdp_client_socket);
   if (result<0) {
     mdp->packetTypeAndFlags=MDP_ERROR;
@@ -1180,53 +1139,43 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
   }
 }
 
-char overlay_mdp_client_socket_path[1024];
-int overlay_mdp_client_socket_path_len=-1;
-
 int overlay_mdp_client_init()
 {
-  if (mdp_client_socket==-1) {
-    /* Open socket to MDP server (thus connection is always local) */
-    if (0) WHY("Use of abstract name space socket for Linux not implemented");
-    
-    mdp_client_socket = socket(AF_UNIX, SOCK_DGRAM, 0);
-    if (mdp_client_socket < 0) {
-      WHY_perror("socket");
-      return WHY("Could not open socket to MDP server");
-    }
-
-    /* We must bind to a temporary file name */
-    struct sockaddr_un name;
-    unsigned int random_value;
-    if (urandombytes((unsigned char *)&random_value,sizeof(int)))
-	return WHY("urandombytes() failed");
-    name.sun_family = AF_UNIX;
-    if (overlay_mdp_client_socket_path_len==-1) {
-      char fmt[1024];
-      if (!FORM_SERVAL_INSTANCE_PATH(fmt, "mdp-client-%d-%08x.socket"))
-	return WHY("Could not form MDP client socket name");
-      snprintf(overlay_mdp_client_socket_path,1024,fmt,getpid(),random_value);
-      overlay_mdp_client_socket_path_len=strlen(overlay_mdp_client_socket_path)+1;
-      if(debug&DEBUG_IO) DEBUGF("MDP client socket name='%s'",overlay_mdp_client_socket_path);
-    }
-    if (overlay_mdp_client_socket_path_len > 104 - 1)
-	FATALF("MDP socket path too long (%d > %d)", overlay_mdp_client_socket_path_len, 104 - 1);
-    
-    bcopy(overlay_mdp_client_socket_path,name.sun_path,
-	  overlay_mdp_client_socket_path_len);
-    unlink(name.sun_path);
-    int len = 1 + strlen(name.sun_path) + sizeof(name.sun_family) + 1;
-    int r=bind(mdp_client_socket, (struct sockaddr *)&name, len);
-    if (r) {
-      WHY_perror("bind");
-      return WHY("Could not bind MDP client socket to file name");
-    }
-
-    int send_buffer_size=128*1024;
-    if (setsockopt(mdp_client_socket, SOL_SOCKET, SO_RCVBUF, 
-			 &send_buffer_size, sizeof(send_buffer_size)) == -1)
-      WARN_perror("setsockopt");
+  if (mdp_client_socket != -1)
+    return 0;
+  
+  /* Open socket to MDP server (thus connection is always local) */
+  mdp_client_socket = socket(AF_UNIX, SOCK_DGRAM, 0);
+  if (mdp_client_socket < 0) {
+    WHY_perror("socket");
+    return WHY("Could not open socket to MDP server");
   }
+
+  /* Bind to a random name, but cache it for later use */
+  struct sockaddr_un name;
+  socklen_t len;
+  unsigned int random_value;
+  if (overlay_mdp_client_socket_path[0] == 0) {
+    if (urandombytes((unsigned char *)&random_value,sizeof(unsigned int)))
+      return WHY("urandombytes() failed");
+
+    snprintf(overlay_mdp_client_socket_path, sizeof(overlay_mdp_client_socket_path),
+	     "mdp-client-%d-%08x.socket", getpid(), random_value);
+    if(debug & DEBUG_IO) DEBUGF("MDP client socket name='%s'",overlay_mdp_client_socket_path);
+  }
+  
+  socket_setname(&name, overlay_mdp_client_socket_path, &len);
+  unlink(name.sun_path);
+  int r=bind(mdp_client_socket, (struct sockaddr *)&name, len);
+  if (r) {
+    WHY_perror("bind");
+    return WHY("Could not bind MDP client socket to file name");
+  }
+
+  int send_buffer_size=128*1024;
+  if (setsockopt(mdp_client_socket, SOL_SOCKET, SO_RCVBUF, 
+		 &send_buffer_size, sizeof(send_buffer_size)) == -1)
+    WARN_perror("setsockopt");
   
   return 0;
 }
@@ -1240,7 +1189,7 @@ int overlay_mdp_client_done()
     overlay_mdp_send(&mdp,0,0);
   }
 
-  if (overlay_mdp_client_socket_path_len>-1)
+  if (overlay_mdp_client_socket_path[0] != 0)
     unlink(overlay_mdp_client_socket_path);
   if (mdp_client_socket!=-1)
     close(mdp_client_socket);

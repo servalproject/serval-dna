@@ -51,6 +51,7 @@ SRCS=	\
 	sha2.c \
 	sighandlers.c \
 	simulate.c \
+	socket.c \
 	sqlite3.c \
 	srandomdev.c \
 	strbuf.c \
@@ -63,6 +64,7 @@ MONITORCLIENTSRCS=conf.c \
 	mkdir.c \
 	monitor-client.c \
 	net.c \
+	socket.c \
 	strbuf.c \
 	strbuf_helpers.c
 

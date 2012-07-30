@@ -844,8 +844,7 @@ int overlay_mdp_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int overlay_mdp_reply_error(int sock,
 			    struct sockaddr_un *recvaddr,int recvaddrlen,
 			    int error_number,char *message);
-extern struct sched_ent mdp_abstract;
-extern struct sched_ent mdp_named;
+extern struct sched_ent mdp_sock;
 
 
 typedef struct sockaddr_mdp {

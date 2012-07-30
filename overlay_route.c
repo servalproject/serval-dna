@@ -1491,5 +1491,5 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
 	  }
       }
 
-  return overlay_mdp_reply(mdp_named.poll.fd,addr,addrlen,mdp);
+  return overlay_mdp_reply(mdp_sock.poll.fd,addr,addrlen,mdp);
 }

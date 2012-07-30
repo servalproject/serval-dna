@@ -340,7 +340,7 @@ int vomp_send_mdp_status_audio(vomp_call_state *call, int audio_codec, unsigned 
   long long now=overlay_gettime_ms();
   for(i=0;i<vomp_interested_usock_count;i++)
     if (vomp_interested_expiries[i]>=now) {
-      overlay_mdp_reply(mdp_named.poll.fd,
+      overlay_mdp_reply(mdp_sock.poll.fd,
 			vomp_interested_usocks[i],
 			vomp_interested_usock_lengths[i],
 			&mdp);
@@ -587,7 +587,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	      if (!memcmp(recvaddr->sun_path,
 			  vomp_interested_usocks[i],recvaddrlen))
 		/* found it -- so we are already monitoring this one */
-		return overlay_mdp_reply_error(mdp_named.poll.fd,recvaddr,recvaddrlen,
+		return overlay_mdp_reply_error(mdp_sock.poll.fd,recvaddr,recvaddrlen,
 					       0,"Success");
 	    if (vomp_interested_expiries[i]<now) candidate=i;
 	  }
@@ -600,7 +600,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	  }
 	  vomp_interested_usocks[i]=malloc(recvaddrlen);
 	  if (!vomp_interested_usocks[i])
-	    return overlay_mdp_reply_error(mdp_named.poll.fd, recvaddr,recvaddrlen,
+	    return overlay_mdp_reply_error(mdp_sock.poll.fd, recvaddr,recvaddrlen,
 					   4002,"Out of memory");
 	  bcopy(recvaddr,vomp_interested_usocks[i],
 		recvaddrlen);
@@ -618,10 +618,10 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	  }
 		
 	  return overlay_mdp_reply_error
-	    (mdp_named.poll.fd,recvaddr,recvaddrlen,0,"Success");	     
+	    (mdp_sock.poll.fd,recvaddr,recvaddrlen,0,"Success");	     
 	} else {
 	  return overlay_mdp_reply_error
-	    (mdp_named.poll.fd,recvaddr,recvaddrlen,
+	    (mdp_sock.poll.fd,recvaddr,recvaddrlen,
 	     4003,"Too many listeners (try again in a minute?)");
 	}
       }
@@ -649,12 +649,12 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 		    }
 		  vomp_interested_usock_count--;
 		  return overlay_mdp_reply_error
-		    (mdp_named.poll.fd,recvaddr,recvaddrlen,
+		    (mdp_sock.poll.fd,recvaddr,recvaddrlen,
 		     0,"Success. You have been removed.");
 		}
 	  }
 	return overlay_mdp_reply_error
-	  (mdp_named.poll.fd,recvaddr,recvaddrlen,
+	  (mdp_sock.poll.fd,recvaddr,recvaddrlen,
 	   0,"Success. You were never listening.");
       }
       break;
@@ -696,7 +696,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	      =vomp_call_states[i].local.state;
 	  }
 	
-	return overlay_mdp_reply(mdp_named.poll.fd,recvaddr,recvaddrlen,&mdpreply);
+	return overlay_mdp_reply(mdp_sock.poll.fd,recvaddr,recvaddrlen,&mdpreply);
       }
       break;
     case VOMPEVENT_DIAL:
@@ -706,11 +706,11 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	NULL,
 	NULL))
 	return overlay_mdp_reply_error
-	      (mdp_named.poll.fd,recvaddr,recvaddrlen,4004,
+	      (mdp_sock.poll.fd,recvaddr,recvaddrlen,4004,
 	       "Unable to place call");
       else{
 	int result= overlay_mdp_reply_error 
-	  (mdp_named.poll.fd,recvaddr,recvaddrlen,0, "Success");
+	  (mdp_sock.poll.fd,recvaddr,recvaddrlen,0, "Success");
 	if (result) WHY("Failed to send MDP reply");
 	return result;
       }
@@ -721,12 +721,12 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	  =vomp_find_call_by_session(mdp->vompevent.call_session_token);
 	if (!call) 
 	  return overlay_mdp_reply_error
-	    (mdp_named.poll.fd,recvaddr,recvaddrlen,4006,
+	    (mdp_sock.poll.fd,recvaddr,recvaddrlen,4006,
 	     "No such call");
 	
 	vomp_hangup(call);
 	
-	return overlay_mdp_reply_error(mdp_named.poll.fd,
+	return overlay_mdp_reply_error(mdp_sock.poll.fd,
 				recvaddr,recvaddrlen,0,"Success");
       }
       break;
@@ -736,15 +736,15 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 	  =vomp_find_call_by_session(mdp->vompevent.call_session_token);
 	if (!call) 
 	  return overlay_mdp_reply_error
-	    (mdp_named.poll.fd,recvaddr,recvaddrlen,4006,
+	    (mdp_sock.poll.fd,recvaddr,recvaddrlen,4006,
 	     "No such call");
 	
 	if (vomp_pickup(call))
-	  return overlay_mdp_reply_error(mdp_named.poll.fd,
+	  return overlay_mdp_reply_error(mdp_sock.poll.fd,
 					 recvaddr,recvaddrlen,4009,
 					 "Call is not RINGINGIN, so cannot be picked up");
 	else
-	  return overlay_mdp_reply_error(mdp_named.poll.fd,
+	  return overlay_mdp_reply_error(mdp_sock.poll.fd,
 				  recvaddr,recvaddrlen,0,"Success");
       }
       break;
@@ -764,7 +764,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
       break;
     default:
       /* didn't understand it, so respond with an error */
-      return overlay_mdp_reply_error(mdp_named.poll.fd,
+      return overlay_mdp_reply_error(mdp_sock.poll.fd,
 				     recvaddr,recvaddrlen,4001,
 				     "Invalid VOMPEVENT request (use DIAL,HANGUP,CALLREJECT,AUDIOSTREAMING,REGISTERINTERST,WITHDRAWINTERST only)"); 
 

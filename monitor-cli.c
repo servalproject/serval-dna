@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <fcntl.h>
 
 #include "serval.h"
+#include "socket.h"
 
 static char cmd[1024];
 static int cmdLen=0;
@@ -54,10 +55,11 @@ static int fast_audio=0;
 
 int app_monitor_cli(int argc, const char *const *argv, struct command_line_option *o)
 {
+  socklen_t len;
   const char *sid=NULL;
   cli_arg(argc, argv, o, "sid", &sid, NULL, "");
   struct sockaddr_un addr;
-
+  
   if (!strcasecmp(sid,"reflect")) {
     pipeAudio=1; reflectAudio=1;
     sid="";
@@ -68,12 +70,8 @@ int app_monitor_cli(int argc, const char *const *argv, struct command_line_optio
     exit(-1);
   }
 
-  memset(&addr, 0, sizeof(addr));
-  addr.sun_family = AF_UNIX;
-  addr.sun_path[0]=0;
-  snprintf(&addr.sun_path[1],100,"%s",
-	   confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME));
-  int len = 1+strlen(&addr.sun_path[1]) + sizeof(addr.sun_family);
+  socket_setname(&addr, confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME), &len);
+	   
   char *p=(char *)&addr;
   printf("last char='%c' %02x\n",p[len-1],p[len-1]);
 

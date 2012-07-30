@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 #include "rhizome.h"
+#include "socket.h"
 #include <sys/stat.h>
 
 #if defined(LOCAL_PEERCRED) && !defined(SO_PEERCRED)
@@ -63,7 +64,7 @@ struct profile_total client_stats;
 int monitor_setup_sockets()
 {
   struct sockaddr_un name;
-  int len;
+  socklen_t len;
   int sock;
   
   bzero(&name, sizeof(name));
@@ -74,24 +75,7 @@ int monitor_setup_sockets()
     goto error;
   }
 
-#ifdef linux
-  /* Use abstract namespace as Android has no writable FS which supports sockets.
-     Abstract namespace is just plain better, anyway, as no dead files end up
-     hanging around. */
-  name.sun_path[0]=0;
-  /* XXX: 104 comes from OSX sys/un.h - no #define (note Linux has UNIX_PATH_MAX and it's 108(!)) */
-  snprintf(&name.sun_path[1],104-2,
-	   confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME));
-  /* Doesn't include trailing nul */
-  len = 1+strlen(&name.sun_path[1]) + sizeof(name.sun_family);
-#else
-  snprintf(name.sun_path,104-1,"%s/%s",
-	   serval_instancepath(),
-	   confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME));
-  unlink(name.sun_path);
-  /* Includes trailing nul */
-  len = 1+strlen(name.sun_path) + sizeof(name.sun_family);
-#endif
+  socket_setname(&name, confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME), &len);
 
   if(bind(sock, (struct sockaddr *)&name, len)==-1) {
     WHY_perror("bind");
