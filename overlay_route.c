@@ -398,28 +398,29 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *interface)
   
   long long now = gettime_ms();
   overlay_neighbour *direct_neighbour=NULL;
-  
-  if (n->neighbour_id){
+
+  if (n->neighbour_id) {
     direct_neighbour = &overlay_neighbours[n->neighbour_id];
     overlay_route_recalc_neighbour_metrics(direct_neighbour, now);
     /* Is a direct neighbour.
        So in the absence of any better indirect route, we pick the interface that
-       we can hear this neighbour on the most reliably, and then send the frame 
+       we can hear this neighbour on the most reliably, and then send the frame
        via that interface and directly addressed to the recipient. */
-
-    *interface=0;
-    for(i=1;i<OVERLAY_MAX_INTERFACES;i++) {
-      if (overlay_interfaces[i].state==INTERFACE_STATE_UP &&
-	  direct_neighbour->scores[i]>direct_neighbour->scores[*interface]) *interface=i;
+    int ifn = -1;
+    for (i = 0; i < overlay_interface_count; ++i) {
+      if ( overlay_interfaces[i].state == INTERFACE_STATE_UP
+	&& (ifn == -1 || direct_neighbour->scores[i] > direct_neighbour->scores[ifn]))
+	ifn = i;
     }
-    if (direct_neighbour->scores[*interface]>0) {
-      bcopy(d,nexthop,SID_SIZE);
-      if (0) DEBUGF("nexthop is %s",alloca_tohex_sid(nexthop));
+    if (ifn != -1 && direct_neighbour->scores[ifn] > 0) {
+      *interface = ifn;
+      bcopy(d, nexthop, SID_SIZE);
+      if (debug&DEBUG_OVERLAYROUTING)
+	DEBUGF("nexthop is %s", alloca_tohex_sid(nexthop));
       return 0;
     }
-    // otherwise fall through
   }
-  
+
   /* Is not a direct neighbour.
      XXX - Very simplistic for now. */
   int o;

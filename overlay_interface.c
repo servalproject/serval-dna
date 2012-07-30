@@ -654,7 +654,7 @@ void overlay_interface_discover(struct sched_ent *alarm){
   int detect_real_interfaces = 0;
   
   /* Mark all UP interfaces as DETECTING, so we can tell which interfaces are new, and which are dead */
-  for(i = 0; i < overlay_interface_count; i++)
+  for (i = 0; i < overlay_interface_count; i++)
     if (overlay_interfaces[i].state==INTERFACE_STATE_UP)
       overlay_interfaces[i].state=INTERFACE_STATE_DETECTING;
 
@@ -665,7 +665,7 @@ void overlay_interface_discover(struct sched_ent *alarm){
       continue;
     }
     
-    for(i = 0; i < overlay_interface_count; i++)
+    for (i = 0; i < overlay_interface_count; i++)
       if (!strcasecmp(overlay_interfaces[i].name,r->namespec)){
 	if (overlay_interfaces[i].state==INTERFACE_STATE_DETECTING)
 	  overlay_interfaces[i].state=INTERFACE_STATE_UP;
