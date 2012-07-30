@@ -105,7 +105,6 @@ struct in_addr {
 #endif
 
 #include <fcntl.h>
-//FIXME #include <getopt.h>
 #include <ctype.h>
 #include <sys/stat.h>
 
@@ -144,16 +143,10 @@ struct in_addr {
 /* Limit packet payloads to minimise packet loss of big packets in mesh networks */
 #define MAX_DATA_BYTES 256
 
-extern int dnatimeout;
-extern int hlr_size;
-extern unsigned char *hlr;
-
 double simulatedBER;
 
 extern int serverMode;
 extern int servalShutdown;
-
-extern int returnMultiVars;
 
 extern char *gatewayspec;
 
@@ -167,14 +160,6 @@ extern int client_port;
 #define MAX_PEERS 1024
 extern int peer_count;
 extern struct in_addr peers[MAX_PEERS];
-
-struct mphlr_variable {
-  unsigned char id;
-  char *name;
-  char *desc;
-};
-
-extern struct mphlr_variable vars[];
 
 extern char *outputtemplate;
 extern char *instrumentation_file;
@@ -196,7 +181,7 @@ typedef struct keypair {
 #define PKR_MAX_KEYPAIRS 64
 #define PKR_SALT_BYTES 32
 #define PKR_MAC_BYTES 64
-typedef struct keyring_identity {  
+typedef struct keyring_identity {
   char *PKRPin;
   unsigned int slot;
   int keypair_count;
@@ -612,27 +597,18 @@ int unpackageVariableSegment(unsigned char *data, int dlen, int flags, struct re
 int packetDecipher(unsigned char *packet,int len,int cipher);
 int safeZeroField(unsigned char *packet,int start,int count);
 int extractSid(const unsigned char *packet,int *ofs, char *sid);
-int hlrSetVariable(unsigned char *hlr,int hofs,int varid,int varinstance,
-		   unsigned char *value,int len);
 int extractDid(unsigned char *packet,int *ofs,char *did);
-char *hlrSid(unsigned char *hlr, int ofs, char *sid);
 int processRequest(unsigned char *packet,int len,struct sockaddr *sender,int sender_len,
 		   unsigned char *transaction_id,int recvttl,char *did,char *sid);
 
 int extractRequest(unsigned char *packet,int *packet_ofs,int packet_len,
 		   int *itemId,int *instance,unsigned char *value,
 		   int *start_offset,int *max_offset,int *flags);
-int hlrGetVariable(unsigned char *hlr,int hofs,int varid,int varinstance,
-		   unsigned char *value,int *len);
 int dropPacketP(size_t packet_len);
 int additionalPeer(char *peer);
 int readRoutingTable(struct in_addr peers[],int *peer_count,int peer_max);
 int readBatmanPeerFile(char *file_path,struct in_addr peers[],int *peer_count,int peer_max);
 int getBatmanPeerList(char *socket_path,struct in_addr peers[],int *peer_count,int peer_max);
-int hlrDump(unsigned char *hlr,int hofs);
-int importHlr(char *textfile);
-int exportHlr(unsigned char *hlr,char *text);
-int openHlrFile(char *backing_file,int size);
 int asteriskObtainGateway(char *requestor_sid,char *did,char *uri_out);
 int packetOkDNA(unsigned char *packet,int len,unsigned char *transaction_id,
 		int recvttl,struct sockaddr *recvaddr, size_t recvaddrlen,int parseP);

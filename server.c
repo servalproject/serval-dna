@@ -40,8 +40,6 @@ int serverRespawnOnCrash = 0;
 int servalShutdown = 0;
 
 static int server_getpid = 0;
-unsigned char *hlr=NULL;
-int hlr_size=0;
 
 char *instrumentation_file=NULL;
 FILE *i_f=NULL;
