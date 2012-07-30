@@ -19,6 +19,24 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 
+int dumpResponses(struct response_set *responses)
+{
+  struct response *r;
+  if (!responses) {
+    DEBUG("Response set is NULL");
+    return 0;
+  }
+  DEBUGF("Response set claims to contain %d entries.", responses->response_count);
+  r = responses->responses;
+  while(r) {
+    DEBUGF("  response code 0x%02x", r->code);
+    if (r->next && r->next->prev != r)
+      DEBUG("    !! response chain is broken");
+    r = r->next;
+  }
+  return 0;
+}
+
 int clearResponse(struct response **response)
 {
   while(*response)

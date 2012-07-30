@@ -1,5 +1,23 @@
-#ifndef _CONSTANTS_H
-#define _CONSTANTS_H
+/*
+Copyright (C) 2012 Serval Project Inc.
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+*/
+
+#ifndef __SERVALD_CONSTANTS_H
+#define __SERVALD_CONSTANTS_H
 
 /* Packet format:
 
@@ -90,42 +108,6 @@
 #define ACTION_RECVTTL 0xfd
 #define ACTION_PAD 0xfe
 #define ACTION_EOT 0xff
-
-#define DEBUG_ALL                   (~0)
-#define DEBUG_PACKETRX              (1 << 0)
-#define DEBUG_OVERLAYINTERFACES     (1 << 1)
-#define DEBUG_VERBOSE               (1 << 2)
-#define DEBUG_VERBOSE_IO            (1 << 3)
-#define DEBUG_PEERS                 (1 << 4)
-#define DEBUG_DNARESPONSES          (1 << 5)
-#define DEBUG_DNAHELPER           (1 << 6)
-#define DEBUG_SIMULATION            (1 << 7)
-#define DEBUG_RHIZOME_RX            (1 << 8)
-#define DEBUG_PACKETFORMATS         (1 << 9)
-#define DEBUG_GATEWAY               (1 << 10)
-#define DEBUG_KEYRING                   (1 << 11) 
-#define DEBUG_IO                    (1 << 12)
-#define DEBUG_OVERLAYFRAMES         (1 << 13)
-#define DEBUG_OVERLAYABBREVIATIONS  (1 << 14)
-#define DEBUG_OVERLAYROUTING        (1 << 15)
-#define DEBUG_SECURITY              (1 << 16)
-#define DEBUG_RHIZOME               (1 << 17)
-#define DEBUG_OVERLAYROUTEMONITOR   (1 << 18)
-#define DEBUG_QUEUES                (1 << 19)
-#define DEBUG_BROADCASTS            (1 << 20)
-#define DEBUG_RHIZOME_TX            (1 << 21)
-#define DEBUG_PACKETTX              (1 << 22)
-#define DEBUG_PACKETCONSTRUCTION    (1 << 23)
-#define DEBUG_MANIFESTS             (1 << 24)
-#define DEBUG_MDPREQUESTS           (1 << 25)
-#define DEBUG_TIMING						(1 << 26)
-
-#define LOG_LEVEL_SILENT    (-1)
-#define LOG_LEVEL_DEBUG     (0)
-#define LOG_LEVEL_INFO      (1)
-#define LOG_LEVEL_WARN      (2)
-#define LOG_LEVEL_ERROR     (3)
-#define LOG_LEVEL_FATAL     (4)
 
 #define OVERLAY_MAX_INTERFACES 16
 
@@ -378,4 +360,4 @@
 #define DEFAULT_MONITOR_SOCKET_NAME "org.servalproject.servald.monitor.socket"
 #define DEFAULT_MDP_SOCKET_NAME "org.servalproject.servald.mdp.socket"
 
-#endif
+#endif // __SERVALD_CONSTANTS_H

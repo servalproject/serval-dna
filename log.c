@@ -1,6 +1,6 @@
 /* 
-Serval Distributed Numbering Architecture (DNA)
-Copyright (C) 2010 Paul Gardner-Stephen 
+Serval logging.
+Copyright (C) 2012 Serval Project Inc.
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -249,38 +249,6 @@ int dump(char *name, unsigned char *addr, size_t len)
     for (j = 0; j < 16 && i + j < len; j++)
       strbuf_sprintf(b, "%c", addr[i+j] >= ' ' && addr[i+j] < 0x7f ? addr[i+j] : '.');
     DEBUG(strbuf_str(b));
-  }
-  return 0;
-}
-
-char *catv(const char *data, char *buf, size_t len)
-{
-  strbuf b = strbuf_local(buf, len);
-  for (; *data && !strbuf_overrun(b); ++data) {
-    if (*data == '\n') strbuf_puts(b, "\\n");
-    else if (*data == '\r')   strbuf_puts(b, "\\r");
-    else if (*data == '\t')   strbuf_puts(b, "\\t");
-    else if (*data == '\\')   strbuf_puts(b, "\\\\");
-    else if (isprint(*data))  strbuf_putc(b, *data);
-    else		      strbuf_sprintf(b, "\\x%02x", *data);
-  }
-  return buf;
-}
-
-int dumpResponses(struct response_set *responses)
-{
-  struct response *r;
-  if (!responses) {
-    DEBUG("Response set is NULL");
-    return 0;
-  }
-  DEBUGF("Response set claims to contain %d entries.", responses->response_count);
-  r = responses->responses;
-  while(r) {
-    DEBUGF("  response code 0x%02x", r->code);
-    if (r->next && r->next->prev != r)
-      DEBUG("    !! response chain is broken");
-    r = r->next;
   }
   return 0;
 }

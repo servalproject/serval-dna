@@ -1,6 +1,7 @@
 /* 
-Serval Distributed Numbering Architecture (DNA)
-Copyright (C) 2010 Paul Gardner-Stephen 
+Serval Daemon
+Copyright (C) 2010-2012 Paul Gardner-Stephen 
+Copyright (C) 2012 Serval Project Inc.
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -17,6 +18,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#ifndef __SERVALD_SERVALD_H
+#define __SERVALD_SERVALD_H
 
 // #define MALLOC_PARANOIA
 
@@ -559,19 +562,55 @@ int packetSetSidFromId(unsigned char *packet,int packet_maxlen,int *packet_len,
 		       keyring_identity *id);
 int packetFinalise(unsigned char *packet,int packet_maxlen,int recvttl,
 		   int *packet_len,int cryptoflags);
-int extractResponses(struct in_addr sender,unsigned char *buffer,int len,struct response_set *responses);
 int packetGetID(unsigned char *packet,int len,char *did,char *sid);
 int getPeerList();
+
+struct response {
+  int code;
+  unsigned char sid[SID_SIZE];
+  struct in_addr sender;
+  int recvttl;
+  unsigned char *response;
+  int response_len;
+  int var_id;
+  int var_instance;
+  int value_len;
+  int value_offset;
+  int value_bytes;
+  struct response *next,*prev;
+
+  /* who sent it? */
+  unsigned short peer_id;
+  /* have we checked it to see if it allows us to stop requesting? */
+  unsigned char checked;
+};
+
+struct response_set {
+  struct response *responses;
+  struct response *last_response;
+  int response_count;
+
+  /* Bit mask of peers who have replied */
+  unsigned char *reply_bitmask;
+};
+
+int clearResponse(struct response **response);
+int clearResponses(struct response_set *responses);
+int fixResponses(struct response_set *responses);
+int dumpResponses(struct response_set *responses);
+int eraseLastResponse(struct response_set *responses);
+int responseFromPeerP(struct response_set *responses,int peerId);
+int responseFromPeer(struct response_set *responses,int peerId);
+int extractResponses(struct in_addr sender,unsigned char *buffer,int len,struct response_set *responses);
+
 int sendToPeers(unsigned char *packet,int packet_len,int method,int peerId,struct response_set *responses);
 int getReplyPackets(int method,int peer,int batchP,struct response_set *responses,
 		    unsigned char *transaction_id,struct sockaddr *recvaddr,int timeout);
-int clearResponse(struct response **response);
-int packageVariableSegment(unsigned char *data,int *dlen,
-			   struct response *h,
-			   int offset,int buffer_size);
+int packageVariableSegment(unsigned char *data, int *dlen, struct response *h, int offset, int buffer_size);
+int unpackageVariableSegment(unsigned char *data, int dlen, int flags, struct response *r);
+
 int packetDecipher(unsigned char *packet,int len,int cipher);
 int safeZeroField(unsigned char *packet,int start,int count);
-int unpackageVariableSegment(unsigned char *data,int dlen,int flags,struct response *r);
 int extractSid(const unsigned char *packet,int *ofs, char *sid);
 int hlrSetVariable(unsigned char *hlr,int hofs,int varid,int varinstance,
 		   unsigned char *value,int len);
@@ -585,18 +624,12 @@ int extractRequest(unsigned char *packet,int *packet_ofs,int packet_len,
 		   int *start_offset,int *max_offset,int *flags);
 int hlrGetVariable(unsigned char *hlr,int hofs,int varid,int varinstance,
 		   unsigned char *value,int *len);
-int dumpResponses(struct response_set *responses);
-int eraseLastResponse(struct response_set *responses);
 int dropPacketP(size_t packet_len);
-int clearResponses(struct response_set *responses);
-int responseFromPeerP(struct response_set *responses,int peerId);
-int responseFromPeer(struct response_set *responses,int peerId);
 int additionalPeer(char *peer);
 int readRoutingTable(struct in_addr peers[],int *peer_count,int peer_max);
 int readBatmanPeerFile(char *file_path,struct in_addr peers[],int *peer_count,int peer_max);
 int getBatmanPeerList(char *socket_path,struct in_addr peers[],int *peer_count,int peer_max);
 int hlrDump(unsigned char *hlr,int hofs);
-int fixResponses(struct response_set *responses);
 int importHlr(char *textfile);
 int exportHlr(unsigned char *hlr,char *text);
 int openHlrFile(char *backing_file,int size);
@@ -614,8 +647,6 @@ int readArpTable(struct in_addr peers[],int *peer_count,int peer_max);
 
 int overlay_frame_process(struct overlay_interface *interface,overlay_frame *f);
 int overlay_frame_resolve_addresses(overlay_frame *f);
-
-#define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca(toprint_strlen((dstlen), (buf), (len)) + 1), (dstlen), (buf), (len))
 
 #define alloca_tohex(buf,len)           tohex((char *)alloca((len)*2+1), (buf), (len))
 #define alloca_tohex_sid(sid)           alloca_tohex((sid), SID_SIZE)
@@ -1198,3 +1229,5 @@ void dump_stack();
 
 #define OUT() fd_func_exit(&_this_call);
 #define RETURN(X) { OUT() return(X); }
+
+#endif // __SERVALD_SERVALD_H
