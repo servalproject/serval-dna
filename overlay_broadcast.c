@@ -67,7 +67,7 @@ int overlay_broadcast_drop_check(unsigned char *a)
     }
   bpi_index&=BPI_MASK;
   if (debug&DEBUG_BROADCASTS) 
-    fprintf(stderr,"BPI %02X%02X%02X%02X%02X%02X%02X%02X resolves to hash bin %d\n",
+    DEBUGF("BPI %02X%02X%02X%02X%02X%02X%02X%02X resolves to hash bin %d",
 	    a[24],a[25],a[26],a[27],a[28],a[29],a[30],a[31],bpi_index);
   
   int bpiNew=0;
@@ -79,12 +79,12 @@ int overlay_broadcast_drop_check(unsigned char *a)
 
   if (bpiNew)
     {
-      if (debug&DEBUG_BROADCASTS) fprintf(stderr,"  BPI is new, so don't drop frame.\n");
+      if (debug&DEBUG_BROADCASTS) DEBUGF("  BPI is new, so don't drop frame");
       return 0; /* don't drop */
     }
   else
     {
-      if (debug&DEBUG_BROADCASTS) fprintf(stderr,"  BPI is already in our list, so drop the frame to prevent broadcast storms.\n");
+      if (debug&DEBUG_BROADCASTS) DEBUGF("  BPI is already in our list, so drop the frame to prevent broadcast storms");
       return 1; /* drop frame because we have seen this BPI recently */
     }
 }
