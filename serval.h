@@ -377,7 +377,7 @@ extern int overlayMode;
 typedef struct overlay_interface {
   struct sched_ent alarm;
   char name[80];
-  int offset;
+  int recv_offset;
   int fileP;
   int bits_per_second;
   int port;
