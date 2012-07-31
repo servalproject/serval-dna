@@ -117,8 +117,7 @@ int ob_makespace(overlay_buffer *b,int bytes)
       if (newSize>65536) {
 	if (newSize&65535) newSize+=65536-(newSize&65535);
       }
-      if (0) printf("  realloc(b->bytes=%p,newSize=%d)\n",
-	     b->bytes,newSize);
+      if (0) DEBUGF("realloc(b->bytes=%p,newSize=%d)", b->bytes,newSize);
       /* XXX OSX realloc() seems to be able to corrupt things if the heap is not happy when calling realloc(), making debugging memory corruption much harder.
 	 So will do a three-stage malloc,bcopy,free to see if we can tease the bug out that way. */
       /*
@@ -133,7 +132,7 @@ int ob_makespace(overlay_buffer *b,int bytes)
 	int corrupt=0;
 	for(i=0;i<4096;i++) if (b->bytes[b->allocSize+i]!=0xbd) corrupt++;
 	if (corrupt) {
-	  printf("!!!!!! %d corrupted bytes in overrun catch tray\n",corrupt);
+	  WHYF("!!!!!! %d corrupted bytes in overrun catch tray", corrupt);
 	  dump("overrun catch tray",&b->bytes[b->allocSize],4096);
 	  sleep(3600);
 	}
@@ -162,9 +161,6 @@ int ob_makespace(overlay_buffer *b,int bytes)
 /*
  Functions that append data and increase the size of the buffer if possible / required
  */
-
-
-
 
 int ob_append_byte(overlay_buffer *b,unsigned char byte)
 {
@@ -336,7 +332,7 @@ int ob_patch_rfs(overlay_buffer *b,int l)
   int shift=new_size-b->var_length_bytes;
   if (shift) {
     if (debug&DEBUG_PACKETCONSTRUCTION) {
-      fprintf(stderr,"Patching RFS for rfs_size=%d (was %d), so indel %d btyes\n",
+      DEBUGF("Patching RFS for rfs_size=%d (was %d), so indel %d btyes",
 	      new_size,b->var_length_bytes,shift);
       dump("before indel",
 	   &b->bytes[b->var_length_offset],
@@ -372,18 +368,8 @@ int asprintable(int c)
 
 int ob_dump(overlay_buffer *b,char *desc)
 {
-  fprintf(stderr,"Dumping overlay_buffer '%s' at %p : length=%d\n",desc,b,b->length);
-  int i,j;
-
-  for(i=0;i<b->length;i+=16)
-    {
-      fprintf(stderr,"%04x :",i);
-      for(j=0;j<16&&(i+j<b->length);j++) fprintf(stderr," %02x",b->bytes[i+j]);
-      for(;j<16;j++) fprintf(stderr,"   ");
-      fprintf(stderr,"  ");
-      for(j=0;j<16&&(i+j<b->length);j++) fprintf(stderr," %c",asprintable(b->bytes[i+j]));
-      fprintf(stderr,"\n");
-    }
+  DEBUGF("overlay_buffer '%s' at %p : length=%d", desc, b, b->length);
+  dump(NULL, b->bytes, b->length);
   return 0;
 }
 
@@ -396,19 +382,19 @@ int ob_dump(overlay_buffer *b,char *desc)
 void *_serval_debug_malloc(unsigned int bytes,char *file,const char *func,int line)
 {
   void *r=malloc(bytes+SDM_GUARD_AFTER);
-  fprintf(stderr,"%s:%d:%s(): malloc(%d) -> %p\n",file,line,func,bytes,r); 
+  logMessage(LOG_LEVEL_DEBUG, file, line, func, "malloc(%d) -> %p", bytes, r); 
   return r;
 }
 
 void *_serval_debug_calloc(unsigned int bytes,unsigned int count,char *file,const char *func,int line)
 {
   void *r=calloc((bytes*count)+SDM_GUARD_AFTER,1);
-  fprintf(stderr,"%s:%d:%s(): calloc(%d,%d) -> %p\n",file,line,func,bytes,count,r);
+  logMessage(LOG_LEVEL_DEBUG, file, line, func, "calloc(%d,%d) -> %p", bytes, count, r); 
   return r;
 }
 
 void _serval_debug_free(void *p,char *file,const char *func,int line)
 {
   free(p);
-  fprintf(stderr,"%s:%d:%s(): free(%p)\n",file,line,func,p);
+  logMessage(LOG_LEVEL_DEBUG, file, line, func, "free(%p)", p); 
 }
