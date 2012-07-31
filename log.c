@@ -232,11 +232,12 @@ void vlogMessage(int level, const char *file, unsigned int line, const char *fun
   }
 }
 
-int dump(char *name, unsigned char *addr, size_t len)
+int logDump(int level, const char *file, unsigned int line, const char *function, char *name, unsigned char *addr, size_t len)
 {
   char buf[100];
   size_t i;
-  DEBUGF("Dump of %s", name);
+  if (name)
+    logMessage(level, file, line, function, "Dump of %s", name);
   for(i = 0; i < len; i += 16) {
     strbuf b = strbuf_local(buf, sizeof buf);
     strbuf_sprintf(b, "  %04x :", i);
@@ -248,7 +249,7 @@ int dump(char *name, unsigned char *addr, size_t len)
     strbuf_puts(b, "    ");
     for (j = 0; j < 16 && i + j < len; j++)
       strbuf_sprintf(b, "%c", addr[i+j] >= ' ' && addr[i+j] < 0x7f ? addr[i+j] : '.');
-    DEBUG(strbuf_str(b));
+    logMessage(level, file, line, function, "%s", strbuf_str(b));
   }
   return 0;
 }

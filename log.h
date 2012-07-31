@@ -66,7 +66,7 @@ void logArgv(int level, const char *file, unsigned int line, const char *functio
 void logMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, ...);
 void vlogMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, va_list);
 unsigned int debugFlagMask(const char *flagname);
-int dump(char *name, unsigned char *addr, size_t len);
+int logDump(int level, const char *file, unsigned int line, const char *function, char *name, unsigned char *addr, size_t len);
 char *toprint(char *dstStr, ssize_t dstChars, const char *srcBuf, size_t srcBytes);
 size_t toprint_strlen(ssize_t dstStrLen, const char *srcBuf, size_t srcBytes);
 ssize_t get_self_executable_path(char *buf, size_t len);
@@ -105,6 +105,8 @@ int log_backtrace(const char *file, unsigned int line, const char *function);
 #define DEBUG_perror(X)     DEBUGF("%s: %s [errno=%d]", (X), strerror(errno), errno)
 #define D DEBUG("D")
 #define DEBUG_argv(X,ARGC,ARGV) logArgv(LOG_LEVEL_DEBUG, __FILE__, __LINE__, __FUNCTION__, (X), (ARGC), (ARGV))
+
+#define dump(X,A,N)         logDump(LOG_LEVEL_DEBUG, __FILE__, __LINE__, __FUNCTION__, (X), (A), (N))
 
 #define BACKTRACE           log_backtrace(__FILE__, __LINE__, __FUNCTION__)
 
