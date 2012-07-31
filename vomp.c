@@ -319,7 +319,6 @@ int vomp_send_mdp_status_audio(vomp_call_state *call, int audio_codec, unsigned 
   mdp.packetTypeAndFlags=MDP_VOMPEVENT;
   mdp.vompevent.call_session_token=call->local.session;
   mdp.vompevent.last_activity=call->last_activity;
-  if (call->ringing) mdp.vompevent.flags|=VOMPEVENT_RINGING;
   if (call->local.state==VOMP_STATE_CALLENDED) 
     mdp.vompevent.flags|=VOMPEVENT_CALLENDED;
   if (call->remote.state==VOMPEVENT_CALLENDED)
@@ -462,13 +461,15 @@ int vomp_call_stop_audio(vomp_call_state *call)
   return WHY("Not implemented");
 }
 
-int vomp_call_start_ringing(vomp_call_state *call)
-{
-  /* We just need to set the flag to say that we are ringing.
-     Interested listeners and far end will be informed via vomp_send_status() */
-  call->ringing=1;
-  if (debug & DEBUG_VOMP)
-    DEBUGF("RING RING!");
+int vomp_ringing(vomp_call_state *call){
+  if (call){
+    if (debug & DEBUG_VOMP)
+      DEBUGF("RING RING!");
+    if (call->local.state<VOMP_STATE_RINGINGIN && call->remote.state==VOMP_STATE_RINGINGOUT){
+      call->local.state=VOMP_STATE_RINGINGIN;
+      vomp_update(call);
+    }
+  }
   return 0;
 }
 
@@ -476,7 +477,6 @@ int vomp_call_destroy(vomp_call_state *call)
 {
   /* do some general clean ups */
   if (call->audio_started) vomp_call_stop_audio(call);
-  if (call->ringing) call->ringing=0;
 
   if (debug & DEBUG_VOMP)
     DEBUGF("Destroying call %s <--> %s", call->local.did,call->remote.did);
@@ -543,7 +543,6 @@ int vomp_pickup(vomp_call_state *call)
       return WHY("Call is not ringing");
     call->local.state=VOMP_STATE_INCALL;
     call->create_time=gettime_ms();
-    call->ringing=0;
     /* state machine does job of starting audio stream, just tell everyone about
      the changed state. */
     vomp_update(call);
@@ -689,7 +688,6 @@ int vomp_mdp_event(overlay_mdp_frame *mdp, struct sockaddr_un *recvaddr,int recv
 	mdpreply.vompevent.flags=VOMPEVENT_CALLINFO;
 	mdpreply.vompevent.call_session_token=mdp->vompevent.call_session_token;
 	if (call) {
-	  if (call->ringing) mdpreply.vompevent.flags|=VOMPEVENT_RINGING;
 	  if (call->audio_started) 
 	    mdpreply.vompevent.flags|=VOMPEVENT_AUDIOSTREAMING;
 	  if (call->remote.state==VOMP_STATE_CALLENDED) 
@@ -889,7 +887,6 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	   so we must also move to CALLENDED no matter what state we were in */
 	
 	if (call->audio_started) vomp_call_stop_audio(call);
-	if (call->ringing) call->ringing=0;
 	call->local.state=VOMP_STATE_CALLENDED;
       }
       
@@ -918,9 +915,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	  // hey, quit it, we were trying to call you.
 	  call->local.state=VOMP_STATE_CALLENDED;
 	else{
-	  // TODO fail the call if we can't find a codec you know
-	  call->local.state=VOMP_STATE_RINGINGIN;
-	  if (!call->ringing) vomp_call_start_ringing(call);
+	  // Don't automatically transition to RINGIN, wait for a client to tell us when.
 	}
 	break;
 	  
@@ -968,7 +963,6 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	call->local.state=VOMP_STATE_INCALL;
 	// reset create time when call is established
 	call->create_time=gettime_ms();
-	call->ringing=0;
 	// Fall through
       case (VOMP_STATE_INCALL<<3)|VOMP_STATE_INCALL:
 	/* play any audio that they have sent us. */

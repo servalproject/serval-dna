@@ -419,6 +419,9 @@ int monitor_process_command(struct monitor_context *c)
 	  ||callSessionToken==0) {
 	monitor_call_status(&vomp_call_states[i]);
       }
+  } else if (sscanf(cmd,"ringing %x",&callSessionToken)==1) {
+    vomp_call_state *call=vomp_find_call_by_session(callSessionToken);
+    vomp_ringing(call);
   } else if (sscanf(cmd,"pickup %x",&callSessionToken)==1) {
     vomp_call_state *call=vomp_find_call_by_session(callSessionToken);
     vomp_pickup(call);

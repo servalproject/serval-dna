@@ -1033,7 +1033,6 @@ typedef struct vomp_call_state {
   vomp_call_half local;
   vomp_call_half remote;
   int initiated_call;
-  int ringing;
   int fast_audio;
   time_ms_t create_time;
   time_ms_t last_activity;
@@ -1065,6 +1064,7 @@ int vomp_parse_dtmf_digit(char c);
 int vomp_dial(unsigned char *local_sid, unsigned char *remote_sid, char *local_did, char *remote_did);
 int vomp_pickup(vomp_call_state *call);
 int vomp_hangup(vomp_call_state *call);
+int vomp_ringing(vomp_call_state *call);
 int vomp_send_status_remote_audio(vomp_call_state *call, int audio_codec, const unsigned char *audio, int audio_length);
 
 
