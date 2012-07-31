@@ -931,8 +931,8 @@ _tfw_assertExpr() {
 _tfw_assert_stdxxx_is() {
    local qual="$1"
    shift
-   _tfw_getopts assertfilecontent --$qual "$@"
-   shift $((_tfw_getopts_shift - 1))
+   _tfw_getopts assertfilecontent --$qual --stderr "$@"
+   shift $((_tfw_getopts_shift - 2))
    if [ $# -lt 1 ]; then
       _tfw_error "incorrect arguments"
       return 254
@@ -955,8 +955,8 @@ _tfw_assert_stdxxx_is() {
 _tfw_assert_stdxxx_linecount() {
    local qual="$1"
    shift
-   _tfw_getopts assertfilecontent --$qual "$@"
-   shift $((_tfw_getopts_shift - 1))
+   _tfw_getopts assertfilecontent --$qual --stderr "$@"
+   shift $((_tfw_getopts_shift - 2))
    if [ $# -lt 1 ]; then
       _tfw_error "incorrect arguments"
       return 254
@@ -971,8 +971,8 @@ _tfw_assert_stdxxx_linecount() {
 _tfw_assert_stdxxx_grep() {
    local qual="$1"
    shift
-   _tfw_getopts assertgrep --$qual "$@"
-   shift $((_tfw_getopts_shift - 1))
+   _tfw_getopts assertgrep --$qual --stderr "$@"
+   shift $((_tfw_getopts_shift - 2))
    if [ $# -ne 1 ]; then
       _tfw_error "incorrect arguments"
       return 254
