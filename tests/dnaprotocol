@@ -34,6 +34,7 @@ setup() {
    wait_until --sleep=0.25 is_reachable +A
    set_instance +A
    wait_until --sleep=0.25 is_reachable +B
+   executeOk_servald config set debug.all Yes
 }
 
 teardown() {
