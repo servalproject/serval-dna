@@ -38,7 +38,6 @@ SERVALD_SRC_FILES = \
         serval-dna/responses.c     \
 	serval-dna/serval_packetvisualise.c \
         serval-dna/server.c        \
-        serval-dna/trans_cache.c   \
 	serval-dna/sha2.c          \
 	serval-dna/simulate.c      \
         serval-dna/srandomdev.c    \

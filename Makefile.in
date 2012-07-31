@@ -55,7 +55,6 @@ SRCS=	\
 	srandomdev.c \
 	strbuf.c \
 	strbuf_helpers.c \
-	trans_cache.c \
 	vomp.c
 
 MONITORCLIENTSRCS=conf.c \
