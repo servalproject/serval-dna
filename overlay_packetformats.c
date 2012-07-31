@@ -215,7 +215,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       
       if (f.nexthop[0]==0 || f.destination[0]==0 || f.source[0]==0){
 	WHY("Addresses expanded incorrectly");
-	dump("Addresses expanded incorrectly", &packet[payloadStart], ofs - payloadStart);
+	dump(NULL, &packet[payloadStart], ofs - payloadStart);
 	break;
       }
       
