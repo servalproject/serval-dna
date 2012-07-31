@@ -591,19 +591,18 @@ int overlay_route_ack_selfannounce(overlay_frame *f,
      However, if there is no known next-hop for this node (because the return path
      has not yet begun to be built), then we need to set the nexthop to broadcast. */
   out->nexthop_address_status=OA_UNINITIALISED;
-  {
-    if (overlay_resolve_next_hop(out)) {
-      /* no open path, so convert to broadcast */
-      int i;
-      for(i=0;i<(SID_SIZE-8);i++) out->nexthop[i]=0xff;
-      for(i=(SID_SIZE-8);i<SID_SIZE;i++) out->nexthop[i]=random()&0xff;
-      out->nexthop_address_status=OA_RESOLVED;
-      out->ttl=2;
-      out->isBroadcast=1;
-      if (debug&DEBUG_OVERLAYROUTING) 
-	DEBUG("Broadcasting ack to selfannounce for hithero unroutable node");
-    } else out->isBroadcast=0;
-  }
+  if (overlay_resolve_next_hop(out)) {
+    /* no open path, so convert to broadcast */
+    int i;
+    for(i=0;i<(SID_SIZE-8);i++) out->nexthop[i]=0xff;
+    for(i=(SID_SIZE-8);i<SID_SIZE;i++) out->nexthop[i]=random()&0xff;
+    out->nexthop_address_status=OA_RESOLVED;
+    out->ttl=2;
+    out->isBroadcast=1;
+    if (debug&DEBUG_OVERLAYROUTING) 
+      DEBUG("Broadcasting ack to selfannounce for hithero unroutable node");
+  } else
+    out->isBroadcast = 0;
 
   /* Set the time in the ack. Use the last sequence number we have seen
      from this neighbour, as that may be helpful information for that neighbour
@@ -965,9 +964,9 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
     unsigned int interval=n->observations[i].s2-n->observations[i].s1;      
     
     /* Check the observation age, and ignore if too old */
-    int obs_age=now-n->observations[i].time_ms;
+    long long obs_age = now - n->observations[i].time_ms;
     if (debug&DEBUG_OVERLAYROUTING)
-      DEBUGF("tallying obs: %dms old, %dms long", obs_age,interval);
+      DEBUGF("tallying obs: %lldms old, %ums long", obs_age,interval);
     
     /* Ignore very large intervals (>1hour) as being likely to be erroneous.
      (or perhaps a clock wrap due to the modulo arithmatic)

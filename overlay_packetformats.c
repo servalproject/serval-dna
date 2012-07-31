@@ -344,15 +344,22 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
   /* And the sender for any other addresses in this packet */
   overlay_abbreviate_set_current_sender(sid);
   
-  /* Sequence number range.  Based on one tick per milli-second. */
-  
-  if (ob_append_int(b,overlay_interfaces[interface].last_tick_ms))
+  /* Sequence number range.  Based on one tick per millisecond. */
+  long long last_ms = overlay_interfaces[interface].last_tick_ms;
+  // If this interface has not been ticked yet (no selfannounce sent) then invent the prior sequence
+  // number: one millisecond ago.
+  if (last_ms == -1)
+    last_ms = now - 1;
+  if (ob_append_int(b, last_ms))
     return WHY("Could not add low sequence number to self-announcement");
-  if (ob_append_int(b,now))
+  if (ob_append_int(b, now))
     return WHY("Could not add high sequence number to self-announcement");
-  overlay_interfaces[interface].last_tick_ms=now;
   if (debug&DEBUG_OVERLAYINTERFACES)
-    DEBUGF("last tick seq# = %lld", overlay_interfaces[interface].last_tick_ms);
+    DEBUGF("interface #%d: last_tick_ms=%lld, now=%lld (delta=%lld)",
+	interface, overlay_interfaces[interface].last_tick_ms, now,
+	now - last_ms
+      );
+  overlay_interfaces[interface].last_tick_ms = now;
 
   /* A byte that indicates which interface we are sending over */
   if (ob_append_byte(b,interface))

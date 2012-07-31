@@ -282,7 +282,7 @@ int overlay_interface_init(char *name,struct sockaddr_in *src_addr,struct sockad
   I(bits_per_second)=speed_in_bits;
   I(port)=port;
   I(type)=type;
-  I(last_tick_ms)=0;
+  I(last_tick_ms)= -1; // not ticked yet
   I(alarm.poll.fd)=0;
   switch (type) {
   case OVERLAY_INTERFACE_PACKETRADIO:
@@ -403,7 +403,7 @@ void overlay_dummy_poll(struct sched_ent *alarm)
   unsigned char transaction_id[8];
   unsigned long long now = gettime_ms();
 
-  if (interface->last_tick_ms + interface->tick_ms <= now){
+  if (interface->last_tick_ms == -1 || now >= interface->last_tick_ms + interface->tick_ms) {
     // tick the interface
     int i = (interface - overlay_interfaces);
     overlay_tick_interface(i, now);
@@ -416,12 +416,10 @@ void overlay_dummy_poll(struct sched_ent *alarm)
       /* if there's no input, while we want to check for more soon,
 	 we need to allow all other low priority alarms to fire first,
 	 otherwise we'll dominate the scheduler without accomplishing anything */
-      
-      alarm->alarm = gettime_ms()+20;
-      alarm->deadline = alarm->alarm + 10000;
-      
-      if (alarm->alarm > interface->last_tick_ms + interface->tick_ms)
+      alarm->alarm = gettime_ms() + 20;
+      if (interface->last_tick_ms != -1 && alarm->alarm > interface->last_tick_ms + interface->tick_ms)
 	alarm->alarm = interface->last_tick_ms + interface->tick_ms;
+      alarm->deadline = alarm->alarm + 10000;
     }
   else
     {
@@ -988,7 +986,8 @@ int overlay_tick_interface(int i, long long now)
   /* 1. Send announcement about ourselves, including one SID that we host if we host more than one SID
      (the first SID we host becomes our own identity, saving a little bit of data here).
   */
-  overlay_add_selfannouncement(i,packet.buffer);
+  if (overlay_add_selfannouncement(i,packet.buffer) == -1)
+    return WHY("tick failed");
   
   /* Add advertisements for ROUTES */
   overlay_route_add_advertisements(packet.buffer);
