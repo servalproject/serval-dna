@@ -63,6 +63,7 @@ void set_logging(FILE *f);
 FILE *open_logging();
 void close_logging();
 void logArgv(int level, const char *file, unsigned int line, const char *function, const char *label, int argc, const char *const *argv);
+void logString(int level, const char *file, unsigned int line, const char *function, const char *str); 
 void logMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, ...);
 void vlogMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, va_list);
 unsigned int debugFlagMask(const char *flagname);
