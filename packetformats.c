@@ -126,8 +126,10 @@ int packetOkDNA(unsigned char *packet,int len,unsigned char *transaction_id,
     bcopy(&temp[0],&packet[HEADERFIELDS_LEN],payloadRotation);
   }
 
-  if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"Packet passes sanity checks and is ready for decoding.\n");
-  if (debug&DEBUG_PACKETFORMATS) dump("unrotated packet",packet,len);
+  if (debug&DEBUG_PACKETFORMATS) {
+    DEBUG("Packet passes sanity checks and is ready for decoding");
+    dump("unrotated packet",packet,len);
+  }
 
   if (parseP) return process_packet(packet,len,recvttl,recvaddr,recvaddrlen); else return 0;
 }
@@ -253,10 +255,11 @@ int packetFinalise(unsigned char *packet,int packet_maxlen,int recvttl,
   payloadRotation=(*packet_len)-HEADERFIELDS_LEN;
   if (payloadRotation>0xff) payloadRotation=0xff;
   payloadRotation=random()%payloadRotation;
-  if (debug&DEBUG_SECURITY) 
-    fprintf(stderr,"Known Plaintext counter-measure: rotating packet payload by 0x%02x bytes.\n",
+  if (debug&DEBUG_SECURITY) {
+    DEBUGF("Known Plaintext counter-measure: rotating packet payload by 0x%02x bytes",
 	    payloadRotation);
-  if (debug&DEBUG_SECURITY) dump("unrotated packet",packet,*packet_len);
+    dump("unrotated packet",packet,*packet_len);
+  }
 
   /* Now rotate the payload */
   {
@@ -297,11 +300,11 @@ int extractRequest(unsigned char *packet,int *packet_ofs,int packet_len,
   *bytes|=packet[(*packet_ofs)++];
 
   *flags=packet[(*packet_ofs)++];
-  if (debug&DEBUG_PACKETFORMATS) printf("Write flags = 0x%02x\n",*flags);
+  if (debug&DEBUG_PACKETFORMATS) DEBUGF("Write flags = 0x%02x",*flags);
 
   if (*packet_ofs<0||(*packet_ofs)+(*bytes)>=packet_len)
     {
-      if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"Packet offset is %d, length is %d, and asked for %d bytes.\n",*packet_ofs,packet_len,*bytes);
+      if (debug&DEBUG_PACKETFORMATS) DEBUGF("Packet offset is %d, length is %d, and asked for %d bytes",*packet_ofs,packet_len,*bytes);
       return WHY("mal-formed request packet (too short for claimed data)");
     }
 
@@ -332,7 +335,7 @@ int extractResponses(struct in_addr sender,unsigned char *buffer,int len,struct 
       switch(buffer[ofs])
 	{
 	case ACTION_EOT:
-	  if (debug&DEBUG_DNARESPONSES) fprintf(stderr,"Reached response packet EOT.\n");
+	  if (debug&DEBUG_DNARESPONSES) DEBUGF("Reached response packet EOT");
 	case ACTION_DECLINED: case ACTION_OKAY:
 	case ACTION_CREATEHLR:
 	  r->response_len=0; break;
@@ -378,7 +381,7 @@ int extractResponses(struct in_addr sender,unsigned char *buffer,int len,struct 
 	case ACTION_XFER:
 	default:
 	  free(r);
-	  if (debug&(DEBUG_DNARESPONSES|DEBUG_PACKETFORMATS)) fprintf(stderr,"Encountered unimplemented response code 0x%02x @ 0x%x\n",buffer[ofs],ofs);
+	  if (debug&(DEBUG_DNARESPONSES|DEBUG_PACKETFORMATS)) DEBUGF("Encountered unimplemented response code 0x%02x @ 0x%x",buffer[ofs],ofs);
 	  fixResponses(responses);
 	  return WHY("Encountered unimplemented response type");
 	}
@@ -403,7 +406,7 @@ int extractResponses(struct in_addr sender,unsigned char *buffer,int len,struct 
       if (r->peer_id>peer_count) r->peer_id=-1;
 
       /* Link new response into chain */
-      if (debug&DEBUG_DNARESPONSES) printf("Linking response into response set.\n");
+      if (debug&DEBUG_DNARESPONSES) DEBUGF("Linking response into response set");
       r->prev=responses->last_response;
       if (responses->last_response)
 	responses->last_response->next=r;
@@ -436,7 +439,7 @@ int packageVariableSegment(unsigned char *data,int *dlen,
   bytes=buffer_size-(*dlen)-8;
   if ((h->value_len-offset)<bytes) bytes=h->value_len-offset;
   if (bytes<0) bytes=0;
-  if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"Packaging %d bytes of variable\n",bytes);
+  if (debug&DEBUG_PACKETFORMATS) DEBUGF("Packaging %d bytes of variable",bytes);
 
   /* Describe variable */
 
@@ -455,7 +458,7 @@ int packageVariableSegment(unsigned char *data,int *dlen,
   /* Number of bytes in this segment */
   data[(*dlen)++]=(bytes>>8)&0xff;
   data[(*dlen)++]=bytes&0xff;
-  if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"Packaging %d bytes\n",bytes);
+  if (debug&DEBUG_PACKETFORMATS) DEBUGF("Packaging %d bytes",bytes);
 
   /* Package the variable value itself (or part thereof) */
   bcopy(&h->response[offset],&data[*dlen],bytes);

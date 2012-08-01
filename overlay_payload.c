@@ -34,20 +34,20 @@ int op_append_type(overlay_buffer *headers,overlay_frame *p)
     {
     case OF_TYPE_FLAG_NORMAL:
       c[0]=p->type|p->modifiers;
-      if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"type resolves to %02x\n",c[0]);
+      if (debug&DEBUG_PACKETFORMATS) DEBUGF("type resolves to %02x",c[0]);
       if (ob_append_bytes(headers,c,1)) return -1;
       break;
     case OF_TYPE_FLAG_E12:
       c[0]=(p->type&OF_MODIFIER_BITS)|OF_TYPE_EXTENDED12;
       c[1]=(p->type>>4)&0xff;
-      if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"type resolves to %02x%02x\n",c[0],c[1]);
+      if (debug&DEBUG_PACKETFORMATS) DEBUGF("type resolves to %02x%02x",c[0],c[1]);
       if (ob_append_bytes(headers,c,2)) return -1;
       break;
     case OF_TYPE_FLAG_E20:
       c[0]=(p->type&OF_MODIFIER_BITS)|OF_TYPE_EXTENDED20;
       c[1]=(p->type>>4)&0xff;
       c[2]=(p->type>>12)&0xff;
-      if (debug&DEBUG_PACKETFORMATS) fprintf(stderr,"type resolves to %02x%02x%02x\n",c[0],c[1],c[2]);
+      if (debug&DEBUG_PACKETFORMATS) DEBUGF("type resolves to %02x%02x%02x",c[0],c[1],c[2]);
       if (ob_append_bytes(headers,c,3)) return -1;
       break;
     default: 
@@ -194,21 +194,16 @@ overlay_buffer *overlay_payload_unpackage(overlay_frame *b) {
 int dump_queue(char *msg,int q)
 {
   overlay_txqueue *qq=&overlay_tx[q];
-  printf("Contents of TX queue #%d (%s):\n",q,msg);
-  printf("  length=%d, maxLength=%d\n",qq->length,qq->maxLength);
+  DEBUGF("Contents of TX queue #%d (%s):",q,msg);
+  DEBUGF("  length=%d, maxLength=%d",qq->length,qq->maxLength);
   struct overlay_frame *f=qq->first,*l=qq->last;
-
-  printf("  head of queue = %p, tail of queue = %p\n",
-	 f,l);
-
+  DEBUGF("  head of queue = %p, tail of queue = %p", f, l);
   struct overlay_frame *n=f;
   int count=0;
-
   while(n) {
-    printf("    queue entry #%d : prev=%p, next=%p\n",
-	   count,n->prev,n->next);
-    if (n==n->next) { 
-      printf("      ERROR: loop in queue\n");
+    DEBUGF("    queue entry #%d : prev=%p, next=%p", count,n->prev,n->next);
+    if (n==n->next) {
+      WHY("      ERROR: loop in queue");
       return -1;
     }
     n=n->next;
@@ -218,18 +213,13 @@ int dump_queue(char *msg,int q)
 
 int dump_payload(overlay_frame *p,char *message)
 {
-  fflush(stdout);
-  fprintf(stderr,
-	  "+++++\nFrame from %s to %s of type 0x%02x %s:\n",
+  DEBUGF( "+++++\nFrame from %s to %s of type 0x%02x %s:",
 	  alloca_tohex_sid(p->source),
 	  alloca_tohex_sid(p->destination),p->type,
 	  message?message:"");
-  fprintf(stderr," next hop is %s\n",alloca_tohex_sid(p->nexthop));
-  fflush(stderr);
-  if (p->payload) dump("payload contents",
-		       &p->payload->bytes[0],p->payload->length);   
-  fflush(stdout); fflush(stderr);
-  fprintf(stderr,"-----\n");
+  DEBUGF(" next hop is %s",alloca_tohex_sid(p->nexthop));
+  if (p->payload)
+    dump("payload contents", &p->payload->bytes[0],p->payload->length);
   return 0;
 }
 

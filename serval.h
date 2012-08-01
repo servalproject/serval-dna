@@ -660,6 +660,10 @@ int overlay_interface_init_socket(int i);
 long long overlay_time_until_next_tick();
 int overlay_rx_messages();
 
+void logServalPacket(int level, const char *file, unsigned int line, const char *function, const char *message, const unsigned char *packet, size_t len);
+
+#define DEBUG_packet_visualise(M,P,N) logServalPacket(LOG_LEVEL_DEBUG, __FILE__, __LINE__, __FUNCTION__, (M), (P), (N))
+
 int overlay_add_selfannouncement();
 int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b);
 int overlay_interface_args(const char *arg);
@@ -797,7 +801,7 @@ int overlay_saw_mdp_containing_frame(overlay_frame *f,long long now);
 
 #include "nacl.h"
 
-int serval_packetvisualise(FILE *f,char *message,unsigned char *packet,int plen);
+int serval_packetvisualise(FILE *f, const char *message, const unsigned char *packet, size_t len);
 
 int overlay_broadcast_drop_check(unsigned char *a);
 int overlay_address_is_broadcast(unsigned char *a);

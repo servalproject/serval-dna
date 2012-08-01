@@ -38,16 +38,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf.h"
 
 int cli_usage() {
-  fprintf(stderr,"\nServal Mesh version <version>.\n");
-  fprintf(stderr,"Usage:\n");
+  printf("Serval Mesh version <version>.\n");
+  printf("Usage:\n");
   int i,j;
-  for(i=0;command_line_options[i].function;i++)
-    {
-      for(j=0;command_line_options[i].words[j];j++)
-	fprintf(stderr," %s",command_line_options[i].words[j]);
-      fprintf(stderr,"\n   %s\n",command_line_options[i].description);
-    }
-  return -1;
+  for(i=0;command_line_options[i].function;i++) {
+    for(j=0;command_line_options[i].words[j];j++)
+      printf(" %s",command_line_options[i].words[j]);
+    printf("\n   %s\n",command_line_options[i].description);
+  }
+  return 0;
 }
 
 /* Remember the name by which this program was invoked.
@@ -183,24 +182,17 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servald_ServalD_rawCommand(JNIEnv 
 
 #endif /* HAVE_JNI_H */
 
-static void complainCommandLine(const char *prefix, int argc, const char *const *argv)
-{
-  WHY_argv(prefix, argc, argv);
-}
-
 /* The argc and argv arguments must be passed verbatim from main(argc, argv), so argv[0] is path to
    executable.
 */
 int parseCommandLine(const char *argv0, int argc, const char *const *args)
 {
-  int i;
   int ambiguous=0;
   int cli_call=-1;
-  
   fd_clearstats();
-
   IN();
   exec_argv0 = argv0;
+  int i;
   for(i=0;command_line_options[i].function;i++)
     {
       int j;
@@ -242,13 +234,12 @@ int parseCommandLine(const char *argv0, int argc, const char *const *args)
 	if (cli_call>=0) ambiguous++;
 	if (ambiguous==1) {
 	  WHY("Ambiguous command line call:");
-	  complainCommandLine("   ", argc, args);
+	  WHY_argv("   ", argc, args);
 	  WHY("Matches the following known command line calls:");
-	  complainCommandLine("   ", argc, command_line_options[cli_call].words);
+	  WHY_argv("   ", argc, command_line_options[cli_call].words);
 	}
-	if (ambiguous) {
-	  complainCommandLine("   ", argc, command_line_options[i].words);
-	}
+	if (ambiguous)
+	  WHY_argv("   ", argc, command_line_options[i].words);
 	cli_call=i;
       }
     }
@@ -257,9 +248,12 @@ int parseCommandLine(const char *argv0, int argc, const char *const *args)
   if (ambiguous) return -1;
   /* Complain if we found no matching calls */
   if (cli_call<0) {
-    WHY("Unknown command line call:");
-    complainCommandLine("   ", argc, args);
-    return cli_usage();
+    if (argc) {
+      WHY("Unknown command line call:");
+      WHY_argv("   ", argc, args);
+    }
+    INFO("Use \"help\" command to see a list of valid commands");
+    return -1;
   }
 
   /* Otherwise, make call */
@@ -897,10 +891,10 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
 	rx_stddev=sqrtf(rx_stddev);
 
 	/* XXX Report final statistics before going */
-	fprintf(stderr,"--- %s ping statistics ---\n", alloca_tohex_sid(ping_sid));
-	fprintf(stderr,"%lld packets transmitted, %lld packets received, %3.1f%% packet loss\n",
+	printf("--- %s ping statistics ---\n", alloca_tohex_sid(ping_sid));
+	printf("%lld packets transmitted, %lld packets received, %3.1f%% packet loss\n",
 		tx_count,rx_count,tx_count?(tx_count-rx_count)*100.0/tx_count:0);
-	fprintf(stderr,"round-trip min/avg/max/stddev%s = %lld/%.3f/%lld/%.3f ms\n",
+	printf("round-trip min/avg/max/stddev%s = %lld/%.3f/%lld/%.3f ms\n",
 		(samples<rx_count)?" (stddev calculated from last 1024 samples)":"",
 		rx_mintime,rx_mean,rx_maxtime,rx_stddev);
 
@@ -1525,22 +1519,16 @@ int app_id_self(int argc, const char *const *argv, struct command_line_option *o
 int app_test_rfs(int argc, const char *const *argv, struct command_line_option *o)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
-  unsigned char bytes[8];
+  printf("Testing that RFS coder works properly.\n");
   int i;
-  
-  fprintf(stderr,"Testing that RFS coder works properly.\n");
-  for(i=0;i<65536;i++)
-    {
-      rfs_encode(i,&bytes[0]);
-      int zero=0;
-      int r=rfs_decode(&bytes[0],&zero);
-      if (i!=r) {
-	fprintf(stderr,"RFS encoding of %d decodes to %d: ",i,r);
-	int j;
-	for(j=0;j<zero;j++) fprintf(stderr," %02x",bytes[j]);
-	fprintf(stderr,"\n");
-      }
-    }
+  for(i=0;i<65536;i++) {
+    unsigned char bytes[8];
+    rfs_encode(i, &bytes[0]);
+    int zero=0;
+    int r=rfs_decode(&bytes[0],&zero);
+    if (i != r)
+      printf("RFS encoding of %d decodes to %d: %s\n", i, r, alloca_tohex(bytes, sizeof bytes));
+  }
   return 0;
 }
 

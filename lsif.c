@@ -75,7 +75,7 @@ int scrapeProcNetRoute()
   if (debug & DEBUG_OVERLAYINTERFACES) DEBUG("called");
 
   FILE *f=fopen("/proc/net/route","r");
-  if (!f) return fprintf(stderr,"Can't read from /proc/net/route\n");
+  if (!f) return WHY_perror("fopen(\"/proc/net/route\")");
 
   char line[1024],name[1024],dest[1024],mask[1024];
 

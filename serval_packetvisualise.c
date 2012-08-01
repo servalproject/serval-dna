@@ -1,3 +1,23 @@
+/* 
+Serval Mesh
+Copyright (C) 2010-2012 Paul Gardner-Stephen
+Copyright (C) 2010-2012 Serval Project Pty Limited
+Copyright (C) 2012 Serval Project Inc.
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+*/
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,7 +46,6 @@ int main(int argc,char **argv)
       int i;
       len=random()%8192;
       for(i=0;i<len;i++) buff[i]=random()&0xff;
-      
       serval_packetvisualise(stdout,"Fuzz Test",buff,len);
     }
   return 0;
@@ -34,7 +53,7 @@ int main(int argc,char **argv)
 
 #endif
 
-int serval_packetvisualise_renderaddress(FILE *f,unsigned char *packet,int *ofs,int senderP)
+int serval_packetvisualise_renderaddress(FILE *f, const unsigned char *packet, size_t *ofs, int senderP)
 {
 
   switch(packet[*ofs]) {
@@ -128,7 +147,7 @@ int serval_packetvisualise_renderaddress(FILE *f,unsigned char *packet,int *ofs,
       if (skip) {
 	fprintf(f," <literal 256 bit address, assigned index 0x");
 	int i;
-	for(i=0;i<skip;i++) fprintf(stderr,"%02x",packet[(*ofs)+skip]);
+	for(i=0;i<skip;i++) fprintf(f,"%02x",packet[(*ofs)+skip]);
 	fprintf(f,">");
       } else
 	fprintf(f," <literal 256 bit address>");
@@ -139,7 +158,7 @@ int serval_packetvisualise_renderaddress(FILE *f,unsigned char *packet,int *ofs,
 }
 
 
-int isOverlayPacket(FILE *f,unsigned char *packet,int *ofs,int len)
+int isOverlayPacket(FILE *f, const unsigned char *packet, size_t *ofs, size_t len)
 {
   if (packet[(*ofs)]!=0x4f) return 0;
   if (packet[(*ofs)+1]!=0x10) return 0;
@@ -195,7 +214,7 @@ int isOverlayPacket(FILE *f,unsigned char *packet,int *ofs,int len)
       
       /* Assuming that there is no compression or crypto, we just use the plain body 
 	 of the frame. */
-      unsigned char *frame=&packet[*ofs];
+      const unsigned char *frame=&packet[*ofs];
       int frame_len=rfs;
 
       next_frame_ofs=(*ofs)+rfs;
@@ -544,13 +563,12 @@ int isOverlayPacket(FILE *f,unsigned char *packet,int *ofs,int len)
   return 1;
 }
 
-int isDNAPacket(FILE *f,unsigned char *packet,int *ofs,int len)
+int isDNAPacket(FILE *f, const unsigned char *packet, size_t *ofs, size_t len)
 {
   return 0;
 }
 
-
-int serval_packetvisualise(FILE *f,char *message,unsigned char *packet,int len)
+int serval_packetvisualise(FILE *f, const char *message, const unsigned char *packet, size_t len)
 {
   if (f == NULL)
     return -1;
@@ -570,19 +588,18 @@ int serval_packetvisualise(FILE *f,char *message,unsigned char *packet,int len)
       fprintf(f,"\n");
     }
 
-  int ofs=0;
+  size_t ofs=0;
   fprintf(f,"  Packet Structure:\n");
-
   if (isOverlayPacket(f,packet,&ofs,len))
-    { }
+    ;
   else if (isDNAPacket(f,packet,&ofs,len))
-    { }
+    ;
   else {
     /* Unknown packet type. */
   }
 
   if (ofs<len) {
-    fprintf(stderr,"  WARNING: The last %d (0x%x) bytes of the packet were not parsed.\n",len-ofs,len-ofs);
+    fprintf(f,"  WARNING: The last %d (0x%x) bytes of the packet were not parsed.\n",len-ofs,len-ofs);
   for(i=0;i<len;i+=16) 
     if (i+15>=ofs)
     {

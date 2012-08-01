@@ -365,11 +365,8 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
 	bcopy(&m->manifestdata[(*ofs)+1+32],&sigBuf[96],32);
 	/* Get public key of signatory */
 	bcopy(&m->manifestdata[(*ofs)+1+64],&publicKey[0],crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
-	
 	unsigned long long mlen=0;
-	int r=crypto_sign_edwards25519sha512batch_open(verifyBuf,&mlen,&sigBuf[0],128,
-						       publicKey);
-	fflush(stdout); fflush(stderr);
+	int r=crypto_sign_edwards25519sha512batch_open(verifyBuf,&mlen,&sigBuf[0],128, publicKey);
 #endif
 	if (r) {
 	  (*ofs)+=len;

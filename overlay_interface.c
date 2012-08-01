@@ -382,12 +382,12 @@ void overlay_interface_poll(struct sched_ent *alarm)
   
   /* We have a frame from this interface */
   if (debug&DEBUG_PACKETRX)
-    serval_packetvisualise(open_logging(),"Read from real interface", packet,plen);
+    DEBUG_packet_visualise("Read from real interface", packet,plen);
   if (debug&DEBUG_OVERLAYINTERFACES) DEBUGF("Received %d bytes on interface %s",plen,interface->name);
   if (packetOk(interface,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
     WHY("Malformed packet");
     // Do we really want to attempt to parse it again?
-    //serval_packetvisualise(open_logging(), "Malformed packet", packet,plen);
+    //DEBUG_packet_visualise("Malformed packet", packet,plen);
   }
 }
 
@@ -437,7 +437,7 @@ void overlay_dummy_poll(struct sched_ent *alarm)
 	  if (plen > nread - 128)
 	    plen = -1;
 	  if (debug&DEBUG_PACKETRX)
-	    serval_packetvisualise(open_logging(), "Read from dummy interface", &packet[128], plen);
+	    DEBUG_packet_visualise("Read from dummy interface", &packet[128], plen);
 	  bzero(&transaction_id[0],8);
 	  bzero(&src_addr,sizeof(src_addr));
 	  if (plen >= 4) {
@@ -475,7 +475,7 @@ int overlay_broadcast_ensemble(int interface_number,
   if (debug&DEBUG_PACKETTX)
     {
       DEBUGF("Sending this packet via interface #%d",interface_number);
-      serval_packetvisualise(open_logging(),NULL,bytes,len);
+      DEBUG_packet_visualise(NULL,bytes,len);
     }
 
   overlay_interface *interface = &overlay_interfaces[interface_number];
@@ -1028,4 +1028,21 @@ long long parse_quantity(char *q)
     {
       return WHY("Could not parse quantity");
     }
+}
+
+void logServalPacket(int level, const char *file, unsigned int line, const char *function, const char *message, const unsigned char *packet, size_t len)
+{
+  char *buffer;
+  size_t size;
+  FILE *m = open_memstream(&buffer, &size);
+  if (m == NULL) {
+    WHY_perror("open_memstream");
+    return;
+  }
+  if (serval_packetvisualise(m, message, packet, len) == -1)
+    WHY("serval_packetvisualise() failed");
+  if (fclose(m) == EOF)
+    WHY_perror("fclose");
+  else
+    logString(level, file, line, function, buffer);
 }

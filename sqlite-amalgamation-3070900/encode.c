@@ -247,9 +247,7 @@ int main(int argc, char **argv){
     }
     printf(" OK\n");
   }
-  fprintf(stderr,"Finished.  Total encoding: %d->%d bytes\n",
-          nByteIn, nByteOut);
-  fprintf(stderr,"Avg size increase: %.3f%%\n",
-    (nByteOut-nByteIn)*100.0/(double)nByteIn);
+  printf("Finished.  Total encoding: %d->%d bytes\n", nByteIn, nByteOut);
+  printf("Avg size increase: %.3f%%\n", (nByteOut-nByteIn)*100.0/(double)nByteIn);
 }
 #endif /* ENCODER_TEST */
