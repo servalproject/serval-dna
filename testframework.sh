@@ -378,6 +378,12 @@ teardown() {
 # The following functions are provided to facilitate writing test cases and
 # fixtures.
 
+# Add quotations to the given arguments to allow them to be expanded intact
+# in eval expressions.
+shellarg() {
+   _tfw_shellarg "$@"
+}
+
 # Echo the absolute path (containing symlinks if given) of the given
 # file/directory, which does not have to exist or even be accessible.
 abspath() {
