@@ -283,7 +283,7 @@ unsigned int debugFlagMask(const char *flagname) {
   else if (!strcasecmp(flagname,"peers"))		return DEBUG_PEERS;
   else if (!strcasecmp(flagname,"dnaresponses"))	return DEBUG_DNARESPONSES;
   else if (!strcasecmp(flagname,"dnahelper"))		return DEBUG_DNAHELPER;
-  else if (!strcasecmp(flagname,"simulation"))		return DEBUG_SIMULATION;
+  else if (!strcasecmp(flagname,"vomp"))		return DEBUG_VOMP;
   else if (!strcasecmp(flagname,"packetformats"))	return DEBUG_PACKETFORMATS;
   else if (!strcasecmp(flagname,"packetconstruction"))	return DEBUG_PACKETCONSTRUCTION;
   else if (!strcasecmp(flagname,"gateway"))		return DEBUG_GATEWAY;

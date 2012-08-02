@@ -1,6 +1,7 @@
 /* 
 Serval Voice Over Mesh Protocol (VoMP)
-Copyright (C) 2012 Paul Gardner-Stephen 
+Copyright (C) 2012 Paul Gardner-Stephen
+Copyright (C) 2012 Serval Project Inc.
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -24,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "strbuf.h"
 
 /* Although we only support one call at a time, we allow for multiple call states.
    This is partly to deal with denial of service attacks that might occur by causing
@@ -34,8 +36,10 @@ int vomp_active_call=-1;
 vomp_call_state vomp_call_states[VOMP_MAX_CALLS];
 struct profile_total vomp_stats;
 
-int dump_vomp_status();
-void vomp_process_tick(struct sched_ent *alarm);
+static void vomp_process_tick(struct sched_ent *alarm);
+static int dump_vomp_status();
+static const char *vomp_describe_codec(int c);
+strbuf strbuf_append_vomp_supported_codecs(strbuf sb, const unsigned char supported_codecs[256]);
 
 /* which codecs we support (set by registered listener) */
 unsigned char vomp_local_codec_list[256];
@@ -56,14 +60,15 @@ vomp_call_state *vomp_find_call_by_session(int session_token)
   return NULL;
 }
 
-int vomp_generate_session_id(){
+int vomp_generate_session_id()
+{
   int session_id=0;
   while (!session_id)
   {
     if (urandombytes((unsigned char *)&session_id,sizeof(int)))
       return WHY("Insufficient entropy");
     session_id&=VOMP_SESSION_MASK;
-    DEBUGF("session=0x%08x\n",session_id);
+    if (debug & DEBUG_VOMP) DEBUGF("session=0x%08x",session_id);
     int i;
     /* reject duplicate call session numbers */
     for(i=0;i<vomp_call_count;i++)
@@ -81,8 +86,8 @@ vomp_call_state *vomp_create_call(unsigned char *remote_sid,
 				  unsigned int remote_session,
 				  unsigned int local_session,
 				  int remote_state,
-				  int local_state){
-  
+				  int local_state)
+{
   int i;
   if (!local_session)
     local_session=vomp_generate_session_id();
@@ -111,7 +116,8 @@ vomp_call_state *vomp_create_call(unsigned char *remote_sid,
   vomp_stats.name="vomp_process_tick";
   call->alarm.stats=&vomp_stats;
   schedule(&call->alarm);
-  WHYF("Returning new call #%d",local_session);
+  if (debug & DEBUG_VOMP)
+    DEBUGF("Returning new call #%d",local_session);
   return call;
 }
 
@@ -125,15 +131,16 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
   int i;
   vomp_call_state *call;
   
-  if (0) printf("%d calls already in progress.\n",vomp_call_count);
+  if (debug & DEBUG_VOMP)
+    DEBUGF("%d calls already in progress.",vomp_call_count);
   for(i=0;i<vomp_call_count;i++)
     {
       call = &vomp_call_states[i];
       
       /* do the fast comparison first, and only if that matches proceed to
 	 the slower SID comparisons */
-      if (0)
-	fprintf(stderr,"asking for %06x:%06x, this call %06x:%06x\n",
+      if (debug & DEBUG_VOMP)
+	DEBUGF("asking for %06x:%06x, this call %06x:%06x",
 		sender_session,recvr_session,
 		call->remote.session,
 		call->local.session);
@@ -159,9 +166,8 @@ vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
       if (!call->remote.session) 
 	call->remote.session=sender_session;
 
-      if (0) {
-	WHYF("Returning existing call #%d",i);
-	fprintf(stderr,"%06x:%06x matches call #%d %06x:%06x\n",
+      if (debug & DEBUG_VOMP) {
+	DEBUGF("%06x:%06x matches call #%d %06x:%06x",
 		sender_session,recvr_session,i,
 		call->remote.session,
 		call->local.session);
@@ -213,25 +219,25 @@ int vomp_send_status_remote_audio(vomp_call_state *call, int audio_codec, const 
   
   mdp.out.payload_length=14;
   
-  if (call->local.state<VOMP_STATE_RINGINGOUT
-      &&call->remote.state<VOMP_STATE_RINGINGOUT){
+  if (call->local.state < VOMP_STATE_RINGINGOUT && call->remote.state < VOMP_STATE_RINGINGOUT) {
     /* Also include list of supported codecs */
-    if (0) WHY("Including codec list");
     int i;
-    for(i=0;i<256;i++)
+    for (i = 0; i < 256; ++i)
       if (vomp_local_codec_list[i]) {
 	mdp.out.payload[mdp.out.payload_length++]=i;
-	if (0) WHYF("  I support the %s codec",vomp_describe_codec(i));
+	if (debug & DEBUG_VOMP)
+	  DEBUGF("I support the %s codec", vomp_describe_codec(i));
       }
     mdp.out.payload[mdp.out.payload_length++]=0;
-    if (0) WHYF("mdp frame with codec list is %d bytes",mdp.out.payload_length);
+    if (debug & DEBUG_VOMP)
+      DEBUGF("mdp frame with codec list is %d bytes", mdp.out.payload_length);
   }
 
   if (call->local.state==VOMP_STATE_INCALL && audio && audio_length && vomp_sample_size(audio_codec)==audio_length) {
     unsigned short  *len=&mdp.out.payload_length;
     unsigned char *p=&mdp.out.payload[0];
 
-    // WHY("Including audio sample block");
+    // DEBUG("Including audio sample block");
 
     /* record sample in recent list.
        XXX - What timestamp to attach to the sample?
@@ -294,17 +300,20 @@ int vomp_send_status_remote_audio(vomp_call_state *call, int audio_codec, const 
   return 0;
 }
 
-int vomp_send_status_remote(vomp_call_state *call){
+int vomp_send_status_remote(vomp_call_state *call)
+{
   return vomp_send_status_remote_audio(call, 0, NULL, 0);
 }
 
-int vomp_send_mdp_status_audio(vomp_call_state *call, int audio_codec, unsigned int start_time, unsigned int end_time, const unsigned char *audio, int audio_length){
+int vomp_send_mdp_status_audio(vomp_call_state *call, int audio_codec, unsigned int start_time, unsigned int end_time, const unsigned char *audio, int audio_length)
+{
   if (audio && audio_length && vomp_sample_size(audio_codec)!=audio_length)
     return WHY("Audio frame is the wrong length");
   
   overlay_mdp_frame mdp;
   
-  DEBUG("Sending mdp client packet");
+  if (debug & DEBUG_VOMP)
+    DEBUG("Sending mdp client packet");
   
   bzero(&mdp,sizeof(mdp));
   mdp.packetTypeAndFlags=MDP_VOMPEVENT;
@@ -325,11 +334,9 @@ int vomp_send_mdp_status_audio(vomp_call_state *call, int audio_codec, unsigned 
   bcopy(&call->remote_codec_list[0],&mdp.vompevent.supported_codecs[0],256);
 
   if (audio && audio_length) {
-    if (0) WHYF("Frame contains audio (codec=%s)",
-		vomp_describe_codec(audio_codec));
-    bcopy(audio,
-	  &mdp.vompevent.audio_bytes[0],
-	  audio_length);
+    if (debug & DEBUG_VOMP)
+      DEBUGF("Frame contains audio (codec=%s)", vomp_describe_codec(audio_codec));
+    bcopy(audio, &mdp.vompevent.audio_bytes[0], audio_length);
     mdp.vompevent.audio_sample_codec=audio_codec;
     mdp.vompevent.audio_sample_bytes=audio_length;
     mdp.vompevent.audio_sample_starttime=start_time;
@@ -348,18 +355,21 @@ int vomp_send_mdp_status_audio(vomp_call_state *call, int audio_codec, unsigned 
   return 0;
 }
 
-int vomp_send_mdp_status(vomp_call_state *call){
+int vomp_send_mdp_status(vomp_call_state *call)
+{
   return vomp_send_mdp_status_audio(call,0,0,0,NULL,0);
 }
 
 // send call state updates if required.
-int vomp_update(vomp_call_state *call){
+int vomp_update(vomp_call_state *call)
+{
   int combined_status=(call->remote.state<<4)|call->local.state;
   
   if (call->last_sent_status==combined_status)
     return 0;
   
-  DEBUGF("Call state changed to %d %d, sending updates",call->local.state, call->remote.state);
+  if (debug & DEBUG_VOMP)
+    DEBUGF("Call state changed to %d %d, sending updates",call->local.state, call->remote.state);
   
   call->last_sent_status=combined_status;
   
@@ -385,7 +395,8 @@ int vomp_call_start_audio(vomp_call_state *call)
 
 // check a small circular buffer of recently seen audio
 // we're not trying to be perfect here, we still expect all clients to reorder and filter duplicates
-int vomp_audio_already_seen(vomp_call_state *call, unsigned int end_time){
+int vomp_audio_already_seen(vomp_call_state *call, unsigned int end_time)
+{
   int i;
   for(i=0;i<VOMP_MAX_RECENT_SAMPLES *4;i++)
     if (call->seen_samples[i]==end_time)
@@ -401,7 +412,7 @@ int vomp_process_audio(vomp_call_state *call,unsigned int sender_duration,overla
 {
   int ofs=14;
   // if (mdp->in.payload_length>14)
-  //  WHYF("got here (payload has %d bytes)",mdp->in.payload_length);
+  //  DEBUGF("got here (payload has %d bytes)",mdp->in.payload_length);
 
   /* Get end time marker for sample block collection */
   unsigned int e=0, s=0;
@@ -411,13 +422,13 @@ int vomp_process_audio(vomp_call_state *call,unsigned int sender_duration,overla
   e|=mdp->in.payload[ofs++]<<0;
   
   sender_duration = (e&0xFFFF0000)|sender_duration;
-  if (0)
+  if (debug & DEBUG_VOMP)
     DEBUGF("Jitter %d, %d",sender_duration -e,(gettime_ms()-call->create_time)-e);
   
   while(ofs<mdp->in.payload_length)
     {
       int codec=mdp->in.payload[ofs];
-      // WHYF("Spotted a %s sample block",vomp_describe_codec(codec));
+      // DEBUGF("Spotted a %s sample block",vomp_describe_codec(codec));
       if (!codec||vomp_sample_size(codec)<0) break;
       if ((ofs+1+vomp_sample_size(codec))>mdp->in.payload_length) break;
 
@@ -456,7 +467,8 @@ int vomp_call_start_ringing(vomp_call_state *call)
   /* We just need to set the flag to say that we are ringing.
      Interested listeners and far end will be informed via vomp_send_status() */
   call->ringing=1;
-  fprintf(stderr,"RING RING!\n");
+  if (debug & DEBUG_VOMP)
+    DEBUGF("RING RING!");
   return 0;
 }
 
@@ -466,8 +478,8 @@ int vomp_call_destroy(vomp_call_state *call)
   if (call->audio_started) vomp_call_stop_audio(call);
   if (call->ringing) call->ringing=0;
 
-  fprintf(stderr,"Destroying call %s <--> %s\n",
-	  call->local.did,call->remote.did);
+  if (debug & DEBUG_VOMP)
+    DEBUGF("Destroying call %s <--> %s", call->local.did,call->remote.did);
 
   /* tell everyone the call has died */
   call->local.state=VOMP_STATE_CALLENDED; call->remote.state=VOMP_STATE_CALLENDED;
@@ -489,12 +501,14 @@ int vomp_call_destroy(vomp_call_state *call)
   return 0;
 }
 
-int vomp_dial(unsigned char *local_sid, unsigned char *remote_sid, char *local_did, char *remote_did){
+int vomp_dial(unsigned char *local_sid, unsigned char *remote_sid, char *local_did, char *remote_did)
+{
   /* TODO use local_did and remote_did start putting the call together.
    These need to be passed to the node being called to provide caller id,
    and potentially handle call-routing, e.g., if it is a gateway.
    */
-  DEBUG("Dialing\n");
+  if (debug & DEBUG_VOMP)
+    DEBUG("Dialing");
   
   if (vomp_call_count>=VOMP_MAX_CALLS)
     return WHY("All call slots in use");
@@ -520,12 +534,13 @@ int vomp_dial(unsigned char *local_sid, unsigned char *remote_sid, char *local_d
   return 0;
 }
 
-int vomp_pickup(vomp_call_state *call){
+int vomp_pickup(vomp_call_state *call)
+{
   if (call){
-    WHY("Picking up");
+    if (debug && DEBUG_VOMP)
+      DEBUG("Picking up");
     if (call->local.state!=VOMP_STATE_RINGINGIN)
       return WHY("Call is not ringing");
-    
     call->local.state=VOMP_STATE_INCALL;
     call->create_time=gettime_ms();
     call->ringing=0;
@@ -536,9 +551,11 @@ int vomp_pickup(vomp_call_state *call){
   return 0;
 }
 
-int vomp_hangup(vomp_call_state *call){
+int vomp_hangup(vomp_call_state *call)
+{
   if (call){
-    WHY("Hanging up");
+    if (debug & DEBUG_VOMP)
+      DEBUG("Hanging up");
     if (call->local.state==VOMP_STATE_INCALL) vomp_call_stop_audio(call);
     call->local.state=VOMP_STATE_CALLENDED;
     vomp_update(call);
@@ -555,8 +572,7 @@ int vomp_hangup(vomp_call_state *call){
    the user will know about the call because the call display will come up.
 */
 
-int vomp_mdp_event(overlay_mdp_frame *mdp,
-		   struct sockaddr_un *recvaddr,int recvaddrlen)
+int vomp_mdp_event(overlay_mdp_frame *mdp, struct sockaddr_un *recvaddr,int recvaddrlen)
 {
   /* Frames from the user can take only a few forms:
      - announce interest in call state.
@@ -569,13 +585,14 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
      transported audio.  In particular we inform when the call state changes,
      including if any error has occurred.
   */
-  if (0)
-    DEBUGF("Flags=0x%x\n",mdp->vompevent.flags);
-  
+  if (debug & DEBUG_VOMP)
+    DEBUGF("Flags=0x%x",mdp->vompevent.flags);
+
   switch(mdp->vompevent.flags)
     {
     case VOMPEVENT_REGISTERINTEREST:
-      WHY("Request to register interest");
+      if (debug & DEBUG_VOMP)
+	DEBUG("Request to register interest");
       /* put unix domain socket on record to send call state event and audio to. */
       {
 	int i;
@@ -628,7 +645,8 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
       break;
     case VOMPEVENT_WITHDRAWINTEREST:
       /* opposite of above */
-      WHY("Request to withdraw interest");
+      if (debug & DEBUG_VOMP)
+	DEBUG("Request to withdraw interest");
       {
 	int i;
 	for(i=0;i<vomp_interested_usock_count;i++)
@@ -711,7 +729,8 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
       else{
 	int result= overlay_mdp_reply_error 
 	  (mdp_named.poll.fd,recvaddr,recvaddrlen,0, "Success");
-	if (result) WHY("Failed to send MDP reply");
+	if (result)
+	  WHY("Failed to send MDP reply");
 	return result;
       }
       break;
@@ -719,22 +738,16 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
       {
 	vomp_call_state *call
 	  =vomp_find_call_by_session(mdp->vompevent.call_session_token);
-	if (!call) 
-	  return overlay_mdp_reply_error
-	    (mdp_named.poll.fd,recvaddr,recvaddrlen,4006,
-	     "No such call");
-	
+	if (!call)
+	  return overlay_mdp_reply_error(mdp_named.poll.fd,recvaddr, recvaddrlen, 4006, "No such call");
 	vomp_hangup(call);
-	
-	return overlay_mdp_reply_error(mdp_named.poll.fd,
-				recvaddr,recvaddrlen,0,"Success");
+	return overlay_mdp_reply_error(mdp_named.poll.fd, recvaddr,recvaddrlen,0,"Success");
       }
       break;
-    case VOMPEVENT_PICKUP: 
+    case VOMPEVENT_PICKUP:
       {
-	vomp_call_state *call
-	  =vomp_find_call_by_session(mdp->vompevent.call_session_token);
-	if (!call) 
+	vomp_call_state *call = vomp_find_call_by_session(mdp->vompevent.call_session_token);
+	if (!call)
 	  return overlay_mdp_reply_error
 	    (mdp_named.poll.fd,recvaddr,recvaddrlen,4006,
 	     "No such call");
@@ -750,16 +763,16 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
       break;
     case VOMPEVENT_AUDIOPACKET: /* user supplying audio */
       {
-	// WHY("Audio packet arrived");
-	vomp_call_state *call
-	  =vomp_find_call_by_session(mdp->vompevent.call_session_token);
+	// DEBUG("Audio packet arrived");
+	vomp_call_state *call = vomp_find_call_by_session(mdp->vompevent.call_session_token);
 	if (call) {
 	  return vomp_send_status_remote_audio(call, 
 					       mdp->vompevent.audio_sample_codec,
 					       &mdp->vompevent.audio_bytes[0],
 					       vomp_sample_size(mdp->vompevent.audio_sample_codec));
 	}
-	else WHY("audio packet had invalid call session token");
+	else
+	  return WHY("audio packet had invalid call session token");
       }
       break;
     default:
@@ -776,18 +789,13 @@ int vomp_mdp_event(overlay_mdp_frame *mdp,
 int vomp_extract_remote_codec_list(vomp_call_state *call,overlay_mdp_frame *mdp)
 {
   int i;
-  if (0) {
-    WHY("Receiving list of remote codecs");
-    dump("codec list mdp frame",
-	 (unsigned char *)&mdp->in.payload[0],mdp->in.payload_length);
+  if (debug & DEBUG_VOMP)
+    dump("codec list mdp frame", (unsigned char *)&mdp->in.payload[0],mdp->in.payload_length);
+  for(i=0;mdp->in.payload[14+i]&&(i<256) &&((14+i)<mdp->in.payload_length);i++) {
+    if (debug & DEBUG_VOMP)
+      DEBUGF("populating remote codec list with %s", vomp_describe_codec(mdp->in.payload[14+i]));
+    call->remote_codec_list[mdp->in.payload[14+i]]=1;
   }
-  for(i=0;mdp->in.payload[14+i]&&(i<256)
-	&&((14+i)<mdp->in.payload_length);i++)
-    {
-      if (0) WHYF("populating remote codec list with %s",
-		  vomp_describe_codec(mdp->in.payload[14+i]));
-      call->remote_codec_list[mdp->in.payload[14+i]]=1;
-    }  
   // TODO send codec list to monitor clients
   return 0;
 }
@@ -853,9 +861,8 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
       if (!call)
 	return WHY("Unable to find or create call");
       
-      if (!recvr_session)
-	WHY("recvr_session==0, created call.");
-      
+      if (!recvr_session && (debug & DEBUG_VOMP))
+	DEBUG("recvr_session==0, created call");
       
       // TODO ignore state changes if sequence is stale?
       // TODO ignore state changes that seem to go backwards?
@@ -865,8 +872,8 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	{
 	/* No registered listener, so we cannot answer the call, so just reject
 	   it. */
-	  if (0) WHYF("Rejecting call due to lack of a listener: states=%d,%d",
-	       call->local.state,sender_state);
+	  if (debug & DEBUG_VOMP)
+	    DEBUGF("Rejecting call due to lack of a listener: states=%d,%d", call->local.state,sender_state);
 
 	call->local.state=VOMP_STATE_CALLENDED;
 	/* now let the state machine progress to destroy the call */
@@ -1026,28 +1033,28 @@ char *vomp_describe_state(int state)
   return "UNKNOWN";
 }
 
-int dump_vomp_status()
+static int dump_vomp_status()
 {
   int i;
-  printf(">>> Active VoMP call states:\n");
+  DEBUGF(">>> Active VoMP call states:");
   for(i=0;i<vomp_call_count;i++)
     {
-      printf("%s/%06x\n-> %s/%06x\n   (%s -> %s)\n",
+      DEBUGF("%s/%06x -> %s/%06x (%s -> %s)",
 	     alloca_tohex_sid(vomp_call_states[i].local.sid),
 	     vomp_call_states[i].local.session,
 	     alloca_tohex_sid(vomp_call_states[i].remote.sid),
 	     vomp_call_states[i].remote.session,
 	     vomp_call_states[i].local.did,
 	     vomp_call_states[i].remote.did);
-      printf("   local state=%s, remote state=%s\n",
+      DEBUGF("   local state=%s, remote state=%s",
 	     vomp_describe_state(vomp_call_states[i].local.state),
 	     vomp_describe_state(vomp_call_states[i].remote.state));
     }
-  if (!vomp_call_count) printf("No active calls\n");
+  if (!vomp_call_count) DEBUGF("No active calls");
   return 0;
 }
 
-char *vomp_describe_codec(int c)
+static const char *vomp_describe_codec(int c)
 {
   switch(c) {
   case VOMP_CODEC_NONE: return "none";
@@ -1065,6 +1072,19 @@ char *vomp_describe_codec(int c)
   case VOMP_CODEC_CALLERID: return "CallerID";
   }
   return "unknown";
+}
+
+strbuf strbuf_append_vomp_supported_codecs(strbuf sb, const unsigned char supported_codecs[256])
+{
+  int i;
+  const char *p = strbuf_end(sb);
+  for (i = 0; i < 256; ++i)
+    if (supported_codecs[i]) {
+      if (p != strbuf_end(sb))
+	strbuf_putc(sb, ' ');
+      strbuf_puts(sb, vomp_describe_codec(i));
+    }
+  return sb;
 }
 
 int vomp_sample_size(int c)
@@ -1120,18 +1140,18 @@ int app_vomp_status(int argc, const char *const *argv, struct command_line_optio
     {
       WHY("Current call state information request failed.");
       if (mdp.packetTypeAndFlags==MDP_ERROR&&mdp.error.error)
-	fprintf(stderr,"MDP: error=%d, message='%s'\n",
+	WHYF("MDP: error=%d, message='%s'",
 		mdp.error.error,mdp.error.message);
       overlay_mdp_client_done();
       return -1;
     }
   if (mdp.packetTypeAndFlags!=MDP_VOMPEVENT) {
-    WHYF("Received incorrect reply type from server (received MDP message type 0x%04x)\n",mdp.packetTypeAndFlags);
+    WHYF("Received incorrect reply type from server (received MDP message type 0x%04x)",mdp.packetTypeAndFlags);
     overlay_mdp_client_done();
     return -1;
   }
   if (mdp.vompevent.flags!=VOMPEVENT_CALLINFO) {
-    WHYF("Received incorrect reply type from server (received VoMP message type 0x%04x)\n",mdp.vompevent.flags);
+    WHYF("Received incorrect reply type from server (received VoMP message type 0x%04x)",mdp.vompevent.flags);
     overlay_mdp_client_done();
     return -1;
   }
@@ -1143,22 +1163,23 @@ int app_vomp_status(int argc, const char *const *argv, struct command_line_optio
     if (mdp.vompevent.other_calls_sessions[i])
       {
 	count++;
-	fprintf(stderr,"%06x:%s:",
+	if (debug & DEBUG_VOMP) {
+	  strbuf b = strbuf_alloca(1024);
+	  strbuf_sprintf(b, "%06x:%s:",
 		mdp.vompevent.other_calls_sessions[i],
 		vomp_describe_state(mdp.vompevent.other_calls_states[i]));
-	mdp2.packetTypeAndFlags=MDP_VOMPEVENT;
-	mdp2.vompevent.flags=VOMPEVENT_CALLINFO;
-	mdp2.vompevent.call_session_token=mdp.vompevent.other_calls_sessions[i];
-	if (overlay_mdp_send(&mdp2,MDP_AWAITREPLY,5000))
-	  fprintf(stderr,"<server failed to provide detail>");
-	else
-	  {
+	  mdp2.packetTypeAndFlags=MDP_VOMPEVENT;
+	  mdp2.vompevent.flags=VOMPEVENT_CALLINFO;
+	  mdp2.vompevent.call_session_token=mdp.vompevent.other_calls_sessions[i];
+	  if (overlay_mdp_send(&mdp2,MDP_AWAITREPLY,5000))
+	    strbuf_puts(b, "<server failed to provide detail>");
+	  else {
 	    if (mdp2.vompevent.call_session_token!=mdp.vompevent.other_calls_sessions[i])
-	      fprintf(stderr,"<strange reply from server (%04x, %04x, token %06x)>",
+	      strbuf_sprintf(b, "<strange reply from server (%04x, %04x, token %06x)>",
 		      mdp.packetTypeAndFlags,mdp.vompevent.flags,
 		      mdp2.vompevent.call_session_token);
 	    else {
-	      fprintf(stderr,"%s* -> %s* (%s -> %s)",
+	      strbuf_sprintf(b, "%s* -> %s* (%s -> %s)",
 		      alloca_tohex(mdp2.vompevent.local_sid, 6),
 		      alloca_tohex(mdp2.vompevent.remote_sid, 6),
 		      strlen(mdp2.vompevent.local_did)
@@ -1166,20 +1187,20 @@ int app_vomp_status(int argc, const char *const *argv, struct command_line_optio
 		      strlen(mdp2.vompevent.remote_did)
 		      ?mdp2.vompevent.remote_did:"<no remote number>");
 	    }
-	    int i;
-	    fprintf(stderr," supports");
-	    for(i=0;i<256;i++) 
-	      if (mdp2.vompevent.supported_codecs[i])
-		fprintf(stderr," %s",vomp_describe_codec(i));	    
+	    strbuf_puts(b, " supports ");
+	    strbuf_append_vomp_supported_codecs(b, mdp2.vompevent.supported_codecs);
 	  }
-	fprintf(stderr,"\n");	
+	  DEBUG(strbuf_str(b));
+	}
       }
-  fprintf(stderr,"%d live call descriptors.\n",count);
+  if (debug & DEBUG_VOMP)
+    DEBUGF("%d live call descriptors.",count);
   return overlay_mdp_client_done();
 }
 
 int app_vomp_dial(int argc, const char *const *argv, struct command_line_option *o)
 {
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *sid,*did,*callerid;
   cli_arg(argc, argv, o, "sid", &sid, NULL, "");
   cli_arg(argc, argv, o, "did", &did, NULL, "");
@@ -1192,21 +1213,20 @@ int app_vomp_dial(int argc, const char *const *argv, struct command_line_option 
   mdp.vompevent.flags=VOMPEVENT_DIAL;
   if (overlay_mdp_getmyaddr(0,&mdp.vompevent.local_sid[0])) return -1;
   stowSid(&mdp.vompevent.remote_sid[0],0,sid);
-  printf("local_sid=%s\n",alloca_tohex_sid(mdp.vompevent.local_sid));
-  printf("remote_sid=%s from %s\n", alloca_tohex_sid(mdp.vompevent.remote_sid),sid);
-
+  if (debug & DEBUG_VOMP) {
+    DEBUGF("local_sid=%s",alloca_tohex_sid(mdp.vompevent.local_sid));
+    DEBUGF("remote_sid=%s from %s", alloca_tohex_sid(mdp.vompevent.remote_sid),sid);
+  }
   if (overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000))
-    {
-      WHY("Dial request failed.");
-    }
+    WHY("Dial request failed.");
   if (mdp.packetTypeAndFlags==MDP_ERROR&&mdp.error.error)
-    fprintf(stderr,"Dial request failed: error=%d, message='%s'\n",
-	    mdp.error.error,mdp.error.message);
-  else 
-    printf("Dial request accepted.\n");
-  
+    WHYF("Dial request failed: error=%d, message='%s'", mdp.error.error,mdp.error.message);
+  else {
+    if (debug & DEBUG_VOMP)
+      DEBUGF("Dial request accepted.");
+  }
   return overlay_mdp_client_done();
-} 
+}
 
 int vomp_parse_dtmf_digit(char c)
 {
@@ -1253,18 +1273,19 @@ int app_vomp_dtmf(int argc, const char *const *argv, struct command_line_option 
   int i;
   for(i=0;i<strlen(digits);i++) {
     int digit=vomp_parse_dtmf_digit(digits[i]);
-    if (digit<0) return WHYF("'%c' is not a DTMF digit.",digits[i]);    
+    if (digit<0)
+      return WHYF("'%c' is not a DTMF digit.",digits[i]);
     mdp.vompevent.audio_bytes[mdp.vompevent.audio_sample_bytes]
       =(digit<<4); /* 80ms standard tone duration, so that it is a multiple
 		      of the majority of codec time units (70ms is the nominal
 		      DTMF tone length for most systems). */
-    if (overlay_mdp_send(&mdp,0,0)) WHY("Send DTMF failed.");
+    if (overlay_mdp_send(&mdp,0,0))
+      WHY("Send DTMF failed");
   }
-
-  printf("DTMF digit(s) sent.\n");
-  
+  if (debug & DEBUG_VOMP)
+    DEBUGF("DTMF digit(s) sent.");
   return overlay_mdp_client_done();
-} 
+}
 
 
 int app_vomp_pickup(int argc, const char *const *argv, struct command_line_option *o)
@@ -1280,17 +1301,15 @@ int app_vomp_pickup(int argc, const char *const *argv, struct command_line_optio
   mdp.vompevent.call_session_token=strtol(call_token,NULL,16);
 
   if (overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000))
-    {
-      WHY("Pickup request failed.");
-    }
+    WHY("Pickup request failed.");
   if (mdp.packetTypeAndFlags==MDP_ERROR&&mdp.error.error)
-    fprintf(stderr,"Pickup request failed: error=%d, message='%s'\n",
-	    mdp.error.error,mdp.error.message);
-  else 
-    printf("Pickup request accepted.\n");
-  
+    WHYF("Pickup request failed: error=%d, message='%s'", mdp.error.error,mdp.error.message);
+  else {
+    if (debug & DEBUG_VOMP)
+      DEBUGF("Pickup request accepted.");
+  }
   return overlay_mdp_client_done();
-} 
+}
 
 int app_vomp_hangup(int argc, const char *const *argv, struct command_line_option *o)
 {
@@ -1309,13 +1328,13 @@ int app_vomp_hangup(int argc, const char *const *argv, struct command_line_optio
       WHY("Hangup/reject request failed.");
     }
   if (mdp.packetTypeAndFlags==MDP_ERROR&&mdp.error.error)
-    fprintf(stderr,"Hangup/reject request failed: error=%d, message='%s'\n",
-	    mdp.error.error,mdp.error.message);
-  else 
-    printf("Hangup/reject request accepted.\n");
-  
+    WHYF("Hangup/reject request failed: error=%d, message='%s'", mdp.error.error,mdp.error.message);
+  else {
+    if (debug & DEBUG_VOMP)
+      DEBUGF("Hangup/reject request accepted.");
+  }
   return overlay_mdp_client_done();
-} 
+}
 
 int app_vomp_monitor(int argc, const char *const *argv, struct command_line_option *o)
 {
@@ -1327,14 +1346,13 @@ int app_vomp_monitor(int argc, const char *const *argv, struct command_line_opti
   mdp.vompevent.supported_codecs[0]=VOMP_CODEC_DTMF;
   mdp.vompevent.supported_codecs[1]=VOMP_CODEC_NONE;
 
-  if (overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000))
-    { WHY("Failed to register interest in telephony events.");
-      overlay_mdp_client_done(); 
-      if (mdp.packetTypeAndFlags==MDP_ERROR&&mdp.error.error) 
-	fprintf(stderr,"  MDP Server error #%d: '%s'\n",
-		mdp.error.error,mdp.error.message);
-      return -1; 
-    }
+  if (overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000)) {
+    WHY("Failed to register interest in telephony events.");
+    overlay_mdp_client_done();
+    if (mdp.packetTypeAndFlags==MDP_ERROR&&mdp.error.error)
+      WHYF("  MDP Server error #%d: '%s'", mdp.error.error,mdp.error.message);
+    return -1;
+  }
 
   while(!servalShutdown) {
     overlay_mdp_frame rx;
@@ -1343,66 +1361,60 @@ int app_vomp_monitor(int argc, const char *const *argv, struct command_line_opti
        infinity, but broken poll() and select() implementations on OSX
        make this impossible.  So one unnecessary check per second is 
        probably tolerable.  */
-    if (overlay_mdp_client_poll(1000)>0)
-      if (!overlay_mdp_recv(&rx,&ttl))
-	{
-	  switch(rx.packetTypeAndFlags) {
-	  case MDP_ERROR:
-	    fprintf(stderr,"MDP Server error #%d: '%s'\n",
-		    rx.error.error,rx.error.message);
-	    break;
-	  case MDP_VOMPEVENT:
-	    fprintf(stderr,"VoMP call descriptor %06x %s:%s",
-		    rx.vompevent.call_session_token,
-		    vomp_describe_state(rx.vompevent.local_state),
-		    vomp_describe_state(rx.vompevent.remote_state));
-	    if (rx.vompevent.flags&VOMPEVENT_RINGING) 
-	      fprintf(stderr," RINGING");
-	    if (rx.vompevent.flags&VOMPEVENT_CALLENDED) 
-	      fprintf(stderr," CALLENDED");
-	    if (rx.vompevent.flags&VOMPEVENT_CALLREJECT) 
-	      fprintf(stderr," CALLREJECTED");
-	    if (rx.vompevent.flags&VOMPEVENT_CALLCREATED) 
-	      fprintf(stderr," CREATED");
-	    if (rx.vompevent.flags&VOMPEVENT_AUDIOSTREAMING) 
-	      fprintf(stderr," AUDIOSTREAMING");
-	    int i;
-	    fprintf(stderr," codecs:");
-	    for(i=0;i<256;i++) 
-	      if (rx.vompevent.supported_codecs[i])
-		fprintf(stderr," %s",vomp_describe_codec(i));	    
-
-	    fprintf(stderr,"\n");
-	    if (rx.vompevent.audio_sample_codec) {
-	      fprintf(stderr,"    attached audio sample: codec=%s, len=%d\n",
-		      vomp_describe_codec(rx.vompevent.audio_sample_codec),
-		      rx.vompevent.audio_sample_bytes);
-	      fprintf(stderr,"    sample covers %lldms - %lldms of call.\n",
-		      rx.vompevent.audio_sample_starttime,
-		      rx.vompevent.audio_sample_endtime);
-	    }
-	    break;
-	  default:
-	    fprintf(stderr,"Unknown message (type=0x%02x)\n",rx.packetTypeAndFlags);
+    if (overlay_mdp_client_poll(1000) > 0 && !overlay_mdp_recv(&rx,&ttl)) {
+      switch(rx.packetTypeAndFlags) {
+      case MDP_ERROR:
+	WHYF("MDP Server error #%d: '%s'", rx.error.error,rx.error.message);
+	break;
+      case MDP_VOMPEVENT: {
+	  strbuf b = strbuf_alloca(1024);
+	  strbuf_sprintf(b, "VoMP call descriptor %06x %s:%s",
+		  rx.vompevent.call_session_token,
+		  vomp_describe_state(rx.vompevent.local_state),
+		  vomp_describe_state(rx.vompevent.remote_state));
+	  if (rx.vompevent.flags&VOMPEVENT_RINGING)
+	    strbuf_puts(b, " RINGING");
+	  if (rx.vompevent.flags&VOMPEVENT_CALLENDED)
+	    strbuf_puts(b, " CALLENDED");
+	  if (rx.vompevent.flags&VOMPEVENT_CALLREJECT)
+	    strbuf_puts(b, " CALLREJECTED");
+	  if (rx.vompevent.flags&VOMPEVENT_CALLCREATED)
+	    strbuf_puts(b, " CREATED");
+	  if (rx.vompevent.flags&VOMPEVENT_AUDIOSTREAMING)
+	    strbuf_puts(b, " AUDIOSTREAMING");
+	  strbuf_puts(b, " codecs: ");
+	  strbuf_append_vomp_supported_codecs(b, rx.vompevent.supported_codecs);
+	  DEBUG(strbuf_str(b));
+	  if (rx.vompevent.audio_sample_codec) {
+	    DEBUGF("    attached audio sample: codec=%s, len=%d",
+		    vomp_describe_codec(rx.vompevent.audio_sample_codec),
+		    rx.vompevent.audio_sample_bytes);
+	    DEBUGF("    sample covers %lldms - %lldms of call.",
+		    rx.vompevent.audio_sample_starttime,
+		    rx.vompevent.audio_sample_endtime);
 	  }
 	}
-    
+	break;
+      default:
+	DEBUGF("Unknown message (type=0x%02x)",rx.packetTypeAndFlags);
+      }
+    }
   }
 
   mdp.packetTypeAndFlags=MDP_VOMPEVENT;
   mdp.vompevent.flags=VOMPEVENT_WITHDRAWINTEREST;
-  if (overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000))
-    { WHY("Failed to deregister interest in telephony events.");
-      overlay_mdp_client_done(); return -1; }
-  if (mdp.packetTypeAndFlags==MDP_ERROR&&mdp.error.error) {
-    fprintf(stderr,"  MDP Server error #%d: '%s'\n",
-	    mdp.error.error,mdp.error.message);
-     }
-
+  if (overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000)) {
+    WHY("Failed to deregister interest in telephony events.");
+    overlay_mdp_client_done();
+    return -1;
+  }
+  if (mdp.packetTypeAndFlags==MDP_ERROR&&mdp.error.error)
+    DEBUGF("MDP Server error #%d: '%s'", mdp.error.error,mdp.error.message);
   return overlay_mdp_client_done();
 }
 
-void vomp_process_tick(struct sched_ent *alarm){
+static void vomp_process_tick(struct sched_ent *alarm)
+{
   char msg[32];
   int len;
   unsigned long long now = gettime_ms();

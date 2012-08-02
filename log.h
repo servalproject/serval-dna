@@ -31,7 +31,7 @@ extern unsigned int debug;
 #define DEBUG_PEERS                 (1 << 4)
 #define DEBUG_DNARESPONSES          (1 << 5)
 #define DEBUG_DNAHELPER             (1 << 6)
-#define DEBUG_SIMULATION            (1 << 7)
+#define DEBUG_VOMP                  (1 << 7)
 #define DEBUG_RHIZOME_RX            (1 << 8)
 #define DEBUG_PACKETFORMATS         (1 << 9)
 #define DEBUG_GATEWAY               (1 << 10)

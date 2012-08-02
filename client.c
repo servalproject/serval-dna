@@ -310,7 +310,7 @@ int getReplyPackets(int method,int peer,int batchP,struct response_set *response
     }
 
     if (dropPacketP(len)) {
-      if (debug&DEBUG_SIMULATION) DEBUGF("Simulation mode: Dropped packet due to simulated link parameters");
+      if (debug&DEBUG_DNARESPONSES) DEBUGF("Simulation mode: Dropped packet due to simulated link parameters");
       continue;
     }
     if (!packetOk(NULL,buffer,len,transaction_id,ttl,recvaddr,recvaddrlen,0)) {

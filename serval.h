@@ -1039,8 +1039,6 @@ vomp_call_state *vomp_find_call_by_session(int session_token);
 int vomp_mdp_event(overlay_mdp_frame *mdp,
 		   struct sockaddr_un *recvaddr,int recvaddrlen);
 int vomp_mdp_received(overlay_mdp_frame *mdp);
-char *vomp_describe_state(int state);
-char *vomp_describe_codec(int c);
 int vomp_tick_interval();
 int vomp_sample_size(int c);
 int vomp_codec_timespan(int c);
