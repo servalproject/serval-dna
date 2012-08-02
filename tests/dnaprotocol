@@ -21,19 +21,28 @@
 source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 
-is_reachable() {
-  local sidvar="SID${1#+}"
-  grep "PEER REACHABLE, sid=${!sidvar}" "$instance_servald_log"
+instances_reach_each_other() {
+   local I J
+   for I; do
+      for J; do
+         [ $I = $J ] && continue
+         local logvar=LOG${I#+}
+         local sidvar=SID${J#+}
+         if ! grep "PEER REACHABLE, sid=${!sidvar}" "${!logvar}"; then
+            return 1
+         fi
+      done
+   done
+   return 0
 }
 
 setup() {
    setup_servald
    assert_no_servald_processes
+   configure_servald_server() { set_server_vars; }
    start_servald_instances +A +B
-   set_instance +B
-   wait_until --sleep=0.25 is_reachable +A
+   wait_until --sleep=0.25 instances_reach_each_other +A +B
    set_instance +A
-   wait_until --sleep=0.25 is_reachable +B
    executeOk_servald config set debug.all Yes
 }
 
@@ -43,16 +52,14 @@ teardown() {
    assert_no_servald_processes
 }
 
-# Called by start_servald_instances immediately before starting the server
-# process in each instance.
-configure_servald_server() {
+set_server_vars() {
    executeOk_servald config set log.show_pid on
    executeOk_servald config set log.show_time on
    executeOk_servald config set mdp.wifi.tick_ms 100
    executeOk_servald config set mdp.selfannounce.ticks_per_full_address 1
    executeOk_servald config set debug.interfaces Yes
    executeOk_servald config set debug.packetformats No
-   executeOk_servald config set debug.routing Yes
+   executeOk_servald config set debug.routing No
    executeOk_servald config set debug.tx No
    executeOk_servald config set debug.rx No
    executeOk_servald config set debug.mdprequests Yes
@@ -62,6 +69,7 @@ doc_MultiServer="Start three servald servers with dummy interfaces"
 setup_MultiServer() {
    setup_servald
    assert_no_servald_processes
+   configure_servald_server() { set_server_vars; }
 }
 test_MultiServer() {
    start_servald_instances +A +B +C
@@ -127,6 +135,54 @@ test_NodeinfoRemote() {
    assertStdoutGrep --matches=1 ":$DIDB:"
    assertStdoutGrep --matches=1 ":$NAMEB"
    assertStdoutGrep --matches=0 "did-not-resolved"
+}
+
+doc_MultiLookupNumber="Lookup by phone number many nodes reply"
+setup_MultiLookupNumber() {
+   setup_servald
+   assert_no_servald_processes
+   dnahelper="$TFWTMP/dnahelper"
+   cat >"$dnahelper" <<'EOF'
+#!/bin/sh
+echo STARTED
+while read line
+do
+   token="${line%%|*}"
+   case "$1:$line" in
+   A:*'|00001|') echo "$token|uri:A1|00001|Name One|";;
+   A:*'|00002|') echo "$token|uri:A2|00002|Name Two|";;
+   B:*'|00001|') echo "$token|uri:B1|00001|Name Three|";;
+   B:*'|00002|') echo "$token|uri:B2|00002|Name Four|";;
+   B:*'|00003|') echo "$token|uri:B3|00003|Name Five|";;
+   C:*'|00001|') echo "$token|uri:C1|00001|Name Six|";;
+   esac
+   echo DONE
+done
+EOF
+   chmod 0755 "$dnahelper"
+   configure_servald_server() {
+      set_server_vars
+      executeOk_servald config set debug.dnahelper on
+      executeOk_servald config set dna.helper.executable "$dnahelper"
+      executeOk_servald config set dna.helper.argv.1 "$instance_name"
+   }
+   start_servald_instances +A +B +C +D
+   wait_until --sleep=0.25 instances_reach_each_other +A +B +C +D
+   set_instance +D
+}
+test_MultiLookupNumber() {
+   executeOk_servald dna lookup 00001
+   assertStdoutLineCount '==' 3
+   assertStdoutGrep --matches=1 "uri:A1:00001:Name One$"
+   assertStdoutGrep --matches=1 "uri:B1:00001:Name Three$"
+   assertStdoutGrep --matches=1 "uri:C1:00001:Name Six$"
+   executeOk_servald dna lookup 00002
+   assertStdoutLineCount '==' 2
+   assertStdoutGrep --matches=1 "uri:A2:00002:Name Two$"
+   assertStdoutGrep --matches=1 "uri:B2:00002:Name Four$"
+   executeOk_servald dna lookup 00003
+   assertStdoutLineCount '==' 1
+   assertStdoutGrep --matches=1 "uri:B3:00003:Name Five$"
 }
 
 runTests "$@"
