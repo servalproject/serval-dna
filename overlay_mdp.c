@@ -471,7 +471,7 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp,long long now)
       WHY("didn't send mdp packet");
       if (errno==ENOENT) {
 	/* far-end of socket has died, so drop binding */
-	printf("Closing dead MDP client '%s'\n",mdp_bindings_sockets[match]);
+	INFOF("Closing dead MDP client '%s'",mdp_bindings_sockets[match]);
 	overlay_mdp_releasebindings(&addr,mdp_bindings_socket_name_lengths[match]);
       }
       WHY_perror("sendto(e)");
@@ -639,9 +639,7 @@ int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,int userGeneratedFrameP,
 	{
 	  /* Binding matches, now make sure the sockets match */
 	  if (mdp_bindings_socket_name_lengths[i]==(recvaddrlen-sizeof(short)))
-	      if (!memcmp(mdp_bindings_sockets[i],recvaddr->sun_path,
-			  recvaddrlen-sizeof(short)))
-	      {
+	      if (!memcmp(mdp_bindings_sockets[i],recvaddr->sun_path, recvaddrlen-sizeof(short))) {
 		/* Everything matches, so this unix socket and MDP address 
 		   combination is valid */
 		return 0;
@@ -668,11 +666,11 @@ int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,int userGeneratedFrameP,
     }      
   } 
 
-  printf("addr=%s port=%u (0x%x)\n",
-	 alloca_tohex_sid(src->sid),src->port,src->port);
-  if (recvaddr) printf("recvaddr='%s'\n",
-	 recvaddr->sun_path);
-  return WHY("No such socket binding:unix domain socket tuple exists -- someone might be trying to spoof someone else's connection");
+  return WHYF("No such binding: recvaddr=%s addr=%s port=%u (0x%x) -- possible spoofing attack",
+	recvaddr ? alloca_toprint(-1, recvaddr->sun_path, strlen(recvaddr->sun_path)) : "NULL",
+	alloca_tohex_sid(src->sid),
+	src->port,src->port
+      );
 }
 
 /* Construct MDP packet frame from overlay_mdp_frame structure
@@ -799,8 +797,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 	dump("nonce",nonce,crypto_box_curve25519xsalsa20poly1305_NONCEBYTES);
 	dump("plain text",&plain[16],cipher_len-16);
 	dump("cipher text",cipher_text,cipher_len-16);	
-	printf("frame->payload->length=%d,cipher_len-16=%d,cipher_offset=%d\n",
-	       frame->payload->length,cipher_len-16,cipher_offset);
+	DEBUGF("frame->payload->length=%d,cipher_len-16=%d,cipher_offset=%d", frame->payload->length,cipher_len-16,cipher_offset);
 	dump("frame",&frame->payload->bytes[0],
 	     frame->payload->length);
       }
