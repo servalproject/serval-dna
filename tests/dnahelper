@@ -41,6 +41,7 @@ configure_servald_server() {
    executeOk_servald config set log.show_time on
    executeOk_servald config set debug.dnahelper on
    executeOk_servald config set dna.helper.executable "$dnahelper"
+   executeOk_servald config set dna.helper.argv.1 "Hello, World!"
 }
 
 setup_dnahelper() {
@@ -223,6 +224,32 @@ setup_ExecError() {
 }
 test_ExecError() {
    executeOk_servald dna lookup 12345
+}
+
+doc_ExecArg1="DNA helper configured argument"
+setup_ExecArg1() {
+   setup_servald
+   assert_no_servald_processes
+   dnahelper="$TFWTMP/dnahelper"
+   cat >"$dnahelper" <<'EOF'
+#!/bin/sh
+echo STARTED
+while read line
+do
+   token="${line%%|*}"
+   line="${line#*|}"
+   did="${line%%|*}"
+   line="${line#*|}"
+   echo "$token|uri:dumb|$did|$1|"
+   echo DONE
+done
+EOF
+   chmod 0755 "$dnahelper"
+   start_servald_instances +A
+}
+test_ExecArg1() {
+   executeOk_servald dna lookup 12345
+   assertStdoutIs -e "uri:dumb:12345:Hello, World!\n"
 }
 
 doc_ReplyOk1="DNA helper returns one valid reply"
