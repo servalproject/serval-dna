@@ -71,16 +71,16 @@ doc_LookupWildcard="Lookup by wildcard"
 test_LookupWildcard() {
    executeOk_servald dna lookup "*"
    assertStdoutLineCount '==' 2
-   assertStdoutGrep --matches=1 "^sid://$SIDA/5550001:5550001:Agent A Smith$"
-   assertStdoutGrep --matches=1 "^sid://$SIDB/5550002:5550002:Agent B Smith$"
+   assertStdoutGrep --matches=1 "^sid://$SIDA/$DIDA:$DIDA:$NAMEA$"
+   assertStdoutGrep --matches=1 "^sid://$SIDB/$DIDB:$DIDB:$NAMEB$"
 }
 
 doc_LookupEmpty="Lookup by empty string"
 test_LookupEmpty() {
    executeOk_servald dna lookup ""
    assertStdoutLineCount '==' 2
-   assertStdoutGrep --matches=1 "^sid://$SIDA/5550001:5550001:Agent A Smith$"
-   assertStdoutGrep --matches=1 "^sid://$SIDB/5550002:5550002:Agent B Smith$"
+   assertStdoutGrep --matches=1 "^sid://$SIDA/$DIDA:$DIDA:$NAMEA$"
+   assertStdoutGrep --matches=1 "^sid://$SIDB/$DIDB:$DIDB:$NAMEB$"
 }
 
 doc_LookupNumber="Lookup by phone number"
@@ -91,12 +91,12 @@ test_LookupNumber() {
    assertStdoutLineCount '==' 0
    executeOk_servald dna lookup "55500011"
    assertStdoutLineCount '==' 0
-   executeOk_servald dna lookup "5550001"
+   executeOk_servald dna lookup "$DIDA"
    assertStdoutLineCount '==' 1
-   assertStdoutGrep --matches=1 "^sid://$SIDA/5550001:5550001:Agent A Smith$"
-   executeOk_servald dna lookup "5550002"
+   assertStdoutGrep --matches=1 "^sid://$SIDA/$DIDA:$DIDA:$NAMEA$"
+   executeOk_servald dna lookup "$DIDB"
    assertStdoutLineCount '==' 1
-   assertStdoutGrep --matches=1 "^sid://$SIDB/5550002:5550002:Agent B Smith$"
+   assertStdoutGrep --matches=1 "^sid://$SIDB/$DIDB:$DIDB:$NAMEB$"
 }
 
 doc_NodeinfoLocal="Node info auto-resolves for local identities"
@@ -105,25 +105,28 @@ test_NodeinfoLocal() {
    # if it isn't asked for.
    executeOk_servald node info $SIDA
    assertStdoutLineCount '==' 1
-   assertStdoutGrep --matches=1 "Agent A Smith"
+   assertStdoutGrep --matches=1 ":$SIDA:"
+   assertStdoutGrep --matches=1 ":$DIDA:"
+   assertStdoutGrep --matches=1 ":$NAMEA"
    assertStdoutGrep --matches=0 "did-not-resolved"
 }
 
 doc_NodeinfoRemote="Node info resolves remote identities"
 test_NodeinfoRemote() {
-   # if resolvedid is not specified for a remote identity, then don't resolve
-   # it.
+   # if resolvedid is not specified for a remote identity, then don't resolve it.
    executeOk_servald node info $SIDB
    assertStdoutLineCount '==' 1
-   assertStdoutGrep --matches=0 "Agent B Smith"
+   assertStdoutGrep --matches=1 ":$SIDB:"
+   assertStdoutGrep --matches=0 ":$DIDB:"
+   assertStdoutGrep --matches=0 ":$NAMEB"
    assertStdoutGrep --matches=1 "did-not-resolved"
-
    # But if it resolvedid is specified, then do resolve it using DNA
    executeOk_servald node info $SIDB resolvedid
    assertStdoutLineCount '==' 1
-   assertStdoutGrep --matches=1 "Agent B Smith"
+   assertStdoutGrep --matches=1 ":$SIDB:"
+   assertStdoutGrep --matches=1 ":$DIDB:"
+   assertStdoutGrep --matches=1 ":$NAMEB"
    assertStdoutGrep --matches=0 "did-not-resolved"
-
 }
 
 runTests "$@"

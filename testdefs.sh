@@ -420,7 +420,7 @@ assert_all_servald_servers_no_errors() {
 #  - assign a phone number (DID) and name to the new identity, use defaults
 #    if not specified by arg1 and arg2
 #  - set the SID variable to the SID of the new identity
-#  - set the NUMBER variable to the phone number of the new identity
+#  - set the DID variable to the phone number of the new identity
 #  - set the NAME variable to the name of the new identity
 create_identity() {
    executeOk_servald keyring add
@@ -428,10 +428,10 @@ create_identity() {
    executeOk_servald keyring list
    SID=$(replayStdout | sed -ne "1s/^\($rexp_sid\):.*\$/\1/p")
    assert --message='main identity known' [ -n "$SID" ]
-   NUMBER="${1-$((5550000 + $instance_number))}"
+   DID="${1-$((5550000 + $instance_number))}"
    NAME="${2-Agent $instance_name Smith}"
-   executeOk_servald set did $SID "$NUMBER" "$NAME"
-   tfw_log "Identity $instance_name: $SID $NUMBER $NAME"
+   executeOk_servald set did $SID "$DID" "$NAME"
+   tfw_log "Identity $instance_name: $SID $DID $NAME"
 }
 
 # Utility function, to be overridden as needed:
@@ -447,6 +447,8 @@ configure_servald_server() {
 #    and with its own private monitor and MDP abstract socket names
 #  - set variable DUMMYNET to the full path name of shared dummy interface
 #  - set variables SIDx to the SID of instance x: SIDA, SIDB, etc.
+#  - set variables DIDx to the DID of instance x: DIDA, DIDB, etc.
+#  - set variables NAMEx to the names of instance x: NAMEA, NAMEB, etc.
 #  - set variables LOGx to the full path of server log file for instance x: LOGA,
 #    LOGB, etc,
 #  - wait for all instances to detect each other
@@ -465,8 +467,10 @@ start_servald_instances() {
       executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name"
       configure_servald_server
       start_servald_server
-      eval SID${I#+}="$SID"
-      eval LOG${I#+}="$instance_servald_log"
+      eval SID$instance_name="$SID"
+      eval DID$instance_name="$(shellarg "$DID")"
+      eval NAME$instance_name="$(shellarg "$NAME")"
+      eval LOG$instance_name="$(shellarg "$instance_servald_log")"
    done
    # Now wait until they see each other.
    wait_until --sleep=0.25 instances_see_each_other "$@"
