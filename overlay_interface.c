@@ -1036,7 +1036,7 @@ void logServalPacket(int level, const char *file, unsigned int line, const char 
   if (serval_packetvisualise(XPRINTF_MALLOCBUF(&mb), message, packet, len) == -1)
     WHY("serval_packetvisualise() failed");
   else if (mb.buffer == NULL)
-    WHY("serval_packetvisualise() output buffer missing");
+    WHYF("serval_packetvisualise() output buffer missing, message=%s packet=%p len=%lu", alloca_toprint(-1, message, strlen(message)), packet, len);
   else
     logString(level, file, line, function, mb.buffer);
   if (mb.buffer)
