@@ -18,10 +18,10 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
-#include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
+#include "xprintf.h"
 
 #define MAX_SPACES 120
 const char *spaces="          ""          ""          ""          "
@@ -34,9 +34,10 @@ const char *indent(int n)
 
 int senderSet=0;
 unsigned char senderAddress[32];
-static void _dump(FILE *f, const unsigned char *data, size_t len, size_t ofs, const char *fmt, ...);
+static void _dump(XPRINTF xpf, const unsigned char *data, size_t len, size_t ofs, const char *fmt, ...);
 
 #ifdef STANDALONE
+
 int main(int argc,char **argv)
 {
   int i,n;
@@ -48,35 +49,35 @@ int main(int argc,char **argv)
       int i;
       len=random()%8192;
       for(i=0;i<len;i++) buff[i]=random()&0xff;
-      serval_packetvisualise(stdout,"Fuzz Test",buff,len);
+      serval_packetvisualise(XPRINTF_STDIO(stdout), "Fuzz Test", buff, len);
     }
   return 0;
 }
 
 #endif
 
-int serval_packetvisualise_renderaddress(FILE *f, const unsigned char *packet, size_t *ofs, int senderP)
+int serval_packetvisualise_renderaddress(XPRINTF xpf, const unsigned char *packet, size_t *ofs, int senderP)
 {
 
   switch(packet[*ofs]) {
   case 0x00: /* ourself */
     if (senderSet) {
       int i;
-      for(i=0;i<senderSet;i++) fprintf(f,"%02X",senderAddress[i]);
-      if (senderSet<32) fprintf(f,"*");
-      fprintf(f," <same as sender's address>"); 
+      for(i=0;i<senderSet;i++) xprintf(xpf,"%02X",senderAddress[i]);
+      if (senderSet<32) xprintf(xpf,"*");
+      xprintf(xpf," <same as sender's address>"); 
     } else {
-      fprintf(f," <WARNING: self-reference to sender's address>"); 
+      xprintf(xpf," <WARNING: self-reference to sender's address>"); 
     }
     (*ofs)++;
     break;
   case 0x01: /* by index */
-    fprintf(f,"<address associated with index #%02x by sender>",
+    xprintf(xpf,"<address associated with index #%02x by sender>",
 	    packet[(*ofs)+1]);
     (*ofs)+=2;
     break;
   case 0x03: /* previously used address */
-    fprintf(f,"<same as previous address>");
+    xprintf(xpf,"<same as previous address>");
     (*ofs)++;
     break;
   case 0x09: /* prefix 3 bytes and assign index */
@@ -84,11 +85,11 @@ int serval_packetvisualise_renderaddress(FILE *f, const unsigned char *packet, s
     { int skip=0;
       if (packet[*ofs]&8) skip=1;
       (*ofs)++;
-      fprintf(f,"%02X%02X%02X* <24 bit prefix",
+      xprintf(xpf,"%02X%02X%02X* <24 bit prefix",
 	      packet[(*ofs)],packet[(*ofs)+1],packet[(*ofs)+2]);
       if (senderP) bcopy(&packet[*ofs],senderAddress,3); senderSet=3;
-      if (skip) fprintf(f," assigned index 0x%02x",packet[(*ofs)+3]);
-      fprintf(f,">");
+      if (skip) xprintf(xpf," assigned index 0x%02x",packet[(*ofs)+3]);
+      xprintf(xpf,">");
       (*ofs)+=3+skip;
     }
     break;
@@ -97,18 +98,18 @@ int serval_packetvisualise_renderaddress(FILE *f, const unsigned char *packet, s
     { int skip=0;
       if (packet[*ofs]&8) skip=1;
       (*ofs)++;
-      fprintf(f,"%02X%02X%02X%02X%02X%02X%02X* <56 bit prefix",
+      xprintf(xpf,"%02X%02X%02X%02X%02X%02X%02X* <56 bit prefix",
 	      packet[(*ofs)],packet[(*ofs)+1],packet[(*ofs)+2],packet[(*ofs)+3],
 	      packet[(*ofs)+4],packet[(*ofs)+5],packet[(*ofs)+6]);
       if (senderP) bcopy(&packet[*ofs],senderAddress,7); senderSet=7;
-      if (skip) fprintf(f," assigned index 0x%02x",packet[(*ofs)+7]);
-      fprintf(f,">");
+      if (skip) xprintf(xpf," assigned index 0x%02x",packet[(*ofs)+7]);
+      xprintf(xpf,">");
       (*ofs)+=7+skip;
     }
     break;
   case 0x07: /* prefix 11 bytes */
     (*ofs)++;
-    fprintf(f,"%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X* <88 bit prefix>",
+    xprintf(xpf,"%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X* <88 bit prefix>",
 	    packet[(*ofs)],packet[(*ofs)+1],packet[(*ofs)+2],packet[(*ofs)+3],
 	    packet[(*ofs)+4],packet[(*ofs)+5],packet[(*ofs)+6],packet[(*ofs)+7],
 	    packet[(*ofs)+8],packet[(*ofs)+9],packet[(*ofs)+10]);
@@ -119,10 +120,10 @@ int serval_packetvisualise_renderaddress(FILE *f, const unsigned char *packet, s
     {
       int i;
       (*ofs)++; 
-      fprintf(f,"<broadcast BPI=");
-      for(i=0;i<8;i++) fprintf(f,"%02X",packet[(*ofs)+i]);
+      xprintf(xpf,"<broadcast BPI=");
+      for(i=0;i<8;i++) xprintf(xpf,"%02X",packet[(*ofs)+i]);
       (*ofs)+=8;
-      fprintf(f,">"); break;
+      xprintf(xpf,">"); break;
     }
   case 0x0b: /* prefix 11 bytes and assign index */
   case 0x0d: /* prefix 11 bytes and assign 2-byte index */
@@ -130,7 +131,7 @@ int serval_packetvisualise_renderaddress(FILE *f, const unsigned char *packet, s
   case 0x02: /* reserved */
   case 0x04: /* reserved */
   case 0x0c: /* reserved */
-    fprintf(f,"<illegal address token 0x%02x>",packet[(*ofs)]);
+    xprintf(xpf,"<illegal address token 0x%02x>",packet[(*ofs)]);
     return -1;
     break;
   default:
@@ -143,16 +144,16 @@ int serval_packetvisualise_renderaddress(FILE *f, const unsigned char *packet, s
       /* naturally presented 32 byte address */
       {
 	int i;
-	for(i=0;i<32;i++) fprintf(f,"%02x",packet[(*ofs)+i]);
+	for(i=0;i<32;i++) xprintf(xpf,"%02x",packet[(*ofs)+i]);
 	if (senderP) bcopy(&packet[*ofs],senderAddress,32); senderSet=32;
       }
       if (skip) {
-	fprintf(f," <literal 256 bit address, assigned index 0x");
+	xprintf(xpf," <literal 256 bit address, assigned index 0x");
 	int i;
-	for(i=0;i<skip;i++) fprintf(f,"%02x",packet[(*ofs)+skip]);
-	fprintf(f,">");
+	for(i=0;i<skip;i++) xprintf(xpf,"%02x",packet[(*ofs)+skip]);
+	xprintf(xpf,">");
       } else
-	fprintf(f," <literal 256 bit address>");
+	xprintf(xpf," <literal 256 bit address>");
       (*ofs)+=32+skip;
     }
   }
@@ -160,17 +161,17 @@ int serval_packetvisualise_renderaddress(FILE *f, const unsigned char *packet, s
 }
 
 
-int isOverlayPacket(FILE *f, const unsigned char *packet, size_t *ofs, size_t len)
+int isOverlayPacket(XPRINTF xpf, const unsigned char *packet, size_t *ofs, size_t len)
 {
   if (packet[(*ofs)]!=0x4f) return 0;
   if (packet[(*ofs)+1]!=0x10) return 0;
 
   int version = (packet[(*ofs)+2]<<8)+packet[(*ofs)+3];
 
-  fprintf(f,"%sServal Overlay Mesh Packet version %d (0x%04x)\n",
+  xprintf(xpf,"%sServal Overlay Mesh Packet version %d (0x%04x)\n",
 	  indent(4),version,version);
   if (version>0x001) {
-    fprintf(f,"%s  WARNING: Packet version is newer than I know about.\n",indent(4));
+    xprintf(xpf,"%s  WARNING: Packet version is newer than I know about.\n",indent(4));
   }
   (*ofs)+=4;
 
@@ -209,9 +210,9 @@ int isOverlayPacket(FILE *f, const unsigned char *packet, size_t *ofs, size_t le
       }
       (*ofs)++;
   
-      fprintf(f,"%sOverlay Frame at offset 0x%x\n%stype identifier = 0x%x, modifier bits = 0x%x.\n",
+      xprintf(xpf,"%sOverlay Frame at offset 0x%x\n%stype identifier = 0x%x, modifier bits = 0x%x.\n",
 	      indent(6),frame_ofs,indent(8),frame_type,frame_flags);
-      fprintf(f,"%sTime-to-live = %d (0x%02x)\n%sframe payload bytes = %d (0x%x).\n",
+      xprintf(xpf,"%sTime-to-live = %d (0x%02x)\n%sframe payload bytes = %d (0x%x).\n",
 	      indent(8),ttl,ttl,indent(8),rfs,rfs);
       
       /* Assuming that there is no compression or crypto, we just use the plain body 
@@ -224,66 +225,66 @@ int isOverlayPacket(FILE *f, const unsigned char *packet, size_t *ofs, size_t le
       int cantDecodeFrame=0;
       int cantDecodeRecipient=0;
       int showSignature=0;
-      fprintf(f,"%sframe is ",indent(8));
+      xprintf(xpf,"%sframe is ",indent(8));
       switch(frame_flags&0x3) {
-      case 0: fprintf(f,"not compressed"); break;
-      case 1: fprintf(f,"gzip-compressed"); break;
-      case 2: fprintf(f,"bzip2-compressed"); break;
-      case 3: fprintf(f,"marked as compressed using illegal code 0x3"); 
+      case 0: xprintf(xpf,"not compressed"); break;
+      case 1: xprintf(xpf,"gzip-compressed"); break;
+      case 2: xprintf(xpf,"bzip2-compressed"); break;
+      case 3: xprintf(xpf,"marked as compressed using illegal code 0x3"); 
 	cantDecodeFrame=1;
 	break;
       }
-      fprintf(f,"\n%sframe is ",indent(8));
+      xprintf(xpf,"\n%sframe is ",indent(8));
       switch(frame_flags&0xc) {
-      case 0: fprintf(f,"not encrypted"); break;
-      case 4: fprintf(f,"encrypted using recipients public key (SID)"); 
+      case 0: xprintf(xpf,"not encrypted"); break;
+      case 4: xprintf(xpf,"encrypted using recipients public key (SID)"); 
 	cantDecodeFrame=1; break;
-      case 8: fprintf(f,"signed using senders public signing key (SAS)"); 
+      case 8: xprintf(xpf,"signed using senders public signing key (SAS)"); 
 	/* This doesn't stop us displaying the frame, as the body is still en claire.
 	   It does mean that we should present the signature block, and not
 	   show the signature as part of the packet body. */
 	cantDecodeFrame=0; 
 	showSignature=1;
 	break;
-      case 0xc: fprintf(f,"authcrypted (encrypted and authenticated) using CryptoBox (SID)"); 
+      case 0xc: xprintf(xpf,"authcrypted (encrypted and authenticated) using CryptoBox (SID)"); 
 	cantDecodeFrame=1; break;
       }
-      fprintf(f,"\n");
+      xprintf(xpf,"\n");
 
       if (!cantDecodeRecipient) {
 	/* Show next-hop, sender and  destination addresses */
-	fprintf(f,"%sFrame    next-hop address: ",indent(8));
-	if (serval_packetvisualise_renderaddress(f,packet,ofs,0))
-	  { fprintf(f,"\n%sERROR: Cannot decode remainder of frame\n",indent(8));
+	xprintf(xpf,"%sFrame    next-hop address: ",indent(8));
+	if (serval_packetvisualise_renderaddress(xpf,packet,ofs,0))
+	  { xprintf(xpf,"\n%sERROR: Cannot decode remainder of frame\n",indent(8));
 	    dumpRaw=1;
 	    goto nextframe;
 	  }
-	fprintf(f,"\n%sFrame destination address: ",indent(8));
-	if (serval_packetvisualise_renderaddress(f,packet,ofs,0))
-	  { fprintf(f,"\n%sERROR: Cannot decode remainder of frame\n",indent(8));
+	xprintf(xpf,"\n%sFrame destination address: ",indent(8));
+	if (serval_packetvisualise_renderaddress(xpf,packet,ofs,0))
+	  { xprintf(xpf,"\n%sERROR: Cannot decode remainder of frame\n",indent(8));
 	    dumpRaw=1;
 	    goto nextframe;
 	  }
-	fprintf(f,"\n%sFrame      source address: ",indent(8));
-	if (serval_packetvisualise_renderaddress(f,packet,ofs,1))
-	  { fprintf(f,"\n%sERROR: Cannot decode remainder of frame\n",indent(8));
+	xprintf(xpf,"\n%sFrame      source address: ",indent(8));
+	if (serval_packetvisualise_renderaddress(xpf,packet,ofs,1))
+	  { xprintf(xpf,"\n%sERROR: Cannot decode remainder of frame\n",indent(8));
 	    dumpRaw=1;
 	    goto nextframe;
 	  }
-	fprintf(f,"\n");
-	fprintf(f,"%sFrame payload begins at offset 0x%x\n",indent(8),*ofs);
+	xprintf(xpf,"\n");
+	xprintf(xpf,"%sFrame payload begins at offset 0x%x\n",indent(8),*ofs);
 	frame=&packet[*ofs];
 	frame_len=next_frame_ofs-(*ofs);
 	if (showSignature) frame_len-=64;
 	frame_ofs=0;
       } else {
-	fprintf(f,"%sWARNING: Cannot decode frame addresses due to encryption.\n",
+	xprintf(xpf,"%sWARNING: Cannot decode frame addresses due to encryption.\n",
 		indent(8));
       }
 
       if (cantDecodeFrame) {
-	fprintf(f,"%sWARNING: Cannot decode compressed and/or encrypted frame.\n",indent(8));
-	_dump(f, frame, frame_len, 0, "%s", indent(10));
+	xprintf(xpf,"%sWARNING: Cannot decode compressed and/or encrypted frame.\n",indent(8));
+	_dump(xpf, frame, frame_len, 0, "%s", indent(10));
       }
       else {
 	/* Decrypt and/or decompress frame */
@@ -293,32 +294,32 @@ int isOverlayPacket(FILE *f, const unsigned char *packet, size_t *ofs, size_t le
 	  {
 	    unsigned long long time;
 	    int i;
-	    fprintf(f,"%sSelf-announcement\n",indent(8));
+	    xprintf(xpf,"%sSelf-announcement\n",indent(8));
 	    time=0; for(i=0;i<4;i++) time=(time<<8)|frame[frame_ofs++];
-	    fprintf(f,"%sStart time: %10lldms (0x%08llx)\n",indent(10),time,time);
+	    xprintf(xpf,"%sStart time: %10lldms (0x%08llx)\n",indent(10),time,time);
 	    time=0; for(i=0;i<4;i++) time=(time<<8)|frame[frame_ofs++];
-	    fprintf(f,"%sEnd time:   %10lldms (0x%08llx)\n",indent(10),time,time);
-	    fprintf(f,"%sSender's Interface number: %d\n",indent(10),frame[frame_ofs++]);
+	    xprintf(xpf,"%sEnd time:   %10lldms (0x%08llx)\n",indent(10),time,time);
+	    xprintf(xpf,"%sSender's Interface number: %d\n",indent(10),frame[frame_ofs++]);
 	  }
 	  break;
 	case 0x20: /* self-announce ack */
 	  {
 	    unsigned long long time;
 	    int i;
-	    fprintf(f,"%sACK of self-announce\n",indent(8));
+	    xprintf(xpf,"%sACK of self-announce\n",indent(8));
 	    time=0; for(i=0;i<4;i++) time=(time<<8)|frame[frame_ofs++];
-	    fprintf(f,"%sStart time: %10lldms (0x%08llx)\n",indent(10),time,time);
+	    xprintf(xpf,"%sStart time: %10lldms (0x%08llx)\n",indent(10),time,time);
 	    time=0; for(i=0;i<4;i++) time=(time<<8)|frame[frame_ofs++];
-	    fprintf(f,"%sEnd time:   %10lldms (0x%08llx)\n",indent(10),time,time);
+	    xprintf(xpf,"%sEnd time:   %10lldms (0x%08llx)\n",indent(10),time,time);
 	    int iface=frame[frame_ofs++];
-	    fprintf(f,"%sSender Interface : %d\n",indent(10),iface);	    
+	    xprintf(xpf,"%sSender Interface : %d\n",indent(10),iface);	    
 	  } 
 	  break;
 	case 0x50: /* rhizome advertisement */
 	  {
 	    int i,j,k;
 	    int rhizome_ad_frame_type=frame[0];
-	    fprintf(f,"%sRhizome bundle advertisement frame, version %d\n",indent(8),rhizome_ad_frame_type);
+	    xprintf(xpf,"%sRhizome bundle advertisement frame, version %d\n",indent(8),rhizome_ad_frame_type);
 	    unsigned short int http_port = 0;
 	    i=1;
 	    switch (rhizome_ad_frame_type) {
@@ -326,18 +327,18 @@ int isOverlayPacket(FILE *f, const unsigned char *packet, size_t *ofs, size_t le
 	      case 4:
 		http_port = (frame[i] << 8) + frame[i+1];
 		i += 2;
-		fprintf(f,"%sHTTP port = %d\n", indent(8), http_port);
+		xprintf(xpf,"%sHTTP port = %d\n", indent(8), http_port);
 		break;
 	    }
 	    switch (rhizome_ad_frame_type) {
 	      case 2:
 	      case 4:
-		fprintf(f,"%sBundle BAR(s) (i=%d, frame_len=%d):\n", indent(8),i,frame_len);
+		xprintf(xpf,"%sBundle BAR(s) (i=%d, frame_len=%d):\n", indent(8),i,frame_len);
 		break;
 	      case 1:
 	      case 3:
 		/* Frame contains whole manifest(s) */
-		fprintf(f,"%sBundle Manifest(s) (i=%d, frame_len=%d):\n", indent(8),i,frame_len);
+		xprintf(xpf,"%sBundle Manifest(s) (i=%d, frame_len=%d):\n", indent(8),i,frame_len);
 		while(i<frame_len) {		  
 		  /* Check for end of manifests */
 		  if (frame[i] == 0xff) { i+=1; break; }
@@ -345,66 +346,66 @@ int isOverlayPacket(FILE *f, const unsigned char *packet, size_t *ofs, size_t le
 		  int manifest_len=(frame[i]<<8)+frame[i+1];
 		  i+=2;
 		  if (i > frame_len) {
-		    fprintf(f,"%sERROR: Unexpected end of Frame -- skipping rest of frame.\n",indent(10));
+		    xprintf(xpf,"%sERROR: Unexpected end of Frame -- skipping rest of frame.\n",indent(10));
 		    break;
 		  }
 		  if (manifest_len>(frame_len-i)) {
-		    fprintf(f,"%sERROR: Manifest extends for 0x%x bytes, but frame contains only 0x%x more bytes -- skipping rest of frame.\n",indent(10),manifest_len,frame_len-i);
-		    _dump(f, frame, frame_len, 0, "%s", indent(12));
+		    xprintf(xpf,"%sERROR: Manifest extends for 0x%x bytes, but frame contains only 0x%x more bytes -- skipping rest of frame.\n",indent(10),manifest_len,frame_len-i);
+		    _dump(xpf, frame, frame_len, 0, "%s", indent(12));
 		    i=frame_len;
 		    break;
 		  }
 		  /* find manifest self-signature block */
 		  for(j=0;j<manifest_len;j++) if (frame[i+j]==0) { j++; break;}
-		  fprintf(f,"%smanifest id @0x%x-0x%x/0x%x (len=0x%x) (from first signature block) = ",
+		  xprintf(xpf,"%smanifest id @0x%x-0x%x/0x%x (len=0x%x) (from first signature block) = ",
 			  indent(10),i,i+manifest_len-1,frame_len,manifest_len);
-		  for(k=0;k<32;k++) fprintf(f,"%02X",frame[i+j+k+1+64]);
-		  fprintf(f,"\n");
+		  for(k=0;k<32;k++) xprintf(xpf,"%02X",frame[i+j+k+1+64]);
+		  xprintf(xpf,"\n");
 		  /* Print manifest text body */
 		  int column=0;
-		  fprintf(f,"%sManifest variables:\n",indent(12));
+		  xprintf(xpf,"%sManifest variables:\n",indent(12));
 		  for(k=0;k<(j-1);k++) {		    
-		    if (!column) { fprintf(f,"%s",indent(14)); column=14; }
+		    if (!column) { xprintf(xpf,"%s",indent(14)); column=14; }
 		    switch(frame[i+k]) {
 		    case '\r': /* ignore CR */
 		    case '\n': /* LF */
 		      column=0;
 		      /* fall through */
 		    default:
-		      fprintf(f,"%c",frame[i+k]);
+		      xprintf(xpf,"%c",frame[i+k]);
 		    }
 		  }
 		  /* Print manifest signature blocks */
 		  
-		  fprintf(f,"%sManifest signature blocks\n",indent(12));
+		  xprintf(xpf,"%sManifest signature blocks\n",indent(12));
 		  for(;j<manifest_len;)
 		    {
 		      int sigLen=frame[i+j];
 		      switch(sigLen) {
 		      case 0x61: /* cryptosign signature */
-			fprintf(f,"%sNaCl CryptoSign Generated Signature\n",indent(14));
-			fprintf(f,"%sPublic key of signatory = ",indent(16));
-			for(k=0;k<32;k++) fprintf(f,"%02X",frame[i+j+1+64+k]);
-			fprintf(f,"\n");
-			fprintf(f,"%sSignature data:",indent(16));
+			xprintf(xpf,"%sNaCl CryptoSign Generated Signature\n",indent(14));
+			xprintf(xpf,"%sPublic key of signatory = ",indent(16));
+			for(k=0;k<32;k++) xprintf(xpf,"%02X",frame[i+j+1+64+k]);
+			xprintf(xpf,"\n");
+			xprintf(xpf,"%sSignature data:",indent(16));
 			for(k=0;k<64;k++)
 			  {
-			    if (!(k&0xf)) fprintf(f,"\n%s",indent(18-1));
-			    fprintf(f," %02X",frame[i+j+1+k]);
+			    if (!(k&0xf)) xprintf(xpf,"\n%s",indent(18-1));
+			    xprintf(xpf," %02X",frame[i+j+1+k]);
 			  }
-			fprintf(f,"\n");
+			xprintf(xpf,"\n");
 			break;
 		      case 0:
 			sigLen=1;
 		      default:
-			fprintf(f,"%sUnknown Signature Type 0x%02x\n",indent(14),frame[i+j]);
-			fprintf(f,"%sSignature data:",indent(16));
+			xprintf(xpf,"%sUnknown Signature Type 0x%02x\n",indent(14),frame[i+j]);
+			xprintf(xpf,"%sSignature data:",indent(16));
 			for(k=0;k<(sigLen-1);k++)
 			  {
-			    if (!(k&0xf)) fprintf(f,"\n%s",indent(18-1));
-			    fprintf(f," %02X",frame[i+j+1+k]);
+			    if (!(k&0xf)) xprintf(xpf,"\n%s",indent(18-1));
+			    xprintf(xpf," %02X",frame[i+j+1+k]);
 			  }
-			fprintf(f,"\n");			
+			xprintf(xpf,"\n");			
 			break;
 		      }
 		      j+=sigLen;
@@ -413,31 +414,31 @@ int isOverlayPacket(FILE *f, const unsigned char *packet, size_t *ofs, size_t le
 		}
 		break;
 	      default:
-		fprintf(f,"%sWARNING: Version is newer than I understand.\n",indent(10));
+		xprintf(xpf,"%sWARNING: Version is newer than I understand.\n",indent(10));
 		break;
 	    }
 
-	    fprintf(f,"%sBundle Advertisement Records (BARs):\n",indent(8));
+	    xprintf(xpf,"%sBundle Advertisement Records (BARs):\n",indent(8));
 	    for(;i<(frame_len-31);i+=32) {
-	      fprintf(f,"%smanifest id = %02X%02X%02X%02X%02X%02X%02X%02X*\n",
+	      xprintf(xpf,"%smanifest id = %02X%02X%02X%02X%02X%02X%02X%02X*\n",
 		      indent(10),frame[i],frame[i+1],frame[i+2],frame[i+3],
 		      frame[i+4],frame[i+5],frame[i+6],frame[i+7]);
 	    
 	      unsigned long long manifest_version=0;
 	      for(j=0;j<7;j++) manifest_version=(manifest_version<<8)|frame[i+8+j];
-	      fprintf(f,"%smanifest revision = %lld (0x%llx)\n",
+	      xprintf(xpf,"%smanifest revision = %lld (0x%llx)\n",
 		      indent(12),manifest_version,manifest_version);
-	      fprintf(f,"%smanifest TTL = %d (0x%x)\n",
+	      xprintf(xpf,"%smanifest TTL = %d (0x%x)\n",
 		      indent(12),frame[i+16],frame[i+16]);
 	      unsigned long long file_size=0;
 	      for(j=0;j<6;j++) file_size=(file_size<<8)+frame[i+18+j];
-	      fprintf(f,"%sassociated file size = %lld (0x%llx) bytes\n",
+	      xprintf(xpf,"%sassociated file size = %lld (0x%llx) bytes\n",
 		      indent(12),file_size,file_size);
 	      double lat0=((frame[i+24]<<8)+frame[i+25])*180/65535-90;
 	      double long0=((frame[i+26]<<8)+frame[i+27])*360/65535-180;
 	      double lat1=((frame[i+28]<<8)+frame[i+29])*180/65535-90;
 	      double long1=((frame[i+30]<<8)+frame[i+31])*360/65535-180;
-	      fprintf(f,"%sgeographic extent of relevance (lat,long) = (%.f,%.f) - (%.f,%.f)\n",
+	      xprintf(xpf,"%sgeographic extent of relevance (lat,long) = (%.f,%.f) - (%.f,%.f)\n",
 		      indent(12),lat0,long0,lat1,long1);
 	    }
 	  }
@@ -445,9 +446,9 @@ int isOverlayPacket(FILE *f, const unsigned char *packet, size_t *ofs, size_t le
 	case 0x70: /* node announce */
 	  {
 	    int i;
-	    fprintf(f,"%sNode reachability announcment(s):\n",indent(8));
+	    xprintf(xpf,"%sNode reachability announcment(s):\n",indent(8));
 	    for(i=0;i<frame_len;i+=8)
-	      fprintf(f,"%s  %02X%02X%02X%02X%02X%02X* best link score = %d, via %d gateways\n",
+	      xprintf(xpf,"%s  %02X%02X%02X%02X%02X%02X* best link score = %d, via %d gateways\n",
 		      indent(10),
 		      frame[i+0],frame[i+1],frame[i+2],frame[i+3],
 		      frame[i+4],frame[i+5],
@@ -458,15 +459,15 @@ int isOverlayPacket(FILE *f, const unsigned char *packet, size_t *ofs, size_t le
 	case 0x30: /* MDP frame */
 	  {
 	    int version=(frame[0]<<8)|(frame[1]);
-	    fprintf(f,"%sMDP frame (version=0x%04x):\n",indent(8),version);
+	    xprintf(xpf,"%sMDP frame (version=0x%04x):\n",indent(8),version);
 	    int src_port=(frame[2]<<24)|(frame[3]<<16)|(frame[4]<<8)|frame[5];
 	    int dst_port=(frame[6]<<24)|(frame[7]<<16)|(frame[8]<<8)|frame[9];
-	    fprintf(f,"%s      source port =%-6d (0x%08x)\n",
+	    xprintf(xpf,"%s      source port =%-6d (0x%08x)\n",
 		    indent(10),src_port,src_port);
-	    fprintf(f,"%s destination port =%-6d (0x%08x)\n",
+	    xprintf(xpf,"%s destination port =%-6d (0x%08x)\n",
 		    indent(10),dst_port,dst_port);
-	    fprintf(f,"%sMDP Payload:\n",indent(10));
-	    _dump(f, frame + 10, frame_len - 10, 0, "%sframe+", indent(12));
+	    xprintf(xpf,"%sMDP Payload:\n",indent(10));
+	    _dump(xpf, frame + 10, frame_len - 10, 0, "%sframe+", indent(12));
 	  }
 	  break;
 	case 0x40: /* voice frame */
@@ -474,26 +475,26 @@ int isOverlayPacket(FILE *f, const unsigned char *packet, size_t *ofs, size_t le
 	default:
 	  {
 	    /* Reserved values */
-	    fprintf(f,"%sWARNING: Packet contains reserved/unknown frame type 0x%02x\n", indent(8),frame_type);
-	    _dump(f, frame, frame_len, 0, "%sframe+", indent(10));
+	    xprintf(xpf,"%sWARNING: Packet contains reserved/unknown frame type 0x%02x\n", indent(8),frame_type);
+	    _dump(xpf, frame, frame_len, 0, "%sframe+", indent(10));
 	  }
 	  break;
 	}
 
 	if (showSignature) {
-	  fprintf(f,"%sWARNING: Signature is for display purposes, and has not been verified\n",indent(8));
-	  fprintf(f,"%sFrame signature block (SAS signed):\n",indent(8));
-	  _dump(f, frame + frame_len, len < 64 ? len : 64, 0, "%s" ,indent(10));
+	  xprintf(xpf,"%sWARNING: Signature is for display purposes, and has not been verified\n",indent(8));
+	  xprintf(xpf,"%sFrame signature block (SAS signed):\n",indent(8));
+	  _dump(xpf, frame + frame_len, len < 64 ? len : 64, 0, "%s" ,indent(10));
 	}
       }	
       
     nextframe:
       if (next_frame_ofs<0) {
-	fprintf(f,"%sERROR: Cannot continue decoding payload due to previous error(s)\n",indent(6));
+	xprintf(xpf,"%sERROR: Cannot continue decoding payload due to previous error(s)\n",indent(6));
 	return 1;
       }
       if (dumpRaw)
-	_dump(f, packet, next_frame_ofs, *ofs, "%s", indent(10));
+	_dump(xpf, packet, next_frame_ofs, *ofs, "%s", indent(10));
       (*ofs)=next_frame_ofs;
       continue;
     }
@@ -501,52 +502,50 @@ int isOverlayPacket(FILE *f, const unsigned char *packet, size_t *ofs, size_t le
   return 1;
 }
 
-int isDNAPacket(FILE *f, const unsigned char *packet, size_t *ofs, size_t len)
+int isDNAPacket(XPRINTF xpf, const unsigned char *packet, size_t *ofs, size_t len)
 {
   return 0;
 }
 
-int serval_packetvisualise(FILE *f, const char *message, const unsigned char *packet, size_t len)
+int serval_packetvisualise(XPRINTF xpf, const char *message, const unsigned char *packet, size_t len)
 {
-  if (f == NULL)
-    return -1;
   if (message)
-    fprintf(f, "%s: ",message);
-  fprintf(f,"Packet body of %d (0x%x) bytes:\n",len,len);
-  _dump(f, packet, len, 0, "    ");
+    xprintf(xpf, "%s: ",message);
+  xprintf(xpf,"Packet body of %d (0x%x) bytes:\n",len,len);
+  _dump(xpf, packet, len, 0, "    ");
   size_t ofs=0;
-  fprintf(f,"  Packet Structure:\n");
-  if (isOverlayPacket(f,packet,&ofs,len))
+  xprintf(xpf,"  Packet Structure:\n");
+  if (isOverlayPacket(xpf,packet,&ofs,len))
     ;
-  else if (isDNAPacket(f,packet,&ofs,len))
+  else if (isDNAPacket(xpf,packet,&ofs,len))
     ;
   else {
     /* Unknown packet type. */
   }
   if (ofs<len) {
-    fprintf(f,"  WARNING: The last %d (0x%x) bytes of the packet were not parsed.\n",len-ofs,len-ofs);
-    _dump(f, packet, len, ofs, "    ");
+    xprintf(xpf,"  WARNING: The last %d (0x%x) bytes of the packet were not parsed.\n",len-ofs,len-ofs);
+    _dump(xpf, packet, len, ofs, "    ");
   }
   return 0;
 }
 
-static void _dump(FILE *f, const unsigned char *data, size_t len, size_t ofs, const char *fmt, ...)
+static void _dump(XPRINTF xpf, const unsigned char *data, size_t len, size_t ofs, const char *fmt, ...)
 {
   va_list ap;
   va_start(ap, fmt);
   int i, j;
   for (i = (ofs / 16) * 16; i < len; i += 16) {
-    vfprintf(f, fmt, ap);
-    fprintf(f, "%04x:", i);
+    vxprintf(xpf, fmt, ap);
+    xprintf(xpf, "%04x:", i);
     for (j = 0; j < 16; ++j)
       if (i + j >= ofs && i + j < len)
-	fprintf(f," %02x", data[i+j]);
+	xprintf(xpf," %02x", data[i+j]);
       else
-	fprintf(f, "   ");
-    fprintf(f, "    ");
+	xprintf(xpf, "   ");
+    xprintf(xpf, "    ");
     for (j = 0; j < 16 && i + j < len; ++j)
-      fputc(i + j < ofs ? ' ' : data[i+j] >= ' ' && data[i+j] < 0x7c ? data[i+j] : '.', f);
-    fputc('\n', f);
+      xputc(i + j < ofs ? ' ' : data[i+j] >= ' ' && data[i+j] < 0x7c ? data[i+j] : '.', xpf);
+    xputc('\n', xpf);
   }
   va_end(ap);
 }

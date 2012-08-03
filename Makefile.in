@@ -55,7 +55,8 @@ SRCS=	\
 	srandomdev.c \
 	strbuf.c \
 	strbuf_helpers.c \
-	vomp.c
+	vomp.c \
+        xprintf.c
 
 MONITORCLIENTSRCS=conf.c \
 	log.c \
@@ -84,6 +85,7 @@ HDRS=	fifo.h \
 	sha2.h \
 	conf.h \
 	log.h \
+	xprintf.h \
 	constants.h \
 	monitor-client.h \
 	sqlite-amalgamation-3070900/sqlite3.h

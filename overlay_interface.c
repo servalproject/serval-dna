@@ -1032,19 +1032,13 @@ long long parse_quantity(char *q)
 
 void logServalPacket(int level, const char *file, unsigned int line, const char *function, const char *message, const unsigned char *packet, size_t len)
 {
-  char *buffer = NULL;
-  size_t size = 0;
-  FILE *m = open_memstream(&buffer, &size);
-  if (m == NULL) {
-    WHY_perror("open_memstream");
-    return;
-  }
-  if (serval_packetvisualise(m, message, packet, len) == -1)
+  struct mallocbuf mb = STRUCT_MALLOCBUF_NULL;
+  if (serval_packetvisualise(XPRINTF_MALLOCBUF(&mb), message, packet, len) == -1)
     WHY("serval_packetvisualise() failed");
-  if (fclose(m) == EOF)
-    WHY_perror("fclose");
+  else if (mb.buffer == NULL)
+    WHY("serval_packetvisualise() output buffer missing");
   else
-    logString(level, file, line, function, buffer);
-  if (buffer)
-    free(buffer);
+    logString(level, file, line, function, mb.buffer);
+  if (mb.buffer)
+    free(mb.buffer);
 }

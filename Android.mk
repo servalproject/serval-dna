@@ -16,6 +16,7 @@ SERVALD_SRC_FILES = \
 	serval-dna/commandline.c   \
 	serval-dna/conf.c   \
         serval-dna/dataformats.c   \
+        serval-dna/xprintf.c       \
         serval-dna/log.c           \
         serval-dna/net.c           \
         serval-dna/mkdir.c         \

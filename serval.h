@@ -109,9 +109,9 @@ struct in_addr {
 #include <sys/stat.h>
 
 #include "constants.h"
+#include "xprintf.h"
 #include "log.h"
 #include "conf.h"
-
 
 /* bzero(3) is deprecated in favour of memset(3). */
 #define bzero(addr,len) memset((addr), 0, (len))
@@ -801,7 +801,7 @@ int overlay_saw_mdp_containing_frame(overlay_frame *f,long long now);
 
 #include "nacl.h"
 
-int serval_packetvisualise(FILE *f, const char *message, const unsigned char *packet, size_t len);
+int serval_packetvisualise(XPRINTF xpf, const char *message, const unsigned char *packet, size_t len);
 
 int overlay_broadcast_drop_check(unsigned char *a);
 int overlay_address_is_broadcast(unsigned char *a);
