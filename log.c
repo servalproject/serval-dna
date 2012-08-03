@@ -223,14 +223,14 @@ void logString(int level, const char *file, unsigned int line, const char *funct
   for (p = str; *p; ++p) {
     if (*p == '\n') {
       if (_log_prepare(level, file, line, function)) {
-	strbuf_ncat(&logbuf, str, p - s);
+	strbuf_ncat(&logbuf, s, p - s);
 	_log_finish(level);
       }
       s = p + 1;
     }
   }
   if (p > s && _log_prepare(level, file, line, function)) {
-    strbuf_ncat(&logbuf, str, p - s);
+    strbuf_ncat(&logbuf, s, p - s);
     _log_finish(level);
   }
 }

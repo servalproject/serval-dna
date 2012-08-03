@@ -1032,8 +1032,8 @@ long long parse_quantity(char *q)
 
 void logServalPacket(int level, const char *file, unsigned int line, const char *function, const char *message, const unsigned char *packet, size_t len)
 {
-  char *buffer;
-  size_t size;
+  char *buffer = NULL;
+  size_t size = 0;
   FILE *m = open_memstream(&buffer, &size);
   if (m == NULL) {
     WHY_perror("open_memstream");
@@ -1045,4 +1045,6 @@ void logServalPacket(int level, const char *file, unsigned int line, const char 
     WHY_perror("fclose");
   else
     logString(level, file, line, function, buffer);
+  if (buffer)
+    free(buffer);
 }
