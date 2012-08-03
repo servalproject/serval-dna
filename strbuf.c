@@ -46,8 +46,9 @@ strbuf strbuf_ncat(strbuf sb, const char *text, size_t len)
   if (sb->start && sb->current < sb->end) {
     register size_t n = min(sb->end - sb->current, len);
     char *c;
-    for (c = sb->current; n-- && (*c = *text); ++c, ++text)
+    for (c = sb->current; n && (*c = *text); --n, ++c, ++text)
       ;
+    *c = '\0';
   }
   sb->current += len;
   return sb;
