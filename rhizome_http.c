@@ -20,9 +20,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <signal.h>
-#include <ctype.h>
 
 #include "serval.h"
+#include "str.h"
 #include "rhizome.h"
 
 typedef struct rhizome_http_request {
@@ -499,41 +499,6 @@ int http_header_complete(const char *buf, size_t len, size_t tail)
     }
   }
   return count == 2;
-}
-
-/* Check if a given string starts with a given sub-string.  If so, return 1 and, if afterp is not
-   NULL, set *afterp to point to the character immediately following the substring.  Otherwise
-   return 0.
-   This function is used to parse HTTP headers and responses, which are typically not
-   nul-terminated, but are held in a buffer which has an associated length.  To avoid this function
-   running past the end of the buffer, the caller must ensure that the buffer contains a sub-string
-   that is not part of the sub-string being sought, eg, "\r\n\r\n" as detected by
-   http_header_complete().  This guarantees that this function will return nonzero before running
-   past the end of the buffer.
-   @author Andrew Bettison <andrew@servalproject.com>
- */
-int str_startswith(char *str, const char *substring, char **afterp)
-{
-  while (*substring && *substring == *str)
-    ++substring, ++str;
-  if (*substring)
-    return 0;
-  if (afterp)
-    *afterp = str;
-  return 1;
-}
-
-/* Case-insensitive form of str_startswith().
- */
-int strcase_startswith(char *str, const char *substring, char **afterp)
-{
-  while (*substring && *str && toupper(*substring) == toupper(*str))
-    ++substring, ++str;
-  if (*substring)
-    return 0;
-  if (afterp)
-    *afterp = str;
-  return 1;
 }
 
 static int rhizome_server_parse_http_request(rhizome_http_request *r)
