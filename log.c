@@ -17,10 +17,6 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include "log.h"
-#include "conf.h"
-#include "strbuf.h"
-#include "strbuf_helpers.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>
@@ -34,6 +30,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <unistd.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+
+#include "log.h"
+#include "conf.h"
+#include "strbuf.h"
+#include "strbuf_helpers.h"
 
 unsigned int debug = 0;
 
