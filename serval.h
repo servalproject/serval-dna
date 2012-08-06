@@ -974,7 +974,7 @@ int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
 int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp);
 int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 		     struct sockaddr_un *recvaddr,int recvaddlen);
-int overlay_mdp_dnalookup_reply(const overlay_mdp_data_frame *mdpd, const unsigned char *sid, const char *uri, const char *did, const char *name);
+int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const unsigned char *resolved_sid, const char *uri, const char *did, const char *name);
 
 int dump_payload(overlay_frame *p,char *message);
 

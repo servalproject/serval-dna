@@ -515,7 +515,7 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp,long long now)
 	      strbuf_tohex(b, packedSid, SID_SIZE);
 	      strbuf_putc(b, '/');
 	      strbuf_puts(b, unpackedDid);
-	      overlay_mdp_dnalookup_reply(&mdp->out, packedSid, strbuf_str(b), unpackedDid, name);
+	      overlay_mdp_dnalookup_reply(&mdp->out.src, packedSid, strbuf_str(b), unpackedDid, name);
 	      kp++;
 	      results++;
 	    }
@@ -590,18 +590,17 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp,long long now)
   RETURN(0);
 }
 
-int overlay_mdp_dnalookup_reply(const overlay_mdp_data_frame *mdpd, const unsigned char *sid, const char *uri, const char *did, const char *name)
+int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const unsigned char *resolved_sid, const char *uri, const char *did, const char *name)
 {
   overlay_mdp_frame mdpreply;
   bzero(&mdpreply, sizeof mdpreply);
   mdpreply.packetTypeAndFlags = MDP_TX; // outgoing MDP message
-  bcopy(mdpd->src.sid, mdpreply.out.dst.sid, SID_SIZE);
-  mdpreply.out.dst.port = mdpd->src.port;
-  mdpreply.out.src.port = mdpd->dst.port;
-  bcopy(sid, mdpreply.out.src.sid, SID_SIZE);
+  memcpy(mdpreply.out.src.sid, resolved_sid, SID_SIZE);
+  mdpreply.out.src.port = MDP_PORT_DNALOOKUP;
+  bcopy(dstaddr, &mdpreply.out.dst, sizeof(sockaddr_mdp));
   /* build reply as TOKEN|URI|DID|NAME|<NUL> */
   strbuf b = strbuf_local((char *)mdpreply.out.payload, sizeof mdpreply.out.payload);
-  strbuf_tohex(b, sid, SID_SIZE);
+  strbuf_tohex(b, resolved_sid, SID_SIZE);
   strbuf_sprintf(b, "|%s|%s|%s|", uri, did, name);
   if (strbuf_overrun(b))
     return WHY("MDP payload overrun");
@@ -629,23 +628,21 @@ int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,int userGeneratedFrameP,
       */
       return WHY("Packet had broadcast address as source address");
     }
-  
+
   /* Now make sure that source address is in the list of bound addresses,
      and that the recvaddr matches. */
   int i;
-  for(i=0;i<MDP_MAX_BINDINGS;i++)
-    {
-      if (!memcmp(src,&mdp_bindings[i],sizeof(sockaddr_mdp)))
-	{
-	  /* Binding matches, now make sure the sockets match */
-	  if (mdp_bindings_socket_name_lengths[i]==(recvaddrlen-sizeof(short)))
-	      if (!memcmp(mdp_bindings_sockets[i],recvaddr->sun_path, recvaddrlen-sizeof(short))) {
-		/* Everything matches, so this unix socket and MDP address 
-		   combination is valid */
-		return 0;
-	      }
-	}
+  for(i = 0; i < MDP_MAX_BINDINGS; ++i) {
+    if (mdp_bindings[i].port && memcmp(src, &mdp_bindings[i], sizeof(sockaddr_mdp)) == 0) {
+      /* Binding matches, now make sure the sockets match */
+      if (  mdp_bindings_socket_name_lengths[i] == recvaddrlen - sizeof(short)
+	&&  memcmp(mdp_bindings_sockets[i], recvaddr->sun_path, recvaddrlen - sizeof(short)) == 0
+      ) {
+	/* Everything matches, so this unix socket and MDP address combination is valid */
+	return 0;
+      }
     }
+  }
 
   /* Check for build-in port listeners */
   if (overlay_address_is_local(src->sid)) {
@@ -654,7 +651,8 @@ int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,int userGeneratedFrameP,
       /* we don't allow user/network generated packets claiming to
 	 be from the echo port, largely to prevent echo:echo connections
 	 and the resulting denial of service from triggering endless pongs. */
-      if (!userGeneratedFrameP) return 0; 
+      if (!userGeneratedFrameP)
+	return 0;
       break;
       /* other built-in listeners */
     case MDP_PORT_KEYMAPREQUEST:
@@ -663,13 +661,14 @@ int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,int userGeneratedFrameP,
       return 0;
     default:
       break;
-    }      
-  } 
+    }
+  }
 
-  return WHYF("No such binding: recvaddr=%s addr=%s port=%u (0x%x) -- possible spoofing attack",
-	recvaddr ? alloca_toprint(-1, recvaddr->sun_path, strlen(recvaddr->sun_path)) : "NULL",
+  return WHYF("No such binding: recvaddr=%p %s addr=%s port=%u (0x%x) -- possible spoofing attack",
+	recvaddr,
+	recvaddr ? alloca_toprint(-1, recvaddr->sun_path, recvaddrlen - sizeof(short)) : "",
 	alloca_tohex_sid(src->sid),
-	src->port,src->port
+	src->port, src->port
       );
 }
 
