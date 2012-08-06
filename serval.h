@@ -1028,32 +1028,8 @@ typedef struct vomp_sample_block {
   unsigned char bytes[1024];
 } vomp_sample_block;
 
-typedef struct vomp_call_state {
-  struct sched_ent alarm;
-  vomp_call_half local;
-  vomp_call_half remote;
-  int initiated_call;
-  int fast_audio;
-  time_ms_t create_time;
-  time_ms_t last_activity;
-  time_ms_t audio_clock;
-  int audio_started;
-  // last local & remote status we sent to all interested parties
-  int last_sent_status;
-  unsigned char remote_codec_list[256];
-  int recent_sample_rotor;
-  vomp_sample_block recent_samples[VOMP_MAX_RECENT_SAMPLES];
-  
-  int sample_pos;
-  unsigned int seen_samples[VOMP_MAX_RECENT_SAMPLES *4];
-} vomp_call_state;
-
-extern int vomp_call_count;
-extern int vomp_active_call;
-extern vomp_call_state vomp_call_states[VOMP_MAX_CALLS];
-
-
-vomp_call_state *vomp_find_call_by_session(int session_token);
+struct vomp_call_state;
+struct vomp_call_state *vomp_find_call_by_session(int session_token);
 int vomp_mdp_event(overlay_mdp_frame *mdp,
 		   struct sockaddr_un *recvaddr,int recvaddrlen);
 int vomp_mdp_received(overlay_mdp_frame *mdp);
@@ -1062,10 +1038,10 @@ int vomp_sample_size(int c);
 int vomp_codec_timespan(int c);
 int vomp_parse_dtmf_digit(char c);
 int vomp_dial(unsigned char *local_sid, unsigned char *remote_sid, char *local_did, char *remote_did);
-int vomp_pickup(vomp_call_state *call);
-int vomp_hangup(vomp_call_state *call);
-int vomp_ringing(vomp_call_state *call);
-int vomp_send_status_remote_audio(vomp_call_state *call, int audio_codec, const unsigned char *audio, int audio_length);
+int vomp_pickup(struct vomp_call_state *call);
+int vomp_hangup(struct vomp_call_state *call);
+int vomp_ringing(struct vomp_call_state *call);
+int vomp_send_status_remote_audio(struct vomp_call_state *call, int audio_codec, const unsigned char *audio, int audio_length);
 
 
 typedef struct command_line_option {
@@ -1113,11 +1089,10 @@ int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 
 int monitor_setup_sockets();
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
-int monitor_call_status(vomp_call_state *call);
-int monitor_send_audio(vomp_call_state *call, int audio_codec, unsigned int start_time, unsigned int end_time, const unsigned char *audio, int audio_length);
 int monitor_announce_peer(const unsigned char *sid);
 int monitor_announce_unreachable_peer(const unsigned char *sid);
 int monitor_tell_clients(char *msg, int msglen, int mask);
+int monitor_client_interested(int mask);
 extern int monitor_socket_count;
 
 

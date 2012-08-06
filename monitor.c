@@ -369,17 +369,6 @@ int monitor_process_command(struct monitor_context *c)
     c->flags|=MONITOR_PEERS;
   else if (!strcasecmp(cmd,"ignore peers"))
     c->flags&=~MONITOR_PEERS;
-  else if (sscanf(cmd,"FASTAUDIO:%x:%d",&callSessionToken,&flag)==2)
-    {
-      // TODO half implemented
-      int i;
-      for(i=0;i<vomp_call_count;i++)
-	if (vomp_call_states[i].local.session==callSessionToken
-	    ||callSessionToken==0) {
-	  vomp_call_states[i].fast_audio=flag;
-	  break;
-	}
-    }
   else if (sscanf(cmd,"call %s %s %s",sid,localDid,remoteDid)==3) {
     DEBUG("here");
     int gotSid = 0;
@@ -411,26 +400,18 @@ int monitor_process_command(struct monitor_context *c)
 	vomp_dial(keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key, (unsigned char *)sid, localDid, remoteDid);
       }
     }
-  }
-  else if (sscanf(cmd,"status %x",&callSessionToken)==1) {
-    int i;
-    for(i=0;i<vomp_call_count;i++)
-      if (vomp_call_states[i].local.session==callSessionToken
-	  ||callSessionToken==0) {
-	monitor_call_status(&vomp_call_states[i]);
-      }
   } else if (sscanf(cmd,"ringing %x",&callSessionToken)==1) {
-    vomp_call_state *call=vomp_find_call_by_session(callSessionToken);
+    struct vomp_call_state *call=vomp_find_call_by_session(callSessionToken);
     vomp_ringing(call);
   } else if (sscanf(cmd,"pickup %x",&callSessionToken)==1) {
-    vomp_call_state *call=vomp_find_call_by_session(callSessionToken);
+    struct vomp_call_state *call=vomp_find_call_by_session(callSessionToken);
     vomp_pickup(call);
   }
   else if (sscanf(cmd,"hangup %x",&callSessionToken)==1) {
-    vomp_call_state *call=vomp_find_call_by_session(callSessionToken);
+    struct vomp_call_state *call=vomp_find_call_by_session(callSessionToken);
     vomp_hangup(call);
   } else if (sscanf(cmd,"dtmf %x %s",&callSessionToken,digits)==2) {
-    vomp_call_state *call=vomp_find_call_by_session(callSessionToken);
+    struct vomp_call_state *call=vomp_find_call_by_session(callSessionToken);
     if (call){
       int i;
       for(i=0;i<strlen(digits);i++) {
@@ -466,7 +447,7 @@ int monitor_process_data(struct monitor_context *c)
     RETURN(-1);
   }
 
-  vomp_call_state *call=vomp_find_call_by_session(c->sample_call_session_token);
+  struct vomp_call_state *call=vomp_find_call_by_session(c->sample_call_session_token);
   if (!call) {
     write_str(c->alarm.poll.fd,"\nERROR:No such call\n");
     RETURN(-1);
@@ -507,33 +488,6 @@ int monitor_announce_bundle(rhizome_manifest *m)
   return 0;
 }
 
-int monitor_call_status(vomp_call_state *call)
-{
-  int i;
-  char msg[1024];
-  IN();
-  snprintf(msg,1024,"\nCALLSTATUS:%06x:%06x:%d:%d:%d:%s:%s:%s:%s\n",
-	   call->local.session,call->remote.session,
-	   call->local.state,call->remote.state,
-	   call->fast_audio,
-	   alloca_tohex_sid(call->local.sid),
-	   alloca_tohex_sid(call->remote.sid),
-	   call->local.did,call->remote.did);
-  msg[1023]=0;
-  for(i=monitor_socket_count -1;i>=0;i--) {
-    if (!(monitor_sockets[i].flags&MONITOR_VOMP))
-      continue;
-    if ( set_nonblock(monitor_sockets[i].alarm.poll.fd) == -1
-      || write_str_nonblock(monitor_sockets[i].alarm.poll.fd, msg) == -1
-      || set_block(monitor_sockets[i].alarm.poll.fd) == -1
-    ) {
-      INFOF("Tearing down monitor client #%d", i);
-      monitor_client_close(&monitor_sockets[i]);
-    }
-  }
-  RETURN(0);
-}
-
 int monitor_announce_peer(const unsigned char *sid)
 {
   char msg[1024];
@@ -550,27 +504,13 @@ int monitor_announce_unreachable_peer(const unsigned char *sid)
   return 0;
 }
 
-int monitor_send_audio(vomp_call_state *call, int audio_codec, unsigned int start_time, unsigned int end_time, const unsigned char *audio, int audio_length)
-{
-  if (0) DEBUGF("Tell call monitor about audio for call %06x:%06x",
-	      call->local.session,call->remote.session);
-  int sample_bytes=vomp_sample_size(audio_codec);
-  char msg[1024 + MAX_AUDIO_BYTES];
-  /* All commands followed by binary data start with *len:, so that 
-     they can be easily parsed at the far end, even if not supported.
-     Put newline at start of these so that receiving data in command
-     mode doesn't confuse the parser.  */
-  int msglen = snprintf(msg, 1024,
-	   "\n*%d:AUDIOPACKET:%06x:%06x:%d:%d:%d:%d:%d\n",
-	   sample_bytes,
-	   call->local.session,call->remote.session,
-	   call->local.state,call->remote.state,
-	   audio_codec, start_time, end_time);
-  
-  bcopy(audio, &msg[msglen], sample_bytes);
-  msglen+=sample_bytes;
-  msg[msglen++]='\n';
-  monitor_tell_clients(msg, msglen, MONITOR_VOMP);
+// test if any monitor clients are interested in a particular type of event
+int monitor_client_interested(int mask){
+  int i;
+  for(i=monitor_socket_count -1;i>=0;i--) {
+    if (monitor_sockets[i].flags & mask)
+      return 1;
+  }
   return 0;
 }
 
