@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <stdio.h>
 #include <stdarg.h>
+#include "strbuf_helpers.h"
 
 extern unsigned int debug;
 
@@ -69,12 +70,12 @@ void logMessage(int level, const char *file, unsigned int line, const char *func
 void vlogMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, va_list);
 unsigned int debugFlagMask(const char *flagname);
 int logDump(int level, const char *file, unsigned int line, const char *function, char *name, unsigned char *addr, size_t len);
-char *toprint(char *dstStr, ssize_t dstChars, const char *srcBuf, size_t srcBytes);
-size_t toprint_strlen(ssize_t dstStrLen, const char *srcBuf, size_t srcBytes);
+char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcBytes);
+size_t toprint_strlen(const char *srcBuf, size_t srcBytes);
 ssize_t get_self_executable_path(char *buf, size_t len);
 int log_backtrace(const char *file, unsigned int line, const char *function);
 
-#define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca(toprint_strlen((dstlen), (buf), (len)) + 1), (dstlen), (buf), (len))
+#define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca((dstlen) == -1 ? toprint_strlen((buf),(len)) + 1 : (dstlen)), (dstlen), (buf), (len))
 
 #define LOGF(L,F,...)       (logMessage(L, __FILE__, __LINE__, __FUNCTION__, F, ##__VA_ARGS__))
 #define LOGF_perror(L,F,...) logMessage_perror(L, __FILE__, __LINE__, __FUNCTION__, F, ##__VA_ARGS__)

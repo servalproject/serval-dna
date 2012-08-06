@@ -24,27 +24,25 @@ static inline size_t min(size_t a, size_t b) {
   return a < b ? a : b;
 }
 
-strbuf strbuf_init(strbuf sb, char *buffer, size_t size)
+strbuf strbuf_init(strbuf sb, char *buffer, ssize_t size)
 {
   sb->start = buffer;
-  sb->end = sb->start + size - 1;
+  sb->end = size >= 0 ? sb->start + size - 1 : NULL;
   return strbuf_reset(sb);
 }
 
 strbuf strbuf_reset(strbuf sb)
 {
   sb->current = sb->start;
-  if (sb->start && sb->end >= sb->start) {
+  if (sb->start)
     *sb->start = '\0';
-    *sb->end = '\0'; // should never get overwritten
-  }
   return sb;
 }
 
 strbuf strbuf_ncat(strbuf sb, const char *text, size_t len)
 {
-  if (sb->start && sb->current < sb->end) {
-    register size_t n = min(sb->end - sb->current, len);
+  if (sb->start && (!sb->end || (sb->current < sb->end))) {
+    register size_t n = sb->end ? min(sb->end - sb->current, len) : len;
     char *c;
     for (c = sb->current; n && (*c = *text); --n, ++c, ++text)
       ;
@@ -56,17 +54,15 @@ strbuf strbuf_ncat(strbuf sb, const char *text, size_t len)
 
 strbuf strbuf_puts(strbuf sb, const char *text)
 {
-  if (sb->start && sb->current < sb->end) {
-    register size_t n = sb->end - sb->current;
+  if (sb->start && (!sb->end || sb->current < sb->end)) {
+    register size_t n = sb->end ? sb->end - sb->current : -1;
     while (n-- && (*sb->current = *text)) {
       ++sb->current;
       ++text;
     }
   }
-  while (*text) {
+  while (*text++)
     ++sb->current;
-    ++text;
-  }
   return sb;
 }
 
@@ -76,7 +72,7 @@ strbuf strbuf_tohex(strbuf sb, const unsigned char *data, size_t len)
   char *p = sb->current;
   sb->current += len * 2;
   if (sb->start) {
-    char *e = sb->current < sb->end ? sb->current : sb->end;
+    char *e = sb->end && sb->current > sb->end ? sb->end : sb->current;
     // The following loop could overwrite the '\0' at *sp->end.
     for (; p < e; ++data) {
       *p++ = hexdigit[*data >> 4];
@@ -90,11 +86,11 @@ strbuf strbuf_tohex(strbuf sb, const unsigned char *data, size_t len)
 
 strbuf strbuf_putc(strbuf sb, char ch)
 {
-  if (sb->start && sb->current < sb->end) {
-    *sb->current++ = ch;
-    *sb->current = '\0';
-  } else
-    ++sb->current;
+  if (sb->start && (!sb->end || sb->current < sb->end)) {
+    sb->current[0] = ch;
+    sb->current[1] = '\0';
+  }
+  ++sb->current;
   return sb;
 }
 
@@ -110,9 +106,13 @@ int strbuf_sprintf(strbuf sb, const char *fmt, ...)
 int strbuf_vsprintf(strbuf sb, const char *fmt, va_list ap)
 {
   int n;
-  if (sb->start && sb->current < sb->end) {
-    n = vsnprintf(sb->current, sb->end - sb->current + 1, fmt, ap);
-    *sb->end = '\0';
+  if (sb->start && !sb->end) {
+    n = vsprintf(sb->current, fmt, ap);
+  } else if (sb->start && sb->current < sb->end) {
+    int space = sb->end - sb->current + 1;
+    n = vsnprintf(sb->current, space, fmt, ap);
+    if (n >= space)
+      *sb->end = '\0';
   } else {
     char tmp[1];
     n = vsnprintf(tmp, sizeof tmp, fmt, ap);
@@ -125,13 +125,15 @@ int strbuf_vsprintf(strbuf sb, const char *fmt, va_list ap)
 char *strbuf_substr(const_strbuf sb, int offset)
 {
   char *s;
-  if (offset < 0) {
-    s = (sb->current < sb->end ? sb->current : sb->end) + offset;
+  if (!sb->start)
+    s = NULL;
+  else if (offset < 0) {
+    s = strbuf_end(sb) + offset;
     if (s < sb->start)
       s = sb->start;
   } else {
     s = sb->start + offset;
-    if (s > sb->end)
+    if (sb->end && s > sb->end)
       s = sb->end;
   }
   return s;
@@ -140,14 +142,14 @@ char *strbuf_substr(const_strbuf sb, int offset)
 strbuf strbuf_trunc(strbuf sb, int offset)
 {
   if (offset < 0) {
-    char *e = sb->current < sb->end ? sb->current : sb->end;
+    char *e = strbuf_end(sb);
     sb->current = offset <= sb->start - e ? sb->start : e + offset;
   } else {
     char *s = sb->start + offset;
     if (s < sb->current)
       sb->current = s;
   }
-  if (sb->start && sb->current < sb->end)
+  if (sb->start && (!sb->end || sb->current < sb->end))
     *sb->current = '\0';
   return sb;
 }

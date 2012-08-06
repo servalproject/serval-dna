@@ -25,11 +25,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
     nul-terminated string in a fixed-size, caller-provided backing buffer,
     using a sequence of append operations.
 
-    An append operation that would overflow the buffer is truncated, and the
-    result nul-terminated.  Once a truncation has occurred, the "overrun"
-    property of the strbuf is true until the next strbuf_init(), and all
-    subsequent appends will be fully truncated, ie, nothing more will be
-    appended to the buffer.
+    An append operation that would overflow the buffer is truncated with a nul
+    terminator and the "overrun" property of the strbuf becomes true until the
+    next strbuf_init() or strbuf_trunc().  Any append to an overrun strbuf will
+    be fully truncated, ie, nothing more will be appended to the buffer.
 
     The string in the buffer is guaranteed to always be nul terminated, which
     means that the maximum strlen() of the assembled string is one less than
@@ -52,9 +51,27 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
     A NULL buffer can be provided.  This causes the strbuf operations to
     perform all character counting and truncation calculations as usual, but
-    not assemble the string.  This allows a strbuf to be used for calculating
-    the size needed for a buffer, which the caller may then allocate and replay
-    the same operations to fill.
+    not actually assemble the string; it is as though the strbuf is permanently
+    overrun, but no nul terminator is appended.  This allows a strbuf to be
+    used for calculating the size needed for a buffer, which the caller may
+    then allocate and replay the same operations to fill.
+
+    A buffer length of -1 can be given.  This causes the strbuf operations to
+    treat the buffer as unlimited in size.  This is useful for when the caller
+    is 100% certain that the strbuf will not be overrun.  For example, if the
+    required buffer size was already computed by a preliminary run of the same
+    strbuf operations on a NULL buffer, and the necessary size allocated.
+
+    The strbuf operations will never write any data beyond the length of the
+    assembled string plus one for the nul terminator.  So, for example, the
+    following code will never alter buf[4]:
+
+    char buf[5];
+    buf[4] = 'x';
+    strbuf b;
+    strbuf_init(b, buf, sizeof buf);
+    strbuf_puts(&b, "abc");
+    assert buf[4] == 'x'; // always passes
 
 */
 
@@ -73,8 +90,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #endif
 
 struct strbuf {
-    char *start;
-    char *end;
+    char *start; // NULL after strbuf_init(buffer=NULL)
+    char *end; // NULL after strbuf_init(size=-1), otherwise end=&start[size-1]
     char *current;
 };
 
@@ -111,7 +128,7 @@ typedef const struct strbuf *const_strbuf;
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-#define strbuf_alloca(size) strbuf_make(alloca(SIZEOF_STRBUF + size), SIZEOF_STRBUF + size)
+#define strbuf_alloca(size) strbuf_make(alloca(SIZEOF_STRBUF + (size)), SIZEOF_STRBUF + (size))
 
 
 /** Convenience macro for filling a strbuf from the calling function's
@@ -175,7 +192,7 @@ typedef const struct strbuf *const_strbuf;
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-strbuf strbuf_init(strbuf sb, char *buffer, size_t size);
+strbuf strbuf_init(strbuf sb, char *buffer, ssize_t size);
 
 
 /** Initialise a strbuf and its backing buffer inside the caller-supplied
@@ -322,7 +339,7 @@ __STRBUF_INLINE char *strbuf_str(const_strbuf sb) {
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 __STRBUF_INLINE char *strbuf_end(const_strbuf sb) {
-  return sb->current < sb->end ? sb->current : sb->end;
+  return sb->end && sb->current > sb->end ? sb->end : sb->current;
 }
 
 
@@ -388,8 +405,8 @@ __STRBUF_INLINE size_t strbuf_is_empty(const_strbuf sb) {
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-__STRBUF_INLINE size_t strbuf_size(const_strbuf sb) {
-  return sb->end - sb->start + 1;
+__STRBUF_INLINE ssize_t strbuf_size(const_strbuf sb) {
+  return sb->end ? sb->end - sb->start + 1 : -1;
 }
 
 
@@ -401,7 +418,7 @@ __STRBUF_INLINE size_t strbuf_size(const_strbuf sb) {
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 __STRBUF_INLINE size_t strbuf_len(const_strbuf sb) {
-  return (sb->current < sb->end ? sb->current : sb->end) - sb->start;
+  return strbuf_end(sb) - sb->start;
 }
 
 
@@ -425,7 +442,7 @@ __STRBUF_INLINE size_t strbuf_count(const_strbuf sb) {
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 __STRBUF_INLINE int strbuf_overrun(const_strbuf sb) {
-  return sb->current > sb->end;
+  return sb->end && sb->current > sb->end;
 }
 
 #define write_str(fd,str)               (_write_str(fd, str, __FILE__, __LINE__, __FUNCTION__))

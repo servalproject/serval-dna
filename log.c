@@ -306,23 +306,24 @@ unsigned int debugFlagMask(const char *flagname) {
 }
 
 /* Format a buffer of data as a printable representation, eg: "Abc\x0b\n\0", for display
-   in log messages.  If dstStrLen == -1 then assumes the dstStr buffer is large enough to
-   hold the representation of the entire srcBuf.
+   in log messages.
    @author Andrew Bettison <andrew@servalproject.com>
  */
-char *toprint(char *dstStr, ssize_t dstStrLen, const char *srcBuf, size_t srcBytes)
+char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcBytes)
 {
-  return strbuf_str(strbuf_toprint_quoted_len(strbuf_local(dstStr, (dstStrLen == -1 ? 2 + srcBytes * 4 : dstStrLen) + 1), '"', srcBuf, srcBytes));
+  strbuf b = strbuf_local(dstStr, dstBufSiz);
+  strbuf_toprint_quoted_len(b, '"', srcBuf, srcBytes);
+  return dstStr;
 }
 
-/* Compute the length of the printable string produced by toprint().  If dstStrLen == -1 then
-   returns the exact number of characters in the printable representation, otherwise returns
-   dstStrLen.
+/* Compute the length of the string produced by toprint().  If dstStrLen == -1 then returns the
+   exact number of characters in the printable representation (excluding the terminating nul),
+   otherwise returns dstStrLen.
    @author Andrew Bettison <andrew@servalproject.com>
  */
-size_t toprint_strlen(ssize_t dstStrLen, const char *srcBuf, size_t srcBytes)
+size_t toprint_strlen(const char *srcBuf, size_t srcBytes)
 {
-  return dstStrLen == -1 ? strbuf_count(strbuf_toprint_quoted_len(strbuf_local(NULL, 0), '"', srcBuf, srcBytes)) : dstStrLen;
+  return strbuf_count(strbuf_toprint_quoted_len(strbuf_local(NULL, 0), '"', srcBuf, srcBytes));
 }
 
 /* Read the symbolic link into the supplied buffer and add a terminating nul.  Return -1 if the
