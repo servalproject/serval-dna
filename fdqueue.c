@@ -238,10 +238,12 @@ int fd_poll()
   if (r>0) {
     for(i=0;i<fdcount;i++)
       if (fds[i].revents) {
+	int fd = fds[i].fd;
 	/* Call the alarm callback with the socket in non-blocking mode */
-	set_nonblock(fds[i].fd);
+	set_nonblock(fd);
 	call_alarm(fd_callbacks[i], fds[i].revents);
-	if (fds[i].fd != -1)
+	/* The alarm may have closed and unwatched the descriptor, make sure this descriptor still matches */
+	if (i<fdcount && fds[i].fd == fd)
 	  set_block(fds[i].fd);
       }
   }

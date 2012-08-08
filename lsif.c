@@ -87,14 +87,10 @@ int scrapeProcNetRoute()
     int r;
     if ((r=sscanf(line,"%s %s %*s %*s %*s %*s %*s %s",name,dest,mask))==3)
       {
-	unsigned int d = strtol(dest,NULL,16);
-	unsigned int m = strtol(mask,NULL,16);
-	struct sockaddr_in local,broadcast;
-	if (!(d&(~m))) {
-	  local.sin_addr.s_addr=d;
-	  broadcast.sin_addr.s_addr=d|~m;
-	  overlay_interface_register(name,&local,&broadcast);
-	}
+	struct in_addr addr = {.s_addr=strtol(dest,NULL,16)};
+	struct in_addr netmask = {.s_addr=strtol(mask,NULL,16)};
+	
+	overlay_interface_register(name,addr,netmask);
       }
 
     line[0]=0; fgets(line,1024,f);    
@@ -117,7 +113,7 @@ lsif(void) {
   struct ifconf   ifc;
   int             sck, nInterfaces, ofs;
   struct ifreq    *ifr;
-  struct sockaddr_in local, *broadcast;
+  struct in_addr  addr, netmask;
 
   if (debug & DEBUG_OVERLAYINTERFACES) DEBUG("called");
 
@@ -151,7 +147,7 @@ lsif(void) {
       continue;
     }
   
-    bcopy(&ifr->ifr_ifru.ifru_addr, &local, sizeof(struct sockaddr_in));
+    addr = ((struct sockaddr_in *)&ifr->ifr_ifru.ifru_addr)->sin_addr;
     
     /* Get interface flags */
     if (ioctl(sck, SIOCGIFFLAGS, ifr) == -1)
@@ -163,20 +159,14 @@ lsif(void) {
       continue;
     }
     
-    /* Get broadcast address */
-    if (ioctl(sck, SIOCGIFBRDADDR, ifr, sizeof(*ifr)) == -1){
-      WHY_perror("ioctl(SIOCGIFBRDADDR)");
+    /* Get netmask */
+    if (ioctl(sck, SIOCGIFNETMASK, ifr, sizeof(*ifr)) != 0) {
+      WHY_perror("ioctl(SIOCGIFNETMASK)");
       continue;
     }
-
-    broadcast = (struct sockaddr_in *)&ifr->ifr_ifru.ifru_broadaddr;
-
-    if (debug & DEBUG_OVERLAYINTERFACES) {
-      // note, inet_ntop doesn't seem to behave on android
-      DEBUGF("%s address: %s", ifr->ifr_name, inet_ntoa(local.sin_addr));
-      DEBUGF("%s broadcast address: %s", ifr->ifr_name, inet_ntoa(broadcast->sin_addr));
-    }
-    overlay_interface_register(ifr->ifr_name, &local, broadcast);
+    netmask = ((struct sockaddr_in *)&ifr->ifr_ifru.ifru_addr)->sin_addr;
+    
+    overlay_interface_register(ifr->ifr_name, addr, netmask);
     nInterfaces++;
   }
   
@@ -193,7 +183,7 @@ int
 doifaddrs(void) {
   struct ifaddrs	*ifaddr, *ifa;
   char 			*name;
-  struct sockaddr_in	local, netmask, broadcast;
+  struct in_addr	addr, netmask;
   
   if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("called");
   
@@ -214,21 +204,10 @@ doifaddrs(void) {
     }
 
     name = ifa->ifa_name;
-    local = *(struct sockaddr_in *)ifa->ifa_addr;
-    netmask = *(struct sockaddr_in *)ifa->ifa_netmask;
-    broadcast = local;
-  
-    /* Compute broadcast address */
-    broadcast.sin_addr.s_addr |= (~netmask.sin_addr.s_addr);
+    addr = ((struct sockaddr_in *)ifa->ifa_addr)->sin_addr;
+    netmask = ((struct sockaddr_in *)ifa->ifa_netmask)->sin_addr;
 
-    if (debug & DEBUG_OVERLAYINTERFACES){
-      char			addrtxt[INET_ADDRSTRLEN], bcasttxt[INET_ADDRSTRLEN];
-      assert(inet_ntop(AF_INET, (const void *)&local.sin_addr, addrtxt, INET_ADDRSTRLEN) != NULL);
-      assert(inet_ntop(AF_INET, (const void *)&broadcast.sin_addr, bcasttxt, INET_ADDRSTRLEN) != NULL);
-      DEBUGF("name=%s addr=%s broad=%s", name, addrtxt, bcasttxt);
-    }
-
-    overlay_interface_register(name,&local,&broadcast);
+    overlay_interface_register(name, addr, netmask);
   }
   freeifaddrs(ifaddr);
 
