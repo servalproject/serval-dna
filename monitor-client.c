@@ -16,99 +16,261 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include "monitor-client.h"
+#include <stdio.h>
+#include <errno.h>
+#include <stdlib.h>
+#include <stdarg.h>
+#ifdef HAVE_STRINGS_H
+#include <strings.h>
+#endif
+#include <string.h>
+#include <signal.h>
+#include <sys/types.h>
 
+#ifdef WIN32
+#include "win32/win32.h"
+#endif
+#include <unistd.h>
+#ifdef HAVE_SYS_SOCKET_H
+#include <sys/socket.h>
+#endif
+#include <sys/un.h>
+#include <fcntl.h>
+
+#include "constants.h"
+#include "conf.h"
+#include "log.h"
+#include "str.h"
+
+#include "monitor-client.h"
+#include <ctype.h>
+
+#define STATE_INIT 0
+#define STATE_DATA 1
+#define STATE_READY 2
+
+#define MONITOR_CLIENT_BUFFER_SIZE 8192
+#define MAX_ARGS 32
+
+struct monitor_state {
+  char *cmd;
+  int argc;
+  char *argv[MAX_ARGS];
+  unsigned char *data;
+  int dataBytes;
+  int cmdBytes;
+  
+  int state;
+  unsigned char buffer[MONITOR_CLIENT_BUFFER_SIZE];
+  int bufferBytes;
+};
+
+// FIX ME, COPY-PASTA from monitor.c
+int monitor_socket_name(struct sockaddr_un *name){
+  int len;
+#ifdef linux
+  /* Use abstract namespace as Android has no writable FS which supports sockets.
+   Abstract namespace is just plain better, anyway, as no dead files end up
+   hanging around. */
+  name.sun_path[0]=0;
+  /* XXX: 104 comes from OSX sys/un.h - no #define (note Linux has UNIX_PATH_MAX and it's 108(!)) */
+  snprintf(&name->sun_path[1],104-2,
+	   confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME));
+  /* Doesn't include trailing nul */
+  len = 1+strlen(&name->sun_path[1]) + sizeof(name->sun_family);
+#else
+  snprintf(name->sun_path,104-1,"%s/%s",
+	   serval_instancepath(),
+	   confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME));
+  /* Includes trailing nul */
+  len = 1+strlen(name->sun_path) + sizeof(name->sun_family);
+#endif
+  return len;
+}
 
 /* Open monitor interface abstract domain named socket */
-int monitor_client_open()
+int monitor_client_open(struct monitor_state **res)
 {
   int fd;
   struct sockaddr_un addr;
 
   if ( (fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
     perror("socket");
-    exit(-1);
+    return -1;
   }
 
   memset(&addr, 0, sizeof(addr));
   addr.sun_family = AF_UNIX;
-  /* XXX - On non-linux systems, we need to use a regular named socket */
-  addr.sun_path[0]=0;
-  snprintf(&addr.sun_path[1],100,
-	   "%s", confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME));
-  int len = 1+strlen(&addr.sun_path[1]) + sizeof(addr.sun_family);
-  char *p=(char *)&addr;
-  printf("last char='%c' %02x\n",p[len-1],p[len-1]);
+  int len = monitor_socket_name(&addr);
+  
+  INFOF("Attempting to connect to %s", &addr.sun_path[1]);
 
   if (connect(fd, (struct sockaddr*)&addr, len) == -1) {
     perror("connect");
-    exit(-1);
+    return -1;
   }
+  
+  *res = (struct monitor_state*)malloc(sizeof(struct monitor_state));
   return fd;
 }
 
-int monitor_client_writeline(int fd,char *msg)
-{
-  return write(fd,msg,strlen(msg));
+int monitor_client_close(int fd, struct monitor_state *res){
+  free(res);
+  close(fd);
+  return 0;
 }
 
-int monitor_client_writeline_and_data(int fd,char *msg,unsigned char *data,int bytes)
+int monitor_client_writeline(int fd,char *fmt, ...)
 {
-  int maxlen=strlen(msg)+20+bytes;
+  char msg[512];
+  int n;
+  va_list ap;
+  
+  if (fd<0)
+    return -1;
+  
+  va_start(ap, fmt);
+  n=vsnprintf(msg, sizeof(msg), fmt, ap);
+  va_end(ap);
+  
+  return write(fd,msg,n);
+}
+
+int monitor_client_writeline_and_data(int fd,unsigned char *data,int bytes,char *fmt,...)
+{
+  int maxlen=512+bytes;
   char out[maxlen];
-  snprintf(out,maxlen,"*%d:%s\n",bytes,msg);
-  int len=strlen(msg);
-  bcopy(&data[0],&msg[len],bytes);
-  len+=bytes;
-  return write(fd,msg,len);
+  va_list ap;
+  int n;
+  
+  if (fd<0)
+    return -1;
+  
+  n=snprintf(out,maxlen-bytes,"*%d:",bytes);
+  
+  va_start(ap, fmt);
+  n+=vsnprintf(out+n, maxlen-bytes-n, fmt, ap);
+  va_end(ap);
+  
+  bcopy(data,out+n,bytes);
+  n+=bytes;
+  return write(fd,out,n);
 }
 
-static unsigned char buffer[MONITOR_CLIENT_BUFFER_SIZE];
-static int buffer_bytes=0;
-
-int monitor_client_readline(int fd, monitor_result **res)
+int monitor_client_read(int fd, struct monitor_state *res, struct monitor_command_handler *handlers, int handler_count)
 {
-  monitor_result *r=*res;
-
   /* Read any available bytes */
-  fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, NULL) | O_NONBLOCK);
-  int bytesRead=read(fd,&buffer[buffer_bytes],
-		     MONITOR_CLIENT_BUFFER_SIZE-buffer_bytes);
-  if (bytesRead>0) buffer_bytes+=bytesRead;
-
-  /* Now see if we have a full line of results to return */
-  int i;
-  for(i=0;i<buffer_bytes;i++)
-    if (buffer[i]=='\n') {
-      /* Found an end of line marker.
-         Now check if there is a data section to extract. */
-      int dataBytes=0;
-      int lineStart=0;
-      if (sscanf("*%d:%n",(char *)buffer,&dataBytes,&lineStart)==1)
-	{
-	  if ((dataBytes+i)>buffer_bytes)
-	    {
-	      /* We don't yet have enough bytes to return */
-	      return -1;
-	    }
-	  /* Copy data section */
-	  r->dataBytes=dataBytes;
-	  bcopy(&buffer[i],&r->data[0],dataBytes);
-	  /* copy line from after the *len: part, and without the
-	     new line.  Then null-terminate it */
-	  bcopy(&buffer[lineStart],&r->line[0],i-lineStart);
-	  r->line[i-lineStart]=0;
-	  /* remember to discard the data section from the buffer */
-	  i+=dataBytes;
-	} else {
-	/* no data section */
-	r->dataBytes=0;
-      }
-      /* shuffle buffer down */
-      bcopy(&buffer[i],&buffer[0],buffer_bytes-i);
-      buffer_bytes-=i;
-      return 0;
+  int oldOffset = res->bufferBytes;
+  
+  if (res->bufferBytes==0)
+    res->cmd = (char *)res->buffer;
+  
+  int bytesRead=read(fd, res->buffer + oldOffset, MONITOR_CLIENT_BUFFER_SIZE - oldOffset);
+  if (bytesRead<1){
+    switch(errno) {
+      case EINTR:
+      case ENOTRECOVERABLE:
+	/* transient errors */
+	WHY_perror("read");
+      case EAGAIN:
+	return 0;
     }
-  /* no end of line, so need to read more */
-  return -1;
+    WHY_perror("read");
+    return -1;
+  }
+  
+  res->bufferBytes+=bytesRead;
+
+again:
+  // wait until we have the whole command line
+  if (res->state == STATE_INIT){
+    int i;
+    
+    for(i=oldOffset;i<res->bufferBytes;i++){
+      if (res->buffer[i]=='\n'){
+	// skip any leading \n's
+	if ((char*)(res->buffer+i) == res->cmd){
+	  res->cmd++;
+	  continue;
+	}
+	
+	res->buffer[i]=0;
+	res->dataBytes = 0;
+	res->cmdBytes = i + 1;
+	if (*res->cmd=='*'){
+	  res->cmd++;
+	  for (; isdigit(*res->cmd); ++res->cmd)
+	    res->dataBytes = res->dataBytes * 10 + *res->cmd - '0';
+	  if (*res->cmd==':')
+	    res->cmd++;
+	}
+	
+	// find all arguments, initialise argc / argv && null terminate strings
+	{
+	  char *p=res->cmd;
+	  res->argc=0;
+	  while (*p){
+	    if (*p==':'){
+	      *p=0;
+	      res->argv[res->argc]=p+1;
+	      res->argc++;
+	    }
+	    p++;
+	  }
+	}
+	
+	if (res->dataBytes){
+	  res->data=(unsigned char *)&res->buffer[i+1];
+	  res->state = STATE_DATA;
+	}else{
+	  res->data=NULL;
+	  res->state = STATE_READY;
+	}
+	break;
+      }
+    }
+  }
+  
+  // make sure all the data has arrived
+  if (res->state == STATE_DATA){
+    if (res->bufferBytes >= res->dataBytes + res->cmdBytes){
+      res->state = STATE_READY;
+    }
+  }
+  
+  // ok, now we can try to process the command
+  if (res->state == STATE_READY){
+    int handled=0;
+    int i;
+    // call all handlers that match (yes there might be more than one)
+    for (i=0;i<handler_count;i++){
+      /* since we know res->cmd is terminated with a '\n', 
+       and there shouldn't be a '\n' in h->command, 
+       this shouldn't run past the end of the buffer */
+      if (handlers[i].handler && (!handlers[i].command || strcase_startswith(res->cmd,handlers[i].command, NULL))){
+	if (handlers[i].handler(res->cmd, res->argc, res->argv, res->data, res->dataBytes, handlers[i].context)>0)
+	  handled=1;
+      }
+    }
+    
+    if (!handled){
+      INFOF("Event \"%s\" was not handled", res->cmd);
+    }
+      
+    // shuffle any unprocessed bytes
+    int remaining = res->bufferBytes - (res->dataBytes + res->cmdBytes);
+    if (remaining>0){
+      bcopy(res->buffer+res->dataBytes + res->cmdBytes,res->buffer,remaining);
+    }
+    res->bufferBytes=remaining;
+    res->cmdBytes=0;
+    res->dataBytes=0;
+    res->state = STATE_INIT;
+    res->cmd = (char *)res->buffer;
+    oldOffset = 0;
+    goto again;
+  }
+  
+  
+  return 0;
 }

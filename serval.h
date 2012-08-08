@@ -1092,6 +1092,7 @@ int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int monitor_announce_peer(const unsigned char *sid);
 int monitor_announce_unreachable_peer(const unsigned char *sid);
 int monitor_tell_clients(char *msg, int msglen, int mask);
+int monitor_tell_formatted(int mask, char *fmt, ...);
 int monitor_client_interested(int mask);
 extern int monitor_socket_count;
 

@@ -175,8 +175,7 @@ static int _log_prepare(int level, const char *file, unsigned int line, const ch
   return 1;
 }
 
-static void _log_finish(int level)
-{
+static void _log_internal(int level, struct strbuf *buf){
 #ifdef ANDROID
   int alevel = ANDROID_LOG_UNKNOWN;
   switch (level) {
@@ -186,15 +185,26 @@ static void _log_finish(int level)
     case LOG_LEVEL_WARN:  alevel = ANDROID_LOG_WARN; break;
     case LOG_LEVEL_DEBUG: alevel = ANDROID_LOG_DEBUG; break;
   }
-  __android_log_print(alevel, "servald", "%s", strbuf_str(&logbuf));
-  strbuf_reset(&logbuf);
+  __android_log_print(alevel, "servald", "%s", strbuf_str(buf));
+  strbuf_reset(buf);
 #else
   FILE *logf = open_logging();
   if (logf) {
-    fprintf(logf, "%s\n%s", strbuf_str(&logbuf), strbuf_overrun(&logbuf) ? "LOG OVERRUN\n" : "");
-    strbuf_reset(&logbuf);
+    fprintf(logf, "%s\n%s", strbuf_str(buf), strbuf_overrun(buf) ? "LOG OVERRUN\n" : "");
+    strbuf_reset(buf);
   }
 #endif
+}
+
+void (*_log_implementation)(int level, struct strbuf *buf)=_log_internal;
+
+static void _log_finish(int level){
+  if(_log_implementation)
+    _log_implementation(level, &logbuf);
+}
+
+void set_log_implementation(void (*log_function)(int level, struct strbuf *buf)){
+  _log_implementation=log_function;
 }
 
 void logArgv(int level, const char *file, unsigned int line, const char *function, const char *label, int argc, const char *const *argv)

@@ -16,34 +16,16 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include <stdio.h>
-#include <errno.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#ifdef HAVE_STRINGS_H
-#include <strings.h>
-#endif
-#include <string.h>
-#include <signal.h>
-#include <sys/types.h>
+struct monitor_state;
 
-#ifdef WIN32
-#include "win32/win32.h"
-#endif
-#include <unistd.h>
-#ifdef HAVE_SYS_SOCKET_H
-#include <sys/socket.h>
-#endif
-#include <sys/un.h>
-#include <fcntl.h>
+struct monitor_command_handler{
+  char *command;
+  void *context;
+  int (*handler)(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context);
+};
 
-#include "constants.h"
-#include "conf.h"
-#include "log.h"
-
-#define MONITOR_CLIENT_BUFFER_SIZE 8192
-typedef struct monitor_result {
-  char line[MONITOR_CLIENT_BUFFER_SIZE];
-  unsigned char data[MONITOR_CLIENT_BUFFER_SIZE];
-  int dataBytes;
-} monitor_result;
+int monitor_client_open(struct monitor_state **res);
+int monitor_client_writeline(int fd,char *fmt, ...);
+int monitor_client_writeline_and_data(int fd,unsigned char *data,int bytes,char *fmt,...);
+int monitor_client_read(int fd, struct monitor_state *res, struct monitor_command_handler *handlers, int handler_count);
+int monitor_client_close(int fd, struct monitor_state *res); 

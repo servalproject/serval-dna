@@ -60,6 +60,28 @@ struct sched_ent named_socket;
 struct profile_total named_stats;
 struct profile_total client_stats;
 
+int monitor_socket_name(struct sockaddr_un *name){
+  int len;
+#ifdef linux
+  /* Use abstract namespace as Android has no writable FS which supports sockets.
+   Abstract namespace is just plain better, anyway, as no dead files end up
+   hanging around. */
+  name->sun_path[0]=0;
+  /* XXX: 104 comes from OSX sys/un.h - no #define (note Linux has UNIX_PATH_MAX and it's 108(!)) */
+  snprintf(&name->sun_path[1],104-2,
+	   confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME));
+  /* Doesn't include trailing nul */
+  len = 1+strlen(&name->sun_path[1]) + sizeof(name->sun_family);
+#else
+  snprintf(name->sun_path,104-1,"%s/%s",
+	   serval_instancepath(),
+	   confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME));
+  /* Includes trailing nul */
+  len = 1+strlen(name->sun_path) + sizeof(name->sun_family);
+#endif
+  return len;
+}
+
 int monitor_setup_sockets()
 {
   struct sockaddr_un name;
@@ -74,23 +96,9 @@ int monitor_setup_sockets()
     goto error;
   }
 
-#ifdef linux
-  /* Use abstract namespace as Android has no writable FS which supports sockets.
-     Abstract namespace is just plain better, anyway, as no dead files end up
-     hanging around. */
-  name.sun_path[0]=0;
-  /* XXX: 104 comes from OSX sys/un.h - no #define (note Linux has UNIX_PATH_MAX and it's 108(!)) */
-  snprintf(&name.sun_path[1],104-2,
-	   confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME));
-  /* Doesn't include trailing nul */
-  len = 1+strlen(&name.sun_path[1]) + sizeof(name.sun_family);
-#else
-  snprintf(name.sun_path,104-1,"%s/%s",
-	   serval_instancepath(),
-	   confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME));
+  len = monitor_socket_name(&name);
+#ifndef linux
   unlink(name.sun_path);
-  /* Includes trailing nul */
-  len = 1+strlen(name.sun_path) + sizeof(name.sun_family);
 #endif
 
   if(bind(sock, (struct sockaddr *)&name, len)==-1) {
@@ -176,7 +184,7 @@ void monitor_client_close(struct monitor_context *c){
 
 void monitor_client_poll(struct sched_ent *alarm)
 {
-  /* Read from any open connections */
+  /* Read available data from a monitor socket */
   struct monitor_context *c=(struct monitor_context *)alarm;
   errno=0;
   int bytes;
@@ -288,9 +296,12 @@ static void monitor_new_client(int s) {
 #endif
 
   if (otheruid != getuid()) {
-    WHYF("monitor.socket client has wrong uid (%d versus %d)", otheruid,getuid());
-    write_str(s, "\nCLOSE:Incorrect UID\n");
-    goto error;
+    int allowed_id = confValueGetInt64("monitor.uid",-1);
+    if (otheruid != allowed_id){
+      WHYF("monitor.socket client has wrong uid (%d versus %d)", otheruid,getuid());
+      write_str(s, "\nCLOSE:Incorrect UID\n");
+      goto error;
+    }
   }
   if (monitor_socket_count >= MAX_MONITOR_SOCKETS
 	     ||monitor_socket_count < 0) {
@@ -333,7 +344,6 @@ int monitor_process_command(struct monitor_context *c)
   }
 
   char msg[1024];
-  int flag;
 
   if (cmd[0]=='*') {
     /* command with content */
@@ -346,7 +356,7 @@ int monitor_process_command(struct monitor_context *c)
       c->data_offset=0;
       c->sample_codec=-1;
 
-      if (sscanf(cmd,"AUDIO:%x:%d",
+      if (sscanf(cmd,"AUDIO %x %d",
 		 &callSessionToken,&sampleType)==2)
 	{
 	  /* Start getting sample */
@@ -356,18 +366,18 @@ int monitor_process_command(struct monitor_context *c)
 	}
     }
   }
-  else if (!strcasecmp(cmd,"monitor vomp"))
+  else if (strcase_startswith(cmd,"monitor vomp",NULL))
     // TODO add supported codec list argument
     c->flags|=MONITOR_VOMP;
-  else if (!strcasecmp(cmd,"ignore vomp"))
+  else if (strcase_startswith(cmd,"ignore vomp",NULL))
     c->flags&=~MONITOR_VOMP;
-  else if (!strcasecmp(cmd,"monitor rhizome"))
+  else if (strcase_startswith(cmd,"monitor rhizome", NULL))
     c->flags|=MONITOR_RHIZOME;
-  else if (!strcasecmp(cmd,"ignore rhizome"))
+  else if (strcase_startswith(cmd,"ignore rhizome", NULL))
     c->flags&=~MONITOR_RHIZOME;
-  else if (!strcasecmp(cmd,"monitor peers"))
+  else if (strcase_startswith(cmd,"monitor peers", NULL))
     c->flags|=MONITOR_PEERS;
-  else if (!strcasecmp(cmd,"ignore peers"))
+  else if (strcase_startswith(cmd,"ignore peers", NULL))
     c->flags&=~MONITOR_PEERS;
   else if (sscanf(cmd,"call %s %s %s",sid,localDid,remoteDid)==3) {
     DEBUG("here");
@@ -490,18 +500,12 @@ int monitor_announce_bundle(rhizome_manifest *m)
 
 int monitor_announce_peer(const unsigned char *sid)
 {
-  char msg[1024];
-  int n = snprintf(msg, sizeof msg, "\nNEWPEER:%s\n", alloca_tohex_sid(sid));
-  monitor_tell_clients(msg, n, MONITOR_PEERS);
-  return 0;
+  return monitor_tell_formatted(MONITOR_PEERS, "\nNEWPEER:%s\n", alloca_tohex_sid(sid));
 }
 
 int monitor_announce_unreachable_peer(const unsigned char *sid)
 {
-  char msg[1024];
-  int n = snprintf(msg, sizeof msg, "\nOLDPEER:%s\n", alloca_tohex_sid(sid));
-  monitor_tell_clients(msg, n, MONITOR_PEERS);
-  return 0;
+  return monitor_tell_formatted(MONITOR_PEERS, "\nOLDPEER:%s\n", alloca_tohex_sid(sid));
 }
 
 // test if any monitor clients are interested in a particular type of event
@@ -531,4 +535,16 @@ int monitor_tell_clients(char *msg, int msglen, int mask)
     }
   }
   RETURN(0);
+}
+
+int monitor_tell_formatted(int mask, char *fmt, ...){
+  char msg[1024];
+  int n;
+  va_list ap;
+  
+  va_start(ap, fmt);
+  n=vsnprintf(msg, sizeof(msg), fmt, ap);
+  va_end(ap);
+  monitor_tell_clients(msg, n, mask);
+  return 0;
 }

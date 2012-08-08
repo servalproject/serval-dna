@@ -346,13 +346,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define VOMP_CODEC_CODECSISUPPORT 0xfe
 #define VOMP_CODEC_CHANGEYOURCODECTO 0xff
 
-#define VOMP_STATE_NOCALL 1
-#define VOMP_STATE_CALLPREP 2
-#define VOMP_STATE_RINGINGOUT 3
-#define VOMP_STATE_RINGINGIN 4
-#define VOMP_STATE_INCALL 5
-#define VOMP_STATE_CALLENDED 6
-
 /* in milliseconds of inactivity */
 #define VOMP_CALL_TIMEOUT 120000
 #define VOMP_CALL_STATUS_INTERVAL 1000
