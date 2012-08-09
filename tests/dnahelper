@@ -302,7 +302,7 @@ doc_TokenMismatch="DNA helper returns mismatched token"
 test_TokenMismatch() {
    executeOk_servald dna lookup 000061
    assertStdoutIs ""
-   assertGrep --matches=0 "$LOGA" 'ERROR:.*DNAHELPER'
+   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*mismatched token'
 }
 
 doc_TokenEmpty="DNA helper returns empty token"

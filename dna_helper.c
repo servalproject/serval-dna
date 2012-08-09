@@ -402,6 +402,8 @@ void handle_reply_line(const char *bufp, size_t len)
 	WHYF("DNAHELPER reply %s contains empty token -- ignored", alloca_toprint(-1, bufp, len));
       else if (!str_is_subscriber_id(sidhex))
 	WHYF("DNAHELPER reply %s contains invalid token -- ignored", alloca_toprint(-1, bufp, len));
+      else if (strncmp(sidhex, request_buffer, SID_STRLEN) != 0)
+	WHYF("DNAHELPER reply %s contains mismatched token -- ignored", alloca_toprint(-1, bufp, len));
       else if (did[0] == '\0')
 	WHYF("DNAHELPER reply %s contains empty DID -- ignored", alloca_toprint(-1, bufp, len));
       else if (!str_is_did(did))
