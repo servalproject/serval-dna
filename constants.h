@@ -347,7 +347,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define VOMP_CODEC_CHANGEYOURCODECTO 0xff
 
 /* in milliseconds of inactivity */
-#define VOMP_CALL_TIMEOUT 120000
+// 20 seconds to start ringing
+#define VOMP_CALL_DIAL_TIMEOUT 5000
+// 60 seconds to answer
+#define VOMP_CALL_RING_TIMEOUT 60000
+// 2 minutes of zero network traffic
+#define VOMP_CALL_NETWORK_TIMEOUT 120000
+// force state packet interval
 #define VOMP_CALL_STATUS_INTERVAL 1000
 
 #define DEFAULT_MONITOR_SOCKET_NAME "org.servalproject.servald.monitor.socket"

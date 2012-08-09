@@ -1567,18 +1567,15 @@ static void vomp_process_tick(struct sched_ent *alarm)
   
   struct vomp_call_state *call = (struct vomp_call_state *)alarm;
   
-  /* See if any calls need to begin expiring
-   (current timeout is set at 2 minutes) */
-  if (call->local.state<VOMP_STATE_INCALL
-      &&((call->create_time+VOMP_CALL_TIMEOUT)<now))
-  {
-    /* timeout calls that haven't reached INCALL status, e.g.,
-     ringing. As well as sensible UX, it also prevents our call
-     slots getting full of cruft. */
-    vomp_call_destroy(call);
-    return;
-  } else if (call->last_activity+VOMP_CALL_TIMEOUT<now){
-    /* Call timed out, so just immmediately tear the call down */
+  /* See if any calls need to be expired.
+     Allow VOMP_CALL_DIAL_TIMEOUT ms for the other party to ring / request ringing
+     Allow VOMP_CALL_RING_TIMEOUT ms for the ringing party to answer
+     Allow VOMP_CALL_NETWORK_TIMEOUT ms between received packets
+   */
+  
+  if ((call->remote.state < VOMP_STATE_RINGINGOUT && call->create_time + VOMP_CALL_DIAL_TIMEOUT < now) ||
+      (call->local.state < VOMP_STATE_INCALL && call->create_time + VOMP_CALL_RING_TIMEOUT < now) ||
+      (call->last_activity+VOMP_CALL_NETWORK_TIMEOUT<now) ){
     vomp_call_destroy(call);
     return;
   }
