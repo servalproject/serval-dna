@@ -486,13 +486,13 @@ int vomp_update_local_state(struct vomp_call_state *call, int new_state){
   switch(new_state){
     case VOMP_STATE_CALLPREP:
       // tell client our session id.
-      monitor_tell_formatted(MONITOR_VOMP, "\nCALLTO:%x:%s:%s:%s:%s\n", 
+      monitor_tell_formatted(MONITOR_VOMP, "\nCALLTO:%06x:%s:%s:%s:%s\n", 
 			     call->local.session, 
 			     alloca_tohex_sid(call->local.sid), call->local.did,
 			     alloca_tohex_sid(call->remote.sid), call->remote.did);
       break;
     case VOMP_STATE_CALLENDED:
-      monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%x\n", call->local.session);
+      monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%06x\n", call->local.session);
       break;
   }
   
@@ -507,17 +507,17 @@ int vomp_update_remote_state(struct vomp_call_state *call, int new_state){
   
   switch(new_state){
     case VOMP_STATE_RINGINGOUT:
-      monitor_tell_formatted(MONITOR_VOMP, "\nCALLFROM:%x:%s:%s:%s:%s\n", 
+      monitor_tell_formatted(MONITOR_VOMP, "\nCALLFROM:%06x:%s:%s:%s:%s\n", 
 			     call->local.session, 
 			     alloca_tohex_sid(call->local.sid), call->local.did,
 			     alloca_tohex_sid(call->remote.sid), call->remote.did);
       break;
     case VOMP_STATE_RINGINGIN:
-      monitor_tell_formatted(MONITOR_VOMP, "\nRINGING:%x\n", call->local.session);
+      monitor_tell_formatted(MONITOR_VOMP, "\nRINGING:%06x\n", call->local.session);
       break;
     case VOMP_STATE_INCALL:
       if (call->remote.state==VOMP_STATE_RINGINGIN){
-	monitor_tell_formatted(MONITOR_VOMP, "\nANSWERED:%x\n", call->local.session);
+	monitor_tell_formatted(MONITOR_VOMP, "\nANSWERED:%06x\n", call->local.session);
       }
       break;
   }
