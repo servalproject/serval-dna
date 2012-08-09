@@ -396,7 +396,7 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *interface)
     return -1;
   }
   
-  long long now = gettime_ms();
+  time_ms_t now = gettime_ms();
   overlay_neighbour *direct_neighbour=NULL;
 
   if (n->neighbour_id) {
@@ -527,7 +527,7 @@ overlay_node *overlay_route_find_node(const unsigned char *sid, int prefixLen, i
     overlay_nodes[bin_number][free_slot].best_link_score=0;
     overlay_nodes[bin_number][free_slot].best_observation=0;
     for(i=0;i<OVERLAY_MAX_INTERFACES;i++) {
-      overlay_nodes[bin_number][free_slot].most_recent_advertisment[i]=0;
+      overlay_nodes[bin_number][free_slot].most_recent_advertisment_ms[i]=0;
       overlay_nodes[bin_number][free_slot].most_recent_advertised_score[i]=0;
     }
   }
@@ -730,7 +730,7 @@ overlay_neighbour *overlay_route_get_neighbour_structure(unsigned char *packed_s
 
 int overlay_route_i_can_hear_node(unsigned char *who,int sender_interface,
 				  unsigned int s1,unsigned int s2,
-				  long long now)
+				  time_ms_t now)
 {
   if (0) DEBUGF("I can hear node %s (but I really only care who can hear me)",
 	      alloca_tohex_sid(who));
@@ -740,7 +740,7 @@ int overlay_route_i_can_hear_node(unsigned char *who,int sender_interface,
 
 int overlay_route_node_can_hear_me(unsigned char *who,int sender_interface,
 				   unsigned int s1,unsigned int s2,
-				   long long now)
+				   time_ms_t now)
 {
   /* 1. Find (or create) node entry for the node.
      2. Replace oldest observation with this observation.
@@ -776,7 +776,7 @@ int overlay_route_node_can_hear_me(unsigned char *who,int sender_interface,
   }
   
   if (debug&DEBUG_OVERLAYROUTING)
-    DEBUGF("assign observation slot #%d: s1=%u s2=%u time_ms=%lld", obs_index, s1, s2, now);
+    DEBUGF("assign observation slot #%d: s1=%u s2=%u time_ms=%lld", obs_index, s1, s2, (long long)now);
   neh->observations[obs_index].s1=s1;
   neh->observations[obs_index].s2=s2;
   neh->observations[obs_index].sender_interface=sender_interface;
@@ -796,7 +796,7 @@ int overlay_route_node_can_hear_me(unsigned char *who,int sender_interface,
   return 0;
 }
 
-int overlay_route_saw_selfannounce(overlay_frame *f,long long now)
+int overlay_route_saw_selfannounce(overlay_frame *f, time_ms_t now)
 {
   IN();
   unsigned int s1,s2;
@@ -826,7 +826,7 @@ int overlay_route_saw_selfannounce(overlay_frame *f,long long now)
 }
 
 /* XXX Think about scheduling this node's score for readvertising? */
-int overlay_route_recalc_node_metrics(overlay_node *n,long long now)
+int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
 {
   int o;
   int best_score=0;
@@ -911,10 +911,10 @@ int overlay_route_recalc_node_metrics(overlay_node *n,long long now)
    200 seconds perhaps?).  Also, if no recent observations, then we further
    limit the score.
 */
-int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
+int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n, time_ms_t now)
 {
   int i;
-  long long most_recent_observation=0;
+  time_ms_t most_recent_observation=0;
 
   if (!n->node)
     return 0;
@@ -927,14 +927,14 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
     if (debug&DEBUG_OVERLAYROUTING)
       DEBUG("last update was never");
   } else {
-    long long ago = now - n->last_metric_update;
+    time_ms_t ago = now - n->last_metric_update;
     if (ago < 500) {
       if (debug&DEBUG_OVERLAYROUTING)
-	DEBUGF("last update was %lldms ago -- skipping", ago);
+	DEBUGF("last update was %lldms ago -- skipping", (long long)ago);
       return 0;
     }
     if (debug&DEBUG_OVERLAYROUTING)
-      DEBUGF("last update was %lldms ago", ago);
+      DEBUGF("last update was %lldms ago", (long long)ago);
   }
   n->last_metric_update = now;
 
@@ -964,7 +964,7 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now)
     unsigned int interval=n->observations[i].s2-n->observations[i].s1;      
     
     /* Check the observation age, and ignore if too old */
-    long long obs_age = now - n->observations[i].time_ms;
+    time_ms_t obs_age = now - n->observations[i].time_ms;
     if (debug&DEBUG_OVERLAYROUTING)
       DEBUGF("tallying obs: %lldms old, %ums long", obs_age,interval);
     
@@ -1079,7 +1079,7 @@ int overlay_route_saw_selfannounce_ack(overlay_frame *f,long long now)
 
 /* if to and via are the same, then this is evidence that we can get to the
    node directly. */
-int overlay_route_record_link(long long now,unsigned char *to,
+int overlay_route_record_link(time_ms_t now, unsigned char *to,
 			      unsigned char *via,int sender_interface,
 			      unsigned int s1,unsigned int s2,int score,
 			      int gateways_en_route)
@@ -1169,7 +1169,7 @@ int overlay_address_is_local(unsigned char *s)
 int overlay_route_dump()
 {
   int bin,slot,o,n,i;
-  long long now=gettime_ms();
+  time_ms_t now = gettime_ms();
   strbuf b = strbuf_alloca(8192);
 
   strbuf_sprintf(b,"Overlay Local Identities\n------------------------\n");
@@ -1194,7 +1194,7 @@ int overlay_route_dump()
       {
 	strbuf_sprintf(b,"  %s* : %lldms ago :",
 		alloca_tohex(overlay_neighbours[n].node->sid, 7),
-		now - overlay_neighbours[n].last_observation_time_ms);
+		(long long)(now - overlay_neighbours[n].last_observation_time_ms));
 	for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
 	  if (overlay_neighbours[n].scores[i]) 
 	    strbuf_sprintf(b," %d(via #%d)",
@@ -1248,7 +1248,7 @@ void overlay_route_tick(struct sched_ent *alarm)
 {
   int n;
 
-  long long start_time=gettime_ms();
+  time_ms_t start_time = gettime_ms();
 
   if (debug&DEBUG_OVERLAYROUTING) 
     DEBUGF("Neighbours: %d@%d, Nodes: %d@%d",
@@ -1269,7 +1269,7 @@ void overlay_route_tick(struct sched_ent *alarm)
 
   /* Tweak neighbour bundle size to spread it out over the required time.
      XXX Does this behave correctly when there are no neighbours? */
-  long long neighbour_time=gettime_ms()-start_time;
+  time_ms_t neighbour_time = gettime_ms() - start_time;
   if (neighbour_time>2) overlay_route_tick_neighbour_bundle_size/=neighbour_time;
   else if (neighbour_time==0) overlay_route_tick_neighbour_bundle_size*=2;
   if (overlay_route_tick_neighbour_bundle_size<1) overlay_route_tick_neighbour_bundle_size=1;
@@ -1292,7 +1292,7 @@ void overlay_route_tick(struct sched_ent *alarm)
   /* Tweak neighbour bundle size to spread it out over the required time.
      Allow 2ms here instead of 1ms, as neighbour processing may have taken the
      bulk of the tick. */
-  long long node_time=gettime_ms()-neighbour_time-start_time;
+  time_ms_t node_time = gettime_ms() - neighbour_time - start_time;
   if (node_time>1) overlay_route_tick_node_bundle_size/=node_time;
   else if (node_time==0) overlay_route_tick_node_bundle_size*=2;
   if (overlay_route_tick_node_bundle_size<1) overlay_route_tick_node_bundle_size=1;
@@ -1325,7 +1325,7 @@ void overlay_route_tick(struct sched_ent *alarm)
 /* Ticking neighbours is easy; we just pretend we have heard from them again,
    and recalculate the score that way, which already includes a mechanism for
    taking into account the age of the most recent observation */
-int overlay_route_tick_neighbour(int neighbour_id,long long now)
+int overlay_route_tick_neighbour(int neighbour_id, time_ms_t now)
 {
   if (neighbour_id>0)
     if (overlay_route_recalc_neighbour_metrics(&overlay_neighbours[neighbour_id],now)) 
@@ -1344,7 +1344,7 @@ int overlay_route_tick_neighbour(int neighbour_id,long long now)
    most part we can tolerate these without any special action, as their high
    scores will keep them reachable for longer anyway.
 */
-int overlay_route_tick_node(int bin,int slot,long long now)
+int overlay_route_tick_node(int bin,int slot, time_ms_t now)
 {
   return overlay_route_recalc_node_metrics(&overlay_nodes[bin][slot],now);
 }
@@ -1353,7 +1353,7 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
 			    struct sockaddr_un *addr,int addrlen)
 {
   int bin,slot,n;
-  long long now=gettime_ms();
+  time_ms_t now = gettime_ms();
 
   if (0) 
     DEBUGF("Looking for node %s* (prefix len=0x%x)",
@@ -1381,7 +1381,7 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
 		    mdp->nodeinfo.foundP=1;
 		    mdp->nodeinfo.localP=1;
 		    mdp->nodeinfo.neighbourP=0;
-		    mdp->nodeinfo.time_since_last_observation=0;
+		    mdp->nodeinfo.time_since_last_observation = 0;
 		    mdp->nodeinfo.score=256;
 		    mdp->nodeinfo.interface_number=-1;
 		    bcopy(&keyring->contexts[cn]->identities[in]
@@ -1430,9 +1430,7 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
 		mdp->nodeinfo.foundP=1;
 		mdp->nodeinfo.localP=0;
 		mdp->nodeinfo.neighbourP=1;
-		mdp->nodeinfo.time_since_last_observation
-		  =gettime_ms()
-		  -overlay_neighbours[n].last_observation_time_ms;
+		mdp->nodeinfo.time_since_last_observation = gettime_ms() - overlay_neighbours[n].last_observation_time_ms;
 		mdp->nodeinfo.score=-1;
 		mdp->nodeinfo.interface_number=-1;
 		mdp->nodeinfo.resolve_did=0;
@@ -1466,7 +1464,7 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
 		mdp->nodeinfo.foundP=1;
 		mdp->nodeinfo.localP=0;
 		mdp->nodeinfo.neighbourP=0;
-		mdp->nodeinfo.time_since_last_observation=gettime_ms();
+		mdp->nodeinfo.time_since_last_observation = gettime_ms();
 		mdp->nodeinfo.score=-1;
 		mdp->nodeinfo.interface_number=-1;
 		mdp->nodeinfo.resolve_did=0;
@@ -1479,9 +1477,8 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
 		      if (ob->corrected_score>mdp->nodeinfo.score) {
 			mdp->nodeinfo.score=ob->corrected_score;
 		      }
-		      if ((now-ob->rx_time)
-			  <mdp->nodeinfo.time_since_last_observation)
-			mdp->nodeinfo.time_since_last_observation=now-ob->rx_time;
+		      if (now - ob->rx_time < mdp->nodeinfo.time_since_last_observation)
+			mdp->nodeinfo.time_since_last_observation = now - ob->rx_time;
 		    }
 		
 		bcopy(&overlay_nodes[bin][slot].sid[0],

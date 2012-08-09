@@ -182,7 +182,7 @@ int overlay_frame_process(struct overlay_interface *interface,overlay_frame *f)
   IN();
   if (!f) RETURN(WHY("f==NULL"));
 
-  long long now=gettime_ms();
+  time_ms_t now = gettime_ms();
 
   if (debug&DEBUG_OVERLAYFRAMES)
     DEBUGF(">>> Received frame (type=%02x, bytes=%d)",f->type,f->payload?f->payload->length:-1);

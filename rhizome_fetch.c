@@ -269,7 +269,7 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
 typedef struct ignored_manifest {
   unsigned char bid[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
   struct sockaddr_in peer;
-  long long timeout;
+  time_ms_t timeout;
 } ignored_manifest;
 
 #define IGNORED_BIN_SIZE 8

@@ -443,12 +443,11 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 
   /* Now repeatedly send resolution request and collect results until we reach
      timeout. */
-  unsigned long long timeout=gettime_ms()+3000;
-  unsigned long long last_tx=0;
-  
-  while(timeout>gettime_ms())
+  time_ms_t timeout = gettime_ms() + 3000;
+  time_ms_t last_tx = 0;
+  time_ms_t now;
+  while (timeout > (now = gettime_ms()))
     {
-      unsigned long long now=gettime_ms();
       if ((last_tx+125)<now)
 	{ 
 	  mdp.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT;
@@ -468,7 +467,7 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 	  overlay_mdp_send(&mdp,0,0);
 	  last_tx=now;
 	}
-      long long short_timeout=125;
+      time_ms_t short_timeout=125;
       while(short_timeout>0) {
 	if (overlay_mdp_client_poll(short_timeout))
 	  {
@@ -647,7 +646,7 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
       }
     }
     /* Main process.  Allow a few seconds for the child process to report for duty. */
-    long long timeout = gettime_ms() + 5000;
+    time_ms_t timeout = gettime_ms() + 5000;
     do {
       struct timespec delay;
       delay.tv_sec = 0;
@@ -676,7 +675,7 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   int			pid, tries, running;
   const char		*instancepath;
-  long long		timeout;
+  time_ms_t		timeout;
   struct timespec 	delay;
 
   if (cli_arg(argc, argv, o, "instance path", &instancepath, cli_absolute_path, NULL) == -1)
@@ -808,11 +807,11 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
   /* XXX Eventually we should try to resolve SID to phone number and vice versa */
   printf("MDP PING %s (%s): 12 data bytes\n", alloca_tohex_sid(ping_sid), alloca_tohex_sid(ping_sid));
 
-  long long rx_mintime=-1;
-  long long rx_maxtime=-1;
+  time_ms_t rx_mintime=-1;
+  time_ms_t rx_maxtime=-1;
+  time_ms_t rx_ms=0;
+  time_ms_t rx_times[1024];
   long long rx_count=0,tx_count=0;
-  long long rx_ms=0;
-  long long rx_times[1024];
 
   if (broadcast) 
     WHY("WARNING: broadcast ping packets will not be encryped.");
@@ -840,11 +839,11 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
 
     /* Now look for replies until one second has passed, and print any replies
        with appropriate information as required */
-    long long now=gettime_ms();
-    long long timeout=now+1000;
+    time_ms_t now = gettime_ms();
+    time_ms_t timeout = now + 1000;
 
     while(now<timeout) {
-      long long timeout_ms=timeout-gettime_ms();
+      time_ms_t timeout_ms = timeout - gettime_ms();
       int result = overlay_mdp_client_poll(timeout_ms);
 
       if (result>0) {
@@ -858,7 +857,7 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
 	    {
 	      int *rxseq=(int *)&mdp.in.payload;
 	      long long *txtime=(long long *)&mdp.in.payload[4];
-	      long long delay=gettime_ms()-*txtime;
+	      time_ms_t delay = gettime_ms() - *txtime;
 	      printf("%s: seq=%d time=%lld ms%s%s\n",
 		     alloca_tohex_sid(mdp.in.src.sid),(*rxseq)-firstSeq+1,delay,
 		     mdp.packetTypeAndFlags&MDP_NOCRYPT?"":" ENCRYPTED",
@@ -1042,7 +1041,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
     if (debug & DEBUG_RHIZOME) DEBUGF("manifest contains service=%s", service);
   }
   if (rhizome_manifest_get(m, "date", NULL, 0) == NULL) {
-    rhizome_manifest_set_ll(m, "date", gettime_ms());
+    rhizome_manifest_set_ll(m, "date", (long long) gettime_ms());
     if (debug & DEBUG_RHIZOME) DEBUGF("missing 'date', set default date=%s", rhizome_manifest_get(m, "date", NULL, 0));
   }
   if (strcasecmp(RHIZOME_SERVICE_FILE, service) == 0) {
@@ -1545,18 +1544,16 @@ int app_crypt_test(int argc, const char *const *argv, struct command_line_option
 
   int len,i;
 
-  gettime_ms();
-
   for(len=16;len<=65536;len*=2) {
-    unsigned long long start=gettime_ms();
+    time_ms_t start = gettime_ms();
     for (i=0;i<1000;i++) {
       bzero(&plain_block[0],crypto_box_curve25519xsalsa20poly1305_ZEROBYTES);
       crypto_box_curve25519xsalsa20poly1305_afternm
 	(plain_block,plain_block,len,nonce,k);
     }
-    unsigned long long end=gettime_ms();
+    time_ms_t end = gettime_ms();
     printf("%d bytes - 100 tests took %lldms - mean time = %.2fms\n",
-	   len,end-start,(end-start)*1.0/i);
+	   len, (long long) end - start, (end - start) * 1.0 / i);
   }
   return 0;
 }
@@ -1612,9 +1609,9 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
     if (overlay_mdp_bind(srcsid,port)) port=0;
 
     if (port) {    
-      unsigned long long now = gettime_ms();
-      unsigned long long timeout = now+3000;
-      unsigned long long next_send = now;
+      time_ms_t now = gettime_ms();
+      time_ms_t timeout = now + 3000;
+      time_ms_t next_send = now;
       
       while(now < timeout){
 	now=gettime_ms();
@@ -1633,7 +1630,7 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 	  continue;
 	}
 	
-	long long timeout_ms = (next_send>timeout?timeout:next_send) - now;
+	time_ms_t timeout_ms = (next_send>timeout?timeout:next_send) - now;
 	if (overlay_mdp_client_poll(timeout_ms)<=0)
 	  continue;
 	

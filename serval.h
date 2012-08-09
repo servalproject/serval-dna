@@ -113,6 +113,27 @@ struct in_addr {
 #include "log.h"
 #include "conf.h"
 
+/* All wall clock times in the Serval daemon are represented in milliseconds
+ * since the Unix epoch.  The gettime_ms() function uses gettimeofday(2) to
+ * return this value when called.  The time_ms_t typedef should be used
+ * wherever this time value is handled or stored.
+ *
+ * This type could perfectly well be unsigned, but is defined as signed to
+ * avoid the need to cast or define a special signed timedelta_ms_t type at **
+ * (1):
+ *
+ *      static time_ms_t then = 0;
+ *      time_ms_t now = gettime_ms();
+ *      time_ms_t ago = now - then;  // ** (1)
+ *      if (then && ago < 0) {
+ *          ... time going backwards ...
+ *      } else {
+ *          ... time has advanced ...
+ *          then = now;
+ *      }
+ */
+typedef long long time_ms_t;
+
 /* bzero(3) is deprecated in favour of memset(3). */
 #define bzero(addr,len) memset((addr), 0, (len))
 
@@ -325,7 +346,7 @@ typedef struct overlay_frame {
   
   int rfs; /* remainder of frame size */
   
-  long long enqueued_at;
+  time_ms_t enqueued_at;
   
 } overlay_frame;
 
@@ -333,15 +354,15 @@ struct profile_total {
   struct profile_total *_next;
   int _initialised;
   const char *name;
-  long long max_time;
-  long long total_time;
-  long long child_time;
+  time_ms_t max_time;
+  time_ms_t total_time;
+  time_ms_t child_time;
   int calls;
 };
 
 struct call_stats{
-  long long enter_time;
-  long long child_time;
+  time_ms_t enter_time;
+  time_ms_t child_time;
   struct profile_total *totals;
   struct call_stats *prev;
 };
@@ -358,9 +379,9 @@ struct sched_ent{
   void *context;
   struct pollfd poll;
   // when we should first consider the alarm
-  long long alarm;
+  time_ms_t alarm;
   // the order we will prioritise the alarm
-  long long deadline;
+  time_ms_t deadline;
   struct profile_total *stats;
   int _poll_index;
 };
@@ -396,7 +417,7 @@ typedef struct overlay_interface {
   int tick_ms; /* milliseconds per tick */
   
   /* The time of the last tick on this interface in milli seconds */
-  long long last_tick_ms;
+  time_ms_t last_tick_ms;
   /* How many times have we abbreviated our address since we last announced it in full? */
   int ticks_since_sent_full_address;
   
@@ -526,7 +547,7 @@ int respondSimple(keyring_identity *id,
 		  int action,unsigned char *action_text,int action_len,
 		  unsigned char *transaction_id,int recvttl,
 		  struct sockaddr *recvaddr,int cryptoFlags);
-long long gettime_ms();
+time_ms_t gettime_ms();
 int server_pid();
 void server_save_argv(int argc, const char *const *argv);
 int server(char *backing_file);
@@ -657,7 +678,7 @@ long long parse_quantity(char *q);
 int overlay_interface_init(char *name,struct sockaddr_in *src_addr,struct sockaddr_in *broadcast,
 			   int speed_in_bits,int port,int type);
 int overlay_interface_init_socket(int i);
-long long overlay_time_until_next_tick();
+time_ms_t overlay_time_until_next_tick();
 int overlay_rx_messages();
 
 void logServalPacket(int level, const char *file, unsigned int line, const char *function, const char *message, const unsigned char *packet, size_t len);
@@ -707,7 +728,7 @@ typedef struct overlay_neighbour_observation {
      e.g., for gigabit type links. So lets go with 1ms granularity. */
   unsigned int s1;
   unsigned int s2;
-  long long time_ms;
+  time_ms_t time_ms;
   unsigned char sender_interface;
   unsigned char valid;
 } overlay_neighbour_observation;
@@ -718,7 +739,7 @@ typedef struct overlay_node_observation {
   unsigned char gateways_en_route;
   unsigned char RESERVED; /* for alignment */
   unsigned char interface;
-  long long rx_time;
+  time_ms_t rx_time;
   unsigned char sender_prefix[OVERLAY_SENDER_PREFIX_LENGTH];
 } overlay_node_observation;
 
@@ -730,17 +751,17 @@ typedef struct overlay_node {
   int best_link_score;
   int best_observation;
   unsigned int last_first_hand_observation_time_millisec;
-  long long last_observation_time_ms;
+  time_ms_t last_observation_time_ms;
   /* When did we last advertise this node on each interface, and what score
      did we advertise? */
-  long long most_recent_advertisment[OVERLAY_MAX_INTERFACES];
+  time_ms_t most_recent_advertisment_ms[OVERLAY_MAX_INTERFACES];
   unsigned char most_recent_advertised_score[OVERLAY_MAX_INTERFACES];
   overlay_node_observation observations[OVERLAY_MAX_OBSERVATIONS];
 } overlay_node;
 
 typedef struct overlay_neighbour {
-  long long last_observation_time_ms;
-  long long last_metric_update;
+  time_ms_t last_observation_time_ms;
+  time_ms_t last_metric_update;
   int most_recent_observation_id;
   overlay_neighbour_observation observations[OVERLAY_MAX_OBSERVATIONS];
   overlay_node *node;
@@ -755,12 +776,11 @@ typedef struct overlay_neighbour {
 } overlay_neighbour;
 extern overlay_neighbour *overlay_neighbours;
 
-long long overlay_gettime_ms();
 int overlay_route_init(int mb_ram);
-int overlay_route_saw_selfannounce_ack(overlay_frame *f,long long now);
-int overlay_route_recalc_node_metrics(overlay_node *n,long long now);
-int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n,long long now);
-int overlay_route_saw_selfannounce(overlay_frame *f,long long now);
+int overlay_route_saw_selfannounce_ack(overlay_frame *f, time_ms_t now);
+int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now);
+int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n, time_ms_t now);
+int overlay_route_saw_selfannounce(overlay_frame *f, time_ms_t now);
 overlay_node *overlay_route_find_node(const unsigned char *sid,int prefixLen,int createP);
 unsigned int overlay_route_hash_sid(const unsigned char *sid);
 int overlay_route_init(int mb_ram);
@@ -775,14 +795,13 @@ int overlay_broadcast_generate_address(unsigned char *a);
 int packetEncipher(unsigned char *packet,int maxlen,int *len,int cryptoflags);
 int overlayServerMode();
 int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP);
-long long overlay_time_in_ms();
 int overlay_abbreviate_lookup_sender_id();
-int overlay_route_record_link(long long now,unsigned char *to,
+int overlay_route_record_link( time_ms_t now,unsigned char *to,
 			      unsigned char *via,int sender_interface,
 			      unsigned int s1,unsigned int s2,int score,int gateways_en_route);
 int overlay_route_dump();
-int overlay_route_tick_neighbour(int neighbour_id,long long now);
-int overlay_route_tick_node(int bin,int slot,long long now);
+int overlay_route_tick_neighbour(int neighbour_id, time_ms_t now);
+int overlay_route_tick_node(int bin,int slot, time_ms_t now);
 int overlay_route_add_advertisements(overlay_buffer *e);
 int ovleray_route_please_advertise(overlay_node *n);
 int overlay_abbreviate_set_current_sender(unsigned char *in);
@@ -792,12 +811,12 @@ extern int overlay_bin_size; /* associativity, i.e., entries per bin */
 extern int overlay_bin_bytes;
 extern overlay_node **overlay_nodes;
 
-int overlay_route_saw_advertisements(int i,overlay_frame *f, long long now);
-int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now);
+int overlay_route_saw_advertisements(int i,overlay_frame *f,  time_ms_t now);
+int overlay_rhizome_saw_advertisements(int i,overlay_frame *f,  time_ms_t now);
 int overlay_route_please_advertise(overlay_node *n);
 int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_saw_voice_traffic();
-int overlay_saw_mdp_containing_frame(overlay_frame *f,long long now);
+int overlay_saw_mdp_containing_frame(overlay_frame *f, time_ms_t now);
 
 #include "nacl.h"
 
@@ -896,9 +915,9 @@ typedef struct overlay_mdp_vompevent {
   /* Once a call has been established, this is how the MDP/VoMP server
      and user-end process talk about the call. */
   unsigned int call_session_token;
-  unsigned long long audio_sample_endtime;
-  unsigned long long audio_sample_starttime;
-  unsigned long long last_activity;
+  unsigned int audio_sample_endtime;
+  unsigned int audio_sample_starttime;
+  time_ms_t last_activity;
   unsigned int flags;
   unsigned short audio_sample_bytes;
   unsigned char audio_sample_codec;  
@@ -935,7 +954,7 @@ typedef struct overlay_mdp_nodeinfo {
   int score;
   int interface_number;
   int resolve_did;
-  unsigned long long time_since_last_observation;
+  time_ms_t time_since_last_observation;
   int index; /* which record to return or was returned (incase there are multiple matches) */
   int count; /* number of matching records */
 } overlay_mdp_nodeinfo;
@@ -962,12 +981,12 @@ int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req);
 extern int mdp_client_socket;
 int overlay_mdp_client_init();
 int overlay_mdp_client_done();
-int overlay_mdp_client_poll(long long timeout_ms);
+int overlay_mdp_client_poll(time_ms_t timeout_ms);
 int overlay_mdp_recv(overlay_mdp_frame *mdp,int *ttl);
 int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms);
 
 /* Server-side MDP functions */
-int overlay_saw_mdp_frame(overlay_mdp_frame *mdp,long long now);
+int overlay_saw_mdp_frame(overlay_mdp_frame *mdp, time_ms_t now);
 int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp);
 int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
 			  overlay_mdp_frame *mdpreply);
@@ -1004,8 +1023,8 @@ typedef struct vomp_call_half {
 
 typedef struct vomp_sample_block {
   unsigned int codec;
-  unsigned long long starttime;
-  unsigned long long endtime;
+  time_ms_t starttime;
+  time_ms_t endtime;
   unsigned char bytes[1024];
 } vomp_sample_block;
 
@@ -1016,9 +1035,9 @@ typedef struct vomp_call_state {
   int initiated_call;
   int ringing;
   int fast_audio;
-  unsigned long long create_time;
-  unsigned long long last_activity;
-  unsigned long long audio_clock;
+  time_ms_t create_time;
+  time_ms_t last_activity;
+  time_ms_t audio_clock;
   int audio_started;
   // last local & remote status we sent to all interested parties
   int last_sent_status;
@@ -1128,7 +1147,7 @@ int encodeAndDispatchRecordedAudio(int fd,int callSessionToken,
 int scrapeProcNetRoute();
 int lsif();
 int doifaddrs();
-int bufferAudioForPlayback(int codec,long long start_time,long long end_time,
+int bufferAudioForPlayback(int codec, time_ms_t start_time, time_ms_t end_time,
 			   unsigned char *data,int dataLen);
 int startAudio();
 int stopAudio();

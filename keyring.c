@@ -1145,7 +1145,7 @@ unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
 struct sid_sas_mapping {
   unsigned char sid[SID_SIZE];
   unsigned char sas_public[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
-  unsigned long long last_request_time_in_ms;
+  time_ms_t last_request_time_in_ms;
   unsigned char validP;
 };
 
@@ -1263,7 +1263,7 @@ int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req)
 		  alloca_tohex_sid(sid_sas_mappings[i].sid),
 		  alloca_tohex_sid(sid_sas_mappings[i].sas_public));
 	sid_sas_mappings[i].validP=1;
-	sid_sas_mappings[i].last_request_time_in_ms=0;
+	sid_sas_mappings[i].last_request_time_in_ms = -1;
 	if (debug & DEBUG_KEYRING)
 	  DEBUG("Stored mapping");
 	return 0;
@@ -1292,7 +1292,7 @@ unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
   */
   IN();
   int i;
-  long long now=gettime_ms();
+  time_ms_t now = gettime_ms();
   for(i=0;i<sid_sas_mapping_count;i++)
     {
       if (memcmp(sid,sid_sas_mappings[i].sid,SID_SIZE)) continue;
@@ -1302,9 +1302,8 @@ unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
 	RETURN(sid_sas_mappings[i].sas_public);
       }
       /* Don't flood the network with mapping requests */
-      if (((now-sid_sas_mappings[i].last_request_time_in_ms)<1000)
-	  &&((now-sid_sas_mappings[i].last_request_time_in_ms)>=0))
-	{ RETURN(WHYNULL("Too soon to ask for SAS mapping again.")); }
+      if (sid_sas_mappings[i].last_request_time_in_ms != -1 && now < sid_sas_mappings[i].last_request_time_in_ms + 1000)
+	RETURN(WHYNULL("Too soon to ask for SAS mapping again."));
       /* we can request again, so fall out to where we do that.
          i is set to this mapping, so the request process will update this
          record. */
@@ -1325,7 +1324,7 @@ unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
   bzero(&sid_sas_mappings[i].sas_public,
 	crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
   sid_sas_mappings[i].validP=0;
-  sid_sas_mappings[i].last_request_time_in_ms=now;
+  sid_sas_mappings[i].last_request_time_in_ms = now;
 
   /* request mapping (send request auth-crypted). */
   overlay_mdp_frame mdp;

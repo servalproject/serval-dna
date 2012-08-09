@@ -112,11 +112,14 @@ ssize_t recvwithttl(int sock,unsigned char *buffer, size_t bufferlen,int *ttl,
   return len;
 }
 
-long long gettime_ms()
+time_ms_t gettime_ms()
 {
   struct timeval nowtv;
-  if (gettimeofday(&nowtv, NULL))
-    FATAL_perror("gettimeofday"); // If this fails, all else is lost!
+  // If gettimeofday() fails or returns an invalid value, all else is lost!
+  if (gettimeofday(&nowtv, NULL) == -1)
+    FATAL_perror("gettimeofday");
+  if (nowtv.tv_sec < 0 || nowtv.tv_usec < 0 || nowtv.tv_usec >= 1000000)
+    FATALF("gettimeofday returned tv_sec=%ld tv_usec=%ld", nowtv.tv_sec, nowtv.tv_usec);
   return nowtv.tv_sec * 1000LL + nowtv.tv_usec / 1000;
 }
 
@@ -245,18 +248,18 @@ void server_shutdown_check(struct sched_ent *alarm)
   /* If this server has been supplanted with another or Serval has been uninstalled, then its PID
       file will change or be unaccessible.  In this case, shut down without all the cleanup.
       Perform this check at most once per second.  */
-  static long long server_pid_time_ms = 0;
-  long long time_ms = gettime_ms();
-  if (server_pid_time_ms == 0 || time_ms - server_pid_time_ms > 1000) {
-    server_pid_time_ms = time_ms;
+  static time_ms_t server_pid_time_ms = 0;
+  time_ms_t now = gettime_ms();
+  if (server_pid_time_ms == 0 || now - server_pid_time_ms > 1000) {
+    server_pid_time_ms = now;
     if (server_pid() != server_getpid) {
       WARNF("Server pid file no longer contains pid=%d -- shutting down without cleanup", server_getpid);
       exit(1);
     }
   }
   if (alarm){
-    alarm->alarm = gettime_ms()+1000;
-    alarm->deadline = alarm->alarm+5000;
+    alarm->alarm = now + 1000;
+    alarm->deadline = alarm->alarm + 5000;
     schedule(alarm);
   }
 }

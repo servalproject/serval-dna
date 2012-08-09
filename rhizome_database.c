@@ -567,7 +567,7 @@ int rhizome_store_bundle(rhizome_manifest *m)
   if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_bind_text(stmt, 1, manifestid, -1, SQLITE_TRANSIENT);
   if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_bind_blob(stmt, 2, m->manifestdata, m->manifest_bytes, SQLITE_TRANSIENT);
   if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_bind_int64(stmt, 3, m->version);
-  if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_bind_int64(stmt, 4, gettime_ms());
+  if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_bind_int64(stmt, 4, (long long) gettime_ms());
   if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_bind_blob(stmt, 5, bar, RHIZOME_BAR_BYTES, SQLITE_TRANSIENT);
   if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_bind_int64(stmt, 6, m->fileLength);
   if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_bind_text(stmt, 7, filehash, -1, SQLITE_TRANSIENT);
@@ -577,7 +577,7 @@ int rhizome_store_bundle(rhizome_manifest *m)
   // we might need to leave the old file around for a bit
   // clean out unreferenced files first
   if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_prepare_v2_retry(rhizome_db, "DELETE FROM FILES WHERE inserttime < ? AND NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);", -1, &stmt, NULL);
-  if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_bind_int64(stmt, 1, gettime_ms() - 60000);
+  if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_bind_int64(stmt, 1, (long long)(gettime_ms() - 60000));
   if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_step_retry(stmt);
   if (SQLITE_CODE_OK(sql_ret)) sql_ret = sqlite3_finalize(stmt);
   
@@ -827,7 +827,7 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
   sqlite3_exec(rhizome_db,"DELETE FROM FILES WHERE datavalid=0;",NULL,NULL,NULL);
 
   snprintf(sqlcmd,1024,"INSERT OR REPLACE INTO FILES(id,data,length,highestpriority,datavalid,inserttime) VALUES('%s',?,%lld,%d,0,%lld);",
-	   hash,(long long)m->fileLength,priority,gettime_ms());
+	   hash,(long long)m->fileLength,priority,(long long)gettime_ms());
   sqlite3_stmt *statement;
   if (sqlite3_prepare_v2(rhizome_db,sqlcmd,strlen(sqlcmd)+1,&statement,&cmdtail) 
       != SQLITE_OK)

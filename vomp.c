@@ -49,7 +49,7 @@ int vomp_interested_usock_count=0;
 #define VOMP_MAX_INTERESTED 128
 struct sockaddr_un *vomp_interested_usocks[VOMP_MAX_INTERESTED];
 int vomp_interested_usock_lengths[VOMP_MAX_INTERESTED];
-unsigned long long vomp_interested_expiries[VOMP_MAX_INTERESTED];
+time_ms_t vomp_interested_expiries[VOMP_MAX_INTERESTED];
 
 vomp_call_state *vomp_find_call_by_session(int session_token)
 {
@@ -207,7 +207,7 @@ int vomp_send_status_remote_audio(vomp_call_state *call, int audio_codec, const 
   mdp.out.payload[3]=(call->remote.sequence>>0)&0xff;
   mdp.out.payload[4]=(call->local.sequence>>8)&0xff;
   mdp.out.payload[5]=(call->local.sequence>>0)&0xff;
-  unsigned long long call_millis=gettime_ms()-call->create_time;
+  time_ms_t call_millis = gettime_ms() - call->create_time;
   mdp.out.payload[6]=(call_millis>>8)&0xff;
   mdp.out.payload[7]=(call_millis>>0)&0xff;
   mdp.out.payload[8]=(call->remote.session>>16)&0xff;
@@ -344,7 +344,7 @@ int vomp_send_mdp_status_audio(vomp_call_state *call, int audio_codec, unsigned 
   }
   
   int i;
-  long long now=gettime_ms();
+  time_ms_t now = gettime_ms();
   for(i=0;i<vomp_interested_usock_count;i++)
     if (vomp_interested_expiries[i]>=now) {
       overlay_mdp_reply(mdp_named.poll.fd,
@@ -423,7 +423,7 @@ int vomp_process_audio(vomp_call_state *call,unsigned int sender_duration,overla
   
   sender_duration = (e&0xFFFF0000)|sender_duration;
   if (debug & DEBUG_VOMP)
-    DEBUGF("Jitter %d, %d",sender_duration -e,(gettime_ms()-call->create_time)-e);
+    DEBUGF("Jitter %d, %lld", sender_duration - e, (long long)((gettime_ms() - call->create_time) - e));
   
   while(ofs<mdp->in.payload_length)
     {
@@ -597,7 +597,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp, struct sockaddr_un *recvaddr,int recv
       {
 	int i;
 	int candidate=-1;
-	long long now=gettime_ms();
+	time_ms_t now = gettime_ms();
 	for(i=0;i<vomp_interested_usock_count;i++)
 	  {
 	    if (vomp_interested_usock_lengths[i]==recvaddrlen)
@@ -622,7 +622,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp, struct sockaddr_un *recvaddr,int recv
 	  bcopy(recvaddr,vomp_interested_usocks[i],
 		recvaddrlen);
 	  vomp_interested_usock_lengths[i]=recvaddrlen;
-	  vomp_interested_expiries[i]=gettime_ms()+60000;
+	  vomp_interested_expiries[i] = gettime_ms() + 60000;
 	  if (i==vomp_interested_usock_count) vomp_interested_usock_count++;
 
 	  if (mdp->vompevent.supported_codecs[0]) {
@@ -663,7 +663,7 @@ int vomp_mdp_event(overlay_mdp_frame *mdp, struct sockaddr_un *recvaddr,int recv
 		      vomp_interested_usock_lengths[i]
 			=vomp_interested_usock_lengths[swap];
 		      vomp_interested_usocks[i]=vomp_interested_usocks[swap];
-		      vomp_interested_expiries[i]=vomp_interested_expiries[swap];
+		      vomp_interested_expiries[i] = vomp_interested_expiries[swap];
 		    }
 		  vomp_interested_usock_count--;
 		  return overlay_mdp_reply_error
@@ -1389,9 +1389,9 @@ int app_vomp_monitor(int argc, const char *const *argv, struct command_line_opti
 	    DEBUGF("    attached audio sample: codec=%s, len=%d",
 		    vomp_describe_codec(rx.vompevent.audio_sample_codec),
 		    rx.vompevent.audio_sample_bytes);
-	    DEBUGF("    sample covers %lldms - %lldms of call.",
-		    rx.vompevent.audio_sample_starttime,
-		    rx.vompevent.audio_sample_endtime);
+	    DEBUGF("    sample covers %ldms - %ldms of call.",
+		    (long) rx.vompevent.audio_sample_starttime,
+		    (long) rx.vompevent.audio_sample_endtime);
 	  }
 	}
 	break;
@@ -1417,7 +1417,7 @@ static void vomp_process_tick(struct sched_ent *alarm)
 {
   char msg[32];
   int len;
-  unsigned long long now = gettime_ms();
+  time_ms_t now = gettime_ms();
   
   vomp_call_state *call = (vomp_call_state *)alarm;
   

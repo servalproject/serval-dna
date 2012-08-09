@@ -195,7 +195,7 @@ int callState=0;
 int processLine(char *cmd,unsigned char *data,int dataLen)
 {
   int l_id,r_id,l_state,r_state,codec;
-  long long start_time,end_time;
+  time_ms_t start_time, end_time;
   if (showReceived) {
     printf("> %s\n",cmd);
     if (data) {
@@ -215,11 +215,10 @@ int processLine(char *cmd,unsigned char *data,int dataLen)
     }
   }
   if (sscanf(cmd,"AUDIOPACKET:%x:%x:%d:%d:%d:%lld:%lld",
-	     &l_id,&r_id,&l_state,&r_state,
-	     &codec,&start_time,&end_time)==7)
+	     &l_id,&r_id,&l_state,&r_state, &codec, &start_time, &end_time)==7)
     {
       if (pipeAudio&&audev&&fast_audio) {
-	bufferAudioForPlayback(codec,start_time,end_time,data,dataLen);	
+	bufferAudioForPlayback(codec, start_time, end_time, data, dataLen);	
       }
     }
   char msg[1024];

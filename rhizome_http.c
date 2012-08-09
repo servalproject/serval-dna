@@ -92,7 +92,7 @@ struct profile_total connection_stats;
 
 unsigned short rhizome_http_server_port = 0;
 static int rhizome_server_socket = -1;
-static long long rhizome_server_last_start_attempt = -1;
+static time_ms_t rhizome_server_last_start_attempt = -1;
 
 // Format icon data using:
 //   od -vt u1 ~/Downloads/favicon.ico | cut -c9- | sed 's/  */,/g'
@@ -138,10 +138,10 @@ int rhizome_http_server_start()
     return 1;
 
   /* Only try to start http server every five seconds. */
-  long long now_ms = gettime_ms();
-  if (now_ms < rhizome_server_last_start_attempt + 5000)
+  time_ms_t now = gettime_ms();
+  if (now < rhizome_server_last_start_attempt + 5000)
     return 2;
-  rhizome_server_last_start_attempt  = now_ms;
+  rhizome_server_last_start_attempt  = now;
   if (debug & DEBUG_RHIZOME_TX)
     DEBUGF("Starting rhizome HTTP server");
 

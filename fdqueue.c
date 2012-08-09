@@ -32,7 +32,7 @@ struct profile_total poll_stats={NULL,0,"Idle (in poll)",0,0,0};
 
 void list_alarms() {
   DEBUG("Alarms;");
-  long long now = gettime_ms();
+  time_ms_t now = gettime_ms();
   struct sched_ent *alarm;
   for (alarm = next_alarm; alarm; alarm = alarm->_next)
     DEBUGF("%s in %lldms", (alarm->stats ? alarm->stats->name : "Unnamed"), alarm->alarm - now);
@@ -184,7 +184,7 @@ int fd_poll()
 {
   int i, r;
   int ms=60000;
-  long long now=gettime_ms();
+  time_ms_t now = gettime_ms();
   
   /* move alarms that have elapsed to the deadline queue */
   while (next_alarm!=NULL&&next_alarm->alarm <=now){

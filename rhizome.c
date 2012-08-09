@@ -386,13 +386,14 @@ int rhizome_bundle_push_update(char *id,long long version,unsigned char *data,in
 /* When voice traffic is being carried, we need to throttle Rhizome down
    to a more sensible level.  Or possibly even supress it entirely.
  */
-long long rhizome_voice_timeout=0;
+time_ms_t rhizome_voice_timeout = -1;
 int rhizome_saw_voice_traffic()
 {
   /* We are in "voice mode" for a second after sending a voice frame */
-  if (rhizome_voice_timeout<gettime_ms()) {
-    WHY("Suppressing Rhizome due to voice traffic");
-    rhizome_voice_timeout=gettime_ms()+1000;
+  time_ms_t now = gettime_ms();
+  if (rhizome_voice_timeout < now) {
+    INFO("Suppressing Rhizome due to voice traffic");
+    rhizome_voice_timeout = now + 1000;
   }
     
   return 0;

@@ -40,10 +40,10 @@ int fd_tallystats(struct profile_total *total,struct profile_total *a)
 int fd_showstat(struct profile_total *total, struct profile_total *a)
 {
   INFOF("%lldms (%2.1f%%) in %d calls (max %lldms, avg %.1fms, +child avg %.1fms) : %s",
-       a->total_time,
+       (long long) a->total_time,
        a->total_time*100.0/total->total_time,
        a->calls,
-       a->max_time,
+       (long long) a->max_time,
        a->total_time*1.00/a->calls,
        (a->total_time+a->child_time)*1.00/a->calls,
        a->name);
@@ -194,8 +194,8 @@ int fd_func_exit(struct call_stats *this_call)
   if (current_call != this_call)
     WHYF("stack mismatch, exited through %s()",this_call->totals->name);
   
-  long long now = gettime_ms();
-  long long elapsed=now - this_call->enter_time;
+  time_ms_t now = gettime_ms();
+  time_ms_t elapsed = now - this_call->enter_time;
   current_call = this_call->prev;
   
   if (this_call->totals && !this_call->totals->_initialised){
@@ -220,4 +220,3 @@ int fd_func_exit(struct call_stats *this_call)
   
   return 0;
 }
-

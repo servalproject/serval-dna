@@ -111,7 +111,7 @@ int mdp_bindings_initialised=0;
 sockaddr_mdp mdp_bindings[MDP_MAX_BINDINGS];
 char mdp_bindings_sockets[MDP_MAX_BINDINGS][MDP_MAX_SOCKET_NAME_LEN];
 int mdp_bindings_socket_name_lengths[MDP_MAX_BINDINGS];
-unsigned long long mdp_bindings_time[MDP_MAX_BINDINGS];
+time_ms_t mdp_bindings_time[MDP_MAX_BINDINGS];
 
 int overlay_mdp_reply_error(int sock,
 			    struct sockaddr_un *recvaddr,int recvaddrlen,
@@ -352,7 +352,7 @@ unsigned char *overlay_mdp_decrypt(overlay_frame *f,overlay_mdp_frame *mdp,
   RETURN(b);
 }
 
-int overlay_saw_mdp_containing_frame(overlay_frame *f,long long now)
+int overlay_saw_mdp_containing_frame(overlay_frame *f, time_ms_t now)
 {
   IN();
   /* Take frame source and destination and use them to populate mdp->in->{src,dst}
@@ -400,7 +400,7 @@ int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp)
   return 0;
 }
 
-int overlay_saw_mdp_frame(overlay_mdp_frame *mdp,long long now)
+int overlay_saw_mdp_frame(overlay_mdp_frame *mdp, time_ms_t now)
 {
   IN();
   int i;
@@ -1244,7 +1244,7 @@ int overlay_mdp_client_done()
   return 0;
 }
 
-int overlay_mdp_client_poll(long long timeout_ms)
+int overlay_mdp_client_poll(time_ms_t timeout_ms)
 {
   fd_set r;
   int ret;

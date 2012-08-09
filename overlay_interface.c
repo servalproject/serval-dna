@@ -54,7 +54,7 @@ struct outgoing_packet{
 struct sched_ent next_packet;
 struct profile_total send_packet;
 
-int overlay_tick_interface(int i, long long now);
+int overlay_tick_interface(int i, time_ms_t now);
 
 unsigned char magic_header[]={/* Magic */ 'O',0x10,
   /* Version */ 0x00,0x01};
@@ -359,7 +359,7 @@ void overlay_interface_poll(struct sched_ent *alarm)
     
     if (interface->state==INTERFACE_STATE_UP){
       // tick the interface
-      unsigned long long now = gettime_ms();
+      time_ms_t now = gettime_ms();
       int i = (interface - overlay_interfaces);
       overlay_tick_interface(i, now);
       alarm->alarm=now+interface->tick_ms;
@@ -403,7 +403,7 @@ void overlay_dummy_poll(struct sched_ent *alarm)
   struct sockaddr src_addr;
   size_t addrlen = sizeof(src_addr);
   unsigned char transaction_id[8];
-  unsigned long long now = gettime_ms();
+  time_ms_t now = gettime_ms();
 
   if (interface->last_tick_ms == -1 || now >= interface->last_tick_ms + interface->tick_ms) {
     // tick the interface
@@ -793,7 +793,7 @@ void overlay_init_packet(struct outgoing_packet *packet, int interface){
 // update the alarm time and return 1 if changed
 int overlay_calc_queue_time(overlay_txqueue *queue, overlay_frame *frame){
   int ret=0;
-  long long int send_time;
+  time_ms_t send_time;
   
   if (frame->nexthop_address_status==OA_UNINITIALISED)
     overlay_resolve_next_hop(frame);
@@ -821,7 +821,7 @@ int overlay_calc_queue_time(overlay_txqueue *queue, overlay_frame *frame){
   return ret;
 }
 
-void overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, long long now){
+void overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, time_ms_t now){
   overlay_frame *frame = queue->first;
   
   // TODO stop when the packet is nearly full?
@@ -913,7 +913,7 @@ void overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue
 }
 
 // fill a packet from our outgoing queues and send it
-int overlay_fill_send_packet(struct outgoing_packet *packet, long long now){
+int overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now){
   int i;
   IN();
   // while we're looking at queues, work out when to schedule another packet
@@ -964,7 +964,7 @@ void overlay_update_queue_schedule(overlay_txqueue *queue, overlay_frame *frame)
   }
 }
 
-int overlay_tick_interface(int i, long long now)
+int overlay_tick_interface(int i, time_ms_t now)
 {
   struct outgoing_packet packet;
   IN();
