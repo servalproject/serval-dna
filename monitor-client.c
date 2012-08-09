@@ -72,7 +72,7 @@ int monitor_socket_name(struct sockaddr_un *name){
   /* Use abstract namespace as Android has no writable FS which supports sockets.
    Abstract namespace is just plain better, anyway, as no dead files end up
    hanging around. */
-  name.sun_path[0]=0;
+  name->sun_path[0] = '\0';
   /* XXX: 104 comes from OSX sys/un.h - no #define (note Linux has UNIX_PATH_MAX and it's 108(!)) */
   snprintf(&name->sun_path[1],104-2,
 	   confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME));
