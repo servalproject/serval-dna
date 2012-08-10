@@ -417,6 +417,7 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   int i;
+  
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
     return -1;
@@ -426,10 +427,21 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 #define MAXURILEN 256
   char uris[MAXREPLIES][MAXURILEN];
 
-  const char *did;
+  const char *did, *delay;
   if (cli_arg(argc, argv, o, "did", &did, cli_lookup_did, "*") == -1)
     return -1;
-
+  if (cli_arg(argc, argv, o, "timeout", &delay, NULL, "3000") == -1)
+    return -1;
+  
+  int idelay=atoi(delay);
+  int one_reply=0;
+  
+  // Ugly hack, if timeout is negative, stop after first reply
+  if (idelay<0){
+    one_reply=1;
+    idelay=-idelay;
+  }
+  
   /* Bind to MDP socket and await confirmation */
   unsigned char srcsid[SID_SIZE];
   int port=32768+(random()&32767);
@@ -443,7 +455,7 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 
   /* Now repeatedly send resolution request and collect results until we reach
      timeout. */
-  time_ms_t timeout = gettime_ms() + 3000;
+  time_ms_t timeout = gettime_ms() + idelay;
   time_ms_t last_tx = 0;
   time_ms_t now;
   while (timeout > (now = gettime_ms()))
@@ -502,6 +514,12 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 			cli_puts(uri); cli_delim(":");
 			cli_puts(did); cli_delim(":");
 			cli_puts(name); cli_delim("\n");
+			
+			if (one_reply){
+			  timeout=now;
+			  short_timeout=0;
+			}
+			
 			/* Remember that we have seen it */
 			if (uri_count<MAXREPLIES&&strlen(uri)<MAXURILEN) {
 			  strcpy(uris[uri_count++],uri);
@@ -1718,7 +1736,7 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
    Keep this list alphabetically sorted for user convenience.
 */
 command_line_option command_line_options[]={
-  {app_dna_lookup,{"dna","lookup","<did>",NULL},0,
+  {app_dna_lookup,{"dna","lookup","<did>","[<timeout>]",NULL},0,
    "Lookup the SIP/MDP address of the supplied telephone number (DID)."},
   {cli_usage,{"help",NULL},0,
    "Display command usage."},
