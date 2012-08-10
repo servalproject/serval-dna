@@ -341,7 +341,7 @@ int monitor_send_lookup_response(const char *sid, const int port, const char *ex
     WHY("No local identity, cannot send DNA LOOKUP reply");
   else{
     char uri[256];
-    snprintf(uri, sizeof(uri), "sid://%s/%s", sid, ext);
+    snprintf(uri, sizeof(uri), "sid://%s/%s", alloca_tohex_sid(keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key), ext);
     DEBUGF("Sending response to %s for %s", sid, uri);
     overlay_mdp_dnalookup_reply(&addr, keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key, uri, ext, name);
   }
@@ -358,6 +358,7 @@ int monitor_process_command(struct monitor_context *c)
   char *cmd = c->line;
   IN();
   
+  remoteDid[0]='\0';
   c->line_length=0;
 
   if (strlen(cmd)>MONITOR_LINE_LENGTH) {
