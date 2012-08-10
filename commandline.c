@@ -591,8 +591,10 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
     serval_setinstancepath(instancepath);
   
   if (execpath == NULL) {
+#ifdef HAVE_JNI_H
     if (jni_env)
       return WHY("Must supply <exec path> argument when invoked via JNI");
+#endif
     execpath = exec_argv0;
   }
   /* Create the instance directory if it does not yet exist */
