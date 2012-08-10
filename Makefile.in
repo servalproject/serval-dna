@@ -101,7 +101,7 @@ CFLAGS+=-Wall -Wno-unused-value
 
 DEFS=	@DEFS@
 
-all:	servald libmonitorclient.so
+all:	servald libmonitorclient.so libmonitorclient.a
 
 sqlite3.o:	sqlite3.c
 	@echo CC $<
@@ -125,5 +125,9 @@ libmonitorclient.so: $(MONITORCLIENTOBJS)
 	@echo LINK $@
 	@$(CC) $(CFLAGS) -Wall -shared -o $@ $(MONITORCLIENTOBJS) $(LDFLAGS)
 
+libmonitorclient.a: $(MONITORCLIENTOBJS)
+	@echo AR $@
+	@$(AR) -cr $@ $(MONITORCLIENTOBJS)
+
 clean:
-	@rm -f $(OBJS) servald libservald.so
+	@rm -f $(OBJS) servald libservald.so libmonitorclient.so libmonitorclient.a
