@@ -260,6 +260,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define MONITOR_VOMP (1<<0)
 #define MONITOR_RHIZOME (1<<1)
 #define MONITOR_PEERS (1<<2)
+#define MONITOR_DNAHELPER (1<<3)
 
 #define MAX_SIGNATURES 16
 

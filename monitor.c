@@ -328,11 +328,33 @@ static void monitor_new_client(int s) {
     return;
 }
 
+int monitor_send_lookup_response(const char *sid, const int port, const char *ext, const char *name){
+  struct sockaddr_mdp addr={
+    .port = port
+  };
+  
+  if (stowSid((unsigned char *)&addr.sid, 0, sid)==-1)
+    return WHYF("Invalid SID %s", sid);
+  
+  int cn=0, in=0, kp=0;
+  if (!keyring_next_identity(keyring, &cn, &in, &kp))
+    WHY("No local identity, cannot send DNA LOOKUP reply");
+  else{
+    char uri[256];
+    snprintf(uri, sizeof(uri), "sid://%s/%s", sid, ext);
+    DEBUGF("Sending response to %s for %s", sid, uri);
+    overlay_mdp_dnalookup_reply(&addr, keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key, uri, ext, name);
+  }
+  return 0;
+}
+
 int monitor_process_command(struct monitor_context *c) 
 {
   int callSessionToken,sampleType,bytes;
   char sid[MONITOR_LINE_LENGTH],localDid[MONITOR_LINE_LENGTH];
   char remoteDid[MONITOR_LINE_LENGTH],digits[MONITOR_LINE_LENGTH];
+  int port;
+  
   char *cmd = c->line;
   IN();
   
@@ -379,7 +401,13 @@ int monitor_process_command(struct monitor_context *c)
     c->flags|=MONITOR_PEERS;
   else if (strcase_startswith(cmd,"ignore peers", NULL))
     c->flags&=~MONITOR_PEERS;
-  else if (sscanf(cmd,"call %s %s %s",sid,localDid,remoteDid)==3) {
+  else if (strcase_startswith(cmd,"monitor dnahelper", NULL))
+    c->flags|=MONITOR_DNAHELPER;
+  else if (strcase_startswith(cmd,"ignore dnahelper", NULL))
+    c->flags&=~MONITOR_DNAHELPER;
+  else if (sscanf(cmd,"lookup match %s %d %s %s",sid,&port,localDid,remoteDid)>=3) {
+    monitor_send_lookup_response(sid,port,localDid,remoteDid);
+  }else if (sscanf(cmd,"call %s %s %s",sid,localDid,remoteDid)==3) {
     DEBUG("here");
     int gotSid = 0;
     if (sid[0]=='*') {

@@ -531,9 +531,9 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp, time_ms_t now)
 	       immediately, so as not to cause blockages and delays in servald.
 	    */
 	    dna_helper_enqueue(mdp, did, mdp->out.src.sid);
+	    monitor_tell_formatted(MONITOR_DNAHELPER, "LOOKUP:%s:%d:%s\n", alloca_tohex_sid(mdp->out.src.sid), mdp->out.src.port, did);
 	  }
 	  RETURN(0);
-	  DEBUG("Got here");
 	}
 	break;
       case MDP_PORT_ECHO: /* well known ECHO port for TCP/UDP and now MDP */
