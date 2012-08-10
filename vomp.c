@@ -700,7 +700,7 @@ int vomp_dial(unsigned char *local_sid, unsigned char *remote_sid, char *local_d
 int vomp_pickup(struct vomp_call_state *call)
 {
   if (call){
-    if (debug && DEBUG_VOMP)
+    if (debug & DEBUG_VOMP)
       DEBUG("Picking up");
     if (call->local.state!=VOMP_STATE_RINGINGIN)
       return WHY("Call is not ringing");
