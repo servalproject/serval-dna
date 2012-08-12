@@ -57,6 +57,7 @@ SRCS=	\
 	strbuf.c \
 	strbuf_helpers.c \
 	strlcpy.c \
+	subscribers.c \
 	vomp.c \
         xprintf.c
 
@@ -85,6 +86,7 @@ HDRS=	fifo.h \
 	serval.h \
 	strbuf.h \
 	strbuf_helpers.h \
+	subscribers.h \
 	sha2.h \
 	conf.h \
 	log.h \
