@@ -119,6 +119,31 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 */
 
+typedef struct overlay_address_table {
+  unsigned char epoch;
+  char sids[256][SID_SIZE];
+  /* 0x00 = not set, which thus limits us to using only 255 (0x01-0xff) of the indexes for
+   storing addresses.
+   By spending an extra 256 bytes we reduce, but not eliminate the problem of collisions.
+   Will think about a complete solution later.
+   */
+  unsigned char byfirstbyte[256][2];
+  /* next free entry in sid[] */
+  unsigned char next_free;
+} overlay_address_table;
+
+typedef struct overlay_address_cache {
+  int size;
+  int shift; /* Used to calculat lookup function, which is (b[0].b[1].b[2]>>shift) */
+  sid *sids; /* one entry per bucket, to keep things simple. */
+  /* XXX Should have a means of changing the hash function so that naughty people can't try
+   to force our cache to flush with duplicate addresses? 
+   But we must use only the first 24 bits of the address due to abbreviation policies, 
+   so our options are limited.
+   For now the hash will be the first k bits.
+   */
+} overlay_address_cache;
+
 overlay_address_table *abbrs=NULL;
 overlay_address_cache *cache=NULL;
 

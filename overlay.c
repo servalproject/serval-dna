@@ -177,6 +177,38 @@ schedule(&_sched_##X); }
   return 0;
 }
 
+// a frame destined for one of our local addresses, or broadcast, has arrived. Process it.
+int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, overlay_frame *f){
+  int id = (interface - overlay_interfaces);
+  switch(f->type)
+  {
+    // route control frames
+    case OF_TYPE_SELFANNOUNCE:
+      overlay_route_saw_selfannounce(f,now);
+      break;
+    case OF_TYPE_SELFANNOUNCE_ACK:
+      overlay_route_saw_selfannounce_ack(f,now);
+      break;
+    case OF_TYPE_NODEANNOUNCE:
+      overlay_route_saw_advertisements(id,f,now);
+      break;
+      
+    // data frames
+    case OF_TYPE_RHIZOME_ADVERT:
+      overlay_rhizome_saw_advertisements(id,f,now);
+      break;
+    case OF_TYPE_DATA:
+    case OF_TYPE_DATA_VOICE:
+      overlay_saw_mdp_containing_frame(f,now);
+      break;
+    default:
+      DEBUGF("Unsupported f->type=0x%x",f->type);
+      return WHY("Support for that f->type not yet implemented");
+      break;
+  }
+  return 0;
+}
+
 int overlay_frame_process(struct overlay_interface *interface,overlay_frame *f)
 {
   IN();
@@ -270,37 +302,7 @@ int overlay_frame_process(struct overlay_interface *interface,overlay_frame *f)
 
   // process payloads with broadcast or our sid as destination
   if (ultimatelyForMe){
-    int id = (interface - overlay_interfaces);
-    switch(f->type)
-      {
-      case OF_TYPE_SELFANNOUNCE:
-	overlay_route_saw_selfannounce(f,now);
-	break;
-      case OF_TYPE_SELFANNOUNCE_ACK:
-	overlay_route_saw_selfannounce_ack(f,now);
-	break;
-      case OF_TYPE_NODEANNOUNCE:
-	overlay_route_saw_advertisements(id,f,now);
-	break;
-      case OF_TYPE_RHIZOME_ADVERT:
-	overlay_rhizome_saw_advertisements(id,f,now);
-	break;
-      case OF_TYPE_DATA:
-      case OF_TYPE_DATA_VOICE:
-	if (0) {
-	  DEBUG("saw mdp containing frame");
-	  DEBUGF("  src = %s\n", alloca_tohex_sid(f->source));
-	  DEBUGF("  nxt = %s\n", alloca_tohex_sid(f->nexthop));
-	  DEBUGF("  dst = %s\n", alloca_tohex_sid(f->destination));
-	  dump("payload", f->payload->bytes, f->payload->length);
-	}
-	overlay_saw_mdp_containing_frame(f,now);
-	break;
-      default:
-	DEBUGF("Unsupported f->type=0x%x",f->type);
-	RETURN(WHY("Support for that f->type not yet implemented"));
-	break;
-      }
+    process_incoming_frame(now, interface, f);
   }
 
   RETURN(0);
