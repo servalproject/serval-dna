@@ -107,6 +107,7 @@ int monitor_client_open(struct monitor_state **res)
 
   if (connect(fd, (struct sockaddr*)&addr, len) == -1) {
     perror("connect");
+    close(fd);
     return -1;
   }
   
