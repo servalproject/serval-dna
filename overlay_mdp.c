@@ -948,10 +948,6 @@ void overlay_mdp_poll(struct sched_ent *alarm)
       if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_GOODBYE");
       overlay_mdp_releasebindings(recvaddr_un,recvaddrlen);
       return;
-    case MDP_VOMPEVENT:
-      if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_VOMPEVENT");
-      vomp_mdp_event(mdp,recvaddr_un,recvaddrlen);
-      return;
     case MDP_NODEINFO:
       if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_NODEINFO");
       overlay_route_node_info(mdp,recvaddr_un,recvaddrlen);
@@ -1102,10 +1098,6 @@ int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
       len=&mdp->error.message[0]-(char *)mdp;
       len+=strlen(mdp->error.message)+1;      
       if (mdp->error.error) INFOF("mdp return/error code: %d:%s",mdp->error.error,mdp->error.message);
-      break;
-    case MDP_VOMPEVENT:
-      /* XXX too hard to work out precisely for now. */
-      len=sizeof(overlay_mdp_frame);
       break;
     case MDP_NODEINFO:
       /* XXX problems with calculating this due to structure padding, 

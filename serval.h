@@ -1009,17 +1009,6 @@ void _serval_debug_free(void *p,char *file,const char *func,int line);
 #endif
 
 
-typedef struct vomp_call_half {
-  unsigned char sid[SID_SIZE];
-  unsigned char did[64];
-  unsigned char state;
-  unsigned char codec;
-  unsigned int session;
-  unsigned int sequence;
-  /* the following is from call creation, not start of audio flow */
-  unsigned long long milliseconds_since_call_start;
-} vomp_call_half;
-
 typedef struct vomp_sample_block {
   unsigned int codec;
   time_ms_t starttime;
@@ -1029,8 +1018,6 @@ typedef struct vomp_sample_block {
 
 struct vomp_call_state;
 struct vomp_call_state *vomp_find_call_by_session(int session_token);
-int vomp_mdp_event(overlay_mdp_frame *mdp,
-		   struct sockaddr_un *recvaddr,int recvaddrlen);
 int vomp_mdp_received(overlay_mdp_frame *mdp);
 int vomp_tick_interval();
 int vomp_sample_size(int c);
@@ -1073,15 +1060,9 @@ int overlay_broadcast_ensemble(int interface_number,
 			       struct sockaddr_in *recipientaddr /* NULL == broadcast */,
 			       unsigned char *bytes,int len);
 
-int app_vomp_status(int argc, const char *const *argv, struct command_line_option *o);
-int app_vomp_dial(int argc, const char *const *argv, struct command_line_option *o);
-int app_vomp_pickup(int argc, const char *const *argv, struct command_line_option *o);
-int app_vomp_hangup(int argc, const char *const *argv, struct command_line_option *o);
-int app_vomp_monitor(int argc, const char *const *argv, struct command_line_option *o);
 #ifdef HAVE_VOIPTEST
 int app_pa_phone(int argc, const char *const *argv, struct command_line_option *o);
 #endif
-int app_vomp_dtmf(int argc, const char *const *argv, struct command_line_option *o);
 int app_monitor_cli(int argc, const char *const *argv, struct command_line_option *o);
 
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);

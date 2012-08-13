@@ -409,7 +409,6 @@ int monitor_process_command(struct monitor_context *c)
   else if (sscanf(cmd,"lookup match %s %d %s %s",sid,&port,localDid,remoteDid)>=3) {
     monitor_send_lookup_response(sid,port,localDid,remoteDid);
   }else if (sscanf(cmd,"call %s %s %s",sid,localDid,remoteDid)==3) {
-    DEBUG("here");
     int gotSid = 0;
     if (sid[0]=='*') {
       /* For testing, pick any peer and call them */

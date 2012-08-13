@@ -297,29 +297,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
    Multiple replies can be used to respond with more. */
 #define MDP_MAX_SID_REQUEST 59
 
-#define MDP_VOMPEVENT 7
 #define VOMP_MAX_CALLS 16
 /* Maximum amount of audio to cram into a VoMP audio packet.
    More lets us include preemptive retransmissions.
    Less reduces the chance of packets getting lost, and reduces
    the bandwidth used. */
 #define VOMP_STUFF_BYTES 800
-
-/* For  overlay_mdp_vompevent->flags */
-#define VOMPEVENT_RINGING (1<<0)
-#define VOMPEVENT_CALLENDED (1<<1)
-#define VOMPEVENT_CALLREJECT (1<<2)
-#define VOMPEVENT_HANGUP VOMPEVENT_CALLREJECT
-#define VOMPEVENT_TIMEOUT (1<<3)
-#define VOMPEVENT_ERROR (1<<4)
-#define VOMPEVENT_AUDIOSTREAMING (1<<5)
-#define VOMPEVENT_DIAL (1<<6)
-#define VOMPEVENT_REGISTERINTEREST (1<<7)
-#define VOMPEVENT_WITHDRAWINTEREST (1<<8)
-#define VOMPEVENT_CALLCREATED (1<<9)
-#define VOMPEVENT_PICKUP (1<<10)
-#define VOMPEVENT_CALLINFO (1<<11)
-#define VOMPEVENT_AUDIOPACKET (1<<12)
 
 #define MAX_AUDIO_BYTES 1024
 #define MDP_NODEINFO 8
