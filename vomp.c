@@ -26,7 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 #include "strbuf.h"
-
+#include "strlcpy.h"
 
 /*
  Typical call state lifecycle between 2 parties.
