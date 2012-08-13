@@ -1009,13 +1009,6 @@ void _serval_debug_free(void *p,char *file,const char *func,int line);
 #endif
 
 
-typedef struct vomp_sample_block {
-  unsigned int codec;
-  time_ms_t starttime;
-  time_ms_t endtime;
-  unsigned char bytes[1024];
-} vomp_sample_block;
-
 struct vomp_call_state;
 struct vomp_call_state *vomp_find_call_by_session(int session_token);
 int vomp_mdp_received(overlay_mdp_frame *mdp);
@@ -1027,7 +1020,7 @@ int vomp_dial(unsigned char *local_sid, unsigned char *remote_sid, char *local_d
 int vomp_pickup(struct vomp_call_state *call);
 int vomp_hangup(struct vomp_call_state *call);
 int vomp_ringing(struct vomp_call_state *call);
-int vomp_send_status_remote_audio(struct vomp_call_state *call, int audio_codec, const unsigned char *audio, int audio_length);
+int vomp_received_audio(struct vomp_call_state *call, int audio_codec, const unsigned char *audio, int audio_length);
 
 
 typedef struct command_line_option {

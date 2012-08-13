@@ -101,6 +101,14 @@ struct vomp_call_half {
   unsigned long long milliseconds_since_call_start;
 };
 
+struct vomp_sample_block {
+  unsigned int codec;
+  int len;
+  time_ms_t starttime;
+  time_ms_t endtime;
+  unsigned char bytes[1024];
+};
+
 struct vomp_call_state {
   struct sched_ent alarm;
   struct vomp_call_half local;
@@ -115,7 +123,7 @@ struct vomp_call_state {
   int last_sent_status;
   unsigned char remote_codec_list[256];
   int recent_sample_rotor;
-  vomp_sample_block recent_samples[VOMP_MAX_RECENT_SAMPLES];
+  struct vomp_sample_block recent_samples[VOMP_MAX_RECENT_SAMPLES];
   
   int sample_pos;
   unsigned int seen_samples[VOMP_MAX_RECENT_SAMPLES *4];
@@ -274,7 +282,7 @@ struct vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
 /* send updated call status to end-point and to any interested listeners as
    appropriate */
 
-int vomp_send_status_remote_audio(struct vomp_call_state *call, int audio_codec, const unsigned char *audio, int audio_length)
+int vomp_send_status_remote(struct vomp_call_state *call)
 {
   overlay_mdp_frame mdp;
   unsigned short  *len=&mdp.out.payload_length;
@@ -319,68 +327,46 @@ int vomp_send_status_remote_audio(struct vomp_call_state *call, int audio_codec,
     mdp.out.payload[(*len)++]=0;
     
     if (call->initiated_call){
-      didLen = snprintf((char *)(mdp.out.payload + *len), sizeof(mdp.out.payload) - *len, "%s",call->local.did);
-      *len+=didLen;
+      DEBUGF("Sending phone numbers %s, %s",call->local.did,call->remote.did);
+      didLen = snprintf((char *)(mdp.out.payload + *len), sizeof(mdp.out.payload) - *len, "%s", call->local.did);
+      *len+=didLen+1;
       didLen = snprintf((char *)(mdp.out.payload + *len), sizeof(mdp.out.payload) - *len, "%s", call->remote.did);
-      *len+=didLen;
+      *len+=didLen+1;
     }
     
     if (debug & DEBUG_VOMP)
       DEBUGF("mdp frame with codec list is %d bytes", mdp.out.payload_length);
   }
 
-  if (call->local.state==VOMP_STATE_INCALL && audio && audio_length && vomp_sample_size(audio_codec)==audio_length) {
+  if (call->local.state==VOMP_STATE_INCALL) {
     unsigned char *p=&mdp.out.payload[0];
-
-    // DEBUG("Including audio sample block");
-
-    /* record sample in recent list.
-       XXX - What timestamp to attach to the sample?
-       Two obvious choices:
-       1. The sample is for the most recent n milliseconds; or
-       2. The sample is for the next n milliseconds following the
-       last sample.
-
-       Option 1 introduces all sorts of problems with sample production
-       jitter, where as option 2 has no such problems, but simply requires the
-       producer of audio to ensure that they provide exactly the right amount
-       of audio, or risk the call getting out of sync.  This is a fairly
-       reasonable expectation, or else things go to pot.
-
-       Note that in-call slew is the responsibility of the player, not the
-       recorder of audio.  Basically if the audio queue starts to bank up,
-       then the player needs to drop samples.
-    */
-    vomp_sample_block *sb=call->recent_samples;
+    struct vomp_sample_block *sb=call->recent_samples;
     int rotor=call->recent_sample_rotor%VOMP_MAX_RECENT_SAMPLES;
-    sb[rotor].codec=audio_codec;
-    sb[rotor].endtime=call->audio_clock+vomp_codec_timespan(sb[rotor].codec)-1;
-    sb[rotor].starttime=call->audio_clock;
-    call->audio_clock=sb[rotor].endtime+1;
-    bcopy(audio,&sb[rotor].bytes[0],audio_length);
     
-    /* write the sample end-time in milliseconds since call establishment */
-    p[(*len)++]=(call->audio_clock>>24)&0xff;
-    p[(*len)++]=(call->audio_clock>>16)&0xff;
-    p[(*len)++]=(call->audio_clock>>8)&0xff;
-    p[(*len)++]=(call->audio_clock>>0)&0xff;	
+    if (sb[rotor].len==vomp_sample_size(sb[rotor].codec)){
+      /* write the sample end-time in milliseconds since call establishment */
+      p[(*len)++]=(call->audio_clock>>24)&0xff;
+      p[(*len)++]=(call->audio_clock>>16)&0xff;
+      p[(*len)++]=(call->audio_clock>>8)&0xff;
+      p[(*len)++]=(call->audio_clock>>0)&0xff;	
 
-    /* stuff frame with most recent sample blocks as a form of preemptive
-       retransmission. But don't make the packets too large. */
-    while (((*len)+1+audio_length)
-	   <VOMP_STUFF_BYTES) {
-      p[(*len)++]=sb[rotor].codec;
-      bcopy(&sb[rotor].bytes[0],&p[*len],vomp_sample_size(sb[rotor].codec));
-      (*len)+=vomp_sample_size(sb[rotor].codec);
-      
-      rotor--; if (rotor<0) rotor+=VOMP_MAX_RECENT_SAMPLES;
-      rotor%=VOMP_MAX_RECENT_SAMPLES;
-      
-      // stop if we've run out of samples before we ran out of bytes
-      if ((!sb[rotor].endtime)||(sb[rotor].endtime+1==call->audio_clock)) break;
+      /* stuff frame with most recent sample blocks as a form of preemptive
+	 retransmission. But don't make the packets too large. */
+      while (((*len)+1+sb[rotor].len) <VOMP_STUFF_BYTES && sb[rotor].len==vomp_sample_size(sb[rotor].codec)) {
+	p[(*len)++]=sb[rotor].codec;
+	bcopy(&sb[rotor].bytes[0],&p[*len],sb[rotor].len);
+	(*len)+=sb[rotor].len;
+	sb[rotor].len=0;
+	
+	rotor--; if (rotor<0) rotor+=VOMP_MAX_RECENT_SAMPLES;
+	rotor%=VOMP_MAX_RECENT_SAMPLES;
+	
+	// stop if we've run out of samples before we ran out of bytes
+	if ((!sb[rotor].endtime)||(sb[rotor].endtime+1==call->audio_clock)) break;
+      }
+      call->recent_sample_rotor++;
+      call->recent_sample_rotor%=VOMP_MAX_RECENT_SAMPLES;
     }
-    call->recent_sample_rotor++;
-    call->recent_sample_rotor%=VOMP_MAX_RECENT_SAMPLES;
   }
   
   /* XXX Here we act as our own client. This used to be able to block.
@@ -395,9 +381,59 @@ int vomp_send_status_remote_audio(struct vomp_call_state *call, int audio_codec,
   return 0;
 }
 
-int vomp_send_status_remote(struct vomp_call_state *call)
+// copy audio into the rotor buffers
+int vomp_received_audio(struct vomp_call_state *call, int audio_codec, const unsigned char *audio, int audio_length)
 {
-  return vomp_send_status_remote_audio(call, 0, NULL, 0);
+  int codec_block_size=vomp_sample_size(audio_codec);
+  int offset=0;
+  struct vomp_sample_block *sb=call->recent_samples;
+  
+  while(offset<audio_length){
+    
+    int rotor=call->recent_sample_rotor%VOMP_MAX_RECENT_SAMPLES;
+    
+    if (sb[rotor].len==0){
+      /*
+       What timestamp to attach to the sample?
+       Two obvious choices:
+       1. The sample is for the most recent n milliseconds; or
+       2. The sample is for the next n milliseconds following the
+       last sample.
+       
+       Option 1 introduces all sorts of problems with sample production
+       jitter, where as option 2 has no such problems, but simply requires the
+       producer of audio to ensure that they provide exactly the right amount
+       of audio, or risk the call getting out of sync.  This is a fairly
+       reasonable expectation, or else things go to pot.
+       
+       Note that in-call slew is the responsibility of the player, not the
+       recorder of audio.  Basically if the audio queue starts to bank up,
+       then the player needs to drop samples.
+       */
+      
+      sb[rotor].codec=audio_codec;
+      sb[rotor].endtime=call->audio_clock+vomp_codec_timespan(sb[rotor].codec)-1;
+      sb[rotor].starttime=call->audio_clock;
+      call->audio_clock=sb[rotor].endtime+1;
+    }else if(sb[rotor].codec!=audio_codec){
+      WHY("Did not finish previous audio buffer!!");
+    }
+    
+    int copy_size = (audio_length - offset);
+    if (copy_size > codec_block_size - sb[rotor].len)
+      copy_size=codec_block_size - sb[rotor].len;
+    
+    bcopy(audio + offset,&sb[rotor].bytes[sb[rotor].len],copy_size);
+    sb[rotor].len+=copy_size;
+    offset+=copy_size;
+    
+    // send audio whenever we get the right number of bytes.
+    if (sb[rotor].len>=codec_block_size){
+      vomp_send_status_remote(call);
+    }
+  }
+  
+  return 0;
 }
 
 int monitor_call_status(struct vomp_call_state *call)
@@ -580,12 +616,13 @@ int vomp_call_stop_audio(struct vomp_call_state *call)
 
 int vomp_ringing(struct vomp_call_state *call){
   if (call){
-    if (debug & DEBUG_VOMP)
-      DEBUGF("RING RING!");
-    if (call->local.state<VOMP_STATE_RINGINGIN && call->remote.state==VOMP_STATE_RINGINGOUT){
+    if ((!call->initiated_call) && call->local.state<VOMP_STATE_RINGINGIN && call->remote.state==VOMP_STATE_RINGINGOUT){
+      if (debug & DEBUG_VOMP)
+	DEBUGF("RING RING!");
       vomp_update_local_state(call, VOMP_STATE_RINGINGIN);
       vomp_update(call);
-    }
+    }else
+      return WHY("Can't ring, call is not being dialled");
   }
   return 0;
 }
@@ -657,13 +694,14 @@ int vomp_pickup(struct vomp_call_state *call)
   if (call){
     if (debug & DEBUG_VOMP)
       DEBUG("Picking up");
-    if (call->local.state!=VOMP_STATE_RINGINGIN)
-      return WHY("Call is not ringing");
-    vomp_update_local_state(call, VOMP_STATE_INCALL);
-    call->create_time=gettime_ms();
-    /* state machine does job of starting audio stream, just tell everyone about
-     the changed state. */
-    vomp_update(call);
+    if (call->local.state<=VOMP_STATE_RINGINGIN && call->remote.state==VOMP_STATE_RINGINGOUT){
+      vomp_update_local_state(call, VOMP_STATE_INCALL);
+      call->create_time=gettime_ms();
+      /* state machine does job of starting audio stream, just tell everyone about
+       the changed state. */
+      vomp_update(call);
+    }else
+      return WHY("Can't pickup, call is not ringing");
   }
   return 0;
 }
@@ -693,7 +731,7 @@ int vomp_extract_remote_codec_list(struct vomp_call_state *call,overlay_mdp_fram
   if (!call->initiated_call){
     ofs++;
     if (ofs<mdp->in.payload_length)
-      ofs+=strlcpy(call->remote.did, (char *)(mdp->in.payload+ofs), sizeof(call->remote.did));
+      ofs+=strlcpy(call->remote.did, (char *)(mdp->in.payload+ofs), sizeof(call->remote.did))+1;
     if (ofs<mdp->in.payload_length)
       ofs+=strlcpy(call->local.did, (char *)(mdp->in.payload+ofs), sizeof(call->local.did));
   }

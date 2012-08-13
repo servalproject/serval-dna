@@ -462,7 +462,7 @@ int monitor_process_command(struct monitor_context *c)
 	 of the majority of codec time units (70ms is the nominal
 	 DTMF tone length for most systems). */
 	unsigned char code = digit <<4;
-	vomp_send_status_remote_audio(call, VOMP_CODEC_DTMF, &code, 1);
+	vomp_received_audio(call, VOMP_CODEC_DTMF, &code, 1);
       }
     }
   }
@@ -479,19 +479,13 @@ int monitor_process_data(struct monitor_context *c)
   /* Called when we have received an entire data sample */
   c->state=MONITOR_STATE_COMMAND;
 
-  if (vomp_sample_size(c->sample_codec)!=c->data_offset) {
-      WARNF("Ignoring sample block of incorrect size (expected %d, got %d bytes for codec %d)",
-	   vomp_sample_size(c->sample_codec), c->data_offset, c->sample_codec);
-    RETURN(-1);
-  }
-
   struct vomp_call_state *call=vomp_find_call_by_session(c->sample_call_session_token);
   if (!call) {
     write_str(c->alarm.poll.fd,"\nERROR:No such call\n");
     RETURN(-1);
   }
 
-  vomp_send_status_remote_audio(call, c->sample_codec, &c->buffer[0], vomp_sample_size(c->sample_codec));
+  vomp_received_audio(call, c->sample_codec, &c->buffer[0], vomp_sample_size(c->sample_codec));
 
   RETURN(0);
 }
