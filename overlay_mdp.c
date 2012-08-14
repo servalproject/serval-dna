@@ -20,9 +20,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "strbuf.h"
 
-struct sched_ent mdp_abstract;
-struct sched_ent mdp_named;
-struct profile_total mdp_stats;
+struct profile_total mdp_stats={.name="overlay_mdp_poll"};
+
+struct sched_ent mdp_abstract={
+  .function = overlay_mdp_poll,
+  .stats = &mdp_stats,
+};
+
+struct sched_ent mdp_named={
+  .function = overlay_mdp_poll,
+  .stats = &mdp_stats,
+};
 
 int overlay_mdp_setup_sockets()
 {
@@ -36,7 +44,7 @@ int overlay_mdp_setup_sockets()
      linux-only thing. */
   mdp_abstract.poll.fd = -1;
 #else
-  if (mdp_abstract.function==NULL) {
+  if (mdp_abstract.poll.fd<=0) {
     /* Abstract name space unix sockets is a special Linux thing, which is
        convenient for us because Android is Linux, but does not have a shared
        writable path that is on a UFS partition, so we cannot use traditional
@@ -65,14 +73,12 @@ int overlay_mdp_setup_sockets()
       int send_buffer_size=64*1024;    
       if (setsockopt(mdp_abstract.poll.fd, SOL_SOCKET, SO_SNDBUF, &send_buffer_size, sizeof(send_buffer_size)) == -1)
 	WARN_perror("setsockopt(SO_SNDBUF)");
-      mdp_abstract.function = overlay_mdp_poll;
-      mdp_abstract.stats.name = "overlay_mdp_poll";
       mdp_abstract.poll.events = POLLIN;
       watch(&mdp_abstract);
     } 
   }
 #endif
-  if (mdp_named.function==NULL) {
+  if (mdp_named.poll.fd<=0) {
     if (!form_serval_instance_path(&name.sun_path[0], 100, "mdp.socket"))
       return WHY("Cannot construct name of unix domain socket.");
     unlink(&name.sun_path[0]);
@@ -94,7 +100,6 @@ int overlay_mdp_setup_sockets()
       if (setsockopt(mdp_named.poll.fd, SOL_SOCKET, SO_RCVBUF, &send_buffer_size, sizeof(send_buffer_size)) == -1)
 	WARN_perror("setsockopt(SO_RCVBUF)");
       mdp_named.function = overlay_mdp_poll;
-      mdp_stats.name="overlay_mdp_poll";
       mdp_named.stats = &mdp_stats;
       mdp_named.poll.events = POLLIN;
       watch(&mdp_named);
@@ -107,11 +112,17 @@ int overlay_mdp_setup_sockets()
 
 #define MDP_MAX_BINDINGS 100
 #define MDP_MAX_SOCKET_NAME_LEN 110
+
+struct mdp_binding{
+  int any;
+  sockaddr_mdp addr;
+  char socket_name[MDP_MAX_SOCKET_NAME_LEN];
+  int name_len;
+  time_ms_t binding_time;
+};
+
+struct mdp_binding mdp_bindings[MDP_MAX_BINDINGS];
 int mdp_bindings_initialised=0;
-sockaddr_mdp mdp_bindings[MDP_MAX_BINDINGS];
-char mdp_bindings_sockets[MDP_MAX_BINDINGS][MDP_MAX_SOCKET_NAME_LEN];
-int mdp_bindings_socket_name_lengths[MDP_MAX_BINDINGS];
-time_ms_t mdp_bindings_time[MDP_MAX_BINDINGS];
 
 int overlay_mdp_reply_error(int sock,
 			    struct sockaddr_un *recvaddr,int recvaddrlen,
@@ -163,9 +174,9 @@ int overlay_mdp_releasebindings(struct sockaddr_un *recvaddr,int recvaddrlen)
   /* Free up any MDP bindings held by this client. */
   int i;
   for(i=0;i<MDP_MAX_BINDINGS;i++)
-    if (mdp_bindings_socket_name_lengths[i]==recvaddrlen)
-      if (!memcmp(mdp_bindings_sockets[i],recvaddr->sun_path,recvaddrlen))
-	mdp_bindings[i].port=0;
+    if (mdp_bindings[i].name_len==recvaddrlen)
+      if (!memcmp(mdp_bindings[i].socket_name,recvaddr->sun_path,recvaddrlen))
+	mdp_bindings[i].addr.port=0;
 
   return 0;
 
@@ -177,7 +188,8 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
   int i;
   if (!mdp_bindings_initialised) {
     /* Mark all slots as unused */
-    for(i=0;i<MDP_MAX_BINDINGS;i++) mdp_bindings[i].port=0;
+    for(i=0;i<MDP_MAX_BINDINGS;i++)
+      mdp_bindings[i].addr.port=0;
     mdp_bindings_initialised=1;
   }
 
@@ -202,18 +214,18 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
   int free=-1;
   for(i=0;i<MDP_MAX_BINDINGS;i++) {
     /* Look for duplicate bindings */
-    if (mdp_bindings[i].port==mdp->bind.port_number)
-      if (!memcmp(mdp_bindings[i].sid,mdp->bind.sid,SID_SIZE))
+    if (mdp_bindings[i].addr.port==mdp->bind.port_number)
+      if (!memcmp(mdp_bindings[i].addr.sid,mdp->bind.sid,SID_SIZE))
 	{ found=i; break; }
     /* Look for free slots in case we need one */
-    if ((free==-1)&&(mdp_bindings[i].port==0)) free=i;
+    if ((free==-1)&&(mdp_bindings[i].addr.port==0)) free=i;
   }
  
   /* Binding was found.  See if it is us, if so, then all is well,
      else we check flags to see if we should override the existing binding. */
   if (found>-1) {
-    if (mdp_bindings_socket_name_lengths[found]==recvaddrlen)
-      if (!memcmp(mdp_bindings_sockets[found],recvaddr->sun_path,recvaddrlen))
+    if (mdp_bindings[found].name_len==recvaddrlen)
+      if (!memcmp(mdp_bindings[found].socket_name,recvaddr->sun_path,recvaddrlen))
 	{
 	  INFO("Identical binding exists");
 	  DEBUG("Need to return binding information to client");
@@ -250,16 +262,16 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
        Call listeners don't have a port binding, so are unaffected by this.
     */
     free=random()%MDP_MAX_BINDINGS;
-    mdp_bindings[free].port=0;
+    mdp_bindings[free].addr.port=0;
   }
 
   /* Okay, record binding and report success */
-  mdp_bindings[free].port=mdp->bind.port_number;
-  memcpy(&mdp_bindings[free].sid[0],&mdp->bind.sid[0],SID_SIZE);
-  mdp_bindings_socket_name_lengths[free]=recvaddrlen-2;
-  memcpy(&mdp_bindings_sockets[free][0],&recvaddr->sun_path[0],
-	 mdp_bindings_socket_name_lengths[free]);
-  mdp_bindings_time[free]=gettime_ms();
+  mdp_bindings[free].addr.port=mdp->bind.port_number;
+  memcpy(mdp_bindings[free].addr.sid,mdp->bind.sid,SID_SIZE);
+  mdp_bindings[free].name_len=recvaddrlen-2;
+  memcpy(mdp_bindings[free].socket_name,recvaddr->sun_path,
+	 mdp_bindings[free].name_len);
+  mdp_bindings[free].binding_time=gettime_ms();
   return overlay_mdp_reply_ok(sock,recvaddr,recvaddrlen,"Port bound");
 }
 
@@ -364,8 +376,8 @@ int overlay_saw_mdp_containing_frame(overlay_frame *f, time_ms_t now)
   int len=f->payload->length;
 
   /* Get source and destination addresses */
-  bcopy(&f->destination[0],&mdp.in.dst.sid[0],SID_SIZE);
-  bcopy(&f->source[0],&mdp.in.src.sid[0],SID_SIZE);
+  bcopy(f->destination,mdp.in.dst.sid,SID_SIZE);
+  bcopy(f->source,mdp.in.src.sid,SID_SIZE);
 
   if (len<10) RETURN(WHY("Invalid MDP frame"));
 
@@ -428,7 +440,7 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp, time_ms_t now)
     
     for(i=0;i<MDP_MAX_BINDINGS;i++)
       {
-	if (!memcmp(&mdp->out.dst,&mdp_bindings[i],sizeof(sockaddr_mdp)))
+	if (!memcmp(&mdp->out.dst,&mdp_bindings[i].addr,sizeof(sockaddr_mdp)))
 	  { /* exact and specific match, so stop searching */
 	    match=i; break; }
 	else {
@@ -449,18 +461,18 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp, time_ms_t now)
 	     specified addresses.
 	  */
 	  if (match==-1)
-	    if (mdp->out.dst.port==mdp_bindings[i].port)
+	    if (mdp->out.dst.port==mdp_bindings[i].addr.port)
 		{
 		  int j;
-		  for(j=0;j<SID_SIZE;j++) if (mdp_bindings[i].sid[j]) break; 
+		  for(j=0;j<SID_SIZE;j++) if (mdp_bindings[i].addr.sid[j]) break; 
 		  if (j==SID_SIZE) match=i;
 		}
 	}
       }
-    if (match>-1) {      
+    if (match>-1) {
       struct sockaddr_un addr;
 
-      bcopy(mdp_bindings_sockets[match],&addr.sun_path[0],mdp_bindings_socket_name_lengths[match]);
+      bcopy(mdp_bindings[match].socket_name,addr.sun_path,mdp_bindings[match].name_len);
       addr.sun_family=AF_UNIX;
       errno=0;
       int len=overlay_mdp_relevant_bytes(mdp);
@@ -471,8 +483,8 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp, time_ms_t now)
       WHY("didn't send mdp packet");
       if (errno==ENOENT) {
 	/* far-end of socket has died, so drop binding */
-	INFOF("Closing dead MDP client '%s'",mdp_bindings_sockets[match]);
-	overlay_mdp_releasebindings(&addr,mdp_bindings_socket_name_lengths[match]);
+	INFOF("Closing dead MDP client '%s'",mdp_bindings[match].socket_name);
+	overlay_mdp_releasebindings(&addr,mdp_bindings[match].name_len);
       }
       WHY_perror("sendto(e)");
       RETURN(WHY("Failed to pass received MDP frame to client"));
@@ -634,10 +646,10 @@ int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,int userGeneratedFrameP,
      and that the recvaddr matches. */
   int i;
   for(i = 0; i < MDP_MAX_BINDINGS; ++i) {
-    if (mdp_bindings[i].port && memcmp(src, &mdp_bindings[i], sizeof(sockaddr_mdp)) == 0) {
+    if (mdp_bindings[i].addr.port && memcmp(src, &mdp_bindings[i].addr, sizeof(sockaddr_mdp)) == 0) {
       /* Binding matches, now make sure the sockets match */
-      if (  mdp_bindings_socket_name_lengths[i] == recvaddrlen - sizeof(short)
-	&&  memcmp(mdp_bindings_sockets[i], recvaddr->sun_path, recvaddrlen - sizeof(short)) == 0
+      if (  mdp_bindings[i].name_len == recvaddrlen - sizeof(short)
+	&&  memcmp(mdp_bindings[i].socket_name, recvaddr->sun_path, recvaddrlen - sizeof(short)) == 0
       ) {
 	/* Everything matches, so this unix socket and MDP address combination is valid */
 	return 0;
