@@ -648,6 +648,7 @@ int overlay_frame_resolve_addresses(overlay_frame *f);
 
 #define alloca_tohex(buf,len)           tohex((char *)alloca((len)*2+1), (buf), (len))
 #define alloca_tohex_sid(sid)           alloca_tohex((sid), SID_SIZE)
+#define alloca_tohex_sas(sas)           alloca_tohex((sas), SAS_SIZE)
 
 overlay_buffer *ob_new(int size);
 overlay_buffer *ob_static(unsigned char *bytes, int size);

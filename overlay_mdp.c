@@ -263,8 +263,7 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
   return overlay_mdp_reply_ok(sock,recvaddr,recvaddrlen,"Port bound");
 }
 
-unsigned char *overlay_mdp_decrypt(overlay_frame *f,overlay_mdp_frame *mdp,
-				   int *len)
+unsigned char *overlay_mdp_decrypt(overlay_frame *f, overlay_mdp_frame *mdp, int *len)
 {
   IN();
 
@@ -277,19 +276,20 @@ unsigned char *overlay_mdp_decrypt(overlay_frame *f,overlay_mdp_frame *mdp,
     /* get payload */
     b=&f->payload->bytes[0];
     *len=f->payload->length;
-    mdp->packetTypeAndFlags|=MDP_NOCRYPT|MDP_NOSIGN; break;    
+    mdp->packetTypeAndFlags|=MDP_NOCRYPT|MDP_NOSIGN;
+    break;
   case OF_CRYPTO_CIPHERED:
-    WHY("decryption not implemented");
-    RETURN(NULL);
-    mdp->packetTypeAndFlags|=MDP_NOSIGN; break;
+    RETURN(WHYNULL("decryption not implemented"));
+    mdp->packetTypeAndFlags|=MDP_NOSIGN;
+    break;
   case OF_CRYPTO_SIGNED:
     {
       /* This call below will dispatch the request for the SAS if we don't
 	 already have it.  In the meantime, we just drop the frame if the SAS
 	 is not available. */
-      unsigned char *key=keyring_find_sas_public(keyring,mdp->out.src.sid);
-      if (!key) { WHY("SAS key not currently on record, so cannot verify");
-	RETURN(NULL); }
+      unsigned char *key = keyring_find_sas_public(keyring,mdp->out.src.sid);
+      if (!key)
+	RETURN(WHYNULL("SAS key not currently on record, cannot verify"));
 
       /* get payload and following compacted signature */
       b=&f->payload->bytes[0];
@@ -483,8 +483,9 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp, time_ms_t now)
 	RETURN(vomp_mdp_received(mdp));
       case MDP_PORT_KEYMAPREQUEST:
 	/* Either respond with the appropriate SAS, or record this one if it
-	   verfies out okay. */
-	DEBUG("key mapping request");
+	   verifies out okay. */
+	if (debug & DEBUG_MDPREQUESTS)
+	  DEBUG("MDP_PORT_KEYMAPREQUEST");
 	RETURN(keyring_mapping_request(keyring,mdp));
       case MDP_PORT_DNALOOKUP: /* attempt to resolve DID to SID */
 	{
@@ -918,7 +919,8 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       RETURN(WHY("Error enqueuing frame"));
     }
   else {
-    if (debug&DEBUG_OVERLAYINTERFACES) DEBUG("queued frame");
+    if (debug&DEBUG_OVERLAYINTERFACES)
+      DEBUGF("queued frame type=%#x modifiers=%#x ttl=%u", frame->type, frame->modifiers, frame->ttl);
     RETURN(0);
   }
 }

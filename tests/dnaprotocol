@@ -63,6 +63,7 @@ set_server_vars() {
    executeOk_servald config set debug.tx No
    executeOk_servald config set debug.rx No
    executeOk_servald config set debug.mdprequests Yes
+   executeOk_servald config set debug.keyring Yes
 }
 
 doc_MultiServer="Start three servald servers with dummy interfaces"

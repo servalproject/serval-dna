@@ -51,6 +51,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 */
 #define SID_SIZE 32
+#define SAS_SIZE 32 // == crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES
 #define DID_MINSIZE 5
 #define DID_MAXSIZE 32
 #define SIDDIDFIELD_LEN (SID_SIZE+1)
