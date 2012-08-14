@@ -112,6 +112,7 @@ int monitor_client_open(struct monitor_state **res)
   }
   
   *res = (struct monitor_state*)malloc(sizeof(struct monitor_state));
+  memset(res,sizeof(struct monitor_state),0);
   return fd;
 }
 
