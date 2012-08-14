@@ -4,6 +4,7 @@
 *.user
 *.ncb
 *.o
+*.a
 *.suo
 .*.sw?
 configure
