@@ -279,7 +279,8 @@ void overlay_interface_read_any(struct sched_ent *alarm){
   
   /* Should we drop the packet if we don't find a match? */
   if (!interface){
-    INFO("Could not find matching interface for received packet");
+    if (debug&DEBUG_OVERLAYINTERFACES)
+      DEBUGF("Could not find matching interface for packet received from %s", inet_ntoa(src));
     return;
   }
   
