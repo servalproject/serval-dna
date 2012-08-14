@@ -275,7 +275,7 @@ int overlay_route_init(int mb_ram)
   }
   if (debug&DEBUG_OVERLAYROUTING)
     DEBUGF("Generating byte-order for hash function:%s", strbuf_str(b));
-  overlay_route_hash_bytes=16;
+  overlay_route_hash_bytes=12;
 
   int associativity=4;
   int bin_count=1;
