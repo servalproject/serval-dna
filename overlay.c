@@ -218,8 +218,9 @@ int overlay_frame_process(struct overlay_interface *interface,overlay_frame *f)
 
   // only examine payloads that are broadcasts, or where I'm the next hop
   if (overlay_address_is_broadcast(f->nexthop)) {
+    // Note we can only check for dropping once per payload, as a second test would return true.
     if (overlay_broadcast_drop_check(f->nexthop)){
-      if (debug&DEBUG_OVERLAYFRAMES)
+      if (debug&(DEBUG_OVERLAYFRAMES|DEBUG_BROADCASTS))
 	DEBUGF("Dropping frame, duplicate broadcast %s", alloca_tohex_sid(f->nexthop));
       RETURN(0);
     }

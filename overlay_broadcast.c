@@ -27,11 +27,21 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 
+#define BROADCAST_LEN 8
+
+struct broadcast{
+  unsigned char id[BROADCAST_LEN];
+};
+
+#define MAX_BPIS 1024
+#define BPI_MASK 0x3ff
+struct broadcast bpilist[MAX_BPIS];
+
 /* Determine if an address is broadcast */
 int overlay_address_is_broadcast(unsigned char *a)
 {
   int i;
-  for(i=0;i<(SID_SIZE-8);i++)
+  for(i=0;i<(SID_SIZE - BROADCAST_LEN);i++)
     if (a[i]!=0xff) return 0;
   return 1;
 }
@@ -39,14 +49,10 @@ int overlay_address_is_broadcast(unsigned char *a)
 int overlay_broadcast_generate_address(unsigned char *a)
 {
   int i;
-  for(i=0;i<(SID_SIZE-8);i++) a[i]=0xff;
+  for(i=0;i<(SID_SIZE - BROADCAST_LEN);i++) a[i]=0xff;
   for(;i<SID_SIZE;i++) a[i]=random()&0xff;
   return 0;
 }
-
-#define MAX_BPIS 1024
-#define BPI_MASK 0x3ff
-unsigned char bpilist[MAX_BPIS][8];
 
 int overlay_broadcast_drop_check(unsigned char *a)
 {
@@ -60,31 +66,21 @@ int overlay_broadcast_drop_check(unsigned char *a)
      robustness it is however required. */
   int bpi_index=0;
   int i;
-  for(i=0;i<8;i++)
+  for(i=0;i<BROADCAST_LEN;i++)
     {
       bpi_index=((bpi_index<<3)&0xfff8)+((bpi_index>>13)&0x7);
-      bpi_index^=a[24+i];
+      bpi_index^=a[SID_SIZE - BROADCAST_LEN + i];
     }
   bpi_index&=BPI_MASK;
-  if (debug&DEBUG_BROADCASTS) 
-    DEBUGF("BPI %02X%02X%02X%02X%02X%02X%02X%02X resolves to hash bin %d",
-	    a[24],a[25],a[26],a[27],a[28],a[29],a[30],a[31],bpi_index);
   
-  int bpiNew=0;
-  for(i=0;i<8;i++)
-    {
-      if (a[24+i]!=bpilist[bpi_index][i]) bpiNew=1;
-      bpilist[bpi_index][i]=a[24+i];
-    }
-
-  if (bpiNew)
-    {
-      if (debug&DEBUG_BROADCASTS) DEBUGF("  BPI is new, so don't drop frame");
-      return 0; /* don't drop */
-    }
-  else
-    {
-      if (debug&DEBUG_BROADCASTS) DEBUGF("  BPI is already in our list, so drop the frame to prevent broadcast storms");
-      return 1; /* drop frame because we have seen this BPI recently */
-    }
+  if (memcmp(bpilist[bpi_index].id, a + SID_SIZE - BROADCAST_LEN, BROADCAST_LEN)){
+    if (debug&DEBUG_BROADCASTS)
+      DEBUGF("BPI %s is new", alloca_tohex(a + SID_SIZE - BROADCAST_LEN, BROADCAST_LEN));
+    bcopy(a + SID_SIZE - BROADCAST_LEN, bpilist[bpi_index].id, BROADCAST_LEN);
+    return 0; /* don't drop */
+  }else{
+    if (debug&DEBUG_BROADCASTS)
+      DEBUGF("BPI %s is a duplicate", alloca_tohex(a + SID_SIZE - BROADCAST_LEN, BROADCAST_LEN));
+    return 1; /* drop frame because we have seen this BPI recently */
+  }
 }

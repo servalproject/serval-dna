@@ -66,7 +66,6 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
      Will pick a next hop if one has not been chosen.
   */
 
-  int i;
   overlay_buffer *headers;
   
   headers=ob_new(256);
@@ -79,33 +78,6 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
     dump_payload(p,"package_fmt1 stuffing into packet");
 
   /* Build header */
-
-  if (p->nexthop_address_status!=OA_RESOLVED) {
-    if (0) WHYF("next hop is NOT resolved for packet to %s",
-		alloca_tohex_sid(p->destination));
-    if (overlay_address_is_broadcast(p->destination)) {
-      /* Broadcast frames are broadcast rather than unicast to next hop.
-	 Just check if the broadcast frame should be dropped first. */
-      if (overlay_broadcast_drop_check(p->destination)){
-	WHY("This broadcast packet ID has been seen recently");
-	goto cleanup;
-      }
-      
-      /* Copy the broadcast address exactly so that we preserve the BPI */
-      for(i=0;i<SID_SIZE;i++) p->nexthop[i]=p->destination[i];
-      p->nexthop_address_status=OA_RESOLVED;
-    } else {
-      if (overlay_get_nexthop((unsigned char *)p->destination,p->nexthop,&p->nexthop_interface)) {
-	WHY("could not determine next hop address for payload");
-	goto cleanup;
-      }
-      else p->nexthop_address_status=OA_RESOLVED;
-    }
-  } else {
-    if (0) WHYF("next hop IS resolved for packet to %s",
-		alloca_tohex_sid(p->destination));
-  }
-
 
   if (p->source[0]<0x10) {
     // Make sure that addresses do not overload the special address spaces of 0x00*-0x0f*
@@ -318,6 +290,9 @@ overlay_frame *op_dup(overlay_frame *in)
 int overlay_frame_set_broadcast_as_destination(overlay_frame *f)
 {  
   overlay_broadcast_generate_address(f->destination);
+  // remember the broadcast address we are about to send so we don't sent the packet twice
+  overlay_broadcast_drop_check(f->destination);
+  f->isBroadcast=1;
   return 0;
 }
 

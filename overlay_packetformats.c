@@ -147,7 +147,6 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 	break;
       }
 
-      int payloadStart = ofs;
       int nextPayload = ofs+f.rfs;
       
       if (nextPayload > len){

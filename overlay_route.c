@@ -203,13 +203,8 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *interface)
       DEBUGF("No open path to %s, invalid sid",alloca_tohex_sid(d));
     return -1;
   }
+  // Note, broadcast address handling is already done by this point
   
-  if (overlay_broadcast_drop_check(d)) return WHY("I have sent that broadcast frame before");
-  if (overlay_address_is_broadcast(d)) {
-    bcopy(&d[0],&nexthop[0],SID_SIZE);
-    return 0;
-  }
-
   overlay_node *n=overlay_route_find_node(d,SID_SIZE,0 /* don't create if missing */ );
   if (!n){
     if (debug&DEBUG_OVERLAYROUTING)
@@ -353,12 +348,8 @@ int overlay_route_ack_selfannounce(overlay_frame *f,
   out->nexthop_address_status=OA_UNINITIALISED;
   if (overlay_resolve_next_hop(out)) {
     /* no open path, so convert to broadcast */
-    int i;
-    for(i=0;i<(SID_SIZE-8);i++) out->nexthop[i]=0xff;
-    for(i=(SID_SIZE-8);i<SID_SIZE;i++) out->nexthop[i]=random()&0xff;
-    out->nexthop_address_status=OA_RESOLVED;
+    overlay_frame_set_broadcast_as_destination(out);
     out->ttl=2;
-    out->isBroadcast=1;
     if (debug&DEBUG_OVERLAYROUTING) 
       DEBUG("Broadcasting ack to selfannounce for hithero unroutable node");
   } else

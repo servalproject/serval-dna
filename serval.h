@@ -723,7 +723,6 @@ unsigned int overlay_route_hash_sid(const unsigned char *sid);
 unsigned char *overlay_get_my_sid();
 int overlay_frame_set_me_as_source(overlay_frame *f);
 int overlay_frame_set_broadcast_as_destination(overlay_frame *f);
-int overlay_broadcast_generate_address(unsigned char *a);
 int packetEncipher(unsigned char *packet,int maxlen,int *len,int cryptoflags);
 int overlayServerMode();
 int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP);

@@ -972,19 +972,16 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
   // TODO stop when the packet is nearly full?
   
   while(frame){
-    int drop =0;
     frame->isBroadcast = overlay_address_is_broadcast(frame->destination);
     
-    if (frame->enqueued_at + queue->latencyTarget < now)
-      drop=1;
-    else if(frame->isBroadcast)
-      drop=overlay_broadcast_drop_check(frame->destination);
-    
-    if (drop){
+    if (frame->enqueued_at + queue->latencyTarget < now){
       DEBUG("Dropping frame due to expiry timeout");
       frame = overlay_queue_remove(queue, frame);
       continue;
     }
+    /* Note, once we queue a broadcast packet we are committed to sending it out every interface, 
+     even if we hear it from somewhere else in the mean time
+     */
     
     if (overlay_resolve_next_hop(frame))
       goto skip;

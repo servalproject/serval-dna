@@ -43,6 +43,7 @@ SERVALD_SRC_FILES = \
 	serval-dna/simulate.c      \
         serval-dna/srandomdev.c    \
 	serval-dna/str.c	\
+	serval-dna/subscribers.c \
 	serval-dna/keyring.c       \
 	serval-dna/vomp.c \
 	serval-dna/lsif.c \
