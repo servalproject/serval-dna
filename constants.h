@@ -248,8 +248,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define COMPUTE_RFS_LENGTH -1
 
-#define OVERLAY_SENDER_PREFIX_LENGTH 12
-
 /* Keep track of last 32 observations of a node.
    Hopefully this is enough, if not, we will increase.
    To keep the requirement down we will collate contigious neighbour observations on each interface.

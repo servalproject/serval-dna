@@ -43,7 +43,7 @@ unsigned char get_nibble(const unsigned char *sid, int pos){
 
 // find a subscriber struct from a subscriber id
 // TODO find abreviated sid's
-struct subscriber *find(const unsigned char *sid, int len, int create){
+struct subscriber *find_subscriber(const unsigned char *sid, int len, int create){
   struct tree_node *ptr = &root;
   int pos=0;
   if (len!=SID_SIZE)
@@ -60,6 +60,7 @@ struct subscriber *find(const unsigned char *sid, int len, int create){
       
       if (create){
 	struct subscriber *ret=(struct subscriber *)malloc(sizeof(struct subscriber));
+	memset(ret,0,sizeof(struct subscriber));
 	ptr->subscribers[nibble]=ret;
 	bcopy(sid, ret->sid, SID_SIZE);
 	ret->abbreviate_len=pos;
@@ -95,18 +96,34 @@ struct subscriber *find(const unsigned char *sid, int len, int create){
   return NULL;
 }
 
-void dump_subscriber_tree(struct tree_node *node, int depth){
-  int i;
-  for (i=0;i<16;i++){
+/* 
+ Walk the subscriber tree, calling the callback function for each subscriber.
+ if start is a valid pointer, the first entry returned will be after this subscriber
+ if the callback returns non-zero, the process will stop.
+ */
+int walk_tree(struct tree_node *node, int pos, struct subscriber *start, 
+	      int(*callback)(struct subscriber *, void *), void *context){
+  int i=0;
+  
+  if (start){
+    i=get_nibble(start->sid,pos);
+  }
+  
+  for (;i<16;i++){
     if (node->is_tree & (1<<i)){
-      DEBUGF("%d, %x",depth,i);
-      dump_subscriber_tree(node->tree_nodes[i],depth+1);
-    }else if(node->subscribers[i]){
-      DEBUGF("%d, %x, %s", node->subscribers[i]->abbreviate_len, i, alloca_tohex_sid(node->subscribers[i]->sid));
+      if (walk_tree(node->tree_nodes[i], pos+1, start, callback, context))
+	return 1;
+    }else if(node->subscribers[i] && node->subscribers[i] != start){
+      if (callback(node->subscribers[i], context))
+	return 1;
     }
   }
+  return 0;
 }
 
-void dump_subscribers(){
-  dump_subscriber_tree(&root,0);
+/*
+ walk the tree, starting at start, calling the callback function
+ */
+void enum_subscribers(struct subscriber *start, int(*callback)(struct subscriber *, void *), void *context){
+  walk_tree(&root, 0, start, callback, context);
 }

@@ -18,6 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "subscribers.h"
 
 /* List of prioritised advertisements */
 #define OVERLAY_MAX_ADVERTISEMENT_REQUESTS 16
@@ -55,6 +56,34 @@ int overlay_route_please_advertise(overlay_node *n)
   else return 1;
 }
 
+struct subscriber *last_advertised=NULL;
+
+int add_advertisement(struct subscriber *subscriber, void *context){
+  overlay_buffer *e=context;
+  
+  if (subscriber->node){
+    overlay_node *n=subscriber->node;
+    
+    ob_append_bytes(e,subscriber->sid,6);
+    ob_append_byte(e,n->best_link_score);
+    ob_append_byte(e,n->observations[n->best_observation].gateways_en_route);
+    
+    // stop if we run out of space
+    if (ob_makespace(e,8)!=0){
+      last_advertised=subscriber;
+      return 1;
+    }
+    
+    // or we've been called twice and looped around
+    if (subscriber == last_advertised){
+      last_advertised = NULL;
+      return 1;
+    }
+  }
+  
+  return 0;
+}
+
 int overlay_route_add_advertisements(overlay_buffer *e)
 {
   /* Construct a route advertisement frame and append it to e.
@@ -83,19 +112,13 @@ int overlay_route_add_advertisements(overlay_buffer *e)
      which gives us 30 available advertisement slots per packet.
    */
   int i;
-  int bytes=e->sizeLimit-e->length;
-  int overhead=1+8+1+3+32+1+1; /* maximum overhead */
-  int slots=(bytes-overhead)/8;
-  if (slots>30) slots=30;
-  int slots_used=0;
-
-  if (slots<1) return WHY("No room for node advertisements");
-
+  
   if (ob_append_byte(e,OF_TYPE_NODEANNOUNCE))
     return WHY("could not add node advertisement header");
   ob_append_byte(e,1); /* TTL */
   
-  ob_append_rfs(e,1+8+1+1+8*slots_used);
+  // assume we might fill the packet
+  ob_append_rfs(e, e->sizeLimit - e->length);
 
   /* Stuff in dummy address fields */
   ob_append_byte(e,OA_CODE_BROADCAST);
@@ -105,9 +128,11 @@ int overlay_route_add_advertisements(overlay_buffer *e)
   overlay_abbreviate_clear_most_recent_address();
   overlay_abbreviate_append_address(e, overlay_get_my_sid());
   
+  // TODO high priority advertisements first....
+  /*
   while (slots>0&&oad_request_count) {
       oad_request_count--;
-      ob_append_bytes(e,oad_requests[oad_request_count]->sid,6);
+      ob_append_bytes(e,oad_requests[oad_request_count]->subscriber->sid,6);
       ob_append_byte(e,oad_requests[oad_request_count]->best_link_score);
       ob_append_byte(e,oad_requests[oad_request_count]
 		     ->observations[oad_requests[oad_request_count]
@@ -115,51 +140,17 @@ int overlay_route_add_advertisements(overlay_buffer *e)
       slots--;
       slots_used++;
     } 
-
-  while(slots>0)
-    {
-      /* find next node */
-      int bin=oad_bin;
-      int slot=oad_slot;
-
-      /* XXX Skipping priority advertised nodes could be done faster, e.g.,
-	 by adding a flag to the overlay_node structure to indicate if it
-	 has been sent priority, and if so, skip it.
-	 The flags could then be reset at the end of this function.
-	 But this will do for now. 
-      */
-      int skip=0;
-      for(i=0;i<oad_request_count;i++) 
-	if (oad_requests[i]==&overlay_nodes[oad_bin][oad_slot])
-	  skip=1;
-      
-      if (!skip)
-	{
-	  if(overlay_nodes[oad_bin][oad_slot].sid[0]) {
-	    overlay_node *n=&overlay_nodes[oad_bin][oad_slot];
-	    
-	    ob_append_bytes(e,n->sid,6);
-	    ob_append_byte(e,n->best_link_score);
-	    ob_append_byte(e,n->observations[n->best_observation].gateways_en_route);
-
-	    slots--;
-	    slots_used++;
-	  }
-	}
-      
-      /* Find next node */
-      oad_slot++; 
-      if (oad_slot>=overlay_bin_size) { oad_slot=0; oad_bin++; }
-
-      /* Stop stuffing if we get to the end of the node list so that 
-	 we can implement an appropriate pause between rounds to avoid
-	 unneeded repeated TX of nodes. */
-      if (oad_bin>=overlay_bin_count) { oad_bin=0; oad_round++; break; }
-      
-      /* Stop if we have advertised everyone */
-      if (oad_bin==bin&&oad_slot==slot) break;
-    }
+*/
+  struct subscriber *start = last_advertised;
   
+  // append announcements starting from the last node we advertised
+  enum_subscribers(start, add_advertisement, e);
+
+  // if we didn't start at the beginning and still have space, start again from the beginning
+  if (start && e->sizeLimit - e->length >=8){
+    enum_subscribers(NULL, add_advertisement, e);
+  }
+    
   ob_patch_rfs(e,COMPUTE_RFS_LENGTH);
 
   return 0;
@@ -178,62 +169,46 @@ int overlay_route_add_advertisements(overlay_buffer *e)
 int overlay_route_saw_advertisements(int i,overlay_frame *f, long long now)
 {
   int ofs=0;
-
-  /* lookup score of current sender */
-  overlay_node *sender = overlay_route_find_node(f->source, SID_SIZE, 0);
-  if (sender == NULL) {
-    WARNF("Cannot advertise %s -- overlay node not found", alloca_tohex_sid(f->source));
-    return -1;
-  }
-  int sender_score=sender->best_link_score;
-  if (debug&DEBUG_OVERLAYROUTEMONITOR)
-    DEBUGF("score to reach %s is %d", alloca_tohex_sid(f->source),sender_score);
-
+  IN();
   while(ofs<f->payload->length)
     {
-      unsigned char to[SID_SIZE];
-      int out_len=0;
-      int r
-	=overlay_abbreviate_cache_lookup(&f->payload->bytes[ofs],to,&out_len,
-					 6 /* prefix length */,
-					 0 /* no index code to process */);
-      if (r==OA_PLEASEEXPLAIN) {
-	/* Unresolved address -- TODO ask someone to resolve it for us. */
-	WARN("Dispatch PLEASEEXPLAIN not implemented");
+      struct subscriber *subscriber;
+      
+      subscriber = find_subscriber(&f->payload->bytes[ofs], 6, 0);
+      if (!subscriber){
+	//WARN("Dispatch PLEASEEXPLAIN not implemented");
 	goto next;
       }
       
-      int score=f->payload->bytes[6];
-      int gateways_en_route=f->payload->bytes[7];
+      int score=f->payload->bytes[ofs+6];
+      int gateways_en_route=f->payload->bytes[ofs+7];
 
       /* Don't record routes to ourselves */
-      if (overlay_address_is_local(to)) {
+      if (overlay_address_is_local(subscriber->sid)) {
 	if (debug & DEBUG_OVERLAYROUTING)
-	  DEBUGF("Ignore announcement about me (%s)", alloca_tohex_sid(to));
+	  DEBUGF("Ignore announcement about me (%s)", alloca_tohex_sid(subscriber->sid));
 	goto next;
       }
       
       /* Don't let nodes advertise paths to themselves!
 	 (paths to self get detected through selfannouncements and selfannouncement acks) */
-      if (!memcmp(&overlay_abbreviate_current_sender.b[0],to,SID_SIZE)){
+      if (!memcmp(overlay_abbreviate_current_sender.b,subscriber->sid,SID_SIZE)){
 	if (debug & DEBUG_OVERLAYROUTING)
-	  DEBUGF("Ignore announcement about neighbour (%s)", alloca_tohex_sid(to));
+	  DEBUGF("Ignore announcement about neighbour (%s)", alloca_tohex_sid(subscriber->sid));
 	goto next;
       }
       
-      if (r==OA_RESOLVED) {
-	/* File it */
-	overlay_route_record_link(now,to,&overlay_abbreviate_current_sender.b[0],
-				  i,
-				  /* time range that this advertisement covers.
-				     XXX - Make it up for now. */
-				  now-2500,now,
-				  score,gateways_en_route);
-      } 
+      /* File it */
+      overlay_route_record_link(now,subscriber->sid,overlay_abbreviate_current_sender.b,
+				i,
+				/* time range that this advertisement covers.
+				   XXX - Make it up for now. */
+				now-2500,now,
+				score,gateways_en_route);
       
     next:			  
       ofs+=8;
     }
   
-  return 0;
+  RETURN(0);;
 }

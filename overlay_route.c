@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 #include "strbuf.h"
+#include "subscribers.h"
 
 /*
   Here we implement the actual routing algorithm which is heavily based on BATMAN.
@@ -121,230 +122,52 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 
-/* For fast handling we will have a number of bins that will be indexed by the
-   first few bits of the peer's SIDs, and a number of entries in each bin to
-   handle hash collissions while still allowing us to have static memory usage. */
-int overlay_bin_count=0;
-int overlay_bin_size=0; /* associativity, i.e., entries per bin */
-int overlay_bin_bytes=0; /* number of bytes required to represent the range
-			    [0..bin_count) */
-overlay_node **overlay_nodes=NULL;
+struct overlay_neighbour_observation {
+  /* Sequence numbers are handled as ranges because the tick
+   rate can vary between interfaces, and we want to be able to
+   estimate the reliability of links to nodes that may have
+   several available interfaces.
+   We don't want sequence numbers to wrap too often, but we
+   would also like to support fairly fast ticking interfaces,
+   e.g., for gigabit type links. So lets go with 1ms granularity. */
+  unsigned int s1;
+  unsigned int s2;
+  time_ms_t time_ms;
+  unsigned char sender_interface;
+  unsigned char valid;
+};
 
-/* We also need to keep track of which nodes are our direct neighbours.
+struct overlay_neighbour {
+  time_ms_t last_observation_time_ms;
+  time_ms_t last_metric_update;
+  int most_recent_observation_id;
+  struct overlay_neighbour_observation observations[OVERLAY_MAX_OBSERVATIONS];
+  overlay_node *node;
+  
+  /* Scores of visibility from each of the neighbours interfaces.
+   This is so that the sender knows which interface to use to reach us.
+   */
+  unsigned char scores[OVERLAY_MAX_INTERFACES];
+};
+
+/* We need to keep track of which nodes are our direct neighbours.
    This means we need to keep an eye on how recently we received DIRECT announcements
    from nodes, and keep a list of the most recent ones.  The challenge is to keep the
    list ordered without having to do copies or have nasty linked-list structures that
    require lots of random memory reads to resolve.
 
-   The simplest approach is to maintain a large cache of neighbours and practise random
+   The simplest approach is to maintain a cache of neighbours and practise random
    replacement.  It is however succecptible to cache flushing attacks by adversaries, so
    we will need something smarter in the long term.
 */
-int overlay_max_neighbours=0;
+#define overlay_max_neighbours 128
 int overlay_neighbour_count=0;
-overlay_neighbour *overlay_neighbours=NULL;
+struct overlay_neighbour overlay_neighbours[overlay_max_neighbours];
 
-/* allocate structures according to memory availability.
-   We size differently because some devices are very constrained,
-   e.g., mesh potatoes, some are middle sized, like mobile phones, and
-   some are very large, like dedicated servers, that can keep track of
-   very many nodes.
-   
-   The memory allocation is in two main areas:
-   
-   1. Neighbour list, which is short, requiring just a single pointer per
-   direct neighbour.  So this can probably be set to a fairly large value
-   on any sized machine, certainly in the thousands, which should be more
-   than sufficient for wifi-type interfaces.  1000 neighbours requires
-   onlt 8KB on a 64 bit machine, which is probably a reasonable limit per
-   MB allocated.  This leaves 1016KB/MB for:
-   
-   2. The node information (overlay_node) structures.  These take more
-   space and have to be sized appropriately.  We also need to choose the
-   associativity of the node table based on the size of the structure.
-   The smaller the structure the greater the associativity we should have
-   so that the fewer the entries the more effectively we use them.  The
-   trade-off is that increased associativity results in increased search
-   time as the bins are searched for matches.  This is also why for very
-   large tables we want low associativity so that we are more CPU efficient.
-   
-   The bulk of the size ofthe overlay_node structure is the observations
-   information, because each observation contains a full 32 byte SID. The
-   question is whether a full SID is required, or whether a prefix is
-   sufficient, or if there is some even more compact representation possible.
-   
-   In principle the sender of the observation should be a direct neighbour,
-   and so we could just use a neighbour index. However the neighbour indices
-   are liable to change or become invalid over time, and we don't want to have
-   to trawl through the nodes every time that happens, as otherwise the CPU
-   requirements will be crazy.  
-   
-   This suggests that the use of a prefix is probably more appropriate. The
-   prefix must be long enough to be robust against birthday-paradox effects
-   and attacks. So at least 8 bytes (64 bits) is mandatory to make it
-   reasonably difficult to find a colliding public key prefix.  Prudence 
-   suggests that a longer prefix is desirable to give a safety margin, perhaps
-   12 bytes (96 bits) being a reasonable figure.  
-   
-   This approximately halves the memory requirement per node to about 4KB (i.e.
-   ~250 nodes per MB), and employing shorter prefixes than 12 bytes will result
-   in diminishing returns, so this gives us confidence that it is an appropriate
-   figure.
-   
-   Four-way associativity is probably reasonable for large-memory deployments
-   where we have space for many thousands of nodes to keep string comparison
-   effort to low levels.
-   
-   For small-memory deployments where we have space for only a few hundred nodes it
-   probably makes sence to go for eight-way associativity just to be on the safe
-   side.  However, this is somewhat arbitrary.  Only experience will teach us.
-   
-   One final note on potential attacks against us is that by having a hashed structure,
-   even with modest associativity, is that if an attacker knows the hash function 
-   they can readily cause hash collisions and interfere with connectivity to nodes
-   on the mesh.  
-   
-   The most robust solution to this problem would be to use a linear hash function
-   that takes, say, 10 of the 32 bytes as input, as this would result in a hash function
-   space of:  32!/22! which is > 2^47.  This would then require several times 2^47 
-   observation injections by an adversary to cause a hash collision with confidence.
-   Actually determining that such a collision had been caused would probably multiply
-   the effort required by some small further constant.  
-   
-   Using a non-linear hash function would raise the space to 32^10 > 2^50, the factor 
-   of 8 probably not being worth the CPU complexity of such a non-linear function.
-   
-   However the question arises as to whether such an extreme approach is required, 
-   remembering that changing the hash function does not break the protocol, so 
-   such strong hash functions could be employed in future if needed without breaking
-   backward compatibility.
-   
-   So let us then think about some very simple alternatives that might be good enough
-   for now, but that are very fast to calculate.
-   
-   The simplest is to just choose a sufficient number of bytes from the SIDs to create
-   a sufficiently long index value.  This gives 32!/(32-n)! where n is the number of
-   bytes required, or 32 for the worst-case situation of n.
-   
-   An improvement is to xor bytes to produce the index value.  Using pairs of bytes
-   gets us to something along the lines of 32!/(32-2n)! for production of a single byte,
-   which is a modest improvement, but possibly not good enough.  As we increase the number
-   of bytes xored together the situation improves to a point. However if we go to far we 
-   end up reducing the total space because once more than half of the bytes are involved in
-   the xor it is equivalent to the xor of all of the bytes xored with the bytes not included
-   in the xor. This means that regardless of the length of the index we need, we probably want
-   to use only half of the bytes as input, a this gives a complexity of 32!/16! = 2^73,
-   which is plenty.
-   
-   In fact, this gives us a better result than the previous concept, and can be implemented
-   using a very simple algorithm.  All we need to do is get a random ordering of the numbers 
-   [0..31], and round robin xor the bytes we need with the [0..15]th elements of the random
-   ordering.  
-*/
+int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now);
+int overlay_route_recalc_neighbour_metrics(struct overlay_neighbour *n, time_ms_t now);
+struct overlay_neighbour *overlay_route_get_neighbour_structure(overlay_node *node, int createP);
 
-/* The random ordering of bytes for the hash */
-int overlay_route_hash_order[16];
-int overlay_route_hash_bytes=0;
-
-int overlay_route_initP=0;
-int overlay_route_init(int mb_ram)
-{
-  int i,j;
-
-  /* Try to catch one observed behaviour when memory corruption has occurred. */
-  if (overlay_route_initP) {
-    WHY("multiply called");
-    sleep(3600);
-  }
-  overlay_route_initP=1;
-  
-  memabuseCheck();
-
-  srandomdev();
-
-  /* Generate hash ordering function */
-  strbuf b = strbuf_alloca(12 * 32);
-  for(i=0;i<32;i++) {
-    j=0;
-    overlay_route_hash_order[i]=random()&31;
-    while(j<i) {
-      overlay_route_hash_order[i]=random()&31;
-      for(j=0;j<i;j++) if (overlay_route_hash_order[i]==overlay_route_hash_order[j]) break;
-    }
-    strbuf_sprintf(b, " %d", overlay_route_hash_order[i]);
-  }
-  if (debug&DEBUG_OVERLAYROUTING)
-    DEBUGF("Generating byte-order for hash function:%s", strbuf_str(b));
-  overlay_route_hash_bytes=12;
-
-  int associativity=4;
-  int bin_count=1;
-
-  /* Now fiddle it to get bin_count to be a power of two that fits and doesn't waste too much space. */
-  long long space=(sizeof(overlay_neighbour*)*1024LL*mb_ram)+sizeof(overlay_node)*bin_count*associativity*1LL;
-  while (space<mb_ram*1048576LL&&associativity<8)
-    {
-      long long space2=(sizeof(overlay_neighbour*)*1024LL*mb_ram)+sizeof(overlay_node)*(bin_count*2LL)*associativity*1LL;
-      if (space2<mb_ram*1048576LL) { bin_count*=2; continue; }
-      space2=(sizeof(overlay_neighbour*)*1024LL)+sizeof(overlay_node)*bin_count*(associativity+1)*1LL;
-      if (space2<mb_ram*1048576LL) { associativity++; continue; }
-      break;
-    }
-
-  /* Report on the space used */
-  {
-    space=(sizeof(overlay_neighbour*)*1024LL*mb_ram)+sizeof(overlay_node)*bin_count*associativity*1LL;
-    int percent=100LL*space/(mb_ram*1048576LL);
-    if (debug&DEBUG_OVERLAYROUTING)
-      DEBUGF("Using %d%% of %dMB RAM allows for %d bins with %d-way associativity and %d direct neighbours",
-	      percent,mb_ram,bin_count,associativity,1024*mb_ram);
-  }
-
-  /* Now allocate the structures */
-
-  overlay_nodes=calloc(sizeof(overlay_node*),bin_count);
-  if (!overlay_nodes) return WHY_perror("calloc");
-
-  overlay_neighbours=calloc(sizeof(overlay_neighbour),1024*mb_ram);
-  if (!overlay_neighbours) {
-    WHY_perror("calloc");
-    free(overlay_nodes);
-    return -1;
-  }
-
-  for(i=0;i<bin_count;i++)
-    {
-      overlay_nodes[i]=calloc(sizeof(overlay_node),associativity);
-      if (!overlay_nodes[i]) {
-	WHY_perror("calloc");
-	while(--i>=0) free(overlay_nodes[i]);
-	free(overlay_nodes);
-	free(overlay_neighbours);
-	return -1;
-      }
-    }
-
-  overlay_max_neighbours=1024*mb_ram;
-  overlay_bin_count=bin_count;
-  overlay_bin_size=associativity;
-
-  if (debug&DEBUG_OVERLAYROUTING)
-    DEBUGF("Node (%d bins) and neighbour tables allocated",bin_count);
-
-  /* Work out number of bytes required to represent the bin number.
-     Used for calculation of sid hash */
-  overlay_bin_bytes=1;
-  while(bin_count&0xffffff00) {
-    if (debug&DEBUG_OVERLAYROUTING)
-      DEBUGF("bin_count=0x%08x, overlay_bin_bytes=%d",bin_count,overlay_bin_bytes);
-    overlay_bin_bytes++;
-    bin_count=bin_count>>8;
-  }
-  if (debug&DEBUG_OVERLAYROUTING)
-    DEBUGF("bin_count=0x%08x, overlay_bin_bytes=%d",bin_count,overlay_bin_bytes);
-
-  return 0;
-}
 
 /* Select a next hop to get to a node.
    Frist, let us consider neighbours.  These are on a local link to us, and do not require any
@@ -387,8 +210,6 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *interface)
     return 0;
   }
 
-  if (!overlay_neighbours) return WHY("I have no neighbours");
-
   overlay_node *n=overlay_route_find_node(d,SID_SIZE,0 /* don't create if missing */ );
   if (!n){
     if (debug&DEBUG_OVERLAYROUTING)
@@ -397,7 +218,7 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *interface)
   }
   
   time_ms_t now = gettime_ms();
-  overlay_neighbour *direct_neighbour=NULL;
+  struct overlay_neighbour *direct_neighbour=NULL;
 
   if (n->neighbour_id) {
     direct_neighbour = &overlay_neighbours[n->neighbour_id];
@@ -432,9 +253,9 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *interface)
     if (!score)
       continue;
     
-    overlay_neighbour *neighbour
+    struct overlay_neighbour *neighbour
       =overlay_route_get_neighbour_structure
-      (n->observations[o].sender_prefix,OVERLAY_SENDER_PREFIX_LENGTH,0);
+      (n->observations[o].sender->node,0);
     
     if (neighbour && neighbour!=direct_neighbour) {
       overlay_route_recalc_neighbour_metrics(neighbour, now);
@@ -442,7 +263,7 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *interface)
       for(i=1;i<OVERLAY_MAX_INTERFACES;i++) {
 	if (overlay_interfaces[i].state==INTERFACE_STATE_UP &&
 	    neighbour->scores[i]*score>best_score) {
-	  bcopy(&neighbour->node->sid[0],&nexthop[0],SID_SIZE);
+	  bcopy(neighbour->node->subscriber->sid,nexthop,SID_SIZE);
 	  *interface=i;
 	  best_o=o;
 	  best_score=score;
@@ -459,91 +280,33 @@ int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *interface)
   }
 }
 
-unsigned int overlay_route_hash_sid(const unsigned char *sid)
-{
-  /* Calculate the bin number of an address (sid) from the sid. */
-  if (!overlay_route_hash_bytes) return WHY("overlay_route_hash_bytes==0");
-  unsigned int bin=0;
-  int byte=0;
-  int i;
-  for(i=0;i<overlay_route_hash_bytes;i++) {
-    bin=bin^((sid[overlay_route_hash_order[i]])<<(8*byte));
-    byte++;
-    if (byte>=overlay_bin_bytes) byte=0;
-  }
-
-  /* Mask out extranous bits to return only a valid bin number */
-  bin&=(overlay_bin_count-1);
-  if (debug&DEBUG_OVERLAYROUTING)
-    DEBUGF("Address %s resolves to bin #%d", alloca_tohex_sid(sid), bin);
-  
-  return bin;
-}
-
 overlay_node *overlay_route_find_node(const unsigned char *sid, int prefixLen, int createP)
 {
-  if (*sid==0 || prefixLen<overlay_route_hash_bytes){
+  if (*sid==0){
     INFOF("Sid %s/%d cannot ever become a node!", alloca_tohex_sid(sid), prefixLen);
     return NULL;
   }
   
-  int bin_number = overlay_route_hash_sid(sid);
-  if (bin_number < 0) {
-    WHY("negative bin number");
+  struct subscriber *subscriber = find_subscriber(sid, prefixLen, createP);
+  if (!subscriber)
     return NULL;
-  }
-
-  int free_slot = -1;
-  overlay_node *found=NULL;
-  {
-    int slot;
-    for (slot = 0; slot < overlay_bin_size; slot++)
-      if (overlay_nodes[bin_number][slot].sid[0]==0)
-	free_slot = slot;
-      else if (memcmp(sid, overlay_nodes[bin_number][slot].sid, prefixLen) == 0){
-	if (found){
-	  INFOF("SID prefix %d %s is not unique", prefixLen, alloca_tohex_sid(sid));
-	  return NULL;
-	}
-	found = &overlay_nodes[bin_number][slot];
-      }
-  }
-
-  if (found)
-    return found;
   
-  /* Didn't find it */
-  if (!createP) return NULL;
-
-  if (free_slot == -1) {
-    /* Evict */
-    WARN("overlay_nodes[] eviction NOT IMPLEMENTED");
-    return NULL;
-    int i;
-    for(i=0;i<OVERLAY_MAX_OBSERVATIONS;i++)
-      overlay_nodes[bin_number][free_slot].observations[i].observed_score=0;
-    overlay_nodes[bin_number][free_slot].neighbour_id=0;
-    overlay_nodes[bin_number][free_slot].most_recent_observation_id=0;
-    overlay_nodes[bin_number][free_slot].best_link_score=0;
-    overlay_nodes[bin_number][free_slot].best_observation=0;
-    for(i=0;i<OVERLAY_MAX_INTERFACES;i++) {
-      overlay_nodes[bin_number][free_slot].most_recent_advertisment_ms[i]=0;
-      overlay_nodes[bin_number][free_slot].most_recent_advertised_score[i]=0;
-    }
+  if ((!subscriber->node) && createP){
+    subscriber->node = (overlay_node *)malloc(sizeof(overlay_node));
+    memset(subscriber->node,0,sizeof(overlay_node));
+    subscriber->node->subscriber = subscriber;
+    
+    // This info message is used by tests; don't alter or remove it.
+    INFOF("ADD OVERLAY NODE sid=%s", alloca_tohex_sid(sid));
   }
-
-  bcopy(sid, overlay_nodes[bin_number][free_slot].sid, SID_SIZE);
-
-  // This info message is used by tests; don't alter or remove it.
-  INFOF("ADD OVERLAY NODE sid=%s slot=%d", alloca_tohex_sid(sid), free_slot);
-
-  return &overlay_nodes[bin_number][free_slot];
+    
+  return subscriber->node;
 }
 
 int overlay_route_ack_selfannounce(overlay_frame *f,
 				   unsigned int s1,unsigned int s2,
 				   int interface,
-				   overlay_neighbour *n)
+				   struct overlay_neighbour *n)
 {
   /* Acknowledge the receipt of a self-announcement of an immediate neighbour.
      We could acknowledge immediately, but that requires the transmission of an
@@ -580,10 +343,7 @@ int overlay_route_ack_selfannounce(overlay_frame *f,
 	         XXX 6 is quite an arbitrary selection however. */
 
   /* Set destination of ack to source of observed frame */
-  if (overlay_frame_set_neighbour_as_destination(out,n)) {
-    op_free(out);
-    return WHY("overlay_frame_set_neighbour_as_source() failed");
-  }
+  bcopy(n->node->subscriber->sid, out->destination, SID_SIZE);
   /* set source to ourselves */
   overlay_frame_set_me_as_source(out);
 
@@ -678,7 +438,7 @@ int overlay_route_make_neighbour(overlay_node *n)
   if (n->neighbour_id) return 0;
 
   /* If address is local don't both making it a neighbour */
-  if (overlay_address_is_local(n->sid)) return 0;
+  if (overlay_address_is_local(n->subscriber->sid)) return 0;
 
   /* It isn't yet a neighbour, so find or free a neighbour slot */
   /* slot 0 is reserved, so skip it */
@@ -692,40 +452,28 @@ int overlay_route_make_neighbour(overlay_node *n)
     if (overlay_neighbours[nid].node) overlay_neighbours[nid].node->neighbour_id=0;
     n->neighbour_id=nid;
   }
-  bzero(&overlay_neighbours[n->neighbour_id],sizeof(overlay_neighbour));
+  bzero(&overlay_neighbours[n->neighbour_id],sizeof(struct overlay_neighbour));
   overlay_neighbours[n->neighbour_id].node=n;
 
   return 0;
 }
 
-overlay_neighbour *overlay_route_get_neighbour_structure(unsigned char *packed_sid,
-							 int prefixLen,int createP)
+struct overlay_neighbour *overlay_route_get_neighbour_structure(overlay_node *node, int createP)
 {
-  IN();
-  if (overlay_address_is_local(packed_sid)) {
-    WHY("asked for neighbour structure for myself");
-    RETURN(NULL);
-  }  
-
-  overlay_node *n=overlay_route_find_node(packed_sid,prefixLen,createP);
-  if (!n) {
-    // WHY("Could not find node record for observed node"); 
-    RETURN(NULL);
-  }
-
+  if (!node)
+    return NULL;
+  
   /* Check if node is already a neighbour, or if not, make it one */
-  if (!n->neighbour_id){
+  if (!node->neighbour_id){
     if (!createP)
-      RETURN(NULL);
+      return NULL;
     
-    if (overlay_route_make_neighbour(n)) {
-      WHY("overlay_route_make_neighbour() failed"); 
-      RETURN(NULL);
-    }
+    if (overlay_route_make_neighbour(node))
+      return WHYNULL("overlay_route_make_neighbour() failed"); 
   }
 
   /* Get neighbour structure */
-  RETURN(&overlay_neighbours[n->neighbour_id]);
+  return &overlay_neighbours[node->neighbour_id];
 }
 
 int overlay_route_i_can_hear_node(unsigned char *who,int sender_interface,
@@ -747,7 +495,8 @@ int overlay_route_node_can_hear_me(unsigned char *who,int sender_interface,
      3. Update score of how reliably we can hear this node */
 
   /* Get neighbour structure */
-  overlay_neighbour *neh=overlay_route_get_neighbour_structure(who,SID_SIZE,1 /* create if necessary */);
+  struct subscriber *subscriber = find_subscriber(who, SID_SIZE, 1);
+  struct overlay_neighbour *neh=overlay_route_get_neighbour_structure(subscriber->node,1 /* create if necessary */);
   if (!neh)
     return -1;
   
@@ -801,16 +550,16 @@ int overlay_route_saw_selfannounce(overlay_frame *f, time_ms_t now)
   IN();
   unsigned int s1,s2;
   unsigned char sender_interface;
-  overlay_neighbour *n=overlay_route_get_neighbour_structure(f->source,SID_SIZE,
-							     1 /* make neighbour if not yet one */);
+  
+  overlay_node *node = overlay_route_find_node(f->source, SID_SIZE, 1);
+  if (!node)
+    RETURN(-1);
+  
+  struct overlay_neighbour *n=overlay_route_get_neighbour_structure(node, 1 /* make neighbour if not yet one */);
  
   if (!n){
     RETURN(-1);
   }
-
-  /* Record current sender for reference by addresses in subsequent frames in the
-     ensemble */
-  overlay_abbreviate_set_current_sender(f->source);
 
   s1=ob_get_int(f->payload, 0);
   s2=ob_get_int(f->payload, 4);
@@ -832,9 +581,6 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
   int best_score=0;
   int best_observation=-1;
 
-  if (n->sid[0]==0)
-    return 0;
-  
   for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++)
     {
       if (n->observations[o].observed_score)
@@ -855,13 +601,16 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
       /* Node is also a direct neighbour, so check score that way */
       if (n->neighbour_id>overlay_max_neighbours||n->neighbour_id<0)
 	return WHY("n->neighbour_id is invalid.");
+      
+      struct overlay_neighbour *neighbour=&overlay_neighbours[n->neighbour_id];
+      
       int i;
       for(i=0;i<overlay_interface_count;i++)
 	{
 	  if (overlay_interfaces[i].state==INTERFACE_STATE_UP && 
-	      overlay_neighbours[n->neighbour_id].scores[i]>best_score)
+	      neighbour->scores[i]>best_score)
 	    {
-	      best_score=overlay_neighbours[n->neighbour_id].scores[i];
+	      best_score=neighbour->scores[i];
 	      best_observation=-1;
 	    }
 	}
@@ -879,16 +628,16 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
   }
   
   if (n->best_link_score && !best_score){
-    INFOF("PEER UNREACHABLE, sid=%s", alloca_tohex_sid(n->sid));
-    monitor_announce_unreachable_peer(n->sid);
+    INFOF("PEER UNREACHABLE, sid=%s", alloca_tohex_sid(n->subscriber->sid));
+    monitor_announce_unreachable_peer(n->subscriber->sid);
   }else if(best_score && !n->best_link_score){
-    INFOF("PEER REACHABLE, sid=%s", alloca_tohex_sid(n->sid));
+    INFOF("PEER REACHABLE, sid=%s", alloca_tohex_sid(n->subscriber->sid));
     /* Make sure node is advertised soon */
     overlay_route_please_advertise(n);
-    monitor_announce_peer(n->sid);
+    monitor_announce_peer(n->subscriber->sid);
     
     /* Pre-emptively check if we have their sas in memory, or send a request */
-    keyring_find_sas_public(keyring, n->sid);
+    keyring_find_sas_public(keyring, n->subscriber->sid);
   }
   
   /* Remember new reachability information */
@@ -917,16 +666,17 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
    200 seconds perhaps?).  Also, if no recent observations, then we further
    limit the score.
 */
-int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n, time_ms_t now)
+int overlay_route_recalc_neighbour_metrics(struct overlay_neighbour *n, time_ms_t now)
 {
   int i;
   time_ms_t most_recent_observation=0;
+  IN();
 
   if (!n->node)
-    return 0;
+    RETURN(0);
 
   if (debug&DEBUG_OVERLAYROUTING)
-    DEBUGF("Updating neighbour metrics for %s", alloca_tohex_sid(n->node->sid));
+    DEBUGF("Updating neighbour metrics for %s", alloca_tohex_sid(n->node->subscriber->sid));
   
   /* At most one update per half second */
   if (n->last_metric_update == 0) {
@@ -937,7 +687,7 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n, time_ms_t now)
     if (ago < 500) {
       if (debug&DEBUG_OVERLAYROUTING)
 	DEBUGF("last update was %lldms ago -- skipping", (long long)ago);
-      return 0;
+      RETURN (0);
     }
     if (debug&DEBUG_OVERLAYROUTING)
       DEBUGF("last update was %lldms ago", (long long)ago);
@@ -1034,8 +784,7 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n, time_ms_t now)
   if (scoreChanged)
     overlay_route_recalc_node_metrics(n->node, now);
   
-  return 0;
-  
+  RETURN(0);
 }
 
 /* 
@@ -1061,17 +810,12 @@ int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n, time_ms_t now)
 */
 int overlay_route_saw_selfannounce_ack(overlay_frame *f,long long now)
 {
+  IN();
   if (debug&DEBUG_OVERLAYROUTING)
     DEBUGF("processing selfannounce ack (payload length=%d)",f->payload->length);
   
-  if (!overlay_neighbours) {
-    if (debug&DEBUG_OVERLAYROUTING)
-      DEBUG("no neighbours, so returning immediately");
-    return 0;
-  }
-
   if (f->payload->length<9) 
-    return WHY("FOO! selfannounce ack packet too short");
+    RETURN(WHY("FOO! selfannounce ack packet too short"));
 
   unsigned int s1=ob_get_int(f->payload,0);
   unsigned int s2=ob_get_int(f->payload,4);
@@ -1080,7 +824,7 @@ int overlay_route_saw_selfannounce_ack(overlay_frame *f,long long now)
   // Call something like the following for each link
   overlay_route_node_can_hear_me(f->source,iface,s1,s2,now);
   
-  return 0;
+  RETURN(0);
 }
 
 /* if to and via are the same, then this is evidence that we can get to the
@@ -1090,6 +834,7 @@ int overlay_route_record_link(time_ms_t now, unsigned char *to,
 			      unsigned int s1,unsigned int s2,int score,
 			      int gateways_en_route)
 {
+  IN();
   if (debug & DEBUG_OVERLAYROUTING)
     DEBUGF("to=%s, via=%s, sender_interface=%d, s1=%d, s2=%d score=%d gateways_en_route=%d",
 	alloca_tohex_sid(to), alloca_tohex_sid(via), sender_interface, s1, s2,
@@ -1099,12 +844,17 @@ int overlay_route_record_link(time_ms_t now, unsigned char *to,
   if (sender_interface>OVERLAY_MAX_INTERFACES || score == 0) {
     if (debug & DEBUG_OVERLAYROUTING)
       DEBUG("invalid report");
-    return 0;
+    RETURN(0);
   }
 
   overlay_node *n = overlay_route_find_node(to, SID_SIZE, 1 /* create node if missing */);
   if (!n)
-    return WHY("Could not create entry for node");
+    RETURN(WHY("Could not create entry for node"));
+  
+  struct subscriber *sender = find_subscriber(via, SID_SIZE, 1);
+  if (!sender)
+    RETURN(WHY("Could not create subscriber"));
+  
   int slot = -1;
   int i;
   for (i = 0; i < OVERLAY_MAX_OBSERVATIONS; ++i) {
@@ -1113,7 +863,7 @@ int overlay_route_record_link(time_ms_t now, unsigned char *to,
       slot = i;
     /* If the intermediate host ("via") address and interface numbers match, then overwrite old
        observation with new one */
-    if (memcmp(via, n->observations[i].sender_prefix, OVERLAY_SENDER_PREFIX_LENGTH) == 0) {
+    if (n->observations[i].sender == sender) {
       slot = i;
       break;
     }
@@ -1127,9 +877,9 @@ int overlay_route_record_link(time_ms_t now, unsigned char *to,
       DEBUGF("allocate observation slot=%d", slot);
   } else {
     if (debug & DEBUG_OVERLAYROUTING)
-      DEBUGF("overwrite observation slot=%d (sender_prefix=%s interface=%u observed_score=%u rx_time=%lld)",
+      DEBUGF("overwrite observation slot=%d (sender=%s interface=%u observed_score=%u rx_time=%lld)",
 	  slot,
-	  alloca_tohex(n->observations[slot].sender_prefix, OVERLAY_SENDER_PREFIX_LENGTH),
+	  n->observations[slot].sender?alloca_tohex_sid(n->observations[slot].sender->sid):"[None]",
 	  n->observations[slot].interface,
 	  n->observations[slot].observed_score,
 	  n->observations[slot].rx_time
@@ -1139,7 +889,7 @@ int overlay_route_record_link(time_ms_t now, unsigned char *to,
   n->observations[slot].observed_score=0;
   n->observations[slot].gateways_en_route=gateways_en_route;
   n->observations[slot].rx_time=now;
-  bcopy(via,n->observations[slot].sender_prefix,OVERLAY_SENDER_PREFIX_LENGTH);
+  n->observations[slot].sender = sender;
   n->observations[slot].observed_score=score;
   n->observations[slot].interface=sender_interface;
   
@@ -1161,7 +911,7 @@ int overlay_route_record_link(time_ms_t now, unsigned char *to,
   if (debug & DEBUG_OVERLAYROUTEMONITOR)
     overlay_route_dump();
   
-  return 0;
+  RETURN(0);
 }
 
 int overlay_address_is_local(unsigned char *s) 
@@ -1172,9 +922,34 @@ int overlay_address_is_local(unsigned char *s)
   return found;
 }
 
+int node_dump(struct subscriber *subscriber, void *context){
+  strbuf *b=context;
+  overlay_node *node = subscriber->node;
+  int o;
+  
+  if (node){
+    
+    strbuf_sprintf(*b,"  %s* : %d :", alloca_tohex(subscriber->sid, 7),
+		   node->best_link_score);
+    for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++)
+    {
+      if (node->observations[o].observed_score)
+      {
+	overlay_node_observation *ob=&node->observations[o];
+	if (ob->corrected_score)
+	  strbuf_sprintf(*b," %d/%d via %s*",
+			 ob->corrected_score,ob->gateways_en_route,
+			 alloca_tohex(ob->sender->sid,7));
+      }
+    }       
+    strbuf_sprintf(*b,"\n");
+  }
+  return 0;
+}
+
 int overlay_route_dump()
 {
-  int bin,slot,o,n,i;
+  int n,i;
   time_ms_t now = gettime_ms();
   strbuf b = strbuf_alloca(8192);
 
@@ -1199,7 +974,7 @@ int overlay_route_dump()
     if (overlay_neighbours[n].node)
       {
 	strbuf_sprintf(b,"  %s* : %lldms ago :",
-		alloca_tohex(overlay_neighbours[n].node->sid, 7),
+		alloca_tohex(overlay_neighbours[n].node->subscriber->sid, 7),
 		(long long)(now - overlay_neighbours[n].last_observation_time_ms));
 	for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
 	  if (overlay_neighbours[n].scores[i]) 
@@ -1211,26 +986,9 @@ int overlay_route_dump()
   
   strbuf_reset(b);
   strbuf_sprintf(b,"Overlay Mesh Route Table\n------------------------\n");
-  for(bin=0;bin<overlay_bin_count;bin++)
-    for(slot=0;slot<overlay_bin_size;slot++)
-      {
-	if (!overlay_nodes[bin][slot].sid[0]) continue;
-	
-	strbuf_sprintf(b,"  %s* : %d :", alloca_tohex(overlay_nodes[bin][slot].sid, 7),
-		overlay_nodes[bin][slot].best_link_score);
-	for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++)
-	  {
-	    if (overlay_nodes[bin][slot].observations[o].observed_score)
-	      {
-		overlay_node_observation *ob=&overlay_nodes[bin][slot].observations[o];
-		if (ob->corrected_score)
-		  strbuf_sprintf(b," %d/%d via %s*",
-			  ob->corrected_score,ob->gateways_en_route,
-			  alloca_tohex(ob->sender_prefix, 7));
-	      }
-	  }       
-	strbuf_sprintf(b,"\n");
-      }
+  
+  enum_subscribers(NULL, node_dump, &b);
+  
   DEBUG(strbuf_str(b));
   return 0;
 }
@@ -1238,94 +996,6 @@ int overlay_route_dump()
 int max(int a,int b)
 {
   if (a>b) return a; else return b;
-}
-
-/*
-  We want to progressivelly update all routes as we go along, updating a few nodes
-  every call, so that no one call takes too long.  This is important since we don't
-  want to add any excessive delays that might upset delay-sensitive voice and video
-  traffic.
-*/
-int overlay_route_tick_next_neighbour_id=0;
-int overlay_route_tick_neighbour_bundle_size=1;
-int overlay_route_tick_next_node_bin_id=0;
-int overlay_route_tick_node_bundle_size=1;
-void overlay_route_tick(struct sched_ent *alarm)
-{
-  int n;
-
-  time_ms_t start_time = gettime_ms();
-
-  if (debug&DEBUG_OVERLAYROUTING) 
-    DEBUGF("Neighbours: %d@%d, Nodes: %d@%d",
-	    overlay_route_tick_neighbour_bundle_size,overlay_route_tick_next_neighbour_id,
-	    overlay_route_tick_node_bundle_size,overlay_route_tick_next_node_bin_id);
-
-  /* Go through some of neighbour list */
-  
-  // TODO This doesn't seem to be reliable
-  // note that neighbour metrics are now re-calculated in overlay_get_nexthop when we need them
-  n=overlay_route_tick_neighbour_bundle_size;
-  if (n<1) n=1;
-  while(n--)
-    {
-      overlay_route_tick_neighbour(overlay_route_tick_next_neighbour_id++,start_time);
-      if (overlay_route_tick_next_neighbour_id>=overlay_neighbour_count) overlay_route_tick_next_neighbour_id=0;
-    }
-
-  /* Tweak neighbour bundle size to spread it out over the required time.
-     XXX Does this behave correctly when there are no neighbours? */
-  time_ms_t neighbour_time = gettime_ms() - start_time;
-  if (neighbour_time>2) overlay_route_tick_neighbour_bundle_size/=neighbour_time;
-  else if (neighbour_time==0) overlay_route_tick_neighbour_bundle_size*=2;
-  if (overlay_route_tick_neighbour_bundle_size<1) overlay_route_tick_neighbour_bundle_size=1;
-  if (overlay_route_tick_neighbour_bundle_size>overlay_neighbour_count)
-    overlay_route_tick_neighbour_bundle_size=overlay_neighbour_count;
-
-  /* Go through some of node list */
-  n=overlay_route_tick_node_bundle_size;
-  if (n<1) n=1;
-  while(n--)
-    {
-      int slot;
-      for(slot=0;slot<overlay_bin_size;slot++) {
-	overlay_route_tick_node(overlay_route_tick_next_node_bin_id,slot,start_time);
-      }
-      overlay_route_tick_next_node_bin_id++;
-      if (overlay_route_tick_next_node_bin_id>=overlay_bin_count) overlay_route_tick_next_node_bin_id=0;
-    }
-
-  /* Tweak neighbour bundle size to spread it out over the required time.
-     Allow 2ms here instead of 1ms, as neighbour processing may have taken the
-     bulk of the tick. */
-  time_ms_t node_time = gettime_ms() - neighbour_time - start_time;
-  if (node_time>1) overlay_route_tick_node_bundle_size/=node_time;
-  else if (node_time==0) overlay_route_tick_node_bundle_size*=2;
-  if (overlay_route_tick_node_bundle_size<1) overlay_route_tick_node_bundle_size=1;
-
-  /* Limit bundle sizes to sanity */
-  if (overlay_route_tick_neighbour_bundle_size>overlay_neighbour_count
-      &&overlay_neighbour_count)
-    overlay_route_tick_neighbour_bundle_size=overlay_neighbour_count;
-  if (overlay_route_tick_node_bundle_size>overlay_bin_count)
-    overlay_route_tick_node_bundle_size=overlay_bin_count;
-
-  /* Work out how long to have between route ticks to make sure we update all route scores
-     every 5 seconds. */
-  int ticks=max(overlay_neighbour_count
-		?overlay_neighbour_count/overlay_route_tick_neighbour_bundle_size:0,
-		overlay_bin_count/overlay_route_tick_node_bundle_size);
-  if (ticks<1) ticks=1;
-  if (ticks>5000) ticks=5000;
-  int interval=5000/ticks;
-
-  if (debug&DEBUG_OVERLAYROUTING) DEBUGF("route tick interval = %dms (%d ticks per 5sec, neigh=%lldms, node=%lldms)",interval,ticks,neighbour_time,node_time);
-
-  /* Update callback interval based on how much work we have to do */
-  alarm->alarm = gettime_ms()+interval;
-  alarm->deadline = alarm->alarm+100;
-  schedule(alarm);
-  return;
 }
 
 /* Ticking neighbours is easy; we just pretend we have heard from them again,
@@ -1350,15 +1020,35 @@ int overlay_route_tick_neighbour(int neighbour_id, time_ms_t now)
    most part we can tolerate these without any special action, as their high
    scores will keep them reachable for longer anyway.
 */
-int overlay_route_tick_node(int bin,int slot, time_ms_t now)
+int overlay_route_tick_node(struct subscriber *subscriber, void *context)
 {
-  return overlay_route_recalc_node_metrics(&overlay_nodes[bin][slot],now);
+  if (subscriber->node)
+    overlay_route_recalc_node_metrics(subscriber->node, gettime_ms());
+  return 0;
+}
+
+void overlay_route_tick(struct sched_ent *alarm)
+{
+  int n;
+  time_ms_t now = gettime_ms();
+  
+  /* Go through some of neighbour list */
+  for (n=0;n<overlay_max_neighbours;n++)
+    overlay_route_tick_neighbour(n,now);
+  
+  /* Go through the node list */
+  enum_subscribers(NULL, overlay_route_tick_node, NULL);
+  
+  /* Update callback interval based on how much work we have to do */
+  alarm->alarm = gettime_ms()+5000;
+  alarm->deadline = alarm->alarm+100;
+  schedule(alarm);
+  return;
 }
 
 int overlay_route_node_info(overlay_mdp_frame *mdp,
 			    struct sockaddr_un *addr,int addrlen)
 {
-  int bin,slot,n;
   time_ms_t now = gettime_ms();
 
   if (0) 
@@ -1382,117 +1072,86 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
 			->keypairs[kp]->public_key[0],
 			mdp->nodeinfo.sid_prefix_length/2))
 	      {
-		if (mdp->nodeinfo.count==mdp->nodeinfo.index)
-		  {
-		    mdp->nodeinfo.foundP=1;
-		    mdp->nodeinfo.localP=1;
-		    mdp->nodeinfo.neighbourP=0;
-		    mdp->nodeinfo.time_since_last_observation = 0;
-		    mdp->nodeinfo.score=256;
-		    mdp->nodeinfo.interface_number=-1;
-		    bcopy(&keyring->contexts[cn]->identities[in]
-			  ->keypairs[kp]->public_key[0],
-			  &mdp->nodeinfo.sid[0],SID_SIZE);
-
-		    mdp->nodeinfo.did[0]=0;
-		    if (mdp->nodeinfo.resolve_did) {
-		      mdp->nodeinfo.resolve_did=0;
-		      int k2;
-		      for(k2=0;k2<keyring->contexts[cn]->identities[in]
-			    ->keypair_count;k2++)
-			if (keyring->contexts[cn]->identities[in]->keypairs[k2]->type
-			    ==KEYTYPE_DID)
-			  {
-			    /* private key field has unpacked did */
-			    bcopy(&keyring->contexts[cn]->identities[in]
-				  ->keypairs[k2]->private_key[0],
-				  &mdp->nodeinfo.did[0],
-				  keyring->contexts[cn]->identities[in]
-				  ->keypairs[k2]->private_key_len);
-			    /* public key has name */
-			    bcopy(&keyring->contexts[cn]->identities[in]
-				  ->keypairs[k2]->public_key[0],
-				  &mdp->nodeinfo.name[0],
-				  keyring->contexts[cn]->identities[in]
-				  ->keypairs[k2]->public_key_len);
-			    mdp->nodeinfo.resolve_did=1;
-			  }
-		    }
-		  }
-		mdp->nodeinfo.count++;
-	      }
-	  }
-
-  /* check neighbour table, i.e., if directly connected */
-  for(n=0;n<overlay_neighbour_count;n++)
-    if (overlay_neighbours[n].node)
-      {
-	if (!memcmp(&mdp->nodeinfo.sid[0],
-		    &overlay_neighbours[n].node->sid[0],
-		    mdp->nodeinfo.sid_prefix_length/2))
-	  {
-	    if (mdp->nodeinfo.count==mdp->nodeinfo.index)
-	      {
 		mdp->nodeinfo.foundP=1;
-		mdp->nodeinfo.localP=0;
-		mdp->nodeinfo.neighbourP=1;
-		mdp->nodeinfo.time_since_last_observation = gettime_ms() - overlay_neighbours[n].last_observation_time_ms;
-		mdp->nodeinfo.score=-1;
-		mdp->nodeinfo.interface_number=-1;
-		mdp->nodeinfo.resolve_did=0;
-		int i;
-		for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
-		  if (overlay_neighbours[n].scores[i]>mdp->nodeinfo.score)
-		    {
-		      mdp->nodeinfo.score=overlay_neighbours[n].scores[i];
-		      mdp->nodeinfo.interface_number=i;
-		    }
-		
-		bcopy(&overlay_neighbours[n].node->sid[0],
-		      &mdp->nodeinfo.sid[0],SID_SIZE);
-	      }
-	    mdp->nodeinfo.count++;
-	  }
-      }
-  
-  /* check if it is an indirectly connected node that we know about */
-  for(bin=0;bin<overlay_bin_count;bin++)
-    for(slot=0;slot<overlay_bin_size;slot++)
-      {
-	if (!overlay_nodes[bin][slot].sid[0]) continue;
-	
-	if (!memcmp(&mdp->nodeinfo.sid[0],
-		    &overlay_nodes[bin][slot].sid[0],
-		    mdp->nodeinfo.sid_prefix_length/2))
-	  {
-	    if (mdp->nodeinfo.count==mdp->nodeinfo.index)
-	      {
-		mdp->nodeinfo.foundP=1;
-		mdp->nodeinfo.localP=0;
+		mdp->nodeinfo.localP=1;
 		mdp->nodeinfo.neighbourP=0;
-		mdp->nodeinfo.time_since_last_observation = gettime_ms();
-		mdp->nodeinfo.score=-1;
+		mdp->nodeinfo.time_since_last_observation = 0;
+		mdp->nodeinfo.score=256;
 		mdp->nodeinfo.interface_number=-1;
-		mdp->nodeinfo.resolve_did=0;
-		int o;
-		for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++)
-		  if (overlay_nodes[bin][slot].observations[o].observed_score)
-		    {
-		      overlay_node_observation *ob
-			=&overlay_nodes[bin][slot].observations[o];
-		      if (ob->corrected_score>mdp->nodeinfo.score) {
-			mdp->nodeinfo.score=ob->corrected_score;
-		      }
-		      if (now - ob->rx_time < mdp->nodeinfo.time_since_last_observation)
-			mdp->nodeinfo.time_since_last_observation = now - ob->rx_time;
-		    }
-		
-		bcopy(&overlay_nodes[bin][slot].sid[0],
+		bcopy(&keyring->contexts[cn]->identities[in]
+		      ->keypairs[kp]->public_key[0],
 		      &mdp->nodeinfo.sid[0],SID_SIZE);
+
+		mdp->nodeinfo.did[0]=0;
+		if (mdp->nodeinfo.resolve_did) {
+		  mdp->nodeinfo.resolve_did=0;
+		  int k2;
+		  for(k2=0;k2<keyring->contexts[cn]->identities[in]
+			->keypair_count;k2++)
+		    if (keyring->contexts[cn]->identities[in]->keypairs[k2]->type
+			==KEYTYPE_DID)
+		      {
+			/* private key field has unpacked did */
+			bcopy(&keyring->contexts[cn]->identities[in]
+			      ->keypairs[k2]->private_key[0],
+			      &mdp->nodeinfo.did[0],
+			      keyring->contexts[cn]->identities[in]
+			      ->keypairs[k2]->private_key_len);
+			/* public key has name */
+			bcopy(&keyring->contexts[cn]->identities[in]
+			      ->keypairs[k2]->public_key[0],
+			      &mdp->nodeinfo.name[0],
+			      keyring->contexts[cn]->identities[in]
+			      ->keypairs[k2]->public_key_len);
+			mdp->nodeinfo.resolve_did=1;
+		      }
+		}
+		return overlay_mdp_reply(mdp_named.poll.fd,addr,addrlen,mdp);
 	      }
-	    mdp->nodeinfo.count++;
 	  }
-      }
+
+  struct subscriber *subscriber = find_subscriber(mdp->nodeinfo.sid, mdp->nodeinfo.sid_prefix_length/2, 0);
+  if (subscriber && subscriber->node){
+    overlay_node *node = subscriber->node;
+    
+    mdp->nodeinfo.foundP=1;
+    mdp->nodeinfo.localP=0;
+    mdp->nodeinfo.score=-1;
+    mdp->nodeinfo.interface_number=-1;
+    mdp->nodeinfo.resolve_did=0;
+    bcopy(subscriber->sid,
+	  mdp->nodeinfo.sid,SID_SIZE);
+    
+    if (subscriber->node->neighbour_id){
+      int n = subscriber->node->neighbour_id;
+      mdp->nodeinfo.neighbourP=1;
+      mdp->nodeinfo.time_since_last_observation = now - overlay_neighbours[n].last_observation_time_ms;
+      
+      int i;
+      for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
+	if (overlay_neighbours[n].scores[i]>mdp->nodeinfo.score)
+	{
+	  mdp->nodeinfo.score=overlay_neighbours[n].scores[i];
+	  mdp->nodeinfo.interface_number=i;
+	}
+      
+    }else{
+      mdp->nodeinfo.neighbourP=0;
+      mdp->nodeinfo.time_since_last_observation = -1;
+      int o;
+      for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++)
+	if (node->observations[o].observed_score)
+	{
+	  overlay_node_observation *ob
+	  =&node->observations[o];
+	  if (ob->corrected_score>mdp->nodeinfo.score) {
+	    mdp->nodeinfo.score=ob->corrected_score;
+	  }
+	  if (mdp->nodeinfo.time_since_last_observation == -1 || now - ob->rx_time < mdp->nodeinfo.time_since_last_observation)
+	    mdp->nodeinfo.time_since_last_observation = now - ob->rx_time;
+	}
+    }
+  }
 
   return overlay_mdp_reply(mdp_named.poll.fd,addr,addrlen,mdp);
 }

@@ -689,21 +689,6 @@ int rfs_length(int l);
 int rfs_encode(int l,unsigned char *b);
 int rfs_decode(unsigned char *b,int *offset);
 
-typedef struct overlay_neighbour_observation {
-  /* Sequence numbers are handled as ranges because the tick
-     rate can vary between interfaces, and we want to be able to
-     estimate the reliability of links to nodes that may have
-     several available interfaces.
-     We don't want sequence numbers to wrap too often, but we
-     would also like to support fairly fast ticking interfaces,
-     e.g., for gigabit type links. So lets go with 1ms granularity. */
-  unsigned int s1;
-  unsigned int s2;
-  time_ms_t time_ms;
-  unsigned char sender_interface;
-  unsigned char valid;
-} overlay_neighbour_observation;
-
 typedef struct overlay_node_observation {
   unsigned char observed_score; /* serves as validty check also */
   unsigned char corrected_score;
@@ -711,12 +696,12 @@ typedef struct overlay_node_observation {
   unsigned char RESERVED; /* for alignment */
   unsigned char interface;
   time_ms_t rx_time;
-  unsigned char sender_prefix[OVERLAY_SENDER_PREFIX_LENGTH];
+  struct subscriber *sender;
 } overlay_node_observation;
 
 
 typedef struct overlay_node {
-  unsigned char sid[SID_SIZE];
+  struct subscriber *subscriber;
   int neighbour_id; /* 0=not a neighbour */
   int most_recent_observation_id;
   int best_link_score;
@@ -730,37 +715,13 @@ typedef struct overlay_node {
   overlay_node_observation observations[OVERLAY_MAX_OBSERVATIONS];
 } overlay_node;
 
-typedef struct overlay_neighbour {
-  time_ms_t last_observation_time_ms;
-  time_ms_t last_metric_update;
-  int most_recent_observation_id;
-  overlay_neighbour_observation observations[OVERLAY_MAX_OBSERVATIONS];
-  overlay_node *node;
-
-  /* Scores of visibility from each of the neighbours interfaces.
-     This is so that the sender knows which interface to use to reach us.
-   */
-  unsigned char scores[OVERLAY_MAX_INTERFACES];
-
-  /* One-byte index entries for address abbreviation */
-  unsigned char one_byte_index_address_prefixes[256][OVERLAY_SENDER_PREFIX_LENGTH];
-} overlay_neighbour;
-extern overlay_neighbour *overlay_neighbours;
-
-int overlay_route_init(int mb_ram);
 int overlay_route_saw_selfannounce_ack(overlay_frame *f, time_ms_t now);
-int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now);
-int overlay_route_recalc_neighbour_metrics(overlay_neighbour *n, time_ms_t now);
 int overlay_route_saw_selfannounce(overlay_frame *f, time_ms_t now);
 overlay_node *overlay_route_find_node(const unsigned char *sid,int prefixLen,int createP);
 unsigned int overlay_route_hash_sid(const unsigned char *sid);
-int overlay_route_init(int mb_ram);
-overlay_neighbour *overlay_route_get_neighbour_structure(unsigned char *packed_sid, 
-							 int prefixLen,int createP);
+
 unsigned char *overlay_get_my_sid();
 int overlay_frame_set_me_as_source(overlay_frame *f);
-int overlay_frame_set_neighbour_as_source(overlay_frame *f,overlay_neighbour *n);
-int overlay_frame_set_neighbour_as_destination(overlay_frame *f,overlay_neighbour *n);
 int overlay_frame_set_broadcast_as_destination(overlay_frame *f);
 int overlay_broadcast_generate_address(unsigned char *a);
 int packetEncipher(unsigned char *packet,int maxlen,int *len,int cryptoflags);
@@ -771,16 +732,9 @@ int overlay_route_record_link( time_ms_t now,unsigned char *to,
 			      unsigned char *via,int sender_interface,
 			      unsigned int s1,unsigned int s2,int score,int gateways_en_route);
 int overlay_route_dump();
-int overlay_route_tick_neighbour(int neighbour_id, time_ms_t now);
-int overlay_route_tick_node(int bin,int slot, time_ms_t now);
 int overlay_route_add_advertisements(overlay_buffer *e);
 int ovleray_route_please_advertise(overlay_node *n);
 int overlay_abbreviate_set_current_sender(unsigned char *in);
-
-extern int overlay_bin_count;
-extern int overlay_bin_size; /* associativity, i.e., entries per bin */
-extern int overlay_bin_bytes;
-extern overlay_node **overlay_nodes;
 
 int overlay_route_saw_advertisements(int i,overlay_frame *f,  time_ms_t now);
 int overlay_rhizome_saw_advertisements(int i,overlay_frame *f,  time_ms_t now);
@@ -916,7 +870,7 @@ typedef struct overlay_mdp_vompevent {
 
 typedef struct overlay_mdp_nodeinfo {
   unsigned char sid[SID_SIZE];
-  int sid_prefix_length; /* allow wildcard matching */
+  int sid_prefix_length; /* must be long enough to be unique */
   char did[64];
   char name[64];
   int foundP;
@@ -926,8 +880,6 @@ typedef struct overlay_mdp_nodeinfo {
   int interface_number;
   int resolve_did;
   time_ms_t time_since_last_observation;
-  int index; /* which record to return or was returned (incase there are multiple matches) */
-  int count; /* number of matching records */
 } overlay_mdp_nodeinfo;
 
 typedef struct overlay_mdp_frame {

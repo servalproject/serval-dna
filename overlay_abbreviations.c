@@ -156,8 +156,6 @@ sid overlay_abbreviate_previous_address={{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
    it on most occassions.
 */
 sid overlay_abbreviate_current_sender={{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}};
-int overlay_abbreviate_current_sender_set=0;
-int overlay_abbreviate_current_sender_id=-1;
 
 int overlay_abbreviate_prepare_cache()
 {
@@ -266,15 +264,13 @@ int overlay_abbreviate_address(unsigned char *in,unsigned char *out,int *ofs)
   if (in[0]<0x10) return WHY("Invalid address - 0x00-0x0f are reserved prefixes.");
 
   /* Is this the same as the current sender? */
-  if (overlay_abbreviate_current_sender_set){
-    for(i=0;i<SID_SIZE;i++)
-      if (in[i]!=overlay_abbreviate_current_sender.b[i])
-	break;
-    if (i==SID_SIZE) {
-      out[(*ofs)++]=OA_CODE_SELF; 
-      return 0;
-    } 
-  }
+  for(i=0;i<SID_SIZE;i++)
+    if (in[i]!=overlay_abbreviate_current_sender.b[i])
+      break;
+  if (i==SID_SIZE) {
+    out[(*ofs)++]=OA_CODE_SELF; 
+    return 0;
+  } 
   
   /* Try repeating previous address */
   for(i=0;i<SID_SIZE;i++)
@@ -369,7 +365,7 @@ int overlay_abbreviate_expand_address(unsigned char *in,int *inofs,unsigned char
     DEBUGF("Address first byte/abbreviation code=%02x (input offset=%d)\n",in[*inofs],*inofs);
   switch(in[*inofs])
     {
-    case OA_CODE_02: case OA_CODE_04: case OA_CODE_0C:
+    case OA_CODE_02: case OA_CODE_04: case OA_CODE_0C: case OA_CODE_INDEX:
       /* Unsupported codes, so tell the sender 
 	 if the frame was addressed to us as next-hop */
       (*inofs)++;
@@ -380,8 +376,9 @@ int overlay_abbreviate_expand_address(unsigned char *in,int *inofs,unsigned char
 			used to encode the sender's address there ;) */
       (*inofs)++;
       if (debug&DEBUG_OVERLAYABBREVIATIONS) DEBUGF("Resolving OA_CODE_SELF.\n");
-      if (overlay_abbreviate_current_sender_set) {
-	bcopy(&overlay_abbreviate_current_sender.b[0],&out[*ofs],SID_SIZE);
+	
+      if (overlay_abbreviate_current_sender.b[0]) {
+	bcopy(overlay_abbreviate_current_sender.b,&out[*ofs],SID_SIZE);
 	overlay_abbreviate_set_most_recent_address(&out[*ofs]);
 	(*ofs)+=SID_SIZE;
 	return OA_RESOLVED;
@@ -389,17 +386,6 @@ int overlay_abbreviate_expand_address(unsigned char *in,int *inofs,unsigned char
 	WARN("Cannot resolve OA_CODE_SELF if the packet doesn't start with a self announcement.\n");
 	return OA_UNINITIALISED;
       }
-    case OA_CODE_INDEX: /* single byte index look up */
-      /* Lookup sender's neighbour ID */
-      if (overlay_abbreviate_current_sender_id == -1 && overlay_abbreviate_lookup_sender_id() == -1)
-	return WHY("could not lookup neighbour ID of packet sender");
-      r=overlay_abbreviate_cache_lookup(overlay_neighbours[overlay_abbreviate_current_sender_id].one_byte_index_address_prefixes[in[*inofs]],
-				      out,ofs,OVERLAY_SENDER_PREFIX_LENGTH,0);
-      (*inofs)++;
-      if (r==OA_RESOLVED)
-	overlay_abbreviate_set_most_recent_address(&out[*ofs]);
-      (*inofs)++;
-      return r;
     case OA_CODE_PREVIOUS: /* Same as last address */
       (*inofs)++;
       bcopy(&overlay_abbreviate_previous_address.b[0],&out[*ofs],SID_SIZE);
@@ -448,43 +434,11 @@ int overlay_abbreviate_expand_address(unsigned char *in,int *inofs,unsigned char
       if (in[*inofs]==OA_CODE_FULL_INDEX2) bytes=2;
       if (bytes) (*inofs)++; /* Skip leading control code if present */
       bcopy(&in[*inofs],&out[*ofs],SID_SIZE);
-      if (bytes) overlay_abbreviate_remember_index(bytes,&in[*inofs],&in[(*inofs)+SID_SIZE]);
       overlay_abbreviate_cache_address(&in[*inofs]);
       overlay_abbreviate_set_most_recent_address(&in[*inofs]);
       (*inofs)+=SID_SIZE+bytes;
       return OA_RESOLVED;
     }
-}
-
-int overlay_abbreviate_lookup_sender_id()
-{
-  if (!overlay_abbreviate_current_sender_set)
-    return WHY("Sender has not been set");
-  overlay_neighbour *neh=overlay_route_get_neighbour_structure(overlay_abbreviate_current_sender.b,SID_SIZE,1 /* create if needed */);
-  if (!neh) { overlay_abbreviate_current_sender_id=-1; return WHY("Could not find sender in neighbour list"); }
-  /* Okay, so the following is a little tortuous in asking our parent who we are instead of just knowing, 
-     but it will do for now */
-  if (!neh->node) return WHY("neighbour structure has no associated node");
-  overlay_abbreviate_current_sender_id=neh->node->neighbour_id;
-  return 0;
-}
-
-int overlay_abbreviate_remember_index(int index_byte_count,unsigned char *sid_to_remember,unsigned char *index_bytes)
-{
-  int index=index_bytes[0];
-  if (index_byte_count>1) index=(index<<8)|index_bytes[1];
-
-  /* Lookup sender's neighbour ID */
-  if (overlay_abbreviate_current_sender_id == -1 && overlay_abbreviate_lookup_sender_id() == -1)
-    return WHY("could not lookup neighbour ID of packet sender");
-
-  if (debug&DEBUG_OVERLAYABBREVIATIONS) {
-    DEBUGF("index=%d", index);
-    DEBUGF("remember that sender #%d has assigned index #%d to sid=[%s]", overlay_abbreviate_current_sender_id, index, alloca_tohex_sid(sid_to_remember));
-  }
-
-  bcopy(sid_to_remember,overlay_neighbours[overlay_abbreviate_current_sender_id].one_byte_index_address_prefixes[index],OVERLAY_SENDER_PREFIX_LENGTH);
-  return 0;
 }
 
 int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *ofs,
@@ -546,13 +500,6 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
   bcopy(&cache->sids[index].b[0],&out[(*ofs)],SID_SIZE);
   (*ofs)+=SID_SIZE;
   if (index_bytes) {
-    /* We need to remember it as well, so do that.
-       If this process fails, it is okay, as we can still resolve the address now.
-       It will probably result in waste later though when we get asked to look it up,
-       however the alternative definitely wastes bandwidth now, so let us defer the
-       corrective action in case it is never required. 
-    */
-    overlay_abbreviate_remember_index(index_bytes,&cache->sids[index].b[0],&in[prefix_bytes]);
     (*ofs)+=index_bytes;
   }
   if (debug&DEBUG_OVERLAYABBREVIATIONS)
@@ -564,14 +511,12 @@ int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *of
 int overlay_abbreviate_set_current_sender(unsigned char *in)
 {
   bcopy(in,&overlay_abbreviate_current_sender.b[0],SID_SIZE);
-  overlay_abbreviate_current_sender_id=-1;
-  overlay_abbreviate_current_sender_set=1;
   return 0;
 }
 
 int overlay_abbreviate_unset_current_sender()
 {
-  overlay_abbreviate_current_sender_set=0;
+  overlay_abbreviate_current_sender.b[0]=0;
   return 0;
 }
 

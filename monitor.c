@@ -409,28 +409,10 @@ int monitor_process_command(struct monitor_context *c)
   else if (sscanf(cmd,"lookup match %s %d %s %s",sid,&port,localDid,remoteDid)>=3) {
     monitor_send_lookup_response(sid,port,localDid,remoteDid);
   }else if (sscanf(cmd,"call %s %s %s",sid,localDid,remoteDid)==3) {
-    int gotSid = 0;
-    if (sid[0]=='*') {
-      /* For testing, pick any peer and call them */
-      int bin, slot;
-      for (bin = 0; bin < overlay_bin_count; bin++)
-	for (slot = 0; slot < overlay_bin_size; slot++) {
-	  if (overlay_nodes[bin][slot].sid[0]) {
-	    memcpy(sid, overlay_nodes[bin][slot].sid, SID_SIZE);
-	    gotSid = 1;
-	    break;
-	  }
-	}
-      if (!gotSid)
-	write_str(c->alarm.poll.fd,"\nERROR:no known peers, so cannot place call\n");
-    } else {
-      // pack the binary representation of the sid into the same buffer.
-      if (stowSid((unsigned char*)sid, 0, sid) == -1)
-	write_str(c->alarm.poll.fd,"\nERROR:invalid SID, so cannot place call\n");
-      else
-	gotSid = 1;
-    }
-    if (gotSid) {
+    // pack the binary representation of the sid into the same buffer.
+    if (stowSid((unsigned char*)sid, 0, sid) == -1)
+      write_str(c->alarm.poll.fd,"\nERROR:invalid SID, so cannot place call\n");
+    else {
       int cn=0, in=0, kp=0;
       if (!keyring_next_identity(keyring, &cn, &in, &kp))
 	write_str(c->alarm.poll.fd,"\nERROR:no local identity, so cannot place call\n");

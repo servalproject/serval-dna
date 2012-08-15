@@ -213,11 +213,8 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 	DEBUG(strbuf_str(b));
       }
       
-      if (f.nexthop[0]==0 || f.destination[0]==0 || f.source[0]==0){
-	WHY("Addresses expanded incorrectly");
-	dump(NULL, &packet[payloadStart], ofs - payloadStart);
+      if (f.nexthop[0]==0 || f.destination[0]==0 || f.source[0]==0)
 	break;
-      }
       
       if (nexthop_address_status!=OA_RESOLVED
 	  || destination_address_status!=OA_RESOLVED
@@ -235,6 +232,11 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 	if (f.type==OF_TYPE_SELFANNOUNCE)
 	  break;
       }else{
+	
+	/* Record current sender for reference by addresses in subsequent frames in the
+	 ensemble */
+	if (f.type==OF_TYPE_SELFANNOUNCE)
+	  overlay_abbreviate_set_current_sender(f.source);
 	
 	// TODO refactor all packet parsing to only allocate additional memory for the payload
 	// if it needs to be queued for forwarding.

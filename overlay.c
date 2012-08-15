@@ -125,9 +125,6 @@ int overlayServerMode()
      of wifi latency anyway, so we'll live with it.  Larger values will affect voice transport,
      and smaller values would affect CPU and energy use, and make the simulation less realistic. */
 
-  /* Create structures to use 1MB of RAM for testing */
-  overlay_route_init(1);
-
 #define SCHEDULE(X, Y, D) { \
 static struct sched_ent _sched_##X; \
 static struct profile_total _stats_##X; \
@@ -261,7 +258,7 @@ int overlay_frame_process(struct overlay_interface *interface,overlay_frame *f)
       if (!broadcast)
       {
 	if (overlay_get_nexthop(f->destination,f->nexthop,&f->nexthop_interface))
-	  WHYF("Could not find next hop for %s* - dropping frame",
+	  INFOF("Could not find next hop for %s* - dropping frame",
 	       alloca_tohex(f->destination, 7));
 	forward=0;
       }

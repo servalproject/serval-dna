@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/stat.h>
 #include "serval.h"
 #include "strbuf.h"
+#include "subscribers.h"
 
 struct profile_total mdp_stats={.name="overlay_mdp_poll"};
 
@@ -937,6 +938,29 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   }
 }
 
+struct search_state{
+  overlay_mdp_frame *mdp;
+  overlay_mdp_frame *mdpreply;
+  int first;
+  int max;
+  int index;
+  int count;
+};
+
+int search_subscribers(struct subscriber *subscriber, void *context){
+  struct search_state *state = context;
+  if (!subscriber->node)
+    return 0;
+  int score = subscriber->node->best_link_score;
+  
+  if (state->mdp->addrlist.mode == MDP_ADDRLIST_MODE_ALL_PEERS || score >= 1) {
+    if (state->count++ >= state->first && state->index < state->max) {
+      memcpy(state->mdpreply->addrlist.sids[state->index++], subscriber->sid, SID_SIZE);
+    }
+  }
+  return 0;
+}
+
 void overlay_mdp_poll(struct sched_ent *alarm)
 {
   unsigned char buffer[16384];
@@ -1014,27 +1038,16 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 	case MDP_ADDRLIST_MODE_ROUTABLE_PEERS:
 	case MDP_ADDRLIST_MODE_ALL_PEERS: {
 	    /* from peer list */
-	    i = count = 0;
-	    int bin, slot;
-	    for (bin = 0; bin < overlay_bin_count; ++bin) {
-	      for (slot = 0; slot < overlay_bin_size; ++slot) {
-		const unsigned char *sid = overlay_nodes[bin][slot].sid;
-		if (sid[0]) {
-		  const char *sidhex = alloca_tohex_sid(sid);
-		  int score = overlay_nodes[bin][slot].best_link_score;
-		  if (debug & DEBUG_MDPREQUESTS)
-		    DEBUGF("bin=%d slot=%d sid=%s best_link_score=%d", bin, slot, sidhex, score);
-		  if (mdp->addrlist.mode == MDP_ADDRLIST_MODE_ALL_PEERS || score >= 1) {
-		    if (count++ >= sid_num && i < max_sids) {
-		      if (debug & DEBUG_MDPREQUESTS) DEBUGF("send sid=%s", sidhex);
-		      memcpy(mdpreply.addrlist.sids[i++], sid, SID_SIZE);
-		    } else {
-		      if (debug & DEBUG_MDPREQUESTS) DEBUGF("skip sid=%s", sidhex);
-		    }
-		  }
-		}
-	      }
-	    }
+	  struct search_state state={
+	    .mdp=mdp,
+	    .mdpreply=&mdpreply,
+	    .first=sid_num,
+	    .max=max_sid,
+	  };
+	  
+	  enum_subscribers(NULL, search_subscribers, &state);
+	  i=state.index;
+	  count=state.count;
 	  }
 	  break;
 	}

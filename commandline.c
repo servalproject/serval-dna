@@ -1704,8 +1704,9 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
   }
 
   cli_printf("record"); cli_delim(":");
-  cli_printf("%d",mdp.nodeinfo.index); cli_delim(":");
-  cli_printf("%d",mdp.nodeinfo.count); cli_delim(":");
+  // TODO remove these two unused output fields
+  cli_printf("%d",1); cli_delim(":");
+  cli_printf("%d",1); cli_delim(":");
   cli_printf("%s",mdp.nodeinfo.foundP?"found":"noresult"); cli_delim(":");
   cli_printf("%s", alloca_tohex_sid(mdp.nodeinfo.sid)); cli_delim(":");
   cli_printf("%s",mdp.nodeinfo.resolve_did?mdp.nodeinfo.did:"did-not-resolved"); 
