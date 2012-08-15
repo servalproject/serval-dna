@@ -382,6 +382,7 @@ teardown() {
 # in eval expressions.
 shellarg() {
    _tfw_shellarg "$@"
+   echo "${_tfw_args[*]}"
 }
 
 # Echo the absolute path (containing symlinks if given) of the given
@@ -436,14 +437,14 @@ escape_grep_extended() {
 #  - sets the $executed variable to a description of the command that was
 #    executed
 execute() {
-   tfw_log "# execute" $(_tfw_shellarg "$@")
+   tfw_log "# execute" $(shellarg "$@")
    _tfw_getopts execute "$@"
    shift $_tfw_getopts_shift
    _tfw_execute "$@"
 }
 
 executeOk() {
-   tfw_log "# executeOk" $(_tfw_shellarg "$@")
+   tfw_log "# executeOk" $(shellarg "$@")
    _tfw_getopts executeok "$@"
    _tfw_opt_exit_status=0
    _tfw_dump_on_fail --stderr
@@ -458,7 +459,7 @@ executeOk() {
 #    status
 # where SECONDS may be fractional, eg, 1.5
 wait_until() {
-   tfw_log "# wait_until" $(_tfw_shellarg "$@")
+   tfw_log "# wait_until" $(shellarg "$@")
    local start=$SECONDS
    _tfw_getopts wait_until "$@"
    shift $_tfw_getopts_shift
@@ -482,8 +483,8 @@ wait_until() {
 assert() {
    _tfw_getopts assert "$@"
    shift $_tfw_getopts_shift
-   [ -z "$_tfw_message" ] && _tfw_message=$(_tfw_shellarg "$@")
-   _tfw_assert "$@" || _tfw_failexit
+   [ -z "$_tfw_message" ] && _tfw_message=$(shellarg "$@")
+   _tfw_assert "$@" || _tfw_failexit || return $?
    tfw_log "# assert $_tfw_message"
    return 0
 }
@@ -491,9 +492,10 @@ assert() {
 assertExpr() {
    _tfw_getopts assertexpr "$@"
    shift $_tfw_getopts_shift
-   local awkexpr=$(_tfw_expr_to_awkexpr "$@")
-   _tfw_message="${_tfw_message+$_tfw_message }($(_tfw_shellarg \"$awkexpr\"))"
-   _tfw_assert _tfw_eval_awkexpr "$awkexpr" || _tfw_failexit
+   _tfw_parse_expr "$@" || return $?
+   _tfw_message="${_tfw_message:+$_tfw_message }("$@")"
+   _tfw_shellarg "${_tfw_expr[@]}"
+   _tfw_assert eval "${_tfw_args[@]}" || _tfw_failexit || return $?
    tfw_log "# assert $_tfw_message"
    return 0
 }
@@ -581,7 +583,7 @@ assertExitStatus() {
    _tfw_getopts assertexitstatus "$@"
    shift $_tfw_getopts_shift
    [ -z "$_tfw_message" ] && _tfw_message="exit status ($_tfw_exitStatus) of ($executed) $*"
-   _tfw_assertExpr "$_tfw_exitStatus" "$@" || _tfw_failexit
+   _tfw_assertExpr "$_tfw_exitStatus" "$@" || _tfw_failexit || return $?
    tfw_log "# assert $_tfw_message"
    return 0
 }
@@ -590,7 +592,7 @@ assertRealTime() {
    _tfw_getopts assertrealtime "$@"
    shift $_tfw_getopts_shift
    [ -z "$_tfw_message" ] && _tfw_message="real execution time ($realtime) of ($executed) $*"
-   _tfw_assertExpr "$realtime" "$@" || _tfw_failexit
+   _tfw_assertExpr "$realtime" "$@" || _tfw_failexit || return $?
    tfw_log "# assert $_tfw_message"
    return 0
 }
@@ -632,7 +634,7 @@ assertGrep() {
    shift $_tfw_getopts_shift
    if [ $# -ne 2 ]; then
       _tfw_error "incorrect arguments"
-      return 254
+      return $?
    fi
    _tfw_dump_on_fail "$1"
    _tfw_assert_grep "$1" "$1" "$2" || _tfw_failexit
@@ -646,16 +648,15 @@ assertGrep() {
 # immune to spaces and shell metacharacters.
 _tfw_shellarg() {
    local arg
-   local -a shellarg=()
+   _tfw_args=()
    _tfw_shopt -s extglob
    for arg; do
       case "$arg" in
-      +([A-Za-z_0-9.,:=+\/-])) shellarg+=("$arg");;
-      *) shellarg+=("'${arg//'/'\\''}'");;
+      +([A-Za-z_0-9.,:=+\/-])) _tfw_args+=("$arg");;
+      *) _tfw_args+=("'${arg//'/'\\''}'");;
       esac
    done
    _tfw_shopt_restore
-   echo "${shellarg[@]}"
 }
 
 # Echo the absolute path of the given path, using only Bash builtins.
@@ -761,7 +762,7 @@ _tfw_teardown() {
 
 # Executes $_tfw_executable with the given arguments.
 _tfw_execute() {
-   executed=$(_tfw_shellarg "${_tfw_executable##*/}" "$@")
+   executed=$(shellarg "${_tfw_executable##*/}" "$@")
    if $_tfw_opt_core_backtrace; then
       ulimit -S -c unlimited
       rm -f core
@@ -776,7 +777,7 @@ _tfw_execute() {
    if [ -n "$_tfw_opt_exit_status" ]; then
       _tfw_message="exit status ($_tfw_exitStatus) of ($executed) is $_tfw_opt_exit_status"
       _tfw_dump_stderr_on_fail=true
-      _tfw_assert [ "$_tfw_exitStatus" -eq "$_tfw_opt_exit_status" ] || _tfw_failexit
+      _tfw_assert [ "$_tfw_exitStatus" -eq "$_tfw_opt_exit_status" ] || _tfw_failexit || return $?
       tfw_log "# assert $_tfw_message"
    else
       tfw_log "# exit status of ($executed) = $_tfw_exitStatus"
@@ -896,42 +897,56 @@ _tfw_getopts() {
    return 0
 }
 
-_tfw_expr_to_awkexpr() {
-   local awkexpr=
+_tfw_matches_rexp() {
+   local rexp="$1"
+   shift
    for arg; do
-      if [ -z "${arg//[0-9]}" ]; then
-         awkexpr="${awkexpr:+$awkexpr }$arg"
-      else
-         case $arg in
-         '==' | '!=' | '<' | '<=' | '>' | '>=' | \
-         '~' | '!~' | '&&' | '||' | '!' )
-            awkexpr="${awkexpr:+$awkexpr }$arg"
-            ;;
-         *)
-            arg=${arg//\\/\\\\} #} restore Vim syntax highlighting
-            arg=${arg//"/\\"}
-            awkexpr="${awkexpr:+$awkexpr }\"$arg\""
-            ;;
-         esac
+      if ! echo "$arg" | grep -q -e "^$rexp\$"; then
+         return 1
       fi
    done
-   echo $awkexpr
+   return 0
 }
 
-_tfw_eval_awkexpr() {
-   local awkerrs # on separate line so we don't lose exit status
-   awkerrs=$(awk "BEGIN { exit(($*) ? 0 : 1) }" </dev/null 2>&1)
-   local stat=$?
-   if [ -n "$awkerrs" ]; then
-      _tfw_error "invalid expression: $*"
-      stat=254
-   fi
-   return $stat
+_tfw_parse_expr() {
+   local _expr="$*"
+   _tfw_expr=()
+   while [ $# -ne 0 ]; do
+      case "$1" in
+      '&&' | '||' | '!' | '(' | ')')
+         _tfw_expr+=("$1")
+         shift
+         ;;
+      *)
+         if [ $# -lt 3 ]; then
+            _tfw_error "invalid expression: $_expr"
+            return $?
+         fi
+         case "$2" in
+         '==') _tfw_expr+=("[" "$1" "-eq" "$3" "]");;
+         '!=') _tfw_expr+=("[" "$1" "-ne" "$3" "]");;
+         '<=') _tfw_expr+=("[" "$1" "-le" "$3" "]");;
+         '<') _tfw_expr+=("[" "$1" "-lt" "$3" "]");;
+         '>=') _tfw_expr+=("[" "$1" "-ge" "$3" "]");;
+         '>') _tfw_expr+=("[" "$1" "-gt" "$3" "]");;
+         '~') _tfw_expr+=("_tfw_matches_rexp" "$3" "$1");;
+         '!~') _tfw_expr+=("!" "_tfw_matches_rexp" "$3" "$1");;
+         *)
+            _tfw_error "invalid expression: $_expr"
+            return $?
+            ;;
+         esac
+         shift 3
+         ;;
+      esac
+   done
+   return 0
 }
 
 _tfw_assertExpr() {
-   local awkexpr=$(_tfw_expr_to_awkexpr "$@")
-   _tfw_assert _tfw_eval_awkexpr "$awkexpr" || _tfw_failexit
+   _tfw_parse_expr "$@" || return $?
+   _tfw_shellarg "${_tfw_expr[@]}"
+   _tfw_assert eval "${_tfw_args[@]}"
 }
 
 _tfw_assert_stdxxx_is() {
@@ -941,13 +956,13 @@ _tfw_assert_stdxxx_is() {
    shift $((_tfw_getopts_shift - 2))
    if [ $# -lt 1 ]; then
       _tfw_error "incorrect arguments"
-      return 254
+      return $?
    fi
    case "$_tfw_opt_line" in
    '') ln -f "$_tfw_tmp/$qual" "$_tfw_tmp/content";;
    *) sed -n -e "${_tfw_opt_line}p" "$_tfw_tmp/$qual" >"$_tfw_tmp/content";;
    esac
-   local message="${_tfw_message:-${_tfw_opt_line:+line $_tfw_opt_line of }$qual of ($executed) is $(_tfw_shellarg "$@")}"
+   local message="${_tfw_message:-${_tfw_opt_line:+line $_tfw_opt_line of }$qual of ($executed) is $(shellarg "$@")}"
    echo -n "$@" >$_tfw_tmp/stdxxx_is.tmp
    if ! cmp --quiet $_tfw_tmp/stdxxx_is.tmp "$_tfw_tmp/content"; then
       _tfw_failmsg "assertion failed: $message"
@@ -965,11 +980,11 @@ _tfw_assert_stdxxx_linecount() {
    shift $((_tfw_getopts_shift - 2))
    if [ $# -lt 1 ]; then
       _tfw_error "incorrect arguments"
-      return 254
+      return $?
    fi
    local lineCount=$(( $(cat $_tfw_tmp/$qual | wc -l) + 0 ))
    [ -z "$_tfw_message" ] && _tfw_message="$qual line count ($lineCount) $*"
-   _tfw_assertExpr "$lineCount" "$@" || _tfw_failexit
+   _tfw_assertExpr "$lineCount" "$@" || _tfw_failexit || return $?
    tfw_log "# assert $_tfw_message"
    return 0
 }
@@ -981,7 +996,7 @@ _tfw_assert_stdxxx_grep() {
    shift $((_tfw_getopts_shift - 2))
    if [ $# -ne 1 ]; then
       _tfw_error "incorrect arguments"
-      return 254
+      return $?
    fi
    _tfw_assert_grep "$qual of ($executed)" $_tfw_tmp/$qual "$@"
 }
@@ -993,13 +1008,13 @@ _tfw_assert_grep() {
    local message=
    if ! [ -e "$file" ]; then
       _tfw_error "$file does not exist"
-      ret=254
+      ret=$?
    elif ! [ -f "$file" ]; then
       _tfw_error "$file is not a regular file"
-      ret=254
+      ret=$?
    elif ! [ -r "$file" ]; then
       _tfw_error "$file is not readable"
-      ret=254
+      ret=$?
    else
       local matches=$(( $(grep --regexp="$pattern" "$file" | wc -l) + 0 ))
       local done=false
@@ -1060,7 +1075,7 @@ _tfw_assert_grep() {
       esac
       if ! $done; then
          _tfw_error "unsupported value for --matches=$_tfw_opt_matches"
-         ret=254
+         ret=$?
       fi
       _tfw_shopt_restore
    fi
