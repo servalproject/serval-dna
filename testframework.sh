@@ -563,26 +563,26 @@ tfw_cat() {
    local show_nonprinting=
    for file; do
       case $file in
-      --stdout) 
-         tfw_log "#--- ${header:-stdout of ($executed)} ---"
+      --stdout)
+         tfw_log "#----- ${header:-stdout of ($executed)} -----"
          cat $show_nonprinting $_tfw_tmp/stdout
-         tfw_log "#---"
+         tfw_log "#-----"
          header=
          show_nonprinting=
          ;;
-      --stderr) 
-         tfw_log "#--- ${header:-stderr of ($executed)} ---"
+      --stderr)
+         tfw_log "#----- ${header:-stderr of ($executed)} -----"
          cat $show_nonprinting $_tfw_tmp/stderr
-         tfw_log "#---"
+         tfw_log "#-----"
          header=
          show_nonprinting=
          ;;
       --header=*) header="${1#*=}";;
       -v|--show-nonprinting) show_nonprinting=-v;;
       *)
-         tfw_log "#--- ${header:-$file} ---"
+         tfw_log "#----- ${header:-${file#$_tfw_tmp/}} -----"
          cat $show_nonprinting "$file"
-         tfw_log "#---"
+         tfw_log "#-----"
          header=
          show_nonprinting=
          ;;
@@ -594,9 +594,9 @@ tfw_core_backtrace() {
    local executable="$1"
    local corefile="$2"
    echo backtrace >"$_tfw_tmpdir/backtrace.gdb"
-   tfw_log "#--- gdb backtrace from $executable $corefile ---"
+   tfw_log "#----- gdb backtrace from $executable $corefile -----"
    gdb -n -batch -x "$_tfw_tmpdir/backtrace.gdb" "$executable" "$corefile" </dev/null
-   tfw_log "#---"
+   tfw_log "#-----"
    rm -f "$_tfw_tmpdir/backtrace.gdb"
 }
 
@@ -807,7 +807,7 @@ _tfw_execute() {
       ! _tfw_parse_times_to_milliseconds sys systime_ms
    then
       tfw_log '# malformed output from time:'
-      tfw_cat --header=times -v $_tfw_tmp/times
+      tfw_cat -v $_tfw_tmp/times
    fi
    return 0
 }
@@ -1231,7 +1231,7 @@ _tfw_failmsg() {
 }
 
 _tfw_backtrace() {
-   tfw_log '#--- backtrace ---'
+   tfw_log '#----- backtrace -----'
    local -i up=1
    while [ "${BASH_SOURCE[$up]}" == "${BASH_SOURCE[0]}" ]; do
       let up=up+1
@@ -1242,7 +1242,7 @@ _tfw_backtrace() {
       let up=up+1
       let i=i+1
    done
-   tfw_log '#---'
+   tfw_log '#-----'
 }
 
 _tfw_failexit() {
