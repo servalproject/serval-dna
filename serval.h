@@ -665,7 +665,6 @@ unsigned char *ob_append_space(overlay_buffer *b,int count);
 int ob_append_short(overlay_buffer *b,unsigned short v);
 int ob_append_int(overlay_buffer *b,unsigned int v);
 int ob_patch_rfs(overlay_buffer *b,int l);
-int ob_indel_space(overlay_buffer *b,int offset,int shift);
 int ob_append_rfs(overlay_buffer *b,int l);
 int ob_setbyte(overlay_buffer *b,int ofs,unsigned char value);
 int ob_getbyte(overlay_buffer *b,int ofs);

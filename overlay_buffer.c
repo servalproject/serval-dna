@@ -306,14 +306,12 @@ int rfs_decode(unsigned char *b,int *ofs)
   return rfs;
 }
 
+// move the data at offset, by shift bytes
 int ob_indel_space(overlay_buffer *b,int offset,int shift)
 {
-  if (shift>0) { /* make space */ 
-    if (ob_makespace(b,-shift)) return -1;
-    bcopy(&b->bytes[offset],&b->bytes[offset+shift],b->length-(offset+shift));
-  } else if (shift<0) { /* free up space */
-    bcopy(&b->bytes[offset-shift],&b->bytes[offset],b->length-(offset-shift));
-  }
+  if (offset>=b->length) return -1;
+  if (shift>0 && ob_makespace(b, shift)) return -1;
+  bcopy(&b->bytes[offset],&b->bytes[offset+shift],b->length-offset);
   b->length+=shift;
   return 0;
 }
@@ -329,7 +327,7 @@ int ob_patch_rfs(overlay_buffer *b,int l)
 
   /* Adjust size of field */
   int new_size=rfs_length(l);
-  int shift=new_size-b->var_length_bytes;
+  int shift=new_size - b->var_length_bytes;
   if (shift) {
     if (debug&DEBUG_PACKETCONSTRUCTION) {
       DEBUGF("Patching RFS for rfs_size=%d (was %d), so indel %d btyes",
@@ -338,7 +336,7 @@ int ob_patch_rfs(overlay_buffer *b,int l)
 	   &b->bytes[b->var_length_offset],
 	   b->length-b->var_length_offset);
     }
-    if (ob_indel_space(b,b->var_length_offset,shift)) return -1;
+    if (ob_indel_space(b, b->var_length_offset + b->var_length_bytes, shift)) return -1;
     if (debug&DEBUG_PACKETCONSTRUCTION) {
       dump("after indel",
 	   &b->bytes[b->var_length_offset],
