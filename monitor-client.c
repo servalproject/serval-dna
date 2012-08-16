@@ -112,7 +112,7 @@ int monitor_client_open(struct monitor_state **res)
   }
   
   *res = (struct monitor_state*)malloc(sizeof(struct monitor_state));
-  memset(res,sizeof(struct monitor_state),0);
+  memset(*res,sizeof(struct monitor_state),0);
   return fd;
 }
 
@@ -273,6 +273,8 @@ again:
     goto again;
   }
   
+  if (res->bufferBytes >= MONITOR_CLIENT_BUFFER_SIZE)
+    return WHY("Buffer full");
   
   return 0;
 }
