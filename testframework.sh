@@ -75,15 +75,15 @@ Options:
 
 # Internal utility for setting shopt variables and restoring their original
 # value:
-#     _tfw_shopt -s extglob -u extdebug
+#     local oo
+#     _tfw_shopt oo -s extglob -u extdebug
 #     ...
-#     _tfw_shopt_restore
+#     _tfw_shopt_restore oo
 _tfw_shopt() {
-   if [ -n "$_tfw_shopt_orig" ]; then
-      _tfw_fatal "unrestored shopt settings: $_tfw_shopt_orig"
-   fi
-   _tfw_shopt_orig=
+   local _var="$1"
+   shift
    local op=s
+   local restore=
    while [ $# -ne 0 ]
    do
       case "$1" in
@@ -91,24 +91,23 @@ _tfw_shopt() {
       -u) op=u;;
       *)
          local opt="$1"
-         _tfw_shopt_orig="${restore:+$restore; }shopt -$(shopt -q $opt && echo s || echo u) $opt"
+         restore="${restore:+$restore; }shopt -$(shopt -q $opt && echo s || echo u) $opt"
          shopt -$op $opt
          ;;
       esac
       shift
    done
+   eval $_var='"$restore"'
 }
 _tfw_shopt_restore() {
-   if [ -n "$_tfw_shopt_orig" ]; then
-      eval "$_tfw_shopt_orig"
-      _tfw_shopt_orig=
-   fi
+   local _var="$1"
+   [ -n "${!_var}" ] && eval "${!_var}"
 }
-_tfw_shopt_orig=
-declare -a _tfw_running_pids
+
+declare -a _tfw_running_jobs
 
 # The rest of this file is parsed for extended glob patterns.
-_tfw_shopt -s extglob
+_tfw_shopt _tfw_orig_shopt -s extglob
 
 runTests() {
    _tfw_stdout=1
@@ -119,7 +118,7 @@ runTests() {
    _tfw_suite_name="${_tfw_invoking_script##*/}"
    _tfw_cwd=$(abspath "$PWD")
    _tfw_tmpdir="${TFW_TMPDIR:-${TMPDIR:-/tmp}}/_tfw-$$"
-   trap '_tfw_status=$?; rm -rf "$_tfw_tmpdir"; exit $_tfw_status' EXIT SIGHUP SIGINT SIGTERM
+   trap '_tfw_status=$?; _tfw_killtests; rm -rf "$_tfw_tmpdir"; exit $_tfw_status' EXIT SIGHUP SIGINT SIGTERM
    rm -rf "$_tfw_tmpdir"
    mkdir -p "$_tfw_tmpdir" || return $?
    _tfw_logdir="${TFW_LOGDIR:-$_tfw_cwd/testlog}/$_tfw_suite_name"
@@ -131,7 +130,8 @@ runTests() {
    local allargs="$*"
    local -a filters=()
    local njobs=1
-   _tfw_shopt -s extglob
+   local oo
+   _tfw_shopt oo -s extglob
    while [ $# -ne 0 ]; do
       case "$1" in
       --help) usage; exit 0;;
@@ -149,7 +149,7 @@ runTests() {
       esac
       shift
    done
-   _tfw_shopt_restore
+   _tfw_shopt_restore oo
    if $_tfw_verbose && [ $njobs -ne 1 ]; then
       _tfw_fatal "--verbose is incompatible with --jobs=$njobs"
    fi
@@ -161,6 +161,8 @@ runTests() {
    rm -f "$_tfw_logdir"/*
    # Enumerate all the test cases.
    _tfw_find_tests "${filters[@]}"
+   # Enable job control.
+   set -m
    # Iterate through all test cases, starting a new test whenever the number of
    # running tests is less than the job limit.
    _tfw_testcount=0
@@ -168,7 +170,7 @@ runTests() {
    _tfw_failcount=0
    _tfw_errorcount=0
    _tfw_fatalcount=0
-   _tfw_running_pids=()
+   _tfw_running_jobs=()
    _tfw_test_number_watermark=0
    local testNumber
    local testPosition=0
@@ -178,7 +180,7 @@ runTests() {
       let ++testPosition
       let ++_tfw_testcount
       # Wait for any existing child process to finish.
-      while [ $njobs -ne 0 -a ${#_tfw_running_pids[*]} -ge $njobs ]; do
+      while [ $njobs -ne 0 -a ${#_tfw_running_jobs[*]} -ge $njobs ]; do
          _tfw_harvest_processes
       done
       [ $_tfw_fatalcount -ne 0 ] && break
@@ -251,12 +253,13 @@ runTests() {
             fi
          } >"$_tfw_logdir/$testNumber.$testName.$result"
          exit 0
-      ) &
-      _tfw_running_pids+=($!)
-      ln -s "$_tfw_results_dir/$testName" "$_tfw_results_dir/pid-$!"
+      ) </dev/null &
+      local job=$(jobs %% | sed -n -e '1s/^\[\([0-9]\+\)\].*/\1/p')
+      _tfw_running_jobs+=($job)
+      ln -f -s "$_tfw_results_dir/$testName" "$_tfw_results_dir/job-$job"
    done
    # Wait for all child processes to finish.
-   while [ ${#_tfw_running_pids[*]} -ne 0 ]; do
+   while [ ${#_tfw_running_jobs[*]} -ne 0 ]; do
       _tfw_harvest_processes
    done
    # Clean up working directory.
@@ -266,6 +269,22 @@ runTests() {
    s=$([ $_tfw_testcount -eq 1 ] || echo s)
    echo "$_tfw_testcount test$s, $_tfw_passcount pass, $_tfw_failcount fail, $_tfw_errorcount error"
    [ $_tfw_fatalcount -eq 0 -a $_tfw_failcount -eq 0 -a $_tfw_errorcount -eq 0 ]
+}
+
+_tfw_killtests() {
+   if [ $njobs -eq 1 ]; then
+      echo -n " killing..."
+   else
+      echo -n -e "\r\rKilling tests...\r"
+   fi
+   trap '' SIGHUP SIGINT SIGTERM
+   local job
+   for job in ${_tfw_running_jobs[*]}; do
+      kill %$job 2>/dev/null
+   done
+   while [ ${#_tfw_running_jobs[*]} -ne 0 ]; do
+      _tfw_harvest_processes
+   done
 }
 
 _tfw_echo_intro() {
@@ -282,16 +301,16 @@ _tfw_harvest_processes() {
    sleep 1 &
    spid=$!
    set -m
-   wait $spid 2>/dev/null
+   wait $spid >/dev/null 2>/dev/null
    trap - SIGCHLD
    # </incantation>
-   local -a surviving_pids=()
-   local pid
-   for pid in ${_tfw_running_pids[*]}; do
-      if kill -0 $pid 2>/dev/null; then
-         surviving_pids+=($pid)
-      elif [ -s "$_tfw_results_dir/pid-$pid" ]; then
-         set -- $(<"$_tfw_results_dir/pid-$pid")
+   local -a surviving_jobs=()
+   local job
+   for job in ${_tfw_running_jobs[*]}; do
+      if jobs %$job >/dev/null 2>/dev/null; then
+         surviving_jobs+=($job)
+      elif [ -s "$_tfw_results_dir/job-$job" ]; then
+         set -- $(<"$_tfw_results_dir/job-$job")
          local testPosition="$1"
          local testNumber="$2"
          local testName="$3"
@@ -331,11 +350,13 @@ _tfw_harvest_processes() {
             _tfw_echo_result "$result"
             echo
          fi
+         rm -f "$_tfw_results_dir/job-$job"
       else
-         _tfw_echoerr "${BASH_SOURCE[1]}: child process $pid terminated without result"
+         _tfw_echoerr "${BASH_SOURCE[1]}: job %$job terminated without result"
+         rm -f "$_tfw_results_dir/job-$job"
       fi
    done
-   _tfw_running_pids=(${surviving_pids[*]})
+   _tfw_running_jobs=(${surviving_jobs[*]})
 }
 
 _tfw_echo_result() {
@@ -649,14 +670,12 @@ assertGrep() {
 _tfw_shellarg() {
    local arg
    _tfw_args=()
-   _tfw_shopt -s extglob
    for arg; do
       case "$arg" in
-      +([A-Za-z_0-9.,:=+\/-])) _tfw_args+=("$arg");;
-      *) _tfw_args+=("'${arg//'/'\\''}'");;
+      '' | *[^A-Za-z_0-9.,:=+\/-]* ) _tfw_args+=("'${arg//'/'\\''}'");;
+      *) _tfw_args+=("$arg");;
       esac
    done
-   _tfw_shopt_restore
 }
 
 # Echo the absolute path of the given path, using only Bash builtins.
@@ -855,7 +874,8 @@ _tfw_getopts() {
    _tfw_opt_matches=
    _tfw_opt_line=
    _tfw_getopts_shift=0
-   _tfw_shopt -s extglob
+   local oo
+   _tfw_shopt oo -s extglob
    while [ $# -ne 0 ]; do
       case "$context:$1" in
       *:--stdout) _tfw_dump_on_fail --stdout;;
@@ -893,7 +913,7 @@ _tfw_getopts() {
       [ -z "$_tfw_executable" ] && _tfw_error "missing executable argument"
       ;;
    esac
-   _tfw_shopt_restore
+   _tfw_shopt_restore oo
    return 0
 }
 
@@ -1019,7 +1039,8 @@ _tfw_assert_grep() {
       local matches=$(( $(grep --regexp="$pattern" "$file" | wc -l) + 0 ))
       local done=false
       local ret=0
-      _tfw_shopt -s extglob
+      local oo
+      _tfw_shopt oo -s extglob
       case "$_tfw_opt_matches" in
       '')
          done=true
@@ -1077,7 +1098,7 @@ _tfw_assert_grep() {
          _tfw_error "unsupported value for --matches=$_tfw_opt_matches"
          ret=$?
       fi
-      _tfw_shopt_restore
+      _tfw_shopt_restore oo
    fi
    if [ $ret -ne 0 ]; then
       _tfw_backtrace
@@ -1121,7 +1142,8 @@ _tfw_checkTerminfo() {
 # an alphabetic character (not numeric or '_').
 _tfw_find_tests() {
    _tfw_tests=()
-   _tfw_shopt -s extdebug
+   local oo
+   _tfw_shopt oo -s extdebug
    local name
    for name in $(builtin declare -F |
          sed -n -e '/^declare -f test_[A-Za-z]/s/^declare -f test_//p' |
@@ -1188,7 +1210,7 @@ _tfw_find_tests() {
       fi
       _tfw_tests+=("$testName")
    done
-   _tfw_shopt_restore
+   _tfw_shopt_restore oo
 }
 
 # A "fail" event occurs when any assertion fails, and indicates that the test
@@ -1286,4 +1308,4 @@ _tfw_fatalexit() {
 }
 
 # Restore the caller's shopt preferences before returning.
-_tfw_shopt_restore
+_tfw_shopt_restore _tfw_orig_shopt
