@@ -921,7 +921,7 @@ _tfw_matches_rexp() {
    local rexp="$1"
    shift
    for arg; do
-      if ! echo "$arg" | grep -q -e "^$rexp\$"; then
+      if ! echo "$arg" | grep -q -e "$rexp"; then
          return 1
       fi
    done
