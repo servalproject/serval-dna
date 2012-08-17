@@ -199,7 +199,7 @@ error:
   return WHY("Failed to start rhizome HTTP server");
 
 success:
-  INFOF("Started Rhizome HTTP server on port %d, fd = %d", port, rhizome_server_socket);
+  INFOF("RHIZOME HTTP SERVER, START port=%d, fd=%d", port, rhizome_server_socket);
   rhizome_http_server_port = port;
   /* Add Rhizome HTTPd server to list of file descriptors to watch */
   server_alarm.function = rhizome_server_poll;
@@ -267,8 +267,7 @@ void rhizome_server_poll(struct sched_ent *alarm)
   while ((sock = accept(rhizome_server_socket, &addr, &addr_len)) != -1) {
     if (addr.sa_family == AF_INET) {
       struct sockaddr_in *peerip = (struct sockaddr_in *)&addr;
-      if (debug & DEBUG_RHIZOME_TX)
-	DEBUGF("HTTP ACCEPT addrlen=%u family=%u port=%u addr=%u.%u.%u.%u",
+      INFOF("RHIZOME HTTP SERVER, ACCEPT addrlen=%u family=%u port=%u addr=%u.%u.%u.%u",
 	  addr_len, peerip->sin_family, peerip->sin_port,
 	  ((unsigned char*)&peerip->sin_addr.s_addr)[0],
 	  ((unsigned char*)&peerip->sin_addr.s_addr)[1],
@@ -276,9 +275,9 @@ void rhizome_server_poll(struct sched_ent *alarm)
 	  ((unsigned char*)&peerip->sin_addr.s_addr)[3]
 	);
     } else {
-      if (debug & DEBUG_RHIZOME_TX)
-	DEBUGF("HTTP ACCEPT addrlen=%u family=%u data=%s",
-	  addr_len, addr.sa_family, alloca_tohex((unsigned char *)addr.sa_data, sizeof addr.sa_data));
+      INFOF("RHIZOME HTTP SERVER, ACCEPT addrlen=%u family=%u data=%s",
+	  addr_len, addr.sa_family, alloca_tohex((unsigned char *)addr.sa_data, sizeof addr.sa_data)
+	);
     }
     rhizome_http_request *request = calloc(sizeof(rhizome_http_request), 1);
     if (request == NULL) {
@@ -528,8 +527,7 @@ static int rhizome_server_parse_http_request(rhizome_http_request *r)
   }
   if (path) {
     char *id = NULL;
-    if (debug & DEBUG_RHIZOME_TX)
-      DEBUGF("GET %s", alloca_toprint(1024, path, pathlen));
+    INFOF("RHIZOME HTTP SERVER, GET %s", alloca_toprint(1024, path, pathlen));
     if (strcmp(path, "/favicon.ico") == 0) {
       r->request_type = RHIZOME_HTTP_REQUEST_FAVICON;
       rhizome_server_http_response_header(r, 200, "image/vnd.microsoft.icon", favicon_len);

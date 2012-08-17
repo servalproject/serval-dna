@@ -85,10 +85,8 @@ rhizome_file_fetch_record file_fetch_queue[MAX_QUEUED_FILES];
    only to deal with packet errors (but also naughty people who might want to mess
    with the transfer.
 
-   For HTTP over IPv4, the biggest problem is that we don't know the IPv4 address of
-   the sender, or in fact that the link is over IPv4 and thus that HTTP over IPv4 is
-   an option.  We probably need to be passed this information.  This has since been
-   incorporated.
+   For HTTP over IPv4, the IPv4 address and port number of the sender is sent as part of the
+   advertisement.
 */
 
 /* As defined below uses 64KB */
@@ -645,7 +643,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	}
 	struct sockaddr_in addr = *peerip;
 	addr.sin_family = AF_INET;
-	INFOF("HTTP CONNECT family=%u port=%u addr=%u.%u.%u.%u",
+	INFOF("RHIZOME HTTP REQUEST, CONNECT family=%u port=%u addr=%u.%u.%u.%u",
 	    addr.sin_family, ntohs(addr.sin_port),
 	    ((unsigned char*)&addr.sin_addr.s_addr)[0],
 	    ((unsigned char*)&addr.sin_addr.s_addr)[1],
@@ -668,8 +666,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	*manifest_kept = 1;
 	q->alarm.poll.fd=sock;
 	strncpy(q->fileid, m->fileHexHash, RHIZOME_FILEHASH_STRLEN + 1);
-	snprintf(q->request,1024,"GET /rhizome/file/%s HTTP/1.0\r\n\r\n", q->fileid);
-	q->request_len=strlen(q->request);
+	q->request_len = snprintf(q->request, sizeof q->request, "GET /rhizome/file/%s HTTP/1.0\r\n\r\n", q->fileid);
 	q->request_ofs=0;
 	q->state=RHIZOME_FETCH_CONNECTING;
 	q->file_len=-1;
@@ -698,6 +695,8 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	  return -1;
 	}
 	
+	INFOF("RHIZOME HTTP REQUEST, GET \"/rhizome/file/%s\"", q->fileid);
+
 	/* Watch for activity on the socket */
 	q->alarm.function=rhizome_fetch_poll;
 	fetch_stats.name="rhizome_fetch_poll";
