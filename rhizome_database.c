@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include "strbuf.h"
 #include <stdlib.h>
+#include <time.h>
 
 long long rhizome_space=0;
 static const char *rhizome_thisdatastore_path = NULL;
@@ -176,24 +177,57 @@ int rhizome_opendb()
  */
 int sqlite_prepare(sqlite3_stmt **statement, const strbuf stmt)
 {
-  return sqlite_prepare_loglevel(LOG_LEVEL_ERROR, statement, stmt);
+  return (*statement = sqlite_prepare_loglevel(LOG_LEVEL_ERROR, stmt)) ? 0 : -1;
 }
 
-int sqlite_prepare_loglevel(int log_level, sqlite3_stmt **statement, const strbuf stmt)
+sqlite3_stmt *sqlite_prepare_loglevel(int log_level, strbuf stmt)
 {
+  sqlite3_stmt *statement = NULL;
   if (strbuf_overrun(stmt))
-    return WHYF("Sql statement overrun: %s", strbuf_str(stmt));
+    return WHYFNULL("Sql statement overrun: %s", strbuf_str(stmt));
   if (!rhizome_db && rhizome_opendb() == -1)
-    return -1;
-  switch (sqlite3_prepare_v2(rhizome_db, strbuf_str(stmt), -1, statement, NULL)) {
+    return NULL;
+  switch (sqlite3_prepare_v2(rhizome_db, strbuf_str(stmt), -1, &statement, NULL)) {
     case SQLITE_OK: case SQLITE_DONE:
       break;
     default:
       LOGF(log_level, "%s in %s", sqlite3_errmsg(rhizome_db), strbuf_str(stmt));
-      sqlite3_finalize(*statement);
-      return -1;
+      sqlite3_finalize(statement);
+      return NULL;
   }
-  return 0;
+  return statement;
+}
+
+/*
+   Convenience wrapper for executing and finalizing a prepared SQL statement that returns a no
+   value.  If an error occurs then logs it at the given level and returns -1.  Otherwise returns
+   zero.
+ */
+int sqlite_exec_void_prepared_loglevel(int log_level, sqlite3_stmt *statement, int return_if_busy)
+{
+  int ret = 0;
+  int stepcode;
+  int rows = 0;
+  while ((stepcode = sqlite3_step(statement)) == SQLITE_ROW)
+    ++rows;
+  if (rows)
+    WARNF("void query unexpectedly returned %d row%s", rows, rows == 1 ? "" : "s");
+  switch (stepcode) {
+    case SQLITE_OK:
+    case SQLITE_DONE:
+    case SQLITE_ROW:
+      break;
+    case SQLITE_BUSY:
+      if (return_if_busy)
+	return 1;
+      // fall through...
+    default:
+      ret = -1;
+      LOGF(log_level, "%s in %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));
+      break;
+  }
+  sqlite3_finalize(statement);
+  return ret;
 }
 
 /*
@@ -204,45 +238,68 @@ int sqlite_exec_void(const char *sqlformat, ...)
 {
   strbuf stmt = strbuf_alloca(8192);
   strbuf_va_printf(stmt, sqlformat);
-  return sqlite_exec_void_strbuf_loglevel(LOG_LEVEL_ERROR, stmt);
+  return sqlite_exec_void_prepared_loglevel(LOG_LEVEL_ERROR, sqlite_prepare_loglevel(LOG_LEVEL_ERROR, stmt), 0);
 }
 
 int sqlite_exec_void_loglevel(int log_level, const char *sqlformat, ...)
 {
   strbuf stmt = strbuf_alloca(8192);
   strbuf_va_printf(stmt, sqlformat);
-  return sqlite_exec_void_strbuf_loglevel(log_level, stmt);
+  return sqlite_exec_void_prepared_loglevel(log_level, sqlite_prepare_loglevel(log_level, stmt), 0);
 }
 
 /*
-   Convenience wrapper for executing an SQL command that returns a no value.
-   If an error occurs then logs it at the given level and returns -1.  Otherwise returns zero.
+   Same as sqlite_exec_void() but if the statement cannot be executed because the database is locked
+   for updates, then will retry for at most the given number of milliseconds 'timeout_ms', sleeping
+   'sleep_ms' between tries (if sleep_ms == 0 then uses a default of 250ms).
+   Returns -1 on error (logged as error), returns 0 on success, returns 1 if the database is still
+   locked after all retries (logged as error).
+   @author Andrew Bettison <andrew@servalproject.com>
  */
-int sqlite_exec_void_strbuf_loglevel(int log_level, const strbuf stmt)
+int sqlite_exec_void_retry(int timeout_ms, int sleep_ms, const char *sqlformat, ...)
 {
-  sqlite3_stmt *statement;
-  int ret = sqlite_prepare_loglevel(log_level, &statement, stmt);
-  if (ret != -1) {
-    int stepcode;
-    int rows = 0;
-    while ((stepcode = sqlite3_step(statement)) == SQLITE_ROW)
-      ++rows;
-    if (rows) WARNF("void query unexpectedly returned %d row%s", rows, rows == 1 ? "" : "s");
-    switch (stepcode) {
-      case SQLITE_OK:
-      case SQLITE_DONE:
-      case SQLITE_ROW:
-	ret = 0;
-	break;
-      default:
-	ret = -1;
-	LOGF(log_level, "%s in %s", sqlite3_errmsg(rhizome_db), strbuf_str(stmt));
-	break;
+  strbuf stmt = strbuf_alloca(8192);
+  strbuf_va_printf(stmt, sqlformat);
+  sqlite3_stmt *statement = sqlite_prepare_loglevel(LOG_LEVEL_ERROR, stmt);
+  if (!statement)
+    return -1;
+  int ret;
+  if (sleep_ms <= 0)
+    sleep_ms = 250;
+  unsigned tries = 1;
+  time_ms_t start = gettime_ms();
+  while ((ret = sqlite_exec_void_prepared_loglevel(LOG_LEVEL_SILENT, statement, 1)) == 1) {
+    time_ms_t now = gettime_ms();
+    if (now >= start + timeout_ms) {
+      WHYF("timed out after %u %s in %.3f seconds, %s in %s",
+	  tries, tries == 1 ? "try" : "tries",
+	  (now - start) / 1e3,
+	  sqlite3_errmsg(rhizome_db),
+	  sqlite3_sql(statement)
+	);
+      sqlite3_finalize(statement);
+      break;
     }
-    sqlite3_finalize(statement);
+    INFOF("database locked on try %u after %.3f seconds: %s",
+	tries, (now - start) / 1e3, sqlite3_sql(statement)
+      );
+    struct timespec delay;
+    delay.tv_sec = sleep_ms / 1000;
+    delay.tv_nsec = (sleep_ms % 1000) * 1000000;
+    nanosleep(&delay, NULL);
+    ++tries;
+  }
+  if (tries > 1) {
+    time_ms_t now = gettime_ms();
+    INFOF("succeeded after %u %s in %.3f seconds: %s",
+	tries, tries == 1 ? "try" : "tries",
+	(now - start) / 1e3,
+	sqlite3_sql(statement)
+      );
   }
   return ret;
 }
+
 
 /*
    Convenience wrapper for executing an SQL command that returns a single int64 value.
@@ -963,8 +1020,8 @@ int rhizome_update_file_priority(const char *fileid)
 	"   AND groupmemberships.groupid=grouplist.id;",
 	fileid) == -1)
     return -1;
-  if (highestPriority >= 0)
-    return sqlite_exec_void("UPDATE files set highestPriority=%lld WHERE id='%s';", highestPriority, fileid);
+  if (highestPriority >= 0 && sqlite_exec_void_retry(1000, 100, "UPDATE files set highestPriority=%lld WHERE id='%s';", highestPriority, fileid) != 0)
+    WHYF("cannot update priority for fileid=%s", fileid);
   return 0;
 }
 

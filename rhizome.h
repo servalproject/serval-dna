@@ -207,10 +207,10 @@ void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCoun
 int rhizome_find_privatekey(rhizome_manifest *m);
 rhizome_signature *rhizome_sign_hash(rhizome_manifest *m, const unsigned char *authorSid);
 int sqlite_prepare(sqlite3_stmt **statement, const strbuf stmt);
-int sqlite_prepare_loglevel(int log_level, sqlite3_stmt **statement, const strbuf stmt);
+sqlite3_stmt *sqlite_prepare_loglevel(int log_level, strbuf stmt);
 int sqlite_exec_void(const char *sqlformat,...);
 int sqlite_exec_void_loglevel(int log_level, const char *sqlformat, ...);
-int sqlite_exec_void_strbuf_loglevel(int log_level, const strbuf stmt);
+int sqlite_exec_void_prepared_loglevel(int log_level, sqlite3_stmt *statement, int return_if_busy);
 int sqlite_exec_int64(long long *result, const char *sqlformat,...);
 int sqlite_exec_strbuf(strbuf sb, const char *sqlformat,...);
 double rhizome_manifest_get_double(rhizome_manifest *m,char *var,double default_value);
