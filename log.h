@@ -93,7 +93,8 @@ void set_log_implementation(void (*log_function)(int level, struct strbuf *buf))
 
 #define WHYF(F,...)         (LOGF(LOG_LEVEL_ERROR, F, ##__VA_ARGS__), -1)
 #define WHY(X)              WHYF("%s", (X))
-#define WHYNULL(X)          (LOGF(LOG_LEVEL_ERROR, "%s", X), NULL)
+#define WHYFNULL(F,...)     (LOGF(LOG_LEVEL_ERROR, F, ##__VA_ARGS__), NULL)
+#define WHYNULL(X)          (WHYFNULL("%s", (X)))
 #define WHYF_perror(F,...)  WHYF(F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno)
 #define WHY_perror(X)       WHYF("%s: %s [errno=%d]", (X), strerror(errno), errno)
 
