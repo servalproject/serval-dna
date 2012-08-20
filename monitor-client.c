@@ -112,7 +112,7 @@ int monitor_client_open(struct monitor_state **res)
   }
   
   *res = (struct monitor_state*)malloc(sizeof(struct monitor_state));
-  memset(*res,sizeof(struct monitor_state),0);
+  memset(*res,0,sizeof(struct monitor_state));
   return fd;
 }
 
@@ -170,11 +170,14 @@ int monitor_client_read(int fd, struct monitor_state *res, struct monitor_comman
   int bytesRead=read(fd, res->buffer + oldOffset, MONITOR_CLIENT_BUFFER_SIZE - oldOffset);
   if (bytesRead<1){
     switch(errno) {
-      case EINTR:
       case ENOTRECOVERABLE:
 	/* transient errors */
 	WHY_perror("read");
+      case EINTR:
       case EAGAIN:
+#if defined(EWOULDBLOCK) && EWOULDBLOCK != EAGAIN
+      case EWOULDBLOCK: 
+#endif
 	return 0;
     }
     WHY_perror("read");
