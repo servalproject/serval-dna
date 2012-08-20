@@ -74,7 +74,7 @@ int monitor_socket_name(struct sockaddr_un *name){
    hanging around. */
   name->sun_path[0] = '\0';
   /* XXX: 104 comes from OSX sys/un.h - no #define (note Linux has UNIX_PATH_MAX and it's 108(!)) */
-  snprintf(&name->sun_path[1],104-2,
+  snprintf(&name->sun_path[1],104-2,"%s",
 	   confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME));
   /* Doesn't include trailing nul */
   len = 1+strlen(&name->sun_path[1]) + sizeof(name->sun_family);
