@@ -1047,6 +1047,7 @@ _tfw_assert_grep() {
       local matches=$(( $(grep --regexp="$pattern" "$file" | wc -l) + 0 ))
       local done=false
       local ret=0
+      local info="$matches match"$([ $matches -ne 1 ] && echo "es")
       local oo
       _tfw_shopt oo -s extglob
       case "$_tfw_opt_matches" in
@@ -1056,7 +1057,7 @@ _tfw_assert_grep() {
          if [ $matches -ne 0 ]; then
             tfw_log "# assert $message"
          else
-            _tfw_failmsg "assertion failed: $message"
+            _tfw_failmsg "assertion failed ($info): $message"
             ret=1
          fi
          ;;
@@ -1069,7 +1070,7 @@ _tfw_assert_grep() {
          if [ $matches -eq $_tfw_opt_matches ]; then
             tfw_log "# assert $message"
          else
-            _tfw_failmsg "assertion failed: $message"
+            _tfw_failmsg "assertion failed ($info): $message"
             ret=1
          fi
          ;;
@@ -1083,7 +1084,7 @@ _tfw_assert_grep() {
          if [ $matches -ge $bound ]; then
             tfw_log "# assert $message"
          else
-            _tfw_failmsg "assertion failed: $message"
+            _tfw_failmsg "assertion failed ($info): $message"
             ret=1
          fi
          ;;
@@ -1097,7 +1098,7 @@ _tfw_assert_grep() {
          if [ $matches -le $bound ]; then
             tfw_log "# assert $message"
          else
-            _tfw_failmsg "assertion failed: $message"
+            _tfw_failmsg "assertion failed ($info): $message"
             ret=1
          fi
          ;;
