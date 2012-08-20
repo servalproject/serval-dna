@@ -105,6 +105,7 @@ _tfw_shopt_restore() {
 }
 
 declare -a _tfw_running_jobs
+declare -a _tfw_job_pgids
 
 # The rest of this file is parsed for extended glob patterns.
 _tfw_shopt _tfw_orig_shopt -s extglob
@@ -171,6 +172,7 @@ runTests() {
    _tfw_errorcount=0
    _tfw_fatalcount=0
    _tfw_running_jobs=()
+   _tfw_job_pgids=()
    _tfw_test_number_watermark=0
    local testNumber
    local testPosition=0
@@ -256,6 +258,7 @@ runTests() {
       ) </dev/null &
       local job=$(jobs %% | sed -n -e '1s/^\[\([0-9]\+\)\].*/\1/p')
       _tfw_running_jobs+=($job)
+      _tfw_job_pgids[$job]=$(jobs -p %%)
       ln -f -s "$_tfw_results_dir/$testName" "$_tfw_results_dir/job-$job"
    done
    # Wait for all child processes to finish.
@@ -280,7 +283,7 @@ _tfw_killtests() {
    trap '' SIGHUP SIGINT SIGTERM
    local job
    for job in ${_tfw_running_jobs[*]}; do
-      kill %$job 2>/dev/null
+      kill -TERM %$job 2>/dev/null
    done
    while [ ${#_tfw_running_jobs[*]} -ne 0 ]; do
       _tfw_harvest_processes
@@ -297,7 +300,7 @@ _tfw_harvest_processes() {
    # <incantation>
    # This is the only way known to get the effect of a 'wait' builtin that will
    # return when _any_ child dies or after a one-second timeout.
-   trap 'kill $spid 2>/dev/null' SIGCHLD
+   trap 'kill -TERM $spid 2>/dev/null' SIGCHLD
    sleep 1 &
    spid=$!
    set -m
@@ -309,7 +312,13 @@ _tfw_harvest_processes() {
    for job in ${_tfw_running_jobs[*]}; do
       if jobs %$job >/dev/null 2>/dev/null; then
          surviving_jobs+=($job)
-      elif [ -s "$_tfw_results_dir/job-$job" ]; then
+         continue
+      fi
+      # Kill any residual processes from the test case.
+      local pgid=${_tfw_job_pgids[$job]}
+      [ -n "$pgid" ] && kill -TERM -$pgid 2>/dev/null
+      # Report the test script outcome.
+      if [ -s "$_tfw_results_dir/job-$job" ]; then
          set -- $(<"$_tfw_results_dir/job-$job")
          local testPosition="$1"
          local testNumber="$2"
@@ -350,11 +359,10 @@ _tfw_harvest_processes() {
             _tfw_echo_result "$result"
             echo
          fi
-         rm -f "$_tfw_results_dir/job-$job"
       else
          _tfw_echoerr "${BASH_SOURCE[1]}: job %$job terminated without result"
-         rm -f "$_tfw_results_dir/job-$job"
       fi
+      rm -f "$_tfw_results_dir/job-$job"
    done
    _tfw_running_jobs=(${surviving_jobs[*]})
 }
