@@ -30,6 +30,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <limits.h>
 #ifdef HAVE_JNI_H
 #include <jni.h>
 #endif
@@ -48,10 +49,6 @@ int cli_usage() {
   }
   return 0;
 }
-
-/* Remember the name by which this program was invoked.
-*/
-const char *exec_argv0 = NULL;
 
 /* Data structures for accumulating output of a single JNI call.
 */
@@ -191,7 +188,6 @@ int parseCommandLine(const char *argv0, int argc, const char *const *args)
   int cli_call=-1;
   fd_clearstats();
   IN();
-  exec_argv0 = argv0;
   int i;
   for(i=0;command_line_options[i].function;i++)
     {
@@ -583,6 +579,7 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
   }
 #endif
   const char *execpath, *instancepath;
+  char *tmp;
   int foregroundP = (argc >= 2 && !strcasecmp(argv[1], "foreground"));
   if (cli_arg(argc, argv, o, "instance path", &instancepath, cli_absolute_path, NULL) == -1
    || cli_arg(argc, argv, o, "exec path", &execpath, cli_absolute_path, NULL) == -1)
@@ -595,8 +592,15 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
     if (jni_env)
       return WHY("Must supply <exec path> argument when invoked via JNI");
 #endif
-    execpath = exec_argv0;
+    if ((tmp = malloc(PATH_MAX)) == NULL)
+	return WHY("Unable to allocate memory for execpath");
+
+  if (get_self_executable_path(tmp, PATH_MAX) == -1)
+    return WHY("unable to determine own executable name");
+
+  execpath = tmp;
   }
+
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
     return -1;
