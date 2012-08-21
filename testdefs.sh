@@ -66,7 +66,7 @@ setup_servald() {
       error "servald executable not present: $servald"
       return 1
    fi
-   ln -f -s "$servald_build_executable" $servald
+   cp -f "$servald_build_executable" $servald
    unset SERVALD_OUTPUT_DELIMITER
    unset SERVALD_SERVER_START_DELAY
    unset SERVALD_LOG_FILE
