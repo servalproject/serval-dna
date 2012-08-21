@@ -451,7 +451,7 @@ int monitor_call_status(struct vomp_call_state *call)
   return 0;
 }
 
-int monitor_send_audio(struct vomp_call_state *call, int audio_codec, unsigned int start_time, unsigned int end_time, const unsigned char *audio, int audio_length)
+int monitor_send_audio(struct vomp_call_state *call, int audio_codec, unsigned int start_time, unsigned int end_time, const unsigned char *audio, int audio_length, int sequence)
 {
   if (0) DEBUGF("Tell call monitor about audio for call %06x:%06x",
 		call->local.session,call->remote.session);
@@ -462,10 +462,11 @@ int monitor_send_audio(struct vomp_call_state *call, int audio_codec, unsigned i
    Put newline at start of these so that receiving data in command
    mode doesn't confuse the parser.  */
   int msglen = snprintf(msg, 1024,
-			"\n*%d:AUDIOPACKET:%x:%d:%d:%d\n",
+			"\n*%d:AUDIOPACKET:%x:%d:%d:%d:%d\n",
 			sample_bytes,
 			call->local.session,
-			audio_codec, start_time, end_time);
+			audio_codec, start_time, end_time,
+			sequence);
   
   bcopy(audio, &msg[msglen], sample_bytes);
   msglen+=sample_bytes;
@@ -583,6 +584,8 @@ int vomp_process_audio(struct vomp_call_state *call,unsigned int sender_duration
   if (debug & DEBUG_VOMP)
     DEBUGF("Jitter %d, %lld", sender_duration - e, (long long)((gettime_ms() - call->create_time) - e));
   
+  int sequence = call->remote.sequence;
+  
   while(ofs<mdp->in.payload_length)
     {
       int codec=mdp->in.payload[ofs];
@@ -599,11 +602,12 @@ int vomp_process_audio(struct vomp_call_state *call,unsigned int sender_duration
 	if (monitor_socket_count)
 	  monitor_send_audio(call, codec, s, e,
 			     &mdp->in.payload[ofs+1],
-			     vomp_sample_size(codec)
-			     );
+			     vomp_sample_size(codec),
+			     sequence);
       }
       ofs+=1+vomp_sample_size(codec);
       e=s-1;
+      sequence--;
     }
   return 0;
 }
@@ -786,6 +790,8 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	DEBUG("recvr_session==0, created call");
       
       recvr_state = call->local.state;
+      call->remote.sequence=sender_seq;
+	    
       
       // TODO ignore state changes if sequence is stale?
       // TODO ignore state changes that seem to go backwards?
@@ -914,8 +920,6 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	WHYF("Ignoring invalid call state %d.%d",sender_state,recvr_state);
 	return 0;
       }
-      
-      call->remote.sequence=sender_seq;
       
       vomp_update_remote_state(call, sender_state);
       vomp_update_local_state(call, recvr_state);
