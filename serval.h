@@ -549,6 +549,7 @@ int respondSimple(keyring_identity *id,
 		  unsigned char *transaction_id,int recvttl,
 		  struct sockaddr *recvaddr,int cryptoFlags);
 time_ms_t gettime_ms();
+time_ms_t sleep_ms(time_ms_t milliseconds);
 int server_pid();
 void server_save_argv(int argc, const char *const *argv);
 int server(char *backing_file);

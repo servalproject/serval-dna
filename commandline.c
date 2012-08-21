@@ -700,7 +700,6 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
   int			pid, tries, running;
   const char		*instancepath;
   time_ms_t		timeout;
-  struct timespec 	delay;
 
   if (cli_arg(argc, argv, o, "instance path", &instancepath, cli_absolute_path, NULL) == -1)
     return WHY("Unable to determine instance path");
@@ -750,11 +749,9 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
     }
     /* Allow a few seconds for the process to die. */
     timeout = gettime_ms() + 2000;
-    do {
-      delay.tv_sec = 0;
-      delay.tv_nsec = 200000000; // 200 ms = 5 Hz
-      nanosleep(&delay, NULL);
-    } while ((running = server_pid()) == pid && gettime_ms() < timeout);
+    do
+      sleep_ms(200); // 5 Hz
+    while ((running = server_pid()) == pid && gettime_ms() < timeout);
   }
   server_remove_stopfile();
   cli_puts("tries");

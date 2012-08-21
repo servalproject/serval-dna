@@ -123,6 +123,20 @@ time_ms_t gettime_ms()
   return nowtv.tv_sec * 1000LL + nowtv.tv_usec / 1000;
 }
 
+// Returns sleep time remaining.
+time_ms_t sleep_ms(time_ms_t milliseconds)
+{
+  if (milliseconds <= 0)
+    return 0;
+  struct timespec delay;
+  struct timespec remain;
+  delay.tv_sec = milliseconds / 1000;
+  delay.tv_nsec = (milliseconds % 1000) * 1000000;
+  if (nanosleep(&delay, &remain) == -1 && errno != EINTR)
+    FATALF_perror("nanosleep(tv_sec=%ld, tv_nsec=%ld)", delay.tv_sec, delay.tv_nsec);
+  return remain.tv_sec * 1000 + remain.tv_nsec / 1000000;
+}
+
 /** Return the PID of the currently running server process, return 0 if there is none.
  */
 int server_pid()
@@ -168,15 +182,8 @@ int server(char *backing_file)
      process, for example to check that the start/stop logic is robust.
    */
   const char *delay = getenv("SERVALD_SERVER_START_DELAY");
-  if (delay) {
-    long ms = atoi(delay);
-    if (ms > 0) {
-      struct timespec ts;
-      ts.tv_sec = ms / 1000;
-      ts.tv_nsec = (ms % 1000) * 1000000;
-      nanosleep(&ts, NULL);
-    }
-  }
+  if (delay)
+    sleep_ms(atoi(delay));
 
   serverMode = 1;
   serverRespawnOnCrash = confValueGetBoolean("server.respawn_on_crash", 0);

@@ -251,12 +251,12 @@ int sqlite_exec_void_loglevel(int log_level, const char *sqlformat, ...)
 /*
    Same as sqlite_exec_void() but if the statement cannot be executed because the database is locked
    for updates, then will retry for at most the given number of milliseconds 'timeout_ms', sleeping
-   'sleep_ms' between tries (if sleep_ms == 0 then uses a default of 250ms).
+   'sleeptime_ms' between tries (if sleeptime_ms == 0 then uses a default of 250ms).
    Returns -1 on error (logged as error), returns 0 on success, returns 1 if the database is still
    locked after all retries (logged as error).
    @author Andrew Bettison <andrew@servalproject.com>
  */
-int sqlite_exec_void_retry(int timeout_ms, int sleep_ms, const char *sqlformat, ...)
+int sqlite_exec_void_retry(int timeout_ms, int sleeptime_ms, const char *sqlformat, ...)
 {
   strbuf stmt = strbuf_alloca(8192);
   strbuf_va_printf(stmt, sqlformat);
@@ -264,8 +264,8 @@ int sqlite_exec_void_retry(int timeout_ms, int sleep_ms, const char *sqlformat, 
   if (!statement)
     return -1;
   int ret;
-  if (sleep_ms <= 0)
-    sleep_ms = 250;
+  if (sleeptime_ms <= 0)
+    sleeptime_ms = 250;
   unsigned tries = 1;
   time_ms_t start = gettime_ms();
   while ((ret = sqlite_exec_void_prepared_loglevel(LOG_LEVEL_SILENT, statement, 1)) == 1) {
@@ -283,10 +283,7 @@ int sqlite_exec_void_retry(int timeout_ms, int sleep_ms, const char *sqlformat, 
     INFOF("database locked on try %u after %.3f seconds: %s",
 	tries, (now - start) / 1e3, sqlite3_sql(statement)
       );
-    struct timespec delay;
-    delay.tv_sec = sleep_ms / 1000;
-    delay.tv_nsec = (sleep_ms % 1000) * 1000000;
-    nanosleep(&delay, NULL);
+    sleep_ms(sleeptime_ms);
     ++tries;
   }
   if (tries > 1) {
