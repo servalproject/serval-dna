@@ -89,7 +89,8 @@ void set_log_implementation(void (*log_function)(int level, struct strbuf *buf))
 
 #define FATALF(F,...)       do { LOGF(LOG_LEVEL_FATAL, F, ##__VA_ARGS__); exit(-1); } while (1)
 #define FATAL(X)            FATALF("%s", (X))
-#define FATAL_perror(X)     FATALF("%s: %s [errno=%d]", (X), strerror(errno), errno)
+#define FATALF_perror(F,...) FATALF(F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno)
+#define FATAL_perror(X)     FATALF_perror("%s", (X))
 
 #define WHYF(F,...)         (LOGF(LOG_LEVEL_ERROR, F, ##__VA_ARGS__), -1)
 #define WHY(X)              WHYF("%s", (X))
