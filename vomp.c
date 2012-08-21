@@ -356,7 +356,6 @@ int vomp_send_status_remote(struct vomp_call_state *call)
 	p[(*len)++]=sb[rotor].codec;
 	bcopy(&sb[rotor].bytes[0],&p[*len],sb[rotor].len);
 	(*len)+=sb[rotor].len;
-	sb[rotor].len=0;
 	
 	rotor--; if (rotor<0) rotor+=VOMP_MAX_RECENT_SAMPLES;
 	rotor%=VOMP_MAX_RECENT_SAMPLES;
@@ -392,7 +391,7 @@ int vomp_received_audio(struct vomp_call_state *call, int audio_codec, const uns
     
     int rotor=call->recent_sample_rotor%VOMP_MAX_RECENT_SAMPLES;
     
-    if (sb[rotor].len==0){
+    if (sb[rotor].len==0 || call->audio_clock!=sb[rotor].endtime+1){
       /*
        What timestamp to attach to the sample?
        Two obvious choices:
@@ -412,8 +411,9 @@ int vomp_received_audio(struct vomp_call_state *call, int audio_codec, const uns
        */
       
       sb[rotor].codec=audio_codec;
-      sb[rotor].endtime=call->audio_clock+vomp_codec_timespan(sb[rotor].codec)-1;
+      sb[rotor].len=0;
       sb[rotor].starttime=call->audio_clock;
+      sb[rotor].endtime=call->audio_clock+vomp_codec_timespan(sb[rotor].codec)-1;
       call->audio_clock=sb[rotor].endtime+1;
     }else if(sb[rotor].codec!=audio_codec){
       WHY("Did not finish previous audio buffer!!");
