@@ -26,7 +26,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 long long rhizome_space=0;
 static const char *rhizome_thisdatastore_path = NULL;
 
-#define SQLITE_CODE_OK(code) (code==SQLITE_OK || code==SQLITE_DONE)
+#define SQLITE_CODE_OK(code)	((code) == SQLITE_OK || (code) == SQLITE_DONE)
+#define SQLITE_CODE_BUSY(code)	((code) == SQLITE_BUSY || (code) == SQLITE_LOCKED)
 
 const char *rhizome_datastore_path()
 {
@@ -170,6 +171,83 @@ int rhizome_opendb()
   RETURN(0);
 }
 
+/* SQL query retry logic.
+
+   The common retry-on-busy logic is factored into this function.  This logic encapsulates the
+   maximum time (timeout) that the caller may wait for a lock to be released and the sleep interval
+   while waiting.  The way to use it is this:
+
+      sqlite_retry_state retry = SQLITE_RETRY_STATE_INIT;
+      do ret = some_sqlite_operation(...);
+        while (is_busy(ret) && sqlite_retry(&retry, "some_sqlite_operation"));
+      if (is_error(ret) || is_busy(ret))
+	return -1; // an error has already been logged
+      sqlite_retry_done(&retry, "some_sqlite_operation");
+      ...
+
+   If the database is currently locked for updates, then some_sqlite_operation() will return a code
+   indicating busy (which is distinguishable from the codes for success or any other error).
+   sqlite_retry() will then log a DEBUG or INFO message, sleep for a short period and return true if
+   the timeout has not been reached.  It keeps this information in the 'retry' variable, which must
+   be initialised as shown.  As long as the timeout has not been reached, sqlite_retry() will keep
+   sleeping and returning true.  If the timeout is reached, then sqlite_retry() will log an error
+   and return false.  If the operation is successful, sqlite_retry_done() must be called to log the
+   success as a DEBUG or INFO message to provide closure to the prior messages already logged by
+   sqlite_retry() and to reset the 'retry' variable for re-use.
+
+   The timeout and sleep interval depend on whether the caller is the servald server process or not.
+   If invoked by the server process then the timeout is 30ms, and the interval is 10ms, in order to
+   avoid introducing latency into server responses.  Otherwise the timeout is one second or longer,
+   and the sleep interval 100 ms.
+
+   A single 'retry' variable may be initialised once then used for a succession of database
+   operations.  If invoked by the server process, then the timeout timer will not be reset by
+   sqlite_retry() or sqlite_retry_done(), so that the timeout limit will apply to the cumulative
+   latency, not just to each individual query, which could potentially add up to much greater
+   latency than desired.  However, in non-server processes, each query may be allowed its own
+   timeout, giving a greater chance of success at the expense of potentially greater latency.
+ */
+
+static int sqlite_retry(sqlite_retry_state *retry, const char *action)
+{
+  int timeout_ms = serverMode ? 30 : 1000;
+  int sleeptime_ms = serverMode ? 10 : 100;
+  time_ms_t now = gettime_ms();
+  ++retry->tries;
+  if (retry->start == -1)
+    retry->start = now;
+  else if (now >= retry->start + timeout_ms) {
+    WHYF("timed out after %u %s in %.3f seconds, %s: %s",
+	retry->tries, retry->tries == 1 ? "try" : "tries",
+	(now - retry->start) / 1e3,
+	sqlite3_errmsg(rhizome_db),
+	action
+      );
+    retry->tries = 0;
+    if (!serverMode)
+      retry->start = -1;
+    return 0; // tell caller to stop trying
+  }
+  INFOF("database locked on try %u after %.3f seconds: %s", retry->tries, (now - retry->start) / 1e3, action);
+  sleep_ms(sleeptime_ms);
+  return 1; // tell caller to try again
+}
+
+static void sqlite_retry_done(sqlite_retry_state *retry, const char *action)
+{
+  if (retry->tries > 1) {
+    time_ms_t now = gettime_ms();
+    INFOF("succeeded after %u %s in %.3f seconds: %s",
+	retry->tries, retry->tries == 1 ? "try" : "tries",
+	(now - retry->start) / 1e3,
+	action
+      );
+  }
+  retry->tries = 0;
+  if (!serverMode)
+    retry->start = -1;
+}
+
 /*
    Convenience wrapper for preparing an SQL command.
    Returns -1 if an error occurs (logged as an error), otherwise zero with the prepared
@@ -199,120 +277,105 @@ sqlite3_stmt *sqlite_prepare_loglevel(int log_level, strbuf stmt)
 }
 
 /*
-   Convenience wrapper for executing and finalizing a prepared SQL statement that returns a no
-   value.  If an error occurs then logs it at the given level and returns -1.  Otherwise returns
-   zero.
+   Convenience wrapper for executing a prepared SQL statement that returns no value.  If an error
+   occurs then logs it at the given level and returns -1.  If 'retry' is non-NULL and the BUSY error
+   occurs (indicating the database is locked, ie, currently in use by another process), then resets
+   the statement and retries while sqlite_retry() returns true.  If sqlite_retry() returns false
+   then returns -1.  Otherwise returns zero.  Always finalises the statement before returning.
  */
-int sqlite_exec_void_prepared_loglevel(int log_level, sqlite3_stmt *statement, int return_if_busy)
+static int sqlite_exec_void_prepared(int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement)
 {
+  if (!statement)
+    return -1;
   int ret = 0;
-  int stepcode;
   int rows = 0;
-  while ((stepcode = sqlite3_step(statement)) == SQLITE_ROW)
-    ++rows;
+  while (1) {
+    int stepcode;
+    while ((stepcode = sqlite3_step(statement)) == SQLITE_ROW)
+      ++rows;
+    switch (stepcode) {
+      case SQLITE_OK:
+      case SQLITE_DONE:
+      case SQLITE_ROW:
+	if (retry)
+	  sqlite_retry_done(retry, sqlite3_sql(statement));
+	break;
+      case SQLITE_BUSY:
+      case SQLITE_LOCKED:
+	if (retry && sqlite_retry(retry, sqlite3_sql(statement))) {
+	  sqlite3_reset(statement);
+	  continue; // back to sqlite3_step()
+	}
+	// fall through...
+      default:
+	LOGF(log_level, "%s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));
+	ret = -1;
+	break;
+    }
+    break;
+  }
   if (rows)
     WARNF("void query unexpectedly returned %d row%s", rows, rows == 1 ? "" : "s");
-  switch (stepcode) {
-    case SQLITE_OK:
-    case SQLITE_DONE:
-    case SQLITE_ROW:
-      break;
-    case SQLITE_BUSY:
-      if (return_if_busy)
-	return 1;
-      // fall through...
-    default:
-      ret = -1;
-      LOGF(log_level, "%s in %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));
-      break;
-  }
   sqlite3_finalize(statement);
   return ret;
 }
 
-/*
-   Convenience wrapper for executing an SQL command that returns a no value.
-   If an error occurs then logs it at error level and returns -1.  Otherwise returns zero.
+static int sqlite_vexec_void(int log_level, sqlite_retry_state *retry, const char *sqlformat, va_list ap)
+{
+  strbuf stmt = strbuf_alloca(8192);
+  strbuf_vsprintf(stmt, sqlformat, ap);
+  return sqlite_exec_void_prepared(log_level, retry, sqlite_prepare_loglevel(log_level, stmt));
+}
+
+/* Convenience wrapper for executing an SQL command that returns no value.
+   If an error occurs then logs it at ERROR level and returns -1.  Otherwise returns zero.
+   @author Andrew Bettison <andrew@servalproject.com>
  */
 int sqlite_exec_void(const char *sqlformat, ...)
 {
-  strbuf stmt = strbuf_alloca(8192);
-  strbuf_va_printf(stmt, sqlformat);
-  return sqlite_exec_void_prepared_loglevel(LOG_LEVEL_ERROR, sqlite_prepare_loglevel(LOG_LEVEL_ERROR, stmt), 0);
-}
-
-int sqlite_exec_void_loglevel(int log_level, const char *sqlformat, ...)
-{
-  strbuf stmt = strbuf_alloca(8192);
-  strbuf_va_printf(stmt, sqlformat);
-  return sqlite_exec_void_prepared_loglevel(log_level, sqlite_prepare_loglevel(log_level, stmt), 0);
-}
-
-/*
-   Same as sqlite_exec_void() but if the statement cannot be executed because the database is locked
-   for updates, then will retry for at most the given number of milliseconds 'timeout_ms', sleeping
-   'sleeptime_ms' between tries (if sleeptime_ms == 0 then uses a default of 250ms).
-   Returns -1 on error (logged as error), returns 0 on success, returns 1 if the database is still
-   locked after all retries (logged as error).
-   @author Andrew Bettison <andrew@servalproject.com>
- */
-int sqlite_exec_void_retry(int timeout_ms, int sleeptime_ms, const char *sqlformat, ...)
-{
-  strbuf stmt = strbuf_alloca(8192);
-  strbuf_va_printf(stmt, sqlformat);
-  sqlite3_stmt *statement = sqlite_prepare_loglevel(LOG_LEVEL_ERROR, stmt);
-  if (!statement)
-    return -1;
-  int ret;
-  if (sleeptime_ms <= 0)
-    sleeptime_ms = 250;
-  unsigned tries = 1;
-  time_ms_t start = gettime_ms();
-  while ((ret = sqlite_exec_void_prepared_loglevel(LOG_LEVEL_SILENT, statement, 1)) == 1) {
-    time_ms_t now = gettime_ms();
-    if (now >= start + timeout_ms) {
-      WHYF("timed out after %u %s in %.3f seconds, %s in %s",
-	  tries, tries == 1 ? "try" : "tries",
-	  (now - start) / 1e3,
-	  sqlite3_errmsg(rhizome_db),
-	  sqlite3_sql(statement)
-	);
-      sqlite3_finalize(statement);
-      break;
-    }
-    INFOF("database locked on try %u after %.3f seconds: %s",
-	tries, (now - start) / 1e3, sqlite3_sql(statement)
-      );
-    sleep_ms(sleeptime_ms);
-    ++tries;
-  }
-  if (tries > 1) {
-    time_ms_t now = gettime_ms();
-    INFOF("succeeded after %u %s in %.3f seconds: %s",
-	tries, tries == 1 ? "try" : "tries",
-	(now - start) / 1e3,
-	sqlite3_sql(statement)
-      );
-  }
+  va_list ap;
+  va_start(ap, sqlformat);
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_INIT;
+  int ret = sqlite_vexec_void(LOG_LEVEL_ERROR, &retry, sqlformat, ap);
+  va_end(ap);
   return ret;
 }
 
-
-/*
-   Convenience wrapper for executing an SQL command that returns a single int64 value.
-   Returns -1 if an error occurs.
-   If no row is found, then returns 0 and does not alter *result.
-   If exactly one row is found, the assigns its value to *result and returns 1.
-   If more than one row is found, then assigns the value of the first row to *result and returns the
-   number of rows.
+/* Same as sqlite_exec_void(), but logs any error at the given level instead of ERROR.
+   @author Andrew Bettison <andrew@servalproject.com>
  */
-int sqlite_exec_int64(long long *result, const char *sqlformat,...)
+int sqlite_exec_void_loglevel(int log_level, const char *sqlformat, ...)
+{
+  va_list ap;
+  va_start(ap, sqlformat);
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_INIT;
+  int ret = sqlite_vexec_void(log_level, &retry, sqlformat, ap);
+  va_end(ap);
+  return ret;
+}
+
+/* Same as sqlite_exec_void() but if the statement cannot be executed because the database is
+   currently locked for updates, then will call sqlite_retry() on the supplied retry state variable
+   instead of its own, internal one.  If 'retry' is passed as NULL, then will not sleep and retry at
+   all in the event of a busy condition, but will log it as an error and return immediately.
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+int sqlite_exec_void_retry(sqlite_retry_state *retry, const char *sqlformat, ...)
+{
+  va_list ap;
+  va_start(ap, sqlformat);
+  int ret = sqlite_vexec_void(LOG_LEVEL_ERROR, retry, sqlformat, ap);
+  va_end(ap);
+  return ret;
+}
+
+static int sqlite_vexec_int64(sqlite_retry_state *retry, long long *result, const char *sqlformat, va_list ap)
 {
   strbuf stmt = strbuf_alloca(8192);
-  strbuf_va_printf(stmt, sqlformat);
-  sqlite3_stmt *statement;
+  strbuf_vsprintf(stmt, sqlformat, ap);
+  sqlite3_stmt *statement = NULL;
   int ret = sqlite_prepare(&statement, stmt);
-  if (ret != -1) {
+  while (ret != -1) {
     int rowcount = 0;
     int stepcode = sqlite3_step(statement);
     if (stepcode == SQLITE_ROW) {
@@ -328,20 +391,63 @@ int sqlite_exec_int64(long long *result, const char *sqlformat,...)
     }
     if (ret != -1) {
       switch (stepcode) {
-	case SQLITE_OK: case SQLITE_DONE:
+	case SQLITE_OK:
+	case SQLITE_DONE:
 	  ret = rowcount;
+	  sqlite_retry_done(retry, sqlite3_sql(statement));
 	  break;
+	case SQLITE_BUSY:
+	case SQLITE_LOCKED:
+	  if (rowcount == 0 && sqlite_retry(retry, sqlite3_sql(statement))) {
+	    sqlite3_reset(statement);
+	    continue; // back to first sqlite3_step()
+	  }
+	  // fall through...
 	default:
-	  ret = WHYF("%s in %s", sqlite3_errmsg(rhizome_db), strbuf_str(stmt));
+	  ret = WHYF("%s: %s", sqlite3_errmsg(rhizome_db), strbuf_str(stmt));
 	  break;
       }
     }
     sqlite3_finalize(statement);
+    break;
   }
   return ret;
 }
 
-/* 
+/*
+   Convenience wrapper for executing an SQL command that returns a single int64 value.
+   Returns -1 if an error occurs.
+   If no row is found, then returns 0 and does not alter *result.
+   If exactly one row is found, the assigns its value to *result and returns 1.
+   If more than one row is found, then assigns the value of the first row to *result and returns the
+   number of rows.
+ */
+int sqlite_exec_int64(long long *result, const char *sqlformat,...)
+{
+  va_list ap;
+  va_start(ap, sqlformat);
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_INIT;
+  int ret = sqlite_vexec_int64(&retry, result, sqlformat, ap);
+  va_end(ap);
+  return ret;
+}
+
+/* Same as sqlite_exec_int64() but if the statement cannot be executed because the database is
+   currently locked for updates, then will call sqlite_retry() on the supplied retry state variable
+   instead of its own, internal one.  If 'retry' is passed as NULL, then will not sleep and retry at
+   all in the event of a busy condition, but will log it as an error and return immediately.
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+int sqlite_exec_int64_retry(sqlite_retry_state *retry, long long *result, const char *sqlformat,...)
+{
+  va_list ap;
+  va_start(ap, sqlformat);
+  int ret = sqlite_vexec_int64(retry, result, sqlformat, ap);
+  va_end(ap);
+  return ret;
+}
+
+/*
    Convenience wrapper for executing an SQL command that returns a single text value.
    Returns -1 if an error occurs, otherwise the number of rows that were found:
     0 means no rows, nothing is appended to the strbuf
@@ -356,30 +462,43 @@ int sqlite_exec_strbuf(strbuf sb, const char *sqlformat,...)
   sqlite3_stmt *statement;
   int ret = sqlite_prepare(&statement, stmt);
   if (ret != -1) {
+    sqlite_retry_state retry = SQLITE_RETRY_STATE_INIT;
     int rowcount = 0;
-    int stepcode = sqlite3_step(statement);
-    if (stepcode == SQLITE_ROW) {
-      int n = sqlite3_column_count(statement);
-      if (n != 1)
-	ret = WHYF("Incorrect column count %d (should be 1): %s", n, strbuf_str(stmt));
-      else {
-	rowcount = 1;
-	strbuf_puts(sb, (const char *)sqlite3_column_text(statement, 0));
-	while ((stepcode = sqlite3_step(statement)) == SQLITE_ROW)
-	  ++rowcount;
+    while (1) {
+      int stepcode = sqlite3_step(statement);
+      if (stepcode == SQLITE_ROW) {
+	int n = sqlite3_column_count(statement);
+	if (n != 1)
+	  ret = WHYF("Incorrect column count %d (should be 1): %s", n, strbuf_str(stmt));
+	else {
+	  rowcount = 1;
+	  strbuf_puts(sb, (const char *)sqlite3_column_text(statement, 0));
+	  while ((stepcode = sqlite3_step(statement)) == SQLITE_ROW)
+	    ++rowcount;
+	}
       }
-    }
-    if (ret != -1) {
-      switch (stepcode) {
-	case SQLITE_OK: case SQLITE_DONE:
-	  ret = rowcount;
-	  break;
-	default:
-	  ret = -1;
-	  WHY(strbuf_str(stmt));
-	  WHY(sqlite3_errmsg(rhizome_db));
-	  break;
+      if (ret != -1) {
+	switch (stepcode) {
+	  case SQLITE_OK:
+	  case SQLITE_DONE:
+	    ret = rowcount;
+	    sqlite_retry_done(&retry, sqlite3_sql(statement));
+	    break;
+	  case SQLITE_BUSY:
+	  case SQLITE_LOCKED:
+	    if (rowcount == 0 && sqlite_retry(&retry, sqlite3_sql(statement))) {
+	      sqlite3_reset(statement);
+	      continue; // back to first sqlite3_step()
+	    }
+	    // fall through...
+	  default:
+	    ret = -1;
+	    WHY(strbuf_str(stmt));
+	    WHY(sqlite3_errmsg(rhizome_db));
+	    break;
+	}
       }
+      break;
     }
     sqlite3_finalize(statement);
   }
@@ -517,36 +636,34 @@ int rhizome_drop_stored_file(const char *id,int maximum_priority)
 }
 
 
-int sqlite3_exec_retry(sqlite3 *db,const char *sql,int (*callback)(void*,int,char**,char**),void *arg,char **errmsg){
+int sqlite3_exec_retry(sqlite3 *db,const char *sql,int (*callback)(void*,int,char**,char**),void *arg,char **errmsg)
+{
   int ret;
-  do{
-    ret = sqlite3_exec(db, sql, callback, arg, errmsg);
-  }while(ret==SQLITE_BUSY || ret==SQLITE_LOCKED);
+  do ret = sqlite3_exec(db, sql, callback, arg, errmsg);
+    while (SQLITE_CODE_BUSY(ret));
   if (!SQLITE_CODE_OK(ret))
     WHY(sql);
   return ret;
 }
 
-int sqlite3_prepare_v2_retry(sqlite3 *db, const char *zSql, int nByte, sqlite3_stmt **ppStmt, const char **pzTail){
+int sqlite3_prepare_v2_retry(sqlite3 *db, const char *zSql, int nByte, sqlite3_stmt **ppStmt, const char **pzTail)
+{
   int ret;
-  do{
-    ret = sqlite3_prepare_v2(db, zSql, nByte, ppStmt, pzTail);
-  }while(ret==SQLITE_BUSY || ret==SQLITE_LOCKED);
+  do ret = sqlite3_prepare_v2(db, zSql, nByte, ppStmt, pzTail);
+    while (SQLITE_CODE_BUSY(ret));
   if (!SQLITE_CODE_OK(ret))
     WHY(zSql);
   return ret;
 }
 
-int sqlite3_step_retry(sqlite3_stmt *stmt){
-  int ret;
-  while(1){
-    ret = sqlite3_step(stmt);
-    if (ret==SQLITE_BUSY || ret==SQLITE_LOCKED){
-      WHY("Database locked, retrying");
-      sqlite3_reset(stmt);
-    }else{
+int sqlite3_step_retry(sqlite3_stmt *stmt)
+{
+  while (1) {
+    int ret = sqlite3_step(stmt);
+    if (!SQLITE_CODE_BUSY(ret))
       return ret;
-    }
+    INFO("Database locked, retrying");
+    sqlite3_reset(stmt);
   }
 }
 
@@ -808,7 +925,6 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
 {
   const char *file=m->dataFileName;
   const char *hash=m->fileHexHash;
-  char hash_out[crypto_hash_sha512_BYTES*2+1];
   int priority=m->fileHighestPriority;
   if (m->payloadEncryption) 
     return WHY("Writing encrypted payloads not implemented");
@@ -850,9 +966,6 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
      int sqlite3_blob_write(sqlite3_blob *, const void *z, int n, int iOffset);
 */
   
-  char sqlcmd[1024];
-  const char *cmdtail;
-
   /* See if the file is already stored, and if so, don't bother storing it again */
   long long count = 0;
   if (sqlite_exec_int64(&count, "SELECT COUNT(*) FROM FILES WHERE id='%s' AND datavalid<>0;", hash) < 1) {
@@ -878,50 +991,28 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
 
   /* Okay, so there are no records that match, but we should delete any half-baked record (with datavalid=0) so that the insert below doesn't fail.
    Don't worry about the return result, since it might not delete any records. */
-  sqlite3_exec(rhizome_db,"DELETE FROM FILES WHERE datavalid=0;",NULL,NULL,NULL);
+  sqlite_exec_void("DELETE FROM FILES WHERE datavalid=0;");
 
-  snprintf(sqlcmd,1024,"INSERT OR REPLACE INTO FILES(id,data,length,highestpriority,datavalid,inserttime) VALUES('%s',?,%lld,%d,0,%lld);",
-	   hash,(long long)m->fileLength,priority,(long long)gettime_ms());
-  sqlite3_stmt *statement;
-  if (sqlite3_prepare_v2(rhizome_db,sqlcmd,strlen(sqlcmd)+1,&statement,&cmdtail) 
-      != SQLITE_OK)
-    {
-      WHY(sqlite3_errmsg(rhizome_db));   
-      sqlite3_finalize(statement);
-      close(fd);
-      return WHY("sqlite3_prepare_v2() failed");
-    }
-  
+  strbuf stmt = strbuf_alloca(8192);
+  strbuf_sprintf(stmt,
+      "INSERT OR REPLACE INTO FILES(id,data,length,highestpriority,datavalid,inserttime) VALUES('%s',?,%lld,%d,0,%lld);",
+      hash, (long long)m->fileLength, priority, (long long)gettime_ms()
+    );
+  sqlite3_stmt *statement = sqlite_prepare_loglevel(LOG_LEVEL_ERROR, stmt);
+  if (!statement)
+    goto insert_row_fail;
   /* Bind appropriate sized zero-filled blob to data field */
-  int dud=0;
-  int r;
-  if ((r=sqlite3_bind_zeroblob(statement,1,m->fileLength))!=SQLITE_OK)
-    {
-      dud++;
-      WHY(sqlite3_errmsg(rhizome_db));   
-      WHY("sqlite3_bind_zeroblob() failed");
-    }
-
+  if (sqlite3_bind_zeroblob(statement, 1, m->fileLength) != SQLITE_OK) {
+    WHYF("sqlite3_bind_zeroblob() failed: %s in %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));
+    sqlite3_finalize(statement);
+    goto insert_row_fail;
+  }
   /* Do actual insert, and abort if it fails */
-  if (!dud)
-    switch(sqlite3_step(statement)) {
-    case SQLITE_OK: case SQLITE_ROW: case SQLITE_DONE:
-      break;
-    default:
-      dud++;
-      WHY("sqlite3_step() failed");
-      WHY(sqlite3_errmsg(rhizome_db));   
-    }
-
-  if (sqlite3_finalize(statement)) dud++;
-  if (dud) {
-    if (sqlite3_finalize(statement)!=SQLITE_OK)
-      {
-	WHY(sqlite3_errmsg(rhizome_db));
-	WHY("sqlite3_finalize() failed");
-      }
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_INIT;
+  if (sqlite_exec_void_prepared(LOG_LEVEL_ERROR, &retry, statement) == -1) {
+insert_row_fail:
     close(fd);
-    return WHY("SQLite3 failed to insert row for file");
+    return WHYF("Failed to insert row for fileid=%s", hash);
   }
 
   /* Get rowid for inserted row, so that we can modify the blob */
@@ -929,23 +1020,19 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
   if (rowid<1) {
     WHY(sqlite3_errmsg(rhizome_db));
     close(fd);
-    return WHY("SQLite3 failed return rowid of inserted row");
+    return WHYF("Failed to get row ID of newly inserted row for fileid=%s", hash);
   }
-
   sqlite3_blob *blob;
-  if (sqlite3_blob_open(rhizome_db,"main","FILES","data",rowid,
-		    1 /* read/write */,
-			&blob) != SQLITE_OK)
-    {
-      WHY(sqlite3_errmsg(rhizome_db));
-      sqlite3_blob_close(blob);
-      close(fd);
-      return WHY("SQLite3 failed to open file blob for writing");
-    }
-
-  unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
-  bzero(nonce,crypto_stream_xsalsa20_NONCEBYTES);
-  unsigned char buffer[RHIZOME_CRYPT_PAGE_SIZE];  
+  int ret;
+  do ret = sqlite3_blob_open(rhizome_db, "main", "FILES", "data", rowid, 1 /* read/write */, &blob);
+  while (SQLITE_CODE_BUSY(ret) && sqlite_retry(&retry, "sqlite3_blob_open"));
+  if (ret != SQLITE_OK) {
+    WHY(sqlite3_errmsg(rhizome_db));
+    sqlite3_blob_close(blob);
+    close(fd);
+    return WHYF("Failed to open blob in newly inserted row for fileid=%s", hash);
+  }
+  sqlite_retry_done(&retry, "sqlite3_blob_open");
 
   /* Calculate hash of file as we go, so that we can report if
      the contents have changed during import.  This is also why we
@@ -954,48 +1041,61 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
      by a separate process.  This has already been shown to happen with
      Serval Maps, and it is also quite possible with MeshMS and other
      services. */
+  char hash_out[crypto_hash_sha512_BYTES*2+1];
   {
+    unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
+    unsigned char buffer[RHIZOME_CRYPT_PAGE_SIZE];
+    bzero(nonce, sizeof nonce);
     SHA512_CTX context;
     SHA512_Init(&context);
-
     long long i;
-    for(i=0;i<m->fileLength;i+=RHIZOME_CRYPT_PAGE_SIZE)
-      {
-	int n=RHIZOME_CRYPT_PAGE_SIZE;
-	if (i+n>m->fileLength) n=m->fileLength-i;
-	SHA512_Update(&context, &addr[i], n);
-	if (key) {
-	  /* calculate block nonce */
-	  int j; for(j=0;j<8;j++) nonce[i]=(i>>(j*8))&0xff;
-	  crypto_stream_xsalsa20_xor(&addr[i],&buffer[0],n,
-				     nonce,key);
-	  if (sqlite3_blob_write(blob,&buffer[0],n,i) !=SQLITE_OK) dud++;
-	}
-	else 
-	  if (sqlite3_blob_write(blob,&addr[i],n,i) !=SQLITE_OK) dud++;
+    for (i = 0; i < m->fileLength; i += RHIZOME_CRYPT_PAGE_SIZE) {
+      int n = RHIZOME_CRYPT_PAGE_SIZE;
+      if (i + n > m->fileLength)
+	n = m->fileLength - i;
+      const unsigned char *writeable = &addr[i];
+      SHA512_Update(&context, writeable, n);
+      if (key) {
+	/* calculate block nonce */
+	int j;
+	for (j=0;j<8;j++)
+	  nonce[i]=(i>>(j*8))&0xff;
+	crypto_stream_xsalsa20_xor(buffer, writeable, n, nonce, key);
+	writeable = buffer;
       }
+      do ret = sqlite3_blob_write(blob, writeable, n, i);
+	while (SQLITE_CODE_BUSY(ret) && sqlite_retry(&retry, "sqlite3_blob_write"));
+      if (ret != SQLITE_OK) {
+	WHY(sqlite3_errmsg(rhizome_db));
+	sqlite3_blob_close(blob);
+	close(fd);
+	return WHYF("Failed to write to blob in newly inserted row for fileid=%s", hash);
+      }
+      sqlite_retry_done(&retry, "sqlite3_blob_write");
+    }
      SHA512_End(&context, (char *)hash_out);
      str_toupper_inplace(hash_out);
   }
-  
-  if (sqlite3_blob_close(blob)!=SQLITE_OK) dud++;
-  
+  do ret = sqlite3_blob_close(blob);
+    while (SQLITE_CODE_BUSY(ret) && sqlite_retry(&retry, "sqlite3_blob_close"));
+  if (ret != SQLITE_OK) {
+    WHY(sqlite3_errmsg(rhizome_db));
+    close(fd);
+    return WHYF("Failed to close blob in newly inserted row for fileid=%s", hash);
+  }
+  sqlite_retry_done(&retry, "sqlite3_blob_close");
+
   close(fd);
 
-  if (strcasecmp(hash_out,hash))
-    {
-      WHYF("Computed hash = %s",hash_out);
-      return WHY("File hash does not match -- has file been modified while being stored?");
-    }
+  if (strcasecmp(hash_out, hash) != 0) {
+    return WHYF("File hash %s does not match computed hash %s -- has file been modified while being stored?",
+	hash_out, hash
+      );
+  }
 
   /* Mark file as up-to-date */
-  if (sqlite_exec_void("UPDATE FILES SET datavalid=1 WHERE id='%s';", hash))
+  if (sqlite_exec_void_retry(&retry, "UPDATE FILES SET datavalid=1 WHERE id='%s';", hash) != 0)
     return WHY("Failed to set datavalid");
-
-  if (dud) {
-      WHY(sqlite3_errmsg(rhizome_db));
-      return WHY("SQLite3 failed write all blob data");
-  }
 
   return 0;
 }
@@ -1010,14 +1110,15 @@ int rhizome_update_file_priority(const char *fileid)
 {
   /* work out the highest priority of any referrer */
   long long highestPriority = -1;
-  if (sqlite_exec_int64(&highestPriority,
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_INIT;
+  if (sqlite_exec_int64_retry(&retry, &highestPriority,
 	"SELECT max(grouplist.priority) FROM MANIFESTS,GROUPMEMBERSHIPS,GROUPLIST"
 	" where manifests.filehash='%s'"
 	"   AND groupmemberships.manifestid=manifests.id"
 	"   AND groupmemberships.groupid=grouplist.id;",
 	fileid) == -1)
     return -1;
-  if (highestPriority >= 0 && sqlite_exec_void_retry(1000, 100, "UPDATE files set highestPriority=%lld WHERE id='%s';", highestPriority, fileid) != 0)
+  if (highestPriority >= 0 && sqlite_exec_void_retry(&retry, "UPDATE files set highestPriority=%lld WHERE id='%s';", highestPriority, fileid) != 0)
     WHYF("cannot update priority for fileid=%s", fileid);
   return 0;
 }

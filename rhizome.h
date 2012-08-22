@@ -203,6 +203,14 @@ int rhizome_manifest_bind_file(rhizome_manifest *m_in,const char *filename,int e
 int rhizome_manifest_finalise(rhizome_manifest *m);
 int rhizome_add_manifest(rhizome_manifest *m_in,int ttl);
 
+typedef struct sqlite_retry_state {
+  time_ms_t start;
+  unsigned int tries;
+}
+    sqlite_retry_state;
+
+#define SQLITE_RETRY_STATE_INIT ((struct sqlite_retry_state){.start=-1,.tries=0})
+
 void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCount);
 int rhizome_find_privatekey(rhizome_manifest *m);
 rhizome_signature *rhizome_sign_hash(rhizome_manifest *m, const unsigned char *authorSid);
@@ -210,8 +218,9 @@ int sqlite_prepare(sqlite3_stmt **statement, const strbuf stmt);
 sqlite3_stmt *sqlite_prepare_loglevel(int log_level, strbuf stmt);
 int sqlite_exec_void(const char *sqlformat,...);
 int sqlite_exec_void_loglevel(int log_level, const char *sqlformat, ...);
-int sqlite_exec_void_prepared_loglevel(int log_level, sqlite3_stmt *statement, int return_if_busy);
+int sqlite_exec_void_retry(sqlite_retry_state *retry, const char *sqlformat, ...);
 int sqlite_exec_int64(long long *result, const char *sqlformat,...);
+int sqlite_exec_int64_retry(sqlite_retry_state *retry, long long *result, const char *sqlformat,...);
 int sqlite_exec_strbuf(strbuf sb, const char *sqlformat,...);
 double rhizome_manifest_get_double(rhizome_manifest *m,char *var,double default_value);
 int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs);
