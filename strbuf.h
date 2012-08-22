@@ -132,9 +132,7 @@ typedef const struct strbuf *const_strbuf;
 
 
 /** Convenience macro for filling a strbuf from the calling function's
- * printf(3)-like variadic arguments.  The returned strbuf is only valid for
- * the duration of the function, so it must not be returned.  See alloca(3) for
- * more information.
+ * printf(3)-like variadic arguments.  See alloca(3) for more information.
  *
  *      #include <stdarg.h>
  *
