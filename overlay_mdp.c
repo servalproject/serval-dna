@@ -972,136 +972,142 @@ int search_subscribers(struct subscriber *subscriber, void *context){
 
 void overlay_mdp_poll(struct sched_ent *alarm)
 {
-  unsigned char buffer[16384];
-  int ttl;
-  unsigned char recvaddrbuffer[1024];
-  struct sockaddr *recvaddr=(struct sockaddr *)&recvaddrbuffer[0];
-  socklen_t recvaddrlen=sizeof(recvaddrbuffer);
-  struct sockaddr_un *recvaddr_un=NULL;
+  if (alarm->poll.revents & POLLIN) {
+    unsigned char buffer[16384];
+    int ttl;
+    unsigned char recvaddrbuffer[1024];
+    struct sockaddr *recvaddr=(struct sockaddr *)&recvaddrbuffer[0];
+    socklen_t recvaddrlen=sizeof(recvaddrbuffer);
+    struct sockaddr_un *recvaddr_un=NULL;
 
-  ttl=-1;
-  bzero((void *)recvaddrbuffer,sizeof(recvaddrbuffer));
+    ttl=-1;
+    bzero((void *)recvaddrbuffer,sizeof(recvaddrbuffer));
   
-  ssize_t len = recvwithttl(alarm->poll.fd,buffer,sizeof(buffer),&ttl, recvaddr, &recvaddrlen);
-  recvaddr_un=(struct sockaddr_un *)recvaddr;
+    ssize_t len = recvwithttl(alarm->poll.fd,buffer,sizeof(buffer),&ttl, recvaddr, &recvaddrlen);
+    recvaddr_un=(struct sockaddr_un *)recvaddr;
 
-  if (len>0) {
-    /* Look at overlay_mdp_frame we have received */
-    overlay_mdp_frame *mdp=(overlay_mdp_frame *)&buffer[0];      
-    unsigned int mdp_type = mdp->packetTypeAndFlags & MDP_TYPE_MASK;
+    if (len>0) {
+      /* Look at overlay_mdp_frame we have received */
+      overlay_mdp_frame *mdp=(overlay_mdp_frame *)&buffer[0];      
+      unsigned int mdp_type = mdp->packetTypeAndFlags & MDP_TYPE_MASK;
 
-    switch (mdp_type) {
-    case MDP_GOODBYE:
-      if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_GOODBYE");
-      overlay_mdp_releasebindings(recvaddr_un,recvaddrlen);
-      return;
-    case MDP_NODEINFO:
-      if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_NODEINFO");
-      overlay_route_node_info(mdp,recvaddr_un,recvaddrlen);
-      return;
-    case MDP_GETADDRS:
-      if (debug & DEBUG_MDPREQUESTS)
-	DEBUGF("MDP_GETADDRS first_sid=%u last_sid=%u frame_sid_count=%u mode=%d",
-	    mdp->addrlist.first_sid,
-	    mdp->addrlist.last_sid,
-	    mdp->addrlist.frame_sid_count,
-	    mdp->addrlist.mode
-	  );
-      {
-	overlay_mdp_frame mdpreply;
-	
-	/* Work out which SIDs to get ... */
-	int sid_num=mdp->addrlist.first_sid;
-	int max_sid=mdp->addrlist.last_sid;
-	int max_sids=mdp->addrlist.frame_sid_count;
-	/* ... and constrain list for sanity */
-	if (sid_num<0) sid_num=0;
-	if (max_sids>MDP_MAX_SID_REQUEST) max_sids=MDP_MAX_SID_REQUEST;
-	if (max_sids<0) max_sids=0;
-	
-	/* Prepare reply packet */
-	mdpreply.packetTypeAndFlags = MDP_ADDRLIST;
-	mdpreply.addrlist.mode = mdp->addrlist.mode;
-	mdpreply.addrlist.first_sid = sid_num;
-	mdpreply.addrlist.last_sid = max_sid;
-	mdpreply.addrlist.frame_sid_count = max_sids;
-	
-	/* Populate with SIDs */
-	int i=0;
-	int count=0;
-	switch (mdp->addrlist.mode) {
-	case MDP_ADDRLIST_MODE_SELF: {
-	    int cn=0,in=0,kp=0;
-	    while(keyring_next_identity(keyring,&cn,&in,&kp)) {	    
-	      if (count>=sid_num&&(i<max_sids))
-		bcopy(keyring->contexts[cn]->identities[in]
-		      ->keypairs[kp]->public_key,
-		      mdpreply.addrlist.sids[i++],SID_SIZE);
-	      in++; kp=0;
-	      count++;
-	      if (i>=max_sids)
-		break;
-	    }
-	  }
-	  break;
-	case MDP_ADDRLIST_MODE_ROUTABLE_PEERS:
-	case MDP_ADDRLIST_MODE_ALL_PEERS: {
-	    /* from peer list */
-	  struct search_state state={
-	    .mdp=mdp,
-	    .mdpreply=&mdpreply,
-	    .first=sid_num,
-	    .max=max_sid,
-	  };
-	  
-	  enum_subscribers(NULL, search_subscribers, &state);
-	  i=state.index;
-	  count=state.count;
-	  }
-	  break;
-	}
-	mdpreply.addrlist.frame_sid_count = i;
-	mdpreply.addrlist.last_sid = sid_num + i - 1;
-	mdpreply.addrlist.server_sid_count = count;
-
-	if (debug & DEBUG_MDPREQUESTS)
-	  DEBUGF("reply MDP_ADDRLIST first_sid=%u last_sid=%u frame_sid_count=%u server_sid_count=%u",
-	      mdpreply.addrlist.first_sid,
-	      mdpreply.addrlist.last_sid,
-	      mdpreply.addrlist.frame_sid_count,
-	      mdpreply.addrlist.server_sid_count
-	    );
-
-	/* Send back to caller */
-	overlay_mdp_reply(alarm->poll.fd,
-			  (struct sockaddr_un *)recvaddr,recvaddrlen,
-			  &mdpreply);
+      switch (mdp_type) {
+      case MDP_GOODBYE:
+	if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_GOODBYE");
+	overlay_mdp_releasebindings(recvaddr_un,recvaddrlen);
 	return;
+      case MDP_NODEINFO:
+	if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_NODEINFO");
+	overlay_route_node_info(mdp,recvaddr_un,recvaddrlen);
+	return;
+      case MDP_GETADDRS:
+	if (debug & DEBUG_MDPREQUESTS)
+	  DEBUGF("MDP_GETADDRS first_sid=%u last_sid=%u frame_sid_count=%u mode=%d",
+	      mdp->addrlist.first_sid,
+	      mdp->addrlist.last_sid,
+	      mdp->addrlist.frame_sid_count,
+	      mdp->addrlist.mode
+	    );
+	{
+	  overlay_mdp_frame mdpreply;
+	  
+	  /* Work out which SIDs to get ... */
+	  int sid_num=mdp->addrlist.first_sid;
+	  int max_sid=mdp->addrlist.last_sid;
+	  int max_sids=mdp->addrlist.frame_sid_count;
+	  /* ... and constrain list for sanity */
+	  if (sid_num<0) sid_num=0;
+	  if (max_sids>MDP_MAX_SID_REQUEST) max_sids=MDP_MAX_SID_REQUEST;
+	  if (max_sids<0) max_sids=0;
+	  
+	  /* Prepare reply packet */
+	  mdpreply.packetTypeAndFlags = MDP_ADDRLIST;
+	  mdpreply.addrlist.mode = mdp->addrlist.mode;
+	  mdpreply.addrlist.first_sid = sid_num;
+	  mdpreply.addrlist.last_sid = max_sid;
+	  mdpreply.addrlist.frame_sid_count = max_sids;
+	  
+	  /* Populate with SIDs */
+	  int i=0;
+	  int count=0;
+	  switch (mdp->addrlist.mode) {
+	  case MDP_ADDRLIST_MODE_SELF: {
+	      int cn=0,in=0,kp=0;
+	      while(keyring_next_identity(keyring,&cn,&in,&kp)) {	    
+		if (count>=sid_num&&(i<max_sids))
+		  bcopy(keyring->contexts[cn]->identities[in]
+			->keypairs[kp]->public_key,
+			mdpreply.addrlist.sids[i++],SID_SIZE);
+		in++; kp=0;
+		count++;
+		if (i>=max_sids)
+		  break;
+	      }
+	    }
+	    break;
+	  case MDP_ADDRLIST_MODE_ROUTABLE_PEERS:
+	  case MDP_ADDRLIST_MODE_ALL_PEERS: {
+	      /* from peer list */
+	    struct search_state state={
+	      .mdp=mdp,
+	      .mdpreply=&mdpreply,
+	      .first=sid_num,
+	      .max=max_sid,
+	    };
+	    
+	    enum_subscribers(NULL, search_subscribers, &state);
+	    i=state.index;
+	    count=state.count;
+	    }
+	    break;
+	  }
+	  mdpreply.addrlist.frame_sid_count = i;
+	  mdpreply.addrlist.last_sid = sid_num + i - 1;
+	  mdpreply.addrlist.server_sid_count = count;
+
+	  if (debug & DEBUG_MDPREQUESTS)
+	    DEBUGF("reply MDP_ADDRLIST first_sid=%u last_sid=%u frame_sid_count=%u server_sid_count=%u",
+		mdpreply.addrlist.first_sid,
+		mdpreply.addrlist.last_sid,
+		mdpreply.addrlist.frame_sid_count,
+		mdpreply.addrlist.server_sid_count
+	      );
+
+	  /* Send back to caller */
+	  overlay_mdp_reply(alarm->poll.fd,
+			    (struct sockaddr_un *)recvaddr,recvaddrlen,
+			    &mdpreply);
+	  return;
+	}
+	break;
+      case MDP_TX: /* Send payload (and don't treat it as system privileged) */
+	if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_TX");
+	overlay_mdp_dispatch(mdp,1,(struct sockaddr_un*)recvaddr,recvaddrlen);
+	return;
+	break;
+      case MDP_BIND: /* Bind to port */
+	if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_BIND");
+	overlay_mdp_process_bind_request(alarm->poll.fd,mdp, recvaddr_un, recvaddrlen);
+	return;
+	break;
+      default:
+	/* Client is not allowed to send any other frame type */
+	WARNF("Unsupported MDP frame type: %d", mdp_type);
+	mdp->packetTypeAndFlags=MDP_ERROR;
+	mdp->error.error=2;
+	snprintf(mdp->error.message,128,"Illegal request type.  Clients may use only MDP_TX or MDP_BIND.");
+	int len=4+4+strlen(mdp->error.message)+1;
+	errno=0;
+	/* We ignore the result of the following, because it is just sending an
+	   error message back to the client.  If this fails, where would we report
+	   the error to? My point exactly. */
+	sendto(alarm->poll.fd,mdp,len,0,(struct sockaddr *)recvaddr,recvaddrlen);
       }
-      break;
-    case MDP_TX: /* Send payload (and don't treat it as system privileged) */
-      if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_TX");
-      overlay_mdp_dispatch(mdp,1,(struct sockaddr_un*)recvaddr,recvaddrlen);
-      return;
-      break;
-    case MDP_BIND: /* Bind to port */
-      if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_BIND");
-      overlay_mdp_process_bind_request(alarm->poll.fd,mdp, recvaddr_un, recvaddrlen);
-      return;
-      break;
-    default:
-      /* Client is not allowed to send any other frame type */
-      WARNF("Unsupported MDP frame type: %d", mdp_type);
-      mdp->packetTypeAndFlags=MDP_ERROR;
-      mdp->error.error=2;
-      snprintf(mdp->error.message,128,"Illegal request type.  Clients may use only MDP_TX or MDP_BIND.");
-      int len=4+4+strlen(mdp->error.message)+1;
-      errno=0;
-      /* We ignore the result of the following, because it is just sending an
-	 error message back to the client.  If this fails, where would we report
-	 the error to? My point exactly. */
-      sendto(alarm->poll.fd,mdp,len,0,(struct sockaddr *)recvaddr,recvaddrlen);
     }
+  }
+  
+  if (alarm->poll.revents & (POLLHUP | POLLERR)) {
+    INFO("Error on mdp socket");
   }
   return;
 }

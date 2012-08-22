@@ -168,6 +168,8 @@ void monitor_poll(struct sched_ent *alarm)
 void monitor_client_close(struct monitor_context *c){
   struct monitor_context *last;
   
+  INFO("Tearing down monitor client");
+  
   unwatch(&c->alarm);
   close(c->alarm.poll.fd);
   c->alarm.poll.fd=-1;
@@ -189,75 +191,79 @@ void monitor_client_poll(struct sched_ent *alarm)
   errno=0;
   int bytes;
   
-  switch(c->state) {
-  case MONITOR_STATE_COMMAND:
-    bytes = 1;
-    while(bytes == 1) {
-      if (c->line_length >= MONITOR_LINE_LENGTH) {
-	/* line too long */
-	c->line[MONITOR_LINE_LENGTH-1] = 0;
-	monitor_process_command(c);
-	bytes = -1;
-	break;
-      }
-      bytes = read(c->alarm.poll.fd, &c->line[c->line_length], 1);
-      if (bytes < 1) {
-	switch(errno) {
-	case EINTR:
-	case ENOTRECOVERABLE:
-	  /* transient errors */
-	  WHY_perror("read");
+  if (alarm->poll.revents & POLLIN) {
+    switch(c->state) {
+    case MONITOR_STATE_COMMAND:
+      bytes = 1;
+      while(bytes == 1) {
+	if (c->line_length >= MONITOR_LINE_LENGTH) {
+	  /* line too long */
+	  c->line[MONITOR_LINE_LENGTH-1] = 0;
+	  monitor_process_command(c);
+	  bytes = -1;
 	  break;
-	case EAGAIN:
-	  break;
-	default:
-	  WHY_perror("read");
-	  /* all other errors; close socket */
-	  INFO("Tearing down monitor client");
-	  monitor_client_close(c);
-	  return;
 	}
-      }
-      if (bytes > 0 && (c->line[c->line_length] != '\r')) {
-	  c->line_length += bytes;
-	  if (c->line[c->line_length-1] == '\n') {
-	    /* got command */
-	    c->line[c->line_length-1] = 0; /* trim new line for easier parsing */
-	    monitor_process_command(c);
+	bytes = read(c->alarm.poll.fd, &c->line[c->line_length], 1);
+	if (bytes < 1) {
+	  switch(errno) {
+	  case EINTR:
+	  case ENOTRECOVERABLE:
+	    /* transient errors */
+	    WHY_perror("read");
 	    break;
+	  case EAGAIN:
+	    break;
+	  default:
+	    WHY_perror("read");
+	    /* all other errors; close socket */
+	    monitor_client_close(c);
+	    return;
 	  }
 	}
-    }
-    break;
-  case MONITOR_STATE_DATA:
-    bytes = read(c->alarm.poll.fd,
-		 &c->buffer[c->data_offset],
-		 c->data_expected-c->data_offset);
-    if (bytes < 1) {
-      switch(errno) {
-      case EAGAIN: case EINTR: 
-	/* transient errors */
-	break;
-      default:
-	/* all other errors; close socket */
-	  WHYF("Tearing down monitor client due to errno=%d",
-	       errno);
-	  monitor_client_close(c);
-	  return;
+	if (bytes > 0 && (c->line[c->line_length] != '\r')) {
+	    c->line_length += bytes;
+	    if (c->line[c->line_length-1] == '\n') {
+	      /* got command */
+	      c->line[c->line_length-1] = 0; /* trim new line for easier parsing */
+	      monitor_process_command(c);
+	      break;
+	    }
+	  }
       }
-    } else {
-      c->data_offset += bytes;
-      if (c->data_offset >= c->data_expected)
-	{
-	  /* we have the binary data we were expecting. */
-	  monitor_process_data(c);
-	  c->state = MONITOR_STATE_COMMAND;
+      break;
+    case MONITOR_STATE_DATA:
+      bytes = read(c->alarm.poll.fd,
+		   &c->buffer[c->data_offset],
+		   c->data_expected-c->data_offset);
+      if (bytes < 1) {
+	switch(errno) {
+	case EAGAIN: case EINTR: 
+	  /* transient errors */
+	  break;
+	default:
+	  /* all other errors; close socket */
+	    WHYF("Tearing down monitor client due to errno=%d",
+		 errno);
+	    monitor_client_close(c);
+	    return;
 	}
+      } else {
+	c->data_offset += bytes;
+	if (c->data_offset >= c->data_expected)
+	  {
+	    /* we have the binary data we were expecting. */
+	    monitor_process_data(c);
+	    c->state = MONITOR_STATE_COMMAND;
+	  }
+      }
+      break;
+    default:
+      c->state = MONITOR_STATE_COMMAND;
+      WHY("fixed monitor connection state");
     }
-    break;
-  default:
-    c->state = MONITOR_STATE_COMMAND;
-    WHY("fixed monitor connection state");
+  }
+  if (alarm->poll.revents & (POLLHUP | POLLERR)) {
+    monitor_client_close(c);
   }
   return;
 }

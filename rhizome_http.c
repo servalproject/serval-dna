@@ -261,46 +261,52 @@ void rhizome_client_poll(struct sched_ent *alarm)
 
 void rhizome_server_poll(struct sched_ent *alarm)
 {
-  struct sockaddr addr;
-  unsigned int addr_len = sizeof addr;
-  int sock;
-  while ((sock = accept(rhizome_server_socket, &addr, &addr_len)) != -1) {
-    if (addr.sa_family == AF_INET) {
-      struct sockaddr_in *peerip = (struct sockaddr_in *)&addr;
-      INFOF("RHIZOME HTTP SERVER, ACCEPT addrlen=%u family=%u port=%u addr=%u.%u.%u.%u",
-	  addr_len, peerip->sin_family, peerip->sin_port,
-	  ((unsigned char*)&peerip->sin_addr.s_addr)[0],
-	  ((unsigned char*)&peerip->sin_addr.s_addr)[1],
-	  ((unsigned char*)&peerip->sin_addr.s_addr)[2],
-	  ((unsigned char*)&peerip->sin_addr.s_addr)[3]
-	);
-    } else {
-      INFOF("RHIZOME HTTP SERVER, ACCEPT addrlen=%u family=%u data=%s",
+  if (alarm->poll.revents & (POLLIN | POLLOUT)) {
+    struct sockaddr addr;
+    unsigned int addr_len = sizeof addr;
+    int sock;
+    while ((sock = accept(rhizome_server_socket, &addr, &addr_len)) != -1) {
+      if (addr.sa_family == AF_INET) {
+	struct sockaddr_in *peerip = (struct sockaddr_in *)&addr;
+	INFOF("RHIZOME HTTP SERVER, ACCEPT addrlen=%u family=%u port=%u addr=%u.%u.%u.%u",
+	    addr_len, peerip->sin_family, peerip->sin_port,
+	    ((unsigned char*)&peerip->sin_addr.s_addr)[0],
+	    ((unsigned char*)&peerip->sin_addr.s_addr)[1],
+	    ((unsigned char*)&peerip->sin_addr.s_addr)[2],
+	    ((unsigned char*)&peerip->sin_addr.s_addr)[3]
+	  );
+      } else {
+	INFOF("RHIZOME HTTP SERVER, ACCEPT addrlen=%u family=%u data=%s",
 	  addr_len, addr.sa_family, alloca_tohex((unsigned char *)addr.sa_data, sizeof addr.sa_data)
 	);
+      }
+      rhizome_http_request *request = calloc(sizeof(rhizome_http_request), 1);
+      if (request == NULL) {
+	WHYF_perror("calloc(%u, 1)", sizeof(rhizome_http_request));
+	WHY("Cannot respond to request, out of memory");
+      } else {
+	/* We are now trying to read the HTTP request */
+	request->request_type=RHIZOME_HTTP_REQUEST_RECEIVING;
+	request->alarm.function = rhizome_client_poll;
+	connection_stats.name="rhizome_client_poll";
+	request->alarm.stats=&connection_stats;
+	request->alarm.poll.fd=sock;
+	request->alarm.poll.events=POLLIN;
+	request->alarm.alarm = gettime_ms()+RHIZOME_IDLE_TIMEOUT;
+	request->alarm.deadline = request->alarm.alarm+RHIZOME_IDLE_TIMEOUT;
+	// watch for the incoming http request
+	watch(&request->alarm);
+	// set an inactivity timeout to close the connection
+	schedule(&request->alarm);
+      }
     }
-    rhizome_http_request *request = calloc(sizeof(rhizome_http_request), 1);
-    if (request == NULL) {
-      WHYF_perror("calloc(%u, 1)", sizeof(rhizome_http_request));
-      WHY("Cannot respond to request, out of memory");
-    } else {
-      /* We are now trying to read the HTTP request */
-      request->request_type=RHIZOME_HTTP_REQUEST_RECEIVING;
-      request->alarm.function = rhizome_client_poll;
-      connection_stats.name="rhizome_client_poll";
-      request->alarm.stats=&connection_stats;
-      request->alarm.poll.fd=sock;
-      request->alarm.poll.events=POLLIN;
-      request->alarm.alarm = gettime_ms()+RHIZOME_IDLE_TIMEOUT;
-      request->alarm.deadline = request->alarm.alarm+RHIZOME_IDLE_TIMEOUT;
-      // watch for the incoming http request
-      watch(&request->alarm);
-      // set an inactivity timeout to close the connection
-      schedule(&request->alarm);
+    if (errno != EAGAIN) {
+      WARN_perror("accept");
     }
   }
-  if (errno != EAGAIN) {
-    WARN_perror("accept");
+  
+  if (alarm->poll.revents & (POLLHUP | POLLERR)) {
+    INFO("Error on tcp listen socket");
   }
 }
 

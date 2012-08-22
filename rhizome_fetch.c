@@ -827,134 +827,140 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
     return;
   }
   
-  switch(q->state) {
-    case RHIZOME_FETCH_CONNECTING:
-    case RHIZOME_FETCH_SENDINGHTTPREQUEST:
-      rhizome_fetch_write(q);
-      break;
-    case RHIZOME_FETCH_RXFILE: {
-	/* Keep reading until we have the promised amount of data */
-	char buffer[8192];
-	sigPipeFlag = 0;
-	int bytes = read_nonblock(q->alarm.poll.fd, buffer, sizeof buffer);
-	/* If we got some data, see if we have found the end of the HTTP request */
-	if (bytes > 0) {
-	  rhizome_write_content(q, buffer, bytes);
-	} else {
-	  if (debug & DEBUG_RHIZOME_RX)
-	    DEBUG("Empty read, closing connection");
-	  rhizome_fetch_close(q);
-	  return;
-	}
-	if (sigPipeFlag) {
-	  if (debug & DEBUG_RHIZOME_RX)
-	    DEBUG("Received SIGPIPE, closing connection");
-	  rhizome_fetch_close(q);
-	  return;
-	}
-      }
-      break;
-    case RHIZOME_FETCH_RXHTTPHEADERS: {
-	/* Keep reading until we have two CR/LFs in a row */
-	sigPipeFlag = 0;
-	int bytes = read_nonblock(q->alarm.poll.fd, &q->request[q->request_len], 1024 - q->request_len - 1);
-	/* If we got some data, see if we have found the end of the HTTP reply */
-	if (bytes > 0) {
-	  // reset timeout
-	  unschedule(&q->alarm);
-	  q->alarm.alarm = gettime_ms() + RHIZOME_IDLE_TIMEOUT;
-	  q->alarm.deadline = q->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
-	  schedule(&q->alarm);
-	  q->request_len += bytes;
-	  if (http_header_complete(q->request, q->request_len, bytes + 4)) {
+  if (alarm->poll.revents & (POLLIN | POLLOUT)) {
+    switch(q->state) {
+      case RHIZOME_FETCH_CONNECTING:
+      case RHIZOME_FETCH_SENDINGHTTPREQUEST:
+	rhizome_fetch_write(q);
+	break;
+      case RHIZOME_FETCH_RXFILE: {
+	  /* Keep reading until we have the promised amount of data */
+	  char buffer[8192];
+	  sigPipeFlag = 0;
+	  int bytes = read_nonblock(q->alarm.poll.fd, buffer, sizeof buffer);
+	  /* If we got some data, see if we have found the end of the HTTP request */
+	  if (bytes > 0) {
+	    rhizome_write_content(q, buffer, bytes);
+	  } else {
 	    if (debug & DEBUG_RHIZOME_RX)
-	      DEBUGF("Got HTTP reply: %s", alloca_toprint(160, q->request, q->request_len));
-	    /* We have all the reply headers, so parse them, taking care of any following bytes of
-	      content. */
-	    char *p = NULL;
-	    if (!str_startswith(q->request, "HTTP/1.0 ", &p)) {
-	      if (debug&DEBUG_RHIZOME_RX)
-		DEBUGF("Malformed HTTP reply: missing HTTP/1.0 preamble");
-	      rhizome_fetch_close(q);
-	      return;
-	    }
-	    int http_response_code = 0;
-	    char *nump;
-	    for (nump = p; isdigit(*p); ++p)
-	      http_response_code = http_response_code * 10 + *p - '0';
-	    if (p == nump || *p != ' ') {
-	      if (debug&DEBUG_RHIZOME_RX)
-		DEBUGF("Malformed HTTP reply: missing decimal status code");
-	      rhizome_fetch_close(q);
-	      return;
-	    }
-	    if (http_response_code != 200) {
+	      DEBUG("Empty read, closing connection");
+	    rhizome_fetch_close(q);
+	    return;
+	  }
+	  if (sigPipeFlag) {
+	    if (debug & DEBUG_RHIZOME_RX)
+	      DEBUG("Received SIGPIPE, closing connection");
+	    rhizome_fetch_close(q);
+	    return;
+	  }
+	}
+	break;
+      case RHIZOME_FETCH_RXHTTPHEADERS: {
+	  /* Keep reading until we have two CR/LFs in a row */
+	  sigPipeFlag = 0;
+	  int bytes = read_nonblock(q->alarm.poll.fd, &q->request[q->request_len], 1024 - q->request_len - 1);
+	  /* If we got some data, see if we have found the end of the HTTP reply */
+	  if (bytes > 0) {
+	    // reset timeout
+	    unschedule(&q->alarm);
+	    q->alarm.alarm = gettime_ms() + RHIZOME_IDLE_TIMEOUT;
+	    q->alarm.deadline = q->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
+	    schedule(&q->alarm);
+	    q->request_len += bytes;
+	    if (http_header_complete(q->request, q->request_len, bytes + 4)) {
 	      if (debug & DEBUG_RHIZOME_RX)
-		DEBUGF("Failed HTTP request: rhizome server returned %d != 200 OK", http_response_code);
-	      rhizome_fetch_close(q);
-	      return;
-	    }
-	    // This loop will terminate, because http_header_complete() above found at least
-	    // "\n\n" at the end of the header, and probably "\r\n\r\n".
-	    while (*p++ != '\n')
-	      ;
-	    // Iterate over header lines until the last blank line.
-	    long long content_length = -1;
-	    while (*p != '\r' && *p != '\n') {
-	      if (strcase_startswith(p, "Content-Length:", &p)) {
-		while (*p == ' ')
-		  ++p;
-		content_length = 0;
-		for (nump = p; isdigit(*p); ++p)
-		  content_length = content_length * 10 + *p - '0';
-		if (p == nump || (*p != '\r' && *p != '\n')) {
-		  if (debug & DEBUG_RHIZOME_RX)  {
-		    DEBUGF("Invalid HTTP reply: malformed Content-Length header");
-		    rhizome_fetch_close(q);
-		    return;
-		  }
-		}
+		DEBUGF("Got HTTP reply: %s", alloca_toprint(160, q->request, q->request_len));
+	      /* We have all the reply headers, so parse them, taking care of any following bytes of
+		content. */
+	      char *p = NULL;
+	      if (!str_startswith(q->request, "HTTP/1.0 ", &p)) {
+		if (debug&DEBUG_RHIZOME_RX)
+		  DEBUGF("Malformed HTTP reply: missing HTTP/1.0 preamble");
+		rhizome_fetch_close(q);
+		return;
 	      }
+	      int http_response_code = 0;
+	      char *nump;
+	      for (nump = p; isdigit(*p); ++p)
+		http_response_code = http_response_code * 10 + *p - '0';
+	      if (p == nump || *p != ' ') {
+		if (debug&DEBUG_RHIZOME_RX)
+		  DEBUGF("Malformed HTTP reply: missing decimal status code");
+		rhizome_fetch_close(q);
+		return;
+	      }
+	      if (http_response_code != 200) {
+		if (debug & DEBUG_RHIZOME_RX)
+		  DEBUGF("Failed HTTP request: rhizome server returned %d != 200 OK", http_response_code);
+		rhizome_fetch_close(q);
+		return;
+	      }
+	      // This loop will terminate, because http_header_complete() above found at least
+	      // "\n\n" at the end of the header, and probably "\r\n\r\n".
 	      while (*p++ != '\n')
 		;
+	      // Iterate over header lines until the last blank line.
+	      long long content_length = -1;
+	      while (*p != '\r' && *p != '\n') {
+		if (strcase_startswith(p, "Content-Length:", &p)) {
+		  while (*p == ' ')
+		    ++p;
+		  content_length = 0;
+		  for (nump = p; isdigit(*p); ++p)
+		    content_length = content_length * 10 + *p - '0';
+		  if (p == nump || (*p != '\r' && *p != '\n')) {
+		    if (debug & DEBUG_RHIZOME_RX)  {
+		      DEBUGF("Invalid HTTP reply: malformed Content-Length header");
+		      rhizome_fetch_close(q);
+		      return;
+		    }
+		  }
+		}
+		while (*p++ != '\n')
+		  ;
+	      }
+	      if (*p == '\r')
+		++p;
+	      ++p; // skip '\n' at end of blank line
+	      if (content_length == -1) {
+		if (debug & DEBUG_RHIZOME_RX)
+		  DEBUGF("Invalid HTTP reply: missing Content-Length header");
+		rhizome_fetch_close(q);
+		return;
+	      }
+	      q->file_len = content_length;
+	      /* We have all we need.  The file is already open, so just write out any initial bytes of
+		the body we read.
+	      */
+	      q->state = RHIZOME_FETCH_RXFILE;
+	      int content_bytes = q->request + q->request_len - p;
+	      if (content_bytes > 0)
+		rhizome_write_content(q, p, content_bytes);
 	    }
-	    if (*p == '\r')
-	      ++p;
-	    ++p; // skip '\n' at end of blank line
-	    if (content_length == -1) {
-	      if (debug & DEBUG_RHIZOME_RX)
-		DEBUGF("Invalid HTTP reply: missing Content-Length header");
-	      rhizome_fetch_close(q);
-	      return;
-	    }
-	    q->file_len = content_length;
-	    /* We have all we need.  The file is already open, so just write out any initial bytes of
-	      the body we read.
-	    */
-	    q->state = RHIZOME_FETCH_RXFILE;
-	    int content_bytes = q->request + q->request_len - p;
-	    if (content_bytes > 0)
-	      rhizome_write_content(q, p, content_bytes);
+	  } else {
+	    if (debug & DEBUG_RHIZOME_RX)
+	      DEBUG("Empty read, closing connection");
+	    rhizome_fetch_close(q);
+	    return;
 	  }
-	} else {
-	  if (debug & DEBUG_RHIZOME_RX)
-	    DEBUG("Empty read, closing connection");
-	  rhizome_fetch_close(q);
-	  return;
+	  if (sigPipeFlag) {
+	    if (debug & DEBUG_RHIZOME_RX)
+	      DEBUG("Received SIGPIPE, closing connection");
+	    rhizome_fetch_close(q);
+	    return;
+	  }
 	}
-	if (sigPipeFlag) {
-	  if (debug & DEBUG_RHIZOME_RX)
-	    DEBUG("Received SIGPIPE, closing connection");
-	  rhizome_fetch_close(q);
-	  return;
-	}
+	break;
+      default:
+	if (debug & DEBUG_RHIZOME_RX) 
+	  DEBUG("Closing rhizome fetch connection due to illegal/unimplemented state.");
+	rhizome_fetch_close(q);
+	return;
       }
-      break;
-    default:
-      if (debug & DEBUG_RHIZOME_RX) 
-	DEBUG("Closing rhizome fetch connection due to illegal/unimplemented state.");
-      rhizome_fetch_close(q);
-      return;
-    }
+  }
+  
+  if (alarm->poll.revents & (POLLHUP | POLLERR)) {
+    rhizome_fetch_close(q);
+  }  
   return;
 }

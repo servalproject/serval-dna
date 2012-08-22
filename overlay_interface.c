@@ -254,50 +254,58 @@ error:
 // So we have to bind a socket to INADDR_ANY to receive these packets.
 static void
 overlay_interface_read_any(struct sched_ent *alarm){
-  int plen=0;
-  int recvttl=1;
-  int i;
-  unsigned char packet[16384];
-  overlay_interface *interface=NULL;
-  struct sockaddr src_addr;
-  socklen_t addrlen = sizeof(src_addr);
+  if (alarm->poll.revents & POLLIN) {
+    int plen=0;
+    int recvttl=1;
+    int i;
+    unsigned char packet[16384];
+    overlay_interface *interface=NULL;
+    struct sockaddr src_addr;
+    socklen_t addrlen = sizeof(src_addr);
   
-  /* Read only one UDP packet per call to share resources more fairly, and also
-   enable stats to accurately count packets received */
-  plen = recvwithttl(alarm->poll.fd, packet, sizeof(packet), &recvttl, &src_addr, &addrlen);
-  if (plen == -1) {
-    WHY_perror("recvwithttl(c)");
-    unwatch(alarm);
-    close(alarm->poll.fd);
-    return;
-  }
+    /* Read only one UDP packet per call to share resources more fairly, and also
+     enable stats to accurately count packets received */
+    plen = recvwithttl(alarm->poll.fd, packet, sizeof(packet), &recvttl, &src_addr, &addrlen);
+    if (plen == -1) {
+      WHY_perror("recvwithttl(c)");
+      unwatch(alarm);
+      close(alarm->poll.fd);
+      return;
+    }
   
-  struct in_addr src = ((struct sockaddr_in *)&src_addr)->sin_addr;
+    struct in_addr src = ((struct sockaddr_in *)&src_addr)->sin_addr;
   
-  /* Try to identify the real interface that the packet arrived on */
-  for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
-    if (overlay_interfaces[i].state!=INTERFACE_STATE_UP)
-      continue;
-    // TODO test netmask...
-    if ((overlay_interfaces[i].netmask.s_addr & src.s_addr) == (overlay_interfaces[i].netmask.s_addr & overlay_interfaces[i].address.sin_addr.s_addr)){
-      interface = &overlay_interfaces[i];
-      break;
+    /* Try to identify the real interface that the packet arrived on */
+    for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
+      if (overlay_interfaces[i].state!=INTERFACE_STATE_UP)
+	continue;
+      // TODO test netmask...
+      if ((overlay_interfaces[i].netmask.s_addr & src.s_addr) == (overlay_interfaces[i].netmask.s_addr & overlay_interfaces[i].address.sin_addr.s_addr)){
+	interface = &overlay_interfaces[i];
+	break;
+      }
+    }
+  
+    /* Should we drop the packet if we don't find a match? */
+    if (!interface){
+      if (debug&DEBUG_OVERLAYINTERFACES)
+	DEBUGF("Could not find matching interface for packet received from %s", inet_ntoa(src));
+      return;
+    }
+  
+    /* We have a frame from this interface */
+    if (debug&DEBUG_PACKETRX)
+      DEBUG_packet_visualise("Read from real interface", packet,plen);
+    if (debug&DEBUG_OVERLAYINTERFACES) DEBUGF("Received %d bytes on interface INADDR_ANY",plen);
+    if (packetOk(interface,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
+      WHY("Malformed packet");
     }
   }
-  
-  /* Should we drop the packet if we don't find a match? */
-  if (!interface){
-    if (debug&DEBUG_OVERLAYINTERFACES)
-      DEBUGF("Could not find matching interface for packet received from %s", inet_ntoa(src));
-    return;
-  }
-  
-  /* We have a frame from this interface */
-  if (debug&DEBUG_PACKETRX)
-    DEBUG_packet_visualise("Read from real interface", packet,plen);
-  if (debug&DEBUG_OVERLAYINTERFACES) DEBUGF("Received %d bytes on interface INADDR_ANY",plen);
-  if (packetOk(interface,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
-    WHY("Malformed packet");
+  if (alarm->poll.revents & (POLLHUP | POLLERR)) {
+    INFO("Closing broadcast socket due to error");
+    unwatch(alarm);
+    close(alarm->poll.fd);
+    alarm->poll.fd=-1;
   }
 }
 
@@ -478,11 +486,6 @@ overlay_interface_init(char *name, struct in_addr src_addr, struct in_addr netma
 static void overlay_interface_poll(struct sched_ent *alarm)
 {
   struct overlay_interface *interface = (overlay_interface *)alarm;
-  int plen=0;
-  unsigned char packet[16384];
-
-  struct sockaddr src_addr;
-  socklen_t addrlen = sizeof(src_addr);
 
   if (alarm->poll.revents==0){
     
@@ -499,24 +502,37 @@ static void overlay_interface_poll(struct sched_ent *alarm)
     return;
   }
   
-  /* Read only one UDP packet per call to share resources more fairly, and also
-     enable stats to accurately count packets received */
-  int recvttl=1;
-  plen = recvwithttl(alarm->poll.fd,packet, sizeof(packet), &recvttl, &src_addr, &addrlen);
-  if (plen == -1) {
-    WHY_perror("recvwithttl(c)");
-    overlay_interface_close(interface);
-    return;
+  if (alarm->poll.revents & POLLIN) {
+    int plen=0;
+    unsigned char packet[16384];
+
+    struct sockaddr src_addr;
+    socklen_t addrlen = sizeof(src_addr);
+
+    
+    /* Read only one UDP packet per call to share resources more fairly, and also
+       enable stats to accurately count packets received */
+    int recvttl=1;
+    plen = recvwithttl(alarm->poll.fd,packet, sizeof(packet), &recvttl, &src_addr, &addrlen);
+    if (plen == -1) {
+      WHY_perror("recvwithttl(c)");
+      overlay_interface_close(interface);
+      return;
+    }
+  
+    /* We have a frame from this interface */
+    if (debug&DEBUG_PACKETRX)
+      DEBUG_packet_visualise("Read from real interface", packet,plen);
+    if (debug&DEBUG_OVERLAYINTERFACES) DEBUGF("Received %d bytes on interface %s",plen,interface->name);
+    if (packetOk(interface,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
+      WHY("Malformed packet");
+      // Do we really want to attempt to parse it again?
+      //DEBUG_packet_visualise("Malformed packet", packet,plen);
+    }
   }
   
-  /* We have a frame from this interface */
-  if (debug&DEBUG_PACKETRX)
-    DEBUG_packet_visualise("Read from real interface", packet,plen);
-  if (debug&DEBUG_OVERLAYINTERFACES) DEBUGF("Received %d bytes on interface %s",plen,interface->name);
-  if (packetOk(interface,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
-    WHY("Malformed packet");
-    // Do we really want to attempt to parse it again?
-    //DEBUG_packet_visualise("Malformed packet", packet,plen);
+  if (alarm->poll.revents & (POLLHUP | POLLERR)) {
+    overlay_interface_close(interface);
   }
 }
 
