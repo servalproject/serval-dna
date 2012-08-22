@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 #include "subscribers.h"
+#include "overlay_buffer.h"
 
 /* List of prioritised advertisements */
 #define OVERLAY_MAX_ADVERTISEMENT_REQUESTS 16
@@ -59,7 +60,7 @@ int overlay_route_please_advertise(overlay_node *n)
 struct subscriber *last_advertised=NULL;
 
 int add_advertisement(struct subscriber *subscriber, void *context){
-  overlay_buffer *e=context;
+  struct overlay_buffer *e=context;
   
   if (subscriber->node){
     overlay_node *n=subscriber->node;
@@ -84,7 +85,7 @@ int add_advertisement(struct subscriber *subscriber, void *context){
   return 0;
 }
 
-int overlay_route_add_advertisements(overlay_buffer *e)
+int overlay_route_add_advertisements(struct overlay_buffer *e)
 {
   /* Construct a route advertisement frame and append it to e.
      
@@ -113,12 +114,14 @@ int overlay_route_add_advertisements(overlay_buffer *e)
    */
   int i;
   
+  ob_checkpoint(e);
+  
   if (ob_append_byte(e,OF_TYPE_NODEANNOUNCE))
     return WHY("could not add node advertisement header");
   ob_append_byte(e,1); /* TTL */
   
   // assume we might fill the packet
-  ob_append_rfs(e, e->sizeLimit - e->length);
+  ob_append_rfs(e, e->sizeLimit - e->position);
 
   /* Stuff in dummy address fields */
   ob_append_byte(e,OA_CODE_BROADCAST);
@@ -142,16 +145,22 @@ int overlay_route_add_advertisements(overlay_buffer *e)
     } 
 */
   struct subscriber *start = last_advertised;
+  int start_pos = e->position;
   
   // append announcements starting from the last node we advertised
   enum_subscribers(start, add_advertisement, e);
 
   // if we didn't start at the beginning and still have space, start again from the beginning
-  if (start && e->sizeLimit - e->length >=8){
+  if (start && e->sizeLimit - e->position >=8){
     enum_subscribers(NULL, add_advertisement, e);
   }
-    
-  ob_patch_rfs(e,COMPUTE_RFS_LENGTH);
+  
+  if (e->position == start_pos){
+    // no advertisements? don't bother to send the payload at all.
+    ob_rewind(e);
+    overlay_abbreviate_clear_most_recent_address();
+  }else
+    ob_patch_rfs(e,COMPUTE_RFS_LENGTH);
 
   return 0;
 }
@@ -168,26 +177,30 @@ int overlay_route_add_advertisements(overlay_buffer *e)
  */
 int overlay_route_saw_advertisements(int i,overlay_frame *f, long long now)
 {
-  int ofs=0;
   IN();
-  while(ofs<f->payload->length)
+  while(f->payload->position < f->payload->sizeLimit)
     {
       struct subscriber *subscriber;
+      unsigned char *sid = ob_get_bytes_ptr(f->payload, 6);
+      int score=ob_get(f->payload);
+      int gateways_en_route=ob_get(f->payload);
+
+      // stop if hit end of payload
+      if (!sid || score<0 || gateways_en_route<0)
+	continue;
       
-      subscriber = find_subscriber(&f->payload->bytes[ofs], 6, 0);
+      subscriber = find_subscriber(sid, 6, 0);
+      
       if (!subscriber){
 	//WARN("Dispatch PLEASEEXPLAIN not implemented");
-	goto next;
+	continue;
       }
       
-      int score=f->payload->bytes[ofs+6];
-      int gateways_en_route=f->payload->bytes[ofs+7];
-
       /* Don't record routes to ourselves */
       if (overlay_address_is_local(subscriber->sid)) {
 	if (debug & DEBUG_OVERLAYROUTING)
 	  DEBUGF("Ignore announcement about me (%s)", alloca_tohex_sid(subscriber->sid));
-	goto next;
+	continue;
       }
       
       /* Don't let nodes advertise paths to themselves!
@@ -195,7 +208,7 @@ int overlay_route_saw_advertisements(int i,overlay_frame *f, long long now)
       if (!memcmp(overlay_abbreviate_current_sender.b,subscriber->sid,SID_SIZE)){
 	if (debug & DEBUG_OVERLAYROUTING)
 	  DEBUGF("Ignore announcement about neighbour (%s)", alloca_tohex_sid(subscriber->sid));
-	goto next;
+	continue;
       }
       
       /* File it */
@@ -206,8 +219,6 @@ int overlay_route_saw_advertisements(int i,overlay_frame *f, long long now)
 				now-2500,now,
 				score,gateways_en_route);
       
-    next:			  
-      ofs+=8;
     }
   
   RETURN(0);;

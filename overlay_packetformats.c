@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 #include "strbuf.h"
+#include "overlay_buffer.h"
 
 struct sockaddr_in loopback = {
   .sin_family=0,
@@ -236,12 +237,10 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 	 ensemble */
 	if (f.type==OF_TYPE_SELFANNOUNCE)
 	  overlay_abbreviate_set_current_sender(f.source);
-	
-	// TODO refactor all packet parsing to only allocate additional memory for the payload
-	// if it needs to be queued for forwarding.
-	
+
+	/* Create an overlay buffer, wrapping around this static packet */
 	f.payload = ob_static(&packet[ofs], nextPayload - ofs);
-	ob_setlength(f.payload, nextPayload - ofs);
+	ob_limitsize(f.payload, nextPayload - ofs);
 	
 	/* Finally process the frame */
 	overlay_frame_process(interface,&f);
@@ -257,7 +256,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   return 0;
 }
 
-int overlay_add_selfannouncement(int interface,overlay_buffer *b)
+int overlay_add_selfannouncement(int interface,struct overlay_buffer *b)
 {
 
   /* Pull the first record from the HLR database and turn it into a
@@ -351,9 +350,9 @@ int overlay_add_selfannouncement(int interface,overlay_buffer *b)
   // number: one millisecond ago.
   if (last_ms == -1)
     last_ms = now - 1;
-  if (ob_append_int(b, last_ms))
+  if (ob_append_ui32(b, last_ms))
     return WHY("Could not add low sequence number to self-announcement");
-  if (ob_append_int(b, now))
+  if (ob_append_ui32(b, now))
     return WHY("Could not add high sequence number to self-announcement");
   if (debug&DEBUG_OVERLAYINTERFACES)
     DEBUGF("interface #%d: last_tick_ms=%lld, now=%lld (delta=%lld)",

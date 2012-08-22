@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <time.h>
 #include "serval.h"
 #include "strbuf.h"
+#include "overlay_buffer.h"
 
 #ifdef HAVE_IFADDRS_H
 #include <ifaddrs.h>
@@ -52,7 +53,7 @@ struct profile_total sock_any_stats;
 struct outgoing_packet{
   overlay_interface *interface;
   int i;
-  overlay_buffer *buffer;
+  struct overlay_buffer *buffer;
 };
 
 struct sched_ent next_packet;
@@ -925,7 +926,7 @@ static void
 overlay_init_packet(struct outgoing_packet *packet, int interface) {
   packet->i = interface;
   packet->interface = &overlay_interfaces[packet->i];
-  packet->buffer=ob_new(packet->interface->mtu);
+  packet->buffer=ob_new();
   ob_limitsize(packet->buffer, packet->interface->mtu);
   ob_append_bytes(packet->buffer,magic_header,4);
   
@@ -1075,14 +1076,14 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
   
   if(packet->buffer){
     // send the packet
-    if (packet->buffer->length>=HEADERFIELDS_LEN){
+    if (packet->buffer->position>=HEADERFIELDS_LEN){
       if (debug&DEBUG_PACKETCONSTRUCTION)
-	dump("assembled packet",&packet->buffer->bytes[0],packet->buffer->length);
+	dump("assembled packet",&packet->buffer->bytes[0],packet->buffer->position);
       
       if (debug&DEBUG_OVERLAYINTERFACES) 
-	DEBUGF("Sending %d byte packet",packet->buffer->length);
+	DEBUGF("Sending %d byte packet",packet->buffer->position);
       
-      overlay_broadcast_ensemble(packet->i,NULL,packet->buffer->bytes,packet->buffer->length);
+      overlay_broadcast_ensemble(packet->i,NULL,packet->buffer->bytes,packet->buffer->position);
     }
     ob_free(packet->buffer);
     overlay_abbreviate_clear_most_recent_address();

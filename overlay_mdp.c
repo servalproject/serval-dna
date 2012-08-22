@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "strbuf.h"
 #include "subscribers.h"
+#include "overlay_buffer.h"
 
 struct profile_total mdp_stats={.name="overlay_mdp_poll"};
 
@@ -280,7 +281,7 @@ unsigned char *overlay_mdp_decrypt(overlay_frame *f, overlay_mdp_frame *mdp, int
 {
   IN();
 
-  *len=f->payload->length;
+  *len=f->payload->sizeLimit;
   unsigned char *b = NULL;
   unsigned char plain_block[(*len)+16];
 
@@ -288,7 +289,7 @@ unsigned char *overlay_mdp_decrypt(overlay_frame *f, overlay_mdp_frame *mdp, int
   case 0: 
     /* get payload */
     b=&f->payload->bytes[0];
-    *len=f->payload->length;
+    *len=f->payload->sizeLimit;
     mdp->packetTypeAndFlags|=MDP_NOCRYPT|MDP_NOSIGN;
     break;
   case OF_CRYPTO_CIPHERED:
@@ -306,7 +307,7 @@ unsigned char *overlay_mdp_decrypt(overlay_frame *f, overlay_mdp_frame *mdp, int
 
       /* get payload and following compacted signature */
       b=&f->payload->bytes[0];
-      *len=f->payload->length-crypto_sign_edwards25519sha512batch_BYTES;
+      *len=f->payload->sizeLimit-crypto_sign_edwards25519sha512batch_BYTES;
 
       /* get hash */
       unsigned char hash[crypto_hash_sha512_BYTES];
@@ -344,7 +345,7 @@ unsigned char *overlay_mdp_decrypt(overlay_frame *f, overlay_mdp_frame *mdp, int
       if (!k) { WHY("I don't have the private key required to decrypt that");
 	RETURN(NULL); }
       bzero(&plain_block[0],crypto_box_curve25519xsalsa20poly1305_ZEROBYTES-16);
-      int cipher_len=f->payload->length-nb;
+      int cipher_len=f->payload->sizeLimit-nb;
       bcopy(&f->payload->bytes[nb],&plain_block[16],cipher_len);
       if (0) {
 	dump("nm bytes",k,crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES);
@@ -374,7 +375,7 @@ int overlay_saw_mdp_containing_frame(overlay_frame *f, time_ms_t now)
      Take payload from mdp frame itself.
   */
   overlay_mdp_frame mdp;
-  int len=f->payload->length;
+  int len=f->payload->sizeLimit;
 
   /* Get source and destination addresses */
   bcopy(f->destination,mdp.in.dst.sid,SID_SIZE);
@@ -750,13 +751,15 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   case 0: /* crypted and signed (using CryptoBox authcryption primitive) */
     frame->modifiers=OF_CRYPTO_SIGNED|OF_CRYPTO_CIPHERED;
     /* Prepare payload */
-    frame->payload=ob_new(1 /* frame type (MDP) */
-			  +1 /* MDP version */
-			  +4 /* dst port */
-			  +4 /* src port */
-			  +crypto_box_curve25519xsalsa20poly1305_NONCEBYTES
-			  +crypto_box_curve25519xsalsa20poly1305_ZEROBYTES
-			  +mdp->out.payload_length);
+    frame->payload=ob_new();
+      /*length should be;
+       1 - frame type (MDP)
+      +1 - MDP version 
+      +4 - dst port 
+      +4 - src port 
+      +crypto_box_curve25519xsalsa20poly1305_NONCEBYTES
+      +crypto_box_curve25519xsalsa20poly1305_ZEROBYTES
+      +mdp->out.payload_length*/
     {
       /* write cryptobox nonce */
       unsigned char nonce[crypto_box_curve25519xsalsa20poly1305_NONCEBYTES];
@@ -792,7 +795,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       unsigned char *k=keyring_get_nm_bytes(&mdp->out.src,&mdp->out.dst);
       if (!k) { op_free(frame); RETURN(WHY("could not compute Curve25519(NxM)")); }
       /* Get pointer to place in frame where the ciphered text needs to go */
-      int cipher_offset=frame->payload->length;
+      int cipher_offset=frame->payload->position;
       unsigned char *cipher_text=ob_append_space(frame->payload,cipher_len);
       if (fe||(!cipher_text))
 	{ op_free(frame); RETURN(WHY("could not make space for ciphered text")); }
@@ -803,16 +806,16 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       /* now shuffle down 16 bytes to get rid of the temporary space that crypto_box
 	 uses. */
       bcopy(&cipher_text[16],&cipher_text[0],cipher_len-16);
-      frame->payload->length-=16;
+      frame->payload->position-=16;
       if (0) {
 	DEBUG("authcrypted mdp frame");
 	dump("nm bytes",k,crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES);
 	dump("nonce",nonce,crypto_box_curve25519xsalsa20poly1305_NONCEBYTES);
 	dump("plain text",&plain[16],cipher_len-16);
 	dump("cipher text",cipher_text,cipher_len-16);	
-	DEBUGF("frame->payload->length=%d,cipher_len-16=%d,cipher_offset=%d", frame->payload->length,cipher_len-16,cipher_offset);
+	DEBUGF("frame->payload->length=%d,cipher_len-16=%d,cipher_offset=%d", frame->payload->position,cipher_len-16,cipher_offset);
 	dump("frame",&frame->payload->bytes[0],
-	     frame->payload->length);
+	     frame->payload->position);
       }
     }
     break;
@@ -838,12 +841,15 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
     */
     frame->modifiers=OF_CRYPTO_SIGNED; 
     /* Prepare payload */
-    frame->payload=ob_new(1 /* frame type (MDP) */
-			  +1 /* MDP version */
-			  +4 /* dst port */
-			  +4 /* src port */
-			  +crypto_sign_edwards25519sha512batch_BYTES
-			  +mdp->out.payload_length);
+      frame->payload=ob_new();
+      /* Length should be;
+	1 - frame type (MDP) 
+	+1 - MDP version 
+	+4 - dst port 
+	+4 - src port 
+	+crypto_sign_edwards25519sha512batch_BYTES
+	+mdp->out.payload_length
+      */
     {
       unsigned char *key=keyring_find_sas_private(keyring,mdp->out.src.sid,NULL);
       if (!key) { op_free(frame); RETURN(WHY("could not find signing key")); }
@@ -893,17 +899,20 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   case MDP_NOSIGN|MDP_NOCRYPT: /* clear text and no signature */
     frame->modifiers=0; 
     /* Copy payload body in */
-    frame->payload=ob_new(1 /* frame type (MDP) */
-			  +1 /* MDP version */
-			  +4 /* dst port */
-			  +4 /* src port */
-			  +mdp->out.payload_length);
+    frame->payload=ob_new();
+      /* Length should be;
+       1 - frame type (MDP) 
+      +1 - MDP version 
+      +4 - dst port 
+      +4 - src port 
+      +mdp->out.payload_length
+       */
     /* MDP version 1 */
     ob_append_byte(frame->payload,0x01);
     ob_append_byte(frame->payload,0x01);
     /* Destination port */
-    ob_append_int(frame->payload,mdp->out.src.port);
-    ob_append_int(frame->payload,mdp->out.dst.port);
+    ob_append_ui32(frame->payload,mdp->out.src.port);
+    ob_append_ui32(frame->payload,mdp->out.dst.port);
     ob_append_bytes(frame->payload,mdp->out.payload,mdp->out.payload_length);
     break;
   }

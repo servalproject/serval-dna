@@ -71,6 +71,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "rhizome.h"
 #include "strbuf.h"
+#include "overlay_buffer.h"
 
 int overlayMode=0;
 
@@ -199,8 +200,7 @@ int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, o
       overlay_saw_mdp_containing_frame(f,now);
       break;
     default:
-      DEBUGF("Unsupported f->type=0x%x",f->type);
-      return WHY("Support for that f->type not yet implemented");
+      return WHYF("Support for f->type=0x%x not yet implemented",f->type);
       break;
   }
   return 0;
@@ -214,7 +214,7 @@ int overlay_frame_process(struct overlay_interface *interface,overlay_frame *f)
   time_ms_t now = gettime_ms();
 
   if (debug&DEBUG_OVERLAYFRAMES)
-    DEBUGF(">>> Received frame (type=%02x, bytes=%d)",f->type,f->payload?f->payload->length:-1);
+    DEBUGF(">>> Received frame (type=%02x, bytes=%d)",f->type,f->payload ? f->payload->sizeLimit:-1);
 
   // only examine payloads that are broadcasts, or where I'm the next hop
   if (overlay_address_is_broadcast(f->nexthop)) {

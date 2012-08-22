@@ -454,22 +454,6 @@ typedef struct overlay_peer {
 
 extern overlay_peer overlay_peers[OVERLAY_MAX_PEERS];
 
-typedef struct overlay_buffer {
-  unsigned char *bytes;
-  // position of data read / written
-  int length;
-  // allocated size of buffer
-  int allocSize;
-  // remembered position for rewinding
-  int checkpointLength;
-  // maximum allowed bytes for reading / writing
-  int sizeLimit;
-  int var_length_offset;
-  int var_length_bytes;
-} overlay_buffer;
-
-int ob_unlimitsize(overlay_buffer *b);
-
 
 typedef struct overlay_txqueue {
   struct overlay_frame *first;
@@ -627,27 +611,6 @@ int overlay_frame_resolve_addresses(overlay_frame *f);
 #define alloca_tohex_sid(sid)           alloca_tohex((sid), SID_SIZE)
 #define alloca_tohex_sas(sas)           alloca_tohex((sas), SAS_SIZE)
 
-overlay_buffer *ob_new(int size);
-overlay_buffer *ob_static(unsigned char *bytes, int size);
-int ob_free(overlay_buffer *b);
-int ob_checkpoint(overlay_buffer *b);
-int ob_rewind(overlay_buffer *b);
-int ob_setlength(overlay_buffer *b,int bytes);
-int ob_limitsize(overlay_buffer *b,int bytes);
-int ob_unlimitsize(overlay_buffer *b);
-int ob_makespace(overlay_buffer *b,int bytes);
-int ob_append_byte(overlay_buffer *b,unsigned char byte);
-int ob_append_bytes(overlay_buffer *b,unsigned char *bytes,int count);
-unsigned char *ob_append_space(overlay_buffer *b,int count);
-int ob_append_short(overlay_buffer *b,unsigned short v);
-int ob_append_int(overlay_buffer *b,unsigned int v);
-int ob_patch_rfs(overlay_buffer *b,int l);
-int ob_append_rfs(overlay_buffer *b,int l);
-int ob_setbyte(overlay_buffer *b,int ofs,unsigned char value);
-int ob_getbyte(overlay_buffer *b,int ofs);
-int ob_dump(overlay_buffer *b,char *desc);
-unsigned int ob_get_int(overlay_buffer *b,int offset);
-
 int op_free(overlay_frame *p);
 overlay_frame *op_dup(overlay_frame *f);
 
@@ -657,11 +620,11 @@ int overlay_rx_messages();
 #define DEBUG_packet_visualise(M,P,N) logServalPacket(LOG_LEVEL_DEBUG, __HERE__, (M), (P), (N))
 
 int overlay_add_selfannouncement();
-int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b);
+int overlay_frame_package_fmt1(overlay_frame *p, struct overlay_buffer *b);
 int overlay_interface_args(const char *arg);
 int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *interface);
 int overlay_sendto(struct sockaddr_in *recipientaddr,unsigned char *bytes,int len);
-int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e);
+int overlay_rhizome_add_advertisements(int interface_number,struct overlay_buffer *e);
 int overlay_add_local_identity(unsigned char *s);
 int overlay_address_is_local(unsigned char *s);
 void overlay_update_queue_schedule(overlay_txqueue *queue, overlay_frame *frame);
@@ -674,7 +637,7 @@ extern int overlay_local_identity_count;
 extern unsigned char *overlay_local_identities[OVERLAY_MAX_LOCAL_IDENTITIES];
 
 int overlay_abbreviate_address(unsigned char *in,unsigned char *out,int *ofs);
-int overlay_abbreviate_append_address(overlay_buffer *b,unsigned char *a);
+int overlay_abbreviate_append_address(struct overlay_buffer *b,unsigned char *a);
 
 int overlay_abbreviate_expand_address(unsigned char *in,int *inofs,unsigned char *out,int *ofs);
 int overlay_abbreviate_cache_address(unsigned char *sid);
@@ -731,7 +694,7 @@ int overlay_route_record_link( time_ms_t now,unsigned char *to,
 			      unsigned char *via,int sender_interface,
 			      unsigned int s1,unsigned int s2,int score,int gateways_en_route);
 int overlay_route_dump();
-int overlay_route_add_advertisements(overlay_buffer *e);
+int overlay_route_add_advertisements(struct overlay_buffer *e);
 int ovleray_route_please_advertise(overlay_node *n);
 int overlay_abbreviate_set_current_sender(unsigned char *in);
 

@@ -18,7 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
-
+#include "overlay_buffer.h"
 /*
   We use 256bit Curve25519 addresses in the overlay mesh.  This means we have very large
   addresses to send around the place on a regular basis, which is bad.
@@ -240,17 +240,17 @@ int overlay_abbreviate_try_byindex(unsigned char *in,unsigned char *out,int *ofs
     return 1;
 }
 
-int overlay_abbreviate_append_address(overlay_buffer *b,unsigned char *a)
+int overlay_abbreviate_append_address(struct overlay_buffer *b,unsigned char *a)
 {
   int count=0;
   ob_makespace(b,SID_SIZE+3);
-  int r=overlay_abbreviate_address(a,&b->bytes[b->length],&count);
+  int r=overlay_abbreviate_address(a,&b->bytes[b->position],&count);
   if (debug&DEBUG_PACKETCONSTRUCTION) {
     DEBUGF("address %s abbreviates as shown in this", alloca_tohex_sid(a));
-    dump(NULL, &b->bytes[b->length], count);
+    dump(NULL, &b->bytes[b->position], count);
   }
   if (r) return r;
-  b->length+=count;
+  b->position+=count;
   overlay_abbreviate_set_most_recent_address(a);
   return 0;
 }

@@ -18,6 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "overlay_buffer.h"
 
 int overlay_payload_verify(overlay_frame *p)
 {
@@ -27,7 +28,7 @@ int overlay_payload_verify(overlay_frame *p)
   return WHY("function not implemented");
 }
 
-int op_append_type(overlay_buffer *headers,overlay_frame *p)
+int op_append_type(struct overlay_buffer *headers,overlay_frame *p)
 {
   unsigned char c[3];
   switch(p->type&OF_TYPE_FLAG_BITS)
@@ -59,16 +60,16 @@ int op_append_type(overlay_buffer *headers,overlay_frame *p)
 }
 
 
-int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
+int overlay_frame_package_fmt1(overlay_frame *p, struct overlay_buffer *b)
 {
   /* Convert a payload (frame) structure into a series of bytes.
      Assumes that any encryption etc has already been done.
      Will pick a next hop if one has not been chosen.
   */
 
-  overlay_buffer *headers;
+  struct overlay_buffer *headers;
   
-  headers=ob_new(256);
+  headers=ob_new();
 
   if (!headers) return WHY("could not allocate overlay buffer for headers");
 
@@ -111,26 +112,26 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
      we rely on context for abbreviating the addresses.  So we write it initially and then patch it
      after.
   */
-  int max_len=((SID_SIZE+3)*3+headers->length+p->payload->length);
+  int max_len=((SID_SIZE+3)*3+headers->position+p->payload->position);
   if (debug&DEBUG_PACKETCONSTRUCTION) 
     DEBUGF("Appending RFS for max_len=%d\n",max_len);
   ob_append_rfs(headers,max_len);
   
-  int addrs_start=headers->length;
+  int addrs_start=headers->position;
   
   /* Write out addresses as abbreviated as possible */
   overlay_abbreviate_append_address(headers,p->nexthop);
   overlay_abbreviate_append_address(headers,p->destination);
   overlay_abbreviate_append_address(headers,p->source);
   
-  int addrs_len=headers->length-addrs_start;
-  int actual_len=addrs_len+p->payload->length;
+  int addrs_len=headers->position-addrs_start;
+  int actual_len=addrs_len+p->payload->position;
   if (debug&DEBUG_PACKETCONSTRUCTION) 
     DEBUGF("Patching RFS for actual_len=%d\n",actual_len);
   ob_patch_rfs(headers,actual_len);
 
   /* Write payload format plus total length of header bits */
-  if (ob_makespace(b,2+headers->length+p->payload->length)) {
+  if (ob_makespace(b,2+headers->position+p->payload->position)) {
     /* Not enough space free in output buffer */
     if (debug&DEBUG_PACKETFORMATS)
       DEBUGF("Could not make enough space free in output buffer");
@@ -138,11 +139,11 @@ int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b)
   }
   
   /* Package up headers and payload */
-  if (ob_append_bytes(b,headers->bytes,headers->length)) {
+  if (ob_append_bytes(b,headers->bytes,headers->position)) {
     WHY("could not append header");
     goto cleanup;
   }
-  if (ob_append_bytes(b,p->payload->bytes,p->payload->length)) {
+  if (ob_append_bytes(b,p->payload->bytes,p->payload->position)) {
     WHY("could not append payload"); 
     goto cleanup;
   }
@@ -156,13 +157,6 @@ cleanup:
   return -1;
 }
   
-overlay_buffer *overlay_payload_unpackage(overlay_frame *b) {
-  /* Extract the payload at the current location in the buffer. */
-    
-  WHY("not implemented");
-  return NULL;
-}
-
 int dump_queue(char *msg,int q)
 {
   overlay_txqueue *qq=&overlay_tx[q];
@@ -191,7 +185,7 @@ int dump_payload(overlay_frame *p,char *message)
 	  message?message:"");
   DEBUGF(" next hop is %s",alloca_tohex_sid(p->nexthop));
   if (p->payload)
-    dump("payload contents", &p->payload->bytes[0],p->payload->length);
+    dump("payload contents", &p->payload->bytes[0],p->payload->position);
   return 0;
 }
 
@@ -204,8 +198,8 @@ int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP)
 
      Complain if there are too many frames in the queue.
   */
-  if (0)
-    WHYF("Enqueuing packet for %s* (q[%d]length = %d)",
+  if (debug&DEBUG_PACKETTX)
+    DEBUGF("Enqueuing packet for %s* (q[%d]length = %d)",
 	 alloca_tohex(p->destination, 7),
 	 q,overlay_tx[q].length);
   
@@ -274,16 +268,8 @@ overlay_frame *op_dup(overlay_frame *in)
 
   /* copy main data structure */
   bcopy(in,out,sizeof(overlay_frame));
-  out->payload=ob_new(in->payload->length);
-  if (!out->payload) {
-    free(out);
-    return WHYNULL("ob_new() failed");
-  }
-  if (ob_append_bytes(out->payload,&in->payload->bytes[0],in->payload->length))
-    {
-      op_free(out);
-      return WHYNULL("could not duplicate payload bytes");
-    }
+  
+  out->payload=ob_dup(in->payload);
   return out;
 }
 

@@ -1506,7 +1506,7 @@ int app_id_self(int argc, const char *const *argv, struct command_line_option *o
     a.addrlist.mode = MDP_ADDRLIST_MODE_ROUTABLE_PEERS; /* get routable (reachable) peers */
   else
     return WHYF("unsupported arg '%s'", argv[1]);
-  a.addrlist.first_sid=-1;
+  a.addrlist.first_sid=0;
   a.addrlist.last_sid=0x7fffffff;
   a.addrlist.frame_sid_count=MDP_MAX_SID_REQUEST;
 

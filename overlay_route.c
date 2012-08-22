@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "strbuf.h"
 #include "subscribers.h"
+#include "overlay_buffer.h"
 
 /*
   Here we implement the actual routing algorithm which is heavily based on BATMAN.
@@ -349,6 +350,7 @@ int overlay_route_ack_selfannounce(overlay_frame *f,
   if (overlay_resolve_next_hop(out)) {
     /* no open path, so convert to broadcast */
     overlay_frame_set_broadcast_as_destination(out);
+    out->isBroadcast = 1;
     out->ttl=2;
     if (debug&DEBUG_OVERLAYROUTING) 
       DEBUG("Broadcasting ack to selfannounce for hithero unroutable node");
@@ -368,13 +370,12 @@ int overlay_route_ack_selfannounce(overlay_frame *f,
      numbers means we can't just take the highest-numbered sequence number.  
      So we need to take the observation which was most recently received.
   */
-  out->payload=ob_new(4+32*2+1); /* will grow if it isn't big enough, but let's try to
-				    avoid a realloc() if possible */
+  out->payload=ob_new();
 
   /* XXX - we should merge contiguous observation reports so that packet loss 
      on the return path doesn't count against the link. */
-  ob_append_int(out->payload,s1);
-  ob_append_int(out->payload,s2);
+  ob_append_ui32(out->payload,s1);
+  ob_append_ui32(out->payload,s2);
 
   /* The ack needs to contain the per-interface scores that we have built up
      for this neighbour.
@@ -552,9 +553,9 @@ int overlay_route_saw_selfannounce(overlay_frame *f, time_ms_t now)
     RETURN(-1);
   }
 
-  s1=ob_get_int(f->payload, 0);
-  s2=ob_get_int(f->payload, 4);
-  sender_interface=ob_getbyte(f->payload, 8);
+  s1=ob_get_ui32(f->payload);
+  s2=ob_get_ui32(f->payload);
+  sender_interface=ob_get(f->payload);
   if (debug&DEBUG_OVERLAYROUTING)
     DEBUGF("Received self-announcement for sequence range [%08x,%08x] from interface %d",s1,s2,sender_interface);
 
@@ -803,14 +804,14 @@ int overlay_route_saw_selfannounce_ack(overlay_frame *f,long long now)
 {
   IN();
   if (debug&DEBUG_OVERLAYROUTING)
-    DEBUGF("processing selfannounce ack (payload length=%d)",f->payload->length);
+    DEBUGF("processing selfannounce ack (payload length=%d)",f->payload->sizeLimit);
   
-  if (f->payload->length<9) 
+  if (f->payload->sizeLimit<9) 
     RETURN(WHY("FOO! selfannounce ack packet too short"));
 
-  unsigned int s1=ob_get_int(f->payload,0);
-  unsigned int s2=ob_get_int(f->payload,4);
-  int iface=ob_getbyte(f->payload,8);
+  unsigned int s1=ob_get_ui32(f->payload);
+  unsigned int s2=ob_get_ui32(f->payload);
+  int iface=ob_get(f->payload);
 
   // Call something like the following for each link
   overlay_route_node_can_hear_me(f->source,iface,s1,s2,now);

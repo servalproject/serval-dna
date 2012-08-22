@@ -82,6 +82,7 @@ MONITORCLIENTOBJS=	$(MONITORCLIENTSRCS:.c=.o)
 
 HDRS=	fifo.h \
 	Makefile \
+	overlay_buffer.h \
 	rhizome.h \
 	serval.h \
 	strbuf.h \

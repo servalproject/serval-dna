@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "rhizome.h"
 #include <assert.h>
+#include "overlay_buffer.h"
 #include <stdlib.h>
 
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
@@ -73,7 +74,7 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
 
 int bundles_available=-1;
 int bundle_offset[2]={0,0};
-int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
+int overlay_rhizome_add_advertisements(int interface_number, struct overlay_buffer *e)
 {
   IN();
   int voice_mode=0;
@@ -93,13 +94,10 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
   if (voice_mode) if (random()&3) { RETURN(0); }
 
   int pass;
-  int bytes=e->sizeLimit-e->length;
+  int bytes=e->sizeLimit-e->position;
   int overhead=1+11+1+2+2; /* maximum overhead */
   int slots=(bytes-overhead)/RHIZOME_BAR_BYTES;
   if (slots>30) slots=30;
-  int slots_used=0;
-  int bytes_used=0;
-  int bytes_available=bytes-overhead-1 /* one byte held for expanding RFS */;
   int bundles_advertised=0;
 
   if (slots<1) { RETURN(WHY("No room for node advertisements")); }
@@ -110,7 +108,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
     RETURN(WHY("could not add rhizome bundle advertisement header"));
   ob_append_byte(e, 1); /* TTL (1 byte) */
 
-  ob_append_rfs(e,1+11+1+2+RHIZOME_BAR_BYTES*slots_used/* RFS */);
+  ob_append_rfs(e,1+11+1+2+RHIZOME_BAR_BYTES/* RFS */);
 
   /* Stuff in dummy address fields (11 bytes) */
   ob_append_byte(e,OA_CODE_BROADCAST);
@@ -129,7 +127,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
    */
   ob_append_byte(e,3+skipmanifests);
   /* Rhizome HTTP server port number (2 bytes) */
-  ob_append_short(e, rhizome_http_server_port);
+  ob_append_ui16(e, rhizome_http_server_port);
 
   /* XXX Should add priority bundles here.
      XXX Should prioritise bundles for subscribed groups, Serval-authorised files
@@ -165,6 +163,7 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
   sqlite3_blob *blob=NULL;
 
   for(pass=skipmanifests;pass<2;pass++) {
+    ob_checkpoint(e);
     switch(pass) {
     case 0: /* Full manifests */
       statement = sqlite_prepare("SELECT MANIFEST,ROWID FROM MANIFESTS LIMIT %d,%d", bundle_offset[pass], slots);
@@ -175,9 +174,8 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
     }
     if (!statement)
       RETURN(WHY("Could not prepare sql statement for fetching BARs for advertisement"));
-    while(  bytes_used < bytes_available
-	&&  sqlite_step_retry(&retry, statement) == SQLITE_ROW
-	&&  e->length + RHIZOME_BAR_BYTES <= e->sizeLimit
+    while(  sqlite_step_retry(&retry, statement) == SQLITE_ROW
+	&&  e->position+RHIZOME_BAR_BYTES<=e->sizeLimit
     ) {
       int column_type=sqlite3_column_type(statement, 0);
       switch(column_type) {
@@ -214,77 +212,37 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 	  continue;
 	}
 
-	/* XXX This whole section is too hard to follow how the frame gets
-	    built up. In particular the calculations for space required etc
-	    are quite opaque... and I wrote it!  */
 	int overhead=0;
-	int frameFull=0;
 	if (!pass) overhead=2;
-	if (0) DEBUGF("e=%p, e->bytes=%p,e->length=%d, e->allocSize=%d", e,e->bytes,e->length,e->allocSize);
 
-	if (ob_makespace(e,overhead+2+blob_bytes)) {
-	  if (0||debug&DEBUG_RHIZOME) {
-	    rhizome_manifest *m=rhizome_new_manifest();
-	    char mdata[blob_bytes]; mdata[0]=0; mdata[1]=0;
-	    sqlite3_blob_read(blob,&mdata[0],blob_bytes,0);
-	    rhizome_read_manifest_file(m,mdata, blob_bytes);
-	    long long version = rhizome_manifest_get_ll(m, "version");
-	    DEBUGF("Stop cramming %s advertisements: not enough space for %s*:v%lld (%d bytes, size limit=%d, used=%d)",
-		    pass?"BARs":"manifests",
-		    alloca_tohex(m->cryptoSignPublic, 8),
-		    version,
-		    blob_bytes,e->sizeLimit,e->length);
-	    rhizome_manifest_free(m);
-	  }
-	  frameFull=1;
-	} else if (!pass) {
-	  /* put manifest length field and manifest ID */
-	  /* XXX why on earth is this being done this way, instead of
-	      with ob_append_byte() ??? */
-	  ob_setbyte(e,e->length,(blob_bytes>>8)&0xff);
-	  ob_setbyte(e,e->length+1,(blob_bytes>>0)&0xff);
-	  if (0&&debug&DEBUG_RHIZOME)
-	    DEBUGF("length bytes written at offset 0x%x",e->length);
+	/* make sure there's enough room for the blob, its length,
+	the 0xFF end marker and 1 spare for the rfs length to increase */
+	if (ob_makespace(e,overhead+blob_bytes+2))
+	  goto stopStuffing;
+	  
+	if (!pass) {
+	      /* include manifest length field */
+	      ob_append_ui16(e, blob_bytes);
 	}
-	if (frameFull) {
-	  sqlite3_blob_close(blob);
-	  blob=NULL;
+	    
+	unsigned char *dest=ob_append_space(e, blob_bytes);
+	if (!dest){
+	  WHY("Reading blob will overflow overlay_buffer");
 	  goto stopStuffing;
 	}
-	if (e->length+overhead+blob_bytes>=e->allocSize) {
-	  WHY("Reading blob will overflow overlay_buffer");
-	  sqlite3_blob_close(blob);
-	  blob=NULL;
-	  continue;
-	}
-	if (sqlite3_blob_read(blob,&e->bytes[e->length+overhead],blob_bytes,0) != SQLITE_OK) {
+	
+	if (sqlite3_blob_read(blob,dest,blob_bytes,0) != SQLITE_OK) {
 	  WHYF("sqlite3_blob_read() failed, %s", sqlite3_errmsg(rhizome_db));
-	  sqlite3_blob_close(blob);
-	  blob=NULL;
-	  continue;
+	  goto stopStuffing;
 	}
 
-	/* debug: show which BID/version combos we are advertising */
-	if (0 && (!pass)) {
-	  rhizome_manifest *m = rhizome_new_manifest();
-	  rhizome_read_manifest_file(m, (char *)&e->bytes[e->length+overhead], blob_bytes);
-	  long long version = rhizome_manifest_get_ll(m, "version");
-	  DEBUGF("Advertising manifest %s* version %lld", alloca_tohex(m->cryptoSignPublic, 8), version);
-	  rhizome_manifest_free(m);
-	}
-
-	e->length+=overhead+blob_bytes;
-	if (e->length>e->allocSize) {
-	  sqlite3_blob_close(blob);
-	  blob=NULL;
-	  FATAL("e->length > e->size");
-	}
-	bytes_used+=overhead+blob_bytes;
 	bundles_advertised++;
 	bundle_offset[pass]++;
 
 	sqlite3_blob_close(blob);
 	blob=NULL;
+	
+	ob_checkpoint(e);
       }
     }
   stopStuffing:
@@ -294,23 +252,16 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
     if (statement)
       sqlite3_finalize(statement);
     statement = NULL;
+      
+    ob_rewind(e);
+      
     if (!pass) {
       /* Mark end of whole manifests by writing 0xff, which is more than the MSB
 	  of a manifest's length is allowed to be. */
       ob_append_byte(e,0xff);
-      bytes_used++;
     }
   }
 
-  if (blob)
-    sqlite3_blob_close(blob);
-  blob = NULL;
-  if (statement)
-    sqlite3_finalize(statement);
-  statement = NULL;
-
-  if (debug & DEBUG_RHIZOME)
-    DEBUGF("Appended %d rhizome advertisements to packet using %d bytes", bundles_advertised, bytes_used);
   ob_patch_rfs(e, COMPUTE_RFS_LENGTH);
 
   RETURN(0);
@@ -320,8 +271,7 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 {
   IN();
   if (!f) { RETURN(-1); }
-  int ofs=0;
-  int ad_frame_type=f->payload->bytes[ofs++];
+  int ad_frame_type=ob_get(f->payload);
   struct sockaddr_in httpaddr = *(struct sockaddr_in *)f->recvaddr;
   httpaddr.sin_port = htons(RHIZOME_HTTP_PORT);
   int manifest_length;
@@ -331,26 +281,26 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
   switch (ad_frame_type) {
     case 3:
       /* The same as type=1, but includes the source HTTP port number */
-      httpaddr.sin_port = htons((f->payload->bytes[ofs] << 8) + f->payload->bytes[ofs + 1]);
-      ofs += 2;
+      httpaddr.sin_port = htons(ob_get_ui16(f->payload));
       // FALL THROUGH ...
     case 1:
       /* Extract whole manifests */
-      while(ofs<f->payload->length) {
-	manifest_length=(f->payload->bytes[ofs]<<8)+f->payload->bytes[ofs+1];
-	if (manifest_length>=0xff00) {
-	  ofs++;
+      while(f->payload->position < f->payload->sizeLimit) {
+	if (ob_getbyte(f->payload, f->payload->position)==0xff){
+	  f->payload->position++;
 	  break;
 	}
-	if (manifest_length>f->payload->length - ofs) {
-	  assert(inet_ntop(AF_INET, &httpaddr.sin_addr, httpaddrtxt, sizeof(httpaddrtxt)) != NULL);
-	  WHYF("Illegal manifest length field in rhizome advertisement frame from %s:%d (%d vs %d)",
-	       httpaddrtxt, ntohs(httpaddr.sin_port), manifest_length, f->payload->length - ofs);
-	  break;
-	}
-
-	ofs+=2;
+	  
+	manifest_length=ob_get_ui16(f->payload);
 	if (manifest_length==0) continue;
+	
+	unsigned char *data = ob_get_bytes_ptr(f->payload, manifest_length);
+	if (!data) {
+	  assert(inet_ntop(AF_INET, &httpaddr.sin_addr, httpaddrtxt, sizeof(httpaddrtxt)) != NULL);
+	  WHYF("Illegal manifest length field in rhizome advertisement frame %d vs %d.", 
+	       manifest_length, f->payload->sizeLimit - f->payload->position);
+	  break;
+	}
 
 	/* Read manifest without verifying signatures (which would waste lots of
 	   energy, everytime we see a manifest that we already have).
@@ -364,12 +314,13 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	  WHY("Out of manifests");
 	  RETURN(0);
 	}
-	if (rhizome_read_manifest_file(m, (char *)&f->payload->bytes[ofs], 
-				       manifest_length) == -1) {
+	
+	if (rhizome_read_manifest_file(m, (char *)data, manifest_length) == -1) {
 	  WHY("Error importing manifest body");
 	  rhizome_manifest_free(m);
 	  RETURN(0);
 	}
+	
 	char manifest_id_prefix[RHIZOME_MANIFEST_ID_STRLEN + 1];
 	if (rhizome_manifest_get(m, "id", manifest_id_prefix, sizeof manifest_id_prefix) == NULL) {
 	  WHY("Manifest does not contain 'id' field");
@@ -395,7 +346,7 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	  rhizome_manifest_free(m);
 	  RETURN(0);
 	}
-	int importManifest=0;	
+	
 	if (rhizome_ignore_manifest_check(m, &httpaddr))
 	  {
 	    /* Ignoring manifest that has caused us problems recently */
@@ -407,10 +358,12 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	    if (rhizome_manifest_version_cache_lookup(m)) {
 	      /* We already have this version or newer */
 	      if (debug & DEBUG_RHIZOME_RX) DEBUG("We already have that manifest or newer.");
-	      importManifest=0;
 	    } else {
 	      if (debug & DEBUG_RHIZOME_RX) DEBUG("Not seen before.");
-	      importManifest=1;
+	      
+	      rhizome_suggest_queue_manifest_import(m, &httpaddr);
+	      // the above function will free the manifest structure, make sure we don't free it again
+	      m=NULL;
 	    }
 	  }
 	else
@@ -420,42 +373,10 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	       a minute. */
 	    rhizome_queue_ignore_manifest(m, &httpaddr, 60000);
 	  }
-	if (m) rhizome_manifest_free(m);
+	
+	if (m)
+	  rhizome_manifest_free(m);
 	m=NULL;
-	if (importManifest) {
-	  /* Okay, so the manifest looks like it is potentially interesting to us,
-	     i.e., we don't already have it or a later version of it.
-	     Now reread the manifest, this time verifying signatures */
-	  if ((m = rhizome_new_manifest()) == NULL)
-	    WHY("Out of manifests");
-	  else if (rhizome_read_manifest_file(m, (char *)&f->payload->bytes[ofs], manifest_length) == -1) {
-	    WHY("Error importing manifest body");
-	    rhizome_manifest_free(m);
-	    m = NULL;
-	    /* PGS @20120626 - Used to verify manifest here, which is before
-	       checking if we already have the bundle or newer.  Trouble is
-	       that signature verification is VERY expensive (~400ms on the ideos
-	       phones), so we now defer it to inside 
-	       rhizome_suggest_queue_manifest_import(), where it only gets called
-	       after checking that it is worth adding to the queue. */
-	  } else if (m->errors) {
-	    if (debug&DEBUG_RHIZOME) DEBUGF("Verifying manifest %s* revealed errors -- not storing.", manifest_id_prefix);
-	    rhizome_queue_ignore_manifest(m, &httpaddr, 60000);
-	    rhizome_manifest_free(m);
-	    m = NULL;
-	  } else {
-	    if (debug&DEBUG_RHIZOME) DEBUGF("Verifying manifest %s* revealed no errors -- will try to store.", manifest_id_prefix);
-	    /* Add manifest to import queue. We need to know originating IPv4 address
-	       so that we can transfer by HTTP. */
-	    if (0) DEBUG("Suggesting fetching of a bundle");
-	    rhizome_suggest_queue_manifest_import(m, &httpaddr);
-	  }
-	}
-	if (!manifest_length) {
-	  WHY("Infinite loop in packet decoding");
-	  break;
-	}
-	ofs+=manifest_length;
       }
       break;
     }
