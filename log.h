@@ -63,29 +63,37 @@ extern unsigned int debug;
 
 struct strbuf;
 
+struct __sourceloc {
+    const char *file;
+    unsigned int line;
+    const char *function;
+};
+
 void set_logging(FILE *f);
 FILE *open_logging();
 void close_logging();
-void logArgv(int level, const char *file, unsigned int line, const char *function, const char *label, int argc, const char *const *argv);
-void logString(int level, const char *file, unsigned int line, const char *function, const char *str); 
-void logMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, ...);
-void vlogMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, va_list);
+void logArgv(int level, struct __sourceloc where, const char *label, int argc, const char *const *argv);
+void logString(int level, struct __sourceloc where, const char *str); 
+void logMessage(int level, struct __sourceloc where, const char *fmt, ...);
+void vlogMessage(int level, struct __sourceloc where, const char *fmt, va_list);
 unsigned int debugFlagMask(const char *flagname);
-int logDump(int level, const char *file, unsigned int line, const char *function, char *name, unsigned char *addr, size_t len);
+int logDump(int level, struct __sourceloc where, char *name, unsigned char *addr, size_t len);
 char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcBytes);
 size_t toprint_strlen(const char *srcBuf, size_t srcBytes);
 ssize_t get_self_executable_path(char *buf, size_t len);
-int log_backtrace(const char *file, unsigned int line, const char *function);
+int log_backtrace(struct __sourceloc where);
 void set_log_implementation(void (*log_function)(int level, struct strbuf *buf));
 
 #define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca((dstlen) == -1 ? toprint_strlen((buf),(len)) + 1 : (dstlen)), (dstlen), (buf), (len))
 
-#define LOGF(L,F,...)       (logMessage(L, __FILE__, __LINE__, __FUNCTION__, F, ##__VA_ARGS__))
-#define LOGF_perror(L,F,...) logMessage_perror(L, __FILE__, __LINE__, __FUNCTION__, F, ##__VA_ARGS__)
+#define __HERE__            ((struct __sourceloc){ .file = __FILE__, .line = __LINE__, .function = __FUNCTION__ })
+#define __NOWHERE__         ((struct __sourceloc){ .file = NULL, .line = 0, .function = NULL })
+
+#define LOGF(L,F,...)       (logMessage(L, __HERE__, F, ##__VA_ARGS__))
+#define LOGF_perror(L,F,...) logMessage_perror(L, __HERE__, F, ##__VA_ARGS__)
 #define LOG_perror(L,X)     LOGF_perror(L, "%s", (X))
 
-#define logMessage_perror(L,file,line,func,F,...) \
-                            (logMessage(L, file, line, func, F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno))
+#define logMessage_perror(L,where,F,...) (logMessage(L, where, F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno))
 
 #define FATALF(F,...)       do { LOGF(LOG_LEVEL_FATAL, F, ##__VA_ARGS__); exit(-1); } while (1)
 #define FATAL(X)            FATALF("%s", (X))
@@ -102,7 +110,7 @@ void set_log_implementation(void (*log_function)(int level, struct strbuf *buf))
 #define WARNF(F,...)        LOGF(LOG_LEVEL_WARN, F, ##__VA_ARGS__)
 #define WARN(X)             WARNF("%s", (X))
 #define WARN_perror(X)      WARNF("%s: %s [errno=%d]", (X), strerror(errno), errno)
-#define WHY_argv(X,ARGC,ARGV) logArgv(LOG_LEVEL_ERROR, __FILE__, __LINE__, __FUNCTION__, (X), (ARGC), (ARGV))
+#define WHY_argv(X,ARGC,ARGV) logArgv(LOG_LEVEL_ERROR, __HERE__, (X), (ARGC), (ARGV))
 
 #define INFOF(F,...)        LOGF(LOG_LEVEL_INFO, F, ##__VA_ARGS__)
 #define INFO(X)             INFOF("%s", (X))
@@ -112,10 +120,10 @@ void set_log_implementation(void (*log_function)(int level, struct strbuf *buf))
 #define DEBUGF_perror(F,...) DEBUGF(F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno)
 #define DEBUG_perror(X)     DEBUGF("%s: %s [errno=%d]", (X), strerror(errno), errno)
 #define D DEBUG("D")
-#define DEBUG_argv(X,ARGC,ARGV) logArgv(LOG_LEVEL_DEBUG, __FILE__, __LINE__, __FUNCTION__, (X), (ARGC), (ARGV))
+#define DEBUG_argv(X,ARGC,ARGV) logArgv(LOG_LEVEL_DEBUG, __HERE__, (X), (ARGC), (ARGV))
 
-#define dump(X,A,N)         logDump(LOG_LEVEL_DEBUG, __FILE__, __LINE__, __FUNCTION__, (X), (A), (N))
+#define dump(X,A,N)         logDump(LOG_LEVEL_DEBUG, __HERE__, (X), (A), (N))
 
-#define BACKTRACE           log_backtrace(__FILE__, __LINE__, __FUNCTION__)
+#define BACKTRACE           log_backtrace(__HERE__)
 
 #endif // __SERVALD_LOG_H

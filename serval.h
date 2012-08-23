@@ -111,6 +111,7 @@ struct in_addr {
 #include "constants.h"
 #include "xprintf.h"
 #include "log.h"
+#include "net.h"
 #include "conf.h"
 
 /* All wall clock times in the Serval daemon are represented in milliseconds
@@ -681,9 +682,9 @@ int overlay_interface_init_socket(int i);
 time_ms_t overlay_time_until_next_tick();
 int overlay_rx_messages();
 
-void logServalPacket(int level, const char *file, unsigned int line, const char *function, const char *message, const unsigned char *packet, size_t len);
+void logServalPacket(int level, struct __sourceloc where, const char *message, const unsigned char *packet, size_t len);
 
-#define DEBUG_packet_visualise(M,P,N) logServalPacket(LOG_LEVEL_DEBUG, __FILE__, __LINE__, __FUNCTION__, (M), (P), (N))
+#define DEBUG_packet_visualise(M,P,N) logServalPacket(LOG_LEVEL_DEBUG, __HERE__, (M), (P), (N))
 
 int overlay_add_selfannouncement();
 int overlay_frame_package_fmt1(overlay_frame *p,overlay_buffer *b);
@@ -1000,13 +1001,13 @@ int dump_payload(overlay_frame *p,char *message);
 int urandombytes(unsigned char *x,unsigned long long xlen);
 
 #ifdef MALLOC_PARANOIA
-#define malloc(X) _serval_debug_malloc(X,__FILE__,__FUNCTION__,__LINE__)
-#define calloc(X,Y) _serval_debug_calloc(X,Y,__FILE__,__FUNCTION__,__LINE__)
-#define free(X) _serval_debug_free(X,__FILE__,__FUNCTION__,__LINE__)
+#define malloc(X) _serval_debug_malloc(X,__HERE__)
+#define calloc(X,Y) _serval_debug_calloc(X,Y,__HERE__)
+#define free(X) _serval_debug_free(X,__HERE__)
 
-void *_serval_debug_malloc(unsigned int bytes,char *file,const char *func,int line);
-void *_serval_debug_calloc(unsigned int bytes,unsigned int count,char *file,const char *func,int line);
-void _serval_debug_free(void *p,char *file,const char *func,int line);
+void *_serval_debug_malloc(unsigned int bytes, struct __sourceloc where);
+void *_serval_debug_calloc(unsigned int bytes, unsigned int count, struct __sourceloc where);
+void _serval_debug_free(void *p, struct __sourceloc where);
 #endif
 
 
@@ -1117,24 +1118,6 @@ extern int sigPipeFlag;
 extern int sigIoFlag;
 void sigPipeHandler(int signal);
 void sigIoHandler(int signal);
-
-#define set_nonblock(fd)                (_set_nonblock(fd, __FILE__, __LINE__, __FUNCTION__))
-#define set_block(fd)                   (_set_block(fd, __FILE__, __LINE__, __FUNCTION__))
-#define read_nonblock(fd,buf,len)       (_read_nonblock(fd, buf, len, __FILE__, __LINE__, __FUNCTION__))
-#define write_all(fd,buf,len)           (_write_all(fd, buf, len, __FILE__, __LINE__, __FUNCTION__))
-#define write_nonblock(fd,buf,len)      (_write_nonblock(fd, buf, len, __FILE__, __LINE__, __FUNCTION__))
-#define write_all_nonblock(fd,buf,len)  (_write_all_nonblock(fd, buf, len, __FILE__, __LINE__, __FUNCTION__))
-#define write_str(fd,str)               (_write_str(fd, str, __FILE__, __LINE__, __FUNCTION__))
-#define write_str_nonblock(fd,str)      (_write_str_nonblock(fd, str, __FILE__, __LINE__, __FUNCTION__))
-
-int _set_nonblock(int fd, const char *file, unsigned int line, const char *function);
-int _set_block(int fd, const char *file, unsigned int line, const char *function);
-ssize_t _read_nonblock(int fd, void *buf, size_t len, const char *file, unsigned int line, const char *function);
-ssize_t _write_all(int fd, const void *buf, size_t len, const char *file, unsigned int line, const char *function);
-ssize_t _write_nonblock(int fd, const void *buf, size_t len, const char *file, unsigned int line, const char *function);
-ssize_t _write_all_nonblock(int fd, const void *buf, size_t len, const char *file, unsigned int line, const char *function);
-ssize_t _write_str(int fd, const char *str, const char *file, unsigned int line, const char *function);
-ssize_t _write_str_nonblock(int fd, const char *str, const char *file, unsigned int line, const char *function);
 
 int rhizome_http_server_start();
 int overlay_mdp_setup_sockets();

@@ -429,35 +429,27 @@ int rhizome_manifest_set_ll(rhizome_manifest *m,char *var,long long value)
 rhizome_manifest manifests[MAX_RHIZOME_MANIFESTS];
 char manifest_free[MAX_RHIZOME_MANIFESTS];
 int manifest_first_free=-1;
-const char *manifest_alloc_sourcefiles[MAX_RHIZOME_MANIFESTS];
-const char *manifest_alloc_functions[MAX_RHIZOME_MANIFESTS];
-int manifest_alloc_lines[MAX_RHIZOME_MANIFESTS];
-const char *manifest_free_sourcefiles[MAX_RHIZOME_MANIFESTS];
-const char *manifest_free_functions[MAX_RHIZOME_MANIFESTS];
-int manifest_free_lines[MAX_RHIZOME_MANIFESTS];
+struct __sourceloc manifest_alloc_where[MAX_RHIZOME_MANIFESTS];
+struct __sourceloc manifest_free_where[MAX_RHIZOME_MANIFESTS];
 
-static void _log_manifest_trace(const char *filename, const char *funcname, int line, const char *operation)
+static void _log_manifest_trace(struct __sourceloc where, const char *operation)
 {
   int count_free = 0;
   int i;
   for (i = 0; i != MAX_RHIZOME_MANIFESTS; ++i)
     if (manifest_free[i])
       ++count_free;
-  logMessage(LOG_LEVEL_DEBUG, filename, line, funcname, "%s(): count_free = %d", operation, count_free);
+  logMessage(LOG_LEVEL_DEBUG, where, "%s(): count_free = %d", operation, count_free);
 }
 
-rhizome_manifest *_rhizome_new_manifest(const char *filename, const char *funcname, int line)
+rhizome_manifest *_rhizome_new_manifest(struct __sourceloc where)
 {
   if (manifest_first_free<0) {
     /* Setup structures */
     int i;
     for(i=0;i<MAX_RHIZOME_MANIFESTS;i++) {
-      manifest_alloc_sourcefiles[i]="<never allocated>";
-      manifest_alloc_functions[i]="<never allocated>";
-      manifest_alloc_lines[i]=-1;
-      manifest_free_sourcefiles[i]="<never freed>";
-      manifest_free_functions[i]="<never freed>";
-      manifest_free_lines[i]=-1;
+      manifest_alloc_where[i]=__NOWHERE__;
+      manifest_free_where[i]=__NOWHERE__;
       manifest_free[i]=1;
     }
     manifest_first_free=0;
@@ -467,14 +459,14 @@ rhizome_manifest *_rhizome_new_manifest(const char *filename, const char *funcna
   if (manifest_first_free>=MAX_RHIZOME_MANIFESTS)
     {
       int i;
-      logMessage(LOG_LEVEL_ERROR, filename, line, funcname, "%s(): no free manifest records, this probably indicates a memory leak", __FUNCTION__);
+      logMessage(LOG_LEVEL_ERROR, where, "%s(): no free manifest records, this probably indicates a memory leak", __FUNCTION__);
       WHYF("   Slot# | Last allocated by");
       for(i=0;i<MAX_RHIZOME_MANIFESTS;i++) {
 	WHYF("   %-5d | %s:%d in %s()",
 		i,
-		manifest_alloc_sourcefiles[i],
-		manifest_alloc_lines[i],
-		manifest_alloc_functions[i]
+		manifest_alloc_where[i].file,
+		manifest_alloc_where[i].line,
+		manifest_alloc_where[i].function
 	    );
       }     
       return NULL;
@@ -486,32 +478,27 @@ rhizome_manifest *_rhizome_new_manifest(const char *filename, const char *funcna
 
   /* Indicate where manifest was allocated, and that it is no longer
      free. */
-  manifest_alloc_sourcefiles[manifest_first_free]=filename;
-  manifest_alloc_lines[manifest_first_free]=line;
-  manifest_alloc_functions[manifest_first_free]=funcname;
+  manifest_alloc_where[manifest_first_free]=where;
   manifest_free[manifest_first_free]=0;
-  manifest_free_sourcefiles[manifest_first_free]="<not freed>";
-  manifest_free_functions[manifest_first_free]="<not freed>";
-  manifest_free_lines[manifest_first_free]=-1;
+  manifest_free_where[manifest_first_free]=__NOWHERE__;
 
   /* Work out where next free manifest record lives */
   for (; manifest_first_free < MAX_RHIZOME_MANIFESTS && !manifest_free[manifest_first_free]; ++manifest_first_free)
     ;
 
-  if (debug & DEBUG_MANIFESTS) _log_manifest_trace(filename, funcname, line, __FUNCTION__);
+  if (debug & DEBUG_MANIFESTS) _log_manifest_trace(where, __FUNCTION__);
 
   return m;
 }
 
-void _rhizome_manifest_free(const char *sourcefile,const char *funcname,int line,
-			    rhizome_manifest *m)
+void _rhizome_manifest_free(struct __sourceloc where, rhizome_manifest *m)
 {
   if (!m) return;
   int i;
   int mid=m->manifest_record_number;
 
   if (m!=&manifests[mid]) {
-    logMessage(LOG_LEVEL_ERROR, sourcefile, line, funcname,
+    logMessage(LOG_LEVEL_ERROR, where,
 	"%s(): asked to free manifest %p, which claims to be manifest slot #%d (%p), but isn't",
 	__FUNCTION__, m, mid, &manifests[mid]
       );
@@ -519,12 +506,12 @@ void _rhizome_manifest_free(const char *sourcefile,const char *funcname,int line
   }
 
   if (manifest_free[mid]) {
-    logMessage(LOG_LEVEL_ERROR, sourcefile, line, funcname,
+    logMessage(LOG_LEVEL_ERROR, where,
 	"%s(): asked to free manifest slot #%d (%p), which was already freed at %s:%d:%s()",
 	__FUNCTION__, mid, m,
-	manifest_free_sourcefiles[mid],
-	manifest_free_lines[mid],
-	manifest_free_functions[mid]
+	manifest_free_where[mid].file,
+	manifest_free_where[mid].line,
+	manifest_free_where[mid].function
       );
     exit(-1);
   }
@@ -543,12 +530,10 @@ void _rhizome_manifest_free(const char *sourcefile,const char *funcname,int line
   m->dataFileName=NULL;
 
   manifest_free[mid]=1;
-  manifest_free_sourcefiles[mid]=sourcefile;
-  manifest_free_functions[mid]=funcname;
-  manifest_free_lines[mid]=line;
+  manifest_free_where[mid]=where;
   if (mid<manifest_first_free) manifest_first_free=mid;
 
-  if (debug & DEBUG_MANIFESTS) _log_manifest_trace(sourcefile, funcname, line, __FUNCTION__);
+  if (debug & DEBUG_MANIFESTS) _log_manifest_trace(where, __FUNCTION__);
 
   return;
 }

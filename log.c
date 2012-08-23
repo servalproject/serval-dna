@@ -32,6 +32,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <fcntl.h>
 
 #include "log.h"
+#include "net.h"
 #include "conf.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
@@ -128,7 +129,7 @@ static const char *_trimbuildpath(const char *path)
   return &path[lastsep];
 }
 
-static int _log_prepare(int level, const char *file, unsigned int line, const char *function)
+static int _log_prepare(int level, struct __sourceloc where)
 {
   if (level == LOG_LEVEL_SILENT)
     return 0;
@@ -161,21 +162,22 @@ static int _log_prepare(int level, const char *file, unsigned int line, const ch
 	strbuf_sprintf(&logbuf, "%s.%03u ", buf, tv.tv_usec / 1000);
     }
   }
-  if (file) {
-    strbuf_sprintf(&logbuf, "%s", _trimbuildpath(file));
-    if (line)
-      strbuf_sprintf(&logbuf, ":%u", line);
-    if (function)
-      strbuf_sprintf(&logbuf, ":%s()", function);
+  if (where.file) {
+    strbuf_sprintf(&logbuf, "%s", _trimbuildpath(where.file));
+    if (where.line)
+      strbuf_sprintf(&logbuf, ":%u", where.line);
+    if (where.function)
+      strbuf_sprintf(&logbuf, ":%s()", where.function);
     strbuf_putc(&logbuf, ' ');
-  } else if (function) {
-    strbuf_sprintf(&logbuf, "%s() ", function);
+  } else if (where.function) {
+    strbuf_sprintf(&logbuf, "%s() ", where.function);
   }
   strbuf_putc(&logbuf, ' ');
   return 1;
 }
 
-static void _log_internal(int level, struct strbuf *buf){
+static void _log_internal(int level, struct strbuf *buf)
+{
 #ifdef ANDROID
   int alevel = ANDROID_LOG_UNKNOWN;
   switch (level) {
@@ -196,20 +198,22 @@ static void _log_internal(int level, struct strbuf *buf){
 #endif
 }
 
-void (*_log_implementation)(int level, struct strbuf *buf)=_log_internal;
+void (*_log_implementation)(int level, struct strbuf *buf) = _log_internal;
 
-static void _log_finish(int level){
-  if(_log_implementation)
+static void _log_finish(int level)
+{
+  if (_log_implementation)
     _log_implementation(level, &logbuf);
 }
 
-void set_log_implementation(void (*log_function)(int level, struct strbuf *buf)){
+void set_log_implementation(void (*log_function)(int level, struct strbuf *buf))
+{
   _log_implementation=log_function;
 }
 
-void logArgv(int level, const char *file, unsigned int line, const char *function, const char *label, int argc, const char *const *argv)
+void logArgv(int level, struct __sourceloc where, const char *label, int argc, const char *const *argv)
 {
-  if (_log_prepare(level, file, line, function)) {
+  if (_log_prepare(level, where)) {
     if (label) {
       strbuf_puts(&logbuf, label);
       strbuf_putc(&logbuf, ' ');
@@ -227,47 +231,47 @@ void logArgv(int level, const char *file, unsigned int line, const char *functio
   }
 }
 
-void logString(int level, const char *file, unsigned int line, const char *function, const char *str)
+void logString(int level, struct __sourceloc where, const char *str)
 {
   const char *s = str;
   const char *p;
   for (p = str; *p; ++p) {
     if (*p == '\n') {
-      if (_log_prepare(level, file, line, function)) {
+      if (_log_prepare(level, where)) {
 	strbuf_ncat(&logbuf, s, p - s);
 	_log_finish(level);
       }
       s = p + 1;
     }
   }
-  if (p > s && _log_prepare(level, file, line, function)) {
+  if (p > s && _log_prepare(level, where)) {
     strbuf_ncat(&logbuf, s, p - s);
     _log_finish(level);
   }
 }
 
-void logMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, ...)
+void logMessage(int level, struct __sourceloc where, const char *fmt, ...)
 {
   va_list ap;
   va_start(ap, fmt);
-  vlogMessage(level, file, line, function, fmt, ap);
+  vlogMessage(level, where, fmt, ap);
   va_end(ap);
 }
 
-void vlogMessage(int level, const char *file, unsigned int line, const char *function, const char *fmt, va_list ap)
+void vlogMessage(int level, struct __sourceloc where, const char *fmt, va_list ap)
 {
-  if (_log_prepare(level, file, line, function)) {
+  if (_log_prepare(level, where)) {
     strbuf_vsprintf(&logbuf, fmt, ap);
     _log_finish(level);
   }
 }
 
-int logDump(int level, const char *file, unsigned int line, const char *function, char *name, unsigned char *addr, size_t len)
+int logDump(int level, struct __sourceloc where, char *name, unsigned char *addr, size_t len)
 {
   char buf[100];
   size_t i;
   if (name)
-    logMessage(level, file, line, function, "Dump of %s", name);
+    logMessage(level, where, "Dump of %s", name);
   for(i = 0; i < len; i += 16) {
     strbuf b = strbuf_local(buf, sizeof buf);
     strbuf_sprintf(b, "  %04x :", i);
@@ -279,7 +283,7 @@ int logDump(int level, const char *file, unsigned int line, const char *function
     strbuf_puts(b, "    ");
     for (j = 0; j < 16 && i + j < len; j++)
       strbuf_sprintf(b, "%c", addr[i+j] >= ' ' && addr[i+j] < 0x7f ? addr[i+j] : '.');
-    logMessage(level, file, line, function, "%s", strbuf_str(b));
+    logMessage(level, where, "%s", strbuf_str(b));
   }
   return 0;
 }
@@ -393,7 +397,7 @@ ssize_t get_self_executable_path(char *buf, size_t len)
   return WHYF("Not implemented");
 }
 
-int log_backtrace(const char *file, unsigned int line, const char *function)
+int log_backtrace(struct __sourceloc where)
 {
   open_logging();
   char execpath[160];
@@ -445,7 +449,7 @@ int log_backtrace(const char *file, unsigned int line, const char *function)
   }
   // parent
   close(stdout_fds[1]);
-  logMessage(LOG_LEVEL_DEBUG, file, line, function, "GDB BACKTRACE");
+  logMessage(LOG_LEVEL_DEBUG, where, "GDB BACKTRACE");
   char buf[1024];
   char *const bufe = buf + sizeof buf;
   char *linep = buf;
@@ -457,14 +461,14 @@ int log_backtrace(const char *file, unsigned int line, const char *function)
     for (; p < readp; ++p)
       if (*p == '\n' || *p == '\0') {
 	*p = '\0';
-	logMessage(LOG_LEVEL_DEBUG, NULL, 0, NULL, "%s", linep);
+	logMessage(LOG_LEVEL_DEBUG, __NOWHERE__, "%s", linep);
 	linep = p + 1;
       }
     if (readp >= bufe && linep == buf) {
       // Line does not fit into buffer.
       char t = bufe[-1];
       bufe[-1] = '\0';
-      logMessage(LOG_LEVEL_DEBUG, NULL, 0, NULL, "%s", buf);
+      logMessage(LOG_LEVEL_DEBUG, __NOWHERE__, "%s", buf);
       buf[0] = t;
       readp = buf + 1;
     } else if (readp + 120 >= bufe && linep != buf) {
@@ -480,7 +484,7 @@ int log_backtrace(const char *file, unsigned int line, const char *function)
     WHY_perror("read");
   if (readp > linep) {
     *readp = '\0';
-    logMessage(LOG_LEVEL_DEBUG, NULL, 0, NULL, "%s", linep);
+    logMessage(LOG_LEVEL_DEBUG, __NOWHERE__, "%s", linep);
   }
   close(stdout_fds[0]);
   int status = 0;
@@ -488,7 +492,7 @@ int log_backtrace(const char *file, unsigned int line, const char *function)
     WHY_perror("waitpid");
   strbuf b = strbuf_local(buf, sizeof buf);
   strbuf_append_exit_status(b, status);
-  logMessage(LOG_LEVEL_DEBUG, NULL, 0, NULL, "gdb %s", buf);
+  logMessage(LOG_LEVEL_DEBUG, __NOWHERE__, "gdb %s", buf);
   unlink(tempfile);
   return 0;
 }

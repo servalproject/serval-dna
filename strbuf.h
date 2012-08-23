@@ -443,9 +443,4 @@ __STRBUF_INLINE int strbuf_overrun(const_strbuf sb) {
   return sb->end && sb->current > sb->end;
 }
 
-#define write_str(fd,str)               (_write_str(fd, str, __FILE__, __LINE__, __FUNCTION__))
-ssize_t _write_str(int fd, const char *str, const char *file, unsigned int line, const char *function);
-ssize_t _write_str_nonblock(int fd, const char *str, const char *file, unsigned int line, const char *function);
-
-
 #endif // __STRBUF_H__

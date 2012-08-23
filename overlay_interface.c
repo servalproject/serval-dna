@@ -1155,7 +1155,7 @@ long long parse_quantity(char *q)
     }
 }
 
-void logServalPacket(int level, const char *file, unsigned int line, const char *function, const char *message, const unsigned char *packet, size_t len)
+void logServalPacket(int level, struct __sourceloc where, const char *message, const unsigned char *packet, size_t len)
 {
   struct mallocbuf mb = STRUCT_MALLOCBUF_NULL;
   if (serval_packetvisualise(XPRINTF_MALLOCBUF(&mb), message, packet, len) == -1)
@@ -1163,7 +1163,7 @@ void logServalPacket(int level, const char *file, unsigned int line, const char 
   else if (mb.buffer == NULL)
     WHYF("serval_packetvisualise() output buffer missing, message=%s packet=%p len=%lu", alloca_toprint(-1, message, strlen(message)), packet, len);
   else
-    logString(level, file, line, function, mb.buffer);
+    logString(level, where, mb.buffer);
   if (mb.buffer)
     free(mb.buffer);
 }

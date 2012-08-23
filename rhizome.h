@@ -179,11 +179,10 @@ int rhizome_manifest_set_ll(rhizome_manifest *m,char *var,long long value);
 int rhizome_manifest_set(rhizome_manifest *m, const char *var, const char *value);
 int rhizome_manifest_del(rhizome_manifest *m, const char *var);
 long long rhizome_file_size(char *filename);
-void _rhizome_manifest_free(const char *sourcefile,const char *funcname,int line,
-			    rhizome_manifest *m);
-#define rhizome_manifest_free(m) _rhizome_manifest_free(__FILE__,__FUNCTION__,__LINE__,m)
-rhizome_manifest *_rhizome_new_manifest(const char *file,const char *func,int line);
-#define rhizome_new_manifest() _rhizome_new_manifest(__FILE__,__FUNCTION__,__LINE__)
+void _rhizome_manifest_free(struct __sourceloc where, rhizome_manifest *m);
+#define rhizome_manifest_free(m) _rhizome_manifest_free(__HERE__,m)
+rhizome_manifest *_rhizome_new_manifest(struct __sourceloc where);
+#define rhizome_new_manifest() _rhizome_new_manifest(__HERE__)
 int rhizome_manifest_pack_variables(rhizome_manifest *m);
 int rhizome_store_bundle(rhizome_manifest *m);
 int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid);

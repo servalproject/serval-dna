@@ -377,22 +377,22 @@ int ob_dump(overlay_buffer *b,char *desc)
 #undef realloc
 
 #define SDM_GUARD_AFTER 16384
-void *_serval_debug_malloc(unsigned int bytes,char *file,const char *func,int line)
+void *_serval_debug_malloc(unsigned int bytes, struct __sourceloc where)
 {
   void *r=malloc(bytes+SDM_GUARD_AFTER);
-  logMessage(LOG_LEVEL_DEBUG, file, line, func, "malloc(%d) -> %p", bytes, r); 
+  logMessage(LOG_LEVEL_DEBUG, where, "malloc(%d) -> %p", bytes, r); 
   return r;
 }
 
-void *_serval_debug_calloc(unsigned int bytes,unsigned int count,char *file,const char *func,int line)
+void *_serval_debug_calloc(unsigned int bytes, unsigned int count, struct __sourceloc where)
 {
   void *r=calloc((bytes*count)+SDM_GUARD_AFTER,1);
-  logMessage(LOG_LEVEL_DEBUG, file, line, func, "calloc(%d,%d) -> %p", bytes, count, r); 
+  logMessage(LOG_LEVEL_DEBUG, where, "calloc(%d,%d) -> %p", bytes, count, r); 
   return r;
 }
 
-void _serval_debug_free(void *p,char *file,const char *func,int line)
+void _serval_debug_free(void *p, struct __sourceloc where)
 {
   free(p);
-  logMessage(LOG_LEVEL_DEBUG, file, line, func, "free(%p)", p); 
+  logMessage(LOG_LEVEL_DEBUG, where, "free(%p)", p); 
 }
