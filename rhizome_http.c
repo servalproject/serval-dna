@@ -406,81 +406,70 @@ static int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *t
     return WHY("Not enough space to fit any records");
   }
 
-  char query[1024];
-  snprintf(query,1024,"%s LIMIT %lld,%d",r->source,r->source_index,record_count);
-
-  sqlite3_stmt *statement;
+  sqlite3_stmt *statement = sqlite_prepare("%s LIMIT %lld,%d", r->source, r->source_index, record_count);
+  if (!statement)
+    return -1;
   if (debug & DEBUG_RHIZOME_TX)
-    DEBUG(query);
-  switch (sqlite3_prepare_v2(rhizome_db,query,-1,&statement,NULL))
-    {
-    case SQLITE_OK: case SQLITE_DONE: case SQLITE_ROW:
-      break;
-    default:
+    DEBUG(sqlite3_sql(statement));
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  while(  r->buffer_length + r->source_record_size < r->buffer_size
+      &&  sqlite_step_retry(&retry, statement) == SQLITE_ROW
+  ) {
+    r->source_index++;
+    if (sqlite3_column_count(statement)!=2) {
       sqlite3_finalize(statement);
-      sqlite3_close(rhizome_db);
-      rhizome_db=NULL;
-      WHY(query);
-      WHY(sqlite3_errmsg(rhizome_db));
-      return WHY("Could not prepare sql statement.");
+      return WHY("sqlite3 returned multiple columns for a single column query");
     }
-  while(((r->buffer_length+r->source_record_size)<r->buffer_size)
-	&&(sqlite3_step(statement)==SQLITE_ROW))
-    {
-      r->source_index++;
-      
-      if (sqlite3_column_count(statement)!=2) {
-	sqlite3_finalize(statement);
-	return WHY("sqlite3 returned multiple columns for a single column query");
-      }
-      sqlite3_blob *blob;
-      const unsigned char *value;
-      int column_type=sqlite3_column_type(statement, 0);
-      switch(column_type) {
-      case SQLITE_TEXT:	value=sqlite3_column_text(statement, 0); break;
-      case SQLITE_BLOB:
-	if (debug & DEBUG_RHIZOME_TX)
-	  DEBUGF("table='%s',col='%s',rowid=%lld", table, column, sqlite3_column_int64(statement,1));
-	if (sqlite3_blob_open(rhizome_db,"main",table,column,
-			      sqlite3_column_int64(statement,1) /* rowid */,
-			      0 /* read only */,&blob)!=SQLITE_OK)
-	  {
-	    WHY("Couldn't open blob");
-	    continue;
-	  }
-	if (sqlite3_blob_read(blob,&blob_value[0],
-			  /* copy number of bytes based on whether we need to
-			     de-hex the string or not */
-			      r->source_record_size*(1+(r->source_flags&1)),0)
-	    !=SQLITE_OK) {
-	  WHY("Couldn't read from blob");
-	  sqlite3_blob_close(blob);
-	  continue;
-	}
-	value=blob_value;
-	sqlite3_blob_close(blob);
-	break;
-      default:
-	/* improper column type, so don't include in report */
-	WHYF("Bad column type %d", column_type);
+    sqlite3_blob *blob;
+    const unsigned char *value;
+    int column_type=sqlite3_column_type(statement, 0);
+    switch(column_type) {
+    case SQLITE_TEXT:	value=sqlite3_column_text(statement, 0); break;
+    case SQLITE_BLOB:
+      if (debug & DEBUG_RHIZOME_TX)
+	DEBUGF("table='%s',col='%s',rowid=%lld", table, column, sqlite3_column_int64(statement,1));
+
+      int ret;
+      int64_t rowid = sqlite3_column_int64(statement, 1);
+      do ret = sqlite3_blob_open(rhizome_db, "main", table, column, rowid, 0 /* read only */, &blob);
+	while (sqlite_code_busy(ret) && sqlite_retry(&retry, "sqlite3_blob_open"));
+      if (!sqlite_code_ok(ret)) {
+	WHYF("sqlite3_blob_open() failed, %s", sqlite3_errmsg(rhizome_db));
 	continue;
       }
-      if (r->source_flags&1) {
-	/* hex string to be converted */
-	int i;
-	for(i=0;i<r->source_record_size;i++)
-	  /* convert the two nybls and make a byte */
-	  r->buffer[r->buffer_length+i]
-	    =(hexvalue(value[i<<1])<<4)|hexvalue(value[(i<<1)+1]);
-      } else
-	/* direct binary value */
-	bcopy(value,&r->buffer[r->buffer_length],r->source_record_size);
-      r->buffer_length+=r->source_record_size;
-      
+      sqlite_retry_done(&retry, "sqlite3_blob_open");
+      if (sqlite3_blob_read(blob,&blob_value[0],
+			/* copy number of bytes based on whether we need to
+			    de-hex the string or not */
+			    r->source_record_size*(1+(r->source_flags&1)),0)
+	  !=SQLITE_OK) {
+	WHYF("sqlite3_blob_read() failed, %s", sqlite3_errmsg(rhizome_db));
+	sqlite3_blob_close(blob);
+	continue;
+      }
+      value = blob_value;
+      sqlite3_blob_close(blob);
+      break;
+    default:
+      /* improper column type, so don't include in report */
+      WHYF("Bad column type %d", column_type);
+      continue;
     }
+    if (r->source_flags&1) {
+      /* hex string to be converted */
+      int i;
+      for(i=0;i<r->source_record_size;i++)
+	/* convert the two nybls and make a byte */
+	r->buffer[r->buffer_length+i]
+	  =(hexvalue(value[i<<1])<<4)|hexvalue(value[(i<<1)+1]);
+    } else
+      /* direct binary value */
+      bcopy(value,&r->buffer[r->buffer_length],r->source_record_size);
+    r->buffer_length+=r->source_record_size;
+    
+  }
   sqlite3_finalize(statement);
-
-  return 0;  
+  return 0;
 }
 
 int http_header_complete(const char *buf, size_t len, size_t tail)

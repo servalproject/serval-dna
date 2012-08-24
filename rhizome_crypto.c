@@ -38,44 +38,6 @@ int rhizome_manifest_createid(rhizome_manifest *m)
   return WHY("Failed to create keypair for manifest ID.");
 }
 
-#ifdef DEPRECATED
-int rhizome_store_keypair_bytes(unsigned char *p,unsigned char *s) {
-  /* XXX TODO Secrets should be encrypted using a keyring password. */
-  if (sqlite_exec_void("INSERT INTO KEYPAIRS(public,private) VALUES('%s','%s');",
-			rhizome_bytes_to_hex(p,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES),
-			rhizome_bytes_to_hex(s,crypto_sign_edwards25519sha512batch_SECRETKEYBYTES))<0)
-    return WHY("Failed to store key pair.");
-  return 0;
-}
-
-int rhizome_find_keypair_bytes(unsigned char *p,unsigned char *s) {
-  sqlite3_stmt *statement;
-  char sql[1024];
-  const char *cmdtail;
-
-  snprintf(sql,1024,"SELECT private from KEYPAIRS WHERE public='%s';",
-	   rhizome_bytes_to_hex(p,crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES));
-  if (sqlite3_prepare_v2(rhizome_db,sql,strlen(sql)+1,&statement,&cmdtail) 
-      != SQLITE_OK) {
-    sqlite3_finalize(statement);    
-    return WHY(sqlite3_errmsg(rhizome_db));
-  }
-  if ( sqlite3_step(statement) == SQLITE_ROW ) {
-    if (sqlite3_column_type(statement,0)==SQLITE_TEXT) {
-      const unsigned char *hex=sqlite3_column_text(statement,0);
-      sqlite3_finalize(statement);
-      if (fromhexstr(s, (const char *)hex, crypto_sign_edwards25519sha512batch_SECRETKEYBYTES) != -1) {
-	/* XXX TODO Decrypt secret using a keyring password */
-	return 0;
-      }
-      return WHY("Database contains invalid secret key");
-    }
-  }
-  sqlite3_finalize(statement);
-  return WHY("Could not find matching secret key.");
-}
-#endif
-
 /*
    Return -1 if an error occurs.
    Return 0 if the author's private key is located and the XOR is performed successfully.

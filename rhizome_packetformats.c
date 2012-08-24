@@ -145,9 +145,11 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
 
   // TODO Group handling not completely thought out here yet.
 
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+
   /* Get number of bundles available if required */
   long long tmp = 0;
-  if (sqlite_exec_int64(&tmp, "SELECT COUNT(BAR) FROM MANIFESTS;") != 1)
+  if (sqlite_exec_int64_retry(&retry, &tmp, "SELECT COUNT(BAR) FROM MANIFESTS;") != 1)
     { RETURN(WHY("Could not count BARs for advertisement")); }
   bundles_available = (int) tmp;
   if (bundles_available==-1||(bundle_offset[0]>=bundles_available)) 
@@ -161,157 +163,155 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
   sqlite3_stmt *statement=NULL;
   sqlite3_blob *blob=NULL;
 
-  for(pass=skipmanifests;pass<2;pass++)
-    {
-      char query[1024];
-      switch(pass) {
-      case 0: /* Full manifests */
-	snprintf(query,1024,"SELECT MANIFEST,ROWID FROM MANIFESTS LIMIT %d,%d",
-		 bundle_offset[pass],slots);
-	break;
-      case 1: /* BARs */
-	snprintf(query,1024,"SELECT BAR,ROWID FROM MANIFESTS LIMIT %d,%d",
-		 bundle_offset[pass],slots);
-	break;
-      }
-
-      switch (sqlite3_prepare_v2(rhizome_db,query,-1,&statement,NULL))
-	{
-	case SQLITE_OK: case SQLITE_DONE: case SQLITE_ROW:
-	  break;
-	default:
-	  sqlite3_finalize(statement); statement=NULL;
-	  sqlite3_close(rhizome_db); rhizome_db=NULL;
-	  WHY(query);
-	  WHY(sqlite3_errmsg(rhizome_db));
-	  RETURN(WHY("Could not prepare sql statement for fetching BARs for advertisement."));
-	}
-      while((bytes_used<bytes_available)&&(sqlite3_step(statement)==SQLITE_ROW)&&
-	    (e->length+RHIZOME_BAR_BYTES<=e->sizeLimit))
-	{
-	  int column_type=sqlite3_column_type(statement, 0);
-	  switch(column_type) {
-	  case SQLITE_BLOB:
-	    if (blob) sqlite3_blob_close(blob); blob=NULL;
-	    if (sqlite3_blob_open(rhizome_db,"main","manifests",
-				  pass?"bar":"manifest",
-				  sqlite3_column_int64(statement,1) /* rowid */,
-				  0 /* read only */,&blob)!=SQLITE_OK)
-	      {
-		WHY("Couldn't open blob");
-		continue;
-	      }
-	    int blob_bytes=sqlite3_blob_bytes(blob);
-	    if (pass&&(blob_bytes!=RHIZOME_BAR_BYTES)) {
-	      if (debug&DEBUG_RHIZOME) 
-		DEBUG("Found a BAR that is the wrong size - ignoring");
-	      sqlite3_blob_close(blob); blob=NULL;
-	      continue;
-	    }
-	    
-	    /* Only include manifests that are <=1KB inline.
-	       Longer ones are only advertised by BAR */
-	    if (blob_bytes>1024) { 
-	      if (0) WARN("blob>1k - ignoring");
-	      sqlite3_blob_close(blob); blob=NULL;
-	      bundle_offset[pass]++;
-	      continue;
-	    }
-
-	    /* XXX This whole section is too hard to follow how the frame gets
-	       built up. In particular the calculations for space required etc
-	       are quite opaque... and I wrote it!  */
-	    int overhead=0;
-	    int frameFull=0;
-	    if (!pass) overhead=2;
-	    if (0) DEBUGF("e=%p, e->bytes=%p,e->length=%d, e->allocSize=%d",
-		   e,e->bytes,e->length,e->allocSize);	    
-	    
-	    if (ob_makespace(e,overhead+2+blob_bytes)) {
-	      if (0||debug&DEBUG_RHIZOME) {
-		rhizome_manifest *m=rhizome_new_manifest();
-		char mdata[blob_bytes]; mdata[0]=0; mdata[1]=0;
-		sqlite3_blob_read(blob,&mdata[0],blob_bytes,0);
-		rhizome_read_manifest_file(m,mdata, blob_bytes);
-		long long version = rhizome_manifest_get_ll(m, "version");
-		DEBUGF("Stop cramming %s advertisements: not enough space for %s*:v%lld (%d bytes, size limit=%d, used=%d)",
-		       pass?"BARs":"manifests",
-		       alloca_tohex(m->cryptoSignPublic, 8),
-		       version,
-		       blob_bytes,e->sizeLimit,e->length);
-		rhizome_manifest_free(m);
-	      }
-	      frameFull=1;
-	    } else if (!pass) {
-	      /* put manifest length field and manifest ID */
-	      /* XXX why on earth is this being done this way, instead of 
-		 with ob_append_byte() ??? */		
-	      ob_setbyte(e,e->length,(blob_bytes>>8)&0xff);
-	      ob_setbyte(e,e->length+1,(blob_bytes>>0)&0xff);
-	      if (0&&debug&DEBUG_RHIZOME)
-		DEBUGF("length bytes written at offset 0x%x",e->length);
-	    }
-	    if (frameFull) { 
-	      sqlite3_blob_close(blob); blob=NULL;
-	      goto stopStuffing;
-	    }
-	    if (e->length+overhead+blob_bytes>=e->allocSize) {
-	      WHY("Reading blob will overflow overlay_buffer");
-	      sqlite3_blob_close(blob); blob=NULL;
-	      continue;
-	    }
-	    if (sqlite3_blob_read(blob,&e->bytes[e->length+overhead],blob_bytes,0)
-		!=SQLITE_OK) {
-	      if (debug&DEBUG_RHIZOME) DEBUG("Couldn't read from blob");
-	      sqlite3_blob_close(blob); blob=NULL;
-	    
-	      continue;
-	    }
-
-	    /* debug: show which BID/version combos we are advertising */
-	    if (0&&(!pass)) {
-	      rhizome_manifest *m=rhizome_new_manifest();
-	      rhizome_read_manifest_file
-		(m, (char *)&e->bytes[e->length+overhead], blob_bytes);
-	      long long version = rhizome_manifest_get_ll(m, "version");
-	      WHYF("Advertising manifest %s* version %lld",
-		   alloca_tohex(m->cryptoSignPublic, 8),
-		   version);
-	      rhizome_manifest_free(m);
-	    }
-
-	    e->length+=overhead+blob_bytes;
-	    if (e->length>e->allocSize) {
-	      WHY("e->length > e->size");
-	      sqlite3_blob_close(blob); blob=NULL;
-	      abort();
-	    }
-	    bytes_used+=overhead+blob_bytes;
-	    bundles_advertised++;
-	    bundle_offset[pass]++;
-	    //	    bundle_offset[pass]=sqlite3_column_int64(statement,1);
-	    
-	    sqlite3_blob_close(blob); blob=NULL;
-	  }
-	}
-    stopStuffing:
-      if (blob) sqlite3_blob_close(blob); blob=NULL;
-      if (statement) sqlite3_finalize(statement); statement=NULL;
-      if (!pass) 
-	{
-	  /* Mark end of whole manifests by writing 0xff, which is more than the MSB
-	     of a manifest's length is allowed to be. */
-	  ob_append_byte(e,0xff);
-	  bytes_used++;
-	}
+  for(pass=skipmanifests;pass<2;pass++) {
+    switch(pass) {
+    case 0: /* Full manifests */
+      statement = sqlite_prepare("SELECT MANIFEST,ROWID FROM MANIFESTS LIMIT %d,%d", bundle_offset[pass], slots);
+      break;
+    case 1: /* BARs */
+      statement = sqlite_prepare("SELECT BAR,ROWID FROM MANIFESTS LIMIT %d,%d", bundle_offset[pass], slots);
+      break;
     }
+    if (!statement)
+      RETURN(WHY("Could not prepare sql statement for fetching BARs for advertisement"));
+    while(  bytes_used < bytes_available
+	&&  sqlite_step_retry(&retry, statement) == SQLITE_ROW
+	&&  e->length + RHIZOME_BAR_BYTES <= e->sizeLimit
+    ) {
+      int column_type=sqlite3_column_type(statement, 0);
+      switch(column_type) {
+      case SQLITE_BLOB:
+	if (blob)
+	  sqlite3_blob_close(blob);
+	blob = NULL;
+	int ret;
+	int64_t rowid = sqlite3_column_int64(statement, 1);
+	do ret = sqlite3_blob_open(rhizome_db, "main", "manifests", pass?"bar":"manifest", rowid, 0 /* read only */, &blob);
+	  while (sqlite_code_busy(ret) && sqlite_retry(&retry, "sqlite3_blob_open"));
+	if (!sqlite_code_ok(ret)) {
+	  WHYF("sqlite3_blob_open() failed, %s", sqlite3_errmsg(rhizome_db));
+	  continue;
+	}
+	sqlite_retry_done(&retry, "sqlite3_blob_open");
 
-  if (blob) sqlite3_blob_close(blob); blob=NULL;
-  if (statement) sqlite3_finalize(statement); statement=NULL;
-  
-  if (0&&debug&DEBUG_RHIZOME) DEBUGF("Appended %d rhizome advertisements to packet using %d bytes.",bundles_advertised,bytes_used);
+	int blob_bytes=sqlite3_blob_bytes(blob);
+	if (pass&&(blob_bytes!=RHIZOME_BAR_BYTES)) {
+	  if (debug&DEBUG_RHIZOME)
+	    DEBUG("Found a BAR that is the wrong size - ignoring");
+	  sqlite3_blob_close(blob);
+	  blob=NULL;
+	  continue;
+	}
+
+	/* Only include manifests that are <=1KB inline.
+	    Longer ones are only advertised by BAR */
+	if (blob_bytes>1024) {
+	  WARN("ignoring manifest > 1k");
+	  sqlite3_blob_close(blob);
+	  blob = NULL;
+	  bundle_offset[pass]++;
+	  continue;
+	}
+
+	/* XXX This whole section is too hard to follow how the frame gets
+	    built up. In particular the calculations for space required etc
+	    are quite opaque... and I wrote it!  */
+	int overhead=0;
+	int frameFull=0;
+	if (!pass) overhead=2;
+	if (0) DEBUGF("e=%p, e->bytes=%p,e->length=%d, e->allocSize=%d", e,e->bytes,e->length,e->allocSize);
+
+	if (ob_makespace(e,overhead+2+blob_bytes)) {
+	  if (0||debug&DEBUG_RHIZOME) {
+	    rhizome_manifest *m=rhizome_new_manifest();
+	    char mdata[blob_bytes]; mdata[0]=0; mdata[1]=0;
+	    sqlite3_blob_read(blob,&mdata[0],blob_bytes,0);
+	    rhizome_read_manifest_file(m,mdata, blob_bytes);
+	    long long version = rhizome_manifest_get_ll(m, "version");
+	    DEBUGF("Stop cramming %s advertisements: not enough space for %s*:v%lld (%d bytes, size limit=%d, used=%d)",
+		    pass?"BARs":"manifests",
+		    alloca_tohex(m->cryptoSignPublic, 8),
+		    version,
+		    blob_bytes,e->sizeLimit,e->length);
+	    rhizome_manifest_free(m);
+	  }
+	  frameFull=1;
+	} else if (!pass) {
+	  /* put manifest length field and manifest ID */
+	  /* XXX why on earth is this being done this way, instead of
+	      with ob_append_byte() ??? */
+	  ob_setbyte(e,e->length,(blob_bytes>>8)&0xff);
+	  ob_setbyte(e,e->length+1,(blob_bytes>>0)&0xff);
+	  if (0&&debug&DEBUG_RHIZOME)
+	    DEBUGF("length bytes written at offset 0x%x",e->length);
+	}
+	if (frameFull) {
+	  sqlite3_blob_close(blob);
+	  blob=NULL;
+	  goto stopStuffing;
+	}
+	if (e->length+overhead+blob_bytes>=e->allocSize) {
+	  WHY("Reading blob will overflow overlay_buffer");
+	  sqlite3_blob_close(blob);
+	  blob=NULL;
+	  continue;
+	}
+	if (sqlite3_blob_read(blob,&e->bytes[e->length+overhead],blob_bytes,0) != SQLITE_OK) {
+	  WHYF("sqlite3_blob_read() failed, %s", sqlite3_errmsg(rhizome_db));
+	  sqlite3_blob_close(blob);
+	  blob=NULL;
+	  continue;
+	}
+
+	/* debug: show which BID/version combos we are advertising */
+	if (0 && (!pass)) {
+	  rhizome_manifest *m = rhizome_new_manifest();
+	  rhizome_read_manifest_file(m, (char *)&e->bytes[e->length+overhead], blob_bytes);
+	  long long version = rhizome_manifest_get_ll(m, "version");
+	  DEBUGF("Advertising manifest %s* version %lld", alloca_tohex(m->cryptoSignPublic, 8), version);
+	  rhizome_manifest_free(m);
+	}
+
+	e->length+=overhead+blob_bytes;
+	if (e->length>e->allocSize) {
+	  sqlite3_blob_close(blob);
+	  blob=NULL;
+	  FATAL("e->length > e->size");
+	}
+	bytes_used+=overhead+blob_bytes;
+	bundles_advertised++;
+	bundle_offset[pass]++;
+
+	sqlite3_blob_close(blob);
+	blob=NULL;
+      }
+    }
+  stopStuffing:
+    if (blob)
+      sqlite3_blob_close(blob);
+    blob = NULL;
+    if (statement)
+      sqlite3_finalize(statement);
+    statement = NULL;
+    if (!pass) {
+      /* Mark end of whole manifests by writing 0xff, which is more than the MSB
+	  of a manifest's length is allowed to be. */
+      ob_append_byte(e,0xff);
+      bytes_used++;
+    }
+  }
+
+  if (blob)
+    sqlite3_blob_close(blob);
+  blob = NULL;
+  if (statement)
+    sqlite3_finalize(statement);
+  statement = NULL;
+
+  if (debug & DEBUG_RHIZOME)
+    DEBUGF("Appended %d rhizome advertisements to packet using %d bytes", bundles_advertised, bytes_used);
   ob_patch_rfs(e, COMPUTE_RFS_LENGTH);
-  
+
   RETURN(0);
 }
 
