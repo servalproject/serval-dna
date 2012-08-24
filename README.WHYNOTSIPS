@@ -1,0 +1,21 @@
+When we were looking at implementing secure calls for OpenBTS it was suggested
+that we configure Asterisk to use SIPS/ZRTP. This would have been relatively
+easy to setup, however there are a few problems.
+
+Number one is that when Asterisk checks the certificates it will either
+validate the certificate (checking the chain of trust and so on) and then
+check that the common name attribute on the certificate matches the hostname
+of the peer, or it will do none of these checks. This code is in main/tcptls.c
+line 206 (in version 1.8.14.1).
+
+This is undesirable in a setup where there is limited or no infrastructure as
+there is not likely to be a DNS server setup, or even rigid IP assignments
+that would allow a static hosts file based setup. This situation would force
+the administrator to disable the checks completely which would allow a trivial
+man in the middle attack.
+
+It would be possible to modify Asterisk to have a third way where it validates
+the certificate and checks the chain of trust but does not look at the common
+name. We decided against this approach as the VOMP channel driver was written
+in time to avoid it.
+
