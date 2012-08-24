@@ -46,6 +46,7 @@ struct profile_total interface_poll_stats;
 struct profile_total dummy_poll_stats;
 
 struct sched_ent sock_any;
+struct sockaddr_in sock_any_addr;
 struct profile_total sock_any_stats;
 
 struct outgoing_packet{
@@ -299,16 +300,20 @@ int overlay_interface_init_any(int port){
   struct sockaddr_in addr;
   
   if (sock_any.poll.fd>0){
-    // TODO warn on port mismatch
+    // Check the port number matches
+    assert(sock_any_addr.sin_port == htons(port));
+    
     return 0;
   }
   addr.sin_family = AF_INET;
   addr.sin_port = htons(port);
   addr.sin_addr.s_addr = INADDR_ANY;
-  
+
   sock_any.poll.fd = overlay_bind_socket((const struct sockaddr *)&addr, sizeof(addr), NULL);
   if (sock_any.poll.fd<0)
     return -1;
+  
+  sock_any_addr = addr;
   
   sock_any.poll.events=POLLIN;
   sock_any.function = overlay_interface_read_any;
