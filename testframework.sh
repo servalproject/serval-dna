@@ -371,19 +371,19 @@ _tfw_echo_result() {
    local result="$1"
    case "$result" in
    ERROR | FATAL)
-      $_tfw_tput setf 4
+      $_tfw_tput setaf 1
       $_tfw_tput rev
       echo -n "$result"
       $_tfw_tput sgr0
       $_tfw_tput op
-      ;; 
+      ;;
    PASS)
-      $_tfw_tput setf 2
+      $_tfw_tput setaf 2
       echo -n "$result"
       $_tfw_tput op
       ;;
    FAIL)
-      $_tfw_tput setf 4
+      $_tfw_tput setaf 1
       echo -n "$result"
       $_tfw_tput op
       ;;
