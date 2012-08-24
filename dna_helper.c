@@ -143,7 +143,7 @@ dna_helper_close_pipes()
 }
 
 static int
-dna_helper_start(const char *command, const char *arg)
+dna_helper_start(const char *command, const char *arg, const char *mysid)
 {
   dna_helper_close_pipes();
   int stdin_fds[2], stdout_fds[2], stderr_fds[2];
@@ -163,9 +163,11 @@ dna_helper_start(const char *command, const char *arg)
     close(stdout_fds[1]);
     return -1;
   }
+
   switch (dna_helper_pid = fork()) {
   case 0:
     /* Child, should exec() to become helper after installing file descriptors. */
+    setenv("MYSID", mysid, 1);
     set_logging(stderr);
     signal(SIGTERM, SIG_DFL);
     close(stdin_fds[1]);
@@ -557,7 +559,12 @@ dna_helper_enqueue(overlay_mdp_frame *mdp, const char *did, const unsigned char 
       dna_helper_pid = 0;
       return 0;
     }
-    if (dna_helper_start(dna_helper_executable, dna_helper_arg1) == -1) {
+    unsigned char *mysid;
+    
+    if ((mysid = overlay_get_my_sid()) == NULL)
+      return WHY("Unable to lookup my SID");
+      
+    if (dna_helper_start(dna_helper_executable, dna_helper_arg1, alloca_tohex_sid(mysid)) == -1) {
       /* Something broke, bail out */
       WHY("DNAHELPER start failed");
       return -1;
