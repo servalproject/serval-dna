@@ -19,16 +19,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 #include "overlay_buffer.h"
+#include "overlay_packet.h"
 
-int overlay_payload_verify(overlay_frame *p)
-{
-  /* Make sure that an incoming payload has a valid signature from the sender.
-     This is used to prevent spoofing */
-
-  return WHY("function not implemented");
-}
-
-int op_append_type(struct overlay_buffer *headers,overlay_frame *p)
+static int op_append_type(struct overlay_buffer *headers, struct overlay_frame *p)
 {
   unsigned char c[3];
   switch(p->type&OF_TYPE_FLAG_BITS)
@@ -60,7 +53,7 @@ int op_append_type(struct overlay_buffer *headers,overlay_frame *p)
 }
 
 
-int overlay_frame_package_fmt1(overlay_frame *p, struct overlay_buffer *b)
+int overlay_frame_append_payload(struct overlay_frame *p, struct subscriber *next_hop, struct overlay_buffer *b)
 {
   /* Convert a payload (frame) structure into a series of bytes.
      Assumes that any encryption etc has already been done.
@@ -76,25 +69,9 @@ int overlay_frame_package_fmt1(overlay_frame *p, struct overlay_buffer *b)
   ob_checkpoint(b);
   
   if (debug&DEBUG_PACKETCONSTRUCTION)
-    dump_payload(p,"package_fmt1 stuffing into packet");
+    dump_payload(p,"append_payload stuffing into packet");
 
   /* Build header */
-
-  if (p->source[0]<0x10) {
-    // Make sure that addresses do not overload the special address spaces of 0x00*-0x0f*
-    WHY("packet source address begins with reserved value 0x00-0x0f");
-    goto cleanup;
-  }
-  if (p->destination[0]<0x10) {
-    // Make sure that addresses do not overload the special address spaces of 0x00*-0x0f*
-    WHY("packet destination address begins with reserved value 0x00-0x0f");
-    goto cleanup;
-  }
-  if (p->nexthop[0]<0x10) {
-    // Make sure that addresses do not overload the special address spaces of 0x00*-0x0f*
-    WHY("packet nexthop address begins with reserved value 0x00-0x0f");
-    goto cleanup;
-  }
 
   /* Write fields into binary structure in correct order */
 
@@ -120,9 +97,16 @@ int overlay_frame_package_fmt1(overlay_frame *p, struct overlay_buffer *b)
   int addrs_start=headers->position;
   
   /* Write out addresses as abbreviated as possible */
-  overlay_abbreviate_append_address(headers,p->nexthop);
-  overlay_abbreviate_append_address(headers,p->destination);
-  overlay_abbreviate_append_address(headers,p->source);
+  if (p->sendBroadcast){
+    overlay_broadcast_append(headers, &p->broadcast_id);
+  }else{
+    overlay_address_append(headers, next_hop);
+  }
+  if (p->destination)
+    overlay_address_append(headers,p->destination);
+  else
+    ob_append_byte(headers, OA_CODE_PREVIOUS);
+  overlay_address_append(headers,p->source);
   
   int addrs_len=headers->position-addrs_start;
   int actual_len=addrs_len+p->payload->position;
@@ -177,19 +161,18 @@ int dump_queue(char *msg,int q)
   return 0;
 }
 
-int dump_payload(overlay_frame *p,char *message)
+int dump_payload(struct overlay_frame *p, char *message)
 {
   DEBUGF( "+++++\nFrame from %s to %s of type 0x%02x %s:",
-	  alloca_tohex_sid(p->source),
-	  alloca_tohex_sid(p->destination),p->type,
+	  alloca_tohex_sid(p->source->sid),
+	  alloca_tohex_sid(p->destination->sid),p->type,
 	  message?message:"");
-  DEBUGF(" next hop is %s",alloca_tohex_sid(p->nexthop));
   if (p->payload)
     dump("payload contents", &p->payload->bytes[0],p->payload->position);
   return 0;
 }
 
-int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP)
+int overlay_payload_enqueue(int q, struct overlay_frame *p)
 {
   /* Add payload p to queue q.
 
@@ -198,14 +181,27 @@ int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP)
 
      Complain if there are too many frames in the queue.
   */
+  
+  if (!p) return WHY("Cannot queue NULL");
+  
+  if (p->destination && 
+      (p->destination->reachable == REACHABLE_NONE || p->destination->reachable == REACHABLE_SELF))
+    return WHYF("Destination %s is unreachable (%d)", alloca_tohex_sid(p->destination->sid), p->destination->reachable);
+      
   if (debug&DEBUG_PACKETTX)
     DEBUGF("Enqueuing packet for %s* (q[%d]length = %d)",
-	 alloca_tohex(p->destination, 7),
+	 alloca_tohex(p->destination->sid, 7),
 	 q,overlay_tx[q].length);
   
   if (q<0||q>=OQ_MAX) return WHY("Invalid queue specified");
-  if (!p) return WHY("Cannot queue NULL");
 
+  
+  if (p->payload && p->payload->position > p->payload->sizeLimit){
+    // HACK, maybe should be done in each caller
+    // set the size of the payload based on the position written
+    p->payload->sizeLimit=p->payload->position;
+  }
+  
   if (0) dump_payload(p,"queued for delivery");
 
   if (overlay_tx[q].length>=overlay_tx[q].maxLength) 
@@ -213,17 +209,14 @@ int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP)
 
   if (0) dump_queue("before",q);
   
-  /* If the frame is broadcast, then mark it correctly so that it can be sent
-     via all interfaces. */
-  if (overlay_address_is_broadcast(p->destination)||forceBroadcastP)
-    {
-      p->isBroadcast=1;
-      int i;
-      for(i=0;i<OVERLAY_MAX_INTERFACES;i++) p->broadcast_sent_via[i]=0;
-    }
-  else p->isBroadcast=0;
-
-  overlay_frame *l=overlay_tx[q].last;
+  if (!p->destination){
+    int i;
+    p->sendBroadcast=1;
+    for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
+      p->broadcast_sent_via[i]=0;
+  }
+  
+  struct overlay_frame *l=overlay_tx[q].last;
   if (l) l->next=p;
   p->prev=l;
   p->next=NULL;
@@ -237,7 +230,7 @@ int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP)
   
   if (0) dump_queue("after",q);
 
-  if (q==OQ_ISOCHRONOUS_VOICE&&(!forceBroadcastP)) {
+  if (q==OQ_ISOCHRONOUS_VOICE) {
     // Send a packet now
     overlay_send_packet(NULL);
   }
@@ -245,7 +238,7 @@ int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP)
   return 0;
 }
 
-int op_free(overlay_frame *p)
+int op_free(struct overlay_frame *p)
 {
   if (!p) return WHY("Asked to free NULL");
   if (p->prev&&p->prev->next==p) return WHY("p->prev->next still points here");
@@ -258,53 +251,29 @@ int op_free(overlay_frame *p)
   return 0;
 }
 
-overlay_frame *op_dup(overlay_frame *in)
+struct overlay_frame *op_dup(struct overlay_frame *in)
 {
   if (!in) return NULL;
 
   /* clone the frame */
-  overlay_frame *out=malloc(sizeof(overlay_frame));
+  struct overlay_frame *out=malloc(sizeof(struct overlay_frame));
   if (!out) return WHYNULL("malloc() failed");
 
   /* copy main data structure */
-  bcopy(in,out,sizeof(overlay_frame));
+  bcopy(in,out,sizeof(struct overlay_frame));
   
-  out->payload=ob_dup(in->payload);
+  if (in->payload)
+    out->payload=ob_dup(in->payload);
   return out;
 }
 
-int overlay_frame_set_broadcast_as_destination(overlay_frame *f)
+int overlay_frame_set_broadcast_as_destination(struct overlay_frame *f)
 {  
-  overlay_broadcast_generate_address(f->destination);
-  // remember the broadcast address we are about to send so we don't sent the packet twice
-  overlay_broadcast_drop_check(f->destination);
-  f->isBroadcast=1;
+  overlay_broadcast_generate_address(&f->broadcast_id);
+  // remember the broadcast address we are about to send so we don't sent the packet if we receive it again
+  overlay_broadcast_drop_check(&f->broadcast_id);
+  f->destination=NULL;
+  f->sendBroadcast=1;
   return 0;
 }
 
-
-unsigned char *overlay_get_my_sid()
-{
-  /* Make sure we can find our SID */
-  int kp;
-  if (!keyring)
-    { WHY("keyring is null"); return NULL; }
-  if (!keyring->context_count) 
-    { WHY("No context zero in keyring"); return NULL; }
-  if (!keyring->contexts[0]->identity_count) 
-    { WHY("No identity in keyring context zero"); return NULL; }
-
-  for(kp=0;kp<keyring->contexts[0]->identities[0]->keypair_count;kp++)
-    if (keyring->contexts[0]->identities[0]->keypairs[kp]->type==KEYTYPE_CRYPTOBOX)
-      return keyring->contexts[0]->identities[0]->keypairs[kp]->public_key;
-  
-  WHY("Could not find first entry in HLR"); return NULL; 
-}
-
-int overlay_frame_set_me_as_source(overlay_frame *f)
-{
-  unsigned char *sid=overlay_get_my_sid();
-  if (!sid) return WHY("overlay_get_my_sid() failed.");
-  bcopy(sid,f->source,SID_SIZE);
-  return 0;
-}

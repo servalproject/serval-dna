@@ -19,8 +19,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 #include "strbuf.h"
-#include "subscribers.h"
 #include "overlay_buffer.h"
+#include "overlay_address.h"
+#include "overlay_packet.h"
 
 /*
   Here we implement the actual routing algorithm which is heavily based on BATMAN.
@@ -170,110 +171,24 @@ int overlay_route_recalc_neighbour_metrics(struct overlay_neighbour *n, time_ms_
 struct overlay_neighbour *overlay_route_get_neighbour_structure(overlay_node *node, int createP);
 
 
-/* Select a next hop to get to a node.
-   Frist, let us consider neighbours.  These are on a local link to us, and do not require any
-   intermediate nodes to transmit to us.  However, assymetric packet loss is common, so we may
-   not be able to transmit back to the neighbour.  We know if we can because we will have
-   received acks to our self announcements.  However, to send an ack to a self announcement we
-   need a fall-back option.  This fall-back should be by sending to the broadcast address.
-
-   The complication comes when we have multiple interfaces available.  If we send to all, then
-   we need a way of keeping track which interfaces we have sent it on so far, which is a bit
-   icky, and more to the point requires some revamping of code.  A bigger problem is that we might
-   have cheap and expensive interfaces, and we don't want to go blabbing about our wifi or ethernet
-   based peers over a $10/MB BGAN link, when we can reasonably know that it shouldn't be necessary.
-
-   The trouble is that sometimes it might just be necessary. We then have two options, send traffic
-   over multiple interfaces to try to discover such one-way links, even if internet back-haul is 
-   required in between.  This is nice in the long-term.  Or, we be more conservative with the traffic
-   and require that a resolution to the route be discoverable via the interface that the frame
-   arrived on.
-
-   In any case, we need to tag the nexthop address with the interface(s) on which to send it.
-
-   Once we have this working and neighbours can communicate, then we can move on to addressing
-   nodes that are only indirectly connected. Indeed, the two are somewhat interconnected as
-   an indirect route may be required to get a self-announce ack back to the sender.
-*/
-int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *interface)
-{
-  int i;
+overlay_node *get_node(struct subscriber *subscriber, int create){
+  if (!subscriber)
+    return NULL;
   
-  if (*d==0){
-    if (debug&DEBUG_OVERLAYROUTING)
-      DEBUGF("No open path to %s, invalid sid",alloca_tohex_sid(d));
-    return -1;
-  }
-  // Note, broadcast address handling is already done by this point
+  // we don't want to track routing info for ourselves.
+  if (subscriber->reachable==REACHABLE_SELF)
+    return NULL;
   
-  overlay_node *n=overlay_route_find_node(d,SID_SIZE,0 /* don't create if missing */ );
-  if (!n){
-    if (debug&DEBUG_OVERLAYROUTING)
-      DEBUGF("No open path to %s, unknown peer",alloca_tohex_sid(d));
-    return -1;
+  if ((!subscriber->node) && create){
+    subscriber->node = (overlay_node *)malloc(sizeof(overlay_node));
+    memset(subscriber->node,0,sizeof(overlay_node));
+    subscriber->node->subscriber = subscriber;
+    
+    // This info message is used by tests; don't alter or remove it.
+    INFOF("ADD OVERLAY NODE sid=%s", alloca_tohex_sid(subscriber->sid));
   }
   
-  time_ms_t now = gettime_ms();
-  struct overlay_neighbour *direct_neighbour=NULL;
-
-  if (n->neighbour_id) {
-    direct_neighbour = &overlay_neighbours[n->neighbour_id];
-    overlay_route_recalc_neighbour_metrics(direct_neighbour, now);
-    /* Is a direct neighbour.
-       So in the absence of any better indirect route, we pick the interface that
-       we can hear this neighbour on the most reliably, and then send the frame
-       via that interface and directly addressed to the recipient. */
-    int ifn = -1;
-    for (i = 0; i < overlay_interface_count; ++i) {
-      if ( overlay_interfaces[i].state == INTERFACE_STATE_UP
-	&& (ifn == -1 || direct_neighbour->scores[i] > direct_neighbour->scores[ifn]))
-	ifn = i;
-    }
-    if (ifn != -1 && direct_neighbour->scores[ifn] > 0) {
-      *interface = ifn;
-      bcopy(d, nexthop, SID_SIZE);
-      if (debug&DEBUG_OVERLAYROUTING)
-	DEBUGF("nexthop is %s", alloca_tohex_sid(nexthop));
-      return 0;
-    }
-  }
-
-  /* Is not a direct neighbour.
-     XXX - Very simplistic for now. */
-  int o;
-  int best_score=0;
-  int best_o=-1;
-  for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++) {
-    int score=n->observations[o].observed_score;
-    
-    if (!score)
-      continue;
-    
-    struct overlay_neighbour *neighbour
-      =overlay_route_get_neighbour_structure
-      (n->observations[o].sender->node,0);
-    
-    if (neighbour && neighbour!=direct_neighbour) {
-      overlay_route_recalc_neighbour_metrics(neighbour, now);
-      
-      for(i=1;i<OVERLAY_MAX_INTERFACES;i++) {
-	if (overlay_interfaces[i].state==INTERFACE_STATE_UP &&
-	    neighbour->scores[i]*score>best_score) {
-	  bcopy(neighbour->node->subscriber->sid,nexthop,SID_SIZE);
-	  *interface=i;
-	  best_o=o;
-	  best_score=score;
-	}
-      }
-    }
-  }
-  if (best_o>-1) {
-    return 0;
-  } else {
-    if (debug&DEBUG_OVERLAYROUTING)
-      DEBUGF("No open path to %s, no good neighbour observations",alloca_tohex_sid(d));
-    return -1;
-  }
+  return subscriber->node;
 }
 
 overlay_node *overlay_route_find_node(const unsigned char *sid, int prefixLen, int createP)
@@ -283,23 +198,10 @@ overlay_node *overlay_route_find_node(const unsigned char *sid, int prefixLen, i
     return NULL;
   }
   
-  struct subscriber *subscriber = find_subscriber(sid, prefixLen, createP);
-  if (!subscriber)
-    return NULL;
-  
-  if ((!subscriber->node) && createP){
-    subscriber->node = (overlay_node *)malloc(sizeof(overlay_node));
-    memset(subscriber->node,0,sizeof(overlay_node));
-    subscriber->node->subscriber = subscriber;
-    
-    // This info message is used by tests; don't alter or remove it.
-    INFOF("ADD OVERLAY NODE sid=%s", alloca_tohex_sid(sid));
-  }
-    
-  return subscriber->node;
+  return get_node(find_subscriber(sid, prefixLen, createP), createP);
 }
 
-int overlay_route_ack_selfannounce(overlay_frame *f,
+int overlay_route_ack_selfannounce(struct overlay_frame *f,
 				   unsigned int s1,unsigned int s2,
 				   int interface,
 				   struct overlay_neighbour *n)
@@ -327,8 +229,8 @@ int overlay_route_ack_selfannounce(overlay_frame *f,
    */
 
   /* XXX Allocate overlay_frame structure and populate it */
-  overlay_frame *out=NULL;
-  out=calloc(sizeof(overlay_frame),1);
+  struct overlay_frame *out=NULL;
+  out=calloc(sizeof(struct overlay_frame),1);
   if (!out) return WHY("calloc() failed to allocate an overlay frame");
 
   out->type=OF_TYPE_SELFANNOUNCE_ACK;
@@ -339,24 +241,14 @@ int overlay_route_ack_selfannounce(overlay_frame *f,
 	         XXX 6 is quite an arbitrary selection however. */
 
   /* Set destination of ack to source of observed frame */
-  bcopy(n->node->subscriber->sid, out->destination, SID_SIZE);
+  out->destination = n->node->subscriber;
   /* set source to ourselves */
-  overlay_frame_set_me_as_source(out);
+  out->source = my_subscriber;
 
-  /* Next-hop will get set at TX time, so no need to set it here.
-     However, if there is no known next-hop for this node (because the return path
-     has not yet begun to be built), then we need to set the nexthop to broadcast. */
-  out->nexthop_address_status=OA_UNINITIALISED;
-  if (overlay_resolve_next_hop(out)) {
-    /* no open path, so convert to broadcast */
-    overlay_frame_set_broadcast_as_destination(out);
-    out->isBroadcast = 1;
-    out->ttl=2;
-    if (debug&DEBUG_OVERLAYROUTING) 
-      DEBUG("Broadcasting ack to selfannounce for hithero unroutable node");
-  } else
-    out->isBroadcast = 0;
-
+  /* Try to use broadcast if we don't have a route yet */
+  if (out->destination->reachable == REACHABLE_NONE)
+    out->destination->reachable = REACHABLE_BROADCAST;
+  
   /* Set the time in the ack. Use the last sequence number we have seen
      from this neighbour, as that may be helpful information for that neighbour
      down the track.  My policy is to communicate that information which should
@@ -410,7 +302,7 @@ int overlay_route_ack_selfannounce(overlay_frame *f,
 
   /* Add to queue. Keep broadcast status that we have assigned here if required to
      get ack back to sender before we have a route. */
-  if (overlay_payload_enqueue(OQ_MESH_MANAGEMENT,out,out->isBroadcast))
+  if (overlay_payload_enqueue(OQ_MESH_MANAGEMENT,out))
     {
       op_free(out);
       return WHY("overlay_payload_enqueue(self-announce ack) failed");
@@ -429,9 +321,6 @@ int overlay_route_make_neighbour(overlay_node *n)
   /* If it is already a neighbour, then return */
   if (n->neighbour_id) return 0;
 
-  /* If address is local don't both making it a neighbour */
-  if (overlay_address_is_local(n->subscriber->sid)) return 0;
-
   /* It isn't yet a neighbour, so find or free a neighbour slot */
   /* slot 0 is reserved, so skip it */
   if (!overlay_neighbour_count) overlay_neighbour_count=1;
@@ -446,7 +335,7 @@ int overlay_route_make_neighbour(overlay_node *n)
   }
   bzero(&overlay_neighbours[n->neighbour_id],sizeof(struct overlay_neighbour));
   overlay_neighbours[n->neighbour_id].node=n;
-
+  
   return 0;
 }
 
@@ -468,17 +357,7 @@ struct overlay_neighbour *overlay_route_get_neighbour_structure(overlay_node *no
   return &overlay_neighbours[node->neighbour_id];
 }
 
-int overlay_route_i_can_hear_node(unsigned char *who,int sender_interface,
-				  unsigned int s1,unsigned int s2,
-				  time_ms_t now)
-{
-  if (0) DEBUGF("I can hear node %s (but I really only care who can hear me)",
-	      alloca_tohex_sid(who));
-  return 0;
-}
-
-
-int overlay_route_node_can_hear_me(unsigned char *who,int sender_interface,
+int overlay_route_node_can_hear_me(struct subscriber *subscriber, int sender_interface,
 				   unsigned int s1,unsigned int s2,
 				   time_ms_t now)
 {
@@ -487,7 +366,6 @@ int overlay_route_node_can_hear_me(unsigned char *who,int sender_interface,
      3. Update score of how reliably we can hear this node */
 
   /* Get neighbour structure */
-  struct subscriber *subscriber = find_subscriber(who, SID_SIZE, 1);
   struct overlay_neighbour *neh=overlay_route_get_neighbour_structure(subscriber->node,1 /* create if necessary */);
   if (!neh)
     return -1;
@@ -537,13 +415,13 @@ int overlay_route_node_can_hear_me(unsigned char *who,int sender_interface,
   return 0;
 }
 
-int overlay_route_saw_selfannounce(overlay_frame *f, time_ms_t now)
+int overlay_route_saw_selfannounce(struct overlay_frame *f, time_ms_t now)
 {
   IN();
   unsigned int s1,s2;
   unsigned char sender_interface;
   
-  overlay_node *node = overlay_route_find_node(f->source, SID_SIZE, 1);
+  overlay_node *node = get_node(f->source, 1);
   if (!node)
     RETURN(-1);
   
@@ -559,8 +437,6 @@ int overlay_route_saw_selfannounce(overlay_frame *f, time_ms_t now)
   if (debug&DEBUG_OVERLAYROUTING)
     DEBUGF("Received self-announcement for sequence range [%08x,%08x] from interface %d",s1,s2,sender_interface);
 
-  overlay_route_i_can_hear_node(f->source,sender_interface,s1,s2,now);
-
   overlay_route_ack_selfannounce(f,s1,s2,sender_interface,n);
 
   RETURN(0);
@@ -572,51 +448,94 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
   int o;
   int best_score=0;
   int best_observation=-1;
-
-  for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++)
-    {
-      if (n->observations[o].observed_score)
-	{
-	  int discounted_score=n->observations[o].observed_score;
-	  discounted_score-=(now-n->observations[o].rx_time)/1000;
-	  if (discounted_score<0) discounted_score=0;
-	  n->observations[o].corrected_score=discounted_score;
-	  if (discounted_score>best_score)  {
-	    best_score=discounted_score;
-	    best_observation=o;
-	  }
-	}
-    }
-
+  int reachable = REACHABLE_NONE;
+  
+  // TODO expiry timer since last self announce
+  if (n->subscriber->reachable==REACHABLE_BROADCAST)
+    reachable = REACHABLE_BROADCAST;
+  overlay_interface *interface=NULL;
+  struct subscriber *next_hop=NULL;
+  
   if (n->neighbour_id)
+  {
+    /* Node is also a direct neighbour, so check score that way */
+    if (n->neighbour_id>overlay_max_neighbours||n->neighbour_id<0)
+      return WHY("n->neighbour_id is invalid.");
+    
+    struct overlay_neighbour *neighbour=&overlay_neighbours[n->neighbour_id];
+    
+    int i;
+    for(i=0;i<overlay_interface_count;i++)
     {
-      /* Node is also a direct neighbour, so check score that way */
-      if (n->neighbour_id>overlay_max_neighbours||n->neighbour_id<0)
-	return WHY("n->neighbour_id is invalid.");
-      
-      struct overlay_neighbour *neighbour=&overlay_neighbours[n->neighbour_id];
-      
-      int i;
-      for(i=0;i<overlay_interface_count;i++)
-	{
-	  if (overlay_interfaces[i].state==INTERFACE_STATE_UP && 
-	      neighbour->scores[i]>best_score)
-	    {
-	      best_score=neighbour->scores[i];
-	      best_observation=-1;
-	    }
-	}
+      if (overlay_interfaces[i].state==INTERFACE_STATE_UP && 
+	  neighbour->scores[i]>best_score)
+      {
+	best_score=neighbour->scores[i];
+	best_observation=-1;
+	reachable=REACHABLE_DIRECT;
+	interface = &overlay_interfaces[i];
+      }
     }
+  }
 
+  if (best_score<=0){
+    for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++)
+      {
+	if (n->observations[o].observed_score && n->observations[o].sender->reachable==REACHABLE_DIRECT)
+	  {
+	    int discounted_score=n->observations[o].observed_score;
+	    discounted_score-=(now-n->observations[o].rx_time)/1000;
+	    if (discounted_score<0) discounted_score=0;
+	    n->observations[o].corrected_score=discounted_score;
+	    if (discounted_score>best_score)  {
+	      best_score=discounted_score;
+	      best_observation=o;
+	      reachable=REACHABLE_INDIRECT;
+	      next_hop=n->observations[o].sender;
+	    }
+	  }
+      }
+  }
+  
   /* Think about scheduling this node's score for readvertising if its score
      has changed a lot?
      Really what we probably want is to advertise when the score goes up, since
      if it goes down, we probably don't need to say anything at all.
   */
+  
   int diff=best_score-n->best_link_score;
   if (diff>0) {
     overlay_route_please_advertise(n);
     if (debug&DEBUG_OVERLAYROUTEMONITOR) overlay_route_dump();
+  }
+  
+  /* Remember new reachability information */
+  if (n->subscriber->reachable!=reachable){
+    switch (reachable){
+      case REACHABLE_DIRECT:
+	DEBUGF("%s is now reachable directly", alloca_tohex_sid(n->subscriber->sid));
+	break;
+      case REACHABLE_INDIRECT:
+	DEBUGF("%s is now reachable indirectly", alloca_tohex_sid(n->subscriber->sid));
+	break;
+      case REACHABLE_NONE:
+	DEBUGF("%s is not reachable", alloca_tohex_sid(n->subscriber->sid));
+	break;
+      case REACHABLE_BROADCAST:
+	DEBUGF("%s is now reachable via broadcast", alloca_tohex_sid(n->subscriber->sid));
+	break;
+    }
+  }
+    
+  n->subscriber->reachable=reachable;
+  switch (reachable){
+    case REACHABLE_INDIRECT:
+      n->subscriber->next_hop = next_hop;
+      break;
+    case REACHABLE_DIRECT:
+      n->subscriber->interface = interface;
+      n->subscriber->address = interface->broadcast_address;
+      break;
   }
   
   if (n->best_link_score && !best_score){
@@ -632,7 +551,6 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
     keyring_find_sas_public(keyring, n->subscriber->sid);
   }
   
-  /* Remember new reachability information */
   n->best_link_score=best_score;
   n->best_observation=best_observation;
 
@@ -800,14 +718,14 @@ int overlay_route_recalc_neighbour_metrics(struct overlay_neighbour *n, time_ms_
    These link scores should get stored in our node list as compared to our neighbour list,
    with the node itself listed as the nexthop that the score is associated with.
 */
-int overlay_route_saw_selfannounce_ack(overlay_frame *f,long long now)
+int overlay_route_saw_selfannounce_ack(struct overlay_frame *f,long long now)
 {
   IN();
   if (debug&DEBUG_OVERLAYROUTING)
     DEBUGF("processing selfannounce ack (payload length=%d)",f->payload->sizeLimit);
   
   if (f->payload->sizeLimit<9) 
-    RETURN(WHY("FOO! selfannounce ack packet too short"));
+    RETURN(WHY("selfannounce ack packet too short"));
 
   unsigned int s1=ob_get_ui32(f->payload);
   unsigned int s2=ob_get_ui32(f->payload);
@@ -906,14 +824,6 @@ int overlay_route_record_link(time_ms_t now, unsigned char *to,
   RETURN(0);
 }
 
-int overlay_address_is_local(unsigned char *s) 
-{ 
-  int cn=0,in=0,kp=0;
-  int found=keyring_find_sid(keyring,&cn,&in,&kp,s);
-
-  return found;
-}
-
 int node_dump(struct subscriber *subscriber, void *context){
   strbuf *b=context;
   overlay_node *node = subscriber->node;
@@ -983,11 +893,6 @@ int overlay_route_dump()
   
   DEBUG(strbuf_str(b));
   return 0;
-}
-
-int max(int a,int b)
-{
-  if (a>b) return a; else return b;
 }
 
 /* Ticking neighbours is easy; we just pretend we have heard from them again,

@@ -2,7 +2,6 @@
 
 SERVALD_SRC_FILES = \
         serval-dna/main.c \
-        serval-dna/overlay_abbreviations.c \
 	serval-dna/overlay_advertise.c \
 	serval-dna/overlay_buffer.c        \
 	serval-dna/overlay_interface.c     \
@@ -24,7 +23,7 @@ SERVALD_SRC_FILES = \
         serval-dna/strbuf_helpers.c \
         serval-dna/gateway.c       \
         serval-dna/overlay.c       \
-        serval-dna/overlay_broadcast.c \
+        serval-dna/overlay_address.c \
         serval-dna/performance_timing.c \
 	serval-dna/packetformats.c \
         serval-dna/peers.c         \
@@ -43,7 +42,6 @@ SERVALD_SRC_FILES = \
 	serval-dna/simulate.c      \
         serval-dna/srandomdev.c    \
 	serval-dna/str.c	\
-	serval-dna/subscribers.c \
 	serval-dna/keyring.c       \
 	serval-dna/vomp.c \
 	serval-dna/lsif.c \

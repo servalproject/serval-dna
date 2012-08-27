@@ -1622,9 +1622,11 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
     /* Asked for DID resolution, but did not get it, so do a DNA lookup
        here.  We do this on the client side, so that we don't block the 
        single-threaded server. */
-    overlay_mdp_frame m2;
-    bzero(&m2,sizeof(m2));
+    overlay_mdp_frame mdp_resolve;
+    overlay_mdp_frame mdp_reply;
+    bzero(&mdp_resolve,sizeof(mdp_resolve));
     int port=32768+(random()&0xffff);
+    
     unsigned char srcsid[SID_SIZE];
     if (overlay_mdp_getmyaddr(0,srcsid)) port=0;
     if (overlay_mdp_bind(srcsid,port)) port=0;
@@ -1638,15 +1640,15 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 	now=gettime_ms();
 	
 	if (now >= next_send){
-	  m2.packetTypeAndFlags=MDP_TX;
-	  m2.out.src.port=port;
-	  bcopy(&srcsid[0],&m2.out.src.sid[0],SID_SIZE);
-	  bcopy(&mdp.nodeinfo.sid[0],&m2.out.dst.sid[0],SID_SIZE);
-	  m2.out.dst.port=MDP_PORT_DNALOOKUP;
+	  mdp_resolve.packetTypeAndFlags=MDP_TX;
+	  mdp_resolve.out.src.port=port;
+	  bcopy(&srcsid[0],&mdp_resolve.out.src.sid[0],SID_SIZE);
+	  bcopy(&mdp.nodeinfo.sid[0],&mdp_resolve.out.dst.sid[0],SID_SIZE);
+	  mdp_resolve.out.dst.port=MDP_PORT_DNALOOKUP;
 	  /* search for any DID */
-	  m2.out.payload[0]=0;
-	  m2.out.payload_length=1;
-	  overlay_mdp_send(&m2,0,0);
+	  mdp_resolve.out.payload[0]=0;
+	  mdp_resolve.out.payload_length=1;
+	  overlay_mdp_send(&mdp_resolve,0,0);
 	  next_send+=125;
 	  continue;
 	}
@@ -1656,27 +1658,27 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 	  continue;
 	
 	int ttl=-1;
-	if (overlay_mdp_recv(&m2,&ttl))
+	if (overlay_mdp_recv(&mdp_reply,&ttl))
 	  continue;
 	
-	if ((m2.packetTypeAndFlags&MDP_TYPE_MASK)==MDP_ERROR){
+	if ((mdp_reply.packetTypeAndFlags&MDP_TYPE_MASK)==MDP_ERROR){
 	  // TODO log error?
 	  continue;
 	}
 	
-	if (m2.packetTypeAndFlags!=MDP_TX) {
+	if (mdp_reply.packetTypeAndFlags!=MDP_TX) {
 	  WHYF("MDP returned an unexpected message (type=0x%x)",
-	       m2.packetTypeAndFlags);
+	       mdp_reply.packetTypeAndFlags);
 	  
-	  if (m2.packetTypeAndFlags==MDP_ERROR) 
+	  if (mdp_reply.packetTypeAndFlags==MDP_ERROR) 
 	    WHYF("MDP message is return/error: %d:%s",
-		 m2.error.error,m2.error.message);
+		 mdp_reply.error.error,mdp_reply.error.message);
 	  continue;
 	}
 	
 	// we might receive a late response from an ealier request, ignore it
-	if (memcmp(&m2.in.src.sid[0],&mdp.nodeinfo.sid[0],SID_SIZE)){
-	  WHYF("Unexpected result from SID %s", alloca_tohex_sid(m2.in.src.sid));
+	if (memcmp(mdp_reply.in.src.sid, mdp.nodeinfo.sid, SID_SIZE)){
+	  WHYF("Unexpected result from SID %s", alloca_tohex_sid(mdp_reply.in.src.sid));
 	  continue;
 	}
 	
@@ -1685,12 +1687,13 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 	  char did[DID_MAXSIZE + 1];
 	  char name[64];
 	  char uri[512];
-	  if ( !parseDnaReply((char *)m2.in.payload, m2.in.payload_length, sidhex, did, name, uri, NULL)
+	  if ( !parseDnaReply((char *)mdp_reply.in.payload, mdp_reply.in.payload_length, sidhex, did, name, uri, NULL)
 	    || !str_is_subscriber_id(sidhex)
 	    || !str_is_did(did)
 	    || !str_is_uri(uri)
 	  ) {
-	    WHYF("Received malformed DNA reply: %s", alloca_toprint(160, (const char *)m2.in.payload, m2.in.payload_length));
+	    WHYF("Received malformed DNA reply: %s", 
+		 alloca_toprint(160, (const char *)mdp_reply.in.payload, mdp_reply.in.payload_length));
 	  } else {
 	    /* Got a good DNA reply, copy it into place */
 	    bcopy(did,mdp.nodeinfo.did,32);

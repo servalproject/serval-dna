@@ -18,6 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 #include "nacl.h"
+#include "overlay_address.h"
 
 static int urandomfd = -1;
 
@@ -723,11 +724,25 @@ int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
       dump("stored",&slot[32],crypto_hash_sha512_BYTES);
       goto kdp_safeexit;
     }
+  
+  // add any unlocked subscribers to our memory table, flagged as local sid's
+  int i=0;
+  for (i=0;i<id->keypair_count;i++){
+    if (id->keypairs[i]->type == KEYTYPE_CRYPTOBOX){
+      struct subscriber *subscriber = find_subscriber(id->keypairs[i]->public_key, SID_SIZE, 1);
+      if (subscriber){
+	subscriber->reachable=REACHABLE_SELF;
+	if (!my_subscriber)
+	  my_subscriber=subscriber;
+      }
+    }
+  }
+  
   /* Well, it's all fine, so add the id into the context and return */
   c->identities[c->identity_count++]=id;
+  
   return 0;
 
-  WHY("Not implemented");
  kdp_safeexit:
   /* Clean up any potentially sensitive data before exiting */
   bzero(slot,KEYRING_PAGE_SIZE);
@@ -773,7 +788,9 @@ int keyring_enter_pin(keyring_file *k, const char *pin)
 	  for(c=0;c<k->context_count;c++)
 	    {
 	      int result=keyring_decrypt_pkr(k,k->contexts[c],pin?pin:"",slot);
-	      if (!result) identitiesFound++;
+	      if (!result)
+		identitiesFound++;
+		
 	    }
 	}	
       }
@@ -923,8 +940,17 @@ keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, co
     }
   else
 #endif
-    /* Everything went fine */
-    return id;
+
+  // add new identity to in memory table
+  struct subscriber *subscriber = find_subscriber(id->keypairs[1]->public_key, SID_SIZE, 1);
+  if (subscriber){
+    subscriber->reachable=REACHABLE_SELF;
+    if (!my_subscriber)
+      my_subscriber=subscriber;
+  }
+  
+  /* Everything went fine */
+  return id;
 
  kci_safeexit:
   if (id) keyring_free_identity(id);

@@ -211,34 +211,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define OF_COMPRESS_BZIP2 0x02    /* bzip2 */
 #define OF_COMPRESS_RESERVED 0x03 /* Reserved for another compression system */
 
-#define OVERLAY_ADDRESS_CACHE_SIZE 1024
-
-/* Return codes for resolution of abbreviated addressses */
-#define OA_UNINITIALISED 0 /* Nothing has been written into the field */
-#define OA_RESOLVED 1      /* We expanded the abbreviation successfully */
-#define OA_PLEASEEXPLAIN 2 /* We need the sender to explain their abbreviation */
-#define OA_UNSUPPORTED 3   /* We cannot expand the abbreviation as we do not understand this code */
-
-/* Codes used to describe abbreviated addresses.
-   Values 0x10 - 0xff are the first byte of, and implicit indicators of addresses written in full */
-#define OA_CODE_SELF 0x00
-#define OA_CODE_INDEX 0x01
-#define OA_CODE_02 0x02
-#define OA_CODE_PREVIOUS 0x03
-#define OA_CODE_04 0x04
-#define OA_CODE_PREFIX3 0x05
-#define OA_CODE_PREFIX7 0x06
-#define OA_CODE_PREFIX11 0x07
-#define OA_CODE_FULL_INDEX1 0x08
-#define OA_CODE_PREFIX3_INDEX1 0x09
-#define OA_CODE_PREFIX7_INDEX1 0x0a
-#define OA_CODE_PREFIX11_INDEX1 0x0b
-#define OA_CODE_0C 0x0c
-#define OA_CODE_PREFIX11_INDEX2 0x0d
-#define OA_CODE_FULL_INDEX2 0x0e
-/* The TTL field in a frame is used to differentiate between link-local and wide-area broadcasts */
-#define OA_CODE_BROADCAST 0x0f
-
 #define RFS_PLUS250 0xfa
 #define RFS_PLUS456 0xfb
 #define RFS_PLUS762 0xfc
@@ -341,5 +313,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define DEFAULT_MONITOR_SOCKET_NAME "org.servalproject.servald.monitor.socket"
 #define DEFAULT_MDP_SOCKET_NAME "org.servalproject.servald.mdp.socket"
+
+// flags for address types
+#define TYPE_NONE 0
+#define TYPE_BROADCAST 1
+#define TYPE_SUBSCRIBER 2
+#define TYPE_TOO_SHORT 3
+
 
 #endif // __SERVALD_CONSTANTS_H

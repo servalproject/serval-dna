@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "strbuf.h"
 #include "overlay_buffer.h"
+#include "overlay_packet.h"
 
 #ifdef HAVE_IFADDRS_H
 #include <ifaddrs.h>
@@ -53,6 +54,7 @@ struct profile_total sock_any_stats;
 struct outgoing_packet{
   overlay_interface *interface;
   int i;
+  struct sockaddr_in dest;
   struct overlay_buffer *buffer;
 };
 
@@ -262,7 +264,7 @@ overlay_interface_read_any(struct sched_ent *alarm){
     overlay_interface *interface=NULL;
     struct sockaddr src_addr;
     socklen_t addrlen = sizeof(src_addr);
-  
+    
     /* Read only one UDP packet per call to share resources more fairly, and also
      enable stats to accurately count packets received */
     plen = recvwithttl(alarm->poll.fd, packet, sizeof(packet), &recvttl, &src_addr, &addrlen);
@@ -272,9 +274,9 @@ overlay_interface_read_any(struct sched_ent *alarm){
       close(alarm->poll.fd);
       return;
     }
-  
+    
     struct in_addr src = ((struct sockaddr_in *)&src_addr)->sin_addr;
-  
+    
     /* Try to identify the real interface that the packet arrived on */
     for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
       if (overlay_interfaces[i].state!=INTERFACE_STATE_UP)
@@ -285,14 +287,14 @@ overlay_interface_read_any(struct sched_ent *alarm){
 	break;
       }
     }
-  
+    
     /* Should we drop the packet if we don't find a match? */
     if (!interface){
       if (debug&DEBUG_OVERLAYINTERFACES)
 	DEBUGF("Could not find matching interface for packet received from %s", inet_ntoa(src));
       return;
     }
-  
+    
     /* We have a frame from this interface */
     if (debug&DEBUG_PACKETRX)
       DEBUG_packet_visualise("Read from real interface", packet,plen);
@@ -306,7 +308,7 @@ overlay_interface_read_any(struct sched_ent *alarm){
     unwatch(alarm);
     close(alarm->poll.fd);
     alarm->poll.fd=-1;
-  }
+  }  
 }
 
 // bind a socket to INADDR_ANY:port
@@ -519,7 +521,7 @@ static void overlay_interface_poll(struct sched_ent *alarm)
       overlay_interface_close(interface);
       return;
     }
-  
+    
     /* We have a frame from this interface */
     if (debug&DEBUG_PACKETRX)
       DEBUG_packet_visualise("Read from real interface", packet,plen);
@@ -533,7 +535,7 @@ static void overlay_interface_poll(struct sched_ent *alarm)
   
   if (alarm->poll.revents & (POLLHUP | POLLERR)) {
     overlay_interface_close(interface);
-  }
+  }  
 }
 
 void overlay_dummy_poll(struct sched_ent *alarm)
@@ -865,11 +867,10 @@ void overlay_interface_discover(struct sched_ent *alarm){
 }
 
 /* remove and free a payload from the queue */
-static overlay_frame *
-overlay_queue_remove(overlay_txqueue *queue, overlay_frame *frame)
-{
-  overlay_frame *prev = frame->prev;
-  overlay_frame *next = frame->next;
+static struct overlay_frame *
+overlay_queue_remove(overlay_txqueue *queue, struct overlay_frame *frame){
+  struct overlay_frame *prev = frame->prev;
+  struct overlay_frame *next = frame->next;
   if (prev)
     prev->next = next;
   else if(frame == queue->first)
@@ -921,44 +922,26 @@ overlay_queue_dump(overlay_txqueue *q)
   return 0;
 }
 
-int overlay_resolve_next_hop(overlay_frame *frame){
-  IN();
-  if (frame->nexthop_address_status==OA_RESOLVED)
-    RETURN(0);
-  
-  if (frame->isBroadcast)
-    bcopy(&frame->destination,&frame->nexthop,SID_SIZE);
-  else if (overlay_get_nexthop((unsigned char *)frame->destination,frame->nexthop,&frame->nexthop_interface)){
-    // TODO new code?
-    frame->nexthop_address_status=OA_UNSUPPORTED;
-    RETURN(-1);
-  }
-  
-  frame->nexthop_address_status=OA_RESOLVED;
-  RETURN(0);
-}
-
 static void
-overlay_init_packet(struct outgoing_packet *packet, int interface) {
-  packet->i = interface;
-  packet->interface = &overlay_interfaces[packet->i];
+overlay_init_packet(struct outgoing_packet *packet, overlay_interface *interface, struct sockaddr_in addr){
+  packet->interface = interface;
+  packet->i = (interface - overlay_interfaces);
+  packet->dest=addr;
   packet->buffer=ob_new();
   ob_limitsize(packet->buffer, packet->interface->mtu);
   ob_append_bytes(packet->buffer,magic_header,4);
   
-  overlay_abbreviate_clear_most_recent_address();
-  overlay_abbreviate_unset_current_sender();
+  overlay_address_clear();
 }
 
 // update the alarm time and return 1 if changed
 static int
-overlay_calc_queue_time(overlay_txqueue *queue, overlay_frame *frame) {
+overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
   int ret=0;
   time_ms_t send_time;
-  
-  if (frame->nexthop_address_status==OA_UNINITIALISED)
-    overlay_resolve_next_hop(frame);
-  if (frame->nexthop_address_status!=OA_RESOLVED)
+
+  // ignore packet if the destination is currently unreachable
+  if (frame->destination && frame->destination->reachable==REACHABLE_NONE)
     return 0;
   
   // when is the next packet from this queue due?
@@ -983,16 +966,15 @@ overlay_calc_queue_time(overlay_txqueue *queue, overlay_frame *frame) {
 }
 
 static void
-overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, time_ms_t now) {
-  overlay_frame *frame = queue->first;
+overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, time_ms_t now){
+  struct overlay_frame *frame = queue->first;
   
   // TODO stop when the packet is nearly full?
   
   while(frame){
-    frame->isBroadcast = overlay_address_is_broadcast(frame->destination);
-    
     if (frame->enqueued_at + queue->latencyTarget < now){
-      DEBUG("Dropping frame due to expiry timeout");
+      DEBUGF("Dropping frame type %x for %s due to expiry timeout", 
+	     frame->type, frame->destination?alloca_tohex_sid(frame->destination->sid):"All");
       frame = overlay_queue_remove(queue, frame);
       continue;
     }
@@ -1000,19 +982,47 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
      even if we hear it from somewhere else in the mean time
      */
     
-    if (overlay_resolve_next_hop(frame))
+    if (frame->destination && frame->destination->reachable==REACHABLE_NONE)
       goto skip;
+    
+    struct subscriber *next_hop = frame->destination;
+    
+    if (next_hop){
+      switch(next_hop->reachable){
+	case REACHABLE_INDIRECT:
+	  next_hop=next_hop->next_hop;
+	  
+	  // make sure the routing table is consistent
+	  if (next_hop->reachable!=REACHABLE_DIRECT)
+	    goto skip;
+	  
+	  // fall through
+	case REACHABLE_DIRECT:
+	  frame->sendBroadcast=0;
+	  break;
+	  
+	case REACHABLE_BROADCAST:
+	  if (!frame->sendBroadcast){
+	    frame->sendBroadcast=1;
+	    overlay_broadcast_generate_address(&frame->broadcast_id);
+	    int i;
+	    for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
+	      frame->broadcast_sent_via[i]=0;
+	  }
+	  break;
+      }
+    }
     
     if (!packet->buffer){
       // use the interface of the first payload we find
-      if (frame->isBroadcast){
+      if (frame->sendBroadcast){
 	// find an interface that we haven't broadcast on yet
 	int i;
 	for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
 	{
 	  if (overlay_interfaces[i].state==INTERFACE_STATE_UP)
 	    if (!frame->broadcast_sent_via[i]){
-	      overlay_init_packet(packet, i);
+	      overlay_init_packet(packet, &overlay_interfaces[i], overlay_interfaces[i].broadcast_address);
 	      break;
 	    }
 	}
@@ -1023,28 +1033,34 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	  continue;
 	}
       }else{
-	overlay_init_packet(packet, frame->nexthop_interface);
+	overlay_init_packet(packet, next_hop->interface, next_hop->address);
       }
       
     }else{
       // make sure this payload can be sent via this interface
-      if (frame->isBroadcast){
+      if (frame->sendBroadcast){
 	if (frame->broadcast_sent_via[packet->i]){
 	  goto skip;
 	}
-      }else if(packet->i != frame->nexthop_interface){
+      }else if(packet->interface != next_hop->interface || packet->dest.sin_addr.s_addr != next_hop->address.sin_addr.s_addr){
 	goto skip;
       }
     }
     
-    if (overlay_frame_package_fmt1(frame, packet->buffer))
+    if (debug&DEBUG_OVERLAYFRAMES){
+      DEBUGF("Sending payload type %x len %d for %s via %s", frame->type, frame->payload->position,
+	     frame->destination?alloca_tohex_sid(frame->destination->sid):"All",
+	     frame->sendBroadcast?alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN):alloca_tohex_sid(next_hop->sid));
+    }
+    
+    if (overlay_frame_append_payload(frame, next_hop, packet->buffer))
       // payload was not queued
       goto skip;
     
     // mark the payload as sent
     int keep_payload = 0;
     
-    if (frame->isBroadcast){
+    if (frame->sendBroadcast){
       int i;
       frame->broadcast_sent_via[packet->i]=1;
       
@@ -1102,7 +1118,7 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
       overlay_broadcast_ensemble(packet->i,NULL,packet->buffer->bytes,packet->buffer->position);
     }
     ob_free(packet->buffer);
-    overlay_abbreviate_clear_most_recent_address();
+    overlay_address_clear();
     RETURN(1);
   }
   RETURN(0);
@@ -1117,7 +1133,7 @@ void overlay_send_packet(struct sched_ent *alarm){
 }
 
 // update time for next alarm and reschedule
-void overlay_update_queue_schedule(overlay_txqueue *queue, overlay_frame *frame){
+void overlay_update_queue_schedule(overlay_txqueue *queue, struct overlay_frame *frame){
   if (overlay_calc_queue_time(queue, frame)){
     unschedule(&next_packet);
     schedule(&next_packet);
@@ -1137,7 +1153,7 @@ overlay_tick_interface(int i, time_ms_t now) {
 
   // initialise the packet buffer
   bzero(&packet, sizeof(struct outgoing_packet));
-  overlay_init_packet(&packet, i);
+  overlay_init_packet(&packet, &overlay_interfaces[i], overlay_interfaces[i].broadcast_address);
   
   if (debug&DEBUG_OVERLAYINTERFACES) DEBUGF("Ticking interface #%d",i);
 

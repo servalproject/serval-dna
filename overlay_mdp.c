@@ -19,8 +19,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/stat.h>
 #include "serval.h"
 #include "strbuf.h"
-#include "subscribers.h"
 #include "overlay_buffer.h"
+#include "overlay_address.h"
+#include "overlay_packet.h"
 
 struct profile_total mdp_stats={.name="overlay_mdp_poll"};
 
@@ -33,6 +34,24 @@ struct sched_ent mdp_named={
   .function = overlay_mdp_poll,
   .stats = &mdp_stats,
 };
+
+// is the SID entirely 0xFF?
+static int is_broadcast(const unsigned char *sid){
+  int i;
+  for (i=0;i<SID_SIZE;i++)
+    if (sid[i]!=0xFF) 
+      return 0;
+  return 1;
+}
+
+// is the SID entirely 0x00?
+static int is_sid_any(unsigned char *sid){
+  int i;
+  for (i=0;i<SID_SIZE;i++)
+    if (sid[i])
+      return 0;
+  return 1;
+}
 
 int overlay_mdp_setup_sockets()
 {
@@ -134,10 +153,14 @@ int overlay_mdp_reply_error(int sock,
 
   mdpreply.packetTypeAndFlags=MDP_ERROR;
   mdpreply.error.error=error_number;
+  if (error_number)
+    WHYF("MDP error, code #%d %s",error_number, message);
+  
   if (error_number==0||message)
     snprintf(&mdpreply.error.message[0],128,"%s",message?message:"Success");
-  else
+  else{
     snprintf(&mdpreply.error.message[0],128,"Error code #%d",error_number);
+  }
   mdpreply.error.message[127]=0;
 
   return overlay_mdp_reply(sock,recvaddr,recvaddrlen,&mdpreply);
@@ -199,12 +222,10 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
   
   /* Make sure source address is either all zeros (listen on all), or a valid
      local address */
-  for(i=0;i<SID_SIZE;i++) if (mdp->bind.sid[i]) break;
-  if (i<SID_SIZE) {
-    /* Not all zeroes, so make sure it is a valid SID */
-    int ok=0;
-    if (overlay_address_is_local(mdp->bind.sid)) ok=1;
-    if (!ok) {
+  if (!is_sid_any(mdp->bind.sid)){
+    struct subscriber *subscriber = find_subscriber(mdp->bind.sid, SID_SIZE, 0);
+    if (!subscriber || subscriber->reachable != REACHABLE_SELF){
+      WHYF("Invalid bind request for sid=%s", alloca_tohex_sid(mdp->bind.sid));
       /* Source address is invalid */
       return overlay_mdp_reply_error(sock,recvaddr,recvaddrlen,7,
 				     "Bind address is not valid (must be a local MDP address, or all zeroes).");
@@ -277,7 +298,7 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
   return overlay_mdp_reply_ok(sock,recvaddr,recvaddrlen,"Port bound");
 }
 
-unsigned char *overlay_mdp_decrypt(overlay_frame *f, overlay_mdp_frame *mdp, int *len)
+unsigned char *overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp, int *len)
 {
   IN();
 
@@ -366,7 +387,7 @@ unsigned char *overlay_mdp_decrypt(overlay_frame *f, overlay_mdp_frame *mdp, int
   RETURN(b);
 }
 
-int overlay_saw_mdp_containing_frame(overlay_frame *f, time_ms_t now)
+int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now)
 {
   IN();
   /* Take frame source and destination and use them to populate mdp->in->{src,dst}
@@ -378,8 +399,14 @@ int overlay_saw_mdp_containing_frame(overlay_frame *f, time_ms_t now)
   int len=f->payload->sizeLimit;
 
   /* Get source and destination addresses */
-  bcopy(f->destination,mdp.in.dst.sid,SID_SIZE);
-  bcopy(f->source,mdp.in.src.sid,SID_SIZE);
+  if (f->destination)
+    bcopy(f->destination->sid,mdp.in.dst.sid,SID_SIZE);
+  else{
+    // pack the broadcast address into the mdp structure
+    memset(mdp.in.dst.sid, 0xFF, SID_SIZE - BROADCAST_LEN);
+    bcopy(f->broadcast_id.id, mdp.in.dst.sid + SID_SIZE - BROADCAST_LEN, BROADCAST_LEN);
+  }
+  bcopy(f->source->sid,mdp.in.src.sid,SID_SIZE);
 
   if (len<10) RETURN(WHY("Invalid MDP frame"));
 
@@ -433,13 +460,6 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp, time_ms_t now)
 	   alloca_tohex(mdp->out.src.sid, 7),
 	   mdp->out.src.port,mdp->out.dst.port);
 
-
-    if ((!overlay_address_is_local(mdp->out.dst.sid))
-	&&(!overlay_address_is_broadcast(mdp->out.dst.sid)))
-      {
-	RETURN(WHY("Asked to process an MDP packet that was not addressed to this node."));
-      }
-    
     for(i=0;i<MDP_MAX_BINDINGS;i++)
       {
 	if (!memcmp(&mdp->out.dst,&mdp_bindings[i].addr,sizeof(sockaddr_mdp)))
@@ -564,13 +584,10 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp, time_ms_t now)
 	  }
 	  /* If the packet was sent to broadcast, then replace broadcast address
 	     with our local address. For now just responds with first local address */
-	  if (overlay_address_is_broadcast(mdp->out.src.sid))
+	  if (is_broadcast(mdp->out.src.sid))
 	    {
-	      if (keyring->contexts[0]->identity_count&&
-		  keyring->contexts[0]->identities[0]->keypair_count&&
-		  keyring->contexts[0]->identities[0]->keypairs[0]->type
-		  ==KEYTYPE_CRYPTOBOX)		  
-		bcopy(keyring->contexts[0]->identities[0]->keypairs[0]->public_key,
+	      if (my_subscriber)		  
+		bcopy(my_subscriber->sid,
 		      mdp->out.src.sid,SID_SIZE);
 	      else
 		/* No local addresses, so put all zeroes */
@@ -628,7 +645,7 @@ int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,int userGeneratedFrameP,
 				      struct sockaddr_un *recvaddr,
 				      int recvaddrlen)
 {
-  if (overlay_address_is_broadcast(src->sid))
+  if (is_broadcast(src->sid))
     {
       /* This is rather naughty if it happens, since broadcasting a
 	 response can lead to all manner of nasty things.
@@ -659,8 +676,9 @@ int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,int userGeneratedFrameP,
     }
   }
 
+  struct subscriber *subscriber = find_subscriber(src->sid, SID_SIZE, 1);
   /* Check for build-in port listeners */
-  if (overlay_address_is_local(src->sid)) {
+  if (subscriber && subscriber->reachable == REACHABLE_SELF) {
     switch(src->port) {
     case MDP_PORT_ECHO:
       /* we don't allow user/network generated packets claiming to
@@ -698,8 +716,6 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 {
   IN();
   /* Work out if destination is broadcast or not */
-  int broadcast=1;
-  
   if (overlay_mdp_sanitytest_sourceaddr(&mdp->out.src,userGeneratedFrameP,
 					recvaddr,recvaddrlen))
     RETURN(overlay_mdp_reply_error
@@ -709,41 +725,55 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 	    "Source address is invalid (you must bind to a source address before"
 	    " you can send packets"));
   
-  if (!overlay_address_is_broadcast(mdp->out.dst.sid)) broadcast=0;
+  /* Prepare the overlay frame for dispatch */
+  struct overlay_frame *frame = calloc(1,sizeof(struct overlay_frame));
   
-  if (overlay_address_is_local(mdp->out.dst.sid)||broadcast)
+  if (is_broadcast(mdp->out.dst.sid)){
+    /* broadcast packets cannot be encrypted, so complain if MDP_NOCRYPT
+     flag is not set. Also, MDP_NOSIGN must also be applied, until
+     NaCl cryptobox keys can be used for signing. */	
+    if (!(mdp->packetTypeAndFlags&MDP_NOCRYPT))
+      RETURN(overlay_mdp_reply_error(mdp_named.poll.fd,
+				     recvaddr,recvaddrlen,5,
+				     "Broadcast packets cannot be encrypted "));
+  
+    overlay_broadcast_generate_address(&frame->broadcast_id);
+    frame->destination = NULL;
+  }else{
+    frame->destination = find_subscriber(mdp->out.dst.sid, SID_SIZE, 1);
+  }
+  frame->ttl=64; /* normal TTL (XXX allow setting this would be a good idea) */	
+  
+  if (is_sid_any(mdp->out.src.sid)){
+    /* set source to ourselves */
+    frame->source = my_subscriber;
+    bcopy(frame->source->sid, mdp->out.src.sid, SID_SIZE);
+  }else{
+    frame->source = find_subscriber(mdp->out.src.sid, SID_SIZE, 1);
+  }
+  
+  if (!frame->destination || frame->destination->reachable == REACHABLE_SELF)
     {
       /* Packet is addressed such that we should process it. */
       overlay_saw_mdp_frame(mdp,gettime_ms());
-      if (!broadcast) {
+      if (frame->destination) {
 	/* Is local, and is not broadcast, so shouldn't get sent out
 	   on the wire. */
+	op_free(frame);
 	RETURN(0);
       }
     }
   
-  /* broadcast packets cannot be encrypted, so complain if MDP_NOCRYPT
-     flag is not set. Also, MDP_NOSIGN must also be applied, until
-     NaCl cryptobox keys can be used for signing. */	
-  if (broadcast) {
-    if (!(mdp->packetTypeAndFlags&MDP_NOCRYPT))
-      RETURN(overlay_mdp_reply_error(mdp_named.poll.fd,
-				     recvaddr,recvaddrlen,5,
-				     "Broadcast packets cannot be encrypted "));  }
-  
-  /* Prepare the overlay frame for dispatch */
-  struct overlay_frame *frame;
-  frame=calloc(sizeof(overlay_frame),1);
-  if (!frame) RETURN(WHY_perror("calloc"));
   /* give voice packets priority */
   if (mdp->out.dst.port==MDP_PORT_VOMP) frame->type=OF_TYPE_DATA_VOICE;
   else frame->type=OF_TYPE_DATA;
   frame->prev=NULL;
   frame->next=NULL;
+  frame->payload=ob_new();
   
   int fe=0;
 
-  /* Work out the disposition of the frame.  For now we are only worried
+  /* Work out the disposition of the frame->  For now we are only worried
      about the crypto matters, and not compression that may be applied
      before encryption (since applying it after is useless as ciphered
      text should have maximum entropy). */
@@ -751,15 +781,14 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   case 0: /* crypted and signed (using CryptoBox authcryption primitive) */
     frame->modifiers=OF_CRYPTO_SIGNED|OF_CRYPTO_CIPHERED;
     /* Prepare payload */
-    frame->payload=ob_new();
-      /*length should be;
-       1 - frame type (MDP)
-      +1 - MDP version 
-      +4 - dst port 
-      +4 - src port 
-      +crypto_box_curve25519xsalsa20poly1305_NONCEBYTES
-      +crypto_box_curve25519xsalsa20poly1305_ZEROBYTES
-      +mdp->out.payload_length*/
+    ob_makespace(frame->payload, 
+	   1 // frame type (MDP)
+	  +1 // MDP version 
+	  +4 // dst port 
+	  +4 // src port 
+	  +crypto_box_curve25519xsalsa20poly1305_NONCEBYTES
+	  +crypto_box_curve25519xsalsa20poly1305_ZEROBYTES
+	  +mdp->out.payload_length);
     {
       /* write cryptobox nonce */
       unsigned char nonce[crypto_box_curve25519xsalsa20poly1305_NONCEBYTES];
@@ -793,16 +822,23 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       /* get pre-computed PKxSK bytes (the slow part of auth-cryption that can be
 	 retained and reused, and use that to do the encryption quickly. */
       unsigned char *k=keyring_get_nm_bytes(&mdp->out.src,&mdp->out.dst);
-      if (!k) { op_free(frame); RETURN(WHY("could not compute Curve25519(NxM)")); }
+      if (!k) {
+	op_free(frame);
+	RETURN(WHY("could not compute Curve25519(NxM)")); 
+      }
       /* Get pointer to place in frame where the ciphered text needs to go */
       int cipher_offset=frame->payload->position;
       unsigned char *cipher_text=ob_append_space(frame->payload,cipher_len);
-      if (fe||(!cipher_text))
-	{ op_free(frame); RETURN(WHY("could not make space for ciphered text")); }
+      if (fe||(!cipher_text)){
+	op_free(frame);
+	RETURN(WHY("could not make space for ciphered text")); 
+      }
       /* Actually authcrypt the payload */
       if (crypto_box_curve25519xsalsa20poly1305_afternm
-	  (cipher_text,plain,cipher_len,nonce,k))
-	{ op_free(frame); RETURN(WHY("crypto_box_afternm() failed")); }
+	  (cipher_text,plain,cipher_len,nonce,k)){
+	op_free(frame);
+	RETURN(WHY("crypto_box_afternm() failed")); 
+      }
       /* now shuffle down 16 bytes to get rid of the temporary space that crypto_box
 	 uses. */
       bcopy(&cipher_text[16],&cipher_text[0],cipher_len-16);
@@ -819,15 +855,6 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       }
     }
     break;
-  case MDP_NOSIGN: 
-    /* ciphered, but not signed.
-       This means we don't use CryptoBox, but rather a more compact means
-       of representing the ciphered stream segment.
-    */
-    frame->modifiers=OF_CRYPTO_CIPHERED; 
-    op_free(frame);
-    RETURN(WHY("ciphered MDP packets not implemented"));
-    break;
   case MDP_NOCRYPT: 
     /* Payload is sent unencrypted, but signed.
 
@@ -841,18 +868,19 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
     */
     frame->modifiers=OF_CRYPTO_SIGNED; 
     /* Prepare payload */
-      frame->payload=ob_new();
-      /* Length should be;
-	1 - frame type (MDP) 
-	+1 - MDP version 
-	+4 - dst port 
-	+4 - src port 
+    ob_makespace(frame->payload,
+	1 // frame type (MDP) 
+	+1 // MDP version 
+	+4 // dst port 
+	+4 // src port 
 	+crypto_sign_edwards25519sha512batch_BYTES
-	+mdp->out.payload_length
-      */
+	+mdp->out.payload_length);
     {
-      unsigned char *key=keyring_find_sas_private(keyring,mdp->out.src.sid,NULL);
-      if (!key) { op_free(frame); RETURN(WHY("could not find signing key")); }
+      unsigned char *key=keyring_find_sas_private(keyring, frame->source->sid, NULL);
+      if (!key) {
+	op_free(frame);
+	RETURN(WHY("could not find signing key"));
+      }
       
       /* Build plain-text that includes header and hash it so that
          we can sign that hash. */
@@ -882,7 +910,10 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       crypto_sign_edwards25519sha512batch(signature,&sig_len,
 					  hash,crypto_hash_sha512_BYTES,
 					  key);
-      if (!sig_len) { op_free(frame); RETURN(WHY("Signing MDP frame failed")); }
+      if (!sig_len) {
+	op_free(frame);
+	RETURN(WHY("Signing MDP frame failed"));
+      }
       /* chop hash out of middle of signature since it has to be recomputed
 	 at the far end, anyway, as described above. */
       bcopy(&signature[32+64],&signature[32],32);
@@ -899,14 +930,12 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   case MDP_NOSIGN|MDP_NOCRYPT: /* clear text and no signature */
     frame->modifiers=0; 
     /* Copy payload body in */
-    frame->payload=ob_new();
-      /* Length should be;
-       1 - frame type (MDP) 
-      +1 - MDP version 
-      +4 - dst port 
-      +4 - src port 
-      +mdp->out.payload_length
-       */
+    ob_makespace(frame->payload, 
+	   1 // frame type (MDP) 
+	  +1 // MDP version 
+	  +4 // dst port 
+	  +4 // src port 
+	  +mdp->out.payload_length);
     /* MDP version 1 */
     ob_append_byte(frame->payload,0x01);
     ob_append_byte(frame->payload,0x01);
@@ -915,36 +944,28 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
     ob_append_ui32(frame->payload,mdp->out.dst.port);
     ob_append_bytes(frame->payload,mdp->out.payload,mdp->out.payload_length);
     break;
-  }
-  frame->ttl=64; /* normal TTL (XXX allow setting this would be a good idea) */	  
-  /* set source to ourselves 
-     XXX should eventually honour binding, which should allow choosing which
-     local identity.  This will be required for openbts integration/SIP:MSIP
-     gateways etc. */
-  overlay_frame_set_me_as_source(frame);
-  
-  /* Set destination address */
-  if (broadcast)
-    overlay_frame_set_broadcast_as_destination(frame);
-  else{
-    bcopy(&mdp->out.dst.sid[0],frame->destination,SID_SIZE);
+  case MDP_NOSIGN: 
+  default:
+    /* ciphered, but not signed.
+     This means we don't use CryptoBox, but rather a more compact means
+     of representing the ciphered stream segment.
+     */
+    op_free(frame);
+    RETURN(WHY("Not implemented"));
+    break;
   }
   
-  int q=OQ_ORDINARY;
-  if (mdp->out.src.port==MDP_PORT_VOMP) {
-    q=OQ_ISOCHRONOUS_VOICE;
+  // TODO include priority in packet header
+  int qn=OQ_ORDINARY;
+  /* Make sure voice traffic gets priority */
+  if ((frame->type&OF_TYPE_BITS)==OF_TYPE_DATA_VOICE) {
+    qn=OQ_ISOCHRONOUS_VOICE;
     rhizome_saw_voice_traffic();
   }
-  if (overlay_payload_enqueue(q,frame,0))
-    {
-      if (frame) op_free(frame);
-      RETURN(WHY("Error enqueuing frame"));
-    }
-  else {
-    if (debug&DEBUG_OVERLAYINTERFACES)
-      DEBUGF("queued frame type=%#x modifiers=%#x ttl=%u", frame->type, frame->modifiers, frame->ttl);
-    RETURN(0);
-  }
+  
+  if (overlay_payload_enqueue(qn, frame))
+    op_free(frame);
+  RETURN(0);
 }
 
 struct search_state{
@@ -956,17 +977,27 @@ struct search_state{
   int count;
 };
 
-int search_subscribers(struct subscriber *subscriber, void *context){
+static int search_subscribers(struct subscriber *subscriber, void *context){
   struct search_state *state = context;
-  if (!subscriber->node)
-    return 0;
-  int score = subscriber->node->best_link_score;
   
-  if (state->mdp->addrlist.mode == MDP_ADDRLIST_MODE_ALL_PEERS || score >= 1) {
-    if (state->count++ >= state->first && state->index < state->max) {
-      memcpy(state->mdpreply->addrlist.sids[state->index++], subscriber->sid, SID_SIZE);
-    }
+  if (state->mdp->addrlist.mode == MDP_ADDRLIST_MODE_SELF && subscriber->reachable != REACHABLE_SELF){
+    return 0;
   }
+  
+  if (state->mdp->addrlist.mode == MDP_ADDRLIST_MODE_ROUTABLE_PEERS && 
+      (subscriber->reachable != REACHABLE_DIRECT && subscriber->reachable != REACHABLE_INDIRECT)){
+    return 0;
+  }
+    
+  if (state->mdp->addrlist.mode == MDP_ADDRLIST_MODE_ALL_PEERS &&
+      subscriber->reachable == REACHABLE_SELF){
+    return 0;
+  }
+  
+  if (state->count++ >= state->first && state->index < state->max) {
+    memcpy(state->mdpreply->addrlist.sids[state->index++], subscriber->sid, SID_SIZE);
+  }
+  
   return 0;
 }
 
@@ -982,7 +1013,7 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 
     ttl=-1;
     bzero((void *)recvaddrbuffer,sizeof(recvaddrbuffer));
-  
+    
     ssize_t len = recvwithttl(alarm->poll.fd,buffer,sizeof(buffer),&ttl, recvaddr, &recvaddrlen);
     recvaddr_un=(struct sockaddr_un *)recvaddr;
 
@@ -1028,42 +1059,18 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 	  mdpreply.addrlist.frame_sid_count = max_sids;
 	  
 	  /* Populate with SIDs */
-	  int i=0;
-	  int count=0;
-	  switch (mdp->addrlist.mode) {
-	  case MDP_ADDRLIST_MODE_SELF: {
-	      int cn=0,in=0,kp=0;
-	      while(keyring_next_identity(keyring,&cn,&in,&kp)) {	    
-		if (count>=sid_num&&(i<max_sids))
-		  bcopy(keyring->contexts[cn]->identities[in]
-			->keypairs[kp]->public_key,
-			mdpreply.addrlist.sids[i++],SID_SIZE);
-		in++; kp=0;
-		count++;
-		if (i>=max_sids)
-		  break;
-	      }
-	    }
-	    break;
-	  case MDP_ADDRLIST_MODE_ROUTABLE_PEERS:
-	  case MDP_ADDRLIST_MODE_ALL_PEERS: {
-	      /* from peer list */
-	    struct search_state state={
-	      .mdp=mdp,
-	      .mdpreply=&mdpreply,
-	      .first=sid_num,
-	      .max=max_sid,
-	    };
-	    
-	    enum_subscribers(NULL, search_subscribers, &state);
-	    i=state.index;
-	    count=state.count;
-	    }
-	    break;
-	  }
-	  mdpreply.addrlist.frame_sid_count = i;
-	  mdpreply.addrlist.last_sid = sid_num + i - 1;
-	  mdpreply.addrlist.server_sid_count = count;
+	  struct search_state state={
+	    .mdp=mdp,
+	    .mdpreply=&mdpreply,
+	    .first=sid_num,
+	    .max=max_sid,
+	  };
+	  
+	  enum_subscribers(NULL, search_subscribers, &state);
+	  
+	  mdpreply.addrlist.frame_sid_count = state.index;
+	  mdpreply.addrlist.last_sid = sid_num + state.index - 1;
+	  mdpreply.addrlist.server_sid_count = state.count;
 
 	  if (debug & DEBUG_MDPREQUESTS)
 	    DEBUGF("reply MDP_ADDRLIST first_sid=%u last_sid=%u frame_sid_count=%u server_sid_count=%u",
@@ -1367,7 +1374,8 @@ int overlay_mdp_bind(unsigned char *localaddr,int port)
 int overlay_mdp_getmyaddr(int index,unsigned char *sid)
 {
   overlay_mdp_frame a;
-
+  memset(&a, 0, sizeof(a));
+  
   a.packetTypeAndFlags=MDP_GETADDRS;
   a.addrlist.mode = MDP_ADDRLIST_MODE_SELF;
   a.addrlist.first_sid=index;

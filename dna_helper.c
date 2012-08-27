@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
+#include "overlay_address.h"
 
 /*
   The challenge with making an interface for calling an external program to 
@@ -566,10 +567,11 @@ dna_helper_enqueue(overlay_mdp_frame *mdp, const char *did, const unsigned char 
       dna_helper_pid = 0;
       return 0;
     }
-    unsigned char *mysid;
-    if ((mysid = overlay_get_my_sid()) == NULL)
+    
+    if (!my_subscriber)
       return WHY("Unable to lookup my SID");
-    if (dna_helper_start(dna_helper_executable, dna_helper_arg1, alloca_tohex_sid(mysid)) == -1) {
+      
+    if (dna_helper_start(dna_helper_executable, dna_helper_arg1, alloca_tohex_sid(my_subscriber->sid)) == -1) {
       /* Something broke, bail out */
       return WHY("DNAHELPER start failed");
     }

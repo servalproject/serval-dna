@@ -171,7 +171,8 @@ int isOverlayPacket(XPRINTF xpf, const unsigned char *packet, size_t *ofs, size_
   xprintf(xpf,"%sServal Overlay Mesh Packet version %d (0x%04x)\n",
 	  indent(4),version,version);
   if (version>0x001) {
-    xprintf(xpf,"%s  WARNING: Packet version is newer than I know about.\n",indent(4));
+    xprintf(xpf,"%s  ERROR: Packet version is newer than I know about.\n",indent(4));
+    return 0;
   }
   (*ofs)+=4;
 

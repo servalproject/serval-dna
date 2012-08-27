@@ -21,6 +21,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include <assert.h>
 #include "overlay_buffer.h"
+#include "overlay_address.h"
+#include "overlay_packet.h"
 #include <stdlib.h>
 
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
@@ -111,11 +113,11 @@ int overlay_rhizome_add_advertisements(int interface_number, struct overlay_buff
   ob_append_rfs(e,1+11+1+2+RHIZOME_BAR_BYTES/* RFS */);
 
   /* Stuff in dummy address fields (11 bytes) */
-  ob_append_byte(e,OA_CODE_BROADCAST);
-  { int i; for(i=0;i<8;i++) ob_append_byte(e,random()&0xff); } /* BPI for broadcast */
-  ob_append_byte(e,OA_CODE_PREVIOUS);
-  overlay_abbreviate_clear_most_recent_address();
-  overlay_abbreviate_append_address(e, overlay_get_my_sid());
+  struct broadcast broadcast_id;
+  overlay_broadcast_generate_address(&broadcast_id);
+  overlay_broadcast_append(e, &broadcast_id);
+  ob_append_byte(e, OA_CODE_PREVIOUS);
+  overlay_address_append(e, my_subscriber);
 
   /* Randomly choose whether to advertise manifests or BARs first. */
   int skipmanifests=random()&1;
@@ -267,7 +269,7 @@ int overlay_rhizome_add_advertisements(int interface_number, struct overlay_buff
   RETURN(0);
 }
 
-int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
+int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long now)
 {
   IN();
   if (!f) { RETURN(-1); }

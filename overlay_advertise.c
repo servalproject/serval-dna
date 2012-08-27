@@ -18,8 +18,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
-#include "subscribers.h"
+#include "overlay_address.h"
 #include "overlay_buffer.h"
+#include "overlay_packet.h"
 
 /* List of prioritised advertisements */
 #define OVERLAY_MAX_ADVERTISEMENT_REQUESTS 16
@@ -112,7 +113,9 @@ int overlay_route_add_advertisements(struct overlay_buffer *e)
      Thus using a fixed 1-byte RFS field we are limited to RFS<0xfa,
      which gives us 30 available advertisement slots per packet.
    */
-  int i;
+  
+  if (!my_subscriber)
+    return WHY("Cannot advertise because I don't know who I am");
   
   ob_checkpoint(e);
   
@@ -123,13 +126,15 @@ int overlay_route_add_advertisements(struct overlay_buffer *e)
   // assume we might fill the packet
   ob_append_rfs(e, e->sizeLimit - e->position);
 
-  /* Stuff in dummy address fields */
-  ob_append_byte(e,OA_CODE_BROADCAST);
-  for(i=0;i<8;i++) ob_append_byte(e,random()&0xff); /* random BPI */
+  /* Add address fields */
+  struct broadcast broadcast;
+  overlay_broadcast_generate_address(&broadcast);
+  overlay_broadcast_append(e,&broadcast);
+  
   ob_append_byte(e,OA_CODE_PREVIOUS);
   
-  overlay_abbreviate_clear_most_recent_address();
-  overlay_abbreviate_append_address(e, overlay_get_my_sid());
+  overlay_address_append(e, my_subscriber);
+  overlay_address_set_sender(my_subscriber);
   
   // TODO high priority advertisements first....
   /*
@@ -158,7 +163,7 @@ int overlay_route_add_advertisements(struct overlay_buffer *e)
   if (e->position == start_pos){
     // no advertisements? don't bother to send the payload at all.
     ob_rewind(e);
-    overlay_abbreviate_clear_most_recent_address();
+    overlay_address_clear();
   }else
     ob_patch_rfs(e,COMPUTE_RFS_LENGTH);
 
@@ -175,7 +180,7 @@ int overlay_route_add_advertisements(struct overlay_buffer *e)
    of nodes from here to there.  That seems silly, and is agains't the BATMAN
    approach of each node just knowing single-hop information.
  */
-int overlay_route_saw_advertisements(int i,overlay_frame *f, long long now)
+int overlay_route_saw_advertisements(int i, struct overlay_frame *f, long long now)
 {
   IN();
   while(f->payload->position < f->payload->sizeLimit)
@@ -192,27 +197,19 @@ int overlay_route_saw_advertisements(int i,overlay_frame *f, long long now)
       subscriber = find_subscriber(sid, 6, 0);
       
       if (!subscriber){
-	//WARN("Dispatch PLEASEEXPLAIN not implemented");
+	WARN("Dispatch PLEASEEXPLAIN not implemented");
 	continue;
       }
       
       /* Don't record routes to ourselves */
-      if (overlay_address_is_local(subscriber->sid)) {
+      if (subscriber->reachable==REACHABLE_SELF) {
 	if (debug & DEBUG_OVERLAYROUTING)
 	  DEBUGF("Ignore announcement about me (%s)", alloca_tohex_sid(subscriber->sid));
 	continue;
       }
       
-      /* Don't let nodes advertise paths to themselves!
-	 (paths to self get detected through selfannouncements and selfannouncement acks) */
-      if (!memcmp(overlay_abbreviate_current_sender.b,subscriber->sid,SID_SIZE)){
-	if (debug & DEBUG_OVERLAYROUTING)
-	  DEBUGF("Ignore announcement about neighbour (%s)", alloca_tohex_sid(subscriber->sid));
-	continue;
-      }
-      
       /* File it */
-      overlay_route_record_link(now,subscriber->sid,overlay_abbreviate_current_sender.b,
+      overlay_route_record_link(now, subscriber->sid, f->source->sid,
 				i,
 				/* time range that this advertisement covers.
 				   XXX - Make it up for now. */

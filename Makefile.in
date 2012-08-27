@@ -25,9 +25,8 @@ SRCS=	\
 	monitor-cli.c \
 	net.c \
 	overlay.c \
-	overlay_abbreviations.c \
 	overlay_advertise.c \
-	overlay_broadcast.c \
+	overlay_address.c \
 	overlay_buffer.c \
 	overlay_interface.c \
 	overlay_mdp.c \
@@ -57,7 +56,6 @@ SRCS=	\
 	strbuf.c \
 	strbuf_helpers.c \
 	strlcpy.c \
-	subscribers.c \
 	vomp.c \
         xprintf.c
 
@@ -83,11 +81,12 @@ MONITORCLIENTOBJS=	$(MONITORCLIENTSRCS:.c=.o)
 HDRS=	fifo.h \
 	Makefile \
 	overlay_buffer.h \
+	overlay_address.h \
+	overlay_packet.h \
 	rhizome.h \
 	serval.h \
 	strbuf.h \
 	strbuf_helpers.h \
-	subscribers.h \
 	sha2.h \
 	conf.h \
 	log.h \

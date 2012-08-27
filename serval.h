@@ -285,47 +285,6 @@ void keyring_identity_extract(const keyring_identity *id, const unsigned char **
 
 extern int sock;
 
-typedef struct sid {
-  unsigned char b[SID_SIZE];
-} sid;
-
-extern sid overlay_abbreviate_current_sender;
-
-typedef struct overlay_frame {
-  struct overlay_frame *prev;
-  struct overlay_frame *next;
-  
-  unsigned int type;
-  unsigned int modifiers;
-  
-  unsigned char ttl;
-  
-  /* Mark which interfaces the frame has been sent on,
-   so that we can ensure that broadcast frames get sent
-   exactly once on each interface */
-  int isBroadcast;
-  unsigned char broadcast_sent_via[OVERLAY_MAX_INTERFACES];
-  
-  unsigned char nexthop[32];
-  int nexthop_address_status;
-  int nexthop_interface; /* which interface the next hop should be attempted on */
-  
-  unsigned char destination[32];
-  unsigned char source[32];
-  
-  /* IPv4 node frame was received from (if applicable) */
-  struct sockaddr *recvaddr;
-  
-  /* Actual payload */
-  // TODO refactor *all* packet parsing so that the payload is not copied or allocated unless it must be forwarded.
-  struct overlay_buffer *payload;
-  
-  int rfs; /* remainder of frame size */
-  
-  time_ms_t enqueued_at;
-  
-} overlay_frame;
-
 struct profile_total {
   struct profile_total *_next;
   int _initialised;
@@ -361,6 +320,9 @@ struct sched_ent{
   struct profile_total *stats;
   int _poll_index;
 };
+
+struct overlay_buffer;
+struct subscriber;
 
 #define STRUCT_SCHED_ENT_UNUSED ((struct sched_ent){NULL, NULL, NULL, NULL, {-1, 0, 0}, 0LL, 0LL, NULL, -1})
 
@@ -595,6 +557,7 @@ int getBatmanPeerList(char *socket_path,struct in_addr peers[],int *peer_count,i
 int asteriskObtainGateway(char *requestor_sid,char *did,char *uri_out);
 int packetOkDNA(unsigned char *packet,int len,unsigned char *transaction_id,
 		int recvttl,struct sockaddr *recvaddr, size_t recvaddrlen,int parseP);
+int overlay_forward_payload(struct overlay_frame *f);
 int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,
 		    unsigned char *transaction_id,int recvttl,
 		    struct sockaddr *recvaddr, size_t recvaddrlen,int parseP);
@@ -604,15 +567,12 @@ int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP
 		      struct response_set *responses);
 int readArpTable(struct in_addr peers[],int *peer_count,int peer_max);
 
-int overlay_frame_process(struct overlay_interface *interface,overlay_frame *f);
-int overlay_frame_resolve_addresses(overlay_frame *f);
+int overlay_frame_process(struct overlay_interface *interface, struct overlay_frame *f);
+int overlay_frame_resolve_addresses(struct overlay_frame *f);
 
 #define alloca_tohex(buf,len)           tohex((char *)alloca((len)*2+1), (buf), (len))
 #define alloca_tohex_sid(sid)           alloca_tohex((sid), SID_SIZE)
 #define alloca_tohex_sas(sas)           alloca_tohex((sas), SAS_SIZE)
-
-int op_free(overlay_frame *p);
-overlay_frame *op_dup(overlay_frame *f);
 
 time_ms_t overlay_time_until_next_tick();
 int overlay_rx_messages();
@@ -620,33 +580,18 @@ int overlay_rx_messages();
 #define DEBUG_packet_visualise(M,P,N) logServalPacket(LOG_LEVEL_DEBUG, __HERE__, (M), (P), (N))
 
 int overlay_add_selfannouncement();
-int overlay_frame_package_fmt1(overlay_frame *p, struct overlay_buffer *b);
+int overlay_frame_append_payload(struct overlay_frame *p, struct subscriber *next_hop, struct overlay_buffer *b);
 int overlay_interface_args(const char *arg);
-int overlay_get_nexthop(unsigned char *d,unsigned char *nexthop,int *interface);
 int overlay_sendto(struct sockaddr_in *recipientaddr,unsigned char *bytes,int len);
 int overlay_rhizome_add_advertisements(int interface_number,struct overlay_buffer *e);
 int overlay_add_local_identity(unsigned char *s);
-int overlay_address_is_local(unsigned char *s);
-void overlay_update_queue_schedule(overlay_txqueue *queue, overlay_frame *frame);
+void overlay_update_queue_schedule(overlay_txqueue *queue, struct overlay_frame *frame);
 void overlay_send_packet(struct sched_ent *alarm);
-int overlay_resolve_next_hop(overlay_frame *frame);
 
 extern int overlay_interface_count;
 
 extern int overlay_local_identity_count;
 extern unsigned char *overlay_local_identities[OVERLAY_MAX_LOCAL_IDENTITIES];
-
-int overlay_abbreviate_address(unsigned char *in,unsigned char *out,int *ofs);
-int overlay_abbreviate_append_address(struct overlay_buffer *b,unsigned char *a);
-
-int overlay_abbreviate_expand_address(unsigned char *in,int *inofs,unsigned char *out,int *ofs);
-int overlay_abbreviate_cache_address(unsigned char *sid);
-int overlay_abbreviate_cache_lookup(unsigned char *in,unsigned char *out,int *ofs,
-				    int prefix_bytes,int index_bytes);
-int overlay_abbreviate_remember_index(int index_byte_count,unsigned char *in,unsigned char *index_bytes);
-extern int overlay_abbreviate_repeat_policy;
-int overlay_abbreviate_set_most_recent_address(unsigned char *in);
-int overlay_abbreviate_clear_most_recent_address();
 
 int rfs_length(int l);
 int rfs_encode(int l,unsigned char *b);
@@ -678,41 +623,33 @@ typedef struct overlay_node {
   overlay_node_observation observations[OVERLAY_MAX_OBSERVATIONS];
 } overlay_node;
 
-int overlay_route_saw_selfannounce_ack(overlay_frame *f, time_ms_t now);
-int overlay_route_saw_selfannounce(overlay_frame *f, time_ms_t now);
+int overlay_route_saw_selfannounce_ack(struct overlay_frame *f, time_ms_t now);
+int overlay_route_saw_selfannounce(struct overlay_frame *f, time_ms_t now);
 overlay_node *overlay_route_find_node(const unsigned char *sid,int prefixLen,int createP);
 unsigned int overlay_route_hash_sid(const unsigned char *sid);
 
-unsigned char *overlay_get_my_sid();
-int overlay_frame_set_me_as_source(overlay_frame *f);
-int overlay_frame_set_broadcast_as_destination(overlay_frame *f);
+int overlay_frame_set_broadcast_as_destination(struct overlay_frame *f);
 int packetEncipher(unsigned char *packet,int maxlen,int *len,int cryptoflags);
 int overlayServerMode();
-int overlay_payload_enqueue(int q,overlay_frame *p,int forceBroadcastP);
-int overlay_abbreviate_lookup_sender_id();
+int overlay_payload_enqueue(int q, struct overlay_frame *p);
 int overlay_route_record_link( time_ms_t now,unsigned char *to,
 			      unsigned char *via,int sender_interface,
 			      unsigned int s1,unsigned int s2,int score,int gateways_en_route);
 int overlay_route_dump();
 int overlay_route_add_advertisements(struct overlay_buffer *e);
 int ovleray_route_please_advertise(overlay_node *n);
-int overlay_abbreviate_set_current_sender(unsigned char *in);
 
-int overlay_route_saw_advertisements(int i,overlay_frame *f,  time_ms_t now);
-int overlay_rhizome_saw_advertisements(int i,overlay_frame *f,  time_ms_t now);
+int overlay_route_saw_advertisements(int i, struct overlay_frame *f, time_ms_t now);
+int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f,  time_ms_t now);
 int overlay_route_please_advertise(overlay_node *n);
 int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_saw_voice_traffic();
-int overlay_saw_mdp_containing_frame(overlay_frame *f, time_ms_t now);
+int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now);
 
 #include "nacl.h"
 
 int serval_packetvisualise(XPRINTF xpf, const char *message, const unsigned char *packet, size_t len);
 
-int overlay_broadcast_drop_check(unsigned char *a);
-int overlay_address_is_broadcast(unsigned char *a);
-int overlay_broadcast_generate_address(unsigned char *a);
-int overlay_abbreviate_unset_current_sender();
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_opendb();
 
@@ -880,7 +817,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 		     struct sockaddr_un *recvaddr,int recvaddlen);
 int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const unsigned char *resolved_sid, const char *uri, const char *did, const char *name);
 
-int dump_payload(overlay_frame *p,char *message);
+int dump_payload(struct overlay_frame *p, char *message);
 
 int urandombytes(unsigned char *x,unsigned long long xlen);
 
