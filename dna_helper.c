@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 #include <signal.h>
 #include "serval.h"
 #include "strbuf.h"
@@ -311,7 +312,10 @@ static void monitor_requests(struct sched_ent *alarm)
 	strbuf_str(strbuf_append_poll_events(strbuf_alloca(40), sched_requests.poll.revents))
       );
   }
-  if (sched_requests.poll.revents & (POLLHUP | POLLERR)) {
+  // On Linux, poll(2) returns ERR when the remote reader dies.  On Mac OS X, poll(2) returns NVAL,
+  // which is documented to mean the file descriptor is not open, but testing revealed that in this
+  // case it is still open.  See issue #5.
+  if (sched_requests.poll.revents & (POLLHUP | POLLERR | POLLNVAL)) {
     if (debug & DEBUG_DNAHELPER)
       DEBUGF("DNAHELPER closing stdin fd=%d", dna_helper_stdin);
     close(dna_helper_stdin);
@@ -471,7 +475,7 @@ static void monitor_replies(struct sched_ent *alarm)
       }
     }
   }
-  if (sched_replies.poll.revents & (POLLHUP | POLLERR)) {
+  if (sched_replies.poll.revents & (POLLHUP | POLLERR | POLLNVAL)) {
     if (debug & DEBUG_DNAHELPER)
       DEBUGF("DNAHELPER closing stdout fd=%d", dna_helper_stdout);
     close(dna_helper_stdout);
@@ -496,7 +500,7 @@ static void monitor_errors(struct sched_ent *alarm)
     if (nread > 0)
       WHYF("DNAHELPER stderr %s", alloca_toprint(-1, buffer, nread));
   }
-  if (sched_errors.poll.revents & (POLLHUP | POLLERR)) {
+  if (sched_errors.poll.revents & (POLLHUP | POLLERR | POLLNVAL)) {
     if (debug & DEBUG_DNAHELPER)
       DEBUGF("DNAHELPER closing stderr fd=%d", dna_helper_stderr);
     close(dna_helper_stderr);
