@@ -51,15 +51,25 @@ configure_servald_server() {
 }
 
 # Predicate function:
-#  - return true if the file bundle identified by $BID and $VERSION has been
+#  - return true if the file bundle identified by arg1=BID and arg2=VERSION has been
 #    received by all the given instances
 #  - does this by examining the server log files of the respective instances
 #    for tell-tale INFO messages
 bundle_received_by() {
+   local BID="$1"
+   local VERSION="$2"
+   shift 2
    local I
    for I; do
-      logvar="LOG${I#+}"
-      grep "RHIZOME ADD MANIFEST service=file bid=$BID version=$VERSION" "${!logvar}" || return 1
+      case "$I" in
+      +*)
+         logvar="LOG${I#+}"
+         grep "RHIZOME ADD MANIFEST service=file bid=$BID version=$VERSION" "${!logvar}" || return 1
+         ;;
+      *)
+         error "invalid instance argument: $I"
+         ;;
+      esac
    done
    return 0
 }
@@ -112,13 +122,13 @@ setup_FileTransfer() {
    start_servald_instances +A +B
 }
 test_FileTransfer() {
-   wait_until bundle_received_by +B
+   wait_until bundle_received_by $BID $VERSION +B
    set_instance +B
    assert_received file1
    set_instance +A
    update_file file1 file2
    set_instance +B
-   wait_until bundle_received_by +B
+   wait_until bundle_received_by $BID $VERSION +B
    assert_received file2
 }
 
@@ -133,7 +143,7 @@ setup_FileTransferBig() {
    start_servald_instances +A +B
 }
 test_FileTransferBig() {
-   wait_until bundle_received_by +B
+   wait_until bundle_received_by $BID $VERSION +B
    set_instance +B
    assert_received file1
 }
@@ -158,7 +168,7 @@ setup_FileTransferMulti() {
    start_servald_instances +A +B +C +D +E
 }
 test_FileTransferMulti() {
-   wait_until bundle_received_by +B +C +D +E
+   wait_until bundle_received_by $BID $VERSION +B +C +D +E
    local I
    for I in +B +C +D +E; do
       set_instance $I
@@ -172,15 +182,73 @@ setup_FileTransferDelete() {
    set_instance +A
    add_file file1
    start_servald_instances +A +B
-   wait_until bundle_received_by +B
+   wait_until bundle_received_by $BID $VERSION +B
    set_instance +A
    >file1_2
    update_file file1 file1_2
 }
 test_FileTransferDelete() {
-   wait_until bundle_received_by +B
+   wait_until bundle_received_by $BID $VERSION +B
    set_instance +B
    assert_received file1_2
+}
+
+setup_sync() {
+   set_instance +A
+   add_file file1
+   BID1=$BID
+   VERSION1=$VERSION
+   start_servald_instances dummy1 +A
+   wait_until rhizome_http_server_started +A
+   get_rhizome_server_port PORTA +A
+   set_instance +B
+   add_file file2
+   BID2=$BID
+   VERSION2=$VERSION
+   executeOk_servald config set rhizome.direct.address "$addr_localhost"
+   executeOk_servald config set rhizome.direct.port "$PORTA"
+   start_servald_instances dummy2 +B
+}
+
+doc_Push="One way push bundle to unconnected node"
+setup_Push() {
+   setup_common
+   setup_sync
+}
+test_Push() {
+   executeOk_servald rhizome push
+   assert bundle_received_by $BID1 $VERSION1 +B
+   assert ! bundle_received_by $BID2 $VERSION2 +A
+   set_instance +B
+   assert_received file1
+}
+
+doc_Pull="One way pull bundle from unconnected node"
+setup_Pull() {
+   setup_common
+   setup_sync
+}
+test_Pull() {
+   executeOk_servald rhizome pull
+   assert bundle_received_by $BID2 $VERSION2 +A
+   assert ! bundle_received_by $BID1 $VERSION1 +B
+   set_instance +A
+   assert_received file2
+}
+
+doc_Sync="Two-way sync bundles between unconnected nodes"
+setup_Sync() {
+   setup_common
+   setup_sync
+}
+test_Sync() {
+   executeOk_servald rhizome sync
+   assert bundle_received_by $BID2 $VERSION2 +A
+   assert bundle_received_by $BID1 $VERSION1 +B
+   set_instance +A
+   assert_received file2
+   set_instance +B
+   assert_received file1
 }
 
 runTests "$@"

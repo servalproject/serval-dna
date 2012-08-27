@@ -22,6 +22,7 @@ servald_source_root="${testdefs_sh%/*}"
 servald_build_root="$servald_source_root"
 servald_build_executable="$servald_build_root/servald"
 export TFW_LOGDIR="${TFW_LOGDIR:-$servald_build_root/testlog}"
+addr_localhost="127.0.0.1"
 
 declare -a instance_stack=()
 
@@ -445,7 +446,7 @@ configure_servald_server() {
 # Utility function:
 #  - start a set of servald server processes running on a shared dummy interface
 #    and with its own private monitor and MDP abstract socket names
-#  - set variable DUMMYNET to the full path name of shared dummy interface
+#  - set variables DUMMYx to the full path name of shared dummy interface
 #  - set variables SIDx to the SID of instance x: SIDA, SIDB, etc.
 #  - set variables DIDx to the DID of instance x: DIDA, DIDB, etc.
 #  - set variables NAMEx to the names of instance x: NAMEA, NAMEB, etc.
@@ -454,9 +455,13 @@ configure_servald_server() {
 #  - wait for all instances to detect each other
 #  - assert that all instances are in each others' peer lists
 start_servald_instances() {
+   local DUMMY=dummy
+   case "$1" in
+   dummy*) DUMMY="$1"; shift;;
+   esac
    push_instance
-   tfw_log "# start servald instances $*"
-   DUMMYNET=$SERVALD_VAR/dummy
+   tfw_log "# start servald instances DUMMY=$DUMMY $*"
+   local DUMMYNET="$SERVALD_VAR/$DUMMY"
    >$DUMMYNET
    local I J
    for I; do
@@ -467,6 +472,7 @@ start_servald_instances() {
       executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name"
       configure_servald_server
       start_servald_server
+      eval DUMMY$instance_name="$DUMMYNET"
       eval SID$instance_name="$SID"
       eval DID$instance_name="$(shellarg "$DID")"
       eval NAME$instance_name="$(shellarg "$NAME")"
@@ -501,5 +507,22 @@ instances_see_each_other() {
          fi
       done
    done
+   return 0
+}
+
+rhizome_http_server_started() {
+   local logvar=LOG${1#+}
+   grep 'RHIZOME HTTP SERVER,.*START.*port=[0-9]' "${!logvar}"
+}
+
+get_rhizome_server_port() {
+   local _var="$1"
+   local _logvar=LOG${2#+}
+   local _port=$(sed -n -e '/.*RHIZOME HTTP SERVER.*START/{s/.*port=\([0-9]\{1,\}\).*/\1/p;q}' "${!_logvar}")
+   assert --message="instance $2 Rhizome HTTP server port number is known" [ -n "$_port" ]
+   if [ -n "$_var" ]; then
+      eval "$_var=\$_port"
+      tfw_log "$_var=$_port"
+   fi
    return 0
 }
