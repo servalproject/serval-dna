@@ -28,7 +28,7 @@ setup() {
 doc_GetCreateInstanceDir="Get creates instance directory"
 setup_GetCreateInstanceDir() {
    setup
-   assert [ ! -d "$SERVALINSTANCE_PATH" ]
+   assert ! [ -d "$SERVALINSTANCE_PATH" ]
 }
 test_GetCreateInstanceDir() {
    executeOk_servald config get
@@ -38,7 +38,7 @@ test_GetCreateInstanceDir() {
 doc_SetCreateInstanceDir="Set creates instance directory"
 setup_SetCreateInstanceDir() {
    setup
-   assert [ ! -d "$SERVALINSTANCE_PATH" ]
+   assert ! [ -d "$SERVALINSTANCE_PATH" ]
 }
 test_SetCreateInstanceDir() {
    executeOk_servald config set foo bar

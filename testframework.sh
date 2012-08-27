@@ -844,7 +844,13 @@ _tfw_parse_times_to_milliseconds() {
 }
 
 _tfw_assert() {
-   if ! "$@"; then
+   local sense=
+   while [ "$1" = '!' ]; do
+      sense="$sense !"
+      shift
+   done
+   "$@"
+   if [ $sense $? -ne 0 ]; then
       _tfw_failmsg "assertion failed: ${_tfw_message:-$*}"
       _tfw_backtrace
       return 1
