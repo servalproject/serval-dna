@@ -245,6 +245,10 @@ extract_manifest_filehash() {
    extract_manifest "$1" "$2" filehash "$rexp_filehash"
 }
 
+extract_manifest_name() {
+   extract_manifest "$1" "$2" name ".*"
+}
+
 extract_manifest_version() {
    extract_manifest "$1" "$2" version "$rexp_version"
 }

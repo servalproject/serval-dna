@@ -251,4 +251,26 @@ test_Sync() {
    assert_received file1
 }
 
+doc_HttpAddLocal="Add file locally using HTTP, returns manifest"
+setup_HttpAddLocal() {
+   case "$(curl --version | tr '\n' ' ')" in
+   curl\ @(7|8|9|[1-9][0-1]).*\ Protocols:*\ http\ *) ;;
+   '') fail "curl(1) command is not present";;
+   *) fail "curl(1) version is not adequate (expecting 7 or higher)";;
+   esac
+   setup_common
+   start_servald_instances +A
+   wait_until rhizome_http_server_started +A
+   get_rhizome_server_port PORTA +A
+}
+test_HttpAddLocal() {
+   echo 'File file1' >file1
+   executeOk curl --silent --form 'file=@file1' "$addr_localhost:$PORTA" --output file1.manifest
+   assert_manifest_complete file1.manifest
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file1
+   extract_manifest_name name file1.manifest
+   assert [ "$name" = file1 ]
+}
+
 runTests "$@"
