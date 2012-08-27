@@ -199,7 +199,7 @@ error:
   return WHY("Failed to start rhizome HTTP server");
 
 success:
-  INFOF("RHIZOME HTTP SERVER, START port=%d, fd=%d", port, rhizome_server_socket);
+  INFOF("RHIZOME HTTP SERVER, START port=%d fd=%d", port, rhizome_server_socket);
   rhizome_http_server_port = port;
   /* Add Rhizome HTTPd server to list of file descriptors to watch */
   server_alarm.function = rhizome_server_poll;
