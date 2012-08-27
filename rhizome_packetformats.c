@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 #include "rhizome.h"
+#include <assert.h>
 #include <stdlib.h>
 
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
@@ -325,7 +326,8 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
   httpaddr.sin_port = htons(RHIZOME_HTTP_PORT);
   int manifest_length;
   rhizome_manifest *m=NULL;
-
+  char httpaddrtxt[INET_ADDRSTRLEN];
+  
   switch (ad_frame_type) {
     case 3:
       /* The same as type=1, but includes the source HTTP port number */
@@ -341,7 +343,9 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	  break;
 	}
 	if (manifest_length>f->payload->length - ofs) {
-	  WHYF("Illegal manifest length field in rhizome advertisement frame %d vs %d.", manifest_length, f->payload->length - ofs);
+	  assert(inet_ntop(AF_INET, &httpaddr.sin_addr, httpaddrtxt, sizeof(httpaddrtxt)) != NULL);
+	  WHYF("Illegal manifest length field in rhizome advertisement frame from %s:%d (%d vs %d)",
+	       httpaddrtxt, ntohs(httpaddr.sin_port), manifest_length, f->payload->length - ofs);
 	  break;
 	}
 
