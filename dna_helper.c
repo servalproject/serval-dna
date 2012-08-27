@@ -306,7 +306,8 @@ int dna_helper_shutdown()
 static void monitor_requests(struct sched_ent *alarm)
 {
   if (debug & DEBUG_DNAHELPER) {
-    DEBUGF("sched_requests.poll.revents=%s",
+    DEBUGF("sched_requests.poll.fd=%d .revents=%s",
+	sched_requests.poll.fd,
 	strbuf_str(strbuf_append_poll_events(strbuf_alloca(40), sched_requests.poll.revents))
       );
   }
@@ -432,7 +433,8 @@ void handle_reply_line(const char *bufp, size_t len)
 static void monitor_replies(struct sched_ent *alarm)
 {
   if (debug & DEBUG_DNAHELPER) {
-    DEBUGF("sched_replies.poll.revents=%s",
+    DEBUGF("sched_replies.poll.fd=%d .revents=%s",
+	sched_replies.poll.fd,
 	strbuf_str(strbuf_append_poll_events(strbuf_alloca(40), sched_replies.poll.revents))
       );
   }
@@ -483,7 +485,8 @@ static void monitor_replies(struct sched_ent *alarm)
 static void monitor_errors(struct sched_ent *alarm)
 {
   if (debug & DEBUG_DNAHELPER) {
-    DEBUGF("sched_errors.poll.revents=%s",
+    DEBUGF("sched_errors.poll.fd=%d .revents=%s",
+	sched_errors.poll.fd,
 	strbuf_str(strbuf_append_poll_events(strbuf_alloca(40), sched_errors.poll.revents))
       );
   }
@@ -560,14 +563,11 @@ dna_helper_enqueue(overlay_mdp_frame *mdp, const char *did, const unsigned char 
       return 0;
     }
     unsigned char *mysid;
-    
     if ((mysid = overlay_get_my_sid()) == NULL)
       return WHY("Unable to lookup my SID");
-      
     if (dna_helper_start(dna_helper_executable, dna_helper_arg1, alloca_tohex_sid(mysid)) == -1) {
       /* Something broke, bail out */
-      WHY("DNAHELPER start failed");
-      return -1;
+      return WHY("DNAHELPER start failed");
     }
   }
   /* Write request to dna helper.
