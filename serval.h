@@ -1055,6 +1055,11 @@ int overlay_broadcast_ensemble(int interface_number,
 			       struct sockaddr_in *recipientaddr /* NULL == broadcast */,
 			       unsigned char *bytes,int len);
 
+int app_rhizome_direct_sync(int argc, const char *const *argv, 
+			    struct command_line_option *o);
+int app_rhizome_direct_server(int argc, const char *const *argv, 
+			      struct command_line_option *o);
+
 #ifdef HAVE_VOIPTEST
 int app_pa_phone(int argc, const char *const *argv, struct command_line_option *o);
 #endif
