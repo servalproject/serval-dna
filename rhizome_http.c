@@ -87,12 +87,17 @@ struct profile_total server_stats;
 struct profile_total connection_stats;
 
 /*
-  HTTP server and client code for rhizome transfers.
+  HTTP server and client code for rhizome transfers and rhizome direct.
+  Selection of either use is made when starting the HTTP server and
+  specifying the call-back function to use on client connections. 
  */
 
 unsigned short rhizome_http_server_port = 0;
 static int rhizome_server_socket = -1;
 static time_ms_t rhizome_server_last_start_attempt = -1;
+
+void (*rhizome_http_client_poll_func)(struct sched_ent *)=NULL;
+const char *rhizome_http_client_poll_func_description="(null)";
 
 // Format icon data using:
 //   od -vt u1 ~/Downloads/favicon.ico | cut -c9- | sed 's/  */,/g'
@@ -132,7 +137,9 @@ int rhizome_http_server_running()
    Return 1 if the server is already started successfully.
    Return 2 if the server was not started because it is too soon since last failed attempt.
  */
-int rhizome_http_server_start()
+int rhizome_http_server_start(void (*client_poll_func)(struct sched_ent *),
+			      const char *client_poll_func_desc,
+			      int port_low,int port_high)
 {
   if (rhizome_server_socket != -1)
     return 1;
@@ -146,7 +153,7 @@ int rhizome_http_server_start()
     DEBUGF("Starting rhizome HTTP server");
 
   unsigned short port;
-  for (port = RHIZOME_HTTP_PORT; port <= RHIZOME_HTTP_PORT_MAX; ++port) {
+  for (port = port_low; port <= port_high; ++port) {
     /* Create a new socket, reusable and non-blocking. */
     if (rhizome_server_socket == -1) {
       rhizome_server_socket = socket(AF_INET,SOCK_STREAM,0);
@@ -200,6 +207,11 @@ error:
 
 success:
   INFOF("RHIZOME HTTP SERVER, START port=%d fd=%d", port, rhizome_server_socket);
+
+  /* Remember which function to call when handling client connections */
+  rhizome_http_client_poll_func=client_poll_func;
+  rhizome_http_client_poll_func_description=client_poll_func_desc;
+
   rhizome_http_server_port = port;
   /* Add Rhizome HTTPd server to list of file descriptors to watch */
   server_alarm.function = rhizome_server_poll;

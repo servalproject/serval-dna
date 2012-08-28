@@ -43,6 +43,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define RHIZOME_HTTP_PORT 4110
 #define RHIZOME_HTTP_PORT_MAX 4150
+#define RHIZOME_DIRECT_PORT 4100
+#define RHIZOME_DIRECT_PORT_MAX 4109
 
 extern time_ms_t rhizome_voice_timeout;
 
