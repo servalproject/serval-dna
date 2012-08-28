@@ -153,7 +153,8 @@ schedule(&_sched_##X); }
     /* Rhizome http server needs to know which callback to attach
        to client sockets, so provide it here, along with the name to
        appear in time accounting statistics. */
-    rhizome_http_server_start(rhizome_client_poll,"rhizome_client_poll",
+    rhizome_http_server_start(rhizome_server_parse_http_request,
+			      "rhizome_server_parse_http_request",
 			      RHIZOME_HTTP_PORT,RHIZOME_HTTP_PORT_MAX);
   
   /* Pick next rhizome files to grab every few seconds

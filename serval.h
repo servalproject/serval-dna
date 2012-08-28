@@ -1124,9 +1124,6 @@ extern int sigIoFlag;
 void sigPipeHandler(int signal);
 void sigIoHandler(int signal);
 
-int rhizome_http_server_start(void (*server_poll_func)(struct sched_ent *),
-			      const char *server_poll_func_description,
-			      int port_low,int port_high);
 int overlay_mdp_setup_sockets();
 
 int schedule(struct sched_ent *alarm);

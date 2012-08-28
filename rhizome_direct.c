@@ -108,9 +108,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "rhizome.h"
 
-void rhizome_direct_client_poll(struct sched_ent *alarm)
+int rhizome_direct_parse_http_request(rhizome_http_request *r)
 {
-
+  return 0;
 }
 
 int app_rhizome_direct_server(int argc, const char *const *argv, 
@@ -126,8 +126,8 @@ int app_rhizome_direct_server(int argc, const char *const *argv,
   int port_high=confValueGetInt64Range("rhizome.direct.port_max",RHIZOME_DIRECT_PORT_MAX,
 					 port_low,65535);
 
-  int r=rhizome_http_server_start(rhizome_direct_client_poll,
-				  "rhizome_direct_client_poll",
+  int r=rhizome_http_server_start(rhizome_direct_parse_http_request,
+				  "rhizome_direct_parse_http_request",
 				  port_low,port_high);
 
   return -1;

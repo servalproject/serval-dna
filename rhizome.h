@@ -302,3 +302,60 @@ int rhizome_ignore_manifest_check(rhizome_manifest *m,
 
 int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
 					  struct sockaddr_in *peerip);
+
+typedef struct rhizome_http_request {
+  struct sched_ent alarm;
+  long long initiate_time; /* time connection was initiated */
+  
+  /* The HTTP request as currently received */
+  int request_length;
+#define RHIZOME_HTTP_REQUEST_MAXLEN 1024
+  char request[RHIZOME_HTTP_REQUEST_MAXLEN];
+  
+  /* Nature of the request */
+  int request_type;
+#define RHIZOME_HTTP_REQUEST_RECEIVING -1
+#define RHIZOME_HTTP_REQUEST_FROMBUFFER 1
+#define RHIZOME_HTTP_REQUEST_FILE 2
+#define RHIZOME_HTTP_REQUEST_SUBSCRIBEDGROUPLIST 4
+#define RHIZOME_HTTP_REQUEST_ALLGROUPLIST 8
+#define RHIZOME_HTTP_REQUEST_BUNDLESINGROUP 16
+  // manifests are small enough to send from a buffer
+  // #define RHIZOME_HTTP_REQUEST_BUNDLEMANIFEST 32
+  // for anything too big, we can just use a blob
+#define RHIZOME_HTTP_REQUEST_BLOB 64
+#define RHIZOME_HTTP_REQUEST_FAVICON 128
+  
+  /* Local buffer of data to be sent.
+   If a RHIZOME_HTTP_REQUEST_FROMBUFFER, then the buffer is sent, and when empty
+   the request is closed.
+   Else emptying the buffer triggers a request to fetch more data.  Only if no
+   more data is provided do we then close the request. */
+  unsigned char *buffer;
+  int buffer_size; // size
+  int buffer_length; // number of bytes loaded into buffer
+  int buffer_offset; // where we are between [0,buffer_length)
+  
+  /* The source specification data which are used in different ways by different 
+   request types */
+  char source[1024];
+  long long source_index;
+  long long source_count;
+  int source_record_size;
+  unsigned int source_flags;
+  
+  sqlite3_blob *blob;
+  /* source_index used for offset in blob */
+  long long blob_end; 
+  
+} rhizome_http_request;
+
+int rhizome_server_free_http_request(rhizome_http_request *r);
+int rhizome_server_http_send_bytes(rhizome_http_request *r);
+int rhizome_server_parse_http_request(rhizome_http_request *r);
+int rhizome_server_simple_http_response(rhizome_http_request *r, int result, const char *response);
+int rhizome_server_http_response_header(rhizome_http_request *r, int result, const char *mime_type, unsigned long long bytes);
+int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, char *column);
+int rhizome_http_server_start(int (*http_parse_func)(rhizome_http_request *),
+			      const char *http_parse_func_description,
+			      int port_low,int port_high);
