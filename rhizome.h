@@ -359,3 +359,6 @@ int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, c
 int rhizome_http_server_start(int (*http_parse_func)(rhizome_http_request *),
 			      const char *http_parse_func_description,
 			      int port_low,int port_high);
+
+extern unsigned char favicon_bytes[];
+extern int favicon_len;

@@ -110,6 +110,48 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 int rhizome_direct_parse_http_request(rhizome_http_request *r)
 {
+  /* Switching to writing, so update the call-back */
+  r->alarm.poll.events=POLLOUT;
+  watch(&r->alarm);
+  // Start building up a response.
+  r->request_type = 0;
+  // Parse the HTTP "GET" line.
+  char *path = NULL;
+  size_t pathlen = 0;
+  /* TODO: Implement POST */
+  if (str_startswith(r->request, "GET ", &path)) {
+    char *p;
+    // This loop is guaranteed to terminate before the end of the buffer, because we know that the
+    // buffer contains at least "\n\n" and maybe "\r\n\r\n" at the end of the header block.
+    for (p = path; !isspace(*p); ++p)
+      ;
+    pathlen = p - path;
+    if ( str_startswith(p, " HTTP/1.", &p)
+      && (str_startswith(p, "0", &p) || str_startswith(p, "1", &p))
+      && (str_startswith(p, "\r\n", &p) || str_startswith(p, "\n", &p))
+    )
+      path[pathlen] = '\0';
+    else
+      path = NULL;
+  }
+  if (path) {
+    char *id = NULL;
+    INFOF("RHIZOME HTTP SERVER, GET %s", alloca_toprint(1024, path, pathlen));
+    if (strcmp(path, "/favicon.ico") == 0) {
+      r->request_type = RHIZOME_HTTP_REQUEST_FAVICON;
+      rhizome_server_http_response_header(r, 200, "image/vnd.microsoft.icon", favicon_len);
+    } else {
+      rhizome_server_simple_http_response(r, 404, "<html><h1>Not found</h1></html>\r\n");
+    }
+  } else {
+    if (debug & DEBUG_RHIZOME_TX)
+      DEBUGF("Received malformed HTTP request: %s", alloca_toprint(120, (const char *)r->request, r->request_length));
+    rhizome_server_simple_http_response(r, 400, "<html><h1>Malformed request</h1></html>\r\n");
+  }
+  
+  /* Try sending data immediately. */
+  rhizome_server_http_send_bytes(r);
+
   return 0;
 }
 
@@ -126,9 +168,9 @@ int app_rhizome_direct_server(int argc, const char *const *argv,
   int port_high=confValueGetInt64Range("rhizome.direct.port_max",RHIZOME_DIRECT_PORT_MAX,
 					 port_low,65535);
 
-  int r=rhizome_http_server_start(rhizome_direct_parse_http_request,
-				  "rhizome_direct_parse_http_request",
-				  port_low,port_high);
+  rhizome_http_server_start(rhizome_direct_parse_http_request,
+			    "rhizome_direct_parse_http_request",
+			    port_low,port_high);
 
   return -1;
 }
