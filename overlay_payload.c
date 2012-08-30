@@ -193,7 +193,8 @@ int overlay_payload_enqueue(int q, struct overlay_frame *p)
 	 alloca_tohex(p->destination->sid, 7),
 	 q,overlay_tx[q].length);
   
-  if (q<0||q>=OQ_MAX) return WHY("Invalid queue specified");
+  if (q<0||q>=OQ_MAX) 
+    return WHY("Invalid queue specified");
 
   
   if (p->payload && p->payload->position > p->payload->sizeLimit){
@@ -202,18 +203,28 @@ int overlay_payload_enqueue(int q, struct overlay_frame *p)
     p->payload->sizeLimit=p->payload->position;
   }
   
-  if (0) dump_payload(p,"queued for delivery");
-
   if (overlay_tx[q].length>=overlay_tx[q].maxLength) 
     return WHYF("Queue #%d congested (size = %d)",q,overlay_tx[q].maxLength);
 
-  if (0) dump_queue("before",q);
-  
   if (!p->destination){
     int i;
+    int drop=1;
+    
+    // make sure there is an interface up that allows broadcasts
+    for(i=0;i<OVERLAY_MAX_INTERFACES;i++){
+      if (overlay_interfaces[i].state==INTERFACE_STATE_UP
+	  && overlay_interfaces[i].send_broadcasts){
+	p->broadcast_sent_via[i]=0;
+	drop=0;
+      }else
+	p->broadcast_sent_via[i]=1;
+    }
+    
+    // just drop it now
+    if (drop)
+      return -1;
+    
     p->sendBroadcast=1;
-    for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
-      p->broadcast_sent_via[i]=0;
   }
   
   struct overlay_frame *l=overlay_tx[q].last;
@@ -231,7 +242,10 @@ int overlay_payload_enqueue(int q, struct overlay_frame *p)
   if (0) dump_queue("after",q);
 
   if (q==OQ_ISOCHRONOUS_VOICE) {
-    // Send a packet now
+    // Send a packet immediately to reduce latency
+    // Also this prevents aggregation of multiple voice frames which would 
+    // increase the chance of packet loss leading to missing audio
+    // TODO, remove when we NACK and retry all frames
     overlay_send_packet(NULL);
   }
   

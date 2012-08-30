@@ -353,7 +353,7 @@ typedef struct overlay_interface {
    These figures will be refined over time, and we will allow people to set them per-interface.
    */
   int tick_ms; /* milliseconds per tick */
-  
+  int send_broadcasts;
   /* The time of the last tick on this interface in milli seconds */
   time_ms_t last_tick_ms;
   /* How many times have we abbreviated our address since we last announced it in full? */
@@ -871,6 +871,7 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
 int overlay_interface_register(char *name,
 			       struct in_addr addr,
 			       struct in_addr mask);
+overlay_interface * overlay_interface_find(struct in_addr addr);
 
 #ifdef HAVE_VOIPTEST
 int app_pa_phone(int argc, const char *const *argv, struct command_line_option *o);
