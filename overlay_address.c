@@ -146,6 +146,27 @@ void enum_subscribers(struct subscriber *start, int(*callback)(struct subscriber
   walk_tree(&root, 0, start, callback, context);
 }
 
+// quick test to make sure the specified route is valid.
+int subscriber_is_reachable(struct subscriber *subscriber){
+  if (!subscriber)
+    return REACHABLE_NONE;
+  
+  if (subscriber->reachable==REACHABLE_INDIRECT
+      && !(subscriber->next_hop
+	&& subscriber->next_hop->reachable==REACHABLE_DIRECT
+	&& subscriber_is_reachable(subscriber->next_hop)==REACHABLE_DIRECT)
+      )
+    return REACHABLE_NONE;
+  
+  if (subscriber->reachable==REACHABLE_DIRECT
+      && !(subscriber->interface
+	 && subscriber->interface->state==INTERFACE_STATE_UP)
+      )
+    return REACHABLE_NONE;
+  
+  return subscriber->reachable;
+}
+
 // generate a new random broadcast address
 int overlay_broadcast_generate_address(struct broadcast *addr)
 {

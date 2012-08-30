@@ -950,7 +950,7 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
   time_ms_t send_time;
 
   // ignore packet if the destination is currently unreachable
-  if (frame->destination && frame->destination->reachable==REACHABLE_NONE)
+  if (frame->destination && subscriber_is_reachable(frame->destination)==REACHABLE_NONE)
     return 0;
   
   // when is the next packet from this queue due?
@@ -991,7 +991,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
      even if we hear it from somewhere else in the mean time
      */
     
-    if (frame->destination && frame->destination->reachable==REACHABLE_NONE)
+    if (frame->destination && subscriber_is_reachable(frame->destination)==REACHABLE_NONE)
       goto skip;
     
     struct subscriber *next_hop = frame->destination;
@@ -1000,10 +1000,6 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       switch(next_hop->reachable){
 	case REACHABLE_INDIRECT:
 	  next_hop=next_hop->next_hop;
-	  
-	  // make sure the routing table is consistent
-	  if (next_hop->reachable!=REACHABLE_DIRECT)
-	    goto skip;
 	  
 	  // fall through
 	case REACHABLE_DIRECT:

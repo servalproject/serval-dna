@@ -97,6 +97,7 @@ extern struct subscriber *my_subscriber;
 
 struct subscriber *find_subscriber(const unsigned char *sid, int len, int create);
 void enum_subscribers(struct subscriber *start, int(*callback)(struct subscriber *, void *), void *context);
+int subscriber_is_reachable(struct subscriber *subscriber);
 
 int overlay_broadcast_drop_check(struct broadcast *addr);
 int overlay_broadcast_generate_address(struct broadcast *addr);
