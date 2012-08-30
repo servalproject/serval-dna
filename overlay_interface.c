@@ -442,7 +442,7 @@ overlay_interface_init(char *name, struct in_addr src_addr, struct in_addr netma
     return WHYF("Unsupported interface type %d", type);
   }
 
-  // allow for a per interface override
+  // allow for a per interface override of tick interval
   {
     char option_name[64];
     snprintf(option_name, sizeof(option_name), "mdp.%s.tick_ms", name);
@@ -636,11 +636,9 @@ void overlay_dummy_poll(struct sched_ent *alarm)
 
 static int
 overlay_broadcast_ensemble(int interface_number,
-			   struct sockaddr_in *recipientaddr /* NULL == broadcast */,
+			   struct sockaddr_in *recipientaddr,
 			   unsigned char *bytes,int len)
 {
-  struct sockaddr_in s;
-  
   if (debug&DEBUG_PACKETTX)
     {
       DEBUGF("Sending this packet via interface #%d",interface_number);
@@ -651,16 +649,6 @@ overlay_broadcast_ensemble(int interface_number,
 
   if (interface->state!=INTERFACE_STATE_UP){
     return WHYF("Cannot send to interface %s as it is down", interface->name);
-  }
-  memset(&s, '\0', sizeof(struct sockaddr_in));
-  if (recipientaddr) {
-    bcopy(recipientaddr,&s,sizeof(struct sockaddr_in));
-  }
-  else {
-    s = interface->broadcast_address;
-    s.sin_family = AF_INET;
-    if (debug&DEBUG_PACKETTX) DEBUGF("Port=%d",interface->port);
-    s.sin_port = htons(interface->port);
   }
 
   if (interface->fileP)
@@ -719,11 +707,7 @@ overlay_broadcast_ensemble(int interface_number,
   else
     {
       if(sendto(interface->alarm.poll.fd, 
-<<<<<<< HEAD
-		bytes, len, 0, (struct sockaddr *)&s, sizeof(struct sockaddr_in)) != len){
-=======
 		bytes, len, 0, (struct sockaddr *)recipientaddr, sizeof(struct sockaddr_in)) != len){
->>>>>>> 7e557b4... Don't send any broadcasts if tick_ms=0
 	WHY_perror("sendto(c)");
 	overlay_interface_close(interface);
 	return -1;
