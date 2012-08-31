@@ -676,13 +676,8 @@ unsigned int ob_get_int(overlay_buffer *b,int offset);
 int op_free(overlay_frame *p);
 overlay_frame *op_dup(overlay_frame *f);
 
-long long parse_quantity(char *q);
-
-int overlay_interface_init_socket(int i);
 time_ms_t overlay_time_until_next_tick();
 int overlay_rx_messages();
-
-void logServalPacket(int level, struct __sourceloc where, const char *message, const unsigned char *packet, size_t len);
 
 #define DEBUG_packet_visualise(M,P,N) logServalPacket(LOG_LEVEL_DEBUG, __HERE__, (M), (P), (N))
 
@@ -1050,10 +1045,6 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
 int overlay_interface_register(char *name,
 			       struct in_addr addr,
 			       struct in_addr mask);
-int overlay_queue_dump(overlay_txqueue *q);
-int overlay_broadcast_ensemble(int interface_number,
-			       struct sockaddr_in *recipientaddr /* NULL == broadcast */,
-			       unsigned char *bytes,int len);
 
 #ifdef HAVE_VOIPTEST
 int app_pa_phone(int argc, const char *const *argv, struct command_line_option *o);
@@ -1139,7 +1130,6 @@ void rhizome_check_connections(struct sched_ent *alarm);
 
 void monitor_client_poll(struct sched_ent *alarm);
 void monitor_poll(struct sched_ent *alarm);
-void overlay_interface_poll(struct sched_ent *alarm);
 void rhizome_client_poll(struct sched_ent *alarm);
 void rhizome_fetch_poll(struct sched_ent *alarm);
 void rhizome_server_poll(struct sched_ent *alarm);

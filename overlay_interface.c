@@ -58,13 +58,16 @@ struct outgoing_packet{
 struct sched_ent next_packet;
 struct profile_total send_packet;
 
-int overlay_tick_interface(int i, time_ms_t now);
+static int overlay_tick_interface(int i, time_ms_t now);
+static void overlay_interface_poll(struct sched_ent *alarm);
+static void		logServalPacket(int level, struct __sourceloc where, const char *message, const unsigned char *packet, size_t len);
+static long long	parse_quantity(char *q);
 
 unsigned char magic_header[]={/* Magic */ 'O',0x10,
   /* Version */ 0x00,0x01};
 
 
-int overlay_interface_type(char *s)
+static int overlay_interface_type(char *s)
 {
   if (!strcasecmp(s,"ethernet")) return OVERLAY_INTERFACE_ETHERNET;
   if (!strcasecmp(s,"wifi")) return OVERLAY_INTERFACE_WIFI;
@@ -174,7 +177,8 @@ int overlay_interface_args(const char *arg)
   return 0;     
 }
 
-void overlay_interface_close(overlay_interface *interface){
+static void
+overlay_interface_close(overlay_interface *interface){
   if (interface->fileP){
     INFOF("Interface %s is down", interface->name);
   }else{
@@ -188,7 +192,8 @@ void overlay_interface_close(overlay_interface *interface){
 }
 
 // create a socket with options common to all our UDP sockets
-int overlay_bind_socket(const struct sockaddr *addr, size_t addr_size, char *interface_name){
+static int
+overlay_bind_socket(const struct sockaddr *addr, size_t addr_size, char *interface_name){
   int fd;
   int reuseP = 1;
   int broadcastP = 1;
@@ -246,7 +251,8 @@ error:
 
 // OSX doesn't recieve broadcast packets on sockets bound to an interface's address
 // So we have to bind a socket to INADDR_ANY to receive these packets.
-void overlay_interface_read_any(struct sched_ent *alarm){
+static void
+overlay_interface_read_any(struct sched_ent *alarm){
   int plen=0;
   int recvttl=1;
   int i;
@@ -296,7 +302,7 @@ void overlay_interface_read_any(struct sched_ent *alarm){
 
 // bind a socket to INADDR_ANY:port
 // for now, we don't have a graceful close for this interface but it should go away when the process dies
-int overlay_interface_init_any(int port){
+static int overlay_interface_init_any(int port){
   struct sockaddr_in addr;
   
   if (sock_any.poll.fd>0){
@@ -324,7 +330,7 @@ int overlay_interface_init_any(int port){
   return 0;
 }
 
-int
+static int
 overlay_interface_init_socket(int interface_index)
 {
   overlay_interface *const interface = &overlay_interfaces[interface_index];
@@ -379,9 +385,10 @@ overlay_interface_init_socket(int interface_index)
   return 0;
 }
 
-int overlay_interface_init(char *name, struct in_addr src_addr, struct in_addr netmask,
-			   struct in_addr broadcast,
-			   int speed_in_bits, int port, int type)
+static int
+overlay_interface_init(char *name, struct in_addr src_addr, struct in_addr netmask,
+		       struct in_addr broadcast,
+		       int speed_in_bits, int port, int type)
 {
   /* Too many interfaces */
   if (overlay_interface_count>=OVERLAY_MAX_INTERFACES) return WHY("Too many interfaces -- Increase OVERLAY_MAX_INTERFACES");
@@ -467,7 +474,7 @@ int overlay_interface_init(char *name, struct in_addr src_addr, struct in_addr n
   return 0;
 }
 
-void overlay_interface_poll(struct sched_ent *alarm)
+static void overlay_interface_poll(struct sched_ent *alarm)
 {
   struct overlay_interface *interface = (overlay_interface *)alarm;
   int plen=0;
@@ -587,9 +594,10 @@ void overlay_dummy_poll(struct sched_ent *alarm)
   return ;
 }
 
-int overlay_broadcast_ensemble(int interface_number,
-			       struct sockaddr_in *recipientaddr /* NULL == broadcast */,
-			       unsigned char *bytes,int len)
+static int
+overlay_broadcast_ensemble(int interface_number,
+			   struct sockaddr_in *recipientaddr /* NULL == broadcast */,
+			   unsigned char *bytes,int len)
 {
   struct sockaddr_in s;
   
@@ -840,7 +848,9 @@ void overlay_interface_discover(struct sched_ent *alarm){
 }
 
 /* remove and free a payload from the queue */
-overlay_frame *overlay_queue_remove(overlay_txqueue *queue, overlay_frame *frame){
+static overlay_frame *
+overlay_queue_remove(overlay_txqueue *queue, overlay_frame *frame)
+{
   overlay_frame *prev = frame->prev;
   overlay_frame *next = frame->next;
   if (prev)
@@ -860,7 +870,9 @@ overlay_frame *overlay_queue_remove(overlay_txqueue *queue, overlay_frame *frame
   return next;
 }
 
-int overlay_queue_dump(overlay_txqueue *q)
+/* XXX: unused */
+static int
+overlay_queue_dump(overlay_txqueue *q)
 {
   strbuf b = strbuf_alloca(8192);
   struct overlay_frame *f;
@@ -909,7 +921,8 @@ int overlay_resolve_next_hop(overlay_frame *frame){
   RETURN(0);
 }
 
-void overlay_init_packet(struct outgoing_packet *packet, int interface){
+static void
+overlay_init_packet(struct outgoing_packet *packet, int interface) {
   packet->i = interface;
   packet->interface = &overlay_interfaces[packet->i];
   packet->buffer=ob_new(packet->interface->mtu);
@@ -921,7 +934,8 @@ void overlay_init_packet(struct outgoing_packet *packet, int interface){
 }
 
 // update the alarm time and return 1 if changed
-int overlay_calc_queue_time(overlay_txqueue *queue, overlay_frame *frame){
+static int
+overlay_calc_queue_time(overlay_txqueue *queue, overlay_frame *frame) {
   int ret=0;
   time_ms_t send_time;
   
@@ -951,7 +965,8 @@ int overlay_calc_queue_time(overlay_txqueue *queue, overlay_frame *frame){
   return ret;
 }
 
-void overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, time_ms_t now){
+static void
+overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, time_ms_t now) {
   overlay_frame *frame = queue->first;
   
   // TODO stop when the packet is nearly full?
@@ -1043,7 +1058,8 @@ void overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue
 }
 
 // fill a packet from our outgoing queues and send it
-int overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now){
+static int
+overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
   int i;
   IN();
   // while we're looking at queues, work out when to schedule another packet
@@ -1094,8 +1110,8 @@ void overlay_update_queue_schedule(overlay_txqueue *queue, overlay_frame *frame)
   }
 }
 
-int overlay_tick_interface(int i, time_ms_t now)
-{
+static int
+overlay_tick_interface(int i, time_ms_t now) {
   struct outgoing_packet packet;
   IN();
 
@@ -1128,8 +1144,8 @@ int overlay_tick_interface(int i, time_ms_t now)
   RETURN(0);
 }
 
-long long parse_quantity(char *q)
-{
+static long long
+parse_quantity(char *q) {
   int m;
   char units[80];
 
@@ -1160,8 +1176,8 @@ long long parse_quantity(char *q)
     }
 }
 
-void logServalPacket(int level, struct __sourceloc where, const char *message, const unsigned char *packet, size_t len)
-{
+static void
+logServalPacket(int level, struct __sourceloc where, const char *message, const unsigned char *packet, size_t len) {
   struct mallocbuf mb = STRUCT_MALLOCBUF_NULL;
   if (serval_packetvisualise(XPRINTF_MALLOCBUF(&mb), message, packet, len) == -1)
     WHY("serval_packetvisualise() failed");
