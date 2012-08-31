@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 /*
   Rhizome Direct (github issue #9)
+  @author Paul Gardner-Stephen <paul@servalproject.org>
 
   The base rhizome protocol allows the automatic and progressive transfer of data
   bundles (typically files and their associated meta-data) between devices sharing
@@ -107,6 +108,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 #include "rhizome.h"
+#include "str.h"
 
 int rhizome_direct_parse_http_request(rhizome_http_request *r)
 {
@@ -118,7 +120,6 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
   // Parse the HTTP "GET" line.
   char *path = NULL;
   size_t pathlen = 0;
-  /* TODO: Implement POST */
   if (str_startswith(r->request, "GET ", &path)) {
     char *p;
     // This loop is guaranteed to terminate before the end of the buffer, because we know that the
@@ -133,15 +134,76 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
       path[pathlen] = '\0';
     else
       path = NULL;
-  }
-  if (path) {
-    char *id = NULL;
-    INFOF("RHIZOME HTTP SERVER, GET %s", alloca_toprint(1024, path, pathlen));
-    if (strcmp(path, "/favicon.ico") == 0) {
-      r->request_type = RHIZOME_HTTP_REQUEST_FAVICON;
-      rhizome_server_http_response_header(r, 200, "image/vnd.microsoft.icon", favicon_len);
-    } else {
-      rhizome_server_simple_http_response(r, 404, "<html><h1>Not found</h1></html>\r\n");
+ 
+    if (path) {
+      char *id = NULL;
+      INFOF("RHIZOME HTTP SERVER, GET %s", alloca_toprint(1024, path, pathlen));
+      if (strcmp(path, "/favicon.ico") == 0) {
+	r->request_type = RHIZOME_HTTP_REQUEST_FAVICON;
+	rhizome_server_http_response_header(r, 200, "image/vnd.microsoft.icon", favicon_len);
+      } else {
+	rhizome_server_simple_http_response(r, 404, "<html><h1>Not found</h1></html>\r\n");
+      }
+    }
+  } else   if (str_startswith(r->request, "POST ", &path)) {
+    char *p;
+        
+    // This loop is guaranteed to terminate before the end of the buffer, because we know that the
+    // buffer contains at least "\n\n" and maybe "\r\n\r\n" at the end of the header block.
+    for (p = path; !isspace(*p); ++p)
+      ;
+    pathlen = p - path;
+    if ( str_startswith(p, " HTTP/1.", &p)
+      && (str_startswith(p, "0", &p) || str_startswith(p, "1", &p))
+      && (str_startswith(p, "\r\n", &p) || str_startswith(p, "\n", &p))
+    )
+	path[pathlen] = '\0';
+    else
+      path = NULL;
+ 
+    if (path) {
+      char *id = NULL;
+      INFOF("RHIZOME HTTP SERVER, POST %s", alloca_toprint(1024, path, pathlen));
+      if (strcmp(path, "/bundle") == 0) {
+	/*
+	  We know we have the complete header, so get the content length and content type
+	  fields. From those we work out what to do with the body. */
+	char *headers=&path[pathlen+1];
+	int headerlen=r->request_length-(headers-r->request);
+	const char *cl_str=str_str(headers,"Content-Length: ",headerlen);
+	const char *ct_str=str_str(headers,"Content-Type: multipart/form-data; boundary=",headerlen);
+	if (!cl_str)
+	  return 
+	    rhizome_server_simple_http_response(r,400,"<html><h1>POST without content-length</h1></html>\r\n");
+	if (!ct_str)
+	  return 
+	    rhizome_server_simple_http_response(r,400,"<html><h1>POST without content-type (or unsupported content-type)</h1></html>\r\n");
+	/* ok, we have content-type and content-length, now make sure they are
+	   well formed. */
+	long long cl;
+	if (sscanf(cl_str,"Content-Length: %lld",&cl)!=1)
+	  return 
+	    rhizome_server_simple_http_response(r,400,"<html><h1>malformed Content-Length: header</h1></html>\r\n");
+	char boundary_string[1024];
+	int i;
+	ct_str+=strlen("Content-Type: multipart/form-data; boundary=");
+	for(i=0;i<1023&&*ct_str&&*ct_str!='\n';i++,ct_str++)
+	  boundary_string[i]=*ct_str;
+	boundary_string[i]=0;
+	if (i<4||i>128)
+	  return 
+	    rhizome_server_simple_http_response(r,400,"<html><h1>malformed Content-Type: header</h1></html>\r\n");
+
+	DEBUGF("HTTP POST content-length=%lld, boundary string='%s'",
+	       cl,boundary_string);
+	/* Now start receiving and parsing multi-part data.
+	   We may have already received some of the post-header data, so 
+	   rewind that if necessary. */
+	return rhizome_server_simple_http_response(r, 200, "<html><h1>Not implemented</h1></html>\r\n");
+	
+      } else {
+	rhizome_server_simple_http_response(r, 404, "<html><h1>Not found</h1></html>\r\n");
+      }
     }
   } else {
     if (debug & DEBUG_RHIZOME_TX)
@@ -168,11 +230,24 @@ int app_rhizome_direct_server(int argc, const char *const *argv,
   int port_high=confValueGetInt64Range("rhizome.direct.port_max",RHIZOME_DIRECT_PORT_MAX,
 					 port_low,65535);
 
+  /* Rhizome direct mode doesn't need all of the normal servald preparation, because
+     rhizome direct just needs to listen on its port, talk to other rhizome direct
+     daemons, and query the rhizome database directly.  So we probably just need to
+     read configuration settings so that we can access the rhizome sqlite database.
+  */
+ 
+  /* Start rhizome direct http server */
   rhizome_http_server_start(rhizome_direct_parse_http_request,
 			    "rhizome_direct_parse_http_request",
 			    port_low,port_high);
+  
+  /* Respond to events */
+  while(1) {
+    /* Check for activitiy and respond to it */
+    fd_poll();
+  }
 
-  return -1;
+  return 0;
 }
 
 int app_rhizome_direct_sync(int argc, const char *const *argv, 
