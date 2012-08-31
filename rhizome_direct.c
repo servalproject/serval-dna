@@ -196,9 +196,21 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
 
 	DEBUGF("HTTP POST content-length=%lld, boundary string='%s'",
 	       cl,boundary_string);
+
 	/* Now start receiving and parsing multi-part data.
 	   We may have already received some of the post-header data, so 
-	   rewind that if necessary. */
+	   rewind that if necessary. Need to start by finding actual end of
+	   headers, and passing any body bytes to the parser.
+	   Also need to tell the HTTP request that it has moved to multipart
+	   form data parsing, and what the actual requested action is.
+	*/
+
+	/* Remember boundary string and source path */
+	snprintf(&r->source[0],1023,"%s",boundary_string);
+	r->source[1023]=0;
+	snprintf(&r->path[0],1023,"%s",path);
+	r->path[1023]=0;
+	
 	return rhizome_server_simple_http_response(r, 200, "<html><h1>Not implemented</h1></html>\r\n");
 	
       } else {

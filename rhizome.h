@@ -314,7 +314,10 @@ typedef struct rhizome_http_request {
   
   /* Nature of the request */
   int request_type;
+  /* All of the below are receiving data */
 #define RHIZOME_HTTP_REQUEST_RECEIVING -1
+#define RHIZOME_HTTP_REQUEST_RECEIVING_MULTIPART -2
+  /* All of the below are sending data */
 #define RHIZOME_HTTP_REQUEST_FROMBUFFER 1
 #define RHIZOME_HTTP_REQUEST_FILE 2
 #define RHIZOME_HTTP_REQUEST_SUBSCRIBEDGROUPLIST 4
@@ -336,6 +339,11 @@ typedef struct rhizome_http_request {
   int buffer_length; // number of bytes loaded into buffer
   int buffer_offset; // where we are between [0,buffer_length)
   
+  /* Path of request (used by POST multipart form requests where
+     the actual processing of the request does not occur while the
+     request headers are still available. */
+  char path[1024];
+
   /* The source specification data which are used in different ways by different 
    request types */
   char source[1024];
