@@ -21,6 +21,7 @@
 #include <string.h>
 #include <ctype.h>
 #include "str.h"
+#include "log.h"
 
 int str_startswith(char *str, const char *substring, char **afterp)
 {
@@ -49,6 +50,6 @@ const char *str_str(const char *s1,const char *s2,int s1len)
 {
   int s2len=strlen(s2);
   for(;*s1&&(s1len--);s1++)
-    if (!strncmp(s2,s1,s2len)) return s1;
+    if (!strncmp(s1,s2,s2len)) return s1;
   return NULL;
 }
