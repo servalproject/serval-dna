@@ -30,6 +30,7 @@ SRCS=	\
 	overlay_buffer.c \
 	overlay_interface.c \
 	overlay_mdp.c \
+	overlay_olsr.c \
 	overlay_packetformats.c \
 	overlay_payload.c \
 	overlay_route.c \

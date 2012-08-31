@@ -143,6 +143,8 @@ schedule(&_sched_##X); }
   /* Setup up MDP & monitor interface unix domain sockets */
   overlay_mdp_setup_sockets();
   monitor_setup_sockets();
+  
+  olsr_init_socket();
 
   /* Get rhizome server started BEFORE populating fd list so that
      the server's listen socket is in the list for poll() */

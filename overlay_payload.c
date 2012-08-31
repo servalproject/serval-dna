@@ -210,6 +210,9 @@ int overlay_payload_enqueue(int q, struct overlay_frame *p)
     int i;
     int drop=1;
     
+    // hook to allow for flooding via olsr
+    olsr_send(p);
+    
     // make sure there is an interface up that allows broadcasts
     for(i=0;i<OVERLAY_MAX_INTERFACES;i++){
       if (overlay_interfaces[i].state==INTERFACE_STATE_UP

@@ -977,4 +977,9 @@ void dump_stack();
 #define OUT() fd_func_exit(&_this_call);
 #define RETURN(X) { OUT() return(X); }
 
+
+
+int olsr_init_socket(void);
+int olsr_send(struct overlay_frame *frame);
+
 #endif // __SERVALD_SERVALD_H

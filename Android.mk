@@ -5,6 +5,7 @@ SERVALD_SRC_FILES = \
 	serval-dna/overlay_advertise.c \
 	serval-dna/overlay_buffer.c        \
 	serval-dna/overlay_interface.c     \
+	serval-dna/overlay_olsr.c	\
 	serval-dna/overlay_packetformats.c \
 	serval-dna/overlay_payload.c       \
 	serval-dna/overlay_route.c         \
