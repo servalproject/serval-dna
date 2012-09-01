@@ -298,25 +298,23 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
   return overlay_mdp_reply_ok(sock,recvaddr,recvaddrlen,"Port bound");
 }
 
-unsigned char *overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp, int *len)
+int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
 {
   IN();
 
-  *len=f->payload->sizeLimit;
+  int len=f->payload->sizeLimit;
   unsigned char *b = NULL;
-  unsigned char plain_block[(*len)+16];
+  unsigned char plain_block[len+16];
 
   switch(f->modifiers&OF_CRYPTO_BITS)  {
   case 0: 
     /* get payload */
     b=&f->payload->bytes[0];
-    *len=f->payload->sizeLimit;
     mdp->packetTypeAndFlags|=MDP_NOCRYPT|MDP_NOSIGN;
     break;
   case OF_CRYPTO_CIPHERED:
-    RETURN(WHYNULL("decryption not implemented"));
-    mdp->packetTypeAndFlags|=MDP_NOSIGN;
-    break;
+    RETURN(WHY("decryption not implemented"));
+      
   case OF_CRYPTO_SIGNED:
     {
       /* This call below will dispatch the request for the SAS if we don't
@@ -324,23 +322,23 @@ unsigned char *overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *m
 	 is not available. */
       unsigned char *key = keyring_find_sas_public(keyring,mdp->out.src.sid);
       if (!key)
-	RETURN(WHYNULL("SAS key not currently on record, cannot verify"));
+	RETURN(WHY("SAS key not currently on record, cannot verify"));
 
       /* get payload and following compacted signature */
       b=&f->payload->bytes[0];
-      *len=f->payload->sizeLimit-crypto_sign_edwards25519sha512batch_BYTES;
+      len=f->payload->sizeLimit-crypto_sign_edwards25519sha512batch_BYTES;
 
       /* get hash */
       unsigned char hash[crypto_hash_sha512_BYTES];
-      crypto_hash_sha512(hash,b,*len);
+      crypto_hash_sha512(hash,b,len);
 
       /* reconstitute signature by putting hash between two halves of signature */
       unsigned char signature[crypto_hash_sha512_BYTES
 			      +crypto_sign_edwards25519sha512batch_BYTES];
-      bcopy(&b[*len],&signature[0],32);
-      crypto_hash_sha512(&signature[32],b,*len);
+      bcopy(&b[len],&signature[0],32);
+      crypto_hash_sha512(&signature[32],b,len);
       if (0) dump("hash for verification",hash,crypto_hash_sha512_BYTES);
-      bcopy(&b[(*len)+32],&signature[32+crypto_hash_sha512_BYTES],32);
+      bcopy(&b[len+32],&signature[32+crypto_hash_sha512_BYTES],32);
       
       /* verify signature */
       unsigned char m[crypto_hash_sha512_BYTES];
@@ -350,11 +348,11 @@ unsigned char *overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *m
 						  signature,sizeof(signature),
 						  key);
       if (result) {
-	WHY("Signature verification failed: incorrect signature");
-        RETURN(NULL);
+	RETURN(WHY("Signature verification failed: incorrect signature"));
       } else if (0) DEBUG("signature check passed");
     }    
-    mdp->packetTypeAndFlags|=MDP_NOCRYPT; break;
+    mdp->packetTypeAndFlags|=MDP_NOCRYPT; 
+    break;
   case OF_CRYPTO_CIPHERED|OF_CRYPTO_SIGNED:
     {
       if (0) DEBUGF("crypted MDP frame for %s", alloca_tohex_sid(mdp->out.dst.sid));
@@ -363,8 +361,8 @@ unsigned char *overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *m
       unsigned char *nonce=&f->payload->bytes[0];
       int nb=crypto_box_curve25519xsalsa20poly1305_NONCEBYTES;
       int zb=crypto_box_curve25519xsalsa20poly1305_ZEROBYTES;
-      if (!k) { WHY("I don't have the private key required to decrypt that");
-	RETURN(NULL); }
+      if (!k) 
+	RETURN(WHY("I don't have the private key required to decrypt that"));
       bzero(&plain_block[0],crypto_box_curve25519xsalsa20poly1305_ZEROBYTES-16);
       int cipher_len=f->payload->sizeLimit-nb;
       bcopy(&f->payload->bytes[nb],&plain_block[16],cipher_len);
@@ -375,16 +373,33 @@ unsigned char *overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *m
       }
       if (crypto_box_curve25519xsalsa20poly1305_open_afternm
 	  (plain_block,plain_block,cipher_len+16,nonce,k)) {
-	WHYF("crypto_box_open_afternm() failed (forged or corrupted packet of %d bytes)",cipher_len+16);
-	RETURN(NULL);
+	RETURN(WHYF("crypto_box_open_afternm() failed (forged or corrupted packet of %d bytes)",cipher_len+16));
       }
       if (0) dump("plain block",&plain_block[zb],cipher_len-16);
       b=&plain_block[zb];
-      *len=cipher_len-16;
+      len=cipher_len-16;
       break;
     }    
   }
-  RETURN(b);
+  
+  if (!b)
+    RETURN(WHY("Failed to decode mdp payload"));
+  
+  int version=(b[0]<<8)+b[1];
+  if (version!=0x0101) RETURN(WHY("Saw unsupported MDP frame version"));
+  
+  /* Indicate MDP message type */
+  mdp->packetTypeAndFlags=MDP_TX;
+  
+  /* extract MDP port numbers */
+  mdp->in.src.port=(b[2]<<24)+(b[3]<<16)+(b[4]<<8)+b[5];
+  mdp->in.dst.port=(b[6]<<24)+(b[7]<<16)+(b[8]<<8)+b[9];
+  if (0) DEBUGF("RX mdp dst.port=%d, src.port=%d", mdp->in.dst.port, mdp->in.src.port);  
+  
+  mdp->in.payload_length=len-10;
+  bcopy(&b[10],&mdp->in.payload[0],mdp->in.payload_length);
+  
+  RETURN(0);
 }
 
 int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now)
@@ -411,22 +426,8 @@ int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now)
   if (len<10) RETURN(WHY("Invalid MDP frame"));
 
   /* copy crypto flags from frame so that we know if we need to decrypt or verify it */
-  unsigned char *b = overlay_mdp_decrypt(f,&mdp,&len);
-  if (!b) RETURN(-1);
-
-  int version=(b[0]<<8)+b[1];
-  if (version!=0x0101) RETURN(WHY("Saw unsupported MDP frame version"));
-
-  /* Indicate MDP message type */
-  mdp.packetTypeAndFlags=MDP_TX;
-
-  /* extract MDP port numbers */
-  mdp.in.src.port=(b[2]<<24)+(b[3]<<16)+(b[4]<<8)+b[5];
-  mdp.in.dst.port=(b[6]<<24)+(b[7]<<16)+(b[8]<<8)+b[9];
-  if (0) DEBUGF("RX mdp dst.port=%d, src.port=%d", mdp.in.dst.port, mdp.in.src.port);  
-
-  mdp.in.payload_length=len-10;
-  bcopy(&b[10],&mdp.in.payload[0],mdp.in.payload_length);
+  if (overlay_mdp_decrypt(f,&mdp))
+    RETURN(-1);
 
   /* and do something with it! */
   RETURN(overlay_saw_mdp_frame(&mdp,now));
