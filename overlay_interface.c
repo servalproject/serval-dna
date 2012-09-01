@@ -322,7 +322,8 @@ static int overlay_interface_init_any(int port){
   
   if (sock_any.poll.fd>0){
     // Check the port number matches
-    assert(sock_any_addr.sin_port == htons(port));
+    if (sock_any_addr.sin_port != htons(port))
+      return WHYF("Unable to listen to broadcast packets for ports %d & %d", port, ntohs(sock_any_addr.sin_port));
     
     return 0;
   }
