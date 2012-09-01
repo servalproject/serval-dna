@@ -110,6 +110,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include "str.h"
 
+int rhizome_direct_process_post_multipart_bytes
+(rhizome_http_request *r,const char *bytes,int count)
+{
+  return 0;
+}
+
 int rhizome_direct_parse_http_request(rhizome_http_request *r)
 {
   /* Switching to writing, so update the call-back */
@@ -206,11 +212,36 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
 	*/
 
 	/* Remember boundary string and source path */
-	snprintf(&r->source[0],1023,"%s",boundary_string);
-	r->source[1023]=0;
+	snprintf(&r->boundarystring[0],1023,"%s",boundary_string);
+	r->boundarystring[1023]=0;
+	r->source_index=0;
+	r->source_count=cl;
 	snprintf(&r->path[0],1023,"%s",path);
 	r->path[1023]=0;
-	
+	r->request_type=RHIZOME_HTTP_REQUEST_RECEIVING_MULTIPART;
+
+	/* Find the end of the headers and start of any body bytes that we
+	   have read so far. */
+	{
+	  const char *eoh="\r\n\r\n";
+	  int i=0;
+	  for(i=0;i<r->request_length;i++) {
+	    if (!strncmp(eoh,&r->request[i],strlen(eoh)))
+	      break;
+	  }
+	  if (i>=r->request_length) {
+	    /* Couldn't find the end of the headers, but this routine should
+	       not be called if the end of headers has not been found.
+	       Complain and go home. */
+	    return 
+	      rhizome_server_simple_http_response(r, 404, "<html><h1>End of headers seems to have gone missing</h1></html>\r\n");
+	  }
+
+	  /* Process any outstanding bytes */
+	  rhizome_direct_process_post_multipart_bytes(r,&r->request[i],r->request_length-i);
+	  r->request_length=0;
+	}
+
 	return rhizome_server_simple_http_response(r, 200, "<html><h1>Not implemented</h1></html>\r\n");
 	
       } else {

@@ -343,6 +343,8 @@ typedef struct rhizome_http_request {
      the actual processing of the request does not occur while the
      request headers are still available. */
   char path[1024];
+  /* Boundary string for POST multipart form requests */
+  char boundarystring[1024];
 
   /* The source specification data which are used in different ways by different 
    request types */
