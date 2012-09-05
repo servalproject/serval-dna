@@ -253,6 +253,13 @@ int rhizome_direct_process_mime_line(rhizome_http_request *r,char *buffer,int co
   case RD_MIME_STATE_BODY:
     if (boundaryLine) {
       r->source_flags=RD_MIME_STATE_PARTHEADERS;
+
+      /* We will have written an extra CRLF to the end of the file,
+	 so prune that off. */
+      fflush(r->field_file);
+      int fd=fileno(r->field_file);
+      off_t correct_size=ftell(r->field_file)-2;
+      ftruncate(fd,correct_size);
       fclose(r->field_file);
       r->field_file=NULL;
     }
