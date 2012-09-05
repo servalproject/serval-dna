@@ -198,18 +198,23 @@ int rhizome_direct_process_post_multipart_bytes
   for(o=0;o<count;o++)
     {
       int newline=0;
-      if ((o+1)<count)
-	if (bytes[o]=='\r'&&bytes[o+1]=='\n')
-	  newline=1;
-      if (r->request_length>1020) newline=1;
+      if (bytes[o]=='\n')
+	if (r->request_length>0&&r->request[r->request_length-1]=='\r')
+	  { newline=1; r->request_length--; }
+      if (r->request_length>1020) newline=2;
       if (newline) {	
 	/* Found end of line, so process it */
 	r->request[r->request_length]=0;
 	if (rhizome_direct_process_mime_line(r,r->request)) return -1;
 	r->request_length=0;
-      } else {
-	r->request[r->request_length++]=bytes[o];
+	/* If a real new line was detected, then
+	   don't include the \n as part of the next line.
+	   But if it wasn't a real new line, then make sure we
+	   don't loose the byte. */
+	if (newline==1) continue;
       }
+
+      r->request[r->request_length++]=bytes[o];
     }
 
   r->source_count-=count;
