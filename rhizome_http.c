@@ -24,7 +24,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "str.h"
 #include "rhizome.h"
-
 #define RHIZOME_SERVER_MAX_LIVE_REQUESTS 32
 
 struct sched_ent server_alarm;
@@ -179,6 +178,34 @@ void rhizome_client_poll(struct sched_ent *alarm)
   }
   switch(r->request_type)
     {
+    case RHIZOME_HTTP_REQUEST_RECEIVING_MULTIPART:
+      {
+	/* Reading multi-part form data. Read some bytes and proces them. */
+	char buffer[16384];
+	sigPipeFlag=0;
+	int bytes = read_nonblock(r->alarm.poll.fd, buffer, 16384);
+	/* If we got some data, see if we have found the end of the HTTP request */
+	if (bytes > 0) {
+	  // reset inactivity timer
+	  r->alarm.alarm = gettime_ms() + RHIZOME_IDLE_TIMEOUT;
+	  r->alarm.deadline = r->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
+	  unschedule(&r->alarm);
+	  schedule(&r->alarm);
+	  rhizome_direct_process_post_multipart_bytes(r,buffer,bytes);
+	} else {
+	  if (debug & DEBUG_RHIZOME_TX)
+	    DEBUG("Empty read, closing connection");
+	  rhizome_server_free_http_request(r);
+	  return;
+	}
+	if (sigPipeFlag) {
+	  if (debug & DEBUG_RHIZOME_TX)
+	    DEBUG("Received SIGPIPE, closing connection");
+	  rhizome_server_free_http_request(r);
+	  return;
+	}
+      }
+      break;
     case RHIZOME_HTTP_REQUEST_RECEIVING:
       /* Keep reading until we have two CR/LFs in a row */
       r->request[r->request_length] = '\0';
