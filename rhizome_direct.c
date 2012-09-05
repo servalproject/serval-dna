@@ -135,8 +135,20 @@ int rhizome_direct_form_received(rhizome_http_request *r)
   case RD_MIME_STATE_MANIFESTHEADERS
     |RD_MIME_STATE_DATAHEADERS:
     /* A bundle to import */
-    DEBUGF("Call bundle import for rhizomedata.%d.{manifest,data}",
+    DEBUGF("Call bundle import for rhizomedata.%d.{data,file}",
 	   r->alarm.poll.fd);
+    char cmd[1024];
+    snprintf(cmd,1024,
+	     "servald rhizome import bundle rhizomedirect.%d.data rhizomedirect.%d.manifest",
+	     r->alarm.poll.fd,r->alarm.poll.fd);
+    cmd[1023]=0;
+    int rv=system(cmd);
+    int status=-1;
+
+    if (rv!=-1) status=WEXITSTATUS(rv);
+
+    DEBUGF("Import returned %d",status);
+
     /* clean up after ourselves */
     rhizome_direct_clear_temporary_files(r);
     /* and report back to caller.
@@ -379,14 +391,18 @@ int rhizome_direct_process_post_multipart_bytes
   if (r->source_count<=0) {
     DEBUGF("Got to end of multi-part form data");
 
-    /* Flush out any remaining data */
-    if (r->request_length) {
-      DEBUGF("Flushing last %d bytes",r->request_length);
-      r->request[r->request_length]=0;
-      rhizome_direct_process_mime_line(r,r->request,r->request_length);
+    /* If the form is still being processed, then flush things through */
+    if (r->request_type<0) {
+      /* Flush out any remaining data */
+      if (r->request_length) {
+	DEBUGF("Flushing last %d bytes",r->request_length);
+	r->request[r->request_length]=0;
+	rhizome_direct_process_mime_line(r,r->request,r->request_length);
+      }      
+      return rhizome_direct_form_received(r);
+    } else {
+      /* Form has already been processed, so do nothing */
     }
-    
-    return rhizome_direct_form_received(r);
   }
   return 0;
 }
