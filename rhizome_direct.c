@@ -121,13 +121,28 @@ int rhizome_direct_form_received(rhizome_http_request *r)
 
 #define RD_MIME_STATE_INITIAL 0
 #define RD_MIME_STATE_PARTHEADERS 1
-#define RD_MIME_STATE_BODY 2
+#define RD_MIME_STATE_MANIFESTHEADERS 2
+#define RD_MIME_STATE_DATAHEADERS 3
+#define RD_MIME_STATE_BODY 99
+
 int rhizome_direct_process_mime_line(rhizome_http_request *r,char *buffer)
 {
   /* Check for boundary line at start of buffer.
      Boundary line = CRLF + "--" + boundary_string + optional whitespace + CRLF
      EXCEPT end of form boundary, which is:
      CRLF + "--" + boundary_string + "--" + CRLF
+
+     NOTE: We attach the "--" to boundary_string when setting things up so that
+     we don't have to keep manually checking for it here.
+
+     NOTE: The parser eats the CRLF from the front, and attaches it to the end
+     of the previous line.  This means we need to rewind 2 bytes from whatever
+     file we were writing to whenever we encounter a boundary line, at least
+     if those last two bytes were CRLF. That can be safely assumed if we
+     assume that the boundary string has been chosen to be a string never appearing
+     anywhere in the contents of the form.  In practice, that is only "almost
+     certain" (according to the mathematical meaning of that phrase) if boundary
+     strings are randomly selected and are of sufficient length.
    
      NOTE: We are not supporting nested/mixed parts, as that would considerably
      complicate the parser.  If the need arises in future, we will deal with it
@@ -136,26 +151,67 @@ int rhizome_direct_process_mime_line(rhizome_http_request *r,char *buffer)
   */
   DEBUGF("mime line: %s",buffer);
 
+  /* Regardless of the state of the parser, the presence of boundary lines
+     is significant, so lets just check once, and remember the result.
+     Similarly check a few other conditions. */
+  int boundaryLine=0;
+  if (!strncmp(buffer,r->boundary_string,r->boundary_string_length))
+    boundaryLine=1;
+  int endOfForm=0;
+  if (boundaryLine&&
+      buffer[r->boundary_string_length]=='-'&&
+      buffer[r->boundary_string_length+1]=='-')
+    endOfForm=1;
+  int blankLine=0;
+  if (!strcmp(buffer,"\r\n")) blankLine=1;
 
-  if (buffer[0]=='\r'&&buffer[1]=='\n'&&buffer[2]=='-'&&buffer[3]=='-') {
-    if (!strncmp(&buffer[4],r->boundary_string,r->boundary_string_length))
-      {
-	/* Boundary line */
-	/* Close off any file still being written to.	     
-	 */
-	/* XXX The following does not allow for the presence of white space
-	   after the boundary line, although this is allowed by RFC2046 */
-	if (buffer[4+r->boundary_string_length]=='-'
-	    &&buffer[5+r->boundary_string_length]=='-') {
-	  /* End of form marker found. 
-	     Pass it to function that deals with what has been received,
-	     and will also send response or close the http request if required. */
-	  DEBUGF("Found end of form");
-	  return rhizome_direct_form_received(r);
-	} else {
-	  /* Found boundary line for next form element. */
-	}
+  switch(r->source_flags) {
+  case RD_MIME_STATE_INITIAL:
+    if (boundaryLine) r->source_flags=RD_MIME_STATE_PARTHEADERS;
+    break;
+  case RD_MIME_STATE_PARTHEADERS:
+  case RD_MIME_STATE_MANIFESTHEADERS:
+  case RD_MIME_STATE_DATAHEADERS:
+    if (blankLine) {
+      /* End of headers */
+      if (r->source_flags!=RD_MIME_STATE_PARTHEADERS) {
+	/* Open manifest or data file handle, and begin writing to
+	   it. */
+      } else {
+	/* unknown part: complain */
+	rhizome_server_simple_http_response
+	  (r, 400, "<html><h1>Unsupported form field</h1></html>\r\n");
+	return -1;
       }
+    } else {
+      char field[1024];
+      char name[1024];
+      if (sscanf(buffer,
+		 "Content-Disposition: form-data; name=\"%[^\"]\";"
+		 " filename=\"%[^\"]\"",field,name)==2)
+	{
+	  DEBUGF("Found form part '%s' name '%s'",field,name);
+	  if (!strcasecmp(field,"manifest")) 
+	    r->source_flags=RD_MIME_STATE_MANIFESTHEADERS;
+	  if (!strcasecmp(field,"data")) 
+	    r->source_flags=RD_MIME_STATE_DATAHEADERS;
+	}
+    }
+    break;
+  case RD_MIME_STATE_BODY:
+    if (boundaryLine) r->source_flags=RD_MIME_STATE_PARTHEADERS;
+    break;
+  }
+
+  if (endOfForm) {
+    /* End of form marker found. 
+       Pass it to function that deals with what has been received,
+       and will also send response or close the http request if required. */
+
+    /* XXX Rewind last two bytes from file if open, and close file */
+
+    DEBUGF("Found end of form");
+    return rhizome_direct_form_received(r);
   }
   return 0;
 }
@@ -234,7 +290,6 @@ int rhizome_direct_process_post_multipart_bytes
   if (r->source_count<=0) {
     DEBUGF("Got to end of multi-part form data");
     /* return "no content" for now. */
-    r->request_type=0;
     return rhizome_direct_form_received(r);
   }
   return 0;
@@ -335,8 +390,10 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
 	   form data parsing, and what the actual requested action is.
 	*/
 
-	/* Remember boundary string and source path */
-	snprintf(&r->boundary_string[0],1023,"%s",boundary_string);
+	/* Remember boundary string and source path.
+	   Put the preceeding -- on the front to make our life easier when
+	   parsing the rest later. */
+	snprintf(&r->boundary_string[0],1023,"--%s",boundary_string);
 	r->boundary_string[1023]=0;
 	r->boundary_string_length=strlen(r->boundary_string);
 	r->source_index=0;
