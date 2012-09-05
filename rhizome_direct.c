@@ -110,17 +110,37 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include "str.h"
 
+int rhizome_direct_clear_temporary_files(rhizome_http_request *r)
+{
+  char filename[1024];
+  char *fields[]={"manifest","data","unknown",NULL};
+  int i;
+
+  for(i=0;fields[i];i++) {
+    snprintf(filename,1024,"rhizomedirect.%d.%s",r->alarm.poll.fd,fields[i]);
+    filename[1023]=0;
+    DEBUGF("Unlinking '%s'",filename);
+  }
+  return 0;
+}
+
 int rhizome_direct_form_received(rhizome_http_request *r)
 {
   /* XXX This needs to be implemented.
      For now we just put out a "no content" response that makes testing convenient
   */
 
+  /* XXX process completed form based on the set of fields seen */
+
+  /* Clean up after ourselves */
+  rhizome_direct_clear_temporary_files(r);
+
   return rhizome_server_simple_http_response(r, 204, "Move along. Nothing to see.");
+
 }
 
 
-int rhizome_direct_process_mime_line(rhizome_http_request *r,char *buffer)
+int rhizome_direct_process_mime_line(rhizome_http_request *r,char *buffer,int count)
 {
   /* Check for boundary line at start of buffer.
      Boundary line = CRLF + "--" + boundary_string + optional whitespace + CRLF
@@ -159,8 +179,8 @@ int rhizome_direct_process_mime_line(rhizome_http_request *r,char *buffer)
   int blankLine=0;
   if (!strcmp(buffer,"\r\n")) blankLine=1;
 
-  DEBUGF("mime state: 0x%x, blankLine=%d, EOF=%d",
-	 r->source_flags,blankLine,endOfForm);
+  DEBUGF("mime state: 0x%x, blankLine=%d, EOF=%d, bytes=%d",
+	 r->source_flags,blankLine,endOfForm,count);
   switch(r->source_flags) {
   case RD_MIME_STATE_INITIAL:
     DEBUGF("mime line: %s",r->request);
@@ -172,20 +192,43 @@ int rhizome_direct_process_mime_line(rhizome_http_request *r,char *buffer)
     DEBUGF("mime line: %s",r->request);
     if (blankLine) {
       /* End of headers */
-      if (r->source_flags!=RD_MIME_STATE_PARTHEADERS) {
-	/* Open manifest or data file handle, and begin writing to
-	   it. */
-	/* XXX not implemented */
-	r->source_flags=RD_MIME_STATE_BODY;
-      } else {
-	/* unknown part: complain */
+      if (r->source_flags==RD_MIME_STATE_PARTHEADERS)
+	{
+	  /* Multiple content-disposition lines.  This is very naughty. */
+	  rhizome_server_simple_http_response
+	    (r, 400, "<html><h1>Malformed multi-part form POST: Missing content-disposition lines in MIME encoded part.</h1></html>\r\n");
+	  return -1;
+	}
+      
+      /* Prepare to write to file for field.
+	 We may have multiple rhizome direct transactions running at the same
+	 time on different TCP connections.  So serialise using file descriptor.
+	 We could use the boundary string or some other random thing, but using
+	 the file descriptor places a reasonable upper limit on the clutter that
+	 is possible, while still preventing collisions -- provided that we don't
+	 close the file descriptor until we have completed processing the 
+	 request. */
+      r->field_file=NULL;
+      char filename[1024];
+      char *field="unknown";
+      switch(r->source_flags) {
+      case RD_MIME_STATE_DATAHEADERS: field="data"; break;
+      case RD_MIME_STATE_MANIFESTHEADERS: field="manifest"; break;
+      }
+      snprintf(filename,1024,"rhizomedirect.%d.%s",r->alarm.poll.fd,field);
+      filename[1023]=0;
+      DEBUGF("Writing to '%s'",filename);
+      r->field_file=fopen(filename,"w");
+      if (!r->field_file) {
+	rhizome_direct_clear_temporary_files(r);
 	rhizome_server_simple_http_response
-	  (r, 400, "<html><h1>Unsupported form field or missing content-disposition line in mime part</h1></html>\r\n");
+	  (r, 500, "<html><h1>Sorry, couldn't complete your request, reasonable as it was.  Perhaps try again later.</h1></html>\r\n");
 	return -1;
       }
+      r->source_flags=RD_MIME_STATE_BODY;
     } else {
-      char field[1024];
       char name[1024];
+      char field[1024];
       if (sscanf(buffer,
 		 "Content-Disposition: form-data; name=\"%[^\"]\";"
 		 " filename=\"%[^\"]\"",field,name)==2)
@@ -204,20 +247,19 @@ int rhizome_direct_process_mime_line(rhizome_http_request *r,char *buffer)
 	    r->source_flags=RD_MIME_STATE_DATAHEADERS;
 	  if (r->source_flags!=RD_MIME_STATE_PARTHEADERS)
 	    r->fields_seen|=r->source_flags;
-	} else if (blankLine) {
-	  if (r->source_flags==RD_MIME_STATE_PARTHEADERS)
-	    {
-	      /* Multiple content-disposition lines.  This is very naughty. */
-	      rhizome_server_simple_http_response
-		(r, 400, "<html><h1>Malformed multi-part form POST: Missing content-disposition lines in MIME encoded part.</h1></html>\r\n");
-	      return -1;
-	    }
-	  r->source_flags=RD_MIME_STATE_BODY;
-      }	
+	} 
     }
     break;
   case RD_MIME_STATE_BODY:
-    if (boundaryLine) r->source_flags=RD_MIME_STATE_PARTHEADERS;
+    if (boundaryLine) {
+      r->source_flags=RD_MIME_STATE_PARTHEADERS;
+      fclose(r->field_file);
+      r->field_file=NULL;
+    }
+    else {
+      int written=fwrite(r->request,count,1,r->field_file);
+      DEBUGF("wrote %d lump of %d bytes",written,count);
+    }
     break;
   }
 
@@ -292,7 +334,8 @@ int rhizome_direct_process_post_multipart_bytes
 	  r->request[r->request_length++]='\n';
 	}
 	r->request[r->request_length]=0;
-	if (rhizome_direct_process_mime_line(r,r->request)) return -1;
+	if (rhizome_direct_process_mime_line(r,r->request,r->request_length)) 
+	  return -1;
 	r->request_length=0;
 	/* If a real new line was detected, then
 	   don't include the \n as part of the next line.
@@ -307,6 +350,16 @@ int rhizome_direct_process_post_multipart_bytes
   r->source_count-=count;
   if (r->source_count<=0) {
     DEBUGF("Got to end of multi-part form data");
+
+    /* Flush out any remaining data */
+    if (r->field_file) fclose(r->field_file);
+    if (r->request_length) {
+      DEBUGF("Flushing last %d bytes",r->request_length);
+      r->request[r->request_length]=0;
+      if (rhizome_direct_process_mime_line(r,r->request,r->request_length))
+	return -1;
+    }
+    
     /* return "no content" for now. */
     return rhizome_direct_form_received(r);
   }
