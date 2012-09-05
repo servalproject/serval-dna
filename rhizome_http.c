@@ -192,12 +192,11 @@ void rhizome_client_poll(struct sched_ent *alarm)
 	  unschedule(&r->alarm);
 	  schedule(&r->alarm);
 	  rhizome_direct_process_post_multipart_bytes(r,buffer,bytes);
-	} else {
-	  if (debug & DEBUG_RHIZOME_TX)
-	    DEBUG("Empty read, closing connection");
-	  rhizome_server_free_http_request(r);
-	  return;
 	}
+	/* We don't drop the connection on an empty read, because that results
+	   in connections dropping when they shouldn't, including during testing.
+	   The idle timeout should drop the connections instead.
+	*/
 	if (sigPipeFlag) {
 	  if (debug & DEBUG_RHIZOME_TX)
 	    DEBUG("Received SIGPIPE, closing connection");
@@ -560,7 +559,11 @@ static const char *httpResultString(int response_code) {
   case 206: return "Partial Content";
   case 404: return "Not found";
   case 500: return "Internal server error";
-  default:  return "A suffusion of yellow";
+  default:  
+    if (response_code<=4)
+      return "Unknown status code";
+    else
+      return "A suffusion of yellow";
   }
 }
 
@@ -617,6 +620,10 @@ int rhizome_server_simple_http_response(rhizome_http_request *r, int result, con
   hr.content_type = "text/html";
   hr.content_length = strlen(response);
   hr.body = response;
+  if (result==400) {
+    DEBUGF("Rejecting http request as malformed due to: %s",
+	   response);
+  }
   return rhizome_server_set_response(r, &hr);
 }
 
