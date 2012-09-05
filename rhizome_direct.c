@@ -113,6 +113,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 int rhizome_direct_process_post_multipart_bytes
 (rhizome_http_request *r,const char *bytes,int count)
 {
+  DEBUGF("Saw %d multi-part form bytes",count);
   return 0;
 }
 
@@ -242,8 +243,8 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
 	  r->request_length=0;
 	}
 
-	return rhizome_server_simple_http_response(r, 200, "<html><h1>Not implemented</h1></html>\r\n");
-	
+	/* Handle the rest of the transfer asynchronously. */
+	return 0;
       } else {
 	rhizome_server_simple_http_response(r, 404, "<html><h1>Not found</h1></html>\r\n");
       }
