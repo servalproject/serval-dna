@@ -624,6 +624,7 @@ int rhizome_server_simple_http_response(rhizome_http_request *r, int result, con
     DEBUGF("Rejecting http request as malformed due to: %s",
 	   response);
   }
+  r->request_type=0;
   return rhizome_server_set_response(r, &hr);
 }
 
