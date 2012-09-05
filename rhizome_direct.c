@@ -169,8 +169,9 @@ int rhizome_direct_process_mime_line(rhizome_http_request *r,char *buffer,int co
      is significant, so lets just check once, and remember the result.
      Similarly check a few other conditions. */
   int boundaryLine=0;
-  if (!strncmp(buffer,r->boundary_string,r->boundary_string_length))
+  if (!bcmp(buffer,r->boundary_string,r->boundary_string_length))
     boundaryLine=1;
+
   int endOfForm=0;
   if (boundaryLine&&
       buffer[r->boundary_string_length]=='-'&&
@@ -179,11 +180,10 @@ int rhizome_direct_process_mime_line(rhizome_http_request *r,char *buffer,int co
   int blankLine=0;
   if (!strcmp(buffer,"\r\n")) blankLine=1;
 
-  DEBUGF("mime state: 0x%x, blankLine=%d, EOF=%d, bytes=%d",
-	 r->source_flags,blankLine,endOfForm,count);
+  DEBUGF("mime state: 0x%x, blankLine=%d, boundary=%d, EOF=%d, bytes=%d",
+	 r->source_flags,blankLine,boundaryLine,endOfForm,count);
   switch(r->source_flags) {
   case RD_MIME_STATE_INITIAL:
-    DEBUGF("mime line: %s",r->request);
     if (boundaryLine) r->source_flags=RD_MIME_STATE_PARTHEADERS;
     break;
   case RD_MIME_STATE_PARTHEADERS:
@@ -443,7 +443,7 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
 	char boundary_string[1024];
 	int i;
 	ct_str+=strlen("Content-Type: multipart/form-data; boundary=");
-	for(i=0;i<1023&&*ct_str&&*ct_str!='\n';i++,ct_str++)
+	for(i=0;i<1023&&*ct_str&&*ct_str!='\n'&&*ct_str!='\r';i++,ct_str++)
 	  boundary_string[i]=*ct_str;
 	boundary_string[i]=0;
 	if (i<4||i>128)
