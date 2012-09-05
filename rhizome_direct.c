@@ -115,14 +115,52 @@ int rhizome_direct_form_received(rhizome_http_request *r)
   /* XXX This needs to be implemented.
      For now we just put out a "no content" response that makes testing convenient
   */
+
   return rhizome_server_simple_http_response(r, 204, "Move along. Nothing to see.");
+}
+
+int rhizome_direct_process_mime_line(rhizome_http_request *r,char *buffer)
+{
+  /* Check for boundary line at start of buffer.
+     Boundary line = CRLF + "--" + boundary_string + optional whitespace + CRLF
+     EXCEPT end of form boundary, which is:
+     CRLF + "--" + boundary_string + "--" + CRLF
+     
+     NOTE: We are not supporting nested/mixed parts, as that would considerably
+     complicate the parser.  If the need arises in future, we will deal with it
+     then.  In the meantime, we will have something that meets our immediate
+     needs for Rhizome Direct and a variety of use cases.
+  */
+  DEBUGF("mime line: %s",buffer);
+
+  if (buffer[0]=='\r'&&buffer[1]=='\n'&&buffer[2]=='-'&&buffer[3]=='-') {
+    if (!strncmp(&buffer[4],r->boundary_string,r->boundary_string_length))
+      {
+	/* Boundary line */
+	/* Close off any file still being written to.	     
+	 */
+	/* XXX The following does not allow for the presence of white space
+	   after the boundary line, although this is allowed by RFC2046 */
+	if (buffer[4+r->boundary_string_length]=='-'
+	    &&buffer[5+r->boundary_string_length]=='-') {
+	  /* End of form marker found. 
+	     Pass it to function that deals with what has been received,
+	     and will also send response or close the http request if required. */
+	  DEBUGF("Found end of form");
+	  return rhizome_direct_form_received(r);
+	} else {
+	  /* Found boundary line for next form element. */
+	}
+      }
+  }
+  return 0;
 }
 
 int rhizome_direct_process_post_multipart_bytes
 (rhizome_http_request *r,const char *bytes,int count)
 {
-  DEBUGF("Saw %d multi-part form bytes",count);
   {
+    DEBUGF("Saw %d multi-part form bytes",count);
     FILE *f=fopen("post.log","a"); 
     if (f) fwrite(bytes,count,1,f);
     if (f) fclose(f);
@@ -149,44 +187,30 @@ int rhizome_direct_process_post_multipart_bytes
      Content-Type: application/octet-stream     
   */
 
-  char buffer[count+1024];
-  int totalBytes=r->request_length+count;
+  int o;
 
-  /* Merge all the data we have so far */
-  bcopy(&r->request[0],&buffer[0],r->request_length);
-  bcopy(&bytes[0],&buffer[r->request_length],count);
+  /* Split into lines and process each line separately using a
+     simple state machine. 
+     Lines containing binary are truncated into arbitrarily length pieces, but
+     a newline will ALWAYS break the line.
+  */
 
-  int o=0;
-
-  {
-    /* Check for boundary line at start of buffer.
-       Boundary line = CRLF + "--" + boundary_string + optional whitespace + CRLF
-       EXCEPT end of form boundary, which is:
-       CRLF + "--" + boundary_string + "--" + CRLF
-     */
-    if (buffer[0]=='\r'&&buffer[1]=='\n'&&buffer[2]=='-'&&buffer[3]=='-') {
-      if (!strncmp(&buffer[4],r->boundary_string,r->boundary_string_length))
-	{
-	  /* Boundary line */
-	  /* Close off any file still being written to.	     
-	   */
-	  /* XXX The following does not allow for the presence of white space
-	     after the boundary line, although this is allowed by RFC2046 */
-	  if (buffer[4+r->boundary_string_length]=='-'
-	      &&buffer[5+r->boundary_string_length]=='-') {
-	    /* End of form marker found. 
-	       Pass it to function that deals with what has been received,
-	       and will also send response or close the http request if required. */
-	    DEBUGF("Found end of form");
-	    return rhizome_direct_form_received(r);
-	  } else {
-	    /* Found boundary line for next form element. */
-	    o=4+r->boundary_string_length;
-	    // XXX	    if (sscanf(&buffer[o],"Content-Disposition: form-data; name=\"%[^\"]\"; filename=\"%[^\"]\"%n",
-	  }
-	}
+  for(o=0;o<count;o++)
+    {
+      int newline=0;
+      if ((o+1)<count)
+	if (bytes[o]=='\r'&&bytes[o+1]=='\n')
+	  newline=1;
+      if (r->request_length>1020) newline=1;
+      if (newline) {	
+	/* Found end of line, so process it */
+	r->request[r->request_length]=0;
+	if (rhizome_direct_process_mime_line(r,r->request)) return -1;
+	r->request_length=0;
+      } else {
+	r->request[r->request_length++]=bytes[o];
+      }
     }
-  }
 
   r->source_count-=count;
   if (r->source_count<=0) {
@@ -320,9 +344,16 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
 	      rhizome_server_simple_http_response(r, 404, "<html><h1>End of headers seems to have gone missing</h1></html>\r\n");
 	  }
 
-	  /* Process any outstanding bytes */
-	  rhizome_direct_process_post_multipart_bytes(r,&r->request[i],r->request_length-i);
+	  /* Process any outstanding bytes.
+	     We need to copy the bytes to a separate buffer, because 
+	     r->request and r->request_length get used internally in the 
+	     parser, which is also why we need to zero r->request_length
+	   */
+	  int count=r->request_length-i;
+	  char buffer[count];
+	  bcopy(&r->request[i],&buffer[0],count);
 	  r->request_length=0;
+	  rhizome_direct_process_post_multipart_bytes(r,buffer,count);
 	}
 
 	/* Handle the rest of the transfer asynchronously. */
