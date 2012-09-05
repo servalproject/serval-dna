@@ -74,7 +74,9 @@ static int safeSystem(char *cmd_file)
   if(pid == -1)
     return WHY_perror("fork");
   if (pid == 0) {
-    execlp(shell, shell, "-c", cmd_file,NULL);
+    /* XXX: Need the cast on Solaris because it defins NULL as 0L and gcc doesn't
+     * see it as a sentinal */
+    execlp(shell, shell, "-c", cmd_file,(void*)NULL);
     _exit(1);
   }
   // Wait for child to finish

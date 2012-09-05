@@ -662,7 +662,9 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
 	   creates a new server daemon process with the correct argv[0].  Otherwise, the servald
 	   process appears as a process with argv[0] = "org.servalproject". */
 	if (execpath) {
-	  execl(execpath, execpath, "start", "foreground", NULL);
+	/* XXX: Need the cast on Solaris because it defins NULL as 0L and gcc doesn't
+	 * see it as a sentinal */
+	  execl(execpath, execpath, "start", "foreground", (void *)NULL);
 	  _exit(-1);
 	}
 	_exit(server(NULL));
@@ -672,10 +674,7 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
     /* Main process.  Allow a few seconds for the child process to report for duty. */
     time_ms_t timeout = gettime_ms() + 5000;
     do {
-      struct timespec delay;
-      delay.tv_sec = 0;
-      delay.tv_nsec = 200000000; // 200 ms = 5 Hz
-      nanosleep(&delay, NULL);
+      sleep_ms(200); // 5 Hz
     } while ((pid = server_pid()) == 0 && gettime_ms() < timeout);
     if (pid == -1)
       return -1;

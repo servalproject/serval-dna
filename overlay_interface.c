@@ -17,6 +17,10 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <assert.h>
 #include <time.h>
 #include "serval.h"
@@ -219,7 +223,13 @@ int overlay_bind_socket(const struct sockaddr *addr, size_t addr_size, char *int
   /* Automatically close socket on calls to exec().
    This makes life easier when we restart with an exec after receiving
    a bad signal. */
-  fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, NULL) | O_CLOEXEC);
+  fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, NULL) | 
+#ifdef FD_CLOEXEC
+						FD_CLOEXEC
+#else
+						O_CLOEXEC
+#endif
+	);
   
 #ifdef SO_BINDTODEVICE
   /*

@@ -20,6 +20,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <signal.h>
+#ifdef HAVE_SYS_FILIO_H
+#include <sys/filio.h>
+#endif
 
 #include "serval.h"
 #include "str.h"

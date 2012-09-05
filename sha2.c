@@ -36,7 +36,21 @@
 #ifdef HAVE_SYS_ENDIAN_H
 #include <sys/endian.h>
 #endif
+#ifdef HAVE_SYS_BYTEORDER_H
+#include <sys/byteorder.h>
+#endif
 #include "sha2.h"
+
+/* Translate from Solaris */
+#ifndef BYTE_ORDER
+#define LITTLE_ENDIAN  1234    /* LSB first: i386, vax */
+#define BIG_ENDIAN     4321    /* MSB first: 68000, ibm, net */
+#ifdef _BIG_ENDIAN
+#define BYTE_ORDER BIG_ENDIAN
+#else
+#define BYTE_ORDER LITTLE_ENDIAN
+#endif
+#endif
 
 /*
  * ASSERT NOTE:

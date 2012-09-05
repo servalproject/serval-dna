@@ -27,6 +27,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include <sys/stat.h>
 
+#ifdef HAVE_UCRED_H
+#include <ucred.h>
+#endif
+
 #if defined(LOCAL_PEERCRED) && !defined(SO_PEERCRED)
 #define SO_PEERCRED LOCAL_PEERCRED
 #endif
@@ -263,12 +267,14 @@ void monitor_client_poll(struct sched_ent *alarm)
 }
  
 static void monitor_new_client(int s) {
-#ifdef linux
+#ifdef SO_PEERCRED
   struct ucred			ucred;
   socklen_t			len;
   int				res;
-#else
+#elif defined(HAVE_GETPEEREID)
   gid_t				othergid;
+#elif defined(HAVE_UCRED_H)
+  ucred_t			*ucred;
 #endif
   uid_t				otheruid;
   struct monitor_context	*c;
@@ -276,7 +282,8 @@ static void monitor_new_client(int s) {
   if (set_nonblock(s) == -1)
     goto error;
 
-#ifdef linux
+#ifdef SO_PEERCRED
+  /* Linux way */
   len = sizeof(ucred);
   res = getsockopt(s, SOL_SOCKET, SO_PEERCRED, &ucred, &len);
   if (res) { 
@@ -288,11 +295,22 @@ static void monitor_new_client(int s) {
     goto error;
   }
   otheruid = ucred.uid;
-#else
+#elif defined(HAVE_UCRED_H)
+  /* Solaris way */
+  if (getpeerucred(s, &ucred) != 0) {
+    WHY_perror("getpeerucred()");
+    goto error;
+  }
+  otheruid = ucred_geteuid(ucred);
+  ucred_free(ucred);
+#elif defined(HAVE_GETPEEREID)
+  /* BSD way */
   if (getpeereid(s, &otheruid, &othergid) != 0) {
     WHY_perror("getpeereid()");
     goto error;
   }
+#else
+#error No way to get socket peer credentials
 #endif
 
   if (otheruid != getuid()) {
