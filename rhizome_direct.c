@@ -119,19 +119,23 @@ int rhizome_direct_form_received(rhizome_http_request *r)
   return rhizome_server_simple_http_response(r, 204, "Move along. Nothing to see.");
 }
 
+#define RD_MIME_STATE_INITIAL 0
+#define RD_MIME_STATE_PARTHEADERS 1
+#define RD_MIME_STATE_BODY 2
 int rhizome_direct_process_mime_line(rhizome_http_request *r,char *buffer)
 {
   /* Check for boundary line at start of buffer.
      Boundary line = CRLF + "--" + boundary_string + optional whitespace + CRLF
      EXCEPT end of form boundary, which is:
      CRLF + "--" + boundary_string + "--" + CRLF
-     
+   
      NOTE: We are not supporting nested/mixed parts, as that would considerably
      complicate the parser.  If the need arises in future, we will deal with it
      then.  In the meantime, we will have something that meets our immediate
      needs for Rhizome Direct and a variety of use cases.
   */
   DEBUGF("mime line: %s",buffer);
+
 
   if (buffer[0]=='\r'&&buffer[1]=='\n'&&buffer[2]=='-'&&buffer[3]=='-') {
     if (!strncmp(&buffer[4],r->boundary_string,r->boundary_string_length))
@@ -204,6 +208,15 @@ int rhizome_direct_process_post_multipart_bytes
       if (r->request_length>1020) newline=2;
       if (newline) {	
 	/* Found end of line, so process it */
+	if (newline==1) {
+	  /* Put the real new line onto the end if it was present, so that
+	     we don't go doing anything silly, like joining lines in files
+	     that really were separated by CRLF, or similarly inserting CRLF
+	     in the middle of slabs of bytes that were not CRLF terminated.
+	  */
+	  r->request[r->request_length++]='\r';
+	  r->request[r->request_length++]='\n';
+	}
 	r->request[r->request_length]=0;
 	if (rhizome_direct_process_mime_line(r,r->request)) return -1;
 	r->request_length=0;
@@ -352,12 +365,15 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
 	  /* Process any outstanding bytes.
 	     We need to copy the bytes to a separate buffer, because 
 	     r->request and r->request_length get used internally in the 
-	     parser, which is also why we need to zero r->request_length
+	     parser, which is also why we need to zero r->request_length.
+	     We also zero r->source_flags, which is used as the state
+	     counter for parsing the multi-part form data.
 	   */
 	  int count=r->request_length-i;
 	  char buffer[count];
 	  bcopy(&r->request[i],&buffer[0],count);
 	  r->request_length=0;
+	  r->source_flags=0;
 	  rhizome_direct_process_post_multipart_bytes(r,buffer,count);
 	}
 
