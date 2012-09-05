@@ -344,7 +344,8 @@ typedef struct rhizome_http_request {
      request headers are still available. */
   char path[1024];
   /* Boundary string for POST multipart form requests */
-  char boundarystring[1024];
+  char boundary_string[1024];
+  int boundary_string_length;
 
   /* The source specification data which are used in different ways by different 
    request types */

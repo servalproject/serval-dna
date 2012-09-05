@@ -110,10 +110,91 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include "str.h"
 
+int rhizome_direct_form_received(rhizome_http_request *r)
+{
+  /* XXX This needs to be implemented.
+     For now we just put out a "no content" response that makes testing convenient
+  */
+  return rhizome_server_simple_http_response(r, 204, "Move along. Nothing to see.");
+}
+
 int rhizome_direct_process_post_multipart_bytes
 (rhizome_http_request *r,const char *bytes,int count)
 {
   DEBUGF("Saw %d multi-part form bytes",count);
+  {
+    FILE *f=fopen("post.log","a"); 
+    if (f) fwrite(bytes,count,1,f);
+    if (f) fclose(f);
+  }
+
+  /* This function looks for multi-part form separators and descriptor lines,
+     and streams any "manifest" or "data" blocks to respectively named files.
+
+     The challenge is that we might only get a partial boundary string passed
+     to us.  So we need to remember the last KB or so of data and glue it to
+     the front of the current set of bytes.
+
+     In multi-part form parsing we don't need r->request for anything, so if
+     we are not in a form part already, then we can stow the bytes there
+     for reexamination when more bytes arrive.
+     
+     Side effect will be that the entire boundary string and associated bits will
+     need to be <=1KB, the size of r->request.  This seems quite reasonable.
+
+     Example of such a block is:
+
+     ------WebKitFormBoundaryEoJwSoSVW4qsrBZW
+     Content-Disposition: form-data; name="manifest"; filename="spleen"
+     Content-Type: application/octet-stream     
+  */
+
+  char buffer[count+1024];
+  int totalBytes=r->request_length+count;
+
+  /* Merge all the data we have so far */
+  bcopy(&r->request[0],&buffer[0],r->request_length);
+  bcopy(&bytes[0],&buffer[r->request_length],count);
+
+  int o=0;
+
+  {
+    /* Check for boundary line at start of buffer.
+       Boundary line = CRLF + "--" + boundary_string + optional whitespace + CRLF
+       EXCEPT end of form boundary, which is:
+       CRLF + "--" + boundary_string + "--" + CRLF
+     */
+    if (buffer[0]=='\r'&&buffer[1]=='\n'&&buffer[2]=='-'&&buffer[3]=='-') {
+      if (!strncmp(&buffer[4],r->boundary_string,r->boundary_string_length))
+	{
+	  /* Boundary line */
+	  /* Close off any file still being written to.	     
+	   */
+	  /* XXX The following does not allow for the presence of white space
+	     after the boundary line, although this is allowed by RFC2046 */
+	  if (buffer[4+r->boundary_string_length]=='-'
+	      &&buffer[5+r->boundary_string_length]=='-') {
+	    /* End of form marker found. 
+	       Pass it to function that deals with what has been received,
+	       and will also send response or close the http request if required. */
+	    DEBUGF("Found end of form");
+	    return rhizome_direct_form_received(r);
+	  } else {
+	    /* Found boundary line for next form element. */
+	    o=4+r->boundary_string_length;
+	    // XXX	    if (sscanf(&buffer[o],"Content-Disposition: form-data; name=\"%[^\"]\"; filename=\"%[^\"]\"%n",
+	  }
+	}
+    }
+  }
+
+  r->source_count-=count;
+  if (r->source_count<=0) {
+    DEBUGF("Got to end of multi-part form data");
+    /* return "no content" for now. */
+    r->request_type=0;
+    return rhizome_direct_form_received(r);
+  }
   return 0;
 }
 
@@ -213,8 +294,9 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
 	*/
 
 	/* Remember boundary string and source path */
-	snprintf(&r->boundarystring[0],1023,"%s",boundary_string);
-	r->boundarystring[1023]=0;
+	snprintf(&r->boundary_string[0],1023,"%s",boundary_string);
+	r->boundary_string[1023]=0;
+	r->boundary_string_length=strlen(r->boundary_string);
 	r->source_index=0;
 	r->source_count=cl;
 	snprintf(&r->path[0],1023,"%s",path);
