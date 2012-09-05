@@ -386,16 +386,16 @@ ssize_t read_symlink(const char *path, char *buf, size_t len)
 
 ssize_t get_self_executable_path(char *buf, size_t len)
 {
-#ifdef linux
+#if defined(linux)
   return read_symlink("/proc/self/exe", buf, len);
-#endif
-#ifdef __APPLE__
-  // Mac OS X
-  // TODO: Not tested
+#elif defined (__sun__)
+  return read_symlink("/proc/self/path/a.out", buf, len);
+#elif defined (__APPLE__)
   uint32_t bufsize = len;
   return _NSGetExecutablePath(buf, &bufsize) == -1 && len ? -1 : bufsize;
+#else
+#error Unable to find executable path
 #endif
-  return WHYF("Not implemented");
 }
 
 int log_backtrace(struct __sourceloc where)
