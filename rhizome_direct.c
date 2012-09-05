@@ -352,7 +352,6 @@ int rhizome_direct_process_post_multipart_bytes
     DEBUGF("Got to end of multi-part form data");
 
     /* Flush out any remaining data */
-    if (r->field_file) fclose(r->field_file);
     if (r->request_length) {
       DEBUGF("Flushing last %d bytes",r->request_length);
       r->request[r->request_length]=0;
