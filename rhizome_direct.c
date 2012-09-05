@@ -131,9 +131,30 @@ int rhizome_direct_form_received(rhizome_http_request *r)
   */
 
   /* XXX process completed form based on the set of fields seen */
+  switch(r->fields_seen) {
+  case RD_MIME_STATE_MANIFESTHEADERS
+    |RD_MIME_STATE_DATAHEADERS:
+    /* A bundle to import */
+    DEBUGF("Call bundle import for rhizomedata.%d.{manifest,data}",
+	   r->alarm.poll.fd);
+    /* clean up after ourselves */
+    rhizome_direct_clear_temporary_files(r);
+    /* and report back to caller.
+       201 = content created, which is probably appropriate for when we successfully
+       import a bundle (or if we already have it).
+       403 = forbidden, which might be appropriate if we refuse to accept it, e.g.,
+       the import fails due to malformed data etc.
 
-  /* Clean up after ourselves */
-  rhizome_direct_clear_temporary_files(r);
+       For now we are just returning "no content" as a place-holder while debugging.
+    */       
+    rhizome_server_simple_http_response(r, 204, "Move along. Nothing to see.");
+    break;     
+  default:
+    /* Clean up after ourselves */
+    rhizome_direct_clear_temporary_files(r);
+    
+    
+  }
 
   return rhizome_server_simple_http_response(r, 204, "Move along. Nothing to see.");
 
@@ -362,11 +383,9 @@ int rhizome_direct_process_post_multipart_bytes
     if (r->request_length) {
       DEBUGF("Flushing last %d bytes",r->request_length);
       r->request[r->request_length]=0;
-      if (rhizome_direct_process_mime_line(r,r->request,r->request_length))
-	return -1;
+      rhizome_direct_process_mime_line(r,r->request,r->request_length);
     }
     
-    /* return "no content" for now. */
     return rhizome_direct_form_received(r);
   }
   return 0;
