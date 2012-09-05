@@ -119,11 +119,6 @@ int rhizome_direct_form_received(rhizome_http_request *r)
   return rhizome_server_simple_http_response(r, 204, "Move along. Nothing to see.");
 }
 
-#define RD_MIME_STATE_INITIAL 0
-#define RD_MIME_STATE_PARTHEADERS 1
-#define RD_MIME_STATE_MANIFESTHEADERS 2
-#define RD_MIME_STATE_DATAHEADERS 3
-#define RD_MIME_STATE_BODY 99
 
 int rhizome_direct_process_mime_line(rhizome_http_request *r,char *buffer)
 {
@@ -149,7 +144,6 @@ int rhizome_direct_process_mime_line(rhizome_http_request *r,char *buffer)
      then.  In the meantime, we will have something that meets our immediate
      needs for Rhizome Direct and a variety of use cases.
   */
-  DEBUGF("mime line: %s",buffer);
 
   /* Regardless of the state of the parser, the presence of boundary lines
      is significant, so lets just check once, and remember the result.
@@ -165,22 +159,28 @@ int rhizome_direct_process_mime_line(rhizome_http_request *r,char *buffer)
   int blankLine=0;
   if (!strcmp(buffer,"\r\n")) blankLine=1;
 
+  DEBUGF("mime state: 0x%x, blankLine=%d, EOF=%d",
+	 r->source_flags,blankLine,endOfForm);
   switch(r->source_flags) {
   case RD_MIME_STATE_INITIAL:
+    DEBUGF("mime line: %s",r->request);
     if (boundaryLine) r->source_flags=RD_MIME_STATE_PARTHEADERS;
     break;
   case RD_MIME_STATE_PARTHEADERS:
   case RD_MIME_STATE_MANIFESTHEADERS:
   case RD_MIME_STATE_DATAHEADERS:
+    DEBUGF("mime line: %s",r->request);
     if (blankLine) {
       /* End of headers */
       if (r->source_flags!=RD_MIME_STATE_PARTHEADERS) {
 	/* Open manifest or data file handle, and begin writing to
 	   it. */
+	/* XXX not implemented */
+	r->source_flags=RD_MIME_STATE_BODY;
       } else {
 	/* unknown part: complain */
 	rhizome_server_simple_http_response
-	  (r, 400, "<html><h1>Unsupported form field</h1></html>\r\n");
+	  (r, 400, "<html><h1>Unsupported form field or missing content-disposition line in mime part</h1></html>\r\n");
 	return -1;
       }
     } else {
@@ -190,12 +190,30 @@ int rhizome_direct_process_mime_line(rhizome_http_request *r,char *buffer)
 		 "Content-Disposition: form-data; name=\"%[^\"]\";"
 		 " filename=\"%[^\"]\"",field,name)==2)
 	{
+	  if (r->source_flags!=RD_MIME_STATE_PARTHEADERS)
+	    {
+	      /* Multiple content-disposition lines.  This is very naughty. */
+	      rhizome_server_simple_http_response
+		(r, 400, "<html><h1>Malformed multi-part form POST: Multiple content-disposition lines in single MIME encoded part.</h1></html>\r\n");
+	      return -1;
+	    }
 	  DEBUGF("Found form part '%s' name '%s'",field,name);
 	  if (!strcasecmp(field,"manifest")) 
 	    r->source_flags=RD_MIME_STATE_MANIFESTHEADERS;
 	  if (!strcasecmp(field,"data")) 
 	    r->source_flags=RD_MIME_STATE_DATAHEADERS;
-	}
+	  if (r->source_flags!=RD_MIME_STATE_PARTHEADERS)
+	    r->fields_seen|=r->source_flags;
+	} else if (blankLine) {
+	  if (r->source_flags==RD_MIME_STATE_PARTHEADERS)
+	    {
+	      /* Multiple content-disposition lines.  This is very naughty. */
+	      rhizome_server_simple_http_response
+		(r, 400, "<html><h1>Malformed multi-part form POST: Missing content-disposition lines in MIME encoded part.</h1></html>\r\n");
+	      return -1;
+	    }
+	  r->source_flags=RD_MIME_STATE_BODY;
+      }	
     }
     break;
   case RD_MIME_STATE_BODY:

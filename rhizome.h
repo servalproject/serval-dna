@@ -346,6 +346,25 @@ typedef struct rhizome_http_request {
   /* Boundary string for POST multipart form requests */
   char boundary_string[1024];
   int boundary_string_length;
+  /* File currently being written to while decoding POST multipart form */
+  FILE *field_file;
+  /* Which fields have been seen in POST multipart form */
+  int fields_seen;
+  /* The seen fields bitmap above shares values with the actual Rhizome Direct
+     state machine.  The state numbers (and thus bitmap values for the various
+     fields) are listed here.
+     
+     To avoid confusion, we should not use single bit values for states that do
+     not correspond directly to a particular field.
+     Doesn't really matter what they are apart from not having exactly one bit set.
+     In fact, the only reason to not have exactly one bit set is so that we keep as
+     many bits available for field types as possible.
+  */
+#define RD_MIME_STATE_MANIFESTHEADERS (1<<0)
+#define RD_MIME_STATE_DATAHEADERS (1<<1)
+#define RD_MIME_STATE_INITIAL 0
+#define RD_MIME_STATE_PARTHEADERS 0xffff0000
+#define RD_MIME_STATE_BODY 0xffff0001
 
   /* The source specification data which are used in different ways by different 
    request types */
