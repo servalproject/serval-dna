@@ -379,7 +379,7 @@ get_servald_pids() {
    fi
    local mypid=$$
    # XXX The following line will not find any PIDs if there are spaces in "$servald".
-   local pids=$(ps -u$UID -o pid,args | awk -v mypid="$mypid" -v servald="$servald" '$1 != mypid && $2 == servald {print $1}')
+   local pids=$(ps -u$UID -o pid,args | $AWK -v mypid="$mypid" -v servald="$servald" '$1 != mypid && $2 == servald {print $1}')
    [ -n "$var" ] && eval "$var=($pids)"
    [ -n "$pids" ]
 }
@@ -427,7 +427,7 @@ create_identity() {
    executeOk_servald keyring add
    assert [ -e "$SERVALINSTANCE_PATH/serval.keyring" ]
    executeOk_servald keyring list
-   SID=$(replayStdout | sed -ne "1s/^\($rexp_sid\):.*\$/\1/p")
+   SID=$(replayStdout | $SED -ne "1s/^\($rexp_sid\):.*\$/\1/p")
    assert --message='main identity known' [ -n "$SID" ]
    DID="${1-$((5550000 + $instance_number))}"
    NAME="${2-Agent $instance_name Smith}"
