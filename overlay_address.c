@@ -82,6 +82,12 @@ struct subscriber *find_subscriber(const unsigned char *sid, int len, int create
 	ptr->subscribers[nibble]=ret;
 	bcopy(sid, ret->sid, SID_SIZE);
 	ret->abbreviate_len=pos;
+	// always send the full sid on first use
+	ret->send_full=1;
+	
+	// always send my full sid when we hear about someone new
+	if (my_subscriber)
+	  my_subscriber->send_full = 1;
       }
       return ptr->subscribers[nibble];
       
@@ -261,18 +267,28 @@ int overlay_address_append(struct overlay_buffer *b, struct subscriber *subscrib
   return 0;
 }
 
-static struct subscriber * find_subscr_buffer(struct overlay_buffer *b, int len, int create){
+int find_subscr_buffer(struct overlay_buffer *b, int len, int create, struct subscriber **subscriber){
   unsigned char *id = ob_get_bytes_ptr(b, len);
   if (!id)
-    return WHYNULL("Not enough space in buffer to parse address");
-  struct subscriber *ret=find_subscriber(id, len, create);
-  if (!ret)
-    return WHYFNULL("Abbreviation %s not found", alloca_tohex(id, len));
-  previous=ret;
+    return WHY("Not enough space in buffer to parse address");
+  *subscriber=find_subscriber(id, len, create);
+  
+  if (!*subscriber){
+    INFOF("Abbreviation %s not found", alloca_tohex(id, len));
+    
+    // HACK, imperfect... better to send a sas key request
+    // always send my full sid when we fail to resolve an abbreviation
+    // they may not know us either
+    if (my_subscriber)
+      my_subscriber->send_full = 1;
+    return 1;
+  }
+  previous=*subscriber;
   previous_broadcast=NULL;
-  return ret;
+  return 0;
 }
 
+// returns 0 = success, -1 = fatal parsing error, 1 = unable to identify address
 int overlay_address_parse(struct overlay_buffer *b, struct broadcast *broadcast, struct subscriber **subscriber)
 {
   int code = ob_getbyte(b,b->position);
@@ -291,8 +307,10 @@ int overlay_address_parse(struct overlay_buffer *b, struct broadcast *broadcast,
       
     case OA_CODE_SELF:
       b->position++;
-      if (!sender)
-	return WHY("Could not resolve address, sender has not been set");
+      if (!sender){
+	INFO("Could not resolve address, sender has not been set");
+	return 1;
+      }
       *subscriber=sender;
       previous=sender;
       return 0;
@@ -308,34 +326,28 @@ int overlay_address_parse(struct overlay_buffer *b, struct broadcast *broadcast,
       else if (previous_broadcast){
 	if (broadcast)
 	  bcopy(previous_broadcast->id, broadcast->id, BROADCAST_LEN);
-      }else 
-	return WHY("Unable to decode previous address");
+      }else{
+	INFO("Unable to decode previous address");
+	return 1;
+      }
       return 0;
       
     case OA_CODE_PREFIX3:
       b->position++;
-      *subscriber=find_subscr_buffer(b,3,0);
-      if (!*subscriber) return -1;
-      return 0;
+      return find_subscr_buffer(b,3,0,subscriber);
       
     case OA_CODE_PREFIX7:
       b->position++;
-      *subscriber=find_subscr_buffer(b,7,0);
-      if (!*subscriber) return -1;
-      return 0;
+      return find_subscr_buffer(b,7,0,subscriber);
       
     case OA_CODE_PREFIX11:
       b->position++;
-      *subscriber=find_subscr_buffer(b,11,0);
-      if (!*subscriber) return -1;
-      return 0;
+      return find_subscr_buffer(b,11,0,subscriber);
   }
   
   if (code<=0x0f)
     return WHYF("Unsupported abbreviation code %d", code);
-  *subscriber=find_subscr_buffer(b,SID_SIZE,1);
-  if (!*subscriber) return -1;
-  return 0;
+  return find_subscr_buffer(b,SID_SIZE,1,subscriber);
 }
 
 void overlay_address_clear(void){
