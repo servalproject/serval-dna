@@ -564,39 +564,6 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
   return 0;
 }
 
-int app_rhizome_direct_server(int argc, const char *const *argv, 
-			      struct command_line_option *o)
-{
-  /* Start Rhizome Direct server on configured port.
-     We re-use the Rhizome HTTP server code as much as possible here,
-     just replacing the server and client poll functions with our own.
-  */  
-
-  int port_low=confValueGetInt64Range("rhizome.direct.port",RHIZOME_DIRECT_PORT,
-					 0,65535);
-  int port_high=confValueGetInt64Range("rhizome.direct.port_max",RHIZOME_DIRECT_PORT_MAX,
-					 port_low,65535);
-
-  /* Rhizome direct mode doesn't need all of the normal servald preparation, because
-     rhizome direct just needs to listen on its port, talk to other rhizome direct
-     daemons, and query the rhizome database directly.  So we probably just need to
-     read configuration settings so that we can access the rhizome sqlite database.
-  */
- 
-  /* Start rhizome direct http server */
-  rhizome_http_server_start(rhizome_direct_parse_http_request,
-			    "rhizome_direct_parse_http_request",
-			    port_low,port_high);
-  
-  /* Respond to events */
-  while(1) {
-    /* Check for activitiy and respond to it */
-    fd_poll();
-  }
-
-  return 0;
-}
-
 int app_rhizome_direct_sync(int argc, const char *const *argv, 
 			    struct command_line_option *o)
 {

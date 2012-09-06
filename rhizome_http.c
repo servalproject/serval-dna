@@ -473,6 +473,7 @@ int http_header_complete(const char *buf, size_t len, size_t tail)
   return count == 2;
 }
 
+int rhizome_direct_parse_http_request(rhizome_http_request *r);
 int rhizome_server_parse_http_request(rhizome_http_request *r)
 {
   /* Switching to writing, so update the call-back */
@@ -483,7 +484,9 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
   // Parse the HTTP "GET" line.
   char *path = NULL;
   size_t pathlen = 0;
-  if (str_startswith(r->request, "GET ", &path)) {
+  if (str_startswith(r->request, "POST ", &path)) {
+    return rhizome_direct_parse_http_request(r);
+  } else if (str_startswith(r->request, "GET ", &path)) {
     char *p;
     // This loop is guaranteed to terminate before the end of the buffer, because we know that the
     // buffer contains at least "\n\n" and maybe "\r\n\r\n" at the end of the header block.

@@ -1783,8 +1783,6 @@ command_line_option command_line_options[]={
    "Extract a manifest from Rhizome and write it to the given path"},
   {app_rhizome_extract_file,{"rhizome","extract","file","<fileid>","[<filepath>]","[<key>]",NULL},CLIFLAG_STANDALONE,
    "Extract a file from Rhizome and write it to the given path"},
-  {app_rhizome_direct_server,{"rhizome","direct","server",NULL},CLIFLAG_STANDALONE,
-   "Listen for Rhizome Direct requests"},
   {app_rhizome_direct_sync,{"rhizome","direct","sync","<ip:port>",NULL},
    CLIFLAG_STANDALONE,
    "Synchronise with the specified Rhizome Direct server. Return when done."},

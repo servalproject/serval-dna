@@ -1057,8 +1057,6 @@ int overlay_broadcast_ensemble(int interface_number,
 
 int app_rhizome_direct_sync(int argc, const char *const *argv, 
 			    struct command_line_option *o);
-int app_rhizome_direct_server(int argc, const char *const *argv, 
-			      struct command_line_option *o);
 
 #ifdef HAVE_VOIPTEST
 int app_pa_phone(int argc, const char *const *argv, struct command_line_option *o);
