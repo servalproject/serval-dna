@@ -795,10 +795,10 @@ overlay_interface_register(char *name,
   
   if (found_interface>=0){
     // try to reactivate the existing interface
-    overlay_interfaces[i].address.sin_addr = addr;
-    overlay_interfaces[i].broadcast_address.sin_addr = broadcast;
-    overlay_interfaces[i].netmask = mask;
-    return overlay_interface_init_socket(i);
+    overlay_interfaces[found_interface].address.sin_addr = addr;
+    overlay_interfaces[found_interface].broadcast_address.sin_addr = broadcast;
+    overlay_interfaces[found_interface].netmask = mask;
+    return overlay_interface_init_socket(found_interface);
   }
   
   /* New interface, so register it */
