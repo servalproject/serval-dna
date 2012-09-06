@@ -54,6 +54,12 @@
 # }
 # runTests "$@"
 
+# abspath isn't available on Solaris
+type abspath 2>/dev/null
+if [ $? -ne 0 ]; then
+    abspath () { case "$1" in /*)printf "%s\n" "$1";; *)printf "%s\n" "$PWD/$1";; esac; }
+fi
+
 usage() {
    echo -n "\
 Usage: ${0##*/} [options] [--]
