@@ -67,7 +67,7 @@ if [ $SYSTYPE = "SunOS" ]; then
     SED=gsed
     GREP=ggrep
 fi
-
+echo "BASH is $BASH"
 if [ $SYSTYPE = "Linux" ]; then
     # Get nanosecond resolution
     TSFMT='+%Y-%m-%d %H:%M:%S.%N'
