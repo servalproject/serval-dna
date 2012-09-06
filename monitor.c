@@ -31,8 +31,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <ucred.h>
 #endif
 
+#ifdef linux
 #if defined(LOCAL_PEERCRED) && !defined(SO_PEERCRED)
 #define SO_PEERCRED LOCAL_PEERCRED
+#endif
 #endif
 
 #define MONITOR_LINE_LENGTH 160
