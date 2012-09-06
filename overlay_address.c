@@ -271,6 +271,8 @@ int find_subscr_buffer(struct overlay_buffer *b, int len, int create, struct sub
   unsigned char *id = ob_get_bytes_ptr(b, len);
   if (!id)
     return WHY("Not enough space in buffer to parse address");
+  if (!subscriber)
+    return WHY("Expected subscriber");
   *subscriber=find_subscriber(id, len, create);
   
   if (!*subscriber){
@@ -295,7 +297,8 @@ int overlay_address_parse(struct overlay_buffer *b, struct broadcast *broadcast,
   switch(code){
     case OA_CODE_BROADCAST:
       b->position++;
-      *subscriber=NULL;
+      if (subscriber)
+	*subscriber=NULL;
       
       if (!broadcast)
 	return WHY("No broadcast structure for receiving broadcast address");
@@ -307,6 +310,8 @@ int overlay_address_parse(struct overlay_buffer *b, struct broadcast *broadcast,
       
     case OA_CODE_SELF:
       b->position++;
+      if (!subscriber)
+	return WHY("Expected subscriber");
       if (!sender){
 	INFO("Could not resolve address, sender has not been set");
 	return 1;
@@ -317,6 +322,8 @@ int overlay_address_parse(struct overlay_buffer *b, struct broadcast *broadcast,
       
     case OA_CODE_PREVIOUS:
       b->position++;
+      if (!subscriber)
+	return WHY("Expected subscriber");
       // previous may be null, if the previous address was a broadcast. 
       // In this case we want the subscriber to be null as well and not report an error,
       if (previous)
