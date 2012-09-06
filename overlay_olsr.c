@@ -1,3 +1,20 @@
+/*
+ Copyright (C) 2012 Serval Project.
+ 
+ This program is free software; you can redistribute it and/or
+ modify it under the terms of the GNU General Public License
+ as published by the Free Software Foundation; either version 2
+ of the License, or (at your option) any later version.
+ 
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ 
+ You should have received a copy of the GNU General Public License
+ along with this program; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ */
 
 /*
  
@@ -5,8 +22,8 @@
  
  - requires olsrd to be running on the same machine with plugin X loaded with the following configuration;
  LoadPlugin "name..."{
-   PlParam  "BindPort"	"1000" 
-   PlParam  "DestPort"	"1001"
+   PlParam  "BindPort"	"4130" 
+   PlParam  "DestPort"	"4131"
    PlParam  "MagicNumber" "123"
  }
  
@@ -86,13 +103,6 @@ int olsr_init_socket(void){
     return -1;
   }
   
-  // we only need to see packets from destPort
-  addr.sin_port=htons(remote_port);
-  if (connect(fd, (struct sockaddr *)&addr, sizeof(struct sockaddr_in))){
-    WHY_perror("Connect failed");
-    // ignore error
-  }
-  
   read_watch.poll.fd = fd;
   
   watch(&read_watch);
@@ -105,8 +115,11 @@ static void parse_frame(struct overlay_buffer *buff){
   struct in_addr *addr;
   
   // parse the incoming olsr header
-  if ((PACKET_FORMAT_NUMBER & 0xFF) != ob_get(buff))
+  int magic = ob_get(buff);
+  if ((PACKET_FORMAT_NUMBER & 0xFF) != magic){
+    WHYF("Unexpected magic number %d", magic);
     return;
+  }
   
   frame.ttl = ob_get(buff);
   addr_len = ob_get(buff);
