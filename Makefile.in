@@ -59,10 +59,9 @@ SRCS=	\
 	vomp.c \
         xprintf.c
 
-# Only build these on Linux
-ifeq (0, 1)
-SRCS+=	audio_alsa.c \
-	audio_msm_g1.c
+HAVE_ALSA= @HAVE_ALSA@
+ifeq (HAVE_ALSA,1)
+SRCS+=	audio_alsa.c
 endif
 
 MONITORCLIENTSRCS=conf.c \

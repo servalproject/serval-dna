@@ -33,7 +33,7 @@ int detectAudioDevice()
 #ifdef ANDROID
   if (!audev) audev=audio_msm_g1_detect();
 #endif
-#ifdef linux
+#ifdef HAVE_SYS_ALSA_ASOUNDLIB_H
   if (!audev) audev=audio_alsa_detect();
 #endif
   if (audev) {
