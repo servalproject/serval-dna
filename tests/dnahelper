@@ -53,8 +53,8 @@ setup_dnahelper() {
    export SID_JOE_F=1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF
    export SID_ECCLES=1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDE0
    dnahelper="$TFWTMP/dnahelper"
-   cat >"$dnahelper" <<'EOF'
-#!/bin/bash
+   echo "#\!$SHELL" >"$dnahelper"
+   cat >>"$dnahelper" <<'EOF'
 echo STARTED
 while read line
 do
