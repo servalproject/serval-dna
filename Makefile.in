@@ -105,7 +105,8 @@ CFLAGS+=-fPIC
 CFLAGS+=-Wall -Wno-unused-value
 # Solaris magic
 CFLAGS+=-DSHA2_USE_INTTYPES_H -D_XOPEN_SOURCE=600 -D_XOPEN_SOURCE_EXTENDED=1 -D__EXTENSIONS__=1
-
+# OSX magic to compensate for the Solaris magic
+CFLAGS+=-D_DARWIN_C_SOURCE
 -include Makefile.dbg
 
 DEFS=	@DEFS@
