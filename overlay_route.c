@@ -183,7 +183,8 @@ overlay_node *get_node(struct subscriber *subscriber, int create){
     subscriber->node = (overlay_node *)malloc(sizeof(overlay_node));
     memset(subscriber->node,0,sizeof(overlay_node));
     subscriber->node->subscriber = subscriber;
-    
+    // if we're taking over routing calculations, make sure we invalidate any other calculations first
+    subscriber->reachable=REACHABLE_NONE;
     // This info message is used by tests; don't alter or remove it.
     INFOF("ADD OVERLAY NODE sid=%s", alloca_tohex_sid(subscriber->sid));
   }

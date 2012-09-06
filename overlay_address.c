@@ -160,11 +160,30 @@ int subscriber_is_reachable(struct subscriber *subscriber){
   
   if (subscriber->reachable==REACHABLE_DIRECT
       && !(subscriber->interface
-	 && subscriber->interface->state==INTERFACE_STATE_UP)
+      && subscriber->interface->state==INTERFACE_STATE_UP)
       )
     return REACHABLE_NONE;
   
   return subscriber->reachable;
+}
+
+// mark the subscriber as reachable via reply unicast packet
+int reachable_unicast(struct subscriber *subscriber, overlay_interface *interface, struct in_addr addr, int port){
+  if (subscriber->reachable!=REACHABLE_NONE)
+    return WHYF("Subscriber %s is already reachable", alloca_tohex_sid(subscriber->sid));
+  
+  if (subscriber->node)
+    return WHYF("Subscriber %s is already known for overlay routing", alloca_tohex_sid(subscriber->sid));
+  
+  subscriber->interface = interface;
+  subscriber->reachable = REACHABLE_DIRECT;
+  subscriber->address.sin_family = AF_INET;
+  subscriber->address.sin_addr = addr;
+  subscriber->address.sin_port = port;
+  
+  // may be used in tests
+  DEBUGF("ADD DIRECT ROUTE TO %s via %s", alloca_tohex_sid(subscriber->sid), inet_ntoa(addr));
+  return 0;
 }
 
 // generate a new random broadcast address

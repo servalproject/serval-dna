@@ -136,13 +136,10 @@ static void parse_frame(struct overlay_buffer *buff){
   
   if (frame.source->reachable==REACHABLE_NONE){
     // locate the interface we should send outgoing unicast packets to
-    frame.source->interface = overlay_interface_find(*addr);
-    if (frame.source->interface){
-      frame.source->reachable=REACHABLE_DIRECT;
-      frame.source->address.sin_family=AF_INET;
-      frame.source->address.sin_addr=*addr;
+    overlay_interface *interface = overlay_interface_find(*addr);
+    if (interface){
       // assume the port number of the other servald matches our local port number configuration
-      frame.source->address.sin_port=frame.source->interface->port;
+      reachable_unicast(frame.source, interface, *addr, interface->port);
     }
   }
   
@@ -214,6 +211,7 @@ static int send_packet(unsigned char *header, int header_len, unsigned char *pay
     .msg_iovlen=2,
   };
   
+  DEBUGF("Sending broadcast via olsr");
   if (sendmsg(read_watch.poll.fd, &msg, 0)<0){
     return WHY_perror("Sending packet");
   }

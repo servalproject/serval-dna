@@ -269,6 +269,19 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       goto next;
     }
     
+    // HACK, change to packet transmitter when packet format includes that.
+    if (f.type!=OF_TYPE_SELFANNOUNCE && 
+	f.source->reachable == REACHABLE_NONE && 
+	!f.source->node &&
+	!interface->fileP &&
+	recvaddr->sa_family==AF_INET){
+      struct sockaddr_in *addr=(struct sockaddr_in *)recvaddr;
+      
+      // mark this subscriber as reachable directly via unicast.
+      reachable_unicast(f.source, interface, addr->sin_addr, addr->sin_port);
+    }
+    
+    
     f.payload = ob_slice(b, b->position, next_payload - b->position);
     if (!f.payload){
       WHY("Payload length is longer than remaining packet size");
