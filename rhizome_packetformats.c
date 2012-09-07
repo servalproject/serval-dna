@@ -87,6 +87,10 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
      We need to change manifest table to include payload length to make our life
      easy here (also would let us order advertisements by size of payload).
      For now, we will just advertised only occassionally.
+
+     XXX Actually, we will move all processing of Rhizome into a separate process
+     so that the CPU delays caused by Rhizome verifying signatures isn't a problem.
+     We will still want to limit network usage during calls, however.
  */
   time_ms_t now = gettime_ms();
   if (now<rhizome_voice_timeout) voice_mode=1;
