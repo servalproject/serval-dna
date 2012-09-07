@@ -302,14 +302,14 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
 {
   IN();
 
-  int len=f->payload->sizeLimit;
+  int len=f->payload->sizeLimit - f->payload->position;
   unsigned char *b = NULL;
   unsigned char plain_block[len+16];
 
   switch(f->modifiers&OF_CRYPTO_BITS)  {
   case 0: 
     /* get payload */
-    b=&f->payload->bytes[0];
+    b=&f->payload->bytes[f->payload->position];
     mdp->packetTypeAndFlags|=MDP_NOCRYPT|MDP_NOSIGN;
     break;
   case OF_CRYPTO_CIPHERED:
@@ -325,8 +325,8 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
 	RETURN(WHY("SAS key not currently on record, cannot verify"));
 
       /* get payload and following compacted signature */
-      b=&f->payload->bytes[0];
-      len=f->payload->sizeLimit-crypto_sign_edwards25519sha512batch_BYTES;
+      b=&f->payload->bytes[f->payload->position];
+      len=f->payload->sizeLimit - f->payload->position - crypto_sign_edwards25519sha512batch_BYTES;
 
       /* get hash */
       unsigned char hash[crypto_hash_sha512_BYTES];
@@ -358,14 +358,14 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
       if (0) DEBUGF("crypted MDP frame for %s", alloca_tohex_sid(mdp->out.dst.sid));
 
       unsigned char *k=keyring_get_nm_bytes(&mdp->out.dst,&mdp->out.src);
-      unsigned char *nonce=&f->payload->bytes[0];
+      unsigned char *nonce=&f->payload->bytes[f->payload->position];
       int nb=crypto_box_curve25519xsalsa20poly1305_NONCEBYTES;
       int zb=crypto_box_curve25519xsalsa20poly1305_ZEROBYTES;
       if (!k) 
 	RETURN(WHY("I don't have the private key required to decrypt that"));
       bzero(&plain_block[0],crypto_box_curve25519xsalsa20poly1305_ZEROBYTES-16);
-      int cipher_len=f->payload->sizeLimit-nb;
-      bcopy(&f->payload->bytes[nb],&plain_block[16],cipher_len);
+      int cipher_len=f->payload->sizeLimit - f->payload->position - nb;
+      bcopy(&f->payload->bytes[nb + f->payload->position],&plain_block[16],cipher_len);
       if (0) {
 	dump("nm bytes",k,crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES);
 	dump("nonce",nonce,crypto_box_curve25519xsalsa20poly1305_NONCEBYTES);
@@ -411,9 +411,6 @@ int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now)
      Take payload from mdp frame itself.
   */
   overlay_mdp_frame mdp;
-  int len=f->payload->sizeLimit;
-
-  if (len<10) RETURN(WHY("Invalid MDP frame"));
   
   /* Get source and destination addresses */
   if (f->destination)
