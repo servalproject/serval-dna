@@ -86,7 +86,7 @@ int add_advertisement(struct subscriber *subscriber, void *context){
   return 0;
 }
 
-int overlay_route_add_advertisements(struct overlay_buffer *e)
+int overlay_route_add_advertisements(overlay_interface *interface, struct overlay_buffer *e)
 {
   /* Construct a route advertisement frame and append it to e.
      
@@ -133,7 +133,7 @@ int overlay_route_add_advertisements(struct overlay_buffer *e)
   
   ob_append_byte(e,OA_CODE_PREVIOUS);
   
-  overlay_address_append(e, my_subscriber);
+  overlay_address_append_self(interface,e);
   overlay_address_set_sender(my_subscriber);
   
   // TODO high priority advertisements first....

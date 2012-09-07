@@ -125,22 +125,31 @@ struct subscriber *find_subscriber(const unsigned char *sid, int len, int create
  if start is a valid pointer, the first entry returned will be after this subscriber
  if the callback returns non-zero, the process will stop.
  */
-static int walk_tree(struct tree_node *node, int pos, struct subscriber *start, 
+static int walk_tree(struct tree_node *node, int pos, 
+	      unsigned char *start, int start_len, 
+	      unsigned char *end, int end_len,
 	      int(*callback)(struct subscriber *, void *), void *context){
-  int i=0;
+  int i=0, e=16;
   
-  if (start){
-    i=get_nibble(start->sid,pos);
+  if (start && pos < start_len*2){
+    i=get_nibble(start,pos);
   }
   
-  for (;i<16;i++){
+  if (end && pos < end_len*2){
+    e=get_nibble(end,pos) +1;
+  }
+  
+  for (;i<e;i++){
     if (node->is_tree & (1<<i)){
-      if (walk_tree(node->tree_nodes[i], pos+1, start, callback, context))
+      if (walk_tree(node->tree_nodes[i], pos+1, start, start_len, end, end_len, callback, context))
 	return 1;
-    }else if(node->subscribers[i] && node->subscribers[i] != start){
-      if (callback(node->subscribers[i], context))
-	return 1;
+    }else if(node->subscribers[i]){
+      if ((!start) || start_len<SID_SIZE || memcmp(node->subscribers[i]->sid, start, start_len)!=0)
+	if (callback(node->subscribers[i], context))
+	  return 1;
     }
+    // stop comparing the start sid after looking at the first branch of the tree
+    start=NULL;
   }
   return 0;
 }
@@ -149,7 +158,7 @@ static int walk_tree(struct tree_node *node, int pos, struct subscriber *start,
  walk the tree, starting at start, calling the supplied callback function
  */
 void enum_subscribers(struct subscriber *start, int(*callback)(struct subscriber *, void *), void *context){
-  walk_tree(&root, 0, start, callback, context);
+  walk_tree(&root, 0, start->sid, SID_SIZE, NULL, 0, callback, context);
 }
 
 // quick test to make sure the specified route is valid.
@@ -267,6 +276,32 @@ int overlay_address_append(struct overlay_buffer *b, struct subscriber *subscrib
   return 0;
 }
 
+int overlay_address_append_self(overlay_interface *interface, struct overlay_buffer *b){
+  static int ticks_per_full_address = -1;
+  if (ticks_per_full_address == -1) {
+    ticks_per_full_address = confValueGetInt64Range("mdp.selfannounce.ticks_per_full_address", 4LL, 1LL, 1000000LL);
+    INFOF("ticks_per_full_address = %d", ticks_per_full_address);
+  }
+  
+  if (!my_subscriber)
+    return WHY("I don't know who I am yet");
+  
+  if (++interface->ticks_since_sent_full_address < ticks_per_full_address){
+    interface->ticks_since_sent_full_address = 0;
+    my_subscriber->send_full=1;
+  }
+  
+  if (overlay_address_append(b, my_subscriber))
+    return WHY("Could not append my sid");
+  
+  return 0;
+}
+
+static int mark_full(struct subscriber *subscriber, void *context){
+  subscriber->send_full=1;
+  return 0;
+}
+
 int find_subscr_buffer(struct overlay_buffer *b, int len, int create, struct subscriber **subscriber){
   unsigned char *id = ob_get_bytes_ptr(b, len);
   if (!id)
@@ -277,6 +312,9 @@ int find_subscr_buffer(struct overlay_buffer *b, int len, int create, struct sub
   
   if (!*subscriber){
     INFOF("Abbreviation %s not found", alloca_tohex(id, len));
+    
+    // If the abbreviation is too short, mark any subscribers that match to send full SID's
+    walk_tree(&root, 0, id, len, id, len, mark_full, NULL);
     
     // HACK, imperfect... better to send a sas key request
     // always send my full sid when we fail to resolve an abbreviation

@@ -580,7 +580,7 @@ int overlay_rx_messages();
 #define DEBUG_packet_visualise(M,P,N) logServalPacket(LOG_LEVEL_DEBUG, __HERE__, (M), (P), (N))
 
 int overlay_add_selfannouncement();
-int overlay_frame_append_payload(struct overlay_frame *p, struct subscriber *next_hop, struct overlay_buffer *b);
+int overlay_frame_append_payload(overlay_interface *interface, struct overlay_frame *p, struct subscriber *next_hop, struct overlay_buffer *b);
 int overlay_interface_args(const char *arg);
 int overlay_sendto(struct sockaddr_in *recipientaddr,unsigned char *bytes,int len);
 int overlay_rhizome_add_advertisements(int interface_number,struct overlay_buffer *e);
@@ -636,7 +636,7 @@ int overlay_route_record_link( time_ms_t now,unsigned char *to,
 			      unsigned char *via,int sender_interface,
 			      unsigned int s1,unsigned int s2,int score,int gateways_en_route);
 int overlay_route_dump();
-int overlay_route_add_advertisements(struct overlay_buffer *e);
+int overlay_route_add_advertisements(overlay_interface *interface, struct overlay_buffer *e);
 int ovleray_route_please_advertise(overlay_node *n);
 
 int overlay_route_saw_advertisements(int i, struct overlay_frame *f, time_ms_t now);

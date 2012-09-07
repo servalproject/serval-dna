@@ -1343,6 +1343,10 @@ unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
   sid_sas_mappings[i].validP=0;
   sid_sas_mappings[i].last_request_time_in_ms = now;
 
+  // always send our sid in full, it's likely this is a new peer
+  if (my_subscriber)
+    my_subscriber->send_full = 1;
+  
   /* request mapping (send request auth-crypted). */
   overlay_mdp_frame mdp;
   mdp.packetTypeAndFlags=MDP_TX;

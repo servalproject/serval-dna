@@ -345,15 +345,6 @@ int overlay_add_selfannouncement(int interface,struct overlay_buffer *b)
   if (ob_append_byte(b, OF_TYPE_SELFANNOUNCE))
     return WHY("Could not add self-announcement header");
 
-  static int ticks_per_full_address = -1;
-  if (ticks_per_full_address == -1) {
-    ticks_per_full_address = confValueGetInt64Range("mdp.selfannounce.ticks_per_full_address", 4LL, 1LL, 1000000LL);
-    INFOF("ticks_per_full_address = %d", ticks_per_full_address);
-  }
-  int send_prefix = ++overlay_interfaces[interface].ticks_since_sent_full_address < ticks_per_full_address;
-  if (!send_prefix)
-    overlay_interfaces[interface].ticks_since_sent_full_address = 0;
-
   /* A TTL for this frame.
      XXX - BATMAN uses various TTLs, but I think that it may just be better to have all TTL=1,
      and have the onward nodes selectively choose which nodes to on-announce.  If we prioritise
@@ -365,7 +356,7 @@ int overlay_add_selfannouncement(int interface,struct overlay_buffer *b)
   
   /* Add space for Remaining Frame Size field.  This will always be a single byte
      for self-announcments as they are always <256 bytes. */
-  if (ob_append_rfs(b,1+8+1+(send_prefix?(1+7):SID_SIZE)+4+4+1))
+  if (ob_append_rfs(b,1+8+1+SID_SIZE+4+4+1))
     return WHY("Could not add RFS for self-announcement frame");
 
   /* Add next-hop address.  Always link-local broadcast for self-announcements */
@@ -378,20 +369,9 @@ int overlay_add_selfannouncement(int interface,struct overlay_buffer *b)
   if (ob_append_byte(b, OA_CODE_PREVIOUS))
     return WHY("Could not add self-announcement header");
 
-  /* Add our SID to the announcement as sender
-     We can likely get away with abbreviating our own address much of the time, since these
-     frames will be sent on a regular basis.  However, we can only abbreviate using a prefix,
-     not any of the fancier methods.  Indeed, if we tried to use the standard abbreviation
-     functions they would notice that we are attaching an address which is ourself, and send
-     a uselessly short address. So instead we will use a simple scheme where we will send our
-     address in full an arbitrary 1 in 4 times.
-  */
-  
-  if (!send_prefix)
-    my_subscriber->send_full=1;
-  
-  if (overlay_address_append(b, my_subscriber))
-    return WHY("Could not append SID to self-announcement");
+  /* Add our SID to the announcement as sender */
+  if (overlay_address_append_self(&overlay_interfaces[interface], b))
+    return -1;
   
   overlay_address_set_sender(my_subscriber);
   

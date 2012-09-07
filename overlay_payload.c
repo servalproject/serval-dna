@@ -53,7 +53,7 @@ static int op_append_type(struct overlay_buffer *headers, struct overlay_frame *
 }
 
 
-int overlay_frame_append_payload(struct overlay_frame *p, struct subscriber *next_hop, struct overlay_buffer *b)
+int overlay_frame_append_payload(overlay_interface *interface, struct overlay_frame *p, struct subscriber *next_hop, struct overlay_buffer *b)
 {
   /* Convert a payload (frame) structure into a series of bytes.
      Assumes that any encryption etc has already been done.
@@ -106,7 +106,12 @@ int overlay_frame_append_payload(struct overlay_frame *p, struct subscriber *nex
     overlay_address_append(headers,p->destination);
   else
     ob_append_byte(headers, OA_CODE_PREVIOUS);
-  overlay_address_append(headers,p->source);
+  
+  if (p->source==my_subscriber){
+    overlay_address_append_self(interface, headers);
+  }else{
+    overlay_address_append(headers,p->source);
+  }
   
   int addrs_len=headers->position-addrs_start;
   int actual_len=addrs_len+p->payload->position;

@@ -117,7 +117,7 @@ int overlay_rhizome_add_advertisements(int interface_number, struct overlay_buff
   overlay_broadcast_generate_address(&broadcast_id);
   overlay_broadcast_append(e, &broadcast_id);
   ob_append_byte(e, OA_CODE_PREVIOUS);
-  overlay_address_append(e, my_subscriber);
+  overlay_address_append_self(&overlay_interfaces[interface_number], e);
 
   /* Randomly choose whether to advertise manifests or BARs first. */
   int skipmanifests=random()&1;

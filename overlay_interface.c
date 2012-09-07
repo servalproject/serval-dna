@@ -400,6 +400,10 @@ overlay_interface_init_socket(int interface_index)
   interface->state=INTERFACE_STATE_UP;
   
   INFOF("Interface %s addr %s, is up",interface->name, inet_ntoa(interface->broadcast_address.sin_addr));
+  
+  // mark our sid to be sent in full
+  if (my_subscriber)
+    my_subscriber->send_full = 1;
   return 0;
 }
 
@@ -1059,7 +1063,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	     frame->sendBroadcast?alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN):alloca_tohex_sid(next_hop->sid));
     }
     
-    if (overlay_frame_append_payload(frame, next_hop, packet->buffer))
+    if (overlay_frame_append_payload(packet->interface, frame, next_hop, packet->buffer))
       // payload was not queued
       goto skip;
     
@@ -1175,7 +1179,7 @@ overlay_tick_interface(int i, time_ms_t now) {
     return WHY("tick failed");
   
   /* Add advertisements for ROUTES */
-  overlay_route_add_advertisements(packet.buffer);
+  overlay_route_add_advertisements(packet.interface, packet.buffer);
   
   /* Stuff more payloads from queues and send it */
   overlay_fill_send_packet(&packet, now);

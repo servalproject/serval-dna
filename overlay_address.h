@@ -105,6 +105,7 @@ int overlay_broadcast_generate_address(struct broadcast *addr);
 
 int overlay_broadcast_append(struct overlay_buffer *b, struct broadcast *broadcast);
 int overlay_address_append(struct overlay_buffer *b, struct subscriber *subscriber);
+int overlay_address_append_self(overlay_interface *interface, struct overlay_buffer *b);
 int overlay_address_parse(struct overlay_buffer *b, struct broadcast *broadcast, struct subscriber **subscriber);
 void overlay_address_clear(void);
 void overlay_address_set_sender(struct subscriber *subscriber);
