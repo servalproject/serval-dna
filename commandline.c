@@ -454,9 +454,11 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
   time_ms_t timeout = gettime_ms() + idelay;
   time_ms_t last_tx = 0;
   time_ms_t now;
+  int interval=125;
+  
   while (timeout > (now = gettime_ms()))
     {
-      if ((last_tx+125)<now)
+      if ((last_tx+interval)<now)
 	{ 
 	  mdp.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT;
 	  
@@ -474,6 +476,7 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 
 	  overlay_mdp_send(&mdp,0,0);
 	  last_tx=now;
+	  interval+=interval;
 	}
       time_ms_t short_timeout=125;
       while(short_timeout>0) {
