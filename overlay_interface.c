@@ -711,6 +711,7 @@ overlay_broadcast_ensemble(int interface_number,
     }
   else
     {
+      DEBUGF("Sending overlay frame on %s to %s",interface->name,inet_ntoa(recipientaddr->sin_addr));
       if(sendto(interface->alarm.poll.fd, 
 		bytes, len, 0, (struct sockaddr *)recipientaddr, sizeof(struct sockaddr_in)) != len){
 	WHY_perror("sendto(c)");

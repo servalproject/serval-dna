@@ -198,6 +198,9 @@ int reachable_unicast(struct subscriber *subscriber, overlay_interface *interfac
   
   // may be used in tests
   DEBUGF("ADD DIRECT ROUTE TO %s via %s", alloca_tohex_sid(subscriber->sid), inet_ntoa(addr));
+  
+  /* Pre-emptively check if we have their sas in memory, or send a request */
+  keyring_find_sas_public(keyring, subscriber->sid);
   return 0;
 }
 

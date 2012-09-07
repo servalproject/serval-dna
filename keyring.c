@@ -1318,7 +1318,7 @@ unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
 	RETURN(sid_sas_mappings[i].sas_public);
       }
       /* Don't flood the network with mapping requests */
-      if (sid_sas_mappings[i].last_request_time_in_ms != -1 && now < sid_sas_mappings[i].last_request_time_in_ms + 1000) {
+      if (sid_sas_mappings[i].last_request_time_in_ms != -1 && now < sid_sas_mappings[i].last_request_time_in_ms + 100) {
 	INFO("Too soon to ask for SAS mapping again");
 	RETURN(NULL);
       }
@@ -1343,25 +1343,24 @@ unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
   sid_sas_mappings[i].validP=0;
   sid_sas_mappings[i].last_request_time_in_ms = now;
 
+  if (!my_subscriber)
+    RETURN(WHYNULL("couldn't request SAS (I don't know who I am)"));    
+  
   // always send our sid in full, it's likely this is a new peer
-  if (my_subscriber)
-    my_subscriber->send_full = 1;
+  my_subscriber->send_full = 1;
   
   /* request mapping (send request auth-crypted). */
   overlay_mdp_frame mdp;
+  memset(&mdp,0,sizeof(overlay_mdp_frame));
+  
   mdp.packetTypeAndFlags=MDP_TX;
-  bcopy(&sid[0],&mdp.out.dst.sid[0],SID_SIZE);
+  bcopy(sid,mdp.out.dst.sid,SID_SIZE);
   mdp.out.dst.port=MDP_PORT_KEYMAPREQUEST;
   mdp.out.src.port=MDP_PORT_KEYMAPREQUEST;
-  if (k->contexts[0]->identity_count&&
-      k->contexts[0]->identities[0]->keypair_count&&
-      k->contexts[0]->identities[0]->keypairs[0]->type
-      ==KEYTYPE_CRYPTOBOX)
-    bcopy(keyring->contexts[0]->identities[0]->keypairs[0]->public_key,
-	  mdp.out.src.sid,SID_SIZE);
-  else { RETURN(WHYNULL("couldn't request SAS (I don't know who I am)")); }
+  bcopy(my_subscriber->sid,mdp.out.src.sid,SID_SIZE);
   mdp.out.payload_length=1;
   mdp.out.payload[0]=KEYTYPE_CRYPTOSIGN;
+  
   if (overlay_mdp_dispatch(&mdp, 0 /* system generated */, NULL, 0))
     RETURN(WHYNULL("Failed to send SAS resolution request"));
   if (debug & DEBUG_KEYRING)
