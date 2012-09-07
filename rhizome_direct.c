@@ -569,13 +569,114 @@ int app_rhizome_direct_sync(int argc, const char *const *argv,
 {
   /* Attempt to connect with a remote Rhizome Direct instance,
      and negotiate which BARs to synchronise. */
-  char *modeName = (argc >= 3 ? argv[2] : "sync");
+  const char *modeName = (argc >= 3 ? argv[2] : "sync");
   int mode=3; /* two-way sync */
   if (!strcasecmp(modeName,"push")) mode=1; /* push only */
   if (!strcasecmp(modeName,"pull")) mode=2; /* pull only */
 
   DEBUGF("sync direction = %d",mode);
+
+  unsigned char bid_low[RHIZOME_BAR_BYTES];
+  unsigned char bid_high[RHIZOME_BAR_BYTES];
+  unsigned char bars_out[RHIZOME_BAR_BYTES*128];
+
+  /* Start synchronising from the beginning of the BID address space */
+  memset(bid_low,0x00,RHIZOME_BAR_BYTES);
+  int bars_stuffed=rhizome_direct_get_bars(bid_low,bid_high,bars_out,
+					   sizeof(bars_out)/RHIZOME_BAR_BYTES);
+  DEBUGF("Receied %d BARs",bars_stuffed);
+  dump("BARs",bars_out,RHIZOME_BAR_BYTES*bars_stuffed);
   return -1;
 }
+ 
+/* Read upto the <bars_requested> next BARs from the Rhizome database,
+   beginning from the first BAR that corresponds to a manifest with 
+   BID>=<bid_low>.
+   Sets <bid_high> to the highest BID for which a BAR was returned.
+   Return value is the number of BARs written into <bars_out>.
+
+   XXX Once the rhizome database gets big, we will need to make sure
+   that we have suitable indexes.  It is tempting to just pack BARs
+   by row_id, but the far end needs them in an orderly manner so that
+   it is possible to make provably complete comparison of the contents
+   of the respective rhizome databases.
+*/
+int rhizome_direct_get_bars(const unsigned char *bid_low,
+			    unsigned char *bid_high,
+			    unsigned char *bars_out,
+			    int bars_requested)
+{
+    sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+
+  /* Get number of bundles available if required */
+    char query[1024];
+    snprintf(query,1024,
+	     "SELECT COUNT(BAR) FROM MANIFESTS"
+	     " WHERE ID>='%s' ORDER BY BAR LIMIT %d;",
+	     alloca_tohex(bid_low,RHIZOME_MANIFEST_ID_BYTES),bars_requested);
+
+  long long tmp = 0;
+  if (sqlite_exec_int64_retry(&retry, &tmp, query) != 1)
+    { return(WHY("Could not count BARs for advertisement")); }
+  int bundles_available = (int) tmp;
+  if(1)
+    DEBUGF("%d matching bundles in database.",bundles_available);
+
+  snprintf(query,1024,
+	   "SELECT BAR,ROWID FROM MANIFESTS"
+	   " WHERE ID>='%s' ORDER BY BAR LIMIT %d;",
+	   alloca_tohex(bid_low,RHIZOME_MANIFEST_ID_BYTES),bars_requested);
+
+  sqlite3_stmt *statement=sqlite_prepare(query);
+  sqlite3_blob *blob=NULL;
+
+  int bars_written=0;
+
+  while(bars_written<bars_requested
+	&&  sqlite_step_retry(&retry, statement) == SQLITE_ROW)
+    {
+      int column_type=sqlite3_column_type(statement, 0);
+      switch(column_type) {
+      case SQLITE_BLOB:
+	if (blob)
+	  sqlite3_blob_close(blob);
+	blob = NULL;
+	int ret;
+	int64_t rowid = sqlite3_column_int64(statement, 1);
+	do ret = sqlite3_blob_open(rhizome_db, "main", "manifests", "bar",
+				   rowid, 0 /* read only */, &blob);
+	while (sqlite_code_busy(ret) && sqlite_retry(&retry, "sqlite3_blob_open"));
+	if (!sqlite_code_ok(ret)) {
+	  WHYF("sqlite3_blob_open() failed, %s", sqlite3_errmsg(rhizome_db));
+	  continue;
+	}
+	sqlite_retry_done(&retry, "sqlite3_blob_open");
+	
+	int blob_bytes=sqlite3_blob_bytes(blob);
+	if (blob_bytes!=RHIZOME_BAR_BYTES) {
+	  if (debug&DEBUG_RHIZOME)
+	    DEBUG("Found a BAR that is the wrong size - ignoring");
+	  sqlite3_blob_close(blob);
+	  blob=NULL;
+	  continue;
+	}	
+	sqlite3_blob_read(blob,&bars_out[bars_written*RHIZOME_BAR_BYTES],
+			  RHIZOME_BAR_BYTES,0);
+	sqlite3_blob_close(blob);
+	blob=NULL;
+
+	bars_written++;
+	break;
+      default:
+	/* non-BLOB field.  This is an error, but we will persevere with subsequent
+	   rows, becuase they might be fine. */
+	break;
+      }
+    }
+  if (statement)
+    sqlite3_finalize(statement);
+  statement = NULL;
   
+  return bars_written;
+}
   
