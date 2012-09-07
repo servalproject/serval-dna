@@ -173,6 +173,7 @@ static void olsr_read(struct sched_ent *alarm){
     }
     
     struct overlay_buffer *b = ob_static(buff, msg_len);
+    ob_limitsize(b, msg_len);
     parse_frame(b);
     
     ob_free(b);

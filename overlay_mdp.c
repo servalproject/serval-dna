@@ -413,6 +413,8 @@ int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now)
   overlay_mdp_frame mdp;
   int len=f->payload->sizeLimit;
 
+  if (len<10) RETURN(WHY("Invalid MDP frame"));
+  
   /* Get source and destination addresses */
   if (f->destination)
     bcopy(f->destination->sid,mdp.in.dst.sid,SID_SIZE);
@@ -422,8 +424,6 @@ int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now)
     bcopy(f->broadcast_id.id, mdp.in.dst.sid + SID_SIZE - BROADCAST_LEN, BROADCAST_LEN);
   }
   bcopy(f->source->sid,mdp.in.src.sid,SID_SIZE);
-
-  if (len<10) RETURN(WHY("Invalid MDP frame"));
 
   /* copy crypto flags from frame so that we know if we need to decrypt or verify it */
   if (overlay_mdp_decrypt(f,&mdp))
