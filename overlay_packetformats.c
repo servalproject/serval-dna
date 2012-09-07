@@ -278,7 +278,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       struct sockaddr_in *addr=(struct sockaddr_in *)recvaddr;
       
       // mark this subscriber as reachable directly via unicast.
-      reachable_unicast(f.source, interface, addr->sin_addr, addr->sin_port);
+      reachable_unicast(f.source, interface, addr->sin_addr, ntohs(addr->sin_port));
     }
     
     

@@ -194,10 +194,10 @@ int reachable_unicast(struct subscriber *subscriber, overlay_interface *interfac
   subscriber->reachable = REACHABLE_DIRECT;
   subscriber->address.sin_family = AF_INET;
   subscriber->address.sin_addr = addr;
-  subscriber->address.sin_port = port;
+  subscriber->address.sin_port = htons(port);
   
   // may be used in tests
-  DEBUGF("ADD DIRECT ROUTE TO %s via %s", alloca_tohex_sid(subscriber->sid), inet_ntoa(addr));
+  DEBUGF("ADD DIRECT ROUTE TO %s via %s:%d", alloca_tohex_sid(subscriber->sid), inet_ntoa(addr), port);
   
   /* Pre-emptively check if we have their sas in memory, or send a request */
   keyring_find_sas_public(keyring, subscriber->sid);
