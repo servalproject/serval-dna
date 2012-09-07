@@ -53,7 +53,7 @@ setup_dnahelper() {
    export SID_JOE_F=1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF
    export SID_ECCLES=1234567890ABCDEF1234567890ABCDEF1234567890ABCDEF1234567890ABCDE0
    dnahelper="$TFWTMP/dnahelper"
-   echo "#\!$BASH" >"$dnahelper"
+   echo "#!$BASH" >"$dnahelper"
    cat >>"$dnahelper" <<'EOF'
 echo STARTED
 while read line
@@ -231,7 +231,7 @@ setup_ExecArg1() {
    setup_servald
    assert_no_servald_processes
    dnahelper="$TFWTMP/dnahelper"
-   echo "#\!$BASH" >"$dnahelper"
+   echo "#!$BASH" >"$dnahelper"
    cat >>"$dnahelper" <<'EOF'
 echo STARTED
 while read line
