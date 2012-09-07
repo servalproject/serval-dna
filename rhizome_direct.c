@@ -569,6 +569,12 @@ int app_rhizome_direct_sync(int argc, const char *const *argv,
 {
   /* Attempt to connect with a remote Rhizome Direct instance,
      and negotiate which BARs to synchronise. */
+  char *modeName = (argc >= 3 ? argv[2] : "sync");
+  int mode=3; /* two-way sync */
+  if (!strcasecmp(modeName,"push")) mode=1; /* push only */
+  if (!strcasecmp(modeName,"pull")) mode=2; /* pull only */
+
+  DEBUGF("sync direction = %d",mode);
   return -1;
 }
   
