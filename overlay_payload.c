@@ -195,7 +195,7 @@ int overlay_payload_enqueue(int q, struct overlay_frame *p)
       
   if (debug&DEBUG_PACKETTX)
     DEBUGF("Enqueuing packet for %s* (q[%d]length = %d)",
-	 alloca_tohex(p->destination->sid, 7),
+	   p->destination?alloca_tohex(p->destination->sid, 7): alloca_tohex(p->broadcast_id.id,BROADCAST_LEN),
 	 q,overlay_tx[q].length);
   
   if (q<0||q>=OQ_MAX) 
