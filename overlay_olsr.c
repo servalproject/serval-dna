@@ -114,6 +114,7 @@ static void parse_frame(struct overlay_buffer *buff){
   u_int8_t addr_len;
   struct in_addr *addr;
   
+  memset(&frame,0,sizeof(struct overlay_frame));
   // parse the incoming olsr header
   int magic = ob_get(buff);
   if ((PACKET_FORMAT_NUMBER & 0xFF) != magic){
