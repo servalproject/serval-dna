@@ -389,6 +389,14 @@ int rhizome_http_server_start(int (*http_parse_func)(rhizome_http_request *),
 			      int port_low,int port_high);
 
 typedef struct rhizome_direct_bundle_cursor {
+  /* Where the current fill started */
+  long long start_size_high;
+  unsigned char start_bid_low[RHIZOME_MANIFEST_ID_BYTES];
+
+  /* Limit of where this cursor may traverse */
+  long long limit_size_high;
+  unsigned char limit_bid_high[RHIZOME_MANIFEST_ID_BYTES];
+
   long long size_low;
   long long size_high;
   unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTES];
@@ -399,12 +407,20 @@ typedef struct rhizome_direct_bundle_cursor {
 } rhizome_direct_bundle_cursor;
 
 rhizome_direct_bundle_cursor *rhizome_direct_bundle_iterator(int buffer_size);
+void rhizome_direct_bundle_iterator_unlimit(rhizome_direct_bundle_cursor *r);
+int rhizome_direct_bundle_iterator_pickle_range(rhizome_direct_bundle_cursor *r,
+						unsigned char *pickled,
+						int pickle_buffer_size);
+int rhizome_direct_bundle_iterator_unpickle_range(rhizome_direct_bundle_cursor *r,
+						  const unsigned char *pickled,
+						  int pickle_buffer_size);
 int rhizome_direct_bundle_iterator_fill(rhizome_direct_bundle_cursor *c,
 					int max_bars);
 void rhizome_direct_bundle_iterator_free(rhizome_direct_bundle_cursor **c);
 int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTES],
 			    unsigned char bid_high[RHIZOME_MANIFEST_ID_BYTES],
 			    long long size_low,long long size_high,
+			    const unsigned char bid_max[RHIZOME_MANIFEST_ID_BYTES],
 			    unsigned char *bars_out,
 			    int bars_requested);
 int rhizome_direct_process_post_multipart_bytes
