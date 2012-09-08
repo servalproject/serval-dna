@@ -582,6 +582,7 @@ int app_rhizome_direct_sync(int argc, const char *const *argv,
 
   /* Start synchronising from the beginning of the BID address space */
   memset(bid_low,0x00,RHIZOME_BAR_BYTES);
+
   int bars_stuffed=rhizome_direct_get_bars(bid_low,bid_high,bars_out,
 					   sizeof(bars_out)/RHIZOME_BAR_BYTES);
   DEBUGF("Receied %d BARs",bars_stuffed);
@@ -601,8 +602,8 @@ int app_rhizome_direct_sync(int argc, const char *const *argv,
    it is possible to make provably complete comparison of the contents
    of the respective rhizome databases.
 */
-int rhizome_direct_get_bars(const unsigned char *bid_low,
-			    unsigned char *bid_high,
+int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTES],
+			    unsigned char bid_high[RHIZOME_MANIFEST_ID_BYTES],
 			    unsigned char *bars_out,
 			    int bars_requested)
 {
@@ -623,12 +624,12 @@ int rhizome_direct_get_bars(const unsigned char *bid_low,
     DEBUGF("%d matching bundles in database.",bundles_available);
 
   snprintf(query,1024,
-	   "SELECT BAR,ROWID FROM MANIFESTS"
+	   "SELECT BAR,ROWID,ID FROM MANIFESTS"
 	   " WHERE ID>='%s' ORDER BY BAR LIMIT %d;",
 	   alloca_tohex(bid_low,RHIZOME_MANIFEST_ID_BYTES),bars_requested);
 
   sqlite3_stmt *statement=sqlite_prepare(query);
-  sqlite3_blob *blob=NULL;
+  sqlite3_blob *blob=NULL;  
 
   int bars_written=0;
 
@@ -665,6 +666,11 @@ int rhizome_direct_get_bars(const unsigned char *bid_low,
 	sqlite3_blob_close(blob);
 	blob=NULL;
 
+	/* Remember the BID so that we cant write it into bid_high so that the
+	   caller knows how far we got. */
+	bcopy((const char *)sqlite3_column_text(statement, 0),
+	      bid_high,RHIZOME_MANIFEST_ID_BYTES);
+
 	bars_written++;
 	break;
       default:
@@ -677,6 +683,8 @@ int rhizome_direct_get_bars(const unsigned char *bid_low,
     sqlite3_finalize(statement);
   statement = NULL;
   
+  DEBUGF("Last manifest ID was '%s'",bid_high);
+
   return bars_written;
 }
   
