@@ -109,6 +109,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "rhizome.h"
 #include "str.h"
+#include <assert.h>
 
 int rhizome_direct_clear_temporary_files(rhizome_http_request *r)
 {
@@ -576,41 +577,79 @@ int app_rhizome_direct_sync(int argc, const char *const *argv,
 
   DEBUGF("sync direction = %d",mode);
 
-  unsigned char bid_low[RHIZOME_BAR_BYTES];
-  unsigned char bid_high[RHIZOME_BAR_BYTES];
-  unsigned char bars_out[RHIZOME_BAR_BYTES*128];
-
-  /* Start synchronising from the beginning of the BID address space */
-  memset(bid_low,0x00,RHIZOME_BAR_BYTES);
-
-  /* Loop through until no bars are returned */
-  int bars_stuffed=1;
-  while(bars_stuffed>0)
+  /* Get iterator capable of 64KB buffering */
+  rhizome_direct_bundle_cursor *c=rhizome_direct_bundle_iterator(0x10000);
+  int count;
+  while((count=rhizome_direct_bundle_iterator_fill(c,-1)))
     {
-      bars_stuffed=rhizome_direct_get_bars(bid_low,bid_high,
-					   0,999999999999LL,
-					   bars_out,
-					   sizeof(bars_out)/RHIZOME_BAR_BYTES);
-      DEBUGF("Received %d BARs",bars_stuffed);
-      dump("BARs",bars_out,RHIZOME_BAR_BYTES*bars_stuffed);  
-
-      /* Continue from next BID */
-      bcopy(bid_high,bid_low,RHIZOME_MANIFEST_ID_BYTES);
-      int i;
-      for(i=RHIZOME_BAR_BYTES-1;i>=0;i--)
-	{
-	  bid_low[i]++;
-	  if (bid_low[i]) break;
-	}
-      if (i<0) break;
-      dump("bid_low",bid_low,RHIZOME_MANIFEST_ID_BYTES);
-      
-  }
+      DEBUGF("Got %d BARs",count);
+      dump("BARs",c->buffer,c->buffer_used);
+    }
+  rhizome_direct_bundle_iterator_free(&c);
 
   return -1;
 }
  
+rhizome_direct_bundle_cursor *rhizome_direct_bundle_iterator(int buffer_size)
+{
+  rhizome_direct_bundle_cursor *r=calloc(sizeof(rhizome_direct_bundle_cursor),1);
+  assert(r!=NULL);
+  r->buffer=malloc(buffer_size);
+  assert(r->buffer);
+  r->buffer_size=buffer_size;
 
+  r->size_low=0;
+  r->size_high=1024;
+  return r;
+}
+
+int rhizome_direct_bundle_iterator_fill(rhizome_direct_bundle_cursor *c,int max_bars)
+{
+  int bundles_stuffed=0;
+  c->buffer_used=0;
+
+  /* -1 is magic value for fill right up */
+  if (max_bars==-1) max_bars=c->buffer_size/RHIZOME_BAR_BYTES;
+
+  while (bundles_stuffed<max_bars
+	 /* for now no bundle file can be bigger than 1TB */
+	 &&c->size_low<0x100000000000LL) 
+    {
+      /* Don't overrun the cursor's buffer */
+      int stuffable=(c->buffer_size-c->buffer_used)/RHIZOME_BAR_BYTES;
+      if (stuffable<=0) break;
+
+      int stuffed_now=rhizome_direct_get_bars(c->bid_low,c->bid_high,
+					      c->size_low,c->size_high,
+					      &c->buffer[c->buffer_used],
+					      stuffable);
+      bundles_stuffed+=stuffed_now;
+      c->buffer_used+=RHIZOME_BAR_BYTES*stuffed_now;
+      if (!stuffed_now) {
+	/* no more matches in this size bin, so move up a size bin */
+	c->size_low=c->size_high+1;
+	c->size_high*=2;      
+      } else {      
+	/* Continue from next BID */
+	bcopy(c->bid_high,c->bid_low,RHIZOME_MANIFEST_ID_BYTES);
+	int i;
+	for(i=RHIZOME_BAR_BYTES-1;i>=0;i--)
+	  {
+	    c->bid_low[i]++;
+	    if (c->bid_low[i]) break;
+	  }
+	if (i<0) break;
+      }
+    }  
+  return bundles_stuffed;
+}
+
+void rhizome_direct_bundle_iterator_free(rhizome_direct_bundle_cursor **c)
+{
+  free((*c)->buffer); (*c)->buffer=NULL;
+  bzero(*c,sizeof(rhizome_direct_bundle_cursor));
+  *c=NULL;
+}
 
 /* Read upto the <bars_requested> next BARs from the Rhizome database,
    beginning from the first BAR that corresponds to a manifest with 

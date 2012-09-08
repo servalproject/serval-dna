@@ -387,13 +387,28 @@ int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, c
 int rhizome_http_server_start(int (*http_parse_func)(rhizome_http_request *),
 			      const char *http_parse_func_description,
 			      int port_low,int port_high);
-int rhizome_direct_process_post_multipart_bytes
-(rhizome_http_request *r,const char *bytes,int count);
+
+typedef struct rhizome_direct_bundle_cursor {
+  long long size_low;
+  long long size_high;
+  unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTES];
+  unsigned char bid_high[RHIZOME_MANIFEST_ID_BYTES];
+  unsigned char *buffer;
+  int buffer_size;
+  int buffer_used;
+} rhizome_direct_bundle_cursor;
+
+rhizome_direct_bundle_cursor *rhizome_direct_bundle_iterator(int buffer_size);
+int rhizome_direct_bundle_iterator_fill(rhizome_direct_bundle_cursor *c,
+					int max_bars);
+void rhizome_direct_bundle_iterator_free(rhizome_direct_bundle_cursor **c);
 int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTES],
 			    unsigned char bid_high[RHIZOME_MANIFEST_ID_BYTES],
 			    long long size_low,long long size_high,
 			    unsigned char *bars_out,
 			    int bars_requested);
+int rhizome_direct_process_post_multipart_bytes
+(rhizome_http_request *r,const char *bytes,int count);
 
 extern unsigned char favicon_bytes[];
 extern int favicon_len;
