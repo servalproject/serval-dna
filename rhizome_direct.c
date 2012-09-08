@@ -652,7 +652,7 @@ int rhizome_direct_bundle_iterator_pickle_range(rhizome_direct_bundle_cursor *r,
      ranges, which will happen with every rhizome direct sync.
   */
 
-  int v;
+  long long v;
   int ltwov=0;
 
   v=r->start_size_high;
@@ -660,6 +660,7 @@ int rhizome_direct_bundle_iterator_pickle_range(rhizome_direct_bundle_cursor *r,
   pickled[0]=ltwov;
   for(v=0;v<4;v++) pickled[1+v]=r->start_bid_low[v];
   v=r->size_high;
+  DEBUGF("pickling size_high=%lld",r->size_high);
   while(v) { ltwov++; v=v>>1; }
   pickled[1+4]=ltwov;
   for(v=0;v<4;v++) pickled[1+4+1+v]=r->bid_high[v];
@@ -723,6 +724,8 @@ int rhizome_direct_bundle_iterator_fill(rhizome_direct_bundle_cursor *c,int max_
 	=(c->buffer_size-c->buffer_used-c->buffer_offset_bytes)/RHIZOME_BAR_BYTES;
       if (stuffable<=0) break;
 
+      DEBUGF("size_high=%lld",c->size_high);
+
       /* Make sure we only get the range of BIDs allowed by the cursor limit.
 	 If we are not yet at the bundle data size limit, then any bundle is okay.
 	 If we are at the bundle data size limit, then we need to honour
@@ -744,7 +747,9 @@ int rhizome_direct_bundle_iterator_fill(rhizome_direct_bundle_cursor *c,int max_
       if (!stuffed_now) {
 	/* no more matches in this size bin, so move up a size bin */
 	c->size_low=c->size_high+1;
-	c->size_high*=2;      
+	c->size_high*=2;
+	/* Record that we covered to the end of that size bin */
+	memset(c->bid_high,0xff,RHIZOME_MANIFEST_ID_BYTES);
       } else {      
 	/* Continue from next BID */
 	bcopy(c->bid_high,c->bid_low,RHIZOME_MANIFEST_ID_BYTES);
