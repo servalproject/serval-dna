@@ -583,18 +583,44 @@ int app_rhizome_direct_sync(int argc, const char *const *argv,
   /* Start synchronising from the beginning of the BID address space */
   memset(bid_low,0x00,RHIZOME_BAR_BYTES);
 
-  int bars_stuffed=rhizome_direct_get_bars(bid_low,bid_high,bars_out,
+  /* Loop through until no bars are returned */
+  int bars_stuffed=1;
+  while(bars_stuffed>0)
+    {
+      bars_stuffed=rhizome_direct_get_bars(bid_low,bid_high,
+					   0,999999999999LL,
+					   bars_out,
 					   sizeof(bars_out)/RHIZOME_BAR_BYTES);
-  DEBUGF("Receied %d BARs",bars_stuffed);
-  dump("BARs",bars_out,RHIZOME_BAR_BYTES*bars_stuffed);
+      DEBUGF("Received %d BARs",bars_stuffed);
+      dump("BARs",bars_out,RHIZOME_BAR_BYTES*bars_stuffed);  
+
+      /* Continue from next BID */
+      bcopy(bid_high,bid_low,RHIZOME_MANIFEST_ID_BYTES);
+      int i;
+      for(i=RHIZOME_BAR_BYTES-1;i>=0;i--)
+	{
+	  bid_low[i]++;
+	  if (bid_low[i]) break;
+	}
+      if (i<0) break;
+      dump("bid_low",bid_low,RHIZOME_MANIFEST_ID_BYTES);
+      
+  }
+
   return -1;
 }
  
+
+
 /* Read upto the <bars_requested> next BARs from the Rhizome database,
    beginning from the first BAR that corresponds to a manifest with 
    BID>=<bid_low>.
    Sets <bid_high> to the highest BID for which a BAR was returned.
    Return value is the number of BARs written into <bars_out>.
+
+   Only returns BARs for bundles within the specified size range.
+   This is used by the cursor wrapper function that passes over all of the
+   BARs in prioritised order.
 
    XXX Once the rhizome database gets big, we will need to make sure
    that we have suitable indexes.  It is tempting to just pack BARs
@@ -604,6 +630,7 @@ int app_rhizome_direct_sync(int argc, const char *const *argv,
 */
 int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTES],
 			    unsigned char bid_high[RHIZOME_MANIFEST_ID_BYTES],
+			    long long size_low,long long size_high,
 			    unsigned char *bars_out,
 			    int bars_requested)
 {
@@ -613,8 +640,10 @@ int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTE
     char query[1024];
     snprintf(query,1024,
 	     "SELECT COUNT(BAR) FROM MANIFESTS"
-	     " WHERE ID>='%s' ORDER BY BAR LIMIT %d;",
-	     alloca_tohex(bid_low,RHIZOME_MANIFEST_ID_BYTES),bars_requested);
+	     " WHERE ID>='%s' AND FILESIZE BETWEEN %lld AND %lld ORDER BY BAR LIMIT %d;",
+	     alloca_tohex(bid_low,RHIZOME_MANIFEST_ID_BYTES),
+	     size_low,size_high,
+	     bars_requested);
 
   long long tmp = 0;
   if (sqlite_exec_int64_retry(&retry, &tmp, query) != 1)
@@ -625,8 +654,11 @@ int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTE
 
   snprintf(query,1024,
 	   "SELECT BAR,ROWID,ID FROM MANIFESTS"
-	   " WHERE ID>='%s' ORDER BY BAR LIMIT %d;",
-	   alloca_tohex(bid_low,RHIZOME_MANIFEST_ID_BYTES),bars_requested);
+	   " WHERE ID>='%s' AND FILESIZE BETWEEN %lld AND %lld"
+	   " ORDER BY BAR LIMIT %d;",
+	   alloca_tohex(bid_low,RHIZOME_MANIFEST_ID_BYTES),
+	   size_low,size_high,
+	   bars_requested);
 
   sqlite3_stmt *statement=sqlite_prepare(query);
   sqlite3_blob *blob=NULL;  
@@ -668,8 +700,9 @@ int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTE
 
 	/* Remember the BID so that we cant write it into bid_high so that the
 	   caller knows how far we got. */
-	bcopy((const char *)sqlite3_column_text(statement, 0),
-	      bid_high,RHIZOME_MANIFEST_ID_BYTES);
+	fromhex(bid_high,
+		(const char *)sqlite3_column_text(statement, 2),
+		RHIZOME_MANIFEST_ID_BYTES);
 
 	bars_written++;
 	break;
@@ -683,8 +716,6 @@ int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTE
     sqlite3_finalize(statement);
   statement = NULL;
   
-  DEBUGF("Last manifest ID was '%s'",bid_high);
-
   return bars_written;
 }
   
