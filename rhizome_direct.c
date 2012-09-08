@@ -583,7 +583,7 @@ int app_rhizome_direct_sync(int argc, const char *const *argv,
   while((count=rhizome_direct_bundle_iterator_fill(c,-1)))
     {
       DEBUGF("Got %d BARs",count);
-      dump("BARs",c->buffer,c->buffer_used);
+      dump("BARs",c->buffer,c->buffer_used+c->buffer_offset_bytes);
 
       /* Build HTTP POST to send to far end presenting these BARs and seeking
 	 feedback from the far end as to which are new, or if the far end has
@@ -705,10 +705,13 @@ int rhizome_direct_bundle_iterator_fill(rhizome_direct_bundle_cursor *c,int max_
      the range that the cursor will cover, so that responses to the exact range
      covered can be provided.. But first things first, remembering where the cursor
      started.
+     We keep the space for the pickled cursor range at the start of the buffer,
+     and fill it in at the end.
   */
   /* This is the only information required to remember where we started: */
   c->start_size_high=c->size_high;
   bcopy(c->bid_low,c->start_bid_low,RHIZOME_MANIFEST_ID_BYTES);
+  c->buffer_offset_bytes=1+4+1+4; /* space for pickled cursor range */
 
   /* -1 is magic value for fill right up */
   if (max_bars==-1) max_bars=c->buffer_size/RHIZOME_BAR_BYTES;
@@ -716,7 +719,8 @@ int rhizome_direct_bundle_iterator_fill(rhizome_direct_bundle_cursor *c,int max_
   while (bundles_stuffed<max_bars&&c->size_high<=c->limit_size_high) 
     {
       /* Don't overrun the cursor's buffer */
-      int stuffable=(c->buffer_size-c->buffer_used)/RHIZOME_BAR_BYTES;
+      int stuffable
+	=(c->buffer_size-c->buffer_used-c->buffer_offset_bytes)/RHIZOME_BAR_BYTES;
       if (stuffable<=0) break;
 
       /* Make sure we only get the range of BIDs allowed by the cursor limit.
@@ -732,7 +736,8 @@ int rhizome_direct_bundle_iterator_fill(rhizome_direct_bundle_cursor *c,int max_
       int stuffed_now=rhizome_direct_get_bars(c->bid_low,c->bid_high,
 					      c->size_low,c->size_high,
 					      bid_max,
-					      &c->buffer[c->buffer_used],
+					      &c->buffer[c->buffer_used
+							 +c->buffer_offset_bytes],
 					      stuffable);
       bundles_stuffed+=stuffed_now;
       c->buffer_used+=RHIZOME_BAR_BYTES*stuffed_now;
@@ -752,6 +757,10 @@ int rhizome_direct_bundle_iterator_fill(rhizome_direct_bundle_cursor *c,int max_
 	if (i<0) break;
       }
     }  
+
+  /* Record range of cursor that this call covered. */
+  rhizome_direct_bundle_iterator_pickle_range(c,c->buffer,c->buffer_offset_bytes);
+
   return bundles_stuffed;
 }
 

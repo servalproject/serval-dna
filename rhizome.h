@@ -404,6 +404,7 @@ typedef struct rhizome_direct_bundle_cursor {
   unsigned char *buffer;
   int buffer_size;
   int buffer_used;
+  int buffer_offset_bytes;
 } rhizome_direct_bundle_cursor;
 
 rhizome_direct_bundle_cursor *rhizome_direct_bundle_iterator(int buffer_size);
