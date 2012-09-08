@@ -589,14 +589,17 @@ int app_rhizome_direct_sync(int argc, const char *const *argv,
 	 feedback from the far end as to which are new, or if the far end has
 	 new content that we do not.
 
-	 The POST needs to contain the {bundle-size,BID} range that this fill
-	 covers.  
-
-	 XXX - Update cursor function to explicitly provide that information.
-	 Really just needs to remember where the cursor was at the start of a
-	 fill. The position of the cursor at the end of a fill is already
-	 remembered.
+	 The iterator prepares the buffer entirely, including putting the cursor
+	 range covered, so that the far end can unpack it, search their corresponding
+	 space and return their results.
       */
+      rhizome_direct_bundle_cursor *t=rhizome_direct_bundle_iterator(0x10000);
+      rhizome_direct_bundle_iterator_unpickle_range(t,c->buffer,10);      
+      DEBUGF("Unpickled: size bins=%lld..%lld, %08x - %08x",
+	     t->size_high,t->limit_size_high,
+	     *(int*)&t->bid_low[0],
+	     *(int*)&t->limit_bid_high[0]);
+      rhizome_direct_bundle_iterator_free(&t);
     }
   rhizome_direct_bundle_iterator_free(&c);
 
@@ -656,12 +659,12 @@ int rhizome_direct_bundle_iterator_pickle_range(rhizome_direct_bundle_cursor *r,
   int ltwov=0;
 
   v=r->start_size_high;
-  while(v) { ltwov++; v=v>>1; }
+  while(v>1) { ltwov++; v=v>>1; }
   pickled[0]=ltwov;
   for(v=0;v<4;v++) pickled[1+v]=r->start_bid_low[v];
   v=r->size_high;
   DEBUGF("pickling size_high=%lld",r->size_high);
-  while(v) { ltwov++; v=v>>1; }
+  while(v>1) { ltwov++; v=v>>1; }
   pickled[1+4]=ltwov;
   for(v=0;v<4;v++) pickled[1+4+1+v]=r->bid_high[v];
 
@@ -723,8 +726,6 @@ int rhizome_direct_bundle_iterator_fill(rhizome_direct_bundle_cursor *c,int max_
       int stuffable
 	=(c->buffer_size-c->buffer_used-c->buffer_offset_bytes)/RHIZOME_BAR_BYTES;
       if (stuffable<=0) break;
-
-      DEBUGF("size_high=%lld",c->size_high);
 
       /* Make sure we only get the range of BIDs allowed by the cursor limit.
 	 If we are not yet at the bundle data size limit, then any bundle is okay.
