@@ -427,5 +427,55 @@ int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTE
 int rhizome_direct_process_post_multipart_bytes
 (rhizome_http_request *r,const char *bytes,int count);
 
+typedef struct rhizome_direct_sync_request {
+  struct sched_ent alarm;
+  rhizome_direct_bundle_cursor *cursor;
+
+  int pushP;
+  int pullP;
+
+  /* Sync interval in seconds.  zero = sync only once */
+  int interval;
+
+  /* The dispatch function will be called each time a sync request can
+     be sent off, i.e., one cursor->buffer full of data.
+     Will differ based on underlying transport. HTTP is the initial 
+     supported transport, but deLorme inReach will likely follow soon after.
+  */
+  void (*dispatch_function)(struct rhizome_direct_sync_request *);
+
+  /* General purpose pointer for transport-dependent state */
+  void *transport_specific_state;
+
+  /* Statistics.
+     Each sync will consist of one or more "fills" of the cursor buffer, which 
+     will then be dispatched by the transport-specific dispatch function.
+     Each of those dispatches may then result in zero or 
+   */
+  int syncs_started;
+  int syncs_completed;
+  int fills_sent;
+  int fill_responses_processed;
+  int bundles_pushed;
+  int bundles_pulled;
+  int bundle_transfers_in_progress;
+
+} rhizome_direct_sync_request;
+
+#define RHIZOME_DIRECT_MAX_SYNC_HANDLES 16
+extern rhizome_direct_sync_request *rd_sync_handles[RHIZOME_DIRECT_MAX_SYNC_HANDLES];
+extern int rd_sync_handle_count;
+
+rhizome_direct_sync_request
+*rhizome_direct_new_sync_request(
+				 void (*transport_specific_dispatch_function)
+				 (struct rhizome_direct_sync_request *),
+				 int buffer_size,int interval, int mode, 
+				 void *transport_specific_state);
+int rhizome_direct_continue_sync_request(rhizome_direct_sync_request *r);
+int rhizome_direct_conclude_sync_request(rhizome_direct_sync_request *r);
+
+void rhizome_direct_http_dispatch(rhizome_direct_sync_request *);
+
 extern unsigned char favicon_bytes[];
 extern int favicon_len;
