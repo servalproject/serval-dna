@@ -174,6 +174,7 @@ int rhizome_direct_start_sync_request(rhizome_direct_sync_request *r)
 
 int rhizome_direct_continue_sync_request(rhizome_direct_sync_request *r)
 {
+  DEBUG("here");
   assert(r);
   assert(r->syncs_started==r->syncs_completed+1);
 
@@ -189,9 +190,11 @@ int rhizome_direct_continue_sync_request(rhizome_direct_sync_request *r)
 
   if (r->cursor->size_high>=r->cursor->limit_size_high)
     {
+      DEBUG("Out of bins");
       if (memcmp(r->cursor->bid_low,r->cursor->limit_bid_high,
 		 RHIZOME_MANIFEST_ID_BYTES)>=0)
 	{
+	  DEBUG("out of BIDs");
 	  /* Sync has finished.
 	     The transport may have initiated one or more transfers, so
 	     we cannot declare the sync complete until we know the transport
@@ -199,8 +202,10 @@ int rhizome_direct_continue_sync_request(rhizome_direct_sync_request *r)
 	  if (!r->bundle_transfers_in_progress)
 	    {
 	      /* seems that all is done */
+	      DEBUG("All done");
 	      return rhizome_direct_conclude_sync_request(r);
-	    }
+	    } else 
+	    DEBUG("Stuck on in-progress transfers");
 	} else
 	DEBUGF("bid_low<limit_bid_high");
     }
@@ -228,16 +233,19 @@ int rhizome_direct_conclude_sync_request(rhizome_direct_sync_request *r)
   */
 
   if (r->interval==0) {
+    DEBUG("concluding one-shot");
     int i;
     for(i=0;i<rd_sync_handle_count;i++)
       if (r==rd_sync_handles[i])
 	{
+	  DEBUG("Found it");
 	  rhizome_direct_bundle_iterator_free(&r->cursor);
 	  free(r);
 	  
 	  if (i!=rd_sync_handle_count-1)
 	    rd_sync_handles[i]=rd_sync_handles[rd_sync_handle_count-1];
 	  rd_sync_handle_count--;
+	  DEBUGF("handle count=%d",rd_sync_handle_count);
 	  return 0;
 	}    
     DEBUGF("Couldn't find sync request handle in list.");
@@ -268,7 +276,8 @@ int app_rhizome_direct_sync(int argc, const char *const *argv,
 
   rhizome_direct_start_sync_request(s);
 
-  while(fd_poll()&&(rd_sync_handle_count>0)) continue;   
+  if (rd_sync_handle_count>0)
+    while(fd_poll()&&(rd_sync_handle_count>0)) continue;   
 
   return 0;
 }
