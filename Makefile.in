@@ -44,6 +44,7 @@ SRCS=	\
 	rhizome_crypto.c \
 	rhizome_database.c \
 	rhizome_direct.c \
+	rhizome_direct_http.c \
 	rhizome_fetch.c \
 	rhizome_http.c \
 	rhizome_packetformats.c \
