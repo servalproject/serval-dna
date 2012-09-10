@@ -512,6 +512,9 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   char boundary[1024];
   snprintf(boundary,1024,"----%08lx%08lx",random(),random());
 
+  /* TODO: Refactor this code so that it uses our asynchronous framework.
+   */
+
   int content_length=
     strlen("--")+strlen(boundary)+strlen("\r\n")+
     strlen("Content-Disposition: form-data; name=\"IHAVEs\"; filename=\"IHAVEs\"\r\n"
@@ -539,6 +542,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
     int count=write(sock,&buffer[sent],len-sent);
     if (count<1) {
       DEBUGF("errno=%d, count=%d",errno,count);
+      if (errno==EPIPE) goto rx;
       close(sock);
       goto end;
     }
@@ -552,6 +556,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
     int count=write(sock,&r->cursor->buffer[sent],len-sent);
     if (count<1) {
       DEBUGF("errno=%d, count=%d",errno,count);
+      if (errno==EPIPE) goto rx;
       close(sock);
       goto end;
     }
@@ -566,12 +571,34 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
     int count=write(sock,&buffer[sent],len-sent);
     if (count<1) {
       DEBUGF("errno=%d, count=%d",errno,count);
+      if (errno==EPIPE) goto rx;
       close(sock);
       goto end;
     }
     sent+=count;
   }
 
+ rx:
+  /* request sent, now get response back. */
+  buffer[0]=0; len=0;
+  while(!http_header_complete(buffer,len,len)&&(len<8192))
+    {
+      int count=read(sock,&buffer[len],8192-len);
+      if (count<1) {
+	DEBUGF("errno=%d, count=%d",errno,count);
+	close(sock);
+	goto end;
+      }
+      len+=count;
+      if (len>=8000) {
+	DEBUGF("reply header too long");
+	close(sock);
+	goto end;
+      }
+    }
+
+  DEBUGF("Got HTTP header");
+  dump("reply",(unsigned char *)buffer,len);
 
   end:
   /* Warning: tail recursion when done this way. 
