@@ -480,11 +480,100 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
 void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 {
   DEBUGF("Dispatch size_high=%lld",r->cursor->size_high);
+  rhizome_direct_transport_state_http *state=r->transport_specific_state;
 
+  int sock=socket(AF_INET, SOCK_STREAM, 0);
+  if (sock==-1) {
+    DEBUGF("could not open socket");    
+    goto end;
+  } 
+
+  struct hostent *hostent;
+  hostent = gethostbyname(state->host);
+  if (!hostent) {
+    DEBUGF("could not resolve hostname");
+    goto end;
+  }
+
+  struct sockaddr_in addr;  
+  addr.sin_family = AF_INET;     
+  addr.sin_port = htons(state->port);   
+  addr.sin_addr = *((struct in_addr *)hostent->h_addr);
+  bzero(&(addr.sin_zero),8);     
+
+  if (connect(sock,(struct sockaddr *)&addr,sizeof(struct sockaddr)) == -1)
+    {
+      close(sock);
+      DEBUGF("Could not connect to remote");
+      goto end;
+    }
   
-  
-  int sock;
-  
+  /* Okay, we have open socket */
+  char boundary[1024];
+  snprintf(boundary,1024,"----%08lx%08lx",random(),random());
+
+  int content_length=
+    strlen("--")+strlen(boundary)+strlen("\r\n")+
+    strlen("Content-Disposition: form-data; name=\"IHAVEs\"; filename=\"IHAVEs\"\r\n"
+	   "Content-Type: application/octet-stream\r\n"
+	   "\r\n")+
+    r->cursor->buffer_offset_bytes+r->cursor->buffer_used+
+    strlen("--")+strlen(boundary)+strlen("--\r\n");
+
+  char buffer[8192];
+  snprintf(buffer,8192,
+	   "POST /rhizome/enquiry HTTP/1.0\r\n"
+	   "Content-length: %d\r\n"
+	   "Content-Type: multipart/form-data; boundary=%s\r\n"
+	   "\r\n"
+	   "--%s\r\n"
+	   "Content-Disposition: form-data; name=\"IHAVEs\"; filename=\"IHAVEs\"\r\n"
+	   "Content-Type: application/octet-stream\r\n"
+	   "\r\n",
+	   content_length,
+	   boundary,boundary);
+  int len=strlen(buffer);
+  int sent=0;
+  while(sent<len) {
+    errno=0;
+    int count=write(sock,&buffer[sent],len-sent);
+    if (count<1) {
+      DEBUGF("errno=%d, count=%d",errno,count);
+      close(sock);
+      goto end;
+    }
+    sent+=count;
+  }
+
+  len=r->cursor->buffer_offset_bytes+r->cursor->buffer_used;
+  sent=0;
+  while(sent<len) {
+    errno=0;
+    int count=write(sock,&r->cursor->buffer[sent],len-sent);
+    if (count<1) {
+      DEBUGF("errno=%d, count=%d",errno,count);
+      close(sock);
+      goto end;
+    }
+    sent+=count;
+  }
+
+  snprintf(buffer,8192,"--%s--\r\n",boundary);
+  len=strlen(buffer);
+  sent=0;
+  while(sent<len) {
+    errno=0;
+    int count=write(sock,&buffer[sent],len-sent);
+    if (count<1) {
+      DEBUGF("errno=%d, count=%d",errno,count);
+      close(sock);
+      goto end;
+    }
+    sent+=count;
+  }
+
+
+  end:
   /* Warning: tail recursion when done this way. 
      Should be triggered by an asynchronous event.
      But this will do for now. */
