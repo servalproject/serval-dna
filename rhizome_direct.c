@@ -270,9 +270,22 @@ int app_rhizome_direct_sync(int argc, const char *const *argv,
   /* Get iterator capable of 64KB buffering.
      In future we should parse the sync URL and base the buffer size on the
      transport and allowable traffic volumes. */
+  rhizome_direct_transport_state_http 
+    *state=calloc(sizeof(rhizome_direct_transport_state_http),1);
+  if (strlen(argv[3])>1020)
+    {
+      DEBUG("rhizome direct URI too long");
+      return -1;
+    }
+  if (sscanf(argv[3],"%[^:]:%d",state->host,&state->port)!=2)
+    {
+      DEBUG("could not parse rhizome direct URI");     
+      return -1;
+    }
+
   rhizome_direct_sync_request 
     *s = rhizome_direct_new_sync_request(rhizome_direct_http_dispatch,
-					 65536,0,mode,NULL);
+					 65536,0,mode,state);
 
   rhizome_direct_start_sync_request(s);
 

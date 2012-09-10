@@ -480,6 +480,10 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
 void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 {
   DEBUGF("Dispatch size_high=%lld",r->cursor->size_high);
+
+  
+  
+  int sock;
   
   /* Warning: tail recursion when done this way. 
      Should be triggered by an asynchronous event.

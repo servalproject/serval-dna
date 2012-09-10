@@ -475,6 +475,11 @@ rhizome_direct_sync_request
 int rhizome_direct_continue_sync_request(rhizome_direct_sync_request *r);
 int rhizome_direct_conclude_sync_request(rhizome_direct_sync_request *r);
 
+typedef struct rhizome_direct_transport_state_http {
+  int port;
+  char host[1024];  
+} rhizome_direct_transport_state_http;
+
 void rhizome_direct_http_dispatch(rhizome_direct_sync_request *);
 
 extern unsigned char favicon_bytes[];
