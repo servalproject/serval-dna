@@ -302,7 +302,10 @@ overlay_interface_read_any(struct sched_ent *alarm){
     /* We have a frame from this interface */
     if (debug&DEBUG_PACKETRX)
       DEBUG_packet_visualise("Read from real interface", packet,plen);
-    if (debug&DEBUG_OVERLAYINTERFACES) DEBUGF("Received %d bytes on interface INADDR_ANY",plen);
+    if (debug&DEBUG_OVERLAYINTERFACES)
+      DEBUGF("Received %d bytes from %s on interface %s (ANY)",plen, 
+	     inet_ntoa(((struct sockaddr_in *)&src_addr)->sin_addr),
+	     interface->name);
     if (packetOk(interface,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
       WHY("Malformed packet");
     }
@@ -551,7 +554,10 @@ static void overlay_interface_poll(struct sched_ent *alarm)
     /* We have a frame from this interface */
     if (debug&DEBUG_PACKETRX)
       DEBUG_packet_visualise("Read from real interface", packet,plen);
-    if (debug&DEBUG_OVERLAYINTERFACES) DEBUGF("Received %d bytes on interface %s",plen,interface->name);
+    if (debug&DEBUG_OVERLAYINTERFACES) 
+      DEBUGF("Received %d bytes from %s on interface %s",plen, 
+	     inet_ntoa(((struct sockaddr_in *)&src_addr)->sin_addr),
+	     interface->name);
     if (packetOk(interface,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
       WHY("Malformed packet");
       // Do we really want to attempt to parse it again?

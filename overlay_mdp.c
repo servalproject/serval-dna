@@ -328,16 +328,14 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
       b=&f->payload->bytes[f->payload->position];
       len=f->payload->sizeLimit - f->payload->position - crypto_sign_edwards25519sha512batch_BYTES;
 
-      /* get hash */
-      unsigned char hash[crypto_hash_sha512_BYTES];
-      crypto_hash_sha512(hash,b,len);
-
       /* reconstitute signature by putting hash between two halves of signature */
       unsigned char signature[crypto_hash_sha512_BYTES
 			      +crypto_sign_edwards25519sha512batch_BYTES];
       bcopy(&b[len],&signature[0],32);
+      
       crypto_hash_sha512(&signature[32],b,len);
-      if (0) dump("hash for verification",hash,crypto_hash_sha512_BYTES);
+      if (0) dump("hash for verification",&signature[32],crypto_hash_sha512_BYTES);
+      
       bcopy(&b[len+32],&signature[32+crypto_hash_sha512_BYTES],32);
       
       /* verify signature */
@@ -348,7 +346,10 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
 						  signature,sizeof(signature),
 						  key);
       if (result) {
-	RETURN(WHY("Signature verification failed: incorrect signature"));
+	WHY("Signature verification failed");
+	dump("data", b, len);
+	dump("signature", signature, sizeof(signature));
+	RETURN(-1);
       } else if (0) DEBUG("signature check passed");
     }    
     mdp->packetTypeAndFlags|=MDP_NOCRYPT; 
@@ -883,24 +884,22 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       /* Build plain-text that includes header and hash it so that
          we can sign that hash. */
       unsigned char hash[crypto_hash_sha512_BYTES];
-      unsigned char plain[10+mdp->out.payload_length];
-
+      int plain_len = 10+mdp->out.payload_length;
+      unsigned char *plain = frame->payload->bytes + frame->payload->position;
+      
+      if (!plain)
+	return WHY("Unable to allocate space for payload and signature");
+      
       /* MDP version 1 */
-      plain[0]=0x01; 
-      plain[1]=0x01;
-      /* Ports */
-      plain[2]=(mdp->out.src.port>>24)&0xff;
-      plain[3]=(mdp->out.src.port>>16)&0xff;
-      plain[4]=(mdp->out.src.port>>8)&0xff;
-      plain[5]=(mdp->out.src.port>>0)&0xff;
-      plain[6]=(mdp->out.dst.port>>24)&0xff;
-      plain[7]=(mdp->out.dst.port>>16)&0xff;
-      plain[8]=(mdp->out.dst.port>>8)&0xff;
-      plain[9]=(mdp->out.dst.port>>0)&0xff;
-      /* payload */
-      bcopy(&mdp->out.payload,&plain[10],mdp->out.payload_length);
+      ob_append_byte(frame->payload,0x01);
+      ob_append_byte(frame->payload,0x01);
+      /* Destination port */
+      ob_append_ui32(frame->payload,mdp->out.src.port);
+      ob_append_ui32(frame->payload,mdp->out.dst.port);
+      ob_append_bytes(frame->payload,mdp->out.payload,mdp->out.payload_length);
+      
       /* now hash it */
-      crypto_hash_sha512(hash,plain,10+mdp->out.payload_length);
+      crypto_hash_sha512(hash,plain,plain_len);
       
       unsigned char signature[crypto_hash_sha512_BYTES
 			      +crypto_sign_edwards25519sha512batch_BYTES];
@@ -912,15 +911,13 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 	op_free(frame);
 	RETURN(WHY("Signing MDP frame failed"));
       }
-      /* chop hash out of middle of signature since it has to be recomputed
-	 at the far end, anyway, as described above. */
-      bcopy(&signature[32+64],&signature[32],32);
-      sig_len-=crypto_hash_sha512_BYTES;
       
-      /* ok, now chain plain-text with the signature at the end and send it */
-      ob_append_bytes(frame->payload,plain,10+mdp->out.payload_length);
+      if (0){
+	dump("payload", plain, plain_len);
+	dump("signature", signature, sizeof(signature));
+      }
       /* chop hash out of middle of signature since it has to be recomputed
-	 at the far end, anyway, as described above. */
+	 at the far end, anyway, and ammend the two halves of the signature. */
       ob_append_bytes(frame->payload,&signature[0],32);
       ob_append_bytes(frame->payload,&signature[32+crypto_hash_sha512_BYTES],32);
     }
