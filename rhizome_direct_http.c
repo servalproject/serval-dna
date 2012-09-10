@@ -374,7 +374,9 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
     if (path) {
       char *id = NULL;
       INFOF("RHIZOME HTTP SERVER, POST %s", alloca_toprint(1024, path, pathlen));
-      if (strcmp(path, "/bundle") == 0) {
+      if ((strcmp(path, "/rhizome/import") == 0) 
+	  ||(strcmp(path, "/rhizome/enquiry") == 0))
+	{
 	/*
 	  We know we have the complete header, so get the content length and content type
 	  fields. From those we work out what to do with the body. */
@@ -526,7 +528,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   char buffer[8192];
   snprintf(buffer,8192,
 	   "POST /rhizome/enquiry HTTP/1.0\r\n"
-	   "Content-length: %d\r\n"
+	   "Content-Length: %d\r\n"
 	   "Content-Type: multipart/form-data; boundary=%s\r\n"
 	   "\r\n"
 	   "--%s\r\n"
@@ -599,6 +601,51 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 
   DEBUGF("Got HTTP header");
   dump("reply",(unsigned char *)buffer,len);
+
+  char *p = NULL;
+  if (!str_startswith(buffer, "HTTP/1.0 ", &p)) {
+    DEBUGF("Malformed HTTP reply: missing HTTP/1.0 preamble");
+    close(sock); goto end;
+  }
+  int http_response_code = 0;
+  char *nump;
+  for (nump = p; isdigit(*p); ++p)
+    http_response_code = http_response_code * 10 + *p - '0';
+  if (p == nump || *p != ' ') {
+      DEBUGF("Malformed HTTP reply: missing decimal status code");
+    close(sock); goto end;
+  }
+  if (http_response_code != 200) {
+    DEBUGF("Failed HTTP request: rhizome server returned %d != 200 OK", http_response_code);
+    close(sock); goto end;
+  }
+  // This loop will terminate, because http_header_complete() above found at least
+  // "\n\n" at the end of the header, and probably "\r\n\r\n".
+  while (*p++ != '\n')
+    ;
+  // Iterate over header lines until the last blank line.
+  while (*p != '\r' && *p != '\n') {
+    if (strcase_startswith(p, "Content-Length:", &p)) {
+      while (*p == ' ')
+	++p;
+      content_length = 0;
+      for (nump = p; isdigit(*p); ++p)
+	content_length = content_length * 10 + *p - '0';
+      if (p == nump || (*p != '\r' && *p != '\n')) {
+	DEBUGF("Invalid HTTP reply: malformed Content-Length header");
+	close(sock); goto end;	
+      }
+    }
+    while (*p++ != '\n')
+      ;
+  }
+  if (*p == '\r')
+    ++p;
+  ++p; // skip '\n' at end of blank line
+  if (content_length == -1) {
+    DEBUGF("Invalid HTTP reply: missing Content-Length header");
+    close(sock); goto end;
+  }
 
   end:
   /* Warning: tail recursion when done this way. 
