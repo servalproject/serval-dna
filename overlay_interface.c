@@ -54,6 +54,7 @@ struct profile_total sock_any_stats;
 struct outgoing_packet{
   overlay_interface *interface;
   int i;
+  int unicast;
   struct sockaddr_in dest;
   struct overlay_buffer *buffer;
 };
@@ -302,7 +303,7 @@ overlay_interface_read_any(struct sched_ent *alarm){
     /* We have a frame from this interface */
     if (debug&DEBUG_PACKETRX)
       DEBUG_packet_visualise("Read from real interface", packet,plen);
-    if (debug&DEBUG_OVERLAYINTERFACES)
+    if (debug&DEBUG_OVERLAYINTERFACES) 
       DEBUGF("Received %d bytes from %s on interface %s (ANY)",plen, 
 	     inet_ntoa(((struct sockaddr_in *)&src_addr)->sin_addr),
 	     interface->name);
@@ -944,10 +945,10 @@ overlay_queue_dump(overlay_txqueue *q)
 }
 
 static void
-overlay_init_packet(struct outgoing_packet *packet, overlay_interface *interface, struct sockaddr_in addr){
+overlay_init_packet(struct outgoing_packet *packet, overlay_interface *interface){
   packet->interface = interface;
   packet->i = (interface - overlay_interfaces);
-  packet->dest=addr;
+  packet->dest=interface->broadcast_address;
   packet->buffer=ob_new();
   ob_limitsize(packet->buffer, packet->interface->mtu);
   ob_append_bytes(packet->buffer,magic_header,4);
@@ -1003,18 +1004,19 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
      even if we hear it from somewhere else in the mean time
      */
     
-    if (frame->destination && subscriber_is_reachable(frame->destination)==REACHABLE_NONE)
-      goto skip;
-    
     struct subscriber *next_hop = frame->destination;
     
     if (next_hop){
-      switch(next_hop->reachable){
+      switch(subscriber_is_reachable(next_hop)){
+	case REACHABLE_NONE:
+	  goto skip;
+	  
 	case REACHABLE_INDIRECT:
 	  next_hop=next_hop->next_hop;
 	  
 	  // fall through
 	case REACHABLE_DIRECT:
+	case REACHABLE_UNICAST:
 	  frame->sendBroadcast=0;
 	  break;
 	  
@@ -1039,7 +1041,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	{
 	  if (overlay_interfaces[i].state==INTERFACE_STATE_UP
 	      && !frame->broadcast_sent_via[i]){
-	    overlay_init_packet(packet, &overlay_interfaces[i], overlay_interfaces[i].broadcast_address);
+	    overlay_init_packet(packet, &overlay_interfaces[i]);
 	    break;
 	  }
 	}
@@ -1050,7 +1052,11 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	  continue;
 	}
       }else{
-	overlay_init_packet(packet, next_hop->interface, next_hop->address);
+	overlay_init_packet(packet, next_hop->interface);
+	if (next_hop->reachable==REACHABLE_UNICAST){
+	  packet->dest = next_hop->address;
+	  packet->unicast=1;
+	}
       }
       
     }else{
@@ -1059,8 +1065,15 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	if (frame->broadcast_sent_via[packet->i]){
 	  goto skip;
 	}
-      }else if(packet->interface != next_hop->interface || packet->dest.sin_addr.s_addr != next_hop->address.sin_addr.s_addr){
-	goto skip;
+      }else{
+	if(packet->interface != next_hop->interface)
+	  goto skip;
+	if (next_hop->reachable==REACHABLE_DIRECT && packet->unicast)
+	  goto skip;
+	if (next_hop->reachable==REACHABLE_UNICAST && 
+	    ((!packet->unicast) ||
+	    packet->dest.sin_addr.s_addr != next_hop->address.sin_addr.s_addr))
+	  goto skip;
       }
     }
     
@@ -1175,7 +1188,7 @@ overlay_tick_interface(int i, time_ms_t now) {
 
   // initialise the packet buffer
   bzero(&packet, sizeof(struct outgoing_packet));
-  overlay_init_packet(&packet, &overlay_interfaces[i], overlay_interfaces[i].broadcast_address);
+  overlay_init_packet(&packet, &overlay_interfaces[i]);
   
   if (debug&DEBUG_OVERLAYINTERFACES) DEBUGF("Ticking interface #%d",i);
 

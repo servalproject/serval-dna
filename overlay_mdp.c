@@ -980,7 +980,9 @@ static int search_subscribers(struct subscriber *subscriber, void *context){
   }
   
   if (state->mdp->addrlist.mode == MDP_ADDRLIST_MODE_ROUTABLE_PEERS && 
-      (subscriber->reachable != REACHABLE_DIRECT && subscriber->reachable != REACHABLE_INDIRECT)){
+      (subscriber->reachable != REACHABLE_DIRECT && 
+       subscriber->reachable != REACHABLE_INDIRECT && 
+       subscriber->reachable != REACHABLE_UNICAST)){
     return 0;
   }
     

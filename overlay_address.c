@@ -166,18 +166,28 @@ int subscriber_is_reachable(struct subscriber *subscriber){
   if (!subscriber)
     return REACHABLE_NONE;
   
-  if (subscriber->reachable==REACHABLE_INDIRECT
-      && !(subscriber->next_hop
-	&& subscriber->next_hop->reachable==REACHABLE_DIRECT
-	&& subscriber_is_reachable(subscriber->next_hop)==REACHABLE_DIRECT)
-      )
-    return REACHABLE_NONE;
+  if (subscriber->reachable==REACHABLE_INDIRECT){
+    if (!subscriber->next_hop)
+      return REACHABLE_NONE;
+    
+    // avoid infinite recursion...
+    if (subscriber->next_hop->reachable!=REACHABLE_DIRECT && 
+	subscriber->next_hop->reachable!=REACHABLE_UNICAST)
+      return REACHABLE_NONE;
+    
+    int r = subscriber_is_reachable(subscriber->next_hop);
+    if (r!=REACHABLE_DIRECT && r!= REACHABLE_UNICAST)
+      return REACHABLE_NONE;
+  }
   
-  if (subscriber->reachable==REACHABLE_DIRECT
-      && !(subscriber->interface
-      && subscriber->interface->state==INTERFACE_STATE_UP)
-      )
-    return REACHABLE_NONE;
+  if (subscriber->reachable==REACHABLE_DIRECT || 
+      subscriber->reachable==REACHABLE_UNICAST){
+    // make sure the interface is still up
+    if (!subscriber->interface)
+      return REACHABLE_NONE;
+    if (subscriber->interface->state!=INTERFACE_STATE_UP)
+      return REACHABLE_NONE;
+  }
   
   return subscriber->reachable;
 }
@@ -191,7 +201,7 @@ int reachable_unicast(struct subscriber *subscriber, overlay_interface *interfac
     return WHYF("Subscriber %s is already known for overlay routing", alloca_tohex_sid(subscriber->sid));
   
   subscriber->interface = interface;
-  subscriber->reachable = REACHABLE_DIRECT;
+  subscriber->reachable = REACHABLE_UNICAST;
   subscriber->address.sin_family = AF_INET;
   subscriber->address.sin_addr = addr;
   subscriber->address.sin_port = htons(port);

@@ -28,15 +28,18 @@
 // immediate neighbour
 #define REACHABLE_DIRECT 1
 
+// reachable via unicast packet
+#define REACHABLE_UNICAST 2
+
 // packets must be routed
-#define REACHABLE_INDIRECT 2
+#define REACHABLE_INDIRECT 3
 
 // packets can probably be flooded to this peer with ttl=2
 // (temporary state for new peers before path discovery has finished)
-#define REACHABLE_BROADCAST 3
+#define REACHABLE_BROADCAST 4
 
 // this subscriber is in our keystore
-#define REACHABLE_SELF 4
+#define REACHABLE_SELF 5
 
 /* Codes used to describe abbreviated addresses.
  Values 0x10 - 0xff are the first byte of, and implicit indicators of addresses written in full */
@@ -83,7 +86,8 @@ struct subscriber{
     struct{
       // if direct, where do we send packets?
       struct overlay_interface *interface;
-      // if s_addr == INADDR_ANY, send to the interface broadcast address
+      
+      // if reachable==REACHABLE_UNICAST use this address & sequence number, else use the interface broadcast address
       struct sockaddr_in address;
     };
   };
