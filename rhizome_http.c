@@ -570,13 +570,6 @@ static const char *httpResultString(int response_code) {
   }
 }
 
-struct http_response {
-  unsigned int result_code;
-  const char * content_type;
-  unsigned long long content_length;
-  const char * body;
-};
-
 static strbuf strbuf_build_http_response(strbuf sb, const struct http_response *h)
 {
   strbuf_sprintf(sb, "HTTP/1.0 %03u %s\r\n", h->result_code, httpResultString(h->result_code));
@@ -588,7 +581,7 @@ static strbuf strbuf_build_http_response(strbuf sb, const struct http_response *
   return sb;
 }
 
-static int rhizome_server_set_response(rhizome_http_request *r, const struct http_response *h)
+int rhizome_server_set_response(rhizome_http_request *r, const struct http_response *h)
 {
   strbuf b = strbuf_local((char *) r->buffer, r->buffer_size);
   strbuf_build_http_response(b, h);

@@ -255,6 +255,27 @@ int rhizome_direct_conclude_sync_request(rhizome_direct_sync_request *r)
   return 0;
 }
 
+rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
+(unsigned char *buffer,int size)
+{
+  if (size<10) return NULL;
+
+  rhizome_direct_bundle_cursor *c=calloc(sizeof(rhizome_direct_bundle_cursor),1);
+  if (rhizome_direct_bundle_iterator_unpickle_range(c,buffer,10))
+    {
+      DEBUGF("Couldn't unpickle range");
+      rhizome_direct_bundle_iterator_free(&c);
+      return NULL;
+    }
+  DEBUGF("unpickled size_high=%lld, limit_size_high=%lld",
+	 c->size_high,c->limit_size_high);
+
+  rhizome_direct_bundle_iterator_free(&c);
+  return NULL;
+
+}
+
+
 int app_rhizome_direct_sync(int argc, const char *const *argv, 
 			    struct command_line_option *o)
 {

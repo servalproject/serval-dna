@@ -378,6 +378,13 @@ typedef struct rhizome_http_request {
   
 } rhizome_http_request;
 
+struct http_response {
+  unsigned int result_code;
+  const char * content_type;
+  unsigned long long content_length;
+  const char * body;
+};
+
 int rhizome_server_free_http_request(rhizome_http_request *r);
 int rhizome_server_http_send_bytes(rhizome_http_request *r);
 int rhizome_server_parse_http_request(rhizome_http_request *r);
@@ -474,6 +481,8 @@ rhizome_direct_sync_request
 				 void *transport_specific_state);
 int rhizome_direct_continue_sync_request(rhizome_direct_sync_request *r);
 int rhizome_direct_conclude_sync_request(rhizome_direct_sync_request *r);
+rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
+(unsigned char *buffer,int size);
 
 typedef struct rhizome_direct_transport_state_http {
   int port;

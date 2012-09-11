@@ -44,43 +44,130 @@ int rhizome_direct_form_received(rhizome_http_request *r)
   */
 
   /* XXX process completed form based on the set of fields seen */
-  switch(r->fields_seen) {
-  case RD_MIME_STATE_MANIFESTHEADERS
-    |RD_MIME_STATE_DATAHEADERS:
-    /* A bundle to import */
-    DEBUGF("Call bundle import for rhizomedata.%d.{data,file}",
-	   r->alarm.poll.fd);
-    char cmd[1024];
-    snprintf(cmd,1024,
-	     "servald rhizome import bundle rhizomedirect.%d.data rhizomedirect.%d.manifest",
-	     r->alarm.poll.fd,r->alarm.poll.fd);
-    cmd[1023]=0;
-    int rv=system(cmd);
-    int status=-1;
+  if (!strcmp(r->path,"/rhizome/import"))
+    {
+      switch(r->fields_seen) {
+      case RD_MIME_STATE_MANIFESTHEADERS
+	|RD_MIME_STATE_DATAHEADERS:
+	/* A bundle to import */
+	DEBUGF("Call bundle import for rhizomedata.%d.{data,file}",
+	       r->alarm.poll.fd);
+	char cmd[1024];
+	snprintf(cmd,1024,
+		 "servald rhizome import bundle rhizomedirect.%d.data rhizomedirect.%d.manifest",
+		 r->alarm.poll.fd,r->alarm.poll.fd);
+	cmd[1023]=0;
+	int rv=system(cmd);
+	int status=-1;
+	
+	if (rv!=-1) status=WEXITSTATUS(rv);
+	
+	DEBUGF("Import returned %d",status);
+	
+	/* clean up after ourselves */
+	rhizome_direct_clear_temporary_files(r);
+	/* and report back to caller.
+	   200 = ok, which is probably appropriate for when we already had the bundle.
+	   201 = content created, which is probably appropriate for when we successfully
+	   import a bundle (or if we already have it).
+	   403 = forbidden, which might be appropriate if we refuse to accept it, e.g.,
+	   the import fails due to malformed data etc.
+	   (should probably also indicate if we have a newer version if possible)
+	   
+	   For now we are just returning "no content" as a place-holder while debugging.
+	*/
+	rhizome_server_simple_http_response(r, 204, "Move along. Nothing to see.");
+	break;     
+      default:
+	/* Clean up after ourselves */
+	rhizome_direct_clear_temporary_files(r);	     
+      }
+    } else if (!strcmp(r->path,"/rhizome/enquiry")) {
+    int fd=-1;
+    char file[1024];
+    switch(r->fields_seen) {
+    case RD_MIME_STATE_DATAHEADERS:
+      /* Read data buffer in, pass to rhizome direct for comparison with local
+	 rhizome database, and send back responses. */
+      snprintf(file,1024,"rhizomedirect.%d.%s",r->alarm.poll.fd,"data");
+      fd=open(file,O_RDONLY);
+      if (fd == -1) {
+	/* Clean up after ourselves */
+	rhizome_direct_clear_temporary_files(r);	     
+	return rhizome_server_simple_http_response(r,500,"Couldn't read a file");
+      }
+      struct stat stat;
+      if (fstat(fd,&stat)) {
+	/* Clean up after ourselves */
+	close(fd);
+	rhizome_direct_clear_temporary_files(r);	     
+	return rhizome_server_simple_http_response(r,500,"Couldn't stat a file");
+      }
+      unsigned char *addr = mmap(NULL, stat.st_size, PROT_READ, 
+				 MAP_FILE|MAP_SHARED, fd, 0);
+      if (addr==MAP_FAILED) {
+	/* Clean up after ourselves */
+	close(fd);
+	rhizome_direct_clear_temporary_files(r);	     
+	return rhizome_server_simple_http_response(r,500,"Couldn't mmap() a file");
+      }
+      rhizome_direct_bundle_cursor *c=rhizome_direct_get_fill_response(addr,stat.st_size);
+      munmap(addr,stat.st_size);
+      close(fd);
 
-    if (rv!=-1) status=WEXITSTATUS(rv);
+      if (c)
+	{
+	  /* TODO: Write out_buffer as the body of the response.
+	     We should be able to do this using the async framework fairly easily.
+	  */
+	  
+	  int bytes=c->buffer_offset_bytes+c->buffer_used;
+	  r->buffer=malloc(bytes+1024);
+	  r->buffer_size=bytes+1024;
+	  r->buffer_offset=0;
+	  assert(r->buffer);
 
-    DEBUGF("Import returned %d",status);
+	  /* Write HTTP response header */
+	  struct http_response hr;
+	  hr.result_code=200;
+	  hr.content_type="binary/octet-stream";
+	  hr.content_length=bytes;
+	  r->request_type=0;
+	  rhizome_server_set_response(r,&hr);
+	  assert(r->buffer_offset<1024);
 
-    /* clean up after ourselves */
-    rhizome_direct_clear_temporary_files(r);
-    /* and report back to caller.
-       201 = content created, which is probably appropriate for when we successfully
-       import a bundle (or if we already have it).
-       403 = forbidden, which might be appropriate if we refuse to accept it, e.g.,
-       the import fails due to malformed data etc.
+	  /* Now append body and send it back. */
+	  bcopy(c->buffer,&r->buffer[r->buffer_offset],bytes);
+	  r->buffer_length+=bytes;
+	  r->buffer_offset=0;
 
-       For now we are just returning "no content" as a place-holder while debugging.
-    */       
-    rhizome_server_simple_http_response(r, 204, "Move along. Nothing to see.");
-    break;     
-  default:
-    /* Clean up after ourselves */
-    rhizome_direct_clear_temporary_files(r);
-    
-    
+	  /* Clean up cursor after sending response */
+	  rhizome_direct_bundle_iterator_free(&c);
+	  /* Clean up after ourselves */
+	  rhizome_direct_clear_temporary_files(r);	     
+
+	  return 0;
+	}
+      else
+	{
+	  return rhizome_server_simple_http_response(r,500,"Could not get response to enquiry");
+	}
+
+      /* Clean up after ourselves */
+      rhizome_direct_clear_temporary_files(r);	     
+      break;
+    default:
+      /* Clean up after ourselves */
+      rhizome_direct_clear_temporary_files(r);	     
+
+      return rhizome_server_simple_http_response(r, 404, "/rhizome/enquiry requires 'data' field");
+    }
+
   }
 
+  /* Clean up after ourselves */
+  rhizome_direct_clear_temporary_files(r);	     
+  /* Report error */
   return rhizome_server_simple_http_response(r, 500, "Something went wrong.  Probably a missing data or manifest part, or invalid combination of URI and data/manifest provision.");
 
 }
