@@ -356,24 +356,22 @@ overlay_interface_init_socket(int interface_index)
   overlay_interface *const interface = &overlay_interfaces[interface_index];
   interface->fileP = 0;
 
-#ifdef __APPLE__
   /*
-  On OSX and probably windows you can't bind to a broadcast address.
+   On linux you can bind to the broadcast address to receive broadcast packets per interface [or subnet],
+   but then you can't receive unicast packets on the same socket.
+   
+   On osx, you can only receive broadcast packets if you bind to INADDR_ANY.
+   
+   So the most portable way to do this is to bind to each interface's IP address for sending broadcasts 
+   and receiving unicasts, and bind a separate socket to INADDR_ANY just for receiving broadcast packets.
+   
+   Sending packets from INADDR_ANY would probably work, but gives us less control over which interfaces are sending packets.
+   But there may be some platforms that need some other combination for everything to work.
    */
-  const struct sockaddr *addr = (const struct sockaddr *)&interface->address;
-
-  /* On osx, UDP sockets bound to a specific interface can send broadcast packets just fine, 
-   but can't receive broadcast packets
-   So we need a socket bound to INADDR_ANY for receiving them.
-   */
+  
   overlay_interface_init_any(interface->port);
-#else
-  /*
-   Bind to the broadcast address, so that we can reliably receive broadcast 
-   traffic on linux platforms. 
-   */
-  const struct sockaddr *addr = (const struct sockaddr *)&interface->broadcast_address;
-#endif
+  
+  const struct sockaddr *addr = (const struct sockaddr *)&interface->address;
   
   interface->alarm.poll.fd = overlay_bind_socket(addr, sizeof(interface->broadcast_address), interface->name);
   if (interface->alarm.poll.fd<0){
@@ -718,7 +716,8 @@ overlay_broadcast_ensemble(int interface_number,
     }
   else
     {
-      DEBUGF("Sending overlay frame on %s to %s",interface->name,inet_ntoa(recipientaddr->sin_addr));
+      if (debug&DEBUG_OVERLAYINTERFACES) 
+	DEBUGF("Sending %d byte overlay frame on %s to %s",len,interface->name,inet_ntoa(recipientaddr->sin_addr));
       if(sendto(interface->alarm.poll.fd, 
 		bytes, len, 0, (struct sockaddr *)recipientaddr, sizeof(struct sockaddr_in)) != len){
 	WHY_perror("sendto(c)");
@@ -1146,9 +1145,6 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
       
       if (debug&DEBUG_PACKETCONSTRUCTION)
 	dump("assembled packet",&packet->buffer->bytes[0],packet->buffer->position);
-      
-      if (debug&DEBUG_OVERLAYINTERFACES) 
-	DEBUGF("Sending %d byte packet",packet->buffer->position);
       
       overlay_broadcast_ensemble(packet->i, &packet->dest, packet->buffer->bytes, packet->buffer->position);
     }

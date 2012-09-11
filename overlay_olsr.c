@@ -151,8 +151,8 @@ static void parse_frame(struct overlay_buffer *buff){
   
   frame.modifiers=ob_get(buff);
   
-//  dump("received headers", buff->bytes, buff->position);
-//  dump("received payload", buff->bytes+buff->position, buff->sizeLimit - buff->position);
+  if (debug&DEBUG_OVERLAYINTERFACES) 
+    DEBUGF("Received %d byte payload via olsr", buff->sizeLimit - buff->position);
   
   // the remaining bytes are an mdp payload, process it
   frame.payload = buff;
@@ -218,7 +218,6 @@ static int send_packet(unsigned char *header, int header_len, unsigned char *pay
     .msg_iovlen=2,
   };
   
-  DEBUGF("Sending broadcast via olsr");
   if (sendmsg(read_watch.poll.fd, &msg, 0)<0){
     return WHY_perror("Sending packet");
   }
@@ -240,8 +239,8 @@ int olsr_send(struct overlay_frame *frame){
   overlay_broadcast_append(b, &frame->broadcast_id);
   ob_append_byte(b, frame->modifiers);
   
-//  dump("sent headers", b->bytes, b->position);
-//  dump("sent payload", frame->payload->bytes, frame->payload->sizeLimit);
+  if (debug&DEBUG_OVERLAYINTERFACES) 
+    DEBUGF("Sending %d byte payload via olsr", frame->payload->sizeLimit);
   
   // send the packet
   int ret = send_packet(b->bytes, b->position, frame->payload->bytes, frame->payload->sizeLimit);
