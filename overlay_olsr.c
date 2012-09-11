@@ -135,6 +135,9 @@ static void parse_frame(struct overlay_buffer *buff){
   if (overlay_address_parse(buff, NULL, &frame.source))
     return;
   
+  if (!frame.source)
+    return;
+  
   if (frame.source->reachable==REACHABLE_NONE){
     // locate the interface we should send outgoing unicast packets to
     overlay_interface *interface = overlay_interface_find(*addr);
