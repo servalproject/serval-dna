@@ -260,7 +260,8 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
 {
   if (size<10) return NULL;
 
-  rhizome_direct_bundle_cursor *c=calloc(sizeof(rhizome_direct_bundle_cursor),1);
+  rhizome_direct_bundle_cursor *c=rhizome_direct_bundle_iterator(size);
+  assert(c!=NULL);
   if (rhizome_direct_bundle_iterator_unpickle_range(c,buffer,10))
     {
       DEBUGF("Couldn't unpickle range");
@@ -270,9 +271,10 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
   DEBUGF("unpickled size_high=%lld, limit_size_high=%lld",
 	 c->size_high,c->limit_size_high);
 
-  rhizome_direct_bundle_iterator_free(&c);
-  return NULL;
+  int count=rhizome_direct_bundle_iterator_fill(c,-1);
+  DEBUGF("Found %d manifests in that range",count);
 
+  return c;
 }
 
 

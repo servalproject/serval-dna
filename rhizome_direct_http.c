@@ -137,7 +137,7 @@ int rhizome_direct_form_received(rhizome_http_request *r)
 	  assert(r->buffer_offset<1024);
 
 	  /* Now append body and send it back. */
-	  bcopy(c->buffer,&r->buffer[r->buffer_offset],bytes);
+	  bcopy(c->buffer,&r->buffer[r->buffer_length],bytes);
 	  r->buffer_length+=bytes;
 	  r->buffer_offset=0;
 
@@ -673,6 +673,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   while(!http_header_complete(buffer,len,len)&&(len<8192))
     {
       int count=read(sock,&buffer[len],8192-len);
+      if (count==0) break;
       if (count<1) {
 	DEBUGF("errno=%d, count=%d",errno,count);
 	close(sock);
@@ -733,6 +734,8 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
     DEBUGF("Invalid HTTP reply: missing Content-Length header");
     close(sock); goto end;
   }
+
+  DEBUGF("XXX Reading enquiry response for processing");
 
   end:
   /* Warning: tail recursion when done this way. 
