@@ -81,7 +81,7 @@ int rhizome_direct_form_received(rhizome_http_request *r)
     
   }
 
-  return rhizome_server_simple_http_response(r, 204, "Move along. Nothing to see.");
+  return rhizome_server_simple_http_response(r, 500, "Something went wrong.  Probably a missing data or manifest part, or invalid combination of URI and data/manifest provision.");
 
 }
 
@@ -519,11 +519,11 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 
   int content_length=
     strlen("--")+strlen(boundary)+strlen("\r\n")+
-    strlen("Content-Disposition: form-data; name=\"IHAVEs\"; filename=\"IHAVEs\"\r\n"
+    strlen("Content-Disposition: form-data; name=\"data\"; filename=\"IHAVEs\"\r\n"
 	   "Content-Type: application/octet-stream\r\n"
 	   "\r\n")+
     r->cursor->buffer_offset_bytes+r->cursor->buffer_used+
-    strlen("--")+strlen(boundary)+strlen("--\r\n");
+    strlen("\r\n--")+strlen(boundary)+strlen("--\r\n");
 
   char buffer[8192];
   snprintf(buffer,8192,
@@ -532,7 +532,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	   "Content-Type: multipart/form-data; boundary=%s\r\n"
 	   "\r\n"
 	   "--%s\r\n"
-	   "Content-Disposition: form-data; name=\"IHAVEs\"; filename=\"IHAVEs\"\r\n"
+	   "Content-Disposition: form-data; name=\"data\"; filename=\"IHAVEs\"\r\n"
 	   "Content-Type: application/octet-stream\r\n"
 	   "\r\n",
 	   content_length,
@@ -565,7 +565,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
     sent+=count;
   }
 
-  snprintf(buffer,8192,"--%s--\r\n",boundary);
+  snprintf(buffer,8192,"\r\n--%s--\r\n",boundary);
   len=strlen(buffer);
   sent=0;
   while(sent<len) {
