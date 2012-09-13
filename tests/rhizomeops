@@ -328,7 +328,7 @@ setup_AddUpdateSameVersion() {
    setup_AddDuplicate
    cp file1.manifest file1_2.manifest
    strip_signatures file1_2.manifest
-   sed -i -e '/^date=/d;/^filehash=/d;/^filesize=/d' file1_2.manifest
+   $SED -i -e '/^date=/d;/^filehash=/d;/^filesize=/d' file1_2.manifest
    tfw_cat -v file1_2.manifest
    assertGrep --matches=0 file1_2.manifest '^filehash='
    extract_manifest_version '' file1_2.manifest # asserts has version= line
@@ -351,7 +351,7 @@ setup_AddUpdateNewVersion() {
    setup_AddUpdateSameVersion
    extract_manifest_version version file1_2.manifest
    let version=version+1
-   sed -i -e "/^version=/s/=.*/=$version/" file1_2.manifest
+   $SED -i -e "/^version=/s/=.*/=$version/" file1_2.manifest
    assertGrep --matches=1 file1_2.manifest "^version=$version$"
 }
 test_AddUpdateNewVersion() {
@@ -367,7 +367,7 @@ test_AddUpdateNewVersion() {
 doc_AddUpdateNoAuthor="Cannot add new payload to authorless manifest"
 setup_AddUpdateNoAuthor() {
    setup_AddUpdateNewVersion
-   sed -i -e '/^BK=/d' file1_2.manifest
+   $SED -i -e '/^BK=/d' file1_2.manifest
 }
 test_AddUpdateNoAuthor() {
    tfw_cat -v file1_2.manifest
@@ -395,7 +395,7 @@ test_AddUpdateNoAuthorWithSecret() {
 doc_AddUpdateAutoVersion="Add new payload to existing manifest with automatic version"
 setup_AddUpdateAutoVersion() {
    setup_AddUpdateSameVersion
-   sed -i -e '/^version=/d' file1_2.manifest
+   $SED -i -e '/^version=/d' file1_2.manifest
    assertGrep --matches=0 file1_2.manifest '^version='
 }
 test_AddUpdateAutoVersion() {

@@ -523,8 +523,8 @@ int monitor_announce_bundle(rhizome_manifest *m)
 	   service ? service : "",
 	   m->version,
 	   m->fileLength,
-	   sender,
-	   recipient,
+	   sender ? sender : "",
+	   recipient ? recipient : "",
 	   m->dataFileName?m->dataFileName:"");
   for(i=monitor_socket_count -1;i>=0;i--) {
     if (monitor_sockets[i].flags & MONITOR_RHIZOME) {

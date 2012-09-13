@@ -37,7 +37,7 @@ extract_stdout_keyvalue_optional() {
    local _var="$1"
    local _label="$2"
    local _rexp="$3"
-   local _line=$(replayStdout | grep "^$_label:")
+   local _line=$(replayStdout | $GREP "^$_label:")
    local _value=
    local _return=1
    if [ -n "$_line" ]; then
@@ -502,7 +502,7 @@ instances_see_each_other() {
          [ $I = $J ] && continue
          local logvar=LOG${I#+}
          local sidvar=SID${J#+}
-         if ! grep "ADD OVERLAY NODE sid=${!sidvar}" "${!logvar}"; then
+         if ! $GREP "ADD OVERLAY NODE sid=${!sidvar}" "${!logvar}"; then
             return 1
          fi
       done
