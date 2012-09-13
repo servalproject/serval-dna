@@ -760,6 +760,8 @@ int rhizome_fetch_close(rhizome_file_fetch_record *q){
 }
 
 void rhizome_fetch_write(rhizome_file_fetch_record *q){
+  if (debug & DEBUG_RHIZOME_RX)
+    DEBUGF("write_nonblock(%d, %s)", q->alarm.poll.fd, alloca_toprint(-1, &q->request[q->request_ofs], q->request_len-q->request_ofs));
   int bytes = write_nonblock(q->alarm.poll.fd, &q->request[q->request_ofs], q->request_len-q->request_ofs);
   if (bytes == -1) {
     WHY("Got error while sending HTTP request.  Closing.");
