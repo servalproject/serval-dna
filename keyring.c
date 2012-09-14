@@ -1350,7 +1350,7 @@ int keyring_find_sid(const keyring_file *k, int *cn, int *in, int *kp, const uns
 
 void keyring_identity_extract(const keyring_identity *id, const unsigned char **sidp, const char **didp, const char **namep)
 {
-  int todo = (sidp ? 1 : 0) | (didp ? 2 : 0) || (namep ? 4 : 0);
+  int todo = (sidp ? 1 : 0) | (didp ? 2 : 0) | (namep ? 4 : 0);
   int kpn;
   for (kpn = 0; todo && kpn < id->keypair_count; ++kpn) {
     keypair *kp = id->keypairs[kpn];
