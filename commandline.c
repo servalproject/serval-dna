@@ -461,6 +461,7 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
     {
       if ((last_tx+interval)<now)
 	{ 
+	  /* Send a broadcast packet, flooding across the local mesh network */
 	  mdp.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT;
 	  
 	  /* set source address to a local address, and pick a random port */
@@ -476,6 +477,18 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 	  mdp.out.payload_length=strlen(did)+1;
 
 	  overlay_mdp_send(&mdp,0,0);
+	  
+	  /* Also send an encrypted unicast request to a configured directory service */
+	  const char *directory_service = confValueGet("directory.service", NULL);
+	  if (directory_service){
+	    if (stowSid(mdp.out.dst.sid, 0, directory_service)==-1){
+	      WHYF("Invalid directory server SID %s", directory_service);
+	    }else{
+	      mdp.packetTypeAndFlags=MDP_TX;
+	      overlay_mdp_send(&mdp,0,0);
+	    }
+	  }
+
 	  last_tx=now;
 	  interval+=interval;
 	}

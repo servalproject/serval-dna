@@ -8,18 +8,18 @@
 char last_add[256]="dummy";
 
 void store(char *key, char *value){
-  fprintf(stderr,"Adding; \"%s\" = \"%s\"\n", key, value);
+  // used by tests
+  INFOF("PUBLISHED \"%s\" = \"%s\"", key, value);
   strncpy(value, last_add, sizeof(last_add));
   last_add[255]=0;
 }
 
 const char *retrieve(char *key){
-  fprintf(stderr, "Looking for; \"%s\"\n", key);
+  INFOF("RESOLVING \"%s\"", key);
   
   // dummy code, just reply with the last record we've heard
   return last_add;
 }
-
 
 void add_record(){
   int ttl;
@@ -27,6 +27,9 @@ void add_record(){
   
   if (!overlay_mdp_recv(&mdp, &ttl))
     return;
+  
+  if (mdp.packetTypeAndFlags|=MDP_NOCRYPT)
+    return WHY("Only encrypted packets will be considered for publishing");
   
   // make sure the payload is a NULL terminated string
   mdp.in.payload[mdp.in.payload_length]=0;

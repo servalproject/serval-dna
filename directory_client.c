@@ -15,8 +15,6 @@
 #include "serval.h"
 #include "overlay_address.h"
 
-#define MDP_DIRECTORY 999
-
 struct subscriber *directory_service;
 
 // send a registration packet
@@ -25,11 +23,13 @@ static void directory_send(struct subscriber *directory_service, const unsigned 
   
   memset(&request, 0, sizeof(overlay_mdp_frame));
   
+  request.packetTypeAndFlags = MDP_TX;
+  
   bcopy(sid, request.out.src.sid, SID_SIZE);
   request.out.src.port=MDP_PORT_NOREPLY;
   
-  bcopy(request.out.dst.sid, directory_service->sid, SID_SIZE);
-  request.out.dst.port=MDP_DIRECTORY;
+  bcopy(directory_service->sid, request.out.dst.sid, SID_SIZE);
+  request.out.dst.port=MDP_PORT_DIRECTORY;
   request.out.payload_length = snprintf((char *)request.out.payload, sizeof(request.out.payload), 
 					"%s|%s", did, name);
   
@@ -61,18 +61,23 @@ static void directory_send_keyring(struct subscriber *directory_service){
 }
 
 static int load_directory_config(){
-  const char *sid_hex = confValueGet("directory.service", NULL);
-  if (!sid_hex)
-    return 0;
-  
-  unsigned char sid[SID_SIZE];
-  if (stowSid(sid, 0, sid_hex)==-1)
-    return WHYF("Invalid directory server SID %s", sid_hex);
-  
-  directory_service = find_subscriber(sid, SID_SIZE, 1);
-  if (!directory_service)
-    return WHYF("Failed to create subscriber record");
-  
+  if (!directory_service){
+    const char *sid_hex = confValueGet("directory.service", NULL);
+    if (!sid_hex)
+      return 0;
+    
+    unsigned char sid[SID_SIZE];
+    if (stowSid(sid, 0, sid_hex)==-1)
+      return WHYF("Invalid directory server SID %s", sid_hex);
+    
+    directory_service = find_subscriber(sid, SID_SIZE, 1);
+    if (!directory_service)
+      return WHYF("Failed to create subscriber record");
+    
+    // used by tests
+    INFOF("ADD DIRECTORY SERVICE %s", alloca_tohex_sid(directory_service->sid));
+  }
+  // always attempt to reload the address, may depend on DNS resolution
   return load_subscriber_address(directory_service);
 }
 
@@ -80,9 +85,11 @@ int directory_interface_up(overlay_interface *interface){
   // reload config, now that an interface is up
   load_directory_config();
   
-  if (directory_service && subscriber_is_reachable(directory_service) != REACHABLE_NONE){
-    directory_send_keyring(directory_service);
+  if (directory_service){
+    if (subscriber_is_reachable(directory_service) != REACHABLE_NONE)
+      directory_send_keyring(directory_service);
+    else
+      DEBUGF("Directory service is not reachable");
   }
   return 0;
 }
-
