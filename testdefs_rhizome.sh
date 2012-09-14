@@ -26,52 +26,6 @@ rexp_filesize='[0-9]\{1,\}'
 rexp_version='[0-9]\{1,\}'
 rexp_date='[0-9]\{1,\}'
 
-# Utility function:
-#  - create N identities in the current instance (I)
-#  - set variable SID to SID of first identity
-#  - set variable SID{I} to SID of first identity, eg, SIDA
-#  - set variables SID{I}{1..N} to SIDs of identities, eg, SIDA1, SIDA2...
-#  - set variables DID{I}{1..N} to DIDs of identities, eg, DIDA1, DIDA2...
-#  - set variables NAME{I}{1..N} to names of identities, eg, NAMEA1, NAMEA2...
-#  - assert that all SIDs are unique
-#  - assert that all SIDs appear in keyring list
-create_rhizome_identities() {
-   local N="$1"
-   case "$N" in
-   +([0-9]));;
-   *) error "invalid arg1: $N";;
-   esac
-   local i j
-   for ((i = 1; i <= N; ++i)); do
-      executeOk_servald keyring add
-      local sidvar=SID$instance_name$i
-      local didvar=DID$instance_name$i
-      local namevar=NAME$instance_name$i
-      extract_stdout_keyvalue $sidvar sid "$rexp_sid"
-      tfw_log "$sidvar=${!sidvar}"
-      if [ $i -eq 1 ]; then
-         SID="${!sidvar}"
-         eval SID$instance_name="$SID"
-      fi
-      extract_stdout_keyvalue_optional DID$instance_name$i did "$rexp_did" && tfw_log "$didvar=${!didvar}"
-      extract_stdout_keyvalue_optional NAME$instance_name$i name ".*" && tfw_log "$namevar=${!namevar}"
-   done
-   for ((i = 1; i <= N; ++i)); do
-      for ((j = 1; j <= N; ++j)); do
-         [ $i -ne $j ] && eval assert [ "\$SID$instance_name$i" != "\$SID$instance_name$j" ]
-      done
-   done
-   executeOk_servald keyring list
-   assertStdoutLineCount '==' $N
-   for ((i = 1; i <= N; ++i)); do
-      local sidvar=SID$instance_name$i
-      local didvar=DID$instance_name$i
-      local namevar=NAME$instance_name$i
-      local re_name=$(escape_grep_basic "${!namevar}")
-      assertStdoutGrep --matches=1 "^${!sidvar}:${!didvar}:${re_name}\$"
-   done
-}
-
 assert_manifest_complete() {
    local manifest="$1"
    tfw_cat -v "$manifest"
