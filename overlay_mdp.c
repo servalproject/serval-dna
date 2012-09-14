@@ -136,8 +136,8 @@ int overlay_mdp_setup_sockets()
 #define MDP_MAX_SOCKET_NAME_LEN 110
 
 struct mdp_binding{
-  int any;
-  sockaddr_mdp addr;
+  struct subscriber *subscriber;
+  int port;
   char socket_name[MDP_MAX_SOCKET_NAME_LEN];
   int name_len;
   time_ms_t binding_time;
@@ -202,35 +202,21 @@ int overlay_mdp_releasebindings(struct sockaddr_un *recvaddr,int recvaddrlen)
   for(i=0;i<MDP_MAX_BINDINGS;i++)
     if (mdp_bindings[i].name_len==recvaddrlen)
       if (!memcmp(mdp_bindings[i].socket_name,recvaddr->sun_path,recvaddrlen))
-	mdp_bindings[i].addr.port=0;
+	mdp_bindings[i].port=0;
 
   return 0;
 
 }
 
-int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
-				     struct sockaddr_un *recvaddr,int recvaddrlen)
+int overlay_mdp_process_bind_request(int sock, struct subscriber *subscriber, int port,
+				     int flags, struct sockaddr_un *recvaddr, int recvaddrlen)
 {
   int i;
   if (!mdp_bindings_initialised) {
     /* Mark all slots as unused */
     for(i=0;i<MDP_MAX_BINDINGS;i++)
-      mdp_bindings[i].addr.port=0;
+      mdp_bindings[i].port=0;
     mdp_bindings_initialised=1;
-  }
-
-//  DEBUG("Doesn't authenticate source address on multi-SID installations like an OpenBTS:mesh gateway)");
-  
-  /* Make sure source address is either all zeros (listen on all), or a valid
-     local address */
-  if (!is_sid_any(mdp->bind.sid)){
-    struct subscriber *subscriber = find_subscriber(mdp->bind.sid, SID_SIZE, 0);
-    if (!subscriber || subscriber->reachable != REACHABLE_SELF){
-      WHYF("Invalid bind request for sid=%s", alloca_tohex_sid(mdp->bind.sid));
-      /* Source address is invalid */
-      return overlay_mdp_reply_error(sock,recvaddr,recvaddrlen,7,
-				     "Bind address is not valid (must be a local MDP address, or all zeroes).");
-    }
   }
 
   /* See if binding already exists */
@@ -238,39 +224,29 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
   int free=-1;
   for(i=0;i<MDP_MAX_BINDINGS;i++) {
     /* Look for duplicate bindings */
-    if (mdp_bindings[i].addr.port==mdp->bind.port_number)
-      if (!memcmp(mdp_bindings[i].addr.sid,mdp->bind.sid,SID_SIZE))
-	{ found=i; break; }
+    if (mdp_bindings[i].port == port && 
+	mdp_bindings[i].subscriber == subscriber){
+      
+      if (mdp_bindings[found].name_len==recvaddrlen &&
+	  !memcmp(mdp_bindings[found].socket_name,recvaddr->sun_path,recvaddrlen)){
+	// this client already owns this port binding?
+	INFO("Identical binding exists");
+	return 0;
+	
+      }else if(flags&MDP_FORCE){
+	// steal the port binding
+	free=i; 
+	break;
+	
+      }else{
+	return WHY("Port already in use");
+      }
+    }
+    
     /* Look for free slots in case we need one */
-    if ((free==-1)&&(mdp_bindings[i].addr.port==0)) free=i;
+    if ((free==-1)&&(mdp_bindings[i].port==0)) free=i;
   }
  
-  /* Binding was found.  See if it is us, if so, then all is well,
-     else we check flags to see if we should override the existing binding. */
-  if (found>-1) {
-    if (mdp_bindings[found].name_len==recvaddrlen)
-      if (!memcmp(mdp_bindings[found].socket_name,recvaddr->sun_path,recvaddrlen))
-	{
-	  INFO("Identical binding exists");
-	  DEBUG("Need to return binding information to client");
-	  return overlay_mdp_reply_ok(sock,recvaddr,recvaddrlen,"Port bound (actually, it was already bound to you)");
-	}
-    /* Okay, so there is an existing binding.  Either replace it (if requested) or
-       return an error */
-    if (!(mdp->packetTypeAndFlags&MDP_FORCE))
-      {
-	WHY("Port already in use");
-	return overlay_mdp_reply_error(sock,recvaddr,recvaddrlen,3, "Port already in use");
-      }
-    else {
-      /* Cause existing binding to be replaced.
-	 XXX - We should notify the existing binding holder that their binding
-	 has been snaffled. */
-      DEBUG("Warn socket holder about port-snatch");
-      free=found;
-    }
-  }
-
   /* Okay, so no binding exists.  Make one, and return success.
      If we have too many bindings, we should return an error.
      XXX - We don't find out when the socket responsible for a binding has died,
@@ -286,17 +262,17 @@ int overlay_mdp_process_bind_request(int sock,overlay_mdp_frame *mdp,
        Call listeners don't have a port binding, so are unaffected by this.
     */
     free=random()%MDP_MAX_BINDINGS;
-    mdp_bindings[free].addr.port=0;
   }
 
   /* Okay, record binding and report success */
-  mdp_bindings[free].addr.port=mdp->bind.port_number;
-  memcpy(mdp_bindings[free].addr.sid,mdp->bind.sid,SID_SIZE);
+  mdp_bindings[free].port=port;
+  mdp_bindings[free].subscriber=subscriber;
+  
   mdp_bindings[free].name_len=recvaddrlen-2;
   memcpy(mdp_bindings[free].socket_name,recvaddr->sun_path,
 	 mdp_bindings[free].name_len);
   mdp_bindings[free].binding_time=gettime_ms();
-  return overlay_mdp_reply_ok(sock,recvaddr,recvaddrlen,"Port bound");
+  return 0;
 }
 
 int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
@@ -460,37 +436,27 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp, time_ms_t now)
 	   alloca_tohex(mdp->out.src.sid, 7),
 	   mdp->out.src.port,mdp->out.dst.port);
 
+    // TODO pass in dest subscriber as an argument, we should know it by now
+    struct subscriber *destination = NULL;
+    if (!is_broadcast(mdp->out.dst.sid)){
+      destination = find_subscriber(mdp->out.dst.sid, SID_SIZE, 1);
+    }
+    
     for(i=0;i<MDP_MAX_BINDINGS;i++)
       {
-	if (!memcmp(&mdp->out.dst,&mdp_bindings[i].addr,sizeof(sockaddr_mdp)))
-	  { /* exact and specific match, so stop searching */
-	    match=i; break; }
-	else {
-	  /* No exact match, so see if the port matches, and local-side address
-	     is the anonymous address (all zeroes), the destination address is
-	     a local address, and the ports match.  This is to find matches to
-	     the mdp equivalent of a socket bound to 0.0.0.0:port in IPv4.
-
-	     Just as with the IPv4 situation, we prioritise ports that are listening
-	     on a specific address over those with no address bound.  Thus we only
-	     try to match these 0.0.0.0 style bindings if there is no specific
-	     binding, and we keep looking in case there is a more specific binding.
-	     
-	     Because there is no concept of sub-nets in the Serval overlay mesh
-	     (since addresses are randomly allocated from the entire address
-	     space), we don't have to worry about a more structured heirarchy where
-	     more completely specified addresses take priority over less completely
-	     specified addresses.
-	  */
-	  if (match==-1)
-	    if (mdp->out.dst.port==mdp_bindings[i].addr.port)
-		{
-		  int j;
-		  for(j=0;j<SID_SIZE;j++) if (mdp_bindings[i].addr.sid[j]) break; 
-		  if (j==SID_SIZE) match=i;
-		}
+	if (mdp_bindings[i].port!=mdp->out.dst.port)
+	  continue;
+	
+	if ((!destination) || mdp_bindings[i].subscriber == destination){
+	  /* exact match, so stop searching */
+	  match=i;
+	  break;
+	}else if (!mdp_bindings[i].subscriber){
+	  /* If we find an "ANY" binding, remember it. But we will prefer an exact match if we find one */
+	  match=i;
 	}
       }
+    
     if (match>-1) {
       struct sockaddr_un addr;
 
@@ -663,9 +629,13 @@ int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,int userGeneratedFrameP,
 
   /* Now make sure that source address is in the list of bound addresses,
      and that the recvaddr matches. */
+  struct subscriber *subscriber = find_subscriber(src->sid, SID_SIZE, 1);
+  
   int i;
   for(i = 0; i < MDP_MAX_BINDINGS; ++i) {
-    if (mdp_bindings[i].addr.port && memcmp(src, &mdp_bindings[i].addr, sizeof(sockaddr_mdp)) == 0) {
+    if (mdp_bindings[i].port != src->port)
+      continue;
+    if ((!mdp_bindings[i].subscriber) || mdp_bindings[i].subscriber == subscriber) {
       /* Binding matches, now make sure the sockets match */
       if (  mdp_bindings[i].name_len == recvaddrlen - sizeof(short)
 	&&  memcmp(mdp_bindings[i].socket_name, recvaddr->sun_path, recvaddrlen - sizeof(short)) == 0
@@ -676,10 +646,11 @@ int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,int userGeneratedFrameP,
     }
   }
 
-  struct subscriber *subscriber = find_subscriber(src->sid, SID_SIZE, 1);
   /* Check for build-in port listeners */
   if (subscriber && subscriber->reachable == REACHABLE_SELF) {
     switch(src->port) {
+    case MDP_PORT_NOREPLY:
+      /* allow system generated packets with no binding for responses */
     case MDP_PORT_ECHO:
       /* we don't allow user/network generated packets claiming to
 	 be from the echo port, largely to prevent echo:echo connections
@@ -687,6 +658,7 @@ int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,int userGeneratedFrameP,
       if (!userGeneratedFrameP)
 	return 0;
       break;
+	
       /* other built-in listeners */
     case MDP_PORT_KEYMAPREQUEST:
     case MDP_PORT_VOMP:
@@ -716,8 +688,8 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 {
   IN();
   /* Work out if destination is broadcast or not */
-  if (overlay_mdp_sanitytest_sourceaddr(&mdp->out.src,userGeneratedFrameP,
-					recvaddr,recvaddrlen))
+  if (overlay_mdp_sanitytest_sourceaddr(&mdp->out.src, userGeneratedFrameP,
+					recvaddr, recvaddrlen))
     RETURN(overlay_mdp_reply_error
 	   (mdp_named.poll.fd,
 	    (struct sockaddr_un *)recvaddr,
@@ -1085,16 +1057,41 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 	  return;
 	}
 	break;
+	  
       case MDP_TX: /* Send payload (and don't treat it as system privileged) */
 	if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_TX");
 	overlay_mdp_dispatch(mdp,1,(struct sockaddr_un*)recvaddr,recvaddrlen);
 	return;
 	break;
+	  
       case MDP_BIND: /* Bind to port */
-	if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_BIND");
-	overlay_mdp_process_bind_request(alarm->poll.fd,mdp, recvaddr_un, recvaddrlen);
-	return;
+	{
+	  if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_BIND");
+	  
+	  struct subscriber *subscriber=NULL;
+	  /* Make sure source address is either all zeros (listen on all), or a valid
+	   local address */
+	  
+	  if (!is_sid_any(mdp->bind.sid)){
+	    subscriber = find_subscriber(mdp->bind.sid, SID_SIZE, 0);
+	    if ((!subscriber) || subscriber->reachable != REACHABLE_SELF){
+	      WHYF("Invalid bind request for sid=%s", alloca_tohex_sid(mdp->bind.sid));
+	      /* Source address is invalid */
+	      overlay_mdp_reply_error(alarm->poll.fd, recvaddr_un, recvaddrlen, 7,
+					     "Bind address is not valid (must be a local MDP address, or all zeroes).");
+	      return;
+	    }
+	    
+	  }
+	  if (overlay_mdp_process_bind_request(alarm->poll.fd, subscriber, mdp->bind.port_number,
+					       mdp->packetTypeAndFlags, recvaddr_un, recvaddrlen))
+	    overlay_mdp_reply_error(alarm->poll.fd,recvaddr_un,recvaddrlen,3, "Port already in use");
+	  else
+	    overlay_mdp_reply_ok(alarm->poll.fd,recvaddr_un,recvaddrlen,"Port bound");
+	  return;
+	}
 	break;
+	  
       default:
 	/* Client is not allowed to send any other frame type */
 	WARNF("Unsupported MDP frame type: %d", mdp_type);
