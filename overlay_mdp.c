@@ -283,6 +283,9 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
   unsigned char *b = NULL;
   unsigned char plain_block[len+16];
 
+  /* Indicate MDP message type */
+  mdp->packetTypeAndFlags=MDP_TX;
+  
   switch(f->modifiers&OF_CRYPTO_BITS)  {
   case 0: 
     /* get payload */
@@ -365,9 +368,6 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
   
   int version=(b[0]<<8)+b[1];
   if (version!=0x0101) RETURN(WHY("Saw unsupported MDP frame version"));
-  
-  /* Indicate MDP message type */
-  mdp->packetTypeAndFlags=MDP_TX;
   
   /* extract MDP port numbers */
   mdp->in.src.port=(b[2]<<24)+(b[3]<<16)+(b[4]<<8)+b[5];
@@ -497,7 +497,8 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp, time_ms_t now)
 	  if (mdp->out.payload_length<1) {
 	    RETURN(WHY("Empty DID in DNA resolution request")); }
 	  bcopy(&mdp->out.payload[0],&did[0],pll);
-	  did[pll]=0; 
+	  did[pll]=0;
+	  
 	  int results=0;
 	  while(keyring_find_did(keyring,&cn,&in,&kp,did))
 	    {
