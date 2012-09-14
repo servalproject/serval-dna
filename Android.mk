@@ -36,6 +36,8 @@ SERVALD_SRC_FILES = \
 	serval-dna/rhizome_fetch.c \
 	serval-dna/rhizome_http.c \
 	serval-dna/rhizome_packetformats.c \
+	serval-dna/rhizome_direct.c \
+	serval-dna/rhizome_direct_http.c \
         serval-dna/responses.c     \
 	serval-dna/serval_packetvisualise.c \
         serval-dna/server.c        \
