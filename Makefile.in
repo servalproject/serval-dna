@@ -20,6 +20,7 @@ SRCS=	\
 	log.c \
 	lsif.c \
 	main.c \
+	mdp_client.c \
 	mkdir.c \
 	monitor.c \
 	monitor-cli.c \
@@ -69,6 +70,15 @@ MONITORCLIENTSRCS=conf.c \
 	strbuf.c \
 	strbuf_helpers.c
 
+MDPCLIENTSRCS=conf.c \
+	mkdir.c \
+	log.c \
+	mdp_client.c \
+	net.c \
+	str.c \
+	strbuf.c \
+	strbuf_helpers.c
+
 HAVE_VOIPTEST=	@HAVE_VOIPTEST@
 ifeq ($(HAVE_VOIPTEST), 1)
 SRCS+=	pa_phone.c
@@ -78,6 +88,7 @@ endif
 OBJS=	$(SRCS:.c=.o)
 
 MONITORCLIENTOBJS=	$(MONITORCLIENTSRCS:.c=.o)
+MDPCLIENTOBJS=	$(MDPCLIENTSRCS:.c=.o)
 
 HDRS=	fifo.h \
 	Makefile \
@@ -95,6 +106,7 @@ HDRS=	fifo.h \
 	xprintf.h \
 	constants.h \
 	monitor-client.h \
+	mdp_client.h \
 	sqlite-amalgamation-3070900/sqlite3.h
 
 LDFLAGS=@LDFLAGS@ @PORTAUDIO_LIBS@ @SRC_LIBS@ @SPANDSP_LIBS@ @CODEC2_LIBS@ @PTHREAD_LIBS@

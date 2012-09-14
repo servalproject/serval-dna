@@ -799,20 +799,11 @@ typedef struct overlay_mdp_frame {
 
 int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req);
 
-/* Client-side MDP function */
-extern int mdp_client_socket;
-int overlay_mdp_client_init();
-int overlay_mdp_client_done();
-int overlay_mdp_client_poll(time_ms_t timeout_ms);
-int overlay_mdp_recv(overlay_mdp_frame *mdp,int *ttl);
-int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms);
-
 /* Server-side MDP functions */
 int overlay_saw_mdp_frame(overlay_mdp_frame *mdp, time_ms_t now);
 int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp);
 int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
 			  overlay_mdp_frame *mdpreply);
-int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp);
 int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 		     struct sockaddr_un *recvaddr,int recvaddlen);
 int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const unsigned char *resolved_sid, const char *uri, const char *did, const char *name);

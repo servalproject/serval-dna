@@ -19,6 +19,7 @@ SERVALD_SRC_FILES = \
         serval-dna/xprintf.c       \
         serval-dna/log.c           \
         serval-dna/net.c           \
+	serval-dna/mdp_client.c    \
         serval-dna/mkdir.c         \
         serval-dna/strbuf.c         \
         serval-dna/strbuf_helpers.c \

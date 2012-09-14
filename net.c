@@ -20,6 +20,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 #include "net.h"
 
 int _set_nonblock(int fd, struct __sourceloc where)
@@ -124,3 +126,98 @@ ssize_t _write_str_nonblock(int fd, const char *str, struct __sourceloc where)
 {
   return _write_all_nonblock(fd, str, strlen(str), where);
 }
+
+ssize_t recvwithttl(int sock,unsigned char *buffer, size_t bufferlen,int *ttl,
+		    struct sockaddr *recvaddr, socklen_t *recvaddrlen)
+{
+  struct msghdr msg;
+  struct iovec iov[1];
+  
+  iov[0].iov_base=buffer;
+  iov[0].iov_len=bufferlen;
+  bzero(&msg,sizeof(msg));
+  msg.msg_name = recvaddr;
+  msg.msg_namelen = *recvaddrlen;
+  msg.msg_iov = &iov[0];
+  msg.msg_iovlen = 1;
+  // setting the following makes the data end up in the wrong place
+  //  msg.msg_iov->iov_base=iov_buffer;
+  // msg.msg_iov->iov_len=sizeof(iov_buffer);
+  
+  struct cmsghdr cmsgcmsg[16];
+  msg.msg_control = &cmsgcmsg[0];
+  msg.msg_controllen = sizeof(struct cmsghdr)*16;
+  msg.msg_flags = 0;
+  
+  ssize_t len = recvmsg(sock,&msg,0);
+  if (len == -1 && errno != EAGAIN && errno != EWOULDBLOCK)
+    return WHY_perror("recvmsg");
+  
+  if (0&&debug&DEBUG_PACKETRX) {
+    DEBUGF("recvmsg returned %lld (flags=%d, msg_controllen=%d)", (long long) len, msg.msg_flags, msg.msg_controllen);
+    dump("received data", buffer, len);
+  }
+  
+  struct cmsghdr *cmsg;
+  if (len>0)
+  {
+    for (cmsg = CMSG_FIRSTHDR(&msg); 
+	 cmsg != NULL; 
+	 cmsg = CMSG_NXTHDR(&msg,cmsg)) {
+      
+      if ((cmsg->cmsg_level == IPPROTO_IP) && 
+	  ((cmsg->cmsg_type == IP_RECVTTL) ||(cmsg->cmsg_type == IP_TTL))
+	  &&(cmsg->cmsg_len) ){
+	if (debug&DEBUG_PACKETRX)
+	  DEBUGF("  TTL (%p) data location resolves to %p", ttl,CMSG_DATA(cmsg));
+	if (CMSG_DATA(cmsg)) {
+	  *ttl = *(unsigned char *) CMSG_DATA(cmsg);
+	  if (debug&DEBUG_PACKETRX)
+	    DEBUGF("  TTL of packet is %d", *ttl);
+	} 
+      } else {
+	if (debug&DEBUG_PACKETRX)
+	  DEBUGF("I didn't expect to see level=%02x, type=%02x",
+		 cmsg->cmsg_level,cmsg->cmsg_type);
+      }	 
+    }
+  }
+  *recvaddrlen=msg.msg_namelen;
+  
+  return len;
+}
+
+int urandombytes(unsigned char *x, unsigned long long xlen)
+{
+  static int urandomfd = -1;
+  int tries = 0;
+  if (urandomfd == -1) {
+    for (tries = 0; tries < 4; ++tries) {
+      urandomfd = open("/dev/urandom",O_RDONLY);
+      if (urandomfd != -1) break;
+      sleep(1);
+    }
+    if (urandomfd == -1) {
+      WHY_perror("open(/dev/urandom)");
+      return -1;
+    }
+  }
+  tries = 0;
+  while (xlen > 0) {
+    int i = (xlen < 1048576) ? xlen : 1048576;
+    i = read(urandomfd, x, i);
+    if (i == -1) {
+      if (++tries > 4) {
+	WHY_perror("read(/dev/urandom)");
+	return -1;
+      }
+      sleep(1);
+    } else {
+      tries = 0;
+      x += i;
+      xlen -= i;
+    }
+  }
+  return 0;
+}
+

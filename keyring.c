@@ -20,41 +20,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "nacl.h"
 #include "overlay_address.h"
 
-static int urandomfd = -1;
-
-int urandombytes(unsigned char *x, unsigned long long xlen)
-{
-  int tries = 0;
-  if (urandomfd == -1) {
-    for (tries = 0; tries < 4; ++tries) {
-      urandomfd = open("/dev/urandom",O_RDONLY);
-      if (urandomfd != -1) break;
-      sleep(1);
-    }
-    if (urandomfd == -1) {
-      WHY_perror("open(/dev/urandom)");
-      return -1;
-    }
-  }
-  tries = 0;
-  while (xlen > 0) {
-    int i = (xlen < 1048576) ? xlen : 1048576;
-    i = read(urandomfd, x, i);
-    if (i == -1) {
-      if (++tries > 4) {
-	WHY_perror("read(/dev/urandom)");
-	return -1;
-      }
-      sleep(1);
-    } else {
-      tries = 0;
-      x += i;
-      xlen -= i;
-    }
-  }
-  return 0;
-}
-
 /*
   Open keyring file, read BAM and create initial context using the 
   stored salt. */

@@ -16,6 +16,9 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#ifndef __SERVALD_MONITOR_CLIENT_H
+#define __SERVALD_MONITOR_CLIENT_H
+
 struct monitor_state;
 
 struct monitor_command_handler{
@@ -29,3 +32,5 @@ int monitor_client_writeline(int fd,char *fmt, ...);
 int monitor_client_writeline_and_data(int fd,unsigned char *data,int bytes,char *fmt,...);
 int monitor_client_read(int fd, struct monitor_state *res, struct monitor_command_handler *handlers, int handler_count);
 int monitor_client_close(int fd, struct monitor_state *res); 
+
+#endif
