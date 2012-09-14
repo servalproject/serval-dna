@@ -301,7 +301,7 @@ int overlay_address_append(struct overlay_buffer *b, struct subscriber *subscrib
   }else if(subscriber==previous){
     ob_append_byte(b, OA_CODE_PREVIOUS);
     
-  }else if(subscriber->send_full || subscriber->abbreviate_len >= 24){
+  }else if(subscriber->send_full || subscriber->abbreviate_len >= 20){
     subscriber->send_full=0;
     ob_append_bytes(b, subscriber->sid, SID_SIZE);
     
@@ -332,7 +332,7 @@ int overlay_address_append_self(overlay_interface *interface, struct overlay_buf
   if (!my_subscriber)
     return WHY("I don't know who I am yet");
   
-  if (++interface->ticks_since_sent_full_address < ticks_per_full_address){
+  if (++interface->ticks_since_sent_full_address > ticks_per_full_address){
     interface->ticks_since_sent_full_address = 0;
     my_subscriber->send_full=1;
   }
