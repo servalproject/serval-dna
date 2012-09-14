@@ -255,10 +255,25 @@ int rhizome_direct_conclude_sync_request(rhizome_direct_sync_request *r)
   return 0;
 }
 
+/*
+  This function is called with the list of BARs for a specified cursor range
+  that the far-end possesses, i.e., what we are given is a list of "I have"'s.
+  To produce our reply, we need to work out corresponding list of "I have"'s, and
+  then compare them to produce the list of "you have and I want" and "I have and
+  you want" that if fulfilled, would result in both ends having the same set of
+  BARs for the specified cursor range.  The potential presense of multiple versions
+  of a given bundle introduces only a slight complication. 
+*/
+
 rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
 (unsigned char *buffer,int size)
 {
   if (size<10) return NULL;
+  if (size>65536) return NULL;
+
+  int them_count=(size-10)/RHIZOME_BAR_BYTES;
+
+  unsigned char usbuffer[size];
 
   rhizome_direct_bundle_cursor *c=rhizome_direct_bundle_iterator(size);
   assert(c!=NULL);
@@ -271,8 +286,79 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
   DEBUGF("unpickled size_high=%lld, limit_size_high=%lld",
 	 c->size_high,c->limit_size_high);
 
-  int count=rhizome_direct_bundle_iterator_fill(c,-1);
-  DEBUGF("Found %d manifests in that range",count);
+  /* Get our list of BARs for the same cursor range */
+  int us_count=rhizome_direct_bundle_iterator_fill(c,-1);
+  DEBUGF("Found %d manifests in that range",us_count);
+  
+  /* Transfer to a temporary buffer, so that we can overwrite
+     the cursor's buffer with the response data. */
+  bcopy(c->buffer,usbuffer,10+us_count*RHIZOME_BAR_BYTES);
+  c->buffer_offset_bytes=10;
+  c->buffer_used=0;
+
+  /* Iterate until we are through both lists.
+     Note that the responses are 9-bytes each, much smaller than the 32 bytes
+     used by BARs, therefore the response will never be bigger than the request,
+     and so we don't need to worry about overflows. */
+  int them=0,us=0;
+  while(them<them_count&&us<us_count)
+    {
+      unsigned char *them_id=&buffer[10+them*RHIZOME_BAR_BYTES];
+      unsigned char *us_id=&usbuffer[10+us*RHIZOME_BAR_BYTES];
+      int relation=memcmp(them_id,us_id,RHIZOME_BAR_BYTES);
+      int who=0;
+      if (relation<0) {
+	/* They have a bundle that we don't have any version of.
+	   Append 9-byte "please send" record consisting of 0x01 followed
+	   by the eight-byte BID prefix from the BAR. */
+	c->buffer[c->buffer_offset_bytes+c->buffer_used]=0x01; /* Please send */
+	bcopy(&buffer[10+them*RHIZOME_BAR_BYTES],
+	      &c->buffer[c->buffer_offset_bytes+c->buffer_used+1],
+	      8);
+	c->buffer_used+=1+8;
+	who=-1;
+      } else if (relation>0) {
+	/* We have a bundle that they don't have any version of
+	   Append 9-byte "I have [newer]" record consisting of 0x02 followed
+	   by the eight-byte BID prefix from the BAR. */
+	c->buffer[c->buffer_offset_bytes+c->buffer_used]=0x02; /* I have [newer] */
+	bcopy(&usbuffer[10+us*RHIZOME_BAR_BYTES],
+	      &c->buffer[c->buffer_offset_bytes+c->buffer_used+1],
+	      8);
+	c->buffer_used+=1+8;
+	who=+1;
+      } else {
+	/* We each have a version of this bundle, so see whose is newer */
+	long long them_version
+	  =rhizome_bar_version(&buffer[10+them*RHIZOME_BAR_BYTES]);
+	long long us_version
+	  =rhizome_bar_version(&usbuffer[10+us*RHIZOME_BAR_BYTES]);
+	if (them_version>us_version) {
+	  /* They have the newer version of the bundle */
+	  c->buffer[c->buffer_offset_bytes+c->buffer_used]=0x01; /* Please send */
+	  bcopy(&buffer[10+them*RHIZOME_BAR_BYTES],
+		&c->buffer[c->buffer_offset_bytes+c->buffer_used+1],
+		8);
+	  c->buffer_used+=1+8;
+	} else if (them_version<us_version) {
+	  /* We have the newer version of the bundle */
+	  c->buffer[c->buffer_offset_bytes+c->buffer_used]=0x02; /* I have [newer] */
+	  bcopy(&usbuffer[10+us*RHIZOME_BAR_BYTES],
+		&c->buffer[c->buffer_offset_bytes+c->buffer_used+1],
+		8);
+	  c->buffer_used+=1+8;
+	} else {
+	  DEBUGF("We both have the same version of this bundle");
+	}
+      }
+
+      /* Advance through lists accordingly */
+      switch(who) {
+      case -1: them++; break;
+      case +1: us++; break;
+      case 0: them++; us++; break;
+      }
+    }
 
   return c;
 }
