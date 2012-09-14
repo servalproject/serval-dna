@@ -374,7 +374,7 @@ int vomp_send_status_remote(struct vomp_call_state *call)
      Make sure that we don't want (just drop the message if there is
      congestion) */
   
-  overlay_mdp_dispatch(&mdp,1,NULL,0);
+  overlay_mdp_dispatch(&mdp,0,NULL,0);
   
   call->local.sequence++;
   return 0;

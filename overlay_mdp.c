@@ -546,6 +546,7 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp, time_ms_t now)
 	  /* Swap addresses */
 	  overlay_mdp_swap_src_dst(mdp);
 
+	  /* Prevent echo:echo connections and the resulting denial of service from triggering endless pongs. */
 	  if (mdp->out.dst.port==MDP_PORT_ECHO) {
 	    RETURN(WHY("echo loop averted"));
 	  }
@@ -608,33 +609,16 @@ int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const unsigned char
   return overlay_mdp_dispatch(&mdpreply, 0 /* system generated */, NULL, 0);
 }
 
-int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,int userGeneratedFrameP,
-				      struct sockaddr_un *recvaddr,
-				      int recvaddrlen)
+int overlay_mdp_check_binding(struct subscriber *subscriber, int port, int userGeneratedFrameP,
+			      struct sockaddr_un *recvaddr, int recvaddrlen)
 {
-  if (is_broadcast(src->sid))
-    {
-      /* This is rather naughty if it happens, since broadcasting a
-	 response can lead to all manner of nasty things.
-	 Picture a packet with broadcast as the source address, sent
-	 to, say, the MDP echo port on another node, and with a source
-	 port also of the echo port.  Said echo will get multiplied many,
-	 many, many times over before the TTL finally reaches zero.
-	 So we just say no to any packet with a broadcast source address. 
-	 (Of course we have other layers of protection against such 
-	 shenanigens, such as using BPIs to smart-flood broadcasts, but
-	 security comes through depth.)
-      */
-      return WHY("Packet had broadcast address as source address");
-    }
 
-  /* Now make sure that source address is in the list of bound addresses,
+  /* Check if the address is in the list of bound addresses,
      and that the recvaddr matches. */
-  struct subscriber *subscriber = find_subscriber(src->sid, SID_SIZE, 1);
   
   int i;
   for(i = 0; i < MDP_MAX_BINDINGS; ++i) {
-    if (mdp_bindings[i].port != src->port)
+    if (mdp_bindings[i].port != port)
       continue;
     if ((!mdp_bindings[i].subscriber) || mdp_bindings[i].subscriber == subscriber) {
       /* Binding matches, now make sure the sockets match */
@@ -648,33 +632,22 @@ int overlay_mdp_sanitytest_sourceaddr(sockaddr_mdp *src,int userGeneratedFrameP,
   }
 
   /* Check for build-in port listeners */
-  if (subscriber && subscriber->reachable == REACHABLE_SELF) {
-    switch(src->port) {
+  if (!userGeneratedFrameP){
+    switch(port) {
     case MDP_PORT_NOREPLY:
-      /* allow system generated packets with no binding for responses */
     case MDP_PORT_ECHO:
-      /* we don't allow user/network generated packets claiming to
-	 be from the echo port, largely to prevent echo:echo connections
-	 and the resulting denial of service from triggering endless pongs. */
-      if (!userGeneratedFrameP)
-	return 0;
-      break;
-	
-      /* other built-in listeners */
     case MDP_PORT_KEYMAPREQUEST:
     case MDP_PORT_VOMP:
     case MDP_PORT_DNALOOKUP:
       return 0;
-    default:
-      break;
     }
   }
 
   return WHYF("No such binding: recvaddr=%p %s addr=%s port=%u (0x%x) -- possible spoofing attack",
 	recvaddr,
 	recvaddr ? alloca_toprint(-1, recvaddr->sun_path, recvaddrlen - sizeof(short)) : "",
-	alloca_tohex_sid(src->sid),
-	src->port, src->port
+	alloca_tohex_sid(subscriber->sid),
+	port, port
       );
 }
 
@@ -688,42 +661,68 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 			 struct sockaddr_un *recvaddr,int recvaddrlen)
 {
   IN();
+
+  /* Prepare the overlay frame for dispatch */
+  struct overlay_frame *frame = calloc(1,sizeof(struct overlay_frame));
+  
+  if (is_sid_any(mdp->out.src.sid)){
+    /* set source to ourselves */
+    frame->source = my_subscriber;
+    bcopy(frame->source->sid, mdp->out.src.sid, SID_SIZE);
+  }else if (is_broadcast(mdp->out.src.sid)){
+    /* This is rather naughty if it happens, since broadcasting a
+     response can lead to all manner of nasty things.
+     Picture a packet with broadcast as the source address, sent
+     to, say, the MDP echo port on another node, and with a source
+     port also of the echo port.  Said echo will get multiplied many,
+     many, many times over before the TTL finally reaches zero.
+     So we just say no to any packet with a broadcast source address. 
+     (Of course we have other layers of protection against such 
+     shenanigens, such as using BPIs to smart-flood broadcasts, but
+     security comes through depth.)
+     */
+    op_free(frame);
+    RETURN(WHY("Packet had broadcast address as source address"));
+  }else{
+    frame->source = find_subscriber(mdp->out.src.sid, SID_SIZE, 0);
+    if (!frame->source){
+      op_free(frame);
+      RETURN(WHYF("Possible spoofing attempt, tried to send a packet from %s, which is an unknown SID", alloca_tohex_sid(mdp->out.src.sid)));
+    }
+    if (frame->source->reachable!=REACHABLE_SELF){
+      op_free(frame);
+      RETURN(WHYF("Possible spoofing attempt, tried to send a packet from %s", alloca_tohex_sid(mdp->out.src.sid)));
+    }
+  }
+  
   /* Work out if destination is broadcast or not */
-  if (overlay_mdp_sanitytest_sourceaddr(&mdp->out.src, userGeneratedFrameP,
-					recvaddr, recvaddrlen))
+  if (overlay_mdp_check_binding(frame->source, mdp->out.src.port, userGeneratedFrameP,
+				recvaddr, recvaddrlen)){
+    op_free(frame);
     RETURN(overlay_mdp_reply_error
 	   (mdp_named.poll.fd,
 	    (struct sockaddr_un *)recvaddr,
 	    recvaddrlen,8,
 	    "Source address is invalid (you must bind to a source address before"
 	    " you can send packets"));
-  
-  /* Prepare the overlay frame for dispatch */
-  struct overlay_frame *frame = calloc(1,sizeof(struct overlay_frame));
+  }
   
   if (is_broadcast(mdp->out.dst.sid)){
     /* broadcast packets cannot be encrypted, so complain if MDP_NOCRYPT
      flag is not set. Also, MDP_NOSIGN must also be applied, until
      NaCl cryptobox keys can be used for signing. */	
-    if (!(mdp->packetTypeAndFlags&MDP_NOCRYPT))
+    if (!(mdp->packetTypeAndFlags&MDP_NOCRYPT)){
+      op_free(frame);
       RETURN(overlay_mdp_reply_error(mdp_named.poll.fd,
 				     recvaddr,recvaddrlen,5,
 				     "Broadcast packets cannot be encrypted "));
-  
+    }
     overlay_broadcast_generate_address(&frame->broadcast_id);
     frame->destination = NULL;
   }else{
     frame->destination = find_subscriber(mdp->out.dst.sid, SID_SIZE, 1);
   }
   frame->ttl=64; /* normal TTL (XXX allow setting this would be a good idea) */	
-  
-  if (is_sid_any(mdp->out.src.sid)){
-    /* set source to ourselves */
-    frame->source = my_subscriber;
-    bcopy(frame->source->sid, mdp->out.src.sid, SID_SIZE);
-  }else{
-    frame->source = find_subscriber(mdp->out.src.sid, SID_SIZE, 1);
-  }
   
   if (!frame->destination || frame->destination->reachable == REACHABLE_SELF)
     {

@@ -1191,7 +1191,7 @@ int keyring_mapping_request(keyring_file *k, overlay_mdp_frame *req)
 	    alloca_tohex_sid(req->out.src.sid), req->out.src.port,
 	    alloca_tohex_sid(req->out.dst.sid), req->out.dst.port
 	  );
-    return overlay_mdp_dispatch(req,1,NULL,0);
+    return overlay_mdp_dispatch(req,0,NULL,0);
   } else {
     /* It's probably a response. */
     if (debug & DEBUG_KEYRING)
