@@ -266,6 +266,18 @@ overlay_interface * overlay_interface_find(struct in_addr addr){
   return NULL;
 }
 
+overlay_interface * overlay_interface_find_name(const char *name){
+  int i;
+  for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
+    if (overlay_interfaces[i].state!=INTERFACE_STATE_UP)
+      continue;
+    if (strcasecmp(name, overlay_interfaces[i].name)==0){
+      return &overlay_interfaces[i];
+    }
+  }
+  return NULL;
+}
+
 // OSX doesn't recieve broadcast packets on sockets bound to an interface's address
 // So we have to bind a socket to INADDR_ANY to receive these packets.
 static void
@@ -406,6 +418,10 @@ overlay_interface_init_socket(int interface_index)
   // mark our sid to be sent in full
   if (my_subscriber)
     my_subscriber->send_full = 1;
+  
+  // try to register ourselves with a directory service
+  directory_interface_up(interface);
+  
   return 0;
 }
 

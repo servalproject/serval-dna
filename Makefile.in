@@ -10,6 +10,7 @@ SRCS=	\
 	commandline.c \
 	conf.c \
 	dataformats.c \
+	directory_client.c \
 	dna_helper.c \
 	dna_identity.c \
 	encode.c \
@@ -131,6 +132,10 @@ sqlite-amalgamation-3070900/sqlite3.o:	sqlite-amalgamation-3070900/sqlite3.c
 servald:	$(OBJS)
 	@echo LINK $@
 	@$(CC) $(CFLAGS) -Wall -o $@ $(OBJS) $(LDFLAGS)
+
+directory_service: $(MDPCLIENTOBJS) directory_service.o
+	@echo LINK $@
+	@$(CC) $(CFLAGS) -Wall -o $@ $(MDPCLIENTOBJS) directory_service.o $(LDFLAGS) 
 
 # This does not build on 64 bit elf platforms as NaCL isn't built with -fPIC
 # DOC 20120615

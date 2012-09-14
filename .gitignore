@@ -18,6 +18,7 @@ nacl/naclinc.txt
 nacl/nacllib.txt
 serval.c
 servald
+directory_service
 *.so
 test.*.log
 testlog

@@ -215,6 +215,38 @@ int reachable_unicast(struct subscriber *subscriber, overlay_interface *interfac
   return 0;
 }
 
+// load a unicast address from configuration, replace with database??
+int load_subscriber_address(struct subscriber *subscriber){
+  char buff[80];
+  const char *sid_hex = alloca_tohex_sid(subscriber->sid);
+  
+  snprintf(buff, sizeof(buff), "%s.interface", sid_hex);
+  const char *interface_name = confValueGet(buff, NULL);
+  if (!interface_name)
+    return 1;
+  
+  snprintf(buff, sizeof(buff), "%s.address", sid_hex);
+  const char *address = confValueGet(buff, NULL);
+  if (!address)
+    return 1;
+  
+  snprintf(buff, sizeof(buff), "%s.port", sid_hex);
+  int port = confValueGetInt64Range(buff, PORT_DNA, 1, 65535);
+  
+  overlay_interface *interface = overlay_interface_find_name(interface_name);
+  if (!interface){
+    WARNF("Interface %s is not UP", interface_name);
+    return -1;
+  }
+  
+  struct in_addr addr;
+  if (!inet_aton(address, &addr)){
+    return WHYF("%s doesn't look like an IP address", address);
+  }
+  
+  return reachable_unicast(subscriber, interface, addr, port);
+}
+
 // generate a new random broadcast address
 int overlay_broadcast_generate_address(struct broadcast *addr)
 {
