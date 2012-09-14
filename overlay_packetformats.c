@@ -271,9 +271,9 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     
     // HACK, change to packet transmitter when packet format includes that.
     if (f.type!=OF_TYPE_SELFANNOUNCE && 
-	f.source->reachable == REACHABLE_NONE && 
-	!f.source->node &&
-	!interface->fileP &&
+	(f.source->reachable == REACHABLE_NONE || f.source->reachable == REACHABLE_UNICAST)&& 
+	(!f.source->node) &&
+	(!interface->fileP) &&
 	recvaddr->sa_family==AF_INET){
       struct sockaddr_in *addr=(struct sockaddr_in *)recvaddr;
       

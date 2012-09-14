@@ -59,7 +59,7 @@ static unsigned char get_nibble(const unsigned char *sid, int pos){
   return byte&0xF;
 }
 
-// find a subscriber struct from a subscriber id
+// find a subscriber struct from a whole or abbreviated subscriber id
 // TODO find abreviated sid's
 struct subscriber *find_subscriber(const unsigned char *sid, int len, int create){
   struct tree_node *ptr = &root;
@@ -194,20 +194,21 @@ int subscriber_is_reachable(struct subscriber *subscriber){
 
 // mark the subscriber as reachable via reply unicast packet
 int reachable_unicast(struct subscriber *subscriber, overlay_interface *interface, struct in_addr addr, int port){
-  if (subscriber->reachable!=REACHABLE_NONE)
+  if (subscriber->reachable!=REACHABLE_NONE && subscriber->reachable!=REACHABLE_UNICAST)
     return WHYF("Subscriber %s is already reachable", alloca_tohex_sid(subscriber->sid));
   
   if (subscriber->node)
     return WHYF("Subscriber %s is already known for overlay routing", alloca_tohex_sid(subscriber->sid));
+  
+  // may be used in tests
+  if (subscriber->reachable==REACHABLE_NONE)
+    DEBUGF("ADD DIRECT ROUTE TO %s via %s:%d", alloca_tohex_sid(subscriber->sid), inet_ntoa(addr), port);
   
   subscriber->interface = interface;
   subscriber->reachable = REACHABLE_UNICAST;
   subscriber->address.sin_family = AF_INET;
   subscriber->address.sin_addr = addr;
   subscriber->address.sin_port = htons(port);
-  
-  // may be used in tests
-  DEBUGF("ADD DIRECT ROUTE TO %s via %s:%d", alloca_tohex_sid(subscriber->sid), inet_ntoa(addr), port);
   
   /* Pre-emptively check if we have their sas in memory, or send a request */
   keyring_find_sas_public(keyring, subscriber->sid);
