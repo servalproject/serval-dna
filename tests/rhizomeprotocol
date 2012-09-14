@@ -32,9 +32,9 @@ teardown() {
 
 setup_rhizome() {
    set_instance +A
-   create_rhizome_identities 1
+   create_identities 1
    set_instance +B
-   create_rhizome_identities 1
+   create_identities 1
 }
 
 # Called by start_servald_instances for each instance.
