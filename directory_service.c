@@ -5,31 +5,85 @@
 #include <stdio.h>
 #include <unistd.h>
 
-char last_add[256]="dummy";
+struct item{
+  // simple tree structure
+  struct item *_left;
+  struct item *_right;
+  char key[32];
+  char value[128];
+  time_ms_t expires;
+};
 
-void store(char *key, char *value){
+struct item *root;
+
+static struct item *create_item(const char *key){
+  struct item *ret=calloc(1,sizeof(struct item));
+  strncpy(ret->key,key,sizeof(ret->key));
+  ret->key[sizeof(ret->key) -1]=0;
+  return ret;
+}
+
+static struct item *find_item(const char *key, int create){
+  if (!root){
+    if (create)
+      root=create_item(key);
+    return root;
+  }
+  
+  struct item *item = root;
+  
+  while(item){
+    int c=strcmp(item->key, key);
+    if (c==0)
+      return item;
+    if (c<0){
+      if (!item->_left){
+	if (create)
+	  item->_left=create_item(key);
+	return item->_left;
+      }
+      item = item->_left;
+    }else{
+      if (!item->_right){
+	if (create)
+	  item->_right=create_item(key);
+	return item->_right;
+      }
+      item = item->_right;
+    }
+  }
+  return NULL;
+}
+
+static void store(char *key, char *value){
   // used by tests
   INFOF("PUBLISHED \"%s\" = \"%s\"", key, value);
-  strncpy(value, last_add, sizeof(last_add));
-  last_add[255]=0;
+  
+  struct item *item = find_item(key, 1);
+  strncpy(item->value,value,sizeof(item->value));
+  item->value[sizeof(item->value) -1]=0;
 }
 
-const char *retrieve(char *key){
+static const char *retrieve(char *key){
   INFOF("RESOLVING \"%s\"", key);
   
-  // dummy code, just reply with the last record we've heard
-  return last_add;
+  struct item *item = find_item(key, 0);
+  if (item)
+    return item->value;
+  return NULL;
 }
 
-void add_record(){
+static void add_record(){
   int ttl;
   overlay_mdp_frame mdp;
   
   if (!overlay_mdp_recv(&mdp, &ttl))
     return;
   
-  if (mdp.packetTypeAndFlags|=MDP_NOCRYPT)
-    return WHY("Only encrypted packets will be considered for publishing");
+  if (mdp.packetTypeAndFlags|=MDP_NOCRYPT){
+    WHY("Only encrypted packets will be considered for publishing");
+    return;
+  }
   
   // make sure the payload is a NULL terminated string
   mdp.in.payload[mdp.in.payload_length]=0;
@@ -39,8 +93,8 @@ void add_record(){
   while(i<mdp.in.payload_length && mdp.in.payload[i] && mdp.in.payload[i]!='|')
     i++;
   mdp.in.payload[i]=0;
-  char *name = mdp.in.payload+i+1;
-  char *sid = alloca_to_hex_sid(mdp.in.src.sid);
+  char *name = (char *)mdp.in.payload+i+1;
+  char *sid = alloca_tohex_sid(mdp.in.src.sid);
   
   // TODO check that did is a valid phone number
   
@@ -49,7 +103,7 @@ void add_record(){
   store(did, url);
 }
 
-void process_line(char *line){
+static void process_line(char *line){
   char *token=line;
   char *p=line;
   while(*p && *p!='|') p++;
@@ -63,7 +117,7 @@ void process_line(char *line){
     printf("%s|%s|\n",token,response);
 }
 
-void resolve_request(){
+static void resolve_request(){
   static char line_buff[1024];
   static int line_pos=0;
   
@@ -105,10 +159,8 @@ int main(int argc, char **argv){
   fds[1].fd = mdp_client_socket;
   fds[1].events = POLLIN;
   
-  fprintf(stderr, "Hello\n");
-  
   while(1){
-    int r = poll(fds, 2, 10000);
+    int r = poll(fds, 2, 60000);
     if (r>0){
       if (fds[0].revents & POLLIN)
 	resolve_request();
@@ -118,10 +170,8 @@ int main(int argc, char **argv){
       if (fds[0].revents & (POLLHUP | POLLERR))
 	break;
     }
-    fprintf(stderr,".");
   }
   
-  fprintf(stderr, "Bye\n");
   overlay_mdp_client_done();
   return 0;
 }
