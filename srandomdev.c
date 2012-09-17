@@ -77,8 +77,7 @@ srandomdev(void)
 		{
 
                 gettimeofday(&tv, NULL);
-                /* NOTE: intentional use of uninitialized variable */
-                seed ^= (getpid() << 16) ^ tv.tv_sec ^ tv.tv_usec;
+                seed = (getpid() << 16) ^ tv.tv_sec ^ tv.tv_usec;
         }
         srandom(seed);
 }

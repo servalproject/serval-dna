@@ -31,10 +31,8 @@ teardown() {
 }
 
 setup_rhizome() {
-   set_instance +A
-   create_rhizome_identities 1
+   foreach_instance +A +B create_single_identity
    set_instance +B
-   create_rhizome_identities 1
 }
 
 # Called by start_servald_instances for each instance.
@@ -110,6 +108,8 @@ setup_FileTransfer() {
    set_instance +A
    add_file file1
    start_servald_instances +A +B
+   foreach_instance +A assert_peers_are_instances +B
+   foreach_instance +B assert_peers_are_instances +A
 }
 test_FileTransfer() {
    wait_until bundle_received_by +B
@@ -131,6 +131,8 @@ setup_FileTransferBig() {
    ls -l file1
    add_file file1
    start_servald_instances +A +B
+   foreach_instance +A assert_peers_are_instances +B
+   foreach_instance +B assert_peers_are_instances +A
 }
 test_FileTransferBig() {
    wait_until bundle_received_by +B
@@ -156,6 +158,10 @@ setup_FileTransferMulti() {
    set_instance +A
    add_file file1
    start_servald_instances +A +B +C +D +E
+   foreach_instance +A assert_peers_are_instances +B +C +D +E
+   foreach_instance +B assert_peers_are_instances +A +C +D +E
+   foreach_instance +C assert_peers_are_instances +A +B +D +E
+   foreach_instance +D assert_peers_are_instances +A +B +C +E
 }
 test_FileTransferMulti() {
    wait_until bundle_received_by +B +C +D +E
@@ -172,6 +178,8 @@ setup_FileTransferDelete() {
    set_instance +A
    add_file file1
    start_servald_instances +A +B
+   foreach_instance +A assert_peers_are_instances +B
+   foreach_instance +B assert_peers_are_instances +A
    wait_until bundle_received_by +B
    set_instance +A
    >file1_2

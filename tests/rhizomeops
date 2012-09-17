@@ -27,10 +27,10 @@ shopt -s extglob
 setup_rhizome() {
    set_instance +A
    executeOk_servald config set debug.rhizome on
-   create_rhizome_identities 1
+   create_identities 1
    set_instance +B
    executeOk_servald config set debug.rhizome on
-   create_rhizome_identities 4
+   create_identities 4
    assert [ $SIDB1 != $SIDA1 ]
    assert [ $SIDB2 != $SIDA1 ]
    assert [ $SIDB3 != $SIDA1 ]
