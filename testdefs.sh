@@ -471,12 +471,18 @@ create_single_identity() {
    local sidvar=SID${instance_name}1
    local didvar=DID${instance_name}1
    local namevar=NAME${instance_name}1
-   eval "$didvar=\${1-\$((5550000 + \$instance_number))}"
-   eval "$namevar=\${2-Agent \$instance_name Smith}"
+   eval "$didvar=\"\${1-\$((5550000 + \$instance_number))}\""
+   eval "$namevar=\"\${2-Agent \$instance_name Smith}\""
    create_identities 1
-   eval SID$instance_name="${!sidvar}"
-   eval DID$instance_name="${!didvar}"
-   eval NAME$instance_name="${!namevar}"
+   eval "SID$instance_name=\"\${!sidvar}\""
+   eval "DID$instance_name=\"\${!didvar}\""
+   eval "NAME$instance_name=\"\${!namevar}\""
+   sidvar=SID${instance_name}
+   didvar=DID${instance_name}
+   namevar=NAME${instance_name}
+   tfw_log "SID$instance_name=$(shellarg "${!sidvar}")"
+   tfw_log "DID$instance_name=$(shellarg "${!didvar}")"
+   tfw_log "NAME$instance_name=$(shellarg "${!namevar}")"
 }
 
 # Utility function:
@@ -510,9 +516,11 @@ create_identities() {
          executeOk_servald set did "${!sidvar}" "${!didvar}" "${!namevar}"
          eval "$didvar=\${!didvar}"
          eval "$namevar=\${!namevar}"
+         tfw_log "$didvar=$(shellarg "${!didvar}")"
+         tfw_log "$namevar=$(shellarg "${!namevar}")"
       else
-         extract_stdout_keyvalue_optional $didvar did "$rexp_did" && tfw_log "$didvar=${!didvar}"
-         extract_stdout_keyvalue_optional $namevar name ".*" && tfw_log "$namevar=${!namevar}"
+         extract_stdout_keyvalue_optional $didvar did "$rexp_did" && tfw_log "$didvar=$(shellarg "${!didvar}")"
+         extract_stdout_keyvalue_optional $namevar name ".*" && tfw_log "$namevar=$(shellarg "${!namevar}")"
       fi
    done
    for ((i = 1; i <= N; ++i)); do
