@@ -921,6 +921,7 @@ int stopAudio();
 #define SERVER_RUNNING 4
 int server_probe(int *pid);
 
+int dna_helper_start();
 int dna_helper_shutdown();
 int dna_helper_enqueue(overlay_mdp_frame *mdp, const char *did, const unsigned char *requestorSid);
 int dna_return_resolution(overlay_mdp_frame *mdp, unsigned char *fromSid,

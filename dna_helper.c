@@ -144,9 +144,25 @@ dna_helper_close_pipes()
   }
 }
 
-static int
-dna_helper_start(const char *command, const char *arg, const char *mysid)
+int
+dna_helper_start()
 {
+  const char *command = confValueGet("dna.helper.executable", NULL);
+  const char *arg = confValueGet("dna.helper.argv.1", NULL);
+  if (!command || !command[0]) {
+    /* Check if we have a helper configured. If not, then set
+     dna_helper_pid to magic value of 0 so that we don't waste time
+     in future looking up the dna helper configuration value. */
+    INFO("DNAHELPER none configured");
+    dna_helper_pid = 0;
+    return 0;
+  }
+  
+  if (!my_subscriber)
+    return WHY("Unable to lookup my SID");
+  
+  const char *mysid = alloca_tohex_sid(my_subscriber->sid);
+  
   dna_helper_close_pipes();
   int stdin_fds[2], stdout_fds[2], stderr_fds[2];
   if (pipe(stdin_fds) == -1)
@@ -557,21 +573,7 @@ dna_helper_enqueue(overlay_mdp_frame *mdp, const char *did, const unsigned char 
     return 0;
   // Only try to restart a DNA helper process if the previous one is well and truly gone.
   if (dna_helper_pid == -1 && dna_helper_stdin == -1 && dna_helper_stdout == -1 && dna_helper_stderr == -1) {
-    const char *dna_helper_executable = confValueGet("dna.helper.executable", NULL);
-    const char *dna_helper_arg1 = confValueGet("dna.helper.argv.1", NULL);
-    if (!dna_helper_executable || !dna_helper_executable[0]) {
-      /* Check if we have a helper configured. If not, then set
-	 dna_helper_pid to magic value of 0 so that we don't waste time
-	 in future looking up the dna helper configuration value. */
-      INFO("DNAHELPER none configured");
-      dna_helper_pid = 0;
-      return 0;
-    }
-    
-    if (!my_subscriber)
-      return WHY("Unable to lookup my SID");
-      
-    if (dna_helper_start(dna_helper_executable, dna_helper_arg1, alloca_tohex_sid(my_subscriber->sid)) == -1) {
+    if (dna_helper_start() == -1) {
       /* Something broke, bail out */
       return WHY("DNAHELPER start failed");
     }

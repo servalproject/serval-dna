@@ -150,6 +150,9 @@ schedule(&_sched_##X); }
      the server's listen socket is in the list for poll() */
   if (rhizome_enabled()) rhizome_http_server_start();
   
+  // start the dna helper if configured
+  dna_helper_start();
+  
   /* Pick next rhizome files to grab every few seconds
      from the priority list continuously being built from observed
      bundle announcements */
