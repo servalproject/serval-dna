@@ -184,7 +184,7 @@ overlay_node *get_node(struct subscriber *subscriber, int create){
     memset(subscriber->node,0,sizeof(overlay_node));
     subscriber->node->subscriber = subscriber;
     // if we're taking over routing calculations, make sure we invalidate any other calculations first
-    subscriber->reachable=REACHABLE_NONE;
+    set_reachable(subscriber, REACHABLE_NONE);
     // This info message is used by tests; don't alter or remove it.
     INFOF("ADD OVERLAY NODE sid=%s", alloca_tohex_sid(subscriber->sid));
   }
@@ -248,7 +248,7 @@ int overlay_route_ack_selfannounce(struct overlay_frame *f,
 
   /* Try to use broadcast if we don't have a route yet */
   if (out->destination->reachable == REACHABLE_NONE)
-    out->destination->reachable = REACHABLE_BROADCAST;
+    set_reachable(out->destination, REACHABLE_BROADCAST);
   
   /* Set the time in the ack. Use the last sequence number we have seen
      from this neighbour, as that may be helpful information for that neighbour
@@ -504,31 +504,14 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
      if it goes down, we probably don't need to say anything at all.
   */
   
-  int diff=best_score-n->best_link_score;
+  int diff=best_score - n->best_link_score;
   if (diff>0) {
     overlay_route_please_advertise(n);
     if (debug&DEBUG_OVERLAYROUTEMONITOR) overlay_route_dump();
   }
+  int old_best = n->best_link_score;
   
   /* Remember new reachability information */
-  if (n->subscriber->reachable!=reachable){
-    switch (reachable){
-      case REACHABLE_DIRECT:
-	DEBUGF("%s is now reachable directly", alloca_tohex_sid(n->subscriber->sid));
-	break;
-      case REACHABLE_INDIRECT:
-	DEBUGF("%s is now reachable indirectly", alloca_tohex_sid(n->subscriber->sid));
-	break;
-      case REACHABLE_NONE:
-	DEBUGF("%s is not reachable", alloca_tohex_sid(n->subscriber->sid));
-	break;
-      case REACHABLE_BROADCAST:
-	DEBUGF("%s is now reachable via broadcast", alloca_tohex_sid(n->subscriber->sid));
-	break;
-    }
-  }
-    
-  n->subscriber->reachable=reachable;
   switch (reachable){
     case REACHABLE_INDIRECT:
       n->subscriber->next_hop = next_hop;
@@ -538,11 +521,14 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
       n->subscriber->address = interface->broadcast_address;
       break;
   }
+  n->best_link_score=best_score;
+  n->best_observation=best_observation;
+  set_reachable(n->subscriber, reachable);
   
-  if (n->best_link_score && !best_score){
+  if (old_best && !best_score){
     INFOF("PEER UNREACHABLE, sid=%s", alloca_tohex_sid(n->subscriber->sid));
     monitor_announce_unreachable_peer(n->subscriber->sid);
-  }else if(best_score && !n->best_link_score){
+  }else if(best_score && !old_best){
     INFOF("PEER REACHABLE, sid=%s", alloca_tohex_sid(n->subscriber->sid));
     /* Make sure node is advertised soon */
     overlay_route_please_advertise(n);
@@ -552,9 +538,6 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
     keyring_find_sas_public(keyring, n->subscriber->sid);
   }
   
-  n->best_link_score=best_score;
-  n->best_observation=best_observation;
-
   return 0;
 }
 

@@ -153,6 +153,9 @@ schedule(&_sched_##X); }
   // start the dna helper if configured
   dna_helper_start();
   
+  // preload directory service information
+  directory_service_init();
+  
   /* Pick next rhizome files to grab every few seconds
      from the priority list continuously being built from observed
      bundle announcements */

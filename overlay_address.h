@@ -98,10 +98,12 @@ struct broadcast{
 };
 
 extern struct subscriber *my_subscriber;
+extern struct subscriber *directory_service;
 
 struct subscriber *find_subscriber(const unsigned char *sid, int len, int create);
 void enum_subscribers(struct subscriber *start, int(*callback)(struct subscriber *, void *), void *context);
 int subscriber_is_reachable(struct subscriber *subscriber);
+int set_reachable(struct subscriber *subscriber, int reachable);
 int reachable_unicast(struct subscriber *subscriber, overlay_interface *interface, struct in_addr addr, int port);
 int load_subscriber_address(struct subscriber *subscriber);
 

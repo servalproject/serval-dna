@@ -192,6 +192,45 @@ int subscriber_is_reachable(struct subscriber *subscriber){
   return subscriber->reachable;
 }
 
+int set_reachable(struct subscriber *subscriber, int reachable){
+  if (subscriber->reachable==reachable)
+    return 0;
+  int old_value=subscriber->reachable;
+  
+  subscriber->reachable=reachable;
+  
+  // these log messages may be used in tests
+  switch(reachable){
+    case REACHABLE_NONE:
+      DEBUGF("%s is not reachable", alloca_tohex_sid(subscriber->sid));
+      break;
+    case REACHABLE_SELF:
+      break;
+      
+    case REACHABLE_DIRECT:
+      DEBUGF("%s is now reachable directly", alloca_tohex_sid(subscriber->sid));
+      break;
+    case REACHABLE_INDIRECT:
+      DEBUGF("%s is now reachable indirectly", alloca_tohex_sid(subscriber->sid));
+      break;
+    case REACHABLE_UNICAST:
+      DEBUGF("%s is now reachable via unicast", alloca_tohex_sid(subscriber->sid));
+      break;
+    case REACHABLE_BROADCAST:
+      DEBUGF("%s is now reachable via broadcast", alloca_tohex_sid(subscriber->sid));
+      break;
+  }
+  
+  // Hacky layering violation...
+  if (subscriber==directory_service &&
+      (old_value==REACHABLE_NONE||old_value==REACHABLE_BROADCAST) &&
+      (reachable!=REACHABLE_NONE&&reachable!=REACHABLE_BROADCAST)
+      )
+    directory_registration();
+  
+  return 0;
+}
+
 // mark the subscriber as reachable via reply unicast packet
 int reachable_unicast(struct subscriber *subscriber, overlay_interface *interface, struct in_addr addr, int port){
   if (subscriber->reachable!=REACHABLE_NONE && subscriber->reachable!=REACHABLE_UNICAST)
@@ -200,12 +239,8 @@ int reachable_unicast(struct subscriber *subscriber, overlay_interface *interfac
   if (subscriber->node)
     return WHYF("Subscriber %s is already known for overlay routing", alloca_tohex_sid(subscriber->sid));
   
-  // may be used in tests
-  if (subscriber->reachable==REACHABLE_NONE)
-    DEBUGF("ADD DIRECT ROUTE TO %s via %s:%d", alloca_tohex_sid(subscriber->sid), inet_ntoa(addr), port);
-  
   subscriber->interface = interface;
-  subscriber->reachable = REACHABLE_UNICAST;
+  set_reachable(subscriber, REACHABLE_UNICAST);
   subscriber->address.sin_family = AF_INET;
   subscriber->address.sin_addr = addr;
   subscriber->address.sin_port = htons(port);
@@ -222,6 +257,7 @@ int load_subscriber_address(struct subscriber *subscriber){
   
   snprintf(buff, sizeof(buff), "%s.interface", sid_hex);
   const char *interface_name = confValueGet(buff, NULL);
+  // no unicast configuration? just return.
   if (!interface_name)
     return 1;
   

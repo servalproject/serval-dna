@@ -865,7 +865,8 @@ int overlay_interface_register(char *name,
 overlay_interface * overlay_interface_find(struct in_addr addr);
 overlay_interface * overlay_interface_find_name(const char *name);
 
-int directory_interface_up(overlay_interface *interface);
+int directory_registration();
+int directory_service_init();
 
 #ifdef HAVE_VOIPTEST
 int app_pa_phone(int argc, const char *const *argv, struct command_line_option *o);

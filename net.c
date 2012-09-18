@@ -22,7 +22,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <time.h>
 #include "net.h"
+#include "serval.h"
 
 int _set_nonblock(int fd, struct __sourceloc where)
 {
@@ -219,5 +221,30 @@ int urandombytes(unsigned char *x, unsigned long long xlen)
     }
   }
   return 0;
+}
+
+time_ms_t gettime_ms()
+{
+  struct timeval nowtv;
+  // If gettimeofday() fails or returns an invalid value, all else is lost!
+  if (gettimeofday(&nowtv, NULL) == -1)
+    FATAL_perror("gettimeofday");
+  if (nowtv.tv_sec < 0 || nowtv.tv_usec < 0 || nowtv.tv_usec >= 1000000)
+    FATALF("gettimeofday returned tv_sec=%ld tv_usec=%ld", nowtv.tv_sec, nowtv.tv_usec);
+  return nowtv.tv_sec * 1000LL + nowtv.tv_usec / 1000;
+}
+
+// Returns sleep time remaining.
+time_ms_t sleep_ms(time_ms_t milliseconds)
+{
+  if (milliseconds <= 0)
+    return 0;
+  struct timespec delay;
+  struct timespec remain;
+  delay.tv_sec = milliseconds / 1000;
+  delay.tv_nsec = (milliseconds % 1000) * 1000000;
+  if (nanosleep(&delay, &remain) == -1 && errno != EINTR)
+    FATALF_perror("nanosleep(tv_sec=%ld, tv_nsec=%ld)", delay.tv_sec, delay.tv_nsec);
+  return remain.tv_sec * 1000 + remain.tv_nsec / 1000000;
 }
 

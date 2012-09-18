@@ -696,7 +696,7 @@ int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
     if (id->keypairs[i]->type == KEYTYPE_CRYPTOBOX){
       struct subscriber *subscriber = find_subscriber(id->keypairs[i]->public_key, SID_SIZE, 1);
       if (subscriber){
-	subscriber->reachable=REACHABLE_SELF;
+	set_reachable(subscriber, REACHABLE_SELF);
 	if (!my_subscriber)
 	  my_subscriber=subscriber;
       }
@@ -909,7 +909,7 @@ keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, co
   // add new identity to in memory table
   struct subscriber *subscriber = find_subscriber(id->keypairs[1]->public_key, SID_SIZE, 1);
   if (subscriber){
-    subscriber->reachable=REACHABLE_SELF;
+    set_reachable(subscriber, REACHABLE_SELF);
     if (!my_subscriber)
       my_subscriber=subscriber;
   }

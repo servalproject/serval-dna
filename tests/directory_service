@@ -1,0 +1,72 @@
+#!/bin/bash
+
+# Tests for Directory Services.
+# Copyright 2012 Serval Project
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+
+configure_servald_server() {
+   executeOk_servald config set log.show_pid on
+   executeOk_servald config set log.show_time on
+   executeOk_servald config set debug.mdprequests Yes
+}
+
+setup() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B +C create_single_identity
+   set_instance +A
+   executeOk_servald config set dna.helper.executable "$servald_build_root/directory_service"
+   executeOk_servald config set debug.dnahelper on
+   foreach_instance +B +C executeOk_servald config set directory.service $SIDA
+   start_servald_instances +A +B +C
+}
+
+teardown() {
+   stop_all_servald_servers
+   kill_all_servald_processes
+   assert_no_servald_processes
+}
+
+is_published() {
+   grep "PUBLISHED" $LOGA || return 1
+   return 0   
+}
+
+sent_directory_request() {
+   grep "Sending directory registration" $LOGB || return 1
+   return 0
+}
+
+doc_publish="Publish and retrieve a directory entry"
+test_publish() {
+   wait_until sent_directory_request
+   wait_until is_published
+   stop_servald_server +B
+   stop_servald_server +C
+   set_instance +A
+   executeOk_servald dna lookup "$DIDB"
+   assertStdoutLineCount '==' 1
+   assertStdoutGrep --matches=1 "^sid://$SIDB/$DIDB:$DIDB:$NAMEB\$"
+   executeOk_servald dna lookup "$DIDC"
+   assertStdoutLineCount '==' 1
+   assertStdoutGrep --matches=1 "^sid://$SIDC/$DIDC:$DIDC:$NAMEC\$"
+   return
+}
+
+runTests "$@"

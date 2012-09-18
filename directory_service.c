@@ -56,20 +56,20 @@ static struct item *find_item(const char *key, int create){
 }
 
 static void store(char *key, char *value){
-  // used by tests
-  INFOF("PUBLISHED \"%s\" = \"%s\"", key, value);
-  
   struct item *item = find_item(key, 1);
   strncpy(item->value,value,sizeof(item->value));
   item->value[sizeof(item->value) -1]=0;
+  // expire after 20 minutes
+  item->expires = gettime_ms()+1200000;
+  // used by tests
+  fprintf(stderr, "PUBLISHED \"%s\" = \"%s\"\n", key, value);
 }
 
 static const char *retrieve(char *key){
-  INFOF("RESOLVING \"%s\"", key);
-  
   struct item *item = find_item(key, 0);
-  if (item)
+  if (item && item->expires > gettime_ms()){
     return item->value;
+  }
   return NULL;
 }
 
@@ -77,11 +77,11 @@ static void add_record(){
   int ttl;
   overlay_mdp_frame mdp;
   
-  if (!overlay_mdp_recv(&mdp, &ttl))
+  if (overlay_mdp_recv(&mdp, &ttl))
     return;
   
-  if (mdp.packetTypeAndFlags|=MDP_NOCRYPT){
-    WHY("Only encrypted packets will be considered for publishing");
+  if (mdp.packetTypeAndFlags&MDP_NOCRYPT){
+    fprintf(stderr, "Only encrypted packets will be considered for publishing\n");
     return;
   }
   
@@ -115,6 +115,8 @@ static void process_line(char *line){
   const char *response = retrieve(did);
   if (response)
     printf("%s|%s|\n",token,response);
+  printf("DONE\n");
+  fflush(stdout);
 }
 
 static void resolve_request(){
@@ -149,8 +151,10 @@ int main(int argc, char **argv){
 
   // bind for incoming directory updates
   unsigned char srcsid[SID_SIZE];
-  if (overlay_mdp_getmyaddr(0,srcsid)) return WHY("Could not get local address");
-  if (overlay_mdp_bind(srcsid,MDP_PORT_DIRECTORY)) return WHY("Could not bind to MDP socket");
+  if (overlay_mdp_getmyaddr(0,srcsid))
+    return WHY("Could not get local address");
+  if (overlay_mdp_bind(srcsid,MDP_PORT_DIRECTORY))
+    return WHY("Could not bind to MDP socket");
   
   set_nonblock(STDIN_FILENO);
   
@@ -159,8 +163,11 @@ int main(int argc, char **argv){
   fds[1].fd = mdp_client_socket;
   fds[1].events = POLLIN;
   
+  printf("STARTED\n");
+  fflush(stdout);
+  
   while(1){
-    int r = poll(fds, 2, 60000);
+    int r = poll(fds, 2, 100);
     if (r>0){
       if (fds[0].revents & POLLIN)
 	resolve_request();

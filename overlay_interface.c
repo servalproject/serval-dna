@@ -419,9 +419,6 @@ overlay_interface_init_socket(int interface_index)
   if (my_subscriber)
     my_subscriber->send_full = 1;
   
-  // try to register ourselves with a directory service
-  directory_interface_up(interface);
-  
   return 0;
 }
 

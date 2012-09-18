@@ -17,8 +17,8 @@ nacl/nacl-20110221/build
 nacl/naclinc.txt
 nacl/nacllib.txt
 serval.c
-servald
-directory_service
+/servald
+/directory_service
 *.so
 test.*.log
 testlog

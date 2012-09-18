@@ -17,6 +17,18 @@
 
 struct subscriber *directory_service;
 
+static void directory_update(struct sched_ent *alarm);
+
+static struct profile_total directory_timing={
+  .name="directory_update",
+};
+
+struct sched_ent directory_alarm={
+  .function=directory_update,
+  .stats=&directory_timing,
+};
+#define DIRECTORY_UPDATE_INTERVAL 300000
+
 // send a registration packet
 static void directory_send(struct subscriber *directory_service, const unsigned char *sid, const char *did, const char *name){
   overlay_mdp_frame request;
@@ -32,7 +44,9 @@ static void directory_send(struct subscriber *directory_service, const unsigned 
   request.out.dst.port=MDP_PORT_DIRECTORY;
   request.out.payload_length = snprintf((char *)request.out.payload, sizeof(request.out.payload), 
 					"%s|%s", did, name);
-  
+  // Used by tests
+  INFOF("Sending directory registration for %s, %s, %s to %s", 
+	alloca_tohex(sid,7), did, name, alloca_tohex(directory_service->sid, 7));
   overlay_mdp_dispatch(&request, 0, NULL, 0);
 }
 
@@ -48,8 +62,8 @@ static void directory_send_keyring(struct subscriber *directory_service){
       
       for(k2=0; k2 < i->keypair_count; k2++){
 	if (i->keypairs[k2]->type==KEYTYPE_DID){
-	  const char *unpackedDid = (const char *) i->keypairs[kp]->private_key;
-	  const char *name = (const char *) i->keypairs[kp]->public_key;
+	  const char *unpackedDid = (const char *) i->keypairs[k2]->private_key;
+	  const char *name = (const char *) i->keypairs[k2]->public_key;
 	  
 	  directory_send(directory_service, packedSid, unpackedDid, name);
 	  // send the first DID only
@@ -81,15 +95,33 @@ static int load_directory_config(){
   return load_subscriber_address(directory_service);
 }
 
-int directory_interface_up(overlay_interface *interface){
-  // reload config, now that an interface is up
+static void directory_update(struct sched_ent *alarm){
   load_directory_config();
   
   if (directory_service){
-    if (subscriber_is_reachable(directory_service) != REACHABLE_NONE)
+    if (subscriber_is_reachable(directory_service) != REACHABLE_NONE){
       directory_send_keyring(directory_service);
-    else
+      
+      alarm->alarm = gettime_ms() + DIRECTORY_UPDATE_INTERVAL;
+      alarm->deadline = alarm->alarm + 10000;
+      schedule(alarm);
+    }else
       DEBUGF("Directory service is not reachable");
   }
+}
+
+int directory_service_init(){
+  directory_update(&directory_alarm);
   return 0;
 }
+
+// called when we discover a route to the directory service SID
+int directory_registration(){
+  // give the route & SAS keys a moment to propagate
+  unschedule(&directory_alarm);
+  directory_alarm.alarm = gettime_ms() + 200;
+  directory_alarm.deadline = directory_alarm.alarm + 10000;
+  schedule(&directory_alarm);
+  return 0;
+}
+
