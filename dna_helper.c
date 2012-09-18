@@ -439,11 +439,7 @@ void handle_reply_line(const char *bufp, size_t len)
       else {
 	if (debug & DEBUG_DNAHELPER)
 	  DEBUGF("DNAHELPER reply %s", alloca_toprint(-1, bufp, len));
-	int cn=0, in=0, kp=0;
-	if (!keyring_next_identity(keyring, &cn, &in, &kp))
-	  WHYF("No local identity, cannot send DNA LOOKUP reply");
-	else
-	  overlay_mdp_dnalookup_reply(&request_mdp_data.src, keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key, uri, did, name);
+	overlay_mdp_dnalookup_reply(&request_mdp_data.src, my_subscriber->sid, uri, did, name);
       }
     }
   } else {

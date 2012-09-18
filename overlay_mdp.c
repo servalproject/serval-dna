@@ -684,6 +684,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
     op_free(frame);
     RETURN(WHY("Packet had broadcast address as source address"));
   }else{
+    // assume all local identities have already been unlocked and marked as SELF.
     frame->source = find_subscriber(mdp->out.src.sid, SID_SIZE, 0);
     if (!frame->source){
       op_free(frame);

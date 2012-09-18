@@ -840,6 +840,14 @@ keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, co
     crypto_box_curve25519xsalsa20poly1305_keypair(id->keypairs[0]->public_key,
 						  id->keypairs[0]->private_key);
 
+  // add new identity to in memory table
+  struct subscriber *subscriber = find_subscriber(id->keypairs[0]->public_key, SID_SIZE, 1);
+  if (subscriber){
+    set_reachable(subscriber, REACHABLE_SELF);
+    if (!my_subscriber)
+      my_subscriber=subscriber;
+  }
+  
   /* crypto_sign key pair */
   id->keypairs[1]=calloc(sizeof(keypair),1);
   if (!id->keypairs[1]) {
@@ -906,14 +914,6 @@ keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, co
   else
 #endif
 
-  // add new identity to in memory table
-  struct subscriber *subscriber = find_subscriber(id->keypairs[1]->public_key, SID_SIZE, 1);
-  if (subscriber){
-    set_reachable(subscriber, REACHABLE_SELF);
-    if (!my_subscriber)
-      my_subscriber=subscriber;
-  }
-  
   /* Everything went fine */
   return id;
 
