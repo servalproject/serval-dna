@@ -189,9 +189,11 @@ int overlay_payload_enqueue(int q, struct overlay_frame *p)
   
   if (!p) return WHY("Cannot queue NULL");
   
-  if (p->destination && 
-      (p->destination->reachable == REACHABLE_NONE || p->destination->reachable == REACHABLE_SELF))
-    return WHYF("Destination %s is unreachable (%d)", alloca_tohex_sid(p->destination->sid), p->destination->reachable);
+  if (p->destination){
+    int r = subscriber_is_reachable(p->destination);
+    if (r == REACHABLE_SELF || r == REACHABLE_NONE)
+      return WHYF("Destination %s is unreachable (%d)", alloca_tohex_sid(p->destination->sid), r);
+  }
       
   if (debug&DEBUG_PACKETTX)
     DEBUGF("Enqueuing packet for %s* (q[%d]length = %d)",

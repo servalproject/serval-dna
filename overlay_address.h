@@ -41,6 +41,8 @@
 // this subscriber is in our keystore
 #define REACHABLE_SELF 5
 
+#define REACHABLE_DEFAULT_ROUTE 6
+
 /* Codes used to describe abbreviated addresses.
  Values 0x10 - 0xff are the first byte of, and implicit indicators of addresses written in full */
 #define OA_CODE_SELF 0x00

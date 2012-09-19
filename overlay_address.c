@@ -166,6 +166,14 @@ int subscriber_is_reachable(struct subscriber *subscriber){
   if (!subscriber)
     return REACHABLE_NONE;
   
+  // is there a default route?
+  if (subscriber->reachable==REACHABLE_NONE &&
+      directory_service && 
+      subscriber!=directory_service &&
+      subscriber_is_reachable(directory_service)!=REACHABLE_NONE){
+    return REACHABLE_DEFAULT_ROUTE;
+  }
+  
   if (subscriber->reachable==REACHABLE_INDIRECT){
     if (!subscriber->next_hop)
       return REACHABLE_NONE;

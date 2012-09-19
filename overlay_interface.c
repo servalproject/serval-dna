@@ -1025,8 +1025,14 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	  
 	case REACHABLE_INDIRECT:
 	  next_hop=next_hop->next_hop;
+	  frame->sendBroadcast=0;
+	  break;
 	  
-	  // fall through
+	case REACHABLE_DEFAULT_ROUTE:
+	  next_hop=directory_service;
+	  frame->sendBroadcast=0;
+	  break;
+	  
 	case REACHABLE_DIRECT:
 	case REACHABLE_UNICAST:
 	  frame->sendBroadcast=0;
