@@ -258,6 +258,10 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 
     if (f.type==OF_TYPE_SELFANNOUNCE){
       sender = f.source;
+      // skip the entire packet if it came from me
+      if (sender->reachable==REACHABLE_SELF)
+	break;
+      
       overlay_address_set_sender(f.source);
       
       // if this is a dummy announcement for a node that isn't in our routing table

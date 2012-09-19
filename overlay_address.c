@@ -395,6 +395,12 @@ static int add_explain_response(struct subscriber *subscriber, void *context){
     response->please_explain->payload=ob_new();
     ob_limitsize(response->please_explain->payload, 1024);
   }
+  
+  // if one of our identities is unknown, 
+  // the header of our next payload must include our full sid.
+  if (subscriber->reachable==REACHABLE_SELF)
+    subscriber->send_full = 1;
+  
   // add the whole subscriber id to the payload, stop if we run out of space
   DEBUGF("Adding full sid by way of explanation %s", alloca_tohex_sid(subscriber->sid));
   if (ob_append_bytes(response->please_explain->payload, subscriber->sid, SID_SIZE))

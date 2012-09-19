@@ -619,7 +619,7 @@ void overlay_dummy_poll(struct sched_ent *alarm)
     /* if there's no input, while we want to check for more soon,
 	we need to allow all other low priority alarms to fire first,
 	otherwise we'll dominate the scheduler without accomplishing anything */
-    alarm->alarm = gettime_ms() + 20;
+    alarm->alarm = gettime_ms() + 5;
     if (interface->last_tick_ms != -1 && alarm->alarm > interface->last_tick_ms + interface->tick_ms)
       alarm->alarm = interface->last_tick_ms + interface->tick_ms;
     alarm->deadline = alarm->alarm + 10000;
@@ -633,8 +633,8 @@ void overlay_dummy_poll(struct sched_ent *alarm)
       if (nread == -1)
 	WHY_perror("read");
       else {
-	interface->recv_offset += nread;
 	if (nread == sizeof packet) {
+	  interface->recv_offset += nread;
 	  plen = packet[110] + (packet[111] << 8);
 	  if (plen > nread - 128)
 	    plen = -1;
@@ -658,9 +658,12 @@ void overlay_dummy_poll(struct sched_ent *alarm)
       }
     }
     /* keep reading new packets as fast as possible, 
-	but don't prevent other high priority alarms */
-    alarm->alarm = gettime_ms();
-    alarm->deadline = alarm->alarm + 200;
+	but don't completely prevent other high priority alarms */
+    if (interface->recv_offset >= length)
+      alarm->alarm = gettime_ms() + 5;
+    else
+      alarm->alarm = gettime_ms();
+    alarm->deadline = alarm->alarm + 100;
   }
   
   schedule(alarm);
