@@ -456,6 +456,8 @@ int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t bytes);
 int hexvalue(char c);
 char *str_toupper_inplace(char *s);
 
+int is_all_matching(unsigned char *ptr, int len, int value);
+
 int str_is_subscriber_id(const char *sid);
 int strn_is_subscriber_id(const char *sid, size_t *lenp);
 int str_is_did(const char *did);

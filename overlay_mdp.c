@@ -37,22 +37,10 @@ struct sched_ent mdp_named={
 };
 
 // is the SID entirely 0xFF?
-static int is_broadcast(const unsigned char *sid){
-  int i;
-  for (i=0;i<SID_SIZE;i++)
-    if (sid[i]!=0xFF) 
-      return 0;
-  return 1;
-}
+#define is_broadcast(SID) is_all_matching(SID, SID_SIZE, 0xFF)
 
 // is the SID entirely 0x00?
-static int is_sid_any(unsigned char *sid){
-  int i;
-  for (i=0;i<SID_SIZE;i++)
-    if (sid[i])
-      return 0;
-  return 1;
-}
+#define is_sid_any(SID) is_all_matching(SID, SID_SIZE, 0)
 
 int overlay_mdp_setup_sockets()
 {
@@ -431,8 +419,8 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp, time_ms_t now)
        more prudent path.
     */
 
-    if (0)
-      WHYF("Received packet with listener (MDP ports: src=%s*:%d, dst=%d)",
+    if (debug & DEBUG_MDPREQUESTS) 
+      DEBUGF("Received packet with listener (MDP ports: src=%s*:%d, dst=%d)",
 	   alloca_tohex(mdp->out.src.sid, 7),
 	   mdp->out.src.port,mdp->out.dst.port);
 
@@ -498,6 +486,9 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp, time_ms_t now)
 	    RETURN(WHY("Empty DID in DNA resolution request")); }
 	  bcopy(&mdp->out.payload[0],&did[0],pll);
 	  did[pll]=0;
+	  
+	  if (debug & DEBUG_MDPREQUESTS)
+	    DEBUG("MDP_PORT_DNALOOKUP");
 	  
 	  int results=0;
 	  while(keyring_find_did(keyring,&cn,&in,&kp,did))

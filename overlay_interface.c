@@ -1074,8 +1074,11 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	  
 	case REACHABLE_BROADCAST:
 	  if (!frame->sendBroadcast){
+	    if (frame->ttl>2)
+	      frame->ttl=2;
 	    frame->sendBroadcast=1;
-	    overlay_broadcast_generate_address(&frame->broadcast_id);
+	    if (is_all_matching(frame->broadcast_id.id, BROADCAST_LEN, 0))
+	      overlay_broadcast_generate_address(&frame->broadcast_id);
 	    int i;
 	    for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
 	      frame->broadcast_sent_via[i]=0;

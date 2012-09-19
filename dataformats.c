@@ -57,6 +57,15 @@ int is_xstring(const char *text, int len)
   return _is_xstring(text, len);
 }
 
+/* Does this whole buffer contain the same value? */
+int is_all_matching(unsigned char *ptr, int len, int value){
+  int i;
+  for (i=0;i<len;i++)
+    if (ptr[i]!=value)
+      return 0;
+  return 1;
+}
+
 char *tohex(char *dstHex, const unsigned char *srcBinary, size_t bytes)
 {
   char *p;
