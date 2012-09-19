@@ -69,4 +69,57 @@ test_publish() {
    return
 }
 
+start_routing_instance() {
+   executeOk_servald config set interface.folder "$SERVALD_VAR"
+   executeOk_servald config set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name"
+   executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name"
+   executeOk_servald config set log.show_pid on
+   executeOk_servald config set log.show_time on
+   executeOk_servald config set debug.mdprequests Yes
+   start_servald_server
+}
+
+setup_routing() {
+   setup_servald
+   assert_no_servald_processes
+# create three nodes, on two dummy interfaces, with no interface ticks or routing
+   foreach_instance +A +B +C create_single_identity
+   >$SERVALD_VAR/dummyB
+   >$SERVALD_VAR/dummyC
+   set_instance +A
+   executeOk_servald config set interfaces "+>dummyB,+>dummyC"
+   executeOk_servald config set mdp.dummyB.tick_ms 0
+   executeOk_servald config set mdp.dummyC.tick_ms 0
+   executeOk_servald config set dna.helper.executable "$servald_build_root/directory_service"
+   executeOk_servald config set debug.dnahelper on
+   start_routing_instance
+   set_instance +B
+   executeOk_servald config set interfaces "+>dummyB"
+   executeOk_servald config set mdp.dummyB.tick_ms 0
+   executeOk_servald config set directory.service $SIDA
+   executeOk_servald config set $SIDA.interface "dummyB"
+   executeOk_servald config set $SIDA.address 127.0.0.1
+   start_routing_instance
+   set_instance +C
+   executeOk_servald config set interfaces "+>dummyC"
+   executeOk_servald config set mdp.dummyC.tick_ms 0
+   executeOk_servald config set directory.service $SIDA
+   executeOk_servald config set $SIDA.interface "dummyC"
+   executeOk_servald config set $SIDA.address 127.0.0.1
+   start_routing_instance
+}
+
+doc_routing="Ping via relay node"
+test_routing() {
+   set_instance +B
+   executeOk_servald dna lookup "$DIDC"
+   assertStdoutLineCount '==' 1
+   assertStdoutGrep --matches=1 "^sid://$SIDC/$DIDC:$DIDC:$NAMEC\$"
+   set_instance +C
+   executeOk_servald dna lookup "$DIDB"
+   assertStdoutLineCount '==' 1
+   assertStdoutGrep --matches=1 "^sid://$SIDB/$DIDB:$DIDB:$NAMEB\$"
+   executeOk_servald mdp ping $SIDB 3
+   tfw_cat --stdout --stderr
+}
 runTests "$@"
