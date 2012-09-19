@@ -813,9 +813,13 @@ int app_server_status(int argc, const char *const *argv, struct command_line_opt
 int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *o)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
-  const char *sid;
+  const char *sid, *count;
   if (cli_arg(argc, argv, o, "SID|broadcast", &sid, str_is_subscriber_id, "broadcast") == -1)
     return -1;
+  if (cli_arg(argc, argv, o, "count", &count, NULL, "0") == -1)
+    return -1;
+  
+  int icount=atoi(count);
 
   overlay_mdp_frame mdp;
   
@@ -853,7 +857,7 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
 
   if (broadcast) 
     WHY("WARNING: broadcast ping packets will not be encryped.");
-  while(1) {
+  while(icount==0 || tx_count<icount) {
     /* Now send the ping packets */
     mdp.packetTypeAndFlags=MDP_TX;
     if (broadcast) mdp.packetTypeAndFlags|=MDP_NOCRYPT;
@@ -1784,7 +1788,7 @@ command_line_option command_line_options[]={
    "Stop a running Serval Mesh node process with given instance path."},
   {app_server_status,{"status",NULL},0,
    "Display information about any running Serval Mesh node."},
-  {app_mdp_ping,{"mdp","ping","<SID|broadcast>",NULL},CLIFLAG_STANDALONE,
+  {app_mdp_ping,{"mdp","ping","<SID|broadcast>","[<count>]",NULL},CLIFLAG_STANDALONE,
    "Attempts to ping specified node via Mesh Datagram Protocol (MDP)."},
   {app_config_set,{"config","set","<variable>","<value>",NULL},CLIFLAG_STANDALONE,
    "Set specified configuration variable."},
