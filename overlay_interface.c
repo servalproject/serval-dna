@@ -607,14 +607,13 @@ void overlay_dummy_poll(struct sched_ent *alarm)
   unsigned char transaction_id[8];
   time_ms_t now = gettime_ms();
 
-  if (interface->tick_ms>0 && (interface->last_tick_ms == -1 || now >= interface->last_tick_ms + interface->tick_ms)) {
-    // tick the interface
-    int i = (interface - overlay_interfaces);
-    overlay_tick_interface(i, now);
-  }
-  
   /* Read from dummy interface file */
   long long length=lseek(alarm->poll.fd,0,SEEK_END);
+  
+  int new_packets = (length - interface->recv_offset) / sizeof packet;
+  if (new_packets > 20)
+    WARNF("Getting behind, there are %d unread packets", new_packets);
+  
   if (interface->recv_offset >= length) {
     /* if there's no input, while we want to check for more soon,
 	we need to allow all other low priority alarms to fire first,
@@ -664,6 +663,15 @@ void overlay_dummy_poll(struct sched_ent *alarm)
     else
       alarm->alarm = gettime_ms();
     alarm->deadline = alarm->alarm + 100;
+  }
+  
+  // only tick the interface if we've caught up reading all the packets
+  if (interface->recv_offset >= length &&
+      interface->tick_ms>0 && 
+      (interface->last_tick_ms == -1 || now >= interface->last_tick_ms + interface->tick_ms)) {
+    // tick the interface
+    int i = (interface - overlay_interfaces);
+    overlay_tick_interface(i, now);
   }
   
   schedule(alarm);
@@ -1080,8 +1088,11 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	    if (frame->ttl>2)
 	      frame->ttl=2;
 	    frame->sendBroadcast=1;
-	    if (is_all_matching(frame->broadcast_id.id, BROADCAST_LEN, 0))
+	    if (is_all_matching(frame->broadcast_id.id, BROADCAST_LEN, 0)){
 	      overlay_broadcast_generate_address(&frame->broadcast_id);
+	      // mark it as already seen so we don't immediately retransmit it
+	      overlay_broadcast_drop_check(&frame->broadcast_id);
+	    }
 	    int i;
 	    for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
 	      frame->broadcast_sent_via[i]=0;
@@ -1234,7 +1245,7 @@ static int
 overlay_tick_interface(int i, time_ms_t now) {
   struct outgoing_packet packet;
   IN();
-
+  
   /* An interface with no speed budget is for listening only, so doesn't get ticked */
   if (overlay_interfaces[i].bits_per_second<1
       || overlay_interfaces[i].state!=INTERFACE_STATE_UP) {

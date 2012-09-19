@@ -35,24 +35,36 @@ int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, s
   {
       // route control frames
     case OF_TYPE_SELFANNOUNCE:
+      if (debug&DEBUG_OVERLAYFRAMES)
+	DEBUG("Processing OF_TYPE_SELFANNOUNCE");
       overlay_route_saw_selfannounce(f,now);
       break;
     case OF_TYPE_SELFANNOUNCE_ACK:
+      if (debug&DEBUG_OVERLAYFRAMES)
+	DEBUG("Processing OF_TYPE_SELFANNOUNCE_ACK");
       overlay_route_saw_selfannounce_ack(f,now);
       break;
     case OF_TYPE_NODEANNOUNCE:
+      if (debug&DEBUG_OVERLAYFRAMES)
+	DEBUG("Processing OF_TYPE_NODEANNOUNCE");
       overlay_route_saw_advertisements(id,f,now);
       break;
       
       // data frames
     case OF_TYPE_RHIZOME_ADVERT:
+      if (debug&DEBUG_OVERLAYFRAMES)
+	DEBUG("Processing OF_TYPE_RHIZOME_ADVERT");
       overlay_rhizome_saw_advertisements(id,f,now);
       break;
     case OF_TYPE_DATA:
     case OF_TYPE_DATA_VOICE:
+      if (debug&DEBUG_OVERLAYFRAMES)
+	DEBUG("Processing OF_TYPE_DATA");
       overlay_saw_mdp_containing_frame(f,now);
       break;
     case OF_TYPE_PLEASEEXPLAIN:
+      if (debug&DEBUG_OVERLAYFRAMES)
+	DEBUG("Processing OF_TYPE_PLEASEEXPLAIN");
       process_explain(f);
       break;
     default:
@@ -69,7 +81,9 @@ int overlay_forward_payload(struct overlay_frame *f){
     return 0;
   
   if (debug&DEBUG_OVERLAYFRAMES)
-    DEBUG("Forwarding frame");
+    DEBUGF("Forwarding payload for %s, ttl=%d",
+	  (f->destination?alloca_tohex_sid(f->destination->sid):"broadcast"),
+	  f->ttl);
 
   /* Queue frame for dispatch.
    Don't forget to put packet in the correct queue based on type.
@@ -251,7 +265,9 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     if (debug&DEBUG_OVERLAYFRAMES){
       DEBUGF("Received payload type %x, len %d", f.type, next_payload - b->position);
       DEBUGF("Payload from %s", alloca_tohex_sid(f.source->sid));
-      DEBUGF("Payload to %s", (f.destination?alloca_tohex_sid(f.destination->sid):alloca_tohex(f.broadcast_id.id, BROADCAST_LEN)));
+      DEBUGF("Payload to %s", (f.destination?alloca_tohex_sid(f.destination->sid):"broadcast"));
+      if (!is_all_matching(f.broadcast_id.id, BROADCAST_LEN, 0))
+	DEBUGF("Broadcast id %s", alloca_tohex(f.broadcast_id.id, BROADCAST_LEN));
       if (nexthop)
 	DEBUGF("Next hop %s", alloca_tohex_sid(nexthop->sid));
     }
@@ -308,15 +324,11 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     // forward payloads that are for someone else or everyone
     if ((!f.destination) || 
 	(f.destination->reachable != REACHABLE_SELF && f.destination->reachable != REACHABLE_NONE)){
-      if (debug&DEBUG_OVERLAYFRAMES)
-	DEBUG("Forwarding payload");
       overlay_forward_payload(&f);
     }
     
     // process payloads that are for me or everyone
     if ((!f.destination) || f.destination->reachable==REACHABLE_SELF){
-      if (debug&DEBUG_OVERLAYFRAMES)
-	DEBUG("Processing payload");
       process_incoming_frame(now, interface, &f);
     }
     

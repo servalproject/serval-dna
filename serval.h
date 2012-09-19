@@ -630,7 +630,6 @@ int overlay_route_saw_selfannounce(struct overlay_frame *f, time_ms_t now);
 overlay_node *overlay_route_find_node(const unsigned char *sid,int prefixLen,int createP);
 unsigned int overlay_route_hash_sid(const unsigned char *sid);
 
-int overlay_frame_set_broadcast_as_destination(struct overlay_frame *f);
 int packetEncipher(unsigned char *packet,int maxlen,int *len,int cryptoflags);
 int overlayServerMode();
 int overlay_payload_enqueue(int q, struct overlay_frame *p);

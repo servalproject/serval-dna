@@ -290,14 +290,3 @@ struct overlay_frame *op_dup(struct overlay_frame *in)
     out->payload=ob_dup(in->payload);
   return out;
 }
-
-int overlay_frame_set_broadcast_as_destination(struct overlay_frame *f)
-{  
-  overlay_broadcast_generate_address(&f->broadcast_id);
-  // remember the broadcast address we are about to send so we don't sent the packet if we receive it again
-  overlay_broadcast_drop_check(&f->broadcast_id);
-  f->destination=NULL;
-  f->sendBroadcast=1;
-  return 0;
-}
-
