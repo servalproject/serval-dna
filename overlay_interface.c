@@ -968,7 +968,7 @@ overlay_queue_dump(overlay_txqueue *q)
 }
 
 static void
-overlay_init_packet(struct outgoing_packet *packet, overlay_interface *interface){
+overlay_init_packet(struct outgoing_packet *packet, overlay_interface *interface, int tick){
   packet->interface = interface;
   packet->i = (interface - overlay_interfaces);
   packet->dest=interface->broadcast_address;
@@ -977,6 +977,29 @@ overlay_init_packet(struct outgoing_packet *packet, overlay_interface *interface
   ob_append_bytes(packet->buffer,magic_header,4);
   
   overlay_address_clear();
+  
+  if (tick){
+    /* 1. Send announcement about ourselves, including one SID that we host if we host more than one SID
+     (the first SID we host becomes our own identity, saving a little bit of data here).
+     */
+    overlay_add_selfannouncement(packet->i, packet->buffer);
+  }else{
+    // add a badly formatted dummy self announce payload to tell people we sent this.
+    ob_append_byte(packet->buffer, OF_TYPE_SELFANNOUNCE);
+    ob_append_byte(packet->buffer, 1);
+    ob_append_rfs(packet->buffer, SID_SIZE + 2);
+    
+    /* from me, to me, via me 
+     (it's shorter than an actual broadcast, 
+     and receivers wont try to process it 
+     since its not going to have a payload body anyway) */
+    overlay_address_append_self(interface, packet->buffer);
+    overlay_address_set_sender(my_subscriber);
+    ob_append_byte(packet->buffer, OA_CODE_PREVIOUS);
+    ob_append_byte(packet->buffer, OA_CODE_PREVIOUS);
+    
+    ob_patch_rfs(packet->buffer, COMPUTE_RFS_LENGTH);
+  }
 }
 
 // update the alarm time and return 1 if changed
@@ -1070,7 +1093,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	{
 	  if (overlay_interfaces[i].state==INTERFACE_STATE_UP
 	      && !frame->broadcast_sent_via[i]){
-	    overlay_init_packet(packet, &overlay_interfaces[i]);
+	    overlay_init_packet(packet, &overlay_interfaces[i], 0);
 	    break;
 	  }
 	}
@@ -1081,7 +1104,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	  continue;
 	}
       }else{
-	overlay_init_packet(packet, next_hop->interface);
+	overlay_init_packet(packet, next_hop->interface, 0);
 	if (next_hop->reachable==REACHABLE_UNICAST){
 	  packet->dest = next_hop->address;
 	  packet->unicast=1;
@@ -1212,17 +1235,11 @@ overlay_tick_interface(int i, time_ms_t now) {
     RETURN(0);
   }
 
+  if (debug&DEBUG_OVERLAYINTERFACES) DEBUGF("Ticking interface #%d",i);
+  
   // initialise the packet buffer
   bzero(&packet, sizeof(struct outgoing_packet));
-  overlay_init_packet(&packet, &overlay_interfaces[i]);
-  
-  if (debug&DEBUG_OVERLAYINTERFACES) DEBUGF("Ticking interface #%d",i);
-
-  /* 1. Send announcement about ourselves, including one SID that we host if we host more than one SID
-     (the first SID we host becomes our own identity, saving a little bit of data here).
-  */
-  if (overlay_add_selfannouncement(i,packet.buffer) == -1)
-    return WHY("tick failed");
+  overlay_init_packet(&packet, &overlay_interfaces[i], 1);
   
   /* Add advertisements for ROUTES */
   overlay_route_add_advertisements(packet.interface, packet.buffer);

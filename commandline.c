@@ -490,7 +490,7 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 	  }
 
 	  last_tx=now;
-	  interval+=interval;
+	  interval+=interval>>1;
 	}
       time_ms_t short_timeout=125;
       while(short_timeout>0) {

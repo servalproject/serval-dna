@@ -113,6 +113,9 @@ static void parse_frame(struct overlay_buffer *buff){
   struct overlay_frame frame;
   u_int8_t addr_len;
   struct in_addr *addr;
+  struct decode_context context={
+    .please_explain=NULL,
+  };
   
   memset(&frame,0,sizeof(struct overlay_frame));
   // parse the incoming olsr header
@@ -132,11 +135,11 @@ static void parse_frame(struct overlay_buffer *buff){
   addr = (struct in_addr *)ob_get_bytes_ptr(buff, addr_len);
   
   // read source subscriber
-  if (overlay_address_parse(buff, NULL, &frame.source))
-    return;
+  if (overlay_address_parse(&context, buff, NULL, &frame.source))
+    goto end;
   
-  if (!frame.source)
-    return;
+  if (context.invalid_addresses)
+    goto end;
   
   if (frame.source->reachable==REACHABLE_NONE){
     // locate the interface we should send outgoing unicast packets to
@@ -149,8 +152,11 @@ static void parse_frame(struct overlay_buffer *buff){
   
   // read source broadcast id
   // assume each packet may arrive multiple times due to routing loops between servald overlay and olsr.
-  if (overlay_address_parse(buff, &frame.broadcast_id, NULL))
-    return;
+  if (overlay_address_parse(&context, buff, &frame.broadcast_id, NULL))
+    goto end;
+  
+  if (context.invalid_addresses)
+    goto end;
   
   frame.modifiers=ob_get(buff);
   
@@ -163,6 +169,8 @@ static void parse_frame(struct overlay_buffer *buff){
   overlay_saw_mdp_containing_frame(&frame, gettime_ms());
   
   // TODO relay this packet to other non-olsr networks.
+end:
+  send_please_explain(&context, my_subscriber, frame.source);
 }
 
 static void olsr_read(struct sched_ent *alarm){

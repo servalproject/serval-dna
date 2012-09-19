@@ -52,6 +52,9 @@ int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, s
     case OF_TYPE_DATA_VOICE:
       overlay_saw_mdp_containing_frame(f,now);
       break;
+    case OF_TYPE_PLEASEEXPLAIN:
+      process_explain(f);
+      break;
     default:
       return WHYF("Support for f->type=0x%x not yet implemented",f->type);
       break;
@@ -151,6 +154,11 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   */
 
   struct overlay_frame f;
+  struct subscriber *sender=NULL;
+  struct decode_context context={
+    .please_explain=NULL,
+  };
+  
   time_ms_t now = gettime_ms();
   struct overlay_buffer *b = ob_static(packet, len);
   ob_limitsize(b, len);
@@ -182,6 +190,8 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   
   /* Skip magic bytes and version */
   while(b->position < b->sizeLimit){
+    context.invalid_addresses=0;
+    
     int flags = ob_get(b);
     
     /* Get normal form of packet type and modifiers */
@@ -213,7 +223,6 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       break;
     }
 
-    int payload_start=b->position;
     int next_payload = b->position + payload_len;
     
     /* Always attempt to resolve all of the addresses in a packet, or we could fail to understand an important payload 
@@ -226,16 +235,19 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
      */
     
     struct subscriber *nexthop=NULL;
+    bzero(f.broadcast_id.id, BROADCAST_LEN);
     
-    // if we can't parse one of the addresses, skip processing the payload
-    if (overlay_address_parse(b, &f.broadcast_id, &nexthop)
-	|| overlay_address_parse(b, NULL, &f.destination)
-	|| overlay_address_parse(b, NULL, &f.source)){
-      WHYF("Parsing failed for type %x", f.type);
-      dump(NULL, b->bytes + payload_start, payload_len);
+    // if the structure of the addresses looks wrong, stop immediately
+    if (overlay_address_parse(&context, b, &f.broadcast_id, &nexthop)
+	|| overlay_address_parse(&context, b, NULL, &f.destination)
+	|| overlay_address_parse(&context, b, NULL, &f.source)){
       goto next;
     }
     
+    // if we can't understand one of the addresses, skip processing the payload
+    if (context.invalid_addresses)
+      goto next;
+
     if (debug&DEBUG_OVERLAYFRAMES){
       DEBUGF("Received payload type %x, len %d", f.type, next_payload - b->position);
       DEBUGF("Payload from %s", alloca_tohex_sid(f.source->sid));
@@ -245,7 +257,19 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     }
 
     if (f.type==OF_TYPE_SELFANNOUNCE){
+      sender = f.source;
       overlay_address_set_sender(f.source);
+      
+      // if this is a dummy announcement for a node that isn't in our routing table
+      if (f.destination && 
+	(f.source->reachable == REACHABLE_NONE || f.source->reachable == REACHABLE_UNICAST) && 
+	(!f.source->node) &&
+	(interface->fileP || recvaddr->sa_family==AF_INET)){
+	  struct sockaddr_in *addr=(struct sockaddr_in *)recvaddr;
+	  
+	  // mark this subscriber as reachable directly via unicast.
+	  reachable_unicast(f.source, interface, addr->sin_addr, ntohs(addr->sin_port));
+      }
     }
     
     // ignore any payload we sent
@@ -268,18 +292,6 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 	DEBUGF("Ignoring duplicate broadcast (%s)", alloca_tohex(f.broadcast_id.id, BROADCAST_LEN));
       goto next;
     }
-    
-    // HACK, change to packet transmitter when packet format includes that.
-    if (f.type!=OF_TYPE_SELFANNOUNCE && 
-	(f.source->reachable == REACHABLE_NONE || f.source->reachable == REACHABLE_UNICAST)&& 
-	(!f.source->node) &&
-	(interface->fileP || recvaddr->sa_family==AF_INET)){
-      struct sockaddr_in *addr=(struct sockaddr_in *)recvaddr;
-      
-      // mark this subscriber as reachable directly via unicast.
-      reachable_unicast(f.source, interface, addr->sin_addr, ntohs(addr->sin_port));
-    }
-    
     
     f.payload = ob_slice(b, b->position, next_payload - b->position);
     if (!f.payload){
@@ -313,6 +325,8 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   }
   
   ob_free(b);
+  
+  send_please_explain(&context, my_subscriber, sender);
   return 0;
 }
 

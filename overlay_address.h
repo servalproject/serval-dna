@@ -99,6 +99,11 @@ struct broadcast{
   unsigned char id[BROADCAST_LEN];
 };
 
+struct decode_context{
+  int invalid_addresses;
+  struct overlay_frame *please_explain;
+};
+
 extern struct subscriber *my_subscriber;
 extern struct subscriber *directory_service;
 
@@ -109,13 +114,17 @@ int set_reachable(struct subscriber *subscriber, int reachable);
 int reachable_unicast(struct subscriber *subscriber, overlay_interface *interface, struct in_addr addr, int port);
 int load_subscriber_address(struct subscriber *subscriber);
 
+int process_explain(struct overlay_frame *frame);
 int overlay_broadcast_drop_check(struct broadcast *addr);
 int overlay_broadcast_generate_address(struct broadcast *addr);
 
 int overlay_broadcast_append(struct overlay_buffer *b, struct broadcast *broadcast);
 int overlay_address_append(struct overlay_buffer *b, struct subscriber *subscriber);
 int overlay_address_append_self(overlay_interface *interface, struct overlay_buffer *b);
-int overlay_address_parse(struct overlay_buffer *b, struct broadcast *broadcast, struct subscriber **subscriber);
+
+int overlay_address_parse(struct decode_context *context, struct overlay_buffer *b, struct broadcast *broadcast, struct subscriber **subscriber);
+int send_please_explain(struct decode_context *context, struct subscriber *source, struct subscriber *destination);
+
 void overlay_address_clear(void);
 void overlay_address_set_sender(struct subscriber *subscriber);
 

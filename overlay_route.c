@@ -367,9 +367,10 @@ int overlay_route_node_can_hear_me(struct subscriber *subscriber, int sender_int
      3. Update score of how reliably we can hear this node */
 
   /* Get neighbour structure */
-  struct overlay_neighbour *neh=overlay_route_get_neighbour_structure(subscriber->node,1 /* create if necessary */);
+  
+  struct overlay_neighbour *neh=overlay_route_get_neighbour_structure(get_node(subscriber, 1),1 /* create if necessary */);
   if (!neh)
-    return -1;
+    return WHY("Unable to create neighbour structure");
   
   int obs_index=neh->most_recent_observation_id;
   int merge=0;
@@ -567,7 +568,7 @@ int overlay_route_recalc_neighbour_metrics(struct overlay_neighbour *n, time_ms_
   IN();
 
   if (!n->node)
-    RETURN(0);
+    RETURN(WHY("Neighbour is not a node"));
 
   if (debug&DEBUG_OVERLAYROUTING)
     DEBUGF("Updating neighbour metrics for %s", alloca_tohex_sid(n->node->subscriber->sid));
@@ -884,7 +885,7 @@ int overlay_route_dump()
    taking into account the age of the most recent observation */
 int overlay_route_tick_neighbour(int neighbour_id, time_ms_t now)
 {
-  if (neighbour_id>0)
+  if (neighbour_id>0 && overlay_neighbours[neighbour_id].node)
     if (overlay_route_recalc_neighbour_metrics(&overlay_neighbours[neighbour_id],now)) 
       WHY("overlay_route_recalc_neighbour_metrics() failed");
   
