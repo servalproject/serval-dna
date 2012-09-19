@@ -273,8 +273,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     if (f.type!=OF_TYPE_SELFANNOUNCE && 
 	(f.source->reachable == REACHABLE_NONE || f.source->reachable == REACHABLE_UNICAST)&& 
 	(!f.source->node) &&
-	(!interface->fileP) &&
-	recvaddr->sa_family==AF_INET){
+	(interface->fileP || recvaddr->sa_family==AF_INET)){
       struct sockaddr_in *addr=(struct sockaddr_in *)recvaddr;
       
       // mark this subscriber as reachable directly via unicast.

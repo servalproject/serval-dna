@@ -271,7 +271,9 @@ overlay_interface * overlay_interface_find_name(const char *name){
   for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
     if (overlay_interfaces[i].state!=INTERFACE_STATE_UP)
       continue;
-    if (strcasecmp(name, overlay_interfaces[i].name)==0){
+    if (strcasecmp((*name=='>'?name+1:name), 
+		   (*overlay_interfaces[i].name=='>'?overlay_interfaces[i].name+1:overlay_interfaces[i].name)
+		   )==0){
       return &overlay_interfaces[i];
     }
   }
@@ -418,6 +420,7 @@ overlay_interface_init_socket(int interface_index)
   // mark our sid to be sent in full
   if (my_subscriber)
     my_subscriber->send_full = 1;
+  directory_registration();
   
   return 0;
 }
@@ -465,29 +468,31 @@ overlay_interface_init(char *name, struct in_addr src_addr, struct in_addr netma
   // allow for a per interface override of tick interval
   {
     char option_name[64];
-    snprintf(option_name, sizeof(option_name), "mdp.%s.tick_ms", name);
+    snprintf(option_name, sizeof(option_name), "mdp.%s.tick_ms", (*name=='>'?name+1:name));
     interface->tick_ms = confValueGetInt64Range(option_name, interface->tick_ms, 1LL, 3600000LL);
   }
   
   // disable announcements and other broadcasts if tick_ms=0. 
   if (interface->tick_ms>0)
     interface->send_broadcasts=1;
-  else
+  else{
     interface->send_broadcasts=0;
+    INFOF("Interface %s is running tickless", name);
+  }
   
   if (name[0]=='>') {
     interface->fileP=1;
     char dummyfile[1024];
     if (name[1]=='/') {
       /* Absolute path */
-      snprintf(dummyfile,1024,"%s",&name[1]);
-    } else
-      /* Relative to instance path */
-      if (!FORM_SERVAL_INSTANCE_PATH(dummyfile, &name[1]))
-	return WHY("could not form dummy interfance name");
+      snprintf(dummyfile, sizeof(dummyfile), "%s", &name[1]);
+    } else {
+      const char *interface_folder = confValueGet("interface.folder", serval_instancepath());
+      snprintf(dummyfile, sizeof(dummyfile), "%s/%s", interface_folder, &name[1]);
+    }
     
     if ((interface->alarm.poll.fd = open(dummyfile,O_APPEND|O_RDWR)) < 1) {
-      return WHY("could not open dummy interface file for append");
+      return WHYF("could not open dummy interface file %s for append", dummyfile);
     }
 
     /* Seek to end of file as initial reading point */
@@ -505,6 +510,12 @@ overlay_interface_init(char *name, struct in_addr src_addr, struct in_addr netma
     
     interface->state=INTERFACE_STATE_UP;
     INFOF("Dummy interface %s is up",interface->name);
+    
+    // mark our sid to be sent in full
+    if (my_subscriber)
+      my_subscriber->send_full = 1;
+    
+    directory_registration();
     
   } else {
     
