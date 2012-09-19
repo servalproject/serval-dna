@@ -819,6 +819,8 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
   if (cli_arg(argc, argv, o, "count", &count, NULL, "0") == -1)
     return -1;
   
+  // assume we wont hear any responses
+  int ret=-1;
   int icount=atoi(count);
 
   overlay_mdp_frame mdp;
@@ -906,6 +908,7 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
 		     mdp.packetTypeAndFlags&MDP_NOSIGN?"":" SIGNED");
 	      // TODO Put duplicate pong detection here so that stats work properly.
 	      rx_count++;
+	      ret=0;
 	      rx_ms+=delay;
 	      if (rx_mintime>delay||rx_mintime==-1) rx_mintime=delay;
 	      if (delay>rx_maxtime) rx_maxtime=delay;
@@ -919,36 +922,34 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
 	}
       }
       now=gettime_ms();
-      if (servalShutdown) {
-
-	float rx_stddev=0;
-	float rx_mean=rx_ms*1.0/rx_count;
-	int samples=rx_count;
-	if (samples>1024) samples=1024;
-	int i;
-	for(i=0;i<samples;i++)
-	  rx_stddev+=(rx_mean-rx_times[i])*(rx_mean-rx_times[i]);
-	rx_stddev/=samples;
-	rx_stddev=sqrtf(rx_stddev);
-
-	/* XXX Report final statistics before going */
-	printf("--- %s ping statistics ---\n", alloca_tohex_sid(ping_sid));
-	printf("%lld packets transmitted, %lld packets received, %3.1f%% packet loss\n",
-		tx_count,rx_count,tx_count?(tx_count-rx_count)*100.0/tx_count:0);
-	printf("round-trip min/avg/max/stddev%s = %lld/%.3f/%lld/%.3f ms\n",
-		(samples<rx_count)?" (stddev calculated from last 1024 samples)":"",
-		rx_mintime,rx_mean,rx_maxtime,rx_stddev);
-
-	overlay_mdp_client_done();
-	return 0;
-      }
+      if (servalShutdown)
+	break;
     }
     sequence_number++;
     timeout=now+1000;
   }
 
+  {
+    float rx_stddev=0;
+    float rx_mean=rx_ms*1.0/rx_count;
+    int samples=rx_count;
+    if (samples>1024) samples=1024;
+    int i;
+    for(i=0;i<samples;i++)
+      rx_stddev+=(rx_mean-rx_times[i])*(rx_mean-rx_times[i]);
+    rx_stddev/=samples;
+    rx_stddev=sqrtf(rx_stddev);
+
+    /* XXX Report final statistics before going */
+    printf("--- %s ping statistics ---\n", alloca_tohex_sid(ping_sid));
+    printf("%lld packets transmitted, %lld packets received, %3.1f%% packet loss\n",
+	   tx_count,rx_count,tx_count?(tx_count-rx_count)*100.0/tx_count:0);
+    printf("round-trip min/avg/max/stddev%s = %lld/%.3f/%lld/%.3f ms\n",
+	   (samples<rx_count)?" (stddev calculated from last 1024 samples)":"",
+	   rx_mintime,rx_mean,rx_maxtime,rx_stddev);
+  }
   overlay_mdp_client_done();
-  return 0;
+  return ret;
 }
 
 int app_config_set(int argc, const char *const *argv, struct command_line_option *o)
