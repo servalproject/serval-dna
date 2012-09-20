@@ -30,11 +30,18 @@ setup() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B +C create_single_identity
+   set_instance +D
+   DIDD1=$DIDC
+   NAMED1="Agent D Smith"
+   create_identities 1
+   SIDD=$SIDD1
+   DIDD=$DIDD1
+   NAMED=$NAMED1
    set_instance +A
    executeOk_servald config set dna.helper.executable "$servald_build_root/directory_service"
    executeOk_servald config set debug.dnahelper on
-   foreach_instance +B +C executeOk_servald config set directory.service $SIDA
-   start_servald_instances +A +B +C
+   foreach_instance +B +C +D executeOk_servald config set directory.service $SIDA
+   start_servald_instances +A +B +C +D
 }
 
 teardown() {
@@ -49,7 +56,7 @@ is_published() {
 }
 
 sent_directory_request() {
-   grep "Sending directory registration" $LOGB || return 1
+   grep "Sending directory registration" $LOGD || return 1
    return 0
 }
 
@@ -59,13 +66,15 @@ test_publish() {
    wait_until is_published
    stop_servald_server +B
    stop_servald_server +C
+   stop_servald_server +D
    set_instance +A
    executeOk_servald dna lookup "$DIDB"
    assertStdoutLineCount '==' 1
    assertStdoutGrep --matches=1 "^sid://$SIDB/$DIDB:$DIDB:$NAMEB\$"
    executeOk_servald dna lookup "$DIDC"
-   assertStdoutLineCount '==' 1
+   assertStdoutLineCount '==' 2
    assertStdoutGrep --matches=1 "^sid://$SIDC/$DIDC:$DIDC:$NAMEC\$"
+   assertStdoutGrep --matches=1 "^sid://$SIDD/$DIDD:$DIDD:$NAMED\$"
    return
 }
 

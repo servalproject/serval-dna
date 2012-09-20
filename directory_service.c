@@ -23,13 +23,7 @@ static struct item *create_item(const char *key){
   return ret;
 }
 
-static struct item *find_item(const char *key, int create){
-  if (!root){
-    if (create)
-      root=create_item(key);
-    return root;
-  }
-  
+static struct item *find_item(const char *key){
   struct item *item = root;
   
   while(item){
@@ -37,40 +31,39 @@ static struct item *find_item(const char *key, int create){
     if (c==0)
       return item;
     if (c<0){
-      if (!item->_left){
-	if (create)
-	  item->_left=create_item(key);
-	return item->_left;
-      }
       item = item->_left;
     }else{
-      if (!item->_right){
-	if (create)
-	  item->_right=create_item(key);
-	return item->_right;
-      }
       item = item->_right;
     }
   }
   return NULL;
 }
 
-static void store(char *key, char *value){
-  struct item *item = find_item(key, 1);
+static void add_item(char *key, char *value){
+  struct item *item = root, **last_ptr=&root;
+  while(item){
+    int c=strcmp(item->key, key);
+    if (c==0){
+      c=strcmp(item->value, value);
+      if (c==0)
+	return;
+    }
+    if (c<0){
+      last_ptr = &item->_left;
+    }else{
+      last_ptr = &item->_right;
+    }
+    item = *last_ptr;
+  }
+  
+  *last_ptr = item = create_item(key);
+  
   strncpy(item->value,value,sizeof(item->value));
   item->value[sizeof(item->value) -1]=0;
   // expire after 20 minutes
   item->expires = gettime_ms()+1200000;
   // used by tests
   fprintf(stderr, "PUBLISHED \"%s\" = \"%s\"\n", key, value);
-}
-
-static const char *retrieve(char *key){
-  struct item *item = find_item(key, 0);
-  if (item && item->expires > gettime_ms()){
-    return item->value;
-  }
-  return NULL;
 }
 
 static void add_record(){
@@ -100,7 +93,16 @@ static void add_record(){
   
   char url[256];
   snprintf(url, sizeof(url), "sid://%s/%s|%s|%s", sid, did, did, name);
-  store(did, url);
+  add_item(did, url);
+}
+
+static void respond(char *token, struct item *item){
+  if (!item)
+    return;
+  respond(token, item->_left);
+  if (item->expires > gettime_ms())
+    printf("%s|%s|\n",token,item->value);
+  respond(token, item->_right);
 }
 
 static void process_line(char *line){
@@ -112,9 +114,7 @@ static void process_line(char *line){
   while(*p && *p!='|') p++;
   *p++=0;
   
-  const char *response = retrieve(did);
-  if (response)
-    printf("%s|%s|\n",token,response);
+  respond(token, find_item(did));
   printf("DONE\n");
   fflush(stdout);
 }
