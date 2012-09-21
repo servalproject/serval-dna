@@ -84,8 +84,7 @@ unsigned long long rhizome_bar_bidprefix(unsigned char *bar)
 {
   long long bidprefix=0;
   int i;
-  for(i=0;i<8;i++) bidprefix|=bar[8-i]<<(8*i);
-  dump("bar",bar,32);
+  for(i=0;i<8;i++) bidprefix|=((unsigned long long)bar[7-i])<<(8*i);
   return bidprefix;
 }
 
