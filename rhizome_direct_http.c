@@ -740,9 +740,20 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
     close(sock); goto end;
   }
 
-  DEBUGF("XXX Reading enquiry response for processing");
   DEBUGF("content_length=%d",content_length);
   dump("response",(unsigned char *)p,content_length);
+
+  /* We now have the list of 9-byte records that indicate the list of BAR prefixes
+     that differ between the two nodes.  We can now action those which are relevant,
+     i.e., based on whether we are pushing, pulling or synchronising (both).
+
+     I am currently undecided as to whether it is cleaner to have some general
+     rhizome direct function for doing that, or whether it just adds unnecessary
+     complication, and the responses should just be handled in here.
+
+     For now, I am just going to implement it in here, and we can generalise later.
+  */
+  DEBUGF("XXX Need to parse responses into actions");
 
   end:
   /* Warning: tail recursion when done this way. 
