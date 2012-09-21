@@ -92,7 +92,7 @@ static void add_record(){
   // TODO check that did is a valid phone number
   
   char url[256];
-  snprintf(url, sizeof(url), "sid://%s/%s|%s|%s", sid, did, did, name);
+  snprintf(url, sizeof(url), "sid://%s/local/%s|%s|%s", sid, did, did, name);
   add_item(did, url);
 }
 

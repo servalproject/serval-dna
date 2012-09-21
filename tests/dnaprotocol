@@ -82,16 +82,16 @@ doc_LookupWildcard="Lookup by wildcard"
 test_LookupWildcard() {
    executeOk_servald dna lookup "*"
    assertStdoutLineCount '==' 2
-   assertStdoutGrep --matches=1 "^sid://$SIDA/$DIDA:$DIDA:$NAMEA\$"
-   assertStdoutGrep --matches=1 "^sid://$SIDB/$DIDB:$DIDB:$NAMEB\$"
+   assertStdoutGrep --matches=1 "^sid://$SIDA/local/$DIDA:$DIDA:$NAMEA\$"
+   assertStdoutGrep --matches=1 "^sid://$SIDB/local/$DIDB:$DIDB:$NAMEB\$"
 }
 
 doc_LookupEmpty="Lookup by empty string"
 test_LookupEmpty() {
    executeOk_servald dna lookup ""
    assertStdoutLineCount '==' 2
-   assertStdoutGrep --matches=1 "^sid://$SIDA/$DIDA:$DIDA:$NAMEA$"
-   assertStdoutGrep --matches=1 "^sid://$SIDB/$DIDB:$DIDB:$NAMEB$"
+   assertStdoutGrep --matches=1 "^sid://$SIDA/local/$DIDA:$DIDA:$NAMEA$"
+   assertStdoutGrep --matches=1 "^sid://$SIDB/local/$DIDB:$DIDB:$NAMEB$"
 }
 
 doc_LookupNonExistent="Lookup non-existent phone number"
@@ -104,14 +104,14 @@ doc_LookupLocal="Lookup local phone number"
 test_LookupLocal() {
    executeOk_servald dna lookup "$DIDA"
    assertStdoutLineCount '==' 1
-   assertStdoutGrep --matches=1 "^sid://$SIDA/$DIDA:$DIDA:$NAMEA$"
+   assertStdoutGrep --matches=1 "^sid://$SIDA/local/$DIDA:$DIDA:$NAMEA$"
 }
 
 doc_LookupRemote="Lookup remote phone number"
 test_LookupRemote() {
    executeOk_servald dna lookup "$DIDB"
    assertStdoutLineCount '==' 1
-   assertStdoutGrep --matches=1 "^sid://$SIDB/$DIDB:$DIDB:$NAMEB$"
+   assertStdoutGrep --matches=1 "^sid://$SIDB/local/$DIDB:$DIDB:$NAMEB$"
 }
 
 doc_NodeinfoLocal="Node info auto-resolves for local identities"

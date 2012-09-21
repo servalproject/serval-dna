@@ -70,11 +70,11 @@ test_publish() {
    set_instance +A
    executeOk_servald dna lookup "$DIDB"
    assertStdoutLineCount '==' 1
-   assertStdoutGrep --matches=1 "^sid://$SIDB/$DIDB:$DIDB:$NAMEB\$"
+   assertStdoutGrep --matches=1 "^sid://$SIDB/local/$DIDB:$DIDB:$NAMEB\$"
    executeOk_servald dna lookup "$DIDC"
    assertStdoutLineCount '==' 2
-   assertStdoutGrep --matches=1 "^sid://$SIDC/$DIDC:$DIDC:$NAMEC\$"
-   assertStdoutGrep --matches=1 "^sid://$SIDD/$DIDD:$DIDD:$NAMED\$"
+   assertStdoutGrep --matches=1 "^sid://$SIDC/local/$DIDC:$DIDC:$NAMEC\$"
+   assertStdoutGrep --matches=1 "^sid://$SIDD/local/$DIDD:$DIDD:$NAMED\$"
    return
 }
 
@@ -123,11 +123,11 @@ test_routing() {
    set_instance +B
    executeOk_servald dna lookup "$DIDC"
    assertStdoutLineCount '==' 1
-   assertStdoutGrep --matches=1 "^sid://$SIDC/$DIDC:$DIDC:$NAMEC\$"
+   assertStdoutGrep --matches=1 "^sid://$SIDC/local/$DIDC:$DIDC:$NAMEC\$"
    set_instance +C
    executeOk_servald dna lookup "$DIDB"
    assertStdoutLineCount '==' 1
-   assertStdoutGrep --matches=1 "^sid://$SIDB/$DIDB:$DIDB:$NAMEB\$"
+   assertStdoutGrep --matches=1 "^sid://$SIDB/local/$DIDB:$DIDB:$NAMEB\$"
    executeOk_servald mdp ping $SIDB 3
    tfw_cat --stdout --stderr
 }

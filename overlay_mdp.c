@@ -506,7 +506,7 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp, time_ms_t now)
 	      strbuf b = strbuf_alloca(SID_STRLEN + DID_MAXSIZE + 10);
 	      strbuf_puts(b, "sid://");
 	      strbuf_tohex(b, packedSid, SID_SIZE);
-	      strbuf_putc(b, '/');
+	      strbuf_puts(b, "/local/");
 	      strbuf_puts(b, unpackedDid);
 	      overlay_mdp_dnalookup_reply(&mdp->out.src, packedSid, strbuf_str(b), unpackedDid, name);
 	      kp++;
