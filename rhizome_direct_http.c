@@ -136,6 +136,7 @@ int rhizome_direct_form_received(rhizome_http_request *r)
 	  hr.result_code=200;
 	  hr.content_type="binary/octet-stream";
 	  hr.content_length=bytes;
+	  hr.body=NULL;
 	  r->request_type=0;
 	  rhizome_server_set_response(r,&hr);
 	  assert(r->buffer_offset<1024);
@@ -740,6 +741,8 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   }
 
   DEBUGF("XXX Reading enquiry response for processing");
+  DEBUGF("content_length=%d",content_length);
+  dump("response",(unsigned char *)p,content_length);
 
   end:
   /* Warning: tail recursion when done this way. 
