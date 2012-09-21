@@ -754,6 +754,17 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
      For now, I am just going to implement it in here, and we can generalise later.
   */
   DEBUGF("XXX Need to parse responses into actions");
+  int i;
+  for(i=10;i<content_length;i+=9)
+    {
+      int type=p[i];
+      // unsigned char *bid_prefix=(unsigned char *)&p[i+1];
+      unsigned long long 
+	bid_prefix_ll=rhizome_bar_bidprefix((unsigned char *)&p[i+1]);
+      DEBUGF("%s %016llx*",type==1?"push":"pull",bid_prefix_ll);
+    }
+
+  /* now update cursor according to what range was covered in the response */
 
   end:
   /* Warning: tail recursion when done this way. 
