@@ -304,11 +304,20 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
      used by BARs, therefore the response will never be bigger than the request,
      and so we don't need to worry about overflows. */
   int them=0,us=0;
-  while(them<them_count&&us<us_count)
+  DEBUGF("themcount=%d, uscount=%d",them_count,us_count);
+  while(them<them_count||us<us_count)
     {
       unsigned char *them_id=&buffer[10+them*RHIZOME_BAR_BYTES];
       unsigned char *us_id=&usbuffer[10+us*RHIZOME_BAR_BYTES];
-      int relation=memcmp(them_id,us_id,RHIZOME_BAR_BYTES);
+      int relation=0;
+      if (them<them_count&&us<us_count)
+	relation=memcmp(them_id,us_id,RHIZOME_BAR_BYTES);
+      else if (us==us_count) relation=-1; /* they have a bundle we don't have */
+      else if (them==them_count) relation=+1; /* we have a bundle they don't have */
+      else {
+	DEBUGF("This should never happen.");
+	break;
+      }
       int who=0;
       if (relation<0) {
 	/* They have a bundle that we don't have any version of.
