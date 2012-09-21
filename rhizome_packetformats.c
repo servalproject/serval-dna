@@ -76,9 +76,19 @@ long long rhizome_bar_version(unsigned char *bar)
   long long version=0;
   int i;
   // for(i=0;i<7;i++) bar[8+6-i]=(m->version>>(8*i))&0xff;
-  for(i=0;i<7;i++) version|=bar[8+6-i]<<(8*i);
+  for(i=0;i<7;i++) version|=bar[8+6-i]<<(8LL*i);
   return version;
 }
+
+unsigned long long rhizome_bar_bidprefix(unsigned char *bar)
+{
+  long long bidprefix=0;
+  int i;
+  for(i=0;i<8;i++) bidprefix|=bar[8-i]<<(8*i);
+  dump("bar",bar,32);
+  return bidprefix;
+}
+
 
 int bundles_available=-1;
 int bundle_offset[2]={0,0};

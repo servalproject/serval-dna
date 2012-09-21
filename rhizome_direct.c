@@ -317,6 +317,8 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
 	      8);
 	c->buffer_used+=1+8;
 	who=-1;
+	DEBUGF("They have previously unseen bundle %016llx*",
+	       rhizome_bar_bidprefix(&buffer[10+them*RHIZOME_BAR_BYTES]));
       } else if (relation>0) {
 	/* We have a bundle that they don't have any version of
 	   Append 9-byte "I have [newer]" record consisting of 0x02 followed
@@ -327,6 +329,8 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
 	      8);
 	c->buffer_used+=1+8;
 	who=+1;
+	DEBUGF("We have previously unseen bundle %016llx*",
+	       rhizome_bar_bidprefix(&usbuffer[10+us*RHIZOME_BAR_BYTES]));
       } else {
 	/* We each have a version of this bundle, so see whose is newer */
 	long long them_version
@@ -340,6 +344,10 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
 		&c->buffer[c->buffer_offset_bytes+c->buffer_used+1],
 		8);
 	  c->buffer_used+=1+8;
+	  DEBUGF("They have newer version of bundle %016llx* (%lld versus %lld)",
+		 rhizome_bar_bidprefix(&usbuffer[10+us*RHIZOME_BAR_BYTES]),
+		 rhizome_bar_version(&usbuffer[10+us*RHIZOME_BAR_BYTES]),
+		 rhizome_bar_version(&buffer[10+them*RHIZOME_BAR_BYTES]));
 	} else if (them_version<us_version) {
 	  /* We have the newer version of the bundle */
 	  c->buffer[c->buffer_offset_bytes+c->buffer_used]=0x02; /* I have [newer] */
@@ -347,8 +355,13 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
 		&c->buffer[c->buffer_offset_bytes+c->buffer_used+1],
 		8);
 	  c->buffer_used+=1+8;
+	DEBUGF("We have newer version of bundle %016llx* (%lld versus %lld)",
+	       rhizome_bar_bidprefix(&usbuffer[10+us*RHIZOME_BAR_BYTES]),
+	       rhizome_bar_version(&usbuffer[10+us*RHIZOME_BAR_BYTES]),
+	       rhizome_bar_version(&buffer[10+them*RHIZOME_BAR_BYTES]));
 	} else {
-	  DEBUGF("We both have the same version of this bundle");
+	  DEBUGF("We both have the same version of %016llx*",
+		 rhizome_bar_bidprefix(&buffer[10+them*RHIZOME_BAR_BYTES]));
 	}
       }
 

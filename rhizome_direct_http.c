@@ -21,7 +21,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include "str.h"
 #include <assert.h>
-
+#include <sys/stat.h>
+#include <sys/wait.h>
 
 int rhizome_direct_clear_temporary_files(rhizome_http_request *r)
 {
@@ -202,7 +203,7 @@ int rhizome_direct_process_mime_line(rhizome_http_request *r,char *buffer,int co
      is significant, so lets just check once, and remember the result.
      Similarly check a few other conditions. */
   int boundaryLine=0;
-  if (!bcmp(buffer,r->boundary_string,r->boundary_string_length))
+  if (!memcmp(buffer,r->boundary_string,r->boundary_string_length))
     boundaryLine=1;
 
   int endOfForm=0;
