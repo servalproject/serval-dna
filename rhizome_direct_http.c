@@ -112,7 +112,10 @@ int rhizome_direct_form_received(rhizome_http_request *r)
 	rhizome_direct_clear_temporary_files(r);	     
 	return rhizome_server_simple_http_response(r,500,"Couldn't mmap() a file");
       }
-      rhizome_direct_bundle_cursor *c=rhizome_direct_get_fill_response(addr,stat.st_size);
+      /* Ask for a fill response.  Regardless of the size of the set of BARs passed
+	 to us, we will allow up to 64KB of response. */
+      rhizome_direct_bundle_cursor 
+	*c=rhizome_direct_get_fill_response(addr,stat.st_size,65536);
       munmap(addr,stat.st_size);
       close(fd);
 

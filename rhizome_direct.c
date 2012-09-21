@@ -266,16 +266,18 @@ int rhizome_direct_conclude_sync_request(rhizome_direct_sync_request *r)
 */
 
 rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
-(unsigned char *buffer,int size)
+(unsigned char *buffer,int size, int max_response_bytes)
 {
   if (size<10) return NULL;
   if (size>65536) return NULL;
+  if (max_response_bytes<10) return NULL;
+  if (max_response_bytes>1048576) return NULL;
 
   int them_count=(size-10)/RHIZOME_BAR_BYTES;
 
-  unsigned char usbuffer[size];
+  unsigned char usbuffer[max_response_bytes];
 
-  rhizome_direct_bundle_cursor *c=rhizome_direct_bundle_iterator(size);
+  rhizome_direct_bundle_cursor *c=rhizome_direct_bundle_iterator(max_response_bytes);
   assert(c!=NULL);
   if (rhizome_direct_bundle_iterator_unpickle_range(c,buffer,10))
     {
@@ -285,6 +287,7 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
     }
   DEBUGF("unpickled size_high=%lld, limit_size_high=%lld",
 	 c->size_high,c->limit_size_high);
+  DEBUGF("c->buffer_size=%d",c->buffer_size);
 
   /* Get our list of BARs for the same cursor range */
   int us_count=rhizome_direct_bundle_iterator_fill(c,-1);
@@ -530,7 +533,11 @@ int rhizome_direct_bundle_iterator_fill(rhizome_direct_bundle_cursor *c,int max_
   c->buffer_offset_bytes=1+4+1+4; /* space for pickled cursor range */
 
   /* -1 is magic value for fill right up */
-  if (max_bars==-1) max_bars=c->buffer_size/RHIZOME_BAR_BYTES;
+  if (max_bars==-1) 
+    max_bars=(c->buffer_size-c->buffer_offset_bytes)/RHIZOME_BAR_BYTES;
+
+  DEBUGF("Iterating cursor size high %lld..%lld, max_bars=%d",
+	 c->size_high,c->limit_size_high,max_bars);
 
   while (bundles_stuffed<max_bars&&c->size_high<=c->limit_size_high) 
     {

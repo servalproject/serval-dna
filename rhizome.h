@@ -484,7 +484,7 @@ rhizome_direct_sync_request
 int rhizome_direct_continue_sync_request(rhizome_direct_sync_request *r);
 int rhizome_direct_conclude_sync_request(rhizome_direct_sync_request *r);
 rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
-(unsigned char *buffer,int size);
+(unsigned char *buffer,int size,int max_response_bytes);
 
 typedef struct rhizome_direct_transport_state_http {
   int port;
