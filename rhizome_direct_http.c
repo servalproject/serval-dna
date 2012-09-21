@@ -115,7 +115,7 @@ int rhizome_direct_form_received(rhizome_http_request *r)
       /* Ask for a fill response.  Regardless of the size of the set of BARs passed
 	 to us, we will allow up to 64KB of response. */
       rhizome_direct_bundle_cursor 
-	*c=rhizome_direct_get_fill_response(addr,stat.st_size,65536);
+	*c=rhizome_direct_get_fill_response(addr,stat.st_size,10+18);
       munmap(addr,stat.st_size);
       close(fd);
 
@@ -764,7 +764,36 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
       DEBUGF("%s %016llx*",type==1?"push":"pull",bid_prefix_ll);
     }
 
-  /* now update cursor according to what range was covered in the response */
+  /* now update cursor according to what range was covered in the response.
+     We set our current position to just past the high limit of the returned
+     cursor.
+
+     XXX - This introduces potential problems with the returned cursor range.
+     If the far end returns an earlier cursor position than we are in, we could
+     end up in an infinite loop.  We could also end up in a very long finite loop
+     if the cursor doesn't advance far.  A simple solution is to not adjust the
+     cursor position, and simply re-attempt the sync until no actions result.
+     That will do for now.     
+ */
+#ifdef FANCY_CURSOR_POSITION_HANDLING
+  rhizome_direct_bundle_cursor *c=rhizome_direct_bundle_iterator(10);
+  assert(c!=NULL);
+  if (rhizome_direct_bundle_iterator_unpickle_range(c,(unsigned char *)&p[0],10))
+    {
+      DEBUGF("Couldn't unpickle range. This should never happen.  Assuming near and far cursor ranges match.");
+    }
+  else {
+    DEBUGF("unpickled size_high=%lld, limit_size_high=%lld",
+	   c->size_high,c->limit_size_high);
+    DEBUGF("c->buffer_size=%d",c->buffer_size);
+    r->cursor->size_low=c->limit_size_high;
+    bcopy(c->limit_bid_high,r->cursor->bid_low,4);
+    /* Set tail of BID to all high, as we assume the far end has returned all
+       BIDs with the specified prefix. */
+    memset(&r->cursor->bid_low[4],0xff,RHIZOME_MANIFEST_ID_BYTES);
+  }
+  rhizome_direct_bundle_iterator_free(&c);
+#endif
 
   end:
   /* Warning: tail recursion when done this way. 

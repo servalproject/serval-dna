@@ -275,9 +275,14 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
 
   int them_count=(size-10)/RHIZOME_BAR_BYTES;
 
-  unsigned char usbuffer[max_response_bytes];
-
-  rhizome_direct_bundle_cursor *c=rhizome_direct_bundle_iterator(max_response_bytes);
+  /* We need to get a list of BARs that will fit into max_response_bytes when we
+     have summarised them into 9-byte PUSH/PULL hints.
+     So we need an intermediate buffer that is somewhat larger to allow the actual
+     maximum response buffer to be completely filled. */
+  int max_intermediate_bytes=10+((max_response_bytes-10)/9)*RHIZOME_BAR_BYTES;
+  unsigned char usbuffer[max_intermediate_bytes];
+  rhizome_direct_bundle_cursor 
+    *c=rhizome_direct_bundle_iterator(max_intermediate_bytes);
   assert(c!=NULL);
   if (rhizome_direct_bundle_iterator_unpickle_range(c,buffer,10))
     {
@@ -542,7 +547,7 @@ int rhizome_direct_bundle_iterator_fill(rhizome_direct_bundle_cursor *c,int max_
   c->buffer_offset_bytes=1+4+1+4; /* space for pickled cursor range */
 
   /* -1 is magic value for fill right up */
-  if (max_bars==-1) 
+  if (max_bars==-1)
     max_bars=(c->buffer_size-c->buffer_offset_bytes)/RHIZOME_BAR_BYTES;
 
   DEBUGF("Iterating cursor size high %lld..%lld, max_bars=%d",
