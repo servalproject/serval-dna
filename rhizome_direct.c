@@ -174,7 +174,6 @@ int rhizome_direct_start_sync_request(rhizome_direct_sync_request *r)
 
 int rhizome_direct_continue_sync_request(rhizome_direct_sync_request *r)
 {
-  DEBUG("here");
   assert(r);
   assert(r->syncs_started==r->syncs_completed+1);
 
@@ -393,6 +392,70 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
   return c;
 }
 
+rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix,int prefix_length)
+{
+  /* Give a BID prefix, e.g., from a BAR, find the matching manifest and return it.
+     Of course, it is possible that more than one manifest matches.  This should
+     occur only very rarely (with the possible exception of intentional attack, and
+     even then a 64-bit prefix creates a reasonable barrier.  If we move to a new
+     BAR format with 120 or 128 bits of BID prefix, then we should be safe for some
+     time, thus this function taking the BID prefix as an input in preparation for
+     that change).
+
+     Of course, we need to be able to find the manifest.
+     Easiest way is to select with a BID range.  We could instead have an extra
+     database column with the prefix.
+  */
+  assert(prefix_length>=0);
+  assert(prefix_length<=RHIZOME_MANIFEST_ID_BYTES);
+  DEBUGF("here");
+  unsigned char low[RHIZOME_MANIFEST_ID_BYTES];
+  unsigned char high[RHIZOME_MANIFEST_ID_BYTES];
+
+  memset(low,0x00,RHIZOME_MANIFEST_ID_BYTES);
+  memset(high,0x00,RHIZOME_MANIFEST_ID_BYTES);
+  bcopy(bid_prefix,low,prefix_length);
+  bcopy(bid_prefix,high,prefix_length);
+
+  char query[1024];
+  snprintf(query,1024,"SELECT MANIFEST,ROWID FROM MANIFESTS WHERE ID>='%s' AND ID<='%s'",
+	   alloca_tohex(low,RHIZOME_MANIFEST_ID_BYTES),
+	   alloca_tohex(high,RHIZOME_MANIFEST_ID_BYTES));
+  
+  sqlite3_stmt *statement=sqlite_prepare(query);
+  sqlite3_blob *blob=NULL;  
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+
+  if (sqlite_step_retry(&retry, statement) == SQLITE_ROW)
+    {
+      int ret;
+      int64_t rowid = sqlite3_column_int64(statement, 1);
+      do ret = sqlite3_blob_open(rhizome_db, "main", "manifests", "bar",
+				 rowid, 0 /* read only */, &blob);
+      while (sqlite_code_busy(ret) && sqlite_retry(&retry, "sqlite3_blob_open"));
+      if (!sqlite_code_ok(ret)) {
+	WHYF("sqlite3_blob_open() failed, %s", sqlite3_errmsg(rhizome_db));
+	sqlite3_finalize(statement);
+	return NULL;
+	
+      }
+      sqlite_retry_done(&retry, "sqlite3_blob_open");
+
+      /* Read manifest data from blob */
+      DEBUGF("XXX Read manifest and return it");
+
+      sqlite3_blob_close(blob);
+      sqlite3_finalize(statement);
+      return NULL;
+    }
+  else 
+    {
+      DEBUGF("no matching manifests");
+      sqlite3_finalize(statement);
+      return NULL;
+    }
+
+}
 
 int app_rhizome_direct_sync(int argc, const char *const *argv, 
 			    struct command_line_option *o)

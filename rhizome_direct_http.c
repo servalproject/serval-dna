@@ -762,6 +762,26 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
       unsigned long long 
 	bid_prefix_ll=rhizome_bar_bidprefix((unsigned char *)&p[i+1]);
       DEBUGF("%s %016llx*",type==1?"push":"pull",bid_prefix_ll);
+      if (type==2&&r->pullP) {
+	DEBUGF("XXX rhizome direct http pull not yet implemented.");
+	/* Need to fetch manifest.  Once we have the manifest, then we can
+	   use our normal bundle fetch routines from rhizome_fetch.c
+	*/
+      } else if (type==1&&r->pushP) {
+	DEBUGF("XXX rhizome direct http push not yet implemented");
+	/* Form up the POST request to submit the appropriate bundle. */
+
+	/* Start by getting the manifest, which is the main thing we need, and also
+	   gives us the information we need for sending any associated file. */
+	rhizome_manifest *m=rhizome_direct_get_manifest((unsigned char *)&p[i+1],8);
+	if (!m) {
+	  DEBUGF("This should never happen.  The manifest exists, but when I went looking for it, it doesn't appear to be there.");
+	  goto next_item;
+	}
+	if (m) rhizome_manifest_free(m);
+      }
+    next_item:
+      continue;
     }
 
   /* now update cursor according to what range was covered in the response.

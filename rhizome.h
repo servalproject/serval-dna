@@ -421,6 +421,7 @@ void rhizome_direct_bundle_iterator_unlimit(rhizome_direct_bundle_cursor *r);
 int rhizome_direct_bundle_iterator_pickle_range(rhizome_direct_bundle_cursor *r,
 						unsigned char *pickled,
 						int pickle_buffer_size);
+rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix,int prefix_length);
 int rhizome_direct_bundle_iterator_unpickle_range(rhizome_direct_bundle_cursor *r,
 						  const unsigned char *pickled,
 						  int pickle_buffer_size);
