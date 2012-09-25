@@ -23,9 +23,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
   data structures (except for a binary extent for an audio sample block).
 */
 
+#include <sys/stat.h>
 #include "serval.h"
 #include "rhizome.h"
-#include <sys/stat.h>
+#include "cli.h"
+#include "str.h"
+#include "overlay_address.h"
+#include "monitor-client.h"
 
 #if defined(LOCAL_PEERCRED) && !defined(SO_PEERCRED)
 #define SO_PEERCRED LOCAL_PEERCRED
@@ -44,8 +48,6 @@ struct monitor_context {
   unsigned char buffer[MONITOR_DATA_SIZE];
   int data_expected;
   int data_offset;
-  int sample_codec;
-  int sample_call_session_token;
 };
 
 #define MAX_MONITOR_SOCKETS 8
@@ -59,28 +61,6 @@ static void monitor_new_client(int s);
 struct sched_ent named_socket;
 struct profile_total named_stats;
 struct profile_total client_stats;
-
-int monitor_socket_name(struct sockaddr_un *name){
-  int len;
-#ifdef linux
-  /* Use abstract namespace as Android has no writable FS which supports sockets.
-   Abstract namespace is just plain better, anyway, as no dead files end up
-   hanging around. */
-  name->sun_path[0]=0;
-  /* XXX: 104 comes from OSX sys/un.h - no #define (note Linux has UNIX_PATH_MAX and it's 108(!)) */
-  snprintf(&name->sun_path[1],104-2,
-	   confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME));
-  /* Doesn't include trailing nul */
-  len = 1+strlen(&name->sun_path[1]) + sizeof(name->sun_family);
-#else
-  snprintf(name->sun_path,104-1,"%s/%s",
-	   serval_instancepath(),
-	   confValueGet("monitor.socket",DEFAULT_MONITOR_SOCKET_NAME));
-  /* Includes trailing nul */
-  len = 1+strlen(name->sun_path) + sizeof(name->sun_family);
-#endif
-  return len;
-}
 
 int monitor_setup_sockets()
 {
@@ -136,6 +116,13 @@ int monitor_setup_sockets()
   return -1;
 }
 
+int monitor_write_error(struct monitor_context *c, const char *error){
+  char msg[256];
+  snprintf(msg, sizeof(msg), "\nERROR:%s\n", error);
+  write_str(c->alarm.poll.fd, msg);
+  return -1;
+}
+
 void monitor_poll(struct sched_ent *alarm)
 {
   int s;
@@ -165,7 +152,7 @@ void monitor_poll(struct sched_ent *alarm)
   }
 }
 
-void monitor_client_close(struct monitor_context *c){
+static void monitor_close(struct monitor_context *c){
   struct monitor_context *last;
   
   INFO("Tearing down monitor client");
@@ -197,11 +184,10 @@ void monitor_client_poll(struct sched_ent *alarm)
       bytes = 1;
       while(bytes == 1) {
 	if (c->line_length >= MONITOR_LINE_LENGTH) {
-	  /* line too long */
-	  c->line[MONITOR_LINE_LENGTH-1] = 0;
-	  monitor_process_command(c);
-	  bytes = -1;
-	  break;
+	  c->line_length=0;
+	  monitor_write_error(c,"Command too long");
+	  monitor_close(c);
+	  return;
 	}
 	bytes = read(c->alarm.poll.fd, &c->line[c->line_length], 1);
 	if (bytes < 1) {
@@ -216,54 +202,80 @@ void monitor_client_poll(struct sched_ent *alarm)
 	  default:
 	    WHY_perror("read");
 	    /* all other errors; close socket */
-	    monitor_client_close(c);
+	    monitor_close(c);
 	    return;
 	  }
 	}
-	if (bytes > 0 && (c->line[c->line_length] != '\r')) {
-	    c->line_length += bytes;
-	    if (c->line[c->line_length-1] == '\n') {
-	      /* got command */
-	      c->line[c->line_length-1] = 0; /* trim new line for easier parsing */
-	      monitor_process_command(c);
-	      break;
-	    }
-	  }
-      }
-      break;
-    case MONITOR_STATE_DATA:
-      bytes = read(c->alarm.poll.fd,
-		   &c->buffer[c->data_offset],
-		   c->data_expected-c->data_offset);
-      if (bytes < 1) {
-	switch(errno) {
-	case EAGAIN: case EINTR: 
-	  /* transient errors */
+	
+	// silently skip all \r characters
+	if (c->line[c->line_length] == '\r')
+	  continue;
+	
+	// parse data length as soon as we see the : delimiter, 
+	// so we can read the rest of the line into the start of the buffer
+	if (c->data_expected==0 && c->line[0]=='*' && c->line[c->line_length]==':'){
+	  c->line[c->line_length]=0;
+	  c->data_expected=atoi(c->line +1);
+	  c->line_length=0;
+	  continue;
+	}
+	
+	if (c->line[c->line_length] == '\n') {
+	  /* got whole command line, start reading data if required */
+	  c->line[c->line_length]=0;
+	  c->state=MONITOR_STATE_DATA;
+	  c->data_offset=0;
 	  break;
-	default:
-	  /* all other errors; close socket */
-	    WHYF("Tearing down monitor client due to errno=%d",
-		 errno);
-	    monitor_client_close(c);
-	    return;
 	}
-      } else {
-	c->data_offset += bytes;
-	if (c->data_offset >= c->data_expected)
-	  {
-	    /* we have the binary data we were expecting. */
-	    monitor_process_data(c);
-	    c->state = MONITOR_STATE_COMMAND;
-	  }
+	
+	c->line_length += bytes;
       }
-      break;
+	
+      if (c->state!=MONITOR_STATE_DATA)
+	break;
+	
+      // else fall through
+    case MONITOR_STATE_DATA:
+	
+      if (c->data_expected - c->data_offset >0){
+	bytes = read(c->alarm.poll.fd,
+		     &c->buffer[c->data_offset],
+		     c->data_expected - c->data_offset);
+	if (bytes < 1) {
+	  switch(errno) {
+	  case EAGAIN: case EINTR: 
+	    /* transient errors */
+	    break;
+	  default:
+	    /* all other errors; close socket */
+	      WHYF("Tearing down monitor client due to errno=%d",
+		   errno);
+	      monitor_close(c);
+	      return;
+	  }
+	}
+	
+	c->data_offset += bytes;
+      }
+      
+      if (c->data_offset < c->data_expected)
+	break;
+	
+      /* we have the next command and all of the binary data we were expecting. Now we can process it */
+      monitor_process_command(c);
+	
+      // fall through
     default:
+      // reset parsing state
       c->state = MONITOR_STATE_COMMAND;
-      WHY("fixed monitor connection state");
+      c->data_expected = 0;
+      c->data_offset = 0;
+      c->line_length = 0;
     }
   }
+  
   if (alarm->poll.revents & (POLLHUP | POLLERR)) {
-    monitor_client_close(c);
+    monitor_close(c);
   }
   return;
 }
@@ -334,148 +346,181 @@ static void monitor_new_client(int s) {
     return;
 }
 
-int monitor_send_lookup_response(const char *sid, const int port, const char *ext, const char *name){
+static int monitor_set(int argc, const char *const *argv, struct command_line_option *o, void *context){
+  struct monitor_context *c=context;
+  if (strcase_startswith((char *)argv[1],"vomp",NULL))
+    c->flags|=MONITOR_VOMP;
+  else if (strcase_startswith((char *)argv[1],"rhizome", NULL))
+    c->flags|=MONITOR_RHIZOME;
+  else if (strcase_startswith((char *)argv[1],"peers", NULL))
+    c->flags|=MONITOR_PEERS;
+  else if (strcase_startswith((char *)argv[1],"dnahelper", NULL))
+    c->flags|=MONITOR_DNAHELPER;
+  else
+    return monitor_write_error(c,"Unknown monitor type");
+
+  char msg[1024];
+  snprintf(msg,sizeof(msg),"\nMONITORSTATUS:%d\n",c->flags);
+  write_str(c->alarm.poll.fd,msg);
+  
+  return 0;
+}
+
+static int monitor_clear(int argc, const char *const *argv, struct command_line_option *o, void *context){
+  struct monitor_context *c=context;
+  if (strcase_startswith((char *)argv[1],"vomp",NULL))
+    c->flags&=~MONITOR_VOMP;
+  else if (strcase_startswith((char *)argv[1],"rhizome", NULL))
+    c->flags&=~MONITOR_RHIZOME;
+  else if (strcase_startswith((char *)argv[1],"peers", NULL))
+    c->flags&=~MONITOR_PEERS;
+  else if (strcase_startswith((char *)argv[1],"dnahelper", NULL))
+    c->flags&=~MONITOR_DNAHELPER;
+  else
+    return monitor_write_error(c,"Unknown monitor type");
+  
+  char msg[1024];
+  snprintf(msg,sizeof(msg),"\nMONITORSTATUS:%d\n",c->flags);
+  write_str(c->alarm.poll.fd,msg);
+  
+  return 0;
+}
+
+static int monitor_lookup_match(int argc, const char *const *argv, struct command_line_option *o, void *context){
+  struct monitor_context *c=context;
+  const char *sid=argv[2];
+  const char *ext=argv[4];
+  const char *name=argv[5];
+  
+  if (!my_subscriber)
+    return monitor_write_error(c,"I don't know who I am");
+  
   struct sockaddr_mdp addr={
-    .port = port
+    .port = atoi(argv[3]),
   };
   
   if (stowSid((unsigned char *)&addr.sid, 0, sid)==-1)
-    return WHYF("Invalid SID %s", sid);
+    return monitor_write_error(c,"Invalid SID");
   
-  int cn=0, in=0, kp=0;
-  if (!keyring_next_identity(keyring, &cn, &in, &kp))
-    WHY("No local identity, cannot send DNA LOOKUP reply");
-  else{
-    char uri[256];
-    snprintf(uri, sizeof(uri), "sid://%s/external/%s", alloca_tohex_sid(keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key), ext);
-    DEBUGF("Sending response to %s for %s", sid, uri);
-    overlay_mdp_dnalookup_reply(&addr, keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key, uri, ext, name);
+  char uri[256];
+  snprintf(uri, sizeof(uri), "sid://%s/external/%s", alloca_tohex_sid(my_subscriber->sid), ext);
+  DEBUGF("Sending response to %s for %s", sid, uri);
+  overlay_mdp_dnalookup_reply(&addr, my_subscriber->sid, uri, ext, name);
+  return 0;
+}
+
+static int monitor_call(int argc, const char *const *argv, struct command_line_option *o, void *context){
+  struct monitor_context *c=context;
+  unsigned char sid[SID_SIZE];
+  if (stowSid(sid, 0, argv[1]) == -1)
+    return monitor_write_error(c,"invalid SID, so cannot place call");
+  
+  if (!my_subscriber)
+    return monitor_write_error(c,"I don't know who I am");
+  
+  vomp_dial(my_subscriber->sid, sid, argv[2], argv[3]);
+  return 0;
+}
+
+static int monitor_call_ring(int argc, const char *const *argv, struct command_line_option *o, void *context){
+  struct monitor_context *c=context;
+  struct vomp_call_state *call=vomp_find_call_by_session(strtol(argv[1],NULL,16));
+  if (!call)
+    return monitor_write_error(c,"Invalid call token");
+  vomp_ringing(call);
+  return 0;
+}
+
+static int monitor_call_pickup(int argc, const char *const *argv, struct command_line_option *o, void *context){
+  struct monitor_context *c=context;
+  struct vomp_call_state *call=vomp_find_call_by_session(strtol(argv[1],NULL,16));
+  if (!call)
+    return monitor_write_error(c,"Invalid call token");
+  vomp_pickup(call);
+  return 0;
+}
+
+static int monitor_call_audio(int argc, const char *const *argv, struct command_line_option *o, void *context){
+  struct monitor_context *c=context;
+  struct vomp_call_state *call=vomp_find_call_by_session(strtol(argv[1],NULL,16));
+  if (!call)
+    return monitor_write_error(c,"Invalid call token");
+  vomp_received_audio(call, atoi(argv[2]), c->buffer, c->data_expected);
+  return 0;
+}
+
+static int monitor_call_hangup(int argc, const char *const *argv, struct command_line_option *o, void *context){
+  struct monitor_context *c=context;
+  struct vomp_call_state *call=vomp_find_call_by_session(strtol(argv[1],NULL,16));
+  if (!call)
+    return monitor_write_error(c,"Invalid call token");
+  vomp_hangup(call);
+  return 0;
+}
+
+static int monitor_call_dtmf(int argc, const char *const *argv, struct command_line_option *o, void *context){
+  struct monitor_context *c=context;
+  struct vomp_call_state *call=vomp_find_call_by_session(strtol(argv[1],NULL,16));
+  if (!call)
+    return monitor_write_error(c,"Invalid call token");
+  const char *digits = argv[2];
+  
+  int i;
+  for(i=0;i<strlen(digits);i++) {
+    int digit=vomp_parse_dtmf_digit(digits[i]);
+    if (digit<0)
+      monitor_write_error(c,"Invalid DTMF digit");
+    else{
+      /* 80ms standard tone duration, so that it is a multiple
+       of the majority of codec time units (70ms is the nominal
+       DTMF tone length for most systems). */
+      unsigned char code = digit <<4;
+      vomp_received_audio(call, VOMP_CODEC_DTMF, &code, 1);
+    }
   }
   return 0;
 }
 
-int monitor_process_command(struct monitor_context *c) 
-{
-  int callSessionToken,sampleType,bytes;
-  char sid[MONITOR_LINE_LENGTH],localDid[MONITOR_LINE_LENGTH];
-  char remoteDid[MONITOR_LINE_LENGTH],digits[MONITOR_LINE_LENGTH];
-  int port;
+struct command_line_option monitor_options[]={
+  {monitor_set,{"monitor","<type>",NULL},0,""},
+  {monitor_clear,{"ignore","<type>",NULL},0,""},
+  {monitor_lookup_match,{"lookup","match","<sid>","<port>","<ext>","<name>",NULL},0,""},
+  {monitor_call, {"call","<sid>","<local_did>","<remote_did>",NULL},0,""},
+  {monitor_call_ring, {"ringing","<token>",NULL},0,""},
+  {monitor_call_pickup, {"pickup","<token>",NULL},0,""},
+  {monitor_call_audio,{"audio","<token>","<type>","[<offset>]",NULL},0,""},
+  {monitor_call_hangup, {"hangup","<token>",NULL},0,""},
+  {monitor_call_dtmf, {"dtmf","<token>","<digits>",NULL},0,""},
+};
+
+static int parse_argv(char *cmdline, char delim, char **argv, int max_argv){
+  int argc=0;
   
-  char *cmd = c->line;
-  IN();
+  if (*cmdline && argc<max_argv){
+    argv[argc++]=cmdline;
+  }
   
-  remoteDid[0]='\0';
-  c->line_length=0;
-
-  if (strlen(cmd)>MONITOR_LINE_LENGTH) {
-    write_str(c->alarm.poll.fd,"\nERROR:Command too long\n");
-    RETURN(-1);
-  }
-
-  char msg[1024];
-
-  if (cmd[0]=='*') {
-    /* command with content */
-    int ofs=0;
-    if (sscanf(cmd,"*%d:%n",&bytes,&ofs)==1) {
-      /* work out rest of command */
-      cmd=&cmd[ofs];
-      c->state=MONITOR_STATE_DATA;
-      c->data_expected=bytes;
-      c->data_offset=0;
-      c->sample_codec=-1;
-
-      if (sscanf(cmd,"AUDIO %x %d",
-		 &callSessionToken,&sampleType)==2)
-	{
-	  /* Start getting sample */
-	  c->sample_call_session_token=callSessionToken;
-	  c->sample_codec=sampleType;
-	  RETURN(0);
-	}
+  // TODO quoted argument handling?
+  
+  while(*cmdline){
+    if (*cmdline==delim){
+      *cmdline=0;
+      if (cmdline[1] && argc<max_argv)
+	argv[argc++]=cmdline+1;
     }
+    cmdline++;
   }
-  else if (strcase_startswith(cmd,"monitor vomp",NULL))
-    // TODO add supported codec list argument
-    c->flags|=MONITOR_VOMP;
-  else if (strcase_startswith(cmd,"ignore vomp",NULL))
-    c->flags&=~MONITOR_VOMP;
-  else if (strcase_startswith(cmd,"monitor rhizome", NULL))
-    c->flags|=MONITOR_RHIZOME;
-  else if (strcase_startswith(cmd,"ignore rhizome", NULL))
-    c->flags&=~MONITOR_RHIZOME;
-  else if (strcase_startswith(cmd,"monitor peers", NULL))
-    c->flags|=MONITOR_PEERS;
-  else if (strcase_startswith(cmd,"ignore peers", NULL))
-    c->flags&=~MONITOR_PEERS;
-  else if (strcase_startswith(cmd,"monitor dnahelper", NULL))
-    c->flags|=MONITOR_DNAHELPER;
-  else if (strcase_startswith(cmd,"ignore dnahelper", NULL))
-    c->flags&=~MONITOR_DNAHELPER;
-  else if (sscanf(cmd,"lookup match %s %d %s %s",sid,&port,localDid,remoteDid)>=3) {
-    monitor_send_lookup_response(sid,port,localDid,remoteDid);
-  }else if (sscanf(cmd,"call %s %s %s",sid,localDid,remoteDid)==3) {
-    // pack the binary representation of the sid into the same buffer.
-    if (stowSid((unsigned char*)sid, 0, sid) == -1)
-      write_str(c->alarm.poll.fd,"\nERROR:invalid SID, so cannot place call\n");
-    else {
-      int cn=0, in=0, kp=0;
-      if (!keyring_next_identity(keyring, &cn, &in, &kp))
-	write_str(c->alarm.poll.fd,"\nERROR:no local identity, so cannot place call\n");
-      else {
-	vomp_dial(keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key, (unsigned char *)sid, localDid, remoteDid);
-      }
-    }
-  } else if (sscanf(cmd,"ringing %x",&callSessionToken)==1) {
-    struct vomp_call_state *call=vomp_find_call_by_session(callSessionToken);
-    vomp_ringing(call);
-  } else if (sscanf(cmd,"pickup %x",&callSessionToken)==1) {
-    struct vomp_call_state *call=vomp_find_call_by_session(callSessionToken);
-    vomp_pickup(call);
-  }
-  else if (sscanf(cmd,"hangup %x",&callSessionToken)==1) {
-    struct vomp_call_state *call=vomp_find_call_by_session(callSessionToken);
-    vomp_hangup(call);
-  } else if (sscanf(cmd,"dtmf %x %s",&callSessionToken,digits)==2) {
-    struct vomp_call_state *call=vomp_find_call_by_session(callSessionToken);
-    if (call){
-      int i;
-      for(i=0;i<strlen(digits);i++) {
-	int digit=vomp_parse_dtmf_digit(digits[i]);
-	if (digit<0) {
-	  snprintf(msg,1024,"\nERROR: invalid DTMF digit 0x%02x\n",digit);
-	  write_str(c->alarm.poll.fd,msg);
-	}
-	/* 80ms standard tone duration, so that it is a multiple
-	 of the majority of codec time units (70ms is the nominal
-	 DTMF tone length for most systems). */
-	unsigned char code = digit <<4;
-	vomp_received_audio(call, VOMP_CODEC_DTMF, &code, 1);
-      }
-    }
-  }
-
-  snprintf(msg,1024,"\nMONITORSTATUS:%d\n",c->flags);
-  write_str(c->alarm.poll.fd,msg);
-
-  RETURN(0);
+  return argc;
 }
 
-int monitor_process_data(struct monitor_context *c) 
+int monitor_process_command(struct monitor_context *c) 
 {
-  IN();
-  /* Called when we have received an entire data sample */
-  c->state=MONITOR_STATE_COMMAND;
-
-  struct vomp_call_state *call=vomp_find_call_by_session(c->sample_call_session_token);
-  if (!call) {
-    write_str(c->alarm.poll.fd,"\nERROR:No such call\n");
-    RETURN(-1);
-  }
-
-  vomp_received_audio(call, c->sample_codec, &c->buffer[0], vomp_sample_size(c->sample_codec));
-
-  RETURN(0);
+  char *argv[16]={NULL,};
+  int argc = parse_argv(c->line, ' ', argv, 16);
+  
+  if (cli_execute(NULL, argc, (const char *const*)argv, monitor_options, c))
+    return monitor_write_error(c, "Invalid command");
+  return 0;
 }
 
 int monitor_announce_bundle(rhizome_manifest *m)
@@ -501,7 +546,7 @@ int monitor_announce_bundle(rhizome_manifest *m)
 	|| set_block(monitor_sockets[i].alarm.poll.fd) == -1
       ) {
 	INFO("Tearing down monitor client");
-	monitor_client_close(&monitor_sockets[i]);
+	monitor_close(&monitor_sockets[i]);
       }
     }
   }
@@ -540,7 +585,7 @@ int monitor_tell_clients(char *msg, int msglen, int mask)
 	|| set_block(monitor_sockets[i].alarm.poll.fd) == -1
       ) {
 	INFOF("Tearing down monitor client #%d", i);
-	monitor_client_close(&monitor_sockets[i]);
+	monitor_close(&monitor_sockets[i]);
       }
     }
   }

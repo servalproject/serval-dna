@@ -831,24 +831,12 @@ int vomp_tick_interval();
 int vomp_sample_size(int c);
 int vomp_codec_timespan(int c);
 int vomp_parse_dtmf_digit(char c);
-int vomp_dial(unsigned char *local_sid, unsigned char *remote_sid, char *local_did, char *remote_did);
+int vomp_dial(unsigned char *local_sid, unsigned char *remote_sid, const char *local_did, const char *remote_did);
 int vomp_pickup(struct vomp_call_state *call);
 int vomp_hangup(struct vomp_call_state *call);
 int vomp_ringing(struct vomp_call_state *call);
 int vomp_received_audio(struct vomp_call_state *call, int audio_codec, const unsigned char *audio, int audio_length);
 
-
-typedef struct command_line_option {
-  int (*function)(int argc, const char *const *argv, struct command_line_option *o);
-  const char *words[32]; // 32 words should be plenty!
-  unsigned long long flags;
-#define CLIFLAG_NONOVERLAY (1<<0) /* Uses a legacy IPv4 DNA call instead of overlay mnetwork */
-#define CLIFLAG_STANDALONE (1<<1) /* Cannot be issued to a running instance */
-  const char *description; // describe this invocation
-} command_line_option;
-
-extern command_line_option command_line_options[];
-int cli_arg(int argc, const char *const *argv, command_line_option *o, char *argname, const char **dst, int (*validator)(const char *arg), char *defaultvalue);
 int cli_putchar(char c);
 int cli_puts(const char *str);
 int cli_printf(const char *fmt, ...);
@@ -869,10 +857,11 @@ overlay_interface * overlay_interface_find_name(const char *name);
 int directory_registration();
 int directory_service_init();
 
+struct command_line_option;
 #ifdef HAVE_VOIPTEST
-int app_pa_phone(int argc, const char *const *argv, struct command_line_option *o);
+int app_pa_phone(int argc, const char *const *argv, struct command_line_option *o, void *context);
 #endif
-int app_monitor_cli(int argc, const char *const *argv, struct command_line_option *o);
+int app_monitor_cli(int argc, const char *const *argv, struct command_line_option *o, void *context);
 
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 

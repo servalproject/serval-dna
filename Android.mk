@@ -12,6 +12,7 @@ SERVALD_SRC_FILES = \
 	serval-dna/overlay_mdp.c	\
         serval-dna/batman.c        \
         serval-dna/ciphers.c       \
+	serval-dna/cli.c	\
         serval-dna/client.c        \
 	serval-dna/commandline.c   \
 	serval-dna/conf.c   \
@@ -53,6 +54,7 @@ SERVALD_SRC_FILES = \
 	serval-dna/fdqueue.c \
 	serval-dna/monitor.c \
 	serval-dna/monitor-cli.c \
+	serval-dna/monitor-client.c \
 	serval-dna/codecs.c \
 	serval-dna/audiodevices.c \
 	serval-dna/audio_msm_g1.c \

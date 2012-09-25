@@ -65,7 +65,6 @@ struct monitor_state {
   int bufferBytes;
 };
 
-// FIX ME, COPY-PASTA from monitor.c
 int monitor_socket_name(struct sockaddr_un *name){
   int len;
 #ifdef linux

@@ -18,11 +18,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #define __RHIZOME_INLINE
+#include <stdlib.h>
+#include <time.h>
 #include "serval.h"
 #include "rhizome.h"
 #include "strbuf.h"
-#include <stdlib.h>
-#include <time.h>
+#include "str.h"
 
 long long rhizome_space=0;
 static const char *rhizome_thisdatastore_path = NULL;

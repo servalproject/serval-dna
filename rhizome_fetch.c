@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <time.h>
 #include "serval.h"
 #include "rhizome.h"
+#include "str.h"
 
 extern int sigPipeFlag;
 extern int sigIoFlag;

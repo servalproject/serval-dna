@@ -658,7 +658,7 @@ int vomp_call_destroy(struct vomp_call_state *call)
   return 0;
 }
 
-int vomp_dial(unsigned char *local_sid, unsigned char *remote_sid, char *local_did, char *remote_did)
+int vomp_dial(unsigned char *local_sid, unsigned char *remote_sid, const char *local_did, const char *remote_did)
 {
   /* TODO use local_did and remote_did start putting the call together.
    These need to be passed to the node being called to provide caller id,

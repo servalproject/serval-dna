@@ -5,6 +5,7 @@ SRCS=	\
 	audio_reflector.c \
 	batman.c \
 	ciphers.c \
+	cli.c \
 	client.c \
 	codecs.c \
 	commandline.c \
@@ -24,6 +25,7 @@ SRCS=	\
 	mdp_client.c \
 	mkdir.c \
 	monitor.c \
+	monitor-client.c \
 	monitor-cli.c \
 	net.c \
 	overlay.c \

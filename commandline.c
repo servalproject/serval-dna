@@ -38,17 +38,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include "strbuf.h"
 #include "mdp_client.h"
+#include "cli.h"
 
-int cli_usage() {
+extern struct command_line_option command_line_options[];
+
+int commandline_usage(int argc, const char *const *argv, struct command_line_option *o, void *context){
   printf("Serval Mesh version <version>.\n");
-  printf("Usage:\n");
-  int i,j;
-  for(i=0;command_line_options[i].function;i++) {
-    for(j=0;command_line_options[i].words[j];j++)
-      printf(" %s",command_line_options[i].words[j]);
-    printf("\n   %s\n",command_line_options[i].description);
-  }
-  return 0;
+  return cli_usage(command_line_options);
 }
 
 /* Data structures for accumulating output of a single JNI call.
@@ -185,77 +181,11 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servald_ServalD_rawCommand(JNIEnv 
 */
 int parseCommandLine(const char *argv0, int argc, const char *const *args)
 {
-  int ambiguous=0;
-  int cli_call=-1;
   fd_clearstats();
   IN();
-  int i;
-  for(i=0;command_line_options[i].function;i++)
-    {
-      int j;
-      const char *word = NULL;
-      int optional = 0;
-      int mandatory = 0;
-      for (j = 0; (word = command_line_options[i].words[j]); ++j) {
-	int wordlen = strlen(word);
-	if (optional < 0) {
-	  WHYF("Internal error: command_line_options[%d].word[%d]=\"%s\" not allowed after \"...\"", i, j, word);
-	  break;
-	}
-	else if (!(  (wordlen > 2 && word[0] == '<' && word[wordlen-1] == '>')
-		  || (wordlen > 4 && word[0] == '[' && word[1] == '<' && word[wordlen-2] == '>' && word[wordlen-1] == ']')
-		  || (wordlen > 0)
-	)) {
-	  WHYF("Internal error: command_line_options[%d].word[%d]=\"%s\" is malformed", i, j, word);
-	  break;
-	} else if (word[0] == '<') {
-	  ++mandatory;
-	  if (optional) {
-	    WHYF("Internal error: command_line_options[%d].word[%d]=\"%s\" should be optional", i, j, word);
-	    break;
-	  }
-	} else if (word[0] == '[') {
-	  ++optional;
-	} else if (wordlen == 3 && word[0] == '.' && word[1] == '.' && word[2] == '.') {
-	  optional = -1;
-	} else {
-	  ++mandatory;
-	  if (j < argc && strcasecmp(word, args[j])) // literal words don't match
-	    break;
-	}
-      }
-      if (!word && argc >= mandatory && (optional < 0 || argc <= mandatory + optional)) {
-	/* A match!  We got through the command definition with no internal errors and all literal
-	   args matched and we have a proper number of args.  If we have multiple matches, then note
-	   that the call is ambiguous. */
-	if (cli_call>=0) ambiguous++;
-	if (ambiguous==1) {
-	  WHY("Ambiguous command line call:");
-	  WHY_argv("   ", argc, args);
-	  WHY("Matches the following known command line calls:");
-	  WHY_argv("   ", argc, command_line_options[cli_call].words);
-	}
-	if (ambiguous)
-	  WHY_argv("   ", argc, command_line_options[i].words);
-	cli_call=i;
-      }
-    }
-
-  /* Don't process ambiguous calls */
-  if (ambiguous) return -1;
-  /* Complain if we found no matching calls */
-  if (cli_call<0) {
-    if (argc) {
-      WHY("Unknown command line call:");
-      WHY_argv("   ", argc, args);
-    }
-    INFO("Use \"help\" command to see a list of valid commands");
-    return -1;
-  }
-
-  /* Otherwise, make call */
   confSetDebugFlags();
-  int result=command_line_options[cli_call].function(argc, args, &command_line_options[cli_call]);
+  
+  int result = cli_execute(argv0, argc, args, command_line_options, NULL);
   /* clean up after ourselves */
   overlay_mdp_client_done();
   OUT();
@@ -263,34 +193,6 @@ int parseCommandLine(const char *argv0, int argc, const char *const *args)
   if (debug&DEBUG_TIMING)
     fd_showstats();
   return result;
-}
-
-int cli_arg(int argc, const char *const *argv, command_line_option *o, char *argname, const char **dst, int (*validator)(const char *arg), char *defaultvalue)
-{
-  int arglen = strlen(argname);
-  int i;
-  const char *word;
-  for(i = 0; (word = o->words[i]); ++i) {
-    int wordlen = strlen(word);
-    /* No need to check that the "<...>" and "[<...>]" are all intact in the command_line_option,
-       because that was already checked in parseCommandLine(). */
-    if (i < argc
-      &&(  (wordlen == arglen + 2 && word[0] == '<' && !strncasecmp(&word[1], argname, arglen))
-        || (wordlen == arglen + 4 && word[0] == '[' && !strncasecmp(&word[2], argname, arglen)))
-    ) {
-      const char *value = argv[i];
-      if (validator && !(*validator)(value))
-	return WHYF("Invalid argument %d '%s': \"%s\"", i + 1, argname, value);
-      *dst = value;
-      return 0;
-    }
-  }
-  /* No matching valid argument was found, so return default value.  It might seem that this should
-     never happen, but it can because more than one version of a command line option may exist, one
-     with a given argument and another without, and allowing a default value means we can have a
-     single function handle both in a fairly simple manner. */
-  *dst = defaultvalue;
-  return 1;
 }
 
 /* Write a single character to output.  If in a JNI call, then this appends the character to the
@@ -392,7 +294,7 @@ int cli_delim(const char *opt)
   return 0;
 }
 
-int app_echo(int argc, const char *const *argv, struct command_line_option *o)
+int app_echo(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   int i;
@@ -405,12 +307,7 @@ int app_echo(int argc, const char *const *argv, struct command_line_option *o)
   return 0;
 }
 
-int cli_lookup_did(const char *text)
-{
-  return text[0] == '\0' || strcmp(text, "*") == 0 || str_is_did(text);
-}
-
-int app_dna_lookup(int argc, const char *const *argv, struct command_line_option *o)
+int app_dna_lookup(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   int i;
@@ -555,12 +452,7 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
   return 0;
 }
 
-int cli_absolute_path(const char *arg)
-{
-  return arg[0] == '/' && arg[1] != '\0';
-}
-
-int app_server_start(int argc, const char *const *argv, struct command_line_option *o)
+int app_server_start(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   /* Process optional arguments */
@@ -711,7 +603,7 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
   return ret;
 }
 
-int app_server_stop(int argc, const char *const *argv, struct command_line_option *o)
+int app_server_stop(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   int			pid, tries, running;
@@ -778,7 +670,7 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
   return 0;
 }
 
-int app_server_status(int argc, const char *const *argv, struct command_line_option *o)
+int app_server_status(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   int	pid;
@@ -810,7 +702,7 @@ int app_server_status(int argc, const char *const *argv, struct command_line_opt
   return pid > 0 ? 0 : 1;
 }
 
-int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *o)
+int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *sid, *count;
@@ -952,7 +844,7 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
   return ret;
 }
 
-int app_config_set(int argc, const char *const *argv, struct command_line_option *o)
+int app_config_set(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *var, *val;
@@ -964,7 +856,7 @@ int app_config_set(int argc, const char *const *argv, struct command_line_option
   return confValueSet(var, val) == -1 ? -1 : confWrite();
 }
 
-int app_config_del(int argc, const char *const *argv, struct command_line_option *o)
+int app_config_del(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *var;
@@ -975,7 +867,7 @@ int app_config_del(int argc, const char *const *argv, struct command_line_option
   return confValueSet(var, NULL) == -1 ? -1 : confWrite();
 }
 
-int app_config_get(int argc, const char *const *argv, struct command_line_option *o)
+int app_config_get(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *var;
@@ -1006,7 +898,7 @@ int app_config_get(int argc, const char *const *argv, struct command_line_option
   return 0;
 }
 
-int app_rhizome_hash_file(int argc, const char *const *argv, struct command_line_option *o)
+int app_rhizome_hash_file(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   /* compute hash of file. We do this without a manifest, so it will necessarily
@@ -1021,17 +913,7 @@ int app_rhizome_hash_file(int argc, const char *const *argv, struct command_line
   return 0;
 }
 
-int cli_optional_sid(const char *arg)
-{
-  return !arg[0] || str_is_subscriber_id(arg);
-}
-
-int cli_optional_bundle_key(const char *arg)
-{
-  return !arg[0] || rhizome_str_is_bundle_key(arg);
-}
-
-int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_option *o)
+int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *filepath, *manifestpath, *authorSidHex, *pin, *bskhex;
@@ -1215,7 +1097,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   return ret;
 }
 
-int app_rhizome_import_bundle(int argc, const char *const *argv, struct command_line_option *o)
+int app_rhizome_import_bundle(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *filepath, *manifestpath;
@@ -1286,12 +1168,7 @@ int app_rhizome_import_bundle(int argc, const char *const *argv, struct command_
   return status;
 }
 
-int cli_manifestid(const char *arg)
-{
-  return rhizome_str_is_manifest_id(arg);
-}
-
-int app_rhizome_extract_manifest(int argc, const char *const *argv, struct command_line_option *o)
+int app_rhizome_extract_manifest(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *manifestid, *manifestpath;
@@ -1327,17 +1204,7 @@ int app_rhizome_extract_manifest(int argc, const char *const *argv, struct comma
   return ret;
 }
 
-int cli_fileid(const char *arg)
-{
-  return rhizome_str_is_file_hash(arg);
-}
-
-int cli_optional_bundle_crypt_key(const char *arg)
-{
-  return !arg[0] || rhizome_str_is_bundle_crypt_key(arg);
-}
-
-int app_rhizome_extract_file(int argc, const char *const *argv, struct command_line_option *o)
+int app_rhizome_extract_file(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *fileid, *filepath, *keyhex;
@@ -1367,15 +1234,7 @@ int app_rhizome_extract_file(int argc, const char *const *argv, struct command_l
   return ret;
 }
 
-int cli_uint(const char *arg)
-{
-  register const char *s = arg;
-  while (isdigit(*s++))
-    ;
-  return s != arg && *s == '\0';
-}
-
-int app_rhizome_list(int argc, const char *const *argv, struct command_line_option *o)
+int app_rhizome_list(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *pin, *service, *sender_sid, *recipient_sid, *offset, *limit;
@@ -1395,7 +1254,7 @@ int app_rhizome_list(int argc, const char *const *argv, struct command_line_opti
   return rhizome_list_manifests(service, sender_sid, recipient_sid, atoi(offset), atoi(limit));
 }
 
-int app_keyring_create(int argc, const char *const *argv, struct command_line_option *o)
+int app_keyring_create(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *pin;
@@ -1405,7 +1264,7 @@ int app_keyring_create(int argc, const char *const *argv, struct command_line_op
   return 0;
 }
 
-int app_keyring_list(int argc, const char *const *argv, struct command_line_option *o)
+int app_keyring_list(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *pin;
@@ -1432,7 +1291,7 @@ int app_keyring_list(int argc, const char *const *argv, struct command_line_opti
   return 0;
  }
 
-int app_keyring_add(int argc, const char *const *argv, struct command_line_option *o)
+int app_keyring_add(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *pin;
@@ -1477,12 +1336,7 @@ int app_keyring_add(int argc, const char *const *argv, struct command_line_optio
   return 0;
 }
 
-int cli_optional_did(const char *text)
-{
-  return text[0] == '\0' || str_is_did(text);
-}
-
-int app_keyring_set_did(int argc, const char *const *argv, struct command_line_option *o)
+int app_keyring_set_did(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *sid, *did, *pin, *name;
@@ -1511,7 +1365,7 @@ int app_keyring_set_did(int argc, const char *const *argv, struct command_line_o
   return 0;
 }
 
-int app_id_self(int argc, const char *const *argv, struct command_line_option *o)
+int app_id_self(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   /* List my own identities */
@@ -1558,7 +1412,7 @@ int app_id_self(int argc, const char *const *argv, struct command_line_option *o
   return 0;
 }
 
-int app_test_rfs(int argc, const char *const *argv, struct command_line_option *o)
+int app_test_rfs(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   printf("Testing that RFS coder works properly.\n");
@@ -1574,7 +1428,7 @@ int app_test_rfs(int argc, const char *const *argv, struct command_line_option *
   return 0;
 }
 
-int app_crypt_test(int argc, const char *const *argv, struct command_line_option *o)
+int app_crypt_test(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   unsigned char nonce[crypto_box_curve25519xsalsa20poly1305_NONCEBYTES];
@@ -1601,7 +1455,7 @@ int app_crypt_test(int argc, const char *const *argv, struct command_line_option
   return 0;
 }
 
-int app_node_info(int argc, const char *const *argv, struct command_line_option *o)
+int app_node_info(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *sid;
@@ -1764,10 +1618,10 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 
    Keep this list alphabetically sorted for user convenience.
 */
-command_line_option command_line_options[]={
+struct command_line_option command_line_options[]={
   {app_dna_lookup,{"dna","lookup","<did>","[<timeout>]",NULL},0,
    "Lookup the SIP/MDP address of the supplied telephone number (DID)."},
-  {cli_usage,{"help",NULL},0,
+  {commandline_usage,{"help",NULL},0,
    "Display command usage."},
   {app_echo,{"echo","...",NULL},CLIFLAG_STANDALONE,
    "Output the supplied string."},
@@ -1827,8 +1681,8 @@ command_line_option command_line_options[]={
    "Return information about SID, and optionally ask for DID resolution via network"},
   {app_test_rfs,{"test","rfs",NULL},0,
    "Test RFS field calculation"},
-  {app_monitor_cli,{"monitor","[<sid>]",NULL},0,
-   "Interactive servald monitor interface.  Specify SID to auto-dial that peer and insert dummy audio data"},
+  {app_monitor_cli,{"monitor",NULL},0,
+   "Interactive servald monitor interface."},
   {app_crypt_test,{"crypt","test",NULL},0,
    "Run cryptography speed test"},
 #ifdef HAVE_VOIPTEST
