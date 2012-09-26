@@ -804,6 +804,8 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	  "Content-Type: application/octet-stream\r\n"
 	  "\r\n";
 	/* Work out what the content length should be */
+	DEBUGF("manifest_all_bytes=%d, manifest_bytes=%d",
+	       m->manifest_all_bytes,m->manifest_bytes);
 	int content_length
 	  =strlen(template2)-2 /* minus 2 for the "%s" that gets replaced */
 	  +strlen(boundary_string)
@@ -847,7 +849,33 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	}	
 
 	/* send file contents now */
+	long long rowid = -1;
+	sqlite3_blob *blob=NULL;
+	sqlite_exec_int64(&rowid, "select rowid from files where id='%s';", id);
+	if (rowid >= 0 && sqlite3_blob_open(rhizome_db, "main", "files", "data", 
+					    rowid, 0, &blob) != SQLITE_OK)
+	  goto closeit;
+	int i;
+	for(i=0;i<filesize;)
+	  {
+	    int count=4096;
+	    if (filesize-i<count) count=filesize-i;
+	    unsigned char buffer[4096];
+	    if(sqlite3_blob_read(blob,buffer,count,i)==SQLITE_OK)
+	      {
+		count=write(sock,buffer,count);
+		if (count<0) {
+		  DEBUGF("socket error writing to server");
+		  sqlite3_blob_close(blob);
+		  goto closeit;
+		} else i+=count;
+	      } else {
+	      DEBUGF("An sqlite error occurred reading from the blob");
+	      sqlite3_blob_close(blob);
+	      goto closeit;
+	    }
 
+	  }
 
 	/* Send final mime boundary */
 	len+=0;
