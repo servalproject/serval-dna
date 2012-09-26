@@ -413,7 +413,7 @@ rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix,int pref
   unsigned char high[RHIZOME_MANIFEST_ID_BYTES];
 
   memset(low,0x00,RHIZOME_MANIFEST_ID_BYTES);
-  memset(high,0x00,RHIZOME_MANIFEST_ID_BYTES);
+  memset(high,0xff,RHIZOME_MANIFEST_ID_BYTES);
   bcopy(bid_prefix,low,prefix_length);
   bcopy(bid_prefix,high,prefix_length);
 
@@ -443,7 +443,7 @@ rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix,int pref
 
       /* Read manifest data from blob */
       DEBUGF("XXX Read manifest and return it");
-
+      
       sqlite3_blob_close(blob);
       sqlite3_finalize(statement);
       return NULL;
