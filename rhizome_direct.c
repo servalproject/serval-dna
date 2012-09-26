@@ -442,8 +442,27 @@ rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix,int pref
       sqlite_retry_done(&retry, "sqlite3_blob_open");
 
       /* Read manifest data from blob */
-      DEBUGF("XXX Read manifest and return it");
+
+      size_t manifestblobsize = sqlite3_column_bytes(statement, 0);
+      if (manifestblobsize<1||manifestblobsize>1024) goto error;
+
+      const char *manifestblob = (char *) sqlite3_column_blob(statement, 0);
+      if (!manifestblob) goto error;
+      dump("manifest bytes",manifestblob,manifestblobsize);
+
+      rhizome_manifest *m=rhizome_new_manifest();
+      if (rhizome_read_manifest_file(m,manifestblob,manifestblobsize)==-1)
+	{
+	  rhizome_manifest_free(m);
+	  goto error;
+	}
       
+      DEBUGF("Read manifest");
+      sqlite3_blob_close(blob);
+      sqlite3_finalize(statement);
+      return m;
+
+ error:
       sqlite3_blob_close(blob);
       sqlite3_finalize(statement);
       return NULL;
