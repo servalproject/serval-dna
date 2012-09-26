@@ -799,29 +799,71 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	  "Content-Type: application/octet-stream\r\n"
 	  "\r\n";
 	char *template3=
-	  "--%s\r\n"
+	  "\r\n--%s\r\n"
 	  "Content-Disposition: form-data; name=\"data\"; filename=\"d\"\r\n"
 	  "Content-Type: application/octet-stream\r\n"
 	  "\r\n";
 	/* Work out what the content length should be */
 	int content_length
-	  =strlen(template2)-2
+	  =strlen(template2)-2 /* minus 2 for the "%s" that gets replaced */
 	  +strlen(boundary_string)
 	  +m->manifest_all_bytes
-	  +strlen(template3)-2
+	  +strlen(template3)-2 /* minus 2 for the "%s" that gets replaced */
 	  +strlen(boundary_string)
 	  +filesize
 	  +strlen("\r\n--")+strlen(boundary_string)+strlen("--\r\n");
+
+	/* XXX For some reason the above is four bytes out, so fix that */
+	content_length+=4;
 
 	int len=snprintf(buffer,8192,template,content_length,boundary_string);
 	len+=snprintf(&buffer[len],8192-len,template2,boundary_string);
 	memcpy(&buffer[len],m->manifestdata,m->manifest_all_bytes);
 	len+=m->manifest_all_bytes;
 	len+=snprintf(&buffer[len],8192-len,template3,boundary_string);
-	dump("POST prep",(unsigned char *)buffer,len);
-		 
+
+	addr.sin_family = AF_INET;     
+	addr.sin_port = htons(state->port);   
+	addr.sin_addr = *((struct in_addr *)hostent->h_addr);
+	bzero(&(addr.sin_zero),8);     
+	
+	sock=socket(AF_INET, SOCK_STREAM, 0);
+	if (sock==-1) {
+	  DEBUGF("could not open socket");    
+	  goto closeit;
+	} 
+	if (connect(sock,(struct sockaddr *)&addr,sizeof(struct sockaddr)) == -1)
+	  {
+	    DEBUGF("Could not connect to remote");
+	    goto closeit;
+	  }
+
+	int sent=0;
+	/* Send buffer now */
+	while(sent<len) {
+	  int r=write(sock,&buffer[sent],len-sent);
+	  if (r>0) sent+=r;
+	  if (r<0) goto closeit;
+	}	
+
+	/* send file contents now */
 
 
+	/* Send final mime boundary */
+	len+=0;
+	len+=snprintf(&buffer[len],8192-len,"\r\n--%s--\r\n",boundary_string);
+	sent=0;
+	while(sent<len) {
+	  int r=write(sock,&buffer[sent],len-sent);
+	  if (r>0) sent+=r;
+	  if (r<0) goto closeit;
+	}	
+
+	/* send buffer now */
+	DEBUGF("XXX check HTTP response");
+
+      closeit:
+	close(sock);
 
 	if (m) rhizome_manifest_free(m);
       }
