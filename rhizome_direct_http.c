@@ -778,6 +778,51 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	  DEBUGF("This should never happen.  The manifest exists, but when I went looking for it, it doesn't appear to be there.");
 	  goto next_item;
 	}
+
+	/* Get filehash and size from manifest if present */
+	const char *id = rhizome_manifest_get(m, "id", NULL, 0);
+	DEBUGF("file id = '%s'",id);
+	long long filesize = rhizome_manifest_get_ll(m, "filesize");
+	DEBUGF("file size = %lld",filesize);
+
+	/* We now have everything we need to compose the POST request and send it.
+	 */
+	char boundary_string[128];
+	char buffer[8192];
+	snprintf(boundary_string,80,"%08lx%08lx",random(),random());
+	char *template="POST /rhizome/import HTTP/1.0\r\n"
+	  "Content-Length: %d\r\n"
+	  "Content-Type: multipart/form-data; boundary=%s\r\n"
+	  "\r\n";
+	char *template2="--%s\r\n"
+	  "Content-Disposition: form-data; name=\"manifest\"; filename=\"m\"\r\n"
+	  "Content-Type: application/octet-stream\r\n"
+	  "\r\n";
+	char *template3=
+	  "--%s\r\n"
+	  "Content-Disposition: form-data; name=\"data\"; filename=\"d\"\r\n"
+	  "Content-Type: application/octet-stream\r\n"
+	  "\r\n";
+	/* Work out what the content length should be */
+	int content_length
+	  =strlen(template2)-2
+	  +strlen(boundary_string)
+	  +m->manifest_all_bytes
+	  +strlen(template3)-2
+	  +strlen(boundary_string)
+	  +filesize
+	  +strlen("\r\n--")+strlen(boundary_string)+strlen("--\r\n");
+
+	int len=snprintf(buffer,8192,template,content_length,boundary_string);
+	len+=snprintf(&buffer[len],8192-len,template2,boundary_string);
+	memcpy(&buffer[len],m->manifestdata,m->manifest_all_bytes);
+	len+=m->manifest_all_bytes;
+	len+=snprintf(&buffer[len],8192-len,template3,boundary_string);
+	dump("POST prep",(unsigned char *)buffer,len);
+		 
+
+
+
 	if (m) rhizome_manifest_free(m);
       }
     next_item:

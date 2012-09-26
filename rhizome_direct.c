@@ -214,7 +214,7 @@ int rhizome_direct_continue_sync_request(rhizome_direct_sync_request *r)
   DEBUGF("Got %d BARs",count);
   dump("BARs",r->cursor->buffer,
        r->cursor->buffer_used+r->cursor->buffer_offset_bytes);
-
+  
   r->dispatch_function(r);
 
   r->fills_sent++;
@@ -448,7 +448,6 @@ rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix,int pref
 
       const char *manifestblob = (char *) sqlite3_column_blob(statement, 0);
       if (!manifestblob) goto error;
-      dump("manifest bytes",manifestblob,manifestblobsize);
 
       rhizome_manifest *m=rhizome_new_manifest();
       if (rhizome_read_manifest_file(m,manifestblob,manifestblobsize)==-1)
