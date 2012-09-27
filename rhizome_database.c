@@ -872,7 +872,7 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
     WARNF("File has grown by %lld bytes. I will just store the original number of bytes so that the hash (hopefully) matches",stat.st_size-m->fileLength);
   }
 
-  unsigned char *addr = mmap(NULL, m->fileLength, PROT_READ, MAP_FILE|MAP_SHARED, fd, 0);
+  unsigned char *addr = mmap(NULL, m->fileLength, PROT_READ, MAP_SHARED, fd, 0);
   if (addr==MAP_FAILED) {
     WHY_perror("mmap");
     WHY("mmap() of associated file failed.");

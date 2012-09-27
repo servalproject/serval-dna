@@ -115,7 +115,7 @@ update_file() {
    [ -e "$new_name" ] || echo 'File $new_name' >"$new_name"
    local sidvar="SID$instance_name"
    [ "$new_name" != "$orig_name" ] && cp "$orig_name.manifest" "$new_name.manifest"
-   sed -i -e '/^date=/d;/^filehash=/d;/^filesize=/d;/^version=/d;/^name=/d' "$new_name.manifest"
+   $SED -i -e '/^date=/d;/^filehash=/d;/^filesize=/d;/^version=/d;/^name=/d' "$new_name.manifest"
    executeOk_servald rhizome add file "${!sidvar}" '' "$new_name" "$new_name.manifest"
    executeOk_servald rhizome list ''
    assert_rhizome_list "$new_name"

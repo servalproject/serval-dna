@@ -18,6 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include <time.h>
+#include <arpa/inet.h>
 #include "serval.h"
 #include "rhizome.h"
 
@@ -643,13 +644,12 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	}
 	struct sockaddr_in addr = *peerip;
 	addr.sin_family = AF_INET;
-	INFOF("RHIZOME HTTP REQUEST, CONNECT family=%u port=%u addr=%u.%u.%u.%u",
-	    addr.sin_family, ntohs(addr.sin_port),
-	    ((unsigned char*)&addr.sin_addr.s_addr)[0],
-	    ((unsigned char*)&addr.sin_addr.s_addr)[1],
-	    ((unsigned char*)&addr.sin_addr.s_addr)[2],
-	    ((unsigned char*)&addr.sin_addr.s_addr)[3]
-	  );
+	char buf[INET_ADDRSTRLEN];
+	if (inet_ntop(AF_INET, &addr.sin_addr, buf, sizeof buf) == NULL) {
+	  buf[0] = '*';
+	  buf[1] = '\0';
+	}
+	INFOF("RHIZOME HTTP REQUEST, CONNECT family=%u port=%u addr=%s", addr.sin_family, ntohs(addr.sin_port), buf);
 	if (connect(sock, (struct sockaddr*)&addr, sizeof addr) == -1) {
 	  if (errno == EINPROGRESS) {
 	    if (debug & DEBUG_RHIZOME_RX)
@@ -760,6 +760,8 @@ int rhizome_fetch_close(rhizome_file_fetch_record *q){
 }
 
 void rhizome_fetch_write(rhizome_file_fetch_record *q){
+  if (debug & DEBUG_RHIZOME_RX)
+    DEBUGF("write_nonblock(%d, %s)", q->alarm.poll.fd, alloca_toprint(-1, &q->request[q->request_ofs], q->request_len-q->request_ofs));
   int bytes = write_nonblock(q->alarm.poll.fd, &q->request[q->request_ofs], q->request_len-q->request_ofs);
   if (bytes == -1) {
     WHY("Got error while sending HTTP request.  Closing.");

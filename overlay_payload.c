@@ -298,19 +298,24 @@ overlay_frame *op_dup(overlay_frame *in)
 
   /* clone the frame */
   overlay_frame *out=malloc(sizeof(overlay_frame));
-  if (!out) return WHYNULL("malloc() failed");
+  if (!out) {
+    WHY("malloc() failed");
+    return NULL;
+  }
 
   /* copy main data structure */
   bcopy(in,out,sizeof(overlay_frame));
   out->payload=ob_new(in->payload->length);
   if (!out->payload) {
     free(out);
-    return WHYNULL("ob_new() failed");
+    WHY("ob_new() failed");
+    return NULL;
   }
   if (ob_append_bytes(out->payload,&in->payload->bytes[0],in->payload->length))
     {
       op_free(out);
-      return WHYNULL("could not duplicate payload bytes");
+      WHY("could not duplicate payload bytes");
+      return NULL;
     }
   return out;
 }

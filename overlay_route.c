@@ -264,7 +264,7 @@ int overlay_route_init(int mb_ram)
 
   /* Generate hash ordering function */
   strbuf b = strbuf_alloca(12 * 32);
-  for(i=0;i<32;i++) {
+  for(i=0;i<sizeof overlay_route_hash_order / sizeof overlay_route_hash_order[0];i++) {
     j=0;
     overlay_route_hash_order[i]=random()&31;
     while(j<i) {

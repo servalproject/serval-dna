@@ -54,6 +54,25 @@
 # }
 # runTests "$@"
 
+AWK=awk
+SED=sed
+GREP=grep
+TSFMT='+%Y-%m-%d %H:%M:%S'
+
+SYSTYPE=`uname -s`
+if [ $SYSTYPE = "SunOS" ]; then
+    abspath () { case "$1" in /*)printf "%s\n" "$1";; *)printf "%s\n" "$PWD/$1";; esac; }
+
+    AWK=gawk
+    SED=gsed
+    GREP=ggrep
+fi
+
+if [ $SYSTYPE = "Linux" ]; then
+    # Get nanosecond resolution
+    TSFMT='+%Y-%m-%d %H:%M:%S.%N'
+fi
+
 usage() {
    echo -n "\
 Usage: ${0##*/} [options] [--]
@@ -256,7 +275,7 @@ runTests() {
          } >"$_tfw_logdir/$testNumber.$testName.$result"
          exit 0
       ) </dev/null &
-      local job=$(jobs %% | sed -n -e '1s/^\[\([0-9]\{1,\}\)\].*/\1/p')
+      local job=$(jobs %% | $SED -n -e '1s/^\[\([0-9]\{1,\}\)\].*/\1/p')
       _tfw_running_jobs+=($job)
       _tfw_job_pgids[$job]=$(jobs -p %%)
       ln -f -s "$_tfw_results_dir/$testName" "$_tfw_results_dir/job-$job"
@@ -724,7 +743,7 @@ _tfw_abspath() {
 }
 
 _tfw_timestamp() {
-   local ts=$(date '+%Y-%m-%d %H:%M:%S.%N')
+   local ts=$(date "$TSFMT")
    echo "${ts%[0-9][0-9][0-9][0-9][0-9][0-9]}"
 }
 
@@ -823,7 +842,7 @@ _tfw_execute() {
 _tfw_parse_times_to_milliseconds() {
    local label="$1"
    local var="$2"
-   local milliseconds=$(awk '$1 == "'"$label"'" {
+   local milliseconds=$($AWK '$1 == "'"$label"'" {
          value = $2
          minutes = 0
          if (match(value, "[0-9]+m")) {
@@ -935,7 +954,7 @@ _tfw_matches_rexp() {
    local rexp="$1"
    shift
    for arg; do
-      if ! echo "$arg" | grep -q -e "$rexp"; then
+      if ! echo "$arg" | $GREP -q -e "$rexp"; then
          return 1
       fi
    done
@@ -994,11 +1013,11 @@ _tfw_assert_stdxxx_is() {
    fi
    case "$_tfw_opt_line" in
    '') ln -f "$_tfw_tmp/$qual" "$_tfw_tmp/content";;
-   *) sed -n -e "${_tfw_opt_line}p" "$_tfw_tmp/$qual" >"$_tfw_tmp/content";;
+   *) $SED -n -e "${_tfw_opt_line}p" "$_tfw_tmp/$qual" >"$_tfw_tmp/content";;
    esac
    local message="${_tfw_message:-${_tfw_opt_line:+line $_tfw_opt_line of }$qual of ($executed) is $(shellarg "$@")}"
    echo -n "$@" >$_tfw_tmp/stdxxx_is.tmp
-   if ! cmp --quiet $_tfw_tmp/stdxxx_is.tmp "$_tfw_tmp/content"; then
+   if ! cmp -s $_tfw_tmp/stdxxx_is.tmp "$_tfw_tmp/content"; then
       _tfw_failmsg "assertion failed: $message"
       _tfw_backtrace
       return 1
@@ -1050,7 +1069,7 @@ _tfw_assert_grep() {
       _tfw_error "$file is not readable"
       ret=$?
    else
-      local matches=$(( $(grep --regexp="$pattern" "$file" | wc -l) + 0 ))
+      local matches=$(( $($GREP --regexp="$pattern" "$file" | wc -l) + 0 ))
       local done=false
       local ret=0
       local info="$matches match"$([ $matches -ne 1 ] && echo "es")
@@ -1161,10 +1180,10 @@ _tfw_find_tests() {
    _tfw_shopt oo -s extdebug
    local name
    for name in $(builtin declare -F |
-         sed -n -e '/^declare -f test_[A-Za-z]/s/^declare -f test_//p' |
+         $SED -n -e '/^declare -f test_[A-Za-z]/s/^declare -f test_//p' |
          while read name; do builtin declare -F "test_$name"; done |
-         sort --key 2,2n --key 3,3 |
-         sed -e 's/^test_//' -e 's/[    ].*//')
+         sort -k 2,2n -k 3,3 |
+         $SED -e 's/^test_//' -e 's/[    ].*//')
    do
       local number=$((${#_tfw_tests[*]} + 1))
       local testName=

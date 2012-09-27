@@ -30,8 +30,12 @@ int recordBufferSize=0;
 
 int detectAudioDevice()
 {
+#ifdef ANDROID
   if (!audev) audev=audio_msm_g1_detect();
+#endif
+#ifdef HAVE_SYS_ALSA_ASOUNDLIB_H
   if (!audev) audev=audio_alsa_detect();
+#endif
   if (audev) {
     WHYF("Detected audio device '%s'",audev->name);
     return 0;

@@ -81,12 +81,12 @@ assert_manifest_complete() {
    assertGrep "$manifest" "^date=$rexp_date\$"
    assertGrep "$manifest" "^version=$rexp_version\$"
    assertGrep "$manifest" "^filesize=$rexp_filesize\$"
-   if grep -q '^filesize=0$' "$manifest"; then
+   if $GREP -q '^filesize=0$' "$manifest"; then
       assertGrep --matches=0 "$manifest" "^filehash="
    else
       assertGrep "$manifest" "^filehash=$rexp_filehash\$"
    fi
-   if grep -q '^service=file$' "$manifest"; then
+   if $GREP -q '^service=file$' "$manifest"; then
       assertGrep "$manifest" "^name="
    fi
 }
@@ -112,7 +112,7 @@ assert_stdout_add_file() {
    shift
    unpack_manifest_for_grep "$filename"
    opt_name=false
-   if replayStdout | grep -q '^service:file$'; then
+   if replayStdout | $GREP -q '^service:file$'; then
       opt_name=true
    fi
    fieldnames='service|manifestid|secret|filesize|filehash|name'
@@ -136,7 +136,7 @@ assert_stdout_add_file() {
    ${opt_manifestid:-true} && assertStdoutGrep --matches=1 "^manifestid:$re_manifestid\$"
    ${opt_secret:-true} && assertStdoutGrep --matches=1 "^secret:$re_secret\$"
    ${opt_filesize:-true} && assertStdoutGrep --matches=1 "^filesize:$re_filesize\$"
-   if replayStdout | grep -q '^filesize:0$'; then
+   if replayStdout | $GREP -q '^filesize:0$'; then
       assertStdoutGrep --matches=0 "^filehash:"
    else
       ${opt_filehash:-true} && assertStdoutGrep --matches=1 "^filehash:$re_filehash\$"
@@ -155,7 +155,7 @@ unpack_manifest_for_grep() {
    re_version="$rexp_version"
    re_secret="$rexp_bundlesecret"
    re_name=$(escape_grep_basic "${filename##*/}")
-   local filesize=$(sed -n -e '/^filesize=/s///p' "$filename.manifest" 2>/dev/null)
+   local filesize=$($SED -n -e '/^filesize=/s///p' "$filename.manifest" 2>/dev/null)
    if [ "$filesize" = 0 ]; then
       re_filesize=0
       re_filehash=
@@ -166,17 +166,17 @@ unpack_manifest_for_grep() {
    fi
    # If there is a manifest file that looks like it matches this payload
    # file, then use its file hash to check the rhizome list '' output.
-   local filehash=$(sed -n -e '/^filehash=/s///p' "$filename.manifest" 2>/dev/null)
+   local filehash=$($SED -n -e '/^filehash=/s///p' "$filename.manifest" 2>/dev/null)
    if [ "$filehash" = "$re_filehash" ]; then
-      re_manifestid=$(sed -n -e '/^id=/s///p' "$filename.manifest")
-      re_version=$(sed -n -e '/^version=/s///p' "$filename.manifest")
-      re_service=$(sed -n -e '/^service=/s///p' "$filename.manifest")
+      re_manifestid=$($SED -n -e '/^id=/s///p' "$filename.manifest")
+      re_version=$($SED -n -e '/^version=/s///p' "$filename.manifest")
+      re_service=$($SED -n -e '/^service=/s///p' "$filename.manifest")
       re_service=$(escape_grep_basic "$re_service")
-      re_sender=$(sed -n -e '/^sender=/s///p' "$filename.manifest")
-      re_recipient=$(sed -n -e '/^recipient=/s///p' "$filename.manifest")
+      re_sender=$($SED -n -e '/^sender=/s///p' "$filename.manifest")
+      re_recipient=$($SED -n -e '/^recipient=/s///p' "$filename.manifest")
       case "$re_service" in
       file)
-         re_name=$(sed -n -e '/^name=/s///p' "$filename.manifest")
+         re_name=$($SED -n -e '/^name=/s///p' "$filename.manifest")
          re_name=$(escape_grep_basic "$re_name")
          ;;
       *)
@@ -201,7 +201,7 @@ assert_manifest_newer() {
 
 strip_signatures() {
    for file; do
-      cat -v "$file" | sed -e '/^^@/,$d' >"tmp.$file" && mv -f "tmp.$file" "$file"
+      cat -v "$file" | $SED -e '/^^@/,$d' >"tmp.$file" && mv -f "tmp.$file" "$file"
    done
 }
 
@@ -218,7 +218,7 @@ extract_manifest() {
    local _manifestfile="$2"
    local _label="$3"
    local _rexp="$4"
-   local _value=$(sed -n -e "/^$_label=$_rexp\$/s/^$_label=//p" "$_manifestfile")
+   local _value=$($SED -n -e "/^$_label=$_rexp\$/s/^$_label=//p" "$_manifestfile")
    assert --message="$_manifestfile contains valid '$_label=' line" \
           --dump-on-fail="$_manifestfile" \
           [ -n "$_value" ]
@@ -264,13 +264,13 @@ compute_filehash() {
 
 rhizome_http_server_started() {
    local logvar=LOG${1#+}
-   grep 'RHIZOME HTTP SERVER,.*START.*port=[0-9]' "${!logvar}"
+   $GREP 'RHIZOME HTTP SERVER,.*START.*port=[0-9]' "${!logvar}"
 }
 
 get_rhizome_server_port() {
    local _var="$1"
    local _logvar=LOG${2#+}
-   local _port=$(sed -n -e '/.*RHIZOME HTTP SERVER.*START/{s/.*port=\([0-9]\{1,\}\).*/\1/p;q}' "${!_logvar}")
+   local _port=$($SED -n -e '/.*RHIZOME HTTP SERVER.*START/{s/.*port=\([0-9]\{1,\}\).*/\1/p;q}' "${!_logvar}")
    assert --message="instance $2 Rhizome HTTP server port number is known" [ -n "$_port" ]
    if [ -n "$_var" ]; then
       eval "$_var=\$_port"

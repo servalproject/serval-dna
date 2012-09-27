@@ -17,6 +17,11 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <inttypes.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
 #include <time.h>
 #include "serval.h"
 
@@ -206,9 +211,9 @@ int getBatmanPeerList(char *socket_path,struct in_addr peers[],int *peer_count,i
  askagain:
 
   /* Make socket */
-  sock=socket(AF_LOCAL,SOCK_STREAM,0);
+  sock=socket(PF_UNIX,SOCK_STREAM,0);
   memset(&socket_address,0,sizeof(struct sockaddr_un));
-  socket_address.sun_family=AF_LOCAL;
+  socket_address.sun_family=PF_UNIX;
   if (strlen(socket_path)>256) return WHY("BATMAN socket path too long");
   strcpy(socket_address.sun_path,socket_path);
 

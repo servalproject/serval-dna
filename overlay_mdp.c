@@ -291,7 +291,7 @@ unsigned char *overlay_mdp_decrypt(overlay_frame *f, overlay_mdp_frame *mdp, int
     mdp->packetTypeAndFlags|=MDP_NOCRYPT|MDP_NOSIGN;
     break;
   case OF_CRYPTO_CIPHERED:
-    RETURN(WHYNULL("decryption not implemented"));
+    RETURNNULL(WHYNULL("decryption not implemented"));
     mdp->packetTypeAndFlags|=MDP_NOSIGN;
     break;
   case OF_CRYPTO_SIGNED:
@@ -301,7 +301,7 @@ unsigned char *overlay_mdp_decrypt(overlay_frame *f, overlay_mdp_frame *mdp, int
 	 is not available. */
       unsigned char *key = keyring_find_sas_public(keyring,mdp->out.src.sid);
       if (!key)
-	RETURN(WHYNULL("SAS key not currently on record, cannot verify"));
+	RETURNNULL(WHYNULL("SAS key not currently on record, cannot verify"));
 
       /* get payload and following compacted signature */
       b=&f->payload->bytes[0];

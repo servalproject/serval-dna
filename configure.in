@@ -1,5 +1,6 @@
 dnl Process this file with autoconf to produce a configure script.
 AC_INIT(servald, 0.9)
+AC_CONFIG_MACRO_DIR([m4])
 
 CPPFLAGS=-D_GNU_SOURCE
 
@@ -59,7 +60,14 @@ if test -n "$JAVAC"; then
     popdef([AC_MSG_ERROR])
 fi
 
+dnl XXX Isn't this pointless? we are always linked against libc
 AC_CHECK_LIB(c,srandomdev)
+
+dnl Solaris hides nanosleep here
+AC_CHECK_LIB(rt,nanosleep)
+
+dnl BSD way of getting socket creds
+AC_CHECK_FUNCS(getpeereid)
 
 AC_CHECK_HEADERS(
     stdio.h \
@@ -85,8 +93,16 @@ AC_CHECK_HEADERS(
     net/route.h \
     signal.h \
     jni.h \
-    alsa/asoundlib.h \
+    ucred.h \
+    sys/filio.h \
+    sys/endian.h \
+    sys/byteorder.h \
 )
+
+dnl Check for ALSA
+AC_CHECK_HEADER([alsa/asoundlib.h], [have_alsa=1], [have_alsa=0])
+AS_IF([test x"$have_alsa" = "x1"], [AC_DEFINE([HAVE_ALSA_ASOUNDLIB_H])])
+AS_IF([test x"$have_alsa" = "x1"], [AC_SUBST(HAVE_ALSA,1)], [AC_SUBST(HAVE_ALSA,0)])
 
 echo "Fetching and building NaCl if required."
 echo "(this can take HOURS to build depending on your architecture,"

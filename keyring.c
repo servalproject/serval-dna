@@ -1125,7 +1125,7 @@ unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
   int cn=0,in=0,kp=0;
 
   if (!keyring_find_sid(k,&cn,&in,&kp,sid)) {
-    RETURN(WHYNULL("Could not find SID in keyring, so can't find SAS"));
+    RETURNNULL(WHYNULL("Could not find SID in keyring, so can't find SAS"));
   }
 
   for(kp=0;kp<k->contexts[cn]->identities[in]->keypair_count;kp++)
@@ -1139,7 +1139,7 @@ unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
 	RETURN(k->contexts[cn]->identities[in]->keypairs[kp]->private_key);
       }
 
-  RETURN(WHYNULL("Identity lacks SAS"));
+  RETURNNULL(WHYNULL("Identity lacks SAS"));
 }
 
 struct sid_sas_mapping {
@@ -1329,11 +1329,11 @@ unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
       ==KEYTYPE_CRYPTOBOX)
     bcopy(keyring->contexts[0]->identities[0]->keypairs[0]->public_key,
 	  mdp.out.src.sid,SID_SIZE);
-  else { RETURN(WHYNULL("couldn't request SAS (I don't know who I am)")); }
+  else { RETURNNULL(WHYNULL("couldn't request SAS (I don't know who I am)")); }
   mdp.out.payload_length=1;
   mdp.out.payload[0]=KEYTYPE_CRYPTOSIGN;
   if (overlay_mdp_dispatch(&mdp, 0 /* system generated */, NULL, 0))
-    RETURN(WHYNULL("Failed to send SAS resolution request"));
+    RETURNNULL(WHYNULL("Failed to send SAS resolution request"));
   if (debug & DEBUG_KEYRING)
     DEBUGF("Dispatched SAS resolution request");
   RETURN(NULL); 
@@ -1458,9 +1458,9 @@ struct nm_record nm_cache[NM_CACHE_SLOTS];
 unsigned char *keyring_get_nm_bytes(sockaddr_mdp *known,sockaddr_mdp *unknown)
 {
   IN();
-  if (!known) { RETURN(WHYNULL("known pub key is null")); }
-  if (!unknown) { RETURN(WHYNULL("unknown pub key is null")); }
-  if (!keyring) { RETURN(WHYNULL("keyring is null")); }
+  if (!known) { RETURNNULL(WHYNULL("known pub key is null")); }
+  if (!unknown) { RETURNNULL(WHYNULL("unknown pub key is null")); }
+  if (!keyring) { RETURNNULL(WHYNULL("keyring is null")); }
 
   int i;
 
@@ -1478,7 +1478,7 @@ unsigned char *keyring_get_nm_bytes(sockaddr_mdp *known,sockaddr_mdp *unknown)
      in fact a known key */
   int cn=0,in=0,kp=0;
   if (!keyring_find_sid(keyring,&cn,&in,&kp,known->sid))
-    { RETURN(WHYNULL("known key is not in fact known.")); }
+    { RETURNNULL(WHYNULL("known key is not in fact known.")); }
 
   /* work out where to store it */
   if (nm_slots_used<NM_CACHE_SLOTS) {
