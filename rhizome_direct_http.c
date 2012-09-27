@@ -781,7 +781,9 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 
 	/* Get filehash and size from manifest if present */
 	const char *id = rhizome_manifest_get(m, "id", NULL, 0);
-	DEBUGF("file id = '%s'",id);
+	DEBUGF("bundle id = '%s'",id);
+	const char *hash = rhizome_manifest_get(m, "filehash", NULL, 0);
+	DEBUGF("bundle file hash = '%s'",hash);
 	long long filesize = rhizome_manifest_get_ll(m, "filesize");
 	DEBUGF("file size = %lld",filesize);
 
@@ -789,7 +791,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	 */
 	char boundary_string[128];
 	char buffer[8192];
-	snprintf(boundary_string,80,"%08lx%08lx",random(),random());
+	snprintf(boundary_string,80,"----%08lx%08lx",random(),random());
 	char *template="POST /rhizome/import HTTP/1.0\r\n"
 	  "Content-Length: %d\r\n"
 	  "Content-Type: multipart/form-data; boundary=%s\r\n"
@@ -851,7 +853,8 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	/* send file contents now */
 	long long rowid = -1;
 	sqlite3_blob *blob=NULL;
-	sqlite_exec_int64(&rowid, "select rowid from files where id='%s';", id);
+	sqlite_exec_int64(&rowid, "select rowid from files where id='%s';", hash);
+	DEBUGF("Reading from rowid #%d filehash='%s'",rowid,hash?hash:"(null)");
 	if (rowid >= 0 && sqlite3_blob_open(rhizome_db, "main", "files", "data", 
 					    rowid, 0, &blob) != SQLITE_OK)
 	  goto closeit;
@@ -861,17 +864,23 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	    int count=4096;
 	    if (filesize-i<count) count=filesize-i;
 	    unsigned char buffer[4096];
-	    if(sqlite3_blob_read(blob,buffer,count,i)==SQLITE_OK)
+	    DEBUGF("reading %d bytes @ %d from blob",count,i);
+	    int sr=sqlite3_blob_read(blob,buffer,count,i);
+	    if (sr==SQLITE_OK||sr==SQLITE_DONE)
 	      {
 		count=write(sock,buffer,count);
 		if (count<0) {
 		  DEBUGF("socket error writing to server");
 		  sqlite3_blob_close(blob);
 		  goto closeit;
-		} else i+=count;
+		} else { 
+		  i+=count;
+		  DEBUGF("Wrote %d bytes of file",count);
+		}
 	      } else {
-	      DEBUGF("An sqlite error occurred reading from the blob");
-	      sqlite3_blob_close(blob);
+	      DEBUGF("sqlite error #%d occurred reading from the blob",sr);
+	      DEBUGF("It was: %s",sqlite3_errmsg(rhizome_db));
+	      sqlite3_blob_close(blob);	      
 	      goto closeit;
 	    }
 
