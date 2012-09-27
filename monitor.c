@@ -39,7 +39,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define MONITOR_DATA_SIZE MAX_AUDIO_BYTES
 struct monitor_context {
   struct sched_ent alarm;
+  // monitor interest bitmask
   int flags;
+  // what types of audio can we write to this client?
+  // (packed bits)
+  unsigned char supported_codecs[CODEC_FLAGS_LENGTH];
+  
   char line[MONITOR_LINE_LENGTH];
   int line_length;
 #define MONITOR_STATE_COMMAND 1
@@ -335,7 +340,7 @@ static void monitor_new_client(int s) {
   c->alarm.poll.events=POLLIN;
   c->line_length = 0;
   c->state = MONITOR_STATE_COMMAND;
-  write_str(s,"\nMONITOR:You are talking to servald\n");
+  write_str(s,"\nINFO:You are talking to servald\n");
   INFOF("Got %d clients", monitor_socket_count);
   watch(&c->alarm);  
   
@@ -346,11 +351,30 @@ static void monitor_new_client(int s) {
     return;
 }
 
+void monitor_get_all_supported_codecs(unsigned char *codecs){
+  int i, j;
+  bzero(codecs,CODEC_FLAGS_LENGTH);
+  for(i=monitor_socket_count -1;i>=0;i--) {
+    if (monitor_sockets[i].flags & MONITOR_VOMP){
+      for (j=0;j<CODEC_FLAGS_LENGTH;j++)
+	codecs[j]|=monitor_sockets[i].supported_codecs[j];
+    }
+  }
+}
+
 static int monitor_set(int argc, const char *const *argv, struct command_line_option *o, void *context){
   struct monitor_context *c=context;
-  if (strcase_startswith((char *)argv[1],"vomp",NULL))
+  if (strcase_startswith((char *)argv[1],"vomp",NULL)){
     c->flags|=MONITOR_VOMP;
-  else if (strcase_startswith((char *)argv[1],"rhizome", NULL))
+    // store the list of supported codecs against the monitor connection,
+    // since we need to forget about them when the client disappears.
+    int i;
+    for (i=2;i<argc;i++){
+      int codec = atoi(argv[i]);
+      if (codec>=0 && codec <=255)
+	set_codec_flag(codec, c->supported_codecs);
+    }
+  }else if (strcase_startswith((char *)argv[1],"rhizome", NULL))
     c->flags|=MONITOR_RHIZOME;
   else if (strcase_startswith((char *)argv[1],"peers", NULL))
     c->flags|=MONITOR_PEERS;
@@ -482,6 +506,7 @@ static int monitor_call_dtmf(int argc, const char *const *argv, struct command_l
 }
 
 struct command_line_option monitor_options[]={
+  {monitor_set,{"monitor","vomp","<codec>","...",NULL},0,""},
   {monitor_set,{"monitor","<type>",NULL},0,""},
   {monitor_clear,{"ignore","<type>",NULL},0,""},
   {monitor_lookup_match,{"lookup","match","<sid>","<port>","<ext>","<name>",NULL},0,""},
@@ -491,27 +516,8 @@ struct command_line_option monitor_options[]={
   {monitor_call_audio,{"audio","<token>","<type>","[<offset>]",NULL},0,""},
   {monitor_call_hangup, {"hangup","<token>",NULL},0,""},
   {monitor_call_dtmf, {"dtmf","<token>","<digits>",NULL},0,""},
+  {NULL},
 };
-
-static int parse_argv(char *cmdline, char delim, char **argv, int max_argv){
-  int argc=0;
-  
-  if (*cmdline && argc<max_argv){
-    argv[argc++]=cmdline;
-  }
-  
-  // TODO quoted argument handling?
-  
-  while(*cmdline){
-    if (*cmdline==delim){
-      *cmdline=0;
-      if (cmdline[1] && argc<max_argv)
-	argv[argc++]=cmdline+1;
-    }
-    cmdline++;
-  }
-  return argc;
-}
 
 int monitor_process_command(struct monitor_context *c) 
 {

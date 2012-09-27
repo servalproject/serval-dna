@@ -297,9 +297,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define VOMP_CODEC_DTMF 0x80
 #define VOMP_CODEC_ENGAGED 0x81
 #define VOMP_CODEC_ONHOLD 0x82
-#define VOMP_CODEC_CALLERID 0x83
-#define VOMP_CODEC_CODECSISUPPORT 0xfe
-#define VOMP_CODEC_CHANGEYOURCODECTO 0xff
+
+#define CODEC_FLAGS_LENGTH 32
 
 /* in milliseconds of inactivity */
 // 20 seconds to start ringing

@@ -212,14 +212,12 @@ int overlay_mdp_process_bind_request(int sock, struct subscriber *subscriber, in
   }
 
   /* See if binding already exists */
-  int found=-1; // XXX: this is never set, why is it here?
   int free=-1;
   for(i=0;i<MDP_MAX_BINDINGS;i++) {
     /* Look for duplicate bindings */
     if (mdp_bindings[i].port == port && mdp_bindings[i].subscriber == subscriber) {
-      if (found != -1 &&
-	  mdp_bindings[found].name_len==recvaddrlen &&
-	  !memcmp(mdp_bindings[found].socket_name,recvaddr->sun_path,recvaddrlen)) {
+      if (mdp_bindings[i].name_len==recvaddrlen &&
+	  !memcmp(mdp_bindings[i].socket_name,recvaddr->sun_path,recvaddrlen)) {
 	// this client already owns this port binding?
 	INFO("Identical binding exists");
 	return 0;
@@ -657,6 +655,8 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 
   /* Prepare the overlay frame for dispatch */
   struct overlay_frame *frame = calloc(1,sizeof(struct overlay_frame));
+  if (!frame)
+    FATAL("Couldn't allocate frame buffer");
   
   if (is_sid_any(mdp->out.src.sid)){
     /* set source to ourselves */

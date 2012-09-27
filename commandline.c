@@ -1652,6 +1652,8 @@ struct command_line_option command_line_options[]={
    "Set specified configuration variable."},
   {app_config_get,{"config","get","[<variable>]",NULL},CLIFLAG_STANDALONE,
    "Get specified configuration variable."},
+  {app_vomp_console,{"console",NULL},0,
+    "Test phone call life-cycle from the console"},
   {app_rhizome_hash_file,{"rhizome","hash","file","<filepath>",NULL},CLIFLAG_STANDALONE,
    "Compute the Rhizome hash of a file"},
   {app_rhizome_add_file,{"rhizome","add","file","<author_sid>","<pin>","<filepath>","[<manifestpath>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,

@@ -123,7 +123,12 @@ static void resolve_request(){
   static char line_buff[1024];
   static int line_pos=0;
   
+  set_nonblock(STDIN_FILENO);
+  
   int bytes = read(STDIN_FILENO, line_buff + line_pos, sizeof(line_buff) - line_pos);
+  
+  set_block(STDIN_FILENO);
+  
   int i = line_pos;
   int processed=0;
   line_pos+=bytes;
@@ -155,8 +160,6 @@ int main(int argc, char **argv){
     return WHY("Could not get local address");
   if (overlay_mdp_bind(srcsid,MDP_PORT_DIRECTORY))
     return WHY("Could not bind to MDP socket");
-  
-  set_nonblock(STDIN_FILENO);
   
   fds[0].fd = STDIN_FILENO;
   fds[0].events = POLLIN;

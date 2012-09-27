@@ -48,6 +48,7 @@ SERVALD_SRC_FILES = \
 	serval-dna/str.c	\
 	serval-dna/keyring.c       \
 	serval-dna/vomp.c \
+	serval-dna/vomp_console.c \
 	serval-dna/lsif.c \
 	serval-dna/dna_helper.c \
 	serval-dna/sighandlers.c \

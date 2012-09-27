@@ -42,3 +42,23 @@ int strcase_startswith(char *str, const char *substring, char **afterp)
   return 1;
 }
 
+int parse_argv(char *cmdline, char delim, char **argv, int max_argv){
+  int argc=0;
+  
+  if (*cmdline && argc<max_argv){
+    argv[argc++]=cmdline;
+  }
+  
+  // TODO quoted argument handling?
+  
+  while(*cmdline){
+    if (*cmdline==delim){
+      *cmdline=0;
+      if (cmdline[1] && argc<max_argv)
+	argv[argc++]=cmdline+1;
+    }
+    cmdline++;
+  }
+  return argc;
+}
+

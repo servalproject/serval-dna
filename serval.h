@@ -788,6 +788,10 @@ void _serval_debug_free(void *p, struct __sourceloc where);
 
 
 struct vomp_call_state;
+
+void set_codec_flag(int codec, unsigned char *flags);
+int is_codec_set(int codec, unsigned char *flags);
+
 struct vomp_call_state *vomp_find_call_by_session(int session_token);
 int vomp_mdp_received(overlay_mdp_frame *mdp);
 int vomp_tick_interval();
@@ -799,6 +803,7 @@ int vomp_pickup(struct vomp_call_state *call);
 int vomp_hangup(struct vomp_call_state *call);
 int vomp_ringing(struct vomp_call_state *call);
 int vomp_received_audio(struct vomp_call_state *call, int audio_codec, const unsigned char *audio, int audio_length);
+void monitor_get_all_supported_codecs(unsigned char *codecs);
 
 int cli_putchar(char c);
 int cli_puts(const char *str);
@@ -825,6 +830,7 @@ struct command_line_option;
 int app_pa_phone(int argc, const char *const *argv, struct command_line_option *o, void *context);
 #endif
 int app_monitor_cli(int argc, const char *const *argv, struct command_line_option *o, void *context);
+int app_vomp_console(int argc, const char *const *argv, struct command_line_option *o, void *context);
 
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 

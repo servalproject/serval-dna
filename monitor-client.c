@@ -163,6 +163,9 @@ int monitor_client_read(int fd, struct monitor_state *res, struct monitor_comman
   /* Read any available bytes */
   int oldOffset = res->bufferBytes;
   
+  if (oldOffset+1>=MONITOR_CLIENT_BUFFER_SIZE)
+    return WHY("Buffer full without finding command");
+  
   if (res->bufferBytes==0)
     res->cmd = (char *)res->buffer;
   
@@ -182,14 +185,12 @@ int monitor_client_read(int fd, struct monitor_state *res, struct monitor_comman
     WHY_perror("read");
     return -1;
   }
-  
   res->bufferBytes+=bytesRead;
 
 again:
   // wait until we have the whole command line
   if (res->state == STATE_INIT){
     int i;
-    
     for(i=oldOffset;i<res->bufferBytes;i++){
       if (res->buffer[i]=='\n'){
 	// skip any leading \n's
@@ -205,6 +206,8 @@ again:
 	  res->cmd++;
 	  for (; isdigit(*res->cmd); ++res->cmd)
 	    res->dataBytes = res->dataBytes * 10 + *res->cmd - '0';
+	  if (res->dataBytes<0 || res->dataBytes > MONITOR_CLIENT_BUFFER_SIZE)
+	    return WHYF("Invalid data length %d", res->dataBytes);
 	  if (*res->cmd==':')
 	    res->cmd++;
 	}
@@ -213,7 +216,7 @@ again:
 	{
 	  char *p=res->cmd;
 	  res->argc=0;
-	  while (*p){
+	  while (*p && res->argc<MAX_ARGS){
 	    if (*p==':'){
 	      *p=0;
 	      res->argv[res->argc]=p+1;

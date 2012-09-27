@@ -49,7 +49,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
       // this might be a replay attack
       < NOCALL + codecs
   // Ok, we have a network path, lets try to establish the call
+  $ CODECS [token] [their supported codec list]
   > RINGOUT
+      $ CODECS [token] [their supported codec list]
       // (Note that if both parties are trying to dial each other, 
       // the call should jump straight to INCALL)
       // inform client about the call request
@@ -145,7 +147,7 @@ struct vomp_call_state {
   time_ms_t audio_clock;
   // last local & remote status we sent to all interested parties
   int last_sent_status;
-  unsigned char remote_codec_list[256];
+  unsigned char remote_codec_flags[CODEC_FLAGS_LENGTH];
   
   // track when we first heard audio, so we can calculate timing from the current sequence number
   int first_remote_audio_sequence;
@@ -168,8 +170,18 @@ static void vomp_process_tick(struct sched_ent *alarm);
 static const char *vomp_describe_codec(int c);
 strbuf strbuf_append_vomp_supported_codecs(strbuf sb, const unsigned char supported_codecs[256]);
 
-/* which codecs we support (set by registered listener) */
-unsigned char vomp_local_codec_list[256];
+
+void set_codec_flag(int codec, unsigned char *flags){
+  if (codec<0 || codec>255)
+    return;
+  flags[codec >> 3] |= 1<<(codec & 7);
+}
+
+int is_codec_set(int codec, unsigned char *flags){
+  if (codec<0 || codec>255)
+    return 0;
+  return flags[codec >> 3] & (1<<(codec & 7));
+}
 
 struct vomp_call_state *vomp_find_call_by_session(int session_token)
 {
@@ -338,19 +350,22 @@ int vomp_send_status_remote(struct vomp_call_state *call)
   prepare_vomp_header(call, &mdp);
 
   if (call->local.state < VOMP_STATE_RINGINGOUT && call->remote.state < VOMP_STATE_RINGINGOUT) {
-    /* Include src and dst phone numbers */
     int didLen;
+    unsigned char codecs[CODEC_FLAGS_LENGTH];
     
     /* Include the list of supported codecs */
+    monitor_get_all_supported_codecs(codecs);
+    
     int i;
     for (i = 0; i < 256; ++i)
-      if (vomp_local_codec_list[i]) {
+      if (is_codec_set(i,codecs)) {
 	mdp.out.payload[(*len)++]=i;
 	if (debug & DEBUG_VOMP)
 	  DEBUGF("I support the %s codec", vomp_describe_codec(i));
       }
     mdp.out.payload[(*len)++]=0;
     
+    /* Include src and dst phone numbers */
     if (call->initiated_call){
       DEBUGF("Sending phone numbers %s, %s",call->local.did,call->remote.did);
       didLen = snprintf((char *)(mdp.out.payload + *len), sizeof(mdp.out.payload) - *len, "%s", call->local.did);
@@ -363,9 +378,10 @@ int vomp_send_status_remote(struct vomp_call_state *call)
       DEBUGF("mdp frame with codec list is %d bytes", mdp.out.payload_length);
   }
 
+  call->local.sequence++;
+  
   overlay_mdp_dispatch(&mdp,0,NULL,0);
   
-  call->local.sequence++;
   return 0;
 }
 
@@ -406,13 +422,13 @@ int vomp_received_audio(struct vomp_call_state *call, int audio_codec, const uns
     offset+=codec_block_size;
     
     call->audio_clock += codec_duration;
+    call->local.sequence++;
     
     // send the payload more than once to add resilience to dropped packets
     // TODO remove once network links have built in retries
     mdp.out.send_copies=VOMP_MAX_RECENT_SAMPLES;
     overlay_mdp_dispatch(&mdp,0,NULL,0);
     
-    call->local.sequence++;
   }
   
   return 0;
@@ -461,6 +477,24 @@ int monitor_send_audio(struct vomp_call_state *call, int audio_codec, unsigned i
 int vomp_update_local_state(struct vomp_call_state *call, int new_state){
   if (call->local.state>=new_state)
     return 0;
+  
+  if (new_state > VOMP_STATE_CALLPREP && new_state <= VOMP_STATE_INCALL && call->local.state<=VOMP_STATE_CALLPREP){
+    // tell clients about the remote codec list 
+    int i;
+    unsigned char our_codecs[CODEC_FLAGS_LENGTH];
+    char msg[256];
+    monitor_get_all_supported_codecs(our_codecs);
+    strbuf b = strbuf_local(msg, sizeof msg);
+    strbuf_sprintf(b, "\nCODECS:%06x", call->local.session);
+    
+    for (i = 0; i < 256; ++i){
+      if (is_codec_set(i,call->remote_codec_flags) && is_codec_set(i,our_codecs)) {
+	strbuf_sprintf(b, ":%d", i);
+      }
+    }
+    strbuf_putc(b, '\n');
+    monitor_tell_clients(strbuf_str(b), strbuf_len(b), MONITOR_VOMP);
+  }
   
   switch(new_state){
     case VOMP_STATE_CALLPREP:
@@ -601,15 +635,13 @@ int vomp_ringing(struct vomp_call_state *call){
 int vomp_call_destroy(struct vomp_call_state *call)
 {
   if (debug & DEBUG_VOMP)
-    DEBUGF("Destroying call %s <--> %s", call->local.did,call->remote.did);
-
-  /* tell everyone the call has died */
-  vomp_update_local_state(call, VOMP_STATE_CALLENDED);
-  vomp_update(call);
-
+    DEBUGF("Destroying call %06x:%06x [%s,%s]", call->local.session, call->remote.session, call->local.did,call->remote.did);
+  
   /* now release the call structure */
   int i = (call - vomp_call_states);
   unschedule(&call->alarm);
+  call->local.session=0;
+  call->remote.session=0;
   
   vomp_call_count--;
   if (i!=vomp_call_count){
@@ -693,7 +725,8 @@ int vomp_extract_remote_codec_list(struct vomp_call_state *call,overlay_mdp_fram
     dump("codec list mdp frame", (unsigned char *)&mdp->in.payload[0],mdp->in.payload_length);
   
   for (;ofs<mdp->in.payload_length && mdp->in.payload[ofs];ofs++){
-    call->remote_codec_list[mdp->in.payload[ofs]]=1;
+    int codec = mdp->in.payload[ofs];
+    set_codec_flag(codec, call->remote_codec_flags);
   }
   if (!call->initiated_call){
     ofs++;
@@ -764,16 +797,34 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
       {
 	/* No registered listener, so we cannot answer the call, so just reject
 	   it. */
-	if (debug & DEBUG_VOMP)
-	  DEBUGF("Rejecting call due to lack of a listener: states=%d,%d", recvr_state, sender_state);
-
+	WHY("Rejecting call, no listening clients");
 	recvr_state=VOMP_STATE_CALLENDED;
 	/* now let the state machine progress to destroy the call */
       }
 
       if (recvr_state < VOMP_STATE_RINGINGOUT && sender_state < VOMP_STATE_RINGINGOUT){
+	unsigned char supported_codecs[CODEC_FLAGS_LENGTH];
+	int i, found=0;
+	
 	// the other party should have given us their list of supported codecs
 	vomp_extract_remote_codec_list(call,mdp);
+	
+	// make sure we have at least one codec in common
+	monitor_get_all_supported_codecs(supported_codecs);
+	
+	// look for a matching bit
+	for (i=0;i<CODEC_FLAGS_LENGTH;i++){
+	  if (supported_codecs[i] & call->remote_codec_flags[i]){
+	    found=1;
+	    break;
+	  }
+	}
+	
+	// nope, we can't speak the same language.
+	if (!found){
+	  WHY("Rejecting call, no matching codecs found");
+	  recvr_state=VOMP_STATE_CALLENDED;
+	}
       }
       
       if (sender_state==VOMP_STATE_CALLENDED){
@@ -889,10 +940,6 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
       
       /* send an update to the call status if required */
       vomp_update(call);
-      
-      if (sender_state==VOMP_STATE_CALLENDED
-	  &&recvr_state==VOMP_STATE_CALLENDED)
-	return vomp_call_destroy(call);
     }
     return 0;
     break;
@@ -920,7 +967,6 @@ static const char *vomp_describe_codec(int c)
   case VOMP_CODEC_DTMF: return "DTMF";
   case VOMP_CODEC_ENGAGED: return "Engaged-tone";
   case VOMP_CODEC_ONHOLD: return "On-Hold";
-  case VOMP_CODEC_CALLERID: return "CallerID";
   }
   return "unknown";
 }
@@ -941,7 +987,6 @@ int vomp_sample_size(int c)
   case VOMP_CODEC_DTMF: return 1;
   case VOMP_CODEC_ENGAGED: return 0;
   case VOMP_CODEC_ONHOLD: return 0;
-  case VOMP_CODEC_CALLERID: return 32;
   }
   return -1;
 }
@@ -961,7 +1006,6 @@ int vomp_codec_timespan(int c)
   case VOMP_CODEC_DTMF: return 80;
   case VOMP_CODEC_ENGAGED: return 20;
   case VOMP_CODEC_ONHOLD: return 20;
-  case VOMP_CODEC_CALLERID: return 0;
   }
   return -1;
 }
@@ -997,7 +1041,7 @@ static void vomp_process_tick(struct sched_ent *alarm)
   time_ms_t now = gettime_ms();
   
   struct vomp_call_state *call = (struct vomp_call_state *)alarm;
-  
+
   /* See if any calls need to be expired.
      Allow VOMP_CALL_DIAL_TIMEOUT ms for the other party to ring / request ringing
      Allow VOMP_CALL_RING_TIMEOUT ms for the ringing party to answer
@@ -1007,6 +1051,20 @@ static void vomp_process_tick(struct sched_ent *alarm)
   if ((call->remote.state < VOMP_STATE_RINGINGOUT && call->create_time + VOMP_CALL_DIAL_TIMEOUT < now) ||
       (call->local.state < VOMP_STATE_INCALL && call->create_time + VOMP_CALL_RING_TIMEOUT < now) ||
       (call->last_activity+VOMP_CALL_NETWORK_TIMEOUT<now) ){
+    
+    /* tell any local clients that call has died */
+    vomp_update_local_state(call, VOMP_STATE_CALLENDED);
+    vomp_update_remote_state(call, VOMP_STATE_CALLENDED);
+    vomp_update(call);
+  }
+  
+  /*
+   If we are calling ourselves, mdp packets are processed as soon as they are sent.
+   So we can't risk moving call entries around at that time as that will change pointers that are still on the stack.
+   So instead we wait for the next vomp tick to destroy the structure
+   */
+  if (call->local.state==VOMP_STATE_CALLENDED
+      &&call->remote.state==VOMP_STATE_CALLENDED){
     vomp_call_destroy(call);
     return;
   }

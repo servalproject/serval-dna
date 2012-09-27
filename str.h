@@ -37,5 +37,6 @@ int str_startswith(char *str, const char *substring, char **afterp);
  */
 int strcase_startswith(char *str, const char *substring, char **afterp);
 
+int parse_argv(char *cmdline, char delim, char **argv, int max_argv);
 
 #endif

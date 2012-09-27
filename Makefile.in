@@ -62,6 +62,7 @@ SRCS=	\
 	strbuf_helpers.c \
 	strlcpy.c \
 	vomp.c \
+	vomp_console.c \
         xprintf.c
 
 MONITORCLIENTSRCS=conf.c \
