@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <signal.h>
 #include <unistd.h>
+#include <time.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <sys/stat.h>
@@ -479,7 +480,7 @@ int processRequest(unsigned char *packet,int len,
 	if (instrumentation_file)
 	  {
 	    if (!i_f) { if (strcmp(instrumentation_file,"-")) i_f=fopen(instrumentation_file,"a"); else i_f=stdout; }
-	    if (i_f) fprintf(i_f,"%ld:%02x%02x%02x%02x:%d:%d\n",time(0),sender->sa_data[0],sender->sa_data[1],sender->sa_data[2],sender->sa_data[3],field,value);
+	    if (i_f) fprintf(i_f,"%ld:%02x%02x%02x%02x:%d:%d\n",(long)time(0),sender->sa_data[0],sender->sa_data[1],sender->sa_data[2],sender->sa_data[3],field,value);
 	    if (i_f) fflush(i_f);
 	  }
       }

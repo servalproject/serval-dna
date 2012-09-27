@@ -208,29 +208,25 @@ int overlay_mdp_process_bind_request(int sock, struct subscriber *subscriber, in
   }
 
   /* See if binding already exists */
-  int found=-1;
+  int found=-1; // XXX: this is never set, why is it here?
   int free=-1;
   for(i=0;i<MDP_MAX_BINDINGS;i++) {
     /* Look for duplicate bindings */
-    if (mdp_bindings[i].port == port && 
-	mdp_bindings[i].subscriber == subscriber){
-      
-      if (mdp_bindings[found].name_len==recvaddrlen &&
-	  !memcmp(mdp_bindings[found].socket_name,recvaddr->sun_path,recvaddrlen)){
+    if (mdp_bindings[i].port == port && mdp_bindings[i].subscriber == subscriber) {
+      if (found != -1 &&
+	  mdp_bindings[found].name_len==recvaddrlen &&
+	  !memcmp(mdp_bindings[found].socket_name,recvaddr->sun_path,recvaddrlen)) {
 	// this client already owns this port binding?
 	INFO("Identical binding exists");
 	return 0;
-	
       }else if(flags&MDP_FORCE){
 	// steal the port binding
-	free=i; 
+	free=i;
 	break;
-	
       }else{
 	return WHY("Port already in use");
       }
     }
-    
     /* Look for free slots in case we need one */
     if ((free==-1)&&(mdp_bindings[i].port==0)) free=i;
   }
