@@ -399,7 +399,7 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 	      {
 		if (rx.packetTypeAndFlags==MDP_ERROR)
 		  {
-		    WHYF("       Error message: %s", mdp.error.message);
+		    WHYF("       Error message: %s", rx.error.message);
 		  }
 		else if ((rx.packetTypeAndFlags&MDP_TYPE_MASK)==MDP_TX) {
 		  /* Extract DID, Name, URI from response. */
@@ -716,7 +716,7 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
   int icount=atoi(count);
 
   overlay_mdp_frame mdp;
-  
+  bzero(&mdp, sizeof(overlay_mdp_frame));
   /* Bind to MDP socket and await confirmation */
   unsigned char srcsid[SID_SIZE];
   int port=32768+(random()&32767);
@@ -1370,6 +1370,7 @@ int app_id_self(int argc, const char *const *argv, struct command_line_option *o
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   /* List my own identities */
   overlay_mdp_frame a;
+  bzero(&a, sizeof(overlay_mdp_frame));
   int result;
   int count=0;
 

@@ -712,14 +712,11 @@ unsigned char *keyring_get_nm_bytes(sockaddr_mdp *priv,sockaddr_mdp *pub);
 typedef struct overlay_mdp_data_frame {
   sockaddr_mdp src;
   sockaddr_mdp dst;
-  unsigned short payload_length;
+  uint16_t payload_length;
+  // temporary hack to improve reliability before implementing per-packet nack's
+  int send_copies;
   unsigned char payload[MDP_MTU-100];
 } overlay_mdp_data_frame;
-
-typedef struct overlay_mdp_bind_request {
-  unsigned int port_number;
-  unsigned char sid[SID_SIZE];
-} overlay_mdp_bind_request;
 
 typedef struct overlay_mdp_error {
   unsigned int error;
@@ -734,39 +731,6 @@ typedef struct overlay_mdp_addrlist {
   unsigned int frame_sid_count; /* how many of the following 59 slots are populated */
   unsigned char sids[MDP_MAX_SID_REQUEST][SID_SIZE];
 } overlay_mdp_addrlist;
-
-/* elements sorted by size for alignment */
-typedef struct overlay_mdp_vompevent {
-  /* Once a call has been established, this is how the MDP/VoMP server
-     and user-end process talk about the call. */
-  unsigned int call_session_token;
-  unsigned int audio_sample_endtime;
-  unsigned int audio_sample_starttime;
-  time_ms_t last_activity;
-  unsigned int flags;
-  unsigned short audio_sample_bytes;
-  unsigned char audio_sample_codec;  
-  unsigned char local_state;
-  unsigned char remote_state;
-  /* list of codecs the registering party is willing to support
-       (for VOMPEVENT_REGISTERINTEREST) */
-  unsigned char supported_codecs[257];
-  union {
-    struct {
-      /* Used to precisely define the call end points during call
-	 setup. */
-      char local_did[64];
-      char remote_did[64];
-      unsigned char local_sid[SID_SIZE];
-      unsigned char remote_sid[SID_SIZE];
-      /* session numbers of other calls in progress 
-	 (for VOMPEVENT_CALLINFO) */
-      unsigned int other_calls_sessions[VOMP_MAX_CALLS];
-      unsigned char other_calls_states[VOMP_MAX_CALLS];
-    };
-    unsigned char audio_bytes[MAX_AUDIO_BYTES];
-  };
-} overlay_mdp_vompevent;
 
 typedef struct overlay_mdp_nodeinfo {
   unsigned char sid[SID_SIZE];
@@ -783,13 +747,12 @@ typedef struct overlay_mdp_nodeinfo {
 } overlay_mdp_nodeinfo;
 
 typedef struct overlay_mdp_frame {
-  unsigned int packetTypeAndFlags;
+  uint16_t packetTypeAndFlags;
   union {
     overlay_mdp_data_frame out;
     overlay_mdp_data_frame in;
-    overlay_mdp_bind_request bind;
+    sockaddr_mdp bind;
     overlay_mdp_addrlist addrlist;
-    overlay_mdp_vompevent vompevent;
     overlay_mdp_nodeinfo nodeinfo;
     overlay_mdp_error error;
     /* 2048 is too large (causes EMSGSIZE errors on OSX, but probably fine on

@@ -31,6 +31,8 @@ struct overlay_frame {
   unsigned int modifiers;
   
   unsigned char ttl;
+  // temporary hack to improve reliability before implementing per-packet nack's
+  int send_copies;
   
   /* Mark which interfaces the frame has been sent on,
    so that we can ensure that broadcast frames get sent

@@ -213,6 +213,11 @@ int overlay_payload_enqueue(int q, struct overlay_frame *p)
   if (overlay_tx[q].length>=overlay_tx[q].maxLength) 
     return WHYF("Queue #%d congested (size = %d)",q,overlay_tx[q].maxLength);
 
+  if (p->send_copies<=0)
+    p->send_copies=1;
+  else if(p->send_copies>5)
+    return WHY("Too many copies requested");
+  
   if (!p->destination){
     int i;
     int drop=1;

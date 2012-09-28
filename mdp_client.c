@@ -223,7 +223,7 @@ int overlay_mdp_bind(unsigned char *localaddr,int port)
   overlay_mdp_frame mdp;
   mdp.packetTypeAndFlags=MDP_BIND|MDP_FORCE;
   bcopy(localaddr,mdp.bind.sid,SID_SIZE);
-  mdp.bind.port_number=port;
+  mdp.bind.port=port;
   int result=overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000);
   if (result) {
     if (mdp.packetTypeAndFlags==MDP_ERROR)
@@ -261,37 +261,33 @@ int overlay_mdp_getmyaddr(int index,unsigned char *sid)
 
 int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp) 
 {
-  int len=4;
+  int len;
   switch(mdp->packetTypeAndFlags&MDP_TYPE_MASK)
   {
     case MDP_GOODBYE:
       /* no arguments for saying goodbye */
+      len=&mdp->raw[0]-(char *)mdp;
       break;
     case MDP_ADDRLIST: 
-      len=&mdp->addrlist.sids[0][0]-(unsigned char *)mdp;
-      len+=mdp->addrlist.frame_sid_count*SID_SIZE;
+      len=(&mdp->addrlist.sids[0][0]-(unsigned char *)mdp) + mdp->addrlist.frame_sid_count*SID_SIZE;
       break;
     case MDP_GETADDRS: 
       len=&mdp->addrlist.sids[0][0]-(unsigned char *)mdp;
       break;
     case MDP_TX: 
-      len=&mdp->out.payload[0]-(unsigned char *)mdp;
-      len+=mdp->out.payload_length; 
+      len=(&mdp->out.payload[0]-(unsigned char *)mdp) + mdp->out.payload_length; 
       break;
-    case MDP_BIND: 
-      len=&mdp->bind.sid[SID_SIZE]-(unsigned char *)mdp;
+    case MDP_BIND:
+      len=(&mdp->raw[0] - (char *)mdp) + sizeof(sockaddr_mdp);
       break;
     case MDP_ERROR: 
       /* This formulation is used so that we don't copy any bytes after the
        end of the string, to avoid information leaks */
-      len=&mdp->error.message[0]-(char *)mdp;
-      len+=strlen(mdp->error.message)+1;      
+      len=(&mdp->error.message[0]-(char *)mdp) + strlen(mdp->error.message)+1;      
       if (mdp->error.error) INFOF("mdp return/error code: %d:%s",mdp->error.error,mdp->error.message);
       break;
     case MDP_NODEINFO:
-      /* XXX problems with calculating this due to structure padding, 
-       so doubled required space, and now it works. */
-      len=sizeof(overlay_mdp_nodeinfo)*2;
+      len=(&mdp->raw[0] - (char *)mdp) + sizeof(overlay_mdp_nodeinfo);
       break;
     default:
       return WHY("Illegal MDP frame type.");

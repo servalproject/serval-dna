@@ -1173,6 +1173,10 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	    break;
 	  }
       }
+    }else{
+      frame->send_copies --;
+      if (frame->send_copies>0)
+	keep_payload=1;
     }
     
     if (!keep_payload){

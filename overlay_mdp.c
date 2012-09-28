@@ -200,6 +200,10 @@ int overlay_mdp_process_bind_request(int sock, struct subscriber *subscriber, in
 				     int flags, struct sockaddr_un *recvaddr, int recvaddrlen)
 {
   int i;
+  
+  if (port<=0){
+    return WHYF("Port %d cannot be bound", port);
+  }
   if (!mdp_bindings_initialised) {
     /* Mark all slots as unused */
     for(i=0;i<MDP_MAX_BINDINGS;i++)
@@ -247,7 +251,8 @@ int overlay_mdp_process_bind_request(int sock, struct subscriber *subscriber, in
     */
     free=random()%MDP_MAX_BINDINGS;
   }
-
+  if (debug & DEBUG_MDPREQUESTS) 
+    DEBUGF("Binding %s:%d",alloca_tohex_sid(subscriber->sid),port);
   /* Okay, record binding and report success */
   mdp_bindings[free].port=port;
   mdp_bindings[free].subscriber=subscriber;
@@ -373,6 +378,7 @@ int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now)
      Take payload from mdp frame itself.
   */
   overlay_mdp_frame mdp;
+  bzero(&mdp, sizeof(overlay_mdp_frame));
   
   /* Get source and destination addresses */
   if (f->destination)
@@ -919,6 +925,8 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
     rhizome_saw_voice_traffic();
   }
   
+  frame->send_copies = mdp->out.send_copies;
+  
   if (overlay_payload_enqueue(qn, frame))
     op_free(frame);
   RETURN(0);
@@ -1071,7 +1079,7 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 	    }
 	    
 	  }
-	  if (overlay_mdp_process_bind_request(alarm->poll.fd, subscriber, mdp->bind.port_number,
+	  if (overlay_mdp_process_bind_request(alarm->poll.fd, subscriber, mdp->bind.port,
 					       mdp->packetTypeAndFlags, recvaddr_un, recvaddrlen))
 	    overlay_mdp_reply_error(alarm->poll.fd,recvaddr_un,recvaddrlen,3, "Port already in use");
 	  else
