@@ -31,6 +31,7 @@
 #include "constants.h"
 
 int call_token=-1;
+int seen_audio=0;
 int monitor_client_fd=-1;
 
 static void send_hangup(int session_id){
@@ -60,7 +61,8 @@ static int remote_call(char *cmd, int argc, char **argv, unsigned char *data, in
   }
   
   call_token = token;
-  printf("Incoming call\n");
+  seen_audio = 0;
+  printf("Incoming call from %s (%s)\n",argv[3],argv[4]);
   fflush(stdout);
   send_ringing(token);
   return 1;
@@ -90,6 +92,7 @@ static int remote_dialing(char *cmd, int argc, char **argv, unsigned char *data,
   int token = strtol(argv[0], NULL, 16);
   if (call_token == -1){
     call_token=token;
+    seen_audio=0;
     printf("Dialling\n");
     fflush(stdout);
   }else
@@ -100,7 +103,7 @@ static int remote_dialing(char *cmd, int argc, char **argv, unsigned char *data,
 static int remote_hangup(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context){
   int token = strtol(argv[0], NULL, 16);
   if (call_token == token){
-    printf("Hangup\n");
+    printf("Call ended\n");
     fflush(stdout);
     call_token=-1;
   }
@@ -110,8 +113,11 @@ static int remote_hangup(char *cmd, int argc, char **argv, unsigned char *data, 
 static int remote_audio(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context){
   int token = strtol(argv[0], NULL, 16);
   if (call_token == token){
-    printf("Incoming audio\n");
-    fflush(stdout);
+    if (!seen_audio){
+      printf("Incoming audio\n");
+      fflush(stdout);
+      seen_audio=1;
+    }
   }else
     send_hangup(token);
   return 1;
@@ -120,7 +126,11 @@ static int remote_audio(char *cmd, int argc, char **argv, unsigned char *data, i
 static int remote_codecs(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context){
   int token = strtol(argv[0], NULL, 16);
   if (call_token == token){
-    printf("Codec list ...\n");
+    int i;
+    printf("Codec list");
+    for (i=1;i<argc;i++)
+      printf(" %s",argv[i]);
+    printf("\n");
     fflush(stdout);
   }else
     send_hangup(token);
@@ -165,15 +175,15 @@ static int console_dial(int argc, const char *const *argv, struct command_line_o
     return 0;
   }
   const char *sid=argv[1];
-  const char *local=argc>=3?argv[2]:"55500000";
-  const char *remote=argc>=4?argv[3]:"55500000";
+  const char *local=argc>=3?argv[2]:"";
+  const char *remote=argc>=4?argv[3]:"";
   send_call(sid, local, remote);
   return 0;
 }
 
 static int console_answer(int argc, const char *const *argv, struct command_line_option *o, void *context){
   if (call_token==-1){
-    printf("No call to answer\n");
+    printf("No active call to answer\n");
     fflush(stdout);
   }else
     send_pickup(call_token);
