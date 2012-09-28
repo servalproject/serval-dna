@@ -590,31 +590,37 @@ tfw_cat() {
    local show_nonprinting=
    for file; do
       case $file in
+      --header=*)
+         header="${1#*=}"
+         continue
+         ;;
+      -v|--show-nonprinting)
+         show_nonprinting=-v
+         continue
+         ;;
       --stdout)
-         tfw_log "#----- ${header:-stdout of ($executed)} -----"
-         cat $show_nonprinting $_tfw_tmp/stdout
-         tfw_log "#-----"
-         header=
-         show_nonprinting=
+         file="$_tfw_tmp/stdout"
+         header="${header:-stdout of ($executed)}"
          ;;
       --stderr)
-         tfw_log "#----- ${header:-stderr of ($executed)} -----"
-         cat $show_nonprinting $_tfw_tmp/stderr
-         tfw_log "#-----"
-         header=
-         show_nonprinting=
+         file="$_tfw_tmp/stderr"
+         header="${header:-stderr of ($executed)}"
          ;;
-      --header=*) header="${1#*=}";;
-      -v|--show-nonprinting) show_nonprinting=-v;;
       *)
-         tfw_log "#----- ${header:-${file#$_tfw_tmp/}} -----"
-         cat $show_nonprinting "$file"
-         tfw_log "#-----"
-         header=
-         show_nonprinting=
+         header="${header:-${file#$_tfw_tmp/}}"
          ;;
       esac
-   done >&$_tfw_log_fd
+      local missing_nl=
+      tfw_log "#----- $header -----"
+      cat $show_nonprinting "$file" >&$_tfw_log_fd
+      if [ "$(tail -1c "$file")" != "$newline" ]; then
+         echo >&$_tfw_log_fd
+         missing_nl=" (no newline at end)"
+      fi
+      tfw_log "#-----$missing_nl"
+      header=
+      show_nonprinting=
+   done
 }
 
 tfw_core_backtrace() {
@@ -1265,14 +1271,14 @@ _tfw_failmsg() {
 }
 
 _tfw_backtrace() {
-   tfw_log '#----- backtrace -----'
+   tfw_log '#----- shell backtrace -----'
    local -i up=1
    while [ "${BASH_SOURCE[$up]}" == "${BASH_SOURCE[0]}" ]; do
       let up=up+1
    done
    local -i i=0
    while [ $up -lt ${#FUNCNAME[*]} -a "${BASH_SOURCE[$up]}" != "${BASH_SOURCE[0]}" ]; do
-      tfw_log "[$i] ${FUNCNAME[$(($up-1))]}() called from ${FUNCNAME[$up]}() at line ${BASH_LINENO[$(($up-1))]} of ${BASH_SOURCE[$up]}"
+      echo "[$i] ${FUNCNAME[$(($up-1))]}() called from ${FUNCNAME[$up]}() at line ${BASH_LINENO[$(($up-1))]} of ${BASH_SOURCE[$up]}" >&$_tfw_log_fd 
       let up=up+1
       let i=i+1
    done
