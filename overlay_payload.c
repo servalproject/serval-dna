@@ -256,14 +256,6 @@ int overlay_payload_enqueue(int q, struct overlay_frame *p)
   
   if (0) dump_queue("after",q);
 
-  if (q==OQ_ISOCHRONOUS_VOICE) {
-    // Send a packet immediately to reduce latency
-    // Also this prevents aggregation of multiple voice frames which would 
-    // increase the chance of packet loss leading to missing audio
-    // TODO, remove when we NACK and retry all frames
-    overlay_send_packet(NULL);
-  }
-  
   return 0;
 }
 

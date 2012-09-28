@@ -79,7 +79,6 @@ int bundle_offset[2]={0,0};
 int overlay_rhizome_add_advertisements(int interface_number, struct overlay_buffer *e)
 {
   IN();
-  int voice_mode=0;
 
   /* behave differently during voice mode.
      Basically don't encourage people to grab stuff from us, but keep
@@ -92,8 +91,8 @@ int overlay_rhizome_add_advertisements(int interface_number, struct overlay_buff
      For now, we will just advertised only occassionally.
  */
   time_ms_t now = gettime_ms();
-  if (now<rhizome_voice_timeout) voice_mode=1;
-  if (voice_mode) if (random()&3) { RETURN(0); }
+  if (now<rhizome_voice_timeout)
+    RETURN(0);
 
   int pass;
   int bytes=e->sizeLimit-e->position;

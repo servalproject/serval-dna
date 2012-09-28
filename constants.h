@@ -270,7 +270,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
    Multiple replies can be used to respond with more. */
 #define MDP_MAX_SID_REQUEST 59
 
-#define VOMP_MAX_CALLS 16
 /* Maximum amount of audio to cram into a VoMP audio packet.
    More lets us include preemptive retransmissions.
    Less reduces the chance of packets getting lost, and reduces
@@ -282,7 +281,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define MDP_GOODBYE 9
 #define MDP_AWAITREPLY 9999
 
-#define VOMP_SESSION_MASK 0xffffff
 /* max number of recent samples to cram into a VoMP frame as well as the current
    frame of audio (preemptive audio retransmission) */
 #define VOMP_MAX_RECENT_SAMPLES 2

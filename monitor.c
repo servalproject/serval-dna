@@ -380,7 +380,7 @@ static int monitor_clear(int argc, const char *const *argv, struct command_line_
     return monitor_write_error(c,"Unknown monitor type");
   
   char msg[1024];
-  snprintf(msg,sizeof(msg),"\nMONITORSTATUS:%d\n",c->flags);
+  snprintf(msg,sizeof(msg),"\nINFO:%d\n",c->flags);
   write_str(c->alarm.poll.fd,msg);
   
   return 0;
