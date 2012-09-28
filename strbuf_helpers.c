@@ -54,8 +54,9 @@ static strbuf inline _overrun(strbuf sb, const char *suffix)
 static strbuf inline _overrun_quote(strbuf sb, char quote, const char *suffix)
 {
   if (strbuf_overrun(sb)) {
-    strbuf_trunc(sb, -strlen(suffix) - 1);
-    strbuf_putc(sb, quote);
+    strbuf_trunc(sb, -strlen(suffix) - (quote ? 1 : 0));
+    if (quote)
+      strbuf_putc(sb, quote);
     strbuf_puts(sb, suffix);
   }
   return sb;
@@ -75,30 +76,34 @@ strbuf strbuf_toprint(strbuf sb, const char *str)
   return _overrun(sb, "...");
 }
 
-strbuf strbuf_toprint_quoted_len(strbuf sb, char quote, const char *buf, size_t len)
+strbuf strbuf_toprint_quoted_len(strbuf sb, const char quotes[2], const char *buf, size_t len)
 {
-  strbuf_putc(sb, quote);
+  if (quotes && quotes[0])
+    strbuf_putc(sb, quotes[0]);
   for (; len && !strbuf_overrun(sb); ++buf, --len)
-    if (*buf == quote) {
+    if (quotes && *buf == quotes[1]) {
       strbuf_putc(sb, '\\');
-      strbuf_putc(sb, quote);
+      strbuf_putc(sb, *buf);
     } else
       _toprint(sb, *buf);
-  strbuf_putc(sb, quote);
-  return _overrun_quote(sb, quote, "...");
+  if (quotes && quotes[1])
+    strbuf_putc(sb, quotes[1]);
+  return _overrun_quote(sb, quotes ? quotes[1] : '\0', "...");
 }
 
-strbuf strbuf_toprint_quoted(strbuf sb, char quote, const char *str)
+strbuf strbuf_toprint_quoted(strbuf sb, const char quotes[2], const char *str)
 {
-  strbuf_putc(sb, quote);
+  if (quotes && quotes[0])
+    strbuf_putc(sb, quotes[0]);
   for (; *str && !strbuf_overrun(sb); ++str)
-    if (*str == quote) {
+    if (quotes && *str == quotes[1]) {
       strbuf_putc(sb, '\\');
-      strbuf_putc(sb, quote);
+      strbuf_putc(sb, *str);
     } else
       _toprint(sb, *str);
-  strbuf_putc(sb, quote);
-  return _overrun_quote(sb, quote, "...");
+  if (quotes && quotes[1])
+    strbuf_putc(sb, quotes[1]);
+  return _overrun_quote(sb, quotes ? quotes[1] : '\0', "...");
 }
 
 strbuf strbuf_append_poll_events(strbuf sb, short events)

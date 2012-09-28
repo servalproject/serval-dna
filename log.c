@@ -225,7 +225,7 @@ void logArgv(int level, struct __sourceloc where, const char *label, int argc, c
       if (i)
 	strbuf_putc(&logbuf, ' ');
       if (argv[i])
-	strbuf_toprint_quoted(&logbuf, '"', argv[i]);
+	strbuf_toprint_quoted(&logbuf, "\"\"", argv[i]);
       else
 	strbuf_puts(&logbuf, "NULL");
     }
@@ -326,10 +326,10 @@ unsigned int debugFlagMask(const char *flagname) {
    in log messages.
    @author Andrew Bettison <andrew@servalproject.com>
  */
-char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcBytes)
+char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcBytes, const char quotes[2])
 {
   strbuf b = strbuf_local(dstStr, dstBufSiz);
-  strbuf_toprint_quoted_len(b, '"', srcBuf, srcBytes);
+  strbuf_toprint_quoted_len(b, quotes, srcBuf, srcBytes);
   return dstStr;
 }
 
@@ -338,9 +338,30 @@ char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcByt
    otherwise returns dstStrLen.
    @author Andrew Bettison <andrew@servalproject.com>
  */
-size_t toprint_strlen(const char *srcBuf, size_t srcBytes)
+size_t toprint_len(const char *srcBuf, size_t srcBytes, const char quotes[2])
 {
-  return strbuf_count(strbuf_toprint_quoted_len(strbuf_local(NULL, 0), '"', srcBuf, srcBytes));
+  return strbuf_count(strbuf_toprint_quoted_len(strbuf_local(NULL, 0), quotes, srcBuf, srcBytes));
+}
+
+/* Format a null-terminated string as a printable representation, eg: "Abc\x0b\n", for display
+   in log messages.
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+char *toprint_str(char *dstStr, ssize_t dstBufSiz, const char *srcStr, const char quotes[2])
+{
+  strbuf b = strbuf_local(dstStr, dstBufSiz);
+  strbuf_toprint_quoted(b, quotes, srcStr);
+  return dstStr;
+}
+
+/* Compute the length of the string produced by toprint_str().  If dstStrLen == -1 then returns the
+   exact number of characters in the printable representation (excluding the terminating nul),
+   otherwise returns dstStrLen.
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+size_t toprint_str_len(const char *srcStr, const char quotes[2])
+{
+  return strbuf_count(strbuf_toprint_quoted(strbuf_local(NULL, 0), quotes, srcStr));
 }
 
 /* Read the symbolic link into the supplied buffer and add a terminating nul.  Return -1 if the

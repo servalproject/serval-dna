@@ -78,13 +78,16 @@ void logMessage(int level, struct __sourceloc where, const char *fmt, ...);
 void vlogMessage(int level, struct __sourceloc where, const char *fmt, va_list);
 unsigned int debugFlagMask(const char *flagname);
 int logDump(int level, struct __sourceloc where, char *name, unsigned char *addr, size_t len);
-char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcBytes);
-size_t toprint_strlen(const char *srcBuf, size_t srcBytes);
+char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcBytes, const char quotes[2]);
+char *toprint_str(char *dstStr, ssize_t dstBufSiz, const char *srcStr, const char quotes[2]);
+size_t toprint_len(const char *srcBuf, size_t srcBytes, const char quotes[2]);
+size_t toprint_str_len(const char *srcStr, const char quotes[2]);
 ssize_t get_self_executable_path(char *buf, size_t len);
 int log_backtrace(struct __sourceloc where);
 void set_log_implementation(void (*log_function)(int level, struct strbuf *buf));
 
-#define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca((dstlen) == -1 ? toprint_strlen((buf),(len)) + 1 : (dstlen)), (dstlen), (buf), (len))
+#define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca((dstlen) == -1 ? toprint_len((buf),(len), "``") + 1 : (dstlen)), (dstlen), (buf), (len), "``")
+#define alloca_str_toprint(str)  toprint_str((char *)alloca(toprint_str_len(str, "``") + 1), -1, (str), "``")
 
 #define __HERE__            ((struct __sourceloc){ .file = __FILE__, .line = __LINE__, .function = __FUNCTION__ })
 #define __NOWHERE__         ((struct __sourceloc){ .file = NULL, .line = 0, .function = NULL })

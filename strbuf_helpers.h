@@ -39,12 +39,12 @@ strbuf strbuf_toprint(strbuf sb, const char *str);
  * backslash within the text.
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-strbuf strbuf_toprint_quoted_len(strbuf sb, char quote, const char *buf, size_t len);
+strbuf strbuf_toprint_quoted_len(strbuf sb, const char quotes[2], const char *buf, size_t len);
 
 /* Equivalent to strbuf_toprint_quoted_len(sb, str, strlen(str)).
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-strbuf strbuf_toprint_quoted(strbuf sb, char quote, const char *str);
+strbuf strbuf_toprint_quoted(strbuf sb, const char quotes[2], const char *str);
 
 /* Append a symbolic representation of the poll(2) event flags.
  * @author Andrew Bettison <andrew@servalproject.com>
