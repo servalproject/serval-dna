@@ -382,27 +382,11 @@ int rhizome_position_candidate(int position)
 
 void rhizome_import_received_bundle(struct rhizome_manifest *m)
 {
-  // TODO: We already have the manifest struct in memory, should import the bundle
-  // directly from that, not by writing it to a file and re-reading it!
-  const char *id = rhizome_manifest_get(m, "id", NULL, 0);
-  if (id == NULL) {
-    WHY("Manifest missing ID");
-    return;
-  }
-  if (create_rhizome_import_dir() == -1)
-    return;
-  char filename[1024];
-  if (!FORM_RHIZOME_IMPORT_PATH(filename, "manifest.%s", id))
-    return;
-  /* Do really write the manifest unchanged */
-  m->finalised = 1;
-  m->manifest_bytes = m->manifest_all_bytes;
   if (debug & DEBUG_RHIZOME_RX) {
-    DEBUGF("manifest bid=%s len=%d has %d signatories", id, m->manifest_bytes, m->sig_count);
+    DEBUGF("manifest len=%d has %d signatories", m->manifest_bytes, m->sig_count);
     dump("manifest", m->manifestdata, m->manifest_all_bytes);
   }
-  if (rhizome_write_manifest_file(m, filename) != -1)
-    rhizome_bundle_import(m, NULL, id, m->ttl - 1 /* TTL */);
+  rhizome_bundle_import(m, NULL, NULL, m->ttl - 1 /* TTL */);
 }
 
 /* Verifies manifests as late as possible to avoid wasting time. */
@@ -723,14 +707,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
       {
 	if (debug & DEBUG_RHIZOME_RX) 
 	  DEBUGF("We already have the file for this manifest; importing from manifest alone.");
-	if (create_rhizome_import_dir() == -1)
-	  return -1;
-	char filename[1024];
-	if (!FORM_RHIZOME_IMPORT_PATH(filename, "manifest.%s", bid))
-	  return -1;
-	if (!rhizome_write_manifest_file(m, filename)) {
-	  rhizome_bundle_import(m, NULL, bid, m->ttl-1);
-	}
+	rhizome_bundle_import(m, NULL, NULL, m->ttl-1);
       }
   }
 

@@ -48,64 +48,53 @@ int rhizome_enabled()
    file and object buffers and lifetimes.
 */
 
-int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, 
-			  const char *bundle, int ttl)
+int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out,
+			  const char *manifest_path, int ttl)
 {
   if (debug & DEBUG_RHIZOME)
-    DEBUGF("rhizome_bundle_import(m_in=%p, m_out=%p, bundle=%s, ttl=%d)",
-	  m_in, m_out, bundle ? bundle : "(null)", ttl);
-  if (m_out) *m_out = NULL;
-
-  char filename[1024];
-  char manifestname[1024];
-
-  /* make sure import path exists */
-  if (create_rhizome_import_dir() == -1)
-    return -1;
-
-  if (!FORM_RHIZOME_IMPORT_PATH(filename, "file.%s", bundle)
-   || !FORM_RHIZOME_IMPORT_PATH(manifestname, "manifest.%s", bundle))
-    return WHY("Manifest bundle name too long");
-
+    DEBUGF("rhizome_bundle_import(m_in=%p, m_out=%p, manifest_path=%s, ttl=%d)",
+	m_in, m_out,
+	manifest_path ? alloca_str_toprint(manifest_path) : "NULL",
+	ttl
+      );
+  if (m_out)
+    *m_out = NULL;
   /* Read manifest file if no manifest was given */
   rhizome_manifest *m = m_in;
   if (!m_in) {
+    if (!manifest_path)
+      return WHY("No manifest supplied");
     m = rhizome_new_manifest();
     if (!m)
-      return WHY("Out of manifests.");
-    if (rhizome_read_manifest_file(m, manifestname, 0 /* file not buffer */) == -1) {
+      return WHY("Out of manifests");
+    if (rhizome_read_manifest_file(m, manifest_path, 0 /* file not buffer */) == -1) {
       rhizome_manifest_free(m);
-      return WHY("Could not read manifest file.");
+      return WHY("Could not read manifest file");
     } else if (rhizome_manifest_verify(m)) {
       rhizome_manifest_free(m);
-      return WHY("Could not verify manifest file.");
+      return WHY("Could not verify manifest file");
     }
   }
-
-  /* Add the manifest and its associated file to the Rhizome database. */
-  m->dataFileName = strdup(filename);
+  /* Add the manifest and its payload to the Rhizome database. */
+  if (!(m->dataFileName && m->dataFileName[0]))
+    return WHY("Missing data file name");
   if (rhizome_manifest_check_file(m))
     return WHY("File does not belong to manifest");
-  int ret=rhizome_manifest_check_duplicate(m,NULL);
-  if (!ret) rhizome_add_manifest(m, ttl);
-  unlink(filename);
+  int ret = rhizome_manifest_check_duplicate(m, NULL);
+  if (ret == 0)
+    ret = rhizome_add_manifest(m, ttl);
   if (ret == -1) {
     WHY("rhizome_add_manifest() failed");
-    unlink(manifestname);
   } else {
-    /* >>> For testing, write manifest file back to disk and leave it there */
-    // unlink(manifestname);
-    if (rhizome_write_manifest_file(m, manifestname))
-      ret = WHY("Could not write manifest file.");
+    if (manifest_path && rhizome_write_manifest_file(m, manifest_path))
+      ret = WHYF("Could not write %s", manifest_path);
   }
-
   /* If the manifest structure was allocated in this function, and it is not being returned to the
      caller, then this function is responsible for freeing it */
   if (m_out)
     *m_out = m;
   else if (!m_in)
     rhizome_manifest_free(m);
-
   return ret;
 }
 
