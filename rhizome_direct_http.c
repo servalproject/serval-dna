@@ -104,8 +104,7 @@ int rhizome_direct_form_received(rhizome_http_request *r)
 	rhizome_direct_clear_temporary_files(r);	     
 	return rhizome_server_simple_http_response(r,500,"Couldn't stat a file");
       }
-      unsigned char *addr = mmap(NULL, stat.st_size, PROT_READ, 
-				 MAP_FILE|MAP_SHARED, fd, 0);
+      unsigned char *addr = mmap(NULL, stat.st_size, PROT_READ, MAP_SHARED, fd, 0);
       if (addr==MAP_FAILED) {
 	/* Clean up after ourselves */
 	close(fd);
@@ -438,7 +437,6 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
       path = NULL;
  
     if (path) {
-      char *id = NULL;
       INFOF("RHIZOME HTTP SERVER, GET %s", alloca_toprint(1024, path, pathlen));
       if (strcmp(path, "/favicon.ico") == 0) {
 	r->request_type = RHIZOME_HTTP_REQUEST_FAVICON;
@@ -464,7 +462,6 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
       path = NULL;
  
     if (path) {
-      char *id = NULL;
       INFOF("RHIZOME HTTP SERVER, POST %s", alloca_toprint(1024, path, pathlen));
       if ((strcmp(path, "/rhizome/import") == 0) 
 	  ||(strcmp(path, "/rhizome/enquiry") == 0))
