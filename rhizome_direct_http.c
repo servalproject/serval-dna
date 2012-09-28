@@ -20,6 +20,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "rhizome.h"
 #include "str.h"
+#include "strbuf.h"
+#include "strbuf_helpers.h"
 #include <assert.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
@@ -40,50 +42,53 @@ int rhizome_direct_clear_temporary_files(rhizome_http_request *r)
 
 int rhizome_direct_form_received(rhizome_http_request *r)
 {
-  /* XXX This needs to be implemented.
-     For now we just put out a "no content" response that makes testing convenient
-  */
-
-  /* XXX process completed form based on the set of fields seen */
-  if (!strcmp(r->path,"/rhizome/import"))
-    {
-      switch(r->fields_seen) {
-      case RD_MIME_STATE_MANIFESTHEADERS
-	|RD_MIME_STATE_DATAHEADERS:
+  if (!strcmp(r->path,"/rhizome/import")) {
+    switch(r->fields_seen) {
+    case RD_MIME_STATE_MANIFESTHEADERS | RD_MIME_STATE_DATAHEADERS: {
 	/* A bundle to import */
-	DEBUGF("Call bundle import for rhizomedata.%d.{data,file}",
-	       r->alarm.poll.fd);
-	char cmd[1024];
-	snprintf(cmd,1024,
-		 "servald rhizome import bundle rhizomedirect.%d.data rhizomedirect.%d.manifest",
-		 r->alarm.poll.fd,r->alarm.poll.fd);
-	cmd[1023]=0;
-	int rv=system(cmd);
-	int status=-1;
-	
-	if (rv!=-1) status=WEXITSTATUS(rv);
-	
-	DEBUGF("Import returned %d",status);
-	
+	strbuf cmd = strbuf_alloca(1024);
+	strbuf_sprintf(cmd, 
+	    "servald rhizome import bundle rhizomedirect.%d.data rhizomedirect.%d.manifest",
+	    r->alarm.poll.fd, r->alarm.poll.fd
+	  );
+	DEBUGF("system(\"%s\")", strbuf_str(cmd));
+	int status = system(strbuf_str(cmd));
 	/* clean up after ourselves */
 	rhizome_direct_clear_temporary_files(r);
-	/* and report back to caller.
-	   200 = ok, which is probably appropriate for when we already had the bundle.
-	   201 = content created, which is probably appropriate for when we successfully
-	   import a bundle (or if we already have it).
-	   403 = forbidden, which might be appropriate if we refuse to accept it, e.g.,
-	   the import fails due to malformed data etc.
-	   (should probably also indicate if we have a newer version if possible)
-	   
-	   For now we are just returning "no content" as a place-holder while debugging.
+	if (status == -1) {
+	  WHYF_perror("system(\"%s\")", strbuf_str(cmd));
+	  return rhizome_server_simple_http_response(r, 500, "Server error: Rhizome import command not executed.");
+	}
+	strbuf st = strbuf_alloca(100);
+	strbuf_append_exit_status(st, status);
+	DEBUGF("Import command %s", strbuf_str(st));
+	/* report back to caller.
+	  200 = ok, which is probably appropriate for when we already had the bundle.
+	  201 = content created, which is probably appropriate for when we successfully
+	  import a bundle (or if we already have it).
+	  403 = forbidden, which might be appropriate if we refuse to accept it, e.g.,
+	  the import fails due to malformed data etc.
+	  (should probably also indicate if we have a newer version if possible)
 	*/
-	rhizome_server_simple_http_response(r, 204, "Move along. Nothing to see.");
-	break;     
-      default:
-	/* Clean up after ourselves */
-	rhizome_direct_clear_temporary_files(r);	     
+	if (WIFEXITED(status)) {
+	  switch (WEXITSTATUS(status)) {
+	  case 0:
+	    return rhizome_server_simple_http_response(r, 201, "Bundle succesfully imported.");
+	  case 1:
+	    return rhizome_server_simple_http_response(r, 200, "Bundle already imported.");
+	  default:
+	    return rhizome_server_simple_http_response(r, 500, "Server error: Rhizome import command failed.");
+	  }
+	}
+	WHY("should not reach here");
+	return rhizome_server_simple_http_response(r, 500, "Server error: Internal bug.");
       }
-    } else if (!strcmp(r->path,"/rhizome/enquiry")) {
+      break;     
+    default:
+      /* Clean up after ourselves */
+      rhizome_direct_clear_temporary_files(r);	     
+    }
+  } else if (!strcmp(r->path,"/rhizome/enquiry")) {
     int fd=-1;
     char file[1024];
     switch(r->fields_seen) {
@@ -217,7 +222,7 @@ int rhizome_direct_process_mime_line(rhizome_http_request *r,char *buffer,int co
   int blankLine=0;
   if (!strcmp(buffer,"\r\n")) blankLine=1;
 
-  DEBUGF("mime state: 0x%x, blankLine=%d, boundary=%d, EOF=%d, bytes=%d",
+  DEBUGF("mime state 0x%x, blankLine=%d, boundary=%d, EOF=%d, bytes=%d",
 	 r->source_flags,blankLine,boundaryLine,endOfForm,count);
   switch(r->source_flags) {
   case RD_MIME_STATE_INITIAL:
@@ -226,7 +231,7 @@ int rhizome_direct_process_mime_line(rhizome_http_request *r,char *buffer,int co
   case RD_MIME_STATE_PARTHEADERS:
   case RD_MIME_STATE_MANIFESTHEADERS:
   case RD_MIME_STATE_DATAHEADERS:
-    DEBUGF("mime line: %s",r->request);
+    DEBUGF("mime line %s", alloca_str_toprint(r->request));
     if (blankLine) {
       /* End of headers */
       if (r->source_flags==RD_MIME_STATE_PARTHEADERS)

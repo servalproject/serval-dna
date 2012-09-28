@@ -608,7 +608,7 @@ int rhizome_server_set_response(rhizome_http_request *r, const struct http_respo
   r->buffer_offset = 0;
   r->request_type |= RHIZOME_HTTP_REQUEST_FROMBUFFER;
   if (debug & DEBUG_RHIZOME_TX)
-    DEBUGF("Sending HTTP response: %s", alloca_toprint(120, (const char *)r->buffer, r->buffer_length));
+    DEBUGF("Sending HTTP response: %s", alloca_toprint(160, (const char *)r->buffer, r->buffer_length));
   return 0;
 }
 
