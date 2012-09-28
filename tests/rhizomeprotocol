@@ -43,7 +43,7 @@ configure_servald_server() {
    executeOk_servald config set debug.rhizometx on
    executeOk_servald config set debug.rhizomerx on
    executeOk_servald config set server.respawn_on_signal off
-   executeOk_servald config set mdp.wifi.tick_ms 100
+   executeOk_servald config set mdp.wifi.tick_ms 500
    executeOk_servald config set mdp.selfannounce.ticks_per_full_address 1
    executeOk_servald config set rhizome.fetch_interval_ms 100
 }
@@ -72,12 +72,16 @@ bundle_received_by() {
    return 0
 }
 
-assert_have_curl_7() {
+setup_curl_7() {
    case "$(curl --version | tr '\n' ' ')" in
    curl\ @(7|8|9|[1-9][0-1]).*\ Protocols:*\ http\ *) ;;
    '') fail "curl(1) command is not present";;
    *) fail "curl(1) version is not adequate (expecting 7 or higher)";;
    esac
+   unset http_proxy
+   unset HTTP_PROXY
+   unset HTTPS_PROXY
+   unset ALL_PROXY
 }
 
 setup_common() {
@@ -269,7 +273,8 @@ test_Sync() {
 
 doc_HttpImport="Import bundle using HTTP POST multi-part form."
 setup_HttpImport() {
-   assert_have_curl_7
+   setup_curl_7
+   setup_common
    cat >README.WHYNOTSIPS <<'EOF'
 When we were looking at implementing secure calls for OpenBTS it was suggested
 that we configure Asterisk to use SIPS/ZRTP. This would have been relatively
@@ -292,9 +297,7 @@ the certificate and checks the chain of trust but does not look at the common
 name. We decided against this approach as the VOMP channel driver was written
 in time to avoid it.
 EOF
-   setup_common
    set_instance +B
-   create_identity
    executeOk_servald rhizome add file $SIDB '' README.WHYNOTSIPS README.WHYNOTSIPS.manifest
    assert_manifest_complete README.WHYNOTSIPS.manifest
    assert_stdout_add_file README.WHYNOTSIPS
@@ -304,14 +307,22 @@ EOF
    get_rhizome_server_port PORTA +A
 }
 test_HttpImport() {
-   executeOk curl --silent --form 'data=@README.WHYNOTSIPS' --form 'manifest=@README.WHYNOTSIPS.manifest' "$addr_localhost:$PORTA" --output http.output
+   executeOk curl \
+         --silent --fail --show-error \
+         --output http.output \
+         --dump-header http.headers \
+         --write-out '%{http_code}\n' \
+         --form 'data=@README.WHYNOTSIPS' \
+         --form 'manifest=@README.WHYNOTSIPS.manifest' \
+         "$addr_localhost:$PORTA/rhizome/import"
+   tfw_cat http.headers http.output
    executeOk_servald rhizome list ''
    assert_rhizome_list README.WHYNOTSIPS
 }
 
 doc_HttpAddLocal="Add file locally using HTTP, returns manifest"
 setup_HttpAddLocal() {
-   assert_have_curl_7
+   setup_curl_7
    setup_common
    start_servald_instances +A
    wait_until rhizome_http_server_started +A
