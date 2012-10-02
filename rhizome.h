@@ -308,6 +308,11 @@ typedef struct rhizome_http_request {
   struct sched_ent alarm;
   long long initiate_time; /* time connection was initiated */
   
+  /* identify request from others being run.
+     Monotonic counter feeds it.  Only used for debugging when we write
+     post-<uuid>.log files for multi-part form requests. */
+  unsigned int uuid;
+
   /* The HTTP request as currently received */
   int request_length;
 #define RHIZOME_HTTP_REQUEST_MAXLEN 1024

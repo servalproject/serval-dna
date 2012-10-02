@@ -246,6 +246,8 @@ void rhizome_client_poll(struct sched_ent *alarm)
   return;
 }
 
+static unsigned int rhizome_http_request_uuid_counter=0;
+
 void rhizome_server_poll(struct sched_ent *alarm)
 {
   struct sockaddr addr;
@@ -271,6 +273,7 @@ void rhizome_server_poll(struct sched_ent *alarm)
       WHYF_perror("calloc(%u, 1)", sizeof(rhizome_http_request));
       WHY("Cannot respond to request, out of memory");
     } else {
+      request->uuid=rhizome_http_request_uuid_counter++;
       /* We are now trying to read the HTTP request */
       request->request_type=RHIZOME_HTTP_REQUEST_RECEIVING;
       request->alarm.function = rhizome_client_poll;
