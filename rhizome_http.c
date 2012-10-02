@@ -545,8 +545,42 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
     } else if (str_startswith(path, "/rhizome/manifest/", &id)) {
       // TODO: Stream the specified manifest
       rhizome_server_simple_http_response(r, 500, "<html><h1>Not implemented</h1></html>\r\n");
-    } else {
+    } else if (str_startswith(path, "/rhizome/manifestbyprefix/", &id)) {
+      /* Manifest by prefix */
+      char bid_low[RHIZOME_MANIFEST_ID_STRLEN+1];
+      char bid_high[RHIZOME_MANIFEST_ID_STRLEN+1];
+      int i;
+      for (i=0;i<RHIZOME_MANIFEST_ID_STRLEN
+	     &&path[strlen("/rhizome/manifestbyprefix/")+i];i++) {
+	bid_low[i]=path[strlen("/rhizome/manifestbyprefix/")+i];
+	bid_high[i]=path[strlen("/rhizome/manifestbyprefix/")+i];
+      }
+      for(;i<RHIZOME_MANIFEST_ID_STRLEN;i++) {
+	bid_low[i]='0';
+	bid_high[i]='f';
+      }
+      bid_low[RHIZOME_MANIFEST_ID_STRLEN]=0;
+      bid_high[RHIZOME_MANIFEST_ID_STRLEN]=0;
+      DEBUGF("Looking for manifest between %s and %s",
+	     bid_low,bid_high);
+
+      long long rowid = -1;
+      sqlite_exec_int64(&rowid, "select rowid from manifests where id between '%s' and '%s';", bid_low,bid_high);
+      if (rowid >= 0 && sqlite3_blob_open(rhizome_db, "main", "manifests", "manifest", rowid, 0, &r->blob) != SQLITE_OK)
+	rowid = -1;
+      if (rowid == -1) {
+	DEBUGF("Row not found");
+	rhizome_server_simple_http_response(r, 404, "<html><h1>Payload not found</h1></html>\r\n");
+      } else {
+	DEBUGF("row id = %d",rowid);
+	r->source_index = 0;
+	r->blob_end = sqlite3_blob_bytes(r->blob);
+	rhizome_server_http_response_header(r, 200, "application/binary", r->blob_end - r->source_index);
+	r->request_type |= RHIZOME_HTTP_REQUEST_BLOB;
+      }
+    }else {
       rhizome_server_simple_http_response(r, 404, "<html><h1>Not found</h1></html>\r\n");
+      DEBUGF("Sending 404 not found for '%s'",path);
     }
   } else {
     if (debug & DEBUG_RHIZOME_TX)
