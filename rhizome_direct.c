@@ -256,12 +256,12 @@ int rhizome_direct_conclude_sync_request(rhizome_direct_sync_request *r)
 
 /*
   This function is called with the list of BARs for a specified cursor range
-  that the far-end possesses, i.e., what we are given is a list of "I have"'s.
-  To produce our reply, we need to work out corresponding list of "I have"'s, and
-  then compare them to produce the list of "you have and I want" and "I have and
-  you want" that if fulfilled, would result in both ends having the same set of
-  BARs for the specified cursor range.  The potential presense of multiple versions
-  of a given bundle introduces only a slight complication. 
+  that the far-end possesses, i.e., what we are given is a list of the far end's 
+  "I have"'s.  To produce our reply, we need to work out corresponding list of
+  "I have"'s, and then compare them to produce the list of "you have and I want" 
+  and "I have and you want" that if fulfilled, would result in both ends having the
+  same set of BARs for the specified cursor range.  The potential presense of
+  multiple versions of a given bundle introduces only a slight complication. 
 */
 
 rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
@@ -724,7 +724,7 @@ int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTE
   char query[1024];
 
   snprintf(query,1024,
-	   "SELECT BAR,ROWID,ID FROM MANIFESTS"
+	   "SELECT BAR,ROWID,ID,FILESIZE FROM MANIFESTS"
 	   " WHERE ID>='%s' AND ID<='%s' AND FILESIZE BETWEEN %lld AND %lld"
 	   " ORDER BY BAR LIMIT %d;",
 	   alloca_tohex(bid_low,RHIZOME_MANIFEST_ID_BYTES),
@@ -747,6 +747,12 @@ int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTE
 	  sqlite3_blob_close(blob);
 	blob = NULL;
 	int ret;
+	int64_t filesize = sqlite3_column_int64(statement, 3);
+	if (filesize<size_low||filesize>size_high) {
+	  DEBUGF("WEIRDNESS ALERT: filesize=%lld, but query was: %s",
+		 filesize,query);
+	  break;
+	}
 	int64_t rowid = sqlite3_column_int64(statement, 1);
 	do ret = sqlite3_blob_open(rhizome_db, "main", "manifests", "bar",
 				   rowid, 0 /* read only */, &blob);
@@ -780,7 +786,7 @@ int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTE
 	break;
       default:
 	/* non-BLOB field.  This is an error, but we will persevere with subsequent
-	   rows, becuase they might be fine. */
+	   rows, because they might be fine. */
 	break;
       }
     }
