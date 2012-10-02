@@ -648,6 +648,7 @@ int rhizome_direct_bundle_iterator_unpickle_range(rhizome_direct_bundle_cursor *
   /* Get start of range */
   r->size_high=1LL<<pickled[0];
   r->size_low=(r->size_high/2)+1;
+  if (r->size_low<=1024) r->size_low=0;
   for(v=0;v<4;v++) r->bid_low[v]=pickled[1+v];
   for(;v<RHIZOME_MANIFEST_ID_BYTES;v++) r->bid_low[v]=0x00;
 
@@ -714,6 +715,7 @@ int rhizome_direct_bundle_iterator_fill(rhizome_direct_bundle_cursor *c,int max_
       if (!stuffed_now) {
 	/* no more matches in this size bin, so move up a size bin */
 	c->size_low=c->size_high+1;
+	if (c->size_low<=1025) c->size_low=0;
 	c->size_high*=2;
 	/* Record that we covered to the end of that size bin */
 	memset(c->bid_high,0xff,RHIZOME_MANIFEST_ID_BYTES);
