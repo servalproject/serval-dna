@@ -1449,6 +1449,11 @@ int rhizome_import_from_files(const char *manifestpath,const char *filepath)
   } else if (rhizome_manifest_verify(m) == -1) {
     status = WHY("Could not verify manifest file.");
   } else {
+    /* Make sure we store signatures */
+    m->manifest_bytes=m->manifest_all_bytes;
+    DEBUGF("selfsignedP=%d",
+	   rhizome_is_self_signed(m));
+
     /* Add the manifest and its associated file to the Rhizome database. */
     m->dataFileName = strdup(filepath);
     if (rhizome_manifest_check_file(m))

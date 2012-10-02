@@ -286,10 +286,14 @@ setup_Push() {
 }
 test_Push() {
    executeOk_servald rhizome direct push
-   assert bundle_received_by $BID1 $VERSION1 +B
-   assert ! bundle_received_by $BID2 $VERSION2 +A
+   assert bundle_received_by $BID2 $VERSION2 +A
+   assert ! bundle_received_by $BID1 $VERSION1 +B
+   set_instance +A
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file1 file2
    set_instance +B
-   assert_received file1
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file2
 }
 
 doc_Pull="One way pull bundle from unconnected node"

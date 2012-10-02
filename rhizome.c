@@ -364,7 +364,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
       service ? service : "NULL",
       alloca_tohex_sid(m_in->cryptoSignPublic),
       m_in->version
-    );
+      );
   monitor_announce_bundle(m_in);
   return 0;
 }

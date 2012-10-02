@@ -46,17 +46,18 @@ assert_manifest_complete() {
 }
 
 assert_rhizome_list() {
+    # PGS 20121002 - Removed sensitivity to self-signed flag, because it will be
+    # different between originator and a receiver of a bundle.
    assertStdoutLineCount --stderr '==' $(($# + 2))
    assertStdoutIs --stderr --line=1 -e '11\n'
    assertStdoutIs --stderr --line=2 -e 'service:id:version:date:.inserttime:.selfsigned:filesize:filehash:sender:recipient:name\n'
    local filename
    for filename; do
-      re__selfsigned=1
       case "$filename" in
       *!) filename="${filename%!}"; re__selfsigned=0;;
       esac
       unpack_manifest_for_grep "$filename"
-      assertStdoutGrep --stderr --matches=1 "^$re_service:$re_manifestid:.*:$re__selfsigned:$re_filesize:$re_filehash:$re_sender:$re_recipient:$re_name\$"
+      assertStdoutGrep --stderr --matches=1 "^$re_service:$re_manifestid:.*:.*:$re_filesize:$re_filehash:$re_sender:$re_recipient:$re_name\$"
    done
 }
 
