@@ -332,6 +332,7 @@ setup_HttpAddLocal() {
    # set rhizome.api.* configuration variables
    set_instance +A
    executeOk_servald config set rhizome.api.addfile.uri "/rhizome/secretaddfile"
+   executeOk_servald config set rhizome.api.addfile.author $SIDA
 
    start_servald_instances +A
    wait_until rhizome_http_server_started +A

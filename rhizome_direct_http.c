@@ -252,7 +252,9 @@ int rhizome_direct_form_received(rhizome_http_request *r)
       }
       DEBUGF("File name = '%s'",name);
 
-      const char *senderhex = rhizome_manifest_get(m, "sender", NULL, 0);
+      const char *senderhex
+	= rhizome_manifest_get(m, "sender", NULL, 0);
+      if (!senderhex) senderhex=confValueGet("rhizome.api.addfile.author",NULL);
       unsigned char authorSid[SID_SIZE];
       if (senderhex) fromhexstr(authorSid,senderhex,SID_SIZE);
       const char *bskhex
