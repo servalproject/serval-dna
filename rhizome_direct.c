@@ -726,6 +726,9 @@ int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTE
   snprintf(query,1024,
 	   "SELECT BAR,ROWID,ID,FILESIZE FROM MANIFESTS"
 	   " WHERE ID>='%s' AND ID<='%s' AND FILESIZE BETWEEN %lld AND %lld"
+	   // The following formulation doesn't remove the weird returning of
+	   // bundles with out of range filesize values
+	   //	   " WHERE ID>='%s' AND ID<='%s' AND FILESIZE > %lld AND FILESIZE < %lld"
 	   " ORDER BY BAR LIMIT %d;",
 	   alloca_tohex(bid_low,RHIZOME_MANIFEST_ID_BYTES),
 	   alloca_tohex(bid_max,RHIZOME_MANIFEST_ID_BYTES),
