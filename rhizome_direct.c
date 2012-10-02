@@ -275,10 +275,11 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
   int them_count=(size-10)/RHIZOME_BAR_BYTES;
 
   /* We need to get a list of BARs that will fit into max_response_bytes when we
-     have summarised them into 9-byte PUSH/PULL hints.
+     have summarised them into (1+RHIZOME_BAR_PREFIX_BYTES)-byte PUSH/PULL hints.
      So we need an intermediate buffer that is somewhat larger to allow the actual
      maximum response buffer to be completely filled. */
-  int max_intermediate_bytes=10+((max_response_bytes-10)/9)*RHIZOME_BAR_BYTES;
+  int max_intermediate_bytes
+    =10+((max_response_bytes-10)/(1+RHIZOME_BAR_PREFIX_BYTES))*RHIZOME_BAR_BYTES;
   unsigned char usbuffer[max_intermediate_bytes];
   rhizome_direct_bundle_cursor 
     *c=rhizome_direct_bundle_iterator(max_intermediate_bytes);
@@ -304,18 +305,23 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
   c->buffer_used=0;
 
   /* Iterate until we are through both lists.
-     Note that the responses are 9-bytes each, much smaller than the 32 bytes
-     used by BARs, therefore the response will never be bigger than the request,
-     and so we don't need to worry about overflows. */
+     Note that the responses are (1+RHIZOME_BAR_PREFIX_BYTES)-bytes each, much 
+     smaller than the 32 bytes used by BARs, therefore the response will never be
+     bigger than the request, and so we don't need to worry about overflows. */
   int them=0,us=0;
   DEBUGF("themcount=%d, uscount=%d",them_count,us_count);
   while(them<them_count||us<us_count)
     {
-      unsigned char *them_id=&buffer[10+them*RHIZOME_BAR_BYTES];
-      unsigned char *us_id=&usbuffer[10+us*RHIZOME_BAR_BYTES];
+      DEBUGF("them=%d, us=%d",them,us);
+      unsigned char *them_bar=&buffer[10+them*RHIZOME_BAR_BYTES];
+      unsigned char *us_bar=&usbuffer[10+us*RHIZOME_BAR_BYTES];
       int relation=0;
-      if (them<them_count&&us<us_count)
-	relation=memcmp(them_id,us_id,RHIZOME_BAR_BYTES);
+      if (them<them_count&&us<us_count) {
+	relation=memcmp(them_bar,us_bar,RHIZOME_BAR_COMPARE_BYTES);
+	DEBUGF("relation = %d",relation);
+	dump("them BAR",them_bar,RHIZOME_BAR_BYTES);
+	dump("us BAR",us_bar,RHIZOME_BAR_BYTES);
+      }
       else if (us==us_count) relation=-1; /* they have a bundle we don't have */
       else if (them==them_count) relation=+1; /* we have a bundle they don't have */
       else {
@@ -325,28 +331,28 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
       int who=0;
       if (relation<0) {
 	/* They have a bundle that we don't have any version of.
-	   Append 9-byte "please send" record consisting of 0x01 followed
+	   Append 16-byte "please send" record consisting of 0x01 followed
 	   by the eight-byte BID prefix from the BAR. */
 	c->buffer[c->buffer_offset_bytes+c->buffer_used]=0x01; /* Please send */
-	bcopy(&buffer[10+them*RHIZOME_BAR_BYTES],
+	bcopy(&buffer[10+them*RHIZOME_BAR_BYTES+RHIZOME_BAR_PREFIX_OFFSET],
 	      &c->buffer[c->buffer_offset_bytes+c->buffer_used+1],
-	      8);
-	c->buffer_used+=1+8;
+	      RHIZOME_BAR_PREFIX_BYTES);
+	c->buffer_used+=1+RHIZOME_BAR_PREFIX_BYTES;
 	who=-1;
 	DEBUGF("They have previously unseen bundle %016llx*",
-	       rhizome_bar_bidprefix(&buffer[10+them*RHIZOME_BAR_BYTES]));
+	       rhizome_bar_bidprefix_ll(&buffer[10+them*RHIZOME_BAR_BYTES]));
       } else if (relation>0) {
 	/* We have a bundle that they don't have any version of
-	   Append 9-byte "I have [newer]" record consisting of 0x02 followed
+	   Append 16-byte "I have [newer]" record consisting of 0x02 followed
 	   by the eight-byte BID prefix from the BAR. */
 	c->buffer[c->buffer_offset_bytes+c->buffer_used]=0x02; /* I have [newer] */
-	bcopy(&usbuffer[10+us*RHIZOME_BAR_BYTES],
+	bcopy(&usbuffer[10+us*RHIZOME_BAR_BYTES+RHIZOME_BAR_PREFIX_OFFSET],
 	      &c->buffer[c->buffer_offset_bytes+c->buffer_used+1],
-	      8);
-	c->buffer_used+=1+8;
+	      RHIZOME_BAR_PREFIX_BYTES);
+	c->buffer_used+=1+RHIZOME_BAR_PREFIX_BYTES;
 	who=+1;
 	DEBUGF("We have previously unseen bundle %016llx*",
-	       rhizome_bar_bidprefix(&usbuffer[10+us*RHIZOME_BAR_BYTES]));
+	       rhizome_bar_bidprefix_ll(&usbuffer[10+us*RHIZOME_BAR_BYTES]));
       } else {
 	/* We each have a version of this bundle, so see whose is newer */
 	long long them_version
@@ -356,28 +362,28 @@ rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
 	if (them_version>us_version) {
 	  /* They have the newer version of the bundle */
 	  c->buffer[c->buffer_offset_bytes+c->buffer_used]=0x01; /* Please send */
-	  bcopy(&buffer[10+them*RHIZOME_BAR_BYTES],
+	  bcopy(&buffer[10+them*RHIZOME_BAR_BYTES+RHIZOME_BAR_PREFIX_OFFSET],
 		&c->buffer[c->buffer_offset_bytes+c->buffer_used+1],
-		8);
-	  c->buffer_used+=1+8;
+		RHIZOME_BAR_PREFIX_BYTES);
+	  c->buffer_used+=1+RHIZOME_BAR_PREFIX_BYTES;
 	  DEBUGF("They have newer version of bundle %016llx* (%lld versus %lld)",
-		 rhizome_bar_bidprefix(&usbuffer[10+us*RHIZOME_BAR_BYTES]),
+		 rhizome_bar_bidprefix_ll(&usbuffer[10+us*RHIZOME_BAR_BYTES]),
 		 rhizome_bar_version(&usbuffer[10+us*RHIZOME_BAR_BYTES]),
 		 rhizome_bar_version(&buffer[10+them*RHIZOME_BAR_BYTES]));
 	} else if (them_version<us_version) {
 	  /* We have the newer version of the bundle */
 	  c->buffer[c->buffer_offset_bytes+c->buffer_used]=0x02; /* I have [newer] */
-	  bcopy(&usbuffer[10+us*RHIZOME_BAR_BYTES],
+	  bcopy(&usbuffer[10+us*RHIZOME_BAR_BYTES+RHIZOME_BAR_PREFIX_OFFSET],
 		&c->buffer[c->buffer_offset_bytes+c->buffer_used+1],
-		8);
-	  c->buffer_used+=1+8;
-	DEBUGF("We have newer version of bundle %016llx* (%lld versus %lld)",
-	       rhizome_bar_bidprefix(&usbuffer[10+us*RHIZOME_BAR_BYTES]),
-	       rhizome_bar_version(&usbuffer[10+us*RHIZOME_BAR_BYTES]),
-	       rhizome_bar_version(&buffer[10+them*RHIZOME_BAR_BYTES]));
+		RHIZOME_BAR_PREFIX_BYTES);
+	  c->buffer_used+=1+RHIZOME_BAR_PREFIX_BYTES;
+	  DEBUGF("We have newer version of bundle %016llx* (%lld versus %lld)",
+		 rhizome_bar_bidprefix_ll(&usbuffer[10+us*RHIZOME_BAR_BYTES]),
+		 rhizome_bar_version(&usbuffer[10+us*RHIZOME_BAR_BYTES]),
+		 rhizome_bar_version(&buffer[10+them*RHIZOME_BAR_BYTES]));
 	} else {
 	  DEBUGF("We both have the same version of %016llx*",
-		 rhizome_bar_bidprefix(&buffer[10+them*RHIZOME_BAR_BYTES]));
+		 rhizome_bar_bidprefix_ll(&buffer[10+them*RHIZOME_BAR_BYTES]));
 	}
       }
 

@@ -712,9 +712,10 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   DEBUGF("content_length=%d",content_length);
   dump("response",(unsigned char *)p,content_length);
 
-  /* We now have the list of 9-byte records that indicate the list of BAR prefixes
-     that differ between the two nodes.  We can now action those which are relevant,
-     i.e., based on whether we are pushing, pulling or synchronising (both).
+  /* We now have the list of (1+RHIZOME_BAR_PREFIX_BYTES)-byte records that indicate
+     the list of BAR prefixes that differ between the two nodes.  We can now action
+     those which are relevant, i.e., based on whether we are pushing, pulling or 
+     synchronising (both).
 
      I am currently undecided as to whether it is cleaner to have some general
      rhizome direct function for doing that, or whether it just adds unnecessary
@@ -724,12 +725,12 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   */
   DEBUGF("XXX Need to parse responses into actions");
   int i;
-  for(i=10;i<content_length;i+=9)
+  for(i=10;i<content_length;i+=(1+RHIZOME_BAR_PREFIX_BYTES))
     {
       int type=p[i];
       // unsigned char *bid_prefix=(unsigned char *)&p[i+1];
       unsigned long long 
-	bid_prefix_ll=rhizome_bar_bidprefix((unsigned char *)&p[i+1]);
+	bid_prefix_ll=rhizome_bar_bidprefix_ll((unsigned char *)&p[i+1]);
       DEBUGF("%s %016llx*",type==1?"push":"pull",bid_prefix_ll);
       if (type==2&&r->pullP) {
 	WARN("XXX Rhizome direct http pull yet implemented");
@@ -742,7 +743,9 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 
 	/* Start by getting the manifest, which is the main thing we need, and also
 	   gives us the information we need for sending any associated file. */
-	rhizome_manifest *m=rhizome_direct_get_manifest((unsigned char *)&p[i+1],8);
+	rhizome_manifest 
+	  *m=rhizome_direct_get_manifest((unsigned char *)&p[i+1],
+					 RHIZOME_BAR_PREFIX_BYTES);
 	if (!m) {
 	  WHY("This should never happen.  The manifest exists, but when I went looking for it, it doesn't appear to be there.");
 	  goto next_item;

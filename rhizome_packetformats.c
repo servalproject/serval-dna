@@ -35,6 +35,8 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
      and geographic bounding box information that is used to help manage flooding of
      bundles.
 
+     Old BAR format (no longer used):
+
      64 bits - manifest ID prefix.
      56 bits - low 56 bits of version number.
      8 bits  - TTL of bundle in hops.
@@ -43,6 +45,18 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
      16 bits - min longitude (-180 - +180).
      16 bits - max latitude (-90 - +90).
      16 bits - max longitude (-180 - +180).
+
+     New BAR format with longer manifest ID prefix:
+
+     120 bits - manifest ID prefix.
+     8 bits - log2(length) of associated file.
+     56 bits - low 56 bits of version number.
+     16 bits - min latitude (-90 - +90).
+     16 bits - min longitude (-180 - +180).
+     16 bits - max latitude (-90 - +90).
+     16 bits - max longitude (-180 - +180).
+     8 bits  - TTL of bundle in hops (0xff = unlimited distribution)
+
  */
 
   if (!m) { RETURN(WHY("null manifest passed in")); }
@@ -50,13 +64,13 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
   int i;
 
   /* Manifest prefix */
-  for(i=0;i<8;i++) bar[i]=m->cryptoSignPublic[i];
-  /* Version */
-  for(i=0;i<7;i++) bar[8+6-i]=(m->version>>(8*i))&0xff;
-  /* TTL */
-  if (m->ttl>0) bar[15]=m->ttl-1; else bar[15]=0;
+  for(i=0;i<RHIZOME_BAR_PREFIX_BYTES;i++) 
+    bar[RHIZOME_BAR_PREFIX_OFFSET+i]=m->cryptoSignPublic[i];
   /* file length */
-  for(i=0;i<8;i++) bar[16+7-i]=(m->fileLength>>(8*i))&0xff;
+  bar[RHIZOME_BAR_FILESIZE_OFFSET]=log2(m->fileLength);
+  /* Version */
+  for(i=0;i<7;i++) bar[RHIZOME_BAR_VERSION_OFFSET+6-i]=(m->version>>(8*i))&0xff;
+
   /* geo bounding box */
   double minLat=rhizome_manifest_get_double(m,"min_lat",-90);
   if (minLat<-90) minLat=-90; if (minLat>90) minLat=90;
@@ -65,13 +79,17 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
   double maxLat=rhizome_manifest_get_double(m,"max_lat",+90);
   if (maxLat<-90) maxLat=-90; if (maxLat>90) maxLat=90;
   double maxLong=rhizome_manifest_get_double(m,"max_long",+180);
-  if (maxLong<-180) maxLong=-180; if (maxLong>180) maxLong=180;
-  
+  if (maxLong<-180) maxLong=-180; if (maxLong>180) maxLong=180;  
   unsigned short v;
-  v=(minLat+90)*(65535/180); bar[24]=(v>>8)&0xff; bar[25]=(v>>0)&0xff;
-  v=(minLong+180)*(65535/360); bar[26]=(v>>8)&0xff; bar[27]=(v>>0)&0xff;
-  v=(maxLat+90)*(65535/180); bar[28]=(v>>8)&0xff; bar[29]=(v>>0)&0xff;
-  v=(maxLong+180)*(65535/360); bar[30]=(v>>8)&0xff; bar[31]=(v>>0)&0xff;
+  int o=RHIZOME_BAR_GEOBOX_OFFSET;
+  v=(minLat+90)*(65535/180); bar[o++]=(v>>8)&0xff; bar[o++]=(v>>0)&0xff;
+  v=(minLong+180)*(65535/360); bar[o++]=(v>>8)&0xff; bar[o++]=(v>>0)&0xff;
+  v=(maxLat+90)*(65535/180); bar[o++]=(v>>8)&0xff; bar[o++]=(v>>0)&0xff;
+  v=(maxLong+180)*(65535/360); bar[o++]=(v>>8)&0xff; bar[o++]=(v>>0)&0xff;
+
+  /* TTL */
+  if (m->ttl>0) bar[RHIZOME_BAR_TTL_OFFSET]=m->ttl-1; 
+  else bar[RHIZOME_BAR_TTL_OFFSET]=0;
   
   RETURN(0);
 }
@@ -81,18 +99,20 @@ long long rhizome_bar_version(unsigned char *bar)
   long long version=0;
   int i;
   // for(i=0;i<7;i++) bar[8+6-i]=(m->version>>(8*i))&0xff;
-  for(i=0;i<7;i++) version|=bar[8+6-i]<<(8LL*i);
+  for(i=0;i<7;i++) version|=bar[RHIZOME_BAR_VERSION_OFFSET+6-i]<<(8LL*i);
   return version;
 }
 
-unsigned long long rhizome_bar_bidprefix(unsigned char *bar)
+/* This function only displays the first 8 bytes, and should not be used
+   for comparison. */
+unsigned long long rhizome_bar_bidprefix_ll(unsigned char *bar)
 {
   long long bidprefix=0;
   int i;
-  for(i=0;i<8;i++) bidprefix|=((unsigned long long)bar[7-i])<<(8*i);
+  for(i=0;i<8;i++) 
+    bidprefix|=((unsigned long long)bar[RHIZOME_BAR_PREFIX_OFFSET+7-i])<<(8*i);
   return bidprefix;
 }
-
 
 int bundles_available=-1;
 int bundle_offset[2]={0,0};

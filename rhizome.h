@@ -63,6 +63,13 @@ typedef struct rhizome_signature {
 } rhizome_signature;
 
 #define RHIZOME_BAR_BYTES 32
+#define RHIZOME_BAR_COMPARE_BYTES 31
+#define RHIZOME_BAR_PREFIX_BYTES 15
+#define RHIZOME_BAR_PREFIX_OFFSET 0
+#define RHIZOME_BAR_FILESIZE_OFFSET 15
+#define RHIZOME_BAR_VERSION_OFFSET 16
+#define RHIZOME_BAR_GEOBOX_OFFSET 23
+#define RHIZOME_BAR_TTL_OFFSET 31
 
 #define MAX_MANIFEST_VARS 256
 #define MAX_MANIFEST_BYTES 8192
@@ -268,7 +275,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found,
 			   int checkVersionP);
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
 long long rhizome_bar_version(unsigned char *bar);
-unsigned long long rhizome_bar_bidprefix(unsigned char *bar);
+unsigned long long rhizome_bar_bidprefix_ll(unsigned char *bar);
 int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peerip, int *manifest_kept);
 int rhizome_list_manifests(const char *service, const char *sender_sid, const char *recipient_sid, int limit, int offset);
 int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp);
