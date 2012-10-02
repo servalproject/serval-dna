@@ -511,3 +511,8 @@ extern unsigned char favicon_bytes[];
 extern int favicon_len;
 
 int rhizome_import_from_files(const char *manifestpath,const char *filepath);
+int rhizome_fetch_request_manifest_by_prefix(struct sockaddr_in *peerip,
+					     unsigned char *prefix,
+					     int prefix_length,
+					     int importP);
+extern int rhizome_file_fetch_queue_count;

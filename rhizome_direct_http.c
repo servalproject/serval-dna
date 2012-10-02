@@ -508,9 +508,9 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
       r->request_length = 0;
       r->source_flags = 0;
 
-      /* Find the end of the headers and start of any body bytes that we have read so far.
-	 Copy the bytes to a separate buffer, because r->request and r->request_length get used
-	 internally in the parser.
+      /* Find the end of the headers and start of any body bytes that we have read
+	 so far. Copy the bytes to a separate buffer, because r->request and 
+	 r->request_length get used internally in the parser.
 	*/
       if (contentlen) {
 	char buffer[contentlen];
@@ -736,10 +736,25 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
       if (type==2&&r->pullP) {
 	WARN("XXX Rhizome direct http pull yet implemented");
 	/* Need to fetch manifest.  Once we have the manifest, then we can
-	   use our normal bundle fetch routines from rhizome_fetch.c
+	   use our normal bundle fetch routines from rhizome_fetch.c	 
+
+	   Generate a request like: GET /rhizome/manifestbybar/<hex of bar>
+	   and add it to our list of HTTP fetch requests, then watch
+	   until the request is finished.  That will give us the manifest.
+	   Then as noted above, we can use that to pull the file down using
+	   existing routines.
 	*/
+	if (!rhizome_fetch_request_manifest_by_prefix
+	    (&addr,(unsigned char *)&p[i+1],RHIZOME_BAR_PREFIX_BYTES,
+	     1 /* import, getting file if needed */))
+	  {
+	    /* Fetching the manifest, and then using it to see if we want to 
+	       fetch the file for import is all handled asynchronously, so just
+	       wait for it to finish. */
+	    while(rhizome_file_fetch_queue_count) fd_poll();
+	  }
+	
       } else if (type==1&&r->pushP) {
-	WARN("XXX rhizome direct http push not implemented");
 	/* Form up the POST request to submit the appropriate bundle. */
 
 	/* Start by getting the manifest, which is the main thing we need, and also
