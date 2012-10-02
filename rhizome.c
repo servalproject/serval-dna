@@ -41,60 +41,63 @@ int rhizome_enabled()
   return rhizome_enabled_flag;
 }
 
-/* Import a bundle from the inbox folder.  The bundle is contained a pair of files, one containing
-   the manifest and the optional other containing the payload.
-
-   The logic is all in rhizome_add_manifest().  This function just wraps that function and manages
-   file and object buffers and lifetimes.
+/* Import a bundle from a pair of files, one containing the manifest and the optional other
+   containing the payload.  The logic is all in rhizome_bundle_import().  This function just wraps
+   that function and manages file and object buffers and lifetimes.
 */
 
-int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out,
-			  const char *manifest_path, int ttl)
+int rhizome_bundle_import_files(const char *manifest_path, const char *payload_path, int ttl)
 {
   if (debug & DEBUG_RHIZOME)
-    DEBUGF("rhizome_bundle_import(m_in=%p, m_out=%p, manifest_path=%s, ttl=%d)",
-	m_in, m_out,
+    DEBUGF("(manifest_path=%s, payload_path=%s, ttl=%d)",
 	manifest_path ? alloca_str_toprint(manifest_path) : "NULL",
+	payload_path ? alloca_str_toprint(payload_path) : "NULL",
 	ttl
       );
-  if (m_out)
-    *m_out = NULL;
   /* Read manifest file if no manifest was given */
-  rhizome_manifest *m = m_in;
-  if (!m_in) {
-    if (!manifest_path)
-      return WHY("No manifest supplied");
-    m = rhizome_new_manifest();
-    if (!m)
-      return WHY("Out of manifests");
-    if (rhizome_read_manifest_file(m, manifest_path, 0 /* file not buffer */) == -1) {
-      rhizome_manifest_free(m);
-      return WHY("Could not read manifest file");
-    } else if (rhizome_manifest_verify(m)) {
-      rhizome_manifest_free(m);
-      return WHY("Could not verify manifest file");
-    }
+  if (!manifest_path)
+    return WHY("No manifest supplied");
+  int ret = 0;
+  rhizome_manifest *m = rhizome_new_manifest();
+  if (!m)
+    ret = WHY("Out of manifests");
+  else if (rhizome_read_manifest_file(m, manifest_path, 0 /* file not buffer */) == -1)
+    ret = WHY("Could not read manifest file");
+  else if (rhizome_manifest_verify(m))
+    ret = WHY("Verification of manifest file failed");
+  else {
+    m->dataFileName = strdup(payload_path);
+    if (rhizome_manifest_check_file(m))
+      ret = WHY("Payload does not belong to manifest");
+    else
+      ret = rhizome_bundle_import(m, ttl);
   }
+  if (m)
+    rhizome_manifest_free(m);
+  return ret;
+}
+
+/* Import a bundle from a finalised manifest struct.  The dataFileName element must give the path
+   of a readable file containing the payload unless the payload is null (zero length).  The logic is
+   all in rhizome_add_manifest().  This function just wraps that function and manages object buffers
+   and lifetimes.
+*/
+
+int rhizome_bundle_import(rhizome_manifest *m, int ttl)
+{
+  if (debug & DEBUG_RHIZOME)
+    DEBUGF("(m=%p, ttl=%d)", m, ttl);
   /* Add the manifest and its payload to the Rhizome database. */
   if (m->fileLength > 0 && !(m->dataFileName && m->dataFileName[0]))
     return WHY("Missing data file name");
   if (rhizome_manifest_check_file(m))
     return WHY("File does not belong to manifest");
   int ret = rhizome_manifest_check_duplicate(m, NULL);
-  if (ret == 0)
+  if (ret == 0) {
     ret = rhizome_add_manifest(m, ttl);
-  if (ret == -1) {
-    WHY("rhizome_add_manifest() failed");
-  } else {
-    if (manifest_path && rhizome_write_manifest_file(m, manifest_path))
-      ret = WHYF("Could not write %s", manifest_path);
+    if (ret == -1)
+      WHY("rhizome_add_manifest() failed");
   }
-  /* If the manifest structure was allocated in this function, and it is not being returned to the
-     caller, then this function is responsible for freeing it */
-  if (m_out)
-    *m_out = m;
-  else if (!m_in)
-    rhizome_manifest_free(m);
   return ret;
 }
 

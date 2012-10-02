@@ -317,7 +317,7 @@ test_HttpImport() {
          "$addr_localhost:$PORTA/rhizome/import"
    tfw_cat http.headers http.output
    executeOk_servald rhizome list ''
-   assert_rhizome_list README.WHYNOTSIPS
+   assert_rhizome_list README.WHYNOTSIPS!
 }
 
 doc_HttpAddLocal="Add file locally using HTTP, returns manifest"

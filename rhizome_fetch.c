@@ -388,7 +388,7 @@ void rhizome_import_received_bundle(struct rhizome_manifest *m)
     DEBUGF("manifest len=%d has %d signatories", m->manifest_bytes, m->sig_count);
     dump("manifest", m->manifestdata, m->manifest_all_bytes);
   }
-  rhizome_bundle_import(m, NULL, NULL, m->ttl - 1 /* TTL */);
+  rhizome_bundle_import(m, m->ttl - 1 /* TTL */);
 }
 
 /* Verifies manifests as late as possible to avoid wasting time. */
@@ -707,7 +707,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
     } else {
       if (debug & DEBUG_RHIZOME_RX) 
 	DEBUGF("We already have the file for this manifest; importing from manifest alone.");
-      rhizome_bundle_import(m, NULL, NULL, m->ttl-1);
+      rhizome_bundle_import(m, m->ttl-1);
     }
   }
 

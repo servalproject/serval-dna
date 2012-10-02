@@ -209,7 +209,8 @@ int rhizome_store_bundle(rhizome_manifest *m);
 int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid);
 int rhizome_clean_payload(const char *fileidhex);
 int rhizome_store_file(rhizome_manifest *m,const unsigned char *key);
-int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, const char *manifest_path, int ttl);
+int rhizome_bundle_import_files(const char *manifest_path, const char *payload_path, int ttl);
+int rhizome_bundle_import(rhizome_manifest *m, int ttl);
 
 int rhizome_manifest_verify(rhizome_manifest *m);
 int rhizome_manifest_check_sanity(rhizome_manifest *m_in);

@@ -45,23 +45,13 @@ int rhizome_direct_form_received(rhizome_http_request *r)
   if (!strcmp(r->path,"/rhizome/import")) {
     switch(r->fields_seen) {
     case RD_MIME_STATE_MANIFESTHEADERS | RD_MIME_STATE_DATAHEADERS: {
-	/* A bundle to import */
-	strbuf cmd = strbuf_alloca(1024);
-	strbuf_sprintf(cmd, 
-	    "servald rhizome import bundle rhizomedirect.%d.data rhizomedirect.%d.manifest",
-	    r->alarm.poll.fd, r->alarm.poll.fd
-	  );
-	DEBUGF("system(\"%s\")", strbuf_str(cmd));
-	int status = system(strbuf_str(cmd));
-	/* clean up after ourselves */
+	/* Got a bundle to import */
+	strbuf manifest_path = strbuf_alloca(50);
+	strbuf payload_path = strbuf_alloca(50);
+	strbuf_sprintf(manifest_path, "rhizomedirect.%d.manifest", r->alarm.poll.fd);
+	strbuf_sprintf(payload_path, "rhizomedirect.%d.data", r->alarm.poll.fd);
+	int ret = rhizome_bundle_import_files(strbuf_str(manifest_path), strbuf_str(payload_path), 1); // ttl = 1
 	rhizome_direct_clear_temporary_files(r);
-	if (status == -1) {
-	  WHYF_perror("system(\"%s\")", strbuf_str(cmd));
-	  return rhizome_server_simple_http_response(r, 500, "Server error: Rhizome import command not executed.");
-	}
-	strbuf st = strbuf_alloca(100);
-	strbuf_append_exit_status(st, status);
-	DEBUGF("Import command %s", strbuf_str(st));
 	/* report back to caller.
 	  200 = ok, which is probably appropriate for when we already had the bundle.
 	  201 = content created, which is probably appropriate for when we successfully
@@ -70,18 +60,13 @@ int rhizome_direct_form_received(rhizome_http_request *r)
 	  the import fails due to malformed data etc.
 	  (should probably also indicate if we have a newer version if possible)
 	*/
-	if (WIFEXITED(status)) {
-	  switch (WEXITSTATUS(status)) {
-	  case 0:
-	    return rhizome_server_simple_http_response(r, 201, "Bundle succesfully imported.");
-	  case 1:
-	    return rhizome_server_simple_http_response(r, 200, "Bundle already imported.");
-	  default:
-	    return rhizome_server_simple_http_response(r, 500, "Server error: Rhizome import command failed.");
-	  }
+	switch (ret) {
+	case 0:
+	  return rhizome_server_simple_http_response(r, 201, "Bundle succesfully imported.");
+	case 2:
+	  return rhizome_server_simple_http_response(r, 200, "Bundle already imported.");
 	}
-	WHY("should not reach here");
-	return rhizome_server_simple_http_response(r, 500, "Server error: Internal bug.");
+	return rhizome_server_simple_http_response(r, 500, "Server error: Rhizome import command failed.");
       }
       break;     
     default:
