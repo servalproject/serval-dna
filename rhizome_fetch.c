@@ -989,30 +989,24 @@ int rhizome_fetch_request_manifest_by_prefix(struct sockaddr_in *peerip,
   q->file_len=-1;
   q->file_ofs=0;
   
-  /* XXX Don't forget to implement resume */
-  /* XXX We should stream file straight into the database */
-  const char *id = rhizome_manifest_get(q->manifest, "id", NULL, 0);
-  if (id == NULL) {
-    close(sock);
-    return WHY("Manifest missing ID");
-  }
   if (create_rhizome_import_dir() == -1)
     return -1;
   char filename[1024];
-  if (!FORM_RHIZOME_IMPORT_PATH(filename, "file.%s", id)) {
+  if (!FORM_RHIZOME_IMPORT_PATH(filename, "file.%s", 
+				alloca_tohex(prefix,prefix_length))) {
     close(sock);
     return -1;
   }
-  q->manifest->dataFileName = strdup(filename);
-  if ((q->file = fopen(q->manifest->dataFileName, "w")) == NULL) {
+  if ((q->file = fopen(filename, "w")) == NULL) {
     WHY_perror("fopen");
     if (debug & DEBUG_RHIZOME_RX)
-      DEBUGF("Could not open '%s' to write received file", q->manifest->dataFileName);
+      DEBUGF("Could not open '%s' to write received file", filename);
     close(sock);
     return -1;
   }
   
-  INFOF("RHIZOME HTTP REQUEST, GET \"/rhizome/file/%s\"", q->fileid);
+  INFOF("RHIZOME HTTP REQUEST, GET \"/rhizome/manifestbyprefix/%s\"", 
+	alloca_tohex(prefix,prefix_length));
   
   /* Watch for activity on the socket */
   q->alarm.function=rhizome_fetch_poll;
@@ -1029,6 +1023,6 @@ int rhizome_fetch_request_manifest_by_prefix(struct sockaddr_in *peerip,
   rhizome_file_fetch_queue_count++;
   if (debug & DEBUG_RHIZOME_RX)
     DEBUGF("Queued file for fetching into %s (%d in queue)",
-	   q->manifest->dataFileName, rhizome_file_fetch_queue_count);
+	   filename, rhizome_file_fetch_queue_count);
   return 0;
 }
