@@ -241,17 +241,17 @@ int rhizome_direct_form_received(rhizome_http_request *r)
 	rhizome_manifest_set_ll(m, "date", (long long) gettime_ms());
 	if (debug & DEBUG_RHIZOME) DEBUGF("missing 'date', set default date=%s", rhizome_manifest_get(m, "date", NULL, 0));
       }
-      if (strcasecmp(RHIZOME_SERVICE_FILE, service) == 0) {
-	const char *name = rhizome_manifest_get(m, "name", NULL, 0);
-	if (name == NULL) {
-	  name = strrchr(filepath, '/');
-	  name = name ? name + 1 : filepath;
-	  rhizome_manifest_set(m, "name", name);
-	  if (debug & DEBUG_RHIZOME) DEBUGF("missing 'name', set default name=\"%s\"", name);
-	} else {
-	  if (debug & DEBUG_RHIZOME) DEBUGF("manifest contains name=\"%s\"", name);
-	}
+
+      const char *name = rhizome_manifest_get(m, "name", NULL, 0);
+      if (name == NULL) {
+	name=r->data_file_name;
+	rhizome_manifest_set(m, "name", r->data_file_name);
+	if (debug & DEBUG_RHIZOME) DEBUGF("missing 'name', set name=\"%s\" from HTTP post field filename specification", name);
+      } else {
+	if (debug & DEBUG_RHIZOME) DEBUGF("manifest contains name=\"%s\"", name);
       }
+      DEBUGF("File name = '%s'",name);
+
       const char *senderhex = rhizome_manifest_get(m, "sender", NULL, 0);
       unsigned char authorSid[SID_SIZE];
       if (senderhex) fromhexstr(authorSid,senderhex,SID_SIZE);
