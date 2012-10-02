@@ -508,7 +508,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, struct sockaddr_i
   candidates[i].peer=*peerip;
 
   int j;
-  if (0) {
+  if (1) {
     DEBUG("Rhizome priorities fetch list now:");
     for(j=0;j<candidate_count;j++)
       DEBUGF("%02d:%s:size=%lld, priority=%d",
@@ -542,9 +542,11 @@ void rhizome_enqueue_suggestions(struct sched_ent *alarm)
     bcopy(&candidates[i],&candidates[0],bytes);
     candidate_count-=i;
   }
-  alarm->alarm = gettime_ms() + rhizome_fetch_interval_ms;
-  alarm->deadline = alarm->alarm + rhizome_fetch_interval_ms*3;
-  schedule(alarm);
+  if (alarm) {
+    alarm->alarm = gettime_ms() + rhizome_fetch_interval_ms;
+    alarm->deadline = alarm->alarm + rhizome_fetch_interval_ms*3;
+    schedule(alarm);
+  }
   return;
 }
 
@@ -569,7 +571,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
      the cache slot number to implicitly store the first bits.
   */
 
-  if (debug & DEBUG_RHIZOME_RX)
+  if (1||debug & DEBUG_RHIZOME_RX)
     DEBUGF("Fetching manifest bid=%s version=%lld size=%lld:", bid, m->version, filesize);
 
   if (rhizome_manifest_version_cache_lookup(m)) {
@@ -591,10 +593,12 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
   /* Don't queue if already queued */
   int i;
   for (i = 0; i < rhizome_file_fetch_queue_count; ++i) {
-    if (memcmp(m->cryptoSignPublic, file_fetch_queue[i].manifest->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES) == 0) {
-      if (debug & DEBUG_RHIZOME_RX)
-	DEBUGF("   manifest fetch already queued");
-      return 3;
+    if (file_fetch_queue[i].manifest) {
+      if (memcmp(m->cryptoSignPublic, file_fetch_queue[i].manifest->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES) == 0) {
+	if (debug & DEBUG_RHIZOME_RX)
+	  DEBUGF("   manifest fetch already queued");
+	return 3;
+      }
     }
   }
 
@@ -803,8 +807,9 @@ void rhizome_write_content(rhizome_file_fetch_record *q, char *buffer, int bytes
 	  DEBUGF("Couldn't read manifest from %s",q->filename);
 	  rhizome_manifest_free(m);
 	} else {
-	  DEBUGF("All looks good for importing manifest");
+	  DEBUGF("All looks good for importing manifest %p",m);
 	  rhizome_suggest_queue_manifest_import(m,&q->peer);
+	  rhizome_enqueue_suggestions(NULL);
 	}
       }
     }
@@ -1014,12 +1019,12 @@ int rhizome_fetch_request_manifest_by_prefix(struct sockaddr_in *peerip,
     return -1;
   }
   if (strlen(q->filename)<sizeof(q->filename))
-    strcpy(filename,q->filename);
+    strcpy(q->filename,filename);
   else q->filename[0]=0;
 
   if ((q->file = fopen(filename, "w")) == NULL) {
     WHY_perror("fopen");
-    if (debug & DEBUG_RHIZOME_RX)
+    //    if (debug & DEBUG_RHIZOME_RX)
       DEBUGF("Could not open '%s' to write received file", filename);
     close(sock);
     return -1;
