@@ -285,7 +285,7 @@ int isOverlayPacket(XPRINTF xpf, const unsigned char *packet, size_t *ofs, size_
 
       if (cantDecodeFrame) {
 	xprintf(xpf,"%sWARNING: Cannot decode compressed and/or encrypted frame.\n",indent(8));
-	_dump(xpf, frame, frame_len, 0, "%s", indent(10));
+	_dump(xpf, frame, next_frame_ofs - *ofs, 0, "%s", indent(10));
       }
       else {
 	/* Decrypt and/or decompress frame */
