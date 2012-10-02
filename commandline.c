@@ -307,10 +307,53 @@ int app_echo(int argc, const char *const *argv, struct command_line_option *o, v
   return 0;
 }
 
+void lookup_send_request(unsigned char *srcsid, int srcport, unsigned char *dstsid, const char *did){
+  int i;
+  overlay_mdp_frame mdp;
+  bzero(&mdp,sizeof(mdp));
+  
+  
+  /* set source address to a local address, and pick a random port */
+  mdp.out.src.port=srcport;
+  bcopy(srcsid,mdp.out.src.sid,SID_SIZE);
+  
+  /* Send to destination address and DNA lookup port */
+  
+  if (dstsid){
+    /* Send an encrypted unicast packet */
+    mdp.packetTypeAndFlags=MDP_TX;
+    bcopy(dstsid, mdp.out.dst.sid, SID_SIZE);
+  }else{
+    /* Send a broadcast packet, flooding across the local mesh network */
+    mdp.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT;
+    for(i=0;i<SID_SIZE;i++) 
+      mdp.out.dst.sid[i]=0xff;
+  }  
+  mdp.out.dst.port=MDP_PORT_DNALOOKUP;
+  
+  /* put DID into packet */
+  bcopy(did,&mdp.out.payload[0],strlen(did)+1);
+  mdp.out.payload_length=strlen(did)+1;
+  
+  overlay_mdp_send(&mdp,0,0);
+  
+  /* Also send an encrypted unicast request to a configured directory service */
+  if (!dstsid){
+    const char *directory_service = confValueGet("directory.service", NULL);
+    if (directory_service){
+      if (stowSid(mdp.out.dst.sid, 0, directory_service)==-1){
+	WHYF("Invalid directory server SID %s", directory_service);
+      }else{
+	mdp.packetTypeAndFlags=MDP_TX;
+	overlay_mdp_send(&mdp,0,0);
+      }
+    }
+  }
+}
+
 int app_dna_lookup(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
-  int i;
   
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
@@ -344,8 +387,6 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 
   /* use MDP to send the lookup request to MDP_PORT_DNALOOKUP, and wait for
      replies. */
-  overlay_mdp_frame mdp;
-  bzero(&mdp,sizeof(mdp));
 
   /* Now repeatedly send resolution request and collect results until we reach
      timeout. */
@@ -357,34 +398,9 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
   while (timeout > (now = gettime_ms()))
     {
       if ((last_tx+interval)<now)
-	{ 
-	  /* Send a broadcast packet, flooding across the local mesh network */
-	  mdp.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT;
-	  
-	  /* set source address to a local address, and pick a random port */
-	  mdp.out.src.port=port;
-	  bcopy(&srcsid[0],&mdp.out.src.sid[0],SID_SIZE);
-	  
-	  /* Send to broadcast address and DNA lookup port */
-	  for(i=0;i<SID_SIZE;i++) mdp.out.dst.sid[i]=0xff;
-	  mdp.out.dst.port=MDP_PORT_DNALOOKUP;
-	  
-	  /* put DID into packet */
-	  bcopy(did,&mdp.out.payload[0],strlen(did)+1);
-	  mdp.out.payload_length=strlen(did)+1;
+	{
 
-	  overlay_mdp_send(&mdp,0,0);
-	  
-	  /* Also send an encrypted unicast request to a configured directory service */
-	  const char *directory_service = confValueGet("directory.service", NULL);
-	  if (directory_service){
-	    if (stowSid(mdp.out.dst.sid, 0, directory_service)==-1){
-	      WHYF("Invalid directory server SID %s", directory_service);
-	    }else{
-	      mdp.packetTypeAndFlags=MDP_TX;
-	      overlay_mdp_send(&mdp,0,0);
-	    }
-	  }
+	  lookup_send_request(srcsid, port, NULL, did);
 
 	  last_tx=now;
 	  interval+=interval>>1;
@@ -395,7 +411,7 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
 	  {
 	    overlay_mdp_frame rx;
 	    int ttl;
-	    while (overlay_mdp_recv(&rx,&ttl)==0)
+	    if (overlay_mdp_recv(&rx, port, &ttl)==0)
 	      {
 		if (rx.packetTypeAndFlags==MDP_ERROR)
 		  {
@@ -784,7 +800,7 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
 
       if (result>0) {
 	int ttl=-1;
-	while (overlay_mdp_recv(&mdp,&ttl)==0) {
+	if (overlay_mdp_recv(&mdp, port, &ttl)==0) {
 	  switch(mdp.packetTypeAndFlags&MDP_TYPE_MASK) {
 	  case MDP_ERROR:
 	    WHYF("mdpping: overlay_mdp_recv: %s (code %d)", mdp.error.message, mdp.error.error);
@@ -1499,9 +1515,7 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
     /* Asked for DID resolution, but did not get it, so do a DNA lookup
        here.  We do this on the client side, so that we don't block the 
        single-threaded server. */
-    overlay_mdp_frame mdp_resolve;
     overlay_mdp_frame mdp_reply;
-    bzero(&mdp_resolve,sizeof(mdp_resolve));
     int port=32768+(random()&0xffff);
     
     unsigned char srcsid[SID_SIZE];
@@ -1517,15 +1531,8 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 	now=gettime_ms();
 	
 	if (now >= next_send){
-	  mdp_resolve.packetTypeAndFlags=MDP_TX;
-	  mdp_resolve.out.src.port=port;
-	  bcopy(&srcsid[0],&mdp_resolve.out.src.sid[0],SID_SIZE);
-	  bcopy(&mdp.nodeinfo.sid[0],&mdp_resolve.out.dst.sid[0],SID_SIZE);
-	  mdp_resolve.out.dst.port=MDP_PORT_DNALOOKUP;
-	  /* search for any DID */
-	  mdp_resolve.out.payload[0]=0;
-	  mdp_resolve.out.payload_length=1;
-	  overlay_mdp_send(&mdp_resolve,0,0);
+	  /* Send a unicast packet to this node, asking for any did */
+	  lookup_send_request(srcsid, port, mdp.nodeinfo.sid, "");
 	  next_send+=125;
 	  continue;
 	}
@@ -1535,7 +1542,7 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 	  continue;
 	
 	int ttl=-1;
-	if (overlay_mdp_recv(&mdp_reply,&ttl))
+	if (overlay_mdp_recv(&mdp_reply, port, &ttl))
 	  continue;
 	
 	if ((mdp_reply.packetTypeAndFlags&MDP_TYPE_MASK)==MDP_ERROR){
@@ -1572,7 +1579,7 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 	    WHYF("Received malformed DNA reply: %s", 
 		 alloca_toprint(160, (const char *)mdp_reply.in.payload, mdp_reply.in.payload_length));
 	  } else {
-	    /* Got a good DNA reply, copy it into place */
+	    /* Got a good DNA reply, copy it into place and stop polling */
 	    bcopy(did,mdp.nodeinfo.did,32);
 	    bcopy(name,mdp.nodeinfo.name,64);
 	    mdp.nodeinfo.resolve_did=1;

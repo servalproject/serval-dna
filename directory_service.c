@@ -70,7 +70,7 @@ static void add_record(){
   int ttl;
   overlay_mdp_frame mdp;
   
-  if (overlay_mdp_recv(&mdp, &ttl))
+  if (overlay_mdp_recv(&mdp, MDP_PORT_DIRECTORY, &ttl))
     return;
   
   if (mdp.packetTypeAndFlags&MDP_NOCRYPT){

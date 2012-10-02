@@ -59,27 +59,30 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
     }
   }
   
-  if (overlay_mdp_client_poll(timeout_ms)<=0){
-    /* Timeout */
-    mdp->packetTypeAndFlags=MDP_ERROR;
-    mdp->error.error=1;
-    snprintf(mdp->error.message,128,"Timeout waiting for reply to MDP packet (packet was successfully sent).");    
-    return -1; /* WHY("Timeout waiting for server response"); */
+  int port=mdp->out.dst.port;
+  time_ms_t started = gettime_ms();
+  
+  while(timeout_ms>=0 && overlay_mdp_client_poll(timeout_ms)>0){
+    int ttl=-1;
+    if (!overlay_mdp_recv(mdp, port, &ttl)) {
+      /* If all is well, examine result and return error code provided */
+      if ((mdp->packetTypeAndFlags&MDP_TYPE_MASK)==MDP_ERROR)
+	return mdp->error.error;
+      else
+      /* Something other than an error has been returned */
+	return 0;
+    }
+    
+    // work out how much longer we can wait for a valid response
+    time_ms_t now = gettime_ms();
+    timeout_ms -= (now - started);
   }
   
-  int ttl=-1;
-  if (!overlay_mdp_recv(mdp,&ttl)) {
-    /* If all is well, examine result and return error code provided */
-    if ((mdp->packetTypeAndFlags&MDP_TYPE_MASK)==MDP_ERROR)
-      return mdp->error.error;
-    else
-    /* Something other than an error has been returned */
-      return 0;
-  } else {
-    /* poll() said that there was data, but there isn't.
-     So we will abort. */
-    return WHY("poll() aborted");
-  }
+  /* Timeout */
+  mdp->packetTypeAndFlags=MDP_ERROR;
+  mdp->error.error=1;
+  snprintf(mdp->error.message,128,"Timeout waiting for reply to MDP packet (packet was successfully sent).");    
+  return -1; /* WHY("Timeout waiting for server response"); */
 }
 
 char overlay_mdp_client_socket_path[1024];
@@ -170,7 +173,7 @@ int overlay_mdp_client_poll(time_ms_t timeout_ms)
   return ret;
 }
 
-int overlay_mdp_recv(overlay_mdp_frame *mdp,int *ttl) 
+int overlay_mdp_recv(overlay_mdp_frame *mdp, int port, int *ttl) 
 {
   char mdp_socket_name[101];
   unsigned char recvaddrbuffer[1024];
@@ -204,11 +207,16 @@ int overlay_mdp_recv(overlay_mdp_frame *mdp,int *ttl)
 	return WHY("Reply did not come from server");
     }
     
+    // silently drop incoming packets for the wrong port number
+    if (port>0 && port != mdp->in.dst.port)
+      return -1;
+    
     int expected_len = overlay_mdp_relevant_bytes(mdp);
     
     if (len < expected_len){
       return WHYF("Expected packet length of %d, received only %lld bytes", expected_len, (long long) len);
     }
+    
     /* Valid packet received */
     return 0;
   } else 
