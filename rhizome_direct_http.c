@@ -51,6 +51,7 @@ int rhizome_direct_form_received(rhizome_http_request *r)
 	strbuf_sprintf(manifest_path, "rhizomedirect.%d.manifest", r->alarm.poll.fd);
 	strbuf_sprintf(payload_path, "rhizomedirect.%d.data", r->alarm.poll.fd);
 	int ret = rhizome_bundle_import_files(strbuf_str(manifest_path), strbuf_str(payload_path), 1); // ttl = 1
+
 	rhizome_direct_clear_temporary_files(r);
 	/* report back to caller.
 	  200 = ok, which is probably appropriate for when we already had the bundle.

@@ -509,3 +509,5 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *);
 
 extern unsigned char favicon_bytes[];
 extern int favicon_len;
+
+int rhizome_import_from_files(const char *manifestpath,const char *filepath);

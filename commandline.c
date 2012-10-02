@@ -1200,66 +1200,7 @@ int app_rhizome_import_bundle(int argc, const char *const *argv, struct command_
   cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "");
   if (rhizome_opendb() == -1)
     return -1;
-  rhizome_manifest *m = rhizome_new_manifest();
-  if (!m)
-    return WHY("Out of manifests.");
-  int status = -1;
-  if (rhizome_read_manifest_file(m, manifestpath, 0) == -1) {
-    status = WHY("could not read manifest file");
-  } else if (rhizome_manifest_verify(m) == -1) {
-    status = WHY("Could not verify manifest file.");
-  } else {
-    /* Add the manifest and its associated file to the Rhizome database. */
-    m->dataFileName = strdup(filepath);
-    if (rhizome_manifest_check_file(m))
-      status = WHY("file does not belong to manifest");
-    else {
-      int ret = rhizome_manifest_check_duplicate(m, NULL);
-      if (ret == -1)
-	status = WHY("rhizome_manifest_check_duplicate() failed");
-      else if (ret) {
-	INFO("Duplicate found in store");
-	status = 1;
-      } else if (rhizome_add_manifest(m, 1) == -1) { // ttl = 1
-	status = WHY("rhizome_add_manifest() failed");
-      } else {
-	status = 0;
-      }
-      if (status != -1) {
-	const char *service = rhizome_manifest_get(m, "service", NULL, 0);
-	if (service) {
-	  cli_puts("service");
-	  cli_delim(":");
-	  cli_puts(service);
-	  cli_delim("\n");
-	}
-	{
-	  cli_puts("manifestid");
-	  cli_delim(":");
-	  cli_puts(alloca_tohex(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES));
-	  cli_delim("\n");
-	}
-	cli_puts("filesize");
-	cli_delim(":");
-	cli_printf("%lld", m->fileLength);
-	cli_delim("\n");
-	if (m->fileLength != 0) {
-	  cli_puts("filehash");
-	  cli_delim(":");
-	  cli_puts(m->fileHexHash);
-	  cli_delim("\n");
-	}
-	const char *name = rhizome_manifest_get(m, "name", NULL, 0);
-	if (name) {
-	  cli_puts("name");
-	  cli_delim(":");
-	  cli_puts(name);
-	  cli_delim("\n");
-	}
-      }
-    }
-  }
-  rhizome_manifest_free(m);
+  int status=rhizome_import_from_files(manifestpath,filepath);
   return status;
 }
 
