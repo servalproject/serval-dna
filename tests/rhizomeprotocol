@@ -286,8 +286,6 @@ setup_Push() {
 }
 test_Push() {
    executeOk_servald rhizome direct push
-   assert bundle_received_by $BID2 $VERSION2 +A
-   assert ! bundle_received_by $BID1 $VERSION1 +B
    set_instance +A
    executeOk_servald rhizome list ''
    assert_rhizome_list file1 file2
@@ -336,7 +334,7 @@ setup_HttpAddLocal() {
 }
 test_HttpAddLocal() {
    echo 'File file1' >file1
-   executeOk curl --silent --form 'data=@file1' "$addr_localhost:$PORTA" --output file1.manifest
+   executeOk curl --silent --form 'data=@file1' "http://$addr_localhost:$PORTA/rhizome/import" --output file1.manifest
    assert_manifest_complete file1.manifest
    executeOk_servald rhizome list ''
    assert_rhizome_list file1
