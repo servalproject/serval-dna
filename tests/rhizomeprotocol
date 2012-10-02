@@ -303,8 +303,6 @@ setup_Pull() {
 }
 test_Pull() {
    executeOk_servald rhizome direct pull
-   assert bundle_received_by $BID1 $VERSION1 +B
-   assert ! bundle_received_by $BID2 $VERSION2 +A
    set_instance +A
    executeOk_servald rhizome list ''
    assert_rhizome_list file1
@@ -320,8 +318,6 @@ setup_Sync() {
 }
 test_Sync() {
    executeOk_servald rhizome direct sync
-   assert bundle_received_by $BID2 $VERSION2 +A
-   assert bundle_received_by $BID1 $VERSION1 +B
    set_instance +A
    executeOk_servald rhizome list ''
    assert_rhizome_list file1 file2

@@ -643,15 +643,20 @@ int rhizome_store_bundle(rhizome_manifest *m)
   unsigned char bar[RHIZOME_BAR_BYTES];
   rhizome_manifest_to_bar(m,bar);
 
-  /* Store the file */
+  /* Store the file (but not if it is already in the database) */
+  // TODO encrypted payloads - pass encryption key here. Filehash should be of
+  // encrypted data.
+  // We should add the file in the same transaction, but closing the blob seems
+  // to cause some issues.
   char filehash[RHIZOME_FILEHASH_STRLEN + 1];
   if (m->fileLength > 0) {
     if (!m->fileHashedP)
       return WHY("Manifest payload hash unknown");
     strncpy(filehash, m->fileHexHash, sizeof filehash);
     str_toupper_inplace(filehash);
-    // TODO encrypted payloads - pass encryption key here
-    // We should add the file in the same transaction, but closing the blob seems to cause some issues.
+
+    /* rhizome_store_file() checks if it is already in the database, so we just
+       call it normally. */
     if (rhizome_store_file(m, NULL))
       return WHY("Could not store file");
   } else {
@@ -852,6 +857,31 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
   if (!m->fileHashedP)
     return WHY("Cannot store bundle file until it has been hashed");
 
+  /* See if the file is already stored, and if so, don't bother storing it again.
+     Do this check BEFORE trying to open the associated file, because if the caller
+     has received a manifest and checked that it exists in the database, it may 
+     (sensibly) elect not supply the file. Rhizome Direct does this. */
+  long long count = 0;
+  if (sqlite_exec_int64(&count, "SELECT COUNT(*) FROM FILES WHERE id='%s' AND datavalid<>0;", hash) < 1) {
+    WHY("Failed to count stored files");
+    goto error;
+  }
+  if (count >= 1) {
+    /* File is already stored, so just update the highestPriority field if required. */
+    long long storedPriority = -1;
+    if (sqlite_exec_int64(&storedPriority, "SELECT highestPriority FROM FILES WHERE id='%s' AND datavalid!=0", hash) == -1) {
+      WHY("Failed to select highest priority");
+      goto error;
+    }
+    if (storedPriority<priority) {
+      if (sqlite_exec_void("UPDATE FILES SET highestPriority=%d WHERE id='%s';", priority, hash) == -1) {
+	WHY("SQLite failed to update highestPriority field for stored file.");
+	goto error;
+      }
+    }
+    return 0;
+  }
+
   int fd=open(file,O_RDONLY);
   if (fd == -1) {
     WHY_perror("open");
@@ -882,29 +912,6 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
     WHY_perror("mmap");
     WHY("mmap() of associated file failed.");
     goto error;
-  }
-
-  /* See if the file is already stored, and if so, don't bother storing it again */
-  long long count = 0;
-  if (sqlite_exec_int64(&count, "SELECT COUNT(*) FROM FILES WHERE id='%s' AND datavalid<>0;", hash) < 1) {
-    WHY("Failed to count stored files");
-    goto error;
-  }
-  if (count >= 1) {
-    /* File is already stored, so just update the highestPriority field if required. */
-    long long storedPriority = -1;
-    if (sqlite_exec_int64(&storedPriority, "SELECT highestPriority FROM FILES WHERE id='%s' AND datavalid!=0", hash) == -1) {
-      WHY("Failed to select highest priority");
-      goto error;
-    }
-    if (storedPriority<priority) {
-      if (sqlite_exec_void("UPDATE FILES SET highestPriority=%d WHERE id='%s';", priority, hash) == -1) {
-	WHY("SQLite failed to update highestPriority field for stored file.");
-	goto error;
-      }
-    }
-    close(fd);
-    return 0;
   }
 
   /* Okay, so there are no records that match, but we should delete any half-baked record (with datavalid=0) so that the insert below doesn't fail.
