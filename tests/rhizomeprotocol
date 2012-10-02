@@ -213,6 +213,55 @@ test_FileTransferDelete() {
    assert_received file1_2
 }
 
+doc_HttpImport="Import bundle using HTTP POST multi-part form."
+setup_HttpImport() {
+   setup_curl_7
+   setup_common
+   cat >README.WHYNOTSIPS <<'EOF'
+When we were looking at implementing secure calls for OpenBTS it was suggested
+that we configure Asterisk to use SIPS/ZRTP. This would have been relatively
+easy to setup, however there are a few problems.
+
+Number one is that when Asterisk checks the certificates it will either
+validate the certificate (checking the chain of trust and so on) and then
+check that the common name attribute on the certificate matches the hostname
+of the peer, or it will do none of these checks. This code is in main/tcptls.c
+line 206 (in version 1.8.14.1).
+
+This is undesirable in a setup where there is limited or no infrastructure as
+there is not likely to be a DNS server setup, or even rigid IP assignments
+that would allow a static hosts file based setup. This situation would force
+the administrator to disable the checks completely which would allow a trivial
+man in the middle attack.
+
+It would be possible to modify Asterisk to have a third way where it validates
+the certificate and checks the chain of trust but does not look at the common
+name. We decided against this approach as the VOMP channel driver was written
+in time to avoid it.
+EOF
+   set_instance +B
+   executeOk_servald rhizome add file $SIDB '' README.WHYNOTSIPS README.WHYNOTSIPS.manifest
+   assert_manifest_complete README.WHYNOTSIPS.manifest
+   assert_stdout_add_file README.WHYNOTSIPS
+   set_instance +A
+   start_servald_instances +A
+   wait_until rhizome_http_server_started +A
+   get_rhizome_server_port PORTA +A
+}
+test_HttpImport() {
+   executeOk curl \
+         --silent --fail --show-error \
+         --output http.output \
+         --dump-header http.headers \
+         --write-out '%{http_code}\n' \
+         --form 'data=@README.WHYNOTSIPS' \
+         --form 'manifest=@README.WHYNOTSIPS.manifest' \
+         "$addr_localhost:$PORTA/rhizome/import"
+   tfw_cat http.headers http.output
+   executeOk_servald rhizome list ''
+   assert_rhizome_list README.WHYNOTSIPS!
+}
+
 setup_sync() {
    set_instance +A
    add_file file1
@@ -269,55 +318,6 @@ test_Sync() {
    assert_received file2
    set_instance +B
    assert_received file1
-}
-
-doc_HttpImport="Import bundle using HTTP POST multi-part form."
-setup_HttpImport() {
-   setup_curl_7
-   setup_common
-   cat >README.WHYNOTSIPS <<'EOF'
-When we were looking at implementing secure calls for OpenBTS it was suggested
-that we configure Asterisk to use SIPS/ZRTP. This would have been relatively
-easy to setup, however there are a few problems.
-
-Number one is that when Asterisk checks the certificates it will either
-validate the certificate (checking the chain of trust and so on) and then
-check that the common name attribute on the certificate matches the hostname
-of the peer, or it will do none of these checks. This code is in main/tcptls.c
-line 206 (in version 1.8.14.1).
-
-This is undesirable in a setup where there is limited or no infrastructure as
-there is not likely to be a DNS server setup, or even rigid IP assignments
-that would allow a static hosts file based setup. This situation would force
-the administrator to disable the checks completely which would allow a trivial
-man in the middle attack.
-
-It would be possible to modify Asterisk to have a third way where it validates
-the certificate and checks the chain of trust but does not look at the common
-name. We decided against this approach as the VOMP channel driver was written
-in time to avoid it.
-EOF
-   set_instance +B
-   executeOk_servald rhizome add file $SIDB '' README.WHYNOTSIPS README.WHYNOTSIPS.manifest
-   assert_manifest_complete README.WHYNOTSIPS.manifest
-   assert_stdout_add_file README.WHYNOTSIPS
-   set_instance +A
-   start_servald_instances +A
-   wait_until rhizome_http_server_started +A
-   get_rhizome_server_port PORTA +A
-}
-test_HttpImport() {
-   executeOk curl \
-         --silent --fail --show-error \
-         --output http.output \
-         --dump-header http.headers \
-         --write-out '%{http_code}\n' \
-         --form 'data=@README.WHYNOTSIPS' \
-         --form 'manifest=@README.WHYNOTSIPS.manifest' \
-         "$addr_localhost:$PORTA/rhizome/import"
-   tfw_cat http.headers http.output
-   executeOk_servald rhizome list ''
-   assert_rhizome_list README.WHYNOTSIPS!
 }
 
 doc_HttpAddLocal="Add file locally using HTTP, returns manifest"
