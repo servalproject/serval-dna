@@ -315,8 +315,8 @@ setup_Sync() {
    setup_sync
 }
 test_Sync() {
-   executeOk_servald rhizome direct sync
    set_instance +A
+   executeOk_servald rhizome direct sync
    executeOk_servald rhizome list ''
    assert_rhizome_list file1 file2
    set_instance +B
