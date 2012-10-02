@@ -33,6 +33,15 @@
 int call_token=-1;
 int seen_audio=0;
 int monitor_client_fd=-1;
+struct monitor_state *monitor_state;
+
+struct line_state{
+  struct sched_ent alarm;
+  int fd;
+  char line_buff[1024];
+  int line_pos;
+  void (*process_line)(char *line);
+};
 
 static void send_hangup(int session_id){
   monitor_client_writeline(monitor_client_fd, "hangup %06x\n",session_id);
@@ -202,9 +211,9 @@ static int console_hangup(int argc, const char *const *argv, struct command_line
 static int console_usage(int argc, const char *const *argv, struct command_line_option *o, void *context);
 
 struct command_line_option console_commands[]={
-  {console_dial,{"call","<sid>","[<local_number>]","[<remote_extension>]",NULL},0,"Start dialling a given person"},
   {console_answer,{"answer",NULL},0,"Answer an incoming phone call"},
-  {console_hangup,{"hangup",NULL},0,"Hangup the line"},
+  {console_dial,{"call","<sid>","[<local_number>]","[<remote_extension>]",NULL},0,"Start dialling a given person"},
+  {console_hangup,{"hangup",NULL},0,"Hangup the phone line"},
   {console_usage,{"help",NULL},0,"This usage message"},
   {NULL},
 };
@@ -225,15 +234,10 @@ static void console_command(char *line){
   }
 }
 
-struct line_state{
-  int fd;
-  char line_buff[1024];
-  int line_pos;
-};
-
-static void read_lines(struct line_state *state, void (*process_line)(char *line)){
+static void read_lines(struct sched_ent *alarm){
+  struct line_state *state=(struct line_state *)alarm;
   set_nonblock(STDIN_FILENO);
-  int bytes = read(state->fd, state->line_buff + state->line_pos, sizeof(state->line_buff) - state->line_pos);
+  int bytes = read(state->alarm.poll.fd, state->line_buff + state->line_pos, sizeof(state->line_buff) - state->line_pos);
   set_block(STDIN_FILENO);
   int i = state->line_pos;
   int processed=0;
@@ -244,7 +248,7 @@ static void read_lines(struct line_state *state, void (*process_line)(char *line
     if (state->line_buff[i]=='\n'){
       state->line_buff[i]=0;
       if (*line_start)
-	process_line(line_start);
+	state->process_line(line_start);
       processed=i+1;
       line_start = state->line_buff + processed;
     }
@@ -257,45 +261,53 @@ static void read_lines(struct line_state *state, void (*process_line)(char *line
   }
 }
 
+static void monitor_read(struct sched_ent *alarm){
+  if (monitor_client_read(alarm->poll.fd, monitor_state, console_handlers, 
+			  sizeof(console_handlers)/sizeof(struct monitor_command_handler))<0){
+    unwatch(alarm);
+    monitor_client_close(alarm->poll.fd, monitor_state);
+    alarm->poll.fd=-1;
+    monitor_client_fd=-1;
+  }
+}
+
 int app_vomp_console(int argc, const char *const *argv, struct command_line_option *o, void *context){
-  struct pollfd fds[2];
-  struct line_state stdin_state;
-  struct monitor_state *state;
-  monitor_client_fd = monitor_client_open(&state);
+  static struct profile_total stdin_profile={
+    .name="read_lines",
+  };
+  struct line_state stdin_state={
+    .alarm.poll.fd = STDIN_FILENO,
+    .alarm.poll.events = POLLIN,
+    .alarm.function = read_lines,
+    .alarm.stats=&stdin_profile,
+    .process_line=console_command,
+  };
+  static struct profile_total monitor_profile={
+    .name="monitor_read",
+  };
+  struct sched_ent monitor_alarm={
+    .poll.events = POLLIN,
+    .function = monitor_read,
+    .stats=&monitor_profile,
+  };
+  
+  monitor_client_fd = monitor_client_open(&monitor_state);
   
   monitor_client_writeline(monitor_client_fd, "monitor vomp %d %d %d\n",
 			   VOMP_CODEC_8ULAW,VOMP_CODEC_8ALAW,VOMP_CODEC_PCM);
   
-  bzero(&stdin_state, sizeof(struct line_state));
-  stdin_state.fd = STDIN_FILENO;
   set_nonblock(monitor_client_fd);
   
-  fds[0].fd = STDIN_FILENO;
-  fds[0].events = POLLIN;
-  fds[1].fd = monitor_client_fd;
-  fds[1].events = POLLIN;
+  monitor_alarm.poll.fd = monitor_client_fd;
+  watch(&monitor_alarm);
   
-  while(1){
-    int r = poll(fds, 2, 10000);
-    if (r>0){
-      
-      if (fds[0].revents & POLLIN)
-	read_lines(&stdin_state, console_command);
-      
-      if (fds[1].revents & POLLIN){
-	if (monitor_client_read(monitor_client_fd, state, console_handlers, 
-				sizeof(console_handlers)/sizeof(struct monitor_command_handler))<0){
-	  break;
-	}
-      }
-      
-      if (fds[0].revents & (POLLHUP | POLLERR))
-	break;
-    }
+  watch(&stdin_state.alarm);
+  
+  while(monitor_client_fd!=-1){
+    fd_poll();
   }
   
-  monitor_client_close(monitor_client_fd, state);
-  monitor_client_fd=-1;
+  unwatch(&stdin_state.alarm);
   
   return 0;
 }
