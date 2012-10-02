@@ -382,6 +382,8 @@ int rhizome_position_candidate(int position)
 
 void rhizome_import_received_bundle(struct rhizome_manifest *m)
 {
+  m->finalised = 1;
+  m->manifest_bytes = m->manifest_all_bytes; // store the signatures too
   if (debug & DEBUG_RHIZOME_RX) {
     DEBUGF("manifest len=%d has %d signatories", m->manifest_bytes, m->sig_count);
     dump("manifest", m->manifestdata, m->manifest_all_bytes);
@@ -702,13 +704,11 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	/* TODO: fetch via overlay */
 	return WHY("Rhizome fetching via overlay not implemented");
       }
+    } else {
+      if (debug & DEBUG_RHIZOME_RX) 
+	DEBUGF("We already have the file for this manifest; importing from manifest alone.");
+      rhizome_bundle_import(m, NULL, NULL, m->ttl-1);
     }
-    else
-      {
-	if (debug & DEBUG_RHIZOME_RX) 
-	  DEBUGF("We already have the file for this manifest; importing from manifest alone.");
-	rhizome_bundle_import(m, NULL, NULL, m->ttl-1);
-      }
   }
 
   return 0;

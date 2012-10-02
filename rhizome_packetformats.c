@@ -428,7 +428,7 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	    /* Ignoring manifest that has caused us problems recently */
 	    if (1) WARNF("Ignoring manifest with errors: %s*", manifest_id_prefix);
 	  }
-	else if (m&&(!m->errors))
+	else if (m->errors == 0)
 	  {
 	    /* Manifest is okay, so see if it is worth storing */
 	    if (rhizome_manifest_version_cache_lookup(m)) {
@@ -447,8 +447,10 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	       a minute. */
 	    rhizome_queue_ignore_manifest(m, &httpaddr, 60000);
 	  }
-	if (m) rhizome_manifest_free(m);
-	m=NULL;
+	if (m) {
+	  rhizome_manifest_free(m);
+	  m = NULL;
+	}
 	if (importManifest) {
 	  /* Okay, so the manifest looks like it is potentially interesting to us,
 	     i.e., we don't already have it or a later version of it.
@@ -466,15 +468,16 @@ int overlay_rhizome_saw_advertisements(int i,overlay_frame *f, long long now)
 	       rhizome_suggest_queue_manifest_import(), where it only gets called
 	       after checking that it is worth adding to the queue. */
 	  } else if (m->errors) {
-	    if (debug&DEBUG_RHIZOME) DEBUGF("Verifying manifest %s* revealed errors -- not storing.", manifest_id_prefix);
+	    if (debug&DEBUG_RHIZOME)
+	      DEBUGF("Verifying manifest %s* revealed errors -- not storing.", manifest_id_prefix);
 	    rhizome_queue_ignore_manifest(m, &httpaddr, 60000);
 	    rhizome_manifest_free(m);
 	    m = NULL;
 	  } else {
-	    if (debug&DEBUG_RHIZOME) DEBUGF("Verifying manifest %s* revealed no errors -- will try to store.", manifest_id_prefix);
+	    if (debug&DEBUG_RHIZOME)
+	      DEBUGF("Verifying manifest %s* revealed no errors -- will try to store.", manifest_id_prefix);
 	    /* Add manifest to import queue. We need to know originating IPv4 address
 	       so that we can transfer by HTTP. */
-	    if (0) DEBUG("Suggesting fetching of a bundle");
 	    rhizome_suggest_queue_manifest_import(m, &httpaddr);
 	  }
 	}

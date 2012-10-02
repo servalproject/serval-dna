@@ -76,7 +76,7 @@ int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out,
     }
   }
   /* Add the manifest and its payload to the Rhizome database. */
-  if (!(m->dataFileName && m->dataFileName[0]))
+  if (m->fileLength > 0 && !(m->dataFileName && m->dataFileName[0]))
     return WHY("Missing data file name");
   if (rhizome_manifest_check_file(m))
     return WHY("File does not belong to manifest");
@@ -232,7 +232,7 @@ int rhizome_manifest_check_file(rhizome_manifest *m_in)
      the file size stored in the manifest */
   long long mfilesize = rhizome_manifest_get_ll(m_in, "filesize");
   m_in->fileLength = 0;
-  if (m_in->dataFileName[0]) {
+  if (m_in->dataFileName && m_in->dataFileName[0]) {
     struct stat stat;
     if (lstat(m_in->dataFileName,&stat) == -1) {
       if (errno != ENOENT || mfilesize != 0)
@@ -242,7 +242,7 @@ int rhizome_manifest_check_file(rhizome_manifest *m_in)
     }
   }
   if (debug & DEBUG_RHIZOME)
-    DEBUGF("filename=%s, fileLength=%lld", m_in->dataFileName, m_in->fileLength);
+    DEBUGF("filename=%s, fileLength=%lld", m_in->dataFileName ? alloca_str_toprint(m_in->dataFileName) : NULL, m_in->fileLength);
   if (mfilesize != -1 && mfilesize != m_in->fileLength) {
     WHYF("Manifest.filesize (%lld) != actual file size (%lld)", mfilesize, m_in->fileLength);
     return -1;
@@ -315,7 +315,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
 
   /* Get manifest version number. */
   m_in->version = rhizome_manifest_get_ll(m_in, "version");
-  if (m_in->version==-1) 
+  if (m_in->version==-1)
     return WHY("Manifest must have a version number");
 
   /* Supply manifest version number if missing, so we can do the version check below */
