@@ -498,8 +498,8 @@ int app_rhizome_direct_sync(int argc, const char *const *argv,
      transport and allowable traffic volumes. */
   rhizome_direct_transport_state_http 
     *state=calloc(sizeof(rhizome_direct_transport_state_http),1);
-  const char *sync_url=confValueGet("rhizome.direct.peer", NULL);
-  int peer_count=0;
+  const char *sync_url=NULL;
+  int peer_count=confValueGetInt64("rhizome.direct.peer.count",0);
   int peer_number=0;
   char peer_var[128];
 
