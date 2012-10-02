@@ -32,6 +32,7 @@ typedef struct rhizome_file_fetch_record {
   rhizome_manifest *manifest;
   char fileid[RHIZOME_FILEHASH_STRLEN + 1];
   FILE *file;
+  char filename[1024];
   
   char request[1024];
   int request_len;
@@ -47,6 +48,8 @@ typedef struct rhizome_file_fetch_record {
 #define RHIZOME_FETCH_RXHTTPHEADERS 3
 #define RHIZOME_FETCH_RXFILE 4
   
+  struct sockaddr_in peer;
+
 } rhizome_file_fetch_record;
 
 struct profile_total fetch_stats;
@@ -651,6 +654,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	rhizome_file_fetch_record *q=&file_fetch_queue[rhizome_file_fetch_queue_count];
 	q->manifest = m;
 	*manifest_kept = 1;
+	bcopy(&addr,&q->peer,sizeof(q->peer));
 	q->alarm.poll.fd=sock;
 	strncpy(q->fileid, m->fileHexHash, RHIZOME_FILEHASH_STRLEN + 1);
 	q->request_len = snprintf(q->request, sizeof q->request, "GET /rhizome/file/%s HTTP/1.0\r\n\r\n", q->fileid);
@@ -791,6 +795,18 @@ void rhizome_write_content(rhizome_file_fetch_record *q, char *buffer, int bytes
       /* This was to fetch the manifest, so now fetch the file if needed */
       DEBUGF("Received a manifest in response to supplying a manifest prefix.");
       DEBUGF("XXX Not implemented scheduling the fetching of the file itself.");
+      /* Read the manifest and add it to suggestion queue, then immediately
+	 call schedule queued items. */
+      rhizome_manifest *m=rhizome_new_manifest();
+      if (m) {
+	if (rhizome_read_manifest_file(m,q->filename,0)==-1) {
+	  DEBUGF("Couldn't read manifest from %s",q->filename);
+	  rhizome_manifest_free(m);
+	} else {
+	  DEBUGF("All looks good for importing manifest");
+	  rhizome_suggest_queue_manifest_import(m,&q->peer);
+	}
+      }
     }
     rhizome_fetch_close(q);
     return;
@@ -997,6 +1013,10 @@ int rhizome_fetch_request_manifest_by_prefix(struct sockaddr_in *peerip,
     close(sock);
     return -1;
   }
+  if (strlen(q->filename)<sizeof(q->filename))
+    strcpy(filename,q->filename);
+  else q->filename[0]=0;
+
   if ((q->file = fopen(filename, "w")) == NULL) {
     WHY_perror("fopen");
     if (debug & DEBUG_RHIZOME_RX)
