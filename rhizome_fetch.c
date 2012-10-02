@@ -636,6 +636,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	  close(sock);
 	  return -1;
 	}
+	dump("copying peerip",peerip,sizeof(*peerip));
 	struct sockaddr_in addr = *peerip;
 	addr.sin_family = AF_INET;
 	char buf[INET_ADDRSTRLEN];
@@ -808,6 +809,7 @@ void rhizome_write_content(rhizome_file_fetch_record *q, char *buffer, int bytes
 	  rhizome_manifest_free(m);
 	} else {
 	  DEBUGF("All looks good for importing manifest %p",m);
+	  dump("q->peer",&q->peer,sizeof(q->peer));
 	  rhizome_suggest_queue_manifest_import(m,&q->peer);
 	  rhizome_enqueue_suggestions(NULL);
 	}
@@ -1004,6 +1006,7 @@ int rhizome_fetch_request_manifest_by_prefix(struct sockaddr_in *peerip,
   q->manifest = NULL;
   q->alarm.poll.fd=sock;
   bzero(q->fileid, sizeof(q->fileid));
+  q->peer=*peerip;
   q->request_len = snprintf(q->request, sizeof q->request, "GET /rhizome/manifestbyprefix/%s HTTP/1.0\r\n\r\n", alloca_tohex(prefix,prefix_length));
   q->request_ofs=0;
   q->state=RHIZOME_FETCH_CONNECTING;
