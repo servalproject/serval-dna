@@ -254,15 +254,16 @@ void rhizome_server_poll(struct sched_ent *alarm)
   unsigned int addr_len = sizeof addr;
   int sock;
   while ((sock = accept(rhizome_server_socket, &addr, &addr_len)) != -1) {
+    struct sockaddr_in *peerip=NULL;
     if (addr.sa_family == AF_INET) {
-      struct sockaddr_in *peerip = (struct sockaddr_in *)&addr;
+      peerip = (struct sockaddr_in *)&addr;
       INFOF("RHIZOME HTTP SERVER, ACCEPT addrlen=%u family=%u port=%u addr=%u.%u.%u.%u",
 	  addr_len, peerip->sin_family, peerip->sin_port,
 	  ((unsigned char*)&peerip->sin_addr.s_addr)[0],
 	  ((unsigned char*)&peerip->sin_addr.s_addr)[1],
 	  ((unsigned char*)&peerip->sin_addr.s_addr)[2],
 	  ((unsigned char*)&peerip->sin_addr.s_addr)[3]
-	);
+	    );
     } else {
       INFOF("RHIZOME HTTP SERVER, ACCEPT addrlen=%u family=%u data=%s",
 	  addr_len, addr.sa_family, alloca_tohex((unsigned char *)addr.sa_data, sizeof addr.sa_data)
@@ -274,6 +275,10 @@ void rhizome_server_poll(struct sched_ent *alarm)
       WHY("Cannot respond to request, out of memory");
     } else {
       request->uuid=rhizome_http_request_uuid_counter++;
+      if (peerip) request->requestor=*peerip; 
+      else bzero(&request->requestor,sizeof(request->requestor));
+      DEBUGF("accepted connection from %s",inet_ntoa(request->requestor.sin_addr));
+
       /* We are now trying to read the HTTP request */
       request->request_type=RHIZOME_HTTP_REQUEST_RECEIVING;
       request->alarm.function = rhizome_client_poll;

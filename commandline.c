@@ -1117,8 +1117,11 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
     rhizome_manifest_free(m);
     return WHYF("Could not bind manifest to file '%s'",filepath);
   }
-  /* Add the manifest and its associated file to the Rhizome database, generating an "id" in the
-   * process */
+  /* Add the manifest and its associated file to the Rhizome database, 
+     generating an "id" in the process.
+     PGS @20121003 - Hang on, didn't we create the ID above? Presumably the
+     following does NOT in fact generate a bundle ID. 
+  */
   rhizome_manifest *mout = NULL;
   if (debug & DEBUG_RHIZOME) DEBUGF("rhizome_add_manifest(author='%s')", authorSidHex);
 

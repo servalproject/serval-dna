@@ -328,13 +328,18 @@ doc_HttpAddLocal="Add file locally using HTTP, returns manifest"
 setup_HttpAddLocal() {
    setup_curl_7
    setup_common
+
+   # set rhizome.api.* configuration variables
+   set_instance +A
+   executeOk_servald config set rhizome.api.addfile.uri "/rhizome/secretaddfile"
+
    start_servald_instances +A
    wait_until rhizome_http_server_started +A
    get_rhizome_server_port PORTA +A
 }
 test_HttpAddLocal() {
    echo 'File file1' >file1
-   executeOk curl --silent --form 'data=@file1' "http://$addr_localhost:$PORTA/rhizome/import" --output file1.manifest
+   executeOk curl --silent --form 'data=@file1' "http://$addr_localhost:$PORTA/rhizome/secretaddfile" --output file1.manifest
    assert_manifest_complete file1.manifest
    executeOk_servald rhizome list ''
    assert_rhizome_list file1

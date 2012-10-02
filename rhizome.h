@@ -315,6 +315,8 @@ typedef struct rhizome_http_request {
   struct sched_ent alarm;
   long long initiate_time; /* time connection was initiated */
   
+  struct sockaddr_in requestor;
+
   /* identify request from others being run.
      Monotonic counter feeds it.  Only used for debugging when we write
      post-<uuid>.log files for multi-part form requests. */
@@ -361,6 +363,8 @@ typedef struct rhizome_http_request {
   int boundary_string_length;
   /* File currently being written to while decoding POST multipart form */
   FILE *field_file;
+  /* Name of data file supplied */
+  char data_file_name[1024];
   /* Which fields have been seen in POST multipart form */
   int fields_seen;
   /* The seen fields bitmap above shares values with the actual Rhizome Direct
