@@ -498,25 +498,71 @@ int app_rhizome_direct_sync(int argc, const char *const *argv,
      transport and allowable traffic volumes. */
   rhizome_direct_transport_state_http 
     *state=calloc(sizeof(rhizome_direct_transport_state_http),1);
-  if (strlen(argv[3])>1020)
+  const char *sync_url=confValueGet("rhizome.direct.peer", NULL);
+  int peer_count=0;
+  int peer_number=0;
+  char peer_var[128];
+
+  if (argv[3]) {
+    peer_count=1;
+    sync_url=argv[3];
+  } 
+
+  if (peer_count<1) {
+    DEBUG("No rhizome direct peers were configured or supplied.");
+  }
+
+  /* XXX This code runs each sync in series, when we can probably do them in
+     parallel.  But we can't really do them in parallel until we make the
+     synchronisation process fully asynchronous, which probably won't happen
+     for a while yet.
+     Also, we don't currently parse the URI protocol field fully. */
+ next_peer:
+  if (!sync_url) {
+    snprintf(peer_var,128,"rhizome.direct.peer.%d",peer_number);
+    sync_url=confValueGet(peer_var, NULL);
+  }
+   
+  if (strlen(sync_url)>1020)
     {
       DEBUG("rhizome direct URI too long");
       return -1;
     }
-  if (sscanf(argv[3],"%[^:]:%d",state->host,&state->port)!=2)
+
+  char protocol[1024];
+  state->port=RHIZOME_HTTP_PORT;
+  int ok=0;
+  if (sscanf(sync_url,"%[^:]://%[^:]:%d",protocol,state->host,&state->port)>=2)
+    ok=1;
+  if (!ok) sprintf(protocol,"http");
+  if ((!ok)&&(sscanf(sync_url,"%[^:]:%d",state->host,&state->port)>=1))
+    ok=2;
+  if (!ok)
     {
       DEBUG("could not parse rhizome direct URI");     
       return -1;
-    }
+    } 
+  DEBUGF("Rhizome direct peer is %s://%s:%d (parse route %d)",
+	 protocol,state->host,state->port,ok);
 
+  if (strcasecmp(protocol,"http")) {
+    DEBUG("Unsupport Rhizome Direct synchronisation protocol."
+	  "  Only HTTP is supported at present.");
+    return -1;
+  }
+  
   rhizome_direct_sync_request 
     *s = rhizome_direct_new_sync_request(rhizome_direct_http_dispatch,
 					 65536,0,mode,state);
-
+  
   rhizome_direct_start_sync_request(s);
-
+  
   if (rd_sync_handle_count>0)
     while(fd_poll()&&(rd_sync_handle_count>0)) continue;   
+  
+  sync_url=NULL;
+  peer_number++;
+  if (peer_number<peer_count) goto next_peer;
 
   return 0;
 }
@@ -667,7 +713,6 @@ int rhizome_direct_bundle_iterator_fill(rhizome_direct_bundle_cursor *c,int max_
       c->buffer_used+=RHIZOME_BAR_BYTES*stuffed_now;
       if (!stuffed_now) {
 	/* no more matches in this size bin, so move up a size bin */
-	DEBUGF("Continue from next size bin");
 	c->size_low=c->size_high+1;
 	c->size_high*=2;
 	/* Record that we covered to the end of that size bin */
@@ -678,7 +723,6 @@ int rhizome_direct_bundle_iterator_fill(rhizome_direct_bundle_cursor *c,int max_
 	  memset(c->bid_low,0x00,RHIZOME_MANIFEST_ID_BYTES);
       } else {
 	/* Continue from next BID */
-	DEBUGF("Continue from next BID");
 	bcopy(c->bid_high,c->bid_low,RHIZOME_MANIFEST_ID_BYTES);
 	int i;
 	for(i=RHIZOME_BAR_BYTES-1;i>=0;i--)

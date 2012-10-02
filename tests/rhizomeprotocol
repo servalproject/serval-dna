@@ -274,6 +274,9 @@ setup_sync() {
    add_file file2
    BID2=$BID
    VERSION2=$VERSION
+   executeOk_servald config set rhizome.direct.peer.count "1"
+   executeOk_servald config set rhizome.direct.peer.0 "http://${addr_localhost}:${PORTA}"
+   start_servald_instances dummy2 +B
 }
 
 doc_Push="One way push bundle to unconnected node"
@@ -282,7 +285,7 @@ setup_Push() {
    setup_sync
 }
 test_Push() {
-   executeOk_servald rhizome direct push "$addr_localhost:$PORTA"
+   executeOk_servald rhizome direct push
    tfw_cat --stderr
    wait_until bundle_received_by $BID2 $VERSION2 +A
    assert ! bundle_received_by $BID1 $VERSION1 +B
@@ -296,7 +299,7 @@ setup_Pull() {
    setup_sync
 }
 test_Pull() {
-   executeOk_servald rhizome direct pull "$addr_localhost:$PORTA"
+   executeOk_servald rhizome direct pull
    tfw_cat --stderr
    assert bundle_received_by $BID1 $VERSION1 +B
    assert ! bundle_received_by $BID2 $VERSION2 +A
@@ -310,7 +313,7 @@ setup_Sync() {
    setup_sync
 }
 test_Sync() {
-   executeOk_servald rhizome direct sync "$addr_localhost:$PORTA"
+   executeOk_servald rhizome direct sync 
    tfw_cat --stderr
    assert bundle_received_by $BID2 $VERSION2 +A
    assert bundle_received_by $BID1 $VERSION1 +B
