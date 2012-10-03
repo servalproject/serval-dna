@@ -865,11 +865,16 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
     WHY("Could not stat() associated file");
     goto error;
   }
-  if (stat.st_size<m->fileLength) {
-    WHYF("File has shrunk, so cannot be stored.");
+  if (stat.st_size < m->fileLength) {
+    WHYF("File has shrunk by %lld bytes from %lld to %lld, not stored",
+	(long long)(m->fileLength - stat.st_size), (long long) m->fileLength, (long long) stat.st_size
+      );
     goto error;
-  } else if (stat.st_size>m->fileLength) {
-    WARNF("File has grown by %lld bytes. I will just store the original number of bytes so that the hash (hopefully) matches",stat.st_size-m->fileLength);
+  } else if (stat.st_size > m->fileLength) {
+    // If the file has grown, store the original , in the hope that it will match the hash.
+    WARNF("File has grown by +%lld bytes to %lld, only storing %lld",
+	(long long)(stat.st_size - m->fileLength), (long long) stat.st_size, (long long) m->fileLength
+      );
   }
 
   unsigned char *addr = mmap(NULL, m->fileLength, PROT_READ, MAP_SHARED, fd, 0);

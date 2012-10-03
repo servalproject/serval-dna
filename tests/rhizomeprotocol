@@ -103,7 +103,7 @@ extract_manifest_vars() {
 
 add_file() {
    local name="$1"
-   [ -e "$name" ] || echo 'File $name' >"$name"
+   [ -e "$name" ] || echo "File $name" >"$name"
    local sidvar="SID$instance_name"
    executeOk_servald rhizome add file "${!sidvar}" '' "$name" "$name.manifest"
    executeOk_servald rhizome list ''
@@ -122,6 +122,19 @@ update_file() {
    executeOk_servald rhizome list ''
    assert_rhizome_list "$new_name"
    extract_manifest_vars "$new_name.manifest"
+}
+
+assert_received() {
+   local name="${1?}"
+   shift
+   executeOk_servald rhizome list ''
+   assert_rhizome_list "$name!" "$@"
+   local _hash
+   if [ -s "$name" ]; then
+      extract_manifest_filehash _hash "$name.manifest"
+      executeOk_servald rhizome extract file "$_hash" extracted
+      assert cmp "$name" extracted
+   fi
 }
 
 doc_FileTransfer="New bundle and update transfer to one node"
@@ -160,18 +173,6 @@ test_FileTransferBig() {
    wait_until bundle_received_by $BID $VERSION +B
    set_instance +B
    assert_received file1
-}
-
-assert_received() {
-   local name="${1?}"
-   executeOk_servald rhizome list ''
-   assert_rhizome_list "$name!"
-   local _hash
-   if [ -s "$name" ]; then
-      extract_manifest_filehash _hash "$name.manifest"
-      executeOk_servald rhizome extract file "$_hash" extracted
-      assert cmp "$name" extracted
-   fi
 }
 
 doc_FileTransferMulti="New bundle transfers to four nodes"
@@ -258,8 +259,7 @@ test_HttpImport() {
          --form 'manifest=@README.WHYNOTSIPS.manifest' \
          "$addr_localhost:$PORTA/rhizome/import"
    tfw_cat http.headers http.output
-   executeOk_servald rhizome list ''
-   assert_rhizome_list README.WHYNOTSIPS!
+   assert_received README.WHYNOTSIPS
 }
 
 setup_sync() {
@@ -274,9 +274,6 @@ setup_sync() {
    add_file file2
    BID2=$BID
    VERSION2=$VERSION
-   executeOk_servald config set rhizome.direct.address "$addr_localhost"
-   executeOk_servald config set rhizome.direct.port "$PORTA"
-   start_servald_instances dummy2 +B
 }
 
 doc_Push="One way push bundle to unconnected node"
@@ -285,11 +282,12 @@ setup_Push() {
    setup_sync
 }
 test_Push() {
-   executeOk_servald rhizome push
-   assert bundle_received_by $BID1 $VERSION1 +B
-   assert ! bundle_received_by $BID2 $VERSION2 +A
-   set_instance +B
-   assert_received file1
+   executeOk_servald rhizome direct push "$addr_localhost:$PORTA"
+   tfw_cat --stderr
+   wait_until bundle_received_by $BID2 $VERSION2 +A
+   assert ! bundle_received_by $BID1 $VERSION1 +B
+   set_instance +A
+   assert_received file2 file1
 }
 
 doc_Pull="One way pull bundle from unconnected node"
@@ -298,11 +296,12 @@ setup_Pull() {
    setup_sync
 }
 test_Pull() {
-   executeOk_servald rhizome pull
-   assert bundle_received_by $BID2 $VERSION2 +A
-   assert ! bundle_received_by $BID1 $VERSION1 +B
-   set_instance +A
-   assert_received file2
+   executeOk_servald rhizome direct pull "$addr_localhost:$PORTA"
+   tfw_cat --stderr
+   assert bundle_received_by $BID1 $VERSION1 +B
+   assert ! bundle_received_by $BID2 $VERSION2 +A
+   set_instance +B
+   assert_received file1
 }
 
 doc_Sync="Two-way sync bundles between unconnected nodes"
@@ -311,7 +310,8 @@ setup_Sync() {
    setup_sync
 }
 test_Sync() {
-   executeOk_servald rhizome sync
+   executeOk_servald rhizome direct sync "$addr_localhost:$PORTA"
+   tfw_cat --stderr
    assert bundle_received_by $BID2 $VERSION2 +A
    assert bundle_received_by $BID1 $VERSION1 +B
    set_instance +A

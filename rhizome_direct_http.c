@@ -83,12 +83,14 @@ int rhizome_direct_form_received(rhizome_http_request *r)
       snprintf(file,1024,"rhizomedirect.%d.%s",r->alarm.poll.fd,"data");
       fd=open(file,O_RDONLY);
       if (fd == -1) {
+	WHYF_perror("open(%s, O_RDONLY)", alloca_str_toprint(file));
 	/* Clean up after ourselves */
 	rhizome_direct_clear_temporary_files(r);	     
 	return rhizome_server_simple_http_response(r,500,"Couldn't read a file");
       }
       struct stat stat;
-      if (fstat(fd,&stat)) {
+      if (fstat(fd, &stat) == -1) {
+	WHYF_perror("stat(%d)", fd);
 	/* Clean up after ourselves */
 	close(fd);
 	rhizome_direct_clear_temporary_files(r);	     
@@ -96,6 +98,7 @@ int rhizome_direct_form_received(rhizome_http_request *r)
       }
       unsigned char *addr = mmap(NULL, stat.st_size, PROT_READ, MAP_SHARED, fd, 0);
       if (addr==MAP_FAILED) {
+	WHYF_perror("mmap(NULL, %lld, PROT_READ, MAP_SHARED, %d, 0)", (long long) stat.st_size, fd);
 	/* Clean up after ourselves */
 	close(fd);
 	rhizome_direct_clear_temporary_files(r);	     
@@ -310,9 +313,9 @@ int rhizome_direct_process_mime_line(rhizome_http_request *r,char *buffer,int co
   return 0;
 }
 
-int rhizome_direct_process_post_multipart_bytes
-(rhizome_http_request *r,const char *bytes,int count)
+int rhizome_direct_process_post_multipart_bytes(rhizome_http_request *r,const char *bytes,int count)
 {
+  DEBUG(alloca_toprint(-1, bytes, count));
   {
     DEBUGF("Saw %d multi-part form bytes",count);
     FILE *f=fopen("post.log","a"); 
@@ -406,150 +409,119 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
   /* Switching to writing, so update the call-back */
   r->alarm.poll.events=POLLOUT;
   watch(&r->alarm);
-  // Start building up a response.
-  r->request_type = 0;
-  // Parse the HTTP "GET" line.
+  // Parse the HTTP request into verb, path, protocol, headers and content.
+  char *const request_end = r->request + r->request_length;
+  char *verb = r->request;
   char *path = NULL;
+  char *proto = NULL;
   size_t pathlen = 0;
-  if (str_startswith(r->request, "GET ", &path)) {
-    char *p;
-    // This loop is guaranteed to terminate before the end of the buffer, because we know that the
-    // buffer contains at least "\n\n" and maybe "\r\n\r\n" at the end of the header block.
-    for (p = path; !isspace(*p); ++p)
-      ;
-    pathlen = p - path;
-    if ( str_startswith(p, " HTTP/1.", &p)
-      && (str_startswith(p, "0", &p) || str_startswith(p, "1", &p))
-      && (str_startswith(p, "\r\n", &p) || str_startswith(p, "\n", &p))
-    )
-      path[pathlen] = '\0';
-    else
-      path = NULL;
- 
-    if (path) {
-      INFOF("RHIZOME HTTP SERVER, GET %s", alloca_toprint(1024, path, pathlen));
-      if (strcmp(path, "/favicon.ico") == 0) {
-	r->request_type = RHIZOME_HTTP_REQUEST_FAVICON;
-	rhizome_server_http_response_header(r, 200, "image/vnd.microsoft.icon", favicon_len);
-      } else {
-	rhizome_server_simple_http_response(r, 404, "<html><h1>Not found</h1></html>\r\n");
+  char *headers = NULL;
+  int headerlen = 0;
+  char *content = NULL;
+  int contentlen = 0;
+  char *p;
+  if ((str_startswith(verb, "GET", &p) || str_startswith(verb, "POST", &p)) && isspace(*p)) {
+    *p++ = '\0';
+    path = p;
+    while (p < request_end && !isspace(*p))
+      ++p;
+    if (p < request_end) {
+      pathlen = p - path;
+      *p++ = '\0';
+      proto = p;
+      if ( str_startswith(p, "HTTP/1.", &p)
+	&& (str_startswith(p, "0", &p) || str_startswith(p, "1", &p))
+	&& (str_startswith(p, "\r\n", &headers) || str_startswith(p, "\n", &headers))
+      ) {
+	*p = '\0';
+	char *eoh = str_str(headers, "\r\n\r\n", request_end - p);
+	if (eoh) {
+	  content = eoh + 4;
+	  headerlen = content - headers;
+	  contentlen = request_end - content;
+	}
       }
     }
-  } else   if (str_startswith(r->request, "POST ", &path)) {
-    char *p;
-        
-    // This loop is guaranteed to terminate before the end of the buffer, because we know that the
-    // buffer contains at least "\n\n" and maybe "\r\n\r\n" at the end of the header block.
-    for (p = path; !isspace(*p); ++p)
-      ;
-    pathlen = p - path;
-    if ( str_startswith(p, " HTTP/1.", &p)
-      && (str_startswith(p, "0", &p) || str_startswith(p, "1", &p))
-      && (str_startswith(p, "\r\n", &p) || str_startswith(p, "\n", &p))
-    )
-	path[pathlen] = '\0';
-    else
-      path = NULL;
- 
-    if (path) {
-      INFOF("RHIZOME HTTP SERVER, POST %s", alloca_toprint(1024, path, pathlen));
-      if ((strcmp(path, "/rhizome/import") == 0) 
-	  ||(strcmp(path, "/rhizome/enquiry") == 0))
-	{
-	/*
-	  We know we have the complete header, so get the content length and content type
-	  fields. From those we work out what to do with the body. */
-	char *headers=&path[pathlen+1];
-	int headerlen=r->request_length-(headers-r->request);
-	const char *cl_str=str_str(headers,"Content-Length: ",headerlen);
-	const char *ct_str=str_str(headers,"Content-Type: multipart/form-data; boundary=",headerlen);
-	if (!cl_str)
-	  return 
-	    rhizome_server_simple_http_response(r,400,"<html><h1>POST without content-length</h1></html>\r\n");
-	if (!ct_str)
-	  return 
-	    rhizome_server_simple_http_response(r,400,"<html><h1>POST without content-type (or unsupported content-type)</h1></html>\r\n");
-	/* ok, we have content-type and content-length, now make sure they are
-	   well formed. */
-	long long cl;
-	if (sscanf(cl_str,"Content-Length: %lld",&cl)!=1)
-	  return 
-	    rhizome_server_simple_http_response(r,400,"<html><h1>malformed Content-Length: header</h1></html>\r\n");
-	char boundary_string[1024];
-	int i;
-	ct_str+=strlen("Content-Type: multipart/form-data; boundary=");
-	for(i=0;i<1023&&*ct_str&&*ct_str!='\n'&&*ct_str!='\r';i++,ct_str++)
-	  boundary_string[i]=*ct_str;
-	boundary_string[i]=0;
-	if (i<4||i>128)
-	  return 
-	    rhizome_server_simple_http_response(r,400,"<html><h1>malformed Content-Type: header</h1></html>\r\n");
+  }
+  if (content == NULL) {
+    if (debug & DEBUG_RHIZOME_TX)
+      DEBUGF("Received malformed HTTP request %s", alloca_toprint(160, (const char *)r->request, r->request_length));
+    return rhizome_server_simple_http_response(r, 400, "<html><h1>Malformed request</h1></html>\r\n");
+  }
+  INFOF("RHIZOME HTTP SERVER, %s %s %s", verb, alloca_toprint(-1, path, pathlen), proto);
+  if (debug & DEBUG_RHIZOME_TX)
+    DEBUGF("headers %s", alloca_toprint(-1, headers, headerlen));
+  if (strcmp(verb, "GET") == 0) {
+    if (strcmp(path, "/favicon.ico") == 0) {
+      r->request_type = RHIZOME_HTTP_REQUEST_FAVICON;
+      rhizome_server_http_response_header(r, 200, "image/vnd.microsoft.icon", favicon_len);
+    } else {
+      rhizome_server_simple_http_response(r, 404, "<html><h1>Not found</h1></html>\r\n");
+    }
+  } else if (strcmp(verb, "POST") == 0) {
+    if (strcmp(path, "/rhizome/import") == 0 || strcmp(path, "/rhizome/enquiry") == 0) {
+      const char *cl_str=str_str(headers,"Content-Length: ",headerlen);
+      const char *ct_str=str_str(headers,"Content-Type: multipart/form-data; boundary=",headerlen);
+      if (!cl_str)
+	return rhizome_server_simple_http_response(r,400,"<html><h1>Missing Content-Length header</h1></html>\r\n");
+      if (!ct_str)
+	return rhizome_server_simple_http_response(r,400,"<html><h1>Missing or unsupported Content-Type header</h1></html>\r\n");
+      /* ok, we have content-type and content-length, now make sure they are well formed. */
+      long long content_length;
+      if (sscanf(cl_str,"Content-Length: %lld",&content_length)!=1)
+	return rhizome_server_simple_http_response(r,400,"<html><h1>Malformed Content-Length header</h1></html>\r\n");
+      char boundary_string[1024];
+      int i;
+      ct_str+=strlen("Content-Type: multipart/form-data; boundary=");
+      for(i=0;i<1023&&*ct_str&&*ct_str!='\n'&&*ct_str!='\r';i++,ct_str++)
+	boundary_string[i]=*ct_str;
+      boundary_string[i] = '\0';
+      if (i<4||i>128)
+	return rhizome_server_simple_http_response(r,400,"<html><h1>Malformed Content-Type header</h1></html>\r\n");
 
-	DEBUGF("HTTP POST content-length=%lld, boundary string='%s'",
-	       cl,boundary_string);
+      DEBUGF("content_length=%lld, boundary_string=%s contentlen=%d", (long long) content_length, alloca_str_toprint(boundary_string), contentlen);
 
-	/* Now start receiving and parsing multi-part data.
-	   We may have already received some of the post-header data, so 
-	   rewind that if necessary. Need to start by finding actual end of
-	   headers, and passing any body bytes to the parser.
-	   Also need to tell the HTTP request that it has moved to multipart
-	   form data parsing, and what the actual requested action is.
+      /* Now start receiving and parsing multi-part data.  If we already received some of the
+	 post-header data, process that first.  Tell the HTTP request that it has moved to multipart
+	 form data parsing, and what the actual requested action is.
+      */
+
+      /* Remember boundary string and source path.
+	  Put the preceeding -- on the front to make our life easier when
+	  parsing the rest later. */
+      strbuf bs = strbuf_local(r->boundary_string, sizeof r->boundary_string);
+      strbuf_puts(bs, "--");
+      strbuf_puts(bs, boundary_string);
+      if (strbuf_overrun(bs))
+	return rhizome_server_simple_http_response(r,500,"<html><h1>Server error: Multipart boundary string too long</h1></html>\r\n");
+      strbuf ps = strbuf_local(r->path, sizeof r->path);
+      strbuf_puts(ps, path);
+      if (strbuf_overrun(ps))
+	return rhizome_server_simple_http_response(r,500,"<html><h1>Server error: Path too long</h1></html>\r\n");
+      r->boundary_string_length = strbuf_len(bs);
+      r->source_index = 0;
+      r->source_count = content_length;
+      r->request_type = RHIZOME_HTTP_REQUEST_RECEIVING_MULTIPART;
+      r->request_length = 0;
+      r->source_flags = 0;
+
+      /* Find the end of the headers and start of any body bytes that we have read so far.
+	 Copy the bytes to a separate buffer, because r->request and r->request_length get used
+	 internally in the parser.
 	*/
-
-	/* Remember boundary string and source path.
-	   Put the preceeding -- on the front to make our life easier when
-	   parsing the rest later. */
-	snprintf(&r->boundary_string[0],1023,"--%s",boundary_string);
-	r->boundary_string[1023]=0;
-	r->boundary_string_length=strlen(r->boundary_string);
-	r->source_index=0;
-	r->source_count=cl;
-	snprintf(&r->path[0],1023,"%s",path);
-	r->path[1023]=0;
-	r->request_type=RHIZOME_HTTP_REQUEST_RECEIVING_MULTIPART;
-
-	/* Find the end of the headers and start of any body bytes that we
-	   have read so far. */
-	{
-	  const char *eoh="\r\n\r\n";
-	  int i=0;
-	  for(i=0;i<r->request_length;i++) {
-	    if (!strncmp(eoh,&r->request[i],strlen(eoh)))
-	      break;
-	  }
-	  if (i>=r->request_length) {
-	    /* Couldn't find the end of the headers, but this routine should
-	       not be called if the end of headers has not been found.
-	       Complain and go home. */
-	    return 
-	      rhizome_server_simple_http_response(r, 404, "<html><h1>End of headers seems to have gone missing</h1></html>\r\n");
-	  }
-
-	  /* Process any outstanding bytes.
-	     We need to copy the bytes to a separate buffer, because 
-	     r->request and r->request_length get used internally in the 
-	     parser, which is also why we need to zero r->request_length.
-	     We also zero r->source_flags, which is used as the state
-	     counter for parsing the multi-part form data.
-	   */
-	  int count=r->request_length-i;
-	  char buffer[count];
-	  bcopy(&r->request[i],&buffer[0],count);
-	  r->request_length=0;
-	  r->source_flags=0;
-	  rhizome_direct_process_post_multipart_bytes(r,buffer,count);
-	}
-
-	/* Handle the rest of the transfer asynchronously. */
-	return 0;
-      } else {
-	rhizome_server_simple_http_response(r, 404, "<html><h1>Not found</h1></html>\r\n");
+      if (contentlen) {
+	char buffer[contentlen];
+	bcopy(content, buffer, contentlen);
+	rhizome_direct_process_post_multipart_bytes(r, buffer, contentlen);
       }
+
+      /* Handle the rest of the transfer asynchronously. */
+      return 0;
+    } else {
+      rhizome_server_simple_http_response(r, 404, "<html><h1>Not found</h1></html>\r\n");
     }
   } else {
-    if (debug & DEBUG_RHIZOME_TX)
-      DEBUGF("Received malformed HTTP request: %s", alloca_toprint(120, (const char *)r->request, r->request_length));
-    rhizome_server_simple_http_response(r, 400, "<html><h1>Malformed request</h1></html>\r\n");
+    rhizome_server_simple_http_response(r, 404, "<html><h1>Not found</h1></html>\r\n");
   }
   
   /* Try sending data immediately. */
@@ -561,11 +533,11 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
 void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 {
   DEBUGF("Dispatch size_high=%lld",r->cursor->size_high);
-  rhizome_direct_transport_state_http *state=r->transport_specific_state;
+  rhizome_direct_transport_state_http *state = r->transport_specific_state;
 
   int sock=socket(AF_INET, SOCK_STREAM, 0);
   if (sock==-1) {
-    DEBUGF("could not open socket");    
+    WHY_perror("socket");    
     goto end;
   } 
 
@@ -582,48 +554,54 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   addr.sin_addr = *((struct in_addr *)hostent->h_addr);
   bzero(&(addr.sin_zero),8);     
 
-  if (connect(sock,(struct sockaddr *)&addr,sizeof(struct sockaddr)) == -1)
-    {
-      close(sock);
-      DEBUGF("Could not connect to remote");
-      goto end;
-    }
-  
-  /* Okay, we have open socket */
-  char boundary[1024];
-  snprintf(boundary,1024,"----%08lx%08lx",random(),random());
+  if (connect(sock,(struct sockaddr *)&addr,sizeof(struct sockaddr)) == -1) {
+    WHY_perror("connect");
+    close(sock);
+    goto end;
+  }
+ 
+  char boundary[20];
+  char buffer[8192];
+
+  strbuf bb = strbuf_local(boundary, sizeof boundary);
+  strbuf_sprintf(bb, "%08lx%08lx", random(), random());
+  assert(!strbuf_overrun(bb));
+  strbuf content_preamble = strbuf_alloca(200);
+  strbuf content_postamble = strbuf_alloca(40);
+  strbuf_sprintf(content_preamble,
+      "--%s\r\n"
+      "Content-Disposition: form-data; name=\"data\"; filename=\"IHAVEs\"\r\n"
+      "Content-Type: application/octet-stream\r\n"
+      "\r\n",
+      boundary
+    );
+  strbuf_sprintf(content_postamble, "\r\n--%s--\r\n", boundary);
+  assert(!strbuf_overrun(content_preamble));
+  assert(!strbuf_overrun(content_postamble));
+  int content_length = strbuf_len(content_preamble)
+		     + r->cursor->buffer_offset_bytes
+		     + r->cursor->buffer_used
+		     + strbuf_len(content_postamble);
+  strbuf request = strbuf_local(buffer, sizeof buffer);
+  strbuf_sprintf(request,
+      "POST /rhizome/enquiry HTTP/1.0\r\n"
+      "Content-Length: %d\r\n"
+      "Content-Type: multipart/form-data; boundary=%s\r\n"
+      "\r\n%s",
+      content_length, boundary, strbuf_str(content_preamble)
+    );
+  assert(!strbuf_overrun(request));
 
   /* TODO: Refactor this code so that it uses our asynchronous framework.
    */
-
-  int content_length=
-    strlen("--")+strlen(boundary)+strlen("\r\n")+
-    strlen("Content-Disposition: form-data; name=\"data\"; filename=\"IHAVEs\"\r\n"
-	   "Content-Type: application/octet-stream\r\n"
-	   "\r\n")+
-    r->cursor->buffer_offset_bytes+r->cursor->buffer_used+
-    strlen("\r\n--")+strlen(boundary)+strlen("--\r\n");
-
-  char buffer[8192];
-  snprintf(buffer,8192,
-	   "POST /rhizome/enquiry HTTP/1.0\r\n"
-	   "Content-Length: %d\r\n"
-	   "Content-Type: multipart/form-data; boundary=%s\r\n"
-	   "\r\n"
-	   "--%s\r\n"
-	   "Content-Disposition: form-data; name=\"data\"; filename=\"IHAVEs\"\r\n"
-	   "Content-Type: application/octet-stream\r\n"
-	   "\r\n",
-	   content_length,
-	   boundary,boundary);
-  int len=strlen(buffer);
+  int len = strbuf_len(request);
   int sent=0;
   while(sent<len) {
-    errno=0;
+    DEBUGF("write(%d, %s, %d)", sock, alloca_toprint(-1, &buffer[sent], len-sent), len-sent);
     int count=write(sock,&buffer[sent],len-sent);
-    if (count<1) {
-      DEBUGF("errno=%d, count=%d",errno,count);
+    if (count == -1) {
       if (errno==EPIPE) goto rx;
+      WHYF_perror("write(%d)", len - sent);
       close(sock);
       goto end;
     }
@@ -633,26 +611,28 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   len=r->cursor->buffer_offset_bytes+r->cursor->buffer_used;
   sent=0;
   while(sent<len) {
-    errno=0;
+    DEBUGF("write(%d, %s, %d)", sock, alloca_toprint(-1, (const char*)&r->cursor->buffer[sent], len-sent), len-sent);
     int count=write(sock,&r->cursor->buffer[sent],len-sent);
-    if (count<1) {
-      DEBUGF("errno=%d, count=%d",errno,count);
-      if (errno==EPIPE) goto rx;
+    if (count == -1) {
+      if (errno == EPIPE)
+	goto rx;
+      WHYF_perror("write(%d)", count);
       close(sock);
       goto end;
     }
     sent+=count;
   }
 
-  snprintf(buffer,8192,"\r\n--%s--\r\n",boundary);
-  len=strlen(buffer);
+  strbuf_reset(request);
+  strbuf_puts(request, strbuf_str(content_postamble));
+  len = strbuf_len(request);
   sent=0;
   while(sent<len) {
-    errno=0;
+    DEBUGF("write(%d, %s, %d)", sock, alloca_toprint(-1, &buffer[sent], len-sent), len-sent);
     int count=write(sock,&buffer[sent],len-sent);
-    if (count<1) {
-      DEBUGF("errno=%d, count=%d",errno,count);
+    if (count == -1) {
       if (errno==EPIPE) goto rx;
+      WHYF_perror("write(%d)", len - sent);
       close(sock);
       goto end;
     }
@@ -666,8 +646,8 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
     {
       int count=read(sock,&buffer[len],8192-len);
       if (count==0) break;
-      if (count<1) {
-	DEBUGF("errno=%d, count=%d",errno,count);
+      if (count == -1) {
+	WHYF_perror("read(%d)", 8192-len);
 	close(sock);
 	goto end;
       }
@@ -750,19 +730,19 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	bid_prefix_ll=rhizome_bar_bidprefix((unsigned char *)&p[i+1]);
       DEBUGF("%s %016llx*",type==1?"push":"pull",bid_prefix_ll);
       if (type==2&&r->pullP) {
-	DEBUGF("XXX rhizome direct http pull not yet implemented.");
+	WARN("XXX Rhizome direct http pull yet implemented");
 	/* Need to fetch manifest.  Once we have the manifest, then we can
 	   use our normal bundle fetch routines from rhizome_fetch.c
 	*/
       } else if (type==1&&r->pushP) {
-	DEBUGF("XXX rhizome direct http push not yet implemented");
+	WARN("XXX rhizome direct http push not implemented");
 	/* Form up the POST request to submit the appropriate bundle. */
 
 	/* Start by getting the manifest, which is the main thing we need, and also
 	   gives us the information we need for sending any associated file. */
 	rhizome_manifest *m=rhizome_direct_get_manifest((unsigned char *)&p[i+1],8);
 	if (!m) {
-	  DEBUGF("This should never happen.  The manifest exists, but when I went looking for it, it doesn't appear to be there.");
+	  WHY("This should never happen.  The manifest exists, but when I went looking for it, it doesn't appear to be there.");
 	  goto next_item;
 	}
 
@@ -776,9 +756,6 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 
 	/* We now have everything we need to compose the POST request and send it.
 	 */
-	char boundary_string[128];
-	char buffer[8192];
-	snprintf(boundary_string,80,"----%08lx%08lx",random(),random());
 	char *template="POST /rhizome/import HTTP/1.0\r\n"
 	  "Content-Length: %d\r\n"
 	  "Content-Type: multipart/form-data; boundary=%s\r\n"
@@ -797,21 +774,21 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	       m->manifest_all_bytes,m->manifest_bytes);
 	int content_length
 	  =strlen(template2)-2 /* minus 2 for the "%s" that gets replaced */
-	  +strlen(boundary_string)
+	  +strlen(boundary)
 	  +m->manifest_all_bytes
 	  +strlen(template3)-2 /* minus 2 for the "%s" that gets replaced */
-	  +strlen(boundary_string)
+	  +strlen(boundary)
 	  +filesize
-	  +strlen("\r\n--")+strlen(boundary_string)+strlen("--\r\n");
+	  +strlen("\r\n--")+strlen(boundary)+strlen("--\r\n");
 
 	/* XXX For some reason the above is four bytes out, so fix that */
 	content_length+=4;
 
-	int len=snprintf(buffer,8192,template,content_length,boundary_string);
-	len+=snprintf(&buffer[len],8192-len,template2,boundary_string);
+	int len=snprintf(buffer,8192,template,content_length,boundary);
+	len+=snprintf(&buffer[len],8192-len,template2,boundary);
 	memcpy(&buffer[len],m->manifestdata,m->manifest_all_bytes);
 	len+=m->manifest_all_bytes;
-	len+=snprintf(&buffer[len],8192-len,template3,boundary_string);
+	len+=snprintf(&buffer[len],8192-len,template3,boundary);
 
 	addr.sin_family = AF_INET;     
 	addr.sin_port = htons(state->port);   
@@ -832,6 +809,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	int sent=0;
 	/* Send buffer now */
 	while(sent<len) {
+	  DEBUGF("write(%d, %s, %d)", sock, alloca_toprint(-1, &buffer[sent], len-sent), len-sent);
 	  int r=write(sock,&buffer[sent],len-sent);
 	  if (r>0) sent+=r;
 	  if (r<0) goto closeit;
@@ -855,9 +833,10 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	    int sr=sqlite3_blob_read(blob,buffer,count,i);
 	    if (sr==SQLITE_OK||sr==SQLITE_DONE)
 	      {
+		DEBUGF("write(%d, %s, %d)", sock, alloca_toprint(-1, (char *)buffer, count), count);
 		count=write(sock,buffer,count);
 		if (count<0) {
-		  DEBUGF("socket error writing to server");
+		  WHY_perror("write");
 		  sqlite3_blob_close(blob);
 		  goto closeit;
 		} else { 
@@ -865,19 +844,18 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 		  DEBUGF("Wrote %d bytes of file",count);
 		}
 	      } else {
-	      DEBUGF("sqlite error #%d occurred reading from the blob",sr);
-	      DEBUGF("It was: %s",sqlite3_errmsg(rhizome_db));
-	      sqlite3_blob_close(blob);	      
+	      WHYF("sqlite error #%d occurred reading from the blob: %s",sr, sqlite3_errmsg(rhizome_db));
+	      sqlite3_blob_close(blob);
 	      goto closeit;
 	    }
 
 	  }
 
 	/* Send final mime boundary */
-	len+=0;
-	len+=snprintf(&buffer[len],8192-len,"\r\n--%s--\r\n",boundary_string);
+	len=snprintf(buffer,8192,"\r\n--%s--\r\n",boundary);
 	sent=0;
 	while(sent<len) {
+	  DEBUGF("write(%d, %s, %d)", sock, alloca_toprint(-1, &buffer[sent], len-sent), len-sent);
 	  int r=write(sock,&buffer[sent],len-sent);
 	  if (r>0) sent+=r;
 	  if (r<0) goto closeit;
