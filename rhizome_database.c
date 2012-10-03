@@ -148,21 +148,20 @@ int rhizome_opendb()
   /* Create tables as required */
   sqlite_exec_void_loglevel(loglevel, "PRAGMA auto_vacuum=2;");
   if (	sqlite_exec_void("CREATE TABLE IF NOT EXISTS GROUPLIST(id text not null primary key, closed integer,ciphered integer,priority integer);") == -1
-    ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS MANIFESTS(id text not null primary key, manifest blob, version integer,inserttime integer, bar blob);") == -1
-    ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS FILES(id text not null primary key, data blob, length integer, highestpriority integer, datavalid integer);") == -1
+    ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS MANIFESTS(id text not null primary key, manifest blob, version integer,inserttime integer, bar blob, filesize integer, filehash text);") == -1
+    ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS FILES(id text not null primary key, data blob, length integer, highestpriority integer, datavalid integer, inserttime integer);") == -1
     ||	sqlite_exec_void("DROP TABLE IF EXISTS FILEMANIFESTS;") == -1
     ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS GROUPMEMBERSHIPS(manifestid text not null, groupid text not null);") == -1
     ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS VERIFICATIONS(sid text not null, did text, name text, starttime integer, endtime integer, signature blob);") == -1
   ) {
     RETURN(WHY("Failed to create schema"));
   }
-  // No easy way to tell if these columns already exist, should probably create some kind of schema
-  // version table.  Running these a second time will fail.
-  sqlite_exec_void_loglevel(loglevel, "ALTER TABLE MANIFESTS ADD COLUMN filesize text;");
-  sqlite_exec_void_loglevel(loglevel, "ALTER TABLE MANIFESTS ADD COLUMN filehash text;");
-  sqlite_exec_void_loglevel(loglevel, "ALTER TABLE FILES ADD inserttime integer;");
-  /* Clean out database, but if this fails keep going (database may be read-only). */
+
+  /* Create indexes if they don't already exist */
+  sqlite_exec_void_loglevel(LOG_LEVEL_WARN,"CREATE INDEX IF NOT EXISTS bundlesizeindex ON manifests (filesize);");
   sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_HASH ON MANIFESTS(filehash);");
+
+  /* Clean out half-finished entries from the database */
   sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM MANIFESTS WHERE filehash IS NULL;");
   sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM FILES WHERE NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);");
   sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM MANIFESTS WHERE filehash != '' AND NOT EXISTS( SELECT  1 FROM FILES WHERE MANIFESTS.filehash = FILES.id);");
