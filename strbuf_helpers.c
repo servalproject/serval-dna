@@ -38,7 +38,7 @@ static inline strbuf _toprint(strbuf sb, char c)
   else if (c >= ' ' && c <= '~')
     strbuf_putc(sb, c);
   else
-    strbuf_sprintf(sb, "\\x%02x", c);
+    strbuf_sprintf(sb, "\\x%02x", (unsigned char) c);
   return sb;
 }
 
