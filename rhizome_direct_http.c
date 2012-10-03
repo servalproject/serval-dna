@@ -904,7 +904,6 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
       // unsigned char *bid_prefix=(unsigned char *)&p[i+1];
       unsigned long long 
 	bid_prefix_ll=rhizome_bar_bidprefix_ll((unsigned char *)&actionlist[i+1]);
-      dump("response",(unsigned char *)actionlist,content_length);
       DEBUGF("%s %016llx* @ 0x%x",type==1?"push":"pull",bid_prefix_ll,i);
       if (type==2&&r->pullP) {
 	/* Need to fetch manifest.  Once we have the manifest, then we can
