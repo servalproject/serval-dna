@@ -1427,6 +1427,22 @@ int app_id_self(int argc, const char *const *argv, struct command_line_option *o
   return 0;
 }
 
+int app_count_peers(int argc, const char *const *argv, struct command_line_option *o, void *context){
+  overlay_mdp_frame a;
+  bzero(&a, sizeof(overlay_mdp_frame));
+  a.packetTypeAndFlags=MDP_GETADDRS;
+  a.addrlist.mode = MDP_ADDRLIST_MODE_ROUTABLE_PEERS;
+  a.addrlist.first_sid=0x7fffffff;
+  if (overlay_mdp_send(&a,MDP_AWAITREPLY,5000)){
+    if (a.packetTypeAndFlags==MDP_ERROR)
+      return WHYF("  MDP Server error #%d: '%s'",a.error.error,a.error.message);
+    return WHYF("Failed to send request");
+  }
+  cli_printf("%d",a.addrlist.server_sid_count);
+  cli_delim("\n");
+  return 0;
+}
+
 int app_test_rfs(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
@@ -1687,6 +1703,8 @@ struct command_line_option command_line_options[]={
    "Return identity of all known peers as URIs"},
   {app_node_info,{"node","info","<sid>","[getdid]",NULL},0,
    "Return information about SID, and optionally ask for DID resolution via network"},
+  {app_count_peers,{"peer","count",NULL},0,
+    "Return a count of routable peers on the network"},
   {app_test_rfs,{"test","rfs",NULL},0,
    "Test RFS field calculation"},
   {app_monitor_cli,{"monitor",NULL},0,
