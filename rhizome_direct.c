@@ -777,21 +777,23 @@ int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTE
 
   snprintf(query,1024,
 	   "SELECT BAR,ROWID,ID,FILESIZE FROM MANIFESTS"
-	   " WHERE ID>='%s' AND ID<='%s' AND FILESIZE BETWEEN %lld AND %lld"
+	   " WHERE"
+	   " FILESIZE BETWEEN %lld AND %lld"
+	   " AND ID>='%s' AND ID<='%s'"
 	   // The following formulation doesn't remove the weird returning of
 	   // bundles with out of range filesize values
 	   //	   " WHERE ID>='%s' AND ID<='%s' AND FILESIZE > %lld AND FILESIZE < %lld"
 	   " ORDER BY BAR LIMIT %d;",
+	   size_low, size_high,
 	   alloca_tohex(bid_low,RHIZOME_MANIFEST_ID_BYTES),
 	   alloca_tohex(bid_max,RHIZOME_MANIFEST_ID_BYTES),
-	   size_low,size_high,
 	   bars_requested);
 
   sqlite3_stmt *statement=sqlite_prepare(query);
   sqlite3_blob *blob=NULL;  
 
   int bars_written=0;
-
+  
   while(bars_written<bars_requested
 	&&  sqlite_step_retry(&retry, statement) == SQLITE_ROW)
     {
@@ -807,7 +809,7 @@ int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTE
 	  DEBUGF("WEIRDNESS ALERT: filesize=%lld, but query was: %s",
 		 filesize,query);
 	  break;
-	}
+	} 
 	int64_t rowid = sqlite3_column_int64(statement, 1);
 	do ret = sqlite3_blob_open(rhizome_db, "main", "manifests", "bar",
 				   rowid, 0 /* read only */, &blob);

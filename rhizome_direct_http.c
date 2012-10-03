@@ -783,7 +783,6 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   len=r->cursor->buffer_offset_bytes+r->cursor->buffer_used;
   sent=0;
   while(sent<len) {
-    DEBUGF("write(%d, %s, %d)", sock, alloca_toprint(-1, (const char*)&r->cursor->buffer[sent], len-sent), len-sent);
     int count=write(sock,&r->cursor->buffer[sent],len-sent);
     if (count == -1) {
       if (errno == EPIPE)
@@ -880,7 +879,12 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   }
 
   DEBUGF("content_length=%d",content_length);
-  dump("response",(unsigned char *)p,content_length);
+
+  /* For some reason the response data gets overwritten during a push,
+     so we need to copy it, and use the copy instead. */
+  unsigned char *actionlist=alloca(content_length);
+  bcopy(p,actionlist,content_length);
+  dump("response",actionlist,content_length);
 
   /* We now have the list of (1+RHIZOME_BAR_PREFIX_BYTES)-byte records that indicate
      the list of BAR prefixes that differ between the two nodes.  We can now action
@@ -893,17 +897,16 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 
      For now, I am just going to implement it in here, and we can generalise later.
   */
-  DEBUGF("XXX Need to parse responses into actions");
   int i;
   for(i=10;i<content_length;i+=(1+RHIZOME_BAR_PREFIX_BYTES))
     {
-      int type=p[i];
+      int type=actionlist[i];
       // unsigned char *bid_prefix=(unsigned char *)&p[i+1];
       unsigned long long 
-	bid_prefix_ll=rhizome_bar_bidprefix_ll((unsigned char *)&p[i+1]);
-      DEBUGF("%s %016llx*",type==1?"push":"pull",bid_prefix_ll);
+	bid_prefix_ll=rhizome_bar_bidprefix_ll((unsigned char *)&actionlist[i+1]);
+      dump("response",(unsigned char *)actionlist,content_length);
+      DEBUGF("%s %016llx* @ 0x%x",type==1?"push":"pull",bid_prefix_ll,i);
       if (type==2&&r->pullP) {
-	WARN("XXX Rhizome direct http pull yet implemented");
 	/* Need to fetch manifest.  Once we have the manifest, then we can
 	   use our normal bundle fetch routines from rhizome_fetch.c	 
 
@@ -914,7 +917,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	   existing routines.
 	*/
 	if (!rhizome_fetch_request_manifest_by_prefix
-	    (&addr,(unsigned char *)&p[i+1],RHIZOME_BAR_PREFIX_BYTES,
+	    (&addr,&actionlist[i+1],RHIZOME_BAR_PREFIX_BYTES,
 	     1 /* import, getting file if needed */))
 	  {
 	    /* Fetching the manifest, and then using it to see if we want to 
@@ -929,7 +932,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	/* Start by getting the manifest, which is the main thing we need, and also
 	   gives us the information we need for sending any associated file. */
 	rhizome_manifest 
-	  *m=rhizome_direct_get_manifest((unsigned char *)&p[i+1],
+	  *m=rhizome_direct_get_manifest(&actionlist[i+1],
 					 RHIZOME_BAR_PREFIX_BYTES);
 	if (!m) {
 	  WHY("This should never happen.  The manifest exists, but when I went looking for it, it doesn't appear to be there.");
@@ -999,7 +1002,6 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	int sent=0;
 	/* Send buffer now */
 	while(sent<len) {
-	  DEBUGF("write(%d, %s, %d)", sock, alloca_toprint(-1, &buffer[sent], len-sent), len-sent);
 	  int r=write(sock,&buffer[sent],len-sent);
 	  if (r>0) sent+=r;
 	  if (r<0) goto closeit;
@@ -1023,7 +1025,6 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	    int sr=sqlite3_blob_read(blob,buffer,count,i);
 	    if (sr==SQLITE_OK||sr==SQLITE_DONE)
 	      {
-		DEBUGF("write(%d, %s, %d)", sock, alloca_toprint(-1, (char *)buffer, count), count);
 		count=write(sock,buffer,count);
 		if (count<0) {
 		  WHY_perror("write");
@@ -1045,7 +1046,6 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	len=snprintf(buffer,8192,"\r\n--%s--\r\n",boundary);
 	sent=0;
 	while(sent<len) {
-	  DEBUGF("write(%d, %s, %d)", sock, alloca_toprint(-1, &buffer[sent], len-sent), len-sent);
 	  int r=write(sock,&buffer[sent],len-sent);
 	  if (r>0) sent+=r;
 	  if (r<0) goto closeit;
@@ -1060,6 +1060,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	if (m) rhizome_manifest_free(m);
       }
     next_item:
+      DEBUGF("Next item.");
       continue;
     }
 
