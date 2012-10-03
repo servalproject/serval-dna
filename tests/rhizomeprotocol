@@ -274,9 +274,8 @@ setup_sync() {
    add_file file2
    BID2=$BID
    VERSION2=$VERSION
-   set_instance +A
    executeOk_servald config set rhizome.direct.peer.count "1"
-   executeOk_servald config set rhizome.direct.peer.0 "http://${addr_localhost}:${PORTB}"
+   executeOk_servald config set rhizome.direct.peer.0 "http://${addr_localhost}:${PORTA}"
    start_servald_instances dummy2 +B
 }
 
@@ -286,13 +285,15 @@ setup_Push() {
    setup_sync
 }
 test_Push() {
-   set_instance +A
-   executeOk_servald rhizome direct push
-   executeOk_servald rhizome list ''
-   assert_rhizome_list file1
    set_instance +B
+   executeOk_servald rhizome direct push
+   set_instance +A
+   tfw_cat --stdout --stderr
    executeOk_servald rhizome list ''
    assert_rhizome_list file1 file2
+   set_instance +B
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file2
 }
 
 doc_Pull="One way pull bundle from unconnected node"
@@ -301,13 +302,14 @@ setup_Pull() {
    setup_sync
 }
 test_Pull() {
-   set_instance +A
+   set_instance +B
    executeOk_servald rhizome direct pull
+   set_instance +A
    executeOk_servald rhizome list ''
-   assert_rhizome_list file1 file2
+   assert_rhizome_list file1
    set_instance +B
    executeOk_servald rhizome list ''
-   assert_rhizome_list file2
+   assert_rhizome_list file1 file2
 }
 
 doc_Sync="Two-way sync bundles between unconnected nodes"
