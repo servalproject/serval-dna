@@ -224,15 +224,15 @@ int rhizome_manifest_check_file(rhizome_manifest *m_in)
     return 0;
   }
   if (gotfile) {
-    DEBUGF("Skipping file checks for bundle, as file is already in the database");
+    /* Skipping file checks for bundle, as file is already in the database */
     return 0;
   }
 
   /* Find out whether the payload is expected to be encrypted or not */
   m_in->payloadEncryption=rhizome_manifest_get_ll(m_in, "crypt");
   
-  /* Check payload file is accessible and discover its length, then check that it matches
-     the file size stored in the manifest */
+  /* Check payload file is accessible and discover its length, then check that it
+     matches the file size stored in the manifest */
   long long mfilesize = rhizome_manifest_get_ll(m_in, "filesize");
   m_in->fileLength = 0;
   if (m_in->dataFileName && m_in->dataFileName[0]) {

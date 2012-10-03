@@ -277,7 +277,6 @@ void rhizome_server_poll(struct sched_ent *alarm)
       request->uuid=rhizome_http_request_uuid_counter++;
       if (peerip) request->requestor=*peerip; 
       else bzero(&request->requestor,sizeof(request->requestor));
-      DEBUGF("accepted connection from %s",inet_ntoa(request->requestor.sin_addr));
       request->data_file_name[0]=0;
 
       /* We are now trying to read the HTTP request */
