@@ -93,6 +93,12 @@ struct subscriber{
       struct sockaddr_in address;
     };
   };
+  
+  // public signing key details
+  unsigned char sas_public[SAS_SIZE];
+  time_ms_t sas_last_request;
+  unsigned char sas_valid;
+  
 };
 
 struct broadcast{

@@ -287,10 +287,12 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
       /* This call below will dispatch the request for the SAS if we don't
 	 already have it.  In the meantime, we just drop the frame if the SAS
 	 is not available. */
-      unsigned char *key = keyring_find_sas_public(keyring,mdp->out.src.sid);
-      if (!key)
+      
+      if (!f->source->sas_valid){
+	keyring_send_sas_request(f->source);
 	RETURN(WHY("SAS key not currently on record, cannot verify"));
-
+      }
+      
       /* get payload and following compacted signature */
       b=&f->payload->bytes[f->payload->position];
       len=f->payload->sizeLimit - f->payload->position - crypto_sign_edwards25519sha512batch_BYTES;
@@ -311,7 +313,7 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
       int result
 	=crypto_sign_edwards25519sha512batch_open(m,&mlen,
 						  signature,sizeof(signature),
-						  key);
+						  f->source->sas_public);
       if (result) {
 	WHY("Signature verification failed");
 	dump("data", b, len);

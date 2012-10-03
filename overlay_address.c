@@ -230,7 +230,11 @@ int set_reachable(struct subscriber *subscriber, int reachable){
       break;
   }
   
-  // Hacky layering violation...
+  /* Pre-emptively send a sas request */
+  if (!subscriber->sas_valid && reachable!=REACHABLE_SELF && reachable!=REACHABLE_NONE && reachable!=REACHABLE_BROADCAST)
+    keyring_send_sas_request(subscriber);
+
+  // Hacky layering violation... send our identity to a directory service
   if (subscriber==directory_service &&
       (old_value==REACHABLE_NONE||old_value==REACHABLE_BROADCAST) &&
       (reachable!=REACHABLE_NONE&&reachable!=REACHABLE_BROADCAST)
@@ -249,13 +253,11 @@ int reachable_unicast(struct subscriber *subscriber, overlay_interface *interfac
     return WHYF("Subscriber %s is already known for overlay routing", alloca_tohex_sid(subscriber->sid));
   
   subscriber->interface = interface;
-  set_reachable(subscriber, REACHABLE_UNICAST);
   subscriber->address.sin_family = AF_INET;
   subscriber->address.sin_addr = addr;
   subscriber->address.sin_port = htons(port);
+  set_reachable(subscriber, REACHABLE_UNICAST);
   
-  /* Pre-emptively check if we have their sas in memory, or send a request */
-  keyring_find_sas_public(keyring, subscriber->sid);
   return 0;
 }
 

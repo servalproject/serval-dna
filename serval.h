@@ -189,6 +189,8 @@ extern char *batman_socket;
 extern char *batman_peerfile;
 
 
+struct subscriber;
+
 typedef struct keypair {
   int type;
   unsigned char *private_key;
@@ -273,7 +275,7 @@ int keyring_find_did(const keyring_file *k,int *cn,int *in,int *kp,char *did);
 int keyring_find_sid(const keyring_file *k,int *cn,int *in,int *kp, const unsigned char *sid);
 unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
 					unsigned char **sas_public);
-unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid);
+int keyring_send_sas_request(struct subscriber *subscriber);
 
 int keyring_commit(keyring_file *k);
 keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, const char *pin);
@@ -322,7 +324,6 @@ struct sched_ent{
 };
 
 struct overlay_buffer;
-struct subscriber;
 
 #define STRUCT_SCHED_ENT_UNUSED ((struct sched_ent){NULL, NULL, NULL, NULL, {-1, 0, 0}, 0LL, 0LL, NULL, -1})
 

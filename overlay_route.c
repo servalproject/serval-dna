@@ -534,9 +534,6 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
     /* Make sure node is advertised soon */
     overlay_route_please_advertise(n);
     monitor_announce_peer(n->subscriber->sid);
-    
-    /* Pre-emptively check if we have their sas in memory, or send a request */
-    keyring_find_sas_public(keyring, n->subscriber->sid);
   }
   
   return 0;

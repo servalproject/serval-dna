@@ -1133,16 +1133,61 @@ unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
   RETURN(WHYNULL("Identity lacks SAS"));
 }
 
-struct sid_sas_mapping {
-  unsigned char sid[SID_SIZE];
-  unsigned char sas_public[SAS_SIZE];
-  time_ms_t last_request_time_in_ms;
-  unsigned char validP;
-};
+static int keyring_store_sas(overlay_mdp_frame *req){
+  struct subscriber *subscriber = find_subscriber(req->in.src.sid,SID_SIZE,1);
+  
+  if (subscriber->sas_valid){
+    if (debug & DEBUG_KEYRING)
+      DEBUGF("Ignoring SID:SAS mapping for %s, already have one", alloca_tohex_sid(req->in.src.sid));
+    return 0;
+  }
+  
+  if (debug & DEBUG_KEYRING)
+    DEBUGF("Received SID:SAS mapping, %d bytes", req->out.payload_length);
+  
+  unsigned keytype = req->out.payload[0];
+  
+  if (keytype!=KEYTYPE_CRYPTOSIGN)
+    return WHYF("Ignoring SID:SAS mapping with unsupported key type %u", keytype);
 
-#define MAX_SID_SAS_MAPPINGS 1024
-int sid_sas_mapping_count=0;
-struct sid_sas_mapping sid_sas_mappings[MAX_SID_SAS_MAPPINGS];
+  if (req->out.payload_length < 1 + SAS_SIZE)
+    return WHY("Truncated key mapping announcement?");
+  
+  unsigned char plain[req->out.payload_length];
+  unsigned long long plain_len=0;
+  unsigned char *sas_public=&req->out.payload[1];
+  unsigned char *compactsignature = &req->out.payload[1+SAS_SIZE];
+  int siglen=SID_SIZE+crypto_sign_edwards25519sha512batch_BYTES;
+  unsigned char signature[siglen];
+  
+  /* reconstitute signed SID for verification */
+  bcopy(&compactsignature[0],&signature[0],32);
+  bcopy(&req->out.src.sid[0],&signature[32],SID_SIZE);
+  bcopy(&compactsignature[32],&signature[32+SID_SIZE],32);
+  
+  int r=crypto_sign_edwards25519sha512batch_open(plain,&plain_len,
+						 signature,siglen,
+						 sas_public);
+  if (r)
+    return WHY("SID:SAS mapping verification signature does not verify");
+  /* These next two tests should never be able to fail, but let's just check anyway. */
+  if (plain_len != SID_SIZE)
+    return WHY("SID:SAS mapping signed block is wrong length");
+  if (memcmp(plain, req->out.src.sid, SID_SIZE) != 0)
+    return WHY("SID:SAS mapping signed block is for wrong SID");
+  
+  /* now store it */
+  bcopy(sas_public, subscriber->sas_public, SAS_SIZE);
+  subscriber->sas_valid=1;
+  subscriber->sas_last_request=-1;
+  
+  if (debug & DEBUG_KEYRING)
+    DEBUGF("Stored SID:SAS mapping, SID=%s to SAS=%s",
+	   alloca_tohex_sid(req->out.src.sid),
+	   alloca_tohex_sas(subscriber->sas_public)
+	   );
+  return 0;
+}
 
 int keyring_mapping_request(keyring_file *k, overlay_mdp_frame *req)
 {
@@ -1193,123 +1238,28 @@ int keyring_mapping_request(keyring_file *k, overlay_mdp_frame *req)
 	  );
     return overlay_mdp_dispatch(req,0,NULL,0);
   } else {
-    /* It's probably a response. */
-    if (debug & DEBUG_KEYRING)
-      DEBUGF("Received SID:SAS mapping, %d bytes", req->out.payload_length);
-    unsigned keytype = req->out.payload[0];
-
-    switch (keytype) {
-    case KEYTYPE_CRYPTOSIGN:
-      {
-	if (req->out.payload_length < 1 + SAS_SIZE)
-	  return WHY("Truncated key mapping announcement?");
-	unsigned char plain[req->out.payload_length];
-	unsigned long long plain_len=0;
-	unsigned char *sas_public=&req->out.payload[1];
-	unsigned char *compactsignature = &req->out.payload[1+SAS_SIZE];
-	/* reconstitute signed SID for verification */
-	int siglen=SID_SIZE+crypto_sign_edwards25519sha512batch_BYTES;
-	unsigned char signature[siglen];
-	bcopy(&compactsignature[0],&signature[0],32);
-	bcopy(&req->out.src.sid[0],&signature[32],SID_SIZE);
-	bcopy(&compactsignature[32],&signature[32+SID_SIZE],32);
-
-	int r=crypto_sign_edwards25519sha512batch_open(plain,&plain_len,
-						       signature,siglen,
-						       sas_public);
-	if (r)
-	  return WHY("SID:SAS mapping verification signature does not verify");
-	/* These next two tests should never be able to fail, but let's just check anyway. */
-	if (plain_len != SID_SIZE)
-	  return WHY("SID:SAS mapping signed block is wrong length");
-	if (memcmp(plain, req->out.src.sid, SID_SIZE) != 0)
-	  return WHY("SID:SAS mapping signed block is for wrong SID");
-
-	/* work out where to put it */
-	int i;
-	for (i = 0; i < sid_sas_mapping_count; ++i)
-	  if (memcmp(req->out.src.sid, sid_sas_mappings[i].sid, SID_SIZE) == 0)
-	    break;
-	if (i >= MAX_SID_SAS_MAPPINGS)
-	  i = random() % MAX_SID_SAS_MAPPINGS;
-	else if (i >= sid_sas_mapping_count)
-	  i = sid_sas_mapping_count++;
-
-	/* now put it */
-	bcopy(&req->out.src.sid, &sid_sas_mappings[i].sid[0], SID_SIZE);
-	bcopy(sas_public, &sid_sas_mappings[i].sas_public[0], SAS_SIZE);
-	if (debug & DEBUG_KEYRING)
-	  DEBUGF("Stored SID:SAS mapping #%d of %d, SID=%s to SAS=%s",
-	      i, sid_sas_mapping_count,
-	      alloca_tohex_sid(sid_sas_mappings[i].sid),
-	      alloca_tohex_sas(sid_sas_mappings[i].sas_public)
-	    );
-	sid_sas_mappings[i].validP=1;
-	sid_sas_mappings[i].last_request_time_in_ms = -1;
-	return 0;
-      }
-      break;
-    default:
-      WARNF("Ignoring SID:SAS mapping with unsupported key type %u", keytype);
-      break;
-    }
+    return keyring_store_sas(req);
   }
   return WHY("Not implemented");
 }
 
-unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
-{
-  /* Main issue here is that we need to have the public SAS key for
-     this sender.  This needs to be cached somewhere (possibly persistently,
-     or not depending on a persons paranoia level, as having a SID:SAS
-     mapping implies that at least machine to machine contact has occurred
-     with that identity.
-
-     See the Serval Security Framework document for a discussion of some of the
-     privacy and security issues that vex a persistent store.
-
-     For now we will just use a non-persistent cache for safety (and it happens
-     to be easy to implement as well :)
-  */
-  IN();
-  int i;
+int keyring_send_sas_request(struct subscriber *subscriber){
+  if (subscriber->sas_valid)
+    return 0;
+  
   time_ms_t now = gettime_ms();
-  for(i=0;i<sid_sas_mapping_count;i++)
-    {
-      if (memcmp(sid,sid_sas_mappings[i].sid,SID_SIZE)) continue;
-      if (sid_sas_mappings[i].validP) {
-	if (debug & DEBUG_KEYRING)
-	  DEBUGF("Found SAS for SID=%s", alloca_tohex_sid(sid));
-	RETURN(sid_sas_mappings[i].sas_public);
-      }
-      /* Don't flood the network with mapping requests */
-      if (sid_sas_mappings[i].last_request_time_in_ms != -1 && now < sid_sas_mappings[i].last_request_time_in_ms + 100) {
-	INFO("Too soon to ask for SAS mapping again");
-	RETURN(NULL);
-      }
-      /* we can request again, so fall out to where we do that.
-         i is set to this mapping, so the request process will update this
-         record. */
-      break;
-    }
-  if (debug & DEBUG_KEYRING)
-    DEBUGF("Requesting SAS mapping for SID=%s", alloca_tohex_sid(sid));
-
-  /* allocate mapping slot or replace one at random, depending on how full things
-     are */
-  if (i==sid_sas_mapping_count) {
-    if (i>=MAX_SID_SAS_MAPPINGS) i=random()%MAX_SID_SAS_MAPPINGS;
-    else sid_sas_mapping_count++;
+  
+  if (now < subscriber->sas_last_request + 100){
+    if (debug & DEBUG_KEYRING)
+      INFO("Too soon to ask for SAS mapping again");
+    return 0;
   }
-
-  /* pre-populate mapping slot */
-  bcopy(&sid[0], &sid_sas_mappings[i].sid[0], SID_SIZE);
-  bzero(&sid_sas_mappings[i].sas_public, SAS_SIZE);
-  sid_sas_mappings[i].validP=0;
-  sid_sas_mappings[i].last_request_time_in_ms = now;
-
+  
   if (!my_subscriber)
-    RETURN(WHYNULL("couldn't request SAS (I don't know who I am)"));    
+    return WHY("couldn't request SAS (I don't know who I am)");
+  
+  if (debug & DEBUG_KEYRING)
+    DEBUGF("Requesting SAS mapping for SID=%s", alloca_tohex_sid(subscriber->sid));
   
   // always send our sid in full, it's likely this is a new peer
   my_subscriber->send_full = 1;
@@ -1319,7 +1269,7 @@ unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
   memset(&mdp,0,sizeof(overlay_mdp_frame));
   
   mdp.packetTypeAndFlags=MDP_TX;
-  bcopy(sid,mdp.out.dst.sid,SID_SIZE);
+  bcopy(subscriber->sid,mdp.out.dst.sid,SID_SIZE);
   mdp.out.dst.port=MDP_PORT_KEYMAPREQUEST;
   mdp.out.src.port=MDP_PORT_KEYMAPREQUEST;
   bcopy(my_subscriber->sid,mdp.out.src.sid,SID_SIZE);
@@ -1327,10 +1277,12 @@ unsigned char *keyring_find_sas_public(keyring_file *k,unsigned char *sid)
   mdp.out.payload[0]=KEYTYPE_CRYPTOSIGN;
   
   if (overlay_mdp_dispatch(&mdp, 0 /* system generated */, NULL, 0))
-    RETURN(WHYNULL("Failed to send SAS resolution request"));
+    return WHY("Failed to send SAS resolution request");
   if (debug & DEBUG_KEYRING)
     DEBUGF("Dispatched SAS resolution request");
-  RETURN(NULL); 
+  
+  subscriber->sas_last_request=now;
+  return 0;
 }
 
 int keyring_find_sid(const keyring_file *k, int *cn, int *in, int *kp, const unsigned char *sid)
