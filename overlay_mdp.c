@@ -934,38 +934,60 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   RETURN(0);
 }
 
-struct search_state{
-  overlay_mdp_frame *mdp;
-  overlay_mdp_frame *mdpreply;
-  int first;
-  int max;
-  int index;
-  int count;
-};
-
 static int search_subscribers(struct subscriber *subscriber, void *context){
-  struct search_state *state = context;
+  overlay_mdp_addrlist *response = context;
   
-  if (state->mdp->addrlist.mode == MDP_ADDRLIST_MODE_SELF && subscriber->reachable != REACHABLE_SELF){
+  if (response->mode == MDP_ADDRLIST_MODE_SELF && subscriber->reachable != REACHABLE_SELF){
     return 0;
   }
   
-  if (state->mdp->addrlist.mode == MDP_ADDRLIST_MODE_ROUTABLE_PEERS && 
+  if (response->mode == MDP_ADDRLIST_MODE_ROUTABLE_PEERS && 
       (subscriber->reachable != REACHABLE_DIRECT && 
        subscriber->reachable != REACHABLE_INDIRECT && 
        subscriber->reachable != REACHABLE_UNICAST)){
     return 0;
   }
     
-  if (state->mdp->addrlist.mode == MDP_ADDRLIST_MODE_ALL_PEERS &&
+  if (response->mode == MDP_ADDRLIST_MODE_ALL_PEERS &&
       subscriber->reachable == REACHABLE_SELF){
     return 0;
   }
   
-  if (state->count++ >= state->first && state->index < state->max) {
-    memcpy(state->mdpreply->addrlist.sids[state->index++], subscriber->sid, SID_SIZE);
+  if (response->server_sid_count++ >= response->first_sid && 
+      response->first_sid + response->frame_sid_count < response->last_sid) {
+    memcpy(response->sids[response->frame_sid_count++], subscriber->sid, SID_SIZE);
   }
   
+  return 0;
+}
+
+int overlay_mdp_address_list(overlay_mdp_addrlist *request, overlay_mdp_addrlist *response){
+  if (debug & DEBUG_MDPREQUESTS)
+    DEBUGF("MDP_GETADDRS first_sid=%u mode=%d",
+	   request->first_sid,
+	   request->mode
+	   );
+  
+  /* Prepare reply packet */
+  response->mode = request->mode;
+  response->first_sid = request->first_sid;
+  response->frame_sid_count = 0;
+  
+  /* ... and constrain list for sanity */
+  if (response->first_sid<0) response->first_sid=0;
+  
+  /* Populate with SIDs */
+  enum_subscribers(NULL, search_subscribers, response);
+  
+  response->last_sid = response->first_sid + response->frame_sid_count - 1;
+  
+  if (debug & DEBUG_MDPREQUESTS)
+    DEBUGF("reply MDP_ADDRLIST first_sid=%u last_sid=%u frame_sid_count=%u server_sid_count=%u",
+	   response->first_sid,
+	   response->last_sid,
+	   response->frame_sid_count,
+	   response->server_sid_count
+	   );
   return 0;
 }
 
@@ -995,63 +1017,25 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 	if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_GOODBYE");
 	overlay_mdp_releasebindings(recvaddr_un,recvaddrlen);
 	return;
+	  
+      /* Deprecated. We can replace with a more generic dump of the routing table */
       case MDP_NODEINFO:
 	if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_NODEINFO");
-	overlay_route_node_info(mdp,recvaddr_un,recvaddrlen);
+	  
+	if (!overlay_route_node_info(&mdp->nodeinfo))
+	  overlay_mdp_reply(mdp_named.poll.fd,recvaddr_un,recvaddrlen,mdp);
 	return;
+	  
       case MDP_GETADDRS:
-	if (debug & DEBUG_MDPREQUESTS)
-	  DEBUGF("MDP_GETADDRS first_sid=%u last_sid=%u frame_sid_count=%u mode=%d",
-	      mdp->addrlist.first_sid,
-	      mdp->addrlist.last_sid,
-	      mdp->addrlist.frame_sid_count,
-	      mdp->addrlist.mode
-	    );
 	{
 	  overlay_mdp_frame mdpreply;
-	  
-	  /* Work out which SIDs to get ... */
-	  int sid_num=mdp->addrlist.first_sid;
-	  int max_sid=mdp->addrlist.last_sid;
-	  int max_sids=mdp->addrlist.frame_sid_count;
-	  /* ... and constrain list for sanity */
-	  if (sid_num<0) sid_num=0;
-	  if (max_sids>MDP_MAX_SID_REQUEST) max_sids=MDP_MAX_SID_REQUEST;
-	  if (max_sids<0) max_sids=0;
-	  
-	  /* Prepare reply packet */
 	  mdpreply.packetTypeAndFlags = MDP_ADDRLIST;
-	  mdpreply.addrlist.mode = mdp->addrlist.mode;
-	  mdpreply.addrlist.first_sid = sid_num;
-	  mdpreply.addrlist.last_sid = max_sid;
-	  mdpreply.addrlist.frame_sid_count = max_sids;
-	  
-	  /* Populate with SIDs */
-	  struct search_state state={
-	    .mdp=mdp,
-	    .mdpreply=&mdpreply,
-	    .first=sid_num,
-	    .max=max_sid,
-	  };
-	  
-	  enum_subscribers(NULL, search_subscribers, &state);
-	  
-	  mdpreply.addrlist.frame_sid_count = state.index;
-	  mdpreply.addrlist.last_sid = sid_num + state.index - 1;
-	  mdpreply.addrlist.server_sid_count = state.count;
-
-	  if (debug & DEBUG_MDPREQUESTS)
-	    DEBUGF("reply MDP_ADDRLIST first_sid=%u last_sid=%u frame_sid_count=%u server_sid_count=%u",
-		mdpreply.addrlist.first_sid,
-		mdpreply.addrlist.last_sid,
-		mdpreply.addrlist.frame_sid_count,
-		mdpreply.addrlist.server_sid_count
-	      );
-
+	  if (!overlay_mdp_address_list(&mdp->addrlist, &mdpreply.addrlist))
 	  /* Send back to caller */
-	  overlay_mdp_reply(alarm->poll.fd,
-			    (struct sockaddr_un *)recvaddr,recvaddrlen,
-			    &mdpreply);
+	    overlay_mdp_reply(alarm->poll.fd,
+			      (struct sockaddr_un *)recvaddr,recvaddrlen,
+			      &mdpreply);
+	    
 	  return;
 	}
 	break;

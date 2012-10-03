@@ -925,18 +925,17 @@ void overlay_route_tick(struct sched_ent *alarm)
   return;
 }
 
-int overlay_route_node_info(overlay_mdp_frame *mdp,
-			    struct sockaddr_un *addr,int addrlen)
+int overlay_route_node_info(overlay_mdp_nodeinfo *node_info)
 {
   time_ms_t now = gettime_ms();
 
   if (0) 
     DEBUGF("Looking for node %s* (prefix len=0x%x)",
-	 alloca_tohex(mdp->nodeinfo.sid, mdp->nodeinfo.sid_prefix_length),
-	 mdp->nodeinfo.sid_prefix_length
+	 alloca_tohex(node_info->sid, node_info->sid_prefix_length),
+	 node_info->sid_prefix_length
 	 );
 
-  mdp->nodeinfo.foundP=0;
+  node_info->foundP=0;
   
   /* check if it is a local identity */
   int cn,in,kp;
@@ -946,24 +945,24 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
 	if (keyring->contexts[cn]->identities[in]->keypairs[kp]->type
 	    ==KEYTYPE_CRYPTOBOX)
 	  {
-	    if (!memcmp(&mdp->nodeinfo.sid[0],
+	    if (!memcmp(&node_info->sid[0],
 			&keyring->contexts[cn]->identities[in]
 			->keypairs[kp]->public_key[0],
-			mdp->nodeinfo.sid_prefix_length/2))
+			node_info->sid_prefix_length/2))
 	      {
-		mdp->nodeinfo.foundP=1;
-		mdp->nodeinfo.localP=1;
-		mdp->nodeinfo.neighbourP=0;
-		mdp->nodeinfo.time_since_last_observation = 0;
-		mdp->nodeinfo.score=256;
-		mdp->nodeinfo.interface_number=-1;
+		node_info->foundP=1;
+		node_info->localP=1;
+		node_info->neighbourP=0;
+		node_info->time_since_last_observation = 0;
+		node_info->score=256;
+		node_info->interface_number=-1;
 		bcopy(&keyring->contexts[cn]->identities[in]
 		      ->keypairs[kp]->public_key[0],
-		      &mdp->nodeinfo.sid[0],SID_SIZE);
+		      &node_info->sid[0],SID_SIZE);
 
-		mdp->nodeinfo.did[0]=0;
-		if (mdp->nodeinfo.resolve_did) {
-		  mdp->nodeinfo.resolve_did=0;
+		node_info->did[0]=0;
+		if (node_info->resolve_did) {
+		  node_info->resolve_did=0;
 		  int k2;
 		  for(k2=0;k2<keyring->contexts[cn]->identities[in]
 			->keypair_count;k2++)
@@ -973,64 +972,64 @@ int overlay_route_node_info(overlay_mdp_frame *mdp,
 			/* private key field has unpacked did */
 			bcopy(&keyring->contexts[cn]->identities[in]
 			      ->keypairs[k2]->private_key[0],
-			      &mdp->nodeinfo.did[0],
+			      &node_info->did[0],
 			      keyring->contexts[cn]->identities[in]
 			      ->keypairs[k2]->private_key_len);
 			/* public key has name */
 			bcopy(&keyring->contexts[cn]->identities[in]
 			      ->keypairs[k2]->public_key[0],
-			      &mdp->nodeinfo.name[0],
+			      &node_info->name[0],
 			      keyring->contexts[cn]->identities[in]
 			      ->keypairs[k2]->public_key_len);
-			mdp->nodeinfo.resolve_did=1;
+			node_info->resolve_did=1;
 		      }
 		}
-		return overlay_mdp_reply(mdp_named.poll.fd,addr,addrlen,mdp);
+		return 0;
 	      }
 	  }
 
-  struct subscriber *subscriber = find_subscriber(mdp->nodeinfo.sid, mdp->nodeinfo.sid_prefix_length/2, 0);
+  struct subscriber *subscriber = find_subscriber(node_info->sid, node_info->sid_prefix_length/2, 0);
   if (subscriber && subscriber->node){
     overlay_node *node = subscriber->node;
     
-    mdp->nodeinfo.foundP=1;
-    mdp->nodeinfo.localP=0;
-    mdp->nodeinfo.score=-1;
-    mdp->nodeinfo.interface_number=-1;
-    mdp->nodeinfo.resolve_did=0;
+    node_info->foundP=1;
+    node_info->localP=0;
+    node_info->score=-1;
+    node_info->interface_number=-1;
+    node_info->resolve_did=0;
     bcopy(subscriber->sid,
-	  mdp->nodeinfo.sid,SID_SIZE);
+	  node_info->sid,SID_SIZE);
     
     if (subscriber->node->neighbour_id){
       int n = subscriber->node->neighbour_id;
-      mdp->nodeinfo.neighbourP=1;
-      mdp->nodeinfo.time_since_last_observation = now - overlay_neighbours[n].last_observation_time_ms;
+      node_info->neighbourP=1;
+      node_info->time_since_last_observation = now - overlay_neighbours[n].last_observation_time_ms;
       
       int i;
       for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
-	if (overlay_neighbours[n].scores[i]>mdp->nodeinfo.score)
+	if (overlay_neighbours[n].scores[i]>node_info->score)
 	{
-	  mdp->nodeinfo.score=overlay_neighbours[n].scores[i];
-	  mdp->nodeinfo.interface_number=i;
+	  node_info->score=overlay_neighbours[n].scores[i];
+	  node_info->interface_number=i;
 	}
       
     }else{
-      mdp->nodeinfo.neighbourP=0;
-      mdp->nodeinfo.time_since_last_observation = -1;
+      node_info->neighbourP=0;
+      node_info->time_since_last_observation = -1;
       int o;
       for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++)
 	if (node->observations[o].observed_score)
 	{
 	  overlay_node_observation *ob
 	  =&node->observations[o];
-	  if (ob->corrected_score>mdp->nodeinfo.score) {
-	    mdp->nodeinfo.score=ob->corrected_score;
+	  if (ob->corrected_score>node_info->score) {
+	    node_info->score=ob->corrected_score;
 	  }
-	  if (mdp->nodeinfo.time_since_last_observation == -1 || now - ob->rx_time < mdp->nodeinfo.time_since_last_observation)
-	    mdp->nodeinfo.time_since_last_observation = now - ob->rx_time;
+	  if (node_info->time_since_last_observation == -1 || now - ob->rx_time < node_info->time_since_last_observation)
+	    node_info->time_since_last_observation = now - ob->rx_time;
 	}
     }
   }
 
-  return overlay_mdp_reply(mdp_named.poll.fd,addr,addrlen,mdp);
+  return 0;
 }

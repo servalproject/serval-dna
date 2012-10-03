@@ -1400,8 +1400,6 @@ int app_id_self(int argc, const char *const *argv, struct command_line_option *o
   else
     return WHYF("unsupported arg '%s'", argv[1]);
   a.addrlist.first_sid=0;
-  a.addrlist.last_sid=0x7fffffff;
-  a.addrlist.frame_sid_count=MDP_MAX_SID_REQUEST;
 
   while(a.addrlist.frame_sid_count==MDP_MAX_SID_REQUEST) {
     result=overlay_mdp_send(&a,MDP_AWAITREPLY,5000);

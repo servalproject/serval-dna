@@ -815,8 +815,7 @@ int is_configvarname(const char *arg);
 
 int overlay_mdp_getmyaddr(int index,unsigned char *sid);
 int overlay_mdp_bind(unsigned char *localaddr,int port); 
-int overlay_route_node_info(overlay_mdp_frame *mdp,
-			    struct sockaddr_un *addr,int addrlen);
+int overlay_route_node_info(overlay_mdp_nodeinfo *node_info);
 int overlay_interface_register(char *name,
 			       struct in_addr addr,
 			       struct in_addr mask);
