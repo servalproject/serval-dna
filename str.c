@@ -46,10 +46,15 @@ int strcase_startswith(char *str, const char *substring, char **afterp)
 }
 
 /* Like strstr() but doesn't depend on null termination */
-const char *str_str(const char *s1,const char *s2,int s1len)
+char *str_str(char *haystack, const char *needle, int haystack_len)
 {
-  int s2len=strlen(s2);
-  for(;*s1&&(s1len--);s1++)
-    if (!strncmp(s1,s2,s2len)) return s1;
+  size_t needle_len = strlen(needle);
+  if (needle_len == 0)
+    return haystack;
+  if (haystack_len >= needle_len) {
+    for (; *haystack && haystack_len >= needle_len; ++haystack, --haystack_len)
+      if (strncmp(haystack, needle, needle_len) == 0)
+	return haystack;
+  }
   return NULL;
 }

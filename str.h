@@ -38,7 +38,9 @@ int str_startswith(char *str, const char *substring, char **afterp);
 int strcase_startswith(char *str, const char *substring, char **afterp);
 
 /* like strstr(), but doesn't depend on null termination.
-   @author Paul Gardner-Stephen <paul@servalproject.org> */
-const char *str_str(const char *s1,const char *s2,int s1len);
+   @author Paul Gardner-Stephen <paul@servalproject.org>
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+char *str_str(char *haystack, const char *needle, int haystack_len);
 
 #endif
