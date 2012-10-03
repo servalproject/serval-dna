@@ -115,7 +115,7 @@ int rhizome_direct_form_received(rhizome_http_request *r)
       /* Ask for a fill response.  Regardless of the size of the set of BARs passed
 	 to us, we will allow up to 64KB of response. */
       rhizome_direct_bundle_cursor 
-	*c=rhizome_direct_get_fill_response(addr,stat.st_size,10+18);
+	*c=rhizome_direct_get_fill_response(addr,stat.st_size,65536);
       munmap(addr,stat.st_size);
       close(fd);
 
@@ -482,7 +482,6 @@ int rhizome_direct_process_mime_line(rhizome_http_request *r,char *buffer,int co
 
 int rhizome_direct_process_post_multipart_bytes(rhizome_http_request *r,const char *bytes,int count)
 {
-  DEBUG(alloca_toprint(-1, bytes, count));
   {
     char logname[128];
     snprintf(logname,128,"post-%08x.log",r->uuid);
