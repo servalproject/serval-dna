@@ -215,10 +215,10 @@ int overlay_rhizome_add_advertisements(int interface_number,overlay_buffer *e)
   for(pass=skipmanifests;pass<2;pass++) {
     switch(pass) {
     case 0: /* Full manifests */
-      statement = sqlite_prepare("SELECT MANIFEST,ROWID FROM MANIFESTS LIMIT %d,%d", bundle_offset[pass], slots);
+      statement = sqlite_prepare(&retry, "SELECT MANIFEST,ROWID FROM MANIFESTS LIMIT %d,%d", bundle_offset[pass], slots);
       break;
     case 1: /* BARs */
-      statement = sqlite_prepare("SELECT BAR,ROWID FROM MANIFESTS LIMIT %d,%d", bundle_offset[pass], slots);
+      statement = sqlite_prepare(&retry, "SELECT BAR,ROWID FROM MANIFESTS LIMIT %d,%d", bundle_offset[pass], slots);
       break;
     }
     if (!statement)
