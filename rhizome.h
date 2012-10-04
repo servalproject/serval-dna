@@ -178,7 +178,7 @@ int rhizome_str_is_file_hash(const char *text);
 
 #define alloca_tohex_bid(bid)           alloca_tohex((bid), RHIZOME_MANIFEST_ID_BYTES)
 
-int http_header_complete(const char *buf, size_t len, size_t tail);
+int http_header_complete(const char *buf, size_t len, size_t read_since_last_call);
 int str_startswith(char *str, const char *substring, char **afterp);
 int strcase_startswith(char *str, const char *substring, char **afterp);
 
