@@ -428,10 +428,9 @@ rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix,int pref
 	   alloca_tohex(low,RHIZOME_MANIFEST_ID_BYTES),
 	   alloca_tohex(high,RHIZOME_MANIFEST_ID_BYTES));
   
-  sqlite3_stmt *statement=sqlite_prepare(query);
-  sqlite3_blob *blob=NULL;  
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-
+  sqlite3_stmt *statement = sqlite_prepare(&retry, query);
+  sqlite3_blob *blob=NULL;  
   if (sqlite_step_retry(&retry, statement) == SQLITE_ROW)
     {
       int ret;
@@ -790,7 +789,7 @@ int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTE
 	   alloca_tohex(bid_max,RHIZOME_MANIFEST_ID_BYTES),
 	   bars_requested);
 
-  sqlite3_stmt *statement=sqlite_prepare(query);
+  sqlite3_stmt *statement=sqlite_prepare(&retry, query);
   sqlite3_blob *blob=NULL;  
 
   int bars_written=0;

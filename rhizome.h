@@ -243,8 +243,8 @@ __RHIZOME_INLINE int sqlite_code_busy(int code)
   return code == SQLITE_BUSY || code == SQLITE_LOCKED;
 }
 
-sqlite3_stmt *_sqlite_prepare(struct __sourceloc, const char *sqlformat, ...);
-sqlite3_stmt *_sqlite_prepare_loglevel(struct __sourceloc, int log_level, strbuf stmt);
+sqlite3_stmt *_sqlite_prepare(struct __sourceloc where, sqlite_retry_state *retry, const char *sqlformat, ...);
+sqlite3_stmt *_sqlite_prepare_loglevel(struct __sourceloc where, int log_level, sqlite_retry_state *retry, strbuf stmt);
 int _sqlite_retry(struct __sourceloc where, sqlite_retry_state *retry, const char *action);
 void _sqlite_retry_done(struct __sourceloc where, sqlite_retry_state *retry, const char *action);
 int _sqlite_step_retry(struct __sourceloc where, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement);
@@ -255,8 +255,8 @@ int _sqlite_exec_int64(struct __sourceloc, long long *result, const char *sqlfor
 int _sqlite_exec_int64_retry(struct __sourceloc, sqlite_retry_state *retry, long long *result, const char *sqlformat,...);
 int _sqlite_exec_strbuf(struct __sourceloc, strbuf sb, const char *sqlformat,...);
 
-#define sqlite_prepare(fmt,...)                 _sqlite_prepare(__HERE__, (fmt), ##__VA_ARGS__)
-#define sqlite_prepare_loglevel(ll,sb)          _sqlite_prepare_loglevel(__HERE__, (ll), (sb))
+#define sqlite_prepare(rs,fmt,...)              _sqlite_prepare(__HERE__, (rs), (fmt), ##__VA_ARGS__)
+#define sqlite_prepare_loglevel(ll,rs,sb)       _sqlite_prepare_loglevel(__HERE__, (ll), (rs), (sb))
 #define sqlite_retry(rs,action)                 _sqlite_retry(__HERE__, (rs), (action))
 #define sqlite_retry_done(rs,action)            _sqlite_retry_done(__HERE__, (rs), (action))
 #define sqlite_step(stmt)                       _sqlite_step_retry(__HERE__, LOG_LEVEL_ERROR, NULL, (stmt))

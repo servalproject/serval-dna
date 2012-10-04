@@ -401,12 +401,12 @@ int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, c
     return WHY("Not enough space to fit any records");
   }
 
-  sqlite3_stmt *statement = sqlite_prepare("%s LIMIT %lld,%d", r->source, r->source_index, record_count);
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  sqlite3_stmt *statement = sqlite_prepare(&retry, "%s LIMIT %lld,%d", r->source, r->source_index, record_count);
   if (!statement)
     return -1;
   if (debug & DEBUG_RHIZOME_TX)
     DEBUG(sqlite3_sql(statement));
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   while(  r->buffer_length + r->source_record_size < r->buffer_size
       &&  sqlite_step_retry(&retry, statement) == SQLITE_ROW
   ) {
