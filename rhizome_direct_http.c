@@ -574,7 +574,7 @@ int rhizome_direct_process_post_multipart_bytes(rhizome_http_request *r,const ch
 int rhizome_direct_parse_http_request(rhizome_http_request *r)
 {
   const char *submitBareFileURI=confValueGet("rhizome.api.addfile.uri", NULL);
-  DEBUGF("uri='%s'",submitBareFileURI?submitBareFileURI:"(null)");
+  DEBUGF("uri=%s", submitBareFileURI ? alloca_str_toprint(submitBareFileURI) : "NULL");
   
   /* Switching to writing, so update the call-back */
   r->alarm.poll.events=POLLOUT;
@@ -621,77 +621,72 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
   INFOF("RHIZOME HTTP SERVER, %s %s %s", verb, alloca_toprint(-1, path, pathlen), proto);
   if (debug & DEBUG_RHIZOME_TX)
     DEBUGF("headers %s", alloca_toprint(-1, headers, headerlen));
-  if (strcmp(verb, "GET") == 0) {
-    if (strcmp(path, "/favicon.ico") == 0) {
-      r->request_type = RHIZOME_HTTP_REQUEST_FAVICON;
-      rhizome_server_http_response_header(r, 200, "image/vnd.microsoft.icon", favicon_len);
-    } else {
-      rhizome_server_simple_http_response(r, 404, "<html><h1>Not found (GET)</h1></html>\r\n");
-    }
-  } else if (strcmp(verb, "POST") == 0) {
-    if (strcmp(path, "/rhizome/import") == 0 
-	|| strcmp(path, "/rhizome/enquiry") == 0
-	|| (submitBareFileURI&&(strcmp(path, submitBareFileURI)==0))) {
-      const char *cl_str=str_str(headers,"Content-Length: ",headerlen);
-      const char *ct_str=str_str(headers,"Content-Type: multipart/form-data; boundary=",headerlen);
-      if (!cl_str)
-	return rhizome_server_simple_http_response(r,400,"<html><h1>Missing Content-Length header</h1></html>\r\n");
-      if (!ct_str)
-	return rhizome_server_simple_http_response(r,400,"<html><h1>Missing or unsupported Content-Type header</h1></html>\r\n");
-      /* ok, we have content-type and content-length, now make sure they are well formed. */
-      long long content_length;
-      if (sscanf(cl_str,"Content-Length: %lld",&content_length)!=1)
-	return rhizome_server_simple_http_response(r,400,"<html><h1>Malformed Content-Length header</h1></html>\r\n");
-      char boundary_string[1024];
-      int i;
-      ct_str+=strlen("Content-Type: multipart/form-data; boundary=");
-      for(i=0;i<1023&&*ct_str&&*ct_str!='\n'&&*ct_str!='\r';i++,ct_str++)
-	boundary_string[i]=*ct_str;
-      boundary_string[i] = '\0';
-      if (i<4||i>128)
-	return rhizome_server_simple_http_response(r,400,"<html><h1>Malformed Content-Type header</h1></html>\r\n");
+  if (strcmp(verb, "GET") == 0 && strcmp(path, "/favicon.ico") == 0) {
+    r->request_type = RHIZOME_HTTP_REQUEST_FAVICON;
+    rhizome_server_http_response_header(r, 200, "image/vnd.microsoft.icon", favicon_len);
+  } else if (strcmp(verb, "POST") == 0
+      && (   strcmp(path, "/rhizome/import") == 0 
+	  || strcmp(path, "/rhizome/enquiry") == 0
+	  || (submitBareFileURI && strcmp(path, submitBareFileURI) == 0)
+	 )
+  ) {
+    const char *cl_str=str_str(headers,"Content-Length: ",headerlen);
+    const char *ct_str=str_str(headers,"Content-Type: multipart/form-data; boundary=",headerlen);
+    if (!cl_str)
+      return rhizome_server_simple_http_response(r,400,"<html><h1>Missing Content-Length header</h1></html>\r\n");
+    if (!ct_str)
+      return rhizome_server_simple_http_response(r,400,"<html><h1>Missing or unsupported Content-Type header</h1></html>\r\n");
+    /* ok, we have content-type and content-length, now make sure they are well formed. */
+    long long content_length;
+    if (sscanf(cl_str,"Content-Length: %lld",&content_length)!=1)
+      return rhizome_server_simple_http_response(r,400,"<html><h1>Malformed Content-Length header</h1></html>\r\n");
+    char boundary_string[1024];
+    int i;
+    ct_str+=strlen("Content-Type: multipart/form-data; boundary=");
+    for(i=0;i<1023&&*ct_str&&*ct_str!='\n'&&*ct_str!='\r';i++,ct_str++)
+      boundary_string[i]=*ct_str;
+    boundary_string[i] = '\0';
+    if (i<4||i>128)
+      return rhizome_server_simple_http_response(r,400,"<html><h1>Malformed Content-Type header</h1></html>\r\n");
 
-      DEBUGF("content_length=%lld, boundary_string=%s contentlen=%d", (long long) content_length, alloca_str_toprint(boundary_string), contentlen);
+    DEBUGF("content_length=%lld, boundary_string=%s contentlen=%d", (long long) content_length, alloca_str_toprint(boundary_string), contentlen);
 
-      /* Now start receiving and parsing multi-part data.  If we already received some of the
-	 post-header data, process that first.  Tell the HTTP request that it has moved to multipart
-	 form data parsing, and what the actual requested action is.
+    /* Now start receiving and parsing multi-part data.  If we already received some of the
+	post-header data, process that first.  Tell the HTTP request that it has moved to multipart
+	form data parsing, and what the actual requested action is.
+    */
+
+    /* Remember boundary string and source path.
+	Put the preceeding -- on the front to make our life easier when
+	parsing the rest later. */
+    strbuf bs = strbuf_local(r->boundary_string, sizeof r->boundary_string);
+    strbuf_puts(bs, "--");
+    strbuf_puts(bs, boundary_string);
+    if (strbuf_overrun(bs))
+      return rhizome_server_simple_http_response(r,500,"<html><h1>Internal server error: Multipart boundary string too long</h1></html>\r\n");
+    strbuf ps = strbuf_local(r->path, sizeof r->path);
+    strbuf_puts(ps, path);
+    if (strbuf_overrun(ps))
+      return rhizome_server_simple_http_response(r,500,"<html><h1>Internal server error: Path too long</h1></html>\r\n");
+    r->boundary_string_length = strbuf_len(bs);
+    r->source_index = 0;
+    r->source_count = content_length;
+    r->request_type = RHIZOME_HTTP_REQUEST_RECEIVING_MULTIPART;
+    r->request_length = 0;
+    r->source_flags = 0;
+
+    /* Find the end of the headers and start of any body bytes that we have read
+	so far. Copy the bytes to a separate buffer, because r->request and 
+	r->request_length get used internally in the parser.
       */
-
-      /* Remember boundary string and source path.
-	  Put the preceeding -- on the front to make our life easier when
-	  parsing the rest later. */
-      strbuf bs = strbuf_local(r->boundary_string, sizeof r->boundary_string);
-      strbuf_puts(bs, "--");
-      strbuf_puts(bs, boundary_string);
-      if (strbuf_overrun(bs))
-	return rhizome_server_simple_http_response(r,500,"<html><h1>Server error: Multipart boundary string too long</h1></html>\r\n");
-      strbuf ps = strbuf_local(r->path, sizeof r->path);
-      strbuf_puts(ps, path);
-      if (strbuf_overrun(ps))
-	return rhizome_server_simple_http_response(r,500,"<html><h1>Server error: Path too long</h1></html>\r\n");
-      r->boundary_string_length = strbuf_len(bs);
-      r->source_index = 0;
-      r->source_count = content_length;
-      r->request_type = RHIZOME_HTTP_REQUEST_RECEIVING_MULTIPART;
-      r->request_length = 0;
-      r->source_flags = 0;
-
-      /* Find the end of the headers and start of any body bytes that we have read
-	 so far. Copy the bytes to a separate buffer, because r->request and 
-	 r->request_length get used internally in the parser.
-	*/
-      if (contentlen) {
-	char buffer[contentlen];
-	bcopy(content, buffer, contentlen);
-	rhizome_direct_process_post_multipart_bytes(r, buffer, contentlen);
-      }
-
-      /* Handle the rest of the transfer asynchronously. */
-      return 0;
-    } else {
-      rhizome_server_simple_http_response(r, 404, "<html><h1>Not found (POST)</h1></html>\r\n");
+    if (contentlen) {
+      char buffer[contentlen];
+      bcopy(content, buffer, contentlen);
+      rhizome_direct_process_post_multipart_bytes(r, buffer, contentlen);
     }
+
+    /* Handle the rest of the transfer asynchronously. */
+    return 0;
   } else {
     rhizome_server_simple_http_response(r, 404, "<html><h1>Not found (OTHER)</h1></html>\r\n");
   }
