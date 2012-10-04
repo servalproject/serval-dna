@@ -554,7 +554,7 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
        instance directory when it starts up.  */
     if (server_remove_stopfile() == -1)
       return -1;
-    if (rhizome_opendb() == -1)
+    if (rhizome_enabled() && rhizome_opendb() == -1)
       return -1;
     overlayMode = 1;
     if (foregroundP)
