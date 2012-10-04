@@ -1401,11 +1401,11 @@ int nm_slots_used=0;
 #define NM_CACHE_SLOTS 512
 struct nm_record nm_cache[NM_CACHE_SLOTS];
 
-unsigned char *keyring_get_nm_bytes(sockaddr_mdp *known,sockaddr_mdp *unknown)
+unsigned char *keyring_get_nm_bytes(unsigned char *known_sid, unsigned char *unknown_sid)
 {
   IN();
-  if (!known) { RETURN(WHYNULL("known pub key is null")); }
-  if (!unknown) { RETURN(WHYNULL("unknown pub key is null")); }
+  if (!known_sid) { RETURN(WHYNULL("known pub key is null")); }
+  if (!unknown_sid) { RETURN(WHYNULL("unknown pub key is null")); }
   if (!keyring) { RETURN(WHYNULL("keyring is null")); }
 
   int i;
@@ -1413,11 +1413,9 @@ unsigned char *keyring_get_nm_bytes(sockaddr_mdp *known,sockaddr_mdp *unknown)
   /* See if we have it cached already */
   for(i=0;i<nm_slots_used;i++)
     {
-      if (memcmp(nm_cache[i].known_key,known->sid,
-	       crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES)) continue;
-      if (memcmp(nm_cache[i].unknown_key,unknown->sid,
-	       crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES)) continue;
-      { RETURN(nm_cache[i].nm_bytes); }
+      if (memcmp(nm_cache[i].known_key,known_sid,SID_SIZE)) continue;
+      if (memcmp(nm_cache[i].unknown_key,unknown_sid,SID_SIZE)) continue;
+      RETURN(nm_cache[i].nm_bytes);
     }
 
   /* Not in the cache, so prepare to cache it (or return failure if known is not
@@ -1434,12 +1432,10 @@ unsigned char *keyring_get_nm_bytes(sockaddr_mdp *known,sockaddr_mdp *unknown)
   }
 
   /* calculate and store */
-  bcopy(known->sid,nm_cache[i].known_key,
-	crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES);
-  bcopy(unknown->sid,nm_cache[i].unknown_key,
-	crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES);
+  bcopy(known_sid,nm_cache[i].known_key,SID_SIZE);
+  bcopy(unknown->sid,nm_cache[i].unknown_key,SID_SIZE);
   crypto_box_curve25519xsalsa20poly1305_beforenm(nm_cache[i].nm_bytes,
-						 unknown->sid,
+						 unknown_sid,
 						 keyring
 						 ->contexts[cn]
 						 ->identities[in]

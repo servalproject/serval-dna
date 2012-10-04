@@ -708,7 +708,7 @@ typedef struct sockaddr_mdp {
   unsigned char sid[SID_SIZE];
   unsigned int port;
 } sockaddr_mdp;
-unsigned char *keyring_get_nm_bytes(sockaddr_mdp *priv,sockaddr_mdp *pub);
+unsigned char *keyring_get_nm_bytes(unsigned char *known_sid, unsigned char *unknown_sid);
 
 typedef struct overlay_mdp_data_frame {
   sockaddr_mdp src;

@@ -327,7 +327,7 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
     {
       if (0) DEBUGF("crypted MDP frame for %s", alloca_tohex_sid(mdp->out.dst.sid));
 
-      unsigned char *k=keyring_get_nm_bytes(&mdp->out.dst,&mdp->out.src);
+      unsigned char *k=keyring_get_nm_bytes(&mdp->out.dst.sid,&mdp->out.src.sid);
       unsigned char *nonce=&f->payload->bytes[f->payload->position];
       int nb=crypto_box_curve25519xsalsa20poly1305_NONCEBYTES;
       int zb=crypto_box_curve25519xsalsa20poly1305_ZEROBYTES;
@@ -789,7 +789,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       
       /* get pre-computed PKxSK bytes (the slow part of auth-cryption that can be
 	 retained and reused, and use that to do the encryption quickly. */
-      unsigned char *k=keyring_get_nm_bytes(&mdp->out.src,&mdp->out.dst);
+      unsigned char *k=keyring_get_nm_bytes(&mdp->out.src.sid,&mdp->out.dst.sid);
       if (!k) {
 	op_free(frame);
 	RETURN(WHY("could not compute Curve25519(NxM)")); 
