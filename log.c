@@ -268,7 +268,7 @@ void vlogMessage(int level, struct __sourceloc where, const char *fmt, va_list a
   }
 }
 
-int logDump(int level, struct __sourceloc where, char *name, unsigned char *addr, size_t len)
+int logDump(int level, struct __sourceloc where, char *name, const unsigned char *addr, size_t len)
 {
   char buf[100];
   size_t i;

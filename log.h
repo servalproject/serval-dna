@@ -77,7 +77,7 @@ void logString(int level, struct __sourceloc where, const char *str);
 void logMessage(int level, struct __sourceloc where, const char *fmt, ...);
 void vlogMessage(int level, struct __sourceloc where, const char *fmt, va_list);
 unsigned int debugFlagMask(const char *flagname);
-int logDump(int level, struct __sourceloc where, char *name, unsigned char *addr, size_t len);
+int logDump(int level, struct __sourceloc where, char *name, const unsigned char *addr, size_t len);
 char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcBytes, const char quotes[2]);
 char *toprint_str(char *dstStr, ssize_t dstBufSiz, const char *srcStr, const char quotes[2]);
 size_t toprint_len(const char *srcBuf, size_t srcBytes, const char quotes[2]);
@@ -92,7 +92,7 @@ void set_log_implementation(void (*log_function)(int level, struct strbuf *buf))
 #define __HERE__            ((struct __sourceloc){ .file = __FILE__, .line = __LINE__, .function = __FUNCTION__ })
 #define __NOWHERE__         ((struct __sourceloc){ .file = NULL, .line = 0, .function = NULL })
 
-#define LOGF(L,F,...)       (logMessage(L, __HERE__, F, ##__VA_ARGS__))
+#define LOGF(L,F,...)       logMessage(L, __HERE__, F, ##__VA_ARGS__)
 #define LOGF_perror(L,F,...) logMessage_perror(L, __HERE__, F, ##__VA_ARGS__)
 #define LOG_perror(L,X)     LOGF_perror(L, "%s", (X))
 
@@ -107,12 +107,12 @@ void set_log_implementation(void (*log_function)(int level, struct strbuf *buf))
 #define WHY(X)              WHYF("%s", (X))
 #define WHYFNULL(F,...)     (LOGF(LOG_LEVEL_ERROR, F, ##__VA_ARGS__), NULL)
 #define WHYNULL(X)          (WHYFNULL("%s", (X)))
-#define WHYF_perror(F,...)  WHYF(F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno)
+#define WHYF_perror(F,...)  (LOGF_perror(LOG_LEVEL_ERROR, F, ##__VA_ARGS__), -1)
 #define WHY_perror(X)       WHYF_perror("%s", (X))
 
 #define WARNF(F,...)        LOGF(LOG_LEVEL_WARN, F, ##__VA_ARGS__)
 #define WARN(X)             WARNF("%s", (X))
-#define WARNF_perror(F,...) WARNF(F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno)
+#define WARNF_perror(F,...) LOGF_perror(LOG_LEVEL_WARN, F, ##__VA_ARGS__)
 #define WARN_perror(X)      WARNF_perror("%s", (X))
 #define WHY_argv(X,ARGC,ARGV) logArgv(LOG_LEVEL_ERROR, __HERE__, (X), (ARGC), (ARGV))
 
@@ -121,12 +121,12 @@ void set_log_implementation(void (*log_function)(int level, struct strbuf *buf))
 
 #define DEBUGF(F,...)       LOGF(LOG_LEVEL_DEBUG, F, ##__VA_ARGS__)
 #define DEBUG(X)            DEBUGF("%s", (X))
-#define DEBUGF_perror(F,...) DEBUGF(F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno)
-#define DEBUG_perror(X)     DEBUGF("%s: %s [errno=%d]", (X), strerror(errno), errno)
-#define D DEBUG("D")
+#define DEBUGF_perror(F,...) LOGF_perror(LOG_LEVEL_DEBUG, F, ##__VA_ARGS__)
+#define DEBUG_perror(X)     DEBUGF_perror("%s", (X))
+#define D                   DEBUG("D")
 #define DEBUG_argv(X,ARGC,ARGV) logArgv(LOG_LEVEL_DEBUG, __HERE__, (X), (ARGC), (ARGV))
 
-#define dump(X,A,N)         logDump(LOG_LEVEL_DEBUG, __HERE__, (X), (A), (N))
+#define dump(X,A,N)         logDump(LOG_LEVEL_DEBUG, __HERE__, (X), (const unsigned char *)(A), (size_t)(N))
 
 #define BACKTRACE           log_backtrace(__HERE__)
 
