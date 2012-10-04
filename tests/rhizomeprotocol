@@ -57,15 +57,20 @@ bundle_received_by() {
    local BID="$1"
    local VERSION="$2"
    shift 2
+   local rexp="RHIZOME ADD MANIFEST service=file bid=$BID version=$VERSION"
    local I
    for I; do
       case "$I" in
       +*)
-         logvar="LOG${I#+}"
-         grep "RHIZOME ADD MANIFEST service=file bid=$BID version=$VERSION" "${!logvar}" || return 1
+         local logvar="LOG${I#+}"
+         grep "$rexp" "${!logvar}" || return 1
+         ;;
+      --stderr)
+         replayStderr | grep "$rexp" || return 1
          ;;
       *)
          error "invalid instance argument: $I"
+         return 1
          ;;
       esac
    done
@@ -126,9 +131,6 @@ update_file() {
 
 assert_received() {
    local name="${1?}"
-   shift
-   executeOk_servald rhizome list ''
-   assert_rhizome_list "$name!" "$@"
    local _hash
    if [ -s "$name" ]; then
       extract_manifest_filehash _hash "$name.manifest"
@@ -149,11 +151,15 @@ setup_FileTransfer() {
 test_FileTransfer() {
    wait_until bundle_received_by $BID $VERSION +B
    set_instance +B
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file1!
    assert_received file1
    set_instance +A
    update_file file1 file2
    set_instance +B
    wait_until bundle_received_by $BID $VERSION +B
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file2!
    assert_received file2
 }
 
@@ -172,6 +178,8 @@ setup_FileTransferBig() {
 test_FileTransferBig() {
    wait_until bundle_received_by $BID $VERSION +B
    set_instance +B
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file1!
    assert_received file1
 }
 
@@ -191,6 +199,8 @@ test_FileTransferMulti() {
    local I
    for I in +B +C +D +E; do
       set_instance $I
+      executeOk_servald rhizome list ''
+      assert_rhizome_list file1!
       assert_received file1
    done
 }
@@ -211,6 +221,8 @@ setup_FileTransferDelete() {
 test_FileTransferDelete() {
    wait_until bundle_received_by $BID $VERSION +B
    set_instance +B
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file1_2!
    assert_received file1_2
 }
 
@@ -259,85 +271,18 @@ test_HttpImport() {
          --form 'manifest=@README.WHYNOTSIPS.manifest' \
          "$addr_localhost:$PORTA/rhizome/import"
    tfw_cat http.headers http.output
+   executeOk_servald rhizome list ''
+   assert_rhizome_list README.WHYNOTSIPS!
    assert_received README.WHYNOTSIPS
-}
-
-setup_sync() {
-   set_instance +A
-   add_file file1
-   BID1=$BID
-   VERSION1=$VERSION
-   start_servald_instances dummy1 +A
-   wait_until rhizome_http_server_started +A
-   get_rhizome_server_port PORTA +A
-   set_instance +B
-   add_file file2
-   BID2=$BID
-   VERSION2=$VERSION
-   executeOk_servald config set rhizome.direct.peer.count "1"
-   executeOk_servald config set rhizome.direct.peer.0 "http://${addr_localhost}:${PORTA}"
-   start_servald_instances dummy2 +B
-}
-
-doc_Push="One way push bundle to unconnected node"
-setup_Push() {
-   setup_common
-   setup_sync
-}
-test_Push() {
-   set_instance +B
-   executeOk_servald rhizome direct push
-   set_instance +A
-   tfw_cat --stdout --stderr
-   executeOk_servald rhizome list ''
-   assert_rhizome_list file1 file2
-   set_instance +B
-   executeOk_servald rhizome list ''
-   assert_rhizome_list file2
-}
-
-doc_Pull="One way pull bundle from unconnected node"
-setup_Pull() {
-   setup_common
-   setup_sync
-}
-test_Pull() {
-   set_instance +B
-   executeOk_servald rhizome direct pull
-   set_instance +A
-   executeOk_servald rhizome list ''
-   assert_rhizome_list file1
-   set_instance +B
-   executeOk_servald rhizome list ''
-   assert_rhizome_list file1 file2
-}
-
-doc_Sync="Two-way sync bundles between unconnected nodes"
-setup_Sync() {
-   setup_common
-   setup_sync
-}
-test_Sync() {
-   set_instance +B
-   executeOk_servald rhizome direct sync
-   set_instance +A
-   executeOk_servald rhizome list ''
-   assert_rhizome_list file1 file2
-   set_instance +B
-   executeOk_servald rhizome list ''
-   assert_rhizome_list file1 file2
 }
 
 doc_HttpAddLocal="Add file locally using HTTP, returns manifest"
 setup_HttpAddLocal() {
    setup_curl_7
    setup_common
-
-   # set rhizome.api.* configuration variables
    set_instance +A
    executeOk_servald config set rhizome.api.addfile.uri "/rhizome/secretaddfile"
    executeOk_servald config set rhizome.api.addfile.author $SIDA
-
    start_servald_instances +A
    wait_until rhizome_http_server_started +A
    get_rhizome_server_port PORTA +A
@@ -350,6 +295,80 @@ test_HttpAddLocal() {
    assert_rhizome_list file1
    extract_manifest_name name file1.manifest
    assert [ "$name" = file1 ]
+   assert_received file1
+}
+
+setup_sync() {
+   set_instance +A
+   add_file file1
+   BID1=$BID
+   VERSION1=$VERSION
+   start_servald_instances dummy1 +A
+   wait_until rhizome_http_server_started +A
+   get_rhizome_server_port PORTA +A
+   set_instance +B
+   executeOk_servald config set rhizome.direct.peer.count "1"
+   executeOk_servald config set rhizome.direct.peer.0 "http://${addr_localhost}:${PORTA}"
+   add_file file2
+   BID2=$BID
+   VERSION2=$VERSION
+}
+
+doc_DirectPush="One way push bundle to unconnected node"
+setup_DirectPush() {
+   setup_common
+   setup_sync
+}
+test_DirectPush() {
+   set_instance +B
+   executeOk_servald rhizome direct push
+   assert bundle_received_by $BID2 $VERSION2 +A
+   set_instance +A
+   tfw_cat --stdout --stderr
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file1 file2!
+   assert_received file2
+   set_instance +B
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file2
+}
+
+doc_DirectPull="One way pull bundle from unconnected node"
+setup_DirectPull() {
+   setup_common
+   setup_sync
+}
+test_DirectPull() {
+   set_instance +B
+   executeOk_servald rhizome direct pull
+   assert bundle_received_by $BID1 $VERSION1 --stderr
+   set_instance +A
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file1
+   set_instance +B
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file1! file2
+   assert_received file1
+}
+
+doc_DirectSync="Two-way sync bundles between unconnected nodes"
+setup_DirectSync() {
+   setup_common
+   setup_sync
+}
+test_DirectSync() {
+   set_instance +B
+   executeOk_servald rhizome direct sync
+   assert bundle_received_by $BID1 $VERSION1 --stderr
+   assert bundle_received_by $BID2 $VERSION2 +A
+   set_instance +A
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file1 file2!
+   assert_received file2
+   set_instance +B
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file1! file2
+   assert_received file1
 }
 
 runTests "$@"
