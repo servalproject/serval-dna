@@ -875,75 +875,36 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	  q->alarm.deadline = q->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
 	  schedule(&q->alarm);
 	  q->request_len += bytes;
-	  if (http_header_complete(q->request, q->request_len, bytes + 4)) {
+	  if (http_header_complete(q->request, q->request_len, bytes)) {
 	    if (debug & DEBUG_RHIZOME_RX)
 	      DEBUGF("Got HTTP reply: %s", alloca_toprint(160, q->request, q->request_len));
 	    /* We have all the reply headers, so parse them, taking care of any following bytes of
 	      content. */
-	    char *p = NULL;
-	    if (!str_startswith(q->request, "HTTP/1.0 ", &p)) {
-	      if (debug&DEBUG_RHIZOME_RX)
-		DEBUGF("Malformed HTTP reply: missing HTTP/1.0 preamble");
+	    struct http_response_parts parts;
+	    if (unpack_http_response(q->request, &parts) == -1) {
 	      rhizome_fetch_close(q);
 	      return;
 	    }
-	    int http_response_code = 0;
-	    char *nump;
-	    for (nump = p; isdigit(*p); ++p)
-	      http_response_code = http_response_code * 10 + *p - '0';
-	    if (p == nump || *p != ' ') {
-	      if (debug&DEBUG_RHIZOME_RX)
-		DEBUGF("Malformed HTTP reply: missing decimal status code");
-	      rhizome_fetch_close(q);
-	      return;
-	    }
-	    if (http_response_code != 200) {
+	    if (parts.code != 200) {
 	      if (debug & DEBUG_RHIZOME_RX)
-		DEBUGF("Failed HTTP request: rhizome server returned %d != 200 OK", http_response_code);
+		DEBUGF("Failed HTTP request: rhizome server returned %d != 200 OK", parts.code);
 	      rhizome_fetch_close(q);
 	      return;
 	    }
-	    // This loop will terminate, because http_header_complete() above found at least
-	    // "\n\n" at the end of the header, and probably "\r\n\r\n".
-	    while (*p++ != '\n')
-	      ;
-	    // Iterate over header lines until the last blank line.
-	    long long content_length = -1;
-	    while (*p != '\r' && *p != '\n') {
-	      if (strcase_startswith(p, "Content-Length:", &p)) {
-		while (*p == ' ')
-		  ++p;
-		content_length = 0;
-		for (nump = p; isdigit(*p); ++p)
-		  content_length = content_length * 10 + *p - '0';
-		if (p == nump || (*p != '\r' && *p != '\n')) {
-		  if (debug & DEBUG_RHIZOME_RX)  {
-		    DEBUGF("Invalid HTTP reply: malformed Content-Length header");
-		    rhizome_fetch_close(q);
-		    return;
-		  }
-		}
-	      }
-	      while (*p++ != '\n')
-		;
-	    }
-	    if (*p == '\r')
-	      ++p;
-	    ++p; // skip '\n' at end of blank line
-	    if (content_length == -1) {
+	    if (parts.content_length == -1) {
 	      if (debug & DEBUG_RHIZOME_RX)
 		DEBUGF("Invalid HTTP reply: missing Content-Length header");
 	      rhizome_fetch_close(q);
 	      return;
 	    }
-	    q->file_len = content_length;
+	    q->file_len = parts.content_length;
 	    /* We have all we need.  The file is already open, so just write out any initial bytes of
 	      the body we read.
 	    */
 	    q->state = RHIZOME_FETCH_RXFILE;
-	    int content_bytes = q->request + q->request_len - p;
+	    int content_bytes = q->request + q->request_len - parts.content_start;
 	    if (content_bytes > 0)
-	      rhizome_write_content(q, p, content_bytes);
+	      rhizome_write_content(q, parts.content_start, content_bytes);
 	  }
 	} else {
 	  if (debug & DEBUG_RHIZOME_RX)
@@ -966,6 +927,69 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
       return;
     }
   return;
+}
+
+/*
+   This function takes a pointer to a buffer into which the entire HTTP response header has been
+   read.  The caller must have ensured that the buffer contains at least one consecutive pair of
+   newlines '\n', optionally with carriage returns '\r' preceding and optionally interspersed with
+   nul characters '\0' (which can originate from telnet).  The http_header_complete() function
+   is useful for this.
+   This returns pointers to within the supplied buffer, and may overwrite some characters in the
+   buffer, for example to nul-terminate a string that was terminated by space ' ' or newline '\r'
+   '\n' in the buffer.  For that reason, it takes char* not const char* arguments and returns the
+   same.  It is up to the caller to manage the lifetime of the returned pointers, which of course
+   will only be valid for as long as the buffer persists and is not overwritten.
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+int unpack_http_response(char *response, struct http_response_parts *parts)
+{
+  parts->code = -1;
+  parts->reason = NULL;
+  parts->content_length = -1;
+  parts->content_start = NULL;
+  char *p = NULL;
+  if (!str_startswith(response, "HTTP/1.0 ", &p)) {
+    if (debug&DEBUG_RHIZOME_RX)
+      DEBUGF("Malformed HTTP reply: missing HTTP/1.0 preamble");
+    return -1;
+  }
+  if (!(isdigit(p[0]) && isdigit(p[1]) && isdigit(p[2]) && p[3] == ' ')) {
+    if (debug&DEBUG_RHIZOME_RX)
+      DEBUGF("Malformed HTTP reply: missing three-digit status code");
+    return -1;
+  }
+  parts->code = (p[0]-'0') * 100 + (p[1]-'0') * 10 + p[2]-'0';
+  p += 4;
+  parts->reason = p;
+  while (*p != '\n')
+    ++p;
+  if (p[-1] == '\r')
+    p[-1] = '\0';
+  *p++ = '\0';
+  // Iterate over header lines until the last blank line.
+  while (!(p[0] == '\n' || (p[0] == '\r' && p[1] == '\n'))) {
+    if (strcase_startswith(p, "Content-Length:", &p)) {
+      while (*p == ' ')
+	++p;
+      parts->content_length = 0;
+      char *nump = p;
+      while (isdigit(*p))
+	parts->content_length = parts->content_length * 10 + *p++ - '0';
+      if (p == nump || (*p != '\r' && *p != '\n')) {
+	if (debug & DEBUG_RHIZOME_RX)
+	  DEBUGF("Invalid HTTP reply: malformed Content-Length header");
+	return -1;
+      }
+    }
+    while (*p++ != '\n')
+      ;
+  }
+  if (*p == '\r')
+    ++p;
+  ++p; // skip '\n' at end of blank line
+  parts->content_start = p;
+  return 0;
 }
 
 int rhizome_fetch_request_manifest_by_prefix(struct sockaddr_in *peerip,

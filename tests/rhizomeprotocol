@@ -307,6 +307,10 @@ setup_sync() {
    wait_until rhizome_http_server_started +A
    get_rhizome_server_port PORTA +A
    set_instance +B
+   executeOk_servald config set log.show_time on
+   executeOk_servald config set debug.rhizome on
+   executeOk_servald config set debug.rhizometx on
+   executeOk_servald config set debug.rhizomerx on
    executeOk_servald config set rhizome.direct.peer.count "1"
    executeOk_servald config set rhizome.direct.peer.0 "http://${addr_localhost}:${PORTA}"
    add_file file2
@@ -322,9 +326,9 @@ setup_DirectPush() {
 test_DirectPush() {
    set_instance +B
    executeOk_servald rhizome direct push
+   tfw_cat --stdout --stderr
    assert bundle_received_by $BID2 $VERSION2 +A
    set_instance +A
-   tfw_cat --stdout --stderr
    executeOk_servald rhizome list ''
    assert_rhizome_list file1 file2!
    assert_received file2
@@ -341,6 +345,7 @@ setup_DirectPull() {
 test_DirectPull() {
    set_instance +B
    executeOk_servald rhizome direct pull
+   tfw_cat --stdout --stderr
    assert bundle_received_by $BID1 $VERSION1 --stderr
    set_instance +A
    executeOk_servald rhizome list ''
@@ -359,6 +364,7 @@ setup_DirectSync() {
 test_DirectSync() {
    set_instance +B
    executeOk_servald rhizome direct sync
+   tfw_cat --stdout --stderr
    assert bundle_received_by $BID1 $VERSION1 --stderr
    assert bundle_received_by $BID2 $VERSION2 +A
    set_instance +A

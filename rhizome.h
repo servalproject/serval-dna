@@ -324,8 +324,7 @@ typedef struct rhizome_http_request {
 
   /* The HTTP request as currently received */
   int request_length;
-#define RHIZOME_HTTP_REQUEST_MAXLEN 1024
-  char request[RHIZOME_HTTP_REQUEST_MAXLEN];
+  char request[1024];
   
   /* Nature of the request */
   int request_type;
@@ -520,3 +519,12 @@ int rhizome_fetch_request_manifest_by_prefix(struct sockaddr_in *peerip,
 					     int prefix_length,
 					     int importP);
 extern int rhizome_file_fetch_queue_count;
+
+struct http_response_parts {
+  int code;
+  char *reason;
+  long long content_length;
+  char *content_start;
+};
+
+int unpack_http_response(char *response, struct http_response_parts *parts);

@@ -212,7 +212,7 @@ void rhizome_client_poll(struct sched_ent *alarm)
       /* Keep reading until we have two CR/LFs in a row */
       r->request[r->request_length] = '\0';
       sigPipeFlag=0;
-      int bytes = read_nonblock(r->alarm.poll.fd, &r->request[r->request_length], RHIZOME_HTTP_REQUEST_MAXLEN - r->request_length);
+      int bytes = read_nonblock(r->alarm.poll.fd, &r->request[r->request_length], sizeof r->request - r->request_length);
       /* If we got some data, see if we have found the end of the HTTP request */
       if (bytes > 0) {
 	// reset inactivity timer
@@ -221,7 +221,7 @@ void rhizome_client_poll(struct sched_ent *alarm)
 	unschedule(&r->alarm);
 	schedule(&r->alarm);
 	r->request_length += bytes;
-	if (http_header_complete(r->request, r->request_length, bytes + 4)) {
+	if (http_header_complete(r->request, r->request_length, bytes)) {
 	  /* We have the request. Now parse it to see if we can respond to it */
 	  if (rhizome_http_parse_func!=NULL) rhizome_http_parse_func(r);
 	}
@@ -467,9 +467,10 @@ int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, c
   return 0;
 }
 
-int http_header_complete(const char *buf, size_t len, size_t tail)
+int http_header_complete(const char *buf, size_t len, size_t read_since_last_call)
 {
   const char *bufend = buf + len;
+  size_t tail = read_since_last_call + 4;
   if (tail < len)
     buf = bufend - tail;
   int count = 0;
@@ -604,6 +605,7 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
 static const char *httpResultString(int response_code) {
   switch (response_code) {
   case 200: return "OK";
+  case 201: return "Created";
   case 206: return "Partial Content";
   case 404: return "Not found";
   case 500: return "Internal server error";

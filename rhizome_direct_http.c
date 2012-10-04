@@ -571,6 +571,9 @@ int rhizome_direct_process_post_multipart_bytes(rhizome_http_request *r,const ch
   return 0;
 }
 
+struct http_request_parts {
+};
+
 int rhizome_direct_parse_http_request(rhizome_http_request *r)
 {
   const char *submitBareFileURI=confValueGet("rhizome.api.addfile.uri", NULL);
@@ -697,6 +700,32 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
   return 0;
 }
 
+static int receive_http_response(int sock, char *buffer, size_t buffer_len, struct http_response_parts *parts)
+{
+  int len = 0;
+  int count;
+  do {
+      if ((count = read(sock, &buffer[len], buffer_len - len)) == -1)
+	return WHYF_perror("read(%d, %p, %d)", sock, &buffer[len], buffer_len - len);
+      len += count;
+  } while (len < buffer_len && count != 0 && !http_header_complete(buffer, len, len));
+  if (debug & DEBUG_RHIZOME_RX)
+    DEBUGF("Received HTTP response %s", alloca_toprint(-1, buffer, len));
+  if (unpack_http_response(buffer, parts) == -1)
+    return -1;
+  if (parts->code != 200 && parts->code != 201) {
+    INFOF("Failed HTTP request: server returned %003u %s", parts->code, parts->reason);
+    return -1;
+  }
+  if (parts->content_length == -1) {
+    if (debug & DEBUG_RHIZOME_RX)
+      DEBUGF("Invalid HTTP reply: missing Content-Length header");
+    return -1;
+  }
+  DEBUGF("content_length=%d", parts->content_length);
+  return 0;
+}
+
 void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 {
   DEBUGF("Dispatch size_high=%lld",r->cursor->size_high);
@@ -805,81 +834,19 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
     sent+=count;
   }
 
+  struct http_response_parts parts;
  rx:
   /* request sent, now get response back. */
-  buffer[0]=0; len=0;
-  while(!http_header_complete(buffer,len,len)&&(len<8192))
-    {
-      int count=read(sock,&buffer[len],8192-len);
-      if (count==0) break;
-      if (count == -1) {
-	WHYF_perror("read(%d)", 8192-len);
-	close(sock);
-	goto end;
-      }
-      len+=count;
-      if (len>=8000) {
-	DEBUGF("reply header too long");
-	close(sock);
-	goto end;
-      }
-    }
-
-  DEBUGF("Got HTTP header");
-  dump("reply",(unsigned char *)buffer,len);
-
-  char *p = NULL;
-  if (!str_startswith(buffer, "HTTP/1.0 ", &p)) {
-    DEBUGF("Malformed HTTP reply: missing HTTP/1.0 preamble");
-    close(sock); goto end;
+  if (receive_http_response(sock, buffer, sizeof buffer, &parts) == -1) {
+    close(sock);
+    goto end;
   }
-  int http_response_code = 0;
-  char *nump;
-  for (nump = p; isdigit(*p); ++p)
-    http_response_code = http_response_code * 10 + *p - '0';
-  if (p == nump || *p != ' ') {
-      DEBUGF("Malformed HTTP reply: missing decimal status code");
-    close(sock); goto end;
-  }
-  if (http_response_code != 200) {
-    DEBUGF("Failed HTTP request: rhizome server returned %d != 200 OK", http_response_code);
-    close(sock); goto end;
-  }
-  // This loop will terminate, because http_header_complete() above found at least
-  // "\n\n" at the end of the header, and probably "\r\n\r\n".
-  while (*p++ != '\n')
-    ;
-  // Iterate over header lines until the last blank line.
-  while (*p != '\r' && *p != '\n') {
-    if (strcase_startswith(p, "Content-Length:", &p)) {
-      while (*p == ' ')
-	++p;
-      content_length = 0;
-      for (nump = p; isdigit(*p); ++p)
-	content_length = content_length * 10 + *p - '0';
-      if (p == nump || (*p != '\r' && *p != '\n')) {
-	DEBUGF("Invalid HTTP reply: malformed Content-Length header");
-	close(sock); goto end;	
-      }
-    }
-    while (*p++ != '\n')
-      ;
-  }
-  if (*p == '\r')
-    ++p;
-  ++p; // skip '\n' at end of blank line
-  if (content_length == -1) {
-    DEBUGF("Invalid HTTP reply: missing Content-Length header");
-    close(sock); goto end;
-  }
-
-  DEBUGF("content_length=%d",content_length);
 
   /* For some reason the response data gets overwritten during a push,
      so we need to copy it, and use the copy instead. */
-  unsigned char *actionlist=alloca(content_length);
-  bcopy(p,actionlist,content_length);
-  dump("response",actionlist,content_length);
+  unsigned char *actionlist=alloca(parts.content_length);
+  bcopy(parts.content_start, actionlist, parts.content_length);
+  dump("response", actionlist, parts.content_length);
 
   /* We now have the list of (1+RHIZOME_BAR_PREFIX_BYTES)-byte records that indicate
      the list of BAR prefixes that differ between the two nodes.  We can now action
@@ -896,7 +863,6 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   for(i=10;i<content_length;i+=(1+RHIZOME_BAR_PREFIX_BYTES))
     {
       int type=actionlist[i];
-      // unsigned char *bid_prefix=(unsigned char *)&p[i+1];
       unsigned long long 
 	bid_prefix_ll=rhizome_bar_bidprefix_ll((unsigned char *)&actionlist[i+1]);
       DEBUGF("%s %016llx* @ 0x%x",type==1?"push":"pull",bid_prefix_ll,i);
@@ -1017,23 +983,21 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	    unsigned char buffer[4096];
 	    DEBUGF("reading %d bytes @ %d from blob",count,i);
 	    int sr=sqlite3_blob_read(blob,buffer,count,i);
-	    if (sr==SQLITE_OK||sr==SQLITE_DONE)
-	      {
-		count=write(sock,buffer,count);
-		if (count<0) {
-		  WHY_perror("write");
-		  sqlite3_blob_close(blob);
-		  goto closeit;
-		} else { 
-		  i+=count;
-		  DEBUGF("Wrote %d bytes of file",count);
-		}
-	      } else {
+	    if (sr==SQLITE_OK||sr==SQLITE_DONE) {
+	      count=write(sock,buffer,count);
+	      if (count<0) {
+		WHY_perror("write");
+		sqlite3_blob_close(blob);
+		goto closeit;
+	      } else { 
+		i+=count;
+		DEBUGF("Wrote %d bytes of file",count);
+	      }
+	    } else {
 	      WHYF("sqlite error #%d occurred reading from the blob: %s",sr, sqlite3_errmsg(rhizome_db));
 	      sqlite3_blob_close(blob);
 	      goto closeit;
 	    }
-
 	  }
 
 	/* Send final mime boundary */
@@ -1045,8 +1009,10 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	  if (r<0) goto closeit;
 	}	
 
-	/* send buffer now */
-	DEBUGF("XXX check HTTP response");
+	/* get response back. */
+	if (receive_http_response(sock, buffer, sizeof buffer, &parts) == -1)
+	  goto closeit;
+	INFOF("Received HTTP response %03u %s", parts.code, parts.reason);
 
       closeit:
 	close(sock);
