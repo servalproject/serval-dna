@@ -856,6 +856,8 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
   if (!m->fileHashedP)
     return WHY("Cannot store bundle file until it has been hashed");
 
+  int fd = -1;
+
   /* See if the file is already stored, and if so, don't bother storing it again.
      Do this check BEFORE trying to open the associated file, because if the caller
      has received a manifest and checked that it exists in the database, it may 
@@ -881,16 +883,16 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
     return 0;
   }
 
-  int fd=open(file,O_RDONLY);
+  fd = open(file, O_RDONLY);
   if (fd == -1) {
-    WHY_perror("open");
+    WHYF_perror("open(%s)", alloca_str_toprint(file));
     WHY("Could not open associated file");
     goto error;
   }
   
   struct stat stat;
   if (fstat(fd, &stat)) {
-    WHY_perror("fstat");
+    WHYF_perror("fstat(%d)", fd);
     WHY("Could not stat() associated file");
     goto error;
   }
@@ -908,7 +910,7 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
 
   unsigned char *addr = mmap(NULL, m->fileLength, PROT_READ, MAP_SHARED, fd, 0);
   if (addr==MAP_FAILED) {
-    WHY_perror("mmap");
+    WHYF_perror("mmap(NULL, %lld, PROT_READ, MAP_SHARED, %d, 0)", (long long) m->fileLength, fd);
     WHY("mmap() of associated file failed.");
     goto error;
   }
