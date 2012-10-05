@@ -24,6 +24,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_address.h"
 #include "overlay_packet.h"
 #include <stdlib.h>
+#include <math.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
 
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
 {
@@ -33,6 +39,8 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
      and geographic bounding box information that is used to help manage flooding of
      bundles.
 
+     Old BAR format (no longer used):
+
      64 bits - manifest ID prefix.
      56 bits - low 56 bits of version number.
      8 bits  - TTL of bundle in hops.
@@ -41,6 +49,18 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
      16 bits - min longitude (-180 - +180).
      16 bits - max latitude (-90 - +90).
      16 bits - max longitude (-180 - +180).
+
+     New BAR format with longer manifest ID prefix:
+
+     120 bits - manifest ID prefix.
+     8 bits - log2(length) of associated file.
+     56 bits - low 56 bits of version number.
+     16 bits - min latitude (-90 - +90).
+     16 bits - min longitude (-180 - +180).
+     16 bits - max latitude (-90 - +90).
+     16 bits - max longitude (-180 - +180).
+     8 bits  - TTL of bundle in hops (0xff = unlimited distribution)
+
  */
 
   if (!m) { RETURN(WHY("null manifest passed in")); }
@@ -48,13 +68,13 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
   int i;
 
   /* Manifest prefix */
-  for(i=0;i<8;i++) bar[i]=m->cryptoSignPublic[i];
-  /* Version */
-  for(i=0;i<7;i++) bar[8+6-i]=(m->version>>(8*i))&0xff;
-  /* TTL */
-  if (m->ttl>0) bar[15]=m->ttl-1; else bar[15]=0;
+  for(i=0;i<RHIZOME_BAR_PREFIX_BYTES;i++) 
+    bar[RHIZOME_BAR_PREFIX_OFFSET+i]=m->cryptoSignPublic[i];
   /* file length */
-  for(i=0;i<8;i++) bar[16+7-i]=(m->fileLength>>(8*i))&0xff;
+  bar[RHIZOME_BAR_FILESIZE_OFFSET]=log2(m->fileLength);
+  /* Version */
+  for(i=0;i<7;i++) bar[RHIZOME_BAR_VERSION_OFFSET+6-i]=(m->version>>(8*i))&0xff;
+
   /* geo bounding box */
   double minLat=rhizome_manifest_get_double(m,"min_lat",-90);
   if (minLat<-90) minLat=-90; if (minLat>90) minLat=90;
@@ -63,15 +83,39 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
   double maxLat=rhizome_manifest_get_double(m,"max_lat",+90);
   if (maxLat<-90) maxLat=-90; if (maxLat>90) maxLat=90;
   double maxLong=rhizome_manifest_get_double(m,"max_long",+180);
-  if (maxLong<-180) maxLong=-180; if (maxLong>180) maxLong=180;
-  
+  if (maxLong<-180) maxLong=-180; if (maxLong>180) maxLong=180;  
   unsigned short v;
-  v=(minLat+90)*(65535/180); bar[24]=(v>>8)&0xff; bar[25]=(v>>0)&0xff;
-  v=(minLong+180)*(65535/360); bar[26]=(v>>8)&0xff; bar[27]=(v>>0)&0xff;
-  v=(maxLat+90)*(65535/180); bar[28]=(v>>8)&0xff; bar[29]=(v>>0)&0xff;
-  v=(maxLong+180)*(65535/360); bar[30]=(v>>8)&0xff; bar[31]=(v>>0)&0xff;
+  int o=RHIZOME_BAR_GEOBOX_OFFSET;
+  v=(minLat+90)*(65535/180); bar[o++]=(v>>8)&0xff; bar[o++]=(v>>0)&0xff;
+  v=(minLong+180)*(65535/360); bar[o++]=(v>>8)&0xff; bar[o++]=(v>>0)&0xff;
+  v=(maxLat+90)*(65535/180); bar[o++]=(v>>8)&0xff; bar[o++]=(v>>0)&0xff;
+  v=(maxLong+180)*(65535/360); bar[o++]=(v>>8)&0xff; bar[o++]=(v>>0)&0xff;
+
+  /* TTL */
+  if (m->ttl>0) bar[RHIZOME_BAR_TTL_OFFSET]=m->ttl-1; 
+  else bar[RHIZOME_BAR_TTL_OFFSET]=0;
   
   RETURN(0);
+}
+
+long long rhizome_bar_version(unsigned char *bar)
+{
+  long long version=0;
+  int i;
+  // for(i=0;i<7;i++) bar[8+6-i]=(m->version>>(8*i))&0xff;
+  for(i=0;i<7;i++) version|=bar[RHIZOME_BAR_VERSION_OFFSET+6-i]<<(8LL*i);
+  return version;
+}
+
+/* This function only displays the first 8 bytes, and should not be used
+   for comparison. */
+unsigned long long rhizome_bar_bidprefix_ll(unsigned char *bar)
+{
+  long long bidprefix=0;
+  int i;
+  for(i=0;i<8;i++) 
+    bidprefix|=((unsigned long long)bar[RHIZOME_BAR_PREFIX_OFFSET+7-i])<<(8*i);
+  return bidprefix;
 }
 
 int bundles_available=-1;
@@ -79,6 +123,7 @@ int bundle_offset[2]={0,0};
 int overlay_rhizome_add_advertisements(int interface_number, struct overlay_buffer *e)
 {
   IN();
+  int voice_mode=0;
 
   /* behave differently during voice mode.
      Basically don't encourage people to grab stuff from us, but keep
@@ -89,10 +134,14 @@ int overlay_rhizome_add_advertisements(int interface_number, struct overlay_buff
      We need to change manifest table to include payload length to make our life
      easy here (also would let us order advertisements by size of payload).
      For now, we will just advertised only occassionally.
+
+     XXX Actually, we will move all processing of Rhizome into a separate process
+     so that the CPU delays caused by Rhizome verifying signatures isn't a problem.
+     We will still want to limit network usage during calls, however.
  */
   time_ms_t now = gettime_ms();
-  if (now<rhizome_voice_timeout)
-    RETURN(0);
+  if (now<rhizome_voice_timeout) voice_mode=1;
+  if (voice_mode) if (random()&3) { RETURN(0); }
 
   int pass;
   int bytes=e->sizeLimit-e->position;
@@ -167,10 +216,10 @@ int overlay_rhizome_add_advertisements(int interface_number, struct overlay_buff
     ob_checkpoint(e);
     switch(pass) {
     case 0: /* Full manifests */
-      statement = sqlite_prepare("SELECT MANIFEST,ROWID FROM MANIFESTS LIMIT %d,%d", bundle_offset[pass], slots);
+      statement = sqlite_prepare(&retry, "SELECT MANIFEST,ROWID FROM MANIFESTS LIMIT %d,%d", bundle_offset[pass], slots);
       break;
     case 1: /* BARs */
-      statement = sqlite_prepare("SELECT BAR,ROWID FROM MANIFESTS LIMIT %d,%d", bundle_offset[pass], slots);
+      statement = sqlite_prepare(&retry, "SELECT BAR,ROWID FROM MANIFESTS LIMIT %d,%d", bundle_offset[pass], slots);
       break;
     }
     if (!statement)
@@ -353,7 +402,7 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
 	    /* Ignoring manifest that has caused us problems recently */
 	    if (1) WARNF("Ignoring manifest with errors: %s*", manifest_id_prefix);
 	  }
-	else if (m&&(!m->errors))
+	else if (m->errors == 0)
 	  {
 	    /* Manifest is okay, so see if it is worth storing */
 	    if (rhizome_manifest_version_cache_lookup(m)) {
@@ -361,7 +410,6 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
 	      if (debug & DEBUG_RHIZOME_RX) DEBUG("We already have that manifest or newer.");
 	    } else {
 	      if (debug & DEBUG_RHIZOME_RX) DEBUG("Not seen before.");
-	      
 	      rhizome_suggest_queue_manifest_import(m, &httpaddr);
 	      // the above function will free the manifest structure, make sure we don't free it again
 	      m=NULL;
@@ -374,10 +422,10 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
 	       a minute. */
 	    rhizome_queue_ignore_manifest(m, &httpaddr, 60000);
 	  }
-	
-	if (m)
+	if (m) {
 	  rhizome_manifest_free(m);
-	m=NULL;
+	  m = NULL;
+	}
       }
       break;
     }

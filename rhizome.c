@@ -41,71 +41,66 @@ int rhizome_enabled()
   return rhizome_enabled_flag;
 }
 
-/* Import a bundle from the inbox folder.  The bundle is contained a pair of files, one containing
-   the manifest and the optional other containing the payload.
-
-   The logic is all in rhizome_add_manifest().  This function just wraps that function and manages
-   file and object buffers and lifetimes.
+/* Import a bundle from a pair of files, one containing the manifest and the optional other
+   containing the payload.  The logic is all in rhizome_bundle_import().  This function just wraps
+   that function and manages file and object buffers and lifetimes.
 */
 
-int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, 
-			  const char *bundle, int ttl)
+int rhizome_bundle_import_files(const char *manifest_path, const char *payload_path, int ttl)
 {
   if (debug & DEBUG_RHIZOME)
-    DEBUGF("rhizome_bundle_import(m_in=%p, m_out=%p, bundle=%s, ttl=%d)",
-	  m_in, m_out, bundle ? bundle : "(null)", ttl);
-  if (m_out) *m_out = NULL;
-
-  char filename[1024];
-  char manifestname[1024];
-
-  /* make sure import path exists */
-  if (create_rhizome_import_dir() == -1)
-    return -1;
-
-  if (!FORM_RHIZOME_IMPORT_PATH(filename, "file.%s", bundle)
-   || !FORM_RHIZOME_IMPORT_PATH(manifestname, "manifest.%s", bundle))
-    return WHY("Manifest bundle name too long");
-
+    DEBUGF("(manifest_path=%s, payload_path=%s, ttl=%d)",
+	manifest_path ? alloca_str_toprint(manifest_path) : "NULL",
+	payload_path ? alloca_str_toprint(payload_path) : "NULL",
+	ttl
+      );
   /* Read manifest file if no manifest was given */
-  rhizome_manifest *m = m_in;
-  if (!m_in) {
-    m = rhizome_new_manifest();
-    if (!m)
-      return WHY("Out of manifests.");
-    if (rhizome_read_manifest_file(m, manifestname, 0 /* file not buffer */) == -1) {
-      rhizome_manifest_free(m);
-      return WHY("Could not read manifest file.");
-    } else if (rhizome_manifest_verify(m)) {
-      rhizome_manifest_free(m);
-      return WHY("Could not verify manifest file.");
-    }
-  }
+  if (!manifest_path)
+    return WHY("No manifest supplied");
+  int ret = 0;
+  rhizome_manifest *m = rhizome_new_manifest();
+  if (!m)
+    ret = WHY("Out of manifests");
+  else if (rhizome_read_manifest_file(m, manifest_path, 0 /* file not buffer */) == -1)
+    ret = WHY("Could not read manifest file");
+  else if (rhizome_manifest_verify(m))
+    ret = WHY("Verification of manifest file failed");
+  else {
+    /* Make sure we store signatures */
+    m->manifest_bytes=m->manifest_all_bytes;
 
-  /* Add the manifest and its associated file to the Rhizome database. */
-  m->dataFileName = strdup(filename);
+    m->dataFileName = strdup(payload_path);
+    if (rhizome_manifest_check_file(m))
+      ret = WHY("Payload does not belong to manifest");
+    else
+      ret = rhizome_bundle_import(m, ttl);
+  }
+  if (m)
+    rhizome_manifest_free(m);
+  return ret;
+}
+
+/* Import a bundle from a finalised manifest struct.  The dataFileName element must give the path
+   of a readable file containing the payload unless the payload is null (zero length).  The logic is
+   all in rhizome_add_manifest().  This function just wraps that function and manages object buffers
+   and lifetimes.
+*/
+
+int rhizome_bundle_import(rhizome_manifest *m, int ttl)
+{
+  if (debug & DEBUG_RHIZOME)
+    DEBUGF("(m=%p, ttl=%d)", m, ttl);
+  /* Add the manifest and its payload to the Rhizome database. */
+  if (m->fileLength > 0 && !(m->dataFileName && m->dataFileName[0]))
+    return WHY("Missing data file name");
   if (rhizome_manifest_check_file(m))
     return WHY("File does not belong to manifest");
-  int ret=rhizome_manifest_check_duplicate(m,NULL);
-  if (!ret) rhizome_add_manifest(m, ttl);
-  unlink(filename);
-  if (ret == -1) {
-    WHY("rhizome_add_manifest() failed");
-    unlink(manifestname);
-  } else {
-    /* >>> For testing, write manifest file back to disk and leave it there */
-    // unlink(manifestname);
-    if (rhizome_write_manifest_file(m, manifestname))
-      ret = WHY("Could not write manifest file.");
+  int ret = rhizome_manifest_check_duplicate(m, NULL);
+  if (ret == 0) {
+    ret = rhizome_add_manifest(m, ttl);
+    if (ret == -1)
+      WHY("rhizome_add_manifest() failed");
   }
-
-  /* If the manifest structure was allocated in this function, and it is not being returned to the
-     caller, then this function is responsible for freeing it */
-  if (m_out)
-    *m_out = m;
-  else if (!m_in)
-    rhizome_manifest_free(m);
-
   return ret;
 }
 
@@ -232,18 +227,18 @@ int rhizome_manifest_check_file(rhizome_manifest *m_in)
     return 0;
   }
   if (gotfile) {
-    DEBUGF("Skipping file checks for bundle, as file is already in the database");
+    /* Skipping file checks for bundle, as file is already in the database */
     return 0;
   }
 
   /* Find out whether the payload is expected to be encrypted or not */
   m_in->payloadEncryption=rhizome_manifest_get_ll(m_in, "crypt");
   
-  /* Check payload file is accessible and discover its length, then check that it matches
-     the file size stored in the manifest */
+  /* Check payload file is accessible and discover its length, then check that it
+     matches the file size stored in the manifest */
   long long mfilesize = rhizome_manifest_get_ll(m_in, "filesize");
   m_in->fileLength = 0;
-  if (m_in->dataFileName[0]) {
+  if (m_in->dataFileName && m_in->dataFileName[0]) {
     struct stat stat;
     if (lstat(m_in->dataFileName,&stat) == -1) {
       if (errno != ENOENT || mfilesize != 0)
@@ -253,7 +248,7 @@ int rhizome_manifest_check_file(rhizome_manifest *m_in)
     }
   }
   if (debug & DEBUG_RHIZOME)
-    DEBUGF("filename=%s, fileLength=%lld", m_in->dataFileName, m_in->fileLength);
+    DEBUGF("filename=%s, fileLength=%lld", m_in->dataFileName ? alloca_str_toprint(m_in->dataFileName) : "NULL", m_in->fileLength);
   if (mfilesize != -1 && mfilesize != m_in->fileLength) {
     WHYF("Manifest.filesize (%lld) != actual file size (%lld)", mfilesize, m_in->fileLength);
     return -1;
@@ -326,7 +321,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
 
   /* Get manifest version number. */
   m_in->version = rhizome_manifest_get_ll(m_in, "version");
-  if (m_in->version==-1) 
+  if (m_in->version==-1)
     return WHY("Manifest must have a version number");
 
   /* Supply manifest version number if missing, so we can do the version check below */
@@ -372,7 +367,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
       service ? service : "NULL",
       alloca_tohex_sid(m_in->cryptoSignPublic),
       m_in->version
-    );
+      );
   monitor_announce_bundle(m_in);
   return 0;
 }

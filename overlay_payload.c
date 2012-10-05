@@ -282,7 +282,7 @@ struct overlay_frame *op_dup(struct overlay_frame *in)
 
   /* copy main data structure */
   bcopy(in,out,sizeof(struct overlay_frame));
-  
+
   if (in->payload)
     out->payload=ob_dup(in->payload);
   return out;

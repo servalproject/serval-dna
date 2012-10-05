@@ -250,7 +250,7 @@ int overlay_mdp_process_bind_request(int sock, struct subscriber *subscriber, in
     free=random()%MDP_MAX_BINDINGS;
   }
   if (debug & DEBUG_MDPREQUESTS) 
-    DEBUGF("Binding %s:%d",alloca_tohex_sid(subscriber->sid),port);
+    DEBUGF("Binding %s:%d", subscriber ? alloca_tohex_sid(subscriber->sid) : "NULL", port);
   /* Okay, record binding and report success */
   mdp_bindings[free].port=port;
   mdp_bindings[free].subscriber=subscriber;
@@ -281,18 +281,15 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
     break;
   case OF_CRYPTO_CIPHERED:
     RETURN(WHY("decryption not implemented"));
-      
   case OF_CRYPTO_SIGNED:
     {
       /* This call below will dispatch the request for the SAS if we don't
 	 already have it.  In the meantime, we just drop the frame if the SAS
 	 is not available. */
-      
       if (!f->source->sas_valid){
 	keyring_send_sas_request(f->source);
 	RETURN(WHY("SAS key not currently on record, cannot verify"));
       }
-      
       /* get payload and following compacted signature */
       b=&f->payload->bytes[f->payload->position];
       len=f->payload->sizeLimit - f->payload->position - crypto_sign_edwards25519sha512batch_BYTES;
@@ -327,7 +324,7 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
     {
       if (0) DEBUGF("crypted MDP frame for %s", alloca_tohex_sid(mdp->out.dst.sid));
 
-      unsigned char *k=keyring_get_nm_bytes(&mdp->out.dst.sid,&mdp->out.src.sid);
+      unsigned char *k=keyring_get_nm_bytes(mdp->out.dst.sid, mdp->out.src.sid);
       unsigned char *nonce=&f->payload->bytes[f->payload->position];
       int nb=crypto_box_curve25519xsalsa20poly1305_NONCEBYTES;
       int zb=crypto_box_curve25519xsalsa20poly1305_ZEROBYTES;
@@ -789,7 +786,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       
       /* get pre-computed PKxSK bytes (the slow part of auth-cryption that can be
 	 retained and reused, and use that to do the encryption quickly. */
-      unsigned char *k=keyring_get_nm_bytes(&mdp->out.src.sid,&mdp->out.dst.sid);
+      unsigned char *k=keyring_get_nm_bytes(mdp->out.src.sid, mdp->out.dst.sid);
       if (!k) {
 	op_free(frame);
 	RETURN(WHY("could not compute Curve25519(NxM)")); 

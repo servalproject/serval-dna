@@ -17,8 +17,11 @@
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
+#include <stdio.h>
+#include <string.h>
 #include <ctype.h>
 #include "str.h"
+#include "log.h"
 
 int str_startswith(char *str, const char *substring, char **afterp)
 {
@@ -42,15 +45,13 @@ int strcase_startswith(char *str, const char *substring, char **afterp)
   return 1;
 }
 
-int parse_argv(char *cmdline, char delim, char **argv, int max_argv){
+int parse_argv(char *cmdline, char delim, char **argv, int max_argv)
+{
   int argc=0;
-  
   if (*cmdline && argc<max_argv){
     argv[argc++]=cmdline;
   }
-  
   // TODO quoted argument handling?
-  
   while(*cmdline){
     if (*cmdline==delim){
       *cmdline=0;
@@ -62,3 +63,16 @@ int parse_argv(char *cmdline, char delim, char **argv, int max_argv){
   return argc;
 }
 
+/* Like strstr() but doesn't depend on null termination */
+char *str_str(char *haystack, const char *needle, int haystack_len)
+{
+  size_t needle_len = strlen(needle);
+  if (needle_len == 0)
+    return haystack;
+  if (haystack_len >= needle_len) {
+    for (; *haystack && haystack_len >= needle_len; ++haystack, --haystack_len)
+      if (strncmp(haystack, needle, needle_len) == 0)
+	return haystack;
+  }
+  return NULL;
+}

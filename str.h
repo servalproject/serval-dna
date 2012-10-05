@@ -37,6 +37,12 @@ int str_startswith(char *str, const char *substring, char **afterp);
  */
 int strcase_startswith(char *str, const char *substring, char **afterp);
 
+/* like strstr(), but doesn't depend on null termination.
+   @author Paul Gardner-Stephen <paul@servalproject.org>
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+char *str_str(char *haystack, const char *needle, int haystack_len);
+
 int parse_argv(char *cmdline, char delim, char **argv, int max_argv);
 
 #endif

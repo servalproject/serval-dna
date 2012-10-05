@@ -90,8 +90,8 @@ doc_LookupEmpty="Lookup by empty string"
 test_LookupEmpty() {
    executeOk_servald dna lookup ""
    assertStdoutLineCount '==' 2
-   assertStdoutGrep --matches=1 "^sid://$SIDA/local/$DIDA:$DIDA:$NAMEA$"
-   assertStdoutGrep --matches=1 "^sid://$SIDB/local/$DIDB:$DIDB:$NAMEB$"
+   assertStdoutGrep --matches=1 "^sid://$SIDA/local/$DIDA:$DIDA:$NAMEA\$"
+   assertStdoutGrep --matches=1 "^sid://$SIDB/local/$DIDB:$DIDB:$NAMEB\$"
 }
 
 doc_LookupNonExistent="Lookup non-existent phone number"
@@ -104,14 +104,14 @@ doc_LookupLocal="Lookup local phone number"
 test_LookupLocal() {
    executeOk_servald dna lookup "$DIDA"
    assertStdoutLineCount '==' 1
-   assertStdoutGrep --matches=1 "^sid://$SIDA/local/$DIDA:$DIDA:$NAMEA$"
+   assertStdoutGrep --matches=1 "^sid://$SIDA/local/$DIDA:$DIDA:$NAMEA\$"
 }
 
 doc_LookupRemote="Lookup remote phone number"
 test_LookupRemote() {
    executeOk_servald dna lookup "$DIDB"
    assertStdoutLineCount '==' 1
-   assertStdoutGrep --matches=1 "^sid://$SIDB/local/$DIDB:$DIDB:$NAMEB$"
+   assertStdoutGrep --matches=1 "^sid://$SIDB/local/$DIDB:$DIDB:$NAMEB\$"
 }
 
 doc_NodeinfoLocal="Node info auto-resolves for local identities"
@@ -148,8 +148,8 @@ setup_multi_helper() {
    setup_servald
    assert_no_servald_processes
    dnahelper="$TFWTMP/dnahelper"
-   cat >"$dnahelper" <<'EOF'
-#!/bin/sh
+   echo "#!$BASH" >"$dnahelper"
+   cat >>"$dnahelper" <<'EOF'
 echo STARTED
 while read line
 do
@@ -197,8 +197,8 @@ setup_MultiLookupHelperTwo() {
 test_MultiLookupHelperTwo() {
    executeOk_servald dna lookup 00002
    assertStdoutLineCount '==' 2
-   assertStdoutGrep --matches=1 "uri:A2:00002:Name Two$"
-   assertStdoutGrep --matches=1 "uri:B2:00002:Name Four$"
+   assertStdoutGrep --matches=1 "uri:A2:00002:Name Two\$"
+   assertStdoutGrep --matches=1 "uri:B2:00002:Name Four\$"
 }
 
 doc_MultiLookupHelperOne="Lookup phone number one node replies"
@@ -208,7 +208,7 @@ setup_MultiLookupHelperOne() {
 test_MultiLookupHelperOne() {
    executeOk_servald dna lookup 00001
    assertStdoutLineCount '==' 1
-   assertStdoutGrep --matches=1 "uri:B3:00001:Name Five$"
+   assertStdoutGrep --matches=1 "uri:B3:00001:Name Five\$"
 }
 
 runTests "$@"

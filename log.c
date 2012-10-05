@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/param.h>
 #include <time.h>
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
@@ -30,6 +31,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <unistd.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <stdint.h>
 
 #include "log.h"
 #include "net.h"
@@ -223,7 +225,7 @@ void logArgv(int level, struct __sourceloc where, const char *label, int argc, c
       if (i)
 	strbuf_putc(&logbuf, ' ');
       if (argv[i])
-	strbuf_toprint_quoted(&logbuf, '"', argv[i]);
+	strbuf_toprint_quoted(&logbuf, "\"\"", argv[i]);
       else
 	strbuf_puts(&logbuf, "NULL");
     }
@@ -266,7 +268,7 @@ void vlogMessage(int level, struct __sourceloc where, const char *fmt, va_list a
   }
 }
 
-int logDump(int level, struct __sourceloc where, char *name, unsigned char *addr, size_t len)
+int logDump(int level, struct __sourceloc where, char *name, const unsigned char *addr, size_t len)
 {
   char buf[100];
   size_t i;
@@ -324,10 +326,10 @@ unsigned int debugFlagMask(const char *flagname) {
    in log messages.
    @author Andrew Bettison <andrew@servalproject.com>
  */
-char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcBytes)
+char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcBytes, const char quotes[2])
 {
   strbuf b = strbuf_local(dstStr, dstBufSiz);
-  strbuf_toprint_quoted_len(b, '"', srcBuf, srcBytes);
+  strbuf_toprint_quoted_len(b, quotes, srcBuf, srcBytes);
   return dstStr;
 }
 
@@ -336,9 +338,30 @@ char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcByt
    otherwise returns dstStrLen.
    @author Andrew Bettison <andrew@servalproject.com>
  */
-size_t toprint_strlen(const char *srcBuf, size_t srcBytes)
+size_t toprint_len(const char *srcBuf, size_t srcBytes, const char quotes[2])
 {
-  return strbuf_count(strbuf_toprint_quoted_len(strbuf_local(NULL, 0), '"', srcBuf, srcBytes));
+  return strbuf_count(strbuf_toprint_quoted_len(strbuf_local(NULL, 0), quotes, srcBuf, srcBytes));
+}
+
+/* Format a null-terminated string as a printable representation, eg: "Abc\x0b\n", for display
+   in log messages.
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+char *toprint_str(char *dstStr, ssize_t dstBufSiz, const char *srcStr, const char quotes[2])
+{
+  strbuf b = strbuf_local(dstStr, dstBufSiz);
+  strbuf_toprint_quoted(b, quotes, srcStr);
+  return dstStr;
+}
+
+/* Compute the length of the string produced by toprint_str().  If dstStrLen == -1 then returns the
+   exact number of characters in the printable representation (excluding the terminating nul),
+   otherwise returns dstStrLen.
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+size_t toprint_str_len(const char *srcStr, const char quotes[2])
+{
+  return strbuf_count(strbuf_toprint_quoted(strbuf_local(NULL, 0), quotes, srcStr));
 }
 
 /* Read the symbolic link into the supplied buffer and add a terminating nul.  Return -1 if the
@@ -385,30 +408,30 @@ ssize_t read_symlink(const char *path, char *buf, size_t len)
 
 ssize_t get_self_executable_path(char *buf, size_t len)
 {
-#ifdef linux
+#if defined(linux)
   return read_symlink("/proc/self/exe", buf, len);
-#endif
-#ifdef __APPLE__
-  // Mac OS X
-  // TODO: Not tested
+#elif defined (__sun__)
+  return read_symlink("/proc/self/path/a.out", buf, len);
+#elif defined (__APPLE__)
   uint32_t bufsize = len;
   return _NSGetExecutablePath(buf, &bufsize) == -1 && len ? -1 : bufsize;
+#else
+#error Unable to find executable path
 #endif
-  return WHYF("Not implemented");
 }
 
 int log_backtrace(struct __sourceloc where)
 {
   open_logging();
-  char execpath[160];
+  char execpath[MAXPATHLEN];
   if (get_self_executable_path(execpath, sizeof execpath) == -1)
     return WHY("cannot log backtrace: own executable path unknown");
-  char tempfile[512];
-  if (!FORM_SERVAL_INSTANCE_PATH(tempfile, "servalXXXXXX.gdb"))
+  char tempfile[MAXPATHLEN];
+  if (!FORM_SERVAL_INSTANCE_PATH(tempfile, "servalgdb.XXXXX"))
     return -1;
-  int tmpfd = mkstemps(tempfile, 4);
+  int tmpfd = mkstemp(tempfile);
   if (tmpfd == -1)
-    return WHY_perror("mkstemps");
+    return WHY_perror("mkstemp");
   if (write_str(tmpfd, "backtrace\n") == -1) {
     close(tmpfd);
     unlink(tempfile);
@@ -420,7 +443,7 @@ int log_backtrace(struct __sourceloc where)
     return -1;
   }
   char pidstr[12];
-  snprintf(pidstr, sizeof pidstr, "%u", getpid());
+  snprintf(pidstr, sizeof pidstr, "%jd", (intmax_t)getpid());
   int stdout_fds[2];
   if (pipe(stdout_fds) == -1)
     return WHY_perror("pipe");
@@ -442,7 +465,9 @@ int log_backtrace(struct __sourceloc where)
       _exit(-2);
     }
     close(stdout_fds[0]);
-    execlp("gdb", "gdb", "-n", "-batch", "-x", tempfile, execpath, pidstr, NULL);
+    /* XXX: Need the cast on Solaris because it defins NULL as 0L and gcc doesn't
+     * see it as a sentinal */
+    execlp("gdb", "gdb", "-n", "-batch", "-x", tempfile, execpath, pidstr, (void*)NULL);
     perror("execlp(\"gdb\")");
     do { _exit(-3); } while (1);
     break;

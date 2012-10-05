@@ -22,11 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_buffer.h"
 #include "overlay_packet.h"
 
-struct sockaddr_in loopback = {
-  .sin_family=0,
-  .sin_port=0,
-  .sin_addr.s_addr=0x0100007f
-};
+struct sockaddr_in loopback;
 
 // a frame destined for one of our local addresses, or broadcast, has arrived. Process it.
 int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, struct overlay_frame *f){
@@ -185,10 +181,12 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     f.recvaddr=recvaddr; 
     if (debug&DEBUG_OVERLAYFRAMES)
       DEBUG("Received overlay packet");
-    
   } else {
     if (interface->fileP) {
-      /* dummy interface, so tell to use 0.0.0.0 */
+      /* dummy interface, so tell to use localhost */
+      loopback.sin_family = AF_INET;
+      loopback.sin_port = 0;
+      loopback.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
       f.recvaddr=(struct sockaddr *)&loopback;
     } else 
       /* some other sort of interface, so we can't offer any help here */

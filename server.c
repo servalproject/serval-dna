@@ -740,7 +740,13 @@ int createServerSocket()
      This makes life easier when we restart with an exec after receiving
      a bad signal. */
   fcntl(sock, F_SETFL,
-	fcntl(sock, F_GETFL, NULL)|O_CLOEXEC);
+	fcntl(sock, F_GETFL, NULL)|
+#ifdef FD_CLOEXEC
+                                                FD_CLOEXEC
+#else
+                                                O_CLOEXEC
+#endif
+       );
 
   int i=1;
   setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &i, sizeof(i));

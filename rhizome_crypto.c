@@ -296,7 +296,10 @@ int rhizome_manifest_lookup_signature_validity(unsigned char *hash,unsigned char
 int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
 {
   IN();
-  if (!m) { RETURN(WHY("NULL pointer passed in as manifest")); }
+  if (!m)
+    RETURN(WHY("NULL pointer passed in as manifest"));
+  if (debug&DEBUG_RHIZOME)
+    DEBUGF("m->manifest_all_bytes=%d m->manifest_bytes=%d *ofs=%d", m->manifest_all_bytes, m->manifest_bytes, *ofs);
 
   if ((*ofs)>=m->manifest_all_bytes) { RETURN(0); }
 

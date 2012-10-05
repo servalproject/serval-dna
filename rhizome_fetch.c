@@ -18,6 +18,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include <time.h>
+#include <arpa/inet.h>
+#include <assert.h>
 #include "serval.h"
 #include "rhizome.h"
 #include "str.h"
@@ -31,6 +33,7 @@ typedef struct rhizome_file_fetch_record {
   rhizome_manifest *manifest;
   char fileid[RHIZOME_FILEHASH_STRLEN + 1];
   FILE *file;
+  char filename[1024];
   
   char request[1024];
   int request_len;
@@ -46,6 +49,8 @@ typedef struct rhizome_file_fetch_record {
 #define RHIZOME_FETCH_RXHTTPHEADERS 3
 #define RHIZOME_FETCH_RXFILE 4
   
+  struct sockaddr_in peer;
+
 } rhizome_file_fetch_record;
 
 struct profile_total fetch_stats;
@@ -382,27 +387,13 @@ int rhizome_position_candidate(int position)
 
 void rhizome_import_received_bundle(struct rhizome_manifest *m)
 {
-  // TODO: We already have the manifest struct in memory, should import the bundle
-  // directly from that, not by writing it to a file and re-reading it!
-  const char *id = rhizome_manifest_get(m, "id", NULL, 0);
-  if (id == NULL) {
-    WHY("Manifest missing ID");
-    return;
-  }
-  if (create_rhizome_import_dir() == -1)
-    return;
-  char filename[1024];
-  if (!FORM_RHIZOME_IMPORT_PATH(filename, "manifest.%s", id))
-    return;
-  /* Do really write the manifest unchanged */
   m->finalised = 1;
-  m->manifest_bytes = m->manifest_all_bytes;
+  m->manifest_bytes = m->manifest_all_bytes; // store the signatures too
   if (debug & DEBUG_RHIZOME_RX) {
-    DEBUGF("manifest bid=%s len=%d has %d signatories", id, m->manifest_bytes, m->sig_count);
+    DEBUGF("manifest len=%d has %d signatories", m->manifest_bytes, m->sig_count);
     dump("manifest", m->manifestdata, m->manifest_all_bytes);
   }
-  if (rhizome_write_manifest_file(m, filename) != -1)
-    rhizome_bundle_import(m, NULL, id, m->ttl - 1 /* TTL */);
+  rhizome_bundle_import(m, m->ttl - 1 /* TTL */);
 }
 
 /* Verifies manifests as late as possible to avoid wasting time. */
@@ -518,7 +509,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, struct sockaddr_i
   candidates[i].peer=*peerip;
 
   int j;
-  if (0) {
+  if (1) {
     DEBUG("Rhizome priorities fetch list now:");
     for(j=0;j<candidate_count;j++)
       DEBUGF("%02d:%s:size=%lld, priority=%d",
@@ -552,9 +543,11 @@ void rhizome_enqueue_suggestions(struct sched_ent *alarm)
     bcopy(&candidates[i],&candidates[0],bytes);
     candidate_count-=i;
   }
-  alarm->alarm = gettime_ms() + rhizome_fetch_interval_ms;
-  alarm->deadline = alarm->alarm + rhizome_fetch_interval_ms*3;
-  schedule(alarm);
+  if (alarm) {
+    alarm->alarm = gettime_ms() + rhizome_fetch_interval_ms;
+    alarm->deadline = alarm->alarm + rhizome_fetch_interval_ms*3;
+    schedule(alarm);
+  }
   return;
 }
 
@@ -579,7 +572,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
      the cache slot number to implicitly store the first bits.
   */
 
-  if (debug & DEBUG_RHIZOME_RX)
+  if (1||debug & DEBUG_RHIZOME_RX)
     DEBUGF("Fetching manifest bid=%s version=%lld size=%lld:", bid, m->version, filesize);
 
   if (rhizome_manifest_version_cache_lookup(m)) {
@@ -601,10 +594,12 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
   /* Don't queue if already queued */
   int i;
   for (i = 0; i < rhizome_file_fetch_queue_count; ++i) {
-    if (memcmp(m->cryptoSignPublic, file_fetch_queue[i].manifest->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES) == 0) {
-      if (debug & DEBUG_RHIZOME_RX)
-	DEBUGF("   manifest fetch already queued");
-      return 3;
+    if (file_fetch_queue[i].manifest) {
+      if (memcmp(m->cryptoSignPublic, file_fetch_queue[i].manifest->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES) == 0) {
+	if (debug & DEBUG_RHIZOME_RX)
+	  DEBUGF("   manifest fetch already queued");
+	return 3;
+      }
     }
   }
 
@@ -642,15 +637,15 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	  close(sock);
 	  return -1;
 	}
+	dump("copying peerip",peerip,sizeof(*peerip));
 	struct sockaddr_in addr = *peerip;
 	addr.sin_family = AF_INET;
-	INFOF("RHIZOME HTTP REQUEST, CONNECT family=%u port=%u addr=%u.%u.%u.%u",
-	    addr.sin_family, ntohs(addr.sin_port),
-	    ((unsigned char*)&addr.sin_addr.s_addr)[0],
-	    ((unsigned char*)&addr.sin_addr.s_addr)[1],
-	    ((unsigned char*)&addr.sin_addr.s_addr)[2],
-	    ((unsigned char*)&addr.sin_addr.s_addr)[3]
-	  );
+	char buf[INET_ADDRSTRLEN];
+	if (inet_ntop(AF_INET, &addr.sin_addr, buf, sizeof buf) == NULL) {
+	  buf[0] = '*';
+	  buf[1] = '\0';
+	}
+	INFOF("RHIZOME HTTP REQUEST, CONNECT family=%u port=%u addr=%s", addr.sin_family, ntohs(addr.sin_port), buf);
 	if (connect(sock, (struct sockaddr*)&addr, sizeof addr) == -1) {
 	  if (errno == EINPROGRESS) {
 	    if (debug & DEBUG_RHIZOME_RX)
@@ -665,6 +660,7 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	rhizome_file_fetch_record *q=&file_fetch_queue[rhizome_file_fetch_queue_count];
 	q->manifest = m;
 	*manifest_kept = 1;
+	bcopy(&addr,&q->peer,sizeof(q->peer));
 	q->alarm.poll.fd=sock;
 	strncpy(q->fileid, m->fileHexHash, RHIZOME_FILEHASH_STRLEN + 1);
 	q->request_len = snprintf(q->request, sizeof q->request, "GET /rhizome/file/%s HTTP/1.0\r\n\r\n", q->fileid);
@@ -719,20 +715,11 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 	/* TODO: fetch via overlay */
 	return WHY("Rhizome fetching via overlay not implemented");
       }
+    } else {
+      if (debug & DEBUG_RHIZOME_RX) 
+	DEBUGF("We already have the file for this manifest; importing from manifest alone.");
+      rhizome_bundle_import(m, m->ttl-1);
     }
-    else
-      {
-	if (debug & DEBUG_RHIZOME_RX) 
-	  DEBUGF("We already have the file for this manifest; importing from manifest alone.");
-	if (create_rhizome_import_dir() == -1)
-	  return -1;
-	char filename[1024];
-	if (!FORM_RHIZOME_IMPORT_PATH(filename, "manifest.%s", bid))
-	  return -1;
-	if (!rhizome_write_manifest_file(m, filename)) {
-	  rhizome_bundle_import(m, NULL, bid, m->ttl-1);
-	}
-      }
   }
 
   return 0;
@@ -761,6 +748,8 @@ int rhizome_fetch_close(rhizome_file_fetch_record *q){
 }
 
 void rhizome_fetch_write(rhizome_file_fetch_record *q){
+  if (debug & DEBUG_RHIZOME_RX)
+    DEBUGF("write_nonblock(%d, %s)", q->alarm.poll.fd, alloca_toprint(-1, &q->request[q->request_ofs], q->request_len-q->request_ofs));
   int bytes = write_nonblock(q->alarm.poll.fd, &q->request[q->request_ofs], q->request_len-q->request_ofs);
   if (bytes == -1) {
     WHY("Got error while sending HTTP request.  Closing.");
@@ -804,9 +793,29 @@ void rhizome_write_content(rhizome_file_fetch_record *q, char *buffer, int bytes
       DEBUGF("Received all of file via rhizome -- now to import it");
     fclose(q->file);
     q->file = NULL;
-    rhizome_import_received_bundle(q->manifest);
-    rhizome_manifest_free(q->manifest);
-    q->manifest = NULL;
+    if (q->manifest) {
+      rhizome_import_received_bundle(q->manifest);
+      rhizome_manifest_free(q->manifest);
+      q->manifest = NULL;
+    } else {
+      /* This was to fetch the manifest, so now fetch the file if needed */
+      DEBUGF("Received a manifest in response to supplying a manifest prefix.");
+      DEBUGF("XXX Not implemented scheduling the fetching of the file itself.");
+      /* Read the manifest and add it to suggestion queue, then immediately
+	 call schedule queued items. */
+      rhizome_manifest *m=rhizome_new_manifest();
+      if (m) {
+	if (rhizome_read_manifest_file(m,q->filename,0)==-1) {
+	  DEBUGF("Couldn't read manifest from %s",q->filename);
+	  rhizome_manifest_free(m);
+	} else {
+	  DEBUGF("All looks good for importing manifest %p",m);
+	  dump("q->peer",&q->peer,sizeof(q->peer));
+	  rhizome_suggest_queue_manifest_import(m,&q->peer);
+	  rhizome_enqueue_suggestions(NULL);
+	}
+      }
+    }
     rhizome_fetch_close(q);
     return;
   }
@@ -821,13 +830,13 @@ void rhizome_write_content(rhizome_file_fetch_record *q, char *buffer, int bytes
 void rhizome_fetch_poll(struct sched_ent *alarm)
 {
   rhizome_file_fetch_record *q=(rhizome_file_fetch_record *)alarm;
-  
+
   if (alarm->poll.revents==0){
     // timeout, close the socket
     rhizome_fetch_close(q);
     return;
   }
-  
+
   if (alarm->poll.revents & (POLLIN | POLLOUT)) {
     switch(q->state) {
       case RHIZOME_FETCH_CONNECTING:
@@ -868,100 +877,199 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	    q->alarm.deadline = q->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
 	    schedule(&q->alarm);
 	    q->request_len += bytes;
-	    if (http_header_complete(q->request, q->request_len, bytes + 4)) {
+	    if (http_header_complete(q->request, q->request_len, bytes)) {
 	      if (debug & DEBUG_RHIZOME_RX)
 		DEBUGF("Got HTTP reply: %s", alloca_toprint(160, q->request, q->request_len));
 	      /* We have all the reply headers, so parse them, taking care of any following bytes of
 		content. */
-	      char *p = NULL;
-	      if (!str_startswith(q->request, "HTTP/1.0 ", &p)) {
-		if (debug&DEBUG_RHIZOME_RX)
-		  DEBUGF("Malformed HTTP reply: missing HTTP/1.0 preamble");
+	      struct http_response_parts parts;
+	      if (unpack_http_response(q->request, &parts) == -1) {
 		rhizome_fetch_close(q);
 		return;
 	      }
-	      int http_response_code = 0;
-	      char *nump;
-	      for (nump = p; isdigit(*p); ++p)
-		http_response_code = http_response_code * 10 + *p - '0';
-	      if (p == nump || *p != ' ') {
-		if (debug&DEBUG_RHIZOME_RX)
-		  DEBUGF("Malformed HTTP reply: missing decimal status code");
-		rhizome_fetch_close(q);
-		return;
-	      }
-	      if (http_response_code != 200) {
+	      if (parts.code != 200) {
 		if (debug & DEBUG_RHIZOME_RX)
-		  DEBUGF("Failed HTTP request: rhizome server returned %d != 200 OK", http_response_code);
+		  DEBUGF("Failed HTTP request: rhizome server returned %d != 200 OK", parts.code);
 		rhizome_fetch_close(q);
 		return;
 	      }
-	      // This loop will terminate, because http_header_complete() above found at least
-	      // "\n\n" at the end of the header, and probably "\r\n\r\n".
-	      while (*p++ != '\n')
-		;
-	      // Iterate over header lines until the last blank line.
-	      long long content_length = -1;
-	      while (*p != '\r' && *p != '\n') {
-		if (strcase_startswith(p, "Content-Length:", &p)) {
-		  while (*p == ' ')
-		    ++p;
-		  content_length = 0;
-		  for (nump = p; isdigit(*p); ++p)
-		    content_length = content_length * 10 + *p - '0';
-		  if (p == nump || (*p != '\r' && *p != '\n')) {
-		    if (debug & DEBUG_RHIZOME_RX)  {
-		      DEBUGF("Invalid HTTP reply: malformed Content-Length header");
-		      rhizome_fetch_close(q);
-		      return;
-		    }
-		  }
-		}
-		while (*p++ != '\n')
-		  ;
-	      }
-	      if (*p == '\r')
-		++p;
-	      ++p; // skip '\n' at end of blank line
-	      if (content_length == -1) {
+	      if (parts.content_length == -1) {
 		if (debug & DEBUG_RHIZOME_RX)
 		  DEBUGF("Invalid HTTP reply: missing Content-Length header");
 		rhizome_fetch_close(q);
 		return;
 	      }
-	      q->file_len = content_length;
+	      q->file_len = parts.content_length;
 	      /* We have all we need.  The file is already open, so just write out any initial bytes of
 		the body we read.
 	      */
 	      q->state = RHIZOME_FETCH_RXFILE;
-	      int content_bytes = q->request + q->request_len - p;
+	      int content_bytes = q->request + q->request_len - parts.content_start;
 	      if (content_bytes > 0)
-		rhizome_write_content(q, p, content_bytes);
+		rhizome_write_content(q, parts.content_start, content_bytes);
 	    }
-	  } else {
-	    if (debug & DEBUG_RHIZOME_RX)
-	      DEBUG("Empty read, closing connection");
-	    rhizome_fetch_close(q);
-	    return;
 	  }
-	  if (sigPipeFlag) {
-	    if (debug & DEBUG_RHIZOME_RX)
-	      DEBUG("Received SIGPIPE, closing connection");
-	    rhizome_fetch_close(q);
-	    return;
-	  }
+	  break;
+	default:
+	  if (debug & DEBUG_RHIZOME_RX)
+	    DEBUG("Closing rhizome fetch connection due to illegal/unimplemented state.");
+	  rhizome_fetch_close(q);
+	  return;
 	}
-	break;
-      default:
-	if (debug & DEBUG_RHIZOME_RX) 
-	  DEBUG("Closing rhizome fetch connection due to illegal/unimplemented state.");
-	rhizome_fetch_close(q);
-	return;
-      }
+    }
   }
-  
   if (alarm->poll.revents & (POLLHUP | POLLERR)) {
     rhizome_fetch_close(q);
-  }  
+  }
   return;
+}
+
+/*
+   This function takes a pointer to a buffer into which the entire HTTP response header has been
+   read.  The caller must have ensured that the buffer contains at least one consecutive pair of
+   newlines '\n', optionally with carriage returns '\r' preceding and optionally interspersed with
+   nul characters '\0' (which can originate from telnet).  The http_header_complete() function
+   is useful for this.
+   This returns pointers to within the supplied buffer, and may overwrite some characters in the
+   buffer, for example to nul-terminate a string that was terminated by space ' ' or newline '\r'
+   '\n' in the buffer.  For that reason, it takes char* not const char* arguments and returns the
+   same.  It is up to the caller to manage the lifetime of the returned pointers, which of course
+   will only be valid for as long as the buffer persists and is not overwritten.
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+int unpack_http_response(char *response, struct http_response_parts *parts)
+{
+  parts->code = -1;
+  parts->reason = NULL;
+  parts->content_length = -1;
+  parts->content_start = NULL;
+  char *p = NULL;
+  if (!str_startswith(response, "HTTP/1.0 ", &p)) {
+    if (debug&DEBUG_RHIZOME_RX)
+      DEBUGF("Malformed HTTP reply: missing HTTP/1.0 preamble");
+    return -1;
+  }
+  if (!(isdigit(p[0]) && isdigit(p[1]) && isdigit(p[2]) && p[3] == ' ')) {
+    if (debug&DEBUG_RHIZOME_RX)
+      DEBUGF("Malformed HTTP reply: missing three-digit status code");
+    return -1;
+  }
+  parts->code = (p[0]-'0') * 100 + (p[1]-'0') * 10 + p[2]-'0';
+  p += 4;
+  parts->reason = p;
+  while (*p != '\n')
+    ++p;
+  if (p[-1] == '\r')
+    p[-1] = '\0';
+  *p++ = '\0';
+  // Iterate over header lines until the last blank line.
+  while (!(p[0] == '\n' || (p[0] == '\r' && p[1] == '\n'))) {
+    if (strcase_startswith(p, "Content-Length:", &p)) {
+      while (*p == ' ')
+	++p;
+      parts->content_length = 0;
+      char *nump = p;
+      while (isdigit(*p))
+	parts->content_length = parts->content_length * 10 + *p++ - '0';
+      if (p == nump || (*p != '\r' && *p != '\n')) {
+	if (debug & DEBUG_RHIZOME_RX)
+	  DEBUGF("Invalid HTTP reply: malformed Content-Length header");
+	return -1;
+      }
+    }
+    while (*p++ != '\n')
+      ;
+  }
+  if (*p == '\r')
+    ++p;
+  ++p; // skip '\n' at end of blank line
+  parts->content_start = p;
+  return 0;
+}
+
+int rhizome_fetch_request_manifest_by_prefix(struct sockaddr_in *peerip,
+					     unsigned char *prefix,
+					     int prefix_length,
+					     int importP)
+{
+  assert(peerip);
+  /* Transfer via HTTP over IPv4 */
+  int sock = socket(AF_INET, SOCK_STREAM, 0);
+  if (sock == -1)
+    return WHY_perror("socket");
+  if (set_nonblock(sock) == -1) {
+    close(sock);
+    return -1;
+  }
+  struct sockaddr_in addr = *peerip;
+  addr.sin_family = AF_INET;
+  INFOF("RHIZOME HTTP REQUEST, CONNECT family=%u port=%u addr=%u.%u.%u.%u",
+	addr.sin_family, ntohs(addr.sin_port),
+	((unsigned char*)&addr.sin_addr.s_addr)[0],
+	((unsigned char*)&addr.sin_addr.s_addr)[1],
+	((unsigned char*)&addr.sin_addr.s_addr)[2],
+	((unsigned char*)&addr.sin_addr.s_addr)[3]
+	);
+  if (connect(sock, (struct sockaddr*)&addr, sizeof addr) == -1) {
+    if (errno == EINPROGRESS) {
+      if (debug & DEBUG_RHIZOME_RX)
+	DEBUGF("connect() returned EINPROGRESS");
+    } else {
+      WHY_perror("connect");
+      WHY("Failed to open socket to peer's rhizome web server");
+      close(sock);
+      return -1;
+    }
+  }
+  rhizome_file_fetch_record *q=&file_fetch_queue[rhizome_file_fetch_queue_count];
+  q->manifest = NULL;
+  q->alarm.poll.fd=sock;
+  bzero(q->fileid, sizeof(q->fileid));
+  q->peer=*peerip;
+  q->request_len = snprintf(q->request, sizeof q->request, "GET /rhizome/manifestbyprefix/%s HTTP/1.0\r\n\r\n", alloca_tohex(prefix,prefix_length));
+  q->request_ofs=0;
+  q->state=RHIZOME_FETCH_CONNECTING;
+  q->file_len=-1;
+  q->file_ofs=0;
+  
+  if (create_rhizome_import_dir() == -1)
+    return -1;
+  char filename[1024];
+  if (!FORM_RHIZOME_IMPORT_PATH(filename, "file.%s", 
+				alloca_tohex(prefix,prefix_length))) {
+    close(sock);
+    return -1;
+  }
+  if (strlen(q->filename)<sizeof(q->filename))
+    strcpy(q->filename,filename);
+  else q->filename[0]=0;
+
+  if ((q->file = fopen(filename, "w")) == NULL) {
+    WHY_perror("fopen");
+    //    if (debug & DEBUG_RHIZOME_RX)
+      DEBUGF("Could not open '%s' to write received file", filename);
+    close(sock);
+    return -1;
+  }
+  
+  INFOF("RHIZOME HTTP REQUEST, GET \"/rhizome/manifestbyprefix/%s\"", 
+	alloca_tohex(prefix,prefix_length));
+  
+  /* Watch for activity on the socket */
+  q->alarm.function=rhizome_fetch_poll;
+  fetch_stats.name="rhizome_fetch_poll";
+  q->alarm.stats=&fetch_stats;
+  q->alarm.poll.events=POLLIN|POLLOUT;
+  watch(&q->alarm);
+  /* And schedule a timeout alarm */
+  q->alarm.alarm=gettime_ms() + RHIZOME_IDLE_TIMEOUT;
+  q->alarm.deadline = q->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
+  
+  schedule(&q->alarm);
+  
+  rhizome_file_fetch_queue_count++;
+  if (debug & DEBUG_RHIZOME_RX)
+    DEBUGF("Queued file for fetching into %s (%d in queue)",
+	   filename, rhizome_file_fetch_queue_count);
+  return 0;
 }

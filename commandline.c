@@ -587,7 +587,9 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
 	   creates a new server daemon process with the correct argv[0].  Otherwise, the servald
 	   process appears as a process with argv[0] = "org.servalproject". */
 	if (execpath) {
-	  execl(execpath, execpath, "start", "foreground", NULL);
+	/* XXX: Need the cast on Solaris because it defins NULL as 0L and gcc doesn't
+	 * see it as a sentinal */
+	  execl(execpath, execpath, "start", "foreground", (void *)NULL);
 	  _exit(-1);
 	}
 	_exit(server(NULL));
@@ -597,10 +599,7 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
     /* Main process.  Allow a few seconds for the child process to report for duty. */
     time_ms_t timeout = gettime_ms() + 5000;
     do {
-      struct timespec delay;
-      delay.tv_sec = 0;
-      delay.tv_nsec = 200000000; // 200 ms = 5 Hz
-      nanosleep(&delay, NULL);
+      sleep_ms(200); // 5 Hz
     } while ((pid = server_pid()) == 0 && gettime_ms() < timeout);
     if (pid == -1)
       return -1;
@@ -1038,8 +1037,11 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
     rhizome_manifest_free(m);
     return WHYF("Could not bind manifest to file '%s'",filepath);
   }
-  /* Add the manifest and its associated file to the Rhizome database, generating an "id" in the
-   * process */
+  /* Add the manifest and its associated file to the Rhizome database, 
+     generating an "id" in the process.
+     PGS @20121003 - Hang on, didn't we create the ID above? Presumably the
+     following does NOT in fact generate a bundle ID. 
+  */
   rhizome_manifest *mout = NULL;
   if (debug & DEBUG_RHIZOME) DEBUGF("rhizome_add_manifest(author='%s')", authorSidHex);
 
@@ -1121,66 +1123,7 @@ int app_rhizome_import_bundle(int argc, const char *const *argv, struct command_
   cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "");
   if (rhizome_opendb() == -1)
     return -1;
-  rhizome_manifest *m = rhizome_new_manifest();
-  if (!m)
-    return WHY("Out of manifests.");
-  int status = -1;
-  if (rhizome_read_manifest_file(m, manifestpath, 0) == -1) {
-    status = WHY("could not read manifest file");
-  } else if (rhizome_manifest_verify(m) == -1) {
-    status = WHY("Could not verify manifest file.");
-  } else {
-    /* Add the manifest and its associated file to the Rhizome database. */
-    m->dataFileName = strdup(filepath);
-    if (rhizome_manifest_check_file(m))
-      status = WHY("file does not belong to manifest");
-    else {
-      int ret = rhizome_manifest_check_duplicate(m, NULL);
-      if (ret == -1)
-	status = WHY("rhizome_manifest_check_duplicate() failed");
-      else if (ret) {
-	INFO("Duplicate found in store");
-	status = 1;
-      } else if (rhizome_add_manifest(m, 1) == -1) { // ttl = 1
-	status = WHY("rhizome_add_manifest() failed");
-      } else {
-	status = 0;
-      }
-      if (status != -1) {
-	const char *service = rhizome_manifest_get(m, "service", NULL, 0);
-	if (service) {
-	  cli_puts("service");
-	  cli_delim(":");
-	  cli_puts(service);
-	  cli_delim("\n");
-	}
-	{
-	  cli_puts("manifestid");
-	  cli_delim(":");
-	  cli_puts(alloca_tohex(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES));
-	  cli_delim("\n");
-	}
-	cli_puts("filesize");
-	cli_delim(":");
-	cli_printf("%lld", m->fileLength);
-	cli_delim("\n");
-	if (m->fileLength != 0) {
-	  cli_puts("filehash");
-	  cli_delim(":");
-	  cli_puts(m->fileHexHash);
-	  cli_delim("\n");
-	}
-	const char *name = rhizome_manifest_get(m, "name", NULL, 0);
-	if (name) {
-	  cli_puts("name");
-	  cli_delim(":");
-	  cli_puts(name);
-	  cli_delim("\n");
-	}
-      }
-    }
-  }
-  rhizome_manifest_free(m);
+  int status=rhizome_import_from_files(manifestpath,filepath);
   return status;
 }
 
@@ -1687,6 +1630,15 @@ struct command_line_option command_line_options[]={
    "Extract a manifest from Rhizome and write it to the given path"},
   {app_rhizome_extract_file,{"rhizome","extract","file","<fileid>","[<filepath>]","[<key>]",NULL},CLIFLAG_STANDALONE,
    "Extract a file from Rhizome and write it to the given path"},
+  {app_rhizome_direct_sync,{"rhizome","direct","sync","[peer url]",NULL},
+   CLIFLAG_STANDALONE,
+   "Synchronise with the specified Rhizome Direct server. Return when done."},
+  {app_rhizome_direct_sync,{"rhizome","direct","push","[peer url]",NULL},
+   CLIFLAG_STANDALONE,
+   "Deliver all new content to the specified Rhizome Direct server. Return when done."},
+  {app_rhizome_direct_sync,{"rhizome","direct","pull","[peer url]",NULL},
+   CLIFLAG_STANDALONE,
+   "Fetch all new content from the specified Rhizome Direct server. Return when done."},
   {app_keyring_create,{"keyring","create",NULL},0,
    "Create a new keyring file."},
   {app_keyring_list,{"keyring","list","[<pin,pin...>]",NULL},CLIFLAG_STANDALONE,

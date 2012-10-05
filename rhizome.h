@@ -63,6 +63,13 @@ typedef struct rhizome_signature {
 } rhizome_signature;
 
 #define RHIZOME_BAR_BYTES 32
+#define RHIZOME_BAR_COMPARE_BYTES 31
+#define RHIZOME_BAR_PREFIX_BYTES 15
+#define RHIZOME_BAR_PREFIX_OFFSET 0
+#define RHIZOME_BAR_FILESIZE_OFFSET 15
+#define RHIZOME_BAR_VERSION_OFFSET 16
+#define RHIZOME_BAR_GEOBOX_OFFSET 23
+#define RHIZOME_BAR_TTL_OFFSET 31
 
 #define MAX_MANIFEST_VARS 256
 #define MAX_MANIFEST_BYTES 8192
@@ -171,7 +178,7 @@ int rhizome_str_is_file_hash(const char *text);
 
 #define alloca_tohex_bid(bid)           alloca_tohex((bid), RHIZOME_MANIFEST_ID_BYTES)
 
-int http_header_complete(const char *buf, size_t len, size_t tail);
+int http_header_complete(const char *buf, size_t len, size_t read_since_last_call);
 
 typedef struct sqlite_retry_state {
   unsigned int limit; // do not retry once elapsed >= limit
@@ -207,7 +214,8 @@ int rhizome_store_bundle(rhizome_manifest *m);
 int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid);
 int rhizome_clean_payload(const char *fileidhex);
 int rhizome_store_file(rhizome_manifest *m,const unsigned char *key);
-int rhizome_bundle_import(rhizome_manifest *m_in, rhizome_manifest **m_out, const char *bundle, int ttl);
+int rhizome_bundle_import_files(const char *manifest_path, const char *payload_path, int ttl);
+int rhizome_bundle_import(rhizome_manifest *m, int ttl);
 
 int rhizome_manifest_verify(rhizome_manifest *m);
 int rhizome_manifest_check_sanity(rhizome_manifest *m_in);
@@ -233,8 +241,8 @@ __RHIZOME_INLINE int sqlite_code_busy(int code)
   return code == SQLITE_BUSY || code == SQLITE_LOCKED;
 }
 
-sqlite3_stmt *_sqlite_prepare(struct __sourceloc, const char *sqlformat, ...);
-sqlite3_stmt *_sqlite_prepare_loglevel(struct __sourceloc, int log_level, strbuf stmt);
+sqlite3_stmt *_sqlite_prepare(struct __sourceloc where, sqlite_retry_state *retry, const char *sqlformat, ...);
+sqlite3_stmt *_sqlite_prepare_loglevel(struct __sourceloc where, int log_level, sqlite_retry_state *retry, strbuf stmt);
 int _sqlite_retry(struct __sourceloc where, sqlite_retry_state *retry, const char *action);
 void _sqlite_retry_done(struct __sourceloc where, sqlite_retry_state *retry, const char *action);
 int _sqlite_step_retry(struct __sourceloc where, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement);
@@ -245,8 +253,8 @@ int _sqlite_exec_int64(struct __sourceloc, long long *result, const char *sqlfor
 int _sqlite_exec_int64_retry(struct __sourceloc, sqlite_retry_state *retry, long long *result, const char *sqlformat,...);
 int _sqlite_exec_strbuf(struct __sourceloc, strbuf sb, const char *sqlformat,...);
 
-#define sqlite_prepare(fmt,...)                 _sqlite_prepare(__HERE__, (fmt), ##__VA_ARGS__)
-#define sqlite_prepare_loglevel(ll,sb)          _sqlite_prepare_loglevel(__HERE__, (ll), (sb))
+#define sqlite_prepare(rs,fmt,...)              _sqlite_prepare(__HERE__, (rs), (fmt), ##__VA_ARGS__)
+#define sqlite_prepare_loglevel(ll,rs,sb)       _sqlite_prepare_loglevel(__HERE__, (ll), (rs), (sb))
 #define sqlite_retry(rs,action)                 _sqlite_retry(__HERE__, (rs), (action))
 #define sqlite_retry_done(rs,action)            _sqlite_retry_done(__HERE__, (rs), (action))
 #define sqlite_step(stmt)                       _sqlite_step_retry(__HERE__, LOG_LEVEL_ERROR, NULL, (stmt))
@@ -264,6 +272,8 @@ int rhizome_update_file_priority(const char *fileid);
 int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found,
 			   int checkVersionP);
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
+long long rhizome_bar_version(unsigned char *bar);
+unsigned long long rhizome_bar_bidprefix_ll(unsigned char *bar);
 int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peerip, int *manifest_kept);
 int rhizome_list_manifests(const char *service, const char *sender_sid, const char *recipient_sid, int limit, int offset);
 int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp);
@@ -298,3 +308,221 @@ int rhizome_ignore_manifest_check(rhizome_manifest *m,
 
 int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
 					  struct sockaddr_in *peerip);
+
+typedef struct rhizome_http_request {
+  struct sched_ent alarm;
+  long long initiate_time; /* time connection was initiated */
+  
+  struct sockaddr_in requestor;
+
+  /* identify request from others being run.
+     Monotonic counter feeds it.  Only used for debugging when we write
+     post-<uuid>.log files for multi-part form requests. */
+  unsigned int uuid;
+
+  /* The HTTP request as currently received */
+  int request_length;
+  char request[1024];
+  
+  /* Nature of the request */
+  int request_type;
+  /* All of the below are receiving data */
+#define RHIZOME_HTTP_REQUEST_RECEIVING -1
+#define RHIZOME_HTTP_REQUEST_RECEIVING_MULTIPART -2
+  /* All of the below are sending data */
+#define RHIZOME_HTTP_REQUEST_FROMBUFFER 1
+#define RHIZOME_HTTP_REQUEST_FILE 2
+#define RHIZOME_HTTP_REQUEST_SUBSCRIBEDGROUPLIST 4
+#define RHIZOME_HTTP_REQUEST_ALLGROUPLIST 8
+#define RHIZOME_HTTP_REQUEST_BUNDLESINGROUP 16
+  // manifests are small enough to send from a buffer
+  // #define RHIZOME_HTTP_REQUEST_BUNDLEMANIFEST 32
+  // for anything too big, we can just use a blob
+#define RHIZOME_HTTP_REQUEST_BLOB 64
+#define RHIZOME_HTTP_REQUEST_FAVICON 128
+  
+  /* Local buffer of data to be sent.
+   If a RHIZOME_HTTP_REQUEST_FROMBUFFER, then the buffer is sent, and when empty
+   the request is closed.
+   Else emptying the buffer triggers a request to fetch more data.  Only if no
+   more data is provided do we then close the request. */
+  unsigned char *buffer;
+  int buffer_size; // size
+  int buffer_length; // number of bytes loaded into buffer
+  int buffer_offset; // where we are between [0,buffer_length)
+  
+  /* Path of request (used by POST multipart form requests where
+     the actual processing of the request does not occur while the
+     request headers are still available. */
+  char path[1024];
+  /* Boundary string for POST multipart form requests */
+  char boundary_string[1024];
+  int boundary_string_length;
+  /* File currently being written to while decoding POST multipart form */
+  FILE *field_file;
+  /* Name of data file supplied */
+  char data_file_name[1024];
+  /* Which fields have been seen in POST multipart form */
+  int fields_seen;
+  /* The seen fields bitmap above shares values with the actual Rhizome Direct
+     state machine.  The state numbers (and thus bitmap values for the various
+     fields) are listed here.
+     
+     To avoid confusion, we should not use single bit values for states that do
+     not correspond directly to a particular field.
+     Doesn't really matter what they are apart from not having exactly one bit set.
+     In fact, the only reason to not have exactly one bit set is so that we keep as
+     many bits available for field types as possible.
+  */
+#define RD_MIME_STATE_MANIFESTHEADERS (1<<0)
+#define RD_MIME_STATE_DATAHEADERS (1<<1)
+#define RD_MIME_STATE_INITIAL 0
+#define RD_MIME_STATE_PARTHEADERS 0xffff0000
+#define RD_MIME_STATE_BODY 0xffff0001
+
+  /* The source specification data which are used in different ways by different 
+   request types */
+  char source[1024];
+  long long source_index;
+  long long source_count;
+  int source_record_size;
+  unsigned int source_flags;
+  
+  sqlite3_blob *blob;
+  /* source_index used for offset in blob */
+  long long blob_end; 
+  
+} rhizome_http_request;
+
+struct http_response {
+  unsigned int result_code;
+  const char * content_type;
+  unsigned long long content_length;
+  const char * body;
+};
+int rhizome_server_set_response(rhizome_http_request *r, const struct http_response *h);
+int rhizome_server_free_http_request(rhizome_http_request *r);
+int rhizome_server_http_send_bytes(rhizome_http_request *r);
+int rhizome_server_parse_http_request(rhizome_http_request *r);
+int rhizome_server_simple_http_response(rhizome_http_request *r, int result, const char *response);
+int rhizome_server_http_response_header(rhizome_http_request *r, int result, const char *mime_type, unsigned long long bytes);
+int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, char *column);
+int rhizome_http_server_start(int (*http_parse_func)(rhizome_http_request *),
+			      const char *http_parse_func_description,
+			      int port_low,int port_high);
+
+typedef struct rhizome_direct_bundle_cursor {
+  /* Where the current fill started */
+  long long start_size_high;
+  unsigned char start_bid_low[RHIZOME_MANIFEST_ID_BYTES];
+
+  /* Limit of where this cursor may traverse */
+  long long limit_size_high;
+  unsigned char limit_bid_high[RHIZOME_MANIFEST_ID_BYTES];
+
+  long long size_low;
+  long long size_high;
+  unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTES];
+  unsigned char bid_high[RHIZOME_MANIFEST_ID_BYTES];
+  unsigned char *buffer;
+  int buffer_size;
+  int buffer_used;
+  int buffer_offset_bytes;
+} rhizome_direct_bundle_cursor;
+
+rhizome_direct_bundle_cursor *rhizome_direct_bundle_iterator(int buffer_size);
+void rhizome_direct_bundle_iterator_unlimit(rhizome_direct_bundle_cursor *r);
+int rhizome_direct_bundle_iterator_pickle_range(rhizome_direct_bundle_cursor *r,
+						unsigned char *pickled,
+						int pickle_buffer_size);
+rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix,int prefix_length);
+int rhizome_direct_bundle_iterator_unpickle_range(rhizome_direct_bundle_cursor *r,
+						  const unsigned char *pickled,
+						  int pickle_buffer_size);
+int rhizome_direct_bundle_iterator_fill(rhizome_direct_bundle_cursor *c,
+					int max_bars);
+void rhizome_direct_bundle_iterator_free(rhizome_direct_bundle_cursor **c);
+int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTES],
+			    unsigned char bid_high[RHIZOME_MANIFEST_ID_BYTES],
+			    long long size_low,long long size_high,
+			    const unsigned char bid_max[RHIZOME_MANIFEST_ID_BYTES],
+			    unsigned char *bars_out,
+			    int bars_requested);
+int rhizome_direct_process_post_multipart_bytes
+(rhizome_http_request *r,const char *bytes,int count);
+
+typedef struct rhizome_direct_sync_request {
+  struct sched_ent alarm;
+  rhizome_direct_bundle_cursor *cursor;
+
+  int pushP;
+  int pullP;
+
+  /* Sync interval in seconds.  zero = sync only once */
+  int interval;
+
+  /* The dispatch function will be called each time a sync request can
+     be sent off, i.e., one cursor->buffer full of data.
+     Will differ based on underlying transport. HTTP is the initial 
+     supported transport, but deLorme inReach will likely follow soon after.
+  */
+  void (*dispatch_function)(struct rhizome_direct_sync_request *);
+
+  /* General purpose pointer for transport-dependent state */
+  void *transport_specific_state;
+
+  /* Statistics.
+     Each sync will consist of one or more "fills" of the cursor buffer, which 
+     will then be dispatched by the transport-specific dispatch function.
+     Each of those dispatches may then result in zero or 
+   */
+  int syncs_started;
+  int syncs_completed;
+  int fills_sent;
+  int fill_responses_processed;
+  int bundles_pushed;
+  int bundles_pulled;
+  int bundle_transfers_in_progress;
+
+} rhizome_direct_sync_request;
+
+#define RHIZOME_DIRECT_MAX_SYNC_HANDLES 16
+extern rhizome_direct_sync_request *rd_sync_handles[RHIZOME_DIRECT_MAX_SYNC_HANDLES];
+extern int rd_sync_handle_count;
+
+rhizome_direct_sync_request
+*rhizome_direct_new_sync_request(
+				 void (*transport_specific_dispatch_function)
+				 (struct rhizome_direct_sync_request *),
+				 int buffer_size,int interval, int mode, 
+				 void *transport_specific_state);
+int rhizome_direct_continue_sync_request(rhizome_direct_sync_request *r);
+int rhizome_direct_conclude_sync_request(rhizome_direct_sync_request *r);
+rhizome_direct_bundle_cursor *rhizome_direct_get_fill_response
+(unsigned char *buffer,int size,int max_response_bytes);
+
+typedef struct rhizome_direct_transport_state_http {
+  int port;
+  char host[1024];  
+} rhizome_direct_transport_state_http;
+
+void rhizome_direct_http_dispatch(rhizome_direct_sync_request *);
+
+extern unsigned char favicon_bytes[];
+extern int favicon_len;
+
+int rhizome_import_from_files(const char *manifestpath,const char *filepath);
+int rhizome_fetch_request_manifest_by_prefix(struct sockaddr_in *peerip,
+					     unsigned char *prefix,
+					     int prefix_length,
+					     int importP);
+extern int rhizome_file_fetch_queue_count;
+
+struct http_response_parts {
+  int code;
+  char *reason;
+  long long content_length;
+  char *content_start;
+};
+
+int unpack_http_response(char *response, struct http_response_parts *parts);

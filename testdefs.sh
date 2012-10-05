@@ -22,6 +22,7 @@ servald_source_root="${testdefs_sh%/*}"
 servald_build_root="$servald_source_root"
 servald_build_executable="$servald_build_root/servald"
 export TFW_LOGDIR="${TFW_LOGDIR:-$servald_build_root/testlog}"
+addr_localhost="127.0.0.1"
 
 declare -a instance_stack=()
 
@@ -36,7 +37,7 @@ extract_stdout_keyvalue_optional() {
    local _var="$1"
    local _label="$2"
    local _rexp="$3"
-   local _line=$(replayStdout | grep "^$_label:")
+   local _line=$(replayStdout | $GREP "^$_label:")
    local _value=
    local _return=1
    if [ -n "$_line" ]; then
@@ -421,7 +422,7 @@ get_servald_pids() {
    fi
    local mypid=$$
    # XXX The following line will not find any PIDs if there are spaces in "$servald".
-   local pids=$(ps -u$UID -o pid,args | awk -v mypid="$mypid" -v servald="$servald" '$1 != mypid && $2 == servald {print $1}')
+   local pids=$(ps -u$UID -o pid,args | $AWK -v mypid="$mypid" -v servald="$servald" '$1 != mypid && $2 == servald {print $1}')
    [ -n "$var" ] && eval "$var=($pids)"
    [ -n "$pids" ]
 }
@@ -546,16 +547,21 @@ configure_servald_server() {
 }
 
 # Utility function:
-#  - start a set of servald server processes running on a shared dummy interface and with its own
-#    private monitor and MDP abstract socket names
-#  - set variable DUMMYNET to the full path name of shared dummy interface
-#  - set variables LOGx to the full path of server log file for instance x: LOGA, LOGB, etc,
+#  - start a set of servald server processes running on a shared dummy interface
+#    and with its own private monitor and MDP abstract socket names
+#  - set variables DUMMYx to the full path name of shared dummy interface
+#  - set variables LOGx to the full path of server log file for instance x: LOGA,
+#    LOGB, etc,
 #  - wait for all instances to detect each other
 #  - assert that all instances are in each others' peer lists
 start_servald_instances() {
+   local DUMMY=dummy
+   case "$1" in
+   dummy*) DUMMY="$1"; shift;;
+   esac
    push_instance
-   tfw_log "# start servald instances $*"
-   DUMMYNET=$SERVALD_VAR/dummy
+   tfw_log "# start servald instances DUMMY=$DUMMY $*"
+   local DUMMYNET="$SERVALD_VAR/$DUMMY"
    >$DUMMYNET
    local I
    for I; do
@@ -567,6 +573,7 @@ start_servald_instances() {
       executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name"
       configure_servald_server
       start_servald_server
+      eval DUMMY$instance_name="$DUMMYNET"
       eval LOG$instance_name="$(shellarg "$instance_servald_log")"
    done
    # Now wait until they see each other.

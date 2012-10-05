@@ -43,23 +43,50 @@ configure_servald_server() {
    executeOk_servald config set debug.rhizometx on
    executeOk_servald config set debug.rhizomerx on
    executeOk_servald config set server.respawn_on_signal off
-   executeOk_servald config set mdp.wifi.tick_ms 100
+   executeOk_servald config set mdp.wifi.tick_ms 500
    executeOk_servald config set mdp.selfannounce.ticks_per_full_address 1
    executeOk_servald config set rhizome.fetch_interval_ms 100
 }
 
 # Predicate function:
-#  - return true if the file bundle identified by $BID and $VERSION has been
+#  - return true if the file bundle identified by arg1=BID and arg2=VERSION has been
 #    received by all the given instances
 #  - does this by examining the server log files of the respective instances
 #    for tell-tale INFO messages
 bundle_received_by() {
+   local BID="$1"
+   local VERSION="$2"
+   shift 2
+   local rexp="RHIZOME ADD MANIFEST service=file bid=$BID version=$VERSION"
    local I
    for I; do
-      logvar="LOG${I#+}"
-      grep "RHIZOME ADD MANIFEST service=file bid=$BID version=$VERSION" "${!logvar}" || return 1
+      case "$I" in
+      +*)
+         local logvar="LOG${I#+}"
+         grep "$rexp" "${!logvar}" || return 1
+         ;;
+      --stderr)
+         replayStderr | grep "$rexp" || return 1
+         ;;
+      *)
+         error "invalid instance argument: $I"
+         return 1
+         ;;
+      esac
    done
    return 0
+}
+
+setup_curl_7() {
+   case "$(curl --version | tr '\n' ' ')" in
+   curl\ @(7|8|9|[1-9][0-1]).*\ Protocols:*\ http\ *) ;;
+   '') fail "curl(1) command is not present";;
+   *) fail "curl(1) version is not adequate (expecting 7 or higher)";;
+   esac
+   unset http_proxy
+   unset HTTP_PROXY
+   unset HTTPS_PROXY
+   unset ALL_PROXY
 }
 
 setup_common() {
@@ -81,7 +108,7 @@ extract_manifest_vars() {
 
 add_file() {
    local name="$1"
-   [ -e "$name" ] || echo 'File $name' >"$name"
+   [ -e "$name" ] || echo "File $name" >"$name"
    local sidvar="SID$instance_name"
    executeOk_servald rhizome add file "${!sidvar}" '' "$name" "$name.manifest"
    executeOk_servald rhizome list ''
@@ -95,11 +122,21 @@ update_file() {
    [ -e "$new_name" ] || echo 'File $new_name' >"$new_name"
    local sidvar="SID$instance_name"
    [ "$new_name" != "$orig_name" ] && cp "$orig_name.manifest" "$new_name.manifest"
-   sed -i -e '/^date=/d;/^filehash=/d;/^filesize=/d;/^version=/d;/^name=/d' "$new_name.manifest"
+   $SED -i -e '/^date=/d;/^filehash=/d;/^filesize=/d;/^version=/d;/^name=/d' "$new_name.manifest"
    executeOk_servald rhizome add file "${!sidvar}" '' "$new_name" "$new_name.manifest"
    executeOk_servald rhizome list ''
    assert_rhizome_list "$new_name"
    extract_manifest_vars "$new_name.manifest"
+}
+
+assert_received() {
+   local name="${1?}"
+   local _hash
+   if [ -s "$name" ]; then
+      extract_manifest_filehash _hash "$name.manifest"
+      executeOk_servald rhizome extract file "$_hash" extracted
+      assert cmp "$name" extracted
+   fi
 }
 
 doc_FileTransfer="New bundle and update transfer to one node"
@@ -112,13 +149,17 @@ setup_FileTransfer() {
    foreach_instance +B assert_peers_are_instances +A
 }
 test_FileTransfer() {
-   wait_until bundle_received_by +B
+   wait_until bundle_received_by $BID $VERSION +B
    set_instance +B
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file1!
    assert_received file1
    set_instance +A
    update_file file1 file2
    set_instance +B
-   wait_until bundle_received_by +B
+   wait_until bundle_received_by $BID $VERSION +B
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file2!
    assert_received file2
 }
 
@@ -135,21 +176,11 @@ setup_FileTransferBig() {
    foreach_instance +B assert_peers_are_instances +A
 }
 test_FileTransferBig() {
-   wait_until bundle_received_by +B
+   wait_until bundle_received_by $BID $VERSION +B
    set_instance +B
-   assert_received file1
-}
-
-assert_received() {
-   local name="${1?}"
    executeOk_servald rhizome list ''
-   assert_rhizome_list "$name!"
-   local _hash
-   if [ -s "$name" ]; then
-      extract_manifest_filehash _hash "$name.manifest"
-      executeOk_servald rhizome extract file "$_hash" extracted
-      assert cmp "$name" extracted
-   fi
+   assert_rhizome_list file1!
+   assert_received file1
 }
 
 doc_FileTransferMulti="New bundle transfers to four nodes"
@@ -164,10 +195,12 @@ setup_FileTransferMulti() {
    foreach_instance +D assert_peers_are_instances +A +B +C +E
 }
 test_FileTransferMulti() {
-   wait_until bundle_received_by +B +C +D +E
+   wait_until bundle_received_by $BID $VERSION +B +C +D +E
    local I
    for I in +B +C +D +E; do
       set_instance $I
+      executeOk_servald rhizome list ''
+      assert_rhizome_list file1!
       assert_received file1
    done
 }
@@ -180,15 +213,168 @@ setup_FileTransferDelete() {
    start_servald_instances +A +B
    foreach_instance +A assert_peers_are_instances +B
    foreach_instance +B assert_peers_are_instances +A
-   wait_until bundle_received_by +B
+   wait_until bundle_received_by $BID $VERSION +B
    set_instance +A
    >file1_2
    update_file file1 file1_2
 }
 test_FileTransferDelete() {
-   wait_until bundle_received_by +B
+   wait_until bundle_received_by $BID $VERSION +B
    set_instance +B
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file1_2!
    assert_received file1_2
+}
+
+doc_HttpImport="Import bundle using HTTP POST multi-part form."
+setup_HttpImport() {
+   setup_curl_7
+   setup_common
+   cat >README.WHYNOTSIPS <<'EOF'
+When we were looking at implementing secure calls for OpenBTS it was suggested
+that we configure Asterisk to use SIPS/ZRTP. This would have been relatively
+easy to setup, however there are a few problems.
+
+Number one is that when Asterisk checks the certificates it will either
+validate the certificate (checking the chain of trust and so on) and then
+check that the common name attribute on the certificate matches the hostname
+of the peer, or it will do none of these checks. This code is in main/tcptls.c
+line 206 (in version 1.8.14.1).
+
+This is undesirable in a setup where there is limited or no infrastructure as
+there is not likely to be a DNS server setup, or even rigid IP assignments
+that would allow a static hosts file based setup. This situation would force
+the administrator to disable the checks completely which would allow a trivial
+man in the middle attack.
+
+It would be possible to modify Asterisk to have a third way where it validates
+the certificate and checks the chain of trust but does not look at the common
+name. We decided against this approach as the VOMP channel driver was written
+in time to avoid it.
+EOF
+   set_instance +B
+   executeOk_servald rhizome add file $SIDB '' README.WHYNOTSIPS README.WHYNOTSIPS.manifest
+   assert_manifest_complete README.WHYNOTSIPS.manifest
+   assert_stdout_add_file README.WHYNOTSIPS
+   set_instance +A
+   start_servald_instances +A
+   wait_until rhizome_http_server_started +A
+   get_rhizome_server_port PORTA +A
+}
+test_HttpImport() {
+   executeOk curl \
+         --silent --fail --show-error \
+         --output http.output \
+         --dump-header http.headers \
+         --write-out '%{http_code}\n' \
+         --form 'data=@README.WHYNOTSIPS' \
+         --form 'manifest=@README.WHYNOTSIPS.manifest' \
+         "$addr_localhost:$PORTA/rhizome/import"
+   tfw_cat http.headers http.output
+   executeOk_servald rhizome list ''
+   assert_rhizome_list README.WHYNOTSIPS!
+   assert_received README.WHYNOTSIPS
+}
+
+doc_HttpAddLocal="Add file locally using HTTP, returns manifest"
+setup_HttpAddLocal() {
+   setup_curl_7
+   setup_common
+   set_instance +A
+   executeOk_servald config set rhizome.api.addfile.uri "/rhizome/secretaddfile"
+   executeOk_servald config set rhizome.api.addfile.author $SIDA
+   start_servald_instances +A
+   wait_until rhizome_http_server_started +A
+   get_rhizome_server_port PORTA +A
+}
+test_HttpAddLocal() {
+   echo 'File file1' >file1
+   executeOk curl --silent --form 'data=@file1' "http://$addr_localhost:$PORTA/rhizome/secretaddfile" --output file1.manifest
+   assert_manifest_complete file1.manifest
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file1
+   extract_manifest_name name file1.manifest
+   assert [ "$name" = file1 ]
+   assert_received file1
+}
+
+setup_sync() {
+   set_instance +A
+   add_file file1
+   BID1=$BID
+   VERSION1=$VERSION
+   start_servald_instances dummy1 +A
+   wait_until rhizome_http_server_started +A
+   get_rhizome_server_port PORTA +A
+   set_instance +B
+   executeOk_servald config set log.show_time on
+   executeOk_servald config set debug.rhizome on
+   executeOk_servald config set debug.rhizometx on
+   executeOk_servald config set debug.rhizomerx on
+   executeOk_servald config set rhizome.direct.peer.count "1"
+   executeOk_servald config set rhizome.direct.peer.0 "http://${addr_localhost}:${PORTA}"
+   add_file file2
+   BID2=$BID
+   VERSION2=$VERSION
+}
+
+doc_DirectPush="One way push bundle to unconnected node"
+setup_DirectPush() {
+   setup_common
+   setup_sync
+}
+test_DirectPush() {
+   set_instance +B
+   executeOk_servald rhizome direct push
+   tfw_cat --stdout --stderr
+   assert bundle_received_by $BID2 $VERSION2 +A
+   set_instance +A
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file1 file2!
+   assert_received file2
+   set_instance +B
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file2
+}
+
+doc_DirectPull="One way pull bundle from unconnected node"
+setup_DirectPull() {
+   setup_common
+   setup_sync
+}
+test_DirectPull() {
+   set_instance +B
+   executeOk_servald rhizome direct pull
+   tfw_cat --stdout --stderr
+   assert bundle_received_by $BID1 $VERSION1 --stderr
+   set_instance +A
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file1
+   set_instance +B
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file1! file2
+   assert_received file1
+}
+
+doc_DirectSync="Two-way sync bundles between unconnected nodes"
+setup_DirectSync() {
+   setup_common
+   setup_sync
+}
+test_DirectSync() {
+   set_instance +B
+   executeOk_servald rhizome direct sync
+   tfw_cat --stdout --stderr
+   assert bundle_received_by $BID1 $VERSION1 --stderr
+   assert bundle_received_by $BID2 $VERSION2 +A
+   set_instance +A
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file1 file2!
+   assert_received file2
+   set_instance +B
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file1! file2
+   assert_received file1
 }
 
 runTests "$@"

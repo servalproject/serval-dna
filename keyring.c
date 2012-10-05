@@ -1116,7 +1116,7 @@ unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
   int cn=0,in=0,kp=0;
 
   if (!keyring_find_sid(k,&cn,&in,&kp,sid)) {
-    RETURN(WHYNULL("Could not find SID in keyring, so can't find SAS"));
+    RETURNNULL(WHYNULL("Could not find SID in keyring, so can't find SAS"));
   }
 
   for(kp=0;kp<k->contexts[cn]->identities[in]->keypair_count;kp++)
@@ -1130,7 +1130,7 @@ unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
 	RETURN(k->contexts[cn]->identities[in]->keypairs[kp]->private_key);
       }
 
-  RETURN(WHYNULL("Identity lacks SAS"));
+  RETURNNULL(WHYNULL("Identity lacks SAS"));
 }
 
 static int keyring_store_sas(overlay_mdp_frame *req){
@@ -1404,9 +1404,9 @@ struct nm_record nm_cache[NM_CACHE_SLOTS];
 unsigned char *keyring_get_nm_bytes(unsigned char *known_sid, unsigned char *unknown_sid)
 {
   IN();
-  if (!known_sid) { RETURN(WHYNULL("known pub key is null")); }
-  if (!unknown_sid) { RETURN(WHYNULL("unknown pub key is null")); }
-  if (!keyring) { RETURN(WHYNULL("keyring is null")); }
+  if (!known_sid) { RETURNNULL(WHYNULL("known pub key is null")); }
+  if (!unknown_sid) { RETURNNULL(WHYNULL("unknown pub key is null")); }
+  if (!keyring) { RETURNNULL(WHYNULL("keyring is null")); }
 
   int i;
 
@@ -1421,8 +1421,8 @@ unsigned char *keyring_get_nm_bytes(unsigned char *known_sid, unsigned char *unk
   /* Not in the cache, so prepare to cache it (or return failure if known is not
      in fact a known key */
   int cn=0,in=0,kp=0;
-  if (!keyring_find_sid(keyring,&cn,&in,&kp,known->sid))
-    { RETURN(WHYNULL("known key is not in fact known.")); }
+  if (!keyring_find_sid(keyring,&cn,&in,&kp,known_sid))
+    { RETURNNULL(WHYNULL("known key is not in fact known.")); }
 
   /* work out where to store it */
   if (nm_slots_used<NM_CACHE_SLOTS) {
@@ -1433,7 +1433,7 @@ unsigned char *keyring_get_nm_bytes(unsigned char *known_sid, unsigned char *unk
 
   /* calculate and store */
   bcopy(known_sid,nm_cache[i].known_key,SID_SIZE);
-  bcopy(unknown->sid,nm_cache[i].unknown_key,SID_SIZE);
+  bcopy(unknown_sid,nm_cache[i].unknown_key,SID_SIZE);
   crypto_box_curve25519xsalsa20poly1305_beforenm(nm_cache[i].nm_bytes,
 						 unknown_sid,
 						 keyring

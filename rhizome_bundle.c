@@ -353,7 +353,7 @@ long long rhizome_manifest_get_ll(rhizome_manifest *m, const char *var)
   if (!m)
     return -1;
   int i;
-  for (i = 0;i != m->var_count; ++i)
+  for (i = 0; i < m->var_count; ++i)
     if (!strcmp(m->vars[i], var)) {
       char *vp = m->values[i];
       char *ep = vp;

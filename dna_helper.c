@@ -196,7 +196,9 @@ dna_helper_start()
       fflush(stderr);
       _exit(-1);
     }
-    execl(command, command, arg, NULL);
+    /* XXX: Need the cast on Solaris because it defins NULL as 0L and gcc doesn't
+     * see it as a sentinal */
+    execl(command, command, arg, (void *)NULL);
     LOGF_perror(LOG_LEVEL_FATAL, "execl(%s, %s, %s, NULL)", command, command, arg ? arg : "NULL");
     fflush(stderr);
     do { _exit(-1); } while (1);

@@ -1,6 +1,6 @@
 #!/bin/sh
 
-if [ ! -e nacl-version ]; then
+if [ ! -r nacl-version ]; then
    echo "Can't find nacl-version file"
    exit 1
 fi
@@ -67,20 +67,27 @@ printf("The compilation worked.\n");
 }
 EOF
 
+worked=0
 for ar in $arlist; do
    arch=`basename \`dirname $ar\``
    incpath=`dirname $ar`/../../include/$arch
    rm -f test
    gcc -o test test.c $ar -I$incpath >/dev/null 2>&1
-   if [ -e test ]; then
+   if [ -r test ]; then
      naclbuilddir=`echo $ar | sed -e s,/libnacl.a,,`
      echo "${incpath}" >naclinc.txt
      echo "${ar}" >nacllib.txt
+     worked=1
      break
    fi
 done
 rm -f test test.c
 
+if [ $worked -eq 0 ]; then
+    echo "Library present but couldn't build the test program"
+    exit 1
+fi
+
 # Create nacl.h for lazy programmers
-(cd ${incpath} ; find . -name \*.h -a \! -name mphlr.h -a \! -name nacl.h | sed -Ee 's,\./(.*),#include <\1>,') >${incpath}/nacl.h
+(cd ${incpath} ; find . -name \*.h -a \! -name mphlr.h -a \! -name nacl.h | sed -e 's,\./\(.*\),#include <\1>,') >${incpath}/nacl.h
 

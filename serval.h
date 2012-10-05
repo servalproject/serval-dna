@@ -826,6 +826,7 @@ int directory_registration();
 int directory_service_init();
 
 struct command_line_option;
+int app_rhizome_direct_sync(int argc, const char *const *argv, struct command_line_option *o, void *context);
 #ifdef HAVE_VOIPTEST
 int app_pa_phone(int argc, const char *const *argv, struct command_line_option *o, void *context);
 #endif
@@ -892,7 +893,6 @@ extern int sigIoFlag;
 void sigPipeHandler(int signal);
 void sigIoHandler(int signal);
 
-int rhizome_http_server_start();
 int overlay_mdp_setup_sockets();
 
 int schedule(struct sched_ent *alarm);
@@ -931,6 +931,7 @@ void dump_stack();
 
 #define OUT() fd_func_exit(&_this_call);
 #define RETURN(X) { OUT() return(X); }
+#define RETURNNULL { OUT() return(NULL); }
 
 
 
