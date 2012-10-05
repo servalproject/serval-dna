@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <assert.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <arpa/inet.h>
 
 int rhizome_direct_clear_temporary_files(rhizome_http_request *r)
 {
@@ -180,8 +181,7 @@ int rhizome_direct_form_received(rhizome_http_request *r)
       {	
 	DEBUGF("rhizome.api.addfile request received from %s, but is only allowed from %s",
 	       inet_ntoa(r->requestor.sin_addr),
-	       confValueGet("rhizome.api.addfile.allowedaddress",
-			    "127.0.0.1"));
+	       confValueGet("rhizome.api.addfile.allowedaddress", "127.0.0.1"));
 
 	rhizome_direct_clear_temporary_files(r);	     
 	return rhizome_server_simple_http_response(r,404,"Not available from here.");
