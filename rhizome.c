@@ -66,6 +66,9 @@ int rhizome_bundle_import_files(const char *manifest_path, const char *payload_p
   else if (rhizome_manifest_verify(m))
     ret = WHY("Verification of manifest file failed");
   else {
+    /* Make sure we store signatures */
+    m->manifest_bytes=m->manifest_all_bytes;
+
     m->dataFileName = strdup(payload_path);
     if (rhizome_manifest_check_file(m))
       ret = WHY("Payload does not belong to manifest");
