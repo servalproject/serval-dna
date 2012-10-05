@@ -248,7 +248,7 @@ int rhizome_manifest_check_file(rhizome_manifest *m_in)
     }
   }
   if (debug & DEBUG_RHIZOME)
-    DEBUGF("filename=%s, fileLength=%lld", m_in->dataFileName ? alloca_str_toprint(m_in->dataFileName) : NULL, m_in->fileLength);
+    DEBUGF("filename=%s, fileLength=%lld", m_in->dataFileName ? alloca_str_toprint(m_in->dataFileName) : "NULL", m_in->fileLength);
   if (mfilesize != -1 && mfilesize != m_in->fileLength) {
     WHYF("Manifest.filesize (%lld) != actual file size (%lld)", mfilesize, m_in->fileLength);
     return -1;
