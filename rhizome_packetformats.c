@@ -24,11 +24,25 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_address.h"
 #include "overlay_packet.h"
 #include <stdlib.h>
-#include <math.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+
+/* Android doesn't have log2(), and we don't really need to do floating point
+   math to work out how big a file is.
+ */
+int log2ll(unsigned long long x)
+{
+  unsigned char lookup[16]={0,1,2,2,3,3,3,3,4,4,4,4,4,4,4,4};
+  int v=-1;
+  if (x>0xffffffff) { v+=32; x=x>>32LL; }
+  if (x>0xffff)     { v+=16; x=x>>16LL; }
+  if (x>0xff)       { v+= 8; x=x>> 8LL; }
+  if (x>0xf)        { v+= 4; x=x>> 4LL; }
+  v+=lookup[x&0xf];
+  return v;
+}
 
 
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
@@ -71,7 +85,7 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
   for(i=0;i<RHIZOME_BAR_PREFIX_BYTES;i++) 
     bar[RHIZOME_BAR_PREFIX_OFFSET+i]=m->cryptoSignPublic[i];
   /* file length */
-  bar[RHIZOME_BAR_FILESIZE_OFFSET]=log2(m->fileLength);
+  bar[RHIZOME_BAR_FILESIZE_OFFSET]=log2ll(m->fileLength);
   /* Version */
   for(i=0;i<7;i++) bar[RHIZOME_BAR_VERSION_OFFSET+6-i]=(m->version>>(8*i))&0xff;
 
