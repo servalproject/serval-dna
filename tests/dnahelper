@@ -389,7 +389,7 @@ doc_ReplyInvalidEmpty="DNA helper returns invalid reply, empty line"
 test_ReplyInvalidEmpty() {
    executeOk_servald dna lookup 000083
    assertStdoutIs ""
-   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*reply "\\n" invalid'
+   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*reply .\\n. invalid'
 }
 
 doc_ReplyInvalidMissingNewline="DNA helper returns invalid reply, missing newline"
@@ -424,7 +424,7 @@ test_HelperDies() {
    executeOk_servald dna lookup 00011
    assertStdoutIs ""
    assertGrep "$LOGA" 'INFO:.*DNAHELPER.*process.*exited normally with status 42'
-   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*"goodbye cruel world\\n"'
+   assertGrep "$LOGA" 'ERROR:.*DNAHELPER.*goodbye cruel world\\n'
    executeOk_servald dna lookup 00001
    assertStdoutIs -e "sip://$SID_JOE_A@10.1.1.1:00001:Joe A. Bloggs\n"
 }
