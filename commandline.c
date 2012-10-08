@@ -281,17 +281,25 @@ int cli_printf(const char *fmt, ...)
 int cli_delim(const char *opt)
 {
 #ifdef HAVE_JNI_H
-  if (jni_env) {
+  if (jni_env)
     return outv_end_field();
-  } else
 #endif
-  {
-    const char *delim = getenv("SERVALD_OUTPUT_DELIMITER");
-    if (delim == NULL)
-      delim = opt ? opt : "\n";
-    fputs(delim, stdout);
-  }
+  const char *delim = getenv("SERVALD_OUTPUT_DELIMITER");
+  if (delim == NULL)
+    delim = opt ? opt : "\n";
+  fputs(delim, stdout);
   return 0;
+}
+
+/* Flush the output fields if they are being written to standard output.
+ */
+void cli_flush()
+{
+#ifdef HAVE_JNI_H
+  if (jni_env)
+    return;
+#endif
+  fflush(stdout);
 }
 
 int app_echo(int argc, const char *const *argv, struct command_line_option *o, void *context)
@@ -473,7 +481,13 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   /* Process optional arguments */
   int pid=-1;
+  int cpid=-1;
 #if 0
+  // It would have been nice if whoever disabled this code had left a comment as to why they didn't
+  // simply delete it altogether.  In any event, this logic is largely redundant because the Android
+  // Batphone app automatically calls "servald stop" then "servald start" (via JNI) whenever its
+  // monitor interface socket is broken.
+  // -- Andrew Bettison <andrew@servalproject.com>
   int status=server_probe(&pid);
   switch(status) {
   case SERVER_NOTRESPONDING: 
@@ -511,21 +525,17 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
     return -1;
   if (instancepath != NULL)
     serval_setinstancepath(instancepath);
-  
   if (execpath == NULL) {
 #ifdef HAVE_JNI_H
     if (jni_env)
       return WHY("Must supply <exec path> argument when invoked via JNI");
 #endif
     if ((tmp = malloc(PATH_MAX)) == NULL)
-	return WHY("Unable to allocate memory for execpath");
-
+	return WHY("Out of memory");
   if (get_self_executable_path(tmp, PATH_MAX) == -1)
     return WHY("unable to determine own executable name");
-
   execpath = tmp;
   }
-
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
     return -1;
@@ -559,44 +569,56 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
     overlayMode = 1;
     if (foregroundP)
       return server(NULL);
-    switch (fork()) {
+    const char *dir = getenv("SERVALD_SERVER_CHDIR");
+    if (!dir)
+      dir = confValueGet("server.chdir", "/");
+    switch (cpid = fork()) {
       case -1:
 	/* Main process.  Fork failed.  There is no child process. */
 	return WHY_perror("fork");
       case 0: {
-	/* Child process.  Close logfile (so that it gets re-opened again on demand, with our
-	   own file pointer), disconnect from current directory, disconnect standard I/O streams,
-	   and start a new process group so that if we are being started by an adb shell session,
-	   then we don't receive a SIGHUP when the adb shell process ends.  */
-	close_logging();
-	int fd;
-	if ((fd = open("/dev/null", O_RDWR, 0)) == -1)
-	  _exit(WHY_perror("open"));
-	if (setsid() == -1)
-	  _exit(WHY_perror("setsid"));
-	const char *dir = getenv("SERVALD_SERVER_CHDIR");
-	if (!dir)
-	  dir = confValueGet("server.chdir", "/");
-	(void)chdir(dir);
-	(void)dup2(fd, 0);
-	(void)dup2(fd, 1);
-	(void)dup2(fd, 2);
-	if (fd > 2)
-	  (void)close(fd);
-	/* The execpath option is provided so that a JNI call to "start" can be made which
-	   creates a new server daemon process with the correct argv[0].  Otherwise, the servald
-	   process appears as a process with argv[0] = "org.servalproject". */
-	if (execpath) {
-	/* XXX: Need the cast on Solaris because it defins NULL as 0L and gcc doesn't
-	 * see it as a sentinal */
-	  execl(execpath, execpath, "start", "foreground", (void *)NULL);
-	  _exit(-1);
+	/* Child process.  Fork then exit, to disconnect daemon from parent process, so that
+	   when daemon exits it does not live on as a zombie. N.B. Do not return from within this
+	   process; that will unroll the JNI call stack and cause havoc.  Use _exit().  */
+	switch (fork()) {
+	  case -1:
+	    exit(WHY_perror("fork"));
+	  case 0: {
+	    /* Grandchild process.  Close logfile (so that it gets re-opened again on demand, with
+	       our own file pointer), disconnect from current directory, disconnect standard I/O
+	       streams, and start a new process session so that if we are being started by an adb
+	       shell session, then we don't receive a SIGHUP when the adb shell process ends.  */
+	    close_logging();
+	    int fd;
+	    if ((fd = open("/dev/null", O_RDWR, 0)) == -1)
+	      _exit(WHY_perror("open"));
+	    if (setsid() == -1)
+	      _exit(WHY_perror("setsid"));
+	    (void)chdir(dir);
+	    (void)dup2(fd, 0);
+	    (void)dup2(fd, 1);
+	    (void)dup2(fd, 2);
+	    if (fd > 2)
+	      (void)close(fd);
+	    /* The execpath option is provided so that a JNI call to "start" can be made which
+	       creates a new server daemon process with the correct argv[0].  Otherwise, the servald
+	       process appears as a process with argv[0] = "org.servalproject". */
+	    if (execpath) {
+	    /* Need the cast on Solaris because it defines NULL as 0L and gcc doesn't see it as a
+	       sentinal. */
+	      execl(execpath, execpath, "start", "foreground", (void *)NULL);
+	      _exit(-1);
+	    }
+	    _exit(server(NULL));
+	    // NOT REACHED
+	  }
 	}
-	_exit(server(NULL));
-	// NOT REACHED
+	_exit(0); // Main process is waitpid()-ing for this.
       }
     }
-    /* Main process.  Allow a few seconds for the child process to report for duty. */
+    /* Main process.  Wait for the child process to fork the grandchild and exit. */
+    waitpid(cpid, NULL, 0);
+    /* Allow a few seconds for the grandchild process to report for duty. */
     time_ms_t timeout = gettime_ms() + 5000;
     do {
       sleep_ms(200); // 5 Hz
@@ -615,6 +637,19 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
   cli_delim(":");
   cli_printf("%d", pid);
   cli_delim("\n");
+  cli_flush();
+  /* Sleep before returning if env var is set.  This is used in testing, to simulate the situation
+     on Android phones where the "start" command is invoked via the JNI interface and the calling
+     process does not die.
+   */
+  const char *post_sleep = getenv("SERVALD_START_POST_SLEEP");
+  if (post_sleep) {
+    time_ms_t milliseconds = atof(post_sleep) * 1000;
+    if (milliseconds > 0) {
+      INFOF("Sleeping for %lld milliseconds", (long long) milliseconds);
+      sleep_ms(milliseconds);
+    }
+  }
   return ret;
 }
 
@@ -624,31 +659,25 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
   int			pid, tries, running;
   const char		*instancepath;
   time_ms_t		timeout;
-
   if (cli_arg(argc, argv, o, "instance path", &instancepath, cli_absolute_path, NULL) == -1)
     return WHY("Unable to determine instance path");
   if (instancepath != NULL)
     serval_setinstancepath(instancepath);
-  
   instancepath = serval_instancepath();
   cli_puts("instancepath");
   cli_delim(":");
   cli_puts(instancepath);
   cli_delim("\n");
-
   pid = server_pid();
   /* Not running, nothing to stop */
   if (pid <= 0)
     return 1;
-
   INFOF("Stopping server (pid=%d)", pid);
-
   /* Set the stop file and signal the process */
   cli_puts("pid");
   cli_delim(":");
   cli_printf("%d", pid);
   cli_delim("\n");
-
   tries = 0;
   running = pid;
   while (running == pid) {
@@ -690,15 +719,11 @@ int app_server_status(int argc, const char *const *argv, struct command_line_opt
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   int	pid;
   const char *instancepath;
-  
   if (cli_arg(argc, argv, o, "instance path", &instancepath, cli_absolute_path, NULL) == -1)
     return WHY("Unable to determine instance path");
-
   if (instancepath != NULL)
     serval_setinstancepath(instancepath);
-  
   pid = server_pid();
-
   cli_puts("instancepath");
   cli_delim(":");
   cli_puts(serval_instancepath());
@@ -713,7 +738,6 @@ int app_server_status(int argc, const char *const *argv, struct command_line_opt
     cli_printf("%d", pid);
     cli_delim("\n");
   }
-  
   return pid > 0 ? 0 : 1;
 }
 

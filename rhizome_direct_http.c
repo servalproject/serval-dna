@@ -413,6 +413,7 @@ int rhizome_direct_process_mime_line(rhizome_http_request *r,char *buffer,int co
       filename[1023]=0;
       r->field_file=fopen(filename,"w");
       if (!r->field_file) {
+	WHYF_perror("fopen(%s, \"w\")", alloca_str_toprint(filename));
 	rhizome_direct_clear_temporary_files(r);
 	rhizome_server_simple_http_response
 	  (r, 500, "<html><h1>Sorry, couldn't complete your request, reasonable as it was.  Perhaps try again later.</h1></html>\r\n");

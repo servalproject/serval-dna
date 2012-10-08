@@ -109,4 +109,28 @@ test_StartStopFast() {
    stop_servald_server
 }
 
+doc_NoZombie="Server process does not become a zombie"
+setup_NoZombie() {
+   setup
+   setup_interfaces
+   export SERVALD_START_POST_SLEEP=1000
+   servald_start &
+   start_pid=$!
+   wait_until get_servald_server_pidfile servald_pid
+   assert kill -0 $start_pid
+}
+test_NoZombie() {
+   tfw_log "Before kill -KILL $servald_pid"
+   ps -l $start_pid $servald_pid
+   assert kill -KILL $servald_pid
+   tfw_log "After kill -KILL $servald_pid"
+   ps -l $start_pid $servald_pid
+   assert --message="zombie servald process does not exist" ! kill -0 $servald_pid
+}
+teardown_NoZombie() {
+   kill -TERM $start_pid
+   kill_all_servald_processes
+   assert_no_servald_processes
+}
+
 runTests "$@"

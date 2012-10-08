@@ -70,6 +70,8 @@ setup_servald() {
    cp -f "$servald_build_executable" $servald
    unset SERVALD_OUTPUT_DELIMITER
    unset SERVALD_SERVER_START_DELAY
+   unset SERVALD_SERVER_CHDIR
+   unset SERVALD_START_POST_SLEEP
    unset SERVALD_LOG_FILE
    servald_instances_dir="$SERVALD_VAR/instance"
    set_instance +Z
@@ -211,7 +213,7 @@ start_servald_server() {
    local -a after_pids
    get_servald_pids before_pids
    tfw_log "# before_pids=$before_pids"
-   SERVALD_SERVER_CHDIR="$instance_dir" SERVALD_LOG_FILE="$instance_servald_log" executeOk --core-backtrace $servald start "$@"
+   executeOk --core-backtrace servald_start "$@"
    extract_stdout_keyvalue start_instance_path instancepath '.*'
    extract_stdout_keyvalue start_pid pid '[0-9]\+'
    assert [ "$start_instance_path" = "$SERVALINSTANCE_PATH" ]
@@ -251,6 +253,12 @@ start_servald_server() {
 }
 
 # Utility function:
+#  - invoke "servald start" command with given args and suitable environment
+servald_start() {
+   SERVALD_SERVER_CHDIR="$instance_dir" SERVALD_LOG_FILE="$instance_servald_log" $servald start "$@"
+}
+
+# Utility function:
 #  - stop a servald server process instance in an orderly fashion
 #  - cat its log file into the test log
 stop_servald_server() {
@@ -266,6 +274,7 @@ stop_servald_server() {
    extract_stdout_keyvalue stop_instance_path instancepath '.*'
    assert [ "$stop_instance_path" = "$SERVALINSTANCE_PATH" ]
    if [ -n "$servald_pid" ]; then
+      assertExitStatus '==' 0
       extract_stdout_keyvalue stop_pid pid '[0-9]\+'
       assert [ "$stop_pid" = "$servald_pid" ]
    fi
