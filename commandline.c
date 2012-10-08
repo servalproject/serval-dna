@@ -913,6 +913,14 @@ int app_config_get(int argc, const char *const *argv, struct command_line_option
   return 0;
 }
 
+int app_rhizome_enabled(int argc, const char *const *argv, struct command_line_option *o, void *context)
+{
+	if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+	cli_puts(rhizome_enabled() ? "true" : "false");
+	cli_delim("\n");
+	return 0;
+}
+
 int app_rhizome_hash_file(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
@@ -1618,6 +1626,8 @@ struct command_line_option command_line_options[]={
    "Get specified configuration variable."},
   {app_vomp_console,{"console",NULL},0,
     "Test phone call life-cycle from the console"},
+  {app_rhizome_enabled,{"rhizome","enabled",NULL},CLIFLAG_STANDALONE,
+    "Indicates whether rhizome is enabled in serval config file"},
   {app_rhizome_hash_file,{"rhizome","hash","file","<filepath>",NULL},CLIFLAG_STANDALONE,
    "Compute the Rhizome hash of a file"},
   {app_rhizome_add_file,{"rhizome","add","file","<author_sid>","<pin>","<filepath>","[<manifestpath>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,
