@@ -727,7 +727,8 @@ int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peeri
 
 int rhizome_fetch_close(rhizome_file_fetch_record *q){
   /* Free ephemeral data */
-  if (q->file) fclose(q->file);
+  if (q->file)
+    fclose(q->file);
   q->file=NULL;
   if (q->manifest) 
     rhizome_manifest_free(q->manifest);
@@ -740,7 +741,10 @@ int rhizome_fetch_close(rhizome_file_fetch_record *q){
   q->alarm.poll.fd=-1;
   
   /* Reduce count of open connections */	
-  rhizome_file_fetch_queue_count--;
+  if (rhizome_file_fetch_queue_count>0)
+    rhizome_file_fetch_queue_count--;
+  else
+    WHY("rhizome_file_fetch_queue_count is already zero, is a fetch record being double freed?");
   
   if (debug & DEBUG_RHIZOME_RX) 
     DEBUGF("Released rhizome fetch slot (%d used)", rhizome_file_fetch_queue_count);
@@ -831,18 +835,12 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 {
   rhizome_file_fetch_record *q=(rhizome_file_fetch_record *)alarm;
 
-  if (alarm->poll.revents==0){
-    // timeout, close the socket
-    rhizome_fetch_close(q);
-    return;
-  }
-
   if (alarm->poll.revents & (POLLIN | POLLOUT)) {
     switch(q->state) {
       case RHIZOME_FETCH_CONNECTING:
       case RHIZOME_FETCH_SENDINGHTTPREQUEST:
 	rhizome_fetch_write(q);
-	break;
+	return;
       case RHIZOME_FETCH_RXFILE: {
 	  /* Keep reading until we have the promised amount of data */
 	  char buffer[8192];
@@ -851,6 +849,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	  /* If we got some data, see if we have found the end of the HTTP request */
 	  if (bytes > 0) {
 	    rhizome_write_content(q, buffer, bytes);
+	    return;
 	  } else {
 	    if (debug & DEBUG_RHIZOME_RX)
 	      DEBUG("Empty read, closing connection");
@@ -884,6 +883,8 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 		content. */
 	      struct http_response_parts parts;
 	      if (unpack_http_response(q->request, &parts) == -1) {
+		if (debug & DEBUG_RHIZOME_RX)
+		  DEBUGF("Failed HTTP request: failed to unpack http response");
 		rhizome_fetch_close(q);
 		return;
 	      }
@@ -905,8 +906,10 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	      */
 	      q->state = RHIZOME_FETCH_RXFILE;
 	      int content_bytes = q->request + q->request_len - parts.content_start;
-	      if (content_bytes > 0)
+	      if (content_bytes > 0){
 		rhizome_write_content(q, parts.content_start, content_bytes);
+		return;
+	      }
 	    }
 	  }
 	  break;
@@ -918,10 +921,14 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	}
     }
   }
-  if (alarm->poll.revents & (POLLHUP | POLLERR)) {
+  
+  if (alarm->poll.revents==0 || alarm->poll.revents & (POLLHUP | POLLERR)){
+    // timeout or socket error, close the socket
+    if (debug & DEBUG_RHIZOME_RX)
+      DEBUGF("Closing due to timeout or error %x (%x %x)", alarm->poll.revents, POLLHUP, POLLERR);
     rhizome_fetch_close(q);
   }
-  return;
+  
 }
 
 /*

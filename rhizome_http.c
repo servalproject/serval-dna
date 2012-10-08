@@ -176,6 +176,8 @@ void rhizome_client_poll(struct sched_ent *alarm)
 {
   rhizome_http_request *r = (rhizome_http_request *)alarm;
   if (alarm->poll.revents == 0){
+    if (debug & DEBUG_RHIZOME_TX)
+      DEBUG("Closing connection due to timeout");
     rhizome_server_free_http_request(r);
     return;
   }
@@ -792,6 +794,10 @@ int rhizome_server_http_send_bytes(rhizome_http_request *r)
 	break;
       }
   }
-  if (!r->request_type) return rhizome_server_free_http_request(r);	  
+  if (!r->request_type){
+    if (debug & DEBUG_RHIZOME_TX)
+      DEBUG("Closing connection, done");
+    return rhizome_server_free_http_request(r);
+  }
   return 1;
 }
