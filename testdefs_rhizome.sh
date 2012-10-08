@@ -227,7 +227,7 @@ rhizome_http_server_started() {
 get_rhizome_server_port() {
    local _var="$1"
    local _logvar=LOG${2#+}
-   local _port=$($SED -n -e '/.*RHIZOME HTTP SERVER.*START/{s/.*port=\([0-9]\{1,\}\).*/\1/p;q}' "${!_logvar}")
+   local _port=$($SED -n -e '/RHIZOME HTTP SERVER.*START/s/.*port=\([0-9]\{1,\}\).*/\1/p' "${!_logvar}" | $SED -n '$p')
    assert --message="instance $2 Rhizome HTTP server port number is known" [ -n "$_port" ]
    if [ -n "$_var" ]; then
       eval "$_var=\$_port"
