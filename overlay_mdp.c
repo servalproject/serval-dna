@@ -951,7 +951,7 @@ static int search_subscribers(struct subscriber *subscriber, void *context){
   }
   
   if (response->server_sid_count++ >= response->first_sid && 
-      response->first_sid + response->frame_sid_count < response->last_sid) {
+      response->frame_sid_count < MDP_MAX_SID_REQUEST) {
     memcpy(response->sids[response->frame_sid_count++], subscriber->sid, SID_SIZE);
   }
   
@@ -1026,6 +1026,7 @@ void overlay_mdp_poll(struct sched_ent *alarm)
       case MDP_GETADDRS:
 	{
 	  overlay_mdp_frame mdpreply;
+	  bzero(&mdpreply, sizeof(overlay_mdp_frame));
 	  mdpreply.packetTypeAndFlags = MDP_ADDRLIST;
 	  if (!overlay_mdp_address_list(&mdp->addrlist, &mdpreply.addrlist))
 	  /* Send back to caller */

@@ -1344,7 +1344,7 @@ int app_id_self(int argc, const char *const *argv, struct command_line_option *o
     return WHYF("unsupported arg '%s'", argv[1]);
   a.addrlist.first_sid=0;
 
-  while(a.addrlist.frame_sid_count==MDP_MAX_SID_REQUEST) {
+  do{
     result=overlay_mdp_send(&a,MDP_AWAITREPLY,5000);
     if (result) {
       if (a.packetTypeAndFlags==MDP_ERROR)
@@ -1366,7 +1366,8 @@ int app_id_self(int argc, const char *const *argv, struct command_line_option *o
     /* get ready to ask for next block of SIDs */
     a.packetTypeAndFlags=MDP_GETADDRS;
     a.addrlist.first_sid=a.addrlist.last_sid+1;
-  }
+  }while(a.addrlist.frame_sid_count==MDP_MAX_SID_REQUEST);
+
   return 0;
 }
 
