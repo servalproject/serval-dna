@@ -55,9 +55,17 @@ static void send_pickup(int session_id){
 static void send_call(const char *sid, const char *caller_id, const char *remote_ext){
   monitor_client_writeline(monitor_client_fd, "call %s %s %s\n", sid, caller_id, remote_ext);
 }
+
+#if 0
+This function commented out to avoid "defined but not used" compiler warning.  Once you need
+it, just get rid of the #if0..#endif and this comment.
+-- Andrew Bettison <andrew@servalproject.com>
+
 static void send_audio(int session_id, unsigned char *buffer, int len, int codec){
   monitor_client_writeline_and_data(monitor_client_fd, buffer, len, "audio %06x %d\n", session_id, codec);
 }
+
+#endif
 
 static int remote_call(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context){
   int token = strtol(argv[0], NULL, 16);
