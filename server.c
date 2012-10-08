@@ -78,6 +78,7 @@ int server_pid()
     int pid = atoi(buf);
     if (pid > 0 && kill(pid, 0) != -1)
       return pid;
+    INFOF("Unlinking stale pidfile %s", filename);
     unlink(filename);
   }
   return 0;
