@@ -25,7 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 struct sockaddr_in loopback;
 
 // a frame destined for one of our local addresses, or broadcast, has arrived. Process it.
-int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, struct overlay_frame *f){
+int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, struct overlay_frame *f, struct decode_context *context){
   int id = (interface - overlay_interfaces);
   switch(f->type)
   {
@@ -43,7 +43,7 @@ int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, s
     case OF_TYPE_NODEANNOUNCE:
       if (debug&DEBUG_OVERLAYFRAMES)
 	DEBUG("Processing OF_TYPE_NODEANNOUNCE");
-      overlay_route_saw_advertisements(id,f,now);
+      overlay_route_saw_advertisements(id,f,context,now);
       break;
       
       // data frames
@@ -327,7 +327,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     
     // process payloads that are for me or everyone
     if ((!f.destination) || f.destination->reachable==REACHABLE_SELF){
-      process_incoming_frame(now, interface, &f);
+      process_incoming_frame(now, interface, &f, &context);
     }
     
   next:

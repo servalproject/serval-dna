@@ -145,9 +145,8 @@ static int walk_tree(struct tree_node *node, int pos,
       if (walk_tree(node->tree_nodes[i], pos+1, start, start_len, end, end_len, callback, context))
 	return 1;
     }else if(node->subscribers[i]){
-      if ((!start) || start_len<SID_SIZE || memcmp(node->subscribers[i]->sid, start, start_len)!=0)
-	if (callback(node->subscribers[i], context))
-	  return 1;
+      if (callback(node->subscribers[i], context))
+	return 1;
     }
     // stop comparing the start sid after looking at the first branch of the tree
     start=NULL;
@@ -156,7 +155,7 @@ static int walk_tree(struct tree_node *node, int pos,
 }
 
 /*
- walk the tree, starting at start, calling the supplied callback function
+ walk the tree, starting at start inclusive, calling the supplied callback function
  */
 void enum_subscribers(struct subscriber *start, int(*callback)(struct subscriber *, void *), void *context){
   walk_tree(&root, 0, start->sid, SID_SIZE, NULL, 0, callback, context);
@@ -432,7 +431,7 @@ int find_subscr_buffer(struct decode_context *context, struct overlay_buffer *b,
     if (!context->please_explain){
       context->please_explain = calloc(sizeof(struct overlay_frame),1);
       context->please_explain->payload=ob_new();
-      ob_limitsize(context->please_explain->payload, 1024);
+      ob_limitsize(context->please_explain->payload, MDP_MTU);
     }
     
     // And I'll tell you about any subscribers I know that match this abbreviation, 

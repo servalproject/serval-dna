@@ -190,6 +190,7 @@ extern char *batman_peerfile;
 
 
 struct subscriber;
+struct decode_context;
 
 typedef struct keypair {
   int type;
@@ -641,7 +642,7 @@ int overlay_route_dump();
 int overlay_route_add_advertisements(overlay_interface *interface, struct overlay_buffer *e);
 int ovleray_route_please_advertise(overlay_node *n);
 
-int overlay_route_saw_advertisements(int i, struct overlay_frame *f, time_ms_t now);
+int overlay_route_saw_advertisements(int i, struct overlay_frame *f, struct decode_context *context, time_ms_t now);
 int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f,  time_ms_t now);
 int overlay_route_please_advertise(overlay_node *n);
 int rhizome_server_get_fds(struct pollfd *fds,int *fdcount,int fdmax);

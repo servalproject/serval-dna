@@ -58,7 +58,7 @@ int overlay_route_please_advertise(overlay_node *n)
   else return 1;
 }
 
-struct subscriber *last_advertised=NULL;
+struct subscriber *next_advertisement=NULL;
 
 int add_advertisement(struct subscriber *subscriber, void *context){
   struct overlay_buffer *e=context;
@@ -66,21 +66,17 @@ int add_advertisement(struct subscriber *subscriber, void *context){
   if (subscriber->node){
     overlay_node *n=subscriber->node;
     
-    ob_append_bytes(e,subscriber->sid,6);
-    ob_append_byte(e,n->best_link_score);
-    ob_append_byte(e,n->observations[n->best_observation].gateways_en_route);
-    
-    // stop if we run out of space
-    if (ob_makespace(e,8)!=0){
-      last_advertised=subscriber;
+    if (overlay_address_append(e,subscriber) ||
+	ob_append_byte(e,n->best_link_score) ||
+	ob_append_byte(e,n->observations[n->best_observation].gateways_en_route)){
+      
+      // stop if we run out of space, remember where we should start next time.
+      next_advertisement=subscriber;
+      ob_rewind(e);
       return 1;
     }
     
-    // or we've been called twice and looped around
-    if (subscriber == last_advertised){
-      last_advertised = NULL;
-      return 1;
-    }
+    ob_checkpoint(e);
   }
   
   return 0;
@@ -149,14 +145,16 @@ int overlay_route_add_advertisements(overlay_interface *interface, struct overla
       slots_used++;
     } 
 */
-  struct subscriber *start = last_advertised;
+  struct subscriber *start = next_advertisement;
+  next_advertisement=NULL;
+  
   int start_pos = e->position;
   
-  // append announcements starting from the last node we advertised
+  // append announcements starting from the last node we couldn't advertise last time
   enum_subscribers(start, add_advertisement, e);
 
   // if we didn't start at the beginning and still have space, start again from the beginning
-  if (start && e->sizeLimit - e->position >=8){
+  if (start && !next_advertisement && e->sizeLimit - e->position > 0){
     enum_subscribers(NULL, add_advertisement, e);
   }
   
@@ -180,26 +178,27 @@ int overlay_route_add_advertisements(overlay_interface *interface, struct overla
    of nodes from here to there.  That seems silly, and is agains't the BATMAN
    approach of each node just knowing single-hop information.
  */
-int overlay_route_saw_advertisements(int i, struct overlay_frame *f, long long now)
+int overlay_route_saw_advertisements(int i, struct overlay_frame *f, struct decode_context *context, time_ms_t now)
 {
   IN();
   while(f->payload->position < f->payload->sizeLimit)
     {
       struct subscriber *subscriber;
-      unsigned char *sid = ob_get_bytes_ptr(f->payload, 6);
+      context->invalid_addresses=0;
+      
+      if (overlay_address_parse(context, f->payload, NULL, &subscriber))
+	break;
+      
       int score=ob_get(f->payload);
       int gateways_en_route=ob_get(f->payload);
 
       // stop if hit end of payload
-      if (!sid || score<0 || gateways_en_route<0)
-	continue;
+      if (score<0 || gateways_en_route<0)
+	break;
       
-      subscriber = find_subscriber(sid, 6, 0);
-      
-      if (!subscriber){
-	WARN("Dispatch PLEASEEXPLAIN not implemented");
+      // skip if we can't parse the subscriber id
+      if (context->invalid_addresses || !subscriber)
 	continue;
-      }
       
       /* Don't record routes to ourselves */
       if (subscriber->reachable==REACHABLE_SELF) {
