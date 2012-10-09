@@ -458,7 +458,13 @@ int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t bytes);
 int hexvalue(char c);
 char *str_toupper_inplace(char *s);
 
-int is_all_matching(unsigned char *ptr, int len, int value);
+int is_all_matching(const unsigned char *ptr, size_t len, unsigned char value);
+
+// is the SID entirely 0xFF?
+#define is_sid_broadcast(SID) is_all_matching(SID, SID_SIZE, 0xFF)
+
+// is the SID entirely 0x00?
+#define is_sid_any(SID) is_all_matching(SID, SID_SIZE, 0)
 
 int str_is_subscriber_id(const char *sid);
 int strn_is_subscriber_id(const char *sid, size_t *lenp);

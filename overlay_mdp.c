@@ -36,12 +36,6 @@ struct sched_ent mdp_named={
   .stats = &mdp_stats,
 };
 
-// is the SID entirely 0xFF?
-#define is_broadcast(SID) is_all_matching(SID, SID_SIZE, 0xFF)
-
-// is the SID entirely 0x00?
-#define is_sid_any(SID) is_all_matching(SID, SID_SIZE, 0)
-
 int overlay_mdp_setup_sockets()
 {
   struct sockaddr_un name;
@@ -425,7 +419,7 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp, time_ms_t now)
 
     // TODO pass in dest subscriber as an argument, we should know it by now
     struct subscriber *destination = NULL;
-    if (!is_broadcast(mdp->out.dst.sid)){
+    if (!is_sid_broadcast(mdp->out.dst.sid)){
       destination = find_subscriber(mdp->out.dst.sid, SID_SIZE, 1);
     }
     
@@ -542,7 +536,7 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp, time_ms_t now)
 	  }
 	  /* If the packet was sent to broadcast, then replace broadcast address
 	     with our local address. For now just responds with first local address */
-	  if (is_broadcast(mdp->out.src.sid))
+	  if (is_sid_broadcast(mdp->out.src.sid))
 	    {
 	      if (my_subscriber)		  
 		bcopy(my_subscriber->sid,
@@ -661,7 +655,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
     /* set source to ourselves */
     frame->source = my_subscriber;
     bcopy(frame->source->sid, mdp->out.src.sid, SID_SIZE);
-  }else if (is_broadcast(mdp->out.src.sid)){
+  }else if (is_sid_broadcast(mdp->out.src.sid)){
     /* This is rather naughty if it happens, since broadcasting a
      response can lead to all manner of nasty things.
      Picture a packet with broadcast as the source address, sent
@@ -700,7 +694,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 	    " you can send packets"));
   }
   
-  if (is_broadcast(mdp->out.dst.sid)){
+  if (is_sid_broadcast(mdp->out.dst.sid)){
     /* broadcast packets cannot be encrypted, so complain if MDP_NOCRYPT
      flag is not set. Also, MDP_NOSIGN must also be applied, until
      NaCl cryptobox keys can be used for signing. */	

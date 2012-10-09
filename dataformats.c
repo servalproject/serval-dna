@@ -58,10 +58,10 @@ int is_xstring(const char *text, int len)
 }
 
 /* Does this whole buffer contain the same value? */
-int is_all_matching(unsigned char *ptr, int len, int value){
-  int i;
-  for (i=0;i<len;i++)
-    if (ptr[i]!=value)
+int is_all_matching(const unsigned char *ptr, size_t len, unsigned char value)
+{
+  while (len--)
+    if (*ptr++ != value)
       return 0;
   return 1;
 }
