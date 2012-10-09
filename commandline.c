@@ -796,10 +796,10 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
     if (broadcast) mdp.packetTypeAndFlags|=MDP_NOCRYPT;
     mdp.out.src.port=port;
     bcopy(srcsid,mdp.out.src.sid,SID_SIZE);
-    bcopy(ping_sid,&mdp.out.dst.sid[0],SID_SIZE);
+    bcopy(ping_sid,mdp.out.dst.sid,SID_SIZE);
     mdp.out.queue=OQ_MESH_MANAGEMENT;
-    /* Set port to well known echo port (from /etc/services) */
-    mdp.out.dst.port=7;
+    /* Set port to well known echo port */
+    mdp.out.dst.port=MDP_PORT_ECHO;
     mdp.out.payload_length=4+8;
     int *seq=(int *)&mdp.out.payload;
     *seq=sequence_number;

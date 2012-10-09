@@ -377,9 +377,8 @@ int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now)
   if (f->destination)
     bcopy(f->destination->sid,mdp.in.dst.sid,SID_SIZE);
   else{
-    // pack the broadcast address into the mdp structure
-    memset(mdp.in.dst.sid, 0xFF, SID_SIZE - BROADCAST_LEN);
-    bcopy(f->broadcast_id.id, mdp.in.dst.sid + SID_SIZE - BROADCAST_LEN, BROADCAST_LEN);
+    // pack the broadcast address into the mdp structure, note that we no longer care about the broadcast id
+    memset(mdp.in.dst.sid, 0xFF, SID_SIZE);
   }
   bcopy(f->source->sid,mdp.in.src.sid,SID_SIZE);
 
