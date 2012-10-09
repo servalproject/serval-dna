@@ -61,7 +61,7 @@ extract_stdout_keyvalue_optional() {
       _value="${_line#*$_delim}"
       _return=0
    fi
-   [ -n "$_var" ] && eval $_var="$_value"
+   [ -n "$_var" ] && eval $_var="\$_value"
    return $_return
 }
 
@@ -342,11 +342,11 @@ get_servald_server_pidfile() {
    set_instance_fromarg "$1" && shift
    local _pidfile="$instance_servald_pidfile"
    pop_instance
-   [ -n "$_pidfilevar" ] && eval $_pidfilevar="$_pidfile"
+   [ -n "$_pidfilevar" ] && eval $_pidfilevar="\$_pidfile"
    local _pid=$(cat "$_pidfile" 2>/dev/null)
    case "$_pid" in
    +([0-9]))
-      [ -n "$_pidvar" ] && eval $_pidvar="$_pid"
+      [ -n "$_pidvar" ] && eval $_pidvar="\$_pid"
       return 0
       ;;
    '')
@@ -449,7 +449,7 @@ get_servald_pids() {
    local mypid=$$
    # XXX The following line will not find any PIDs if there are spaces in "$servald".
    local pids=$(ps -u$UID -o pid,args | $AWK -v mypid="$mypid" -v servald="$servald" '$1 != mypid && $2 == servald {print $1}')
-   [ -n "$var" ] && eval "$var=($pids)"
+   [ -n "$var" ] && eval "$var=(\$pids)"
    [ -n "$pids" ]
 }
 
@@ -599,8 +599,8 @@ start_servald_instances() {
       executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name"
       configure_servald_server
       start_servald_server
-      eval DUMMY$instance_name="$DUMMYNET"
-      eval LOG$instance_name="$(shellarg "$instance_servald_log")"
+      eval DUMMY$instance_name="\$DUMMYNET"
+      eval LOG$instance_name="\$(shellarg "\$instance_servald_log")"
    done
    # Now wait until they see each other.
    wait_until --sleep=0.25 instances_see_each_other "$@"

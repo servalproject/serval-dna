@@ -179,7 +179,7 @@ extract_manifest() {
    assert --message="$_manifestfile contains valid '$_label=' line" \
           --dump-on-fail="$_manifestfile" \
           [ -n "$_value" ]
-   [ -n "$_var" ] && eval $_var="$_value"
+   [ -n "$_var" ] && eval $_var="\$_value"
 }
 
 extract_manifest_service() {
@@ -216,7 +216,7 @@ compute_filehash() {
    local _hash=$($servald rhizome hash file "$_file") || error "$servald failed to compute file hash"
    [ -z "${_hash//[0-9a-fA-F]/}" ] || error "file hash contains non-hex: $_hash"
    [ "${#_hash}" -eq 128 ] || error "file hash incorrect length: $_hash"
-   [ -n "$_var" ] && eval $_var="$_hash"
+   [ -n "$_var" ] && eval $_var="\$_hash"
 }
 
 rhizome_http_server_started() {
