@@ -1156,9 +1156,8 @@ static int keyring_store_sas(overlay_mdp_frame *req){
   unsigned char signature[siglen];
   
   /* reconstitute signed SID for verification */
-  bcopy(&compactsignature[0],&signature[0],32);
-  bcopy(&req->out.src.sid[0],&signature[32],SID_SIZE);
-  bcopy(&compactsignature[32],&signature[32+SID_SIZE],32);
+  bcopy(&compactsignature[0],&signature[0],64);
+  bcopy(&req->out.src.sid[0],&signature[64],SID_SIZE);
   
   int r=crypto_sign_edwards25519sha512batch_open(plain,&plain_len,
 						 signature,siglen,
@@ -1205,7 +1204,6 @@ int keyring_mapping_request(keyring_file *k, overlay_mdp_frame *req)
     /* type of key being verified */
     req->out.payload[0]=KEYTYPE_CRYPTOSIGN;
     /* the public key itself */
-    int sigbytes=crypto_sign_edwards25519sha512batch_BYTES;
     bcopy(sas_public,&req->out.payload[1], SAS_SIZE);
     /* and a signature of the SID using the SAS key, to prove possession of
        the key.  Possession of the SID has already been established by the
@@ -1218,8 +1216,7 @@ int keyring_mapping_request(keyring_file *k, overlay_mdp_frame *req)
     if (crypto_sign_edwards25519sha512batch
 	(&req->out.payload[1+SAS_SIZE],&slen,req->out.dst.sid,SID_SIZE,sas_priv))
       return WHY("crypto_sign() failed");
-    /* chop the SID out of the signature, since it can be reinserted on reception */
-    bcopy(&req->out.payload[1+SAS_SIZE+32+SID_SIZE], &req->out.payload[1+SAS_SIZE+32], sigbytes-32);
+    /* chop the SID from the end of the signature, since it can be reinserted on reception */
     slen-=SID_SIZE;
     /* and record the full length of this */
     req->out.payload_length = 1 + SAS_SIZE + slen;

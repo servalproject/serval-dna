@@ -77,6 +77,8 @@ do
 	cp -p "$o"/*.c "$work/${opi}"
 
 	cp -pr "$implementationdir"/* "$work/${opi}"
+        echo $work/${opi}/*.c*
+        echo $work/${opi}/*.h
 
         rm ${work}/${opi}/measure.c
         rm ${work}/${opi}/try.c

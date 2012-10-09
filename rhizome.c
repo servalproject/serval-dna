@@ -166,8 +166,15 @@ int rhizome_manifest_bind_id(rhizome_manifest *m_in)
        The nice thing about this specification is that:
        privateKey = BK XOR sha512(RS##BID), so the same function can be used
        to encrypt and decrypt the BK field. */
+    const unsigned char *rs;
+    int rs_len=0;
     unsigned char bkbytes[RHIZOME_BUNDLE_KEY_BYTES];
-    if (rhizome_bk_xor(m_in->author, m_in->cryptoSignPublic, m_in->cryptoSignSecret, bkbytes) == 0) {
+
+    if (rhizome_find_secret(m_in->author,&rs_len,&rs)) {
+      return WHYF("Failed to obtain RS for %s to calculate BK",
+		 alloca_tohex_sid(m_in->author));
+    }
+    if (!rhizome_secret2bk(m_in->cryptoSignPublic,rs,rs_len,bkbytes,m_in->cryptoSignSecret)) {
       char bkhex[RHIZOME_BUNDLE_KEY_STRLEN + 1];
       (void) tohex(bkhex, bkbytes, RHIZOME_BUNDLE_KEY_BYTES);
       if (debug&DEBUG_RHIZOME) DEBUGF("set BK=%s", bkhex);

@@ -32,7 +32,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define RHIZOME_MANIFEST_ID_BYTES       crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES
 #define RHIZOME_MANIFEST_ID_STRLEN      (RHIZOME_MANIFEST_ID_BYTES * 2)
-#define RHIZOME_BUNDLE_KEY_BYTES        crypto_sign_edwards25519sha512batch_SECRETKEYBYTES
+#define RHIZOME_BUNDLE_KEY_BYTES        (crypto_sign_edwards25519sha512batch_SECRETKEYBYTES-crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)
 #define RHIZOME_BUNDLE_KEY_STRLEN       (RHIZOME_BUNDLE_KEY_BYTES  * 2)
 #define RHIZOME_FILEHASH_BYTES          SHA512_DIGEST_LENGTH
 #define RHIZOME_FILEHASH_STRLEN         (RHIZOME_FILEHASH_BYTES * 2)
@@ -295,13 +295,32 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m);
 int rhizome_manifest_version_cache_store(rhizome_manifest *m);
 int monitor_announce_bundle(rhizome_manifest *m);
 int rhizome_find_secret(const unsigned char *authorSid, int *rs_len, const unsigned char **rs);
-int rhizome_bk_xor(const unsigned char *authorSid, // binary
-		   unsigned char bid[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES],
-		   unsigned char bkin[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES],
-		   unsigned char bkout[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]);
+int rhizome_bk_xor_stream(
+  const unsigned char bid[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES],
+  const unsigned char *rs,
+  const size_t rs_len,
+  unsigned char *xor_stream,
+  int xor_stream_byte_count);
+int rhizome_bk2secret(rhizome_manifest *m,
+  const unsigned char bid[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES],
+  const unsigned char *rs, const size_t rs_len,
+  /* The BK need only be the length of the secret half of the secret key */
+  const unsigned char bkin[RHIZOME_BUNDLE_KEY_BYTES],
+  unsigned char secret[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]
+		      );
+int rhizome_secret2bk(
+  const unsigned char bid[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES],
+  const unsigned char *rs, const size_t rs_len,
+  /* The BK need only be the length of the secret half of the secret key */
+  unsigned char bkout[RHIZOME_BUNDLE_KEY_BYTES],
+  const unsigned char secret[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]
+		      );
 unsigned char *rhizome_bundle_shared_secret(rhizome_manifest *m);
 int rhizome_extract_privatekey(rhizome_manifest *m);
-int rhizome_verify_bundle_privatekey(rhizome_manifest *m);
+int rhizome_sign_hash_with_key(rhizome_manifest *m,const unsigned char *sk,
+			       const unsigned char *pk,rhizome_signature *out);
+int rhizome_verify_bundle_privatekey(rhizome_manifest *m, const unsigned char *sk,
+				     const unsigned char *pk);
 int rhizome_find_bundle_author(rhizome_manifest *m);
 int rhizome_queue_ignore_manifest(rhizome_manifest *m,
 				  struct sockaddr_in *peerip,int timeout);

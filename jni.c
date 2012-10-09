@@ -212,7 +212,7 @@ JNIEXPORT jint JNICALL Java_to_yp_cr_NaCl_nativeCryptoSignOpen
   smlen=(*env)->GetArrayLength(env, jsm);
   mlen=(*env)->GetArrayLength(env, jm); mlen_in=mlen;
 
-  if ((smlen-mlen)!=crypto_sign_edwards25519sha512batch_BYTES) return -4;  
+  if (smlen>mlen) return -4;  
   if ((*env)->GetArrayLength(env, jpk)!=crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES) return -3;
   
   /* Get inputs */

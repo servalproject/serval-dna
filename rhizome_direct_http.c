@@ -273,7 +273,7 @@ int rhizome_direct_form_received(rhizome_http_request *r)
 	unsigned char bsk[RHIZOME_BUNDLE_KEY_BYTES];
 	fromhexstr(bsk,bskhex,RHIZOME_BUNDLE_KEY_BYTES);
 	memcpy(m->cryptoSignSecret, bsk, RHIZOME_BUNDLE_KEY_BYTES);
-	if (rhizome_verify_bundle_privatekey(m) == -1) {
+	if (rhizome_verify_bundle_privatekey(m,m->cryptoSignSecret,m->cryptoSignPublic) == -1) {
 	  rhizome_manifest_free(m);
 	  m = NULL;
 	  rhizome_direct_clear_temporary_files(r);

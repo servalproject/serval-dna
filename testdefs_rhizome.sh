@@ -19,7 +19,7 @@
 # expressions) and also in sed(1).
 rexp_service='[A-Za-z0-9_]\+'
 rexp_manifestid='[0-9a-fA-F]\{64\}'
-rexp_bundlekey='[0-9a-fA-F]\{128\}'
+rexp_bundlekey='[0-9a-fA-F]\{64\}'
 rexp_bundlesecret="$rexp_bundlekey"
 rexp_filehash='[0-9a-fA-F]\{128\}'
 rexp_filesize='[0-9]\{1,\}'

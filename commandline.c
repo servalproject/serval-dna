@@ -1091,7 +1091,8 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
 	// The caller provided the bundle secret key, so ensure that it corresponds to the bundle's
 	// public key (its bundle ID), otherwise it won't work.
 	memcpy(m->cryptoSignSecret, bsk, RHIZOME_BUNDLE_KEY_BYTES);
-	if (rhizome_verify_bundle_privatekey(m) == -1) {
+	if (rhizome_verify_bundle_privatekey(m,m->cryptoSignSecret,
+					     m->cryptoSignPublic) == -1) {
 	  rhizome_manifest_free(m);
 	  return WHY("Incorrect BID secret key.");
 	}
@@ -1500,17 +1501,153 @@ int app_crypt_test(int argc, const char *const *argv, struct command_line_option
 
   int len,i;
 
-  for(len=16;len<=65536;len*=2) {
+  printf("Benchmarking CryptoBox Auth-Cryption:\n");
+  int count=1024;
+  for(len=16;len<=16384;len*=2) {
     time_ms_t start = gettime_ms();
-    for (i=0;i<1000;i++) {
+    for (i=0;i<count;i++) {
       bzero(&plain_block[0],crypto_box_curve25519xsalsa20poly1305_ZEROBYTES);
       crypto_box_curve25519xsalsa20poly1305_afternm
 	(plain_block,plain_block,len,nonce,k);
     }
     time_ms_t end = gettime_ms();
-    printf("%d bytes - 100 tests took %lldms - mean time = %.2fms\n",
-	   len, (long long) end - start, (end - start) * 1.0 / i);
+    double each=(end - start) * 1.0 / i;
+    printf("%d bytes - %d tests took %lldms - mean time = %.2fms\n",
+	   len, i, (long long) end - start, each);
+    /* Auto-reduce number of repeats so that it doesn't take too long on the phone */
+    if (each>1.00) count/=2;
   }
+
+
+  printf("Benchmarking CryptoSign signature verification:\n");
+  {
+
+    unsigned char sign_pk[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
+    unsigned char sign_sk[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES];
+    if (crypto_sign_edwards25519sha512batch_keypair(sign_pk,sign_sk))
+      { fprintf(stderr,"crypto_sign_curve25519xsalsa20poly1305_keypair() failed.\n");
+	exit(-1); }
+
+    unsigned char plainTextIn[1024];
+    unsigned char cipherText[1024];
+    unsigned char plainTextOut[1024];
+    unsigned long long cipherLen=0;
+    unsigned long long plainLenOut;
+    bzero(plainTextIn,1024);
+    bzero(cipherText,1024);
+    snprintf((char *)&plainTextIn[0],1024,"%s","No casaba melons allowed in the lab.");
+    int plainLenIn=64;
+
+    time_ms_t start = gettime_ms();
+    for(i=0;i<10;i++) {
+    int r=crypto_sign_edwards25519sha512batch(cipherText,&cipherLen,
+					      plainTextIn,plainLenIn,
+					      sign_sk);
+    if (r) { fprintf(stderr,"crypto_sign_edwards25519sha512batch() failed.\n");
+      exit(-1); }
+    }
+
+    time_ms_t end=gettime_ms();
+    printf("mean signature generation time = %.2fms\n",
+	   (end-start)*1.0/i);
+    start = gettime_ms();
+
+    for(i=0;i<10;i++) {
+      bzero(&plainTextOut,1024); plainLenOut=0;
+      int r=crypto_sign_edwards25519sha512batch_open(plainTextOut,&plainLenOut,
+						 &cipherText[0],cipherLen,
+						 sign_pk);
+      if (r) { 
+	fprintf(stderr,"crypto_sign_edwards25519sha512batch_open() failed (r=%d, i=%d).\n",
+		r,i);
+	exit(-1);
+      }
+    }
+    end = gettime_ms();
+    printf("mean signature verification time = %.2fms\n",
+	   (end-start)*1.0/i);
+  }
+
+  /* We can't do public signing with a crypto_box key, but we should be able to
+     do shared-secret generation using crypto_sign keys. */
+  {
+    printf("Testing supercop-20120525 Ed25519 CryptoSign implementation:\n");
+
+    unsigned char sign1_pk[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
+    unsigned char sign1_sk[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES];
+    if (crypto_sign_edwards25519sha512batch_keypair(sign1_pk,sign1_sk))
+      { fprintf(stderr,"crypto_sign_edwards25519sha512batch_keypair() failed.\n");
+	exit(-1); }
+
+    /* Try calculating public key from secret key */
+    unsigned char pk[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
+
+    /* New Ed25519 implementation has public key as 2nd half of private key. */
+    bcopy(&sign1_sk[32],pk,32);
+
+    if (memcmp(pk, sign1_pk, crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)) {
+      fprintf(stderr,"Could not calculate public key from private key.\n");
+      dump("calculated",&pk,sizeof(pk));
+      dump("original",&sign1_pk,sizeof(sign1_pk));
+      //      exit(-1);
+    } else printf("Can calculate public key from private key.\n");
+
+    /* Now use a pre-tested keypair and make sure that we can sign and verify with
+       it, and that the signatures are as expected. */
+    
+    unsigned char key[64]={
+      0xf6,0x70,0x6b,0x8a,0x4e,0x1e,0x4b,0x01,
+      0x11,0x56,0x85,0xac,0x63,0x46,0x67,0x5f,
+      0xc1,0x44,0xcf,0xdf,0x98,0x5c,0x2b,0x8b,
+      0x18,0xff,0x70,0x9c,0x12,0x71,0x48,0xb9,
+
+      0x32,0x2a,0x88,0xba,0x9c,0xdd,0xed,0x35,
+      0x8f,0x01,0x18,0xf7,0x60,0x1b,0xfb,0x80,
+      0xaf,0xce,0x74,0xe0,0x85,0x39,0xac,0x13,
+      0x15,0xf6,0x79,0xaa,0x68,0xef,0x5d,0xc6};
+
+    unsigned char plainTextIn[1024];
+    unsigned char plainTextOut[1024];
+    unsigned char cipherText[1024];
+    unsigned long long cipherLen=0;
+    unsigned long long plainLenOut;
+    bzero(plainTextIn,1024);
+    bzero(cipherText,1024);
+    snprintf((char *)&plainTextIn[0],1024,"%s","No casaba melons allowed in the lab.");
+    int plainLenIn=64;
+
+    int r=crypto_sign_edwards25519sha512batch(cipherText,&cipherLen,
+					  plainTextIn,plainLenIn,
+					  key);
+    if (r) { fprintf(stderr,"crypto_sign_edwards25519sha512batch() failed.\n");
+      exit(-1); }
+  
+    dump("signature",cipherText,cipherLen);
+   
+    unsigned char casabamelons[128]={
+      0xa4,0xea,0xd0,0x7f,0x11,0x65,0x28,0x3f,0x90,0x45,0x87,0xbf,0xe5,0xb9,0x15,0x2a,0x9a,0x2d,0x99,0x35,0x0d,0x0e,0x7b,0xb0,0xcd,0x15,0x2e,0xe8,0xeb,0xb3,0xc2,0xb1,0x13,0x8e,0xe3,0x82,0x55,0x6c,0x6e,0x34,0x44,0xe4,0xbc,0xa3,0xd5,0xe0,0x7a,0x6a,0x67,0x61,0xda,0x79,0x67,0xb6,0x1c,0x2e,0x48,0xc7,0x28,0x5b,0xd8,0xd0,0x54,0x0c,0x4e,0x6f,0x20,0x63,0x61,0x73,0x61,0x62,0x61,0x20,0x6d,0x65,0x6c,0x6f,0x6e,0x73,0x20,0x61,0x6c,0x6c,0x6f,0x77,0x65,0x64,0x20,0x69,0x6e,0x20,0x74,0x68,0x65,0x20,0x6c,0x61,0x62,0x2e,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+      0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+    };
+    
+    if (cipherLen!=128||memcmp(casabamelons, cipherText, 128)) {
+      fprintf(stderr,"Computed signature for stored key+message does not match expected value.\n");
+      dump("expected signature",casabamelons,sizeof(casabamelons));
+      //      exit(-1);
+    }
+  
+    bzero(&plainTextOut,1024); plainLenOut=0;
+    r=crypto_sign_edwards25519sha512batch_open(plainTextOut,&plainLenOut,
+					       &casabamelons[0],128,
+					       /* the public key, which is the 2nd
+						  half of the secret key. */
+					       &key[32]);
+    if (r) {
+      fprintf(stderr,"Cannot open rearranged ref/ version of signature.\n");      
+    } else 
+      printf("Signature open fine.\n");
+
+  }
+  
   return 0;
 }
 

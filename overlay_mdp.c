@@ -288,18 +288,18 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
       b=&f->payload->bytes[f->payload->position];
       len=f->payload->sizeLimit - f->payload->position - crypto_sign_edwards25519sha512batch_BYTES;
 
-      /* reconstitute signature by putting hash between two halves of signature */
+      /* reconstitute signature by putting hash at end of signature */
       unsigned char signature[crypto_hash_sha512_BYTES
 			      +crypto_sign_edwards25519sha512batch_BYTES];
-      bcopy(&b[len],&signature[0],32);
-      
-      crypto_hash_sha512(&signature[32],b,len);
+      bcopy(&b[len],&signature[0],64);
+      crypto_hash_sha512(&signature[64],b,len);
       if (0) dump("hash for verification",&signature[32],crypto_hash_sha512_BYTES);
       
-      bcopy(&b[len+32],&signature[32+crypto_hash_sha512_BYTES],32);
-      
-      /* verify signature */
-      unsigned char m[crypto_hash_sha512_BYTES];
+      /* verify signature.
+         Note that crypto_sign_open requires m to be as large as signature, even
+         though it will not need the whole length eventually -- it does use the 
+	 full length and will overwrite the end of a short buffer. */
+      unsigned char m[sizeof(signature)];
       unsigned long long  mlen=0;
       int result
 	=crypto_sign_edwards25519sha512batch_open(m,&mlen,
@@ -549,9 +549,16 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp, time_ms_t now)
 		bzero(mdp->out.src.sid,SID_SIZE);
 	    }
 
-	  /* queue frame for delivery */	  
+	  /* Always send PONGs auth-crypted so that the receipient knows
+	     that they are genuine, and so that we avoid the extra cost 
+	     of signing (which is slower than auth-crypting) */
+	  int preserved=mdp->packetTypeAndFlags;
+	  mdp->packetTypeAndFlags&=~(MDP_NOCRYPT|MDP_NOSIGN);
+
+	  /* queue frame for delivery */
 	  overlay_mdp_dispatch(mdp,0 /* system generated */,
 			       NULL,0);
+	  mdp->packetTypeAndFlags=preserved;
 	  
 	  /* and switch addresses back around in case the caller was planning on
 	     using MDP structure again (this happens if there is a loop-back reply
@@ -882,10 +889,9 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 	dump("payload", plain, plain_len);
 	dump("signature", signature, sizeof(signature));
       }
-      /* chop hash out of middle of signature since it has to be recomputed
-	 at the far end, anyway, and ammend the two halves of the signature. */
-      ob_append_bytes(frame->payload,&signature[0],32);
-      ob_append_bytes(frame->payload,&signature[32+crypto_hash_sha512_BYTES],32);
+      /* chop hash from end of signature since it has to be recomputed
+	 at the far end, anyway. */
+      ob_append_bytes(frame->payload,&signature[0],64);
     }
     break;
   case MDP_NOSIGN|MDP_NOCRYPT: /* clear text and no signature */
