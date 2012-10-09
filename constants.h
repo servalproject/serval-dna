@@ -121,38 +121,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define OVERLAY_INTERFACE_WIFI 2
 #define OVERLAY_INTERFACE_PACKETRADIO 3
 
-/*
- For each peer we need to keep track of the routes that we know to reach it.
- 
- We want to use static sized data structures as much as we can to keep things efficient by
- allowing computed memory address lookups instead of following linked lists and other 
- non-deterministic means.
- 
- The tricky part of doing all this is that each interface may have a different maximum number
- of peers based on the bandwidth of the link, as we do not want mesh traffic to consume all
- available bandwidth.  In particular, we need to reserve at least enough bandwidth for one
- call.
- 
- Related to this, if we are in a mesh larger than the per-interface limit allows, then we need to
- only track the highest-scoring peers.  This sounds simple, but how to we tell when to replace a
- low-scoring peer with another one which has a better reachability score, if we are not tracking 
- the reachability score of that node?
- 
- The answer to this is that we track as many nodes as we can, but only announce the highest
- scoring nodes on each interface as bandwidth allows.
- 
- This also keeps our memory usage fixed.
- 
- XXX - At present we are setting OVERLAY_MAX_PEERS at compile time.
- With a bit of work we can change this to be a run-time option.
- 
- Memory consumption of OVERLAY_MAX_PEERS=n is O(n^2).
- XXX We could and should improve this down the track by only monitoring the top k routes, and replacing the worst route
- option when a better one comes along.  This would get the memory usage down to O(n).
- 
- */
-#define OVERLAY_MAX_PEERS 500
-
 #define OQ_ISOCHRONOUS_VOICE 0
 #define OQ_MESH_MANAGEMENT 1
 #define OQ_ISOCHRONOUS_VIDEO 2

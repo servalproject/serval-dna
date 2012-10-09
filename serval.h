@@ -394,31 +394,6 @@ extern overlay_interface overlay_interfaces[OVERLAY_MAX_INTERFACES];
 extern int overlay_last_interface_number; // used to remember where a packet came from
 extern unsigned int overlay_sequence_number;
 
-
-typedef struct overlay_peer {
-  unsigned char address[SIDDIDFIELD_LEN];
-  
-  /* Scores and score update times for reaching this node via various interfaces */
-  int known_routes[OVERLAY_MAX_INTERFACES];
-  unsigned short scores[OVERLAY_MAX_INTERFACES][OVERLAY_MAX_PEERS];
-  
-  /* last_regeneration is the time that this peer was created/replaced with another peer.
-   lastupdate[] indicates the time that another peer's reachability report
-   caused us to update our score to reach via that peer.
-   If lastupdate[x][y] is older than last_regeneration[y], then we must
-   ignore the entry, because the lastupdate[x][y] entry references a previous
-   generation of that peer, i.e., not to the peer we think it does.
-   
-   This slight convolution allows us to replace peers without having to touch the
-   records of every other peer in our list.
-   */
-  int last_regeneration;
-  unsigned int lastupdate[OVERLAY_MAX_INTERFACES][OVERLAY_MAX_PEERS];
-} overlay_peer;
-
-extern overlay_peer overlay_peers[OVERLAY_MAX_PEERS];
-
-
 typedef struct overlay_txqueue {
   struct overlay_frame *first;
   struct overlay_frame *last;
