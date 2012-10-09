@@ -549,7 +549,8 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
   }
   
   DEBUGF("Queued please explain");
-  if (!overlay_payload_enqueue(OQ_MESH_MANAGEMENT, context->please_explain))
+  context->please_explain->queue=OQ_MESH_MANAGEMENT;
+  if (!overlay_payload_enqueue(context->please_explain))
     return 0;
   op_free(context->please_explain);
   return 0;

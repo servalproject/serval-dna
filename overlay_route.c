@@ -303,7 +303,8 @@ int overlay_route_ack_selfannounce(struct overlay_frame *f,
 
   /* Add to queue. Keep broadcast status that we have assigned here if required to
      get ack back to sender before we have a route. */
-  if (overlay_payload_enqueue(OQ_MESH_MANAGEMENT,out))
+  out->queue=OQ_MESH_MANAGEMENT;
+  if (overlay_payload_enqueue(out))
     {
       op_free(out);
       return WHY("overlay_payload_enqueue(self-announce ack) failed");

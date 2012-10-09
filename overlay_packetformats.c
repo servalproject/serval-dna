@@ -93,14 +93,14 @@ int overlay_forward_payload(struct overlay_frame *f){
     return WHY("Could not clone frame for queuing");
   
   // TODO include priority in packet header
-  int qn=OQ_ORDINARY;
+  qf->queue=OQ_ORDINARY;
   /* Make sure voice traffic gets priority */
   if ((qf->type&OF_TYPE_BITS)==OF_TYPE_DATA_VOICE) {
-    qn=OQ_ISOCHRONOUS_VOICE;
+    qf->queue=OQ_ISOCHRONOUS_VOICE;
     rhizome_saw_voice_traffic();
   }
   
-  if (overlay_payload_enqueue(qn,qf)) {
+  if (overlay_payload_enqueue(qf)) {
     op_free(qf);
     return WHY("failed to enqueue forwarded payload");
   }

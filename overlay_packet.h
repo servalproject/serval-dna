@@ -31,6 +31,7 @@ struct overlay_frame {
   unsigned int modifiers;
   
   unsigned char ttl;
+  unsigned char queue;
   // temporary hack to improve reliability before implementing per-packet nack's
   int send_copies;
   

@@ -640,7 +640,7 @@ unsigned int overlay_route_hash_sid(const unsigned char *sid);
 
 int packetEncipher(unsigned char *packet,int maxlen,int *len,int cryptoflags);
 int overlayServerMode();
-int overlay_payload_enqueue(int q, struct overlay_frame *p);
+int overlay_payload_enqueue(struct overlay_frame *p);
 int overlay_route_record_link( time_ms_t now,unsigned char *to,
 			      unsigned char *via,int sender_interface,
 			      unsigned int s1,unsigned int s2,int score,int gateways_en_route);

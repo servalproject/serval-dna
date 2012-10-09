@@ -177,7 +177,7 @@ int dump_payload(struct overlay_frame *p, char *message)
   return 0;
 }
 
-int overlay_payload_enqueue(int q, struct overlay_frame *p)
+int overlay_payload_enqueue(struct overlay_frame *p)
 {
   /* Add payload p to queue q.
 
@@ -195,14 +195,15 @@ int overlay_payload_enqueue(int q, struct overlay_frame *p)
       return WHYF("Destination %s is unreachable (%d)", alloca_tohex_sid(p->destination->sid), r);
   }
       
+  if (p->queue<0||p->queue>=OQ_MAX) 
+    return WHY("Invalid queue specified");
+  
+  overlay_txqueue *queue = &overlay_tx[p->queue];
+  
   if (debug&DEBUG_PACKETTX)
     DEBUGF("Enqueuing packet for %s* (q[%d]length = %d)",
 	   p->destination?alloca_tohex(p->destination->sid, 7): alloca_tohex(p->broadcast_id.id,BROADCAST_LEN),
-	 q,overlay_tx[q].length);
-  
-  if (q<0||q>=OQ_MAX) 
-    return WHY("Invalid queue specified");
-
+	 p->queue, queue->length);
   
   if (p->payload && p->payload->position > p->payload->sizeLimit){
     // HACK, maybe should be done in each caller
@@ -210,8 +211,8 @@ int overlay_payload_enqueue(int q, struct overlay_frame *p)
     p->payload->sizeLimit=p->payload->position;
   }
   
-  if (overlay_tx[q].length>=overlay_tx[q].maxLength) 
-    return WHYF("Queue #%d congested (size = %d)",q,overlay_tx[q].maxLength);
+  if (queue->length>=queue->maxLength) 
+    return WHYF("Queue #%d congested (size = %d)",p->queue,queue->maxLength);
 
   if (p->send_copies<=0)
     p->send_copies=1;
@@ -242,19 +243,19 @@ int overlay_payload_enqueue(int q, struct overlay_frame *p)
     p->sendBroadcast=1;
   }
   
-  struct overlay_frame *l=overlay_tx[q].last;
+  struct overlay_frame *l=queue->last;
   if (l) l->next=p;
   p->prev=l;
   p->next=NULL;
   p->enqueued_at=gettime_ms();
 
-  overlay_tx[q].last=p;
-  if (!overlay_tx[q].first) overlay_tx[q].first=p;
-  overlay_tx[q].length++;
+  queue->last=p;
+  if (!queue->first) queue->first=p;
+  queue->length++;
 
-  overlay_update_queue_schedule(&overlay_tx[q], p);
+  overlay_update_queue_schedule(queue, p);
   
-  if (0) dump_queue("after",q);
+  if (0) dump_queue("after",p->queue);
 
   return 0;
 }

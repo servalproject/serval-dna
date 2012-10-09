@@ -911,16 +911,16 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   }
   
   // TODO include priority in packet header
-  int qn=OQ_ORDINARY;
+  frame->queue=OQ_ORDINARY;
   /* Make sure voice traffic gets priority */
   if ((frame->type&OF_TYPE_BITS)==OF_TYPE_DATA_VOICE) {
-    qn=OQ_ISOCHRONOUS_VOICE;
+    frame->queue=OQ_ISOCHRONOUS_VOICE;
     rhizome_saw_voice_traffic();
   }
   
   frame->send_copies = mdp->out.send_copies;
   
-  if (overlay_payload_enqueue(qn, frame))
+  if (overlay_payload_enqueue(frame))
     op_free(frame);
   RETURN(0);
 }
