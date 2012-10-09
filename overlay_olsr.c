@@ -124,6 +124,7 @@ static void parse_frame(struct overlay_buffer *buff){
     WHYF("Unexpected magic number %d", magic);
     return;
   }
+  overlay_address_clear();
   
   frame.ttl = ob_get(buff);
   addr_len = ob_get(buff);
@@ -134,21 +135,31 @@ static void parse_frame(struct overlay_buffer *buff){
   
   addr = (struct in_addr *)ob_get_bytes_ptr(buff, addr_len);
   
-  // read source subscriber
-  if (overlay_address_parse(&context, buff, NULL, &frame.source))
+  // read subscriber id of transmitter
+  struct subscriber *sender;
+  if (overlay_address_parse(&context, buff, NULL, &sender))
     goto end;
   
   if (context.invalid_addresses)
     goto end;
   
-  if (frame.source->reachable==REACHABLE_NONE){
+  overlay_address_set_sender(sender);
+  
+  if (sender->reachable==REACHABLE_NONE){
     // locate the interface we should send outgoing unicast packets to
     overlay_interface *interface = overlay_interface_find(*addr);
     if (interface){
       // assume the port number of the other servald matches our local port number configuration
-      reachable_unicast(frame.source, interface, *addr, interface->port);
+      reachable_unicast(sender, interface, *addr, interface->port);
     }
   }
+  
+  // read subscriber id of payload origin
+  if (overlay_address_parse(&context, buff, NULL, &frame.source))
+    goto end;
+  
+  if (context.invalid_addresses)
+    goto end;
   
   // read source broadcast id
   // assume each packet may arrive multiple times due to routing loops between servald overlay and olsr.
@@ -169,8 +180,10 @@ static void parse_frame(struct overlay_buffer *buff){
   overlay_saw_mdp_containing_frame(&frame, gettime_ms());
   
   // TODO relay this packet to other non-olsr networks.
+  
 end:
-  send_please_explain(&context, my_subscriber, frame.source);
+  // if we didn't understand one of the address abreviations, ask for explanation
+  send_please_explain(&context, my_subscriber, sender);
 }
 
 static void olsr_read(struct sched_ent *alarm){
@@ -243,9 +256,16 @@ int olsr_send(struct overlay_frame *frame){
     return 0;
   
   struct overlay_buffer *b=ob_new();
+  overlay_address_clear();
+  
   // build olsr specific frame header
   ob_append_byte(b, PACKET_FORMAT_NUMBER);
   ob_append_byte(b, frame->ttl);
+  
+  // address the packet as transmitted by me
+  overlay_address_append(b, my_subscriber);
+  overlay_address_set_sender(my_subscriber);
+  
   overlay_address_append(b, frame->source);
   overlay_broadcast_append(b, &frame->broadcast_id);
   ob_append_byte(b, frame->modifiers);
