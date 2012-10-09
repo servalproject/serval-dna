@@ -33,15 +33,32 @@ rexp_did='[0-9+#]\{5,\}'
 
 # Utility function for extracting information from the output of servald
 # commands that return "key:value\n" pairs.
+#
+#     extract_stdout_keyvalue optional <varname> <key> [<delimiter>] <regular-expression>
+#
+# Examines the standard output of the last command executed using "execute" or
+# any of its variants.  If there is a line matching
+# "<key><delimiter><regular-expression>\n" then assigns the part matched by
+# <regular-expression> into the shell variable called <varname> and returns 0.
+# Otherwise, leaves <varname> unchanged and returns 1.
+#
+# The default <delimimter> is ':'.
+#
 extract_stdout_keyvalue_optional() {
    local _var="$1"
    local _label="$2"
+   local _delim=':'
    local _rexp="$3"
-   local _line=$(replayStdout | $GREP "^$_label:")
+   case $# in
+   3) ;;
+   4) _delim="$3"; _rexp="$4";;
+   *) error "invalid number of args";;
+   esac
+   local _line=$(replayStdout | $GREP "^$_label$_delim")
    local _value=
    local _return=1
    if [ -n "$_line" ]; then
-      _value="${_line#*:}"
+      _value="${_line#*$_delim}"
       _return=0
    fi
    [ -n "$_var" ] && eval $_var="$_value"

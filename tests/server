@@ -92,8 +92,8 @@ setup_StartStart() {
 }
 test_StartStart() {
    execute --exit-status=10 $servald start
-   extract_stdout_keyvalue start_instance_path instancepath '.*'
-   extract_stdout_keyvalue start_pid pid '[0-9]\+'
+   extract_stdout_keyvalue start_instance_path 'instancepath' '.*'
+   extract_stdout_keyvalue start_pid 'pid' '[0-9]\+'
    assert [ "$start_instance_path" = "$SERVALINSTANCE_PATH" ]
    assert [ "$servald_pid" = "$start_pid" ]
 }
