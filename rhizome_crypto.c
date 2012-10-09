@@ -112,10 +112,14 @@ int rhizome_extract_privatekey(rhizome_manifest *m, const unsigned char *authorS
 /*
    Test to see if the given manifest was created (signed) by any unlocked identity currently in the
    keyring.
-   Returns -1 if an error occurs, eg, the manifest contains an invalid BK field.
-   Return 0 if the manifest's BK field was produced by any currently unlocked SID.
-   Returns 1 if the manifest has no BK field.
-   Returns 2 otherwise.
+   - Returns -1 if an error occurs, eg, the manifest contains an invalid BK field.
+   - Return 0 if the manifest's BK field was produced by any currently unlocked SID.
+   - Returns 1 if the manifest has no BK field.
+   - Returns 2 otherwise.
+   Currently unused; was called from rhizome_list_manifests() to compute the now-defunct
+   ".selfsigned" column, but that made the Rhizome List view too slow in the Serval Mesh app.
+   See issue servalproject/serval-dna#17.
+   @author Andrew Bettison <andrew@servalproject.com>
  */
 int rhizome_is_self_signed(rhizome_manifest *m)
 {

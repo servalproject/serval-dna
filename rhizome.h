@@ -132,6 +132,11 @@ typedef struct rhizome_manifest {
   int group_count;
   char *groups[MAX_MANIFEST_VARS];
 
+  /* Author of the manifest.  A reference to a local keyring entry.  Manifests
+   * not authored locally will have the ANY author (all zeros).
+   */
+  unsigned char author[SID_SIZE];
+
 } rhizome_manifest;
 
 /* Supported service identifiers.  These go in the 'service' field of every
@@ -222,7 +227,7 @@ int rhizome_manifest_check_sanity(rhizome_manifest *m_in);
 int rhizome_manifest_check_file(rhizome_manifest *m_in);
 int rhizome_manifest_check_duplicate(rhizome_manifest *m_in,rhizome_manifest **m_out);
 
-int rhizome_manifest_bind_id(rhizome_manifest *m_in, const unsigned char *authorSid);
+int rhizome_manifest_bind_id(rhizome_manifest *m_in);
 int rhizome_manifest_bind_file(rhizome_manifest *m_in,const char *filename,int encryptP);
 int rhizome_manifest_finalise(rhizome_manifest *m);
 int rhizome_add_manifest(rhizome_manifest *m_in,int ttl);

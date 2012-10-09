@@ -251,18 +251,17 @@ int rhizome_direct_form_received(rhizome_http_request *r)
 	if (debug & DEBUG_RHIZOME) DEBUGF("manifest contains name=\"%s\"", name);
       }
 
-      const char *senderhex
-	= rhizome_manifest_get(m, "sender", NULL, 0);
-      if (!senderhex) senderhex=confValueGet("rhizome.api.addfile.author",NULL);
-      unsigned char authorSid[SID_SIZE];
-      if (senderhex) fromhexstr(authorSid,senderhex,SID_SIZE);
-      const char *bskhex
-	=confValueGet("rhizome.api.addfile.bundlesecretkey", NULL);   
+      const char *senderhex = rhizome_manifest_get(m, "sender", NULL, 0);
+      if (!senderhex)
+	senderhex = confValueGet("rhizome.api.addfile.author", NULL);
+      if (senderhex)
+	fromhexstr(m->author, senderhex, SID_SIZE);
+      const char *bskhex = confValueGet("rhizome.api.addfile.bundlesecretkey", NULL);   
 
       /* Bind an ID to the manifest, and also bind the file.  Then finalise the 
 	 manifest. But if the manifest already contains an ID, don't override it. */
       if (rhizome_manifest_get(m, "id", NULL, 0) == NULL) {
-	if (rhizome_manifest_bind_id(m, senderhex ? authorSid : NULL)) {
+	if (rhizome_manifest_bind_id(m)) {
 	  rhizome_manifest_free(m);
 	  m = NULL;
 	  rhizome_direct_clear_temporary_files(r);

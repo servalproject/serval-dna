@@ -141,7 +141,7 @@ test_AddEmpty() {
    assertGrep .manifest '^name=$'
    assertGrep .manifest '^filesize=0$'
    executeOk_servald rhizome list ''
-   assert_rhizome_list ''
+   assert_rhizome_list @$SIDB1
 }
 
 doc_AddThenList="List contains one file after one add"
@@ -157,11 +157,11 @@ test_AddThenList() {
    # Add first file
    executeOk_servald rhizome add file $SIDB1 '' file1 file1.manifest
    executeOk_servald rhizome list ''
-   assert_rhizome_list file1
+   assert_rhizome_list file1@$SIDB1
    # Add second file
    executeOk_servald rhizome add file $SIDB1 '' file2 file2.manifest
    executeOk_servald rhizome list ''
-   assert_rhizome_list file1 file2
+   assert_rhizome_list file1@$SIDB1 file2@$SIDB1
 }
 
 doc_AddThenExtractManifest="Extract manifest after one add"
@@ -171,7 +171,7 @@ setup_AddThenExtractManifest() {
    echo "A test file" >file1
    executeOk_servald rhizome add file $SIDB1 '' file1 file1.manifest
    executeOk_servald rhizome list ''
-   assert_rhizome_list file1
+   assert_rhizome_list file1@$SIDB1
    extract_manifest_id manifestid file1.manifest
    extract_manifest_version version file1.manifest
    extract_manifest_filehash filehash file1.manifest
@@ -179,14 +179,15 @@ setup_AddThenExtractManifest() {
 test_AddThenExtractManifest() {
    executeOk_servald rhizome extract manifest $manifestid file1x.manifest
    assert cmp file1.manifest file1x.manifest
-   assertStdoutLineCount '==' 6
+   assertStdoutLineCount '==' 7
    local size=$(( $(cat file1 | wc -c) + 0 ))
    assertStdoutGrep --matches=1 "^service:file$"
-   assertStdoutGrep --matches=1 "^manifestid:$manifestid$"
-   assertStdoutGrep --matches=1 "^version:$version$"
-   assertStdoutGrep --matches=1 "^inserttime:[0-9]\+$"
-   assertStdoutGrep --matches=1 "^filehash:$filehash$"
-   assertStdoutGrep --matches=1 "^filesize:$size$"
+   assertStdoutGrep --matches=1 "^manifestid:$manifestid\$"
+   assertStdoutGrep --matches=1 "^version:$version\$"
+   assertStdoutGrep --matches=1 "^inserttime:[0-9]\+\$"
+   assertStdoutGrep --matches=1 "^\.author:$SIDB1\$"
+   assertStdoutGrep --matches=1 "^filehash:$filehash\$"
+   assertStdoutGrep --matches=1 "^filesize:$size\$"
 }
 
 doc_ExtractMissingManifest="Extract non-existent manifest"
@@ -226,7 +227,7 @@ setup_AddThenExtractFile() {
    executeOk_servald rhizome add file $SIDB1 '' file1 file1.manifest
    tfw_cat --stderr
    executeOk_servald rhizome list ''
-   assert_rhizome_list file1
+   assert_rhizome_list file1@$SIDB1
    extract_manifest_filehash filehash file1.manifest
 }
 test_AddThenExtractFile() {
@@ -284,7 +285,7 @@ setup_AddDuplicate() {
    extract_stdout_secret file2_secret
    # Make sure they are both in the list.
    executeOk_servald rhizome list ''
-   assert_rhizome_list file1 file2
+   assert_rhizome_list file1@$SIDB1 file2@$SIDB1
 }
 test_AddDuplicate() {
    # Add first file again - nothing should change in its manifests, and it
@@ -294,7 +295,7 @@ test_AddDuplicate() {
    assert [ -s file1.manifestA ]
    assert_stdout_add_file file1
    executeOk_servald rhizome list ''
-   assert_rhizome_list file1 file2
+   assert_rhizome_list file1@$SIDB1 file2@$SIDB1
    strip_signatures file1.manifest file1.manifestA
    assert diff file1.manifest file1.manifestA
    # Repeat for second file.
@@ -302,7 +303,7 @@ test_AddDuplicate() {
    assert [ -s file2.manifestA ]
    assert_stdout_add_file file2
    executeOk_servald rhizome list ''
-   assert_rhizome_list file1 file2
+   assert_rhizome_list file1@$SIDB1 file2@$SIDB1
    strip_signatures file2.manifest file2.manifestA
    assert diff file2.manifest file2.manifestA
 }
@@ -320,7 +321,7 @@ test_AddMismatched() {
    assert cmp file1.manifest file1_2.manifest
    # And rhizome store should be unchanged.
    executeOk_servald rhizome list ''
-   assert_rhizome_list file1 file2
+   assert_rhizome_list file1@$SIDB1 file2@$SIDB1
 }
 
 doc_AddUpdateSameVersion="Add new payload to existing manifest with same version fails"
@@ -343,7 +344,7 @@ test_AddUpdateSameVersion() {
    assert cmp file1_2.manifest file1_2.manifest.orig
    # And rhizome store should be unchanged.
    executeOk_servald rhizome list ''
-   assert_rhizome_list file1 file2
+   assert_rhizome_list file1@$SIDB1 file2@$SIDB1
 }
 
 doc_AddUpdateNewVersion="Add new payload to existing manifest with new version"
@@ -357,11 +358,12 @@ setup_AddUpdateNewVersion() {
 test_AddUpdateNewVersion() {
    tfw_cat -v file1_2.manifest
    executeOk_servald rhizome add file $SIDB1 '' file1_2 file1_2.manifest
+   tfw_cat --stderr
    assert_stdout_add_file file1_2 name=file1
    assert_manifest_newer file1.manifest file1_2.manifest
    # Rhizome store contents reflect new payload.
    executeOk_servald rhizome list ''
-   assert_rhizome_list file1_2 file2
+   assert_rhizome_list file1_2@$SIDB1 file2@$SIDB1
 }
 
 doc_AddUpdateNoAuthor="Cannot add new payload to authorless manifest"
@@ -376,7 +378,7 @@ test_AddUpdateNoAuthor() {
    assertExitStatus '!=' 0
    # Rhizome store contents have old payload.
    executeOk_servald rhizome list ''
-   assert_rhizome_list file1 file2
+   assert_rhizome_list file1@$SIDB1 file2@$SIDB1
 }
 
 doc_AddUpdateNoAuthorWithSecret="Add new payload to authorless manifest with bundle secret"
@@ -389,7 +391,7 @@ test_AddUpdateNoAuthorWithSecret() {
    tfw_cat --stderr
    # Rhizome store contents have new payload.
    executeOk_servald rhizome list ''
-   assert_rhizome_list file1_2! file2
+   assert_rhizome_list file1_2@$SIDB1 file2@$SIDB1
 }
 
 doc_AddUpdateAutoVersion="Add new payload to existing manifest with automatic version"

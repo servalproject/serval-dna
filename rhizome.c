@@ -149,9 +149,10 @@ int rhizome_manifest_check_sanity(rhizome_manifest *m_in)
     by joining the parent group.
 */
 
-int rhizome_manifest_bind_id(rhizome_manifest *m_in, const unsigned char *authorSid)
+int rhizome_manifest_bind_id(rhizome_manifest *m_in)
 {
-  rhizome_manifest_createid(m_in);
+  if (rhizome_manifest_createid(m_in) == -1)
+    return -1;
   /* The ID is implicit in transit, but we need to store it in the file, so that reimporting
      manifests on receiver nodes works easily.  We might implement something that strips the id
      variable out of the manifest when sending it, or some other scheme to avoid sending all the
@@ -159,7 +160,7 @@ int rhizome_manifest_bind_id(rhizome_manifest *m_in, const unsigned char *author
   char id[RHIZOME_MANIFEST_ID_STRLEN + 1];
   rhizome_bytes_to_hex_upper(m_in->cryptoSignPublic, id, RHIZOME_MANIFEST_ID_BYTES);
   rhizome_manifest_set(m_in, "id", id);
-  if (authorSid) {
+  if (!is_sid_any(m_in->author)) {
     /* Set the BK using the provided authorship information.
        Serval Security Framework defines BK as being:
        BK = privateKey XOR sha512(RS##BID), where BID = cryptoSignPublic, 
@@ -168,7 +169,7 @@ int rhizome_manifest_bind_id(rhizome_manifest *m_in, const unsigned char *author
        privateKey = BK XOR sha512(RS##BID), so the same function can be used
        to encrypt and decrypt the BK field. */
     unsigned char bkbytes[RHIZOME_BUNDLE_KEY_BYTES];
-    if (rhizome_bk_xor(authorSid, m_in->cryptoSignPublic, m_in->cryptoSignSecret, bkbytes) == 0) {
+    if (rhizome_bk_xor(m_in->author, m_in->cryptoSignPublic, m_in->cryptoSignSecret, bkbytes) == 0) {
       char bkhex[RHIZOME_BUNDLE_KEY_STRLEN + 1];
       (void) tohex(bkhex, bkbytes, RHIZOME_BUNDLE_KEY_BYTES);
       if (debug&DEBUG_RHIZOME) DEBUGF("set BK=%s", bkhex);
@@ -281,7 +282,7 @@ int rhizome_manifest_check_file(rhizome_manifest *m_in)
 /* Check if a manifest is already stored for the same payload with the same details.
    This catches the case of "dna rhizome add file <filename>" on the same file more than once.
    (Debounce!) */
-int rhizome_manifest_check_duplicate(rhizome_manifest *m_in,rhizome_manifest **m_out)
+int rhizome_manifest_check_duplicate(rhizome_manifest *m_in, rhizome_manifest **m_out)
 {
   if (debug & DEBUG_RHIZOME) DEBUG("Checking for duplicate");
   if (m_out) *m_out = NULL; 

@@ -1030,8 +1030,13 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   }
   /* Bind an ID to the manifest, and also bind the file.  Then finalise the manifest.
      But if the manifest already contains an ID, don't override it. */
+  if (authorSidHex[0]) {
+    if (debug & DEBUG_RHIZOME)
+      DEBUGF("author=%s", authorSidHex);
+    memcpy(m->author, authorSid, SID_SIZE);
+  }
   if (rhizome_manifest_get(m, "id", NULL, 0) == NULL) {
-    if (rhizome_manifest_bind_id(m, authorSidHex[0] ? authorSid : NULL)) {
+    if (rhizome_manifest_bind_id(m) == -1) {
       rhizome_manifest_free(m);
       m = NULL;
       return WHY("Could not bind manifest to an ID");
@@ -1067,22 +1072,19 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
      PGS @20121003 - Hang on, didn't we create the ID above? Presumably the
      following does NOT in fact generate a bundle ID. 
   */
-  rhizome_manifest *mout = NULL;
-  if (debug & DEBUG_RHIZOME) DEBUGF("rhizome_add_manifest(author='%s')", authorSidHex);
-
   int ret=0;
-  if (rhizome_manifest_check_duplicate(m,&mout)==2)
-    {
-      /* duplicate found -- verify it so that we can write it out later */
-      rhizome_manifest_verify(mout);
-      ret=2;
-    } else {
+  rhizome_manifest *mout = NULL;
+  if (rhizome_manifest_check_duplicate(m, &mout) == 2) {
+    /* duplicate found -- verify it so that we can write it out later */
+    rhizome_manifest_verify(mout);
+    ret=2;
+  } else {
     /* not duplicate, so finalise and add to database */
     if (rhizome_manifest_finalise(m)) {
       rhizome_manifest_free(m);
       return WHY("Could not finalise manifest");
     }
-    if (rhizome_add_manifest(m,255 /* TTL */)) {
+    if (rhizome_add_manifest(m, 255 /* TTL */)) {
       rhizome_manifest_free(m);
       return WHY("Manifest not added to Rhizome database");
     }
@@ -1090,7 +1092,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
 
   /* If successfully added, overwrite the manifest file so that the Java component that is
      invoking this command can read it to obtain feedback on the result. */
-  rhizome_manifest *mwritten=mout?mout:m;
+  rhizome_manifest *mwritten = mout ? mout : m;
   if (manifestpath[0] 
       && rhizome_write_manifest_file(mwritten, manifestpath) == -1)
     ret = WHY("Could not overwrite manifest file.");

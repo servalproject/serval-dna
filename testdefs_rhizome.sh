@@ -47,17 +47,22 @@ assert_manifest_complete() {
 
 assert_rhizome_list() {
    assertStdoutLineCount --stderr '==' $(($# + 2))
-   assertStdoutIs --stderr --line=1 -e '11\n'
-   assertStdoutIs --stderr --line=2 -e 'service:id:version:date:.inserttime:.selfsigned:filesize:filehash:sender:recipient:name\n'
+   assertStdoutIs --stderr --line=1 -e '12\n'
+   assertStdoutIs --stderr --line=2 -e 'service:id:version:date:.inserttime:.author:.fromhere:filesize:filehash:sender:recipient:name\n'
    local filename
+   local re__author="\($rexp_sid\)\{0,1\}"
+   local re__fromhere
    local re__inserttime="$rexp_date"
    for filename; do
-      re__selfsigned=1
+      re__fromhere=1
       case "$filename" in
-      *!) filename="${filename%!}"; re__selfsigned=0;;
+      *@*) re__author="${filename##*@}"; filename="${filename%@*}";;
+      esac
+      case "$filename" in
+      *!) re__fromhere=0; filename="${filename%!}";;
       esac
       unpack_manifest_for_grep "$filename"
-      assertStdoutGrep --stderr --matches=1 "^$re_service:$re_manifestid:$re_version:$re_date:$re__inserttime:$re__selfsigned:$re_filesize:$re_filehash:$re_sender:$re_recipient:$re_name\$"
+      assertStdoutGrep --stderr --matches=1 "^$re_service:$re_manifestid:$re_version:$re_date:$re__inserttime:$re__author:$re__fromhere:$re_filesize:$re_filehash:$re_sender:$re_recipient:$re_name\$"
    done
 }
 
@@ -110,6 +115,8 @@ unpack_manifest_for_grep() {
    re_version="$rexp_version"
    re_date="$rexp_date"
    re_secret="$rexp_bundlesecret"
+   re_sender="\($rexp_sid\)\{0,1\}"
+   re_recipient="\($rexp_sid\)\{0,1\}"
    re_name=$(escape_grep_basic "${filename##*/}")
    local filesize=$($SED -n -e '/^filesize=/s///p' "$filename.manifest" 2>/dev/null)
    if [ "$filesize" = 0 ]; then
@@ -124,11 +131,11 @@ unpack_manifest_for_grep() {
    # file, then use its file hash to check the rhizome list '' output.
    local filehash=$($SED -n -e '/^filehash=/s///p' "$filename.manifest" 2>/dev/null)
    if [ "$filehash" = "$re_filehash" ]; then
+      re_service=$($SED -n -e '/^service=/s///p' "$filename.manifest")
+      re_service=$(escape_grep_basic "$re_service")
       re_manifestid=$($SED -n -e '/^id=/s///p' "$filename.manifest")
       re_version=$($SED -n -e '/^version=/s///p' "$filename.manifest")
       re_date=$($SED -n -e '/^date=/s///p' "$filename.manifest")
-      re_service=$($SED -n -e '/^service=/s///p' "$filename.manifest")
-      re_service=$(escape_grep_basic "$re_service")
       re_sender=$($SED -n -e '/^sender=/s///p' "$filename.manifest")
       re_recipient=$($SED -n -e '/^recipient=/s///p' "$filename.manifest")
       case "$re_service" in
@@ -138,6 +145,8 @@ unpack_manifest_for_grep() {
          ;;
       *)
          re_name=
+         re_sender="$rexp_sid"
+         re_recipient="$rexp_sid"
          ;;
       esac
    fi
