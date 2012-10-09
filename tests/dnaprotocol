@@ -67,17 +67,6 @@ set_server_vars() {
    executeOk_servald config set debug.keyring Yes
 }
 
-doc_MultiServer="Start three servald servers with dummy interfaces"
-setup_MultiServer() {
-   setup_servald
-   assert_no_servald_processes
-   foreach_instance +A +B +C create_single_identity
-   configure_servald_server() { set_server_vars; }
-}
-test_MultiServer() {
-   start_servald_instances +A +B +C
-}
-
 doc_LookupWildcard="Lookup by wildcard"
 test_LookupWildcard() {
    executeOk_servald dna lookup "*"

@@ -1,0 +1,82 @@
+#!/bin/bash
+
+# Tests for Route discovery
+# Copyright 2012 Serval Project
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+
+configure_servald_server() {
+   executeOk_servald config set log.show_pid on
+   executeOk_servald config set log.show_time on
+   executeOk_servald config set debug.mdprequests Yes
+}
+
+add_interface() {
+   >$SERVALD_VAR/$1
+   executeOk_servald config get interfaces
+   extract_stdout_keyvalue_optional EXISTING 'interfaces' '=' '.*'
+   executeOk_servald config set interfaces "+>$1,$EXISTING"
+}
+
+start_routing_instance() {
+   executeOk_servald config set interface.folder "$SERVALD_VAR"
+   executeOk_servald config set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name"
+   executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name"
+   executeOk_servald config set log.show_pid on
+   executeOk_servald config set log.show_time on
+   executeOk_servald config set debug.mdprequests Yes
+   start_servald_server
+}
+
+teardown() {
+   stop_all_servald_servers
+   kill_all_servald_processes
+   assert_no_servald_processes
+}
+
+setup_single_link() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B create_single_identity
+   start_servald_instances +A +B
+}
+
+doc_single_link="Start 2 instances on one link"
+test_single_link() {
+   set_instance +A
+   executeOk_servald mdp ping $SIDB 3
+}
+
+setup_multihop_linear() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B +C +D create_single_identity
+   foreach_instance +A +B add_interface dummy1
+   foreach_instance +B +C add_interface dummy2
+   foreach_instance +C +D add_interface dummy3
+   foreach_instance +A +B +C +D start_routing_instance
+}
+
+doc_multihop_linear="Start 4 instances in a linear arrangement"
+test_multihop_linear() {
+   wait_until --sleep=0.25 instances_see_each_other +A +B +C +D
+   set_instance +A
+   executeOk_servald mdp ping $SIDD 3
+}
+
+runTests "$@"

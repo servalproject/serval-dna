@@ -630,13 +630,12 @@ assert_peers_are_instances() {
 #   selfannounce mechanism
 has_seen_instances() {
    local I N
-   local logvar=LOG$instance_name
    for I; do
       [ $I = $instance_arg ] && continue
       for ((N=1; 1; ++N)); do
          local sidvar=SID${I#+}$N
          [ -n "${!sidvar}" ] || break
-         if ! grep "ADD OVERLAY NODE sid=${!sidvar}" "${!logvar}"; then
+         if ! grep "ADD OVERLAY NODE sid=${!sidvar}" $instance_servald_log; then
             return 1
          fi
       done
