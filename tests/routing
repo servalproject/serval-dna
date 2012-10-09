@@ -60,6 +60,7 @@ doc_single_link="Start 2 instances on one link"
 test_single_link() {
    set_instance +A
    executeOk_servald mdp ping $SIDB 3
+   tfw_cat --stdout --stderr
 }
 
 setup_multihop_linear() {
@@ -77,6 +78,7 @@ test_multihop_linear() {
    wait_until --sleep=0.25 instances_see_each_other +A +B +C +D
    set_instance +A
    executeOk_servald mdp ping $SIDD 3
+   tfw_cat --stdout --stderr
 }
 
 runTests "$@"

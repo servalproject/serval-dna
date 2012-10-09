@@ -103,16 +103,19 @@ int overlayServerMode()
   for(i=0;i<OQ_MAX;i++) {
     overlay_tx[i].maxLength=100;
     overlay_tx[i].latencyTarget=1000; /* Keep packets in queue for 1 second by default */
-    overlay_tx[i].transmit_delay=10; /* Hold onto packets for 10ms before trying to send a full packet */
+    overlay_tx[i].transmit_delay=5; /* Hold onto packets for 10ms before trying to send a full packet */
     overlay_tx[i].grace_period=100; /* Delay sending a packet for up to 100ms if servald has other processing to do */
   }
   /* expire voice/video call packets much sooner, as they just aren't any use if late */
-  overlay_tx[OQ_ISOCHRONOUS_VOICE].latencyTarget=500;
-  overlay_tx[OQ_ISOCHRONOUS_VIDEO].latencyTarget=500;
+  overlay_tx[OQ_ISOCHRONOUS_VOICE].latencyTarget=200;
+  overlay_tx[OQ_ISOCHRONOUS_VIDEO].latencyTarget=200;
 
   /* try to send voice packets without any delay, and before other background processing */
   overlay_tx[OQ_ISOCHRONOUS_VOICE].transmit_delay=0;
   overlay_tx[OQ_ISOCHRONOUS_VOICE].grace_period=0;
+  
+  /* Routing payloads, ack's and nacks need to be sent immediately */
+  overlay_tx[OQ_MESH_MANAGEMENT].transmit_delay=0;
 
   /* opportunistic traffic can be significantly delayed */
   overlay_tx[OQ_OPPORTUNISTIC].transmit_delay=200;

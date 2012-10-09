@@ -204,12 +204,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
    time.
    #define OF_CRYPTO_PARANOID 0x0c Encrypted and digitally signed frame, with final destination address also encrypted. */
 
-/* Data compression */
-#define OF_COMPRESS_BITS 0x03
-#define OF_COMPRESS_NONE 0x00
-#define OF_COMPRESS_GZIP 0x01     /* Frame compressed with gzip */
-#define OF_COMPRESS_BZIP2 0x02    /* bzip2 */
-#define OF_COMPRESS_RESERVED 0x03 /* Reserved for another compression system */
+/* QOS packet queue bits */
+#define OF_QUEUE_BITS 0x03
 
 #define RFS_PLUS250 0xfa
 #define RFS_PLUS456 0xfb

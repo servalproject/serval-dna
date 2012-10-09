@@ -24,6 +24,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 static int op_append_type(struct overlay_buffer *headers, struct overlay_frame *p)
 {
   unsigned char c[3];
+  // pack the QOS queue into the modifiers
+  int q_bits = p->queue;
+  if (q_bits>0) q_bits--;
+  if (q_bits>3) q_bits=3;
+  
+  p->modifiers = (p->modifiers & ~OF_QUEUE_BITS)|q_bits;
+  
   switch(p->type&OF_TYPE_FLAG_BITS)
     {
     case OF_TYPE_FLAG_NORMAL:
@@ -195,7 +202,7 @@ int overlay_payload_enqueue(struct overlay_frame *p)
       return WHYF("Destination %s is unreachable (%d)", alloca_tohex_sid(p->destination->sid), r);
   }
       
-  if (p->queue<0||p->queue>=OQ_MAX) 
+  if (p->queue>=OQ_MAX) 
     return WHY("Invalid queue specified");
   
   overlay_txqueue *queue = &overlay_tx[p->queue];

@@ -797,6 +797,7 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
     mdp.out.src.port=port;
     bcopy(srcsid,mdp.out.src.sid,SID_SIZE);
     bcopy(ping_sid,&mdp.out.dst.sid[0],SID_SIZE);
+    mdp.out.queue=OQ_MESH_MANAGEMENT;
     /* Set port to well known echo port (from /etc/services) */
     mdp.out.dst.port=7;
     mdp.out.payload_length=4+8;

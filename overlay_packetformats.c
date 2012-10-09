@@ -92,8 +92,6 @@ int overlay_forward_payload(struct overlay_frame *f){
   if (!qf) 
     return WHY("Could not clone frame for queuing");
   
-  // TODO include priority in packet header
-  qf->queue=OQ_ORDINARY;
   /* Make sure voice traffic gets priority */
   if ((qf->type&OF_TYPE_BITS)==OF_TYPE_DATA_VOICE) {
     qf->queue=OQ_ISOCHRONOUS_VOICE;
@@ -223,6 +221,8 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 	f.modifiers=0;
 	break;
     }
+    
+    f.queue = (f.modifiers & OF_QUEUE_BITS) +1;
     
     /* Get time to live */
     f.ttl=ob_get(b);

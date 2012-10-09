@@ -371,6 +371,8 @@ int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now)
   overlay_mdp_frame mdp;
   bzero(&mdp, sizeof(overlay_mdp_frame));
   
+  mdp.in.queue = f->queue;
+  
   /* Get source and destination addresses */
   if (f->destination)
     bcopy(f->destination->sid,mdp.in.dst.sid,SID_SIZE);
@@ -910,9 +912,11 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
     break;
   }
   
-  // TODO include priority in packet header
-  frame->queue=OQ_ORDINARY;
-  /* Make sure voice traffic gets priority */
+  frame->queue=mdp->out.queue;
+  if (frame->queue==0)
+    frame->queue = OQ_ORDINARY;
+  
+  /* Make sure only voice traffic gets priority */
   if ((frame->type&OF_TYPE_BITS)==OF_TYPE_DATA_VOICE) {
     frame->queue=OQ_ISOCHRONOUS_VOICE;
     rhizome_saw_voice_traffic();
