@@ -208,6 +208,7 @@ typedef struct keypair {
 #define PKR_MAC_BYTES 64
 typedef struct keyring_identity {
   char *PKRPin;
+  struct subscriber *subscriber;
   unsigned int slot;
   int keypair_count;
   keypair *keypairs[PKR_MAX_KEYPAIRS];

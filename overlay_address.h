@@ -99,6 +99,8 @@ struct subscriber{
   time_ms_t sas_last_request;
   unsigned char sas_valid;
   
+  // private keys for local identities
+  keyring_identity *identity;
 };
 
 struct broadcast{

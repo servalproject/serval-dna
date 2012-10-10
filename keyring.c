@@ -226,6 +226,11 @@ void keyring_free_identity(keyring_identity *id)
     if (id->keypairs[i])
       keyring_free_keypair(id->keypairs[i]);
 
+  if (id->subscriber){
+    id->subscriber->identity=NULL;
+    set_reachable(id->subscriber, REACHABLE_NONE);
+  }
+    
   bzero(id,sizeof(keyring_identity));
   return;
 }
@@ -694,12 +699,15 @@ int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
   int i=0;
   for (i=0;i<id->keypair_count;i++){
     if (id->keypairs[i]->type == KEYTYPE_CRYPTOBOX){
-      struct subscriber *subscriber = find_subscriber(id->keypairs[i]->public_key, SID_SIZE, 1);
-      if (subscriber){
-	set_reachable(subscriber, REACHABLE_SELF);
+      id->subscriber = find_subscriber(id->keypairs[i]->public_key, SID_SIZE, 1);
+      if (id->subscriber){
+	set_reachable(id->subscriber, REACHABLE_SELF);
+	id->subscriber->identity = id;
 	if (!my_subscriber)
-	  my_subscriber=subscriber;
+	  my_subscriber=id->subscriber;
       }
+      // only one key per identity supported
+      break;
     }
   }
   
@@ -770,6 +778,7 @@ int keyring_enter_pin(keyring_file *k, const char *pin)
    with the specified PKR pin.  
    The crypto_box and crypto_sign key pairs are automatically created, and the PKR
    is packed and written to a hithero unallocated slot which is then marked full. 
+   Requires an explicit call to keyring_commit()
 */
 keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, const char *pin)
 {
@@ -840,14 +849,6 @@ keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, co
     crypto_box_curve25519xsalsa20poly1305_keypair(id->keypairs[0]->public_key,
 						  id->keypairs[0]->private_key);
 
-  // add new identity to in memory table
-  struct subscriber *subscriber = find_subscriber(id->keypairs[0]->public_key, SID_SIZE, 1);
-  if (subscriber){
-    set_reachable(subscriber, REACHABLE_SELF);
-    if (!my_subscriber)
-      my_subscriber=subscriber;
-  }
-  
   /* crypto_sign key pair */
   id->keypairs[1]=calloc(sizeof(keypair),1);
   if (!id->keypairs[1]) {
@@ -899,21 +900,15 @@ keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, co
   /* Add identity to data structure */
   c->identities[c->identity_count++]=id;
 
-  /* We require explicit calling of keyring_commit(), since that seems
-     more sensible */
-#ifdef NOTDEFINED
-  /* Commit keyring to disk */
-  if (keyring_commit(k))
-    {
-      /* Write to disk failed, so unlink identity and clear allocation and generally
-	 clean up the mess. */
-      b->bitmap[byte]&=0xff-(1<<bit);
-      /* Add identity to data structure */
-      c->identities[--c->identity_count]=NULL;
-    }
-  else
-#endif
-
+  // add new identity to in memory table
+  id->subscriber = find_subscriber(id->keypairs[0]->public_key, SID_SIZE, 1);
+  if (id->subscriber){
+    set_reachable(id->subscriber, REACHABLE_SELF);
+    id->subscriber->identity = id;
+    if (!my_subscriber)
+      my_subscriber=id->subscriber;
+  }
+  
   /* Everything went fine */
   return id;
 
