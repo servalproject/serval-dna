@@ -39,7 +39,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf.h"
 #include "strbuf_helpers.h"
 
-unsigned int debug = 0;
+debugflags_t debug = 0;
 
 static FILE *logfile = NULL;
 static int flag_show_pid = -1;
@@ -290,7 +290,8 @@ int logDump(int level, struct __sourceloc where, char *name, const unsigned char
   return 0;
 }
 
-unsigned int debugFlagMask(const char *flagname) {
+debugflags_t debugFlagMask(const char *flagname)
+{
   if	  (!strcasecmp(flagname,"all"))			return DEBUG_ALL;
   else if (!strcasecmp(flagname,"interfaces"))		return DEBUG_OVERLAYINTERFACES;
   else if (!strcasecmp(flagname,"rx"))			return DEBUG_PACKETRX;

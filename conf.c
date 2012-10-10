@@ -296,15 +296,15 @@ int64_t confValueGetInt64Range(const char *var, int64_t defaultValue, int64_t ra
 void confSetDebugFlags()
 {
   if (config_buffer || read_config() != -1) {
-    unsigned int setmask = 0;
-    unsigned int clearmask = 0;
+    debugflags_t setmask = 0;
+    debugflags_t clearmask = 0;
     int setall = 0;
     int clearall = 0;
     unsigned int i;
     for (i = 0; i != confc; ++i) {
       char *var = confvar[i];
       if (strncasecmp(var, "debug.", 6) == 0) {
-	unsigned int mask = debugFlagMask(var + 6);
+	debugflags_t mask = debugFlagMask(var + 6);
 	if (mask == 0)
 	  WARNF("Unsupported debug option '%s'", var);
 	else {

@@ -23,7 +23,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdarg.h>
 #include "strbuf_helpers.h"
 
-extern unsigned int debug;
+typedef unsigned int debugflags_t;
+
+extern debugflags_t debug;
 
 #define DEBUG_ALL                   (~0)
 #define DEBUG_PACKETRX              (1 << 0)
@@ -76,7 +78,7 @@ void logArgv(int level, struct __sourceloc where, const char *label, int argc, c
 void logString(int level, struct __sourceloc where, const char *str); 
 void logMessage(int level, struct __sourceloc where, const char *fmt, ...);
 void vlogMessage(int level, struct __sourceloc where, const char *fmt, va_list);
-unsigned int debugFlagMask(const char *flagname);
+debugflags_t debugFlagMask(const char *flagname);
 int logDump(int level, struct __sourceloc where, char *name, const unsigned char *addr, size_t len);
 char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcBytes, const char quotes[2]);
 char *toprint_str(char *dstStr, ssize_t dstBufSiz, const char *srcStr, const char quotes[2]);
