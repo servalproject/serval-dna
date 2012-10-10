@@ -87,6 +87,8 @@ int overlay_frame_append_payload(overlay_interface *interface, struct overlay_fr
     goto cleanup;    
 
   /* Write out TTL */
+  if (p->ttl>64)
+    p->ttl=64;
   if (ob_append_byte(headers,p->ttl))
     goto cleanup;
 

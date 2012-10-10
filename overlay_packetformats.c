@@ -72,7 +72,6 @@ int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, s
 
 // duplicate the frame and queue it
 int overlay_forward_payload(struct overlay_frame *f){
-  f->ttl--;
   if (f->ttl<=0)
     return 0;
   
@@ -226,6 +225,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     
     /* Get time to live */
     f.ttl=ob_get(b);
+    f.ttl--;
 
     /* Decode length of remainder of frame */
     int payload_len=rfs_decode(b->bytes, &b->position);

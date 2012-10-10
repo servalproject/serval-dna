@@ -81,4 +81,26 @@ test_multihop_linear() {
    tfw_cat --stdout --stderr
 }
 
+setup_crowded_mess() {
+   setup_servald
+   assert_no_servald_processes
+# BCDE & DEFG form squares, ABC & FGH form triangles
+   foreach_instance +A +B +C +D +E +F +G +H create_single_identity
+   foreach_instance +A +B +C add_interface dummy1
+   foreach_instance +B +D add_interface dummy2
+   foreach_instance +C +E add_interface dummy3
+   foreach_instance +D +E add_interface dummy4
+   foreach_instance +D +F add_interface dummy5
+   foreach_instance +E +G add_interface dummy6
+   foreach_instance +F +G +H add_interface dummy7
+   foreach_instance +A +B +C +D +E +F +G +H start_routing_instance
+}
+
+doc_crowded_mess="Multiple possible paths"
+test_crowded_mess() {
+   set_instance +A
+   executeOk_servald mdp ping $SIDH 5
+   tfw_cat --stdout --stderr
+}
+
 runTests "$@"

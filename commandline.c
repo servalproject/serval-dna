@@ -833,9 +833,13 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
 	    {
 	      int *rxseq=(int *)&mdp.in.payload;
 	      long long *txtime=(long long *)&mdp.in.payload[4];
+	      int hop_count = 64 - mdp.in.ttl;
 	      time_ms_t delay = gettime_ms() - *txtime;
-	      printf("%s: seq=%d time=%lld ms%s%s\n",
-		     alloca_tohex_sid(mdp.in.src.sid),(*rxseq)-firstSeq+1,delay,
+	      printf("%s: seq=%d time=%lld hops=%d ms%s%s\n",
+		     alloca_tohex_sid(mdp.in.src.sid),
+		     (*rxseq)-firstSeq+1,
+		     delay,
+		     hop_count,
 		     mdp.packetTypeAndFlags&MDP_NOCRYPT?"":" ENCRYPTED",
 		     mdp.packetTypeAndFlags&MDP_NOSIGN?"":" SIGNED");
 	      // TODO Put duplicate pong detection here so that stats work properly.

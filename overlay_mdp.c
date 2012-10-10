@@ -372,6 +372,7 @@ int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now)
   bzero(&mdp, sizeof(overlay_mdp_frame));
   
   mdp.in.queue = f->queue;
+  mdp.in.ttl = f->ttl;
   
   /* Get source and destination addresses */
   if (f->destination)
@@ -530,7 +531,8 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp, time_ms_t now)
 
 	  /* Swap addresses */
 	  overlay_mdp_swap_src_dst(mdp);
-
+	  mdp->out.ttl=0;
+	  
 	  /* Prevent echo:echo connections and the resulting denial of service from triggering endless pongs. */
 	  if (mdp->out.dst.port==MDP_PORT_ECHO) {
 	    RETURN(WHY("echo loop averted"));
@@ -710,7 +712,10 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   }else{
     frame->destination = find_subscriber(mdp->out.dst.sid, SID_SIZE, 1);
   }
-  frame->ttl=64; /* normal TTL (XXX allow setting this would be a good idea) */	
+  
+  frame->ttl=mdp->out.ttl;
+  if (frame->ttl==0) 
+    frame->ttl=64; /* default TTL */	
   
   if (!frame->destination || frame->destination->reachable == REACHABLE_SELF)
     {

@@ -1224,6 +1224,7 @@ int keyring_mapping_request(keyring_file *k, overlay_mdp_frame *req)
     /* and record the full length of this */
     req->out.payload_length = 1 + SAS_SIZE + slen;
     overlay_mdp_swap_src_dst(req);
+    req->out.ttl=0;
     req->packetTypeAndFlags=MDP_TX; /* crypt and sign */
     if (debug & DEBUG_KEYRING)
       DEBUGF("Sending SID:SAS mapping, %d bytes, %s:0x%X -> %s:0x%X",

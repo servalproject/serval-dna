@@ -700,6 +700,7 @@ typedef struct overlay_mdp_data_frame {
   // temporary hack to improve reliability before implementing per-packet nack's
   int send_copies;
   int queue;
+  int ttl;
   unsigned char payload[MDP_MTU-100];
 } overlay_mdp_data_frame;
 
