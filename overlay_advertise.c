@@ -65,7 +65,8 @@ int add_advertisement(struct subscriber *subscriber, void *context){
   
   if (subscriber->node){
     overlay_node *n=subscriber->node;
-    
+    // never send the full sid in an advertisement
+    subscriber->send_full=0;
     if (overlay_address_append(e,subscriber) ||
 	ob_append_byte(e,n->best_link_score) ||
 	ob_append_byte(e,n->observations[n->best_observation].gateways_en_route)){
@@ -181,7 +182,9 @@ int overlay_route_add_advertisements(overlay_interface *interface, struct overla
 int overlay_route_saw_advertisements(int i, struct overlay_frame *f, struct decode_context *context, time_ms_t now)
 {
   IN();
-  while(f->payload->position < f->payload->sizeLimit)
+  context->abbreviations_only=1;
+  // minimum record length is (address code, 3 byte sid, score, gateways)
+  while(f->payload->position +6 <= f->payload->sizeLimit)
     {
       struct subscriber *subscriber;
       context->invalid_addresses=0;
@@ -216,6 +219,6 @@ int overlay_route_saw_advertisements(int i, struct overlay_frame *f, struct deco
 				score,gateways_en_route);
       
     }
-  
-  RETURN(0);;
+  context->abbreviations_only=0;
+  RETURN(0);
 }

@@ -108,6 +108,7 @@ struct broadcast{
 };
 
 struct decode_context{
+  int abbreviations_only;
   int invalid_addresses;
   struct overlay_frame *please_explain;
 };

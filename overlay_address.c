@@ -522,7 +522,7 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
   }
   
   // we must assume that we wont be able to understand the rest of the packet
-  if (code<=0x0f)
+  if (code<=0x0f || context->abbreviations_only)
     return WHYF("Unsupported abbreviation code %d", code);
   
   return find_subscr_buffer(context, b, -1, SID_SIZE,1,subscriber);
