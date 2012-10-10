@@ -314,7 +314,7 @@ debugflags_t debugFlagMask(const char *flagname)
   else if (!strcasecmp(flagname,"rhizome"))	        return DEBUG_RHIZOME;
   else if (!strcasecmp(flagname,"rhizometx"))		return DEBUG_RHIZOME_TX;
   else if (!strcasecmp(flagname,"rhizomerx"))		return DEBUG_RHIZOME_RX;
-  else if (!strcasecmp(flagname,"rhizomerx"))		return DEBUG_RHIZOME_RX;
+  else if (!strcasecmp(flagname,"rhizomeads"))		return DEBUG_RHIZOME_ADS;
   else if (!strcasecmp(flagname,"monitorroutes"))	return DEBUG_OVERLAYROUTEMONITOR;
   else if (!strcasecmp(flagname,"queues"))		return DEBUG_QUEUES;
   else if (!strcasecmp(flagname,"broadcasts"))		return DEBUG_BROADCASTS;

@@ -1346,7 +1346,9 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
 	  && sqlite3_column_type(statement, 1) == SQLITE_BLOB
 	  && sqlite3_column_type(statement, 2) == SQLITE_INTEGER
 	  && sqlite3_column_type(statement, 3) == SQLITE_INTEGER
-	  && sqlite3_column_type(statement, 4) == SQLITE_TEXT
+	  && (  sqlite3_column_type(statement, 4) == SQLITE_TEXT
+	     || sqlite3_column_type(statement, 4) == SQLITE_NULL
+	     )
     )) {
       ret = WHY("Incorrect statement column");
       break;
