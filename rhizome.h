@@ -246,6 +246,8 @@ __RHIZOME_INLINE int sqlite_code_busy(int code)
   return code == SQLITE_BUSY || code == SQLITE_LOCKED;
 }
 
+debugflags_t sqlite_set_debugmask(debugflags_t newmask);
+
 sqlite3_stmt *_sqlite_prepare(struct __sourceloc where, sqlite_retry_state *retry, const char *sqlformat, ...);
 sqlite3_stmt *_sqlite_prepare_loglevel(struct __sourceloc where, int log_level, sqlite_retry_state *retry, strbuf stmt);
 int _sqlite_retry(struct __sourceloc where, sqlite_retry_state *retry, const char *action);

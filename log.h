@@ -55,6 +55,7 @@ extern debugflags_t debug;
 #define DEBUG_MANIFESTS             (1 << 24)
 #define DEBUG_MDPREQUESTS           (1 << 25)
 #define DEBUG_TIMING                (1 << 26)
+#define DEBUG_RHIZOME_ADS           (1 << 27)
 
 #define LOG_LEVEL_SILENT    (-1)
 #define LOG_LEVEL_DEBUG     (0)

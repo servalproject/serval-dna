@@ -120,10 +120,36 @@ int rhizome_manifest_priority(sqlite_retry_state *retry, const char *id)
   return (int) result;
 }
 
+debugflags_t sqlite_trace_debug = DEBUG_RHIZOME;
+const struct __sourceloc *sqlite_trace_where = NULL;
+
 static void sqlite_trace_callback(void *context, const char *rendered_sql)
 {
-  if (debug & DEBUG_RHIZOME)
-    DEBUG(rendered_sql);
+  if (debug & sqlite_trace_debug)
+    logMessage(LOG_LEVEL_DEBUG, sqlite_trace_where ? *sqlite_trace_where : __HERE__, "%s", rendered_sql);
+}
+
+/* This function allows code like:
+ *
+ *    debugflags_t oldmask = sqlite_set_debugmask(DEBUG_SOMETHING_ELSE);
+ *    ...
+ *    sqlite3_stmt *statement = sqlite_prepare(&retry, "select blah blah blah");
+ *    while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
+ *	// do blah blah blah
+ *    }
+ *    ...
+ *    sqlite_set_debugmask(oldmask);
+ *    return result;
+ *
+ * so that code can choose which DEBUG_ flags control the logging of rendered SQL queries.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+debugflags_t sqlite_set_debugmask(debugflags_t newmask)
+{
+  debugflags_t oldmask = sqlite_trace_debug;
+  sqlite_trace_debug = newmask;
+  return oldmask;
 }
 
 int rhizome_opendb()
@@ -315,9 +341,9 @@ sqlite3_stmt *_sqlite_prepare_loglevel(struct __sourceloc where, int log_level, 
 
 int _sqlite_step_retry(struct __sourceloc where, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement)
 {
-  if (!statement)
-    return -1;
-  while (1) {
+  int ret = -1;
+  sqlite_trace_where = &where;
+  while (statement) {
     int stepcode = sqlite3_step(statement);
     switch (stepcode) {
       case SQLITE_OK:
@@ -325,7 +351,9 @@ int _sqlite_step_retry(struct __sourceloc where, int log_level, sqlite_retry_sta
       case SQLITE_ROW:
 	if (retry)
 	  _sqlite_retry_done(where, retry, sqlite3_sql(statement));
-	return stepcode;
+	ret = stepcode;
+	statement = NULL;
+	break;
       case SQLITE_BUSY:
       case SQLITE_LOCKED:
 	if (retry && _sqlite_retry(where, retry, sqlite3_sql(statement))) {
@@ -335,9 +363,13 @@ int _sqlite_step_retry(struct __sourceloc where, int log_level, sqlite_retry_sta
 	// fall through...
       default:
 	logMessage(log_level, where, "query failed, %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));
-	return -1;
+	ret = -1;
+	statement = NULL;
+	break;
     }
   }
+  sqlite_trace_where = NULL;
+  return ret;
 }
 
 /*

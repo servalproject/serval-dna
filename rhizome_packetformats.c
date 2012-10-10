@@ -208,18 +208,21 @@ int overlay_rhizome_add_advertisements(int interface_number, struct overlay_buff
 
   // TODO Group handling not completely thought out here yet.
 
+  debugflags_t oldmask = sqlite_set_debugmask(DEBUG_RHIZOME_ADS);
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
 
   /* Get number of bundles available if required */
   long long tmp = 0;
-  if (sqlite_exec_int64_retry(&retry, &tmp, "SELECT COUNT(BAR) FROM MANIFESTS;") != 1)
-    { RETURN(WHY("Could not count BARs for advertisement")); }
+  if (sqlite_exec_int64_retry(&retry, &tmp, "SELECT COUNT(BAR) FROM MANIFESTS;") != 1) {
+    sqlite_set_debugmask(oldmask);
+    RETURN(WHY("Could not count BARs for advertisement"));
+  }
   bundles_available = (int) tmp;
   if (bundles_available==-1||(bundle_offset[0]>=bundles_available)) 
     bundle_offset[0]=0;
   if (bundles_available==-1||(bundle_offset[1]>=bundles_available)) 
     bundle_offset[1]=0;
-  if(0)
+  if (debug & DEBUG_RHIZOME_ADS)
     DEBUGF("%d bundles in database (%d %d), slots=%d.",bundles_available,
 	   bundle_offset[0],bundle_offset[1],slots);
   
@@ -236,8 +239,10 @@ int overlay_rhizome_add_advertisements(int interface_number, struct overlay_buff
       statement = sqlite_prepare(&retry, "SELECT BAR,ROWID FROM MANIFESTS LIMIT %d,%d", bundle_offset[pass], slots);
       break;
     }
-    if (!statement)
+    if (!statement) {
+      sqlite_set_debugmask(oldmask);
       RETURN(WHY("Could not prepare sql statement for fetching BARs for advertisement"));
+    }
     while(  sqlite_step_retry(&retry, statement) == SQLITE_ROW
 	&&  e->position+RHIZOME_BAR_BYTES<=e->sizeLimit
     ) {
@@ -259,7 +264,7 @@ int overlay_rhizome_add_advertisements(int interface_number, struct overlay_buff
 
 	int blob_bytes=sqlite3_blob_bytes(blob);
 	if (pass&&(blob_bytes!=RHIZOME_BAR_BYTES)) {
-	  if (debug&DEBUG_RHIZOME)
+	  if (debug&DEBUG_RHIZOME_ADS)
 	    DEBUG("Found a BAR that is the wrong size - ignoring");
 	  sqlite3_blob_close(blob);
 	  blob=NULL;
@@ -328,6 +333,7 @@ int overlay_rhizome_add_advertisements(int interface_number, struct overlay_buff
 
   ob_patch_rfs(e, COMPUTE_RFS_LENGTH);
 
+  sqlite_set_debugmask(oldmask);
   RETURN(0);
 }
 
@@ -342,6 +348,8 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
   rhizome_manifest *m=NULL;
   char httpaddrtxt[INET_ADDRSTRLEN];
   
+  debugflags_t oldmask = sqlite_set_debugmask(DEBUG_RHIZOME_ADS);
+
   switch (ad_frame_type) {
     case 3:
       /* The same as type=1, but includes the source HTTP port number */
@@ -376,12 +384,14 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
 	m = rhizome_new_manifest();
 	if (!m) {
 	  WHY("Out of manifests");
+	  sqlite_set_debugmask(oldmask);
 	  RETURN(0);
 	}
 	
 	if (rhizome_read_manifest_file(m, (char *)data, manifest_length) == -1) {
 	  WHY("Error importing manifest body");
 	  rhizome_manifest_free(m);
+	  sqlite_set_debugmask(oldmask);
 	  RETURN(0);
 	}
 	
@@ -389,13 +399,15 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
 	if (rhizome_manifest_get(m, "id", manifest_id_prefix, sizeof manifest_id_prefix) == NULL) {
 	  WHY("Manifest does not contain 'id' field");
 	  rhizome_manifest_free(m);
+	  sqlite_set_debugmask(oldmask);
 	  RETURN(0);
 	}
 	/* trim manifest ID to a prefix for ease of debugging 
 	   (that is the only use of this */
 	manifest_id_prefix[8]=0; 
 	long long version = rhizome_manifest_get_ll(m, "version");
-	if (debug & DEBUG_RHIZOME_RX) DEBUGF("manifest id=%s* version=%lld", manifest_id_prefix, version);
+	if (debug & DEBUG_RHIZOME_ADS)
+	  DEBUGF("manifest id=%s* version=%lld", manifest_id_prefix, version);
 
 	/* Crude signature presence test */
 	for(i=m->manifest_all_bytes-1;i>0;i--)
@@ -408,6 +420,7 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
 	     offering the same manifest */
 	  WARN("Ignoring manifest announcment with no signature");
 	  rhizome_manifest_free(m);
+	  sqlite_set_debugmask(oldmask);
 	  RETURN(0);
 	}
 	
@@ -421,9 +434,11 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
 	    /* Manifest is okay, so see if it is worth storing */
 	    if (rhizome_manifest_version_cache_lookup(m)) {
 	      /* We already have this version or newer */
-	      if (debug & DEBUG_RHIZOME_RX) DEBUG("We already have that manifest or newer.");
+	      if (debug & DEBUG_RHIZOME_ADS)
+		DEBUG("We already have that manifest or newer.");
 	    } else {
-	      if (debug & DEBUG_RHIZOME_RX) DEBUG("Not seen before.");
+	      if (debug & DEBUG_RHIZOME_ADS)
+		DEBUG("Not seen before.");
 	      rhizome_suggest_queue_manifest_import(m, &httpaddr);
 	      // the above function will free the manifest structure, make sure we don't free it again
 	      m=NULL;
@@ -431,7 +446,8 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
 	  }
 	else
 	  {
-	    if (debug & DEBUG_RHIZOME) DEBUG("Unverified manifest has errors - so not processing any further.");
+	    if (debug & DEBUG_RHIZOME_ADS)
+	      DEBUG("Unverified manifest has errors - so not processing any further.");
 	    /* Don't waste any time on this manifest in future attempts for at least
 	       a minute. */
 	    rhizome_queue_ignore_manifest(m, &httpaddr, 60000);
@@ -443,5 +459,6 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
       }
       break;
     }
+  sqlite_set_debugmask(oldmask);
   RETURN(0);
 }
