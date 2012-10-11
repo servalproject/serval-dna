@@ -65,19 +65,23 @@ int add_advertisement(struct subscriber *subscriber, void *context){
   
   if (subscriber->node){
     overlay_node *n=subscriber->node;
-    // never send the full sid in an advertisement
-    subscriber->send_full=0;
-    if (overlay_address_append(e,subscriber) ||
-	ob_append_byte(e,n->best_link_score) ||
-	ob_append_byte(e,n->observations[n->best_observation].gateways_en_route)){
-      
-      // stop if we run out of space, remember where we should start next time.
-      next_advertisement=subscriber;
-      ob_rewind(e);
-      return 1;
-    }
     
-    ob_checkpoint(e);
+    if (n->best_link_score>0 && n->observations[n->best_observation].gateways_en_route < 64){
+      // never send the full sid in an advertisement
+      subscriber->send_full=0;
+      
+      if (overlay_address_append(e,subscriber) ||
+	  ob_append_byte(e,n->best_link_score -1) ||
+	  ob_append_byte(e,n->observations[n->best_observation].gateways_en_route +1)){
+	
+	// stop if we run out of space, remember where we should start next time.
+	next_advertisement=subscriber;
+	ob_rewind(e);
+	return 1;
+      }
+      
+      ob_checkpoint(e);
+    }
   }
   
   return 0;
