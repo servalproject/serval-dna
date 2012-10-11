@@ -366,6 +366,19 @@ test_AddUpdateNewVersion() {
    assert_rhizome_list file1_2@$SIDB1 file2@$SIDB1
 }
 
+doc_AddUpdateDiscoverAuthor="Add new payload to manifest with author discovery"
+setup_AddUpdateDiscoverAuthor() {
+   setup_AddUpdateNewVersion
+}
+test_AddUpdateDiscoverAuthor() {
+   tfw_cat -v file1_2.manifest
+   executeOk_servald rhizome add file '' '' file1_2 file1_2.manifest "$file1_secret"
+   tfw_cat --stderr
+   # Rhizome store contents have new payload.
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file1_2@$SIDB1 file2@$SIDB1
+}
+
 doc_AddUpdateNoAuthor="Cannot add new payload to authorless manifest"
 setup_AddUpdateNoAuthor() {
    setup_AddUpdateNewVersion

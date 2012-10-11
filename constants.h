@@ -50,7 +50,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
    get - 8 bit variable value
 
 */
-#define SID_SIZE 32
+#define SID_SIZE 32 // == crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES
 #define SAS_SIZE 32 // == crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES
 #define DID_MINSIZE 5
 #define DID_MAXSIZE 32

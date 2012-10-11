@@ -570,22 +570,17 @@ int rhizome_manifest_pack_variables(rhizome_manifest *m)
  */
 int rhizome_manifest_selfsign(rhizome_manifest *m)
 {
-  if (!m->haveSecret) return WHY("Need private key to sign manifest");
-  rhizome_signature *sig = rhizome_sign_hash(m, m->cryptoSignSecret);
-  if (!sig) return WHY("rhizome_sign_hash() failed.");
-
+  if (!m->haveSecret)
+    return WHY("Need private key to sign manifest");
+  rhizome_signature sig;
+  if (rhizome_sign_hash(m, &sig) == -1)
+    return WHY("rhizome_sign_hash() failed");
   /* Append signature to end of manifest data */
-  if (sig->signatureLength+m->manifest_bytes>MAX_MANIFEST_BYTES) {
-    free(sig); 
-    return WHY("Manifest plus signatures is too long.");
-  }
-
-  bcopy(&sig->signature[0],&m->manifestdata[m->manifest_bytes],sig->signatureLength);
-
-  m->manifest_bytes+=sig->signatureLength;
-  m->manifest_all_bytes=m->manifest_bytes;
-
-  free(sig);
+  if (sig.signatureLength + m->manifest_bytes > MAX_MANIFEST_BYTES)
+    return WHY("Manifest plus signatures is too long");
+  bcopy(&sig.signature[0], &m->manifestdata[m->manifest_bytes], sig.signatureLength);
+  m->manifest_bytes += sig.signatureLength;
+  m->manifest_all_bytes = m->manifest_bytes;
   return 0;
 }
 

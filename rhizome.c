@@ -157,9 +157,7 @@ int rhizome_manifest_bind_id(rhizome_manifest *m_in)
      manifests on receiver nodes works easily.  We might implement something that strips the id
      variable out of the manifest when sending it, or some other scheme to avoid sending all the
      extra bytes. */
-  char id[RHIZOME_MANIFEST_ID_STRLEN + 1];
-  rhizome_bytes_to_hex_upper(m_in->cryptoSignPublic, id, RHIZOME_MANIFEST_ID_BYTES);
-  rhizome_manifest_set(m_in, "id", id);
+  rhizome_manifest_set(m_in, "id", alloca_tohex_bid(m_in->cryptoSignPublic));
   if (!is_sid_any(m_in->author)) {
     /* Set the BK using the provided authorship information.
        Serval Security Framework defines BK as being:

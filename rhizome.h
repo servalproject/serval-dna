@@ -234,7 +234,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl);
 
 void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCount);
 int rhizome_find_privatekey(rhizome_manifest *m);
-rhizome_signature *rhizome_sign_hash(rhizome_manifest *m, const unsigned char *authorSid);
+int rhizome_sign_hash(rhizome_manifest *m, rhizome_signature *out);
 
 __RHIZOME_INLINE int sqlite_code_ok(int code)
 {
@@ -299,9 +299,9 @@ int rhizome_bk_xor(const unsigned char *authorSid, // binary
 		   unsigned char bkin[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES],
 		   unsigned char bkout[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]);
 unsigned char *rhizome_bundle_shared_secret(rhizome_manifest *m);
-int rhizome_extract_privatekey(rhizome_manifest *m, const unsigned char *authorSid);
+int rhizome_extract_privatekey(rhizome_manifest *m);
 int rhizome_verify_bundle_privatekey(rhizome_manifest *m);
-int rhizome_is_self_signed(rhizome_manifest *m);
+int rhizome_find_bundle_author(rhizome_manifest *m);
 int rhizome_queue_ignore_manifest(rhizome_manifest *m,
 				  struct sockaddr_in *peerip,int timeout);
 int rhizome_ignore_manifest_check(rhizome_manifest *m,

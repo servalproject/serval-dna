@@ -38,123 +38,187 @@ int rhizome_manifest_createid(rhizome_manifest *m)
   return WHY("Failed to create keypair for manifest ID.");
 }
 
-/*
-   Return -1 if an error occurs.
-   Return 0 if the author's private key is located and the XOR is performed successfully.
-   Return 1 if the author's identity is not in the keyring.
-   Return 2 if the author's identity is in the keyring but has no rhizome secret.
-*/
+/* Given a Rhizome Secret (RS) and bundle ID (BID), XOR a bundle key 'bkin' (private or public) with
+ * RS##BID.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+static void rhizome_bk_xor_rs(
+  const unsigned char *rs,
+  size_t rs_len,
+  unsigned char bid[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES],
+  unsigned char bkin[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES],
+  unsigned char bkout[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]
+)
+{
+  IN();
+  int combined_len = rs_len + crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES;
+  unsigned char buffer[combined_len];
+  bcopy(&rs[0], &buffer[0], rs_len);
+  bcopy(&bid[0], &buffer[rs_len], crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+  unsigned char hash[crypto_hash_sha512_BYTES];
+  crypto_hash_sha512(hash,buffer,combined_len);
+  int i;
+  for(i = 0; i != crypto_sign_edwards25519sha512batch_SECRETKEYBYTES; ++i)
+    bkout[i] = bkin[i] ^ hash[i];
+  bzero(buffer, combined_len);
+  bzero(hash, sizeof hash);
+  OUT();
+}
+
+/* Given the SID of a bundle's author and the bundle ID, XOR a bundle key (private or public) with
+ * RS##BID where RS is the rhizome secret of the bundle's author, and BID is the bundle's public key
+ * (aka the Bundle ID).
+ *
+ * This will convert a manifest BK field into the bundle's private key, or vice versa.
+ *
+ * Returns -1 if an error occurs.
+ * Returns 0 if the author's private key is located and the XOR is performed successfully.
+ * Returns 2 if the author's identity is not in the keyring.
+ * Returns 3 if the author's identity is in the keyring but has no rhizome secret.
+ *
+ * Looks up the SID in the keyring, and if it is present and has a valid-looking RS, calls
+ * rhizome_bk_xor_rs() to perform the XOR.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
 int rhizome_bk_xor(const unsigned char *authorSid, // binary
 		   unsigned char bid[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES],
 		   unsigned char bkin[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES],
 		   unsigned char bkout[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES])
 {
-  IN();
   if (crypto_sign_edwards25519sha512batch_SECRETKEYBYTES > crypto_hash_sha512_BYTES)
-    { RETURN(WHY("BK needs to be longer than it can be")); }
+    return WHY("BK needs to be longer than it can be");
   int cn=0,in=0,kp=0;
   if (!keyring_find_sid(keyring,&cn,&in,&kp,authorSid)) {
-    if (debug & DEBUG_RHIZOME) DEBUG("identity not in keyring");
-    { RETURN(1); }
+    if (debug & DEBUG_RHIZOME)
+      DEBUGF("identity sid=%s is not in keyring", alloca_tohex_sid(authorSid));
+    return 2;
   }
   kp = keyring_identity_find_keytype(keyring, cn, in, KEYTYPE_RHIZOME);
   if (kp == -1) {
-    if (debug & DEBUG_RHIZOME) DEBUG("identity has no Rhizome Secret");
-    RETURN(2);
+    if (debug & DEBUG_RHIZOME)
+      DEBUGF("identity sid=%s has no Rhizome Secret", alloca_tohex_sid(authorSid));
+    return 3;
   }
-  int rs_len=keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key_len;
-  if (rs_len<16||rs_len>1024)
-    { RETURN(WHYF("invalid Rhizome Secret: length=%d", rs_len)); }
-  unsigned char *rs=keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key;
-  int combined_len=rs_len+crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES;
-  unsigned char buffer[combined_len];
-  bcopy(&rs[0],&buffer[0],rs_len);
-  bcopy(&bid[0],&buffer[rs_len],crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
-  unsigned char hash[crypto_hash_sha512_BYTES];
-  crypto_hash_sha512(hash,buffer,combined_len);
-  int i;
-  for(i = 0; i != crypto_sign_edwards25519sha512batch_SECRETKEYBYTES; ++i)
-    bkout[i]=bkin[i]^hash[i];
-  bzero(&buffer[0],combined_len);
-  bzero(&hash[0],crypto_hash_sha512_BYTES);
-  RETURN(0);
+  int rs_len = keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key_len;
+  if (rs_len < 16 || rs_len > 1024)
+    return WHYF("identity sid=%s has invalid Rhizome Secret: length=%d", alloca_tohex_sid(authorSid), rs_len);
+  const unsigned char *rs = keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key;
+  if (debug & DEBUG_RHIZOME)
+    DEBUGF("using identity sid=%s", alloca_tohex_sid(authorSid));
+  rhizome_bk_xor_rs(rs, rs_len, bid, bkin, bkout);
+  return 0;
 }
 
-/* See if the manifest has a BK entry, and if so, use it to obtain the 
-   private key for the BID.  Decoding BK's relies on the provision of
-   the appropriate SID.
-
-   Return 0 if the private key was extracted, 1 if not.  Return -1 if an error occurs.
-
-   XXX Note that this function is not able to verify that the private key
-   is correct, as there is no exposed API in NaCl for calculating the
-   public key from a cryptosign private key.  We thus have to trust that
-   the supplied SID is correct.
-
-*/
-int rhizome_extract_privatekey(rhizome_manifest *m, const unsigned char *authorSid)
+/* See if the manifest has a BK entry, and if so, use it to obtain the private key for the BID.  The
+ * manifest's 'author' field must contain the (binary) SID of the purported author of the bundle,
+ * which is used to look up the author's rhizome secret in the keyring.
+ *
+ * Returns 0 if a valid private key was extracted, with the private key in the manifest
+ * 'cryptoSignSecret' field and the 'haveSecret' field set to 1.
+ *
+ * Returns 1 if the manifest does not have a BK field.
+ *
+ * Returns 2 if the author is not found in the keyring (not unlocked?) -- this return code from
+ * rhizome_bk_xor().
+ *
+ * Returns 3 if the author is found in the keyring but has no rhizome secret -- this return code
+ * from rhizome_bk_xor().
+ *
+ * Returns 4 if the author is found in the keyring and has a rhizome secret but the private bundle
+ * key formed using it does not verify.
+ *
+ * Returns -1 on error.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int rhizome_extract_privatekey(rhizome_manifest *m)
 {
   IN();
   char *bk = rhizome_manifest_get(m, "BK", NULL, 0);
-  if (!bk) { RETURN(WHY("missing BK field")); }
+  if (!bk)
+    RETURN(1);
   unsigned char bkBytes[RHIZOME_BUNDLE_KEY_BYTES];
   if (fromhexstr(bkBytes, bk, RHIZOME_BUNDLE_KEY_BYTES) == -1)
-    { RETURN(WHYF("invalid BK field: %s", bk)); }
-  switch (rhizome_bk_xor(authorSid, m->cryptoSignPublic, bkBytes, m->cryptoSignSecret)) {
-    case -1:
-      RETURN(WHY("rhizome_bk_xor() failed"));
-    case 0:
-      RETURN(rhizome_verify_bundle_privatekey(m));
+    RETURN(WHYF("invalid BK field: %s", bk));
+  int result = rhizome_bk_xor(m->author, m->cryptoSignPublic, bkBytes, m->cryptoSignSecret);
+  if (result == 0) {
+    int verified = rhizome_verify_bundle_privatekey(m);
+    if (verified == 0)
+      RETURN(0); // bingo
+    if (verified == -1)
+      result = WHY("rhizome_bk_xor() failed");
+    else {
+      if (debug & DEBUG_RHIZOME)
+	DEBUGF("identity sid=%s is not the author of bundle with BK=%s", alloca_tohex_sid(m->author), bk);
+      result = 3;
+    }
   }
-  RETURN(WHYF("Rhizome secret for %s not found. (Have you unlocked the identity?)", alloca_tohex_sid(authorSid)));
+  memset(m->cryptoSignSecret, 0, sizeof m->cryptoSignSecret);
+  RETURN(result);
 }
 
-/*
-   Test to see if the given manifest was created (signed) by any unlocked identity currently in the
-   keyring.
-   - Returns -1 if an error occurs, eg, the manifest contains an invalid BK field.
-   - Return 0 if the manifest's BK field was produced by any currently unlocked SID.
-   - Returns 1 if the manifest has no BK field.
-   - Returns 2 otherwise.
-   Currently unused; was called from rhizome_list_manifests() to compute the now-defunct
-   ".selfsigned" column, but that made the Rhizome List view too slow in the Serval Mesh app.
-   See issue servalproject/serval-dna#17.
-   @author Andrew Bettison <andrew@servalproject.com>
+/* Discover if the given manifest was created (signed) by any unlocked identity currently in the
+ * keyring.
+ *
+ * Returns 0 if an identity is found with permission to alter the bundle, after setting the manifest
+ * 'author' field to the SID of the identity and the manifest 'cryptoSignSecret' field to the bundle
+ * secret key and the 'haveSecret' field to 1.
+ *
+ * Returns 1 if no identity in the keyring is the author of this bundle.
+ *
+ * Returns 4 if the manifest has no BK field.
+ *
+ * Returns -1 if an error occurs, eg, the manifest contains an invalid BK field.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
  */
-int rhizome_is_self_signed(rhizome_manifest *m)
+int rhizome_find_bundle_author(rhizome_manifest *m)
 {
   IN();
   char *bk = rhizome_manifest_get(m, "BK", NULL, 0);
   if (!bk) {
-    if (debug & DEBUG_RHIZOME) DEBUGF("missing BK field");
-    RETURN(1);
+    if (debug & DEBUG_RHIZOME)
+      DEBUGF("missing BK field");
+    RETURN(4);
   }
   unsigned char bkBytes[RHIZOME_BUNDLE_KEY_BYTES];
   if (fromhexstr(bkBytes, bk, RHIZOME_BUNDLE_KEY_BYTES) == -1)
-    { RETURN(WHYF("invalid BK field: %s", bk)); }
+    RETURN(WHYF("invalid BK field: %s", bk));
   int cn = 0, in = 0, kp = 0;
   for (; keyring_next_identity(keyring, &cn, &in, &kp); ++kp) {
     const unsigned char *authorSid = keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key;
-    //if (debug & DEBUG_RHIZOME) DEBUGF("identity %s", alloca_tohex(authorSid, SID_SIZE));
+    //if (debug & DEBUG_RHIZOME) DEBUGF("try author identity sid=%s", alloca_tohex(authorSid, SID_SIZE));
     int rkp = keyring_identity_find_keytype(keyring, cn, in, KEYTYPE_RHIZOME);
     if (rkp != -1) {
-      switch (rhizome_bk_xor(authorSid, m->cryptoSignPublic, bkBytes, m->cryptoSignSecret)) {
-	case -1:
-	  RETURN(WHY("rhizome_bk_xor() failed"));
-	case 0:
-	  if (rhizome_verify_bundle_privatekey(m) == 0)
-	    RETURN(0); // bingo
-	  break;
+      int rs_len = keyring->contexts[cn]->identities[in]->keypairs[rkp]->private_key_len;
+      if (rs_len < 16 || rs_len > 1024)
+	RETURN(WHYF("invalid Rhizome Secret: length=%d", rs_len));
+      const unsigned char *rs = keyring->contexts[cn]->identities[in]->keypairs[rkp]->private_key;
+      rhizome_bk_xor_rs(rs, rs_len, m->cryptoSignPublic, bkBytes, m->cryptoSignSecret);
+      int verified = rhizome_verify_bundle_privatekey(m);
+      if (verified == 0) {
+	memcpy(m->author, authorSid, sizeof m->author);
+	if (debug & DEBUG_RHIZOME)
+	  DEBUGF("found bundle author sid=%s", alloca_tohex_sid(m->author));
+	RETURN(0); // bingo
       }
+      memset(m->cryptoSignSecret, 0, sizeof m->cryptoSignSecret);
+      if (verified == -1)
+	RETURN(WHY("rhizome_verify_bundle_privatekey() failed"));
     }
   }
-  RETURN(2); // not self signed
+  if (debug & DEBUG_RHIZOME)
+    DEBUG("bundle author not found");
+  RETURN(1);
 }
 
-/* Verify the validity of the manifest's sccret key.
-   Return 0 if valid, 1 if not.  Return -1 if an error occurs.
-   XXX This is a pretty ugly way to do it, but NaCl offers no API to
-   do this cleanly.
+/* Verify the validity of the manifest's secret key, ie, is the given manifest's 'cryptoSignSecret'
+ * field actually the secret key corresponding to the public key in 'cryptoSignPublic'?
+ * Return 0 if valid, 1 if not.  Return -1 if an error occurs.
+ *
+ * XXX This is a pretty ugly way to do it, but NaCl offers no API to do this cleanly.
  */
 int rhizome_verify_bundle_privatekey(rhizome_manifest *m)
 {
@@ -194,45 +258,32 @@ int rhizome_verify_bundle_privatekey(rhizome_manifest *m)
 #endif //!ge25519
 }
 
-rhizome_signature *rhizome_sign_hash(rhizome_manifest *m, const unsigned char *authorSid)
+int rhizome_sign_hash(rhizome_manifest *m, rhizome_signature *out)
 {
   IN();
-  unsigned char *hash=m->manifesthash;
-  unsigned char *publicKeyBytes=m->cryptoSignPublic;
-  
-  if (!m->haveSecret && rhizome_extract_privatekey(m, authorSid)) {
-    WHY("Cannot find secret key to sign manifest data.");
-    RETURN(NULL);
-  }
-
+  unsigned char *hash = m->manifesthash;
+  unsigned char *publicKeyBytes = m->cryptoSignPublic;
+  if (!m->haveSecret && rhizome_extract_privatekey(m))
+    RETURN(WHY("Cannot find secret key to sign manifest data."));
   /* Signature is formed by running crypto_sign_edwards25519sha512batch() on the 
      hash of the manifest.  The signature actually contains the hash, so to save
      space we cut the hash out of the signature. */
-  unsigned char signatureBuffer[crypto_sign_edwards25519sha512batch_BYTES+crypto_hash_sha512_BYTES];
-  unsigned long long sigLen=0;
-  int mLen=crypto_hash_sha512_BYTES;
-
-  int r=crypto_sign_edwards25519sha512batch(signatureBuffer,&sigLen,
-					    &hash[0],mLen,m->cryptoSignSecret);
-  if (r) {
-    WHY("crypto_sign() failed.");
-    RETURN(NULL);
-  }
-
-  rhizome_signature *out=calloc(sizeof(rhizome_signature),1);
-
+  unsigned char signatureBuffer[crypto_sign_edwards25519sha512batch_BYTES + crypto_hash_sha512_BYTES];
+  unsigned long long sigLen = 0;
+  int mLen = crypto_hash_sha512_BYTES;
+  int r = crypto_sign_edwards25519sha512batch(signatureBuffer, &sigLen, &hash[0], mLen, m->cryptoSignSecret);
+  if (r)
+    RETURN(WHY("crypto_sign_edwards25519sha512batch() failed."));
   /* Here we use knowledge of the internal structure of the signature block
      to remove the hash, since that is implicitly transported, thus reducing the
      actual signature size down to 64 bytes.
      We do then need to add the public key of the signatory on. */
-  bcopy(&signatureBuffer[0],&out->signature[1],32);
-  bcopy(&signatureBuffer[96],&out->signature[33],32);
-  bcopy(&publicKeyBytes[0],&out->signature[65],crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
-  out->signatureLength=65+crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES;
-
-  out->signature[0]=out->signatureLength;
-
-  RETURN(out);
+  bcopy(&signatureBuffer[0], &out->signature[1], 32);
+  bcopy(&signatureBuffer[96], &out->signature[33], 32);
+  bcopy(&publicKeyBytes[0], &out->signature[65], crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+  out->signatureLength = 65 + crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES;
+  out->signature[0] = out->signatureLength;
+  RETURN(0);
 }
 
 typedef struct manifest_signature_block_cache {

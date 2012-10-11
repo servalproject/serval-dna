@@ -914,9 +914,9 @@ void dump_stack();
     _this_call.totals=&_aggregate_stats; \
     fd_func_enter(&_this_call);
 
-#define OUT() fd_func_exit(&_this_call);
-#define RETURN(X) { OUT() return(X); }
-#define RETURNNULL { OUT() return(NULL); }
+#define OUT() fd_func_exit(&_this_call)
+#define RETURN(X) do { OUT(); return (X); } while (0);
+#define RETURNNULL do { OUT(); return (NULL); } while (0);
 
 
 
