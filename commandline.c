@@ -1035,16 +1035,18 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   /* Bind an ID to the manifest, and also bind the file.  Then finalise the manifest.
      But if the manifest already contains an ID, don't override it. */
   if (authorSidHex[0]) {
-    if (debug & DEBUG_RHIZOME)
-      DEBUGF("author=%s", authorSidHex);
+    if (debug & DEBUG_RHIZOME) DEBUGF("author=%s", authorSidHex);
     memcpy(m->author, authorSid, SID_SIZE);
   }
-  if (rhizome_manifest_get(m, "id", NULL, 0) == NULL) {
+  const char *id = rhizome_manifest_get(m, "id", NULL, 0);
+  if (id == NULL) {
+    if (debug & DEBUG_RHIZOME) DEBUG("creating new bundle");
     if (rhizome_manifest_bind_id(m) == -1) {
       rhizome_manifest_free(m);
       return WHY("Could not bind manifest to an ID");
     }
   } else {
+    if (debug & DEBUG_RHIZOME) DEBUGF("modifying existing bundle bid=%s", id);
     // Modifying an existing bundle.  If an author SID is supplied, we must ensure that it is valid,
     // ie, that identity has permission to alter the bundle.  If no author SID is supplied but a BSK
     // is supplied, then use that to alter the bundle.  Otherwise, search the keyring for an
@@ -1079,6 +1081,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
       }
     }
     if (bskhex[0]) {
+      if (debug & DEBUG_RHIZOME) DEBUGF("bskhex=%s", bskhex);
       if (m->haveSecret) {
 	// If a bundle secret key was supplied that does not match the secret key derived from the
 	// author, then warn but carry on using the author's.
@@ -1096,6 +1099,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
     }
     // If we still don't know the bundle secret or the author, then search for an author.
     if (!m->haveSecret && is_sid_any(m->author)) {
+      if (debug & DEBUG_RHIZOME) DEBUG("bundle author not specified, searching keyring");
       int result = rhizome_find_bundle_author(m);
       if (result != 0) {
 	rhizome_manifest_free(m);

@@ -137,8 +137,10 @@ int rhizome_extract_privatekey(rhizome_manifest *m)
 {
   IN();
   char *bk = rhizome_manifest_get(m, "BK", NULL, 0);
-  if (!bk)
+  if (!bk) {
+    if (debug & DEBUG_RHIZOME) DEBUG("bundle contains no BK field");
     RETURN(1);
+  }
   unsigned char bkBytes[RHIZOME_BUNDLE_KEY_BYTES];
   if (fromhexstr(bkBytes, bk, RHIZOME_BUNDLE_KEY_BYTES) == -1)
     RETURN(WHYF("invalid BK field: %s", bk));
@@ -150,12 +152,12 @@ int rhizome_extract_privatekey(rhizome_manifest *m)
     if (verified == -1)
       result = WHY("rhizome_bk_xor() failed");
     else {
-      if (debug & DEBUG_RHIZOME)
-	DEBUGF("identity sid=%s is not the author of bundle with BK=%s", alloca_tohex_sid(m->author), bk);
+      if (debug & DEBUG_RHIZOME) DEBUGF("identity sid=%s is not the author of bundle with BK=%s", alloca_tohex_sid(m->author), bk);
       result = 3;
     }
   }
   memset(m->cryptoSignSecret, 0, sizeof m->cryptoSignSecret);
+  if (debug & DEBUG_RHIZOME) DEBUGF("result=%d", result);
   RETURN(result);
 }
 
