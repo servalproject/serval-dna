@@ -164,8 +164,8 @@ test_AddThenList() {
    assert_rhizome_list file1@$SIDB1 file2@$SIDB1
 }
 
-doc_AddThenExtractManifest="Extract manifest after one add"
-setup_AddThenExtractManifest() {
+doc_ExtractManifestAfterAdd="Extract manifest after one add"
+setup_ExtractManifestAfterAdd() {
    setup_servald
    setup_rhizome
    echo "A test file" >file1
@@ -176,7 +176,34 @@ setup_AddThenExtractManifest() {
    extract_manifest_version version file1.manifest
    extract_manifest_filehash filehash file1.manifest
 }
-test_AddThenExtractManifest() {
+test_ExtractManifestAfterAdd() {
+   executeOk_servald rhizome extract manifest $manifestid file1x.manifest
+   assert cmp file1.manifest file1x.manifest
+   assertStdoutLineCount '==' 8
+   local size=$(( $(cat file1 | wc -c) + 0 ))
+   assertStdoutGrep --matches=1 "^service:file$"
+   assertStdoutGrep --matches=1 "^manifestid:$manifestid\$"
+   assertStdoutGrep --matches=1 "^version:$version\$"
+   assertStdoutGrep --matches=1 "^inserttime:$rexp_date\$"
+   assertStdoutGrep --matches=1 "^filehash:$filehash\$"
+   assertStdoutGrep --matches=1 "^filesize:$size\$"
+   assertStdoutGrep --matches=1 "^\.author:$SIDB1\$"
+   assertStdoutGrep --matches=1 "^\.readonly:0\$"
+}
+
+doc_ExtractManifestAfterAddNoAuthor="Extract manifest after one add with no author"
+setup_ExtractManifestAfterAddNoAuthor() {
+   setup_servald
+   setup_rhizome
+   echo "A test file" >file1
+   executeOk_servald rhizome add file '' '' file1 file1.manifest
+   executeOk_servald rhizome list ''
+   assert_rhizome_list file1!
+   extract_manifest_id manifestid file1.manifest
+   extract_manifest_version version file1.manifest
+   extract_manifest_filehash filehash file1.manifest
+}
+test_ExtractManifestAfterAddNoAuthor() {
    executeOk_servald rhizome extract manifest $manifestid file1x.manifest
    assert cmp file1.manifest file1x.manifest
    assertStdoutLineCount '==' 7
@@ -184,19 +211,19 @@ test_AddThenExtractManifest() {
    assertStdoutGrep --matches=1 "^service:file$"
    assertStdoutGrep --matches=1 "^manifestid:$manifestid\$"
    assertStdoutGrep --matches=1 "^version:$version\$"
-   assertStdoutGrep --matches=1 "^inserttime:[0-9]\+\$"
-   assertStdoutGrep --matches=1 "^\.author:$SIDB1\$"
+   assertStdoutGrep --matches=1 "^inserttime:$rexp_date\$"
    assertStdoutGrep --matches=1 "^filehash:$filehash\$"
    assertStdoutGrep --matches=1 "^filesize:$size\$"
+   assertStdoutGrep --matches=1 "^\.readonly:1\$"
 }
 
-doc_ExtractMissingManifest="Extract non-existent manifest"
-setup_ExtractMissingManifest() {
+doc_ExtractManifestNonExistent="Extract non-existent manifest"
+setup_ExtractManifestNonExistent() {
    setup_servald
    setup_rhizome
    manifestid=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF
 }
-test_ExtractMissingManifest() {
+test_ExtractManifestNonExistent() {
    execute --exit-status=1 $servald rhizome extract manifest $manifestid foo.manifest
    assertStdoutLineCount '==' 0
    assert [ ! -e foo.manifest ]
@@ -219,8 +246,8 @@ test_ExtractManifestInvalidID() {
    assert [ ! -e foo.manifest ]
 }
 
-doc_AddThenExtractFile="Extract file after one add"
-setup_AddThenExtractFile() {
+doc_ExtractFileAfterAdd="Extract file after one add"
+setup_ExtractFileAfterAdd() {
    setup_servald
    setup_rhizome
    echo "A test file" >file1
@@ -230,7 +257,7 @@ setup_AddThenExtractFile() {
    assert_rhizome_list file1@$SIDB1
    extract_manifest_filehash filehash file1.manifest
 }
-test_AddThenExtractFile() {
+test_ExtractFileAfterAdd() {
    executeOk_servald rhizome extract file $filehash file1x
    assert cmp file1 file1x
    local size=$(( $(cat file1 | wc -c) + 0 ))
@@ -239,13 +266,13 @@ test_AddThenExtractFile() {
    assertStdoutGrep --matches=1 "^filesize:$size$"
 }
 
-doc_ExtractMissingFile="Extract non-existent file"
-setup_ExtractMissingFile() {
+doc_ExtractFileMissing="Extract non-existent file"
+setup_ExtractFileMissing() {
    setup_servald
    setup_rhizome
    filehash=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF
 }
-test_ExtractMissingFile() {
+test_ExtractFileMissing() {
    execute --exit-status=1 $servald rhizome extract file $filehash foo
    assertStdoutLineCount '==' 0
    assert [ ! -e foo ]
@@ -606,6 +633,45 @@ test_ImportForeignBundle() {
    assert_stdout_import_bundle fileA
    executeOk_servald rhizome list ''
    assert_rhizome_list fileA!
+}
+
+doc_ImportOwnBundle="Can import a bundle created by same instance"
+setup_ImportOwnBundle() {
+   setup_servald
+   setup_rhizome
+   echo "Hello from B" >fileB
+   executeOk_servald rhizome add file $SIDB2 '' fileB fileB.manifest
+   assert_stdout_add_file fileB
+   extract_manifest_id manifestid fileB.manifest
+   extract_manifest_version version fileB.manifest
+   extract_manifest_filehash filehash fileB.manifest
+   rm -f $SERVALINSTANCE_PATH/rhizome.db
+   executeOk_servald rhizome list ''
+   assert_rhizome_list
+}
+test_ImportOwnBundle() {
+   executeOk_servald rhizome import bundle fileB fileB.manifest
+   assert_stdout_import_bundle fileB
+   # Bundle author and sender are unknown, so appears not to be from here
+   executeOk_servald rhizome list ''
+   assert_rhizome_list fileB!
+   # Extracting the manifest discovers that it is ours.
+   executeOk_servald rhizome extract manifest $manifestid fileBx.manifest
+   tfw_cat --stderr
+   assert cmp fileB.manifest fileBx.manifest
+   assertStdoutLineCount '==' 8
+   local size=$(( $(cat fileB | wc -c) + 0 ))
+   assertStdoutGrep --matches=1 "^service:file$"
+   assertStdoutGrep --matches=1 "^manifestid:$manifestid\$"
+   assertStdoutGrep --matches=1 "^version:$version\$"
+   assertStdoutGrep --matches=1 "^inserttime:$rexp_date\$"
+   assertStdoutGrep --matches=1 "^filehash:$filehash\$"
+   assertStdoutGrep --matches=1 "^filesize:$size\$"
+   assertStdoutGrep --matches=1 "^\.author:$SIDB2\$"
+   assertStdoutGrep --matches=1 "^\.readonly:0\$"
+   # Now bundle author is known, so appears to be from here
+   executeOk_servald rhizome list ''
+   assert_rhizome_list fileB@$SIDB2
 }
 
 runTests "$@"

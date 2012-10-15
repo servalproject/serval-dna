@@ -153,7 +153,7 @@ int rhizome_extract_privatekey(rhizome_manifest *m)
       result = WHY("rhizome_bk_xor() failed");
     else {
       if (debug & DEBUG_RHIZOME) DEBUGF("identity sid=%s is not the author of bundle with BK=%s", alloca_tohex_sid(m->author), bk);
-      result = 3;
+      result = 4;
     }
   }
   memset(m->cryptoSignSecret, 0, sizeof m->cryptoSignSecret);

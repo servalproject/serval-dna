@@ -1211,12 +1211,15 @@ int app_rhizome_import_bundle(int argc, const char *const *argv, struct command_
 int app_rhizome_extract_manifest(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
-  const char *manifestid, *manifestpath;
+  const char *pins, *manifestid, *manifestpath;
+  cli_arg(argc, argv, o, "pin,pin...", &pins, NULL, "");
   if (cli_arg(argc, argv, o, "manifestid", &manifestid, cli_manifestid, NULL)
    || cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, NULL) == -1)
     return -1;
   /* Ensure the Rhizome database exists and is open */
   if (create_serval_instance_dir() == -1)
+    return -1;
+  if (!(keyring = keyring_open_with_pins(pins)))
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
@@ -1277,8 +1280,8 @@ int app_rhizome_extract_file(int argc, const char *const *argv, struct command_l
 int app_rhizome_list(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
-  const char *pin, *service, *sender_sid, *recipient_sid, *offset, *limit;
-  cli_arg(argc, argv, o, "pin,pin...", &pin, NULL, "");
+  const char *pins, *service, *sender_sid, *recipient_sid, *offset, *limit;
+  cli_arg(argc, argv, o, "pin,pin...", &pins, NULL, "");
   cli_arg(argc, argv, o, "service", &service, NULL, "");
   cli_arg(argc, argv, o, "sender_sid", &sender_sid, cli_optional_sid, "");
   cli_arg(argc, argv, o, "recipient_sid", &recipient_sid, cli_optional_sid, "");
@@ -1287,7 +1290,7 @@ int app_rhizome_list(int argc, const char *const *argv, struct command_line_opti
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
     return -1;
-  if (!(keyring = keyring_open_with_pins(pin)))
+  if (!(keyring = keyring_open_with_pins(pins)))
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
@@ -1307,9 +1310,9 @@ int app_keyring_create(int argc, const char *const *argv, struct command_line_op
 int app_keyring_list(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
-  const char *pin;
-  cli_arg(argc, argv, o, "pin,pin...", &pin, NULL, "");
-  keyring_file *k = keyring_open_with_pins(pin);
+  const char *pins;
+  cli_arg(argc, argv, o, "pin,pin...", &pins, NULL, "");
+  keyring_file *k = keyring_open_with_pins(pins);
   if (!k)
     return -1;
   int cn, in;
@@ -1708,7 +1711,7 @@ struct command_line_option command_line_options[]={
    "Import a payload/manifest pair into Rhizome"},
   {app_rhizome_list,{"rhizome","list","<pin,pin...>","[<service>]","[<sender_sid>]","[<recipient_sid>]","[<offset>]","[<limit>]",NULL},CLIFLAG_STANDALONE,
    "List all manifests and files in Rhizome"},
-  {app_rhizome_extract_manifest,{"rhizome","extract","manifest","<manifestid>","[<manifestpath>]",NULL},CLIFLAG_STANDALONE,
+  {app_rhizome_extract_manifest,{"rhizome","extract","manifest","<manifestid>","[<manifestpath>]","[<pin,pin...>]",NULL},CLIFLAG_STANDALONE,
    "Extract a manifest from Rhizome and write it to the given path"},
   {app_rhizome_extract_file,{"rhizome","extract","file","<fileid>","[<filepath>]","[<key>]",NULL},CLIFLAG_STANDALONE,
    "Extract a file from Rhizome and write it to the given path"},

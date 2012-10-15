@@ -1355,6 +1355,9 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
     }
     const char *q_manifestid = (const char *) sqlite3_column_text(statement, 0);
     const char *manifestblob = (char *) sqlite3_column_blob(statement, 1);
+    long long q_version = (long long) sqlite3_column_int64(statement, 2);
+    long long q_inserttime = (long long) sqlite3_column_int64(statement, 3);
+    const char *q_author = (const char *) sqlite3_column_text(statement, 4);
     size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
     if (mp) {
       m = rhizome_new_manifest();
@@ -1385,7 +1388,7 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
 	  }
 	} else {
 	  if (blob_filehash != NULL)
-	    WARN("Manifest contains spurious 'filehash' field");
+	    WARN("Manifest contains spurious 'filehash' field -- ignored");
 	  m->fileHexHash[0] = '\0';
 	  m->fileHashedP = 0;
 	}
@@ -1394,20 +1397,61 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
 	  ret = WHY("Manifest is missing 'version' field");
 	else
 	  m->version = blob_version;
+	int read_only = 1;
+	if (q_author == NULL) {
+	  // Search for the author in the keyring.
+	  // TODO optimise: if manifest 'sender' is set, try that identity first.
+	  int result = rhizome_find_bundle_author(m);
+	  switch (result) {
+	  case -1:
+	    ret = WHY("Error searching keyring for bundle author");
+	    break;
+	  case 0:
+	    read_only = 0;
+	    if (sqlite_exec_void("UPDATE MANIFESTS SET author='%s' WHERE id='%s';", alloca_tohex_sid(m->author), manifestIdUpper) == -1)
+	      WHY("Error updating MANIFESTS author column");
+	    break;
+	  }
+	} else if (strcmp(q_author, "unknown") == 0) {
+	  q_author = NULL; // don't output the ".author" field
+	} else if (stowSid(m->author, 0, q_author) == -1) {
+	  WARNF("MANIFESTS row id=%s contains invalid author=%s -- ignored", q_manifestid, alloca_str_toprint(q_author));
+	} else {
+	  // If the AUTHOR column contains a valid SID, then it means that author verification has
+	  // already been done (either implicitly when the bundle was added locally, or explicitly
+	  // the last time this verification was performed), so we trust that this bundle is
+	  // writable if the AUTHOR is also present in the keyring and possesses a Rhizome Secret.
+	  int result = rhizome_extract_privatekey(m);
+	  switch (result) {
+	  case -1:
+	    ret = WHY("Error extracting manifest private key");
+	    break;
+	  case 0:
+	    read_only = 0;
+	    break;
+	  case 4: // author is in keyring, but does not verify
+	    WARNF("MANIFESTS row id=%s author=%s fails verification -- ignored", q_manifestid, q_author);
+	    memset(m->author, 0, sizeof m->author);
+	    if (sqlite_exec_void("UPDATE MANIFESTS SET author=NULL WHERE id='%s';", manifestIdUpper) == -1)
+	      WHY("Error updating MANIFESTS author column");
+	    break;
+	  }
+	}
 	if (ret == 1) {
-	  const char *q_author = (const char *) sqlite3_column_text(statement, 4);
 	  cli_puts("service"); cli_delim(":");
 	  cli_puts(blob_service); cli_delim("\n");
 	  cli_puts("manifestid"); cli_delim(":");
 	  cli_puts(q_manifestid); cli_delim("\n");
 	  cli_puts("version"); cli_delim(":");
-	  cli_printf("%lld", (long long) sqlite3_column_int64(statement, 2)); cli_delim("\n");
+	  cli_printf("%lld", q_version); cli_delim("\n");
 	  cli_puts("inserttime"); cli_delim(":");
-	  cli_printf("%lld", (long long) sqlite3_column_int64(statement, 3)); cli_delim("\n");
-	  if (q_author) {
+	  cli_printf("%lld", q_inserttime); cli_delim("\n");
+	  if (!is_sid_any(m->author)) {
 	    cli_puts(".author"); cli_delim(":");
-	    cli_puts(q_author); cli_delim("\n");
+	    cli_puts(alloca_tohex_sid(m->author)); cli_delim("\n");
 	  }
+	  cli_puts(".readonly"); cli_delim(":");
+	  cli_printf("%d", read_only); cli_delim("\n");
 	  cli_puts("filesize"); cli_delim(":");
 	  cli_printf("%lld", (long long) m->fileLength); cli_delim("\n");
 	  if (m->fileLength != 0) {
