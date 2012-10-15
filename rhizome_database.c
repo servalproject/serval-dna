@@ -152,6 +152,30 @@ debugflags_t sqlite_set_debugmask(debugflags_t newmask)
   return oldmask;
 }
 
+/*
+ * The MANIFESTS table 'author' column records the cryptographically verified SID of the author
+ * that has write permission on the bundle, ie, possesses the Rhizome secret key that generated the
+ * BID, and hence can derive the Bundle Secret from the bundle's BK field:
+ * - The MANIFESTS table 'author' column is set to the author SID when a bundle is created
+ *   locally bu a non-secret identity, so no verification need ever be performed for one's own
+ *   bundles while they remain in the Rhizome store.
+ * - When a bundle is imported, the 'author' column is set to NULL to indicate that no
+ *   verification has passed yet.  This includes one's own bundles that have been purged from
+ *   the local Rhizome store then recovered from a remote Rhizome node.
+ * - When a manifest with NULL 'author' is examined closely, ie extracted, not merely
+ *   listed, the keyring is searched for an identity that is the author.  If an author is
+ *   found, the MANIFESTS table 'author' column is updated.  This allows one to regain the
+ *   ability to overwrite one's own bundles that have been lost but recovered from an exterior
+ *   Rhizome node.
+ * - The above check automates the "own bundle recovery" mechanism at the expense of a CPU-heavy
+ *   cryptographic check every time a foreign bundle is examined, but at least listing is fast.
+ *   This will not scale as many identities are added to the keyring.  It will eventually have to be
+ *   replaced with a means to cache positive and negative verifications in the Rhizome db for local,
+ *   non-secret identities.
+ *
+ * -- Andrew Bettison <andrew@servalproject.com>, October 2012
+ */
+
 int rhizome_opendb()
 {
   if (rhizome_db) return 0;
@@ -1412,10 +1436,9 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
 	      WHY("Error updating MANIFESTS author column");
 	    break;
 	  }
-	} else if (strcmp(q_author, "unknown") == 0) {
-	  q_author = NULL; // don't output the ".author" field
 	} else if (stowSid(m->author, 0, q_author) == -1) {
 	  WARNF("MANIFESTS row id=%s contains invalid author=%s -- ignored", q_manifestid, alloca_str_toprint(q_author));
+	  q_author = NULL; // don't output the ".author" field
 	} else {
 	  // If the AUTHOR column contains a valid SID, then it means that author verification has
 	  // already been done (either implicitly when the bundle was added locally, or explicitly
