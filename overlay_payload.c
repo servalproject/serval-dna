@@ -288,7 +288,7 @@ struct overlay_frame *op_dup(struct overlay_frame *in)
 
   /* clone the frame */
   struct overlay_frame *out=malloc(sizeof(struct overlay_frame));
-  if (!out) return WHYNULL("malloc() failed");
+  if (!out) { WHY("malloc() failed"); return NULL; }
 
   /* copy main data structure */
   bcopy(in,out,sizeof(struct overlay_frame));

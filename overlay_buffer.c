@@ -57,8 +57,10 @@ struct overlay_buffer *ob_static(unsigned char *bytes, int size){
 // Both buffers will point to the same memory region.
 // It is up to the caller to ensure this buffer is not used after the parent buffer is freed.
 struct overlay_buffer *ob_slice(struct overlay_buffer *b, int offset, int length){
-  if (offset+length > b->allocSize)
-    return WHYNULL("Buffer isn't long enough to slice");
+  if (offset+length > b->allocSize) {
+    WHY("Buffer isn't long enough to slice");
+	return NULL;
+  }
       
   struct overlay_buffer *ret=calloc(sizeof(struct overlay_buffer),1);
   if (!ret)
@@ -212,8 +214,10 @@ int ob_append_byte(struct overlay_buffer *b,unsigned char byte)
 
 unsigned char *ob_append_space(struct overlay_buffer *b,int count)
 {
-  if (ob_makespace(b,count)) 
-    return WHYNULL("ob_makespace() failed");
+  if (ob_makespace(b,count))  {
+    WHY("ob_makespace() failed");
+    return NULL;
+  }
   
   unsigned char *r=&b->bytes[b->position];
   b->position+=count;

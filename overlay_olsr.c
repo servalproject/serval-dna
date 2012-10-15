@@ -95,7 +95,13 @@ int olsr_init_socket(void){
   /* Automatically close socket on calls to exec().
    This makes life easier when we restart with an exec after receiving
    a bad signal. */
-  fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, NULL) | O_CLOEXEC);
+  fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, NULL) |
+#ifdef FD_CLOEXEC
+ FD_CLOEXEC
+#else
+ O_CLOEXEC
+#endif
+);
   
   if (bind(fd, (struct sockaddr *)&addr, sizeof(struct sockaddr_in))) {
     WHY_perror("Bind failed");
@@ -111,7 +117,7 @@ int olsr_init_socket(void){
 
 static void parse_frame(struct overlay_buffer *buff){
   struct overlay_frame frame;
-  u_int8_t addr_len;
+  uint8_t addr_len;
   struct in_addr *addr;
   struct decode_context context={
     .please_explain=NULL,

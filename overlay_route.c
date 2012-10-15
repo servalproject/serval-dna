@@ -352,7 +352,7 @@ struct overlay_neighbour *overlay_route_get_neighbour_structure(overlay_node *no
       return NULL;
     
     if (overlay_route_make_neighbour(node))
-      return WHYNULL("overlay_route_make_neighbour() failed"); 
+      { WHY("overlay_route_make_neighbour() failed"); return NULL; }
   }
 
   /* Get neighbour structure */
