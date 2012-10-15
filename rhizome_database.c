@@ -1438,13 +1438,13 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
 	  }
 	} else if (stowSid(m->author, 0, q_author) == -1) {
 	  WARNF("MANIFESTS row id=%s contains invalid author=%s -- ignored", q_manifestid, alloca_str_toprint(q_author));
-	  q_author = NULL; // don't output the ".author" field
 	} else {
 	  // If the AUTHOR column contains a valid SID, then it means that author verification has
 	  // already been done (either implicitly when the bundle was added locally, or explicitly
-	  // the last time this verification was performed), so we trust that this bundle is
-	  // writable if the AUTHOR is also present in the keyring and possesses a Rhizome Secret.
-	  int result = rhizome_extract_privatekey(m);
+	  // when rhizome_find_bundle_author() was called in the case above), so we represent this
+	  // bundle as writable if the author is present in the keyring and possesses a Rhizome
+	  // Secret.
+	  int result = rhizome_find_secret(m->author, NULL, NULL);
 	  switch (result) {
 	  case -1:
 	    ret = WHY("Error extracting manifest private key");
@@ -1452,11 +1452,9 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
 	  case 0:
 	    read_only = 0;
 	    break;
-	  case 4: // author is in keyring, but does not verify
-	    WARNF("MANIFESTS row id=%s author=%s fails verification -- ignored", q_manifestid, q_author);
-	    memset(m->author, 0, sizeof m->author);
-	    if (sqlite_exec_void("UPDATE MANIFESTS SET author=NULL WHERE id='%s';", manifestIdUpper) == -1)
-	      WHY("Error updating MANIFESTS author column");
+	  default:
+	    INFOF("bundle author=%s is not in keyring -- ignored", q_author);
+	    memset(m->author, 0, sizeof m->author); // do not output ".author" field
 	    break;
 	  }
 	}

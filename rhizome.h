@@ -294,6 +294,7 @@ int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_manifest_version_cache_lookup(rhizome_manifest *m);
 int rhizome_manifest_version_cache_store(rhizome_manifest *m);
 int monitor_announce_bundle(rhizome_manifest *m);
+int rhizome_find_secret(const unsigned char *authorSid, int *rs_len, const unsigned char **rs);
 int rhizome_bk_xor(const unsigned char *authorSid, // binary
 		   unsigned char bid[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES],
 		   unsigned char bkin[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES],

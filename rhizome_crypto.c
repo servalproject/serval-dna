@@ -66,6 +66,41 @@ static void rhizome_bk_xor_rs(
   OUT();
 }
 
+/* Given the SID of a bundle's author, search for an identity in the keyring and return its
+ * Rhizome secret if found.
+ *
+ * Returns -1 if an error occurs.
+ * Returns 0 if the author's rhizome secret is found; '*rs' is set to point to the secret key in the
+ * keyring, and '*rs_len' is set to the key length.
+ * Returns 2 if the author's identity is not in the keyring.
+ * Returns 3 if the author's identity is in the keyring but has no rhizome secret.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int rhizome_find_secret(const unsigned char *authorSid, int *rs_len, const unsigned char **rs)
+{
+  int cn=0, in=0, kp=0;
+  if (!keyring_find_sid(keyring,&cn,&in,&kp,authorSid)) {
+    if (debug & DEBUG_RHIZOME)
+      DEBUGF("identity sid=%s is not in keyring", alloca_tohex_sid(authorSid));
+    return 2;
+  }
+  kp = keyring_identity_find_keytype(keyring, cn, in, KEYTYPE_RHIZOME);
+  if (kp == -1) {
+    if (debug & DEBUG_RHIZOME)
+      DEBUGF("identity sid=%s has no Rhizome Secret", alloca_tohex_sid(authorSid));
+    return 3;
+  }
+  int rslen = keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key_len;
+  if (rslen < 16 || rslen > 1024)
+    return WHYF("identity sid=%s has invalid Rhizome Secret: length=%d", alloca_tohex_sid(authorSid), rslen);
+  if (rs_len)
+    *rs_len = rslen;
+  if (rs)
+    *rs = keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key;
+  return 0;
+}
+
 /* Given the SID of a bundle's author and the bundle ID, XOR a bundle key (private or public) with
  * RS##BID where RS is the rhizome secret of the bundle's author, and BID is the bundle's public key
  * (aka the Bundle ID).
@@ -74,8 +109,10 @@ static void rhizome_bk_xor_rs(
  *
  * Returns -1 if an error occurs.
  * Returns 0 if the author's private key is located and the XOR is performed successfully.
- * Returns 2 if the author's identity is not in the keyring.
- * Returns 3 if the author's identity is in the keyring but has no rhizome secret.
+ * Returns 2 if the author's identity is not in the keyring (this return code from
+ * rhizome_find_secret()).
+ * Returns 3 if the author's identity is in the keyring but has no rhizome secret (this return code
+ * from rhizome_find_secret()).
  *
  * Looks up the SID in the keyring, and if it is present and has a valid-looking RS, calls
  * rhizome_bk_xor_rs() to perform the XOR.
@@ -89,26 +126,17 @@ int rhizome_bk_xor(const unsigned char *authorSid, // binary
 {
   if (crypto_sign_edwards25519sha512batch_SECRETKEYBYTES > crypto_hash_sha512_BYTES)
     return WHY("BK needs to be longer than it can be");
-  int cn=0,in=0,kp=0;
-  if (!keyring_find_sid(keyring,&cn,&in,&kp,authorSid)) {
+  int rs_len;
+  const unsigned char *rs;
+  int result = rhizome_find_secret(authorSid, &rs_len, &rs);
+  if (result == -1)
+    return WHY("Error searching for Rhizome secret");
+  if (result == 0) {
     if (debug & DEBUG_RHIZOME)
-      DEBUGF("identity sid=%s is not in keyring", alloca_tohex_sid(authorSid));
-    return 2;
+      DEBUGF("using identity sid=%s", alloca_tohex_sid(authorSid));
+    rhizome_bk_xor_rs(rs, rs_len, bid, bkin, bkout);
   }
-  kp = keyring_identity_find_keytype(keyring, cn, in, KEYTYPE_RHIZOME);
-  if (kp == -1) {
-    if (debug & DEBUG_RHIZOME)
-      DEBUGF("identity sid=%s has no Rhizome Secret", alloca_tohex_sid(authorSid));
-    return 3;
-  }
-  int rs_len = keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key_len;
-  if (rs_len < 16 || rs_len > 1024)
-    return WHYF("identity sid=%s has invalid Rhizome Secret: length=%d", alloca_tohex_sid(authorSid), rs_len);
-  const unsigned char *rs = keyring->contexts[cn]->identities[in]->keypairs[kp]->private_key;
-  if (debug & DEBUG_RHIZOME)
-    DEBUGF("using identity sid=%s", alloca_tohex_sid(authorSid));
-  rhizome_bk_xor_rs(rs, rs_len, bid, bkin, bkout);
-  return 0;
+  return result;
 }
 
 /* See if the manifest has a BK entry, and if so, use it to obtain the private key for the BID.  The
