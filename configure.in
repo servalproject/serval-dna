@@ -97,6 +97,7 @@ AC_CHECK_HEADERS(
     sys/filio.h \
     sys/endian.h \
     sys/byteorder.h \
+    sys/sockio.h
 )
 
 dnl Check for ALSA
