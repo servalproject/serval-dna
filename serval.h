@@ -881,10 +881,14 @@ void sigIoHandler(int signal);
 
 int overlay_mdp_setup_sockets();
 
-int schedule(struct sched_ent *alarm);
-int unschedule(struct sched_ent *alarm);
-int watch(struct sched_ent *alarm);
-int unwatch(struct sched_ent *alarm);
+int _schedule(struct __sourceloc whence, struct sched_ent *alarm);
+int _unschedule(struct __sourceloc whence, struct sched_ent *alarm);
+int _watch(struct __sourceloc whence, struct sched_ent *alarm);
+int _unwatch(struct __sourceloc whence, struct sched_ent *alarm);
+#define schedule(alarm)   _schedule(__WHENCE__, alarm)
+#define unschedule(alarm) _unschedule(__WHENCE__, alarm)
+#define watch(alarm)      _watch(__WHENCE__, alarm)
+#define unwatch(alarm)    _unwatch(__WHENCE__, alarm)
 int fd_poll();
 
 void overlay_interface_discover(struct sched_ent *alarm);

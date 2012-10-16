@@ -30,28 +30,28 @@ struct sched_ent *next_alarm=NULL;
 struct sched_ent *next_deadline=NULL;
 struct profile_total poll_stats={NULL,0,"Idle (in poll)",0,0,0};
 
-void list_alarms() {
+#define alloca_alarm_name(alarm) ((alarm)->stats ? alloca_str_toprint((alarm)->stats->name) : "Unnamed")
+
+void list_alarms()
+{
   DEBUG("Alarms;");
   time_ms_t now = gettime_ms();
   struct sched_ent *alarm;
   
   for (alarm = next_deadline; alarm; alarm = alarm->_next)
-    DEBUGF("%p %s deadline in %lldms", 
-	   alarm->function, (alarm->stats ? alarm->stats->name : "Unnamed"), 
-	   alarm->deadline - now);
+    DEBUGF("%p %s deadline in %lldms", alarm->function, alloca_alarm_name(alarm), alarm->deadline - now);
   
   for (alarm = next_alarm; alarm; alarm = alarm->_next)
-    DEBUGF("%p %s in %lldms, deadline in %lldms", 
-	   alarm->function, (alarm->stats ? alarm->stats->name : "Unnamed"), 
-	   alarm->alarm - now, alarm->deadline - now);
+    DEBUGF("%p %s in %lldms, deadline in %lldms", alarm->function, alloca_alarm_name(alarm), alarm->alarm - now, alarm->deadline - now);
   
   DEBUG("File handles;");
   int i;
   for (i = 0; i < fdcount; ++i)
-    DEBUGF("%s watching #%d", (fd_callbacks[i]->stats ? fd_callbacks[i]->stats->name : "Unnamed"), fds[i].fd);
+    DEBUGF("%s watching #%d", alloca_alarm_name(fd_callbacks[i]), fds[i].fd);
 }
 
-int deadline(struct sched_ent *alarm){
+int deadline(struct sched_ent *alarm)
+{
   struct sched_ent *node = next_deadline, *last = NULL;
   if (alarm->deadline < alarm->alarm)
     alarm->deadline = alarm->alarm;
@@ -74,11 +74,14 @@ int deadline(struct sched_ent *alarm){
   return 0;
 }
 
-
 // add an alarm to the list of scheduled function calls.
 // simply populate .alarm with the absolute time, and .function with the method to call.
 // on calling .poll.revents will be zero.
-int schedule(struct sched_ent *alarm){
+int _schedule(struct __sourceloc __whence, struct sched_ent *alarm)
+{
+  if (debug & DEBUG_IO)
+    DEBUGF("schedule(alarm=%s)", alloca_alarm_name(alarm));
+
   struct sched_ent *node = next_alarm, *last = NULL;
   
   if (alarm->_next || alarm->_prev || alarm==next_alarm || alarm==next_deadline)
@@ -115,7 +118,11 @@ int schedule(struct sched_ent *alarm){
 
 // remove a function from the schedule before it has fired
 // safe to unschedule twice...
-int unschedule(struct sched_ent *alarm){
+int _unschedule(struct __sourceloc __whence, struct sched_ent *alarm)
+{
+  if (debug & DEBUG_IO)
+    DEBUGF("unschedule(alarm=%s)", alloca_alarm_name(alarm));
+
   struct sched_ent *prev = alarm->_prev;
   struct sched_ent *next = alarm->_next;
   
@@ -135,17 +142,21 @@ int unschedule(struct sched_ent *alarm){
 }
 
 // start watching a file handle, call this function again if you wish to change the event mask
-int watch(struct sched_ent *alarm){
+int _watch(struct __sourceloc __whence, struct sched_ent *alarm)
+{
+  if (debug & DEBUG_IO)
+    DEBUGF("watch(alarm=%s)", alloca_alarm_name(alarm));
+
   if (!alarm->function)
     return WHY("Can't watch if you haven't set the function pointer");
   
   if (alarm->_poll_index>=0 && fd_callbacks[alarm->_poll_index]==alarm){
     // updating event flags
     if (debug & DEBUG_IO)
-      DEBUGF("Updating watch %s, #%d for %d", (alarm->stats?alarm->stats->name:"Unnamed"), alarm->poll.fd, alarm->poll.events);
+      DEBUGF("Updating watch %s, #%d for %d", alloca_alarm_name(alarm), alarm->poll.fd, alarm->poll.events);
   }else{
     if (debug & DEBUG_IO)
-      DEBUGF("Adding watch %s, #%d for %d", (alarm->stats?alarm->stats->name:"Unnamed"), alarm->poll.fd, alarm->poll.events);
+      DEBUGF("Adding watch %s, #%d for %d", alloca_alarm_name(alarm), alarm->poll.fd, alarm->poll.events);
     if (fdcount>=MAX_WATCHED_FDS)
       return WHY("Too many file handles to watch");
     fd_callbacks[fdcount]=alarm;
@@ -158,7 +169,11 @@ int watch(struct sched_ent *alarm){
 }
 
 // stop watching a file handle
-int unwatch(struct sched_ent *alarm){
+int _unwatch(struct __sourceloc __whence, struct sched_ent *alarm)
+{
+  if (debug & DEBUG_IO)
+    DEBUGF("unwatch(alarm=%s)", alloca_alarm_name(alarm));
+
   int index = alarm->_poll_index;
   if (index <0 || fds[index].fd!=alarm->poll.fd)
     return WHY("Attempted to unwatch a handle that is not being watched");
@@ -174,11 +189,12 @@ int unwatch(struct sched_ent *alarm){
   fd_callbacks[fdcount]=NULL;
   alarm->_poll_index=-1;
   if (debug & DEBUG_IO)
-    DEBUGF("%s stopped watching #%d for %d", (alarm->stats?alarm->stats->name:"Unnamed"), alarm->poll.fd, alarm->poll.events);
+    DEBUGF("%s stopped watching #%d for %d", alloca_alarm_name(alarm), alarm->poll.fd, alarm->poll.events);
   return 0;
 }
 
-void call_alarm(struct sched_ent *alarm, int revents){
+static void call_alarm(struct sched_ent *alarm, int revents)
+{
   struct call_stats call_stats;
   call_stats.totals = alarm->stats;
   
