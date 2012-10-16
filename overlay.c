@@ -128,16 +128,16 @@ int overlayServerMode()
      of wifi latency anyway, so we'll live with it.  Larger values will affect voice transport,
      and smaller values would affect CPU and energy use, and make the simulation less realistic. */
 
+  time_ms_t now = gettime_ms();
+  
 #define SCHEDULE(X, Y, D) { \
-static struct sched_ent _sched_##X; \
-static struct profile_total _stats_##X; \
-bzero(&_sched_##X, sizeof(struct sched_ent)); \
-bzero(&_stats_##X, sizeof(struct profile_total)); \
-_sched_##X.stats = &_stats_##X; \
-_sched_##X.function=X;\
-_stats_##X.name="" #X "";\
-_sched_##X.alarm=gettime_ms()+Y;\
-_sched_##X.deadline=_sched_##X.alarm+D;\
+static struct profile_total _stats_##X={.name="" #X "",}; \
+static struct sched_ent _sched_##X={\
+  .stats = &_stats_##X, \
+  .function=X,\
+}; \
+_sched_##X.alarm=(now+Y);\
+_sched_##X.deadline=(now+Y+D);\
 schedule(&_sched_##X); }
   
   /* Periodically check for server shut down */

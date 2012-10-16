@@ -34,8 +34,17 @@ void list_alarms() {
   DEBUG("Alarms;");
   time_ms_t now = gettime_ms();
   struct sched_ent *alarm;
+  
+  for (alarm = next_deadline; alarm; alarm = alarm->_next)
+    DEBUGF("%p %s deadline in %lldms", 
+	   alarm->function, (alarm->stats ? alarm->stats->name : "Unnamed"), 
+	   alarm->deadline - now);
+  
   for (alarm = next_alarm; alarm; alarm = alarm->_next)
-    DEBUGF("%s in %lldms", (alarm->stats ? alarm->stats->name : "Unnamed"), alarm->alarm - now);
+    DEBUGF("%p %s in %lldms, deadline in %lldms", 
+	   alarm->function, (alarm->stats ? alarm->stats->name : "Unnamed"), 
+	   alarm->alarm - now, alarm->deadline - now);
+  
   DEBUG("File handles;");
   int i;
   for (i = 0; i < fdcount; ++i)
@@ -48,7 +57,7 @@ int deadline(struct sched_ent *alarm){
     alarm->deadline = alarm->alarm;
   
   while(node!=NULL){
-    if (node->alarm > alarm->alarm)
+    if (node->deadline > alarm->deadline)
       break;
     last = node;
     node = node->_next;
@@ -56,7 +65,7 @@ int deadline(struct sched_ent *alarm){
   if (last == NULL){
     next_deadline = alarm;
   }else{
-    last->_next=alarm;
+    last->_next = alarm;
   }
   alarm->_prev = last;
   if(node!=NULL)
@@ -71,6 +80,9 @@ int deadline(struct sched_ent *alarm){
 // on calling .poll.revents will be zero.
 int schedule(struct sched_ent *alarm){
   struct sched_ent *node = next_alarm, *last = NULL;
+  
+  if (alarm->_next || alarm->_prev || alarm==next_alarm || alarm==next_deadline)
+    FATAL("Attempted to schedule an alarm that is still scheduled.");
   
   if (!alarm->function)
     return WHY("Can't schedule if you haven't set the function pointer");
