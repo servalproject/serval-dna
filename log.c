@@ -39,6 +39,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf.h"
 #include "strbuf_helpers.h"
 
+const struct __sourceloc __whence = __NOWHERE__;
+
 debugflags_t debug = 0;
 
 static FILE *logfile = NULL;
@@ -131,7 +133,7 @@ static const char *_trimbuildpath(const char *path)
   return &path[lastsep];
 }
 
-static int _log_prepare(int level, struct __sourceloc where)
+static int _log_prepare(int level, struct __sourceloc whence)
 {
   if (level == LOG_LEVEL_SILENT)
     return 0;
@@ -164,15 +166,15 @@ static int _log_prepare(int level, struct __sourceloc where)
 	strbuf_sprintf(&logbuf, "%s.%03u ", buf, tv.tv_usec / 1000);
     }
   }
-  if (where.file) {
-    strbuf_sprintf(&logbuf, "%s", _trimbuildpath(where.file));
-    if (where.line)
-      strbuf_sprintf(&logbuf, ":%u", where.line);
-    if (where.function)
-      strbuf_sprintf(&logbuf, ":%s()", where.function);
+  if (whence.file) {
+    strbuf_sprintf(&logbuf, "%s", _trimbuildpath(whence.file));
+    if (whence.line)
+      strbuf_sprintf(&logbuf, ":%u", whence.line);
+    if (whence.function)
+      strbuf_sprintf(&logbuf, ":%s()", whence.function);
     strbuf_putc(&logbuf, ' ');
-  } else if (where.function) {
-    strbuf_sprintf(&logbuf, "%s() ", where.function);
+  } else if (whence.function) {
+    strbuf_sprintf(&logbuf, "%s() ", whence.function);
   }
   strbuf_putc(&logbuf, ' ');
   return 1;
@@ -213,9 +215,9 @@ void set_log_implementation(void (*log_function)(int level, struct strbuf *buf))
   _log_implementation=log_function;
 }
 
-void logArgv(int level, struct __sourceloc where, const char *label, int argc, const char *const *argv)
+void logArgv(int level, struct __sourceloc whence, const char *label, int argc, const char *const *argv)
 {
-  if (_log_prepare(level, where)) {
+  if (_log_prepare(level, whence)) {
     if (label) {
       strbuf_puts(&logbuf, label);
       strbuf_putc(&logbuf, ' ');
@@ -233,47 +235,47 @@ void logArgv(int level, struct __sourceloc where, const char *label, int argc, c
   }
 }
 
-void logString(int level, struct __sourceloc where, const char *str)
+void logString(int level, struct __sourceloc whence, const char *str)
 {
   const char *s = str;
   const char *p;
   for (p = str; *p; ++p) {
     if (*p == '\n') {
-      if (_log_prepare(level, where)) {
+      if (_log_prepare(level, whence)) {
 	strbuf_ncat(&logbuf, s, p - s);
 	_log_finish(level);
       }
       s = p + 1;
     }
   }
-  if (p > s && _log_prepare(level, where)) {
+  if (p > s && _log_prepare(level, whence)) {
     strbuf_ncat(&logbuf, s, p - s);
     _log_finish(level);
   }
 }
 
-void logMessage(int level, struct __sourceloc where, const char *fmt, ...)
+void logMessage(int level, struct __sourceloc whence, const char *fmt, ...)
 {
   va_list ap;
   va_start(ap, fmt);
-  vlogMessage(level, where, fmt, ap);
+  vlogMessage(level, whence, fmt, ap);
   va_end(ap);
 }
 
-void vlogMessage(int level, struct __sourceloc where, const char *fmt, va_list ap)
+void vlogMessage(int level, struct __sourceloc whence, const char *fmt, va_list ap)
 {
-  if (_log_prepare(level, where)) {
+  if (_log_prepare(level, whence)) {
     strbuf_vsprintf(&logbuf, fmt, ap);
     _log_finish(level);
   }
 }
 
-int logDump(int level, struct __sourceloc where, char *name, const unsigned char *addr, size_t len)
+int logDump(int level, struct __sourceloc whence, char *name, const unsigned char *addr, size_t len)
 {
   char buf[100];
   size_t i;
   if (name)
-    logMessage(level, where, "Dump of %s", name);
+    logMessage(level, whence, "Dump of %s", name);
   for(i = 0; i < len; i += 16) {
     strbuf b = strbuf_local(buf, sizeof buf);
     strbuf_sprintf(b, "  %04x :", i);
@@ -285,7 +287,7 @@ int logDump(int level, struct __sourceloc where, char *name, const unsigned char
     strbuf_puts(b, "    ");
     for (j = 0; j < 16 && i + j < len; j++)
       strbuf_sprintf(b, "%c", addr[i+j] >= ' ' && addr[i+j] < 0x7f ? addr[i+j] : '.');
-    logMessage(level, where, "%s", strbuf_str(b));
+    logMessage(level, whence, "%s", strbuf_str(b));
   }
   return 0;
 }
@@ -422,7 +424,7 @@ ssize_t get_self_executable_path(char *buf, size_t len)
 #endif
 }
 
-int log_backtrace(struct __sourceloc where)
+int log_backtrace(struct __sourceloc whence)
 {
   open_logging();
   char execpath[MAXPATHLEN];
@@ -476,7 +478,7 @@ int log_backtrace(struct __sourceloc where)
   }
   // parent
   close(stdout_fds[1]);
-  logMessage(LOG_LEVEL_DEBUG, where, "GDB BACKTRACE");
+  logMessage(LOG_LEVEL_DEBUG, whence, "GDB BACKTRACE");
   char buf[1024];
   char *const bufe = buf + sizeof buf;
   char *linep = buf;

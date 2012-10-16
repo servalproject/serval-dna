@@ -566,8 +566,6 @@ int overlay_frame_resolve_addresses(struct overlay_frame *f);
 time_ms_t overlay_time_until_next_tick();
 int overlay_rx_messages();
 
-#define DEBUG_packet_visualise(M,P,N) logServalPacket(LOG_LEVEL_DEBUG, __HERE__, (M), (P), (N))
-
 int overlay_add_selfannouncement();
 int overlay_frame_append_payload(overlay_interface *interface, struct overlay_frame *p, struct subscriber *next_hop, struct overlay_buffer *b);
 int overlay_interface_args(const char *arg);
@@ -766,13 +764,13 @@ int dump_payload(struct overlay_frame *p, char *message);
 int urandombytes(unsigned char *x,unsigned long long xlen);
 
 #ifdef MALLOC_PARANOIA
-#define malloc(X) _serval_debug_malloc(X,__HERE__)
-#define calloc(X,Y) _serval_debug_calloc(X,Y,__HERE__)
-#define free(X) _serval_debug_free(X,__HERE__)
+#define malloc(X) _serval_debug_malloc(X,__WHENCE__)
+#define calloc(X,Y) _serval_debug_calloc(X,Y,__WHENCE__)
+#define free(X) _serval_debug_free(X,__WHENCE__)
 
-void *_serval_debug_malloc(unsigned int bytes, struct __sourceloc where);
-void *_serval_debug_calloc(unsigned int bytes, unsigned int count, struct __sourceloc where);
-void _serval_debug_free(void *p, struct __sourceloc where);
+void *_serval_debug_malloc(unsigned int bytes, struct __sourceloc whence);
+void *_serval_debug_calloc(unsigned int bytes, unsigned int count, struct __sourceloc whence);
+void _serval_debug_free(void *p, struct __sourceloc whence);
 #endif
 
 

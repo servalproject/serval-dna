@@ -210,10 +210,10 @@ int rhizome_manifest_set_ll(rhizome_manifest *m,char *var,long long value);
 int rhizome_manifest_set(rhizome_manifest *m, const char *var, const char *value);
 int rhizome_manifest_del(rhizome_manifest *m, const char *var);
 long long rhizome_file_size(char *filename);
-void _rhizome_manifest_free(struct __sourceloc where, rhizome_manifest *m);
-#define rhizome_manifest_free(m) _rhizome_manifest_free(__HERE__,m)
-rhizome_manifest *_rhizome_new_manifest(struct __sourceloc where);
-#define rhizome_new_manifest() _rhizome_new_manifest(__HERE__)
+void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m);
+#define rhizome_manifest_free(m) _rhizome_manifest_free(__WHENCE__,m)
+rhizome_manifest *_rhizome_new_manifest(struct __sourceloc __whence);
+#define rhizome_new_manifest() _rhizome_new_manifest(__WHENCE__)
 int rhizome_manifest_pack_variables(rhizome_manifest *m);
 int rhizome_store_bundle(rhizome_manifest *m);
 int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid);
@@ -248,11 +248,11 @@ __RHIZOME_INLINE int sqlite_code_busy(int code)
 
 debugflags_t sqlite_set_debugmask(debugflags_t newmask);
 
-sqlite3_stmt *_sqlite_prepare(struct __sourceloc where, sqlite_retry_state *retry, const char *sqlformat, ...);
-sqlite3_stmt *_sqlite_prepare_loglevel(struct __sourceloc where, int log_level, sqlite_retry_state *retry, strbuf stmt);
-int _sqlite_retry(struct __sourceloc where, sqlite_retry_state *retry, const char *action);
-void _sqlite_retry_done(struct __sourceloc where, sqlite_retry_state *retry, const char *action);
-int _sqlite_step_retry(struct __sourceloc where, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement);
+sqlite3_stmt *_sqlite_prepare(struct __sourceloc __whence, sqlite_retry_state *retry, const char *sqlformat, ...);
+sqlite3_stmt *_sqlite_prepare_loglevel(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, strbuf stmt);
+int _sqlite_retry(struct __sourceloc __whence, sqlite_retry_state *retry, const char *action);
+void _sqlite_retry_done(struct __sourceloc __whence, sqlite_retry_state *retry, const char *action);
+int _sqlite_step_retry(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement);
 int _sqlite_exec_void(struct __sourceloc, const char *sqlformat, ...);
 int _sqlite_exec_void_loglevel(struct __sourceloc, int log_level, const char *sqlformat, ...);
 int _sqlite_exec_void_retry(struct __sourceloc, sqlite_retry_state *retry, const char *sqlformat, ...);
@@ -260,18 +260,18 @@ int _sqlite_exec_int64(struct __sourceloc, long long *result, const char *sqlfor
 int _sqlite_exec_int64_retry(struct __sourceloc, sqlite_retry_state *retry, long long *result, const char *sqlformat,...);
 int _sqlite_exec_strbuf(struct __sourceloc, strbuf sb, const char *sqlformat,...);
 
-#define sqlite_prepare(rs,fmt,...)              _sqlite_prepare(__HERE__, (rs), (fmt), ##__VA_ARGS__)
-#define sqlite_prepare_loglevel(ll,rs,sb)       _sqlite_prepare_loglevel(__HERE__, (ll), (rs), (sb))
-#define sqlite_retry(rs,action)                 _sqlite_retry(__HERE__, (rs), (action))
-#define sqlite_retry_done(rs,action)            _sqlite_retry_done(__HERE__, (rs), (action))
-#define sqlite_step(stmt)                       _sqlite_step_retry(__HERE__, LOG_LEVEL_ERROR, NULL, (stmt))
-#define sqlite_step_retry(rs,stmt)              _sqlite_step_retry(__HERE__, LOG_LEVEL_ERROR, (rs), (stmt))
-#define sqlite_exec_void(fmt,...)               _sqlite_exec_void(__HERE__, (fmt), ##__VA_ARGS__)
-#define sqlite_exec_void_loglevel(ll,fmt,...)   _sqlite_exec_void_loglevel(__HERE__, (ll), (fmt), ##__VA_ARGS__)
-#define sqlite_exec_void_retry(rs,fmt,...)      _sqlite_exec_void_retry(__HERE__, (rs), (fmt), ##__VA_ARGS__)
-#define sqlite_exec_int64(res,fmt,...)          _sqlite_exec_int64(__HERE__, (res), (fmt), ##__VA_ARGS__)
-#define sqlite_exec_int64_retry(rs,res,fmt,...) _sqlite_exec_int64_retry(__HERE__, (rs), (res), (fmt), ##__VA_ARGS__)
-#define sqlite_exec_strbuf(sb,fmt,...)          _sqlite_exec_strbuf(__HERE__, (sb), (fmt), ##__VA_ARGS__)
+#define sqlite_prepare(rs,fmt,...)              _sqlite_prepare(__WHENCE__, (rs), (fmt), ##__VA_ARGS__)
+#define sqlite_prepare_loglevel(ll,rs,sb)       _sqlite_prepare_loglevel(__WHENCE__, (ll), (rs), (sb))
+#define sqlite_retry(rs,action)                 _sqlite_retry(__WHENCE__, (rs), (action))
+#define sqlite_retry_done(rs,action)            _sqlite_retry_done(__WHENCE__, (rs), (action))
+#define sqlite_step(stmt)                       _sqlite_step_retry(__WHENCE__, LOG_LEVEL_ERROR, NULL, (stmt))
+#define sqlite_step_retry(rs,stmt)              _sqlite_step_retry(__WHENCE__, LOG_LEVEL_ERROR, (rs), (stmt))
+#define sqlite_exec_void(fmt,...)               _sqlite_exec_void(__WHENCE__, (fmt), ##__VA_ARGS__)
+#define sqlite_exec_void_loglevel(ll,fmt,...)   _sqlite_exec_void_loglevel(__WHENCE__, (ll), (fmt), ##__VA_ARGS__)
+#define sqlite_exec_void_retry(rs,fmt,...)      _sqlite_exec_void_retry(__WHENCE__, (rs), (fmt), ##__VA_ARGS__)
+#define sqlite_exec_int64(res,fmt,...)          _sqlite_exec_int64(__WHENCE__, (res), (fmt), ##__VA_ARGS__)
+#define sqlite_exec_int64_retry(rs,res,fmt,...) _sqlite_exec_int64_retry(__WHENCE__, (rs), (res), (fmt), ##__VA_ARGS__)
+#define sqlite_exec_strbuf(sb,fmt,...)          _sqlite_exec_strbuf(__WHENCE__, (sb), (fmt), ##__VA_ARGS__)
 
 double rhizome_manifest_get_double(rhizome_manifest *m,char *var,double default_value);
 int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs);

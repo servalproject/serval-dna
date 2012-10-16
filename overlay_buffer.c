@@ -460,22 +460,22 @@ int ob_dump(struct overlay_buffer *b,char *desc)
 #undef realloc
 
 #define SDM_GUARD_AFTER 16384
-void *_serval_debug_malloc(unsigned int bytes, struct __sourceloc where)
+void *_serval_debug_malloc(unsigned int bytes, struct __sourceloc __whence)
 {
   void *r=malloc(bytes+SDM_GUARD_AFTER);
-  logMessage(LOG_LEVEL_DEBUG, where, "malloc(%d) -> %p", bytes, r); 
+  DEBUGF("malloc(%d) -> %p", bytes, r); 
   return r;
 }
 
-void *_serval_debug_calloc(unsigned int bytes, unsigned int count, struct __sourceloc where)
+void *_serval_debug_calloc(unsigned int bytes, unsigned int count, struct __sourceloc __whence)
 {
   void *r=calloc((bytes*count)+SDM_GUARD_AFTER,1);
-  logMessage(LOG_LEVEL_DEBUG, where, "calloc(%d,%d) -> %p", bytes, count, r); 
+  DEBUGF("calloc(%d,%d) -> %p", bytes, count, r); 
   return r;
 }
 
-void _serval_debug_free(void *p, struct __sourceloc where)
+void _serval_debug_free(void *p, struct __sourceloc __whence)
 {
   free(p);
-  logMessage(LOG_LEVEL_DEBUG, where, "free(%p)", p); 
+  DEBUGF("free(%p)", p); 
 }

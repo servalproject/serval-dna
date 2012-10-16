@@ -20,24 +20,24 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define __SERVALD_NET_H
 
 #include <sys/types.h> // for size_t, ssize_t
-#include "log.h" // for __HERE__ and struct __sourceloc
+#include "log.h" // for __WHENCE__ and struct __sourceloc
 
-#define set_nonblock(fd)                (_set_nonblock(fd, __HERE__))
-#define set_block(fd)                   (_set_block(fd, __HERE__))
-#define read_nonblock(fd,buf,len)       (_read_nonblock(fd, buf, len, __HERE__))
-#define write_all(fd,buf,len)           (_write_all(fd, buf, len, __HERE__))
-#define write_nonblock(fd,buf,len)      (_write_nonblock(fd, buf, len, __HERE__))
-#define write_all_nonblock(fd,buf,len)  (_write_all_nonblock(fd, buf, len, __HERE__))
-#define write_str(fd,str)               (_write_str(fd, str, __HERE__))
-#define write_str_nonblock(fd,str)      (_write_str_nonblock(fd, str, __HERE__))
+#define set_nonblock(fd)                (_set_nonblock(fd, __WHENCE__))
+#define set_block(fd)                   (_set_block(fd, __WHENCE__))
+#define read_nonblock(fd,buf,len)       (_read_nonblock(fd, buf, len, __WHENCE__))
+#define write_all(fd,buf,len)           (_write_all(fd, buf, len, __WHENCE__))
+#define write_nonblock(fd,buf,len)      (_write_nonblock(fd, buf, len, __WHENCE__))
+#define write_all_nonblock(fd,buf,len)  (_write_all_nonblock(fd, buf, len, __WHENCE__))
+#define write_str(fd,str)               (_write_str(fd, str, __WHENCE__))
+#define write_str_nonblock(fd,str)      (_write_str_nonblock(fd, str, __WHENCE__))
 
-int _set_nonblock(int fd, struct __sourceloc where);
-int _set_block(int fd, struct __sourceloc where);
-ssize_t _read_nonblock(int fd, void *buf, size_t len, struct __sourceloc where);
-ssize_t _write_all(int fd, const void *buf, size_t len, struct __sourceloc where);
-ssize_t _write_nonblock(int fd, const void *buf, size_t len, struct __sourceloc where);
-ssize_t _write_all_nonblock(int fd, const void *buf, size_t len, struct __sourceloc where);
-ssize_t _write_str(int fd, const char *str, struct __sourceloc where);
-ssize_t _write_str_nonblock(int fd, const char *str, struct __sourceloc where);
+int _set_nonblock(int fd, struct __sourceloc __whence);
+int _set_block(int fd, struct __sourceloc __whence);
+ssize_t _read_nonblock(int fd, void *buf, size_t len, struct __sourceloc __whence);
+ssize_t _write_all(int fd, const void *buf, size_t len, struct __sourceloc __whence);
+ssize_t _write_nonblock(int fd, const void *buf, size_t len, struct __sourceloc __whence);
+ssize_t _write_all_nonblock(int fd, const void *buf, size_t len, struct __sourceloc __whence);
+ssize_t _write_str(int fd, const char *str, struct __sourceloc __whence);
+ssize_t _write_str_nonblock(int fd, const char *str, struct __sourceloc __whence);
 
 #endif // __SERVALD_NET_H

@@ -68,8 +68,10 @@ struct profile_total send_packet;
 
 static int overlay_tick_interface(int i, time_ms_t now);
 static void overlay_interface_poll(struct sched_ent *alarm);
-static void		logServalPacket(int level, struct __sourceloc where, const char *message, const unsigned char *packet, size_t len);
-static long long	parse_quantity(char *q);
+static void logServalPacket(int level, struct __sourceloc __whence, const char *message, const unsigned char *packet, size_t len);
+static long long parse_quantity(char *q);
+
+#define DEBUG_packet_visualise(M,P,N) logServalPacket(LOG_LEVEL_DEBUG, __WHENCE__, (M), (P), (N))
 
 unsigned char magic_header[]={/* Magic */ 'O',0x10,
   /* Version */ 0x00,0x01};
@@ -1314,14 +1316,14 @@ parse_quantity(char *q) {
 }
 
 static void
-logServalPacket(int level, struct __sourceloc where, const char *message, const unsigned char *packet, size_t len) {
+logServalPacket(int level, struct __sourceloc __whence, const char *message, const unsigned char *packet, size_t len) {
   struct mallocbuf mb = STRUCT_MALLOCBUF_NULL;
   if (serval_packetvisualise(XPRINTF_MALLOCBUF(&mb), message, packet, len) == -1)
     WHY("serval_packetvisualise() failed");
   else if (mb.buffer == NULL)
     WHYF("serval_packetvisualise() output buffer missing, message=%s packet=%p len=%lu", alloca_toprint(-1, message, strlen(message)), packet, len);
   else
-    logString(level, where, mb.buffer);
+    logString(level, __whence, mb.buffer);
   if (mb.buffer)
     free(mb.buffer);
 }

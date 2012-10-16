@@ -121,12 +121,12 @@ int rhizome_manifest_priority(sqlite_retry_state *retry, const char *id)
 }
 
 debugflags_t sqlite_trace_debug = DEBUG_RHIZOME;
-const struct __sourceloc *sqlite_trace_where = NULL;
+const struct __sourceloc *sqlite_trace_whence = NULL;
 
 static void sqlite_trace_callback(void *context, const char *rendered_sql)
 {
   if (debug & sqlite_trace_debug)
-    logMessage(LOG_LEVEL_DEBUG, sqlite_trace_where ? *sqlite_trace_where : __HERE__, "%s", rendered_sql);
+    logMessage(LOG_LEVEL_DEBUG, sqlite_trace_whence ? *sqlite_trace_whence : __HERE__, "%s", rendered_sql);
 }
 
 /* This function allows code like:
@@ -277,7 +277,7 @@ sqlite_retry_state sqlite_retry_state_init(int serverLimit, int serverSleep, int
     };
 }
 
-int _sqlite_retry(struct __sourceloc where, sqlite_retry_state *retry, const char *action)
+int _sqlite_retry(struct __sourceloc __whence, sqlite_retry_state *retry, const char *action)
 {
   time_ms_t now = gettime_ms();
   ++retry->busytries;
@@ -285,8 +285,7 @@ int _sqlite_retry(struct __sourceloc where, sqlite_retry_state *retry, const cha
     retry->start = now;
   else
     retry->elapsed += now - retry->start;
-  logMessage(LOG_LEVEL_INFO, where,
-      "%s on try %u after %.3f seconds (%.3f elapsed): %s",
+  INFOF("%s on try %u after %.3f seconds (%.3f elapsed): %s",
       sqlite3_errmsg(rhizome_db),
       retry->busytries,
       (now - retry->start) / 1e3,
@@ -305,12 +304,11 @@ int _sqlite_retry(struct __sourceloc where, sqlite_retry_state *retry, const cha
   return 1; // tell caller to try again
 }
 
-void _sqlite_retry_done(struct __sourceloc where, sqlite_retry_state *retry, const char *action)
+void _sqlite_retry_done(struct __sourceloc __whence, sqlite_retry_state *retry, const char *action)
 {
   if (retry->busytries) {
     time_ms_t now = gettime_ms();
-    logMessage(LOG_LEVEL_INFO, where,
-	"succeeded on try %u after %.3f seconds (%.3f elapsed): %s",
+    INFOF("succeeded on try %u after %.3f seconds (%.3f elapsed): %s",
 	retry->busytries + 1,
 	(now - retry->start) / 1e3,
 	retry->elapsed / 1e3,
@@ -328,20 +326,18 @@ void _sqlite_retry_done(struct __sourceloc where, sqlite_retry_state *retry, con
    Returns -1 if an error occurs (logged as an error), otherwise zero with the prepared
    statement in *statement.
  */
-sqlite3_stmt *_sqlite_prepare(struct __sourceloc where, sqlite_retry_state *retry, const char *sqlformat, ...)
+sqlite3_stmt *_sqlite_prepare(struct __sourceloc __whence, sqlite_retry_state *retry, const char *sqlformat, ...)
 {
   strbuf sql = strbuf_alloca(8192);
   strbuf_va_printf(sql, sqlformat);
-  return _sqlite_prepare_loglevel(where, LOG_LEVEL_ERROR, retry, sql);
+  return _sqlite_prepare_loglevel(__whence, LOG_LEVEL_ERROR, retry, sql);
 }
 
-sqlite3_stmt *_sqlite_prepare_loglevel(struct __sourceloc where, int log_level, sqlite_retry_state *retry, strbuf stmt)
+sqlite3_stmt *_sqlite_prepare_loglevel(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, strbuf stmt)
 {
   sqlite3_stmt *statement = NULL;
-  if (strbuf_overrun(stmt)) {
-    logMessage(LOG_LEVEL_ERROR, where, "SQL overrun: %s", strbuf_str(stmt));
-    return NULL;
-  }
+  if (strbuf_overrun(stmt))
+    return WHYFNULL("SQL overrun: %s", strbuf_str(stmt));
   if (!rhizome_db && rhizome_opendb() == -1)
     return NULL;
   while (1) {
@@ -351,22 +347,22 @@ sqlite3_stmt *_sqlite_prepare_loglevel(struct __sourceloc where, int log_level, 
 	return statement;
       case SQLITE_BUSY:
       case SQLITE_LOCKED:
-	if (retry && _sqlite_retry(where, retry, strbuf_str(stmt))) {
+	if (retry && _sqlite_retry(__whence, retry, strbuf_str(stmt))) {
 	  break; // back to sqlite3_prepare_v2()
 	}
 	// fall through...
       default:
-	logMessage(log_level, where, "query invalid, %s: %s", sqlite3_errmsg(rhizome_db), strbuf_str(stmt));
+	LOGF(log_level, "query invalid, %s: %s", sqlite3_errmsg(rhizome_db), strbuf_str(stmt));
 	sqlite3_finalize(statement);
 	return NULL;
     }
   }
 }
 
-int _sqlite_step_retry(struct __sourceloc where, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement)
+int _sqlite_step_retry(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement)
 {
   int ret = -1;
-  sqlite_trace_where = &where;
+  sqlite_trace_whence = &__whence;
   while (statement) {
     int stepcode = sqlite3_step(statement);
     switch (stepcode) {
@@ -374,25 +370,25 @@ int _sqlite_step_retry(struct __sourceloc where, int log_level, sqlite_retry_sta
       case SQLITE_DONE:
       case SQLITE_ROW:
 	if (retry)
-	  _sqlite_retry_done(where, retry, sqlite3_sql(statement));
+	  _sqlite_retry_done(__whence, retry, sqlite3_sql(statement));
 	ret = stepcode;
 	statement = NULL;
 	break;
       case SQLITE_BUSY:
       case SQLITE_LOCKED:
-	if (retry && _sqlite_retry(where, retry, sqlite3_sql(statement))) {
+	if (retry && _sqlite_retry(__whence, retry, sqlite3_sql(statement))) {
 	  sqlite3_reset(statement);
 	  break; // back to sqlite3_step()
 	}
 	// fall through...
       default:
-	logMessage(log_level, where, "query failed, %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));
+	LOGF(log_level, "query failed, %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));
 	ret = -1;
 	statement = NULL;
 	break;
     }
   }
-  sqlite_trace_where = NULL;
+  sqlite_trace_whence = NULL;
   return ret;
 }
 
@@ -403,37 +399,37 @@ int _sqlite_step_retry(struct __sourceloc where, int log_level, sqlite_retry_sta
    the statement and retries while sqlite_retry() returns true.  If sqlite_retry() returns false
    then returns -1.  Otherwise returns zero.  Always finalises the statement before returning.
  */
-static int _sqlite_exec_void_prepared(struct __sourceloc where, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement)
+static int _sqlite_exec_void_prepared(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement)
 {
   if (!statement)
     return -1;
   int rowcount = 0;
   int stepcode;
-  while ((stepcode = _sqlite_step_retry(where, log_level, retry, statement)) == SQLITE_ROW)
+  while ((stepcode = _sqlite_step_retry(__whence, log_level, retry, statement)) == SQLITE_ROW)
     ++rowcount;
   if (rowcount)
-    logMessage(LOG_LEVEL_WARN, where, "void query unexpectedly returned %d row%s", rowcount, rowcount == 1 ? "" : "s");
+    WARNF("void query unexpectedly returned %d row%s", rowcount, rowcount == 1 ? "" : "s");
   sqlite3_finalize(statement);
   return sqlite_code_ok(stepcode) ? 0 : -1;
 }
 
-static int _sqlite_vexec_void(struct __sourceloc where, int log_level, sqlite_retry_state *retry, const char *sqlformat, va_list ap)
+static int _sqlite_vexec_void(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, const char *sqlformat, va_list ap)
 {
   strbuf stmt = strbuf_alloca(8192);
   strbuf_vsprintf(stmt, sqlformat, ap);
-  return _sqlite_exec_void_prepared(where, log_level, retry, _sqlite_prepare_loglevel(where, log_level, retry, stmt));
+  return _sqlite_exec_void_prepared(__whence, log_level, retry, _sqlite_prepare_loglevel(__whence, log_level, retry, stmt));
 }
 
 /* Convenience wrapper for executing an SQL command that returns no value.
    If an error occurs then logs it at ERROR level and returns -1.  Otherwise returns zero.
    @author Andrew Bettison <andrew@servalproject.com>
  */
-int _sqlite_exec_void(struct __sourceloc where, const char *sqlformat, ...)
+int _sqlite_exec_void(struct __sourceloc __whence, const char *sqlformat, ...)
 {
   va_list ap;
   va_start(ap, sqlformat);
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  int ret = _sqlite_vexec_void(where, LOG_LEVEL_ERROR, &retry, sqlformat, ap);
+  int ret = _sqlite_vexec_void(__whence, LOG_LEVEL_ERROR, &retry, sqlformat, ap);
   va_end(ap);
   return ret;
 }
@@ -441,12 +437,12 @@ int _sqlite_exec_void(struct __sourceloc where, const char *sqlformat, ...)
 /* Same as sqlite_exec_void(), but logs any error at the given level instead of ERROR.
    @author Andrew Bettison <andrew@servalproject.com>
  */
-int _sqlite_exec_void_loglevel(struct __sourceloc where, int log_level, const char *sqlformat, ...)
+int _sqlite_exec_void_loglevel(struct __sourceloc __whence, int log_level, const char *sqlformat, ...)
 {
   va_list ap;
   va_start(ap, sqlformat);
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  int ret = _sqlite_vexec_void(where, log_level, &retry, sqlformat, ap);
+  int ret = _sqlite_vexec_void(__whence, log_level, &retry, sqlformat, ap);
   va_end(ap);
   return ret;
 }
@@ -457,36 +453,34 @@ int _sqlite_exec_void_loglevel(struct __sourceloc where, int log_level, const ch
    all in the event of a busy condition, but will log it as an error and return immediately.
    @author Andrew Bettison <andrew@servalproject.com>
  */
-int _sqlite_exec_void_retry(struct __sourceloc where, sqlite_retry_state *retry, const char *sqlformat, ...)
+int _sqlite_exec_void_retry(struct __sourceloc __whence, sqlite_retry_state *retry, const char *sqlformat, ...)
 {
   va_list ap;
   va_start(ap, sqlformat);
-  int ret = _sqlite_vexec_void(where, LOG_LEVEL_ERROR, retry, sqlformat, ap);
+  int ret = _sqlite_vexec_void(__whence, LOG_LEVEL_ERROR, retry, sqlformat, ap);
   va_end(ap);
   return ret;
 }
 
-static int _sqlite_vexec_int64(struct __sourceloc where, sqlite_retry_state *retry, long long *result, const char *sqlformat, va_list ap)
+static int _sqlite_vexec_int64(struct __sourceloc __whence, sqlite_retry_state *retry, long long *result, const char *sqlformat, va_list ap)
 {
   strbuf stmt = strbuf_alloca(8192);
   strbuf_vsprintf(stmt, sqlformat, ap);
-  sqlite3_stmt *statement = _sqlite_prepare_loglevel(where, LOG_LEVEL_ERROR, retry, stmt);
+  sqlite3_stmt *statement = _sqlite_prepare_loglevel(__whence, LOG_LEVEL_ERROR, retry, stmt);
   if (!statement)
     return -1;
   int ret = 0;
   int rowcount = 0;
   int stepcode;
-  while ((stepcode = _sqlite_step_retry(where, LOG_LEVEL_ERROR, retry, statement)) == SQLITE_ROW) {
+  while ((stepcode = _sqlite_step_retry(__whence, LOG_LEVEL_ERROR, retry, statement)) == SQLITE_ROW) {
     int columncount = sqlite3_column_count(statement);
-    if (columncount != 1) {
-      logMessage(LOG_LEVEL_ERROR, where, "incorrect column count %d (should be 1): %s", columncount, sqlite3_sql(statement));
-      ret = -1;
-    }
+    if (columncount != 1)
+      ret = WHYF("incorrect column count %d (should be 1): %s", columncount, sqlite3_sql(statement));
     else if (++rowcount == 1)
       *result = sqlite3_column_int64(statement, 0);
   }
   if (rowcount > 1)
-    logMessage(LOG_LEVEL_WARN, where, "query unexpectedly returned %d rows, ignored all but first", rowcount);
+    WARNF("query unexpectedly returned %d rows, ignored all but first", rowcount);
   sqlite3_finalize(statement);
   return sqlite_code_ok(stepcode) && ret != -1 ? rowcount : -1;
 }
@@ -499,12 +493,12 @@ static int _sqlite_vexec_int64(struct __sourceloc where, sqlite_retry_state *ret
    If more than one row is found, then logs a warning, assigns the value of the first row to *result
    and returns the number of rows.
  */
-int _sqlite_exec_int64(struct __sourceloc where, long long *result, const char *sqlformat,...)
+int _sqlite_exec_int64(struct __sourceloc __whence, long long *result, const char *sqlformat,...)
 {
   va_list ap;
   va_start(ap, sqlformat);
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  int ret = _sqlite_vexec_int64(where, &retry, result, sqlformat, ap);
+  int ret = _sqlite_vexec_int64(__whence, &retry, result, sqlformat, ap);
   va_end(ap);
   return ret;
 }
@@ -515,11 +509,11 @@ int _sqlite_exec_int64(struct __sourceloc where, long long *result, const char *
    all in the event of a busy condition, but will log it as an error and return immediately.
    @author Andrew Bettison <andrew@servalproject.com>
  */
-int _sqlite_exec_int64_retry(struct __sourceloc where, sqlite_retry_state *retry, long long *result, const char *sqlformat,...)
+int _sqlite_exec_int64_retry(struct __sourceloc __whence, sqlite_retry_state *retry, long long *result, const char *sqlformat,...)
 {
   va_list ap;
   va_start(ap, sqlformat);
-  int ret = _sqlite_vexec_int64(where, retry, result, sqlformat, ap);
+  int ret = _sqlite_vexec_int64(__whence, retry, result, sqlformat, ap);
   va_end(ap);
   return ret;
 }
@@ -532,28 +526,26 @@ int _sqlite_exec_int64_retry(struct __sourceloc where, sqlite_retry_state *retry
     2 more than one row, logs a warning and appends the first row's column to the strbuf
    @author Andrew Bettison <andrew@servalproject.com>
  */
-int _sqlite_exec_strbuf(struct __sourceloc where, strbuf sb, const char *sqlformat,...)
+int _sqlite_exec_strbuf(struct __sourceloc __whence, strbuf sb, const char *sqlformat,...)
 {
   strbuf stmt = strbuf_alloca(8192);
   strbuf_va_printf(stmt, sqlformat);
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = _sqlite_prepare_loglevel(where, LOG_LEVEL_ERROR, &retry, stmt);
+  sqlite3_stmt *statement = _sqlite_prepare_loglevel(__whence, LOG_LEVEL_ERROR, &retry, stmt);
   if (!statement)
     return -1;
   int ret = 0;
   int rowcount = 0;
   int stepcode;
-  while ((stepcode = _sqlite_step_retry(where, LOG_LEVEL_ERROR, &retry, statement)) == SQLITE_ROW) {
+  while ((stepcode = _sqlite_step_retry(__whence, LOG_LEVEL_ERROR, &retry, statement)) == SQLITE_ROW) {
     int columncount = sqlite3_column_count(statement);
-    if (columncount != 1) {
-      logMessage(LOG_LEVEL_ERROR, where, "incorrect column count %d (should be 1): %s", columncount, sqlite3_sql(statement));
-      ret = -1;
-    }
+    if (columncount != 1)
+      ret - WHYF("incorrect column count %d (should be 1): %s", columncount, sqlite3_sql(statement));
     else if (++rowcount == 1)
       strbuf_puts(sb, (const char *)sqlite3_column_text(statement, 0));
   }
   if (rowcount > 1)
-    logMessage(LOG_LEVEL_WARN, where, "query unexpectedly returned %d rows, ignored all but first", rowcount);
+    WARNF("query unexpectedly returned %d rows, ignored all but first", rowcount);
   sqlite3_finalize(statement);
   return sqlite_code_ok(stepcode) && ret != -1 ? rowcount : -1;
 }
@@ -1034,7 +1026,7 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
     goto insert_row_fail;
   }
   /* Do actual insert, and abort if it fails */
-  if (_sqlite_exec_void_prepared(__HERE__, LOG_LEVEL_ERROR, &retry, statement) == -1) {
+  if (_sqlite_exec_void_prepared(__WHENCE__, LOG_LEVEL_ERROR, &retry, statement) == -1) {
 insert_row_fail:
     WHYF("Failed to insert row for fileid=%s", hash);
     goto error;
