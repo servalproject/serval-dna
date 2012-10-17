@@ -278,12 +278,16 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       
       overlay_address_set_sender(f.source);
       
+      struct sockaddr_in *addr=(struct sockaddr_in *)recvaddr;
+      
+      // always update the IP address we heard them from, even if we don't need to use it right now
+      f.source->address = *addr;
+      
       // if this is a dummy announcement for a node that isn't in our routing table
       if (f.destination && 
 	(f.source->reachable == REACHABLE_NONE || f.source->reachable == REACHABLE_UNICAST) && 
 	(!f.source->node) &&
 	(interface->fileP || recvaddr->sa_family==AF_INET)){
-	  struct sockaddr_in *addr=(struct sockaddr_in *)recvaddr;
 	  
 	  // mark this subscriber as reachable directly via unicast.
 	  reachable_unicast(f.source, interface, addr->sin_addr, ntohs(addr->sin_port));

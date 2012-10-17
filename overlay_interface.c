@@ -823,10 +823,9 @@ overlay_interface_register(char *name,
     int broadcast_match = 0;
     int name_match =0;
     
-    if ((overlay_interfaces[i].broadcast_address.sin_addr.s_addr & 0xffffffff)
-	== (broadcast.s_addr & 0xffffffff)){
+    if (overlay_interfaces[i].broadcast_address.sin_addr.s_addr
+	== broadcast.s_addr)
       broadcast_match = 1;
-    }
     
     name_match = !strcasecmp(overlay_interfaces[i].name, name);
     

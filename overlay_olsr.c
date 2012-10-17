@@ -151,11 +151,16 @@ static void parse_frame(struct overlay_buffer *buff){
   
   overlay_address_set_sender(sender);
   
-  if (sender->reachable==REACHABLE_NONE){
-    // locate the interface we should send outgoing unicast packets to
-    overlay_interface *interface = overlay_interface_find(*addr);
-    if (interface){
-      // assume the port number of the other servald matches our local port number configuration
+  // locate the interface we should send outgoing unicast packets to
+  overlay_interface *interface = overlay_interface_find(*addr);
+  if (interface){
+    // always update the IP address we heard them from, even if we don't need to use it right now
+    sender->address.sin_family = AF_INET;
+    sender->address.sin_addr = *addr;
+    // assume the port number of the other servald matches our local port number configuration
+    sender->address.sin_port = htons(interface->port);
+
+    if (sender->reachable==REACHABLE_NONE){
       reachable_unicast(sender, interface, *addr, interface->port);
     }
   }

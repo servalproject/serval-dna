@@ -81,20 +81,17 @@ struct subscriber{
   
   // result of routing calculations;
   int reachable;
-  union{
-    // if indirect, who is the next hop?
-    struct subscriber *next_hop;
-    
-    struct{
-      // if direct, where do we send packets?
-      struct overlay_interface *interface;
-      
-      // if reachable==REACHABLE_UNICAST use this address & sequence number, else use the interface broadcast address
-      struct sockaddr_in address;
-    };
-  };
   
-  // public signing key details
+  // if indirect, who is the next hop?
+  struct subscriber *next_hop;
+  
+  // if direct, or unicast, where do we send packets?
+  struct overlay_interface *interface;
+  
+  // if reachable==REACHABLE_UNICAST send packets to this address, else use the interface broadcast address
+  struct sockaddr_in address;
+  
+  // public signing key details for remote peers
   unsigned char sas_public[SAS_SIZE];
   time_ms_t sas_last_request;
   unsigned char sas_valid;
