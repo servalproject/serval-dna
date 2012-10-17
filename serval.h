@@ -751,7 +751,6 @@ typedef struct overlay_mdp_frame {
 int keyring_mapping_request(keyring_file *k,overlay_mdp_frame *req);
 
 /* Server-side MDP functions */
-int overlay_saw_mdp_frame(overlay_mdp_frame *mdp, time_ms_t now);
 int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp);
 int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
 			  overlay_mdp_frame *mdpreply);

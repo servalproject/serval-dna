@@ -36,6 +36,8 @@ struct sched_ent mdp_named={
   .stats = &mdp_stats,
 };
 
+static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame *mdp, time_ms_t now);
+
 int overlay_mdp_setup_sockets()
 {
   struct sockaddr_un name;
@@ -388,7 +390,7 @@ int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now)
     RETURN(-1);
 
   /* and do something with it! */
-  RETURN(overlay_saw_mdp_frame(&mdp,now));
+  RETURN(overlay_saw_mdp_frame(f, &mdp,now));
 }
 
 int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp)
@@ -400,7 +402,7 @@ int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp)
   return 0;
 }
 
-int overlay_saw_mdp_frame(overlay_mdp_frame *mdp, time_ms_t now)
+static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame *mdp, time_ms_t now)
 {
   IN();
   int i;
@@ -421,7 +423,9 @@ int overlay_saw_mdp_frame(overlay_mdp_frame *mdp, time_ms_t now)
 
     // TODO pass in dest subscriber as an argument, we should know it by now
     struct subscriber *destination = NULL;
-    if (!is_sid_broadcast(mdp->out.dst.sid)){
+    if (frame)
+      destination = frame->destination;
+    else if (!is_sid_broadcast(mdp->out.dst.sid)){
       destination = find_subscriber(mdp->out.dst.sid, SID_SIZE, 1);
     }
     
@@ -727,7 +731,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   if (!frame->destination || frame->destination->reachable == REACHABLE_SELF)
     {
       /* Packet is addressed such that we should process it. */
-      overlay_saw_mdp_frame(mdp,gettime_ms());
+      overlay_saw_mdp_frame(NULL,mdp,gettime_ms());
       if (frame->destination) {
 	/* Is local, and is not broadcast, so shouldn't get sent out
 	   on the wire. */
