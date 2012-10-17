@@ -102,7 +102,6 @@ static void directory_update(struct sched_ent *alarm){
     if (subscriber_is_reachable(directory_service) != REACHABLE_NONE){
       directory_send_keyring(directory_service);
       
-      unschedule(alarm);
       alarm->alarm = gettime_ms() + DIRECTORY_UPDATE_INTERVAL;
       alarm->deadline = alarm->alarm + 10000;
       schedule(alarm);
@@ -112,6 +111,7 @@ static void directory_update(struct sched_ent *alarm){
 }
 
 int directory_service_init(){
+  unschedule(&directory_alarm);
   directory_update(&directory_alarm);
   return 0;
 }
