@@ -29,10 +29,14 @@ setup() {
    assert_all_instance_peers_complete +A
 }
 
-teardown() {
+finally() {
    stop_all_servald_servers
+}
+
+teardown() {
    kill_all_servald_processes
    assert_no_servald_processes
+   report_all_servald_servers
 }
 
 # Called by start_servald_instances immediately before starting the server

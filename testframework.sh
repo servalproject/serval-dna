@@ -478,6 +478,12 @@ escape_grep_extended() {
    echo "$re"
 }
 
+# Return true if all the arguments arg2... match the given grep(1) regular
+# expression arg1.
+matches_rexp() {
+   _tfw_matches_rexp "$@"
+}
+
 # Executes its arguments as a command:
 #  - captures the standard output and error in temporary files for later
 #    examination
@@ -886,6 +892,7 @@ _tfw_assert() {
 declare -a _tfw_opt_dump_on_fail
 
 _tfw_dump_on_fail() {
+   local arg
    for arg; do
       local _found=false
       local _f
@@ -959,6 +966,7 @@ _tfw_getopts() {
 _tfw_matches_rexp() {
    local rexp="$1"
    shift
+   local arg
    for arg; do
       if ! echo "$arg" | $GREP -q -e "$rexp"; then
          return 1

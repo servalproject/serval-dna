@@ -45,25 +45,31 @@ assert_manifest_complete() {
    fi
 }
 
+# Assertion function:
+# - assert that the output of a "servald rhizome list" command exactly describes the given files
 assert_rhizome_list() {
-   assertStdoutLineCount --stderr '==' $(($# + 2))
    assertStdoutIs --stderr --line=1 -e '12\n'
    assertStdoutIs --stderr --line=2 -e 'service:id:version:date:.inserttime:.author:.fromhere:filesize:filehash:sender:recipient:name\n'
    local filename
-   local re__author="\($rexp_sid\)\{0,1\}"
-   local re__fromhere
+   local exactly=true
    local re__inserttime="$rexp_date"
+   local re__fromhere='[01]'
+   local re__author="\($rexp_sid\)\{0,1\}"
+   local files=0
    for filename; do
-      re__fromhere=1
       case "$filename" in
-      *@*) re__author="${filename##*@}"; filename="${filename%@*}";;
+      --fromhere=*) re__fromhere="${filename#*=}";;
+      --author=*) re__author="${filename#*=}";;
+      --and-others) exactly=false;;
+      --*) error "unsupported option: $filename";;
+      *)
+         unpack_manifest_for_grep "$filename"
+         assertStdoutGrep --stderr --matches=1 "^$re_service:$re_manifestid:$re_version:$re_date:$re__inserttime:$re__author:$re__fromhere:$re_filesize:$re_filehash:$re_sender:$re_recipient:$re_name\$"
+         let files+=1
+         ;;
       esac
-      case "$filename" in
-      *!) re__fromhere=0; filename="${filename%!}";;
-      esac
-      unpack_manifest_for_grep "$filename"
-      assertStdoutGrep --stderr --matches=1 "^$re_service:$re_manifestid:$re_version:$re_date:$re__inserttime:$re__author:$re__fromhere:$re_filesize:$re_filehash:$re_sender:$re_recipient:$re_name\$"
    done
+   $exactly && assertStdoutLineCount --stderr '==' $(($files + 2))
 }
 
 assert_stdout_add_file() {
