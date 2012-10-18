@@ -1186,7 +1186,8 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       }
     }else{
       frame->send_copies --;
-      if (frame->send_copies>0)
+      // ignore resend logic for unicast packets, where wifi gives better resilience
+      if (frame->send_copies>0 && !packet->unicast)
 	keep_payload=1;
     }
     
