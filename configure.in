@@ -105,30 +105,6 @@ AC_CHECK_HEADER([alsa/asoundlib.h], [have_alsa=1], [have_alsa=0])
 AS_IF([test x"$have_alsa" = "x1"], [AC_DEFINE([HAVE_ALSA_ASOUNDLIB_H])])
 AS_IF([test x"$have_alsa" = "x1"], [AC_SUBST(HAVE_ALSA,1)], [AC_SUBST(HAVE_ALSA,0)])
 
-echo "Fetching and building NaCl if required."
-echo "(this can take HOURS to build depending on your architecture,"
-echo " but fortunately it only needs to happen once.)"
-cd nacl
-./nacl-gcc-prep
-cd ..
-NACL_INC=`cat nacl/naclinc.txt`
-NACL_LIB=`cat nacl/nacllib.txt`
-CPPFLAGS="$CPPFLAGS -Inacl/$NACL_INC"
-LDFLAGS="$LDFLAGS nacl/$NACL_LIB"
-AC_CHECK_HEADER(crypto_sign_edwards25519sha512batch_ref/ge25519.h,
-        AC_DEFINE([HAVE_CRYPTO_SIGN_NACL_GE25519_H]),
-        [
-            dnl A kludge to get to the NaCl ge25519 functions, which are not included in the public API
-            dnl in a native build (but are available in the Android build).
-            oCPPFLAGS="$CPPFLAGS"
-            CPPFLAGS="$CPPFLAGS -Inacl/$NACL_INC -Inacl/${NACL_INC%%/*}/crypto_sign"
-            AC_CHECK_HEADER([edwards25519sha512batch/ref/ge25519.h],
-                    AC_DEFINE([HAVE_KLUDGE_NACL_GE25519_H]),
-                    CPPFLAGS="$oCPPFLAGS"
-                )
-        ]
-    )
-
 AC_CHECK_LIB(m,sqrtf,[LDFLAGS="$LDFLAGS -lm"])
 AC_CHECK_LIB(nsl,callrpc,[LDFLAGS="$LDFLAGS -lnsl"])
 AC_CHECK_LIB(socket,socket,[LDFLAGS="$LDFLAGS -lsocket"])

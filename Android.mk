@@ -85,11 +85,10 @@ SERVALD_LOCAL_STATIC_LIBRARIES = sqlite3 nacl
 # Build NACL
 include $(CLEAR_VARS)
 # Work out where NACL is
-NACL_VER=$(shell cat $(LOCAL_PATH)/serval-dna/nacl/nacl-version)
-NACL_BASE=serval-dna/nacl/$(NACL_VER)/build_android
-NACL_INC=$(LOCAL_PATH)/$(NACL_BASE)
+NACL_BASE=serval-dna/nacl/src
+NACL_INC=$(LOCAL_PATH)/$(NACL_BASE)/../include
 # Find sources
-include $(LOCAL_PATH)/$(NACL_BASE)/sources.mk
+include $(LOCAL_PATH)/$(NACL_BASE)/nacl.mk
 LOCAL_MODULE:= nacl
 LOCAL_SRC_FILES:= $(NACL_SOURCES)
 LOCAL_CFLAGS += -g -I$(NACL_INC)
@@ -100,9 +99,9 @@ include $(CLEAR_VARS)
 # Find SQLITE3 headers
 SQLITE3_INC=$(LOCAL_PATH)/sqlite3
 # Get the list of sources
-include $(LOCAL_PATH)/serval-dna/nacl/$(NACL_VER)/build_android/sources.mk
+include $(LOCAL_PATH)/serval-dna/nacl/src/nacl.mk
 LOCAL_SRC_FILES:= $(SERVALD_SRC_FILES)
-LOCAL_CFLAGS += $(SERVALD_LOCAL_CFLAGS)
+LOCAL_CFLAGS += $(SERVALD_LOCAL_CFLAGS) -Iserval-dna/nacl/include
 LOCAL_LDLIBS := $(SERVALD_LOCAL_LDLIBS)
 LOCAL_STATIC_LIBRARIES := $(SERVALD_LOCAL_STATIC_LIBRARIES)
 LOCAL_MODULE:= serval

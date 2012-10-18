@@ -1,4 +1,6 @@
-SRCS=	\
+NACL_BASE=	nacl/src
+include $(NACL_BASE)/nacl.mk
+SRCS=	$(NACL_SOURCES) \
 	audiodevices.c \
 	audio_reflector.c \
 	batman.c \
@@ -121,7 +123,7 @@ HDRS=	fifo.h \
 
 LDFLAGS=@LDFLAGS@ @LIBS@ @PORTAUDIO_LIBS@ @SRC_LIBS@ @SPANDSP_LIBS@ @CODEC2_LIBS@ @PTHREAD_LIBS@
 
-CFLAGS=	-Isqlite-amalgamation-3070900 @CPPFLAGS@ @CFLAGS@ @PORTAUDIO_CFLAGS@ @SRC_CFLAGS@ @SPANDSP_CFLAGS@ @PTHREAD_CFLAGS@ $(VOIPTEST_CFLAGS) 
+CFLAGS=	-Isqlite-amalgamation-3070900 @CPPFLAGS@ @CFLAGS@ @PORTAUDIO_CFLAGS@ @SRC_CFLAGS@ @SPANDSP_CFLAGS@ @PTHREAD_CFLAGS@ $(VOIPTEST_CFLAGS) -Inacl/include
 CFLAGS+=-fPIC
 CFLAGS+=-Wall -Wno-unused-value
 # Solaris magic
@@ -140,7 +142,7 @@ sqlite-amalgamation-3070900/sqlite3.o:	sqlite-amalgamation-3070900/sqlite3.c
 
 %.o:	%.c $(HDRS)
 	@echo CC $<
-	@$(CC) $(CFLAGS) $(DEFS) -c $<
+	@$(CC) $(CFLAGS) $(DEFS) -c $< -o $@
 
 servald:	$(OBJS)
 	@echo LINK $@

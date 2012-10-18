@@ -299,7 +299,7 @@ int rhizome_verify_bundle_privatekey(rhizome_manifest *m,
   IN();
 
 #include "crypto_sign_edwards25519sha512batch.h"
-#include "nacl/nacl-20110221/crypto_sign/edwards25519sha512batch/ref/ge.h"
+#include "nacl/src/crypto_sign_edwards25519sha512batch_ref/ge.h"
 
   unsigned char h[64];
   unsigned char pk[32];
