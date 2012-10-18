@@ -431,11 +431,11 @@ int log_backtrace(struct __sourceloc whence)
   if (get_self_executable_path(execpath, sizeof execpath) == -1)
     return WHY("cannot log backtrace: own executable path unknown");
   char tempfile[MAXPATHLEN];
-  if (!FORM_SERVAL_INSTANCE_PATH(tempfile, "servalgdb.XXXXX"))
+  if (!FORM_SERVAL_INSTANCE_PATH(tempfile, "servalgdb.XXXXXX"))
     return -1;
   int tmpfd = mkstemp(tempfile);
   if (tmpfd == -1)
-    return WHY_perror("mkstemp");
+    return WHYF_perror("mkstemp(%s)", alloca_str_toprint(tempfile));
   if (write_str(tmpfd, "backtrace\n") == -1) {
     close(tmpfd);
     unlink(tempfile);
