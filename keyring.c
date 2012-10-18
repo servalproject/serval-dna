@@ -17,6 +17,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "rhizome.h"
 #include "nacl.h"
 #include "overlay_address.h"
 
@@ -1105,7 +1106,7 @@ int keyring_sanitise_position(const keyring_file *k,int *cn,int *in,int *kp)
 }
 
 unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
-					unsigned char **sas_public)
+					unsigned char **sas_public_out)
 {
   IN();
   int cn=0,in=0,kp=0;
@@ -1117,12 +1118,23 @@ unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
   for(kp=0;kp<k->contexts[cn]->identities[in]->keypair_count;kp++)
     if (k->contexts[cn]->identities[in]->keypairs[kp]->type==KEYTYPE_CRYPTOSIGN)
       {
-	if (sas_public) 
-	  *sas_public=
-	    k->contexts[cn]->identities[in]->keypairs[kp]->public_key;
+	unsigned char *sas_private=
+	  k->contexts[cn]->identities[in]->keypairs[kp]->private_key;
+	unsigned char *sas_public=
+	  k->contexts[cn]->identities[in]->keypairs[kp]->public_key;
+	if (rhizome_verify_bundle_privatekey(NULL,sas_private,sas_public))
+	  {
+	    /* SAS key is invalid (perhaps because it was a pre 0.90 format one),
+	       so replace it */
+	    DEBUGF("SAS key is invalid -- regenerating.");
+	    crypto_sign_edwards25519sha512batch_keypair(sas_public,
+							sas_private);
+	    keyring_commit(k);
+	  }
 	if (debug & DEBUG_KEYRING)
 	  DEBUGF("Found SAS entry for %s*", alloca_tohex(sid, 7));
-	RETURN(k->contexts[cn]->identities[in]->keypairs[kp]->private_key);
+	if (sas_public_out) *sas_public_out=sas_public; 
+	RETURN(sas_private);
       }
 
   RETURNNULL(WHYNULL("Identity lacks SAS"));
