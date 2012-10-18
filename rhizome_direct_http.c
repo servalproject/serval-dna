@@ -876,14 +876,13 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	   Then as noted above, we can use that to pull the file down using
 	   existing routines.
 	*/
-	if (!rhizome_fetch_request_manifest_by_prefix
-	    (&addr,&actionlist[i+1],RHIZOME_BAR_PREFIX_BYTES,
-	     1 /* import, getting file if needed */))
+	if (!rhizome_fetch_request_manifest_by_prefix(&addr,&actionlist[i+1],RHIZOME_BAR_PREFIX_BYTES))
 	  {
 	    /* Fetching the manifest, and then using it to see if we want to 
 	       fetch the file for import is all handled asynchronously, so just
 	       wait for it to finish. */
-	    while(rhizome_file_fetch_queue_count) fd_poll();
+	    while (rhizome_count_queued_imports())
+	      fd_poll();
 	  }
 	
       } else if (type==1&&r->pushP) {
