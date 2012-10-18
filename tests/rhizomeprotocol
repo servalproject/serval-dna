@@ -73,14 +73,12 @@ bundle_received_by() {
       +[A-Z])
          local logvar="LOG${arg#+}"
          for rexp in "${rexps[@]}"; do
-            echo grep "$rexp" "${!logvar}"
             grep "$rexp" "${!logvar}" || return 1
          done
          restart=true
          ;;
       --stderr)
          for rexp in "${rexps[@]}"; do
-            echo replayStderr \| grep "$rexp"
             replayStderr | grep "$rexp" || return 1
          done
          restart=true
@@ -414,18 +412,19 @@ setup_FileTransferStress() {
 }
 test_FileTransferStress() {
    start_servald_instances +A +B +C +D +E
-   wait_until bundle_received_by \
-      $bundlesA +B +C +D +E \
-      $bundlesB +A +C +D +E \
-      $bundlesC +A +B +D +E \
-      $bundlesD +A +B +C +E \
-      $bundlesE +A +B +C +D
+   wait_until --timeout=180 bundle_received_by \
+      ${bundlesA[*]} +B +C +D +E \
+      ${bundlesB[*]} +A +C +D +E \
+      ${bundlesC[*]} +A +B +D +E \
+      ${bundlesD[*]} +A +B +C +E \
+      ${bundlesE[*]} +A +B +C +D
+   stop_all_servald_servers
    local i
    for i in A B C D E; do
       set_instance +$i
       executeOk_servald rhizome list ''
-      assert_rhizome_list --fromhere=1 file-$i-* --fromhere=0 file-!($i)-*
-      assert_received file-!($i)-*
+      assert_rhizome_list --fromhere=1 file-$i-? --fromhere=0 file-!($i)-?
+      assert_received file-!($i)-?
    done
 }
 
