@@ -47,10 +47,14 @@ setup() {
    executeOk_servald config set debug.all Yes
 }
 
-teardown() {
+finally() {
    stop_all_servald_servers
+}
+
+teardown() {
    kill_all_servald_processes
    assert_no_servald_processes
+   report_all_servald_servers
 }
 
 set_server_vars() {

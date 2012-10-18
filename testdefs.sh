@@ -337,6 +337,7 @@ stop_servald_server() {
          tfw_log "# ended servald process: pid=$bpid"
       fi
    done
+   pop_instance
 }
 
 # Utility function:
@@ -349,7 +350,6 @@ report_servald_server() {
       tfw_core_backtrace "$servald" "$instance_dir/core"
       rm -f "$instance_dir/core"
    fi
-   pop_instance
 }
 
 # Utility function:
@@ -423,7 +423,7 @@ stop_all_servald_servers() {
 # Utility function for tearing down servald fixtures:
 #  - log a report of the execution of all servald server process instances
 report_all_servald_servers() {
-   foreach_instance_with_pidfile report_servald_server
+   foreach_instance +{A..Z} report_servald_server
 }
 
 # Utility function for tearing down servald fixtures:
@@ -498,7 +498,7 @@ get_servald_pids() {
 assert_no_servald_processes() {
    local pids
    get_servald_pids pids
-   assert --message="$servald_basename process(es) running: $pids" [ -z "$pids" ]
+   assert --message="no $servald_basename process(es) running" [ -z "$pids" ]
    return 0
 }
 

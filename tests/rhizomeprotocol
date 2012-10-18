@@ -24,15 +24,14 @@ source "${0%/*}/../testdefs_rhizome.sh"
 
 shopt -s extglob
 
+finally() {
+   stop_all_servald_servers
+}
+
 teardown() {
    kill_all_servald_processes
    assert_no_servald_processes
-   report_all_servald_processes
-}
-
-setup_rhizome() {
-   foreach_instance +A +B create_single_identity
-   set_instance +B
+   report_all_servald_servers
 }
 
 # Called by start_servald_instances for each instance.
@@ -109,8 +108,9 @@ setup_curl_7() {
 
 setup_common() {
    setup_servald
-   setup_rhizome
    assert_no_servald_processes
+   foreach_instance +A +B create_single_identity
+   set_instance +B
 }
 
 extract_manifest_vars() {
@@ -431,7 +431,6 @@ test_FileTransferStress() {
       assert_rhizome_list --fromhere=1 file-$i-* --fromhere=0 file-!($i)-*
       assert_received file-!($i)-*
    done
-   assert_status_all_servald_servers running
 }
 
 runTests "$@"
