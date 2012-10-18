@@ -45,9 +45,9 @@ setup() {
 }
 
 teardown() {
-   stop_all_servald_servers
    kill_all_servald_processes
    assert_no_servald_processes
+   report_all_servald_servers
 }
 
 is_published() {
@@ -75,7 +75,7 @@ test_publish() {
    assertStdoutLineCount '==' 2
    assertStdoutGrep --matches=1 "^sid://$SIDC/local/$DIDC:$DIDC:$NAMEC\$"
    assertStdoutGrep --matches=1 "^sid://$SIDD/local/$DIDD:$DIDD:$NAMED\$"
-   return
+   assert_status_all_servald_servers running
 }
 
 start_routing_instance() {
@@ -130,5 +130,7 @@ test_routing() {
    assertStdoutGrep --matches=1 "^sid://$SIDB/local/$DIDB:$DIDB:$NAMEB\$"
    executeOk_servald mdp ping $SIDB 3
    tfw_cat --stdout --stderr
+   assert_status_all_servald_servers running
 }
+
 runTests "$@"

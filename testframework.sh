@@ -230,7 +230,7 @@ runTests() {
          local start_time=$(_tfw_timestamp)
          local finish_time=unknown
          (
-            trap '_tfw_status=$?; _tfw_teardown; exit $_tfw_status' EXIT SIGHUP SIGINT SIGTERM
+            trap '_tfw_finalise; _tfw_teardown; _tfw_exit' EXIT SIGHUP SIGINT SIGTERM
             _tfw_result=ERROR
             mkdir $_tfw_tmp || exit 255
             _tfw_setup
@@ -239,12 +239,8 @@ runTests() {
             tfw_log "# CALL test_$_tfw_test_name()"
             $_tfw_trace && set -x
             test_$_tfw_test_name
+            set +x
             _tfw_result=PASS
-            case $_tfw_result in
-            PASS) exit 0;;
-            FAIL) exit 1;;
-            ERROR) exit 254;;
-            esac
             exit 255
          )
          local stat=$?
@@ -419,6 +415,10 @@ setup() {
    :
 }
 
+finally() {
+   :
+}
+
 teardown() {
    :
 }
@@ -476,6 +476,12 @@ escape_grep_extended() {
    re="${re//\[/\\[}"
    re="${re//{/\\{}"
    echo "$re"
+}
+
+# Return true if all the arguments arg2... match the given grep(1) regular
+# expression arg1.
+matches_rexp() {
+   _tfw_matches_rexp "$@"
 }
 
 # Executes its arguments as a command:
@@ -792,24 +798,53 @@ _tfw_setup() {
    tfw_log '# END SETUP'
 }
 
+_tfw_finalise() {
+   _tfw_phase=finalise
+   tfw_log '# FINALISE'
+   case `type -t finally_$_tfw_test_name` in
+   function)
+      tfw_log "# CALL finally_$_tfw_test_name()"
+      $_tfw_trace && set -x
+      finally_$_tfw_test_name
+      set +x
+      ;;
+   *)
+      tfw_log "# CALL finally($_tfw_test_name)"
+      $_tfw_trace && set -x
+      finally $_tfw_test_name
+      set +x
+      ;;
+   esac
+   tfw_log '# END FINALLY'
+}
+
 _tfw_teardown() {
    _tfw_phase=teardown
    tfw_log '# TEARDOWN'
    case `type -t teardown_$_tfw_test_name` in
    function)
-      tfw_log "# call teardown_$_tfw_test_name()"
+      tfw_log "# CALL teardown_$_tfw_test_name()"
       $_tfw_trace && set -x
       teardown_$_tfw_test_name
       set +x
       ;;
    *)
-      tfw_log "# call teardown($_tfw_test_name)"
+      tfw_log "# CALL teardown($_tfw_test_name)"
       $_tfw_trace && set -x
       teardown $_tfw_test_name
       set +x
       ;;
    esac
    tfw_log '# END TEARDOWN'
+}
+
+_tfw_exit() {
+   case $_tfw_result in
+   PASS) exit 0;;
+   FAIL) exit 1;;
+   ERROR) exit 254;;
+   esac
+   exit 255
 }
 
 # Executes $_tfw_executable with the given arguments.
@@ -886,6 +921,7 @@ _tfw_assert() {
 declare -a _tfw_opt_dump_on_fail
 
 _tfw_dump_on_fail() {
+   local arg
    for arg; do
       local _found=false
       local _f
@@ -959,6 +995,7 @@ _tfw_getopts() {
 _tfw_matches_rexp() {
    local rexp="$1"
    shift
+   local arg
    for arg; do
       if ! echo "$arg" | $GREP -q -e "$rexp"; then
          return 1
@@ -1260,7 +1297,7 @@ _tfw_find_tests() {
 _tfw_failmsg() {
    # A failure during setup or teardown is treated as an error.
    case $_tfw_phase in
-   testcase)
+   testcase|finalise)
       if ! $_tfw_opt_error_on_fail; then
          tfw_log "FAIL: $*"
          return 0;
@@ -1289,11 +1326,20 @@ _tfw_failexit() {
    # When exiting a test case due to a failure, log any diagnostic output that
    # has been requested.
    tfw_cat "${_tfw_opt_dump_on_fail[@]}"
-   # A failure during setup or teardown is treated as an error.
+   # A failure during setup or teardown is treated as an error.  A failure
+   # during finalise does not terminate execution.
    case $_tfw_phase in
    testcase)
       if ! $_tfw_opt_error_on_fail; then
          exit 1
+      fi
+      ;;
+   finalise)
+      if ! $_tfw_opt_error_on_fail; then
+         case $_tfw_result in
+         PASS) _tfw_result=FAIL; _tfw_status=1;;
+         esac
+         return 1
       fi
       ;;
    esac
@@ -1321,10 +1367,10 @@ _tfw_error() {
 }
 
 _tfw_errorexit() {
-   # Do not exit process during teardown
+   # Do not exit process during finalise or teardown
    _tfw_result=ERROR
    case $_tfw_phase in
-   teardown) [ $_tfw_status -lt 254 ] && _tfw_status=254;;
+   finalise|teardown) [ $_tfw_status -lt 254 ] && _tfw_status=254;;
    *) exit 254;;
    esac
    return 254

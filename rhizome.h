@@ -117,6 +117,8 @@ typedef struct rhizome_manifest {
   int fileHighestPriority;
   /* Absolute path of the file associated with the manifest */
   char *dataFileName;
+  /* If set, unlink(2) the associated file when freeing the manifest */
+  int dataFileUnlinkOnFree;
   /* Whether the paylaod is encrypted or not */
   int payloadEncryption; 
 
@@ -281,7 +283,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found,
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
 long long rhizome_bar_version(unsigned char *bar);
 unsigned long long rhizome_bar_bidprefix_ll(unsigned char *bar);
-int rhizome_queue_manifest_import(rhizome_manifest *m, struct sockaddr_in *peerip, int *manifest_kept);
+int rhizome_queue_manifest_import(rhizome_manifest *m, const struct sockaddr_in *peerip, int *manifest_kept);
 int rhizome_list_manifests(const char *service, const char *sender_sid, const char *recipient_sid, int limit, int offset);
 int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp);
 int rhizome_retrieve_file(const char *fileid, const char *filepath,
@@ -539,11 +541,8 @@ extern unsigned char favicon_bytes[];
 extern int favicon_len;
 
 int rhizome_import_from_files(const char *manifestpath,const char *filepath);
-int rhizome_fetch_request_manifest_by_prefix(struct sockaddr_in *peerip,
-					     unsigned char *prefix,
-					     int prefix_length,
-					     int importP);
-extern int rhizome_file_fetch_queue_count;
+int rhizome_fetch_request_manifest_by_prefix(const struct sockaddr_in *peerip, const unsigned char *prefix, size_t prefix_length);
+int rhizome_count_queued_imports();
 
 struct http_response_parts {
   int code;

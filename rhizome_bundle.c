@@ -525,8 +525,12 @@ void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m)
       m->signatories[i]=NULL;
     }
 
-  if (m->dataFileName) free(m->dataFileName);
-  m->dataFileName=NULL;
+  if (m->dataFileName) {
+    if (m->dataFileUnlinkOnFree && unlink(m->dataFileName) == -1)
+      WARNF_perror("unlink(%s)", alloca_str_toprint(m->dataFileName));
+    free(m->dataFileName);
+    m->dataFileName = NULL;
+  }
 
   manifest_free[mid]=1;
   manifest_free_whence[mid]=__whence;

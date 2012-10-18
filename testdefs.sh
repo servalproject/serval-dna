@@ -209,6 +209,23 @@ foreach_instance() {
    return $ret
 }
 
+# Composition function:
+#  - invoke a command once in every instance that contains a server pidfile
+#  - takes the same options as foreach_instance()
+foreach_instance_with_pidfile() {
+   push_instance
+   local -a instances=()
+   if pushd "${servald_instances_dir?:}" >/dev/null; then
+      for name in *; do
+         set_instance "+$name"
+         get_servald_server_pidfile && instances+=("+$name")
+      done
+      popd >/dev/null
+   fi
+   pop_instance
+   foreach_instance "${instances[@]}" "$@"
+}
+
 # Utility function for setting up servald JNI fixtures:
 #  - check that libservald.so is present
 #  - set LD_LIBRARY_PATH so that libservald.so can be found
@@ -307,13 +324,6 @@ stop_servald_server() {
          assert --message="servald process still running" [ "$apid" -ne "$servald_pid" ]
       done
    fi
-   # Append the server log file to the test log.
-   [ -s "$instance_servald_log" ] && tfw_cat "$instance_servald_log"
-   # Append a core dump backtrace to the test log.
-   if [ -s "$instance_dir/core" ]; then
-      tfw_core_backtrace "$servald" "$instance_dir/core"
-      rm -f "$instance_dir/core"
-   fi
    # Check there is at least one fewer servald processes running.
    for bpid in ${before_pids[*]}; do
       local isgone=true
@@ -328,6 +338,18 @@ stop_servald_server() {
       fi
    done
    pop_instance
+}
+
+# Utility function:
+#  - cat a servald server log file and core dump information into the test log
+report_servald_server() {
+   # Append the server log file to the test log.
+   [ -s "$instance_servald_log" ] && tfw_cat "$instance_servald_log"
+   # Append a core dump backtrace to the test log.
+   if [ -s "$instance_dir/core" ]; then
+      tfw_core_backtrace "$servald" "$instance_dir/core"
+      rm -f "$instance_dir/core"
+   fi
 }
 
 # Utility function:
@@ -372,18 +394,36 @@ assert_servald_server_pidfile() {
    assert get_servald_server_pidfile "$@"
 }
 
+# Assertion function:
+#  - assert that the given instance's server has the given status ('running' or 'stopped')
+assert_servald_server_status() {
+   push_instance
+   set_instance_fromarg "$1" && shift
+   [ $# -eq 1 ] || error "invalid arguments"
+   executeOk_servald status
+   local status
+   extract_stdout_keyvalue status status '.*'
+   assert --message="instance +$instance_name servald server status is '$1'" [ "$status" = "$1" ]
+   pop_instance
+}
+
+# Assertion function:
+#  - asserts that all servald instances with a pidfile have a server in a given
+#    state
+assert_status_all_servald_servers() {
+   foreach_instance_with_pidfile assert_servald_server_status "$@"
+}
+
 # Utility function for tearing down servald fixtures:
 #  - stop all servald server process instances in an orderly fashion
 stop_all_servald_servers() {
-   push_instance
-   if pushd "${servald_instances_dir?:}" >/dev/null; then
-      for name in *; do
-         set_instance "+$name"
-         get_servald_server_pidfile && stop_servald_server
-      done
-      popd >/dev/null
-   fi
-   pop_instance
+   foreach_instance_with_pidfile stop_servald_server
+}
+
+# Utility function for tearing down servald fixtures:
+#  - log a report of the execution of all servald server process instances
+report_all_servald_servers() {
+   foreach_instance +{A..Z} report_servald_server
 }
 
 # Utility function for tearing down servald fixtures:
@@ -458,7 +498,7 @@ get_servald_pids() {
 assert_no_servald_processes() {
    local pids
    get_servald_pids pids
-   assert --message="$servald_basename process(es) running: $pids" [ -z "$pids" ]
+   assert --message="no $servald_basename process(es) running" [ -z "$pids" ]
    return 0
 }
 

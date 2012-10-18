@@ -1,0 +1,83 @@
+#!/bin/bash
+
+# Stress tests for Serval rhizome protocol.
+#
+# Copyright 2012 Serval Project Inc.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+source "${0%/*}/../testdefs_rhizome.sh"
+
+shopt -s extglob
+
+finally() {
+   stop_all_servald_servers
+}
+
+teardown() {
+   kill_all_servald_processes
+   assert_no_servald_processes
+   report_all_servald_servers
+}
+
+# Called by start_servald_instances for each instance.
+configure_servald_server() {
+   executeOk_servald config set log.show_pid on
+   executeOk_servald config set log.show_time on
+   executeOk_servald config set debug.rhizome on
+   executeOk_servald config set debug.rhizometx on
+   executeOk_servald config set debug.rhizomerx on
+   executeOk_servald config set server.respawn_on_signal off
+   executeOk_servald config set mdp.wifi.tick_ms 500
+   executeOk_servald config set mdp.selfannounce.ticks_per_full_address 1
+}
+
+doc_FileTransferStress="Stress - five nodes each sharing 16 bundles"
+setup_FileTransferStress() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B +C +D +E create_single_identity
+   for i in A B C D E
+   do
+      eval "bundles$i=()"
+      set_instance +$i
+      for n in 1 2 3 4 5 6 7 8 9 a b c d e f g
+      do
+         rhizome_add_file file-$i-$n
+         eval "bundles$i+=(\$BID:\$VERSION)"
+      done
+   done
+}
+test_FileTransferStress() {
+   start_servald_instances +A +B +C +D +E
+   wait_until --timeout=180 bundle_received_by \
+      ${bundlesA[*]} +B +C +D +E \
+      ${bundlesB[*]} +A +C +D +E \
+      ${bundlesC[*]} +A +B +D +E \
+      ${bundlesD[*]} +A +B +C +E \
+      ${bundlesE[*]} +A +B +C +D
+   stop_all_servald_servers
+   local i
+   for i in A B C D E; do
+      set_instance +$i
+      executeOk_servald rhizome list ''
+      assert_rhizome_list --fromhere=1 file-$i-? --fromhere=0 file-!($i)-?
+      assert_rhizome_received file-!($i)-?
+   done
+}
+
+runTests "$@"

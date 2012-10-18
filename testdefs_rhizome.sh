@@ -45,25 +45,31 @@ assert_manifest_complete() {
    fi
 }
 
+# Assertion function:
+# - assert that the output of a "servald rhizome list" command exactly describes the given files
 assert_rhizome_list() {
-   assertStdoutLineCount --stderr '==' $(($# + 2))
    assertStdoutIs --stderr --line=1 -e '12\n'
    assertStdoutIs --stderr --line=2 -e 'service:id:version:date:.inserttime:.author:.fromhere:filesize:filehash:sender:recipient:name\n'
    local filename
-   local re__author="\($rexp_sid\)\{0,1\}"
-   local re__fromhere
+   local exactly=true
    local re__inserttime="$rexp_date"
+   local re__fromhere='[01]'
+   local re__author="\($rexp_sid\)\{0,1\}"
+   local files=0
    for filename; do
-      re__fromhere=1
       case "$filename" in
-      *@*) re__author="${filename##*@}"; filename="${filename%@*}";;
+      --fromhere=*) re__fromhere="${filename#*=}";;
+      --author=*) re__author="${filename#*=}";;
+      --and-others) exactly=false;;
+      --*) error "unsupported option: $filename";;
+      *)
+         unpack_manifest_for_grep "$filename"
+         assertStdoutGrep --stderr --matches=1 "^$re_service:$re_manifestid:$re_version:$re_date:$re__inserttime:$re__author:$re__fromhere:$re_filesize:$re_filehash:$re_sender:$re_recipient:$re_name\$"
+         let files+=1
+         ;;
       esac
-      case "$filename" in
-      *!) re__fromhere=0; filename="${filename%!}";;
-      esac
-      unpack_manifest_for_grep "$filename"
-      assertStdoutGrep --stderr --matches=1 "^$re_service:$re_manifestid:$re_version:$re_date:$re__inserttime:$re__author:$re__fromhere:$re_filesize:$re_filehash:$re_sender:$re_recipient:$re_name\$"
    done
+   $exactly && assertStdoutLineCount --stderr '==' $(($files + 2))
 }
 
 assert_stdout_add_file() {
@@ -244,3 +250,96 @@ get_rhizome_server_port() {
    fi
    return 0
 }
+
+# Predicate function:
+#  - return true if the file bundles identified by args BID[:VERSION] has been
+#    received by all the given instances args +I
+#  - does this by examining the server log files of the respective instances
+#    for tell-tale INFO messages
+bundle_received_by() {
+   local -a rexps
+   local restart=true
+   local arg bid version rexp
+   for arg; do
+      case "$arg" in
+      +([0-9A-F])?(:+([0-9])))
+         $restart && rexps=()
+         restart=false
+         bid="${arg%%:*}"
+         matches_rexp "$rexp_manifestid" "$bid" || error "invalid bundle ID: $bid"
+         if [ "$bid" = "$arg" ]; then
+            rexps+=("RHIZOME ADD MANIFEST service=file bid=$bid")
+         else
+            version="${arg#*:}"
+            rexps+=("RHIZOME ADD MANIFEST service=file bid=$bid version=$version")
+         fi
+         ;;
+      +[A-Z])
+         local logvar="LOG${arg#+}"
+         for rexp in "${rexps[@]}"; do
+            grep "$rexp" "${!logvar}" || return 1
+         done
+         restart=true
+         ;;
+      --stderr)
+         for rexp in "${rexps[@]}"; do
+            replayStderr | grep "$rexp" || return 1
+         done
+         restart=true
+         ;;
+      *)
+         error "invalid argument: $arg"
+         return 1
+         ;;
+      esac
+   done
+   return 0
+}
+
+extract_manifest_vars() {
+   local manifest="${1?}"
+   extract_manifest_id BID "$manifest"
+   extract_manifest_version VERSION "$manifest"
+   extract_manifest_filesize FILESIZE "$manifest"
+   FILEHASH=
+   if [ "$FILESIZE" != '0' ]; then
+      extract_manifest_filehash FILEHASH "$manifest"
+   fi
+}
+
+rhizome_add_file() {
+   local name="$1"
+   [ -e "$name" ] || echo "File $name" >"$name"
+   local sidvar="SID$instance_name"
+   executeOk_servald rhizome add file "${!sidvar}" '' "$name" "$name.manifest"
+   executeOk_servald rhizome list ''
+   assert_rhizome_list --fromhere=1 --author="${!sidvar}" "$name" --and-others
+   extract_manifest_vars "$name.manifest"
+}
+
+rhizome_update_file() {
+   local orig_name="$1"
+   local new_name="$2"
+   [ -e "$new_name" ] || echo 'File $new_name' >"$new_name"
+   local sidvar="SID$instance_name"
+   [ "$new_name" != "$orig_name" ] && cp "$orig_name.manifest" "$new_name.manifest"
+   $SED -i -e '/^date=/d;/^filehash=/d;/^filesize=/d;/^version=/d;/^name=/d' "$new_name.manifest"
+   executeOk_servald rhizome add file "${!sidvar}" '' "$new_name" "$new_name.manifest"
+   executeOk_servald rhizome list ''
+   assert_rhizome_list --fromhere=1 "$new_name"
+   extract_manifest_vars "$new_name.manifest"
+}
+
+assert_rhizome_received() {
+   [ $# -ne 0 ] || error "missing arguments"
+   local name
+   local _hash
+   for name; do
+      if [ -s "$name" ]; then
+         extract_manifest_filehash _hash "$name.manifest"
+         executeOk_servald rhizome extract file "$_hash" extracted
+         assert cmp "$name" extracted
+      fi
+   done
+}
+

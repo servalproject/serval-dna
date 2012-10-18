@@ -435,7 +435,7 @@ int log_backtrace(struct __sourceloc whence)
     return -1;
   int tmpfd = mkstemp(tempfile);
   if (tmpfd == -1)
-    return WHYF_perror("mkstemp(%s)",alloca_str_toprint(tempfile));
+    return WHYF_perror("mkstemp(%s)", alloca_str_toprint(tempfile));
   if (write_str(tmpfd, "backtrace\n") == -1) {
     close(tmpfd);
     unlink(tempfile);
