@@ -192,7 +192,11 @@ int fd_func_enter(struct call_stats *this_call)
 int fd_func_exit(struct call_stats *this_call)
 {
   if (current_call != this_call)
-    WHYF("stack mismatch, exited through %s()",this_call->totals->name);
+    FATALF("stack-trace corrupted: %s%s%s exited through %s()",
+	 current_call?" entered through ":"no entry information, but",
+	 current_call?current_call->totals->name:"",	 
+	 current_call?"(), but":"",
+	 this_call->totals->name);
   
   time_ms_t now = gettime_ms();
   time_ms_t elapsed = now - this_call->enter_time;
