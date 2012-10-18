@@ -396,7 +396,7 @@ test_DirectSync() {
    assert_received file1
 }
 
-doc_FileTransferStress="Many bundle transfers between five nodes"
+doc_FileTransferStress="Stress - five nodes each sharing 16 bundles"
 setup_FileTransferStress() {
    setup_servald
    assert_no_servald_processes
@@ -411,13 +411,9 @@ setup_FileTransferStress() {
          eval "bundles$i+=(\$BID:\$VERSION)"
       done
    done
-   start_servald_instances +A +B +C +D +E
-   foreach_instance +A assert_peers_are_instances +B +C +D +E
-   foreach_instance +B assert_peers_are_instances +A +C +D +E
-   foreach_instance +C assert_peers_are_instances +A +B +D +E
-   foreach_instance +D assert_peers_are_instances +A +B +C +E
 }
 test_FileTransferStress() {
+   start_servald_instances +A +B +C +D +E
    wait_until bundle_received_by \
       $bundlesA +B +C +D +E \
       $bundlesB +A +C +D +E \
