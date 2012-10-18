@@ -18,6 +18,7 @@ You should have received a copy of the GNU General Public License
 along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
+#include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
@@ -50,7 +51,7 @@ int main(int argc,char **argv)
       int i;
       len=random()%8192;
       for(i=0;i<len;i++) buff[i]=random()&0xff;
-      serval_packetvisualise(XPRINTF_STDIO(stdout), "Fuzz Test", buff, len);
+      serval_packetvisualise_xpf(XPRINTF_STDIO(stdout), "Fuzz Test", buff, len);
     }
   return 0;
 }
@@ -509,7 +510,7 @@ int isDNAPacket(XPRINTF xpf, const unsigned char *packet, size_t *ofs, size_t le
   return 0;
 }
 
-int serval_packetvisualise(XPRINTF xpf, const char *message, const unsigned char *packet, size_t len)
+int serval_packetvisualise_xpf(XPRINTF xpf, const char *message, const unsigned char *packet, size_t len)
 {
   if (message)
     xprintf(xpf, "%s: ",message);
@@ -550,4 +551,9 @@ static void _dump(XPRINTF xpf, const unsigned char *data, size_t len, size_t ofs
     xputc('\n', xpf);
   }
   va_end(ap);
+}
+
+int serval_packetvisualise(const char *message, const unsigned char *packet, size_t len)
+{
+  return serval_packetvisualise_xpf(XPRINTF_STDIO(stdout),message, packet, len);
 }
