@@ -135,7 +135,7 @@ ssize_t get_self_executable_path(char *buf, size_t len);
 int log_backtrace(struct __sourceloc whence);
 void set_log_implementation(void (*log_function)(int level, struct strbuf *buf));
 
-#define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca((dstlen) == -1 ? toprint_len((buf),(len), "``") + 1 : (dstlen)), (dstlen), (buf), (len), "``")
+#define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca((dstlen) == -1 ? toprint_len((const char *)(buf),(len), "``") + 1 : (dstlen)), (dstlen), (const char *)(buf), (len), "``")
 #define alloca_str_toprint(str)  toprint_str((char *)alloca(toprint_str_len(str, "``") + 1), -1, (str), "``")
 
 #define __HERE__            ((struct __sourceloc){ .file = __FILE__, .line = __LINE__, .function = __FUNCTION__ })

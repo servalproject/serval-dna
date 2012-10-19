@@ -94,22 +94,25 @@ int monitor_client_open(struct monitor_state **res)
   struct sockaddr_un addr;
 
   if ( (fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-    perror("socket");
+    WHYF_perror("socket(AF_UNIX, SOCK_STREAM, 0)");
     return -1;
   }
 
   memset(&addr, 0, sizeof(addr));
   addr.sun_family = AF_UNIX;
   int len = monitor_socket_name(&addr);
-  
-  INFOF("Attempting to connect to %s", &addr.sun_path[1]);
+
+  INFOF("Attempting to connect to %s %s",
+      addr.sun_path[0] ? "local" : "abstract",
+      alloca_str_toprint(addr.sun_path[0] ? &addr.sun_path[0] : &addr.sun_path[1])
+    );
 
   if (connect(fd, (struct sockaddr*)&addr, len) == -1) {
-    perror("connect");
+    WHYF_perror("connect(%d, %s)", fd, alloca_toprint(-1, &addr, len));
     close(fd);
     return -1;
   }
-  
+
   *res = (struct monitor_state*)malloc(sizeof(struct monitor_state));
   memset(*res,0,sizeof(struct monitor_state));
   return fd;

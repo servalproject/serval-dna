@@ -83,7 +83,7 @@ int monitor_setup_sockets()
   name.sun_family = AF_UNIX;
   
   if ((sock = socket(AF_UNIX, SOCK_STREAM, 0))==-1) {
-    WHY_perror("socket");
+    WHYF_perror("socket(AF_UNIX, SOCK_STREAM, 0)");
     goto error;
   }
 
@@ -93,26 +93,26 @@ int monitor_setup_sockets()
 #endif
 
   if(bind(sock, (struct sockaddr *)&name, len)==-1) {
-    WHY_perror("bind");
+    WHYF_perror("bind(%d, %s)", sock, alloca_toprint(-1, &name, len));
     goto error;
   }
   if(listen(sock,MAX_MONITOR_SOCKETS)==-1) {
-    WHY_perror("listen");
+    WHYF_perror("listen(%d, %d)", sock, MAX_MONITOR_SOCKETS);
     goto error;
   }
 
   int reuseP=1;
-  if(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, 
-		&reuseP, sizeof(reuseP)) < 0) {
-    WHY_perror("setsockopt");
+  if(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuseP, sizeof reuseP) < 0) {
+    WHYF_perror("setsockopt(%d, SOL_SOCKET, SO_REUSEADDR, &%d, %d)", sock, reuseP, sizeof reuseP);
     WHY("Could not indicate reuse addresses. Not necessarily a problem (yet)");
   }
   
   int send_buffer_size=64*1024;    
-  if(setsockopt(sock, SOL_SOCKET, SO_RCVBUF, 
-		&send_buffer_size, sizeof(send_buffer_size))==-1)
-    WHY_perror("setsockopt");
-  if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO)) DEBUG("Monitor server socket setup");
+  if(setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &send_buffer_size, sizeof send_buffer_size)==-1)
+    WHYF_perror("setsockopt(%d, SOL_SOCKET, SO_RCVBUF, &%d, %d)", sock, send_buffer_size, sizeof send_buffer_size);
+
+  if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO))
+    DEBUGF("Monitor server socket bound to %s", alloca_toprint(-1, &name, len));
 
   named_socket.function=monitor_poll;
   named_stats.name="monitor_poll";
@@ -323,7 +323,7 @@ static void monitor_new_client(int s) {
 #elif defined(HAVE_UCRED_H)
   /* Solaris way */
   if (getpeerucred(s, &ucred) != 0) {
-    WHY_perror("getpeerucred()");
+    WHY_perror("getpeerucred");
     goto error;
   }
   otheruid = ucred_geteuid(ucred);
@@ -331,7 +331,7 @@ static void monitor_new_client(int s) {
 #elif defined(HAVE_GETPEEREID)
   /* BSD way */
   if (getpeereid(s, &otheruid, &othergid) != 0) {
-    WHY_perror("getpeereid()");
+    WHY_perror("getpeereid");
     goto error;
   }
 #else
