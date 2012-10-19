@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sqlite3.h>
 #include "sha2.h"
 #include "strbuf.h"
+#include "nacl.h"
 #include <sys/stat.h>
 
 #ifndef __RHIZOME_INLINE

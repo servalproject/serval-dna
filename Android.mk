@@ -11,6 +11,7 @@ SERVALD_SRC_FILES = \
 	serval-dna/overlay_route.c         \
 	serval-dna/overlay_mdp.c	\
         serval-dna/batman.c        \
+        serval-dna/crypto.c	\
         serval-dna/ciphers.c       \
 	serval-dna/cli.c	\
         serval-dna/client.c        \

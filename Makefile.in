@@ -10,6 +10,7 @@ SRCS=	$(NACL_SOURCES) \
 	codecs.c \
 	commandline.c \
 	conf.c \
+	crypto.c \
 	dataformats.c \
 	directory_client.c \
 	dna_helper.c \
@@ -113,6 +114,7 @@ HDRS=	fifo.h \
 	strbuf_helpers.h \
 	sha2.h \
 	conf.h \
+	crypto.h \
 	log.h \
 	net.h \
 	xprintf.h \
