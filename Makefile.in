@@ -3,10 +3,7 @@ include $(NACL_BASE)/nacl.mk
 SRCS=	$(NACL_SOURCES) \
 	audiodevices.c \
 	audio_reflector.c \
-	batman.c \
-	ciphers.c \
 	cli.c \
-	client.c \
 	codecs.c \
 	commandline.c \
 	conf.c \
@@ -14,7 +11,6 @@ SRCS=	$(NACL_SOURCES) \
 	dataformats.c \
 	directory_client.c \
 	dna_helper.c \
-	dna_identity.c \
 	encode.c \
 	fdqueue.c \
 	fifo.c \
@@ -41,9 +37,7 @@ SRCS=	$(NACL_SOURCES) \
 	overlay_route.c \
 	packetformats.c \
 	performance_timing.c \
-	peers.c \
 	randombytes.c \
-	responses.c \
 	rhizome.c \
 	rhizome_bundle.c \
 	rhizome_crypto.c \
@@ -57,7 +51,6 @@ SRCS=	$(NACL_SOURCES) \
 	server.c \
 	sha2.c \
 	sighandlers.c \
-	simulate.c \
 	sqlite-amalgamation-3070900/sqlite3.c \
 	srandomdev.c \
 	str.c \

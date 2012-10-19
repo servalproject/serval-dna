@@ -452,13 +452,7 @@ int strn_is_did(const char *did, size_t *lenp);
 int str_is_uri(const char *uri);
 
 int stowSid(unsigned char *packet, int ofs, const char *sid);
-int stowDid(unsigned char *packet,int *ofs,char *did);
-int isFieldZeroP(unsigned char *packet,int start,int count);
 void srandomdev();
-int respondSimple(keyring_identity *id,
-		  int action,unsigned char *action_text,int action_len,
-		  unsigned char *transaction_id,int recvttl,
-		  struct sockaddr *recvaddr,int cryptoFlags);
 time_ms_t gettime_ms();
 time_ms_t sleep_ms(time_ms_t milliseconds);
 int server_pid();
@@ -474,87 +468,11 @@ void insertTransactionInCache(unsigned char *transaction_id);
 int packetOk(struct overlay_interface *interface,unsigned char *packet, size_t len,
 	     unsigned char *transaction_id, int recvttl,
 	     struct sockaddr *recvaddr, size_t recvaddrlen,int parseP);
-int process_packet(unsigned char *packet, size_t len, int recvttl,struct sockaddr *sender, size_t sender_len);
-int packetMakeHeader(unsigned char *packet,int packet_maxlen,int *packet_len,unsigned char *transaction_id,int cryptoflags);
-int packetSetDid(unsigned char *packet,int packet_maxlen,int *packet_len,char *did);
-int packetSetSidFromId(unsigned char *packet,int packet_maxlen,int *packet_len,
-		       keyring_identity *id);
-int packetFinalise(unsigned char *packet,int packet_maxlen,int recvttl,
-		   int *packet_len,int cryptoflags);
-int packetGetID(unsigned char *packet,int len,char *did,char *sid);
-int getPeerList();
 
-struct response {
-  int code;
-  unsigned char sid[SID_SIZE];
-  struct in_addr sender;
-  int recvttl;
-  unsigned char *response;
-  int response_len;
-  int var_id;
-  int var_instance;
-  int value_len;
-  int value_offset;
-  int value_bytes;
-  struct response *next,*prev;
-
-  /* who sent it? */
-  unsigned short peer_id;
-  /* have we checked it to see if it allows us to stop requesting? */
-  unsigned char checked;
-};
-
-struct response_set {
-  struct response *responses;
-  struct response *last_response;
-  int response_count;
-
-  /* Bit mask of peers who have replied */
-  unsigned char *reply_bitmask;
-};
-
-int clearResponse(struct response **response);
-int clearResponses(struct response_set *responses);
-int fixResponses(struct response_set *responses);
-int dumpResponses(struct response_set *responses);
-int eraseLastResponse(struct response_set *responses);
-int responseFromPeerP(struct response_set *responses,int peerId);
-int responseFromPeer(struct response_set *responses,int peerId);
-int extractResponses(struct in_addr sender,unsigned char *buffer,int len,struct response_set *responses);
-
-int sendToPeers(unsigned char *packet,int packet_len,int method,int peerId,struct response_set *responses);
-int getReplyPackets(int method,int peer,int batchP,struct response_set *responses,
-		    unsigned char *transaction_id,struct sockaddr *recvaddr,int timeout);
-int packageVariableSegment(unsigned char *data, int *dlen, struct response *h, int offset, int buffer_size);
-int unpackageVariableSegment(unsigned char *data, int dlen, int flags, struct response *r);
-
-int packetDecipher(unsigned char *packet,int len,int cipher);
-int safeZeroField(unsigned char *packet,int start,int count);
-int extractSid(const unsigned char *packet,int *ofs, char *sid);
-int extractDid(unsigned char *packet,int *ofs,char *did);
-int processRequest(unsigned char *packet,int len,struct sockaddr *sender,int sender_len,
-		   unsigned char *transaction_id,int recvttl,char *did,char *sid);
-
-int extractRequest(unsigned char *packet,int *packet_ofs,int packet_len,
-		   int *itemId,int *instance,unsigned char *value,
-		   int *start_offset,int *max_offset,int *flags);
-int dropPacketP(size_t packet_len);
-int additionalPeer(char *peer);
-int readRoutingTable(struct in_addr peers[],int *peer_count,int peer_max);
-int readBatmanPeerFile(char *file_path,struct in_addr peers[],int *peer_count,int peer_max);
-int getBatmanPeerList(char *socket_path,struct in_addr peers[],int *peer_count,int peer_max);
-int asteriskObtainGateway(char *requestor_sid,char *did,char *uri_out);
-int packetOkDNA(unsigned char *packet,int len,unsigned char *transaction_id,
-		int recvttl,struct sockaddr *recvaddr, size_t recvaddrlen,int parseP);
 int overlay_forward_payload(struct overlay_frame *f);
 int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,
 		    unsigned char *transaction_id,int recvttl,
 		    struct sockaddr *recvaddr, size_t recvaddrlen,int parseP);
-int prepareGateway(char *gatewayspec);
-int packetSendRequest(int method,unsigned char *packet,int packet_len,int batchP,
-		      unsigned char *transaction_id,struct sockaddr *recvaddr,
-		      struct response_set *responses);
-int readArpTable(struct in_addr peers[],int *peer_count,int peer_max);
 
 int overlay_frame_process(struct overlay_interface *interface, struct overlay_frame *f);
 int overlay_frame_resolve_addresses(struct overlay_frame *f);
@@ -564,7 +482,6 @@ int overlay_frame_resolve_addresses(struct overlay_frame *f);
 #define alloca_tohex_sas(sas)           alloca_tohex((sas), SAS_SIZE)
 
 time_ms_t overlay_time_until_next_tick();
-int overlay_rx_messages();
 
 int overlay_add_selfannouncement();
 int overlay_frame_append_payload(overlay_interface *interface, struct overlay_frame *p, struct subscriber *next_hop, struct overlay_buffer *b);
@@ -613,9 +530,7 @@ typedef struct overlay_node {
 int overlay_route_saw_selfannounce_ack(struct overlay_frame *f, time_ms_t now);
 int overlay_route_saw_selfannounce(struct overlay_frame *f, time_ms_t now);
 overlay_node *overlay_route_find_node(const unsigned char *sid,int prefixLen,int createP);
-unsigned int overlay_route_hash_sid(const unsigned char *sid);
 
-int packetEncipher(unsigned char *packet,int maxlen,int *len,int cryptoflags);
 int overlayServerMode();
 int overlay_payload_enqueue(struct overlay_frame *p);
 int overlay_route_record_link( time_ms_t now,unsigned char *to,
@@ -637,43 +552,7 @@ int serval_packetvisualise(XPRINTF xpf, const char *message, const unsigned char
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_opendb();
 
-typedef struct dna_identity_status {
-  char sid[SID_STRLEN];
-  char did[64+1];
-  char name[255+1];
-
-  int initialisedP;
-  time_t startofvalidity;
-  time_t endofvalidity;
-  int verifier_count;
-  /* Dynamically allocate these so that we don't waste a memory
-     (well, if we are talking about running on a feature phone, 4KB per entry
-     (16*256 bytes) is best avoided if we can.) */
-  unsigned char *verifiers[MAX_SIGNATURES];
-  int verificationStatus;
-
-  /* Set if we know that there are no duplicates of this DID/name
-     combination, as it allows us to avoid a database lookup. */
-  int uniqueDidAndName;
-} dna_identity_status;
-
 int parseCommandLine(const char *argv0, int argc, const char *const *argv);
-
-dna_identity_status *dnacache_lookup(char *did,char *name,char *sid);
-dna_identity_status *dnacache_lookup_next();
-int dnacache_update_verification(char *did,char *sid,char *name,
-				 char *signature,int revokeVerificationP);
-int dnacache_vouch_for_identity(char *did,char *sid,char *name);
-
-#undef DEBUG_MEM_ABUSE
-#ifdef DEBUG_MEM_ABUSE
-int memabuseInit();
-int _memabuseCheck(const char *func,const char *file,const int line);
-#define memabuseCheck() _memabuseCheck(__FUNCTION__,__FILE__,__LINE__)
-#else
-#define memabuseInit() /* */
-#define memabuseCheck() /* */
-#endif
 
 int form_serval_instance_path(char * buf, size_t bufsiz, const char *path);
 int create_serval_instance_dir();

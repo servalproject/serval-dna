@@ -29,7 +29,6 @@ int main(int argc, char **argv)
   signal(SIGPIPE,sigPipeHandler);
   signal(SIGIO,sigIoHandler);
 
-  memabuseInit();
   srandomdev();
   server_save_argv(argc, (const char*const*)argv);
   int status = parseCommandLine(argv[0], argc - 1, (const char*const*)&argv[1]);

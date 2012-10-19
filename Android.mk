@@ -10,11 +10,8 @@ SERVALD_SRC_FILES = \
 	serval-dna/overlay_payload.c       \
 	serval-dna/overlay_route.c         \
 	serval-dna/overlay_mdp.c	\
-        serval-dna/batman.c        \
         serval-dna/crypto.c	\
-        serval-dna/ciphers.c       \
 	serval-dna/cli.c	\
-        serval-dna/client.c        \
 	serval-dna/commandline.c   \
 	serval-dna/conf.c   \
         serval-dna/dataformats.c   \
@@ -31,7 +28,6 @@ SERVALD_SRC_FILES = \
         serval-dna/overlay_address.c \
         serval-dna/performance_timing.c \
 	serval-dna/packetformats.c \
-        serval-dna/peers.c         \
 	serval-dna/randombytes.c \
 	serval-dna/rhizome.c \
 	serval-dna/rhizome_bundle.c \
@@ -42,11 +38,9 @@ SERVALD_SRC_FILES = \
 	serval-dna/rhizome_packetformats.c \
 	serval-dna/rhizome_direct.c \
 	serval-dna/rhizome_direct_http.c \
-        serval-dna/responses.c     \
 	serval-dna/serval_packetvisualise.c \
         serval-dna/server.c        \
 	serval-dna/sha2.c          \
-	serval-dna/simulate.c      \
         serval-dna/srandomdev.c    \
 	serval-dna/str.c	\
 	serval-dna/keyring.c       \
