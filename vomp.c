@@ -137,6 +137,22 @@ struct vomp_call_half {
   unsigned int sequence;
 };
 
+struct jitter_sample{
+  int sample_clock;
+  int local_clock;
+  int delta;
+  int sort_index;
+};
+
+#define JITTER_SAMPLES 128
+struct jitter_measurements{
+  struct jitter_sample samples[JITTER_SAMPLES];
+  struct jitter_sample *sorted_samples[JITTER_SAMPLES];
+  int next_sample;
+  int max_sample_clock;
+  int sample_count;
+};
+
 struct vomp_call_state {
   struct sched_ent alarm;
   struct vomp_call_half local;
@@ -148,6 +164,7 @@ struct vomp_call_state {
   // last local & remote status we sent to all interested parties
   int last_sent_status;
   unsigned char remote_codec_flags[CODEC_FLAGS_LENGTH];
+  struct jitter_measurements jitter;
   
   // track when we first heard audio, so we can calculate timing from the current sequence number
   int first_remote_audio_sequence;
@@ -159,9 +176,9 @@ struct vomp_call_state {
 };
 
 /* Some clients may only support one call at a time, even then we allow for multiple call states.
-   This is partly to deal with denial of service attacks that might occur by causing
-   the ejection of newly allocated session numbers before the caller has had a chance
-   to progress the call to a further state. */
+ This is partly to deal with denial of service attacks that might occur by causing
+ the ejection of newly allocated session numbers before the caller has had a chance
+ to progress the call to a further state. */
 int vomp_call_count=0;
 struct vomp_call_state vomp_call_states[VOMP_MAX_CALLS];
 struct profile_total vomp_stats;
@@ -170,6 +187,77 @@ static void vomp_process_tick(struct sched_ent *alarm);
 static const char *vomp_describe_codec(int c);
 strbuf strbuf_append_vomp_supported_codecs(strbuf sb, const unsigned char supported_codecs[256]);
 
+
+void store_jitter_sample(struct jitter_measurements *measurements, int sample_clock, int local_clock){
+  IN();
+  int i;
+  struct jitter_sample *sample = &measurements->samples[measurements->next_sample];
+
+  measurements->next_sample++;
+  if (measurements->next_sample>=JITTER_SAMPLES)
+    measurements->next_sample=0;
+  
+  int delta=(local_clock - sample_clock);
+  
+  int pos=0;
+  if (measurements->sample_count>0){
+    int old_index = measurements->sample_count;
+    if (measurements->sample_count>=JITTER_SAMPLES){
+      old_index = sample->sort_index;
+    }
+      
+    // binary search to find insert position
+    int min=0;
+    int max=measurements->sample_count -1;
+    while(min<=max){
+      pos = (max+min) / 2;
+      if (delta <= measurements->sorted_samples[pos]->delta){
+	max = pos-1;
+      }else{
+	pos++;
+	min = pos;
+      }
+    }
+    
+    if (pos>=measurements->sample_count)
+      pos=measurements->sample_count -1;
+    
+    // shuffle the sorted array elements
+    for (i=old_index;i>pos;i--){
+      measurements->sorted_samples[i]=measurements->sorted_samples[i-1];
+      measurements->sorted_samples[i]->sort_index=i;
+    }
+    for (i=old_index;i<pos;i++){
+      measurements->sorted_samples[i]=measurements->sorted_samples[i+1];
+      measurements->sorted_samples[i]->sort_index=i;
+    }
+  }
+  measurements->sorted_samples[pos]=sample;
+  
+  if (measurements->sample_count<JITTER_SAMPLES)
+    measurements->sample_count++;
+  
+  sample->sample_clock = sample_clock;
+  sample->local_clock = local_clock;
+  sample->delta = delta;
+  sample->sort_index = pos;
+  
+  if (sample_clock > measurements->max_sample_clock)
+    measurements->max_sample_clock=sample_clock;
+  
+  OUT();
+}
+
+int get_jitter_size(struct jitter_measurements *measurements){
+  IN();
+  int i=JITTER_SAMPLES -4;
+  int jitter;
+  if (i>=measurements->sample_count)
+    i=measurements->sample_count -1;
+  jitter=measurements->sorted_samples[i]->delta - measurements->sorted_samples[0]->delta;
+  
+  RETURN(jitter);
+}
 
 void set_codec_flag(int codec, unsigned char *flags){
   if (codec<0 || codec>255)
@@ -459,12 +547,15 @@ int monitor_send_audio(struct vomp_call_state *call, int audio_codec, unsigned i
    they can be easily parsed at the far end, even if not supported.
    Put newline at start of these so that receiving data in command
    mode doesn't confuse the parser.  */
+  
+  int jitter_delay = get_jitter_size(&call->jitter);
+  
   int msglen = snprintf(msg, 1024,
-			"\n*%d:AUDIOPACKET:%x:%d:%d:%d:%d\n",
+			"\n*%d:AUDIOPACKET:%x:%d:%d:%d:%d:%d\n",
 			sample_bytes,
 			call->local.session,
 			audio_codec, start_time, end_time,
-			sequence);
+			sequence, jitter_delay);
   
   bcopy(audio, &msg[msglen], sample_bytes);
   msglen+=sample_bytes;
@@ -577,7 +668,7 @@ int vomp_audio_already_seen(struct vomp_call_state *call, unsigned int end_time)
   return 0;
 }
 
-int vomp_process_audio(struct vomp_call_state *call,unsigned int sender_duration,overlay_mdp_frame *mdp)
+int vomp_process_audio(struct vomp_call_state *call,unsigned int sender_duration,overlay_mdp_frame *mdp,time_ms_t now)
 {
   int ofs=14;
   // if (mdp->in.payload_length>14)
@@ -597,10 +688,6 @@ int vomp_process_audio(struct vomp_call_state *call,unsigned int sender_duration
       
       sender_duration = (s&0xFFFF0000)|sender_duration;
       
-      // simplistic jitter debug info
-      if (debug & DEBUG_VOMP)
-	DEBUGF("Jitter %d, %lld", sender_duration - s, (long long)((gettime_ms() - call->create_time) - s));
-      
       int codec=mdp->in.payload[ofs++];
       int audio_len = mdp->in.payload_length - ofs;
       if ((!codec)||vomp_sample_size(codec)<0) return -1;
@@ -609,6 +696,8 @@ int vomp_process_audio(struct vomp_call_state *call,unsigned int sender_duration
 
       /* Pass audio frame to all registered listeners */
       if (!vomp_audio_already_seen(call, e)){
+	store_jitter_sample(&call->jitter, s, now);
+	
 	if (monitor_socket_count)
 	  monitor_send_audio(call, codec, s, e,
 			     &mdp->in.payload[ofs],
@@ -743,6 +832,8 @@ int vomp_extract_remote_codec_list(struct vomp_call_state *call,overlay_mdp_fram
    must pay attention to endianness. */
 int vomp_mdp_received(overlay_mdp_frame *mdp)
 {
+  time_ms_t now = gettime_ms();
+  
   if (mdp->packetTypeAndFlags&(MDP_NOCRYPT|MDP_NOSIGN))
     {
       /* stream-crypted audio frame */
@@ -910,7 +1001,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	// Fall through
       case (VOMP_STATE_INCALL<<3)|VOMP_STATE_INCALL:
 	/* play any audio that they have sent us. */
-	vomp_process_audio(call,sender_duration,mdp);
+	vomp_process_audio(call,sender_duration,mdp,now);
 	break;
 	  
       case (VOMP_STATE_CALLENDED<<3)|VOMP_STATE_NOCALL:
