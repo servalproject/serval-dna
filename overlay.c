@@ -168,7 +168,7 @@ schedule(&_sched_##X); }
   /* Pick next rhizome files to grab every few seconds
      from the priority list continuously being built from observed
      bundle announcements */
-  SCHEDULE(rhizome_enqueue_suggestions, rhizome_fetch_interval_ms, rhizome_fetch_interval_ms*3);
+  SCHEDULE(rhizome_start_next_queued_fetches, rhizome_fetch_interval_ms, rhizome_fetch_interval_ms*3);
 
   /* Periodically check for new interfaces */
   SCHEDULE(overlay_interface_discover, 1, 100);
