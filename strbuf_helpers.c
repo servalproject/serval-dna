@@ -22,6 +22,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <ctype.h>
 #include <string.h>
 #include <sys/wait.h>
+#ifdef HAVE_NETINET_IN_H
+#include <netinet/in.h>
+#endif
 
 static inline strbuf _toprint(strbuf sb, char c)
 {
@@ -196,5 +199,73 @@ strbuf strbuf_append_exit_status(strbuf sb, int status)
   else if (WIFCONTINUED(status))
     strbuf_sprintf(sb, "continued by signal %u (SIGCONT)", SIGCONT);
 #endif
+  return sb;
+}
+
+strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr)
+{
+  const char *fam = NULL;
+  switch (addr->sa_family) {
+  case AF_UNSPEC:    fam = "AF_UNSPEC"; break;
+  case AF_UNIX:	     fam = "AF_UNIX"; break;
+  case AF_INET:	     fam = "AF_INET"; break;
+  case AF_AX25:	     fam = "AF_AX25"; break;
+  case AF_IPX:	     fam = "AF_IPX"; break;
+  case AF_APPLETALK: fam = "AF_APPLETALK"; break;
+  case AF_NETROM:    fam = "AF_NETROM"; break;
+  case AF_BRIDGE:    fam = "AF_BRIDGE"; break;
+  case AF_ATMPVC:    fam = "AF_ATMPVC"; break;
+  case AF_X25:	     fam = "AF_X25"; break;
+  case AF_INET6:     fam = "AF_INET6"; break;
+  case AF_ROSE:	     fam = "AF_ROSE"; break;
+  case AF_DECnet:    fam = "AF_DECnet"; break;
+  case AF_NETBEUI:   fam = "AF_NETBEUI"; break;
+  case AF_SECURITY:  fam = "AF_SECURITY"; break;
+  case AF_KEY:	     fam = "AF_KEY"; break;
+  case AF_NETLINK:   fam = "AF_NETLINK"; break;
+  case AF_PACKET:    fam = "AF_PACKET"; break;
+  case AF_ASH:	     fam = "AF_ASH"; break;
+  case AF_ECONET:    fam = "AF_ECONET"; break;
+  case AF_ATMSVC:    fam = "AF_ATMSVC"; break;
+  case AF_SNA:	     fam = "AF_SNA"; break;
+  case AF_IRDA:	     fam = "AF_IRDA"; break;
+  case AF_PPPOX:     fam = "AF_PPPOX"; break;
+  case AF_WANPIPE:   fam = "AF_WANPIPE"; break;
+  case AF_LLC:	     fam = "AF_LLC"; break;
+  case AF_TIPC:	     fam = "AF_TIPC"; break;
+  case AF_BLUETOOTH: fam = "AF_BLUETOOTH"; break;
+  }
+  if (fam)
+    strbuf_puts(sb, fam);
+  else
+    strbuf_sprintf(sb, "[%d]", addr->sa_family);
+  switch (addr->sa_family) {
+  case AF_UNIX:
+    strbuf_putc(sb, ' ');
+    if (addr->sa_data[0])
+      strbuf_toprint_quoted_len(sb, addr->sa_data, "\"\"", sizeof addr->sa_data);
+    else {
+      strbuf_puts(sb, "abstract ");
+      strbuf_toprint_quoted_len(sb, addr->sa_data, "\"\"", sizeof addr->sa_data);
+    }
+    break;
+  case AF_INET: {
+      const struct sockaddr_in *addr_in = (const struct sockaddr_in *) addr;
+      strbuf_sprintf(sb, " %u.%u.%u.%u:%u",
+	  ((unsigned char *) &addr_in->sin_addr.s_addr)[0],
+	  ((unsigned char *) &addr_in->sin_addr.s_addr)[1],
+	  ((unsigned char *) &addr_in->sin_addr.s_addr)[2],
+	  ((unsigned char *) &addr_in->sin_addr.s_addr)[3],
+	  ntohs(addr_in->sin_port)
+	);
+    }
+    break;
+  default: {
+      int i;
+      for (i = 0; i < sizeof addr->sa_data; ++i)
+	strbuf_sprintf(sb, " %02x", addr->sa_data[i]);
+    }
+    break;
+  }
   return sb;
 }
