@@ -147,7 +147,7 @@ static void rhizome_fetch_unqueue(struct rhizome_fetch_queue *q, int i)
   struct rhizome_fetch_candidate *e = &q->candidate_queue[q->candidate_queue_size - 1];
   for (; c < e && c[1].manifest; ++c)
     c[0] = c[1];
-  e->manifest = NULL;
+  c->manifest = NULL;
 }
 
 /* Return true if there are any active fetches currently in progress.
