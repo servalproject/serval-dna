@@ -470,8 +470,9 @@ static int monitor_call_ring(int argc, const char *const *argv, struct command_l
   struct monitor_context *c=context;
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(argv[1],NULL,16));
   if (!call)
-    return monitor_write_error(c,"Invalid call token");
-  vomp_ringing(call);
+    monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%s\n", argv[1]);
+  else
+    vomp_ringing(call);
   return 0;
 }
 
@@ -479,8 +480,9 @@ static int monitor_call_pickup(int argc, const char *const *argv, struct command
   struct monitor_context *c=context;
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(argv[1],NULL,16));
   if (!call)
-    return monitor_write_error(c,"Invalid call token");
-  vomp_pickup(call);
+    monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%s\n", argv[1]);
+  else
+    vomp_pickup(call);
   return 0;
 }
 
@@ -488,8 +490,9 @@ static int monitor_call_audio(int argc, const char *const *argv, struct command_
   struct monitor_context *c=context;
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(argv[1],NULL,16));
   if (!call)
-    return monitor_write_error(c,"Invalid call token");
-  vomp_received_audio(call, atoi(argv[2]), c->buffer, c->data_expected);
+    monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%s\n", argv[1]);
+  else
+    vomp_received_audio(call, atoi(argv[2]), c->buffer, c->data_expected);
   return 0;
 }
 
@@ -497,8 +500,9 @@ static int monitor_call_hangup(int argc, const char *const *argv, struct command
   struct monitor_context *c=context;
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(argv[1],NULL,16));
   if (!call)
-    return monitor_write_error(c,"Invalid call token");
-  vomp_hangup(call);
+    monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%s\n", argv[1]);
+  else
+    vomp_hangup(call);
   return 0;
 }
 
