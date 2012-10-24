@@ -1,63 +1,9 @@
 # Included by top-level Android.mk
 
-SERVALD_SRC_FILES = \
-        serval-dna/main.c \
-	serval-dna/overlay_advertise.c \
-	serval-dna/overlay_buffer.c        \
-	serval-dna/overlay_interface.c     \
-	serval-dna/overlay_olsr.c	\
-	serval-dna/overlay_packetformats.c \
-	serval-dna/overlay_payload.c       \
-	serval-dna/overlay_route.c         \
-	serval-dna/overlay_mdp.c	\
-        serval-dna/crypto.c	\
-	serval-dna/cli.c	\
-	serval-dna/commandline.c   \
-	serval-dna/conf.c   \
-        serval-dna/dataformats.c   \
-	serval-dna/directory_client.c \
-        serval-dna/xprintf.c       \
-        serval-dna/log.c           \
-        serval-dna/net.c           \
-	serval-dna/mdp_client.c    \
-        serval-dna/mkdir.c         \
-        serval-dna/strbuf.c         \
-        serval-dna/strbuf_helpers.c \
-        serval-dna/gateway.c       \
-        serval-dna/overlay.c       \
-        serval-dna/overlay_address.c \
-        serval-dna/performance_timing.c \
-	serval-dna/packetformats.c \
-	serval-dna/randombytes.c \
-	serval-dna/rhizome.c \
-	serval-dna/rhizome_bundle.c \
-	serval-dna/rhizome_crypto.c \
-	serval-dna/rhizome_database.c \
-	serval-dna/rhizome_fetch.c \
-	serval-dna/rhizome_http.c \
-	serval-dna/rhizome_packetformats.c \
-	serval-dna/rhizome_direct.c \
-	serval-dna/rhizome_direct_http.c \
-	serval-dna/serval_packetvisualise.c \
-        serval-dna/server.c        \
-	serval-dna/sha2.c          \
-        serval-dna/srandomdev.c    \
-	serval-dna/str.c	\
-	serval-dna/keyring.c       \
-	serval-dna/vomp.c \
-	serval-dna/vomp_console.c \
-	serval-dna/lsif.c \
-	serval-dna/dna_helper.c \
-	serval-dna/sighandlers.c \
-	serval-dna/fdqueue.c \
-	serval-dna/monitor.c \
-	serval-dna/monitor-cli.c \
-	serval-dna/monitor-client.c \
-	serval-dna/codecs.c \
-	serval-dna/audiodevices.c \
-	serval-dna/audio_msm_g1.c \
-	serval-dna/audio_alsa.c \
-	serval-dna/audio_reflector.c
+SERVAL_BASE=serval-dna/
+include jni/serval-dna/sourcefiles.mk
+include jni/serval-dna/androidonlysources.mk
+SERVALD_SRC_FILES = $(SERVAL_SOURCES) $(ANDROIDONLY_SOURCES)
 
 SERVALD_LOCAL_CFLAGS = \
 	-g \

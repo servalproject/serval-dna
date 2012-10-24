@@ -1,65 +1,9 @@
 NACL_BASE=	nacl/src
 include $(NACL_BASE)/nacl.mk
-SRCS=	$(NACL_SOURCES) \
-	audiodevices.c \
-	audio_reflector.c \
-	cli.c \
-	codecs.c \
-	commandline.c \
-	conf.c \
-	crypto.c \
-	dataformats.c \
-	directory_client.c \
-	dna_helper.c \
-	encode.c \
-	fdqueue.c \
-	fifo.c \
-	gateway.c \
-	keyring.c \
-	log.c \
-	lsif.c \
-	main.c \
-	mdp_client.c \
-	mkdir.c \
-	monitor.c \
-	monitor-client.c \
-	monitor-cli.c \
-	net.c \
-	overlay.c \
-	overlay_advertise.c \
-	overlay_address.c \
-	overlay_buffer.c \
-	overlay_interface.c \
-	overlay_mdp.c \
-	overlay_olsr.c \
-	overlay_packetformats.c \
-	overlay_payload.c \
-	overlay_route.c \
-	packetformats.c \
-	performance_timing.c \
-	randombytes.c \
-	rhizome.c \
-	rhizome_bundle.c \
-	rhizome_crypto.c \
-	rhizome_database.c \
-	rhizome_direct.c \
-	rhizome_direct_http.c \
-	rhizome_fetch.c \
-	rhizome_http.c \
-	rhizome_packetformats.c \
-	serval_packetvisualise.c \
-	server.c \
-	sha2.c \
-	sighandlers.c \
-	sqlite-amalgamation-3070900/sqlite3.c \
-	srandomdev.c \
-	str.c \
-	strbuf.c \
-	strbuf_helpers.c \
-	strlcpy.c \
-	vomp.c \
-	vomp_console.c \
-        xprintf.c
+SERVAL_BASE=
+include sourcefiles.mk
+SRCS=	$(NACL_SOURCES) $(SERVAL_SOURCES)
+include headerfiles.mk
 
 HAVE_ALSA= @HAVE_ALSA@
 ifeq (HAVE_ALSA,1)
@@ -96,25 +40,6 @@ OBJS=	$(SRCS:.c=.o)
 MONITORCLIENTOBJS=	$(MONITORCLIENTSRCS:.c=.o)
 MDPCLIENTOBJS=	$(MDPCLIENTSRCS:.c=.o)
 
-HDRS=	fifo.h \
-	Makefile \
-	overlay_buffer.h \
-	overlay_address.h \
-	overlay_packet.h \
-	rhizome.h \
-	serval.h \
-	strbuf.h \
-	strbuf_helpers.h \
-	sha2.h \
-	conf.h \
-	crypto.h \
-	log.h \
-	net.h \
-	xprintf.h \
-	constants.h \
-	monitor-client.h \
-	mdp_client.h \
-	sqlite-amalgamation-3070900/sqlite3.h
 
 LDFLAGS=@LDFLAGS@ @LIBS@ @PORTAUDIO_LIBS@ @SRC_LIBS@ @SPANDSP_LIBS@ @CODEC2_LIBS@ @PTHREAD_LIBS@
 
