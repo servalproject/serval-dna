@@ -150,10 +150,11 @@ typedef struct rhizome_manifest {
 #define     RHIZOME_SERVICE_MESHMS  "MeshMS1"
 
 extern long long rhizome_space;
-extern int rhizome_fetch_interval_ms;
 extern unsigned short rhizome_http_server_port;
 
 int rhizome_configure();
+int rhizome_enabled();
+int rhizome_fetch_delay_ms();
 
 int rhizome_set_datastore_path(const char *path);
 
