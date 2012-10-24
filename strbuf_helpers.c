@@ -25,6 +25,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifdef HAVE_NETINET_IN_H
 #include <netinet/in.h>
 #endif
+#ifdef HAVE_ARPA_INET_H
+#include <arpa/inet.h>
+#endif
 
 static inline strbuf _toprint(strbuf sb, char c)
 {
@@ -209,6 +212,11 @@ strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr)
   case AF_UNSPEC:    fam = "AF_UNSPEC"; break;
   case AF_UNIX:	     fam = "AF_UNIX"; break;
   case AF_INET:	     fam = "AF_INET"; break;
+#if 0
+  // These values are not used in Serval, yet.
+  case AF_BLUETOOTH: fam = "AF_BLUETOOTH"; break;
+  case AF_INET6:     fam = "AF_INET6"; break;
+  // These values will probably never be used in Serval.
   case AF_AX25:	     fam = "AF_AX25"; break;
   case AF_IPX:	     fam = "AF_IPX"; break;
   case AF_APPLETALK: fam = "AF_APPLETALK"; break;
@@ -216,7 +224,6 @@ strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr)
   case AF_BRIDGE:    fam = "AF_BRIDGE"; break;
   case AF_ATMPVC:    fam = "AF_ATMPVC"; break;
   case AF_X25:	     fam = "AF_X25"; break;
-  case AF_INET6:     fam = "AF_INET6"; break;
   case AF_ROSE:	     fam = "AF_ROSE"; break;
   case AF_DECnet:    fam = "AF_DECnet"; break;
   case AF_NETBEUI:   fam = "AF_NETBEUI"; break;
@@ -233,7 +240,7 @@ strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *addr)
   case AF_WANPIPE:   fam = "AF_WANPIPE"; break;
   case AF_LLC:	     fam = "AF_LLC"; break;
   case AF_TIPC:	     fam = "AF_TIPC"; break;
-  case AF_BLUETOOTH: fam = "AF_BLUETOOTH"; break;
+#endif
   }
   if (fam)
     strbuf_puts(sb, fam);
