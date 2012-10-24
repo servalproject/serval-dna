@@ -881,7 +881,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	    /* Fetching the manifest, and then using it to see if we want to 
 	       fetch the file for import is all handled asynchronously, so just
 	       wait for it to finish. */
-	    while (rhizome_count_queued_imports())
+	    while (rhizome_any_fetch_active())
 	      fd_poll();
 	  }
 	

@@ -757,6 +757,7 @@ void sigIoHandler(int signal);
 
 int overlay_mdp_setup_sockets();
 
+int is_scheduled(const struct sched_ent *alarm);
 int _schedule(struct __sourceloc whence, struct sched_ent *alarm);
 int _unschedule(struct __sourceloc whence, struct sched_ent *alarm);
 int _watch(struct __sourceloc whence, struct sched_ent *alarm);
@@ -770,7 +771,6 @@ int fd_poll();
 void overlay_interface_discover(struct sched_ent *alarm);
 void overlay_dummy_poll(struct sched_ent *alarm);
 void overlay_route_tick(struct sched_ent *alarm);
-void rhizome_enqueue_suggestions(struct sched_ent *alarm);
 void server_shutdown_check(struct sched_ent *alarm);
 void overlay_mdp_poll(struct sched_ent *alarm);
 void fd_periodicstats(struct sched_ent *alarm);

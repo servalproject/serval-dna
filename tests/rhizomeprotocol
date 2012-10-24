@@ -44,7 +44,6 @@ configure_servald_server() {
    executeOk_servald config set server.respawn_on_signal off
    executeOk_servald config set mdp.wifi.tick_ms 500
    executeOk_servald config set mdp.selfannounce.ticks_per_full_address 1
-   executeOk_servald config set rhizome.fetch_interval_ms 100
 }
 
 setup_curl_7() {

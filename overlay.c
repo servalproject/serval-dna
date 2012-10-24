@@ -84,10 +84,6 @@ int overlayServerMode()
      send periodic traffic. This means we need to */
   INFO("Running in overlay mode.");
 
-  /* Make sure rhizome configured settings are known. */
-  if (rhizome_fetch_interval_ms < 1)
-    rhizome_configure();
-
   /* Get keyring available for use.
      Required for MDP, and very soon as a complete replacement for the
      HLR for DNA lookups, even in non-overlay mode. */
@@ -165,11 +161,6 @@ schedule(&_sched_##X); }
   // preload directory service information
   directory_service_init();
   
-  /* Pick next rhizome files to grab every few seconds
-     from the priority list continuously being built from observed
-     bundle announcements */
-  SCHEDULE(rhizome_enqueue_suggestions, rhizome_fetch_interval_ms, rhizome_fetch_interval_ms*3);
-
   /* Periodically check for new interfaces */
   SCHEDULE(overlay_interface_discover, 1, 100);
 

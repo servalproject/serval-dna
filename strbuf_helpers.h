@@ -80,4 +80,10 @@ strbuf strbuf_append_shell_quotemeta(strbuf sb, const char *word);
  */
 strbuf strbuf_append_exit_status(strbuf sb, int status);
 
+/* Append a textual description of a struct sockaddr_in.
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+struct sockaddr;
+strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *);
+
 #endif //__STRBUF_HELPERS_H__

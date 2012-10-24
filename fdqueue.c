@@ -74,6 +74,11 @@ int deadline(struct sched_ent *alarm)
   return 0;
 }
 
+int is_scheduled(const struct sched_ent *alarm)
+{
+  return alarm->_next || alarm->_prev || alarm == next_alarm || alarm == next_deadline;
+}
+
 // add an alarm to the list of scheduled function calls.
 // simply populate .alarm with the absolute time, and .function with the method to call.
 // on calling .poll.revents will be zero.
@@ -84,8 +89,8 @@ int _schedule(struct __sourceloc __whence, struct sched_ent *alarm)
 
   struct sched_ent *node = next_alarm, *last = NULL;
   
-  if (alarm->_next || alarm->_prev || alarm==next_alarm || alarm==next_deadline)
-    FATAL("Attempted to schedule an alarm that is still scheduled.");
+  if (is_scheduled(alarm))
+    FATAL("Scheduling an alarm that is already scheduled");
   
   if (!alarm->function)
     return WHY("Can't schedule if you haven't set the function pointer");

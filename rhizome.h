@@ -150,10 +150,11 @@ typedef struct rhizome_manifest {
 #define     RHIZOME_SERVICE_MESHMS  "MeshMS1"
 
 extern long long rhizome_space;
-extern int rhizome_fetch_interval_ms;
 extern unsigned short rhizome_http_server_port;
 
 int rhizome_configure();
+int rhizome_enabled();
+int rhizome_fetch_delay_ms();
 
 int rhizome_set_datastore_path(const char *path);
 
@@ -284,7 +285,6 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found,
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
 long long rhizome_bar_version(unsigned char *bar);
 unsigned long long rhizome_bar_bidprefix_ll(unsigned char *bar);
-int rhizome_queue_manifest_import(rhizome_manifest *m, const struct sockaddr_in *peerip, int *manifest_kept);
 int rhizome_list_manifests(const char *service, const char *sender_sid, const char *recipient_sid, int limit, int offset);
 int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp);
 int rhizome_retrieve_file(const char *fileid, const char *filepath,
@@ -325,10 +325,8 @@ int rhizome_sign_hash_with_key(rhizome_manifest *m,const unsigned char *sk,
 int rhizome_verify_bundle_privatekey(rhizome_manifest *m, const unsigned char *sk,
 				     const unsigned char *pk);
 int rhizome_find_bundle_author(rhizome_manifest *m);
-int rhizome_queue_ignore_manifest(rhizome_manifest *m,
-				  struct sockaddr_in *peerip,int timeout);
-int rhizome_ignore_manifest_check(rhizome_manifest *m,
-				  struct sockaddr_in *peerip);
+int rhizome_queue_ignore_manifest(rhizome_manifest *m, const struct sockaddr_in *peerip, int timeout);
+int rhizome_ignore_manifest_check(rhizome_manifest *m, const struct sockaddr_in *peerip);
 
 /* one manifest is required per candidate, plus a few spare.
    so MAX_RHIZOME_MANIFESTS must be > MAX_CANDIDATES. 
@@ -336,8 +334,7 @@ int rhizome_ignore_manifest_check(rhizome_manifest *m,
 #define MAX_RHIZOME_MANIFESTS 24
 #define MAX_CANDIDATES 16
 
-int rhizome_suggest_queue_manifest_import(rhizome_manifest *m,
-					  struct sockaddr_in *peerip);
+int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sockaddr_in *peerip);
 
 typedef struct rhizome_http_request {
   struct sched_ent alarm;
@@ -542,8 +539,20 @@ extern unsigned char favicon_bytes[];
 extern int favicon_len;
 
 int rhizome_import_from_files(const char *manifestpath,const char *filepath);
-int rhizome_fetch_request_manifest_by_prefix(const struct sockaddr_in *peerip, const unsigned char *prefix, size_t prefix_length);
-int rhizome_count_queued_imports();
+
+enum rhizome_start_fetch_result {
+  STARTED = 0,
+  SAMEBUNDLE,
+  SAMEPAYLOAD,
+  SUPERSEDED,
+  OLDERBUNDLE,
+  NEWERBUNDLE,
+  IMPORTED,
+  SLOTBUSY
+};
+
+enum rhizome_start_fetch_result rhizome_fetch_request_manifest_by_prefix(const struct sockaddr_in *peerip, const unsigned char *prefix, size_t prefix_length);
+int rhizome_any_fetch_active();
 
 struct http_response_parts {
   int code;
