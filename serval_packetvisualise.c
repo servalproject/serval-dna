@@ -383,9 +383,10 @@ int isOverlayPacket(XPRINTF xpf, const unsigned char *packet, size_t *ofs, size_
 		  xprintf(xpf,"%sManifest signature blocks\n",indent(12));
 		  for(;j<manifest_len;)
 		    {
-		      int sigLen=frame[i+j];
-		      switch(sigLen) {
-		      case 0x61: /* cryptosign signature */
+		      int sigType=frame[i+j];
+		      int sigLen=(sigType&0x3f)*4+4+1;
+		      switch(sigType) {
+		      case 0x17: /* cryptosign signature */
 			xprintf(xpf,"%sNaCl CryptoSign Generated Signature\n",indent(14));
 			xprintf(xpf,"%sPublic key of signatory = ",indent(16));
 			for(k=0;k<32;k++) xprintf(xpf,"%02X",frame[i+j+1+64+k]);

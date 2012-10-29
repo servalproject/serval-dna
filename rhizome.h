@@ -96,7 +96,7 @@ typedef struct rhizome_manifest {
   /* Parties who have signed this manifest (raw byte format) */
   unsigned char *signatories[MAX_MANIFEST_VARS];
   /*
-    0x61 = crypto_sign_edwards25519sha512batch()
+    0x17 = crypto_sign_edwards25519sha512batch()
   */
   unsigned char signatureTypes[MAX_MANIFEST_VARS];
 

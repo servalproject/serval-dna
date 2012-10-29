@@ -355,7 +355,7 @@ int rhizome_sign_hash_with_key(rhizome_manifest *m,const unsigned char *sk,
   bcopy(signatureBuffer, &out->signature[1], 64);
   bcopy(pk, &out->signature[65], crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
   out->signatureLength = 65 + crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES;
-  out->signature[0] = out->signatureLength;
+  out->signature[0] = 0x17; // CryptoSign
   RETURN(0);
 }
 
@@ -430,21 +430,17 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
 
   if ((*ofs)>=m->manifest_all_bytes) { RETURN(0); }
 
-  int len=m->manifestdata[*ofs];
-  if (!len) { 
-    (*ofs)=m->manifest_bytes;
-    m->errors++;
-    RETURN(WHY("Zero byte signature blocks are not allowed, assuming signature section corrupt."));
-  }
+  int sigType=m->manifestdata[*ofs];
+  int len=(sigType&0x3f)*4+4+1;
 
   /* Each signature type is required to have a different length to detect it.
      At present only crypto_sign_edwards25519sha512batch() signatures are
      supported. */
   int r;
   if (m->sig_count<MAX_MANIFEST_VARS)
-    switch(len) 
+    switch(sigType) 
       {
-      case 0x61: /* crypto_sign_edwards25519sha512batch() */
+      case 0x17: /* crypto_sign_edwards25519sha512batch() */
 	/* Reconstitute signature block */
 	r=rhizome_manifest_lookup_signature_validity
 	  (m->manifesthash,&m->manifestdata[(*ofs)+1],96);
@@ -481,7 +477,7 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
       default:
 	(*ofs)+=len;
 	m->errors++;
-	RETURN(WHY("Encountered illegal or malformed signature block"));
+	RETURN(WHYF("Encountered illegal or malformed signature block (unknown type=0x%02x @ offset 0x%x)",sigType,(*ofs)-len));
       }
   else
     {
