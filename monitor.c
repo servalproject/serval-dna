@@ -467,7 +467,6 @@ static int monitor_call(int argc, const char *const *argv, struct command_line_o
 }
 
 static int monitor_call_ring(int argc, const char *const *argv, struct command_line_option *o, void *context){
-  struct monitor_context *c=context;
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(argv[1],NULL,16));
   if (!call)
     monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%s\n", argv[1]);
@@ -477,7 +476,6 @@ static int monitor_call_ring(int argc, const char *const *argv, struct command_l
 }
 
 static int monitor_call_pickup(int argc, const char *const *argv, struct command_line_option *o, void *context){
-  struct monitor_context *c=context;
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(argv[1],NULL,16));
   if (!call)
     monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%s\n", argv[1]);
@@ -497,7 +495,6 @@ static int monitor_call_audio(int argc, const char *const *argv, struct command_
 }
 
 static int monitor_call_hangup(int argc, const char *const *argv, struct command_line_option *o, void *context){
-  struct monitor_context *c=context;
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(argv[1],NULL,16));
   if (!call)
     monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%s\n", argv[1]);
