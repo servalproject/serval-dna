@@ -95,7 +95,7 @@ Build and test
 --------------
 
 Instructions for building and testing Serval DNA are in
-[INSTALL.md][./INSTALL.md].  (If that link is does not work, try
+[INSTALL.md](./INSTALL.md).  (If that link is does not work, try
 [INSTALL.md](/servalproject/serval-dna/blob/master/INSTALL.md).)
 
 
