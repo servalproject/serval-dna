@@ -153,6 +153,9 @@ int overlay_rhizome_add_advertisements(int interface_number, struct overlay_buff
      so that the CPU delays caused by Rhizome verifying signatures isn't a problem.
      We will still want to limit network usage during calls, however.
  */
+  if (!rhizome_http_server_running() || !rhizome_db) 
+    RETURN(0);
+    
   time_ms_t now = gettime_ms();
   if (now<rhizome_voice_timeout) voice_mode=1;
   if (voice_mode) if (random()&3) { RETURN(0); }
@@ -165,8 +168,6 @@ int overlay_rhizome_add_advertisements(int interface_number, struct overlay_buff
   int bundles_advertised=0;
 
   if (slots<1) { RETURN(WHY("No room for node advertisements")); }
-
-  if (!rhizome_db) { RETURN(WHY("Rhizome not enabled")); }
 
   if (ob_append_byte(e,OF_TYPE_RHIZOME_ADVERT))
     RETURN(WHY("could not add rhizome bundle advertisement header"));
@@ -341,6 +342,9 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
 {
   IN();
   if (!f) { RETURN(-1); }
+  
+  if (!rhizome_db) { RETURN(0); }
+  
   int ad_frame_type=ob_get(f->payload);
   struct sockaddr_in httpaddr = *(struct sockaddr_in *)f->recvaddr;
   httpaddr.sin_port = htons(RHIZOME_HTTP_PORT);

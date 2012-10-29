@@ -21,31 +21,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include <stdlib.h>
 
-static int _rhizome_enabled = -1;
-static int _rhizome_fetch_delay_ms = -1;
-
-/* Configure rhizome.
-   @author Andrew Bettison <andrew@servalproject.com>
- */
-int rhizome_configure()
-{
-  _rhizome_enabled = confValueGetBoolean("rhizome.enable", 1);
-  _rhizome_fetch_delay_ms = (int) confValueGetInt64Range("rhizome.fetch_delay_ms", 50, 1, 3600000);
-  return 0;
-}
-
 int rhizome_enabled()
 {
-  if (_rhizome_enabled < 0)
-    rhizome_configure();
-  return _rhizome_enabled;
+  return confValueGetBoolean("rhizome.enable", 1);;
 }
 
 int rhizome_fetch_delay_ms()
 {
-  if (_rhizome_fetch_delay_ms < 1)
-    rhizome_configure();
-  return _rhizome_fetch_delay_ms;
+  return confValueGetInt64Range("rhizome.fetch_delay_ms", 50, 1, 3600000);
 }
 
 /* Import a bundle from a pair of files, one containing the manifest and the optional other

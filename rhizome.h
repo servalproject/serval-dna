@@ -174,6 +174,7 @@ int create_rhizome_import_dir();
 extern sqlite3 *rhizome_db;
 
 int rhizome_opendb();
+int rhizome_close_db();
 int rhizome_manifest_createid(rhizome_manifest *m);
 
 int rhizome_strn_is_manifest_id(const char *text);

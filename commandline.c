@@ -188,6 +188,7 @@ int parseCommandLine(const char *argv0, int argc, const char *const *args)
   int result = cli_execute(argv0, argc, args, command_line_options, NULL);
   /* clean up after ourselves */
   overlay_mdp_client_done();
+  rhizome_close_db();
   OUT();
   
   if (debug&DEBUG_TIMING)
@@ -564,8 +565,6 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
        instance directory when it starts up.  */
     if (server_remove_stopfile() == -1)
       return -1;
-    if (rhizome_enabled() && rhizome_opendb() == -1)
-      return -1;
     overlayMode = 1;
     if (foregroundP)
       return server(NULL);
@@ -589,6 +588,9 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
 	       streams, and start a new process session so that if we are being started by an adb
 	       shell session, then we don't receive a SIGHUP when the adb shell process ends.  */
 	    close_logging();
+	    
+	    //TODO close config
+	    
 	    int fd;
 	    if ((fd = open("/dev/null", O_RDWR, 0)) == -1)
 	      _exit(WHY_perror("open"));

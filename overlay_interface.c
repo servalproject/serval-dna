@@ -1226,9 +1226,7 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
     // send the packet
     if (packet->buffer->position>=HEADERFIELDS_LEN){
       // stuff rhizome announcements at the last moment
-      if (rhizome_enabled() && rhizome_http_server_running()){
-	overlay_rhizome_add_advertisements(packet->i,packet->buffer);
-      }
+      overlay_rhizome_add_advertisements(packet->i,packet->buffer);
       
       if (debug&DEBUG_PACKETCONSTRUCTION)
 	dump("assembled packet",&packet->buffer->bytes[0],packet->buffer->position);

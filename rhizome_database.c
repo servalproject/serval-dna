@@ -226,6 +226,17 @@ int rhizome_opendb()
   RETURN(0);
 }
 
+int rhizome_close_db(){
+  if (rhizome_db){
+    // TODO if we prepare statements globally we need to make sure any prepared statements are closed first.
+    int r = sqlite3_close(rhizome_db);
+    if (r != SQLITE_OK)
+      return WHYF("Failed to close sqlite database, %s",sqlite3_errmsg(rhizome_db));
+  }
+  rhizome_db=NULL;
+  return 0;
+}
+
 /* SQL query retry logic.
 
    The common retry-on-busy logic is factored into this function.  This logic encapsulates the
