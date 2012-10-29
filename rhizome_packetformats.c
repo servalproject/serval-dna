@@ -137,29 +137,17 @@ int bundle_offset[2]={0,0};
 int overlay_rhizome_add_advertisements(int interface_number, struct overlay_buffer *e)
 {
   IN();
-  int voice_mode=0;
 
-  /* behave differently during voice mode.
-     Basically don't encourage people to grab stuff from us, but keep
-     just enough activity going so that it is possible to send a (small)
-     message/file during a call. 
-
-     XXX Eventually only advertise small/recently changed files during voice calls.
-     We need to change manifest table to include payload length to make our life
+  /* We need to change manifest table to include payload length to make our life
      easy here (also would let us order advertisements by size of payload).
      For now, we will just advertised only occassionally.
 
-     XXX Actually, we will move all processing of Rhizome into a separate process
+     XXX We will move all processing of Rhizome into a separate process
      so that the CPU delays caused by Rhizome verifying signatures isn't a problem.
-     We will still want to limit network usage during calls, however.
  */
   if (!rhizome_http_server_running() || !rhizome_db) 
     RETURN(0);
     
-  time_ms_t now = gettime_ms();
-  if (now<rhizome_voice_timeout) voice_mode=1;
-  if (voice_mode) if (random()&3) { RETURN(0); }
-
   int pass;
   int bytes=e->sizeLimit-e->position;
   int overhead=1+11+1+2+2; /* maximum overhead */

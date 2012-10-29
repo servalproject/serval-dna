@@ -59,6 +59,7 @@ struct outgoing_packet{
   overlay_interface *interface;
   int i;
   int unicast;
+  int add_advertisements;
   struct sockaddr_in dest;
   struct overlay_buffer *buffer;
 };
@@ -996,6 +997,7 @@ overlay_init_packet(struct outgoing_packet *packet, overlay_interface *interface
   packet->i = (interface - overlay_interfaces);
   packet->dest=interface->broadcast_address;
   packet->buffer=ob_new();
+  packet->add_advertisements=1;
   ob_limitsize(packet->buffer, packet->interface->mtu);
   ob_append_bytes(packet->buffer,magic_header,4);
   
@@ -1168,6 +1170,10 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       // payload was not queued
       goto skip;
     
+    // don't send rhizome adverts if the packet contains a voice payload
+    if (frame->queue==OQ_ISOCHRONOUS_VOICE)
+      packet->add_advertisements=0;
+      
     // mark the payload as sent
     int keep_payload = 0;
     
@@ -1226,7 +1232,8 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
     // send the packet
     if (packet->buffer->position>=HEADERFIELDS_LEN){
       // stuff rhizome announcements at the last moment
-      overlay_rhizome_add_advertisements(packet->i,packet->buffer);
+      if (packet->add_advertisements)
+	overlay_rhizome_add_advertisements(packet->i,packet->buffer);
       
       if (debug&DEBUG_PACKETCONSTRUCTION)
 	dump("assembled packet",&packet->buffer->bytes[0],packet->buffer->position);
