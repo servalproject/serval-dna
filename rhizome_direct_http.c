@@ -998,6 +998,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	      goto closeit;
 	    }
 	  }
+	sqlite3_blob_close(blob);
 
 	/* Send final mime boundary */
 	len=snprintf(buffer,8192,"\r\n--%s--\r\n",boundary);

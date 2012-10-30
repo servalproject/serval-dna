@@ -226,9 +226,14 @@ int rhizome_opendb()
   RETURN(0);
 }
 
-int rhizome_close_db(){
-  if (rhizome_db){
-    // TODO if we prepare statements globally we need to make sure any prepared statements are closed first.
+int rhizome_close_db()
+{
+  if (rhizome_db) {
+    sqlite3_stmt *stmt = NULL;
+    while ((stmt = sqlite3_next_stmt(rhizome_db, stmt))) {
+      const char *sql = sqlite3_sql(stmt);
+      WARNF("closing Rhizome db with unfinalised statement: %s", sql ? sql : "BLOB");
+    }
     int r = sqlite3_close(rhizome_db);
     if (r != SQLITE_OK)
       return WHYF("Failed to close sqlite database, %s",sqlite3_errmsg(rhizome_db));
@@ -354,7 +359,6 @@ sqlite3_stmt *_sqlite_prepare_loglevel(struct __sourceloc __whence, int log_leve
   while (1) {
     switch (sqlite3_prepare_v2(rhizome_db, strbuf_str(stmt), -1, &statement, NULL)) {
       case SQLITE_OK:
-      case SQLITE_DONE:
 	return statement;
       case SQLITE_BUSY:
       case SQLITE_LOCKED:
