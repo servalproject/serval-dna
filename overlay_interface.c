@@ -803,14 +803,9 @@ overlay_interface_register(char *name,
   
   /* See if the interface is listed in the filter */
   me = NULL;
-  r = interface_filter;
-  while(r) {
-    if (!strcasecmp(name, r->namespec))
+  for (r = interface_filter; r && !me; r = r->next)
+    if (r->namespec[0] == '\0' || strcasecmp(name, r->namespec) == 0)
       me = r;
-
-    r = r->next;
-  }
-
   if (me == NULL || me->excludeP) {
     if (debug & DEBUG_OVERLAYINTERFACES)
       DEBUGF("Interface %s is not interesting.",name);
