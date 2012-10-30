@@ -70,8 +70,8 @@ The **servald** daemon periodically scans its operating system's network
 interfaces and uses its `interfaces` configuration option to select which to
 ignore and which to use.
 
-Eg, to use two interfaces, `eth0` a 230 MiB/s ethernet on port 7333 and `wifi0`
-a 1 MB/s WiFi device:
+Eg, to use two interfaces, **eth0** a 230 MiB/s ethernet on port 7333 and
+**wifi0** a 1 MB/s WiFi device:
 
     $ servald config set interfaces '+eth0=ethernet:7333:230M,+wifi0=wifi'
 
@@ -95,22 +95,28 @@ where:
  * `port` is a TCP port number (default is 4110)
  * `speed` is the interface's bytes per second capacity (default 1 MB/s),
    expressed in the form ***Nu*** where ***N*** is a decimal integer and
-   ***u*** is a unit, one of `k` (10³), `K` (2¹⁰), `m` (10⁶), `M` (2²⁰), `g`
-   (10⁹) or `G` (2³⁰)
+   ***u*** is a unit, one of `k` (10^3), `K` (2^10), `m` (10^6), `M` (2^20),
+   `g` (10^9) or `G` (2^30)
 
-Interface specifications are applied in the order they appear.  The form `+`
-matches all interfaces.  The form `-name` rejects any interfaces called *name*.
-The forms beginning with `+name` match any interface called *name*.  The
-`+>path` form specifies a dummy interface (see below).  For example, an
+The form `+` matches all interfaces.
+
+The form `-name` rejects any interfaces called *name*.
+
+The forms beginning with `+name` match any interface called *name*.
+
+The form `+>path` specifies a dummy interface (see below).
+
+Interface specifications are applied in the order they appear.  For example, an
 interfaces list of `+,-eth0` will not reject the *eth0* interface because the
-leading `+` will match it first, but `-eth0,+` will reject *eth0*.
+leading `+` will match it first, but `-eth0,+` will reject *eth0* and accept
+all others.
 
-Dummy Network Interface
+Dummy network interface
 -----------------------
 
-Sometimes it is helpful to run an isolated group of several intercommunicating
-**servald** instances on a single machine for testing purposes.  To make this
-possible, **servald** supports a *dummy* network interface.
+Sometimes it is helpful to run an isolated group of connected **servald**
+instances on a single machine for testing purposes.  To make this possible,
+**servald** supports a *dummy* network interface.
 
 A dummy interface is simply a regular file to which all instances append their
 network packets.  The file grows without limit.  Each instance advances its own
