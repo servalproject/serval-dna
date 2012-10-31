@@ -55,10 +55,12 @@ setup_FileTransferStress() {
    do
       eval "bundles$i=()"
       set_instance +$i
+      let j=0
       for n in 1 2 3 4 5 6 7 8 9 a b c d e f g
       do
-         rhizome_add_file file-$i-$n
+         rhizome_add_file file-$i-$n $((2 ** (j + 10)))
          eval "bundles$i+=(\$BID:\$VERSION)"
+         let j=j+1
       done
    done
 }

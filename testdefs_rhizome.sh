@@ -309,7 +309,8 @@ extract_manifest_vars() {
 
 rhizome_add_file() {
    local name="$1"
-   [ -e "$name" ] || echo "File $name" >"$name"
+   local size="${2:-64}"
+   [ -e "$name" ] || create_file "$name" $size
    local sidvar="SID$instance_name"
    executeOk_servald rhizome add file "${!sidvar}" '' "$name" "$name.manifest"
    executeOk_servald rhizome list ''

@@ -138,10 +138,11 @@ runTests() {
    _tfw_invoking_script=$(abspath "${BASH_SOURCE[1]}")
    _tfw_suite_name="${_tfw_invoking_script##*/}"
    _tfw_cwd=$(abspath "$PWD")
-   _tfw_tmpdir="${TFW_TMPDIR:-${TMPDIR:-/tmp}}/_tfw-$$"
-   trap '_tfw_status=$?; _tfw_killtests; rm -rf "$_tfw_tmpdir"; exit $_tfw_status' EXIT SIGHUP SIGINT SIGTERM
-   rm -rf "$_tfw_tmpdir"
-   mkdir -p "$_tfw_tmpdir" || return $?
+   _tfw_tmpdir="$(_tfw_abspath -P "${TFW_TMPDIR:-${TMPDIR:-/tmp}}")"
+   _tfw_tmpmain="$_tfw_tmpdir/_tfw-$$"
+   trap '_tfw_status=$?; _tfw_killtests; rm -rf "$_tfw_tmpmain"; exit $_tfw_status' EXIT SIGHUP SIGINT SIGTERM
+   rm -rf "$_tfw_tmpmain"
+   mkdir -p "$_tfw_tmpmain" || return $?
    _tfw_logdir="${TFW_LOGDIR:-$_tfw_cwd/testlog}/$_tfw_suite_name"
    _tfw_trace=false
    _tfw_verbose=false
@@ -175,7 +176,7 @@ runTests() {
       _tfw_fatal "--verbose is incompatible with --jobs=$njobs"
    fi
    # Create an empty results directory.
-   _tfw_results_dir="$_tfw_tmpdir/results"
+   _tfw_results_dir="$_tfw_tmpmain/results"
    mkdir "$_tfw_results_dir" || return $?
    # Create an empty log directory.
    mkdir -p "$_tfw_logdir" || return $?
@@ -226,7 +227,7 @@ runTests() {
          # All files created by this test belong inside a temporary directory.
          # The path name must be kept short because it is used to construct
          # named socket paths, which have a limited length.
-         _tfw_tmp=/tmp/_tfw-$_tfw_unique
+         _tfw_tmp=$_tfw_tmpdir/_tfw-$_tfw_unique
          trap '_tfw_status=$?; rm -rf "$_tfw_tmp"; exit $_tfw_status' EXIT SIGHUP SIGINT SIGTERM
          local start_time=$(_tfw_timestamp)
          local finish_time=unknown
@@ -282,7 +283,7 @@ runTests() {
       _tfw_harvest_processes
    done
    # Clean up working directory.
-   rm -rf "$_tfw_tmpdir"
+   rm -rf "$_tfw_tmpmain"
    trap - EXIT SIGHUP SIGINT SIGTERM
    # Echo result summary and exit with success if no failures or errors.
    s=$([ $_tfw_testcount -eq 1 ] || echo s)
@@ -642,11 +643,11 @@ tfw_cat() {
 tfw_core_backtrace() {
    local executable="$1"
    local corefile="$2"
-   echo backtrace >"$_tfw_tmpdir/backtrace.gdb"
+   echo backtrace >"$_tfw_tmpmain/backtrace.gdb"
    tfw_log "#----- gdb backtrace from $executable $corefile -----"
-   gdb -n -batch -x "$_tfw_tmpdir/backtrace.gdb" "$executable" "$corefile" </dev/null
+   gdb -n -batch -x "$_tfw_tmpmain/backtrace.gdb" "$executable" "$corefile" </dev/null
    tfw_log "#-----"
-   rm -f "$_tfw_tmpdir/backtrace.gdb"
+   rm -f "$_tfw_tmpmain/backtrace.gdb"
 }
 
 assertExitStatus() {
