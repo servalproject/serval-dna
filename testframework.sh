@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Serval Project testing framework for Bash shell
-# Copyright 2012 Paul Gardner-Stephen
+# Copyright 2012 Serval Project, Inc.
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -62,7 +62,6 @@ TSFMT='+%Y-%m-%d %H:%M:%S'
 SYSTYPE=`uname -s`
 if [ $SYSTYPE = "SunOS" ]; then
     abspath () { case "$1" in /*)printf "%s\n" "$1";; *)printf "%s\n" "$PWD/$1";; esac; }
-
     AWK=gawk
     SED=gsed
     GREP=ggrep
@@ -133,7 +132,9 @@ runTests() {
    _tfw_stdout=1
    _tfw_stderr=2
    _tfw_checkBashVersion
+   export PATH="$(_tfw_abspath "${BASH_SOURCE%/*}"):$PATH"
    _tfw_checkTerminfo
+   _tfw_checkCommandInPATH tfw_createfile
    _tfw_invoking_script=$(abspath "${BASH_SOURCE[1]}")
    _tfw_suite_name="${_tfw_invoking_script##*/}"
    _tfw_cwd=$(abspath "$PWD")
@@ -482,6 +483,15 @@ escape_grep_extended() {
 # expression arg1.
 matches_rexp() {
    _tfw_matches_rexp "$@"
+}
+
+# Create a file with the given size (default 0).
+# Usage: create_file <path> [<size>]
+# where: <size> is of the form Nu
+#        N is decimal integer
+#        u is one of kKmMgG (k=10^3, K=2^10, m=10^6, M=2^20, g=10^9, G=2^30)
+create_file() {
+   tfw_createfile --label="$1" ${2:+--size=$2} >"$1" || error "failed command: create_file $@"
 }
 
 # Executes its arguments as a command:
@@ -1211,6 +1221,13 @@ _tfw_checkTerminfo() {
    _tfw_tput=false
    case $(type -p tput) in
    */tput) _tfw_tput=tput;;
+   esac
+}
+
+_tfw_checkCommandInPATH() {
+   case $(type -p "$1") in
+   */"${1##*/}") ;;
+   *) _tfw_fatal "command not found: $1 (PATH=$PATH)"
    esac
 }
 

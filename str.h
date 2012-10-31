@@ -21,15 +21,17 @@
 #define __STR_H__
 
 /* Check if a given string starts with a given sub-string.  If so, return 1 and, if afterp is not
- NULL, set *afterp to point to the character immediately following the substring.  Otherwise
- return 0.
- This function is used to parse HTTP headers and responses, which are typically not
- nul-terminated, but are held in a buffer which has an associated length.  To avoid this function
- running past the end of the buffer, the caller must ensure that the buffer contains a sub-string
- that is not part of the sub-string being sought, eg, "\r\n\r\n" as detected by
- http_header_complete().  This guarantees that this function will return nonzero before running
- past the end of the buffer.
- @author Andrew Bettison <andrew@servalproject.com>
+ * NULL, set *afterp to point to the character immediately following the substring.  Otherwise
+ * return 0.
+ *
+ * This function is used to parse HTTP headers and responses, which are typically not
+ * nul-terminated, but are held in a buffer which has an associated length.  To avoid this function
+ * running past the end of the buffer, the caller must ensure that the buffer contains a sub-string
+ * that is not part of the sub-string being sought, eg, "\r\n\r\n" as detected by
+ * http_header_complete().  This guarantees that this function will return nonzero before running
+ * past the end of the buffer.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
  */
 int str_startswith(char *str, const char *substring, char **afterp);
 
@@ -37,11 +39,29 @@ int str_startswith(char *str, const char *substring, char **afterp);
  */
 int strcase_startswith(char *str, const char *substring, char **afterp);
 
-/* like strstr(), but doesn't depend on null termination.
-   @author Paul Gardner-Stephen <paul@servalproject.org>
-   @author Andrew Bettison <andrew@servalproject.com>
+/* like strstr(3), but doesn't depend on null termination.
+ *
+ * @author Paul Gardner-Stephen <paul@servalproject.org>
+ * @author Andrew Bettison <andrew@servalproject.com>
  */
 char *str_str(char *haystack, const char *needle, int haystack_len);
+
+/* Parse a string as an integer in ASCII radix notation in the given 'base' (eg, base=10 means
+ * decimal) and scale the result by a factor given by an optional suffix "scaling" character in the
+ * set {kKmMgG}: 'k' = 1e3, 'K' = 1<<10, 'm' = 1e6, 'M' = 1<<20, 'g' = 1e9, 'G' = * 1<<30.
+ *
+ * Return 1 if a valid scaled integer was parsed, storing the value in *result (unless result is
+ * NULL) and storing a pointer to the immediately succeeding character in *afterp (unless afterp is
+ * NULL, in which case returns 1 only if the immediately succeeding character is a nul '\0').
+ * Returns 0 otherwise, leaving *result and *afterp unchanged.
+ *
+ * NOTE: an argument base > 16 will cause any trailing 'g' or 'G' character to be parsed as part of
+ * the integer, not as a scale suffix.  Ditto for base > 20 and 'k' 'K', and base > 22 and 'm' 'M'.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int str_to_ll_scaled(const char *str, int base, long long *result, char **afterp);
+
 
 int parse_argv(char *cmdline, char delim, char **argv, int max_argv);
 

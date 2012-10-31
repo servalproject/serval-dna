@@ -19,6 +19,7 @@ nacl/nacllib.txt
 serval.c
 /servald
 /directory_service
+/tfw_createfile
 *.so
 test.*.log
 testlog

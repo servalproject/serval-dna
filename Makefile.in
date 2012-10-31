@@ -54,7 +54,7 @@ CFLAGS+=-D_DARWIN_C_SOURCE
 
 DEFS=	@DEFS@
 
-all:	servald libmonitorclient.so libmonitorclient.a
+all:	servald libmonitorclient.so libmonitorclient.a tfw_createfile
 
 sqlite-amalgamation-3070900/sqlite3.o:	sqlite-amalgamation-3070900/sqlite3.c
 	@echo CC $<
@@ -71,6 +71,10 @@ servald:	$(OBJS)
 directory_service: $(MDPCLIENTOBJS) directory_service.o
 	@echo LINK $@
 	@$(CC) $(CFLAGS) -Wall -o $@ $(MDPCLIENTOBJS) directory_service.o $(LDFLAGS) 
+
+tfw_createfile: tfw_createfile.o str.o
+	@echo LINK $@
+	@$(CC) $(CFLAGS) -Wall -o $@ tfw_createfile.o str.o
 
 # This does not build on 64 bit elf platforms as NaCL isn't built with -fPIC
 # DOC 20120615

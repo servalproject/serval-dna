@@ -17,6 +17,7 @@
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
@@ -75,4 +76,30 @@ char *str_str(char *haystack, const char *needle, int haystack_len)
 	return haystack;
   }
   return NULL;
+}
+
+int str_to_ll_scaled(const char *str, int base, long long *result, char **afterp)
+{
+  if (!(isdigit(*str) || *str == '-' || *str == '+'))
+    return 0;
+  char *end;
+  long long value = strtoll(str, &end, base);
+  if (end == str)
+    return 0;
+  switch (*end) {
+    case '\0': break;
+    case 'k': value *= 1000LL; ++end; break;
+    case 'K': value *= 1024LL; ++end; break;
+    case 'm': value *= 1000LL * 1000LL; ++end; break;
+    case 'M': value *= 1024LL * 1024LL; ++end; break;
+    case 'g': value *= 1000LL * 1000LL * 1000LL; ++end; break;
+    case 'G': value *= 1024LL * 1024LL * 1024LL; ++end; break;
+    default: return 0;
+  }
+  if (afterp)
+    *afterp = end;
+  else if (*end)
+    return 0;
+  *result = value;
+  return 1;
 }
