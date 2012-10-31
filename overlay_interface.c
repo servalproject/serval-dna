@@ -27,6 +27,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf.h"
 #include "overlay_buffer.h"
 #include "overlay_packet.h"
+#include "str.h"
 
 #ifdef HAVE_IFADDRS_H
 #include <ifaddrs.h>
@@ -1284,35 +1285,14 @@ overlay_tick_interface(int i, time_ms_t now) {
 }
 
 static long long
-parse_quantity(char *q) {
-  int m;
-  char units[80];
-
-  if (strlen(q)>=80) return WHY("quantity string >=80 characters");
-
-  if (sscanf(q,"%d%s",&m,units)==2)
-    {
-      if (units[1]) return WHY("Units should be single character");
-      switch(units[0])
-	{
-	case 'k': return m*1000LL;
-	case 'K': return m*1024LL;
-	case 'm': return m*1000LL*1000LL;
-	case 'M': return m*1024LL*1024LL;
-	case 'g': return m*1000LL*1000LL*1000LL;
-	case 'G': return m*1024LL*1024LL*1024LL;
-	default:
-	  return WHY("Illegal unit: should be k,K,m,M,g, or G.");
-	}
-    }
-  if (sscanf(q,"%d",&m)==1)
-    {
-      return m;
-    }
-  else
-    {
-      return WHY("Could not parse quantity");
-    }
+parse_quantity(char *q)
+{
+  if (strlen(q) >= 80)
+    return WHY("quantity string >=80 characters");
+  long long result;
+  if (str_to_ll_scaled(q, 10, &result, NULL))
+    return result;
+  return WHYF("Illegal quantity: %s", alloca_str_toprint(q));
 }
 
 static void
