@@ -11,7 +11,6 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)encode.c \
 	$(SERVAL_BASE)fdqueue.c \
 	$(SERVAL_BASE)fifo.c \
-	$(SERVAL_BASE)gateway.c \
 	$(SERVAL_BASE)keyring.c \
 	$(SERVAL_BASE)log.c \
 	$(SERVAL_BASE)lsif.c \
