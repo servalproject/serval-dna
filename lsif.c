@@ -191,6 +191,9 @@ doifaddrs(void) {
     return WHY_perror("getifaddr()");
 
   for (ifa = ifaddr; ifa != NULL ; ifa = ifa->ifa_next) {
+    if (!ifa->ifa_addr || !ifa->ifa_netmask)
+      continue;
+    
     /* We're only interested in IPv4 addresses */
     if (ifa->ifa_addr->sa_family != AF_INET) {
       if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("Skipping non-AF_INET address on %s", ifa->ifa_name);
