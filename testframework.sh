@@ -140,6 +140,7 @@ runTests() {
    _tfw_cwd=$(abspath "$PWD")
    _tfw_tmpdir="$(_tfw_abspath -P "${TFW_TMPDIR:-${TMPDIR:-/tmp}}")"
    _tfw_tmpmain="$_tfw_tmpdir/_tfw-$$"
+   _tfw_njobs=1
    trap '_tfw_status=$?; _tfw_killtests; rm -rf "$_tfw_tmpmain"; exit $_tfw_status' EXIT SIGHUP SIGINT SIGTERM
    rm -rf "$_tfw_tmpmain"
    mkdir -p "$_tfw_tmpmain" || return $?
@@ -151,7 +152,6 @@ runTests() {
    _tfw_default_timeout=60
    local allargs="$*"
    local -a filters=()
-   local njobs=1
    local oo
    _tfw_shopt oo -s extglob
    while [ $# -ne 0 ]; do
@@ -160,8 +160,8 @@ runTests() {
       -t|--trace) _tfw_trace=true;;
       -v|--verbose) _tfw_verbose=true;;
       --filter=*) filters+=("${1#*=}");;
-      -j|--jobs) njobs=0;;
-      --jobs=+([0-9])) njobs="${1#*=}";;
+      -j|--jobs) _tfw_njobs=0;;
+      --jobs=+([0-9])) _tfw_njobs="${1#*=}";;
       --jobs=*) _tfw_fatal "invalid option: $1";;
       -E|--stop-on-error) _tfw_stop_on_error=true;;
       -F|--stop-on-failure) _tfw_stop_on_failure=true;;
@@ -172,8 +172,8 @@ runTests() {
       shift
    done
    _tfw_shopt_restore oo
-   if $_tfw_verbose && [ $njobs -ne 1 ]; then
-      _tfw_fatal "--verbose is incompatible with --jobs=$njobs"
+   if $_tfw_verbose && [ $_tfw_njobs -ne 1 ]; then
+      _tfw_fatal "--verbose is incompatible with --jobs=$_tfw_njobs"
    fi
    # Create an empty results directory.
    _tfw_results_dir="$_tfw_tmpmain/results"
@@ -203,7 +203,7 @@ runTests() {
       let ++testPosition
       let ++_tfw_testcount
       # Wait for any existing child process to finish.
-      while [ $njobs -ne 0 -a ${#_tfw_running_jobs[*]} -ge $njobs ]; do
+      while [ $_tfw_njobs -ne 0 -a ${#_tfw_running_jobs[*]} -ge $_tfw_njobs ]; do
          _tfw_harvest_processes
       done
       [ $_tfw_fatalcount -ne 0 ] && break
@@ -211,7 +211,7 @@ runTests() {
       $_tfw_stop_on_failure && [ $_tfw_failcount -ne 0 ] && break
       # Start the next test in a child process.
       _tfw_echo_intro $testPosition $testNumber $testName
-      if $_tfw_verbose || [ $njobs -ne 1 ]; then
+      if $_tfw_verbose || [ $_tfw_njobs -ne 1 ]; then
          echo
       fi
       echo "$testPosition $testNumber $testName" >"$_tfw_results_dir/$testName"
@@ -292,7 +292,7 @@ runTests() {
 }
 
 _tfw_killtests() {
-   if [ $njobs -eq 1 ]; then
+   if [ $_tfw_njobs -eq 1 ]; then
       echo -n " killing..."
    else
       echo -n -e "\r\rKilling tests...\r"
@@ -357,7 +357,7 @@ _tfw_harvest_processes() {
             ;;
          esac
          local lines
-         if ! $_tfw_verbose && [ $njobs -eq 1 ]; then
+         if ! $_tfw_verbose && [ $_tfw_njobs -eq 1 ]; then
             echo -n " "
             _tfw_echo_result "$result"
             echo
