@@ -1,6 +1,6 @@
 /*
 Serval Distributed Numbering Architecture (DNA)
-Copyright (C) 2010 Paul Gardner-Stephen
+Copyright (C) 2012 Serval Project, Inc.
  
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License
@@ -137,10 +137,10 @@ static struct rhizome_fetch_candidate *rhizome_fetch_insert(struct rhizome_fetch
 {
   struct rhizome_fetch_candidate * const c = &q->candidate_queue[i];
   struct rhizome_fetch_candidate * e = &q->candidate_queue[q->candidate_queue_size - 1];
-  assert(i >= 0 && i < q->candidate_queue_size);
-  assert(i == 0 || c[-1].manifest);
   if (debug & DEBUG_RHIZOME_RX)
     DEBUGF("insert queue[%d] candidate[%d]", q - rhizome_fetch_queues, i);
+  assert(i >= 0 && i < q->candidate_queue_size);
+  assert(i == 0 || c[-1].manifest);
   if (e->manifest) // queue is full
     rhizome_manifest_free(e->manifest);
   else
@@ -855,7 +855,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
     RETURN(-1);
   }
 
-  struct rhizome_fetch_candidate *c = rhizome_fetch_insert(qi, j);
+  struct rhizome_fetch_candidate *c = rhizome_fetch_insert(qi, ci);
   c->manifest = m;
   c->peer = *peerip;
   c->priority = priority;
