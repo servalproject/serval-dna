@@ -141,6 +141,7 @@ runTests() {
    _tfw_tmpdir="$(_tfw_abspath -P "${TFW_TMPDIR:-${TMPDIR:-/tmp}}")"
    _tfw_tmpmain="$_tfw_tmpdir/_tfw-$$"
    _tfw_njobs=1
+   _tfw_lognoise=true
    trap '_tfw_status=$?; _tfw_killtests; rm -rf "$_tfw_tmpmain"; exit $_tfw_status' EXIT SIGHUP SIGINT SIGTERM
    rm -rf "$_tfw_tmpmain"
    mkdir -p "$_tfw_tmpmain" || return $?
@@ -588,14 +589,31 @@ fatal() {
    _tfw_fatalexit
 }
 
-# Append a message to the test case's stdout log.  A normal 'echo' to stdout
-# will also do this, but tfw_log will work even in a context that stdout (fd 1)
-# is redirected.
+# Append a time stamped message to the test case's stdout log.  Will work even
+# in a context that stdout (fd 1) is redirected.  Will not log anything in a
+# quietened region.
 tfw_log() {
-   local ts=$(_tfw_timestamp)
-   cat >&$_tfw_log_fd <<EOF
+   if $_tfw_lognoise; then
+      local ts=$(_tfw_timestamp)
+      cat >&$_tfw_log_fd <<EOF
 ${ts##* } $*
 EOF
+   fi
+}
+
+# Execute the given command with log messages quietened.
+tfw_nolog() {
+   if [ "$1" = ! ]; then
+      shift
+      ! tfw_nolog "$@"
+   else
+      local old_lognoise=$_tfw_lognoise
+      _tfw_lognoise=false
+      "$@" >/dev/null
+      local stat=$?
+      _tfw_lognoise=$old_lognoise
+      return $stat
+   fi
 }
 
 # Append the contents of a file to the test case's stdout log.  A normal 'cat'
