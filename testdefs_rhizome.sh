@@ -257,16 +257,18 @@ get_rhizome_server_port() {
 #  - does this by examining the server log files of the respective instances
 #    for tell-tale INFO messages
 bundle_received_by() {
-   local -a rexps
+   local -a rexps bundles
    local restart=true
-   local arg bid version rexp
+   local arg bid version rexp bundle bundlefile i
+   local ret=0
    for arg; do
       case "$arg" in
       +([0-9A-F])?(:+([0-9])))
-         $restart && rexps=()
+         $restart && rexps=() bundles=()
          restart=false
          bid="${arg%%:*}"
          matches_rexp "$rexp_manifestid" "$bid" || error "invalid bundle ID: $bid"
+         bundles+=("$arg")
          if [ "$bid" = "$arg" ]; then
             rexps+=("RHIZOME ADD MANIFEST service=file bid=$bid")
          else
@@ -275,15 +277,34 @@ bundle_received_by() {
          fi
          ;;
       +[A-Z])
-         local logvar="LOG${arg#+}"
-         for rexp in "${rexps[@]}"; do
-            grep "$rexp" "${!logvar}" || return 1
+         push_instance
+         tfw_nolog set_instance $arg || return $?
+         for ((i = 0; i < ${#bundles[*]}; ++i)); do
+            bundle="${bundles[$i]}"
+            rexp="${rexps[$i]}"
+            bundledir="$instance_dir/cache/bundles_received"
+            bundlefile="$bundledir/$bundle"
+            if [ ! -s "$bundlefile" ]; then
+               [ -d "$bundledir" ] || mkdir -p "$bundledir" || error "mkdir failed"
+               if grep "$rexp" "$instance_servald_log" >"$bundlefile"; then
+                  tfw_log "bundle $bundle received by instance +$instance_name"
+               else
+                  ret=1
+               fi
+            fi
          done
          restart=true
+         pop_instance
          ;;
       --stderr)
-         for rexp in "${rexps[@]}"; do
-            replayStderr | grep "$rexp" || return 1
+         for ((i = 0; i < ${#bundles[*]}; ++i)); do
+            bundle="${bundles[$i]}"
+            rexp="${rexps[$i]}"
+            if replayStderr | grep "$rexp" >/dev/null; then
+               tfw_log "bundle $bundle received by ($executed)"
+            else
+               ret=1
+            fi
          done
          restart=true
          ;;
@@ -293,7 +314,7 @@ bundle_received_by() {
          ;;
       esac
    done
-   return 0
+   return $ret
 }
 
 extract_manifest_vars() {
