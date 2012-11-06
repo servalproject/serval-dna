@@ -89,11 +89,10 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
   return -1; /* WHY("Timeout waiting for server response"); */
 }
 
-char overlay_mdp_client_socket_path[1024];
-int overlay_mdp_client_socket_path_len=-1;
-
 int overlay_mdp_client_init()
 {
+  char overlay_mdp_client_socket_path[1024];
+  int overlay_mdp_client_socket_path_len=-1;
   if (mdp_client_socket==-1) {
     /* Open socket to MDP server (thus connection is always local) */
     if (0) WHY("Use of abstract name space socket for Linux not implemented");
@@ -147,12 +146,20 @@ int overlay_mdp_client_done()
     overlay_mdp_frame mdp;
     mdp.packetTypeAndFlags=MDP_GOODBYE;
     overlay_mdp_send(&mdp,0,0);
+    
+    // get the socket name and unlink it from the filesystem
+    struct sockaddr_un name;
+    socklen_t len=sizeof(name);
+    if (getsockname(mdp_client_socket, (struct sockaddr *)&name, &len))
+      WHY_perror("getsockname()");
+    else if(len>sizeof(sa_family_t) && len<=sizeof(name)){
+      if (unlink(name.sun_path))
+	WHY_perror("unlink()");
+    }
+    
+    close(mdp_client_socket);
   }
   
-  if (overlay_mdp_client_socket_path_len>-1)
-    unlink(overlay_mdp_client_socket_path);
-  if (mdp_client_socket!=-1)
-    close(mdp_client_socket);
   mdp_client_socket=-1;
   return 0;
 }
