@@ -176,9 +176,7 @@ int overlay_mdp_recv(int mdp_sockfd, overlay_mdp_frame *mdp, int port, int *ttl)
   mdp->packetTypeAndFlags=0;
   
   /* Check if reply available */
-  set_nonblock(mdp_client_socket);
   ssize_t len = recvwithttl(mdp_sockfd,(unsigned char *)mdp, sizeof(overlay_mdp_frame),ttl,recvaddr,&recvaddrlen);
-  set_block(mdp_client_socket);
   
   recvaddr_un=(struct sockaddr_un *)recvaddr;
   /* Null terminate received address so that the stat() call below can succeed */
