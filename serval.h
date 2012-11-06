@@ -675,8 +675,8 @@ int cli_delim(const char *opt);
 
 int is_configvarname(const char *arg);
 
-int overlay_mdp_getmyaddr(int index,unsigned char *sid);
-int overlay_mdp_bind(unsigned char *localaddr,int port); 
+int overlay_mdp_getmyaddr(int mpd_sockfd, int index, unsigned char *sid);
+int overlay_mdp_bind(int mdp_sockfd, unsigned char *localaddr, int port);
 int overlay_route_node_info(overlay_mdp_nodeinfo *node_info);
 int overlay_interface_register(char *name,
 			       struct in_addr addr,

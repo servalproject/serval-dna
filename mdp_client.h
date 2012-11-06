@@ -23,11 +23,11 @@
 
 /* Client-side MDP function */
 extern int mdp_client_socket;
-int overlay_mdp_client_init();
-int overlay_mdp_client_done();
-int overlay_mdp_client_poll(time_ms_t timeout_ms);
-int overlay_mdp_recv(overlay_mdp_frame *mdp, int port, int *ttl);
-int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms);
+int overlay_mdp_client_socket(void);
+int overlay_mdp_client_close(int mdp_sockfd);
+int overlay_mdp_client_poll(int mdp_sockfd, time_ms_t timeout_ms);
+int overlay_mdp_recv(int mdp_sockfd, overlay_mdp_frame *mdp, int port, int *ttl);
+int overlay_mdp_send(int mdp_sockfd, overlay_mdp_frame *mdp,int flags,int timeout_ms);
 int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp);
 
 #endif
