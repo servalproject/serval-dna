@@ -42,9 +42,7 @@ int overlay_mdp_send(int mdp_sockfd, overlay_mdp_frame *mdp, int flags, int time
   if (make_local_sockaddr(&addr, &addrlen, "mdp.socket") == -1)
     return -1;
   // Send to that socket
-  set_nonblock(mdp_sockfd);
   int result = sendto(mdp_sockfd, mdp, len, 0, (struct sockaddr *)&addr, addrlen);
-  set_block(mdp_sockfd);
   if (result == -1) {
     mdp->packetTypeAndFlags=MDP_ERROR;
     mdp->error.error=1;
@@ -158,9 +156,7 @@ int overlay_mdp_recv(int mdp_sockfd, overlay_mdp_frame *mdp, int port, int *ttl)
   socklen_t recvaddrlen = sizeof recvaddr;
   ssize_t len;
   mdp->packetTypeAndFlags = 0;
-  set_nonblock(mdp_sockfd);
   len = recvwithttl(mdp_sockfd, (unsigned char *)mdp, sizeof(overlay_mdp_frame), ttl, (struct sockaddr *)&recvaddr, &recvaddrlen);
-  set_block(mdp_sockfd);
   if (len <= 0)
     return -1; // no packet received
 
