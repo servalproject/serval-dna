@@ -91,7 +91,6 @@ static int outv_end_field()
     return WHY("Exception thrown from NewByteArray()");
   }
   (*jni_env)->SetByteArrayRegion(jni_env, arr, 0, length, (jbyte*)outv_buffer);
-  DEBUGF("SetByteArrayRegion(%s)", alloca_toprint(-1, outv_buffer, length));
   if ((*jni_env)->ExceptionOccurred(jni_env)) {
     jni_exception = 1;
     return WHY("Exception thrown from SetByteArrayRegion()");
