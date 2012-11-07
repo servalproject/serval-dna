@@ -909,14 +909,14 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
 	long long blob_filesize = rhizome_manifest_get_ll(m, "filesize");
 	int from_here = 0;
 	if (q_author) {
-	  DEBUGF("q_author=%s", alloca_str_toprint(q_author));
+	  if (debug & DEBUG_RHIZOME) DEBUGF("q_author=%s", alloca_str_toprint(q_author));
 	  unsigned char authorSid[SID_SIZE];
 	  stowSid(authorSid, 0, q_author);
 	  int cn = 0, in = 0, kp = 0;
 	  from_here = keyring_find_sid(keyring, &cn, &in, &kp, authorSid);
 	}
 	if (!from_here && blob_sender) {
-	  DEBUGF("blob_sender=%s", alloca_str_toprint(blob_sender));
+	  if (debug & DEBUG_RHIZOME) DEBUGF("blob_sender=%s", alloca_str_toprint(blob_sender));
 	  unsigned char senderSid[SID_SIZE];
 	  stowSid(senderSid, 0, blob_sender);
 	  int cn = 0, in = 0, kp = 0;
