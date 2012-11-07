@@ -24,6 +24,7 @@ source "${0%/*}/../testconfig.sh"
 
 setup() {
    setup_servald
+   executeOk_servald config set debug.verbose 1
    assert_echo_works
    compile_java_classes
    setup_servald_so
@@ -32,21 +33,21 @@ setup() {
 compile_java_classes() {
    assert --message='Java compiler was detected by ./configure' [ "$JAVAC" ]
    mkdir classes
-   assert $JAVAC -d classes "$servald_source_root"/java/org/servalproject/servald/*.java
+   assert $JAVAC -Xlint:unchecked -d classes "$servald_source_root"/java/org/servalproject/servald/*.java
    assert [ -r classes/org/servalproject/servald/ServalD.class ]
    assert [ -r classes/org/servalproject/servald/ServalDTests.class ]
 }
 
 # Make sure that the normal echo command-line works, without JNI.
 assert_echo_works() {
-   executeOk $servald echo 'Hello,' 'world!'
-   assertStdoutIs -e 'Hello,\nworld!\n'
+   executeOk $servald echo -e 'Hello,\ttab' 'world\0!'
+   assertStdoutIs -e 'Hello,\ttab\nworld\0!\n'
 }
 
 doc_Echo="Serval JNI echo Hello world"
 test_Echo() {
-   executeOk java -classpath "$PWD/classes" org.servalproject.servald.ServalD echo 'Hello,' 'world!'
-   assertStdoutIs -e 'Hello,\nworld!\n'
+   executeOk java -classpath "$PWD/classes" org.servalproject.servald.ServalD echo -e 'Hello,\ttab' 'world\0!'
+   assertStdoutIs -e 'Hello,\ttab\nworld\0!\n'
 }
 
 doc_Delim="Serval non-JNI output delimiter environment variable"
