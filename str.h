@@ -20,6 +20,60 @@
 #ifndef __STR_H__
 #define __STR_H__
 
+#include <string.h>
+#include <ctype.h>
+
+#ifndef __STR_INLINE
+# if __GNUC__ && !__GNUC_STDC_INLINE__
+#  define __STR_INLINE extern inline
+# else
+#  define __STR_INLINE inline
+# endif
+#endif
+
+/* Return true iff 'len' bytes starting at 'text' are hex digits, upper or lower case.
+ * Does not check the following byte.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+__STR_INLINE int is_xsubstring(const char *text, int len)
+{
+  while (len--)
+    if (!isxdigit(*text++))
+      return 0;
+  return 1;
+}
+
+/* Return true iff the nul-terminated string 'text' has length 'len' and consists only of hex
+ * digits, upper or lower case.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+__STR_INLINE int is_xstring(const char *text, int len)
+{
+  while (len--)
+    if (!isxdigit(*text++))
+      return 0;
+  return *text == '\0';
+}
+
+extern char hexdigit[16];
+char *tohex(char *dstHex, const unsigned char *srcBinary, size_t bytes);
+size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t nbinary);
+int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary);
+int is_all_matching(const unsigned char *ptr, size_t len, unsigned char value);
+char *str_toupper_inplace(char *s);
+
+__STR_INLINE int hexvalue(char c)
+{
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  return -1;
+}
+
+size_t str_fromprint(unsigned char *dst, const char *src);
+
 /* Check if a given string starts with a given sub-string.  If so, return 1 and, if afterp is not
  * NULL, set *afterp to point to the character immediately following the substring.  Otherwise
  * return 0.

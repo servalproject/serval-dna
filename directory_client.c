@@ -13,6 +13,7 @@
  */
 
 #include "serval.h"
+#include "str.h"
 #include "overlay_address.h"
 
 struct subscriber *directory_service;

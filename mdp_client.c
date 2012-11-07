@@ -18,6 +18,7 @@
 
 #include <sys/stat.h>
 #include "serval.h"
+#include "str.h"
 #include "strbuf.h"
 #include "overlay_buffer.h"
 #include "overlay_address.h"

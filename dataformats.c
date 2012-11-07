@@ -19,92 +19,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 #include "rhizome.h"
+#include "str.h"
 #include <ctype.h>
-
-char hexdigit[16] = {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
-
-static inline int _is_xsubstring(const char *text, int len)
-{
-  while (len--)
-    if (!isxdigit(*text++))
-      return 0;
-  return 1;
-}
-
-static inline int _is_xstring(const char *text, int len)
-{
-  while (len--)
-    if (!isxdigit(*text++))
-      return 0;
-  return *text == '\0';
-}
-
-/* Return true iff 'len' bytes starting at 'text' are hex digits, upper or lower case.
-   Does not check the following byte.
-   @author Andrew Bettison <andrew@servalproject.com>
- */
-int is_xsubstring(const char *text, int len)
-{
-  return _is_xsubstring(text, len);
-}
-
-/* Return true iff the nul-terminated string 'text' has length 'len' and consists only of hex
-   digits, upper or lower case.
-   @author Andrew Bettison <andrew@servalproject.com>
- */
-int is_xstring(const char *text, int len)
-{
-  return _is_xstring(text, len);
-}
-
-/* Does this whole buffer contain the same value? */
-int is_all_matching(const unsigned char *ptr, size_t len, unsigned char value)
-{
-  while (len--)
-    if (*ptr++ != value)
-      return 0;
-  return 1;
-}
-
-char *tohex(char *dstHex, const unsigned char *srcBinary, size_t bytes)
-{
-  char *p;
-  for (p = dstHex; bytes--; ++srcBinary) {
-    *p++ = hexdigit[*srcBinary >> 4];
-    *p++ = hexdigit[*srcBinary & 0xf];
-  }
-  *p = '\0';
-  return dstHex;
-}
-
-/* Convert nbinary*2 ASCII hex characters [0-9A-Fa-f] to nbinary bytes of data.  Can be used to
-   perform the conversion in-place, eg, fromhex(buf, (char*)buf, n);  Returns -1 if a non-hex-digit
-   character is encountered, otherwise returns the number of binary bytes produced (= nbinary).
-   @author Andrew Bettison <andrew@servalproject.com>
- */
-size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t nbinary)
-{
-  size_t count = 0;
-  while (count != nbinary) {
-    unsigned char high = hexvalue(*srcHex++);
-    if (high & 0xf0) return -1;
-    unsigned char low = hexvalue(*srcHex++);
-    if (low & 0xf0) return -1;
-    dstBinary[count++] = (high << 4) + low;
-  }
-  return count;
-}
-
-/* Convert nbinary*2 ASCII hex characters [0-9A-Fa-f] followed by a nul '\0' character to nbinary bytes of data.  Can be used to
-   perform the conversion in-place, eg, fromhex(buf, (char*)buf, n);  Returns -1 if a non-hex-digit
-   character is encountered or the character immediately following the last hex digit is not a nul,
-   otherwise returns zero.
-   @author Andrew Bettison <andrew@servalproject.com>
- */
-int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary)
-{
-  return (fromhex(dstBinary, srcHex, nbinary) == nbinary && srcHex[nbinary * 2] == '\0') ? 0 : -1;
-}
 
 int str_is_subscriber_id(const char *sid)
 {
@@ -119,7 +35,7 @@ int strn_is_subscriber_id(const char *sid, size_t *lenp)
       *lenp = 9;
     return 1;
   }
-  if (_is_xsubstring(sid, SID_STRLEN)) {
+  if (is_xsubstring(sid, SID_STRLEN)) {
     if (lenp)
       *lenp = SID_STRLEN;
     return 1;
@@ -129,42 +45,42 @@ int strn_is_subscriber_id(const char *sid, size_t *lenp)
 
 int rhizome_strn_is_manifest_id(const char *id)
 {
-  return _is_xsubstring(id, RHIZOME_MANIFEST_ID_STRLEN);
+  return is_xsubstring(id, RHIZOME_MANIFEST_ID_STRLEN);
 }
 
 int rhizome_str_is_manifest_id(const char *id)
 {
-  return _is_xstring(id, RHIZOME_MANIFEST_ID_STRLEN);
+  return is_xstring(id, RHIZOME_MANIFEST_ID_STRLEN);
 }
 
 int rhizome_strn_is_bundle_key(const char *key)
 {
-  return _is_xsubstring(key, RHIZOME_BUNDLE_KEY_STRLEN);
+  return is_xsubstring(key, RHIZOME_BUNDLE_KEY_STRLEN);
 }
 
 int rhizome_str_is_bundle_key(const char *key)
 {
-  return _is_xstring(key, RHIZOME_BUNDLE_KEY_STRLEN);
+  return is_xstring(key, RHIZOME_BUNDLE_KEY_STRLEN);
 }
 
 int rhizome_strn_is_bundle_crypt_key(const char *key)
 {
-  return _is_xsubstring(key, RHIZOME_CRYPT_KEY_STRLEN);
+  return is_xsubstring(key, RHIZOME_CRYPT_KEY_STRLEN);
 }
 
 int rhizome_str_is_bundle_crypt_key(const char *key)
 {
-  return _is_xstring(key, RHIZOME_CRYPT_KEY_STRLEN);
+  return is_xstring(key, RHIZOME_CRYPT_KEY_STRLEN);
 }
 
 int rhizome_strn_is_file_hash(const char *hash)
 {
-  return _is_xsubstring(hash, RHIZOME_FILEHASH_STRLEN);
+  return is_xsubstring(hash, RHIZOME_FILEHASH_STRLEN);
 }
 
 int rhizome_str_is_file_hash(const char *hash)
 {
-  return _is_xstring(hash, RHIZOME_FILEHASH_STRLEN);
+  return is_xstring(hash, RHIZOME_FILEHASH_STRLEN);
 }
 
 int str_is_did(const char *did)
@@ -276,22 +192,6 @@ int stowSid(unsigned char *packet, int ofs, const char *sid)
   else if (fromhex(packet + ofs, sid, SID_SIZE) != SID_SIZE || sid[SID_STRLEN] != '\0')
     return WHY("invalid SID");
   return 0;
-}
-
-char *str_toupper_inplace(char *str)
-{
-  register char *s;
-  for (s = str; *s; ++s)
-    *s = toupper(*s);
-  return str;
-}
-
-int hexvalue(char c)
-{
-  if (c >= '0' && c <= '9') return c - '0';
-  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-  return -1;
 }
 
 int packetGetID(unsigned char *packet,int len,char *did,char *sid)

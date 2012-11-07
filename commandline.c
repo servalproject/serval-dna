@@ -37,6 +37,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "rhizome.h"
 #include "strbuf.h"
+#include "str.h"
 #include "mdp_client.h"
 #include "cli.h"
 

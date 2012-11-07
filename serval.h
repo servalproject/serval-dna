@@ -429,16 +429,6 @@ extern overlay_txqueue overlay_tx[OQ_MAX];
 
 ssize_t recvwithttl(int sock, unsigned char *buffer, size_t bufferlen, int *ttl, struct sockaddr *recvaddr, socklen_t *recvaddrlen);
 
-int is_xsubstring(const char *text, int len);
-int is_xstring(const char *text, int len);
-char *tohex(char *dstHex, const unsigned char *srcBinary, size_t bytes);
-size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t bytes);
-int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t bytes);
-int hexvalue(char c);
-char *str_toupper_inplace(char *s);
-
-int is_all_matching(const unsigned char *ptr, size_t len, unsigned char value);
-
 // is the SID entirely 0xFF?
 #define is_sid_broadcast(SID) is_all_matching(SID, SID_SIZE, 0xFF)
 

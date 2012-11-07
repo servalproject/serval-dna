@@ -17,12 +17,72 @@
  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
+#define __STR_INLINE
+#include "str.h"
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
-#include "str.h"
-#include "log.h"
+
+char hexdigit[16] = {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
+
+char *tohex(char *dstHex, const unsigned char *srcBinary, size_t bytes)
+{
+  char *p;
+  for (p = dstHex; bytes--; ++srcBinary) {
+    *p++ = hexdigit[*srcBinary >> 4];
+    *p++ = hexdigit[*srcBinary & 0xf];
+  }
+  *p = '\0';
+  return dstHex;
+}
+
+/* Convert nbinary*2 ASCII hex characters [0-9A-Fa-f] to nbinary bytes of data.  Can be used to
+   perform the conversion in-place, eg, fromhex(buf, (char*)buf, n);  Returns -1 if a non-hex-digit
+   character is encountered, otherwise returns the number of binary bytes produced (= nbinary).
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t nbinary)
+{
+  size_t count = 0;
+  while (count != nbinary) {
+    unsigned char high = hexvalue(*srcHex++);
+    if (high & 0xf0) return -1;
+    unsigned char low = hexvalue(*srcHex++);
+    if (low & 0xf0) return -1;
+    dstBinary[count++] = (high << 4) + low;
+  }
+  return count;
+}
+
+/* Convert nbinary*2 ASCII hex characters [0-9A-Fa-f] followed by a nul '\0' character to nbinary bytes of data.  Can be used to
+   perform the conversion in-place, eg, fromhex(buf, (char*)buf, n);  Returns -1 if a non-hex-digit
+   character is encountered or the character immediately following the last hex digit is not a nul,
+   otherwise returns zero.
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary)
+{
+  return (fromhex(dstBinary, srcHex, nbinary) == nbinary && srcHex[nbinary * 2] == '\0') ? 0 : -1;
+}
+
+/* Does this whole buffer contain the same value? */
+int is_all_matching(const unsigned char *ptr, size_t len, unsigned char value)
+{
+  while (len--)
+    if (*ptr++ != value)
+      return 0;
+  return 1;
+}
+
+char *str_toupper_inplace(char *str)
+{
+  register char *s;
+  for (s = str; *s; ++s)
+    *s = toupper(*s);
+  return str;
+}
 
 int str_startswith(char *str, const char *substring, char **afterp)
 {
@@ -102,4 +162,38 @@ int str_to_ll_scaled(const char *str, int base, long long *result, char **afterp
     return 0;
   *result = value;
   return 1;
+}
+
+size_t str_fromprint(unsigned char *dst, const char *src)
+{
+  unsigned char *const odst = dst;
+  while (*src) {
+    switch (*src) {
+    case '\\':
+      ++src;
+      switch (*src) {
+      case '\0': *dst++ = '\\'; break;
+      case '0': *dst++ = '\0'; ++src; break;
+      case 'n': *dst++ = '\n'; ++src; break;
+      case 'r': *dst++ = '\r'; ++src; break;
+      case 't': *dst++ = '\t'; ++src; break;
+      case 'x':
+	if (isxdigit(src[1]) && isxdigit(src[2])) {
+	  ++src;
+	  fromhex(dst++, src, 1);
+	  src += 2;
+	  break;
+	}
+	// fall through
+      default:
+	*dst++ = *src++;
+	break;
+      }
+      break;
+    default:
+      *dst++ = *src++;
+      break;
+    }
+  }
+  return dst - odst;
 }

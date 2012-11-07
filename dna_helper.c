@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/stat.h>
 #include <signal.h>
 #include "serval.h"
+#include "str.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
 #include "overlay_address.h"
