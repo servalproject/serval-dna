@@ -22,7 +22,6 @@
 #include "serval.h"
 
 /* Client-side MDP function */
-extern int mdp_client_socket;
 int overlay_mdp_client_socket(void);
 int overlay_mdp_client_close(int mdp_sockfd);
 int overlay_mdp_client_poll(int mdp_sockfd, time_ms_t timeout_ms);
