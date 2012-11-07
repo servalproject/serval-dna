@@ -1260,11 +1260,16 @@ int app_rhizome_extract_manifest(int argc, const char *const *argv, struct comma
   switch (ret) {
     case 0: ret = 1; break;
     case 1: ret = 0;
-      if (manifestpath) {
+      if (manifestpath && strcmp(manifestpath, "-") == 0) {
+	cli_puts("manifest");
+	cli_delim(":");
+	cli_write(m->manifestdata, m->manifest_all_bytes);
+	cli_delim("\n");
+      } else if (manifestpath) {
 	/* If the manifest has been read in from database, the blob is there,
 	   and we can lie and say we are finalised and just want to write it
-	   out.  XXX really should have a dirty/clean flag, so that write
-	   works is clean but not finalised. */
+	   out.  TODO: really should have a dirty/clean flag, so that write
+	   works if clean but not finalised. */
 	m->finalised=1;
 	if (rhizome_write_manifest_file(m, manifestpath) == -1)
 	  ret = -1;
