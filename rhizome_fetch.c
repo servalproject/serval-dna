@@ -633,8 +633,8 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
   if (gotfile) {
     if (debug & DEBUG_RHIZOME_RX)
       DEBUGF("   fetch not started - payload already present, so importing instead");
-    if (rhizome_bundle_import(m, m->ttl-1) == -1)
-      return WHY("bundle import failed");
+    if (rhizome_add_manifest(m, m->ttl-1) == -1)
+      return WHY("add manifest failed");
     return IMPORTED;
   }
 
@@ -723,6 +723,7 @@ static void rhizome_start_next_queued_fetch(struct rhizome_fetch_slot *slot)
       case SAMEPAYLOAD:
       case SUPERSEDED:
       case NEWERBUNDLE:
+      default:
 	// Discard the candidate fetch and loop to try the next in queue.
 	rhizome_fetch_unqueue(q, i);
 	break;
