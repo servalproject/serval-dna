@@ -449,8 +449,8 @@ overlay_interface_init(char *name, struct in_addr src_addr, struct in_addr netma
 
   overlay_interface *const interface = &overlay_interfaces[overlay_interface_count];
 
-  strcpy(interface->name,name);
-
+  strncpy(interface->name, name, sizeof interface->name);
+  
   /* Pick a reasonable default MTU.
      This will ultimately get tuned by the bandwidth and other properties of the interface */
   interface->mtu=1200;

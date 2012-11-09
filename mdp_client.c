@@ -115,8 +115,8 @@ int overlay_mdp_client_init()
       overlay_mdp_client_socket_path_len=strlen(overlay_mdp_client_socket_path)+1;
       if(debug&DEBUG_IO) DEBUGF("MDP client socket name='%s'",overlay_mdp_client_socket_path);
     }
-    if (overlay_mdp_client_socket_path_len > 104 - 1)
-      FATALF("MDP socket path too long (%d > %d)", overlay_mdp_client_socket_path_len, 104 - 1);
+    if (overlay_mdp_client_socket_path_len > sizeof(name.sun_path) - 1)
+      FATALF("MDP socket path too long (%d > %d)", overlay_mdp_client_socket_path_len, sizeof(name.sun_path) - 1);
     
     bcopy(overlay_mdp_client_socket_path,name.sun_path,
 	  overlay_mdp_client_socket_path_len);
