@@ -1027,9 +1027,11 @@ int keyring_set_did(keyring_identity *id,char *did,char *name)
   len=strlen(name); if (len>63) len=63;
   bcopy(name,&id->keypairs[i]->public_key[0],len);
   bzero(&id->keypairs[i]->public_key[len],64-len);
-  dump("storing did",&id->keypairs[i]->private_key[0],32);
-  dump("storing name",&id->keypairs[i]->public_key[0],64);
   
+  if (debug & DEBUG_KEYRING){
+    dump("storing did",&id->keypairs[i]->private_key[0],32);
+    dump("storing name",&id->keypairs[i]->public_key[0],64);
+  }  
   return 0;
 }
 
