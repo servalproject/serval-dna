@@ -315,15 +315,13 @@ int app_echo(int argc, const char *const *argv, struct command_line_option *o, v
   return 0;
 }
 
-void lookup_send_request(unsigned char *srcsid, int srcport, unsigned char *dstsid, const char *did){
-  int mdp_sockfd;
+void lookup_send_request(int mdp_sockfd, unsigned char *srcsid, int srcport, unsigned char *dstsid, const char *did)
+{
   int i;
   overlay_mdp_frame mdp;
   bzero(&mdp,sizeof(mdp));
-
-  if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
-    WHY("Cannot create MDP socket");
-
+  
+  
   /* set source address to a local address, and pick a random port */
   mdp.out.src.port=srcport;
   bcopy(srcsid,mdp.out.src.sid,SID_SIZE);
@@ -360,8 +358,6 @@ void lookup_send_request(unsigned char *srcsid, int srcport, unsigned char *dsts
       }
     }
   }
-
-  overlay_mdp_client_close(mdp_sockfd);
 }
 
 int app_dna_lookup(int argc, const char *const *argv, struct command_line_option *o, void *context)
@@ -423,7 +419,7 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
       if ((last_tx+interval)<now)
 	{
 
-	  lookup_send_request(srcsid, port, NULL, did);
+	  lookup_send_request(mdp_sockfd, srcsid, port, NULL, did);
 
 	  last_tx=now;
 	  interval+=interval>>1;
@@ -1761,7 +1757,7 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 	
 	if (now >= next_send){
 	  /* Send a unicast packet to this node, asking for any did */
-	  lookup_send_request(srcsid, port, mdp.nodeinfo.sid, "");
+	  lookup_send_request(mdp_sockfd, srcsid, port, mdp.nodeinfo.sid, "");
 	  next_send+=125;
 	  continue;
 	}
