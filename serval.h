@@ -776,20 +776,18 @@ void rhizome_server_poll(struct sched_ent *alarm);
 int fd_clearstats();
 int fd_showstats();
 int fd_checkalarms();
-int fd_func_exit(struct call_stats *this_call);
-int fd_func_enter(struct call_stats *this_call);
+int fd_func_enter(struct __sourceloc __whence, struct call_stats *this_call);
+int fd_func_exit(struct __sourceloc __whence, struct call_stats *this_call);
 void dump_stack();
 
 #define IN() static struct profile_total _aggregate_stats={NULL,0,__FUNCTION__,0,0,0}; \
     struct call_stats _this_call; \
     _this_call.totals=&_aggregate_stats; \
-    fd_func_enter(&_this_call);
+    fd_func_enter(__HERE__, &_this_call);
 
-#define OUT() fd_func_exit(&_this_call)
+#define OUT() fd_func_exit(__HERE__, &_this_call)
 #define RETURN(X) do { OUT(); return (X); } while (0);
 #define RETURNNULL do { OUT(); return (NULL); } while (0);
-
-
 
 int olsr_init_socket(void);
 int olsr_send(struct overlay_frame *frame);

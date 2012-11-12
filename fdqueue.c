@@ -204,13 +204,13 @@ static void call_alarm(struct sched_ent *alarm, int revents)
   call_stats.totals = alarm->stats;
   
   if (call_stats.totals)
-    fd_func_enter(&call_stats);
+    fd_func_enter(__HERE__, &call_stats);
   
   alarm->poll.revents = revents;
   alarm->function(alarm);
   
   if (call_stats.totals)
-    fd_func_exit(&call_stats);
+    fd_func_exit(__HERE__, &call_stats);
 }
 
 int fd_poll()
@@ -240,7 +240,7 @@ int fd_poll()
   {
     struct call_stats call_stats;
     call_stats.totals=&poll_stats;
-    fd_func_enter(&call_stats);
+    fd_func_enter(__HERE__, &call_stats);
     r = poll(fds, fdcount, ms);
     if (debug & DEBUG_IO) {
       strbuf b = strbuf_alloca(1024);
@@ -255,7 +255,7 @@ int fd_poll()
       }
       DEBUGF("poll(fds=(%s), fdcount=%d, ms=%d) = %d", strbuf_str(b), fdcount, ms, r);
     }
-    fd_func_exit(&call_stats);
+    fd_func_exit(__HERE__, &call_stats);
     now=gettime_ms();
   }
   
