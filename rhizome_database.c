@@ -841,7 +841,7 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare(&retry, "%s", strbuf_str(b));
   if (!statement)
-    return -1;
+    RETURN(-1);
   int ret = 0;
   size_t rows = 0;
   cli_puts("12"); cli_delim("\n"); // number of columns
