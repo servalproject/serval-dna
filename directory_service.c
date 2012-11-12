@@ -46,8 +46,10 @@ static void add_item(char *key, char *value){
     int c=strcmp(item->key, key);
     if (c==0){
       c=strcmp(item->value, value);
-      if (c==0)
+      if (c==0){
+	item->expires = gettime_ms()+1200000;
 	return;
+      }
     }
     if (c<0){
       last_ptr = &item->_left;
