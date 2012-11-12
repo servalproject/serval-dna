@@ -78,6 +78,7 @@ struct rhizome_fetch_candidate queue3[2];
 struct rhizome_fetch_candidate queue4[1];
 
 #define NELS(a) (sizeof (a) / sizeof *(a))
+#define slotno(slot) ((struct rhizome_fetch_queue *)(slot) - &rhizome_fetch_queues[0])
 
 /* Static allocation of the queue structures.  Must be in order of ascending size_threshold.
  */
@@ -184,6 +185,19 @@ int rhizome_any_fetch_active()
   int i;
   for (i = 0; i < NQUEUES; ++i)
     if (rhizome_fetch_queues[i].active.state != RHIZOME_FETCH_FREE)
+      return 1;
+  return 0;
+}
+
+/* Return true if there are any fetches queued.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int rhizome_any_fetch_queued()
+{
+  int i;
+  for (i = 0; i < NQUEUES; ++i)
+    if (rhizome_fetch_queues[i].candidate_queue[0].manifest)
       return 1;
   return 0;
 }
@@ -573,7 +587,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
 
   if (debug & DEBUG_RHIZOME_RX)
     DEBUGF("Fetching bundle slot=%d bid=%s version=%lld size=%lld peerip=%s",
-	slot - &rhizome_fetch_queues[0].active,
+	slotno(slot),
 	bid,
 	m->version,
 	m->fileLength,
@@ -668,7 +682,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
     return -1;
   }
   if (debug & DEBUG_RHIZOME_RX) 
-    DEBUGF("   started fetch into %s, slot=%d filehash=%s", slot->manifest->dataFileName, slot - &rhizome_fetch_queues[0].active, m->fileHexHash);
+    DEBUGF("   started fetch into %s, slot=%d filehash=%s", slot->manifest->dataFileName, slotno(slot), m->fileHexHash);
   return STARTED;
 }
 
@@ -895,7 +909,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
 static int rhizome_fetch_close(struct rhizome_fetch_slot *slot)
 {
   if (debug & DEBUG_RHIZOME_RX)
-    DEBUGF("Close Rhizome fetch slot=%d", slot - &rhizome_fetch_queues[0].active);
+    DEBUGF("close Rhizome fetch slot=%d", slotno(slot));
   assert(slot->state != RHIZOME_FETCH_FREE);
 
   /* close socket and stop watching it */
