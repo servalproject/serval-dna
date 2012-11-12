@@ -4,6 +4,7 @@
 #include <poll.h>
 #include <stdio.h>
 #include <unistd.h>
+#include "str.h"
 
 struct item{
   // simple tree structure
