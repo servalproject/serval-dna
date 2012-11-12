@@ -14,7 +14,7 @@ struct item{
   time_ms_t expires;
 };
 
-struct item *root;
+struct item *root=NULL;
 
 static struct item *create_item(const char *key){
   struct item *ret=calloc(1,sizeof(struct item));
