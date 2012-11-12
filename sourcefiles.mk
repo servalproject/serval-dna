@@ -25,6 +25,7 @@ SERVAL_SOURCES = \
 	$(SERVAL_BASE)mem.c \
 	$(SERVAL_BASE)instance.c \
 	$(SERVAL_BASE)socket.c \
+	$(SERVAL_BASE)mdp_jni.c \
 	$(SERVAL_BASE)monitor.c \
 	$(SERVAL_BASE)monitor-client.c \
 	$(SERVAL_BASE)monitor-cli.c \
