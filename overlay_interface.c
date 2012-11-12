@@ -59,6 +59,7 @@ struct profile_total sock_any_stats;
 struct outgoing_packet{
   overlay_interface *interface;
   int i;
+  struct subscriber *unicast_subscriber;
   int unicast;
   int add_advertisements;
   struct sockaddr_in dest;
@@ -769,22 +770,15 @@ overlay_broadcast_ensemble(int interface_number,
 	DEBUGF("Sending %d byte overlay frame on %s to %s",len,interface->name,inet_ntoa(recipientaddr->sin_addr));
       if(sendto(interface->alarm.poll.fd, 
 		bytes, len, 0, (struct sockaddr *)recipientaddr, sizeof(struct sockaddr_in)) != len){
+	int e=errno;
 	WHY_perror("sendto(c)");
-	overlay_interface_close(interface);
+	// only close the interface on some kinds of errors
+	if (e==ENETDOWN || e==EINVAL)
+	  overlay_interface_close(interface);
 	return -1;
       }
       return 0;
     }
-}
-
-/* This function is called to return old non-overlay requests back out the
-   interface they came in. */
-int overlay_sendto(struct sockaddr_in *recipientaddr,unsigned char *bytes,int len)
-{
-  if (debug&DEBUG_PACKETTX) DEBUGF("Sending %d bytes",len);
-  if (overlay_broadcast_ensemble(overlay_last_interface_number,recipientaddr,bytes,len) == -1) 
-    return -1;
-  return len;
 }
 
 /* Register the interface, or update the existing interface registration */
@@ -1133,6 +1127,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       }else{
 	overlay_init_packet(packet, next_hop->interface, 0);
 	if (next_hop->reachable==REACHABLE_UNICAST){
+	  packet->unicast_subscriber = next_hop;
 	  packet->dest = next_hop->address;
 	  packet->unicast=1;
 	}
@@ -1234,7 +1229,12 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
       if (debug&DEBUG_PACKETCONSTRUCTION)
 	dump("assembled packet",&packet->buffer->bytes[0],packet->buffer->position);
       
-      overlay_broadcast_ensemble(packet->i, &packet->dest, packet->buffer->bytes, packet->buffer->position);
+      if (overlay_broadcast_ensemble(packet->i, &packet->dest, packet->buffer->bytes, packet->buffer->position)){
+	// sendto failed. We probably don't have a valid route
+	if (packet->unicast_subscriber){
+	  set_reachable(packet->unicast_subscriber, REACHABLE_NONE);
+	}
+      }
     }
     ob_free(packet->buffer);
     overlay_address_clear();

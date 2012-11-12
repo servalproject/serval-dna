@@ -476,7 +476,6 @@ time_ms_t overlay_time_until_next_tick();
 int overlay_add_selfannouncement();
 int overlay_frame_append_payload(overlay_interface *interface, struct overlay_frame *p, struct subscriber *next_hop, struct overlay_buffer *b);
 int overlay_interface_args(const char *arg);
-int overlay_sendto(struct sockaddr_in *recipientaddr,unsigned char *bytes,int len);
 int overlay_rhizome_add_advertisements(int interface_number,struct overlay_buffer *e);
 int overlay_add_local_identity(unsigned char *s);
 void overlay_update_queue_schedule(overlay_txqueue *queue, struct overlay_frame *frame);
