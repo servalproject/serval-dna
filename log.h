@@ -150,7 +150,7 @@ void set_log_implementation(void (*log_function)(int level, struct strbuf *buf))
 
 #define logMessage_perror(L,whence,F,...) (logMessage(L, whence, F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno))
 
-#define FATALF(F,...)       do { LOGF(LOG_LEVEL_FATAL, F, ##__VA_ARGS__); exit(-1); } while (1)
+#define FATALF(F,...)       do { LOGF(LOG_LEVEL_FATAL, F, ##__VA_ARGS__); abort(); exit(-1); } while (1)
 #define FATAL(X)            FATALF("%s", (X))
 #define FATALF_perror(F,...) FATALF(F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno)
 #define FATAL_perror(X)     FATALF_perror("%s", (X))
