@@ -475,9 +475,10 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
 	goto bail;
       }
     }
-    INFOF("RHIZOME HTTP REQUEST family=%u addr=%s port=%u %s",
-	slot->peer.sin_family, buf, ntohs(slot->peer.sin_port), alloca_str_toprint(slot->request)
-      );
+    if (debug & DEBUG_RHIZOME_RX)
+      DEBUGF("RHIZOME HTTP REQUEST family=%u addr=%s port=%u %s",
+	  slot->peer.sin_family, buf, ntohs(slot->peer.sin_port), alloca_str_toprint(slot->request)
+	);
     slot->alarm.poll.fd = sock;
     slot->request_ofs = 0;
     slot->state = RHIZOME_FETCH_CONNECTING;
@@ -570,7 +571,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
      the cache slot number to implicitly store the first bits.
   */
 
-  if (1||(debug & DEBUG_RHIZOME_RX))
+  if (debug & DEBUG_RHIZOME_RX)
     DEBUGF("Fetching bundle slot=%d bid=%s version=%lld size=%lld peerip=%s",
 	slot - &rhizome_fetch_queues[0].active,
 	bid,
@@ -970,7 +971,15 @@ void rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int by
     slot->file = NULL;
     if (slot->manifest) {
       // Were fetching payload, now we have it.
-      rhizome_import_received_bundle(slot->manifest);
+      if (!rhizome_import_received_bundle(slot->manifest)){
+	char buf[INET_ADDRSTRLEN];
+	if (inet_ntop(AF_INET, &slot->peer.sin_addr, buf, sizeof buf) == NULL) {
+	  buf[0] = '*';
+	  buf[1] = '\0';
+	}
+	INFOF("Completed http request from %s:%u for file %s",
+	      buf, ntohs(slot->peer.sin_port), slot->manifest->fileHexHash);
+      }
     } else {
       /* This was to fetch the manifest, so now fetch the file if needed */
       DEBUGF("Received a manifest in response to supplying a manifest prefix.");
