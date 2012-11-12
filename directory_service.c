@@ -102,10 +102,12 @@ static void add_record(){
 static void respond(char *token, struct item *item){
   if (!item)
     return;
-  respond(token, item->_left);
+  if (item->_left && strcmp(item->key, item->_left->key)==0)
+    respond(token, item->_left);
   if (item->expires > gettime_ms())
     printf("%s|%s|\n",token,item->value);
-  respond(token, item->_right);
+  if (item->_right && strcmp(item->key, item->_right->key)==0)
+    respond(token, item->_right);
 }
 
 static void process_line(char *line){
