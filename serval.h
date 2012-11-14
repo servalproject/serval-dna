@@ -617,15 +617,13 @@ int is_codec_set(int codec, unsigned char *flags);
 
 struct vomp_call_state *vomp_find_call_by_session(int session_token);
 int vomp_mdp_received(overlay_mdp_frame *mdp);
-int vomp_tick_interval();
-int vomp_sample_size(int c);
-int vomp_codec_timespan(int c);
 int vomp_parse_dtmf_digit(char c);
 int vomp_dial(unsigned char *local_sid, unsigned char *remote_sid, const char *local_did, const char *remote_did);
 int vomp_pickup(struct vomp_call_state *call);
 int vomp_hangup(struct vomp_call_state *call);
 int vomp_ringing(struct vomp_call_state *call);
-int vomp_received_audio(struct vomp_call_state *call, int audio_codec, const unsigned char *audio, int audio_length);
+int vomp_received_audio(struct vomp_call_state *call, int audio_codec, int time, int sequence,
+			const unsigned char *audio, int audio_length);
 void monitor_get_all_supported_codecs(unsigned char *codecs);
 
 int cli_putchar(char c);

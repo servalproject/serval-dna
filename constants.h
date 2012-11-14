@@ -171,18 +171,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
    frame of audio (preemptive audio retransmission) */
 #define VOMP_MAX_RECENT_SAMPLES 2
 
-#define VOMP_CODEC_NONE 0x00
-#define VOMP_CODEC_CODEC2_2400 0x01
-#define VOMP_CODEC_CODEC2_1400 0x02
-#define VOMP_CODEC_GSMHALF 0x03
-#define VOMP_CODEC_GSMFULL 0x04
-#define VOMP_CODEC_16SIGNED 0x05
-#define VOMP_CODEC_8ULAW 0x06
-#define VOMP_CODEC_8ALAW 0x07
-#define VOMP_CODEC_PCM 0x08
-#define VOMP_CODEC_DTMF 0x80
-#define VOMP_CODEC_ENGAGED 0x81
-#define VOMP_CODEC_ONHOLD 0x82
+// codec's with well defined parameters
+#define VOMP_CODEC_16SIGNED 0x01
+#define VOMP_CODEC_ULAW 0x02
+#define VOMP_CODEC_ALAW 0x03
+#define VOMP_CODEC_GSM 0x04
+
+// other out of band signals, probably shouldn't be codecs
+#define VOMP_CODEC_DTMF 0x20
+#define VOMP_CODEC_TEXT 0x21
+
+// Note, Don't add codec's we aren't using yet
 
 #define CODEC_FLAGS_LENGTH 32
 

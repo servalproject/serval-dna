@@ -29,6 +29,8 @@
 #include "monitor-client.h"
 #include "str.h"
 #include "constants.h"
+#include "strbuf.h"
+#include "strbuf_helpers.h"
 
 int call_token=-1;
 int seen_audio=0;
@@ -301,8 +303,8 @@ int app_vomp_console(int argc, const char *const *argv, struct command_line_opti
   
   monitor_client_fd = monitor_client_open(&monitor_state);
   
-  monitor_client_writeline(monitor_client_fd, "monitor vomp %d %d %d\n",
-			   VOMP_CODEC_8ULAW,VOMP_CODEC_8ALAW,VOMP_CODEC_PCM);
+  monitor_client_writeline(monitor_client_fd, "monitor vomp %d\n",
+			   VOMP_CODEC_TEXT);
   
   set_nonblock(monitor_client_fd);
   
