@@ -62,7 +62,6 @@ static char *config_buffer_end = NULL;
 static unsigned int confc = 0;
 static char *confvar[MAX_CONFIG_VARS];
 static char *confvalue[MAX_CONFIG_VARS];
-static int reading = 0;
 
 static char *grow_config_buffer(size_t needed)
 {
@@ -191,24 +190,9 @@ static int _read_config()
   return 0;
 }
 
-/* Set a flag while reading config, to avoid infinite recursion between here and logging
-   that could be caused by any WHY() or WARN() or DEBUG() invoked in _read_config().  The
-   problem is that on the first log message, the logging system calls confValueGet() to
-   discover the path of the log file, and that will return here.
- */
 static int read_config()
 {
-  if (reading)
-    return -1;
-  reading = 1;
-  int ret = _read_config();
-  reading = 0;
-  return ret;
-}
-
-int confLocked()
-{
-  return reading;
+  return _read_config();
 }
 
 int confVarCount()
@@ -352,6 +336,10 @@ int confParseBoolean(const char *text, const char *option_name)
 
 int confValueSet(const char *var, const char *value)
 {
+  INFOF("var=%s defaultValue=%s",
+      var ? alloca_str_toprint(var) : "NULL",
+      value ? alloca_str_toprint(value) : "NULL"
+    );
   if (!config_buffer && read_config() == -1)
     return -1;
   if (!is_configvarname(var))

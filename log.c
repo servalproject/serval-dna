@@ -32,6 +32,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stdint.h>
+#include <assert.h>
 
 #include "log.h"
 #include "net.h"
@@ -43,6 +44,7 @@ const struct __sourceloc __whence = __NOWHERE__;
 
 debugflags_t debug = 0;
 
+static int busy = 0;
 static FILE *logfile = NULL;
 static int flag_show_pid = -1;
 static int flag_show_time = -1;
@@ -68,7 +70,7 @@ void set_logging(FILE *f)
     INFOF("Logging to stream with fd=%d", fileno(f));
 }
 
-FILE *open_logging()
+static FILE *_open_logging()
 {
 #ifdef ANDROID
   return NULL;
@@ -76,9 +78,9 @@ FILE *open_logging()
   if (!logfile) {
     const char *logpath = getenv("SERVALD_LOG_FILE");
     if (!logpath) {
-      // If the configuration is locked (eg, it called WHY() or DEBUG() while initialising, which
-      // led back to here) then return NULL to indicate the message cannot be logged.
-      if (confLocked())
+      // If the logging system is currently busy (eg, confValueGet() logged a message, which
+      // re-entered here) then return NULL to indicate the message cannot be logged.
+      if (busy > 1)
 	return NULL;
       logpath = confValueGet("log.file", NULL);
     }
@@ -97,17 +99,32 @@ FILE *open_logging()
   return logfile;
 }
 
+FILE *open_logging()
+{
+  ++busy;
+  FILE *ret = _open_logging();
+  assert(busy);
+  --busy;
+  return ret;
+}
+
 static int show_pid()
 {
-  if (flag_show_pid < 0 && !confLocked())
+  if (flag_show_pid < 0) {
+    if (busy > 1)
+      return 0;
     flag_show_pid = confValueGetBoolean("log.show_pid", 0);
+  }
   return flag_show_pid;
 }
 
 static int show_time()
 {
-  if (flag_show_time < 0 && !confLocked())
+  if (flag_show_time < 0) {
+    if (busy > 1)
+      return 0;
     flag_show_time = confValueGetBoolean("log.show_time", 0);
+  }
   return flag_show_time;
 }
 
@@ -137,9 +154,15 @@ static int _log_prepare(int level, struct __sourceloc whence)
 {
   if (level == LOG_LEVEL_SILENT)
     return 0;
+  ++busy;
   if (strbuf_is_empty(&logbuf))
     strbuf_init(&logbuf, _log_buf, sizeof _log_buf);
-  open_logging(); // Put initial INFO message at start of log file
+  _open_logging(); // Put initial INFO message at start of log file
+  int showpid = show_pid();
+  int showtime = show_time();
+  // No calls outside log.c from this point on.
+  if (strbuf_len(&logbuf))
+    strbuf_putc(&logbuf, '\n');
 #ifndef ANDROID
   const char *levelstr = "UNKWN:";
   switch (level) {
@@ -151,9 +174,9 @@ static int _log_prepare(int level, struct __sourceloc whence)
   }
   strbuf_sprintf(&logbuf, "%-6.6s ", levelstr);
 #endif
-  if (show_pid())
+  if (showpid)
     strbuf_sprintf(&logbuf, "[%5u] ", getpid());
-  if (show_time()) {
+  if (showtime) {
     struct timeval tv;
     if (gettimeofday(&tv, NULL) == -1) {
       strbuf_puts(&logbuf, "NOTIME______ ");
@@ -194,7 +217,7 @@ static void _log_internal(int level, struct strbuf *buf)
   __android_log_print(alevel, "servald", "%s", strbuf_str(buf));
   strbuf_reset(buf);
 #else
-  FILE *logf = open_logging();
+  FILE *logf = _open_logging();
   if (logf) {
     fprintf(logf, "%s\n%s", strbuf_str(buf), strbuf_overrun(buf) ? "LOG OVERRUN\n" : "");
     strbuf_reset(buf);
@@ -208,6 +231,8 @@ static void _log_finish(int level)
 {
   if (_log_implementation)
     _log_implementation(level, &logbuf);
+  assert(busy);
+  --busy;
 }
 
 void set_log_implementation(void (*log_function)(int level, struct strbuf *buf))
