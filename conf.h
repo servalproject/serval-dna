@@ -31,9 +31,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 /* Handy statement for forming a path to an instance file in a char buffer whose declaration
  * is in scope (so that sizeof(buf) will work).  Evaluates to true if the pathname fitted into
- * the provided buffer, false (0) otherwise (after printing a message to stderr).  */
+ * the provided buffer, false (0) otherwise (after logging an error).
+ */
 #define FORM_SERVAL_INSTANCE_PATH(buf, path) (form_serval_instance_path(buf, sizeof(buf), (path)))
 
+int confReloadIfNewer();
 const char *confValueGet(const char *var, const char *defaultValue);
 int confValueGetBoolean(const char *var, int defaultValue);
 int64_t confValueGetInt64(const char *var, int64_t defaultValue);

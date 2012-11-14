@@ -18,6 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include <stdio.h>
+#include <sys/stat.h>
 #include <ctype.h>
 #include "conf.h"
 #include "log.h"
@@ -53,9 +54,11 @@ int is_configvarname(const char *arg)
   return s[-1] != '.';
 }
 
+#define CONFFILE_NAME		  "serval.conf"
 #define MAX_CONFIG_VARS		  (100)
 #define CONFIG_BUFFER_ALLOCSIZE	  (1024)
 
+static time_t config_timestamp = 0;
 static char *config_buffer = NULL;
 static char *config_buffer_top = NULL;
 static char *config_buffer_end = NULL;
@@ -94,15 +97,25 @@ static char *grow_config_buffer(size_t needed)
 static int _read_config()
 {
   char conffile[1024];
-  if (!FORM_SERVAL_INSTANCE_PATH(conffile, "serval.conf"))
+  if (!FORM_SERVAL_INSTANCE_PATH(conffile, CONFFILE_NAME))
     return -1;
   size_t size = 0;
   confc = 0;
+  int exists = 0;
   FILE *f = fopen(conffile, "r");
   if (f == NULL) {
     if (errno != ENOENT)
       return WHYF_perror("fopen(%s)", conffile);
+    INFOF("non-existent config file %s", conffile);
+    config_timestamp = 0;
   } else {
+    exists = 1;
+    struct stat st;
+    if (fstat(fileno(f), &st) == -1) {
+      WHYF_perror("fstat(%s)", conffile);
+      fclose(f);
+      return -1;
+    }
     if (fseeko(f, (off_t) 0, SEEK_END) == -1) {
       WHYF_perror("fseeko(%s, 0, SEEK_END)", conffile);
       fclose(f);
@@ -124,6 +137,7 @@ static int _read_config()
       fclose(f);
       return -1;
     }
+    config_timestamp = 0;
     if (fread(config_buffer, size, 1, f) != 1) {
       if (ferror(f))
 	WHYF_perror("fread(%s, %llu)", conffile, (unsigned long long) size);
@@ -134,10 +148,12 @@ static int _read_config()
       fclose(f);
       return -1;
     }
+    config_timestamp = st.st_mtime;
     if (fclose(f) == EOF)
       return WHYF_perror("fclose(%s)", conffile);
+    INFOF("successfully read %s", conffile);
   }
-  config_buffer_top = config_buffer_end = config_buffer + size;
+  config_buffer_top = config_buffer + size;
   char *c = config_buffer;
   char *e = config_buffer_top;
   unsigned int linenum;
@@ -187,7 +203,7 @@ static int _read_config()
   }
   if (problem)
     return WHYF("Error in %s at line %u: %s%s", conffile, linenum, problem, extra);
-  return 0;
+  return exists;
 }
 
 static int read_config()
@@ -195,6 +211,38 @@ static int read_config()
   return _read_config();
 }
 
+/* Check if the config file has changed since we last read it, and if so, invalidate the buffer so
+ * that the next call to read_config() will re-load it.  Returns 1 if the buffer was invalidated, 0
+ * if not, -1 on error.
+ *
+ * TODO: when the config system is overhauled to provide proper dynamic config reloading in JNI and
+ * in the servald daemon, this method will become unnecessary.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int confReloadIfNewer()
+{
+  char conffile[1024];
+  if (!FORM_SERVAL_INSTANCE_PATH(conffile, CONFFILE_NAME))
+    return -1;
+  struct stat st;
+  if (stat(conffile, &st) == -1) {
+    if (errno != ENOENT)
+      return WHYF_perror("stat(%s)", conffile);
+    st.st_mtime = 0;
+  }
+  if (config_timestamp != st.st_mtime) {
+    INFOF("detected new version of %s", conffile);
+    _read_config();
+    return 1;
+  }
+  return 0;
+}
+
+/* Return the number of config options.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
 int confVarCount()
 {
   if (!config_buffer && read_config() == -1)
@@ -202,6 +250,12 @@ int confVarCount()
   return confc;
 }
 
+/* Return the string value of the config option with the given index, which must be in the range
+ * 0..confVarCount().  The returned pointer is only valid until the next call to confVar() or any
+ * other configuration query function.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
 const char *confVar(unsigned int index)
 {
   if (!config_buffer && read_config() == -1)
@@ -224,6 +278,14 @@ const char *confValue(unsigned int index)
   return confvalue[index];
 }
 
+/* Return the string value of the config option with the given name.  The returned pointer is only
+ * valid until the next call to confVarCount(), confVar(), confValue() or any other configuration
+ * query function.  If the named config option is not defined, then returns the given default value.
+ * If the named config option cannot be determined for any other reason, then logs the reason and
+ * returns the given default value.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
 const char *confValueGet(const char *var, const char *defaultValue)
 {
   if (var == NULL) {
@@ -357,8 +419,6 @@ int confValueSet(const char *var, const char *value)
       }
     }
   } else {
-    if (confc >= MAX_CONFIG_VARS)
-      return WHYF("Cannot set %s: too many variables", var);
     size_t valuelen = strlen(value);
     unsigned int i;
     for (i = 0; i != confc; ++i) {
@@ -373,6 +433,8 @@ int confValueSet(const char *var, const char *value)
 	return 0;
       }
     }
+    if (confc >= MAX_CONFIG_VARS)
+      return WHYF("Cannot set %s: too many variables", var);
     size_t varlen = strlen(var);
     char *buf = grow_config_buffer(varlen + 1 + valuelen + 1);
     if (buf == NULL)
@@ -381,6 +443,7 @@ int confValueSet(const char *var, const char *value)
     confvalue[confc] = strcpy(buf + varlen + 1, value);
     ++confc;
   }
+  INFOF("config set %s = %s", var, value ? alloca_str_toprint(value) : "NULL");
   return 0;
 }
 
@@ -406,6 +469,11 @@ int confWrite()
       unlink(tempfile);
       return -1;
     }
+    struct stat st;
+    if (stat(conffile, &st) == -1)
+      return WHYF_perror("stat(%s)", conffile);
+    config_timestamp = st.st_mtime;
+    INFOF("successfully wrote %s", conffile);
   }
   return 0;
 }

@@ -900,6 +900,7 @@ int app_config_set(int argc, const char *const *argv, struct command_line_option
     return -1;
   if (create_serval_instance_dir() == -1)
     return -1;
+  confReloadIfNewer();
   return confValueSet(var, val) == -1 ? -1 : confWrite();
 }
 
