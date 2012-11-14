@@ -107,6 +107,13 @@ test_LookupRemote() {
    assertStdoutGrep --matches=1 "^sid://$SIDB/local/$DIDB:$DIDB:$NAMEB\$"
 }
 
+doc_ReverseLookup="Resolve a remote identity"
+test_ReverseLookup() {
+   executeOk_servald reverse lookup $SIDB
+   assertStdoutGrep --matches=1 ":$DIDB"
+   assertStdoutGrep --matches=1 ":$NAMEB"
+}
+
 doc_NodeinfoLocal="Node info auto-resolves for local identities"
 test_NodeinfoLocal() {
    # node info for a local identity returns DID/Name since it is free, even
