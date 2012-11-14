@@ -962,30 +962,6 @@ int overlay_route_node_info(overlay_mdp_nodeinfo *node_info)
 		      ->keypairs[kp]->public_key[0],
 		      &node_info->sid[0],SID_SIZE);
 
-		node_info->did[0]=0;
-		if (node_info->resolve_did) {
-		  node_info->resolve_did=0;
-		  int k2;
-		  for(k2=0;k2<keyring->contexts[cn]->identities[in]
-			->keypair_count;k2++)
-		    if (keyring->contexts[cn]->identities[in]->keypairs[k2]->type
-			==KEYTYPE_DID)
-		      {
-			/* private key field has unpacked did */
-			bcopy(&keyring->contexts[cn]->identities[in]
-			      ->keypairs[k2]->private_key[0],
-			      &node_info->did[0],
-			      keyring->contexts[cn]->identities[in]
-			      ->keypairs[k2]->private_key_len);
-			/* public key has name */
-			bcopy(&keyring->contexts[cn]->identities[in]
-			      ->keypairs[k2]->public_key[0],
-			      &node_info->name[0],
-			      keyring->contexts[cn]->identities[in]
-			      ->keypairs[k2]->public_key_len);
-			node_info->resolve_did=1;
-		      }
-		}
 		return 0;
 	      }
 	  }
@@ -998,7 +974,6 @@ int overlay_route_node_info(overlay_mdp_nodeinfo *node_info)
     node_info->localP=0;
     node_info->score=-1;
     node_info->interface_number=-1;
-    node_info->resolve_did=0;
     bcopy(subscriber->sid,
 	  node_info->sid,SID_SIZE);
     

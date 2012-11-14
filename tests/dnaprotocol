@@ -114,36 +114,6 @@ test_ReverseLookup() {
    assertStdoutGrep --matches=1 ":$NAMEB"
 }
 
-doc_NodeinfoLocal="Node info auto-resolves for local identities"
-test_NodeinfoLocal() {
-   # node info for a local identity returns DID/Name since it is free, even
-   # if it isn't asked for.
-   executeOk_servald node info $SIDA
-   assertStdoutLineCount '==' 1
-   assertStdoutGrep --matches=1 ":$SIDA:"
-   assertStdoutGrep --matches=1 ":$DIDA:"
-   assertStdoutGrep --matches=1 ":$NAMEA"
-   assertStdoutGrep --matches=0 "did-not-resolved"
-}
-
-doc_NodeinfoRemote="Node info resolves remote identities"
-test_NodeinfoRemote() {
-   # if resolvedid is not specified for a remote identity, then don't resolve it.
-   executeOk_servald node info $SIDB
-   assertStdoutLineCount '==' 1
-   assertStdoutGrep --matches=1 ":$SIDB:"
-   assertStdoutGrep --matches=0 ":$DIDB:"
-   assertStdoutGrep --matches=0 ":$NAMEB"
-   assertStdoutGrep --matches=1 "did-not-resolved"
-   # But if it resolvedid is specified, then do resolve it using DNA
-   executeOk_servald node info $SIDB resolvedid
-   assertStdoutLineCount '==' 1
-   assertStdoutGrep --matches=1 ":$SIDB:"
-   assertStdoutGrep --matches=1 ":$DIDB:"
-   assertStdoutGrep --matches=1 ":$NAMEB"
-   assertStdoutGrep --matches=0 "did-not-resolved"
-}
-
 setup_multi_helper() {
    setup_servald
    assert_no_servald_processes

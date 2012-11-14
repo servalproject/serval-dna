@@ -588,14 +588,11 @@ typedef struct overlay_mdp_addrlist {
 typedef struct overlay_mdp_nodeinfo {
   unsigned char sid[SID_SIZE];
   int sid_prefix_length; /* must be long enough to be unique */
-  char did[64];
-  char name[64];
   int foundP;
   int localP;
   int neighbourP;
   int score;
   int interface_number;
-  int resolve_did;
   time_ms_t time_since_last_observation;
 } overlay_mdp_nodeinfo;
 

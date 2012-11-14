@@ -1662,12 +1662,9 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 
   overlay_mdp_frame mdp;
   bzero(&mdp,sizeof(mdp));
-  int resolveDid=0;
 
   mdp.packetTypeAndFlags=MDP_NODEINFO;
-  if (argc>3) resolveDid=1;
-  mdp.nodeinfo.resolve_did=1; // Request resolution of DID and Name by local server if it can.
-
+  
   /* get SID or SID prefix 
      XXX - Doesn't correctly handle odd-lengthed SID prefixes (ignores last digit).
      The matching code in overlay_route.c also has a similar problem with the last
@@ -1693,100 +1690,13 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
     }
   }
 
-  if (resolveDid&&(!mdp.nodeinfo.resolve_did)) {
-    /* Asked for DID resolution, but did not get it, so do a DNA lookup
-       here.  We do this on the client side, so that we don't block the 
-       single-threaded server. */
-    overlay_mdp_frame mdp_reply;
-    int port=32768+(random()&0xffff);
-    
-    unsigned char srcsid[SID_SIZE];
-    if (overlay_mdp_getmyaddr(0,srcsid)) port=0;
-    if (overlay_mdp_bind(srcsid,port)) port=0;
-
-    if (port) {    
-      time_ms_t now = gettime_ms();
-      time_ms_t timeout = now + 3000;
-      time_ms_t next_send = now;
-      
-      while(now < timeout){
-	now=gettime_ms();
-	
-	if (now >= next_send){
-	  /* Send a unicast packet to this node, asking for any did */
-	  lookup_send_request(srcsid, port, mdp.nodeinfo.sid, "");
-	  next_send+=125;
-	  continue;
-	}
-	
-	time_ms_t poll_timeout = (next_send>timeout?timeout:next_send) - now;
-	if (overlay_mdp_client_poll(poll_timeout)<=0)
-	  continue;
-	
-	int ttl=-1;
-	if (overlay_mdp_recv(&mdp_reply, port, &ttl))
-	  continue;
-	
-	if ((mdp_reply.packetTypeAndFlags&MDP_TYPE_MASK)==MDP_ERROR){
-	  // TODO log error?
-	  continue;
-	}
-	
-	if (mdp_reply.packetTypeAndFlags!=MDP_TX) {
-	  WHYF("MDP returned an unexpected message (type=0x%x)",
-	       mdp_reply.packetTypeAndFlags);
-	  
-	  if (mdp_reply.packetTypeAndFlags==MDP_ERROR) 
-	    WHYF("MDP message is return/error: %d:%s",
-		 mdp_reply.error.error,mdp_reply.error.message);
-	  continue;
-	}
-	
-	// we might receive a late response from an ealier request, ignore it
-	if (memcmp(mdp_reply.in.src.sid, mdp.nodeinfo.sid, SID_SIZE)){
-	  WHYF("Unexpected result from SID %s", alloca_tohex_sid(mdp_reply.in.src.sid));
-	  continue;
-	}
-	
-	{
-	  char sidhex[SID_STRLEN + 1];
-	  char did[DID_MAXSIZE + 1];
-	  char name[64];
-	  char uri[512];
-	  if ( !parseDnaReply((char *)mdp_reply.in.payload, mdp_reply.in.payload_length, sidhex, did, name, uri, NULL)
-	    || !str_is_subscriber_id(sidhex)
-	    || !str_is_did(did)
-	    || !str_is_uri(uri)
-	  ) {
-	    WHYF("Received malformed DNA reply: %s", 
-		 alloca_toprint(160, (const char *)mdp_reply.in.payload, mdp_reply.in.payload_length));
-	  } else {
-	    /* Got a good DNA reply, copy it into place and stop polling */
-	    bcopy(did,mdp.nodeinfo.did,32);
-	    bcopy(name,mdp.nodeinfo.name,64);
-	    mdp.nodeinfo.resolve_did=1;
-	    break;
-	  }
-	}
-      }
-    }
-  }
-
   cli_printf("record"); cli_delim(":");
-  // TODO remove these two unused output fields
-  cli_printf("%d",1); cli_delim(":");
-  cli_printf("%d",1); cli_delim(":");
   cli_printf("%s",mdp.nodeinfo.foundP?"found":"noresult"); cli_delim(":");
   cli_printf("%s", alloca_tohex_sid(mdp.nodeinfo.sid)); cli_delim(":");
-  cli_printf("%s",mdp.nodeinfo.resolve_did?mdp.nodeinfo.did:"did-not-resolved"); 
-  cli_delim(":");
   cli_printf("%s",mdp.nodeinfo.localP?"self":"peer"); cli_delim(":");
-  cli_printf("%s",mdp.nodeinfo.neighbourP?"direct":"indirect"); 
-  cli_delim(":");
+  cli_printf("%s",mdp.nodeinfo.neighbourP?"direct":"indirect"); cli_delim(":");
   cli_printf("%d",mdp.nodeinfo.score); cli_delim(":");
-  cli_printf("%d",mdp.nodeinfo.interface_number); cli_delim(":");
-  cli_printf("%s",mdp.nodeinfo.resolve_did?mdp.nodeinfo.name:"name-not-resolved");
-  cli_delim("\n");
+  cli_printf("%d",mdp.nodeinfo.interface_number); cli_delim("\n");
 
   return 0;
 }
@@ -1871,7 +1781,7 @@ int app_reverse_lookup(int argc, const char *const *argv, struct command_line_op
 	     alloca_toprint(160, (const char *)mdp_reply.in.payload, mdp_reply.in.payload_length));
 	continue;
       }
-	
+      
       /* Got a good DNA reply, copy it into place and stop polling */
       cli_puts("did");
       cli_delim(":");
