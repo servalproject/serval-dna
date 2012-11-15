@@ -208,29 +208,30 @@ int set_reachable(struct subscriber *subscriber, int reachable){
   int old_value=subscriber->reachable;
   
   subscriber->reachable=reachable;
-  
-  // these log messages may be used in tests
-  switch(reachable){
-    case REACHABLE_NONE:
-      DEBUGF("%s is not reachable", alloca_tohex_sid(subscriber->sid));
-      break;
-    case REACHABLE_SELF:
-      break;
-      
-    case REACHABLE_DIRECT:
-      DEBUGF("%s is now reachable directly", alloca_tohex_sid(subscriber->sid));
-      break;
-    case REACHABLE_INDIRECT:
-      DEBUGF("%s is now reachable indirectly", alloca_tohex_sid(subscriber->sid));
-      break;
-    case REACHABLE_UNICAST:
-      DEBUGF("%s is now reachable via unicast", alloca_tohex_sid(subscriber->sid));
-      break;
-    case REACHABLE_BROADCAST:
-      DEBUGF("%s is now reachable via broadcast", alloca_tohex_sid(subscriber->sid));
-      break;
+
+  // These log messages are for use in tests.  Changing them may break test scripts.
+  if (debug&DEBUG_OVERLAYROUTING) {
+    switch (reachable) {
+      case REACHABLE_NONE:
+	DEBUGF("NOT REACHABLE sid=%s", alloca_tohex_sid(subscriber->sid));
+	break;
+      case REACHABLE_SELF:
+	break;
+      case REACHABLE_DIRECT:
+	DEBUGF("REACHABLE DIRECTLY sid=%s", alloca_tohex_sid(subscriber->sid));
+	break;
+      case REACHABLE_INDIRECT:
+	DEBUGF("REACHABLE INDIRECTLY sid=%s", alloca_tohex_sid(subscriber->sid));
+	break;
+      case REACHABLE_UNICAST:
+	DEBUGF("REACHABLE VIA UNICAST sid=%s", alloca_tohex_sid(subscriber->sid));
+	break;
+      case REACHABLE_BROADCAST:
+	DEBUGF("REACHABLE VIA BROADCAST sid=%s", alloca_tohex_sid(subscriber->sid));
+	break;
+    }
   }
-  
+
   /* Pre-emptively send a sas request */
   if (!subscriber->sas_valid && reachable!=REACHABLE_SELF && reachable!=REACHABLE_NONE && reachable!=REACHABLE_BROADCAST)
     keyring_send_sas_request(subscriber);

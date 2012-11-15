@@ -719,14 +719,17 @@ assertStderrGrep() {
 }
 
 assertGrep() {
-   _tfw_getopts assertgrep "$@"
+   _tfw_getopts assertcontentgrep "$@"
    shift $_tfw_getopts_shift
    if [ $# -ne 2 ]; then
       _tfw_error "incorrect arguments"
       return $?
    fi
    _tfw_dump_on_fail "$1"
-   _tfw_assert_grep "$1" "$1" "$2" || _tfw_failexit
+   _tfw_get_content "$1" || return $?
+   local s=s
+   local message
+   _tfw_assert_grep "${_tfw_opt_line_msg:+$_tfw_opt_line_msg of }$1" "$_tfw_tmp/content" "$2" || _tfw_failexit
 }
 
 # Internal (private) functions that are not to be invoked directly from test
@@ -977,6 +980,8 @@ _tfw_getopts() {
    _tfw_opt_sleep=
    _tfw_opt_matches=
    _tfw_opt_line=
+   _tfw_opt_line_sed=
+   _tfw_opt_line_msg=
    _tfw_getopts_shift=0
    local oo
    _tfw_shopt oo -s extglob
@@ -985,6 +990,8 @@ _tfw_getopts() {
       *:--stdout) _tfw_dump_on_fail --stdout;;
       *:--stderr) _tfw_dump_on_fail --stderr;;
       assert*:--dump-on-fail=*) _tfw_dump_on_fail "${1#*=}";;
+      assert*:--error-on-fail) _tfw_opt_error_on_fail=true;;
+      assert*:--message=*) _tfw_message="${1#*=}";;
       execute:--exit-status=+([0-9])) _tfw_opt_exit_status="${1#*=}";;
       execute:--exit-status=*) _tfw_error "invalid value: $1";;
       execute*:--executable=) _tfw_error "missing value: $1";;
@@ -994,12 +1001,13 @@ _tfw_getopts() {
       wait_until:--timeout=*) _tfw_error "invalid value: $1";;
       wait_until:--sleep=@(+([0-9])?(.+([0-9]))|*([0-9]).+([0-9]))) _tfw_opt_sleep="${1#*=}";;
       wait_until:--sleep=*) _tfw_error "invalid value: $1";;
-      assert*:--error-on-fail) _tfw_opt_error_on_fail=true;;
-      assert*:--message=*) _tfw_message="${1#*=}";;
-      assertgrep:--matches=+([0-9])) _tfw_opt_matches="${1#*=}";;
-      assertgrep:--matches=*) _tfw_error "invalid value: $1";; 
-      assertfilecontent:--line=+([0-9])) _tfw_opt_line="${1#*=}";;
-      assertfilecontent:--line=*) _tfw_error "invalid value: $1";; 
+      assertcontentgrep:--matches=+([0-9])) _tfw_opt_matches="${1#*=}";;
+      assertcontentgrep:--matches=*) _tfw_error "invalid value: $1";; 
+      assertcontent*:--line=+([0-9])) _tfw_opt_line="${1#*=}"; _tfw_opt_line_msg="line $_tfw_opt_line";;
+      assertcontent*:--line=+([0-9])..) _tfw_opt_line="${1#*=}\$"; _tfw_opt_line_msg="lines $_tfw_opt_line";;
+      assertcontent*:--line=..+([0-9])) _tfw_opt_line="1${1#*=}"; _tfw_opt_line_msg="lines $_tfw_opt_line";;
+      assertcontent*:--line=+([0-9])..+([0-9])) _tfw_opt_line="${1#*=}"; _tfw_opt_line_msg="lines $_tfw_opt_line";;
+      assertcontent*:--line=*) _tfw_error "invalid value: $1";; 
       *:--) let _tfw_getopts_shift=_tfw_getopts_shift+1; shift; break;;
       *:--*) _tfw_error "unsupported option: $1";;
       *) break;;
@@ -1007,6 +1015,7 @@ _tfw_getopts() {
       let _tfw_getopts_shift=_tfw_getopts_shift+1
       shift
    done
+   [ -n "$_tfw_opt_line" ] && _tfw_opt_line_sed="${_tfw_opt_line/../,}"
    case "$context" in
    execute*)
       if [ -z "$_tfw_executable" ]; then
@@ -1074,20 +1083,24 @@ _tfw_assertExpr() {
    _tfw_assert eval "${_tfw_args[@]}"
 }
 
+_tfw_get_content() {
+   case "$_tfw_opt_line_sed" in
+   '') ln -f "$1" "$_tfw_tmp/content" || error "ln failed";;
+   *) $SED -n -e "${_tfw_opt_line_sed}p" "$1" >"$_tfw_tmp/content" || error "sed failed";;
+   esac
+}
+
 _tfw_assert_stdxxx_is() {
    local qual="$1"
    shift
-   _tfw_getopts assertfilecontent --$qual --stderr "$@"
+   _tfw_getopts assertcontentis --$qual --stderr "$@"
    shift $((_tfw_getopts_shift - 2))
    if [ $# -lt 1 ]; then
       _tfw_error "incorrect arguments"
       return $?
    fi
-   case "$_tfw_opt_line" in
-   '') ln -f "$_tfw_tmp/$qual" "$_tfw_tmp/content";;
-   *) $SED -n -e "${_tfw_opt_line}p" "$_tfw_tmp/$qual" >"$_tfw_tmp/content";;
-   esac
-   local message="${_tfw_message:-${_tfw_opt_line:+line $_tfw_opt_line of }$qual of ($executed) is $(shellarg "$@")}"
+   _tfw_get_content "$_tfw_tmp/$qual" || return $?
+   local message="${_tfw_message:-${_tfw_opt_line_msg:+$_tfw_opt_line_msg of }$qual of ($executed) is $(shellarg "$@")}"
    echo -n "$@" >$_tfw_tmp/stdxxx_is.tmp
    if ! cmp -s $_tfw_tmp/stdxxx_is.tmp "$_tfw_tmp/content"; then
       _tfw_failmsg "assertion failed: $message"
@@ -1101,7 +1114,7 @@ _tfw_assert_stdxxx_is() {
 _tfw_assert_stdxxx_linecount() {
    local qual="$1"
    shift
-   _tfw_getopts assertfilecontent --$qual --stderr "$@"
+   _tfw_getopts assert --$qual --stderr "$@"
    shift $((_tfw_getopts_shift - 2))
    if [ $# -lt 1 ]; then
       _tfw_error "incorrect arguments"
@@ -1117,13 +1130,14 @@ _tfw_assert_stdxxx_linecount() {
 _tfw_assert_stdxxx_grep() {
    local qual="$1"
    shift
-   _tfw_getopts assertgrep --$qual --stderr "$@"
+   _tfw_getopts assertcontentgrep --$qual --stderr "$@"
    shift $((_tfw_getopts_shift - 2))
    if [ $# -ne 1 ]; then
       _tfw_error "incorrect arguments"
       return $?
    fi
-   _tfw_assert_grep "$qual of ($executed)" $_tfw_tmp/$qual "$@"
+   _tfw_get_content "$_tfw_tmp/$qual" || return $?
+   _tfw_assert_grep "${_tfw_opt_line_msg:+$_tfw_opt_line_msg of }$qual of ($executed)" "$_tfw_tmp/content" "$@"
 }
 
 _tfw_assert_grep() {

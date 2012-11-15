@@ -83,20 +83,24 @@ static int outv_growbuf(size_t needed)
 
 static int outv_end_field()
 {
-  outv_growbuf(1);
-  *outv_current++ = '\0';
-  jstring str = (jstring)(*jni_env)->NewStringUTF(jni_env, outv_buffer);
+  size_t length = outv_current - outv_buffer;
   outv_current = outv_buffer;
-  if (str == NULL) {
+  jbyteArray arr = (*jni_env)->NewByteArray(jni_env, length);
+  if (arr == NULL) {
     jni_exception = 1;
-    return WHY("Exception thrown from NewStringUTF()");
+    return WHY("Exception thrown from NewByteArray()");
   }
-  (*jni_env)->CallBooleanMethod(jni_env, outv_list, listAddMethodId, str);
+  (*jni_env)->SetByteArrayRegion(jni_env, arr, 0, length, (jbyte*)outv_buffer);
+  if ((*jni_env)->ExceptionOccurred(jni_env)) {
+    jni_exception = 1;
+    return WHY("Exception thrown from SetByteArrayRegion()");
+  }
+  (*jni_env)->CallBooleanMethod(jni_env, outv_list, listAddMethodId, arr);
   if ((*jni_env)->ExceptionOccurred(jni_env)) {
     jni_exception = 1;
     return WHY("Exception thrown from CallBooleanMethod()");
   }
-  (*jni_env)->DeleteLocalRef(jni_env, str);
+  (*jni_env)->DeleteLocalRef(jni_env, arr);
   return 0;
 }
 
@@ -215,6 +219,32 @@ int cli_putchar(char c)
       return putchar(c);
 }
 
+/* Write a buffer of data to output.  If in a JNI call, then this appends the data to the
+   current output field, including any embedded nul characters.  Returns a non-negative integer on
+   success, EOF on error.
+ */
+int cli_write(const unsigned char *buf, size_t len)
+{
+#ifdef HAVE_JNI_H
+    if (jni_env) {
+      size_t avail = outv_limit - outv_current;
+      if (avail < len) {
+	memcpy(outv_current, buf, avail);
+	outv_current = outv_limit;
+	if (outv_growbuf(len) == -1)
+	  return EOF;
+	len -= avail;
+	buf += avail;
+      }
+      memcpy(outv_current, buf, len);
+      outv_current += len;
+      return 0;
+    }
+    else
+#endif
+      return fwrite(buf, len, 1, stdout);
+}
+
 /* Write a null-terminated string to output.  If in a JNI call, then this appends the string to the
    current output field.  The terminating null is not included.  Returns a non-negative integer on
    success, EOF on error.
@@ -222,21 +252,8 @@ int cli_putchar(char c)
 int cli_puts(const char *str)
 {
 #ifdef HAVE_JNI_H
-    if (jni_env) {
-      size_t len = strlen(str);
-      size_t avail = outv_limit - outv_current;
-      if (avail < len) {
-	strncpy(outv_current, str, avail);
-	outv_current = outv_limit;
-	if (outv_growbuf(len) == -1)
-	  return EOF;
-	len -= avail;
-	str += avail;
-      }
-      strncpy(outv_current, str, len);
-      outv_current += len;
-      return 0;
-    }
+    if (jni_env)
+      return cli_write((const unsigned char *) str, strlen(str));
     else
 #endif
       return fputs(str, stdout);
@@ -307,11 +324,21 @@ void cli_flush()
 int app_echo(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
-  int i;
-  for (i = 1; i < argc; ++i) {
+  int i = 1;
+  int escapes = 0;
+  if (i < argc && strcmp(argv[i], "-e") == 0) {
+    escapes = 1;
+    ++i;
+  }
+  for (; i < argc; ++i) {
     if (debug & DEBUG_VERBOSE)
-      DEBUGF("echo:argv[%d]=%s", i, argv[i]);
-    cli_puts(argv[i]);
+      DEBUGF("echo:argv[%d]=\"%s\"", i, argv[i]);
+    if (escapes) {
+      unsigned char buf[strlen(argv[i])];
+      size_t len = str_fromprint(buf, argv[i]);
+      cli_write(buf, len);
+    } else
+      cli_puts(argv[i]);
     cli_delim(NULL);
   }
   return 0;
@@ -1251,11 +1278,16 @@ int app_rhizome_extract_manifest(int argc, const char *const *argv, struct comma
   switch (ret) {
     case 0: ret = 1; break;
     case 1: ret = 0;
-      if (manifestpath) {
+      if (manifestpath && strcmp(manifestpath, "-") == 0) {
+	cli_puts("manifest");
+	cli_delim(":");
+	cli_write(m->manifestdata, m->manifest_all_bytes);
+	cli_delim("\n");
+      } else if (manifestpath) {
 	/* If the manifest has been read in from database, the blob is there,
 	   and we can lie and say we are finalised and just want to write it
-	   out.  XXX really should have a dirty/clean flag, so that write
-	   works is clean but not finalised. */
+	   out.  TODO: really should have a dirty/clean flag, so that write
+	   works if clean but not finalised. */
 	m->finalised=1;
 	if (rhizome_write_manifest_file(m, manifestpath) == -1)
 	  ret = -1;

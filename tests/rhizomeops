@@ -178,7 +178,6 @@ setup_ExtractManifestAfterAdd() {
 }
 test_ExtractManifestAfterAdd() {
    executeOk_servald rhizome extract manifest $manifestid file1x.manifest
-   assert cmp file1.manifest file1x.manifest
    assertStdoutLineCount '==' 8
    local size=$(( $(cat file1 | wc -c) + 0 ))
    assertStdoutGrep --matches=1 "^service:file$"
@@ -189,6 +188,38 @@ test_ExtractManifestAfterAdd() {
    assertStdoutGrep --matches=1 "^filesize:$size\$"
    assertStdoutGrep --matches=1 "^\.author:$SIDB1\$"
    assertStdoutGrep --matches=1 "^\.readonly:0\$"
+   assert cmp file1.manifest file1x.manifest
+}
+
+doc_ExtractManifestToStdout="Extract manifest to output field"
+setup_ExtractManifestToStdout() {
+   setup_servald
+   setup_rhizome
+   echo "A test file" >file1
+   executeOk_servald rhizome add file $SIDB1 '' file1 file1.manifest
+   extract_manifest_id manifestid file1.manifest
+   extract_manifest_version version file1.manifest
+   extract_manifest_filehash filehash file1.manifest
+}
+test_ExtractManifestToStdout() {
+   executeOk_servald rhizome extract manifest $manifestid -
+   assertStdoutLineCount '>=' 9
+   local size=$(( $(cat file1 | wc -c) + 0 ))
+   assertStdoutGrep --line=..8 --matches=1 "^service:file$"
+   assertStdoutGrep --line=..8 --matches=1 "^manifestid:$manifestid\$"
+   assertStdoutGrep --line=..8 --matches=1 "^version:$version\$"
+   assertStdoutGrep --line=..8 --matches=1 "^inserttime:$rexp_date\$"
+   assertStdoutGrep --line=..8 --matches=1 "^filehash:$filehash\$"
+   assertStdoutGrep --line=..8 --matches=1 "^filesize:$size\$"
+   assertStdoutGrep --line=..8 --matches=1 "^\.author:$SIDB1\$"
+   assertStdoutGrep --line=..8 --matches=1 "^\.readonly:0\$"
+   assertStdoutGrep --line=9 --matches=1 "^manifest:"
+   replayStdout | $SED -n '9s/^manifest://p' >file1x.manifest
+   replayStdout | $SED -n '10,$p' >>file1x.manifest
+   cat file1.manifest >file1n.manifest
+   echo >>file1n.manifest
+   tfw_cat file1n.manifest file1x.manifest
+   assert cmp file1n.manifest file1x.manifest
 }
 
 doc_ExtractManifestAfterAddNoAuthor="Extract manifest after one add with no author"
