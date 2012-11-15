@@ -35,7 +35,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 #define FORM_SERVAL_INSTANCE_PATH(buf, path) (form_serval_instance_path(buf, sizeof(buf), (path)))
 
-int confReloadIfNewer();
+int confBusy();
+int confReloadIfChanged();
 const char *confValueGet(const char *var, const char *defaultValue);
 int confValueGetBoolean(const char *var, int defaultValue);
 int64_t confValueGetInt64(const char *var, int64_t defaultValue);

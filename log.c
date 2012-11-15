@@ -44,7 +44,6 @@ const struct __sourceloc __whence = __NOWHERE__;
 
 debugflags_t debug = 0;
 
-static int busy = 0;
 static FILE *logfile = NULL;
 static int flag_show_pid = -1;
 static int flag_show_time = -1;
@@ -78,21 +77,19 @@ static FILE *_open_logging()
   if (!logfile) {
     const char *logpath = getenv("SERVALD_LOG_FILE");
     if (!logpath) {
-      // If the logging system is currently busy (eg, confValueGet() logged a message, which
-      // re-entered here) then return NULL to indicate the message cannot be logged.
-      if (busy > 1)
+      if (confBusy())
 	return NULL;
       logpath = confValueGet("log.file", NULL);
     }
     if (!logpath) {
-      logfile = stderr;
+      logfile = stderr; //fopen("/tmp/foo", "a");
       INFO("No logfile configured -- logging to stderr");
     } else if ((logfile = fopen(logpath, "a"))) {
       setlinebuf(logfile);
       INFOF("Logging to %s (fd %d)", logpath, fileno(logfile));
     } else {
-      logfile = stderr;
-      WARN_perror("fopen");
+      logfile = stderr; //fopen("/tmp/bar", "a");
+      WARNF_perror("fopen(%s)", logpath);
       WARNF("Cannot append to %s -- falling back to stderr", logpath);
     }
   }
@@ -101,30 +98,20 @@ static FILE *_open_logging()
 
 FILE *open_logging()
 {
-  ++busy;
-  FILE *ret = _open_logging();
-  assert(busy);
-  --busy;
-  return ret;
+  return _open_logging();
 }
 
 static int show_pid()
 {
-  if (flag_show_pid < 0) {
-    if (busy > 1)
-      return 0;
+  if (flag_show_pid < 0 && !confBusy())
     flag_show_pid = confValueGetBoolean("log.show_pid", 0);
-  }
   return flag_show_pid;
 }
 
 static int show_time()
 {
-  if (flag_show_time < 0) {
-    if (busy > 1)
-      return 0;
+  if (flag_show_time < 0 && !confBusy())
     flag_show_time = confValueGetBoolean("log.show_time", 0);
-  }
   return flag_show_time;
 }
 
@@ -154,14 +141,17 @@ static int _log_prepare(int level, struct __sourceloc whence)
 {
   if (level == LOG_LEVEL_SILENT)
     return 0;
-  ++busy;
+  struct timeval tv;
+  tv.tv_sec = 0;
+  int showtime = show_time();
+  if (showtime)
+    gettimeofday(&tv, NULL);
+  int showpid = show_pid();
+  _open_logging(); // Put initial INFO message at start of log file
+  // No calls outside log.c from this point on.
   if (strbuf_is_empty(&logbuf))
     strbuf_init(&logbuf, _log_buf, sizeof _log_buf);
-  _open_logging(); // Put initial INFO message at start of log file
-  int showpid = show_pid();
-  int showtime = show_time();
-  // No calls outside log.c from this point on.
-  if (strbuf_len(&logbuf))
+  else if (strbuf_len(&logbuf))
     strbuf_putc(&logbuf, '\n');
 #ifndef ANDROID
   const char *levelstr = "UNKWN:";
@@ -177,8 +167,7 @@ static int _log_prepare(int level, struct __sourceloc whence)
   if (showpid)
     strbuf_sprintf(&logbuf, "[%5u] ", getpid());
   if (showtime) {
-    struct timeval tv;
-    if (gettimeofday(&tv, NULL) == -1) {
+    if (tv.tv_sec == 0) {
       strbuf_puts(&logbuf, "NOTIME______ ");
     } else {
       struct tm tm;
@@ -231,8 +220,6 @@ static void _log_finish(int level)
 {
   if (_log_implementation)
     _log_implementation(level, &logbuf);
-  assert(busy);
-  --busy;
 }
 
 void set_log_implementation(void (*log_function)(int level, struct strbuf *buf))

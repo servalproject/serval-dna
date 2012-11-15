@@ -900,7 +900,21 @@ int app_config_set(int argc, const char *const *argv, struct command_line_option
     return -1;
   if (create_serval_instance_dir() == -1)
     return -1;
-  confReloadIfNewer();
+  // <kludge>
+  // This fixes a subtle bug in when upgrading the Batphone app: the servald.conf file does
+  // not get upgraded.  The bug goes like this:
+  //  1. new Batphone APK is installed, but prior servald.conf is not overwritten because it
+  //     comes in serval.zip;
+  //  2. new Batphone is started, which calls JNI "stop" command, which reads the old servald.conf
+  //     into memory buffer;
+  //  3. new Batphone unpacks serval.zip, overwriting servald.conf with new version;
+  //  4. new Batphone calls JNI "config set rhizome.enable 1", which sets the "rhizome.enable"
+  //     config option in the existing memory buffer and overwrites servald.conf;
+  // Bingo, the old version of servald.conf is what remains.  This kludge intervenes in step 4, by
+  // reading the new servald.conf into the memory buffer before applying the "rhizome.enable" set
+  // value and overwriting.
+  confReloadIfChanged();
+  // </kludge>
   return confValueSet(var, val) == -1 ? -1 : confWrite();
 }
 
@@ -912,6 +926,9 @@ int app_config_del(int argc, const char *const *argv, struct command_line_option
     return -1;
   if (create_serval_instance_dir() == -1)
     return -1;
+  // <kludge> See app_config_set()
+  confReloadIfChanged();
+  // </kludge>
   return confValueSet(var, NULL) == -1 ? -1 : confWrite();
 }
 

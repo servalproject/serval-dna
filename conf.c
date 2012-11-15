@@ -58,6 +58,7 @@ int is_configvarname(const char *arg)
 #define MAX_CONFIG_VARS		  (100)
 #define CONFIG_BUFFER_ALLOCSIZE	  (1024)
 
+static int busy = 0;
 static time_t config_timestamp = 0;
 static char *config_buffer = NULL;
 static char *config_buffer_top = NULL;
@@ -65,6 +66,9 @@ static char *config_buffer_end = NULL;
 static unsigned int confc = 0;
 static char *confvar[MAX_CONFIG_VARS];
 static char *confvalue[MAX_CONFIG_VARS];
+
+#define BUSY_BODY(_type, _return_if_busy, _return) \
+  do { if (busy) { return (_return_if_busy); } else { busy = 1; _type ret = (_return); busy = 0; return ret; } } while (0)
 
 static char *grow_config_buffer(size_t needed)
 {
@@ -208,7 +212,18 @@ static int _read_config()
 
 static int read_config()
 {
-  return _read_config();
+  BUSY_BODY(int, -1, _read_config());
+}
+
+/* Return true if any conf...() function is in progress, ie, a configuration fetch function is being
+ * re-entered.  This function allows other modules to avoid this re-entry, typically the logging
+ * system that uses confValueGet() to set itself up, which in turn can log messages.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int confBusy()
+{
+  return busy;
 }
 
 /* Check if the config file has changed since we last read it, and if so, invalidate the buffer so
@@ -220,7 +235,7 @@ static int read_config()
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int confReloadIfNewer()
+static int _confReloadIfChanged()
 {
   char conffile[1024];
   if (!FORM_SERVAL_INSTANCE_PATH(conffile, CONFFILE_NAME))
@@ -238,16 +253,45 @@ int confReloadIfNewer()
   }
   return 0;
 }
+int confReloadIfChanged()
+{
+  BUSY_BODY(int, -1, _confReloadIfChanged());
+}
 
 /* Return the number of config options.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int confVarCount()
+static int _confVarCount()
 {
-  if (!config_buffer && read_config() == -1)
+  if (!config_buffer && _read_config() == -1)
     return -1;
   return confc;
+}
+int confVarCount()
+{
+  BUSY_BODY(int, -1, _confVarCount());
+}
+
+/* Return the string name of the config option with the given index, which must be in the range
+ * 0..confVarCount().  The returned pointer is only valid until the next call to confVar() or any
+ * other configuration query function.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+static const char *_confVar(unsigned int index)
+{
+  if (!config_buffer && _read_config() == -1)
+    return NULL;
+  if (index >= confc) {
+    WHYF("Config index=%u too big, confc=%u", index, confc);
+    return NULL;
+  }
+  return confvar[index];
+}
+const char *confVar(unsigned int index)
+{
+  BUSY_BODY(const char *, NULL, _confVar(index));
 }
 
 /* Return the string value of the config option with the given index, which must be in the range
@@ -256,26 +300,19 @@ int confVarCount()
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-const char *confVar(unsigned int index)
+static const char *_confValue(unsigned int index)
 {
-  if (!config_buffer && read_config() == -1)
-    return NULL;
-  if (index >= confc) {
-    WHYF("Config index=%u too big, confc=%u", index, confc);
-    return NULL;
-  }
-  return confvar[index];
-}
-
-const char *confValue(unsigned int index)
-{
-  if (!config_buffer && read_config() == -1)
+  if (!config_buffer && _read_config() == -1)
     return NULL;
   if (index >= confc) {
     WHYF("Config index=%u too big, confc=%u", index, confc);
     return NULL;
   }
   return confvalue[index];
+}
+const char *confValue(unsigned int index)
+{
+  BUSY_BODY(const char *, NULL, _confValue(index));
 }
 
 /* Return the string value of the config option with the given name.  The returned pointer is only
@@ -286,13 +323,13 @@ const char *confValue(unsigned int index)
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-const char *confValueGet(const char *var, const char *defaultValue)
+static const char *_confValueGet(const char *var, const char *defaultValue)
 {
   if (var == NULL) {
     WHYF("NULL var name, returning default value: %s", defaultValue ? defaultValue : "NULL");
     return defaultValue;
   }
-  if (!config_buffer && read_config() == -1) {
+  if (!config_buffer && _read_config() == -1) {
     if (defaultValue)
       WARNF("Config option %s: using default value: %s", var, defaultValue);
     return defaultValue;
@@ -303,10 +340,14 @@ const char *confValueGet(const char *var, const char *defaultValue)
       return confvalue[i];
   return defaultValue;
 }
-
-int confValueGetBoolean(const char *var, int defaultValue)
+const char *confValueGet(const char *var, const char *defaultValue)
 {
-  const char *value = confValueGet(var, NULL);
+  BUSY_BODY(const char *, defaultValue, _confValueGet(var, defaultValue));
+}
+
+static int _confValueGetBoolean(const char *var, int defaultValue)
+{
+  const char *value = _confValueGet(var, NULL);
   if (!value)
     return defaultValue;
   int flag = confParseBoolean(value, var);
@@ -315,10 +356,14 @@ int confValueGetBoolean(const char *var, int defaultValue)
   WARNF("Config option %s: using default value %s", var, defaultValue ? "true" : "false");
   return defaultValue;
 }
-
-int64_t confValueGetInt64(const char *var, int64_t defaultValue)
+int confValueGetBoolean(const char *var, int defaultValue)
 {
-  const char *start = confValueGet(var, NULL);
+  BUSY_BODY(int, defaultValue, _confValueGetBoolean(var, defaultValue));
+}
+
+static int64_t _confValueGetInt64(const char *var, int64_t defaultValue)
+{
+  const char *start = _confValueGet(var, NULL);
   if (!start)
     return defaultValue;
   const char *end = start;
@@ -328,15 +373,23 @@ int64_t confValueGetInt64(const char *var, int64_t defaultValue)
   WARNF("Config option %s: '%s' is not an integer, using default value %lld", var, start, (long long) defaultValue);
   return defaultValue;
 }
-
-int64_t confValueGetInt64Range(const char *var, int64_t defaultValue, int64_t rangemin, int64_t rangemax)
+int64_t confValueGetInt64(const char *var, int64_t defaultValue)
 {
-  int64_t value = confValueGetInt64(var, defaultValue);
+  BUSY_BODY(int64_t, defaultValue, _confValueGetInt64(var, defaultValue));
+}
+
+static int64_t _confValueGetInt64Range(const char *var, int64_t defaultValue, int64_t rangemin, int64_t rangemax)
+{
+  int64_t value = _confValueGetInt64(var, defaultValue);
   if (value >= rangemin || value <= rangemax)
     return value;
   WARNF("Config option %s: configured value %lld out of range [%lld,%lld], using default value %lld",
       var, (long long) value, (long long) rangemin, (long long) rangemax, (long long) defaultValue);
   return defaultValue;
+}
+int64_t confValueGetInt64Range(const char *var, int64_t defaultValue, int64_t rangemin, int64_t rangemax)
+{
+  BUSY_BODY(int64_t, defaultValue, _confValueGetInt64Range(var, defaultValue, rangemin, rangemax));
 }
 
 void confSetDebugFlags()
