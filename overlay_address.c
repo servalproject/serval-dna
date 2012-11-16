@@ -168,38 +168,41 @@ int subscriber_is_reachable(struct subscriber *subscriber){
   if (!subscriber)
     return REACHABLE_NONE;
   
-  // is there a default route?
-  if (subscriber->reachable==REACHABLE_NONE &&
+  int ret = subscriber->reachable;
+  
+  if (ret==REACHABLE_INDIRECT){
+    if (!subscriber->next_hop)
+      ret = REACHABLE_NONE;
+    
+    // avoid infinite recursion...
+    else if (subscriber->next_hop->reachable!=REACHABLE_DIRECT && 
+	subscriber->next_hop->reachable!=REACHABLE_UNICAST)
+      ret = REACHABLE_NONE;
+    else{
+      int r = subscriber_is_reachable(subscriber->next_hop);
+      if (r!=REACHABLE_DIRECT && r!= REACHABLE_UNICAST)
+	ret = REACHABLE_NONE;
+    }
+  }
+  
+  if (ret==REACHABLE_DIRECT || 
+      ret==REACHABLE_UNICAST){
+    // make sure the interface is still up
+    if (!subscriber->interface)
+      ret=REACHABLE_NONE;
+    else if (subscriber->interface->state!=INTERFACE_STATE_UP)
+      ret=REACHABLE_NONE;
+  }
+  
+  // after all of that, should we use a default route?
+  if (ret==REACHABLE_NONE &&
       directory_service && 
       subscriber!=directory_service &&
       subscriber_is_reachable(directory_service)!=REACHABLE_NONE){
-    return REACHABLE_DEFAULT_ROUTE;
+    ret = REACHABLE_DEFAULT_ROUTE;
   }
   
-  if (subscriber->reachable==REACHABLE_INDIRECT){
-    if (!subscriber->next_hop)
-      return REACHABLE_NONE;
-    
-    // avoid infinite recursion...
-    if (subscriber->next_hop->reachable!=REACHABLE_DIRECT && 
-	subscriber->next_hop->reachable!=REACHABLE_UNICAST)
-      return REACHABLE_NONE;
-    
-    int r = subscriber_is_reachable(subscriber->next_hop);
-    if (r!=REACHABLE_DIRECT && r!= REACHABLE_UNICAST)
-      return REACHABLE_NONE;
-  }
-  
-  if (subscriber->reachable==REACHABLE_DIRECT || 
-      subscriber->reachable==REACHABLE_UNICAST){
-    // make sure the interface is still up
-    if (!subscriber->interface)
-      return REACHABLE_NONE;
-    if (subscriber->interface->state!=INTERFACE_STATE_UP)
-      return REACHABLE_NONE;
-  }
-  
-  return subscriber->reachable;
+  return ret;
 }
 
 int set_reachable(struct subscriber *subscriber, int reachable){

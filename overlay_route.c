@@ -625,7 +625,7 @@ int overlay_route_recalc_neighbour_metrics(struct overlay_neighbour *n, time_ms_
      50KB per 12 hours, which is the minimum traffic charge rate 
      on an expensive BGAN satellite link. 	 
      */
-    if (interval>=3600000 || obs_age>200000)
+    if (interval>=3600000 || obs_age>20000)
       continue;
 
     if (debug&DEBUG_OVERLAYROUTING) 
