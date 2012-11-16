@@ -315,12 +315,14 @@ int rhizome_verify_bundle_privatekey(rhizome_manifest *m,
   ge_scalarmult_base(&A,h);
   ge_p3_tobytes(pk,&A);
 
-  for (i = 0;i < 32;++i) if (pkin[i] != pk[i]) {
+  for (i = 0;i < 32;++i) 
+    if (pkin[i] != pk[i]) {
       if (m&&sk==m->cryptoSignSecret&&pkin==m->cryptoSignPublic)
 	m->haveSecret=0;
       RETURN(-1);
     }
-  DEBUGF("We have the private key for this bundle.");
+  if (debug & DEBUG_RHIZOME)
+    DEBUGF("We have the private key for this bundle.");
   if (m&&sk==m->cryptoSignSecret&&pkin==m->cryptoSignPublic) {
     DEBUGF("Set haveSecret=1 in manifest");
     m->haveSecret=1;
