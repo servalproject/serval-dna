@@ -42,10 +42,8 @@ int overlay_mdp_send(int mdp_sockfd, overlay_mdp_frame *mdp, int flags, int time
   if (!FORM_SERVAL_INSTANCE_PATH(name.sun_path, "mdp.socket"))
     return -1;
   
-  set_nonblock(mdp_sockfd);
   int result=sendto(mdp_sockfd, mdp, len, 0,
 		    (struct sockaddr *)&name, sizeof(struct sockaddr_un));
-  set_block(mdp_sockfd);
   if (result<0) {
     mdp->packetTypeAndFlags=MDP_ERROR;
     mdp->error.error=1;
