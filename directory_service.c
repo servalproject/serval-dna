@@ -99,15 +99,17 @@ static void add_record(){
   add_item(did, url);
 }
 
-static void respond(char *token, struct item *item){
+static void respond(char *token, struct item *item, char *key){
   if (!item)
     return;
-  if (item->_left && strcmp(item->key, item->_left->key)==0)
-    respond(token, item->_left);
-  if (item->expires > gettime_ms())
+  
+  int c = strcmp(item->key, key);
+  if (c<=0)
+    respond(token, item->_left, key);
+  if (c==0 && item->expires > gettime_ms())
     printf("%s|%s|\n",token,item->value);
-  if (item->_right && strcmp(item->key, item->_right->key)==0)
-    respond(token, item->_right);
+  if (c>=0)
+    respond(token, item->_right, key);
 }
 
 static void process_line(char *line){
@@ -119,7 +121,7 @@ static void process_line(char *line){
   while(*p && *p!='|') p++;
   *p++=0;
   
-  respond(token, find_item(did));
+  respond(token, find_item(did), did);
   printf("DONE\n");
   fflush(stdout);
 }
