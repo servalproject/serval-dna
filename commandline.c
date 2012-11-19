@@ -865,7 +865,7 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
 	      long long *txtime=(long long *)&mdp.in.payload[4];
 	      int hop_count = 64 - mdp.in.ttl;
 	      time_ms_t delay = gettime_ms() - *txtime;
-	      printf("%s: seq=%d time=%lld hops=%d ms%s%s\n",
+	      printf("%s: seq=%d time=%lldms hops=%d %s%s\n",
 		     alloca_tohex_sid(mdp.in.src.sid),
 		     (*rxseq)-firstSeq+1,
 		     delay,
