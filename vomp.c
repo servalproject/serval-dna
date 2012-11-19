@@ -515,7 +515,6 @@ static int vomp_send_status_remote(struct vomp_call_state *call)
   return 0;
 }
 
-// copy audio into the rotor buffers
 int vomp_received_audio(struct vomp_call_state *call, int audio_codec, int time, int sequence,
 			const unsigned char *audio, int audio_length)
 {

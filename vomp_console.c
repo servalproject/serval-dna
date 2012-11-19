@@ -57,17 +57,9 @@ static void send_pickup(int session_id){
 static void send_call(const char *sid, const char *caller_id, const char *remote_ext){
   monitor_client_writeline(monitor_client_fd, "call %s %s %s\n", sid, caller_id, remote_ext);
 }
-
-#if 0
-This function commented out to avoid "defined but not used" compiler warning.  Once you need
-it, just get rid of the #if0..#endif and this comment.
--- Andrew Bettison <andrew@servalproject.com>
-
 static void send_audio(int session_id, unsigned char *buffer, int len, int codec){
   monitor_client_writeline_and_data(monitor_client_fd, buffer, len, "audio %06x %d\n", session_id, codec);
 }
-
-#endif
 
 static int remote_call(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context){
   int token = strtol(argv[0], NULL, 16);
@@ -132,10 +124,15 @@ static int remote_hangup(char *cmd, int argc, char **argv, unsigned char *data, 
 static int remote_audio(char *cmd, int argc, char **argv, unsigned char *data, int dataLen, void *context){
   int token = strtol(argv[0], NULL, 16);
   if (call_token == token){
-    if (!seen_audio){
-      printf("Incoming audio\n");
-      fflush(stdout);
-      seen_audio=1;
+    int codec = strtol(argv[1], NULL, 10);
+//    int start_time = strtol(argv[2], NULL, 10);
+//    int sequence = strtol(argv[3], NULL, 10);
+    switch (codec){
+      case VOMP_CODEC_TEXT:
+	data[dataLen]=0;
+	printf("%s\n",data);
+	fflush(stdout);
+	break;
     }
   }else
     send_hangup(token);
@@ -180,7 +177,7 @@ struct monitor_command_handler console_handlers[]={
   {.command="ANSWERED",      .handler=remote_pickup},
   {.command="CALLTO",        .handler=remote_dialing},
   {.command="HANGUP",        .handler=remote_hangup},
-  {.command="AUDIOPACKET",   .handler=remote_audio},
+  {.command="AUDIO",         .handler=remote_audio},
   {.command="CODECS",        .handler=remote_codecs},
   {.command="INFO",          .handler=remote_print},
   {.command="CALLSTATUS",    .handler=remote_noop},
@@ -218,6 +215,29 @@ static int console_hangup(int argc, const char *const *argv, struct command_line
   return 0;
 }
 
+static int console_audio(int argc, const char *const *argv, struct command_line_option *o, void *context){
+  if (call_token==-1){
+    printf("No active call\n");
+    fflush(stdout);
+  }else{
+    static char buf[256];
+    static struct strbuf str_buf = STRUCT_STRBUF_EMPTY;
+    int i;
+    strbuf_init(&str_buf, buf, sizeof(buf));
+    for (i = 0; i < argc; ++i) {
+      if (i)
+	strbuf_putc(&str_buf, ' ');
+      if (argv[i])
+	strbuf_toprint_quoted(&str_buf, "\"\"", argv[i]);
+      else
+	strbuf_puts(&str_buf, "NULL");
+    }
+
+    send_audio(call_token, (unsigned char *)strbuf_str(&str_buf), strbuf_len(&str_buf), VOMP_CODEC_TEXT);
+  }
+  return 0;
+}
+
 static int console_usage(int argc, const char *const *argv, struct command_line_option *o, void *context);
 
 struct command_line_option console_commands[]={
@@ -225,6 +245,7 @@ struct command_line_option console_commands[]={
   {console_dial,{"call","<sid>","[<local_number>]","[<remote_extension>]",NULL},0,"Start dialling a given person"},
   {console_hangup,{"hangup",NULL},0,"Hangup the phone line"},
   {console_usage,{"help",NULL},0,"This usage message"},
+  {console_audio,{"say","...",NULL},0,"Send a text string to the other party"},
   {NULL},
 };
 
