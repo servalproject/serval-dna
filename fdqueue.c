@@ -215,9 +215,12 @@ static void call_alarm(struct sched_ent *alarm, int revents)
 
 int fd_poll()
 {
-  int i, r;
+  int i, r=0;
   int ms=60000;
   time_ms_t now = gettime_ms();
+  
+  if (!next_alarm && !next_deadline && fdcount==0)
+    return 0;
   
   /* move alarms that have elapsed to the deadline queue */
   while (next_alarm!=NULL&&next_alarm->alarm <=now){
@@ -241,19 +244,26 @@ int fd_poll()
     struct call_stats call_stats;
     call_stats.totals=&poll_stats;
     fd_func_enter(__HERE__, &call_stats);
-    r = poll(fds, fdcount, ms);
-    if (debug & DEBUG_IO) {
-      strbuf b = strbuf_alloca(1024);
-      int i;
-      for (i = 0; i < fdcount; ++i) {
-	if (i)
-	  strbuf_puts(b, ", ");
-	strbuf_sprintf(b, "%d:", fds[i].fd);
-	strbuf_append_poll_events(b, fds[i].events);
-	strbuf_putc(b, ':');
-	strbuf_append_poll_events(b, fds[i].revents);
+    if (fdcount==0){
+      if (ms>=1000)
+	sleep(ms/1000);
+      else
+	usleep(ms*1000);
+    }else{
+      r = poll(fds, fdcount, ms);
+      if (debug & DEBUG_IO) {
+	strbuf b = strbuf_alloca(1024);
+	int i;
+	for (i = 0; i < fdcount; ++i) {
+	  if (i)
+	    strbuf_puts(b, ", ");
+	  strbuf_sprintf(b, "%d:", fds[i].fd);
+	  strbuf_append_poll_events(b, fds[i].events);
+	  strbuf_putc(b, ':');
+	  strbuf_append_poll_events(b, fds[i].revents);
+	}
+	DEBUGF("poll(fds=(%s), fdcount=%d, ms=%d) = %d", strbuf_str(b), fdcount, ms, r);
       }
-      DEBUGF("poll(fds=(%s), fdcount=%d, ms=%d) = %d", strbuf_str(b), fdcount, ms, r);
     }
     fd_func_exit(__HERE__, &call_stats);
     now=gettime_ms();
@@ -280,5 +290,5 @@ int fd_poll()
 	  set_block(fds[i].fd);
       }
   }
-  return 0;
+  return 1;
 }
