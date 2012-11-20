@@ -17,10 +17,11 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include <poll.h>
 #include "serval.h"
+#include "str.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
-#include <poll.h>
 
 #define MAX_WATCHED_FDS 128
 struct pollfd fds[MAX_WATCHED_FDS];

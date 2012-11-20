@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <netinet/in.h>
 #include <time.h>
 #include "net.h"
+#include "str.h"
 #include "serval.h"
 
 int _set_nonblock(int fd, struct __sourceloc __whence)

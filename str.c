@@ -19,6 +19,7 @@
 
 #define __STR_INLINE
 #include "str.h"
+#include "strbuf_helpers.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -162,6 +163,48 @@ int str_to_ll_scaled(const char *str, int base, long long *result, char **afterp
     return 0;
   *result = value;
   return 1;
+}
+
+/* Format a buffer of data as a printable representation, eg: "Abc\x0b\n\0", for display
+   in log messages.
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcBytes, const char quotes[2])
+{
+  strbuf b = strbuf_local(dstStr, dstBufSiz);
+  strbuf_toprint_quoted_len(b, quotes, srcBuf, srcBytes);
+  return dstStr;
+}
+
+/* Compute the length of the string produced by toprint().  If dstStrLen == -1 then returns the
+   exact number of characters in the printable representation (excluding the terminating nul),
+   otherwise returns dstStrLen.
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+size_t toprint_len(const char *srcBuf, size_t srcBytes, const char quotes[2])
+{
+  return strbuf_count(strbuf_toprint_quoted_len(strbuf_local(NULL, 0), quotes, srcBuf, srcBytes));
+}
+
+/* Format a null-terminated string as a printable representation, eg: "Abc\x0b\n", for display
+   in log messages.
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+char *toprint_str(char *dstStr, ssize_t dstBufSiz, const char *srcStr, const char quotes[2])
+{
+  strbuf b = strbuf_local(dstStr, dstBufSiz);
+  strbuf_toprint_quoted(b, quotes, srcStr);
+  return dstStr;
+}
+
+/* Compute the length of the string produced by toprint_str().  If dstStrLen == -1 then returns the
+   exact number of characters in the printable representation (excluding the terminating nul),
+   otherwise returns dstStrLen.
+   @author Andrew Bettison <andrew@servalproject.com>
+ */
+size_t toprint_str_len(const char *srcStr, const char quotes[2])
+{
+  return strbuf_count(strbuf_toprint_quoted(strbuf_local(NULL, 0), quotes, srcStr));
 }
 
 size_t str_fromprint(unsigned char *dst, const char *src)

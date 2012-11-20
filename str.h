@@ -21,6 +21,7 @@
 #define __STR_H__
 
 #include <string.h>
+#include <sys/types.h>
 #include <ctype.h>
 
 #ifndef __STR_INLINE
@@ -72,7 +73,14 @@ __STR_INLINE int hexvalue(char c)
   return -1;
 }
 
+char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcBytes, const char quotes[2]);
+char *toprint_str(char *dstStr, ssize_t dstBufSiz, const char *srcStr, const char quotes[2]);
+size_t toprint_len(const char *srcBuf, size_t srcBytes, const char quotes[2]);
+size_t toprint_str_len(const char *srcStr, const char quotes[2]);
 size_t str_fromprint(unsigned char *dst, const char *src);
+
+#define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca((dstlen) == -1 ? toprint_len((const char *)(buf),(len), "``") + 1 : (dstlen)), (dstlen), (const char *)(buf), (len), "``")
+#define alloca_str_toprint(str)  toprint_str((char *)alloca(toprint_str_len(str, "``") + 1), -1, (str), "``")
 
 /* Check if a given string starts with a given sub-string.  If so, return 1 and, if afterp is not
  * NULL, set *afterp to point to the character immediately following the substring.  Otherwise

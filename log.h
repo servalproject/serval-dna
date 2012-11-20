@@ -21,7 +21,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <stdio.h>
 #include <stdarg.h>
-#include "strbuf_helpers.h"
 
 typedef unsigned int debugflags_t;
 
@@ -63,8 +62,6 @@ extern debugflags_t debug;
 #define LOG_LEVEL_WARN      (2)
 #define LOG_LEVEL_ERROR     (3)
 #define LOG_LEVEL_FATAL     (4)
-
-struct strbuf;
 
 /*
  * Every log message identifies the location in the source code at which the
@@ -127,17 +124,10 @@ void logMessage(int level, struct __sourceloc whence, const char *fmt, ...);
 void vlogMessage(int level, struct __sourceloc whence, const char *fmt, va_list);
 debugflags_t debugFlagMask(const char *flagname);
 int logDump(int level, struct __sourceloc whence, char *name, const unsigned char *addr, size_t len);
-char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcBytes, const char quotes[2]);
-char *toprint_str(char *dstStr, ssize_t dstBufSiz, const char *srcStr, const char quotes[2]);
-size_t toprint_len(const char *srcBuf, size_t srcBytes, const char quotes[2]);
-size_t toprint_str_len(const char *srcStr, const char quotes[2]);
 ssize_t get_self_executable_path(char *buf, size_t len);
 int log_backtrace(struct __sourceloc whence);
+struct strbuf;
 void set_log_implementation(void (*log_function)(int level, struct strbuf *buf));
-
-#define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca((dstlen) == -1 ? toprint_len((const char *)(buf),(len), "``") + 1 : (dstlen)), (dstlen), (const char *)(buf), (len), "``")
-#define alloca_str_toprint(str)  toprint_str((char *)alloca(toprint_str_len(str, "``") + 1), -1, (str), "``")
-#define alloca_sockaddr(addr)    strbuf_str(strbuf_append_sockaddr(strbuf_alloca(40), (const struct sockaddr *)(addr)))
 
 #define __HERE__            ((struct __sourceloc){ .file = __FILE__, .line = __LINE__, .function = __FUNCTION__ })
 #define __NOWHERE__         ((struct __sourceloc){ .file = NULL, .line = 0, .function = NULL })

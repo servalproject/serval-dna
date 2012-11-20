@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "rhizome.h"
 #include "str.h"
+#include "strbuf_helpers.h"
 
 /* Represents a queued fetch of a bundle payload, for which the manifest is already known.
  */

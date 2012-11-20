@@ -86,4 +86,6 @@ strbuf strbuf_append_exit_status(strbuf sb, int status);
 struct sockaddr;
 strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *);
 
+#define alloca_sockaddr(addr)    strbuf_str(strbuf_append_sockaddr(strbuf_alloca(40), (const struct sockaddr *)(addr)))
+
 #endif //__STRBUF_HELPERS_H__

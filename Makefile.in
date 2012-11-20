@@ -72,9 +72,9 @@ directory_service: $(MDPCLIENTOBJS) directory_service.o
 	@echo LINK $@
 	@$(CC) $(CFLAGS) -Wall -o $@ $(MDPCLIENTOBJS) directory_service.o $(LDFLAGS) 
 
-tfw_createfile: tfw_createfile.o str.o
+tfw_createfile: tfw_createfile.o str.o strbuf.o strbuf_helpers.o
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -o $@ tfw_createfile.o str.o
+	@$(CC) $(CFLAGS) -Wall -o $@ tfw_createfile.o str.o strbuf.o strbuf_helpers.o
 
 # This does not build on 64 bit elf platforms as NaCL isn't built with -fPIC
 # DOC 20120615

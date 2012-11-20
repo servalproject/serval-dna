@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <ctype.h>
 #include "conf.h"
 #include "log.h"
+#include "str.h"
 
 /* This predicate function defines the constraints on configuration option names.
    Valid:
