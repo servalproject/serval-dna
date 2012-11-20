@@ -329,6 +329,7 @@ struct sched_ent{
 };
 
 struct overlay_buffer;
+struct overlay_frame;
 
 #define STRUCT_SCHED_ENT_UNUSED ((struct sched_ent){NULL, NULL, NULL, NULL, {-1, 0, 0}, 0LL, 0LL, NULL, -1})
 
@@ -398,35 +399,6 @@ extern overlay_interface overlay_interfaces[OVERLAY_MAX_INTERFACES];
 extern int overlay_last_interface_number; // used to remember where a packet came from
 extern unsigned int overlay_sequence_number;
 
-typedef struct overlay_txqueue {
-  struct overlay_frame *first;
-  struct overlay_frame *last;
-  int length; /* # frames in queue */
-  int maxLength; /* max # frames in queue before we consider ourselves congested */
-  
-  /* wait until first->enqueued_at+transmit_delay before trying to force the transmission of a packet */
-  int transmit_delay;
-  
-  /* if servald is busy, wait this long before trying to force the transmission of a packet */
-  int grace_period;
-  
-  /* Latency target in ms for this traffic class.
-   Frames older than the latency target will get dropped. */
-  int latencyTarget;
-  
-  /* XXX Need to initialise these:
-   Real-time queue for voice (<200ms ?)
-   Real-time queue for video (<200ms ?) (lower priority than voice)
-   Ordinary service queue (<3 sec ?)
-   Rhizome opportunistic queue (infinity)
-   
-   (Mesh management doesn't need a queue, as each overlay packet is tagged with some mesh management information)
-   */
-} overlay_txqueue;
-
-
-extern overlay_txqueue overlay_tx[OQ_MAX];
-
 ssize_t recvwithttl(int sock, unsigned char *buffer, size_t bufferlen, int *ttl, struct sockaddr *recvaddr, socklen_t *recvaddrlen);
 
 // is the SID entirely 0xFF?
@@ -478,8 +450,6 @@ int overlay_frame_append_payload(overlay_interface *interface, struct overlay_fr
 int overlay_interface_args(const char *arg);
 int overlay_rhizome_add_advertisements(int interface_number,struct overlay_buffer *e);
 int overlay_add_local_identity(unsigned char *s);
-void overlay_update_queue_schedule(overlay_txqueue *queue, struct overlay_frame *frame);
-void overlay_send_packet(struct sched_ent *alarm);
 
 extern int overlay_interface_count;
 
@@ -669,6 +639,9 @@ int overlay_interface_register(char *name,
 			       struct in_addr mask);
 overlay_interface * overlay_interface_find(struct in_addr addr);
 overlay_interface * overlay_interface_find_name(const char *name);
+int overlay_broadcast_ensemble(int interface_number,
+			   struct sockaddr_in *recipientaddr,
+			       unsigned char *bytes,int len);
 
 int directory_registration();
 int directory_service_init();
@@ -761,6 +734,9 @@ void server_shutdown_check(struct sched_ent *alarm);
 void overlay_mdp_poll(struct sched_ent *alarm);
 void fd_periodicstats(struct sched_ent *alarm);
 void rhizome_check_connections(struct sched_ent *alarm);
+
+int overlay_tick_interface(int i, time_ms_t now);
+int overlay_queue_init();
 
 void monitor_client_poll(struct sched_ent *alarm);
 void monitor_poll(struct sched_ent *alarm);

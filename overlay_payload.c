@@ -156,26 +156,6 @@ cleanup:
   return -1;
 }
   
-int dump_queue(char *msg,int q)
-{
-  overlay_txqueue *qq=&overlay_tx[q];
-  DEBUGF("Contents of TX queue #%d (%s):",q,msg);
-  DEBUGF("  length=%d, maxLength=%d",qq->length,qq->maxLength);
-  struct overlay_frame *f=qq->first,*l=qq->last;
-  DEBUGF("  head of queue = %p, tail of queue = %p", f, l);
-  struct overlay_frame *n=f;
-  int count=0;
-  while(n) {
-    DEBUGF("    queue entry #%d : prev=%p, next=%p", count,n->prev,n->next);
-    if (n==n->next) {
-      WHY("      ERROR: loop in queue");
-      return -1;
-    }
-    n=n->next;
-  }
-  return 0;
-}
-
 int dump_payload(struct overlay_frame *p, char *message)
 {
   DEBUGF( "+++++\nFrame from %s to %s of type 0x%02x %s:",
@@ -184,89 +164,6 @@ int dump_payload(struct overlay_frame *p, char *message)
 	  message?message:"");
   if (p->payload)
     dump("payload contents", &p->payload->bytes[0],p->payload->position);
-  return 0;
-}
-
-int overlay_payload_enqueue(struct overlay_frame *p)
-{
-  /* Add payload p to queue q.
-
-     Queues get scanned from first to last, so we should append new entries
-     on the end of the queue.
-
-     Complain if there are too many frames in the queue.
-  */
-  
-  if (!p) return WHY("Cannot queue NULL");
-  
-  if (p->destination){
-    int r = subscriber_is_reachable(p->destination);
-    if (r == REACHABLE_SELF || r == REACHABLE_NONE)
-      return WHYF("Destination %s is unreachable (%d)", alloca_tohex_sid(p->destination->sid), r);
-  }
-      
-  if (p->queue>=OQ_MAX) 
-    return WHY("Invalid queue specified");
-  
-  overlay_txqueue *queue = &overlay_tx[p->queue];
-  
-  if (debug&DEBUG_PACKETTX)
-    DEBUGF("Enqueuing packet for %s* (q[%d]length = %d)",
-	   p->destination?alloca_tohex(p->destination->sid, 7): alloca_tohex(p->broadcast_id.id,BROADCAST_LEN),
-	 p->queue, queue->length);
-  
-  if (p->payload && p->payload->position > p->payload->sizeLimit){
-    // HACK, maybe should be done in each caller
-    // set the size of the payload based on the position written
-    p->payload->sizeLimit=p->payload->position;
-  }
-  
-  if (queue->length>=queue->maxLength) 
-    return WHYF("Queue #%d congested (size = %d)",p->queue,queue->maxLength);
-
-  if (p->send_copies<=0)
-    p->send_copies=1;
-  else if(p->send_copies>5)
-    return WHY("Too many copies requested");
-  
-  if (!p->destination){
-    int i;
-    int drop=1;
-    
-    // hook to allow for flooding via olsr
-    olsr_send(p);
-    
-    // make sure there is an interface up that allows broadcasts
-    for(i=0;i<OVERLAY_MAX_INTERFACES;i++){
-      if (overlay_interfaces[i].state==INTERFACE_STATE_UP
-	  && overlay_interfaces[i].send_broadcasts){
-	p->broadcast_sent_via[i]=0;
-	drop=0;
-      }else
-	p->broadcast_sent_via[i]=1;
-    }
-    
-    // just drop it now
-    if (drop)
-      return -1;
-    
-    p->sendBroadcast=1;
-  }
-  
-  struct overlay_frame *l=queue->last;
-  if (l) l->next=p;
-  p->prev=l;
-  p->next=NULL;
-  p->enqueued_at=gettime_ms();
-
-  queue->last=p;
-  if (!queue->first) queue->first=p;
-  queue->length++;
-
-  overlay_update_queue_schedule(queue, p);
-  
-  if (0) dump_queue("after",p->queue);
-
   return 0;
 }
 
