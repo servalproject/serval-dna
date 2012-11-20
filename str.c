@@ -85,7 +85,7 @@ char *str_toupper_inplace(char *str)
   return str;
 }
 
-int str_startswith(char *str, const char *substring, char **afterp)
+int str_startswith(const char *str, const char *substring, const char **afterp)
 {
   while (*substring && *substring == *str)
     ++substring, ++str;
@@ -96,10 +96,32 @@ int str_startswith(char *str, const char *substring, char **afterp)
   return 1;
 }
 
-int strcase_startswith(char *str, const char *substring, char **afterp)
+int strn_startswith(const char *str, size_t len, const char *substring, const char **afterp)
+{
+  while (len && *substring && *substring == *str)
+    --len, ++substring, ++str;
+  if (*substring)
+    return 0;
+  if (afterp)
+    *afterp = str;
+  return 1;
+}
+
+int strcase_startswith(const char *str, const char *substring, const char **afterp)
 {
   while (*substring && *str && toupper(*substring) == toupper(*str))
     ++substring, ++str;
+  if (*substring)
+    return 0;
+  if (afterp)
+    *afterp = str;
+  return 1;
+}
+
+int strncase_startswith(const char *str, size_t len, const char *substring, const char **afterp)
+{
+  while (len && *substring && toupper(*substring) == toupper(*str))
+    --len, ++substring, ++str;
   if (*substring)
     return 0;
   if (afterp)
@@ -139,7 +161,7 @@ char *str_str(char *haystack, const char *needle, int haystack_len)
   return NULL;
 }
 
-int str_to_ll_scaled(const char *str, int base, long long *result, char **afterp)
+int str_to_ll_scaled(const char *str, int base, long long *result, const char **afterp)
 {
   if (!(isdigit(*str) || *str == '-' || *str == '+'))
     return 0;

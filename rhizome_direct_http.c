@@ -593,7 +593,7 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
   char *content = NULL;
   int contentlen = 0;
   char *p;
-  if ((str_startswith(verb, "GET", &p) || str_startswith(verb, "POST", &p)) && isspace(*p)) {
+  if ((str_startswith(verb, "GET", (const char **)&p) || str_startswith(verb, "POST", (const char **)&p)) && isspace(*p)) {
     *p++ = '\0';
     path = p;
     while (p < request_end && !isspace(*p))
@@ -602,9 +602,9 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
       pathlen = p - path;
       *p++ = '\0';
       proto = p;
-      if ( str_startswith(p, "HTTP/1.", &p)
-	&& (str_startswith(p, "0", &p) || str_startswith(p, "1", &p))
-	&& (str_startswith(p, "\r\n", &headers) || str_startswith(p, "\n", &headers))
+      if ( str_startswith(p, "HTTP/1.", (const char **)&p)
+	&& (str_startswith(p, "0", (const char **)&p) || str_startswith(p, "1", (const char **)&p))
+	&& (str_startswith(p, "\r\n", (const char **)&headers) || str_startswith(p, "\n", (const char **)&headers))
       ) {
 	*p = '\0';
 	char *eoh = str_str(headers, "\r\n\r\n", request_end - p);

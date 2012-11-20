@@ -1140,7 +1140,7 @@ int unpack_http_response(char *response, struct http_response_parts *parts)
   parts->content_length = -1;
   parts->content_start = NULL;
   char *p = NULL;
-  if (!str_startswith(response, "HTTP/1.0 ", &p)) {
+  if (!str_startswith(response, "HTTP/1.0 ", (const char **)&p)) {
     if (debug&DEBUG_RHIZOME_RX)
       DEBUGF("Malformed HTTP reply: missing HTTP/1.0 preamble");
     return -1;
@@ -1160,7 +1160,7 @@ int unpack_http_response(char *response, struct http_response_parts *parts)
   *p++ = '\0';
   // Iterate over header lines until the last blank line.
   while (!(p[0] == '\n' || (p[0] == '\r' && p[1] == '\n'))) {
-    if (strcase_startswith(p, "Content-Length:", &p)) {
+    if (strcase_startswith(p, "Content-Length:", (const char **)&p)) {
       while (*p == ' ')
 	++p;
       parts->content_length = 0;

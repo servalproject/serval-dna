@@ -53,7 +53,7 @@ int main(int argc, char **argv)
   const char *label = "";
   int i;
   for (i = 1; i < argc; ++i) {
-    char *arg = argv[i];
+    const char *arg = argv[i];
     if (str_startswith(arg, "--size=", &arg)) {
       if (!str_to_ll_scaled(arg, 10, &size, NULL) || size < 0)
 	fatal("illegal --size= argument: %s", arg);

@@ -82,9 +82,9 @@ size_t str_fromprint(unsigned char *dst, const char *src);
 #define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca((dstlen) == -1 ? toprint_len((const char *)(buf),(len), "``") + 1 : (dstlen)), (dstlen), (const char *)(buf), (len), "``")
 #define alloca_str_toprint(str)  toprint_str((char *)alloca(toprint_str_len(str, "``") + 1), -1, (str), "``")
 
-/* Check if a given string starts with a given sub-string.  If so, return 1 and, if afterp is not
- * NULL, set *afterp to point to the character immediately following the substring.  Otherwise
- * return 0.
+/* Check if a given nul-terminated string 'str' starts with a given nul-terminated sub-string.  If
+ * so, return 1 and, if afterp is not NULL, set *afterp to point to the character in 'str'
+ * immediately following the substring.  Otherwise return 0.
  *
  * This function is used to parse HTTP headers and responses, which are typically not
  * nul-terminated, but are held in a buffer which has an associated length.  To avoid this function
@@ -95,11 +95,25 @@ size_t str_fromprint(unsigned char *dst, const char *src);
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int str_startswith(char *str, const char *substring, char **afterp);
+int str_startswith(const char *str, const char *substring, const char **afterp);
+
+/* Check if a given string 'str' of a given length 'len' starts with a given nul-terminated
+ * sub-string.  If so, return 1 and, if afterp is not NULL, set *afterp to point to the character
+ * immediately following the substring.  Otherwise return 0.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int strn_startswith(const char *str, size_t len, const char *substring, const char **afterp);
 
 /* Case-insensitive form of str_startswith().
+ * @author Andrew Bettison <andrew@servalproject.com>
  */
-int strcase_startswith(char *str, const char *substring, char **afterp);
+int strcase_startswith(const char *str, const char *substring, const char **afterp);
+
+/* Case-insensitive form of strn_startswith().
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int strncase_startswith(const char *str, size_t len, const char *substring, const char **afterp);
 
 /* like strstr(3), but doesn't depend on null termination.
  *
@@ -122,7 +136,7 @@ char *str_str(char *haystack, const char *needle, int haystack_len);
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int str_to_ll_scaled(const char *str, int base, long long *result, char **afterp);
+int str_to_ll_scaled(const char *str, int base, long long *result, const char **afterp);
 
 
 int parse_argv(char *cmdline, char delim, char **argv, int max_argv);

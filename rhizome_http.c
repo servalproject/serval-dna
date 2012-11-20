@@ -501,10 +501,10 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
   // Parse the HTTP "GET" line.
   char *path = NULL;
   size_t pathlen = 0;
-  if (str_startswith(r->request, "POST ", &path)) {
+  if (str_startswith(r->request, "POST ", (const char **)&path)) {
     return rhizome_direct_parse_http_request(r);
-  } else if (str_startswith(r->request, "GET ", &path)) {
-    char *p;
+  } else if (str_startswith(r->request, "GET ", (const char **)&path)) {
+    const char *p;
     // This loop is guaranteed to terminate before the end of the buffer, because we know that the
     // buffer contains at least "\n\n" and maybe "\r\n\r\n" at the end of the header block.
     for (p = path; !isspace(*p); ++p)
@@ -533,7 +533,7 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
     } else if (strcmp(path, "/rhizome/bars") == 0) {
       /* Return the list of known BARs */
       rhizome_server_sql_query_http_response(r, "bar", "manifests", "from manifests", 32, 0);
-    } else if (str_startswith(path, "/rhizome/file/", &id)) {
+    } else if (str_startswith(path, "/rhizome/file/", (const char **)&id)) {
       /* Stream the specified payload */
       if (!rhizome_str_is_file_hash(id)) {
 	rhizome_server_simple_http_response(r, 400, "<html><h1>Invalid payload ID</h1></html>\r\n");
@@ -553,10 +553,10 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
 	  r->request_type |= RHIZOME_HTTP_REQUEST_BLOB;
 	}
       }
-    } else if (str_startswith(path, "/rhizome/manifest/", &id)) {
+    } else if (str_startswith(path, "/rhizome/manifest/", (const char **)&id)) {
       // TODO: Stream the specified manifest
       rhizome_server_simple_http_response(r, 500, "<html><h1>Not implemented</h1></html>\r\n");
-    } else if (str_startswith(path, "/rhizome/manifestbyprefix/", &id)) {
+    } else if (str_startswith(path, "/rhizome/manifestbyprefix/", (const char **)&id)) {
       /* Manifest by prefix */
       char bid_low[RHIZOME_MANIFEST_ID_STRLEN+1];
       char bid_high[RHIZOME_MANIFEST_ID_STRLEN+1];
