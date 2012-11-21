@@ -447,6 +447,8 @@ time_ms_t overlay_time_until_next_tick();
 
 int overlay_add_selfannouncement();
 int overlay_frame_append_payload(overlay_interface *interface, struct overlay_frame *p, struct subscriber *next_hop, struct overlay_buffer *b);
+int overlay_packet_init_header(struct outgoing_packet *packet);
+int overlay_packet_append_header(struct overlay_buffer *buff, int type, int ttl, int approx_size);
 int overlay_interface_args(const char *arg);
 int overlay_rhizome_add_advertisements(int interface_number,struct overlay_buffer *e);
 int overlay_add_local_identity(unsigned char *s);
@@ -590,8 +592,6 @@ int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
 int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 		     struct sockaddr_un *recvaddr,int recvaddlen);
 int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const unsigned char *resolved_sid, const char *uri, const char *did, const char *name);
-
-int dump_payload(struct overlay_frame *p, char *message);
 
 int urandombytes(unsigned char *x,unsigned long long xlen);
 

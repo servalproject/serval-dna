@@ -153,10 +153,8 @@ schedule(&_sched_##X); }
 
 #undef SCHEDULE
   
-  while(1) {
-    /* Check for activitiy and respond to it */
-    fd_poll();
-  }
+  /* Check for activitiy and respond to it */
+  while(fd_poll());
 
   return 0;
 }

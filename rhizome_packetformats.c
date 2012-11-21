@@ -157,11 +157,8 @@ int overlay_rhizome_add_advertisements(int interface_number, struct overlay_buff
 
   if (slots<1) { RETURN(WHY("No room for node advertisements")); }
 
-  if (ob_append_byte(e,OF_TYPE_RHIZOME_ADVERT))
+  if (overlay_packet_append_header(e, OF_TYPE_RHIZOME_ADVERT, 1, (1+11+1+2+RHIZOME_BAR_BYTES)))
     RETURN(WHY("could not add rhizome bundle advertisement header"));
-  ob_append_byte(e, 1); /* TTL (1 byte) */
-
-  ob_append_rfs(e,1+11+1+2+RHIZOME_BAR_BYTES/* RFS */);
 
   /* Stuff in dummy address fields (11 bytes) */
   struct broadcast broadcast_id;

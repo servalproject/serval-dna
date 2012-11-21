@@ -121,12 +121,9 @@ int overlay_route_add_advertisements(overlay_interface *interface, struct overla
   
   ob_checkpoint(e);
   
-  if (ob_append_byte(e,OF_TYPE_NODEANNOUNCE))
+  // assume we might fill the whole packet
+  if (overlay_packet_append_header(e, OF_TYPE_NODEANNOUNCE, 1, e->sizeLimit - e->position))
     return WHY("could not add node advertisement header");
-  ob_append_byte(e,1); /* TTL */
-  
-  // assume we might fill the packet
-  ob_append_rfs(e, e->sizeLimit - e->position);
 
   /* Add address fields */
   struct broadcast broadcast;

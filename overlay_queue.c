@@ -1,3 +1,22 @@
+/*
+ Copyright (C) 2012 Serval Project Inc
+ 
+ This program is free software; you can redistribute it and/or
+ modify it under the terms of the GNU General Public License
+ as published by the Free Software Foundation; either version 2
+ of the License, or (at your option) any later version.
+ 
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ 
+ You should have received a copy of the GNU General Public License
+ along with this program; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ */
+
+
 #include "serval.h"
 #include "overlay_buffer.h"
 #include "overlay_packet.h"
@@ -31,9 +50,6 @@ typedef struct overlay_txqueue {
 } overlay_txqueue;
 
 overlay_txqueue overlay_tx[OQ_MAX];
-
-unsigned char magic_header[]={/* Magic */ 'O',0x10,
-  /* Version */ 0x00,0x01};
 
 struct outgoing_packet{
   overlay_interface *interface;
@@ -215,6 +231,23 @@ int overlay_payload_enqueue(struct overlay_frame *p)
   return 0;
 }
 
+static void overlay_add_sender_header(struct overlay_buffer *buff, overlay_interface *interface)
+{
+  // add a badly formatted dummy self announce payload to tell people we sent this.
+  overlay_packet_append_header(buff, OF_TYPE_SELFANNOUNCE, 1, SID_SIZE + 2);
+  
+  /* from me, to me, via me 
+   (it's shorter than an actual broadcast, 
+   and receivers wont try to process it 
+   since its not going to have a payload body anyway) */
+  overlay_address_append_self(interface, buff);
+  overlay_address_set_sender(my_subscriber);
+  ob_append_byte(buff, OA_CODE_PREVIOUS);
+  ob_append_byte(buff, OA_CODE_PREVIOUS);
+  
+  ob_patch_rfs(buff, COMPUTE_RFS_LENGTH);
+}
+
 static void
 overlay_init_packet(struct outgoing_packet *packet, overlay_interface *interface, int tick){
   packet->interface = interface;
@@ -223,7 +256,8 @@ overlay_init_packet(struct outgoing_packet *packet, overlay_interface *interface
   packet->buffer=ob_new();
   packet->add_advertisements=1;
   ob_limitsize(packet->buffer, packet->interface->mtu);
-  ob_append_bytes(packet->buffer,magic_header,4);
+  
+  overlay_packet_init_header(packet);
   
   overlay_address_clear();
   
@@ -237,21 +271,7 @@ overlay_init_packet(struct outgoing_packet *packet, overlay_interface *interface
     overlay_route_add_advertisements(packet->interface, packet->buffer);
     
   }else{
-    // add a badly formatted dummy self announce payload to tell people we sent this.
-    ob_append_byte(packet->buffer, OF_TYPE_SELFANNOUNCE);
-    ob_append_byte(packet->buffer, 1);
-    ob_append_rfs(packet->buffer, SID_SIZE + 2);
-    
-    /* from me, to me, via me 
-     (it's shorter than an actual broadcast, 
-     and receivers wont try to process it 
-     since its not going to have a payload body anyway) */
-    overlay_address_append_self(interface, packet->buffer);
-    overlay_address_set_sender(my_subscriber);
-    ob_append_byte(packet->buffer, OA_CODE_PREVIOUS);
-    ob_append_byte(packet->buffer, OA_CODE_PREVIOUS);
-    
-    ob_patch_rfs(packet->buffer, COMPUTE_RFS_LENGTH);
+    overlay_add_sender_header(packet->buffer, interface);
   }
 }
 

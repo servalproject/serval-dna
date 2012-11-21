@@ -373,24 +373,16 @@ int overlay_add_selfannouncement(int interface,struct overlay_buffer *b)
 
   time_ms_t now = gettime_ms();
 
-  /* Header byte */
-  if (ob_append_byte(b, OF_TYPE_SELFANNOUNCE))
-    return WHY("Could not add self-announcement header");
-
-  /* A TTL for this frame.
-     XXX - BATMAN uses various TTLs, but I think that it may just be better to have all TTL=1,
-     and have the onward nodes selectively choose which nodes to on-announce.  If we prioritise
-     newly arrived nodes somewhat (or at least reserve some slots for them), then we can still
-     get the good news travels fast property of BATMAN, but without having to flood in the formal
-     sense. */
-  if (ob_append_byte(b,1))
-    return WHY("Could not add TTL to self-announcement");
-  
+  /* XXX - BATMAN uses various TTLs, but I think that it may just be better to have all TTL=1,
+   and have the onward nodes selectively choose which nodes to on-announce.  If we prioritise
+   newly arrived nodes somewhat (or at least reserve some slots for them), then we can still
+   get the good news travels fast property of BATMAN, but without having to flood in the formal
+   sense. */
   /* Add space for Remaining Frame Size field.  This will always be a single byte
-     for self-announcments as they are always <256 bytes. */
-  if (ob_append_rfs(b,1+8+1+SID_SIZE+4+4+1))
-    return WHY("Could not add RFS for self-announcement frame");
-
+   for self-announcments as they are always <256 bytes. */
+  if (overlay_packet_append_header(b, OF_TYPE_SELFANNOUNCE, 1, 1+8+1+SID_SIZE+4+4+1))
+    return WHY("Could not add self-announcement header");
+  
   /* Add next-hop address.  Always link-local broadcast for self-announcements */
   struct broadcast broadcast_id;
   overlay_broadcast_generate_address(&broadcast_id);
