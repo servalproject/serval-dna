@@ -22,13 +22,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_buffer.h"
 #include "overlay_packet.h"
 
-unsigned char magic_header[]={/* Magic */ 'O',0x10,
-  /* Version */ 0x00,0x01};
-
-int overlay_packet_init_header(struct outgoing_packet *packet){
-  return ob_append_bytes(packet->buffer,magic_header,4);
-}
-
 int overlay_packet_append_header(struct overlay_buffer *buff, int type, int ttl, int approx_size){
   if (ob_append_byte(buff, type)) return -1;
   if (ob_append_byte(buff, ttl)) return -1;

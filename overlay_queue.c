@@ -233,7 +233,7 @@ int overlay_payload_enqueue(struct overlay_frame *p)
 
 static void overlay_add_sender_header(struct overlay_buffer *buff, overlay_interface *interface)
 {
-  // add a badly formatted dummy self announce payload to tell people we sent this.
+  // add a badly addressed dummy self announce payload to tell people we sent this.
   overlay_packet_append_header(buff, OF_TYPE_SELFANNOUNCE, 1, SID_SIZE + 2);
   
   /* from me, to me, via me 
@@ -241,10 +241,10 @@ static void overlay_add_sender_header(struct overlay_buffer *buff, overlay_inter
    and receivers wont try to process it 
    since its not going to have a payload body anyway) */
   overlay_address_append_self(interface, buff);
+  overlay_address_append(buff, my_subscriber);
+  overlay_address_append(buff, my_subscriber);
   overlay_address_set_sender(my_subscriber);
-  ob_append_byte(buff, OA_CODE_PREVIOUS);
-  ob_append_byte(buff, OA_CODE_PREVIOUS);
-  
+  // no payload body..
   ob_patch_rfs(buff, COMPUTE_RFS_LENGTH);
 }
 
@@ -257,7 +257,7 @@ overlay_init_packet(struct outgoing_packet *packet, overlay_interface *interface
   packet->add_advertisements=1;
   ob_limitsize(packet->buffer, packet->interface->mtu);
   
-  overlay_packet_init_header(packet);
+  overlay_packet_init_header(packet->buffer);
   
   overlay_address_clear();
   

@@ -25,6 +25,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 struct sockaddr_in loopback;
 
+unsigned char magic_header[]={/* Magic */ 'O',0x10,
+  /* Version */ 0x00,0x01};
+
+int overlay_packet_init_header(struct overlay_buffer *buff){
+  return ob_append_bytes(buff,magic_header,4);
+}
+
+
 // a frame destined for one of our local addresses, or broadcast, has arrived. Process it.
 int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, struct overlay_frame *f, struct decode_context *context){
   int id = (interface - overlay_interfaces);
@@ -107,8 +115,7 @@ int overlay_forward_payload(struct overlay_frame *f){
 }
 
 int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,
-		    unsigned char *transaction_id,int recvttl,
-		    struct sockaddr *recvaddr, size_t recvaddrlen, int parseP)
+		    int recvttl, struct sockaddr *recvaddr, size_t recvaddrlen)
 {
   /* 
      This function decodes overlay packets which have been assembled for delivery overy IP networks.
@@ -167,11 +174,17 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     .please_explain=NULL,
   };
   
+  if (len<HEADERFIELDS_LEN)
+    return WHY("Packet is too short");
+  
   time_ms_t now = gettime_ms();
   struct overlay_buffer *b = ob_static(packet, len);
   ob_limitsize(b, len);
-  // skip magic bytes and version as they have already been parsed
-  b->position=4;
+  
+  
+  if (ob_get(b)!=magic_header[0] || ob_get(b)!=magic_header[1]
+      || ob_get(b)!=magic_header[2] || ob_get(b)!=magic_header[3])
+    return WHY("Packet type not recognised.");
   
   bzero(&f,sizeof(struct overlay_frame));
   

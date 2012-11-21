@@ -331,7 +331,8 @@ overlay_interface_read_any(struct sched_ent *alarm){
       DEBUGF("Received %d bytes from %s on interface %s (ANY)",plen, 
 	     inet_ntoa(src),
 	     interface->name);
-    if (packetOk(interface,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
+    
+    if (packetOkOverlay(interface, packet, plen, recvttl, &src_addr, addrlen)) {
       WHY("Malformed packet");
     }
   }
@@ -593,7 +594,7 @@ static void overlay_interface_poll(struct sched_ent *alarm)
 	     inet_ntoa(src),
 	     interface->name);
     }
-    if (packetOk(interface,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
+    if (packetOkOverlay(interface, packet, plen, recvttl, &src_addr, addrlen)) {
       WHY("Malformed packet");
       // Do we really want to attempt to parse it again?
       //DEBUG_packet_visualise("Malformed packet", packet,plen);
@@ -616,7 +617,6 @@ void overlay_dummy_poll(struct sched_ent *alarm)
   int plen=0;
   struct sockaddr src_addr;
   size_t addrlen = sizeof(src_addr);
-  unsigned char transaction_id[8];
   time_ms_t now = gettime_ms();
 
   /* Read from dummy interface file */
@@ -651,17 +651,10 @@ void overlay_dummy_poll(struct sched_ent *alarm)
 	    plen = -1;
 	  if (debug&DEBUG_PACKETRX)
 	    DEBUG_packet_visualise("Read from dummy interface", &packet[128], plen);
-	  bzero(&transaction_id[0],8);
 	  bzero(&src_addr,sizeof(src_addr));
-	  if (plen >= 4) {
-	    if (packet[0] == 0x01 && packet[1] == 0 && packet[2] == 0 && packet[3] == 0) {
-	      if (packetOk(interface,&packet[128],plen,transaction_id, -1 /* fake TTL */, &src_addr,addrlen,1) == -1)
-		WARN("Unsupported packet from dummy interface");
-	    } else {
-	      WARNF("Unsupported packet version from dummy interface: %02x %02x %02x %02x", packet[0], packet[1], packet[2], packet[3]);
-	    }
-	  } else {
-	    WARNF("Invalid packet from dummy interface: plen=%lld", (long long) plen);
+	  
+	  if (packetOkOverlay(interface, &packet[128], plen, -1, &src_addr, addrlen)) {
+	    WARN("Unsupported packet from dummy interface");
 	  }
 	}
 	else

@@ -330,7 +330,6 @@ struct sched_ent{
 
 struct overlay_buffer;
 struct overlay_frame;
-
 #define STRUCT_SCHED_ENT_UNUSED ((struct sched_ent){NULL, NULL, NULL, NULL, {-1, 0, 0}, 0LL, 0LL, NULL, -1})
 
 extern int overlayMode;
@@ -427,14 +426,9 @@ void serverCleanUp();
 int isTransactionInCache(unsigned char *transaction_id);
 void insertTransactionInCache(unsigned char *transaction_id);
 
-int packetOk(struct overlay_interface *interface,unsigned char *packet, size_t len,
-	     unsigned char *transaction_id, int recvttl,
-	     struct sockaddr *recvaddr, size_t recvaddrlen,int parseP);
-
 int overlay_forward_payload(struct overlay_frame *f);
 int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,
-		    unsigned char *transaction_id,int recvttl,
-		    struct sockaddr *recvaddr, size_t recvaddrlen,int parseP);
+		    int recvttl, struct sockaddr *recvaddr, size_t recvaddrlen);
 
 int overlay_frame_process(struct overlay_interface *interface, struct overlay_frame *f);
 int overlay_frame_resolve_addresses(struct overlay_frame *f);
@@ -447,7 +441,7 @@ time_ms_t overlay_time_until_next_tick();
 
 int overlay_add_selfannouncement();
 int overlay_frame_append_payload(overlay_interface *interface, struct overlay_frame *p, struct subscriber *next_hop, struct overlay_buffer *b);
-int overlay_packet_init_header(struct outgoing_packet *packet);
+int overlay_packet_init_header(struct overlay_buffer *buff);
 int overlay_packet_append_header(struct overlay_buffer *buff, int type, int ttl, int approx_size);
 int overlay_interface_args(const char *arg);
 int overlay_rhizome_add_advertisements(int interface_number,struct overlay_buffer *e);
