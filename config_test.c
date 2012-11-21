@@ -4,6 +4,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <assert.h>
 
 #include "str.h"
 #include "strbuf_helpers.h"
@@ -18,58 +19,115 @@
 struct config_main config;
 struct config_main default_config;
 
-const char *find_keyend(const char *const fullkey, const char *const fullkeyend)
+const char *find_keyend(const char *const key, const char *const fullkeyend)
 {
-  const char *s;
-  for (s = fullkey; s < fullkeyend && (isalnum(*s) || *s == '_'); ++s)
-    ;
-  if (s == fullkey || (s < fullkeyend && *s != '.'))
+  const char *s = key;
+  if (s < fullkeyend && (isalpha(*s) || *s == '_'))
+    ++s;
+  while (s < fullkeyend && (isalnum(*s) || *s == '_'))
+    ++s;
+  if (s == key || (s < fullkeyend && *s != '.'))
     return NULL;
   return s;
 }
 
-char *strn_malloc(const char *str, size_t len)
+void *emalloc(size_t len)
 {
   char *new = malloc(len + 1);
   if (!new) {
-    WHYF_perror("malloc(%lu)", (long)len + 1);
+    WHYF_perror("malloc(%lu)", (long)len);
     return NULL;
   }
-  strncpy(new, str, len);
-  new[len] = '\0';
   return new;
 }
 
-char *str_malloc(const char *str)
+char *strn_emalloc(const char *str, size_t len)
 {
-  return strn_malloc(str, strlen(str));
+  char *new = emalloc(len + 1);
+  if (new) {
+    strncpy(new, str, len);
+    new[len] = '\0';
+  }
+  return new;
 }
 
-int make_child(struct config_node **const parentp, const char *const key, size_t keylen)
+char *str_emalloc(const char *str)
 {
-  // TODO: search using binary chop and insert in key lexical order.
-  int i;
+  return strn_emalloc(str, strlen(str));
+}
+
+int make_child(struct config_node **const parentp, const char *const fullkey, const char *const key, const char *const keyend)
+{
+  size_t keylen = keyend - key;
+  //DEBUGF("%s key=%s", __FUNCTION__, alloca_toprint(-1, key, keylen));
+  int i = 0;
   struct config_node *child;
-  for (i = 0; i < (*parentp)->nodc; ++i) {
-    child = (*parentp)->nodv[i];
-    if (strncmp(child->key, key, keylen) == 0 && child->key[keylen] == '\0')
-      return i;
+  if ((*parentp)->nodc) {
+    // Binary search for matching child.
+    int m = 0;
+    int n = (*parentp)->nodc - 1;
+    int c;
+    do {
+      i = (m + n) / 2;
+      child = (*parentp)->nodv[i];
+      c = strncmp(key, child->key, keylen);
+      if (c == 0 && child->key[keylen])
+	c = -1;
+      //DEBUGF("   m=%d n=%d i=%d child->key=%s c=%d", m, n, i, alloca_str_toprint(child->key), c);
+      if (c == 0) {
+	//DEBUGF("   found i=%d", i);
+	return i;
+      }
+      if (c > 0)
+	m = ++i;
+      else
+	n = i - 1;
+    } while (m <= n);
   }
-  child = (struct config_node *) calloc(1, sizeof *child);
-  if (child == NULL) {
-    WHYF_perror("calloc(1, %u)", sizeof(struct config_node));
+  // At this point, i is the index where a new child should be inserted.
+  assert(i >= 0);
+  assert(i <= (*parentp)->nodc);
+  child = emalloc(sizeof *child);
+  if (child == NULL)
     return -1;
-  }
-  i = (*parentp)->nodc++;
+  memset(child, sizeof *child, 0);
+  ++(*parentp)->nodc;
   if ((*parentp)->nodc > NELS((*parentp)->nodv))
     *parentp = realloc(*parentp, sizeof(**parentp) + sizeof((*parentp)->nodv[0]) * ((*parentp)->nodc - NELS((*parentp)->nodv)));
+  int j;
+  for (j = (*parentp)->nodc - 1; j > i; --j)
+    (*parentp)->nodv[j] = (*parentp)->nodv[j-1];
   (*parentp)->nodv[i] = child;
+  if (!(child->fullkey = strn_emalloc(fullkey, keyend - fullkey))) {
+    free(child);
+    return -1;
+  }
+  child->key = child->fullkey + (key - fullkey);
+  //DEBUGF("   insert i=%d", i);
   return i;
+}
+
+void free_config_node(struct config_node *node)
+{
+  while (node->nodc)
+    free_config_node(node->nodv[--node->nodc]);
+  if (node->fullkey) {
+    free((char *)node->fullkey);
+    node->fullkey = node->key = NULL;
+  }
+  if (node->text) {
+    free((char *)node->text);
+    node->text = NULL;
+  }
+  free(node);
 }
 
 struct config_node *parse_config(const char *source, const char *buf, size_t len)
 {
-  struct config_node *root = calloc(1, sizeof(struct config_node));
+  struct config_node *root = emalloc(sizeof(struct config_node));
+  if (root == NULL)
+    return NULL;
+  memset(root, sizeof *root, 0);
   const char *end = buf + len;
   const char *line = buf;
   const char *nextline;
@@ -93,64 +151,43 @@ struct config_node *parse_config(const char *source, const char *buf, size_t len
       WARNF("%s:%u: malformed configuration line -- ignored", source, lineno);
       continue;
     }
-    struct config_node **parentp = &root;
+    struct config_node **nodep = &root;
     const char *fullkey = line;
     const char *fullkeyend = p;
     const char *key = fullkey;
     const char *keyend = NULL;
-    int nodi;
-    struct config_node *node = NULL;
-    while (key < fullkeyend && (keyend = find_keyend(key, fullkeyend)) && (nodi = make_child(parentp, key, keyend - key)) != -1) {
-      node = (*parentp)->nodv[nodi];
-      if (node->text) {
-	WARNF("%s:%u: duplicate configuration option %s -- ignored (original is at %s:%u)",
-	    source, lineno, alloca_toprint(-1, fullkey, fullkeyend - fullkey),
-	    node->source, node->line_number
-	  );
-	break;
-      }
-      if (node->line_number == 0) {
-	node->source = source;
-	node->line_number = lineno;
-      }
-      if (!node->fullkey) {
-	if (!(node->fullkey = strn_malloc(fullkey, keyend - fullkey)))
-	  break; // out of memory
-	node->key = node->fullkey + (key - fullkey);
-      }
-      node->text = NULL;
+    int nodi = -1;
+    while (key <= fullkeyend && (keyend = find_keyend(key, fullkeyend)) && (nodi = make_child(nodep, fullkey, key, keyend)) != -1) {
       key = keyend + 1;
-      parentp = &(*parentp)->nodv[nodi];
+      nodep = &(*nodep)->nodv[nodi];
     }
     if (keyend == NULL) {
       WARNF("%s:%u: malformed configuration option %s -- ignored",
 	  source, lineno, alloca_toprint(-1, fullkey, fullkeyend - fullkey)
 	);
-      break;
+      continue;
     }
     if (nodi == -1)
-      break; // out of memory
+      goto error; // out of memory
+    struct config_node *node = *nodep;
+    if (node->text) {
+      WARNF("%s:%u: duplicate configuration option %s -- ignored (original is at %s:%u)",
+	  source, lineno, alloca_toprint(-1, fullkey, fullkeyend - fullkey),
+	  node->source, node->line_number
+	);
+      continue;
+    }
     for (++p; p < lend && isspace(*p); ++p)
       ;
-    if (!(node->text = strn_malloc(p, lend - p)))
+    if (!(node->text = strn_emalloc(p, lend - p)))
       break; // out of memory
+    node->source = source;
+    node->line_number = lineno;
   }
   return root;
-}
-
-void free_config_node(struct config_node *node)
-{
-  while (node->nodc)
-    free_config_node(node->nodv[--node->nodc]);
-  if (node->fullkey) {
-    free((char *)node->fullkey);
-    node->fullkey = node->key = NULL;
-  }
-  if (node->text) {
-    free((char *)node->text);
-    node->text = NULL;
-  }
-  free(node);
+error:
+  free_config_node(root);
+  return NULL;
 }
 
 void dump_config_node(const struct config_node *node, int indent)
@@ -180,75 +217,93 @@ int get_child(const struct config_node *parent, const char *key)
   return -1;
 }
 
-void invalid_text(const struct config_node *node)
+void invalid_text(const struct config_node *node, const char *reason)
 {
-  WARNF("%s:%u: invalid configuration option %s=%s -- ignored",
+  WARNF("%s:%u: ignoring configuration option %s with invalid value %s%s%s",
       node->source, node->line_number,
       alloca_str_toprint(node->fullkey),
-      alloca_str_toprint(node->text)
+      alloca_str_toprint(node->text),
+      reason && reason[0] ? " -- " : "", reason ? reason : ""
     );
+}
+
+void ignore_node(const struct config_node *node, const char *msg)
+{
+  WARNF("%s:%u: ignoring configuration option %s%s%s",
+      node->source, node->line_number, alloca_str_toprint(node->fullkey),
+      msg && msg[0] ? " -- " : "", msg ? msg : ""
+    );
+}
+
+void ignore_tree(const struct config_node *node, const char *msg);
+
+void ignore_children(const struct config_node *parent, const char *msg)
+{
+  int i;
+  for (i = 0; i < parent->nodc; ++i)
+    ignore_tree(parent->nodv[i], msg);
+}
+
+void ignore_tree(const struct config_node *node, const char *msg)
+{
+  if (node->text)
+    ignore_node(node, msg);
+  ignore_children(node, msg);
 }
 
 void unsupported_node(const struct config_node *node)
 {
-  WARNF("%s:%u: unsupported configuration option %s -- ignored",
-      node->source, node->line_number, alloca_str_toprint(node->fullkey)
-    );
+  ignore_node(node, "not supported");
+}
+
+void spurious_children(const struct config_node *parent)
+{
+  ignore_children(parent, "spurious");
 }
 
 void unsupported_children(const struct config_node *parent)
 {
-  int i;
-  for (i = 0; i < parent->nodc; ++i)
-    unsupported_tree(parent->nodv[i]);
+  ignore_children(parent, "not supported");
 }
 
 void unsupported_tree(const struct config_node *node)
 {
-  if (node->text)
-    unsupported_node(node);
-  unsupported_children(node);
-}
-
-void unused_config_node(const struct config_node *node)
-{
-  if (node->text)
-    unsupported_node(node);
-  int i;
-  for (i = 0; i < node->nodc; ++i)
-    unused_config_node(node->nodv[i]);
+  ignore_tree(node, "not supported");
 }
 
 int opt_boolean(int *booleanp, const struct config_node *node)
 {
   unsupported_children(node);
-  if (node->text) {
-    if (!strcasecmp(node->text, "true") || !strcasecmp(node->text, "yes") || !strcasecmp(node->text, "on") || !strcasecmp(node->text, "1"))
-      return (*booleanp = 1);
-    else if (!strcasecmp(node->text, "false") || !strcasecmp(node->text, "no") || !strcasecmp(node->text, "off") || !strcasecmp(node->text, "0"))
-      return (*booleanp = 0);
-    else
-      invalid_text(node);
+  if (!node->text)
+    return 1;
+  if (!strcasecmp(node->text, "true") || !strcasecmp(node->text, "yes") || !strcasecmp(node->text, "on") || !strcasecmp(node->text, "1")) {
+    *booleanp = 1;
+    return 0;
   }
-  return -1;
+  else if (!strcasecmp(node->text, "false") || !strcasecmp(node->text, "no") || !strcasecmp(node->text, "off") || !strcasecmp(node->text, "0")) {
+    *booleanp = 0;
+    return 0;
+  }
+  invalid_text(node, "expecting true|yes|on|1|false|no|off|0");
+  return 1;
 }
 
 int opt_absolute_path(const char **pathp, const struct config_node *node)
 {
-  DEBUGF("%s", __FUNCTION__);
-  dump_config_node(node, 1);
+  //DEBUGF("%s", __FUNCTION__);
+  //dump_config_node(node, 1);
   unsupported_children(node);
-  if (node->text) {
-    if (node->text[0] != '/')
-      invalid_text(node);
-    else {
-      if (*pathp)
-	free((char *) *pathp);
-      if ((*pathp = str_malloc(node->text)))
-	return 0;
-    }
+  if (!node->text)
+    return 1;
+  if (node->text[0] != '/') {
+    invalid_text(node, "must start with '/'");
+    return 1;
   }
-  return -1;
+  if (*pathp)
+    free((char *) *pathp); // TODO: this should be unnecessary
+  if ((*pathp = str_emalloc(node->text)) == NULL)
+    return -1;
+  return 0;
 }
 
 debugflags_t debugFlagMask(const char *flagname)
@@ -285,10 +340,10 @@ debugflags_t debugFlagMask(const char *flagname)
   return 0;
 }
 
-void opt_debugflags(debugflags_t *flagsp, const struct config_node *node)
+int opt_debugflags(debugflags_t *flagsp, const struct config_node *node)
 {
-  DEBUGF("%s", __FUNCTION__);
-  dump_config_node(node, 1);
+  //DEBUGF("%s", __FUNCTION__);
+  //dump_config_node(node, 1);
   if (node->text)
     unsupported_tree(node);
   debugflags_t setmask = 0;
@@ -322,6 +377,90 @@ void opt_debugflags(debugflags_t *flagsp, const struct config_node *node)
     *flagsp = 0;
   *flagsp &= ~clearmask;
   *flagsp |= setmask;
+  return 0;
+}
+
+int opt_protocol(const char **protocolp, const struct config_node *node)
+{
+}
+
+int opt_rhizome_peer(struct config_rhizomepeer *rpeer, const struct config_node *node)
+{
+  if (!node->text)
+    return opt_config_rhizomepeer(rpeer, node);
+  spurious_children(node);
+  const char *protocol;
+  size_t protolen;
+  const char *auth;
+  if (str_is_uri(node->text)) {
+    const char *hier;
+    if (!(   str_uri_scheme(node->text, &protocol, &protolen)
+	  && str_uri_hierarchical(node->text, &hier, NULL)
+	  && str_uri_hierarchical_authority(hier, &auth, NULL))
+    ) {
+      invalid_text(node, "malformed URL");
+      return -1;
+    }
+  } else {
+    auth = node->text;
+    protocol = "http";
+    protolen = strlen(protocol);
+  }
+  const char *host;
+  size_t hostlen;
+  unsigned short port = 0;
+  if (!str_uri_authority_hostname(auth, &host, &hostlen))
+    return -1;
+  str_uri_authority_port(auth, &port);
+  if (!(rpeer->protocol = strn_emalloc(protocol, protolen)))
+    return -1;
+  if (!(rpeer->host = str_emalloc(host))) {
+    free((char *) rpeer->protocol);
+    return -1;
+  }
+  rpeer->port = port;
+  return 0;
+}
+
+int opt_host(const char **hostp, const struct config_node *node)
+{
+  //DEBUGF("%s", __FUNCTION__);
+  //dump_config_node(node, 1);
+  unsupported_children(node);
+  if (!node->text)
+    return 1;
+  if (!node->text[0]) {
+    invalid_text(node, "empty host name");
+    return 1;
+  }
+  if (*hostp)
+    free((char *) *hostp); // TODO: this should be unnecessary
+  if ((*hostp = str_emalloc(node->text)) == NULL)
+    return -1;
+  return 0;
+}
+
+int opt_port(unsigned short *portp, const struct config_node *node)
+{
+  //DEBUGF("%s", __FUNCTION__);
+  //dump_config_node(node, 1);
+  unsupported_children(node);
+  if (!node->text)
+    return 1;
+  unsigned short port = 0;
+  const char *p;
+  for (p = node->text; isdigit(*p); ++p) {
+      unsigned oport = port;
+      port = port * 10 + *p - '0';
+      if (port / 10 != oport)
+	break;
+  }
+  if (*p) {
+    invalid_text(node, "invalid port number");
+    return 1;
+  }
+  *portp = port;
+  return 1;
 }
 
 int main(int argc, char **argv)
@@ -356,6 +495,13 @@ int main(int argc, char **argv)
     DEBUGF("config.log.show_pid = %d", config.log.show_pid);
     DEBUGF("config.log.show_time = %d", config.log.show_time);
     DEBUGF("config.debug = %llx", (unsigned long long) config.debug);
+    int j;
+    for (j = 0; j < config.rhizome.direct.peer.listc; ++j) {
+      DEBUGF("config.rhizome.direct.peer.%s", config.rhizome.direct.peer.listv[j].label);
+      DEBUGF("   .protocol = %s", alloca_str_toprint(config.rhizome.direct.peer.listv[j].value.protocol));
+      DEBUGF("   .host = %s", alloca_str_toprint(config.rhizome.direct.peer.listv[j].value.host));
+      DEBUGF("   .port = %u", config.rhizome.direct.peer.listv[j].value.port);
+    }
   }
   exit(0);
 }
