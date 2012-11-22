@@ -49,13 +49,13 @@ static inline char stripe(int i)
 int main(int argc, char **argv)
 {
   argv0 = argv[0];
-  long long size = 0;
+  uint64_t size = 0;
   const char *label = "";
   int i;
   for (i = 1; i < argc; ++i) {
     const char *arg = argv[i];
     if (str_startswith(arg, "--size=", &arg)) {
-      if (!str_to_ll_scaled(arg, 10, &size, NULL) || size < 0)
+      if (!str_to_uint64_scaled(arg, 10, &size, NULL) || size < 0)
 	fatal("illegal --size= argument: %s", arg);
     }
     else if (str_startswith(arg, "--label=", &arg))
@@ -63,7 +63,7 @@ int main(int argc, char **argv)
     else
       fatal("unrecognised argument: %s", arg);
   }
-  long long offset = 0;
+  uint64_t offset = 0;
   char buf[127];
   for (i = 0; i != sizeof buf; ++i)
     buf[i] = stripe(i);

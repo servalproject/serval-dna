@@ -28,7 +28,7 @@
 #include <assert.h>
 #include <limits.h>
 
-char hexdigit[16] = {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
+const char hexdigit[16] = {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
 
 char *tohex(char *dstHex, const unsigned char *srcBinary, size_t bytes)
 {
@@ -163,24 +163,50 @@ char *str_str(char *haystack, const char *needle, int haystack_len)
   return NULL;
 }
 
-int str_to_ll_scaled(const char *str, int base, long long *result, const char **afterp)
+uint64_t scale_factor(const char *str, const char **afterp)
+{
+  uint64_t factor = 1;
+  switch (str[0]) {
+    case 'k': ++str; factor = 1000LL; break;
+    case 'K': ++str; factor = 1024LL; break;
+    case 'm': ++str; factor = 1000LL * 1000LL; break;
+    case 'M': ++str; factor = 1024LL * 1024LL; break;
+    case 'g': ++str; factor = 1000LL * 1000LL * 1000LL; break;
+    case 'G': ++str; factor = 1024LL * 1024LL * 1024LL; break;
+  }
+  if (afterp)
+    *afterp = str;
+  else if (*str)
+    factor = 0;
+  return factor;
+}
+
+int str_to_int64_scaled(const char *str, int base, int64_t *result, const char **afterp)
 {
   if (!(isdigit(*str) || *str == '-' || *str == '+'))
     return 0;
-  char *end;
-  long long value = strtoll(str, &end, base);
+  const char *end = str;
+  long long value = strtoll(str, (char**)&end, base);
   if (end == str)
     return 0;
-  switch (*end) {
-    case '\0': break;
-    case 'k': value *= 1000LL; ++end; break;
-    case 'K': value *= 1024LL; ++end; break;
-    case 'm': value *= 1000LL * 1000LL; ++end; break;
-    case 'M': value *= 1024LL * 1024LL; ++end; break;
-    case 'g': value *= 1000LL * 1000LL * 1000LL; ++end; break;
-    case 'G': value *= 1024LL * 1024LL * 1024LL; ++end; break;
-    default: return 0;
-  }
+  value *= scale_factor(end, &end);
+  if (afterp)
+    *afterp = end;
+  else if (*end)
+    return 0;
+  *result = value;
+  return 1;
+}
+
+int str_to_uint64_scaled(const char *str, int base, uint64_t *result, const char **afterp)
+{
+  if (!isdigit(*str))
+    return 0;
+  const char *end = str;
+  unsigned long long value = strtoull(str, (char**)&end, base);
+  if (end == str)
+    return 0;
+  value *= scale_factor(end, &end);
   if (afterp)
     *afterp = end;
   else if (*end)
@@ -263,27 +289,6 @@ size_t str_fromprint(unsigned char *dst, const char *src)
     }
   }
   return dst - odst;
-}
-
-int is_uri_char_scheme(char c)
-{
-  return isalpha(c) || isdigit(c) || c == '+' || c == '-' || c == '.';
-}
-
-int is_uri_char_unreserved(char c)
-{
-  return isalpha(c) || isdigit(c) || c == '-' || c == '.' || c == '_' || c == '~';
-}
-
-int is_uri_char_reserved(char c)
-{
-  switch (c) {
-    case ':': case '/': case '?': case '#': case '[': case ']': case '@':
-    case '!': case '$': case '&': case '\'': case '(': case ')':
-    case '*': case '+': case ',': case ';': case '=':
-      return 1;
-  }
-  return 0;
 }
 
 /* Return true if the string resembles a URI.

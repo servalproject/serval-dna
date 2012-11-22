@@ -466,7 +466,6 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 int overlay_frame_process(struct overlay_interface *interface, struct overlay_frame *f);
 int overlay_frame_resolve_addresses(struct overlay_frame *f);
 
-#define alloca_tohex(buf,len)           tohex((char *)alloca((len)*2+1), (buf), (len))
 #define alloca_tohex_sid(sid)           alloca_tohex((sid), SID_SIZE)
 #define alloca_tohex_sas(sas)           alloca_tohex((sas), SAS_SIZE)
 

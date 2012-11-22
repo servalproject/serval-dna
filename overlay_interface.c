@@ -86,7 +86,7 @@ static int overlay_interface_type(char *s)
   if (!strcasecmp(s,"wifi")) return OVERLAY_INTERFACE_WIFI;
   if (!strcasecmp(s,"other")) return OVERLAY_INTERFACE_UNKNOWN;
   if (!strcasecmp(s,"catear")) return OVERLAY_INTERFACE_PACKETRADIO;
-  return WHY("Invalid interface type -- consider using 'wifi','ethernet' or 'other'");
+  return -1;
 }
 
 int overlay_interface_arg(char *arg)
@@ -1290,7 +1290,7 @@ parse_quantity(char *q)
   if (strlen(q) >= 80)
     return WHY("quantity string >=80 characters");
   long long result;
-  if (str_to_ll_scaled(q, 10, &result, NULL))
+  if (str_to_int64_scaled(q, 10, &result, NULL))
     return result;
   return WHYF("Illegal quantity: %s", alloca_str_toprint(q));
 }
