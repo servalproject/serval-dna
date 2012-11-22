@@ -232,23 +232,6 @@ int overlay_payload_enqueue(struct overlay_frame *p)
   return 0;
 }
 
-static void overlay_add_sender_header(struct overlay_buffer *buff, overlay_interface *interface)
-{
-  // add a badly addressed dummy self announce payload to tell people we sent this.
-  overlay_packet_append_header(buff, OF_TYPE_SELFANNOUNCE, 1, SID_SIZE + 2);
-  
-  /* from me, to me, via me 
-   (it's shorter than an actual broadcast, 
-   and receivers wont try to process it 
-   since its not going to have a payload body anyway) */
-  overlay_address_append_self(interface, buff);
-  overlay_address_append(buff, my_subscriber);
-  overlay_address_append(buff, my_subscriber);
-  overlay_address_set_sender(my_subscriber);
-  // no payload body..
-  ob_patch_rfs(buff, COMPUTE_RFS_LENGTH);
-}
-
 static void
 overlay_init_packet(struct outgoing_packet *packet, overlay_interface *interface, int tick){
   packet->interface = interface;
@@ -269,8 +252,6 @@ overlay_init_packet(struct outgoing_packet *packet, overlay_interface *interface
     /* Add advertisements for ROUTES */
     overlay_route_add_advertisements(&packet->context, packet->interface, packet->buffer);
     
-  }else{
-    overlay_add_sender_header(packet->buffer, interface);
   }
 }
 

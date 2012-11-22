@@ -25,12 +25,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 struct sockaddr_in loopback;
 
-unsigned char magic_header[]={/* Magic */ 'O',0x10,
-  /* Version */ 0x00,0x01};
+unsigned char magic_header[]={0x00, 0x01};
 
 int overlay_packet_init_header(struct overlay_interface *interface, struct decode_context *context, 
 			       struct overlay_buffer *buff){
-  return ob_append_bytes(buff,magic_header,4);
+  if (ob_append_bytes(buff,magic_header,sizeof magic_header))
+    return -1;
+  return overlay_address_append_self(context, interface, buff);
 }
 
 
@@ -181,9 +182,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   struct overlay_buffer *b = ob_static(packet, len);
   ob_limitsize(b, len);
   
-  
-  if (ob_get(b)!=magic_header[0] || ob_get(b)!=magic_header[1]
-      || ob_get(b)!=magic_header[2] || ob_get(b)!=magic_header[3])
+  if (ob_get(b)!=magic_header[0] || ob_get(b)!=magic_header[1])
     return WHY("Packet type not recognised.");
   
   bzero(&f,sizeof(struct overlay_frame));
@@ -204,12 +203,13 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       f.recvaddr=NULL;
   }
 
-  // TODO put sender of packet and sequence number in envelope header
-  // Then we can quickly drop reflected broadcast packets
-  // currently we see annoying errors as we attempt to parse each payload
-  // plus with a sequence number we can detect dropped packets and nack them for retransmission
+  overlay_address_parse(&context, b, NULL, &context.sender);
   
-  /* Skip magic bytes and version */
+  if (context.sender && context.sender->reachable==REACHABLE_SELF){
+    ob_free(b);
+    return 0;
+  }
+  
   while(b->position < b->sizeLimit){
     context.invalid_addresses=0;
     
@@ -282,30 +282,6 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 	DEBUGF("Next hop %s", alloca_tohex_sid(nexthop->sid));
     }
 
-    if (f.type==OF_TYPE_SELFANNOUNCE){
-      // skip the entire packet if it came from me
-      if (f.source->reachable==REACHABLE_SELF)
-	break;
-      context.sender = f.source;
-      
-      overlay_address_set_sender(f.source);
-      
-      struct sockaddr_in *addr=(struct sockaddr_in *)recvaddr;
-      
-      // always update the IP address we heard them from, even if we don't need to use it right now
-      f.source->address = *addr;
-      
-      // if this is a dummy announcement for a node that isn't in our routing table
-      if (f.destination && 
-	(f.source->reachable == REACHABLE_NONE || f.source->reachable == REACHABLE_UNICAST) && 
-	(!f.source->node) &&
-	(interface->fileP || recvaddr->sa_family==AF_INET)){
-	  
-	  // mark this subscriber as reachable directly via unicast.
-	  reachable_unicast(f.source, interface, addr->sin_addr, ntohs(addr->sin_port));
-      }
-    }
-    
     // ignore any payload we sent
     if (f.source->reachable==REACHABLE_SELF){
       if (debug&DEBUG_OVERLAYFRAMES)
@@ -352,6 +328,22 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       f.payload=NULL;
     }
     b->position=next_payload;
+  }
+  
+  if (context.sender){
+    struct sockaddr_in *addr=(struct sockaddr_in *)recvaddr;
+    
+    // always update the IP address we heard them from, even if we don't need to use it right now
+    context.sender->address = *addr;
+    
+    // if this is a dummy announcement for a node that isn't in our routing table
+    if ((context.sender->reachable == REACHABLE_NONE || context.sender->reachable == REACHABLE_UNICAST) && 
+	(!context.sender->node) &&
+	(interface->fileP || recvaddr->sa_family==AF_INET)){
+      
+      // mark this subscriber as reachable directly via unicast.
+      reachable_unicast(context.sender, interface, addr->sin_addr, ntohs(addr->sin_port));
+    }
   }
   
   ob_free(b);
