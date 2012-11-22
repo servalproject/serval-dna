@@ -66,50 +66,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define SID_STRLEN (SID_SIZE*2)
 
-/* Array of variables that can be placed in an MPHLR */
-#define VAR_EOR 0x00
-#define VAR_CREATETIME 0x01
-#define VAR_CREATOR 0x02
-#define VAR_REVISION 0x03
-#define VAR_REVISOR 0x04
-#define VAR_PIN 0x05
-#define VAR_VOICESIG 0x08
-#define VAR_HLRMASTER 0x0f
-#define VAR_NAME 0x10
-#define VAR_DIDS 0x80
-#define VAR_LOCATIONS 0x81
-#define VAR_IEMIS 0x82
-#define VAR_TEMIS 0x83
-#define VAR_CALLS_IN 0x90
-#define VAR_CALLS_MISSED 0x91
-#define VAR_CALLS_OUT 0x92
-#define VAR_SMESSAGES 0xa0
-#define VAR_DID2SUBSCRIBER 0xb0
-#define VAR_HLRBACKUPS 0xf0
-#define VAR_NOTE 0xff
-
-#define ACTION_GET 0x00
-#define ACTION_SET 0x01
-#define ACTION_DEL 0x02
-#define ACTION_INSERT 0x03
-#define ACTION_DIGITALTELEGRAM 0x04
-#define ACTION_CREATEHLR 0x0f
-
-#define ACTION_STATS 0x40
-
-#define ACTION_DONE 0x7e
-#define ACTION_ERROR 0x7f
-
-#define ACTION_DECLINED 0x80
-#define ACTION_OKAY 0x81
-#define ACTION_DATA 0x82
-#define ACTION_WROTE 0x83
-
-#define ACTION_XFER 0xf0
-#define ACTION_RECVTTL 0xfd
-#define ACTION_PAD 0xfe
-#define ACTION_EOT 0xff
-
 #define OVERLAY_MAX_INTERFACES 16
 
 #define CRYPT_CIPHERED 1
@@ -144,21 +100,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define OF_TYPE_RHIZOME_ADVERT 0x50 /* Advertisment of file availability via Rhizome */
 #define OF_TYPE_PLEASEEXPLAIN 0x60 /* Request for resolution of an abbreviated address */
 #define OF_TYPE_NODEANNOUNCE 0x70
-#define OF_TYPE_IDENTITYENQUIRY 0x80
-#define OF_TYPE_RESERVED_09 0x90
-#define OF_TYPE_RESERVED_0a 0xa0
-#define OF_TYPE_RESERVED_0b 0xb0
-#define OF_TYPE_RESERVED_0c 0xc0
-#define OF_TYPE_RESERVED_0d 0xd0
-#define OF_TYPE_EXTENDED12 0xe0 /* modifier bits and next byte provide 12 bits extended format
-				   (for future expansion, just allows us to skip the frame) */
-#define OF_TYPE_EXTENDED20 0xf0 /* modifier bits and next 2 bytes provide 20 bits extended format
-				 (for future expansion, just allows us to skip the frame) */
+
 /* Flags used to control the interpretation of the resolved type field */
 #define OF_TYPE_FLAG_BITS 0xf0000000
 #define OF_TYPE_FLAG_NORMAL 0x0
-#define OF_TYPE_FLAG_E12 0x10000000
-#define OF_TYPE_FLAG_E20 0x20000000
 
 /* Modifiers that indicate the disposition of the frame */
 #define OF_MODIFIER_BITS 0x0f
@@ -198,12 +143,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define MONITOR_DNAHELPER (1<<3)
 
 #define MAX_SIGNATURES 16
-
-#define IDENTITY_VERIFIED (1<<0)
-#define IDENTITY_VERIFIEDBYME (1<<1)
-#define IDENTITY_NOTVERIFIED (1<<2)
-  /* The value below is for caching negative results */
-#define IDENTITY_UNKNOWN (1<<3)
 
 #define MDP_PORT_ECHO 0x00000007
 #define MDP_PORT_KEYMAPREQUEST 0x10000001
@@ -276,12 +215,5 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define DEFAULT_MONITOR_SOCKET_NAME "org.servalproject.servald.monitor.socket"
 #define DEFAULT_MDP_SOCKET_NAME "org.servalproject.servald.mdp.socket"
-
-// flags for address types
-#define TYPE_NONE 0
-#define TYPE_BROADCAST 1
-#define TYPE_SUBSCRIBER 2
-#define TYPE_TOO_SHORT 3
-
 
 #endif // __SERVALD_CONSTANTS_H

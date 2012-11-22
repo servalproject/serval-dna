@@ -219,20 +219,6 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     f.type=flags&OF_TYPE_BITS;
     f.modifiers=flags&OF_MODIFIER_BITS;
 
-    switch(f.type){
-      case OF_TYPE_EXTENDED20:
-	/* Eat the next two bytes */
-	f.type=OF_TYPE_FLAG_E20|flags|(ob_get(b)<<4)|(ob_get(b)<<12);
-	f.modifiers=0;
-	break;
-	  
-      case OF_TYPE_EXTENDED12:
-	/* Eat the next byte */
-	f.type=OF_TYPE_FLAG_E12|flags|(ob_get(b)<<4);
-	f.modifiers=0;
-	break;
-    }
-    
     f.queue = (f.modifiers & OF_QUEUE_BITS) +1;
     
     /* Get time to live */
