@@ -18,16 +18,6 @@
 
 #include "config.h"
 
-struct config_node {
-    const char *source; // = parse_config() 'source' arg
-    unsigned int line_number;
-    const char *fullkey; // malloc()
-    const char *key; // points inside fullkey, do not free()
-    const char *text; // malloc()
-    size_t nodc;
-    struct config_node *nodv[10]; // malloc()
-};
-
 const char *find_keyend(const char *const key, const char *const fullkeyend)
 {
   const char *s = key;
@@ -230,13 +220,24 @@ void missing_node(const struct config_node *parent, const char *key)
   WARNF("missing configuration option `%s.%s`", parent->fullkey, key);
 }
 
-void invalid_text(const struct config_node *node, const char *reason)
+void invalid_text(const struct config_node *node, int reason)
 {
-  WARNF("%s:%u: ignoring configuration option %s with invalid value %s%s%s",
+  const char *adj = NULL;
+  const char *why = NULL;
+  switch (reason) {
+  case CFOK:	    adj = "valid"; why = "no good reason"; break;
+  case CFERROR:	    why = "unrecoverable error"; break;
+  case CFOVERFLOW:  why = "overflow"; break;
+  case CFMISSING:   why = "missing"; break;
+  case CFINVALID:   adj = "invalid"; break;
+  default:	    why = "unknown reason"; break;
+  }
+  WARNF("%s:%u: ignoring configuration option %s with%s%s value %s%s%s",
       node->source, node->line_number,
       alloca_str(node->fullkey),
+      adj ? " " : "", adj ? adj : "",
       alloca_str(node->text),
-      reason && reason[0] ? " -- " : "", reason ? reason : ""
+      why ? " -- " : "", why ? why : ""
     );
 }
 
@@ -300,82 +301,44 @@ void unsupported_tree(const struct config_node *node)
   ignore_tree(node, "not supported");
 }
 
-/* Return values for parsing functions */
-#define CFERROR     (-1)
-#define CFOK        0
-#define CFOVERFLOW  1
-#define CFMISSING   2
-#define CFINVALID   3
-
-// Generate parser function prototypes.
-#define SECTION(__sect) \
-    int opt_config_##__sect(struct config_##__sect *, const struct config_node *);
-#define ATOM(__type, __name, __default, __parser, __flags, __comment) \
-    int __parser(__type *, const struct config_node *);
-#define STRING(__size, __name, __default, __parser, __flags, __comment) \
-    int __parser(char *, size_t, const struct config_node *);
-#define SUB(__sect, __name, __flags) \
-    int opt_config_##__sect(struct config_##__sect *, const struct config_node *node);
-#define SUBP(__sect, __name, __parser, __flags) \
-    int __parser(struct config_##__sect *, const struct config_node *node);
-#define SECTION_END
-#define LIST(__sect, __type, __size, __parser, __comment) \
-    int opt_config_##__sect(struct config_##__sect *, const struct config_node *); \
-    int __parser(__type *, const struct config_node *);
-#include "config_schema.h"
-#undef SECTION
-#undef ATOM
-#undef STRING
-#undef SUB
-#undef SUBP
-#undef SECTION_END
-#undef LIST
-
-int opt_boolean(int *booleanp, const struct config_node *node);
-int opt_absolute_path(char *str, size_t len, const struct config_node *node);
+int opt_boolean(int *booleanp, const char *text);
+int opt_absolute_path(char *str, size_t len, const char *text);
 int opt_debugflags(debugflags_t *flagsp, const struct config_node *node);
 int opt_rhizome_peer(struct config_rhizomepeer *, const struct config_node *node);
-int opt_str_nonempty(char *str, size_t len, const struct config_node *node);
-int opt_port(unsigned short *portp, const struct config_node *node);
-int opt_uint64_scaled(uint64_t *intp, const struct config_node *node);
-int opt_sid(sid_t *sidp, const struct config_node *node);
-int opt_interface_type(short *typep, const struct config_node *node);
-int opt_pattern_list(struct pattern_list *listp, const struct config_node *node);
+int opt_str_nonempty(char *str, size_t len, const char *text);
+int opt_uint64_scaled(uint64_t *intp, const char *text);
+int opt_protocol(char *str, size_t len, const char *text);
+int opt_port(unsigned short *portp, const char *text);
+int opt_sid(sid_t *sidp, const char *text);
+int opt_interface_type(short *typep, const char *text);
+int opt_pattern_list(struct pattern_list *listp, const char *text);
 int opt_interface_list(struct config_interface_list *listp, const struct config_node *node);
 
-int opt_boolean(int *booleanp, const struct config_node *node)
+int opt_boolean(int *booleanp, const char *text)
 {
-  unsupported_children(node);
-  if (!node->text)
-    return CFMISSING;
-  if (!strcasecmp(node->text, "true") || !strcasecmp(node->text, "yes") || !strcasecmp(node->text, "on") || !strcasecmp(node->text, "1")) {
+  if (!strcasecmp(text, "true") || !strcasecmp(text, "yes") || !strcasecmp(text, "on") || !strcasecmp(text, "1")) {
     *booleanp = 1;
     return CFOK;
   }
-  else if (!strcasecmp(node->text, "false") || !strcasecmp(node->text, "no") || !strcasecmp(node->text, "off") || !strcasecmp(node->text, "0")) {
+  else if (!strcasecmp(text, "false") || !strcasecmp(text, "no") || !strcasecmp(text, "off") || !strcasecmp(text, "0")) {
     *booleanp = 0;
     return CFOK;
   }
-  invalid_text(node, "expecting true|yes|on|1|false|no|off|0");
+  //invalid_text(node, "expecting true|yes|on|1|false|no|off|0");
   return CFINVALID;
 }
 
-int opt_absolute_path(char *str, size_t len, const struct config_node *node)
+int opt_absolute_path(char *str, size_t len, const char *text)
 {
-  //DEBUGF("%s", __FUNCTION__);
-  //dump_config_node(node, 1);
-  unsupported_children(node);
-  if (!node->text)
-    return CFMISSING;
-  if (node->text[0] != '/') {
-    invalid_text(node, "must start with '/'");
+  if (text[0] != '/') {
+    //invalid_text(node, "must start with '/'");
     return CFINVALID;
   }
-  if (strlen(node->text) >= len) {
-    invalid_text(node, "string overflow");
+  if (strlen(text) >= len) {
+    //invalid_text(node, "string overflow");
     return CFOVERFLOW;
   }
-  strncpy(str, node->text, len);
+  strncpy(str, text, len);
   assert(str[len - 1] == '\0');
   return CFOK;
 }
@@ -418,8 +381,6 @@ int opt_debugflags(debugflags_t *flagsp, const struct config_node *node)
 {
   //DEBUGF("%s", __FUNCTION__);
   //dump_config_node(node, 1);
-  if (node->text)
-    unsupported_tree(node);
   debugflags_t setmask = 0;
   debugflags_t clearmask = 0;
   int setall = 0;
@@ -427,21 +388,31 @@ int opt_debugflags(debugflags_t *flagsp, const struct config_node *node)
   int i;
   for (i = 0; i < node->nodc; ++i) {
     const struct config_node *child = node->nodv[i];
+    unsupported_children(child);
     debugflags_t mask = debugFlagMask(child->key);
     int flag = -1;
     if (!mask)
-      unsupported_tree(child);
-    else if (opt_boolean(&flag, child) != -1) {
-      if (mask == ~0) {
-	if (flag)
-	  setall = 1;
-	else
-	  clearall = 1;
-      } else {
-	if (flag)
-	  setmask |= mask;
-	else
-	  clearmask |= mask;
+      unsupported_node(child);
+    else {
+      int result = child->text ? opt_boolean(&flag, child->text) : CFMISSING;
+      switch (result) {
+      case CFERROR: return CFERROR;
+      case CFOK:
+	if (mask == ~0) {
+	  if (flag)
+	    setall = 1;
+	  else
+	    clearall = 1;
+	} else {
+	  if (flag)
+	    setmask |= mask;
+	  else
+	    clearmask |= mask;
+	}
+	break;
+      default:
+	invalid_text(child, result);
+	break;
       }
     }
   }
@@ -454,22 +425,17 @@ int opt_debugflags(debugflags_t *flagsp, const struct config_node *node)
   return CFOK;
 }
 
-int opt_protocol(char *str, size_t len, const struct config_node *node)
+int opt_protocol(char *str, size_t len, const char *text)
 {
-  //DEBUGF("%s", __FUNCTION__);
-  //dump_config_node(node, 1);
-  unsupported_children(node);
-  if (!node->text)
-    return CFMISSING;
-  if (!str_is_uri_scheme(node->text)) {
-    invalid_text(node, "contains invalid character");
+  if (!str_is_uri_scheme(text)) {
+    //invalid_text(node, "contains invalid character");
     return CFINVALID;
   }
-  if (strlen(node->text) >= len) {
-    invalid_text(node, "string overflow");
+  if (strlen(text) >= len) {
+    //invalid_text(node, "string overflow");
     return CFOVERFLOW;
   }
-  strncpy(str, node->text, len);
+  strncpy(str, text, len);
   assert(str[len - 1] == '\0');
   return CFOK;
 }
@@ -503,11 +469,11 @@ int opt_rhizome_peer(struct config_rhizomepeer *rpeer, const struct config_node 
     goto invalid;
   str_uri_authority_port(auth, &port);
   if (protolen >= sizeof rpeer->protocol) {
-    invalid_text(node, "protocol string overflow");
+    //invalid_text(node, "protocol string overflow");
     return CFOVERFLOW;
   }
   if (hostlen >= sizeof rpeer->host) {
-    invalid_text(node, "hostname string overflow");
+    //invalid_text(node, "hostname string overflow");
     return CFOVERFLOW;
   }
   strncpy(rpeer->protocol, protocol, protolen)[protolen] = '\0';
@@ -515,131 +481,101 @@ int opt_rhizome_peer(struct config_rhizomepeer *rpeer, const struct config_node 
   rpeer->port = port;
   return CFOK;
 invalid:
-  invalid_text(node, "malformed URL");
+  //invalid_text(node, "malformed URL");
   return CFINVALID;
 }
 
-int opt_str_nonempty(char *str, size_t len, const struct config_node *node)
+int opt_str_nonempty(char *str, size_t len, const char *text)
 {
-  //DEBUGF("%s", __FUNCTION__);
-  //dump_config_node(node, 1);
-  unsupported_children(node);
-  if (!node->text)
-    return CFMISSING;
-  if (!node->text[0]) {
-    invalid_text(node, "empty string");
+  if (!text[0]) {
+    //invalid_text(node, "empty string");
     return CFINVALID;
   }
-  if (strlen(node->text) >= len) {
-    invalid_text(node, "string overflow");
+  if (strlen(text) >= len) {
+    //invalid_text(node, "string overflow");
     return CFOVERFLOW;
   }
-  strncpy(str, node->text, len);
+  strncpy(str, text, len);
   assert(str[len - 1] == '\0');
   return CFOK;
 }
 
-int opt_uint64_scaled(uint64_t *intp, const struct config_node *node)
+int opt_uint64_scaled(uint64_t *intp, const char *text)
 {
-  //DEBUGF("%s", __FUNCTION__);
-  //dump_config_node(node, 1);
-  unsupported_children(node);
-  if (!node->text)
-    return CFMISSING;
   uint64_t result;
   const char *end;
-  if (!str_to_uint64_scaled(node->text, 10, &result, &end)) {
-    invalid_text(node, "invalid scaled unsigned integer");
+  if (!str_to_uint64_scaled(text, 10, &result, &end)) {
+    //invalid_text(node, "invalid scaled unsigned integer");
     return CFINVALID;
   }
   *intp = result;
   return CFOK;
 }
 
-int opt_port(unsigned short *portp, const struct config_node *node)
+int opt_port(unsigned short *portp, const char *text)
 {
-  //DEBUGF("%s", __FUNCTION__);
-  //dump_config_node(node, 1);
-  unsupported_children(node);
-  if (!node->text)
-    return CFMISSING;
   unsigned short port = 0;
   const char *p;
-  for (p = node->text; isdigit(*p); ++p) {
+  for (p = text; isdigit(*p); ++p) {
       unsigned oport = port;
       port = port * 10 + *p - '0';
       if (port / 10 != oport)
 	break;
   }
   if (*p || port == 0) {
-    invalid_text(node, "invalid port number");
+    //invalid_text(node, "invalid port number");
     return CFINVALID;
   }
   *portp = port;
   return CFOK;
 }
 
-int opt_sid(sid_t *sidp, const struct config_node *node)
+int opt_sid(sid_t *sidp, const char *text)
 {
-  //DEBUGF("%s", __FUNCTION__);
-  //dump_config_node(node, 1);
-  unsupported_children(node);
-  if (!node->text)
-    return CFMISSING;
   sid_t sid;
-  if (!str_is_subscriber_id(node->text)) {
-    invalid_text(node, "invalid subscriber ID");
+  if (!str_is_subscriber_id(text)) {
+    //invalid_text(node, "invalid subscriber ID");
     return CFINVALID;
   }
-  size_t n = fromhex(sidp->binary, node->text, SID_SIZE);
+  size_t n = fromhex(sidp->binary, text, SID_SIZE);
   assert(n == SID_SIZE);
   return CFOK;
 }
 
-int opt_interface_type(short *typep, const struct config_node *node)
+int opt_interface_type(short *typep, const char *text)
 {
-  //DEBUGF("%s", __FUNCTION__);
-  //dump_config_node(node, 1);
-  unsupported_children(node);
-  if (!node->text)
-    return CFMISSING;
-  if (strcasecmp(node->text, "ethernet") == 0) {
+  if (strcasecmp(text, "ethernet") == 0) {
     *typep = OVERLAY_INTERFACE_ETHERNET;
     return CFOK;
   }
-  if (strcasecmp(node->text, "wifi") == 0) {
+  if (strcasecmp(text, "wifi") == 0) {
     *typep = OVERLAY_INTERFACE_WIFI;
     return CFOK;
   }
-  if (strcasecmp(node->text, "catear") == 0) {
+  if (strcasecmp(text, "catear") == 0) {
     *typep = OVERLAY_INTERFACE_PACKETRADIO;
     return CFOK;
   }
-  if (strcasecmp(node->text, "other") == 0) {
+  if (strcasecmp(text, "other") == 0) {
     *typep = OVERLAY_INTERFACE_UNKNOWN;
     return CFOK;
   }
-  invalid_text(node, "invalid network interface type");
+  //invalid_text(node, "invalid network interface type");
   return CFINVALID;
 }
 
-int opt_pattern_list(struct pattern_list *listp, const struct config_node *node)
+int opt_pattern_list(struct pattern_list *listp, const char *text)
 {
-  //DEBUGF("%s", __FUNCTION__);
-  //dump_config_node(node, 1);
-  unsupported_children(node);
-  if (!node->text)
-    return CFMISSING;
   struct pattern_list list;
   memset(&list, 0, sizeof list);
   const char *word = NULL;
   const char *p;
-  for (p = node->text; ; ++p) {
+  for (p = text; ; ++p) {
     if (!*p || isspace(*p) || *p == ',') {
       if (word) {
 	size_t len = p - word;
 	if (list.patc >= NELS(list.patv) || len >= sizeof(list.patv[list.patc])) {
-	  invalid_text(node, "string overflow");
+	  //invalid_text(node, "string overflow");
 	  return CFOVERFLOW;
 	}
 	strncpy(list.patv[list.patc++], word, len)[len] = '\0';
@@ -662,7 +598,6 @@ int opt_interface_list(struct config_interface_list *listp, const struct config_
     return opt_config_interface_list(listp, node);
   }
   spurious_children(node);
-  invalid_text(node, "NOT IMPLEMENTED");
   return CFINVALID;
 }
 
@@ -673,41 +608,17 @@ void list_overflow(const struct config_node *node);
 void list_omit_element(const struct config_node *node);
 
 // Schema item flags.
-#define __MANDATORY     1
+#define __MANDATORY     (1<<0)
+#define __NO_TEXT	(1<<1)
+#define __NO_CHILDREN	(1<<2)
 
 // Schema flag symbols, to be used in the '__flags' macro arguments.
-#define MANDATORY   |__MANDATORY
-
-// Generate default functions, dfl_config_SECTION()
-#define SECTION(__sect) \
-    int dfl_config_##__sect(struct config_##__sect *s) {
-#define ATOM(__type, __name, __default, __parser, __flags, __comment) \
-        s->__name = (__default);
-#define STRING(__size, __name, __default, __parser, __flags, __comment) \
-        strncpy(s->__name, (__default), (__size))[(__size)] = '\0';
-#define SUB(__sect, __name, __flags) \
-        dfl_config_##__sect(&s->__name);
-#define SUBP(__sect, __name, __parser, __flags) \
-        dfl_config_##__sect(&s->__name);
-#define SECTION_END \
-        return 0; \
-    }
-#define LIST(__sect, __type, __size, __parser, __comment) \
-    int dfl_config_##__sect(struct config_##__sect *s) { \
-        s->listc = 0; \
-        return 0; \
-    }
-#include "config_schema.h"
-#undef SECTION
-#undef ATOM
-#undef STRING
-#undef SUB
-#undef SUBP
-#undef SECTION_END
-#undef LIST
+#define MANDATORY	|__MANDATORY
+#define NO_TEXT		|__NO_TEXT
+#define NO_CHILDREN	|__NO_CHILDREN
 
 // Generate parsing functions, opt_config_SECTION()
-#define SECTION(__sect) \
+#define STRUCT(__sect) \
     int opt_config_##__sect(struct config_##__sect *s, const struct config_node *node) { \
         if (node->text) unsupported_node(node); \
         int result = CFOK; \
@@ -716,30 +627,45 @@ void list_omit_element(const struct config_node *node);
 #define __ITEM(__name, __flags, __parseexpr) \
         { \
             int i = get_child(node, #__name); \
-            if (i != -1) { \
+	    const struct config_node *child = (i != -1) ? node->nodv[i] : NULL; \
+	    int ret = CFMISSING; \
+            if (child) { \
                 used[i] = 1; \
-                const struct config_node *child = node->nodv[i]; \
-                int ret = (__parseexpr); \
-                switch (ret) { \
-                case CFERROR: return CFERROR; \
-                case CFMISSING: i = -1; break; \
-                default: if (result < ret) result = ret; break; \
-                } \
+		if (((0 __flags) & __NO_TEXT) && child->text) \
+		  unsupported_node(child); \
+		if (((0 __flags) & __NO_CHILDREN) && child->nodc) \
+		  unsupported_children(child); \
+                ret = (__parseexpr); \
             } \
-            if (i == -1 && ((0 __flags) & __MANDATORY)) { \
-                missing_node(node, #__name); \
-                if (result < CFMISSING) result = CFMISSING; \
-            } \
+	    switch (ret) { \
+	    case CFOK: break; \
+	    case CFERROR: \
+	      return CFERROR; \
+	    case CFMISSING: \
+	      if ((0 __flags) & __MANDATORY) { \
+		  missing_node(node, #__name); \
+		  if (result < CFMISSING) \
+		    result = CFMISSING; \
+	      } \
+	      break; \
+	    default: \
+	      assert(child != NULL); \
+	      if (child->text) \
+		invalid_text(child, ret); \
+	      if (result < ret) \
+		result = ret; \
+	      break; \
+	    } \
         }
+#define NODE(__type, __name, __default, __parser, __flags, __comment) \
+        __ITEM(__name, __flags, __parser(&s->__name, child))
 #define ATOM(__type, __name, __default, __parser, __flags, __comment) \
-        __ITEM(__name, __flags, __parser(&s->__name, child))
+        __ITEM(__name, __flags NO_CHILDREN, child->text ? __parser(&s->__name, child->text) : CFMISSING)
 #define STRING(__size, __name, __default, __parser, __flags, __comment) \
-        __ITEM(__name, __flags, __parser(s->__name, (__size) + 1, child))
-#define SUB(__sect, __name, __flags) \
-        __ITEM(__name, __flags, opt_config_##__sect(&s->__name, child))
+        __ITEM(__name, __flags NO_CHILDREN, child->text ? __parser(s->__name, (__size) + 1, child->text) : CFMISSING)
 #define SUBP(__sect, __name, __parser, __flags) \
-        __ITEM(__name, __flags, __parser(&s->__name, child))
-#define SECTION_END \
+        __ITEM(__name, __flags NO_TEXT, __parser(&s->__name, child))
+#define END_STRUCT \
         { \
             int i; \
             for (i = 0; i < node->nodc; ++i) \
@@ -748,20 +674,20 @@ void list_omit_element(const struct config_node *node);
         } \
         return result; \
     }
-#define LIST(__sect, __type, __size, __parser, __comment) \
+#define ARRAY(__sect, __type, __size, __parser, __comment) \
     int opt_config_##__sect(struct config_##__sect *s, const struct config_node *node) { \
         if (node->text) unsupported_node(node); \
         int result = CFOK; \
 	int i; \
-	for (i = 0; i < node->nodc && s->listc < NELS(s->listv); ++i) { \
+	for (i = 0; i < node->nodc && s->ac < NELS(s->av); ++i) { \
 	    const struct config_node *elt = node->nodv[i]; \
-	    int ret = __parser(&s->listv[s->listc].value, elt); \
+	    int ret = __parser(&s->av[s->ac].value, elt); \
 	    switch (ret) { \
 	    case CFERROR: return CFERROR; \
 	    case CFOK: \
-		strncpy(s->listv[s->listc].label, elt->key, sizeof s->listv[s->listc].label - 1)\
-		    [sizeof s->listv[s->listc].label - 1] = '\0'; \
-		++s->listc; \
+		strncpy(s->av[s->ac].label, elt->key, sizeof s->av[s->ac].label - 1)\
+		    [sizeof s->av[s->ac].label - 1] = '\0'; \
+		++s->ac; \
 		break; \
 	    default: \
 		list_omit_element(elt); \
@@ -775,13 +701,13 @@ void list_omit_element(const struct config_node *node);
         return result; \
     }
 #include "config_schema.h"
-#undef SECTION
+#undef STRUCT
+#undef NODE
 #undef ATOM
 #undef STRING
-#undef SUB
 #undef SUBP
-#undef SECTION_END
-#undef LIST
+#undef END_STRUCT
+#undef ARRAY
 int main(int argc, char **argv)
 {
   int i;
@@ -817,11 +743,11 @@ int main(int argc, char **argv)
     DEBUGF("config.debug = %llx", (unsigned long long) config.debug);
     DEBUGF("config.directory.service = %s", alloca_tohex(config.directory.service.binary, SID_SIZE));
     int j;
-    for (j = 0; j < config.rhizome.direct.peer.listc; ++j) {
-      DEBUGF("config.rhizome.direct.peer.%s", config.rhizome.direct.peer.listv[j].label);
-      DEBUGF("   .protocol = %s", alloca_str(config.rhizome.direct.peer.listv[j].value.protocol));
-      DEBUGF("   .host = %s", alloca_str(config.rhizome.direct.peer.listv[j].value.host));
-      DEBUGF("   .port = %u", config.rhizome.direct.peer.listv[j].value.port);
+    for (j = 0; j < config.rhizome.direct.peer.ac; ++j) {
+      DEBUGF("config.rhizome.direct.peer.%s", config.rhizome.direct.peer.av[j].label);
+      DEBUGF("   .protocol = %s", alloca_str(config.rhizome.direct.peer.av[j].value.protocol));
+      DEBUGF("   .host = %s", alloca_str(config.rhizome.direct.peer.av[j].value.host));
+      DEBUGF("   .port = %u", config.rhizome.direct.peer.av[j].value.port);
     }
   }
   exit(0);
