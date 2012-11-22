@@ -5,6 +5,7 @@ HDRS=	fifo.h \
 	overlay_packet.h \
 	rhizome.h \
 	serval.h \
+	str.h \
 	strbuf.h \
 	strbuf_helpers.h \
 	sha2.h \

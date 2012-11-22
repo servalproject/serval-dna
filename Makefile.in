@@ -2,13 +2,20 @@ NACL_BASE=	nacl/src
 include $(NACL_BASE)/nacl.mk
 SERVAL_BASE=
 include sourcefiles.mk
-SRCS=	$(NACL_SOURCES) $(SERVAL_SOURCES)
 include headerfiles.mk
 
 HAVE_ALSA= @HAVE_ALSA@
 ifeq (HAVE_ALSA,1)
-SRCS+=	audio_alsa.c
+SERVAL_SOURCES+=	$(SERVAL_BASE)/audio_alsa.c
 endif
+
+HAVE_VOIPTEST=	@HAVE_VOIPTEST@
+ifeq ($(HAVE_VOIPTEST), 1)
+SERVAL_SOURCES+=	$(SERVAL_BASE)/pa_phone.c
+VOIPTEST_CFLAGS=-DHAVE_VOIPTEST=1
+endif
+
+SRCS=	$(NACL_SOURCES) $(SERVAL_SOURCES)
 
 MONITORCLIENTSRCS=conf.c \
 	log.c \
@@ -29,14 +36,8 @@ MDPCLIENTSRCS=conf.c \
 	strbuf.c \
 	strbuf_helpers.c
 
-HAVE_VOIPTEST=	@HAVE_VOIPTEST@
-ifeq ($(HAVE_VOIPTEST), 1)
-SRCS+=	pa_phone.c
-VOIPTEST_CFLAGS=-DHAVE_VOIPTEST=1
-endif
-
 OBJS=	$(SRCS:.c=.o)
-
+SERVAL_OBJS=	$(SERVAL_SOURCES:.c=.o)
 MONITORCLIENTOBJS=	$(MONITORCLIENTSRCS:.c=.o)
 MDPCLIENTOBJS=	$(MDPCLIENTSRCS:.c=.o)
 
@@ -60,9 +61,13 @@ sqlite-amalgamation-3070900/sqlite3.o:	sqlite-amalgamation-3070900/sqlite3.c
 	@echo CC $<
 	@$(CC) $(CFLAGS) $(DEFS) -c $< -o sqlite-amalgamation-3070900/sqlite3.o
 
-%.o:	%.c $(HDRS)
+%.o:	%.c
 	@echo CC $<
 	@$(CC) $(CFLAGS) $(DEFS) -c $< -o $@
+
+$(SERVAL_OBJS): $(HDRS)
+$(MONITORCLIENTOBJS): $(HDRS)
+$(MDPCLIENTOBJS): $(HDRS)
 
 servald:	$(OBJS)
 	@echo LINK $@
