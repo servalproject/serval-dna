@@ -327,7 +327,7 @@ Java_org_servalproject_servald_mdp_MeshSocket__1receive(JNIEnv * env,
   jsid = (*env)->NewByteArray(env, SID_SIZE);
   sid = (*env)->GetByteArrayElements(env, jsid, NULL);
   memcpy(sid, mdp.in.src.sid, SID_SIZE);
-  (*env)->ReleaseByteArrayElements(env, jsid, sid, JNI_COMMIT);
+  (*env)->ReleaseByteArrayElements(env, jsid, sid, 0);
 
   /* sid_obj = new SubscriberId(jsid); */
   sid_obj =
