@@ -134,7 +134,7 @@ unsigned long long rhizome_bar_bidprefix_ll(unsigned char *bar)
 
 int bundles_available=-1;
 int bundle_offset[2]={0,0};
-int overlay_rhizome_add_advertisements(int interface_number, struct overlay_buffer *e)
+int overlay_rhizome_add_advertisements(struct decode_context *context, int interface_number, struct overlay_buffer *e)
 {
   IN();
 
@@ -163,9 +163,9 @@ int overlay_rhizome_add_advertisements(int interface_number, struct overlay_buff
   /* Stuff in dummy address fields (11 bytes) */
   struct broadcast broadcast_id;
   overlay_broadcast_generate_address(&broadcast_id);
-  overlay_broadcast_append(e, &broadcast_id);
+  overlay_broadcast_append(context, e, &broadcast_id);
   ob_append_byte(e, OA_CODE_PREVIOUS);
-  overlay_address_append_self(&overlay_interfaces[interface_number], e);
+  overlay_address_append_self(context, &overlay_interfaces[interface_number], e);
 
   /* Randomly choose whether to advertise manifests or BARs first. */
   int skipmanifests=random()&1;

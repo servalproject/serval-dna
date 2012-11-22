@@ -59,6 +59,7 @@ struct outgoing_packet{
   int add_advertisements;
   struct sockaddr_in dest;
   struct overlay_buffer *buffer;
+  struct decode_context context;
 };
 
 struct sched_ent next_packet;
@@ -257,18 +258,16 @@ overlay_init_packet(struct outgoing_packet *packet, overlay_interface *interface
   packet->add_advertisements=1;
   ob_limitsize(packet->buffer, packet->interface->mtu);
   
-  overlay_packet_init_header(packet->buffer);
-  
-  overlay_address_clear();
+  overlay_packet_init_header(interface, &packet->context, packet->buffer);
   
   if (tick){
     /* 1. Send announcement about ourselves, including one SID that we host if we host more than one SID
      (the first SID we host becomes our own identity, saving a little bit of data here).
      */
-    overlay_add_selfannouncement(packet->i, packet->buffer);
+    overlay_add_selfannouncement(&packet->context, packet->i, packet->buffer);
     
     /* Add advertisements for ROUTES */
-    overlay_route_add_advertisements(packet->interface, packet->buffer);
+    overlay_route_add_advertisements(&packet->context, packet->interface, packet->buffer);
     
   }else{
     overlay_add_sender_header(packet->buffer, interface);
@@ -415,7 +414,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	     frame->sendBroadcast?alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN):alloca_tohex_sid(next_hop->sid));
     }
     
-    if (overlay_frame_append_payload(packet->interface, frame, next_hop, packet->buffer))
+    if (overlay_frame_append_payload(&packet->context, packet->interface, frame, next_hop, packet->buffer))
       // payload was not queued
       goto skip;
     
@@ -482,7 +481,7 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
     if (packet->buffer->position>=HEADERFIELDS_LEN){
       // stuff rhizome announcements at the last moment
       if (packet->add_advertisements)
-	overlay_rhizome_add_advertisements(packet->i,packet->buffer);
+	overlay_rhizome_add_advertisements(&packet->context, packet->i,packet->buffer);
       
       if (debug&DEBUG_PACKETCONSTRUCTION)
 	dump("assembled packet",&packet->buffer->bytes[0],packet->buffer->position);
@@ -495,7 +494,6 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
       }
     }
     ob_free(packet->buffer);
-    overlay_address_clear();
     RETURN(1);
   }
   RETURN(0);

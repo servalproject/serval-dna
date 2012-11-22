@@ -28,7 +28,8 @@ int overlay_packet_append_header(struct overlay_buffer *buff, int type, int ttl,
   return ob_append_rfs(buff, approx_size);
 }
 
-int overlay_frame_append_payload(overlay_interface *interface, struct overlay_frame *p, struct subscriber *next_hop, struct overlay_buffer *b)
+int overlay_frame_append_payload(struct decode_context *context, overlay_interface *interface, 
+				 struct overlay_frame *p, struct subscriber *next_hop, struct overlay_buffer *b)
 {
   /* Convert a payload (frame) structure into a series of bytes.
      Assumes that any encryption etc has already been done.
@@ -78,19 +79,19 @@ int overlay_frame_append_payload(overlay_interface *interface, struct overlay_fr
   
   /* Write out addresses as abbreviated as possible */
   if (p->sendBroadcast){
-    overlay_broadcast_append(headers, &p->broadcast_id);
+    overlay_broadcast_append(context, headers, &p->broadcast_id);
   }else{
-    overlay_address_append(headers, next_hop);
+    overlay_address_append(context, headers, next_hop);
   }
   if (p->destination)
-    overlay_address_append(headers,p->destination);
+    overlay_address_append(context, headers,p->destination);
   else
     ob_append_byte(headers, OA_CODE_PREVIOUS);
   
   if (p->source==my_subscriber){
-    overlay_address_append_self(interface, headers);
+    overlay_address_append_self(context, interface, headers);
   }else{
-    overlay_address_append(headers,p->source);
+    overlay_address_append(context, headers,p->source);
   }
   
   int addrs_len=headers->position-addrs_start;

@@ -439,12 +439,14 @@ int overlay_frame_resolve_addresses(struct overlay_frame *f);
 
 time_ms_t overlay_time_until_next_tick();
 
-int overlay_add_selfannouncement();
-int overlay_frame_append_payload(overlay_interface *interface, struct overlay_frame *p, struct subscriber *next_hop, struct overlay_buffer *b);
-int overlay_packet_init_header(struct overlay_buffer *buff);
+int overlay_add_selfannouncement(struct decode_context *context, int interface,struct overlay_buffer *b);
+int overlay_frame_append_payload(struct decode_context *context, overlay_interface *interface, 
+				 struct overlay_frame *p, struct subscriber *next_hop, struct overlay_buffer *b);
+int overlay_packet_init_header(struct overlay_interface *interface, struct decode_context *context, 
+			       struct overlay_buffer *buff);
 int overlay_packet_append_header(struct overlay_buffer *buff, int type, int ttl, int approx_size);
 int overlay_interface_args(const char *arg);
-int overlay_rhizome_add_advertisements(int interface_number,struct overlay_buffer *e);
+int overlay_rhizome_add_advertisements(struct decode_context *context, int interface_number, struct overlay_buffer *e);
 int overlay_add_local_identity(unsigned char *s);
 
 extern int overlay_interface_count;
@@ -492,7 +494,7 @@ int overlay_route_record_link( time_ms_t now,unsigned char *to,
 			      unsigned char *via,int sender_interface,
 			      unsigned int s1,unsigned int s2,int score,int gateways_en_route);
 int overlay_route_dump();
-int overlay_route_add_advertisements(overlay_interface *interface, struct overlay_buffer *e);
+int overlay_route_add_advertisements(struct decode_context *context, overlay_interface *interface, struct overlay_buffer *e);
 int ovleray_route_please_advertise(overlay_node *n);
 
 int overlay_route_saw_advertisements(int i, struct overlay_frame *f, struct decode_context *context, time_ms_t now);

@@ -28,7 +28,8 @@ struct sockaddr_in loopback;
 unsigned char magic_header[]={/* Magic */ 'O',0x10,
   /* Version */ 0x00,0x01};
 
-int overlay_packet_init_header(struct overlay_buffer *buff){
+int overlay_packet_init_header(struct overlay_interface *interface, struct decode_context *context, 
+			       struct overlay_buffer *buff){
   return ob_append_bytes(buff,magic_header,4);
 }
 
@@ -169,7 +170,6 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   */
 
   struct overlay_frame f;
-  struct subscriber *sender=NULL;
   struct decode_context context={
     .please_explain=NULL,
   };
@@ -203,8 +203,6 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       /* some other sort of interface, so we can't offer any help here */
       f.recvaddr=NULL;
   }
-
-  overlay_address_clear();
 
   // TODO put sender of packet and sequence number in envelope header
   // Then we can quickly drop reflected broadcast packets
@@ -285,10 +283,10 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     }
 
     if (f.type==OF_TYPE_SELFANNOUNCE){
-      sender = f.source;
       // skip the entire packet if it came from me
-      if (sender->reachable==REACHABLE_SELF)
+      if (f.source->reachable==REACHABLE_SELF)
 	break;
+      context.sender = f.source;
       
       overlay_address_set_sender(f.source);
       
@@ -358,11 +356,11 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   
   ob_free(b);
   
-  send_please_explain(&context, my_subscriber, sender);
+  send_please_explain(&context, my_subscriber, context.sender);
   return 0;
 }
 
-int overlay_add_selfannouncement(int interface,struct overlay_buffer *b)
+int overlay_add_selfannouncement(struct decode_context *context, int interface,struct overlay_buffer *b)
 {
 
   /* Pull the first record from the HLR database and turn it into a
@@ -399,7 +397,7 @@ int overlay_add_selfannouncement(int interface,struct overlay_buffer *b)
   /* Add next-hop address.  Always link-local broadcast for self-announcements */
   struct broadcast broadcast_id;
   overlay_broadcast_generate_address(&broadcast_id);
-  if (overlay_broadcast_append(b, &broadcast_id))
+  if (overlay_broadcast_append(context, b, &broadcast_id))
     return WHY("Could not write broadcast address to self-announcement");
 
   /* Add final destination.  Always broadcast for self-announcments. */
@@ -407,10 +405,8 @@ int overlay_add_selfannouncement(int interface,struct overlay_buffer *b)
     return WHY("Could not add self-announcement header");
 
   /* Add our SID to the announcement as sender */
-  if (overlay_address_append_self(&overlay_interfaces[interface], b))
+  if (overlay_address_append_self(context, &overlay_interfaces[interface], b))
     return -1;
-  
-  overlay_address_set_sender(my_subscriber);
   
   /* Sequence number range.  Based on one tick per millisecond. */
   time_ms_t last_ms = overlay_interfaces[interface].last_tick_ms;

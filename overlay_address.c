@@ -50,9 +50,6 @@ struct tree_node{
 
 static struct tree_node root;
 
-static struct subscriber *previous=NULL;
-static struct subscriber *sender=NULL;
-static struct broadcast *previous_broadcast=NULL;
 struct subscriber *my_subscriber=NULL;
 
 static unsigned char get_nibble(const unsigned char *sid, int pos){
@@ -336,21 +333,21 @@ int overlay_broadcast_drop_check(struct broadcast *addr)
   }
 }
 
-int overlay_broadcast_append(struct overlay_buffer *b, struct broadcast *broadcast)
+int overlay_broadcast_append(struct decode_context *context, struct overlay_buffer *b, struct broadcast *broadcast)
 {
   if (ob_append_byte(b, OA_CODE_BROADCAST)) return -1;
   if (ob_append_bytes(b, broadcast->id, BROADCAST_LEN)) return -1;
-  previous=NULL;
+  context->previous=NULL;
   return 0;
 }
 
 // append an appropriate abbreviation into the address
-int overlay_address_append(struct overlay_buffer *b, struct subscriber *subscriber)
+int overlay_address_append(struct decode_context *context, struct overlay_buffer *b, struct subscriber *subscriber)
 {
-  if (subscriber==sender){
+  if (context && subscriber==context->sender){
     ob_append_byte(b, OA_CODE_SELF);
     
-  }else if(subscriber==previous){
+  }else if(context && subscriber==context->previous){
     ob_append_byte(b, OA_CODE_PREVIOUS);
     
   }else if(subscriber->send_full || subscriber->abbreviate_len >= 20){
@@ -369,12 +366,12 @@ int overlay_address_append(struct overlay_buffer *b, struct subscriber *subscrib
     ob_append_byte(b, OA_CODE_PREFIX11);
     ob_append_bytes(b, subscriber->sid, 11);
   }
-  
-  previous = subscriber;
+  if (context)
+    context->previous = subscriber;
   return 0;
 }
 
-int overlay_address_append_self(overlay_interface *interface, struct overlay_buffer *b){
+int overlay_address_append_self(struct decode_context *context, overlay_interface *interface, struct overlay_buffer *b){
   static int ticks_per_full_address = -1;
   if (ticks_per_full_address == -1) {
     ticks_per_full_address = confValueGetInt64Range("mdp.selfannounce.ticks_per_full_address", 4LL, 1LL, 1000000LL);
@@ -389,9 +386,10 @@ int overlay_address_append_self(overlay_interface *interface, struct overlay_buf
     my_subscriber->send_full=1;
   }
   
-  if (overlay_address_append(b, my_subscriber))
+  if (overlay_address_append(context, b, my_subscriber))
     return WHY("Could not append my sid");
   
+  context->sender = my_subscriber;
   return 0;
 }
 
@@ -450,8 +448,8 @@ int find_subscr_buffer(struct decode_context *context, struct overlay_buffer *b,
     ob_append_bytes(context->please_explain->payload, id, len);
     
   }else{
-    previous=*subscriber;
-    previous_broadcast=NULL;
+    context->previous=*subscriber;
+    context->previous_broadcast=NULL;
   }
   return 0;
 }
@@ -474,8 +472,8 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
       }else{
 	ob_get_bytes(b, broadcast->id, BROADCAST_LEN);
       }
-      previous_broadcast=broadcast;
-      previous=NULL;
+      context->previous_broadcast=broadcast;
+      context->previous=NULL;
       return 0;
       
     case OA_CODE_SELF:
@@ -483,12 +481,12 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
       if (!subscriber){
 	WARN("Could not resolve address, no buffer supplied");
 	context->invalid_addresses=1;
-      }else if (!sender){
+      }else if (!context->sender){
 	INFO("Could not resolve address, sender has not been set");
 	context->invalid_addresses=1;
       }else{
-	*subscriber=sender;
-	previous=sender;
+	*subscriber=context->sender;
+	context->previous=context->sender;
       }
       return 0;
       
@@ -501,13 +499,13 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
       if (!subscriber){
 	WARN("Could not resolve address, no buffer supplied");
 	context->invalid_addresses=1;
-      }else if (previous){
-	*subscriber=previous;
-      }else if (previous_broadcast){
+      }else if (context->previous){
+	*subscriber=context->previous;
+      }else if (context->previous_broadcast){
 	*subscriber=NULL;
 	// not an error if broadcast is NULL, as the previous OA_CODE_BROADCAST address must have been valid.
 	if (broadcast)
-	  bcopy(previous_broadcast->id, broadcast->id, BROADCAST_LEN);
+	  bcopy(context->previous_broadcast->id, broadcast->id, BROADCAST_LEN);
       }else{
 	INFO("Unable to decode previous address");
 	context->invalid_addresses=1;
@@ -546,7 +544,7 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
   else
     context->please_explain->source = my_subscriber;
   
-  if (destination){
+  if (context->sender){
     context->please_explain->destination = destination;
     context->please_explain->ttl=64;
   }else{
@@ -608,14 +606,4 @@ int process_explain(struct overlay_frame *frame){
   
   send_please_explain(&context, frame->destination, frame->source);
   return 0;
-}
-
-void overlay_address_clear(void){
-  sender=NULL;
-  previous=NULL;
-  previous_broadcast=NULL;
-}
-
-void overlay_address_set_sender(struct subscriber *subscriber){
-  sender = subscriber;
 }

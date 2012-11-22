@@ -71,7 +71,7 @@ int add_advertisement(struct subscriber *subscriber, void *context){
       // never send the full sid in an advertisement
       subscriber->send_full=0;
       
-      if (overlay_address_append(e,subscriber) ||
+      if (overlay_address_append(NULL,e,subscriber) ||
 	  ob_append_byte(e,n->best_link_score -1) ||
 	  ob_append_byte(e,n->observations[n->best_observation].gateways_en_route +1)){
 	
@@ -88,7 +88,8 @@ int add_advertisement(struct subscriber *subscriber, void *context){
   return 0;
 }
 
-int overlay_route_add_advertisements(overlay_interface *interface, struct overlay_buffer *e)
+int overlay_route_add_advertisements(struct decode_context *context, overlay_interface *interface, 
+				     struct overlay_buffer *e)
 {
   /* Construct a route advertisement frame and append it to e.
      
@@ -128,12 +129,11 @@ int overlay_route_add_advertisements(overlay_interface *interface, struct overla
   /* Add address fields */
   struct broadcast broadcast;
   overlay_broadcast_generate_address(&broadcast);
-  overlay_broadcast_append(e,&broadcast);
+  overlay_broadcast_append(context,e,&broadcast);
   
   ob_append_byte(e,OA_CODE_PREVIOUS);
   
-  overlay_address_append_self(interface,e);
-  overlay_address_set_sender(my_subscriber);
+  overlay_address_append(context, e, my_subscriber);
   
   // TODO high priority advertisements first....
   /*
@@ -164,7 +164,6 @@ int overlay_route_add_advertisements(overlay_interface *interface, struct overla
   if (e->position == start_pos){
     // no advertisements? don't bother to send the payload at all.
     ob_rewind(e);
-    overlay_address_clear();
   }else
     ob_patch_rfs(e,COMPUTE_RFS_LENGTH);
 
@@ -185,6 +184,7 @@ int overlay_route_saw_advertisements(int i, struct overlay_frame *f, struct deco
 {
   IN();
   context->abbreviations_only=1;
+  struct subscriber *previous=context->previous;
   // minimum record length is (address code, 3 byte sid, score, gateways)
   while(f->payload->position +6 <= f->payload->sizeLimit)
     {
@@ -221,6 +221,8 @@ int overlay_route_saw_advertisements(int i, struct overlay_frame *f, struct deco
 				score,gateways_en_route);
       
     }
+  // restore the previous subscriber id for parsing the next header
+  context->previous=previous;
   context->abbreviations_only=0;
   RETURN(0);
 }
