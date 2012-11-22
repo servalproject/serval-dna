@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <stdio.h>
 #include <stdarg.h>
+#include <sys/types.h>
 
 typedef unsigned int debugflags_t;
 

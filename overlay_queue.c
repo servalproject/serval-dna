@@ -2,6 +2,7 @@
 #include "overlay_buffer.h"
 #include "overlay_packet.h"
 #include "str.h"
+#include "strbuf.h"
 
 typedef struct overlay_txqueue {
   struct overlay_frame *first;
