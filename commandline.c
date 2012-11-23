@@ -1525,22 +1525,6 @@ int app_count_peers(int argc, const char *const *argv, struct command_line_optio
   return 0;
 }
 
-int app_test_rfs(int argc, const char *const *argv, struct command_line_option *o, void *context)
-{
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
-  printf("Testing that RFS coder works properly.\n");
-  int i;
-  for(i=0;i<65536;i++) {
-    unsigned char bytes[8];
-    rfs_encode(i, &bytes[0]);
-    int zero=0;
-    int r=rfs_decode(&bytes[0],&zero);
-    if (i != r)
-      printf("RFS encoding of %d decodes to %d: %s\n", i, r, alloca_tohex(bytes, sizeof bytes));
-  }
-  return 0;
-}
-
 int app_crypt_test(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
@@ -1940,8 +1924,6 @@ struct command_line_option command_line_options[]={
     "Return a count of routable peers on the network"},
   {app_reverse_lookup, {"reverse", "lookup", "<sid>", "[<timeout>]", NULL}, 0,
     "Lookup the phone number and name of a given subscriber"},
-  {app_test_rfs,{"test","rfs",NULL},0,
-   "Test RFS field calculation"},
   {app_monitor_cli,{"monitor",NULL},0,
    "Interactive servald monitor interface."},
   {app_crypt_test,{"crypt","test",NULL},0,

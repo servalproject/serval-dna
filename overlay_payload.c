@@ -98,7 +98,8 @@ int overlay_frame_append_payload(struct decode_context *context, overlay_interfa
   int actual_len=addrs_len+p->payload->position;
   if (debug&DEBUG_PACKETCONSTRUCTION) 
     DEBUGF("Patching RFS for actual_len=%d\n",actual_len);
-  ob_patch_rfs(headers,actual_len);
+  
+  ob_set_ui16(headers,headers->var_length_offset,actual_len);
 
   /* Write payload format plus total length of header bits */
   if (ob_makespace(b,2+headers->position+p->payload->position)) {

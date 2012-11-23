@@ -255,24 +255,10 @@ int ob_append_ui32(struct overlay_buffer *b, uint32_t v)
 
 int ob_append_rfs(struct overlay_buffer *b,int l)
 {
-  /* Encode the specified length and append it to the buffer */
   if (l<0||l>0xffff) return -1;
   
-  /* First work out how long the field needs to be, then write dummy bytes
-   and use ob_patch_rfs to set the value.  That way we have only one
-   lot of code that does the encoding. */
-  
   b->var_length_offset=b->position;
-  b->var_length_bytes=rfs_length(l);
-  
-  unsigned char c[3]={0,0,0};
-  if (ob_append_bytes(b,c,b->var_length_bytes)) {
-    b->var_length_offset=0;
-    return -1;
-  }
-  
-  return ob_patch_rfs(b,l);
-  
+  return ob_append_ui16(b,l);
 }
 
 
@@ -348,96 +334,18 @@ int ob_get(struct overlay_buffer *b){
   return b->bytes[b->position++];
 }
 
-int rfs_length(int l)
+int ob_set_ui16(struct overlay_buffer *b, int offset, uint16_t v)
 {
-  if (l<0) return -1;
-  if (l<250) return 1;
-  else if (l<(255+250+(256*4))) return 2;
-  else if (l<=0xffff) return 3;
-  else return -1;
-}
-
-int rfs_encode(int l, unsigned char *b)
-{
-  if (l<250) { b[0]=l; }
-  else if (l<(255+250+(256*4))) {
-    l-=250;
-    int page=(l>>8);
-    l&=0xff;
-    b[0]=RFS_PLUS250+page;
-    b[1]=l;
-  } else {
-    b[0]=RFS_3BYTE;
-    b[1]=l>>8;
-    b[2]=l&0xff;
-  }
-  return 0;
-}
-
-int rfs_decode(unsigned char *b,int *ofs)
-{
-  int rfs=b[*ofs];
-  switch(rfs) {
-  case RFS_PLUS250: case RFS_PLUS456: case RFS_PLUS762: case RFS_PLUS1018: case RFS_PLUS1274: 
-    rfs=250+256*(rfs-RFS_PLUS250)+b[++(*ofs)]; 
-    break;
-  case RFS_3BYTE: rfs=(b[(*ofs)+1]<<8)+b[(*ofs)+2]; (*ofs)+=2;
-  default: /* Length is natural value of field, so nothing to do */
-    break;
-  }
-  (*ofs)++;
-  return rfs;
-}
-
-// move the data at offset, by shift bytes
-int ob_indel_space(struct overlay_buffer *b,int offset,int shift)
-{
-  if (offset>=b->position) return -1;
-  if (shift>0 && ob_makespace(b, shift)) return -1;
-  bcopy(&b->bytes[offset],&b->bytes[offset+shift],b->position-offset);
-  b->position+=shift;
-  return 0;
-}
-
-
-int ob_patch_rfs(struct overlay_buffer *b,int l)
-{
-  if (l==COMPUTE_RFS_LENGTH){
-    // assume the payload has been written, we can now calculate the actual length
-    l = b->position - (b->var_length_offset + b->var_length_bytes);
-  }
-  if (l<0||l>0xffff) return -1;
-
-  /* Adjust size of field */
-  int new_size=rfs_length(l);
-  int shift=new_size - b->var_length_bytes;
-  if (shift) {
-    if (debug&DEBUG_PACKETCONSTRUCTION) {
-      DEBUGF("Patching RFS for rfs_size=%d (was %d), so indel %d btyes",
-	      new_size,b->var_length_bytes,shift);
-      dump("before indel",
-	   &b->bytes[b->var_length_offset],
-	   b->position-b->var_length_offset);
-    }
-    if (ob_indel_space(b, b->var_length_offset + b->var_length_bytes, shift)) return -1;
-    if (debug&DEBUG_PACKETCONSTRUCTION) {
-      dump("after indel",
-	   &b->bytes[b->var_length_offset],
-	   b->position-b->var_length_offset);
-    }
-
-  }
+  if (test_offset(b, offset, 2))
+    return -1;
   
-  if (rfs_encode(l,&b->bytes[b->var_length_offset])) return -1;
-
-  if (debug&DEBUG_PACKETCONSTRUCTION) {
-    dump("after patch",
-	 &b->bytes[b->var_length_offset],
-	 b->position-b->var_length_offset);
-  }
-
+  b->bytes[offset] = (v >> 8) & 0xFF;
+  b->bytes[offset+1] = v & 0xFF;
   return 0;
-  
+}
+
+int ob_patch_rfs(struct overlay_buffer *b){
+  return ob_set_ui16(b,b->var_length_offset,b->position - (b->var_length_offset + 2));
 }
 
 int asprintable(int c)

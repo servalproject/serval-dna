@@ -317,7 +317,7 @@ int overlay_rhizome_add_advertisements(struct decode_context *context, int inter
     }
   }
 
-  ob_patch_rfs(e, COMPUTE_RFS_LENGTH);
+  ob_patch_rfs(e);
 
   sqlite_set_debugmask(oldmask);
   RETURN(0);

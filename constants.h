@@ -112,15 +112,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 /* QOS packet queue bits */
 #define OF_QUEUE_BITS 0x03
 
-#define RFS_PLUS250 0xfa
-#define RFS_PLUS456 0xfb
-#define RFS_PLUS762 0xfc
-#define RFS_PLUS1018 0xfd
-#define RFS_PLUS1274 0xfe
-#define RFS_3BYTE 0xff
-
-#define COMPUTE_RFS_LENGTH -1
-
 /* Keep track of last 32 observations of a node.
    Hopefully this is enough, if not, we will increase.
    To keep the requirement down we will collate contigious neighbour observations on each interface.

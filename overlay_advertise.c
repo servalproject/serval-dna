@@ -165,7 +165,7 @@ int overlay_route_add_advertisements(struct decode_context *context, overlay_int
     // no advertisements? don't bother to send the payload at all.
     ob_rewind(e);
   }else
-    ob_patch_rfs(e,COMPUTE_RFS_LENGTH);
+    ob_patch_rfs(e);
 
   return 0;
 }

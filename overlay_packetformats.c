@@ -226,7 +226,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     f.ttl--;
 
     /* Decode length of remainder of frame */
-    int payload_len=rfs_decode(b->bytes, &b->position);
+    int payload_len=ob_get_ui16(b);
 
     if (payload_len <=0) {
       /* assume we fell off the end of the packet */
@@ -409,7 +409,7 @@ int overlay_add_selfannouncement(struct decode_context *context, int interface,s
   if (ob_append_byte(b,interface))
     return WHY("Could not add interface number to self-announcement");
 
-  ob_patch_rfs(b, COMPUTE_RFS_LENGTH);
+  ob_patch_rfs(b);
   
   return 0;
 }
