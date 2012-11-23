@@ -470,7 +470,8 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
       if (!broadcast){
 	context->invalid_addresses=1;
       }else{
-	ob_get_bytes(b, broadcast->id, BROADCAST_LEN);
+	if (ob_get_bytes(b, broadcast->id, BROADCAST_LEN))
+	  return -1;
       }
       context->previous_broadcast=broadcast;
       context->previous=NULL;
@@ -544,7 +545,7 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
   else
     context->please_explain->source = my_subscriber;
   
-  if (context->sender){
+  if (destination){
     context->please_explain->destination = destination;
     context->please_explain->ttl=64;
   }else{
@@ -564,9 +565,8 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
 int process_explain(struct overlay_frame *frame){
   struct overlay_buffer *b=frame->payload;
   
-  struct decode_context context={
-    .please_explain=NULL,
-  };
+  struct decode_context context;
+  bzero(&context, sizeof context);
   
   while(b->position < b->sizeLimit){
     int code = ob_getbyte(b,b->position);
@@ -591,6 +591,8 @@ int process_explain(struct overlay_frame *frame){
       return WHYF("Unsupported abbreviation code %d", code);
     
     unsigned char *sid = ob_get_bytes_ptr(b, len);
+    if (!sid)
+      return WHY("Badly formatted explain message");
     
     if (len==SID_SIZE){
       // This message is also used to inform people of previously unknown subscribers
