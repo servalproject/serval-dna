@@ -271,7 +271,7 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
   /* Indicate MDP message type */
   mdp->packetTypeAndFlags=MDP_TX;
   
-  switch(f->modifiers&OF_CRYPTO_BITS)  {
+  switch(f->modifiers&(OF_CRYPTO_CIPHERED|OF_CRYPTO_SIGNED))  {
   case 0: 
     /* nothing to do, b already points to the plain text */
     mdp->packetTypeAndFlags|=MDP_NOCRYPT|MDP_NOSIGN;
@@ -855,7 +855,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
     frame->queue = OQ_ORDINARY;
   
   /* Make sure only voice traffic gets priority */
-  if ((frame->type&OF_TYPE_BITS)==OF_TYPE_DATA_VOICE) {
+  if (frame->type==OF_TYPE_DATA_VOICE) {
     frame->queue=OQ_ISOCHRONOUS_VOICE;
     rhizome_saw_voice_traffic();
   }

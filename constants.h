@@ -101,21 +101,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define OF_TYPE_PLEASEEXPLAIN 0x60 /* Request for resolution of an abbreviated address */
 #define OF_TYPE_NODEANNOUNCE 0x70
 
-/* Flags used to control the interpretation of the resolved type field */
-#define OF_TYPE_FLAG_BITS 0xf0000000
-#define OF_TYPE_FLAG_NORMAL 0x0
-
 /* Modifiers that indicate the disposition of the frame */
 #define OF_MODIFIER_BITS 0x0f
 
 /* Crypto/security options */
-#define OF_CRYPTO_BITS 0x0c
 #define OF_CRYPTO_NONE 0x00
 #define OF_CRYPTO_CIPHERED 0x04 /* Encrypted frame */
 #define OF_CRYPTO_SIGNED 0x08   /* signed frame */
-/* The following was previously considered, but is not being implemented at this
-   time.
-   #define OF_CRYPTO_PARANOID 0x0c Encrypted and digitally signed frame, with final destination address also encrypted. */
 
 /* QOS packet queue bits */
 #define OF_QUEUE_BITS 0x03
