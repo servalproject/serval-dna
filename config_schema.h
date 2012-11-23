@@ -27,7 +27,8 @@ ATOM(sid_t,                 service,     SID_NONE, opt_sid,, "Subscriber ID of S
 END_STRUCT
 
 STRUCT(network_interface)
-ATOM(struct pattern_list,   match,     PATTERN_LIST_EMPTY, opt_pattern_list, MANDATORY, "Names that match network interface")
+ATOM(int,                   exclude,    0, opt_boolean,, "If true, do not use matching interfaces")
+ATOM(struct pattern_list,   match,      PATTERN_LIST_EMPTY, opt_pattern_list, MANDATORY, "Names that match network interface")
 ATOM(short,                 type,       OVERLAY_INTERFACE_WIFI, opt_interface_type,, "Type of network interface")
 ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, opt_port,, "Port number for network interface")
 ATOM(uint64_t,              speed,      1000000, opt_uint64_scaled,, "Speed in bits per second")

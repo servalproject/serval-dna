@@ -217,7 +217,9 @@ int get_child(const struct config_node *parent, const char *key)
 
 void missing_node(const struct config_node *parent, const char *key)
 {
-  WARNF("missing configuration option `%s.%s`", parent->fullkey, key);
+  WARNF("missing configuration option `%s%s%s`",
+      parent->fullkey ? parent->fullkey : "", parent->fullkey ? "." : "", key
+    );
 }
 
 void invalid_text(const struct config_node *node, int reason)
@@ -502,7 +504,7 @@ int opt_uint64_scaled(uint64_t *intp, const char *text)
 {
   uint64_t result;
   const char *end;
-  if (!str_to_uint64_scaled(text, 10, &result, &end)) {
+  if (!str_to_uint64_scaled(text, 10, &result, &end) || *end) {
     //invalid_text(node, "invalid scaled unsigned integer");
     return CFINVALID;
   }
@@ -589,11 +591,139 @@ int opt_pattern_list(struct pattern_list *listp, const char *text)
   return CFOK;
 }
 
+
+int opt_network_interface(struct config_network_interface *nifp, const char *text)
+{
+  DEBUGF("%s text=%s", __FUNCTION__, alloca_str(text));
+  struct config_network_interface nif;
+  dfl_config_network_interface(&nif);
+  if (text[0] != '+' && text[0] != '-')
+    return CFINVALID; // "Sign must be + or -"
+  nif.exclude = (text[0] == '-');
+  const char *const endtext = text + strlen(text);
+  const char *name = text + 1;
+  const char *p = strpbrk(name, "=:");
+  if (!p)
+    p = endtext;
+  size_t len = p - name;
+  int star = (len == 0 || (name[0] != '>' && name[len - 1] != '*')) ? 1 : 0;
+  if (len + star >= sizeof(nif.match.patv[0]))
+    return CFOVERFLOW;
+  strncpy(nif.match.patv[0], name, len)[len + star] = '\0';
+  if (star)
+    nif.match.patv[0][len] = '*';
+  nif.match.patc = 1;
+  if (*p == '=') {
+    const char *const type = p + 1;
+    p = strchr(type, ':');
+    if (!p)
+      p = endtext;
+    len = p - type;
+    if (len) {
+      char buf[len + 1];
+      strncpy(buf, type, len)[len] = '\0';
+      int result = opt_interface_type(&nif.type, buf);
+      switch (result) {
+      case CFERROR: return CFERROR;
+      case CFOK: break;
+      default: return result; // "Invalid interface type"
+      }
+    }
+  }
+  if (*p == ':') {
+    const char *const port = p + 1;
+    p = strchr(port, ':');
+    if (!p)
+      p = endtext;
+    len = p - port;
+    if (len) {
+      char buf[len + 1];
+      strncpy(buf, port, len)[len] = '\0';
+      int result = opt_port(&nif.port, buf);
+      switch (result) {
+      case CFERROR: return CFERROR;
+      case CFOK: break;
+      default: return result; // "Invalid interface port number"
+      }
+    }
+  }
+  if (*p == ':') {
+    const char *const speed = p + 1;
+    p = endtext;
+    len = p - speed;
+    if (len) {
+      char buf[len + 1];
+      strncpy(buf, speed, len)[len] = '\0';
+      int result = opt_uint64_scaled(&nif.speed, buf);
+      switch (result) {
+      case CFERROR: return CFERROR;
+      case CFOK: break;
+      default: return result; // "Invalid interface speed"
+      }
+      if (nif.speed < 1)
+	return CFINVALID; // "Interfaces must be capable of at least 1 bit per second"
+    }
+  }
+  if (*p)
+    return CFINVALID; // "Extra junk at end of interface specification"
+  *nifp = nif;
+  return CFOK;
+}
+
 int opt_interface_list(struct config_interface_list *listp, const struct config_node *node)
 {
-  if (node->text)
-    invalid_text(node, CFINVALID);
-  return opt_config_interface_list(listp, node);
+  int result = CFOK;
+  int ret;
+  if (node->text) {
+    const char *p;
+    const char *arg = NULL;
+    unsigned n = listp->ac;
+    for (p = node->text; n < NELS(listp->av); ++p) {
+      if (*p == '\0' || *p == ',' || isspace(*p)) {
+	if (arg) {
+	  int len = p - arg;
+	  if (len > 80) {
+	    result = CFOVERFLOW;
+	    goto invalid;
+	  }
+	  char buf[len + 1];
+	  strncpy(buf, arg, len)[len] = '\0';
+	  ret = opt_network_interface(&listp->av[n].value, buf);
+	  switch (ret) {
+	  case CFERROR: return CFERROR;
+	  case CFOK:
+	    len = snprintf(listp->av[n].label, sizeof listp->av[n].label - 1, "%u", n);
+	    listp->av[n].label[len] = '\0';
+	    ++n;
+	    break;
+	  default:
+	    result = ret;
+	    goto invalid;
+	  }
+	  arg = NULL;
+	}
+	if (!*p)
+	  break;
+      } else if (!arg)
+	arg = p;
+    }
+    if (*p) {
+      result = CFOVERFLOW;
+      goto invalid;
+    }
+    assert(n <= NELS(listp->av));
+    listp->ac = n;
+  }
+invalid:
+  ret = opt_config_interface_list(listp, node);
+  switch (ret) {
+  case CFERROR: return CFERROR;
+  default:
+    if (result < ret)
+      result = ret;
+    break;
+  }
+  return result;
 }
 
 void missing_node(const struct config_node *parent, const char *key);
@@ -693,6 +823,8 @@ void list_omit_element(const struct config_node *node);
 	    if (result < CFOVERFLOW) result = CFOVERFLOW; \
 	    list_overflow(node->nodv[i]); \
 	} \
+	if (s->ac == 0 && result < CFMISSING) \
+	  result = CFMISSING; \
         return result; \
     }
 #include "config_schema.h"
@@ -745,6 +877,18 @@ int main(int argc, char **argv)
       DEBUGF("   .protocol = %s", alloca_str(config.rhizome.direct.peer.av[j].value.protocol));
       DEBUGF("   .host = %s", alloca_str(config.rhizome.direct.peer.av[j].value.host));
       DEBUGF("   .port = %u", config.rhizome.direct.peer.av[j].value.port);
+    }
+    for (j = 0; j < config.interfaces.ac; ++j) {
+      DEBUGF("config.interfaces.%s", config.interfaces.av[j].label);
+      DEBUGF("   .exclude = %d", config.interfaces.av[j].value.exclude);
+      DEBUGF("   .match = [");
+      int k;
+      for (k = 0; k < config.interfaces.av[j].value.match.patc; ++k)
+	DEBUGF("             %s", alloca_str(config.interfaces.av[j].value.match.patv[k]));
+      DEBUGF("            ]");
+      DEBUGF("   .type = %d", config.interfaces.av[j].value.type);
+      DEBUGF("   .port = %u", config.interfaces.av[j].value.port);
+      DEBUGF("   .speed = %llu", (unsigned long long) config.interfaces.av[j].value.speed);
     }
   }
   exit(0);
