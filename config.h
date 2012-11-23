@@ -37,14 +37,14 @@ struct pattern_list {
 };
 #define PATTERN_LIST_EMPTY ((struct pattern_list){.patc = 0})
 
-#define SUB(__sect, __name, __flags) SUBP(__sect, __name, opt_config_##__sect, __flags)
 
 // Generate value structs, struct config_SECTION.
 #define STRUCT(__sect) struct config_##__sect {
 #define NODE(__type, __name, __default, __parser, __flags, __comment) __type __name;
 #define ATOM(__type, __name, __default, __parser, __flags, __comment) __type __name;
 #define STRING(__size, __name, __default, __parser, __flags, __comment) char __name[__size + 1];
-#define SUBP(__sect, __name, __parser, __flags) struct config_##__sect __name;
+#define SUB_STRUCT(__sect, __name, __flags) struct config_##__sect __name;
+#define NODE_STRUCT(__sect, __name, __parser, __flags) struct config_##__sect __name;
 #define END_STRUCT };
 #define ARRAY(__sect, __type, __size, __parser, __comment) struct config_##__sect { unsigned ac; struct { char label[41]; __type value; } av[(__size)]; };
 #include "config_schema.h"
@@ -52,7 +52,8 @@ struct pattern_list {
 #undef NODE
 #undef ATOM
 #undef STRING
-#undef SUBP
+#undef SUB_STRUCT
+#undef NODE_STRUCT
 #undef END_STRUCT
 #undef ARRAY
 
@@ -65,7 +66,9 @@ struct pattern_list {
         s->__name = (__default);
 #define STRING(__size, __name, __default, __parser, __flags, __comment) \
         strncpy(s->__name, (__default), (__size))[(__size)] = '\0';
-#define SUBP(__sect, __name, __parser, __flags) \
+#define SUB_STRUCT(__sect, __name, __flags) \
+        dfl_config_##__sect(&s->__name);
+#define NODE_STRUCT(__sect, __name, __parser, __flags) \
         dfl_config_##__sect(&s->__name);
 #define END_STRUCT \
         return 0; \
@@ -80,7 +83,8 @@ struct pattern_list {
 #undef NODE
 #undef ATOM
 #undef STRING
-#undef SUBP
+#undef SUB_STRUCT
+#undef NODE_STRUCT
 #undef END_STRUCT
 #undef ARRAY
 
@@ -110,8 +114,10 @@ struct config_node {
     int __parser(__type *, const char *);
 #define STRING(__size, __name, __default, __parser, __flags, __comment) \
     int __parser(char *, size_t, const char *);
-#define SUBP(__sect, __name, __parser, __flags) \
-    int __parser(struct config_##__sect *, const struct config_node *node);
+#define SUB_STRUCT(__sect, __name, __flags) \
+    int opt_config_##__sect(struct config_##__sect *, const struct config_node *);
+#define NODE_STRUCT(__sect, __name, __parser, __flags) \
+    int __parser(struct config_##__sect *, const struct config_node *);
 #define END_STRUCT
 #define ARRAY(__sect, __type, __size, __parser, __comment) \
     int opt_config_##__sect(struct config_##__sect *, const struct config_node *); \
@@ -121,7 +127,8 @@ struct config_node {
 #undef NODE
 #undef ATOM
 #undef STRING
-#undef SUBP
+#undef SUB_STRUCT
+#undef NODE_STRUCT
 #undef END_STRUCT
 #undef ARRAY
 

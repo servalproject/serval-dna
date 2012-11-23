@@ -442,10 +442,8 @@ int opt_protocol(char *str, size_t len, const char *text)
 
 int opt_rhizome_peer(struct config_rhizomepeer *rpeer, const struct config_node *node)
 {
-  if (!node->text) {
-    dfl_config_rhizomepeer(rpeer);
+  if (!node->text)
     return opt_config_rhizomepeer(rpeer, node);
-  }
   spurious_children(node);
   const char *protocol;
   size_t protolen;
@@ -593,12 +591,9 @@ int opt_pattern_list(struct pattern_list *listp, const char *text)
 
 int opt_interface_list(struct config_interface_list *listp, const struct config_node *node)
 {
-  if (!node->text) {
-    dfl_config_interface_list(listp);
-    return opt_config_interface_list(listp, node);
-  }
-  spurious_children(node);
-  return CFINVALID;
+  if (node->text)
+    invalid_text(node, CFINVALID);
+  return opt_config_interface_list(listp, node);
 }
 
 void missing_node(const struct config_node *parent, const char *key);
@@ -609,13 +604,13 @@ void list_omit_element(const struct config_node *node);
 
 // Schema item flags.
 #define __MANDATORY     (1<<0)
-#define __NO_TEXT	(1<<1)
-#define __NO_CHILDREN	(1<<2)
+#define __TEXT		(1<<1)
+#define __CHILDREN	(1<<2)
 
 // Schema flag symbols, to be used in the '__flags' macro arguments.
 #define MANDATORY	|__MANDATORY
-#define NO_TEXT		|__NO_TEXT
-#define NO_CHILDREN	|__NO_CHILDREN
+#define USES_TEXT	|__TEXT
+#define USES_CHILDREN	|__CHILDREN
 
 // Generate parsing functions, opt_config_SECTION()
 #define STRUCT(__sect) \
@@ -623,18 +618,14 @@ void list_omit_element(const struct config_node *node);
         if (node->text) unsupported_node(node); \
         int result = CFOK; \
         char used[node->nodc]; \
-        memset(used, 0, node->nodc);
+        memset(used, 0, node->nodc * sizeof used[0]);
 #define __ITEM(__name, __flags, __parseexpr) \
         { \
             int i = get_child(node, #__name); \
 	    const struct config_node *child = (i != -1) ? node->nodv[i] : NULL; \
 	    int ret = CFMISSING; \
             if (child) { \
-                used[i] = 1; \
-		if (((0 __flags) & __NO_TEXT) && child->text) \
-		  unsupported_node(child); \
-		if (((0 __flags) & __NO_CHILDREN) && child->nodc) \
-		  unsupported_children(child); \
+                used[i] |= (__flags); \
                 ret = (__parseexpr); \
             } \
 	    switch (ret) { \
@@ -642,7 +633,7 @@ void list_omit_element(const struct config_node *node);
 	    case CFERROR: \
 	      return CFERROR; \
 	    case CFMISSING: \
-	      if ((0 __flags) & __MANDATORY) { \
+	      if ((__flags) & __MANDATORY) { \
 		  missing_node(node, #__name); \
 		  if (result < CFMISSING) \
 		    result = CFMISSING; \
@@ -658,25 +649,29 @@ void list_omit_element(const struct config_node *node);
 	    } \
         }
 #define NODE(__type, __name, __default, __parser, __flags, __comment) \
-        __ITEM(__name, __flags, __parser(&s->__name, child))
+        __ITEM(__name, 0 __flags, __parser(&s->__name, child))
 #define ATOM(__type, __name, __default, __parser, __flags, __comment) \
-        __ITEM(__name, __flags NO_CHILDREN, child->text ? __parser(&s->__name, child->text) : CFMISSING)
+        __ITEM(__name, ((0 __flags)|__TEXT)&~__CHILDREN, child->text ? __parser(&s->__name, child->text) : CFMISSING)
 #define STRING(__size, __name, __default, __parser, __flags, __comment) \
-        __ITEM(__name, __flags NO_CHILDREN, child->text ? __parser(s->__name, (__size) + 1, child->text) : CFMISSING)
-#define SUBP(__sect, __name, __parser, __flags) \
-        __ITEM(__name, __flags NO_TEXT, __parser(&s->__name, child))
+        __ITEM(__name, ((0 __flags)|__TEXT)&~__CHILDREN, child->text ? __parser(s->__name, (__size) + 1, child->text) : CFMISSING)
+#define SUB_STRUCT(__sect, __name, __flags) \
+        __ITEM(__name, (0 __flags)|__CHILDREN, opt_config_##__sect(&s->__name, child))
+#define NODE_STRUCT(__sect, __name, __parser, __flags) \
+        __ITEM(__name, (0 __flags)|__TEXT|__CHILDREN, __parser(&s->__name, child))
 #define END_STRUCT \
         { \
             int i; \
-            for (i = 0; i < node->nodc; ++i) \
-                if (!used[i]) \
-                    unsupported_tree(node->nodv[i]); \
+            for (i = 0; i < node->nodc; ++i) { \
+                if (node->nodv[i]->text && !(used[i] & __TEXT)) \
+                    unsupported_node(node->nodv[i]); \
+                if (node->nodv[i]->nodc && !(used[i] & __CHILDREN)) \
+                    unsupported_children(node->nodv[i]); \
+	    } \
         } \
         return result; \
     }
 #define ARRAY(__sect, __type, __size, __parser, __comment) \
     int opt_config_##__sect(struct config_##__sect *s, const struct config_node *node) { \
-        if (node->text) unsupported_node(node); \
         int result = CFOK; \
 	int i; \
 	for (i = 0; i < node->nodc && s->ac < NELS(s->av); ++i) { \
@@ -705,9 +700,11 @@ void list_omit_element(const struct config_node *node);
 #undef NODE
 #undef ATOM
 #undef STRING
-#undef SUBP
+#undef SUB_STRUCT
+#undef NODE_STRUCT
 #undef END_STRUCT
 #undef ARRAY
+
 int main(int argc, char **argv)
 {
   int i;
