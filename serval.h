@@ -330,6 +330,8 @@ struct sched_ent{
 
 struct overlay_buffer;
 struct overlay_frame;
+struct broadcast;
+
 #define STRUCT_SCHED_ENT_UNUSED ((struct sched_ent){NULL, NULL, NULL, NULL, {-1, 0, 0}, 0LL, 0LL, NULL, -1})
 
 extern int overlayMode;
@@ -444,7 +446,10 @@ int overlay_frame_append_payload(struct decode_context *context, overlay_interfa
 				 struct overlay_frame *p, struct subscriber *next_hop, struct overlay_buffer *b);
 int overlay_packet_init_header(struct overlay_interface *interface, struct decode_context *context, 
 			       struct overlay_buffer *buff);
-int overlay_packet_append_header(struct overlay_buffer *buff, int type, int ttl, int approx_size);
+int overlay_frame_build_header(struct decode_context *context, struct overlay_buffer *buff, 
+			       int queue, int type, int modifiers, int ttl, 
+			       struct broadcast *broadcast, struct subscriber *next_hop,
+			       struct subscriber *destination, struct subscriber *source);
 int overlay_interface_args(const char *arg);
 int overlay_rhizome_add_advertisements(struct decode_context *context, int interface_number, struct overlay_buffer *e);
 int overlay_add_local_identity(unsigned char *s);

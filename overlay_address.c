@@ -460,7 +460,7 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
   int code = ob_getbyte(b,b->position);
   if (code<0)
     return -1;
-  
+  DEBUGF("Decoding address code %d",code);
   switch(code){
     case OA_CODE_BROADCAST:
       b->position++;
@@ -535,8 +535,9 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
 
 // once we've finished parsing a packet, complete and send a please explain if required.
 int send_please_explain(struct decode_context *context, struct subscriber *source, struct subscriber *destination){
+  IN();
   if (!context->please_explain)
-    return 0;
+    RETURN(0);
   
   context->please_explain->type = OF_TYPE_PLEASEEXPLAIN;
   
@@ -556,9 +557,9 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
   DEBUGF("Queued please explain");
   context->please_explain->queue=OQ_MESH_MANAGEMENT;
   if (!overlay_payload_enqueue(context->please_explain))
-    return 0;
+    RETURN(0);
   op_free(context->please_explain);
-  return 0;
+  RETURN(0);
 }
 
 // process an incoming request for explanation of subscriber abbreviations

@@ -22,10 +22,42 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_buffer.h"
 #include "overlay_packet.h"
 
-int overlay_packet_append_header(struct overlay_buffer *buff, int type, int ttl, int approx_size){
-  if (ob_append_byte(buff, type)) return -1;
+int overlay_frame_build_header(struct decode_context *context, struct overlay_buffer *buff, 
+			       int queue, int type, int modifiers, int ttl, 
+			       struct broadcast *broadcast, struct subscriber *next_hop,
+			       struct subscriber *destination, struct subscriber *source){
+  
+  int x = buff->position;
+  
+  int q_bits = queue;
+  if (q_bits>0) q_bits--;
+  if (q_bits>3) q_bits=3;
+  int type_byte = type|modifiers|q_bits;
+  
+  if (ttl>64)
+    ttl=64;
+  
+  if (ob_append_byte(buff, type_byte)) return -1;
   if (ob_append_byte(buff, ttl)) return -1;
-  return ob_append_rfs(buff, approx_size);
+  if (ob_append_rfs(buff, 2)) return -1;
+  
+  if (broadcast){
+    if (overlay_broadcast_append(context, buff, broadcast)) return -1;
+  }else{
+    if (overlay_address_append(context, buff, next_hop)) return -1;
+  }
+  
+  if (destination){
+    if (overlay_address_append(context, buff, destination)) return -1;
+  }else{
+    if (ob_append_byte(buff, OA_CODE_PREVIOUS)) return -1;
+  }
+  
+  if (overlay_address_append(context, buff, source)) return -1;
+  
+  dump("written header", buff->bytes + x, buff->position - x);
+  
+  return 0;
 }
 
 int overlay_frame_append_payload(struct decode_context *context, overlay_interface *interface, 
@@ -53,53 +85,17 @@ int overlay_frame_append_payload(struct decode_context *context, overlay_interfa
       dump("payload contents", &p->payload->bytes[0],p->payload->position);
   }
   
-  /* Build header */
-  {
-    int q_bits = p->queue;
-    if (q_bits>0) q_bits--;
-    if (q_bits>3) q_bits=3;
-    int type = p->type|p->modifiers|q_bits;
-    
-    if (p->ttl>64)
-      p->ttl=64;
-    
-    /* Length.  This is the fun part, because we cannot calculate how many bytes we need until
-     we have abbreviated the addresses, and the length encoding we use varies according to the
-     length encoded.  The simple option of running the abbreviations twice won't work because 
-     we rely on context for abbreviating the addresses.  So we write it initially and then patch it
-     after.
-     */
-    int max_len=((SID_SIZE+3)*3+headers->position+p->payload->position);
-    
-    if (overlay_packet_append_header(headers, type, p->ttl, max_len))
-      goto cleanup;
-  }
+  if (overlay_frame_build_header(context, headers,
+			     p->queue, p->type, p->modifiers, p->ttl,
+			     (p->sendBroadcast?&p->broadcast_id:NULL), next_hop, 
+			     p->destination, p->source))
+    goto cleanup;
   
-  int addrs_start=headers->position;
-  
-  /* Write out addresses as abbreviated as possible */
-  if (p->sendBroadcast){
-    overlay_broadcast_append(context, headers, &p->broadcast_id);
-  }else{
-    overlay_address_append(context, headers, next_hop);
-  }
-  if (p->destination)
-    overlay_address_append(context, headers,p->destination);
-  else
-    ob_append_byte(headers, OA_CODE_PREVIOUS);
-  
-  if (p->source==my_subscriber){
-    overlay_address_append_self(context, interface, headers);
-  }else{
-    overlay_address_append(context, headers,p->source);
-  }
-  
-  int addrs_len=headers->position-addrs_start;
-  int actual_len=addrs_len+p->payload->position;
+  int hdr_len=headers->position - (headers->var_length_offset +2);
   if (debug&DEBUG_PACKETCONSTRUCTION) 
-    DEBUGF("Patching RFS for actual_len=%d\n",actual_len);
+    DEBUGF("Patching RFS for actual_len=%d\n",hdr_len + p->payload->position);
   
-  ob_set_ui16(headers,headers->var_length_offset,actual_len);
+  ob_set_ui16(headers,headers->var_length_offset,hdr_len + p->payload->position);
 
   /* Write payload format plus total length of header bits */
   if (ob_makespace(b,2+headers->position+p->payload->position)) {

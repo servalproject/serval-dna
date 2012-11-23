@@ -37,6 +37,7 @@ int overlay_packet_init_header(struct overlay_interface *interface, struct decod
 
 // a frame destined for one of our local addresses, or broadcast, has arrived. Process it.
 int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, struct overlay_frame *f, struct decode_context *context){
+  IN();
   int id = (interface - overlay_interfaces);
   switch(f->type)
   {
@@ -75,16 +76,16 @@ int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, s
       process_explain(f);
       break;
     default:
-      return WHYF("Support for f->type=0x%x not yet implemented",f->type);
-      break;
+      RETURN(WHYF("Support for f->type=0x%x not yet implemented",f->type));
   }
-  return 0;
+  RETURN(0);
 }
 
 // duplicate the frame and queue it
 int overlay_forward_payload(struct overlay_frame *f){
+  IN();
   if (f->ttl<=0)
-    return 0;
+    RETURN(0);
   
   if (debug&DEBUG_OVERLAYFRAMES)
     DEBUGF("Forwarding payload for %s, ttl=%d",
@@ -100,7 +101,7 @@ int overlay_forward_payload(struct overlay_frame *f){
    to the caller to do as they please */	  
   struct overlay_frame *qf=op_dup(f);
   if (!qf) 
-    return WHY("Could not clone frame for queuing");
+    RETURN(WHY("Could not clone frame for queuing"));
   
   /* Make sure voice traffic gets priority */
   if (qf->type==OF_TYPE_DATA_VOICE) {
@@ -110,15 +111,16 @@ int overlay_forward_payload(struct overlay_frame *f){
   
   if (overlay_payload_enqueue(qf)) {
     op_free(qf);
-    return WHY("failed to enqueue forwarded payload");
+    RETURN(WHY("failed to enqueue forwarded payload"));
   }
   
-  return 0;
+  RETURN(0);
 }
 
 int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,
 		    int recvttl, struct sockaddr *recvaddr, size_t recvaddrlen)
 {
+  IN();
   /* 
      This function decodes overlay packets which have been assembled for delivery overy IP networks.
      IP based wireless networks have a high, but limited rate of packets that can be sent. In order 
@@ -171,9 +173,8 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   */
 
   struct overlay_frame f;
-  struct decode_context context={
-    .please_explain=NULL,
-  };
+  struct decode_context context;
+  bzero(&context, sizeof context);
   
   if (len<HEADERFIELDS_LEN)
     return WHY("Packet is too short");
@@ -207,7 +208,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   
   if (context.sender && context.sender->reachable==REACHABLE_SELF){
     ob_free(b);
-    return 0;
+    RETURN(0);
   }
   
   while(b->position < b->sizeLimit){
@@ -228,11 +229,12 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     /* Decode length of remainder of frame */
     int payload_len=ob_get_ui16(b);
 
-    if (payload_len <=0) {
-      /* assume we fell off the end of the packet */
+    if (payload_len <=0)
+      /* we fell off the end of the packet? */
       break;
-    }
 
+    dump("decoding header", b->bytes + b->position, payload_len);
+    
     int next_payload = b->position + payload_len;
     
     /* Always attempt to resolve all of the addresses in a packet, or we could fail to understand an important payload 
@@ -251,7 +253,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     if (overlay_address_parse(&context, b, &f.broadcast_id, &nexthop)
 	|| overlay_address_parse(&context, b, NULL, &f.destination)
 	|| overlay_address_parse(&context, b, NULL, &f.source)){
-      goto next;
+      break;
     }
     
     // if we can't understand one of the addresses, skip processing the payload
@@ -316,7 +318,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     b->position=next_payload;
   }
   
-  if (context.sender){
+  if (context.sender && recvaddr){
     struct sockaddr_in *addr=(struct sockaddr_in *)recvaddr;
     
     // always update the IP address we heard them from, even if we don't need to use it right now
@@ -332,10 +334,11 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     }
   }
   
+  send_please_explain(&context, my_subscriber, context.sender);
+  
   ob_free(b);
   
-  send_please_explain(&context, my_subscriber, context.sender);
-  return 0;
+  RETURN(0);
 }
 
 int overlay_add_selfannouncement(struct decode_context *context, int interface,struct overlay_buffer *b)
@@ -362,28 +365,13 @@ int overlay_add_selfannouncement(struct decode_context *context, int interface,s
 
   time_ms_t now = gettime_ms();
 
-  /* XXX - BATMAN uses various TTLs, but I think that it may just be better to have all TTL=1,
-   and have the onward nodes selectively choose which nodes to on-announce.  If we prioritise
-   newly arrived nodes somewhat (or at least reserve some slots for them), then we can still
-   get the good news travels fast property of BATMAN, but without having to flood in the formal
-   sense. */
-  /* Add space for Remaining Frame Size field.  This will always be a single byte
-   for self-announcments as they are always <256 bytes. */
-  if (overlay_packet_append_header(b, OF_TYPE_SELFANNOUNCE, 1, 1+8+1+SID_SIZE+4+4+1))
-    return WHY("Could not add self-announcement header");
-  
-  /* Add next-hop address.  Always link-local broadcast for self-announcements */
   struct broadcast broadcast_id;
   overlay_broadcast_generate_address(&broadcast_id);
-  if (overlay_broadcast_append(context, b, &broadcast_id))
-    return WHY("Could not write broadcast address to self-announcement");
-
-  /* Add final destination.  Always broadcast for self-announcments. */
-  if (ob_append_byte(b, OA_CODE_PREVIOUS))
-    return WHY("Could not add self-announcement header");
-
-  /* Add our SID to the announcement as sender */
-  if (overlay_address_append_self(context, &overlay_interfaces[interface], b))
+  
+  if (overlay_frame_build_header(context, b, 
+				 0, OF_TYPE_SELFANNOUNCE, 0, 1, 
+				 &broadcast_id, NULL,
+				 NULL, my_subscriber))
     return -1;
   
   /* Sequence number range.  Based on one tick per millisecond. */

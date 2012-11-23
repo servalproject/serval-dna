@@ -157,16 +157,15 @@ int overlay_rhizome_add_advertisements(struct decode_context *context, int inter
 
   if (slots<1) { RETURN(WHY("No room for node advertisements")); }
 
-  if (overlay_packet_append_header(e, OF_TYPE_RHIZOME_ADVERT, 1, (1+11+1+2+RHIZOME_BAR_BYTES)))
-    RETURN(WHY("could not add rhizome bundle advertisement header"));
-
-  /* Stuff in dummy address fields (11 bytes) */
   struct broadcast broadcast_id;
   overlay_broadcast_generate_address(&broadcast_id);
-  overlay_broadcast_append(context, e, &broadcast_id);
-  ob_append_byte(e, OA_CODE_PREVIOUS);
-  overlay_address_append_self(context, &overlay_interfaces[interface_number], e);
-
+  
+  if (overlay_frame_build_header(context, e, 
+				 0, OF_TYPE_RHIZOME_ADVERT, 0, 1, 
+				 &broadcast_id, NULL,
+				 NULL, my_subscriber))
+    return -1;
+  
   /* Randomly choose whether to advertise manifests or BARs first. */
   int skipmanifests=random()&1;
   /* Version of rhizome advert block (1 byte):

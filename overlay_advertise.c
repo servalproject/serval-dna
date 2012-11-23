@@ -122,18 +122,14 @@ int overlay_route_add_advertisements(struct decode_context *context, overlay_int
   
   ob_checkpoint(e);
   
-  // assume we might fill the whole packet
-  if (overlay_packet_append_header(e, OF_TYPE_NODEANNOUNCE, 1, e->sizeLimit - e->position))
-    return WHY("could not add node advertisement header");
-
-  /* Add address fields */
   struct broadcast broadcast;
   overlay_broadcast_generate_address(&broadcast);
-  overlay_broadcast_append(context,e,&broadcast);
   
-  ob_append_byte(e,OA_CODE_PREVIOUS);
-  
-  overlay_address_append(context, e, my_subscriber);
+  if (overlay_frame_build_header(context, e, 
+				 0, OF_TYPE_NODEANNOUNCE, 0, 1, 
+				 &broadcast, NULL,
+				 NULL, my_subscriber))
+    return -1;
   
   // TODO high priority advertisements first....
   /*
