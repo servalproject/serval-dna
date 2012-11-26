@@ -43,10 +43,17 @@ start_routing_instance() {
    start_servald_server
 }
 
+log_routing_table() {
+   executeOk_servald route print
+   tfw_cat --stdout --stderr
+}
+
 teardown() {
+   foreach_instance_with_pidfile log_routing_table
    stop_all_servald_servers
    kill_all_servald_processes
    assert_no_servald_processes
+   report_all_servald_servers
 }
 
 setup_single_link() {

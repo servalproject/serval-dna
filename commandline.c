@@ -40,6 +40,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include "mdp_client.h"
 #include "cli.h"
+#include "overlay_address.h"
 
 extern struct command_line_option command_line_options[];
 
@@ -1735,6 +1736,58 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
   return 0;
 }
 
+int app_route_print(int argc, const char *const *argv, struct command_line_option *o, void *context)
+{
+  overlay_mdp_frame mdp;
+  bzero(&mdp,sizeof(mdp));
+  
+  mdp.packetTypeAndFlags=MDP_ROUTING_TABLE;
+  overlay_mdp_send(&mdp,0,0);
+  while(overlay_mdp_client_poll(200)){
+    overlay_mdp_frame rx;
+    int ttl;
+    if (overlay_mdp_recv(&rx, 0, &ttl))
+      continue;
+    
+    int ofs=0;
+    while(ofs + sizeof(struct overlay_route_record) <= rx.out.payload_length){
+      struct overlay_route_record *p=(struct overlay_route_record *)&rx.out.payload[ofs];
+      ofs+=sizeof(struct overlay_route_record);
+      
+      cli_printf(alloca_tohex_sid(p->sid));
+      cli_delim(":");
+      
+      switch (p->reachable){
+	case REACHABLE_NONE:
+	  cli_printf("NONE");
+	  break;
+	case REACHABLE_SELF:
+	  cli_printf("SELF");
+	  break;
+	case REACHABLE_DIRECT:
+	  cli_printf("DIRECT");
+	  break;
+	case REACHABLE_INDIRECT:
+	  cli_printf("INDIRECT");
+	  break;
+	case REACHABLE_UNICAST:
+	  cli_printf("UNICAST");
+	  break;
+	case REACHABLE_BROADCAST:
+	  cli_printf("BROADCAST");
+	  break;
+	default:
+	  cli_printf("%d",p->reachable);
+	  break;
+      }
+      cli_delim(":");
+      cli_printf(alloca_tohex_sid(p->neighbour));
+      cli_delim("\n");
+    }
+  }
+  return 0;
+}
+
 int app_reverse_lookup(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   const char *sid, *delay;
@@ -1918,6 +1971,8 @@ struct command_line_option command_line_options[]={
    "Return identity of known routable peers as URIs"},
   {app_id_self,{"id","allpeers",NULL},0,
    "Return identity of all known peers as URIs"},
+  {app_route_print, {"route","print",NULL},0,
+  "Print the routing table"},
   {app_node_info,{"node","info","<sid>",NULL},0,
    "Return routing information about a SID"},
   {app_count_peers,{"peer","count",NULL},0,

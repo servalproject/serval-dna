@@ -167,10 +167,10 @@ int overlay_mdp_client_poll(time_ms_t timeout_ms)
   if (timeout_ms>=0) {
     tv.tv_sec=timeout_ms/1000;
     tv.tv_usec=(timeout_ms%1000)*1000;
-    ret=select(mdp_client_socket+1,&r,NULL,&r,&tv);
+    ret=select(1,&r,NULL,&r,&tv);
   }
   else
-    ret=select(mdp_client_socket+1,&r,NULL,&r,NULL);
+    ret=select(1,&r,NULL,&r,NULL);
   return ret;
 }
 
@@ -273,6 +273,7 @@ int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
   int len;
   switch(mdp->packetTypeAndFlags&MDP_TYPE_MASK)
   {
+    case MDP_ROUTING_TABLE:
     case MDP_GOODBYE:
       /* no arguments for saying goodbye */
       len=&mdp->raw[0]-(char *)mdp;

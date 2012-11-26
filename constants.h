@@ -146,6 +146,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define MDP_ERROR 4
 #define MDP_GETADDRS 5
 #define MDP_ADDRLIST 6
+#define MDP_ROUTING_TABLE 7
+#define MDP_NODEINFO 8
+#define MDP_GOODBYE 9
 
 // These are back-compatible with the old values of 'mode' when it was 'selfP'
 #define MDP_ADDRLIST_MODE_ROUTABLE_PEERS 0
@@ -163,8 +166,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define VOMP_STUFF_BYTES 800
 
 #define MAX_AUDIO_BYTES 1024
-#define MDP_NODEINFO 8
-#define MDP_GOODBYE 9
 #define MDP_AWAITREPLY 9999
 
 /* max number of recent samples to cram into a VoMP frame as well as the current

@@ -924,6 +924,28 @@ int overlay_mdp_address_list(overlay_mdp_addrlist *request, overlay_mdp_addrlist
   return 0;
 }
 
+struct routing_state{
+  struct sockaddr_un *recvaddr_un;
+  socklen_t recvaddrlen;
+  int fd;
+};
+
+static int routing_table(struct subscriber *subscriber, void *context){
+  struct routing_state *state = (struct routing_state *)context;
+  overlay_mdp_frame reply;
+  bzero(&reply, sizeof(overlay_mdp_frame));
+  
+  struct overlay_route_record *r=(struct overlay_route_record *)&reply.out.payload;
+  reply.packetTypeAndFlags=MDP_TX;
+  reply.out.payload_length=sizeof(struct overlay_route_record);
+  memcpy(r->sid, subscriber->sid, SID_SIZE);
+  r->reachable = subscriber->reachable;
+  if (subscriber->reachable==REACHABLE_INDIRECT && subscriber->next_hop)
+    memcpy(r->neighbour, subscriber->next_hop->sid, SID_SIZE);
+  overlay_mdp_reply(mdp_named.poll.fd, state->recvaddr_un, state->recvaddrlen, &reply);
+  return 0;
+}
+
 void overlay_mdp_poll(struct sched_ent *alarm)
 {
   if (alarm->poll.revents & POLLIN) {
@@ -957,6 +979,18 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 	  
 	if (!overlay_route_node_info(&mdp->nodeinfo))
 	  overlay_mdp_reply(mdp_named.poll.fd,recvaddr_un,recvaddrlen,mdp);
+	return;
+	  
+      case MDP_ROUTING_TABLE:
+	{
+	  struct routing_state state={
+	    .recvaddr_un=recvaddr_un,
+	    .recvaddrlen=recvaddrlen,
+	  };
+	  
+	  enum_subscribers(NULL, routing_table, &state);
+	  
+	}
 	return;
 	  
       case MDP_GETADDRS:
