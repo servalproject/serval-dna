@@ -113,7 +113,7 @@ int extractDid(unsigned char *packet,int *ofs,char *did)
   int nybl;
 
   nybl=0;
-  while(nybl!=0xf&&(*ofs<(OFS_SIDDIDFIELD+SIDDIDFIELD_LEN))&&(d<64))
+  while(nybl!=0xf&&(d<64))
     {
       if (highP) nybl=packet[*ofs]>>4; else nybl=packet[*ofs]&0xf;
       if (nybl<0xa) did[d++]='0'+nybl;
@@ -191,81 +191,6 @@ int stowSid(unsigned char *packet, int ofs, const char *sid)
     memset(packet + ofs, 0xff, SID_SIZE);
   else if (fromhex(packet + ofs, sid, SID_SIZE) != SID_SIZE || sid[SID_STRLEN] != '\0')
     return WHY("invalid SID");
-  return 0;
-}
-
-int packetGetID(unsigned char *packet,int len,char *did,char *sid)
-{
-  int ofs=HEADERFIELDS_LEN;
-
-  switch(packet[ofs])
-    {
-    case 0: /* DID */
-      ofs++;
-      if (extractDid(packet,&ofs,did)) return WHY("Could not decode DID");
-      if (debug&DEBUG_PACKETFORMATS) DEBUGF("Decoded DID as %s", did);
-      return 0;
-      break;
-    case 1: /* SID */
-      ofs++;
-      if (len<(OFS_SIDDIDFIELD+SID_SIZE)) return WHY("Packet too short");
-      if (extractSid(packet,&ofs,sid)) return WHY("Could not decode SID");
-      return 0;
-      break;
-    default: /* no idea */
-      return WHY("Unknown ID key");
-      break;
-    }
-  
-  return WHY("Impossible event #1 just occurred");
-}
-
-/*
-  One of the goals of our packet format is to make it very difficult to mount a known plain-text
-  attack against the ciphered part of the packet.
-  One defence is to make sure that no fixed fields are actually left zero.
-  We accomplish this by filling "zero" fields with randomised data that meets a simple test condition.
-  We have chosen to use the condition that if the modulo 256 sum of the bytes equals zero, then the packet
-  is assumed to be zero/empty.
-  The following two functions allow us to test this, and also to fill a field with safe "zero" data.
-*/
-
-int isFieldZeroP(unsigned char *packet,int start,int count)
-{
-  int mod=0;
-  int i;
-
-  for(i=start;i<start+count;i++)
-    {
-      mod+=packet[i];
-      mod&=0xff;
-    }
-
-  if (debug&DEBUG_PACKETFORMATS) {
-    if (mod) DEBUGF("Field [%d,%d) is non-zero (mod=0x%02x)",start,start+count,mod);
-    else DEBUGF("Field [%d,%d) is zero",start,start+count);
-  }
-
-  if (mod) return 0; else return 1;
-}
-
-int safeZeroField(unsigned char *packet,int start,int count)
-{
-  int mod=0;
-  int i;
-
-  if (debug&DEBUG_PACKETFORMATS)
-    DEBUGF("Known plain-text counter-measure: safe-zeroing [%d,%d)", start,start+count);
-  
-  for(i=start;i<(start+count-1);i++)
-    {
-      packet[i]=random()&0xff;
-      mod+=packet[i];
-      mod&=0xff;
-    }
-  /* set final byte so that modulo sum is zero */
-  packet[i]=(0x100-mod)&0xff;
-  
   return 0;
 }
 

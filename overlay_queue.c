@@ -458,20 +458,19 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
     schedule(&next_packet);
   
   if(packet->buffer){
-    // send the packet
-    if (packet->buffer->position>=HEADERFIELDS_LEN){
-      // stuff rhizome announcements at the last moment
-      if (packet->add_advertisements)
-	overlay_rhizome_add_advertisements(&packet->context, packet->i,packet->buffer);
-      
-      if (debug&DEBUG_PACKETCONSTRUCTION)
-	dump("assembled packet",&packet->buffer->bytes[0],packet->buffer->position);
-      
-      if (overlay_broadcast_ensemble(packet->i, &packet->dest, packet->buffer->bytes, packet->buffer->position)){
-	// sendto failed. We probably don't have a valid route
-	if (packet->unicast_subscriber){
-	  set_reachable(packet->unicast_subscriber, REACHABLE_NONE);
-	}
+    // TODO don't send empty packet
+    
+    // stuff rhizome announcements at the last moment
+    if (packet->add_advertisements)
+      overlay_rhizome_add_advertisements(&packet->context, packet->i,packet->buffer);
+    
+    if (debug&DEBUG_PACKETCONSTRUCTION)
+      dump("assembled packet",&packet->buffer->bytes[0],packet->buffer->position);
+    
+    if (overlay_broadcast_ensemble(packet->i, &packet->dest, packet->buffer->bytes, packet->buffer->position)){
+      // sendto failed. We probably don't have a valid route
+      if (packet->unicast_subscriber){
+	set_reachable(packet->unicast_subscriber, REACHABLE_NONE);
       }
     }
     ob_free(packet->buffer);
