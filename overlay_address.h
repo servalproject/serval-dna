@@ -43,25 +43,8 @@
 
 #define REACHABLE_DEFAULT_ROUTE 6
 
-/* Codes used to describe abbreviated addresses.
- Values 0x10 - 0xff are the first byte of, and implicit indicators of addresses written in full */
-#define OA_CODE_SELF 0x00
-#define OA_CODE_INDEX 0x01
-#define OA_CODE_02 0x02
-#define OA_CODE_PREVIOUS 0x03
-#define OA_CODE_04 0x04
-#define OA_CODE_PREFIX3 0x05
-#define OA_CODE_PREFIX7 0x06
-#define OA_CODE_PREFIX11 0x07
-#define OA_CODE_FULL_INDEX1 0x08
-#define OA_CODE_PREFIX3_INDEX1 0x09
-#define OA_CODE_PREFIX7_INDEX1 0x0a
-#define OA_CODE_PREFIX11_INDEX1 0x0b
-#define OA_CODE_0C 0x0c
-#define OA_CODE_PREFIX11_INDEX2 0x0d
-#define OA_CODE_FULL_INDEX2 0x0e
-/* The TTL field in a frame is used to differentiate between link-local and wide-area broadcasts */
-#define OA_CODE_BROADCAST 0x0f
+#define OA_CODE_SELF 0xff
+#define OA_CODE_PREVIOUS 0xfe
 
 #define BROADCAST_LEN 8
 
@@ -105,12 +88,10 @@ struct broadcast{
 };
 
 struct decode_context{
-  int abbreviations_only;
   int invalid_addresses;
   struct overlay_frame *please_explain;
   struct subscriber *sender;
   struct subscriber *previous;
-  struct broadcast *previous_broadcast;
 };
 
 extern struct subscriber *my_subscriber;
@@ -127,10 +108,11 @@ int process_explain(struct overlay_frame *frame);
 int overlay_broadcast_drop_check(struct broadcast *addr);
 int overlay_broadcast_generate_address(struct broadcast *addr);
 
-int overlay_broadcast_append(struct decode_context *context, struct overlay_buffer *b, struct broadcast *broadcast);
+int overlay_broadcast_append(struct overlay_buffer *b, struct broadcast *broadcast);
 int overlay_address_append(struct decode_context *context, struct overlay_buffer *b, struct subscriber *subscriber);
 
-int overlay_address_parse(struct decode_context *context, struct overlay_buffer *b, struct broadcast *broadcast, struct subscriber **subscriber);
+int overlay_broadcast_parse(struct overlay_buffer *b, struct broadcast *broadcast);
+int overlay_address_parse(struct decode_context *context, struct overlay_buffer *b, struct subscriber **subscriber);
 int send_please_explain(struct decode_context *context, struct subscriber *source, struct subscriber *destination);
 
 #endif

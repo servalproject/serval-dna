@@ -141,7 +141,7 @@ static void parse_frame(struct overlay_buffer *buff){
   addr = (struct in_addr *)ob_get_bytes_ptr(buff, addr_len);
   
   // read subscriber id of transmitter
-  if (overlay_address_parse(&context, buff, NULL, &context.sender))
+  if (overlay_address_parse(&context, buff, &context.sender))
     goto end;
   
   if (context.invalid_addresses)
@@ -162,7 +162,7 @@ static void parse_frame(struct overlay_buffer *buff){
   }
   
   // read subscriber id of payload origin
-  if (overlay_address_parse(&context, buff, NULL, &frame.source))
+  if (overlay_address_parse(&context, buff, &frame.source))
     goto end;
   
   if (context.invalid_addresses)
@@ -170,7 +170,7 @@ static void parse_frame(struct overlay_buffer *buff){
   
   // read source broadcast id
   // assume each packet may arrive multiple times due to routing loops between servald overlay and olsr.
-  if (overlay_address_parse(&context, buff, &frame.broadcast_id, NULL))
+  if (overlay_broadcast_parse(buff, &frame.broadcast_id))
     goto end;
   
   if (context.invalid_addresses)
@@ -274,7 +274,7 @@ int olsr_send(struct overlay_frame *frame){
   overlay_address_append(&context, b, my_subscriber);
   
   overlay_address_append(&context, b, frame->source);
-  overlay_broadcast_append(&context, b, &frame->broadcast_id);
+  overlay_broadcast_append(b, &frame->broadcast_id);
   ob_append_byte(b, frame->modifiers);
   
   if (debug&DEBUG_OVERLAYINTERFACES) 

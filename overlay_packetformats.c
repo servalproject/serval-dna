@@ -202,7 +202,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       f.recvaddr=NULL;
   }
 
-  overlay_address_parse(&context, b, NULL, &context.sender);
+  overlay_address_parse(&context, b, &context.sender);
   
   if (context.sender && context.sender->reachable==REACHABLE_SELF){
     ob_free(b);
@@ -220,7 +220,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     if (flags & PAYLOAD_FLAG_SENDER_SAME){
       f.source = context.sender;
     }else{
-      if (overlay_address_parse(&context, b, NULL, &f.source))
+      if (overlay_address_parse(&context, b, &f.source))
 	break;
       if (!f.source || f.source->reachable==REACHABLE_SELF)
 	process=forward=0;
@@ -228,7 +228,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     
     if (flags & PAYLOAD_FLAG_TO_BROADCAST){
       if (!(flags & PAYLOAD_FLAG_ONE_HOP)){
-	if (overlay_address_parse(&context, b, &f.broadcast_id, NULL))
+	if (overlay_broadcast_parse(b, &f.broadcast_id))
 	  break;
 	if (overlay_broadcast_drop_check(&f.broadcast_id)){
 	  process=forward=0;
@@ -238,7 +238,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       }
       f.destination=NULL;
     }else{
-      if (overlay_address_parse(&context, b, NULL, &f.destination))
+      if (overlay_address_parse(&context, b, &f.destination))
 	break;
       
       if (!f.destination || f.destination->reachable!=REACHABLE_SELF){
@@ -246,7 +246,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       }
       
       if (!(flags & PAYLOAD_FLAG_ONE_HOP)){
-	if (overlay_address_parse(&context, b, NULL, &nexthop))
+	if (overlay_address_parse(&context, b, &nexthop))
 	  break;
 	
 	if (!nexthop || nexthop->reachable!=REACHABLE_SELF){

@@ -48,7 +48,7 @@ int overlay_frame_build_header(struct decode_context *context, struct overlay_bu
   
   if (flags & PAYLOAD_FLAG_TO_BROADCAST){
     if (!(flags & PAYLOAD_FLAG_ONE_HOP)){
-      if (overlay_broadcast_append(context, buff, broadcast)) return -1;
+      if (overlay_broadcast_append(buff, broadcast)) return -1;
     }
   }else{
     if (overlay_address_append(context, buff, destination)) return -1;

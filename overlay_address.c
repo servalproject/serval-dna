@@ -327,12 +327,9 @@ int overlay_broadcast_drop_check(struct broadcast *addr)
   }
 }
 
-int overlay_broadcast_append(struct decode_context *context, struct overlay_buffer *b, struct broadcast *broadcast)
+int overlay_broadcast_append(struct overlay_buffer *b, struct broadcast *broadcast)
 {
-  if (ob_append_byte(b, OA_CODE_BROADCAST)) return -1;
-  if (ob_append_bytes(b, broadcast->id, BROADCAST_LEN)) return -1;
-  context->previous=NULL;
-  return 0;
+  return ob_append_bytes(b, broadcast->id, BROADCAST_LEN);
 }
 
 // append an appropriate abbreviation into the address
@@ -344,21 +341,19 @@ int overlay_address_append(struct decode_context *context, struct overlay_buffer
   }else if(context && subscriber==context->previous){
     ob_append_byte(b, OA_CODE_PREVIOUS);
     
-  }else if(subscriber->send_full || subscriber->abbreviate_len >= 20){
-    subscriber->send_full=0;
-    ob_append_bytes(b, subscriber->sid, SID_SIZE);
-    
-  }else if(subscriber->abbreviate_len <= 4){
-    ob_append_byte(b, OA_CODE_PREFIX3);
-    ob_append_bytes(b, subscriber->sid, 3);
-    
-  }else if(subscriber->abbreviate_len <= 12){
-    ob_append_byte(b, OA_CODE_PREFIX7);
-    ob_append_bytes(b, subscriber->sid, 7);
-    
   }else{
-    ob_append_byte(b, OA_CODE_PREFIX11);
-    ob_append_bytes(b, subscriber->sid, 11);
+    int len=SID_SIZE;
+    if (subscriber->send_full){
+      subscriber->send_full=0;
+    }else{
+      len=(subscriber->abbreviate_len+2)/2;
+      if (subscriber->reachable==REACHABLE_SELF)
+	len++;
+      if (len>SID_SIZE)
+	len=SID_SIZE;
+    }
+    ob_append_byte(b, len);
+    ob_append_bytes(b, subscriber->sid, len);
   }
   if (context)
     context->previous = subscriber;
@@ -380,12 +375,14 @@ static int add_explain_response(struct subscriber *subscriber, void *context){
   
   // add the whole subscriber id to the payload, stop if we run out of space
   DEBUGF("Adding full sid by way of explanation %s", alloca_tohex_sid(subscriber->sid));
+  if (ob_append_byte(response->please_explain->payload, SID_SIZE))
+    return 1;
   if (ob_append_bytes(response->please_explain->payload, subscriber->sid, SID_SIZE))
     return 1;
   return 0;
 }
 
-int find_subscr_buffer(struct decode_context *context, struct overlay_buffer *b, int code, int len, int create, struct subscriber **subscriber){
+int find_subscr_buffer(struct decode_context *context, struct overlay_buffer *b, int len, struct subscriber **subscriber){
   unsigned char *id = ob_get_bytes_ptr(b, len);
   if (!id)
     return WHY("Not enough space in buffer to parse address");
@@ -396,7 +393,7 @@ int find_subscr_buffer(struct decode_context *context, struct overlay_buffer *b,
     return 0;
   }
   
-  *subscriber=find_subscriber(id, len, create);
+  *subscriber=find_subscriber(id, len, 1);
   
   if (!*subscriber){
     context->invalid_addresses=1;
@@ -415,46 +412,28 @@ int find_subscr_buffer(struct decode_context *context, struct overlay_buffer *b,
     walk_tree(&root, 0, id, len, id, len, add_explain_response, context);
     
     INFOF("Asking for explanation of %s", alloca_tohex(id, len));
-    if (code>=0)
-      ob_append_byte(context->please_explain->payload, code);
+    ob_append_byte(context->please_explain->payload, len);
     ob_append_bytes(context->please_explain->payload, id, len);
     
   }else{
     context->previous=*subscriber;
-    context->previous_broadcast=NULL;
   }
   return 0;
 }
 
-// returns 0 = success, -1 = fatal parsing error, 1 = unable to identify address
-int overlay_address_parse(struct decode_context *context, struct overlay_buffer *b, struct broadcast *broadcast, struct subscriber **subscriber)
+int overlay_broadcast_parse(struct overlay_buffer *b, struct broadcast *broadcast)
 {
-  int code = ob_getbyte(b,b->position);
-  if (code<0)
-    return -1;
-  DEBUGF("Decoding address code %d",code);
-  switch(code){
-    case OA_CODE_BROADCAST:
-      b->position++;
-      if (subscriber)
-	*subscriber=NULL;
-      
-      if (!broadcast){
-	context->invalid_addresses=1;
-      }else{
-	if (ob_get_bytes(b, broadcast->id, BROADCAST_LEN))
-	  return -1;
-      }
-      context->previous_broadcast=broadcast;
-      context->previous=NULL;
-      return 0;
-      
+  return ob_get_bytes(b, broadcast->id, BROADCAST_LEN);
+}
+
+// returns 0 = success, -1 = fatal parsing error, 1 = unable to identify address
+int overlay_address_parse(struct decode_context *context, struct overlay_buffer *b, struct subscriber **subscriber)
+{
+  int len = ob_get(b);
+  
+  switch(len){
     case OA_CODE_SELF:
-      b->position++;
-      if (!subscriber){
-	WARN("Could not resolve address, no buffer supplied");
-	context->invalid_addresses=1;
-      }else if (!context->sender){
+      if (!context->sender){
 	INFO("Could not resolve address, sender has not been set");
 	context->invalid_addresses=1;
       }else{
@@ -464,45 +443,16 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
       return 0;
       
     case OA_CODE_PREVIOUS:
-      b->position++;
-      
-      // previous may be null, if the previous address was a broadcast. 
-      // In this case we want the subscriber to be null as well and not report an error,
-      
-      if (!subscriber){
-	WARN("Could not resolve address, no buffer supplied");
-	context->invalid_addresses=1;
-      }else if (context->previous){
-	*subscriber=context->previous;
-      }else if (context->previous_broadcast){
-	*subscriber=NULL;
-	// not an error if broadcast is NULL, as the previous OA_CODE_BROADCAST address must have been valid.
-	if (broadcast)
-	  bcopy(context->previous_broadcast->id, broadcast->id, BROADCAST_LEN);
-      }else{
+      if (!context->previous){
 	INFO("Unable to decode previous address");
 	context->invalid_addresses=1;
+      }else{
+	*subscriber=context->previous;
       }
       return 0;
-      
-    case OA_CODE_PREFIX3:
-      b->position++;
-      return find_subscr_buffer(context, b, code, 3,0,subscriber);
-      
-    case OA_CODE_PREFIX7:
-      b->position++;
-      return find_subscr_buffer(context, b, code, 7,0,subscriber);
-      
-    case OA_CODE_PREFIX11:
-      b->position++;
-      return find_subscr_buffer(context, b, code, 11,0,subscriber);
   }
   
-  // we must assume that we wont be able to understand the rest of the packet
-  if (code<=0x0f || context->abbreviations_only)
-    return WHYF("Unsupported abbreviation code %d", code);
-  
-  return find_subscr_buffer(context, b, -1, SID_SIZE,1,subscriber);
+  return find_subscr_buffer(context, b, len, subscriber);
 }
 
 // once we've finished parsing a packet, complete and send a please explain if required.
@@ -526,7 +476,6 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
     overlay_broadcast_generate_address(&context->please_explain->broadcast_id);
   }
   
-  DEBUGF("Queued please explain");
   context->please_explain->queue=OQ_MESH_MANAGEMENT;
   if (!overlay_payload_enqueue(context->please_explain))
     RETURN(0);
@@ -542,36 +491,17 @@ int process_explain(struct overlay_frame *frame){
   bzero(&context, sizeof context);
   
   while(b->position < b->sizeLimit){
-    int code = ob_getbyte(b,b->position);
-    int len=SID_SIZE;
-    
-    switch(code){
-      case OA_CODE_PREFIX3:
-	len=3;
-	b->position++;
-	break;
-      case OA_CODE_PREFIX7:
-	len=7;
-	b->position++;
-	break;
-      case OA_CODE_PREFIX11:
-	len=11;
-	b->position++;
-	break;
-    }
-    
-    if (len==SID_SIZE && code<=0x0f)
-      return WHYF("Unsupported abbreviation code %d", code);
-    
+    int len = ob_get(b);
+    if (len<=0 || len>SID_SIZE)
+      return WHY("Badly formatted explain message");
     unsigned char *sid = ob_get_bytes_ptr(b, len);
     if (!sid)
-      return WHY("Badly formatted explain message");
+      return WHY("Ran past end of buffer");
     
     if (len==SID_SIZE){
       // This message is also used to inform people of previously unknown subscribers
       // make sure we know this one
       find_subscriber(sid,len,1);
-      INFOF("Now know about %s", alloca_tohex(sid, len));
     }else{
       // reply to the sender with all subscribers that match this abbreviation
       INFOF("Sending responses for %s", alloca_tohex(sid, len));

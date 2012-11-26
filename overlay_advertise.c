@@ -175,7 +175,6 @@ int overlay_route_add_advertisements(struct decode_context *context, overlay_int
 int overlay_route_saw_advertisements(int i, struct overlay_frame *f, struct decode_context *context, time_ms_t now)
 {
   IN();
-  context->abbreviations_only=1;
   struct subscriber *previous=context->previous;
   // minimum record length is (address code, 3 byte sid, score, gateways)
   while(f->payload->position < f->payload->sizeLimit)
@@ -183,15 +182,19 @@ int overlay_route_saw_advertisements(int i, struct overlay_frame *f, struct deco
       struct subscriber *subscriber;
       context->invalid_addresses=0;
       
-      if (overlay_address_parse(context, f->payload, NULL, &subscriber))
+      if (overlay_address_parse(context, f->payload, &subscriber)){
+	WHY("Failed to parse address");
 	break;
+      }
       
       int score=ob_get(f->payload);
       int gateways_en_route=ob_get(f->payload);
 
       // stop if hit end of payload
-      if (score<0 || gateways_en_route<0)
+      if (score<0 || gateways_en_route<0){
+	WHY("Unexpected end of payload");
 	break;
+      }
       
       // skip if we can't parse the subscriber id
       if (context->invalid_addresses || !subscriber)
@@ -215,6 +218,5 @@ int overlay_route_saw_advertisements(int i, struct overlay_frame *f, struct deco
     }
   // restore the previous subscriber id for parsing the next header
   context->previous=previous;
-  context->abbreviations_only=0;
   RETURN(0);
 }

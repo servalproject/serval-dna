@@ -164,7 +164,7 @@ int overlay_payload_enqueue(struct overlay_frame *p)
   if (p->destination){
     int r = subscriber_is_reachable(p->destination);
     if (r == REACHABLE_SELF || r == REACHABLE_NONE)
-      return WHYF("Destination %s is unreachable (%d)", alloca_tohex_sid(p->destination->sid), r);
+      return WHYF("Cannot send %x packet, destination %s is %s", p->type, alloca_tohex_sid(p->destination->sid), r==REACHABLE_SELF?"myself":"unreachable");
   }
   
   if (p->queue>=OQ_MAX) 
