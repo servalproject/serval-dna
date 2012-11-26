@@ -88,7 +88,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *      END_STRUCT
  *
  *      ARRAY_ATOM(name, size, type, parsefunc, comment)
- *      ARRAY_STRING(name, size, parsefunc, comment)
+ *      ARRAY_STRING(name, size, strsize, parsefunc, comment)
  *      ARRAY_NODE(name, size, type, parsefunc, comment)
  *      ARRAY_STRUCT(name, size, structname, comment)
  *
@@ -136,6 +136,21 @@ ATOM(int,                   show_pid,   1, opt_boolean,, "If true, all log lines
 ATOM(int,                   show_time,  1, opt_boolean,, "If true, all log lines contain time stamp")
 END_STRUCT
 
+STRUCT(server)
+STRING(256,                 chdir,      "/", opt_absolute_path,, "Absolute path of chdir(2) for server process")
+END_STRUCT
+
+ARRAY_STRING(argv, 8, 128, opt_str, "Array of arguments to pass to command")
+
+STRUCT(dnahelper)
+STRING(256,                 executable, "", opt_absolute_path,, "Absolute path of dna helper executable")
+SUB_STRUCT(argv,            argv,)
+END_STRUCT
+
+STRUCT(dna)
+SUB_STRUCT(dnahelper,       helper,)
+END_STRUCT
+
 STRUCT(rhizomepeer)
 STRING(25,                  protocol,   "http", opt_protocol,, "Protocol name")
 STRING(256,                 host,       "", opt_str_nonempty, MANDATORY, "Host name or IP address")
@@ -171,6 +186,8 @@ ARRAY_STRUCT(interface_list, 10, network_interface, "Network interfaces")
 STRUCT(main)
 NODE_STRUCT(interface_list, interfaces, opt_interface_list, MANDATORY)
 SUB_STRUCT(log,             log,)
+SUB_STRUCT(server,          server,)
+SUB_STRUCT(dna,             dna,)
 NODE(debugflags_t,          debug,      0, opt_debugflags, USES_CHILDREN, "Debug flags")
 SUB_STRUCT(rhizome,         rhizome,)
 SUB_STRUCT(directory,       directory,)

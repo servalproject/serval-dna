@@ -360,6 +360,7 @@ int opt_boolean(int *booleanp, const char *text);
 int opt_absolute_path(char *str, size_t len, const char *text);
 int opt_debugflags(debugflags_t *flagsp, const struct cf_om_node *node);
 int opt_rhizome_peer(struct config_rhizomepeer *, const struct cf_om_node *node);
+int opt_str(char *str, size_t len, const char *text);
 int opt_str_nonempty(char *str, size_t len, const char *text);
 int opt_uint64_scaled(uint64_t *intp, const char *text);
 int opt_protocol(char *str, size_t len, const char *text);
@@ -541,19 +542,22 @@ invalid:
   return CFINVALID;
 }
 
+int opt_str(char *str, size_t len, const char *text)
+{
+  if (strlen(text) >= len)
+    return CFSTRINGOVERFLOW;
+  strncpy(str, text, len);
+  assert(str[len - 1] == '\0');
+  return CFOK;
+}
+
 int opt_str_nonempty(char *str, size_t len, const char *text)
 {
   if (!text[0]) {
     //invalid_text(node, "empty string");
     return CFINVALID;
   }
-  if (strlen(text) >= len) {
-    //invalid_text(node, "string overflow");
-    return CFSTRINGOVERFLOW;
-  }
-  strncpy(str, text, len);
-  assert(str[len - 1] == '\0');
-  return CFOK;
+  return opt_str(str, len, text);
 }
 
 int opt_uint64_scaled(uint64_t *intp, const char *text)
@@ -851,22 +855,23 @@ void list_omit_element(const struct cf_om_node *node);
       } \
       return result; \
     }
-#define __ARRAY(__name, __size, __type, __decl, __parser, __parsearg, __comment) \
+
+#define __ARRAY(__name, __parseexpr) \
     int opt_config_##__name(struct config_##__name *s, const struct cf_om_node *node) { \
       int result = CFOK; \
       int i; \
       for (i = 0; i < node->nodc && s->ac < NELS(s->av); ++i) { \
-	const struct cf_om_node *elt = node->nodv[i]; \
-	int ret = __parser(&s->av[s->ac].value, elt); \
+	const struct cf_om_node *child = node->nodv[i]; \
+	int ret = (__parseexpr); \
 	switch (ret) { \
 	case CFERROR: return CFERROR; \
 	case CFOK: \
-	  strncpy(s->av[s->ac].label, elt->key, sizeof s->av[s->ac].label - 1)\
+	  strncpy(s->av[s->ac].label, child->key, sizeof s->av[s->ac].label - 1)\
 	      [sizeof s->av[s->ac].label - 1] = '\0'; \
 	  ++s->ac; \
 	  break; \
 	default: \
-	  list_omit_element(elt); \
+	  list_omit_element(child); \
 	  break; \
 	} \
       } \
@@ -878,7 +883,17 @@ void list_omit_element(const struct cf_om_node *node);
 	result |= CFEMPTY; \
       return result; \
     }
+#define ARRAY_ATOM(__name, __size, __type, __parser, __comment) \
+    __ARRAY(__name, child->text ? __parser(&s->av[s->ac].value, child->text) : CFEMPTY)
+#define ARRAY_STRING(__name, __size, __strsize, __parser, __comment) \
+    __ARRAY(__name, child->text ? __parser(s->av[s->ac].value, (__strsize) + 1, child->text) : CFEMPTY)
+#define ARRAY_NODE(__name, __size, __type, __parser, __comment) \
+    __ARRAY(__name, __parser(&s->av[s->ac].value, child))
+#define ARRAY_STRUCT(__name, __size, __structname, __comment) \
+    __ARRAY(__name, opt_config_##__structname(&s->av[s->ac].value, child))
+
 #include "config_schema.h"
+
 #undef STRUCT
 #undef NODE
 #undef ATOM
@@ -887,6 +902,11 @@ void list_omit_element(const struct cf_om_node *node);
 #undef NODE_STRUCT
 #undef END_STRUCT
 #undef __ARRAY
+
+#undef ARRAY_ATOM
+#undef ARRAY_STRING
+#undef ARRAY_NODE
+#undef ARRAY_STRUCT
 
 int main(int argc, char **argv)
 {
@@ -921,9 +941,13 @@ int main(int argc, char **argv)
     DEBUGF("config.log.file = %s", alloca_str(config.log.file));
     DEBUGF("config.log.show_pid = %d", config.log.show_pid);
     DEBUGF("config.log.show_time = %d", config.log.show_time);
+    DEBUGF("config.server.chdir = %s", alloca_str(config.server.chdir));
     DEBUGF("config.debug = %llx", (unsigned long long) config.debug);
     DEBUGF("config.directory.service = %s", alloca_tohex(config.directory.service.binary, SID_SIZE));
     int j;
+    for (j = 0; j < config.dna.helper.argv.ac; ++j) {
+      DEBUGF("config.dna.helper.argv.%s=%s", config.dna.helper.argv.av[j].label, config.dna.helper.argv.av[j].value);
+    }
     for (j = 0; j < config.rhizome.direct.peer.ac; ++j) {
       DEBUGF("config.rhizome.direct.peer.%s", config.rhizome.direct.peer.av[j].label);
       DEBUGF("   .protocol = %s", alloca_str(config.rhizome.direct.peer.av[j].value.protocol));
