@@ -428,9 +428,6 @@ overlay_interface_init_socket(int interface_index)
   
   INFOF("Interface %s addr %s, is up",interface->name, inet_ntoa(interface->broadcast_address.sin_addr));
   
-  // mark our sid to be sent in full
-  if (my_subscriber)
-    my_subscriber->send_full = 1;
   directory_registration();
   
   return 0;
@@ -521,10 +518,6 @@ overlay_interface_init(char *name, struct in_addr src_addr, struct in_addr netma
     
     interface->state=INTERFACE_STATE_UP;
     INFOF("Dummy interface %s is up",interface->name);
-    
-    // mark our sid to be sent in full
-    if (my_subscriber)
-      my_subscriber->send_full = 1;
     
     directory_registration();
     

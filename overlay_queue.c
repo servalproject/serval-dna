@@ -241,7 +241,7 @@ overlay_init_packet(struct outgoing_packet *packet, overlay_interface *interface
   packet->add_advertisements=1;
   ob_limitsize(packet->buffer, packet->interface->mtu);
   
-  overlay_packet_init_header(interface, &packet->context, packet->buffer);
+  overlay_packet_init_header(&packet->context, packet->buffer);
   
   if (tick){
     /* 1. Send announcement about ourselves, including one SID that we host if we host more than one SID

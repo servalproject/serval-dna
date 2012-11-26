@@ -129,7 +129,6 @@ int overlay_broadcast_generate_address(struct broadcast *addr);
 
 int overlay_broadcast_append(struct decode_context *context, struct overlay_buffer *b, struct broadcast *broadcast);
 int overlay_address_append(struct decode_context *context, struct overlay_buffer *b, struct subscriber *subscriber);
-int overlay_address_append_self(struct decode_context *context, overlay_interface *interface, struct overlay_buffer *b);
 
 int overlay_address_parse(struct decode_context *context, struct overlay_buffer *b, struct broadcast *broadcast, struct subscriber **subscriber);
 int send_please_explain(struct decode_context *context, struct subscriber *source, struct subscriber *destination);

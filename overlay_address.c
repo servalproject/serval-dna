@@ -82,12 +82,6 @@ struct subscriber *find_subscriber(const unsigned char *sid, int len, int create
 	ptr->subscribers[nibble]=ret;
 	bcopy(sid, ret->sid, SID_SIZE);
 	ret->abbreviate_len=pos;
-	// always send the full sid on first use
-	ret->send_full=1;
-	
-	// always send my full sid when we hear about someone new
-	if (my_subscriber)
-	  my_subscriber->send_full = 1;
       }
       return ptr->subscribers[nibble];
       
@@ -368,28 +362,6 @@ int overlay_address_append(struct decode_context *context, struct overlay_buffer
   }
   if (context)
     context->previous = subscriber;
-  return 0;
-}
-
-int overlay_address_append_self(struct decode_context *context, overlay_interface *interface, struct overlay_buffer *b){
-  static int ticks_per_full_address = -1;
-  if (ticks_per_full_address == -1) {
-    ticks_per_full_address = confValueGetInt64Range("mdp.selfannounce.ticks_per_full_address", 4LL, 1LL, 1000000LL);
-    INFOF("ticks_per_full_address = %d", ticks_per_full_address);
-  }
-  
-  if (!my_subscriber)
-    return WHY("I don't know who I am yet");
-  
-  if (++interface->ticks_since_sent_full_address > ticks_per_full_address){
-    interface->ticks_since_sent_full_address = 0;
-    my_subscriber->send_full=1;
-  }
-  
-  if (overlay_address_append(context, b, my_subscriber))
-    return WHY("Could not append my sid");
-  
-  context->sender = my_subscriber;
   return 0;
 }
 

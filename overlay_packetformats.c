@@ -27,13 +27,14 @@ struct sockaddr_in loopback;
 
 unsigned char magic_header[]={0x00, 0x01};
 
-int overlay_packet_init_header(struct overlay_interface *interface, struct decode_context *context, 
-			       struct overlay_buffer *buff){
+int overlay_packet_init_header(struct decode_context *context, struct overlay_buffer *buff){
   if (ob_append_bytes(buff,magic_header,sizeof magic_header))
     return -1;
-  return overlay_address_append_self(context, interface, buff);
+  if (overlay_address_append(context, buff, my_subscriber))
+    return -1;
+  context->sender = my_subscriber;
+  return 0;
 }
-
 
 // a frame destined for one of our local addresses, or broadcast, has arrived. Process it.
 int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, struct overlay_frame *f, struct decode_context *context){

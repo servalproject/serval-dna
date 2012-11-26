@@ -1269,9 +1269,6 @@ int keyring_send_sas_request(struct subscriber *subscriber){
   if (debug & DEBUG_KEYRING)
     DEBUGF("Requesting SAS mapping for SID=%s", alloca_tohex_sid(subscriber->sid));
   
-  // always send our sid in full, it's likely this is a new peer
-  my_subscriber->send_full = 1;
-  
   /* request mapping (send request auth-crypted). */
   overlay_mdp_frame mdp;
   memset(&mdp,0,sizeof(overlay_mdp_frame));
