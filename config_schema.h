@@ -1,3 +1,22 @@
+/* 
+Serval DNA configuration
+Copyright (C) 2012 Serval Project Inc.
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+*/
+
 STRUCT(log)
 STRING(256,                 file,       "", opt_absolute_path,, "Absolute path of log file")
 ATOM(int,                   show_pid,   1, opt_boolean,, "If true, all log lines contain PID of logging process")
@@ -10,7 +29,7 @@ STRING(256,                 host,       "", opt_str_nonempty, MANDATORY, "Host n
 ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, opt_port,, "Port number")
 END_STRUCT
 
-ARRAY(peerlist, struct config_rhizomepeer, 10, opt_rhizome_peer, "Rhizome peers")
+ARRAY_NODE(peerlist, 10, struct config_rhizomepeer, opt_rhizome_peer, "Rhizome peers")
 
 STRUCT(rhizomedirect)
 SUB_STRUCT(peerlist,        peer,)
@@ -34,7 +53,7 @@ ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, opt_port,, "Port numb
 ATOM(uint64_t,              speed,      1000000, opt_uint64_scaled,, "Speed in bits per second")
 END_STRUCT
 
-ARRAY(interface_list, struct config_network_interface, 10, opt_config_network_interface, "Network interfaces")
+ARRAY_STRUCT(interface_list, 10, network_interface, "Network interfaces")
 
 STRUCT(main)
 NODE_STRUCT(interface_list, interfaces, opt_interface_list, MANDATORY)

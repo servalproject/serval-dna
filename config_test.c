@@ -55,12 +55,12 @@ char *str_emalloc(const char *str)
   return strn_emalloc(str, strlen(str));
 }
 
-int make_child(struct config_node **const parentp, const char *const fullkey, const char *const key, const char *const keyend)
+int make_child(struct cf_om_node **const parentp, const char *const fullkey, const char *const key, const char *const keyend)
 {
   size_t keylen = keyend - key;
   //DEBUGF("%s key=%s", __FUNCTION__, alloca_toprint(-1, key, keylen));
   int i = 0;
-  struct config_node *child;
+  struct cf_om_node *child;
   if ((*parentp)->nodc) {
     // Binary search for matching child.
     int m = 0;
@@ -106,7 +106,7 @@ int make_child(struct config_node **const parentp, const char *const fullkey, co
   return i;
 }
 
-void free_config_node(struct config_node *node)
+void free_config_node(struct cf_om_node *node)
 {
   while (node->nodc)
     free_config_node(node->nodv[--node->nodc]);
@@ -121,9 +121,9 @@ void free_config_node(struct config_node *node)
   free(node);
 }
 
-struct config_node *parse_config(const char *source, const char *buf, size_t len)
+struct cf_om_node *parse_config(const char *source, const char *buf, size_t len)
 {
-  struct config_node *root = emalloc(sizeof(struct config_node));
+  struct cf_om_node *root = emalloc(sizeof(struct cf_om_node));
   if (root == NULL)
     return NULL;
   memset(root, 0, sizeof *root);
@@ -150,7 +150,7 @@ struct config_node *parse_config(const char *source, const char *buf, size_t len
       WARNF("%s:%u: malformed configuration line -- ignored", source, lineno);
       continue;
     }
-    struct config_node **nodep = &root;
+    struct cf_om_node **nodep = &root;
     const char *fullkey = line;
     const char *fullkeyend = p;
     const char *key = fullkey;
@@ -168,7 +168,7 @@ struct config_node *parse_config(const char *source, const char *buf, size_t len
     }
     if (nodi == -1)
       goto error; // out of memory
-    struct config_node *node = *nodep;
+    struct cf_om_node *node = *nodep;
     if (node->text) {
       WARNF("%s:%u: duplicate configuration option %s -- ignored (original is at %s:%u)",
 	  source, lineno, alloca_toprint(-1, fullkey, fullkeyend - fullkey),
@@ -188,7 +188,7 @@ error:
   return NULL;
 }
 
-void dump_config_node(const struct config_node *node, int indent)
+void dump_config_node(const struct cf_om_node *node, int indent)
 {
   if (node == NULL)
     DEBUGF("%*sNULL", indent * 3, "");
@@ -206,7 +206,7 @@ void dump_config_node(const struct config_node *node, int indent)
   }
 }
 
-int get_child(const struct config_node *parent, const char *key)
+int get_child(const struct cf_om_node *parent, const char *key)
 {
   int i;
   for (i = 0; i < parent->nodc; ++i)
@@ -215,24 +215,77 @@ int get_child(const struct config_node *parent, const char *key)
   return -1;
 }
 
-void missing_node(const struct config_node *parent, const char *key)
+void missing_node(const struct cf_om_node *parent, const char *key)
 {
   WARNF("missing configuration option `%s%s%s`",
       parent->fullkey ? parent->fullkey : "", parent->fullkey ? "." : "", key
     );
 }
 
-void invalid_text(const struct config_node *node, int reason)
+strbuf strbuf_cf_flags(strbuf sb, int flags)
+{
+  if (flags == CFERROR)
+    return strbuf_puts(sb, "CFERROR");
+  size_t n = strbuf_len(sb);
+  static struct { int flag; const char *name; } flagdefs[] = {
+      { CFEMPTY, "CFEMPTY" },
+      { CFSTRINGOVERFLOW, "CFSTRINGOVERFLOW" },
+      { CFARRAYOVERFLOW, "CFARRAYOVERFLOW" },
+      { CFINCOMPLETE, "CFINCOMPLETE" },
+      { CFINVALID, "CFINVALID" },
+      { CFSUB(CFSTRINGOVERFLOW), "CFSUB(CFSTRINGOVERFLOW)" },
+      { CFSUB(CFARRAYOVERFLOW), "CFSUB(CFARRAYOVERFLOW)" },
+      { CFSUB(CFINCOMPLETE), "CFSUB(CFINCOMPLETE)" },
+      { CFSUB(CFINVALID), "CFSUB(CFINVALID)" },
+    };
+  int i;
+  for (i = 0; i < NELS(flagdefs); ++i) {
+    if (flags & flagdefs[i].flag) {
+      if (strbuf_len(sb) != n)
+	strbuf_putc(sb, ' ');
+      strbuf_puts(sb, flagdefs[i].name);
+      flags &= ~flagdefs[i].flag;
+    }
+  }
+  if (flags) {
+    if (strbuf_len(sb) != n)
+      strbuf_putc(sb, ' ');
+    strbuf_sprintf(sb, "%#x", flags);
+  }
+  if (strbuf_len(sb) == n)
+    strbuf_puts(sb, "CFOK");
+  return sb;
+}
+
+void warn_ignoring_node(const struct cf_om_node *node, int reason)
 {
   const char *adj = NULL;
   const char *why = NULL;
-  switch (reason) {
-  case CFOK:	    adj = "valid"; why = "no good reason"; break;
-  case CFERROR:	    why = "unrecoverable error"; break;
-  case CFOVERFLOW:  why = "overflow"; break;
-  case CFMISSING:   why = "missing"; break;
-  case CFINVALID:   adj = "invalid"; break;
-  default:	    why = "unknown reason"; break;
+  if (reason == CFERROR)
+    why = "unrecoverable error";
+  else if (reason & CFINVALID)
+    adj = "invalid";
+  else if (reason & CFINCOMPLETE)
+    why = "incomplete";
+  else if (reason & CFARRAYOVERFLOW)
+    why = "array overflow";
+  else if (reason & CFSTRINGOVERFLOW)
+    why = "string overflow";
+  else if (reason & CFSUB(CFINVALID))
+    adj = "invalid in sub-struct";
+  else if (reason & CFSUB(CFINCOMPLETE))
+    why = "incomplete sub-struct";
+  else if (reason & CFSUB(CFARRAYOVERFLOW))
+    why = "array overflow in sub-struct";
+  else if (reason & CFSUB(CFSTRINGOVERFLOW))
+    why = "string overflow in sub-struct";
+  else if (reason & CFEMPTY)
+    why = "empty";
+  else if (reason)
+    why = "unknown reason";
+  else {
+    adj = "valid";
+    why = "no reason";
   }
   WARNF("%s:%u: ignoring configuration option %s with%s%s value %s%s%s",
       node->source, node->line_number,
@@ -243,7 +296,7 @@ void invalid_text(const struct config_node *node, int reason)
     );
 }
 
-void ignore_node(const struct config_node *node, const char *msg)
+void ignore_node(const struct cf_om_node *node, const char *msg)
 {
   if (node->source && node->line_number)
     WARNF("%s:%u: ignoring configuration option %s%s%s",
@@ -257,56 +310,56 @@ void ignore_node(const struct config_node *node, const char *msg)
       );
 }
 
-void ignore_tree(const struct config_node *node, const char *msg);
+void ignore_tree(const struct cf_om_node *node, const char *msg);
 
-void ignore_children(const struct config_node *parent, const char *msg)
+void ignore_children(const struct cf_om_node *parent, const char *msg)
 {
   int i;
   for (i = 0; i < parent->nodc; ++i)
     ignore_tree(parent->nodv[i], msg);
 }
 
-void ignore_tree(const struct config_node *node, const char *msg)
+void ignore_tree(const struct cf_om_node *node, const char *msg)
 {
   if (node->text)
     ignore_node(node, msg);
   ignore_children(node, msg);
 }
 
-void unsupported_node(const struct config_node *node)
+void unsupported_node(const struct cf_om_node *node)
 {
   ignore_node(node, "not supported");
 }
 
-void list_overflow(const struct config_node *node)
+void list_overflow(const struct cf_om_node *node)
 {
   ignore_children(node, "list overflow");
 }
 
-void list_omit_element(const struct config_node *node)
+void list_omit_element(const struct cf_om_node *node)
 {
   ignore_node(node, "omitted from list");
 }
 
-void spurious_children(const struct config_node *parent)
+void spurious_children(const struct cf_om_node *parent)
 {
   ignore_children(parent, "spurious");
 }
 
-void unsupported_children(const struct config_node *parent)
+void unsupported_children(const struct cf_om_node *parent)
 {
   ignore_children(parent, "not supported");
 }
 
-void unsupported_tree(const struct config_node *node)
+void unsupported_tree(const struct cf_om_node *node)
 {
   ignore_tree(node, "not supported");
 }
 
 int opt_boolean(int *booleanp, const char *text);
 int opt_absolute_path(char *str, size_t len, const char *text);
-int opt_debugflags(debugflags_t *flagsp, const struct config_node *node);
-int opt_rhizome_peer(struct config_rhizomepeer *, const struct config_node *node);
+int opt_debugflags(debugflags_t *flagsp, const struct cf_om_node *node);
+int opt_rhizome_peer(struct config_rhizomepeer *, const struct cf_om_node *node);
 int opt_str_nonempty(char *str, size_t len, const char *text);
 int opt_uint64_scaled(uint64_t *intp, const char *text);
 int opt_protocol(char *str, size_t len, const char *text);
@@ -314,7 +367,7 @@ int opt_port(unsigned short *portp, const char *text);
 int opt_sid(sid_t *sidp, const char *text);
 int opt_interface_type(short *typep, const char *text);
 int opt_pattern_list(struct pattern_list *listp, const char *text);
-int opt_interface_list(struct config_interface_list *listp, const struct config_node *node);
+int opt_interface_list(struct config_interface_list *listp, const struct cf_om_node *node);
 
 int opt_boolean(int *booleanp, const char *text)
 {
@@ -338,7 +391,7 @@ int opt_absolute_path(char *str, size_t len, const char *text)
   }
   if (strlen(text) >= len) {
     //invalid_text(node, "string overflow");
-    return CFOVERFLOW;
+    return CFSTRINGOVERFLOW;
   }
   strncpy(str, text, len);
   assert(str[len - 1] == '\0');
@@ -379,7 +432,7 @@ debugflags_t debugFlagMask(const char *flagname)
   return 0;
 }
 
-int opt_debugflags(debugflags_t *flagsp, const struct config_node *node)
+int opt_debugflags(debugflags_t *flagsp, const struct cf_om_node *node)
 {
   //DEBUGF("%s", __FUNCTION__);
   //dump_config_node(node, 1);
@@ -387,19 +440,21 @@ int opt_debugflags(debugflags_t *flagsp, const struct config_node *node)
   debugflags_t clearmask = 0;
   int setall = 0;
   int clearall = 0;
+  int result = CFEMPTY;
   int i;
   for (i = 0; i < node->nodc; ++i) {
-    const struct config_node *child = node->nodv[i];
+    const struct cf_om_node *child = node->nodv[i];
     unsupported_children(child);
     debugflags_t mask = debugFlagMask(child->key);
     int flag = -1;
     if (!mask)
       unsupported_node(child);
-    else {
-      int result = child->text ? opt_boolean(&flag, child->text) : CFMISSING;
-      switch (result) {
+    else if (child->text) {
+      int ret = opt_boolean(&flag, child->text);
+      switch (ret) {
       case CFERROR: return CFERROR;
       case CFOK:
+	result &= ~CFEMPTY;
 	if (mask == ~0) {
 	  if (flag)
 	    setall = 1;
@@ -413,7 +468,8 @@ int opt_debugflags(debugflags_t *flagsp, const struct config_node *node)
 	}
 	break;
       default:
-	invalid_text(child, result);
+	warn_ignoring_node(child, ret);
+	result |= ret;
 	break;
       }
     }
@@ -424,7 +480,7 @@ int opt_debugflags(debugflags_t *flagsp, const struct config_node *node)
     *flagsp = 0;
   *flagsp &= ~clearmask;
   *flagsp |= setmask;
-  return CFOK;
+  return result;
 }
 
 int opt_protocol(char *str, size_t len, const char *text)
@@ -435,14 +491,14 @@ int opt_protocol(char *str, size_t len, const char *text)
   }
   if (strlen(text) >= len) {
     //invalid_text(node, "string overflow");
-    return CFOVERFLOW;
+    return CFSTRINGOVERFLOW;
   }
   strncpy(str, text, len);
   assert(str[len - 1] == '\0');
   return CFOK;
 }
 
-int opt_rhizome_peer(struct config_rhizomepeer *rpeer, const struct config_node *node)
+int opt_rhizome_peer(struct config_rhizomepeer *rpeer, const struct cf_om_node *node)
 {
   if (!node->text)
     return opt_config_rhizomepeer(rpeer, node);
@@ -470,11 +526,11 @@ int opt_rhizome_peer(struct config_rhizomepeer *rpeer, const struct config_node 
   str_uri_authority_port(auth, &port);
   if (protolen >= sizeof rpeer->protocol) {
     //invalid_text(node, "protocol string overflow");
-    return CFOVERFLOW;
+    return CFSTRINGOVERFLOW;
   }
   if (hostlen >= sizeof rpeer->host) {
     //invalid_text(node, "hostname string overflow");
-    return CFOVERFLOW;
+    return CFSTRINGOVERFLOW;
   }
   strncpy(rpeer->protocol, protocol, protolen)[protolen] = '\0';
   strncpy(rpeer->host, host, hostlen)[hostlen] = '\0';
@@ -493,7 +549,7 @@ int opt_str_nonempty(char *str, size_t len, const char *text)
   }
   if (strlen(text) >= len) {
     //invalid_text(node, "string overflow");
-    return CFOVERFLOW;
+    return CFSTRINGOVERFLOW;
   }
   strncpy(str, text, len);
   assert(str[len - 1] == '\0');
@@ -576,7 +632,7 @@ int opt_pattern_list(struct pattern_list *listp, const char *text)
 	size_t len = p - word;
 	if (list.patc >= NELS(list.patv) || len >= sizeof(list.patv[list.patc])) {
 	  //invalid_text(node, "string overflow");
-	  return CFOVERFLOW;
+	  return CFARRAYOVERFLOW;
 	}
 	strncpy(list.patv[list.patc++], word, len)[len] = '\0';
 	word = NULL;
@@ -594,7 +650,7 @@ int opt_pattern_list(struct pattern_list *listp, const char *text)
 
 int opt_network_interface(struct config_network_interface *nifp, const char *text)
 {
-  DEBUGF("%s text=%s", __FUNCTION__, alloca_str(text));
+  //DEBUGF("%s text=%s", __FUNCTION__, alloca_str(text));
   struct config_network_interface nif;
   dfl_config_network_interface(&nif);
   if (text[0] != '+' && text[0] != '-')
@@ -608,7 +664,7 @@ int opt_network_interface(struct config_network_interface *nifp, const char *tex
   size_t len = p - name;
   int star = (len == 0 || (name[0] != '>' && name[len - 1] != '*')) ? 1 : 0;
   if (len + star >= sizeof(nif.match.patv[0]))
-    return CFOVERFLOW;
+    return CFSTRINGOVERFLOW;
   strncpy(nif.match.patv[0], name, len)[len + star] = '\0';
   if (star)
     nif.match.patv[0][len] = '*';
@@ -670,7 +726,7 @@ int opt_network_interface(struct config_network_interface *nifp, const char *tex
   return CFOK;
 }
 
-int opt_interface_list(struct config_interface_list *listp, const struct config_node *node)
+int opt_interface_list(struct config_interface_list *listp, const struct cf_om_node *node)
 {
   int result = CFOK;
   int ret;
@@ -683,7 +739,7 @@ int opt_interface_list(struct config_interface_list *listp, const struct config_
 	if (arg) {
 	  int len = p - arg;
 	  if (len > 80) {
-	    result = CFOVERFLOW;
+	    result = CFSTRINGOVERFLOW;
 	    goto invalid;
 	  }
 	  char buf[len + 1];
@@ -708,7 +764,7 @@ int opt_interface_list(struct config_interface_list *listp, const struct config_
 	arg = p;
     }
     if (*p) {
-      result = CFOVERFLOW;
+      result = CFARRAYOVERFLOW;
       goto invalid;
     }
     assert(n <= NELS(listp->av));
@@ -726,11 +782,11 @@ invalid:
   return result;
 }
 
-void missing_node(const struct config_node *parent, const char *key);
-void unsupported_node(const struct config_node *node);
-void unsupported_tree(const struct config_node *node);
-void list_overflow(const struct config_node *node);
-void list_omit_element(const struct config_node *node);
+void missing_node(const struct cf_om_node *parent, const char *key);
+void unsupported_node(const struct cf_om_node *node);
+void unsupported_tree(const struct cf_om_node *node);
+void list_overflow(const struct cf_om_node *node);
+void list_omit_element(const struct cf_om_node *node);
 
 // Schema item flags.
 #define __MANDATORY     (1<<0)
@@ -743,89 +799,84 @@ void list_omit_element(const struct config_node *node);
 #define USES_CHILDREN	|__CHILDREN
 
 // Generate parsing functions, opt_config_SECTION()
-#define STRUCT(__sect) \
-    int opt_config_##__sect(struct config_##__sect *s, const struct config_node *node) { \
-        if (node->text) unsupported_node(node); \
-        int result = CFOK; \
-        char used[node->nodc]; \
-        memset(used, 0, node->nodc * sizeof used[0]);
-#define __ITEM(__name, __flags, __parseexpr) \
-        { \
-            int i = get_child(node, #__name); \
-	    const struct config_node *child = (i != -1) ? node->nodv[i] : NULL; \
-	    int ret = CFMISSING; \
-            if (child) { \
-                used[i] |= (__flags); \
-                ret = (__parseexpr); \
-            } \
-	    switch (ret) { \
-	    case CFOK: break; \
-	    case CFERROR: \
-	      return CFERROR; \
-	    case CFMISSING: \
-	      if ((__flags) & __MANDATORY) { \
-		  missing_node(node, #__name); \
-		  if (result < CFMISSING) \
-		    result = CFMISSING; \
-	      } \
-	      break; \
-	    default: \
-	      assert(child != NULL); \
-	      if (child->text) \
-		invalid_text(child, ret); \
-	      if (result < ret) \
-		result = ret; \
-	      break; \
-	    } \
-        }
-#define NODE(__type, __name, __default, __parser, __flags, __comment) \
-        __ITEM(__name, 0 __flags, __parser(&s->__name, child))
-#define ATOM(__type, __name, __default, __parser, __flags, __comment) \
-        __ITEM(__name, ((0 __flags)|__TEXT)&~__CHILDREN, child->text ? __parser(&s->__name, child->text) : CFMISSING)
-#define STRING(__size, __name, __default, __parser, __flags, __comment) \
-        __ITEM(__name, ((0 __flags)|__TEXT)&~__CHILDREN, child->text ? __parser(s->__name, (__size) + 1, child->text) : CFMISSING)
-#define SUB_STRUCT(__sect, __name, __flags) \
-        __ITEM(__name, (0 __flags)|__CHILDREN, opt_config_##__sect(&s->__name, child))
-#define NODE_STRUCT(__sect, __name, __parser, __flags) \
-        __ITEM(__name, (0 __flags)|__TEXT|__CHILDREN, __parser(&s->__name, child))
+#define STRUCT(__name) \
+    int opt_config_##__name(struct config_##__name *s, const struct cf_om_node *node) { \
+      int result = CFEMPTY; \
+      char used[node->nodc]; \
+      memset(used, 0, node->nodc * sizeof used[0]);
+#define __ITEM(__element, __flags, __parseexpr) \
+      { \
+	int i = get_child(node, #__element); \
+	const struct cf_om_node *child = (i != -1) ? node->nodv[i] : NULL; \
+	int ret = CFEMPTY; \
+	if (child) { \
+	  used[i] |= (__flags); \
+	  ret = (__parseexpr); \
+	} \
+	if (ret == CFERROR) \
+	  return CFERROR; \
+	result |= ret & CF__SUBFLAGS; \
+	if (!(ret & CFEMPTY)) \
+	  result &= ~CFEMPTY; \
+	else if ((__flags) & __MANDATORY) { \
+	  missing_node(node, #__element); \
+	  result |= CFINCOMPLETE; \
+	} \
+	if (ret & ~CFEMPTY) { \
+	  assert(child != NULL); \
+	  if (child->text) \
+	    warn_ignoring_node(child, ret); \
+	  result |= CFSUB(ret); \
+	} \
+      }
+#define NODE(__type, __element, __default, __parser, __flags, __comment) \
+        __ITEM(__element, 0 __flags, __parser(&s->__element, child))
+#define ATOM(__type, __element, __default, __parser, __flags, __comment) \
+        __ITEM(__element, ((0 __flags)|__TEXT)&~__CHILDREN, child->text ? __parser(&s->__element, child->text) : CFEMPTY)
+#define STRING(__size, __element, __default, __parser, __flags, __comment) \
+        __ITEM(__element, ((0 __flags)|__TEXT)&~__CHILDREN, child->text ? __parser(s->__element, (__size) + 1, child->text) : CFEMPTY)
+#define SUB_STRUCT(__name, __element, __flags) \
+        __ITEM(__element, (0 __flags)|__CHILDREN, opt_config_##__name(&s->__element, child))
+#define NODE_STRUCT(__name, __element, __parser, __flags) \
+        __ITEM(__element, (0 __flags)|__TEXT|__CHILDREN, __parser(&s->__element, child))
 #define END_STRUCT \
-        { \
-            int i; \
-            for (i = 0; i < node->nodc; ++i) { \
-                if (node->nodv[i]->text && !(used[i] & __TEXT)) \
-                    unsupported_node(node->nodv[i]); \
-                if (node->nodv[i]->nodc && !(used[i] & __CHILDREN)) \
-                    unsupported_children(node->nodv[i]); \
-	    } \
-        } \
-        return result; \
-    }
-#define ARRAY(__sect, __type, __size, __parser, __comment) \
-    int opt_config_##__sect(struct config_##__sect *s, const struct config_node *node) { \
-        int result = CFOK; \
+      { \
 	int i; \
-	for (i = 0; i < node->nodc && s->ac < NELS(s->av); ++i) { \
-	    const struct config_node *elt = node->nodv[i]; \
-	    int ret = __parser(&s->av[s->ac].value, elt); \
-	    switch (ret) { \
-	    case CFERROR: return CFERROR; \
-	    case CFOK: \
-		strncpy(s->av[s->ac].label, elt->key, sizeof s->av[s->ac].label - 1)\
-		    [sizeof s->av[s->ac].label - 1] = '\0'; \
-		++s->ac; \
-		break; \
-	    default: \
-		list_omit_element(elt); \
-		break; \
-	    } \
+	for (i = 0; i < node->nodc; ++i) { \
+	  if (node->nodv[i]->text && !(used[i] & __TEXT)) \
+	    unsupported_node(node->nodv[i]); \
+	  if (node->nodv[i]->nodc && !(used[i] & __CHILDREN)) \
+	    unsupported_children(node->nodv[i]); \
 	} \
-	for (; i < node->nodc; ++i) { \
-	    if (result < CFOVERFLOW) result = CFOVERFLOW; \
-	    list_overflow(node->nodv[i]); \
+      } \
+      return result; \
+    }
+#define __ARRAY(__name, __size, __type, __decl, __parser, __parsearg, __comment) \
+    int opt_config_##__name(struct config_##__name *s, const struct cf_om_node *node) { \
+      int result = CFOK; \
+      int i; \
+      for (i = 0; i < node->nodc && s->ac < NELS(s->av); ++i) { \
+	const struct cf_om_node *elt = node->nodv[i]; \
+	int ret = __parser(&s->av[s->ac].value, elt); \
+	switch (ret) { \
+	case CFERROR: return CFERROR; \
+	case CFOK: \
+	  strncpy(s->av[s->ac].label, elt->key, sizeof s->av[s->ac].label - 1)\
+	      [sizeof s->av[s->ac].label - 1] = '\0'; \
+	  ++s->ac; \
+	  break; \
+	default: \
+	  list_omit_element(elt); \
+	  break; \
 	} \
-	if (s->ac == 0 && result < CFMISSING) \
-	  result = CFMISSING; \
-        return result; \
+      } \
+      for (; i < node->nodc; ++i) { \
+	result |= CFARRAYOVERFLOW; \
+	list_overflow(node->nodv[i]); \
+      } \
+      if (s->ac == 0) \
+	result |= CFEMPTY; \
+      return result; \
     }
 #include "config_schema.h"
 #undef STRUCT
@@ -835,7 +886,7 @@ void list_omit_element(const struct config_node *node);
 #undef SUB_STRUCT
 #undef NODE_STRUCT
 #undef END_STRUCT
-#undef ARRAY
+#undef __ARRAY
 
 int main(int argc, char **argv)
 {
@@ -857,15 +908,16 @@ int main(int argc, char **argv)
       perror("read");
       exit(1);
     }
-    struct config_node *root = parse_config(argv[i], buf, st.st_size);
+    struct cf_om_node *root = parse_config(argv[i], buf, st.st_size);
     close(fd);
     //dump_config_node(root, 0);
     struct config_main config;
     memset(&config, 0, sizeof config);
     dfl_config_main(&config);
-    opt_config_main(&config, root);
+    int result = opt_config_main(&config, root);
     free_config_node(root);
     free(buf);
+    DEBUGF("result = %s", strbuf_str(strbuf_cf_flags(strbuf_alloca(128), result)));
     DEBUGF("config.log.file = %s", alloca_str(config.log.file));
     DEBUGF("config.log.show_pid = %d", config.log.show_pid);
     DEBUGF("config.log.show_time = %d", config.log.show_time);
