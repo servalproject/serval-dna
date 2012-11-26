@@ -130,7 +130,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define MDP_FORCE 0x0100
 #define MDP_NOCRYPT 0x0200
 #define MDP_NOSIGN 0x0400
-#define MDP_MTU 2000
+#define MDP_MTU 1200
 
 #define MDP_TX 1
 #define MDP_BIND 3
