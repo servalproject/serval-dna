@@ -193,16 +193,6 @@ overlay_node *get_node(struct subscriber *subscriber, int create){
   return subscriber->node;
 }
 
-overlay_node *overlay_route_find_node(const unsigned char *sid, int prefixLen, int createP)
-{
-  if (*sid==0){
-    INFOF("Sid %s/%d cannot ever become a node!", alloca_tohex_sid(sid), prefixLen);
-    return NULL;
-  }
-  
-  return get_node(find_subscriber(sid, prefixLen, createP), createP);
-}
-
 int overlay_route_ack_selfannounce(struct overlay_frame *f,
 				   unsigned int s1,unsigned int s2,
 				   int interface,
@@ -723,15 +713,15 @@ int overlay_route_saw_selfannounce_ack(struct overlay_frame *f,long long now)
 
 /* if to and via are the same, then this is evidence that we can get to the
    node directly. */
-int overlay_route_record_link(time_ms_t now, unsigned char *to,
-			      unsigned char *via,int sender_interface,
+int overlay_route_record_link(time_ms_t now, struct subscriber *to,
+			      struct subscriber *via,int sender_interface,
 			      unsigned int s1,unsigned int s2,int score,
 			      int gateways_en_route)
 {
   IN();
   if (debug & DEBUG_OVERLAYROUTING)
     DEBUGF("to=%s, via=%s, sender_interface=%d, s1=%d, s2=%d score=%d gateways_en_route=%d",
-	alloca_tohex_sid(to), alloca_tohex_sid(via), sender_interface, s1, s2,
+	alloca_tohex_sid(to->sid), alloca_tohex_sid(via->sid), sender_interface, s1, s2,
 	score, gateways_en_route
       );
  
@@ -741,13 +731,9 @@ int overlay_route_record_link(time_ms_t now, unsigned char *to,
     RETURN(0);
   }
 
-  overlay_node *n = overlay_route_find_node(to, SID_SIZE, 1 /* create node if missing */);
+  overlay_node *n = get_node(to,1);
   if (!n)
     RETURN(WHY("Could not create entry for node"));
-  
-  struct subscriber *sender = find_subscriber(via, SID_SIZE, 1);
-  if (!sender)
-    RETURN(WHY("Could not create subscriber"));
   
   int slot = -1;
   int i;
@@ -757,7 +743,7 @@ int overlay_route_record_link(time_ms_t now, unsigned char *to,
       slot = i;
     /* If the intermediate host ("via") address and interface numbers match, then overwrite old
        observation with new one */
-    if (n->observations[i].sender == sender) {
+    if (n->observations[i].sender == via) {
       slot = i;
       break;
     }
@@ -783,7 +769,7 @@ int overlay_route_record_link(time_ms_t now, unsigned char *to,
   n->observations[slot].observed_score=0;
   n->observations[slot].gateways_en_route=gateways_en_route;
   n->observations[slot].rx_time=now;
-  n->observations[slot].sender = sender;
+  n->observations[slot].sender = via;
   n->observations[slot].observed_score=score;
   n->observations[slot].interface=sender_interface;
   

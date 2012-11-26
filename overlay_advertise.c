@@ -208,7 +208,7 @@ int overlay_route_saw_advertisements(int i, struct overlay_frame *f, struct deco
       }
       
       /* File it */
-      overlay_route_record_link(now, subscriber->sid, f->source->sid,
+      overlay_route_record_link(now, subscriber, f->source,
 				i,
 				/* time range that this advertisement covers.
 				   XXX - Make it up for now. */
