@@ -80,7 +80,6 @@ int add_advertisement(struct subscriber *subscriber, void *context){
 	ob_rewind(e);
 	return 1;
       }
-      
       ob_checkpoint(e);
     }
   }
@@ -182,7 +181,7 @@ int overlay_route_saw_advertisements(int i, struct overlay_frame *f, struct deco
   context->abbreviations_only=1;
   struct subscriber *previous=context->previous;
   // minimum record length is (address code, 3 byte sid, score, gateways)
-  while(f->payload->position +6 <= f->payload->sizeLimit)
+  while(f->payload->position < f->payload->sizeLimit)
     {
       struct subscriber *subscriber;
       context->invalid_addresses=0;
