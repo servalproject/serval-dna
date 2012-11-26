@@ -87,7 +87,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define OVERLAY_MAX_LOCAL_IDENTITIES 256
 
 /* Overlay mesh packet codes */
-#define OF_TYPE_BITS 0xf0
 #define OF_TYPE_SELFANNOUNCE 0x10 /* BATMAN style announcement frames */
 #define OF_TYPE_SELFANNOUNCE_ACK 0x20 /* BATMAN style "I saw your announcment" frames */
 #define OF_TYPE_DATA 0x30 /* Ordinary data frame.
@@ -101,16 +100,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define OF_TYPE_PLEASEEXPLAIN 0x60 /* Request for resolution of an abbreviated address */
 #define OF_TYPE_NODEANNOUNCE 0x70
 
-/* Modifiers that indicate the disposition of the frame */
-#define OF_MODIFIER_BITS 0x0f
+#define PAYLOAD_FLAG_SENDER_SAME (1<<0)
+#define PAYLOAD_FLAG_TO_BROADCAST (1<<1)
+#define PAYLOAD_FLAG_ONE_HOP (1<<2)
+#define PAYLOAD_FLAG_LONG_PAYLOAD (1<<3)
+#define PAYLOAD_FLAG_CIPHERED (1<<4)
+#define PAYLOAD_FLAG_SIGNED (1<<5)
 
 /* Crypto/security options */
 #define OF_CRYPTO_NONE 0x00
-#define OF_CRYPTO_CIPHERED 0x04 /* Encrypted frame */
-#define OF_CRYPTO_SIGNED 0x08   /* signed frame */
-
-/* QOS packet queue bits */
-#define OF_QUEUE_BITS 0x03
+#define OF_CRYPTO_CIPHERED PAYLOAD_FLAG_CIPHERED /* Encrypted frame */
+#define OF_CRYPTO_SIGNED PAYLOAD_FLAG_SIGNED   /* signed frame */
 
 /* Keep track of last 32 observations of a node.
    Hopefully this is enough, if not, we will increase.

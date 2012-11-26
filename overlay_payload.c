@@ -27,35 +27,42 @@ int overlay_frame_build_header(struct decode_context *context, struct overlay_bu
 			       struct broadcast *broadcast, struct subscriber *next_hop,
 			       struct subscriber *destination, struct subscriber *source){
   
-  int x = buff->position;
+  int flags = modifiers & (PAYLOAD_FLAG_CIPHERED | PAYLOAD_FLAG_SIGNED);
   
-  int q_bits = queue;
-  if (q_bits>0) q_bits--;
-  if (q_bits>3) q_bits=3;
-  int type_byte = type|modifiers|q_bits;
+  if (ttl==1 && !broadcast)
+    flags |= PAYLOAD_FLAG_ONE_HOP;
+  if (destination && destination==next_hop)
+    flags |= PAYLOAD_FLAG_ONE_HOP;
   
-  if (ttl>64)
-    ttl=64;
+  if (source == context->sender)
+    flags |= PAYLOAD_FLAG_SENDER_SAME;
   
-  if (ob_append_byte(buff, type_byte)) return -1;
-  if (ob_append_byte(buff, ttl)) return -1;
-  if (ob_append_rfs(buff, 2)) return -1;
+  if (!destination)
+    flags |= PAYLOAD_FLAG_TO_BROADCAST;
   
-  if (broadcast){
-    if (overlay_broadcast_append(context, buff, broadcast)) return -1;
-  }else{
-    if (overlay_address_append(context, buff, next_hop)) return -1;
+  if (ob_append_byte(buff, flags)) return -1;
+  
+  if (!(flags & PAYLOAD_FLAG_SENDER_SAME)){
+    if (overlay_address_append(context, buff, source)) return -1;
   }
   
-  if (destination){
+  if (flags & PAYLOAD_FLAG_TO_BROADCAST){
+    if (!(flags & PAYLOAD_FLAG_ONE_HOP)){
+      if (overlay_broadcast_append(context, buff, broadcast)) return -1;
+    }
+  }else{
     if (overlay_address_append(context, buff, destination)) return -1;
-  }else{
-    if (ob_append_byte(buff, OA_CODE_PREVIOUS)) return -1;
+    if (!(flags & PAYLOAD_FLAG_ONE_HOP)){
+      if (overlay_address_append(context, buff, next_hop)) return -1;
+    }
   }
   
-  if (overlay_address_append(context, buff, source)) return -1;
+  if (!(flags & PAYLOAD_FLAG_ONE_HOP)){
+    if (ob_append_byte(buff, ttl | ((queue&3)<<5))) return -1;
+  }
+  if (ob_append_byte(buff, type)) return -1;
   
-  dump("written header", buff->bytes + x, buff->position - x);
+  if (ob_append_rfs(buff, 2)) return -1;
   
   return 0;
 }

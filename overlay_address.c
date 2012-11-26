@@ -546,11 +546,11 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
   else
     context->please_explain->source = my_subscriber;
   
-  if (destination){
+  if (destination && destination->reachable!=REACHABLE_NONE){
     context->please_explain->destination = destination;
     context->please_explain->ttl=64;
   }else{
-    context->please_explain->ttl=2;// how will this work with olsr??
+    context->please_explain->ttl=1;// how will this work with olsr??
     overlay_broadcast_generate_address(&context->please_explain->broadcast_id);
   }
   
@@ -559,7 +559,7 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
   if (!overlay_payload_enqueue(context->please_explain))
     RETURN(0);
   op_free(context->please_explain);
-  RETURN(0);
+  RETURN(-1);
 }
 
 // process an incoming request for explanation of subscriber abbreviations

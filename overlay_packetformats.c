@@ -176,9 +176,6 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   struct decode_context context;
   bzero(&context, sizeof context);
   
-  if (len<HEADERFIELDS_LEN)
-    return WHY("Packet is too short");
-  
   time_ms_t now = gettime_ms();
   struct overlay_buffer *b = ob_static(packet, len);
   ob_limitsize(b, len);
@@ -213,48 +210,73 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   
   while(b->position < b->sizeLimit){
     context.invalid_addresses=0;
-    
-    int flags = ob_get(b);
-    
-    /* Get normal form of packet type and modifiers */
-    f.type=flags&OF_TYPE_BITS;
-    f.modifiers=flags&OF_MODIFIER_BITS;
-
-    f.queue = (f.modifiers & OF_QUEUE_BITS) +1;
-    
-    /* Get time to live */
-    f.ttl=ob_get(b);
-    f.ttl--;
-
-    /* Decode length of remainder of frame */
-    int payload_len=ob_get_ui16(b);
-
-    if (payload_len <=0)
-      /* we fell off the end of the packet? */
-      break;
-
-    dump("decoding header", b->bytes + b->position, payload_len);
-    
-    int next_payload = b->position + payload_len;
-    
-    /* Always attempt to resolve all of the addresses in a packet, or we could fail to understand an important payload 
-     eg, peer sends two payloads travelling in opposite directions;
-	[Next, Dest, Sender] forwarding a payload we just send, so Sender == Me
-	[Next, Dest, Sender] delivering a payload to us so Next == Me
-     
-     But Next would be encoded as OA_CODE_PREVIOUS, so we must parse all three addresses, 
-     even if Next is obviously not intended for us
-     */
-    
     struct subscriber *nexthop=NULL;
     bzero(f.broadcast_id.id, BROADCAST_LEN);
+    int process=1;
+    int forward=1;
+    int flags = ob_get(b);
     
-    // if the structure of the addresses looks wrong, stop immediately
-    if (overlay_address_parse(&context, b, &f.broadcast_id, &nexthop)
-	|| overlay_address_parse(&context, b, NULL, &f.destination)
-	|| overlay_address_parse(&context, b, NULL, &f.source)){
-      break;
+    if (flags & PAYLOAD_FLAG_SENDER_SAME){
+      f.source = context.sender;
+    }else{
+      if (overlay_address_parse(&context, b, NULL, &f.source))
+	break;
+      if (!f.source || f.source->reachable==REACHABLE_SELF)
+	process=forward=0;
     }
+    
+    if (flags & PAYLOAD_FLAG_TO_BROADCAST){
+      if (!(flags & PAYLOAD_FLAG_ONE_HOP)){
+	if (overlay_address_parse(&context, b, &f.broadcast_id, NULL))
+	  break;
+	if (overlay_broadcast_drop_check(&f.broadcast_id)){
+	  process=forward=0;
+	  if (debug&DEBUG_OVERLAYFRAMES)
+	    DEBUGF("Ignoring duplicate broadcast (%s)", alloca_tohex(f.broadcast_id.id, BROADCAST_LEN));
+	}
+      }
+      f.destination=NULL;
+    }else{
+      if (overlay_address_parse(&context, b, NULL, &f.destination))
+	break;
+      
+      if (!f.destination || f.destination->reachable!=REACHABLE_SELF){
+	process=0;
+      }
+      
+      if (!(flags & PAYLOAD_FLAG_ONE_HOP)){
+	if (overlay_address_parse(&context, b, NULL, &nexthop))
+	  break;
+	
+	if (!nexthop || nexthop->reachable!=REACHABLE_SELF){
+	  forward=0;
+	}
+      }
+    }
+    
+    if (flags & PAYLOAD_FLAG_ONE_HOP){
+      f.ttl=1;
+    }else{
+      int ttl_qos = ob_get(b);
+      f.ttl = ttl_qos & 0x1F;
+      f.queue = (ttl_qos >> 5) & 3;
+    }
+    f.ttl--;
+    if (f.ttl<=0)
+      forward=0;
+    f.type=ob_get(b);
+    if (f.type<0)
+      break;
+    
+    f.modifiers=flags;
+
+    // TODO allow for one byte length
+    int payload_len = ob_get_ui16(b);
+
+    if (payload_len <=0)
+      break;
+    
+    int next_payload = b->position + payload_len;
     
     // if we can't understand one of the addresses, skip processing the payload
     if (context.invalid_addresses)
@@ -270,26 +292,8 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 	DEBUGF("Next hop %s", alloca_tohex_sid(nexthop->sid));
     }
 
-    // ignore any payload we sent
-    if (f.source->reachable==REACHABLE_SELF){
-      if (debug&DEBUG_OVERLAYFRAMES)
-	DEBUGF("Ignoring payload from myself (%s)", alloca_tohex_sid(f.source->sid));
+    if (!process && !forward)
       goto next;
-    }
-    
-    // skip unicast payloads that aren't for me
-    if (nexthop && nexthop->reachable!=REACHABLE_SELF){
-      if (debug&DEBUG_OVERLAYFRAMES)
-	DEBUGF("Ignoring payload that is not meant for me (%s)", alloca_tohex_sid(nexthop->sid));
-      goto next;
-    }
-      
-    // skip broadcast payloads we've already seen
-    if ((!nexthop) && overlay_broadcast_drop_check(&f.broadcast_id)){
-      if (debug&DEBUG_OVERLAYFRAMES)
-	DEBUGF("Ignoring duplicate broadcast (%s)", alloca_tohex(f.broadcast_id.id, BROADCAST_LEN));
-      goto next;
-    }
     
     f.payload = ob_slice(b, b->position, next_payload - b->position);
     if (!f.payload){
@@ -300,13 +304,12 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     ob_limitsize(f.payload, next_payload - b->position);
     
     // forward payloads that are for someone else or everyone
-    if ((!f.destination) || 
-	(f.destination->reachable != REACHABLE_SELF && f.destination->reachable != REACHABLE_NONE)){
+    if (forward){
       overlay_forward_payload(&f);
     }
     
     // process payloads that are for me or everyone
-    if ((!f.destination) || f.destination->reachable==REACHABLE_SELF){
+    if (process){
       process_incoming_frame(now, interface, &f, &context);
     }
     
