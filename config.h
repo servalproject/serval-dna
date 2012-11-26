@@ -20,6 +20,107 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVALDNA_CONFIG_H
 #define __SERVALDNA_CONFIG_H
 
+/* This file defines the internal API to the configuration file.  See "config_schema.h" for the
+ * definition of the configuration schema, which is used to generate these API components.
+ *
+ * Each STRUCT(foo) schema declaration produces the following data declaration:
+ *
+ *      struct config_foo {
+ *          TYPE NAME;
+ *          ...
+ *      };
+ *
+ *      A C struct definition containing exactly one element per schema declaration inside the
+ *      STRUCT..END_STRUCT block, in the defined order.  The TYPE and NAME of each element depends
+ *      on the schema declaration that produces it:
+ *
+ *      ATOM(TYPE, bar, ...)
+ *      NODE(TYPE, bar, ...)
+ *
+ *          TYPE bar;
+ *
+ *      STRING(SIZE, bar, ...)
+ *
+ *          char bar[SIZE+1];
+ *
+ *      SUB_STRUCT(NAME, bar, ...)
+ *      NODE_STRUCT(NAME, bar, ...)
+ *      
+ *          struct config_NAME bar;
+ *
+ * Each ARRAY_*(SIZE, bar, ...) schema declaration produces the following data declaration:
+ *
+ *      struct config_bar {
+ *          unsigned ac;
+ *          struct {
+ *              char label[N]; // please discover N using sizeof()
+ *              TYPE value;
+ *          } av[SIZE];
+ *      };
+ *
+ *      A C struct definition containing a count 'ac' of the number of array elements [0..SIZE-1]
+ *      and 'av' an array of element values, each one consisting of a label and the value itself,
+ *      whose TYPE depends on the ARRAY_* declaration itself:
+ *      
+ *      ARRAY_ATOM(NAME, SIZE, TYPE, ...)
+ *      ARRAY_NODE(NAME, SIZE, TYPE, ...)
+ *
+ *              TYPE value;
+ *
+ *      ARRAY_STRING(NAME, SIZE, STRINGSIZE, ...)
+ *
+ *              char value[STRINGSIZE];
+ *
+ *      ARRAY_STRUCT(NAME, SIZE, STRUCTNAME, ...)
+ *
+ *              struct config_STRUCTNAME value;
+ *
+ * Each STRUCT(foo) and ARRAY_*(SIZE, foo, ...) schema declaration produces the following API
+ * functions:
+ *
+ *  - int dfl_config_foo(struct config_foo *dest);
+ *
+ *      A C function which sets the entire contents of the given C structure to its default values
+ *      as defined in the schema.  This will only return CFOK or CFERROR; see below.
+ *
+ *  - int opt_config_foo(struct config_foo *dest, const struct cf_om_node *node);
+ *
+ *      A C function which parses the given COM (configuration object model) and assigns the parsed
+ *      result into the given C structure.  See below for the return value.
+ *
+ * All parse functions assign the result of their parsing into the struct given in their 'dest'
+ * argument, and return a bitmask of the following flags:
+ *
+ *  - CFERROR (all bits set, == -1) if an unrecoverable error occurrs (eg, malloc() fails); the
+ *    result in *dest is undefined and may be malformed or inconsistent;
+ *
+ *  - CFEMPTY if no items were encountered in the COM (ie, no array elements or no struct elements);
+ *    the memory at *dest is unchanged;
+ *
+ *  - CFARRAYOVERFLOW if the size of any array was exceeded; a valid result is produced and the
+ *    overflowed array(s) are fully populated, arbitrarily omitting some elements that were found in
+ *    the COM;
+ *
+ *  - CFSTRINGFOVERFLOW if the size of any string element was exceeded, a valid result is produced
+ *    but the overflowed string elements are unchanged -- those parts of *dest are not overwritten;
+ *
+ *  - CFINCOMPLETE if any MANDATORY element was missing; a valid result is produced but the missing
+ *    mandatory element(s) are unchanged -- those parts of *dest are not overwritten;
+ *
+ *  - CFINVALID if any invalid configuration value was encountered, ie, any parse function returned
+ *    CFINVALID in its return flags; a valid result is produced but the invalid elements are
+ *    unchanged -- those parts of *dest are not overwritten;
+ *
+ *  - CFSUB(CFxxx) if the STRUCT parser function encountered the error CFxxx when parsing a struct
+ *    element, ie, a parse function returned CFxxx; a valid result is produced but some parts of
+ *    *dest will not be overwritten;
+ *
+ * The special value CFOK is zero (no bits set); in this case a valid result is produced and all of
+ * *dest is overwritten (except unused array elements).
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+
 #include <stdint.h>
 #include "constants.h"
 #include "strbuf.h"

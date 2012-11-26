@@ -17,6 +17,119 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+/* This file contains definitions for the schema of the Serval DNA configuration file.  See comments
+ * in "config.h" for a description of the internal configuration API.
+ *
+ * A configuration schema is set of nested structures and arrays.  By convention, the top level, or
+ * root of the schema is called "main", but every structure and array has its own complete API which
+ * can be used by itself.  So if there were two independent configuration files, both could be
+ * defined in this file, each with a conventional name for its own root element.
+ *
+ * To describe a configuration file that looks like this:
+ *
+ *      some.thing.element1=integer
+ *      some.thing.element2=string
+ *      some.list.foo.element1=integer
+ *      some.list.foo.element2=string
+ *      some.list.bar.element1=integer
+ *      some.list.bar.element2=string
+ *      another_thing=http://my.host.com:1234/path/to/nowhere
+ *
+ * the following schema would do:
+ *
+ *      STRUCT(happy)
+ *          ATOM(int32_t, element1, 0, opt_int32_nonnegative,, "An integer >= 0")
+ *          STRING(80, element2, "boo!", opt_str_nonempty, MANDATORY, "A non-empty string")
+ *      END_STRUCT
+ *
+ *      ARRAY_STRUCT(joy, 16, happy, "An array of integer-string pairs")
+ *
+ *      STRUCT(love)
+ *          SUB_STRUCT(happy, thing,)
+ *          SUB_STRUCT(joy, list,)
+ *      END_STRUCT
+ *
+ *      STRUCT(main)
+ *          SUB_STRUCT(love, some,)
+ *          STRING(128, another_thing, "", opt_uri,, "URL; protocol://hostname[:port][/path]")
+ *      END_STRUCT
+ *
+ * which would produce an API based on the following definitions (see "config.h" for more
+ * information):
+ *
+ *      struct config_happy {
+ *          int32_t element1;
+ *          char element2[81];
+ *      };
+ *      struct config_joy {
+ *          unsigned ac;
+ *          struct {
+ *              char label[N]; // please discover N using sizeof()
+ *              struct config_happy value;
+ *          } av[16];
+ *      };
+ *      struct config_love {
+ *          struct config_happy thing;
+ *          struct config_joy list;
+ *      };
+ *      struct config_main {
+ *          struct config_love some;
+ *          char another_thing[129];
+ *      };
+ *
+ * A schema definition is composed from the following STRUCT and ARRAY definitions:
+ *
+ *      STRUCT(name)
+ *          ATOM(type, element, default, parsefunc, flags, comment)
+ *          NODE(type, element, default, parsefunc, flags, comment)
+ *          STRING(size, element, default, parsefunc, flags, comment)
+ *          SUB_STRUCT(structname, element, flags)
+ *          NODE_STRUCT(structname, element, parsefunc, flags)
+ *      END_STRUCT
+ *
+ *      ARRAY_ATOM(name, size, type, parsefunc, comment)
+ *      ARRAY_STRING(name, size, parsefunc, comment)
+ *      ARRAY_NODE(name, size, type, parsefunc, comment)
+ *      ARRAY_STRUCT(name, size, structname, comment)
+ *
+ * The meanings of the parameters are:
+ *
+ * 'name'
+ *      A label used to qualify this struct/array's API from the API components of other structs and
+ *      arrays.  This label does not appear anywhere in the config file itself; it is purely for
+ *      internal code-related purposes.
+ * 'type'
+ *      Only used for ATOM, NODE, ARRAY_ATOM and ARRAY_NODE declarations.  Gives the C type of the
+ *      element.  For STRING and ARRAY_STRING, this is implicitly (const char *).
+ * 'structname'
+ *      Only used for SUB_STRUCT, NODE_STRUCT and ARRAY_STRUCT declarations.  Identifies a sub-
+ *      structure by 'name' to nest in the enclosing struct or array.
+ * 'element'
+ *      The name of the struct element and the key in the configuration file.  This name does appear
+ *      in the config file and also in the API, so that an option mamed "some.thing.element1" in the
+ *      file is referred to as some.thing.element1 in the C code.  Arrays are more complicated:
+ *      "some.list.foo.element1" in the config file is referred to as some.list.av[n].value.element1
+ *      in the C code, and some.list.ac gives the size of the some.list.av array.
+ * 'default'
+ *      Only used for ATOM and NODE struct elements.  Gives the default value for the element if
+ *      absent from the config file.
+ * 'parsefunc'
+ *      The function used to parse the value from the config file.  The ATOM, STRING, ARRAY_ATOM and
+ *      ARRAY_STRING parse functions take a string argument (const char *).  The NODE, NODE_STRUCT
+ *      and ARRAY_NODE parse functions take a pointer to a COM node (const struct cf_om_node).
+ * 'flags'
+ *      A space-separated list of flags.  At present only the MANDATORY flag is supported, which
+ *      will cause parsing to fail if the given STRUCT element is not set in the config file.  In
+ *      the case of struct elements that are arrays, the config file must set at least one element
+ *      of the array, or parsing fails.
+ * 'comment'
+ *      A human-readable string describing the value of the configuration option.  Must be
+ *      informative enough to help users diagnose parse errors.  Eg, "An integer" is not enough;
+ *      better would be "Integer >= 0, number of seconds since Unix epoch".
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+
 STRUCT(log)
 STRING(256,                 file,       "", opt_absolute_path,, "Absolute path of log file")
 ATOM(int,                   show_pid,   1, opt_boolean,, "If true, all log lines contain PID of logging process")
