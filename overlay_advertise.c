@@ -121,12 +121,9 @@ int overlay_route_add_advertisements(struct decode_context *context, overlay_int
   
   ob_checkpoint(e);
   
-  struct broadcast broadcast;
-  overlay_broadcast_generate_address(&broadcast);
-  
   if (overlay_frame_build_header(context, e, 
 				 0, OF_TYPE_NODEANNOUNCE, 0, 1, 
-				 &broadcast, NULL,
+				 NULL, NULL,
 				 NULL, my_subscriber))
     return -1;
   

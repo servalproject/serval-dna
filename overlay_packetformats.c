@@ -368,12 +368,9 @@ int overlay_add_selfannouncement(struct decode_context *context, int interface,s
 
   time_ms_t now = gettime_ms();
 
-  struct broadcast broadcast_id;
-  overlay_broadcast_generate_address(&broadcast_id);
-  
   if (overlay_frame_build_header(context, b, 
 				 0, OF_TYPE_SELFANNOUNCE, 0, 1, 
-				 &broadcast_id, NULL,
+				 NULL, NULL,
 				 NULL, my_subscriber))
     return -1;
   

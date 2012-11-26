@@ -157,12 +157,9 @@ int overlay_rhizome_add_advertisements(struct decode_context *context, int inter
 
   if (slots<1) { RETURN(WHY("No room for node advertisements")); }
 
-  struct broadcast broadcast_id;
-  overlay_broadcast_generate_address(&broadcast_id);
-  
   if (overlay_frame_build_header(context, e, 
 				 0, OF_TYPE_RHIZOME_ADVERT, 0, 1, 
-				 &broadcast_id, NULL,
+				 NULL, NULL,
 				 NULL, my_subscriber))
     return -1;
   
