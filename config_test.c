@@ -287,45 +287,61 @@ strbuf strbuf_cf_flags(strbuf sb, int flags)
   return sb;
 }
 
-void warn_ignoring_node(const struct cf_om_node *node, int reason)
+
+
+strbuf strbuf_cf_flag_reason(strbuf sb, int flags)
 {
-  const char *adj = NULL;
-  const char *why = NULL;
-  if (reason == CFERROR)
-    why = "unrecoverable error";
-  else if (reason & CFINVALID)
-    adj = "invalid";
-  else if (reason & CFINCOMPLETE)
-    why = "incomplete";
-  else if (reason & CFARRAYOVERFLOW)
-    why = "array overflow";
-  else if (reason & CFSTRINGOVERFLOW)
-    why = "string overflow";
-  else if (reason & CFUNSUPPORTED)
-    adj = "unsupported";
-  else if (reason & CFSUB(CFINVALID))
-    adj = "contains invalid element";
-  else if (reason & CFSUB(CFINCOMPLETE))
-    why = "contains incomplete element";
-  else if (reason & CFSUB(CFARRAYOVERFLOW))
-    why = "contains array overflow";
-  else if (reason & CFSUB(CFSTRINGOVERFLOW))
-    why = "contains string overflow";
-  else if (reason & CFSUB(CFUNSUPPORTED))
-    why = "contains unsupported element";
-  else if (reason & CFEMPTY)
-    why = "empty";
-  else if (reason)
-    why = "unknown reason";
-  else {
-    adj = "valid";
-    why = "no reason";
+  if (flags == CFERROR)
+    return strbuf_puts(sb, "unrecoverable error");
+  size_t n = strbuf_len(sb);
+  static struct { int flag; const char *reason; } flagdefs[] = {
+      { CFEMPTY, "empty" },
+      { CFSTRINGOVERFLOW, "string overflow" },
+      { CFARRAYOVERFLOW, "array overflow" },
+      { CFINCOMPLETE, "incomplete" },
+      { CFINVALID, "invalid" },
+      { CFUNSUPPORTED, "not supported" },
+      { CFSUB(CFEMPTY), "contains empty element" },
+      { CFSUB(CFSTRINGOVERFLOW), "contains string overflow" },
+      { CFSUB(CFARRAYOVERFLOW), "contains array overflow" },
+      { CFSUB(CFINCOMPLETE), "contains incomplete element" },
+      { CFSUB(CFINVALID), "contains invalid element" },
+      { CFSUB(CFUNSUPPORTED), "contains unsupported element" },
+    };
+  int i;
+  for (i = 0; i < NELS(flagdefs); ++i) {
+    if (flags & flagdefs[i].flag) {
+      if (strbuf_len(sb) != n)
+	strbuf_puts(sb, ", ");
+      strbuf_puts(sb, flagdefs[i].reason);
+      flags &= ~flagdefs[i].flag;
+    }
   }
-  warn_node(__FILE__, __LINE__, node, "ignoring%s%s value %s%s%s",
-      adj ? " " : "", adj ? adj : "",
-      alloca_str(node->text),
-      why ? " -- " : "", why ? why : ""
-    );
+  if (strbuf_len(sb) == n)
+    strbuf_puts(sb, "no reason");
+  return sb;
+}
+
+void warn_ignoring_value(const struct cf_om_node *node, int reason)
+{
+  strbuf b = strbuf_alloca(180);
+  strbuf_cf_flag_reason(b, reason);
+  warn_node(__FILE__, __LINE__, node, "ignoring value %s -- %s", alloca_str(node->text), strbuf_str(b));
+}
+
+void warn_unsupported_node(const struct cf_om_node *node)
+{
+  warn_node(__FILE__, __LINE__, node, "not supported");
+}
+
+void warn_unsupported_children(const struct cf_om_node *parent)
+{
+  int i;
+  for (i = 0; i < parent->nodc; ++i) {
+    if (parent->nodv[i]->text)
+      warn_unsupported_node(parent->nodv[i]);
+    warn_unsupported_children(parent->nodv[i]);
+  }
 }
 
 void ignore_node(const struct cf_om_node *node, const char *msg)
@@ -351,19 +367,9 @@ void ignore_tree(const struct cf_om_node *node, const char *msg)
   ignore_children(node, msg);
 }
 
-void unsupported_node(const struct cf_om_node *node)
-{
-  ignore_node(node, "not supported");
-}
-
-void list_overflow(const struct cf_om_node *node)
+void warn_list_overflow(const struct cf_om_node *node)
 {
   ignore_children(node, "list overflow");
-}
-
-void list_omit_element(const struct cf_om_node *node)
-{
-  ignore_node(node, "omitted from list");
 }
 
 void spurious_children(const struct cf_om_node *parent)
@@ -371,14 +377,21 @@ void spurious_children(const struct cf_om_node *parent)
   ignore_children(parent, "spurious");
 }
 
-void unsupported_children(const struct cf_om_node *parent)
+void warn_array_label(const struct cf_om_node *node, int reason)
 {
-  ignore_children(parent, "not supported");
+  strbuf b = strbuf_alloca(180);
+  strbuf_cf_flag_reason(b, reason);
+  warn_node(__FILE__, __LINE__, node, "array label %s -- %s", alloca_str(node->key), strbuf_str(b));
 }
 
-void unsupported_tree(const struct cf_om_node *node)
+void warn_array_value(const struct cf_om_node *node, int reason)
 {
-  ignore_tree(node, "not supported");
+  strbuf b = strbuf_alloca(180);
+  strbuf_cf_flag_reason(b, reason);
+  if (node->text)
+    warn_node(__FILE__, __LINE__, node, "array value %s -- %s", alloca_str(node->text), strbuf_str(b));
+  else
+    warn_node(__FILE__, __LINE__, node, "array element -- %s", strbuf_str(b));
 }
 
 int opt_boolean(int *booleanp, const char *text);
@@ -470,11 +483,11 @@ int opt_debugflags(debugflags_t *flagsp, const struct cf_om_node *node)
   int i;
   for (i = 0; i < node->nodc; ++i) {
     const struct cf_om_node *child = node->nodv[i];
-    unsupported_children(child);
+    warn_unsupported_children(child);
     debugflags_t mask = debugFlagMask(child->key);
     int flag = -1;
     if (!mask)
-      unsupported_node(child);
+      warn_unsupported_node(child);
     else if (child->text) {
       int ret = opt_boolean(&flag, child->text);
       switch (ret) {
@@ -494,7 +507,7 @@ int opt_debugflags(debugflags_t *flagsp, const struct cf_om_node *node)
 	}
 	break;
       default:
-	warn_ignoring_node(child, ret);
+	warn_ignoring_value(child, ret);
 	result |= ret;
 	break;
       }
@@ -597,8 +610,27 @@ int opt_uint64_scaled(uint64_t *intp, const char *text)
   return CFOK;
 }
 
+int opt_argv_label(char *str, size_t len, const char *text)
+{
+  const char *s = text;
+  if (isdigit(*s) && *s != '0') {
+    ++s;
+    while (isdigit(*s))
+      ++s;
+  }
+  if (s == text || *s)
+    return CFINVALID;
+  if (s - text >= len)
+    return CFSTRINGOVERFLOW;
+  strncpy(str, text, len - 1)[len - 1] = '\0';
+  return CFOK;
+}
+
 int vld_argv(struct config_argv *array, int result)
 {
+  int i;
+  for (i = 0; i < array->ac; ++i) {
+  }
   return result;
 }
 
@@ -852,10 +884,8 @@ bye:
 }
 
 void missing_node(const struct cf_om_node *parent, const char *key);
-void unsupported_node(const struct cf_om_node *node);
-void unsupported_tree(const struct cf_om_node *node);
-void list_overflow(const struct cf_om_node *node);
-void list_omit_element(const struct cf_om_node *node);
+void warn_unsupported_node(const struct cf_om_node *node);
+void warn_list_overflow(const struct cf_om_node *node);
 
 // Schema item flags.
 #define __MANDATORY     (1<<0)
@@ -896,7 +926,7 @@ void list_omit_element(const struct cf_om_node *node);
 	if (ret & ~CFEMPTY) { \
 	  assert(child != NULL); \
 	  if (child->text) \
-	    warn_ignoring_node(child, ret); \
+	    warn_ignoring_value(child, ret); \
 	  result |= CFSUB(ret); \
 	} \
       }
@@ -915,11 +945,11 @@ void list_omit_element(const struct cf_om_node *node);
 	int i; \
 	for (i = 0; i < node->nodc; ++i) { \
 	  if (node->nodv[i]->text && !(used[i] & __TEXT)) { \
-	    unsupported_node(node->nodv[i]); \
+	    warn_unsupported_node(node->nodv[i]); \
 	    result |= CFSUB(CFUNSUPPORTED); \
 	  } \
 	  if (node->nodv[i]->nodc && !(used[i] & __CHILDREN)) { \
-	    unsupported_children(node->nodv[i]); \
+	    warn_unsupported_children(node->nodv[i]); \
 	    result |= CFSUB(CFUNSUPPORTED); \
 	  } \
 	} \
@@ -929,32 +959,38 @@ void list_omit_element(const struct cf_om_node *node);
       return result; \
     }
 
-#define __ARRAY(__name, __parseexpr, __validator...) \
+#define __ARRAY(__name, __lblparser, __parseexpr, __validator...) \
     int opt_config_##__name(struct config_##__name *array, const struct cf_om_node *node) { \
       int (*validator)(struct config_##__name *, int) = (NULL, ##__validator); \
       int result = CFOK; \
       int i, n; \
       for (n = 0, i = 0; i < node->nodc && n < NELS(array->av); ++i) { \
 	const struct cf_om_node *child = node->nodv[i]; \
-	int ret = (__parseexpr); \
+	int ret = __lblparser(array->av[n].label, sizeof array->av[n].label, child->key); \
 	if (ret == CFERROR) \
 	  return CFERROR; \
 	result |= ret & CF__SUBFLAGS; \
 	ret &= CF__FLAGS; \
-	if (ret == CFOK) { \
-	  strncpy(array->av[n].label, child->key, sizeof array->av[n].label - 1)\
-	      [sizeof array->av[n].label - 1] = '\0'; \
-	  ++n; \
-	} else { \
-	  list_omit_element(child); \
+	if (ret != CFOK) \
+	  warn_array_label(child, ret); \
+	else { \
+	  ret = (__parseexpr); \
+	  if (ret == CFERROR) \
+	    return CFERROR; \
+	  result |= ret & CF__SUBFLAGS; \
+	  ret &= CF__FLAGS; \
 	  result |= CFSUB(ret); \
+	  if (ret == CFOK) \
+	    ++n; \
+	  else \
+	    warn_array_value(child, ret); \
 	} \
       } \
       if (i < node->nodc) { \
 	assert(n == NELS(array->av)); \
 	result |= CFARRAYOVERFLOW; \
 	for (; i < node->nodc; ++i) \
-	  list_overflow(node->nodv[i]); \
+	  warn_list_overflow(node->nodv[i]); \
       } \
       array->ac = n; \
       if (validator) \
@@ -965,14 +1001,14 @@ void list_omit_element(const struct cf_om_node *node);
 	result |= CFEMPTY; \
       return result; \
     }
-#define ARRAY_ATOM(__name, __size, __type, __eltparser, __validator...) \
-    __ARRAY(__name, child->text ? __eltparser(&array->av[n].value, child->text) : CFEMPTY, ##__validator)
-#define ARRAY_STRING(__name, __size, __strsize, __eltparser, __validator...) \
-    __ARRAY(__name, child->text ? __eltparser(array->av[n].value, sizeof array->av[n].value, child->text) : CFEMPTY, ##__validator)
-#define ARRAY_NODE(__name, __size, __type, __eltparser, __validator...) \
-    __ARRAY(__name, __eltparser(&array->av[n].value, child), ##__validator)
-#define ARRAY_STRUCT(__name, __size, __structname, __validator...) \
-    __ARRAY(__name, opt_config_##__structname(&array->av[n].value, child), ##__validator)
+#define ARRAY_ATOM(__name, __size, __type, __lblparser, __eltparser, __validator...) \
+    __ARRAY(__name, __lblparser, child->text ? __eltparser(&array->av[n].value, child->text) : CFEMPTY, ##__validator)
+#define ARRAY_STRING(__name, __size, __strsize, __lblparser, __eltparser, __validator...) \
+    __ARRAY(__name, __lblparser, child->text ? __eltparser(array->av[n].value, sizeof array->av[n].value, child->text) : CFEMPTY, ##__validator)
+#define ARRAY_NODE(__name, __size, __type, __lblparser, __eltparser, __validator...) \
+    __ARRAY(__name, __lblparser, __eltparser(&array->av[n].value, child), ##__validator)
+#define ARRAY_STRUCT(__name, __size, __structname, __lblparser, __validator...) \
+    __ARRAY(__name, __lblparser, opt_config_##__structname(&array->av[n].value, child), ##__validator)
 
 #include "config_schema.h"
 

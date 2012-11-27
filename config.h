@@ -211,10 +211,10 @@ struct pattern_list {
             __decl; \
         } av[(__size)]; \
     };
-#define ARRAY_ATOM(__name, __size, __type, __eltparser, __validator...) __ARRAY(__name, __size, __type value)
-#define ARRAY_STRING(__name, __size, __strsize, __eltparser, __validator...) __ARRAY(__name, __size, char value[(__strsize) + 1])
-#define ARRAY_NODE(__name, __size, __type, __eltparser, __validator...) __ARRAY(__name, __size, __type value)
-#define ARRAY_STRUCT(__name, __size, __structname, __validator...) __ARRAY(__name, __size, struct config_##__structname value)
+#define ARRAY_ATOM(__name, __size, __type, __lblparser, __eltparser, __validator...) __ARRAY(__name, __size, __type value)
+#define ARRAY_STRING(__name, __size, __strsize, __lblparser, __eltparser, __validator...) __ARRAY(__name, __size, char value[(__strsize) + 1])
+#define ARRAY_NODE(__name, __size, __type, __lblparser, __eltparser, __validator...) __ARRAY(__name, __size, __type value)
+#define ARRAY_STRUCT(__name, __size, __structname, __lblparser, __validator...) __ARRAY(__name, __size, struct config_##__structname value)
 #include "config_schema.h"
 #undef STRUCT
 #undef NODE
@@ -268,10 +268,10 @@ strbuf strbuf_cf_flags(strbuf, int);
         a->ac = 0; \
         return CFOK; \
     }
-#define ARRAY_ATOM(__name, __size, __type, __eltparser, __validator...) __ARRAY(__name)
-#define ARRAY_STRING(__name, __size, __strsize, __eltparser, __validator...) __ARRAY(__name)
-#define ARRAY_NODE(__name, __size, __type, __eltparser, __validator...) __ARRAY(__name)
-#define ARRAY_STRUCT(__name, __size, __structname, __validator...) __ARRAY(__name)
+#define ARRAY_ATOM(__name, __size, __type, __lblparser, __eltparser, __validator...) __ARRAY(__name)
+#define ARRAY_STRING(__name, __size, __strsize, __lblparser, __eltparser, __validator...) __ARRAY(__name)
+#define ARRAY_NODE(__name, __size, __type, __lblparser, __eltparser, __validator...) __ARRAY(__name)
+#define ARRAY_STRUCT(__name, __size, __structname, __lblparser, __validator...) __ARRAY(__name)
 #include "config_schema.h"
 #undef STRUCT
 #undef NODE
@@ -318,20 +318,21 @@ struct cf_om_node {
 #define NODE_STRUCT(__name, __element, __parser, __flags) \
     int __parser(struct config_##__name *, const struct cf_om_node *);
 #define END_STRUCT
-#define __ARRAY(__name, __validator...) \
+#define __ARRAY(__name, __lblparser, __validator...) \
     int opt_config_##__name(struct config_##__name *, const struct cf_om_node *); \
+    int __lblparser(char *, size_t, const char *); \
     __VALIDATOR(__name, ##__validator)
-#define ARRAY_ATOM(__name, __size, __type, __eltparser, __validator...) \
-    __ARRAY(__name, ##__validator) \
+#define ARRAY_ATOM(__name, __size, __type, __lblparser, __eltparser, __validator...) \
+    __ARRAY(__name, __lblparser, ##__validator) \
     int __eltparser(__type *, const struct cf_om_node *);
-#define ARRAY_STRING(__name, __size, __strsize, __eltparser, __validator...) \
-    __ARRAY(__name, ##__validator) \
+#define ARRAY_STRING(__name, __size, __strsize, __lblparser, __eltparser, __validator...) \
+    __ARRAY(__name, __lblparser, ##__validator) \
     int __eltparser(char *, size_t, const char *);
-#define ARRAY_NODE(__name, __size, __type, __eltparser, __validator...) \
-    __ARRAY(__name, ##__validator) \
+#define ARRAY_NODE(__name, __size, __type, __lblparser, __eltparser, __validator...) \
+    __ARRAY(__name, __lblparser, ##__validator) \
     int __eltparser(__type *, const struct cf_om_node *);
-#define ARRAY_STRUCT(__name, __size, __structname, __validator...) \
-    __ARRAY(__name, ##__validator) \
+#define ARRAY_STRUCT(__name, __size, __structname, __lblparser, __validator...) \
+    __ARRAY(__name, __lblparser, ##__validator) \
     int opt_config_##__structname(struct config_##__structname *, const struct cf_om_node *);
 #include "config_schema.h"
 #undef STRUCT

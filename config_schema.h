@@ -25,6 +25,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  * can be used by itself.  So if there were two independent configuration files, both could be
  * defined in this file, each with a conventional name for its own root element.
  *
+ * A configuration file consists of lines of the form:
+ *
+ *      FULLKEY "=" VALUE "\n"
+ *
+ * where FULLKEY has the form KEY [ "." KEY [ "." KEY [ ... ] ] ] and VALUE is any string not
+ * containing newline.  Lines ending with "\r\n" have the "\r" stripped from the end of VALUE.
+ * Otherwise VALUE is preserved exactly, with all leading and trailing spaces intact.
+ *
  * To describe a configuration file that looks like this:
  *
  *      some.thing.element1=integer
@@ -42,7 +50,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *          STRING(80, element2, "boo!", opt_str_nonempty, MANDATORY, "A non-empty string")
  *      END_STRUCT
  *
- *      ARRAY_STRUCT(joy, 16, happy,, "An array of integer-string pairs")
+ *      ARRAY_STRUCT(joy, 16, happy, opt_str,, "An array of integer-string pairs")
  *
  *      STRUCT(love)
  *          SUB_STRUCT(happy, thing,)
@@ -87,10 +95,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *          NODE_STRUCT(structname, element, parsefunc, flags)
  *      END_STRUCT
  *
- *      ARRAY_ATOM(name, size, type, parsefunc[, validatorfunc])
- *      ARRAY_STRING(name, size, strsize, parsefunc[, validatorfunc])
- *      ARRAY_NODE(name, size, type, parsefunc[, validatorfunc])
- *      ARRAY_STRUCT(name, size, structname[, validatorfunc])
+ *      ARRAY_ATOM(name, size, type, labelparsefunc, valueparsefunc[, validatorfunc])
+ *      ARRAY_STRING(name, size, strsize, labelparsefunc, valueparsefunc[, validatorfunc])
+ *      ARRAY_NODE(name, size, type, labelparsefunc, valueparsefunc[, validatorfunc])
+ *      ARRAY_STRUCT(name, size, structname, labelparsefunc[, validatorfunc])
  *
  * The meanings of the parameters are:
  *
@@ -120,11 +128,20 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *      Only used for ATOM and NODE struct elements.  Gives the default value for the element if
  *      absent from the config file.
  * 'parsefunc'
- *      The function used to parse a text value from the config file.  The ATOM, STRING, ARRAY_ATOM
- *      and ARRAY_STRING parse functions take a string argument (const char *).  The NODE,
- *      NODE_STRUCT and ARRAY_NODE parse functions take a pointer to a COM node (const struct
- *      cf_om_node).  For arrays, the parsefunc is used to parse each element's value, not the
- *      entire array.  Returns a CFxxx result code as documented in "config.h".
+ *      The function used to parse a VALUE from the config file for a STRUCT element.  The and ATOM
+ *      and STRING parse functions take a string argument (const char *) which is the nul-terminated
+ *      text of the VALUE (excluding the trailing \n or \r\n).  The NODE and NODE_STRUCT parse
+ *      functions take a pointer to a COM node (const struct cf_om_node *), which is the tree of all
+ *      lines starting with the same partial FULLKEY.
+ * 'labelparsefunc'
+ *      The function used to parse a KEY from the config file (the ) for each ARRAY element value.
+ *      Takes a string argument (const char *).  Returns a CFxxx result code as documented in
+ *      "config.h".
+ * 'valueparsefunc'
+ *      The function used to parse a VALUE from the config file for each ARRAY element value.  The
+ *      ARRAY_ATOM and ARRAY_STRING parse functions take a string argument (const char *).  The
+ *      ARRAY_NODE and ARRAY_STRUCT parse functions take a pointer to a COM node (const struct
+ *      cf_om_node *).  Returns a CFxxx result code as documented in "config.h".
  * 'validatorfunc'
  *      A function that is called after the struct/array is fully parsed and populated.  This
  *      function can perform validation checks on the whole struct/array that cannot be performed by
@@ -155,7 +172,7 @@ STRUCT(server)
 STRING(256,                 chdir,      "/", opt_absolute_path,, "Absolute path of chdir(2) for server process")
 END_STRUCT
 
-ARRAY_STRING(argv, 8, 128, opt_str, vld_argv)
+ARRAY_STRING(argv, 8, 128, opt_argv_label, opt_str, vld_argv)
 
 STRUCT(executable)
 STRING(256,                 executable, "", opt_absolute_path, MANDATORY, "Absolute path of dna helper executable")
@@ -172,7 +189,7 @@ STRING(256,                 host,       "", opt_str_nonempty, MANDATORY, "Host n
 ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, opt_port,, "Port number")
 END_STRUCT
 
-ARRAY_NODE(peerlist, 10, struct config_rhizomepeer, opt_rhizome_peer)
+ARRAY_NODE(peerlist, 10, struct config_rhizomepeer, opt_str, opt_rhizome_peer)
 
 STRUCT(rhizomedirect)
 SUB_STRUCT(peerlist,        peer,)
@@ -196,7 +213,7 @@ ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, opt_port,, "Port numb
 ATOM(uint64_t,              speed,      1000000, opt_uint64_scaled,, "Speed in bits per second")
 END_STRUCT
 
-ARRAY_STRUCT(interface_list, 10, network_interface)
+ARRAY_STRUCT(interface_list, 10, network_interface, opt_str)
 
 STRUCT(main)
 NODE_STRUCT(interface_list, interfaces, opt_interface_list, MANDATORY)
