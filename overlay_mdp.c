@@ -293,25 +293,28 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
 
       unsigned char *k=keyring_get_nm_bytes(f->destination->sid, f->source->sid);
       unsigned char *nonce=&f->payload->bytes[f->payload->position];
+      int nm=crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES;
       int nb=crypto_box_curve25519xsalsa20poly1305_NONCEBYTES;
       int zb=crypto_box_curve25519xsalsa20poly1305_ZEROBYTES;
+      int cz=crypto_box_curve25519xsalsa20poly1305_BOXZEROBYTES;
+      
       if (!k) 
 	RETURN(WHY("I don't have the private key required to decrypt that"));
-      bzero(&plain_block[0],crypto_box_curve25519xsalsa20poly1305_ZEROBYTES-16);
+      bzero(&plain_block[0],cz);
       int cipher_len=f->payload->sizeLimit - f->payload->position - nb;
-      bcopy(&f->payload->bytes[nb + f->payload->position],&plain_block[16],cipher_len);
+      bcopy(&f->payload->bytes[nb + f->payload->position],&plain_block[cz],cipher_len);
       if (0) {
-	dump("nm bytes",k,crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES);
-	dump("nonce",nonce,crypto_box_curve25519xsalsa20poly1305_NONCEBYTES);
-	dump("cipher block",&plain_block[16],cipher_len); 
+	dump("nm bytes",k,nm);
+	dump("nonce",nonce,nb);
+	dump("cipher block",&plain_block[cz],cipher_len); 
       }
       if (crypto_box_curve25519xsalsa20poly1305_open_afternm
-	  (plain_block,plain_block,cipher_len+16,nonce,k)) {
+	  (plain_block,plain_block,cipher_len+cz,nonce,k)) {
 	RETURN(WHYF("crypto_box_open_afternm() failed (forged or corrupted packet of %d bytes)",cipher_len+16));
       }
-      if (0) dump("plain block",&plain_block[zb],cipher_len-16);
+      if (0) dump("plain block",&plain_block[zb],cipher_len+cz-zb);
       b=&plain_block[zb];
-      len=cipher_len-16;
+      len=cipher_len+cz-zb;
       break;
     }    
   }
@@ -727,28 +730,33 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   switch(mdp->packetTypeAndFlags&(MDP_NOCRYPT|MDP_NOSIGN)) {
   case 0: /* crypted and signed (using CryptoBox authcryption primitive) */
     frame->modifiers=OF_CRYPTO_SIGNED|OF_CRYPTO_CIPHERED;
-    /* Prepare payload */
-    ob_makespace(frame->payload, 
-	   1 // frame type (MDP)
-	  +1 // MDP version 
-	  +4 // dst port 
-	  +4 // src port 
-	  +crypto_box_curve25519xsalsa20poly1305_NONCEBYTES
-	  +crypto_box_curve25519xsalsa20poly1305_ZEROBYTES
-	  +mdp->out.payload_length);
     {
+      int zb=crypto_box_curve25519xsalsa20poly1305_ZEROBYTES;
+      int nb=crypto_box_curve25519xsalsa20poly1305_NONCEBYTES;
+      int cz=crypto_box_curve25519xsalsa20poly1305_BOXZEROBYTES;
+      
+      /* Prepare payload */
+      ob_makespace(frame->payload, 
+		   1 // frame type (MDP)
+		   +1 // MDP version 
+		   +4 // dst port 
+		   +4 // src port 
+		   +nb
+		   +zb
+		   -cz
+		   +mdp->out.payload_length);
+      
       /* write cryptobox nonce */
-      unsigned char nonce[crypto_box_curve25519xsalsa20poly1305_NONCEBYTES];
-      if (urandombytes(nonce,crypto_box_curve25519xsalsa20poly1305_NONCEBYTES)) {
+      unsigned char nonce[nb];
+      if (urandombytes(nonce,nb)) {
 	op_free(frame);
 	RETURN(WHY("urandombytes() failed to generate nonce"));
       }
-      fe|= ob_append_bytes(frame->payload,nonce,crypto_box_curve25519xsalsa20poly1305_NONCEBYTES);
+      fe|= ob_append_bytes(frame->payload,nonce,nb);
       /* generate plain message with zero bytes and get ready to cipher it */
-      unsigned char plain[crypto_box_curve25519xsalsa20poly1305_ZEROBYTES
-			  +10+mdp->out.payload_length];
+      unsigned char plain[zb+10+mdp->out.payload_length];
+      
       /* zero bytes */
-      int zb=crypto_box_curve25519xsalsa20poly1305_ZEROBYTES;
       bzero(&plain[0],zb);
       /* MDP version 1 */
       plain[zb+0]=0x01; 
@@ -786,17 +794,17 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 	op_free(frame);
 	RETURN(WHY("crypto_box_afternm() failed")); 
       }
-      /* now shuffle down 16 bytes to get rid of the temporary space that crypto_box
+      /* now shuffle down to get rid of the temporary space that crypto_box
 	 uses. */
-      bcopy(&cipher_text[16],&cipher_text[0],cipher_len-16);
-      frame->payload->position-=16;
+      bcopy(&cipher_text[cz],&cipher_text[0],cipher_len-cz);
+      frame->payload->position-=cz;
       if (0) {
 	DEBUG("authcrypted mdp frame");
 	dump("nm bytes",k,crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES);
 	dump("nonce",nonce,crypto_box_curve25519xsalsa20poly1305_NONCEBYTES);
-	dump("plain text",&plain[16],cipher_len-16);
-	dump("cipher text",cipher_text,cipher_len-16);	
-	DEBUGF("frame->payload->length=%d,cipher_len-16=%d,cipher_offset=%d", frame->payload->position,cipher_len-16,cipher_offset);
+	dump("plain text",&plain[cz],cipher_len-cz);
+	dump("cipher text",cipher_text,cipher_len-cz);	
+	DEBUGF("frame->payload->length=%d,cipher_len-cz=%d,cipher_offset=%d", frame->payload->position,cipher_len-cz,cipher_offset);
 	dump("frame",&frame->payload->bytes[0],
 	     frame->payload->position);
       }
