@@ -40,6 +40,9 @@ int overlay_frame_build_header(struct decode_context *context, struct overlay_bu
   if (!destination)
     flags |= PAYLOAD_FLAG_TO_BROADCAST;
   
+  if (type!=OF_TYPE_DATA)
+    flags |= PAYLOAD_FLAG_LEGACY_TYPE;
+  
   if (ob_append_byte(buff, flags)) return -1;
   
   if (!(flags & PAYLOAD_FLAG_SENDER_SAME)){
@@ -60,7 +63,10 @@ int overlay_frame_build_header(struct decode_context *context, struct overlay_bu
   if (!(flags & PAYLOAD_FLAG_ONE_HOP)){
     if (ob_append_byte(buff, ttl | ((queue&3)<<5))) return -1;
   }
-  if (ob_append_byte(buff, type)) return -1;
+  
+  if (flags & PAYLOAD_FLAG_LEGACY_TYPE){
+    if (ob_append_byte(buff, type)) return -1;
+  }
   
   if (ob_append_rfs(buff, 2)) return -1;
   

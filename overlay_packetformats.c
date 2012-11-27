@@ -265,9 +265,13 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     f.ttl--;
     if (f.ttl<=0)
       forward=0;
-    f.type=ob_get(b);
-    if (f.type<0)
-      break;
+    
+    if (flags & PAYLOAD_FLAG_LEGACY_TYPE){
+      f.type=ob_get(b);
+      if (f.type<0)
+	break;
+    }else
+      f.type=OF_TYPE_DATA;
     
     f.modifiers=flags;
 

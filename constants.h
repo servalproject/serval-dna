@@ -77,6 +77,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define OVERLAY_MAX_LOCAL_IDENTITIES 256
 
+/* All of these types should be considered deprecated. Processing code should migrate to well known MDP port numbers */
 /* Overlay mesh packet codes */
 #define OF_TYPE_SELFANNOUNCE 0x10 /* BATMAN style announcement frames */
 #define OF_TYPE_SELFANNOUNCE_ACK 0x20 /* BATMAN style "I saw your announcment" frames */
@@ -97,6 +98,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define PAYLOAD_FLAG_LONG_PAYLOAD (1<<3)
 #define PAYLOAD_FLAG_CIPHERED (1<<4)
 #define PAYLOAD_FLAG_SIGNED (1<<5)
+
+// this can be removed once all overlay messages have been turned into mdp payloads
+#define PAYLOAD_FLAG_LEGACY_TYPE (1<<7)
 
 /* Crypto/security options */
 #define OF_CRYPTO_NONE 0x00
