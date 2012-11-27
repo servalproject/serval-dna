@@ -23,7 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 /* This file defines the internal API to the configuration file.  See "config_schema.h" for the
  * definition of the configuration schema, which is used to generate these API components.
  *
- * Each STRUCT(foo) schema declaration produces the following data declaration:
+ * Each STRUCT(foo, ...) schema declaration produces the following data declaration:
  *
  *      struct config_foo {
  *          TYPE NAME;
@@ -75,7 +75,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  *              struct config_STRUCTNAME value;
  *
- * Each STRUCT(foo) and ARRAY_*(SIZE, foo, ...) schema declaration produces the following API
+ * Each STRUCT(foo, ...) and ARRAY_*(SIZE, foo, ...) schema declaration produces the following API
  * functions:
  *
  *  - int dfl_config_foo(struct config_foo *dest);
@@ -86,34 +86,83 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *  - int opt_config_foo(struct config_foo *dest, const struct cf_om_node *node);
  *
  *      A C function which parses the given COM (configuration object model) and assigns the parsed
- *      result into the given C structure.  See below for the return value.
+ *      result into the given C structure.  See below for the return value.  For arrays, this
+ *      function is used to parse each individual array element, and the parsed result is only
+ *      appended to the array if it returns CFOK.
+ *
+ * If a STRUCT(foo, validator) or ARRAY(foo, ..., validator) schema declaration is given a validator
+ * function, then the function must have the following signature:
+ *
+ *  - int validator(struct config_foo *dest, int orig_result);
+ *
+ *      A C function which validates the contents of the given C structure (struct or array) as
+ *      defined in the schema.  This function is invoked by the opt_config_foo() parser function
+ *      just before it returns, so all the parse functions have already been called and the result
+ *      is assembled.  The validator function is passed a pointer to the (non-const) structure,
+ *      which it may modify if desired, and the original CFxxx flags result code (not CFERROR) that
+ *      would be returned by the opt_config_foo() parser function.  It returns a new CFxxx flags
+ *      result (which may simply be the same as was passed).
+ *
+ *      In the case arrays, validator() is passed a *dest containing elements that were successfully
+ *      parsed from the COM, omitting any that did not parse successfully (in which case the
+ *      relevant CFxxx result flags will be set) and arbitrarily omitting others that did not fit
+ *      (in which case the CFOVERFLOW flag is set).  It is up to validator() to decide whether to
+ *      return some, all or none of these elements (ie, alter dest->ac and/or dest->av), and whether
+ *      to set or clear the CFARRAYOVERFLOW bit, or set other bits (like CFINVALID for example).  If
+ *      there is no validator function, then opt_config_foo() will return an empty array (dest->ac
+ *      == 0) in the case of CFARRAYOVERFLOW.
  *
  * All parse functions assign the result of their parsing into the struct given in their 'dest'
  * argument, and return a bitmask of the following flags:
  *
- *  - CFERROR (all bits set, == -1) if an unrecoverable error occurrs (eg, malloc() fails); the
- *    result in *dest is undefined and may be malformed or inconsistent;
+ *  - CFERROR (all bits set, == -1) if an unrecoverable error occurs (eg, malloc() fails).  The
+ *    result in *dest is undefined and may be malformed or inconsistent.
  *
- *  - CFEMPTY if no items were encountered in the COM (ie, no array elements or no struct elements);
- *    the memory at *dest is unchanged;
+ *  - CFEMPTY if no items were parsed from the COM.  In the case of a struct, this means that no
+ *    child nodes were found for any elements; if any child nodes were present but failed parsing
+ *    then CFEMPTY is not set but other flags will be set.  In the case of arrays, CFEMPTY means
+ *    that the returned array has zero length for _any_ reason (overflow, element parsing failures,
+ *    or no elements present in the COM).
  *
- *  - CFARRAYOVERFLOW if the size of any array was exceeded; a valid result is produced and the
- *    overflowed array(s) are fully populated, arbitrarily omitting some elements that were found in
- *    the COM;
+ *  - CFUNSUPPORTED if the config item (array or struct) is not supported.  This flag is not
+ *    produced by the normal opt_config_foo() parse functions, but a validation function could
+ *    set it as a way of indicating, for example, that a given option is not yet implemented or
+ *    has been deprecated.  In that case, the validation function should also log a message to that
+ *    effect.  The CFUNSUPPORTED flag is mainly used in its CFSUB(CFUNSUPPORTED) form (see below)
+ *    to indicate that the COM contains elements that are not defined in the STRUCT.
  *
- *  - CFSTRINGFOVERFLOW if the size of any string element was exceeded, a valid result is produced
- *    but the overflowed string elements are unchanged -- those parts of *dest are not overwritten;
+ *  - CFARRAYOVERFLOW if the size of any array was exceeded.  The result in *dest may be empty (in
+ *    which case CFEMPTY is also set), or may contain elements parsed successfully from the COM (ie,
+ *    returned CFOK), omitting any that did not parse successfully (in which case other bits will be
+ *    set) and arbitrarily omitting others that did not fit (it is not defined which will be
+ *    omitted).  Normal array parsing without a validator function will return an empty result in
+ *    the case of overflow, but a validator function may change this behaviour.
  *
- *  - CFINCOMPLETE if any MANDATORY element was missing; a valid result is produced but the missing
- *    mandatory element(s) are unchanged -- those parts of *dest are not overwritten;
+ *  - CFSTRINGFOVERFLOW if the size of any string element was exceeded.  The result in *dest may be
+ *    unchanged or may contain a truncated string, depending on the parser that detected and
+ *    reported the string overflow.
+ *
+ *  - CFINCOMPLETE if any MANDATORY element is missing (no node in the COM) or empty (as indicated
+ *    by the CFEMPTY bit in its parse result).  The result in *dest is valid but the missing
+ *    mandatory element(s) are unchanged (in the case of a struct) or zero-length (in the case of an
+ *    array).
  *
  *  - CFINVALID if any invalid configuration value was encountered, ie, any parse function returned
- *    CFINVALID in its return flags; a valid result is produced but the invalid elements are
- *    unchanged -- those parts of *dest are not overwritten;
+ *    CFINVALID in its return flags.  The result in *dest is valid and the elements that failed
+ *    to parse are unchanged.
  *
- *  - CFSUB(CFxxx) if the STRUCT parser function encountered the error CFxxx when parsing a struct
- *    element, ie, a parse function returned CFxxx; a valid result is produced but some parts of
- *    *dest will not be overwritten;
+ *  - CFSUB(CFxxx) if any element of a STRUCT or ARRAY produced a CFxxx result when being parsed, ie
+ *    any element's parse function returned CFxxx.  In the case of a STRUCT, the failed elements are
+ *    usually left with their prior (default) values, but this depends on the parse functions'
+ *    behaviours.  In the case of an ARRAY, failed elements are omitted from the array
+ *
+ * The difference between CFSUB(CFxxx) and CFxxx needs explaining.  To illustrate, CFSUB(CFINVALID)
+ * is different from CFINVALID because an element of a struct or array may have failed to parse, yet
+ * the whole struct or array itself may still be valid (in the case of a struct, the element's prior
+ * value may be retained, and in the case of an array, the failed element is simply omitted from the
+ * result).  A validator function may wish to reflect any CFSUB() bit as a CFINVALID result, but the
+ * normal behaviour of opt_config_foo() is to not return CFINVALID unless the validator function
+ * sets it.
  *
  * The special value CFOK is zero (no bits set); in this case a valid result is produced and all of
  * *dest is overwritten (except unused array elements).
@@ -140,7 +189,7 @@ struct pattern_list {
 #define PATTERN_LIST_EMPTY ((struct pattern_list){.patc = 0})
 
 // Generate value structs, struct config_SECTION.
-#define STRUCT(__name) \
+#define STRUCT(__name, __validator...) \
     struct config_##__name {
 #define NODE(__type, __element, __default, __parser, __flags, __comment) \
         __type __element;
@@ -162,10 +211,10 @@ struct pattern_list {
             __decl; \
         } av[(__size)]; \
     };
-#define ARRAY_ATOM(__name, __size, __type, __parser, __comment) __ARRAY(__name, __size, __type value)
-#define ARRAY_STRING(__name, __size, __strsize, __parser, __comment) __ARRAY(__name, __size, char value[(__strsize) + 1])
-#define ARRAY_NODE(__name, __size, __type, __parser, __comment) __ARRAY(__name, __size, __type value)
-#define ARRAY_STRUCT(__name, __size, __structname, __comment) __ARRAY(__name, __size, struct config_##__structname value)
+#define ARRAY_ATOM(__name, __size, __type, __eltparser, __validator...) __ARRAY(__name, __size, __type value)
+#define ARRAY_STRING(__name, __size, __strsize, __eltparser, __validator...) __ARRAY(__name, __size, char value[(__strsize) + 1])
+#define ARRAY_NODE(__name, __size, __type, __eltparser, __validator...) __ARRAY(__name, __size, __type value)
+#define ARRAY_STRUCT(__name, __size, __structname, __validator...) __ARRAY(__name, __size, struct config_##__structname value)
 #include "config_schema.h"
 #undef STRUCT
 #undef NODE
@@ -189,6 +238,7 @@ struct pattern_list {
 #define CFSTRINGOVERFLOW    (1<<2)
 #define CFINCOMPLETE        (1<<3)
 #define CFINVALID           (1<<4)
+#define CFUNSUPPORTED       (1<<5)
 #define CF__SUB_SHIFT       16
 #define CFSUB(f)            ((f) << CF__SUB_SHIFT)
 #define CF__SUBFLAGS        CFSUB(~0)
@@ -198,7 +248,7 @@ strbuf strbuf_cf_flags(strbuf, int);
 
 // Generate default functions, dfl_config_SECTION().
 
-#define STRUCT(__name) \
+#define STRUCT(__name, __validator...) \
     int dfl_config_##__name(struct config_##__name *s) {
 #define NODE(__type, __element, __default, __parser, __flags, __comment) \
         s->__element = (__default);
@@ -218,10 +268,10 @@ strbuf strbuf_cf_flags(strbuf, int);
         a->ac = 0; \
         return CFOK; \
     }
-#define ARRAY_ATOM(__name, __size, __type, __parser, __comment) __ARRAY(__name)
-#define ARRAY_STRING(__name, __size, __strsize, __parser, __comment) __ARRAY(__name)
-#define ARRAY_NODE(__name, __size, __type, __parser, __comment) __ARRAY(__name)
-#define ARRAY_STRUCT(__name, __size, __structname, __comment) __ARRAY(__name)
+#define ARRAY_ATOM(__name, __size, __type, __eltparser, __validator...) __ARRAY(__name)
+#define ARRAY_STRING(__name, __size, __strsize, __eltparser, __validator...) __ARRAY(__name)
+#define ARRAY_NODE(__name, __size, __type, __eltparser, __validator...) __ARRAY(__name)
+#define ARRAY_STRUCT(__name, __size, __structname, __validator...) __ARRAY(__name)
 #include "config_schema.h"
 #undef STRUCT
 #undef NODE
@@ -251,8 +301,12 @@ struct cf_om_node {
 };
 
 // Generate parser function prototypes.
-#define STRUCT(__name) \
-    int opt_config_##__name(struct config_##__name *, const struct cf_om_node *);
+#define __VALIDATOR(__name, __validator...) \
+    typedef int __validator_func__config_##__name##__t(struct config_##__name *, int); \
+    __validator_func__config_##__name##__t __dummy__validator_func__config_##__name, ##__validator;
+#define STRUCT(__name, __validator...) \
+    int opt_config_##__name(struct config_##__name *, const struct cf_om_node *); \
+    __VALIDATOR(__name, ##__validator)
 #define NODE(__type, __element, __default, __parser, __flags, __comment) \
     int __parser(__type *, const struct cf_om_node *);
 #define ATOM(__type, __element, __default, __parser, __flags, __comment) \
@@ -264,19 +318,20 @@ struct cf_om_node {
 #define NODE_STRUCT(__name, __element, __parser, __flags) \
     int __parser(struct config_##__name *, const struct cf_om_node *);
 #define END_STRUCT
-#define __ARRAY(__name) \
-    int opt_config_##__name(struct config_##__name *, const struct cf_om_node *);
-#define ARRAY_ATOM(__name, __size, __type, __parser, __comment) \
-    __ARRAY(__name) \
-    int __parser(__type *, const struct cf_om_node *);
-#define ARRAY_STRING(__name, __size, __strsize, __parser, __comment) \
-    __ARRAY(__name) \
-    int __parser(char *, size_t, const char *);
-#define ARRAY_NODE(__name, __size, __type, __parser, __comment) \
-    __ARRAY(__name) \
-    int __parser(__type *, const struct cf_om_node *);
-#define ARRAY_STRUCT(__name, __size, __structname, __comment) \
-    __ARRAY(__name) \
+#define __ARRAY(__name, __validator...) \
+    int opt_config_##__name(struct config_##__name *, const struct cf_om_node *); \
+    __VALIDATOR(__name, ##__validator)
+#define ARRAY_ATOM(__name, __size, __type, __eltparser, __validator...) \
+    __ARRAY(__name, ##__validator) \
+    int __eltparser(__type *, const struct cf_om_node *);
+#define ARRAY_STRING(__name, __size, __strsize, __eltparser, __validator...) \
+    __ARRAY(__name, ##__validator) \
+    int __eltparser(char *, size_t, const char *);
+#define ARRAY_NODE(__name, __size, __type, __eltparser, __validator...) \
+    __ARRAY(__name, ##__validator) \
+    int __eltparser(__type *, const struct cf_om_node *);
+#define ARRAY_STRUCT(__name, __size, __structname, __validator...) \
+    __ARRAY(__name, ##__validator) \
     int opt_config_##__structname(struct config_##__structname *, const struct cf_om_node *);
 #include "config_schema.h"
 #undef STRUCT

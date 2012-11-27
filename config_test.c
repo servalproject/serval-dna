@@ -4,16 +4,22 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <stdarg.h>
 #include <assert.h>
 
 #include "str.h"
+#include "strbuf.h"
 #include "strbuf_helpers.h"
 
 #define NELS(a) (sizeof (a) / sizeof *(a))
-#define DEBUGF(F,...) fprintf(stderr, "DEBUG: " F "\n", ##__VA_ARGS__)
-#define WARNF(F,...) fprintf(stderr, "WARN:  " F "\n", ##__VA_ARGS__)
-#define WHYF(F,...) fprintf(stderr, "ERROR: " F "\n", ##__VA_ARGS__)
-#define WHYF_perror(F,...) fprintf(stderr, "ERROR: " F ": %s [errno=%d]\n", ##__VA_ARGS__, strerror(errno), errno)
+#define _DEBUGF(F,...) fprintf(stderr, "DEBUG: " F "\n", ##__VA_ARGS__)
+#define _WARNF(F,...) fprintf(stderr, "WARN:  " F "\n", ##__VA_ARGS__)
+#define _WHYF(F,...) fprintf(stderr, "ERROR: " F "\n", ##__VA_ARGS__)
+#define _WHYF_perror(F,...) fprintf(stderr, "ERROR: " F ": %s [errno=%d]\n", ##__VA_ARGS__, strerror(errno), errno)
+#define DEBUGF(F,...) _DEBUGF("%s:%u  " F, __FILE__, __LINE__, ##__VA_ARGS__)
+#define WARNF(F,...) _WARNF("%s:%u  " F, __FILE__, __LINE__, ##__VA_ARGS__)
+#define WHYF(F,...) _WHYF("%s:%u  " F, __FILE__, __LINE__, ##__VA_ARGS__)
+#define WHYF_perror(F,...) _WHYF_perror("%s:%u  " F, __FILE__, __LINE__, ##__VA_ARGS__)
 #define alloca_str(s) ((s) ? alloca_str_toprint(s) : "NULL")
 
 #include "config.h"
@@ -215,9 +221,26 @@ int get_child(const struct cf_om_node *parent, const char *key)
   return -1;
 }
 
+void warn_node(const char *file, unsigned line, const struct cf_om_node *node, const char *fmt, ...)
+{
+  strbuf b = strbuf_alloca(1024);
+  if (node) {
+    if (node->source && node->line_number)
+      strbuf_sprintf(b, "%s:%u: ", node->source, node->line_number);
+    strbuf_puts(b, "configuration option \"");
+    strbuf_puts(b, node->fullkey);
+    strbuf_puts(b, "\": ");
+  }
+  va_list ap;
+  va_start(ap, fmt);
+  strbuf_vsprintf(b, fmt, ap);
+  va_end(ap);
+  _WARNF("%s:%u  %s", file, line, strbuf_str(b));
+}
+
 void missing_node(const struct cf_om_node *parent, const char *key)
 {
-  WARNF("missing configuration option `%s%s%s`",
+  WARNF("missing configuration option %s%s%s",
       parent->fullkey ? parent->fullkey : "", parent->fullkey ? "." : "", key
     );
 }
@@ -233,10 +256,7 @@ strbuf strbuf_cf_flags(strbuf sb, int flags)
       { CFARRAYOVERFLOW, "CFARRAYOVERFLOW" },
       { CFINCOMPLETE, "CFINCOMPLETE" },
       { CFINVALID, "CFINVALID" },
-      { CFSUB(CFSTRINGOVERFLOW), "CFSUB(CFSTRINGOVERFLOW)" },
-      { CFSUB(CFARRAYOVERFLOW), "CFSUB(CFARRAYOVERFLOW)" },
-      { CFSUB(CFINCOMPLETE), "CFSUB(CFINCOMPLETE)" },
-      { CFSUB(CFINVALID), "CFSUB(CFINVALID)" },
+      { CFUNSUPPORTED, "CFUNSUPPORTED" },
     };
   int i;
   for (i = 0; i < NELS(flagdefs); ++i) {
@@ -245,6 +265,16 @@ strbuf strbuf_cf_flags(strbuf sb, int flags)
 	strbuf_putc(sb, ' ');
       strbuf_puts(sb, flagdefs[i].name);
       flags &= ~flagdefs[i].flag;
+    }
+  }
+  for (i = 0; i < NELS(flagdefs); ++i) {
+    if (flags & CFSUB(flagdefs[i].flag)) {
+      if (strbuf_len(sb) != n)
+	strbuf_putc(sb, ' ');
+      strbuf_puts(sb, "CFSUB(");
+      strbuf_puts(sb, flagdefs[i].name);
+      strbuf_putc(sb, ')');
+      flags &= ~CFSUB(flagdefs[i].flag);
     }
   }
   if (flags) {
@@ -271,14 +301,18 @@ void warn_ignoring_node(const struct cf_om_node *node, int reason)
     why = "array overflow";
   else if (reason & CFSTRINGOVERFLOW)
     why = "string overflow";
+  else if (reason & CFUNSUPPORTED)
+    adj = "unsupported";
   else if (reason & CFSUB(CFINVALID))
-    adj = "invalid in sub-struct";
+    adj = "contains invalid element";
   else if (reason & CFSUB(CFINCOMPLETE))
-    why = "incomplete sub-struct";
+    why = "contains incomplete element";
   else if (reason & CFSUB(CFARRAYOVERFLOW))
-    why = "array overflow in sub-struct";
+    why = "contains array overflow";
   else if (reason & CFSUB(CFSTRINGOVERFLOW))
-    why = "string overflow in sub-struct";
+    why = "contains string overflow";
+  else if (reason & CFSUB(CFUNSUPPORTED))
+    why = "contains unsupported element";
   else if (reason & CFEMPTY)
     why = "empty";
   else if (reason)
@@ -287,9 +321,7 @@ void warn_ignoring_node(const struct cf_om_node *node, int reason)
     adj = "valid";
     why = "no reason";
   }
-  WARNF("%s:%u: ignoring configuration option %s with%s%s value %s%s%s",
-      node->source, node->line_number,
-      alloca_str(node->fullkey),
+  warn_node(__FILE__, __LINE__, node, "ignoring%s%s value %s%s%s",
       adj ? " " : "", adj ? adj : "",
       alloca_str(node->text),
       why ? " -- " : "", why ? why : ""
@@ -298,16 +330,9 @@ void warn_ignoring_node(const struct cf_om_node *node, int reason)
 
 void ignore_node(const struct cf_om_node *node, const char *msg)
 {
-  if (node->source && node->line_number)
-    WARNF("%s:%u: ignoring configuration option %s%s%s",
-	node->source, node->line_number, alloca_str(node->fullkey),
-	msg && msg[0] ? " -- " : "", msg ? msg : ""
-      );
-  else
-    WARNF("ignoring configuration option %s%s%s",
-	alloca_str(node->fullkey),
-	msg && msg[0] ? " -- " : "", msg ? msg : ""
-      );
+  warn_node(__FILE__, __LINE__, node, "ignoring%s%s",
+      msg && msg[0] ? " -- " : "", msg ? msg : ""
+    );
 }
 
 void ignore_tree(const struct cf_om_node *node, const char *msg);
@@ -572,6 +597,11 @@ int opt_uint64_scaled(uint64_t *intp, const char *text)
   return CFOK;
 }
 
+int vld_argv(struct config_argv *array, int result)
+{
+  return result;
+}
+
 int opt_port(unsigned short *portp, const char *text)
 {
   unsigned short port = 0;
@@ -652,6 +682,36 @@ int opt_pattern_list(struct pattern_list *listp, const char *text)
 }
 
 
+/* Config parse function.  Implements the original form of the 'interfaces' config option.  Parses a
+ * single text string of the form:
+ *
+ *   ( "+" | "-" ) [ interfacename ] [ "=" type ] [ ":" port [ ":" speed ] ]
+ *
+ * where:
+ *
+ *   "+" means include the interface
+ *   "-" means exclude the interface
+ *
+ *   The original implementation applied include/exclude matching in the order that the list was
+ *   given, but the new implementation applies all exclusions before apply inclusions.  This should
+ *   not be a problem, as there were no known uses that depended on testing an inclusion before an
+ *   exclusion.
+ *
+ *   An empty 'interfacename' matches all interfaces.  So a "+" by itself includes all interfaces,
+ *   and a '-' by itself excludes all interfaces.  These two rules are applied after all other
+ *   interface inclusions/exclusions are tested, otherwise "-" would overrule all other interfaces.
+ *
+ *   The optional 'type' tells DNA how to handle the interface in terms of bandwidth:distance
+ *   relationship for calculating tick times etc.
+ *
+ *   The optional 'port' is the port number to bind all interfaces, instead of the default.
+ *
+ *   The optional 'speed' is the nominal bits/second bandwidth of the interface, instead of the
+ *   default.  It is expressed as a positive integer with an optional scaling suffix, eg, "150k",
+ *   "1K", "900M".
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
 int opt_network_interface(struct config_network_interface *nifp, const char *text)
 {
   //DEBUGF("%s text=%s", __FUNCTION__, alloca_str(text));
@@ -730,10 +790,18 @@ int opt_network_interface(struct config_network_interface *nifp, const char *tex
   return CFOK;
 }
 
+/* Config parse function.  Implements the original form of the 'interfaces' config option.  Parses a
+ * comma-separated list of interface rules (see opt_network_interface() for the format of each
+ * rule), then parses the regular config array-of-struct style interface option settings so that
+ * both forms are supported.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
 int opt_interface_list(struct config_interface_list *listp, const struct cf_om_node *node)
 {
-  int result = CFOK;
-  int ret;
+  int result = opt_config_interface_list(listp, node);
+  if (result == CFERROR)
+    return CFERROR;
   if (node->text) {
     const char *p;
     const char *arg = NULL;
@@ -743,12 +811,12 @@ int opt_interface_list(struct config_interface_list *listp, const struct cf_om_n
 	if (arg) {
 	  int len = p - arg;
 	  if (len > 80) {
-	    result = CFSTRINGOVERFLOW;
-	    goto invalid;
+	    result |= CFSTRINGOVERFLOW;
+	    goto bye;
 	  }
 	  char buf[len + 1];
 	  strncpy(buf, arg, len)[len] = '\0';
-	  ret = opt_network_interface(&listp->av[n].value, buf);
+	  int ret = opt_network_interface(&listp->av[n].value, buf);
 	  switch (ret) {
 	  case CFERROR: return CFERROR;
 	  case CFOK:
@@ -757,8 +825,9 @@ int opt_interface_list(struct config_interface_list *listp, const struct cf_om_n
 	    ++n;
 	    break;
 	  default:
-	    result = ret;
-	    goto invalid;
+	    warn_node(__FILE__, __LINE__, node, "ignoring invalid interface rule %s", alloca_str(buf)); \
+	    result |= CFSUB(ret);
+	    break;
 	  }
 	  arg = NULL;
 	}
@@ -768,21 +837,17 @@ int opt_interface_list(struct config_interface_list *listp, const struct cf_om_n
 	arg = p;
     }
     if (*p) {
-      result = CFARRAYOVERFLOW;
-      goto invalid;
+      result |= CFARRAYOVERFLOW;
+      goto bye;
     }
     assert(n <= NELS(listp->av));
     listp->ac = n;
   }
-invalid:
-  ret = opt_config_interface_list(listp, node);
-  switch (ret) {
-  case CFERROR: return CFERROR;
-  default:
-    if (result < ret)
-      result = ret;
-    break;
-  }
+bye:
+  if (listp->ac == 0)
+    result |= CFEMPTY;
+  else
+    result &= ~CFEMPTY;
   return result;
 }
 
@@ -803,8 +868,9 @@ void list_omit_element(const struct cf_om_node *node);
 #define USES_CHILDREN	|__CHILDREN
 
 // Generate parsing functions, opt_config_SECTION()
-#define STRUCT(__name) \
-    int opt_config_##__name(struct config_##__name *s, const struct cf_om_node *node) { \
+#define STRUCT(__name, __validator...) \
+    int opt_config_##__name(struct config_##__name *strct, const struct cf_om_node *node) { \
+      int (*validator)(struct config_##__name *, int) = (NULL, ##__validator); \
       int result = CFEMPTY; \
       char used[node->nodc]; \
       memset(used, 0, node->nodc * sizeof used[0]);
@@ -816,10 +882,11 @@ void list_omit_element(const struct cf_om_node *node);
 	if (child) { \
 	  used[i] |= (__flags); \
 	  ret = (__parseexpr); \
+	  if (ret == CFERROR) \
+	    return CFERROR; \
 	} \
-	if (ret == CFERROR) \
-	  return CFERROR; \
 	result |= ret & CF__SUBFLAGS; \
+	ret &= CF__FLAGS; \
 	if (!(ret & CFEMPTY)) \
 	  result &= ~CFEMPTY; \
 	else if ((__flags) & __MANDATORY) { \
@@ -834,63 +901,78 @@ void list_omit_element(const struct cf_om_node *node);
 	} \
       }
 #define NODE(__type, __element, __default, __parser, __flags, __comment) \
-        __ITEM(__element, 0 __flags, __parser(&s->__element, child))
+        __ITEM(__element, 0 __flags, __parser(&strct->__element, child))
 #define ATOM(__type, __element, __default, __parser, __flags, __comment) \
-        __ITEM(__element, ((0 __flags)|__TEXT)&~__CHILDREN, child->text ? __parser(&s->__element, child->text) : CFEMPTY)
+        __ITEM(__element, ((0 __flags)|__TEXT)&~__CHILDREN, child->text ? __parser(&strct->__element, child->text) : CFEMPTY)
 #define STRING(__size, __element, __default, __parser, __flags, __comment) \
-        __ITEM(__element, ((0 __flags)|__TEXT)&~__CHILDREN, child->text ? __parser(s->__element, (__size) + 1, child->text) : CFEMPTY)
+        __ITEM(__element, ((0 __flags)|__TEXT)&~__CHILDREN, child->text ? __parser(strct->__element, (__size) + 1, child->text) : CFEMPTY)
 #define SUB_STRUCT(__name, __element, __flags) \
-        __ITEM(__element, (0 __flags)|__CHILDREN, opt_config_##__name(&s->__element, child))
+        __ITEM(__element, (0 __flags)|__CHILDREN, opt_config_##__name(&strct->__element, child))
 #define NODE_STRUCT(__name, __element, __parser, __flags) \
-        __ITEM(__element, (0 __flags)|__TEXT|__CHILDREN, __parser(&s->__element, child))
+        __ITEM(__element, (0 __flags)|__TEXT|__CHILDREN, __parser(&strct->__element, child))
 #define END_STRUCT \
       { \
 	int i; \
 	for (i = 0; i < node->nodc; ++i) { \
-	  if (node->nodv[i]->text && !(used[i] & __TEXT)) \
+	  if (node->nodv[i]->text && !(used[i] & __TEXT)) { \
 	    unsupported_node(node->nodv[i]); \
-	  if (node->nodv[i]->nodc && !(used[i] & __CHILDREN)) \
+	    result |= CFSUB(CFUNSUPPORTED); \
+	  } \
+	  if (node->nodv[i]->nodc && !(used[i] & __CHILDREN)) { \
 	    unsupported_children(node->nodv[i]); \
+	    result |= CFSUB(CFUNSUPPORTED); \
+	  } \
 	} \
       } \
+      if (validator) \
+	result = (*validator)(strct, result); \
       return result; \
     }
 
-#define __ARRAY(__name, __parseexpr) \
-    int opt_config_##__name(struct config_##__name *s, const struct cf_om_node *node) { \
+#define __ARRAY(__name, __parseexpr, __validator...) \
+    int opt_config_##__name(struct config_##__name *array, const struct cf_om_node *node) { \
+      int (*validator)(struct config_##__name *, int) = (NULL, ##__validator); \
       int result = CFOK; \
-      int i; \
-      for (i = 0; i < node->nodc && s->ac < NELS(s->av); ++i) { \
+      int i, n; \
+      for (n = 0, i = 0; i < node->nodc && n < NELS(array->av); ++i) { \
 	const struct cf_om_node *child = node->nodv[i]; \
 	int ret = (__parseexpr); \
-	switch (ret) { \
-	case CFERROR: return CFERROR; \
-	case CFOK: \
-	  strncpy(s->av[s->ac].label, child->key, sizeof s->av[s->ac].label - 1)\
-	      [sizeof s->av[s->ac].label - 1] = '\0'; \
-	  ++s->ac; \
-	  break; \
-	default: \
+	if (ret == CFERROR) \
+	  return CFERROR; \
+	result |= ret & CF__SUBFLAGS; \
+	ret &= CF__FLAGS; \
+	if (ret == CFOK) { \
+	  strncpy(array->av[n].label, child->key, sizeof array->av[n].label - 1)\
+	      [sizeof array->av[n].label - 1] = '\0'; \
+	  ++n; \
+	} else { \
 	  list_omit_element(child); \
-	  break; \
+	  result |= CFSUB(ret); \
 	} \
       } \
-      for (; i < node->nodc; ++i) { \
+      if (i < node->nodc) { \
+	assert(n == NELS(array->av)); \
 	result |= CFARRAYOVERFLOW; \
-	list_overflow(node->nodv[i]); \
+	for (; i < node->nodc; ++i) \
+	  list_overflow(node->nodv[i]); \
       } \
-      if (s->ac == 0) \
+      array->ac = n; \
+      if (validator) \
+	result = (*validator)(array, result); \
+      else if (result & CFARRAYOVERFLOW) \
+	array->ac = 0; \
+      if (array->ac == 0) \
 	result |= CFEMPTY; \
       return result; \
     }
-#define ARRAY_ATOM(__name, __size, __type, __parser, __comment) \
-    __ARRAY(__name, child->text ? __parser(&s->av[s->ac].value, child->text) : CFEMPTY)
-#define ARRAY_STRING(__name, __size, __strsize, __parser, __comment) \
-    __ARRAY(__name, child->text ? __parser(s->av[s->ac].value, (__strsize) + 1, child->text) : CFEMPTY)
-#define ARRAY_NODE(__name, __size, __type, __parser, __comment) \
-    __ARRAY(__name, __parser(&s->av[s->ac].value, child))
-#define ARRAY_STRUCT(__name, __size, __structname, __comment) \
-    __ARRAY(__name, opt_config_##__structname(&s->av[s->ac].value, child))
+#define ARRAY_ATOM(__name, __size, __type, __eltparser, __validator...) \
+    __ARRAY(__name, child->text ? __eltparser(&array->av[n].value, child->text) : CFEMPTY, ##__validator)
+#define ARRAY_STRING(__name, __size, __strsize, __eltparser, __validator...) \
+    __ARRAY(__name, child->text ? __eltparser(array->av[n].value, sizeof array->av[n].value, child->text) : CFEMPTY, ##__validator)
+#define ARRAY_NODE(__name, __size, __type, __eltparser, __validator...) \
+    __ARRAY(__name, __eltparser(&array->av[n].value, child), ##__validator)
+#define ARRAY_STRUCT(__name, __size, __structname, __validator...) \
+    __ARRAY(__name, opt_config_##__structname(&array->av[n].value, child), ##__validator)
 
 #include "config_schema.h"
 

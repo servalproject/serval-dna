@@ -42,7 +42,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *          STRING(80, element2, "boo!", opt_str_nonempty, MANDATORY, "A non-empty string")
  *      END_STRUCT
  *
- *      ARRAY_STRUCT(joy, 16, happy, "An array of integer-string pairs")
+ *      ARRAY_STRUCT(joy, 16, happy,, "An array of integer-string pairs")
  *
  *      STRUCT(love)
  *          SUB_STRUCT(happy, thing,)
@@ -79,18 +79,18 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  * A schema definition is composed from the following STRUCT and ARRAY definitions:
  *
- *      STRUCT(name)
+ *      STRUCT(name[, validatorfunc])
  *          ATOM(type, element, default, parsefunc, flags, comment)
  *          NODE(type, element, default, parsefunc, flags, comment)
- *          STRING(size, element, default, parsefunc, flags, comment)
+ *          STRING(strsize, element, default, parsefunc, flags, comment)
  *          SUB_STRUCT(structname, element, flags)
  *          NODE_STRUCT(structname, element, parsefunc, flags)
  *      END_STRUCT
  *
- *      ARRAY_ATOM(name, size, type, parsefunc, comment)
- *      ARRAY_STRING(name, size, strsize, parsefunc, comment)
- *      ARRAY_NODE(name, size, type, parsefunc, comment)
- *      ARRAY_STRUCT(name, size, structname, comment)
+ *      ARRAY_ATOM(name, size, type, parsefunc[, validatorfunc])
+ *      ARRAY_STRING(name, size, strsize, parsefunc[, validatorfunc])
+ *      ARRAY_NODE(name, size, type, parsefunc[, validatorfunc])
+ *      ARRAY_STRUCT(name, size, structname[, validatorfunc])
  *
  * The meanings of the parameters are:
  *
@@ -98,6 +98,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *      A label used to qualify this struct/array's API from the API components of other structs and
  *      arrays.  This label does not appear anywhere in the config file itself; it is purely for
  *      internal code-related purposes.
+ * 'strsize'
+ *      For STRING elements and ARRAY_STRING arrays of strings, gives the maximum length of the
+ *      string.  The struct is declared with an array of char[strsize+1] to leave room for a
+ *      terminating nul.
+ * 'size'
+ *      For all ARRAYs, gives the maximum size of the array.
  * 'type'
  *      Only used for ATOM, NODE, ARRAY_ATOM and ARRAY_NODE declarations.  Gives the C type of the
  *      element.  For STRING and ARRAY_STRING, this is implicitly (const char *).
@@ -114,9 +120,18 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *      Only used for ATOM and NODE struct elements.  Gives the default value for the element if
  *      absent from the config file.
  * 'parsefunc'
- *      The function used to parse the value from the config file.  The ATOM, STRING, ARRAY_ATOM and
- *      ARRAY_STRING parse functions take a string argument (const char *).  The NODE, NODE_STRUCT
- *      and ARRAY_NODE parse functions take a pointer to a COM node (const struct cf_om_node).
+ *      The function used to parse a text value from the config file.  The ATOM, STRING, ARRAY_ATOM
+ *      and ARRAY_STRING parse functions take a string argument (const char *).  The NODE,
+ *      NODE_STRUCT and ARRAY_NODE parse functions take a pointer to a COM node (const struct
+ *      cf_om_node).  For arrays, the parsefunc is used to parse each element's value, not the
+ *      entire array.  Returns a CFxxx result code as documented in "config.h".
+ * 'validatorfunc'
+ *      A function that is called after the struct/array is fully parsed and populated.  This
+ *      function can perform validation checks on the whole struct/array that cannot be performed by
+ *      the parse functions of each element in isolation, and can even alter the contents of the
+ *      struct/array, eg, sort an array or fill in default values in structs that depend on other
+ *      elements.  Takes as its second argument the CFxxx code produced by the parser, and returns
+ *      an updated CFxxx result code (which could be the same) as documented in "config.h".
  * 'flags'
  *      A space-separated list of flags.  At present only the MANDATORY flag is supported, which
  *      will cause parsing to fail if the given STRUCT element is not set in the config file.  In
@@ -140,15 +155,15 @@ STRUCT(server)
 STRING(256,                 chdir,      "/", opt_absolute_path,, "Absolute path of chdir(2) for server process")
 END_STRUCT
 
-ARRAY_STRING(argv, 8, 128, opt_str, "Array of arguments to pass to command")
+ARRAY_STRING(argv, 8, 128, opt_str, vld_argv)
 
-STRUCT(dnahelper)
-STRING(256,                 executable, "", opt_absolute_path,, "Absolute path of dna helper executable")
+STRUCT(executable)
+STRING(256,                 executable, "", opt_absolute_path, MANDATORY, "Absolute path of dna helper executable")
 SUB_STRUCT(argv,            argv,)
 END_STRUCT
 
 STRUCT(dna)
-SUB_STRUCT(dnahelper,       helper,)
+SUB_STRUCT(executable,      helper,)
 END_STRUCT
 
 STRUCT(rhizomepeer)
@@ -157,7 +172,7 @@ STRING(256,                 host,       "", opt_str_nonempty, MANDATORY, "Host n
 ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, opt_port,, "Port number")
 END_STRUCT
 
-ARRAY_NODE(peerlist, 10, struct config_rhizomepeer, opt_rhizome_peer, "Rhizome peers")
+ARRAY_NODE(peerlist, 10, struct config_rhizomepeer, opt_rhizome_peer)
 
 STRUCT(rhizomedirect)
 SUB_STRUCT(peerlist,        peer,)
@@ -181,7 +196,7 @@ ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, opt_port,, "Port numb
 ATOM(uint64_t,              speed,      1000000, opt_uint64_scaled,, "Speed in bits per second")
 END_STRUCT
 
-ARRAY_STRUCT(interface_list, 10, network_interface, "Network interfaces")
+ARRAY_STRUCT(interface_list, 10, network_interface)
 
 STRUCT(main)
 NODE_STRUCT(interface_list, interfaces, opt_interface_list, MANDATORY)
