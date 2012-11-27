@@ -36,7 +36,7 @@ struct overlay_buffer {
   int allocSize;
   
   // is this an allocated buffer? can it be resized? Should it be freed?
-  int allocated;
+  unsigned char * allocated;
   
   // length position for later patching
   int var_length_offset;
@@ -70,5 +70,9 @@ uint16_t ob_get_ui16(struct overlay_buffer *b);
 int ob_dump(struct overlay_buffer *b,char *desc);
 int ob_set_ui16(struct overlay_buffer *b, int offset, uint16_t v);
 
-
+// information routines
+int ob_position(struct overlay_buffer *b);
+int ob_limit(struct overlay_buffer *b);
+int ob_remaining(struct overlay_buffer *b);
+unsigned char* ob_ptr(struct overlay_buffer *b);
 #endif

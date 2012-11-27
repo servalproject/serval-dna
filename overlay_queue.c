@@ -177,10 +177,10 @@ int overlay_payload_enqueue(struct overlay_frame *p)
 	   p->destination?alloca_tohex(p->destination->sid, 7): alloca_tohex(p->broadcast_id.id,BROADCAST_LEN),
 	   p->queue, queue->length);
   
-  if (p->payload && p->payload->position > p->payload->sizeLimit){
+  if (p->payload && ob_remaining(p->payload)<0){
     // HACK, maybe should be done in each caller
     // set the size of the payload based on the position written
-    p->payload->sizeLimit=p->payload->position;
+    ob_limitsize(p->payload,ob_position(p->payload));
   }
   
   if (queue->length>=queue->maxLength) 
@@ -390,7 +390,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     }
     
     if (debug&DEBUG_OVERLAYFRAMES){
-      DEBUGF("Sending payload type %x len %d for %s via %s", frame->type, frame->payload->position,
+      DEBUGF("Sending payload type %x len %d for %s via %s", frame->type, ob_position(frame->payload),
 	     frame->destination?alloca_tohex_sid(frame->destination->sid):"All",
 	     frame->sendBroadcast?alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN):alloca_tohex_sid(next_hop->sid));
     }
@@ -465,9 +465,9 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
       overlay_rhizome_add_advertisements(&packet->context, packet->i,packet->buffer);
     
     if (debug&DEBUG_PACKETCONSTRUCTION)
-      dump("assembled packet",&packet->buffer->bytes[0],packet->buffer->position);
+      ob_dump(packet->buffer,"assembled packet");
     
-    if (overlay_broadcast_ensemble(packet->i, &packet->dest, packet->buffer->bytes, packet->buffer->position)){
+    if (overlay_broadcast_ensemble(packet->i, &packet->dest, ob_ptr(packet->buffer), ob_position(packet->buffer))){
       // sendto failed. We probably don't have a valid route
       if (packet->unicast_subscriber){
 	set_reachable(packet->unicast_subscriber, REACHABLE_NONE);

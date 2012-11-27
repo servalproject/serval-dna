@@ -47,7 +47,7 @@ struct overlay_buffer *ob_static(unsigned char *bytes, int size){
   if (!ret) return NULL;
   ret->bytes = bytes;
   ret->allocSize = size;
-  ret->allocated = 0;
+  ret->allocated = NULL;
   ob_unlimitsize(ret);
   
   return ret;
@@ -67,7 +67,7 @@ struct overlay_buffer *ob_slice(struct overlay_buffer *b, int offset, int length
       return NULL;
   ret->bytes = b->bytes+offset;
   ret->allocSize = length;
-  ret->allocated = 0;
+  ret->allocated = NULL;
   ob_unlimitsize(ret);
   
   return ret;
@@ -95,8 +95,10 @@ struct overlay_buffer *ob_dup(struct overlay_buffer *b){
 int ob_free(struct overlay_buffer *b)
 {
   if (!b) return WHY("Asked to free NULL");
-  if (b->bytes && b->allocated) free(b->bytes);
+  if (b->bytes && b->allocated) free(b->allocated);
+  // we're about to free this anyway, why are we clearing it?
   b->bytes=NULL;
+  b->allocated=NULL;
   b->allocSize=0;
   b->sizeLimit=0;
   free(b);
@@ -164,7 +166,7 @@ int ob_makespace(struct overlay_buffer *b,int bytes)
   }
   if (0) DEBUGF("realloc(b->bytes=%p,newSize=%d)", b->bytes,newSize);
   /* XXX OSX realloc() seems to be able to corrupt things if the heap is not happy when calling realloc(), making debugging memory corruption much harder.
-     So will do a three-stage malloc,bcopy,free to see if we can tease the bug out that way. */
+     So will do a three-stage malloc,bcopy,free to see if we can tease bugs out that way. */
   /*
     unsigned char *r=realloc(b->bytes,newSize);
     if (!r) return WHY("realloc() failed");
@@ -192,9 +194,9 @@ int ob_makespace(struct overlay_buffer *b,int bytes)
   unsigned char *new=malloc(newSize);
 #endif
   bcopy(b->bytes,new,b->position);
-  if (b->bytes) free(b->bytes);
+  if (b->allocated) free(b->allocated);
   b->bytes=new;
-  b->allocated=1;
+  b->allocated=new;
   b->allocSize=newSize;
   return 0;
 }
@@ -346,6 +348,20 @@ int ob_set_ui16(struct overlay_buffer *b, int offset, uint16_t v)
 
 int ob_patch_rfs(struct overlay_buffer *b){
   return ob_set_ui16(b,b->var_length_offset,b->position - (b->var_length_offset + 2));
+}
+
+
+int ob_position(struct overlay_buffer *b){
+  return b->position;
+}
+int ob_limit(struct overlay_buffer *b){
+  return b->sizeLimit;
+}
+int ob_remaining(struct overlay_buffer *b){
+  return b->sizeLimit - b->position;
+}
+unsigned char *ob_ptr(struct overlay_buffer *b){
+  return b->bytes;
 }
 
 int asprintable(int c)

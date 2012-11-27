@@ -490,7 +490,7 @@ int process_explain(struct overlay_frame *frame){
   struct decode_context context;
   bzero(&context, sizeof context);
   
-  while(b->position < b->sizeLimit){
+  while(ob_remaining(b)>0){
     int len = ob_get(b);
     if (len<=0 || len>SID_SIZE)
       return WHY("Badly formatted explain message");

@@ -143,17 +143,17 @@ int overlay_route_add_advertisements(struct decode_context *context, overlay_int
   struct subscriber *start = next_advertisement;
   next_advertisement=NULL;
   
-  int start_pos = e->position;
+  int start_pos = ob_position(e);
   
   // append announcements starting from the last node we couldn't advertise last time
   enum_subscribers(start, add_advertisement, e);
 
   // if we didn't start at the beginning and still have space, start again from the beginning
-  if (start && !next_advertisement && e->sizeLimit - e->position > 0){
+  if (start && !next_advertisement && ob_limit(e) - ob_position(e) > 0){
     enum_subscribers(NULL, add_advertisement, e);
   }
   
-  if (e->position == start_pos){
+  if (ob_position(e) == start_pos){
     // no advertisements? don't bother to send the payload at all.
     ob_rewind(e);
   }else
@@ -177,7 +177,7 @@ int overlay_route_saw_advertisements(int i, struct overlay_frame *f, struct deco
   IN();
   struct subscriber *previous=context->previous;
   // minimum record length is (address code, 3 byte sid, score, gateways)
-  while(f->payload->position < f->payload->sizeLimit)
+  while(ob_remaining(f->payload)>0)
     {
       struct subscriber *subscriber;
       context->invalid_addresses=0;
