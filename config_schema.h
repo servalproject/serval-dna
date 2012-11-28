@@ -213,6 +213,14 @@ STRUCT(directory)
 ATOM(sid_t,                 service,     SID_NONE, opt_sid,, "Subscriber ID of Serval Directory Service")
 END_STRUCT
 
+STRUCT(host)
+STRING(INTERFACE_NAME_STRLEN, interface, "", opt_str_nonempty, MANDATORY, "Interface name")
+ATOM(struct in_addr,        address,    (struct in_addr){0}, opt_in_addr, MANDATORY, "Host IP address")
+ATOM(uint16_t,              port,       PORT_DNA, opt_port,, "Port number")
+END_STRUCT
+
+ARRAY_STRUCT(host_list, 32, SID_STRLEN, host, opt_str_hex_sid)
+
 STRUCT(network_interface)
 ATOM(int,                   exclude,    0, opt_boolean,, "If true, do not use matching interfaces")
 ATOM(struct pattern_list,   match,      PATTERN_LIST_EMPTY, opt_pattern_list, MANDATORY, "Names that match network interface")
@@ -232,4 +240,5 @@ SUB_STRUCT(dna,             dna,)
 NODE(debugflags_t,          debug,      0, opt_debugflags, USES_CHILDREN, "Debug flags")
 SUB_STRUCT(rhizome,         rhizome,)
 SUB_STRUCT(directory,       directory,)
+SUB_STRUCT(host_list,       hosts,)
 END_STRUCT

@@ -177,15 +177,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 typedef unsigned long debugflags_t;
 
+#define PORT_DNA 4110
 #define RHIZOME_HTTP_PORT 4110
 
 typedef struct binarysid { unsigned char binary[SID_SIZE]; } sid_t;
 #define SID_NONE        ((sid_t){0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0})
 #define SID_BROADCAST   ((sid_t){0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff})
 
+#define INTERFACE_NAME_STRLEN   40
 struct pattern_list {
     unsigned patc;
-    char patv[16][41];
+    char patv[16][INTERFACE_NAME_STRLEN + 1];
 };
 #define PATTERN_LIST_EMPTY ((struct pattern_list){.patc = 0})
 

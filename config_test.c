@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <stdarg.h>
 #include <assert.h>
+#include <arpa/inet.h>
 
 #include "str.h"
 #include "strbuf.h"
@@ -412,7 +413,9 @@ int opt_str_nonempty(char *str, size_t len, const char *text);
 int opt_int(int *intp, const char *text);
 int opt_uint64_scaled(uint64_t *intp, const char *text);
 int opt_protocol(char *str, size_t len, const char *text);
+int opt_in_addr(struct in_addr *addrp, const char *text);
 int opt_port(unsigned short *portp, const char *text);
+int opt_str_hex_sid(char *sidhexp, size_t len, const char *text);
 int opt_sid(sid_t *sidp, const char *text);
 int opt_interface_type(short *typep, const char *text);
 int opt_pattern_list(struct pattern_list *listp, const char *text);
@@ -630,7 +633,7 @@ int opt_uint64_scaled(uint64_t *intp, const char *text)
   return CFOK;
 }
 
-int opt_argv_label(char *str, size_t len, const char *text)
+int opt_argv_label(char *labelp, size_t len, const char *text)
 {
   const char *s = text;
   if (isdigit(*s) && *s != '0') {
@@ -642,7 +645,7 @@ int opt_argv_label(char *str, size_t len, const char *text)
     return CFINVALID;
   if (s - text >= len)
     return CFSTRINGOVERFLOW;
-  strncpy(str, text, len - 1)[len - 1] = '\0';
+  strncpy(labelp, text, len - 1)[len - 1] = '\0';
   return CFOK;
 }
 
@@ -672,6 +675,15 @@ int vld_argv(const struct cf_om_node *parent, struct config_argv *array, int res
   return result;
 }
 
+int opt_in_addr(struct in_addr *addrp, const char *text)
+{
+  struct in_addr addr;
+  if (!inet_aton(text, &addr))
+    return CFINVALID;
+  *addrp = addr;
+  return CFOK;
+}
+
 int opt_port(unsigned short *portp, const char *text)
 {
   unsigned short port = 0;
@@ -687,6 +699,16 @@ int opt_port(unsigned short *portp, const char *text)
     return CFINVALID;
   }
   *portp = port;
+  return CFOK;
+}
+
+int opt_str_hex_sid(char *sidhexp, size_t len, const char *text)
+{
+  if (!str_is_subscriber_id(text))
+    return CFINVALID;
+  if (len <= SID_STRLEN)
+    return CFSTRINGOVERFLOW;
+  strncpy(sidhexp, text, SID_STRLEN)[SID_STRLEN] = '\0';
   return CFOK;
 }
 
@@ -1120,6 +1142,12 @@ int main(int argc, char **argv)
       DEBUGF("   .type = %d", config.interfaces.av[j].value.type);
       DEBUGF("   .port = %u", config.interfaces.av[j].value.port);
       DEBUGF("   .speed = %llu", (unsigned long long) config.interfaces.av[j].value.speed);
+    }
+    for (j = 0; j < config.hosts.ac; ++j) {
+      DEBUGF("config.hosts.%s", config.hosts.av[j].label);
+      DEBUGF("   .interface = %s", alloca_str(config.hosts.av[j].value.interface));
+      DEBUGF("   .address = %s", inet_ntoa(config.hosts.av[j].value.address));
+      DEBUGF("   .port = %u", config.hosts.av[j].value.port);
     }
   }
   exit(0);
