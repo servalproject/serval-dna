@@ -23,6 +23,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <ctype.h>
+#include <alloca.h>
 
 #ifndef __STR_INLINE
 # if __GNUC__ && !__GNUC_STDC_INLINE__

@@ -352,8 +352,10 @@ sqlite3_stmt *_sqlite_prepare(struct __sourceloc __whence, sqlite_retry_state *r
 sqlite3_stmt *_sqlite_prepare_loglevel(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, strbuf stmt)
 {
   sqlite3_stmt *statement = NULL;
-  if (strbuf_overrun(stmt))
-    return WHYFNULL("SQL overrun: %s", strbuf_str(stmt));
+  if (strbuf_overrun(stmt)) {
+    WHYF("SQL overrun: %s", strbuf_str(stmt));
+    return NULL;
+  }
   if (!rhizome_db && rhizome_opendb() == -1)
     return NULL;
   while (1) {

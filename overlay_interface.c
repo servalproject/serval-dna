@@ -327,9 +327,9 @@ overlay_interface_read_any(struct sched_ent *alarm){
     /* We have a frame from this interface */
     if (debug&DEBUG_PACKETRX)
       DEBUG_packet_visualise("Read from real interface", packet,plen);
-    if (debug&DEBUG_OVERLAYINTERFACES) 
+    if (debug&DEBUG_OVERLAYINTERFACES)
       DEBUGF("Received %d bytes from %s on interface %s (ANY)",plen, 
-	     inet_ntoa(((struct sockaddr_in *)&src_addr)->sin_addr),
+	     inet_ntoa(src),
 	     interface->name);
     if (packetOk(interface,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
       WHY("Malformed packet");
@@ -587,10 +587,12 @@ static void overlay_interface_poll(struct sched_ent *alarm)
     /* We have a frame from this interface */
     if (debug&DEBUG_PACKETRX)
       DEBUG_packet_visualise("Read from real interface", packet,plen);
-    if (debug&DEBUG_OVERLAYINTERFACES) 
-      DEBUGF("Received %d bytes from %s on interface %s",plen, 
-	     inet_ntoa(((struct sockaddr_in *)&src_addr)->sin_addr),
+    if (debug&DEBUG_OVERLAYINTERFACES) {
+      struct in_addr src = ((struct sockaddr_in *)&src_addr)->sin_addr; // avoid strict-alias warning on Solaris (gcc 4.4)
+      DEBUGF("Received %d bytes from %s on interface %s",plen,
+	     inet_ntoa(src),
 	     interface->name);
+    }
     if (packetOk(interface,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
       WHY("Malformed packet");
       // Do we really want to attempt to parse it again?
