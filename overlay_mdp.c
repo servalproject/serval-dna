@@ -260,13 +260,29 @@ int overlay_mdp_process_bind_request(int sock, struct subscriber *subscriber, in
   return 0;
 }
 
+static int overlay_mdp_decode_header(struct overlay_buffer *buff, overlay_mdp_frame *mdp)
+{
+  /* extract MDP port numbers */
+  int port = ob_get_packed_ui32(buff);
+  int same = port&1;
+  port >>=1;
+  mdp->in.dst.port = port;
+  if (!same){
+    port = ob_get_packed_ui32(buff);
+  }
+  mdp->in.src.port = port;
+  
+  int len=ob_remaining(buff);
+  
+  if (len<0)
+    return WHY("MDP payload is too short");
+  mdp->in.payload_length=len;
+  return ob_get_bytes(buff, &mdp->in.payload[0], len);
+}
+
 int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
 {
   IN();
-
-  int len=f->payload->sizeLimit - f->payload->position;
-  unsigned char *b = &f->payload->bytes[f->payload->position];
-  unsigned char plain_block[len+16];
 
   /* Indicate MDP message type */
   mdp->packetTypeAndFlags=MDP_TX;
@@ -275,65 +291,73 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
   case 0: 
     /* nothing to do, b already points to the plain text */
     mdp->packetTypeAndFlags|=MDP_NOCRYPT|MDP_NOSIGN;
-    break;
+    RETURN(overlay_mdp_decode_header(f->payload, mdp));
       
   case OF_CRYPTO_CIPHERED:
     RETURN(WHY("decryption not implemented"));
       
   case OF_CRYPTO_SIGNED:
-    if (crypto_verify_message(f->source, b, &len))
-      RETURN(-1);
+    {
+      int len = ob_remaining(f->payload);
+      if (crypto_verify_message(f->source, ob_ptr(f->payload), &len))
+	RETURN(-1);
       
-    mdp->packetTypeAndFlags|=MDP_NOCRYPT; 
-    break;
+      mdp->packetTypeAndFlags|=MDP_NOCRYPT; 
+      ob_limitsize(f->payload, len + ob_position(f->payload));
+      RETURN(overlay_mdp_decode_header(f->payload, mdp));
+    }
       
   case OF_CRYPTO_CIPHERED|OF_CRYPTO_SIGNED:
     {
       if (0) DEBUGF("crypted MDP frame for %s", alloca_tohex_sid(f->destination->sid));
 
-      unsigned char *k=keyring_get_nm_bytes(f->destination->sid, f->source->sid);
-      unsigned char *nonce=&f->payload->bytes[f->payload->position];
       int nm=crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES;
       int nb=crypto_box_curve25519xsalsa20poly1305_NONCEBYTES;
       int zb=crypto_box_curve25519xsalsa20poly1305_ZEROBYTES;
       int cz=crypto_box_curve25519xsalsa20poly1305_BOXZEROBYTES;
       
+      unsigned char *k=keyring_get_nm_bytes(f->destination->sid, f->source->sid);
       if (!k) 
 	RETURN(WHY("I don't have the private key required to decrypt that"));
+      
+      if (0){
+	dump("frame",&f->payload->bytes[f->payload->position],
+	     ob_remaining(f->payload));
+      }
+      
+      unsigned char *nonce=ob_get_bytes_ptr(f->payload, nb);
+      int cipher_len=ob_remaining(f->payload);
+      unsigned char *cipher_text=ob_get_bytes_ptr(f->payload, cipher_len);
+      
+      unsigned char plain_block[cipher_len+cz];
+      
       bzero(&plain_block[0],cz);
-      int cipher_len=f->payload->sizeLimit - f->payload->position - nb;
-      bcopy(&f->payload->bytes[nb + f->payload->position],&plain_block[cz],cipher_len);
+      
+      bcopy(cipher_text,&plain_block[cz],cipher_len);
+      
       if (0) {
 	dump("nm bytes",k,nm);
 	dump("nonce",nonce,nb);
-	dump("cipher block",&plain_block[cz],cipher_len); 
+	dump("cipher block",plain_block,sizeof(plain_block)); 
       }
+      cipher_len+=cz;
+      
       if (crypto_box_curve25519xsalsa20poly1305_open_afternm
-	  (plain_block,plain_block,cipher_len+cz,nonce,k)) {
-	RETURN(WHYF("crypto_box_open_afternm() failed (forged or corrupted packet of %d bytes)",cipher_len+16));
+	  (plain_block,plain_block,cipher_len,nonce,k)) {
+	RETURN(WHYF("crypto_box_open_afternm() failed (forged or corrupted packet of %d bytes)",cipher_len));
       }
-      if (0) dump("plain block",&plain_block[zb],cipher_len+cz-zb);
-      b=&plain_block[zb];
-      len=cipher_len+cz-zb;
-      break;
+      
+      if (0) dump("plain block",plain_block,sizeof(plain_block));
+      
+      cipher_len -= zb;
+      struct overlay_buffer *plaintext = ob_static(&plain_block[zb], cipher_len);
+      ob_limitsize(plaintext,cipher_len);
+      int ret=overlay_mdp_decode_header(plaintext, mdp);
+      ob_free(plaintext);
+      RETURN(ret);
     }    
   }
-  
-  if (!b)
-    RETURN(WHY("Failed to decode mdp payload"));
-  
-  int version=(b[0]<<8)+b[1];
-  if (version!=0x0101) RETURN(WHY("Saw unsupported MDP frame version"));
-  
-  /* extract MDP port numbers */
-  mdp->in.src.port=(b[2]<<24)+(b[3]<<16)+(b[4]<<8)+b[5];
-  mdp->in.dst.port=(b[6]<<24)+(b[7]<<16)+(b[8]<<8)+b[9];
-  if (0) DEBUGF("RX mdp dst.port=%d, src.port=%d", mdp->in.dst.port, mdp->in.src.port);  
-  
-  mdp->in.payload_length=len-10;
-  bcopy(&b[10],&mdp->in.payload[0],mdp->in.payload_length);
-  
-  RETURN(0);
+  RETURN(WHY("Failed to decode mdp payload"));
 }
 
 int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now)
@@ -719,10 +743,28 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   else frame->type=OF_TYPE_DATA;
   frame->prev=NULL;
   frame->next=NULL;
-  frame->payload=ob_new();
+  struct overlay_buffer *plaintext=ob_new();
   
-  int fe=0;
-
+  // build the plain text payload
+  int port=mdp->out.dst.port << 1;
+  if (mdp->out.dst.port==mdp->out.src.port)
+    port |= 1;
+  if (ob_append_packed_ui32(plaintext, port)){
+    ob_free(plaintext);
+    RETURN(-1);
+  }
+  
+  if (mdp->out.dst.port!=mdp->out.src.port){
+    if (ob_append_packed_ui32(plaintext, mdp->out.src.port)){
+      ob_free(plaintext);
+      RETURN(-1);
+    }
+  }
+  if (ob_append_bytes(plaintext, mdp->out.payload, mdp->out.payload_length)){
+    ob_free(plaintext);
+    RETURN(-1);
+  }
+  
   /* Work out the disposition of the frame->  For now we are only worried
      about the crypto matters, and not compression that may be applied
      before encryption (since applying it after is useless as ciphered
@@ -731,50 +773,35 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   case 0: /* crypted and signed (using CryptoBox authcryption primitive) */
     frame->modifiers=OF_CRYPTO_SIGNED|OF_CRYPTO_CIPHERED;
     {
+      int nm=crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES;
       int zb=crypto_box_curve25519xsalsa20poly1305_ZEROBYTES;
       int nb=crypto_box_curve25519xsalsa20poly1305_NONCEBYTES;
       int cz=crypto_box_curve25519xsalsa20poly1305_BOXZEROBYTES;
       
-      /* Prepare payload */
-      ob_makespace(frame->payload, 
-		   1 // frame type (MDP)
-		   +1 // MDP version 
-		   +4 // dst port 
-		   +4 // src port 
-		   +nb
-		   +zb
-		   -cz
-		   +mdp->out.payload_length);
+      /* generate plain message with zero bytes and get ready to cipher it */
+      int cipher_len=ob_position(plaintext);
       
-      /* write cryptobox nonce */
-      unsigned char nonce[nb];
+      // TODO, add support for leading zero's in overlay_buffer's, then we don't need to copy the plain text again.
+      unsigned char plain[zb+cipher_len];
+      
+      /* zero bytes */
+      bzero(&plain[0],zb);
+      bcopy(ob_ptr(plaintext),&plain[zb],cipher_len);
+      
+      ob_free(plaintext);
+      
+      frame->payload = ob_new();
+      unsigned char *nonce = ob_append_space(frame->payload, nb);
+      if (!nonce)
+	RETURN(-1);
       if (urandombytes(nonce,nb)) {
 	op_free(frame);
 	RETURN(WHY("urandombytes() failed to generate nonce"));
       }
       // reserve the high bit of the nonce as a flag for transmitting a shorter nonce.
       nonce[0]&=0x7f;
-      fe|= ob_append_bytes(frame->payload,nonce,nb);
-      /* generate plain message with zero bytes and get ready to cipher it */
-      unsigned char plain[zb+10+mdp->out.payload_length];
       
-      /* zero bytes */
-      bzero(&plain[0],zb);
-      /* MDP version 1 */
-      plain[zb+0]=0x01; 
-      plain[zb+1]=0x01;
-      /* Ports */
-      plain[zb+2]=(mdp->out.src.port>>24)&0xff;
-      plain[zb+3]=(mdp->out.src.port>>16)&0xff;
-      plain[zb+4]=(mdp->out.src.port>>8)&0xff;
-      plain[zb+5]=(mdp->out.src.port>>0)&0xff;
-      plain[zb+6]=(mdp->out.dst.port>>24)&0xff;
-      plain[zb+7]=(mdp->out.dst.port>>16)&0xff;
-      plain[zb+8]=(mdp->out.dst.port>>8)&0xff;
-      plain[zb+9]=(mdp->out.dst.port>>0)&0xff;
-      /* payload */
-      bcopy(&mdp->out.payload,&plain[zb+10],mdp->out.payload_length);
-      int cipher_len=zb+10+mdp->out.payload_length;
+      cipher_len+=zb;
       
       /* get pre-computed PKxSK bytes (the slow part of auth-cryption that can be
 	 retained and reused, and use that to do the encryption quickly. */
@@ -784,9 +811,8 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 	RETURN(WHY("could not compute Curve25519(NxM)")); 
       }
       /* Get pointer to place in frame where the ciphered text needs to go */
-      int cipher_offset=frame->payload->position;
       unsigned char *cipher_text=ob_append_space(frame->payload,cipher_len);
-      if (fe||(!cipher_text)){
+      if ((!cipher_text)){
 	op_free(frame);
 	RETURN(WHY("could not make space for ciphered text")); 
       }
@@ -796,17 +822,20 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 	op_free(frame);
 	RETURN(WHY("crypto_box_afternm() failed")); 
       }
-      /* now shuffle down to get rid of the temporary space that crypto_box
-	 uses. */
-      bcopy(&cipher_text[cz],&cipher_text[0],cipher_len-cz);
-      frame->payload->position-=cz;
       if (0) {
 	DEBUG("authcrypted mdp frame");
-	dump("nm bytes",k,crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES);
-	dump("nonce",nonce,crypto_box_curve25519xsalsa20poly1305_NONCEBYTES);
-	dump("plain text",&plain[cz],cipher_len-cz);
-	dump("cipher text",cipher_text,cipher_len-cz);	
-	DEBUGF("frame->payload->length=%d,cipher_len-cz=%d,cipher_offset=%d", frame->payload->position,cipher_len-cz,cipher_offset);
+	dump("nm",k,nm);
+	dump("plain text",plain,sizeof(plain));
+	dump("nonce",nonce,nb);
+	dump("cipher text",cipher_text,cipher_len);
+      }
+      /* now shuffle down to get rid of the temporary space that crypto_box
+       uses. 
+       TODO extend overlay buffer so we don't need this.
+       */
+      bcopy(&cipher_text[cz],&cipher_text[0],cipher_len-cz);
+      frame->payload->position-=cz;
+      if (0){
 	dump("frame",&frame->payload->bytes[0],
 	     frame->payload->position);
       }
@@ -815,17 +844,9 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       
   case MDP_NOCRYPT: 
     /* Payload is sent unencrypted, but signed. */
-    frame->modifiers=OF_CRYPTO_SIGNED; 
-    /* Prepare payload */
-    /* MDP version 1 */
-    ob_append_byte(frame->payload,0x01);
-    ob_append_byte(frame->payload,0x01);
-    /* Destination port */
-    ob_append_ui32(frame->payload,mdp->out.src.port);
-    ob_append_ui32(frame->payload,mdp->out.dst.port);
-    ob_append_bytes(frame->payload,mdp->out.payload,mdp->out.payload_length);
+    frame->modifiers=OF_CRYPTO_SIGNED;
+    frame->payload = plaintext;
     ob_makespace(frame->payload,SIGNATURE_BYTES);
-    
     if (crypto_sign_message(frame->source, frame->payload->bytes, frame->payload->allocSize, &frame->payload->position)){
       op_free(frame);
       RETURN(-1);
@@ -834,20 +855,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       
   case MDP_NOSIGN|MDP_NOCRYPT: /* clear text and no signature */
     frame->modifiers=0; 
-    /* Copy payload body in */
-    ob_makespace(frame->payload, 
-	   1 // frame type (MDP) 
-	  +1 // MDP version 
-	  +4 // dst port 
-	  +4 // src port 
-	  +mdp->out.payload_length);
-    /* MDP version 1 */
-    ob_append_byte(frame->payload,0x01);
-    ob_append_byte(frame->payload,0x01);
-    /* Destination port */
-    ob_append_ui32(frame->payload,mdp->out.src.port);
-    ob_append_ui32(frame->payload,mdp->out.dst.port);
-    ob_append_bytes(frame->payload,mdp->out.payload,mdp->out.payload_length);
+    frame->payload = plaintext;
     break;
   case MDP_NOSIGN: 
   default:
@@ -857,7 +865,6 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
      */
     op_free(frame);
     RETURN(WHY("Not implemented"));
-    break;
   }
   
   frame->queue=mdp->out.queue;
