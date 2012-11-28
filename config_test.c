@@ -145,6 +145,8 @@ struct cf_om_node *parse_config(const char *source, const char *buf, size_t len)
     if (lend > line && lend[-1] == '\r')
       --lend;
     //DEBUGF("lineno=%u %s", lineno, alloca_toprint(-1, line, lend - line));
+    if (line[0] == '#')
+      continue; // skip comment lines
     const char *p;
     for (p = line; p < lend && isspace(*p); ++p)
       ;
@@ -221,7 +223,7 @@ int get_child(const struct cf_om_node *parent, const char *key)
   return -1;
 }
 
-void warn_node(const char *file, unsigned line, const struct cf_om_node *node, const char *fmt, ...)
+void warn_nodev(const char *file, unsigned line, const struct cf_om_node *node, const char *key, const char *fmt, va_list ap)
 {
   strbuf b = strbuf_alloca(1024);
   if (node) {
@@ -229,20 +231,44 @@ void warn_node(const char *file, unsigned line, const struct cf_om_node *node, c
       strbuf_sprintf(b, "%s:%u: ", node->source, node->line_number);
     strbuf_puts(b, "configuration option \"");
     strbuf_puts(b, node->fullkey);
-    strbuf_puts(b, "\": ");
+    if (key && key[0]) {
+      strbuf_putc(b, '.');
+      strbuf_puts(b, key);
+    }
+    strbuf_puts(b, "\" ");
   }
+  strbuf_vsprintf(b, fmt, ap);
+  _WARNF("%s:%u  %s", file, line, strbuf_str(b));
+}
+
+void warn_childrenv(const char *file, unsigned line, const struct cf_om_node *parent, const char *fmt, va_list ap)
+{
+  int i;
+  for (i = 0; i < parent->nodc; ++i) {
+    warn_nodev(file, line, parent->nodv[i], NULL, fmt, ap);
+    warn_childrenv(file, line, parent->nodv[i], fmt, ap);
+  }
+}
+
+void warn_node(const char *file, unsigned line, const struct cf_om_node *node, const char *key, const char *fmt, ...)
+{
   va_list ap;
   va_start(ap, fmt);
-  strbuf_vsprintf(b, fmt, ap);
+  warn_nodev(file, line, node, key, fmt, ap);
   va_end(ap);
-  _WARNF("%s:%u  %s", file, line, strbuf_str(b));
+}
+
+void warn_children(const char *file, unsigned line, const struct cf_om_node *node, const char *fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  warn_childrenv(file, line, node, fmt, ap);
+  va_end(ap);
 }
 
 void missing_node(const struct cf_om_node *parent, const char *key)
 {
-  WARNF("missing configuration option %s%s%s",
-      parent->fullkey ? parent->fullkey : "", parent->fullkey ? "." : "", key
-    );
+  warn_node(__FILE__, __LINE__, parent, key, "is missing");
 }
 
 strbuf strbuf_cf_flags(strbuf sb, int flags)
@@ -287,8 +313,6 @@ strbuf strbuf_cf_flags(strbuf sb, int flags)
   return sb;
 }
 
-
-
 strbuf strbuf_cf_flag_reason(strbuf sb, int flags)
 {
   if (flags == CFERROR)
@@ -322,16 +346,23 @@ strbuf strbuf_cf_flag_reason(strbuf sb, int flags)
   return sb;
 }
 
-void warn_ignoring_value(const struct cf_om_node *node, int reason)
+void warn_node_value(const struct cf_om_node *node, int reason)
 {
   strbuf b = strbuf_alloca(180);
   strbuf_cf_flag_reason(b, reason);
-  warn_node(__FILE__, __LINE__, node, "ignoring value %s -- %s", alloca_str(node->text), strbuf_str(b));
+  warn_node(__FILE__, __LINE__, node, NULL, "value %s %s", alloca_str(node->text), strbuf_str(b));
+}
+
+void warn_no_array(const struct cf_om_node *node, int reason)
+{
+  strbuf b = strbuf_alloca(180);
+  strbuf_cf_flag_reason(b, reason);
+  warn_node(__FILE__, __LINE__, node, NULL, "array discarded -- %s", strbuf_str(b));
 }
 
 void warn_unsupported_node(const struct cf_om_node *node)
 {
-  warn_node(__FILE__, __LINE__, node, "not supported");
+  warn_node(__FILE__, __LINE__, node, NULL, "not supported");
 }
 
 void warn_unsupported_children(const struct cf_om_node *parent)
@@ -346,9 +377,7 @@ void warn_unsupported_children(const struct cf_om_node *parent)
 
 void ignore_node(const struct cf_om_node *node, const char *msg)
 {
-  warn_node(__FILE__, __LINE__, node, "ignoring%s%s",
-      msg && msg[0] ? " -- " : "", msg ? msg : ""
-    );
+  warn_node(__FILE__, __LINE__, node, NULL, "ignoring%s%s", msg && msg[0] ? " -- " : "", msg ? msg : "");
 }
 
 void ignore_tree(const struct cf_om_node *node, const char *msg);
@@ -369,19 +398,19 @@ void ignore_tree(const struct cf_om_node *node, const char *msg)
 
 void warn_list_overflow(const struct cf_om_node *node)
 {
-  ignore_children(node, "list overflow");
+  warn_children(__FILE__, __LINE__, node, "list overflow");
 }
 
 void spurious_children(const struct cf_om_node *parent)
 {
-  ignore_children(parent, "spurious");
+  warn_children(__FILE__, __LINE__, parent, "spurious");
 }
 
 void warn_array_label(const struct cf_om_node *node, int reason)
 {
   strbuf b = strbuf_alloca(180);
   strbuf_cf_flag_reason(b, reason);
-  warn_node(__FILE__, __LINE__, node, "array label %s -- %s", alloca_str(node->key), strbuf_str(b));
+  warn_node(__FILE__, __LINE__, node, NULL, "array label %s -- %s", alloca_str(node->key), strbuf_str(b));
 }
 
 void warn_array_value(const struct cf_om_node *node, int reason)
@@ -389,9 +418,9 @@ void warn_array_value(const struct cf_om_node *node, int reason)
   strbuf b = strbuf_alloca(180);
   strbuf_cf_flag_reason(b, reason);
   if (node->text)
-    warn_node(__FILE__, __LINE__, node, "array value %s -- %s", alloca_str(node->text), strbuf_str(b));
+    warn_node(__FILE__, __LINE__, node, NULL, "array value %s -- %s", alloca_str(node->text), strbuf_str(b));
   else
-    warn_node(__FILE__, __LINE__, node, "array element -- %s", strbuf_str(b));
+    warn_node(__FILE__, __LINE__, node, NULL, "array element -- %s", strbuf_str(b));
 }
 
 int opt_boolean(int *booleanp, const char *text);
@@ -507,7 +536,7 @@ int opt_debugflags(debugflags_t *flagsp, const struct cf_om_node *node)
 	}
 	break;
       default:
-	warn_ignoring_value(child, ret);
+	warn_node_value(child, ret);
 	result |= ret;
 	break;
       }
@@ -626,10 +655,27 @@ int opt_argv_label(char *str, size_t len, const char *text)
   return CFOK;
 }
 
-int vld_argv(struct config_argv *array, int result)
+int cmp_atoi(const char *a, const char *b)
+{
+  int ai = atoi(a);
+  int bi = atoi(b);
+  return ai < bi ? -1 : ai > bi ? 1 : 0;
+}
+
+int vld_argv(const struct cf_om_node *parent, struct config_argv *array, int result)
 {
   int i;
+  int last_label = -1;
   for (i = 0; i < array->ac; ++i) {
+    int label = atoi(array->av[i].label);
+    assert(label >= 1);
+    while (last_label != -1 && ++last_label < label && last_label <= sizeof(array->av)) {
+      char labelkey[12];
+      sprintf(labelkey, "%u", last_label);
+      missing_node(parent, labelkey);
+      result |= CFINCOMPLETE;
+    }
+    last_label = label;
   }
   return result;
 }
@@ -857,7 +903,7 @@ int opt_interface_list(struct config_interface_list *listp, const struct cf_om_n
 	    ++n;
 	    break;
 	  default:
-	    warn_node(__FILE__, __LINE__, node, "ignoring invalid interface rule %s", alloca_str(buf)); \
+	    warn_node(__FILE__, __LINE__, node, NULL, "invalid interface rule %s", alloca_str(buf)); \
 	    result |= CFSUB(ret);
 	    break;
 	  }
@@ -900,7 +946,7 @@ void warn_list_overflow(const struct cf_om_node *node);
 // Generate parsing functions, opt_config_SECTION()
 #define STRUCT(__name, __validator...) \
     int opt_config_##__name(struct config_##__name *strct, const struct cf_om_node *node) { \
-      int (*validator)(struct config_##__name *, int) = (NULL, ##__validator); \
+      int (*validator)(const struct cf_om_node *, struct config_##__name *, int) = (NULL, ##__validator); \
       int result = CFEMPTY; \
       char used[node->nodc]; \
       memset(used, 0, node->nodc * sizeof used[0]);
@@ -926,7 +972,7 @@ void warn_list_overflow(const struct cf_om_node *node);
 	if (ret & ~CFEMPTY) { \
 	  assert(child != NULL); \
 	  if (child->text) \
-	    warn_ignoring_value(child, ret); \
+	    warn_node_value(child, ret); \
 	  result |= CFSUB(ret); \
 	} \
       }
@@ -955,13 +1001,13 @@ void warn_list_overflow(const struct cf_om_node *node);
 	} \
       } \
       if (validator) \
-	result = (*validator)(strct, result); \
+	result = (*validator)(node, strct, result); \
       return result; \
     }
 
 #define __ARRAY(__name, __lblparser, __parseexpr, __validator...) \
     int opt_config_##__name(struct config_##__name *array, const struct cf_om_node *node) { \
-      int (*validator)(struct config_##__name *, int) = (NULL, ##__validator); \
+      int (*validator)(const struct cf_om_node *, struct config_##__name *, int) = (NULL, ##__validator); \
       int result = CFOK; \
       int i, n; \
       for (n = 0, i = 0; i < node->nodc && n < NELS(array->av); ++i) { \
@@ -971,6 +1017,7 @@ void warn_list_overflow(const struct cf_om_node *node);
 	  return CFERROR; \
 	result |= ret & CF__SUBFLAGS; \
 	ret &= CF__FLAGS; \
+	result |= CFSUB(ret); \
 	if (ret != CFOK) \
 	  warn_array_label(child, ret); \
 	else { \
@@ -994,9 +1041,11 @@ void warn_list_overflow(const struct cf_om_node *node);
       } \
       array->ac = n; \
       if (validator) \
-	result = (*validator)(array, result); \
-      else if (result & CFARRAYOVERFLOW) \
+	result = (*validator)(node, array, result); \
+      if (result & ~CFEMPTY) { \
+	warn_no_array(node, result); \
 	array->ac = 0; \
+      } \
       if (array->ac == 0) \
 	result |= CFEMPTY; \
       return result; \

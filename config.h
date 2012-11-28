@@ -302,7 +302,7 @@ struct cf_om_node {
 
 // Generate parser function prototypes.
 #define __VALIDATOR(__name, __validator...) \
-    typedef int __validator_func__config_##__name##__t(struct config_##__name *, int); \
+    typedef int __validator_func__config_##__name##__t(const struct cf_om_node *, struct config_##__name *, int); \
     __validator_func__config_##__name##__t __dummy__validator_func__config_##__name, ##__validator;
 #define STRUCT(__name, __validator...) \
     int opt_config_##__name(struct config_##__name *, const struct cf_om_node *); \
