@@ -752,6 +752,8 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 	op_free(frame);
 	RETURN(WHY("urandombytes() failed to generate nonce"));
       }
+      // reserve the high bit of the nonce as a flag for transmitting a shorter nonce.
+      nonce[0]&=0x7f;
       fe|= ob_append_bytes(frame->payload,nonce,nb);
       /* generate plain message with zero bytes and get ready to cipher it */
       unsigned char plain[zb+10+mdp->out.payload_length];
