@@ -33,6 +33,7 @@ int overlay_packet_init_header(struct decode_context *context, struct overlay_bu
   if (overlay_address_append(context, buff, my_subscriber))
     return -1;
   context->sender = my_subscriber;
+  ob_append_byte(buff,0);//seq
   return 0;
 }
 
@@ -208,6 +209,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     ob_free(b);
     RETURN(0);
   }
+  int seq = ob_get(b);
   
   while(b->position < b->sizeLimit){
     context.invalid_addresses=0;
