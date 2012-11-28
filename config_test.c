@@ -266,7 +266,7 @@ void warn_children(const char *file, unsigned line, const struct cf_om_node *nod
   va_end(ap);
 }
 
-void missing_node(const struct cf_om_node *parent, const char *key)
+void warn_missing_node(const struct cf_om_node *parent, const char *key)
 {
   warn_node(__FILE__, __LINE__, parent, key, "is missing");
 }
@@ -375,33 +375,12 @@ void warn_unsupported_children(const struct cf_om_node *parent)
   }
 }
 
-void ignore_node(const struct cf_om_node *node, const char *msg)
-{
-  warn_node(__FILE__, __LINE__, node, NULL, "ignoring%s%s", msg && msg[0] ? " -- " : "", msg ? msg : "");
-}
-
-void ignore_tree(const struct cf_om_node *node, const char *msg);
-
-void ignore_children(const struct cf_om_node *parent, const char *msg)
-{
-  int i;
-  for (i = 0; i < parent->nodc; ++i)
-    ignore_tree(parent->nodv[i], msg);
-}
-
-void ignore_tree(const struct cf_om_node *node, const char *msg)
-{
-  if (node->text)
-    ignore_node(node, msg);
-  ignore_children(node, msg);
-}
-
 void warn_list_overflow(const struct cf_om_node *node)
 {
   warn_children(__FILE__, __LINE__, node, "list overflow");
 }
 
-void spurious_children(const struct cf_om_node *parent)
+void warn_spurious_children(const struct cf_om_node *parent)
 {
   warn_children(__FILE__, __LINE__, parent, "spurious");
 }
@@ -429,6 +408,7 @@ int opt_debugflags(debugflags_t *flagsp, const struct cf_om_node *node);
 int opt_rhizome_peer(struct config_rhizomepeer *, const struct cf_om_node *node);
 int opt_str(char *str, size_t len, const char *text);
 int opt_str_nonempty(char *str, size_t len, const char *text);
+int opt_int(int *intp, const char *text);
 int opt_uint64_scaled(uint64_t *intp, const char *text);
 int opt_protocol(char *str, size_t len, const char *text);
 int opt_port(unsigned short *portp, const char *text);
@@ -570,7 +550,7 @@ int opt_rhizome_peer(struct config_rhizomepeer *rpeer, const struct cf_om_node *
 {
   if (!node->text)
     return opt_config_rhizomepeer(rpeer, node);
-  spurious_children(node);
+  warn_spurious_children(node);
   const char *protocol;
   size_t protolen;
   const char *auth;
@@ -627,6 +607,16 @@ int opt_str_nonempty(char *str, size_t len, const char *text)
   return opt_str(str, len, text);
 }
 
+int opt_int(int *intp, const char *text)
+{
+  const char *end = text;
+  long value = strtol(text, (char**)&end, 10);
+  if (end == text || *end)
+    return CFINVALID;
+  *intp = value;
+  return CFOK;
+}
+
 int opt_uint64_scaled(uint64_t *intp, const char *text)
 {
   uint64_t result;
@@ -672,7 +662,7 @@ int vld_argv(const struct cf_om_node *parent, struct config_argv *array, int res
     while (last_label != -1 && ++last_label < label && last_label <= sizeof(array->av)) {
       char labelkey[12];
       sprintf(labelkey, "%u", last_label);
-      missing_node(parent, labelkey);
+      warn_missing_node(parent, labelkey);
       result |= CFINCOMPLETE;
     }
     last_label = label;
@@ -929,10 +919,6 @@ bye:
   return result;
 }
 
-void missing_node(const struct cf_om_node *parent, const char *key);
-void warn_unsupported_node(const struct cf_om_node *node);
-void warn_list_overflow(const struct cf_om_node *node);
-
 // Schema item flags.
 #define __MANDATORY     (1<<0)
 #define __TEXT		(1<<1)
@@ -966,7 +952,7 @@ void warn_list_overflow(const struct cf_om_node *node);
 	if (!(ret & CFEMPTY)) \
 	  result &= ~CFEMPTY; \
 	else if ((__flags) & __MANDATORY) { \
-	  missing_node(node, #__element); \
+	  warn_missing_node(node, #__element); \
 	  result |= CFINCOMPLETE; \
 	} \
 	if (ret & ~CFEMPTY) { \

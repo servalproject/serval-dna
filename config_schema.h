@@ -172,6 +172,11 @@ STRUCT(server)
 STRING(256,                 chdir,      "/", opt_absolute_path,, "Absolute path of chdir(2) for server process")
 END_STRUCT
 
+STRUCT(monitor)
+STRING(256,                 socket,      DEFAULT_MONITOR_SOCKET_NAME, opt_str_nonempty,, "Name of socket for monitor interface")
+ATOM(int,                   uid,         -1, opt_int,, "Allowed UID for monitor socket client")
+END_STRUCT
+
 ARRAY_STRING(argv, 8, 128, opt_argv_label, opt_str, vld_argv)
 
 STRUCT(executable)
@@ -219,6 +224,7 @@ STRUCT(main)
 NODE_STRUCT(interface_list, interfaces, opt_interface_list, MANDATORY)
 SUB_STRUCT(log,             log,)
 SUB_STRUCT(server,          server,)
+SUB_STRUCT(monitor,         monitor,)
 SUB_STRUCT(dna,             dna,)
 NODE(debugflags_t,          debug,      0, opt_debugflags, USES_CHILDREN, "Debug flags")
 SUB_STRUCT(rhizome,         rhizome,)
