@@ -255,6 +255,18 @@ int ob_append_ui32(struct overlay_buffer *b, uint32_t v)
   return 0;
 }
 
+int ob_append_packed_ui32(struct overlay_buffer *b, uint32_t v)
+{
+  do{
+    
+    if (ob_append_byte(b, (v&0x7f) | (v>0x7f?0x80:0)))
+      return -1;
+    v = v>>7;
+    
+  }while(v!=0);
+  return 0;
+}
+
 int ob_append_rfs(struct overlay_buffer *b,int l)
 {
   if (l<0||l>0xffff) return -1;
@@ -329,6 +341,21 @@ uint16_t ob_get_ui16(struct overlay_buffer *b)
   return ret;
 }
 
+uint32_t ob_get_packed_ui32(struct overlay_buffer *b)
+{
+  uint32_t ret=0;
+  int shift=0;
+  int byte;
+  do{
+    byte = ob_get(b);
+    if (byte<0)
+      return WHY("Failed to unpack integer");
+    ret |= (byte&0x7f)<<shift;
+    shift+=7;
+  }while(byte & 0x80);
+  return ret;
+}
+
 int ob_get(struct overlay_buffer *b){
   if (test_offset(b, b->position, 1))
     return -1;
@@ -373,8 +400,8 @@ int asprintable(int c)
 
 int ob_dump(struct overlay_buffer *b,char *desc)
 {
-  DEBUGF("overlay_buffer '%s' at %p : length=%d", desc, b, b->position);
-  dump(NULL, b->bytes, b->position);
+  DEBUGF("overlay_buffer '%s' at %p : position=%d, size=%d", desc, b, b->position, b->sizeLimit);
+  dump(NULL, b->bytes, b->sizeLimit>b->position?b->sizeLimit:b->position);
   return 0;
 }
 

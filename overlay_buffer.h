@@ -57,6 +57,7 @@ int ob_append_bytes(struct overlay_buffer *b,unsigned char *bytes,int count);
 unsigned char *ob_append_space(struct overlay_buffer *b,int count);
 int ob_append_ui16(struct overlay_buffer *b, uint16_t v);
 int ob_append_ui32(struct overlay_buffer *b, uint32_t v);
+int ob_append_packed_ui32(struct overlay_buffer *b, uint32_t v);
 int ob_patch_rfs(struct overlay_buffer *b);
 int ob_append_rfs(struct overlay_buffer *b,int l);
 // get one byte, -ve number indicates failure
@@ -69,6 +70,8 @@ uint32_t ob_get_ui32(struct overlay_buffer *b);
 uint16_t ob_get_ui16(struct overlay_buffer *b);
 int ob_dump(struct overlay_buffer *b,char *desc);
 int ob_set_ui16(struct overlay_buffer *b, int offset, uint16_t v);
+
+uint32_t ob_get_packed_ui32(struct overlay_buffer *b);
 
 // information routines
 int ob_position(struct overlay_buffer *b);
