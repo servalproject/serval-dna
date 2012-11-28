@@ -23,10 +23,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 /* This file defines the internal API to the configuration file.  See "config_schema.h" for the
  * definition of the configuration schema, which is used to generate these API components.
  *
- * Each STRUCT(foo, ...) schema declaration produces the following data declaration:
+ * Each STRUCT(NAME, ...) schema declaration produces the following data declaration:
  *
- *      struct config_foo {
- *          TYPE NAME;
+ *      struct config_NAME {
  *          ...
  *      };
  *
@@ -48,12 +47,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *      
  *          struct config_NAME bar;
  *
- * Each ARRAY_*(SIZE, bar, ...) schema declaration produces the following data declaration:
+ * Each ARRAY_*(NAME, SIZE, LABELLEN, TYPE, ...) schema declaration produces the following data
+ * declaration:
  *
- *      struct config_bar {
+ *      struct config_NAME {
  *          unsigned ac;
- *          struct {
- *              char label[N]; // please discover N using sizeof()
+ *          struct config_NAME__element {
+ *              char label[LABELLEN+1];
  *              TYPE value;
  *          } av[SIZE];
  *      };
@@ -62,45 +62,45 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *      and 'av' an array of element values, each one consisting of a label and the value itself,
  *      whose TYPE depends on the ARRAY_* declaration itself:
  *      
- *      ARRAY_ATOM(NAME, SIZE, TYPE, ...)
- *      ARRAY_NODE(NAME, SIZE, TYPE, ...)
+ *      ARRAY_ATOM(NAME, SIZE, LABELLEN, TYPE, ...)
+ *      ARRAY_NODE(NAME, SIZE, LABELLEN, TYPE, ...)
  *
  *              TYPE value;
  *
- *      ARRAY_STRING(NAME, SIZE, STRINGSIZE, ...)
+ *      ARRAY_STRING(NAME, SIZE, LABELLEN, STRINGSIZE, ...)
  *
  *              char value[STRINGSIZE];
  *
- *      ARRAY_STRUCT(NAME, SIZE, STRUCTNAME, ...)
+ *      ARRAY_STRUCT(NAME, SIZE, LABELLEN, STRUCTNAME, ...)
  *
  *              struct config_STRUCTNAME value;
  *
- * Each STRUCT(foo, ...) and ARRAY_*(SIZE, foo, ...) schema declaration produces the following API
+ * Each STRUCT(NAME, ...) and ARRAY_*(NAME, ...) schema declaration produces the following API
  * functions:
  *
- *  - int dfl_config_foo(struct config_foo *dest);
+ *  - int dfl_config_NAME(struct config_NAME *dest);
  *
  *      A C function which sets the entire contents of the given C structure to its default values
  *      as defined in the schema.  This will only return CFOK or CFERROR; see below.
  *
- *  - int opt_config_foo(struct config_foo *dest, const struct cf_om_node *node);
+ *  - int opt_config_NAME(struct config_NAME *dest, const struct cf_om_node *node);
  *
  *      A C function which parses the given COM (configuration object model) and assigns the parsed
  *      result into the given C structure.  See below for the return value.  For arrays, this
  *      function is used to parse each individual array element, and the parsed result is only
  *      appended to the array if it returns CFOK.
  *
- * If a STRUCT(foo, validator) or ARRAY(foo, ..., validator) schema declaration is given a validator
+ * If a STRUCT(NAME, VALIDATOR) or ARRAY(NAME, ..., VALIDATOR) schema declaration is given a validator
  * function, then the function must have the following signature:
  *
- *  - int validator(struct config_foo *dest, int orig_result);
+ *  - int VALIDATOR(struct config_NAME *dest, int orig_result);
  *
  *      A C function which validates the contents of the given C structure (struct or array) as
- *      defined in the schema.  This function is invoked by the opt_config_foo() parser function
+ *      defined in the schema.  This function is invoked by the opt_config_NAME() parser function
  *      just before it returns, so all the parse functions have already been called and the result
  *      is assembled.  The validator function is passed a pointer to the (non-const) structure,
  *      which it may modify if desired, and the original CFxxx flags result code (not CFERROR) that
- *      would be returned by the opt_config_foo() parser function.  It returns a new CFxxx flags
+ *      would be returned by the opt_config_NAME() parser function.  It returns a new CFxxx flags
  *      result (which may simply be the same as was passed).
  *
  *      In the case arrays, validator() is passed a *dest containing elements that were successfully
@@ -109,7 +109,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *      (in which case the CFOVERFLOW flag is set).  It is up to validator() to decide whether to
  *      return some, all or none of these elements (ie, alter dest->ac and/or dest->av), and whether
  *      to set or clear the CFARRAYOVERFLOW bit, or set other bits (like CFINVALID for example).  If
- *      there is no validator function, then opt_config_foo() will return an empty array (dest->ac
+ *      there is no validator function, then opt_config_NAME() will return an empty array (dest->ac
  *      == 0) in the case of CFARRAYOVERFLOW.
  *
  * All parse functions assign the result of their parsing into the struct given in their 'dest'
@@ -125,11 +125,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *    or no elements present in the COM).
  *
  *  - CFUNSUPPORTED if the config item (array or struct) is not supported.  This flag is not
- *    produced by the normal opt_config_foo() parse functions, but a validation function could
- *    set it as a way of indicating, for example, that a given option is not yet implemented or
- *    has been deprecated.  In that case, the validation function should also log a message to that
- *    effect.  The CFUNSUPPORTED flag is mainly used in its CFSUB(CFUNSUPPORTED) form (see below)
- *    to indicate that the COM contains elements that are not defined in the STRUCT.
+ *    produced by the normal opt_config_NAME() parse functions, but a validation function could set
+ *    it to indicate that a given option is not yet implemented or has been deprecated.  In that
+ *    case, the validation function should also log a message to that effect.  The CFUNSUPPORTED
+ *    flag is mainly used in its CFSUB(CFUNSUPPORTED) form (see below) to indicate that the COM
+ *    contains elements that are not defined in the STRUCT.  This may indicate a typo in the name
+ *    of a config option, resulting in the intended option not being set.
  *
  *  - CFARRAYOVERFLOW if the size of any array was exceeded.  The result in *dest may be empty (in
  *    which case CFEMPTY is also set), or may contain elements parsed successfully from the COM (ie,
@@ -161,7 +162,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  * the whole struct or array itself may still be valid (in the case of a struct, the element's prior
  * value may be retained, and in the case of an array, the failed element is simply omitted from the
  * result).  A validator function may wish to reflect any CFSUB() bit as a CFINVALID result, but the
- * normal behaviour of opt_config_foo() is to not return CFINVALID unless the validator function
+ * normal behaviour of opt_config_NAME() is to not return CFINVALID unless the validator function
  * sets it.
  *
  * The special value CFOK is zero (no bits set); in this case a valid result is produced and all of
@@ -203,18 +204,18 @@ struct pattern_list {
         struct config_##__name __element;
 #define END_STRUCT \
     };
-#define __ARRAY(__name, __size, __decl) \
+#define __ARRAY(__name, __size, __lbllen, __decl) \
     struct config_##__name { \
         unsigned ac; \
-        struct { \
-            char label[41]; \
+        struct config_##__name##__element { \
+            char label[(__lbllen)+1]; \
             __decl; \
         } av[(__size)]; \
     };
-#define ARRAY_ATOM(__name, __size, __type, __lblparser, __eltparser, __validator...) __ARRAY(__name, __size, __type value)
-#define ARRAY_STRING(__name, __size, __strsize, __lblparser, __eltparser, __validator...) __ARRAY(__name, __size, char value[(__strsize) + 1])
-#define ARRAY_NODE(__name, __size, __type, __lblparser, __eltparser, __validator...) __ARRAY(__name, __size, __type value)
-#define ARRAY_STRUCT(__name, __size, __structname, __lblparser, __validator...) __ARRAY(__name, __size, struct config_##__structname value)
+#define ARRAY_ATOM(__name, __size, __lbllen, __type, __lblparser, __eltparser, __validator...) __ARRAY(__name, __size, __lbllen, __type value)
+#define ARRAY_STRING(__name, __size, __lbllen, __strsize, __lblparser, __eltparser, __validator...) __ARRAY(__name, __size, __lbllen, char value[(__strsize) + 1])
+#define ARRAY_NODE(__name, __size, __lbllen, __type, __lblparser, __eltparser, __validator...) __ARRAY(__name, __size, __lbllen, __type value)
+#define ARRAY_STRUCT(__name, __size, __lbllen, __structname, __lblparser, __validator...) __ARRAY(__name, __size, __lbllen, struct config_##__structname value)
 #include "config_schema.h"
 #undef STRUCT
 #undef NODE
@@ -268,10 +269,10 @@ strbuf strbuf_cf_flags(strbuf, int);
         a->ac = 0; \
         return CFOK; \
     }
-#define ARRAY_ATOM(__name, __size, __type, __lblparser, __eltparser, __validator...) __ARRAY(__name)
-#define ARRAY_STRING(__name, __size, __strsize, __lblparser, __eltparser, __validator...) __ARRAY(__name)
-#define ARRAY_NODE(__name, __size, __type, __lblparser, __eltparser, __validator...) __ARRAY(__name)
-#define ARRAY_STRUCT(__name, __size, __structname, __lblparser, __validator...) __ARRAY(__name)
+#define ARRAY_ATOM(__name, __size, __lbllen, __type, __lblparser, __eltparser, __validator...) __ARRAY(__name)
+#define ARRAY_STRING(__name, __size, __lbllen, __strsize, __lblparser, __eltparser, __validator...) __ARRAY(__name)
+#define ARRAY_NODE(__name, __size, __lbllen, __type, __lblparser, __eltparser, __validator...) __ARRAY(__name)
+#define ARRAY_STRUCT(__name, __size, __lbllen, __structname, __lblparser, __validator...) __ARRAY(__name)
 #include "config_schema.h"
 #undef STRUCT
 #undef NODE
@@ -322,16 +323,16 @@ struct cf_om_node {
     int opt_config_##__name(struct config_##__name *, const struct cf_om_node *); \
     int __lblparser(char *, size_t, const char *); \
     __VALIDATOR(__name, ##__validator)
-#define ARRAY_ATOM(__name, __size, __type, __lblparser, __eltparser, __validator...) \
+#define ARRAY_ATOM(__name, __size, __lbllen, __type, __lblparser, __eltparser, __validator...) \
     __ARRAY(__name, __lblparser, ##__validator) \
     int __eltparser(__type *, const struct cf_om_node *);
-#define ARRAY_STRING(__name, __size, __strsize, __lblparser, __eltparser, __validator...) \
+#define ARRAY_STRING(__name, __size, __lbllen, __strsize, __lblparser, __eltparser, __validator...) \
     __ARRAY(__name, __lblparser, ##__validator) \
     int __eltparser(char *, size_t, const char *);
-#define ARRAY_NODE(__name, __size, __type, __lblparser, __eltparser, __validator...) \
+#define ARRAY_NODE(__name, __size, __lbllen, __type, __lblparser, __eltparser, __validator...) \
     __ARRAY(__name, __lblparser, ##__validator) \
     int __eltparser(__type *, const struct cf_om_node *);
-#define ARRAY_STRUCT(__name, __size, __structname, __lblparser, __validator...) \
+#define ARRAY_STRUCT(__name, __size, __lbllen, __structname, __lblparser, __validator...) \
     __ARRAY(__name, __lblparser, ##__validator) \
     int opt_config_##__structname(struct config_##__structname *, const struct cf_om_node *);
 #include "config_schema.h"

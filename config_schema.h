@@ -50,7 +50,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *          STRING(80, element2, "boo!", opt_str_nonempty, MANDATORY, "A non-empty string")
  *      END_STRUCT
  *
- *      ARRAY_STRUCT(joy, 16, happy, opt_str,, "An array of integer-string pairs")
+ *      ARRAY_STRUCT(joy, 16, 3, happy, opt_str, opt_str,)
  *
  *      STRUCT(love)
  *          SUB_STRUCT(happy, thing,)
@@ -71,8 +71,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *      };
  *      struct config_joy {
  *          unsigned ac;
- *          struct {
- *              char label[N]; // please discover N using sizeof()
+ *          struct config_joy__element {
+ *              char label[4];
  *              struct config_happy value;
  *          } av[16];
  *      };
@@ -90,15 +90,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *      STRUCT(name[, validatorfunc])
  *          ATOM(type, element, default, parsefunc, flags, comment)
  *          NODE(type, element, default, parsefunc, flags, comment)
- *          STRING(strsize, element, default, parsefunc, flags, comment)
+ *          STRING(strlen, element, default, parsefunc, flags, comment)
  *          SUB_STRUCT(structname, element, flags)
  *          NODE_STRUCT(structname, element, parsefunc, flags)
  *      END_STRUCT
  *
- *      ARRAY_ATOM(name, size, type, labelparsefunc, valueparsefunc[, validatorfunc])
- *      ARRAY_STRING(name, size, strsize, labelparsefunc, valueparsefunc[, validatorfunc])
- *      ARRAY_NODE(name, size, type, labelparsefunc, valueparsefunc[, validatorfunc])
- *      ARRAY_STRUCT(name, size, structname, labelparsefunc[, validatorfunc])
+ *      ARRAY_ATOM(name, size, labellen, type, labelparsefunc, valueparsefunc[, validatorfunc])
+ *      ARRAY_STRING(name, size, labellen, strlen, labelparsefunc, valueparsefunc[, validatorfunc])
+ *      ARRAY_NODE(name, size, type, labellen, labelparsefunc, valueparsefunc[, validatorfunc])
+ *      ARRAY_STRUCT(name, size, labellen, structname, labelparsefunc[, validatorfunc])
  *
  * The meanings of the parameters are:
  *
@@ -106,10 +106,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *      A label used to qualify this struct/array's API from the API components of other structs and
  *      arrays.  This label does not appear anywhere in the config file itself; it is purely for
  *      internal code-related purposes.
- * 'strsize'
+ * 'strlen'
  *      For STRING elements and ARRAY_STRING arrays of strings, gives the maximum length of the
- *      string.  The struct is declared with an array of char[strsize+1] to leave room for a
+ *      string.  The struct is declared with an array of char[strlen+1] to leave room for a
  *      terminating nul.
+ * 'labellen'
+ *      For all ARRAYs, gives the maximum length of the label string.  The struct is declared with
+ *      an array of char[labellen+1] to leave room for a terminating nul.
  * 'size'
  *      For all ARRAYs, gives the maximum size of the array.
  * 'type'
@@ -177,7 +180,7 @@ STRING(256,                 socket,      DEFAULT_MONITOR_SOCKET_NAME, opt_str_no
 ATOM(int,                   uid,         -1, opt_int,, "Allowed UID for monitor socket client")
 END_STRUCT
 
-ARRAY_STRING(argv, 8, 128, opt_argv_label, opt_str, vld_argv)
+ARRAY_STRING(argv, 16, 3, 128, opt_argv_label, opt_str, vld_argv)
 
 STRUCT(executable)
 STRING(256,                 executable, "", opt_absolute_path, MANDATORY, "Absolute path of dna helper executable")
@@ -194,7 +197,7 @@ STRING(256,                 host,       "", opt_str_nonempty, MANDATORY, "Host n
 ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, opt_port,, "Port number")
 END_STRUCT
 
-ARRAY_NODE(peerlist, 10, struct config_rhizomepeer, opt_str, opt_rhizome_peer)
+ARRAY_NODE(peerlist, 10, 15, struct config_rhizomepeer, opt_str, opt_rhizome_peer)
 
 STRUCT(rhizomedirect)
 SUB_STRUCT(peerlist,        peer,)
@@ -218,7 +221,7 @@ ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, opt_port,, "Port numb
 ATOM(uint64_t,              speed,      1000000, opt_uint64_scaled,, "Speed in bits per second")
 END_STRUCT
 
-ARRAY_STRUCT(interface_list, 10, network_interface, opt_str)
+ARRAY_STRUCT(interface_list, 10, 15, network_interface, opt_str)
 
 STRUCT(main)
 NODE_STRUCT(interface_list, interfaces, opt_interface_list, MANDATORY)

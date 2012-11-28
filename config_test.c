@@ -377,6 +377,7 @@ void warn_unsupported_children(const struct cf_om_node *parent)
 
 void warn_list_overflow(const struct cf_om_node *node)
 {
+  warn_node(__FILE__, __LINE__, node, NULL, "list overflow");
   warn_children(__FILE__, __LINE__, node, "list overflow");
 }
 
@@ -645,17 +646,18 @@ int opt_argv_label(char *str, size_t len, const char *text)
   return CFOK;
 }
 
-int cmp_atoi(const char *a, const char *b)
+int cmp_argv(const struct config_argv__element *a, const struct config_argv__element *b)
 {
-  int ai = atoi(a);
-  int bi = atoi(b);
+  int ai = atoi(a->label);
+  int bi = atoi(b->label);
   return ai < bi ? -1 : ai > bi ? 1 : 0;
 }
 
 int vld_argv(const struct cf_om_node *parent, struct config_argv *array, int result)
 {
-  int i;
+  qsort(array->av, array->ac, sizeof array->av[0], (int (*)(const void *, const void *)) cmp_argv);
   int last_label = -1;
+  int i;
   for (i = 0; i < array->ac; ++i) {
     int label = atoi(array->av[i].label);
     assert(label >= 1);
@@ -1036,13 +1038,13 @@ bye:
 	result |= CFEMPTY; \
       return result; \
     }
-#define ARRAY_ATOM(__name, __size, __type, __lblparser, __eltparser, __validator...) \
+#define ARRAY_ATOM(__name, __size, __lbllen, __type, __lblparser, __eltparser, __validator...) \
     __ARRAY(__name, __lblparser, child->text ? __eltparser(&array->av[n].value, child->text) : CFEMPTY, ##__validator)
-#define ARRAY_STRING(__name, __size, __strsize, __lblparser, __eltparser, __validator...) \
+#define ARRAY_STRING(__name, __size, __lbllen, __strsize, __lblparser, __eltparser, __validator...) \
     __ARRAY(__name, __lblparser, child->text ? __eltparser(array->av[n].value, sizeof array->av[n].value, child->text) : CFEMPTY, ##__validator)
-#define ARRAY_NODE(__name, __size, __type, __lblparser, __eltparser, __validator...) \
+#define ARRAY_NODE(__name, __size, __lbllen, __type, __lblparser, __eltparser, __validator...) \
     __ARRAY(__name, __lblparser, __eltparser(&array->av[n].value, child), ##__validator)
-#define ARRAY_STRUCT(__name, __size, __structname, __lblparser, __validator...) \
+#define ARRAY_STRUCT(__name, __size, __lbllen, __structname, __lblparser, __validator...) \
     __ARRAY(__name, __lblparser, opt_config_##__structname(&array->av[n].value, child), ##__validator)
 
 #include "config_schema.h"
