@@ -50,7 +50,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *          STRING(80, element2, "boo!", opt_str_nonempty, MANDATORY, "A non-empty string")
  *      END_STRUCT
  *
- *      ARRAY_STRUCT(joy, 16, 3, happy, opt_str, opt_str,)
+ *      ARRAY(joy)
+ *          KEY_STRING(3, happy, opt_str)
+ *          VALUE_SUB_STRUCT(happy)
+ *      END_ARRAY(16)
  *
  *      STRUCT(love)
  *          SUB_STRUCT(happy, thing,)
@@ -72,7 +75,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *      struct config_joy {
  *          unsigned ac;
  *          struct config_joy__element {
- *              char label[4];
+ *              char key[4];
  *              struct config_happy value;
  *          } av[16];
  *      };
@@ -88,17 +91,36 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  * A schema definition is composed from the following STRUCT and ARRAY definitions:
  *
  *      STRUCT(name[, validatorfunc])
+ *          element-declaration
+ *          element-declaration
+ *          ...
+ *      END_STRUCT
+ *
+ *          where each element-declaration is one of:
+ *
  *          ATOM(type, element, default, parsefunc, flags, comment)
  *          NODE(type, element, default, parsefunc, flags, comment)
  *          STRING(strlen, element, default, parsefunc, flags, comment)
  *          SUB_STRUCT(structname, element, flags)
  *          NODE_STRUCT(structname, element, parsefunc, flags)
- *      END_STRUCT
  *
- *      ARRAY_ATOM(name, size, labellen, type, labelparsefunc, valueparsefunc[, validatorfunc])
- *      ARRAY_STRING(name, size, labellen, strlen, labelparsefunc, valueparsefunc[, validatorfunc])
- *      ARRAY_NODE(name, size, type, labellen, labelparsefunc, valueparsefunc[, validatorfunc])
- *      ARRAY_STRUCT(name, size, labellen, structname, labelparsefunc[, validatorfunc])
+ *      ARRAY(name[, validatorfunc])
+ *          key-declaration
+ *          value-declaration
+ *      END_ARRAY(size)
+ *  
+ *          where key-declaration is one of:
+ *
+ *          KEY_ATOM(type, parsefunc)
+ *          KEY_STRING(strlen, parsefunc)
+ *
+ *          and value-declaration is one of:
+ *
+ *          VALUE_ATOM(type, parsefunc)
+ *          VALUE_STRING(strlen, parsefunc)
+ *          VALUE_NODE(type, parsefunc)
+ *          VALUE_SUB_STRUCT(structname)
+ *          VALUE_NODE_STRUCT(structname, parsefunc)
  *
  * The meanings of the parameters are:
  *
@@ -107,20 +129,16 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *      arrays.  This label does not appear anywhere in the config file itself; it is purely for
  *      internal code-related purposes.
  * 'strlen'
- *      For STRING elements and ARRAY_STRING arrays of strings, gives the maximum length of the
- *      string.  The struct is declared with an array of char[strlen+1] to leave room for a
- *      terminating nul.
- * 'labellen'
- *      For all ARRAYs, gives the maximum length of the label string.  The struct is declared with
- *      an array of char[labellen+1] to leave room for a terminating nul.
+ *      For STRING, LABEL_STRING and VALUE_STRING, gives the maximum length of the string.  The
+ *      string is declared as an array of char[strlen+1] to leave room for a terminating nul.
  * 'size'
  *      For all ARRAYs, gives the maximum size of the array.
  * 'type'
- *      Only used for ATOM, NODE, ARRAY_ATOM and ARRAY_NODE declarations.  Gives the C type of the
- *      element.  For STRING and ARRAY_STRING, this is implicitly (const char *).
+ *      Used for ATOM, NODE, LABEL_ATOM, VALUE_ATOM and VALUE_NODE declarations.  Gives the C type
+ *      of the element.  For STRING, KEY_STRING and VALUE_STRING this is implicitly a char[].
  * 'structname'
- *      Only used for SUB_STRUCT, NODE_STRUCT and ARRAY_STRUCT declarations.  Identifies a sub-
- *      structure by 'name' to nest in the enclosing struct or array.
+ *      Only used for SUB_STRUCT, NODE_STRUCT, VALUE_SUB_STRUCT and VALUE_NODE_STRUCT declarations.
+ *      Identifies a sub- structure by 'name' to nest in the enclosing struct or array.
  * 'element'
  *      The name of the struct element and the key in the configuration file.  This name does appear
  *      in the config file and also in the API, so that an option mamed "some.thing.element1" in the
@@ -131,20 +149,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *      Only used for ATOM and NODE struct elements.  Gives the default value for the element if
  *      absent from the config file.
  * 'parsefunc'
- *      The function used to parse a VALUE from the config file for a STRUCT element.  The and ATOM
- *      and STRING parse functions take a string argument (const char *) which is the nul-terminated
- *      text of the VALUE (excluding the trailing \n or \r\n).  The NODE and NODE_STRUCT parse
- *      functions take a pointer to a COM node (const struct cf_om_node *), which is the tree of all
- *      lines starting with the same partial FULLKEY.
- * 'labelparsefunc'
- *      The function used to parse a KEY from the config file (the ) for each ARRAY element value.
- *      Takes a string argument (const char *).  Returns a CFxxx result code as documented in
- *      "config.h".
- * 'valueparsefunc'
- *      The function used to parse a VALUE from the config file for each ARRAY element value.  The
- *      ARRAY_ATOM and ARRAY_STRING parse functions take a string argument (const char *).  The
- *      ARRAY_NODE and ARRAY_STRUCT parse functions take a pointer to a COM node (const struct
- *      cf_om_node *).  Returns a CFxxx result code as documented in "config.h".
+ *      The function used to parse a VALUE from the config file for a STRUCT element, or a KEY or
+ *      VALUE for an array element.  Parse functions for ATOM, STRING, KEY_ATOM, KEY_STRING,
+ *      VALUE_ATOM and VALUE_STRING all take a string argument (const char *) which is a
+ *      nul-terminated text.  The parse functions for NODE, NODE_STRUCT, VALUE_NODE and
+ *      VALUE_NODE_STRUCT take a pointer to a COM node (const struct cf_om_node *), and are
+ *      responsible for parsing the node's text and all of its descendents (children).
  * 'validatorfunc'
  *      A function that is called after the struct/array is fully parsed and populated.  This
  *      function can perform validation checks on the whole struct/array that cannot be performed by
@@ -176,11 +186,28 @@ STRING(256,                 chdir,      "/", opt_absolute_path,, "Absolute path 
 END_STRUCT
 
 STRUCT(monitor)
-STRING(256,                 socket,      DEFAULT_MONITOR_SOCKET_NAME, opt_str_nonempty,, "Name of socket for monitor interface")
-ATOM(int,                   uid,         -1, opt_int,, "Allowed UID for monitor socket client")
+STRING(256,                 socket,     DEFAULT_MONITOR_SOCKET_NAME, opt_str_nonempty,, "Name of socket for monitor interface")
+ATOM(int,                   uid,        -1, opt_int,, "Allowed UID for monitor socket client")
 END_STRUCT
 
-ARRAY_STRING(argv, 16, 3, 128, opt_argv_label, opt_str, vld_argv)
+STRUCT(mdp_iftype)
+ATOM(uint32_t,              tick_ms,    0, opt_uint32_nonzero,, "Tick interval for this interface type")
+END_STRUCT
+
+ARRAY(mdp_iftypelist)
+KEY_ATOM(short, opt_interface_type)
+VALUE_SUB_STRUCT(mdp_iftype)
+END_ARRAY(5)
+
+STRUCT(mdp)
+ATOM(uint32_t,              ticks_per_full_address, 4, opt_uint32_nonzero,, "Ticks to elapse between announcing full SID")
+SUB_STRUCT(mdp_iftypelist,  iftype,)
+END_STRUCT
+
+ARRAY(argv, vld_argv)
+KEY_ATOM(unsigned short, opt_ushort_nonzero)
+VALUE_STRING(128, opt_str)
+END_ARRAY(16)
 
 STRUCT(executable)
 STRING(256,                 executable, "", opt_absolute_path, MANDATORY, "Absolute path of dna helper executable")
@@ -197,7 +224,10 @@ STRING(256,                 host,       "", opt_str_nonempty, MANDATORY, "Host n
 ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, opt_port,, "Port number")
 END_STRUCT
 
-ARRAY_NODE(peerlist, 10, 15, struct config_rhizomepeer, opt_str, opt_rhizome_peer)
+ARRAY(peerlist)
+KEY_STRING(15, opt_str)
+VALUE_NODE(struct config_rhizomepeer, opt_rhizome_peer)
+END_ARRAY(10)
 
 STRUCT(rhizomedirect)
 SUB_STRUCT(peerlist,        peer,)
@@ -219,7 +249,10 @@ ATOM(struct in_addr,        address,    (struct in_addr){0}, opt_in_addr, MANDAT
 ATOM(uint16_t,              port,       PORT_DNA, opt_port,, "Port number")
 END_STRUCT
 
-ARRAY_STRUCT(host_list, 32, SID_STRLEN, host, opt_str_hex_sid)
+ARRAY(host_list)
+KEY_ATOM(sid_t, opt_sid)
+VALUE_SUB_STRUCT(host)
+END_ARRAY(32)
 
 STRUCT(network_interface)
 ATOM(int,                   exclude,    0, opt_boolean,, "If true, do not use matching interfaces")
@@ -227,15 +260,20 @@ ATOM(struct pattern_list,   match,      PATTERN_LIST_EMPTY, opt_pattern_list, MA
 ATOM(short,                 type,       OVERLAY_INTERFACE_WIFI, opt_interface_type,, "Type of network interface")
 ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, opt_port,, "Port number for network interface")
 ATOM(uint64_t,              speed,      1000000, opt_uint64_scaled,, "Speed in bits per second")
+ATOM(uint32_t,              mdp_tick_ms, 0, opt_uint32_nonzero,, "Override MDP tick interval for this interface")
 END_STRUCT
 
-ARRAY_STRUCT(interface_list, 10, 15, network_interface, opt_str)
+ARRAY(interface_list)
+KEY_STRING(15, opt_str)
+VALUE_SUB_STRUCT(network_interface)
+END_ARRAY(10)
 
 STRUCT(main)
 NODE_STRUCT(interface_list, interfaces, opt_interface_list, MANDATORY)
 SUB_STRUCT(log,             log,)
 SUB_STRUCT(server,          server,)
 SUB_STRUCT(monitor,         monitor,)
+SUB_STRUCT(mdp,             mdp,)
 SUB_STRUCT(dna,             dna,)
 NODE(debugflags_t,          debug,      0, opt_debugflags, USES_CHILDREN, "Debug flags")
 SUB_STRUCT(rhizome,         rhizome,)

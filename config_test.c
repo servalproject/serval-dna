@@ -411,11 +411,11 @@ int opt_rhizome_peer(struct config_rhizomepeer *, const struct cf_om_node *node)
 int opt_str(char *str, size_t len, const char *text);
 int opt_str_nonempty(char *str, size_t len, const char *text);
 int opt_int(int *intp, const char *text);
+int opt_uint32_nonzero(uint32_t *intp, const char *text);
 int opt_uint64_scaled(uint64_t *intp, const char *text);
 int opt_protocol(char *str, size_t len, const char *text);
 int opt_in_addr(struct in_addr *addrp, const char *text);
 int opt_port(unsigned short *portp, const char *text);
-int opt_str_hex_sid(char *sidhexp, size_t len, const char *text);
 int opt_sid(sid_t *sidp, const char *text);
 int opt_interface_type(short *typep, const char *text);
 int opt_pattern_list(struct pattern_list *listp, const char *text);
@@ -431,20 +431,15 @@ int opt_boolean(int *booleanp, const char *text)
     *booleanp = 0;
     return CFOK;
   }
-  //invalid_text(node, "expecting true|yes|on|1|false|no|off|0");
   return CFINVALID;
 }
 
 int opt_absolute_path(char *str, size_t len, const char *text)
 {
-  if (text[0] != '/') {
-    //invalid_text(node, "must start with '/'");
+  if (text[0] != '/')
     return CFINVALID;
-  }
-  if (strlen(text) >= len) {
-    //invalid_text(node, "string overflow");
+  if (strlen(text) >= len)
     return CFSTRINGOVERFLOW;
-  }
   strncpy(str, text, len);
   assert(str[len - 1] == '\0');
   return CFOK;
@@ -537,14 +532,10 @@ int opt_debugflags(debugflags_t *flagsp, const struct cf_om_node *node)
 
 int opt_protocol(char *str, size_t len, const char *text)
 {
-  if (!str_is_uri_scheme(text)) {
-    //invalid_text(node, "contains invalid character");
+  if (!str_is_uri_scheme(text))
     return CFINVALID;
-  }
-  if (strlen(text) >= len) {
-    //invalid_text(node, "string overflow");
+  if (strlen(text) >= len)
     return CFSTRINGOVERFLOW;
-  }
   strncpy(str, text, len);
   assert(str[len - 1] == '\0');
   return CFOK;
@@ -564,7 +555,7 @@ int opt_rhizome_peer(struct config_rhizomepeer *rpeer, const struct cf_om_node *
 	  && str_uri_hierarchical(node->text, &hier, NULL)
 	  && str_uri_hierarchical_authority(hier, &auth, NULL))
     )
-      goto invalid;
+      return CFINVALID;
   } else {
     auth = node->text;
     protocol = "http";
@@ -574,23 +565,16 @@ int opt_rhizome_peer(struct config_rhizomepeer *rpeer, const struct cf_om_node *
   size_t hostlen;
   unsigned short port = 4110;
   if (!str_uri_authority_hostname(auth, &host, &hostlen))
-    goto invalid;
+    return CFINVALID;
   str_uri_authority_port(auth, &port);
-  if (protolen >= sizeof rpeer->protocol) {
-    //invalid_text(node, "protocol string overflow");
+  if (protolen >= sizeof rpeer->protocol)
     return CFSTRINGOVERFLOW;
-  }
-  if (hostlen >= sizeof rpeer->host) {
-    //invalid_text(node, "hostname string overflow");
+  if (hostlen >= sizeof rpeer->host)
     return CFSTRINGOVERFLOW;
-  }
   strncpy(rpeer->protocol, protocol, protolen)[protolen] = '\0';
   strncpy(rpeer->host, host, hostlen)[hostlen] = '\0';
   rpeer->port = port;
   return CFOK;
-invalid:
-  //invalid_text(node, "malformed URL");
-  return CFINVALID;
 }
 
 int opt_str(char *str, size_t len, const char *text)
@@ -604,10 +588,8 @@ int opt_str(char *str, size_t len, const char *text)
 
 int opt_str_nonempty(char *str, size_t len, const char *text)
 {
-  if (!text[0]) {
-    //invalid_text(node, "empty string");
+  if (!text[0])
     return CFINVALID;
-  }
   return opt_str(str, len, text);
 }
 
@@ -621,56 +603,55 @@ int opt_int(int *intp, const char *text)
   return CFOK;
 }
 
+int opt_uint32_nonzero(uint32_t *intp, const char *text)
+{
+  const char *end = text;
+  long value = strtoul(text, (char**)&end, 10);
+  if (end == text || *end || value < 1 || value > 0xffffffffL)
+    return CFINVALID;
+  *intp = value;
+  return CFOK;
+}
+
 int opt_uint64_scaled(uint64_t *intp, const char *text)
 {
   uint64_t result;
   const char *end;
-  if (!str_to_uint64_scaled(text, 10, &result, &end) || *end) {
-    //invalid_text(node, "invalid scaled unsigned integer");
+  if (!str_to_uint64_scaled(text, 10, &result, &end) || *end)
     return CFINVALID;
-  }
   *intp = result;
   return CFOK;
 }
 
-int opt_argv_label(char *labelp, size_t len, const char *text)
+int opt_ushort_nonzero(unsigned short *ushortp, const char *text)
 {
-  const char *s = text;
-  if (isdigit(*s) && *s != '0') {
-    ++s;
-    while (isdigit(*s))
-      ++s;
-  }
-  if (s == text || *s)
+  uint32_t ui;
+  if (opt_uint32_nonzero(&ui, text) != CFOK || ui > 0xffff)
     return CFINVALID;
-  if (s - text >= len)
-    return CFSTRINGOVERFLOW;
-  strncpy(labelp, text, len - 1)[len - 1] = '\0';
+  *ushortp = ui;
   return CFOK;
 }
 
 int cmp_argv(const struct config_argv__element *a, const struct config_argv__element *b)
 {
-  int ai = atoi(a->label);
-  int bi = atoi(b->label);
-  return ai < bi ? -1 : ai > bi ? 1 : 0;
+  return a->key < b->key ? -1 : a->key > b->key ? 1 : 0;
 }
 
 int vld_argv(const struct cf_om_node *parent, struct config_argv *array, int result)
 {
   qsort(array->av, array->ac, sizeof array->av[0], (int (*)(const void *, const void *)) cmp_argv);
-  int last_label = -1;
+  unsigned short last_key = 0;
   int i;
   for (i = 0; i < array->ac; ++i) {
-    int label = atoi(array->av[i].label);
-    assert(label >= 1);
-    while (last_label != -1 && ++last_label < label && last_label <= sizeof(array->av)) {
+    unsigned short key = array->av[i].key;
+    assert(key >= 1);
+    while (last_key != -1 && ++last_key < key && last_key <= sizeof(array->av)) {
       char labelkey[12];
-      sprintf(labelkey, "%u", last_label);
+      sprintf(labelkey, "%u", last_key);
       warn_missing_node(parent, labelkey);
       result |= CFINCOMPLETE;
     }
-    last_label = label;
+    last_key = key;
   }
   return result;
 }
@@ -694,31 +675,17 @@ int opt_port(unsigned short *portp, const char *text)
       if (port / 10 != oport)
 	break;
   }
-  if (*p || port == 0) {
-    //invalid_text(node, "invalid port number");
+  if (*p || port == 0)
     return CFINVALID;
-  }
   *portp = port;
-  return CFOK;
-}
-
-int opt_str_hex_sid(char *sidhexp, size_t len, const char *text)
-{
-  if (!str_is_subscriber_id(text))
-    return CFINVALID;
-  if (len <= SID_STRLEN)
-    return CFSTRINGOVERFLOW;
-  strncpy(sidhexp, text, SID_STRLEN)[SID_STRLEN] = '\0';
   return CFOK;
 }
 
 int opt_sid(sid_t *sidp, const char *text)
 {
   sid_t sid;
-  if (!str_is_subscriber_id(text)) {
-    //invalid_text(node, "invalid subscriber ID");
+  if (!str_is_subscriber_id(text))
     return CFINVALID;
-  }
   size_t n = fromhex(sidp->binary, text, SID_SIZE);
   assert(n == SID_SIZE);
   return CFOK;
@@ -742,7 +709,6 @@ int opt_interface_type(short *typep, const char *text)
     *typep = OVERLAY_INTERFACE_UNKNOWN;
     return CFOK;
   }
-  //invalid_text(node, "invalid network interface type");
   return CFINVALID;
 }
 
@@ -756,10 +722,8 @@ int opt_pattern_list(struct pattern_list *listp, const char *text)
     if (!*p || isspace(*p) || *p == ',') {
       if (word) {
 	size_t len = p - word;
-	if (list.patc >= NELS(list.patv) || len >= sizeof(list.patv[list.patc])) {
-	  //invalid_text(node, "string overflow");
+	if (list.patc >= NELS(list.patv) || len >= sizeof(list.patv[list.patc]))
 	  return CFARRAYOVERFLOW;
-	}
 	strncpy(list.patv[list.patc++], word, len)[len] = '\0';
 	word = NULL;
       }
@@ -912,8 +876,8 @@ int opt_interface_list(struct config_interface_list *listp, const struct cf_om_n
 	  switch (ret) {
 	  case CFERROR: return CFERROR;
 	  case CFOK:
-	    len = snprintf(listp->av[n].label, sizeof listp->av[n].label - 1, "%u", n);
-	    listp->av[n].label[len] = '\0';
+	    len = snprintf(listp->av[n].key, sizeof listp->av[n].key - 1, "%u", n);
+	    listp->av[n].key[len] = '\0';
 	    ++n;
 	    break;
 	  default:
@@ -1015,22 +979,25 @@ bye:
       return result; \
     }
 
-#define __ARRAY(__name, __lblparser, __parseexpr, __validator...) \
+#define ARRAY(__name, __validator...) \
     int opt_config_##__name(struct config_##__name *array, const struct cf_om_node *node) { \
       int (*validator)(const struct cf_om_node *, struct config_##__name *, int) = (NULL, ##__validator); \
       int result = CFOK; \
       int i, n; \
       for (n = 0, i = 0; i < node->nodc && n < NELS(array->av); ++i) { \
 	const struct cf_om_node *child = node->nodv[i]; \
-	int ret = __lblparser(array->av[n].label, sizeof array->av[n].label, child->key); \
+	int ret = CFEMPTY;
+#define __ARRAY_KEY(__parseexpr) \
+	ret = (__parseexpr); \
 	if (ret == CFERROR) \
 	  return CFERROR; \
 	result |= ret & CF__SUBFLAGS; \
 	ret &= CF__FLAGS; \
 	result |= CFSUB(ret); \
 	if (ret != CFOK) \
-	  warn_array_label(child, ret); \
-	else { \
+	  warn_array_label(child, ret);
+#define __ARRAY_VALUE(__parseexpr) \
+	if (ret == CFOK) { \
 	  ret = (__parseexpr); \
 	  if (ret == CFERROR) \
 	    return CFERROR; \
@@ -1041,7 +1008,8 @@ bye:
 	    ++n; \
 	  else \
 	    warn_array_value(child, ret); \
-	} \
+	}
+#define END_ARRAY(__size) \
       } \
       if (i < node->nodc) { \
 	assert(n == NELS(array->av)); \
@@ -1060,14 +1028,13 @@ bye:
 	result |= CFEMPTY; \
       return result; \
     }
-#define ARRAY_ATOM(__name, __size, __lbllen, __type, __lblparser, __eltparser, __validator...) \
-    __ARRAY(__name, __lblparser, child->text ? __eltparser(&array->av[n].value, child->text) : CFEMPTY, ##__validator)
-#define ARRAY_STRING(__name, __size, __lbllen, __strsize, __lblparser, __eltparser, __validator...) \
-    __ARRAY(__name, __lblparser, child->text ? __eltparser(array->av[n].value, sizeof array->av[n].value, child->text) : CFEMPTY, ##__validator)
-#define ARRAY_NODE(__name, __size, __lbllen, __type, __lblparser, __eltparser, __validator...) \
-    __ARRAY(__name, __lblparser, __eltparser(&array->av[n].value, child), ##__validator)
-#define ARRAY_STRUCT(__name, __size, __lbllen, __structname, __lblparser, __validator...) \
-    __ARRAY(__name, __lblparser, opt_config_##__structname(&array->av[n].value, child), ##__validator)
+#define KEY_ATOM(__type, __eltparser) __ARRAY_KEY(__eltparser(&array->av[n].key, child->key))
+#define KEY_STRING(__strsize, __eltparser) __ARRAY_KEY(__eltparser(array->av[n].key, sizeof array->av[n].key, child->key))
+#define VALUE_ATOM(__type, __eltparser) __ARRAY_VALUE(child->text ? __eltparser(&array->av[n].value, child->text) : CFEMPTY)
+#define VALUE_STRING(__strsize, __eltparser) __ARRAY_VALUE(child->text ? __eltparser(array->av[n].value, sizeof array->av[n].value, child->text) : CFEMPTY)
+#define VALUE_NODE(__type, __eltparser) __ARRAY_VALUE(__eltparser(&array->av[n].value, child))
+#define VALUE_SUB_STRUCT(__structname) __ARRAY_VALUE(opt_config_##__structname(&array->av[n].value, child))
+#define VALUE_NODE_STRUCT(__structname, __eltparser) __ARRAY_VALUE(__eltparser(&array->av[n].value, child))
 
 #include "config_schema.h"
 
@@ -1078,12 +1045,15 @@ bye:
 #undef SUB_STRUCT
 #undef NODE_STRUCT
 #undef END_STRUCT
-#undef __ARRAY
-
-#undef ARRAY_ATOM
-#undef ARRAY_STRING
-#undef ARRAY_NODE
-#undef ARRAY_STRUCT
+#undef ARRAY
+#undef KEY_ATOM
+#undef KEY_STRING
+#undef VALUE_ATOM
+#undef VALUE_STRING
+#undef VALUE_NODE
+#undef VALUE_SUB_STRUCT
+#undef VALUE_NODE_STRUCT
+#undef END_ARRAY
 
 int main(int argc, char **argv)
 {
@@ -1122,17 +1092,21 @@ int main(int argc, char **argv)
     DEBUGF("config.debug = %llx", (unsigned long long) config.debug);
     DEBUGF("config.directory.service = %s", alloca_tohex(config.directory.service.binary, SID_SIZE));
     int j;
+    for (j = 0; j < config.mdp.iftype.ac; ++j) {
+      DEBUGF("config.mdp.iftype.%u", config.mdp.iftype.av[j].key);
+      DEBUGF("   .tick_ms = %u", config.mdp.iftype.av[j].value.tick_ms);
+    }
     for (j = 0; j < config.dna.helper.argv.ac; ++j) {
-      DEBUGF("config.dna.helper.argv.%s=%s", config.dna.helper.argv.av[j].label, config.dna.helper.argv.av[j].value);
+      DEBUGF("config.dna.helper.argv.%u=%s", config.dna.helper.argv.av[j].key, config.dna.helper.argv.av[j].value);
     }
     for (j = 0; j < config.rhizome.direct.peer.ac; ++j) {
-      DEBUGF("config.rhizome.direct.peer.%s", config.rhizome.direct.peer.av[j].label);
+      DEBUGF("config.rhizome.direct.peer.%s", config.rhizome.direct.peer.av[j].key);
       DEBUGF("   .protocol = %s", alloca_str(config.rhizome.direct.peer.av[j].value.protocol));
       DEBUGF("   .host = %s", alloca_str(config.rhizome.direct.peer.av[j].value.host));
       DEBUGF("   .port = %u", config.rhizome.direct.peer.av[j].value.port);
     }
     for (j = 0; j < config.interfaces.ac; ++j) {
-      DEBUGF("config.interfaces.%s", config.interfaces.av[j].label);
+      DEBUGF("config.interfaces.%s", config.interfaces.av[j].key);
       DEBUGF("   .exclude = %d", config.interfaces.av[j].value.exclude);
       DEBUGF("   .match = [");
       int k;
@@ -1144,7 +1118,9 @@ int main(int argc, char **argv)
       DEBUGF("   .speed = %llu", (unsigned long long) config.interfaces.av[j].value.speed);
     }
     for (j = 0; j < config.hosts.ac; ++j) {
-      DEBUGF("config.hosts.%s", config.hosts.av[j].label);
+      char sidhex[SID_STRLEN + 1];
+      tohex(sidhex, config.hosts.av[j].key.binary, SID_SIZE);
+      DEBUGF("config.hosts.%s", sidhex);
       DEBUGF("   .interface = %s", alloca_str(config.hosts.av[j].value.interface));
       DEBUGF("   .address = %s", inet_ntoa(config.hosts.av[j].value.address));
       DEBUGF("   .port = %u", config.hosts.av[j].value.port);

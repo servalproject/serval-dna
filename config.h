@@ -23,7 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 /* This file defines the internal API to the configuration file.  See "config_schema.h" for the
  * definition of the configuration schema, which is used to generate these API components.
  *
- * Each STRUCT(NAME, ...) schema declaration produces the following data declaration:
+ * Each STRUCT(NAME, ...) schema declaration generates the following data declaration:
  *
  *      struct config_NAME {
  *          ...
@@ -47,35 +47,43 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *      
  *          struct config_NAME bar;
  *
- * Each ARRAY_*(NAME, SIZE, LABELLEN, TYPE, ...) schema declaration produces the following data
+ * Each ARRAY(NAME, ...) ... END_ARRAY(SIZE) schema declaration produces the following data
  * declaration:
  *
  *      struct config_NAME {
  *          unsigned ac;
  *          struct config_NAME__element {
- *              char label[LABELLEN+1];
- *              TYPE value;
+ *              KEY-DECLARATION;
+ *              VALUE-DECLARATION;
  *          } av[SIZE];
  *      };
  *
- *      A C struct definition containing a count 'ac' of the number of array elements [0..SIZE-1]
- *      and 'av' an array of element values, each one consisting of a label and the value itself,
- *      whose TYPE depends on the ARRAY_* declaration itself:
+ *      A C struct definition containing a count 'ac' of the number of array elements 0..SIZE-1,
+ *      and 'av' an array of element values, each one consisting of a key and a value:
+ *
+ *      KEY_ATOM(TYPE, ...)
+ *
+ *              TYPE key;
  *      
- *      ARRAY_ATOM(NAME, SIZE, LABELLEN, TYPE, ...)
- *      ARRAY_NODE(NAME, SIZE, LABELLEN, TYPE, ...)
+ *      KEY_STRING(SIZE, ...)
+ *
+ *              char key[SIZE+1];
+ *      
+ *      VALUE_ATOM(NAME, SIZE, LABELLEN, TYPE, ...)
+ *      VALUE_NODE(NAME, SIZE, LABELLEN, TYPE, ...)
  *
  *              TYPE value;
  *
- *      ARRAY_STRING(NAME, SIZE, LABELLEN, STRINGSIZE, ...)
+ *      VALUE_STRING(STRINGSIZE, ...)
  *
- *              char value[STRINGSIZE];
+ *              char value[STRINGSIZE+1];
  *
- *      ARRAY_STRUCT(NAME, SIZE, LABELLEN, STRUCTNAME, ...)
+ *      VALUE_SUB_STRUCT(STRUCTNAME)
+ *      VALUE_NODE_STRUCT(STRUCTNAME, ...)
  *
  *              struct config_STRUCTNAME value;
  *
- * Each STRUCT(NAME, ...) and ARRAY_*(NAME, ...) schema declaration produces the following API
+ * Each STRUCT(NAME, ...) and ARRAY(NAME, ...) schema declaration generates the following API
  * functions:
  *
  *  - int dfl_config_NAME(struct config_NAME *dest);
@@ -90,8 +98,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *      function is used to parse each individual array element, and the parsed result is only
  *      appended to the array if it returns CFOK.
  *
- * If a STRUCT(NAME, VALIDATOR) or ARRAY(NAME, ..., VALIDATOR) schema declaration is given a validator
- * function, then the function must have the following signature:
+ * If a STRUCT(NAME, VALIDATOR) or ARRAY(NAME, VALIDATOR) schema declaration is given a
+ * validator function, then the function must have the following signature:
  *
  *  - int VALIDATOR(struct config_NAME *dest, int orig_result);
  *
@@ -206,18 +214,27 @@ struct pattern_list {
         struct config_##__name __element;
 #define END_STRUCT \
     };
-#define __ARRAY(__name, __size, __lbllen, __decl) \
+#define ARRAY(__name, __validator...) \
     struct config_##__name { \
         unsigned ac; \
-        struct config_##__name##__element { \
-            char label[(__lbllen)+1]; \
-            __decl; \
+        struct config_##__name##__element {
+#define KEY_ATOM(__type, __eltparser) \
+            __type key;
+#define KEY_STRING(__strsize, __eltparser) \
+            char key[(__strsize) + 1];
+#define VALUE_ATOM(__type, __eltparser) \
+            __type value;
+#define VALUE_STRING(__strsize, __eltparser) \
+            char value[(__strsize) + 1];
+#define VALUE_NODE(__type, __eltparser) \
+            __type value;
+#define VALUE_SUB_STRUCT(__structname) \
+            struct config_##__structname value;
+#define VALUE_NODE_STRUCT(__structname, __eltparser) \
+            struct config_##__structname value;
+#define END_ARRAY(__size) \
         } av[(__size)]; \
     };
-#define ARRAY_ATOM(__name, __size, __lbllen, __type, __lblparser, __eltparser, __validator...) __ARRAY(__name, __size, __lbllen, __type value)
-#define ARRAY_STRING(__name, __size, __lbllen, __strsize, __lblparser, __eltparser, __validator...) __ARRAY(__name, __size, __lbllen, char value[(__strsize) + 1])
-#define ARRAY_NODE(__name, __size, __lbllen, __type, __lblparser, __eltparser, __validator...) __ARRAY(__name, __size, __lbllen, __type value)
-#define ARRAY_STRUCT(__name, __size, __lbllen, __structname, __lblparser, __validator...) __ARRAY(__name, __size, __lbllen, struct config_##__structname value)
 #include "config_schema.h"
 #undef STRUCT
 #undef NODE
@@ -226,11 +243,15 @@ struct pattern_list {
 #undef SUB_STRUCT
 #undef NODE_STRUCT
 #undef END_STRUCT
-#undef __ARRAY
-#undef ARRAY_ATOM
-#undef ARRAY_STRING
-#undef ARRAY_NODE
-#undef ARRAY_STRUCT
+#undef ARRAY
+#undef KEY_ATOM
+#undef KEY_STRING
+#undef VALUE_ATOM
+#undef VALUE_STRING
+#undef VALUE_NODE
+#undef VALUE_SUB_STRUCT
+#undef VALUE_NODE_STRUCT
+#undef END_ARRAY
 
 /* Return bit flags for schema default dfl_ and parsing opt_ functions. */
 
@@ -266,15 +287,19 @@ strbuf strbuf_cf_flags(strbuf, int);
 #define END_STRUCT \
         return CFOK; \
     }
-#define __ARRAY(__name) \
+#define ARRAY(__name, __validator...) \
     int dfl_config_##__name(struct config_##__name *a) { \
         a->ac = 0; \
         return CFOK; \
     }
-#define ARRAY_ATOM(__name, __size, __lbllen, __type, __lblparser, __eltparser, __validator...) __ARRAY(__name)
-#define ARRAY_STRING(__name, __size, __lbllen, __strsize, __lblparser, __eltparser, __validator...) __ARRAY(__name)
-#define ARRAY_NODE(__name, __size, __lbllen, __type, __lblparser, __eltparser, __validator...) __ARRAY(__name)
-#define ARRAY_STRUCT(__name, __size, __lbllen, __structname, __lblparser, __validator...) __ARRAY(__name)
+#define KEY_ATOM(__type, __eltparser)
+#define KEY_STRING(__strsize, __eltparser)
+#define VALUE_ATOM(__type, __eltparser)
+#define VALUE_STRING(__strsize, __eltparser)
+#define VALUE_NODE(__type, __eltparser)
+#define VALUE_SUB_STRUCT(__structname)
+#define VALUE_NODE_STRUCT(__structname, __eltparser)
+#define END_ARRAY(__size)
 #include "config_schema.h"
 #undef STRUCT
 #undef NODE
@@ -283,11 +308,15 @@ strbuf strbuf_cf_flags(strbuf, int);
 #undef SUB_STRUCT
 #undef NODE_STRUCT
 #undef END_STRUCT
-#undef __ARRAY
-#undef ARRAY_ATOM
-#undef ARRAY_STRING
-#undef ARRAY_NODE
-#undef ARRAY_STRUCT
+#undef ARRAY
+#undef KEY_ATOM
+#undef KEY_STRING
+#undef VALUE_ATOM
+#undef VALUE_STRING
+#undef VALUE_NODE
+#undef VALUE_SUB_STRUCT
+#undef VALUE_NODE_STRUCT
+#undef END_ARRAY
 
 /* The Configuration Object Model (COM).  The config file is parsed into a tree of these structures
  * first, then those structures are passed as arguments to the schema parsing functions.
@@ -321,22 +350,24 @@ struct cf_om_node {
 #define NODE_STRUCT(__name, __element, __parser, __flags) \
     int __parser(struct config_##__name *, const struct cf_om_node *);
 #define END_STRUCT
-#define __ARRAY(__name, __lblparser, __validator...) \
+#define ARRAY(__name, __validator...) \
     int opt_config_##__name(struct config_##__name *, const struct cf_om_node *); \
-    int __lblparser(char *, size_t, const char *); \
     __VALIDATOR(__name, ##__validator)
-#define ARRAY_ATOM(__name, __size, __lbllen, __type, __lblparser, __eltparser, __validator...) \
-    __ARRAY(__name, __lblparser, ##__validator) \
-    int __eltparser(__type *, const struct cf_om_node *);
-#define ARRAY_STRING(__name, __size, __lbllen, __strsize, __lblparser, __eltparser, __validator...) \
-    __ARRAY(__name, __lblparser, ##__validator) \
+#define KEY_ATOM(__type, __eltparser) \
+    int __eltparser(__type *, const char *);
+#define KEY_STRING(__strsize, __eltparser) \
     int __eltparser(char *, size_t, const char *);
-#define ARRAY_NODE(__name, __size, __lbllen, __type, __lblparser, __eltparser, __validator...) \
-    __ARRAY(__name, __lblparser, ##__validator) \
+#define VALUE_ATOM(__type, __eltparser) \
+    int __eltparser(__type *, const char *);
+#define VALUE_STRING(__strsize, __eltparser) \
+    int __eltparser(char *, size_t, const char *);
+#define VALUE_NODE(__type, __eltparser) \
     int __eltparser(__type *, const struct cf_om_node *);
-#define ARRAY_STRUCT(__name, __size, __lbllen, __structname, __lblparser, __validator...) \
-    __ARRAY(__name, __lblparser, ##__validator) \
+#define VALUE_SUB_STRUCT(__structname) \
     int opt_config_##__structname(struct config_##__structname *, const struct cf_om_node *);
+#define VALUE_NODE_STRUCT(__structname, __eltparser) \
+    int __eltparser(struct config_##__structname *, const struct cf_om_node *);
+#define END_ARRAY(__size)
 #include "config_schema.h"
 #undef STRUCT
 #undef NODE
@@ -345,10 +376,14 @@ struct cf_om_node {
 #undef SUB_STRUCT
 #undef NODE_STRUCT
 #undef END_STRUCT
-#undef __ARRAY
-#undef ARRAY_ATOM
-#undef ARRAY_STRING
-#undef ARRAY_NODE
-#undef ARRAY_STRUCT
+#undef ARRAY
+#undef KEY_ATOM
+#undef KEY_STRING
+#undef VALUE_ATOM
+#undef VALUE_STRING
+#undef VALUE_NODE
+#undef VALUE_SUB_STRUCT
+#undef VALUE_NODE_STRUCT
+#undef END_ARRAY
 
 #endif //__SERVALDNA_CONFIG_H
