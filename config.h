@@ -187,9 +187,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define NELS(a) (sizeof (a) / sizeof *(a))
 
-typedef unsigned long debugflags_t;
-debugflags_t debugFlagMask(const char *flagname);
-
 #define RHIZOME_BUNDLE_KEY_BYTES        32
 
 #define PORT_DNA 4110
@@ -248,20 +245,35 @@ strbuf strbuf_cf_flag_reason(strbuf sb, int flags);
 
 /* Diagnostic functions for use in config schema parsing functions, cf_opt_xxx(). */
 
-void cf_warn_nodev(const char *file, unsigned line, const struct cf_om_node *node, const char *key, const char *fmt, va_list ap);
-void cf_warn_childrenv(const char *file, unsigned line, const struct cf_om_node *parent, const char *fmt, va_list ap);
-void cf_warn_node(const char *file, unsigned line, const struct cf_om_node *node, const char *key, const char *fmt, ...);
-void cf_warn_children(const char *file, unsigned line, const struct cf_om_node *node, const char *fmt, ...);
-void cf_warn_duplicate_node(const struct cf_om_node *parent, const char *key);
-void cf_warn_missing_node(const struct cf_om_node *parent, const char *key);
-void cf_warn_node_value(const struct cf_om_node *node, int reason);
-void cf_warn_no_array(const struct cf_om_node *node, int reason);
-void cf_warn_unsupported_node(const struct cf_om_node *node);
-void cf_warn_unsupported_children(const struct cf_om_node *parent);
-void cf_warn_list_overflow(const struct cf_om_node *node);
-void cf_warn_spurious_children(const struct cf_om_node *parent);
-void cf_warn_array_key(const struct cf_om_node *node, int reason);
-void cf_warn_array_value(const struct cf_om_node *node, int reason);
+void _cf_warn_nodev(struct __sourceloc __whence, const struct cf_om_node *node, const char *key, const char *fmt, va_list ap);
+void _cf_warn_childrenv(struct __sourceloc __whence, const struct cf_om_node *parent, const char *fmt, va_list ap);
+void _cf_warn_node(struct __sourceloc __whence, const struct cf_om_node *node, const char *key, const char *fmt, ...);
+void _cf_warn_children(struct __sourceloc __whence, const struct cf_om_node *node, const char *fmt, ...);
+void _cf_warn_duplicate_node(struct __sourceloc __whence, const struct cf_om_node *parent, const char *key);
+void _cf_warn_missing_node(struct __sourceloc __whence, const struct cf_om_node *parent, const char *key);
+void _cf_warn_node_value(struct __sourceloc __whence, const struct cf_om_node *node, int reason);
+void _cf_warn_no_array(struct __sourceloc __whence, const struct cf_om_node *node, int reason);
+void _cf_warn_unsupported_node(struct __sourceloc __whence, const struct cf_om_node *node);
+void _cf_warn_unsupported_children(struct __sourceloc __whence, const struct cf_om_node *parent);
+void _cf_warn_list_overflow(struct __sourceloc __whence, const struct cf_om_node *node);
+void _cf_warn_spurious_children(struct __sourceloc __whence, const struct cf_om_node *parent);
+void _cf_warn_array_key(struct __sourceloc __whence, const struct cf_om_node *node, int reason);
+void _cf_warn_array_value(struct __sourceloc __whence, const struct cf_om_node *node, int reason);
+
+#define cf_warn_nodev(node, key, fmt, ap)    _cf_warn_nodev(__WHENCE__, node, key, fmt, ap)
+#define cf_warn_childrenv(parent, fmt, ap)   _cf_warn_childrenv(__WHENCE__, parent, fmt, ap)
+#define cf_warn_node(node, key, fmt, ...)    _cf_warn_node(__WHENCE__, node, key, fmt, ##__VA_ARGS__)
+#define cf_warn_children(node, fmt, ...)     _cf_warn_children(__WHENCE__, node, fmt, ##__VA_ARGS__)
+#define cf_warn_duplicate_node(parent, key)  _cf_warn_duplicate_node(__WHENCE__, parent, key)
+#define cf_warn_missing_node(parent, key)    _cf_warn_missing_node(__WHENCE__, parent, key)
+#define cf_warn_node_value(node, reason)     _cf_warn_node_value(__WHENCE__, node, reason)
+#define cf_warn_no_array(node, reason)	     _cf_warn_no_array(__WHENCE__, node, reason)
+#define cf_warn_unsupported_node(node)	     _cf_warn_unsupported_node(__WHENCE__, node)
+#define cf_warn_unsupported_children(parent) _cf_warn_unsupported_children(__WHENCE__, parent)
+#define cf_warn_list_overflow(node)	     _cf_warn_list_overflow(__WHENCE__, node)
+#define cf_warn_spurious_children(parent)    _cf_warn_spurious_children(__WHENCE__, parent)
+#define cf_warn_array_key(node, reason)	     _cf_warn_array_key(__WHENCE__, node, reason)
+#define cf_warn_array_value(node, reason)    _cf_warn_array_value(__WHENCE__, node, reason)
 
 // Generate config struct definitions, struct config_NAME.
 #define STRUCT(__name, __validator...) \

@@ -29,16 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
-
-#define _DEBUGF(F,...) fprintf(stderr, "DEBUG: " F "\n", ##__VA_ARGS__)
-#define _WARNF(F,...) fprintf(stderr, "WARN:  " F "\n", ##__VA_ARGS__)
-#define _WHYF(F,...) fprintf(stderr, "ERROR: " F "\n", ##__VA_ARGS__)
-#define _WHYF_perror(F,...) fprintf(stderr, "ERROR: " F ": %s [errno=%d]\n", ##__VA_ARGS__, strerror(errno), errno)
-#define DEBUGF(F,...) _DEBUGF("%s:%u  " F, __FILE__, __LINE__, ##__VA_ARGS__)
-#define WARNF(F,...) _WARNF("%s:%u  " F, __FILE__, __LINE__, ##__VA_ARGS__)
-#define WHYF(F,...) _WHYF("%s:%u  " F, __FILE__, __LINE__, ##__VA_ARGS__)
-#define WHYF_perror(F,...) _WHYF_perror("%s:%u  " F, __FILE__, __LINE__, ##__VA_ARGS__)
-
+#include "log.h"
 #include "config.h"
 
 void *emalloc(size_t len)
@@ -241,7 +232,7 @@ void cf_dump_node(const struct cf_om_node *node, int indent)
   }
 }
 
-void cf_warn_nodev(const char *file, unsigned line, const struct cf_om_node *node, const char *key, const char *fmt, va_list ap)
+void _cf_warn_nodev(struct __sourceloc __whence, const struct cf_om_node *node, const char *key, const char *fmt, va_list ap)
 {
   strbuf b = strbuf_alloca(1024);
   if (node) {
@@ -256,61 +247,61 @@ void cf_warn_nodev(const char *file, unsigned line, const struct cf_om_node *nod
     strbuf_puts(b, "\" ");
   }
   strbuf_vsprintf(b, fmt, ap);
-  _WARNF("%s:%u  %s", file, line, strbuf_str(b));
+  WARN(strbuf_str(b));
 }
 
-void cf_warn_childrenv(const char *file, unsigned line, const struct cf_om_node *parent, const char *fmt, va_list ap)
+void _cf_warn_childrenv(struct __sourceloc __whence, const struct cf_om_node *parent, const char *fmt, va_list ap)
 {
   int i;
   for (i = 0; i < parent->nodc; ++i) {
-    cf_warn_nodev(file, line, parent->nodv[i], NULL, fmt, ap);
-    cf_warn_childrenv(file, line, parent->nodv[i], fmt, ap);
+    _cf_warn_nodev(__whence, parent->nodv[i], NULL, fmt, ap);
+    _cf_warn_childrenv(__whence, parent->nodv[i], fmt, ap);
   }
 }
 
-void cf_warn_node(const char *file, unsigned line, const struct cf_om_node *node, const char *key, const char *fmt, ...)
+void _cf_warn_node(struct __sourceloc __whence, const struct cf_om_node *node, const char *key, const char *fmt, ...)
 {
   va_list ap;
   va_start(ap, fmt);
-  cf_warn_nodev(file, line, node, key, fmt, ap);
+  _cf_warn_nodev(__whence, node, key, fmt, ap);
   va_end(ap);
 }
 
-void cf_warn_children(const char *file, unsigned line, const struct cf_om_node *node, const char *fmt, ...)
+void _cf_warn_children(struct __sourceloc __whence, const struct cf_om_node *node, const char *fmt, ...)
 {
   va_list ap;
   va_start(ap, fmt);
-  cf_warn_childrenv(file, line, node, fmt, ap);
+  _cf_warn_childrenv(__whence, node, fmt, ap);
   va_end(ap);
 }
 
-void cf_warn_duplicate_node(const struct cf_om_node *parent, const char *key)
+void _cf_warn_duplicate_node(struct __sourceloc __whence, const struct cf_om_node *parent, const char *key)
 {
-  cf_warn_node(__FILE__, __LINE__, parent, key, "is duplicate");
+  _cf_warn_node(__whence, parent, key, "is duplicate");
 }
 
-void cf_warn_missing_node(const struct cf_om_node *parent, const char *key)
+void _cf_warn_missing_node(struct __sourceloc __whence, const struct cf_om_node *parent, const char *key)
 {
-  cf_warn_node(__FILE__, __LINE__, parent, key, "is missing");
+  _cf_warn_node(__whence, parent, key, "is missing");
 }
 
-void cf_warn_spurious_children(const struct cf_om_node *parent)
+void _cf_warn_spurious_children(struct __sourceloc __whence, const struct cf_om_node *parent)
 {
-  cf_warn_children(__FILE__, __LINE__, parent, "spurious");
+  _cf_warn_children(__whence, parent, "spurious");
 }
 
-void cf_warn_unsupported_node(const struct cf_om_node *node)
+void _cf_warn_unsupported_node(struct __sourceloc __whence, const struct cf_om_node *node)
 {
-  cf_warn_node(__FILE__, __LINE__, node, NULL, "not supported");
+  _cf_warn_node(__whence, node, NULL, "not supported");
 }
 
-void cf_warn_unsupported_children(const struct cf_om_node *parent)
+void _cf_warn_unsupported_children(struct __sourceloc __whence, const struct cf_om_node *parent)
 {
   int i;
   for (i = 0; i < parent->nodc; ++i) {
     if (parent->nodv[i]->text)
-      cf_warn_unsupported_node(parent->nodv[i]);
-    cf_warn_unsupported_children(parent->nodv[i]);
+      _cf_warn_unsupported_node(__whence, parent->nodv[i]);
+    _cf_warn_unsupported_children(__whence, parent->nodv[i]);
   }
 }
 
@@ -389,39 +380,39 @@ strbuf strbuf_cf_flag_reason(strbuf sb, int flags)
   return sb;
 }
 
-void cf_warn_node_value(const struct cf_om_node *node, int reason)
+void _cf_warn_node_value(struct __sourceloc __whence, const struct cf_om_node *node, int reason)
 {
   strbuf b = strbuf_alloca(180);
   strbuf_cf_flag_reason(b, reason);
-  cf_warn_node(__FILE__, __LINE__, node, NULL, "value %s %s", alloca_str_toprint(node->text), strbuf_str(b));
+  _cf_warn_node(__whence, node, NULL, "value %s %s", alloca_str_toprint(node->text), strbuf_str(b));
 }
 
-void cf_warn_no_array(const struct cf_om_node *node, int reason)
+void _cf_warn_no_array(struct __sourceloc __whence, const struct cf_om_node *node, int reason)
 {
   strbuf b = strbuf_alloca(180);
   strbuf_cf_flag_reason(b, reason);
-  cf_warn_node(__FILE__, __LINE__, node, NULL, "array discarded -- %s", strbuf_str(b));
+  _cf_warn_node(__whence, node, NULL, "array discarded -- %s", strbuf_str(b));
 }
 
-void cf_warn_array_key(const struct cf_om_node *node, int reason)
+void _cf_warn_array_key(struct __sourceloc __whence, const struct cf_om_node *node, int reason)
 {
   strbuf b = strbuf_alloca(180);
   strbuf_cf_flag_reason(b, reason);
-  cf_warn_node(__FILE__, __LINE__, node, NULL, "array label %s -- %s", alloca_str_toprint(node->key), strbuf_str(b));
+  _cf_warn_node(__whence, node, NULL, "array label %s -- %s", alloca_str_toprint(node->key), strbuf_str(b));
 }
 
-void cf_warn_array_value(const struct cf_om_node *node, int reason)
+void _cf_warn_array_value(struct __sourceloc __whence, const struct cf_om_node *node, int reason)
 {
   strbuf b = strbuf_alloca(180);
   strbuf_cf_flag_reason(b, reason);
   if (node->text)
-    cf_warn_node(__FILE__, __LINE__, node, NULL, "array value %s -- %s", alloca_str_toprint(node->text), strbuf_str(b));
+    _cf_warn_node(__whence, node, NULL, "array value %s -- %s", alloca_str_toprint(node->text), strbuf_str(b));
   else
-    cf_warn_node(__FILE__, __LINE__, node, NULL, "array element -- %s", strbuf_str(b));
+    _cf_warn_node(__whence, node, NULL, "array element -- %s", strbuf_str(b));
 }
 
-void cf_warn_list_overflow(const struct cf_om_node *node)
+void _cf_warn_list_overflow(struct __sourceloc __whence, const struct cf_om_node *node)
 {
-  cf_warn_node(__FILE__, __LINE__, node, NULL, "list overflow");
-  cf_warn_children(__FILE__, __LINE__, node, "list overflow");
+  _cf_warn_node(__whence, node, NULL, "list overflow");
+  _cf_warn_children(__whence, node, "list overflow");
 }

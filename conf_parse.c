@@ -18,6 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include <assert.h>
+#include "log.h"
 #include "config.h"
 
 // Generate config set-default function definitions, cf_dfl_config_NAME().

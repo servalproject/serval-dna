@@ -25,19 +25,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <assert.h>
 #include <arpa/inet.h>
 
+#include "log.h"
 #include "str.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
-
-#define _DEBUGF(F,...) fprintf(stderr, "DEBUG: " F "\n", ##__VA_ARGS__)
-#define _WARNF(F,...) fprintf(stderr, "WARN:  " F "\n", ##__VA_ARGS__)
-#define _WHYF(F,...) fprintf(stderr, "ERROR: " F "\n", ##__VA_ARGS__)
-#define _WHYF_perror(F,...) fprintf(stderr, "ERROR: " F ": %s [errno=%d]\n", ##__VA_ARGS__, strerror(errno), errno)
-#define DEBUGF(F,...) _DEBUGF("%s:%u  " F, __FILE__, __LINE__, ##__VA_ARGS__)
-#define WARNF(F,...) _WARNF("%s:%u  " F, __FILE__, __LINE__, ##__VA_ARGS__)
-#define WHYF(F,...) _WHYF("%s:%u  " F, __FILE__, __LINE__, ##__VA_ARGS__)
-#define WHYF_perror(F,...) _WHYF_perror("%s:%u  " F, __FILE__, __LINE__, ##__VA_ARGS__)
-
 #include "config.h"
 
 int cf_opt_boolean(int *booleanp, const char *text)
@@ -241,7 +232,7 @@ int vld_argv(const struct cf_om_node *parent, struct config_argv *array, int res
     for (i = 1; i < array->ac; ++i) {
       unsigned short key = array->av[i].key;
       if (last_key > key) {
-	cf_warn_node(__FILE__, __LINE__, parent, NULL, "array is not sorted");
+	cf_warn_node(parent, NULL, "array is not sorted");
 	return CFERROR;
       }
       last_key = key;
@@ -503,7 +494,7 @@ int cf_opt_interface_list(struct config_interface_list *listp, const struct cf_o
 	    ++n;
 	    break;
 	  default:
-	    cf_warn_node(__FILE__, __LINE__, node, NULL, "invalid interface rule %s", alloca_str_toprint(buf)); \
+	    cf_warn_node(node, NULL, "invalid interface rule %s", alloca_str_toprint(buf)); \
 	    result |= CFSUB(ret);
 	    break;
 	  }

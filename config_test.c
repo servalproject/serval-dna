@@ -1,20 +1,12 @@
 #include <stdlib.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 
 #include "str.h"
-
-#define _DEBUGF(F,...) fprintf(stderr, "DEBUG: " F "\n", ##__VA_ARGS__)
-#define _WARNF(F,...) fprintf(stderr, "WARN:  " F "\n", ##__VA_ARGS__)
-#define _WHYF(F,...) fprintf(stderr, "ERROR: " F "\n", ##__VA_ARGS__)
-#define _WHYF_perror(F,...) fprintf(stderr, "ERROR: " F ": %s [errno=%d]\n", ##__VA_ARGS__, strerror(errno), errno)
-#define DEBUGF(F,...) _DEBUGF("%s:%u  " F, __FILE__, __LINE__, ##__VA_ARGS__)
-#define WARNF(F,...) _WARNF("%s:%u  " F, __FILE__, __LINE__, ##__VA_ARGS__)
-#define WHYF(F,...) _WHYF("%s:%u  " F, __FILE__, __LINE__, ##__VA_ARGS__)
-#define WHYF_perror(F,...) _WHYF_perror("%s:%u  " F, __FILE__, __LINE__, ##__VA_ARGS__)
-
+#include "log.h"
 #include "config.h"
 
 int main(int argc, char **argv)
@@ -90,6 +82,50 @@ int main(int argc, char **argv)
     }
   }
   exit(0);
+}
+
+const struct __sourceloc __whence = __NOWHERE__;
+
+static const char *_trimbuildpath(const char *path)
+{
+  /* Remove common path prefix */
+  int lastsep = 0;
+  int i;
+  for (i = 0; __FILE__[i] && path[i]; ++i) {
+    if (i && path[i - 1] == '/')
+      lastsep = i;
+    if (__FILE__[i] != path[i])
+      break;
+  }
+  return &path[lastsep];
+}
+
+void logMessage(int level, struct __sourceloc whence, const char *fmt, ...)
+{
+  const char *levelstr = "UNKWN:";
+  switch (level) {
+    case LOG_LEVEL_FATAL: levelstr = "FATAL:"; break;
+    case LOG_LEVEL_ERROR: levelstr = "ERROR:"; break;
+    case LOG_LEVEL_INFO:  levelstr = "INFO:"; break;
+    case LOG_LEVEL_WARN:  levelstr = "WARN:"; break;
+    case LOG_LEVEL_DEBUG: levelstr = "DEBUG:"; break;
+  }
+  fprintf(stderr, "%s ", levelstr);
+  if (whence.file) {
+    fprintf(stderr, "%s", _trimbuildpath(whence.file));
+    if (whence.line)
+      fprintf(stderr, ":%u", whence.line);
+    if (whence.function)
+      fprintf(stderr, ":%s()", whence.function);
+    fputc(' ', stderr);
+  } else if (whence.function) {
+    fprintf(stderr, "%s() ", whence.function);
+  }
+  va_list ap;
+  va_start(ap, fmt);
+  vfprintf(stderr, fmt, ap);
+  va_end(ap);
+  fputc('\n', stderr);
 }
 
 debugflags_t debugFlagMask(const char *flagname)
