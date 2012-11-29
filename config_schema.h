@@ -111,8 +111,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *  
  *          where key-declaration is one of:
  *
- *          KEY_ATOM(type, parsefunc)
- *          KEY_STRING(strlen, parsefunc)
+ *          KEY_ATOM(type, parsefunc[, comparefunc])
+ *          KEY_STRING(strlen, parsefunc[, comparefunc])
  *
  *          and value-declaration is one of:
  *
@@ -155,6 +155,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *      nul-terminated text.  The parse functions for NODE, NODE_STRUCT, VALUE_NODE and
  *      VALUE_NODE_STRUCT take a pointer to a COM node (const struct cf_om_node *), and are
  *      responsible for parsing the node's text and all of its descendents (children).
+ * 'comparefunc'
+ *      A function used to sort an array after all elements have been parsed, and before being
+ *      validated (see below).
  * 'validatorfunc'
  *      A function that is called after the struct/array is fully parsed and populated.  This
  *      function can perform validation checks on the whole struct/array that cannot be performed by
@@ -195,7 +198,7 @@ ATOM(uint32_t,              tick_ms,    0, opt_uint32_nonzero,, "Tick interval f
 END_STRUCT
 
 ARRAY(mdp_iftypelist)
-KEY_ATOM(short, opt_interface_type)
+KEY_ATOM(short, opt_interface_type, cmp_short)
 VALUE_SUB_STRUCT(mdp_iftype)
 END_ARRAY(5)
 
@@ -205,7 +208,7 @@ SUB_STRUCT(mdp_iftypelist,  iftype,)
 END_STRUCT
 
 ARRAY(argv, vld_argv)
-KEY_ATOM(unsigned short, opt_ushort_nonzero)
+KEY_ATOM(unsigned short, opt_ushort_nonzero, cmp_ushort)
 VALUE_STRING(128, opt_str)
 END_ARRAY(16)
 
@@ -250,7 +253,7 @@ ATOM(uint16_t,              port,       PORT_DNA, opt_port,, "Port number")
 END_STRUCT
 
 ARRAY(host_list)
-KEY_ATOM(sid_t, opt_sid)
+KEY_ATOM(sid_t, opt_sid, cmp_sid)
 VALUE_SUB_STRUCT(host)
 END_ARRAY(32)
 

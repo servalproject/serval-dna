@@ -199,7 +199,7 @@ struct pattern_list {
 };
 #define PATTERN_LIST_EMPTY ((struct pattern_list){.patc = 0})
 
-// Generate value structs, struct config_SECTION.
+// Generate value structs, struct config_NAME.
 #define STRUCT(__name, __validator...) \
     struct config_##__name {
 #define NODE(__type, __element, __default, __parser, __flags, __comment) \
@@ -218,9 +218,9 @@ struct pattern_list {
     struct config_##__name { \
         unsigned ac; \
         struct config_##__name##__element {
-#define KEY_ATOM(__type, __eltparser) \
+#define KEY_ATOM(__type, __eltparser, __cmpfunc...) \
             __type key;
-#define KEY_STRING(__strsize, __eltparser) \
+#define KEY_STRING(__strsize, __eltparser, __cmpfunc...) \
             char key[(__strsize) + 1];
 #define VALUE_ATOM(__type, __eltparser) \
             __type value;
@@ -270,7 +270,7 @@ struct pattern_list {
 
 strbuf strbuf_cf_flags(strbuf, int);
 
-// Generate default functions, dfl_config_SECTION().
+// Generate default functions, dfl_config_NAME().
 
 #define STRUCT(__name, __validator...) \
     int dfl_config_##__name(struct config_##__name *s) {
@@ -292,8 +292,8 @@ strbuf strbuf_cf_flags(strbuf, int);
         a->ac = 0; \
         return CFOK; \
     }
-#define KEY_ATOM(__type, __eltparser)
-#define KEY_STRING(__strsize, __eltparser)
+#define KEY_ATOM(__type, __eltparser, __cmpfunc...)
+#define KEY_STRING(__strsize, __eltparser, __cmpfunc...)
 #define VALUE_ATOM(__type, __eltparser)
 #define VALUE_STRING(__strsize, __eltparser)
 #define VALUE_NODE(__type, __eltparser)
@@ -353,9 +353,9 @@ struct cf_om_node {
 #define ARRAY(__name, __validator...) \
     int opt_config_##__name(struct config_##__name *, const struct cf_om_node *); \
     __VALIDATOR(__name, ##__validator)
-#define KEY_ATOM(__type, __eltparser) \
+#define KEY_ATOM(__type, __eltparser, __cmpfunc...) \
     int __eltparser(__type *, const char *);
-#define KEY_STRING(__strsize, __eltparser) \
+#define KEY_STRING(__strsize, __eltparser, __cmpfunc...) \
     int __eltparser(char *, size_t, const char *);
 #define VALUE_ATOM(__type, __eltparser) \
     int __eltparser(__type *, const char *);
@@ -368,6 +368,55 @@ struct cf_om_node {
 #define VALUE_NODE_STRUCT(__structname, __eltparser) \
     int __eltparser(struct config_##__structname *, const struct cf_om_node *);
 #define END_ARRAY(__size)
+#include "config_schema.h"
+#undef __VALIDATOR
+#undef STRUCT
+#undef NODE
+#undef ATOM
+#undef STRING
+#undef SUB_STRUCT
+#undef NODE_STRUCT
+#undef END_STRUCT
+#undef ARRAY
+#undef KEY_ATOM
+#undef KEY_STRING
+#undef VALUE_ATOM
+#undef VALUE_STRING
+#undef VALUE_NODE
+#undef VALUE_SUB_STRUCT
+#undef VALUE_NODE_STRUCT
+#undef END_ARRAY
+
+// Generate array key comparison function prototypes.
+#define STRUCT(__name, __validator...)
+#define NODE(__type, __element, __default, __parser, __flags, __comment)
+#define ATOM(__type, __element, __default, __parser, __flags, __comment)
+#define STRING(__size, __element, __default, __parser, __flags, __comment)
+#define SUB_STRUCT(__name, __element, __flags)
+#define NODE_STRUCT(__name, __element, __parser, __flags)
+#define END_STRUCT
+#define ARRAY(__name, __validator...) \
+    typedef int __compare_func__config_##__name##__t
+#define KEY_ATOM(__type, __eltparser, __cmpfunc...) \
+        (const __type *, const __type *);
+#define KEY_STRING(__strsize, __eltparser, __cmpfunc...) \
+        (const char *, const char *);
+#define VALUE_ATOM(__type, __eltparser)
+#define VALUE_STRING(__strsize, __eltparser)
+#define VALUE_NODE(__type, __eltparser)
+#define VALUE_SUB_STRUCT(__structname)
+#define VALUE_NODE_STRUCT(__structname, __eltparser)
+#define END_ARRAY(__size)
+#include "config_schema.h"
+#undef ARRAY
+#undef KEY_ATOM
+#undef KEY_STRING
+#define ARRAY(__name, __validator...) \
+    __compare_func__config_##__name##__t __dummy__compare_func__config_##__name
+#define KEY_ATOM(__type, __eltparser, __cmpfunc...) \
+        ,##__cmpfunc;
+#define KEY_STRING(__strsize, __eltparser, __cmpfunc...) \
+        ,##__cmpfunc;
 #include "config_schema.h"
 #undef STRUCT
 #undef NODE

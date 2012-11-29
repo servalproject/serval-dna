@@ -267,6 +267,11 @@ void warn_children(const char *file, unsigned line, const struct cf_om_node *nod
   va_end(ap);
 }
 
+void warn_duplicate_node(const struct cf_om_node *parent, const char *key)
+{
+  warn_node(__FILE__, __LINE__, parent, key, "is duplicate");
+}
+
 void warn_missing_node(const struct cf_om_node *parent, const char *key)
 {
   warn_node(__FILE__, __LINE__, parent, key, "is missing");
@@ -632,20 +637,47 @@ int opt_ushort_nonzero(unsigned short *ushortp, const char *text)
   return CFOK;
 }
 
-int cmp_argv(const struct config_argv__element *a, const struct config_argv__element *b)
+int cmp_short(const short *a, const short *b)
 {
-  return a->key < b->key ? -1 : a->key > b->key ? 1 : 0;
+  return *a < *b ? -1 : *a > *b ? 1 : 0;
+}
+
+int cmp_ushort(const unsigned short *a, const unsigned short *b)
+{
+  return *a < *b ? -1 : *a > *b ? 1 : 0;
+}
+
+int cmp_sid(const sid_t *a, const sid_t *b)
+{
+  return memcmp(a->binary, b->binary, sizeof a->binary);
 }
 
 int vld_argv(const struct cf_om_node *parent, struct config_argv *array, int result)
 {
-  qsort(array->av, array->ac, sizeof array->av[0], (int (*)(const void *, const void *)) cmp_argv);
   unsigned short last_key = 0;
   int i;
+  if (array->ac) {
+    unsigned short last_key = array->av[0].key;
+    for (i = 1; i < array->ac; ++i) {
+      unsigned short key = array->av[i].key;
+      if (last_key > key) {
+	warn_node(__FILE__, __LINE__, parent, NULL, "array is not sorted");
+	return CFERROR;
+      }
+      last_key = key;
+    }
+  }
   for (i = 0; i < array->ac; ++i) {
     unsigned short key = array->av[i].key;
     assert(key >= 1);
-    while (last_key != -1 && ++last_key < key && last_key <= sizeof(array->av)) {
+    assert(key >= last_key);
+    if (last_key == key) {
+      char labelkey[12];
+      sprintf(labelkey, "%u", last_key);
+      warn_duplicate_node(parent, labelkey);
+      result |= CFINVALID;
+    }
+    while (++last_key < key && last_key <= sizeof(array->av)) {
       char labelkey[12];
       sprintf(labelkey, "%u", last_key);
       warn_missing_node(parent, labelkey);
@@ -907,6 +939,48 @@ bye:
   return result;
 }
 
+// Generate array element comparison functions.
+#define STRUCT(__name, __validator...)
+#define NODE(__type, __element, __default, __parser, __flags, __comment)
+#define ATOM(__type, __element, __default, __parser, __flags, __comment)
+#define STRING(__size, __element, __default, __parser, __flags, __comment)
+#define SUB_STRUCT(__name, __element, __flags)
+#define NODE_STRUCT(__name, __element, __parser, __flags)
+#define END_STRUCT
+#define ARRAY(__name, __validator...) \
+    static int __cmp_config_##__name(const struct config_##__name##__element *a, const struct config_##__name##__element *b) { \
+      __compare_func__config_##__name##__t *cmp = (NULL
+#define KEY_ATOM(__type, __eltparser, __cmpfunc...) \
+	,##__cmpfunc); \
+      return cmp ? (*cmp)(&a->key, &b->key) : 0;
+#define KEY_STRING(__strsize, __eltparser, __cmpfunc...) \
+	,##__cmpfunc); \
+      return cmp ? (*cmp)(a->key, b->key) : 0;
+#define VALUE_ATOM(__type, __eltparser)
+#define VALUE_STRING(__strsize, __eltparser)
+#define VALUE_NODE(__type, __eltparser)
+#define VALUE_SUB_STRUCT(__structname)
+#define VALUE_NODE_STRUCT(__structname, __eltparser)
+#define END_ARRAY(__size) \
+    }
+#include "config_schema.h"
+#undef STRUCT
+#undef NODE
+#undef ATOM
+#undef STRING
+#undef SUB_STRUCT
+#undef NODE_STRUCT
+#undef END_STRUCT
+#undef ARRAY
+#undef KEY_ATOM
+#undef KEY_STRING
+#undef VALUE_ATOM
+#undef VALUE_STRING
+#undef VALUE_NODE
+#undef VALUE_SUB_STRUCT
+#undef VALUE_NODE_STRUCT
+#undef END_ARRAY
+
 // Schema item flags.
 #define __MANDATORY     (1<<0)
 #define __TEXT		(1<<1)
@@ -981,6 +1055,8 @@ bye:
 
 #define ARRAY(__name, __validator...) \
     int opt_config_##__name(struct config_##__name *array, const struct cf_om_node *node) { \
+      __compare_func__config_##__name##__t *cmp = NULL; \
+      int (*eltcmp)(const struct config_##__name##__element *, const struct config_##__name##__element *) = __cmp_config_##__name; \
       int (*validator)(const struct cf_om_node *, struct config_##__name *, int) = (NULL, ##__validator); \
       int result = CFOK; \
       int i, n; \
@@ -1018,6 +1094,8 @@ bye:
 	  warn_list_overflow(node->nodv[i]); \
       } \
       array->ac = n; \
+      if (cmp) \
+	qsort(array->av, array->ac, sizeof array->av[0], (int (*)(const void *, const void *)) eltcmp); \
       if (validator) \
 	result = (*validator)(node, array, result); \
       if (result & ~CFEMPTY) { \
@@ -1028,13 +1106,22 @@ bye:
 	result |= CFEMPTY; \
       return result; \
     }
-#define KEY_ATOM(__type, __eltparser) __ARRAY_KEY(__eltparser(&array->av[n].key, child->key))
-#define KEY_STRING(__strsize, __eltparser) __ARRAY_KEY(__eltparser(array->av[n].key, sizeof array->av[n].key, child->key))
-#define VALUE_ATOM(__type, __eltparser) __ARRAY_VALUE(child->text ? __eltparser(&array->av[n].value, child->text) : CFEMPTY)
-#define VALUE_STRING(__strsize, __eltparser) __ARRAY_VALUE(child->text ? __eltparser(array->av[n].value, sizeof array->av[n].value, child->text) : CFEMPTY)
-#define VALUE_NODE(__type, __eltparser) __ARRAY_VALUE(__eltparser(&array->av[n].value, child))
-#define VALUE_SUB_STRUCT(__structname) __ARRAY_VALUE(opt_config_##__structname(&array->av[n].value, child))
-#define VALUE_NODE_STRUCT(__structname, __eltparser) __ARRAY_VALUE(__eltparser(&array->av[n].value, child))
+#define KEY_ATOM(__type, __eltparser, __cmpfunc...) \
+      __ARRAY_KEY(__eltparser(&array->av[n].key, child->key)) \
+      cmp = (NULL, ##__cmpfunc);
+#define KEY_STRING(__strsize, __eltparser, __cmpfunc...) \
+      __ARRAY_KEY(__eltparser(array->av[n].key, sizeof array->av[n].key, child->key)) \
+      cmp = (NULL, ##__cmpfunc);
+#define VALUE_ATOM(__type, __eltparser) \
+      __ARRAY_VALUE(child->text ? __eltparser(&array->av[n].value, child->text) : CFEMPTY)
+#define VALUE_STRING(__strsize, __eltparser) \
+      __ARRAY_VALUE(child->text ? __eltparser(array->av[n].value, sizeof array->av[n].value, child->text) : CFEMPTY)
+#define VALUE_NODE(__type, __eltparser) \
+      __ARRAY_VALUE(__eltparser(&array->av[n].value, child))
+#define VALUE_SUB_STRUCT(__structname) \
+      __ARRAY_VALUE(opt_config_##__structname(&array->av[n].value, child))
+#define VALUE_NODE_STRUCT(__structname, __eltparser) \
+      __ARRAY_VALUE(__eltparser(&array->av[n].value, child))
 
 #include "config_schema.h"
 
