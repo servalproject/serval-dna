@@ -26,36 +26,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdarg.h>
 #include <assert.h>
 
+#include "mem.h"
 #include "str.h"
 #include "strbuf.h"
-#include "strbuf_helpers.h"
 #include "log.h"
 #include "config.h"
-
-void *emalloc(size_t len)
-{
-  char *new = malloc(len + 1);
-  if (!new) {
-    WHYF_perror("malloc(%lu)", (long)len);
-    return NULL;
-  }
-  return new;
-}
-
-char *strn_emalloc(const char *str, size_t len)
-{
-  char *new = emalloc(len + 1);
-  if (new) {
-    strncpy(new, str, len);
-    new[len] = '\0';
-  }
-  return new;
-}
-
-char *str_emalloc(const char *str)
-{
-  return strn_emalloc(str, strlen(str));
-}
 
 static const char *cf_find_keyend(const char *const key, const char *const fullkeyend)
 {
@@ -111,7 +86,7 @@ static int cf_om_make_child(struct cf_om_node **const parentp, const char *const
   for (j = (*parentp)->nodc - 1; j > i; --j)
     (*parentp)->nodv[j] = (*parentp)->nodv[j-1];
   (*parentp)->nodv[i] = child;
-  if (!(child->fullkey = strn_emalloc(fullkey, keyend - fullkey))) {
+  if (!(child->fullkey = strn_edup(fullkey, keyend - fullkey))) {
     free(child);
     return -1;
   }
@@ -203,7 +178,7 @@ struct cf_om_node *cf_parse_to_om(const char *source, const char *buf, size_t le
       continue;
     }
     ++p;
-    if (!(node->text = strn_emalloc(p, lend - p)))
+    if (!(node->text = strn_edup(p, lend - p)))
       break; // out of memory
     node->source = source;
     node->line_number = lineno;
