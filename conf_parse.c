@@ -49,7 +49,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define VALUE_SUB_STRUCT(__structname)
 #define VALUE_NODE_STRUCT(__structname, __eltparser)
 #define END_ARRAY(__size)
-#include "config_schema.h"
+#include "conf_schema.h"
 #undef STRUCT
 #undef NODE
 #undef ATOM
@@ -91,7 +91,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define VALUE_NODE_STRUCT(__structname, __eltparser)
 #define END_ARRAY(__size) \
     }
-#include "config_schema.h"
+#include "conf_schema.h"
 #undef STRUCT
 #undef NODE
 #undef ATOM
@@ -251,7 +251,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define VALUE_NODE_STRUCT(__structname, __eltparser) \
       __ARRAY_VALUE(__eltparser(&array->av[n].value, child))
 
-#include "config_schema.h"
+#include "conf_schema.h"
 
 #undef STRUCT
 #undef NODE

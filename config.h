@@ -20,7 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVALDNA_CONFIG_H
 #define __SERVALDNA_CONFIG_H
 
-/* This file defines the internal API to the configuration file.  See "config_schema.h" for the
+/* This file defines the internal API to the configuration file.  See "conf_schema.h" for the
  * definition of the configuration schema, which is used to generate these API components.
  *
  * Each STRUCT(NAME, ...) schema declaration generates the following data declaration:
@@ -299,7 +299,7 @@ void cf_warn_array_value(const struct cf_om_node *node, int reason);
 #define END_ARRAY(__size) \
         } av[(__size)]; \
     };
-#include "config_schema.h"
+#include "conf_schema.h"
 #undef STRUCT
 #undef NODE
 #undef ATOM
@@ -336,7 +336,7 @@ void cf_warn_array_value(const struct cf_om_node *node, int reason);
 #define VALUE_SUB_STRUCT(__structname)
 #define VALUE_NODE_STRUCT(__structname, __eltparser)
 #define END_ARRAY(__size)
-#include "config_schema.h"
+#include "conf_schema.h"
 #undef STRUCT
 #undef NODE
 #undef ATOM
@@ -390,7 +390,7 @@ void cf_warn_array_value(const struct cf_om_node *node, int reason);
 #define VALUE_NODE_STRUCT(__structname, __eltparser) \
     int __eltparser(struct config_##__structname *, const struct cf_om_node *);
 #define END_ARRAY(__size)
-#include "config_schema.h"
+#include "conf_schema.h"
 #undef __VALIDATOR
 #undef STRUCT
 #undef NODE
@@ -429,7 +429,7 @@ void cf_warn_array_value(const struct cf_om_node *node, int reason);
 #define VALUE_SUB_STRUCT(__structname)
 #define VALUE_NODE_STRUCT(__structname, __eltparser)
 #define END_ARRAY(__size)
-#include "config_schema.h"
+#include "conf_schema.h"
 #undef ARRAY
 #undef KEY_ATOM
 #undef KEY_STRING
@@ -439,7 +439,7 @@ void cf_warn_array_value(const struct cf_om_node *node, int reason);
         ,##__cmpfunc;
 #define KEY_STRING(__strsize, __eltparser, __cmpfunc...) \
         ,##__cmpfunc;
-#include "config_schema.h"
+#include "conf_schema.h"
 #undef STRUCT
 #undef NODE
 #undef ATOM
