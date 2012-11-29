@@ -236,25 +236,26 @@ size_t toprint_len(const char *srcBuf, size_t srcBytes, const char quotes[2])
   return strbuf_count(strbuf_toprint_quoted_len(strbuf_local(NULL, 0), quotes, srcBuf, srcBytes));
 }
 
-/* Format a null-terminated string as a printable representation, eg: "Abc\x0b\n", for display
-   in log messages.
+/* Format a null-terminated string as a printable representation, eg: `Abc\x0b\n`, for display
+   in log messages.  If the given string pointer is NULL, return the string "NULL" without quotes.
    @author Andrew Bettison <andrew@servalproject.com>
  */
 char *toprint_str(char *dstStr, ssize_t dstBufSiz, const char *srcStr, const char quotes[2])
 {
   strbuf b = strbuf_local(dstStr, dstBufSiz);
-  strbuf_toprint_quoted(b, quotes, srcStr);
+  if (srcStr)
+    strbuf_toprint_quoted(b, quotes, srcStr);
+  else
+    strbuf_puts(b, "NULL");
   return dstStr;
 }
 
-/* Compute the length of the string produced by toprint_str().  If dstStrLen == -1 then returns the
-   exact number of characters in the printable representation (excluding the terminating nul),
-   otherwise returns dstStrLen.
+/* Compute the length of the string produced by toprint_str(), excluding the terminating nul.
    @author Andrew Bettison <andrew@servalproject.com>
  */
 size_t toprint_str_len(const char *srcStr, const char quotes[2])
 {
-  return strbuf_count(strbuf_toprint_quoted(strbuf_local(NULL, 0), quotes, srcStr));
+  return srcStr ? strbuf_count(strbuf_toprint_quoted(strbuf_local(NULL, 0), quotes, srcStr)) : 4;
 }
 
 size_t str_fromprint(unsigned char *dst, const char *src)
