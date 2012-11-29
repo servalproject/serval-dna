@@ -21,21 +21,8 @@
 #define WARNF(F,...) _WARNF("%s:%u  " F, __FILE__, __LINE__, ##__VA_ARGS__)
 #define WHYF(F,...) _WHYF("%s:%u  " F, __FILE__, __LINE__, ##__VA_ARGS__)
 #define WHYF_perror(F,...) _WHYF_perror("%s:%u  " F, __FILE__, __LINE__, ##__VA_ARGS__)
-#define alloca_str(s) ((s) ? alloca_str_toprint(s) : "NULL")
 
 #include "config.h"
-
-const char *find_keyend(const char *const key, const char *const fullkeyend)
-{
-  const char *s = key;
-  if (s < fullkeyend && (isalpha(*s) || *s == '_'))
-    ++s;
-  while (s < fullkeyend && (isalnum(*s) || *s == '_'))
-    ++s;
-  if (s == key || (s < fullkeyend && *s != '.'))
-    return NULL;
-  return s;
-}
 
 void *emalloc(size_t len)
 {
@@ -62,7 +49,19 @@ char *str_emalloc(const char *str)
   return strn_emalloc(str, strlen(str));
 }
 
-int make_child(struct cf_om_node **const parentp, const char *const fullkey, const char *const key, const char *const keyend)
+static const char *cf_find_keyend(const char *const key, const char *const fullkeyend)
+{
+  const char *s = key;
+  if (s < fullkeyend && (isalpha(*s) || *s == '_'))
+    ++s;
+  while (s < fullkeyend && (isalnum(*s) || *s == '_'))
+    ++s;
+  if (s == key || (s < fullkeyend && *s != '.'))
+    return NULL;
+  return s;
+}
+
+static int cf_om_make_child(struct cf_om_node **const parentp, const char *const fullkey, const char *const key, const char *const keyend)
 {
   size_t keylen = keyend - key;
   //DEBUGF("%s key=%s", __FUNCTION__, alloca_toprint(-1, key, keylen));
@@ -79,7 +78,7 @@ int make_child(struct cf_om_node **const parentp, const char *const fullkey, con
       c = strncmp(key, child->key, keylen);
       if (c == 0 && child->key[keylen])
 	c = -1;
-      //DEBUGF("   m=%d n=%d i=%d child->key=%s c=%d", m, n, i, alloca_str(child->key), c);
+      //DEBUGF("   m=%d n=%d i=%d child->key=%s c=%d", m, n, i, alloca_str_toprint(child->key), c);
       if (c == 0) {
 	//DEBUGF("   found i=%d", i);
 	return i;
@@ -113,10 +112,10 @@ int make_child(struct cf_om_node **const parentp, const char *const fullkey, con
   return i;
 }
 
-void free_config_node(struct cf_om_node *node)
+void cf_free_node(struct cf_om_node *node)
 {
   while (node->nodc)
-    free_config_node(node->nodv[--node->nodc]);
+    cf_free_node(node->nodv[--node->nodc]);
   if (node->fullkey) {
     free((char *)node->fullkey);
     node->fullkey = node->key = NULL;
@@ -128,7 +127,7 @@ void free_config_node(struct cf_om_node *node)
   free(node);
 }
 
-struct cf_om_node *parse_config(const char *source, const char *buf, size_t len)
+struct cf_om_node *cf_parse_to_om(const char *source, const char *buf, size_t len)
 {
   struct cf_om_node *root = emalloc(sizeof(struct cf_om_node));
   if (root == NULL)
@@ -165,7 +164,7 @@ struct cf_om_node *parse_config(const char *source, const char *buf, size_t len)
     const char *key = fullkey;
     const char *keyend = NULL;
     int nodi = -1;
-    while (key <= fullkeyend && (keyend = find_keyend(key, fullkeyend)) && (nodi = make_child(nodep, fullkey, key, keyend)) != -1) {
+    while (key <= fullkeyend && (keyend = cf_find_keyend(key, fullkeyend)) && (nodi = cf_om_make_child(nodep, fullkey, key, keyend)) != -1) {
       key = keyend + 1;
       nodep = &(*nodep)->nodv[nodi];
     }
@@ -193,11 +192,11 @@ struct cf_om_node *parse_config(const char *source, const char *buf, size_t len)
   }
   return root;
 error:
-  free_config_node(root);
+  cf_free_node(root);
   return NULL;
 }
 
-void dump_config_node(const struct cf_om_node *node, int indent)
+void cf_dump_node(const struct cf_om_node *node, int indent)
 {
   if (node == NULL)
     DEBUGF("%*sNULL", indent * 3, "");
@@ -205,17 +204,17 @@ void dump_config_node(const struct cf_om_node *node, int indent)
     DEBUGF("%*s%s:%u fullkey=%s key=%s text=%s", indent * 3, "",
 	node->source ? node->source : "NULL",
 	node->line_number,
-	alloca_str(node->fullkey),
-	alloca_str(node->key),
-	alloca_str(node->text)
+	alloca_str_toprint(node->fullkey),
+	alloca_str_toprint(node->key),
+	alloca_str_toprint(node->text)
       );
     int i;
     for (i = 0; i < node->nodc; ++i)
-      dump_config_node(node->nodv[i], indent + 1);
+      cf_dump_node(node->nodv[i], indent + 1);
   }
 }
 
-int get_child(const struct cf_om_node *parent, const char *key)
+static int cf_get_child(const struct cf_om_node *parent, const char *key)
 {
   int i;
   for (i = 0; i < parent->nodc; ++i)
@@ -224,7 +223,7 @@ int get_child(const struct cf_om_node *parent, const char *key)
   return -1;
 }
 
-void warn_nodev(const char *file, unsigned line, const struct cf_om_node *node, const char *key, const char *fmt, va_list ap)
+void cf_warn_nodev(const char *file, unsigned line, const struct cf_om_node *node, const char *key, const char *fmt, va_list ap)
 {
   strbuf b = strbuf_alloca(1024);
   if (node) {
@@ -242,39 +241,39 @@ void warn_nodev(const char *file, unsigned line, const struct cf_om_node *node, 
   _WARNF("%s:%u  %s", file, line, strbuf_str(b));
 }
 
-void warn_childrenv(const char *file, unsigned line, const struct cf_om_node *parent, const char *fmt, va_list ap)
+void cf_warn_childrenv(const char *file, unsigned line, const struct cf_om_node *parent, const char *fmt, va_list ap)
 {
   int i;
   for (i = 0; i < parent->nodc; ++i) {
-    warn_nodev(file, line, parent->nodv[i], NULL, fmt, ap);
-    warn_childrenv(file, line, parent->nodv[i], fmt, ap);
+    cf_warn_nodev(file, line, parent->nodv[i], NULL, fmt, ap);
+    cf_warn_childrenv(file, line, parent->nodv[i], fmt, ap);
   }
 }
 
-void warn_node(const char *file, unsigned line, const struct cf_om_node *node, const char *key, const char *fmt, ...)
+void cf_warn_node(const char *file, unsigned line, const struct cf_om_node *node, const char *key, const char *fmt, ...)
 {
   va_list ap;
   va_start(ap, fmt);
-  warn_nodev(file, line, node, key, fmt, ap);
+  cf_warn_nodev(file, line, node, key, fmt, ap);
   va_end(ap);
 }
 
-void warn_children(const char *file, unsigned line, const struct cf_om_node *node, const char *fmt, ...)
+void cf_warn_children(const char *file, unsigned line, const struct cf_om_node *node, const char *fmt, ...)
 {
   va_list ap;
   va_start(ap, fmt);
-  warn_childrenv(file, line, node, fmt, ap);
+  cf_warn_childrenv(file, line, node, fmt, ap);
   va_end(ap);
 }
 
-void warn_duplicate_node(const struct cf_om_node *parent, const char *key)
+void cf_warn_duplicate_node(const struct cf_om_node *parent, const char *key)
 {
-  warn_node(__FILE__, __LINE__, parent, key, "is duplicate");
+  cf_warn_node(__FILE__, __LINE__, parent, key, "is duplicate");
 }
 
-void warn_missing_node(const struct cf_om_node *parent, const char *key)
+void cf_warn_missing_node(const struct cf_om_node *parent, const char *key)
 {
-  warn_node(__FILE__, __LINE__, parent, key, "is missing");
+  cf_warn_node(__FILE__, __LINE__, parent, key, "is missing");
 }
 
 strbuf strbuf_cf_flags(strbuf sb, int flags)
@@ -319,7 +318,7 @@ strbuf strbuf_cf_flags(strbuf sb, int flags)
   return sb;
 }
 
-strbuf strbuf_cf_flag_reason(strbuf sb, int flags)
+static strbuf strbuf_cf_flag_reason(strbuf sb, int flags)
 {
   if (flags == CFERROR)
     return strbuf_puts(sb, "unrecoverable error");
@@ -352,82 +351,64 @@ strbuf strbuf_cf_flag_reason(strbuf sb, int flags)
   return sb;
 }
 
-void warn_node_value(const struct cf_om_node *node, int reason)
+void cf_warn_node_value(const struct cf_om_node *node, int reason)
 {
   strbuf b = strbuf_alloca(180);
   strbuf_cf_flag_reason(b, reason);
-  warn_node(__FILE__, __LINE__, node, NULL, "value %s %s", alloca_str(node->text), strbuf_str(b));
+  cf_warn_node(__FILE__, __LINE__, node, NULL, "value %s %s", alloca_str_toprint(node->text), strbuf_str(b));
 }
 
-void warn_no_array(const struct cf_om_node *node, int reason)
+void cf_warn_no_array(const struct cf_om_node *node, int reason)
 {
   strbuf b = strbuf_alloca(180);
   strbuf_cf_flag_reason(b, reason);
-  warn_node(__FILE__, __LINE__, node, NULL, "array discarded -- %s", strbuf_str(b));
+  cf_warn_node(__FILE__, __LINE__, node, NULL, "array discarded -- %s", strbuf_str(b));
 }
 
-void warn_unsupported_node(const struct cf_om_node *node)
+void cf_warn_unsupported_node(const struct cf_om_node *node)
 {
-  warn_node(__FILE__, __LINE__, node, NULL, "not supported");
+  cf_warn_node(__FILE__, __LINE__, node, NULL, "not supported");
 }
 
-void warn_unsupported_children(const struct cf_om_node *parent)
+void cf_warn_unsupported_children(const struct cf_om_node *parent)
 {
   int i;
   for (i = 0; i < parent->nodc; ++i) {
     if (parent->nodv[i]->text)
-      warn_unsupported_node(parent->nodv[i]);
-    warn_unsupported_children(parent->nodv[i]);
+      cf_warn_unsupported_node(parent->nodv[i]);
+    cf_warn_unsupported_children(parent->nodv[i]);
   }
 }
 
-void warn_list_overflow(const struct cf_om_node *node)
+void cf_warn_list_overflow(const struct cf_om_node *node)
 {
-  warn_node(__FILE__, __LINE__, node, NULL, "list overflow");
-  warn_children(__FILE__, __LINE__, node, "list overflow");
+  cf_warn_node(__FILE__, __LINE__, node, NULL, "list overflow");
+  cf_warn_children(__FILE__, __LINE__, node, "list overflow");
 }
 
-void warn_spurious_children(const struct cf_om_node *parent)
+void cf_warn_spurious_children(const struct cf_om_node *parent)
 {
-  warn_children(__FILE__, __LINE__, parent, "spurious");
+  cf_warn_children(__FILE__, __LINE__, parent, "spurious");
 }
 
-void warn_array_label(const struct cf_om_node *node, int reason)
+void cf_warn_array_label(const struct cf_om_node *node, int reason)
 {
   strbuf b = strbuf_alloca(180);
   strbuf_cf_flag_reason(b, reason);
-  warn_node(__FILE__, __LINE__, node, NULL, "array label %s -- %s", alloca_str(node->key), strbuf_str(b));
+  cf_warn_node(__FILE__, __LINE__, node, NULL, "array label %s -- %s", alloca_str_toprint(node->key), strbuf_str(b));
 }
 
-void warn_array_value(const struct cf_om_node *node, int reason)
+void cf_warn_array_value(const struct cf_om_node *node, int reason)
 {
   strbuf b = strbuf_alloca(180);
   strbuf_cf_flag_reason(b, reason);
   if (node->text)
-    warn_node(__FILE__, __LINE__, node, NULL, "array value %s -- %s", alloca_str(node->text), strbuf_str(b));
+    cf_warn_node(__FILE__, __LINE__, node, NULL, "array value %s -- %s", alloca_str_toprint(node->text), strbuf_str(b));
   else
-    warn_node(__FILE__, __LINE__, node, NULL, "array element -- %s", strbuf_str(b));
+    cf_warn_node(__FILE__, __LINE__, node, NULL, "array element -- %s", strbuf_str(b));
 }
 
-int opt_boolean(int *booleanp, const char *text);
-int opt_absolute_path(char *str, size_t len, const char *text);
-int opt_debugflags(debugflags_t *flagsp, const struct cf_om_node *node);
-int opt_rhizome_peer(struct config_rhizomepeer *, const struct cf_om_node *node);
-int opt_str(char *str, size_t len, const char *text);
-int opt_str_nonempty(char *str, size_t len, const char *text);
-int opt_int(int *intp, const char *text);
-int opt_uint32_nonzero(uint32_t *intp, const char *text);
-int opt_uint64_scaled(uint64_t *intp, const char *text);
-int opt_protocol(char *str, size_t len, const char *text);
-int opt_in_addr(struct in_addr *addrp, const char *text);
-int opt_port(unsigned short *portp, const char *text);
-int opt_sid(sid_t *sidp, const char *text);
-int opt_rhizome_bk(rhizome_bk_t *bkp, const char *text);
-int opt_interface_type(short *typep, const char *text);
-int opt_pattern_list(struct pattern_list *listp, const char *text);
-int opt_interface_list(struct config_interface_list *listp, const struct cf_om_node *node);
-
-int opt_boolean(int *booleanp, const char *text)
+int cf_opt_boolean(int *booleanp, const char *text)
 {
   if (!strcasecmp(text, "true") || !strcasecmp(text, "yes") || !strcasecmp(text, "on") || !strcasecmp(text, "1")) {
     *booleanp = 1;
@@ -440,7 +421,7 @@ int opt_boolean(int *booleanp, const char *text)
   return CFINVALID;
 }
 
-int opt_absolute_path(char *str, size_t len, const char *text)
+int cf_opt_absolute_path(char *str, size_t len, const char *text)
 {
   if (text[0] != '/')
     return CFINVALID;
@@ -485,10 +466,10 @@ debugflags_t debugFlagMask(const char *flagname)
   return 0;
 }
 
-int opt_debugflags(debugflags_t *flagsp, const struct cf_om_node *node)
+int cf_opt_debugflags(debugflags_t *flagsp, const struct cf_om_node *node)
 {
   //DEBUGF("%s", __FUNCTION__);
-  //dump_config_node(node, 1);
+  //cf_dump_node(node, 1);
   debugflags_t setmask = 0;
   debugflags_t clearmask = 0;
   int setall = 0;
@@ -497,13 +478,13 @@ int opt_debugflags(debugflags_t *flagsp, const struct cf_om_node *node)
   int i;
   for (i = 0; i < node->nodc; ++i) {
     const struct cf_om_node *child = node->nodv[i];
-    warn_unsupported_children(child);
+    cf_warn_unsupported_children(child);
     debugflags_t mask = debugFlagMask(child->key);
     int flag = -1;
     if (!mask)
-      warn_unsupported_node(child);
+      cf_warn_unsupported_node(child);
     else if (child->text) {
-      int ret = opt_boolean(&flag, child->text);
+      int ret = cf_opt_boolean(&flag, child->text);
       switch (ret) {
       case CFERROR: return CFERROR;
       case CFOK:
@@ -521,7 +502,7 @@ int opt_debugflags(debugflags_t *flagsp, const struct cf_om_node *node)
 	}
 	break;
       default:
-	warn_node_value(child, ret);
+	cf_warn_node_value(child, ret);
 	result |= ret;
 	break;
       }
@@ -536,7 +517,7 @@ int opt_debugflags(debugflags_t *flagsp, const struct cf_om_node *node)
   return result;
 }
 
-int opt_protocol(char *str, size_t len, const char *text)
+int cf_opt_protocol(char *str, size_t len, const char *text)
 {
   if (!str_is_uri_scheme(text))
     return CFINVALID;
@@ -547,11 +528,11 @@ int opt_protocol(char *str, size_t len, const char *text)
   return CFOK;
 }
 
-int opt_rhizome_peer(struct config_rhizomepeer *rpeer, const struct cf_om_node *node)
+int cf_opt_rhizome_peer(struct config_rhizomepeer *rpeer, const struct cf_om_node *node)
 {
   if (!node->text)
-    return opt_config_rhizomepeer(rpeer, node);
-  warn_spurious_children(node);
+    return cf_opt_config_rhizomepeer(rpeer, node);
+  cf_warn_spurious_children(node);
   const char *protocol;
   size_t protolen;
   const char *auth;
@@ -583,7 +564,7 @@ int opt_rhizome_peer(struct config_rhizomepeer *rpeer, const struct cf_om_node *
   return CFOK;
 }
 
-int opt_str(char *str, size_t len, const char *text)
+int cf_opt_str(char *str, size_t len, const char *text)
 {
   if (strlen(text) >= len)
     return CFSTRINGOVERFLOW;
@@ -592,14 +573,14 @@ int opt_str(char *str, size_t len, const char *text)
   return CFOK;
 }
 
-int opt_str_nonempty(char *str, size_t len, const char *text)
+int cf_opt_str_nonempty(char *str, size_t len, const char *text)
 {
   if (!text[0])
     return CFINVALID;
-  return opt_str(str, len, text);
+  return cf_opt_str(str, len, text);
 }
 
-int opt_int(int *intp, const char *text)
+int cf_opt_int(int *intp, const char *text)
 {
   const char *end = text;
   long value = strtol(text, (char**)&end, 10);
@@ -609,7 +590,7 @@ int opt_int(int *intp, const char *text)
   return CFOK;
 }
 
-int opt_uint32_nonzero(uint32_t *intp, const char *text)
+int cf_opt_uint32_nonzero(uint32_t *intp, const char *text)
 {
   const char *end = text;
   long value = strtoul(text, (char**)&end, 10);
@@ -619,7 +600,7 @@ int opt_uint32_nonzero(uint32_t *intp, const char *text)
   return CFOK;
 }
 
-int opt_uint64_scaled(uint64_t *intp, const char *text)
+int cf_opt_uint64_scaled(uint64_t *intp, const char *text)
 {
   uint64_t result;
   const char *end;
@@ -629,10 +610,10 @@ int opt_uint64_scaled(uint64_t *intp, const char *text)
   return CFOK;
 }
 
-int opt_ushort_nonzero(unsigned short *ushortp, const char *text)
+int cf_opt_ushort_nonzero(unsigned short *ushortp, const char *text)
 {
   uint32_t ui;
-  if (opt_uint32_nonzero(&ui, text) != CFOK || ui > 0xffff)
+  if (cf_opt_uint32_nonzero(&ui, text) != CFOK || ui > 0xffff)
     return CFINVALID;
   *ushortp = ui;
   return CFOK;
@@ -662,7 +643,7 @@ int vld_argv(const struct cf_om_node *parent, struct config_argv *array, int res
     for (i = 1; i < array->ac; ++i) {
       unsigned short key = array->av[i].key;
       if (last_key > key) {
-	warn_node(__FILE__, __LINE__, parent, NULL, "array is not sorted");
+	cf_warn_node(__FILE__, __LINE__, parent, NULL, "array is not sorted");
 	return CFERROR;
       }
       last_key = key;
@@ -675,13 +656,13 @@ int vld_argv(const struct cf_om_node *parent, struct config_argv *array, int res
     if (last_key == key) {
       char labelkey[12];
       sprintf(labelkey, "%u", last_key);
-      warn_duplicate_node(parent, labelkey);
+      cf_warn_duplicate_node(parent, labelkey);
       result |= CFINVALID;
     }
     while (++last_key < key && last_key <= sizeof(array->av)) {
       char labelkey[12];
       sprintf(labelkey, "%u", last_key);
-      warn_missing_node(parent, labelkey);
+      cf_warn_missing_node(parent, labelkey);
       result |= CFINCOMPLETE;
     }
     last_key = key;
@@ -689,7 +670,7 @@ int vld_argv(const struct cf_om_node *parent, struct config_argv *array, int res
   return result;
 }
 
-int opt_in_addr(struct in_addr *addrp, const char *text)
+int cf_opt_in_addr(struct in_addr *addrp, const char *text)
 {
   struct in_addr addr;
   if (!inet_aton(text, &addr))
@@ -698,7 +679,7 @@ int opt_in_addr(struct in_addr *addrp, const char *text)
   return CFOK;
 }
 
-int opt_port(unsigned short *portp, const char *text)
+int cf_opt_port(unsigned short *portp, const char *text)
 {
   unsigned short port = 0;
   const char *p;
@@ -714,7 +695,7 @@ int opt_port(unsigned short *portp, const char *text)
   return CFOK;
 }
 
-int opt_sid(sid_t *sidp, const char *text)
+int cf_opt_sid(sid_t *sidp, const char *text)
 {
   sid_t sid;
   if (!str_is_subscriber_id(text))
@@ -724,7 +705,7 @@ int opt_sid(sid_t *sidp, const char *text)
   return CFOK;
 }
 
-int opt_rhizome_bk(rhizome_bk_t *bkp, const char *text)
+int cf_opt_rhizome_bk(rhizome_bk_t *bkp, const char *text)
 {
   rhizome_bk_t sid;
   if (!rhizome_str_is_bundle_key(text))
@@ -734,7 +715,7 @@ int opt_rhizome_bk(rhizome_bk_t *bkp, const char *text)
   return CFOK;
 }
 
-int opt_interface_type(short *typep, const char *text)
+int cf_opt_interface_type(short *typep, const char *text)
 {
   if (strcasecmp(text, "ethernet") == 0) {
     *typep = OVERLAY_INTERFACE_ETHERNET;
@@ -755,7 +736,7 @@ int opt_interface_type(short *typep, const char *text)
   return CFINVALID;
 }
 
-int opt_pattern_list(struct pattern_list *listp, const char *text)
+int cf_opt_pattern_list(struct pattern_list *listp, const char *text)
 {
   struct pattern_list list;
   memset(&list, 0, sizeof list);
@@ -811,11 +792,11 @@ int opt_pattern_list(struct pattern_list *listp, const char *text)
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int opt_network_interface(struct config_network_interface *nifp, const char *text)
+int cf_opt_network_interface(struct config_network_interface *nifp, const char *text)
 {
-  //DEBUGF("%s text=%s", __FUNCTION__, alloca_str(text));
+  //DEBUGF("%s text=%s", __FUNCTION__, alloca_str_toprint(text));
   struct config_network_interface nif;
-  dfl_config_network_interface(&nif);
+  cf_dfl_config_network_interface(&nif);
   if (text[0] != '+' && text[0] != '-')
     return CFINVALID; // "Sign must be + or -"
   nif.exclude = (text[0] == '-');
@@ -841,7 +822,7 @@ int opt_network_interface(struct config_network_interface *nifp, const char *tex
     if (len) {
       char buf[len + 1];
       strncpy(buf, type, len)[len] = '\0';
-      int result = opt_interface_type(&nif.type, buf);
+      int result = cf_opt_interface_type(&nif.type, buf);
       switch (result) {
       case CFERROR: return CFERROR;
       case CFOK: break;
@@ -858,7 +839,7 @@ int opt_network_interface(struct config_network_interface *nifp, const char *tex
     if (len) {
       char buf[len + 1];
       strncpy(buf, port, len)[len] = '\0';
-      int result = opt_port(&nif.port, buf);
+      int result = cf_opt_port(&nif.port, buf);
       switch (result) {
       case CFERROR: return CFERROR;
       case CFOK: break;
@@ -873,7 +854,7 @@ int opt_network_interface(struct config_network_interface *nifp, const char *tex
     if (len) {
       char buf[len + 1];
       strncpy(buf, speed, len)[len] = '\0';
-      int result = opt_uint64_scaled(&nif.speed, buf);
+      int result = cf_opt_uint64_scaled(&nif.speed, buf);
       switch (result) {
       case CFERROR: return CFERROR;
       case CFOK: break;
@@ -890,15 +871,15 @@ int opt_network_interface(struct config_network_interface *nifp, const char *tex
 }
 
 /* Config parse function.  Implements the original form of the 'interfaces' config option.  Parses a
- * comma-separated list of interface rules (see opt_network_interface() for the format of each
+ * comma-separated list of interface rules (see cf_opt_network_interface() for the format of each
  * rule), then parses the regular config array-of-struct style interface option settings so that
  * both forms are supported.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int opt_interface_list(struct config_interface_list *listp, const struct cf_om_node *node)
+int cf_opt_interface_list(struct config_interface_list *listp, const struct cf_om_node *node)
 {
-  int result = opt_config_interface_list(listp, node);
+  int result = cf_opt_config_interface_list(listp, node);
   if (result == CFERROR)
     return CFERROR;
   if (node->text) {
@@ -915,7 +896,7 @@ int opt_interface_list(struct config_interface_list *listp, const struct cf_om_n
 	  }
 	  char buf[len + 1];
 	  strncpy(buf, arg, len)[len] = '\0';
-	  int ret = opt_network_interface(&listp->av[n].value, buf);
+	  int ret = cf_opt_network_interface(&listp->av[n].value, buf);
 	  switch (ret) {
 	  case CFERROR: return CFERROR;
 	  case CFOK:
@@ -924,7 +905,7 @@ int opt_interface_list(struct config_interface_list *listp, const struct cf_om_n
 	    ++n;
 	    break;
 	  default:
-	    warn_node(__FILE__, __LINE__, node, NULL, "invalid interface rule %s", alloca_str(buf)); \
+	    cf_warn_node(__FILE__, __LINE__, node, NULL, "invalid interface rule %s", alloca_str_toprint(buf)); \
 	    result |= CFSUB(ret);
 	    break;
 	  }
@@ -1002,16 +983,16 @@ bye:
 #define USES_TEXT	|__TEXT
 #define USES_CHILDREN	|__CHILDREN
 
-// Generate parsing functions, opt_config_SECTION()
+// Generate parsing functions, cf_opt_config_SECTION()
 #define STRUCT(__name, __validator...) \
-    int opt_config_##__name(struct config_##__name *strct, const struct cf_om_node *node) { \
+    int cf_opt_config_##__name(struct config_##__name *strct, const struct cf_om_node *node) { \
       int (*validator)(const struct cf_om_node *, struct config_##__name *, int) = (NULL, ##__validator); \
       int result = CFEMPTY; \
       char used[node->nodc]; \
       memset(used, 0, node->nodc * sizeof used[0]);
 #define __ITEM(__element, __flags, __parseexpr) \
       { \
-	int i = get_child(node, #__element); \
+	int i = cf_get_child(node, #__element); \
 	const struct cf_om_node *child = (i != -1) ? node->nodv[i] : NULL; \
 	int ret = CFEMPTY; \
 	if (child) { \
@@ -1025,13 +1006,13 @@ bye:
 	if (!(ret & CFEMPTY)) \
 	  result &= ~CFEMPTY; \
 	else if ((__flags) & __MANDATORY) { \
-	  warn_missing_node(node, #__element); \
+	  cf_warn_missing_node(node, #__element); \
 	  result |= CFINCOMPLETE; \
 	} \
 	if (ret & ~CFEMPTY) { \
 	  assert(child != NULL); \
 	  if (child->text) \
-	    warn_node_value(child, ret); \
+	    cf_warn_node_value(child, ret); \
 	  result |= CFSUB(ret); \
 	} \
       }
@@ -1042,7 +1023,7 @@ bye:
 #define STRING(__size, __element, __default, __parser, __flags, __comment) \
         __ITEM(__element, ((0 __flags)|__TEXT)&~__CHILDREN, child->text ? __parser(strct->__element, (__size) + 1, child->text) : CFEMPTY)
 #define SUB_STRUCT(__name, __element, __flags) \
-        __ITEM(__element, (0 __flags)|__CHILDREN, opt_config_##__name(&strct->__element, child))
+        __ITEM(__element, (0 __flags)|__CHILDREN, cf_opt_config_##__name(&strct->__element, child))
 #define NODE_STRUCT(__name, __element, __parser, __flags) \
         __ITEM(__element, (0 __flags)|__TEXT|__CHILDREN, __parser(&strct->__element, child))
 #define END_STRUCT \
@@ -1050,11 +1031,11 @@ bye:
 	int i; \
 	for (i = 0; i < node->nodc; ++i) { \
 	  if (node->nodv[i]->text && !(used[i] & __TEXT)) { \
-	    warn_unsupported_node(node->nodv[i]); \
+	    cf_warn_unsupported_node(node->nodv[i]); \
 	    result |= CFSUB(CFUNSUPPORTED); \
 	  } \
 	  if (node->nodv[i]->nodc && !(used[i] & __CHILDREN)) { \
-	    warn_unsupported_children(node->nodv[i]); \
+	    cf_warn_unsupported_children(node->nodv[i]); \
 	    result |= CFSUB(CFUNSUPPORTED); \
 	  } \
 	} \
@@ -1065,7 +1046,7 @@ bye:
     }
 
 #define ARRAY(__name, __validator...) \
-    int opt_config_##__name(struct config_##__name *array, const struct cf_om_node *node) { \
+    int cf_opt_config_##__name(struct config_##__name *array, const struct cf_om_node *node) { \
       __compare_func__config_##__name##__t *cmp = NULL; \
       int (*eltcmp)(const struct config_##__name##__element *, const struct config_##__name##__element *) = __cmp_config_##__name; \
       int (*validator)(const struct cf_om_node *, struct config_##__name *, int) = (NULL, ##__validator); \
@@ -1082,7 +1063,7 @@ bye:
 	ret &= CF__FLAGS; \
 	result |= CFSUB(ret); \
 	if (ret != CFOK) \
-	  warn_array_label(child, ret);
+	  cf_warn_array_label(child, ret);
 #define __ARRAY_VALUE(__parseexpr) \
 	if (ret == CFOK) { \
 	  ret = (__parseexpr); \
@@ -1094,7 +1075,7 @@ bye:
 	  if (ret == CFOK) \
 	    ++n; \
 	  else \
-	    warn_array_value(child, ret); \
+	    cf_warn_array_value(child, ret); \
 	}
 #define END_ARRAY(__size) \
       } \
@@ -1102,7 +1083,7 @@ bye:
 	assert(n == NELS(array->av)); \
 	result |= CFARRAYOVERFLOW; \
 	for (; i < node->nodc; ++i) \
-	  warn_list_overflow(node->nodv[i]); \
+	  cf_warn_list_overflow(node->nodv[i]); \
       } \
       array->ac = n; \
       if (cmp) \
@@ -1110,7 +1091,7 @@ bye:
       if (validator) \
 	result = (*validator)(node, array, result); \
       if (result & ~CFEMPTY) { \
-	warn_no_array(node, result); \
+	cf_warn_no_array(node, result); \
 	array->ac = 0; \
       } \
       if (array->ac == 0) \
@@ -1130,7 +1111,7 @@ bye:
 #define VALUE_NODE(__type, __eltparser) \
       __ARRAY_VALUE(__eltparser(&array->av[n].value, child))
 #define VALUE_SUB_STRUCT(__structname) \
-      __ARRAY_VALUE(opt_config_##__structname(&array->av[n].value, child))
+      __ARRAY_VALUE(cf_opt_config_##__structname(&array->av[n].value, child))
 #define VALUE_NODE_STRUCT(__structname, __eltparser) \
       __ARRAY_VALUE(__eltparser(&array->av[n].value, child))
 
@@ -1173,20 +1154,20 @@ int main(int argc, char **argv)
       perror("read");
       exit(1);
     }
-    struct cf_om_node *root = parse_config(argv[i], buf, st.st_size);
+    struct cf_om_node *root = cf_parse_to_om(argv[i], buf, st.st_size);
     close(fd);
-    //dump_config_node(root, 0);
+    //cf_dump_node(root, 0);
     struct config_main config;
     memset(&config, 0, sizeof config);
-    dfl_config_main(&config);
-    int result = opt_config_main(&config, root);
-    free_config_node(root);
+    cf_dfl_config_main(&config);
+    int result = cf_opt_config_main(&config, root);
+    cf_free_node(root);
     free(buf);
     DEBUGF("result = %s", strbuf_str(strbuf_cf_flags(strbuf_alloca(128), result)));
-    DEBUGF("config.log.file = %s", alloca_str(config.log.file));
+    DEBUGF("config.log.file = %s", alloca_str_toprint(config.log.file));
     DEBUGF("config.log.show_pid = %d", config.log.show_pid);
     DEBUGF("config.log.show_time = %d", config.log.show_time);
-    DEBUGF("config.server.chdir = %s", alloca_str(config.server.chdir));
+    DEBUGF("config.server.chdir = %s", alloca_str_toprint(config.server.chdir));
     DEBUGF("config.debug = %llx", (unsigned long long) config.debug);
     DEBUGF("config.directory.service = %s", alloca_tohex(config.directory.service.binary, SID_SIZE));
     DEBUGF("config.rhizome.api.addfile.allow_host = %s", inet_ntoa(config.rhizome.api.addfile.allow_host));
@@ -1200,8 +1181,8 @@ int main(int argc, char **argv)
     }
     for (j = 0; j < config.rhizome.direct.peer.ac; ++j) {
       DEBUGF("config.rhizome.direct.peer.%s", config.rhizome.direct.peer.av[j].key);
-      DEBUGF("   .protocol = %s", alloca_str(config.rhizome.direct.peer.av[j].value.protocol));
-      DEBUGF("   .host = %s", alloca_str(config.rhizome.direct.peer.av[j].value.host));
+      DEBUGF("   .protocol = %s", alloca_str_toprint(config.rhizome.direct.peer.av[j].value.protocol));
+      DEBUGF("   .host = %s", alloca_str_toprint(config.rhizome.direct.peer.av[j].value.host));
       DEBUGF("   .port = %u", config.rhizome.direct.peer.av[j].value.port);
     }
     for (j = 0; j < config.interfaces.ac; ++j) {
@@ -1210,7 +1191,7 @@ int main(int argc, char **argv)
       DEBUGF("   .match = [");
       int k;
       for (k = 0; k < config.interfaces.av[j].value.match.patc; ++k)
-	DEBUGF("             %s", alloca_str(config.interfaces.av[j].value.match.patv[k]));
+	DEBUGF("             %s", alloca_str_toprint(config.interfaces.av[j].value.match.patv[k]));
       DEBUGF("            ]");
       DEBUGF("   .type = %d", config.interfaces.av[j].value.type);
       DEBUGF("   .port = %u", config.interfaces.av[j].value.port);
@@ -1220,7 +1201,7 @@ int main(int argc, char **argv)
       char sidhex[SID_STRLEN + 1];
       tohex(sidhex, config.hosts.av[j].key.binary, SID_SIZE);
       DEBUGF("config.hosts.%s", sidhex);
-      DEBUGF("   .interface = %s", alloca_str(config.hosts.av[j].value.interface));
+      DEBUGF("   .interface = %s", alloca_str_toprint(config.hosts.av[j].value.interface));
       DEBUGF("   .address = %s", inet_ntoa(config.hosts.av[j].value.address));
       DEBUGF("   .port = %u", config.hosts.av[j].value.port);
     }

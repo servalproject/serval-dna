@@ -86,12 +86,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  * Each STRUCT(NAME, ...) and ARRAY(NAME, ...) schema declaration generates the following API
  * functions:
  *
- *  - int dfl_config_NAME(struct config_NAME *dest);
+ *  - int cf_dfl_config_NAME(struct config_NAME *dest);
  *
  *      A C function which sets the entire contents of the given C structure to its default values
  *      as defined in the schema.  This will only return CFOK or CFERROR; see below.
  *
- *  - int opt_config_NAME(struct config_NAME *dest, const struct cf_om_node *node);
+ *  - int cf_opt_config_NAME(struct config_NAME *dest, const struct cf_om_node *node);
  *
  *      A C function which parses the given COM (configuration object model) and assigns the parsed
  *      result into the given C structure.  See below for the return value.  For arrays, this
@@ -104,11 +104,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *  - int VALIDATOR(struct config_NAME *dest, int orig_result);
  *
  *      A C function which validates the contents of the given C structure (struct or array) as
- *      defined in the schema.  This function is invoked by the opt_config_NAME() parser function
+ *      defined in the schema.  This function is invoked by the cf_opt_config_NAME() parser function
  *      just before it returns, so all the parse functions have already been called and the result
  *      is assembled.  The validator function is passed a pointer to the (non-const) structure,
  *      which it may modify if desired, and the original CFxxx flags result code (not CFERROR) that
- *      would be returned by the opt_config_NAME() parser function.  It returns a new CFxxx flags
+ *      would be returned by the cf_opt_config_NAME() parser function.  It returns a new CFxxx flags
  *      result (which may simply be the same as was passed).
  *
  *      In the case arrays, validator() is passed a *dest containing elements that were successfully
@@ -117,7 +117,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *      (in which case the CFOVERFLOW flag is set).  It is up to validator() to decide whether to
  *      return some, all or none of these elements (ie, alter dest->ac and/or dest->av), and whether
  *      to set or clear the CFARRAYOVERFLOW bit, or set other bits (like CFINVALID for example).  If
- *      there is no validator function, then opt_config_NAME() will return an empty array (dest->ac
+ *      there is no validator function, then cf_opt_config_NAME() will return an empty array (dest->ac
  *      == 0) in the case of CFARRAYOVERFLOW.
  *
  * All parse functions assign the result of their parsing into the struct given in their 'dest'
@@ -133,7 +133,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *    or no elements present in the COM).
  *
  *  - CFUNSUPPORTED if the config item (array or struct) is not supported.  This flag is not
- *    produced by the normal opt_config_NAME() parse functions, but a validation function could set
+ *    produced by the normal cf_opt_config_NAME() parse functions, but a validation function could set
  *    it to indicate that a given option is not yet implemented or has been deprecated.  In that
  *    case, the validation function should also log a message to that effect.  The CFUNSUPPORTED
  *    flag is mainly used in its CFSUB(CFUNSUPPORTED) form (see below) to indicate that the COM
@@ -170,7 +170,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  * the whole struct or array itself may still be valid (in the case of a struct, the element's prior
  * value may be retained, and in the case of an array, the failed element is simply omitted from the
  * result).  A validator function may wish to reflect any CFSUB() bit as a CFINVALID result, but the
- * normal behaviour of opt_config_NAME() is to not return CFINVALID unless the validator function
+ * normal behaviour of cf_opt_config_NAME() is to not return CFINVALID unless the validator function
  * sets it.
  *
  * The special value CFOK is zero (no bits set); in this case a valid result is produced and all of
@@ -203,7 +203,57 @@ struct pattern_list {
 };
 #define PATTERN_LIST_EMPTY ((struct pattern_list){.patc = 0})
 
-// Generate value structs, struct config_NAME.
+/* The Configuration Object Model (COM).  The config file is parsed into a tree of these structures
+ * first, then those structures are passed as arguments to the schema parsing functions.
+ */
+
+struct cf_om_node {
+    const char *source; // = parse_config() 'source' arg
+    unsigned int line_number;
+    const char *fullkey; // malloc()
+    const char *key; // points inside fullkey, do not free()
+    const char *text; // malloc()
+    size_t nodc;
+    struct cf_om_node *nodv[10]; // malloc()
+};
+
+struct cf_om_node *cf_parse_to_om(const char *source, const char *buf, size_t len);
+void cf_free_node(struct cf_om_node *node);
+void cf_dump_node(const struct cf_om_node *node, int indent);
+
+void cf_warn_nodev(const char *file, unsigned line, const struct cf_om_node *node, const char *key, const char *fmt, va_list ap);
+void cf_warn_childrenv(const char *file, unsigned line, const struct cf_om_node *parent, const char *fmt, va_list ap);
+void cf_warn_node(const char *file, unsigned line, const struct cf_om_node *node, const char *key, const char *fmt, ...);
+void cf_warn_children(const char *file, unsigned line, const struct cf_om_node *node, const char *fmt, ...);
+void cf_warn_duplicate_node(const struct cf_om_node *parent, const char *key);
+void cf_warn_missing_node(const struct cf_om_node *parent, const char *key);
+void cf_warn_node_value(const struct cf_om_node *node, int reason);
+void cf_warn_no_array(const struct cf_om_node *node, int reason);
+void cf_warn_unsupported_node(const struct cf_om_node *node);
+void cf_warn_unsupported_children(const struct cf_om_node *parent);
+void cf_warn_list_overflow(const struct cf_om_node *node);
+void cf_warn_spurious_children(const struct cf_om_node *parent);
+void cf_warn_array_label(const struct cf_om_node *node, int reason);
+void cf_warn_array_value(const struct cf_om_node *node, int reason);
+
+/* Return bit flags for schema default cf_dfl_ and parsing cf_opt_ functions. */
+
+#define CFERROR             (~0) // all set
+#define CFOK                0
+#define CFEMPTY             (1<<0)
+#define CFARRAYOVERFLOW     (1<<1)
+#define CFSTRINGOVERFLOW    (1<<2)
+#define CFINCOMPLETE        (1<<3)
+#define CFINVALID           (1<<4)
+#define CFUNSUPPORTED       (1<<5)
+#define CF__SUB_SHIFT       16
+#define CFSUB(f)            ((f) << CF__SUB_SHIFT)
+#define CF__SUBFLAGS        CFSUB(~0)
+#define CF__FLAGS           (~0 & ~CF__SUBFLAGS)
+
+strbuf strbuf_cf_flags(strbuf, int);
+
+// Generate config struct definitions, struct config_NAME.
 #define STRUCT(__name, __validator...) \
     struct config_##__name {
 #define NODE(__type, __element, __default, __parser, __flags, __comment) \
@@ -257,27 +307,9 @@ struct pattern_list {
 #undef VALUE_NODE_STRUCT
 #undef END_ARRAY
 
-/* Return bit flags for schema default dfl_ and parsing opt_ functions. */
-
-#define CFERROR             (~0) // all set
-#define CFOK                0
-#define CFEMPTY             (1<<0)
-#define CFARRAYOVERFLOW     (1<<1)
-#define CFSTRINGOVERFLOW    (1<<2)
-#define CFINCOMPLETE        (1<<3)
-#define CFINVALID           (1<<4)
-#define CFUNSUPPORTED       (1<<5)
-#define CF__SUB_SHIFT       16
-#define CFSUB(f)            ((f) << CF__SUB_SHIFT)
-#define CF__SUBFLAGS        CFSUB(~0)
-#define CF__FLAGS           (~0 & ~CF__SUBFLAGS)
-
-strbuf strbuf_cf_flags(strbuf, int);
-
-// Generate default functions, dfl_config_NAME().
-
+// Generate config set-default functions, cf_dfl_config_NAME().
 #define STRUCT(__name, __validator...) \
-    int dfl_config_##__name(struct config_##__name *s) {
+    int cf_dfl_config_##__name(struct config_##__name *s) {
 #define NODE(__type, __element, __default, __parser, __flags, __comment) \
         s->__element = (__default);
 #define ATOM(__type, __element, __default, __parser, __flags, __comment) \
@@ -285,14 +317,14 @@ strbuf strbuf_cf_flags(strbuf, int);
 #define STRING(__size, __element, __default, __parser, __flags, __comment) \
         strncpy(s->__element, (__default), (__size))[(__size)] = '\0';
 #define SUB_STRUCT(__name, __element, __flags) \
-        dfl_config_##__name(&s->__element);
+        cf_dfl_config_##__name(&s->__element);
 #define NODE_STRUCT(__name, __element, __parser, __flags) \
-        dfl_config_##__name(&s->__element);
+        cf_dfl_config_##__name(&s->__element);
 #define END_STRUCT \
         return CFOK; \
     }
 #define ARRAY(__name, __validator...) \
-    int dfl_config_##__name(struct config_##__name *a) { \
+    int cf_dfl_config_##__name(struct config_##__name *a) { \
         a->ac = 0; \
         return CFOK; \
     }
@@ -322,26 +354,12 @@ strbuf strbuf_cf_flags(strbuf, int);
 #undef VALUE_NODE_STRUCT
 #undef END_ARRAY
 
-/* The Configuration Object Model (COM).  The config file is parsed into a tree of these structures
- * first, then those structures are passed as arguments to the schema parsing functions.
- */
-
-struct cf_om_node {
-    const char *source; // = parse_config() 'source' arg
-    unsigned int line_number;
-    const char *fullkey; // malloc()
-    const char *key; // points inside fullkey, do not free()
-    const char *text; // malloc()
-    size_t nodc;
-    struct cf_om_node *nodv[10]; // malloc()
-};
-
-// Generate parser function prototypes.
+// Generate config parser function prototypes.
 #define __VALIDATOR(__name, __validator...) \
     typedef int __validator_func__config_##__name##__t(const struct cf_om_node *, struct config_##__name *, int); \
     __validator_func__config_##__name##__t __dummy__validator_func__config_##__name, ##__validator;
 #define STRUCT(__name, __validator...) \
-    int opt_config_##__name(struct config_##__name *, const struct cf_om_node *); \
+    int cf_opt_config_##__name(struct config_##__name *, const struct cf_om_node *); \
     __VALIDATOR(__name, ##__validator)
 #define NODE(__type, __element, __default, __parser, __flags, __comment) \
     int __parser(__type *, const struct cf_om_node *);
@@ -350,12 +368,12 @@ struct cf_om_node {
 #define STRING(__size, __element, __default, __parser, __flags, __comment) \
     int __parser(char *, size_t, const char *);
 #define SUB_STRUCT(__name, __element, __flags) \
-    int opt_config_##__name(struct config_##__name *, const struct cf_om_node *);
+    int cf_opt_config_##__name(struct config_##__name *, const struct cf_om_node *);
 #define NODE_STRUCT(__name, __element, __parser, __flags) \
     int __parser(struct config_##__name *, const struct cf_om_node *);
 #define END_STRUCT
 #define ARRAY(__name, __validator...) \
-    int opt_config_##__name(struct config_##__name *, const struct cf_om_node *); \
+    int cf_opt_config_##__name(struct config_##__name *, const struct cf_om_node *); \
     __VALIDATOR(__name, ##__validator)
 #define KEY_ATOM(__type, __eltparser, __cmpfunc...) \
     int __eltparser(__type *, const char *);
@@ -368,7 +386,7 @@ struct cf_om_node {
 #define VALUE_NODE(__type, __eltparser) \
     int __eltparser(__type *, const struct cf_om_node *);
 #define VALUE_SUB_STRUCT(__structname) \
-    int opt_config_##__structname(struct config_##__structname *, const struct cf_om_node *);
+    int cf_opt_config_##__structname(struct config_##__structname *, const struct cf_om_node *);
 #define VALUE_NODE_STRUCT(__structname, __eltparser) \
     int __eltparser(struct config_##__structname *, const struct cf_om_node *);
 #define END_ARRAY(__size)
@@ -391,7 +409,7 @@ struct cf_om_node {
 #undef VALUE_NODE_STRUCT
 #undef END_ARRAY
 
-// Generate array key comparison function prototypes.
+// Generate config array key comparison function prototypes.
 #define STRUCT(__name, __validator...)
 #define NODE(__type, __element, __default, __parser, __flags, __comment)
 #define ATOM(__type, __element, __default, __parser, __flags, __comment)
@@ -438,5 +456,23 @@ struct cf_om_node {
 #undef VALUE_SUB_STRUCT
 #undef VALUE_NODE_STRUCT
 #undef END_ARRAY
+
+int cf_opt_boolean(int *booleanp, const char *text);
+int cf_opt_absolute_path(char *str, size_t len, const char *text);
+int cf_opt_debugflags(debugflags_t *flagsp, const struct cf_om_node *node);
+int cf_opt_rhizome_peer(struct config_rhizomepeer *, const struct cf_om_node *node);
+int cf_opt_str(char *str, size_t len, const char *text);
+int cf_opt_str_nonempty(char *str, size_t len, const char *text);
+int cf_opt_int(int *intp, const char *text);
+int cf_opt_uint32_nonzero(uint32_t *intp, const char *text);
+int cf_opt_uint64_scaled(uint64_t *intp, const char *text);
+int cf_opt_protocol(char *str, size_t len, const char *text);
+int cf_opt_in_addr(struct in_addr *addrp, const char *text);
+int cf_opt_port(unsigned short *portp, const char *text);
+int cf_opt_sid(sid_t *sidp, const char *text);
+int cf_opt_rhizome_bk(rhizome_bk_t *bkp, const char *text);
+int cf_opt_interface_type(short *typep, const char *text);
+int cf_opt_pattern_list(struct pattern_list *listp, const char *text);
+int cf_opt_interface_list(struct config_interface_list *listp, const struct cf_om_node *node);
 
 #endif //__SERVALDNA_CONFIG_H

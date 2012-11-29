@@ -46,12 +46,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  * the following schema would do:
  *
  *      STRUCT(happy)
- *          ATOM(int32_t, element1, 0, opt_int32_nonnegative,, "An integer >= 0")
- *          STRING(80, element2, "boo!", opt_str_nonempty, MANDATORY, "A non-empty string")
+ *          ATOM(int32_t, element1, 0, cf_opt_int32_nonnegative,, "An integer >= 0")
+ *          STRING(80, element2, "boo!", cf_opt_str_nonempty, MANDATORY, "A non-empty string")
  *      END_STRUCT
  *
  *      ARRAY(joy)
- *          KEY_STRING(3, happy, opt_str)
+ *          KEY_STRING(3, happy, cf_opt_str)
  *          VALUE_SUB_STRUCT(happy)
  *      END_ARRAY(16)
  *
@@ -62,7 +62,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
  *      STRUCT(main)
  *          SUB_STRUCT(love, some,)
- *          STRING(128, another_thing, "", opt_uri,, "URL; protocol://hostname[:port][/path]")
+ *          STRING(128, another_thing, "", cf_opt_uri,, "URL; protocol://hostname[:port][/path]")
  *      END_STRUCT
  *
  * which would produce an API based on the following definitions (see "config.h" for more
@@ -179,50 +179,50 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
 STRUCT(log)
-STRING(256,                 file,       "", opt_absolute_path,, "Absolute path of log file")
-ATOM(int,                   show_pid,   1, opt_boolean,, "If true, all log lines contain PID of logging process")
-ATOM(int,                   show_time,  1, opt_boolean,, "If true, all log lines contain time stamp")
+STRING(256,                 file,       "", cf_opt_absolute_path,, "Absolute path of log file")
+ATOM(int,                   show_pid,   1, cf_opt_boolean,, "If true, all log lines contain PID of logging process")
+ATOM(int,                   show_time,  1, cf_opt_boolean,, "If true, all log lines contain time stamp")
 END_STRUCT
 
 STRUCT(server)
-STRING(256,                 chdir,      "/", opt_absolute_path,, "Absolute path of chdir(2) for server process")
-STRING(256,                 dummy_interface_dir, "", opt_str_nonempty,, "Path of directory containing dummy interface files, either absolute or relative to instance directory")
-ATOM(int,                   respawn_on_crash, 0, opt_boolean,, "If true, server will exec(2) itself on fatal signals, eg SEGV")
+STRING(256,                 chdir,      "/", cf_opt_absolute_path,, "Absolute path of chdir(2) for server process")
+STRING(256,                 dummy_interface_dir, "", cf_opt_str_nonempty,, "Path of directory containing dummy interface files, either absolute or relative to instance directory")
+ATOM(int,                   respawn_on_crash, 0, cf_opt_boolean,, "If true, server will exec(2) itself on fatal signals, eg SEGV")
 END_STRUCT
 
 STRUCT(monitor)
-STRING(256,                 socket,     DEFAULT_MONITOR_SOCKET_NAME, opt_str_nonempty,, "Name of socket for monitor interface")
-ATOM(int,                   uid,        -1, opt_int,, "Allowed UID for monitor socket client")
+STRING(256,                 socket,     DEFAULT_MONITOR_SOCKET_NAME, cf_opt_str_nonempty,, "Name of socket for monitor interface")
+ATOM(int,                   uid,        -1, cf_opt_int,, "Allowed UID for monitor socket client")
 END_STRUCT
 
 STRUCT(mdp_iftype)
-ATOM(uint32_t,              tick_ms,    0, opt_uint32_nonzero,, "Tick interval for this interface type")
+ATOM(uint32_t,              tick_ms,    0, cf_opt_uint32_nonzero,, "Tick interval for this interface type")
 END_STRUCT
 
 ARRAY(mdp_iftypelist)
-KEY_ATOM(short, opt_interface_type, cmp_short)
+KEY_ATOM(short, cf_opt_interface_type, cmp_short)
 VALUE_SUB_STRUCT(mdp_iftype)
 END_ARRAY(5)
 
 STRUCT(mdp)
-STRING(256,                 socket,     DEFAULT_MDP_SOCKET_NAME, opt_str_nonempty,, "Name of socket for MDP client interface")
-ATOM(uint32_t,              ticks_per_full_address, 4, opt_uint32_nonzero,, "Ticks to elapse between announcing full SID")
+STRING(256,                 socket,     DEFAULT_MDP_SOCKET_NAME, cf_opt_str_nonempty,, "Name of socket for MDP client interface")
+ATOM(uint32_t,              ticks_per_full_address, 4, cf_opt_uint32_nonzero,, "Ticks to elapse between announcing full SID")
 SUB_STRUCT(mdp_iftypelist,  iftype,)
 END_STRUCT
 
 STRUCT(olsr)
-ATOM(int,                   enable,     1, opt_boolean,, "If true, OLSR is used for mesh routing")
-ATOM(uint16_t,              remote_port,4130, opt_port,, "Remote port number")
-ATOM(uint16_t,              local_port, 4131, opt_port,, "Local port number")
+ATOM(int,                   enable,     1, cf_opt_boolean,, "If true, OLSR is used for mesh routing")
+ATOM(uint16_t,              remote_port,4130, cf_opt_port,, "Remote port number")
+ATOM(uint16_t,              local_port, 4131, cf_opt_port,, "Local port number")
 END_STRUCT
 
 ARRAY(argv, vld_argv)
-KEY_ATOM(unsigned short, opt_ushort_nonzero, cmp_ushort)
-VALUE_STRING(128, opt_str)
+KEY_ATOM(unsigned short, cf_opt_ushort_nonzero, cmp_ushort)
+VALUE_STRING(128, cf_opt_str)
 END_ARRAY(16)
 
 STRUCT(executable)
-STRING(256,                 executable, "", opt_absolute_path, MANDATORY, "Absolute path of dna helper executable")
+STRING(256,                 executable, "", cf_opt_absolute_path, MANDATORY, "Absolute path of dna helper executable")
 SUB_STRUCT(argv,            argv,)
 END_STRUCT
 
@@ -231,14 +231,14 @@ SUB_STRUCT(executable,      helper,)
 END_STRUCT
 
 STRUCT(rhizomepeer)
-STRING(25,                  protocol,   "http", opt_protocol,, "Protocol name")
-STRING(256,                 host,       "", opt_str_nonempty, MANDATORY, "Host name or IP address")
-ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, opt_port,, "Port number")
+STRING(25,                  protocol,   "http", cf_opt_protocol,, "Protocol name")
+STRING(256,                 host,       "", cf_opt_str_nonempty, MANDATORY, "Host name or IP address")
+ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, cf_opt_port,, "Port number")
 END_STRUCT
 
 ARRAY(peerlist)
-KEY_STRING(15, opt_str)
-VALUE_NODE(struct config_rhizomepeer, opt_rhizome_peer)
+KEY_STRING(15, cf_opt_str)
+VALUE_NODE(struct config_rhizomepeer, cf_opt_rhizome_peer)
 END_ARRAY(10)
 
 STRUCT(rhizome_direct)
@@ -246,11 +246,11 @@ SUB_STRUCT(peerlist,        peer,)
 END_STRUCT
 
 STRUCT(rhizome_api_addfile)
-STRING(64,                  uri_path, "", opt_absolute_path,, "URI path for HTTP add-file request")
-ATOM(struct in_addr,        allow_host, (struct in_addr){htonl(INADDR_LOOPBACK)}, opt_in_addr,, "IP address of host allowed to make HTTP add-file request")
-STRING(256,                 manifest_template_file, "", opt_str_nonempty,, "Path of manifest template file, either absolute or relative to instance directory")
-ATOM(sid_t,                 default_author, SID_NONE, opt_sid,, "Author of add-file bundle if sender not given")
-ATOM(rhizome_bk_t,          bundle_secret_key, RHIZOME_BK_NONE, opt_rhizome_bk,, "Secret key of add-file bundle to try if sender not given")
+STRING(64,                  uri_path, "", cf_opt_absolute_path,, "URI path for HTTP add-file request")
+ATOM(struct in_addr,        allow_host, (struct in_addr){htonl(INADDR_LOOPBACK)}, cf_opt_in_addr,, "IP address of host allowed to make HTTP add-file request")
+STRING(256,                 manifest_template_file, "", cf_opt_str_nonempty,, "Path of manifest template file, either absolute or relative to instance directory")
+ATOM(sid_t,                 default_author, SID_NONE, cf_opt_sid,, "Author of add-file bundle if sender not given")
+ATOM(rhizome_bk_t,          bundle_secret_key, RHIZOME_BK_NONE, cf_opt_rhizome_bk,, "Secret key of add-file bundle to try if sender not given")
 END_STRUCT
 
 STRUCT(rhizome_api)
@@ -258,52 +258,52 @@ SUB_STRUCT(rhizome_api_addfile, addfile,)
 END_STRUCT
 
 STRUCT(rhizome)
-ATOM(int,                   enable,     1, opt_boolean,, "If true, Rhizome HTTP server is started")
-STRING(256,                 datastore_path, "", opt_absolute_path,, "Absolute path of rhizome storage directory")
-ATOM(uint64_t,              database_size, 1000000, opt_uint64_scaled,, "Size of database in bytes")
-ATOM(uint32_t,              fetch_delay_ms, 50, opt_uint32_nonzero,, "Delay from receiving first bundle advert to initiating fetch")
+ATOM(int,                   enable,     1, cf_opt_boolean,, "If true, Rhizome HTTP server is started")
+STRING(256,                 datastore_path, "", cf_opt_absolute_path,, "Absolute path of rhizome storage directory")
+ATOM(uint64_t,              database_size, 1000000, cf_opt_uint64_scaled,, "Size of database in bytes")
+ATOM(uint32_t,              fetch_delay_ms, 50, cf_opt_uint32_nonzero,, "Delay from receiving first bundle advert to initiating fetch")
 SUB_STRUCT(rhizome_direct,  direct,)
 SUB_STRUCT(rhizome_api,     api,)
 END_STRUCT
 
 STRUCT(directory)
-ATOM(sid_t,                 service,     SID_NONE, opt_sid,, "Subscriber ID of Serval Directory Service")
+ATOM(sid_t,                 service,     SID_NONE, cf_opt_sid,, "Subscriber ID of Serval Directory Service")
 END_STRUCT
 
 STRUCT(host)
-STRING(INTERFACE_NAME_STRLEN, interface, "", opt_str_nonempty, MANDATORY, "Interface name")
-ATOM(struct in_addr,        address,    (struct in_addr){htonl(INADDR_NONE)}, opt_in_addr, MANDATORY, "Host IP address")
-ATOM(uint16_t,              port,       PORT_DNA, opt_port,, "Port number")
+STRING(INTERFACE_NAME_STRLEN, interface, "", cf_opt_str_nonempty, MANDATORY, "Interface name")
+ATOM(struct in_addr,        address,    (struct in_addr){htonl(INADDR_NONE)}, cf_opt_in_addr, MANDATORY, "Host IP address")
+ATOM(uint16_t,              port,       PORT_DNA, cf_opt_port,, "Port number")
 END_STRUCT
 
 ARRAY(host_list)
-KEY_ATOM(sid_t, opt_sid, cmp_sid)
+KEY_ATOM(sid_t, cf_opt_sid, cmp_sid)
 VALUE_SUB_STRUCT(host)
 END_ARRAY(32)
 
 STRUCT(network_interface)
-ATOM(int,                   exclude,    0, opt_boolean,, "If true, do not use matching interfaces")
-ATOM(struct pattern_list,   match,      PATTERN_LIST_EMPTY, opt_pattern_list, MANDATORY, "Names that match network interface")
-ATOM(short,                 type,       OVERLAY_INTERFACE_WIFI, opt_interface_type,, "Type of network interface")
-ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, opt_port,, "Port number for network interface")
-ATOM(uint64_t,              speed,      1000000, opt_uint64_scaled,, "Speed in bits per second")
-ATOM(uint32_t,              mdp_tick_ms, 0, opt_uint32_nonzero,, "Override MDP tick interval for this interface")
+ATOM(int,                   exclude,    0, cf_opt_boolean,, "If true, do not use matching interfaces")
+ATOM(struct pattern_list,   match,      PATTERN_LIST_EMPTY, cf_opt_pattern_list, MANDATORY, "Names that match network interface")
+ATOM(short,                 type,       OVERLAY_INTERFACE_WIFI, cf_opt_interface_type,, "Type of network interface")
+ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, cf_opt_port,, "Port number for network interface")
+ATOM(uint64_t,              speed,      1000000, cf_opt_uint64_scaled,, "Speed in bits per second")
+ATOM(uint32_t,              mdp_tick_ms, 0, cf_opt_uint32_nonzero,, "Override MDP tick interval for this interface")
 END_STRUCT
 
 ARRAY(interface_list)
-KEY_STRING(15, opt_str)
+KEY_STRING(15, cf_opt_str)
 VALUE_SUB_STRUCT(network_interface)
 END_ARRAY(10)
 
 // The top level.
 STRUCT(main)
-NODE_STRUCT(interface_list, interfaces, opt_interface_list, MANDATORY)
+NODE_STRUCT(interface_list, interfaces, cf_opt_interface_list, MANDATORY)
 SUB_STRUCT(log,             log,)
 SUB_STRUCT(server,          server,)
 SUB_STRUCT(monitor,         monitor,)
 SUB_STRUCT(mdp,             mdp,)
 SUB_STRUCT(dna,             dna,)
-NODE(debugflags_t,          debug,      0, opt_debugflags, USES_CHILDREN, "Debug flags")
+NODE(debugflags_t,          debug,      0, cf_opt_debugflags, USES_CHILDREN, "Debug flags")
 SUB_STRUCT(rhizome,         rhizome,)
 SUB_STRUCT(directory,       directory,)
 SUB_STRUCT(host_list,       hosts,)
