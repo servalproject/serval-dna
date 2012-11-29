@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include "str.h"
 #include "strbuf_helpers.h"
+#include "overlay_address.h"
 
 /* Represents a queued fetch of a bundle payload, for which the manifest is already known.
  */
@@ -1009,7 +1010,19 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   }
   slot->mdpNextTX=gettime_ms()+133;
   
-  DEBUGF("Send MDP frame asking for blocks of data");
+  overlay_mdp_frame mdp;
+
+  bzero(&mdp,sizeof(mdp));
+  struct subscriber *me=find_subscriber(NULL,0,0);
+  memcpy(me->sid,mdp.out.src.sid,SID_SIZE);
+  mdp.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
+  bcopy(slot->peer_sid,mdp.out.dst.sid,SID_SIZE);
+  mdp.out.dst.port=MDP_PORT_RHIZOME_REQUEST;
+  DEBUGF("Set request manifest in MDP frame body");
+  overlay_mdp_dispatch(&mdp,0 /* system generated */,NULL,0);
+  
+  DEBUGF("Set callback function, and set alarm");
+  // schedule(&slot->alarm,
 
   return 0;
 }
@@ -1022,7 +1035,19 @@ static int rhizome_fetch_mdp_requestmanifest(struct rhizome_fetch_slot *slot)
   }
   slot->mdpNextTX=gettime_ms()+100;
   
-  DEBUGF("Send MDP frame asking for manifest");
+  overlay_mdp_frame mdp;
+
+  bzero(&mdp,sizeof(mdp));
+  struct subscriber *me=find_subscriber(NULL,0,0);
+  memcpy(me->sid,mdp.out.src.sid,SID_SIZE);
+  mdp.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
+  bcopy(slot->peer_sid,mdp.out.dst.sid,SID_SIZE);
+  mdp.out.dst.port=MDP_PORT_RHIZOME_REQUEST;
+  DEBUGF("Set request manifest in MDP frame body");
+  overlay_mdp_dispatch(&mdp,0 /* system generated */,NULL,0);
+  
+  DEBUGF("Set callback function, and set alarm");
+  // schedule(&slot->alarm,
 
   return 0;
 }

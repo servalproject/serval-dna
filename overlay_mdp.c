@@ -608,6 +608,8 @@ int overlay_mdp_check_binding(struct subscriber *subscriber, int port, int userG
     case MDP_PORT_KEYMAPREQUEST:
     case MDP_PORT_VOMP:
     case MDP_PORT_DNALOOKUP:
+    case MDP_PORT_RHIZOME_RESPONSE:
+    case MDP_PORT_RHIZOME_REQUEST:
       return 0;
     }
   }
