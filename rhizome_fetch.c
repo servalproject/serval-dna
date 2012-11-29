@@ -73,6 +73,8 @@ struct rhizome_fetch_slot {
   int prefix_length;
 };
 
+static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot);
+
 /* Represents a queue of fetch candidates and a single active fetch for bundle payloads whose size
  * is less than a given threshold.
  *
@@ -543,7 +545,9 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
     /* Fetch via overlay, either because no IP address was provided, or because
        the connection/attempt to fetch via HTTP failed. */
   WHY("Rhizome fetching via overlay not implemented");
-  slot->state=RHIZOME_FETCH_RXFILEMDP;  
+  slot->state=RHIZOME_FETCH_RXFILEMDP;
+  rhizome_fetch_switch_to_mdp(slot);
+  return 0;
   
 bail:
   if (sock != -1)
