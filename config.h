@@ -180,10 +180,16 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
 #include <stdint.h>
+#include <arpa/inet.h>
+
 #include "constants.h"
 #include "strbuf.h"
 
+#define NELS(a) (sizeof (a) / sizeof *(a))
+
 typedef unsigned long debugflags_t;
+debugflags_t debugFlagMask(const char *flagname);
+
 #define RHIZOME_BUNDLE_KEY_BYTES        32
 
 #define PORT_DNA 4110
@@ -218,25 +224,11 @@ struct cf_om_node {
 };
 
 struct cf_om_node *cf_parse_to_om(const char *source, const char *buf, size_t len);
+int cf_get_child(const struct cf_om_node *parent, const char *key);
 void cf_free_node(struct cf_om_node *node);
 void cf_dump_node(const struct cf_om_node *node, int indent);
 
-void cf_warn_nodev(const char *file, unsigned line, const struct cf_om_node *node, const char *key, const char *fmt, va_list ap);
-void cf_warn_childrenv(const char *file, unsigned line, const struct cf_om_node *parent, const char *fmt, va_list ap);
-void cf_warn_node(const char *file, unsigned line, const struct cf_om_node *node, const char *key, const char *fmt, ...);
-void cf_warn_children(const char *file, unsigned line, const struct cf_om_node *node, const char *fmt, ...);
-void cf_warn_duplicate_node(const struct cf_om_node *parent, const char *key);
-void cf_warn_missing_node(const struct cf_om_node *parent, const char *key);
-void cf_warn_node_value(const struct cf_om_node *node, int reason);
-void cf_warn_no_array(const struct cf_om_node *node, int reason);
-void cf_warn_unsupported_node(const struct cf_om_node *node);
-void cf_warn_unsupported_children(const struct cf_om_node *parent);
-void cf_warn_list_overflow(const struct cf_om_node *node);
-void cf_warn_spurious_children(const struct cf_om_node *parent);
-void cf_warn_array_label(const struct cf_om_node *node, int reason);
-void cf_warn_array_value(const struct cf_om_node *node, int reason);
-
-/* Return bit flags for schema default cf_dfl_ and parsing cf_opt_ functions. */
+/* Return bit flags for config schema default cf_dfl_xxx() and parsing cf_opt_xxx() functions. */
 
 #define CFERROR             (~0) // all set
 #define CFOK                0
@@ -252,6 +244,24 @@ void cf_warn_array_value(const struct cf_om_node *node, int reason);
 #define CF__FLAGS           (~0 & ~CF__SUBFLAGS)
 
 strbuf strbuf_cf_flags(strbuf, int);
+strbuf strbuf_cf_flag_reason(strbuf sb, int flags);
+
+/* Diagnostic functions for use in config schema parsing functions, cf_opt_xxx(). */
+
+void cf_warn_nodev(const char *file, unsigned line, const struct cf_om_node *node, const char *key, const char *fmt, va_list ap);
+void cf_warn_childrenv(const char *file, unsigned line, const struct cf_om_node *parent, const char *fmt, va_list ap);
+void cf_warn_node(const char *file, unsigned line, const struct cf_om_node *node, const char *key, const char *fmt, ...);
+void cf_warn_children(const char *file, unsigned line, const struct cf_om_node *node, const char *fmt, ...);
+void cf_warn_duplicate_node(const struct cf_om_node *parent, const char *key);
+void cf_warn_missing_node(const struct cf_om_node *parent, const char *key);
+void cf_warn_node_value(const struct cf_om_node *node, int reason);
+void cf_warn_no_array(const struct cf_om_node *node, int reason);
+void cf_warn_unsupported_node(const struct cf_om_node *node);
+void cf_warn_unsupported_children(const struct cf_om_node *parent);
+void cf_warn_list_overflow(const struct cf_om_node *node);
+void cf_warn_spurious_children(const struct cf_om_node *parent);
+void cf_warn_array_key(const struct cf_om_node *node, int reason);
+void cf_warn_array_value(const struct cf_om_node *node, int reason);
 
 // Generate config struct definitions, struct config_NAME.
 #define STRUCT(__name, __validator...) \
@@ -307,27 +317,17 @@ strbuf strbuf_cf_flags(strbuf, int);
 #undef VALUE_NODE_STRUCT
 #undef END_ARRAY
 
-// Generate config set-default functions, cf_dfl_config_NAME().
+// Generate config set-default function prototypes, cf_dfl_config_NAME().
 #define STRUCT(__name, __validator...) \
-    int cf_dfl_config_##__name(struct config_##__name *s) {
-#define NODE(__type, __element, __default, __parser, __flags, __comment) \
-        s->__element = (__default);
-#define ATOM(__type, __element, __default, __parser, __flags, __comment) \
-        s->__element = (__default);
-#define STRING(__size, __element, __default, __parser, __flags, __comment) \
-        strncpy(s->__element, (__default), (__size))[(__size)] = '\0';
-#define SUB_STRUCT(__name, __element, __flags) \
-        cf_dfl_config_##__name(&s->__element);
-#define NODE_STRUCT(__name, __element, __parser, __flags) \
-        cf_dfl_config_##__name(&s->__element);
-#define END_STRUCT \
-        return CFOK; \
-    }
+    int cf_dfl_config_##__name(struct config_##__name *s);
+#define NODE(__type, __element, __default, __parser, __flags, __comment)
+#define ATOM(__type, __element, __default, __parser, __flags, __comment)
+#define STRING(__size, __element, __default, __parser, __flags, __comment)
+#define SUB_STRUCT(__name, __element, __flags)
+#define NODE_STRUCT(__name, __element, __parser, __flags)
+#define END_STRUCT
 #define ARRAY(__name, __validator...) \
-    int cf_dfl_config_##__name(struct config_##__name *a) { \
-        a->ac = 0; \
-        return CFOK; \
-    }
+    int cf_dfl_config_##__name(struct config_##__name *a);
 #define KEY_ATOM(__type, __eltparser, __cmpfunc...)
 #define KEY_STRING(__strsize, __eltparser, __cmpfunc...)
 #define VALUE_ATOM(__type, __eltparser)
