@@ -71,6 +71,13 @@ struct rhizome_fetch_slot {
   int barP;
   unsigned char prefix[RHIZOME_MANIFEST_ID_BYTES];
   int prefix_length;
+  int64_t mdpNextTX;
+  int64_t mdpLastRX;
+  int mdpIdleTimeout;
+  int64_t mdpRXWindowStart;
+  int mdpRXBlockLength;
+  uint32_t mdpRXBitmap;
+  unsigned char mdpRXWindow[32*200];
 };
 
 static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot);
@@ -994,6 +1001,32 @@ static int rhizome_fetch_close(struct rhizome_fetch_slot *slot)
   return 0;
 }
 
+static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
+{
+  if ((gettime_ms()-slot->mdpLastRX)>slot->mdpIdleTimeout) {
+    // connection timed out
+    return rhizome_fetch_close(slot);
+  }
+  slot->mdpNextTX=gettime_ms()+133;
+  
+  DEBUGF("Send MDP frame asking for blocks of data");
+
+  return 0;
+}
+
+static int rhizome_fetch_mdp_requestmanifest(struct rhizome_fetch_slot *slot)
+{
+  if ((gettime_ms()-slot->mdpLastRX)>slot->mdpIdleTimeout) {
+    // connection timed out
+    return rhizome_fetch_close(slot);
+  }
+  slot->mdpNextTX=gettime_ms()+100;
+  
+  DEBUGF("Send MDP frame asking for manifest");
+
+  return 0;
+}
+
 static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
 {
   /* close socket and stop watching it */
@@ -1009,6 +1042,31 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
      2. Set timeout for next request (if fetching a file).
      3. Set timeout for no traffic received.
   */
+
+  slot->mdpLastRX=gettime_ms();
+  if (slot->barP) {
+    /* We are requesting a file.  The http request may have already received
+       some of the file, so take that into account when setting up ring buffer. 
+       Then send the request for the next block of data, and set our alarm to
+       re-ask in a little while. "In a little while" is 133ms, which is roughly
+       the time it takes to send 16KB via WiFi broadcast at the 1Mbit base rate 
+       (this will need tuning for non-WiFi interfaces). 16KB ~= 32 x 200 bytes
+       which is the block size we will use.  200bytes allows for several blocks 
+       to fit into a packet, and probably fit at least one any any outgoing packet
+       that is not otherwise full. */
+    slot->mdpIdleTimeout=5000; // give up if nothing received for 5 seconds
+    slot->mdpRXWindowStart=slot->file_ofs;
+    slot->mdpRXBitmap=0x00000000; // no blocks received yet
+    rhizome_fetch_mdp_requestblocks(slot);    
+  } else {
+    /* We are requesting a manifest, which is stateless, except that we eventually
+       give up. All we need to do now is send the request, and set our alarm to
+       try again in case we haven't heard anything back. */
+    slot->mdpNextTX=gettime_ms()+100;
+    slot->mdpIdleTimeout=2000; // only try for two seconds
+    rhizome_fetch_mdp_requestmanifest(slot);
+  }
+
   DEBUGF("Fetch via MDP not implemented");
   return rhizome_fetch_close(slot);
 }
