@@ -186,6 +186,8 @@ END_STRUCT
 
 STRUCT(server)
 STRING(256,                 chdir,      "/", opt_absolute_path,, "Absolute path of chdir(2) for server process")
+STRING(256,                 dummy_interface_dir, "", opt_str_nonempty,, "Path of directory containing dummy interface files, either absolute or relative to instance directory")
+ATOM(int,                   respawn_on_crash, 0, opt_boolean,, "If true, server will exec(2) itself on fatal signals, eg SEGV")
 END_STRUCT
 
 STRUCT(monitor)
@@ -203,8 +205,15 @@ VALUE_SUB_STRUCT(mdp_iftype)
 END_ARRAY(5)
 
 STRUCT(mdp)
+STRING(256,                 socket,     DEFAULT_MDP_SOCKET_NAME, opt_str_nonempty,, "Name of socket for MDP client interface")
 ATOM(uint32_t,              ticks_per_full_address, 4, opt_uint32_nonzero,, "Ticks to elapse between announcing full SID")
 SUB_STRUCT(mdp_iftypelist,  iftype,)
+END_STRUCT
+
+STRUCT(olsr)
+ATOM(int,                   enable,     1, opt_boolean,, "If true, OLSR is used for mesh routing")
+ATOM(uint16_t,              remote_port,4130, opt_port,, "Remote port number")
+ATOM(uint16_t,              local_port, 4131, opt_port,, "Local port number")
 END_STRUCT
 
 ARRAY(argv, vld_argv)
@@ -232,14 +241,29 @@ KEY_STRING(15, opt_str)
 VALUE_NODE(struct config_rhizomepeer, opt_rhizome_peer)
 END_ARRAY(10)
 
-STRUCT(rhizomedirect)
+STRUCT(rhizome_direct)
 SUB_STRUCT(peerlist,        peer,)
 END_STRUCT
 
+STRUCT(rhizome_api_addfile)
+STRING(64,                  uri_path, "", opt_absolute_path,, "URI path for HTTP add-file request")
+ATOM(struct in_addr,        allow_host, (struct in_addr){htonl(INADDR_LOOPBACK)}, opt_in_addr,, "IP address of host allowed to make HTTP add-file request")
+STRING(256,                 manifest_template_file, "", opt_str_nonempty,, "Path of manifest template file, either absolute or relative to instance directory")
+ATOM(sid_t,                 default_author, SID_NONE, opt_sid,, "Author of add-file bundle if sender not given")
+ATOM(rhizome_bk_t,          bundle_secret_key, RHIZOME_BK_NONE, opt_rhizome_bk,, "Secret key of add-file bundle to try if sender not given")
+END_STRUCT
+
+STRUCT(rhizome_api)
+SUB_STRUCT(rhizome_api_addfile, addfile,)
+END_STRUCT
+
 STRUCT(rhizome)
-STRING(256,                 path,       "", opt_absolute_path,, "Absolute path of rhizome directory")
-ATOM(int,                   enabled,    1, opt_boolean,, "If true, Rhizome HTTP server is started")
-SUB_STRUCT(rhizomedirect,   direct,)
+ATOM(int,                   enable,     1, opt_boolean,, "If true, Rhizome HTTP server is started")
+STRING(256,                 datastore_path, "", opt_absolute_path,, "Absolute path of rhizome storage directory")
+ATOM(uint64_t,              database_size, 1000000, opt_uint64_scaled,, "Size of database in bytes")
+ATOM(uint32_t,              fetch_delay_ms, 50, opt_uint32_nonzero,, "Delay from receiving first bundle advert to initiating fetch")
+SUB_STRUCT(rhizome_direct,  direct,)
+SUB_STRUCT(rhizome_api,     api,)
 END_STRUCT
 
 STRUCT(directory)
@@ -248,7 +272,7 @@ END_STRUCT
 
 STRUCT(host)
 STRING(INTERFACE_NAME_STRLEN, interface, "", opt_str_nonempty, MANDATORY, "Interface name")
-ATOM(struct in_addr,        address,    (struct in_addr){0}, opt_in_addr, MANDATORY, "Host IP address")
+ATOM(struct in_addr,        address,    (struct in_addr){htonl(INADDR_NONE)}, opt_in_addr, MANDATORY, "Host IP address")
 ATOM(uint16_t,              port,       PORT_DNA, opt_port,, "Port number")
 END_STRUCT
 
@@ -271,6 +295,7 @@ KEY_STRING(15, opt_str)
 VALUE_SUB_STRUCT(network_interface)
 END_ARRAY(10)
 
+// The top level.
 STRUCT(main)
 NODE_STRUCT(interface_list, interfaces, opt_interface_list, MANDATORY)
 SUB_STRUCT(log,             log,)

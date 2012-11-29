@@ -184,13 +184,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf.h"
 
 typedef unsigned long debugflags_t;
+#define RHIZOME_BUNDLE_KEY_BYTES        32
 
 #define PORT_DNA 4110
 #define RHIZOME_HTTP_PORT 4110
 
-typedef struct binarysid { unsigned char binary[SID_SIZE]; } sid_t;
+typedef struct sid_binary { unsigned char binary[SID_SIZE]; } sid_t;
 #define SID_NONE        ((sid_t){0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0})
 #define SID_BROADCAST   ((sid_t){0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff})
+
+typedef struct rhizome_bk_binary { unsigned char binary[RHIZOME_BUNDLE_KEY_BYTES]; } rhizome_bk_t;
+#define RHIZOME_BK_NONE ((rhizome_bk_t){0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0})
 
 #define INTERFACE_NAME_STRLEN   40
 struct pattern_list {

@@ -422,6 +422,7 @@ int opt_protocol(char *str, size_t len, const char *text);
 int opt_in_addr(struct in_addr *addrp, const char *text);
 int opt_port(unsigned short *portp, const char *text);
 int opt_sid(sid_t *sidp, const char *text);
+int opt_rhizome_bk(rhizome_bk_t *bkp, const char *text);
 int opt_interface_type(short *typep, const char *text);
 int opt_pattern_list(struct pattern_list *listp, const char *text);
 int opt_interface_list(struct config_interface_list *listp, const struct cf_om_node *node);
@@ -720,6 +721,16 @@ int opt_sid(sid_t *sidp, const char *text)
     return CFINVALID;
   size_t n = fromhex(sidp->binary, text, SID_SIZE);
   assert(n == SID_SIZE);
+  return CFOK;
+}
+
+int opt_rhizome_bk(rhizome_bk_t *bkp, const char *text)
+{
+  rhizome_bk_t sid;
+  if (!rhizome_str_is_bundle_key(text))
+    return CFINVALID;
+  size_t n = fromhex(bkp->binary, text, RHIZOME_BUNDLE_KEY_BYTES);
+  assert(n == RHIZOME_BUNDLE_KEY_BYTES);
   return CFOK;
 }
 
@@ -1178,6 +1189,7 @@ int main(int argc, char **argv)
     DEBUGF("config.server.chdir = %s", alloca_str(config.server.chdir));
     DEBUGF("config.debug = %llx", (unsigned long long) config.debug);
     DEBUGF("config.directory.service = %s", alloca_tohex(config.directory.service.binary, SID_SIZE));
+    DEBUGF("config.rhizome.api.addfile.allow_host = %s", inet_ntoa(config.rhizome.api.addfile.allow_host));
     int j;
     for (j = 0; j < config.mdp.iftype.ac; ++j) {
       DEBUGF("config.mdp.iftype.%u", config.mdp.iftype.av[j].key);
