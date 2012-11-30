@@ -145,7 +145,7 @@ int overlay_rhizome_add_advertisements(int interface_number, struct overlay_buff
      XXX We will move all processing of Rhizome into a separate process
      so that the CPU delays caused by Rhizome verifying signatures isn't a problem.
  */
-  if (!rhizome_http_server_running() || !rhizome_db) 
+  if (!is_rhizome_advertise_enabled()) 
     RETURN(0);
     
   int pass;

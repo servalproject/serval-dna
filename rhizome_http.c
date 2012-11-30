@@ -72,7 +72,7 @@ unsigned char favicon_bytes[]={
 ,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 int favicon_len=318;
 
-int rhizome_http_server_running()
+int is_rhizome_http_server_running()
 {
   return rhizome_server_socket != -1;
 }

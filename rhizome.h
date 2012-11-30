@@ -439,6 +439,13 @@ int rhizome_http_server_start(int (*http_parse_func)(rhizome_http_request *),
 			      const char *http_parse_func_description,
 			      int port_low,int port_high);
 
+int is_rhizome_enabled();
+int is_rhizome_mdp_enabled();
+int is_rhizome_http_enabled();
+int is_rhizome_advertise_enabled();
+int is_rhizome_mdp_server_running();
+int is_rhizome_http_server_running();
+
 typedef struct rhizome_direct_bundle_cursor {
   /* Where the current fill started */
   long long start_size_high;

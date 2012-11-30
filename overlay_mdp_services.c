@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "overlay_address.h"
 #include "overlay_packet.h"
 #include "mdp_client.h"
+#include "rhizome.h"
 #include "crypto.h"
 
 int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
@@ -150,12 +151,18 @@ int overlay_mdp_try_interal_services(overlay_mdp_frame *mdp)
   case MDP_PORT_KEYMAPREQUEST:    RETURN(keyring_mapping_request(keyring,mdp));
   case MDP_PORT_DNALOOKUP:        RETURN(overlay_mdp_service_dnalookup(mdp));
   case MDP_PORT_ECHO:             RETURN(overlay_mdp_service_echo(mdp));
-  case MDP_PORT_RHIZOME_REQUEST:  RETURN(overlay_mdp_service_rhizomerequest(mdp));
-  case MDP_PORT_RHIZOME_RESPONSE: RETURN(overlay_mdp_service_rhizomeresponse(mdp));
-  default:
-    /* Unbound socket.  We won't be sending ICMP style connection refused
-       messages, partly because they are a waste of bandwidth. */
-    RETURN(WHYF("Received packet for which no listening process exists (MDP ports: src=%d, dst=%d",
-		mdp->out.src.port,mdp->out.dst.port));
+  case MDP_PORT_RHIZOME_REQUEST: 
+    if (is_rhizome_mdp_server_running()) {
+      RETURN(overlay_mdp_service_rhizomerequest(mdp));
+    } else break;
+  case MDP_PORT_RHIZOME_RESPONSE:
+    if (is_rhizome_mdp_server_running()) {
+      RETURN(overlay_mdp_service_rhizomeresponse(mdp));
+    } else break;
   }
+   
+  /* Unbound socket.  We won't be sending ICMP style connection refused
+     messages, partly because they are a waste of bandwidth. */
+  RETURN(WHYF("Received packet for which no listening process exists (MDP ports: src=%d, dst=%d",
+	      mdp->out.src.port,mdp->out.dst.port));
 }
