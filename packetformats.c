@@ -65,7 +65,7 @@ uint64_t read_uint64(unsigned char *o)
 {
   int i;
   uint64_t v=0;
-  for(i=0;i<8;i++) v=(v<<8)|*(o++);
+  for(i=0;i<8;i++) v=(v<<8)|o[8-1-i];
   return v;
 }
 
@@ -73,7 +73,7 @@ uint32_t read_uint32(unsigned char *o)
 {
   int i;
   uint32_t v=0;
-  for(i=0;i<4;i++) v=(v<<8)|*(o++);
+  for(i=0;i<4;i++) v=(v<<8)|o[4-1-i];
   return v;
 }
 
@@ -81,6 +81,6 @@ uint16_t read_uint16(unsigned char *o)
 {
   int i;
   uint16_t v=0;
-  for(i=0;i<2;i++) v=(v<<8)|*(o++);
+  for(i=0;i<2;i++) v=(v<<8)|o[2-1-i];
   return v;
 }
