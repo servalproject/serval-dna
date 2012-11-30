@@ -36,12 +36,92 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
   DEBUGF("bundle ID = %s",alloca_tohex_bid(&mdp->out.payload[0]));
   DEBUGF("manifest version = 0x%llx",
 	 read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES]));
-  DEBUGF("file offset = 0x%llx",
-	 read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8]));
-  DEBUGF("bitmap = 0x%08x",
-	 read_uint32(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8]));
-  DEBUGF("block length = %d",
-	 read_uint16(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4]));	 
+  uint64_t fileOffset=
+    read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8]);
+  DEBUGF("file offset = 0x%llx",fileOffset);
+  uint32_t bitmap=
+    read_uint32(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8]);
+  DEBUGF("bitmap = 0x%08x",bitmap);
+  uint16_t blockLength=
+  read_uint16(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4]);
+  DEBUGF("block length = %d",blockLength);
+  if (blockLength>300) RETURN(-1);
+
+  /* Find manifest that corresponds to BID and version.
+     If we don't have this combination, then do nothing.
+     If we do have the combination, then find the associated file, 
+     and open the blob so that we can send some of it.
+
+     TODO: If we have a newer version of the manifest, and the manifest is a
+     journal, then the newer version is okay to use to service this request.
+  */
+  long long row_id=-1;
+  if (sqlite_exec_int64(&row_id, "SELECT rowid FROM FILES WHERE id IN (SELECT filehash FROM MANIFESTS WHERE manifests.version=%lld AND manifests.id='%s');",
+			read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES]),
+			alloca_tohex_bid(&mdp->out.payload[0])) < 1)
+    {
+      DEBUGF("Couldn't find stored file.");
+      RETURN(-1);
+    }
+  DEBUGF("manifest file row_id = %lld",row_id);
+
+  sqlite3_blob *blob=NULL; 
+  int ret=sqlite3_blob_open(rhizome_db, "main", "files", "data",
+				   row_id, 0 /* read only */, &blob);
+  if (ret!=SQLITE_OK)
+    {
+      DEBUGF("Failed to open blob: %s",sqlite3_errmsg(rhizome_db));     
+      RETURN(-1);
+    }
+  int blob_bytes=sqlite3_blob_bytes(blob);
+  if (blob_bytes<fileOffset) {
+    sqlite3_blob_close(blob); blob=NULL;
+    RETURN(-1);
+  }
+
+  overlay_mdp_frame reply;
+  bzero(&reply,sizeof(reply));
+  // Reply is broadcast, so we cannot authcrypt, and signing is too time consuming
+  // for low devices.  The result is that an attacker can prevent rhizome transfers
+  // if they want to by injecting fake blocks.  The alternative is to not broadcast
+  // back replies, and then we can authcrypt.
+  reply.packetTypeAndFlags=MDP_TX|MDP_NOSIGN|MDP_NOCRYPT;
+  reply.out.ttl=1;
+  bcopy(my_subscriber->sid,reply.out.src.sid,SID_SIZE);
+  // send replies to broadcast so that others can hear blocks and record them
+  // (not that preemptive listening is implemented yet).
+  reply.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
+  memset(reply.out.dst.sid,0xff,SID_SIZE);
+  reply.out.dst.port=MDP_PORT_RHIZOME_RESPONSE;
+  reply.out.queue=OQ_ORDINARY;
+  reply.out.payload[0]='B'; // reply contains blocks
+  // include 16 bytes of BID prefix for identification
+  bcopy(&mdp->out.payload[0],&reply.out.payload[0],16);
+  // and version of manifest
+  bcopy(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES],
+	&reply.out.payload[16],8);
+
+  int i;
+  for(i=0;i<32;i++)
+    if (!(bitmap&(1<<(31-i))))
+      {	
+	// calculate and set offset of block
+	uint64_t blockOffset=fileOffset+i*blockLength;
+	write_uint64(&reply.out.payload[16+8],blockOffset);
+	// work out how many bytes to read
+	int blockBytes=blob_bytes-blockOffset;
+	if (blockBytes>blockLength) blockBytes=blockLength;
+	// read data for block
+	if (blob_bytes>=blockOffset) {
+	  sqlite3_blob_read(blob,&reply.out.payload[16+8+8],
+			    blockBytes,0);	  
+	  reply.out.payload_length=16+8+8+blockBytes;
+	}
+	// send packet
+	overlay_mdp_dispatch(&reply,0 /* system generated */, NULL,0); 
+      }
+
+  sqlite3_blob_close(blob); blob=NULL;
 
   RETURN(-1);
 }
@@ -49,6 +129,7 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
 int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
 {
   IN();
+  DEBUGF("Someone sent me a rhizome REPLY via MDP");
 
   RETURN(-1);
 }
