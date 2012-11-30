@@ -89,6 +89,20 @@ test_FileTransfer() {
    assert_rhizome_received file2
 }
 
+doc_DisablingHTTPServer="Disabling HTTP rhizome transports works"
+setup_DisablingHTTPServer() {
+   setup_common
+   set_instance +A
+   rhizome_add_file file1
+   executeOk_servald config set rhizome.http.enable 0
+   start_servald_instances +A
+}
+test_DisablingHTTPServer() {
+   local _logvar=LOG${2#+}
+   local _port=$($SED -n -e '/RHIZOME HTTP SERVER.*START/s/.*port=\([0-9]\{1,\}\).*/\1/p' "${!_logvar}" | $SED -n '$p')
+   assert --message="instance $2 Rhizome HTTP server not started" [ ! -n "$_port" ]
+}
+
 doc_FileTransferBig="Big new bundle transfers to one node"
 setup_FileTransferBig() {
    setup_common
