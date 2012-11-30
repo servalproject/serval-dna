@@ -246,7 +246,7 @@ int vld_argv(const struct cf_om_node *parent, struct config_argv *array, int res
       char labelkey[12];
       sprintf(labelkey, "%u", last_key);
       cf_warn_duplicate_node(parent, labelkey);
-      result |= CFINVALID;
+      result |= CFDUPLICATE;
     }
     while (++last_key < key && last_key <= sizeof(array->av)) {
       char labelkey[12];

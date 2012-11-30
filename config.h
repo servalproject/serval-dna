@@ -98,7 +98,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *      function is used to parse each individual array element, and the parsed result is only
  *      appended to the array if it returns CFOK.
  *
- * If a STRUCT(NAME, VALIDATOR) or ARRAY(NAME, VALIDATOR) schema declaration is given a
+ * If a STRUCT(NAME, VALIDATOR) or ARRAY(NAME, FLAGS, VALIDATOR) schema declaration is given a
  * validator function, then the function must have the following signature:
  *
  *  - int VALIDATOR(struct config_NAME *dest, int orig_result);
@@ -140,12 +140,19 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *    contains elements that are not defined in the STRUCT.  This may indicate a typo in the name
  *    of a config option, resulting in the intended option not being set.
  *
+ *  - CFDUPLICATE if a duplicate array entry was found.  The result may be an empty array (in which
+ *    case CFEMPTY is also set), or an array that omits the duplicate element.  It is not defined
+ *    which of the two conflicting elements will get omitted.  Normal array parsing without a
+ *    validator function will return an empty array in the case of duplicate, but a validator
+ *    function may change this behaviour.
+ *
  *  - CFARRAYOVERFLOW if the size of any array was exceeded.  The result in *dest may be empty (in
  *    which case CFEMPTY is also set), or may contain elements parsed successfully from the COM (ie,
- *    returned CFOK), omitting any that did not parse successfully (in which case other bits will be
- *    set) and arbitrarily omitting others that did not fit (it is not defined which will be
- *    omitted).  Normal array parsing without a validator function will return an empty result in
- *    the case of overflow, but a validator function may change this behaviour.
+ *    returned CFOK), omitting any that did not parse successfully (in which case the relevant
+ *    CFSUB() bits will be set) and arbitrarily omitting others that did not fit.  It is not defined
+ *    which elements get omitted from an overflowed array.  Normal array parsing without a validator
+ *    function will return an empty array in the case of overflow, but a validator function may
+ *    change this behaviour.
  *
  *  - CFSTRINGFOVERFLOW if the size of any string element was exceeded.  The result in *dest may be
  *    unchanged or may contain a truncated string, depending on the parser that detected and
@@ -206,6 +213,25 @@ struct pattern_list {
 };
 #define PATTERN_LIST_EMPTY ((struct pattern_list){.patc = 0})
 
+/* Return bit flags for config schema default cf_dfl_xxx() and parsing cf_opt_xxx() functions. */
+
+#define CFERROR             (~0) // all set
+#define CFOK                0
+#define CFEMPTY             (1<<0)
+#define CFDUPLICATE         (1<<1)
+#define CFARRAYOVERFLOW     (1<<2)
+#define CFSTRINGOVERFLOW    (1<<3)
+#define CFINCOMPLETE        (1<<4)
+#define CFINVALID           (1<<5)
+#define CFUNSUPPORTED       (1<<6)
+#define CF__SUB_SHIFT       16
+#define CFSUB(f)            ((f) << CF__SUB_SHIFT)
+#define CF__SUBFLAGS        CFSUB(~0)
+#define CF__FLAGS           (~0 & ~CF__SUBFLAGS)
+
+strbuf strbuf_cf_flags(strbuf, int);
+strbuf strbuf_cf_flag_reason(strbuf sb, int flags);
+
 /* The Configuration Object Model (COM).  The config file is parsed into a tree of these structures
  * first, then those structures are passed as arguments to the schema parsing functions.
  */
@@ -220,28 +246,10 @@ struct cf_om_node {
     struct cf_om_node *nodv[10]; // malloc()
 };
 
-struct cf_om_node *cf_parse_to_om(const char *source, const char *buf, size_t len);
+int cf_parse_to_om(const char *source, const char *buf, size_t len, struct cf_om_node **rootp);
 int cf_get_child(const struct cf_om_node *parent, const char *key);
-void cf_free_node(struct cf_om_node *node);
+void cf_free_node(struct cf_om_node **nodep);
 void cf_dump_node(const struct cf_om_node *node, int indent);
-
-/* Return bit flags for config schema default cf_dfl_xxx() and parsing cf_opt_xxx() functions. */
-
-#define CFERROR             (~0) // all set
-#define CFOK                0
-#define CFEMPTY             (1<<0)
-#define CFARRAYOVERFLOW     (1<<1)
-#define CFSTRINGOVERFLOW    (1<<2)
-#define CFINCOMPLETE        (1<<3)
-#define CFINVALID           (1<<4)
-#define CFUNSUPPORTED       (1<<5)
-#define CF__SUB_SHIFT       16
-#define CFSUB(f)            ((f) << CF__SUB_SHIFT)
-#define CF__SUBFLAGS        CFSUB(~0)
-#define CF__FLAGS           (~0 & ~CF__SUBFLAGS)
-
-strbuf strbuf_cf_flags(strbuf, int);
-strbuf strbuf_cf_flag_reason(strbuf sb, int flags);
 
 /* Diagnostic functions for use in config schema parsing functions, cf_opt_xxx(). */
 
@@ -290,7 +298,7 @@ void _cf_warn_array_value(struct __sourceloc __whence, const struct cf_om_node *
         struct config_##__name __element;
 #define END_STRUCT \
     };
-#define ARRAY(__name, __validator...) \
+#define ARRAY(__name, __flags, __validator...) \
     struct config_##__name { \
         unsigned ac; \
         struct config_##__name##__element {
@@ -338,7 +346,7 @@ void _cf_warn_array_value(struct __sourceloc __whence, const struct cf_om_node *
 #define SUB_STRUCT(__name, __element, __flags)
 #define NODE_STRUCT(__name, __element, __parser, __flags)
 #define END_STRUCT
-#define ARRAY(__name, __validator...) \
+#define ARRAY(__name, __flags, __validator...) \
     int cf_dfl_config_##__name(struct config_##__name *a);
 #define KEY_ATOM(__type, __eltparser, __cmpfunc...)
 #define KEY_STRING(__strsize, __eltparser, __cmpfunc...)
@@ -384,7 +392,7 @@ void _cf_warn_array_value(struct __sourceloc __whence, const struct cf_om_node *
 #define NODE_STRUCT(__name, __element, __parser, __flags) \
     int __parser(struct config_##__name *, const struct cf_om_node *);
 #define END_STRUCT
-#define ARRAY(__name, __validator...) \
+#define ARRAY(__name, __flags, __validator...) \
     int cf_opt_config_##__name(struct config_##__name *, const struct cf_om_node *); \
     __VALIDATOR(__name, ##__validator)
 #define KEY_ATOM(__type, __eltparser, __cmpfunc...) \
@@ -429,7 +437,7 @@ void _cf_warn_array_value(struct __sourceloc __whence, const struct cf_om_node *
 #define SUB_STRUCT(__name, __element, __flags)
 #define NODE_STRUCT(__name, __element, __parser, __flags)
 #define END_STRUCT
-#define ARRAY(__name, __validator...) \
+#define ARRAY(__name, __flags, __validator...) \
     typedef int __compare_func__config_##__name##__t
 #define KEY_ATOM(__type, __eltparser, __cmpfunc...) \
         (const __type *, const __type *);
@@ -445,7 +453,7 @@ void _cf_warn_array_value(struct __sourceloc __whence, const struct cf_om_node *
 #undef ARRAY
 #undef KEY_ATOM
 #undef KEY_STRING
-#define ARRAY(__name, __validator...) \
+#define ARRAY(__name, __flags, __validator...) \
     __compare_func__config_##__name##__t __dummy__compare_func__config_##__name
 #define KEY_ATOM(__type, __eltparser, __cmpfunc...) \
         ,##__cmpfunc;

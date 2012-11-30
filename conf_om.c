@@ -46,8 +46,10 @@ static const char *cf_find_keyend(const char *const key, const char *const fullk
 
 static int cf_om_make_child(struct cf_om_node **const parentp, const char *const fullkey, const char *const key, const char *const keyend)
 {
+  // Allocate parent node if it is not present.
+  if (!*parentp && (*parentp = emalloc_zero(sizeof **parentp)) == NULL)
+    return -1;
   size_t keylen = keyend - key;
-  //DEBUGF("%s key=%s", __FUNCTION__, alloca_toprint(-1, key, keylen));
   int i = 0;
   struct cf_om_node *child;
   if ((*parentp)->nodc) {
@@ -75,10 +77,8 @@ static int cf_om_make_child(struct cf_om_node **const parentp, const char *const
   // At this point, i is the index where a new child should be inserted.
   assert(i >= 0);
   assert(i <= (*parentp)->nodc);
-  child = emalloc(sizeof *child);
-  if (child == NULL)
+  if ((child = emalloc_zero(sizeof *child)) == NULL)
     return -1;
-  memset(child, 0, sizeof *child);
   ++(*parentp)->nodc;
   if ((*parentp)->nodc > NELS((*parentp)->nodv))
     *parentp = realloc(*parentp, sizeof(**parentp) + sizeof((*parentp)->nodv[0]) * ((*parentp)->nodc - NELS((*parentp)->nodv)));
@@ -105,31 +105,13 @@ int cf_get_child(const struct cf_om_node *parent, const char *key)
   return -1;
 }
 
-void cf_free_node(struct cf_om_node *node)
+int cf_parse_to_om(const char *source, const char *buf, size_t len, struct cf_om_node **rootp)
 {
-  while (node->nodc)
-    cf_free_node(node->nodv[--node->nodc]);
-  if (node->fullkey) {
-    free((char *)node->fullkey);
-    node->fullkey = node->key = NULL;
-  }
-  if (node->text) {
-    free((char *)node->text);
-    node->text = NULL;
-  }
-  free(node);
-}
-
-struct cf_om_node *cf_parse_to_om(const char *source, const char *buf, size_t len)
-{
-  struct cf_om_node *root = emalloc(sizeof(struct cf_om_node));
-  if (root == NULL)
-    return NULL;
-  memset(root, 0, sizeof *root);
   const char *end = buf + len;
   const char *line = buf;
   const char *nextline;
   unsigned lineno = 1;
+  int result = CFOK;
   for (lineno = 1; line < end; line = nextline, ++lineno) {
     const char *lend = line;
     while (lend < end && *lend != '\n')
@@ -148,10 +130,11 @@ struct cf_om_node *cf_parse_to_om(const char *source, const char *buf, size_t le
     for (p = line; p < lend && *p != '='; ++p)
       ;
     if (p == line || p == lend) {
-      WARNF("%s:%u: malformed configuration line -- ignored", source, lineno);
+      WARNF("%s:%u: malformed configuration line", source, lineno);
+      result |= CFINVALID;
       continue;
     }
-    struct cf_om_node **nodep = &root;
+    struct cf_om_node **nodep = rootp;
     const char *fullkey = line;
     const char *fullkeyend = p;
     const char *key = fullkey;
@@ -162,31 +145,48 @@ struct cf_om_node *cf_parse_to_om(const char *source, const char *buf, size_t le
       nodep = &(*nodep)->nodv[nodi];
     }
     if (keyend == NULL) {
-      WARNF("%s:%u: malformed configuration option %s -- ignored",
+      WARNF("%s:%u: malformed configuration option %s",
 	  source, lineno, alloca_toprint(-1, fullkey, fullkeyend - fullkey)
 	);
+      result |= CFINVALID;
       continue;
     }
     if (nodi == -1)
-      goto error; // out of memory
+      return CFERROR; // out of memory
     struct cf_om_node *node = *nodep;
     if (node->text) {
-      WARNF("%s:%u: duplicate configuration option %s -- ignored (original is at %s:%u)",
+      WARNF("%s:%u: duplicate configuration option %s (original is at %s:%u)",
 	  source, lineno, alloca_toprint(-1, fullkey, fullkeyend - fullkey),
 	  node->source, node->line_number
 	);
+      result |= CFDUPLICATE;
       continue;
     }
     ++p;
     if (!(node->text = strn_edup(p, lend - p)))
-      break; // out of memory
+      return CFERROR; // out of memory
     node->source = source;
     node->line_number = lineno;
   }
-  return root;
-error:
-  cf_free_node(root);
-  return NULL;
+  return result;
+}
+
+void cf_free_node(struct cf_om_node **nodep)
+{
+  if (*nodep) {
+    while ((*nodep)->nodc)
+      cf_free_node(&(*nodep)->nodv[--(*nodep)->nodc]);
+    if ((*nodep)->fullkey) {
+      free((char *)(*nodep)->fullkey);
+      (*nodep)->fullkey = (*nodep)->key = NULL;
+    }
+    if ((*nodep)->text) {
+      free((char *)(*nodep)->text);
+      (*nodep)->text = NULL;
+    }
+    free(*nodep);
+    *nodep = NULL;
+  }
 }
 
 void cf_dump_node(const struct cf_om_node *node, int indent)
@@ -287,6 +287,7 @@ strbuf strbuf_cf_flags(strbuf sb, int flags)
   size_t n = strbuf_len(sb);
   static struct { int flag; const char *name; } flagdefs[] = {
       { CFEMPTY, "CFEMPTY" },
+      { CFDUPLICATE, "CFDUPLICATE" },
       { CFSTRINGOVERFLOW, "CFSTRINGOVERFLOW" },
       { CFARRAYOVERFLOW, "CFARRAYOVERFLOW" },
       { CFINCOMPLETE, "CFINCOMPLETE" },
@@ -329,12 +330,14 @@ strbuf strbuf_cf_flag_reason(strbuf sb, int flags)
   size_t n = strbuf_len(sb);
   static struct { int flag; const char *reason; } flagdefs[] = {
       { CFEMPTY, "empty" },
+      { CFDUPLICATE, "duplicate element" },
       { CFSTRINGOVERFLOW, "string overflow" },
       { CFARRAYOVERFLOW, "array overflow" },
       { CFINCOMPLETE, "incomplete" },
       { CFINVALID, "invalid" },
       { CFUNSUPPORTED, "not supported" },
       { CFSUB(CFEMPTY), "contains empty element" },
+      { CFSUB(CFDUPLICATE), "contains element with duplicate" },
       { CFSUB(CFSTRINGOVERFLOW), "contains string overflow" },
       { CFSUB(CFARRAYOVERFLOW), "contains array overflow" },
       { CFSUB(CFINCOMPLETE), "contains incomplete element" },
@@ -373,7 +376,7 @@ void _cf_warn_array_key(struct __sourceloc __whence, const struct cf_om_node *no
 {
   strbuf b = strbuf_alloca(180);
   strbuf_cf_flag_reason(b, reason);
-  _cf_warn_node(__whence, node, NULL, "array label %s -- %s", alloca_str_toprint(node->key), strbuf_str(b));
+  _cf_warn_node(__whence, node, NULL, "array key %s -- %s", alloca_str_toprint(node->key), strbuf_str(b));
 }
 
 void _cf_warn_array_value(struct __sourceloc __whence, const struct cf_om_node *node, int reason)

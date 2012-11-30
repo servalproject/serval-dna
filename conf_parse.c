@@ -37,7 +37,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define END_STRUCT \
         return CFOK; \
     }
-#define ARRAY(__name, __validator...) \
+#define ARRAY(__name, __flags, __validator...) \
     int cf_dfl_config_##__name(struct config_##__name *a) { \
         a->ac = 0; \
         return CFOK; \
@@ -76,15 +76,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define SUB_STRUCT(__name, __element, __flags)
 #define NODE_STRUCT(__name, __element, __parser, __flags)
 #define END_STRUCT
-#define ARRAY(__name, __validator...) \
+#define ARRAY(__name, __flags, __validator...) \
     static int __cmp_config_##__name(const struct config_##__name##__element *a, const struct config_##__name##__element *b) { \
       __compare_func__config_##__name##__t *cmp = (NULL
 #define KEY_ATOM(__type, __eltparser, __cmpfunc...) \
 	,##__cmpfunc); \
-      return cmp ? (*cmp)(&a->key, &b->key) : 0;
+      return cmp ? (*cmp)(&a->key, &b->key) : memcmp(&a->key, &b->key, sizeof a->key);
 #define KEY_STRING(__strsize, __eltparser, __cmpfunc...) \
 	,##__cmpfunc); \
-      return cmp ? (*cmp)(a->key, b->key) : 0;
+      return cmp ? (*cmp)(a->key, b->key) : strcmp(a->key, b->key);
 #define VALUE_ATOM(__type, __eltparser)
 #define VALUE_STRING(__strsize, __eltparser)
 #define VALUE_NODE(__type, __eltparser)
@@ -114,11 +114,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define __MANDATORY     (1<<0)
 #define __TEXT		(1<<1)
 #define __CHILDREN	(1<<2)
+#define __SORTED	(1<<3)
+#define __NO_DUPLICATES	(1<<4)
 
 // Schema flag symbols, to be used in the '__flags' macro arguments.
 #define MANDATORY	|__MANDATORY
 #define USES_TEXT	|__TEXT
 #define USES_CHILDREN	|__CHILDREN
+#define SORTED		|__SORTED
+#define NO_DUPLICATES	|__NO_DUPLICATES
 
 // Generate parsing functions, cf_opt_config_SECTION()
 #define STRUCT(__name, __validator...) \
@@ -182,9 +186,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
       return result; \
     }
 
-#define ARRAY(__name, __validator...) \
+#define ARRAY(__name, __flags, __validator...) \
     int cf_opt_config_##__name(struct config_##__name *array, const struct cf_om_node *node) { \
-      __compare_func__config_##__name##__t *cmp = NULL; \
+      int flags = (0 __flags); \
       int (*eltcmp)(const struct config_##__name##__element *, const struct config_##__name##__element *) = __cmp_config_##__name; \
       int (*validator)(const struct cf_om_node *, struct config_##__name *, int) = (NULL, ##__validator); \
       int result = CFOK; \
@@ -192,13 +196,22 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
       for (n = 0, i = 0; i < node->nodc && n < NELS(array->av); ++i) { \
 	const struct cf_om_node *child = node->nodv[i]; \
 	int ret = CFEMPTY;
-#define __ARRAY_KEY(__parseexpr) \
+#define __ARRAY_KEY(__parseexpr, __cmpfunc...) \
 	ret = (__parseexpr); \
 	if (ret == CFERROR) \
 	  return CFERROR; \
 	result |= ret & CF__SUBFLAGS; \
 	ret &= CF__FLAGS; \
 	result |= CFSUB(ret); \
+	if (ret == CFOK && (flags & __NO_DUPLICATES)) { \
+	  int j; \
+	  for (j = 0; j < n; ++j) { \
+	    if ((*eltcmp)(&array->av[j], &array->av[n]) == 0) { \
+	      cf_warn_duplicate_node(child, NULL); \
+	      ret |= CFDUPLICATE; \
+	    } \
+	  } \
+	} \
 	if (ret != CFOK) \
 	  cf_warn_array_key(child, ret);
 #define __ARRAY_VALUE(__parseexpr) \
@@ -223,7 +236,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	  cf_warn_list_overflow(node->nodv[i]); \
       } \
       array->ac = n; \
-      if (cmp) \
+      if (flags & __SORTED) \
 	qsort(array->av, array->ac, sizeof array->av[0], (int (*)(const void *, const void *)) eltcmp); \
       if (validator) \
 	result = (*validator)(node, array, result); \
@@ -236,11 +249,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
       return result; \
     }
 #define KEY_ATOM(__type, __eltparser, __cmpfunc...) \
-      __ARRAY_KEY(__eltparser(&array->av[n].key, child->key)) \
-      cmp = (NULL, ##__cmpfunc);
+      __ARRAY_KEY(__eltparser(&array->av[n].key, child->key), ##__cmpfunc)
 #define KEY_STRING(__strsize, __eltparser, __cmpfunc...) \
-      __ARRAY_KEY(__eltparser(array->av[n].key, sizeof array->av[n].key, child->key)) \
-      cmp = (NULL, ##__cmpfunc);
+      __ARRAY_KEY(__eltparser(array->av[n].key, sizeof array->av[n].key, child->key), ##__cmpfunc)
 #define VALUE_ATOM(__type, __eltparser) \
       __ARRAY_VALUE(child->text ? __eltparser(&array->av[n].value, child->text) : CFEMPTY)
 #define VALUE_STRING(__strsize, __eltparser) \

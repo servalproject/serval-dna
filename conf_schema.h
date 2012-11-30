@@ -50,7 +50,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *          STRING(80, element2, "boo!", cf_opt_str_nonempty, MANDATORY, "A non-empty string")
  *      END_STRUCT
  *
- *      ARRAY(joy)
+ *      ARRAY(joy,)
  *          KEY_STRING(3, happy, cf_opt_str)
  *          VALUE_SUB_STRUCT(happy)
  *      END_ARRAY(16)
@@ -104,7 +104,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *          SUB_STRUCT(structname, element, flags)
  *          NODE_STRUCT(structname, element, parsefunc, flags)
  *
- *      ARRAY(name[, validatorfunc])
+ *      ARRAY(name, flags[, validatorfunc])
  *          key-declaration
  *          value-declaration
  *      END_ARRAY(size)
@@ -199,7 +199,7 @@ STRUCT(mdp_iftype)
 ATOM(uint32_t,              tick_ms,    0, cf_opt_uint32_nonzero,, "Tick interval for this interface type")
 END_STRUCT
 
-ARRAY(mdp_iftypelist)
+ARRAY(mdp_iftypelist, NO_DUPLICATES)
 KEY_ATOM(short, cf_opt_interface_type, cmp_short)
 VALUE_SUB_STRUCT(mdp_iftype)
 END_ARRAY(5)
@@ -216,7 +216,7 @@ ATOM(uint16_t,              remote_port,4130, cf_opt_port,, "Remote port number"
 ATOM(uint16_t,              local_port, 4131, cf_opt_port,, "Local port number")
 END_STRUCT
 
-ARRAY(argv, vld_argv)
+ARRAY(argv, SORTED NO_DUPLICATES, vld_argv)
 KEY_ATOM(unsigned short, cf_opt_ushort_nonzero, cmp_ushort)
 VALUE_STRING(128, cf_opt_str)
 END_ARRAY(16)
@@ -236,7 +236,7 @@ STRING(256,                 host,       "", cf_opt_str_nonempty, MANDATORY, "Hos
 ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, cf_opt_port,, "Port number")
 END_STRUCT
 
-ARRAY(peerlist)
+ARRAY(peerlist,)
 KEY_STRING(15, cf_opt_str)
 VALUE_NODE(struct config_rhizomepeer, cf_opt_rhizome_peer)
 END_ARRAY(10)
@@ -276,7 +276,7 @@ ATOM(struct in_addr,        address,    (struct in_addr){htonl(INADDR_NONE)}, cf
 ATOM(uint16_t,              port,       PORT_DNA, cf_opt_port,, "Port number")
 END_STRUCT
 
-ARRAY(host_list)
+ARRAY(host_list, NO_DUPLICATES)
 KEY_ATOM(sid_t, cf_opt_sid, cmp_sid)
 VALUE_SUB_STRUCT(host)
 END_ARRAY(32)
@@ -290,7 +290,7 @@ ATOM(uint64_t,              speed,      1000000, cf_opt_uint64_scaled,, "Speed i
 ATOM(uint32_t,              mdp_tick_ms, 0, cf_opt_uint32_nonzero,, "Override MDP tick interval for this interface")
 END_STRUCT
 
-ARRAY(interface_list)
+ARRAY(interface_list,)
 KEY_STRING(15, cf_opt_str)
 VALUE_SUB_STRUCT(network_interface)
 END_ARRAY(10)
@@ -306,5 +306,6 @@ SUB_STRUCT(dna,             dna,)
 NODE(debugflags_t,          debug,      0, cf_opt_debugflags, USES_CHILDREN, "Debug flags")
 SUB_STRUCT(rhizome,         rhizome,)
 SUB_STRUCT(directory,       directory,)
+SUB_STRUCT(olsr,            olsr,)
 SUB_STRUCT(host_list,       hosts,)
 END_STRUCT

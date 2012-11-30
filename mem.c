@@ -20,13 +20,21 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <string.h>
 #include "mem.h"
 
-void *_emalloc(struct __sourceloc __whence, size_t len)
+void *_emalloc(struct __sourceloc __whence, size_t bytes)
 {
-  char *new = malloc(len + 1);
+  char *new = malloc(bytes);
   if (!new) {
-    WHYF_perror("malloc(%lu)", (long)len);
+    WHYF_perror("malloc(%lu)", (long)bytes);
     return NULL;
   }
+  return new;
+}
+
+void *_emalloc_zero(struct __sourceloc __whence, size_t bytes)
+{
+  char *new = _emalloc(__whence, bytes);
+  if (new)
+    memset(new, 0, bytes);
   return new;
 }
 

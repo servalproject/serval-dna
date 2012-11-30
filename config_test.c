@@ -29,14 +29,16 @@ int main(int argc, char **argv)
       perror("read");
       exit(1);
     }
-    struct cf_om_node *root = cf_parse_to_om(argv[i], buf, st.st_size);
+    struct cf_om_node *root = NULL;
+    int ret = cf_parse_to_om(argv[i], buf, st.st_size, &root);
     close(fd);
+    DEBUGF("ret = %s", strbuf_str(strbuf_cf_flags(strbuf_alloca(128), ret)));
     //cf_dump_node(root, 0);
     struct config_main config;
     memset(&config, 0, sizeof config);
     cf_dfl_config_main(&config);
-    int result = cf_opt_config_main(&config, root);
-    cf_free_node(root);
+    int result = root ? cf_opt_config_main(&config, root) : CFEMPTY;
+    cf_free_node(&root);
     free(buf);
     DEBUGF("result = %s", strbuf_str(strbuf_cf_flags(strbuf_alloca(128), result)));
     DEBUGF("config.log.file = %s", alloca_str_toprint(config.log.file));
