@@ -26,10 +26,20 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "mdp_client.h"
 #include "rhizome.h"
 #include "crypto.h"
+#include "log.h"
 
 int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
 {
   IN();
+  DEBUGF("Someone sent me a rhizome request via MDP");
+  DEBUGF("requestor sid = %s",alloca_tohex_sid(mdp->out.src.sid));
+  DEBUGF("bundle ID = %s",alloca_tohex_bid(&mdp->out.payload[0]));
+  DEBUGF("file offset = 0x%llx",
+	 read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES]));
+  DEBUGF("bitmap = 0x%08x",
+	 read_uint32(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8]));
+  DEBUGF("block length = %d",
+	 read_uint16(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+4]));	 
 
   RETURN(-1);
 }

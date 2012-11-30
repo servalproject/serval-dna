@@ -68,8 +68,8 @@ struct rhizome_fetch_slot {
   int request_ofs;
 
   /* MDP transport specific elements */
-  unsigned char bar[RHIZOME_BAR_BYTES];
-  int barP;
+  unsigned char bid[RHIZOME_MANIFEST_ID_BYTES];
+  int bidP;
   unsigned char prefix[RHIZOME_MANIFEST_ID_BYTES];
   int prefix_length;
   int64_t mdpNextTX;
@@ -722,8 +722,9 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
 
   /* Prepare for fetching via MDP */
   bcopy(peersid,slot->peer_sid,SID_SIZE);
-  rhizome_manifest_to_bar(m,slot->bar);
-  slot->barP=1;
+  bcopy(m->cryptoSignPublic,slot->bid,RHIZOME_MANIFEST_ID_BYTES);
+  DEBUGF("request bid=%s",alloca_tohex_bid(m->cryptoSignPublic));
+  slot->bidP=1;
 
   if (!FORM_RHIZOME_IMPORT_PATH(slot->filename, "payload.%s", bid))
     return -1;
@@ -766,7 +767,7 @@ rhizome_fetch_request_manifest_by_prefix(const struct sockaddr_in *peerip,
   bcopy(peersid,slot->peer_sid,SID_SIZE);
   bcopy(prefix,slot->prefix,prefix_length);
   slot->prefix_length=prefix_length;
-  slot->barP=0;
+  slot->bidP=0;
 
   if (!FORM_RHIZOME_IMPORT_PATH(slot->filename, "manifest.%s", alloca_tohex(prefix, prefix_length)))
     return -1;
@@ -1015,7 +1016,7 @@ static void rhizome_fetch_mdp_slot_callback(struct sched_ent *alarm)
   }
   DEBUGF("now-lastRX(0x%llx) <= idleTimeout(0x%llx)",
 	 now-slot->mdpLastRX,slot->mdpIdleTimeout);
-  if (slot->barP)
+  if (slot->bidP)
     rhizome_fetch_mdp_requestblocks(slot);
   else
     rhizome_fetch_mdp_requestmanifest(slot);
@@ -1042,11 +1043,11 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
 
   mdp.out.queue=OQ_ORDINARY;
   mdp.out.payload_length=RHIZOME_BAR_BYTES+8+4+2;
-  bcopy(slot->bar,&mdp.out.payload[0],RHIZOME_BAR_BYTES);
+  bcopy(slot->bid,&mdp.out.payload[0],RHIZOME_MANIFEST_ID_BYTES);
 
   write_uint64(&mdp.out.payload[RHIZOME_BAR_BYTES],slot->mdpRXWindowStart);
   write_uint32(&mdp.out.payload[RHIZOME_BAR_BYTES+8],slot->mdpRXBitmap);
-  write_uint16(&mdp.out.payload[RHIZOME_BAR_BYTES+8+4],slot->mdpRXBlockLength);
+  write_uint16(&mdp.out.payload[RHIZOME_BAR_BYTES+8+4],slot->mdpRXBlockLength);  
 
   DEBUGF("src sid=%s, dst sid=%s",
 	 alloca_tohex_sid(mdp.out.src.sid),alloca_tohex_sid(mdp.out.dst.sid));
@@ -1117,9 +1118,8 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
      3. Set timeout for no traffic received.
   */
 
-  DEBUGF("Preparing slot 0x%p: barP=%d",slot,slot->barP);
   slot->mdpLastRX=gettime_ms();
-  if (slot->barP) {
+  if (slot->bidP) {
     /* We are requesting a file.  The http request may have already received
        some of the file, so take that into account when setting up ring buffer. 
        Then send the request for the next block of data, and set our alarm to
@@ -1132,6 +1132,7 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
     slot->mdpIdleTimeout=5000; // give up if nothing received for 5 seconds
     slot->mdpRXWindowStart=slot->file_ofs;
     slot->mdpRXBitmap=0x00000000; // no blocks received yet
+    slot->mdpRXBlockLength=200;
     rhizome_fetch_mdp_requestblocks(slot);    
   } else {
     /* We are requesting a manifest, which is stateless, except that we eventually
