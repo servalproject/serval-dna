@@ -40,3 +40,24 @@ int packetOk(struct overlay_interface *interface, unsigned char *packet, size_t 
   return WHY("Packet type not recognised.");
 }
 
+void write_uint64(unsigned char *o,uint64_t v)
+{
+  int i;
+  for(i=0;i<8;i++)
+    { *(o++)=v&0xff; v=v>>8; }
+}
+
+void write_uint32(unsigned char *o,uint32_t v)
+{
+  int i;
+  for(i=0;i<4;i++)
+    { *(o++)=v&0xff; v=v>>8; }
+}
+
+void write_uint16(unsigned char *o,uint16_t v)
+{
+  int i;
+  for(i=0;i<2;i++)
+    { *(o++)=v&0xff; v=v>>8; }
+}
+

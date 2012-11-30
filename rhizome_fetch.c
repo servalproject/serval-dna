@@ -1036,10 +1036,17 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   mdp.out.dst.port=MDP_PORT_RHIZOME_REQUEST;
   mdp.out.ttl=1;
   mdp.packetTypeAndFlags=MDP_TX;
-  DEBUGF("Set request manifest in MDP frame body");
+
+  mdp.out.queue=OQ_ORDINARY;
+  mdp.out.payload_length=RHIZOME_BAR_BYTES+8+4+2;
+  bcopy(slot->bar,&mdp.out.payload[0],RHIZOME_BAR_BYTES);
+
+  write_uint64(&mdp.out.payload[RHIZOME_BAR_BYTES],slot->mdpRXWindowStart);
+  write_uint32(&mdp.out.payload[RHIZOME_BAR_BYTES+8],slot->mdpRXBitmap);
+  write_uint16(&mdp.out.payload[RHIZOME_BAR_BYTES+8+4],slot->mdpRXBlockLength);
+
   overlay_mdp_dispatch(&mdp,0 /* system generated */,NULL,0);
   
-  DEBUGF("Set callback function, and set alarm");
   slot->alarm.function = rhizome_fetch_mdp_slot_callback;
   slot->alarm.alarm=slot->mdpNextTX;
   schedule(&slot->alarm);
@@ -1049,6 +1056,11 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
 
 static int rhizome_fetch_mdp_requestmanifest(struct rhizome_fetch_slot *slot)
 {
+  if (slot->prefix_length<1||slot->prefix_length>32) {
+    // invalid request
+    return rhizome_fetch_close(slot);
+  }
+
   if ((gettime_ms()-slot->mdpLastRX)>slot->mdpIdleTimeout) {
     // connection timed out
     return rhizome_fetch_close(slot);
@@ -1065,7 +1077,11 @@ static int rhizome_fetch_mdp_requestmanifest(struct rhizome_fetch_slot *slot)
   mdp.out.dst.port=MDP_PORT_RHIZOME_REQUEST;
   mdp.out.ttl=1;
   mdp.packetTypeAndFlags=MDP_TX;
-  DEBUGF("Set request manifest in MDP frame body");
+
+  mdp.out.queue=OQ_ORDINARY;
+  mdp.out.payload_length=slot->prefix_length;
+  bcopy(slot->prefix,&mdp.out.payload[0],slot->prefix_length);
+
   overlay_mdp_dispatch(&mdp,0 /* system generated */,NULL,0);
   
   DEBUGF("Set callback function, and set alarm");

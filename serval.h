@@ -765,4 +765,8 @@ void dump_stack();
 int olsr_init_socket(void);
 int olsr_send(struct overlay_frame *frame);
 
+void write_uint64(unsigned char *o,uint64_t v);
+void write_uint16(unsigned char *o,uint16_t v);
+void write_uint32(unsigned char *o,uint32_t v);
+
 #endif // __SERVALD_SERVALD_H

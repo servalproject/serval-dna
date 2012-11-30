@@ -26,6 +26,19 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "mdp_client.h"
 #include "crypto.h"
 
+int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
+{
+  IN();
+
+  RETURN(-1);
+}
+
+int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
+{
+  IN();
+
+  RETURN(-1);
+}
 
 int overlay_mdp_service_dnalookup(overlay_mdp_frame *mdp)
 {
@@ -133,19 +146,12 @@ int overlay_mdp_try_interal_services(overlay_mdp_frame *mdp)
 {
   IN();
   switch(mdp->out.dst.port) {
-  case MDP_PORT_VOMP:
-    RETURN(vomp_mdp_received(mdp));
-  case MDP_PORT_KEYMAPREQUEST:
-    /* Either respond with the appropriate SAS, or record this one if it
-       verifies out okay. */
-    if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_PORT_KEYMAPREQUEST");
-    RETURN(keyring_mapping_request(keyring,mdp));
-  case MDP_PORT_DNALOOKUP: /* attempt to resolve DID to SID */
-    RETURN(overlay_mdp_service_dnalookup(mdp));
-    break;
-  case MDP_PORT_ECHO: /* well known ECHO port for TCP/UDP and now MDP */
-    RETURN(overlay_mdp_service_echo(mdp));
-    break;
+  case MDP_PORT_VOMP:             RETURN(vomp_mdp_received(mdp));
+  case MDP_PORT_KEYMAPREQUEST:    RETURN(keyring_mapping_request(keyring,mdp));
+  case MDP_PORT_DNALOOKUP:        RETURN(overlay_mdp_service_dnalookup(mdp));
+  case MDP_PORT_ECHO:             RETURN(overlay_mdp_service_echo(mdp));
+  case MDP_PORT_RHIZOME_REQUEST:  RETURN(overlay_mdp_service_rhizomerequest(mdp));
+  case MDP_PORT_RHIZOME_RESPONSE: RETURN(overlay_mdp_service_rhizomeresponse(mdp));
   default:
     /* Unbound socket.  We won't be sending ICMP style connection refused
        messages, partly because they are a waste of bandwidth. */
