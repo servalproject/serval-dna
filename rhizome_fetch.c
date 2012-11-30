@@ -1178,29 +1178,6 @@ void rhizome_fetch_write(struct rhizome_fetch_slot *slot)
   }
 }
 
-int rhizome_received_content(unsigned char *bidprefix,uint64_t version, uint64_t offset,
-			      int count,unsigned char *bytes)
-{
-  IN();
-  int i;
-  for(i=0;i<NQUEUES;i++) {
-    if (rhizome_fetch_queues[i].active.bidP) {
-      if (!bcmp(rhizome_fetch_queues[i].active.bid,bidprefix,
-		16))
-	{
-	  DEBUGF("This response matches slot 0x%p",
-		 rhizome_fetch_queues[i].active);
-	  RETURN(0);
-	}
-      else 
-	DEBUGF("Doesn't match this slot, because BIDs don't match: %s* vs %s",
-	       alloca_tohex(bidprefix,16),
-	       alloca_tohex_bid(rhizome_fetch_queues[i].active.bid));
-    }
-  }
-  RETURN(-1);
-}
-
 void rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int bytes)
 {
   if (bytes>(slot->file_len-slot->file_ofs))
@@ -1263,6 +1240,48 @@ void rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int by
   slot->alarm.alarm=gettime_ms() + RHIZOME_IDLE_TIMEOUT;
   slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
   schedule(&slot->alarm);
+}
+
+int rhizome_received_content(unsigned char *bidprefix,uint64_t version, uint64_t offset,
+			     int count,unsigned char *bytes,int type)
+{
+  IN();
+  int i;
+  for(i=0;i<NQUEUES;i++) {
+    if (rhizome_fetch_queues[i].active.bidP) {
+      if (!bcmp(rhizome_fetch_queues[i].active.bid,bidprefix,
+		16))
+	{
+	  DEBUGF("This response matches slot 0x%p",
+		 rhizome_fetch_queues[i].active);
+	  struct rhizome_fetch_slot *slot=&rhizome_fetch_queues[i].active;
+	  if (slot->file_ofs==offset) {
+	    debug=DEBUG_RHIZOME_RX;
+	    /* We don't know the file length until we receive the last
+	       block. If it isn't the last block, lie, and claim the end of
+	       file is yet to come. */
+	    if (type=='T') slot->file_len=offset+count;
+	    else slot->file_len=offset+count+1;
+	    DEBUGF("Trying to write %d bytes @ %d (file len = %d)",
+		   count,(int)slot->file_ofs,(int)slot->file_len);
+	    rhizome_write_content(slot,(char *)bytes,count);
+	    debug=0;
+	    slot->mdpRXWindowStart=offset+count;
+	    // TODO: Shift bitmap
+	    RETURN(0);
+	  } else {
+	    // TODO: Implement out-of-order reception so that lost packets
+	    // don't cause wastage
+	  }
+	  RETURN(0);
+	}
+      else 
+	DEBUGF("Doesn't match this slot, because BIDs don't match: %s* vs %s",
+	       alloca_tohex(bidprefix,16),
+	       alloca_tohex_bid(rhizome_fetch_queues[i].active.bid));
+    }
+  }
+  RETURN(-1);
 }
 
 void rhizome_fetch_poll(struct sched_ent *alarm)

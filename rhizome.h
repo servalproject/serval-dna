@@ -429,8 +429,9 @@ struct http_response {
   const char * body;
 };
 
-int rhizome_received_content(unsigned char *bid,uint64_t version, uint64_t offset,
-			     int count,unsigned char *bytes);
+int rhizome_received_content(unsigned char *bidprefix,uint64_t version, 
+			     uint64_t offset,int count,unsigned char *bytes,
+			     int type);
 int rhizome_server_set_response(rhizome_http_request *r, const struct http_response *h);
 int rhizome_server_free_http_request(rhizome_http_request *r);
 int rhizome_server_http_send_bytes(rhizome_http_request *r);

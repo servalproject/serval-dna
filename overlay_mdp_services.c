@@ -119,6 +119,9 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
 	  sqlite3_blob_read(blob,&reply.out.payload[1+16+8+8],
 			    blockBytes,0);	  
 	  reply.out.payload_length=1+16+8+8+blockBytes;
+
+	  // Mark terminal block if required
+	  if (blockOffset+blockBytes==blob_bytes) reply.out.payload[0]='T';
 	  // send packet
 	  overlay_mdp_dispatch(&reply,0 /* system generated */, NULL,0); 
 	} else break;
@@ -139,6 +142,7 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
   int type=mdp->out.payload[0];
   switch (type) {
   case 'B': /* data block */
+  case 'T': /* terminal data block */
     {
       if (mdp->out.payload_length<(1+16+8+8+1)) RETURN(-1);
       unsigned char *bidprefix=&mdp->out.payload[1];
@@ -156,7 +160,7 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
 	 a slot to capture this files as it is being requested
 	 by someone else.
       */
-      rhizome_received_content(bidprefix,version,offset,count,bytes);
+      rhizome_received_content(bidprefix,version,offset,count,bytes,type);
 
       RETURN(-1);
     }
