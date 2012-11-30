@@ -74,6 +74,7 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
       RETURN(-1);
     }
   int blob_bytes=sqlite3_blob_bytes(blob);
+  DEBUGF("blob_bytes=%d",blob_bytes);
   if (blob_bytes<fileOffset) {
     sqlite3_blob_close(blob); blob=NULL;
     RETURN(-1);
@@ -110,15 +111,17 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
 	write_uint64(&reply.out.payload[1+16+8],blockOffset);
 	// work out how many bytes to read
 	int blockBytes=blob_bytes-blockOffset;
+	DEBUGF("blockBytes=%d",blockBytes);
 	if (blockBytes>blockLength) blockBytes=blockLength;
+	DEBUGF("blockBytes=%d, blockOffset=%d",blockBytes,blockOffset);
 	// read data for block
 	if (blob_bytes>=blockOffset) {
 	  sqlite3_blob_read(blob,&reply.out.payload[1+16+8+8],
 			    blockBytes,0);	  
 	  reply.out.payload_length=1+16+8+8+blockBytes;
-	}
-	// send packet
-	overlay_mdp_dispatch(&reply,0 /* system generated */, NULL,0); 
+	  // send packet
+	  overlay_mdp_dispatch(&reply,0 /* system generated */, NULL,0); 
+	} else break;
       }
 
   sqlite3_blob_close(blob); blob=NULL;
@@ -130,6 +133,25 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
 {
   IN();
   DEBUGF("Someone sent me a rhizome REPLY via MDP");
+  
+  if (!mdp->out.payload_length) RETURN(-1);
+
+  int type=mdp->out.payload[0];
+  switch (type) {
+  case 'B': /* data block */
+    {
+      if (mdp->out.payload_length<(1+16+8+8+1)) RETURN(-1);
+      unsigned char *bid=&mdp->out.payload[1];
+      uint64_t version=read_uint64(&mdp->out.payload[1+16]);
+      uint64_t offset=read_uint64(&mdp->out.payload[1+16+8]);
+      int bytes=mdp->out.payload_length-(1+16+8+8);
+      DEBUGF("Received %d bytes @ 0x%llx for %s version 0x%llx",
+	     bytes,offset,alloca_tohex_bid(bid),version);
+      RETURN(-1);
+    }
+    break;
+  }
+
 
   RETURN(-1);
 }
