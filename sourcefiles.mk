@@ -28,6 +28,7 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)overlay_interface.c \
 	$(SERVAL_BASE)overlay_queue.c \
 	$(SERVAL_BASE)overlay_mdp.c \
+	$(SERVAL_BASE)overlay_mdp_services.c \
 	$(SERVAL_BASE)overlay_olsr.c \
 	$(SERVAL_BASE)overlay_packetformats.c \
 	$(SERVAL_BASE)overlay_payload.c \

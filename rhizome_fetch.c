@@ -82,6 +82,8 @@ struct rhizome_fetch_slot {
 };
 
 static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot);
+static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot);
+static int rhizome_fetch_mdp_requestmanifest(struct rhizome_fetch_slot *slot);
 
 /* Represents a queue of fetch candidates and a single active fetch for bundle payloads whose size
  * is less than a given threshold.
@@ -1002,6 +1004,20 @@ static int rhizome_fetch_close(struct rhizome_fetch_slot *slot)
   return 0;
 }
 
+static void rhizome_fetch_mdp_slot_callback(struct sched_ent *alarm)
+{
+  struct rhizome_fetch_slot *slot=(struct rhizome_fetch_slot*)alarm;
+  long long now=gettime_ms();
+  if (now>slot->mdpIdleTimeout) {
+    rhizome_fetch_close(slot);
+    return;
+  }
+  if (slot->barP)
+    rhizome_fetch_mdp_requestmanifest(slot);
+  else
+    rhizome_fetch_mdp_requestblocks(slot);
+}
+
 static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
 {
   if ((gettime_ms()-slot->mdpLastRX)>slot->mdpIdleTimeout) {
@@ -1018,12 +1034,16 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   mdp.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
   bcopy(slot->peer_sid,mdp.out.dst.sid,SID_SIZE);
   mdp.out.dst.port=MDP_PORT_RHIZOME_REQUEST;
+  mdp.out.ttl=1;
+  mdp.packetTypeAndFlags=MDP_TX;
   DEBUGF("Set request manifest in MDP frame body");
   overlay_mdp_dispatch(&mdp,0 /* system generated */,NULL,0);
   
   DEBUGF("Set callback function, and set alarm");
-  // schedule(&slot->alarm,
-
+  slot->alarm.function = rhizome_fetch_mdp_slot_callback;
+  slot->alarm.alarm=slot->mdpNextTX;
+  schedule(&slot->alarm);
+  
   return 0;
 }
 
@@ -1043,11 +1063,15 @@ static int rhizome_fetch_mdp_requestmanifest(struct rhizome_fetch_slot *slot)
   mdp.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
   bcopy(slot->peer_sid,mdp.out.dst.sid,SID_SIZE);
   mdp.out.dst.port=MDP_PORT_RHIZOME_REQUEST;
+  mdp.out.ttl=1;
+  mdp.packetTypeAndFlags=MDP_TX;
   DEBUGF("Set request manifest in MDP frame body");
   overlay_mdp_dispatch(&mdp,0 /* system generated */,NULL,0);
   
   DEBUGF("Set callback function, and set alarm");
-  // schedule(&slot->alarm,
+  slot->alarm.function = rhizome_fetch_mdp_slot_callback;
+  slot->alarm.alarm=slot->mdpNextTX;
+  schedule(&slot->alarm);
 
   return 0;
 }
