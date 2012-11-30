@@ -1008,20 +1008,24 @@ static void rhizome_fetch_mdp_slot_callback(struct sched_ent *alarm)
 {
   struct rhizome_fetch_slot *slot=(struct rhizome_fetch_slot*)alarm;
   long long now=gettime_ms();
-  if (now>slot->mdpIdleTimeout) {
+  if (now-slot->mdpLastRX>slot->mdpIdleTimeout) {
+    DEBUGF("MDP connection timed out");
     rhizome_fetch_close(slot);
     return;
   }
+  DEBUGF("now-lastRX(0x%llx) <= idleTimeout(0x%llx)",
+	 now-slot->mdpLastRX,slot->mdpIdleTimeout);
   if (slot->barP)
-    rhizome_fetch_mdp_requestmanifest(slot);
-  else
     rhizome_fetch_mdp_requestblocks(slot);
+  else
+    rhizome_fetch_mdp_requestmanifest(slot);
 }
 
 static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
 {
   if ((gettime_ms()-slot->mdpLastRX)>slot->mdpIdleTimeout) {
     // connection timed out
+    DEBUGF("MDP connection timed out");
     return rhizome_fetch_close(slot);
   }
   slot->mdpNextTX=gettime_ms()+133;
@@ -1060,11 +1064,13 @@ static int rhizome_fetch_mdp_requestmanifest(struct rhizome_fetch_slot *slot)
 {
   if (slot->prefix_length<1||slot->prefix_length>32) {
     // invalid request
+    DEBUGF("invalid MDP Rhizome request");
     return rhizome_fetch_close(slot);
   }
 
   if ((gettime_ms()-slot->mdpLastRX)>slot->mdpIdleTimeout) {
     // connection timed out
+    DEBUGF("MDP connection timedout");
     return rhizome_fetch_close(slot);
   }
   slot->mdpNextTX=gettime_ms()+100;
@@ -1095,6 +1101,8 @@ static int rhizome_fetch_mdp_requestmanifest(struct rhizome_fetch_slot *slot)
 
 static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
 {
+  DEBUGF("Trying to switch to MDP for Rhizome fetch");
+  
   /* close socket and stop watching it */
   unwatch(&slot->alarm);
   unschedule(&slot->alarm);
@@ -1109,6 +1117,7 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
      3. Set timeout for no traffic received.
   */
 
+  DEBUGF("Preparing slot 0x%p: barP=%d",slot,slot->barP);
   slot->mdpLastRX=gettime_ms();
   if (slot->barP) {
     /* We are requesting a file.  The http request may have already received
@@ -1133,8 +1142,7 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
     rhizome_fetch_mdp_requestmanifest(slot);
   }
 
-  DEBUGF("Fetch via MDP not implemented");
-  return rhizome_fetch_close(slot);
+  return 0;
 }
 
 void rhizome_fetch_write(struct rhizome_fetch_slot *slot)
@@ -1143,8 +1151,9 @@ void rhizome_fetch_write(struct rhizome_fetch_slot *slot)
     DEBUGF("write_nonblock(%d, %s)", slot->alarm.poll.fd, alloca_toprint(-1, &slot->request[slot->request_ofs], slot->request_len-slot->request_ofs));
   int bytes = write_nonblock(slot->alarm.poll.fd, &slot->request[slot->request_ofs], slot->request_len-slot->request_ofs);
   if (bytes == -1) {
-    WHY("Got error while sending HTTP request.  Closing.");
+    WHY("Got error while sending HTTP request.");
     rhizome_fetch_switch_to_mdp(slot);
+    return;
   } else {
     // reset timeout
     unschedule(&slot->alarm);
@@ -1217,6 +1226,7 @@ void rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int by
 	}
       }
     }
+    DEBUGF("Closing rhizome fetch slot");
     rhizome_fetch_close(slot);
     return;
   }
