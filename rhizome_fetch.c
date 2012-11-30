@@ -1014,7 +1014,8 @@ static void rhizome_fetch_mdp_slot_callback(struct sched_ent *alarm)
   struct rhizome_fetch_slot *slot=(struct rhizome_fetch_slot*)alarm;
   long long now=gettime_ms();
   if (now-slot->mdpLastRX>slot->mdpIdleTimeout) {
-    DEBUGF("MDP connection timed out");
+    DEBUGF("MDP connection timed out: last RX %lldms ago",
+	   now-slot->mdpLastRX);
     rhizome_fetch_close(slot);
     return;
   }
@@ -1059,9 +1060,10 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   write_uint32(&mdp.out.payload[RHIZOME_BAR_BYTES+8+8],slot->mdpRXBitmap);
   write_uint16(&mdp.out.payload[RHIZOME_BAR_BYTES+8+8+4],slot->mdpRXBlockLength);  
 
-  DEBUGF("src sid=%s, dst sid=%s, mdpRXWindowStart=0x%x",
-	 alloca_tohex_sid(mdp.out.src.sid),alloca_tohex_sid(mdp.out.dst.sid),
-	 slot->mdpRXWindowStart);
+  if (0)
+    DEBUGF("src sid=%s, dst sid=%s, mdpRXWindowStart=0x%x",
+	   alloca_tohex_sid(mdp.out.src.sid),alloca_tohex_sid(mdp.out.dst.sid),
+	   slot->mdpRXWindowStart);
 
   overlay_mdp_dispatch(&mdp,0 /* system generated */,NULL,0);
   
