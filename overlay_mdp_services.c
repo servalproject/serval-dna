@@ -135,7 +135,6 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
 int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
 {
   IN();
-  DEBUGF("Someone sent me a rhizome REPLY via MDP");
   
   if (!mdp->out.payload_length) RETURN(-1);
 
@@ -150,8 +149,9 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
       uint64_t offset=read_uint64(&mdp->out.payload[1+16+8]);
       int count=mdp->out.payload_length-(1+16+8+8);
       unsigned char *bytes=&mdp->out.payload[1+16+8+8];
-      DEBUGF("Received %d bytes @ 0x%llx for %s* version 0x%llx",
-	     count,offset,alloca_tohex(bidprefix,16),version);
+      if (0) 
+	DEBUGF("Received %d bytes @ 0x%llx for %s* version 0x%llx",
+	       count,offset,alloca_tohex(bidprefix,16),version);
 
       /* Now see if there is a slot that matches.  If so, then
 	 see if the bytes are in the window, and write them.
