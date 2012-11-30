@@ -1242,7 +1242,8 @@ void rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int by
   schedule(&slot->alarm);
 }
 
-int rhizome_received_content(unsigned char *bidprefix,uint64_t version, uint64_t offset,
+int rhizome_received_content(unsigned char *bidprefix,
+			     uint64_t version, uint64_t offset,
 			     int count,unsigned char *bytes,int type)
 {
   IN();
@@ -1264,6 +1265,7 @@ int rhizome_received_content(unsigned char *bidprefix,uint64_t version, uint64_t
 	    else slot->file_len=offset+count+1;
 	    DEBUGF("Trying to write %d bytes @ %d (file len = %d)",
 		   count,(int)slot->file_ofs,(int)slot->file_len);
+	    dump("content", bytes,count);
 	    rhizome_write_content(slot,(char *)bytes,count);
 	    debug=0;
 	    slot->mdpRXWindowStart=offset+count;

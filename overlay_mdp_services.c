@@ -117,7 +117,7 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
 	// read data for block
 	if (blob_bytes>=blockOffset) {
 	  sqlite3_blob_read(blob,&reply.out.payload[1+16+8+8],
-			    blockBytes,0);	  
+			    blockBytes,blockOffset);	  
 	  reply.out.payload_length=1+16+8+8+blockBytes;
 
 	  // Mark terminal block if required
