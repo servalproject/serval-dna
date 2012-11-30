@@ -141,12 +141,23 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
   case 'B': /* data block */
     {
       if (mdp->out.payload_length<(1+16+8+8+1)) RETURN(-1);
-      unsigned char *bid=&mdp->out.payload[1];
+      unsigned char *bidprefix=&mdp->out.payload[1];
       uint64_t version=read_uint64(&mdp->out.payload[1+16]);
       uint64_t offset=read_uint64(&mdp->out.payload[1+16+8]);
-      int bytes=mdp->out.payload_length-(1+16+8+8);
-      DEBUGF("Received %d bytes @ 0x%llx for %s version 0x%llx",
-	     bytes,offset,alloca_tohex_bid(bid),version);
+      int count=mdp->out.payload_length-(1+16+8+8);
+      unsigned char *bytes=&mdp->out.payload[1+16+8+8];
+      DEBUGF("Received %d bytes @ 0x%llx for %s* version 0x%llx",
+	     count,offset,alloca_tohex(bidprefix,16),version);
+
+      /* Now see if there is a slot that matches.  If so, then
+	 see if the bytes are in the window, and write them.
+
+	 If there is not matching slot, then consider setting 
+	 a slot to capture this files as it is being requested
+	 by someone else.
+      */
+      rhizome_received_content(bidprefix,version,offset,count,bytes);
+
       RETURN(-1);
     }
     break;

@@ -1178,6 +1178,29 @@ void rhizome_fetch_write(struct rhizome_fetch_slot *slot)
   }
 }
 
+int rhizome_received_content(unsigned char *bidprefix,uint64_t version, uint64_t offset,
+			      int count,unsigned char *bytes)
+{
+  IN();
+  int i;
+  for(i=0;i<NQUEUES;i++) {
+    if (rhizome_fetch_queues[i].active.bidP) {
+      if (!bcmp(rhizome_fetch_queues[i].active.bid,bidprefix,
+		16))
+	{
+	  DEBUGF("This response matches slot 0x%p",
+		 rhizome_fetch_queues[i].active);
+	  RETURN(0);
+	}
+      else 
+	DEBUGF("Doesn't match this slot, because BIDs don't match: %s* vs %s",
+	       alloca_tohex(bidprefix,16),
+	       alloca_tohex_bid(rhizome_fetch_queues[i].active.bid));
+    }
+  }
+  RETURN(-1);
+}
+
 void rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int bytes)
 {
   if (bytes>(slot->file_len-slot->file_ofs))
