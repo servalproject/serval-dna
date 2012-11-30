@@ -1029,7 +1029,7 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   overlay_mdp_frame mdp;
 
   bzero(&mdp,sizeof(mdp));
-  memcpy(my_subscriber->sid,mdp.out.src.sid,SID_SIZE);
+  bcopy(my_subscriber->sid,mdp.out.src.sid,SID_SIZE);
   mdp.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
   bcopy(slot->peer_sid,mdp.out.dst.sid,SID_SIZE);
   mdp.out.dst.port=MDP_PORT_RHIZOME_REQUEST;
@@ -1043,6 +1043,9 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   write_uint64(&mdp.out.payload[RHIZOME_BAR_BYTES],slot->mdpRXWindowStart);
   write_uint32(&mdp.out.payload[RHIZOME_BAR_BYTES+8],slot->mdpRXBitmap);
   write_uint16(&mdp.out.payload[RHIZOME_BAR_BYTES+8+4],slot->mdpRXBlockLength);
+
+  DEBUGF("src sid=%s, dst sid=%s",
+	 alloca_tohex_sid(mdp.out.src.sid),alloca_tohex_sid(mdp.out.dst.sid));
 
   overlay_mdp_dispatch(&mdp,0 /* system generated */,NULL,0);
   
@@ -1069,7 +1072,7 @@ static int rhizome_fetch_mdp_requestmanifest(struct rhizome_fetch_slot *slot)
   overlay_mdp_frame mdp;
 
   bzero(&mdp,sizeof(mdp));
-  memcpy(my_subscriber->sid,mdp.out.src.sid,SID_SIZE);
+  bcopy(my_subscriber->sid,mdp.out.src.sid,SID_SIZE);
   mdp.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
   bcopy(slot->peer_sid,mdp.out.dst.sid,SID_SIZE);
   mdp.out.dst.port=MDP_PORT_RHIZOME_REQUEST;
