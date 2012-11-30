@@ -1029,8 +1029,7 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   overlay_mdp_frame mdp;
 
   bzero(&mdp,sizeof(mdp));
-  struct subscriber *me=find_subscriber(NULL,0,0);
-  memcpy(me->sid,mdp.out.src.sid,SID_SIZE);
+  memcpy(my_subscriber->sid,mdp.out.src.sid,SID_SIZE);
   mdp.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
   bcopy(slot->peer_sid,mdp.out.dst.sid,SID_SIZE);
   mdp.out.dst.port=MDP_PORT_RHIZOME_REQUEST;
