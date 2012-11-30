@@ -34,12 +34,14 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
   DEBUGF("Someone sent me a rhizome request via MDP");
   DEBUGF("requestor sid = %s",alloca_tohex_sid(mdp->out.src.sid));
   DEBUGF("bundle ID = %s",alloca_tohex_bid(&mdp->out.payload[0]));
-  DEBUGF("file offset = 0x%llx",
+  DEBUGF("manifest version = 0x%llx",
 	 read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES]));
+  DEBUGF("file offset = 0x%llx",
+	 read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8]));
   DEBUGF("bitmap = 0x%08x",
-	 read_uint32(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8]));
+	 read_uint32(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8]));
   DEBUGF("block length = %d",
-	 read_uint16(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+4]));	 
+	 read_uint16(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4]));	 
 
   RETURN(-1);
 }

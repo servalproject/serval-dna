@@ -69,6 +69,7 @@ struct rhizome_fetch_slot {
 
   /* MDP transport specific elements */
   unsigned char bid[RHIZOME_MANIFEST_ID_BYTES];
+  int64_t bidVersion;
   int bidP;
   unsigned char prefix[RHIZOME_MANIFEST_ID_BYTES];
   int prefix_length;
@@ -723,7 +724,9 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
   /* Prepare for fetching via MDP */
   bcopy(peersid,slot->peer_sid,SID_SIZE);
   bcopy(m->cryptoSignPublic,slot->bid,RHIZOME_MANIFEST_ID_BYTES);
-  DEBUGF("request bid=%s",alloca_tohex_bid(m->cryptoSignPublic));
+  slot->bidVersion=m->version;
+  DEBUGF("request bid=%s, version=0x%llx",
+	 alloca_tohex_bid(slot->bid),slot->bidVersion);
   slot->bidP=1;
 
   if (!FORM_RHIZOME_IMPORT_PATH(slot->filename, "payload.%s", bid))
@@ -1042,12 +1045,13 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   mdp.packetTypeAndFlags=MDP_TX;
 
   mdp.out.queue=OQ_ORDINARY;
-  mdp.out.payload_length=RHIZOME_BAR_BYTES+8+4+2;
+  mdp.out.payload_length=RHIZOME_BAR_BYTES+8+8+4+2;
   bcopy(slot->bid,&mdp.out.payload[0],RHIZOME_MANIFEST_ID_BYTES);
 
-  write_uint64(&mdp.out.payload[RHIZOME_BAR_BYTES],slot->mdpRXWindowStart);
-  write_uint32(&mdp.out.payload[RHIZOME_BAR_BYTES+8],slot->mdpRXBitmap);
-  write_uint16(&mdp.out.payload[RHIZOME_BAR_BYTES+8+4],slot->mdpRXBlockLength);  
+  write_uint64(&mdp.out.payload[RHIZOME_BAR_BYTES],slot->bidVersion);
+  write_uint64(&mdp.out.payload[RHIZOME_BAR_BYTES+8],slot->mdpRXWindowStart);
+  write_uint32(&mdp.out.payload[RHIZOME_BAR_BYTES+8+8],slot->mdpRXBitmap);
+  write_uint16(&mdp.out.payload[RHIZOME_BAR_BYTES+8+8+4],slot->mdpRXBlockLength);  
 
   DEBUGF("src sid=%s, dst sid=%s",
 	 alloca_tohex_sid(mdp.out.src.sid),alloca_tohex_sid(mdp.out.dst.sid));
