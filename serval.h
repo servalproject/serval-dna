@@ -768,5 +768,8 @@ int olsr_send(struct overlay_frame *frame);
 void write_uint64(unsigned char *o,uint64_t v);
 void write_uint16(unsigned char *o,uint16_t v);
 void write_uint32(unsigned char *o,uint32_t v);
+uint64_t read_uint64(unsigned char *o);
+uint32_t read_uint32(unsigned char *o);
+uint16_t read_uint16(unsigned char *o);
 
 #endif // __SERVALD_SERVALD_H
