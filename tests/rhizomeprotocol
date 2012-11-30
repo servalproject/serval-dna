@@ -101,6 +101,60 @@ test_DisablingHTTPServer() {
    !rhizome_http_server_started
 }
 
+doc_HTTPTransport="Rhizome over HTTP transport"
+setup_HTTPTransport() {
+   setup_common
+   set_instance +B
+   executeOk_servald config set rhizome.mdp.enable 0   
+   set_instance +A
+   executeOk_servald config set rhizome.mdp.enable 0   
+   rhizome_add_file file1
+   start_servald_instances +A +B
+   foreach_instance +A assert_peers_are_instances +B
+   foreach_instance +B assert_peers_are_instances +A
+}
+test_HTTPTransport() {
+   wait_until bundle_received_by $BID:$VERSION +B
+   set_instance +B
+   executeOk_servald rhizome list ''
+   assert_rhizome_list --fromhere=0 file1
+   assert_rhizome_received file1
+   set_instance +A
+   rhizome_update_file file1 file2
+   set_instance +B
+   wait_until bundle_received_by $BID:$VERSION +B
+   executeOk_servald rhizome list ''
+   assert_rhizome_list --fromhere=0 file2
+   assert_rhizome_received file2
+}
+
+doc_MDPTransport="Rhizome over MDP transport"
+setup_MDPTransport() {
+   setup_common
+   set_instance +B
+   executeOk_servald config set rhizome.http.enable 0   
+   set_instance +A
+   executeOk_servald config set rhizome.http.enable 0   
+   rhizome_add_file file1
+   start_servald_instances +A +B
+   foreach_instance +A assert_peers_are_instances +B
+   foreach_instance +B assert_peers_are_instances +A
+}
+test_MDPTransport() {
+   wait_until bundle_received_by $BID:$VERSION +B
+   set_instance +B
+   executeOk_servald rhizome list ''
+   assert_rhizome_list --fromhere=0 file1
+   assert_rhizome_received file1
+   set_instance +A
+   rhizome_update_file file1 file2
+   set_instance +B
+   wait_until bundle_received_by $BID:$VERSION +B
+   executeOk_servald rhizome list ''
+   assert_rhizome_list --fromhere=0 file2
+   assert_rhizome_received file2
+}
+
 doc_FileTransferBig="Big new bundle transfers to one node"
 setup_FileTransferBig() {
    setup_common
