@@ -237,9 +237,11 @@ int overlay_route_ack_selfannounce(struct overlay_frame *f,
   /* set source to ourselves */
   out->source = my_subscriber;
 
-  /* Try to use broadcast if we don't have a route yet */
-  if (out->destination->reachable == REACHABLE_NONE)
-    set_reachable(out->destination, REACHABLE_BROADCAST);
+  /* Assume immediate neighbour via broadcast packet if we don't have a route yet */
+  if (out->destination->reachable == REACHABLE_NONE){
+    out->destination->interface=f->interface;
+    set_reachable(out->destination, REACHABLE_ASSUMED|REACHABLE_BROADCAST);
+  }
   
   /* Set the time in the ack. Use the last sequence number we have seen
      from this neighbour, as that may be helpful information for that neighbour
@@ -444,11 +446,14 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
   int best_observation=-1;
   int reachable = REACHABLE_NONE;
   
-  // TODO expiry timer since last self announce
-  if (n->subscriber->reachable==REACHABLE_BROADCAST)
-    reachable = REACHABLE_BROADCAST;
   overlay_interface *interface=NULL;
   struct subscriber *next_hop=NULL;
+  
+  // TODO assumption timeout...
+  if (n->subscriber->reachable&REACHABLE_ASSUMED){
+    reachable=n->subscriber->reachable;
+    interface=n->subscriber->interface;
+  }
   
   if (n->neighbour_id)
   {
@@ -466,7 +471,7 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
       {
 	best_score=neighbour->scores[i];
 	best_observation=-1;
-	reachable=REACHABLE_DIRECT;
+	reachable=REACHABLE_BROADCAST;
 	interface = &overlay_interfaces[i];
       }
     }
@@ -475,7 +480,7 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
   if (best_score<=0){
     for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++)
       {
-	if (n->observations[o].observed_score && n->observations[o].sender->reachable==REACHABLE_DIRECT)
+	if (n->observations[o].observed_score && n->observations[o].sender->reachable&REACHABLE)
 	  {
 	    int discounted_score=n->observations[o].observed_score;
 	    discounted_score-=(now-n->observations[o].rx_time)/1000;
@@ -509,7 +514,7 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
     case REACHABLE_INDIRECT:
       n->subscriber->next_hop = next_hop;
       break;
-    case REACHABLE_DIRECT:
+    case REACHABLE_BROADCAST:
       n->subscriber->interface = interface;
       n->subscriber->address = interface->broadcast_address;
       break;

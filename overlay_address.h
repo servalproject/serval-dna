@@ -25,26 +25,22 @@
 // not reachable
 #define REACHABLE_NONE 0
 
-// immediate neighbour
-#define REACHABLE_DIRECT 1
-
-// reachable via unicast packet
-#define REACHABLE_UNICAST 2
-
-// packets must be routed
-#define REACHABLE_INDIRECT 3
-
-// packets can probably be flooded to this peer with ttl=2
-// (temporary state for new peers before path discovery has finished)
-#define REACHABLE_BROADCAST 4
-
 // this subscriber is in our keystore
-#define REACHABLE_SELF 5
+#define REACHABLE_SELF (1<<0)
 
-#define REACHABLE_DEFAULT_ROUTE 6
+// immediate neighbour broadcast packet
+#define REACHABLE_BROADCAST (1<<1)
 
-#define OA_CODE_SELF 0xff
-#define OA_CODE_PREVIOUS 0xfe
+// reachable directly via unicast packet
+#define REACHABLE_UNICAST (1<<2)
+
+// packets must be routed via next_hop
+#define REACHABLE_INDIRECT (1<<3)
+
+#define REACHABLE_ASSUMED (1<<4)
+
+#define REACHABLE_DIRECT (REACHABLE_BROADCAST|REACHABLE_UNICAST)
+#define REACHABLE (REACHABLE_DIRECT|REACHABLE_INDIRECT)
 
 #define BROADCAST_LEN 8
 

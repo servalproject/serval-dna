@@ -187,6 +187,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   
   bzero(&f,sizeof(struct overlay_frame));
   
+  f.interface = interface;
   if (recvaddr->sa_family==AF_INET){
     f.recvaddr=recvaddr; 
     if (debug&DEBUG_OVERLAYFRAMES)
@@ -220,6 +221,8 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     int flags = ob_get(b);
     
     if (flags & PAYLOAD_FLAG_SENDER_SAME){
+      if (!context.sender)
+	context.invalid_addresses=1;
       f.source = context.sender;
     }else{
       if (overlay_address_parse(&context, b, &f.source))
@@ -335,7 +338,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     context.sender->address = *addr;
     
     // if this is a dummy announcement for a node that isn't in our routing table
-    if ((context.sender->reachable == REACHABLE_NONE || context.sender->reachable == REACHABLE_UNICAST) && 
+    if (context.sender->reachable == REACHABLE_NONE && 
 	(!context.sender->node) &&
 	(interface->fileP || recvaddr->sa_family==AF_INET)){
       

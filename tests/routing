@@ -60,13 +60,33 @@ setup_single_link() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B create_single_identity
-   start_servald_instances +A +B
+   foreach_instance +A +B add_interface dummy1
+   foreach_instance +A +B start_routing_instance
 }
 
 doc_single_link="Start 2 instances on one link"
 test_single_link() {
    set_instance +A
    executeOk_servald mdp ping $SIDB 3
+   tfw_cat --stdout --stderr
+}
+
+setup_multiple_nodes() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B +C +D create_single_identity
+   foreach_instance +A +B +C +D add_interface dummy1
+   foreach_instance +A +B +C +D start_routing_instance
+}
+
+doc_multiple_nodes="Multiple nodes on one link"
+test_multiple_nodes() {
+   set_instance +A
+   executeOk_servald mdp ping $SIDB 3
+   tfw_cat --stdout --stderr
+   executeOk_servald mdp ping $SIDC 3
+   tfw_cat --stdout --stderr
+   executeOk_servald mdp ping $SIDD 3
    tfw_cat --stdout --stderr
 }
 
@@ -82,7 +102,6 @@ setup_multihop_linear() {
 
 doc_multihop_linear="Start 4 instances in a linear arrangement"
 test_multihop_linear() {
-   wait_until --sleep=0.25 instances_see_each_other +A +B +C +D
    set_instance +A
    executeOk_servald mdp ping $SIDD 3
    tfw_cat --stdout --stderr

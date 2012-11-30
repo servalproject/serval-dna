@@ -36,6 +36,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define BPI_MASK 0x3ff
 static struct broadcast bpilist[MAX_BPIS];
 
+#define OA_CODE_SELF 0xff
+#define OA_CODE_PREVIOUS 0xfe
+
 // each node has 16 slots based on the next 4 bits of a subscriber id
 // each slot either points to another tree node or a struct subscriber.
 struct tree_node{
@@ -166,31 +169,23 @@ int subscriber_is_reachable(struct subscriber *subscriber){
       ret = REACHABLE_NONE;
     
     // avoid infinite recursion...
-    else if (subscriber->next_hop->reachable!=REACHABLE_DIRECT && 
-	subscriber->next_hop->reachable!=REACHABLE_UNICAST)
+    else if (!(subscriber->next_hop->reachable & REACHABLE_DIRECT))
       ret = REACHABLE_NONE;
     else{
       int r = subscriber_is_reachable(subscriber->next_hop);
-      if (r!=REACHABLE_DIRECT && r!= REACHABLE_UNICAST)
+      if (r&REACHABLE_ASSUMED)
+	ret = REACHABLE_NONE;
+      else if (!(r & REACHABLE_DIRECT))
 	ret = REACHABLE_NONE;
     }
   }
   
-  if (ret==REACHABLE_DIRECT || 
-      ret==REACHABLE_UNICAST){
+  if (ret & REACHABLE_DIRECT){
     // make sure the interface is still up
     if (!subscriber->interface)
       ret=REACHABLE_NONE;
     else if (subscriber->interface->state!=INTERFACE_STATE_UP)
       ret=REACHABLE_NONE;
-  }
-  
-  // after all of that, should we use a default route?
-  if (ret==REACHABLE_NONE &&
-      directory_service && 
-      subscriber!=directory_service &&
-      subscriber_is_reachable(directory_service)!=REACHABLE_NONE){
-    ret = REACHABLE_DEFAULT_ROUTE;
   }
   
   return ret;
@@ -211,9 +206,6 @@ int set_reachable(struct subscriber *subscriber, int reachable){
 	break;
       case REACHABLE_SELF:
 	break;
-      case REACHABLE_DIRECT:
-	DEBUGF("REACHABLE DIRECTLY sid=%s", alloca_tohex_sid(subscriber->sid));
-	break;
       case REACHABLE_INDIRECT:
 	DEBUGF("REACHABLE INDIRECTLY sid=%s", alloca_tohex_sid(subscriber->sid));
 	break;
@@ -227,14 +219,13 @@ int set_reachable(struct subscriber *subscriber, int reachable){
   }
 
   /* Pre-emptively send a sas request */
-  if (!subscriber->sas_valid && reachable!=REACHABLE_SELF && reachable!=REACHABLE_NONE && reachable!=REACHABLE_BROADCAST)
+  if (!subscriber->sas_valid && reachable&REACHABLE)
     keyring_send_sas_request(subscriber);
 
   // Hacky layering violation... send our identity to a directory service
   if (subscriber==directory_service &&
-      (old_value==REACHABLE_NONE||old_value==REACHABLE_BROADCAST) &&
-      (reachable!=REACHABLE_NONE&&reachable!=REACHABLE_BROADCAST)
-      )
+      (!(old_value&REACHABLE)) &&
+      reachable&REACHABLE)
     directory_registration();
   
   return 0;
@@ -242,7 +233,7 @@ int set_reachable(struct subscriber *subscriber, int reachable){
 
 // mark the subscriber as reachable via reply unicast packet
 int reachable_unicast(struct subscriber *subscriber, overlay_interface *interface, struct in_addr addr, int port){
-  if (subscriber->reachable!=REACHABLE_NONE && subscriber->reachable!=REACHABLE_UNICAST)
+  if (subscriber->reachable&REACHABLE)
     return WHYF("Subscriber %s is already reachable", alloca_tohex_sid(subscriber->sid));
   
   if (subscriber->node)
@@ -335,11 +326,16 @@ int overlay_broadcast_append(struct overlay_buffer *b, struct broadcast *broadca
 // append an appropriate abbreviation into the address
 int overlay_address_append(struct decode_context *context, struct overlay_buffer *b, struct subscriber *subscriber)
 {
+  if (!subscriber)
+    return WHY("No address supplied");
+  
   if (context && subscriber==context->sender){
-    ob_append_byte(b, OA_CODE_SELF);
+    if (ob_append_byte(b, OA_CODE_SELF))
+      return -1;
     
   }else if(context && subscriber==context->previous){
-    ob_append_byte(b, OA_CODE_PREVIOUS);
+    if (ob_append_byte(b, OA_CODE_PREVIOUS))
+      return -1;
     
   }else{
     int len=SID_SIZE;
@@ -352,8 +348,10 @@ int overlay_address_append(struct decode_context *context, struct overlay_buffer
       if (len>SID_SIZE)
 	len=SID_SIZE;
     }
-    ob_append_byte(b, len);
-    ob_append_bytes(b, subscriber->sid, len);
+    if (ob_append_byte(b, len))
+      return -1;
+    if (ob_append_bytes(b, subscriber->sid, len))
+      return -1;
   }
   if (context)
     context->previous = subscriber;
@@ -468,7 +466,9 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
   else
     context->please_explain->source = my_subscriber;
   
-  if (destination && destination->reachable!=REACHABLE_NONE){
+  context->please_explain->source->send_full=1;
+  
+  if (destination && (destination->reachable & REACHABLE)){
     context->please_explain->destination = destination;
     context->please_explain->ttl=64;
   }else{

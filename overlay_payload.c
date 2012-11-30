@@ -100,7 +100,7 @@ int overlay_frame_append_payload(struct decode_context *context, overlay_interfa
   
   if (overlay_frame_build_header(context, headers,
 			     p->queue, p->type, p->modifiers, p->ttl,
-			     (p->sendBroadcast?&p->broadcast_id:NULL), next_hop, 
+			     (p->destination?NULL:&p->broadcast_id), next_hop, 
 			     p->destination, p->source))
     goto cleanup;
   

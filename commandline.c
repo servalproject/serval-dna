@@ -1757,29 +1757,19 @@ int app_route_print(int argc, const char *const *argv, struct command_line_optio
       cli_printf(alloca_tohex_sid(p->sid));
       cli_delim(":");
       
-      switch (p->reachable){
-	case REACHABLE_NONE:
-	  cli_printf("NONE");
-	  break;
-	case REACHABLE_SELF:
-	  cli_printf("SELF");
-	  break;
-	case REACHABLE_DIRECT:
-	  cli_printf("DIRECT");
-	  break;
-	case REACHABLE_INDIRECT:
-	  cli_printf("INDIRECT");
-	  break;
-	case REACHABLE_UNICAST:
-	  cli_printf("UNICAST");
-	  break;
-	case REACHABLE_BROADCAST:
-	  cli_printf("BROADCAST");
-	  break;
-	default:
-	  cli_printf("%d",p->reachable);
-	  break;
-      }
+      if (p->reachable==REACHABLE_NONE)
+	cli_printf("NONE");
+      if (p->reachable & REACHABLE_SELF)
+	cli_printf("SELF ");
+      if (p->reachable & REACHABLE_ASSUMED)
+	cli_printf("ASSUMED ");
+      if (p->reachable & REACHABLE_BROADCAST)
+	cli_printf("BROADCAST ");
+      if (p->reachable & REACHABLE_UNICAST)
+	cli_printf("UNICAST ");
+      if (p->reachable & REACHABLE_INDIRECT)
+	cli_printf("INDIRECT ");
+      
       cli_delim(":");
       cli_printf(alloca_tohex_sid(p->neighbour));
       cli_delim("\n");

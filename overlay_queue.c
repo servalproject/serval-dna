@@ -163,7 +163,7 @@ int overlay_payload_enqueue(struct overlay_frame *p)
   
   if (p->destination){
     int r = subscriber_is_reachable(p->destination);
-    if (r == REACHABLE_SELF || r == REACHABLE_NONE)
+    if (!(r&REACHABLE))
       return WHYF("Cannot send %x packet, destination %s is %s", p->type, alloca_tohex_sid(p->destination->sid), r==REACHABLE_SELF?"myself":"unreachable");
   }
   
@@ -211,8 +211,6 @@ int overlay_payload_enqueue(struct overlay_frame *p)
     // just drop it now
     if (drop)
       return -1;
-    
-    p->sendBroadcast=1;
   }
   
   struct overlay_frame *l=queue->last;
@@ -262,7 +260,7 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
   time_ms_t send_time;
   
   // ignore packet if the destination is currently unreachable
-  if (frame->destination && subscriber_is_reachable(frame->destination)==REACHABLE_NONE)
+  if (frame->destination && (!(subscriber_is_reachable(frame->destination)&REACHABLE)))
     return 0;
   
   // when is the next packet from this queue due?
@@ -306,46 +304,57 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     struct subscriber *next_hop = frame->destination;
     
     if (next_hop){
-      switch(subscriber_is_reachable(next_hop)){
-	case REACHABLE_NONE:
-	  goto skip;
-	  
-	case REACHABLE_INDIRECT:
-	  next_hop=next_hop->next_hop;
-	  frame->sendBroadcast=0;
-	  break;
-	  
-	case REACHABLE_DEFAULT_ROUTE:
-	  next_hop=directory_service;
-	  frame->sendBroadcast=0;
-	  break;
-	  
-	case REACHABLE_DIRECT:
-	case REACHABLE_UNICAST:
-	  frame->sendBroadcast=0;
-	  break;
-	  
-	case REACHABLE_BROADCAST:
-	  if (!frame->sendBroadcast){
-	    if (frame->ttl>2)
-	      frame->ttl=2;
-	    frame->sendBroadcast=1;
-	    if (is_all_matching(frame->broadcast_id.id, BROADCAST_LEN, 0)){
-	      overlay_broadcast_generate_address(&frame->broadcast_id);
-	      // mark it as already seen so we don't immediately retransmit it
-	      overlay_broadcast_drop_check(&frame->broadcast_id);
-	    }
-	    int i;
-	    for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
-	      frame->broadcast_sent_via[i]=0;
-	  }
-	  break;
+      // Where do we need to route this payload next?
+      
+      int r = subscriber_is_reachable(next_hop);
+      
+      // first, should we try to bounce this payload off the directory service?
+      if (r==REACHABLE_NONE && 
+	  directory_service && 
+	  next_hop!=directory_service){
+	next_hop=directory_service;
+	r=subscriber_is_reachable(directory_service);
       }
-    }
-    
-    if (!packet->buffer){
-      // use the interface of the first payload we find
-      if (frame->sendBroadcast){
+      
+      // do we need to route via a neighbour?
+      if (r&REACHABLE_INDIRECT){
+	next_hop = next_hop->next_hop;
+	r = subscriber_is_reachable(next_hop);
+      }
+      
+      if (!(r&REACHABLE_DIRECT))
+	goto skip;
+      
+      // ignore resend logic for unicast packets, where wifi gives better resilience
+      if (r&REACHABLE_UNICAST)
+	frame->send_copies=1;
+      
+      if (packet->buffer){
+	// is this packet going our way?
+	if(packet->interface != next_hop->interface)
+	  goto skip;
+	
+	if ((r&REACHABLE_BROADCAST) && packet->unicast)
+	  goto skip;
+	
+	if ((r&REACHABLE_UNICAST) && 
+	    (!packet->unicast || packet->dest.sin_addr.s_addr != next_hop->address.sin_addr.s_addr))
+	  goto skip;
+	    
+      }else{
+	// start a new packet buffer.
+	overlay_init_packet(packet, next_hop->interface, 0);
+	if(r&REACHABLE_UNICAST){
+	  packet->unicast_subscriber = next_hop;
+	  packet->dest = next_hop->address;
+	  packet->unicast=1;
+	}
+      }
+    }else{
+      if (packet->buffer){
+	if (frame->broadcast_sent_via[packet->i])
+	  goto skip;
+      }else{
 	// find an interface that we haven't broadcast on yet
 	int i;
 	for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
@@ -358,41 +367,17 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	}
 	
 	if (!packet->buffer){
-	  // oh dear, why is this broadcast still in the queue?
+	  // huh, we don't need to send it anywhere?
 	  frame = overlay_queue_remove(queue, frame);
 	  continue;
 	}
-      }else{
-	overlay_init_packet(packet, next_hop->interface, 0);
-	if (next_hop->reachable==REACHABLE_UNICAST){
-	  packet->unicast_subscriber = next_hop;
-	  packet->dest = next_hop->address;
-	  packet->unicast=1;
-	}
-      }
-      
-    }else{
-      // make sure this payload can be sent via this interface
-      if (frame->sendBroadcast){
-	if (frame->broadcast_sent_via[packet->i]){
-	  goto skip;
-	}
-      }else{
-	if(packet->interface != next_hop->interface)
-	  goto skip;
-	if (next_hop->reachable==REACHABLE_DIRECT && packet->unicast)
-	  goto skip;
-	if (next_hop->reachable==REACHABLE_UNICAST && 
-	    ((!packet->unicast) ||
-	     packet->dest.sin_addr.s_addr != next_hop->address.sin_addr.s_addr))
-	  goto skip;
       }
     }
     
     if (debug&DEBUG_OVERLAYFRAMES){
       DEBUGF("Sending payload type %x len %d for %s via %s", frame->type, ob_position(frame->payload),
 	     frame->destination?alloca_tohex_sid(frame->destination->sid):"All",
-	     frame->sendBroadcast?alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN):alloca_tohex_sid(next_hop->sid));
+	     next_hop?alloca_tohex_sid(next_hop->sid):alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN));
     }
     
     if (overlay_frame_append_payload(&packet->context, packet->interface, frame, next_hop, packet->buffer))
@@ -406,7 +391,11 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     // mark the payload as sent
     int keep_payload = 0;
     
-    if (frame->sendBroadcast){
+    if (next_hop){
+      frame->send_copies --;
+      if (frame->send_copies>0)
+	keep_payload=1;
+    }else{
       int i;
       frame->broadcast_sent_via[packet->i]=1;
       
@@ -419,11 +408,6 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	    break;
 	  }
       }
-    }else{
-      frame->send_copies --;
-      // ignore resend logic for unicast packets, where wifi gives better resilience
-      if (frame->send_copies>0 && !packet->unicast)
-	keep_payload=1;
     }
     
     if (!keep_payload){
