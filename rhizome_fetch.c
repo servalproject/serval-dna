@@ -1269,6 +1269,7 @@ int rhizome_received_content(unsigned char *bidprefix,
 	    rhizome_write_content(slot,(char *)bytes,count);
 	    debug=0;
 	    slot->mdpRXWindowStart=offset+count;
+	    slot->mdpLastRX=gettime_ms();
 	    // TODO: Shift bitmap
 	    RETURN(0);
 	  } else {
