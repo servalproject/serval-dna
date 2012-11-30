@@ -96,26 +96,26 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
   reply.out.queue=OQ_ORDINARY;
   reply.out.payload[0]='B'; // reply contains blocks
   // include 16 bytes of BID prefix for identification
-  bcopy(&mdp->out.payload[0],&reply.out.payload[0],16);
+  bcopy(&mdp->out.payload[0],&reply.out.payload[1],16);
   // and version of manifest
   bcopy(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES],
-	&reply.out.payload[16],8);
-
+	&reply.out.payload[1+16],8);
+  
   int i;
   for(i=0;i<32;i++)
     if (!(bitmap&(1<<(31-i))))
       {	
 	// calculate and set offset of block
 	uint64_t blockOffset=fileOffset+i*blockLength;
-	write_uint64(&reply.out.payload[16+8],blockOffset);
+	write_uint64(&reply.out.payload[1+16+8],blockOffset);
 	// work out how many bytes to read
 	int blockBytes=blob_bytes-blockOffset;
 	if (blockBytes>blockLength) blockBytes=blockLength;
 	// read data for block
 	if (blob_bytes>=blockOffset) {
-	  sqlite3_blob_read(blob,&reply.out.payload[16+8+8],
+	  sqlite3_blob_read(blob,&reply.out.payload[1+16+8+8],
 			    blockBytes,0);	  
-	  reply.out.payload_length=16+8+8+blockBytes;
+	  reply.out.payload_length=1+16+8+8+blockBytes;
 	}
 	// send packet
 	overlay_mdp_dispatch(&reply,0 /* system generated */, NULL,0); 
