@@ -1160,7 +1160,7 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
     slot->mdpIdleTimeout=5000; // give up if nothing received for 5 seconds
     slot->mdpRXWindowStart=slot->file_ofs;
     slot->mdpRXBitmap=0x00000000; // no blocks received yet
-    slot->mdpRXBlockLength=200;
+    slot->mdpRXBlockLength=1024; // 200;
     rhizome_fetch_mdp_requestblocks(slot);    
   } else {
     /* We are requesting a manifest, which is stateless, except that we eventually

@@ -31,21 +31,25 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
 {
   IN();
-  DEBUGF("Someone sent me a rhizome request via MDP");
-  DEBUGF("requestor sid = %s",alloca_tohex_sid(mdp->out.src.sid));
-  DEBUGF("bundle ID = %s",alloca_tohex_bid(&mdp->out.payload[0]));
-  DEBUGF("manifest version = 0x%llx",
-	 read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES]));
+
   uint64_t fileOffset=
     read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8]);
-  DEBUGF("file offset = 0x%llx",fileOffset);
   uint32_t bitmap=
     read_uint32(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8]);
-  DEBUGF("bitmap = 0x%08x",bitmap);
   uint16_t blockLength=
   read_uint16(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4]);
-  DEBUGF("block length = %d",blockLength);
-  if (blockLength>300) RETURN(-1);
+  if (blockLength>1024) RETURN(-1);
+
+  if(0) {
+    DEBUGF("Someone sent me a rhizome request via MDP");
+    DEBUGF("requestor sid = %s",alloca_tohex_sid(mdp->out.src.sid));
+    DEBUGF("bundle ID = %s",alloca_tohex_bid(&mdp->out.payload[0]));
+    DEBUGF("manifest version = 0x%llx",
+	   read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES]));
+    DEBUGF("file offset = 0x%llx",fileOffset);
+    DEBUGF("bitmap = 0x%08x",bitmap);
+    DEBUGF("block length = %d",blockLength);
+  }
 
   /* Find manifest that corresponds to BID and version.
      If we don't have this combination, then do nothing.
@@ -63,8 +67,7 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
       DEBUGF("Couldn't find stored file.");
       RETURN(-1);
     }
-  DEBUGF("manifest file row_id = %lld",row_id);
-
+  
   sqlite3_blob *blob=NULL; 
   int ret=sqlite3_blob_open(rhizome_db, "main", "files", "data",
 				   row_id, 0 /* read only */, &blob);
@@ -73,8 +76,7 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
       DEBUGF("Failed to open blob: %s",sqlite3_errmsg(rhizome_db));     
       RETURN(-1);
     }
-  int blob_bytes=sqlite3_blob_bytes(blob);
-  DEBUGF("blob_bytes=%d",blob_bytes);
+  int blob_bytes=sqlite3_blob_bytes(blob);  
   if (blob_bytes<fileOffset) {
     sqlite3_blob_close(blob); blob=NULL;
     RETURN(-1);
@@ -111,9 +113,7 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
 	write_uint64(&reply.out.payload[1+16+8],blockOffset);
 	// work out how many bytes to read
 	int blockBytes=blob_bytes-blockOffset;
-	DEBUGF("blockBytes=%d",blockBytes);
 	if (blockBytes>blockLength) blockBytes=blockLength;
-	DEBUGF("blockBytes=%d, blockOffset=%d",blockBytes,blockOffset);
 	// read data for block
 	if (blob_bytes>=blockOffset) {
 	  sqlite3_blob_read(blob,&reply.out.payload[1+16+8+8],
