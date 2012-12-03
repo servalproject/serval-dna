@@ -1476,6 +1476,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	    unschedule(&slot->alarm);
 	    slot->alarm.alarm=gettime_ms() + RHIZOME_IDLE_TIMEOUT;
 	    slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
+	    slot->alarm.function = rhizome_fetch_poll;
 	    schedule(&slot->alarm);
 
 	    return;
