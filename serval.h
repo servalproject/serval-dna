@@ -115,37 +115,11 @@ struct in_addr {
 #include "log.h"
 #include "net.h"
 #include "conf.h"
-
-/* All wall clock times in the Serval daemon are represented in milliseconds
- * since the Unix epoch.  The gettime_ms() function uses gettimeofday(2) to
- * return this value when called.  The time_ms_t typedef should be used
- * wherever this time value is handled or stored.
- *
- * This type could perfectly well be unsigned, but is defined as signed to
- * avoid the need to cast or define a special signed timedelta_ms_t type at **
- * (1):
- *
- *      static time_ms_t then = 0;
- *      time_ms_t now = gettime_ms();
- *      time_ms_t ago = now - then;  // ** (1)
- *      if (then && ago < 0) {
- *          ... time going backwards ...
- *      } else {
- *          ... time has advanced ...
- *          then = now;
- *      }
- */
-typedef long long time_ms_t;
-
-/* bzero(3) is deprecated in favour of memset(3). */
-#define bzero(addr,len) memset((addr), 0, (len))
+#include "os.h"
 
 /* UDP Port numbers for various Serval services.
  The overlay mesh works over DNA */
 #define PORT_DNA 4110
-
-/* OpenWRT libc doesn't have bcopy, but has memmove */
-#define bcopy(A,B,C) memmove(B,A,C)
 
 #define BATCH 1
 #define NONBATCH 0
@@ -440,9 +414,6 @@ int str_is_did(const char *did);
 int strn_is_did(const char *did, size_t *lenp);
 
 int stowSid(unsigned char *packet, int ofs, const char *sid);
-void srandomdev();
-time_ms_t gettime_ms();
-time_ms_t sleep_ms(time_ms_t milliseconds);
 int server_pid();
 void server_save_argv(int argc, const char *const *argv);
 int server(char *backing_file);
@@ -619,8 +590,6 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const unsigned char *resolved_sid, const char *uri, const char *did, const char *name);
 
 int dump_payload(struct overlay_frame *p, char *message);
-
-int urandombytes(unsigned char *x,unsigned long long xlen);
 
 struct vomp_call_state;
 

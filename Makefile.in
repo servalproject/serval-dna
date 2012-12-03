@@ -19,7 +19,7 @@ SRCS=	$(NACL_SOURCES) $(SERVAL_SOURCES)
 
 MONITORCLIENTSRCS=conf.c \
 	log.c \
-	mkdir.c \
+	os.c \
 	mem.c \
 	monitor-client.c \
 	net.c \
@@ -29,7 +29,7 @@ MONITORCLIENTSRCS=conf.c \
 
 MDPCLIENTSRCS=conf.c \
 	dataformats.c \
-	mkdir.c \
+	os.c \
 	mem.c \
 	log.c \
 	mdp_client.c \

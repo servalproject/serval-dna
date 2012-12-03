@@ -7,6 +7,7 @@ HDRS=	fifo.h \
 	serval.h \
 	str.h \
 	mem.h \
+	os.h \
 	strbuf.h \
 	strbuf_helpers.h \
 	sha2.h \
