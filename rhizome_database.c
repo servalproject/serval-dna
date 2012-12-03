@@ -951,7 +951,7 @@ int64_t rhizome_database_create_blob_for(const char *hashhex,int64_t fileLength,
 {
   /* Okay, so there are no records that match, but we should delete any half-baked record (with datavalid=0) so that the insert below doesn't fail.
      Don't worry about the return result, since it might not delete any records. */
-  sqlite_exec_void("DELETE FROM FILES WHERE in='%s' AND datavalid=0;",hashhex);
+  sqlite_exec_void("DELETE FROM FILES WHERE id='%s' AND datavalid=0;",hashhex);
 
   /* INSERT INTO FILES(id as text, data blob, length integer, highestpriority integer).
    BUT, we have to do this incrementally so that we can handle blobs larger than available memory.
