@@ -523,7 +523,6 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
     slot->rowid=-1;
   }
 
-  SHA512_Init(&slot->sha512_context);
   if (slot->peer_ipandport.sin_family == AF_INET) {
     /* Transfer via HTTP over IPv4 */
     if ((sock = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
@@ -560,6 +559,7 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
     slot->file_len = -1;
     slot->file_ofs = 0;
     slot->blob_buffer_bytes = 0;
+    SHA512_Init(&slot->sha512_context);
     /* Watch for activity on the socket */
     slot->alarm.function = rhizome_fetch_poll;
     fetch_stats.name = "rhizome_fetch_poll";
@@ -1169,7 +1169,7 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
     slot->file_len=slot->manifest->fileLength;  
     slot->mdpIdleTimeout=5000; // give up if nothing received for 5 seconds
     slot->mdpRXBitmap=0x00000000; // no blocks received yet
-    slot->mdpRXBlockLength=200; // 200;
+    slot->mdpRXBlockLength=500; // 200;
     rhizome_fetch_mdp_requestblocks(slot);    
   } else {
     /* We are requesting a manifest, which is stateless, except that we eventually
@@ -1249,7 +1249,8 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
     slot->manifest_bytes+=count;
   } else {
     /* We are reading a file. Stream it into the database. */  
-    SHA512_Update(&slot->sha512_context,(unsigned char *)buffer,bytes);
+    if (bytes>0)
+      SHA512_Update(&slot->sha512_context,(unsigned char *)buffer,bytes);
     
     if (debug & DEBUG_RHIZOME_RX)
       DEBUGF("slot->blob_buffer_bytes=%d, slot->file_ofs=%d",
@@ -1278,8 +1279,10 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
       if (strcasecmp(hash_out,slot->manifest->fileHexHash)) {
 	if (debug & DEBUG_RHIZOME_RX)
 	  DEBUGF("Hash mismatch -- dropping row from table.");	
+	DEBUGF("Expected hash=%s, got %s",
+	       slot->manifest->fileHexHash,hash_out);
 	sqlite_exec_void_retry(&retry,
-			       "DROP FROM FILES WHERE rowid=%lld",slot->rowid);
+			       "DELETE FROM FILES WHERE rowid=%lld",slot->rowid);
 	rhizome_fetch_close(slot);
 	return -1;
       } else {
