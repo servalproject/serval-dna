@@ -567,8 +567,10 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
     slot->alarm.poll.events = POLLIN|POLLOUT;
     watch(&slot->alarm);
     /* And schedule a timeout alarm */
+    unschedule(&slot->alarm);
     slot->alarm.alarm = gettime_ms() + RHIZOME_IDLE_TIMEOUT;
     slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
+    slot->alarm.function-rhizome_fetch_poll;
     schedule(&slot->alarm);
     return 0;
   }
@@ -1214,9 +1216,14 @@ int rhizome_fetch_flush_blob_buffer(struct rhizome_fetch_slot *slot)
 {
   sqlite3_blob *blob;
   int ret = sqlite3_blob_open(rhizome_db, "main", "FILES", "data", slot->rowid, 1 /* read/write */, &blob);
-  if (ret!=SQLITE_OK) return -1;
+  if (ret!=SQLITE_OK) {
+    if (blob) sqlite3_blob_close(blob);
+    return -1;
+  }
   ret=sqlite3_blob_write(blob, slot->blob_buffer, slot->blob_buffer_bytes, 
 			 slot->file_ofs-slot->blob_buffer_bytes);
+  sqlite3_blob_close(blob); blob=NULL;
+
   if (ret!=SQLITE_OK) {
     WHYF("sqlite3_blob_write(,,%d,%d) failed, %s", 
 	 slot->blob_buffer_bytes,slot->file_ofs-slot->blob_buffer_bytes,
@@ -1228,7 +1235,6 @@ int rhizome_fetch_flush_blob_buffer(struct rhizome_fetch_slot *slot)
     rhizome_fetch_close(slot);
     return -1;
   }
-  sqlite3_blob_close(blob); blob=NULL;
   slot->blob_buffer_bytes=0;
   return 0;
 }
@@ -1412,6 +1418,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	unschedule(&slot->alarm);
 	slot->alarm.alarm=gettime_ms() + RHIZOME_IDLE_TIMEOUT;
 	slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
+	slot->alarm.function = rhizome_fetch_poll;
 	schedule(&slot->alarm);	
 	return;
       } else {
