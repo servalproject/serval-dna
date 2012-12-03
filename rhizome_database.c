@@ -966,6 +966,10 @@ int64_t rhizome_database_create_blob_for(const char *hashhex,int64_t fileLength,
   sqlite3_stmt *statement = sqlite_prepare(&retry, "INSERT OR REPLACE INTO FILES(id,data,length,highestpriority,datavalid,inserttime) VALUES('%s',?,%lld,%d,0,%lld);",
 	  hashhex, (long long)fileLength, priority, (long long)gettime_ms()
 	);
+  DEBUGF("INSERT OR REPLACE INTO FILES(id,data,length,highestpriority,datavalid,inserttime) VALUES('%s',?,%lld,%d,0,%lld);",
+	  hashhex, (long long)fileLength, priority, (long long)gettime_ms()
+	);
+
   if (!statement)
     goto insert_row_fail;
   /* Bind appropriate sized zero-filled blob to data field */

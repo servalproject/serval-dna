@@ -110,8 +110,6 @@ int rhizome_bundle_import(rhizome_manifest *m, int ttl)
   if (debug & DEBUG_RHIZOME)
     DEBUGF("(m=%p, ttl=%d)", m, ttl);
   /* Add the manifest and its payload to the Rhizome database. */
-  if (m->fileLength > 0 && !(m->dataFileName && m->dataFileName[0]))
-    return WHY("Missing data file name");
   if (rhizome_manifest_check_file(m))
     return WHY("File does not belong to manifest");
   int ret = rhizome_manifest_check_duplicate(m, NULL);

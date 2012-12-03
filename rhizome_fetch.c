@@ -505,9 +505,10 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
   if (create_rhizome_import_dir() == -1)
     goto bail;
   slot->file_len=slot->manifest->fileLength;
-  slot->rowid=rhizome_database_create_blob_for(alloca_tohex_sid(slot->bid),
-					 slot->file_len,
-					 RHIZOME_PRIORITY_DEFAULT);
+  slot->rowid=
+    rhizome_database_create_blob_for(slot->manifest->fileHexHash,
+				     slot->file_len,
+				     RHIZOME_PRIORITY_DEFAULT);
   if (slot->rowid<0) {
     WHYF_perror("Could not obtain rowid for blob for file '%s'",
 		alloca_tohex_sid(slot->bid));
@@ -1155,6 +1156,7 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
        which is the block size we will use.  200bytes allows for several blocks 
        to fit into a packet, and probably fit at least one any any outgoing packet
        that is not otherwise full. */
+    slot->file_len=slot->manifest->fileLength;  
     slot->mdpIdleTimeout=5000; // give up if nothing received for 5 seconds
     slot->mdpRXBitmap=0x00000000; // no blocks received yet
     slot->mdpRXBlockLength=200; // 200;
@@ -1218,6 +1220,8 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
     if (ret!=SQLITE_OK) return -1;
     ret=sqlite3_blob_write(blob, buffer, bytes, slot->file_ofs);
     if (ret!=SQLITE_OK) {
+      WHYF("sqlite3_blob_write(,,%d,%d) failed, %s", 
+	   bytes,slot->file_ofs,sqlite3_errmsg(rhizome_db));
       if (debug & DEBUG_RHIZOME_RX)
 	DEBUGF("Failed to write %d bytes to file @ offset %d", bytes, slot->file_ofs);
       rhizome_fetch_close(slot);
@@ -1241,21 +1245,21 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
       char hash_out[SHA512_DIGEST_STRING_LENGTH+1];
       SHA512_End(&slot->sha512_context, (char *)hash_out);
       
-      DEBUGF("Hash of received file = %s",hash_out);
-      DEBUGF("Hash I was looking for = %s",slot->manifest->fileHexHash);
-
       sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
       if (strcasecmp(hash_out,slot->manifest->fileHexHash)) {
-	DEBUGF("Hash mismatch -- dropping row from table.");	
+	if (debug & DEBUG_RHIZOME_RX)
+	  DEBUGF("Hash mismatch -- dropping row from table.");	
 	sqlite_exec_void_retry(&retry,
 			       "DROP FROM FILES WHERE rowid=%lld",slot->rowid);
 	rhizome_fetch_close(slot);
 	return -1;
       } else {
-	sqlite_exec_void_retry(&retry,
-			       "UPDATE FILES SET datavalid=1 WHERE rowid=%lld",
-				slot->rowid);
-	DEBUGF("Marked row valid");
+	int ret=sqlite_exec_void_retry(&retry,
+				       "UPDATE FILES SET datavalid=1 WHERE rowid=%lld",
+				       slot->rowid);
+	if (ret!=SQLITE_OK) 
+	  if (debug & DEBUG_RHIZOME_RX)
+	    DEBUGF("error marking row valid: %s",sqlite3_errmsg(rhizome_db));
       }
 
       if (!rhizome_import_received_bundle(slot->manifest)){
