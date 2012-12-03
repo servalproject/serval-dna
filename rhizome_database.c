@@ -224,6 +224,7 @@ int rhizome_opendb()
   sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM FILES WHERE NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);");
   sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM MANIFESTS WHERE filehash != '' AND NOT EXISTS( SELECT  1 FROM FILES WHERE MANIFESTS.filehash = FILES.id);");
   RETURN(0);
+  sqlite_exec_void("DELETE FROM FILES WHERE datavalid=0;");
 }
 
 int rhizome_close_db()
@@ -1019,7 +1020,7 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
 
   /* Okay, so there are no records that match, but we should delete any half-baked record (with datavalid=0) so that the insert below doesn't fail.
    Don't worry about the return result, since it might not delete any records. */
-  sqlite_exec_void("DELETE FROM FILES WHERE datavalid=0;");
+  sqlite_exec_void("DELETE FROM FILES WHERE in='%s' AND datavalid=0;",hash);
 
   /* INSERT INTO FILES(id as text, data blob, length integer, highestpriority integer).
    BUT, we have to do this incrementally so that we can handle blobs larger than available memory.
