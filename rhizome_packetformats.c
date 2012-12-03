@@ -327,7 +327,7 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
   if (!rhizome_db) { RETURN(0); }
   
   int ad_frame_type=ob_get(f->payload);
-  struct sockaddr_in httpaddr = *(struct sockaddr_in *)f->recvaddr;
+  struct sockaddr_in httpaddr = f->recvaddr;
   httpaddr.sin_port = htons(RHIZOME_HTTP_PORT);
   int manifest_length;
   rhizome_manifest *m=NULL;

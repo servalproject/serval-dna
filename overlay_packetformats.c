@@ -189,19 +189,16 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   
   f.interface = interface;
   if (recvaddr->sa_family==AF_INET){
-    f.recvaddr=recvaddr; 
+    f.recvaddr=*((struct sockaddr_in *)recvaddr); 
     if (debug&DEBUG_OVERLAYFRAMES)
       DEBUG("Received overlay packet");
   } else {
     if (interface->fileP) {
       /* dummy interface, so tell to use localhost */
-      loopback.sin_family = AF_INET;
-      loopback.sin_port = 0;
-      loopback.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-      f.recvaddr=(struct sockaddr *)&loopback;
-    } else 
-      /* some other sort of interface, so we can't offer any help here */
-      f.recvaddr=NULL;
+      f.recvaddr.sin_family = AF_INET;
+      f.recvaddr.sin_port = 0;
+      f.recvaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    }
   }
 
   overlay_address_parse(&context, b, &context.sender);

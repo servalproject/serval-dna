@@ -74,7 +74,7 @@ int overlay_frame_build_header(struct decode_context *context, struct overlay_bu
 }
 
 int overlay_frame_append_payload(struct decode_context *context, overlay_interface *interface, 
-				 struct overlay_frame *p, struct subscriber *next_hop, struct overlay_buffer *b)
+				 struct overlay_frame *p, struct overlay_buffer *b)
 {
   /* Convert a payload (frame) structure into a series of bytes.
      Assumes that any encryption etc has already been done.
@@ -100,7 +100,7 @@ int overlay_frame_append_payload(struct decode_context *context, overlay_interfa
   
   if (overlay_frame_build_header(context, headers,
 			     p->queue, p->type, p->modifiers, p->ttl,
-			     (p->destination?NULL:&p->broadcast_id), next_hop, 
+			     (p->destination?NULL:&p->broadcast_id), p->next_hop, 
 			     p->destination, p->source))
     goto cleanup;
   

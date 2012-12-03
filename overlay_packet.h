@@ -43,11 +43,13 @@ struct overlay_frame {
   
   // null if destination is broadcast
   struct subscriber *destination;
+  struct subscriber *next_hop;
   
   struct subscriber *source;
   
-  /* IPv4 node frame was received from (if applicable) */
-  struct sockaddr *recvaddr;
+  /* IPv4 address the frame was received from, or should be sent to */
+  int destination_resolved;
+  struct sockaddr_in recvaddr;
   overlay_interface *interface;
   
   /* Actual payload */

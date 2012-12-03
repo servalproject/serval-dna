@@ -67,7 +67,7 @@ struct subscriber{
   // if direct, or unicast, where do we send packets?
   struct overlay_interface *interface;
   
-  // if reachable==REACHABLE_UNICAST send packets to this address, else use the interface broadcast address
+  // if reachable&REACHABLE_UNICAST send packets to this address, else use the interface broadcast address
   struct sockaddr_in address;
   
   // public signing key details for remote peers
