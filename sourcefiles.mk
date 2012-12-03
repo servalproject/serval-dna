@@ -17,6 +17,7 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)main.c \
 	$(SERVAL_BASE)mdp_client.c \
 	$(SERVAL_BASE)mkdir.c \
+	$(SERVAL_BASE)mem.c \
 	$(SERVAL_BASE)monitor.c \
 	$(SERVAL_BASE)monitor-client.c \
 	$(SERVAL_BASE)monitor-cli.c \

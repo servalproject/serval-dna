@@ -21,8 +21,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVALD_SERVALD_H
 #define __SERVALD_SERVALD_H
 
-// #define MALLOC_PARANOIA
-
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -112,6 +110,7 @@ struct in_addr {
 #include <sys/stat.h>
 
 #include "constants.h"
+#include "mem.h"
 #include "xprintf.h"
 #include "log.h"
 #include "net.h"
@@ -622,17 +621,6 @@ int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const unsigned char
 int dump_payload(struct overlay_frame *p, char *message);
 
 int urandombytes(unsigned char *x,unsigned long long xlen);
-
-#ifdef MALLOC_PARANOIA
-#define malloc(X) _serval_debug_malloc(X,__WHENCE__)
-#define calloc(X,Y) _serval_debug_calloc(X,Y,__WHENCE__)
-#define free(X) _serval_debug_free(X,__WHENCE__)
-
-void *_serval_debug_malloc(unsigned int bytes, struct __sourceloc whence);
-void *_serval_debug_calloc(unsigned int bytes, unsigned int count, struct __sourceloc whence);
-void _serval_debug_free(void *p, struct __sourceloc whence);
-#endif
-
 
 struct vomp_call_state;
 
