@@ -1502,7 +1502,8 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
     // timeout or socket error, close the socket
     if (debug & DEBUG_RHIZOME_RX)
       DEBUGF("Closing due to timeout or error %x (%x %x)", alarm->poll.revents, POLLHUP, POLLERR);
-    rhizome_fetch_close(slot);
+    if (slot->state!=RHIZOME_FETCH_FREE)
+      rhizome_fetch_close(slot);
   }
 }
 
