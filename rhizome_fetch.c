@@ -1229,7 +1229,6 @@ int rhizome_fetch_flush_blob_buffer(struct rhizome_fetch_slot *slot)
     return -1;
   }
   sqlite3_blob_close(blob); blob=NULL;
-  slot->file_ofs+=slot->blob_buffer_bytes;
   slot->blob_buffer_bytes=0;
   return 0;
 }
@@ -1241,6 +1240,15 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
   if (bytes>(slot->file_len-slot->file_ofs))
     bytes=slot->file_len-slot->file_ofs;
   
+  {
+    FILE *f=fopen("/tmp/file","r+");
+    if (f) {
+      fseek(f,slot->file_ofs,SEEK_SET);
+      fwrite(buffer,bytes,1,f);
+      fclose(f);
+    }
+  }
+
   if (slot->rowid==-1) {
     /* We are reading a manifest.  Read it into a buffer. */
     int count=bytes;
@@ -1252,9 +1260,11 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
     if (bytes>0)
       SHA512_Update(&slot->sha512_context,(unsigned char *)buffer,bytes);
     
-    if (debug & DEBUG_RHIZOME_RX)
+    if (debug & DEBUG_RHIZOME_RX) {
       DEBUGF("slot->blob_buffer_bytes=%d, slot->file_ofs=%d",
 	     slot->blob_buffer_bytes,slot->file_ofs);
+      dump("buffer",buffer,bytes);
+    }
 
     if (slot->blob_buffer_bytes+bytes>RHIZOME_BLOB_BUFFER_SIZE)
       rhizome_fetch_flush_blob_buffer(slot);
