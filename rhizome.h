@@ -432,6 +432,8 @@ struct http_response {
 int rhizome_received_content(unsigned char *bidprefix,uint64_t version, 
 			     uint64_t offset,int count,unsigned char *bytes,
 			     int type);
+int64_t rhizome_database_create_blob_for(const char *hashhex,int64_t fileLength,
+					 int priority);
 int rhizome_server_set_response(rhizome_http_request *r, const struct http_response *h);
 int rhizome_server_free_http_request(rhizome_http_request *r);
 int rhizome_server_http_send_bytes(rhizome_http_request *r);
