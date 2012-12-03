@@ -88,7 +88,12 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
   // for low devices.  The result is that an attacker can prevent rhizome transfers
   // if they want to by injecting fake blocks.  The alternative is to not broadcast
   // back replies, and then we can authcrypt.
-  reply.packetTypeAndFlags=MDP_TX|MDP_NOSIGN|MDP_NOCRYPT;
+  // multiple receivers starting at different times, we really need merkle-tree hashing.
+  // so multiple receivers is not realistic for now.  So use non-broadcast unicode
+  // for now would seem the safest.  But that would stop us from allowing multiple
+  // receivers in the special case where additional nodes begin listening in from the
+  // beginning.
+  reply.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT|MDP_NOSIGN;
   reply.out.ttl=1;
   bcopy(my_subscriber->sid,reply.out.src.sid,SID_SIZE);
   // send replies to broadcast so that others can hear blocks and record them
