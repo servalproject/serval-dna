@@ -124,16 +124,16 @@ schedule(&_sched_##X); }
 
   /* Get rhizome server started BEFORE populating fd list so that
      the server's listen socket is in the list for poll() */
-  if (rhizome_enabled()) {
-    if (!rhizome_opendb()){
-      /* Rhizome http server needs to know which callback to attach
+  if (is_rhizome_enabled()) rhizome_opendb();
+
+  /* Rhizome http server needs to know which callback to attach
 	 to client sockets, so provide it here, along with the name to
 	 appear in time accounting statistics. */
-      rhizome_http_server_start(rhizome_server_parse_http_request,
-				"rhizome_server_parse_http_request",
-				RHIZOME_HTTP_PORT,RHIZOME_HTTP_PORT_MAX);
-    }
-  }
+  if (is_rhizome_http_enabled())
+    rhizome_http_server_start(rhizome_server_parse_http_request,
+			      "rhizome_server_parse_http_request",
+			      RHIZOME_HTTP_PORT,RHIZOME_HTTP_PORT_MAX);    
+
   // start the dna helper if configured
   dna_helper_start();
   

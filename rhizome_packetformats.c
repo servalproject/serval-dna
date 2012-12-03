@@ -145,7 +145,7 @@ int overlay_rhizome_add_advertisements(struct decode_context *context, int inter
      XXX We will move all processing of Rhizome into a separate process
      so that the CPU delays caused by Rhizome verifying signatures isn't a problem.
  */
-  if (!rhizome_http_server_running() || !rhizome_db) 
+  if (!is_rhizome_advertise_enabled()) 
     RETURN(0);
     
   int pass;
@@ -409,7 +409,7 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
 	  RETURN(0);
 	}
 	
-	if (rhizome_ignore_manifest_check(m, &httpaddr))
+	if (rhizome_ignore_manifest_check(m, &httpaddr,f->source->sid))
 	  {
 	    /* Ignoring manifest that has caused us problems recently */
 	    if (1) WARNF("Ignoring manifest with errors: %s*", manifest_id_prefix);
@@ -424,7 +424,7 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
 	    } else {
 	      if (debug & DEBUG_RHIZOME_ADS)
 		DEBUG("Not seen before.");
-	      rhizome_suggest_queue_manifest_import(m, &httpaddr);
+	      rhizome_suggest_queue_manifest_import(m, &httpaddr,f->source->sid);
 	      // the above function will free the manifest structure, make sure we don't free it again
 	      m=NULL;
 	    }
@@ -435,7 +435,7 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
 	      DEBUG("Unverified manifest has errors - so not processing any further.");
 	    /* Don't waste any time on this manifest in future attempts for at least
 	       a minute. */
-	    rhizome_queue_ignore_manifest(m, &httpaddr, 60000);
+	    rhizome_queue_ignore_manifest(m, &httpaddr,f->source->sid, 60000);
 	  }
 	if (m) {
 	  rhizome_manifest_free(m);

@@ -236,3 +236,48 @@ int str_is_uri(const char *uri)
     ++p;
   return p != q && *p == '\0';
 }
+
+void write_uint64(unsigned char *o,uint64_t v)
+{
+  int i;
+  for(i=0;i<8;i++)
+  { *(o++)=v&0xff; v=v>>8; }
+}
+
+void write_uint32(unsigned char *o,uint32_t v)
+{
+  int i;
+  for(i=0;i<4;i++)
+  { *(o++)=v&0xff; v=v>>8; }
+}
+
+void write_uint16(unsigned char *o,uint16_t v)
+{
+  int i;
+  for(i=0;i<2;i++)
+  { *(o++)=v&0xff; v=v>>8; }
+}
+
+uint64_t read_uint64(unsigned char *o)
+{
+  int i;
+  uint64_t v=0;
+  for(i=0;i<8;i++) v=(v<<8)|o[8-1-i];
+  return v;
+}
+
+uint32_t read_uint32(unsigned char *o)
+{
+  int i;
+  uint32_t v=0;
+  for(i=0;i<4;i++) v=(v<<8)|o[4-1-i];
+  return v;
+}
+
+uint16_t read_uint16(unsigned char *o)
+{
+  int i;
+  uint16_t v=0;
+  for(i=0;i<2;i++) v=(v<<8)|o[2-1-i];
+  return v;
+}

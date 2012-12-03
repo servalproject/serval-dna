@@ -326,8 +326,8 @@ int rhizome_sign_hash_with_key(rhizome_manifest *m,const unsigned char *sk,
 int rhizome_verify_bundle_privatekey(rhizome_manifest *m, const unsigned char *sk,
 				     const unsigned char *pk);
 int rhizome_find_bundle_author(rhizome_manifest *m);
-int rhizome_queue_ignore_manifest(rhizome_manifest *m, const struct sockaddr_in *peerip, int timeout);
-int rhizome_ignore_manifest_check(rhizome_manifest *m, const struct sockaddr_in *peerip);
+int rhizome_queue_ignore_manifest(rhizome_manifest *m, const struct sockaddr_in *peerip, const unsigned char peersid[SID_SIZE], int timeout);
+int rhizome_ignore_manifest_check(rhizome_manifest *m, const struct sockaddr_in *peerip,const unsigned char peersid[SID_SIZE]);
 
 /* one manifest is required per candidate, plus a few spare.
    so MAX_RHIZOME_MANIFESTS must be > MAX_CANDIDATES. 
@@ -335,7 +335,7 @@ int rhizome_ignore_manifest_check(rhizome_manifest *m, const struct sockaddr_in 
 #define MAX_RHIZOME_MANIFESTS 24
 #define MAX_CANDIDATES 16
 
-int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sockaddr_in *peerip);
+int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sockaddr_in *peerip,const unsigned char peersid[SID_SIZE]);
 
 typedef struct rhizome_http_request {
   struct sched_ent alarm;
@@ -428,6 +428,10 @@ struct http_response {
   unsigned long long content_length;
   const char * body;
 };
+
+int rhizome_received_content(unsigned char *bidprefix,uint64_t version, 
+			     uint64_t offset,int count,unsigned char *bytes,
+			     int type);
 int rhizome_server_set_response(rhizome_http_request *r, const struct http_response *h);
 int rhizome_server_free_http_request(rhizome_http_request *r);
 int rhizome_server_http_send_bytes(rhizome_http_request *r);
@@ -438,6 +442,13 @@ int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, c
 int rhizome_http_server_start(int (*http_parse_func)(rhizome_http_request *),
 			      const char *http_parse_func_description,
 			      int port_low,int port_high);
+
+int is_rhizome_enabled();
+int is_rhizome_mdp_enabled();
+int is_rhizome_http_enabled();
+int is_rhizome_advertise_enabled();
+int is_rhizome_mdp_server_running();
+int is_rhizome_http_server_running();
 
 typedef struct rhizome_direct_bundle_cursor {
   /* Where the current fill started */
@@ -552,7 +563,7 @@ enum rhizome_start_fetch_result {
   SLOTBUSY
 };
 
-enum rhizome_start_fetch_result rhizome_fetch_request_manifest_by_prefix(const struct sockaddr_in *peerip, const unsigned char *prefix, size_t prefix_length);
+enum rhizome_start_fetch_result rhizome_fetch_request_manifest_by_prefix(const struct sockaddr_in *peerip, const unsigned char sid[SID_SIZE],const unsigned char *prefix, size_t prefix_length);
 int rhizome_any_fetch_active();
 int rhizome_any_fetch_queued();
 

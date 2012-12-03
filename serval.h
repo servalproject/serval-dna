@@ -738,6 +738,7 @@ void overlay_dummy_poll(struct sched_ent *alarm);
 void overlay_route_tick(struct sched_ent *alarm);
 void server_shutdown_check(struct sched_ent *alarm);
 void overlay_mdp_poll(struct sched_ent *alarm);
+int overlay_mdp_try_interal_services(overlay_mdp_frame *mdp);
 void fd_periodicstats(struct sched_ent *alarm);
 void rhizome_check_connections(struct sched_ent *alarm);
 
@@ -769,5 +770,12 @@ void dump_stack();
 
 int olsr_init_socket(void);
 int olsr_send(struct overlay_frame *frame);
+
+void write_uint64(unsigned char *o,uint64_t v);
+void write_uint16(unsigned char *o,uint16_t v);
+void write_uint32(unsigned char *o,uint32_t v);
+uint64_t read_uint64(unsigned char *o);
+uint32_t read_uint32(unsigned char *o);
+uint16_t read_uint16(unsigned char *o);
 
 #endif // __SERVALD_SERVALD_H

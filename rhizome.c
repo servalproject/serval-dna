@@ -22,9 +22,37 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include <stdlib.h>
 
-int rhizome_enabled()
+int is_rhizome_enabled()
 {
-  return confValueGetBoolean("rhizome.enable", 1);;
+  return confValueGetBoolean("rhizome.enable", 1);
+}
+
+int is_rhizome_http_enabled()
+{
+  return confValueGetBoolean("rhizome.enable", 1)
+    &&   confValueGetBoolean("rhizome.http.enable", 1)
+    &&   rhizome_db;
+}
+
+int is_rhizome_mdp_enabled()
+{
+  return confValueGetBoolean("rhizome.enable", 1)
+    &&   confValueGetBoolean("rhizome.mdp.enable", 1)
+    &&   rhizome_db;
+}
+
+int is_rhizome_mdp_server_running()
+{
+  return is_rhizome_mdp_enabled();
+}
+
+int is_rhizome_advertise_enabled()
+{
+  return confValueGetBoolean("rhizome.enable", 1)
+    &&   confValueGetBoolean("rhizome.advertise.enable", 1)
+    &&   rhizome_db
+    &&   (  is_rhizome_http_server_running()
+	    ||is_rhizome_mdp_server_running());
 }
 
 int rhizome_fetch_delay_ms()

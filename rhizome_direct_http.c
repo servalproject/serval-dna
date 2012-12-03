@@ -731,6 +731,8 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   DEBUGF("Dispatch size_high=%lld",r->cursor->size_high);
   rhizome_direct_transport_state_http *state = r->transport_specific_state;
 
+  unsigned char zerosid[SID_SIZE]="\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0";
+
   int sock=socket(AF_INET, SOCK_STREAM, 0);
   if (sock==-1) {
     WHY_perror("socket");    
@@ -876,7 +878,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	   Then as noted above, we can use that to pull the file down using
 	   existing routines.
 	*/
-	if (!rhizome_fetch_request_manifest_by_prefix(&addr,&actionlist[i+1],RHIZOME_BAR_PREFIX_BYTES))
+	if (!rhizome_fetch_request_manifest_by_prefix(&addr,zerosid,&actionlist[i+1],RHIZOME_BAR_PREFIX_BYTES))
 	  {
 	    /* Fetching the manifest, and then using it to see if we want to 
 	       fetch the file for import is all handled asynchronously, so just
