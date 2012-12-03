@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <poll.h>
 #include <ctype.h>
 #include <string.h>
+#include <stdarg.h>
 #include <sys/wait.h>
 #ifdef HAVE_NETINET_IN_H
 #include <netinet/in.h>
@@ -112,6 +113,22 @@ strbuf strbuf_toprint_quoted(strbuf sb, const char quotes[2], const char *str)
   return _overrun_quote(sb, quotes ? quotes[1] : '\0', "...");
 }
 
+strbuf strbuf_path_join(strbuf sb, ...)
+{
+  va_list ap;
+  va_start(ap, sb);
+  const char *segment;
+  while ((segment = va_arg(ap, const char*))) {
+    if (segment[0] == '/')
+      strbuf_reset(sb);
+    else if (strbuf_len(sb) && *strbuf_substr(sb, -1) != '/')
+      strbuf_putc(sb, '/');
+    strbuf_puts(sb, segment);
+  }
+  va_end(ap);
+  return sb;
+}
+
 strbuf strbuf_append_poll_events(strbuf sb, short events)
 {
   static struct { short flags; const char *name; } symbols[] = {
@@ -183,6 +200,20 @@ strbuf strbuf_append_shell_quotemeta(strbuf sb, const char *word)
     strbuf_append_shell_quote(sb, word);
   else
     strbuf_puts(sb, word);
+  return sb;
+}
+
+strbuf strbuf_append_argv(strbuf sb, int argc, const char *const *argv)
+{
+  int i;
+  for (i = 0; i < argc; ++i) {
+    if (i)
+      strbuf_putc(sb, ' ');
+    if (argv[i])
+      strbuf_toprint_quoted(sb, "\"\"", argv[i]);
+    else
+      strbuf_puts(sb, "NULL");
+  }
   return sb;
 }
 

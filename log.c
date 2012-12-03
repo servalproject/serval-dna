@@ -235,15 +235,7 @@ void logArgv(int level, struct __sourceloc whence, const char *label, int argc, 
       strbuf_puts(&logbuf, label);
       strbuf_putc(&logbuf, ' ');
     }
-    int i;
-    for (i = 0; i < argc; ++i) {
-      if (i)
-	strbuf_putc(&logbuf, ' ');
-      if (argv[i])
-	strbuf_toprint_quoted(&logbuf, "\"\"", argv[i]);
-      else
-	strbuf_puts(&logbuf, "NULL");
-    }
+    strbuf_append_argv(&logbuf, argc, argv);
     _log_finish(level);
   }
 }
