@@ -1217,7 +1217,7 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
     int ret = sqlite3_blob_open(rhizome_db, "main", "FILES", "data", slot->rowid, 1 /* read/write */, &blob);
     if (ret!=SQLITE_OK) return -1;
     ret=sqlite3_blob_write(blob, buffer, bytes, slot->file_ofs);
-    if (ret) {
+    if (ret!=SQLITE_OK) {
       if (debug & DEBUG_RHIZOME_RX)
 	DEBUGF("Failed to write %d bytes to file @ offset %d", bytes, slot->file_ofs);
       rhizome_fetch_close(slot);
@@ -1339,7 +1339,7 @@ int rhizome_received_content(unsigned char *bidprefix,
 	  RETURN(0);
 	}
       else 
-	if (1)
+	if (0)
 	  DEBUGF("Doesn't match this slot = 0x%p, because BIDs don't match: %s* vs %s",
 		 alloca_tohex(bidprefix,16),
 		 alloca_tohex_bid(rhizome_fetch_queues[i].active.bid));
