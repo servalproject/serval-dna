@@ -1304,11 +1304,6 @@ int rhizome_received_content(unsigned char *bidprefix,
 	  }
 	  RETURN(0);
 	}
-      else 
-	if (1)
-	  DEBUGF("Doesn't match this slot = 0x%p, because BIDs don't match: %s* vs %s",
-		 alloca_tohex(bidprefix,16),
-		 alloca_tohex_bid(rhizome_fetch_queues[i].active.bid));
     }
   }  
 
