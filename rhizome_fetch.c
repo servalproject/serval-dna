@@ -67,7 +67,7 @@ struct rhizome_fetch_slot {
   int64_t last_write_time;
   int64_t start_time;
 
-#define RHIZOME_BLOB_BUFFER_MAXIMUM_SIZE (2*1024)
+#define RHIZOME_BLOB_BUFFER_MAXIMUM_SIZE (1024*1024)
   int blob_buffer_size;
   unsigned char *blob_buffer;
   int blob_buffer_bytes;
@@ -1092,7 +1092,7 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   write_uint32(&mdp.out.payload[RHIZOME_BAR_BYTES+8+8],slot->mdpRXBitmap);
   write_uint16(&mdp.out.payload[RHIZOME_BAR_BYTES+8+8+4],slot->mdpRXBlockLength);  
 
-  if (1)
+  if (0)
     DEBUGF("src sid=%s, dst sid=%s, mdpRXWindowStart=0x%x",
 	   alloca_tohex_sid(mdp.out.src.sid),alloca_tohex_sid(mdp.out.dst.sid),
 	   slot->file_ofs);
@@ -1244,13 +1244,13 @@ int rhizome_fetch_flush_blob_buffer(struct rhizome_fetch_slot *slot)
   sqlite3_blob_close(blob); blob=NULL;
 
   if (ret!=SQLITE_OK) {
-    WHYF("sqlite3_blob_write(,,%d,%d) failed, %s", 
+    WHYF("sqlite3_blob_write(,,%d,%lld) failed, %s", 
 	 slot->blob_buffer_bytes,slot->file_ofs-slot->blob_buffer_bytes,
 	 sqlite3_errmsg(rhizome_db));
-    if (debug & DEBUG_RHIZOME_RX)
-      DEBUGF("Failed to write %d bytes to file @ offset %d", 
+    if (1||debug & DEBUG_RHIZOME_RX)
+      DEBUGF("Failed to write %d bytes to file @ offset %lld-%lld", 
 	     slot->blob_buffer_bytes,
-	     slot->file_ofs - slot->blob_buffer_bytes);
+	     slot->file_ofs,slot->blob_buffer_bytes);
     rhizome_fetch_close(slot);
     return -1;
   }
@@ -1303,13 +1303,13 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
       bcopy(buffer,&slot->blob_buffer[slot->blob_buffer_bytes],count);
       //      dump("first bytes into slot->blob_buffer",slot->blob_buffer,256);
       slot->blob_buffer_bytes+=count;
+      slot->file_ofs+=count;
       buffer+=count; bytesRemaining-=count;
       if (slot->blob_buffer_bytes==slot->blob_buffer_size)
 	rhizome_fetch_flush_blob_buffer(slot);
     }
   }
 
-  slot->file_ofs+=bytes;
   slot->last_write_time=gettime_ms();
   if (slot->file_ofs>=slot->file_len) {
     /* got all of file */
