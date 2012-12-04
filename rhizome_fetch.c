@@ -982,8 +982,10 @@ static int rhizome_fetch_close(struct rhizome_fetch_slot *slot)
 
   /* close socket and stop watching it */
   unschedule(&slot->alarm);
-  unwatch(&slot->alarm);
-  close(slot->alarm.poll.fd);
+  if (slot->alarm.poll.fd>=0){
+    unwatch(&slot->alarm);
+    close(slot->alarm.poll.fd);
+  }
   slot->alarm.poll.fd = -1;
   slot->alarm.function=NULL;
 
