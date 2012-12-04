@@ -330,6 +330,7 @@ int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay
   frame->flags=PACKET_UNICAST;
   frame->interface=interface;
   frame->payload = ob_new();
+  frame->send_copies=3;
   
   if ((!peer) || !(peer->reachable&REACHABLE))
     my_subscriber->send_full=1;
