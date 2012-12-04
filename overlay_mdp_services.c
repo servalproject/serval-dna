@@ -40,6 +40,8 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
   read_uint16(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4]);
   if (blockLength>1024) RETURN(-1);
 
+  struct subscriber *source = find_subscriber(mdp->out.src.sid, SID_SIZE, 0);
+  
   if(0) {
     DEBUGF("Someone sent me a rhizome request via MDP");
     DEBUGF("requestor sid = %s",alloca_tohex_sid(mdp->out.src.sid));
@@ -96,10 +98,15 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
   reply.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT|MDP_NOSIGN;
   reply.out.ttl=1;
   bcopy(my_subscriber->sid,reply.out.src.sid,SID_SIZE);
-  // send replies to broadcast so that others can hear blocks and record them
-  // (not that preemptive listening is implemented yet).
   reply.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
-  memset(reply.out.dst.sid,0xff,SID_SIZE);
+  if (source && source->reachable&REACHABLE_UNICAST){
+    // if we get a request from a peer that we can only talk to via unicast, send data via unicast too.
+    bcopy(mdp->out.src.sid,reply.out.dst.sid,SID_SIZE);
+  }else{
+    // send replies to broadcast so that others can hear blocks and record them
+    // (not that preemptive listening is implemented yet).
+    memset(reply.out.dst.sid,0xff,SID_SIZE);
+  }
   reply.out.dst.port=MDP_PORT_RHIZOME_RESPONSE;
   reply.out.queue=OQ_ORDINARY;
   reply.out.payload[0]='B'; // reply contains blocks
