@@ -380,6 +380,8 @@ typedef struct overlay_interface {
   struct sockaddr_in address;
   struct sockaddr_in broadcast_address;
   struct in_addr netmask;
+  // can we use this interface for routes to addresses in other subnets?
+  int default_route;
   
   /* Not necessarily the real MTU, but the largest frame size we are willing to TX on this interface.
    For radio links the actual maximum and the maximum that is likely to be delivered reliably are
@@ -444,7 +446,8 @@ time_ms_t overlay_time_until_next_tick();
 int overlay_add_selfannouncement(struct decode_context *context, int interface,struct overlay_buffer *b);
 int overlay_frame_append_payload(struct decode_context *context, overlay_interface *interface, 
 				 struct overlay_frame *p, struct overlay_buffer *b);
-int overlay_packet_init_header(struct decode_context *context, struct overlay_buffer *buff);
+int overlay_packet_init_header(struct decode_context *context, struct overlay_buffer *buff, 
+			       struct subscriber *destination, int flags);
 int overlay_frame_build_header(struct decode_context *context, struct overlay_buffer *buff, 
 			       int queue, int type, int modifiers, int ttl, 
 			       struct broadcast *broadcast, struct subscriber *next_hop,
@@ -597,6 +600,7 @@ int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
 			  overlay_mdp_frame *mdpreply);
 int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 		     struct sockaddr_un *recvaddr,int recvaddlen);
+int overlay_mdp_encode_ports(struct overlay_buffer *plaintext, int dst_port, int src_port);
 int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const unsigned char *resolved_sid, const char *uri, const char *did, const char *name);
 
 int urandombytes(unsigned char *x,unsigned long long xlen);
@@ -739,6 +743,7 @@ void overlay_route_tick(struct sched_ent *alarm);
 void server_shutdown_check(struct sched_ent *alarm);
 void overlay_mdp_poll(struct sched_ent *alarm);
 int overlay_mdp_try_interal_services(overlay_mdp_frame *mdp);
+int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay_interface *interface);
 void fd_periodicstats(struct sched_ent *alarm);
 void rhizome_check_connections(struct sched_ent *alarm);
 

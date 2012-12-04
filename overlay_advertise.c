@@ -67,7 +67,8 @@ int add_advertisement(struct subscriber *subscriber, void *context){
   if (subscriber->node){
     overlay_node *n=subscriber->node;
     
-    if (n->best_link_score>0 && n->observations[n->best_observation].gateways_en_route < 64){
+    if ((subscriber->reachable&REACHABLE) && (!(subscriber->reachable&REACHABLE_ASSUMED)) 
+	&& n->best_link_score>0 && n->observations[n->best_observation].gateways_en_route < 64){
       // never send the full sid in an advertisement
       subscriber->send_full=0;
       

@@ -194,8 +194,6 @@ int subscriber_is_reachable(struct subscriber *subscriber){
 int set_reachable(struct subscriber *subscriber, int reachable){
   if (subscriber->reachable==reachable)
     return 0;
-  int old_value=subscriber->reachable;
-  
   subscriber->reachable=reachable;
 
   // These log messages are for use in tests.  Changing them may break test scripts.
@@ -208,12 +206,20 @@ int set_reachable(struct subscriber *subscriber, int reachable){
 	break;
       case REACHABLE_INDIRECT:
 	DEBUGF("REACHABLE INDIRECTLY sid=%s", alloca_tohex_sid(subscriber->sid));
+	DEBUGF("(via %s, %d)",subscriber->next_hop?alloca_tohex_sid(subscriber->next_hop->sid):"NOONE!"
+	       ,subscriber->next_hop?subscriber->next_hop->reachable:0);
 	break;
       case REACHABLE_UNICAST:
 	DEBUGF("REACHABLE VIA UNICAST sid=%s", alloca_tohex_sid(subscriber->sid));
 	break;
       case REACHABLE_BROADCAST:
 	DEBUGF("REACHABLE VIA BROADCAST sid=%s", alloca_tohex_sid(subscriber->sid));
+	break;
+      case REACHABLE_UNICAST|REACHABLE_ASSUMED:
+	DEBUGF("ASSUMED REACHABLE VIA UNICAST sid=%s", alloca_tohex_sid(subscriber->sid));
+	break;
+      case REACHABLE_BROADCAST|REACHABLE_ASSUMED:
+	DEBUGF("ASSUMED REACHABLE VIA BROADCAST sid=%s", alloca_tohex_sid(subscriber->sid));
 	break;
     }
   }
@@ -223,9 +229,7 @@ int set_reachable(struct subscriber *subscriber, int reachable){
     keyring_send_sas_request(subscriber);
 
   // Hacky layering violation... send our identity to a directory service
-  if (subscriber==directory_service &&
-      (!(old_value&REACHABLE)) &&
-      reachable&REACHABLE)
+  if (subscriber==directory_service)
     directory_registration();
   
   return 0;
@@ -248,37 +252,41 @@ int reachable_unicast(struct subscriber *subscriber, overlay_interface *interfac
   return 0;
 }
 
-// load a unicast address from configuration, replace with database??
+// load a unicast address from configuration
 int load_subscriber_address(struct subscriber *subscriber){
+  if (subscriber_is_reachable(subscriber)&REACHABLE)
+    return 0;
+  
   char buff[80];
   const char *sid_hex = alloca_tohex_sid(subscriber->sid);
-  
-  snprintf(buff, sizeof(buff), "%s.interface", sid_hex);
-  const char *interface_name = confValueGet(buff, NULL);
-  // no unicast configuration? just return.
-  if (!interface_name)
-    return 1;
+  overlay_interface *interface=NULL;
   
   snprintf(buff, sizeof(buff), "%s.address", sid_hex);
   const char *address = confValueGet(buff, NULL);
+  // no address configuration? just return.
   if (!address)
     return 1;
   
-  snprintf(buff, sizeof(buff), "%s.port", sid_hex);
-  int port = confValueGetInt64Range(buff, PORT_DNA, 1, 65535);
-  
-  overlay_interface *interface = overlay_interface_find_name(interface_name);
-  if (!interface){
-    WARNF("Interface %s is not UP", interface_name);
-    return -1;
+  snprintf(buff, sizeof(buff), "%s.interface", sid_hex);
+  const char *interface_name = confValueGet(buff, NULL);
+  if (interface_name){
+    interface = overlay_interface_find_name(interface_name);
+    // explicity defined interface isn't up? just return.
+    if (!interface)
+      return 1;
   }
   
-  struct in_addr addr;
-  if (!inet_aton(address, &addr)){
+  struct sockaddr_in addr;
+  addr.sin_family=AF_INET;
+  
+  if (!inet_aton(address, &addr.sin_addr)){
     return WHYF("%s doesn't look like an IP address", address);
   }
   
-  return reachable_unicast(subscriber, interface, addr, port);
+  snprintf(buff, sizeof(buff), "%s.port", sid_hex);
+  addr.sin_port = confValueGetInt64Range(buff, PORT_DNA, 1, 65535);
+  
+  return overlay_send_probe(subscriber, addr, interface);
 }
 
 // generate a new random broadcast address
@@ -456,30 +464,36 @@ int overlay_address_parse(struct decode_context *context, struct overlay_buffer 
 // once we've finished parsing a packet, complete and send a please explain if required.
 int send_please_explain(struct decode_context *context, struct subscriber *source, struct subscriber *destination){
   IN();
-  if (!context->please_explain)
+  struct overlay_frame *frame=context->please_explain;
+  if (!frame)
     RETURN(0);
-  
-  context->please_explain->type = OF_TYPE_PLEASEEXPLAIN;
+  frame->type = OF_TYPE_PLEASEEXPLAIN;
   
   if (source)
-    context->please_explain->source = source;
+    frame->source = source;
   else
-    context->please_explain->source = my_subscriber;
+    frame->source = my_subscriber;
   
-  context->please_explain->source->send_full=1;
+  frame->source->send_full=1;
+  frame->destination = destination;
   
   if (destination && (destination->reachable & REACHABLE)){
-    context->please_explain->destination = destination;
-    context->please_explain->ttl=64;
+    frame->ttl=64;
   }else{
-    context->please_explain->ttl=1;// how will this work with olsr??
-    overlay_broadcast_generate_address(&context->please_explain->broadcast_id);
+    frame->ttl=1;// how will this work with olsr??
+    overlay_broadcast_generate_address(&frame->broadcast_id);
+    if (context->interface){
+      frame->destination_resolved=1;
+      frame->next_hop = destination;
+      frame->recvaddr=context->addr;
+      frame->interface=context->interface;
+    }
   }
   
-  context->please_explain->queue=OQ_MESH_MANAGEMENT;
-  if (!overlay_payload_enqueue(context->please_explain))
+  frame->queue=OQ_MESH_MANAGEMENT;
+  if (!overlay_payload_enqueue(frame))
     RETURN(0);
-  op_free(context->please_explain);
+  op_free(frame);
   RETURN(-1);
 }
 

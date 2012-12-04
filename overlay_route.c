@@ -480,7 +480,9 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
   if (best_score<=0){
     for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++)
       {
-	if (n->observations[o].observed_score && n->observations[o].sender->reachable&REACHABLE)
+	// only count observations from neighbours that we *know* we have a 2 way path to
+	if (n->observations[o].observed_score && n->observations[o].sender->reachable&REACHABLE
+	    && !(n->observations[o].sender->reachable&REACHABLE_ASSUMED))
 	  {
 	    int discounted_score=n->observations[o].observed_score;
 	    discounted_score-=(now-n->observations[o].rx_time)/1000;

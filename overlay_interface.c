@@ -265,15 +265,21 @@ error:
 
 overlay_interface * overlay_interface_find(struct in_addr addr){
   int i;
+  overlay_interface *ret = NULL;
   for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
     if (overlay_interfaces[i].state!=INTERFACE_STATE_UP)
       continue;
+    
     if ((overlay_interfaces[i].netmask.s_addr & addr.s_addr) == (overlay_interfaces[i].netmask.s_addr & overlay_interfaces[i].address.sin_addr.s_addr)){
       return &overlay_interfaces[i];
     }
+    
+    // check if this is a default interface
+    if (overlay_interfaces[i].default_route)
+      ret=&overlay_interfaces[i];
   }
   
-  return NULL;
+  return ret;
 }
 
 overlay_interface * overlay_interface_find_name(const char *name){
@@ -503,6 +509,16 @@ overlay_interface_init(char *name, struct in_addr src_addr, struct in_addr netma
       return WHYF("could not open dummy interface file %s for append", dummyfile);
     }
 
+    interface->address.sin_family=AF_INET;
+    interface->address.sin_port = 0;
+    interface->address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    
+    interface->netmask.s_addr=0xFFFFFF00;
+    
+    interface->broadcast_address.sin_family=AF_INET;
+    interface->broadcast_address.sin_port = 0;
+    interface->broadcast_address.sin_addr.s_addr = interface->address.sin_addr.s_addr | ~interface->netmask.s_addr;
+    
     /* Seek to end of file as initial reading point */
     interface->recv_offset = lseek(interface->alarm.poll.fd,0,SEEK_END);
     /* XXX later add pretend location information so that we can decide which "packets" to receive
@@ -608,7 +624,11 @@ void overlay_dummy_poll(struct sched_ent *alarm)
   */
   unsigned char packet[2048];
   int plen=0;
-  struct sockaddr src_addr;
+  struct sockaddr_in src_addr={
+    .sin_family = AF_INET,
+    .sin_port = 0,
+    .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
+  };
   size_t addrlen = sizeof(src_addr);
   time_ms_t now = gettime_ms();
 
@@ -644,9 +664,8 @@ void overlay_dummy_poll(struct sched_ent *alarm)
 	    plen = -1;
 	  if (debug&DEBUG_PACKETRX)
 	    DEBUG_packet_visualise("Read from dummy interface", &packet[128], plen);
-	  bzero(&src_addr,sizeof(src_addr));
 	  
-	  if (packetOkOverlay(interface, &packet[128], plen, -1, &src_addr, addrlen)) {
+	  if (packetOkOverlay(interface, &packet[128], plen, -1, (struct sockaddr*)&src_addr, addrlen)) {
 	    WARN("Unsupported packet from dummy interface");
 	  }
 	}

@@ -60,9 +60,11 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
     }
   }
   
-  int port=mdp->out.dst.port;
+  int port=0;
+  if ((mdp->packetTypeAndFlags&MDP_TYPE_MASK) == MDP_TX)
+      port = mdp->out.dst.port;
+      
   time_ms_t started = gettime_ms();
-  
   while(timeout_ms>=0 && overlay_mdp_client_poll(timeout_ms)>0){
     int ttl=-1;
     if (!overlay_mdp_recv(mdp, port, &ttl)) {
@@ -167,10 +169,10 @@ int overlay_mdp_client_poll(time_ms_t timeout_ms)
   if (timeout_ms>=0) {
     tv.tv_sec=timeout_ms/1000;
     tv.tv_usec=(timeout_ms%1000)*1000;
-    ret=select(1,&r,NULL,&r,&tv);
+    ret=select(mdp_client_socket+1,&r,NULL,&r,&tv);
   }
   else
-    ret=select(1,&r,NULL,&r,NULL);
+    ret=select(mdp_client_socket+1,&r,NULL,&r,NULL);
   return ret;
 }
 
@@ -209,8 +211,10 @@ int overlay_mdp_recv(overlay_mdp_frame *mdp, int port, int *ttl)
     }
     
     // silently drop incoming packets for the wrong port number
-    if (port>0 && port != mdp->in.dst.port)
+    if (port>0 && port != mdp->in.dst.port){
+      WARNF("Ignoring packet for port %d",mdp->in.dst.port);
       return -1;
+    }
     
     int expected_len = overlay_mdp_relevant_bytes(mdp);
     

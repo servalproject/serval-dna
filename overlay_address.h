@@ -54,7 +54,8 @@ struct subscriber{
   
   // should we send the full address once?
   int send_full;
-  
+  // sequence number for this unicast or broadcast destination
+  int sequence;
   // overlay routing information
   struct overlay_node *node;
   
@@ -84,6 +85,8 @@ struct broadcast{
 };
 
 struct decode_context{
+  struct overlay_interface *interface;
+  struct sockaddr_in addr;
   int invalid_addresses;
   struct overlay_frame *please_explain;
   struct subscriber *sender;

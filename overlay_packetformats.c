@@ -27,13 +27,15 @@ struct sockaddr_in loopback;
 
 unsigned char magic_header[]={0x00, 0x01};
 
-int overlay_packet_init_header(struct decode_context *context, struct overlay_buffer *buff){
+int overlay_packet_init_header(struct decode_context *context, struct overlay_buffer *buff, 
+			       struct subscriber *destination, int flags){
   if (ob_append_bytes(buff,magic_header,sizeof magic_header))
     return -1;
   if (overlay_address_append(context, buff, my_subscriber))
     return -1;
   context->sender = my_subscriber;
-  ob_append_byte(buff,0);//seq
+  ob_append_byte(buff,0);
+  ob_append_byte(buff,flags);
   return 0;
 }
 
@@ -174,40 +176,59 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
      the source having received the frame from elsewhere.
   */
 
+  if (recvaddr->sa_family!=AF_INET)
+    RETURN(WHYF("Unexpected protocol family %d",recvaddr->sa_family));
+  
   struct overlay_frame f;
   struct decode_context context;
   bzero(&context, sizeof context);
+  bzero(&f,sizeof f);
   
   time_ms_t now = gettime_ms();
   struct overlay_buffer *b = ob_static(packet, len);
   ob_limitsize(b, len);
   
-  if (ob_get(b)!=magic_header[0] || ob_get(b)!=magic_header[1])
-    return WHY("Packet type not recognised.");
-  
-  bzero(&f,sizeof(struct overlay_frame));
-  
-  f.interface = interface;
-  if (recvaddr->sa_family==AF_INET){
-    f.recvaddr=*((struct sockaddr_in *)recvaddr); 
-    if (debug&DEBUG_OVERLAYFRAMES)
-      DEBUG("Received overlay packet");
-  } else {
-    if (interface->fileP) {
-      /* dummy interface, so tell to use localhost */
-      f.recvaddr.sin_family = AF_INET;
-      f.recvaddr.sin_port = 0;
-      f.recvaddr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    }
+  if (ob_get(b)!=magic_header[0] || ob_get(b)!=magic_header[1]){
+    ob_free(b);
+    RETURN(WHY("Packet type not recognised."));
   }
+  
+  context.interface = f.interface = interface;
+  
+  f.recvaddr = *((struct sockaddr_in *)recvaddr); 
 
+  if (debug&DEBUG_OVERLAYFRAMES)
+    DEBUG("Received overlay packet");
+  
   overlay_address_parse(&context, b, &context.sender);
   
-  if (context.sender && context.sender->reachable==REACHABLE_SELF){
-    ob_free(b);
-    RETURN(0);
-  }
   int seq = ob_get(b);
+  int packet_flags = ob_get(b);
+  
+  if (context.sender){
+    
+    if (context.sender->reachable==REACHABLE_SELF){
+      ob_free(b);
+      RETURN(0);
+    }
+    
+    // always update the IP address we heard them from, even if we don't need to use it right now
+    context.sender->address = f.recvaddr;
+    
+    // if this is a dummy announcement for a node that isn't in our routing table
+    if (context.sender->reachable == REACHABLE_NONE && 
+	(!context.sender->node) &&
+	packet_flags&PACKET_UNICAST){
+      
+      // mark this subscriber as reachable directly via unicast.
+      reachable_unicast(context.sender, interface, f.recvaddr.sin_addr, ntohs(f.recvaddr.sin_port));
+    }
+  }
+  
+  if (packet_flags & PACKET_UNICAST)
+    context.addr=f.recvaddr;
+  else
+    context.addr=interface->broadcast_address;
   
   while(b->position < b->sizeLimit){
     context.invalid_addresses=0;
@@ -326,22 +347,6 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       f.payload=NULL;
     }
     b->position=next_payload;
-  }
-  
-  if (context.sender && recvaddr){
-    struct sockaddr_in *addr=(struct sockaddr_in *)recvaddr;
-    
-    // always update the IP address we heard them from, even if we don't need to use it right now
-    context.sender->address = *addr;
-    
-    // if this is a dummy announcement for a node that isn't in our routing table
-    if (context.sender->reachable == REACHABLE_NONE && 
-	(!context.sender->node) &&
-	(interface->fileP || recvaddr->sa_family==AF_INET)){
-      
-      // mark this subscriber as reachable directly via unicast.
-      reachable_unicast(context.sender, interface, addr->sin_addr, ntohs(addr->sin_port));
-    }
   }
   
   send_please_explain(&context, my_subscriber, context.sender);

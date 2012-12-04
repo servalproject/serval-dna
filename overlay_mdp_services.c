@@ -278,6 +278,77 @@ int overlay_mdp_service_echo(overlay_mdp_frame *mdp)
   RETURN(0);
 }
 
+struct probe_contents{
+  struct sockaddr_in addr;
+  unsigned char interface;
+};
+
+/* Collection of unicast echo responses to detect working links */
+static int
+overlay_mdp_service_probe(overlay_mdp_frame *mdp)
+{
+  IN();
+  if (mdp->out.src.port!=MDP_PORT_ECHO || mdp->out.payload_length != sizeof(struct probe_contents)){
+    WARN("Probe packets should be returned from remote echo port");
+    RETURN(-1);
+  }
+  
+  struct subscriber *peer = find_subscriber(mdp->out.src.sid, SID_SIZE, 0);
+  struct probe_contents *probe = (struct probe_contents *)&mdp->out.payload;
+  if (probe->addr.sin_family!=AF_INET)
+    RETURN(WHY("Unsupported address family"));
+  
+  if (peer->reachable == REACHABLE_NONE || peer->reachable == REACHABLE_INDIRECT){
+    reachable_unicast(peer, &overlay_interfaces[probe->interface], probe->addr.sin_addr, probe->addr.sin_port);
+  }
+  RETURN(0);
+}
+
+int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay_interface *interface){
+  if (interface==NULL)
+    interface = overlay_interface_find(addr.sin_addr);
+  
+  if (!interface)
+    return WHY("I don't know which interface to use");
+  
+  struct overlay_frame *frame=malloc(sizeof(struct overlay_frame));
+  bzero(frame,sizeof(struct overlay_frame));
+  frame->type=OF_TYPE_DATA;
+  frame->source = my_subscriber;
+  frame->next_hop = frame->destination = peer;
+  frame->ttl=1;
+  frame->queue=OQ_MESH_MANAGEMENT;
+  frame->destination_resolved=1;
+  frame->recvaddr=addr;
+  frame->flags=PACKET_UNICAST;
+  frame->interface=interface;
+  frame->payload = ob_new();
+  
+  if ((!peer) || !(peer->reachable&REACHABLE))
+    my_subscriber->send_full=1;
+  
+  if (overlay_mdp_encode_ports(frame->payload, MDP_PORT_ECHO, MDP_PORT_PROBE)){
+    op_free(frame);
+    return -1;
+  }
+  // not worried about byte order here as we are the only node that should be parsing the contents.
+  struct probe_contents *probe = (struct probe_contents*)ob_append_space(frame->payload, sizeof(struct probe_contents));
+  if (!probe){
+    op_free(frame);
+    return -1;
+  }
+  probe->addr=addr;
+  // get interface number
+  probe->interface = interface - overlay_interfaces;
+  
+  if (overlay_payload_enqueue(frame)){
+    op_free(frame);
+    return -1;
+  }
+  DEBUGF("Queued probe packet on interface %s", interface->name);
+  return 0;
+}
+
 int overlay_mdp_try_interal_services(overlay_mdp_frame *mdp)
 {
   IN();
@@ -286,6 +357,7 @@ int overlay_mdp_try_interal_services(overlay_mdp_frame *mdp)
   case MDP_PORT_KEYMAPREQUEST:    RETURN(keyring_mapping_request(keyring,mdp));
   case MDP_PORT_DNALOOKUP:        RETURN(overlay_mdp_service_dnalookup(mdp));
   case MDP_PORT_ECHO:             RETURN(overlay_mdp_service_echo(mdp));
+  case MDP_PORT_PROBE:            RETURN(overlay_mdp_service_probe(mdp));
   case MDP_PORT_RHIZOME_REQUEST: 
     if (is_rhizome_mdp_server_running()) {
       RETURN(overlay_mdp_service_rhizomerequest(mdp));

@@ -279,6 +279,7 @@ start_servald_server() {
          new_pids="$new_pids $apid"
       fi
    done
+   eval LOG$instance_name=$instance_servald_log
    assert --message="a new servald process is running" --dump-on-fail="$instance_servald_log" [ -n "$new_pids" ]
    assert --message="servald pidfile process is running" --dump-on-fail="$instance_servald_log" $pidfile_running
    assert --message="servald log file $instance_servald_log is present" [ -r "$instance_servald_log" ]
@@ -642,7 +643,6 @@ start_servald_instances() {
       configure_servald_server
       start_servald_server
       eval DUMMY$instance_name="\$DUMMYNET"
-      eval LOG$instance_name="\$(shellarg "\$instance_servald_log")"
    done
    # Now wait until they see each other.
    wait_until --sleep=0.25 instances_see_each_other "$@"

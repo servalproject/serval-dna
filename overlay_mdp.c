@@ -158,7 +158,7 @@ int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
 {
   int replylen;
 
-  if (!recvaddr) return 0;
+  if (!recvaddr) return WHY("No reply address");
 
   replylen=overlay_mdp_relevant_bytes(mdpreply);
   if (replylen<0) return WHY("Invalid MDP frame (could not compute length)");
@@ -525,6 +525,7 @@ int overlay_mdp_check_binding(struct subscriber *subscriber, int port, int userG
     case MDP_PORT_DNALOOKUP:
     case MDP_PORT_RHIZOME_RESPONSE:
     case MDP_PORT_RHIZOME_REQUEST:
+    case MDP_PORT_PROBE:
       return 0;
     }
   }
@@ -535,6 +536,20 @@ int overlay_mdp_check_binding(struct subscriber *subscriber, int port, int userG
 	alloca_tohex_sid(subscriber->sid),
 	port, port
       );
+}
+
+int overlay_mdp_encode_ports(struct overlay_buffer *plaintext, int dst_port, int src_port){
+  int port=dst_port << 1;
+  if (dst_port==src_port)
+    port |= 1;
+  if (ob_append_packed_ui32(plaintext, port))
+    return -1;
+
+  if (dst_port!=src_port){
+    if (ob_append_packed_ui32(plaintext, src_port))
+      return -1;
+  }
+  return 0;
 }
 
 /* Construct MDP packet frame from overlay_mdp_frame structure
@@ -635,21 +650,11 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   frame->next=NULL;
   struct overlay_buffer *plaintext=ob_new();
   
-  // build the plain text payload
-  int port=mdp->out.dst.port << 1;
-  if (mdp->out.dst.port==mdp->out.src.port)
-    port |= 1;
-  if (ob_append_packed_ui32(plaintext, port)){
+  if (overlay_mdp_encode_ports(plaintext, mdp->out.dst.port, mdp->out.src.port)){
     ob_free(plaintext);
-    RETURN(-1);
+    RETURN (-1);
   }
   
-  if (mdp->out.dst.port!=mdp->out.src.port){
-    if (ob_append_packed_ui32(plaintext, mdp->out.src.port)){
-      ob_free(plaintext);
-      RETURN(-1);
-    }
-  }
   if (ob_append_bytes(plaintext, mdp->out.payload, mdp->out.payload_length)){
     ob_free(plaintext);
     RETURN(-1);
