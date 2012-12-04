@@ -290,10 +290,7 @@ int overlay_mdp_try_interal_services(overlay_mdp_frame *mdp)
     if (is_rhizome_mdp_server_running()) {
       RETURN(overlay_mdp_service_rhizomerequest(mdp));
     } else break;
-  case MDP_PORT_RHIZOME_RESPONSE:
-    if (is_rhizome_mdp_server_running()) {
-      RETURN(overlay_mdp_service_rhizomeresponse(mdp));
-    } else break;
+  case MDP_PORT_RHIZOME_RESPONSE: RETURN(overlay_mdp_service_rhizomeresponse(mdp));    
   }
    
   /* Unbound socket.  We won't be sending ICMP style connection refused
