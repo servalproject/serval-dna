@@ -948,7 +948,11 @@ int app_config_set(int argc, const char *const *argv, const struct command_line_
   if (cf_om_reload() == -1)
     return -1;
   // </kludge>
-  return cf_om_set(&cf_om_root, var, val) == -1 ? -1 : cf_om_save();
+  if (cf_om_set(&cf_om_root, var, val) == -1 || cf_om_save() == -1)
+    return -1;
+  if (cf_reload() == -1) // logs an error if the new config is bad
+    return 2;
+  return 0;
 }
 
 int app_config_del(int argc, const char *const *argv, const struct command_line_option *o, void *context)
@@ -963,7 +967,11 @@ int app_config_del(int argc, const char *const *argv, const struct command_line_
   if (cf_om_reload() == -1)
     return -1;
   // </kludge>
-  return cf_om_set(&cf_om_root, var, NULL) == -1 ? -1 : cf_om_save();
+  if (cf_om_set(&cf_om_root, var, NULL) == -1 || cf_om_save() == -1)
+    return -1;
+  if (cf_reload() == -1) // logs an error if the new config is bad
+    return 2;
+  return 0;
 }
 
 int app_config_get(int argc, const char *const *argv, const struct command_line_option *o, void *context)

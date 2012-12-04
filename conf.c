@@ -74,6 +74,8 @@ static int load()
   else if (meta.size > CONFIG_FILE_MAX_SIZE) {
     WHYF("config file %s is too big (%ld bytes exceeds limit %ld)", path, meta.size, CONFIG_FILE_MAX_SIZE);
     return CFERROR;
+  } else if (meta.size <= 0) {
+    INFOF("config file %s is zero size", path);
   } else {
     FILE *f = fopen(path, "r");
     if (f == NULL) {
