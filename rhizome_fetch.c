@@ -1245,15 +1245,6 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
   // might grow while we are reading from them).
   if (bytes>(slot->file_len-slot->file_ofs))
     bytes=slot->file_len-slot->file_ofs;
-  
-  {
-    FILE *f=fopen("/tmp/file","r+");
-    if (f) {
-      fseek(f,slot->file_ofs,SEEK_SET);
-      fwrite(buffer,bytes,1,f);
-      fclose(f);
-    }
-  }
 
   if (slot->rowid==-1) {
     /* We are reading a manifest.  Read it into a buffer. */
