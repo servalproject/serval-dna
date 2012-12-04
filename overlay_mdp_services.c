@@ -60,7 +60,7 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
      journal, then the newer version is okay to use to service this request.
   */
   long long row_id=-1;
-  if (sqlite_exec_int64(&row_id, "SELECT rowid FROM FILES WHERE id IN (SELECT filehash FROM MANIFESTS WHERE manifests.version=%lld AND manifests.id='%s');",
+  if (sqlite_exec_int64(&row_id, "SELECT rowid FROM FILEBLOBS WHERE id IN (SELECT filehash FROM MANIFESTS WHERE manifests.version=%lld AND manifests.id='%s');",
 			read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES]),
 			alloca_tohex_bid(&mdp->out.payload[0])) < 1)
     {
@@ -69,7 +69,7 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
     }
   
   sqlite3_blob *blob=NULL; 
-  int ret=sqlite3_blob_open(rhizome_db, "main", "files", "data",
+  int ret=sqlite3_blob_open(rhizome_db, "main", "fileblobs", "data",
 				   row_id, 0 /* read only */, &blob);
   if (ret!=SQLITE_OK)
     {

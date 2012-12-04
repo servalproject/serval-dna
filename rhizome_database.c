@@ -1541,7 +1541,7 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath, const unsign
     return 0;
   }
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = sqlite_prepare(&retry, "SELECT id FROM fileblobs WHERE (SELECT 1 FROM files WHERE FILEBLOBS.id = FILES.id AND id = ? AND datavalid != 0)");
+  sqlite3_stmt *statement = sqlite_prepare(&retry, "SELECT rowid FROM fileblobs WHERE (SELECT 1 FROM files WHERE FILEBLOBS.id = FILES.id AND id = ? AND datavalid != 0)");
   if (!statement)
     return -1;
   int ret = 0;
@@ -1553,15 +1553,13 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath, const unsign
   int stepcode = sqlite_step_retry(&retry, statement);
   if (stepcode != SQLITE_ROW) {
     ret = 0; // no files found
-  } else if (!(   sqlite3_column_count(statement) == 3
-		  && sqlite3_column_type(statement, 0) == SQLITE_TEXT
-		  && sqlite3_column_type(statement, 1) == SQLITE_INTEGER
-		  && sqlite3_column_type(statement, 2) == SQLITE_INTEGER
+  } else if (!(   sqlite3_column_count(statement) == 1
+		  && sqlite3_column_type(statement, 0) == SQLITE_INTEGER
   )) { 
     ret = WHY("Incorrect statement column");
   } else {
-    long long length = sqlite3_column_int64(statement, 2);
-    int64_t rowid = sqlite3_column_int64(statement, 1);
+    long long length;
+    int64_t rowid = sqlite3_column_int64(statement, 0);
     sqlite3_blob *blob = NULL;
     int code;
     do code = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", rowid, 0 /* read only */, &blob);
@@ -1569,6 +1567,7 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath, const unsign
     if (!sqlite_code_ok(code)) {
       ret = WHY("Could not open blob for reading");
     } else {
+      length = sqlite3_blob_bytes(blob);
       cli_puts("filehash"); cli_delim(":");
       cli_puts((const char *)sqlite3_column_text(statement, 0)); cli_delim("\n");
       cli_puts("filesize"); cli_delim(":");

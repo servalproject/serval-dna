@@ -541,8 +541,8 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
 	// TODO: Check for Range: header and return 206 if returning partial content
 	str_toupper_inplace(id);
 	long long rowid = -1;
-	sqlite_exec_int64(&rowid, "select rowid from files where id='%s';", id);
-	if (rowid >= 0 && sqlite3_blob_open(rhizome_db, "main", "files", "data", rowid, 0, &r->blob) != SQLITE_OK)
+	sqlite_exec_int64(&rowid, "select rowid from fileblobs where id='%s';", id);
+	if (rowid >= 0 && sqlite3_blob_open(rhizome_db, "main", "fileblobs", "data", rowid, 0, &r->blob) != SQLITE_OK)
 	  rowid = -1;
 	if (rowid == -1) {
 	  rhizome_server_simple_http_response(r, 404, "<html><h1>Payload not found</h1></html>\r\n");

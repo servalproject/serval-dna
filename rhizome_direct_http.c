@@ -971,9 +971,9 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	/* send file contents now */
 	long long rowid = -1;
 	sqlite3_blob *blob=NULL;
-	sqlite_exec_int64(&rowid, "select rowid from files where id='%s';", hash);
+	sqlite_exec_int64(&rowid, "select rowid from fileblobs where id='%s';", hash);
 	DEBUGF("Reading from rowid #%lld filehash='%s'",rowid,hash?hash:"(null)");
-	if (rowid >= 0 && sqlite3_blob_open(rhizome_db, "main", "files", "data", 
+	if (rowid >= 0 && sqlite3_blob_open(rhizome_db, "main", "fileblobs", "data", 
 					    rowid, 0, &blob) != SQLITE_OK)
 	  goto closeit;
 	int i;
