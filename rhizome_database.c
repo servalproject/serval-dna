@@ -206,8 +206,9 @@ int rhizome_opendb()
   /* Create tables as required */
   sqlite_exec_void_loglevel(loglevel, "PRAGMA auto_vacuum=2;");
   if (	sqlite_exec_void("CREATE TABLE IF NOT EXISTS GROUPLIST(id text not null primary key, closed integer,ciphered integer,priority integer);") == -1
-    ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS MANIFESTS(id text not null primary key, manifest blob, version integer,inserttime integer, bar blob, filesize integer, filehash text, author text);") == -1
-    ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS FILES(id text not null primary key, data blob, length integer, highestpriority integer, datavalid integer, inserttime integer);") == -1
+    ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS MANIFESTS(id text not null primary key, version integer,inserttime integer, filesize integer, filehash text, author text, bar blob, manifest blob);") == -1
+    ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS FILES(id text not null primary key, length integer, highestpriority integer, datavalid integer, inserttime integer);") == -1
+    ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS FILEBLOBS(id text not null primary key, data blob);") == -1
     ||	sqlite_exec_void("DROP TABLE IF EXISTS FILEMANIFESTS;") == -1
     ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS GROUPMEMBERSHIPS(manifestid text not null, groupid text not null);") == -1
     ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS VERIFICATIONS(sid text not null, did text, name text, starttime integer, endtime integer, signature blob);") == -1
@@ -222,6 +223,7 @@ int rhizome_opendb()
   /* Clean out half-finished entries from the database */
   sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM MANIFESTS WHERE filehash IS NULL;");
   sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM FILES WHERE NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);");
+  sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM FILEBLOBS WHERE NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE FILEBLOBS.id = FILES.id);");
   sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM MANIFESTS WHERE filehash != '' AND NOT EXISTS( SELECT  1 FROM FILES WHERE MANIFESTS.filehash = FILES.id);");
   RETURN(0);
   sqlite_exec_void("DELETE FROM FILES WHERE datavalid=0;");
@@ -673,8 +675,10 @@ int rhizome_drop_stored_file(const char *id,int maximum_priority)
     }
   }
   sqlite3_finalize(statement);
-  if (can_drop)
+  if (can_drop) {
     sqlite_exec_void_retry(&retry, "delete from files where id='%s';",id);
+    sqlite_exec_void_retry(&retry, "delete from fileblobs where id='%s';",id);
+  }
   return 0;
 }
 
@@ -770,16 +774,14 @@ int rhizome_store_bundle(rhizome_manifest *m)
 
   // we might need to leave the old file around for a bit
   // clean out unreferenced files first
-  if ((stmt = sqlite_prepare(&retry, "DELETE FROM FILES WHERE inserttime < ? AND NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);")) == NULL)
-    goto rollback;
-  if (!sqlite_code_ok(sqlite3_bind_int64(stmt, 1, (long long)(gettime_ms() - 60000)))) {
-    WHYF("query failed, %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(stmt));
+  if (sqlite_exec_void("DELETE FROM FILES WHERE inserttime < ? AND NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);")) {
+    WHYF("delete failed, %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(stmt));
     goto rollback;
   }
-  if (sqlite_step_retry(&retry, stmt) == -1)
+  if (sqlite_exec_void("DELETE FROM FILEBLOBS WHERE NOT EXISTS ( SELECT  1 FROM FILES WHERE FILES.id = FILEBLOBS.id );")) {
+    WHYF("delete failed, %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(stmt));
     goto rollback;
-  sqlite3_finalize(stmt);
-  stmt = NULL;
+  }
 
   if (rhizome_manifest_get(m,"isagroup",NULL,0)!=NULL) {
     int closed=rhizome_manifest_get_ll(m,"closedgroup");
@@ -952,6 +954,7 @@ int64_t rhizome_database_create_blob_for(const char *hashhex,int64_t fileLength,
   /* Okay, so there are no records that match, but we should delete any half-baked record (with datavalid=0) so that the insert below doesn't fail.
      Don't worry about the return result, since it might not delete any records. */
   sqlite_exec_void("DELETE FROM FILES WHERE id='%s' AND datavalid=0;",hashhex);
+  sqlite_exec_void("DELETE FROM FILEBLOBS WHERE id='%s';",hashhex);
 
   /* INSERT INTO FILES(id as text, data blob, length integer, highestpriority integer).
    BUT, we have to do this incrementally so that we can handle blobs larger than available memory.
@@ -963,15 +966,24 @@ int64_t rhizome_database_create_blob_for(const char *hashhex,int64_t fileLength,
   */
 
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = sqlite_prepare(&retry, "INSERT OR REPLACE INTO FILES(id,data,length,highestpriority,datavalid,inserttime) VALUES('%s',?,%lld,%d,0,%lld);",
-	  hashhex, (long long)fileLength, priority, (long long)gettime_ms()
-	);
-  DEBUGF("INSERT OR REPLACE INTO FILES(id,data,length,highestpriority,datavalid,inserttime) VALUES('%s',?,%lld,%d,0,%lld);",
+  int ret=sqlite_exec_void("INSERT OR REPLACE INTO FILES(id,length,highestpriority,datavalid,inserttime) VALUES('%s',%lld,%d,0,%lld);",
+			   hashhex, (long long)fileLength, priority, (long long)gettime_ms()
+			   );
+  if (ret!=SQLITE_OK) {
+    DEBUGF("insert or replace into files ... failed: %s",
+	   sqlite3_errmsg(rhizome_db));
+    goto insert_row_fail;
+  }
+  DEBUGF("INSERT OR REPLACE INTO FILES(id,length,highestpriority,datavalid,inserttime) VALUES('%s',%lld,%d,0,%lld);",
 	  hashhex, (long long)fileLength, priority, (long long)gettime_ms()
 	);
 
+  sqlite3_stmt *statement = sqlite_prepare(&retry,"INSERT OR REPLACE INTO FILEBLOBS(id,data) VALUES('%s',?)",hashhex);
+  DEBUGF("INSERT OR REPLACE INTO FILEBLOBS(id,data) VALUES('%s',?)",hashhex);
   if (!statement)
     goto insert_row_fail;
+  
+
   /* Bind appropriate sized zero-filled blob to data field */
   if (sqlite3_bind_zeroblob(statement, 1, fileLength) != SQLITE_OK) {
     WHYF("sqlite3_bind_zeroblob() failed: %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));
@@ -1078,7 +1090,7 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
     goto error;
   sqlite3_blob *blob;
   int ret;
-  do ret = sqlite3_blob_open(rhizome_db, "main", "FILES", "data", rowid, 1 /* read/write */, &blob);
+  do ret = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", rowid, 1 /* read/write */, &blob);
   while (sqlite_code_busy(ret) && sqlite_retry(&retry, "sqlite3_blob_open"));
   if (ret != SQLITE_OK) {
     WHYF("sqlite3_blob_open() failed, %s", sqlite3_errmsg(rhizome_db));
@@ -1529,7 +1541,7 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath, const unsign
     return 0;
   }
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = sqlite_prepare(&retry, "SELECT id, rowid, length FROM files WHERE id = ? AND datavalid != 0");
+  sqlite3_stmt *statement = sqlite_prepare(&retry, "SELECT id FROM fileblobs WHERE (SELECT 1 FROM files WHERE FILEBLOBS.id = FILES.id AND id = ? AND datavalid != 0)");
   if (!statement)
     return -1;
   int ret = 0;
@@ -1552,7 +1564,7 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath, const unsign
     int64_t rowid = sqlite3_column_int64(statement, 1);
     sqlite3_blob *blob = NULL;
     int code;
-    do code = sqlite3_blob_open(rhizome_db, "main", "FILES", "data", rowid, 0 /* read only */, &blob);
+    do code = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", rowid, 0 /* read only */, &blob);
     while (sqlite_code_busy(code) && sqlite_retry(&retry, "sqlite3_blob_open"));
     if (!sqlite_code_ok(code)) {
       ret = WHY("Could not open blob for reading");

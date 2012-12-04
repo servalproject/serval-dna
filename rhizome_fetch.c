@@ -65,9 +65,11 @@ struct rhizome_fetch_slot {
   int64_t file_ofs;
 
   int64_t last_write_time;
+  int64_t start_time;
 
-#define RHIZOME_BLOB_BUFFER_SIZE 32768
-  unsigned char blob_buffer[RHIZOME_BLOB_BUFFER_SIZE];
+#define RHIZOME_BLOB_BUFFER_MAXIMUM_SIZE (2*1024)
+  int blob_buffer_size;
+  unsigned char *blob_buffer;
   int blob_buffer_bytes;
 
   /* HTTP transport specific elements */
@@ -495,7 +497,8 @@ static int rhizome_import_received_bundle(struct rhizome_manifest *m)
   m->finalised = 1;
   m->manifest_bytes = m->manifest_all_bytes; // store the signatures too
   if (debug & DEBUG_RHIZOME_RX) {
-    DEBUGF("manifest len=%d has %d signatories", m->manifest_bytes, m->sig_count);
+    DEBUGF("manifest len=%d has %d signatories. Associated file = %lld bytes", 
+	   m->manifest_bytes, m->sig_count,(long long)m->fileLength);
     dump("manifest", m->manifestdata, m->manifest_all_bytes);
   }
   return rhizome_bundle_import(m, m->ttl - 1 /* TTL */);
@@ -506,6 +509,7 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
   int sock = -1;
   /* TODO Don't forget to implement resume */
   /* TODO We should stream file straight into the database */
+  slot->start_time=gettime_ms();
   if (create_rhizome_import_dir() == -1)
     goto bail;
   if (slot->manifest) {
@@ -559,6 +563,12 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
     slot->file_len = -1;
     slot->file_ofs = 0;
     slot->blob_buffer_bytes = 0;
+    if (slot->blob_buffer) {
+      free(slot->blob_buffer);
+      slot->blob_buffer=NULL;
+    }
+    slot->blob_buffer_size=0;
+
     SHA512_Init(&slot->sha512_context);
     /* Watch for activity on the socket */
     slot->alarm.function = rhizome_fetch_poll;
@@ -1015,6 +1025,10 @@ static int rhizome_fetch_close(struct rhizome_fetch_slot *slot)
     rhizome_manifest_free(slot->manifest);
   slot->manifest = NULL;
 
+  if (slot->blob_buffer) free(slot->blob_buffer);
+  slot->blob_buffer=NULL;
+  slot->blob_buffer_size=0;
+
   // Release the fetch slot.
   slot->state = RHIZOME_FETCH_FREE;
 
@@ -1168,7 +1182,8 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
        which is the block size we will use.  200bytes allows for several blocks 
        to fit into a packet, and probably fit at least one any any outgoing packet
        that is not otherwise full. */
-    slot->file_len=slot->manifest->fileLength;  
+    slot->file_len=slot->manifest->fileLength;
+
     slot->mdpIdleTimeout=5000; // give up if nothing received for 5 seconds
     slot->mdpRXBitmap=0x00000000; // no blocks received yet
     slot->mdpRXBlockLength=500; // 200;
@@ -1215,7 +1230,7 @@ void rhizome_fetch_write(struct rhizome_fetch_slot *slot)
 int rhizome_fetch_flush_blob_buffer(struct rhizome_fetch_slot *slot)
 {
   sqlite3_blob *blob;
-  int ret = sqlite3_blob_open(rhizome_db, "main", "FILES", "data", slot->rowid, 1 /* read/write */, &blob);
+  int ret = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", slot->rowid, 1 /* read/write */, &blob);
   if (ret!=SQLITE_OK) {
     if (blob) sqlite3_blob_close(blob);
     return -1;
@@ -1263,10 +1278,26 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
       dump("buffer",buffer,bytes);
     }
 
-    if (slot->blob_buffer_bytes+bytes>RHIZOME_BLOB_BUFFER_SIZE)
-      rhizome_fetch_flush_blob_buffer(slot);
-    bcopy(buffer,&slot->blob_buffer[slot->blob_buffer_bytes],bytes);
-    slot->blob_buffer_bytes+=bytes;
+    if (!slot->blob_buffer_size) {
+      /* Allocate an appropriately sized buffer so that we don't have to pay
+	 the cost of blob_open() and blob_close() too often. */
+      slot->blob_buffer_size=slot->file_len;
+      if (slot->blob_buffer_size>RHIZOME_BLOB_BUFFER_MAXIMUM_SIZE)
+	slot->blob_buffer_size=RHIZOME_BLOB_BUFFER_MAXIMUM_SIZE;
+      slot->blob_buffer=malloc(slot->blob_buffer_size);
+      assert(slot->blob_buffer);
+    }
+
+    assert(slot->blob_buffer_size);
+    int bytesRemaining=bytes;
+    while(bytesRemaining>0) {      
+      int count=slot->blob_buffer_size-slot->blob_buffer_bytes;
+      if (count>bytes) count=bytesRemaining;
+      bcopy(buffer,&slot->blob_buffer[slot->blob_buffer_bytes],count);
+      buffer+=count; bytesRemaining-=count;
+      if (slot->blob_buffer_bytes==slot->blob_buffer_size)
+	rhizome_fetch_flush_blob_buffer(slot);
+    }
   }
 
   slot->file_ofs+=bytes;
@@ -1274,12 +1305,12 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
   if (slot->file_ofs>=slot->file_len) {
     /* got all of file */
     // if (debug & DEBUG_RHIZOME_RX)
-      DEBUGF("Received all of file via rhizome -- now to import it");
+    DEBUGF("Received all of file via rhizome -- now to import it");
     if (slot->manifest) {
       // Were fetching payload, now we have it.
 
       char hash_out[SHA512_DIGEST_STRING_LENGTH+1];
-      SHA512_End(&slot->sha512_context, (char *)hash_out);
+      SHA512_End(&slot->sha512_context, (char *)hash_out);      
       if (slot->blob_buffer_bytes) rhizome_fetch_flush_blob_buffer(slot);
       
       sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
@@ -1289,17 +1320,27 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 	DEBUGF("Expected hash=%s, got %s",
 	       slot->manifest->fileHexHash,hash_out);
 	sqlite_exec_void_retry(&retry,
-			       "DELETE FROM FILES WHERE rowid=%lld",slot->rowid);
+			       "DELETE FROM FILEBLOBS WHERE rowid=%lld",slot->rowid);
+	sqlite_exec_void_retry(&retry,
+			       "DELETE FROM FILES WHERE id='%s'",
+			       slot->manifest->fileHexHash);
 	rhizome_fetch_close(slot);
 	return -1;
       } else {
+	INFOF("Updating row status: UPDATE FILES SET datavalid=1 WHERE id='%s'",
+	      slot->manifest->fileHexHash);
+	time_ms_t start=gettime_ms();
 	int ret=sqlite_exec_void_retry(&retry,
-				       "UPDATE FILES SET datavalid=1 WHERE rowid=%lld",
-				       slot->rowid);
+				       "UPDATE FILES SET datavalid=1 WHERE id='%s'",
+				       slot->manifest->fileHexHash);
 	if (ret!=SQLITE_OK) 
 	  if (debug & DEBUG_RHIZOME_RX)
 	    DEBUGF("error marking row valid: %s",sqlite3_errmsg(rhizome_db));
+	INFOF("Updated row status (took %lldms)",(long long)gettime_ms()-start);
       }
+
+      INFOF("Calling rhizome_import_received_bundle() m->fileLength=%lld",
+	    slot->manifest->fileLength);
 
       if (!rhizome_import_received_bundle(slot->manifest)){
 	if (slot->state==RHIZOME_FETCH_RXFILE) {
@@ -1336,7 +1377,10 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 	}
       }
     }
-    DEBUGF("Closing rhizome fetch slot = 0x%p",slot);
+    DEBUGF("Closing rhizome fetch slot = 0x%p.  Received %lld bytes in %lldms (%lldKB/sec).  Buffer size = %d",
+	   slot,(long long)slot->file_ofs,(long long)gettime_ms()-slot->start_time,
+	   (long long)slot->file_ofs/(gettime_ms()-slot->start_time),
+	   slot->blob_buffer_size);
     rhizome_fetch_close(slot);
     return -1;
   }
