@@ -513,7 +513,7 @@ static int rhizome_sync_with_peers(int mode, int peer_count, const struct config
   return 0;
 }
 
-int app_rhizome_direct_sync(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_rhizome_direct_sync(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   /* Attempt to connect with a remote Rhizome Direct instance,
      and negotiate which BARs to synchronise. */

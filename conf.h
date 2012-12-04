@@ -250,9 +250,10 @@ struct cf_om_iterator {
 void cf_om_iter_start(struct cf_om_iterator *, const struct cf_om_node *);
 int cf_om_iter_next(struct cf_om_iterator *);
 
-struct cf_om_node *cf_om_load();
-struct cf_om_node *cf_om_reload();
-int cf_om_save(const struct cf_om_node *root);
+struct cf_om_node *cf_om_root;
+int cf_om_load();
+int cf_om_reload();
+int cf_om_save();
 
 /* Diagnostic functions for use in config schema parsing functions, cf_opt_xxx(). */
 
@@ -550,6 +551,8 @@ extern struct config_main config;
 
 int cf_init();
 int cf_load();
+int cf_load_permissive();
 int cf_reload();
+int cf_reload_permissive();
 
 #endif //__SERVALDNA_CONFIG_H

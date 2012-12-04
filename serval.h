@@ -642,12 +642,12 @@ int directory_registration();
 int directory_service_init();
 
 struct command_line_option;
-int app_rhizome_direct_sync(int argc, const char *const *argv, struct command_line_option *o, void *context);
+int app_rhizome_direct_sync(int argc, const char *const *argv, const struct command_line_option *o, void *context);
 #ifdef HAVE_VOIPTEST
-int app_pa_phone(int argc, const char *const *argv, struct command_line_option *o, void *context);
+int app_pa_phone(int argc, const char *const *argv, const struct command_line_option *o, void *context);
 #endif
-int app_monitor_cli(int argc, const char *const *argv, struct command_line_option *o, void *context);
-int app_vomp_console(int argc, const char *const *argv, struct command_line_option *o, void *context);
+int app_monitor_cli(int argc, const char *const *argv, const struct command_line_option *o, void *context);
+int app_vomp_console(int argc, const char *const *argv, const struct command_line_option *o, void *context);
 
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 

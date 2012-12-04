@@ -302,7 +302,7 @@ END_ARRAY(10)
 
 // The top level.
 STRUCT(main)
-NODE_STRUCT(interface_list, interfaces, cf_opt_interface_list, MANDATORY)
+NODE_STRUCT(interface_list, interfaces, cf_opt_interface_list,)
 SUB_STRUCT(log,             log,)
 SUB_STRUCT(server,          server,)
 SUB_STRUCT(monitor,         monitor,)

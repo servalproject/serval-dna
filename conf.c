@@ -32,8 +32,8 @@ struct file_meta {
   off_t size;
 };
 
+struct cf_om_node *cf_om_root = NULL;
 static struct file_meta conffile_meta = { .mtime = -1, .size = -1 };
-static struct cf_om_node *cf_om_root = NULL;
 
 int cf_limbo = 1;
 struct config_main config;
@@ -119,12 +119,9 @@ static int has_changed(const struct file_meta *metap)
   return metap->size != meta.size || metap->mtime != meta.mtime;
 }
 
-struct cf_om_node *cf_om_load()
+int cf_om_load()
 {
-  int result = load();
-  if (result == CFERROR)
-    return NULL;
-  return cf_om_root;
+  return load() == CFERROR ? -1 : 0;
 }
 
 /* Check if the config file has changed since we last read it, and if so, invalidate the buffer so
@@ -136,17 +133,16 @@ struct cf_om_node *cf_om_load()
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-struct cf_om_node *cf_om_reload()
+int cf_om_reload()
 {
-  if (cf_om_root) {
-    if (!has_changed(&conffile_meta))
-      return cf_om_root;
+  if (!has_changed(&conffile_meta))
+    return CFOK;
+  if (conffile_meta.mtime != -1)
     INFOF("config file %s -- detected new version", conffile_path());
-  }
   return cf_om_load();
 }
 
-int cf_om_save(const struct cf_om_node *root)
+int cf_om_save()
 {
   if (cf_om_root) {
     const char *path = conffile_path();
@@ -157,7 +153,7 @@ int cf_om_save(const struct cf_om_node *root)
     if ((outf = fopen(tempfile, "w")) == NULL)
       return WHYF_perror("fopen(%s, \"w\")", tempfile);
     struct cf_om_iterator it;
-    for (cf_om_iter_start(&it, root); it.node; cf_om_iter_next(&it))
+    for (cf_om_iter_start(&it, cf_om_root); it.node; cf_om_iter_next(&it))
       if (it.node->text)
 	fprintf(outf, "%s=%s\n", it.node->fullkey, it.node->text);
     if (fclose(outf) == EOF)
@@ -179,28 +175,33 @@ int cf_om_save(const struct cf_om_node *root)
 int cf_init()
 {
   cf_limbo = 1;
-  return cf_dfl_config_main(&config) == CFERROR ? -1 : 0;
+  if (cf_dfl_config_main(&config) == CFERROR)
+    return -1;
+  debug = config.debug;
+  return 0;
 }
 
-int cf_load()
+static int load_and_parse(int permissive)
 {
   int result = CFOK;
   if (cf_limbo)
     result = cf_dfl_config_main(&config);
   if (result == CFOK) {
     result = load();
-    if (result == CFOK) {
+    if (result == CFOK || result == CFEMPTY) {
+      result = CFOK;
       struct config_main new_config;
       memset(&new_config, 0, sizeof new_config);
       result = cf_dfl_config_main(&new_config);
       if (result == CFOK) {
 	result = cf_om_root ? cf_opt_config_main(&new_config, cf_om_root) : CFEMPTY;
 	if (result == CFOK || result == CFEMPTY) {
+	  result = CFOK;
 	  config = new_config;
 	  config_meta = conffile_meta;
 	  cf_limbo = 0;
-	  return 0;
 	} else if (result != CFERROR) {
+	  result &= ~CFEMPTY;
 	  config = new_config;
 	  cf_limbo = 0;
 	  WARN("limping along with incomplete configuration");
@@ -208,18 +209,44 @@ int cf_load()
       }
     }
   }
+  debug = config.debug;
+  if (result == CFOK)
+    return 0;
   cf_limbo = 0; // let log messages out
   strbuf b = strbuf_alloca(180);
   strbuf_cf_flag_reason(b, result);
-  return WHYF("config file %s not loaded -- %s", conffile_path(), strbuf_str(b));
+  if (!permissive)
+    return WHYF("config file %s not loaded -- %s", conffile_path(), strbuf_str(b));
+  WARNF("config file %s loaded despite problems -- %s", conffile_path(), strbuf_str(b));
+  return 0;
 }
 
-int cf_reload()
+static int reload_and_parse(int permissive)
 {
   if (!cf_limbo && cf_om_root) {
     if (!has_changed(&config_meta))
       return 0;
     INFOF("config file %s reloading", conffile_path());
   }
-  return cf_load();
+  return load_and_parse(permissive);
+}
+
+int cf_load()
+{
+  return load_and_parse(0);
+}
+
+int cf_load_permissive()
+{
+  return load_and_parse(1);
+}
+
+int cf_reload()
+{
+  return reload_and_parse(0);
+}
+
+int cf_reload_permissive()
+{
+  return reload_and_parse(1);
 }

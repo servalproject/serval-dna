@@ -67,7 +67,7 @@ int is_configvarname(const char *text)
   const char *const textend = text + strlen(text);
   const char *key = text;
   const char *keyend = NULL;
-  while (key < textend && (keyend = cf_find_keyend(key, textend)) != NULL)
+  while (key <= textend && (keyend = cf_find_keyend(key, textend)) != NULL)
     key = keyend + 1;
   return keyend != NULL;
 }
@@ -240,6 +240,8 @@ void cf_om_dump_node(const struct cf_om_node *node, int indent)
 
 const char *cf_om_get(const struct cf_om_node *node, const char *fullkey)
 {
+  if (node == NULL)
+    return NULL;
   const char *fullkeyend = fullkey + strlen(fullkey);
   const char *key = fullkey;
   const char *keyend = NULL;
@@ -333,9 +335,11 @@ void _cf_warn_nodev(struct __sourceloc __whence, const struct cf_om_node *node, 
     if (node->source && node->line_number)
       strbuf_sprintf(b, "%s:%u: ", node->source, node->line_number);
     strbuf_puts(b, "configuration option \"");
-    strbuf_puts(b, node->fullkey);
+    if (node->fullkey && node->fullkey[0])
+      strbuf_puts(b, node->fullkey);
     if (key && key[0]) {
-      strbuf_putc(b, '.');
+      if (node->fullkey && node->fullkey[0])
+	strbuf_putc(b, '.');
       strbuf_puts(b, key);
     }
     strbuf_puts(b, "\" ");
