@@ -284,7 +284,7 @@ int load_subscriber_address(struct subscriber *subscriber){
   }
   
   snprintf(buff, sizeof(buff), "%s.port", sid_hex);
-  addr.sin_port = confValueGetInt64Range(buff, PORT_DNA, 1, 65535);
+  addr.sin_port = htons(confValueGetInt64Range(buff, PORT_DNA, 1, 65535));
   
   return overlay_send_probe(subscriber, addr, interface);
 }
