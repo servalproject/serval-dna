@@ -61,14 +61,14 @@ test_StartLogfile() {
    tfw_cat log
 }
 
-doc_StartNoInterfaces="Starting server with no configured interfaces gives error"
+doc_StartNoInterfaces="Starting server with no configured interfaces gives warning"
 setup_StartNoInterfaces() {
    setup
 }
 test_StartNoInterfaces() {
    start_servald_server
    sleep 0.1
-   assertGrep --message="log contains 'no interfaces' error message" "$instance_servald_log" '^ERROR:.*interfaces'
+   assertGrep --message="log contains 'no interfaces' warning" "$instance_servald_log" '^WARN:.*interfaces'
    tfw_cat "$instance_servald_log"
 }
 

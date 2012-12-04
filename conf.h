@@ -544,6 +544,7 @@ int cf_opt_sid(sid_t *sidp, const char *text);
 int cf_opt_rhizome_bk(rhizome_bk_t *bkp, const char *text);
 int cf_opt_interface_type(short *typep, const char *text);
 int cf_opt_pattern_list(struct pattern_list *listp, const char *text);
+int cf_opt_network_interface(struct config_network_interface *nifp, const struct cf_om_node *node);
 int cf_opt_interface_list(struct config_interface_list *listp, const struct cf_om_node *node);
 
 extern int cf_limbo;

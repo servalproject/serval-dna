@@ -25,6 +25,12 @@ setup() {
    setup_servald
 }
 
+execute_servald_config_error() {
+   execute --stderr --exit-status=2 --core-backtrace --executable=$servald "$@"
+   assertStderrGrep --matches=1 --message="stderr of ($executed) contains exactly one error message" '^ERROR:'
+   assertStderrGrep --matches=1 --message="stderr of ($executed) contains one config error message" '^ERROR:.*config file'
+}
+
 doc_GetCreateInstanceDir="Get creates instance directory"
 setup_GetCreateInstanceDir() {
    setup
@@ -146,6 +152,16 @@ test_DebugFlagAll() {
    executeOk_servald config set debug.all off
    executeOk_servald echo one two three
    assertStderrGrep --matches=3 '\<echo:argv\['
+}
+
+doc_InterfacesLegacy="Legacy interfaces config option is supported"
+test_InterfacesLegacy() {
+   executeOk_servald config set interfaces '+eth,-wifi,+'
+   executeOk_servald config set interfaces '+'
+   executeOk_servald config set interfaces '-'
+   executeOk_servald config set interfaces '+eth=ethernet:4111:9M, +wifi=wifi:4112:900K, -'
+   execute_servald_config_error config set interfaces '+eth=foo:4111:9M'
+   assertExitStatus --stderr '!=' 0
 }
 
 runTests "$@"

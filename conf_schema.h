@@ -297,7 +297,7 @@ END_STRUCT
 
 ARRAY(interface_list,)
 KEY_STRING(15, cf_opt_str)
-VALUE_SUB_STRUCT(network_interface)
+VALUE_NODE_STRUCT(network_interface, cf_opt_network_interface)
 END_ARRAY(10)
 
 // The top level.

@@ -394,7 +394,7 @@ int cf_opt_pattern_list(struct pattern_list *listp, const char *text)
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int cf_opt_network_interface(struct config_network_interface *nifp, const char *text)
+static int cf_opt_network_interface_legacy(struct config_network_interface *nifp, const char *text)
 {
   //DEBUGF("%s text=%s", __FUNCTION__, alloca_str_toprint(text));
   struct config_network_interface nif;
@@ -472,63 +472,67 @@ int cf_opt_network_interface(struct config_network_interface *nifp, const char *
   return CFOK;
 }
 
+int cf_opt_network_interface(struct config_network_interface *nifp, const struct cf_om_node *node)
+{
+  if (!node->text)
+    return cf_opt_config_network_interface(nifp, node);
+  cf_warn_spurious_children(node);
+  return cf_opt_network_interface_legacy(nifp, node->text);
+}
+
 /* Config parse function.  Implements the original form of the 'interfaces' config option.  Parses a
- * comma-separated list of interface rules (see cf_opt_network_interface() for the format of each
- * rule), then parses the regular config array-of-struct style interface option settings so that
- * both forms are supported.
+ * comma-separated list of interface rules (see cf_opt_network_interface_legacy() for the format of
+ * each rule), then parses the regular config array-of-struct style interface option settings so
+ * that both forms are supported.
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 int cf_opt_interface_list(struct config_interface_list *listp, const struct cf_om_node *node)
 {
-  int result = cf_opt_config_interface_list(listp, node);
-  if (result == CFERROR)
-    return CFERROR;
-  if (node->text) {
-    const char *p;
-    const char *arg = NULL;
-    unsigned n = listp->ac;
-    for (p = node->text; n < NELS(listp->av); ++p) {
-      if (*p == '\0' || *p == ',' || isspace(*p)) {
-	if (arg) {
-	  int len = p - arg;
-	  if (len > 80) {
-	    result |= CFSTRINGOVERFLOW;
-	    goto bye;
-	  }
-	  char buf[len + 1];
-	  strncpy(buf, arg, len)[len] = '\0';
-	  int ret = cf_opt_network_interface(&listp->av[n].value, buf);
-	  switch (ret) {
-	  case CFERROR: return CFERROR;
-	  case CFOK:
-	    len = snprintf(listp->av[n].key, sizeof listp->av[n].key - 1, "%u", n);
-	    listp->av[n].key[len] = '\0';
-	    ++n;
-	    break;
-	  default:
-	    cf_warn_node(node, NULL, "invalid interface rule %s", alloca_str_toprint(buf)); \
-	    result |= CFSUB(ret);
-	    break;
-	  }
-	  arg = NULL;
+  if (!node->text)
+    return cf_opt_config_interface_list(listp, node);
+  const char *p;
+  const char *arg = NULL;
+  unsigned n = listp->ac;
+  int result = CFOK;
+  for (p = node->text; n < NELS(listp->av); ++p) {
+    if (*p == '\0' || *p == ',' || isspace(*p)) {
+      if (arg) {
+	int len = p - arg;
+	if (len > 80) {
+	  result |= CFSTRINGOVERFLOW;
+	  goto bye;
 	}
-	if (!*p)
+	char buf[len + 1];
+	strncpy(buf, arg, len)[len] = '\0';
+	int ret = cf_opt_network_interface_legacy(&listp->av[n].value, buf);
+	switch (ret) {
+	case CFERROR: return CFERROR;
+	case CFOK:
+	  len = snprintf(listp->av[n].key, sizeof listp->av[n].key - 1, "%u", n);
+	  listp->av[n].key[len] = '\0';
+	  ++n;
 	  break;
-      } else if (!arg)
-	arg = p;
-    }
-    if (*p) {
-      result |= CFARRAYOVERFLOW;
-      goto bye;
-    }
-    assert(n <= NELS(listp->av));
-    listp->ac = n;
+	default:
+	  cf_warn_node(node, NULL, "invalid interface rule %s", alloca_str_toprint(buf)); \
+	  result |= CFSUB(ret);
+	  break;
+	}
+	arg = NULL;
+      }
+      if (!*p)
+	break;
+    } else if (!arg)
+      arg = p;
   }
+  if (*p) {
+    result |= CFARRAYOVERFLOW;
+    goto bye;
+  }
+  assert(n <= NELS(listp->av));
+  listp->ac = n;
 bye:
   if (listp->ac == 0)
     result |= CFEMPTY;
-  else
-    result &= ~CFEMPTY;
   return result;
 }
