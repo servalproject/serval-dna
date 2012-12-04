@@ -1092,7 +1092,7 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   write_uint32(&mdp.out.payload[RHIZOME_BAR_BYTES+8+8],slot->mdpRXBitmap);
   write_uint16(&mdp.out.payload[RHIZOME_BAR_BYTES+8+8+4],slot->mdpRXBlockLength);  
 
-  if (1)
+  if (0)
     DEBUGF("src sid=%s, dst sid=%s, mdpRXWindowStart=0x%x",
 	   alloca_tohex_sid(mdp.out.src.sid),alloca_tohex_sid(mdp.out.dst.sid),
 	   slot->file_ofs);
@@ -1105,7 +1105,8 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
 
   unschedule(&slot->alarm);
   slot->alarm.function = rhizome_fetch_mdp_slot_callback;
-  slot->alarm.alarm=gettime_ms()+133;
+  // 266ms @ 1mbit (WiFi broadcast speed) = 32x1024 byte packets.
+  slot->alarm.alarm=gettime_ms()+266; 
   slot->alarm.deadline=slot->alarm.alarm+500;
   schedule(&slot->alarm);
   
@@ -1176,17 +1177,20 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
     /* We are requesting a file.  The http request may have already received
        some of the file, so take that into account when setting up ring buffer. 
        Then send the request for the next block of data, and set our alarm to
-       re-ask in a little while. "In a little while" is 133ms, which is roughly
-       the time it takes to send 16KB via WiFi broadcast at the 1Mbit base rate 
-       (this will need tuning for non-WiFi interfaces). 16KB ~= 32 x 200 bytes
-       which is the block size we will use.  200bytes allows for several blocks 
-       to fit into a packet, and probably fit at least one any any outgoing packet
-       that is not otherwise full. */
+       re-ask in a little while. "In a little while" is 266ms, which is roughly
+       the time it takes to send 32KB via WiFi broadcast at the 1Mbit base rate 
+       (this will need tuning for non-WiFi interfaces). 32KB = 32 x 1024 bytes
+       which is the block size we will use.  200bytes would allow for several
+       blocks to fit into a packet, and probably fit at least one any any,
+       outgoing packet that is not otherwise full. But then the whole thing slows
+       down too much.  Much careful thought is required to optimise this
+       transport.
+    */
     slot->file_len=slot->manifest->fileLength;
 
     slot->mdpIdleTimeout=5000; // give up if nothing received for 5 seconds
     slot->mdpRXBitmap=0x00000000; // no blocks received yet
-    slot->mdpRXBlockLength=500; // 200;
+    slot->mdpRXBlockLength=1024; // 200;
     rhizome_fetch_mdp_requestblocks(slot);    
   } else {
     /* We are requesting a manifest, which is stateless, except that we eventually
