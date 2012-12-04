@@ -1053,13 +1053,13 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   mdp.packetTypeAndFlags=MDP_TX;
 
   mdp.out.queue=OQ_ORDINARY;
-  mdp.out.payload_length=RHIZOME_BAR_BYTES+8+8+4+2;
+  mdp.out.payload_length=RHIZOME_MANIFEST_ID_BYTES+8+8+4+2;
   bcopy(slot->bid,&mdp.out.payload[0],RHIZOME_MANIFEST_ID_BYTES);
 
-  write_uint64(&mdp.out.payload[RHIZOME_BAR_BYTES],slot->bidVersion);
-  write_uint64(&mdp.out.payload[RHIZOME_BAR_BYTES+8],slot->file_ofs);
-  write_uint32(&mdp.out.payload[RHIZOME_BAR_BYTES+8+8],slot->mdpRXBitmap);
-  write_uint16(&mdp.out.payload[RHIZOME_BAR_BYTES+8+8+4],slot->mdpRXBlockLength);  
+  write_uint64(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES],slot->bidVersion);
+  write_uint64(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8],slot->file_ofs);
+  write_uint32(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8],slot->mdpRXBitmap);
+  write_uint16(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4],slot->mdpRXBlockLength);  
 
   if (0)
     DEBUGF("src sid=%s, dst sid=%s, mdpRXWindowStart=0x%x",
