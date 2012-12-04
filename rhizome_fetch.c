@@ -1275,7 +1275,7 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
     /* We are reading a file. Stream it into the database. */  
     if (bytes>0)
       SHA512_Update(&slot->sha512_context,(unsigned char *)buffer,bytes);
-    
+
     if (debug & DEBUG_RHIZOME_RX) {
       DEBUGF("slot->blob_buffer_bytes=%d, slot->file_ofs=%d",
 	     slot->blob_buffer_bytes,slot->file_ofs);
@@ -1297,7 +1297,12 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
     while(bytesRemaining>0) {      
       int count=slot->blob_buffer_size-slot->blob_buffer_bytes;
       if (count>bytes) count=bytesRemaining;
+      //      DEBUGF("copying %d bytes to &blob_buffer[0x%x]",
+      //	     count,slot->blob_buffer_bytes);
+      //      dump("buffer",buffer,count);
       bcopy(buffer,&slot->blob_buffer[slot->blob_buffer_bytes],count);
+      //      dump("first bytes into slot->blob_buffer",slot->blob_buffer,256);
+      slot->blob_buffer_bytes+=count;
       buffer+=count; bytesRemaining-=count;
       if (slot->blob_buffer_bytes==slot->blob_buffer_size)
 	rhizome_fetch_flush_blob_buffer(slot);
