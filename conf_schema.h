@@ -204,10 +204,14 @@ KEY_ATOM(short, cf_opt_interface_type, cmp_short)
 VALUE_SUB_STRUCT(mdp_iftype)
 END_ARRAY(5)
 
+STRUCT(mdp_selfannounce)
+ATOM(uint32_t,              ticks_per_full_address, 4, cf_opt_uint32_nonzero,, "Ticks to elapse between announcing full SID")
+END_STRUCT
+
 STRUCT(mdp)
 STRING(256,                 socket,     DEFAULT_MDP_SOCKET_NAME, cf_opt_str_nonempty,, "Name of socket for MDP client interface")
-ATOM(uint32_t,              ticks_per_full_address, 4, cf_opt_uint32_nonzero,, "Ticks to elapse between announcing full SID")
 SUB_STRUCT(mdp_iftypelist,  iftype,)
+SUB_STRUCT(mdp_selfannounce,selfannounce,)
 END_STRUCT
 
 STRUCT(olsr)
@@ -230,7 +234,7 @@ STRUCT(dna)
 SUB_STRUCT(executable,      helper,)
 END_STRUCT
 
-STRUCT(rhizomepeer)
+STRUCT(rhizome_peer)
 STRING(25,                  protocol,   "http", cf_opt_protocol,, "Protocol name")
 STRING(256,                 host,       "", cf_opt_str_nonempty, MANDATORY, "Host name or IP address")
 ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, cf_opt_port,, "Port number")
@@ -238,7 +242,7 @@ END_STRUCT
 
 ARRAY(peerlist,)
 KEY_STRING(15, cf_opt_str)
-VALUE_NODE(struct config_rhizomepeer, cf_opt_rhizome_peer)
+VALUE_NODE_STRUCT(rhizome_peer, cf_opt_rhizome_peer)
 END_ARRAY(10)
 
 STRUCT(rhizome_direct)
@@ -249,7 +253,7 @@ STRUCT(rhizome_api_addfile)
 STRING(64,                  uri_path, "", cf_opt_absolute_path,, "URI path for HTTP add-file request")
 ATOM(struct in_addr,        allow_host, (struct in_addr){htonl(INADDR_LOOPBACK)}, cf_opt_in_addr,, "IP address of host allowed to make HTTP add-file request")
 STRING(256,                 manifest_template_file, "", cf_opt_str_nonempty,, "Path of manifest template file, either absolute or relative to instance directory")
-ATOM(sid_t,                 default_author, SID_NONE, cf_opt_sid,, "Author of add-file bundle if sender not given")
+ATOM(sid_t,                 default_author, SID_ANY, cf_opt_sid,, "Author of add-file bundle if sender not given")
 ATOM(rhizome_bk_t,          bundle_secret_key, RHIZOME_BK_NONE, cf_opt_rhizome_bk,, "Secret key of add-file bundle to try if sender not given")
 END_STRUCT
 
@@ -259,7 +263,7 @@ END_STRUCT
 
 STRUCT(rhizome)
 ATOM(int,                   enable,     1, cf_opt_boolean,, "If true, Rhizome HTTP server is started")
-STRING(256,                 datastore_path, "", cf_opt_absolute_path,, "Absolute path of rhizome storage directory")
+STRING(256,                 datastore_path, "", cf_opt_absolute_path,, "Path of rhizome storage directory, absolute or relative to instance directory")
 ATOM(uint64_t,              database_size, 1000000, cf_opt_uint64_scaled,, "Size of database in bytes")
 ATOM(uint32_t,              fetch_delay_ms, 50, cf_opt_uint32_nonzero,, "Delay from receiving first bundle advert to initiating fetch")
 SUB_STRUCT(rhizome_direct,  direct,)
@@ -267,7 +271,7 @@ SUB_STRUCT(rhizome_api,     api,)
 END_STRUCT
 
 STRUCT(directory)
-ATOM(sid_t,                 service,     SID_NONE, cf_opt_sid,, "Subscriber ID of Serval Directory Service")
+ATOM(sid_t,                 service,     SID_ANY, cf_opt_sid,, "Subscriber ID of Serval Directory Service")
 END_STRUCT
 
 STRUCT(host)
@@ -284,10 +288,11 @@ END_ARRAY(32)
 STRUCT(network_interface)
 ATOM(int,                   exclude,    0, cf_opt_boolean,, "If true, do not use matching interfaces")
 ATOM(struct pattern_list,   match,      PATTERN_LIST_EMPTY, cf_opt_pattern_list, MANDATORY, "Names that match network interface")
+STRING(256,                 dummy,      "", cf_opt_str_nonempty,, "Path of dummy file, absolute or relative to server.dummy_interface_dir")
 ATOM(short,                 type,       OVERLAY_INTERFACE_WIFI, cf_opt_interface_type,, "Type of network interface")
 ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, cf_opt_port,, "Port number for network interface")
 ATOM(uint64_t,              speed,      1000000, cf_opt_uint64_scaled,, "Speed in bits per second")
-ATOM(uint32_t,              mdp_tick_ms, 0, cf_opt_uint32_nonzero,, "Override MDP tick interval for this interface")
+ATOM(int,                   mdp_tick_ms, -1, cf_opt_int32_nonneg,, "Override MDP tick interval for this interface")
 END_STRUCT
 
 ARRAY(interface_list,)

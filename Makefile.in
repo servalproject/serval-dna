@@ -18,6 +18,9 @@ endif
 SRCS=	$(NACL_SOURCES) $(SERVAL_SOURCES)
 
 MONITORCLIENTSRCS=conf.c \
+        conf_om.c \
+        conf_parse.c \
+        conf_schema.c \
 	log.c \
 	os.c \
 	mem.c \
@@ -28,6 +31,9 @@ MONITORCLIENTSRCS=conf.c \
 	strbuf_helpers.c
 
 MDPCLIENTSRCS=conf.c \
+        conf_om.c \
+        conf_parse.c \
+        conf_schema.c \
 	dataformats.c \
 	os.c \
 	mem.c \

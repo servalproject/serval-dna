@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
 #include "serval.h"
+#include "conf.h"
 #include "str.h"
 #include "overlay_address.h"
 #include "overlay_buffer.h"
@@ -267,36 +268,19 @@ int reachable_unicast(struct subscriber *subscriber, overlay_interface *interfac
 }
 
 // load a unicast address from configuration, replace with database??
-int load_subscriber_address(struct subscriber *subscriber){
-  char buff[80];
-  const char *sid_hex = alloca_tohex_sid(subscriber->sid);
-  
-  snprintf(buff, sizeof(buff), "%s.interface", sid_hex);
-  const char *interface_name = confValueGet(buff, NULL);
-  // no unicast configuration? just return.
-  if (!interface_name)
+int load_subscriber_address(struct subscriber *subscriber)
+{
+  int i = config_host_list__get(&config.hosts, (const sid_t*)subscriber->sid);
+  // No unicast configuration? just return.
+  if (i == -1)
     return 1;
-  
-  snprintf(buff, sizeof(buff), "%s.address", sid_hex);
-  const char *address = confValueGet(buff, NULL);
-  if (!address)
-    return 1;
-  
-  snprintf(buff, sizeof(buff), "%s.port", sid_hex);
-  int port = confValueGetInt64Range(buff, PORT_DNA, 1, 65535);
-  
-  overlay_interface *interface = overlay_interface_find_name(interface_name);
+  const struct config_host *hostc = &config.hosts.av[i].value;
+  overlay_interface *interface = overlay_interface_find_name(hostc->interface);
   if (!interface){
-    WARNF("Interface %s is not UP", interface_name);
+    WARNF("Interface %s is not UP", hostc->interface);
     return -1;
   }
-  
-  struct in_addr addr;
-  if (!inet_aton(address, &addr)){
-    return WHYF("%s doesn't look like an IP address", address);
-  }
-  
-  return reachable_unicast(subscriber, interface, addr, port);
+  return reachable_unicast(subscriber, interface, hostc->address, hostc->port);
 }
 
 // generate a new random broadcast address
@@ -374,24 +358,16 @@ int overlay_address_append(struct overlay_buffer *b, struct subscriber *subscrib
   return 0;
 }
 
-int overlay_address_append_self(overlay_interface *interface, struct overlay_buffer *b){
-  static int ticks_per_full_address = -1;
-  if (ticks_per_full_address == -1) {
-    ticks_per_full_address = confValueGetInt64Range("mdp.selfannounce.ticks_per_full_address", 4LL, 1LL, 1000000LL);
-    INFOF("ticks_per_full_address = %d", ticks_per_full_address);
-  }
-  
+int overlay_address_append_self(overlay_interface *interface, struct overlay_buffer *b)
+{
   if (!my_subscriber)
     return WHY("I don't know who I am yet");
-  
-  if (++interface->ticks_since_sent_full_address > ticks_per_full_address){
+  if (++interface->ticks_since_sent_full_address > config.mdp.selfannounce.ticks_per_full_address) {
     interface->ticks_since_sent_full_address = 0;
     my_subscriber->send_full=1;
   }
-  
   if (overlay_address_append(b, my_subscriber))
     return WHY("Could not append my sid");
-  
   return 0;
 }
 

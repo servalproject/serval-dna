@@ -35,6 +35,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <jni.h>
 #endif
 #include "serval.h"
+#include "conf.h"
 #include "rhizome.h"
 #include "strbuf.h"
 #include "str.h"
@@ -188,7 +189,7 @@ int parseCommandLine(const char *argv0, int argc, const char *const *args)
 {
   fd_clearstats();
   IN();
-  confSetDebugFlags();
+  cf_reload();
   
   int result = cli_execute(argv0, argc, args, command_line_options, NULL);
   /* clean up after ourselves */
@@ -376,14 +377,10 @@ void lookup_send_request(unsigned char *srcsid, int srcport, unsigned char *dsts
   
   /* Also send an encrypted unicast request to a configured directory service */
   if (!dstsid){
-    const char *directory_service = confValueGet("directory.service", NULL);
-    if (directory_service){
-      if (stowSid(mdp.out.dst.sid, 0, directory_service)==-1){
-	WHYF("Invalid directory server SID %s", directory_service);
-      }else{
-	mdp.packetTypeAndFlags=MDP_TX;
-	overlay_mdp_send(&mdp,0,0);
-      }
+    if (!is_sid_any(config.directory.service.binary)) {
+      memcpy(mdp.out.dst.sid, config.directory.service.binary, SID_SIZE);
+      mdp.packetTypeAndFlags=MDP_TX;
+      overlay_mdp_send(&mdp,0,0);
     }
   }
 }
@@ -570,10 +567,8 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
     return -1;
   /* Now that we know our instance path, we can ask for the default set of
      network interfaces that we will take interest in. */
-  const char *interfaces = confValueGet("interfaces", "");
-  if (!interfaces[0])
-    WHY("No network interfaces configured (empty 'interfaces' config setting)");
-  overlay_interface_args(interfaces);
+  if (config.interfaces.ac == 0)
+    WARN("No network interfaces configured (empty 'interfaces' config option)");
   if (pid == -1)
     pid = server_pid();
   if (pid < 0)
@@ -598,7 +593,7 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
       return server(NULL);
     const char *dir = getenv("SERVALD_SERVER_CHDIR");
     if (!dir)
-      dir = confValueGet("server.chdir", "/");
+      dir = config.server.chdir;
     switch (cpid = fork()) {
       case -1:
 	/* Main process.  Fork failed.  There is no child process. */
@@ -940,9 +935,9 @@ int app_config_set(int argc, const char *const *argv, struct command_line_option
   // Bingo, the old version of servald.conf is what remains.  This kludge intervenes in step 4, by
   // reading the new servald.conf into the memory buffer before applying the "rhizome.enable" set
   // value and overwriting.
-  confReloadIfChanged();
+  struct cf_om_node *root = cf_om_reload();
   // </kludge>
-  return confValueSet(var, val) == -1 ? -1 : confWrite();
+  return root == NULL ? -1 : cf_om_set(&root, var, val) == -1 ? -1 : cf_om_save(root);
 }
 
 int app_config_del(int argc, const char *const *argv, struct command_line_option *o, void *context)
@@ -954,9 +949,9 @@ int app_config_del(int argc, const char *const *argv, struct command_line_option
   if (create_serval_instance_dir() == -1)
     return -1;
   // <kludge> See app_config_set()
-  confReloadIfChanged();
+  struct cf_om_node *root = cf_om_reload();
   // </kludge>
-  return confValueSet(var, NULL) == -1 ? -1 : confWrite();
+  return root == NULL ? -1 : cf_om_set(&root, var, NULL) == -1 ? -1 : cf_om_save(root);
 }
 
 int app_config_get(int argc, const char *const *argv, struct command_line_option *o, void *context)
@@ -967,8 +962,9 @@ int app_config_get(int argc, const char *const *argv, struct command_line_option
     return -1;
   if (create_serval_instance_dir() == -1)
     return -1;
+  struct cf_om_node *root = cf_om_reload();
   if (var) {
-    const char *value = confValueGet(var, NULL);
+    const char *value = cf_om_get(root, var);
     if (value) {
       cli_puts(var);
       cli_delim("=");
@@ -976,15 +972,14 @@ int app_config_get(int argc, const char *const *argv, struct command_line_option
       cli_delim("\n");
     }
   } else {
-    int n = confVarCount();
-    if (n == -1)
-      return -1;
-    unsigned int i;
-    for (i = 0; i != n; ++i) {
-      cli_puts(confVar(i));
-      cli_delim("=");
-      cli_puts(confValue(i));
-      cli_delim("\n");
+    struct cf_om_iterator it;
+    for (cf_om_iter_start(&it, root); it.node; cf_om_iter_next(&it)) {
+      if (it.node->text) {
+	cli_puts(it.node->fullkey);
+	cli_delim("=");
+	cli_puts(it.node->text);
+	cli_delim("\n");
+      }
     }
   }
   return 0;

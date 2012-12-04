@@ -12,6 +12,7 @@ HDRS=	fifo.h \
 	strbuf_helpers.h \
 	sha2.h \
 	conf.h \
+	conf_schema.h \
 	crypto.h \
 	log.h \
 	net.h \

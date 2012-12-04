@@ -30,7 +30,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include "strbuf.h"
 #include "log.h"
-#include "config.h"
+#include "conf.h"
 
 static const char *cf_find_keyend(const char *const key, const char *const fullkeyend)
 {
@@ -42,6 +42,34 @@ static const char *cf_find_keyend(const char *const key, const char *const fullk
   if (s == key || (s < fullkeyend && *s != '.'))
     return NULL;
   return s;
+}
+
+/* This predicate function defines the constraints on configuration option names.
+ * Valid:
+ *	foo
+ *	foo.bar
+ *	foo.bar.chow
+ *	_word
+ *	word1
+ *	word_1
+ * Invalid:
+ *      foo.
+ *	.foo
+ *	1foo
+ *	foo.bar.
+ *	12
+ *	1.2.3
+ *	foo bar
+ *  @author Andrew Bettison <andrew@servalproject.com>
+ */
+int is_configvarname(const char *text)
+{
+  const char *const textend = text + strlen(text);
+  const char *key = text;
+  const char *keyend = NULL;
+  while (key < textend && (keyend = cf_find_keyend(key, textend)) != NULL)
+    key = keyend + 1;
+  return keyend != NULL;
 }
 
 static int cf_om_make_child(struct cf_om_node **const parentp, const char *const fullkey, const char *const key, const char *const keyend)
@@ -95,23 +123,25 @@ static int cf_om_make_child(struct cf_om_node **const parentp, const char *const
   return i;
 }
 
-int cf_get_child(const struct cf_om_node *parent, const char *key)
+int cf_om_get_child(const struct cf_om_node *parent, const char *key, const char *keyend)
 {
+  if (keyend == NULL)
+    keyend = key + strlen(key);
   // TODO: use binary search, since child nodes are already sorted by key
   int i;
   for (i = 0; i < parent->nodc; ++i)
-    if (strcmp(parent->nodv[i]->key, key) == 0)
+    if (memcmp(parent->nodv[i]->key, key, keyend - key) == 0 && parent->nodv[i]->key[keyend - key] == '\0')
       return i;
   return -1;
 }
 
-int cf_parse_to_om(const char *source, const char *buf, size_t len, struct cf_om_node **rootp)
+int cf_om_parse(const char *source, const char *buf, size_t len, struct cf_om_node **rootp)
 {
   const char *end = buf + len;
   const char *line = buf;
   const char *nextline;
   unsigned lineno = 1;
-  int result = CFOK;
+  int result = CFEMPTY;
   for (lineno = 1; line < end; line = nextline, ++lineno) {
     const char *lend = line;
     while (lend < end && *lend != '\n')
@@ -167,15 +197,16 @@ int cf_parse_to_om(const char *source, const char *buf, size_t len, struct cf_om
       return CFERROR; // out of memory
     node->source = source;
     node->line_number = lineno;
+    result &= ~CFEMPTY;
   }
   return result;
 }
 
-void cf_free_node(struct cf_om_node **nodep)
+void cf_om_free_node(struct cf_om_node **nodep)
 {
   if (*nodep) {
     while ((*nodep)->nodc)
-      cf_free_node(&(*nodep)->nodv[--(*nodep)->nodc]);
+      cf_om_free_node(&(*nodep)->nodv[--(*nodep)->nodc]);
     if ((*nodep)->fullkey) {
       free((char *)(*nodep)->fullkey);
       (*nodep)->fullkey = (*nodep)->key = NULL;
@@ -189,7 +220,7 @@ void cf_free_node(struct cf_om_node **nodep)
   }
 }
 
-void cf_dump_node(const struct cf_om_node *node, int indent)
+void cf_om_dump_node(const struct cf_om_node *node, int indent)
 {
   if (node == NULL)
     DEBUGF("%*sNULL", indent * 3, "");
@@ -203,7 +234,95 @@ void cf_dump_node(const struct cf_om_node *node, int indent)
       );
     int i;
     for (i = 0; i < node->nodc; ++i)
-      cf_dump_node(node->nodv[i], indent + 1);
+      cf_om_dump_node(node->nodv[i], indent + 1);
+  }
+}
+
+const char *cf_om_get(const struct cf_om_node *node, const char *fullkey)
+{
+  const char *fullkeyend = fullkey + strlen(fullkey);
+  const char *key = fullkey;
+  const char *keyend = NULL;
+  int nodi = -1;
+  while (key <= fullkeyend && (keyend = cf_find_keyend(key, fullkeyend)) && (nodi = cf_om_get_child(node, key, keyend)) != -1) {
+    key = keyend + 1;
+    node = node->nodv[nodi];
+  }
+  if (keyend == NULL) {
+    WARNF("malformed configuration option %s", alloca_toprint(-1, fullkey, fullkeyend - fullkey));
+    return NULL;
+  }
+  if (nodi == -1)
+    return NULL;
+  return node->text;
+}
+
+int cf_om_set(struct cf_om_node **nodep, const char *fullkey, const char *text)
+{
+  const char *fullkeyend = fullkey + strlen(fullkey);
+  const char *key = fullkey;
+  const char *keyend = NULL;
+  int nodi = -1;
+  while (key <= fullkeyend && (keyend = cf_find_keyend(key, fullkeyend)) && (nodi = cf_om_make_child(nodep, fullkey, key, keyend)) != -1) {
+    key = keyend + 1;
+    nodep = &(*nodep)->nodv[nodi];
+  }
+  if (keyend == NULL) {
+    WARNF("malformed configuration option %s", alloca_toprint(-1, fullkey, fullkeyend - fullkey));
+    return CFINVALID;
+  }
+  if (nodi == -1)
+    return CFERROR; // out of memory
+  struct cf_om_node *node = *nodep;
+  free((char *)node->text);
+  if (text == NULL)
+    node->text = NULL;
+  else if (!(node->text = str_edup(text)))
+    return CFERROR; // out of memory
+  return CFOK;
+}
+
+void cf_om_iter_start(struct cf_om_iterator *it, const struct cf_om_node *root)
+{
+  it->sp = 0;
+  it->stack[0].node = it->node = root;
+  it->stack[0].index = 0;
+}
+
+#if 0
+static void cf_om_iter_dump(struct cf_om_iterator *it)
+{
+  strbuf b = strbuf_alloca(1024);
+  strbuf_sprintf(b, "node=%p sp=%d", it->node, it->sp);
+  int i;
+  for (i = 0; i <= it->sp; ++i)
+    strbuf_sprintf(b, " %p[%d]", it->stack[i].node, it->stack[i].index);
+  DEBUG(strbuf_str(b));
+}
+#endif
+
+int cf_om_iter_next(struct cf_om_iterator *it)
+{
+  //cf_om_iter_dump(it);
+  if (!it->node)
+    return 0;
+  while (1) {
+    const struct cf_om_node *parent = it->stack[it->sp].node;
+    int i = it->stack[it->sp].index++;
+    if (i < parent->nodc) {
+      it->node = parent->nodv[i];
+      if (it->sp >= NELS(it->stack))
+	return -1;
+      ++it->sp;
+      it->stack[it->sp].node = it->node;
+      it->stack[it->sp].index = 0;
+      return 0;
+    } else if (it->sp) {
+      --it->sp;
+    } else {
+      it->node = NULL;
+      return 0;
+    }
   }
 }
 

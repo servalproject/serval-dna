@@ -19,7 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <assert.h>
 #include "log.h"
-#include "config.h"
+#include "conf.h"
 
 // Generate config set-default function definitions, cf_dfl_config_NAME().
 #define STRUCT(__name, __validator...) \
@@ -133,7 +133,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
       memset(used, 0, node->nodc * sizeof used[0]);
 #define __ITEM(__element, __flags, __parseexpr) \
       { \
-	int i = cf_get_child(node, #__element); \
+	int i = cf_om_get_child(node, #__element, NULL); \
 	const struct cf_om_node *child = (i != -1) ? node->nodv[i] : NULL; \
 	int ret = CFEMPTY; \
 	if (child) { \
@@ -185,7 +185,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	result = (*validator)(node, strct, result); \
       return result; \
     }
-
 #define ARRAY(__name, __flags, __validator...) \
     int cf_opt_config_##__name(struct config_##__name *array, const struct cf_om_node *node) { \
       int flags = (0 __flags); \
@@ -262,9 +261,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
       __ARRAY_VALUE(cf_opt_config_##__structname(&array->av[n].value, child))
 #define VALUE_NODE_STRUCT(__structname, __eltparser) \
       __ARRAY_VALUE(__eltparser(&array->av[n].value, child))
-
 #include "conf_schema.h"
-
 #undef STRUCT
 #undef NODE
 #undef ATOM
@@ -281,3 +278,56 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef VALUE_SUB_STRUCT
 #undef VALUE_NODE_STRUCT
 #undef END_ARRAY
+
+// Generate config array search-by-key functions.
+#define STRUCT(__name, __validator...)
+#define NODE(__type, __element, __default, __parser, __flags, __comment)
+#define ATOM(__type, __element, __default, __parser, __flags, __comment)
+#define STRING(__size, __element, __default, __parser, __flags, __comment)
+#define SUB_STRUCT(__name, __element, __flags)
+#define NODE_STRUCT(__name, __element, __parser, __flags)
+#define END_STRUCT
+#define ARRAY(__name, __flags, __validator...) \
+    int config_##__name##__get(const struct config_##__name *array,
+#define KEY_ATOM(__type, __eltparser, __cmpfunc...) \
+	  const __type *key) { \
+      int (*cmp)(const __type *, const __type *) = (NULL, ##__cmpfunc); \
+      int i; \
+      for (i = 0; i < array->ac; ++i) \
+	if ((cmp ? (*cmp)(key, &array->av[i].key) : memcmp(key, &array->av[i].key, sizeof *key)) == 0) \
+	  return i; \
+      return -1; \
+    }
+#define KEY_STRING(__strsize, __eltparser, __cmpfunc...) \
+	  const char *key) { \
+      int (*cmp)(const char *, const char *) = (NULL, ##__cmpfunc); \
+      int i; \
+      for (i = 0; i < array->ac; ++i) \
+	if ((cmp ? (*cmp)(key, array->av[i].key) : strcmp(key, array->av[i].key)) == 0) \
+	  return i; \
+      return -1; \
+    }
+#define VALUE_ATOM(__type, __eltparser)
+#define VALUE_STRING(__strsize, __eltparser)
+#define VALUE_NODE(__type, __eltparser)
+#define VALUE_SUB_STRUCT(__structname)
+#define VALUE_NODE_STRUCT(__structname, __eltparser)
+#define END_ARRAY(__size)
+#include "conf_schema.h"
+#undef STRUCT
+#undef NODE
+#undef ATOM
+#undef STRING
+#undef SUB_STRUCT
+#undef NODE_STRUCT
+#undef END_STRUCT
+#undef ARRAY
+#undef KEY_ATOM
+#undef KEY_STRING
+#undef VALUE_ATOM
+#undef VALUE_STRING
+#undef VALUE_NODE
+#undef VALUE_SUB_STRUCT
+#undef VALUE_NODE_STRUCT
+#undef END_ARRAY
+

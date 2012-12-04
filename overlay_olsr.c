@@ -32,13 +32,12 @@
 */
 
 #include "serval.h"
+#include "conf.h"
 #include "overlay_packet.h"
 #include "overlay_buffer.h"
 #include "overlay_address.h"
 
 #define PACKET_FORMAT_NUMBER 123
-static int local_port =4131;
-static int remote_port =4130;
 
 static void olsr_read(struct sched_ent *alarm);
 
@@ -60,17 +59,14 @@ int olsr_init_socket(void){
   if (read_watch.poll.fd>=0)
     return 0;
   
-  if (!confValueGetBoolean("olsr.enabled",0))
+  if (!config.olsr.enable)
     return 0;
   
-  local_port = confValueGetInt64Range("olsr.local.port", local_port, 1LL, 0xFFFFLL);
-  remote_port = confValueGetInt64Range("olsr.remote.port", remote_port, 1LL, 0xFFFFLL);
-  
-  INFOF("Initialising olsr broadcast forwarding via ports %d-%d", local_port, remote_port);
+  INFOF("Initialising olsr broadcast forwarding via ports %d-%d", config.olsr.local_port, config.olsr.remote_port);
   struct sockaddr_in addr = {
     .sin_family = AF_INET,
     .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
-    .sin_port = htons(local_port),
+    .sin_port = htons(config.olsr.local_port),
   };
   
   fd = socket(AF_INET,SOCK_DGRAM,0);
@@ -208,7 +204,7 @@ static void olsr_read(struct sched_ent *alarm){
       return;
     
     // drop packets from other port numbers
-    if (ntohs(addr.sin_port)!=remote_port){
+    if (ntohs(addr.sin_port)!= config.olsr.remote_port){
       WHYF("Dropping unexpected packet from port %d", ntohs(addr.sin_port));
       return;
     }
@@ -232,7 +228,7 @@ static int send_packet(unsigned char *header, int header_len, unsigned char *pay
   struct sockaddr_in addr={
     .sin_family=AF_INET,
     .sin_addr.s_addr=htonl(INADDR_LOOPBACK),
-    .sin_port=htons(remote_port),
+    .sin_port=htons(config.olsr.remote_port),
   };
   
   struct iovec iov[]={

@@ -18,18 +18,19 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "conf.h"
 #include "str.h"
 #include "rhizome.h"
 #include <stdlib.h>
 
 int rhizome_enabled()
 {
-  return confValueGetBoolean("rhizome.enable", 1);;
+  return config.rhizome.enable;
 }
 
 int rhizome_fetch_delay_ms()
 {
-  return confValueGetInt64Range("rhizome.fetch_delay_ms", 50, 1, 3600000);
+  return config.rhizome.fetch_delay_ms;
 }
 
 /* Import a bundle from a pair of files, one containing the manifest and the optional other

@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <sys/stat.h>
 #include "serval.h"
+#include "conf.h"
 #include "rhizome.h"
 #include "cli.h"
 #include "str.h"
@@ -339,8 +340,7 @@ static void monitor_new_client(int s) {
 #endif
 
   if (otheruid != getuid()) {
-    int allowed_id = confValueGetInt64("monitor.uid",-1);
-    if (otheruid != allowed_id){
+    if (otheruid != config.monitor.uid){
       WHYF("monitor.socket client has wrong uid (%d versus %d)", otheruid,getuid());
       write_str(s, "\nCLOSE:Incorrect UID\n");
       goto error;

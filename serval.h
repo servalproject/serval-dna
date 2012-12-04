@@ -114,7 +114,6 @@ struct in_addr {
 #include "xprintf.h"
 #include "log.h"
 #include "net.h"
-#include "conf.h"
 #include "os.h"
 
 /* UDP Port numbers for various Serval services.
@@ -141,7 +140,22 @@ struct in_addr {
 /* Limit packet payloads to minimise packet loss of big packets in mesh networks */
 #define MAX_DATA_BYTES 256
 
-double simulatedBER;
+#ifdef ANDROID
+#define DEFAULT_INSTANCE_PATH "/data/data/org.servalproject/var/serval-node"
+#else
+#define DEFAULT_INSTANCE_PATH "/var/serval-node"
+#endif
+
+/* Handy statement for forming a path to an instance file in a char buffer whose declaration
+ * is in scope (so that sizeof(buf) will work).  Evaluates to true if the pathname fitted into
+ * the provided buffer, false (0) otherwise (after logging an error).
+ */
+#define FORM_SERVAL_INSTANCE_PATH(buf, path) (form_serval_instance_path(buf, sizeof(buf), (path)))
+
+const char *serval_instancepath();
+int create_serval_instance_dir();
+int form_serval_instance_path(char *buf, size_t bufsiz, const char *path);
+void serval_setinstancepath(const char *instancepath);
 
 extern int serverMode;
 extern int servalShutdown;
@@ -316,7 +330,7 @@ typedef struct overlay_interface {
   struct sched_ent alarm;
   char name[256];
   int recv_offset;
-  int fileP;
+  int fileP; // dummyP
   int bits_per_second;
   int port;
   int type;
@@ -331,7 +345,7 @@ typedef struct overlay_interface {
    For ~10K ISM915MHz (nominal range ~3000m) it will probably be about 15000ms.
    These figures will be refined over time, and we will allow people to set them per-interface.
    */
-  int tick_ms; /* milliseconds per tick */
+  unsigned tick_ms; /* milliseconds per tick */
   int send_broadcasts;
   /* The time of the last tick on this interface in milli seconds */
   time_ms_t last_tick_ms;
@@ -400,7 +414,12 @@ typedef struct overlay_txqueue {
 
 extern overlay_txqueue overlay_tx[OQ_MAX];
 
-ssize_t recvwithttl(int sock, unsigned char *buffer, size_t bufferlen, int *ttl, struct sockaddr *recvaddr, socklen_t *recvaddrlen);
+typedef struct sid_binary {
+    unsigned char binary[SID_SIZE];
+} sid_t;
+
+#define SID_ANY         ((sid_t){{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}})
+#define SID_BROADCAST   ((sid_t){{0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff}})
 
 // is the SID entirely 0xFF?
 #define is_sid_broadcast(SID) is_all_matching(SID, SID_SIZE, 0xFF)
@@ -443,7 +462,6 @@ time_ms_t overlay_time_until_next_tick();
 
 int overlay_add_selfannouncement();
 int overlay_frame_append_payload(overlay_interface *interface, struct overlay_frame *p, struct subscriber *next_hop, struct overlay_buffer *b);
-int overlay_interface_args(const char *arg);
 int overlay_rhizome_add_advertisements(int interface_number,struct overlay_buffer *e);
 int overlay_add_local_identity(unsigned char *s);
 void overlay_update_queue_schedule(overlay_txqueue *queue, struct overlay_frame *frame);
@@ -510,9 +528,6 @@ int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_opendb();
 
 int parseCommandLine(const char *argv0, int argc, const char *const *argv);
-
-int form_serval_instance_path(char * buf, size_t bufsiz, const char *path);
-int create_serval_instance_dir();
 
 int overlay_mdp_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int overlay_mdp_reply_error(int sock,
@@ -613,8 +628,6 @@ int cli_putchar(char c);
 int cli_puts(const char *str);
 int cli_printf(const char *fmt, ...);
 int cli_delim(const char *opt);
-
-int is_configvarname(const char *arg);
 
 int overlay_mdp_getmyaddr(int index,unsigned char *sid);
 int overlay_mdp_bind(unsigned char *localaddr,int port); 

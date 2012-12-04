@@ -23,8 +23,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <arpa/inet.h>
 #include <assert.h>
 #include <time.h>
+#include <fnmatch.h>
 #include "serval.h"
+#include "conf.h"
 #include "strbuf.h"
+#include "strbuf_helpers.h"
 #include "overlay_buffer.h"
 #include "overlay_packet.h"
 #include "str.h"
@@ -37,17 +40,6 @@ int overlay_ready=0;
 int overlay_interface_count=0;
 overlay_interface overlay_interfaces[OVERLAY_MAX_INTERFACES];
 int overlay_last_interface_number=-1;
-
-struct interface_rules {
-  char *namespec;
-  unsigned long long speed_in_bits;
-  int port;
-  char type;
-  char excludeP;
-  struct interface_rules *next;
-};
-
-struct interface_rules *interface_filter=NULL;
 
 struct profile_total interface_poll_stats;
 struct profile_total dummy_poll_stats;
@@ -72,123 +64,12 @@ struct profile_total send_packet;
 static int overlay_tick_interface(int i, time_ms_t now);
 static void overlay_interface_poll(struct sched_ent *alarm);
 static void logServalPacket(int level, struct __sourceloc __whence, const char *message, const unsigned char *packet, size_t len);
-static long long parse_quantity(char *q);
 
 #define DEBUG_packet_visualise(M,P,N) logServalPacket(LOG_LEVEL_DEBUG, __WHENCE__, (M), (P), (N))
 
 unsigned char magic_header[]={/* Magic */ 'O',0x10,
   /* Version */ 0x00,0x01};
 
-
-static int overlay_interface_type(char *s)
-{
-  if (!strcasecmp(s,"ethernet")) return OVERLAY_INTERFACE_ETHERNET;
-  if (!strcasecmp(s,"wifi")) return OVERLAY_INTERFACE_WIFI;
-  if (!strcasecmp(s,"other")) return OVERLAY_INTERFACE_UNKNOWN;
-  if (!strcasecmp(s,"catear")) return OVERLAY_INTERFACE_PACKETRADIO;
-  return -1;
-}
-
-int overlay_interface_arg(char *arg)
-{
-  /* Parse an interface argument, of the form:
-
-     <+|->[interfacename][=type]
-
-     +interface tells DNA to sit on that interface
-     -interface tells DNA to not sit on that interface
-     +/- without an interface tells DNA to sit on all interfaces.
-
-     The first match rules, so -en0+ tells DNA to use all interfaces, excepting en0
-
-     The optional =type specifier tells DNA how to handle the interface in terms of
-     bandwidth:distance relationship for calculating tick times etc.
-
-     The special type =custom allows full specification:
-     
-     XXX - Settle the custom specification now that we have changed the interface
-     management.
-  */
-
-  char sign[80]="+";
-  char interface_name[80]="";
-  char speed[80]="1m";
-  char typestring[80]="wifi";
-  int port=PORT_DNA;
-  int type=OVERLAY_INTERFACE_UNKNOWN;
-  int n=0;
-
-  /* Too long */
-  if (strlen(arg)>79) return WHY("interface specification was >79 characters");
-
-  struct interface_rules *r=calloc(sizeof(struct interface_rules),1);
-  if (!r) return WHY("calloc(struct interface rules),1) failed");
-
-
-  if (sscanf(arg,"%[+-]%n%[^=:,]%n=%[^:]%n:%d%n:%[^:]%n",
-	     sign,&n,interface_name,&n,typestring,&n,&port,&n,speed,&n)>=1)
-    {
-      if (n<strlen(arg)) { free(r); return WHY("Extra junk at end of interface specification"); }
-
-      if (strlen(sign)>1) { free(r); return WHY("Sign must be + or -"); }
-      switch(sign[0])
-	{
-	case '+': break;
-	case '-': r->excludeP=1; break;
-	default: 
-	  free(r);
-	  return WHY("Invalid interface list item: Must begin with + or -");
-	}
-
-      long long speed_in_bits=parse_quantity(speed);
-      if (speed_in_bits<=1) {
-	free(r);
-	return WHY("Interfaces must be capable of at least 1 bit per second");
-      }
-      if (n<strlen(arg)) return WHY("Extra stuff at end of interface specification");
-
-      type=overlay_interface_type(typestring);
-      if (type<0) { free(r); return WHY("Invalid interface type in specification"); }
-
-      /* Okay, register the interface preference */
-      r->namespec=strdup(interface_name);
-      r->speed_in_bits=speed_in_bits;
-      r->port=port;
-      r->type=type;
-      
-      r->next=interface_filter;
-      interface_filter=r;
-
-      return 0;
-    }
-  else { free(r); return WHY("Bad interface specification"); }
-}
-
-int overlay_interface_args(const char *arg)
-{
-  /* Parse series of comma-separated interface definitions from a single argument
-   */
-  int i=0;
-  char interface[80];
-  int len=0;
-
-  for(i=0;arg[i];i++)
-    {
-      if (arg[i]==','||arg[i]=='\n') {
-	interface[len]=0;
-	if (overlay_interface_arg(interface)) return WHY("Could not add interface");
-	len=0;
-      } else {
-	if (len<79) {
-	  interface[len++]=arg[i];
-	  interface[len]=0;
-	} else 
-	  return WHY("Interface definition is too long (each must be <80 characters)");
-      }
-    }
-  if (len) if (overlay_interface_arg(interface)) return WHY("Could not add final interface");
-  return 0;     
-}
 
 static void
 overlay_interface_close(overlay_interface *interface){
@@ -350,7 +231,8 @@ overlay_interface_read_any(struct sched_ent *alarm){
 
 // bind a socket to INADDR_ANY:port
 // for now, we don't have a graceful close for this interface but it should go away when the process dies
-static int overlay_interface_init_any(int port){
+static int overlay_interface_init_any(int port)
+{
   struct sockaddr_in addr;
   
   if (sock_any.poll.fd>0){
@@ -441,9 +323,8 @@ overlay_interface_init_socket(int interface_index)
 }
 
 static int
-overlay_interface_init(char *name, struct in_addr src_addr, struct in_addr netmask,
-		       struct in_addr broadcast,
-		       int speed_in_bits, int port, int type)
+overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr netmask, struct in_addr broadcast,
+		       const struct config_network_interface *ifconfig)
 {
   /* Too many interfaces */
   if (overlay_interface_count>=OVERLAY_MAX_INTERFACES) return WHY("Too many interfaces -- Increase OVERLAY_MAX_INTERFACES");
@@ -456,56 +337,55 @@ overlay_interface_init(char *name, struct in_addr src_addr, struct in_addr netma
      This will ultimately get tuned by the bandwidth and other properties of the interface */
   interface->mtu=1200;
   interface->state=INTERFACE_STATE_DOWN;
-  interface->bits_per_second=speed_in_bits;
-  interface->port=port;
-  interface->type=type;
+  interface->bits_per_second = ifconfig->speed;
+  interface->port= ifconfig->port;
+  interface->type= ifconfig->type;
   interface->last_tick_ms= -1; // not ticked yet
   interface->alarm.poll.fd=0;
-  
-  // how often do we announce ourselves on this interface?
-  switch (type) {
-  case OVERLAY_INTERFACE_PACKETRADIO:
-    interface->tick_ms = confValueGetInt64Range("mdp.packetradio.tick_ms", 15000LL, 1LL, 3600000LL);
-    break;
-  case OVERLAY_INTERFACE_ETHERNET:
-    interface->tick_ms = confValueGetInt64Range("mdp.ethernet.tick_ms", 500LL, 1LL, 3600000LL);
-    break;
-  case OVERLAY_INTERFACE_WIFI:
-    interface->tick_ms = confValueGetInt64Range("mdp.wifi.tick_ms", 500LL, 1LL, 3600000LL);
-    break;
-  case OVERLAY_INTERFACE_UNKNOWN:
-    interface->tick_ms = confValueGetInt64Range("mdp.unknown.tick_ms", 500LL, 1LL, 3600000LL);
-    break;
-  default:
-    return WHYF("Unsupported interface type %d", type);
-  }
 
-  // allow for a per interface override of tick interval
-  {
-    char option_name[64];
-    snprintf(option_name, sizeof(option_name), "mdp.%s.tick_ms", (*name=='>'?name+1:name));
-    interface->tick_ms = confValueGetInt64Range(option_name, interface->tick_ms, 1LL, 3600000LL);
+  // How often do we announce ourselves on this interface?
+  int32_t tick_ms = ifconfig->mdp_tick_ms;
+  if (tick_ms < 0) {
+    int i = config_mdp_iftypelist__get(&config.mdp.iftype, &ifconfig->type);
+    if (i != -1)
+      tick_ms = config.mdp.iftype.av[i].value.tick_ms;
   }
-  
-  // disable announcements and other broadcasts if tick_ms=0. 
-  if (interface->tick_ms>0)
+  if (tick_ms < 0) {
+    switch (ifconfig->type) {
+    case OVERLAY_INTERFACE_PACKETRADIO:
+      tick_ms = 15000;
+      break;
+    case OVERLAY_INTERFACE_ETHERNET:
+      tick_ms = 500;
+      break;
+    case OVERLAY_INTERFACE_WIFI:
+      tick_ms = 500;
+      break;
+    case OVERLAY_INTERFACE_UNKNOWN:
+      tick_ms = 500;
+      break;
+    default:
+      return WHYF("Unsupported interface type %d", ifconfig->type);
+    }
+  }
+  assert(tick_ms >= 0);
+  interface->tick_ms = tick_ms;
+
+  // disable announcements and other broadcasts if tick_ms=0.
+  if (interface->tick_ms > 0)
     interface->send_broadcasts=1;
   else{
     interface->send_broadcasts=0;
     INFOF("Interface %s is running tickless", name);
   }
   
-  if (name[0]=='>') {
-    interface->fileP=1;
+  if (ifconfig->dummy[0]) {
+    interface->fileP = 1;
     char dummyfile[1024];
-    if (name[1]=='/') {
-      /* Absolute path */
-      snprintf(dummyfile, sizeof(dummyfile), "%s", &name[1]);
-    } else {
-      const char *interface_folder = confValueGet("interface.folder", serval_instancepath());
-      snprintf(dummyfile, sizeof(dummyfile), "%s/%s", interface_folder, &name[1]);
-    }
-    
+    strbuf d = strbuf_local(dummyfile, sizeof dummyfile);
+    strbuf_path_join(d, serval_instancepath(), config.server.dummy_interface_dir, ifconfig->dummy, NULL);
+    if (strbuf_overrun(d))
+      return WHYF("dummy interface file name overrun: %s", alloca_str_toprint(strbuf_str(d)));
     if ((interface->alarm.poll.fd = open(dummyfile,O_APPEND|O_RDWR)) < 1) {
       return WHYF("could not open dummy interface file %s for append", dummyfile);
     }
@@ -781,41 +661,50 @@ overlay_broadcast_ensemble(int interface_number,
     }
 }
 
-/* Register the interface, or update the existing interface registration */
+/* Register the real interface, or update the existing interface registration. */
 int
 overlay_interface_register(char *name,
 			   struct in_addr addr,
-			   struct in_addr mask) {
-  struct interface_rules	*r, *me;
-  int				i;
+			   struct in_addr mask)
+{
   struct in_addr broadcast = {.s_addr = addr.s_addr | ~mask.s_addr};
-  
+
   if (debug & DEBUG_OVERLAYINTERFACES) {
     // note, inet_ntop doesn't seem to behave on android
     DEBUGF("%s address: %s", name, inet_ntoa(addr));
     DEBUGF("%s broadcast address: %s", name, inet_ntoa(broadcast));
   }
-  
-  /* See if the interface is listed in the filter */
-  me = NULL;
-  for (r = interface_filter; r && !me; r = r->next)
-    if (r->namespec[0] == '\0' || strcasecmp(name, r->namespec) == 0)
-      me = r;
-  if (me == NULL || me->excludeP) {
+
+  // Find the matching non-dummy interface rule.
+  const struct config_network_interface *ifconfig = NULL;
+  int i;
+  for (i = 0; i < config.interfaces.ac; ++i, ifconfig = NULL) {
+    ifconfig = &config.interfaces.av[i].value;
+    if (!ifconfig->dummy[0]) {
+      int j;
+      for (j = 0; j < ifconfig->match.patc; ++j)
+	if (fnmatch(ifconfig->match.patv[j], name, 0) == 0)
+	  break;
+    }
+  }
+  if (ifconfig == NULL) {
     if (debug & DEBUG_OVERLAYINTERFACES)
-      DEBUGF("Interface %s is not interesting.",name);
+      DEBUGF("Interface %s does not match any rule", name);
+    return 0;
+  }
+  if (ifconfig->exclude) {
+    if (debug & DEBUG_OVERLAYINTERFACES)
+      DEBUGF("Interface %s is explicitly excluded", name);
     return 0;
   }
 
-  int found_interface= -1;
-  
   /* Search in the exist list of interfaces */
+  int found_interface= -1;
   for(i = 0; i < overlay_interface_count; i++){
     int broadcast_match = 0;
     int name_match =0;
     
-    if (overlay_interfaces[i].broadcast_address.sin_addr.s_addr
-	== broadcast.s_addr)
+    if (overlay_interfaces[i].broadcast_address.sin_addr.s_addr == broadcast.s_addr)
       broadcast_match = 1;
     
     name_match = !strcasecmp(overlay_interfaces[i].name, name);
@@ -850,7 +739,7 @@ overlay_interface_register(char *name,
   }
   
   /* New interface, so register it */
-  if (overlay_interface_init(name, addr, mask, broadcast, me->speed_in_bits, me->port, me->type))
+  if (overlay_interface_init(name, addr, mask, broadcast, ifconfig))
     return WHYF("Could not initialise newly seen interface %s", name);
   else
     if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("Registered interface %s", name);
@@ -858,66 +747,61 @@ overlay_interface_register(char *name,
   return 0;
 }
   
-void overlay_interface_discover(struct sched_ent *alarm){
-  int				i;
-  struct interface_rules	*r;
-  struct in_addr		dummyaddr;
-  int detect_real_interfaces = 0;
-  
+void overlay_interface_discover(struct sched_ent *alarm)
+{
   /* Mark all UP interfaces as DETECTING, so we can tell which interfaces are new, and which are dead */
+  int i;
   for (i = 0; i < overlay_interface_count; i++)
     if (overlay_interfaces[i].state==INTERFACE_STATE_UP)
       overlay_interfaces[i].state=INTERFACE_STATE_DETECTING;
 
-  /* Check through for any virtual dummy interfaces */
-  for (r = interface_filter; r != NULL; r = r->next) {
-    if (r->namespec[0] != '>'){
+  /* Register new dummy interfaces */
+  int detect_real_interfaces = 0;
+  const struct config_network_interface *ifconfig = NULL;
+  for (i = 0; i < config.interfaces.ac; ++i, ifconfig = NULL) {
+    ifconfig = &config.interfaces.av[i].value;
+    if (!ifconfig->dummy[0]) {
       detect_real_interfaces = 1;
       continue;
     }
-    
     for (i = 0; i < overlay_interface_count; i++)
-      if (!strcasecmp(overlay_interfaces[i].name,r->namespec)){
+      if (strcasecmp(overlay_interfaces[i].name, ifconfig->dummy) == 0) {
 	if (overlay_interfaces[i].state==INTERFACE_STATE_DETECTING)
 	  overlay_interfaces[i].state=INTERFACE_STATE_UP;
 	break;
       }
-
-    if (i >= overlay_interface_count){
-      /* New interface, so register it */      
-      overlay_interface_init(r->namespec,dummyaddr,dummyaddr,dummyaddr,1000000,PORT_DNA,OVERLAY_INTERFACE_WIFI);
+    if (i >= overlay_interface_count) {
+      // New dummy interface, so register it.
+      struct in_addr dummyaddr = (struct in_addr){htonl(INADDR_NONE)};
+      overlay_interface_init(ifconfig->dummy, dummyaddr, dummyaddr, dummyaddr, ifconfig);
     }
   }
 
-  /* Look for real interfaces */
-  if (detect_real_interfaces){
+  // Register new real interfaces
+  if (detect_real_interfaces) {
     int no_route = 1;
-    
 #ifdef HAVE_IFADDRS_H
     if (no_route != 0)
       no_route = doifaddrs();
 #endif
-
 #ifdef SIOCGIFCONF
     if (no_route != 0)
       no_route = lsif();
 #endif
-
 #ifdef linux
     if (no_route != 0)
       no_route = scrapeProcNetRoute();
 #endif
-
     if (no_route != 0) {
       FATAL("Unable to get any interface information");
     }
   }
-  
-  // detect if any interfaces have gone away and need to be closed
+
+  // Close any interfaces that have gone away.
   for(i = 0; i < overlay_interface_count; i++)
     if (overlay_interfaces[i].state==INTERFACE_STATE_DETECTING)
       overlay_interface_close(&overlay_interfaces[i]);
-  
+
   alarm->alarm = gettime_ms()+5000;
   alarm->deadline = alarm->alarm + 10000;
   schedule(alarm);
@@ -1282,17 +1166,6 @@ overlay_tick_interface(int i, time_ms_t now) {
   /* Stuff more payloads from queues and send it */
   overlay_fill_send_packet(&packet, now);
   RETURN(0);
-}
-
-static long long
-parse_quantity(char *q)
-{
-  if (strlen(q) >= 80)
-    return WHY("quantity string >=80 characters");
-  long long result;
-  if (str_to_int64_scaled(q, 10, &result, NULL))
-    return result;
-  return WHYF("Illegal quantity: %s", alloca_str_toprint(q));
 }
 
 static void

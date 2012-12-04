@@ -29,7 +29,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
-#include "config.h"
+#include "conf.h"
 
 int cf_opt_boolean(int *booleanp, const char *text)
 {
@@ -117,29 +117,34 @@ int cf_opt_protocol(char *str, size_t len, const char *text)
   return CFOK;
 }
 
-int cf_opt_rhizome_peer(struct config_rhizomepeer *rpeer, const struct cf_om_node *node)
+int cf_opt_rhizome_peer(struct config_rhizome_peer *rpeer, const struct cf_om_node *node)
 {
   if (!node->text)
-    return cf_opt_config_rhizomepeer(rpeer, node);
+    return cf_opt_config_rhizome_peer(rpeer, node);
   cf_warn_spurious_children(node);
+  return cf_opt_rhizome_peer_from_uri(rpeer, node->text);
+}
+
+int cf_opt_rhizome_peer_from_uri(struct config_rhizome_peer *rpeer, const char *text)
+{
   const char *protocol;
   size_t protolen;
   const char *auth;
-  if (str_is_uri(node->text)) {
+  if (str_is_uri(text)) {
     const char *hier;
-    if (!(   str_uri_scheme(node->text, &protocol, &protolen)
-	  && str_uri_hierarchical(node->text, &hier, NULL)
+    if (!(   str_uri_scheme(text, &protocol, &protolen)
+	  && str_uri_hierarchical(text, &hier, NULL)
 	  && str_uri_hierarchical_authority(hier, &auth, NULL))
     )
       return CFINVALID;
   } else {
-    auth = node->text;
+    auth = text;
     protocol = "http";
     protolen = strlen(protocol);
   }
   const char *host;
   size_t hostlen;
-  unsigned short port = 4110;
+  unsigned short port = RHIZOME_HTTP_PORT;
   if (!str_uri_authority_hostname(auth, &host, &hostlen))
     return CFINVALID;
   str_uri_authority_port(auth, &port);
@@ -179,10 +184,20 @@ int cf_opt_int(int *intp, const char *text)
   return CFOK;
 }
 
+int cf_opt_int32_nonneg(int32_t *intp, const char *text)
+{
+  const char *end = text;
+  long value = strtol(text, (char**)&end, 10);
+  if (end == text || *end || value < 0 || value > 0x7fffffffL)
+    return CFINVALID;
+  *intp = value;
+  return CFOK;
+}
+
 int cf_opt_uint32_nonzero(uint32_t *intp, const char *text)
 {
   const char *end = text;
-  long value = strtoul(text, (char**)&end, 10);
+  unsigned long value = strtoul(text, (char**)&end, 10);
   if (end == text || *end || value < 1 || value > 0xffffffffL)
     return CFINVALID;
   *intp = value;
@@ -286,7 +301,6 @@ int cf_opt_port(unsigned short *portp, const char *text)
 
 int cf_opt_sid(sid_t *sidp, const char *text)
 {
-  sid_t sid;
   if (!str_is_subscriber_id(text))
     return CFINVALID;
   size_t n = fromhex(sidp->binary, text, SID_SIZE);
@@ -296,7 +310,6 @@ int cf_opt_sid(sid_t *sidp, const char *text)
 
 int cf_opt_rhizome_bk(rhizome_bk_t *bkp, const char *text)
 {
-  rhizome_bk_t sid;
   if (!rhizome_str_is_bundle_key(text))
     return CFINVALID;
   size_t n = fromhex(bkp->binary, text, RHIZOME_BUNDLE_KEY_BYTES);

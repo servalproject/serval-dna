@@ -15,6 +15,7 @@
 #include "serval.h"
 #include "str.h"
 #include "overlay_address.h"
+#include "conf.h"
 
 struct subscriber *directory_service;
 
@@ -77,18 +78,9 @@ static void directory_send_keyring(struct subscriber *directory_service){
 
 static int load_directory_config(){
   if (!directory_service){
-    const char *sid_hex = confValueGet("directory.service", NULL);
-    if (!sid_hex)
-      return 0;
-    
-    unsigned char sid[SID_SIZE];
-    if (stowSid(sid, 0, sid_hex)==-1)
-      return WHYF("Invalid directory server SID %s", sid_hex);
-    
-    directory_service = find_subscriber(sid, SID_SIZE, 1);
+    directory_service = find_subscriber(config.directory.service.binary, SID_SIZE, 1);
     if (!directory_service)
       return WHYF("Failed to create subscriber record");
-    
     // used by tests
     INFOF("ADD DIRECTORY SERVICE %s", alloca_tohex_sid(directory_service->sid));
   }

@@ -17,8 +17,12 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#ifndef __SERVALDNA__RHIZOME_H
+#define __SERVALDNA__RHIZOME_H
+
 #include <sqlite3.h>
 #include "sha2.h"
+#include "str.h"
 #include "strbuf.h"
 #include "nacl.h"
 #include <sys/stat.h>
@@ -44,6 +48,16 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define RHIZOME_HTTP_PORT 4110
 #define RHIZOME_HTTP_PORT_MAX 4150
+
+typedef struct rhizome_bk_binary {
+    unsigned char binary[RHIZOME_BUNDLE_KEY_BYTES];
+} rhizome_bk_t;
+
+#define RHIZOME_BK_NONE ((rhizome_bk_t){{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}})
+
+__RHIZOME_INLINE int rhizome_is_bk_none(const rhizome_bk_t *bk) {
+    return is_all_matching(bk->binary, sizeof bk->binary, 0);
+}
 
 extern time_ms_t rhizome_voice_timeout;
 
@@ -564,3 +578,5 @@ struct http_response_parts {
 };
 
 int unpack_http_response(char *response, struct http_response_parts *parts);
+
+#endif //__SERVALDNA__RHIZOME_H
