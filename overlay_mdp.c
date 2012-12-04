@@ -344,7 +344,8 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
       
       if (crypto_box_curve25519xsalsa20poly1305_open_afternm
 	  (plain_block,plain_block,cipher_len,nonce,k)) {
-	RETURN(WHYF("crypto_box_open_afternm() failed (forged or corrupted packet of %d bytes)",cipher_len));
+	RETURN(WHYF("crypto_box_open_afternm() failed (from %s, to %s, len %d)",
+		    alloca_tohex_sid(f->source->sid), alloca_tohex_sid(f->destination->sid), cipher_len));
       }
       
       if (0) dump("plain block",plain_block,sizeof(plain_block));
@@ -683,9 +684,13 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       bzero(&plain[0],zb);
       bcopy(ob_ptr(plaintext),&plain[zb],cipher_len);
       
+      cipher_len+=zb;
+      
       ob_free(plaintext);
       
       frame->payload = ob_new();
+      ob_makespace(frame->payload, nb+cipher_len);
+      
       unsigned char *nonce = ob_append_space(frame->payload, nb);
       if (!nonce)
 	RETURN(-1);
@@ -695,8 +700,6 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       }
       // reserve the high bit of the nonce as a flag for transmitting a shorter nonce.
       nonce[0]&=0x7f;
-      
-      cipher_len+=zb;
       
       /* get pre-computed PKxSK bytes (the slow part of auth-cryption that can be
 	 retained and reused, and use that to do the encryption quickly. */
