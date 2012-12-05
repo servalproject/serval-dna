@@ -1156,6 +1156,20 @@ static int rhizome_fetch_mdp_requestmanifest(struct rhizome_fetch_slot *slot)
 
 static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
 {
+  /* In Rhizome Direct we use the same fetch slot system, but we aren't actually
+     a running servald instance, so we cannot fall back to MDP.  This is detected
+     by checking if we have a SID for this instance. If not, then we are not a
+     running servald instance, and we shouldn't try to use MDP.
+
+     Later on we could use MDP, but as a client of a running servald instance,
+     or with a temporary generated SID, so that we don't end up with two
+     instances with the same SID.
+  */
+  if (!my_subscriber) {
+    DEBUGF("I don't have an identity, so we cannot fall back to MDP");
+    return rhizome_fetch_close(slot);
+  }
+
   DEBUGF("Trying to switch to MDP for Rhizome fetch: slot=0x%p",slot);
   
   /* close socket and stop watching it */
