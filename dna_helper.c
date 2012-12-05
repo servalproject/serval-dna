@@ -187,8 +187,8 @@ dna_helper_start()
   int i;
   for (i = 0; i < config.dna.helper.argv.ac; ++i)
     argv[i + 1] = config.dna.helper.argv.av[i].value;
-  argv[i] = NULL;
-  strbuf argv_sb = strbuf_append_argv(strbuf_alloca(1024), config.dna.helper.argv.ac + 2, argv);
+  argv[i + 1] = NULL;
+  strbuf argv_sb = strbuf_append_argv(strbuf_alloca(1024), config.dna.helper.argv.ac + 1, argv);
   switch (dna_helper_pid = fork()) {
   case 0:
     /* Child, should exec() to become helper after installing file descriptors. */

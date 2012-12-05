@@ -424,7 +424,7 @@ static int cf_opt_network_interface_legacy(struct config_network_interface *nifp
     p = endtext;
   size_t len = p - name;
   if (name[0] == '>') {
-    if (len - 1 >= sizeof(nif.match.patv[0]))
+    if (len - 1 >= sizeof(nif.dummy))
       return CFSTRINGOVERFLOW;
     strncpy(nif.dummy, &name[1], len - 1)[len - 1] = '\0';
     nif.match.patc = 0;
@@ -559,10 +559,13 @@ int cf_opt_interface_list(struct config_interface_list *listp, const struct cf_o
 	  listp->av[n].key = n;
 	  ++n;
 	  break;
-	default:
-	  cf_warn_node(node, NULL, "invalid interface rule %s", alloca_str_toprint(buf)); \
-	  result |= CFSUB(ret);
-	  break;
+	default: {
+	    strbuf b = strbuf_alloca(180);
+	    strbuf_cf_flag_reason(b, ret);
+	    cf_warn_node(node, NULL, "invalid interface rule %s -- %s", alloca_str_toprint(buf), strbuf_str(b)); \
+	    result |= CFSUB(ret);
+	    break;
+	  }
 	}
 	arg = NULL;
       }
