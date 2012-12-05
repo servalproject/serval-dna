@@ -34,7 +34,7 @@ add_interface() {
 }
 
 start_routing_instance() {
-   executeOk_servald config set interface.folder "$SERVALD_VAR"
+   executeOk_servald config set server.dummy_interface_dir "$SERVALD_VAR"
    executeOk_servald config set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name"
    executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name"
    executeOk_servald config set log.show_pid on
