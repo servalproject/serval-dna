@@ -481,7 +481,7 @@ int str_uri_authority_hostname(const char *auth, const char **partp, size_t *len
   while (r > q && isdigit(*--r))
     ;
   if (r < p - 1 && *r == ':')
-    q = r;
+    p = r;
   if (partp)
     *partp = q;
   if (lenp)
