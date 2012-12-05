@@ -285,9 +285,9 @@ KEY_ATOM(sid_t, cf_opt_sid, cmp_sid)
 VALUE_SUB_STRUCT(host)
 END_ARRAY(32)
 
-STRUCT(network_interface)
+STRUCT(network_interface, vld_network_interface)
 ATOM(int,                   exclude,    0, cf_opt_boolean,, "If true, do not use matching interfaces")
-ATOM(struct pattern_list,   match,      PATTERN_LIST_EMPTY, cf_opt_pattern_list, MANDATORY, "Names that match network interface")
+ATOM(struct pattern_list,   match,      PATTERN_LIST_EMPTY, cf_opt_pattern_list,, "Names that match network interface")
 STRING(256,                 dummy,      "", cf_opt_str_nonempty,, "Path of dummy file, absolute or relative to server.dummy_interface_dir")
 ATOM(short,                 type,       OVERLAY_INTERFACE_WIFI, cf_opt_interface_type,, "Type of network interface")
 ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, cf_opt_port,, "Port number for network interface")
@@ -295,8 +295,8 @@ ATOM(uint64_t,              speed,      1000000, cf_opt_uint64_scaled,, "Speed i
 ATOM(int,                   mdp_tick_ms, -1, cf_opt_int32_nonneg,, "Override MDP tick interval for this interface")
 END_STRUCT
 
-ARRAY(interface_list,)
-KEY_STRING(15, cf_opt_str)
+ARRAY(interface_list, SORTED NO_DUPLICATES)
+KEY_ATOM(unsigned, cf_opt_uint)
 VALUE_NODE_STRUCT(network_interface, cf_opt_network_interface)
 END_ARRAY(10)
 

@@ -206,8 +206,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define CFARRAYOVERFLOW     (1<<2)
 #define CFSTRINGOVERFLOW    (1<<3)
 #define CFINCOMPLETE        (1<<4)
-#define CFINVALID           (1<<5)
-#define CFUNSUPPORTED       (1<<6)
+#define CFINCOMPATIBLE      (1<<5)
+#define CFINVALID           (1<<6)
+#define CFUNSUPPORTED       (1<<7)
 #define CF__SUB_SHIFT       16
 #define CFSUB(f)            ((f) << CF__SUB_SHIFT)
 #define CF__SUBFLAGS        CFSUB(~0)
@@ -268,7 +269,8 @@ void _cf_warn_no_array(struct __sourceloc __whence, const struct cf_om_node *nod
 void _cf_warn_unsupported_node(struct __sourceloc __whence, const struct cf_om_node *node);
 void _cf_warn_unsupported_children(struct __sourceloc __whence, const struct cf_om_node *parent);
 void _cf_warn_list_overflow(struct __sourceloc __whence, const struct cf_om_node *node);
-void _cf_warn_spurious_children(struct __sourceloc __whence, const struct cf_om_node *parent);
+void _cf_warn_incompatible(struct __sourceloc __whence, const struct cf_om_node *node, const struct cf_om_node *orig);
+void _cf_warn_incompatible_children(struct __sourceloc __whence, const struct cf_om_node *parent);
 void _cf_warn_array_key(struct __sourceloc __whence, const struct cf_om_node *node, int reason);
 void _cf_warn_array_value(struct __sourceloc __whence, const struct cf_om_node *node, int reason);
 
@@ -283,7 +285,8 @@ void _cf_warn_array_value(struct __sourceloc __whence, const struct cf_om_node *
 #define cf_warn_unsupported_node(node)	     _cf_warn_unsupported_node(__WHENCE__, node)
 #define cf_warn_unsupported_children(parent) _cf_warn_unsupported_children(__WHENCE__, parent)
 #define cf_warn_list_overflow(node)	     _cf_warn_list_overflow(__WHENCE__, node)
-#define cf_warn_spurious_children(parent)    _cf_warn_spurious_children(__WHENCE__, parent)
+#define cf_warn_incompatible(node, orig)     _cf_warn_incompatible(__WHENCE__, node, orig)
+#define cf_warn_incompatible_children(parent) _cf_warn_incompatible_children(__WHENCE__, parent)
 #define cf_warn_array_key(node, reason)	     _cf_warn_array_key(__WHENCE__, node, reason)
 #define cf_warn_array_value(node, reason)    _cf_warn_array_value(__WHENCE__, node, reason)
 

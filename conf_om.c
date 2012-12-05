@@ -383,9 +383,26 @@ void _cf_warn_missing_node(struct __sourceloc __whence, const struct cf_om_node 
   _cf_warn_node(__whence, parent, key, "is missing");
 }
 
-void _cf_warn_spurious_children(struct __sourceloc __whence, const struct cf_om_node *parent)
+void _cf_warn_incompatible(struct __sourceloc __whence, const struct cf_om_node *node, const struct cf_om_node *orig)
 {
-  _cf_warn_children(__whence, parent, "spurious");
+  assert(node != orig);
+  strbuf b = strbuf_alloca(180);
+  if (orig) {
+    strbuf_sprintf(b, "\"%s\"", orig->fullkey);
+    if (orig->source && orig->line_number)
+      strbuf_sprintf(b, " at %s:%u", orig->source, orig->line_number);
+  } else {
+    strbuf_puts(b, "other option(s)");
+  }
+  _cf_warn_node(__whence, node, NULL, "is incompatible with %s", strbuf_str(b));
+}
+
+void _cf_warn_incompatible_children(struct __sourceloc __whence, const struct cf_om_node *parent)
+{
+  struct cf_om_iterator it;
+  for (cf_om_iter_start(&it, parent); it.node; cf_om_iter_next(&it))
+    if (it.node != parent && it.node->text)
+      _cf_warn_incompatible(__whence, parent, it.node);
 }
 
 void _cf_warn_unsupported_node(struct __sourceloc __whence, const struct cf_om_node *node)
@@ -414,6 +431,7 @@ strbuf strbuf_cf_flags(strbuf sb, int flags)
       { CFSTRINGOVERFLOW, "CFSTRINGOVERFLOW" },
       { CFARRAYOVERFLOW, "CFARRAYOVERFLOW" },
       { CFINCOMPLETE, "CFINCOMPLETE" },
+      { CFINCOMPATIBLE, "CFINCOMPATIBLE" },
       { CFINVALID, "CFINVALID" },
       { CFUNSUPPORTED, "CFUNSUPPORTED" },
     };
@@ -457,6 +475,7 @@ strbuf strbuf_cf_flag_reason(strbuf sb, int flags)
       { CFSTRINGOVERFLOW, "string overflow" },
       { CFARRAYOVERFLOW, "array overflow" },
       { CFINCOMPLETE, "incomplete" },
+      { CFINCOMPATIBLE, "incompatible" },
       { CFINVALID, "invalid" },
       { CFUNSUPPORTED, "not supported" },
       { CFSUB(CFEMPTY), "contains empty element" },
@@ -464,6 +483,7 @@ strbuf strbuf_cf_flag_reason(strbuf sb, int flags)
       { CFSUB(CFSTRINGOVERFLOW), "contains string overflow" },
       { CFSUB(CFARRAYOVERFLOW), "contains array overflow" },
       { CFSUB(CFINCOMPLETE), "contains incomplete element" },
+      { CFSUB(CFINCOMPATIBLE), "contains incompatible element" },
       { CFSUB(CFINVALID), "contains invalid element" },
       { CFSUB(CFUNSUPPORTED), "contains unsupported element" },
     };

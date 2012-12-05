@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <errno.h>
 #include <sys/types.h>
 #include <stdarg.h>
@@ -121,7 +122,10 @@ int cf_opt_rhizome_peer(struct config_rhizome_peer *rpeer, const struct cf_om_no
 {
   if (!node->text)
     return cf_opt_config_rhizome_peer(rpeer, node);
-  cf_warn_spurious_children(node);
+  if (node->nodc) {
+    cf_warn_incompatible_children(node);
+    return CFINCOMPATIBLE;
+  }
   return cf_opt_rhizome_peer_from_uri(rpeer, node->text);
 }
 
@@ -181,6 +185,16 @@ int cf_opt_int(int *intp, const char *text)
   if (end == text || *end)
     return CFINVALID;
   *intp = value;
+  return CFOK;
+}
+
+int cf_opt_uint(unsigned int *uintp, const char *text)
+{
+  const char *end = text;
+  unsigned long value = strtoul(text, (char**)&end, 10);
+  if (end == text || *end)
+    return CFINVALID;
+  *uintp = value;
   return CFOK;
 }
 
@@ -398,6 +412,7 @@ static int cf_opt_network_interface_legacy(struct config_network_interface *nifp
 {
   //DEBUGF("%s text=%s", __FUNCTION__, alloca_str_toprint(text));
   struct config_network_interface nif;
+  (&nif);
   cf_dfl_config_network_interface(&nif);
   if (text[0] != '+' && text[0] != '-')
     return CFINVALID; // "Sign must be + or -"
@@ -408,13 +423,20 @@ static int cf_opt_network_interface_legacy(struct config_network_interface *nifp
   if (!p)
     p = endtext;
   size_t len = p - name;
-  int star = (len == 0 || (name[0] != '>' && name[len - 1] != '*')) ? 1 : 0;
-  if (len + star >= sizeof(nif.match.patv[0]))
-    return CFSTRINGOVERFLOW;
-  strncpy(nif.match.patv[0], name, len)[len + star] = '\0';
-  if (star)
-    nif.match.patv[0][len] = '*';
-  nif.match.patc = 1;
+  if (name[0] == '>') {
+    if (len - 1 >= sizeof(nif.match.patv[0]))
+      return CFSTRINGOVERFLOW;
+    strncpy(nif.dummy, &name[1], len - 1)[len - 1] = '\0';
+    nif.match.patc = 0;
+  } else {
+    int star = (strchr(name, '*') != NULL) ? 1 : 0;
+    if (len + star >= sizeof(nif.match.patv[0]))
+      return CFSTRINGOVERFLOW;
+    strncpy(nif.match.patv[0], name, len)[len + star] = '\0';
+    if (star)
+      nif.match.patv[0][len] = '*';
+    nif.match.patc = 1;
+  }
   if (*p == '=') {
     const char *const type = p + 1;
     p = strchr(type, ':');
@@ -476,8 +498,29 @@ int cf_opt_network_interface(struct config_network_interface *nifp, const struct
 {
   if (!node->text)
     return cf_opt_config_network_interface(nifp, node);
-  cf_warn_spurious_children(node);
+  if (node->nodc) {
+    cf_warn_incompatible_children(node);
+    return CFINCOMPATIBLE;
+  }
   return cf_opt_network_interface_legacy(nifp, node->text);
+}
+
+int vld_network_interface(const struct cf_om_node *parent, struct config_network_interface *nifp, int result)
+{
+  if (nifp->match.patc != 0 && nifp->dummy[0]) {
+    int nodei_match = cf_om_get_child(parent, "match", NULL);
+    int nodei_dummy = cf_om_get_child(parent, "dummy", NULL);
+    assert(nodei_match != -1);
+    assert(nodei_dummy != -1);
+    cf_warn_incompatible(parent->nodv[nodei_match], parent->nodv[nodei_dummy]);
+    return result | CFSUB(CFINCOMPATIBLE);
+  }
+  if (nifp->match.patc == 0 && !nifp->dummy[0]) {
+    DEBUGF("dummy=%s", alloca_str_toprint(nifp->dummy));
+    cf_warn_missing_node(parent, "match");
+    return result | CFINCOMPLETE;
+  }
+  return result;
 }
 
 /* Config parse function.  Implements the original form of the 'interfaces' config option.  Parses a
@@ -491,6 +534,10 @@ int cf_opt_interface_list(struct config_interface_list *listp, const struct cf_o
 {
   if (!node->text)
     return cf_opt_config_interface_list(listp, node);
+  if (node->nodc) {
+    cf_warn_incompatible_children(node);
+    return CFINCOMPATIBLE;
+  }
   const char *p;
   const char *arg = NULL;
   unsigned n = listp->ac;
@@ -509,8 +556,7 @@ int cf_opt_interface_list(struct config_interface_list *listp, const struct cf_o
 	switch (ret) {
 	case CFERROR: return CFERROR;
 	case CFOK:
-	  len = snprintf(listp->av[n].key, sizeof listp->av[n].key - 1, "%u", n);
-	  listp->av[n].key[len] = '\0';
+	  listp->av[n].key = n;
 	  ++n;
 	  break;
 	default:
