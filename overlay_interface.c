@@ -167,11 +167,8 @@ overlay_interface * overlay_interface_find_name(const char *name){
   for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
     if (overlay_interfaces[i].state!=INTERFACE_STATE_UP)
       continue;
-    if (strcasecmp((*name=='>'?name+1:name), 
-		   (*overlay_interfaces[i].name=='>'?overlay_interfaces[i].name+1:overlay_interfaces[i].name)
-		   )==0){
+    if (strcasecmp(name, overlay_interfaces[i].name) == 0)
       return &overlay_interfaces[i];
-    }
   }
   return NULL;
 }
