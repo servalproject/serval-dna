@@ -294,6 +294,9 @@ int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
     case MDP_BIND:
       len=(&mdp->raw[0] - (char *)mdp) + sizeof(sockaddr_mdp);
       break;
+    case MDP_SCAN:
+      len=(&mdp->raw[0] - (char *)mdp) + sizeof(struct overlay_mdp_scan);
+      break;
     case MDP_ERROR: 
       /* This formulation is used so that we don't copy any bytes after the
        end of the string, to avoid information leaks */

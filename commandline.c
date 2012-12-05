@@ -1874,6 +1874,33 @@ int app_reverse_lookup(int argc, const char *const *argv, struct command_line_op
   return 0;
 }
 
+int app_network_scan(int argc, const char *const *argv, struct command_line_option *o, void *context)
+{
+  overlay_mdp_frame mdp;
+  bzero(&mdp,sizeof(mdp));
+  
+  mdp.packetTypeAndFlags=MDP_SCAN;
+  
+  struct overlay_mdp_scan *scan = (struct overlay_mdp_scan *)&mdp.raw;
+  const char *address;
+  if (cli_arg(argc, argv, o, "address", &address, NULL, NULL) == -1)
+    return -1;
+  
+  if (address){
+    DEBUGF("Parsing arg %s", address);
+    if (!inet_aton(address, &scan->addr))
+      return WHY("Unable to parse the address");
+  }else
+    DEBUGF("Scanning local networks");
+  
+  overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000);
+  if (mdp.packetTypeAndFlags!=MDP_ERROR)
+    return -1;
+  cli_puts(mdp.error.message);
+  cli_delim("\n");
+  return mdp.error.error;
+}
+
 /* NULL marks ends of command structure.
    "<anystring>" marks an arg that can take any value.
    "[<anystring>]" marks an optional arg that can take any value.
@@ -1963,6 +1990,8 @@ struct command_line_option command_line_options[]={
    "Return identity of all known peers as URIs"},
   {app_route_print, {"route","print",NULL},0,
   "Print the routing table"},
+  {app_network_scan, {"scan","[<address>]",NULL},0,
+    "Scan the network for serval peers. If no argument is supplied, all local addresses will be scanned."},
   {app_node_info,{"node","info","<sid>",NULL},0,
    "Return routing information about a SID"},
   {app_count_peers,{"peer","count",NULL},0,

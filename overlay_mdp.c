@@ -859,6 +859,39 @@ static int routing_table(struct subscriber *subscriber, void *context){
   return 0;
 }
 
+struct scan_state{
+  struct sched_ent alarm;
+  overlay_interface *interface;
+  uint32_t current;
+  uint32_t last;
+};
+struct scan_state scans[OVERLAY_MAX_INTERFACES];
+
+static void overlay_mdp_scan(struct sched_ent *alarm)
+{
+  struct sockaddr_in addr={
+    .sin_family=AF_INET,
+    .sin_port=htons(PORT_DNA),
+  };
+  struct scan_state *state = (struct scan_state *)alarm;
+  
+  while(state->current <= state->last){
+    addr.sin_addr.s_addr=htonl(state->current);
+    if (overlay_send_probe(NULL, addr, state->interface))
+      break;
+    state->current++;
+  }
+  
+  if (state->current <= state->last){
+    alarm->alarm=gettime_ms()+500;
+    schedule(alarm);
+  }else{
+    state->interface=NULL;
+    state->current=0;
+    state->last=0;
+  }
+}
+
 void overlay_mdp_poll(struct sched_ent *alarm)
 {
   if (alarm->poll.revents & POLLIN) {
@@ -905,7 +938,7 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 	  
 	}
 	return;
-	  
+      
       case MDP_GETADDRS:
 	{
 	  overlay_mdp_frame mdpreply;
@@ -955,6 +988,52 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 	}
 	break;
 	  
+      case MDP_SCAN:
+	{
+	  struct overlay_mdp_scan *scan = (struct overlay_mdp_scan *)&mdp->raw;
+	  time_ms_t start=gettime_ms();
+	  
+	  if (scan->addr.s_addr==0){
+	    int i=0;
+	    for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
+	      // skip any interface that is already being scanned
+	      if (scans[i].interface)
+		continue;
+	      
+	      struct overlay_interface *interface = &overlay_interfaces[i];
+	      if (interface->state!=INTERFACE_STATE_UP)
+		continue;
+	      
+	      scans[i].interface = interface;
+	      scans[i].current = ntohl(interface->address.sin_addr.s_addr & interface->netmask.s_addr);
+	      scans[i].last = ntohl(interface->broadcast_address.sin_addr.s_addr);
+	      scans[i].alarm.alarm=start;
+	      scans[i].alarm.function=overlay_mdp_scan;
+	      start+=100;
+	      schedule(&scans[i].alarm);
+	    }
+	  }else{
+	    struct overlay_interface *interface = overlay_interface_find(scan->addr);
+	    if (!interface){
+	      overlay_mdp_reply_error(alarm->poll.fd,recvaddr_un,recvaddrlen, 1, "Unable to find matching interface");
+	      return;
+	    }
+	    int i = interface - overlay_interfaces;
+	    
+	    if (!scans[i].interface){
+	      scans[i].interface = interface;
+	      scans[i].current = ntohl(scan->addr.s_addr);
+	      scans[i].last = ntohl(scan->addr.s_addr);
+	      scans[i].alarm.alarm=start;
+	      scans[i].alarm.function=overlay_mdp_scan;
+	      schedule(&scans[i].alarm);
+	    }
+	  }
+	  
+	  overlay_mdp_reply_ok(alarm->poll.fd,recvaddr_un,recvaddrlen,"Scan initiated");
+	}
+	break;
+	
       default:
 	/* Client is not allowed to send any other frame type */
 	WARNF("Unsupported MDP frame type: %d", mdp_type);

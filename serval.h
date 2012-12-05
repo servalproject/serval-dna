@@ -560,12 +560,6 @@ typedef struct overlay_mdp_addrlist {
   unsigned char sids[MDP_MAX_SID_REQUEST][SID_SIZE];
 } overlay_mdp_addrlist;
 
-struct overlay_route_record{
-  unsigned char sid[SID_SIZE];
-  int reachable;
-  unsigned char neighbour[SID_SIZE];
-};
-
 typedef struct overlay_mdp_nodeinfo {
   unsigned char sid[SID_SIZE];
   int sid_prefix_length; /* must be long enough to be unique */

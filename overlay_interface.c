@@ -484,6 +484,9 @@ overlay_interface_init(char *name, struct in_addr src_addr, struct in_addr netma
     char option_name[64];
     snprintf(option_name, sizeof(option_name), "mdp.%s.tick_ms", (*name=='>'?name+1:name));
     interface->tick_ms = confValueGetInt64Range(option_name, interface->tick_ms, 1LL, 3600000LL);
+    
+    snprintf(option_name, sizeof(option_name), "interface.%s.default_route", (*name=='>'?name+1:name));
+    interface->default_route=confValueGetBoolean(option_name,0);
   }
   
   // disable announcements and other broadcasts if tick_ms=0. 

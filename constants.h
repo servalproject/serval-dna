@@ -147,6 +147,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define MDP_ROUTING_TABLE 7
 #define MDP_NODEINFO 8
 #define MDP_GOODBYE 9
+#define MDP_SCAN 10
 
 // These are back-compatible with the old values of 'mode' when it was 'selfP'
 #define MDP_ADDRLIST_MODE_ROUTABLE_PEERS 0
