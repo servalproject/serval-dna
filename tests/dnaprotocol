@@ -60,7 +60,7 @@ teardown() {
 set_server_vars() {
    executeOk_servald config set log.show_pid on
    executeOk_servald config set log.show_time on
-   executeOk_servald config set mdp.wifi.tick_ms 100
+   executeOk_servald config set mdp.iftype.wifi.tick_ms 100
    executeOk_servald config set mdp.selfannounce.ticks_per_full_address 1
    executeOk_servald config set debug.interfaces Yes
    executeOk_servald config set debug.packetformats No
