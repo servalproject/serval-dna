@@ -420,6 +420,11 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       goto skip;
     }
     
+    if (frame->destination)
+      frame->destination->last_tx=now;
+    if (frame->next_hop)
+      frame->next_hop->last_tx=now;
+    
     // don't send rhizome adverts if the packet contains a voice payload
     if (frame->queue==OQ_ISOCHRONOUS_VOICE)
       packet->add_advertisements=0;

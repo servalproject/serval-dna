@@ -305,7 +305,7 @@ overlay_mdp_service_probe(overlay_mdp_frame *mdp)
   if (probe->addr.sin_family!=AF_INET)
     RETURN(WHY("Unsupported address family"));
   
-  if (peer->reachable == REACHABLE_NONE || peer->reachable == REACHABLE_INDIRECT){
+  if (peer->reachable == REACHABLE_NONE || peer->reachable == REACHABLE_INDIRECT || (peer->reachable & REACHABLE_ASSUMED)){
     reachable_unicast(peer, &overlay_interfaces[probe->interface], probe->addr.sin_addr, probe->addr.sin_port);
   }
   RETURN(0);
@@ -318,6 +318,11 @@ int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay
   if (!interface)
     return WHY("I don't know which interface to use");
   
+  time_ms_t now = gettime_ms();
+  
+  if (peer && peer->last_probe+1000>now)
+    return -1;
+    
   struct overlay_frame *frame=malloc(sizeof(struct overlay_frame));
   bzero(frame,sizeof(struct overlay_frame));
   frame->type=OF_TYPE_DATA;
@@ -334,6 +339,9 @@ int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay
   
   if ((!peer) || !(peer->reachable&REACHABLE))
     my_subscriber->send_full=1;
+  
+  if (peer)
+    peer->last_probe=gettime_ms();
   
   if (overlay_mdp_encode_ports(frame->payload, MDP_PORT_ECHO, MDP_PORT_PROBE)){
     op_free(frame);

@@ -214,6 +214,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     
     // always update the IP address we heard them from, even if we don't need to use it right now
     context.sender->address = f.recvaddr;
+    context.sender->last_rx = now;
     
     // if this is a dummy announcement for a node that isn't in our routing table
     if (context.sender->reachable == REACHABLE_NONE && 
@@ -221,7 +222,8 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 	packet_flags&PACKET_UNICAST){
       
       // mark this subscriber as reachable directly via unicast.
-      reachable_unicast(context.sender, interface, f.recvaddr.sin_addr, ntohs(f.recvaddr.sin_port));
+      context.sender->interface = interface;
+      set_reachable(context.sender, REACHABLE_UNICAST|REACHABLE_ASSUMED);
     }
   }
   
@@ -305,6 +307,9 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       break;
     
     int next_payload = b->position + payload_len;
+    
+    if (f.source)
+      f.source->last_rx = now;
     
     // if we can't understand one of the addresses, skip processing the payload
     if (context.invalid_addresses)

@@ -70,6 +70,9 @@ struct subscriber{
   
   // if reachable&REACHABLE_UNICAST send packets to this address, else use the interface broadcast address
   struct sockaddr_in address;
+  time_ms_t last_probe;
+  time_ms_t last_rx;
+  time_ms_t last_tx;
   
   // public signing key details for remote peers
   unsigned char sas_public[SAS_SIZE];
