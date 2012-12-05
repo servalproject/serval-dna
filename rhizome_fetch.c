@@ -1130,6 +1130,8 @@ static int rhizome_fetch_mdp_requestmanifest(struct rhizome_fetch_slot *slot)
   overlay_mdp_frame mdp;
 
   bzero(&mdp,sizeof(mdp));
+  assert(my_subscriber);
+  assert(my_subscriber->sid);
   bcopy(my_subscriber->sid,mdp.out.src.sid,SID_SIZE);
   mdp.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
   bcopy(slot->peer_sid,mdp.out.dst.sid,SID_SIZE);
@@ -1271,6 +1273,7 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
     if (count+slot->manifest_bytes>1024) count=1024-slot->manifest_bytes;
     bcopy(buffer,&slot->manifest_buffer[slot->manifest_bytes],count);
     slot->manifest_bytes+=count;
+    slot->file_ofs+=count;
   } else {
     /* We are reading a file. Stream it into the database. */  
     if (bytes>0)
@@ -1467,7 +1470,8 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	return;
       } else {
 	if (debug & DEBUG_RHIZOME_RX)
-	  DEBUG("Empty read, closing connection");
+	  DEBUGF("Empty read, closing connection: received %lld of %lld bytes",
+		slot->file_ofs,slot->file_len);
 	rhizome_fetch_switch_to_mdp(slot);
 	return;
       }
