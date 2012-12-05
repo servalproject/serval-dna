@@ -41,8 +41,8 @@ configure_servald_server() {
    executeOk_servald config set debug.rhizome on
    executeOk_servald config set debug.rhizometx on
    executeOk_servald config set debug.rhizomerx on
-   executeOk_servald config set server.respawn_on_signal off
-   executeOk_servald config set mdp.wifi.tick_ms 500
+   executeOk_servald config set server.respawn_on_crash off
+   executeOk_servald config set mdp.iftype.wifi.tick_ms 500
    executeOk_servald config set mdp.selfannounce.ticks_per_full_address 1
 }
 
