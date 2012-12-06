@@ -1005,8 +1005,12 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 		continue;
 	      
 	      scans[i].interface = interface;
-	      scans[i].current = ntohl(interface->address.sin_addr.s_addr & interface->netmask.s_addr);
-	      scans[i].last = ntohl(interface->broadcast_address.sin_addr.s_addr);
+	      scans[i].current = ntohl(interface->address.sin_addr.s_addr & interface->netmask.s_addr)+1;
+	      scans[i].last = ntohl(interface->broadcast_address.sin_addr.s_addr)-1;
+	      if (scans[i].last - scans[i].current>0x10000){
+		INFOF("Skipping scan on interface %s as the address space is too large",interface->name);
+		continue;
+	      }
 	      scans[i].alarm.alarm=start;
 	      scans[i].alarm.function=overlay_mdp_scan;
 	      start+=100;
