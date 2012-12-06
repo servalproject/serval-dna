@@ -301,12 +301,13 @@ overlay_mdp_service_probe(overlay_mdp_frame *mdp)
   }
   
   struct subscriber *peer = find_subscriber(mdp->out.src.sid, SID_SIZE, 0);
-  struct probe_contents *probe = (struct probe_contents *)&mdp->out.payload;
-  if (probe->addr.sin_family!=AF_INET)
+  struct probe_contents probe;
+  bcopy(&mdp->out.payload, &probe, sizeof(struct probe_contents));
+  if (probe.addr.sin_family!=AF_INET)
     RETURN(WHY("Unsupported address family"));
   
   if (peer->reachable == REACHABLE_NONE || peer->reachable == REACHABLE_INDIRECT || (peer->reachable & REACHABLE_ASSUMED)){
-    reachable_unicast(peer, &overlay_interfaces[probe->interface], probe->addr.sin_addr, probe->addr.sin_port);
+    reachable_unicast(peer, &overlay_interfaces[probe.interface], probe.addr.sin_addr, probe.addr.sin_port);
   }
   RETURN(0);
 }
@@ -348,15 +349,16 @@ int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay
     return -1;
   }
   // not worried about byte order here as we are the only node that should be parsing the contents.
-  struct probe_contents *probe = (struct probe_contents*)ob_append_space(frame->payload, sizeof(struct probe_contents));
-  if (!probe){
+  unsigned char *dst=ob_append_space(frame->payload, sizeof(struct probe_contents));
+  if (!dst){
     op_free(frame);
     return -1;
   }
-  probe->addr=addr;
+  struct probe_contents probe;
+  probe.addr=addr;
   // get interface number
-  probe->interface = interface - overlay_interfaces;
-  
+  probe.interface = interface - overlay_interfaces;
+  bcopy(&probe, dst, sizeof(struct probe_contents));
   if (overlay_payload_enqueue(frame)){
     op_free(frame);
     return -1;
