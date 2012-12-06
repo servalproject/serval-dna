@@ -153,7 +153,8 @@ static void parse_frame(struct overlay_buffer *buff){
     context.sender->address.sin_port = htons(interface->port);
 
     if (context.sender->reachable==REACHABLE_NONE){
-      reachable_unicast(context.sender, interface, *addr, interface->port);
+      set_reachable(context.sender, REACHABLE_UNICAST|REACHABLE_ASSUMED);
+      overlay_send_probe(context.sender, context.sender->address, interface);
     }
   }
   

@@ -214,9 +214,12 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       RETURN(0);
     }
     
+    context.sender->last_rx = now;
+    
+    // TODO probe unicast links when we detect an address change.
+    
     // always update the IP address we heard them from, even if we don't need to use it right now
     context.sender->address = f.recvaddr;
-    context.sender->last_rx = now;
     
     // if this is a dummy announcement for a node that isn't in our routing table
     if (context.sender->reachable == REACHABLE_NONE && 
@@ -226,6 +229,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       // mark this subscriber as reachable directly via unicast.
       context.sender->interface = interface;
       set_reachable(context.sender, REACHABLE_UNICAST|REACHABLE_ASSUMED);
+      overlay_send_probe(context.sender, f.recvaddr, interface);
     }
   }
   
