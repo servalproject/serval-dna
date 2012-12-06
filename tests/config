@@ -88,16 +88,36 @@ test_SetGet() {
 
 doc_GetAll="Get all config items"
 test_GetAll() {
-   executeOk_servald config set debug.verbose true
-   executeOk_servald config set log.show_pid true
-   executeOk_servald config set server.chdir /tmp/nothing
-   executeOk_servald config set rhizome.enable no
+   executeOk_servald config \
+      set debug.verbose true \
+      set log.show_pid true \
+      set server.chdir /tmp/nothing \
+      set rhizome.enable no
    executeOk_servald config get
    assertStdoutLineCount '==' 4
    assertStdoutGrep --stdout --matches=1 '^debug\.verbose=true$'
    assertStdoutGrep --stdout --matches=1 '^log\.show_pid=true$'
    assertStdoutGrep --stdout --matches=1 '^server\.chdir=/tmp/nothing$'
    assertStdoutGrep --stdout --matches=1 '^rhizome\.enable=no$'
+}
+
+doc_SetDelMixed="Set and del config items in single command"
+test_SetDelMixed() {
+   executeOk_servald config \
+      set debug.verbose true \
+      set log.show_pid true \
+      set server.chdir /tmp/nothing \
+      set rhizome.enable no
+   executeOk_servald config \
+      set debug.verbose false \
+      del log.show_pid \
+      set log.show_time 1 \
+      del server.chdir \
+      del rhizome.enable
+   executeOk_servald config get
+   assertStdoutLineCount '==' 2
+   assertStdoutGrep --stdout --matches=1 '^debug\.verbose=false$'
+   assertStdoutGrep --stdout --matches=1 '^log\.show_time=1$'
 }
 
 doc_SetTwice="Set a single config item twice"
@@ -120,8 +140,7 @@ test_DelNull() {
 
 doc_Del="Delete single config item"
 test_Del() {
-   executeOk_servald config set debug.verbose yes
-   executeOk_servald config set log.show_pid true
+   executeOk_servald config set debug.verbose yes set log.show_pid true
    executeOk_servald config get
    assertStdoutLineCount '==' 2
    executeOk_servald config del debug.verbose
@@ -143,7 +162,7 @@ test_OptionNames() {
    assertExitStatus --stderr '!=' 0
    execute $servald config set .verbose yes
    assertExitStatus --stderr '!=' 0
-   execute $servald config set debug..verbose yes
+   execute $servald config del debug..verbose
    assertExitStatus --stderr '!=' 0
 }
 

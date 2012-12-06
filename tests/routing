@@ -21,9 +21,10 @@ source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 
 configure_servald_server() {
-   executeOk_servald config set log.show_pid on
-   executeOk_servald config set log.show_time on
-   executeOk_servald config set debug.mdprequests Yes
+   executeOk_servald config \
+      set log.show_pid on \
+      set log.show_time on \
+      set debug.mdprequests Yes
 }
 
 add_interface() {
@@ -34,12 +35,13 @@ add_interface() {
 }
 
 start_routing_instance() {
-   executeOk_servald config set server.dummy_interface_dir "$SERVALD_VAR"
-   executeOk_servald config set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name"
-   executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name"
-   executeOk_servald config set log.show_pid on
-   executeOk_servald config set log.show_time on
-   executeOk_servald config set debug.mdprequests Yes
+   executeOk_servald config \
+      set server.dummy_interface_dir "$SERVALD_VAR" \
+      set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name" \
+      set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name" \
+      set log.show_pid on \
+      set log.show_time on \
+      set debug.mdprequests Yes
    start_servald_server
 }
 

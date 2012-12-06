@@ -42,12 +42,13 @@ teardown() {
 # Called by start_servald_instances immediately before starting the server
 # process in each instance.
 configure_servald_server() {
-   executeOk_servald config set log.show_pid on
-   executeOk_servald config set log.show_time on
-   executeOk_servald config set debug.dnahelper on
-   executeOk_servald config set dna.helper.executable "$dnahelper"
-   executeOk_servald config set dna.helper.argv.1 "Hello,"
-   executeOk_servald config set dna.helper.argv.2 "World!"
+   executeOk_servald config \
+      set log.show_pid on \
+      set log.show_time on \
+      set debug.dnahelper on \
+      set dna.helper.executable "$dnahelper" \
+      set dna.helper.argv.1 "Hello," \
+      set dna.helper.argv.2 "World!"
 }
 
 setup_dnahelper() {

@@ -36,14 +36,15 @@ teardown() {
 
 # Called by start_servald_instances for each instance.
 configure_servald_server() {
-   executeOk_servald config set log.show_pid on
-   executeOk_servald config set log.show_time on
-   executeOk_servald config set debug.rhizome on
-   executeOk_servald config set debug.rhizometx on
-   executeOk_servald config set debug.rhizomerx on
-   executeOk_servald config set server.respawn_on_crash off
-   executeOk_servald config set mdp.iftype.wifi.tick_ms 500
-   executeOk_servald config set mdp.selfannounce.ticks_per_full_address 1
+   executeOk_servald config \
+      set log.show_pid on \
+      set log.show_time on \
+      set debug.rhizome on \
+      set debug.rhizometx on \
+      set debug.rhizomerx on \
+      set server.respawn_on_crash off \
+      set mdp.iftype.wifi.tick_ms 500 \
+      set mdp.selfannounce.ticks_per_full_address 1
 }
 
 setup_curl_7() {
@@ -206,8 +207,9 @@ setup_HttpAddLocal() {
    setup_curl_7
    setup_common
    set_instance +A
-   executeOk_servald config set rhizome.api.addfile.uri_path "/rhizome/secretaddfile"
-   executeOk_servald config set rhizome.api.addfile.default_author $SIDA
+   executeOk_servald config \
+      set rhizome.api.addfile.uri_path "/rhizome/secretaddfile" \
+      set rhizome.api.addfile.default_author $SIDA
    start_servald_instances +A
    wait_until rhizome_http_server_started +A
    get_rhizome_server_port PORTA +A
@@ -232,11 +234,12 @@ setup_sync() {
    wait_until rhizome_http_server_started +A
    get_rhizome_server_port PORTA +A
    set_instance +B
-   executeOk_servald config set log.show_time on
-   executeOk_servald config set debug.rhizome on
-   executeOk_servald config set debug.rhizometx on
-   executeOk_servald config set debug.rhizomerx on
-   executeOk_servald config set rhizome.direct.peer.0 "http://${addr_localhost}:${PORTA}"
+   executeOk_servald config \
+      set log.show_time on \
+      set debug.rhizome on \
+      set debug.rhizometx on \
+      set debug.rhizomerx on \
+      set rhizome.direct.peer.0 "http://${addr_localhost}:${PORTA}"
    rhizome_add_file file2
    BID2=$BID
    VERSION2=$VERSION

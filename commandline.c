@@ -926,10 +926,6 @@ int app_mdp_ping(int argc, const char *const *argv, const struct command_line_op
 int app_config_set(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
-  const char *var, *val;
-  if (	cli_arg(argc, argv, o, "variable", &var, is_configvarname, NULL)
-     || cli_arg(argc, argv, o, "value", &val, NULL, ""))
-    return -1;
   if (create_serval_instance_dir() == -1)
     return -1;
   // <kludge>
@@ -948,26 +944,32 @@ int app_config_set(int argc, const char *const *argv, const struct command_line_
   if (cf_om_reload() == -1)
     return -1;
   // </kludge>
-  if (cf_om_set(&cf_om_root, var, val) == -1 || cf_om_save() == -1)
-    return -1;
-  if (cf_reload() == -1) // logs an error if the new config is bad
-    return 2;
-  return 0;
-}
-
-int app_config_del(int argc, const char *const *argv, const struct command_line_option *o, void *context)
-{
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
-  const char *var;
-  if (cli_arg(argc, argv, o, "variable", &var, is_configvarname, NULL))
-    return -1;
-  if (create_serval_instance_dir() == -1)
-    return -1;
-  // <kludge> See app_config_set()
-  if (cf_om_reload() == -1)
-    return -1;
-  // </kludge>
-  if (cf_om_set(&cf_om_root, var, NULL) == -1 || cf_om_save() == -1)
+  const char *var[argc - 1];
+  const char *val[argc - 1];
+  int nvar = 0;
+  int i;
+  for (i = 1; i < argc; ++i) {
+    int iv;
+    if (strcmp(argv[i], "set") == 0) {
+      if (i + 2 > argc)
+	return WHYF("malformed command at argv[%d]: 'set' not followed by two arguments", i);
+      var[nvar] = argv[iv = ++i];
+      val[nvar] = argv[++i];
+    } else if (strcmp(argv[i], "del") == 0) {
+      if (i + 1 > argc)
+	return WHYF("malformed command at argv[%d]: 'del' not followed by one argument", i);
+      var[nvar] = argv[iv = ++i];
+      val[nvar] = NULL;
+    } else
+      return WHYF("malformed command at argv[%d]: unsupported action '%s'", i, argv[i]);
+    if (!is_configvarname(var[nvar]))
+      return WHYF("malformed command at argv[%d]: '%s' is not a valid config option name", iv, var[nvar]);
+    ++nvar;
+  }
+  for (i = 0; i < nvar; ++i)
+    if (cf_om_set(&cf_om_root, var[i], val[i]) == -1)
+      return -1;
+  if (cf_om_save() == -1)
     return -1;
   if (cf_reload() == -1) // logs an error if the new config is bad
     return 2;
@@ -1908,10 +1910,10 @@ struct command_line_option command_line_options[]={
    "Display information about any running Serval Mesh node."},
   {app_mdp_ping,{"mdp","ping","<SID|broadcast>","[<count>]",NULL},CLIFLAG_STANDALONE,
    "Attempts to ping specified node via Mesh Datagram Protocol (MDP)."},
-  {app_config_set,{"config","set","<variable>","<value>",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
-   "Set specified configuration variable."},
-  {app_config_del,{"config","del","<variable>",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
-   "Set specified configuration variable."},
+  {app_config_set,{"config","set","<variable>","<value>","...",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
+   "Set and del specified configuration variables."},
+  {app_config_set,{"config","del","<variable>","...",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
+   "Del and set specified configuration variables."},
   {app_config_get,{"config","get","[<variable>]",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
    "Get specified configuration variable."},
   {app_vomp_console,{"console",NULL},0,

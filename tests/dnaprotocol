@@ -58,17 +58,18 @@ teardown() {
 }
 
 set_server_vars() {
-   executeOk_servald config set log.show_pid on
-   executeOk_servald config set log.show_time on
-   executeOk_servald config set mdp.iftype.wifi.tick_ms 100
-   executeOk_servald config set mdp.selfannounce.ticks_per_full_address 1
-   executeOk_servald config set debug.interfaces Yes
-   executeOk_servald config set debug.packetformats No
-   executeOk_servald config set debug.routing No
-   executeOk_servald config set debug.tx No
-   executeOk_servald config set debug.rx No
-   executeOk_servald config set debug.mdprequests Yes
-   executeOk_servald config set debug.keyring Yes
+   executeOk_servald config \
+      set log.show_pid on \
+      set log.show_time on \
+      set mdp.iftype.wifi.tick_ms 100 \
+      set mdp.selfannounce.ticks_per_full_address 1 \
+      set debug.interfaces Yes \
+      set debug.packetformats No \
+      set debug.routing No \
+      set debug.tx No \
+      set debug.rx No \
+      set debug.mdprequests Yes \
+      set debug.keyring Yes
 }
 
 doc_LookupWildcard="Lookup by wildcard"
@@ -139,9 +140,10 @@ EOF
    foreach_instance +A +B +C +D create_single_identity
    configure_servald_server() {
       set_server_vars
-      executeOk_servald config set debug.dnahelper on
-      executeOk_servald config set dna.helper.executable "$dnahelper"
-      executeOk_servald config set dna.helper.argv.1 "$instance_name"
+      executeOk_servald config \
+         set debug.dnahelper on \
+         set dna.helper.executable "$dnahelper" \
+         set dna.helper.argv.1 "$instance_name"
    }
    start_servald_instances +A +B +C +D
    wait_until --sleep=0.25 instances_reach_each_other +A +B +C +D
