@@ -67,7 +67,7 @@ setup_single_link() {
 doc_single_link="Start 2 instances on one link"
 test_single_link() {
    set_instance +A
-   executeOk_servald mdp ping $SIDB 3
+   executeOk_servald mdp ping $SIDB 10
    tfw_cat --stdout --stderr
 }
 
@@ -82,7 +82,7 @@ setup_multiple_nodes() {
 doc_multiple_nodes="Multiple nodes on one link"
 test_multiple_nodes() {
    set_instance +A
-   executeOk_servald mdp ping $SIDB 3
+   executeOk_servald mdp ping $SIDB 10
    tfw_cat --stdout --stderr
    executeOk_servald mdp ping $SIDC 3
    tfw_cat --stdout --stderr
@@ -103,7 +103,7 @@ setup_multihop_linear() {
 doc_multihop_linear="Start 4 instances in a linear arrangement"
 test_multihop_linear() {
    set_instance +A
-   executeOk_servald mdp ping $SIDD 3
+   executeOk_servald mdp ping $SIDD 10
    tfw_cat --stdout --stderr
 }
 
@@ -125,7 +125,7 @@ setup_crowded_mess() {
 doc_crowded_mess="Multiple possible paths"
 test_crowded_mess() {
    set_instance +A
-   executeOk_servald mdp ping $SIDH 5
+   executeOk_servald mdp ping $SIDH 10
    tfw_cat --stdout --stderr
 }
 
