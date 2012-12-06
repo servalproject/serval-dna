@@ -123,6 +123,21 @@ static int cf_om_make_child(struct cf_om_node **const parentp, const char *const
   return i;
 }
 
+int cf_om_add_child(struct cf_om_node **const parentp, const char *const key)
+{
+  size_t parent_fullkey_len = (parentp && *parentp && (*parentp)->fullkey) ? strlen((*parentp)->fullkey) : 0;
+  size_t fullkey_len = parent_fullkey_len + 1 + strlen(key);
+  char fullkey[fullkey_len + 1];
+  char *pkey = fullkey;
+  if (parent_fullkey_len) {
+    strcpy(fullkey, (*parentp)->fullkey);
+    pkey = fullkey + parent_fullkey_len;
+    *pkey++ = '.';
+  }
+  strcpy(pkey, key);
+  return cf_om_make_child(parentp, fullkey, pkey, fullkey + fullkey_len);
+}
+
 int cf_om_get_child(const struct cf_om_node *parent, const char *key, const char *keyend)
 {
   if (keyend == NULL)

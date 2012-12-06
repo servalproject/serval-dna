@@ -923,6 +923,25 @@ int app_mdp_ping(int argc, const char *const *argv, const struct command_line_op
   return ret;
 }
 
+int app_config_schema(int argc, const char *const *argv, const struct command_line_option *o, void *context)
+{
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (create_serval_instance_dir() == -1)
+    return -1;
+  struct cf_om_node *root = NULL;
+  if (cf_sch_config_main(&root) == -1)
+    return -1;
+  struct cf_om_iterator it;
+  for (cf_om_iter_start(&it, root); it.node; cf_om_iter_next(&it))
+    if (it.node->text) {
+      cli_puts(it.node->fullkey);
+      cli_delim("=");
+      cli_puts(it.node->text);
+      cli_delim("\n");
+    }
+  return 0;
+}
+
 int app_config_set(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
@@ -1910,6 +1929,8 @@ struct command_line_option command_line_options[]={
    "Display information about any running Serval Mesh node."},
   {app_mdp_ping,{"mdp","ping","<SID|broadcast>","[<count>]",NULL},CLIFLAG_STANDALONE,
    "Attempts to ping specified node via Mesh Datagram Protocol (MDP)."},
+  {app_config_schema,{"config","schema",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
+   "Dump configuration schema."},
   {app_config_set,{"config","set","<variable>","<value>","...",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
    "Set and del specified configuration variables."},
   {app_config_set,{"config","del","<variable>","...",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,

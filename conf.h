@@ -236,6 +236,7 @@ int cf_om_parse(const char *source, const char *buf, size_t len, struct cf_om_no
 int cf_om_get_child(const struct cf_om_node *parent, const char *key, const char *keyend);
 const char *cf_om_get(const struct cf_om_node *root, const char *fullkey);
 int cf_om_set(struct cf_om_node **nodep, const char *fullkey, const char *text);
+int cf_om_add_child(struct cf_om_node **const parentp, const char *const key);
 void cf_om_free_node(struct cf_om_node **nodep);
 void cf_om_dump_node(const struct cf_om_node *node, int indent);
 
@@ -351,9 +352,10 @@ struct pattern_list {
 #undef VALUE_NODE_STRUCT
 #undef END_ARRAY
 
-// Generate config set-default function prototypes, cf_dfl_config_NAME().
+// Generate config function prototypes, cf_dfl_config_NAME(), cf_sch_config_NAME().
 #define STRUCT(__name, __validator...) \
-    int cf_dfl_config_##__name(struct config_##__name *s);
+    int cf_dfl_config_##__name(struct config_##__name *s); \
+    int cf_sch_config_##__name(struct cf_om_node **parentp);
 #define NODE(__type, __element, __default, __parser, __flags, __comment)
 #define ATOM(__type, __element, __default, __parser, __flags, __comment)
 #define STRING(__size, __element, __default, __parser, __flags, __comment)
@@ -361,7 +363,8 @@ struct pattern_list {
 #define NODE_STRUCT(__name, __element, __parser, __flags)
 #define END_STRUCT
 #define ARRAY(__name, __flags, __validator...) \
-    int cf_dfl_config_##__name(struct config_##__name *a);
+    int cf_dfl_config_##__name(struct config_##__name *a); \
+    int cf_sch_config_##__name(struct cf_om_node **parentp);
 #define KEY_ATOM(__type, __eltparser, __cmpfunc...)
 #define KEY_STRING(__strsize, __eltparser, __cmpfunc...)
 #define VALUE_ATOM(__type, __eltparser)

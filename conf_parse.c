@@ -331,3 +331,78 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef VALUE_NODE_STRUCT
 #undef END_ARRAY
 
+// Generate config schema dump functions, cf_sch_config_NAME().
+#define STRUCT(__name, __validator...) \
+    int cf_sch_config_##__name(struct cf_om_node **rootp) { \
+      int i; \
+      struct cf_om_node **childp;
+#define __ADD_CHILD(__elementstr) \
+	if ((i = cf_om_add_child(rootp, __elementstr)) == -1) \
+	  return -1; \
+	childp = &(*rootp)->nodv[i];
+#define __ATOM(__text) \
+	if (((*childp)->text = str_edup(__text)) == NULL) \
+	  return -1;
+#define __STRUCT(__structname) \
+	if (cf_sch_config_##__structname(childp) == -1) \
+	  return -1;
+#define NODE(__type, __element, __default, __parser, __flags, __comment) \
+	__ADD_CHILD(#__element) \
+	__ATOM("[" #__parser "]")
+#define ATOM(__type, __element, __default, __parser, __flags, __comment) \
+	__ADD_CHILD(#__element) \
+	__ATOM("[" #__parser "]")
+#define STRING(__size, __element, __default, __parser, __flags, __comment) \
+	__ADD_CHILD(#__element) \
+	__ATOM("[" #__parser "]")
+#define SUB_STRUCT(__structname, __element, __flags) \
+	__ADD_CHILD(#__element) \
+	__STRUCT(__structname)
+#define NODE_STRUCT(__structname, __element, __parser, __flags) \
+	__ADD_CHILD(#__element) \
+	__STRUCT(__structname)
+#define END_STRUCT \
+        return 0; \
+    }
+#define ARRAY(__name, __flags, __validator...) \
+    int cf_sch_config_##__name(struct cf_om_node **rootp) { \
+      int i; \
+      struct cf_om_node **childp;
+#define KEY_ATOM(__type, __eltparser, __cmpfunc...) \
+	__ADD_CHILD("[" #__eltparser "]")
+#define KEY_STRING(__strsize, __eltparser, __cmpfunc...) \
+	__ADD_CHILD("[" #__eltparser "]")
+#define VALUE_ATOM(__type, __eltparser) \
+	__ATOM("[" #__eltparser "]")
+#define VALUE_STRING(__strsize, __eltparser) \
+	__ATOM("[" #__eltparser "]")
+#define VALUE_NODE(__type, __eltparser) \
+	__ATOM("[" #__eltparser "]")
+#define VALUE_SUB_STRUCT(__structname) \
+	__STRUCT(__structname)
+#define VALUE_NODE_STRUCT(__structname, __eltparser) \
+	__STRUCT(__structname)
+#define END_ARRAY(__size) \
+        return 0; \
+    }
+#include "conf_schema.h"
+#undef __ADD_CHILD
+#undef __ATOM
+#undef __STRUCT
+#undef STRUCT
+#undef NODE
+#undef ATOM
+#undef STRING
+#undef SUB_STRUCT
+#undef NODE_STRUCT
+#undef END_STRUCT
+#undef ARRAY
+#undef KEY_ATOM
+#undef KEY_STRING
+#undef VALUE_ATOM
+#undef VALUE_STRING
+#undef VALUE_NODE
+#undef VALUE_SUB_STRUCT
+#undef VALUE_NODE_STRUCT
+#undef END_ARRAY
+
