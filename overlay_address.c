@@ -388,10 +388,17 @@ static int add_explain_response(struct subscriber *subscriber, void *context){
   return 0;
 }
 
-int find_subscr_buffer(struct decode_context *context, struct overlay_buffer *b, int len, struct subscriber **subscriber){
+static int find_subscr_buffer(struct decode_context *context, struct overlay_buffer *b, int len, struct subscriber **subscriber){
+  if (len<=0 || len>SID_SIZE){
+    dump_stack();
+    return WHY("Invalid abbreviation length");
+  }
+  
   unsigned char *id = ob_get_bytes_ptr(b, len);
-  if (!id)
+  if (!id){
+    dump_stack();
     return WHY("Not enough space in buffer to parse address");
+  }
   
   if (!subscriber){
     WARN("Could not resolve address, no buffer supplied");

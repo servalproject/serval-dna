@@ -200,9 +200,11 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   if (debug&DEBUG_OVERLAYFRAMES)
     DEBUG("Received overlay packet");
   
-  overlay_address_parse(&context, b, &context.sender);
+  if (overlay_address_parse(&context, b, &context.sender)){
+    WHY("Unable to parse sender");
+  }
   
-  int seq = ob_get(b);
+  ob_get(b); // sequence number, not implemented yet
   int packet_flags = ob_get(b);
   
   if (context.sender){
@@ -239,22 +241,30 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     int process=1;
     int forward=1;
     int flags = ob_get(b);
-    
+    if (flags<0){
+      WHY("Unable to parse payload flags");
+      break;
+    }
+      
     if (flags & PAYLOAD_FLAG_SENDER_SAME){
       if (!context.sender)
 	context.invalid_addresses=1;
       f.source = context.sender;
     }else{
-      if (overlay_address_parse(&context, b, &f.source))
+      if (overlay_address_parse(&context, b, &f.source)){
+	WHY("Unable to parse payload source");
 	break;
+      }
       if (!f.source || f.source->reachable==REACHABLE_SELF)
 	process=forward=0;
     }
     
     if (flags & PAYLOAD_FLAG_TO_BROADCAST){
       if (!(flags & PAYLOAD_FLAG_ONE_HOP)){
-	if (overlay_broadcast_parse(b, &f.broadcast_id))
+	if (overlay_broadcast_parse(b, &f.broadcast_id)){
+	  WHY("Unable to parse payload broadcast id");
 	  break;
+	}
 	if (overlay_broadcast_drop_check(&f.broadcast_id)){
 	  process=forward=0;
 	  if (debug&DEBUG_OVERLAYFRAMES)
@@ -263,16 +273,20 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       }
       f.destination=NULL;
     }else{
-      if (overlay_address_parse(&context, b, &f.destination))
+      if (overlay_address_parse(&context, b, &f.destination)){
+	WHY("Unable to parse payload destination");
 	break;
+      }
       
       if (!f.destination || f.destination->reachable!=REACHABLE_SELF){
 	process=0;
       }
       
       if (!(flags & PAYLOAD_FLAG_ONE_HOP)){
-	if (overlay_address_parse(&context, b, &nexthop))
+	if (overlay_address_parse(&context, b, &nexthop)){
+	  WHY("Unable to parse payload nexthop");
 	  break;
+	}
 	
 	if (!nexthop || nexthop->reachable!=REACHABLE_SELF){
 	  forward=0;
@@ -284,6 +298,10 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       f.ttl=1;
     }else{
       int ttl_qos = ob_get(b);
+      if (ttl_qos<0){
+	WHY("Unable to parse ttl/qos");
+	break;
+      }
       f.ttl = ttl_qos & 0x1F;
       f.queue = (ttl_qos >> 5) & 3;
     }
@@ -293,8 +311,10 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     
     if (flags & PAYLOAD_FLAG_LEGACY_TYPE){
       f.type=ob_get(b);
-      if (f.type<0)
+      if (f.type<0){
+	WHY("Unable to parse payload type");
 	break;
+      }
     }else
       f.type=OF_TYPE_DATA;
     
@@ -303,8 +323,10 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     // TODO allow for one byte length
     int payload_len = ob_get_ui16(b);
 
-    if (payload_len <=0)
+    if (payload_len <=0){
+      WHY("Unable to parse payload length");
       break;
+    }
     
     int next_payload = b->position + payload_len;
     
@@ -312,8 +334,11 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       f.source->last_rx = now;
     
     // if we can't understand one of the addresses, skip processing the payload
-    if (context.invalid_addresses)
+    if (context.invalid_addresses){
+      if (debug&DEBUG_OVERLAYFRAMES)
+	DEBUG("Skipping payload due to unknown addresses");
       goto next;
+    }
 
     if (debug&DEBUG_OVERLAYFRAMES){
       DEBUGF("Received payload type %x, len %d", f.type, next_payload - b->position);
