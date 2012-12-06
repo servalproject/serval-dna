@@ -305,8 +305,10 @@ static int get_jitter_size(struct jitter_measurements *measurements){
   int jitter;
   if (i>=measurements->sample_count)
     i=measurements->sample_count -1;
-  jitter=measurements->sorted_samples[i]->delta - measurements->sorted_samples[0]->delta;
-  
+  do{
+    jitter=measurements->sorted_samples[i]->delta - measurements->sorted_samples[0]->delta;
+    i--;
+  }while(jitter > 1500);
   RETURN(jitter);
 }
 
