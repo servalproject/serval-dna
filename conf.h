@@ -23,10 +23,18 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <errno.h>
 #include <string.h>
 
+/*
+  DEFAULT_INSTANCE_PATH can be set via the configure option
+  --enable-instance-path=<path>
+*/
+#ifdef INSTANCE_PATH
+#define DEFAULT_INSTANCE_PATH INSTANCE_PATH
+#else
 #ifdef ANDROID
 #define DEFAULT_INSTANCE_PATH "/data/data/org.servalproject/var/serval-node"
 #else
 #define DEFAULT_INSTANCE_PATH "/var/serval-node"
+#endif
 #endif
 
 /* Handy statement for forming a path to an instance file in a char buffer whose declaration

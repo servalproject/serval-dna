@@ -224,6 +224,7 @@ int rhizome_opendb()
   sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM FILES WHERE NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);");
   sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM MANIFESTS WHERE filehash != '' AND NOT EXISTS( SELECT  1 FROM FILES WHERE MANIFESTS.filehash = FILES.id);");
   RETURN(0);
+  sqlite_exec_void("DELETE FROM FILES WHERE datavalid=0;");
 }
 
 int rhizome_close_db()
@@ -945,6 +946,47 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
   RETURN(ret);
 }
 
+int64_t rhizome_database_create_blob_for(const char *hashhex,int64_t fileLength,
+					 int priority)
+{
+  /* Okay, so there are no records that match, but we should delete any half-baked record (with datavalid=0) so that the insert below doesn't fail.
+     Don't worry about the return result, since it might not delete any records. */
+  sqlite_exec_void("DELETE FROM FILES WHERE id='%s' AND datavalid=0;",hashhex);
+
+  /* INSERT INTO FILES(id as text, data blob, length integer, highestpriority integer).
+   BUT, we have to do this incrementally so that we can handle blobs larger than available memory.
+  This is possible using:
+     int sqlite3_bind_zeroblob(sqlite3_stmt*, int, int n);
+  That binds an all zeroes blob to a field.  We can then populate the data by
+  opening a handle to the blob using:
+     int sqlite3_blob_write(sqlite3_blob *, const void *z, int n, int iOffset);
+  */
+
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  sqlite3_stmt *statement = sqlite_prepare(&retry, "INSERT OR REPLACE INTO FILES(id,data,length,highestpriority,datavalid,inserttime) VALUES('%s',?,%lld,%d,0,%lld);",
+	  hashhex, (long long)fileLength, priority, (long long)gettime_ms()
+	);
+  if (!statement)
+    goto insert_row_fail;
+  /* Bind appropriate sized zero-filled blob to data field */
+  if (sqlite3_bind_zeroblob(statement, 1, fileLength) != SQLITE_OK) {
+    WHYF("sqlite3_bind_zeroblob() failed: %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));
+    sqlite3_finalize(statement);
+    goto insert_row_fail;
+  }
+  /* Do actual insert, and abort if it fails */
+  if (_sqlite_exec_void_prepared(__WHENCE__, LOG_LEVEL_ERROR, &retry, statement) == -1) {
+insert_row_fail:
+    WHYF("Failed to insert row for fileid=%s", hashhex);
+    return -1;
+  }
+
+  /* Get rowid for inserted row, so that we can modify the blob */
+  int64_t rowid = sqlite3_last_insert_rowid(rhizome_db);
+
+return rowid;
+}
+
 /* The following function just stores the file (or silently returns if it already exists).
    The relationships of manifests to this file are the responsibility of the caller. */
 int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
@@ -1017,48 +1059,17 @@ int rhizome_store_file(rhizome_manifest *m,const unsigned char *key)
     goto error;
   }
 
-  /* Okay, so there are no records that match, but we should delete any half-baked record (with datavalid=0) so that the insert below doesn't fail.
-   Don't worry about the return result, since it might not delete any records. */
-  sqlite_exec_void("DELETE FROM FILES WHERE datavalid=0;");
+  int64_t rowid=rhizome_database_create_blob_for(hash,m->fileLength,priority);
 
-  /* INSERT INTO FILES(id as text, data blob, length integer, highestpriority integer).
-   BUT, we have to do this incrementally so that we can handle blobs larger than available memory.
-  This is possible using:
-     int sqlite3_bind_zeroblob(sqlite3_stmt*, int, int n);
-  That binds an all zeroes blob to a field.  We can then populate the data by
-  opening a handle to the blob using:
-     int sqlite3_blob_write(sqlite3_blob *, const void *z, int n, int iOffset);
-  */
-
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = sqlite_prepare(&retry, "INSERT OR REPLACE INTO FILES(id,data,length,highestpriority,datavalid,inserttime) VALUES('%s',?,%lld,%d,0,%lld);",
-	  hash, (long long)m->fileLength, priority, (long long)gettime_ms()
-	);
-  if (!statement)
-    goto insert_row_fail;
-  /* Bind appropriate sized zero-filled blob to data field */
-  if (sqlite3_bind_zeroblob(statement, 1, m->fileLength) != SQLITE_OK) {
-    WHYF("sqlite3_bind_zeroblob() failed: %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));
-    sqlite3_finalize(statement);
-    goto insert_row_fail;
-  }
-  /* Do actual insert, and abort if it fails */
-  if (_sqlite_exec_void_prepared(__WHENCE__, LOG_LEVEL_ERROR, &retry, statement) == -1) {
-insert_row_fail:
-    WHYF("Failed to insert row for fileid=%s", hash);
-    goto error;
-  }
-
-  /* Get rowid for inserted row, so that we can modify the blob */
-  int64_t rowid = sqlite3_last_insert_rowid(rhizome_db);
   if (rowid<1) {
-    WHYF("query failed, %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));
+    WHYF("query failed, %s", sqlite3_errmsg(rhizome_db));
     WHYF("Failed to get row ID of newly inserted row for fileid=%s", hash);
     goto error;
   }
   // We write the blob inside a transaction so that we can't get SQLITE_BUSY from
   // sqlite3_blob_close(), which cannot be retried.  Using an explicit transaction, defers BUSY
   // detection to the COMMIT, which can be retried.
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") == -1)
     goto error;
   sqlite3_blob *blob;
