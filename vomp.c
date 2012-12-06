@@ -124,16 +124,21 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define VOMP_STATE_INCALL 5
 #define VOMP_STATE_CALLENDED 6
 
+#define VOMP_REJECT_HANGUP 0
+#define VOMP_REJECT_NOPHONE 1
+#define VOMP_REJECT_NOCODEC 2
+#define VOMP_REJECT_BUSY 3
+#define VOMP_REJECT_TIMEOUT 4
 
-#define VOMP_SESSION_MASK 0xffffff
+#define VOMP_SESSION_MASK 0xffff
 #define VOMP_MAX_CALLS 16
 
+#define VOMP_VERSION 0x02
 
 struct vomp_call_half {
   unsigned char sid[SID_SIZE];
   char did[64];
   unsigned char state;
-  unsigned char codec;
   unsigned int session;
   unsigned int sequence;
 };
@@ -154,6 +159,8 @@ struct jitter_measurements{
   int sample_count;
 };
 
+#define SEEN_SAMPLES 16
+
 struct vomp_call_state {
   struct sched_ent alarm;
   struct vomp_call_half local;
@@ -162,18 +169,13 @@ struct vomp_call_state {
   time_ms_t create_time;
   time_ms_t last_activity;
   time_ms_t audio_clock;
+  int remote_audio_clock;
+  
   // last local & remote status we sent to all interested parties
   int last_sent_status;
+  int rejection_reason;
   unsigned char remote_codec_flags[CODEC_FLAGS_LENGTH];
   struct jitter_measurements jitter;
-  
-  // track when we first heard audio, so we can calculate timing from the current sequence number
-  int first_remote_audio_sequence;
-  
-  // simple ring buffer of audio sample times, used to drop duplicate incoming frames
-  // stores end times, since this is an odd number we can initialise the buffer to zero's
-  int sample_pos;
-  unsigned int seen_samples[VOMP_MAX_RECENT_SAMPLES *4];
 };
 
 /* Some clients may only support one call at a time, even then we allow for multiple call states.
@@ -181,17 +183,65 @@ struct vomp_call_state {
  the ejection of newly allocated session numbers before the caller has had a chance
  to progress the call to a further state. */
 int vomp_call_count=0;
+// TODO allocate call structures dynamically
 struct vomp_call_state vomp_call_states[VOMP_MAX_CALLS];
 struct profile_total vomp_stats;
 
 static void vomp_process_tick(struct sched_ent *alarm);
-static const char *vomp_describe_codec(int c);
 strbuf strbuf_append_vomp_supported_codecs(strbuf sb, const unsigned char supported_codecs[256]);
 
 
-void store_jitter_sample(struct jitter_measurements *measurements, int sample_clock, int local_clock){
+static int vomp_codec_timespan(int c, int data_size)
+{
+  switch(c) {
+    case VOMP_CODEC_16SIGNED: return data_size/16;
+    case VOMP_CODEC_ULAW: return data_size/8;
+    case VOMP_CODEC_ALAW: return data_size/8;
+  }
+  return -1;
+}
+
+int vomp_parse_dtmf_digit(char c)
+{
+  if (c>='0'&&c<='9') return c-0x30;
+  switch (c) {
+    case 'a': case 'A': return 0xa;
+    case 'b': case 'B': return 0xb;
+    case 'c': case 'C': return 0xc;
+    case 'd': case 'D': return 0xd;
+    case '*': return 0xe;
+    case '#': return 0xf;
+  }
+  return -1;
+}
+
+char vomp_dtmf_digit_to_char(int digit)
+{
+  if (digit<0) return '?';
+  if (digit<10) return '0'+digit;
+  if (digit<0xe) return 'A'+digit-0xa;
+  if (digit==0xe) return '*';
+  if (digit==0xf) return '#';
+  return '?';
+}
+
+static int store_jitter_sample(struct jitter_measurements *measurements, int sample_clock, int local_clock){
   IN();
-  int i;
+  int i, count=0;
+  
+  // have a quick look through recent samples, drop if already seen
+  if (measurements->sample_count>0){
+    i=measurements->next_sample -1;
+    while(count<SEEN_SAMPLES && count<=measurements->sample_count){
+      if (i<0)
+	i=measurements->sample_count -1;
+      if (measurements->samples[i].sample_clock == sample_clock)
+	RETURN(-1);
+      i--;
+      count++;
+    }
+  }
+  
   struct jitter_sample *sample = &measurements->samples[measurements->next_sample];
 
   measurements->next_sample++;
@@ -246,17 +296,19 @@ void store_jitter_sample(struct jitter_measurements *measurements, int sample_cl
   if (sample_clock > measurements->max_sample_clock)
     measurements->max_sample_clock=sample_clock;
   
-  OUT();
+  RETURN(0);
 }
 
-int get_jitter_size(struct jitter_measurements *measurements){
+static int get_jitter_size(struct jitter_measurements *measurements){
   IN();
   int i=JITTER_SAMPLES -4;
   int jitter;
   if (i>=measurements->sample_count)
     i=measurements->sample_count -1;
-  jitter=measurements->sorted_samples[i]->delta - measurements->sorted_samples[0]->delta;
-  
+  do{
+    jitter=measurements->sorted_samples[i]->delta - measurements->sorted_samples[0]->delta;
+    i--;
+  }while(jitter > 1500);
   RETURN(jitter);
 }
 
@@ -281,7 +333,7 @@ struct vomp_call_state *vomp_find_call_by_session(int session_token)
   return NULL;
 }
 
-int vomp_generate_session_id()
+static int vomp_generate_session_id()
 {
   int session_id=0;
   while (!session_id)
@@ -302,7 +354,7 @@ int vomp_generate_session_id()
   return session_id;
 }
 
-struct vomp_call_state *vomp_create_call(unsigned char *remote_sid,
+static struct vomp_call_state *vomp_create_call(unsigned char *remote_sid,
 				  unsigned char *local_sid,
 				  unsigned int remote_session,
 				  unsigned int local_session)
@@ -335,7 +387,7 @@ struct vomp_call_state *vomp_create_call(unsigned char *remote_sid,
   return call;
 }
 
-struct vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
+static struct vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
 					  unsigned char *local_sid,
 					  unsigned int sender_session,
 					  unsigned int recvr_session,
@@ -390,14 +442,17 @@ struct vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
       return call;
     }
   
-  /* Don't create a call record if either party has ended it */
-  if (sender_state==VOMP_STATE_CALLENDED || recvr_state==VOMP_STATE_CALLENDED)
+  /* Don't create a call record if either party has already ended it */
+  if (sender_state==VOMP_STATE_CALLENDED || recvr_state==VOMP_STATE_CALLENDED){
+    WHYF("Not creating a call record when the call has already ended");
     return NULL;
+  }
 
-  /* Only create a call record if either party is in CALLPREP state */
-  if (sender_state==VOMP_STATE_CALLPREP || recvr_state==VOMP_STATE_CALLPREP)
+  /* Only create a call record if the remote party is trying to prepare a call */
+  if (sender_state==VOMP_STATE_CALLPREP && recvr_state==VOMP_STATE_NOCALL && recvr_session==0)
     return vomp_create_call(remote_sid, local_sid, sender_session, recvr_session);
   
+  WHYF("Not creating a call record for state %d %d", sender_state, recvr_state);
   return NULL;
 }
 
@@ -408,29 +463,19 @@ static void prepare_vomp_header(struct vomp_call_state *call, overlay_mdp_frame 
   bcopy(call->remote.sid,mdp->out.dst.sid,SID_SIZE);
   mdp->out.dst.port=MDP_PORT_VOMP;
   
-  mdp->out.payload[0]=0x01; /* Normal VoMP frame */
-  mdp->out.payload[1]=(call->remote.state<<4)|call->local.state;
-  mdp->out.payload[2]=(call->remote.sequence>>8)&0xff;
-  mdp->out.payload[3]=(call->remote.sequence>>0)&0xff;
-  mdp->out.payload[4]=(call->local.sequence>>8)&0xff;
-  mdp->out.payload[5]=(call->local.sequence>>0)&0xff;
-  time_ms_t call_millis = gettime_ms() - call->create_time;
-  mdp->out.payload[6]=(call_millis>>8)&0xff;
-  mdp->out.payload[7]=(call_millis>>0)&0xff;
-  mdp->out.payload[8]=(call->remote.session>>16)&0xff;
-  mdp->out.payload[9]=(call->remote.session>>8)&0xff;
-  mdp->out.payload[10]=(call->remote.session>>0)&0xff;
-  mdp->out.payload[11]=(call->local.session>>16)&0xff;
-  mdp->out.payload[12]=(call->local.session>>8)&0xff;
-  mdp->out.payload[13]=(call->local.session>>0)&0xff;
-  
-  mdp->out.payload_length=14;
+  mdp->out.payload[0]=VOMP_VERSION;
+  mdp->out.payload[1]=(call->local.session>>8)&0xff;
+  mdp->out.payload[2]=(call->local.session>>0)&0xff;
+  mdp->out.payload[3]=(call->remote.session>>8)&0xff;
+  mdp->out.payload[4]=(call->remote.session>>0)&0xff;
+  mdp->out.payload[5]=(call->remote.state<<4)|call->local.state;
+  mdp->out.payload_length=6;
 }
 
 /* send updated call status to end-point and to any interested listeners as
    appropriate */
 
-int vomp_send_status_remote(struct vomp_call_state *call)
+static int vomp_send_status_remote(struct vomp_call_state *call)
 {
   overlay_mdp_frame mdp;
   unsigned short  *len=&mdp.out.payload_length;
@@ -449,8 +494,6 @@ int vomp_send_status_remote(struct vomp_call_state *call)
     for (i = 0; i < 256; ++i)
       if (is_codec_set(i,codecs)) {
 	mdp.out.payload[(*len)++]=i;
-	if (debug & DEBUG_VOMP)
-	  DEBUGF("I support the %s codec", vomp_describe_codec(i));
       }
     mdp.out.payload[(*len)++]=0;
     
@@ -474,56 +517,46 @@ int vomp_send_status_remote(struct vomp_call_state *call)
   return 0;
 }
 
-// copy audio into the rotor buffers
-int vomp_received_audio(struct vomp_call_state *call, int audio_codec, const unsigned char *audio, int audio_length)
+int vomp_received_audio(struct vomp_call_state *call, int audio_codec, int time, int sequence,
+			const unsigned char *audio, int audio_length)
 {
   if (call->local.state!=VOMP_STATE_INCALL)
     return -1;
-    
-  int codec_block_size=vomp_sample_size(audio_codec);
-  int offset=0;
-  int codec_duration = vomp_codec_timespan(audio_codec);
   
-  while(offset<audio_length){
-    overlay_mdp_frame mdp;
-    unsigned short  *len=&mdp.out.payload_length;
-    
-    bzero(&mdp,sizeof(mdp));
-    prepare_vomp_header(call, &mdp);
-    
-    /*  
-     Note that in-call slew is the responsibility of the player, not the
-     recorder of audio.  Basically if the audio queue starts to bank up,
-     then the player needs to drop samples.
-     */
-    
-    mdp.out.payload[(*len)++]=(call->audio_clock>>24)&0xff;
-    mdp.out.payload[(*len)++]=(call->audio_clock>>16)&0xff;
-    mdp.out.payload[(*len)++]=(call->audio_clock>>8)&0xff;
-    mdp.out.payload[(*len)++]=(call->audio_clock>>0)&0xff;
-    mdp.out.payload[(*len)++]=audio_codec;
-    
-    if (offset+codec_block_size>audio_length)
-      codec_block_size = audio_length - offset;
-      
-    bcopy(audio+offset,&mdp.out.payload[(*len)],codec_block_size);
-    (*len)+=codec_block_size;
-    offset+=codec_block_size;
-    
-    call->audio_clock += codec_duration;
-    call->local.sequence++;
-    
-    // send the payload more than once to add resilience to dropped packets
-    // TODO remove once network links have built in retries
-    mdp.out.send_copies=VOMP_MAX_RECENT_SAMPLES;
-    overlay_mdp_dispatch(&mdp,0,NULL,0);
-    
+  // note we assume the caller will be consistent about providing time and sequence info
+  if (time==-1){
+    time = call->audio_clock;
+    call->audio_clock+=vomp_codec_timespan(audio_codec, audio_length);
   }
+  
+  if (sequence==-1)
+    sequence = call->local.sequence++;
+  
+  overlay_mdp_frame mdp;
+  unsigned short  *len=&mdp.out.payload_length;
+  
+  bzero(&mdp,sizeof(mdp));
+  prepare_vomp_header(call, &mdp);
+  
+  mdp.out.payload[(*len)++]=audio_codec;
+  time = time / 20;
+  mdp.out.payload[(*len)++]=(time>>8)&0xff;
+  mdp.out.payload[(*len)++]=(time>>0)&0xff;
+  mdp.out.payload[(*len)++]=(sequence>>8)&0xff;
+  mdp.out.payload[(*len)++]=(sequence>>0)&0xff;
+  
+  bcopy(audio,&mdp.out.payload[(*len)],audio_length);
+  (*len)+=audio_length;
+    
+  // send the payload more than once to add resilience to dropped packets
+  // TODO remove once network links have built in retries
+  mdp.out.send_copies=VOMP_MAX_RECENT_SAMPLES;
+  overlay_mdp_dispatch(&mdp,0,NULL,0);
   
   return 0;
 }
 
-int monitor_call_status(struct vomp_call_state *call)
+static int monitor_call_status(struct vomp_call_state *call)
 {
   char msg[1024];
   int n = snprintf(msg,1024,"\nCALLSTATUS:%06x:%06x:%d:%d:%d:%s:%s:%s:%s\n",
@@ -538,11 +571,11 @@ int monitor_call_status(struct vomp_call_state *call)
   return 0;
 }
 
-int monitor_send_audio(struct vomp_call_state *call, int audio_codec, unsigned int start_time, unsigned int end_time, const unsigned char *audio, int audio_length, int sequence)
+static int monitor_send_audio(struct vomp_call_state *call, int audio_codec, int time, int sequence, 
+		       const unsigned char *audio, int audio_length)
 {
   if (0) DEBUGF("Tell call monitor about audio for call %06x:%06x",
 		call->local.session,call->remote.session);
-  int sample_bytes=vomp_sample_size(audio_codec);
   char msg[1024 + MAX_AUDIO_BYTES];
   /* All commands followed by binary data start with *len:, so that 
    they can be easily parsed at the far end, even if not supported.
@@ -552,21 +585,21 @@ int monitor_send_audio(struct vomp_call_state *call, int audio_codec, unsigned i
   int jitter_delay = get_jitter_size(&call->jitter);
   
   int msglen = snprintf(msg, 1024,
-			"\n*%d:AUDIOPACKET:%x:%d:%d:%d:%d:%d\n",
-			sample_bytes,
+			"\n*%d:AUDIO:%x:%d:%d:%d:%d\n",
+			audio_length,
 			call->local.session,
-			audio_codec, start_time, end_time,
-			sequence, jitter_delay);
+			audio_codec, time, sequence, 
+			jitter_delay);
   
-  bcopy(audio, &msg[msglen], sample_bytes);
-  msglen+=sample_bytes;
+  bcopy(audio, &msg[msglen], audio_length);
+  msglen+=audio_length;
   msg[msglen++]='\n';
   monitor_tell_clients(msg, msglen, MONITOR_VOMP);
   return 0;
 }
 
 // update local state and notify interested clients with the correct message
-int vomp_update_local_state(struct vomp_call_state *call, int new_state){
+static int vomp_update_local_state(struct vomp_call_state *call, int new_state){
   if (call->local.state>=new_state)
     return 0;
   
@@ -606,7 +639,7 @@ int vomp_update_local_state(struct vomp_call_state *call, int new_state){
 }
 
 // update remote state and notify interested clients with the correct message
-int vomp_update_remote_state(struct vomp_call_state *call, int new_state){
+static int vomp_update_remote_state(struct vomp_call_state *call, int new_state){
   if (call->remote.state>=new_state)
     return 0;
   
@@ -632,7 +665,7 @@ int vomp_update_remote_state(struct vomp_call_state *call, int new_state){
 }
 
 // send call state updates if required.
-int vomp_update(struct vomp_call_state *call)
+static int vomp_update(struct vomp_call_state *call)
 {
   int combined_status=(call->remote.state<<4)|call->local.state;
   
@@ -654,58 +687,48 @@ int vomp_update(struct vomp_call_state *call)
   return 0;
 }
 
-// check a small circular buffer of recently seen audio
-// we're not trying to be perfect here, we still expect all clients to reorder and filter duplicates
-int vomp_audio_already_seen(struct vomp_call_state *call, unsigned int end_time)
-{
-  int i;
-  for(i=0;i<VOMP_MAX_RECENT_SAMPLES *4;i++)
-    if (call->seen_samples[i]==end_time)
-      return 1;
-  call->seen_samples[call->sample_pos]=end_time;
-  call->sample_pos++;
-  if (call->sample_pos>=VOMP_MAX_RECENT_SAMPLES *4)
-    call->sample_pos=0;
-  return 0;
+static int to_absolute_value(int short_value, int reference_value){
+  short_value = (reference_value & 0xFFFF0000) | short_value;
+  
+  if (short_value + 0x8000 < reference_value)
+    short_value+=0x10000;
+  
+  if (short_value > reference_value + 0x8000)
+    short_value-=0x10000;
+  
+  return short_value;
 }
 
-int vomp_process_audio(struct vomp_call_state *call,unsigned int sender_duration,overlay_mdp_frame *mdp,time_ms_t now)
+static int vomp_process_audio(struct vomp_call_state *call, overlay_mdp_frame *mdp, time_ms_t now)
 {
-  int ofs=14;
-  // if (mdp->in.payload_length>14)
-  //  DEBUGF("got here (payload has %d bytes)",mdp->in.payload_length);
+  int ofs=6;
 
-  /* Get end time marker for sample block collection */
-  unsigned int e=0, s=0;
+  if(ofs>=mdp->in.payload_length)
+    return 0;
   
-  int sequence = call->remote.sequence;
+  int codec=mdp->in.payload[ofs++];
   
-  if(ofs<mdp->in.payload_length)
-    {
-      s=mdp->in.payload[ofs++]<<24;
-      s|=mdp->in.payload[ofs++]<<16;
-      s|=mdp->in.payload[ofs++]<<8;
-      s|=mdp->in.payload[ofs++]<<0;
-      
-      sender_duration = (s&0xFFFF0000)|sender_duration;
-      
-      int codec=mdp->in.payload[ofs++];
-      int audio_len = mdp->in.payload_length - ofs;
-      if ((!codec)||vomp_sample_size(codec)<0) return -1;
+  int time = mdp->in.payload[ofs]<<8 | mdp->in.payload[ofs+1]<<0;
+  ofs+=2;
+  int sequence = mdp->in.payload[ofs]<<8 | mdp->in.payload[ofs+1]<<0;
+  ofs+=2;
+  
+  // rebuild absolute time value from short relative time.
+  call->remote_audio_clock=to_absolute_value(time, call->remote_audio_clock);
+  call->remote.sequence=to_absolute_value(sequence, call->remote.sequence);
+  
+  time=call->remote_audio_clock * 20;
+  
+  int audio_len = mdp->in.payload_length - ofs;
 
-      e = s + vomp_codec_timespan(codec) - 1;
-
-      /* Pass audio frame to all registered listeners */
-      if (!vomp_audio_already_seen(call, e)){
-	store_jitter_sample(&call->jitter, s, now);
-	
-	if (monitor_socket_count)
-	  monitor_send_audio(call, codec, s, e,
-			     &mdp->in.payload[ofs],
-			     audio_len,
-			     sequence);
-      }
-    }
+  if (store_jitter_sample(&call->jitter, time, now))
+    return 0;
+  
+  /* Pass audio frame to all registered listeners */
+  if (monitor_socket_count)
+    monitor_send_audio(call, codec, time, call->remote.sequence,
+		       &mdp->in.payload[ofs],
+		       audio_len);
   return 0;
 }
 
@@ -722,7 +745,7 @@ int vomp_ringing(struct vomp_call_state *call){
   return 0;
 }
 
-int vomp_call_destroy(struct vomp_call_state *call)
+static int vomp_call_destroy(struct vomp_call_state *call)
 {
   if (debug & DEBUG_VOMP)
     DEBUGF("Destroying call %06x:%06x [%s,%s]", call->local.session, call->remote.session, call->local.did,call->remote.did);
@@ -807,9 +830,9 @@ int vomp_hangup(struct vomp_call_state *call)
   return 0;
 }
 
-int vomp_extract_remote_codec_list(struct vomp_call_state *call,overlay_mdp_frame *mdp)
+static int vomp_extract_remote_codec_list(struct vomp_call_state *call,overlay_mdp_frame *mdp)
 {
-  int ofs=14;
+  int ofs=6;
   
   if (debug & DEBUG_VOMP)
     dump("codec list mdp frame", (unsigned char *)&mdp->in.payload[0],mdp->in.payload_length);
@@ -846,18 +869,12 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
   struct vomp_call_state *call=NULL;
 
   switch(mdp->in.payload[0]) {
-  case 0x01: /* Ordinary VoMP state+optional audio frame */
+  case VOMP_VERSION:
     {
-      int recvr_state=mdp->in.payload[1]>>4;
-      int sender_state=mdp->in.payload[1]&0xf;
-      unsigned int recvr_session=
-	(mdp->in.payload[8]<<16)|(mdp->in.payload[9]<<8)|mdp->in.payload[10];
-      unsigned int sender_session=
-	(mdp->in.payload[11]<<16)|(mdp->in.payload[12]<<8)|mdp->in.payload[13];
-      int sender_seq=(mdp->in.payload[4]<<8)+mdp->in.payload[5];
-      
-      // cyclic ~1 minute timer...
-      unsigned int sender_duration = (mdp->in.payload[6]<<8) | mdp->in.payload[7];
+      unsigned int sender_session=(mdp->in.payload[1]<<8)|mdp->in.payload[2];
+      unsigned int recvr_session=(mdp->in.payload[3]<<8)|mdp->in.payload[4];
+      int recvr_state=mdp->in.payload[5]>>4;
+      int sender_state=mdp->in.payload[5]&0xf;
       
       /* wants to create a call session.
        Main aim here: replay protection. An adversary should not be able to
@@ -877,12 +894,13 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
       if (!recvr_session && (debug & DEBUG_VOMP))
 	DEBUG("recvr_session==0, created call");
       
-      recvr_state = call->local.state;
-      call->remote.sequence=sender_seq;
-	    
+      // stale packet or forgery attempt? Should we just drop it?
+      if (sender_state < call->remote.state)
+	sender_state = call->remote.state;
       
-      // TODO ignore state changes if sequence is stale?
-      // TODO ignore state changes that seem to go backwards?
+      // we don't really care what state they think we are in. 
+      // Though we could use this information to indicate a network error.
+      recvr_state = call->local.state;
       
       if ((!monitor_socket_count)
 	  &&(!monitor_client_interested(MONITOR_VOMP)))
@@ -890,11 +908,15 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	/* No registered listener, so we cannot answer the call, so just reject
 	   it. */
 	WHY("Rejecting call, no listening clients");
+	call->rejection_reason=VOMP_REJECT_NOPHONE;
 	recvr_state=VOMP_STATE_CALLENDED;
 	/* now let the state machine progress to destroy the call */
       }
 
       if (recvr_state < VOMP_STATE_RINGINGOUT && sender_state < VOMP_STATE_RINGINGOUT){
+	
+	// TODO, pass codec list to connected clients, let them pick a codec they can use first?
+	
 	unsigned char supported_codecs[CODEC_FLAGS_LENGTH];
 	int i, found=0;
 	
@@ -915,6 +937,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	// nope, we can't speak the same language.
 	if (!found){
 	  WHY("Rejecting call, no matching codecs found");
+	  call->rejection_reason=VOMP_REJECT_NOCODEC;
 	  recvr_state=VOMP_STATE_CALLENDED;
 	}
       }
@@ -922,7 +945,6 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
       if (sender_state==VOMP_STATE_CALLENDED){
 	/* For whatever reason, the far end has given up on the call, 
 	   so we must also move to CALLENDED no matter what state we were in */
-	
 	recvr_state=VOMP_STATE_CALLENDED;
       }
       
@@ -947,10 +969,11 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	   that they would like us to start ringing.
 	   So change our state to RINGINGIN. */
 	  
-	if (call->initiated_call)
+	if (call->initiated_call){
 	  // hey, quit it, we were trying to call you.
+	  call->rejection_reason=VOMP_REJECT_BUSY;
 	  recvr_state=VOMP_STATE_CALLENDED;
-	else{
+	}else{
 	  // Don't automatically transition to RINGIN, wait for a client to tell us when.
 	}
 	break;
@@ -964,7 +987,6 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	   don't indicate their ringing state to the user.
 	 */
 	if (call->initiated_call){
-	  // TODO fail the call if we can't agree on codec's
 	  recvr_state=VOMP_STATE_RINGINGOUT;
 	}else{
 	  recvr_state=VOMP_STATE_CALLENDED;
@@ -1002,7 +1024,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
 	// Fall through
       case (VOMP_STATE_INCALL<<3)|VOMP_STATE_INCALL:
 	/* play any audio that they have sent us. */
-	vomp_process_audio(call,sender_duration,mdp,now);
+	vomp_process_audio(call,mdp,now);
 	break;
 	  
       case (VOMP_STATE_CALLENDED<<3)|VOMP_STATE_NOCALL:
@@ -1044,88 +1066,6 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
   return WHY("Malformed VoMP MDP packet?");
 }
 
-static const char *vomp_describe_codec(int c)
-{
-  switch(c) {
-  case VOMP_CODEC_NONE: return "none";
-  case VOMP_CODEC_CODEC2_2400: return "CODEC2@1400";
-  case VOMP_CODEC_CODEC2_1400: return "CODEC2@2400";
-  case VOMP_CODEC_GSMHALF: return "GSM-half-rate";
-  case VOMP_CODEC_GSMFULL: return "GSM-full-rate";
-  case VOMP_CODEC_16SIGNED: return "16bit-raw";
-  case VOMP_CODEC_8ULAW: return "8bit-uLaw";
-  case VOMP_CODEC_8ALAW: return "8bit-aLaw";
-  case VOMP_CODEC_PCM: return "PCM@8KHz";
-  case VOMP_CODEC_DTMF: return "DTMF";
-  case VOMP_CODEC_ENGAGED: return "Engaged-tone";
-  case VOMP_CODEC_ONHOLD: return "On-Hold";
-  }
-  return "unknown";
-}
-
-int vomp_sample_size(int c)
-{
-  switch(c) {
-  case VOMP_CODEC_NONE: return 0;
-  case VOMP_CODEC_CODEC2_2400: return 7; /* actually 2550bps, 51 bits per 20ms, 
-					    but using whole byte here, so 2800bps */
-  case VOMP_CODEC_CODEC2_1400: return 7; /* per 40ms */
-  case VOMP_CODEC_GSMHALF: return 14; /* check. 5.6kbits */
-  case VOMP_CODEC_GSMFULL: return 33; /* padded to 13.2kbit/sec */
-  case VOMP_CODEC_16SIGNED: return 320; /* 8000x2bytes*0.02sec */
-  case VOMP_CODEC_8ULAW: return 160;
-  case VOMP_CODEC_8ALAW: return 160;
-  case VOMP_CODEC_PCM: return 320;
-  case VOMP_CODEC_DTMF: return 1;
-  case VOMP_CODEC_ENGAGED: return 0;
-  case VOMP_CODEC_ONHOLD: return 0;
-  }
-  return -1;
-}
-
-int vomp_codec_timespan(int c)
-{
-  switch(c) {
-  case VOMP_CODEC_NONE: return 1;
-  case VOMP_CODEC_CODEC2_2400: return 20;
-  case VOMP_CODEC_CODEC2_1400: return 40;
-  case VOMP_CODEC_GSMHALF: return 20;
-  case VOMP_CODEC_GSMFULL: return 20;
-  case VOMP_CODEC_16SIGNED: return 20; 
-  case VOMP_CODEC_8ULAW: return 20;
-  case VOMP_CODEC_8ALAW: return 20;
-  case VOMP_CODEC_PCM: return 20;
-  case VOMP_CODEC_DTMF: return 80;
-  case VOMP_CODEC_ENGAGED: return 20;
-  case VOMP_CODEC_ONHOLD: return 20;
-  }
-  return -1;
-}
-
-int vomp_parse_dtmf_digit(char c)
-{
-  if (c>='0'&&c<='9') return c-0x30;
-  switch (c) {
-  case 'a': case 'A': return 0xa;
-  case 'b': case 'B': return 0xb;
-  case 'c': case 'C': return 0xc;
-  case 'd': case 'D': return 0xd;
-  case '*': return 0xe;
-  case '#': return 0xf;
-  }
-  return -1;
-}
-
-char vomp_dtmf_digit_to_char(int digit)
-{
-  if (digit<0) return '?';
-  if (digit<10) return '0'+digit;
-  if (digit<0xe) return 'A'+digit-0xa;
-  if (digit==0xe) return '*';
-  if (digit==0xf) return '#';
-  return '?';
-}
-
 static void vomp_process_tick(struct sched_ent *alarm)
 {
   char msg[32];
@@ -1145,6 +1085,7 @@ static void vomp_process_tick(struct sched_ent *alarm)
       (call->last_activity+VOMP_CALL_NETWORK_TIMEOUT<now) ){
     
     /* tell any local clients that call has died */
+    call->rejection_reason=VOMP_REJECT_TIMEOUT;
     vomp_update_local_state(call, VOMP_STATE_CALLENDED);
     vomp_update_remote_state(call, VOMP_STATE_CALLENDED);
     vomp_update(call);

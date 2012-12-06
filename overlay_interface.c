@@ -265,15 +265,21 @@ error:
 
 overlay_interface * overlay_interface_find(struct in_addr addr){
   int i;
+  overlay_interface *ret = NULL;
   for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
     if (overlay_interfaces[i].state!=INTERFACE_STATE_UP)
       continue;
+    
     if ((overlay_interfaces[i].netmask.s_addr & addr.s_addr) == (overlay_interfaces[i].netmask.s_addr & overlay_interfaces[i].address.sin_addr.s_addr)){
       return &overlay_interfaces[i];
     }
+    
+    // check if this is a default interface
+    if (overlay_interfaces[i].default_route)
+      ret=&overlay_interfaces[i];
   }
   
-  return NULL;
+  return ret;
 }
 
 overlay_interface * overlay_interface_find_name(const char *name){
@@ -331,7 +337,8 @@ overlay_interface_read_any(struct sched_ent *alarm){
       DEBUGF("Received %d bytes from %s on interface %s (ANY)",plen, 
 	     inet_ntoa(src),
 	     interface->name);
-    if (packetOk(interface,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
+    
+    if (packetOkOverlay(interface, packet, plen, recvttl, &src_addr, addrlen)) {
       WHY("Malformed packet");
     }
   }
@@ -427,9 +434,6 @@ overlay_interface_init_socket(int interface_index)
   
   INFOF("Interface %s addr %s, is up",interface->name, inet_ntoa(interface->broadcast_address.sin_addr));
   
-  // mark our sid to be sent in full
-  if (my_subscriber)
-    my_subscriber->send_full = 1;
   directory_registration();
   
   return 0;
@@ -480,6 +484,9 @@ overlay_interface_init(char *name, struct in_addr src_addr, struct in_addr netma
     char option_name[64];
     snprintf(option_name, sizeof(option_name), "mdp.%s.tick_ms", (*name=='>'?name+1:name));
     interface->tick_ms = confValueGetInt64Range(option_name, interface->tick_ms, 1LL, 3600000LL);
+    
+    snprintf(option_name, sizeof(option_name), "interface.%s.default_route", (*name=='>'?name+1:name));
+    interface->default_route=confValueGetBoolean(option_name,0);
   }
   
   // disable announcements and other broadcasts if tick_ms=0. 
@@ -505,6 +512,16 @@ overlay_interface_init(char *name, struct in_addr src_addr, struct in_addr netma
       return WHYF("could not open dummy interface file %s for append", dummyfile);
     }
 
+    interface->address.sin_family=AF_INET;
+    interface->address.sin_port = 0;
+    interface->address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    
+    interface->netmask.s_addr=0xFFFFFF00;
+    
+    interface->broadcast_address.sin_family=AF_INET;
+    interface->broadcast_address.sin_port = 0;
+    interface->broadcast_address.sin_addr.s_addr = interface->address.sin_addr.s_addr | ~interface->netmask.s_addr;
+    
     /* Seek to end of file as initial reading point */
     interface->recv_offset = lseek(interface->alarm.poll.fd,0,SEEK_END);
     /* XXX later add pretend location information so that we can decide which "packets" to receive
@@ -520,10 +537,6 @@ overlay_interface_init(char *name, struct in_addr src_addr, struct in_addr netma
     
     interface->state=INTERFACE_STATE_UP;
     INFOF("Dummy interface %s is up",interface->name);
-    
-    // mark our sid to be sent in full
-    if (my_subscriber)
-      my_subscriber->send_full = 1;
     
     directory_registration();
     
@@ -593,7 +606,7 @@ static void overlay_interface_poll(struct sched_ent *alarm)
 	     inet_ntoa(src),
 	     interface->name);
     }
-    if (packetOk(interface,packet,plen,NULL,recvttl,&src_addr,addrlen,1)) {
+    if (packetOkOverlay(interface, packet, plen, recvttl, &src_addr, addrlen)) {
       WHY("Malformed packet");
       // Do we really want to attempt to parse it again?
       //DEBUG_packet_visualise("Malformed packet", packet,plen);
@@ -614,9 +627,12 @@ void overlay_dummy_poll(struct sched_ent *alarm)
   */
   unsigned char packet[2048];
   int plen=0;
-  struct sockaddr src_addr;
+  struct sockaddr_in src_addr={
+    .sin_family = AF_INET,
+    .sin_port = 0,
+    .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
+  };
   size_t addrlen = sizeof(src_addr);
-  unsigned char transaction_id[8];
   time_ms_t now = gettime_ms();
 
   /* Read from dummy interface file */
@@ -651,17 +667,9 @@ void overlay_dummy_poll(struct sched_ent *alarm)
 	    plen = -1;
 	  if (debug&DEBUG_PACKETRX)
 	    DEBUG_packet_visualise("Read from dummy interface", &packet[128], plen);
-	  bzero(&transaction_id[0],8);
-	  bzero(&src_addr,sizeof(src_addr));
-	  if (plen >= 4) {
-	    if (packet[0] == 0x01 && packet[1] == 0 && packet[2] == 0 && packet[3] == 0) {
-	      if (packetOk(interface,&packet[128],plen,transaction_id, -1 /* fake TTL */, &src_addr,addrlen,1) == -1)
-		WARN("Unsupported packet from dummy interface");
-	    } else {
-	      WARNF("Unsupported packet version from dummy interface: %02x %02x %02x %02x", packet[0], packet[1], packet[2], packet[3]);
-	    }
-	  } else {
-	    WARNF("Invalid packet from dummy interface: plen=%lld", (long long) plen);
+	  
+	  if (packetOkOverlay(interface, &packet[128], plen, -1, (struct sockaddr*)&src_addr, addrlen)) {
+	    WARN("Unsupported packet from dummy interface");
 	  }
 	}
 	else

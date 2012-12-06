@@ -67,11 +67,12 @@ int add_advertisement(struct subscriber *subscriber, void *context){
   if (subscriber->node){
     overlay_node *n=subscriber->node;
     
-    if (n->best_link_score>0 && n->observations[n->best_observation].gateways_en_route < 64){
+    if ((subscriber->reachable&REACHABLE) && (!(subscriber->reachable&REACHABLE_ASSUMED)) 
+	&& n->best_link_score>0 && n->observations[n->best_observation].gateways_en_route < 64){
       // never send the full sid in an advertisement
       subscriber->send_full=0;
       
-      if (overlay_address_append(e,subscriber) ||
+      if (overlay_address_append(NULL,e,subscriber) ||
 	  ob_append_byte(e,n->best_link_score -1) ||
 	  ob_append_byte(e,n->observations[n->best_observation].gateways_en_route +1)){
 	
@@ -80,7 +81,6 @@ int add_advertisement(struct subscriber *subscriber, void *context){
 	ob_rewind(e);
 	return 1;
       }
-      
       ob_checkpoint(e);
     }
   }
@@ -88,7 +88,8 @@ int add_advertisement(struct subscriber *subscriber, void *context){
   return 0;
 }
 
-int overlay_route_add_advertisements(overlay_interface *interface, struct overlay_buffer *e)
+int overlay_route_add_advertisements(struct decode_context *context, overlay_interface *interface, 
+				     struct overlay_buffer *e)
 {
   /* Construct a route advertisement frame and append it to e.
      
@@ -121,22 +122,11 @@ int overlay_route_add_advertisements(overlay_interface *interface, struct overla
   
   ob_checkpoint(e);
   
-  if (ob_append_byte(e,OF_TYPE_NODEANNOUNCE))
-    return WHY("could not add node advertisement header");
-  ob_append_byte(e,1); /* TTL */
-  
-  // assume we might fill the packet
-  ob_append_rfs(e, e->sizeLimit - e->position);
-
-  /* Add address fields */
-  struct broadcast broadcast;
-  overlay_broadcast_generate_address(&broadcast);
-  overlay_broadcast_append(e,&broadcast);
-  
-  ob_append_byte(e,OA_CODE_PREVIOUS);
-  
-  overlay_address_append_self(interface,e);
-  overlay_address_set_sender(my_subscriber);
+  if (overlay_frame_build_header(context, e, 
+				 0, OF_TYPE_NODEANNOUNCE, 0, 1, 
+				 NULL, NULL,
+				 NULL, my_subscriber))
+    return -1;
   
   // TODO high priority advertisements first....
   /*
@@ -154,22 +144,21 @@ int overlay_route_add_advertisements(overlay_interface *interface, struct overla
   struct subscriber *start = next_advertisement;
   next_advertisement=NULL;
   
-  int start_pos = e->position;
+  int start_pos = ob_position(e);
   
   // append announcements starting from the last node we couldn't advertise last time
   enum_subscribers(start, add_advertisement, e);
 
   // if we didn't start at the beginning and still have space, start again from the beginning
-  if (start && !next_advertisement && e->sizeLimit - e->position > 0){
+  if (start && !next_advertisement && ob_limit(e) - ob_position(e) > 0){
     enum_subscribers(NULL, add_advertisement, e);
   }
   
-  if (e->position == start_pos){
+  if (ob_position(e) == start_pos){
     // no advertisements? don't bother to send the payload at all.
     ob_rewind(e);
-    overlay_address_clear();
   }else
-    ob_patch_rfs(e,COMPUTE_RFS_LENGTH);
+    ob_patch_rfs(e);
 
   return 0;
 }
@@ -187,22 +176,26 @@ int overlay_route_add_advertisements(overlay_interface *interface, struct overla
 int overlay_route_saw_advertisements(int i, struct overlay_frame *f, struct decode_context *context, time_ms_t now)
 {
   IN();
-  context->abbreviations_only=1;
+  struct subscriber *previous=context->previous;
   // minimum record length is (address code, 3 byte sid, score, gateways)
-  while(f->payload->position +6 <= f->payload->sizeLimit)
+  while(ob_remaining(f->payload)>0)
     {
       struct subscriber *subscriber;
       context->invalid_addresses=0;
       
-      if (overlay_address_parse(context, f->payload, NULL, &subscriber))
+      if (overlay_address_parse(context, f->payload, &subscriber)){
+	WHY("Failed to parse address");
 	break;
+      }
       
       int score=ob_get(f->payload);
       int gateways_en_route=ob_get(f->payload);
 
       // stop if hit end of payload
-      if (score<0 || gateways_en_route<0)
+      if (score<0 || gateways_en_route<0){
+	WHY("Unexpected end of payload");
 	break;
+      }
       
       // skip if we can't parse the subscriber id
       if (context->invalid_addresses || !subscriber)
@@ -216,7 +209,7 @@ int overlay_route_saw_advertisements(int i, struct overlay_frame *f, struct deco
       }
       
       /* File it */
-      overlay_route_record_link(now, subscriber->sid, f->source->sid,
+      overlay_route_record_link(now, subscriber, f->source,
 				i,
 				/* time range that this advertisement covers.
 				   XXX - Make it up for now. */
@@ -224,6 +217,7 @@ int overlay_route_saw_advertisements(int i, struct overlay_frame *f, struct deco
 				score,gateways_en_route);
       
     }
-  context->abbreviations_only=0;
+  // restore the previous subscriber id for parsing the next header
+  context->previous=previous;
   RETURN(0);
 }

@@ -40,6 +40,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include "mdp_client.h"
 #include "cli.h"
+#include "overlay_address.h"
 
 extern struct command_line_option command_line_options[];
 
@@ -1525,22 +1526,6 @@ int app_count_peers(int argc, const char *const *argv, struct command_line_optio
   return 0;
 }
 
-int app_test_rfs(int argc, const char *const *argv, struct command_line_option *o, void *context)
-{
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
-  printf("Testing that RFS coder works properly.\n");
-  int i;
-  for(i=0;i<65536;i++) {
-    unsigned char bytes[8];
-    rfs_encode(i, &bytes[0]);
-    int zero=0;
-    int r=rfs_decode(&bytes[0],&zero);
-    if (i != r)
-      printf("RFS encoding of %d decodes to %d: %s\n", i, r, alloca_tohex(bytes, sizeof bytes));
-  }
-  return 0;
-}
-
 int app_crypt_test(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
@@ -1751,6 +1736,48 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
   return 0;
 }
 
+int app_route_print(int argc, const char *const *argv, struct command_line_option *o, void *context)
+{
+  overlay_mdp_frame mdp;
+  bzero(&mdp,sizeof(mdp));
+  
+  mdp.packetTypeAndFlags=MDP_ROUTING_TABLE;
+  overlay_mdp_send(&mdp,0,0);
+  while(overlay_mdp_client_poll(200)){
+    overlay_mdp_frame rx;
+    int ttl;
+    if (overlay_mdp_recv(&rx, 0, &ttl))
+      continue;
+    
+    int ofs=0;
+    while(ofs + sizeof(struct overlay_route_record) <= rx.out.payload_length){
+      struct overlay_route_record *p=(struct overlay_route_record *)&rx.out.payload[ofs];
+      ofs+=sizeof(struct overlay_route_record);
+      
+      cli_printf(alloca_tohex_sid(p->sid));
+      cli_delim(":");
+      
+      if (p->reachable==REACHABLE_NONE)
+	cli_printf("NONE");
+      if (p->reachable & REACHABLE_SELF)
+	cli_printf("SELF ");
+      if (p->reachable & REACHABLE_ASSUMED)
+	cli_printf("ASSUMED ");
+      if (p->reachable & REACHABLE_BROADCAST)
+	cli_printf("BROADCAST ");
+      if (p->reachable & REACHABLE_UNICAST)
+	cli_printf("UNICAST ");
+      if (p->reachable & REACHABLE_INDIRECT)
+	cli_printf("INDIRECT ");
+      
+      cli_delim(":");
+      cli_printf(alloca_tohex_sid(p->neighbour));
+      cli_delim("\n");
+    }
+  }
+  return 0;
+}
+
 int app_reverse_lookup(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
   const char *sid, *delay;
@@ -1847,6 +1874,33 @@ int app_reverse_lookup(int argc, const char *const *argv, struct command_line_op
   return 0;
 }
 
+int app_network_scan(int argc, const char *const *argv, struct command_line_option *o, void *context)
+{
+  overlay_mdp_frame mdp;
+  bzero(&mdp,sizeof(mdp));
+  
+  mdp.packetTypeAndFlags=MDP_SCAN;
+  
+  struct overlay_mdp_scan *scan = (struct overlay_mdp_scan *)&mdp.raw;
+  const char *address;
+  if (cli_arg(argc, argv, o, "address", &address, NULL, NULL) == -1)
+    return -1;
+  
+  if (address){
+    DEBUGF("Parsing arg %s", address);
+    if (!inet_aton(address, &scan->addr))
+      return WHY("Unable to parse the address");
+  }else
+    DEBUGF("Scanning local networks");
+  
+  overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000);
+  if (mdp.packetTypeAndFlags!=MDP_ERROR)
+    return -1;
+  cli_puts(mdp.error.message);
+  cli_delim("\n");
+  return mdp.error.error;
+}
+
 /* NULL marks ends of command structure.
    "<anystring>" marks an arg that can take any value.
    "[<anystring>]" marks an optional arg that can take any value.
@@ -1934,14 +1988,16 @@ struct command_line_option command_line_options[]={
    "Return identity of known routable peers as URIs"},
   {app_id_self,{"id","allpeers",NULL},0,
    "Return identity of all known peers as URIs"},
+  {app_route_print, {"route","print",NULL},0,
+  "Print the routing table"},
+  {app_network_scan, {"scan","[<address>]",NULL},0,
+    "Scan the network for serval peers. If no argument is supplied, all local addresses will be scanned."},
   {app_node_info,{"node","info","<sid>",NULL},0,
    "Return routing information about a SID"},
   {app_count_peers,{"peer","count",NULL},0,
     "Return a count of routable peers on the network"},
   {app_reverse_lookup, {"reverse", "lookup", "<sid>", "[<timeout>]", NULL}, 0,
     "Lookup the phone number and name of a given subscriber"},
-  {app_test_rfs,{"test","rfs",NULL},0,
-   "Test RFS field calculation"},
   {app_monitor_cli,{"monitor",NULL},0,
    "Interactive servald monitor interface."},
   {app_crypt_test,{"crypt","test",NULL},0,

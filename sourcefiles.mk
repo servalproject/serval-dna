@@ -1,7 +1,6 @@
 SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)audio_reflector.c \
 	$(SERVAL_BASE)cli.c \
-	$(SERVAL_BASE)codecs.c \
 	$(SERVAL_BASE)commandline.c \
 	$(SERVAL_BASE)conf.c \
 	$(SERVAL_BASE)crypto.c \
@@ -33,7 +32,6 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)overlay_packetformats.c \
 	$(SERVAL_BASE)overlay_payload.c \
 	$(SERVAL_BASE)overlay_route.c \
-	$(SERVAL_BASE)packetformats.c \
 	$(SERVAL_BASE)performance_timing.c \
 	$(SERVAL_BASE)randombytes.c \
 	$(SERVAL_BASE)rhizome.c \

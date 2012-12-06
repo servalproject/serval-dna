@@ -330,6 +330,7 @@ struct sched_ent{
 
 struct overlay_buffer;
 struct overlay_frame;
+struct broadcast;
 
 #define STRUCT_SCHED_ENT_UNUSED ((struct sched_ent){NULL, NULL, NULL, NULL, {-1, 0, 0}, 0LL, 0LL, NULL, -1})
 
@@ -379,6 +380,8 @@ typedef struct overlay_interface {
   struct sockaddr_in address;
   struct sockaddr_in broadcast_address;
   struct in_addr netmask;
+  // can we use this interface for routes to addresses in other subnets?
+  int default_route;
   
   /* Not necessarily the real MTU, but the largest frame size we are willing to TX on this interface.
    For radio links the actual maximum and the maximum that is likely to be delivered reliably are
@@ -427,14 +430,9 @@ void serverCleanUp();
 int isTransactionInCache(unsigned char *transaction_id);
 void insertTransactionInCache(unsigned char *transaction_id);
 
-int packetOk(struct overlay_interface *interface,unsigned char *packet, size_t len,
-	     unsigned char *transaction_id, int recvttl,
-	     struct sockaddr *recvaddr, size_t recvaddrlen,int parseP);
-
 int overlay_forward_payload(struct overlay_frame *f);
 int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,
-		    unsigned char *transaction_id,int recvttl,
-		    struct sockaddr *recvaddr, size_t recvaddrlen,int parseP);
+		    int recvttl, struct sockaddr *recvaddr, size_t recvaddrlen);
 
 int overlay_frame_process(struct overlay_interface *interface, struct overlay_frame *f);
 int overlay_frame_resolve_addresses(struct overlay_frame *f);
@@ -445,10 +443,17 @@ int overlay_frame_resolve_addresses(struct overlay_frame *f);
 
 time_ms_t overlay_time_until_next_tick();
 
-int overlay_add_selfannouncement();
-int overlay_frame_append_payload(overlay_interface *interface, struct overlay_frame *p, struct subscriber *next_hop, struct overlay_buffer *b);
+int overlay_add_selfannouncement(struct decode_context *context, int interface,struct overlay_buffer *b);
+int overlay_frame_append_payload(struct decode_context *context, overlay_interface *interface, 
+				 struct overlay_frame *p, struct overlay_buffer *b);
+int overlay_packet_init_header(struct decode_context *context, struct overlay_buffer *buff, 
+			       struct subscriber *destination, int flags);
+int overlay_frame_build_header(struct decode_context *context, struct overlay_buffer *buff, 
+			       int queue, int type, int modifiers, int ttl, 
+			       struct broadcast *broadcast, struct subscriber *next_hop,
+			       struct subscriber *destination, struct subscriber *source);
 int overlay_interface_args(const char *arg);
-int overlay_rhizome_add_advertisements(int interface_number,struct overlay_buffer *e);
+int overlay_rhizome_add_advertisements(struct decode_context *context, int interface_number, struct overlay_buffer *e);
 int overlay_add_local_identity(unsigned char *s);
 
 extern int overlay_interface_count;
@@ -492,11 +497,11 @@ overlay_node *overlay_route_find_node(const unsigned char *sid,int prefixLen,int
 
 int overlayServerMode();
 int overlay_payload_enqueue(struct overlay_frame *p);
-int overlay_route_record_link( time_ms_t now,unsigned char *to,
-			      unsigned char *via,int sender_interface,
+int overlay_route_record_link( time_ms_t now, struct subscriber *to,
+			      struct subscriber *via,int sender_interface,
 			      unsigned int s1,unsigned int s2,int score,int gateways_en_route);
 int overlay_route_dump();
-int overlay_route_add_advertisements(overlay_interface *interface, struct overlay_buffer *e);
+int overlay_route_add_advertisements(struct decode_context *context, overlay_interface *interface, struct overlay_buffer *e);
 int ovleray_route_please_advertise(overlay_node *n);
 
 int overlay_route_saw_advertisements(int i, struct overlay_frame *f, struct decode_context *context, time_ms_t now);
@@ -589,9 +594,8 @@ int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
 			  overlay_mdp_frame *mdpreply);
 int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 		     struct sockaddr_un *recvaddr,int recvaddlen);
+int overlay_mdp_encode_ports(struct overlay_buffer *plaintext, int dst_port, int src_port);
 int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const unsigned char *resolved_sid, const char *uri, const char *did, const char *name);
-
-int dump_payload(struct overlay_frame *p, char *message);
 
 int urandombytes(unsigned char *x,unsigned long long xlen);
 
@@ -613,15 +617,13 @@ int is_codec_set(int codec, unsigned char *flags);
 
 struct vomp_call_state *vomp_find_call_by_session(int session_token);
 int vomp_mdp_received(overlay_mdp_frame *mdp);
-int vomp_tick_interval();
-int vomp_sample_size(int c);
-int vomp_codec_timespan(int c);
 int vomp_parse_dtmf_digit(char c);
 int vomp_dial(unsigned char *local_sid, unsigned char *remote_sid, const char *local_did, const char *remote_did);
 int vomp_pickup(struct vomp_call_state *call);
 int vomp_hangup(struct vomp_call_state *call);
 int vomp_ringing(struct vomp_call_state *call);
-int vomp_received_audio(struct vomp_call_state *call, int audio_codec, const unsigned char *audio, int audio_length);
+int vomp_received_audio(struct vomp_call_state *call, int audio_codec, int time, int sequence,
+			const unsigned char *audio, int audio_length);
 void monitor_get_all_supported_codecs(unsigned char *codecs);
 
 int cli_putchar(char c);
@@ -733,6 +735,7 @@ void overlay_route_tick(struct sched_ent *alarm);
 void server_shutdown_check(struct sched_ent *alarm);
 void overlay_mdp_poll(struct sched_ent *alarm);
 int overlay_mdp_try_interal_services(overlay_mdp_frame *mdp);
+int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay_interface *interface);
 void fd_periodicstats(struct sched_ent *alarm);
 void rhizome_check_connections(struct sched_ent *alarm);
 

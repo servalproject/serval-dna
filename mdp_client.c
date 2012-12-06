@@ -60,9 +60,11 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
     }
   }
   
-  int port=mdp->out.dst.port;
+  int port=0;
+  if ((mdp->packetTypeAndFlags&MDP_TYPE_MASK) == MDP_TX)
+      port = mdp->out.dst.port;
+      
   time_ms_t started = gettime_ms();
-  
   while(timeout_ms>=0 && overlay_mdp_client_poll(timeout_ms)>0){
     int ttl=-1;
     if (!overlay_mdp_recv(mdp, port, &ttl)) {
@@ -209,8 +211,10 @@ int overlay_mdp_recv(overlay_mdp_frame *mdp, int port, int *ttl)
     }
     
     // silently drop incoming packets for the wrong port number
-    if (port>0 && port != mdp->in.dst.port)
+    if (port>0 && port != mdp->in.dst.port){
+      WARNF("Ignoring packet for port %d",mdp->in.dst.port);
       return -1;
+    }
     
     int expected_len = overlay_mdp_relevant_bytes(mdp);
     
@@ -273,6 +277,7 @@ int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
   int len;
   switch(mdp->packetTypeAndFlags&MDP_TYPE_MASK)
   {
+    case MDP_ROUTING_TABLE:
     case MDP_GOODBYE:
       /* no arguments for saying goodbye */
       len=&mdp->raw[0]-(char *)mdp;
@@ -288,6 +293,9 @@ int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
       break;
     case MDP_BIND:
       len=(&mdp->raw[0] - (char *)mdp) + sizeof(sockaddr_mdp);
+      break;
+    case MDP_SCAN:
+      len=(&mdp->raw[0] - (char *)mdp) + sizeof(struct overlay_mdp_scan);
       break;
     case MDP_ERROR: 
       /* This formulation is used so that we don't copy any bytes after the

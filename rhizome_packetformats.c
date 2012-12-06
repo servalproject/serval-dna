@@ -134,7 +134,7 @@ unsigned long long rhizome_bar_bidprefix_ll(unsigned char *bar)
 
 int bundles_available=-1;
 int bundle_offset[2]={0,0};
-int overlay_rhizome_add_advertisements(int interface_number, struct overlay_buffer *e)
+int overlay_rhizome_add_advertisements(struct decode_context *context, int interface_number, struct overlay_buffer *e)
 {
   IN();
 
@@ -157,31 +157,9 @@ int overlay_rhizome_add_advertisements(int interface_number, struct overlay_buff
 
   if (slots<1) { RETURN(WHY("No room for node advertisements")); }
 
-  if (ob_append_byte(e,OF_TYPE_RHIZOME_ADVERT))
-    RETURN(WHY("could not add rhizome bundle advertisement header"));
-  ob_append_byte(e, 1); /* TTL (1 byte) */
-
-  ob_append_rfs(e,1+11+1+2+RHIZOME_BAR_BYTES/* RFS */);
-
-  /* Stuff in dummy address fields (11 bytes) */
-  struct broadcast broadcast_id;
-  overlay_broadcast_generate_address(&broadcast_id);
-  overlay_broadcast_append(e, &broadcast_id);
-  ob_append_byte(e, OA_CODE_PREVIOUS);
-  overlay_address_append_self(&overlay_interfaces[interface_number], e);
-
   /* Randomly choose whether to advertise manifests or BARs first. */
   int skipmanifests=random()&1;
-  /* Version of rhizome advert block (1 byte):
-     1 = manifests then BARs,
-     2 = BARs only,
-     3 = HTTP port then manifests then BARs,
-     4 = HTTP port then BARs only
-   */
-  ob_append_byte(e,3+skipmanifests);
-  /* Rhizome HTTP server port number (2 bytes) */
-  ob_append_ui16(e, rhizome_http_server_port);
-
+  
   /* XXX Should add priority bundles here.
      XXX Should prioritise bundles for subscribed groups, Serval-authorised files
      etc over common bundles.
@@ -218,6 +196,32 @@ int overlay_rhizome_add_advertisements(int interface_number, struct overlay_buff
   sqlite3_stmt *statement=NULL;
   sqlite3_blob *blob=NULL;
 
+  ob_checkpoint(e);
+  
+  if (overlay_frame_build_header(context, e, 
+				 0, OF_TYPE_RHIZOME_ADVERT, 0, 1, 
+				 NULL, NULL,
+				 NULL, my_subscriber)){
+    ob_rewind(e);
+    return -1;
+  }
+  
+  /* Version of rhizome advert block (1 byte):
+   1 = manifests then BARs,
+   2 = BARs only,
+   3 = HTTP port then manifests then BARs,
+   4 = HTTP port then BARs only
+   */
+  if (ob_append_byte(e,3+skipmanifests)){
+    ob_rewind(e);
+    return -1;
+  }
+  /* Rhizome HTTP server port number (2 bytes) */
+  if (ob_append_ui16(e, rhizome_http_server_port)){
+    ob_rewind(e);
+    return -1;
+  }
+  
   for(pass=skipmanifests;pass<2;pass++) {
     ob_checkpoint(e);
     switch(pass) {
@@ -230,8 +234,10 @@ int overlay_rhizome_add_advertisements(int interface_number, struct overlay_buff
     }
     if (!statement) {
       sqlite_set_debugmask(oldmask);
-      RETURN(WHY("Could not prepare sql statement for fetching BARs for advertisement"));
+      WHY("Could not prepare sql statement for fetching BARs for advertisement");
+      goto stopStuffing;
     }
+    
     while(  sqlite_step_retry(&retry, statement) == SQLITE_ROW
 	&&  e->position+RHIZOME_BAR_BYTES<=e->sizeLimit
     ) {
@@ -320,7 +326,7 @@ int overlay_rhizome_add_advertisements(int interface_number, struct overlay_buff
     }
   }
 
-  ob_patch_rfs(e, COMPUTE_RFS_LENGTH);
+  ob_patch_rfs(e);
 
   sqlite_set_debugmask(oldmask);
   RETURN(0);
@@ -334,7 +340,7 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
   if (!rhizome_db) { RETURN(0); }
   
   int ad_frame_type=ob_get(f->payload);
-  struct sockaddr_in httpaddr = *(struct sockaddr_in *)f->recvaddr;
+  struct sockaddr_in httpaddr = f->recvaddr;
   httpaddr.sin_port = htons(RHIZOME_HTTP_PORT);
   int manifest_length;
   rhizome_manifest *m=NULL;

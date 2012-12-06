@@ -1,3 +1,22 @@
+/*
+ Copyright (C) 2012 Serval Project Inc
+ 
+ This program is free software; you can redistribute it and/or
+ modify it under the terms of the GNU General Public License
+ as published by the Free Software Foundation; either version 2
+ of the License, or (at your option) any later version.
+ 
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ GNU General Public License for more details.
+ 
+ You should have received a copy of the GNU General Public License
+ along with this program; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ */
+
+
 #include "serval.h"
 #include "overlay_buffer.h"
 #include "overlay_packet.h"
@@ -32,17 +51,15 @@ typedef struct overlay_txqueue {
 
 overlay_txqueue overlay_tx[OQ_MAX];
 
-unsigned char magic_header[]={/* Magic */ 'O',0x10,
-  /* Version */ 0x00,0x01};
-
 struct outgoing_packet{
   overlay_interface *interface;
   int i;
   struct subscriber *unicast_subscriber;
-  int unicast;
   int add_advertisements;
   struct sockaddr_in dest;
+  int header_length;
   struct overlay_buffer *buffer;
+  struct decode_context context;
 };
 
 struct sched_ent next_packet;
@@ -144,11 +161,23 @@ int overlay_payload_enqueue(struct overlay_frame *p)
   
   if (!p) return WHY("Cannot queue NULL");
   
-  if (p->destination){
+  do{
+    if (p->destination_resolved)
+      break;
+    if (!p->destination)
+      break;
     int r = subscriber_is_reachable(p->destination);
-    if (r == REACHABLE_SELF || r == REACHABLE_NONE)
-      return WHYF("Destination %s is unreachable (%d)", alloca_tohex_sid(p->destination->sid), r);
-  }
+    if (r&REACHABLE)
+      break;
+    
+    if (directory_service){
+      r = subscriber_is_reachable(directory_service);
+      if (r&REACHABLE)
+	break;
+    }
+    
+    return WHYF("Cannot send %x packet, destination %s is %s", p->type, alloca_tohex_sid(p->destination->sid), r==REACHABLE_SELF?"myself":"unreachable");
+  } while(0);
   
   if (p->queue>=OQ_MAX) 
     return WHY("Invalid queue specified");
@@ -160,10 +189,10 @@ int overlay_payload_enqueue(struct overlay_frame *p)
 	   p->destination?alloca_tohex(p->destination->sid, 7): alloca_tohex(p->broadcast_id.id,BROADCAST_LEN),
 	   p->queue, queue->length);
   
-  if (p->payload && p->payload->position > p->payload->sizeLimit){
+  if (p->payload && ob_remaining(p->payload)<0){
     // HACK, maybe should be done in each caller
     // set the size of the payload based on the position written
-    p->payload->sizeLimit=p->payload->position;
+    ob_limitsize(p->payload,ob_position(p->payload));
   }
   
   if (queue->length>=queue->maxLength) 
@@ -174,28 +203,30 @@ int overlay_payload_enqueue(struct overlay_frame *p)
   else if(p->send_copies>5)
     return WHY("Too many copies requested");
   
-  if (!p->destination){
-    int i;
-    int drop=1;
-    
-    // hook to allow for flooding via olsr
-    olsr_send(p);
-    
-    // make sure there is an interface up that allows broadcasts
-    for(i=0;i<OVERLAY_MAX_INTERFACES;i++){
-      if (overlay_interfaces[i].state==INTERFACE_STATE_UP
-	  && overlay_interfaces[i].send_broadcasts){
-	p->broadcast_sent_via[i]=0;
-	drop=0;
-      }else
-	p->broadcast_sent_via[i]=1;
+  if (!p->destination_resolved){
+    if (!p->destination){
+      int i;
+      int drop=1;
+      
+      // hook to allow for flooding via olsr
+      olsr_send(p);
+      
+      // make sure there is an interface up that allows broadcasts
+      for(i=0;i<OVERLAY_MAX_INTERFACES;i++){
+	if (overlay_interfaces[i].state==INTERFACE_STATE_UP
+	    && overlay_interfaces[i].send_broadcasts){
+	  p->broadcast_sent_via[i]=0;
+	  drop=0;
+	}else
+	  p->broadcast_sent_via[i]=1;
+      }
+      
+      // just drop it now
+      if (drop){
+	WARN("No broadcast interfaces to send with");
+	return -1;
+      }
     }
-    
-    // just drop it now
-    if (drop)
-      return -1;
-    
-    p->sendBroadcast=1;
   }
   
   struct overlay_frame *l=queue->last;
@@ -210,48 +241,32 @@ int overlay_payload_enqueue(struct overlay_frame *p)
   
   overlay_update_queue_schedule(queue, p);
   
-  if (0) overlay_queue_dump(queue);
-  
   return 0;
 }
 
 static void
-overlay_init_packet(struct outgoing_packet *packet, overlay_interface *interface, int tick){
+overlay_init_packet(struct outgoing_packet *packet, struct subscriber *destination, int flags,
+		    overlay_interface *interface, struct sockaddr_in addr, int tick){
   packet->interface = interface;
   packet->i = (interface - overlay_interfaces);
-  packet->dest=interface->broadcast_address;
+  packet->dest=addr;
   packet->buffer=ob_new();
   packet->add_advertisements=1;
+  if (flags & PACKET_UNICAST)
+    packet->unicast_subscriber = destination;
   ob_limitsize(packet->buffer, packet->interface->mtu);
-  ob_append_bytes(packet->buffer,magic_header,4);
   
-  overlay_address_clear();
-  
+  overlay_packet_init_header(&packet->context, packet->buffer, destination, flags);
+  packet->header_length = ob_position(packet->buffer);
   if (tick){
     /* 1. Send announcement about ourselves, including one SID that we host if we host more than one SID
      (the first SID we host becomes our own identity, saving a little bit of data here).
      */
-    overlay_add_selfannouncement(packet->i, packet->buffer);
+    overlay_add_selfannouncement(&packet->context, packet->i, packet->buffer);
     
     /* Add advertisements for ROUTES */
-    overlay_route_add_advertisements(packet->interface, packet->buffer);
+    overlay_route_add_advertisements(&packet->context, packet->interface, packet->buffer);
     
-  }else{
-    // add a badly formatted dummy self announce payload to tell people we sent this.
-    ob_append_byte(packet->buffer, OF_TYPE_SELFANNOUNCE);
-    ob_append_byte(packet->buffer, 1);
-    ob_append_rfs(packet->buffer, SID_SIZE + 2);
-    
-    /* from me, to me, via me 
-     (it's shorter than an actual broadcast, 
-     and receivers wont try to process it 
-     since its not going to have a payload body anyway) */
-    overlay_address_append_self(interface, packet->buffer);
-    overlay_address_set_sender(my_subscriber);
-    ob_append_byte(packet->buffer, OA_CODE_PREVIOUS);
-    ob_append_byte(packet->buffer, OA_CODE_PREVIOUS);
-    
-    ob_patch_rfs(packet->buffer, COMPUTE_RFS_LENGTH);
   }
 }
 
@@ -261,12 +276,24 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
   int ret=0;
   time_ms_t send_time;
   
-  // ignore packet if the destination is currently unreachable
-  if (frame->destination && subscriber_is_reachable(frame->destination)==REACHABLE_NONE)
+  do{
+    if (frame->destination_resolved)
+      break;
+    if (!frame->destination)
+      break;
+    if (subscriber_is_reachable(frame->destination)&REACHABLE)
+      break;
+    if (directory_service){
+      if (subscriber_is_reachable(directory_service)&REACHABLE)
+	break;
+    }
+    // ignore payload alarm if the destination is currently unreachable
     return 0;
+  }while(0);
   
   // when is the next packet from this queue due?
   send_time=queue->first->enqueued_at + queue->transmit_delay;
+  
   if (next_packet.alarm==0 || send_time < next_packet.alarm){
     next_packet.alarm=send_time;
     ret = 1;
@@ -303,101 +330,100 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
      even if we hear it from somewhere else in the mean time
      */
     
-    struct subscriber *next_hop = frame->destination;
-    
-    if (next_hop){
-      switch(subscriber_is_reachable(next_hop)){
-	case REACHABLE_NONE:
+    if (!frame->destination_resolved){
+      frame->next_hop = frame->destination;
+      
+      if (frame->next_hop){
+	// Where do we need to route this payload next?
+	
+	int r = subscriber_is_reachable(frame->next_hop);
+	
+	// first, should we try to bounce this payload off the directory service?
+	if (r==REACHABLE_NONE && 
+	    directory_service && 
+	    frame->next_hop!=directory_service){
+	  frame->next_hop=directory_service;
+	  r=subscriber_is_reachable(directory_service);
+	}
+	
+	// do we need to route via a neighbour?
+	if (r&REACHABLE_INDIRECT){
+	  frame->next_hop = frame->next_hop->next_hop;
+	  r = subscriber_is_reachable(frame->next_hop);
+	}
+	
+	if (!(r&REACHABLE_DIRECT)){
 	  goto skip;
-	  
-	case REACHABLE_INDIRECT:
-	  next_hop=next_hop->next_hop;
-	  frame->sendBroadcast=0;
-	  break;
-	  
-	case REACHABLE_DEFAULT_ROUTE:
-	  next_hop=directory_service;
-	  frame->sendBroadcast=0;
-	  break;
-	  
-	case REACHABLE_DIRECT:
-	case REACHABLE_UNICAST:
-	  frame->sendBroadcast=0;
-	  break;
-	  
-	case REACHABLE_BROADCAST:
-	  if (!frame->sendBroadcast){
-	    if (frame->ttl>2)
-	      frame->ttl=2;
-	    frame->sendBroadcast=1;
-	    if (is_all_matching(frame->broadcast_id.id, BROADCAST_LEN, 0)){
-	      overlay_broadcast_generate_address(&frame->broadcast_id);
-	      // mark it as already seen so we don't immediately retransmit it
-	      overlay_broadcast_drop_check(&frame->broadcast_id);
-	    }
-	    int i;
-	    for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
-	      frame->broadcast_sent_via[i]=0;
+	}
+	
+	frame->interface = frame->next_hop->interface;
+	
+	if(r&REACHABLE_UNICAST){
+	  frame->recvaddr = frame->next_hop->address;
+	  frame->flags = PACKET_UNICAST;
+	  // ignore resend logic for unicast packets, where wifi gives better resilience
+	  frame->send_copies=1;
+	}else
+	  frame->recvaddr = frame->interface->broadcast_address;
+	
+	frame->destination_resolved=1;
+      }else{
+	
+	if (packet->buffer){
+	  // check if we can stuff into this packet
+	  if (frame->broadcast_sent_via[packet->i]){
+	    goto skip;
 	  }
-	  break;
+	  frame->interface = packet->interface;
+	  frame->recvaddr = packet->interface->broadcast_address;
+	  
+	}else{
+	  // find an interface that we haven't broadcast on yet
+	  frame->interface = NULL;
+	  int i;
+	  for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
+	  {
+	    if (overlay_interfaces[i].state==INTERFACE_STATE_UP
+		&& !frame->broadcast_sent_via[i]){
+	      frame->interface = &overlay_interfaces[i];
+	      frame->recvaddr = overlay_interfaces[i].broadcast_address;
+	      break;
+	    }
+	  }
+	  
+	  if (!frame->interface){
+	    // huh, we don't need to send it anywhere?
+	    frame = overlay_queue_remove(queue, frame);
+	    continue;
+	  }
+	}
       }
     }
     
     if (!packet->buffer){
-      // use the interface of the first payload we find
-      if (frame->sendBroadcast){
-	// find an interface that we haven't broadcast on yet
-	int i;
-	for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
-	{
-	  if (overlay_interfaces[i].state==INTERFACE_STATE_UP
-	      && !frame->broadcast_sent_via[i]){
-	    overlay_init_packet(packet, &overlay_interfaces[i], 0);
-	    break;
-	  }
-	}
-	
-	if (!packet->buffer){
-	  // oh dear, why is this broadcast still in the queue?
-	  frame = overlay_queue_remove(queue, frame);
-	  continue;
-	}
-      }else{
-	overlay_init_packet(packet, next_hop->interface, 0);
-	if (next_hop->reachable==REACHABLE_UNICAST){
-	  packet->unicast_subscriber = next_hop;
-	  packet->dest = next_hop->address;
-	  packet->unicast=1;
-	}
-      }
-      
+      overlay_init_packet(packet, frame->next_hop, frame->flags, frame->interface, frame->recvaddr, 0);
     }else{
-      // make sure this payload can be sent via this interface
-      if (frame->sendBroadcast){
-	if (frame->broadcast_sent_via[packet->i]){
-	  goto skip;
-	}
-      }else{
-	if(packet->interface != next_hop->interface)
-	  goto skip;
-	if (next_hop->reachable==REACHABLE_DIRECT && packet->unicast)
-	  goto skip;
-	if (next_hop->reachable==REACHABLE_UNICAST && 
-	    ((!packet->unicast) ||
-	     packet->dest.sin_addr.s_addr != next_hop->address.sin_addr.s_addr))
-	  goto skip;
+      // is this packet going our way?
+      if (frame->interface!=packet->interface || memcmp(&packet->dest, &frame->recvaddr, sizeof(packet->dest))!=0){
+	goto skip;
       }
-    }
+    }    
     
     if (debug&DEBUG_OVERLAYFRAMES){
-      DEBUGF("Sending payload type %x len %d for %s via %s", frame->type, frame->payload->position,
+      DEBUGF("Sending payload type %x len %d for %s via %s", frame->type, ob_position(frame->payload),
 	     frame->destination?alloca_tohex_sid(frame->destination->sid):"All",
-	     frame->sendBroadcast?alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN):alloca_tohex_sid(next_hop->sid));
+	     frame->next_hop?alloca_tohex_sid(frame->next_hop->sid):alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN));
     }
     
-    if (overlay_frame_append_payload(packet->interface, frame, next_hop, packet->buffer))
+    if (overlay_frame_append_payload(&packet->context, packet->interface, frame, packet->buffer)){
       // payload was not queued
       goto skip;
+    }
+    
+    if (frame->destination)
+      frame->destination->last_tx=now;
+    if (frame->next_hop)
+      frame->next_hop->last_tx=now;
     
     // don't send rhizome adverts if the packet contains a voice payload
     if (frame->queue==OQ_ISOCHRONOUS_VOICE)
@@ -406,7 +432,14 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     // mark the payload as sent
     int keep_payload = 0;
     
-    if (frame->sendBroadcast){
+    if (frame->destination_resolved){
+      frame->send_copies --;
+      if (frame->send_copies>0){
+	keep_payload=1;
+	// make sure we don't schedule the next alarm immediately
+	frame->enqueued_at=gettime_ms();
+      }
+    }else{
       int i;
       frame->broadcast_sent_via[packet->i]=1;
       
@@ -419,20 +452,15 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	    break;
 	  }
       }
-    }else{
-      frame->send_copies --;
-      // ignore resend logic for unicast packets, where wifi gives better resilience
-      if (frame->send_copies>0 && !packet->unicast)
-	keep_payload=1;
     }
     
     if (!keep_payload){
       frame = overlay_queue_remove(queue, frame);
       continue;
-    }
+    } 
     
   skip:
-    // if we can't send the payload now, check when we should try
+    // if we can't send the payload now, check when we should try next
     overlay_calc_queue_time(queue, frame);
     frame = frame->next;
   }
@@ -458,24 +486,24 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
     schedule(&next_packet);
   
   if(packet->buffer){
-    // send the packet
-    if (packet->buffer->position>=HEADERFIELDS_LEN){
+    if (ob_position(packet->buffer) > packet->header_length){
+    
       // stuff rhizome announcements at the last moment
       if (packet->add_advertisements)
-	overlay_rhizome_add_advertisements(packet->i,packet->buffer);
+	overlay_rhizome_add_advertisements(&packet->context, packet->i,packet->buffer);
       
       if (debug&DEBUG_PACKETCONSTRUCTION)
-	dump("assembled packet",&packet->buffer->bytes[0],packet->buffer->position);
+	ob_dump(packet->buffer,"assembled packet");
       
-      if (overlay_broadcast_ensemble(packet->i, &packet->dest, packet->buffer->bytes, packet->buffer->position)){
+      if (overlay_broadcast_ensemble(packet->i, &packet->dest, ob_ptr(packet->buffer), ob_position(packet->buffer))){
 	// sendto failed. We probably don't have a valid route
 	if (packet->unicast_subscriber){
 	  set_reachable(packet->unicast_subscriber, REACHABLE_NONE);
 	}
       }
-    }
+    }else
+      WARN("No payloads were sent?");
     ob_free(packet->buffer);
-    overlay_address_clear();
     RETURN(1);
   }
   RETURN(0);
@@ -512,7 +540,7 @@ overlay_tick_interface(int i, time_ms_t now) {
   
   // initialise the packet buffer
   bzero(&packet, sizeof(struct outgoing_packet));
-  overlay_init_packet(&packet, &overlay_interfaces[i], 1);
+  overlay_init_packet(&packet, NULL, 0, &overlay_interfaces[i], overlay_interfaces[i].broadcast_address, 1);
   
   /* Stuff more payloads from queues and send it */
   overlay_fill_send_packet(&packet, now);

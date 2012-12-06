@@ -25,43 +25,22 @@
 // not reachable
 #define REACHABLE_NONE 0
 
-// immediate neighbour
-#define REACHABLE_DIRECT 1
-
-// reachable via unicast packet
-#define REACHABLE_UNICAST 2
-
-// packets must be routed
-#define REACHABLE_INDIRECT 3
-
-// packets can probably be flooded to this peer with ttl=2
-// (temporary state for new peers before path discovery has finished)
-#define REACHABLE_BROADCAST 4
-
 // this subscriber is in our keystore
-#define REACHABLE_SELF 5
+#define REACHABLE_SELF (1<<0)
 
-#define REACHABLE_DEFAULT_ROUTE 6
+// immediate neighbour broadcast packet
+#define REACHABLE_BROADCAST (1<<1)
 
-/* Codes used to describe abbreviated addresses.
- Values 0x10 - 0xff are the first byte of, and implicit indicators of addresses written in full */
-#define OA_CODE_SELF 0x00
-#define OA_CODE_INDEX 0x01
-#define OA_CODE_02 0x02
-#define OA_CODE_PREVIOUS 0x03
-#define OA_CODE_04 0x04
-#define OA_CODE_PREFIX3 0x05
-#define OA_CODE_PREFIX7 0x06
-#define OA_CODE_PREFIX11 0x07
-#define OA_CODE_FULL_INDEX1 0x08
-#define OA_CODE_PREFIX3_INDEX1 0x09
-#define OA_CODE_PREFIX7_INDEX1 0x0a
-#define OA_CODE_PREFIX11_INDEX1 0x0b
-#define OA_CODE_0C 0x0c
-#define OA_CODE_PREFIX11_INDEX2 0x0d
-#define OA_CODE_FULL_INDEX2 0x0e
-/* The TTL field in a frame is used to differentiate between link-local and wide-area broadcasts */
-#define OA_CODE_BROADCAST 0x0f
+// reachable directly via unicast packet
+#define REACHABLE_UNICAST (1<<2)
+
+// packets must be routed via next_hop
+#define REACHABLE_INDIRECT (1<<3)
+
+#define REACHABLE_ASSUMED (1<<4)
+
+#define REACHABLE_DIRECT (REACHABLE_BROADCAST|REACHABLE_UNICAST)
+#define REACHABLE (REACHABLE_DIRECT|REACHABLE_INDIRECT)
 
 #define BROADCAST_LEN 8
 
@@ -75,7 +54,8 @@ struct subscriber{
   
   // should we send the full address once?
   int send_full;
-  
+  // sequence number for this unicast or broadcast destination
+  int sequence;
   // overlay routing information
   struct overlay_node *node;
   
@@ -88,8 +68,11 @@ struct subscriber{
   // if direct, or unicast, where do we send packets?
   struct overlay_interface *interface;
   
-  // if reachable==REACHABLE_UNICAST send packets to this address, else use the interface broadcast address
+  // if reachable&REACHABLE_UNICAST send packets to this address, else use the interface broadcast address
   struct sockaddr_in address;
+  time_ms_t last_probe;
+  time_ms_t last_rx;
+  time_ms_t last_tx;
   
   // public signing key details for remote peers
   unsigned char sas_public[SAS_SIZE];
@@ -105,9 +88,12 @@ struct broadcast{
 };
 
 struct decode_context{
-  int abbreviations_only;
+  struct overlay_interface *interface;
+  struct sockaddr_in addr;
   int invalid_addresses;
   struct overlay_frame *please_explain;
+  struct subscriber *sender;
+  struct subscriber *previous;
 };
 
 extern struct subscriber *my_subscriber;
@@ -125,14 +111,10 @@ int overlay_broadcast_drop_check(struct broadcast *addr);
 int overlay_broadcast_generate_address(struct broadcast *addr);
 
 int overlay_broadcast_append(struct overlay_buffer *b, struct broadcast *broadcast);
-int overlay_address_append(struct overlay_buffer *b, struct subscriber *subscriber);
-int overlay_address_append_self(overlay_interface *interface, struct overlay_buffer *b);
+int overlay_address_append(struct decode_context *context, struct overlay_buffer *b, struct subscriber *subscriber);
 
-int overlay_address_parse(struct decode_context *context, struct overlay_buffer *b, struct broadcast *broadcast, struct subscriber **subscriber);
+int overlay_broadcast_parse(struct overlay_buffer *b, struct broadcast *broadcast);
+int overlay_address_parse(struct decode_context *context, struct overlay_buffer *b, struct subscriber **subscriber);
 int send_please_explain(struct decode_context *context, struct subscriber *source, struct subscriber *destination);
-
-void overlay_address_clear(void);
-void overlay_address_set_sender(struct subscriber *subscriber);
-
 
 #endif

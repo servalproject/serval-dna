@@ -29,13 +29,12 @@ configure_servald_server() {
 setup() {
    setup_servald
    assert_no_servald_processes
-   foreach_instance +A +B +C create_single_identity
+   foreach_instance +A +B +C +D create_single_identity
    set_instance +D
+   executeOk_servald set did $SIDD $DIDC "Agent D Smith"
    DIDD1=$DIDC
    NAMED1="Agent D Smith"
-   create_identities 1
-   SIDD=$SIDD1
-   DIDD=$DIDD1
+   DIDD=$DIDC1
    NAMED=$NAMED1
    set_instance +A
    executeOk_servald config set dna.helper.executable "$servald_build_root/directory_service"
@@ -51,19 +50,25 @@ teardown() {
 }
 
 is_published() {
-   grep "PUBLISHED" $LOGA || return 1
+   tfw_log "grep \"PUBLISHED.*$1\" $LOGA"
+   grep "PUBLISHED.*$1" $LOGA || return 1
    return 0   
 }
 
 sent_directory_request() {
-   grep "Sending directory registration" $LOGD || return 1
+   tfw_log "grep \"Sending directory registration\" $1"
+   grep "Sending directory registration" $1 || return 1
    return 0
 }
 
 doc_publish="Publish and retrieve a directory entry"
 test_publish() {
-   wait_until sent_directory_request
-   wait_until is_published
+   wait_until sent_directory_request $LOGB
+   wait_until sent_directory_request $LOGC
+   wait_until sent_directory_request $LOGD
+   wait_until is_published $SIDB
+   wait_until is_published $SIDC
+   wait_until is_published $SIDD
    stop_servald_server +B
    stop_servald_server +C
    stop_servald_server +D
@@ -101,25 +106,27 @@ setup_routing() {
    executeOk_servald config set mdp.dummyC.tick_ms 0
    executeOk_servald config set dna.helper.executable "$servald_build_root/directory_service"
    executeOk_servald config set debug.dnahelper on
-   start_routing_instance
    set_instance +B
    executeOk_servald config set interfaces "+>dummyB"
    executeOk_servald config set mdp.dummyB.tick_ms 0
    executeOk_servald config set directory.service $SIDA
    executeOk_servald config set $SIDA.interface "dummyB"
    executeOk_servald config set $SIDA.address 127.0.0.1
-   start_routing_instance
    set_instance +C
    executeOk_servald config set interfaces "+>dummyC"
    executeOk_servald config set mdp.dummyC.tick_ms 0
    executeOk_servald config set directory.service $SIDA
    executeOk_servald config set $SIDA.interface "dummyC"
    executeOk_servald config set $SIDA.address 127.0.0.1
-   start_routing_instance
+   foreach_instance +A +B +C start_routing_instance
 }
 
 doc_routing="Ping via relay node"
 test_routing() {
+   wait_until sent_directory_request $LOGB
+   wait_until sent_directory_request $LOGC
+   wait_until is_published $SIDB
+   wait_until is_published $SIDC
    set_instance +B
    executeOk_servald dna lookup "$DIDC"
    assertStdoutLineCount '==' 1

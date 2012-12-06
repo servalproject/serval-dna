@@ -487,10 +487,17 @@ static int monitor_call_pickup(int argc, const char *const *argv, struct command
 static int monitor_call_audio(int argc, const char *const *argv, struct command_line_option *o, void *context){
   struct monitor_context *c=context;
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(argv[1],NULL,16));
-  if (!call)
+  
+  if (!call){
     monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%s\n", argv[1]);
-  else
-    vomp_received_audio(call, atoi(argv[2]), c->buffer, c->data_expected);
+    return 0;
+  }
+  
+  int codec_type = atoi(argv[2]);
+  int time = argc>=4?atoi(argv[3]):-1;
+  int sequence = argc>=5?atoi(argv[4]):-1;
+  
+  vomp_received_audio(call, codec_type, time, sequence, c->buffer, c->data_expected);
   return 0;
 }
 
@@ -520,7 +527,7 @@ static int monitor_call_dtmf(int argc, const char *const *argv, struct command_l
        of the majority of codec time units (70ms is the nominal
        DTMF tone length for most systems). */
       unsigned char code = digit <<4;
-      vomp_received_audio(call, VOMP_CODEC_DTMF, &code, 1);
+      vomp_received_audio(call, VOMP_CODEC_DTMF, -1, -1, &code, 1);
     }
   }
   return 0;
@@ -534,7 +541,7 @@ struct command_line_option monitor_options[]={
   {monitor_call, {"call","<sid>","<local_did>","<remote_did>",NULL},0,""},
   {monitor_call_ring, {"ringing","<token>",NULL},0,""},
   {monitor_call_pickup, {"pickup","<token>",NULL},0,""},
-  {monitor_call_audio,{"audio","<token>","<type>","[<offset>]",NULL},0,""},
+  {monitor_call_audio,{"audio","<token>","<type>","[<time>]","[<sequence>]",NULL},0,""},
   {monitor_call_hangup, {"hangup","<token>",NULL},0,""},
   {monitor_call_dtmf, {"dtmf","<token>","<digits>",NULL},0,""},
   {NULL},

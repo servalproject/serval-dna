@@ -43,23 +43,50 @@ start_routing_instance() {
    start_servald_server
 }
 
+log_routing_table() {
+   executeOk_servald route print
+   tfw_cat --stdout --stderr
+}
+
 teardown() {
+   foreach_instance_with_pidfile log_routing_table
    stop_all_servald_servers
    kill_all_servald_processes
    assert_no_servald_processes
+   report_all_servald_servers
 }
 
 setup_single_link() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B create_single_identity
-   start_servald_instances +A +B
+   foreach_instance +A +B add_interface dummy1
+   foreach_instance +A +B start_routing_instance
 }
 
 doc_single_link="Start 2 instances on one link"
 test_single_link() {
    set_instance +A
-   executeOk_servald mdp ping $SIDB 3
+   executeOk_servald mdp ping $SIDB 10
+   tfw_cat --stdout --stderr
+}
+
+setup_multiple_nodes() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B +C +D create_single_identity
+   foreach_instance +A +B +C +D add_interface dummy1
+   foreach_instance +A +B +C +D start_routing_instance
+}
+
+doc_multiple_nodes="Multiple nodes on one link"
+test_multiple_nodes() {
+   set_instance +A
+   executeOk_servald mdp ping $SIDB 10
+   tfw_cat --stdout --stderr
+   executeOk_servald mdp ping $SIDC 3
+   tfw_cat --stdout --stderr
+   executeOk_servald mdp ping $SIDD 3
    tfw_cat --stdout --stderr
 }
 
@@ -75,9 +102,8 @@ setup_multihop_linear() {
 
 doc_multihop_linear="Start 4 instances in a linear arrangement"
 test_multihop_linear() {
-   wait_until --sleep=0.25 instances_see_each_other +A +B +C +D
    set_instance +A
-   executeOk_servald mdp ping $SIDD 3
+   executeOk_servald mdp ping $SIDD 10
    tfw_cat --stdout --stderr
 }
 
@@ -99,7 +125,7 @@ setup_crowded_mess() {
 doc_crowded_mess="Multiple possible paths"
 test_crowded_mess() {
    set_instance +A
-   executeOk_servald mdp ping $SIDH 5
+   executeOk_servald mdp ping $SIDH 10
    tfw_cat --stdout --stderr
 }
 

@@ -511,7 +511,7 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
   /* TODO We should stream file straight into the database */
   slot->start_time=gettime_ms();
   if (create_rhizome_import_dir() == -1)
-    goto bail;
+    return -1;
   if (slot->manifest) {
     slot->file_len=slot->manifest->fileLength;
     slot->rowid=
@@ -519,15 +519,27 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
 				       slot->file_len,
 				       RHIZOME_PRIORITY_DEFAULT);
     if (slot->rowid<0) {
-      WHYF_perror("Could not obtain rowid for blob for file '%s'",
+      return WHYF_perror("Could not obtain rowid for blob for file '%s'",
 		  alloca_tohex_sid(slot->bid));
-      goto bail;
     }
   } else {
     slot->rowid=-1;
   }
 
-  if (slot->peer_ipandport.sin_family == AF_INET) {
+  slot->request_ofs = 0;
+  slot->state = RHIZOME_FETCH_CONNECTING;
+  slot->file_len = -1;
+  slot->file_ofs = 0;
+  slot->blob_buffer_bytes = 0;
+  if (slot->blob_buffer) {
+    free(slot->blob_buffer);
+    slot->blob_buffer=NULL;
+  }
+  slot->blob_buffer_size=0;
+
+  SHA512_Init(&slot->sha512_context);
+    
+  if (slot->peer_ipandport.sin_family == AF_INET && slot->peer_ipandport.sin_port) {
     /* Transfer via HTTP over IPv4 */
     if ((sock = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
       WHY_perror("socket");
@@ -558,18 +570,6 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
 	     buf, ntohs(slot->peer_ipandport.sin_port), alloca_str_toprint(slot->request)
 	);
     slot->alarm.poll.fd = sock;
-    slot->request_ofs = 0;
-    slot->state = RHIZOME_FETCH_CONNECTING;
-    slot->file_len = -1;
-    slot->file_ofs = 0;
-    slot->blob_buffer_bytes = 0;
-    if (slot->blob_buffer) {
-      free(slot->blob_buffer);
-      slot->blob_buffer=NULL;
-    }
-    slot->blob_buffer_size=0;
-
-    SHA512_Init(&slot->sha512_context);
     /* Watch for activity on the socket */
     slot->alarm.function = rhizome_fetch_poll;
     fetch_stats.name = "rhizome_fetch_poll";
@@ -580,7 +580,6 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
     unschedule(&slot->alarm);
     slot->alarm.alarm = gettime_ms() + RHIZOME_IDLE_TIMEOUT;
     slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
-    slot->alarm.function-rhizome_fetch_poll;
     schedule(&slot->alarm);
     return 0;
   }
@@ -588,15 +587,9 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
  bail_http:
     /* Fetch via overlay, either because no IP address was provided, or because
        the connection/attempt to fetch via HTTP failed. */
-  WHY("Rhizome fetching via overlay not implemented");
   slot->state=RHIZOME_FETCH_RXFILEMDP;
   rhizome_fetch_switch_to_mdp(slot);
   return 0;
-  
-bail:
-  if (sock != -1)
-    close(sock);
-  return -1;
 }
 
 /* Start fetching a bundle's payload ready for importing.
@@ -1015,8 +1008,10 @@ static int rhizome_fetch_close(struct rhizome_fetch_slot *slot)
 
   /* close socket and stop watching it */
   unschedule(&slot->alarm);
-  unwatch(&slot->alarm);
-  close(slot->alarm.poll.fd);
+  if (slot->alarm.poll.fd>=0){
+    unwatch(&slot->alarm);
+    close(slot->alarm.poll.fd);
+  }
   slot->alarm.poll.fd = -1;
   slot->alarm.function=NULL;
 
@@ -1067,6 +1062,7 @@ static void rhizome_fetch_mdp_slot_callback(struct sched_ent *alarm)
 
 static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
 {
+  IN();
   // only issue new requests every 133ms.  
   // we automatically re-issue once we have received all packets in this
   // request also, so if there is no packet loss, we can go substantially
@@ -1084,13 +1080,13 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   mdp.packetTypeAndFlags=MDP_TX;
 
   mdp.out.queue=OQ_ORDINARY;
-  mdp.out.payload_length=RHIZOME_BAR_BYTES+8+8+4+2;
+  mdp.out.payload_length=RHIZOME_MANIFEST_ID_BYTES+8+8+4+2;
   bcopy(slot->bid,&mdp.out.payload[0],RHIZOME_MANIFEST_ID_BYTES);
 
-  write_uint64(&mdp.out.payload[RHIZOME_BAR_BYTES],slot->bidVersion);
-  write_uint64(&mdp.out.payload[RHIZOME_BAR_BYTES+8],slot->file_ofs);
-  write_uint32(&mdp.out.payload[RHIZOME_BAR_BYTES+8+8],slot->mdpRXBitmap);
-  write_uint16(&mdp.out.payload[RHIZOME_BAR_BYTES+8+8+4],slot->mdpRXBlockLength);  
+  write_uint64(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES],slot->bidVersion);
+  write_uint64(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8],slot->file_ofs);
+  write_uint32(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8],slot->mdpRXBitmap);
+  write_uint16(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4],slot->mdpRXBlockLength);  
 
   if (0)
     DEBUGF("src sid=%s, dst sid=%s, mdpRXWindowStart=0x%x",
@@ -1110,7 +1106,7 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   slot->alarm.deadline=slot->alarm.alarm+500;
   schedule(&slot->alarm);
   
-  return 0;
+  RETURN(0);
 }
 
 static int rhizome_fetch_mdp_requestmanifest(struct rhizome_fetch_slot *slot)
@@ -1173,12 +1169,12 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
   DEBUGF("Trying to switch to MDP for Rhizome fetch: slot=0x%p",slot);
   
   /* close socket and stop watching it */
-  unwatch(&slot->alarm);
-  unschedule(&slot->alarm);
-  if (slot->alarm.poll.fd!=-1) {
+  if (slot->alarm.poll.fd>=0) {
+    unwatch(&slot->alarm);
     close(slot->alarm.poll.fd);
     slot->alarm.poll.fd = -1;
   }
+  unschedule(&slot->alarm);
 
   /* Begin MDP fetch process.
      1. Send initial request.
@@ -1206,7 +1202,7 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
 
     slot->mdpIdleTimeout=5000; // give up if nothing received for 5 seconds
     slot->mdpRXBitmap=0x00000000; // no blocks received yet
-    slot->mdpRXBlockLength=1024; // 200;
+    slot->mdpRXBlockLength=1024;
     rhizome_fetch_mdp_requestblocks(slot);    
   } else {
     /* We are requesting a manifest, which is stateless, except that we eventually
@@ -1276,6 +1272,7 @@ int rhizome_fetch_flush_blob_buffer(struct rhizome_fetch_slot *slot)
 
 int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int bytes)
 {
+  IN();
   // Truncate to known length of file (handy for reading from journal bundles that
   // might grow while we are reading from them).
   if (bytes>(slot->file_len-slot->file_ofs))
@@ -1330,8 +1327,8 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
   slot->last_write_time=gettime_ms();
   if (slot->file_ofs>=slot->file_len) {
     /* got all of file */
-    // if (debug & DEBUG_RHIZOME_RX)
-    DEBUGF("Received all of file via rhizome -- now to import it");
+    if (debug & DEBUG_RHIZOME_RX)
+      DEBUGF("Received all of file via rhizome -- now to import it");
     if (slot->manifest) {
       // Were fetching payload, now we have it.
 
@@ -1351,7 +1348,7 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 			       "DELETE FROM FILES WHERE id='%s'",
 			       slot->manifest->fileHexHash);
 	rhizome_fetch_close(slot);
-	return -1;
+	RETURN(-1);
       } else {
 	INFOF("Updating row status: UPDATE FILES SET datavalid=1 WHERE id='%s'",
 	      slot->manifest->fileHexHash);
@@ -1408,11 +1405,11 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 	   (long long)slot->file_ofs/(gettime_ms()-slot->start_time),
 	   slot->blob_buffer_size);
     rhizome_fetch_close(slot);
-    return -1;
+    RETURN(-1);
   }
 
   // slot is still open
-  return 0;
+  RETURN(0);
 }
 
 int rhizome_received_content(unsigned char *bidprefix,
@@ -1424,7 +1421,7 @@ int rhizome_received_content(unsigned char *bidprefix,
   for(i=0;i<NQUEUES;i++) {
     struct rhizome_fetch_slot *slot=&rhizome_fetch_queues[i].active;
     if (slot->state==RHIZOME_FETCH_RXFILEMDP&&slot->bidP) {
-      if (!bcmp(slot->bid,bidprefix,16))
+      if (!memcmp(slot->bid,bidprefix,16))
 	{
 	  if (slot->file_ofs==offset) {
 	    if (!rhizome_write_content(slot,(char *)bytes,count))
@@ -1446,11 +1443,6 @@ int rhizome_received_content(unsigned char *bidprefix,
 	  }
 	  RETURN(0);
 	}
-      else 
-	if (0)
-	  DEBUGF("Doesn't match this slot = 0x%p, because BIDs don't match: %s* vs %s",
-		 alloca_tohex(bidprefix,16),
-		 alloca_tohex_bid(rhizome_fetch_queues[i].active.bid));
     }
   }  
 
