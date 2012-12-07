@@ -46,6 +46,7 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)rhizome_database.c \
 	$(SERVAL_BASE)rhizome_direct.c \
 	$(SERVAL_BASE)rhizome_direct_http.c \
+	$(SERVAL_BASE)rhizome_direct_async.c \
 	$(SERVAL_BASE)rhizome_fetch.c \
 	$(SERVAL_BASE)rhizome_http.c \
 	$(SERVAL_BASE)rhizome_packetformats.c \
