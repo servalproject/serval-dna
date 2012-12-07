@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 #include "rhizome.h"
+#include "log.h"
 #include <assert.h>
 #include "overlay_buffer.h"
 #include "overlay_address.h"
@@ -44,6 +45,33 @@ int log2ll(unsigned long long x)
   return v;
 }
 
+/* Convert text manifests to compact binary format and back again. */
+int rhizome_manifest_to_binary(rhizome_manifest *m,unsigned char *binary,
+			       int *out_len)
+{
+  /* Check for all of the well known fields:
+     ID = BID (256 bit hex)
+     version = 64bit int
+
+     file-size = 64bit int
+     filehash = 512bit hex (or prefix thereof)
+     service = service name (one of a well-known list, or ASCII)
+     sender = SID (256 bit hex)
+     recipient = SID (256 bit hex)
+     name = ASCII text
+     mime-type = ASCII text
+     BK = 256 bit hex
+     2WAYBK = 256 bit hex
+     crypt = boolean
+  */
+  return WHY("Not implemented");
+}
+
+int rhizome_binary_to_manifest(unsigned char *binary,int length,
+			       rhizome_manifest *m)
+{
+  return WHY("Not implemented");
+}
 
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
 {
