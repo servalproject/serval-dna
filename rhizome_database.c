@@ -1560,7 +1560,7 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath, const unsign
     } else {
       length = sqlite3_blob_bytes(blob);
       cli_puts("filehash"); cli_delim(":");
-      cli_puts((const char *)sqlite3_column_text(statement, 0)); cli_delim("\n");
+      cli_puts(fileIdUpper); cli_delim("\n");
       cli_puts("filesize"); cli_delim(":");
       cli_printf("%lld", length); cli_delim("\n");
       ret = 1;
