@@ -33,7 +33,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <stdlib.h>
 #include "serval.h"
+#include "rhizome.h"
 #include "cli.h"
+#include "overlay_buffer.h"
 
 int app_rhizome_direct_async(int argc, const char *const *argv, struct command_line_option *o, void *context)
 {
@@ -52,8 +54,62 @@ int app_rhizome_direct_async(int argc, const char *const *argv, struct command_l
   DEBUGF("Preparing upto %d messages of upto %d bytes, for rhizome content arrived or updated since %lld",
 	 maxMessages,messageBytes,firstInsertTime);
 
-  long long freshBundles=0;
-  // sqlite_exec_int64(&freshBundles,"SELECT COUNT(*) FROM MANIFESTS WHERE AT SOME POINT I FINISH WRITING THIS QUERY");
+#define MAX_FRESH 128
+  int freshBundles=0;
+  unsigned char bars[MAX_FRESH][RHIZOME_BAR_BYTES]; // 128x32 = 4KB
+
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  sqlite3_stmt *statement = sqlite_prepare(&retry,   
+					   "SELECT rowid FROM MANIFESTS WHERE inserttime>=%lld ORDER BY inserttime LIMIT %d",
+					   firstInsertTime,MAX_FRESH);
+  while (freshBundles<MAX_FRESH
+	 && sqlite_step_retry(&retry, statement) == SQLITE_ROW
+	 ) {
+    unsigned long long rowid;
+    sqlite3_blob *blob;
+    if (sqlite3_column_type(statement, 0)==SQLITE_INTEGER)
+      rowid = sqlite3_column_int64(statement, 0);
+    int ret;
+    do ret = sqlite3_blob_open(rhizome_db, "main", "MANIFESTS", "bar", rowid, 0,
+			       &blob);
+    while (sqlite_code_busy(ret) && sqlite_retry(&retry, "sqlite3_blob_open"));
+    if (ret != SQLITE_OK) {
+      WHYF("sqlite3_blob_open() failed, %s", sqlite3_errmsg(rhizome_db));
+      continue;
+    }
+    if(sqlite3_blob_read(blob,&bars[freshBundles][0],RHIZOME_BAR_BYTES,0)
+       !=SQLITE_OK) {
+      sqlite3_blob_close(blob);
+      WHYF("sqlite3_blob_read() failed, %s", sqlite3_errmsg(rhizome_db));
+      continue;
+    }
+    sqlite3_blob_close(blob);
+    dump("BAR",bars[freshBundles],RHIZOME_BAR_BYTES);
+    freshBundles++;    
+  }
+  sqlite3_finalize(statement);
+
+  DEBUGF("There are %d bundles that we need to tell the far side about.",
+	 freshBundles);
+  if (!freshBundles) {
+    DEBUG("There is nothing to do.");
+    return 0;
+  }
+
+  /* If there are very few fresh bundles, it is more efficient to just send the
+     manifests, rather than go back and forth to see what they already have.     
+
+     We only keep the latest version of any given manifest, so rather annoyingly
+     we can't tell if the far end already knows about a manifest.  What we can do
+     is send abbreviated BIDs and versions, which will allow the far end to
+     work out with high probability (but not certainty) whether they have the
+     bundle in question.
+  */
+  
+  struct overlay_buffer *newContentAnnouncement=ob_new();
+
+  int i;
+  // for(i=0;i<freshBundles;i++)
 
   return 0;
 }
