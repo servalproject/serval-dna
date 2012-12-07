@@ -933,10 +933,11 @@ int app_config_schema(int argc, const char *const *argv, const struct command_li
     return -1;
   struct cf_om_iterator it;
   for (cf_om_iter_start(&it, root); it.node; cf_om_iter_next(&it))
-    if (it.node->text) {
+    if (it.node->text || it.node->nodc == 0) {
       cli_puts(it.node->fullkey);
       cli_delim("=");
-      cli_puts(it.node->text);
+      if (it.node->text)
+	cli_puts(it.node->text);
       cli_delim("\n");
     }
   return 0;

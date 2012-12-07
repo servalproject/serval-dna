@@ -42,8 +42,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
         a->ac = 0; \
         return CFOK; \
     }
-#define KEY_ATOM(__type, __eltparser, __cmpfunc...)
-#define KEY_STRING(__strsize, __eltparser, __cmpfunc...)
+#define KEY_ATOM(__type, __keyparser, __cmpfunc...)
+#define KEY_STRING(__strsize, __keyparser, __cmpfunc...)
 #define VALUE_ATOM(__type, __eltparser)
 #define VALUE_STRING(__strsize, __eltparser)
 #define VALUE_NODE(__type, __eltparser)
@@ -79,10 +79,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define ARRAY(__name, __flags, __validator...) \
     static int __cmp_config_##__name(const struct config_##__name##__element *a, const struct config_##__name##__element *b) { \
       __compare_func__config_##__name##__t *cmp = (NULL
-#define KEY_ATOM(__type, __eltparser, __cmpfunc...) \
+#define KEY_ATOM(__type, __keyparser, __cmpfunc...) \
 	,##__cmpfunc); \
       return cmp ? (*cmp)(&a->key, &b->key) : memcmp(&a->key, &b->key, sizeof a->key);
-#define KEY_STRING(__strsize, __eltparser, __cmpfunc...) \
+#define KEY_STRING(__strsize, __keyparser, __cmpfunc...) \
 	,##__cmpfunc); \
       return cmp ? (*cmp)(a->key, b->key) : strcmp(a->key, b->key);
 #define VALUE_ATOM(__type, __eltparser)
@@ -247,10 +247,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	result |= CFEMPTY; \
       return result; \
     }
-#define KEY_ATOM(__type, __eltparser, __cmpfunc...) \
-      __ARRAY_KEY(__eltparser(&array->av[n].key, child->key), ##__cmpfunc)
-#define KEY_STRING(__strsize, __eltparser, __cmpfunc...) \
-      __ARRAY_KEY(__eltparser(array->av[n].key, sizeof array->av[n].key, child->key), ##__cmpfunc)
+#define KEY_ATOM(__type, __keyparser, __cmpfunc...) \
+      __ARRAY_KEY(__keyparser(&array->av[n].key, child->key), ##__cmpfunc)
+#define KEY_STRING(__strsize, __keyparser, __cmpfunc...) \
+      __ARRAY_KEY(__keyparser(array->av[n].key, sizeof array->av[n].key, child->key), ##__cmpfunc)
 #define VALUE_ATOM(__type, __eltparser) \
       __ARRAY_VALUE(child->text ? __eltparser(&array->av[n].value, child->text) : CFEMPTY)
 #define VALUE_STRING(__strsize, __eltparser) \
@@ -289,7 +289,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define END_STRUCT
 #define ARRAY(__name, __flags, __validator...) \
     int config_##__name##__get(const struct config_##__name *array,
-#define KEY_ATOM(__type, __eltparser, __cmpfunc...) \
+#define KEY_ATOM(__type, __keyparser, __cmpfunc...) \
 	  const __type *key) { \
       int (*cmp)(const __type *, const __type *) = (NULL, ##__cmpfunc); \
       int i; \
@@ -298,7 +298,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	  return i; \
       return -1; \
     }
-#define KEY_STRING(__strsize, __eltparser, __cmpfunc...) \
+#define KEY_STRING(__strsize, __keyparser, __cmpfunc...) \
 	  const char *key) { \
       int (*cmp)(const char *, const char *) = (NULL, ##__cmpfunc); \
       int i; \
@@ -336,31 +336,34 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
     int cf_sch_config_##__name(struct cf_om_node **rootp) { \
       int i; \
       struct cf_om_node **childp;
-#define __ADD_CHILD(__elementstr) \
-	if ((i = cf_om_add_child(rootp, __elementstr)) == -1) \
+#define __ADD_CHILD(nodep, __elementstr) \
+	if ((i = cf_om_add_child(nodep, __elementstr)) == -1) \
 	  return -1; \
-	childp = &(*rootp)->nodv[i];
-#define __ATOM(__text) \
-	if (((*childp)->text = str_edup(__text)) == NULL) \
+	childp = &(*nodep)->nodv[i];
+#define __ATOM(nodep, __text) \
+	if (((*nodep)->text = str_edup(__text)) == NULL) \
 	  return -1;
-#define __STRUCT(__structname) \
-	if (cf_sch_config_##__structname(childp) == -1) \
+#define __STRUCT(nodep, __structname) \
+	if (cf_sch_config_##__structname(nodep) == -1) \
 	  return -1;
 #define NODE(__type, __element, __default, __parser, __flags, __comment) \
-	__ADD_CHILD(#__element) \
-	__ATOM("[" #__parser "]")
+	__ADD_CHILD(rootp, #__element) \
+	__ATOM(childp, "(" #__parser ")") \
+	__ADD_CHILD(childp, "(" #__parser ")") \
+	__ATOM(childp, "(" #__parser ")")
 #define ATOM(__type, __element, __default, __parser, __flags, __comment) \
-	__ADD_CHILD(#__element) \
-	__ATOM("[" #__parser "]")
+	__ADD_CHILD(rootp, #__element) \
+	__ATOM(childp, "(" #__parser ")")
 #define STRING(__size, __element, __default, __parser, __flags, __comment) \
-	__ADD_CHILD(#__element) \
-	__ATOM("[" #__parser "]")
+	__ADD_CHILD(rootp, #__element) \
+	__ATOM(childp, "(" #__parser ")")
 #define SUB_STRUCT(__structname, __element, __flags) \
-	__ADD_CHILD(#__element) \
-	__STRUCT(__structname)
+	__ADD_CHILD(rootp, #__element) \
+	__STRUCT(childp, __structname)
 #define NODE_STRUCT(__structname, __element, __parser, __flags) \
-	__ADD_CHILD(#__element) \
-	__STRUCT(__structname)
+	__ADD_CHILD(rootp, #__element) \
+	__ATOM(childp, "(" #__parser ")") \
+	__STRUCT(childp, __structname)
 #define END_STRUCT \
         return 0; \
     }
@@ -368,20 +371,24 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
     int cf_sch_config_##__name(struct cf_om_node **rootp) { \
       int i; \
       struct cf_om_node **childp;
-#define KEY_ATOM(__type, __eltparser, __cmpfunc...) \
-	__ADD_CHILD("[" #__eltparser "]")
-#define KEY_STRING(__strsize, __eltparser, __cmpfunc...) \
-	__ADD_CHILD("[" #__eltparser "]")
+#define KEY_ATOM(__type, __keyparser, __cmpfunc...) \
+	__ADD_CHILD(rootp, "[" #__keyparser "]")
+#define KEY_STRING(__strsize, __keyparser, __cmpfunc...) \
+	__ADD_CHILD(rootp, "[" #__keyparser "]")
 #define VALUE_ATOM(__type, __eltparser) \
-	__ATOM("[" #__eltparser "]")
+	__ATOM(childp, "(" #__eltparser ")")
 #define VALUE_STRING(__strsize, __eltparser) \
-	__ATOM("[" #__eltparser "]")
+	__ATOM(childp, "(" #__eltparser ")")
 #define VALUE_NODE(__type, __eltparser) \
-	__ATOM("[" #__eltparser "]")
+	__ATOM(childp, "(" #__eltparser ")") \
+	__ADD_CHILD(childp, "(" #__eltparser ")") \
+	__ATOM(childp, "(" #__eltparser ")")
 #define VALUE_SUB_STRUCT(__structname) \
-	__STRUCT(__structname)
+	__STRUCT(childp, __structname)
 #define VALUE_NODE_STRUCT(__structname, __eltparser) \
-	__STRUCT(__structname)
+	__ATOM(childp, "(" #__eltparser ")") \
+	__STRUCT(childp, __structname)
+
 #define END_ARRAY(__size) \
         return 0; \
     }
