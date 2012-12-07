@@ -76,8 +76,9 @@ static void directory_send_keyring(struct subscriber *directory_service){
   }
 }
 
-static int load_directory_config(){
-  if (!directory_service){
+static int load_directory_config()
+{
+  if (!directory_service && !is_sid_any(config.directory.service.binary)) {
     directory_service = find_subscriber(config.directory.service.binary, SID_SIZE, 1);
     if (!directory_service)
       return WHYF("Failed to create subscriber record");
