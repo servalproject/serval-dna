@@ -461,8 +461,8 @@ static int monitor_call(int argc, const char *const *argv, const struct command_
   
   if (!my_subscriber)
     return monitor_write_error(c,"I don't know who I am");
-  
-  vomp_dial(my_subscriber->sid, sid, argv[2], argv[3]);
+  struct subscriber *remote = find_subscriber(sid, SID_SIZE, 1);
+  vomp_dial(my_subscriber, remote, argv[2], argv[3]);
   return 0;
 }
 

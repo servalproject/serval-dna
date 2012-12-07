@@ -28,6 +28,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include "strbuf.h"
 #include "strlcpy.h"
+#include "overlay_address.h"
 
 /*
  Typical call state lifecycle between 2 parties.
@@ -136,7 +137,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define VOMP_VERSION 0x02
 
 struct vomp_call_half {
-  unsigned char sid[SID_SIZE];
+  struct subscriber *subscriber;
   char did[64];
   unsigned char state;
   unsigned int session;
@@ -354,8 +355,8 @@ static int vomp_generate_session_id()
   return session_id;
 }
 
-static struct vomp_call_state *vomp_create_call(unsigned char *remote_sid,
-				  unsigned char *local_sid,
+static struct vomp_call_state *vomp_create_call(struct subscriber *remote,
+				  struct subscriber *local,
 				  unsigned int remote_session,
 				  unsigned int local_session)
 {
@@ -367,8 +368,8 @@ static struct vomp_call_state *vomp_create_call(unsigned char *remote_sid,
   
   /* prepare slot */
   bzero(call,sizeof(struct vomp_call_state));
-  bcopy(local_sid,call->local.sid,SID_SIZE);
-  bcopy(remote_sid,call->remote.sid,SID_SIZE);
+  call->local.subscriber=local;
+  call->remote.subscriber=remote;
   call->local.session=local_session;
   call->remote.session=remote_session;
   call->local.state=VOMP_STATE_NOCALL;
@@ -387,8 +388,8 @@ static struct vomp_call_state *vomp_create_call(unsigned char *remote_sid,
   return call;
 }
 
-static struct vomp_call_state *vomp_find_or_create_call(unsigned char *remote_sid,
-					  unsigned char *local_sid,
+static struct vomp_call_state *vomp_find_or_create_call(struct subscriber *remote,
+					  struct subscriber *local,
 					  unsigned int sender_session,
 					  unsigned int recvr_session,
 					  int sender_state,
@@ -423,8 +424,8 @@ static struct vomp_call_state *vomp_find_or_create_call(unsigned char *remote_si
 	  continue;
       }
       if (!checked) continue;
-      if (memcmp(remote_sid,call->remote.sid,SID_SIZE)) continue;
-      if (memcmp(local_sid,call->local.sid,SID_SIZE)) continue;
+      if (remote!=call->remote.subscriber || local!=call->local.subscriber)
+	continue;
 
       /* it matches. */
 
@@ -450,7 +451,7 @@ static struct vomp_call_state *vomp_find_or_create_call(unsigned char *remote_si
 
   /* Only create a call record if the remote party is trying to prepare a call */
   if (sender_state==VOMP_STATE_CALLPREP && recvr_state==VOMP_STATE_NOCALL && recvr_session==0)
-    return vomp_create_call(remote_sid, local_sid, sender_session, recvr_session);
+    return vomp_create_call(remote, local, sender_session, recvr_session);
   
   WHYF("Not creating a call record for state %d %d", sender_state, recvr_state);
   return NULL;
@@ -458,9 +459,9 @@ static struct vomp_call_state *vomp_find_or_create_call(unsigned char *remote_si
 
 static void prepare_vomp_header(struct vomp_call_state *call, overlay_mdp_frame *mdp){
   mdp->packetTypeAndFlags=MDP_TX;
-  bcopy(call->local.sid,mdp->out.src.sid,SID_SIZE);
+  bcopy(call->local.subscriber->sid,mdp->out.src.sid,SID_SIZE);
   mdp->out.src.port=MDP_PORT_VOMP;
-  bcopy(call->remote.sid,mdp->out.dst.sid,SID_SIZE);
+  bcopy(call->remote.subscriber->sid,mdp->out.dst.sid,SID_SIZE);
   mdp->out.dst.port=MDP_PORT_VOMP;
   
   mdp->out.payload[0]=VOMP_VERSION;
@@ -563,8 +564,8 @@ static int monitor_call_status(struct vomp_call_state *call)
 	   call->local.session,call->remote.session,
 	   call->local.state,call->remote.state,
 	   0,
-	   alloca_tohex_sid(call->local.sid),
-	   alloca_tohex_sid(call->remote.sid),
+	   alloca_tohex_sid(call->local.subscriber->sid),
+	   alloca_tohex_sid(call->remote.subscriber->sid),
 	   call->local.did,call->remote.did);
   
   monitor_tell_clients(msg, n, MONITOR_VOMP);
@@ -626,8 +627,8 @@ static int vomp_update_local_state(struct vomp_call_state *call, int new_state){
       // tell client our session id.
       monitor_tell_formatted(MONITOR_VOMP, "\nCALLTO:%06x:%s:%s:%s:%s\n", 
 			     call->local.session, 
-			     alloca_tohex_sid(call->local.sid), call->local.did,
-			     alloca_tohex_sid(call->remote.sid), call->remote.did);
+			     alloca_tohex_sid(call->local.subscriber->sid), call->local.did,
+			     alloca_tohex_sid(call->remote.subscriber->sid), call->remote.did);
       break;
     case VOMP_STATE_CALLENDED:
       monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%06x\n", call->local.session);
@@ -647,8 +648,8 @@ static int vomp_update_remote_state(struct vomp_call_state *call, int new_state)
     case VOMP_STATE_RINGINGOUT:
       monitor_tell_formatted(MONITOR_VOMP, "\nCALLFROM:%06x:%s:%s:%s:%s\n", 
 			     call->local.session, 
-			     alloca_tohex_sid(call->local.sid), call->local.did,
-			     alloca_tohex_sid(call->remote.sid), call->remote.did);
+			     alloca_tohex_sid(call->local.subscriber->sid), call->local.did,
+			     alloca_tohex_sid(call->remote.subscriber->sid), call->remote.did);
       break;
     case VOMP_STATE_RINGINGIN:
       monitor_tell_formatted(MONITOR_VOMP, "\nRINGING:%06x\n", call->local.session);
@@ -767,7 +768,7 @@ static int vomp_call_destroy(struct vomp_call_state *call)
   return 0;
 }
 
-int vomp_dial(unsigned char *local_sid, unsigned char *remote_sid, const char *local_did, const char *remote_did)
+int vomp_dial(struct subscriber *local, struct subscriber *remote, const char *local_did, const char *remote_did)
 {
   /* TODO use local_did and remote_did start putting the call together.
    These need to be passed to the node being called to provide caller id,
@@ -782,8 +783,8 @@ int vomp_dial(unsigned char *local_sid, unsigned char *remote_sid, const char *l
   /* allocate unique call session token, which is how the client will
    refer to this call during its life */
   struct vomp_call_state *call=vomp_create_call(
-					 remote_sid,
-					 local_sid,
+					 remote,
+					 local,
 					 0,
 					 0);
   
@@ -883,8 +884,10 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
        trying to use such replays to cause a denial of service attack we need
        to be able to track multiple potential session numbers even from the
        same SID. */
+      struct subscriber *local=find_subscriber(mdp->in.dst.sid, SID_SIZE, 0);
+      struct subscriber *remote=find_subscriber(mdp->in.src.sid, SID_SIZE, 0);
       
-      call=vomp_find_or_create_call(mdp->in.src.sid,mdp->in.dst.sid,
+      call=vomp_find_or_create_call(remote,local,
 				    sender_session,recvr_session,
 				    sender_state,recvr_state);
       

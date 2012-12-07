@@ -596,7 +596,7 @@ int is_codec_set(int codec, unsigned char *flags);
 struct vomp_call_state *vomp_find_call_by_session(int session_token);
 int vomp_mdp_received(overlay_mdp_frame *mdp);
 int vomp_parse_dtmf_digit(char c);
-int vomp_dial(unsigned char *local_sid, unsigned char *remote_sid, const char *local_did, const char *remote_did);
+int vomp_dial(struct subscriber *local, struct subscriber *remote, const char *local_did, const char *remote_did);
 int vomp_pickup(struct vomp_call_state *call);
 int vomp_hangup(struct vomp_call_state *call);
 int vomp_ringing(struct vomp_call_state *call);
