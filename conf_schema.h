@@ -216,8 +216,8 @@ END_STRUCT
 
 STRUCT(olsr)
 ATOM(int,                   enable,     1, cf_opt_boolean,, "If true, OLSR is used for mesh routing")
-ATOM(uint16_t,              remote_port,4130, cf_opt_port,, "Remote port number")
-ATOM(uint16_t,              local_port, 4131, cf_opt_port,, "Local port number")
+ATOM(uint16_t,              remote_port,4130, cf_opt_uint16_nonzero,, "Remote port number")
+ATOM(uint16_t,              local_port, 4131, cf_opt_uint16_nonzero,, "Local port number")
 END_STRUCT
 
 ARRAY(argv, SORTED NO_DUPLICATES, vld_argv)
@@ -237,7 +237,7 @@ END_STRUCT
 STRUCT(rhizome_peer)
 STRING(25,                  protocol,   "http", cf_opt_protocol,, "Protocol name")
 STRING(256,                 host,       "", cf_opt_str_nonempty, MANDATORY, "Host name or IP address")
-ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, cf_opt_port,, "Port number")
+ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, cf_opt_uint16_nonzero,, "Port number")
 END_STRUCT
 
 ARRAY(peerlist,)
@@ -277,7 +277,7 @@ END_STRUCT
 STRUCT(host)
 STRING(INTERFACE_NAME_STRLEN, interface, "", cf_opt_str_nonempty, MANDATORY, "Interface name")
 ATOM(struct in_addr,        address,    (struct in_addr){htonl(INADDR_NONE)}, cf_opt_in_addr, MANDATORY, "Host IP address")
-ATOM(uint16_t,              port,       PORT_DNA, cf_opt_port,, "Port number")
+ATOM(uint16_t,              port,       PORT_DNA, cf_opt_uint16_nonzero,, "Port number")
 END_STRUCT
 
 ARRAY(host_list, NO_DUPLICATES)
@@ -290,7 +290,7 @@ ATOM(int,                   exclude,    0, cf_opt_boolean,, "If true, do not use
 ATOM(struct pattern_list,   match,      PATTERN_LIST_EMPTY, cf_opt_pattern_list,, "Names that match network interface")
 STRING(256,                 dummy,      "", cf_opt_str_nonempty,, "Path of dummy file, absolute or relative to server.dummy_interface_dir")
 ATOM(short,                 type,       OVERLAY_INTERFACE_WIFI, cf_opt_interface_type,, "Type of network interface")
-ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, cf_opt_port,, "Port number for network interface")
+ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, cf_opt_uint16_nonzero,, "Port number for network interface")
 ATOM(uint64_t,              speed,      1000000, cf_opt_uint64_scaled,, "Speed in bits per second")
 ATOM(int,                   mdp_tick_ms, -1, cf_opt_int32_nonneg,, "Override MDP tick interval for this interface")
 END_STRUCT

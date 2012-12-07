@@ -297,19 +297,28 @@ int cf_opt_in_addr(struct in_addr *addrp, const char *text)
   return CFOK;
 }
 
-int cf_opt_port(unsigned short *portp, const char *text)
+int cf_opt_uint16(uint16_t *intp, const char *text)
 {
-  unsigned short port = 0;
+  unsigned short ui = 0;
   const char *p;
   for (p = text; isdigit(*p); ++p) {
-      unsigned oport = port;
-      port = port * 10 + *p - '0';
-      if (port / 10 != oport)
+      unsigned oui = ui;
+      ui = ui * 10 + *p - '0';
+      if (ui / 10 != oui)
 	break;
   }
-  if (*p || port == 0)
+  if (*p)
     return CFINVALID;
-  *portp = port;
+  *intp = ui;
+  return CFOK;
+}
+
+int cf_opt_uint16_nonzero(uint16_t *intp, const char *text)
+{
+  uint16_t ui;
+  if (cf_opt_uint16_nonzero(&ui, text) != CFOK || ui == 0)
+    return CFINVALID;
+  *intp = ui;
   return CFOK;
 }
 
@@ -463,7 +472,7 @@ static int cf_opt_network_interface_legacy(struct config_network_interface *nifp
     if (len) {
       char buf[len + 1];
       strncpy(buf, port, len)[len] = '\0';
-      int result = cf_opt_port(&nif.port, buf);
+      int result = cf_opt_uint16_nonzero(&nif.port, buf);
       switch (result) {
       case CFERROR: return CFERROR;
       case CFOK: break;
