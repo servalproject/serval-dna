@@ -509,6 +509,8 @@ static int vomp_send_status_remote(struct vomp_call_state *call)
     
     if (debug & DEBUG_VOMP)
       DEBUGF("mdp frame with codec list is %d bytes", mdp.out.payload_length);
+    
+    overlay_send_stun_request(directory_service, call->remote.subscriber);
   }
 
   call->local.sequence++;
