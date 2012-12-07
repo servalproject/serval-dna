@@ -131,7 +131,16 @@ error:
   return -1;
 }
 
-overlay_interface * overlay_interface_find(struct in_addr addr){
+overlay_interface * overlay_interface_get_default(){
+  int i;
+  for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
+    if (overlay_interfaces[i].state==INTERFACE_STATE_UP && overlay_interfaces[i].default_route)
+      return &overlay_interfaces[i];
+  }
+  return NULL;
+}
+
+overlay_interface * overlay_interface_find(struct in_addr addr, int return_default){
   int i;
   overlay_interface *ret = NULL;
   for (i=0;i<OVERLAY_MAX_INTERFACES;i++){
@@ -143,7 +152,7 @@ overlay_interface * overlay_interface_find(struct in_addr addr){
     }
     
     // check if this is a default interface
-    if (overlay_interfaces[i].default_route)
+    if (return_default && overlay_interfaces[i].default_route)
       ret=&overlay_interfaces[i];
   }
   
@@ -186,7 +195,7 @@ overlay_interface_read_any(struct sched_ent *alarm){
     struct in_addr src = ((struct sockaddr_in *)&src_addr)->sin_addr;
     
     /* Try to identify the real interface that the packet arrived on */
-    interface = overlay_interface_find(src);
+    interface = overlay_interface_find(src, 0);
     
     /* Drop the packet if we don't find a match */
     if (!interface){

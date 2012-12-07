@@ -144,7 +144,7 @@ static void parse_frame(struct overlay_buffer *buff){
     goto end;
   
   // locate the interface we should send outgoing unicast packets to
-  overlay_interface *interface = overlay_interface_find(*addr);
+  overlay_interface *interface = overlay_interface_find(*addr, 1);
   if (interface){
     // always update the IP address we heard them from, even if we don't need to use it right now
     context.sender->address.sin_family = AF_INET;

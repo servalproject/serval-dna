@@ -314,7 +314,7 @@ overlay_mdp_service_probe(overlay_mdp_frame *mdp)
 
 int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay_interface *interface){
   if (interface==NULL)
-    interface = overlay_interface_find(addr.sin_addr);
+    interface = overlay_interface_find(addr.sin_addr, 1);
   
   if (!interface)
     return WHY("I don't know which interface to use");
@@ -337,6 +337,8 @@ int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay
   frame->interface=interface;
   frame->payload = ob_new();
   frame->send_copies=3;
+  
+  // TODO call mdp payload encryption / signing without calling overlay_mdp_dispatch...
   
   if ((!peer) || !(peer->reachable&REACHABLE))
     my_subscriber->send_full=1;
@@ -367,6 +369,128 @@ int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay
   return 0;
 }
 
+// append the address of a unicast link into a packet buffer
+static int overlay_append_unicast_address(struct subscriber *subscriber, struct overlay_buffer *buff)
+{
+  if (!(subscriber->reachable & REACHABLE_UNICAST))
+    return 0;
+  if (subscriber->reachable & REACHABLE_ASSUMED)
+    return 0;
+  if (overlay_address_append(NULL, buff, subscriber))
+    return -1;
+  if (ob_append_ui32(buff, subscriber->address.sin_addr.s_addr))
+    return -1;
+  if (ob_append_ui16(buff, subscriber->address.sin_port))
+    return -1;
+  ob_checkpoint(buff);
+  DEBUGF("Added STUN info for %s", alloca_tohex_sid(subscriber->sid));
+  return 0;
+}
+
+static int overlay_mdp_service_stun_req(overlay_mdp_frame *mdp)
+{
+  DEBUGF("Processing STUN request from %s", alloca_tohex_sid(mdp->out.src.sid));
+  
+  struct overlay_buffer *payload = ob_static(mdp->out.payload, mdp->out.payload_length);
+  ob_limitsize(payload, mdp->out.payload_length);
+  
+  overlay_mdp_frame reply;
+  bzero(&reply, sizeof(reply));
+  reply.packetTypeAndFlags=MDP_TX;
+  
+  bcopy(mdp->out.src.sid, reply.out.dst.sid, SID_SIZE);
+  bcopy(mdp->out.dst.sid, reply.out.src.sid, SID_SIZE);
+  reply.out.src.port=MDP_PORT_STUNREQ;
+  reply.out.dst.port=MDP_PORT_STUN;
+  
+  struct overlay_buffer *replypayload = ob_static(reply.out.payload, sizeof(reply.out.payload));
+  
+  ob_checkpoint(replypayload);
+  while(ob_remaining(payload)>0){
+    struct subscriber *subscriber=NULL;
+    
+    if (overlay_address_parse(NULL, payload, &subscriber))
+      break;
+    
+    if (!subscriber)
+      continue;
+    
+    if (overlay_append_unicast_address(subscriber, replypayload))
+      break;
+  }
+  
+  ob_rewind(replypayload);
+  reply.out.payload_length=ob_position(replypayload);
+  
+  if (reply.out.payload_length)
+    overlay_mdp_dispatch(&reply,0 /* system generated */,
+			 NULL,0);
+  
+  ob_free(replypayload);
+  ob_free(payload);
+  return 0;
+}
+
+static int overlay_mdp_service_stun(overlay_mdp_frame *mdp)
+{
+  struct overlay_buffer *buff = ob_static(mdp->out.payload, mdp->out.payload_length);
+  ob_limitsize(buff, mdp->out.payload_length);
+  
+  DEBUGF("Processing STUN info from %s", alloca_tohex_sid(mdp->out.src.sid));
+  
+  while(ob_remaining(buff)>0){
+    struct subscriber *subscriber=NULL;
+    struct sockaddr_in addr;
+    
+    // TODO explain addresses, link expiry time, resolve differences between addresses...
+    
+    if (overlay_address_parse(NULL, buff, &subscriber)){
+      break;
+    }
+    
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = ob_get_ui32(buff);
+    addr.sin_port = ob_get_ui16(buff);
+    
+    if (!subscriber || (subscriber->reachable!=REACHABLE_NONE))
+      continue;
+    
+    overlay_send_probe(subscriber, addr, NULL);
+  }
+  
+  ob_free(buff);
+  return 0;
+}
+
+int overlay_send_stun_request(struct subscriber *server, struct subscriber *request){
+  if ((!server) || (!request))
+    return -1;
+  if (!(subscriber_is_reachable(server)&REACHABLE))
+    return -1;
+  // don't bother with a stun request if the peer is already reachable directly
+  // TODO link timeouts
+  if (subscriber_is_reachable(request)&REACHABLE_DIRECT)
+    return -1;
+  
+  overlay_mdp_frame mdp;
+  bzero(&mdp, sizeof(mdp));
+  mdp.packetTypeAndFlags=MDP_TX;
+  
+  bcopy(my_subscriber->sid, mdp.out.src.sid, SID_SIZE);
+  bcopy(server->sid, mdp.out.dst.sid, SID_SIZE);
+  mdp.out.src.port=MDP_PORT_STUN;
+  mdp.out.dst.port=MDP_PORT_STUNREQ;
+  
+  struct overlay_buffer *payload = ob_static(mdp.out.payload, sizeof(mdp.out.payload));
+  overlay_address_append(NULL, payload, request);
+  mdp.out.payload_length=ob_position(payload);
+  DEBUGF("Sending STUN request to %s", alloca_tohex_sid(server->sid));
+  overlay_mdp_dispatch(&mdp,0 /* system generated */,
+		       NULL,0);
+  ob_free(payload);
+  return 0;
+}
+
 int overlay_mdp_try_interal_services(overlay_mdp_frame *mdp)
 {
   IN();
@@ -376,6 +500,8 @@ int overlay_mdp_try_interal_services(overlay_mdp_frame *mdp)
   case MDP_PORT_DNALOOKUP:        RETURN(overlay_mdp_service_dnalookup(mdp));
   case MDP_PORT_ECHO:             RETURN(overlay_mdp_service_echo(mdp));
   case MDP_PORT_PROBE:            RETURN(overlay_mdp_service_probe(mdp));
+  case MDP_PORT_STUNREQ:          RETURN(overlay_mdp_service_stun_req(mdp));
+  case MDP_PORT_STUN:             RETURN(overlay_mdp_service_stun(mdp));
   case MDP_PORT_RHIZOME_REQUEST: 
     if (is_rhizome_mdp_server_running()) {
       RETURN(overlay_mdp_service_rhizomerequest(mdp));

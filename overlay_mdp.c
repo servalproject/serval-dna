@@ -527,6 +527,8 @@ int overlay_mdp_check_binding(struct subscriber *subscriber, int port, int userG
     case MDP_PORT_RHIZOME_RESPONSE:
     case MDP_PORT_RHIZOME_REQUEST:
     case MDP_PORT_PROBE:
+    case MDP_PORT_STUNREQ:
+    case MDP_PORT_STUN:
       return 0;
     }
   }
@@ -1017,7 +1019,7 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 	      schedule(&scans[i].alarm);
 	    }
 	  }else{
-	    struct overlay_interface *interface = overlay_interface_find(scan->addr);
+	    struct overlay_interface *interface = overlay_interface_find(scan->addr, 1);
 	    if (!interface){
 	      overlay_mdp_reply_error(alarm->poll.fd,recvaddr_un,recvaddrlen, 1, "Unable to find matching interface");
 	      return;

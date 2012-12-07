@@ -615,7 +615,8 @@ int overlay_route_node_info(overlay_mdp_nodeinfo *node_info);
 int overlay_interface_register(char *name,
 			       struct in_addr addr,
 			       struct in_addr mask);
-overlay_interface * overlay_interface_find(struct in_addr addr);
+overlay_interface * overlay_interface_get_default();
+overlay_interface * overlay_interface_find(struct in_addr addr, int return_default);
 overlay_interface * overlay_interface_find_name(const char *name);
 int overlay_broadcast_ensemble(int interface_number,
 			   struct sockaddr_in *recipientaddr,
@@ -712,6 +713,7 @@ void server_shutdown_check(struct sched_ent *alarm);
 void overlay_mdp_poll(struct sched_ent *alarm);
 int overlay_mdp_try_interal_services(overlay_mdp_frame *mdp);
 int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay_interface *interface);
+int overlay_send_stun_request(struct subscriber *server, struct subscriber *request);
 void fd_periodicstats(struct sched_ent *alarm);
 void rhizome_check_connections(struct sched_ent *alarm);
 

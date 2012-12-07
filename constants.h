@@ -125,6 +125,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define MAX_SIGNATURES 16
 
 #define MDP_PORT_KEYMAPREQUEST 1
+#define MDP_PORT_STUNREQ 4
+#define MDP_PORT_STUN 5
 #define MDP_PORT_PROBE 6
 #define MDP_PORT_ECHO 7
 #define MDP_PORT_DNALOOKUP 10

@@ -413,7 +413,8 @@ static int find_subscr_buffer(struct decode_context *context, struct overlay_buf
     ob_append_bytes(context->please_explain->payload, id, len);
     
   }else{
-    context->previous=*subscriber;
+    if (context)
+      context->previous=*subscriber;
   }
   return 0;
 }
