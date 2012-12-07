@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
 #include "serval.h"
+#include "conf.h"
 #include "str.h"
 #include "overlay_address.h"
 #include "overlay_buffer.h"
@@ -252,40 +253,23 @@ int reachable_unicast(struct subscriber *subscriber, overlay_interface *interfac
   return 0;
 }
 
-// load a unicast address from configuration
-int load_subscriber_address(struct subscriber *subscriber){
+// load a unicast address from configuration, replace with database??
+int load_subscriber_address(struct subscriber *subscriber)
+{
   if (subscriber_is_reachable(subscriber)&REACHABLE)
     return 0;
-  
-  char buff[80];
-  const char *sid_hex = alloca_tohex_sid(subscriber->sid);
-  overlay_interface *interface=NULL;
-  
-  snprintf(buff, sizeof(buff), "%s.address", sid_hex);
-  const char *address = confValueGet(buff, NULL);
-  // no address configuration? just return.
-  if (!address)
+  int i = config_host_list__get(&config.hosts, (const sid_t*)subscriber->sid);
+  // No unicast configuration? just return.
+  if (i == -1)
     return 1;
-  
-  snprintf(buff, sizeof(buff), "%s.interface", sid_hex);
-  const char *interface_name = confValueGet(buff, NULL);
-  if (interface_name){
-    interface = overlay_interface_find_name(interface_name);
-    // explicity defined interface isn't up? just return.
-    if (!interface)
-      return 1;
-  }
-  
+  const struct config_host *hostc = &config.hosts.av[i].value;
+  overlay_interface *interface = overlay_interface_find_name(hostc->interface);
+  if (!interface)
+    return -1;
   struct sockaddr_in addr;
-  addr.sin_family=AF_INET;
-  
-  if (!inet_aton(address, &addr.sin_addr)){
-    return WHYF("%s doesn't look like an IP address", address);
-  }
-  
-  snprintf(buff, sizeof(buff), "%s.port", sid_hex);
-  addr.sin_port = htons(confValueGetInt64Range(buff, PORT_DNA, 1, 65535));
-  
+  addr.sin_family = AF_INET;
+  addr.sin_addr = hostc->address;
+  addr.sin_port = hostc->port;
   return overlay_send_probe(subscriber, addr, interface);
 }
 

@@ -20,8 +20,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define __SERVALD_LOG_H
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdarg.h>
 #include <sys/types.h>
+#include <errno.h>
 
 typedef unsigned int debugflags_t;
 

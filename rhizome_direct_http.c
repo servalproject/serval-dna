@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 #include "rhizome.h"
+#include "conf.h"
 #include "str.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
@@ -43,8 +44,6 @@ int rhizome_direct_clear_temporary_files(rhizome_http_request *r)
 
 int rhizome_direct_form_received(rhizome_http_request *r)
 {
-  const char *submitBareFileURI=confValueGet("rhizome.api.addfile.uri", NULL);
-
   /* Process completed form based on the set of fields seen */
   if (!strcmp(r->path,"/rhizome/import")) {
     switch(r->fields_seen) {
@@ -175,17 +174,16 @@ int rhizome_direct_form_received(rhizome_http_request *r)
      why we leave it disabled by default, but it will be sufficient for testing
      possible uses, including integration with OpenDataKit.
   */
-  else if (submitBareFileURI&&(!strcmp(r->path,submitBareFileURI))) {
-    if (strcmp(inet_ntoa(r->requestor.sin_addr),
-	       confValueGet("rhizome.api.addfile.allowedaddress","127.0.0.1")))
-      {	
-	DEBUGF("rhizome.api.addfile request received from %s, but is only allowed from %s",
-	       inet_ntoa(r->requestor.sin_addr),
-	       confValueGet("rhizome.api.addfile.allowedaddress", "127.0.0.1"));
+  else if (config.rhizome.api.addfile.uri_path[0] && strcmp(r->path, config.rhizome.api.addfile.uri_path) == 0) {
+    if (r->requestor.sin_addr.s_addr != config.rhizome.api.addfile.allow_host.s_addr) {
+      DEBUGF("rhizome.api.addfile request received from %s, but is only allowed from %s",
+	  inet_ntoa(r->requestor.sin_addr),
+	  inet_ntoa(config.rhizome.api.addfile.allow_host)
+	);
 
-	rhizome_direct_clear_temporary_files(r);	     
-	return rhizome_server_simple_http_response(r,404,"Not available from here.");
-      }
+      rhizome_direct_clear_temporary_files(r);	     
+      return rhizome_server_simple_http_response(r,404,"Not available from here.");
+    }
 
     switch(r->fields_seen) {
     case RD_MIME_STATE_DATAHEADERS:
@@ -201,14 +199,13 @@ int rhizome_direct_form_received(rhizome_http_request *r)
       char filepath[1024];
       snprintf(filepath,1024,"rhizomedirect.%d.data",r->alarm.poll.fd);
 
-      const char *manifestTemplate
-	=confValueGet("rhizome.api.addfile.manifesttemplate", NULL);
-      
-      if (manifestTemplate&&access(manifestTemplate, R_OK) != 0)
-	{
-	  rhizome_direct_clear_temporary_files(r);	     
-	  return rhizome_server_simple_http_response(r,500,"rhizome.api.addfile.manifesttemplate points to a file I could not read.");
-	}
+      char manifestTemplate[1024];
+      strbuf b = strbuf_local(manifestTemplate, sizeof manifestTemplate);
+      strbuf_path_join(b, serval_instancepath(), config.rhizome.api.addfile.manifest_template_file, NULL);
+      if (manifestTemplate[0] && access(manifestTemplate, R_OK) != 0) {
+	rhizome_direct_clear_temporary_files(r);
+	return rhizome_server_simple_http_response(r,500,"rhizome.api.addfile.manifesttemplate points to a file I could not read.");
+      }
 
       rhizome_manifest *m = rhizome_new_manifest();
       if (!m)
@@ -218,7 +215,7 @@ int rhizome_direct_form_received(rhizome_http_request *r)
 	  return WHY("Manifest struct could not be allocated -- not added to rhizome");
 	}
 
-      if (manifestTemplate)
+      if (manifestTemplate[0])
 	if (rhizome_read_manifest_file(m, manifestTemplate, 0) == -1) {
 	  rhizome_manifest_free(m);
 	  rhizome_direct_clear_temporary_files(r);	     
@@ -252,11 +249,10 @@ int rhizome_direct_form_received(rhizome_http_request *r)
       }
 
       const char *senderhex = rhizome_manifest_get(m, "sender", NULL, 0);
-      if (!senderhex)
-	senderhex = confValueGet("rhizome.api.addfile.author", NULL);
       if (senderhex)
 	fromhexstr(m->author, senderhex, SID_SIZE);
-      const char *bskhex = confValueGet("rhizome.api.addfile.bundlesecretkey", NULL);   
+      else if (!is_sid_any(config.rhizome.api.addfile.default_author.binary))
+	memcpy(m->author, config.rhizome.api.addfile.default_author.binary, sizeof m->author); // TODO replace with sid_t struct assignment
 
       /* Bind an ID to the manifest, and also bind the file.  Then finalise the 
 	 manifest. But if the manifest already contains an ID, don't override it. */
@@ -266,13 +262,11 @@ int rhizome_direct_form_received(rhizome_http_request *r)
 	  m = NULL;
 	  rhizome_direct_clear_temporary_files(r);
 	  return rhizome_server_simple_http_response(r,500,"Could not bind manifest to an ID");
-	}	
-      } else if (bskhex) {
+	}
+      } else if (!rhizome_is_bk_none(&config.rhizome.api.addfile.bundle_secret_key)) {
 	/* Allow user to specify a bundle secret key so that the same bundle can
 	   be updated, rather than creating a new bundle each time. */
-	unsigned char bsk[RHIZOME_BUNDLE_KEY_BYTES];
-	fromhexstr(bsk,bskhex,RHIZOME_BUNDLE_KEY_BYTES);
-	memcpy(m->cryptoSignSecret, bsk, RHIZOME_BUNDLE_KEY_BYTES);
+	memcpy(m->cryptoSignSecret, config.rhizome.api.addfile.bundle_secret_key.binary, RHIZOME_BUNDLE_KEY_BYTES);
 	if (rhizome_verify_bundle_privatekey(m,m->cryptoSignSecret,m->cryptoSignPublic) == -1) {
 	  rhizome_manifest_free(m);
 	  m = NULL;
@@ -295,7 +289,7 @@ int rhizome_direct_form_received(rhizome_http_request *r)
 	rhizome_manifest_free(m);
 	rhizome_direct_clear_temporary_files(r);
 	return rhizome_server_simple_http_response(r,500,"Could not bind manifest to file");
-      }      
+      }
       if (rhizome_manifest_finalise(m)) {
 	rhizome_manifest_free(m);
 	rhizome_direct_clear_temporary_files(r);
@@ -576,8 +570,7 @@ struct http_request_parts {
 
 int rhizome_direct_parse_http_request(rhizome_http_request *r)
 {
-  const char *submitBareFileURI=confValueGet("rhizome.api.addfile.uri", NULL);
-  DEBUGF("uri=%s", submitBareFileURI ? alloca_str_toprint(submitBareFileURI) : "NULL");
+  DEBUGF("uri=%s", alloca_str_toprint(config.rhizome.api.addfile.uri_path));
   
   /* Switching to writing, so update the call-back */
   r->alarm.poll.events=POLLOUT;
@@ -630,7 +623,7 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
   } else if (strcmp(verb, "POST") == 0
       && (   strcmp(path, "/rhizome/import") == 0 
 	  || strcmp(path, "/rhizome/enquiry") == 0
-	  || (submitBareFileURI && strcmp(path, submitBareFileURI) == 0)
+	  || (config.rhizome.api.addfile.uri_path[0] && strcmp(path, config.rhizome.api.addfile.uri_path) == 0)
 	 )
   ) {
     const char *cl_str=str_str(headers,"Content-Length: ",headerlen);

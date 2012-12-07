@@ -46,8 +46,6 @@ const struct __sourceloc __whence = __NOWHERE__;
 debugflags_t debug = 0;
 
 static FILE *logfile = NULL;
-static int flag_show_pid = -1;
-static int flag_show_time = -1;
 
 /* The logbuf is used to accumulate log messages before the log file is open and ready for
    writing.
@@ -78,11 +76,11 @@ static FILE *_open_logging()
   if (!logfile) {
     const char *logpath = getenv("SERVALD_LOG_FILE");
     if (!logpath) {
-      if (confBusy())
+      if (cf_limbo)
 	return NULL;
-      logpath = confValueGet("log.file", NULL);
+      logpath = config.log.file;
     }
-    if (!logpath) {
+    if (!logpath || !logpath[0]) {
       logfile = stderr; //fopen("/tmp/foo", "a");
       INFO("No logfile configured -- logging to stderr");
     } else if ((logfile = fopen(logpath, "a"))) {
@@ -100,20 +98,6 @@ static FILE *_open_logging()
 FILE *open_logging()
 {
   return _open_logging();
-}
-
-static int show_pid()
-{
-  if (flag_show_pid < 0 && !confBusy())
-    flag_show_pid = confValueGetBoolean("log.show_pid", 0);
-  return flag_show_pid;
-}
-
-static int show_time()
-{
-  if (flag_show_time < 0 && !confBusy())
-    flag_show_time = confValueGetBoolean("log.show_time", 0);
-  return flag_show_time;
 }
 
 void close_logging()
@@ -144,10 +128,8 @@ static int _log_prepare(int level, struct __sourceloc whence)
     return 0;
   struct timeval tv;
   tv.tv_sec = 0;
-  int showtime = show_time();
-  if (showtime)
+  if (config.log.show_time)
     gettimeofday(&tv, NULL);
-  int showpid = show_pid();
   _open_logging(); // Put initial INFO message at start of log file
   // No calls outside log.c from this point on.
   if (strbuf_is_empty(&logbuf))
@@ -165,9 +147,9 @@ static int _log_prepare(int level, struct __sourceloc whence)
   }
   strbuf_sprintf(&logbuf, "%-6.6s ", levelstr);
 #endif
-  if (showpid)
+  if (config.log.show_pid)
     strbuf_sprintf(&logbuf, "[%5u] ", getpid());
-  if (showtime) {
+  if (config.log.show_time) {
     if (tv.tv_sec == 0) {
       strbuf_puts(&logbuf, "NOTIME______ ");
     } else {
@@ -235,15 +217,7 @@ void logArgv(int level, struct __sourceloc whence, const char *label, int argc, 
       strbuf_puts(&logbuf, label);
       strbuf_putc(&logbuf, ' ');
     }
-    int i;
-    for (i = 0; i < argc; ++i) {
-      if (i)
-	strbuf_putc(&logbuf, ' ');
-      if (argv[i])
-	strbuf_toprint_quoted(&logbuf, "\"\"", argv[i]);
-      else
-	strbuf_puts(&logbuf, "NULL");
-    }
+    strbuf_append_argv(&logbuf, argc, argv);
     _log_finish(level);
   }
 }

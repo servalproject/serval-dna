@@ -25,6 +25,33 @@ setup() {
    setup_servald
 }
 
+assert_stderr_log() {
+   local -a warn_patterns=()
+   local -a error_patterns=()
+   while [ $# -gt 0 ]; do
+      case "$1" in
+      --warn-pattern=*) warn_patterns+=("${1#*=}"); shift;;
+      --error-pattern=*) error_patterns+=("${1#*=}"); shift;;
+      *) error "unsupported option: $1"; return;;
+      esac
+   done
+   assertStderrGrep \
+      --matches=${#error_patterns[*]} \
+      --message="stderr of ($executed) contains exactly ${#error_patterns[*]} error message(s)" \
+      '^ERROR:'
+   local pattern
+   for pattern in "${warn_patterns[@]}"; do
+      assertStderrGrep \
+         --message="stderr of ($executed) contains a warning message matching \"$pattern\"" \
+         "^WARN:.*$pattern"
+   done
+   for pattern in "${error_patterns[@]}"; do
+      assertStderrGrep \
+         --message="stderr of ($executed) contains an error message matching \"$pattern\"" \
+         "^ERROR:.*$pattern"
+   done
+}
+
 doc_GetCreateInstanceDir="Get creates instance directory"
 setup_GetCreateInstanceDir() {
    setup
@@ -41,96 +68,102 @@ setup_SetCreateInstanceDir() {
    assert ! [ -d "$SERVALINSTANCE_PATH" ]
 }
 test_SetCreateInstanceDir() {
-   executeOk_servald config set foo bar
+   executeOk_servald config set debug.verbose 0
    assert [ -d "$SERVALINSTANCE_PATH" ]
 }
 
 doc_GetNull="Get an unset config item"
 test_GetNull() {
-   executeOk_servald config get foo
+   executeOk_servald config get debug.verbose
    assertStdoutLineCount '==' 0
 }
 
 doc_SetGet="Set and get a single config item"
 test_SetGet() {
-   executeOk_servald config set foo bar
-   executeOk_servald config get foo
+   executeOk_servald config set debug.verbose yes
+   executeOk_servald config get debug.verbose
    assertStdoutLineCount '==' 1
-   assertStdoutGrep --stdout --stderr --matches=1 '^foo=bar$'
+   assertStdoutGrep --stdout --stderr --matches=1 '^debug\.verbose=yes$'
 }
 
 doc_GetAll="Get all config items"
 test_GetAll() {
-   executeOk_servald config set foo bar
-   executeOk_servald config set hello world
+   executeOk_servald config \
+      set debug.verbose true \
+      set log.show_pid true \
+      set server.chdir /tmp/nothing \
+      set rhizome.enable no
+   executeOk_servald config get
+   assertStdoutLineCount '==' 4
+   assertStdoutGrep --stdout --matches=1 '^debug\.verbose=true$'
+   assertStdoutGrep --stdout --matches=1 '^log\.show_pid=true$'
+   assertStdoutGrep --stdout --matches=1 '^server\.chdir=/tmp/nothing$'
+   assertStdoutGrep --stdout --matches=1 '^rhizome\.enable=no$'
+}
+
+doc_SetDelMixed="Set and del config items in single command"
+test_SetDelMixed() {
+   executeOk_servald config \
+      set debug.verbose true \
+      set log.show_pid true \
+      set server.chdir /tmp/nothing \
+      set rhizome.enable no
+   executeOk_servald config \
+      set debug.verbose false \
+      del log.show_pid \
+      set log.show_time 1 \
+      del server.chdir \
+      del rhizome.enable
    executeOk_servald config get
    assertStdoutLineCount '==' 2
-   assertStdoutGrep --stdout --matches=1 '^foo=bar$'
-   assertStdoutGrep --stdout --matches=1 '^hello=world$'
+   assertStdoutGrep --stdout --matches=1 '^debug\.verbose=false$'
+   assertStdoutGrep --stdout --matches=1 '^log\.show_time=1$'
 }
 
 doc_SetTwice="Set a single config item twice"
 test_SetTwice() {
-   executeOk_servald config set foo bar
-   executeOk_servald config get foo
+   executeOk_servald config set debug.verbose yes
+   executeOk_servald config get debug.verbose
    assertStdoutLineCount '==' 1
-   assertStdoutGrep --stdout --stderr --matches=1 '^foo=bar$'
-   executeOk_servald config set foo wah
-   executeOk_servald config get foo
+   assertStdoutGrep --stdout --stderr --matches=1 '^debug\.verbose=yes$'
+   executeOk_servald config set debug.verbose false
+   executeOk_servald config get debug.verbose
    assertStdoutLineCount '==' 1
-   assertStdoutGrep --stdout --stderr --matches=1 '^foo=wah$'
+   assertStdoutGrep --stdout --stderr --matches=1 '^debug\.verbose=false$'
 }
 
 doc_DelNull="Delete an unset config item"
 test_DelNull() {
-   executeOk_servald config del foo
+   executeOk_servald config del debug.verbose
    assertStdoutLineCount '==' 0
 }
 
 doc_Del="Delete single config item"
 test_Del() {
-   executeOk_servald config set foo bar
-   executeOk_servald config set hello world
+   executeOk_servald config set debug.verbose yes set log.show_pid true
    executeOk_servald config get
    assertStdoutLineCount '==' 2
-   executeOk_servald config del foo
+   executeOk_servald config del debug.verbose
    executeOk_servald config get
    assertStdoutLineCount '==' 1
-   executeOk_servald config get foo
+   executeOk_servald config del log.show_pid
    assertStdoutLineCount '==' 0
 }
 
-doc_CaseInsensitive="Config item names are case insensitive"
-test_CaseInsensitive() {
-   executeOk_servald config set foo bar
-   executeOk_servald config get foo
-   assertStdoutLineCount '==' 1
-   assertStdoutGrep --stdout --stderr --matches=1 '^foo=bar$'
-   executeOk_servald config get Foo
-   assertStdoutLineCount '==' 1
-   assertStdoutGrep --stdout --stderr --matches=1 '^Foo=bar$'
-   executeOk_servald config set FOO wah
-   executeOk_servald config get foo
-   assertStdoutLineCount '==' 1
-   assertStdoutGrep --stdout --stderr --matches=1 '^foo=wah$'
+doc_CaseSensitive="Config item names are case sensitive"
+test_CaseSensitive() {
+   execute $servald config set Debug.verbose yes
+   assertExitStatus --stderr '!=' 0
 }
 
-doc_DotsInNames="Config item names can have internal dots"
-test_DotsInNames() {
-   executeOk_servald config set foo.bar yes
-   executeOk_servald config get foo.bar
-   assertStdoutLineCount '==' 1
-   assertStdoutGrep --stdout --stderr --matches=1 '^foo\.bar=yes$'
-   execute $servald config set foo. yes
-   assertExitStatus '!=' 0
-   execute $servald config set .foo yes
-   assertExitStatus '!=' 0
-   execute $servald config set foo..bar yes
-   assertExitStatus '!=' 0
-   executeOk_servald config set foo.x.bar yes
-   executeOk_servald config get foo.x.bar
-   assertStdoutLineCount '==' 1
-   assertStdoutGrep --stdout --stderr --matches=1 '^foo\.x\.bar=yes$'
+doc_OptionNames="Config item names must be well formed"
+test_OptionNames() {
+   execute $servald config set debug. yes
+   assertExitStatus --stderr '!=' 0
+   execute $servald config set .verbose yes
+   assertExitStatus --stderr '!=' 0
+   execute $servald config del debug..verbose
+   assertExitStatus --stderr '!=' 0
 }
 
 doc_DebugFlags="Debug config options affect verbosity"
@@ -159,6 +192,91 @@ test_DebugFlagAll() {
    executeOk_servald config set debug.all off
    executeOk_servald echo one two three
    assertStderrGrep --matches=3 '\<echo:argv\['
+}
+
+doc_InterfacesLegacyIncludeAll="Legacy 'interfaces' config option include all"
+test_InterfacesLegacyIncludeAll() {
+   executeOk_servald config set interfaces '+'
+}
+
+doc_InterfacesLegacyExcludeAll="Legacy 'interfaces' config option exclude all"
+test_InterfacesLegacyExcludeAll() {
+   executeOk_servald config set interfaces '-'
+}
+
+doc_InterfacesLegacyMixed="Legacy 'interfaces' config option mixed list"
+test_InterfacesLegacyMixed() {
+   executeOk_servald config set interfaces '+eth,-wifi,+'
+}
+
+doc_InterfacesLegacyMixedDetail="Legacy 'interfaces' config option mixed list with details"
+test_InterfacesLegacyMixedDetail() {
+   executeOk_servald config set interfaces '+eth=ethernet:4111:9M, +wifi=wifi:4112:900K, -'
+}
+
+doc_InterfacesLegacyInvalidType="Legacy 'interfaces' config option invalid type"
+test_InterfacesLegacyInvalidType() {
+   execute --stderr --core-backtrace --exit-status=2 --executable=$servald \
+      config set interfaces '+eth=foo:4111:9M'
+   assert_stderr_log \
+      --warn-pattern='"interfaces".*invalid' \
+      --error-pattern='config file.*not loaded.*invalid'
+}
+
+doc_InterfacesLegacyInvalidPort="Legacy 'interfaces' config option invalid port"
+test_InterfacesLegacyInvalidPort() {
+   execute --stderr --core-backtrace --exit-status=2 --executable=$servald \
+      config set interfaces '+eth=ethernet:-1000:9M'
+   assert_stderr_log \
+      --warn-pattern='"interfaces".*invalid' \
+      --error-pattern='config file.*not loaded.*invalid'
+}
+
+doc_InterfacesLegacyInvalidSpeed="Legacy 'interfaces' config option invalid speed"
+test_InterfacesLegacyInvalidSpeed() {
+   execute --stderr --core-backtrace --exit-status=2 --executable=$servald \
+      config set interfaces '+eth=ethernet:4111:9MB'
+   assert_stderr_log \
+      --warn-pattern='"interfaces".*invalid' \
+      --error-pattern='config file.*not loaded.*invalid'
+}
+
+doc_InterfacesLegacyIncompatible="Legacy 'interfaces' config option incompatible with modern form"
+test_InterfacesLegacyIncompatible() {
+   executeOk_servald config set interfaces '+'
+   execute --stderr --core-backtrace --executable=$servald \
+      config set interfaces.10.match 'eth'
+   tfw_cat $SERVALINSTANCE_PATH/serval.conf
+   assertExitStatus '==' 2
+   assert_stderr_log \
+      --warn-pattern='"interfaces.*incompatible' \
+      --error-pattern='config file.*not loaded.*incompatible'
+   tfw_cat --stderr
+}
+
+doc_InterfacesModernMatch="Modern 'interfaces.N.match' config option"
+test_InterfacesModernMatch() {
+   executeOk_servald config set interfaces.0.match 'eth*, wifi*'
+}
+
+doc_InterfacesModernDummy="Modern 'interfaces.N.dummy' config option"
+test_InterfacesModernDummy() {
+   executeOk_servald config set interfaces.0.dummy dummyname
+}
+teardown_InterfacesModernDummy() {
+   tfw_cat $SERVALINSTANCE_PATH/serval.conf
+   teardown
+}
+
+doc_InterfacesModernIncompatible="Config options 'interfaces.match' and 'interfaces.dummy' are incompatible"
+test_InterfacesModernIncompatible() {
+   executeOk_servald config set interfaces.0.match eth
+   execute --stderr --core-backtrace --executable=$servald \
+      config set interfaces.0.dummy dummy
+   assertExitStatus '==' 2
+   assert_stderr_log \
+      --warn-pattern='"interfaces\.0\..*incompatible' \
+      --error-pattern='config file.*not loaded.*incompatible'
 }
 
 runTests "$@"

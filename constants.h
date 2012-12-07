@@ -19,6 +19,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVALD_CONSTANTS_H
 #define __SERVALD_CONSTANTS_H
 
+#define NELS(a) (sizeof (a) / sizeof *(a))
+
 /* Packet format:
 
    16 bit - Magic value 0x4110

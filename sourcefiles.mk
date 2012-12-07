@@ -3,6 +3,9 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)cli.c \
 	$(SERVAL_BASE)commandline.c \
 	$(SERVAL_BASE)conf.c \
+	$(SERVAL_BASE)conf_om.c \
+	$(SERVAL_BASE)conf_parse.c \
+	$(SERVAL_BASE)conf_schema.c \
 	$(SERVAL_BASE)crypto.c \
 	$(SERVAL_BASE)dataformats.c \
 	$(SERVAL_BASE)directory_client.c \
@@ -15,7 +18,9 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)lsif.c \
 	$(SERVAL_BASE)main.c \
 	$(SERVAL_BASE)mdp_client.c \
-	$(SERVAL_BASE)mkdir.c \
+	$(SERVAL_BASE)os.c \
+	$(SERVAL_BASE)mem.c \
+	$(SERVAL_BASE)instance.c \
 	$(SERVAL_BASE)monitor.c \
 	$(SERVAL_BASE)monitor-client.c \
 	$(SERVAL_BASE)monitor-cli.c \
@@ -32,6 +37,7 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)overlay_packetformats.c \
 	$(SERVAL_BASE)overlay_payload.c \
 	$(SERVAL_BASE)overlay_route.c \
+	$(SERVAL_BASE)packetformats.c \
 	$(SERVAL_BASE)performance_timing.c \
 	$(SERVAL_BASE)randombytes.c \
 	$(SERVAL_BASE)rhizome.c \

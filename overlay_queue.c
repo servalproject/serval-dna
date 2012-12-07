@@ -116,6 +116,7 @@ overlay_queue_remove(overlay_txqueue *queue, struct overlay_frame *frame){
   return next;
 }
 
+#if 0 // unused
 static int
 overlay_queue_dump(overlay_txqueue *q)
 {
@@ -148,6 +149,7 @@ overlay_queue_dump(overlay_txqueue *q)
   DEBUG(strbuf_str(b));
   return 0;
 }
+#endif
 
 int overlay_payload_enqueue(struct overlay_frame *p)
 {

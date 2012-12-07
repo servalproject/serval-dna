@@ -18,26 +18,27 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "conf.h"
 #include "str.h"
 #include "rhizome.h"
 #include <stdlib.h>
 
 int is_rhizome_enabled()
 {
-  return confValueGetBoolean("rhizome.enable", 1);
+  return config.rhizome.enable;
 }
 
 int is_rhizome_http_enabled()
 {
-  return confValueGetBoolean("rhizome.enable", 1)
-    &&   confValueGetBoolean("rhizome.http.enable", 1)
+  return config.rhizome.enable
+    &&   config.rhizome.http.enable
     &&   rhizome_db;
 }
 
 int is_rhizome_mdp_enabled()
 {
-  return confValueGetBoolean("rhizome.enable", 1)
-    &&   confValueGetBoolean("rhizome.mdp.enable", 1)
+  return config.rhizome.enable
+    &&   config.rhizome.mdp.enable
     &&   rhizome_db;
 }
 
@@ -48,16 +49,15 @@ int is_rhizome_mdp_server_running()
 
 int is_rhizome_advertise_enabled()
 {
-  return confValueGetBoolean("rhizome.enable", 1)
-    &&   confValueGetBoolean("rhizome.advertise.enable", 1)
+  return config.rhizome.enable
+    &&   config.rhizome.advertise.enable
     &&   rhizome_db
-    &&   (  is_rhizome_http_server_running()
-	    ||is_rhizome_mdp_server_running());
+    &&   (is_rhizome_http_server_running() || is_rhizome_mdp_server_running());
 }
 
 int rhizome_fetch_delay_ms()
 {
-  return confValueGetInt64Range("rhizome.fetch_delay_ms", 50, 1, 3600000);
+  return config.rhizome.fetch_delay_ms;
 }
 
 /* Import a bundle from a pair of files, one containing the manifest and the optional other

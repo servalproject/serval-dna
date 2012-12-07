@@ -25,6 +25,7 @@
 #include <fcntl.h>
 
 #include "serval.h"
+#include "conf.h"
 #include "cli.h"
 #include "monitor-client.h"
 #include "str.h"
@@ -185,7 +186,7 @@ struct monitor_command_handler console_handlers[]={
   {.command="MONITORSTATUS", .handler=remote_noop},
 };
 
-static int console_dial(int argc, const char *const *argv, struct command_line_option *o, void *context){
+static int console_dial(int argc, const char *const *argv, const struct command_line_option *o, void *context){
   if (call_token!=-1){
     printf("Already in a call\n");
     return 0;
@@ -197,7 +198,7 @@ static int console_dial(int argc, const char *const *argv, struct command_line_o
   return 0;
 }
 
-static int console_answer(int argc, const char *const *argv, struct command_line_option *o, void *context){
+static int console_answer(int argc, const char *const *argv, const struct command_line_option *o, void *context){
   if (call_token==-1){
     printf("No active call to answer\n");
     fflush(stdout);
@@ -206,7 +207,7 @@ static int console_answer(int argc, const char *const *argv, struct command_line
   return 0;
 }
 
-static int console_hangup(int argc, const char *const *argv, struct command_line_option *o, void *context){
+static int console_hangup(int argc, const char *const *argv, const struct command_line_option *o, void *context){
   if (call_token==-1){
     printf("No call to hangup\n");
     fflush(stdout);
@@ -215,7 +216,7 @@ static int console_hangup(int argc, const char *const *argv, struct command_line
   return 0;
 }
 
-static int console_audio(int argc, const char *const *argv, struct command_line_option *o, void *context){
+static int console_audio(int argc, const char *const *argv, const struct command_line_option *o, void *context){
   if (call_token==-1){
     printf("No active call\n");
     fflush(stdout);
@@ -238,7 +239,7 @@ static int console_audio(int argc, const char *const *argv, struct command_line_
   return 0;
 }
 
-static int console_usage(int argc, const char *const *argv, struct command_line_option *o, void *context);
+static int console_usage(int argc, const char *const *argv, const struct command_line_option *o, void *context);
 
 struct command_line_option console_commands[]={
   {console_answer,{"answer",NULL},0,"Answer an incoming phone call"},
@@ -249,7 +250,7 @@ struct command_line_option console_commands[]={
   {NULL},
 };
 
-static int console_usage(int argc, const char *const *argv, struct command_line_option *o, void *context){
+static int console_usage(int argc, const char *const *argv, const struct command_line_option *o, void *context){
   cli_usage(console_commands);
   fflush(stdout);
   return 0;
@@ -259,9 +260,12 @@ static void console_command(char *line){
   char *argv[16];
   int argc = parse_argv(line, ' ', argv, 16);
   
-  if (cli_execute(NULL, argc, (const char *const*)argv, console_commands, NULL)){
+  int ret = cli_parse(argc, (const char *const*)argv, console_commands);
+  if (ret == -1) {
     printf("Unknown command, try help\n");
     fflush(stdout);
+  } else {
+    cli_invoke(&console_commands[ret], argc, (const char *const*)argv, NULL);
   }
 }
 
@@ -302,7 +306,8 @@ static void monitor_read(struct sched_ent *alarm){
   }
 }
 
-int app_vomp_console(int argc, const char *const *argv, struct command_line_option *o, void *context){
+int app_vomp_console(int argc, const char *const *argv, const struct command_line_option *o, void *context)
+{
   static struct profile_total stdin_profile={
     .name="read_lines",
   };

@@ -21,32 +21,26 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <stdlib.h>
 #include <time.h>
 #include "serval.h"
+#include "conf.h"
 #include "rhizome.h"
 #include "strbuf.h"
+#include "strbuf_helpers.h"
 #include "str.h"
 
-long long rhizome_space=0;
-static const char *rhizome_thisdatastore_path = NULL;
+static char rhizome_thisdatastore_path[256];
 
 const char *rhizome_datastore_path()
 {
-  if (!rhizome_thisdatastore_path)
+  if (!rhizome_thisdatastore_path[0])
     rhizome_set_datastore_path(NULL);
   return rhizome_thisdatastore_path;
 }
 
 int rhizome_set_datastore_path(const char *path)
 {
-  if (!path)
-    path = confValueGet("rhizome.datastore_path", NULL);
-  if (path) {
-    rhizome_thisdatastore_path = strdup(path);
-    if (path[0] != '/')
-      WARNF("Dangerous rhizome.datastore_path setting: '%s' -- should be absolute", rhizome_thisdatastore_path);
-  } else {
-    rhizome_thisdatastore_path = serval_instancepath();
-    WARNF("Rhizome datastore path not configured -- using instance path '%s'", rhizome_thisdatastore_path);
-  }
+  strbuf b = strbuf_local(rhizome_thisdatastore_path, sizeof rhizome_thisdatastore_path);
+  strbuf_path_join(b, serval_instancepath(), config.rhizome.datastore_path, path, NULL);
+  INFOF("Rhizome datastore path = %s", alloca_str_toprint(rhizome_thisdatastore_path));
   return 0;
 }
 
@@ -197,11 +191,8 @@ int rhizome_opendb()
   int loglevel = (debug & DEBUG_RHIZOME) ? LOG_LEVEL_DEBUG : LOG_LEVEL_SILENT;
 
   /* Read Rhizome configuration */
-  double rhizome_kb = atof(confValueGet("rhizome_kb", "1024"));
-  rhizome_space = 1024LL * rhizome_kb;
   if (debug&DEBUG_RHIZOME) {
-    DEBUGF("serval.conf:rhizome_kb=%.f", rhizome_kb);
-    DEBUGF("Rhizome will use %lldB of storage for its database.", rhizome_space);
+    DEBUGF("Rhizome will use %lluB of storage for its database.", (unsigned long long) config.rhizome.database_size);
   }
   /* Create tables as required */
   sqlite_exec_void_loglevel(loglevel, "PRAGMA auto_vacuum=2;");
@@ -586,7 +577,7 @@ long long rhizome_database_used_bytes()
 int rhizome_make_space(int group_priority, long long bytes)
 {
   /* Asked for impossibly large amount */
-  if (bytes>=(rhizome_space-65536))
+  if (bytes>=(config.rhizome.database_size-65536))
     return WHYF("bytes=%lld is too large", bytes);
 
   long long db_used = rhizome_database_used_bytes();
@@ -594,7 +585,7 @@ int rhizome_make_space(int group_priority, long long bytes)
     return -1;
   
   /* If there is already enough space now, then do nothing more */
-  if (db_used<=(rhizome_space-bytes-65536))
+  if (db_used<=(config.rhizome.database_size-bytes-65536))
     return 0;
 
   /* Okay, not enough space, so free up some. */
@@ -602,7 +593,7 @@ int rhizome_make_space(int group_priority, long long bytes)
   sqlite3_stmt *statement = sqlite_prepare(&retry, "select id,length from files where highestpriority < %d order by descending length", group_priority);
   if (!statement)
     return -1;
-  while (bytes > (rhizome_space - 65536 - rhizome_database_used_bytes())
+  while (bytes > (config.rhizome.database_size - 65536 - rhizome_database_used_bytes())
       && sqlite_step_retry(&retry, statement) == SQLITE_ROW
   ) {
     /* Make sure we can drop this blob, and if so drop it, and recalculate number of bytes required */

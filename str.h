@@ -21,6 +21,7 @@
 #define __STR_H__
 
 #include <string.h>
+#include <stdint.h>
 #include <sys/types.h>
 #include <ctype.h>
 #include <alloca.h>
@@ -59,12 +60,14 @@ __STR_INLINE int is_xstring(const char *text, int len)
   return *text == '\0';
 }
 
-extern char hexdigit[16];
+extern const char hexdigit[16];
 char *tohex(char *dstHex, const unsigned char *srcBinary, size_t bytes);
 size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t nbinary);
 int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary);
 int is_all_matching(const unsigned char *ptr, size_t len, unsigned char value);
 char *str_toupper_inplace(char *s);
+
+#define alloca_tohex(buf,len)           tohex((char *)alloca((len)*2+1), (buf), (len))
 
 __STR_INLINE int hexvalue(char c)
 {
@@ -137,7 +140,107 @@ char *str_str(char *haystack, const char *needle, int haystack_len);
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int str_to_ll_scaled(const char *str, int base, long long *result, const char **afterp);
+int str_to_int64_scaled(const char *str, int base, int64_t *result, const char **afterp);
+int str_to_uint64_scaled(const char *str, int base, uint64_t *result, const char **afterp);
+uint64_t scale_factor(const char *str, const char **afterp);
+
+/* Return true if the string resembles a nul-terminated URI.
+ * Based on RFC-3986 generic syntax, assuming nothing about the hierarchical part.
+ *
+ * uri :=           scheme ":" hierarchical [ "?" query ] [ "#" fragment ]
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int str_is_uri(const char *uri);
+
+__STR_INLINE int is_uri_char_scheme(char c)
+{
+  return isalpha(c) || isdigit(c) || c == '+' || c == '-' || c == '.';
+}
+
+__STR_INLINE int is_uri_char_unreserved(char c)
+{
+  return isalpha(c) || isdigit(c) || c == '-' || c == '.' || c == '_' || c == '~';
+}
+
+__STR_INLINE int is_uri_char_reserved(char c)
+{
+  switch (c) {
+    case ':': case '/': case '?': case '#': case '[': case ']': case '@':
+    case '!': case '$': case '&': case '\'': case '(': case ')':
+    case '*': case '+': case ',': case ';': case '=':
+      return 1;
+  }
+  return 0;
+}
+
+/* Return true if the string resembles a URI scheme without the terminating colon.
+ * Based on RFC-3986 generic syntax.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+__STR_INLINE int str_is_uri_scheme(const char *scheme)
+{
+  if (!isalpha(*scheme++))
+    return 0;
+  while (is_uri_char_scheme(*scheme))
+    ++scheme;
+  return *scheme == '\0';
+}
+
+/* Pick apart a URI into its basic parts.
+ *
+ * uri :=           scheme ":" hierarchical [ "?" query ] [ "#" fragment ]
+ *
+ * Based on RFC-3986 generic syntax, assuming nothing about the hierarchical
+ * part.  If the respective part is found, sets (*partp) to point to the start
+ * of the part within the supplied 'uri' string, sets (*lenp) to the length of
+ * the part substring and returns 1.  Otherwise returns 0.  These functions
+ * do not reliably validate that the string in 'uri' is a valid URI; that must
+ * be done by calling str_is_uri().
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int str_uri_scheme(const char *uri, const char **partp, size_t *lenp);
+int str_uri_hierarchical(const char *uri, const char **partp, size_t *lenp);
+int str_uri_query(const char *uri, const char **partp, size_t *lenp);
+int str_uri_fragment(const char *uri, const char **partp, size_t *lenp);
+
+/* Pick apart a URI hierarchical part into its basic parts.
+ *
+ * hierarchical :=  "//" authority [ "/" path ]
+ *
+ * If the respective part is found, sets (*partp) to point to the start of the
+ * part within the supplied 'uri' string, sets (*lenp) to the length of the
+ * part substring and returns 1.  Otherwise returns 0.
+ *
+ * These functions may be called directly on the part returned by
+ * str_uri_hierarchical(), even though it is not nul-terminated, because they
+ * treat "?" and "#" as equally valid terminators.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int str_uri_hierarchical_authority(const char *hier, const char **partp, size_t *lenp);
+int str_uri_hierarchical_path(const char *hier, const char **partp, size_t *lenp);
+
+/* Pick apart a URI authority into its basic parts.
+ *
+ * authority :=     [ username ":" password "@" ] hostname [ ":" port ]
+ *
+ * If the respective part is found, sets (*partp) to point to the start of the
+ * part within the supplied 'uri' string, sets (*lenp) to the length of the
+ * part substring and returns 1.  Otherwise returns 0.
+ *
+ * These functions may be called directly on the part returned by
+ * str_uri_hierarchical_authority(), even though it is not nul-terminated,
+ * because they treat "/", "?" and "#" as equally valid terminators.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int str_uri_authority_username(const char *auth, const char **partp, size_t *lenp);
+int str_uri_authority_password(const char *auth, const char **partp, size_t *lenp);
+int str_uri_authority_hostname(const char *auth, const char **partp, size_t *lenp);
+int str_uri_authority_port(const char *auth, unsigned short *portp);
 
 
 int parse_argv(char *cmdline, char delim, char **argv, int max_argv);

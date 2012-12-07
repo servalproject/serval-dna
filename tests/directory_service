@@ -21,9 +21,10 @@ source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 
 configure_servald_server() {
-   executeOk_servald config set log.show_pid on
-   executeOk_servald config set log.show_time on
-   executeOk_servald config set debug.mdprequests Yes
+   executeOk_servald config \
+      set log.show_pid on \
+      set log.show_time on \
+      set debug.mdprequests Yes
 }
 
 setup() {
@@ -37,8 +38,9 @@ setup() {
    DIDD=$DIDC1
    NAMED=$NAMED1
    set_instance +A
-   executeOk_servald config set dna.helper.executable "$servald_build_root/directory_service"
-   executeOk_servald config set debug.dnahelper on
+   executeOk_servald config \
+      set dna.helper.executable "$servald_build_root/directory_service" \
+      set debug.dnahelper on
    foreach_instance +B +C +D executeOk_servald config set directory.service $SIDA
    start_servald_instances +A +B +C +D
 }
@@ -84,12 +86,13 @@ test_publish() {
 }
 
 start_routing_instance() {
-   executeOk_servald config set interface.folder "$SERVALD_VAR"
-   executeOk_servald config set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name"
-   executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name"
-   executeOk_servald config set log.show_pid on
-   executeOk_servald config set log.show_time on
-   executeOk_servald config set debug.mdprequests Yes
+   executeOk_servald config \
+      set server.dummy_interface_dir "$SERVALD_VAR" \
+      set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name" \
+      set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name" \
+      set log.show_pid on \
+      set log.show_time on \
+      set debug.mdprequests Yes
    start_servald_server
 }
 
@@ -101,23 +104,27 @@ setup_routing() {
    >$SERVALD_VAR/dummyB
    >$SERVALD_VAR/dummyC
    set_instance +A
-   executeOk_servald config set interfaces "+>dummyB,+>dummyC"
-   executeOk_servald config set mdp.dummyB.tick_ms 0
-   executeOk_servald config set mdp.dummyC.tick_ms 0
-   executeOk_servald config set dna.helper.executable "$servald_build_root/directory_service"
-   executeOk_servald config set debug.dnahelper on
+   executeOk_servald config \
+      set interfaces.0.dummy dummyB \
+      set interfaces.0.mdp_tick_ms 0 \
+      set interfaces.1.dummy dummyC \
+      set interfaces.1.mdp_tick_ms 0 \
+      set dna.helper.executable "$servald_build_root/directory_service" \
+      set debug.dnahelper on
    set_instance +B
-   executeOk_servald config set interfaces "+>dummyB"
-   executeOk_servald config set mdp.dummyB.tick_ms 0
-   executeOk_servald config set directory.service $SIDA
-   executeOk_servald config set $SIDA.interface "dummyB"
-   executeOk_servald config set $SIDA.address 127.0.0.1
+   executeOk_servald config \
+      set interfaces.0.dummy dummyB \
+      set interfaces.0.mdp_tick_ms 0 \
+      set directory.service $SIDA \
+      set hosts.$SIDA.address 127.0.0.1 \
+      set hosts.$SIDA.interface "dummyB"
    set_instance +C
-   executeOk_servald config set interfaces "+>dummyC"
-   executeOk_servald config set mdp.dummyC.tick_ms 0
-   executeOk_servald config set directory.service $SIDA
-   executeOk_servald config set $SIDA.interface "dummyC"
-   executeOk_servald config set $SIDA.address 127.0.0.1
+   executeOk_servald config \
+      set interfaces.1.dummy dummyC \
+      set interfaces.1.mdp_tick_ms 0 \
+      set directory.service $SIDA \
+      set hosts.$SIDA.address 127.0.0.1 \
+      set hosts.$SIDA.interface "dummyC"
    foreach_instance +A +B +C start_routing_instance
 }
 

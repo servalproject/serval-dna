@@ -108,6 +108,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "conf.h"
 #include "rhizome.h"
 #include "str.h"
 #include <assert.h>
@@ -480,7 +481,39 @@ rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix,int pref
 
 }
 
-int app_rhizome_direct_sync(int argc, const char *const *argv, struct command_line_option *o, void *context)
+static int rhizome_sync_with_peers(int mode, int peer_count, const struct config_rhizome_peer *const *peers)
+{
+
+  /* Get iterator capable of 64KB buffering.
+     In future we should parse the sync URL and base the buffer size on the
+     transport and allowable traffic volumes. */
+  rhizome_direct_transport_state_http *state = emalloc_zero(sizeof(rhizome_direct_transport_state_http));
+  /* XXX This code runs each sync in series, when we can probably do them in
+     parallel.  But we can't really do them in parallel until we make the
+     synchronisation process fully asynchronous, which probably won't happen
+     for a while yet.
+     Also, we don't currently parse the URI protocol field fully. */
+  int peer_number;
+  for (peer_number = 0; peer_number < peer_count; ++peer_number) {
+    const struct config_rhizome_peer *peer = peers[peer_number];
+    if (strcasecmp(peer->protocol, "http") != 0)
+      return WHYF("Unsupported Rhizome Direct protocol %s", alloca_str_toprint(peer->protocol));
+    strbuf h = strbuf_local(state->host, sizeof state->host);
+    strbuf_puts(h, peer->host);
+    if (strbuf_overrun(h))
+      return WHYF("Rhizome Direct host name too long: %s", alloca_str_toprint(peer->host));
+    state->port = peer->port;
+    DEBUGF("Rhizome direct peer is %s://%s:%d", peer->protocol, state->host, state->port);
+    rhizome_direct_sync_request *s = rhizome_direct_new_sync_request(rhizome_direct_http_dispatch, 65536, 0, mode, state);
+    rhizome_direct_start_sync_request(s);
+    if (rd_sync_handle_count > 0)
+      while (fd_poll() && rd_sync_handle_count > 0)
+	;
+  }
+  return 0;
+}
+
+int app_rhizome_direct_sync(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   /* Attempt to connect with a remote Rhizome Direct instance,
      and negotiate which BARs to synchronise. */
@@ -488,83 +521,30 @@ int app_rhizome_direct_sync(int argc, const char *const *argv, struct command_li
   int mode=3; /* two-way sync */
   if (!strcasecmp(modeName,"push")) mode=1; /* push only */
   if (!strcasecmp(modeName,"pull")) mode=2; /* pull only */
-
   DEBUGF("sync direction = %d",mode);
-
-  /* Get iterator capable of 64KB buffering.
-     In future we should parse the sync URL and base the buffer size on the
-     transport and allowable traffic volumes. */
-  rhizome_direct_transport_state_http 
-    *state=calloc(sizeof(rhizome_direct_transport_state_http),1);
-  const char *sync_url=NULL;
-  int peer_count=confValueGetInt64("rhizome.direct.peer.count",0);
-  int peer_number=0;
-  char peer_var[128];
-
   if (argv[3]) {
-    peer_count=1;
-    sync_url=argv[3];
-  } 
-
-  if (peer_count<1) {
-    DEBUG("No rhizome direct peers were configured or supplied.");
-  }
-
-  /* XXX This code runs each sync in series, when we can probably do them in
-     parallel.  But we can't really do them in parallel until we make the
-     synchronisation process fully asynchronous, which probably won't happen
-     for a while yet.
-     Also, we don't currently parse the URI protocol field fully. */
- next_peer:
-  if (!sync_url) {
-    snprintf(peer_var,128,"rhizome.direct.peer.%d",peer_number);
-    sync_url=confValueGet(peer_var, NULL);
-  }
-   
-  if (strlen(sync_url)>1020)
-    {
-      DEBUG("rhizome direct URI too long");
-      return -1;
+    struct config_rhizome_peer peer;
+    const struct config_rhizome_peer *peers[1] = { &peer };
+    int result = cf_opt_rhizome_peer_from_uri(&peer, argv[3]);
+    if (result == CFOK)
+      return rhizome_sync_with_peers(mode, 1, peers);
+    else {
+      strbuf b = strbuf_alloca(128);
+      strbuf_cf_flag_reason(b, result);
+      return WHYF("Invalid peer URI %s -- %s", alloca_str_toprint(argv[3]), strbuf_str(b));
     }
-
-  char protocol[1024];
-  state->port=RHIZOME_HTTP_PORT;
-  int ok=0;
-  if (sscanf(sync_url,"%[^:]://%[^:]:%d",protocol,state->host,&state->port)>=2)
-    ok=1;
-  if (!ok) sprintf(protocol,"http");
-  if ((!ok)&&(sscanf(sync_url,"%[^:]:%d",state->host,&state->port)>=1))
-    ok=2;
-  if (!ok)
-    {
-      DEBUG("could not parse rhizome direct URI");     
-      return -1;
-    } 
-  DEBUGF("Rhizome direct peer is %s://%s:%d (parse route %d)",
-	 protocol,state->host,state->port,ok);
-
-  if (strcasecmp(protocol,"http")) {
-    DEBUG("Unsupport Rhizome Direct synchronisation protocol."
-	  "  Only HTTP is supported at present.");
+  } else if (config.rhizome.direct.peer.ac == 0) {
+    DEBUG("No rhizome direct peers were configured or supplied");
     return -1;
+  } else {
+    const struct config_rhizome_peer *peers[config.rhizome.direct.peer.ac];
+    int i;
+    for (i = 0; i < config.rhizome.direct.peer.ac; ++i)
+      peers[i] = &config.rhizome.direct.peer.av[i].value;
+    return rhizome_sync_with_peers(mode, config.rhizome.direct.peer.ac, peers);
   }
-  
-  rhizome_direct_sync_request 
-    *s = rhizome_direct_new_sync_request(rhizome_direct_http_dispatch,
-					 65536,0,mode,state);
-  
-  rhizome_direct_start_sync_request(s);
-  
-  if (rd_sync_handle_count>0)
-    while(fd_poll()&&(rd_sync_handle_count>0)) continue;   
-  
-  sync_url=NULL;
-  peer_number++;
-  if (peer_number<peer_count) goto next_peer;
-
-  return 0;
 }
- 
+
 rhizome_direct_bundle_cursor *rhizome_direct_bundle_iterator(int buffer_size)
 {
   rhizome_direct_bundle_cursor *r=calloc(sizeof(rhizome_direct_bundle_cursor),1);

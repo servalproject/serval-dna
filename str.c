@@ -25,8 +25,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
+#include <assert.h>
+#include <limits.h>
 
-char hexdigit[16] = {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
+const char hexdigit[16] = {'0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F'};
 
 char *tohex(char *dstHex, const unsigned char *srcBinary, size_t bytes)
 {
@@ -161,24 +163,50 @@ char *str_str(char *haystack, const char *needle, int haystack_len)
   return NULL;
 }
 
-int str_to_ll_scaled(const char *str, int base, long long *result, const char **afterp)
+uint64_t scale_factor(const char *str, const char **afterp)
+{
+  uint64_t factor = 1;
+  switch (str[0]) {
+    case 'k': ++str; factor = 1000LL; break;
+    case 'K': ++str; factor = 1024LL; break;
+    case 'm': ++str; factor = 1000LL * 1000LL; break;
+    case 'M': ++str; factor = 1024LL * 1024LL; break;
+    case 'g': ++str; factor = 1000LL * 1000LL * 1000LL; break;
+    case 'G': ++str; factor = 1024LL * 1024LL * 1024LL; break;
+  }
+  if (afterp)
+    *afterp = str;
+  else if (*str)
+    factor = 0;
+  return factor;
+}
+
+int str_to_int64_scaled(const char *str, int base, int64_t *result, const char **afterp)
 {
   if (!(isdigit(*str) || *str == '-' || *str == '+'))
     return 0;
-  char *end;
-  long long value = strtoll(str, &end, base);
+  const char *end = str;
+  long long value = strtoll(str, (char**)&end, base);
   if (end == str)
     return 0;
-  switch (*end) {
-    case '\0': break;
-    case 'k': value *= 1000LL; ++end; break;
-    case 'K': value *= 1024LL; ++end; break;
-    case 'm': value *= 1000LL * 1000LL; ++end; break;
-    case 'M': value *= 1024LL * 1024LL; ++end; break;
-    case 'g': value *= 1000LL * 1000LL * 1000LL; ++end; break;
-    case 'G': value *= 1024LL * 1024LL * 1024LL; ++end; break;
-    default: return 0;
-  }
+  value *= scale_factor(end, &end);
+  if (afterp)
+    *afterp = end;
+  else if (*end)
+    return 0;
+  *result = value;
+  return 1;
+}
+
+int str_to_uint64_scaled(const char *str, int base, uint64_t *result, const char **afterp)
+{
+  if (!isdigit(*str))
+    return 0;
+  const char *end = str;
+  unsigned long long value = strtoull(str, (char**)&end, base);
+  if (end == str)
+    return 0;
+  value *= scale_factor(end, &end);
   if (afterp)
     *afterp = end;
   else if (*end)
@@ -208,25 +236,26 @@ size_t toprint_len(const char *srcBuf, size_t srcBytes, const char quotes[2])
   return strbuf_count(strbuf_toprint_quoted_len(strbuf_local(NULL, 0), quotes, srcBuf, srcBytes));
 }
 
-/* Format a null-terminated string as a printable representation, eg: "Abc\x0b\n", for display
-   in log messages.
+/* Format a null-terminated string as a printable representation, eg: `Abc\x0b\n`, for display
+   in log messages.  If the given string pointer is NULL, return the string "NULL" without quotes.
    @author Andrew Bettison <andrew@servalproject.com>
  */
 char *toprint_str(char *dstStr, ssize_t dstBufSiz, const char *srcStr, const char quotes[2])
 {
   strbuf b = strbuf_local(dstStr, dstBufSiz);
-  strbuf_toprint_quoted(b, quotes, srcStr);
+  if (srcStr)
+    strbuf_toprint_quoted(b, quotes, srcStr);
+  else
+    strbuf_puts(b, "NULL");
   return dstStr;
 }
 
-/* Compute the length of the string produced by toprint_str().  If dstStrLen == -1 then returns the
-   exact number of characters in the printable representation (excluding the terminating nul),
-   otherwise returns dstStrLen.
+/* Compute the length of the string produced by toprint_str(), excluding the terminating nul.
    @author Andrew Bettison <andrew@servalproject.com>
  */
 size_t toprint_str_len(const char *srcStr, const char quotes[2])
 {
-  return strbuf_count(strbuf_toprint_quoted(strbuf_local(NULL, 0), quotes, srcStr));
+  return srcStr ? strbuf_count(strbuf_toprint_quoted(strbuf_local(NULL, 0), quotes, srcStr)) : 4;
 }
 
 size_t str_fromprint(unsigned char *dst, const char *src)
@@ -261,4 +290,223 @@ size_t str_fromprint(unsigned char *dst, const char *src)
     }
   }
   return dst - odst;
+}
+
+/* Return true if the string resembles a URI.
+ * Based on RFC-3986 generic syntax, assuming nothing about the hierarchical part.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int str_is_uri(const char *uri)
+{
+  const char *p;
+  size_t len;
+  if (!str_uri_scheme(uri, &p, &len))
+    return 0;
+  const char *const q = (p += len + 1);
+  for (; *p && (is_uri_char_unreserved(*p) || is_uri_char_reserved(*p)) && *p != '?' && *p != '#'; ++p)
+    ;
+  if (p == q)
+    return 0;
+  if (*p == '?')
+    for (++p; *p && (is_uri_char_unreserved(*p) || is_uri_char_reserved(*p)) && *p != '?' && *p != '#'; ++p)
+      ;
+  if (*p == '#')
+    for (++p; *p && (is_uri_char_unreserved(*p) || is_uri_char_reserved(*p)) && *p != '?' && *p != '#'; ++p)
+      ;
+  return !*p;
+}
+
+int str_uri_scheme(const char *uri, const char **partp, size_t *lenp)
+{
+  const char *p = uri;
+  // Scheme is ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )
+  if (!isalpha(*p++))
+    return 0;
+  while (is_uri_char_scheme(*p))
+    ++p;
+  // Scheme is followed by colon ":".
+  if (*p != ':')
+    return 0;
+  if (partp)
+    *partp = uri;
+  if (lenp)
+    *lenp = p - uri;
+  return 1;
+}
+
+int str_uri_hierarchical(const char *uri, const char **partp, size_t *lenp)
+{
+  const char *p = uri;
+  while (*p && *p != ':')
+    ++p;
+  if (*p != ':')
+    return 0;
+  const char *const q = ++p;
+  while (*p && (is_uri_char_unreserved(*p) || is_uri_char_reserved(*p)) && *p != '?' && *p != '#')
+    ++p;
+  if (p == q)
+    return 0;
+  if (partp)
+    *partp = q;
+  if (lenp)
+    *lenp = p - q;
+  return 1;
+}
+
+int str_uri_query(const char *uri, const char **partp, size_t *lenp)
+{
+  const char *p = uri;
+  while (*p && *p != '?')
+    ++p;
+  if (*p != '?')
+    return 0;
+  const char *const q = ++p;
+  while (*p && (is_uri_char_unreserved(*p) || is_uri_char_reserved(*p)) && *p != '#')
+    ++p;
+  if (p == q || (*p && *p != '#'))
+    return 0;
+  if (partp)
+    *partp = q;
+  if (lenp)
+    *lenp = p - q;
+  return 1;
+}
+
+int str_uri_fragment(const char *uri, const char **partp, size_t *lenp)
+{
+  const char *p = uri;
+  while (*p && *p != '#')
+    ++p;
+  if (*p != '#')
+    return 0;
+  const char *const q = ++p;
+  while (*p && (is_uri_char_unreserved(*p) || is_uri_char_reserved(*p)))
+    ++p;
+  if (p == q || *p)
+    return 0;
+  if (partp)
+    *partp = q;
+  if (lenp)
+    *lenp = p - q;
+  return 1;
+}
+
+int str_uri_hierarchical_authority(const char *hier, const char **partp, size_t *lenp)
+{
+  if (hier[0] != '/' || hier[1] != '/')
+    return 0;
+  const char *const q = hier + 2;
+  const char *p = q;
+  while (*p && (is_uri_char_unreserved(*p) || is_uri_char_reserved(*p)) && *p != '/' && *p != '?' && *p != '#')
+    ++p;
+  if (p == q || (*p && *p != '/' && *p != '?' && *p != '#'))
+    return 0;
+  if (partp)
+    *partp = q;
+  if (lenp)
+    *lenp = p - q;
+  return 1;
+}
+
+int str_uri_hierarchical_path(const char *hier, const char **partp, size_t *lenp)
+{
+  if (hier[0] != '/' || hier[1] != '/')
+    return 0;
+  const char *p = hier + 2;
+  while (*p && *p != '/' && *p != '?' && *p != '#')
+    ++p;
+  if (!*p)
+    return 0;
+  const char *const q = ++p;
+  while (*p && (is_uri_char_unreserved(*p) || is_uri_char_reserved(*p)) && *p != '/' && *p != '?' && *p != '#')
+    ++p;
+  if (p == q || (*p && *p != '/' && *p != '?' && *p != '#'))
+    return 0;
+  if (partp)
+    *partp = q;
+  if (lenp)
+    *lenp = p - q;
+  return 1;
+}
+
+int str_uri_authority_username(const char *auth, const char **partp, size_t *lenp)
+{
+  const char *p;
+  for (p = auth; *p && *p != '@' && *p != '/' && *p != '?' && *p != '#'; ++p)
+      ;
+  if (*p != '@')
+    return 0;
+  for (p = auth; *p && *p != ':' && *p != '@'; ++p)
+    ;
+  if (*p != ':')
+    return 0;
+  if (partp)
+    *partp = auth;
+  if (lenp)
+    *lenp = p - auth;
+  return 1;
+}
+
+int str_uri_authority_password(const char *auth, const char **partp, size_t *lenp)
+{
+  const char *p;
+  for (p = auth; *p && *p != '@' && *p != '/' && *p != '?' && *p != '#'; ++p)
+      ;
+  if (*p != '@')
+    return 0;
+  for (p = auth; *p && *p != ':' && *p != '@'; ++p)
+    ;
+  if (*p != ':')
+    return 0;
+  const char *const q = ++p;
+  for (; *p && *p != '@'; ++p)
+    ;
+  assert(*p == '@');
+  if (partp)
+    *partp = q;
+  if (lenp)
+    *lenp = p - q;
+  return 1;
+}
+
+int str_uri_authority_hostname(const char *auth, const char **partp, size_t *lenp)
+{
+  const char *p;
+  const char *q = auth;
+  for (p = auth; *p && *p != '/' && *p != '?' && *p != '#'; ++p)
+      if (*p == '@')
+	q = p + 1;
+  const char *r = p;
+  while (r > q && isdigit(*--r))
+    ;
+  if (r < p - 1 && *r == ':')
+    p = r;
+  if (partp)
+    *partp = q;
+  if (lenp)
+    *lenp = p - q;
+  return 1;
+}
+
+int str_uri_authority_port(const char *auth, unsigned short *portp)
+{
+  const char *p;
+  const char *q = auth;
+  for (p = auth; *p && *p != '/' && *p != '?' && *p != '#'; ++p)
+      if (*p == '@')
+	q = p + 1;
+  const char *r = p;
+  while (r > q && isdigit(*--r))
+    ;
+  if (r < p - 1 && *r == ':') {
+    for (++r; *r == '0'; ++r)
+      ;
+    int n;
+    if (p - r <= 5 && (n = atoi(r)) <= USHRT_MAX) {
+      *portp = n;
+      return 1;
+    }
+  }
+  return 0;
 }

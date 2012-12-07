@@ -36,14 +36,14 @@ teardown() {
 
 # Called by start_servald_instances for each instance.
 configure_servald_server() {
-   executeOk_servald config set log.show_pid on
-   executeOk_servald config set log.show_time on
-   executeOk_servald config set debug.rhizome on
-   executeOk_servald config set debug.rhizometx on
-   executeOk_servald config set debug.rhizomerx on
-   executeOk_servald config set server.respawn_on_signal off
-   executeOk_servald config set mdp.wifi.tick_ms 500
-   executeOk_servald config set mdp.selfannounce.ticks_per_full_address 1
+   executeOk_servald config \
+      set log.show_pid on \
+      set log.show_time on \
+      set debug.rhizome on \
+      set debug.rhizometx on \
+      set debug.rhizomerx on \
+      set server.respawn_on_crash off \
+      set mdp.iftype.wifi.tick_ms 500
 }
 
 doc_FileTransferStress="Stress - five nodes each sharing 16 bundles"

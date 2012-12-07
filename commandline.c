@@ -35,6 +35,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <jni.h>
 #endif
 #include "serval.h"
+#include "conf.h"
 #include "rhizome.h"
 #include "strbuf.h"
 #include "str.h"
@@ -44,7 +45,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 extern struct command_line_option command_line_options[];
 
-int commandline_usage(int argc, const char *const *argv, struct command_line_option *o, void *context){
+int commandline_usage(int argc, const char *const *argv, const struct command_line_option *o, void *context){
   printf("Serval Mesh version <version>.\n");
   return cli_usage(command_line_options);
 }
@@ -189,9 +190,19 @@ int parseCommandLine(const char *argv0, int argc, const char *const *args)
 {
   fd_clearstats();
   IN();
-  confSetDebugFlags();
   
-  int result = cli_execute(argv0, argc, args, command_line_options, NULL);
+  int result = cli_parse(argc, args, command_line_options);
+  if (result != -1) {
+    const struct command_line_option *option = &command_line_options[result];
+    if (option->flags & CLIFLAG_PERMISSIVE_CONFIG)
+      cf_reload_permissive();
+    else
+      cf_reload();
+    result = cli_invoke(option, argc, args, NULL);
+  } else {
+    cf_reload();
+  }
+
   /* clean up after ourselves */
   overlay_mdp_client_done();
   rhizome_close_db();
@@ -322,7 +333,7 @@ void cli_flush()
   fflush(stdout);
 }
 
-int app_echo(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_echo(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   int i = 1;
@@ -377,19 +388,15 @@ void lookup_send_request(unsigned char *srcsid, int srcport, unsigned char *dsts
   
   /* Also send an encrypted unicast request to a configured directory service */
   if (!dstsid){
-    const char *directory_service = confValueGet("directory.service", NULL);
-    if (directory_service){
-      if (stowSid(mdp.out.dst.sid, 0, directory_service)==-1){
-	WHYF("Invalid directory server SID %s", directory_service);
-      }else{
-	mdp.packetTypeAndFlags=MDP_TX;
-	overlay_mdp_send(&mdp,0,0);
-      }
+    if (!is_sid_any(config.directory.service.binary)) {
+      memcpy(mdp.out.dst.sid, config.directory.service.binary, SID_SIZE);
+      mdp.packetTypeAndFlags=MDP_TX;
+      overlay_mdp_send(&mdp,0,0);
     }
   }
 }
 
-int app_dna_lookup(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_dna_lookup(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   
@@ -506,7 +513,7 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
   return 0;
 }
 
-int app_server_start(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_server_start(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   /* Process optional arguments */
@@ -571,10 +578,8 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
     return -1;
   /* Now that we know our instance path, we can ask for the default set of
      network interfaces that we will take interest in. */
-  const char *interfaces = confValueGet("interfaces", "");
-  if (!interfaces[0])
-    WHY("No network interfaces configured (empty 'interfaces' config setting)");
-  overlay_interface_args(interfaces);
+  if (config.interfaces.ac == 0)
+    WARN("No network interfaces configured (empty 'interfaces' config option)");
   if (pid == -1)
     pid = server_pid();
   if (pid < 0)
@@ -599,7 +604,7 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
       return server(NULL);
     const char *dir = getenv("SERVALD_SERVER_CHDIR");
     if (!dir)
-      dir = confValueGet("server.chdir", "/");
+      dir = config.server.chdir;
     switch (cpid = fork()) {
       case -1:
 	/* Main process.  Fork failed.  There is no child process. */
@@ -684,7 +689,7 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
   return ret;
 }
 
-int app_server_stop(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_server_stop(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   int			pid, tries, running;
@@ -745,7 +750,7 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
   return 0;
 }
 
-int app_server_status(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_server_status(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   int	pid;
@@ -772,7 +777,7 @@ int app_server_status(int argc, const char *const *argv, struct command_line_opt
   return pid > 0 ? 0 : 1;
 }
 
-int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_mdp_ping(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *sid, *count;
@@ -919,13 +924,29 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
   return ret;
 }
 
-int app_config_set(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_config_schema(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
-  const char *var, *val;
-  if (	cli_arg(argc, argv, o, "variable", &var, is_configvarname, NULL)
-     || cli_arg(argc, argv, o, "value", &val, NULL, ""))
+  if (create_serval_instance_dir() == -1)
     return -1;
+  struct cf_om_node *root = NULL;
+  if (cf_sch_config_main(&root) == -1)
+    return -1;
+  struct cf_om_iterator it;
+  for (cf_om_iter_start(&it, root); it.node; cf_om_iter_next(&it))
+    if (it.node->text || it.node->nodc == 0) {
+      cli_puts(it.node->fullkey);
+      cli_delim("=");
+      if (it.node->text)
+	cli_puts(it.node->text);
+      cli_delim("\n");
+    }
+  return 0;
+}
+
+int app_config_set(int argc, const char *const *argv, const struct command_line_option *o, void *context)
+{
+  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   if (create_serval_instance_dir() == -1)
     return -1;
   // <kludge>
@@ -941,26 +962,42 @@ int app_config_set(int argc, const char *const *argv, struct command_line_option
   // Bingo, the old version of servald.conf is what remains.  This kludge intervenes in step 4, by
   // reading the new servald.conf into the memory buffer before applying the "rhizome.enable" set
   // value and overwriting.
-  confReloadIfChanged();
+  if (cf_om_reload() == -1)
+    return -1;
   // </kludge>
-  return confValueSet(var, val) == -1 ? -1 : confWrite();
+  const char *var[argc - 1];
+  const char *val[argc - 1];
+  int nvar = 0;
+  int i;
+  for (i = 1; i < argc; ++i) {
+    int iv;
+    if (strcmp(argv[i], "set") == 0) {
+      if (i + 2 > argc)
+	return WHYF("malformed command at argv[%d]: 'set' not followed by two arguments", i);
+      var[nvar] = argv[iv = ++i];
+      val[nvar] = argv[++i];
+    } else if (strcmp(argv[i], "del") == 0) {
+      if (i + 1 > argc)
+	return WHYF("malformed command at argv[%d]: 'del' not followed by one argument", i);
+      var[nvar] = argv[iv = ++i];
+      val[nvar] = NULL;
+    } else
+      return WHYF("malformed command at argv[%d]: unsupported action '%s'", i, argv[i]);
+    if (!is_configvarname(var[nvar]))
+      return WHYF("malformed command at argv[%d]: '%s' is not a valid config option name", iv, var[nvar]);
+    ++nvar;
+  }
+  for (i = 0; i < nvar; ++i)
+    if (cf_om_set(&cf_om_root, var[i], val[i]) == -1)
+      return -1;
+  if (cf_om_save() == -1)
+    return -1;
+  if (cf_reload() == -1) // logs an error if the new config is bad
+    return 2;
+  return 0;
 }
 
-int app_config_del(int argc, const char *const *argv, struct command_line_option *o, void *context)
-{
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
-  const char *var;
-  if (cli_arg(argc, argv, o, "variable", &var, is_configvarname, NULL))
-    return -1;
-  if (create_serval_instance_dir() == -1)
-    return -1;
-  // <kludge> See app_config_set()
-  confReloadIfChanged();
-  // </kludge>
-  return confValueSet(var, NULL) == -1 ? -1 : confWrite();
-}
-
-int app_config_get(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_config_get(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *var;
@@ -968,8 +1005,10 @@ int app_config_get(int argc, const char *const *argv, struct command_line_option
     return -1;
   if (create_serval_instance_dir() == -1)
     return -1;
+  if (cf_om_reload() == -1)
+    return -1;
   if (var) {
-    const char *value = confValueGet(var, NULL);
+    const char *value = cf_om_get(cf_om_root, var);
     if (value) {
       cli_puts(var);
       cli_delim("=");
@@ -977,21 +1016,20 @@ int app_config_get(int argc, const char *const *argv, struct command_line_option
       cli_delim("\n");
     }
   } else {
-    int n = confVarCount();
-    if (n == -1)
-      return -1;
-    unsigned int i;
-    for (i = 0; i != n; ++i) {
-      cli_puts(confVar(i));
-      cli_delim("=");
-      cli_puts(confValue(i));
-      cli_delim("\n");
+    struct cf_om_iterator it;
+    for (cf_om_iter_start(&it, cf_om_root); it.node; cf_om_iter_next(&it)) {
+      if (it.node->text) {
+	cli_puts(it.node->fullkey);
+	cli_delim("=");
+	cli_puts(it.node->text);
+	cli_delim("\n");
+      }
     }
   }
   return 0;
 }
 
-int app_rhizome_hash_file(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_rhizome_hash_file(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   /* compute hash of file. We do this without a manifest, so it will necessarily
@@ -1006,7 +1044,7 @@ int app_rhizome_hash_file(int argc, const char *const *argv, struct command_line
   return 0;
 }
 
-int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_rhizome_add_file(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *filepath, *manifestpath, *authorSidHex, *pin, *bskhex;
@@ -1246,7 +1284,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   return ret;
 }
 
-int app_rhizome_import_bundle(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_rhizome_import_bundle(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *filepath, *manifestpath;
@@ -1258,7 +1296,7 @@ int app_rhizome_import_bundle(int argc, const char *const *argv, struct command_
   return status;
 }
 
-int app_rhizome_extract_manifest(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_rhizome_extract_manifest(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *pins, *manifestid, *manifestpath;
@@ -1302,7 +1340,7 @@ int app_rhizome_extract_manifest(int argc, const char *const *argv, struct comma
   return ret;
 }
 
-int app_rhizome_extract_file(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_rhizome_extract_file(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *fileid, *filepath, *keyhex;
@@ -1332,7 +1370,7 @@ int app_rhizome_extract_file(int argc, const char *const *argv, struct command_l
   return ret;
 }
 
-int app_rhizome_list(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_rhizome_list(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *pins, *service, *sender_sid, *recipient_sid, *offset, *limit;
@@ -1352,7 +1390,7 @@ int app_rhizome_list(int argc, const char *const *argv, struct command_line_opti
   return rhizome_list_manifests(service, sender_sid, recipient_sid, atoi(offset), atoi(limit));
 }
 
-int app_keyring_create(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_keyring_create(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *pin;
@@ -1362,7 +1400,7 @@ int app_keyring_create(int argc, const char *const *argv, struct command_line_op
   return 0;
 }
 
-int app_keyring_list(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_keyring_list(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *pins;
@@ -1389,7 +1427,7 @@ int app_keyring_list(int argc, const char *const *argv, struct command_line_opti
   return 0;
  }
 
-int app_keyring_add(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_keyring_add(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *pin;
@@ -1434,7 +1472,7 @@ int app_keyring_add(int argc, const char *const *argv, struct command_line_optio
   return 0;
 }
 
-int app_keyring_set_did(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_keyring_set_did(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *sid, *did, *pin, *name;
@@ -1463,7 +1501,7 @@ int app_keyring_set_did(int argc, const char *const *argv, struct command_line_o
   return 0;
 }
 
-int app_id_self(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_id_self(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   /* List my own identities */
@@ -1510,7 +1548,8 @@ int app_id_self(int argc, const char *const *argv, struct command_line_option *o
   return 0;
 }
 
-int app_count_peers(int argc, const char *const *argv, struct command_line_option *o, void *context){
+int app_count_peers(int argc, const char *const *argv, const struct command_line_option *o, void *context)
+{
   overlay_mdp_frame a;
   bzero(&a, sizeof(overlay_mdp_frame));
   a.packetTypeAndFlags=MDP_GETADDRS;
@@ -1526,7 +1565,7 @@ int app_count_peers(int argc, const char *const *argv, struct command_line_optio
   return 0;
 }
 
-int app_crypt_test(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_crypt_test(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   unsigned char nonce[crypto_box_curve25519xsalsa20poly1305_NONCEBYTES];
@@ -1689,7 +1728,7 @@ int app_crypt_test(int argc, const char *const *argv, struct command_line_option
   return 0;
 }
 
-int app_node_info(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_node_info(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *sid;
@@ -1736,7 +1775,7 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
   return 0;
 }
 
-int app_route_print(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_route_print(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   overlay_mdp_frame mdp;
   bzero(&mdp,sizeof(mdp));
@@ -1778,7 +1817,7 @@ int app_route_print(int argc, const char *const *argv, struct command_line_optio
   return 0;
 }
 
-int app_reverse_lookup(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_reverse_lookup(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   const char *sid, *delay;
   
@@ -1874,7 +1913,7 @@ int app_reverse_lookup(int argc, const char *const *argv, struct command_line_op
   return 0;
 }
 
-int app_network_scan(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_network_scan(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   overlay_mdp_frame mdp;
   bzero(&mdp,sizeof(mdp));
@@ -1945,11 +1984,13 @@ struct command_line_option command_line_options[]={
    "Display information about any running Serval Mesh node."},
   {app_mdp_ping,{"mdp","ping","<SID|broadcast>","[<count>]",NULL},CLIFLAG_STANDALONE,
    "Attempts to ping specified node via Mesh Datagram Protocol (MDP)."},
-  {app_config_set,{"config","set","<variable>","<value>",NULL},CLIFLAG_STANDALONE,
-   "Set specified configuration variable."},
-  {app_config_del,{"config","del","<variable>",NULL},CLIFLAG_STANDALONE,
-   "Set specified configuration variable."},
-  {app_config_get,{"config","get","[<variable>]",NULL},CLIFLAG_STANDALONE,
+  {app_config_schema,{"config","schema",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
+   "Dump configuration schema."},
+  {app_config_set,{"config","set","<variable>","<value>","...",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
+   "Set and del specified configuration variables."},
+  {app_config_set,{"config","del","<variable>","...",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
+   "Del and set specified configuration variables."},
+  {app_config_get,{"config","get","[<variable>]",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
    "Get specified configuration variable."},
   {app_vomp_console,{"console",NULL},0,
     "Test phone call life-cycle from the console"},

@@ -22,6 +22,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/stat.h>
 #include <signal.h>
 #include "serval.h"
+#include "conf.h"
 #include "str.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
@@ -148,9 +149,7 @@ dna_helper_close_pipes()
 int
 dna_helper_start()
 {
-  const char *command = confValueGet("dna.helper.executable", NULL);
-  const char *arg = confValueGet("dna.helper.argv.1", NULL);
-  if (!command || !command[0]) {
+  if (!config.dna.helper.executable[0]) {
     /* Check if we have a helper configured. If not, then set
      dna_helper_pid to magic value of 0 so that we don't waste time
      in future looking up the dna helper configuration value. */
@@ -182,7 +181,14 @@ dna_helper_start()
     close(stdout_fds[1]);
     return -1;
   }
-
+  // Construct argv[] for execv() and log messages.
+  const char *argv[config.dna.helper.argv.ac + 2];
+  argv[0] = config.dna.helper.executable;
+  int i;
+  for (i = 0; i < config.dna.helper.argv.ac; ++i)
+    argv[i + 1] = config.dna.helper.argv.av[i].value;
+  argv[i + 1] = NULL;
+  strbuf argv_sb = strbuf_append_argv(strbuf_alloca(1024), config.dna.helper.argv.ac + 1, argv);
   switch (dna_helper_pid = fork()) {
   case 0:
     /* Child, should exec() to become helper after installing file descriptors. */
@@ -197,11 +203,14 @@ dna_helper_start()
       fflush(stderr);
       _exit(-1);
     }
-    /* XXX: Need the cast on Solaris because it defins NULL as 0L and gcc doesn't
-     * see it as a sentinal */
-    execl(command, command, arg, (void *)NULL);
-    LOGF_perror(LOG_LEVEL_FATAL, "execl(%s, %s, %s, NULL)", command, command, arg ? arg : "NULL");
-    fflush(stderr);
+    {
+      execv(config.dna.helper.executable, (char **)argv);
+      LOGF_perror(LOG_LEVEL_FATAL, "execl(%s, [%s])",
+	  alloca_str_toprint(config.dna.helper.executable),
+	  strbuf_str(argv_sb)
+	);
+      fflush(stderr);
+    }
     do { _exit(-1); } while (1);
     break;
   case -1:
@@ -223,13 +232,13 @@ dna_helper_start()
     dna_helper_stdin = stdin_fds[1];
     dna_helper_stdout = stdout_fds[0];
     dna_helper_stderr = stderr_fds[0];
-    INFOF("STARTED DNA HELPER pid=%u stdin=%d stdout=%d stderr=%d executable=%s arg=%s",
+    INFOF("STARTED DNA HELPER pid=%u stdin=%d stdout=%d stderr=%d executable=%s argv=[%s]",
 	dna_helper_pid,
 	dna_helper_stdin,
 	dna_helper_stdout,
 	dna_helper_stderr,
-	command,
-	arg ? arg : "NULL"
+	alloca_str_toprint(config.dna.helper.executable),
+	strbuf_str(argv_sb)
       );
     sched_requests.function = monitor_requests;
     sched_requests.context = NULL;

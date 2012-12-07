@@ -17,6 +17,7 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include "mem.h"
 #include "serval.h"
 #include "overlay_buffer.h"
 
@@ -403,30 +404,4 @@ int ob_dump(struct overlay_buffer *b,char *desc)
   DEBUGF("overlay_buffer '%s' at %p : position=%d, size=%d", desc, b, b->position, b->sizeLimit);
   dump(NULL, b->bytes, b->sizeLimit>b->position?b->sizeLimit:b->position);
   return 0;
-}
-
-#undef malloc
-#undef calloc
-#undef free
-#undef realloc
-
-#define SDM_GUARD_AFTER 16384
-void *_serval_debug_malloc(unsigned int bytes, struct __sourceloc __whence)
-{
-  void *r=malloc(bytes+SDM_GUARD_AFTER);
-  DEBUGF("malloc(%d) -> %p", bytes, r); 
-  return r;
-}
-
-void *_serval_debug_calloc(unsigned int bytes, unsigned int count, struct __sourceloc __whence)
-{
-  void *r=calloc((bytes*count)+SDM_GUARD_AFTER,1);
-  DEBUGF("calloc(%d,%d) -> %p", bytes, count, r); 
-  return r;
-}
-
-void _serval_debug_free(void *p, struct __sourceloc __whence)
-{
-  free(p);
-  DEBUGF("free(%p)", p); 
 }

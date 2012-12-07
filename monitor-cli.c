@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <fcntl.h>
 
 #include "serval.h"
+#include "conf.h"
 #include "cli.h"
 #include "monitor-client.h"
 
@@ -45,7 +46,7 @@ struct monitor_command_handler monitor_handlers[]={
   {.command="",      .handler=remote_print},
 };
 
-int app_monitor_cli(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_monitor_cli(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   struct pollfd fds[2];
   struct monitor_state *state;
