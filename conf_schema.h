@@ -286,7 +286,8 @@ END_STRUCT
 
 STRUCT(host)
 STRING(INTERFACE_NAME_STRLEN, interface, "", cf_opt_str_nonempty,, "Interface name")
-ATOM(struct in_addr,        address,    (struct in_addr){htonl(INADDR_NONE)}, cf_opt_in_addr, MANDATORY, "Host IP address")
+STRING(256,                 host,       "", cf_opt_str_nonempty,, "Host Name")
+ATOM(struct in_addr,        address,    (struct in_addr){htonl(INADDR_NONE)}, cf_opt_in_addr,, "Host IP address")
 ATOM(uint16_t,              port,       PORT_DNA, cf_opt_uint16_nonzero,, "Port number")
 END_STRUCT
 

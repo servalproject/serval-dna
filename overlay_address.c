@@ -238,10 +238,10 @@ int set_reachable(struct subscriber *subscriber, int reachable){
 // mark the subscriber as reachable via reply unicast packet
 int reachable_unicast(struct subscriber *subscriber, overlay_interface *interface, struct in_addr addr, int port){
   if (subscriber->reachable&REACHABLE)
-    return WHYF("Subscriber %s is already reachable", alloca_tohex_sid(subscriber->sid));
+    return -1;
   
   if (subscriber->node)
-    return WHYF("Subscriber %s is already known for overlay routing", alloca_tohex_sid(subscriber->sid));
+    return -1;
   
   subscriber->interface = interface;
   subscriber->address.sin_family = AF_INET;
@@ -252,7 +252,29 @@ int reachable_unicast(struct subscriber *subscriber, overlay_interface *interfac
   return 0;
 }
 
-// load a unicast address from configuration, replace with database??
+int resolve_name(const char *name, struct in_addr *addr){
+  // TODO this can block, move to worker thread.
+  IN();
+  int ret=0;
+  struct addrinfo hint={
+    .ai_family=AF_INET,
+  };
+  struct addrinfo *addresses=NULL;
+  if (getaddrinfo(name, NULL, &hint, &addresses))
+    RETURN(WHYF("Failed to resolve %s",name));
+  
+  if (addresses->ai_addr->sa_family==AF_INET){
+    *addr = ((struct sockaddr_in *)addresses->ai_addr)->sin_addr;
+    DEBUGF("Resolved %s into %s", name, inet_ntoa(*addr));
+
+  }else
+    ret=-1;
+  
+  freeaddrinfo(addresses);
+  RETURN(ret);
+}
+
+// load a unicast address from configuration
 int load_subscriber_address(struct subscriber *subscriber)
 {
   if (subscriber_is_reachable(subscriber)&REACHABLE)
@@ -273,6 +295,15 @@ int load_subscriber_address(struct subscriber *subscriber)
   addr.sin_family = AF_INET;
   addr.sin_addr = hostc->address;
   addr.sin_port = htons(hostc->port);
+  if (addr.sin_addr.s_addr==INADDR_NONE){
+    if (interface || overlay_interface_get_default()){
+      if (resolve_name(hostc->host, &addr.sin_addr))
+	return -1;
+    }else{
+      // interface isnt up yet
+      return 1;
+    }
+  }
   DEBUGF("Loaded address %s:%d for %s", inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), alloca_tohex_sid(subscriber->sid));
   return overlay_send_probe(subscriber, addr, interface);
 }
