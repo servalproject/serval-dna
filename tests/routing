@@ -28,10 +28,16 @@ configure_servald_server() {
 }
 
 add_interface() {
-   >$SERVALD_VAR/$1
-   executeOk_servald config get interfaces
-   extract_stdout_keyvalue_optional EXISTING 'interfaces' '=' '.*'
-   executeOk_servald config set interfaces "+>$1,$EXISTING"
+   >$SERVALD_VAR/dummy$1
+   executeOk_servald config \
+      set interfaces.$1.dummy dummy$1 \
+      set interfaces.$1.dummy_address 127.0.$1.$instance_number \
+      set interfaces.$1.dummy_netmask 255.255.255.224 
+}
+
+interface_up() {
+  grep "Dummy interface .* is up" $instance_servald_log || return 1
+  return 0
 }
 
 start_routing_instance() {
@@ -43,6 +49,7 @@ start_routing_instance() {
       set log.show_time on \
       set debug.mdprequests Yes
    start_servald_server
+   wait_until interface_up
 }
 
 log_routing_table() {
@@ -62,7 +69,7 @@ setup_single_link() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B create_single_identity
-   foreach_instance +A +B add_interface dummy1
+   foreach_instance +A +B add_interface 1
    foreach_instance +A +B start_routing_instance
 }
 
@@ -77,7 +84,7 @@ setup_multiple_nodes() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B +C +D create_single_identity
-   foreach_instance +A +B +C +D add_interface dummy1
+   foreach_instance +A +B +C +D add_interface 1
    foreach_instance +A +B +C +D start_routing_instance
 }
 
@@ -92,13 +99,37 @@ test_multiple_nodes() {
    tfw_cat --stdout --stderr
 }
 
+setup_scan() {
+  setup_servald
+  assert_no_servald_processes
+  foreach_instance +A +B create_single_identity
+  foreach_instance +A +B add_interface 1
+  foreach_instance +A +B \
+    executeOk_servald config \
+      set interfaces.1.dummy_filter_broadcasts 1
+  foreach_instance +A +B start_routing_instance
+}
+
+scan_completed() {
+  grep "Scan completed" $LOG||return1
+  return 0
+}
+
+doc_scan="Simulate isolated clients"
+test_scan() {
+  set_instance +A
+  executeOk_servald scan
+  wait_until scan_completed
+  executeOk_servald mdp ping $SIDB 3
+}
+
 setup_multihop_linear() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B +C +D create_single_identity
-   foreach_instance +A +B add_interface dummy1
-   foreach_instance +B +C add_interface dummy2
-   foreach_instance +C +D add_interface dummy3
+   foreach_instance +A +B add_interface 1
+   foreach_instance +B +C add_interface 2
+   foreach_instance +C +D add_interface 3
    foreach_instance +A +B +C +D start_routing_instance
 }
 
@@ -114,13 +145,13 @@ setup_crowded_mess() {
    assert_no_servald_processes
 # BCDE & DEFG form squares, ABC & FGH form triangles
    foreach_instance +A +B +C +D +E +F +G +H create_single_identity
-   foreach_instance +A +B +C add_interface dummy1
-   foreach_instance +B +D add_interface dummy2
-   foreach_instance +C +E add_interface dummy3
-   foreach_instance +D +E add_interface dummy4
-   foreach_instance +D +F add_interface dummy5
-   foreach_instance +E +G add_interface dummy6
-   foreach_instance +F +G +H add_interface dummy7
+   foreach_instance +A +B +C add_interface 1
+   foreach_instance +B +D add_interface 2
+   foreach_instance +C +E add_interface 3
+   foreach_instance +D +E add_interface 4
+   foreach_instance +D +F add_interface 5
+   foreach_instance +E +G add_interface 6
+   foreach_instance +F +G +H add_interface 7
    foreach_instance +A +B +C +D +E +F +G +H start_routing_instance
 }
 

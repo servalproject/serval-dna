@@ -879,8 +879,10 @@ static void overlay_mdp_scan(struct sched_ent *alarm)
   
   while(state->current <= state->last){
     addr.sin_addr.s_addr=htonl(state->current);
-    if (overlay_send_probe(NULL, addr, state->interface))
-      break;
+    if (addr.sin_addr.s_addr != state->interface->address.sin_addr.s_addr){
+      if (overlay_send_probe(NULL, addr, state->interface))
+	break;
+    }
     state->current++;
   }
   
@@ -888,6 +890,7 @@ static void overlay_mdp_scan(struct sched_ent *alarm)
     alarm->alarm=gettime_ms()+500;
     schedule(alarm);
   }else{
+    DEBUG("Scan completed");
     state->interface=NULL;
     state->current=0;
     state->last=0;

@@ -64,7 +64,6 @@ static unsigned char get_nibble(const unsigned char *sid, int pos){
 }
 
 // find a subscriber struct from a whole or abbreviated subscriber id
-// TODO find abreviated sid's
 struct subscriber *find_subscriber(const unsigned char *sid, int len, int create){
   struct tree_node *ptr = &root;
   int pos=0;
@@ -263,13 +262,16 @@ int load_subscriber_address(struct subscriber *subscriber)
   if (i == -1)
     return 1;
   const struct config_host *hostc = &config.hosts.av[i].value;
-  overlay_interface *interface = overlay_interface_find_name(hostc->interface);
-  if (!interface)
-    return -1;
+  overlay_interface *interface = NULL;
+  if (*hostc->interface){
+    interface = overlay_interface_find_name(hostc->interface);
+    if (!interface)
+      return -1;
+  }
   struct sockaddr_in addr;
   addr.sin_family = AF_INET;
   addr.sin_addr = hostc->address;
-  addr.sin_port = hostc->port;
+  addr.sin_port = htons(hostc->port);
   return overlay_send_probe(subscriber, addr, interface);
 }
 
@@ -374,13 +376,11 @@ static int add_explain_response(struct subscriber *subscriber, void *context){
 
 static int find_subscr_buffer(struct decode_context *context, struct overlay_buffer *b, int len, struct subscriber **subscriber){
   if (len<=0 || len>SID_SIZE){
-    dump_stack();
     return WHY("Invalid abbreviation length");
   }
   
   unsigned char *id = ob_get_bytes_ptr(b, len);
   if (!id){
-    dump_stack();
     return WHY("Not enough space in buffer to parse address");
   }
   
@@ -428,6 +428,8 @@ int overlay_broadcast_parse(struct overlay_buffer *b, struct broadcast *broadcas
 int overlay_address_parse(struct decode_context *context, struct overlay_buffer *b, struct subscriber **subscriber)
 {
   int len = ob_get(b);
+  if (len<0)
+    return WHY("Buffer too small");
   
   switch(len){
     case OA_CODE_SELF:

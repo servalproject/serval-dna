@@ -637,9 +637,12 @@ start_servald_instances() {
       set_instance $I
       # These config settings can be overridden in a caller-supplied configure_servald_server().
       # They are extremely useful for the majority of fixtures.
-      executeOk_servald config set interfaces "+>$DUMMYNET"
-      executeOk_servald config set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name"
-      executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name"
+      executeOk_servald config \
+         set interfaces.1.dummy "$DUMMYNET" \
+         set interfaces.1.dummy_address 127.0.0.1 \
+         set interfaces.1.dummy_netmask 255.255.255.0 \
+         set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name" \
+         set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name"
       configure_servald_server
       start_servald_server
       eval DUMMY$instance_name="\$DUMMYNET"

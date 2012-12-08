@@ -285,7 +285,7 @@ ATOM(sid_t,                 service,     SID_ANY, cf_opt_sid,, "Subscriber ID of
 END_STRUCT
 
 STRUCT(host)
-STRING(INTERFACE_NAME_STRLEN, interface, "", cf_opt_str_nonempty, MANDATORY, "Interface name")
+STRING(INTERFACE_NAME_STRLEN, interface, "", cf_opt_str_nonempty,, "Interface name")
 ATOM(struct in_addr,        address,    (struct in_addr){htonl(INADDR_NONE)}, cf_opt_in_addr, MANDATORY, "Host IP address")
 ATOM(uint16_t,              port,       PORT_DNA, cf_opt_uint16_nonzero,, "Port number")
 END_STRUCT
@@ -299,6 +299,9 @@ STRUCT(network_interface, vld_network_interface)
 ATOM(int,                   exclude,    0, cf_opt_boolean,, "If true, do not use matching interfaces")
 ATOM(struct pattern_list,   match,      PATTERN_LIST_EMPTY, cf_opt_pattern_list,, "Names that match network interface")
 STRING(256,                 dummy,      "", cf_opt_str_nonempty,, "Path of dummy file, absolute or relative to server.dummy_interface_dir")
+ATOM(struct in_addr,        dummy_address,    (struct in_addr){htonl(0x7F000001)}, cf_opt_in_addr,, "Dummy interface address")
+ATOM(struct in_addr,        dummy_netmask,    (struct in_addr){htonl(0xFFFFFF00)}, cf_opt_in_addr,, "Dummy interface netmask")
+ATOM(int,                   dummy_filter_broadcasts,     0, cf_opt_boolean,, "If true, drop all incoming broadcast packets")
 ATOM(short,                 type,       OVERLAY_INTERFACE_WIFI, cf_opt_interface_type,, "Type of network interface")
 ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, cf_opt_uint16_nonzero,, "Port number for network interface")
 ATOM(uint64_t,              speed,      1000000, cf_opt_uint64_scaled,, "Speed in bits per second")

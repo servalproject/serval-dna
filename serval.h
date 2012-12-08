@@ -340,6 +340,7 @@ typedef struct overlay_interface {
   char name[256];
   int recv_offset;
   int fileP; // dummyP
+  int drop_broadcasts;
   int bits_per_second;
   int port;
   int type;

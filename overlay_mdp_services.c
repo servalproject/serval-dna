@@ -307,7 +307,11 @@ overlay_mdp_service_probe(overlay_mdp_frame *mdp)
     RETURN(WHY("Unsupported address family"));
   
   if (peer->reachable == REACHABLE_NONE || peer->reachable == REACHABLE_INDIRECT || (peer->reachable & REACHABLE_ASSUMED)){
-    reachable_unicast(peer, &overlay_interfaces[probe.interface], probe.addr.sin_addr, probe.addr.sin_port);
+    peer->interface = &overlay_interfaces[probe.interface];
+    peer->address.sin_family = AF_INET;
+    peer->address.sin_addr = probe.addr.sin_addr;
+    peer->address.sin_port = probe.addr.sin_port;
+    set_reachable(peer, REACHABLE_UNICAST);
   }
   RETURN(0);
 }
@@ -336,12 +340,10 @@ int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay
   frame->flags=PACKET_UNICAST;
   frame->interface=interface;
   frame->payload = ob_new();
-  frame->send_copies=3;
   
   // TODO call mdp payload encryption / signing without calling overlay_mdp_dispatch...
   
-  if ((!peer) || !(peer->reachable&REACHABLE))
-    my_subscriber->send_full=1;
+  my_subscriber->send_full=1;
   
   if (peer)
     peer->last_probe=gettime_ms();
@@ -365,17 +367,19 @@ int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay
     op_free(frame);
     return -1;
   }
-  DEBUGF("Queued probe packet on interface %s to %s", interface->name, inet_ntoa(addr.sin_addr));
+  DEBUGF("Queued probe packet on interface %s to %s for %s", 
+	 interface->name, inet_ntoa(addr.sin_addr), peer?alloca_tohex_sid(peer->sid):"ANY");
   return 0;
 }
 
 // append the address of a unicast link into a packet buffer
 static int overlay_append_unicast_address(struct subscriber *subscriber, struct overlay_buffer *buff)
 {
-  if (!(subscriber->reachable & REACHABLE_UNICAST))
+  if (subscriber->reachable & REACHABLE_ASSUMED || !(subscriber->reachable & REACHABLE_UNICAST)){
+    DEBUGF("Unable to give address of %s, %d", alloca_tohex_sid(subscriber->sid),subscriber->reachable);
     return 0;
-  if (subscriber->reachable & REACHABLE_ASSUMED)
-    return 0;
+  }
+  
   if (overlay_address_append(NULL, buff, subscriber))
     return -1;
   if (ob_append_ui32(buff, subscriber->address.sin_addr.s_addr))
@@ -386,6 +390,22 @@ static int overlay_append_unicast_address(struct subscriber *subscriber, struct 
   DEBUGF("Added STUN info for %s", alloca_tohex_sid(subscriber->sid));
   return 0;
 }
+
+// append the address of all neighbour unicast links into a packet buffer
+/*
+static int overlay_append_local_unicasts(struct subscriber *subscriber, void *context)
+{
+  struct overlay_buffer *buff = context;
+  if ((!subscriber->interface) ||
+      (!(subscriber->reachable & REACHABLE_UNICAST)) ||
+      (subscriber->reachable & REACHABLE_ASSUMED))
+    return 0;
+  if ((subscriber->address.sin_addr.s_addr & subscriber->interface->netmask.s_addr) !=
+      (subscriber->interface->address.sin_addr.s_addr & subscriber->interface->netmask.s_addr))
+    return 0;
+  return overlay_append_unicast_address(subscriber, buff);
+}
+*/
 
 static int overlay_mdp_service_stun_req(overlay_mdp_frame *mdp)
 {
@@ -412,8 +432,10 @@ static int overlay_mdp_service_stun_req(overlay_mdp_frame *mdp)
     if (overlay_address_parse(NULL, payload, &subscriber))
       break;
     
-    if (!subscriber)
+    if (!subscriber){
+      DEBUGF("Unknown subscriber");
       continue;
+    }
     
     if (overlay_append_unicast_address(subscriber, replypayload))
       break;
@@ -422,10 +444,11 @@ static int overlay_mdp_service_stun_req(overlay_mdp_frame *mdp)
   ob_rewind(replypayload);
   reply.out.payload_length=ob_position(replypayload);
   
-  if (reply.out.payload_length)
+  if (reply.out.payload_length){
+    DEBUGF("Sending reply");
     overlay_mdp_dispatch(&reply,0 /* system generated */,
 			 NULL,0);
-  
+  }
   ob_free(replypayload);
   ob_free(payload);
   return 0;

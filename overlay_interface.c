@@ -384,14 +384,15 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
     }
 
     interface->address.sin_family=AF_INET;
-    interface->address.sin_port = 0;
-    interface->address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    interface->address.sin_port = htons(PORT_DNA);
+    interface->address.sin_addr = ifconfig->dummy_address;
     
-    interface->netmask.s_addr=0xFFFFFF00;
+    interface->netmask=ifconfig->dummy_netmask;
     
     interface->broadcast_address.sin_family=AF_INET;
-    interface->broadcast_address.sin_port = 0;
+    interface->broadcast_address.sin_port = htons(PORT_DNA);
     interface->broadcast_address.sin_addr.s_addr = interface->address.sin_addr.s_addr | ~interface->netmask.s_addr;
+    interface->drop_broadcasts = ifconfig->dummy_filter_broadcasts;
     
     /* Seek to end of file as initial reading point */
     interface->recv_offset = lseek(interface->alarm.poll.fd,0,SEEK_END);
@@ -408,6 +409,9 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
     
     interface->state=INTERFACE_STATE_UP;
     INFOF("Dummy interface %s is up",interface->name);
+    DEBUGF("Address %s",inet_ntoa(interface->address.sin_addr));
+    DEBUGF("Netmask %s",inet_ntoa(interface->netmask));
+    DEBUGF("Broadcast %s",inet_ntoa(interface->broadcast_address.sin_addr));
     
     directory_registration();
     
@@ -489,21 +493,34 @@ static void overlay_interface_poll(struct sched_ent *alarm)
   }  
 }
 
+struct dummy_packet{
+  struct sockaddr_in src_addr;
+  struct sockaddr_in dst_addr;
+  int pid;
+  int payload_length;
+  
+  /* TODO ? ;
+  half-power beam height (uint16)
+  half-power beam width (uint16)
+  range in metres, centre beam (uint32)
+  latitude (uint32)
+  longitude (uint32)
+  X/Z direction (uint16)
+  Y direction (uint16)
+  speed in metres per second (uint16)
+  TX frequency in Hz, uncorrected for doppler (which must be done at the receiving end to take into account
+   relative motion)
+  coding method (use for doppler response etc) null terminated string
+  */
+  
+  unsigned char payload[1400];
+};
+
 void overlay_dummy_poll(struct sched_ent *alarm)
 {
   overlay_interface *interface = (overlay_interface *)alarm;
   /* Grab packets, unpackage and dispatch frames to consumers */
-  /* XXX Okay, so how are we managing out-of-process consumers?
-     They need some way to register their interest in listening to a port.
-  */
-  unsigned char packet[2048];
-  int plen=0;
-  struct sockaddr_in src_addr={
-    .sin_family = AF_INET,
-    .sin_port = 0,
-    .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
-  };
-  size_t addrlen = sizeof(src_addr);
+  struct dummy_packet packet;
   time_ms_t now = gettime_ms();
 
   /* Read from dummy interface file */
@@ -522,31 +539,38 @@ void overlay_dummy_poll(struct sched_ent *alarm)
       alarm->alarm = interface->last_tick_ms + interface->tick_ms;
     alarm->deadline = alarm->alarm + 10000;
   } else {
-    if (lseek(alarm->poll.fd,interface->recv_offset,SEEK_SET) == -1)
+    
+    if (lseek(alarm->poll.fd,interface->recv_offset,SEEK_SET) == -1){
       WHY_perror("lseek");
-    else {
-      if (debug&DEBUG_OVERLAYINTERFACES)
-	DEBUGF("Read interface %s (size=%lld) at offset=%d",interface->name, length, interface->recv_offset);
-      ssize_t nread = read(alarm->poll.fd, packet, sizeof packet);
-      if (nread == -1)
-	WHY_perror("read");
-      else {
-	if (nread == sizeof packet) {
-	  interface->recv_offset += nread;
-	  plen = packet[110] + (packet[111] << 8);
-	  if (plen > nread - 128)
-	    plen = -1;
-	  if (debug&DEBUG_PACKETRX)
-	    DEBUG_packet_visualise("Read from dummy interface", &packet[128], plen);
-	  
-	  if (packetOkOverlay(interface, &packet[128], plen, -1, (struct sockaddr*)&src_addr, addrlen)) {
-	    WARN("Unsupported packet from dummy interface");
-	  }
+      return;
+    }
+    
+    if (debug&DEBUG_OVERLAYINTERFACES)
+      DEBUGF("Read interface %s (size=%lld) at offset=%d",interface->name, length, interface->recv_offset);
+    
+    ssize_t nread = read(alarm->poll.fd, &packet, sizeof packet);
+    if (nread == -1){
+      WHY_perror("read");
+      return;
+    }
+    
+    if (nread == sizeof packet) {
+      interface->recv_offset += nread;
+     
+      if (debug&DEBUG_PACKETRX)
+	DEBUG_packet_visualise("Read from dummy interface", packet.payload, packet.payload_length);
+      
+      if (memcmp(&packet.dst_addr, &interface->address, sizeof(packet.dst_addr))==0 ||
+	  ((!interface->drop_broadcasts) &&
+	  memcmp(&packet.dst_addr, &interface->broadcast_address, sizeof(packet.dst_addr))==0)){
+	
+	if (packetOkOverlay(interface, packet.payload, packet.payload_length, -1, 
+			    (struct sockaddr*)&packet.src_addr, sizeof(packet.src_addr))) {
+	  WARN("Unsupported packet from dummy interface");
 	}
-	else
-	  WARNF("Read %lld bytes from dummy interface", nread);
       }
     }
+    
     /* keep reading new packets as fast as possible, 
 	but don't completely prevent other high priority alarms */
     if (interface->recv_offset >= length)
@@ -589,42 +613,19 @@ overlay_broadcast_ensemble(int interface_number,
 
   if (interface->fileP)
     {
-      char buf[2048];
-      bzero(&buf[0],128);
-      /* Version information */
-      buf[0]=1; buf[1]=0; 
-      buf[2]=0; buf[3]=0;
-      /* PID of creator */
-      buf[4]=getpid()&0xff; buf[5]=getpid()>>8;
-
-      /* TODO make a structure for all this stuff */
-      /* bytes 4-5  = half-power beam height (uint16) */
-      /* bytes 6-7  = half-power beam width (uint16) */
-      /* bytes 8-11 = range in metres, centre beam (uint32) */
-      /* bytes 16-47 = sender */
-      /* bytes 48-79 = next hop */
-      /* bytes 80-83 = latitude (uint32) */
-      /* bytes 84-87 = longitude (uint32) */
-      /* bytes 88-89 = X/Z direction (uint16) */
-      /* bytes 90-91 = Y direction (uint16) */
-      /* bytes 92-93 = speed in metres per second (uint16) */
-      /* bytes 94-97 = TX frequency in Hz, uncorrected for doppler (which must be done at the receiving end to take into account
-         relative motion) */
-      /* bytes 98-109 = coding method (use for doppler response etc) null terminated string */
-      /* bytes 110-111 = length of packet body in bytes */
-      /* bytes 112-127 reserved for future use */
-
-      if (len>2048-128) {
-	WARN("Truncating long packet to fit within 1920 byte limit for dummy interface");
-	len=2048-128;
+      
+      struct dummy_packet packet={
+	.src_addr = interface->address,
+	.dst_addr = *recipientaddr,
+	.pid = getpid(),
+      };
+      
+      if (len > sizeof(packet.payload)){
+	WARN("Truncating long packet to fit within MTU byte limit for dummy interface");
+	len = sizeof(packet.payload);
       }
-
-      /* Record length of packet */
-      buf[110]=len&0xff;
-      buf[111]=(len>>8)&0xff;
-
-      bzero(&buf[128+len],2048-(128+len));
-      bcopy(bytes,&buf[128],len);
+      packet.payload_length=len;
+      bcopy(bytes, packet.payload, len);
       /* This lseek() is unneccessary because the dummy file is opened in O_APPEND mode.  It's
 	 only purpose is to find out the offset to print in the DEBUG statement.  It is vulnerable
 	 to a race condition with other processes appending to the same file. */
@@ -633,11 +634,11 @@ overlay_broadcast_ensemble(int interface_number,
 	return WHY_perror("lseek");
       if (debug&DEBUG_OVERLAYINTERFACES)
 	DEBUGF("Write to interface %s at offset=%d", interface->name, fsize);
-      ssize_t nwrite = write(interface->alarm.poll.fd, buf, 2048);
+      ssize_t nwrite = write(interface->alarm.poll.fd, &packet, sizeof(packet));
       if (nwrite == -1)
 	return WHY_perror("write");
-      if (nwrite != 2048)
-	return WHYF("only wrote %lld of %lld bytes", nwrite, 2048);
+      if (nwrite != sizeof(packet))
+	return WHYF("only wrote %lld of %lld bytes", nwrite, sizeof(packet));
       return 0;
     }
   else
