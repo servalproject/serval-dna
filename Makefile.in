@@ -21,6 +21,7 @@ MONITORCLIENTSRCS=conf.c \
         conf_om.c \
         conf_parse.c \
         conf_schema.c \
+	dataformats.c \
 	log.c \
 	os.c \
 	mem.c \
