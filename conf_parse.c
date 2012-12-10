@@ -213,9 +213,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	} \
 	if (ret != CFOK) \
 	  cf_warn_array_key(child, ret);
-#define __ARRAY_VALUE(__parseexpr) \
+#define __ARRAY_VALUE(__dflexpr, __parseexpr) \
 	if (ret == CFOK) { \
-	  ret = (__parseexpr); \
+	  ret = (__dflexpr); \
+	  if (ret == CFOK) \
+	    ret = (__parseexpr); \
 	  if (ret == CFERROR) \
 	    return CFERROR; \
 	  result |= ret & CF__SUBFLAGS; \
@@ -252,15 +254,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define KEY_STRING(__strsize, __keyparser, __cmpfunc...) \
       __ARRAY_KEY(__keyparser(array->av[n].key, sizeof array->av[n].key, child->key), ##__cmpfunc)
 #define VALUE_ATOM(__type, __eltparser) \
-      __ARRAY_VALUE(child->text ? __eltparser(&array->av[n].value, child->text) : CFEMPTY)
+      __ARRAY_VALUE(CFOK, child->text ? __eltparser(&array->av[n].value, child->text) : CFEMPTY)
 #define VALUE_STRING(__strsize, __eltparser) \
-      __ARRAY_VALUE(child->text ? __eltparser(array->av[n].value, sizeof array->av[n].value, child->text) : CFEMPTY)
+      __ARRAY_VALUE(CFOK, child->text ? __eltparser(array->av[n].value, sizeof array->av[n].value, child->text) : CFEMPTY)
 #define VALUE_NODE(__type, __eltparser) \
-      __ARRAY_VALUE(__eltparser(&array->av[n].value, child))
+      __ARRAY_VALUE(CFOK, __eltparser(&array->av[n].value, child))
 #define VALUE_SUB_STRUCT(__structname) \
-      __ARRAY_VALUE(cf_opt_config_##__structname(&array->av[n].value, child))
+      __ARRAY_VALUE(cf_dfl_config_##__structname(&array->av[n].value), cf_opt_config_##__structname(&array->av[n].value, child))
 #define VALUE_NODE_STRUCT(__structname, __eltparser) \
-      __ARRAY_VALUE(__eltparser(&array->av[n].value, child))
+      __ARRAY_VALUE(cf_dfl_config_##__structname(&array->av[n].value), __eltparser(&array->av[n].value, child))
 #include "conf_schema.h"
 #undef STRUCT
 #undef NODE
