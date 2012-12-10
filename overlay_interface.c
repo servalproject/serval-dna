@@ -307,7 +307,8 @@ overlay_interface_init_socket(int interface_index)
   
   interface->state=INTERFACE_STATE_UP;
   
-  INFOF("Interface %s addr %s, is up",interface->name, inet_ntoa(interface->broadcast_address.sin_addr));
+  INFOF("Interface %s addr %s:%d, is up",interface->name, 
+	inet_ntoa(interface->address.sin_addr), ntohs(interface->address.sin_port));
   
   directory_registration();
   
@@ -333,6 +334,7 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
   interface->port= ifconfig->port;
   interface->type= ifconfig->type;
   interface->default_route = ifconfig->default_route;
+  DEBUGF("interface->default_route=%d",interface->default_route);
   interface->last_tick_ms= -1; // not ticked yet
   interface->alarm.poll.fd=0;
 
@@ -371,7 +373,6 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
     interface->send_broadcasts=0;
     INFOF("Interface %s is running tickless", name);
   }
-  
   if (ifconfig->dummy[0]) {
     interface->fileP = 1;
     char dummyfile[1024];
@@ -383,12 +384,14 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
       return WHYF("could not open dummy interface file %s for append", dummyfile);
     }
 
+    bzero(&interface->address, sizeof(interface->address));
     interface->address.sin_family=AF_INET;
     interface->address.sin_port = htons(PORT_DNA);
     interface->address.sin_addr = ifconfig->dummy_address;
     
     interface->netmask=ifconfig->dummy_netmask;
     
+    bzero(&interface->broadcast_address, sizeof(interface->address));
     interface->broadcast_address.sin_family=AF_INET;
     interface->broadcast_address.sin_port = htons(PORT_DNA);
     interface->broadcast_address.sin_addr.s_addr = interface->address.sin_addr.s_addr | ~interface->netmask.s_addr;
@@ -408,10 +411,8 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
     schedule(&interface->alarm);
     
     interface->state=INTERFACE_STATE_UP;
-    INFOF("Dummy interface %s is up",interface->name);
-    DEBUGF("Address %s",inet_ntoa(interface->address.sin_addr));
-    DEBUGF("Netmask %s",inet_ntoa(interface->netmask));
-    DEBUGF("Broadcast %s",inet_ntoa(interface->broadcast_address.sin_addr));
+    INFOF("Dummy interface %s addr %s:%d, is up",interface->name,
+	  inet_ntoa(interface->address.sin_addr), ntohs(interface->address.sin_port));
     
     directory_registration();
     
@@ -568,7 +569,8 @@ void overlay_dummy_poll(struct sched_ent *alarm)
 			    (struct sockaddr*)&packet.src_addr, sizeof(packet.src_addr))) {
 	  WARN("Unsupported packet from dummy interface");
 	}
-      }
+      }else
+	DEBUGF("Ignoring packet addressed to %s:%d", inet_ntoa(packet.dst_addr.sin_addr), ntohs(packet.dst_addr.sin_port));
     }
     
     /* keep reading new packets as fast as possible, 

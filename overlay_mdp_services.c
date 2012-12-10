@@ -367,8 +367,8 @@ int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay
     op_free(frame);
     return -1;
   }
-  DEBUGF("Queued probe packet on interface %s to %s for %s", 
-	 interface->name, inet_ntoa(addr.sin_addr), peer?alloca_tohex_sid(peer->sid):"ANY");
+  DEBUGF("Queued probe packet on interface %s to %s:%d for %s", 
+	 interface->name, inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), peer?alloca_tohex_sid(peer->sid):"ANY");
   return 0;
 }
 

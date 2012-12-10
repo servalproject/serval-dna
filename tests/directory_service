@@ -85,6 +85,11 @@ test_publish() {
    assert_status_all_servald_servers running
 }
 
+interface_up() {
+  grep "Dummy interface .* is up" $instance_servald_log || return 1
+  return 0
+}
+
 start_routing_instance() {
    executeOk_servald config \
       set server.dummy_interface_dir "$SERVALD_VAR" \
@@ -94,6 +99,7 @@ start_routing_instance() {
       set log.show_time on \
       set debug.mdprequests Yes
    start_servald_server
+   wait_until interface_up
 }
 
 setup_routing() {

@@ -269,9 +269,11 @@ int load_subscriber_address(struct subscriber *subscriber)
       return -1;
   }
   struct sockaddr_in addr;
+  bzero(&addr, sizeof(addr));
   addr.sin_family = AF_INET;
   addr.sin_addr = hostc->address;
   addr.sin_port = htons(hostc->port);
+  DEBUGF("Loaded address %s:%d for %s", inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), alloca_tohex_sid(subscriber->sid));
   return overlay_send_probe(subscriber, addr, interface);
 }
 
