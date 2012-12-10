@@ -52,7 +52,8 @@ static int messagesRequired(int bytesPerMessage,int bytesToSend)
   return bytesToSend/netBytesPerMessage+(bytesToSend%netBytesPerMessage?1:0);
 }
 
-int app_rhizome_direct_async(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_rhizome_direct_async(int argc, const char *const *argv,
+			     const struct command_line_option *o, void *context)
 {
   const char *message_bytes,*max_messages,*token;
   cli_arg(argc, argv, o, "message bytes", &message_bytes, NULL, "140");
