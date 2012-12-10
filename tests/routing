@@ -20,13 +20,6 @@
 source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 
-configure_servald_server() {
-   executeOk_servald config \
-      set log.show_pid on \
-      set log.show_time on \
-      set debug.mdprequests Yes
-}
-
 add_interface() {
    >$SERVALD_VAR/dummy$1
    executeOk_servald config \
@@ -47,7 +40,8 @@ start_routing_instance() {
       set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name" \
       set log.show_pid on \
       set log.show_time on \
-      set debug.mdprequests Yes
+      set debug.mdprequests Yes \
+      set rhizome.enable no
    start_servald_server
    wait_until interface_up
 }
@@ -75,9 +69,13 @@ setup_single_link() {
 
 doc_single_link="Start 2 instances on one link"
 test_single_link() {
+   foreach_instance +A +B \
+      wait_until has_seen_instances +A +B
    set_instance +A
-   executeOk_servald mdp ping $SIDB 10
+   executeOk_servald mdp ping $SIDB 1
    tfw_cat --stdout --stderr
+   executeOk_servald route print
+   assertStdoutGrep --matches=1 "^$SIDB:BROADCAST :"
 }
 
 setup_multiple_nodes() {
@@ -90,13 +88,19 @@ setup_multiple_nodes() {
 
 doc_multiple_nodes="Multiple nodes on one link"
 test_multiple_nodes() {
+   foreach +A +B +C +D \
+      wait_until has_seen_instances +A +B +C +D
    set_instance +A
-   executeOk_servald mdp ping $SIDB 10
+   executeOk_servald mdp ping $SIDB 1
    tfw_cat --stdout --stderr
-   executeOk_servald mdp ping $SIDC 3
+   executeOk_servald mdp ping $SIDC 1
    tfw_cat --stdout --stderr
-   executeOk_servald mdp ping $SIDD 3
+   executeOk_servald mdp ping $SIDD 1
    tfw_cat --stdout --stderr
+   executeOk_servald route print
+   assertStdoutGrep --matches=1 "^$SIDB:BROADCAST :"
+   assertStdoutGrep --matches=1 "^$SIDC:BROADCAST :"
+   assertStdoutGrep --matches=1 "^$SIDD:BROADCAST :"
 }
 
 setup_scan() {
@@ -117,10 +121,13 @@ scan_completed() {
 
 doc_scan="Simulate isolated clients"
 test_scan() {
-  set_instance +A
-  executeOk_servald scan
-  wait_until scan_completed
-  executeOk_servald mdp ping $SIDB 3
+   set_instance +A
+   executeOk_servald scan
+   wait_until scan_completed
+   wait_until has_seen_instances +B
+   executeOk_servald mdp ping $SIDB 1
+   executeOk_servald route print
+   assertStdoutGrep --matches=1 "^$SIDB:UNICAST :"
 }
 
 setup_multihop_linear() {
@@ -135,9 +142,15 @@ setup_multihop_linear() {
 
 doc_multihop_linear="Start 4 instances in a linear arrangement"
 test_multihop_linear() {
+   foreach_instance +A +B +C +D \
+      wait_until has_seen_instances +A +B +C +D
    set_instance +A
-   executeOk_servald mdp ping $SIDD 10
+   executeOk_servald mdp ping $SIDD 1
    tfw_cat --stdout --stderr
+   executeOk_servald route print
+   assertStdoutGrep --matches=1 "^$SIDB:BROADCAST :"
+   assertStdoutGrep --matches=1 "^$SIDC:INDIRECT :"
+   assertStdoutGrep --matches=1 "^$SIDD:INDIRECT :"
 }
 
 setup_crowded_mess() {
@@ -157,9 +170,13 @@ setup_crowded_mess() {
 
 doc_crowded_mess="Multiple possible paths"
 test_crowded_mess() {
+   foreach_instance +A +H \
+      wait_until has_seen_instances +A +H
    set_instance +A
-   executeOk_servald mdp ping $SIDH 10
+   executeOk_servald mdp ping $SIDH 1
    tfw_cat --stdout --stderr
+   executeOk_servald route print
+   assertStdoutGrep --matches=1 "^$SIDH:INDIRECT :"
 }
 
 runTests "$@"

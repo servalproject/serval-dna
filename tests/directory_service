@@ -24,6 +24,7 @@ configure_servald_server() {
    executeOk_servald config \
       set log.show_pid on \
       set log.show_time on \
+      set rhizome.enable No \
       set debug.mdprequests Yes
 }
 
@@ -95,6 +96,7 @@ start_routing_instance() {
       set server.dummy_interface_dir "$SERVALD_VAR" \
       set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name" \
       set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name" \
+      set rhizome.enable No \
       set log.show_pid on \
       set log.show_time on \
       set debug.mdprequests Yes
@@ -138,10 +140,14 @@ test_routing() {
    wait_until is_published $SIDB
    wait_until is_published $SIDC
    set_instance +B
+   executeOk_servald route print
+   assertStdoutGrep --matches=1 "^$SIDA:UNICAST :"
    executeOk_servald dna lookup "$DIDC"
    assertStdoutLineCount '==' 1
    assertStdoutGrep --matches=1 "^sid://$SIDC/local/$DIDC:$DIDC:$NAMEC\$"
    set_instance +C
+   executeOk_servald route print
+   assertStdoutGrep --matches=1 "^$SIDA:UNICAST :"
    executeOk_servald dna lookup "$DIDB"
    assertStdoutLineCount '==' 1
    assertStdoutGrep --matches=1 "^sid://$SIDB/local/$DIDB:$DIDB:$NAMEB\$"

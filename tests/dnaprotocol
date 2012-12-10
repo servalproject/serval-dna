@@ -62,6 +62,7 @@ set_server_vars() {
       set log.show_pid on \
       set log.show_time on \
       set mdp.iftype.wifi.tick_ms 100 \
+      set rhizome.enable No \
       set debug.interfaces Yes \
       set debug.packetformats No \
       set debug.routing No \

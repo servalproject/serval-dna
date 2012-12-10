@@ -648,7 +648,8 @@ start_servald_instances() {
       eval DUMMY$instance_name="\$DUMMYNET"
    done
    # Now wait until they see each other.
-   wait_until --sleep=0.25 instances_see_each_other "$@"
+   foreach "$@" \
+      wait_until --sleep=0.25 has_seen_instances "$@"
    tfw_log "# dummynet file:" $(ls -l $DUMMYNET)
    pop_instance
 }
@@ -675,12 +676,13 @@ assert_peers_are_instances() {
 #   selfannounce mechanism
 has_seen_instances() {
    local I N
+   executeOk_servald route print
    for I; do
       [ $I = $instance_arg ] && continue
       for ((N=1; 1; ++N)); do
          local sidvar=SID${I#+}$N
          [ -n "${!sidvar}" ] || break
-         if ! grep "ADD OVERLAY NODE sid=${!sidvar}" $instance_servald_log; then
+         if ! grep "^${!sidvar}" $_tfw_tmp/stdout; then
             return 1
          fi
       done
