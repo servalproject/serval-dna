@@ -1001,13 +1001,13 @@ int app_config_get(int argc, const char *const *argv, const struct command_line_
 {
   if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
   const char *var;
-  if (cli_arg(argc, argv, o, "variable", &var, is_configvarname, NULL) == -1)
+  if (cli_arg(argc, argv, o, "variable", &var, is_configvarpattern, NULL) == -1)
     return -1;
   if (create_serval_instance_dir() == -1)
     return -1;
   if (cf_om_reload() == -1)
     return -1;
-  if (var) {
+  if (var && is_configvarname(var)) {
     const char *value = cf_om_get(cf_om_root, var);
     if (value) {
       cli_puts(var);
@@ -1018,6 +1018,8 @@ int app_config_get(int argc, const char *const *argv, const struct command_line_
   } else {
     struct cf_om_iterator it;
     for (cf_om_iter_start(&it, cf_om_root); it.node; cf_om_iter_next(&it)) {
+      if (var && cf_om_match(var, it.node) <= 0)
+	continue;
       if (it.node->text) {
 	cli_puts(it.node->fullkey);
 	cli_delim("=");

@@ -44,8 +44,30 @@ static const char *cf_find_keyend(const char *const key, const char *const fullk
   return s;
 }
 
+static const char *cf_find_keypattern_end(const char *const key, const char *const fullkeyend)
+{
+  const char *s = cf_find_keyend(key, fullkeyend);
+  if (s == NULL) {
+    s = key;
+    if (s < fullkeyend && *s == '*')
+      ++s;
+    if (s + 1 == fullkeyend && *s == '*')
+      ++s;
+    if (s == key || (s < fullkeyend && *s != '.'))
+      return NULL;
+  }
+  return s;
+}
+
 /* This predicate function defines the constraints on configuration option names.
- * Valid:
+ *
+ *    OPTION_NAME  ::= ( KEY "." )* LASTKEY
+ *    KEY	   ::= ( ALPHA | "_") ( ALPHANUM | "_" )*
+ *    LASTKEY	   ::= KEY
+ *    ALPHA	   ::= "A" .. "Z" | "a" .. "z"
+ *    ALPHANUM	   ::= ALPHA | "0" .. "9"
+ *
+ * Valid examples:
  *	foo
  *	foo.bar
  *	foo.bar.chow
@@ -68,6 +90,25 @@ int is_configvarname(const char *text)
   const char *key = text;
   const char *keyend = NULL;
   while (key <= textend && (keyend = cf_find_keyend(key, textend)) != NULL)
+    key = keyend + 1;
+  return keyend != NULL;
+}
+
+/* This predicate function defines the constraints on configuration option patterns.
+ * Similar to is_configvarname().
+ *
+ *    OPTION_PATTERN	::= ( KEY_PATTERN "." )* LASTKEY_PATTERN
+ *    KEY_PATTERN	::= "*" | KEY
+ *    LASTKEY_PATTERN	::= "**" | KEY_PATTERN
+ *
+ *  @author Andrew Bettison <andrew@servalproject.com>
+ */
+int is_configvarpattern(const char *text)
+{
+  const char *const textend = text + strlen(text);
+  const char *key = text;
+  const char *keyend = NULL;
+  while (key <= textend && (keyend = cf_find_keypattern_end(key, textend)) != NULL)
     key = keyend + 1;
   return keyend != NULL;
 }
@@ -251,6 +292,55 @@ void cf_om_dump_node(const struct cf_om_node *node, int indent)
     for (i = 0; i < node->nodc; ++i)
       cf_om_dump_node(node->nodv[i], indent + 1);
   }
+}
+
+int cf_om_match(const char *pattern, const struct cf_om_node *node)
+{
+  if (node == NULL) {
+    //DEBUGF("pattern='%s' node=NULL", pattern);
+    return 0;
+  }
+  if (node->fullkey == NULL) {
+    //DEBUGF("pattern='%s' node->fullkey=NULL", pattern);
+    return 0;
+  }
+  /*
+  DEBUGF("pattern='%s' node->fullkey=%s node->nodc=%d node->text=%s",
+      pattern,
+      alloca_str_toprint(node->fullkey),
+      node->nodc,
+      alloca_str_toprint(node->text)
+    );
+  */
+  if (!pattern[0])
+    return -1;
+  const char *const pattern_end = pattern + strlen(pattern);
+  const char *pat = pattern;
+  const char *key = node->fullkey;
+  const char *const fullkeyend = node->fullkey + strlen(node->fullkey);
+  const char *keyend = NULL;
+  const char *patend = pat;
+  //DEBUGF("   pat=%s key=%s", alloca_str_toprint(pat), alloca_str_toprint(key));
+  while (pat < pattern_end && key <= fullkeyend && (keyend = cf_find_keyend(key, fullkeyend)) && (patend = cf_find_keypattern_end(pat, pattern_end))) {
+    if (pat[0] == '*') {
+      if (pat[1] == '*')
+	return 1;
+      pat = patend;
+      key = keyend;
+    } else {
+      while (pat < patend && key < fullkeyend && *pat == *key)
+	++pat, ++key;
+      if (pat != patend || key != keyend)
+	return 0;
+    }
+    if (*pat)
+      ++pat;
+    if (*key)
+      ++key;
+    //DEBUGF("   pat=%s key=%s", alloca_str_toprint(pat), alloca_str_toprint(key));
+  }
+  //DEBUGF("   patend=%s keyend=%s", alloca_str_toprint(patend), alloca_str_toprint(keyend));
+  return patend == NULL ? -1 : keyend && keyend == fullkeyend && pat == pattern_end;
 }
 
 const char *cf_om_get(const struct cf_om_node *node, const char *fullkey)

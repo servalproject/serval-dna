@@ -232,6 +232,7 @@ struct cf_om_node {
 };
 
 int is_configvarname(const char *);
+int is_configvarpattern(const char *);
 int cf_om_parse(const char *source, const char *buf, size_t len, struct cf_om_node **rootp);
 int cf_om_get_child(const struct cf_om_node *parent, const char *key, const char *keyend);
 const char *cf_om_get(const struct cf_om_node *root, const char *fullkey);
@@ -239,6 +240,7 @@ int cf_om_set(struct cf_om_node **nodep, const char *fullkey, const char *text);
 int cf_om_add_child(struct cf_om_node **const parentp, const char *const key);
 void cf_om_free_node(struct cf_om_node **nodep);
 void cf_om_dump_node(const struct cf_om_node *node, int indent);
+int cf_om_match(const char *pattern, const struct cf_om_node *node);
 
 struct cf_om_iterator {
     const struct cf_om_node *node;
