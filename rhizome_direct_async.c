@@ -239,32 +239,3 @@ int app_rhizome_direct_async(int argc, const char *const *argv, struct command_l
 
   return 0;
 }
-
-static int uchar_to_limited_alphabet(unsigned char *in,int in_len,
-				     unsigned char *alphabet,int alphabet_size,
-				     unsigned char *out,int *out_len)
-{
-  int i;
-  *out_len=0;
-
-  int output_digits=in_len*256/alphabet_size;
-  if (in_len*256%alphabet_size) output_digits++;
-
-  return 0;
-}
-
-static int limited_alphabet_to_uchar(unsigned char *in,int in_len,
-				     unsigned char *alphabet,int alphabet_size,
-				     unsigned char *out,int *out_len)
-{
-  int i;
-  
-  int m=1;
-  int a=0;
-  for(i=0;<in_len;i++)
-    {
-      int c=in[i];
-      a+=(c%alphabet_size);
-      c=c/alphabet_size;
-    }
-}
