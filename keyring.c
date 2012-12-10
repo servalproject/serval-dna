@@ -981,6 +981,7 @@ int keyring_commit(keyring_file *k)
 	  }
 	}
       }
+  fflush(k->file);
 
   if (errorCount) WHY("One or more errors occurred while commiting keyring to disk");
   return errorCount;
