@@ -681,9 +681,13 @@ overlay_interface_register(char *name,
     ifconfig = &config.interfaces.av[i].value;
     if (!ifconfig->dummy[0]) {
       int j;
-      for (j = 0; j < ifconfig->match.patc; ++j)
+      for (j = 0; j < ifconfig->match.patc; ++j){
 	if (fnmatch(ifconfig->match.patv[j], name, 0) == 0)
 	  break;
+      }
+      
+      if (j < ifconfig->match.patc)
+	break;
     }
   }
   if (ifconfig == NULL) {
