@@ -527,12 +527,10 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
   
   if (old_best && !best_score){
     INFOF("PEER UNREACHABLE, sid=%s", alloca_tohex_sid(n->subscriber->sid));
-    monitor_announce_unreachable_peer(n->subscriber->sid);
   }else if(best_score && !old_best){
     INFOF("PEER REACHABLE, sid=%s", alloca_tohex_sid(n->subscriber->sid));
     /* Make sure node is advertised soon */
     overlay_route_please_advertise(n);
-    monitor_announce_peer(n->subscriber->sid);
   }
   
   return 0;

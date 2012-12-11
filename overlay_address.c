@@ -194,6 +194,7 @@ int subscriber_is_reachable(struct subscriber *subscriber){
 int set_reachable(struct subscriber *subscriber, int reachable){
   if (subscriber->reachable==reachable)
     return 0;
+  int old_value = subscriber->reachable;
   subscriber->reachable=reachable;
 
   // These log messages are for use in tests.  Changing them may break test scripts.
@@ -231,6 +232,11 @@ int set_reachable(struct subscriber *subscriber, int reachable){
   // Hacky layering violation... send our identity to a directory service
   if (subscriber==directory_service)
     directory_registration();
+  
+  if ((old_value & REACHABLE) && (!(reachable & REACHABLE)))
+    monitor_announce_unreachable_peer(subscriber->sid);
+  if ((!(old_value & REACHABLE)) && (reachable & REACHABLE))
+    monitor_announce_peer(subscriber->sid);
   
   return 0;
 }
