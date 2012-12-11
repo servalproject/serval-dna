@@ -394,9 +394,14 @@ static int add_explain_response(struct subscriber *subscriber, void *context){
   }
   
   // if one of our identities is unknown, 
-  // the header of our next payload must include our full sid.
-  if (subscriber->reachable==REACHABLE_SELF)
-    subscriber->send_full = 1;
+  // the header of this packet must include our full sid.
+  if (subscriber->reachable==REACHABLE_SELF){
+    subscriber->send_full=1;
+    if (subscriber==my_subscriber){
+      response->please_explain->source_full=1;
+      return 0;
+    }
+  }
   
   // add the whole subscriber id to the payload, stop if we run out of space
   DEBUGF("Adding full sid by way of explanation %s", alloca_tohex_sid(subscriber->sid));
@@ -512,8 +517,8 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
     if (context->interface){
       frame->destination_resolved=1;
       frame->next_hop = destination;
-      frame->recvaddr=context->addr;
-      frame->interface=context->interface;
+      frame->recvaddr = context->addr;
+      frame->interface = context->interface;
     }
   }
   
