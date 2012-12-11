@@ -47,6 +47,7 @@ struct overlay_frame {
   struct subscriber *destination;
   struct subscriber *next_hop;
   
+  int source_full;
   struct subscriber *source;
   
   /* IPv4 address the frame was received from, or should be sent to */

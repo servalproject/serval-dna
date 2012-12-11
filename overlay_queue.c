@@ -403,6 +403,8 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     }
     
     if (!packet->buffer){
+      if (frame->source_full)
+	my_subscriber->send_full=1;
       overlay_init_packet(packet, frame->next_hop, frame->flags, frame->interface, frame->recvaddr, 0);
     }else{
       // is this packet going our way?

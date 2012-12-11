@@ -340,10 +340,8 @@ int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay
   frame->flags=PACKET_UNICAST;
   frame->interface=interface;
   frame->payload = ob_new();
-  
+  frame->source_full = 1;
   // TODO call mdp payload encryption / signing without calling overlay_mdp_dispatch...
-  
-  my_subscriber->send_full=1;
   
   if (peer)
     peer->last_probe=gettime_ms();

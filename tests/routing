@@ -108,6 +108,9 @@ setup_scan() {
   assert_no_servald_processes
   foreach_instance +A +B create_single_identity
   foreach_instance +A +B add_interface 1
+  set_instance +B
+  executeOk_servald config \
+      set interfaces.1.dummy_address 127.0.1.11
   foreach_instance +A +B \
     executeOk_servald config \
       set interfaces.1.dummy_filter_broadcasts 1
