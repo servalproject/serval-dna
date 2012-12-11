@@ -876,8 +876,11 @@ static void overlay_mdp_scan(struct sched_ent *alarm)
     .sin_port=htons(PORT_DNA),
   };
   struct scan_state *state = (struct scan_state *)alarm;
+  uint32_t stop = state->last;
+  if (stop - state->current > 25)
+    stop = state->current+25;
   
-  while(state->current <= state->last){
+  while(state->current <= stop){
     addr.sin_addr.s_addr=htonl(state->current);
     if (addr.sin_addr.s_addr != state->interface->address.sin_addr.s_addr){
       if (overlay_send_probe(NULL, addr, state->interface))
