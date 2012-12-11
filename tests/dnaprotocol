@@ -44,7 +44,6 @@ setup() {
    start_servald_instances +A +B
    wait_until --sleep=0.25 instances_reach_each_other +A +B
    set_instance +A
-   executeOk_servald config set debug.all Yes
 }
 
 finally() {
@@ -63,11 +62,11 @@ set_server_vars() {
       set log.show_time on \
       set mdp.iftype.wifi.tick_ms 100 \
       set rhizome.enable No \
-      set debug.interfaces Yes \
+      set debug.overlayinterfaces Yes \
       set debug.packetformats No \
-      set debug.routing No \
-      set debug.tx No \
-      set debug.rx No \
+      set debug.overlayrouting No \
+      set debug.packettx No \
+      set debug.packetrx No \
       set debug.mdprequests Yes \
       set debug.keyring Yes
 }

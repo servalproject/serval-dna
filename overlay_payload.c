@@ -18,6 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "conf.h"
 #include "str.h"
 #include "overlay_buffer.h"
 #include "overlay_packet.h"
@@ -89,7 +90,7 @@ int overlay_frame_append_payload(struct decode_context *context, overlay_interfa
 
   ob_checkpoint(b);
   
-  if (debug&DEBUG_PACKETCONSTRUCTION){
+  if (config.debug.packetconstruction){
     DEBUGF( "+++++\nFrame from %s to %s of type 0x%02x %s:",
 	   alloca_tohex_sid(p->source->sid),
 	   alloca_tohex_sid(p->destination->sid),p->type,
@@ -105,7 +106,7 @@ int overlay_frame_append_payload(struct decode_context *context, overlay_interfa
     goto cleanup;
   
   int hdr_len=headers->position - (headers->var_length_offset +2);
-  if (debug&DEBUG_PACKETCONSTRUCTION) 
+  if (config.debug.packetconstruction) 
     DEBUGF("Patching RFS for actual_len=%d\n",hdr_len + p->payload->position);
   
   ob_set_ui16(headers,headers->var_length_offset,hdr_len + p->payload->position);
@@ -113,7 +114,7 @@ int overlay_frame_append_payload(struct decode_context *context, overlay_interfa
   /* Write payload format plus total length of header bits */
   if (ob_makespace(b,2+headers->position+p->payload->position)) {
     /* Not enough space free in output buffer */
-    if (debug&DEBUG_PACKETFORMATS)
+    if (config.debug.packetformats)
       DEBUGF("Could not make enough space free in output buffer");
     goto cleanup;
   }

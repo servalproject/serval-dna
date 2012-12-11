@@ -648,7 +648,7 @@ start_servald_instances() {
       eval DUMMY$instance_name="\$DUMMYNET"
    done
    # Now wait until they see each other.
-   foreach "$@" \
+   foreach_instance "$@" \
       wait_until --sleep=0.25 has_seen_instances "$@"
    tfw_log "# dummynet file:" $(ls -l $DUMMYNET)
    pop_instance

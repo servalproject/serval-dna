@@ -208,7 +208,7 @@ int parseCommandLine(const char *argv0, int argc, const char *const *args)
   rhizome_close_db();
   OUT();
   
-  if (debug&DEBUG_TIMING)
+  if (config.debug.timing)
     fd_showstats();
   return result;
 }
@@ -335,7 +335,7 @@ void cli_flush()
 
 int app_echo(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   int i = 1;
   int escapes = 0;
   if (i < argc && strcmp(argv[i], "-e") == 0) {
@@ -343,7 +343,7 @@ int app_echo(int argc, const char *const *argv, const struct command_line_option
     ++i;
   }
   for (; i < argc; ++i) {
-    if (debug & DEBUG_VERBOSE)
+    if (config.debug.verbose)
       DEBUGF("echo:argv[%d]=\"%s\"", i, argv[i]);
     if (escapes) {
       unsigned char buf[strlen(argv[i])];
@@ -398,7 +398,7 @@ void lookup_send_request(unsigned char *srcsid, int srcport, unsigned char *dsts
 
 int app_dna_lookup(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
@@ -515,7 +515,7 @@ int app_dna_lookup(int argc, const char *const *argv, const struct command_line_
 
 int app_server_start(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   /* Process optional arguments */
   int pid=-1;
   int cpid=-1;
@@ -691,7 +691,7 @@ int app_server_start(int argc, const char *const *argv, const struct command_lin
 
 int app_server_stop(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   int			pid, tries, running;
   const char		*instancepath;
   time_ms_t		timeout;
@@ -752,7 +752,7 @@ int app_server_stop(int argc, const char *const *argv, const struct command_line
 
 int app_server_status(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   int	pid;
   const char *instancepath;
   if (cli_arg(argc, argv, o, "instance path", &instancepath, cli_absolute_path, NULL) == -1)
@@ -779,7 +779,7 @@ int app_server_status(int argc, const char *const *argv, const struct command_li
 
 int app_mdp_ping(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   const char *sid, *count;
   if (cli_arg(argc, argv, o, "SID|broadcast", &sid, str_is_subscriber_id, "broadcast") == -1)
     return -1;
@@ -926,7 +926,7 @@ int app_mdp_ping(int argc, const char *const *argv, const struct command_line_op
 
 int app_config_schema(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   if (create_serval_instance_dir() == -1)
     return -1;
   struct cf_om_node *root = NULL;
@@ -946,7 +946,7 @@ int app_config_schema(int argc, const char *const *argv, const struct command_li
 
 int app_config_set(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   if (create_serval_instance_dir() == -1)
     return -1;
   // <kludge>
@@ -999,7 +999,7 @@ int app_config_set(int argc, const char *const *argv, const struct command_line_
 
 int app_config_get(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   const char *var;
   if (cli_arg(argc, argv, o, "variable", &var, is_configvarpattern, NULL) == -1)
     return -1;
@@ -1033,7 +1033,7 @@ int app_config_get(int argc, const char *const *argv, const struct command_line_
 
 int app_rhizome_hash_file(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   /* compute hash of file. We do this without a manifest, so it will necessarily
      return the hash of the file unencrypted. */
   const char *filepath;
@@ -1048,7 +1048,7 @@ int app_rhizome_hash_file(int argc, const char *const *argv, const struct comman
 
 int app_rhizome_add_file(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   const char *filepath, *manifestpath, *authorSidHex, *pin, *bskhex;
   cli_arg(argc, argv, o, "filepath", &filepath, NULL, "");
   if (cli_arg(argc, argv, o, "author_sid", &authorSidHex, cli_optional_sid, "") == -1)
@@ -1075,7 +1075,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
   if (!m)
     return WHY("Manifest struct could not be allocated -- not added to rhizome");
   if (manifestpath[0] && access(manifestpath, R_OK) == 0) {
-    if (debug & DEBUG_RHIZOME) DEBUGF("reading manifest from %s", manifestpath);
+    if (config.debug.rhizome) DEBUGF("reading manifest from %s", manifestpath);
     /* Don't verify the manifest, because it will fail if it is incomplete.
        This is okay, because we fill in any missing bits and sanity check before
        trying to write it out. */
@@ -1084,7 +1084,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
       return WHY("Manifest file could not be loaded -- not added to rhizome");
     }
   } else {
-    if (debug & DEBUG_RHIZOME) DEBUGF("manifest file %s does not exist -- creating new manifest", manifestpath);
+    if (config.debug.rhizome) DEBUGF("manifest file %s does not exist -- creating new manifest", manifestpath);
   }
   /* Fill in a few missing manifest fields, to make it easier to use when adding new files:
       - the default service is FILE
@@ -1094,13 +1094,13 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
   const char *service = rhizome_manifest_get(m, "service", NULL, 0);
   if (service == NULL) {
     rhizome_manifest_set(m, "service", (service = RHIZOME_SERVICE_FILE));
-    if (debug & DEBUG_RHIZOME) DEBUGF("missing 'service', set default service=%s", service);
+    if (config.debug.rhizome) DEBUGF("missing 'service', set default service=%s", service);
   } else {
-    if (debug & DEBUG_RHIZOME) DEBUGF("manifest contains service=%s", service);
+    if (config.debug.rhizome) DEBUGF("manifest contains service=%s", service);
   }
   if (rhizome_manifest_get(m, "date", NULL, 0) == NULL) {
     rhizome_manifest_set_ll(m, "date", (long long) gettime_ms());
-    if (debug & DEBUG_RHIZOME) DEBUGF("missing 'date', set default date=%s", rhizome_manifest_get(m, "date", NULL, 0));
+    if (config.debug.rhizome) DEBUGF("missing 'date', set default date=%s", rhizome_manifest_get(m, "date", NULL, 0));
   }
   if (strcasecmp(RHIZOME_SERVICE_FILE, service) == 0) {
     const char *name = rhizome_manifest_get(m, "name", NULL, 0);
@@ -1108,9 +1108,9 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
       name = strrchr(filepath, '/');
       name = name ? name + 1 : filepath;
       rhizome_manifest_set(m, "name", name);
-      if (debug & DEBUG_RHIZOME) DEBUGF("missing 'name', set default name=\"%s\"", name);
+      if (config.debug.rhizome) DEBUGF("missing 'name', set default name=\"%s\"", name);
     } else {
-      if (debug & DEBUG_RHIZOME) DEBUGF("manifest contains name=\"%s\"", name);
+      if (config.debug.rhizome) DEBUGF("manifest contains name=\"%s\"", name);
     }
   }
   /* If the author was not specified on the command-line, then the manifest's "sender"
@@ -1124,18 +1124,18 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
   /* Bind an ID to the manifest, and also bind the file.  Then finalise the manifest.
      But if the manifest already contains an ID, don't override it. */
   if (authorSidHex[0]) {
-    if (debug & DEBUG_RHIZOME) DEBUGF("author=%s", authorSidHex);
+    if (config.debug.rhizome) DEBUGF("author=%s", authorSidHex);
     memcpy(m->author, authorSid, SID_SIZE);
   }
   const char *id = rhizome_manifest_get(m, "id", NULL, 0);
   if (id == NULL) {
-    if (debug & DEBUG_RHIZOME) DEBUG("creating new bundle");
+    if (config.debug.rhizome) DEBUG("creating new bundle");
     if (rhizome_manifest_bind_id(m) == -1) {
       rhizome_manifest_free(m);
       return WHY("Could not bind manifest to an ID");
     }
   } else {
-    if (debug & DEBUG_RHIZOME) DEBUGF("modifying existing bundle bid=%s", id);
+    if (config.debug.rhizome) DEBUGF("modifying existing bundle bid=%s", id);
     // Modifying an existing bundle.  If an author SID is supplied, we must ensure that it is valid,
     // ie, that identity has permission to alter the bundle.  If no author SID is supplied but a BSK
     // is supplied, then use that to alter the bundle.  Otherwise, search the keyring for an
@@ -1170,7 +1170,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
       }
     }
     if (bskhex[0]) {
-      if (debug & DEBUG_RHIZOME) DEBUGF("bskhex=%s", bskhex);
+      if (config.debug.rhizome) DEBUGF("bskhex=%s", bskhex);
       if (m->haveSecret) {
 	// If a bundle secret key was supplied that does not match the secret key derived from the
 	// author, then warn but carry on using the author's.
@@ -1189,7 +1189,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
     }
     // If we still don't know the bundle secret or the author, then search for an author.
     if (!m->haveSecret && is_sid_any(m->author)) {
-      if (debug & DEBUG_RHIZOME) DEBUG("bundle author not specified, searching keyring");
+      if (config.debug.rhizome) DEBUG("bundle author not specified, searching keyring");
       int result = rhizome_find_bundle_author(m);
       if (result != 0) {
 	rhizome_manifest_free(m);
@@ -1288,7 +1288,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
 
 int app_rhizome_import_bundle(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   const char *filepath, *manifestpath;
   cli_arg(argc, argv, o, "filepath", &filepath, NULL, "");
   cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "");
@@ -1300,7 +1300,7 @@ int app_rhizome_import_bundle(int argc, const char *const *argv, const struct co
 
 int app_rhizome_extract_manifest(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   const char *pins, *manifestid, *manifestpath;
   cli_arg(argc, argv, o, "pin,pin...", &pins, NULL, "");
   if (cli_arg(argc, argv, o, "manifestid", &manifestid, cli_manifestid, NULL)
@@ -1344,7 +1344,7 @@ int app_rhizome_extract_manifest(int argc, const char *const *argv, const struct
 
 int app_rhizome_extract_file(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   const char *fileid, *filepath, *keyhex;
   if (cli_arg(argc, argv, o, "fileid", &fileid, cli_fileid, NULL)
    || cli_arg(argc, argv, o, "filepath", &filepath, NULL, "") == -1)
@@ -1374,7 +1374,7 @@ int app_rhizome_extract_file(int argc, const char *const *argv, const struct com
 
 int app_rhizome_list(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   const char *pins, *service, *sender_sid, *recipient_sid, *offset, *limit;
   cli_arg(argc, argv, o, "pin,pin...", &pins, NULL, "");
   cli_arg(argc, argv, o, "service", &service, NULL, "");
@@ -1394,7 +1394,7 @@ int app_rhizome_list(int argc, const char *const *argv, const struct command_lin
 
 int app_keyring_create(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   const char *pin;
   cli_arg(argc, argv, o, "pin,pin...", &pin, NULL, "");
   if (!keyring_open_with_pins(pin))
@@ -1404,7 +1404,7 @@ int app_keyring_create(int argc, const char *const *argv, const struct command_l
 
 int app_keyring_list(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   const char *pins;
   cli_arg(argc, argv, o, "pin,pin...", &pins, NULL, "");
   keyring_file *k = keyring_open_with_pins(pins);
@@ -1431,7 +1431,7 @@ int app_keyring_list(int argc, const char *const *argv, const struct command_lin
 
 int app_keyring_add(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   const char *pin;
   cli_arg(argc, argv, o, "pin", &pin, NULL, "");
   keyring_file *k = keyring_open_with_pins("");
@@ -1476,7 +1476,7 @@ int app_keyring_add(int argc, const char *const *argv, const struct command_line
 
 int app_keyring_set_did(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   const char *sid, *did, *pin, *name;
   cli_arg(argc, argv, o, "sid", &sid, str_is_subscriber_id, "");
   cli_arg(argc, argv, o, "did", &did, cli_optional_did, "");
@@ -1505,7 +1505,7 @@ int app_keyring_set_did(int argc, const char *const *argv, const struct command_
 
 int app_id_self(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   /* List my own identities */
   overlay_mdp_frame a;
   bzero(&a, sizeof(overlay_mdp_frame));
@@ -1569,7 +1569,7 @@ int app_count_peers(int argc, const char *const *argv, const struct command_line
 
 int app_crypt_test(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   unsigned char nonce[crypto_box_curve25519xsalsa20poly1305_NONCEBYTES];
   unsigned char k[crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES];
 
@@ -1732,7 +1732,7 @@ int app_crypt_test(int argc, const char *const *argv, const struct command_line_
 
 int app_node_info(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   const char *sid;
   cli_arg(argc, argv, o, "sid", &sid, NULL, "");
 

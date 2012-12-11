@@ -534,9 +534,9 @@ struct pattern_list {
 #undef VALUE_NODE_STRUCT
 #undef END_ARRAY
 
-int cf_opt_boolean(int *booleanp, const char *text);
+int cf_opt_char_boolean(char *booleanp, const char *text);
+int cf_opt_int_boolean(int *booleanp, const char *text);
 int cf_opt_absolute_path(char *str, size_t len, const char *text);
-int cf_opt_debugflags(debugflags_t *flagsp, const struct cf_om_node *node);
 int cf_opt_rhizome_peer(struct config_rhizome_peer *, const struct cf_om_node *node);
 int cf_opt_rhizome_peer_from_uri(struct config_rhizome_peer *, const char *uri);
 int cf_opt_str(char *str, size_t len, const char *text);

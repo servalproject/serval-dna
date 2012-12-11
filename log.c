@@ -43,8 +43,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 const struct __sourceloc __whence = __NOWHERE__;
 
-debugflags_t debug = 0;
-
 static FILE *logfile = NULL;
 
 /* The logbuf is used to accumulate log messages before the log file is open and ready for
@@ -276,40 +274,6 @@ int logDump(int level, struct __sourceloc whence, char *name, const unsigned cha
       strbuf_sprintf(b, "%c", addr[i+j] >= ' ' && addr[i+j] < 0x7f ? addr[i+j] : '.');
     logMessage(level, whence, "%s", strbuf_str(b));
   }
-  return 0;
-}
-
-debugflags_t debugFlagMask(const char *flagname)
-{
-  if	  (!strcasecmp(flagname,"all"))			return DEBUG_ALL;
-  else if (!strcasecmp(flagname,"interfaces"))		return DEBUG_OVERLAYINTERFACES;
-  else if (!strcasecmp(flagname,"rx"))			return DEBUG_PACKETRX;
-  else if (!strcasecmp(flagname,"tx"))			return DEBUG_PACKETTX;
-  else if (!strcasecmp(flagname,"verbose"))		return DEBUG_VERBOSE;
-  else if (!strcasecmp(flagname,"verbio"))		return DEBUG_VERBOSE_IO;
-  else if (!strcasecmp(flagname,"peers"))		return DEBUG_PEERS;
-  else if (!strcasecmp(flagname,"dnaresponses"))	return DEBUG_DNARESPONSES;
-  else if (!strcasecmp(flagname,"dnahelper"))		return DEBUG_DNAHELPER;
-  else if (!strcasecmp(flagname,"vomp"))		return DEBUG_VOMP;
-  else if (!strcasecmp(flagname,"packetformats"))	return DEBUG_PACKETFORMATS;
-  else if (!strcasecmp(flagname,"packetconstruction"))	return DEBUG_PACKETCONSTRUCTION;
-  else if (!strcasecmp(flagname,"gateway"))		return DEBUG_GATEWAY;
-  else if (!strcasecmp(flagname,"keyring"))		return DEBUG_KEYRING;
-  else if (!strcasecmp(flagname,"sockio"))		return DEBUG_IO;
-  else if (!strcasecmp(flagname,"frames"))		return DEBUG_OVERLAYFRAMES;
-  else if (!strcasecmp(flagname,"abbreviations"))	return DEBUG_OVERLAYABBREVIATIONS;
-  else if (!strcasecmp(flagname,"routing"))		return DEBUG_OVERLAYROUTING;
-  else if (!strcasecmp(flagname,"security"))		return DEBUG_SECURITY;
-  else if (!strcasecmp(flagname,"rhizome"))	        return DEBUG_RHIZOME;
-  else if (!strcasecmp(flagname,"rhizometx"))		return DEBUG_RHIZOME_TX;
-  else if (!strcasecmp(flagname,"rhizomerx"))		return DEBUG_RHIZOME_RX;
-  else if (!strcasecmp(flagname,"rhizomeads"))		return DEBUG_RHIZOME_ADS;
-  else if (!strcasecmp(flagname,"monitorroutes"))	return DEBUG_OVERLAYROUTEMONITOR;
-  else if (!strcasecmp(flagname,"queues"))		return DEBUG_QUEUES;
-  else if (!strcasecmp(flagname,"broadcasts"))		return DEBUG_BROADCASTS;
-  else if (!strcasecmp(flagname,"manifests"))		return DEBUG_MANIFESTS;
-  else if (!strcasecmp(flagname,"mdprequests"))		return DEBUG_MDPREQUESTS;
-  else if (!strcasecmp(flagname,"timing"))		return DEBUG_TIMING;
   return 0;
 }
 

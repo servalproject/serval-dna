@@ -18,6 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <sys/stat.h>
 #include "serval.h"
+#include "conf.h"
 #include "str.h"
 #include "strbuf.h"
 #include "overlay_buffer.h"
@@ -247,7 +248,7 @@ int overlay_mdp_process_bind_request(int sock, struct subscriber *subscriber, in
     */
     free=random()%MDP_MAX_BINDINGS;
   }
-  if (debug & DEBUG_MDPREQUESTS) 
+  if (config.debug.mdprequests) 
     DEBUGF("Binding %s:%d", subscriber ? alloca_tohex_sid(subscriber->sid) : "NULL", port);
   /* Okay, record binding and report success */
   mdp_bindings[free].port=port;
@@ -415,7 +416,7 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
        more prudent path.
     */
 
-    if (debug & DEBUG_MDPREQUESTS) 
+    if (config.debug.mdprequests) 
       DEBUGF("Received packet with listener (MDP ports: src=%s*:%d, dst=%d)",
 	   alloca_tohex(mdp->out.src.sid, 7),
 	   mdp->out.src.port,mdp->out.dst.port);
@@ -810,7 +811,7 @@ static int search_subscribers(struct subscriber *subscriber, void *context){
 }
 
 int overlay_mdp_address_list(overlay_mdp_addrlist *request, overlay_mdp_addrlist *response){
-  if (debug & DEBUG_MDPREQUESTS)
+  if (config.debug.mdprequests)
     DEBUGF("MDP_GETADDRS first_sid=%u mode=%d",
 	   request->first_sid,
 	   request->mode
@@ -829,7 +830,7 @@ int overlay_mdp_address_list(overlay_mdp_addrlist *request, overlay_mdp_addrlist
   
   response->last_sid = response->first_sid + response->frame_sid_count - 1;
   
-  if (debug & DEBUG_MDPREQUESTS)
+  if (config.debug.mdprequests)
     DEBUGF("reply MDP_ADDRLIST first_sid=%u last_sid=%u frame_sid_count=%u server_sid_count=%u",
 	   response->first_sid,
 	   response->last_sid,
@@ -923,13 +924,13 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 
       switch (mdp_type) {
       case MDP_GOODBYE:
-	if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_GOODBYE");
+	if (config.debug.mdprequests) DEBUG("MDP_GOODBYE");
 	overlay_mdp_releasebindings(recvaddr_un,recvaddrlen);
 	return;
 	  
       /* Deprecated. We can replace with a more generic dump of the routing table */
       case MDP_NODEINFO:
-	if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_NODEINFO");
+	if (config.debug.mdprequests) DEBUG("MDP_NODEINFO");
 	  
 	if (!overlay_route_node_info(&mdp->nodeinfo))
 	  overlay_mdp_reply(mdp_named.poll.fd,recvaddr_un,recvaddrlen,mdp);
@@ -963,14 +964,14 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 	break;
 	  
       case MDP_TX: /* Send payload (and don't treat it as system privileged) */
-	if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_TX");
+	if (config.debug.mdprequests) DEBUG("MDP_TX");
 	overlay_mdp_dispatch(mdp,1,(struct sockaddr_un*)recvaddr,recvaddrlen);
 	return;
 	break;
 	  
       case MDP_BIND: /* Bind to port */
 	{
-	  if (debug & DEBUG_MDPREQUESTS) DEBUG("MDP_BIND");
+	  if (config.debug.mdprequests) DEBUG("MDP_BIND");
 	  
 	  struct subscriber *subscriber=NULL;
 	  /* Make sure source address is either all zeros (listen on all), or a valid

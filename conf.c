@@ -179,7 +179,6 @@ int cf_init()
   cf_limbo = 1;
   if (cf_dfl_config_main(&config) == CFERROR)
     return -1;
-  debug = config.debug;
   return 0;
 }
 
@@ -211,7 +210,6 @@ static int load_and_parse(int permissive)
       }
     }
   }
-  debug = config.debug;
   if (result == CFOK)
     return 0;
   cf_limbo = 0; // let log messages out

@@ -230,22 +230,22 @@ int rhizome_direct_form_received(rhizome_http_request *r)
       const char *service = rhizome_manifest_get(m, "service", NULL, 0);
       if (service == NULL) {
 	rhizome_manifest_set(m, "service", (service = RHIZOME_SERVICE_FILE));
-	if (debug & DEBUG_RHIZOME) DEBUGF("missing 'service', set default service=%s", service);
+	if (config.debug.rhizome) DEBUGF("missing 'service', set default service=%s", service);
       } else {
-	if (debug & DEBUG_RHIZOME) DEBUGF("manifest contains service=%s", service);
+	if (config.debug.rhizome) DEBUGF("manifest contains service=%s", service);
       }
       if (rhizome_manifest_get(m, "date", NULL, 0) == NULL) {
 	rhizome_manifest_set_ll(m, "date", (long long) gettime_ms());
-	if (debug & DEBUG_RHIZOME) DEBUGF("missing 'date', set default date=%s", rhizome_manifest_get(m, "date", NULL, 0));
+	if (config.debug.rhizome) DEBUGF("missing 'date', set default date=%s", rhizome_manifest_get(m, "date", NULL, 0));
       }
 
       const char *name = rhizome_manifest_get(m, "name", NULL, 0);
       if (name == NULL) {
 	name=r->data_file_name;
 	rhizome_manifest_set(m, "name", r->data_file_name);
-	if (debug & DEBUG_RHIZOME) DEBUGF("missing 'name', set name=\"%s\" from HTTP post field filename specification", name);
+	if (config.debug.rhizome) DEBUGF("missing 'name', set name=\"%s\" from HTTP post field filename specification", name);
       } else {
-	if (debug & DEBUG_RHIZOME) DEBUGF("manifest contains name=\"%s\"", name);
+	if (config.debug.rhizome) DEBUGF("manifest contains name=\"%s\"", name);
       }
 
       const char *senderhex = rhizome_manifest_get(m, "sender", NULL, 0);
@@ -610,12 +610,12 @@ int rhizome_direct_parse_http_request(rhizome_http_request *r)
     }
   }
   if (content == NULL) {
-    if (debug & DEBUG_RHIZOME_TX)
+    if (config.debug.rhizome_tx)
       DEBUGF("Received malformed HTTP request %s", alloca_toprint(160, (const char *)r->request, r->request_length));
     return rhizome_server_simple_http_response(r, 400, "<html><h1>Malformed request</h1></html>\r\n");
   }
   INFOF("RHIZOME HTTP SERVER, %s %s %s", verb, alloca_toprint(-1, path, pathlen), proto);
-  if (debug & DEBUG_RHIZOME_TX)
+  if (config.debug.rhizome_tx)
     DEBUGF("headers %s", alloca_toprint(-1, headers, headerlen));
   if (strcmp(verb, "GET") == 0 && strcmp(path, "/favicon.ico") == 0) {
     r->request_type = RHIZOME_HTTP_REQUEST_FAVICON;
@@ -702,7 +702,7 @@ static int receive_http_response(int sock, char *buffer, size_t buffer_len, stru
 	return WHYF_perror("read(%d, %p, %d)", sock, &buffer[len], buffer_len - len);
       len += count;
   } while (len < buffer_len && count != 0 && !http_header_complete(buffer, len, len));
-  if (debug & DEBUG_RHIZOME_RX)
+  if (config.debug.rhizome_rx)
     DEBUGF("Received HTTP response %s", alloca_toprint(-1, buffer, len));
   if (unpack_http_response(buffer, parts) == -1)
     return -1;
@@ -711,7 +711,7 @@ static int receive_http_response(int sock, char *buffer, size_t buffer_len, stru
     return -1;
   }
   if (parts->content_length == -1) {
-    if (debug & DEBUG_RHIZOME_RX)
+    if (config.debug.rhizome_rx)
       DEBUGF("Invalid HTTP reply: missing Content-Length header");
     return -1;
   }

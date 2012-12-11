@@ -178,22 +178,6 @@ test_DebugFlags() {
    assertStderrGrep --matches=0 '\<echo:argv\['
 }
 
-doc_DebugFlagAll="Debug config options override debug.all"
-test_DebugFlagAll() {
-   executeOk_servald config set debug.all yes
-   executeOk_servald echo one two three
-   assertStderrGrep --matches=3 '\<echo:argv\['
-   executeOk_servald config set debug.verbose false
-   executeOk_servald echo one two three
-   assertStderrGrep --matches=0 '\<echo:argv\['
-   executeOk_servald config set debug.verbose true
-   executeOk_servald echo one two three
-   assertStderrGrep --matches=3 '\<echo:argv\['
-   executeOk_servald config set debug.all off
-   executeOk_servald echo one two three
-   assertStderrGrep --matches=3 '\<echo:argv\['
-}
-
 doc_InterfacesLegacyIncludeAll="Legacy 'interfaces' config option include all"
 test_InterfacesLegacyIncludeAll() {
    executeOk_servald config set interfaces '+'

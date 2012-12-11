@@ -18,6 +18,7 @@
 
 #include <sys/stat.h>
 #include "serval.h"
+#include "conf.h"
 #include "str.h"
 #include "strbuf.h"
 #include "overlay_buffer.h"
@@ -115,7 +116,7 @@ int overlay_mdp_client_init()
 	return WHY("Could not form MDP client socket name");
       snprintf(overlay_mdp_client_socket_path,1024,fmt,getpid(),random_value);
       overlay_mdp_client_socket_path_len=strlen(overlay_mdp_client_socket_path)+1;
-      if(debug&DEBUG_IO) DEBUGF("MDP client socket name='%s'",overlay_mdp_client_socket_path);
+      if(config.debug.io) DEBUGF("MDP client socket name='%s'",overlay_mdp_client_socket_path);
     }
     if (overlay_mdp_client_socket_path_len > sizeof(name.sun_path) - 1)
       FATALF("MDP socket path too long (%d > %d)", overlay_mdp_client_socket_path_len, sizeof(name.sun_path) - 1);

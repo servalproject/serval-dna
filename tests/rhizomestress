@@ -39,9 +39,9 @@ configure_servald_server() {
    executeOk_servald config \
       set log.show_pid on \
       set log.show_time on \
-      set debug.rhizome on \
-      set debug.rhizometx on \
-      set debug.rhizomerx on \
+      set debug.rhizome off \
+      set debug.rhizome_tx off \
+      set debug.rhizome_rx off \
       set server.respawn_on_crash off \
       set mdp.iftype.wifi.tick_ms 500
 }

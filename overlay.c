@@ -69,6 +69,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "conf.h"
 #include "rhizome.h"
 #include "strbuf.h"
 
@@ -147,7 +148,7 @@ schedule(&_sched_##X); }
   SCHEDULE(overlay_route_tick, 100, 100);
 
   /* Show CPU usage stats periodically */
-  if (debug&DEBUG_TIMING){
+  if (config.debug.timing){
     SCHEDULE(fd_periodicstats, 3000, 500);
   }
 

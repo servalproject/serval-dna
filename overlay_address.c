@@ -198,7 +198,7 @@ int set_reachable(struct subscriber *subscriber, int reachable){
   subscriber->reachable=reachable;
 
   // These log messages are for use in tests.  Changing them may break test scripts.
-  if (debug&DEBUG_OVERLAYROUTING) {
+  if (config.debug.overlayrouting) {
     switch (reachable) {
       case REACHABLE_NONE:
 	DEBUGF("NOT REACHABLE sid=%s", alloca_tohex_sid(subscriber->sid));
@@ -340,12 +340,12 @@ int overlay_broadcast_drop_check(struct broadcast *addr)
   bpi_index&=BPI_MASK;
   
   if (memcmp(bpilist[bpi_index].id, addr->id, BROADCAST_LEN)){
-    if (debug&DEBUG_BROADCASTS)
+    if (config.debug.broadcasts)
       DEBUGF("BPI %s is new", alloca_tohex(addr->id, BROADCAST_LEN));
     bcopy(addr->id, bpilist[bpi_index].id, BROADCAST_LEN);
     return 0; /* don't drop */
   }else{
-    if (debug&DEBUG_BROADCASTS)
+    if (config.debug.broadcasts)
       DEBUGF("BPI %s is a duplicate", alloca_tohex(addr->id, BROADCAST_LEN));
     return 1; /* drop frame because we have seen this BPI recently */
   }

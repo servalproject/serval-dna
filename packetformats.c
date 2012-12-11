@@ -18,11 +18,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "conf.h"
 #include "str.h"
 
 int stowSid(unsigned char *packet, int ofs, const char *sid)
 {
-  if (debug & DEBUG_PACKETFORMATS)
+  if (config.debug.packetformats)
     printf("stowing SID \"%s\"\n", sid);
   if (strcasecmp(sid,"broadcast") == 0)
     memset(packet + ofs, 0xff, SID_SIZE);

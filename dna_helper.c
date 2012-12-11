@@ -115,7 +115,7 @@ static void
 dna_helper_close_pipes()
 {
   if (dna_helper_stdin != -1) {
-    if (debug & DEBUG_DNAHELPER)
+    if (config.debug.dnahelper)
       DEBUGF("DNAHELPER closing stdin pipe fd=%d", dna_helper_stdin);
     close(dna_helper_stdin);
     dna_helper_stdin = -1;
@@ -125,7 +125,7 @@ dna_helper_close_pipes()
     sched_requests.poll.fd = -1;
   }
   if (dna_helper_stdout != -1) {
-    if (debug & DEBUG_DNAHELPER)
+    if (config.debug.dnahelper)
       DEBUGF("DNAHELPER closing stdout pipe fd=%d", dna_helper_stdout);
     close(dna_helper_stdout);
     dna_helper_stdout = -1;
@@ -135,7 +135,7 @@ dna_helper_close_pipes()
     sched_replies.poll.fd = -1;
   }
   if (dna_helper_stderr != -1) {
-    if (debug & DEBUG_DNAHELPER)
+    if (config.debug.dnahelper)
       DEBUGF("DNAHELPER closing stderr pipe fd=%d", dna_helper_stderr);
     close(dna_helper_stderr);
     dna_helper_stderr = -1;
@@ -281,7 +281,7 @@ dna_helper_kill()
     awaiting_reply = 0;
   }
   if (dna_helper_pid > 0) {
-    if (debug & DEBUG_DNAHELPER)
+    if (config.debug.dnahelper)
       DEBUGF("DNAHELPER sending SIGTERM to pid=%d", dna_helper_pid);
     if (kill(dna_helper_pid, SIGTERM) == -1)
       WHYF_perror("kill(%d, SIGTERM)", dna_helper_pid);
@@ -295,7 +295,7 @@ static int
 dna_helper_harvest(int blocking)
 {
   if (dna_helper_pid > 0) {
-    if (blocking && (debug & DEBUG_DNAHELPER))
+    if (blocking && (config.debug.dnahelper))
       DEBUGF("DNAHELPER waiting for pid=%d to die", dna_helper_pid);
     int status;
     pid_t pid = waitpid(dna_helper_pid, &status, blocking ? 0 : WNOHANG);
@@ -320,7 +320,7 @@ dna_helper_harvest(int blocking)
 
 int dna_helper_shutdown()
 {
-  if (debug & DEBUG_DNAHELPER)
+  if (config.debug.dnahelper)
     DEBUG("DNAHELPER shutting down");
   dna_helper_close_pipes();
   switch (dna_helper_kill()) {
@@ -335,7 +335,7 @@ int dna_helper_shutdown()
 
 static void monitor_requests(struct sched_ent *alarm)
 {
-  if (debug & DEBUG_DNAHELPER) {
+  if (config.debug.dnahelper) {
     DEBUGF("sched_requests.poll.fd=%d .revents=%s",
 	sched_requests.poll.fd,
 	strbuf_str(strbuf_append_poll_events(strbuf_alloca(40), sched_requests.poll.revents))
@@ -345,7 +345,7 @@ static void monitor_requests(struct sched_ent *alarm)
   // which is documented to mean the file descriptor is not open, but testing revealed that in this
   // case it is still open.  See issue #5.
   if (sched_requests.poll.revents & (POLLHUP | POLLERR | POLLNVAL)) {
-    if (debug & DEBUG_DNAHELPER)
+    if (config.debug.dnahelper)
       DEBUGF("DNAHELPER closing stdin fd=%d", dna_helper_stdin);
     close(dna_helper_stdin);
     dna_helper_stdin = -1;
@@ -368,7 +368,7 @@ static void monitor_requests(struct sched_ent *alarm)
 	  INFO("DNAHELPER got SIGPIPE on write -- stopping process");
 	  dna_helper_kill();
 	} else if (written > 0) {
-	  if (debug & DEBUG_DNAHELPER)
+	  if (config.debug.dnahelper)
 	    DEBUGF("DNAHELPER wrote request %s", alloca_toprint(-1, request_bufptr, written));
 	  request_bufptr += written;
 	}
@@ -404,7 +404,7 @@ void handle_reply_line(const char *bufp, size_t len)
 {
   if (!dna_helper_started) {
     if (len == 8 && strncmp(bufp, "STARTED\n", 8) == 0) {
-      if (debug & DEBUG_DNAHELPER)
+      if (config.debug.dnahelper)
 	DEBUGF("DNAHELPER got STARTED ACK");
       dna_helper_started = 1;
       // Start sending request if there is one pending.
@@ -418,7 +418,7 @@ void handle_reply_line(const char *bufp, size_t len)
     }
   } else if (awaiting_reply) {
     if (len == 5 && strncmp(bufp, "DONE\n", 5) == 0) {
-      if (debug & DEBUG_DNAHELPER)
+      if (config.debug.dnahelper)
 	DEBUG("DNAHELPER reply DONE");
       unschedule(&sched_timeout);
       awaiting_reply = 0;
@@ -449,7 +449,7 @@ void handle_reply_line(const char *bufp, size_t len)
       else if (*replyend != '\n')
 	WHYF("DNAHELPER reply %s contains spurious trailing chars -- ignored", alloca_toprint(-1, bufp, len));
       else {
-	if (debug & DEBUG_DNAHELPER)
+	if (config.debug.dnahelper)
 	  DEBUGF("DNAHELPER reply %s", alloca_toprint(-1, bufp, len));
 	overlay_mdp_dnalookup_reply(&request_mdp_data.src, my_subscriber->sid, uri, did, name);
       }
@@ -461,7 +461,7 @@ void handle_reply_line(const char *bufp, size_t len)
 
 static void monitor_replies(struct sched_ent *alarm)
 {
-  if (debug & DEBUG_DNAHELPER) {
+  if (config.debug.dnahelper) {
     DEBUGF("sched_replies.poll.fd=%d .revents=%s",
 	sched_replies.poll.fd,
 	strbuf_str(strbuf_append_poll_events(strbuf_alloca(40), sched_replies.poll.revents))
@@ -478,7 +478,7 @@ static void monitor_replies(struct sched_ent *alarm)
       while (nread > 0 && (nl = srv_strnstr(readp, nread, "\n"))) {
 	size_t len = nl - bufp + 1;
 	if (discarding_until_nl) {
-	  if (debug & DEBUG_DNAHELPER)
+	  if (config.debug.dnahelper)
 	    DEBUGF("Discarding %s", alloca_toprint(-1, bufp, len));
 	  discarding_until_nl = 0;
 	} else {
@@ -493,7 +493,7 @@ static void monitor_replies(struct sched_ent *alarm)
 	reply_bufend = reply_buffer + len;
       } else if (reply_bufend >= reply_buffer + sizeof reply_buffer) {
 	WHY("DNAHELPER reply buffer overrun");
-	if (debug & DEBUG_DNAHELPER)
+	if (config.debug.dnahelper)
 	  DEBUGF("Discarding %s", alloca_toprint(-1, reply_buffer, sizeof reply_buffer));
 	reply_bufend = reply_buffer;
 	discarding_until_nl = 1;
@@ -501,7 +501,7 @@ static void monitor_replies(struct sched_ent *alarm)
     }
   }
   if (sched_replies.poll.revents & (POLLHUP | POLLERR | POLLNVAL)) {
-    if (debug & DEBUG_DNAHELPER)
+    if (config.debug.dnahelper)
       DEBUGF("DNAHELPER closing stdout fd=%d", dna_helper_stdout);
     close(dna_helper_stdout);
     dna_helper_stdout = -1;
@@ -513,7 +513,7 @@ static void monitor_replies(struct sched_ent *alarm)
 
 static void monitor_errors(struct sched_ent *alarm)
 {
-  if (debug & DEBUG_DNAHELPER) {
+  if (config.debug.dnahelper) {
     DEBUGF("sched_errors.poll.fd=%d .revents=%s",
 	sched_errors.poll.fd,
 	strbuf_str(strbuf_append_poll_events(strbuf_alloca(40), sched_errors.poll.revents))
@@ -526,7 +526,7 @@ static void monitor_errors(struct sched_ent *alarm)
       WHYF("DNAHELPER stderr %s", alloca_toprint(-1, buffer, nread));
   }
   if (sched_errors.poll.revents & (POLLHUP | POLLERR | POLLNVAL)) {
-    if (debug & DEBUG_DNAHELPER)
+    if (config.debug.dnahelper)
       DEBUGF("DNAHELPER closing stderr fd=%d", dna_helper_stderr);
     close(dna_helper_stderr);
     dna_helper_stderr = -1;
@@ -545,7 +545,7 @@ static void harvester(struct sched_ent *alarm)
     schedule(&sched_harvester);
   } else {
     const int delay_ms = 500;
-    if (debug & DEBUG_DNAHELPER)
+    if (config.debug.dnahelper)
       DEBUGF("DNAHELPER process died, pausing %d ms before restart", delay_ms);
     dna_helper_pid = 0; // Will be set to -1 after delay
     sched_restart.function = restart_delayer;
@@ -558,7 +558,7 @@ static void harvester(struct sched_ent *alarm)
 static void restart_delayer(struct sched_ent *alarm)
 {
   if (dna_helper_pid == 0) {
-    if (debug & DEBUG_DNAHELPER)
+    if (config.debug.dnahelper)
       DEBUG("DNAHELPER re-enable restart");
     dna_helper_pid = -1;
   }
@@ -575,7 +575,7 @@ static void reply_timeout(struct sched_ent *alarm)
 int
 dna_helper_enqueue(overlay_mdp_frame *mdp, const char *did, const unsigned char *requestorSid)
 {
-  if (debug & DEBUG_DNAHELPER)
+  if (config.debug.dnahelper)
     DEBUGF("DNAHELPER request did=%s sid=%s", did, alloca_tohex_sid(requestorSid));
   if (dna_helper_pid == 0)
     return 0;

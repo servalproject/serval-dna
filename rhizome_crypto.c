@@ -18,6 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "conf.h"
 #include "str.h"
 #include "rhizome.h"
 #include <stdlib.h>
@@ -140,13 +141,13 @@ int rhizome_find_secret(const unsigned char *authorSid, int *rs_len, const unsig
 {
   int cn=0, in=0, kp=0;
   if (!keyring_find_sid(keyring,&cn,&in,&kp,authorSid)) {
-    if (debug & DEBUG_RHIZOME)
+    if (config.debug.rhizome)
       DEBUGF("identity sid=%s is not in keyring", alloca_tohex_sid(authorSid));
     return 2;
   }
   kp = keyring_identity_find_keytype(keyring, cn, in, KEYTYPE_RHIZOME);
   if (kp == -1) {
-    if (debug & DEBUG_RHIZOME)
+    if (config.debug.rhizome)
       DEBUGF("identity sid=%s has no Rhizome Secret", alloca_tohex_sid(authorSid));
     return 3;
   }
@@ -207,7 +208,7 @@ int rhizome_extract_privatekey(rhizome_manifest *m)
   IN();
   char *bk = rhizome_manifest_get(m, "BK", NULL, 0);
   if (!bk) {
-    if (debug & DEBUG_RHIZOME) DEBUG("bundle contains no BK field");
+    if (config.debug.rhizome) DEBUG("bundle contains no BK field");
     RETURN(1);
   }
   unsigned char bkBytes[RHIZOME_BUNDLE_KEY_BYTES];
@@ -229,7 +230,7 @@ int rhizome_extract_privatekey(rhizome_manifest *m)
   }
   memset(m->cryptoSignSecret, 0, sizeof m->cryptoSignSecret);
   m->haveSecret=0;
-  if (debug & DEBUG_RHIZOME) DEBUGF("result=%d", result);
+  if (config.debug.rhizome) DEBUGF("result=%d", result);
   RETURN(result);
 }
 
@@ -253,7 +254,7 @@ int rhizome_find_bundle_author(rhizome_manifest *m)
   IN();
   char *bk = rhizome_manifest_get(m, "BK", NULL, 0);
   if (!bk) {
-    if (debug & DEBUG_RHIZOME)
+    if (config.debug.rhizome)
       DEBUGF("missing BK field");
     RETURN(4);
   }
@@ -263,7 +264,7 @@ int rhizome_find_bundle_author(rhizome_manifest *m)
   int cn = 0, in = 0, kp = 0;
   for (; keyring_next_identity(keyring, &cn, &in, &kp); ++kp) {
     const unsigned char *authorSid = keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key;
-    //if (debug & DEBUG_RHIZOME) DEBUGF("try author identity sid=%s", alloca_tohex(authorSid, SID_SIZE));
+    //if (config.debug.rhizome) DEBUGF("try author identity sid=%s", alloca_tohex(authorSid, SID_SIZE));
     int rkp = keyring_identity_find_keytype(keyring, cn, in, KEYTYPE_RHIZOME);
     if (rkp != -1) {
       int rs_len = keyring->contexts[cn]->identities[in]->keypairs[rkp]->private_key_len;
@@ -275,13 +276,13 @@ int rhizome_find_bundle_author(rhizome_manifest *m)
 			     bkBytes,m->cryptoSignSecret)) {
 	memcpy(m->author, authorSid, sizeof m->author);
 	m->haveSecret=1;
-	if (debug & DEBUG_RHIZOME)
+	if (config.debug.rhizome)
 	  DEBUGF("found bundle author sid=%s", alloca_tohex_sid(m->author));
 	RETURN(0); // bingo
       }
     }
   }
-  if (debug & DEBUG_RHIZOME)
+  if (config.debug.rhizome)
     DEBUG("bundle author not found");
   RETURN(1);
 }
@@ -321,7 +322,7 @@ int rhizome_verify_bundle_privatekey(rhizome_manifest *m,
 	m->haveSecret=0;
       RETURN(-1);
     }
-  if (debug & DEBUG_RHIZOME)
+  if (config.debug.rhizome)
     DEBUGF("We have the private key for this bundle.");
   if (m&&sk==m->cryptoSignSecret&&pkin==m->cryptoSignPublic) {
     DEBUGF("Set haveSecret=1 in manifest");
@@ -428,7 +429,7 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
   IN();
   if (!m)
     RETURN(WHY("NULL pointer passed in as manifest"));
-  if (debug&DEBUG_RHIZOME)
+  if (config.debug.rhizome)
     DEBUGF("m->manifest_all_bytes=%d m->manifest_bytes=%d *ofs=%d", m->manifest_all_bytes, m->manifest_bytes, *ofs);
 
   if ((*ofs)>=m->manifest_all_bytes) { RETURN(0); }
@@ -474,7 +475,7 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
 	  bcopy(&m->manifestdata[(*ofs)+1+64],m->signatories[m->sig_count],
 		crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
 	  m->sig_count++;
-	  if (debug&DEBUG_RHIZOME) DEBUG("Signature passed.");
+	  if (config.debug.rhizome) DEBUG("Signature passed.");
 	}
 	break;
       default:

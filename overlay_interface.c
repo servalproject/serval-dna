@@ -199,15 +199,15 @@ overlay_interface_read_any(struct sched_ent *alarm){
     
     /* Drop the packet if we don't find a match */
     if (!interface){
-      if (debug&DEBUG_OVERLAYINTERFACES)
+      if (config.debug.overlayinterfaces)
 	DEBUGF("Could not find matching interface for packet received from %s", inet_ntoa(src));
       return;
     }
     
     /* We have a frame from this interface */
-    if (debug&DEBUG_PACKETRX)
+    if (config.debug.packetrx)
       DEBUG_packet_visualise("Read from real interface", packet,plen);
-    if (debug&DEBUG_OVERLAYINTERFACES)
+    if (config.debug.overlayinterfaces)
       DEBUGF("Received %d bytes from %s on interface %s (ANY)",plen, 
 	     inet_ntoa(src),
 	     interface->name);
@@ -285,7 +285,7 @@ overlay_interface_init_socket(int interface_index)
     return -1;
   }
   
-  if (debug & (DEBUG_PACKETRX | DEBUG_IO)){
+  if (config.debug.packetrx || config.debug.io) {
     char srctxt[INET_ADDRSTRLEN];
     if (inet_ntop(AF_INET, (const void *)&interface->broadcast_address.sin_addr, srctxt, INET_ADDRSTRLEN))
       DEBUGF("Bound to %s:%d", srctxt, ntohs(interface->broadcast_address.sin_port));
@@ -474,9 +474,9 @@ static void overlay_interface_poll(struct sched_ent *alarm)
     }
     
     /* We have a frame from this interface */
-    if (debug&DEBUG_PACKETRX)
+    if (config.debug.packetrx)
       DEBUG_packet_visualise("Read from real interface", packet,plen);
-    if (debug&DEBUG_OVERLAYINTERFACES) {
+    if (config.debug.overlayinterfaces) {
       struct in_addr src = ((struct sockaddr_in *)&src_addr)->sin_addr; // avoid strict-alias warning on Solaris (gcc 4.4)
       DEBUGF("Received %d bytes from %s on interface %s",plen,
 	     inet_ntoa(src),
@@ -546,7 +546,7 @@ void overlay_dummy_poll(struct sched_ent *alarm)
       return;
     }
     
-    if (debug&DEBUG_OVERLAYINTERFACES)
+    if (config.debug.overlayinterfaces)
       DEBUGF("Read interface %s (size=%lld) at offset=%d",interface->name, length, interface->recv_offset);
     
     ssize_t nread = read(alarm->poll.fd, &packet, sizeof packet);
@@ -558,7 +558,7 @@ void overlay_dummy_poll(struct sched_ent *alarm)
     if (nread == sizeof packet) {
       interface->recv_offset += nread;
      
-      if (debug&DEBUG_PACKETRX)
+      if (config.debug.packetrx)
 	DEBUG_packet_visualise("Read from dummy interface", packet.payload, packet.payload_length);
       
       if (memcmp(&packet.dst_addr, &interface->address, sizeof(packet.dst_addr))==0 ||
@@ -601,7 +601,7 @@ overlay_broadcast_ensemble(int interface_number,
 			   struct sockaddr_in *recipientaddr,
 			   unsigned char *bytes,int len)
 {
-  if (debug&DEBUG_PACKETTX)
+  if (config.debug.packettx)
     {
       DEBUGF("Sending this packet via interface #%d",interface_number);
       DEBUG_packet_visualise(NULL,bytes,len);
@@ -634,7 +634,7 @@ overlay_broadcast_ensemble(int interface_number,
       off_t fsize = lseek(interface->alarm.poll.fd, (off_t) 0, SEEK_END);
       if (fsize == -1)
 	return WHY_perror("lseek");
-      if (debug&DEBUG_OVERLAYINTERFACES)
+      if (config.debug.overlayinterfaces)
 	DEBUGF("Write to interface %s at offset=%d", interface->name, fsize);
       ssize_t nwrite = write(interface->alarm.poll.fd, &packet, sizeof(packet));
       if (nwrite == -1)
@@ -645,7 +645,7 @@ overlay_broadcast_ensemble(int interface_number,
     }
   else
     {
-      if (debug&DEBUG_OVERLAYINTERFACES) 
+      if (config.debug.overlayinterfaces) 
 	DEBUGF("Sending %d byte overlay frame on %s to %s",len,interface->name,inet_ntoa(recipientaddr->sin_addr));
       if(sendto(interface->alarm.poll.fd, 
 		bytes, len, 0, (struct sockaddr *)recipientaddr, sizeof(struct sockaddr_in)) != len){
@@ -668,7 +668,7 @@ overlay_interface_register(char *name,
 {
   struct in_addr broadcast = {.s_addr = addr.s_addr | ~mask.s_addr};
 
-  if (debug & DEBUG_OVERLAYINTERFACES) {
+  if (config.debug.overlayinterfaces) {
     // note, inet_ntop doesn't seem to behave on android
     DEBUGF("%s address: %s", name, inet_ntoa(addr));
     DEBUGF("%s broadcast address: %s", name, inet_ntoa(broadcast));
@@ -691,12 +691,12 @@ overlay_interface_register(char *name,
     }
   }
   if (ifconfig == NULL) {
-    if (debug & DEBUG_OVERLAYINTERFACES)
+    if (config.debug.overlayinterfaces)
       DEBUGF("Interface %s does not match any rule", name);
     return 0;
   }
   if (ifconfig->exclude) {
-    if (debug & DEBUG_OVERLAYINTERFACES)
+    if (config.debug.overlayinterfaces)
       DEBUGF("Interface %s is explicitly excluded", name);
     return 0;
   }
@@ -745,7 +745,7 @@ overlay_interface_register(char *name,
   if (overlay_interface_init(name, addr, mask, broadcast, ifconfig))
     return WHYF("Could not initialise newly seen interface %s", name);
   else
-    if (debug & DEBUG_OVERLAYINTERFACES) DEBUGF("Registered interface %s", name);
+    if (config.debug.overlayinterfaces) DEBUGF("Registered interface %s", name);
 
   return 0;
 }

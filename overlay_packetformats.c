@@ -18,6 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "conf.h"
 #include "str.h"
 #include "strbuf.h"
 #include "overlay_buffer.h"
@@ -47,35 +48,35 @@ int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, s
   {
       // route control frames
     case OF_TYPE_SELFANNOUNCE:
-      if (debug&DEBUG_OVERLAYFRAMES)
+      if (config.debug.overlayframes)
 	DEBUG("Processing OF_TYPE_SELFANNOUNCE");
       overlay_route_saw_selfannounce(f,now);
       break;
     case OF_TYPE_SELFANNOUNCE_ACK:
-      if (debug&DEBUG_OVERLAYFRAMES)
+      if (config.debug.overlayframes)
 	DEBUG("Processing OF_TYPE_SELFANNOUNCE_ACK");
       overlay_route_saw_selfannounce_ack(f,now);
       break;
     case OF_TYPE_NODEANNOUNCE:
-      if (debug&DEBUG_OVERLAYFRAMES)
+      if (config.debug.overlayframes)
 	DEBUG("Processing OF_TYPE_NODEANNOUNCE");
       overlay_route_saw_advertisements(id,f,context,now);
       break;
       
       // data frames
     case OF_TYPE_RHIZOME_ADVERT:
-      if (debug&DEBUG_OVERLAYFRAMES)
+      if (config.debug.overlayframes)
 	DEBUG("Processing OF_TYPE_RHIZOME_ADVERT");
       overlay_rhizome_saw_advertisements(id,f,now);
       break;
     case OF_TYPE_DATA:
     case OF_TYPE_DATA_VOICE:
-      if (debug&DEBUG_OVERLAYFRAMES)
+      if (config.debug.overlayframes)
 	DEBUG("Processing OF_TYPE_DATA");
       overlay_saw_mdp_containing_frame(f,now);
       break;
     case OF_TYPE_PLEASEEXPLAIN:
-      if (debug&DEBUG_OVERLAYFRAMES)
+      if (config.debug.overlayframes)
 	DEBUG("Processing OF_TYPE_PLEASEEXPLAIN");
       process_explain(f);
       break;
@@ -91,7 +92,7 @@ int overlay_forward_payload(struct overlay_frame *f){
   if (f->ttl<=0)
     RETURN(0);
   
-  if (debug&DEBUG_OVERLAYFRAMES)
+  if (config.debug.overlayframes)
     DEBUGF("Forwarding payload for %s, ttl=%d",
 	  (f->destination?alloca_tohex_sid(f->destination->sid):"broadcast"),
 	  f->ttl);
@@ -197,7 +198,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   
   f.recvaddr = *((struct sockaddr_in *)recvaddr); 
 
-  if (debug&DEBUG_OVERLAYFRAMES)
+  if (config.debug.overlayframes)
     DEBUG("Received overlay packet");
   
   if (overlay_address_parse(&context, b, &context.sender)){
@@ -271,7 +272,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
 	}
 	if (overlay_broadcast_drop_check(&f.broadcast_id)){
 	  process=forward=0;
-	  if (debug&DEBUG_OVERLAYFRAMES)
+	  if (config.debug.overlayframes)
 	    DEBUGF("Ignoring duplicate broadcast (%s)", alloca_tohex(f.broadcast_id.id, BROADCAST_LEN));
 	}
       }
@@ -339,12 +340,12 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     
     // if we can't understand one of the addresses, skip processing the payload
     if (context.invalid_addresses){
-      if (debug&DEBUG_OVERLAYFRAMES)
+      if (config.debug.overlayframes)
 	DEBUG("Skipping payload due to unknown addresses");
       goto next;
     }
 
-    if (debug&DEBUG_OVERLAYFRAMES){
+    if (config.debug.overlayframes){
       DEBUGF("Received payload type %x, len %d", f.type, next_payload - b->position);
       DEBUGF("Payload from %s", alloca_tohex_sid(f.source->sid));
       DEBUGF("Payload to %s", (f.destination?alloca_tohex_sid(f.destination->sid):"broadcast"));
@@ -430,7 +431,7 @@ int overlay_add_selfannouncement(struct decode_context *context, int interface,s
     return WHY("Could not add low sequence number to self-announcement");
   if (ob_append_ui32(b, now))
     return WHY("Could not add high sequence number to self-announcement");
-  if (debug&DEBUG_OVERLAYINTERFACES)
+  if (config.debug.overlayinterfaces)
     DEBUGF("interface #%d: last_tick_ms=%lld, now=%lld (delta=%lld)",
 	interface,
 	(long long)overlay_interfaces[interface].last_tick_ms,

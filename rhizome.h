@@ -265,7 +265,9 @@ __RHIZOME_INLINE int sqlite_code_busy(int code)
   return code == SQLITE_BUSY || code == SQLITE_LOCKED;
 }
 
-debugflags_t sqlite_set_debugmask(debugflags_t newmask);
+int (*sqlite_set_tracefunc(int (*newfunc)()))();
+int is_debug_rhizome();
+int is_debug_rhizome_ads();
 
 sqlite3_stmt *_sqlite_prepare(struct __sourceloc __whence, sqlite_retry_state *retry, const char *sqlformat, ...);
 sqlite3_stmt *_sqlite_prepare_loglevel(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, strbuf stmt);

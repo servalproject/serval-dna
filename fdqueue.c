@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <poll.h>
 #include "serval.h"
+#include "conf.h"
 #include "str.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
@@ -85,7 +86,7 @@ int is_scheduled(const struct sched_ent *alarm)
 // on calling .poll.revents will be zero.
 int _schedule(struct __sourceloc __whence, struct sched_ent *alarm)
 {
-  if (debug & DEBUG_IO)
+  if (config.debug.io)
     DEBUGF("schedule(alarm=%s)", alloca_alarm_name(alarm));
 
   struct sched_ent *node = next_alarm, *last = NULL;
@@ -126,7 +127,7 @@ int _schedule(struct __sourceloc __whence, struct sched_ent *alarm)
 // safe to unschedule twice...
 int _unschedule(struct __sourceloc __whence, struct sched_ent *alarm)
 {
-  if (debug & DEBUG_IO)
+  if (config.debug.io)
     DEBUGF("unschedule(alarm=%s)", alloca_alarm_name(alarm));
 
   struct sched_ent *prev = alarm->_prev;
@@ -150,7 +151,7 @@ int _unschedule(struct __sourceloc __whence, struct sched_ent *alarm)
 // start watching a file handle, call this function again if you wish to change the event mask
 int _watch(struct __sourceloc __whence, struct sched_ent *alarm)
 {
-  if (debug & DEBUG_IO)
+  if (config.debug.io)
     DEBUGF("watch(alarm=%s)", alloca_alarm_name(alarm));
 
   if (!alarm->function)
@@ -158,10 +159,10 @@ int _watch(struct __sourceloc __whence, struct sched_ent *alarm)
   
   if (alarm->_poll_index>=0 && fd_callbacks[alarm->_poll_index]==alarm){
     // updating event flags
-    if (debug & DEBUG_IO)
+    if (config.debug.io)
       DEBUGF("Updating watch %s, #%d for %d", alloca_alarm_name(alarm), alarm->poll.fd, alarm->poll.events);
   }else{
-    if (debug & DEBUG_IO)
+    if (config.debug.io)
       DEBUGF("Adding watch %s, #%d for %d", alloca_alarm_name(alarm), alarm->poll.fd, alarm->poll.events);
     if (fdcount>=MAX_WATCHED_FDS)
       return WHY("Too many file handles to watch");
@@ -177,7 +178,7 @@ int _watch(struct __sourceloc __whence, struct sched_ent *alarm)
 // stop watching a file handle
 int _unwatch(struct __sourceloc __whence, struct sched_ent *alarm)
 {
-  if (debug & DEBUG_IO)
+  if (config.debug.io)
     DEBUGF("unwatch(alarm=%s)", alloca_alarm_name(alarm));
 
   int index = alarm->_poll_index;
@@ -194,7 +195,7 @@ int _unwatch(struct __sourceloc __whence, struct sched_ent *alarm)
   fds[fdcount].fd=-1;
   fd_callbacks[fdcount]=NULL;
   alarm->_poll_index=-1;
-  if (debug & DEBUG_IO)
+  if (config.debug.io)
     DEBUGF("%s stopped watching #%d for %d", alloca_alarm_name(alarm), alarm->poll.fd, alarm->poll.events);
   return 0;
 }
@@ -252,7 +253,7 @@ int fd_poll()
 	usleep(ms*1000);
     }else{
       r = poll(fds, fdcount, ms);
-      if (debug & DEBUG_IO) {
+      if (config.debug.io) {
 	strbuf b = strbuf_alloca(1024);
 	int i;
 	for (i = 0; i < fdcount; ++i) {
