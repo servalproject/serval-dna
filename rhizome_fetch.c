@@ -1113,7 +1113,7 @@ static int rhizome_fetch_mdp_requestmanifest(struct rhizome_fetch_slot *slot)
 {
   if (slot->prefix_length<1||slot->prefix_length>32) {
     // invalid request
-    DEBUGF("invalid MDP Rhizome request");
+    WARNF("invalid MDP Rhizome request");
     return rhizome_fetch_close(slot);
   }
 
@@ -1141,7 +1141,6 @@ static int rhizome_fetch_mdp_requestmanifest(struct rhizome_fetch_slot *slot)
 
   overlay_mdp_dispatch(&mdp,0 /* system generated */,NULL,0);
   
-  DEBUGF("Set callback function, and set alarm");
   slot->alarm.function = rhizome_fetch_mdp_slot_callback;
   slot->alarm.alarm=gettime_ms()+100;
   slot->alarm.deadline=slot->alarm.alarm+500;
@@ -1166,7 +1165,8 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
     return rhizome_fetch_close(slot);
   }
 
-  DEBUGF("Trying to switch to MDP for Rhizome fetch: slot=0x%p",slot);
+  if (config.debug.rhizome_rx)
+    DEBUGF("Trying to switch to MDP for Rhizome fetch: slot=0x%p",slot);
   
   /* close socket and stop watching it */
   if (slot->alarm.poll.fd>=0) {
@@ -1259,10 +1259,6 @@ int rhizome_fetch_flush_blob_buffer(struct rhizome_fetch_slot *slot)
     WHYF("sqlite3_blob_write(,,%d,%lld) failed, %s", 
 	 slot->blob_buffer_bytes,slot->file_ofs-slot->blob_buffer_bytes,
 	 sqlite3_errmsg(rhizome_db));
-    if (1 || config.debug.rhizome_tx)
-      DEBUGF("Failed to write %d bytes to file @ offset %lld-%lld", 
-	     slot->blob_buffer_bytes,
-	     slot->file_ofs,slot->blob_buffer_bytes);
     rhizome_fetch_close(slot);
     return -1;
   }
@@ -1340,7 +1336,7 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
       if (strcasecmp(hash_out,slot->manifest->fileHexHash)) {
 	if (config.debug.rhizome_rx)
 	  DEBUGF("Hash mismatch -- dropping row from table.");	
-	DEBUGF("Expected hash=%s, got %s",
+	WARNF("Expected hash=%s, got %s",
 	       slot->manifest->fileHexHash,hash_out);
 	sqlite_exec_void_retry(&retry,
 			       "DELETE FROM FILEBLOBS WHERE rowid=%lld",slot->rowid);
@@ -1350,8 +1346,6 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 	rhizome_fetch_close(slot);
 	RETURN(-1);
       } else {
-	INFOF("Updating row status: UPDATE FILES SET datavalid=1 WHERE id='%s'",
-	      slot->manifest->fileHexHash);
 	time_ms_t start=gettime_ms();
 	int ret=sqlite_exec_void_retry(&retry,
 				       "UPDATE FILES SET datavalid=1 WHERE id='%s'",
@@ -1359,11 +1353,7 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 	if (ret!=SQLITE_OK) 
 	  if (config.debug.rhizome_rx)
 	    DEBUGF("error marking row valid: %s",sqlite3_errmsg(rhizome_db));
-	INFOF("Updated row status (took %lldms)",(long long)gettime_ms()-start);
       }
-
-      INFOF("Calling rhizome_import_received_bundle() m->fileLength=%lld",
-	    slot->manifest->fileLength);
 
       if (!rhizome_import_received_bundle(slot->manifest)){
 	if (slot->state==RHIZOME_FETCH_RXFILE) {
@@ -1382,7 +1372,8 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
       }
     } else {
       /* This was to fetch the manifest, so now fetch the file if needed */
-      DEBUGF("Received a manifest in response to supplying a manifest prefix.");
+      if (config.debug.rhizome_rx)
+	DEBUGF("Received a manifest in response to supplying a manifest prefix.");
       /* Read the manifest and add it to suggestion queue, then immediately
 	 call schedule queued items. */
       rhizome_manifest *m = rhizome_new_manifest();
@@ -1392,18 +1383,21 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 	  DEBUGF("Couldn't read manifest");
 	  rhizome_manifest_free(m);
 	} else {
-	  DEBUGF("All looks good for importing manifest id=%s", alloca_tohex_bid(m->cryptoSignPublic));
-	  dump("slot->peerip",&slot->peer_ipandport,sizeof(slot->peer_ipandport));
-	  dump("slot->peersid",&slot->peer_sid,sizeof(slot->peer_sid));
+	  if (config.debug.rhizome_rx){
+	    DEBUGF("All looks good for importing manifest id=%s", alloca_tohex_bid(m->cryptoSignPublic));
+	    dump("slot->peerip",&slot->peer_ipandport,sizeof(slot->peer_ipandport));
+	    dump("slot->peersid",&slot->peer_sid,sizeof(slot->peer_sid));
+	  }
 	  rhizome_suggest_queue_manifest_import(m, &slot->peer_ipandport,
 						slot->peer_sid);
 	}
       }
     }
-    DEBUGF("Closing rhizome fetch slot = 0x%p.  Received %lld bytes in %lldms (%lldKB/sec).  Buffer size = %d",
-	   slot,(long long)slot->file_ofs,(long long)gettime_ms()-slot->start_time,
-	   (long long)slot->file_ofs/(gettime_ms()-slot->start_time),
-	   slot->blob_buffer_size);
+    if (config.debug.rhizome_rx)
+      DEBUGF("Closing rhizome fetch slot = 0x%p.  Received %lld bytes in %lldms (%lldKB/sec).  Buffer size = %d",
+	     slot,(long long)slot->file_ofs,(long long)gettime_ms()-slot->start_time,
+	     (long long)slot->file_ofs/(gettime_ms()-slot->start_time),
+	     slot->blob_buffer_size);
     rhizome_fetch_close(slot);
     RETURN(-1);
   }
