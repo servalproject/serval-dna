@@ -70,6 +70,7 @@ struct subscriber{
   
   // if reachable&REACHABLE_UNICAST send packets to this address, else use the interface broadcast address
   struct sockaddr_in address;
+  time_ms_t last_stun_request;
   time_ms_t last_probe;
   time_ms_t last_rx;
   time_ms_t last_tx;

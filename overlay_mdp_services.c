@@ -494,6 +494,12 @@ int overlay_send_stun_request(struct subscriber *server, struct subscriber *requ
   if (subscriber_is_reachable(request)&REACHABLE_DIRECT)
     return -1;
   
+  time_ms_t now = gettime_ms();
+  if (request->last_stun_request +1000 > now)
+    return -1;
+  
+  request->last_stun_request=now;
+  
   overlay_mdp_frame mdp;
   bzero(&mdp, sizeof(mdp));
   mdp.packetTypeAndFlags=MDP_TX;

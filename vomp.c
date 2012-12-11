@@ -472,6 +472,12 @@ static void prepare_vomp_header(struct vomp_call_state *call, overlay_mdp_frame 
   mdp->out.payload[4]=(call->remote.session>>0)&0xff;
   mdp->out.payload[5]=(call->remote.state<<4)|call->local.state;
   mdp->out.payload_length=6;
+  
+  // keep trying to punch a NAT tunnel for 10s
+  // note that requests are rate limited internally to one packet per second
+  time_ms_t now = gettime_ms();
+  if (call->local.state < VOMP_STATE_CALLENDED && call->create_time + 10000 >now)
+    overlay_send_stun_request(directory_service, call->remote.subscriber);
 }
 
 /* send updated call status to end-point and to any interested listeners as
@@ -510,8 +516,6 @@ static int vomp_send_status_remote(struct vomp_call_state *call)
     
     if (config.debug.vomp)
       DEBUGF("mdp frame with codec list is %d bytes", mdp.out.payload_length);
-    
-    overlay_send_stun_request(directory_service, call->remote.subscriber);
   }
 
   call->local.sequence++;
