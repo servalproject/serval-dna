@@ -53,13 +53,18 @@ static void logServalPacket(int level, struct __sourceloc __whence, const char *
 
 #define DEBUG_packet_visualise(M,P,N) logServalPacket(LOG_LEVEL_DEBUG, __WHENCE__, (M), (P), (N))
 
+static int mark_subscriber_down(struct subscriber *subscriber, void *context)
+{
+  overlay_interface *interface=context;
+  if ((subscriber->reachable & REACHABLE_DIRECT) && subscriber->interface == interface)
+    set_reachable(subscriber, REACHABLE_NONE);
+  return 0;
+}
+
 static void
 overlay_interface_close(overlay_interface *interface){
-  if (interface->fileP){
-    INFOF("Interface %s is down", interface->name);
-  }else{
-    INFOF("Interface %s addr %s is down", interface->name, inet_ntoa(interface->broadcast_address.sin_addr));
-  }
+  enum_subscribers(NULL, mark_subscriber_down, interface);
+  INFOF("Interface %s addr %s is down", interface->name, inet_ntoa(interface->broadcast_address.sin_addr));
   unschedule(&interface->alarm);
   unwatch(&interface->alarm);
   close(interface->alarm.poll.fd);
