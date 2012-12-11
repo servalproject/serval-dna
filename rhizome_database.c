@@ -975,16 +975,11 @@ int64_t rhizome_database_create_blob_for(const char *hashhex,int64_t fileLength,
 	   sqlite3_errmsg(rhizome_db));
     goto insert_row_fail;
   }
-  DEBUGF("INSERT OR REPLACE INTO FILES(id,length,highestpriority,datavalid,inserttime) VALUES('%s',%lld,%d,0,%lld);",
-	  hashhex, (long long)fileLength, priority, (long long)gettime_ms()
-	);
-
+  
   sqlite3_stmt *statement = sqlite_prepare(&retry,"INSERT OR REPLACE INTO FILEBLOBS(id,data) VALUES('%s',?)",hashhex);
-  DEBUGF("INSERT OR REPLACE INTO FILEBLOBS(id,data) VALUES('%s',?)",hashhex);
   if (!statement)
     goto insert_row_fail;
   
-
   /* Bind appropriate sized zero-filled blob to data field */
   if (sqlite3_bind_zeroblob(statement, 1, fileLength) != SQLITE_OK) {
     WHYF("sqlite3_bind_zeroblob() failed: %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));

@@ -748,8 +748,6 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
   bcopy(peersid,slot->peer_sid,SID_SIZE);
   bcopy(m->cryptoSignPublic,slot->bid,RHIZOME_MANIFEST_ID_BYTES);
   slot->bidVersion=m->version;
-  DEBUGF("request bid=%s, version=0x%llx",
-	 alloca_tohex_bid(slot->bid),slot->bidVersion);
   slot->bidP=1;
 
   /* Don't provide a filename, because we will stream the file straight into
@@ -761,7 +759,8 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
     return -1;
   }
   if (config.debug.rhizome_rx) 
-    DEBUGF("   started fetch into %s, slot=%d filehash=%s", slot->manifest->dataFileName, slotno(slot), m->fileHexHash);
+    DEBUGF("   started fetch bid %s version 0x%llx into %s, slot=%d filehash=%s", 
+	   alloca_tohex_bid(slot->bid), slot->bidVersion, slot->manifest->dataFileName, slotno(slot), m->fileHexHash);
   return STARTED;
 }
 
@@ -1003,8 +1002,8 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
 
 static int rhizome_fetch_close(struct rhizome_fetch_slot *slot)
 {
-  //  if (config.debug.rhizome_rx)
-  DEBUGF("close Rhizome fetch slot=%d", slotno(slot));
+  if (config.debug.rhizome_rx)
+    DEBUGF("close Rhizome fetch slot=%d", slotno(slot));
   assert(slot->state != RHIZOME_FETCH_FREE);
 
   /* close socket and stop watching it */
