@@ -21,6 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <arpa/inet.h>
 #include <assert.h>
 #include "serval.h"
+#include "conf.h"
 #include "rhizome.h"
 #include "str.h"
 #include "strbuf_helpers.h"
@@ -182,7 +183,7 @@ static struct rhizome_fetch_candidate *rhizome_fetch_insert(struct rhizome_fetch
 {
   struct rhizome_fetch_candidate * const c = &q->candidate_queue[i];
   struct rhizome_fetch_candidate * e = &q->candidate_queue[q->candidate_queue_size - 1];
-  if (debug & DEBUG_RHIZOME_RX)
+  if (config.debug.rhizome_rx)
     DEBUGF("insert queue[%d] candidate[%d]", q - rhizome_fetch_queues, i);
   assert(i >= 0 && i < q->candidate_queue_size);
   assert(i == 0 || c[-1].manifest);
@@ -208,7 +209,7 @@ static void rhizome_fetch_unqueue(struct rhizome_fetch_queue *q, int i)
 {
   assert(i >= 0 && i < q->candidate_queue_size);
   struct rhizome_fetch_candidate *c = &q->candidate_queue[i];
-  if (debug & DEBUG_RHIZOME_RX)
+  if (config.debug.rhizome_rx)
     DEBUGF("unqueue queue[%d] candidate[%d] manifest=%p", q - rhizome_fetch_queues, i, c->manifest);
   if (c->manifest) {
     rhizome_manifest_free(c->manifest);
@@ -496,7 +497,7 @@ static int rhizome_import_received_bundle(struct rhizome_manifest *m)
 {
   m->finalised = 1;
   m->manifest_bytes = m->manifest_all_bytes; // store the signatures too
-  if (debug & DEBUG_RHIZOME_RX) {
+  if (config.debug.rhizome_rx) {
     DEBUGF("manifest len=%d has %d signatories. Associated file = %lld bytes", 
 	   m->manifest_bytes, m->sig_count,(long long)m->fileLength);
     dump("manifest", m->manifestdata, m->manifest_all_bytes);
@@ -555,7 +556,7 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
     if (connect(sock, (struct sockaddr*)&slot->peer_ipandport, 
 		sizeof slot->peer_ipandport) == -1) {
       if (errno == EINPROGRESS) {
-	if (debug & DEBUG_RHIZOME_RX)
+	if (config.debug.rhizome_rx)
 	  DEBUGF("connect() returned EINPROGRESS");
       } else {
 	WHYF_perror("connect(%d, %s:%u)", sock, buf, 
@@ -563,7 +564,7 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
 	goto bail_http;
       }
     }
-    if (debug & DEBUG_RHIZOME_RX)
+    if (config.debug.rhizome_rx)
       DEBUGF("RHIZOME HTTP REQUEST family=%u addr=%s sid=%s port=%u %s",
 	     slot->peer_ipandport.sin_family, 
 	     alloca_tohex_sid(slot->peer_sid),
@@ -653,7 +654,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
      the cache slot number to implicitly store the first bits.
   */
 
-  if (debug & DEBUG_RHIZOME_RX)
+  if (config.debug.rhizome_rx)
     DEBUGF("Fetching bundle slot=%d bid=%s version=%lld size=%lld peerip=%s",
 	slotno(slot),
 	bid,
@@ -664,7 +665,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
 
   // If the payload is empty, no need to fetch, so import now.
   if (m->fileLength == 0) {
-    if (debug & DEBUG_RHIZOME_RX)
+    if (config.debug.rhizome_rx)
       DEBUGF("   manifest fetch not started -- nil payload, so importing instead");
     if (rhizome_import_received_bundle(m) == -1)
       return WHY("bundle import failed");
@@ -673,11 +674,11 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
 
   // If we already have this version or newer, do not fetch.
   if (rhizome_manifest_version_cache_lookup(m)) {
-    if (debug & DEBUG_RHIZOME_RX)
+    if (config.debug.rhizome_rx)
       DEBUG("   fetch not started -- already have that version or newer");
     return SUPERSEDED;
   }
-  if (debug & DEBUG_RHIZOME_RX)
+  if (config.debug.rhizome_rx)
     DEBUGF("   is new");
 
   /* Don't fetch if already in progress.  If a fetch of an older version is already in progress,
@@ -691,15 +692,15 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
     const rhizome_manifest *am = as->manifest;
     if (as->state != RHIZOME_FETCH_FREE && memcmp(m->cryptoSignPublic, am->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES) == 0) {
       if (am->version < m->version) {
-	if (debug & DEBUG_RHIZOME_RX)
+	if (config.debug.rhizome_rx)
 	  DEBUGF("   fetch already in progress -- older version");
 	return OLDERBUNDLE;
       } else if (am->version > m->version) {
-	if (debug & DEBUG_RHIZOME_RX)
+	if (config.debug.rhizome_rx)
 	  DEBUGF("   fetch already in progress -- newer version");
 	return NEWERBUNDLE;
       } else {
-	if (debug & DEBUG_RHIZOME_RX)
+	if (config.debug.rhizome_rx)
 	  DEBUGF("   fetch already in progress -- same version");
 	return SAMEBUNDLE;
       }
@@ -714,7 +715,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
   if (sqlite_exec_int64(&gotfile, "SELECT COUNT(*) FROM FILES WHERE ID='%s' and datavalid=1;", m->fileHexHash) != 1)
     return WHY("select failed");
   if (gotfile) {
-    if (debug & DEBUG_RHIZOME_RX)
+    if (config.debug.rhizome_rx)
       DEBUGF("   fetch not started - payload already present, so importing instead");
     if (rhizome_add_manifest(m, m->ttl-1) == -1)
       return WHY("add manifest failed");
@@ -726,7 +727,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
     struct rhizome_fetch_slot *s = &rhizome_fetch_queues[i].active;
     const rhizome_manifest *sm = s->manifest;
     if (s->state != RHIZOME_FETCH_FREE && strcasecmp(m->fileHexHash, sm->fileHexHash) == 0) {
-      if (debug & DEBUG_RHIZOME_RX)
+      if (config.debug.rhizome_rx)
 	DEBUGF("   fetch already in progress, slot=%d filehash=%s", i, m->fileHexHash);
       return SAMEPAYLOAD;
     }
@@ -759,7 +760,7 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
   if (schedule_fetch(slot) == -1) {
     return -1;
   }
-  if (debug & DEBUG_RHIZOME_RX) 
+  if (config.debug.rhizome_rx) 
     DEBUGF("   started fetch into %s, slot=%d filehash=%s", slot->manifest->dataFileName, slotno(slot), m->fileHexHash);
   return STARTED;
 }
@@ -879,17 +880,17 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
   const char *bid = alloca_tohex_bid(m->cryptoSignPublic);
   int priority=100; /* normal priority */
 
-  if (debug & DEBUG_RHIZOME_RX)
+  if (config.debug.rhizome_rx)
     DEBUGF("Considering import bid=%s version=%lld size=%lld priority=%d:", bid, m->version, m->fileLength, priority);
 
   if (rhizome_manifest_version_cache_lookup(m)) {
-    if (debug & DEBUG_RHIZOME_RX)
+    if (config.debug.rhizome_rx)
       DEBUG("   already have that version or newer");
     rhizome_manifest_free(m);
     RETURN(-1);
   }
 
-  if (debug & DEBUG_RHIZOME_RX) {
+  if (config.debug.rhizome_rx) {
     long long stored_version;
     if (sqlite_exec_int64(&stored_version, "select version from manifests where id='%s'", bid) > 0)
       DEBUGF("   is new (have version %lld)", stored_version);
@@ -970,7 +971,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
   c->peer_ipandport = *peerip;
   bcopy(peersid,c->peer_sid,SID_SIZE);
 
-  if (debug & DEBUG_RHIZOME_RX) {
+  if (config.debug.rhizome_rx) {
     DEBUG("Rhizome fetch queues:");
     int i, j;
     for (i = 0; i < NQUEUES; ++i) {
@@ -1002,7 +1003,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
 
 static int rhizome_fetch_close(struct rhizome_fetch_slot *slot)
 {
-  //  if (debug & DEBUG_RHIZOME_RX)
+  //  if (config.debug.rhizome_rx)
   DEBUGF("close Rhizome fetch slot=%d", slotno(slot));
   assert(slot->state != RHIZOME_FETCH_FREE);
 
@@ -1051,7 +1052,7 @@ static void rhizome_fetch_mdp_slot_callback(struct sched_ent *alarm)
     rhizome_fetch_close(slot);
     return;
   }
-  if (debug& DEBUG_RHIZOME_RX)
+  if (config.debug.rhizome_rx)
     DEBUGF("Timeout waiting for blocks. Resending request for slot=0x%p",
 	   slot);
   if (slot->bidP)
@@ -1217,7 +1218,7 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
 
 void rhizome_fetch_write(struct rhizome_fetch_slot *slot)
 {
-  if (debug & DEBUG_RHIZOME_RX)
+  if (config.debug.rhizome_rx)
     DEBUGF("write_nonblock(%d, %s)", slot->alarm.poll.fd, alloca_toprint(-1, &slot->request[slot->request_ofs], slot->request_len-slot->request_ofs));
   int bytes = write_nonblock(slot->alarm.poll.fd, &slot->request[slot->request_ofs], slot->request_len-slot->request_ofs);
   if (bytes == -1) {
@@ -1259,7 +1260,7 @@ int rhizome_fetch_flush_blob_buffer(struct rhizome_fetch_slot *slot)
     WHYF("sqlite3_blob_write(,,%d,%lld) failed, %s", 
 	 slot->blob_buffer_bytes,slot->file_ofs-slot->blob_buffer_bytes,
 	 sqlite3_errmsg(rhizome_db));
-    if (1||debug & DEBUG_RHIZOME_RX)
+    if (1 || config.debug.rhizome_tx)
       DEBUGF("Failed to write %d bytes to file @ offset %lld-%lld", 
 	     slot->blob_buffer_bytes,
 	     slot->file_ofs,slot->blob_buffer_bytes);
@@ -1290,7 +1291,7 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
     if (bytes>0)
       SHA512_Update(&slot->sha512_context,(unsigned char *)buffer,bytes);
 
-    if (debug & DEBUG_RHIZOME_RX) {
+    if (config.debug.rhizome_rx) {
       DEBUGF("slot->blob_buffer_bytes=%d, slot->file_ofs=%d",
 	     slot->blob_buffer_bytes,slot->file_ofs);
       dump("buffer",buffer,bytes);
@@ -1327,7 +1328,7 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
   slot->last_write_time=gettime_ms();
   if (slot->file_ofs>=slot->file_len) {
     /* got all of file */
-    if (debug & DEBUG_RHIZOME_RX)
+    if (config.debug.rhizome_rx)
       DEBUGF("Received all of file via rhizome -- now to import it");
     if (slot->manifest) {
       // Were fetching payload, now we have it.
@@ -1338,7 +1339,7 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
       
       sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
       if (strcasecmp(hash_out,slot->manifest->fileHexHash)) {
-	if (debug & DEBUG_RHIZOME_RX)
+	if (config.debug.rhizome_rx)
 	  DEBUGF("Hash mismatch -- dropping row from table.");	
 	DEBUGF("Expected hash=%s, got %s",
 	       slot->manifest->fileHexHash,hash_out);
@@ -1357,7 +1358,7 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 				       "UPDATE FILES SET datavalid=1 WHERE id='%s'",
 				       slot->manifest->fileHexHash);
 	if (ret!=SQLITE_OK) 
-	  if (debug & DEBUG_RHIZOME_RX)
+	  if (config.debug.rhizome_rx)
 	    DEBUGF("error marking row valid: %s",sqlite3_errmsg(rhizome_db));
 	INFOF("Updated row status (took %lldms)",(long long)gettime_ms()-start);
       }
@@ -1475,14 +1476,14 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	schedule(&slot->alarm);	
 	return;
       } else {
-	if (debug & DEBUG_RHIZOME_RX)
+	if (config.debug.rhizome_rx)
 	  DEBUGF("Empty read, closing connection: received %lld of %lld bytes",
 		slot->file_ofs,slot->file_len);
 	rhizome_fetch_switch_to_mdp(slot);
 	return;
       }
       if (sigPipeFlag) {
-	if (debug & DEBUG_RHIZOME_RX)
+	if (config.debug.rhizome_rx)
 	  DEBUG("Received SIGPIPE, closing connection");
 	rhizome_fetch_switch_to_mdp(slot);
 	return;
@@ -1502,25 +1503,25 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	schedule(&slot->alarm);
 	slot->request_len += bytes;
 	if (http_header_complete(slot->request, slot->request_len, bytes)) {
-	  if (debug & DEBUG_RHIZOME_RX)
+	  if (config.debug.rhizome_rx)
 	    DEBUGF("Got HTTP reply: %s", alloca_toprint(160, slot->request, slot->request_len));
 	  /* We have all the reply headers, so parse them, taking care of any following bytes of
 	     content. */
 	  struct http_response_parts parts;
 	  if (unpack_http_response(slot->request, &parts) == -1) {
-	    if (debug & DEBUG_RHIZOME_RX)
+	    if (config.debug.rhizome_rx)
 	      DEBUGF("Failed HTTP request: failed to unpack http response");
 	    rhizome_fetch_switch_to_mdp(slot);
 	    return;
 	  }
 	  if (parts.code != 200) {
-	    if (debug & DEBUG_RHIZOME_RX)
+	    if (config.debug.rhizome_rx)
 	      DEBUGF("Failed HTTP request: rhizome server returned %d != 200 OK", parts.code);
 	    rhizome_fetch_switch_to_mdp(slot);
 	    return;
 	  }
 	  if (parts.content_length == -1) {
-	    if (debug & DEBUG_RHIZOME_RX)
+	    if (config.debug.rhizome_rx)
 	      DEBUGF("Invalid HTTP reply: missing Content-Length header");
 	    rhizome_fetch_switch_to_mdp(slot);
 	    return;
@@ -1554,7 +1555,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
   }
   if (alarm->poll.revents==0 || alarm->poll.revents & (POLLHUP | POLLERR)){
     // timeout or socket error, close the socket
-    if (debug & DEBUG_RHIZOME_RX)
+    if (config.debug.rhizome_rx)
       DEBUGF("Closing due to timeout or error %x (%x %x)", alarm->poll.revents, POLLHUP, POLLERR);
     if (slot->state!=RHIZOME_FETCH_FREE)
       rhizome_fetch_close(slot);
@@ -1582,12 +1583,12 @@ int unpack_http_response(char *response, struct http_response_parts *parts)
   parts->content_start = NULL;
   char *p = NULL;
   if (!str_startswith(response, "HTTP/1.0 ", (const char **)&p)) {
-    if (debug&DEBUG_RHIZOME_RX)
+    if (config.debug.rhizome_rx)
       DEBUGF("Malformed HTTP reply: missing HTTP/1.0 preamble");
     return -1;
   }
   if (!(isdigit(p[0]) && isdigit(p[1]) && isdigit(p[2]) && p[3] == ' ')) {
-    if (debug&DEBUG_RHIZOME_RX)
+    if (config.debug.rhizome_rx)
       DEBUGF("Malformed HTTP reply: missing three-digit status code");
     return -1;
   }
@@ -1609,7 +1610,7 @@ int unpack_http_response(char *response, struct http_response_parts *parts)
       while (isdigit(*p))
 	parts->content_length = parts->content_length * 10 + *p++ - '0';
       if (p == nump || (*p != '\r' && *p != '\n')) {
-	if (debug & DEBUG_RHIZOME_RX)
+	if (config.debug.rhizome_rx)
 	  DEBUGF("Invalid HTTP reply: malformed Content-Length header");
 	return -1;
       }

@@ -18,6 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "conf.h"
 #include "str.h"
 #include "strbuf.h"
 #include "overlay_buffer.h"
@@ -374,7 +375,7 @@ int overlay_route_node_can_hear_me(struct subscriber *subscriber, int sender_int
      the scanning of recent observations when re-calculating observation scores. */
   while (neh->observations[obs_index].valid && neh->observations[obs_index].s2 >= s1 - 1) {
     if (neh->observations[obs_index].sender_interface == sender_interface) {
-      if (debug&DEBUG_OVERLAYROUTING)
+      if (config.debug.overlayrouting)
 	DEBUGF("merging observation into slot #%d s1=%u s2=%u", obs_index, neh->observations[obs_index].s1, neh->observations[obs_index].s2);
       s1 = neh->observations[obs_index].s1;
       merge=1;
@@ -390,7 +391,7 @@ int overlay_route_node_can_hear_me(struct subscriber *subscriber, int sender_int
       obs_index = 0;
   }
   
-  if (debug&DEBUG_OVERLAYROUTING)
+  if (config.debug.overlayrouting)
     DEBUGF("assign observation slot #%d: s1=%u s2=%u time_ms=%lld", obs_index, s1, s2, (long long)now);
   neh->observations[obs_index].s1=s1;
   neh->observations[obs_index].s2=s2;
@@ -407,7 +408,7 @@ int overlay_route_node_can_hear_me(struct subscriber *subscriber, int sender_int
   if (overlay_route_recalc_neighbour_metrics(neh,now))
     return -1;
 
-  if (debug&DEBUG_OVERLAYROUTEMONITOR) overlay_route_dump();
+  if (config.debug.overlayroutemonitor) overlay_route_dump();
   return 0;
 }
 
@@ -430,7 +431,7 @@ int overlay_route_saw_selfannounce(struct overlay_frame *f, time_ms_t now)
   s1=ob_get_ui32(f->payload);
   s2=ob_get_ui32(f->payload);
   sender_interface=ob_get(f->payload);
-  if (debug&DEBUG_OVERLAYROUTING)
+  if (config.debug.overlayrouting)
     DEBUGF("Received self-announcement for sequence range [%08x,%08x] from interface %d",s1,s2,sender_interface);
 
   overlay_route_ack_selfannounce(f,s1,s2,sender_interface,n);
@@ -507,7 +508,7 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
   int diff=best_score - n->best_link_score;
   if (diff>0) {
     overlay_route_please_advertise(n);
-    if (debug&DEBUG_OVERLAYROUTEMONITOR) overlay_route_dump();
+    if (config.debug.overlayroutemonitor) overlay_route_dump();
   }
   int old_best = n->best_link_score;
   
@@ -566,21 +567,21 @@ int overlay_route_recalc_neighbour_metrics(struct overlay_neighbour *n, time_ms_
   if (!n->node)
     RETURN(WHY("Neighbour is not a node"));
 
-  if (debug&DEBUG_OVERLAYROUTING)
+  if (config.debug.overlayrouting)
     DEBUGF("Updating neighbour metrics for %s", alloca_tohex_sid(n->node->subscriber->sid));
   
   /* At most one update per half second */
   if (n->last_metric_update == 0) {
-    if (debug&DEBUG_OVERLAYROUTING)
+    if (config.debug.overlayrouting)
       DEBUG("last update was never");
   } else {
     time_ms_t ago = now - n->last_metric_update;
     if (ago < 500) {
-      if (debug&DEBUG_OVERLAYROUTING)
+      if (config.debug.overlayrouting)
 	DEBUGF("last update was %lldms ago -- skipping", (long long)ago);
       RETURN (0);
     }
-    if (debug&DEBUG_OVERLAYROUTING)
+    if (config.debug.overlayrouting)
       DEBUGF("last update was %lldms ago", (long long)ago);
   }
   n->last_metric_update = now;
@@ -612,7 +613,7 @@ int overlay_route_recalc_neighbour_metrics(struct overlay_neighbour *n, time_ms_
     
     /* Check the observation age, and ignore if too old */
     time_ms_t obs_age = now - n->observations[i].time_ms;
-    if (debug&DEBUG_OVERLAYROUTING)
+    if (config.debug.overlayrouting)
       DEBUGF("tallying obs: %lldms old, %ums long", obs_age,interval);
     
     /* Ignore very large intervals (>1hour) as being likely to be erroneous.
@@ -625,7 +626,7 @@ int overlay_route_recalc_neighbour_metrics(struct overlay_neighbour *n, time_ms_
     if (interval>=3600000 || obs_age>20000)
       continue;
 
-    if (debug&DEBUG_OVERLAYROUTING) 
+    if (config.debug.overlayrouting) 
       DEBUGF("adding %dms (interface %d '%s')",
 	      interval,n->observations[i].sender_interface,
 	      overlay_interfaces[n->observations[i].sender_interface].name);
@@ -669,7 +670,7 @@ int overlay_route_recalc_neighbour_metrics(struct overlay_neighbour *n, time_ms_
       scoreChanged=1;
       n->scores[i]=score;
     }
-    if ((debug&DEBUG_OVERLAYROUTING)&&score)
+    if ((config.debug.overlayrouting)&&score)
       DEBUGF("Neighbour score on interface #%d = %d (observations for %dms)",i,score,ms_observed_200sec[i]);
   }
   if (scoreChanged)
@@ -702,7 +703,7 @@ int overlay_route_recalc_neighbour_metrics(struct overlay_neighbour *n, time_ms_
 int overlay_route_saw_selfannounce_ack(struct overlay_frame *f,long long now)
 {
   IN();
-  if (debug&DEBUG_OVERLAYROUTING)
+  if (config.debug.overlayrouting)
     DEBUGF("processing selfannounce ack (payload length=%d)",f->payload->sizeLimit);
   
   if (f->payload->sizeLimit<9) 
@@ -726,14 +727,14 @@ int overlay_route_record_link(time_ms_t now, struct subscriber *to,
 			      int gateways_en_route)
 {
   IN();
-  if (debug & DEBUG_OVERLAYROUTING)
+  if (config.debug.overlayrouting)
     DEBUGF("to=%s, via=%s, sender_interface=%d, s1=%d, s2=%d score=%d gateways_en_route=%d",
 	alloca_tohex_sid(to->sid), alloca_tohex_sid(via->sid), sender_interface, s1, s2,
 	score, gateways_en_route
       );
  
   if (sender_interface>OVERLAY_MAX_INTERFACES || score == 0) {
-    if (debug & DEBUG_OVERLAYROUTING)
+    if (config.debug.overlayrouting)
       DEBUG("invalid report");
     RETURN(0);
   }
@@ -760,10 +761,10 @@ int overlay_route_record_link(time_ms_t now, struct subscriber *to,
      enough for now. */
   if (slot == -1) {
     slot = random() % OVERLAY_MAX_OBSERVATIONS;
-    if (debug & DEBUG_OVERLAYROUTING)
+    if (config.debug.overlayrouting)
       DEBUGF("allocate observation slot=%d", slot);
   } else {
-    if (debug & DEBUG_OVERLAYROUTING)
+    if (config.debug.overlayrouting)
       DEBUGF("overwrite observation slot=%d (sender=%s interface=%u observed_score=%u rx_time=%lld)",
 	  slot,
 	  n->observations[slot].sender?alloca_tohex_sid(n->observations[slot].sender->sid):"[None]",
@@ -795,7 +796,7 @@ int overlay_route_record_link(time_ms_t now, struct subscriber *to,
 
   overlay_route_recalc_node_metrics(n,now);
   
-  if (debug & DEBUG_OVERLAYROUTEMONITOR)
+  if (config.debug.overlayroutemonitor)
     overlay_route_dump();
   
   RETURN(0);

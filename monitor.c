@@ -112,7 +112,7 @@ int monitor_setup_sockets()
   if(setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &send_buffer_size, sizeof send_buffer_size)==-1)
     WHYF_perror("setsockopt(%d, SOL_SOCKET, SO_RCVBUF, &%d, %d)", sock, send_buffer_size, sizeof send_buffer_size);
 
-  if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO))
+  if (config.debug.io || config.debug.verbose_io)
     DEBUGF("Monitor server socket bound to %s", alloca_toprint(-1, &name, len));
 
   named_socket.function=monitor_poll;

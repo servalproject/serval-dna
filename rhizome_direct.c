@@ -801,7 +801,7 @@ int rhizome_direct_get_bars(const unsigned char bid_low[RHIZOME_MANIFEST_ID_BYTE
 	
 	int blob_bytes=sqlite3_blob_bytes(blob);
 	if (blob_bytes!=RHIZOME_BAR_BYTES) {
-	  if (debug&DEBUG_RHIZOME)
+	  if (config.debug.rhizome)
 	    DEBUG("Found a BAR that is the wrong size - ignoring");
 	  sqlite3_blob_close(blob);
 	  blob=NULL;

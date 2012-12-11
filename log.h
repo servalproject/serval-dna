@@ -25,40 +25,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/types.h>
 #include <errno.h>
 
-typedef unsigned int debugflags_t;
-
-extern debugflags_t debug;
-
-#define DEBUG_ALL                   (~0)
-#define DEBUG_PACKETRX              (1 << 0)
-#define DEBUG_OVERLAYINTERFACES     (1 << 1)
-#define DEBUG_VERBOSE               (1 << 2)
-#define DEBUG_VERBOSE_IO            (1 << 3)
-#define DEBUG_PEERS                 (1 << 4)
-#define DEBUG_DNARESPONSES          (1 << 5)
-#define DEBUG_DNAHELPER             (1 << 6)
-#define DEBUG_VOMP                  (1 << 7)
-#define DEBUG_RHIZOME_RX            (1 << 8)
-#define DEBUG_PACKETFORMATS         (1 << 9)
-#define DEBUG_GATEWAY               (1 << 10)
-#define DEBUG_KEYRING               (1 << 11)
-#define DEBUG_IO                    (1 << 12)
-#define DEBUG_OVERLAYFRAMES         (1 << 13)
-#define DEBUG_OVERLAYABBREVIATIONS  (1 << 14)
-#define DEBUG_OVERLAYROUTING        (1 << 15)
-#define DEBUG_SECURITY              (1 << 16)
-#define DEBUG_RHIZOME               (1 << 17)
-#define DEBUG_OVERLAYROUTEMONITOR   (1 << 18)
-#define DEBUG_QUEUES                (1 << 19)
-#define DEBUG_BROADCASTS            (1 << 20)
-#define DEBUG_RHIZOME_TX            (1 << 21)
-#define DEBUG_PACKETTX              (1 << 22)
-#define DEBUG_PACKETCONSTRUCTION    (1 << 23)
-#define DEBUG_MANIFESTS             (1 << 24)
-#define DEBUG_MDPREQUESTS           (1 << 25)
-#define DEBUG_TIMING                (1 << 26)
-#define DEBUG_RHIZOME_ADS           (1 << 27)
-
 #define LOG_LEVEL_SILENT    (-1)
 #define LOG_LEVEL_DEBUG     (0)
 #define LOG_LEVEL_INFO      (1)
@@ -122,10 +88,9 @@ void set_logging(FILE *f);
 FILE *open_logging();
 void close_logging();
 void logArgv(int level, struct __sourceloc whence, const char *label, int argc, const char *const *argv);
-void logString(int level, struct __sourceloc whence, const char *str); 
+void logString(int level, struct __sourceloc whence, const char *str);
 void logMessage(int level, struct __sourceloc whence, const char *fmt, ...);
 void vlogMessage(int level, struct __sourceloc whence, const char *fmt, va_list);
-debugflags_t debugFlagMask(const char *flagname);
 int logDump(int level, struct __sourceloc whence, char *name, const unsigned char *addr, size_t len);
 ssize_t get_self_executable_path(char *buf, size_t len);
 int log_backtrace(struct __sourceloc whence);

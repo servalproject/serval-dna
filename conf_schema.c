@@ -32,7 +32,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf_helpers.h"
 #include "conf.h"
 
-int cf_opt_boolean(int *booleanp, const char *text)
+int cf_opt_char_boolean(char *booleanp, const char *text)
 {
   if (!strcasecmp(text, "true") || !strcasecmp(text, "yes") || !strcasecmp(text, "on") || !strcasecmp(text, "1")) {
     *booleanp = 1;
@@ -45,6 +45,15 @@ int cf_opt_boolean(int *booleanp, const char *text)
   return CFINVALID;
 }
 
+int cf_opt_int_boolean(int *booleanp, const char *text)
+{
+  char b;
+  int ret = cf_opt_char_boolean(&b, text);
+  if (ret == CFOK)
+    *booleanp = b;
+  return ret;
+}
+
 int cf_opt_absolute_path(char *str, size_t len, const char *text)
 {
   if (text[0] != '/')
@@ -54,57 +63,6 @@ int cf_opt_absolute_path(char *str, size_t len, const char *text)
   strncpy(str, text, len);
   assert(str[len - 1] == '\0');
   return CFOK;
-}
-
-int cf_opt_debugflags(debugflags_t *flagsp, const struct cf_om_node *node)
-{
-  //DEBUGF("%s", __FUNCTION__);
-  //cf_dump_node(node, 1);
-  debugflags_t setmask = 0;
-  debugflags_t clearmask = 0;
-  int setall = 0;
-  int clearall = 0;
-  int result = CFEMPTY;
-  int i;
-  for (i = 0; i < node->nodc; ++i) {
-    const struct cf_om_node *child = node->nodv[i];
-    cf_warn_unsupported_children(child);
-    debugflags_t mask = debugFlagMask(child->key);
-    int flag = -1;
-    if (!mask)
-      cf_warn_unsupported_node(child);
-    else if (child->text) {
-      int ret = cf_opt_boolean(&flag, child->text);
-      switch (ret) {
-      case CFERROR: return CFERROR;
-      case CFOK:
-	result &= ~CFEMPTY;
-	if (mask == ~0) {
-	  if (flag)
-	    setall = 1;
-	  else
-	    clearall = 1;
-	} else {
-	  if (flag)
-	    setmask |= mask;
-	  else
-	    clearmask |= mask;
-	}
-	break;
-      default:
-	cf_warn_node_value(child, ret);
-	result |= ret;
-	break;
-      }
-    }
-  }
-  if (setall)
-    *flagsp = ~0;
-  else if (clearall)
-    *flagsp = 0;
-  *flagsp &= ~clearmask;
-  *flagsp |= setmask;
-  return result;
 }
 
 int cf_opt_protocol(char *str, size_t len, const char *text)

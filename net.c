@@ -23,9 +23,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <time.h>
+
+#include "serval.h"
+#include "conf.h"
 #include "net.h"
 #include "str.h"
-#include "serval.h"
 
 int _set_nonblock(int fd, struct __sourceloc __whence)
 {
@@ -140,7 +142,7 @@ ssize_t recvwithttl(int sock,unsigned char *buffer, size_t bufferlen,int *ttl,
   if (len == -1 && errno != EAGAIN && errno != EWOULDBLOCK)
     return WHY_perror("recvmsg");
   
-  if (0&&debug&DEBUG_PACKETRX) {
+  if (0 && config.debug.packetrx) {
     DEBUGF("recvmsg returned %lld (flags=%d, msg_controllen=%d)", (long long) len, msg.msg_flags, msg.msg_controllen);
     dump("received data", buffer, len);
   }
@@ -155,15 +157,15 @@ ssize_t recvwithttl(int sock,unsigned char *buffer, size_t bufferlen,int *ttl,
       if ((cmsg->cmsg_level == IPPROTO_IP) && 
 	  ((cmsg->cmsg_type == IP_RECVTTL) ||(cmsg->cmsg_type == IP_TTL))
 	  &&(cmsg->cmsg_len) ){
-	if (debug&DEBUG_PACKETRX)
+	if (config.debug.packetrx)
 	  DEBUGF("  TTL (%p) data location resolves to %p", ttl,CMSG_DATA(cmsg));
 	if (CMSG_DATA(cmsg)) {
 	  *ttl = *(unsigned char *) CMSG_DATA(cmsg);
-	  if (debug&DEBUG_PACKETRX)
+	  if (config.debug.packetrx)
 	    DEBUGF("  TTL of packet is %d", *ttl);
 	} 
       } else {
-	if (debug&DEBUG_PACKETRX)
+	if (config.debug.packetrx)
 	  DEBUGF("I didn't expect to see level=%02x, type=%02x",
 		 cmsg->cmsg_level,cmsg->cmsg_type);
       }	 

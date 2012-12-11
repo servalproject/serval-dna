@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <stdlib.h>
 #include "serval.h"
+#include "conf.h"
 #include "rhizome.h"
 #include "str.h"
 
@@ -38,7 +39,7 @@ int rhizome_manifest_verify(rhizome_manifest *m)
   /* Read signature blocks from file. */
   int ofs=end_of_text;  
   while(ofs<m->manifest_all_bytes) {
-    if (debug & DEBUG_RHIZOME) DEBUGF("ofs=0x%x, m->manifest_bytes=0x%x", ofs,m->manifest_all_bytes);
+    if (config.debug.rhizome) DEBUGF("ofs=0x%x, m->manifest_bytes=0x%x", ofs,m->manifest_all_bytes);
     if (rhizome_manifest_extract_signature(m,&ofs)) break;
   }
   
@@ -58,7 +59,7 @@ int rhizome_manifest_verify(rhizome_manifest *m)
       WARN("Invalid manifest 'id' field");
       m->errors++;
     } else if (m->sig_count == 0 || memcmp(m->signatories[0], manifest_id, RHIZOME_MANIFEST_ID_BYTES) != 0) {
-      if (debug&DEBUG_RHIZOME) {
+      if (config.debug.rhizome) {
 	if (m->sig_count>0) {
 	  DEBUGF("Manifest id variable does not match first signature block (signature key is %s)",
 		  alloca_tohex(m->signatories[0], crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)
@@ -487,7 +488,7 @@ rhizome_manifest *_rhizome_new_manifest(struct __sourceloc __whence)
   for (; manifest_first_free < MAX_RHIZOME_MANIFESTS && !manifest_free[manifest_first_free]; ++manifest_first_free)
     ;
 
-  if (debug & DEBUG_MANIFESTS) _log_manifest_trace(__whence, __FUNCTION__);
+  if (config.debug.manifests) _log_manifest_trace(__whence, __FUNCTION__);
 
   return m;
 }
@@ -536,7 +537,7 @@ void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m)
   manifest_free_whence[mid]=__whence;
   if (mid<manifest_first_free) manifest_first_free=mid;
 
-  if (debug & DEBUG_MANIFESTS) _log_manifest_trace(__whence, __FUNCTION__);
+  if (config.debug.manifests) _log_manifest_trace(__whence, __FUNCTION__);
 
   return;
 }
@@ -558,7 +559,7 @@ int rhizome_manifest_pack_variables(rhizome_manifest *m)
     }
   m->manifestdata[ofs++]=0x00;
   m->manifest_bytes=ofs;
-  if (debug&DEBUG_RHIZOME) DEBUG("Repacked variables in manifest.");
+  if (config.debug.rhizome) DEBUG("Repacked variables in manifest.");
   m->manifest_all_bytes=ofs;
 
   /* Recalculate hash */
@@ -588,7 +589,7 @@ int rhizome_manifest_selfsign(rhizome_manifest *m)
 
 int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename)
 {
-  if (debug & DEBUG_RHIZOME) DEBUGF("write manifest (%d bytes) to %s", m->manifest_all_bytes, filename);
+  if (config.debug.rhizome) DEBUGF("write manifest (%d bytes) to %s", m->manifest_all_bytes, filename);
   if (!m) return WHY("Manifest is null.");
   if (!m->finalised) return WHY("Manifest must be finalised before it can be written.");
   FILE *f = fopen(filename, "w");

@@ -18,6 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <sys/stat.h>
 #include "serval.h"
+#include "conf.h"
 #include "str.h"
 #include "strbuf.h"
 #include "overlay_buffer.h"
@@ -196,7 +197,7 @@ int overlay_mdp_service_dnalookup(overlay_mdp_frame *mdp)
   bcopy(&mdp->out.payload[0],&did[0],pll);
   did[pll]=0;
   
-  if (debug & DEBUG_MDPREQUESTS)
+  if (config.debug.mdprequests)
     DEBUG("MDP_PORT_DNALOOKUP");
   
   int results=0;

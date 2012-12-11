@@ -83,7 +83,7 @@ int form_rhizome_import_path(char * buf, size_t bufsiz, const char *fmt, ...)
 
 int create_rhizome_datastore_dir()
 {
-  if (debug & DEBUG_RHIZOME) DEBUGF("mkdirs(%s, 0700)", rhizome_datastore_path());
+  if (config.debug.rhizome) DEBUGF("mkdirs(%s, 0700)", rhizome_datastore_path());
   return mkdirs(rhizome_datastore_path(), 0700);
 }
 
@@ -92,7 +92,7 @@ int create_rhizome_import_dir()
   char dirname[1024];
   if (!form_rhizome_import_path(dirname, sizeof dirname, NULL))
     return -1;
-  if (debug & DEBUG_RHIZOME) DEBUGF("mkdirs(%s, 0700)", dirname);
+  if (config.debug.rhizome) DEBUGF("mkdirs(%s, 0700)", dirname);
   return mkdirs(dirname, 0700);
 }
 
@@ -114,12 +114,22 @@ int rhizome_manifest_priority(sqlite_retry_state *retry, const char *id)
   return (int) result;
 }
 
-debugflags_t sqlite_trace_debug = DEBUG_RHIZOME;
+int is_debug_rhizome()
+{
+  return config.debug.rhizome;
+}
+
+int is_debug_rhizome_ads()
+{
+  return config.debug.rhizome_ads;
+}
+
+static int (*sqlite_trace_func)() = is_debug_rhizome;
 const struct __sourceloc *sqlite_trace_whence = NULL;
 
 static void sqlite_trace_callback(void *context, const char *rendered_sql)
 {
-  if (debug & sqlite_trace_debug)
+  if (sqlite_trace_func())
     logMessage(LOG_LEVEL_DEBUG, sqlite_trace_whence ? *sqlite_trace_whence : __HERE__, "%s", rendered_sql);
 }
 
@@ -139,11 +149,11 @@ static void sqlite_trace_callback(void *context, const char *rendered_sql)
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-debugflags_t sqlite_set_debugmask(debugflags_t newmask)
+int (*sqlite_set_tracefunc(int (*newfunc)()))()
 {
-  debugflags_t oldmask = sqlite_trace_debug;
-  sqlite_trace_debug = newmask;
-  return oldmask;
+  int (*oldfunc)() = sqlite_trace_func;
+  sqlite_trace_func = newfunc;
+  return oldfunc;
 }
 
 /*
@@ -188,10 +198,10 @@ int rhizome_opendb()
     RETURN(WHYF("SQLite could not open database %s: %s", dbpath, sqlite3_errmsg(rhizome_db)));
   }
   sqlite3_trace(rhizome_db, sqlite_trace_callback, NULL);
-  int loglevel = (debug & DEBUG_RHIZOME) ? LOG_LEVEL_DEBUG : LOG_LEVEL_SILENT;
+  int loglevel = (config.debug.rhizome) ? LOG_LEVEL_DEBUG : LOG_LEVEL_SILENT;
 
   /* Read Rhizome configuration */
-  if (debug&DEBUG_RHIZOME) {
+  if (config.debug.rhizome) {
     DEBUGF("Rhizome will use %lluB of storage for its database.", (unsigned long long) config.rhizome.database_size);
   }
   /* Create tables as required */
@@ -658,7 +668,7 @@ int rhizome_drop_stored_file(const char *id,int maximum_priority)
       WHYF("Cannot drop fileid=%s due to manifest priority, manifestId=%s", id, manifestId);
       can_drop = 0;
     } else {
-      if (debug & DEBUG_RHIZOME)
+      if (config.debug.rhizome)
 	DEBUGF("removing stale manifests, groupmemberships");
       sqlite_exec_void_retry(&retry, "delete from manifests where id='%s';", manifestId);
       sqlite_exec_void_retry(&retry, "delete from keypairs where public='%s';", manifestId);
@@ -905,20 +915,20 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
 	long long blob_filesize = rhizome_manifest_get_ll(m, "filesize");
 	int from_here = 0;
 	if (q_author) {
-	  if (debug & DEBUG_RHIZOME) DEBUGF("q_author=%s", alloca_str_toprint(q_author));
+	  if (config.debug.rhizome) DEBUGF("q_author=%s", alloca_str_toprint(q_author));
 	  unsigned char authorSid[SID_SIZE];
 	  stowSid(authorSid, 0, q_author);
 	  int cn = 0, in = 0, kp = 0;
 	  from_here = keyring_find_sid(keyring, &cn, &in, &kp, authorSid);
 	}
 	if (!from_here && blob_sender) {
-	  if (debug & DEBUG_RHIZOME) DEBUGF("blob_sender=%s", alloca_str_toprint(blob_sender));
+	  if (config.debug.rhizome) DEBUGF("blob_sender=%s", alloca_str_toprint(blob_sender));
 	  unsigned char senderSid[SID_SIZE];
 	  stowSid(senderSid, 0, blob_sender);
 	  int cn = 0, in = 0, kp = 0;
 	  from_here = keyring_find_sid(keyring, &cn, &in, &kp, senderSid);
 	}
-	if (debug & DEBUG_RHIZOME) DEBUGF("manifest payload size = %lld", blob_filesize);
+	if (config.debug.rhizome) DEBUGF("manifest payload size = %lld", blob_filesize);
 	cli_puts(blob_service ? blob_service : ""); cli_delim(":");
 	cli_puts(q_manifestid); cli_delim(":");
 	cli_printf("%lld", blob_version); cli_delim(":");
@@ -1238,7 +1248,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
   if (m->fileLength != 0) {
     strncpy(filehash, m->fileHexHash, sizeof filehash);
     str_toupper_inplace(filehash);
-    if (debug & DEBUG_RHIZOME)
+    if (config.debug.rhizome)
       DEBUGF("filehash=\"%s\"", filehash);
     sqlite3_bind_text(statement, field++, filehash, -1, SQLITE_STATIC);
   }
@@ -1247,7 +1257,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
   size_t rows = 0;
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     ++rows;
-    if (debug & DEBUG_RHIZOME) DEBUGF("Row %d", rows);
+    if (config.debug.rhizome) DEBUGF("Row %d", rows);
     if (!(   sqlite3_column_count(statement) == 4
 	  && sqlite3_column_type(statement, 0) == SQLITE_TEXT
 	  && sqlite3_column_type(statement, 1) == SQLITE_BLOB
@@ -1286,7 +1296,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
       long long blob_version = rhizome_manifest_get_ll(blob_m, "version");
       const char *blob_filehash = rhizome_manifest_get(blob_m, "filehash", NULL, 0);
       long long blob_filesize = rhizome_manifest_get_ll(blob_m, "filesize");
-      if (debug & DEBUG_RHIZOME)
+      if (config.debug.rhizome)
 	DEBUGF("Consider manifest.service=%s manifest.id=%s manifest.version=%lld", blob_service, q_manifestid, blob_version);
       /* Perform consistency checks, because we're paranoid. */
       int inconsistent = 0;
@@ -1330,7 +1340,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
 	if (strcasecmp(service, RHIZOME_SERVICE_FILE) == 0) {
 	  const char *blob_name = rhizome_manifest_get(blob_m, "name", NULL, 0);
 	  if (blob_name && !strcmp(blob_name, name)) {
-	    if (debug & DEBUG_RHIZOME)
+	    if (config.debug.rhizome)
 	      strbuf_sprintf(b, " name=\"%s\"", blob_name);
 	    ret = 1;
 	  }
@@ -1338,7 +1348,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
 	  const char *blob_sender = rhizome_manifest_get(blob_m, "sender", NULL, 0);
 	  const char *blob_recipient = rhizome_manifest_get(blob_m, "recipient", NULL, 0);
 	  if (blob_sender && !strcasecmp(blob_sender, sender) && blob_recipient && !strcasecmp(blob_recipient, recipient)) {
-	    if (debug & DEBUG_RHIZOME)
+	    if (config.debug.rhizome)
 	      strbuf_sprintf(b, " sender=%s recipient=%s", blob_sender, blob_recipient);
 	    ret = 1;
 	  }
@@ -1346,7 +1356,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
 	if (ret == 1) {
 	  const char *q_author = (const char *) sqlite3_column_text(statement, 3);
 	  if (q_author) {
-	    if (debug & DEBUG_RHIZOME)
+	    if (config.debug.rhizome)
 	      strbuf_sprintf(b, " .author=%s", q_author);
 	    stowSid(blob_m->author, 0, q_author);
 	  }

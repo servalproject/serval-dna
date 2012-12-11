@@ -18,6 +18,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "conf.h"
 #include "str.h"
 #include "overlay_address.h"
 #include "overlay_buffer.h"
@@ -203,7 +204,7 @@ int overlay_route_saw_advertisements(int i, struct overlay_frame *f, struct deco
       
       /* Don't record routes to ourselves */
       if (subscriber->reachable==REACHABLE_SELF) {
-	if (debug & DEBUG_OVERLAYROUTING)
+	if (config.debug.overlayrouting)
 	  DEBUGF("Ignore announcement about me (%s)", alloca_tohex_sid(subscriber->sid));
 	continue;
       }

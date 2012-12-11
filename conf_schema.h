@@ -178,16 +178,47 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  * @author Andrew Bettison <andrew@servalproject.com>
  */
 
+STRUCT(debug)
+ATOM(char, verbose,		        0, cf_opt_char_boolean,, "")
+ATOM(char, dnaresponses,		0, cf_opt_char_boolean,, "")
+ATOM(char, dnahelper,		        0, cf_opt_char_boolean,, "")
+ATOM(char, queues,		        0, cf_opt_char_boolean,, "")
+ATOM(char, timing,		        0, cf_opt_char_boolean,, "")
+ATOM(char, io,		                0, cf_opt_char_boolean,, "")
+ATOM(char, verbose_io,		        0, cf_opt_char_boolean,, "")
+ATOM(char, packetformats,		0, cf_opt_char_boolean,, "")
+ATOM(char, gateway,		        0, cf_opt_char_boolean,, "")
+ATOM(char, keyring,		        0, cf_opt_char_boolean,, "")
+ATOM(char, security,		        0, cf_opt_char_boolean,, "")
+ATOM(char, mdprequests,		        0, cf_opt_char_boolean,, "")
+ATOM(char, peers,		        0, cf_opt_char_boolean,, "")
+ATOM(char, overlayframes,		0, cf_opt_char_boolean,, "")
+ATOM(char, overlayabbreviations,	0, cf_opt_char_boolean,, "")
+ATOM(char, overlayrouting,		0, cf_opt_char_boolean,, "")
+ATOM(char, overlayroutemonitor,		0, cf_opt_char_boolean,, "")
+ATOM(char, overlayinterfaces,		0, cf_opt_char_boolean,, "")
+ATOM(char, broadcasts,		        0, cf_opt_char_boolean,, "")
+ATOM(char, packettx,		        0, cf_opt_char_boolean,, "")
+ATOM(char, packetrx,		        0, cf_opt_char_boolean,, "")
+ATOM(char, packetconstruction,		0, cf_opt_char_boolean,, "")
+ATOM(char, rhizome,		        0, cf_opt_char_boolean,, "")
+ATOM(char, rhizome_tx,		        0, cf_opt_char_boolean,, "")
+ATOM(char, rhizome_rx,		        0, cf_opt_char_boolean,, "")
+ATOM(char, rhizome_ads,		        0, cf_opt_char_boolean,, "")
+ATOM(char, manifests,		        0, cf_opt_char_boolean,, "")
+ATOM(char, vomp,		        0, cf_opt_char_boolean,, "")
+END_STRUCT
+
 STRUCT(log)
 STRING(256,                 file,       "", cf_opt_absolute_path,, "Absolute path of log file")
-ATOM(int,                   show_pid,   1, cf_opt_boolean,, "If true, all log lines contain PID of logging process")
-ATOM(int,                   show_time,  1, cf_opt_boolean,, "If true, all log lines contain time stamp")
+ATOM(int,                   show_pid,   1, cf_opt_int_boolean,, "If true, all log lines contain PID of logging process")
+ATOM(int,                   show_time,  1, cf_opt_int_boolean,, "If true, all log lines contain time stamp")
 END_STRUCT
 
 STRUCT(server)
 STRING(256,                 chdir,      "/", cf_opt_absolute_path,, "Absolute path of chdir(2) for server process")
 STRING(256,                 dummy_interface_dir, "", cf_opt_str_nonempty,, "Path of directory containing dummy interface files, either absolute or relative to instance directory")
-ATOM(int,                   respawn_on_crash, 0, cf_opt_boolean,, "If true, server will exec(2) itself on fatal signals, eg SEGV")
+ATOM(int,                   respawn_on_crash, 0, cf_opt_int_boolean,, "If true, server will exec(2) itself on fatal signals, eg SEGV")
 END_STRUCT
 
 STRUCT(monitor)
@@ -210,7 +241,7 @@ SUB_STRUCT(mdp_iftypelist,  iftype,)
 END_STRUCT
 
 STRUCT(olsr)
-ATOM(int,                   enable,     1, cf_opt_boolean,, "If true, OLSR is used for mesh routing")
+ATOM(int,                   enable,     1, cf_opt_int_boolean,, "If true, OLSR is used for mesh routing")
 ATOM(uint16_t,              remote_port,4130, cf_opt_uint16_nonzero,, "Remote port number")
 ATOM(uint16_t,              local_port, 4131, cf_opt_uint16_nonzero,, "Local port number")
 END_STRUCT
@@ -257,19 +288,19 @@ SUB_STRUCT(rhizome_api_addfile, addfile,)
 END_STRUCT
 
 STRUCT(rhizome_http)
-ATOM(int,                   enable,     1, cf_opt_boolean,, "If true, Rhizome HTTP server is started")
+ATOM(int,                   enable,     1, cf_opt_int_boolean,, "If true, Rhizome HTTP server is started")
 END_STRUCT
 
 STRUCT(rhizome_mdp)
-ATOM(int,                   enable,     1, cf_opt_boolean,, "If true, Rhizome MDP server is started")
+ATOM(int,                   enable,     1, cf_opt_int_boolean,, "If true, Rhizome MDP server is started")
 END_STRUCT
 
 STRUCT(rhizome_advertise)
-ATOM(int,                   enable,     1, cf_opt_boolean,, "If true, Rhizome advertisements are sent")
+ATOM(int,                   enable,     1, cf_opt_int_boolean,, "If true, Rhizome advertisements are sent")
 END_STRUCT
 
 STRUCT(rhizome)
-ATOM(int,                   enable,     1, cf_opt_boolean,, "If true, server opens Rhizome database when starting")
+ATOM(int,                   enable,     1, cf_opt_int_boolean,, "If true, server opens Rhizome database when starting")
 STRING(256,                 datastore_path, "", cf_opt_absolute_path,, "Path of rhizome storage directory, absolute or relative to instance directory")
 ATOM(uint64_t,              database_size, 1000000, cf_opt_uint64_scaled,, "Size of database in bytes")
 ATOM(uint32_t,              fetch_delay_ms, 50, cf_opt_uint32_nonzero,, "Delay from receiving first bundle advert to initiating fetch")
@@ -297,17 +328,17 @@ VALUE_SUB_STRUCT(host)
 END_ARRAY(32)
 
 STRUCT(network_interface, vld_network_interface)
-ATOM(int,                   exclude,    0, cf_opt_boolean,, "If true, do not use matching interfaces")
+ATOM(int,                   exclude,    0, cf_opt_int_boolean,, "If true, do not use matching interfaces")
 ATOM(struct pattern_list,   match,      PATTERN_LIST_EMPTY, cf_opt_pattern_list,, "Names that match network interface")
 STRING(256,                 dummy,      "", cf_opt_str_nonempty,, "Path of dummy file, absolute or relative to server.dummy_interface_dir")
 ATOM(struct in_addr,        dummy_address,    (struct in_addr){htonl(0x7F000001)}, cf_opt_in_addr,, "Dummy interface address")
 ATOM(struct in_addr,        dummy_netmask,    (struct in_addr){htonl(0xFFFFFF00)}, cf_opt_in_addr,, "Dummy interface netmask")
-ATOM(int,                   dummy_filter_broadcasts,     0, cf_opt_boolean,, "If true, drop all incoming broadcast packets")
+ATOM(int,                   dummy_filter_broadcasts,     0, cf_opt_int_boolean,, "If true, drop all incoming broadcast packets")
 ATOM(short,                 type,       OVERLAY_INTERFACE_WIFI, cf_opt_interface_type,, "Type of network interface")
 ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, cf_opt_uint16_nonzero,, "Port number for network interface")
 ATOM(uint64_t,              speed,      1000000, cf_opt_uint64_scaled,, "Speed in bits per second")
 ATOM(int,                   mdp_tick_ms, -1, cf_opt_int32_nonneg,, "Override MDP tick interval for this interface")
-ATOM(int,                   default_route, 0, cf_opt_boolean,, "If true, use this interface as a default route")
+ATOM(int,                   default_route, 0, cf_opt_int_boolean,, "If true, use this interface as a default route")
 END_STRUCT
 
 ARRAY(interface_list, SORTED NO_DUPLICATES)
@@ -323,7 +354,7 @@ SUB_STRUCT(server,          server,)
 SUB_STRUCT(monitor,         monitor,)
 SUB_STRUCT(mdp,             mdp,)
 SUB_STRUCT(dna,             dna,)
-NODE(debugflags_t,          debug,      0, cf_opt_debugflags, USES_CHILDREN, "Debug flags")
+SUB_STRUCT(debug,           debug,)
 SUB_STRUCT(rhizome,         rhizome,)
 SUB_STRUCT(directory,       directory,)
 SUB_STRUCT(olsr,            olsr,)

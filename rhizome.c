@@ -67,7 +67,7 @@ int rhizome_fetch_delay_ms()
 
 int rhizome_bundle_import_files(const char *manifest_path, const char *payload_path, int ttl)
 {
-  if (debug & DEBUG_RHIZOME)
+  if (config.debug.rhizome)
     DEBUGF("(manifest_path=%s, payload_path=%s, ttl=%d)",
 	manifest_path ? alloca_str_toprint(manifest_path) : "NULL",
 	payload_path ? alloca_str_toprint(payload_path) : "NULL",
@@ -107,7 +107,7 @@ int rhizome_bundle_import_files(const char *manifest_path, const char *payload_p
 
 int rhizome_bundle_import(rhizome_manifest *m, int ttl)
 {
-  if (debug & DEBUG_RHIZOME)
+  if (config.debug.rhizome)
     DEBUGF("(m=%p, ttl=%d)", m, ttl);
   /* Add the manifest and its payload to the Rhizome database. */
   if (rhizome_manifest_check_file(m))
@@ -148,7 +148,7 @@ int rhizome_manifest_check_sanity(rhizome_manifest *m_in)
   } else {
     return WHY("Invalid service type");
   }
-  if (debug & DEBUG_RHIZOME)
+  if (config.debug.rhizome)
     DEBUGF("sender='%s'", sender ? sender : "(null)");
 
   /* passes all sanity checks */
@@ -194,7 +194,7 @@ int rhizome_manifest_bind_id(rhizome_manifest *m_in)
     if (!rhizome_secret2bk(m_in->cryptoSignPublic,rs,rs_len,bkbytes,m_in->cryptoSignSecret)) {
       char bkhex[RHIZOME_BUNDLE_KEY_STRLEN + 1];
       (void) tohex(bkhex, bkbytes, RHIZOME_BUNDLE_KEY_BYTES);
-      if (debug&DEBUG_RHIZOME) DEBUGF("set BK=%s", bkhex);
+      if (config.debug.rhizome) DEBUGF("set BK=%s", bkhex);
       rhizome_manifest_set(m_in, "BK", bkhex);
     } else {
       return WHY("Failed to set BK");
@@ -221,7 +221,7 @@ int rhizome_manifest_bind_file(rhizome_manifest *m_in,const char *filename,int e
     m_in->fileLength = stat.st_size;
   } else
     m_in->fileLength = 0;
-  if (debug & DEBUG_RHIZOME)
+  if (config.debug.rhizome)
     DEBUGF("filename=%s, fileLength=%lld", filename, m_in->fileLength);
   rhizome_manifest_set_ll(m_in,"filesize",m_in->fileLength);
 
@@ -270,7 +270,7 @@ int rhizome_manifest_check_file(rhizome_manifest *m_in)
       m_in->fileLength = stat.st_size;
     }
   }
-  if (debug & DEBUG_RHIZOME)
+  if (config.debug.rhizome)
     DEBUGF("filename=%s, fileLength=%lld", m_in->dataFileName ? alloca_str_toprint(m_in->dataFileName) : "NULL", m_in->fileLength);
   if (mfilesize != -1 && mfilesize != m_in->fileLength) {
     WHYF("Manifest.filesize (%lld) != actual file size (%lld)", mfilesize, m_in->fileLength);
@@ -306,7 +306,7 @@ int rhizome_manifest_check_file(rhizome_manifest *m_in)
    (Debounce!) */
 int rhizome_manifest_check_duplicate(rhizome_manifest *m_in, rhizome_manifest **m_out)
 {
-  if (debug & DEBUG_RHIZOME) DEBUG("Checking for duplicate");
+  if (config.debug.rhizome) DEBUG("Checking for duplicate");
   if (m_out) *m_out = NULL; 
   rhizome_manifest *dupm = NULL;
   if (rhizome_find_duplicate(m_in, &dupm,0 /* version doesn't matter */) == -1)
@@ -318,16 +318,16 @@ int rhizome_manifest_check_duplicate(rhizome_manifest *m_in, rhizome_manifest **
     }
     else
       rhizome_manifest_free(dupm);
-    if (debug & DEBUG_RHIZOME) DEBUG("Found a duplicate");
+    if (config.debug.rhizome) DEBUG("Found a duplicate");
     return 2;
   }
-  if (debug & DEBUG_RHIZOME) DEBUG("No duplicate found");
+  if (config.debug.rhizome) DEBUG("No duplicate found");
   return 0;
 }
 
 int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
 {
-  if (debug & DEBUG_RHIZOME)
+  if (config.debug.rhizome)
     DEBUGF("rhizome_add_manifest(m_in=%p, ttl=%d)",m_in, ttl);
 
   if (m_in->finalised==0)
@@ -363,10 +363,10 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
       case -1:
 	return WHY("Select failed");
       case 0:
-	if (debug & DEBUG_RHIZOME) DEBUG("No existing manifest");
+	if (config.debug.rhizome) DEBUG("No existing manifest");
 	break;
       case 1:
-	if (debug & DEBUG_RHIZOME) DEBUGF("Found existing version=%lld, new version=%lld", storedversion, m_in->version);
+	if (config.debug.rhizome) DEBUGF("Found existing version=%lld, new version=%lld", storedversion, m_in->version);
 	if (m_in->version < storedversion)
 	  return WHY("Newer version exists");
 	if (m_in->version == storedversion)

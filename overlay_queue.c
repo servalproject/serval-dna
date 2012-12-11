@@ -18,6 +18,7 @@
 
 
 #include "serval.h"
+#include "conf.h"
 #include "overlay_buffer.h"
 #include "overlay_packet.h"
 #include "str.h"
@@ -186,7 +187,7 @@ int overlay_payload_enqueue(struct overlay_frame *p)
   
   overlay_txqueue *queue = &overlay_tx[p->queue];
   
-  if (debug&DEBUG_PACKETTX)
+  if (config.debug.packettx)
     DEBUGF("Enqueuing packet for %s* (q[%d]length = %d)",
 	   p->destination?alloca_tohex(p->destination->sid, 7): alloca_tohex(p->broadcast_id.id,BROADCAST_LEN),
 	   p->queue, queue->length);
@@ -411,7 +412,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       }
     }    
     
-    if (debug&DEBUG_OVERLAYFRAMES){
+    if (config.debug.overlayframes){
       DEBUGF("Sending payload type %x len %d for %s via %s", frame->type, ob_position(frame->payload),
 	     frame->destination?alloca_tohex_sid(frame->destination->sid):"All",
 	     frame->next_hop?alloca_tohex_sid(frame->next_hop->sid):alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN));
@@ -494,7 +495,7 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
       if (packet->add_advertisements)
 	overlay_rhizome_add_advertisements(&packet->context, packet->i,packet->buffer);
       
-      if (debug&DEBUG_PACKETCONSTRUCTION)
+      if (config.debug.packetconstruction)
 	ob_dump(packet->buffer,"assembled packet");
       
       if (overlay_broadcast_ensemble(packet->i, &packet->dest, ob_ptr(packet->buffer), ob_position(packet->buffer))){
@@ -538,7 +539,7 @@ overlay_tick_interface(int i, time_ms_t now) {
     RETURN(0);
   }
   
-  if (debug&DEBUG_OVERLAYINTERFACES) DEBUGF("Ticking interface #%d",i);
+  if (config.debug.overlayinterfaces) DEBUGF("Ticking interface #%d",i);
   
   // initialise the packet buffer
   bzero(&packet, sizeof(struct outgoing_packet));

@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include "serval.h"
 #include "str.h"
+#include "conf.h"
 #include "strbuf.h"
 #include "strlcpy.h"
 #include "overlay_address.h"
@@ -342,7 +343,7 @@ static int vomp_generate_session_id()
     if (urandombytes((unsigned char *)&session_id,sizeof(int)))
       return WHY("Insufficient entropy");
     session_id&=VOMP_SESSION_MASK;
-    if (debug & DEBUG_VOMP) DEBUGF("session=0x%08x",session_id);
+    if (config.debug.vomp) DEBUGF("session=0x%08x",session_id);
     int i;
     /* reject duplicate call session numbers */
     for(i=0;i<vomp_call_count;i++)
@@ -383,7 +384,7 @@ static struct vomp_call_state *vomp_create_call(struct subscriber *remote,
   vomp_stats.name="vomp_process_tick";
   call->alarm.stats=&vomp_stats;
   schedule(&call->alarm);
-  if (debug & DEBUG_VOMP)
+  if (config.debug.vomp)
     DEBUGF("Returning new call #%d",local_session);
   return call;
 }
@@ -398,7 +399,7 @@ static struct vomp_call_state *vomp_find_or_create_call(struct subscriber *remot
   int i;
   struct vomp_call_state *call;
   
-  if (debug & DEBUG_VOMP)
+  if (config.debug.vomp)
     DEBUGF("%d calls already in progress.",vomp_call_count);
   for(i=0;i<vomp_call_count;i++)
     {
@@ -406,7 +407,7 @@ static struct vomp_call_state *vomp_find_or_create_call(struct subscriber *remot
       
       /* do the fast comparison first, and only if that matches proceed to
 	 the slower SID comparisons */
-      if (debug & DEBUG_VOMP)
+      if (config.debug.vomp)
 	DEBUGF("asking for %06x:%06x, this call %06x:%06x",
 		sender_session,recvr_session,
 		call->remote.session,
@@ -433,7 +434,7 @@ static struct vomp_call_state *vomp_find_or_create_call(struct subscriber *remot
       if (!call->remote.session) 
 	call->remote.session=sender_session;
 
-      if (debug & DEBUG_VOMP) {
+      if (config.debug.vomp) {
 	DEBUGF("%06x:%06x matches call #%d %06x:%06x",
 		sender_session,recvr_session,i,
 		call->remote.session,
@@ -507,7 +508,7 @@ static int vomp_send_status_remote(struct vomp_call_state *call)
       *len+=didLen+1;
     }
     
-    if (debug & DEBUG_VOMP)
+    if (config.debug.vomp)
       DEBUGF("mdp frame with codec list is %d bytes", mdp.out.payload_length);
     
     overlay_send_stun_request(directory_service, call->remote.subscriber);
@@ -675,7 +676,7 @@ static int vomp_update(struct vomp_call_state *call)
   if (call->last_sent_status==combined_status)
     return 0;
   
-  if (debug & DEBUG_VOMP)
+  if (config.debug.vomp)
     DEBUGF("Call state changed to %d %d, sending updates",call->local.state, call->remote.state);
   
   call->last_sent_status=combined_status;
@@ -738,7 +739,7 @@ static int vomp_process_audio(struct vomp_call_state *call, overlay_mdp_frame *m
 int vomp_ringing(struct vomp_call_state *call){
   if (call){
     if ((!call->initiated_call) && call->local.state<VOMP_STATE_RINGINGIN && call->remote.state==VOMP_STATE_RINGINGOUT){
-      if (debug & DEBUG_VOMP)
+      if (config.debug.vomp)
 	DEBUGF("RING RING!");
       vomp_update_local_state(call, VOMP_STATE_RINGINGIN);
       vomp_update(call);
@@ -750,7 +751,7 @@ int vomp_ringing(struct vomp_call_state *call){
 
 static int vomp_call_destroy(struct vomp_call_state *call)
 {
-  if (debug & DEBUG_VOMP)
+  if (config.debug.vomp)
     DEBUGF("Destroying call %06x:%06x [%s,%s]", call->local.session, call->remote.session, call->local.did,call->remote.did);
   
   /* now release the call structure */
@@ -776,7 +777,7 @@ int vomp_dial(struct subscriber *local, struct subscriber *remote, const char *l
    These need to be passed to the node being called to provide caller id,
    and potentially handle call-routing, e.g., if it is a gateway.
    */
-  if (debug & DEBUG_VOMP)
+  if (config.debug.vomp)
     DEBUG("Dialing");
   
   if (vomp_call_count>=VOMP_MAX_CALLS)
@@ -808,7 +809,7 @@ int vomp_dial(struct subscriber *local, struct subscriber *remote, const char *l
 int vomp_pickup(struct vomp_call_state *call)
 {
   if (call){
-    if (debug & DEBUG_VOMP)
+    if (config.debug.vomp)
       DEBUG("Picking up");
     if (call->local.state<=VOMP_STATE_RINGINGIN && call->remote.state==VOMP_STATE_RINGINGOUT){
       vomp_update_local_state(call, VOMP_STATE_INCALL);
@@ -825,7 +826,7 @@ int vomp_pickup(struct vomp_call_state *call)
 int vomp_hangup(struct vomp_call_state *call)
 {
   if (call){
-    if (debug & DEBUG_VOMP)
+    if (config.debug.vomp)
       DEBUG("Hanging up");
     vomp_update_local_state(call, VOMP_STATE_CALLENDED);
     vomp_update(call);
@@ -837,7 +838,7 @@ static int vomp_extract_remote_codec_list(struct vomp_call_state *call,overlay_m
 {
   int ofs=6;
   
-  if (debug & DEBUG_VOMP)
+  if (config.debug.vomp)
     dump("codec list mdp frame", (unsigned char *)&mdp->in.payload[0],mdp->in.payload_length);
   
   for (;ofs<mdp->in.payload_length && mdp->in.payload[ofs];ofs++){
@@ -896,7 +897,7 @@ int vomp_mdp_received(overlay_mdp_frame *mdp)
       if (!call)
 	return WHY("Unable to find or create call");
       
-      if (!recvr_session && (debug & DEBUG_VOMP))
+      if (!recvr_session && (config.debug.vomp))
 	DEBUG("recvr_session==0, created call");
       
       // stale packet or forgery attempt? Should we just drop it?

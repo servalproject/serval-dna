@@ -17,8 +17,9 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
-#include "mem.h"
 #include "serval.h"
+#include "conf.h"
+#include "mem.h"
 #include "overlay_buffer.h"
 
 /*
@@ -141,7 +142,7 @@ int ob_unlimitsize(struct overlay_buffer *b)
 int ob_makespace(struct overlay_buffer *b,int bytes)
 {
   if (b->sizeLimit!=-1 && b->position+bytes>b->sizeLimit) {
-    if (debug&DEBUG_PACKETFORMATS) WHY("Asked to make space beyond size limit");
+    if (config.debug.packetformats) WHY("Asked to make space beyond size limit");
     return -1;
   }
   
