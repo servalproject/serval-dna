@@ -71,6 +71,7 @@ int urandombytes(unsigned char *buf, unsigned long long len)
     for (tries = 0; tries < 4; ++tries) {
       urandomfd = open("/dev/urandom",O_RDONLY);
       if (urandomfd != -1) break;
+      WHY_perror("open(/dev/urandom)");
       sleep(1);
     }
     if (urandomfd == -1) {
@@ -84,7 +85,7 @@ int urandombytes(unsigned char *buf, unsigned long long len)
     i = read(urandomfd, buf, i);
     if (i == -1) {
       if (++tries > 4) {
-	WHY_perror("read(/dev/urandom)");
+	WHYF_perror("read(/dev/urandom, fd=%d)",urandomfd);
 	return -1;
       }
       sleep(1);
