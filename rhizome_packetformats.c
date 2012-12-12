@@ -117,7 +117,6 @@ long long rhizome_bar_version(unsigned char *bar)
 {
   long long version=0;
   int i;
-  // for(i=0;i<7;i++) bar[8+6-i]=(m->version>>(8*i))&0xff;
   for(i=0;i<7;i++) version|=bar[RHIZOME_BAR_VERSION_OFFSET+6-i]<<(8LL*i);
   return version;
 }

@@ -1346,7 +1346,6 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 	rhizome_fetch_close(slot);
 	RETURN(-1);
       } else {
-	time_ms_t start=gettime_ms();
 	int ret=sqlite_exec_void_retry(&retry,
 				       "UPDATE FILES SET datavalid=1 WHERE id='%s'",
 				       slot->manifest->fileHexHash);

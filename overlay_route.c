@@ -519,7 +519,6 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
       break;
     case REACHABLE_BROADCAST:
       n->subscriber->interface = interface;
-      n->subscriber->address = interface->broadcast_address;
       break;
   }
   n->best_link_score=best_score;
@@ -528,6 +527,8 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
   
   if (old_best && !best_score){
     INFOF("PEER UNREACHABLE, sid=%s", alloca_tohex_sid(n->subscriber->sid));
+    overlay_send_probe(n->subscriber, n->subscriber->address, n->subscriber->interface);
+    
   }else if(best_score && !old_best){
     INFOF("PEER REACHABLE, sid=%s", alloca_tohex_sid(n->subscriber->sid));
     /* Make sure node is advertised soon */
