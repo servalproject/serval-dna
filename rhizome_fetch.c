@@ -1031,6 +1031,14 @@ static int rhizome_fetch_close(struct rhizome_fetch_slot *slot)
   slot->blob_buffer=NULL;
   slot->blob_buffer_size=0;
 
+  // free any deferred out-of-order packets
+  int i;
+  for(i=0;i<slot->mdpRXdeferredPacketCount;i++)
+    {
+      free(slot->mdpRXdeferredPackets[i]);
+    }
+  slot->mdpRXdeferredPacketCount=0;
+
   // Release the fetch slot.
   slot->state = RHIZOME_FETCH_FREE;
 
