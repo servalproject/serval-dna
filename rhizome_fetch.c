@@ -92,7 +92,14 @@ struct rhizome_fetch_slot {
   int mdpResponsesOutstanding;
   int mdpRXBlockLength;
   uint32_t mdpRXBitmap;
-  unsigned char mdpRXWindow[32*200];
+  short mdpRXdeferredPacketCount;
+  // bitmap holds 32 entries, therefore only 31 can be out of order
+  // at any point in time.
+#define RHIZOME_MDP_MAX_DEFERRED_PACKETS 31
+  unsigned char *mdpRXdeferredPackets[RHIZOME_MDP_MAX_DEFERRED_PACKETS];
+  unsigned short mdpRXdeferredPacketStarts[RHIZOME_MDP_MAX_DEFERRED_PACKETS];
+  unsigned short mdpRXdeferredPacketLengths[RHIZOME_MDP_MAX_DEFERRED_PACKETS];
+  unsigned short mdpRXdeferredPacketTypes[RHIZOME_MDP_MAX_DEFERRED_PACKETS];
 };
 
 static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot);
@@ -1434,12 +1441,89 @@ int rhizome_received_content(unsigned char *bidprefix,
 		
 		// TODO: Try flushing out stuck packets that we have kept due to
 		// packet loss / out-of-order delivery.
+		int i;
+		for(i=0;i<slot->mdpRXdeferredPacketCount;i++)
+		  {
+		    if (slot->mdpRXdeferredPacketStarts[i]==slot->file_ofs)
+		      {
+			// Get packet we are about to apply
+			bytes=slot->mdpRXdeferredPackets[i];
+			offset=slot->mdpRXdeferredPacketStarts[i];
+			count=slot->mdpRXdeferredPacketLengths[i];
+			type=slot->mdpRXdeferredPacketTypes[i];
+			
+			// Remove said packet from list
+			int n=slot->mdpRXdeferredPacketCount-1;
+			slot->mdpRXdeferredPackets[i]=slot->mdpRXdeferredPackets[n];
+			slot->mdpRXdeferredPacketStarts[i]
+			  =slot->mdpRXdeferredPacketStarts[n];
+			slot->mdpRXdeferredPacketLengths[i]
+			  =slot->mdpRXdeferredPacketLengths[n];
+			slot->mdpRXdeferredPacketTypes[i]
+			  =slot->mdpRXdeferredPacketTypes[n];
+			slot->mdpRXdeferredPacketCount--;
+			
+			// now we can safely recursively call ourself
+			// because we have finished fiddling with the list of 
+			// deferred packets
+			DEBUGF("Applying out-of-order packet 0x%x -- 0x%x",
+			       offset,offset+count-1);
+		  
+			rhizome_received_content(bidprefix,
+						 version,offset,
+						 count,bytes,type);
+			// Clean up and return
+			free(bytes);
+			RETURN(0);
+		      }
+		  }
 	      }
 
 	    RETURN(0);
 	  } else {
 	    // TODO: Implement out-of-order buffering so that lost packets
 	    // don't cause wastage
+	    if (offset>slot->file_ofs) {
+	      int replacementSlot=-2;
+	      int highestAddressSlot=slot->mdpRXdeferredPacketCount;
+	      for(i=0;i<slot->mdpRXdeferredPacketCount;i++)
+		{
+		  if (slot->mdpRXdeferredPacketStarts[i]<slot->file_ofs) {
+		    // possibly stale deferred packet
+		    // (but check if there are any extra bytes we can commit first)
+		  }
+		  if (offset==slot->mdpRXdeferredPacketStarts[i])
+		    {
+		      // we seem to have this packet already.
+		      // (but check if there are any extra bytes we should remember)
+		      if (count<=slot->mdpRXdeferredPacketLengths[i])
+			replacementSlot=-1; // don't replace
+		      else 
+			replacementSlot=i; 
+		      // either way, don't keep looking
+		      break;
+		    }
+		  if (highestAddressSlot==slot->mdpRXdeferredPacketCount
+		      ||slot->mdpRXdeferredPacketStarts[i]>
+		      slot->mdpRXdeferredPacketStarts[highestAddressSlot])
+		    highestAddressSlot=i;
+		}
+	      if (replacementSlot==-2) replacementSlot=highestAddressSlot;
+	      if (replacementSlot>=0)
+		{
+		  if (replacementSlot<slot->mdpRXdeferredPacketCount)
+		    free(slot->mdpRXdeferredPackets[replacementSlot]);
+		  slot->mdpRXdeferredPackets[replacementSlot]=malloc(count);
+		  bcopy(bytes,slot->mdpRXdeferredPackets[replacementSlot],count);
+		  slot->mdpRXdeferredPacketStarts[replacementSlot]=offset;
+		  slot->mdpRXdeferredPacketLengths[replacementSlot]=count;
+		  slot->mdpRXdeferredPacketTypes[replacementSlot]=type;
+		  if (slot->mdpRXdeferredPacketCount<replacementSlot)
+		    slot->mdpRXdeferredPacketCount=replacementSlot;
+		  DEBUGF("Keeping out-of-order packet for 0x%x -- 0x%x",
+			 offset,offset+count-1);
+		}
+	    }
 	  }
 	  RETURN(0);
 	}
