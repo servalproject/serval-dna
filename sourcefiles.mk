@@ -30,6 +30,7 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)overlay_address.c \
 	$(SERVAL_BASE)overlay_buffer.c \
 	$(SERVAL_BASE)overlay_interface.c \
+	$(SERVAL_BASE)overlay_link.c \
 	$(SERVAL_BASE)overlay_queue.c \
 	$(SERVAL_BASE)overlay_mdp.c \
 	$(SERVAL_BASE)overlay_mdp_services.c \

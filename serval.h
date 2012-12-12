@@ -731,6 +731,10 @@ void rhizome_client_poll(struct sched_ent *alarm);
 void rhizome_fetch_poll(struct sched_ent *alarm);
 void rhizome_server_poll(struct sched_ent *alarm);
 
+int overlay_mdp_service_stun_req(overlay_mdp_frame *mdp);
+int overlay_mdp_service_stun(overlay_mdp_frame *mdp);
+int overlay_mdp_service_probe(overlay_mdp_frame *mdp);
+
 /* function timing routines */
 int fd_clearstats();
 int fd_showstats();
