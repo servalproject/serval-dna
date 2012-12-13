@@ -1474,7 +1474,7 @@ int rhizome_received_content(unsigned char *bidprefix,
 			// now we can safely recursively call ourself
 			// because we have finished fiddling with the list of 
 			// deferred packets
-			DEBUGF("Applying out-of-order packet 0x%x -- 0x%x",
+			DEBUGF("Applying out-of-order packet 0x%llx -- 0x%llx",
 			       offset,offset+count-1);
 		  
 			rhizome_received_content(bidprefix,
@@ -1526,10 +1526,10 @@ int rhizome_received_content(unsigned char *bidprefix,
 		  slot->mdpRXdeferredPacketStarts[replacementSlot]=offset;
 		  slot->mdpRXdeferredPacketLengths[replacementSlot]=count;
 		  slot->mdpRXdeferredPacketTypes[replacementSlot]=type;
-		  if (slot->mdpRXdeferredPacketCount<replacementSlot)
-		    slot->mdpRXdeferredPacketCount=replacementSlot;
-		  DEBUGF("Keeping out-of-order packet for 0x%x -- 0x%x",
-			 offset,offset+count-1);
+		  if (slot->mdpRXdeferredPacketCount<=replacementSlot)
+		    slot->mdpRXdeferredPacketCount=replacementSlot+1;
+		  DEBUGF("Keeping out-of-order packet for 0x%llx -- 0x%llx (slot#%d)",
+			 offset,offset+count-1,replacementSlot);
 		}
 	    }
 	  }
