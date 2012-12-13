@@ -140,8 +140,10 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
 
 	  // Mark terminal block if required
 	  if (blockOffset+blockBytes==blob_bytes) reply.out.payload[0]='T';
-	  // send packet
-	  overlay_mdp_dispatch(&reply,0 /* system generated */, NULL,0); 
+	  // introduce 50% MDP packet loss when required for testing.
+	  if ((!config.debug.mdp_simulated_loss)||(random()&1))
+	    // send packet
+	    overlay_mdp_dispatch(&reply,0 /* system generated */, NULL,0); 
 	} else break;
       }
 
