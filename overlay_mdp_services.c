@@ -103,10 +103,15 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
   if (source && source->reachable&REACHABLE_UNICAST){
     // if we get a request from a peer that we can only talk to via unicast, send data via unicast too.
     bcopy(mdp->out.src.sid,reply.out.dst.sid,SID_SIZE);
+    reply.packetTypeAndFlags=MDP_TX;
   }else{
     // send replies to broadcast so that others can hear blocks and record them
     // (not that preemptive listening is implemented yet).
-    memset(reply.out.dst.sid,0xff,SID_SIZE);
+    // memset(reply.out.dst.sid,0xff,SID_SIZE);
+    // For reasons discussed above, this is not safe, and offers no current benefit.
+    // We can revisit it when we have preemptive listening implemented.
+    bcopy(mdp->out.src.sid,reply.out.dst.sid,SID_SIZE);
+    reply.packetTypeAndFlags=MDP_TX;
   }
   reply.out.dst.port=MDP_PORT_RHIZOME_RESPONSE;
   reply.out.queue=OQ_ORDINARY;
