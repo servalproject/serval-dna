@@ -296,6 +296,23 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
   
   // when is the next packet from this queue due?
   send_time=queue->first->enqueued_at + queue->transmit_delay;
+  time_ms_t next_allowed_packet=0;
+  if (frame->interface){
+    next_allowed_packet = limit_next_allowed(&frame->interface->transfer_limit);
+  }else{
+    // check all interfaces
+    int i;
+    for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
+    {
+      if (overlay_interfaces[i].state!=INTERFACE_STATE_UP)
+	continue;
+      time_ms_t next_packet = limit_next_allowed(&overlay_interfaces[i].transfer_limit);
+      if (next_allowed_packet==0||next_packet < next_allowed_packet)
+	next_allowed_packet = next_packet;
+    }
+  }
+  if (next_allowed_packet > send_time)
+    send_time = next_allowed_packet;
   
   if (next_packet.alarm==0 || send_time < next_packet.alarm){
     next_packet.alarm=send_time;
@@ -329,9 +346,14 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       frame = overlay_queue_remove(queue, frame);
       continue;
     }
+    
     /* Note, once we queue a broadcast packet we are committed to sending it out every interface, 
      even if we hear it from somewhere else in the mean time
      */
+    
+    // quickly skip payloads that have no chance of fitting
+    if (packet->buffer && ob_position(frame->payload) > ob_remaining(packet->buffer))
+      goto skip;
     
     if (!frame->destination_resolved){
       frame->next_hop = frame->destination;
@@ -383,27 +405,37 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	}else{
 	  // find an interface that we haven't broadcast on yet
 	  frame->interface = NULL;
-	  int i;
+	  int i, keep=0;
 	  for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
 	  {
-	    if (overlay_interfaces[i].state==INTERFACE_STATE_UP
-		&& !frame->broadcast_sent_via[i]){
-	      frame->interface = &overlay_interfaces[i];
-	      frame->recvaddr = overlay_interfaces[i].broadcast_address;
-	      break;
-	    }
+	    if (overlay_interfaces[i].state!=INTERFACE_STATE_UP || frame->broadcast_sent_via[i])
+	      continue;
+	    keep=1;
+	    time_ms_t next_allowed = limit_next_allowed(&overlay_interfaces[i].transfer_limit);
+	    if (next_allowed > now)
+	      continue;
+	    frame->interface = &overlay_interfaces[i];
+	    frame->recvaddr = overlay_interfaces[i].broadcast_address;
+	    break;
 	  }
 	  
-	  if (!frame->interface){
+	  if (!keep){
 	    // huh, we don't need to send it anywhere?
 	    frame = overlay_queue_remove(queue, frame);
 	    continue;
 	  }
+	  
+	  if (!frame->interface)
+	    goto skip;
 	}
       }
     }
     
     if (!packet->buffer){
+      // can we send a packet on this interface now?
+      if (limit_is_allowed(&frame->interface->transfer_limit))
+	goto skip;
+	
       if (frame->source_full)
 	my_subscriber->send_full=1;
       overlay_init_packet(packet, frame->next_hop, frame->unicast, frame->interface, frame->recvaddr, 0);
@@ -535,10 +567,13 @@ overlay_tick_interface(int i, time_ms_t now) {
   struct outgoing_packet packet;
   IN();
   
-  /* An interface with no speed budget is for listening only, so doesn't get ticked */
-  if (overlay_interfaces[i].bits_per_second<1
-      || overlay_interfaces[i].state!=INTERFACE_STATE_UP) {
-    RETURN(0);
+  if (overlay_interfaces[i].state!=INTERFACE_STATE_UP) {
+    RETURN(-1);
+  }
+  
+  if (limit_is_allowed(&overlay_interfaces[i].transfer_limit)){
+    WARN("Throttling has blocked a tick packet");
+    RETURN(-1);
   }
   
   if (config.debug.overlayinterfaces) DEBUGF("Ticking interface #%d",i);

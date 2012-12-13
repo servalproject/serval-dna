@@ -5,10 +5,57 @@
 #include "overlay_buffer.h"
 #include "overlay_packet.h"
 
+#define MIN_BURST_LENGTH 5000
+
 struct probe_contents{
   struct sockaddr_in addr;
   unsigned char interface;
 };
+
+static void update_limit_state(struct limit_state *state, time_ms_t now){
+  if (state->next_interval > now || state->burst_size==0){
+    return;
+  }
+  
+  if (state->next_interval + state->burst_length>now)
+    state->next_interval+=state->burst_length;
+  else
+    state->next_interval=now + state->burst_length;
+  
+  state->sent = 0;
+}
+
+/* When should we next allow this thing to occur? */
+time_ms_t limit_next_allowed(struct limit_state *state){
+  time_ms_t now = gettime_ms();
+  update_limit_state(state, now);
+  
+  if (state->sent < state->burst_size)
+    return now;
+  return state->next_interval;
+}
+
+/* Can we do this now? if so, track it */
+int limit_is_allowed(struct limit_state *state){
+  time_ms_t now = gettime_ms();
+  update_limit_state(state, now);
+  if (state->sent >= state->burst_size){
+    return -1;
+  }
+  state->sent ++;
+  return 0;
+}
+
+/* Initialise burst size and length based on the number we can do in one MIN_BURST */
+int limit_init(struct limit_state *state, int rate_micro_seconds){
+  if (rate_micro_seconds==0){
+    state->burst_size=0;
+  }else{
+    state->burst_size = (MIN_BURST_LENGTH / rate_micro_seconds)+1;
+    state->burst_length = (state->burst_size * rate_micro_seconds) / 1000.0;
+  }
+  return 0;
+}
 
 // quick test to make sure the specified route is valid.
 int subscriber_is_reachable(struct subscriber *subscriber){

@@ -227,7 +227,8 @@ ATOM(int,                   uid,        -1, cf_opt_int,, "Allowed UID for monito
 END_STRUCT
 
 STRUCT(mdp_iftype)
-ATOM(uint32_t,              tick_ms,    0, cf_opt_uint32_nonzero,, "Tick interval for this interface type")
+ATOM(uint32_t,              tick_ms,    -1, cf_opt_uint32_nonzero,, "Tick interval for this interface type")
+ATOM(int,                   packet_interval,    -1, cf_opt_int,, "Minimum interval between packets in microseconds")
 END_STRUCT
 
 ARRAY(mdp_iftypelist, NO_DUPLICATES)
@@ -336,8 +337,9 @@ ATOM(struct in_addr,        dummy_netmask,    (struct in_addr){htonl(0xFFFFFF00)
 ATOM(int,                   dummy_filter_broadcasts,     0, cf_opt_int_boolean,, "If true, drop all incoming broadcast packets")
 ATOM(short,                 type,       OVERLAY_INTERFACE_WIFI, cf_opt_interface_type,, "Type of network interface")
 ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, cf_opt_uint16_nonzero,, "Port number for network interface")
-ATOM(uint64_t,              speed,      1000000, cf_opt_uint64_scaled,, "Speed in bits per second")
+ATOM(int,                   packet_interval,    -1, cf_opt_int,, "Minimum interval between packets in microseconds")
 ATOM(int,                   mdp_tick_ms, -1, cf_opt_int32_nonneg,, "Override MDP tick interval for this interface")
+ATOM(char,                  send_broadcasts, 1, cf_opt_char_boolean,, "If false, don't send any broadcast packets")
 ATOM(int,                   default_route, 0, cf_opt_int_boolean,, "If true, use this interface as a default route")
 END_STRUCT
 

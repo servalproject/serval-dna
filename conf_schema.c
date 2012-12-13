@@ -439,21 +439,7 @@ static int cf_opt_network_interface_legacy(struct config_network_interface *nifp
     }
   }
   if (*p == ':') {
-    const char *const speed = p + 1;
     p = endtext;
-    len = p - speed;
-    if (len) {
-      char buf[len + 1];
-      strncpy(buf, speed, len)[len] = '\0';
-      int result = cf_opt_uint64_scaled(&nif.speed, buf);
-      switch (result) {
-      case CFERROR: return CFERROR;
-      case CFOK: break;
-      default: return result; // "Invalid interface speed"
-      }
-      if (nif.speed < 1)
-	return CFINVALID; // "Interfaces must be capable of at least 1 bit per second"
-    }
   }
   if (*p)
     return CFINVALID; // "Extra junk at end of interface specification"

@@ -324,6 +324,18 @@ struct sched_ent{
   int _poll_index;
 };
 
+struct limit_state{
+  // length of time for a burst
+  time_ms_t burst_length;
+  // how many in a burst
+  int burst_size;
+  
+  // how many have we sent in this burst so far
+  int sent;
+  // when can we allow another burst
+  time_ms_t next_interval;
+};
+
 struct overlay_buffer;
 struct overlay_frame;
 struct broadcast;
@@ -343,7 +355,6 @@ typedef struct overlay_interface {
   int recv_offset;
   int fileP; // dummyP
   int drop_broadcasts;
-  int bits_per_second;
   int port;
   int type;
   /* Number of milli-seconds per tick for this interface, which is basically related to the     
@@ -369,6 +380,8 @@ typedef struct overlay_interface {
    */
   int sequence_number;
   /* XXX need recent packet buffers to support the above */
+  
+  struct limit_state transfer_limit;
   
   /* We need to make sure that interface name and broadcast address is unique for all interfaces that are UP.
    We bind a separate socket per interface / broadcast address Broadcast address and netmask, if known
@@ -734,6 +747,10 @@ void rhizome_server_poll(struct sched_ent *alarm);
 int overlay_mdp_service_stun_req(overlay_mdp_frame *mdp);
 int overlay_mdp_service_stun(overlay_mdp_frame *mdp);
 int overlay_mdp_service_probe(overlay_mdp_frame *mdp);
+
+time_ms_t limit_next_allowed(struct limit_state *state);
+int limit_is_allowed(struct limit_state *state);
+int limit_init(struct limit_state *state, int rate_micro_seconds);
 
 /* function timing routines */
 int fd_clearstats();
