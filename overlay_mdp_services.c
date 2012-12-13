@@ -160,6 +160,13 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
   
   if (!mdp->out.payload_length) RETURN(-1);
 
+  // Insist on rhizome data blocks being signed to prevent insertion
+  // of incorrect blocks by adversaries, which would be an easy way
+  // to make requestors waste lots of network and CPU usage.
+  // We also need to make sure that they are from the correct sender.
+  // That gets checked elsewhere.
+  if (mdp->packetTypeAndFlags&MDP_NOSIGN) RETURN(-1);
+
   int type=mdp->out.payload[0];
   switch (type) {
   case 'B': /* data block */
@@ -182,7 +189,8 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
 	 a slot to capture this files as it is being requested
 	 by someone else.
       */
-      rhizome_received_content(bidprefix,version,offset,count,bytes,type);
+      rhizome_received_content(mdp->out.src.sid,bidprefix,version,
+			       offset,count,bytes,type);
 
       RETURN(-1);
     }

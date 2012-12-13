@@ -445,7 +445,8 @@ struct http_response {
   const char * body;
 };
 
-int rhizome_received_content(unsigned char *bidprefix,uint64_t version, 
+int rhizome_received_content(unsigned char *sender_sid,
+			     unsigned char *bidprefix,uint64_t version, 
 			     uint64_t offset,int count,unsigned char *bytes,
 			     int type);
 int64_t rhizome_database_create_blob_for(const char *hashhex,int64_t fileLength,

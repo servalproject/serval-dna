@@ -1134,9 +1134,11 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
 
   overlay_mdp_dispatch(&mdp,0 /* system generated */,NULL,0);
   
-  // remember when we sent the request so that we can adjust the inter-request
-  // interval based on how fast the packets arrive.
-  slot->mdpResponsesOutstanding=32; // TODO: set according to bitmap
+  // Work out how many packets we are expecting, so that we can continue
+  // immediately when we have them all.
+  slot->mdpResponsesOutstanding=32; 
+  { int j; for(j=0;j<32;j++) if (slot->mdpRXBitmap&(1<<j)) 
+			       slot->mdpResponsesOutstanding--; }
 
   unschedule(&slot->alarm);
   slot->alarm.function = rhizome_fetch_mdp_slot_callback;
@@ -1451,7 +1453,8 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
   RETURN(0);
 }
 
-int rhizome_received_content(unsigned char *bidprefix,
+int rhizome_received_content(unsigned char *sender_sid,
+			     unsigned char *bidprefix,
 			     uint64_t version, uint64_t offset,
 			     int count,unsigned char *bytes,int type)
 {
@@ -1460,7 +1463,12 @@ int rhizome_received_content(unsigned char *bidprefix,
   for(i=0;i<NQUEUES;i++) {
     struct rhizome_fetch_slot *slot=&rhizome_fetch_queues[i].active;
     if (slot->state==RHIZOME_FETCH_RXFILEMDP&&slot->bidP) {
-      if (!memcmp(slot->bid,bidprefix,16))
+      // Make sure that this is a block for this slot, and that it is
+      // from whoever we requested it from.  We check elsewhere that the
+      // MDP packet was signed to make sure that noone can have substituted
+      // an incorrect block.
+      if ((!memcmp(slot->bid,bidprefix,16))
+	  &&(!memcmp(slot->peer_sid,sender_sid,SID_SIZE)))
 	{
 	  if (slot->file_ofs==offset) {
 	    if (!rhizome_write_content(slot,(char *)bytes,count))
@@ -1501,7 +1509,8 @@ int rhizome_received_content(unsigned char *bidprefix,
 			DEBUGF("Applying out-of-order packet 0x%llx -- 0x%llx",
 			       offset,offset+count-1);
 		  
-			rhizome_received_content(bidprefix,
+			rhizome_received_content(slot->peer_sid,
+						 bidprefix,
 						 version,offset,
 						 count,bytes,type);
 			// Clean up and return
