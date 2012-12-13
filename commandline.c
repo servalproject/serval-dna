@@ -1962,7 +1962,7 @@ int app_network_scan(int argc, const char *const *argv, const struct command_lin
 struct command_line_option command_line_options[]={
   {app_dna_lookup,{"dna","lookup","<did>","[<timeout>]",NULL},0,
    "Lookup the SIP/MDP address of the supplied telephone number (DID)."},
-  {commandline_usage,{"help",NULL},0,
+  {commandline_usage,{"help",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Display command usage."},
   {app_echo,{"echo","...",NULL},CLIFLAG_STANDALONE,
    "Output the supplied string."},
@@ -1982,7 +1982,7 @@ struct command_line_option command_line_options[]={
    "Stop a running Serval Mesh node process with instance path taken from SERVALINSTANCE_PATH environment variable."},
   {app_server_stop,{"stop","in","<instance path>",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Stop a running Serval Mesh node process with given instance path."},
-  {app_server_status,{"status",NULL},0,
+  {app_server_status,{"status",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Display information about any running Serval Mesh node."},
   {app_mdp_ping,{"mdp","ping","<SID|broadcast>","[<count>]",NULL},CLIFLAG_STANDALONE,
    "Attempts to ping specified node via Mesh Datagram Protocol (MDP)."},
