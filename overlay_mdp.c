@@ -697,9 +697,9 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       unsigned char *nonce = ob_append_space(frame->payload, nb);
       if (!nonce)
 	RETURN(-1);
-      if (urandombytes(nonce,nb)) {
+      if (getuniquenonce(nonce,nb)) {
 	op_free(frame);
-	RETURN(WHY("urandombytes() failed to generate nonce"));
+	RETURN(WHY("getuniquenonce() failed to generate nonce"));
       }
       // reserve the high bit of the nonce as a flag for transmitting a shorter nonce.
       nonce[0]&=0x7f;

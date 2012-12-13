@@ -25,6 +25,7 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)monitor-client.c \
 	$(SERVAL_BASE)monitor-cli.c \
 	$(SERVAL_BASE)net.c \
+	$(SERVAL_BASE)nonce.c \
 	$(SERVAL_BASE)overlay.c \
 	$(SERVAL_BASE)overlay_advertise.c \
 	$(SERVAL_BASE)overlay_address.c \
