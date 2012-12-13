@@ -1098,6 +1098,30 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   mdp.out.payload_length=RHIZOME_MANIFEST_ID_BYTES+8+8+4+2;
   bcopy(slot->bid,&mdp.out.payload[0],RHIZOME_MANIFEST_ID_BYTES);
 
+  // XXX Recalculate mdpRXbitmap taking into account any out-of-order packets we
+  // have received.
+  slot->mdpRXBitmap=0x0;
+  int i;
+  for(i=0;i<slot->mdpRXdeferredPacketCount;i++)
+    {
+      int start=slot->mdpRXdeferredPacketStarts[i];
+      int length=slot->mdpRXdeferredPacketLengths[i];
+      int start_slot=start/slot->mdpRXBlockLength;
+      if (start%slot->mdpRXBlockLength) start_slot++;
+      int end_slot=(start+length)/slot->mdpRXBlockLength;
+      if (slot->mdpRXdeferredPacketTypes[i]=='T') end_slot++;
+      DEBUGF("Deferred packet #%d @ 0x%x - 0x%x covers slots %d - %d",
+	     i,start,start+length-1,start_slot,end_slot);
+      if (start_slot>=0&&start_slot<=31&&end_slot>0&&end_slot<=32) {
+	int j;
+	for(j=start_slot;j<end_slot;j++)
+	  slot->mdpRXBitmap|=(1<<(31-j));
+      }
+      DEBUGF("Request bitmap = 0x%08x, block_length=0x%x, offset=0x%x",
+	     slot->mdpRXBitmap,slot->mdpRXBlockLength,slot->file_ofs);
+    }
+
+
   write_uint64(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES],slot->bidVersion);
   write_uint64(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8],slot->file_ofs);
   write_uint32(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8],slot->mdpRXBitmap);
@@ -1494,6 +1518,7 @@ int rhizome_received_content(unsigned char *bidprefix,
 	    if (offset>slot->file_ofs) {
 	      int replacementSlot=-2;
 	      int highestAddressSlot=slot->mdpRXdeferredPacketCount;
+	      DEBUGF("Slots in use = %d",highestAddressSlot);
 	      for(i=0;i<slot->mdpRXdeferredPacketCount;i++)
 		{
 		  if (slot->mdpRXdeferredPacketStarts[i]<slot->file_ofs) {
@@ -1506,8 +1531,11 @@ int rhizome_received_content(unsigned char *bidprefix,
 		      // (but check if there are any extra bytes we should remember)
 		      if (count<=slot->mdpRXdeferredPacketLengths[i])
 			replacementSlot=-1; // don't replace
-		      else 
+		      else {
 			replacementSlot=i; 
+			DEBUGF("replacementSlot=%d, offset=0x%x, slotsinuse=%d",
+			       replacementSlot,offset,slot->mdpRXdeferredPacketCount);
+		      }
 		      // either way, don't keep looking
 		      break;
 		    }
@@ -1516,7 +1544,13 @@ int rhizome_received_content(unsigned char *bidprefix,
 		      slot->mdpRXdeferredPacketStarts[highestAddressSlot])
 		    highestAddressSlot=i;
 		}
-	      if (replacementSlot==-2) replacementSlot=highestAddressSlot;
+	      if (replacementSlot==-2) {
+		if (slot->mdpRXdeferredPacketCount
+		    >=RHIZOME_MDP_MAX_DEFERRED_PACKETS)
+		  replacementSlot=highestAddressSlot;
+		else
+		  replacementSlot=slot->mdpRXdeferredPacketCount;
+	      }
 	      if (replacementSlot>=0)
 		{
 		  if (replacementSlot<slot->mdpRXdeferredPacketCount)

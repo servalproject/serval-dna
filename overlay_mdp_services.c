@@ -128,6 +128,8 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
       {	
 	// calculate and set offset of block
 	uint64_t blockOffset=fileOffset+i*blockLength;
+	DEBUGF("Requested block is block #%d (0x%llx + 0x%x = 0x%llx)",
+	       i,fileOffset,(int)(i*blockLength),blockOffset);
 	write_uint64(&reply.out.payload[1+16+8],blockOffset);
 	// work out how many bytes to read
 	int blockBytes=blob_bytes-blockOffset;
