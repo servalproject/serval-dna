@@ -36,10 +36,9 @@ Configuration options
 
 The **servald** configuration is a set of label-value pairs called *options*.
 A label is a sequence of one or more alphanumeric words separated by period
-characters `.`.  A value is a string of characters.  If an option is given an
-invalid value, eg, an option that requires a positive decimal integer value is
-given a non-decimal string, then **servald** will log an error or warning and
-use the option's default setting instead.
+characters `.`.  A value is a string of characters which is parsed according
+to the option's type, for example a decimal integer, a boolean, or an internet
+address.
 
 To set a configuration option:
 
