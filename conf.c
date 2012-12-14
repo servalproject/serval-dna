@@ -99,7 +99,7 @@ static int load()
       free(buf);
       return WHYF_perror("fclose(%s)", path);
     }
-    INFOF("config file %s successfully read", path);
+    INFOF("config file %s successfully read %ld bytes", path, (long) meta.size);
   }
   struct cf_om_node *new_root = NULL;
   int result = cf_om_parse(path, buf, meta.size, &new_root);
@@ -137,11 +137,16 @@ int cf_om_load()
  */
 int cf_om_reload()
 {
-  if (!has_changed(&conffile_meta))
+  switch (has_changed(&conffile_meta)) {
+  case -1:
+    return CFERROR;
+  case 0:
     return CFOK;
-  if (conffile_meta.mtime != -1)
-    INFOF("config file %s -- detected new version", conffile_path());
-  return cf_om_load();
+  default:
+    if (conffile_meta.mtime != -1)
+      INFOF("config file %s -- detected new version", conffile_path());
+    return cf_om_load();
+  }
 }
 
 int cf_om_save()
@@ -201,11 +206,12 @@ static int load_and_parse(int permissive)
 	  config = new_config;
 	  config_meta = conffile_meta;
 	  cf_limbo = 0;
+	  logFlush();
 	} else if (result != CFERROR) {
 	  result &= ~CFEMPTY;
 	  config = new_config;
-	  cf_limbo = 0;
 	  WARN("limping along with incomplete configuration");
+	  cf_limbo = 0;
 	}
       }
     }

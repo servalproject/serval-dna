@@ -173,6 +173,18 @@ static int _log_prepare(int level, struct __sourceloc whence)
   return 1;
 }
 
+/* Internal logging implementation.
+ *
+ * This function is called after every single log message is appended to logbuf, and is given the
+ * level of the message.  This function must reset the given strbuf after its contents have been
+ * sent to the log, otherwise log messages will be repeated.  If this function never resets the
+ * strbuf, then it may eventually overrun.
+ *
+ * This function is also called to flush the given logbuf, by giving a log level of SILENT.  That
+ * indicates that no new message has been appended since the last time this function was called.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
 static void _log_internal(int level, struct strbuf *buf)
 {
 #ifdef ANDROID
@@ -183,13 +195,15 @@ static void _log_internal(int level, struct strbuf *buf)
     case LOG_LEVEL_INFO:  alevel = ANDROID_LOG_INFO; break;
     case LOG_LEVEL_WARN:  alevel = ANDROID_LOG_WARN; break;
     case LOG_LEVEL_DEBUG: alevel = ANDROID_LOG_DEBUG; break;
+    case LOG_LEVEL_SILENT: return;
+    default: abort();
   }
   __android_log_print(alevel, "servald", "%s", strbuf_str(buf));
   strbuf_reset(buf);
 #else
   FILE *logf = _open_logging();
   if (logf) {
-    fprintf(logf, "%s\n%s", strbuf_str(buf), strbuf_overrun(buf) ? "LOG OVERRUN\n" : "");
+    fprintf(logf, "%s%s%s", strbuf_str(buf), strbuf_len(buf) ? "\n" : "", strbuf_overrun(buf) ? "LOG OVERRUN\n" : "");
     strbuf_reset(buf);
   }
 #endif
@@ -206,6 +220,12 @@ static void _log_finish(int level)
 void set_log_implementation(void (*log_function)(int level, struct strbuf *buf))
 {
   _log_implementation=log_function;
+}
+
+void logFlush()
+{
+  if (_log_implementation)
+    _log_implementation(LOG_LEVEL_SILENT, &logbuf);
 }
 
 void logArgv(int level, struct __sourceloc whence, const char *label, int argc, const char *const *argv)

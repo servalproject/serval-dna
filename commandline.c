@@ -38,6 +38,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "conf.h"
 #include "rhizome.h"
 #include "strbuf.h"
+#include "strbuf_helpers.h"
 #include "str.h"
 #include "mdp_client.h"
 #include "cli.h"
@@ -194,13 +195,17 @@ int parseCommandLine(const char *argv0, int argc, const char *const *args)
   int result = cli_parse(argc, args, command_line_options);
   if (result != -1) {
     const struct command_line_option *option = &command_line_options[result];
-    if (option->flags & CLIFLAG_PERMISSIVE_CONFIG)
-      cf_reload_permissive();
-    else
-      cf_reload();
-    result = cli_invoke(option, argc, args, NULL);
+    // Do not run the command if the configuration does not load ok
+    if (((option->flags & CLIFLAG_PERMISSIVE_CONFIG) ? cf_reload_permissive() : cf_reload()) != -1)
+      result = cli_invoke(option, argc, args, NULL);
+    else {
+      strbuf b = strbuf_alloca(160);
+      strbuf_append_argv(b, argc, args);
+      result = WHYF("configuration unavailable, not running command: %s", strbuf_str(b));
+    }
   } else {
-    cf_reload();
+    // Load configuration so that "unsupported command" log message can get out
+    cf_reload_permissive();
   }
 
   /* clean up after ourselves */
