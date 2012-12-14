@@ -248,18 +248,18 @@ int overlay_payload_enqueue(struct overlay_frame *p)
 }
 
 static void
-overlay_init_packet(struct outgoing_packet *packet, struct subscriber *destination, int flags,
+overlay_init_packet(struct outgoing_packet *packet, struct subscriber *destination, int unicast,
 		    overlay_interface *interface, struct sockaddr_in addr, int tick){
   packet->interface = interface;
   packet->i = (interface - overlay_interfaces);
   packet->dest=addr;
   packet->buffer=ob_new();
   packet->add_advertisements=1;
-  if (flags & PACKET_UNICAST)
+  if (unicast)
     packet->unicast_subscriber = destination;
   ob_limitsize(packet->buffer, packet->interface->mtu);
   
-  overlay_packet_init_header(&packet->context, packet->buffer, destination, flags);
+  overlay_packet_init_header(&packet->context, packet->buffer, destination, unicast, packet->i, 0);
   packet->header_length = ob_position(packet->buffer);
   if (tick){
     /* 1. Send announcement about ourselves, including one SID that we host if we host more than one SID
@@ -363,7 +363,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	
 	if(r&REACHABLE_UNICAST){
 	  frame->recvaddr = frame->next_hop->address;
-	  frame->flags = PACKET_UNICAST;
+	  frame->unicast = 1;
 	  // ignore resend logic for unicast packets, where wifi gives better resilience
 	  frame->send_copies=1;
 	}else
@@ -406,7 +406,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     if (!packet->buffer){
       if (frame->source_full)
 	my_subscriber->send_full=1;
-      overlay_init_packet(packet, frame->next_hop, frame->flags, frame->interface, frame->recvaddr, 0);
+      overlay_init_packet(packet, frame->next_hop, frame->unicast, frame->interface, frame->recvaddr, 0);
     }else{
       // is this packet going our way?
       if (frame->interface!=packet->interface || memcmp(&packet->dest, &frame->recvaddr, sizeof(packet->dest))!=0){

@@ -444,7 +444,8 @@ int overlay_add_selfannouncement(struct decode_context *context, int interface,s
 int overlay_frame_append_payload(struct decode_context *context, overlay_interface *interface, 
 				 struct overlay_frame *p, struct overlay_buffer *b);
 int overlay_packet_init_header(struct decode_context *context, struct overlay_buffer *buff, 
-			       struct subscriber *destination, int flags);
+			       struct subscriber *destination, 
+			       char unicast, char interface, char seq);
 int overlay_frame_build_header(struct decode_context *context, struct overlay_buffer *buff, 
 			       int queue, int type, int modifiers, int ttl, 
 			       struct broadcast *broadcast, struct subscriber *next_hop,

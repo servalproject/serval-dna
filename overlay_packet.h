@@ -23,8 +23,6 @@
 #include "overlay_address.h"
 #include "serval.h"
 
-#define PACKET_UNICAST (1<<0)
-
 struct overlay_frame {
   struct overlay_frame *prev;
   struct overlay_frame *next;
@@ -54,7 +52,7 @@ struct overlay_frame {
   int destination_resolved;
   struct sockaddr_in recvaddr;
   overlay_interface *interface;
-  int flags;
+  char unicast;
   
   /* Actual payload */
   struct overlay_buffer *payload;

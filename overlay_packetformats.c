@@ -28,15 +28,37 @@ struct sockaddr_in loopback;
 
 unsigned char magic_header[]={0x00, 0x01};
 
+#define PACKET_UNICAST (1<<0)
+#define PACKET_INTERFACE (1<<1)
+#define PACKET_SEQ (1<<2)
+
 int overlay_packet_init_header(struct decode_context *context, struct overlay_buffer *buff, 
-			       struct subscriber *destination, int flags){
+			       struct subscriber *destination, 
+			       char unicast, char interface, char seq){
+  
   if (ob_append_bytes(buff,magic_header,sizeof magic_header))
     return -1;
   if (overlay_address_append(context, buff, my_subscriber))
     return -1;
   context->sender = my_subscriber;
-  ob_append_byte(buff,0);
+  
+  int flags=0;
+  
+  if (unicast)
+    flags |= PACKET_UNICAST;
+  if (interface)
+    flags |= PACKET_INTERFACE;
+  if (seq)
+    flags |= PACKET_SEQ;
+  
   ob_append_byte(buff,flags);
+  
+  if (flags & PACKET_INTERFACE)
+    ob_append_byte(buff,interface);
+  
+  if (flags & PACKET_SEQ)
+    ob_append_byte(buff,seq);
+  
   return 0;
 }
 
@@ -205,8 +227,14 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     WHY("Unable to parse sender");
   }
   
-  ob_get(b); // sequence number, not implemented yet
   int packet_flags = ob_get(b);
+  
+  int sender_interface = 0;
+  if (packet_flags & PACKET_INTERFACE)
+    sender_interface = ob_get(b);
+  
+  if (packet_flags & PACKET_SEQ)
+    ob_get(b); // sequence number, not implemented yet
   
   if (context.sender){
     
