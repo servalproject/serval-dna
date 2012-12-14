@@ -258,7 +258,7 @@ int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay
   frame->source = my_subscriber;
   frame->next_hop = frame->destination = peer;
   frame->ttl=1;
-  frame->queue=OQ_MESH_MANAGEMENT;
+  frame->queue=OQ_ORDINARY;
   frame->destination_resolved=1;
   frame->recvaddr=addr;
   frame->unicast=1;

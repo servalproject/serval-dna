@@ -30,24 +30,9 @@ typedef struct overlay_txqueue {
   int length; /* # frames in queue */
   int maxLength; /* max # frames in queue before we consider ourselves congested */
   
-  /* wait until first->enqueued_at+transmit_delay before trying to force the transmission of a packet */
-  int transmit_delay;
-  
-  /* if servald is busy, wait this long before trying to force the transmission of a packet */
-  int grace_period;
-  
   /* Latency target in ms for this traffic class.
    Frames older than the latency target will get dropped. */
   int latencyTarget;
-  
-  /* XXX Need to initialise these:
-   Real-time queue for voice (<200ms ?)
-   Real-time queue for video (<200ms ?) (lower priority than voice)
-   Ordinary service queue (<3 sec ?)
-   Rhizome opportunistic queue (infinity)
-   
-   (Mesh management doesn't need a queue, as each overlay packet is tagged with some mesh management information)
-   */
 } overlay_txqueue;
 
 overlay_txqueue overlay_tx[OQ_MAX];
@@ -75,23 +60,10 @@ int overlay_queue_init(){
   for(i=0;i<OQ_MAX;i++) {
     overlay_tx[i].maxLength=100;
     overlay_tx[i].latencyTarget=1000; /* Keep packets in queue for 1 second by default */
-    overlay_tx[i].transmit_delay=5; /* Hold onto packets for 10ms before trying to send a full packet */
-    overlay_tx[i].grace_period=100; /* Delay sending a packet for up to 100ms if servald has other processing to do */
   }
   /* expire voice/video call packets much sooner, as they just aren't any use if late */
   overlay_tx[OQ_ISOCHRONOUS_VOICE].latencyTarget=200;
   overlay_tx[OQ_ISOCHRONOUS_VIDEO].latencyTarget=200;
-  
-  /* try to send voice packets without any delay, and before other background processing */
-  overlay_tx[OQ_ISOCHRONOUS_VOICE].transmit_delay=0;
-  overlay_tx[OQ_ISOCHRONOUS_VOICE].grace_period=0;
-  
-  /* Routing payloads, ack's and nacks need to be sent immediately */
-  overlay_tx[OQ_MESH_MANAGEMENT].transmit_delay=0;
-  
-  /* opportunistic traffic can be significantly delayed */
-  overlay_tx[OQ_OPPORTUNISTIC].transmit_delay=200;
-  overlay_tx[OQ_OPPORTUNISTIC].grace_period=500;
   return 0;  
 }
 
@@ -179,7 +151,8 @@ int overlay_payload_enqueue(struct overlay_frame *p)
 	break;
     }
     
-    return WHYF("Cannot send %x packet, destination %s is %s", p->type, alloca_tohex_sid(p->destination->sid), r==REACHABLE_SELF?"myself":"unreachable");
+    return WHYF("Cannot send %x packet, destination %s is %s", p->type, 
+		alloca_tohex_sid(p->destination->sid), r==REACHABLE_SELF?"myself":"unreachable");
   } while(0);
   
   if (p->queue>=OQ_MAX) 
@@ -277,7 +250,6 @@ overlay_init_packet(struct outgoing_packet *packet, struct subscriber *destinati
 static int
 overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
   int ret=0;
-  time_ms_t send_time;
   
   do{
     if (frame->destination_resolved)
@@ -294,8 +266,6 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
     return 0;
   }while(0);
   
-  // when is the next packet from this queue due?
-  send_time=queue->first->enqueued_at + queue->transmit_delay;
   time_ms_t next_allowed_packet=0;
   if (frame->interface){
     next_allowed_packet = limit_next_allowed(&frame->interface->transfer_limit);
@@ -311,20 +281,14 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
 	next_allowed_packet = next_packet;
     }
   }
-  if (next_allowed_packet > send_time)
-    send_time = next_allowed_packet;
   
-  if (next_packet.alarm==0 || send_time < next_packet.alarm){
-    next_packet.alarm=send_time;
+  if (next_packet.alarm==0 || next_allowed_packet < next_packet.alarm){
+    next_packet.alarm=next_allowed_packet;
+    // no grace period, send IO ASAP
+    next_packet.deadline=next_allowed_packet;
     ret = 1;
   }
   
-  // how long can we wait if the server is busy?
-  send_time += queue->grace_period;
-  if (next_packet.deadline==0 || send_time < next_packet.deadline){
-    next_packet.deadline=send_time;
-    ret = 1;
-  }
   if (!next_packet.function){
     next_packet.function=overlay_send_packet;
     send_packet.name="overlay_send_packet";
