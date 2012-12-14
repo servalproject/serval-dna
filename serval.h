@@ -164,6 +164,8 @@ int create_serval_instance_dir();
 int form_serval_instance_path(char *buf, size_t bufsiz, const char *path);
 void serval_setinstancepath(const char *instancepath);
 
+#define SERVER_CONFIG_RELOAD_INTERVAL_MS	1000
+
 extern int serverMode;
 extern int servalShutdown;
 
@@ -710,6 +712,7 @@ int fd_poll();
 void overlay_interface_discover(struct sched_ent *alarm);
 void overlay_dummy_poll(struct sched_ent *alarm);
 void overlay_route_tick(struct sched_ent *alarm);
+void server_config_reload(struct sched_ent *alarm);
 void server_shutdown_check(struct sched_ent *alarm);
 void overlay_mdp_poll(struct sched_ent *alarm);
 int overlay_mdp_try_interal_services(overlay_mdp_frame *mdp);

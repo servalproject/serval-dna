@@ -627,9 +627,6 @@ int app_server_start(int argc, const char *const *argv, const struct command_lin
 	       streams, and start a new process session so that if we are being started by an adb
 	       shell session, then we don't receive a SIGHUP when the adb shell process ends.  */
 	    close_logging();
-	    
-	    //TODO close config
-	    
 	    int fd;
 	    if ((fd = open("/dev/null", O_RDWR, 0)) == -1)
 	      _exit(WHY_perror("open"));

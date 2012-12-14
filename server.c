@@ -87,8 +87,8 @@ void server_save_argv(int argc, const char *const *argv)
 
 int server(char *backing_file)
 {
-  /* For testing, it can be very helpful to delay the start of the server
-     process, for example to check that the start/stop logic is robust.
+  /* For testing, it can be very helpful to delay the start of the server process, for example to
+   * check that the start/stop logic is robust.
    */
   const char *delay = getenv("SERVALD_SERVER_START_DELAY");
   if (delay)
@@ -125,8 +125,7 @@ int server(char *backing_file)
   FILE *f=fopen(filename,"w");
   if (!f) {
     WHY_perror("fopen");
-    WHYF("Could not write to PID file %s", filename);
-    return -1;
+    return WHYF("Could not write to PID file %s", filename);
   }
   server_getpid = getpid();
   fprintf(f,"%d\n", server_getpid);
@@ -135,6 +134,28 @@ int server(char *backing_file)
   overlayServerMode();
 
   return 0;
+}
+
+/* Called periodically by the server process in its main loop.
+ */
+void server_config_reload(struct sched_ent *alarm)
+{
+  switch (cf_reload()) {
+  case -1:
+    WARN("server continuing with prior config");
+    break;
+  case 0:
+    break;
+  default:
+    INFO("server config successfully reloaded");
+    break;
+  }
+  if (alarm) {
+    time_ms_t now = gettime_ms();
+    alarm->alarm = now + SERVER_CONFIG_RELOAD_INTERVAL_MS;
+    alarm->deadline = alarm->alarm + 1000;
+    schedule(alarm);
+  }
 }
 
 /* Called periodically by the server process in its main loop.
