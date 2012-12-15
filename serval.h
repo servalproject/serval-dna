@@ -453,7 +453,6 @@ int overlay_frame_resolve_addresses(struct overlay_frame *f);
 
 time_ms_t overlay_time_until_next_tick();
 
-int overlay_add_selfannouncement(struct decode_context *context, int interface,struct overlay_buffer *b);
 int overlay_frame_append_payload(struct decode_context *context, overlay_interface *interface, 
 				 struct overlay_frame *p, struct overlay_buffer *b);
 int overlay_packet_init_header(struct decode_context *context, struct overlay_buffer *buff, 
@@ -503,7 +502,10 @@ typedef struct overlay_node {
 } overlay_node;
 
 int overlay_route_saw_selfannounce_ack(struct overlay_frame *f, time_ms_t now);
-int overlay_route_saw_selfannounce(struct overlay_frame *f, time_ms_t now);
+int overlay_route_ack_selfannounce(overlay_interface *recv_interface,
+				   unsigned int s1,unsigned int s2,
+				   int interface,
+				   struct subscriber *subscriber);
 overlay_node *overlay_route_find_node(const unsigned char *sid,int prefixLen,int createP);
 
 int overlayServerMode();
@@ -730,7 +732,7 @@ void server_config_reload(struct sched_ent *alarm);
 void server_shutdown_check(struct sched_ent *alarm);
 void overlay_mdp_poll(struct sched_ent *alarm);
 int overlay_mdp_try_interal_services(overlay_mdp_frame *mdp);
-int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay_interface *interface);
+int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay_interface *interface, int queue);
 int overlay_send_stun_request(struct subscriber *server, struct subscriber *request);
 void fd_periodicstats(struct sched_ent *alarm);
 void rhizome_check_connections(struct sched_ent *alarm);

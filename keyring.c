@@ -1239,6 +1239,7 @@ int keyring_mapping_request(keyring_file *k, overlay_mdp_frame *req)
     overlay_mdp_swap_src_dst(req);
     req->out.ttl=0;
     req->packetTypeAndFlags=MDP_TX; /* crypt and sign */
+    req->out.queue=OQ_MESH_MANAGEMENT;
     if (config.debug.keyring)
       DEBUGF("Sending SID:SAS mapping, %d bytes, %s:0x%X -> %s:0x%X",
 	    req->out.payload_length,
@@ -1275,6 +1276,7 @@ int keyring_send_sas_request(struct subscriber *subscriber){
   memset(&mdp,0,sizeof(overlay_mdp_frame));
   
   mdp.packetTypeAndFlags=MDP_TX;
+  mdp.out.queue=OQ_MESH_MANAGEMENT;
   bcopy(subscriber->sid,mdp.out.dst.sid,SID_SIZE);
   mdp.out.dst.port=MDP_PORT_KEYMAPREQUEST;
   mdp.out.src.port=MDP_PORT_KEYMAPREQUEST;

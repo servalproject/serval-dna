@@ -597,7 +597,7 @@ void overlay_dummy_poll(struct sched_ent *alarm)
 			    (struct sockaddr*)&packet.src_addr, sizeof(packet.src_addr))) {
 	  WARN("Unsupported packet from dummy interface");
 	}
-      }else
+      }else if (config.debug.packetrx)
 	DEBUGF("Ignoring packet addressed to %s:%d", inet_ntoa(packet.dst_addr.sin_addr), ntohs(packet.dst_addr.sin_port));
     }
     

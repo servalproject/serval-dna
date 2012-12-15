@@ -41,6 +41,7 @@ static void directory_send(struct subscriber *directory_service, const unsigned 
   
   bcopy(sid, request.out.src.sid, SID_SIZE);
   request.out.src.port=MDP_PORT_NOREPLY;
+  request.out.queue=OQ_ORDINARY;
   
   bcopy(directory_service->sid, request.out.dst.sid, SID_SIZE);
   request.out.dst.port=MDP_PORT_DIRECTORY;

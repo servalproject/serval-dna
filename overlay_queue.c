@@ -214,6 +214,8 @@ int overlay_payload_enqueue(struct overlay_frame *p)
   queue->last=p;
   if (!queue->first) queue->first=p;
   queue->length++;
+  if (p->queue==OQ_ISOCHRONOUS_VOICE)
+    rhizome_saw_voice_traffic();
   
   overlay_update_queue_schedule(queue, p);
   
@@ -235,14 +237,8 @@ overlay_init_packet(struct outgoing_packet *packet, struct subscriber *destinati
   overlay_packet_init_header(&packet->context, packet->buffer, destination, unicast, packet->i, 0);
   packet->header_length = ob_position(packet->buffer);
   if (tick){
-    /* 1. Send announcement about ourselves, including one SID that we host if we host more than one SID
-     (the first SID we host becomes our own identity, saving a little bit of data here).
-     */
-    overlay_add_selfannouncement(&packet->context, packet->i, packet->buffer);
-    
     /* Add advertisements for ROUTES */
     overlay_route_add_advertisements(&packet->context, packet->interface, packet->buffer);
-    
   }
 }
 

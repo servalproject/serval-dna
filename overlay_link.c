@@ -211,7 +211,7 @@ int load_subscriber_address(struct subscriber *subscriber)
     }
   }
   DEBUGF("Loaded address %s:%d for %s", inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), alloca_tohex_sid(subscriber->sid));
-  return overlay_send_probe(subscriber, addr, interface);
+  return overlay_send_probe(subscriber, addr, interface, OQ_MESH_MANAGEMENT);
 }
 
 /* Collection of unicast echo responses to detect working links */
@@ -240,7 +240,7 @@ overlay_mdp_service_probe(overlay_mdp_frame *mdp)
   RETURN(0);
 }
 
-int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay_interface *interface){
+int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay_interface *interface, int queue){
   if (interface==NULL)
     interface = overlay_interface_find(addr.sin_addr, 1);
   
@@ -258,7 +258,7 @@ int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay
   frame->source = my_subscriber;
   frame->next_hop = frame->destination = peer;
   frame->ttl=1;
-  frame->queue=OQ_ORDINARY;
+  frame->queue=queue;
   frame->destination_resolved=1;
   frame->recvaddr=addr;
   frame->unicast=1;
@@ -344,6 +344,7 @@ int overlay_mdp_service_stun_req(overlay_mdp_frame *mdp)
   bcopy(mdp->out.dst.sid, reply.out.src.sid, SID_SIZE);
   reply.out.src.port=MDP_PORT_STUNREQ;
   reply.out.dst.port=MDP_PORT_STUN;
+  reply.out.queue=OQ_MESH_MANAGEMENT;
   
   struct overlay_buffer *replypayload = ob_static(reply.out.payload, sizeof(reply.out.payload));
   
@@ -400,7 +401,7 @@ int overlay_mdp_service_stun(overlay_mdp_frame *mdp)
     if (!subscriber || (subscriber->reachable!=REACHABLE_NONE))
       continue;
     
-    overlay_send_probe(subscriber, addr, NULL);
+    overlay_send_probe(subscriber, addr, NULL, OQ_MESH_MANAGEMENT);
   }
   
   ob_free(buff);
@@ -431,6 +432,7 @@ int overlay_send_stun_request(struct subscriber *server, struct subscriber *requ
   bcopy(server->sid, mdp.out.dst.sid, SID_SIZE);
   mdp.out.src.port=MDP_PORT_STUN;
   mdp.out.dst.port=MDP_PORT_STUNREQ;
+  mdp.out.queue=OQ_MESH_MANAGEMENT;
   
   struct overlay_buffer *payload = ob_static(mdp.out.payload, sizeof(mdp.out.payload));
   overlay_address_append(NULL, payload, request);

@@ -481,6 +481,7 @@ int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const unsigned char
   overlay_mdp_frame mdpreply;
   bzero(&mdpreply, sizeof mdpreply);
   mdpreply.packetTypeAndFlags = MDP_TX; // outgoing MDP message
+  mdpreply.out.queue=OQ_ORDINARY;
   memcpy(mdpreply.out.src.sid, resolved_sid, SID_SIZE);
   mdpreply.out.src.port = MDP_PORT_DNALOOKUP;
   bcopy(dstaddr, &mdpreply.out.dst, sizeof(sockaddr_mdp));
@@ -647,9 +648,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       }
     }
   
-  /* give voice packets priority */
-  if (mdp->out.dst.port==MDP_PORT_VOMP) frame->type=OF_TYPE_DATA_VOICE;
-  else frame->type=OF_TYPE_DATA;
+  frame->type=OF_TYPE_DATA;
   frame->prev=NULL;
   frame->next=NULL;
   struct overlay_buffer *plaintext=ob_new();
@@ -772,12 +771,6 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   if (frame->queue==0)
     frame->queue = OQ_ORDINARY;
   
-  /* Make sure only voice traffic gets priority */
-  if (frame->type==OF_TYPE_DATA_VOICE) {
-    frame->queue=OQ_ISOCHRONOUS_VOICE;
-    rhizome_saw_voice_traffic();
-  }
-  
   frame->send_copies = mdp->out.send_copies;
   
   if (overlay_payload_enqueue(frame))
@@ -884,7 +877,7 @@ static void overlay_mdp_scan(struct sched_ent *alarm)
   while(state->current <= stop){
     addr.sin_addr.s_addr=htonl(state->current);
     if (addr.sin_addr.s_addr != state->interface->address.sin_addr.s_addr){
-      if (overlay_send_probe(NULL, addr, state->interface))
+      if (overlay_send_probe(NULL, addr, state->interface, OQ_ORDINARY))
 	break;
     }
     state->current++;
@@ -965,6 +958,10 @@ void overlay_mdp_poll(struct sched_ent *alarm)
 	  
       case MDP_TX: /* Send payload (and don't treat it as system privileged) */
 	if (config.debug.mdprequests) DEBUG("MDP_TX");
+	  
+	// Dont allow mdp clients to send very high priority payloads
+	if (mdp->out.queue<=OQ_MESH_MANAGEMENT)
+	  mdp->out.queue=OQ_ORDINARY;
 	overlay_mdp_dispatch(mdp,1,(struct sockaddr_un*)recvaddr,recvaddrlen);
 	return;
 	break;

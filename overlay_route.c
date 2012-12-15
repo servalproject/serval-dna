@@ -194,10 +194,10 @@ overlay_node *get_node(struct subscriber *subscriber, int create){
   return subscriber->node;
 }
 
-int overlay_route_ack_selfannounce(struct overlay_frame *f,
+int overlay_route_ack_selfannounce(overlay_interface *recv_interface,
 				   unsigned int s1,unsigned int s2,
 				   int interface,
-				   struct overlay_neighbour *n)
+				   struct subscriber *subscriber)
 {
   /* Acknowledge the receipt of a self-announcement of an immediate neighbour.
      We could acknowledge immediately, but that requires the transmission of an
@@ -234,16 +234,10 @@ int overlay_route_ack_selfannounce(struct overlay_frame *f,
 	         XXX 6 is quite an arbitrary selection however. */
 
   /* Set destination of ack to source of observed frame */
-  out->destination = n->node->subscriber;
+  out->destination = subscriber;
   /* set source to ourselves */
   out->source = my_subscriber;
 
-  /* Assume immediate neighbour via broadcast packet if we don't have a route yet */
-  if (out->destination->reachable == REACHABLE_NONE){
-    out->destination->interface=f->interface;
-    set_reachable(out->destination, REACHABLE_ASSUMED|REACHABLE_BROADCAST);
-  }
-  
   /* Set the time in the ack. Use the last sequence number we have seen
      from this neighbour, as that may be helpful information for that neighbour
      down the track.  My policy is to communicate that information which should
@@ -263,36 +257,6 @@ int overlay_route_ack_selfannounce(struct overlay_frame *f,
      on the return path doesn't count against the link. */
   ob_append_ui32(out->payload,s1);
   ob_append_ui32(out->payload,s2);
-
-  /* The ack needs to contain the per-interface scores that we have built up
-     for this neighbour.
-     We expect that for most neighbours they will have many fewer than 32 interfaces,
-     and even when they have multiple interfaces that we will only be able to hear
-     them on one or a few. 
-
-     So we will structure the format so that we use fewer bytes when fewer interfaces
-     are involved.
-
-     Probably the simplest is to put each non-zero score followed by it's interface.
-     That way the whole list will be easy to parse, and as short as 3 bytes for a
-     single interface.
-
-     We could use the spare 2 bits at the top of the interface id to indicate
-     multiple interfaces with same score? 
-  */
-#ifdef NOTDEFINED
-  int i;
-  for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
-    {
-      /* Only include interfaces with score >0 */
-      if (n->scores[i]) {
-	ob_append_byte(out->payload,n->scores[i]);
-	ob_append_byte(out->payload,i);
-      }
-    }
-  /* Terminate list */
-  ob_append_byte(out->payload,0);
-#endif
   ob_append_byte(out->payload,interface);
 
   /* Add to queue. Keep broadcast status that we have assigned here if required to
@@ -412,33 +376,6 @@ int overlay_route_node_can_hear_me(struct subscriber *subscriber, int sender_int
   return 0;
 }
 
-int overlay_route_saw_selfannounce(struct overlay_frame *f, time_ms_t now)
-{
-  IN();
-  unsigned int s1,s2;
-  unsigned char sender_interface;
-  
-  overlay_node *node = get_node(f->source, 1);
-  if (!node)
-    RETURN(-1);
-  
-  struct overlay_neighbour *n=overlay_route_get_neighbour_structure(node, 1 /* make neighbour if not yet one */);
- 
-  if (!n){
-    RETURN(-1);
-  }
-
-  s1=ob_get_ui32(f->payload);
-  s2=ob_get_ui32(f->payload);
-  sender_interface=ob_get(f->payload);
-  if (config.debug.overlayrouting)
-    DEBUGF("Received self-announcement for sequence range [%08x,%08x] from interface %d",s1,s2,sender_interface);
-
-  overlay_route_ack_selfannounce(f,s1,s2,sender_interface,n);
-
-  RETURN(0);
-}
-
 /* XXX Think about scheduling this node's score for readvertising? */
 int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
 {
@@ -527,7 +464,7 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
   
   if (old_best && !best_score){
     INFOF("PEER UNREACHABLE, sid=%s", alloca_tohex_sid(n->subscriber->sid));
-    overlay_send_probe(n->subscriber, n->subscriber->address, n->subscriber->interface);
+    overlay_send_probe(n->subscriber, n->subscriber->address, n->subscriber->interface, OQ_MESH_MANAGEMENT);
     
   }else if(best_score && !old_best){
     INFOF("PEER REACHABLE, sid=%s", alloca_tohex_sid(n->subscriber->sid));

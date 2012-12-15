@@ -490,7 +490,7 @@ static int vomp_send_status_remote(struct vomp_call_state *call)
   
   bzero(&mdp,sizeof(mdp));
   prepare_vomp_header(call, &mdp);
-
+  mdp.out.queue=OQ_ORDINARY;
   if (call->local.state < VOMP_STATE_RINGINGOUT && call->remote.state < VOMP_STATE_RINGINGOUT) {
     int didLen;
     unsigned char codecs[CODEC_FLAGS_LENGTH];
@@ -559,6 +559,8 @@ int vomp_received_audio(struct vomp_call_state *call, int audio_codec, int time,
   // send the payload more than once to add resilience to dropped packets
   // TODO remove once network links have built in retries
   mdp.out.send_copies=VOMP_MAX_RECENT_SAMPLES;
+  mdp.out.queue=OQ_ISOCHRONOUS_VOICE;
+  
   overlay_mdp_dispatch(&mdp,0,NULL,0);
   
   return 0;
