@@ -1208,11 +1208,74 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
       }
     }
   }
-  int encryptP = 0; // TODO Determine here whether payload is to be encrypted.
-  if (rhizome_manifest_bind_file(m, filepath, encryptP)) {
-    rhizome_manifest_free(m);
-    return WHYF("Could not bind manifest to file '%s'",filepath);
+  
+  /* Keep note as to whether we are supposed to be encrypting this file or not */
+  // TODO should we encrypt??
+  m->payloadEncryption=0;
+  rhizome_manifest_set_ll(m,"crypt",m->payloadEncryption?1:0); 
+  
+  m->fileLength = 0;
+  if (filepath[0]) {
+    struct stat stat;
+    if (lstat(filepath,&stat))
+      return WHYF("Could not stat() payload file '%s'",filepath);
+    m->fileLength = stat.st_size;
   }
+  rhizome_manifest_set_ll(m, "filesize", m->fileLength);
+  
+  if (m->fileLength){
+    // Stream the file directly into the database, encrypting & hashing as we go.
+    struct rhizome_write write;
+    bzero(&write, sizeof(write));
+    
+    if (rhizome_open_write(&write, NULL, m->fileLength, RHIZOME_PRIORITY_DEFAULT))
+      return -1;
+    
+    FILE *f = fopen(filepath, "r");
+    if (!f) {
+      WHY_perror("fopen");
+      goto cleanup;
+    }
+    
+    while(write.file_offset < write.file_length){
+      
+      int size=write.buffer_size - write.data_size;
+      if (write.file_offset + size > write.file_length)
+	size=write.file_length - write.file_offset;
+      
+      int r = fread(write.buffer + write.data_size, 1, size, f);
+      if (r==-1){
+	WHY_perror("fread");
+	goto cleanup;
+      }
+      write.data_size+=r;
+      
+      // TODO encryption
+      
+      if (rhizome_flush(&write)){
+      cleanup:
+	if (f)
+	  fclose(f);
+	rhizome_fail_write(&write);
+	return -1;
+      }
+    }
+    
+    fclose(f);
+    if (rhizome_finish_write(&write))
+      return -1;
+    
+    m->fileHashedP = 1;
+    strlcpy(m->fileHexHash, write.id, SHA512_DIGEST_STRING_LENGTH);
+    rhizome_manifest_set(m, "filehash", m->fileHexHash);
+    
+  } else {
+    m->fileLength = 0;
+    m->fileHexHash[0] = '\0';
+    rhizome_manifest_del(m, "filehash");
+    m->fileHashedP = 0;
+  }
+  
   /* Add the manifest and its associated file to the Rhizome database, 
      generating an "id" in the process.
      PGS @20121003 - Hang on, didn't we create the ID above? Presumably the
@@ -1225,11 +1288,27 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
     rhizome_manifest_verify(mout);
     ret=2;
   } else {
-    /* not duplicate, so finalise and add to database */
-    if (rhizome_manifest_finalise(m)) {
-      rhizome_manifest_free(m);
-      return WHY("Could not finalise manifest");
+    
+    /* set version of manifest, either from version variable, or using current time */
+    if (rhizome_manifest_get(m,"version",NULL,0)==NULL)
+    {
+      /* No version set */
+      m->version = gettime_ms();
+      rhizome_manifest_set_ll(m,"version",m->version);
     }
+    else
+      m->version = rhizome_manifest_get_ll(m,"version");
+    
+    /* Convert to final form for signing and writing to disk */
+    if (rhizome_manifest_pack_variables(m))
+      return WHY("Could not convert manifest to wire format");
+    
+    /* Sign it */
+    if (rhizome_manifest_selfsign(m))
+      return WHY("Could not sign manifest");
+    
+    /* mark manifest as finalised */
+    m->finalised=1;
     if (rhizome_add_manifest(m, 255 /* TTL */)) {
       rhizome_manifest_free(m);
       return WHY("Manifest not added to Rhizome database");

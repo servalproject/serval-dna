@@ -50,6 +50,7 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)rhizome_fetch.c \
 	$(SERVAL_BASE)rhizome_http.c \
 	$(SERVAL_BASE)rhizome_packetformats.c \
+	$(SERVAL_BASE)rhizome_store.c \
 	$(SERVAL_BASE)serval_packetvisualise.c \
 	$(SERVAL_BASE)server.c \
 	$(SERVAL_BASE)sha2.c \
