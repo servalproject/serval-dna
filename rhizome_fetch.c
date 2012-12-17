@@ -97,7 +97,7 @@ struct rhizome_fetch_slot {
   // at any point in time.
 #define RHIZOME_MDP_MAX_DEFERRED_PACKETS 31
   unsigned char *mdpRXdeferredPackets[RHIZOME_MDP_MAX_DEFERRED_PACKETS];
-  unsigned short mdpRXdeferredPacketStarts[RHIZOME_MDP_MAX_DEFERRED_PACKETS];
+  uint32_t mdpRXdeferredPacketStarts[RHIZOME_MDP_MAX_DEFERRED_PACKETS];
   unsigned short mdpRXdeferredPacketLengths[RHIZOME_MDP_MAX_DEFERRED_PACKETS];
   unsigned short mdpRXdeferredPacketTypes[RHIZOME_MDP_MAX_DEFERRED_PACKETS];
 };
@@ -1106,20 +1106,21 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
     {
       int start=slot->mdpRXdeferredPacketStarts[i];
       int length=slot->mdpRXdeferredPacketLengths[i];
-      int start_slot=start/slot->mdpRXBlockLength;
+      int start_slot=(start-slot->file_ofs)/slot->mdpRXBlockLength;
       if (start%slot->mdpRXBlockLength) start_slot++;
-      int end_slot=(start+length)/slot->mdpRXBlockLength;
+      int end_slot=(start-slot->file_ofs+length)/slot->mdpRXBlockLength;
       if (slot->mdpRXdeferredPacketTypes[i]=='T') end_slot++;
       DEBUGF("Deferred packet #%d @ 0x%x - 0x%x covers slots %d - %d",
 	     i,start,start+length-1,start_slot,end_slot);
+      assert(start_slot>0);
       if (start_slot>=0&&start_slot<=31&&end_slot>0&&end_slot<=32) {
 	int j;
 	for(j=start_slot;j<end_slot;j++)
 	  slot->mdpRXBitmap|=(1<<(31-j));
       }
-      DEBUGF("Request bitmap = 0x%08x, block_length=0x%x, offset=0x%x",
-	     slot->mdpRXBitmap,slot->mdpRXBlockLength,slot->file_ofs);
     }
+  DEBUGF("Request bitmap = 0x%08x, block_length=0x%x, offset=0x%x",
+	 slot->mdpRXBitmap,slot->mdpRXBlockLength,slot->file_ofs);
 
 
   write_uint64(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES],slot->bidVersion);
@@ -1334,7 +1335,7 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
     if (config.debug.rhizome_rx) {
       DEBUGF("slot->blob_buffer_bytes=%d, slot->file_ofs=%d",
 	     slot->blob_buffer_bytes,slot->file_ofs);
-      dump("buffer",buffer,bytes);
+      // dump("buffer",buffer,bytes);
     }
 
     if (!slot->blob_buffer_size) {
@@ -1472,17 +1473,11 @@ int rhizome_received_content(unsigned char *sender_sid,
 	{
 	  if (slot->file_ofs==offset) {
 	    if (!rhizome_write_content(slot,(char *)bytes,count))
-	      {
-		slot->mdpResponsesOutstanding--;
-		if (slot->mdpResponsesOutstanding==0) {
-		  // We have received all responses, so immediately ask for more
-		  rhizome_fetch_mdp_requestblocks(slot);
-		}
-		
-		// TODO: Try flushing out stuck packets that we have kept due to
+	      {		
+		// Try flushing out stuck packets that we have kept due to
 		// packet loss / out-of-order delivery.
-		int i;
-		for(i=0;i<slot->mdpRXdeferredPacketCount;i++)
+		int i=0;
+		while(i<slot->mdpRXdeferredPacketCount)
 		  {
 		    if (slot->mdpRXdeferredPacketStarts[i]==slot->file_ofs)
 		      {
@@ -1505,19 +1500,29 @@ int rhizome_received_content(unsigned char *sender_sid,
 			
 			// now we can safely recursively call ourself
 			// because we have finished fiddling with the list of 
-			// deferred packets
-			DEBUGF("Applying out-of-order packet 0x%llx -- 0x%llx",
-			       offset,offset+count-1);
-		  
+			// deferred packets		  
 			rhizome_received_content(slot->peer_sid,
 						 bidprefix,
 						 version,offset,
 						 count,bytes,type);
-			// Clean up and return
+			// Clean up
 			free(bytes);
-			RETURN(0);
+
+			// Start searching from beginning of list again
+			i=0;
 		      }
+		    else 
+		      i++;
 		  }
+
+		// Then see if we need to ask for any more content.
+		slot->mdpResponsesOutstanding--;
+		if (slot->mdpResponsesOutstanding==0) {
+		  // We have received all responses, so immediately ask for more
+		  rhizome_fetch_mdp_requestblocks(slot);
+		}
+		
+		  
 	      }
 
 	    RETURN(0);
@@ -1527,7 +1532,6 @@ int rhizome_received_content(unsigned char *sender_sid,
 	    if (offset>slot->file_ofs) {
 	      int replacementSlot=-2;
 	      int highestAddressSlot=slot->mdpRXdeferredPacketCount;
-	      DEBUGF("Slots in use = %d",highestAddressSlot);
 	      for(i=0;i<slot->mdpRXdeferredPacketCount;i++)
 		{
 		  if (slot->mdpRXdeferredPacketStarts[i]<slot->file_ofs) {
@@ -1542,8 +1546,6 @@ int rhizome_received_content(unsigned char *sender_sid,
 			replacementSlot=-1; // don't replace
 		      else {
 			replacementSlot=i; 
-			DEBUGF("replacementSlot=%d, offset=0x%x, slotsinuse=%d",
-			       replacementSlot,offset,slot->mdpRXdeferredPacketCount);
 		      }
 		      // either way, don't keep looking
 		      break;
