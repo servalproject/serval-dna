@@ -54,7 +54,6 @@ setup_AddNoAuthorNoManifest() {
    executeOk_servald rhizome list ''
    assert_rhizome_list
    echo "A test file" >file1
-   echo "Another test file" >file2
 }
 test_AddNoAuthorNoManifest() {
    executeOk_servald rhizome add file '' '' file1
@@ -93,7 +92,6 @@ setup_AddNonExistManifest() {
    executeOk_servald rhizome list ''
    assert_rhizome_list
    echo "A test file" >file1
-   echo "Another test file" >file2
 }
 test_AddNonExistManifest() {
    assert --error-on-fail [ ! -e file1.manifest ]
@@ -113,7 +111,6 @@ setup_AddManifest() {
    assert_rhizome_list
    echo "A test file" >file1
    echo -e 'name=wah\ndate=12345' >file1.manifest
-   echo "Another test file" >file2
 }
 test_AddManifest() {
    executeOk_servald rhizome add file $SIDB1 '' file1 file1.manifest
@@ -352,6 +349,8 @@ test_AddDuplicate() {
    execute --exit-status=2 $servald rhizome add file $SIDB1 '' file1 file1.manifestA
    assert [ -s file1.manifestA ]
    assert_stdout_add_file file1
+   extract_stdout_secret file1_dup_secret
+   assert [ $file1_secret = $file1_dup_secret ]
    executeOk_servald rhizome list ''
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1 file2
    strip_signatures file1.manifest file1.manifestA
@@ -360,6 +359,8 @@ test_AddDuplicate() {
    execute --exit-status=2 $servald rhizome add file $SIDB1 '' file2 file2.manifestA
    assert [ -s file2.manifestA ]
    assert_stdout_add_file file2
+   extract_stdout_secret file2_dup_secret
+   assert [ $file2_secret = $file2_dup_secret ]
    executeOk_servald rhizome list ''
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1 file2
    strip_signatures file2.manifest file2.manifestA
