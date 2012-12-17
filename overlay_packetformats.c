@@ -28,15 +28,37 @@ struct sockaddr_in loopback;
 
 unsigned char magic_header[]={0x00, 0x01};
 
+#define PACKET_UNICAST (1<<0)
+#define PACKET_INTERFACE (1<<1)
+#define PACKET_SEQ (1<<2)
+
 int overlay_packet_init_header(struct decode_context *context, struct overlay_buffer *buff, 
-			       struct subscriber *destination, int flags){
+			       struct subscriber *destination, 
+			       char unicast, char interface, char seq){
+  
   if (ob_append_bytes(buff,magic_header,sizeof magic_header))
     return -1;
   if (overlay_address_append(context, buff, my_subscriber))
     return -1;
   context->sender = my_subscriber;
-  ob_append_byte(buff,0);
+  
+  int flags=0;
+  
+  if (unicast)
+    flags |= PACKET_UNICAST;
+  if (interface)
+    flags |= PACKET_INTERFACE;
+  if (seq)
+    flags |= PACKET_SEQ;
+  
   ob_append_byte(buff,flags);
+  
+  if (flags & PACKET_INTERFACE)
+    ob_append_byte(buff,interface);
+  
+  if (flags & PACKET_SEQ)
+    ob_append_byte(buff,seq);
+  
   return 0;
 }
 
@@ -46,12 +68,6 @@ int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, s
   int id = (interface - overlay_interfaces);
   switch(f->type)
   {
-      // route control frames
-    case OF_TYPE_SELFANNOUNCE:
-      if (config.debug.overlayframes)
-	DEBUG("Processing OF_TYPE_SELFANNOUNCE");
-      overlay_route_saw_selfannounce(f,now);
-      break;
     case OF_TYPE_SELFANNOUNCE_ACK:
       if (config.debug.overlayframes)
 	DEBUG("Processing OF_TYPE_SELFANNOUNCE_ACK");
@@ -81,7 +97,7 @@ int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, s
       process_explain(f);
       break;
     default:
-      RETURN(WHYF("Support for f->type=0x%x not yet implemented",f->type));
+      RETURN(WHYF("Support for f->type=0x%x not implemented",f->type));
   }
   RETURN(0);
 }
@@ -107,12 +123,6 @@ int overlay_forward_payload(struct overlay_frame *f){
   struct overlay_frame *qf=op_dup(f);
   if (!qf) 
     RETURN(WHY("Could not clone frame for queuing"));
-  
-  /* Make sure voice traffic gets priority */
-  if (qf->type==OF_TYPE_DATA_VOICE) {
-    qf->queue=OQ_ISOCHRONOUS_VOICE;
-    rhizome_saw_voice_traffic();
-  }
   
   if (overlay_payload_enqueue(qf)) {
     op_free(qf);
@@ -205,8 +215,14 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     WHY("Unable to parse sender");
   }
   
-  ob_get(b); // sequence number, not implemented yet
   int packet_flags = ob_get(b);
+  
+  int sender_interface = 0;
+  if (packet_flags & PACKET_INTERFACE)
+    sender_interface = ob_get(b);
+  
+  if (packet_flags & PACKET_SEQ)
+    ob_get(b); // sequence number, not implemented yet
   
   if (context.sender){
     
@@ -223,14 +239,25 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     context.sender->address = f.recvaddr;
     
     // if this is a dummy announcement for a node that isn't in our routing table
-    if (context.sender->reachable == REACHABLE_NONE && 
-	(!context.sender->node) &&
-	packet_flags&PACKET_UNICAST){
-      
-      // mark this subscriber as reachable directly via unicast.
+    if (context.sender->reachable == REACHABLE_NONE) {
       context.sender->interface = interface;
-      set_reachable(context.sender, REACHABLE_UNICAST|REACHABLE_ASSUMED);
-      overlay_send_probe(context.sender, f.recvaddr, interface);
+      
+      // assume for the moment, that we can reply with the same packet type
+      if (packet_flags&PACKET_UNICAST){
+	/* Note the probe payload must be queued before any SID/SAS request so we can force the packet to have a full sid */
+	overlay_send_probe(context.sender, f.recvaddr, interface, OQ_MESH_MANAGEMENT);
+	set_reachable(context.sender, REACHABLE_UNICAST|REACHABLE_ASSUMED);
+      }else{
+	set_reachable(context.sender, REACHABLE_BROADCAST|REACHABLE_ASSUMED);
+      }
+    }
+    
+    if ((!(packet_flags&PACKET_UNICAST)) && context.sender->last_acked + interface->tick_ms <= now){
+      overlay_route_ack_selfannounce(interface,
+				     context.sender->last_acked>now - 3*interface->tick_ms?context.sender->last_acked:now,
+				     now,sender_interface,context.sender);
+      
+      context.sender->last_acked = now;
     }
   }
   
@@ -326,14 +353,14 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     f.modifiers=flags;
 
     // TODO allow for one byte length
-    int payload_len = ob_get_ui16(b);
+    unsigned int payload_len = ob_get_ui16(b);
 
-    if (payload_len <=0){
-      WHY("Unable to parse payload length");
+    if (payload_len > ob_remaining(b)){
+      WHYF("Unable to parse payload length (%d)", payload_len);
       break;
     }
     
-    int next_payload = b->position + payload_len;
+    int next_payload = ob_position(b) + payload_len;
     
     if (f.source)
       f.source->last_rx = now;
@@ -358,13 +385,13 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     if (!process && !forward)
       goto next;
     
-    f.payload = ob_slice(b, b->position, next_payload - b->position);
+    f.payload = ob_slice(b, b->position, payload_len);
     if (!f.payload){
       WHY("Payload length is longer than remaining packet size");
       break;
     }
     // mark the entire payload as having valid data
-    ob_limitsize(f.payload, next_payload - b->position);
+    ob_limitsize(f.payload, payload_len);
     
     // forward payloads that are for someone else or everyone
     if (forward){
@@ -389,62 +416,4 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   ob_free(b);
   
   RETURN(0);
-}
-
-int overlay_add_selfannouncement(struct decode_context *context, int interface,struct overlay_buffer *b)
-{
-
-  /* Pull the first record from the HLR database and turn it into a
-     self-announcment. These are shorter than regular Subscriber Observation
-     Notices (SON) because they are just single-hop announcments of presence.
-
-     Do we really need to push the whole SID (32 bytes), or will just, say, 
-     8 do so that we use a prefix of the SID which is still very hard to forge?
-     
-     A hearer of a self-announcement who has not previously seen the sender might
-     like to get some authentication to prevent naughty people from spoofing routes.
-
-     We can do this by having ourselves, the sender, keep track of the last few frames
-     we have sent, so that we can be asked to sign them.  Actually, we won't sign them, 
-     as that is too slow/energy intensive, but we could use a D-H exchange with the neighbour,
-     performed once to get a shared secret that can be used to feed a stream cipher to
-     produce some sort of verification.
-
-     XXX - But this functionality really needs to move up a level to whole frame composition.
-  */
-
-  time_ms_t now = gettime_ms();
-
-  if (overlay_frame_build_header(context, b, 
-				 0, OF_TYPE_SELFANNOUNCE, 0, 1, 
-				 NULL, NULL,
-				 NULL, my_subscriber))
-    return -1;
-  
-  /* Sequence number range.  Based on one tick per millisecond. */
-  time_ms_t last_ms = overlay_interfaces[interface].last_tick_ms;
-  // If this interface has not been ticked yet (no selfannounce sent) then invent the prior sequence
-  // number: one millisecond ago.
-  if (last_ms == -1)
-    last_ms = now - 1;
-  if (ob_append_ui32(b, last_ms))
-    return WHY("Could not add low sequence number to self-announcement");
-  if (ob_append_ui32(b, now))
-    return WHY("Could not add high sequence number to self-announcement");
-  if (config.debug.overlayinterfaces)
-    DEBUGF("interface #%d: last_tick_ms=%lld, now=%lld (delta=%lld)",
-	interface,
-	(long long)overlay_interfaces[interface].last_tick_ms,
-	(long long)now,
-	(long long)(now - last_ms)
-      );
-  overlay_interfaces[interface].last_tick_ms = now;
-
-  /* A byte that indicates which interface we are sending over */
-  if (ob_append_byte(b,interface))
-    return WHY("Could not add interface number to self-announcement");
-
-  ob_patch_rfs(b);
-  
-  return 0;
 }

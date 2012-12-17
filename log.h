@@ -87,6 +87,7 @@ extern const struct __sourceloc __whence; // see above
 void set_logging(FILE *f);
 FILE *open_logging();
 void close_logging();
+void logFlush();
 void logArgv(int level, struct __sourceloc whence, const char *label, int argc, const char *const *argv);
 void logString(int level, struct __sourceloc whence, const char *str);
 void logMessage(int level, struct __sourceloc whence, const char *fmt, ...);

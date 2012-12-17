@@ -164,6 +164,8 @@ int create_serval_instance_dir();
 int form_serval_instance_path(char *buf, size_t bufsiz, const char *path);
 void serval_setinstancepath(const char *instancepath);
 
+#define SERVER_CONFIG_RELOAD_INTERVAL_MS	1000
+
 extern int serverMode;
 extern int servalShutdown;
 
@@ -322,6 +324,18 @@ struct sched_ent{
   int _poll_index;
 };
 
+struct limit_state{
+  // length of time for a burst
+  time_ms_t burst_length;
+  // how many in a burst
+  int burst_size;
+  
+  // how many have we sent in this burst so far
+  int sent;
+  // when can we allow another burst
+  time_ms_t next_interval;
+};
+
 struct overlay_buffer;
 struct overlay_frame;
 struct broadcast;
@@ -341,7 +355,6 @@ typedef struct overlay_interface {
   int recv_offset;
   int fileP; // dummyP
   int drop_broadcasts;
-  int bits_per_second;
   int port;
   int type;
   /* Number of milli-seconds per tick for this interface, which is basically related to the     
@@ -367,6 +380,8 @@ typedef struct overlay_interface {
    */
   int sequence_number;
   /* XXX need recent packet buffers to support the above */
+  
+  struct limit_state transfer_limit;
   
   /* We need to make sure that interface name and broadcast address is unique for all interfaces that are UP.
    We bind a separate socket per interface / broadcast address Broadcast address and netmask, if known
@@ -440,11 +455,11 @@ int overlay_frame_resolve_addresses(struct overlay_frame *f);
 
 time_ms_t overlay_time_until_next_tick();
 
-int overlay_add_selfannouncement(struct decode_context *context, int interface,struct overlay_buffer *b);
 int overlay_frame_append_payload(struct decode_context *context, overlay_interface *interface, 
 				 struct overlay_frame *p, struct overlay_buffer *b);
 int overlay_packet_init_header(struct decode_context *context, struct overlay_buffer *buff, 
-			       struct subscriber *destination, int flags);
+			       struct subscriber *destination, 
+			       char unicast, char interface, char seq);
 int overlay_frame_build_header(struct decode_context *context, struct overlay_buffer *buff, 
 			       int queue, int type, int modifiers, int ttl, 
 			       struct broadcast *broadcast, struct subscriber *next_hop,
@@ -489,7 +504,10 @@ typedef struct overlay_node {
 } overlay_node;
 
 int overlay_route_saw_selfannounce_ack(struct overlay_frame *f, time_ms_t now);
-int overlay_route_saw_selfannounce(struct overlay_frame *f, time_ms_t now);
+int overlay_route_ack_selfannounce(overlay_interface *recv_interface,
+				   unsigned int s1,unsigned int s2,
+				   int interface,
+				   struct subscriber *subscriber);
 overlay_node *overlay_route_find_node(const unsigned char *sid,int prefixLen,int createP);
 
 int overlayServerMode();
@@ -713,10 +731,11 @@ int fd_poll();
 void overlay_interface_discover(struct sched_ent *alarm);
 void overlay_dummy_poll(struct sched_ent *alarm);
 void overlay_route_tick(struct sched_ent *alarm);
+void server_config_reload(struct sched_ent *alarm);
 void server_shutdown_check(struct sched_ent *alarm);
 void overlay_mdp_poll(struct sched_ent *alarm);
 int overlay_mdp_try_interal_services(overlay_mdp_frame *mdp);
-int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay_interface *interface);
+int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay_interface *interface, int queue);
 int overlay_send_stun_request(struct subscriber *server, struct subscriber *request);
 void fd_periodicstats(struct sched_ent *alarm);
 void rhizome_check_connections(struct sched_ent *alarm);
@@ -729,6 +748,14 @@ void monitor_poll(struct sched_ent *alarm);
 void rhizome_client_poll(struct sched_ent *alarm);
 void rhizome_fetch_poll(struct sched_ent *alarm);
 void rhizome_server_poll(struct sched_ent *alarm);
+
+int overlay_mdp_service_stun_req(overlay_mdp_frame *mdp);
+int overlay_mdp_service_stun(overlay_mdp_frame *mdp);
+int overlay_mdp_service_probe(overlay_mdp_frame *mdp);
+
+time_ms_t limit_next_allowed(struct limit_state *state);
+int limit_is_allowed(struct limit_state *state);
+int limit_init(struct limit_state *state, int rate_micro_seconds);
 
 /* function timing routines */
 int fd_clearstats();

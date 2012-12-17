@@ -30,24 +30,9 @@ typedef struct overlay_txqueue {
   int length; /* # frames in queue */
   int maxLength; /* max # frames in queue before we consider ourselves congested */
   
-  /* wait until first->enqueued_at+transmit_delay before trying to force the transmission of a packet */
-  int transmit_delay;
-  
-  /* if servald is busy, wait this long before trying to force the transmission of a packet */
-  int grace_period;
-  
   /* Latency target in ms for this traffic class.
    Frames older than the latency target will get dropped. */
   int latencyTarget;
-  
-  /* XXX Need to initialise these:
-   Real-time queue for voice (<200ms ?)
-   Real-time queue for video (<200ms ?) (lower priority than voice)
-   Ordinary service queue (<3 sec ?)
-   Rhizome opportunistic queue (infinity)
-   
-   (Mesh management doesn't need a queue, as each overlay packet is tagged with some mesh management information)
-   */
 } overlay_txqueue;
 
 overlay_txqueue overlay_tx[OQ_MAX];
@@ -75,23 +60,10 @@ int overlay_queue_init(){
   for(i=0;i<OQ_MAX;i++) {
     overlay_tx[i].maxLength=100;
     overlay_tx[i].latencyTarget=1000; /* Keep packets in queue for 1 second by default */
-    overlay_tx[i].transmit_delay=5; /* Hold onto packets for 10ms before trying to send a full packet */
-    overlay_tx[i].grace_period=100; /* Delay sending a packet for up to 100ms if servald has other processing to do */
   }
   /* expire voice/video call packets much sooner, as they just aren't any use if late */
   overlay_tx[OQ_ISOCHRONOUS_VOICE].latencyTarget=200;
   overlay_tx[OQ_ISOCHRONOUS_VIDEO].latencyTarget=200;
-  
-  /* try to send voice packets without any delay, and before other background processing */
-  overlay_tx[OQ_ISOCHRONOUS_VOICE].transmit_delay=0;
-  overlay_tx[OQ_ISOCHRONOUS_VOICE].grace_period=0;
-  
-  /* Routing payloads, ack's and nacks need to be sent immediately */
-  overlay_tx[OQ_MESH_MANAGEMENT].transmit_delay=0;
-  
-  /* opportunistic traffic can be significantly delayed */
-  overlay_tx[OQ_OPPORTUNISTIC].transmit_delay=200;
-  overlay_tx[OQ_OPPORTUNISTIC].grace_period=500;
   return 0;  
 }
 
@@ -179,7 +151,8 @@ int overlay_payload_enqueue(struct overlay_frame *p)
 	break;
     }
     
-    return WHYF("Cannot send %x packet, destination %s is %s", p->type, alloca_tohex_sid(p->destination->sid), r==REACHABLE_SELF?"myself":"unreachable");
+    return WHYF("Cannot send %x packet, destination %s is %s", p->type, 
+		alloca_tohex_sid(p->destination->sid), r==REACHABLE_SELF?"myself":"unreachable");
   } while(0);
   
   if (p->queue>=OQ_MAX) 
@@ -241,6 +214,8 @@ int overlay_payload_enqueue(struct overlay_frame *p)
   queue->last=p;
   if (!queue->first) queue->first=p;
   queue->length++;
+  if (p->queue==OQ_ISOCHRONOUS_VOICE)
+    rhizome_saw_voice_traffic();
   
   overlay_update_queue_schedule(queue, p);
   
@@ -248,28 +223,22 @@ int overlay_payload_enqueue(struct overlay_frame *p)
 }
 
 static void
-overlay_init_packet(struct outgoing_packet *packet, struct subscriber *destination, int flags,
+overlay_init_packet(struct outgoing_packet *packet, struct subscriber *destination, int unicast,
 		    overlay_interface *interface, struct sockaddr_in addr, int tick){
   packet->interface = interface;
   packet->i = (interface - overlay_interfaces);
   packet->dest=addr;
   packet->buffer=ob_new();
   packet->add_advertisements=1;
-  if (flags & PACKET_UNICAST)
+  if (unicast)
     packet->unicast_subscriber = destination;
   ob_limitsize(packet->buffer, packet->interface->mtu);
   
-  overlay_packet_init_header(&packet->context, packet->buffer, destination, flags);
+  overlay_packet_init_header(&packet->context, packet->buffer, destination, unicast, packet->i, 0);
   packet->header_length = ob_position(packet->buffer);
   if (tick){
-    /* 1. Send announcement about ourselves, including one SID that we host if we host more than one SID
-     (the first SID we host becomes our own identity, saving a little bit of data here).
-     */
-    overlay_add_selfannouncement(&packet->context, packet->i, packet->buffer);
-    
     /* Add advertisements for ROUTES */
     overlay_route_add_advertisements(&packet->context, packet->interface, packet->buffer);
-    
   }
 }
 
@@ -277,7 +246,6 @@ overlay_init_packet(struct outgoing_packet *packet, struct subscriber *destinati
 static int
 overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
   int ret=0;
-  time_ms_t send_time;
   
   do{
     if (frame->destination_resolved)
@@ -294,20 +262,29 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
     return 0;
   }while(0);
   
-  // when is the next packet from this queue due?
-  send_time=queue->first->enqueued_at + queue->transmit_delay;
+  time_ms_t next_allowed_packet=0;
+  if (frame->interface){
+    next_allowed_packet = limit_next_allowed(&frame->interface->transfer_limit);
+  }else{
+    // check all interfaces
+    int i;
+    for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
+    {
+      if (overlay_interfaces[i].state!=INTERFACE_STATE_UP)
+	continue;
+      time_ms_t next_packet = limit_next_allowed(&overlay_interfaces[i].transfer_limit);
+      if (next_allowed_packet==0||next_packet < next_allowed_packet)
+	next_allowed_packet = next_packet;
+    }
+  }
   
-  if (next_packet.alarm==0 || send_time < next_packet.alarm){
-    next_packet.alarm=send_time;
+  if (next_packet.alarm==0 || next_allowed_packet < next_packet.alarm){
+    next_packet.alarm=next_allowed_packet;
+    // no grace period, send IO ASAP
+    next_packet.deadline=next_allowed_packet;
     ret = 1;
   }
   
-  // how long can we wait if the server is busy?
-  send_time += queue->grace_period;
-  if (next_packet.deadline==0 || send_time < next_packet.deadline){
-    next_packet.deadline=send_time;
-    ret = 1;
-  }
   if (!next_packet.function){
     next_packet.function=overlay_send_packet;
     send_packet.name="overlay_send_packet";
@@ -329,9 +306,14 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       frame = overlay_queue_remove(queue, frame);
       continue;
     }
+    
     /* Note, once we queue a broadcast packet we are committed to sending it out every interface, 
      even if we hear it from somewhere else in the mean time
      */
+    
+    // quickly skip payloads that have no chance of fitting
+    if (packet->buffer && ob_position(frame->payload) > ob_remaining(packet->buffer))
+      goto skip;
     
     if (!frame->destination_resolved){
       frame->next_hop = frame->destination;
@@ -363,7 +345,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	
 	if(r&REACHABLE_UNICAST){
 	  frame->recvaddr = frame->next_hop->address;
-	  frame->flags = PACKET_UNICAST;
+	  frame->unicast = 1;
 	  // ignore resend logic for unicast packets, where wifi gives better resilience
 	  frame->send_copies=1;
 	}else
@@ -383,30 +365,40 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	}else{
 	  // find an interface that we haven't broadcast on yet
 	  frame->interface = NULL;
-	  int i;
+	  int i, keep=0;
 	  for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
 	  {
-	    if (overlay_interfaces[i].state==INTERFACE_STATE_UP
-		&& !frame->broadcast_sent_via[i]){
-	      frame->interface = &overlay_interfaces[i];
-	      frame->recvaddr = overlay_interfaces[i].broadcast_address;
-	      break;
-	    }
+	    if (overlay_interfaces[i].state!=INTERFACE_STATE_UP || frame->broadcast_sent_via[i])
+	      continue;
+	    keep=1;
+	    time_ms_t next_allowed = limit_next_allowed(&overlay_interfaces[i].transfer_limit);
+	    if (next_allowed > now)
+	      continue;
+	    frame->interface = &overlay_interfaces[i];
+	    frame->recvaddr = overlay_interfaces[i].broadcast_address;
+	    break;
 	  }
 	  
-	  if (!frame->interface){
+	  if (!keep){
 	    // huh, we don't need to send it anywhere?
 	    frame = overlay_queue_remove(queue, frame);
 	    continue;
 	  }
+	  
+	  if (!frame->interface)
+	    goto skip;
 	}
       }
     }
     
     if (!packet->buffer){
+      // can we send a packet on this interface now?
+      if (limit_is_allowed(&frame->interface->transfer_limit))
+	goto skip;
+	
       if (frame->source_full)
 	my_subscriber->send_full=1;
-      overlay_init_packet(packet, frame->next_hop, frame->flags, frame->interface, frame->recvaddr, 0);
+      overlay_init_packet(packet, frame->next_hop, frame->unicast, frame->interface, frame->recvaddr, 0);
     }else{
       // is this packet going our way?
       if (frame->interface!=packet->interface || memcmp(&packet->dest, &frame->recvaddr, sizeof(packet->dest))!=0){
@@ -535,10 +527,13 @@ overlay_tick_interface(int i, time_ms_t now) {
   struct outgoing_packet packet;
   IN();
   
-  /* An interface with no speed budget is for listening only, so doesn't get ticked */
-  if (overlay_interfaces[i].bits_per_second<1
-      || overlay_interfaces[i].state!=INTERFACE_STATE_UP) {
-    RETURN(0);
+  if (overlay_interfaces[i].state!=INTERFACE_STATE_UP) {
+    RETURN(-1);
+  }
+  
+  if (limit_is_allowed(&overlay_interfaces[i].transfer_limit)){
+    WARN("Throttling has blocked a tick packet");
+    RETURN(-1);
   }
   
   if (config.debug.overlayinterfaces) DEBUGF("Ticking interface #%d",i);

@@ -335,49 +335,69 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
      This will ultimately get tuned by the bandwidth and other properties of the interface */
   interface->mtu=1200;
   interface->state=INTERFACE_STATE_DOWN;
-  interface->bits_per_second = ifconfig->speed;
   interface->port= ifconfig->port;
   interface->type= ifconfig->type;
   interface->default_route = ifconfig->default_route;
-  DEBUGF("interface->default_route=%d",interface->default_route);
   interface->last_tick_ms= -1; // not ticked yet
   interface->alarm.poll.fd=0;
-
   // How often do we announce ourselves on this interface?
-  int32_t tick_ms = ifconfig->mdp_tick_ms;
-  if (tick_ms < 0) {
-    int i = config_mdp_iftypelist__get(&config.mdp.iftype, &ifconfig->type);
-    if (i != -1)
-      tick_ms = config.mdp.iftype.av[i].value.tick_ms;
-  }
-  if (tick_ms < 0) {
-    switch (ifconfig->type) {
+  interface->tick_ms=-1;
+  int packet_interval=-1;
+  
+  // hard coded defaults:
+  switch (ifconfig->type) {
     case OVERLAY_INTERFACE_PACKETRADIO:
-      tick_ms = 15000;
+      interface->tick_ms = 15000;
+      packet_interval = 1000;
       break;
     case OVERLAY_INTERFACE_ETHERNET:
-      tick_ms = 500;
+      interface->tick_ms = 500;
+      packet_interval = 100;
       break;
     case OVERLAY_INTERFACE_WIFI:
-      tick_ms = 500;
+      interface->tick_ms = 500;
+      packet_interval = 400;
       break;
     case OVERLAY_INTERFACE_UNKNOWN:
-      tick_ms = 500;
+      interface->tick_ms = 500;
+      packet_interval = 100;
       break;
-    default:
-      return WHYF("Unsupported interface type %d", ifconfig->type);
+  }
+  // configurable defaults per interface
+  {
+    int i = config_mdp_iftypelist__get(&config.mdp.iftype, &ifconfig->type);
+    if (i != -1){
+      if (config.mdp.iftype.av[i].value.tick_ms>=0)
+	interface->tick_ms = config.mdp.iftype.av[i].value.tick_ms;
+      if (config.mdp.iftype.av[i].value.packet_interval>=0)
+	packet_interval=config.mdp.iftype.av[i].value.packet_interval;
     }
   }
-  assert(tick_ms >= 0);
-  interface->tick_ms = tick_ms;
-
-  // disable announcements and other broadcasts if tick_ms=0.
-  if (interface->tick_ms > 0)
-    interface->send_broadcasts=1;
-  else{
+  // specific value for this interface
+  if (ifconfig->mdp_tick_ms>=0)
+    interface->tick_ms = ifconfig->mdp_tick_ms;
+  if (ifconfig->packet_interval>=0)
+    packet_interval=ifconfig->packet_interval;
+  
+  interface->send_broadcasts=ifconfig->send_broadcasts;
+  if (packet_interval<0)
+    return WHYF("Invalid packet interval %d specified for interface %s", packet_interval, name);
+  if (packet_interval==0){
+    INFOF("Interface %s is not sending any traffic!", name);
     interface->send_broadcasts=0;
+    interface->tick_ms=0;
+  }else if (!interface->send_broadcasts){
+    INFOF("Interface %s is not sending any broadcast traffic!", name);
+    // no broadcast traffic implies no ticks
+    interface->tick_ms=0;
+  }else if (interface->tick_ms==0)
     INFOF("Interface %s is running tickless", name);
-  }
+  
+  if (interface->tick_ms<0)
+    return WHYF("Invalid tick interval %d specified for interface %s", interface->tick_ms, name);
+
+  limit_init(&interface->transfer_limit, packet_interval);
+  
   if (ifconfig->dummy[0]) {
     interface->fileP = 1;
     char dummyfile[1024];
@@ -436,6 +456,7 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
     if (overlay_interface_init_socket(overlay_interface_count))
       return WHY("overlay_interface_init_socket() failed");    
   }
+  INFOF("Allowing a maximum of %d packets every %lldms", interface->transfer_limit.burst_size, interface->transfer_limit.burst_length);
 
   overlay_interface_count++;
   return 0;
@@ -451,8 +472,10 @@ static void overlay_interface_poll(struct sched_ent *alarm)
       // tick the interface
       time_ms_t now = gettime_ms();
       int i = (interface - overlay_interfaces);
-      overlay_tick_interface(i, now);
-      alarm->alarm=now+interface->tick_ms;
+      if (overlay_tick_interface(i, now))
+	alarm->alarm=limit_next_allowed(&overlay_interfaces[i].transfer_limit);
+      else
+	alarm->alarm=now+interface->tick_ms;
       alarm->deadline=alarm->alarm+interface->tick_ms/2;
       schedule(alarm);
     }
@@ -574,7 +597,7 @@ void overlay_dummy_poll(struct sched_ent *alarm)
 			    (struct sockaddr*)&packet.src_addr, sizeof(packet.src_addr))) {
 	  WARN("Unsupported packet from dummy interface");
 	}
-      }else
+      }else if (config.debug.packetrx)
 	DEBUGF("Ignoring packet addressed to %s:%d", inet_ntoa(packet.dst_addr.sin_addr), ntohs(packet.dst_addr.sin_port));
     }
     

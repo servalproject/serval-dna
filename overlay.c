@@ -117,6 +117,9 @@ schedule(&_sched_##X); }
   /* Periodically check for server shut down */
   SCHEDULE(server_shutdown_check, 0, 100);
   
+  /* Periodically reload configuration */
+  SCHEDULE(server_config_reload, SERVER_CONFIG_RELOAD_INTERVAL_MS, SERVER_CONFIG_RELOAD_INTERVAL_MS + 100);
+  
   /* Setup up MDP & monitor interface unix domain sockets */
   overlay_mdp_setup_sockets();
   monitor_setup_sockets();

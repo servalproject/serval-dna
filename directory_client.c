@@ -29,7 +29,7 @@ struct sched_ent directory_alarm={
   .function=directory_update,
   .stats=&directory_timing,
 };
-#define DIRECTORY_UPDATE_INTERVAL 300000
+#define DIRECTORY_UPDATE_INTERVAL 120000
 
 // send a registration packet
 static void directory_send(struct subscriber *directory_service, const unsigned char *sid, const char *did, const char *name){
@@ -41,6 +41,7 @@ static void directory_send(struct subscriber *directory_service, const unsigned 
   
   bcopy(sid, request.out.src.sid, SID_SIZE);
   request.out.src.port=MDP_PORT_NOREPLY;
+  request.out.queue=OQ_ORDINARY;
   
   bcopy(directory_service->sid, request.out.dst.sid, SID_SIZE);
   request.out.dst.port=MDP_PORT_DIRECTORY;

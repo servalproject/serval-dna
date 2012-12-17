@@ -595,4 +595,27 @@ struct http_response_parts {
 
 int unpack_http_response(char *response, struct http_response_parts *parts);
 
+
+/* Rhizome file storage api */
+struct rhizome_write{
+  char id[SHA512_DIGEST_STRING_LENGTH+1];
+  char id_known;
+  
+  unsigned char *buffer;
+  int buffer_size;
+  int data_size;
+  
+  int64_t file_offset;
+  int64_t file_length;
+  
+  SHA512_CTX sha512_context;
+  int64_t blob_rowid;
+};
+
+int rhizome_exists(const char *fileHash);
+int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int64_t file_length, int priority);
+int rhizome_flush(struct rhizome_write *write);
+int rhizome_fail_write(struct rhizome_write *write);
+int rhizome_finish_write(struct rhizome_write *write);
+
 #endif //__SERVALDNA__RHIZOME_H

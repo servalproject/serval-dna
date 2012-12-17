@@ -81,7 +81,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 /* All of these types should be considered deprecated. Processing code should migrate to well known MDP port numbers */
 /* Overlay mesh packet codes */
-#define OF_TYPE_SELFANNOUNCE 0x10 /* BATMAN style announcement frames */
 #define OF_TYPE_SELFANNOUNCE_ACK 0x20 /* BATMAN style "I saw your announcment" frames */
 #define OF_TYPE_DATA 0x30 /* Ordinary data frame.
 		        Upto MTU bytes of payload.

@@ -129,6 +129,7 @@ test_scan() {
    wait_until scan_completed
    wait_until has_seen_instances +B
    executeOk_servald mdp ping $SIDB 1
+   tfw_cat --stdout --stderr
    executeOk_servald route print
    assertStdoutGrep --matches=1 "^$SIDB:UNICAST :"
 }

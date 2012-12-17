@@ -121,8 +121,6 @@ int overlay_route_add_advertisements(struct decode_context *context, overlay_int
   if (!my_subscriber)
     return WHY("Cannot advertise because I don't know who I am");
   
-  ob_checkpoint(e);
-  
   if (overlay_frame_build_header(context, e, 
 				 0, OF_TYPE_NODEANNOUNCE, 0, 1, 
 				 NULL, NULL,
@@ -145,7 +143,7 @@ int overlay_route_add_advertisements(struct decode_context *context, overlay_int
   struct subscriber *start = next_advertisement;
   next_advertisement=NULL;
   
-  int start_pos = ob_position(e);
+  ob_checkpoint(e);
   
   // append announcements starting from the last node we couldn't advertise last time
   enum_subscribers(start, add_advertisement, e);
@@ -155,12 +153,8 @@ int overlay_route_add_advertisements(struct decode_context *context, overlay_int
     enum_subscribers(NULL, add_advertisement, e);
   }
   
-  if (ob_position(e) == start_pos){
-    // no advertisements? don't bother to send the payload at all.
-    ob_rewind(e);
-  }else
-    ob_patch_rfs(e);
-
+  ob_patch_rfs(e);
+  
   return 0;
 }
 

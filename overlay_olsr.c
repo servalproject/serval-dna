@@ -154,7 +154,7 @@ static void parse_frame(struct overlay_buffer *buff){
 
     if (context.sender->reachable==REACHABLE_NONE){
       set_reachable(context.sender, REACHABLE_UNICAST|REACHABLE_ASSUMED);
-      overlay_send_probe(context.sender, context.sender->address, interface);
+      overlay_send_probe(context.sender, context.sender->address, interface, OQ_MESH_MANAGEMENT);
     }
   }
   
