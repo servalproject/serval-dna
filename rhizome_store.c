@@ -105,6 +105,8 @@ int rhizome_flush(struct rhizome_write *write){
   if (write->data_size<=0)
     return WHY("No content supplied");
   
+  // TODO encryption?
+  
   sqlite3_blob *blob;
   int ret = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", write->blob_rowid, 1 /* read/write */, &blob);
   if (ret!=SQLITE_OK) {
@@ -129,6 +131,36 @@ int rhizome_flush(struct rhizome_write *write){
   if (config.debug.rhizome)
     DEBUGF("Written %lld of %lld", write->file_offset, write->file_length);
   write->data_size=0;
+  return 0;
+}
+
+/* Expects file to be at least file_length in size */
+int rhizome_write_file(struct rhizome_write *write, const char *filename){
+  FILE *f = fopen(filename, "r");
+  if (!f)
+    return WHY_perror("fopen");
+  
+  while(write->file_offset < write->file_length){
+    
+    int size=write->buffer_size - write->data_size;
+    if (write->file_offset + size > write->file_length)
+      size=write->file_length - write->file_offset;
+    
+    int r = fread(write->buffer + write->data_size, 1, size, f);
+    if (r==-1){
+      WHY_perror("fread");
+      fclose(f);
+      return -1;
+    }
+    write->data_size+=r;
+    
+    if (rhizome_flush(write)){
+      fclose(f);
+      return -1;
+    }
+  }
+  
+  fclose(f);
   return 0;
 }
 
@@ -205,4 +237,3 @@ failure:
   rhizome_fail_write(write);
   return -1;
 }
-

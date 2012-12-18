@@ -244,16 +244,10 @@ int rhizome_manifest_bind_file(rhizome_manifest *m_in,const char *filename,int e
 
 int rhizome_manifest_check_file(rhizome_manifest *m_in)
 {
-  long long gotfile = 0;
-  if (sqlite_exec_int64(&gotfile, "SELECT COUNT(*) FROM FILES WHERE ID='%s' and datavalid=1;", m_in->fileHexHash) != 1) {
-    WHYF("Failed to count files");
+  // Don't bother to check the file if we already have it
+  if (rhizome_exists(m_in->fileHexHash))
     return 0;
-  }
-  if (gotfile) {
-    /* Skipping file checks for bundle, as file is already in the database */
-    return 0;
-  }
-
+  
   /* Find out whether the payload is expected to be encrypted or not */
   m_in->payloadEncryption=rhizome_manifest_get_ll(m_in, "crypt");
   
@@ -261,6 +255,7 @@ int rhizome_manifest_check_file(rhizome_manifest *m_in)
      matches the file size stored in the manifest */
   long long mfilesize = rhizome_manifest_get_ll(m_in, "filesize");
   m_in->fileLength = 0;
+  
   if (m_in->dataFileName && m_in->dataFileName[0]) {
     struct stat stat;
     if (lstat(m_in->dataFileName,&stat) == -1) {

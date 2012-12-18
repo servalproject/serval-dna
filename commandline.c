@@ -1231,37 +1231,11 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
     if (rhizome_open_write(&write, NULL, m->fileLength, RHIZOME_PRIORITY_DEFAULT))
       return -1;
     
-    FILE *f = fopen(filepath, "r");
-    if (!f) {
-      WHY_perror("fopen");
-      goto cleanup;
+    if (rhizome_write_file(&write, filepath)){
+      rhizome_fail_write(&write);
+      return -1;
     }
-    
-    while(write.file_offset < write.file_length){
       
-      int size=write.buffer_size - write.data_size;
-      if (write.file_offset + size > write.file_length)
-	size=write.file_length - write.file_offset;
-      
-      int r = fread(write.buffer + write.data_size, 1, size, f);
-      if (r==-1){
-	WHY_perror("fread");
-	goto cleanup;
-      }
-      write.data_size+=r;
-      
-      // TODO encryption
-      
-      if (rhizome_flush(&write)){
-      cleanup:
-	if (f)
-	  fclose(f);
-	rhizome_fail_write(&write);
-	return -1;
-      }
-    }
-    
-    fclose(f);
     if (rhizome_finish_write(&write))
       return -1;
     

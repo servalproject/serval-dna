@@ -614,6 +614,7 @@ struct rhizome_write{
 int rhizome_exists(const char *fileHash);
 int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int64_t file_length, int priority);
 int rhizome_flush(struct rhizome_write *write);
+int rhizome_write_file(struct rhizome_write *write, const char *filename);
 int rhizome_fail_write(struct rhizome_write *write);
 int rhizome_finish_write(struct rhizome_write *write);
 
