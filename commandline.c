@@ -1214,41 +1214,8 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
   m->payloadEncryption=0;
   rhizome_manifest_set_ll(m,"crypt",m->payloadEncryption?1:0); 
   
-  m->fileLength = 0;
-  if (filepath[0]) {
-    struct stat stat;
-    if (lstat(filepath,&stat))
-      return WHYF("Could not stat() payload file '%s'",filepath);
-    m->fileLength = stat.st_size;
-  }
-  rhizome_manifest_set_ll(m, "filesize", m->fileLength);
-  
-  if (m->fileLength){
-    // Stream the file directly into the database, encrypting & hashing as we go.
-    struct rhizome_write write;
-    bzero(&write, sizeof(write));
-    
-    if (rhizome_open_write(&write, NULL, m->fileLength, RHIZOME_PRIORITY_DEFAULT))
-      return -1;
-    
-    if (rhizome_write_file(&write, filepath)){
-      rhizome_fail_write(&write);
-      return -1;
-    }
-      
-    if (rhizome_finish_write(&write))
-      return -1;
-    
-    m->fileHashedP = 1;
-    strlcpy(m->fileHexHash, write.id, SHA512_DIGEST_STRING_LENGTH);
-    rhizome_manifest_set(m, "filehash", m->fileHexHash);
-    
-  } else {
-    m->fileLength = 0;
-    m->fileHexHash[0] = '\0';
-    rhizome_manifest_del(m, "filehash");
-    m->fileHashedP = 0;
-  }
+  if (rhizome_add_file(m, filepath))
+    return -1;
   
   /* Add the manifest and its associated file to the Rhizome database, 
      generating an "id" in the process.
@@ -1349,7 +1316,75 @@ int app_rhizome_import_bundle(int argc, const char *const *argv, const struct co
   cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "");
   if (rhizome_opendb() == -1)
     return -1;
-  int status=rhizome_import_from_files(manifestpath,filepath);
+  
+  rhizome_manifest *m = rhizome_new_manifest();
+  if (!m)
+    return WHY("Out of manifests.");
+  int status=0;
+  
+  if (rhizome_read_manifest_file(m, manifestpath, 0) == -1) {
+    status = WHY("could not read manifest file");
+    goto cleanup;
+  }
+  if (rhizome_manifest_verify(m)){
+    status = WHY("could not verify manifest");
+    goto cleanup;
+  }
+  
+  /* Make sure we store signatures */
+  // TODO, why do we need this? Why isn't the state correct from rhizome_read_manifest_file? 
+  // This feels like a hack...
+  m->manifest_bytes=m->manifest_all_bytes;
+
+  status = rhizome_import_file(m, filepath);
+  if (status<0)
+    goto cleanup;
+  
+  status = rhizome_manifest_check_duplicate(m, NULL);
+  if (status<0)
+    goto cleanup;
+  
+  if (status==0){
+    if (rhizome_add_manifest(m, 1) == -1) { // ttl = 1
+      status = WHY("rhizome_add_manifest() failed");
+      goto cleanup;
+    }
+  }else
+    INFO("Duplicate found in store");
+  
+  const char *service = rhizome_manifest_get(m, "service", NULL, 0);
+  if (service) {
+    cli_puts("service");
+    cli_delim(":");
+    cli_puts(service);
+    cli_delim("\n");
+  }
+  {
+    cli_puts("manifestid");
+    cli_delim(":");
+    cli_puts(alloca_tohex(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES));
+    cli_delim("\n");
+  }
+  cli_puts("filesize");
+  cli_delim(":");
+  cli_printf("%lld", m->fileLength);
+  cli_delim("\n");
+  if (m->fileLength != 0) {
+    cli_puts("filehash");
+    cli_delim(":");
+    cli_puts(m->fileHexHash);
+    cli_delim("\n");
+  }
+  const char *name = rhizome_manifest_get(m, "name", NULL, 0);
+  if (name) {
+    cli_puts("name");
+    cli_delim(":");
+    cli_puts(name);
+    cli_delim("\n");
+  }
+  
+cleanup:
+  rhizome_manifest_free(m);
   return status;
 }
 

@@ -237,3 +237,70 @@ failure:
   rhizome_fail_write(write);
   return -1;
 }
+
+// import a file for an existing bundle with a known file hash
+int rhizome_import_file(rhizome_manifest *m, const char *filepath)
+{
+  if (m->fileLength<=0)
+    return 0;
+  
+  /* Import the file first, checking the hash as we go */
+  struct rhizome_write write;
+  bzero(&write, sizeof(write));
+  
+  int ret=rhizome_open_write(&write, m->fileHexHash, m->fileLength, RHIZOME_PRIORITY_DEFAULT);
+  if (ret!=0)
+    return ret;
+  
+  // file payload is not in the store yet
+  if (rhizome_write_file(&write, filepath)){
+    rhizome_fail_write(&write);
+    return -1;
+  }
+  
+  if (rhizome_finish_write(&write))
+    return -1;
+  return 0;
+}
+
+// import a file for a new bundle with an unknown file hash
+// update the manifest with the details of the file
+int rhizome_add_file(rhizome_manifest *m, const char *filepath)
+{
+  m->fileLength = 0;
+  if (filepath[0]) {
+    struct stat stat;
+    if (lstat(filepath,&stat))
+      return WHYF("Could not stat() payload file '%s'",filepath);
+    m->fileLength = stat.st_size;
+  }
+  
+  rhizome_manifest_set_ll(m, "filesize", m->fileLength);
+  
+  if (m->fileLength == 0){
+    m->fileHexHash[0] = '\0';
+    rhizome_manifest_del(m, "filehash");
+    m->fileHashedP = 0;
+    return 0;
+  }
+  
+  // Stream the file directly into the database, encrypting & hashing as we go.
+  struct rhizome_write write;
+  bzero(&write, sizeof(write));
+
+  if (rhizome_open_write(&write, NULL, m->fileLength, RHIZOME_PRIORITY_DEFAULT))
+    return -1;
+
+  if (rhizome_write_file(&write, filepath)){
+    rhizome_fail_write(&write);
+    return -1;
+  }
+
+  if (rhizome_finish_write(&write))
+    return -1;
+
+  m->fileHashedP = 1;
+  strlcpy(m->fileHexHash, write.id, SHA512_DIGEST_STRING_LENGTH);
+  rhizome_manifest_set(m, "filehash", m->fileHexHash);
+  return 0;
+}

@@ -617,5 +617,7 @@ int rhizome_flush(struct rhizome_write *write);
 int rhizome_write_file(struct rhizome_write *write, const char *filename);
 int rhizome_fail_write(struct rhizome_write *write);
 int rhizome_finish_write(struct rhizome_write *write);
+int rhizome_import_file(rhizome_manifest *m, const char *filepath);
+int rhizome_add_file(rhizome_manifest *m, const char *filepath);
 
 #endif //__SERVALDNA__RHIZOME_H
