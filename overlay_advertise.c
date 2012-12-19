@@ -60,10 +60,13 @@ int overlay_route_please_advertise(overlay_node *n)
   else return 1;
 }
 
-struct subscriber *next_advertisement=NULL;
+struct advertisement_state{
+  struct overlay_buffer *payload;
+  struct subscriber *next_advertisement;
+};
 
 int add_advertisement(struct subscriber *subscriber, void *context){
-  struct overlay_buffer *e=context;
+  struct advertisement_state *state=context;
   
   if (subscriber->node){
     overlay_node *n=subscriber->node;
@@ -73,24 +76,23 @@ int add_advertisement(struct subscriber *subscriber, void *context){
       // never send the full sid in an advertisement
       subscriber->send_full=0;
       
-      if (overlay_address_append(NULL,e,subscriber) ||
-	  ob_append_byte(e,n->best_link_score -1) ||
-	  ob_append_byte(e,n->observations[n->best_observation].gateways_en_route +1)){
+      if (overlay_address_append(NULL,state->payload,subscriber) ||
+	  ob_append_byte(state->payload,n->best_link_score -1) ||
+	  ob_append_byte(state->payload,n->observations[n->best_observation].gateways_en_route +1)){
 	
 	// stop if we run out of space, remember where we should start next time.
-	next_advertisement=subscriber;
-	ob_rewind(e);
+	state->next_advertisement=subscriber;
+	ob_rewind(state->payload);
 	return 1;
       }
-      ob_checkpoint(e);
+      ob_checkpoint(state->payload);
     }
   }
   
   return 0;
 }
 
-int overlay_route_add_advertisements(struct decode_context *context, overlay_interface *interface, 
-				     struct overlay_buffer *e)
+int overlay_route_queue_advertisements(overlay_interface *interface)
 {
   /* Construct a route advertisement frame and append it to e.
      
@@ -120,12 +122,19 @@ int overlay_route_add_advertisements(struct decode_context *context, overlay_int
   
   if (!my_subscriber)
     return WHY("Cannot advertise because I don't know who I am");
+  struct overlay_frame *frame=malloc(sizeof(struct overlay_frame));
+  bzero(frame,sizeof(struct overlay_frame));
+  frame->type=OF_TYPE_NODEANNOUNCE;
+  frame->source = my_subscriber;
+  frame->ttl=1;
+  frame->queue=OQ_MESH_MANAGEMENT;
+  frame->destination_resolved=1;
+  frame->recvaddr=interface->broadcast_address;
+  frame->interface=interface;
+  frame->payload = ob_new();
+  ob_limitsize(frame->payload, 400);
   
-  if (overlay_frame_build_header(context, e, 
-				 0, OF_TYPE_NODEANNOUNCE, 0, 1, 
-				 NULL, NULL,
-				 NULL, my_subscriber))
-    return -1;
+  struct advertisement_state state={.payload = frame->payload,};
   
   // TODO high priority advertisements first....
   /*
@@ -140,21 +149,22 @@ int overlay_route_add_advertisements(struct decode_context *context, overlay_int
       slots_used++;
     } 
 */
-  struct subscriber *start = next_advertisement;
-  next_advertisement=NULL;
-  
-  ob_checkpoint(e);
-  
+  ob_checkpoint(frame->payload);
   // append announcements starting from the last node we couldn't advertise last time
-  enum_subscribers(start, add_advertisement, e);
+  enum_subscribers(interface->next_advert, add_advertisement, &state);
 
   // if we didn't start at the beginning and still have space, start again from the beginning
-  if (start && !next_advertisement && ob_limit(e) - ob_position(e) > 0){
-    enum_subscribers(NULL, add_advertisement, e);
+  if (interface->next_advert && !state.next_advertisement && ob_remaining(frame->payload) > 0){
+    enum_subscribers(NULL, add_advertisement, &state);
   }
   
-  ob_patch_rfs(e);
+  interface->next_advert=state.next_advertisement;
+  ob_limitsize(frame->payload, ob_position(frame->payload));
   
+  if (overlay_payload_enqueue(frame)){
+    op_free(frame);
+    return -1;
+  }
   return 0;
 }
 

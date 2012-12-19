@@ -369,6 +369,8 @@ typedef struct overlay_interface {
    These figures will be refined over time, and we will allow people to set them per-interface.
    */
   unsigned tick_ms; /* milliseconds per tick */
+  struct subscriber *next_advert;
+  
   int send_broadcasts;
   /* The time of the last tick on this interface in milli seconds */
   time_ms_t last_tick_ms;
@@ -514,7 +516,7 @@ int overlay_route_record_link( time_ms_t now, struct subscriber *to,
 			      struct subscriber *via,int sender_interface,
 			      unsigned int s1,unsigned int s2,int score,int gateways_en_route);
 int overlay_route_dump();
-int overlay_route_add_advertisements(struct decode_context *context, overlay_interface *interface, struct overlay_buffer *e);
+int overlay_route_queue_advertisements(overlay_interface *interface);
 int ovleray_route_please_advertise(overlay_node *n);
 
 int overlay_route_saw_advertisements(int i, struct overlay_frame *f, struct decode_context *context, time_ms_t now);

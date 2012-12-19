@@ -99,9 +99,13 @@ int overlay_frame_append_payload(struct decode_context *context, overlay_interfa
       dump("payload contents", &p->payload->bytes[0],p->payload->position);
   }
   
+  struct broadcast *broadcast=NULL;
+  if ((!p->destination) && !is_all_matching(p->broadcast_id.id,BROADCAST_LEN,0)){
+    broadcast = &p->broadcast_id;
+  }
   if (overlay_frame_build_header(context, headers,
 			     p->queue, p->type, p->modifiers, p->ttl,
-			     (p->destination?NULL:&p->broadcast_id), p->next_hop, 
+			     broadcast, p->next_hop, 
 			     p->destination, p->source))
     goto cleanup;
   

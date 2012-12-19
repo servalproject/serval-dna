@@ -225,7 +225,7 @@ int overlay_payload_enqueue(struct overlay_frame *p)
 
 static void
 overlay_init_packet(struct outgoing_packet *packet, struct subscriber *destination, int unicast,
-		    overlay_interface *interface, struct sockaddr_in addr, int tick){
+		    overlay_interface *interface, struct sockaddr_in addr){
   packet->interface = interface;
   packet->i = (interface - overlay_interfaces);
   packet->dest=addr;
@@ -237,17 +237,11 @@ overlay_init_packet(struct outgoing_packet *packet, struct subscriber *destinati
   
   overlay_packet_init_header(&packet->context, packet->buffer, destination, unicast, packet->i, 0);
   packet->header_length = ob_position(packet->buffer);
-  if (tick){
-    /* Add advertisements for ROUTES */
-    overlay_route_add_advertisements(&packet->context, packet->interface, packet->buffer);
-  }
 }
 
 // update the alarm time and return 1 if changed
 static int
 overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
-  int ret=0;
-  
   do{
     if (frame->destination_resolved)
       break;
@@ -302,7 +296,6 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
   struct overlay_frame *frame = queue->first;
   
   // TODO stop when the packet is nearly full?
-  
   while(frame){
     if (frame->enqueued_at + queue->latencyTarget < now){
       DEBUGF("Dropping frame type %x for %s due to expiry timeout", 
@@ -316,7 +309,7 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
      */
     
     // quickly skip payloads that have no chance of fitting
-    if (packet->buffer && ob_position(frame->payload) > ob_remaining(packet->buffer))
+    if (packet->buffer && ob_limit(frame->payload) > ob_remaining(packet->buffer))
       goto skip;
     
     if (!frame->destination_resolved){
@@ -399,10 +392,10 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       // can we send a packet on this interface now?
       if (limit_is_allowed(&frame->interface->transfer_limit))
 	goto skip;
-	
+      
       if (frame->source_full)
 	my_subscriber->send_full=1;
-      overlay_init_packet(packet, frame->next_hop, frame->unicast, frame->interface, frame->recvaddr, 0);
+      overlay_init_packet(packet, frame->next_hop, frame->unicast, frame->interface, frame->recvaddr);
     }else{
       // is this packet going our way?
       if (frame->interface!=packet->interface || memcmp(&packet->dest, &frame->recvaddr, sizeof(packet->dest))!=0){
@@ -510,29 +503,4 @@ static void overlay_send_packet(struct sched_ent *alarm){
   bzero(&packet, sizeof(struct outgoing_packet));
   
   overlay_fill_send_packet(&packet, gettime_ms());
-}
-
-int
-overlay_tick_interface(int i, time_ms_t now) {
-  struct outgoing_packet packet;
-  IN();
-  
-  if (overlay_interfaces[i].state!=INTERFACE_STATE_UP) {
-    RETURN(-1);
-  }
-  
-  if (limit_is_allowed(&overlay_interfaces[i].transfer_limit)){
-    //WARN("Throttling has blocked a tick packet");
-    RETURN(-1);
-  }
-  
-  if (config.debug.overlayinterfaces) DEBUGF("Ticking interface #%d",i);
-  
-  // initialise the packet buffer
-  bzero(&packet, sizeof(struct outgoing_packet));
-  overlay_init_packet(&packet, NULL, 0, &overlay_interfaces[i], overlay_interfaces[i].broadcast_address, 1);
-  
-  /* Stuff more payloads from queues and send it */
-  overlay_fill_send_packet(&packet, now);
-  RETURN(0);
 }

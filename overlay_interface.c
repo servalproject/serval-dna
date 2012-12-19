@@ -471,11 +471,8 @@ static void overlay_interface_poll(struct sched_ent *alarm)
     if (interface->state==INTERFACE_STATE_UP && interface->tick_ms>0){
       // tick the interface
       time_ms_t now = gettime_ms();
-      int i = (interface - overlay_interfaces);
-      if (overlay_tick_interface(i, now))
-	alarm->alarm=limit_next_allowed(&overlay_interfaces[i].transfer_limit);
-      else
-	alarm->alarm=now+interface->tick_ms;
+      overlay_route_queue_advertisements(interface);
+      alarm->alarm=now+interface->tick_ms;
       alarm->deadline=alarm->alarm+interface->tick_ms/2;
       schedule(alarm);
     }
@@ -615,8 +612,8 @@ void overlay_dummy_poll(struct sched_ent *alarm)
       interface->tick_ms>0 && 
       (interface->last_tick_ms == -1 || now >= interface->last_tick_ms + interface->tick_ms)) {
     // tick the interface
-    int i = (interface - overlay_interfaces);
-    overlay_tick_interface(i, now);
+    overlay_route_queue_advertisements(interface);
+    interface->last_tick_ms=now;
   }
   
   schedule(alarm);
