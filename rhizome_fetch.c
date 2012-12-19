@@ -1119,8 +1119,8 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
 	  slot->mdpRXBitmap|=(1<<(31-j));
       }
     }
-  DEBUGF("Request bitmap = 0x%08x, block_length=0x%x, offset=0x%x",
-	 slot->mdpRXBitmap,slot->mdpRXBlockLength,slot->file_ofs);
+  DEBUGF("slot %p: Request bitmap = 0x%08x, block_length=0x%x, offset=0x%x",
+	 slot,slot->mdpRXBitmap,slot->mdpRXBlockLength,slot->file_ofs);
 
 
   write_uint64(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES],slot->bidVersion);
@@ -1646,6 +1646,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	  if (parts.code != 200) {
 	    if (config.debug.rhizome_rx)
 	      DEBUGF("Failed HTTP request: rhizome server returned %d != 200 OK", parts.code);
+	    slot->file_ofs=0;
 	    rhizome_fetch_switch_to_mdp(slot);
 	    return;
 	  }
