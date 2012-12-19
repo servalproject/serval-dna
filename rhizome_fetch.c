@@ -1385,6 +1385,8 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 	sqlite_exec_void_retry(&retry,
 			       "DELETE FROM FILES WHERE id='%s'",
 			       slot->manifest->fileHexHash);
+	rhizome_queue_ignore_manifest(slot->manifest, 
+				      &slot->peer_ipandport, slot->peer_sid, 60000);
 	rhizome_fetch_close(slot);
 	RETURN(-1);
       } else {
