@@ -227,7 +227,7 @@ char vomp_dtmf_digit_to_char(int digit)
   return '?';
 }
 
-static int store_jitter_sample(struct jitter_measurements *measurements, int sample_clock, int local_clock){
+static int store_jitter_sample(struct jitter_measurements *measurements, int sample_clock, int local_clock, int *delay){
   IN();
   int i, count=0;
   
@@ -298,6 +298,8 @@ static int store_jitter_sample(struct jitter_measurements *measurements, int sam
   if (sample_clock > measurements->max_sample_clock)
     measurements->max_sample_clock=sample_clock;
   
+  *delay=sample->delta - measurements->sorted_samples[0]->delta;
+
   RETURN(0);
 }
 
@@ -307,10 +309,9 @@ static int get_jitter_size(struct jitter_measurements *measurements){
   int jitter;
   if (i>=measurements->sample_count)
     i=measurements->sample_count -1;
-  do{
-    jitter=measurements->sorted_samples[i]->delta - measurements->sorted_samples[0]->delta;
-    i--;
-  }while(jitter > 1500);
+  jitter=measurements->sorted_samples[i]->delta - measurements->sorted_samples[0]->delta;
+  if (jitter < 60)
+    jitter=60;
   RETURN(jitter);
 }
 
@@ -582,7 +583,7 @@ static int monitor_call_status(struct vomp_call_state *call)
 }
 
 static int monitor_send_audio(struct vomp_call_state *call, int audio_codec, int time, int sequence, 
-		       const unsigned char *audio, int audio_length)
+		       const unsigned char *audio, int audio_length, int delay)
 {
   if (0) DEBUGF("Tell call monitor about audio for call %06x:%06x",
 		call->local.session,call->remote.session);
@@ -595,11 +596,11 @@ static int monitor_send_audio(struct vomp_call_state *call, int audio_codec, int
   int jitter_delay = get_jitter_size(&call->jitter);
   
   int msglen = snprintf(msg, 1024,
-			"\n*%d:AUDIO:%x:%d:%d:%d:%d\n",
+			"\n*%d:AUDIO:%x:%d:%d:%d:%d:%d\n",
 			audio_length,
 			call->local.session,
 			audio_codec, time, sequence, 
-			jitter_delay);
+			jitter_delay, delay);
   
   bcopy(audio, &msg[msglen], audio_length);
   msglen+=audio_length;
@@ -730,15 +731,16 @@ static int vomp_process_audio(struct vomp_call_state *call, overlay_mdp_frame *m
   time=call->remote_audio_clock * 20;
   
   int audio_len = mdp->in.payload_length - ofs;
-
-  if (store_jitter_sample(&call->jitter, time, now))
+  int delay=0;
+  
+  if (store_jitter_sample(&call->jitter, time, now, &delay))
     return 0;
   
   /* Pass audio frame to all registered listeners */
   if (monitor_socket_count)
     monitor_send_audio(call, codec, time, call->remote.sequence,
 		       &mdp->in.payload[ofs],
-		       audio_len);
+		       audio_len, delay);
   return 0;
 }
 

@@ -52,7 +52,7 @@ struct sched_ent next_packet;
 struct profile_total send_packet;
 
 static void overlay_send_packet(struct sched_ent *alarm);
-static void overlay_update_queue_schedule(overlay_txqueue *queue, struct overlay_frame *frame);
+static int overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame);
 
 int overlay_queue_init(){
   /* Set default congestion levels for queues */
@@ -62,6 +62,7 @@ int overlay_queue_init(){
     overlay_tx[i].latencyTarget=1000; /* Keep packets in queue for 1 second by default */
   }
   /* expire voice/video call packets much sooner, as they just aren't any use if late */
+  overlay_tx[OQ_ISOCHRONOUS_VOICE].maxLength=20;
   overlay_tx[OQ_ISOCHRONOUS_VOICE].latencyTarget=200;
   overlay_tx[OQ_ISOCHRONOUS_VIDEO].latencyTarget=200;
   return 0;  
@@ -217,7 +218,7 @@ int overlay_payload_enqueue(struct overlay_frame *p)
   if (p->queue==OQ_ISOCHRONOUS_VOICE)
     rhizome_saw_voice_traffic();
   
-  overlay_update_queue_schedule(queue, p);
+  overlay_calc_queue_time(queue, p);
   
   return 0;
 }
@@ -276,21 +277,24 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
       if (next_allowed_packet==0||next_packet < next_allowed_packet)
 	next_allowed_packet = next_packet;
     }
+    if (next_allowed_packet==0)
+      return 0;
   }
   
   if (next_packet.alarm==0 || next_allowed_packet < next_packet.alarm){
+    if (!next_packet.function){
+      next_packet.function=overlay_send_packet;
+      send_packet.name="overlay_send_packet";
+      next_packet.stats=&send_packet;
+    }
+    unschedule(&next_packet);
     next_packet.alarm=next_allowed_packet;
-    // no grace period, send IO ASAP
-    next_packet.deadline=next_allowed_packet;
-    ret = 1;
+    // small grace period, we want to read incoming IO first
+    next_packet.deadline=next_allowed_packet+15;
+    schedule(&next_packet);
   }
   
-  if (!next_packet.function){
-    next_packet.function=overlay_send_packet;
-    send_packet.name="overlay_send_packet";
-    next_packet.stats=&send_packet;
-  }
-  return ret;
+  return 0;
 }
 
 static void
@@ -431,11 +435,8 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     
     if (frame->destination_resolved){
       frame->send_copies --;
-      if (frame->send_copies>0){
+      if (frame->send_copies>0)
 	keep_payload=1;
-	// make sure we don't schedule the next alarm immediately
-	frame->enqueued_at=gettime_ms();
-      }
     }else{
       int i;
       frame->broadcast_sent_via[packet->i]=1;
@@ -479,9 +480,6 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
     overlay_stuff_packet(packet, queue, now);
   }
   
-  if (next_packet.alarm)
-    schedule(&next_packet);
-  
   if(packet->buffer){
     if (ob_position(packet->buffer) > packet->header_length){
     
@@ -514,14 +512,6 @@ static void overlay_send_packet(struct sched_ent *alarm){
   overlay_fill_send_packet(&packet, gettime_ms());
 }
 
-// update time for next alarm and reschedule
-static void overlay_update_queue_schedule(overlay_txqueue *queue, struct overlay_frame *frame){
-  if (overlay_calc_queue_time(queue, frame)){
-    unschedule(&next_packet);
-    schedule(&next_packet);
-  }
-}
-
 int
 overlay_tick_interface(int i, time_ms_t now) {
   struct outgoing_packet packet;
@@ -532,7 +522,7 @@ overlay_tick_interface(int i, time_ms_t now) {
   }
   
   if (limit_is_allowed(&overlay_interfaces[i].transfer_limit)){
-    WARN("Throttling has blocked a tick packet");
+    //WARN("Throttling has blocked a tick packet");
     RETURN(-1);
   }
   
