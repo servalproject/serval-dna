@@ -1604,7 +1604,7 @@ int rhizome_received_content(unsigned char *sender_sid,
 			   +32*slot->mdpRXBlockLength);
 		  if ((slot->mdpRequestFrontier
 		       -32*slot->mdpRXBlockLength
-		       +4*slot->mdpRXBlockLength)
+		       +8*slot->mdpRXBlockLength)
 		      <slot->file_ofs) {
 		    if (0) DEBUGF("Sending pipeline request.");
 		    rhizome_fetch_mdp_requestblocks(slot,PIPELINE_REQUEST,
