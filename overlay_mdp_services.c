@@ -39,7 +39,7 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
     read_uint32(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8]);
   uint16_t blockLength=
   read_uint16(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4]);
-  if (blockLength>1024) RETURN(-1);
+  if (blockLength>1500) RETURN(-1);
 
   struct subscriber *source = find_subscriber(mdp->out.src.sid, SID_SIZE, 0);
   

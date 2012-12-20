@@ -296,6 +296,7 @@ END_STRUCT
 
 STRUCT(rhizome_mdp)
 ATOM(int,                   enable,     1, cf_opt_int_boolean,, "If true, Rhizome MDP server is started")
+ATOM(int32_t,                blocksize,  1024, cf_opt_int32_submtu,, "Bytes per block for Rhizome MDP transfers")
 END_STRUCT
 
 STRUCT(rhizome_advertise)

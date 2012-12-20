@@ -1314,7 +1314,7 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
 
     slot->mdpIdleTimeout=10000; // give up if nothing received for 10 seconds
     slot->mdpRXBitmap=0x00000000; // no blocks received yet
-    slot->mdpRXBlockLength=1024;
+    slot->mdpRXBlockLength=config.rhizome.mdp.blocksize;
     slot->mdpRequestFrontier=0;
     slot->mdpDuplicatePackets=0;
 

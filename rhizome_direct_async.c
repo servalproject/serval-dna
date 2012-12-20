@@ -84,7 +84,7 @@ int app_rhizome_direct_async(int argc, const char *const *argv,
   while (freshBundles<MAX_FRESH
 	 && sqlite_step_retry(&retry, statement) == SQLITE_ROW
 	 ) {
-    unsigned long long rowid;
+    unsigned long long rowid=-1;
     sqlite3_blob *blob;
     if (sqlite3_column_type(statement, 0)==SQLITE_INTEGER)
       rowid = sqlite3_column_int64(statement, 0);

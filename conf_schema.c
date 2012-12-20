@@ -156,6 +156,18 @@ int cf_opt_uint(unsigned int *uintp, const char *text)
   return CFOK;
 }
 
+// A payload size of some sort that is smaller than a
+// typical network MTU.
+int cf_opt_int32_submtu(int32_t *intp, const char *text)
+{
+  const char *end = text;
+  long value = strtol(text, (char**)&end, 10);
+  if (end == text || *end || value < 16 || value > 16384)
+    return CFINVALID;
+  *intp = value;
+  return CFOK;
+}
+
 int cf_opt_int32_nonneg(int32_t *intp, const char *text)
 {
   const char *end = text;
