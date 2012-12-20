@@ -1126,8 +1126,8 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot,
       if (start%slot->mdpRXBlockLength) start_slot++;
       int end_slot=(start-slot->file_ofs+length)/slot->mdpRXBlockLength;
       if (slot->mdpRXdeferredPacketTypes[i]=='T') end_slot++;
-      DEBUGF("Deferred packet #%d @ 0x%x - 0x%x covers slots %d - %d",
-	     i,start,start+length-1,start_slot,end_slot);
+      if (0) DEBUGF("Deferred packet #%d @ 0x%x - 0x%x covers slots %d - %d",
+		    i,start,start+length-1,start_slot,end_slot);
       assert(start_slot>0);
       if (start_slot>=0&&start_slot<=31&&end_slot>0&&end_slot<=32) {
 	int j;
@@ -1151,12 +1151,14 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot,
   if (barrierAddress!=NO_BARRIER) {
     DEBUGF("Applying barrier address accept range 0x%x -- 0x%x",
 	   previousBarrierAddress,barrierAddress);
+    unsigned int barrierMask=0;
     for(i=0;i<32;i++) {
-      if ((slot->file_ofs+i*slot->mdpRXBitmap)>=barrierAddress)
-	slot->mdpRXBitmap|=(1<<(31-i));
-      if ((slot->file_ofs+i*slot->mdpRXBitmap)<previousBarrierAddress)
-	slot->mdpRXBitmap|=(1<<(31-i));
+      unsigned int address=slot->file_ofs+i*slot->mdpRXBlockLength;
+      if (address>=barrierAddress) barrierMask|=(1<<(31-i));
+      if (address<previousBarrierAddress) barrierMask|=(1<<(31-i));
     }
+    slot->mdpRXBitmap|=barrierMask;
+    DEBUGF("barrier mask = 0x%08x",barrierMask);       
   }
 
   if (barrierAddress!=NO_BARRIER) previousBarrierAddress=barrierAddress;
@@ -1592,8 +1594,11 @@ int rhizome_received_content(unsigned char *sender_sid,
 		  // request or re-request for skipped blocks
 		  DEBUGF("%d blocks outstanding. We have advanced 0x%x since last request.",
 			 slot->mdpResponsesOutstanding,
-			 slot->file_ofs-slot->mdpRequestFrontier);
-		  if ((slot->mdpRequestFrontier+4*slot->mdpRXBlockLength)
+			 slot->file_ofs-slot->mdpRequestFrontier
+			 +32*slot->mdpRXdeferredPacketCount);
+		  if ((slot->mdpRequestFrontier
+		       -32*slot->mdpRXdeferredPacketCount
+		       +4*slot->mdpRXBlockLength)
 		      <slot->file_ofs) {
 		    DEBUGF("Sending pipeline request.");
 		    rhizome_fetch_mdp_requestblocks(slot,PIPELINE_REQUEST,
