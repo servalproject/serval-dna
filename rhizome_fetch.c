@@ -1533,7 +1533,7 @@ int rhizome_received_content(unsigned char *sender_sid,
 {
   IN();
   int i;
-  if (config.debug.rhizome.mdp)
+  if (config.debug.rhizome_mdp)
     DEBUGF("received data @ 0x%llx -- 0x%llx",offset,offset+count-1);
   for(i=0;i<NQUEUES;i++) {
     struct rhizome_fetch_slot *slot=&rhizome_fetch_queues[i].active;
@@ -1545,6 +1545,20 @@ int rhizome_received_content(unsigned char *sender_sid,
       if ((!memcmp(slot->bid,bidprefix,16))
 	  &&(!memcmp(slot->peer_sid,sender_sid,SID_SIZE)))
 	{
+	  // Whenever we receive a packet, we make sure that the timeout
+	  // is deferred a bit, so that we make sure to drain all pending 
+	  // packets in the sender's queue
+	  long long new_alarm_time=gettime_ms()+75;
+	  if (slot->alarm.alarm<new_alarm_time
+	      ||slot->alarm.deadline<new_alarm_time) {
+	    unschedule(&slot->alarm);
+	    slot->alarm.alarm=new_alarm_time;
+	    if (slot->alarm.deadline<new_alarm_time)
+	      slot->alarm.deadline = new_alarm_time;
+	    slot->alarm.function = rhizome_fetch_poll;
+	    schedule(&slot->alarm);
+	  }
+
 	  if (slot->file_ofs==offset) {
 	    if (!rhizome_write_content(slot,(char *)bytes,count))
 	      {		
@@ -1707,7 +1721,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	rhizome_write_content(slot, buffer, bytes);
 	if (slot->state!=RHIZOME_FETCH_FREE) {
 	  // reset inactivity timeout
-	  DEBUGF("Resetting inactivity timer");
+	  // DEBUGF("Resetting inactivity timer");
 	  unschedule(&slot->alarm);
 	  slot->alarm.alarm=gettime_ms() + RHIZOME_IDLE_TIMEOUT;
 	  slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
