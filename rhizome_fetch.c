@@ -1139,9 +1139,9 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot,
   // When pipelining, just request new stuff
   int pipelineBlocks=0;
   if (pipelineRequest==PIPELINE_REQUEST) {
-    DEBUGF("This is a pipeline request");
+    if (0) DEBUGF("This is a pipeline request");
     for(i=0;i<32;i++) {
-      if ((slot->file_ofs+i*slot->mdpRXBitmap)<slot->mdpRequestFrontier)
+      if ((slot->file_ofs+i*slot->mdpRXBlockLength)<slot->mdpRequestFrontier)
 	slot->mdpRXBitmap|=(1<<(31-i));
       else 
 	pipelineBlocks++;
@@ -1163,8 +1163,9 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot,
 
   if (barrierAddress!=NO_BARRIER) previousBarrierAddress=barrierAddress;
 
-  DEBUGF("slot %p: Request bitmap = 0x%08x, block_length=0x%x, offset=0x%x",
-	 slot,slot->mdpRXBitmap,slot->mdpRXBlockLength,slot->file_ofs);
+  if (0)
+    DEBUGF("slot %p: Request bitmap = 0x%08x, block_length=0x%x, offset=0x%x",
+	   slot,slot->mdpRXBitmap,slot->mdpRXBlockLength,slot->file_ofs);
   if (slot->mdpRXBitmap==0xffffffff) {
     // Request ends up empty, so do nothing
     RETURN(0);
@@ -1529,6 +1530,7 @@ int rhizome_received_content(unsigned char *sender_sid,
 {
   IN();
   int i;
+  // DEBUGF("received data @ 0x%llx -- 0x%llx",offset,offset+count-1);
   for(i=0;i<NQUEUES;i++) {
     struct rhizome_fetch_slot *slot=&rhizome_fetch_queues[i].active;
     if (slot->state==RHIZOME_FETCH_RXFILEMDP&&slot->bidP) {
@@ -1598,10 +1600,10 @@ int rhizome_received_content(unsigned char *sender_sid,
 			   slot->file_ofs-slot->mdpRequestFrontier
 			   +32*slot->mdpRXBlockLength);
 		  if ((slot->mdpRequestFrontier
-		       -32*slot->mdpRXdeferredPacketCount
+		       -32*slot->mdpRXBlockLength
 		       +4*slot->mdpRXBlockLength)
 		      <slot->file_ofs) {
-		    DEBUGF("Sending pipeline request.");
+		    if (0) DEBUGF("Sending pipeline request.");
 		    rhizome_fetch_mdp_requestblocks(slot,PIPELINE_REQUEST,
 						    NO_BARRIER);
 		  } 
