@@ -1472,6 +1472,10 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 	    DEBUGF("error marking row valid: %s",sqlite3_errmsg(rhizome_db));
       }
 
+      INFOF("Received %lld bytes in %lldms (%lldKB/sec), %d duplicate packets.",
+	    (long long)slot->file_ofs,(long long)gettime_ms()-slot->start_time,
+	    (long long)slot->file_ofs/(gettime_ms()-slot->start_time),
+	    slot->mdpDuplicatePackets);
       if (!rhizome_import_received_bundle(slot->manifest)){
 	if (slot->state==RHIZOME_FETCH_RXFILE) {
 	  char buf[INET_ADDRSTRLEN];
@@ -1486,10 +1490,6 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 	  INFOF("Completed MDP request from %s for file %s",
 		alloca_tohex_sid(slot->peer_sid), slot->manifest->fileHexHash);
 	}
-	INFOF("Received %lld bytes in %lldms (%lldKB/sec), %d duplicate packets.",
-	      (long long)slot->file_ofs,(long long)gettime_ms()-slot->start_time,
-	      (long long)slot->file_ofs/(gettime_ms()-slot->start_time),
-	      slot->mdpDuplicatePackets);
       }
     } else {
       /* This was to fetch the manifest, so now fetch the file if needed */
