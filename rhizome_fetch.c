@@ -1063,7 +1063,7 @@ static void rhizome_fetch_mdp_slot_callback(struct sched_ent *alarm)
 {
   struct rhizome_fetch_slot *slot=(struct rhizome_fetch_slot*)alarm;
 
-  if (slot->state!=5) {
+  if (slot->state!=RHIZOME_FETCH_RXFILEMDP) {
     DEBUGF("Stale alarm triggered on idle/reclaimed slot. Ignoring");
     unschedule(alarm);
     return;
