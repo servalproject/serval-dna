@@ -1283,9 +1283,9 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
   if (slot->alarm.poll.fd>=0) {
     unwatch(&slot->alarm);
     close(slot->alarm.poll.fd);
-    slot->alarm.poll.fd = -1;
-    slot->alarm.function=NULL;
   }
+  slot->alarm.poll.fd = -1;
+  slot->alarm.function=NULL;
   unschedule(&slot->alarm);
 
   /* Begin MDP fetch process.
