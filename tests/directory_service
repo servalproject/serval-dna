@@ -41,7 +41,6 @@ is_published() {
 }
 
 sent_directory_request() {
-   tfw_log "grep \"Sending directory registration\" $1"
    grep "Sending directory registration" $1 || return 1
    return 0
 }
@@ -62,6 +61,7 @@ setup_publish() {
       set debug.dnahelper on
    foreach_instance +B +C +D executeOk_servald config set directory.service $SIDA
    start_servald_instances +A +B +C +D
+   wait_until grep "DNAHELPER got STARTED ACK" $LOGA
 }
 
 doc_publish="Publish and retrieve a directory entry"
@@ -131,6 +131,7 @@ setup_routing() {
       set directory.service $SIDA \
       set hosts.$SIDA.address 10.0.1.1
    foreach_instance +A +B +C start_routing_instance
+   wait_until grep "DNAHELPER got STARTED ACK" $LOGA
 }
 
 doc_routing="Ping via relay node"
