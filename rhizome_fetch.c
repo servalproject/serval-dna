@@ -1706,6 +1706,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	rhizome_write_content(slot, buffer, bytes);
 	if (slot->state) {
 	  // reset inactivity timeout
+	  DEBUGF("Resetting inactivity timer");
 	  unschedule(&slot->alarm);
 	  slot->alarm.alarm=gettime_ms() + RHIZOME_IDLE_TIMEOUT;
 	  slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
@@ -1716,7 +1717,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
       } else {
 	if (config.debug.rhizome_rx)
 	  DEBUGF("Empty read, closing connection: received %lld of %lld bytes",
-		slot->file_ofs,slot->file_len);
+		 slot->file_ofs,slot->file_len);
 	rhizome_fetch_switch_to_mdp(slot);
 	return;
       }
@@ -1779,11 +1780,11 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	    slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
 	    slot->alarm.function = rhizome_fetch_poll;
 	    schedule(&slot->alarm);
-
 	    return;
 	  }
 	}
       }
+      assert(slot->state!=RHIZOME_FETCH_FREE);
       break;
       default:
 	WARNF("Closing rhizome fetch connection due to illegal/unimplemented state=%d.",slot->state);
@@ -1797,7 +1798,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
   if (alarm->poll.revents==0 || alarm->poll.revents & (POLLHUP | POLLERR)){
     // timeout or socket error, close the socket
     if (config.debug.rhizome_rx)
-      DEBUGF("Closing due to timeout or error %x (%x %x)", alarm->poll.revents, POLLHUP, POLLERR);
+      DEBUGF("Closing due to timeout or error: events=%x (POLLHUP=%x POLLERR=%x)", alarm->poll.revents, POLLHUP, POLLERR);
     if (slot->state!=RHIZOME_FETCH_FREE)
       rhizome_queue_ignore_manifest(slot->manifest, 
 				    &slot->peer_ipandport, slot->peer_sid, 60000);
