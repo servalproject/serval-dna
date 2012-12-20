@@ -1059,23 +1059,28 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
   cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "");
   if (cli_arg(argc, argv, o, "bsk", &bskhex, cli_optional_bundle_key, "") == -1)
     return -1;
-  unsigned char authorSid[SID_SIZE];
-  if (authorSidHex[0] && fromhexstr(authorSid, authorSidHex, SID_SIZE) == -1)
+  
+  sid_t authorSid;
+  if (authorSidHex[0] && fromhexstr(authorSid.binary, authorSidHex, SID_SIZE) == -1)
     return WHYF("invalid author_sid: %s", authorSidHex);
-  unsigned char bsk[RHIZOME_BUNDLE_KEY_BYTES];
-  if (bskhex[0] && fromhexstr(bsk, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
+  rhizome_bk_t bsk;
+  if (bskhex[0] && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
     return WHYF("invalid bsk: %s", bskhex);
+  
   if (create_serval_instance_dir() == -1)
     return -1;
   if (!(keyring = keyring_open_with_pins((char *)pin)))
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
+  
   /* Create a new manifest that will represent the file.  If a manifest file was supplied, then read
    * it, otherwise create a blank manifest. */
   rhizome_manifest *m = rhizome_new_manifest();
   if (!m)
     return WHY("Manifest struct could not be allocated -- not added to rhizome");
+  
+  
   if (manifestpath[0] && access(manifestpath, R_OK) == 0) {
     if (config.debug.rhizome) DEBUGF("reading manifest from %s", manifestpath);
     /* Don't verify the manifest, because it will fail if it is incomplete.
@@ -1088,181 +1093,32 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
   } else {
     if (config.debug.rhizome) DEBUGF("manifest file %s does not exist -- creating new manifest", manifestpath);
   }
-  /* Fill in a few missing manifest fields, to make it easier to use when adding new files:
-      - the default service is FILE
-      - use the current time for "date"
-      - if service is file, then use the payload file's basename for "name"
-  */
-  const char *service = rhizome_manifest_get(m, "service", NULL, 0);
-  if (service == NULL) {
-    rhizome_manifest_set(m, "service", (service = RHIZOME_SERVICE_FILE));
-    if (config.debug.rhizome) DEBUGF("missing 'service', set default service=%s", service);
-  } else {
-    if (config.debug.rhizome) DEBUGF("manifest contains service=%s", service);
-  }
-  if (rhizome_manifest_get(m, "date", NULL, 0) == NULL) {
-    rhizome_manifest_set_ll(m, "date", (long long) gettime_ms());
-    if (config.debug.rhizome) DEBUGF("missing 'date', set default date=%s", rhizome_manifest_get(m, "date", NULL, 0));
-  }
-  if (strcasecmp(RHIZOME_SERVICE_FILE, service) == 0) {
-    const char *name = rhizome_manifest_get(m, "name", NULL, 0);
-    if (name == NULL) {
-      name = strrchr(filepath, '/');
-      name = name ? name + 1 : filepath;
-      rhizome_manifest_set(m, "name", name);
-      if (config.debug.rhizome) DEBUGF("missing 'name', set default name=\"%s\"", name);
-    } else {
-      if (config.debug.rhizome) DEBUGF("manifest contains name=\"%s\"", name);
-    }
-  }
-  /* If the author was not specified on the command-line, then the manifest's "sender"
-      field is used, if present. */
-  const char *sender = NULL;
-  if (!authorSidHex[0] && (sender = rhizome_manifest_get(m, "sender", NULL, 0)) != NULL) {
-    if (fromhexstr(authorSid, sender, SID_SIZE) == -1)
-      return WHYF("invalid sender: %s", sender);
-    authorSidHex = sender;
-  }
-  /* Bind an ID to the manifest, and also bind the file.  Then finalise the manifest.
-     But if the manifest already contains an ID, don't override it. */
-  if (authorSidHex[0]) {
-    if (config.debug.rhizome) DEBUGF("author=%s", authorSidHex);
-    memcpy(m->author, authorSid, SID_SIZE);
-  }
-  const char *id = rhizome_manifest_get(m, "id", NULL, 0);
-  if (id == NULL) {
-    if (config.debug.rhizome) DEBUG("creating new bundle");
-    if (rhizome_manifest_bind_id(m) == -1) {
-      rhizome_manifest_free(m);
-      return WHY("Could not bind manifest to an ID");
-    }
-  } else {
-    if (config.debug.rhizome) DEBUGF("modifying existing bundle bid=%s", id);
-    // Modifying an existing bundle.  If an author SID is supplied, we must ensure that it is valid,
-    // ie, that identity has permission to alter the bundle.  If no author SID is supplied but a BSK
-    // is supplied, then use that to alter the bundle.  Otherwise, search the keyring for an
-    // identity with permission to alter the bundle.
-    if (!is_sid_any(m->author)) {
-      // Check that the given author has permission to alter the bundle, and extract the secret
-      // bundle key if so.
-      int result = rhizome_extract_privatekey(m);
-      switch (result) {
-      case -1:
-	rhizome_manifest_free(m);
-	return WHY("error in rhizome_extract_privatekey()");
-      case 0:
-	break;
-      case 1:
-	if (bskhex[0])
-	  break;
-	rhizome_manifest_free(m);
-	return WHY("Manifest does not have BK field");
-      case 2:
-	rhizome_manifest_free(m);
-	return WHY("Author unknown");
-      case 3:
-	rhizome_manifest_free(m);
-	return WHY("Author does not have a Rhizome Secret");
-      case 4:
-	rhizome_manifest_free(m);
-	return WHY("Author does not have permission to modify manifest");
-      default:
-	rhizome_manifest_free(m);
-	return WHYF("Unknown result from rhizome_extract_privatekey(): %d", result);
-      }
-    }
-    if (bskhex[0]) {
-      if (config.debug.rhizome) DEBUGF("bskhex=%s", bskhex);
-      if (m->haveSecret) {
-	// If a bundle secret key was supplied that does not match the secret key derived from the
-	// author, then warn but carry on using the author's.
-	if (memcmp(bsk, m->cryptoSignSecret, RHIZOME_BUNDLE_KEY_BYTES) != 0)
-	  WARNF("Supplied bundle secret key is invalid -- ignoring");
-      } else {
-	// The caller provided the bundle secret key, so ensure that it corresponds to the bundle's
-	// public key (its bundle ID), otherwise it won't work.
-	memcpy(m->cryptoSignSecret, bsk, RHIZOME_BUNDLE_KEY_BYTES);
-	if (rhizome_verify_bundle_privatekey(m,m->cryptoSignSecret,
-					     m->cryptoSignPublic) == -1) {
-	  rhizome_manifest_free(m);
-	  return WHY("Incorrect BID secret key.");
-	}
-      }
-    }
-    // If we still don't know the bundle secret or the author, then search for an author.
-    if (!m->haveSecret && is_sid_any(m->author)) {
-      if (config.debug.rhizome) DEBUG("bundle author not specified, searching keyring");
-      int result = rhizome_find_bundle_author(m);
-      if (result != 0) {
-	rhizome_manifest_free(m);
-	switch (result) {
-	case -1:
-	  return WHY("error in rhizome_find_bundle_author()");
-	case 4:
-	  return WHY("Manifest does not have BK field");
-	case 1:
-	  return WHY("No author found");
-	default:
-	  return WHYF("Unknown result from rhizome_find_bundle_author(): %d", result);
-	}
-      }
-    }
-  }
+  
+  if (rhizome_stat_file(m, filepath))
+    return -1;
+  
+  if (rhizome_fill_manifest(m, filepath, *authorSidHex?&authorSid:NULL, &bsk))
+    return -1;
   
   /* Keep note as to whether we are supposed to be encrypting this file or not */
   // TODO should we encrypt??
   m->payloadEncryption=0;
   rhizome_manifest_set_ll(m,"crypt",m->payloadEncryption?1:0); 
   
-  if (rhizome_add_file(m, filepath))
+  if (m->fileLength){
+    if (rhizome_add_file(m, filepath))
+      return -1;
+  }
+  
+  rhizome_manifest *mout = NULL;
+  int ret=rhizome_manifest_finalise(m,&mout);
+  if (ret<0)
     return -1;
   
-  /* Add the manifest and its associated file to the Rhizome database, 
-     generating an "id" in the process.
-     PGS @20121003 - Hang on, didn't we create the ID above? Presumably the
-     following does NOT in fact generate a bundle ID. 
-  */
-  int ret=0;
-  rhizome_manifest *mout = NULL;
-  if (rhizome_manifest_check_duplicate(m, &mout) == 2) {
-    /* duplicate found -- verify it so that we can write it out later */
-    rhizome_manifest_verify(mout);
-    ret=2;
-  } else {
-    
-    /* set version of manifest, either from version variable, or using current time */
-    if (rhizome_manifest_get(m,"version",NULL,0)==NULL)
-    {
-      /* No version set */
-      m->version = gettime_ms();
-      rhizome_manifest_set_ll(m,"version",m->version);
-    }
-    else
-      m->version = rhizome_manifest_get_ll(m,"version");
-    
-    /* Convert to final form for signing and writing to disk */
-    if (rhizome_manifest_pack_variables(m))
-      return WHY("Could not convert manifest to wire format");
-    
-    /* Sign it */
-    if (rhizome_manifest_selfsign(m))
-      return WHY("Could not sign manifest");
-    
-    /* mark manifest as finalised */
-    m->finalised=1;
-    if (rhizome_add_manifest(m, 255 /* TTL */)) {
-      rhizome_manifest_free(m);
-      return WHY("Manifest not added to Rhizome database");
-    }
-  }
-
-  /* If successfully added, overwrite the manifest file so that the Java component that is
-     invoking this command can read it to obtain feedback on the result. */
-  rhizome_manifest *mwritten = mout ? mout : m;
   if (manifestpath[0] 
-      && rhizome_write_manifest_file(mwritten, manifestpath) == -1)
+      && rhizome_write_manifest_file(mout, manifestpath) == -1)
     ret = WHY("Could not overwrite manifest file.");
-  service = rhizome_manifest_get(mwritten, "service", NULL, 0);
+  const char *service = rhizome_manifest_get(mout, "service", NULL, 0);
   if (service) {
     cli_puts("service");
     cli_delim(":");
@@ -1271,7 +1127,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
   }
   {
     char bid[RHIZOME_MANIFEST_ID_STRLEN + 1];
-    rhizome_bytes_to_hex_upper(mwritten->cryptoSignPublic, bid, RHIZOME_MANIFEST_ID_BYTES);
+    rhizome_bytes_to_hex_upper(mout->cryptoSignPublic, bid, RHIZOME_MANIFEST_ID_BYTES);
     cli_puts("manifestid");
     cli_delim(":");
     cli_puts(bid);
@@ -1279,7 +1135,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
   }
   {
     char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
-    rhizome_bytes_to_hex_upper(mwritten->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
+    rhizome_bytes_to_hex_upper(mout->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
     cli_puts("secret");
     cli_delim(":");
     cli_puts(secret);
@@ -1287,24 +1143,24 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
   }
   cli_puts("filesize");
   cli_delim(":");
-  cli_printf("%lld", mwritten->fileLength);
+  cli_printf("%lld", mout->fileLength);
   cli_delim("\n");
-  if (mwritten->fileLength != 0) {
+  if (mout->fileLength != 0) {
     cli_puts("filehash");
     cli_delim(":");
-    cli_puts(mwritten->fileHexHash);
+    cli_puts(mout->fileHexHash);
     cli_delim("\n");
   }
-  const char *name = rhizome_manifest_get(mwritten, "name", NULL, 0);
+  const char *name = rhizome_manifest_get(mout, "name", NULL, 0);
   if (name) {
     cli_puts("name");
     cli_delim(":");
     cli_puts(name);
     cli_delim("\n");
   }
-  rhizome_manifest_free(m);
   if (mout != m)
     rhizome_manifest_free(mout);
+  rhizome_manifest_free(m);
   return ret;
 }
 
@@ -1320,37 +1176,10 @@ int app_rhizome_import_bundle(int argc, const char *const *argv, const struct co
   rhizome_manifest *m = rhizome_new_manifest();
   if (!m)
     return WHY("Out of manifests.");
-  int status=0;
   
-  if (rhizome_read_manifest_file(m, manifestpath, 0) == -1) {
-    status = WHY("could not read manifest file");
-    goto cleanup;
-  }
-  if (rhizome_manifest_verify(m)){
-    status = WHY("could not verify manifest");
-    goto cleanup;
-  }
-  
-  /* Make sure we store signatures */
-  // TODO, why do we need this? Why isn't the state correct from rhizome_read_manifest_file? 
-  // This feels like a hack...
-  m->manifest_bytes=m->manifest_all_bytes;
-
-  status = rhizome_import_file(m, filepath);
+  int status=rhizome_bundle_import_files(m, manifestpath, filepath);
   if (status<0)
     goto cleanup;
-  
-  status = rhizome_manifest_check_duplicate(m, NULL);
-  if (status<0)
-    goto cleanup;
-  
-  if (status==0){
-    if (rhizome_add_manifest(m, 1) == -1) { // ttl = 1
-      status = WHY("rhizome_add_manifest() failed");
-      goto cleanup;
-    }
-  }else
-    INFO("Duplicate found in store");
   
   const char *service = rhizome_manifest_get(m, "service", NULL, 0);
   if (service) {

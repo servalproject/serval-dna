@@ -350,7 +350,6 @@ test_AddDuplicate() {
    assert [ -s file1.manifestA ]
    assert_stdout_add_file file1
    extract_stdout_secret file1_dup_secret
-   assert [ $file1_secret = $file1_dup_secret ]
    executeOk_servald rhizome list ''
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1 file2
    strip_signatures file1.manifest file1.manifestA
@@ -360,11 +359,12 @@ test_AddDuplicate() {
    assert [ -s file2.manifestA ]
    assert_stdout_add_file file2
    extract_stdout_secret file2_dup_secret
-   assert [ $file2_secret = $file2_dup_secret ]
    executeOk_servald rhizome list ''
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1 file2
    strip_signatures file2.manifest file2.manifestA
    assert diff file2.manifest file2.manifestA
+   assert [ $file1_secret = $file1_dup_secret ]
+   assert [ $file2_secret = $file2_dup_secret ]
 }
 
 doc_AddMismatched="Add mismatched manifest/payload fails"

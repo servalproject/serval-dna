@@ -263,9 +263,7 @@ int rhizome_import_file(rhizome_manifest *m, const char *filepath)
   return 0;
 }
 
-// import a file for a new bundle with an unknown file hash
-// update the manifest with the details of the file
-int rhizome_add_file(rhizome_manifest *m, const char *filepath)
+int rhizome_stat_file(rhizome_manifest *m, const char *filepath)
 {
   m->fileLength = 0;
   if (filepath[0]) {
@@ -281,9 +279,14 @@ int rhizome_add_file(rhizome_manifest *m, const char *filepath)
     m->fileHexHash[0] = '\0';
     rhizome_manifest_del(m, "filehash");
     m->fileHashedP = 0;
-    return 0;
   }
-  
+  return 0;
+}
+
+// import a file for a new bundle with an unknown file hash
+// update the manifest with the details of the file
+int rhizome_add_file(rhizome_manifest *m, const char *filepath)
+{
   // Stream the file directly into the database, encrypting & hashing as we go.
   struct rhizome_write write;
   bzero(&write, sizeof(write));
@@ -304,3 +307,28 @@ int rhizome_add_file(rhizome_manifest *m, const char *filepath)
   rhizome_manifest_set(m, "filehash", m->fileHexHash);
   return 0;
 }
+
+/*
+
+int rhizome_open_append(struct rhizome_write *write, int64_t size, const char *expectedFileHash, const char *existingFileHash){
+  
+}
+
+struct rhizome_read{
+  
+};
+
+int rhizome_open_read(struct rhizome_read *read, ){
+  
+}
+
+int rhizome_read(struct rhizome_read *read, unsigned char *buffer, int buffer_length){
+  
+}
+
+int rhizome_seek(struct rhizome_read *read, int64_t offset){
+  
+}
+
+
+*/

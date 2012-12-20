@@ -55,10 +55,17 @@ int rhizome_direct_form_received(rhizome_http_request *r)
 	strbuf payload_path = strbuf_alloca(50);
 	strbuf_sprintf(manifest_path, "rhizomedirect.%d.manifest", r->alarm.poll.fd);
 	strbuf_sprintf(payload_path, "rhizomedirect.%d.data", r->alarm.poll.fd);
-	int ret = rhizome_bundle_import_files(strbuf_str(manifest_path), strbuf_str(payload_path), 1); // ttl = 1
+      
+	int ret=0;
+	rhizome_manifest *m = rhizome_new_manifest();
 	
-	DEBUGF("Import returned %d",ret);
-	
+	if (!m)
+	  ret=WHY("Out of manifests.");
+	else{
+	  ret=rhizome_bundle_import_files(m, strbuf_str(manifest_path), strbuf_str(payload_path));
+	  rhizome_manifest_free(m);
+	}
+      
 	rhizome_direct_clear_temporary_files(r);
 	/* report back to caller.
 	  200 = ok, which is probably appropriate for when we already had the bundle.
@@ -221,86 +228,48 @@ int rhizome_direct_form_received(rhizome_http_request *r)
 	  rhizome_direct_clear_temporary_files(r);	     
 	  return rhizome_server_simple_http_response(r,500,"rhizome.api.addfile.manifesttemplate can't be read as a manifest.");
 	}
-
-      /* Fill in a few missing manifest fields, to make it easier to use when adding new files:
-	 - the default service is FILE
-	 - use the current time for "date"
-	 - if service is file, then use the payload file's basename for "name"
-      */
-      const char *service = rhizome_manifest_get(m, "service", NULL, 0);
-      if (service == NULL) {
-	rhizome_manifest_set(m, "service", (service = RHIZOME_SERVICE_FILE));
-	if (config.debug.rhizome) DEBUGF("missing 'service', set default service=%s", service);
-      } else {
-	if (config.debug.rhizome) DEBUGF("manifest contains service=%s", service);
+	
+      if (rhizome_stat_file(m, filepath)){
+	rhizome_manifest_free(m);
+	rhizome_direct_clear_temporary_files(r);
+	return rhizome_server_simple_http_response(r,500,"Could not store file");
       }
-      if (rhizome_manifest_get(m, "date", NULL, 0) == NULL) {
-	rhizome_manifest_set_ll(m, "date", (long long) gettime_ms());
-	if (config.debug.rhizome) DEBUGF("missing 'date', set default date=%s", rhizome_manifest_get(m, "date", NULL, 0));
-      }
-
-      const char *name = rhizome_manifest_get(m, "name", NULL, 0);
-      if (name == NULL) {
-	name=r->data_file_name;
-	rhizome_manifest_set(m, "name", r->data_file_name);
-	if (config.debug.rhizome) DEBUGF("missing 'name', set name=\"%s\" from HTTP post field filename specification", name);
-      } else {
-	if (config.debug.rhizome) DEBUGF("manifest contains name=\"%s\"", name);
-      }
-
-      const char *senderhex = rhizome_manifest_get(m, "sender", NULL, 0);
-      if (senderhex)
-	fromhexstr(m->author, senderhex, SID_SIZE);
-      else if (!is_sid_any(config.rhizome.api.addfile.default_author.binary))
-	memcpy(m->author, config.rhizome.api.addfile.default_author.binary, sizeof m->author); // TODO replace with sid_t struct assignment
-
-      /* Bind an ID to the manifest, and also bind the file.  Then finalise the 
-	 manifest. But if the manifest already contains an ID, don't override it. */
-      if (rhizome_manifest_get(m, "id", NULL, 0) == NULL) {
-	if (rhizome_manifest_bind_id(m)) {
-	  rhizome_manifest_free(m);
-	  m = NULL;
-	  rhizome_direct_clear_temporary_files(r);
-	  return rhizome_server_simple_http_response(r,500,"Could not bind manifest to an ID");
-	}
-      } else if (!rhizome_is_bk_none(&config.rhizome.api.addfile.bundle_secret_key)) {
-	/* Allow user to specify a bundle secret key so that the same bundle can
-	   be updated, rather than creating a new bundle each time. */
-	memcpy(m->cryptoSignSecret, config.rhizome.api.addfile.bundle_secret_key.binary, RHIZOME_BUNDLE_KEY_BYTES);
-	if (rhizome_verify_bundle_privatekey(m,m->cryptoSignSecret,m->cryptoSignPublic) == -1) {
-	  rhizome_manifest_free(m);
-	  m = NULL;
-	  rhizome_direct_clear_temporary_files(r);
-	  return rhizome_server_simple_http_response(r,500,"rhizome.api.addfile.bundlesecretkey did not verify.  Using the right key for the right bundle?");
-	}
-      } else {
-	/* Bundle ID specified, but without a BSK or sender SID specified.
-	   Therefore we cannot work out the bundle key, and cannot update the
-	   bundle. */
+	
+      sid_t *author=NULL;
+      if (!is_sid_any(config.rhizome.api.addfile.default_author.binary))
+	author = &config.rhizome.api.addfile.default_author;
+      
+      rhizome_bk_t bsk;
+      memcpy(bsk.binary, config.rhizome.api.addfile.bundle_secret_key.binary, RHIZOME_BUNDLE_KEY_BYTES);
+      
+      if (rhizome_fill_manifest(m, r->data_file_name, author, &bsk)){
 	rhizome_manifest_free(m);
 	m = NULL;
 	rhizome_direct_clear_temporary_files(r);
-	return rhizome_server_simple_http_response(r,500,"rhizome.api.addfile.bundlesecretkey not set, and manifest template contains no sender, but template contains a hard-wired bundle ID.  You must specify at least one, or not supply id= in the manifest template.");
-	
+	return rhizome_server_simple_http_response(r,500,"Could not fill manifest default values");
       }
       
-      int encryptP = 0; // TODO Determine here whether payload is to be encrypted.
-      if (rhizome_manifest_bind_file(m, filepath, encryptP)) {
-	rhizome_manifest_free(m);
-	rhizome_direct_clear_temporary_files(r);
-	return rhizome_server_simple_http_response(r,500,"Could not bind manifest to file");
+      m->payloadEncryption=0;
+      rhizome_manifest_set_ll(m,"crypt",m->payloadEncryption?1:0);
+	
+      // import file contents
+      // TODO, stream file into database
+      if (m->fileLength){
+	if (rhizome_add_file(m, filepath)){
+	  rhizome_manifest_free(m);
+	  rhizome_direct_clear_temporary_files(r);
+	  return rhizome_server_simple_http_response(r,500,"Could not store file");
+	}
       }
-      if (rhizome_manifest_finalise(m)) {
+
+      rhizome_manifest *mout = NULL;
+      if (rhizome_manifest_finalise(m, &mout)) {
+	if (mout && mout!=m)
+	  rhizome_manifest_free(mout);
 	rhizome_manifest_free(m);
 	rhizome_direct_clear_temporary_files(r);
 	return rhizome_server_simple_http_response(r,500,
 						   "Could not finalise manifest");
-      }
-      if (rhizome_add_manifest(m,255 /* TTL */)) {
-	rhizome_manifest_free(m);
-	rhizome_direct_clear_temporary_files(r);
-	return rhizome_server_simple_http_response(r,500,
-						   "Add manifest operation failed");
       }
             
       DEBUGF("Import sans-manifest appeared to succeed");
@@ -309,6 +278,8 @@ int rhizome_direct_form_received(rhizome_http_request *r)
       rhizome_server_simple_http_response(r, 200, (char *)m->manifestdata);
 
       /* clean up after ourselves */
+      if (mout && mout!=m)
+	rhizome_manifest_free(mout);
       rhizome_manifest_free(m);
       rhizome_direct_clear_temporary_files(r);
 

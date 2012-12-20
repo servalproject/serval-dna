@@ -238,17 +238,16 @@ int rhizome_store_bundle(rhizome_manifest *m);
 int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid);
 int rhizome_clean_payload(const char *fileidhex);
 int rhizome_store_file(rhizome_manifest *m,const unsigned char *key);
-int rhizome_bundle_import_files(const char *manifest_path, const char *payload_path, int ttl);
+int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, const char *filepath);
 int rhizome_bundle_import(rhizome_manifest *m, int ttl);
+int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSid, rhizome_bk_t *bsk);
 
 int rhizome_manifest_verify(rhizome_manifest *m);
 int rhizome_manifest_check_sanity(rhizome_manifest *m_in);
-int rhizome_manifest_check_file(rhizome_manifest *m_in);
 int rhizome_manifest_check_duplicate(rhizome_manifest *m_in,rhizome_manifest **m_out);
 
 int rhizome_manifest_bind_id(rhizome_manifest *m_in);
-int rhizome_manifest_bind_file(rhizome_manifest *m_in,const char *filename,int encryptP);
-int rhizome_manifest_finalise(rhizome_manifest *m);
+int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout);
 int rhizome_add_manifest(rhizome_manifest *m_in,int ttl);
 
 void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCount);
@@ -618,6 +617,7 @@ int rhizome_write_file(struct rhizome_write *write, const char *filename);
 int rhizome_fail_write(struct rhizome_write *write);
 int rhizome_finish_write(struct rhizome_write *write);
 int rhizome_import_file(rhizome_manifest *m, const char *filepath);
+int rhizome_stat_file(rhizome_manifest *m, const char *filepath);
 int rhizome_add_file(rhizome_manifest *m, const char *filepath);
 
 #endif //__SERVALDNA__RHIZOME_H
