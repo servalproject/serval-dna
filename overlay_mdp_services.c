@@ -123,15 +123,12 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
 	&reply.out.payload[1+16],8);
   
   int i;
-  DEBUGF("Request bitmap = 0x%08x, bit 0 = 0x%08x",
-	 bitmap,(1<<(31-0)));
+  DEBUGF("Request bitmap = 0x%08x, file_offset=0x%x",bitmap,fileOffset);
   for(i=0;i<32;i++)
     if (!(bitmap&(1<<(31-i))))
       {	
 	// calculate and set offset of block
 	uint64_t blockOffset=fileOffset+i*blockLength;
-	DEBUGF("Requested block is block #%d (0x%llx + 0x%x = 0x%llx)",
-	       i,fileOffset,(int)(i*blockLength),blockOffset);
 	write_uint64(&reply.out.payload[1+16+8],blockOffset);
 	// work out how many bytes to read
 	int blockBytes=blob_bytes-blockOffset;

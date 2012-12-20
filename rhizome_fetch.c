@@ -1063,6 +1063,8 @@ static void rhizome_fetch_mdp_slot_callback(struct sched_ent *alarm)
   if (now-slot->last_write_time>slot->mdpIdleTimeout) {
     DEBUGF("MDP connection timed out: last RX %lldms ago",
 	   now-slot->last_write_time);
+    rhizome_queue_ignore_manifest(slot->manifest, 
+				  &slot->peer_ipandport, slot->peer_sid, 60000);
     rhizome_fetch_close(slot);
     return;
   }
@@ -1144,7 +1146,10 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   unschedule(&slot->alarm);
   slot->alarm.function = rhizome_fetch_mdp_slot_callback;
   // 266ms @ 1mbit (WiFi broadcast speed) = 32x1024 byte packets.
-  slot->alarm.alarm=gettime_ms()+266; 
+  // Scaling timeout to the number of packets being requested is smarter,
+  // and certainly helps when faced with heavy packet loss.
+  double ms_per_packet=1000.0*(slot->mdpRXBlockLength*8)/1000000.0;
+  slot->alarm.alarm=gettime_ms()+ms_per_packet*slot->mdpResponsesOutstanding;
   slot->alarm.deadline=slot->alarm.alarm+500;
   schedule(&slot->alarm);
   
@@ -1162,6 +1167,8 @@ static int rhizome_fetch_mdp_requestmanifest(struct rhizome_fetch_slot *slot)
   if ((gettime_ms()-slot->last_write_time)>slot->mdpIdleTimeout) {
     // connection timed out
     DEBUGF("MDP connection timedout");
+    rhizome_queue_ignore_manifest(slot->manifest, 
+				  &slot->peer_ipandport, slot->peer_sid, 60000);
     return rhizome_fetch_close(slot);
   }
   
@@ -1301,6 +1308,8 @@ int rhizome_fetch_flush_blob_buffer(struct rhizome_fetch_slot *slot)
     WHYF("sqlite3_blob_write(,,%d,%lld) failed, %s", 
 	 slot->blob_buffer_bytes,slot->file_ofs-slot->blob_buffer_bytes,
 	 sqlite3_errmsg(rhizome_db));
+    rhizome_queue_ignore_manifest(slot->manifest, 
+				  &slot->peer_ipandport, slot->peer_sid, 60000);
     rhizome_fetch_close(slot);
     return -1;
   }
@@ -1409,8 +1418,11 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 		buf, ntohs(slot->peer_ipandport.sin_port), 
 		slot->manifest->fileHexHash);
 	} else {
-	  INFOF("Completed MDP request from %s  for file %s",
+	  INFOF("Completed MDP request from %s for file %s",
 		alloca_tohex_sid(slot->peer_sid), slot->manifest->fileHexHash);
+	  INFOF("Received %lld bytes in %lldms (%lldKB/sec).",
+		(long long)slot->file_ofs,(long long)gettime_ms()-slot->start_time,
+		(long long)slot->file_ofs/(gettime_ms()-slot->start_time));
 	}
       }
     } else {
@@ -1680,6 +1692,8 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
       break;
       default:
 	WARNF("Closing rhizome fetch connection due to illegal/unimplemented state=%d.",slot->state);
+	rhizome_queue_ignore_manifest(slot->manifest, 
+				      &slot->peer_ipandport, slot->peer_sid, 60000);
 	rhizome_fetch_close(slot);
 	return;
     }
@@ -1690,6 +1704,8 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
     if (config.debug.rhizome_rx)
       DEBUGF("Closing due to timeout or error %x (%x %x)", alarm->poll.revents, POLLHUP, POLLERR);
     if (slot->state!=RHIZOME_FETCH_FREE)
+      rhizome_queue_ignore_manifest(slot->manifest, 
+				    &slot->peer_ipandport, slot->peer_sid, 60000);
       rhizome_fetch_close(slot);
   }
 }
