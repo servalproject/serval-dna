@@ -216,13 +216,14 @@ test_InterfacesLegacyInvalidPort() {
       --error-pattern='config file.*not loaded.*invalid'
 }
 
-doc_InterfacesLegacyInvalidSpeed="Legacy 'interfaces' config option invalid speed"
+doc_InterfacesLegacyInvalidSpeed="Legacy 'interfaces' config option invalid speed is ignored"
 test_InterfacesLegacyInvalidSpeed() {
-   execute --stderr --core-backtrace --exit-status=2 --executable=$servald \
-      config set interfaces '+eth=ethernet:4111:9MB'
-   assert_stderr_log \
-      --warn-pattern='"interfaces".*invalid' \
-      --error-pattern='config file.*not loaded.*invalid'
+   # speed option is no longer validated or used
+   execute --stderr --core-backtrace --exit-status=0 --executable=$servald \
+      config set interfaces '+eth=ethernet:4111:9Moose'
+   #assert_stderr_log \
+   #   --warn-pattern='"interfaces".*invalid' \
+   #   --error-pattern='config file.*not loaded.*invalid'
 }
 
 doc_InterfacesLegacyIncompatible="Legacy 'interfaces' config option incompatible with modern form"
