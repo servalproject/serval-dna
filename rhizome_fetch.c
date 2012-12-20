@@ -93,6 +93,7 @@ struct rhizome_fetch_slot {
   int mdpRXBlockLength;
   uint32_t mdpRXBitmap;
   uint64_t mdpRequestFrontier;
+  uint32_t mdpDuplicatePackets;
   short mdpRXdeferredPacketCount;
   // bitmap holds 32 entries, therefore only 31 can be out of order
   // at any point in time.
@@ -1098,7 +1099,7 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot,
   
   overlay_mdp_frame mdp;
 
-  if (barrierAddress!=NO_BARRIER)
+  if (0&&barrierAddress!=NO_BARRIER)
     DEBUGF("Requesting retransmission of dropped packets between 0x%x and 0x%x",
 	   previousBarrierAddress,barrierAddress);
 
@@ -1149,8 +1150,8 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot,
   }
   // Don't request anything beyond the supplied address
   if (barrierAddress!=NO_BARRIER) {
-    DEBUGF("Applying barrier address accept range 0x%x -- 0x%x",
-	   previousBarrierAddress,barrierAddress);
+    if (0) DEBUGF("Applying barrier address accept range 0x%x -- 0x%x",
+		  previousBarrierAddress,barrierAddress);
     unsigned int barrierMask=0;
     for(i=0;i<32;i++) {
       unsigned int address=slot->file_ofs+i*slot->mdpRXBlockLength;
@@ -1158,7 +1159,7 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot,
       if (address<previousBarrierAddress) barrierMask|=(1<<(31-i));
     }
     slot->mdpRXBitmap|=barrierMask;
-    DEBUGF("barrier mask = 0x%08x",barrierMask);       
+    if (0) DEBUGF("barrier mask = 0x%08x",barrierMask);       
   }
 
   if (barrierAddress!=NO_BARRIER) previousBarrierAddress=barrierAddress;
@@ -1313,6 +1314,7 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
     slot->mdpRXBitmap=0x00000000; // no blocks received yet
     slot->mdpRXBlockLength=1024;
     slot->mdpRequestFrontier=0;
+    slot->mdpDuplicatePackets=0;
 
     rhizome_fetch_mdp_requestblocks(slot,NONPIPELINE_REQUEST,NO_BARRIER);
   } else {
@@ -1482,9 +1484,10 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 	} else {
 	  INFOF("Completed MDP request from %s for file %s",
 		alloca_tohex_sid(slot->peer_sid), slot->manifest->fileHexHash);
-	  INFOF("Received %lld bytes in %lldms (%lldKB/sec).",
+	  INFOF("Received %lld bytes in %lldms (%lldKB/sec), %d duplicate packets.",
 		(long long)slot->file_ofs,(long long)gettime_ms()-slot->start_time,
-		(long long)slot->file_ofs/(gettime_ms()-slot->start_time));
+		(long long)slot->file_ofs/(gettime_ms()-slot->start_time),
+		slot->mdpDuplicatePackets);
 	}
       }
     } else {
@@ -1622,7 +1625,9 @@ int rhizome_received_content(unsigned char *sender_sid,
 					    offset);		  
 
 
-	    if (offset>slot->file_ofs) {
+	    if (offset<slot->file_ofs) {
+	      slot->mdpDuplicatePackets++;
+	    } else if (offset>slot->file_ofs) {
 	      int replacementSlot=-2;
 	      int highestAddressSlot=slot->mdpRXdeferredPacketCount;
 	      for(i=0;i<slot->mdpRXdeferredPacketCount;i++)
@@ -1634,6 +1639,7 @@ int rhizome_received_content(unsigned char *sender_sid,
 		  if (offset==slot->mdpRXdeferredPacketStarts[i])
 		    {
 		      // we seem to have this packet already.
+		      slot->mdpDuplicatePackets++;
 		      // (but check if there are any extra bytes we should remember)
 		      if (count<=slot->mdpRXdeferredPacketLengths[i])
 			replacementSlot=-1; // don't replace
@@ -1666,6 +1672,7 @@ int rhizome_received_content(unsigned char *sender_sid,
 		  slot->mdpRXdeferredPacketTypes[replacementSlot]=type;
 		  if (slot->mdpRXdeferredPacketCount<=replacementSlot)
 		    slot->mdpRXdeferredPacketCount=replacementSlot+1;
+		  if(0)
 		  DEBUGF("Keeping out-of-order packet for 0x%llx -- 0x%llx (slot#%d)",
 			 offset,offset+count-1,replacementSlot);
 		}

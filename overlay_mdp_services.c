@@ -123,7 +123,7 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
 	&reply.out.payload[1+16],8);
   
   int i;
-  DEBUGF("Request bitmap = 0x%08x, file_offset=0x%x",bitmap,fileOffset);
+  if (0) DEBUGF("Request bitmap = 0x%08x, file_offset=0x%x",bitmap,fileOffset);
   for(i=0;i<32;i++)
     if (!(bitmap&(1<<(31-i))))
       {	
