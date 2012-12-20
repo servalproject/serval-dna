@@ -550,6 +550,7 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
     slot->blob_buffer=NULL;
   }
   slot->blob_buffer_size=0;
+  slot->alarm.poll.fd = -1;
 
   SHA512_Init(&slot->sha512_context);
     
@@ -1211,7 +1212,6 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot,
     slot->alarm.alarm+=ms_per_packet*pipelineBlocks;
     slot->alarm.deadline+=ms_per_packet*pipelineBlocks;
   }
-  slot->mdpIdleTimeout=gettime_ms()+RHIZOME_IDLE_TIMEOUT;
 
   schedule(&slot->alarm); 
   
@@ -1312,7 +1312,7 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
     */
     slot->file_len=slot->manifest->fileLength;
 
-    slot->mdpIdleTimeout=5000; // give up if nothing received for 5 seconds
+    slot->mdpIdleTimeout=10000; // give up if nothing received for 10 seconds
     slot->mdpRXBitmap=0x00000000; // no blocks received yet
     slot->mdpRXBlockLength=1024;
     slot->mdpRequestFrontier=0;
@@ -1551,14 +1551,13 @@ int rhizome_received_content(unsigned char *sender_sid,
 	  // is deferred a bit, so that we make sure to drain all pending 
 	  // packets in the sender's queue
 	  long long new_alarm_time=gettime_ms()+75;
-	  slot->mdpIdleTimeout=gettime_ms()+RHIZOME_IDLE_TIMEOUT;
 	  if (slot->alarm.alarm<new_alarm_time
 	      ||slot->alarm.deadline<new_alarm_time) {
 	    unschedule(&slot->alarm);
 	    slot->alarm.alarm=new_alarm_time;
 	    if (slot->alarm.deadline<new_alarm_time)
 	      slot->alarm.deadline = new_alarm_time;
-	    slot->alarm.function = rhizome_fetch_poll;
+	    slot->alarm.function = rhizome_fetch_mdp_slot_callback;
 	    schedule(&slot->alarm);
 	  }
 
@@ -1724,7 +1723,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	rhizome_write_content(slot, buffer, bytes);
 	if (slot->state!=RHIZOME_FETCH_FREE) {
 	  // reset inactivity timeout
-	  // DEBUGF("Resetting inactivity timer");
+	  DEBUGF("Resetting inactivity timer");
 	  unschedule(&slot->alarm);
 	  slot->alarm.alarm=gettime_ms() + RHIZOME_IDLE_TIMEOUT;
 	  slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
@@ -1794,6 +1793,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	    rhizome_write_content(slot, parts.content_start, content_bytes);
 	    if (slot->state!=RHIZOME_FETCH_FREE) {
 	      // reset inactivity timeout
+	      DEBUGF("Resetting inactivity timeout (HTTP)");
 	      unschedule(&slot->alarm);
 	      slot->alarm.alarm=gettime_ms() + RHIZOME_IDLE_TIMEOUT;
 	      slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
@@ -1818,7 +1818,8 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
   if (alarm->poll.revents==0 || alarm->poll.revents & (POLLHUP | POLLERR)){
     // timeout or socket error, close the socket
     if (config.debug.rhizome_rx)
-      DEBUGF("Closing due to timeout or error: events=%x (POLLHUP=%x POLLERR=%x)", alarm->poll.revents, POLLHUP, POLLERR);
+      DEBUGF("Closing due to timeout or error: events=%x, slot->state=%d", 
+	     alarm->poll.revents, POLLHUP, POLLERR,slot->state);
     if (slot->state!=RHIZOME_FETCH_FREE)
       rhizome_queue_ignore_manifest(slot->manifest, 
 				    &slot->peer_ipandport, slot->peer_sid, 60000);
