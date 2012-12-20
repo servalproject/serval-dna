@@ -1704,7 +1704,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
       /* If we got some data, see if we have found the end of the HTTP request */
       if (bytes > 0) {
 	rhizome_write_content(slot, buffer, bytes);
-	if (slot->state) {
+	if (slot->state!=RHIZOME_FETCH_FREE) {
 	  // reset inactivity timeout
 	  DEBUGF("Resetting inactivity timer");
 	  unschedule(&slot->alarm);
@@ -1774,12 +1774,14 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	  int content_bytes = slot->request + slot->request_len - parts.content_start;
 	  if (content_bytes > 0){
 	    rhizome_write_content(slot, parts.content_start, content_bytes);
-	    // reset inactivity timeout
-	    unschedule(&slot->alarm);
-	    slot->alarm.alarm=gettime_ms() + RHIZOME_IDLE_TIMEOUT;
-	    slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
-	    slot->alarm.function = rhizome_fetch_poll;
-	    schedule(&slot->alarm);
+	    if (slot->state!=RHIZOME_FETCH_FREE) {
+	      // reset inactivity timeout
+	      unschedule(&slot->alarm);
+	      slot->alarm.alarm=gettime_ms() + RHIZOME_IDLE_TIMEOUT;
+	      slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
+	      slot->alarm.function = rhizome_fetch_poll;
+	      schedule(&slot->alarm);
+	    }
 	    return;
 	  }
 	}
