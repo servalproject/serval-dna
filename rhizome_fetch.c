@@ -1484,11 +1484,11 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 	} else {
 	  INFOF("Completed MDP request from %s for file %s",
 		alloca_tohex_sid(slot->peer_sid), slot->manifest->fileHexHash);
-	  INFOF("Received %lld bytes in %lldms (%lldKB/sec), %d duplicate packets.",
-		(long long)slot->file_ofs,(long long)gettime_ms()-slot->start_time,
-		(long long)slot->file_ofs/(gettime_ms()-slot->start_time),
-		slot->mdpDuplicatePackets);
 	}
+	INFOF("Received %lld bytes in %lldms (%lldKB/sec), %d duplicate packets.",
+	      (long long)slot->file_ofs,(long long)gettime_ms()-slot->start_time,
+	      (long long)slot->file_ofs/(gettime_ms()-slot->start_time),
+	      slot->mdpDuplicatePackets);
       }
     } else {
       /* This was to fetch the manifest, so now fetch the file if needed */
