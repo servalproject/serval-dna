@@ -1533,7 +1533,8 @@ int rhizome_received_content(unsigned char *sender_sid,
 {
   IN();
   int i;
-  // DEBUGF("received data @ 0x%llx -- 0x%llx",offset,offset+count-1);
+  if (config.debug.rhizome.mdp)
+    DEBUGF("received data @ 0x%llx -- 0x%llx",offset,offset+count-1);
   for(i=0;i<NQUEUES;i++) {
     struct rhizome_fetch_slot *slot=&rhizome_fetch_queues[i].active;
     if (slot->state==RHIZOME_FETCH_RXFILEMDP&&slot->bidP) {
