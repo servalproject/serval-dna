@@ -1211,6 +1211,7 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot,
     slot->alarm.alarm+=ms_per_packet*pipelineBlocks;
     slot->alarm.deadline+=ms_per_packet*pipelineBlocks;
   }
+  slot->mdpIdleTimeout=gettime_ms()+RHIZOME_IDLE_TIMEOUT;
 
   schedule(&slot->alarm); 
   
@@ -1549,6 +1550,7 @@ int rhizome_received_content(unsigned char *sender_sid,
 	  // is deferred a bit, so that we make sure to drain all pending 
 	  // packets in the sender's queue
 	  long long new_alarm_time=gettime_ms()+75;
+	  slot->mdpIdleTimeout=gettime_ms()+RHIZOME_IDLE_TIMEOUT;
 	  if (slot->alarm.alarm<new_alarm_time
 	      ||slot->alarm.deadline<new_alarm_time) {
 	    unschedule(&slot->alarm);
