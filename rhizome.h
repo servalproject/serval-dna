@@ -432,6 +432,9 @@ typedef struct rhizome_http_request {
   unsigned int source_flags;
   
   sqlite3_blob *blob;
+  uint64_t rowid;
+  char *blob_table;
+  char *blob_column;
   /* source_index used for offset in blob */
   long long blob_end; 
   
@@ -444,7 +447,8 @@ struct http_response {
   const char * body;
 };
 
-int rhizome_received_content(unsigned char *bidprefix,uint64_t version, 
+int rhizome_received_content(unsigned char *sender_sid,
+			     unsigned char *bidprefix,uint64_t version, 
 			     uint64_t offset,int count,unsigned char *bytes,
 			     int type);
 int64_t rhizome_database_create_blob_for(const char *hashhex,int64_t fileLength,

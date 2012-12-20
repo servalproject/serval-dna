@@ -443,6 +443,8 @@ void serverCleanUp();
 int isTransactionInCache(unsigned char *transaction_id);
 void insertTransactionInCache(unsigned char *transaction_id);
 
+int getuniquenonce(unsigned char *nonce,int length);
+
 int overlay_forward_payload(struct overlay_frame *f);
 int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,
 		    int recvttl, struct sockaddr *recvaddr, size_t recvaddrlen);
@@ -648,6 +650,7 @@ int directory_service_init();
 
 struct command_line_option;
 int app_rhizome_direct_sync(int argc, const char *const *argv, const struct command_line_option *o, void *context);
+int app_rhizome_direct_async(int argc, const char *const *argv, const struct command_line_option *o, void *context);
 #ifdef HAVE_VOIPTEST
 int app_pa_phone(int argc, const char *const *argv, const struct command_line_option *o, void *context);
 #endif

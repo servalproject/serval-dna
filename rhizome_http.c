@@ -548,8 +548,12 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
 	if (rowid == -1) {
 	  rhizome_server_simple_http_response(r, 404, "<html><h1>Payload not found</h1></html>\r\n");
 	} else {
+	  r->rowid=rowid;
 	  r->source_index = 0;
+	  r->blob_table="fileblobs";
+	  r->blob_column="data";
 	  r->blob_end = sqlite3_blob_bytes(r->blob);
+	  sqlite3_blob_close(r->blob); r->blob=0;
 	  rhizome_server_http_response_header(r, 200, "application/binary", r->blob_end - r->source_index);
 	  r->request_type |= RHIZOME_HTTP_REQUEST_BLOB;
 	}
@@ -587,6 +591,10 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
 	DEBUGF("row id = %d",rowid);
 	r->source_index = 0;
 	r->blob_end = sqlite3_blob_bytes(r->blob);
+	r->rowid=rowid;
+	r->blob_table="manifests";
+	r->blob_column="manifest";
+	sqlite3_blob_close(r->blob); r->blob=0;
 	rhizome_server_http_response_header(r, 200, "application/binary", r->blob_end - r->source_index);
 	r->request_type |= RHIZOME_HTTP_REQUEST_BLOB;
       }
@@ -771,7 +779,23 @@ int rhizome_server_http_send_bytes(rhizome_http_request *r)
 	      }
 	      r->buffer_size=read_size;
 	    }
-	      
+
+	    // Open blob if not already open 
+	    if (!r->blob) {
+	      int ret;
+	      sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+
+	      do ret = sqlite3_blob_open(rhizome_db, "main", 
+					 r->blob_table, r->blob_column, r->rowid, 
+					 0 /* read only */, &r->blob);
+	      while (sqlite_code_busy(ret) 
+		     && sqlite_retry(&retry, "sqlite3_blob_open"));
+	      if (!sqlite_code_ok(ret)) {
+		WHYF("sqlite3_blob_open() failed, %s", sqlite3_errmsg(rhizome_db));
+		continue;
+	      }	      
+	    }
+	    // Read from blob
 	    if(sqlite3_blob_read(r->blob,&r->buffer[0],read_size,r->source_index)
 	       ==SQLITE_OK)
 	      {
@@ -780,11 +804,14 @@ int rhizome_server_http_send_bytes(rhizome_http_request *r)
 		r->request_type|=RHIZOME_HTTP_REQUEST_FROMBUFFER;
 	      }
 	  }
-	    
-	  if (r->source_index >= r->blob_end){
+
+	  // Close blob if open so that we don't tie up the database
+	  if (r->blob) {
 	    sqlite3_blob_close(r->blob);
 	    r->blob=0;
-	  }else
+	  }
+	    
+	  if (r->source_index < r->blob_end)
 	    r->request_type|=RHIZOME_HTTP_REQUEST_BLOB;
 	}
 	break;

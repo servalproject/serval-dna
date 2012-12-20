@@ -25,6 +25,7 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)monitor-client.c \
 	$(SERVAL_BASE)monitor-cli.c \
 	$(SERVAL_BASE)net.c \
+	$(SERVAL_BASE)nonce.c \
 	$(SERVAL_BASE)overlay.c \
 	$(SERVAL_BASE)overlay_advertise.c \
 	$(SERVAL_BASE)overlay_address.c \
@@ -47,6 +48,7 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)rhizome_database.c \
 	$(SERVAL_BASE)rhizome_direct.c \
 	$(SERVAL_BASE)rhizome_direct_http.c \
+	$(SERVAL_BASE)rhizome_direct_async.c \
 	$(SERVAL_BASE)rhizome_fetch.c \
 	$(SERVAL_BASE)rhizome_http.c \
 	$(SERVAL_BASE)rhizome_packetformats.c \

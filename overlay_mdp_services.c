@@ -103,10 +103,15 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
   if (source && source->reachable&REACHABLE_UNICAST){
     // if we get a request from a peer that we can only talk to via unicast, send data via unicast too.
     bcopy(mdp->out.src.sid,reply.out.dst.sid,SID_SIZE);
+    reply.packetTypeAndFlags=MDP_TX;
   }else{
     // send replies to broadcast so that others can hear blocks and record them
     // (not that preemptive listening is implemented yet).
-    memset(reply.out.dst.sid,0xff,SID_SIZE);
+    // memset(reply.out.dst.sid,0xff,SID_SIZE);
+    // For reasons discussed above, this is not safe, and offers no current benefit.
+    // We can revisit it when we have preemptive listening implemented.
+    bcopy(mdp->out.src.sid,reply.out.dst.sid,SID_SIZE);
+    reply.packetTypeAndFlags=MDP_TX;
   }
   reply.out.dst.port=MDP_PORT_RHIZOME_RESPONSE;
   reply.out.queue=OQ_ORDINARY;
@@ -118,6 +123,7 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
 	&reply.out.payload[1+16],8);
   
   int i;
+  if (0) DEBUGF("Request bitmap = 0x%08x, file_offset=0x%x",bitmap,fileOffset);
   for(i=0;i<32;i++)
     if (!(bitmap&(1<<(31-i))))
       {	
@@ -135,8 +141,10 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
 
 	  // Mark terminal block if required
 	  if (blockOffset+blockBytes==blob_bytes) reply.out.payload[0]='T';
-	  // send packet
-	  overlay_mdp_dispatch(&reply,0 /* system generated */, NULL,0); 
+	  // introduce 50% MDP packet loss when required for testing.
+	  if ((!config.debug.mdp_simulated_loss)||(random()&1))
+	    // send packet
+	    overlay_mdp_dispatch(&reply,0 /* system generated */, NULL,0); 
 	} else break;
       }
 
@@ -150,6 +158,13 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
   IN();
   
   if (!mdp->out.payload_length) RETURN(-1);
+
+  // Insist on rhizome data blocks being signed to prevent insertion
+  // of incorrect blocks by adversaries, which would be an easy way
+  // to make requestors waste lots of network and CPU usage.
+  // We also need to make sure that they are from the correct sender.
+  // That gets checked elsewhere.
+  if (mdp->packetTypeAndFlags&MDP_NOSIGN) RETURN(-1);
 
   int type=mdp->out.payload[0];
   switch (type) {
@@ -173,7 +188,8 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
 	 a slot to capture this files as it is being requested
 	 by someone else.
       */
-      rhizome_received_content(bidprefix,version,offset,count,bytes,type);
+      rhizome_received_content(mdp->out.src.sid,bidprefix,version,
+			       offset,count,bytes,type);
 
       RETURN(-1);
     }

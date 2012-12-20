@@ -92,11 +92,24 @@ struct rhizome_fetch_slot {
   int mdpResponsesOutstanding;
   int mdpRXBlockLength;
   uint32_t mdpRXBitmap;
-  unsigned char mdpRXWindow[32*200];
+  uint64_t mdpRequestFrontier;
+  uint32_t mdpDuplicatePackets;
+  short mdpRXdeferredPacketCount;
+  // bitmap holds 32 entries, therefore only 31 can be out of order
+  // at any point in time.
+#define RHIZOME_MDP_MAX_DEFERRED_PACKETS 31
+  unsigned char *mdpRXdeferredPackets[RHIZOME_MDP_MAX_DEFERRED_PACKETS];
+  uint32_t mdpRXdeferredPacketStarts[RHIZOME_MDP_MAX_DEFERRED_PACKETS];
+  unsigned short mdpRXdeferredPacketLengths[RHIZOME_MDP_MAX_DEFERRED_PACKETS];
+  unsigned short mdpRXdeferredPacketTypes[RHIZOME_MDP_MAX_DEFERRED_PACKETS];
 };
 
 static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot);
-static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot);
+#define NONPIPELINE_REQUEST 0
+#define PIPELINE_REQUEST 1
+#define NO_BARRIER -1
+static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot,
+					   int pipelineRequest,int barrierAddress);
 static int rhizome_fetch_mdp_requestmanifest(struct rhizome_fetch_slot *slot);
 
 /* Represents a queue of fetch candidates and a single active fetch for bundle payloads whose size
@@ -537,6 +550,7 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
     slot->blob_buffer=NULL;
   }
   slot->blob_buffer_size=0;
+  slot->alarm.poll.fd = -1;
 
   SHA512_Init(&slot->sha512_context);
     
@@ -1024,6 +1038,17 @@ static int rhizome_fetch_close(struct rhizome_fetch_slot *slot)
   slot->blob_buffer=NULL;
   slot->blob_buffer_size=0;
 
+  // free any deferred out-of-order packets
+  int i;
+  for(i=0;i<slot->mdpRXdeferredPacketCount;i++)
+    {
+      free(slot->mdpRXdeferredPackets[i]);
+    }
+  slot->mdpRXdeferredPacketCount=0;
+
+  slot->file_ofs=0;
+  slot->mdpRequestFrontier=0;
+
   // Release the fetch slot.
   slot->state = RHIZOME_FETCH_FREE;
 
@@ -1048,6 +1073,8 @@ static void rhizome_fetch_mdp_slot_callback(struct sched_ent *alarm)
   if (now-slot->last_write_time>slot->mdpIdleTimeout) {
     DEBUGF("MDP connection timed out: last RX %lldms ago",
 	   now-slot->last_write_time);
+    rhizome_queue_ignore_manifest(slot->manifest, 
+				  &slot->peer_ipandport, slot->peer_sid, 60000);
     rhizome_fetch_close(slot);
     return;
   }
@@ -1055,21 +1082,27 @@ static void rhizome_fetch_mdp_slot_callback(struct sched_ent *alarm)
     DEBUGF("Timeout waiting for blocks. Resending request for slot=0x%p",
 	   slot);
   if (slot->bidP)
-    rhizome_fetch_mdp_requestblocks(slot);
+    rhizome_fetch_mdp_requestblocks(slot,NONPIPELINE_REQUEST,NO_BARRIER);
   else
     rhizome_fetch_mdp_requestmanifest(slot);
 }
 
-static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
+static int previousBarrierAddress=0;
+static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot,
+					   int pipelineRequest,int barrierAddress)
 {
   IN();
-  // only issue new requests every 133ms.  
+  // only issue new requests after allowing enough time for them to be sent to us.
   // we automatically re-issue once we have received all packets in this
   // request also, so if there is no packet loss, we can go substantially
   // faster.  Optimising behaviour when there is no packet loss is an
   // outstanding task.
   
   overlay_mdp_frame mdp;
+
+  if (0&&barrierAddress!=NO_BARRIER)
+    DEBUGF("Requesting retransmission of dropped packets between 0x%x and 0x%x",
+	   previousBarrierAddress,barrierAddress);
 
   bzero(&mdp,sizeof(mdp));
   bcopy(my_subscriber->sid,mdp.out.src.sid,SID_SIZE);
@@ -1083,6 +1116,63 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   mdp.out.payload_length=RHIZOME_MANIFEST_ID_BYTES+8+8+4+2;
   bcopy(slot->bid,&mdp.out.payload[0],RHIZOME_MANIFEST_ID_BYTES);
 
+  // XXX Recalculate mdpRXbitmap taking into account any out-of-order packets we
+  // have received.
+  slot->mdpRXBitmap=0x0;
+  int i;
+  for(i=0;i<slot->mdpRXdeferredPacketCount;i++)
+    {
+      int start=slot->mdpRXdeferredPacketStarts[i];
+      int length=slot->mdpRXdeferredPacketLengths[i];
+      int start_slot=(start-slot->file_ofs)/slot->mdpRXBlockLength;
+      if (start%slot->mdpRXBlockLength) start_slot++;
+      int end_slot=(start-slot->file_ofs+length)/slot->mdpRXBlockLength;
+      if (slot->mdpRXdeferredPacketTypes[i]=='T') end_slot++;
+      if (0) DEBUGF("Deferred packet #%d @ 0x%x - 0x%x covers slots %d - %d",
+		    i,start,start+length-1,start_slot,end_slot);
+      assert(start_slot>0);
+      if (start_slot>=0&&start_slot<=31&&end_slot>0&&end_slot<=32) {
+	int j;
+	for(j=start_slot;j<end_slot;j++)
+	  slot->mdpRXBitmap|=(1<<(31-j));
+      }
+    }
+
+  // When pipelining, just request new stuff
+  int pipelineBlocks=0;
+  if (pipelineRequest==PIPELINE_REQUEST) {
+    if (0) DEBUGF("This is a pipeline request");
+    for(i=0;i<32;i++) {
+      if ((slot->file_ofs+i*slot->mdpRXBlockLength)<slot->mdpRequestFrontier)
+	slot->mdpRXBitmap|=(1<<(31-i));
+      else 
+	pipelineBlocks++;
+    }
+  }
+  // Don't request anything beyond the supplied address
+  if (barrierAddress!=NO_BARRIER) {
+    if (0) DEBUGF("Applying barrier address accept range 0x%x -- 0x%x",
+		  previousBarrierAddress,barrierAddress);
+    unsigned int barrierMask=0;
+    for(i=0;i<32;i++) {
+      unsigned int address=slot->file_ofs+i*slot->mdpRXBlockLength;
+      if (address>=barrierAddress) barrierMask|=(1<<(31-i));
+      if (address<previousBarrierAddress) barrierMask|=(1<<(31-i));
+    }
+    slot->mdpRXBitmap|=barrierMask;
+    if (0) DEBUGF("barrier mask = 0x%08x",barrierMask);       
+  }
+
+  if (barrierAddress!=NO_BARRIER) previousBarrierAddress=barrierAddress;
+
+  if (0)
+    DEBUGF("slot %p: Request bitmap = 0x%08x, block_length=0x%x, offset=0x%x",
+	   slot,slot->mdpRXBitmap,slot->mdpRXBlockLength,slot->file_ofs);
+  if (slot->mdpRXBitmap==0xffffffff) {
+    // Request ends up empty, so do nothing
+    RETURN(0);
+  }
+
   write_uint64(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES],slot->bidVersion);
   write_uint64(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8],slot->file_ofs);
   write_uint32(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8],slot->mdpRXBitmap);
@@ -1095,16 +1185,35 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
 
   overlay_mdp_dispatch(&mdp,0 /* system generated */,NULL,0);
   
-  // remember when we sent the request so that we can adjust the inter-request
-  // interval based on how fast the packets arrive.
-  slot->mdpResponsesOutstanding=32; // TODO: set according to bitmap
+  // Work out how many packets we are expecting, so that we can continue
+  // immediately when we have them all.
+  if (pipelineRequest==NONPIPELINE_REQUEST) {
+    slot->mdpResponsesOutstanding=32; 
+    { int j; for(j=0;j<32;j++) if (slot->mdpRXBitmap&(1<<j)) 
+				 slot->mdpResponsesOutstanding--; }
+  } else {
+    slot->mdpResponsesOutstanding+=pipelineBlocks;
+  }
+
+  // Work out furthest point we have requested
+  if (slot->mdpRequestFrontier<slot->file_ofs+32*slot->mdpRXBlockLength)    
+    slot->mdpRequestFrontier=slot->file_ofs+32*slot->mdpRXBlockLength;
 
   unschedule(&slot->alarm);
   slot->alarm.function = rhizome_fetch_mdp_slot_callback;
   // 266ms @ 1mbit (WiFi broadcast speed) = 32x1024 byte packets.
-  slot->alarm.alarm=gettime_ms()+266; 
-  slot->alarm.deadline=slot->alarm.alarm+500;
-  schedule(&slot->alarm);
+  // Scaling timeout to the number of packets being requested is smarter,
+  // and certainly helps when faced with heavy packet loss.
+  double ms_per_packet=1000.0*(slot->mdpRXBlockLength*8)/1000000.0;
+  if (pipelineRequest==NONPIPELINE_REQUEST) {
+    slot->alarm.alarm=gettime_ms()+ms_per_packet*slot->mdpResponsesOutstanding;
+    slot->alarm.deadline=slot->alarm.alarm+500;
+  } else {
+    slot->alarm.alarm+=ms_per_packet*pipelineBlocks;
+    slot->alarm.deadline+=ms_per_packet*pipelineBlocks;
+  }
+
+  schedule(&slot->alarm); 
   
   RETURN(0);
 }
@@ -1120,6 +1229,8 @@ static int rhizome_fetch_mdp_requestmanifest(struct rhizome_fetch_slot *slot)
   if ((gettime_ms()-slot->last_write_time)>slot->mdpIdleTimeout) {
     // connection timed out
     DEBUGF("MDP connection timedout");
+    rhizome_queue_ignore_manifest(slot->manifest, 
+				  &slot->peer_ipandport, slot->peer_sid, 60000);
     return rhizome_fetch_close(slot);
   }
   
@@ -1172,8 +1283,9 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
   if (slot->alarm.poll.fd>=0) {
     unwatch(&slot->alarm);
     close(slot->alarm.poll.fd);
-    slot->alarm.poll.fd = -1;
   }
+  slot->alarm.poll.fd = -1;
+  slot->alarm.function=NULL;
   unschedule(&slot->alarm);
 
   /* Begin MDP fetch process.
@@ -1200,10 +1312,13 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
     */
     slot->file_len=slot->manifest->fileLength;
 
-    slot->mdpIdleTimeout=5000; // give up if nothing received for 5 seconds
+    slot->mdpIdleTimeout=10000; // give up if nothing received for 10 seconds
     slot->mdpRXBitmap=0x00000000; // no blocks received yet
     slot->mdpRXBlockLength=1024;
-    rhizome_fetch_mdp_requestblocks(slot);    
+    slot->mdpRequestFrontier=0;
+    slot->mdpDuplicatePackets=0;
+
+    rhizome_fetch_mdp_requestblocks(slot,NONPIPELINE_REQUEST,NO_BARRIER);
   } else {
     /* We are requesting a manifest, which is stateless, except that we eventually
        give up. All we need to do now is send the request, and set our alarm to
@@ -1259,6 +1374,8 @@ int rhizome_fetch_flush_blob_buffer(struct rhizome_fetch_slot *slot)
     WHYF("sqlite3_blob_write(,,%d,%lld) failed, %s", 
 	 slot->blob_buffer_bytes,slot->file_ofs-slot->blob_buffer_bytes,
 	 sqlite3_errmsg(rhizome_db));
+    rhizome_queue_ignore_manifest(slot->manifest, 
+				  &slot->peer_ipandport, slot->peer_sid, 60000);
     rhizome_fetch_close(slot);
     return -1;
   }
@@ -1289,7 +1406,7 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
     if (config.debug.rhizome_rx) {
       DEBUGF("slot->blob_buffer_bytes=%d, slot->file_ofs=%d",
 	     slot->blob_buffer_bytes,slot->file_ofs);
-      dump("buffer",buffer,bytes);
+      // dump("buffer",buffer,bytes);
     }
 
     if (!slot->blob_buffer_size) {
@@ -1343,6 +1460,8 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 	sqlite_exec_void_retry(&retry,
 			       "DELETE FROM FILES WHERE id='%s'",
 			       slot->manifest->fileHexHash);
+	rhizome_queue_ignore_manifest(slot->manifest, 
+				      &slot->peer_ipandport, slot->peer_sid, 60000);
 	rhizome_fetch_close(slot);
 	RETURN(-1);
       } else {
@@ -1354,6 +1473,10 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 	    DEBUGF("error marking row valid: %s",sqlite3_errmsg(rhizome_db));
       }
 
+      INFOF("Received %lld bytes in %lldms (%lldKB/sec), %d duplicate packets.",
+	    (long long)slot->file_ofs,(long long)gettime_ms()-slot->start_time,
+	    (long long)slot->file_ofs/(gettime_ms()-slot->start_time),
+	    slot->mdpDuplicatePackets);
       if (!rhizome_import_received_bundle(slot->manifest)){
 	if (slot->state==RHIZOME_FETCH_RXFILE) {
 	  char buf[INET_ADDRSTRLEN];
@@ -1365,7 +1488,7 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 		buf, ntohs(slot->peer_ipandport.sin_port), 
 		slot->manifest->fileHexHash);
 	} else {
-	  INFOF("Completed MDP request from %s  for file %s",
+	  INFOF("Completed MDP request from %s for file %s",
 		alloca_tohex_sid(slot->peer_sid), slot->manifest->fileHexHash);
 	}
       }
@@ -1405,34 +1528,172 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
   RETURN(0);
 }
 
-int rhizome_received_content(unsigned char *bidprefix,
+int rhizome_received_content(unsigned char *sender_sid,
+			     unsigned char *bidprefix,
 			     uint64_t version, uint64_t offset,
 			     int count,unsigned char *bytes,int type)
 {
   IN();
   int i;
+  if (config.debug.rhizome_mdp)
+    DEBUGF("received data @ 0x%llx -- 0x%llx",offset,offset+count-1);
   for(i=0;i<NQUEUES;i++) {
     struct rhizome_fetch_slot *slot=&rhizome_fetch_queues[i].active;
     if (slot->state==RHIZOME_FETCH_RXFILEMDP&&slot->bidP) {
-      if (!memcmp(slot->bid,bidprefix,16))
+      // Make sure that this is a block for this slot, and that it is
+      // from whoever we requested it from.  We check elsewhere that the
+      // MDP packet was signed to make sure that noone can have substituted
+      // an incorrect block.
+      if ((!memcmp(slot->bid,bidprefix,16))
+	  &&(!memcmp(slot->peer_sid,sender_sid,SID_SIZE)))
 	{
+	  // Whenever we receive a packet, we make sure that the timeout
+	  // is deferred a bit, so that we make sure to drain all pending 
+	  // packets in the sender's queue
+	  long long new_alarm_time=gettime_ms()+75;
+	  if (slot->alarm.alarm<new_alarm_time
+	      ||slot->alarm.deadline<new_alarm_time) {
+	    unschedule(&slot->alarm);
+	    slot->alarm.alarm=new_alarm_time;
+	    if (slot->alarm.deadline<new_alarm_time)
+	      slot->alarm.deadline = new_alarm_time;
+	    slot->alarm.function = rhizome_fetch_mdp_slot_callback;
+	    schedule(&slot->alarm);
+	  }
+
 	  if (slot->file_ofs==offset) {
 	    if (!rhizome_write_content(slot,(char *)bytes,count))
-	      {
+	      {		
+		// Try flushing out stuck packets that we have kept due to
+		// packet loss / out-of-order delivery.
+		int i=0;
+		while(i<slot->mdpRXdeferredPacketCount)
+		  {
+		    if (slot->mdpRXdeferredPacketStarts[i]==slot->file_ofs)
+		      {
+			// Get packet we are about to apply
+			bytes=slot->mdpRXdeferredPackets[i];
+			offset=slot->mdpRXdeferredPacketStarts[i];
+			count=slot->mdpRXdeferredPacketLengths[i];
+			type=slot->mdpRXdeferredPacketTypes[i];
+			
+			// Remove said packet from list
+			int n=slot->mdpRXdeferredPacketCount-1;
+			slot->mdpRXdeferredPackets[i]=slot->mdpRXdeferredPackets[n];
+			slot->mdpRXdeferredPacketStarts[i]
+			  =slot->mdpRXdeferredPacketStarts[n];
+			slot->mdpRXdeferredPacketLengths[i]
+			  =slot->mdpRXdeferredPacketLengths[n];
+			slot->mdpRXdeferredPacketTypes[i]
+			  =slot->mdpRXdeferredPacketTypes[n];
+			slot->mdpRXdeferredPacketCount--;
+			
+			// now we can safely recursively call ourself
+			// because we have finished fiddling with the list of 
+			// deferred packets		  
+			rhizome_received_content(slot->peer_sid,
+						 bidprefix,
+						 version,offset,
+						 count,bytes,type);
+			// Clean up
+			free(bytes);
+
+			// Start searching from beginning of list again
+			i=0;
+		      }
+		    else
+		      i++;		    
+		  }
+
+		// Then see if we need to ask for any more content.
 		slot->mdpResponsesOutstanding--;
 		if (slot->mdpResponsesOutstanding==0) {
 		  // We have received all responses, so immediately ask for more
-		  rhizome_fetch_mdp_requestblocks(slot);
+		  rhizome_fetch_mdp_requestblocks(slot,NONPIPELINE_REQUEST,
+						  NO_BARRIER);		  
+		} else {
+		  // We have requests outstanding, so consider sending a pipeline
+		  // request or re-request for skipped blocks
+		  if (0)
+		    DEBUGF("%d blocks outstanding. We have advanced 0x%x since last request.",
+			   slot->mdpResponsesOutstanding,
+			   slot->file_ofs-slot->mdpRequestFrontier
+			   +32*slot->mdpRXBlockLength);
+		  if ((slot->mdpRequestFrontier
+		       -32*slot->mdpRXBlockLength
+		       +8*slot->mdpRXBlockLength)
+		      <slot->file_ofs) {
+		    if (0) DEBUGF("Sending pipeline request.");
+		    rhizome_fetch_mdp_requestblocks(slot,PIPELINE_REQUEST,
+						    NO_BARRIER);
+		  } 
 		}
-		
-		// TODO: Try flushing out stuck packets that we have kept due to
-		// packet loss / out-of-order delivery.
+		  
 	      }
 
 	    RETURN(0);
 	  } else {
 	    // TODO: Implement out-of-order buffering so that lost packets
 	    // don't cause wastage
+
+	    // Rerequest any dropped packets prior to this one, that follow
+	    // the previvous re-send request range
+	    rhizome_fetch_mdp_requestblocks(slot,NONPIPELINE_REQUEST,
+					    offset);		  
+
+
+	    if (offset<slot->file_ofs) {
+	      slot->mdpDuplicatePackets++;
+	    } else if (offset>slot->file_ofs) {
+	      int replacementSlot=-2;
+	      int highestAddressSlot=slot->mdpRXdeferredPacketCount;
+	      for(i=0;i<slot->mdpRXdeferredPacketCount;i++)
+		{
+		  if (slot->mdpRXdeferredPacketStarts[i]<slot->file_ofs) {
+		    // possibly stale deferred packet
+		    // (but check if there are any extra bytes we can commit first)
+		  }
+		  if (offset==slot->mdpRXdeferredPacketStarts[i])
+		    {
+		      // we seem to have this packet already.
+		      slot->mdpDuplicatePackets++;
+		      // (but check if there are any extra bytes we should remember)
+		      if (count<=slot->mdpRXdeferredPacketLengths[i])
+			replacementSlot=-1; // don't replace
+		      else {
+			replacementSlot=i; 
+		      }
+		      // either way, don't keep looking
+		      break;
+		    }
+		  if (highestAddressSlot==slot->mdpRXdeferredPacketCount
+		      ||slot->mdpRXdeferredPacketStarts[i]>
+		      slot->mdpRXdeferredPacketStarts[highestAddressSlot])
+		    highestAddressSlot=i;
+		}
+	      if (replacementSlot==-2) {
+		if (slot->mdpRXdeferredPacketCount
+		    >=RHIZOME_MDP_MAX_DEFERRED_PACKETS)
+		  replacementSlot=highestAddressSlot;
+		else
+		  replacementSlot=slot->mdpRXdeferredPacketCount;
+	      }
+	      if (replacementSlot>=0)
+		{
+		  if (replacementSlot<slot->mdpRXdeferredPacketCount)
+		    free(slot->mdpRXdeferredPackets[replacementSlot]);
+		  slot->mdpRXdeferredPackets[replacementSlot]=malloc(count);
+		  bcopy(bytes,slot->mdpRXdeferredPackets[replacementSlot],count);
+		  slot->mdpRXdeferredPacketStarts[replacementSlot]=offset;
+		  slot->mdpRXdeferredPacketLengths[replacementSlot]=count;
+		  slot->mdpRXdeferredPacketTypes[replacementSlot]=type;
+		  if (slot->mdpRXdeferredPacketCount<=replacementSlot)
+		    slot->mdpRXdeferredPacketCount=replacementSlot+1;
+		  if(0)
+		  DEBUGF("Keeping out-of-order packet for 0x%llx -- 0x%llx (slot#%d)",
+			 offset,offset+count-1,replacementSlot);
+		}
+	    }
 	  }
 	  RETURN(0);
 	}
@@ -1460,17 +1721,20 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
       /* If we got some data, see if we have found the end of the HTTP request */
       if (bytes > 0) {
 	rhizome_write_content(slot, buffer, bytes);
-	// reset inactivity timeout
-	unschedule(&slot->alarm);
-	slot->alarm.alarm=gettime_ms() + RHIZOME_IDLE_TIMEOUT;
-	slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
-	slot->alarm.function = rhizome_fetch_poll;
-	schedule(&slot->alarm);	
+	if (slot->state!=RHIZOME_FETCH_FREE) {
+	  // reset inactivity timeout
+	  DEBUGF("Resetting inactivity timer");
+	  unschedule(&slot->alarm);
+	  slot->alarm.alarm=gettime_ms() + RHIZOME_IDLE_TIMEOUT;
+	  slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
+	  slot->alarm.function = rhizome_fetch_poll;
+	  schedule(&slot->alarm);
+	}
 	return;
       } else {
 	if (config.debug.rhizome_rx)
 	  DEBUGF("Empty read, closing connection: received %lld of %lld bytes",
-		slot->file_ofs,slot->file_len);
+		 slot->file_ofs,slot->file_len);
 	rhizome_fetch_switch_to_mdp(slot);
 	return;
       }
@@ -1509,6 +1773,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	  if (parts.code != 200) {
 	    if (config.debug.rhizome_rx)
 	      DEBUGF("Failed HTTP request: rhizome server returned %d != 200 OK", parts.code);
+	    slot->file_ofs=0;
 	    rhizome_fetch_switch_to_mdp(slot);
 	    return;
 	  }
@@ -1526,20 +1791,25 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	  int content_bytes = slot->request + slot->request_len - parts.content_start;
 	  if (content_bytes > 0){
 	    rhizome_write_content(slot, parts.content_start, content_bytes);
-	    // reset inactivity timeout
-	    unschedule(&slot->alarm);
-	    slot->alarm.alarm=gettime_ms() + RHIZOME_IDLE_TIMEOUT;
-	    slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
-	    slot->alarm.function = rhizome_fetch_poll;
-	    schedule(&slot->alarm);
-
+	    if (slot->state!=RHIZOME_FETCH_FREE) {
+	      // reset inactivity timeout
+	      DEBUGF("Resetting inactivity timeout (HTTP)");
+	      unschedule(&slot->alarm);
+	      slot->alarm.alarm=gettime_ms() + RHIZOME_IDLE_TIMEOUT;
+	      slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
+	      slot->alarm.function = rhizome_fetch_poll;
+	      schedule(&slot->alarm);
+	    }
 	    return;
 	  }
 	}
       }
+      assert(slot->state!=RHIZOME_FETCH_FREE);
       break;
       default:
 	WARNF("Closing rhizome fetch connection due to illegal/unimplemented state=%d.",slot->state);
+	rhizome_queue_ignore_manifest(slot->manifest, 
+				      &slot->peer_ipandport, slot->peer_sid, 60000);
 	rhizome_fetch_close(slot);
 	return;
     }
@@ -1548,8 +1818,11 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
   if (alarm->poll.revents==0 || alarm->poll.revents & (POLLHUP | POLLERR)){
     // timeout or socket error, close the socket
     if (config.debug.rhizome_rx)
-      DEBUGF("Closing due to timeout or error %x (%x %x)", alarm->poll.revents, POLLHUP, POLLERR);
+      DEBUGF("Closing due to timeout or error: events=%x, slot->state=%d", 
+	     alarm->poll.revents, POLLHUP, POLLERR,slot->state);
     if (slot->state!=RHIZOME_FETCH_FREE)
+      rhizome_queue_ignore_manifest(slot->manifest, 
+				    &slot->peer_ipandport, slot->peer_sid, 60000);
       rhizome_fetch_close(slot);
   }
 }
