@@ -1442,6 +1442,10 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
     /* got all of file */
     if (config.debug.rhizome_rx)
       DEBUGF("Received all of file via rhizome -- now to import it");
+    INFOF("Received %lld bytes in %lldms (%lldKB/sec), %d duplicate packets.",
+	  (long long)slot->file_ofs,(long long)gettime_ms()-slot->start_time,
+	  (long long)slot->file_ofs/(gettime_ms()-slot->start_time),
+	  slot->mdpDuplicatePackets);
     if (slot->manifest) {
       // Were fetching payload, now we have it.
 
@@ -1473,7 +1477,7 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 	    DEBUGF("error marking row valid: %s",sqlite3_errmsg(rhizome_db));
       }
 
-      INFOF("Received %lld bytes in %lldms (%lldKB/sec), %d duplicate packets.",
+      INFOF("Stored %lld bytes in %lldms (%lldKB/sec), %d duplicate packets.",
 	    (long long)slot->file_ofs,(long long)gettime_ms()-slot->start_time,
 	    (long long)slot->file_ofs/(gettime_ms()-slot->start_time),
 	    slot->mdpDuplicatePackets);
@@ -1488,6 +1492,10 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 		buf, ntohs(slot->peer_ipandport.sin_port), 
 		slot->manifest->fileHexHash);
 	} else {
+	  INFOF("Imported %lld bytes in %lldms (%lldKB/sec), %d duplicate packets.",
+		(long long)slot->file_ofs,(long long)gettime_ms()-slot->start_time,
+		(long long)slot->file_ofs/(gettime_ms()-slot->start_time),
+		slot->mdpDuplicatePackets);	  
 	  INFOF("Completed MDP request from %s for file %s",
 		alloca_tohex_sid(slot->peer_sid), slot->manifest->fileHexHash);
 	}
