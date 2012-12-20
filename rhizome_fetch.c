@@ -1592,10 +1592,11 @@ int rhizome_received_content(unsigned char *sender_sid,
 		} else {
 		  // We have requests outstanding, so consider sending a pipeline
 		  // request or re-request for skipped blocks
-		  DEBUGF("%d blocks outstanding. We have advanced 0x%x since last request.",
-			 slot->mdpResponsesOutstanding,
-			 slot->file_ofs-slot->mdpRequestFrontier
-			 +32*slot->mdpRXdeferredPacketCount);
+		  if (0)
+		    DEBUGF("%d blocks outstanding. We have advanced 0x%x since last request.",
+			   slot->mdpResponsesOutstanding,
+			   slot->file_ofs-slot->mdpRequestFrontier
+			   +32*slot->mdpRXBlockLength);
 		  if ((slot->mdpRequestFrontier
 		       -32*slot->mdpRXdeferredPacketCount
 		       +4*slot->mdpRXBlockLength)
