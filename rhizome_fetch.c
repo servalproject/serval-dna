@@ -68,7 +68,6 @@ struct rhizome_fetch_slot {
   int64_t last_write_time;
   int64_t start_time;
 
-#define RHIZOME_BLOB_BUFFER_MAXIMUM_SIZE (1024*1024)
   int blob_buffer_size;
   unsigned char *blob_buffer;
   int blob_buffer_bytes;
@@ -1413,8 +1412,8 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
       /* Allocate an appropriately sized buffer so that we don't have to pay
 	 the cost of blob_open() and blob_close() too often. */
       slot->blob_buffer_size=slot->file_len;
-      if (slot->blob_buffer_size>RHIZOME_BLOB_BUFFER_MAXIMUM_SIZE)
-	slot->blob_buffer_size=RHIZOME_BLOB_BUFFER_MAXIMUM_SIZE;
+      if (slot->blob_buffer_size>config.rhizome.buffer_size)
+	slot->blob_buffer_size=config.rhizome.buffer_size;
       slot->blob_buffer=malloc(slot->blob_buffer_size);
       assert(slot->blob_buffer);
     }
@@ -1570,6 +1569,8 @@ int rhizome_received_content(unsigned char *sender_sid,
 	  }
 
 	  if (slot->file_ofs==offset) {
+	    if (config.debug.rhizome_mdp) DEBUGF("Writing %d bytes @ 0x%x",
+						 count,slot->file_ofs);
 	    if (!rhizome_write_content(slot,(char *)bytes,count))
 	      {		
 		// Try flushing out stuck packets that we have kept due to
@@ -1618,7 +1619,7 @@ int rhizome_received_content(unsigned char *sender_sid,
 		if (slot->mdpResponsesOutstanding==0) {
 		  // We have received all responses, so immediately ask for more
 		  rhizome_fetch_mdp_requestblocks(slot,NONPIPELINE_REQUEST,
-						  NO_BARRIER);		  
+						  NO_BARRIER);
 		} else {
 		  // We have requests outstanding, so consider sending a pipeline
 		  // request or re-request for skipped blocks
@@ -1638,7 +1639,7 @@ int rhizome_received_content(unsigned char *sender_sid,
 		}
 		  
 	      }
-
+	    if (config.debug.rhizome_mdp) DEBUGF("Returning from %s",__FUNCTION__);
 	    RETURN(0);
 	  } else {
 	    // TODO: Implement out-of-order buffering so that lost packets
@@ -1703,11 +1704,13 @@ int rhizome_received_content(unsigned char *sender_sid,
 		}
 	    }
 	  }
+	  if (config.debug.rhizome_mdp) DEBUGF("Returning from %s",__FUNCTION__);
 	  RETURN(0);
 	}
     }
   }  
 
+  if (config.debug.rhizome_mdp) DEBUGF("Returning from %s",__FUNCTION__);
   RETURN(-1);
 }
 
