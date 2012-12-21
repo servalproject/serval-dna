@@ -1412,7 +1412,7 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath, const unsign
 	  */
 	  long long offset;
 	  unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
-	  bzero(nonce,crypto_stream_xsalsa20_NONCEBYTES);
+	  bzero(nonce, crypto_stream_xsalsa20_NONCEBYTES);
 	  unsigned char buffer[RHIZOME_CRYPT_PAGE_SIZE];
 	  for (offset = 0; offset < length; offset += RHIZOME_CRYPT_PAGE_SIZE) {
 	    long long count=length-offset;
@@ -1421,15 +1421,18 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath, const unsign
 	      ret = 0;
 	      WHYF("query failed, %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));
 	      WHYF("Error reading %lld bytes of data from blob at offset 0x%llx", count, offset);
+	      break;
 	    }
 	    if (key) {
-	      /* calculate block nonce */
-	      int i; for(i=0;i<8;i++) nonce[i]=(offset>>(i*8))&0xff;
-	      crypto_stream_xsalsa20_xor(&buffer[0],&buffer[0],count, nonce,key);
+	      if(rhizome_crypt_xor_block(buffer, count, offset, key, nonce)){
+		ret=0;
+		break;
+	      }
 	    }
 	    if (write(fd,buffer,count)!=count) {
 	      ret =0;
 	      WHY("Failed to write data to file");
+	      break;
 	    }
 	  }
 	  sqlite3_blob_close(blob);

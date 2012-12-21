@@ -105,7 +105,9 @@ int rhizome_flush(struct rhizome_write *write){
   if (write->data_size<=0)
     return WHY("No content supplied");
   
-  // TODO encryption?
+  if (write->crypt){
+    rhizome_crypt_xor_block(write->buffer, write->data_size, write->file_offset, write->key, write->nonce);
+  }
   
   sqlite3_blob *blob;
   int ret = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", write->blob_rowid, 1 /* read/write */, &blob);

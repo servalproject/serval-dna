@@ -493,3 +493,41 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
   (*ofs)+=len;
   RETURN(0);
 }
+
+int rhizome_crypt_xor_block(unsigned char *buffer, int buffer_size, int64_t stream_offset, 
+			    const unsigned char *key, unsigned char *nonce){
+  int64_t nonce_offset = stream_offset & ~(RHIZOME_CRYPT_PAGE_SIZE -1);
+  int offset=0;
+  
+  if (nonce_offset < stream_offset){
+    int i; for(i=0;i<8;i++) nonce[i]=(nonce_offset>>(i*8))&0xff;
+    int padding = stream_offset & (RHIZOME_CRYPT_PAGE_SIZE -1);
+    int size = RHIZOME_CRYPT_PAGE_SIZE - padding;
+    if (size>buffer_size)
+      size=buffer_size;
+    
+    unsigned char temp[RHIZOME_CRYPT_PAGE_SIZE];
+    bcopy(temp + padding, buffer, size);
+    crypto_stream_xsalsa20_xor(temp, temp, size, nonce, key);
+    bcopy(buffer, temp + padding, size);
+    
+    nonce_offset+=RHIZOME_CRYPT_PAGE_SIZE;
+    offset+=size;
+  }
+  
+  while(offset < buffer_size){
+    // TODO add offset to nonce instead of replacing
+    int i; for(i=0;i<8;i++) nonce[i]=(nonce_offset>>(i*8))&0xff;
+    int size = buffer_size - offset;
+    if (size>RHIZOME_CRYPT_PAGE_SIZE)
+      size=RHIZOME_CRYPT_PAGE_SIZE;
+    
+    crypto_stream_xsalsa20_xor(buffer+offset, buffer+offset, size, nonce, key);
+    
+    nonce_offset+=RHIZOME_CRYPT_PAGE_SIZE;
+    offset+=size;
+  }
+  
+  return 0;
+}
+

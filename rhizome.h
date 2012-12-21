@@ -44,6 +44,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define RHIZOME_CRYPT_KEY_BYTES         crypto_stream_xsalsa20_ref_KEYBYTES
 #define RHIZOME_CRYPT_KEY_STRLEN        (RHIZOME_CRYPT_KEY_BYTES * 2)
+
+// assumed to always be 2^n
 #define RHIZOME_CRYPT_PAGE_SIZE         4096
 
 #define RHIZOME_HTTP_PORT 4110
@@ -593,7 +595,6 @@ struct http_response_parts {
 
 int unpack_http_response(char *response, struct http_response_parts *parts);
 
-
 /* Rhizome file storage api */
 struct rhizome_write{
   char id[SHA512_DIGEST_STRING_LENGTH+1];
@@ -605,6 +606,11 @@ struct rhizome_write{
   
   int64_t file_offset;
   int64_t file_length;
+  
+  unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
+  // note the last 8 bytes will be reset with the current file_offest
+  unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
+  int crypt;
   
   SHA512_CTX sha512_context;
   int64_t blob_rowid;
@@ -619,5 +625,7 @@ int rhizome_finish_write(struct rhizome_write *write);
 int rhizome_import_file(rhizome_manifest *m, const char *filepath);
 int rhizome_stat_file(rhizome_manifest *m, const char *filepath);
 int rhizome_add_file(rhizome_manifest *m, const char *filepath);
+int rhizome_crypt_xor_block(unsigned char *buffer, int buffer_size, int64_t stream_offset, 
+			    const unsigned char *key, unsigned char *nonce);
 
 #endif //__SERVALDNA__RHIZOME_H

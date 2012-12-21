@@ -1269,7 +1269,7 @@ int app_rhizome_extract_file(int argc, const char *const *argv, const struct com
    || cli_arg(argc, argv, o, "filepath", &filepath, NULL, "") == -1)
     return -1;
   cli_arg(argc, argv, o, "key", &keyhex, cli_optional_bundle_crypt_key, "");
-  unsigned char key[RHIZOME_CRYPT_KEY_STRLEN + 1];
+  unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
   if (keyhex[0] && fromhexstr(key, keyhex, RHIZOME_CRYPT_KEY_BYTES) == -1)
     return -1;
   /* Ensure the Rhizome database exists and is open */
