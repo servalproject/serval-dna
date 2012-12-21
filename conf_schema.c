@@ -168,6 +168,16 @@ int cf_opt_int32_submtu(int32_t *intp, const char *text)
   return CFOK;
 }
 
+int cf_opt_uint16_2to256(uint16_t *intp, const char *text)
+{
+  const char *end = text;
+  long value = strtol(text, (char**)&end, 10);
+  if (end == text || *end || value < 2 || value > 256)
+    return CFINVALID;
+  *intp = value;
+  return CFOK;
+}
+
 int cf_opt_int32_nonneg(int32_t *intp, const char *text)
 {
   const char *end = text;

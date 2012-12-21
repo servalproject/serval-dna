@@ -274,8 +274,26 @@ KEY_STRING(15, cf_opt_str)
 VALUE_NODE_STRUCT(rhizome_peer, cf_opt_rhizome_peer)
 END_ARRAY(10)
 
+STRUCT(asyncchannel)
+ATOM(uint16_t,message_length, 160, cf_opt_uint16_nonzero,,"Max. length of each message in bytes")
+ATOM(uint16_t,alphabet_size, 128, cf_opt_uint16_2to256,,"Alphabet size for message bytes. Use 128 for 7-bit clean as for an SMS transport.")
+ATOM(int32_t,settle_time,5000, cf_opt_int32_nonneg,,"Interval in milli-seconds with no bundle reception before announcing new bundles")
+ATOM(int32_t,max_pending,16, cf_opt_int32_nonneg,,"Forces announcement once max_pending bundles are queued, irrespective of settle_time")
+ATOM(int32_t,max_settle_time,60000, cf_opt_int32_nonneg,,"Forces announcement if a bundle has been pending for max_settle_time, irrespective of settle_time and max_pending")
+ATOM(int,encode_flag,1, cf_opt_int_boolean,, "If true, apply base64, base32, hex or other coding as appropriate.")
+STRING(256, in_path, "", cf_opt_absolute_path,, "Inbound message queue path")
+STRING(256, out_path, "", cf_opt_absolute_path,, "Outbound message queue path")
+STRING(256, push_command, "", cf_opt_str_nonempty,, "Command to execute when messages are added to outbound queue")
+END_STRUCT
+
+ARRAY(asyncchannels, )
+  KEY_STRING(32, cf_opt_str)
+  VALUE_SUB_STRUCT(asyncchannel)
+END_ARRAY(16)
+
 STRUCT(rhizome_direct)
 SUB_STRUCT(peerlist,        peer,)
+SUB_STRUCT(asyncchannels,   channels,)
 END_STRUCT
 
 STRUCT(rhizome_api_addfile)
