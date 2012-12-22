@@ -51,6 +51,8 @@ int rhizome_direct_async_setup()
      queues. */
   // XXX Go through rhizome database looking at insertion times
   
+  // XXX Go through received messages and see if there is a complete transmission.
+
   return 0;
 }
 
@@ -67,6 +69,22 @@ void rhizome_direct_async_periodic(struct sched_ent *alarm)
   return;
 }
 
+// Called when the monitor command "rdasync check" is issued.  This tells us
+// to look for newly received messages in the in-bound spool directories for the
+// rhizome direct async channels.
+int monitor_rhizome_direct_async_rx(int argc, const char *const *argv, 
+					   const struct command_line_option *o, 
+					   void *context)
+{
+  return 0;
+}
+
+// Called whenever a bundle is stored in our rhizome database.
+// We use this notification to add bundles to our knowledge of those that need
+// to be sent to our async peers.
+// We need to make sure that when we receive a manifest from an async peer that
+// we don't bother announcing it back to that peer, and generate unnecessary 
+// message traffic!
 int rhizome_direct_sync_bundle_added(rhizome_manifest *m)
 {
   return 0;

@@ -544,6 +544,7 @@ struct command_line_option monitor_options[]={
   {monitor_call_audio,{"audio","<token>","<type>","[<time>]","[<sequence>]",NULL},0,""},
   {monitor_call_hangup, {"hangup","<token>",NULL},0,""},
   {monitor_call_dtmf, {"dtmf","<token>","<digits>",NULL},0,""},
+  {monitor_rhizome_direct_async_rx, {"rdasync","check",NULL},0,""},
   {NULL},
 };
 
