@@ -255,6 +255,7 @@ void rhizome_direct_async_periodic(struct sched_ent *alarm);
 int monitor_rhizome_direct_async_rx(int argc, const char *const *argv, 
 				    const struct command_line_option *o, 
 				    void *context);
+int app_rhizome_direct_async_check(int argc, const char *const *argv, const struct command_line_option *o, void *context);
 
 void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCount);
 int rhizome_find_privatekey(rhizome_manifest *m);

@@ -660,6 +660,26 @@ int app_vomp_console(int argc, const char *const *argv, const struct command_lin
 
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 
+#define MONITOR_LINE_LENGTH 160
+#define MONITOR_DATA_SIZE MAX_AUDIO_BYTES
+struct monitor_context {
+  struct sched_ent alarm;
+  // monitor interest bitmask
+  int flags;
+  // what types of audio can we write to this client?
+  // (packed bits)
+  unsigned char supported_codecs[CODEC_FLAGS_LENGTH];
+  
+  char line[MONITOR_LINE_LENGTH];
+  int line_length;
+#define MONITOR_STATE_COMMAND 1
+#define MONITOR_STATE_DATA 2
+  int state;
+  unsigned char buffer[MONITOR_DATA_SIZE];
+  int data_expected;
+  int data_offset;
+};
+
 int monitor_setup_sockets();
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int monitor_announce_peer(const unsigned char *sid);

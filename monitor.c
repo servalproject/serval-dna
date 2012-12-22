@@ -42,26 +42,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #endif
 #endif
 
-#define MONITOR_LINE_LENGTH 160
-#define MONITOR_DATA_SIZE MAX_AUDIO_BYTES
-struct monitor_context {
-  struct sched_ent alarm;
-  // monitor interest bitmask
-  int flags;
-  // what types of audio can we write to this client?
-  // (packed bits)
-  unsigned char supported_codecs[CODEC_FLAGS_LENGTH];
-  
-  char line[MONITOR_LINE_LENGTH];
-  int line_length;
-#define MONITOR_STATE_COMMAND 1
-#define MONITOR_STATE_DATA 2
-  int state;
-  unsigned char buffer[MONITOR_DATA_SIZE];
-  int data_expected;
-  int data_offset;
-};
-
 #define MAX_MONITOR_SOCKETS 8
 int monitor_socket_count=0;
 struct monitor_context monitor_sockets[MAX_MONITOR_SOCKETS];

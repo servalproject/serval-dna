@@ -36,6 +36,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "rhizome.h"
 #include "cli.h"
 #include "overlay_buffer.h"
+#include "monitor-client.h"
+#include "conf.h"
+#include "str.h"
 
 #define RDA_MSG_BARS_RAW 0x01
 #define RDA_MSG_MANIFESTS 0x02
@@ -76,6 +79,10 @@ int monitor_rhizome_direct_async_rx(int argc, const char *const *argv,
 					   const struct command_line_option *o, 
 					   void *context)
 {
+  struct monitor_context *c=context;
+  char msg[256];
+  snprintf(msg, sizeof(msg), "\nOK:\n");
+  write_str(c->alarm.poll.fd, msg);
   return 0;
 }
 
@@ -102,6 +109,41 @@ static int messagesRequired(int bytesPerMessage,int bytesToSend)
 
   return bytesToSend/netBytesPerMessage+(bytesToSend%netBytesPerMessage?1:0);
 }
+
+int app_rhizome_direct_async_check(int argc, const char *const *argv, const struct command_line_option *o, void *context)
+{
+  struct pollfd fds[1];
+  struct monitor_state *state;
+  
+  int monitor_client_fd = monitor_client_open(&state);
+  
+  write(monitor_client_fd, "rdasync check\n",strlen("rdasync check\n"));
+
+  fds[0].fd = monitor_client_fd;
+  fds[0].events = POLLIN;
+  
+  while(1){
+    int r = poll(fds, 1, 100);
+    if (r>0){
+            
+      if (fds[0].revents & POLLIN){
+	char line[1024];
+	read(monitor_client_fd,line,1024);
+	if (strstr(line,"\nOK:\n")) break;
+	DEBUGF("monitor interface says '%s'",line);
+      }
+      
+      if (fds[0].revents & (POLLHUP | POLLERR))
+	break;
+    }
+  }
+  
+  monitor_client_close(monitor_client_fd, state);
+  monitor_client_fd=-1;
+  
+  return 0;
+}
+
 
 int app_rhizome_direct_async(int argc, const char *const *argv,
 			     const struct command_line_option *o, void *context)
