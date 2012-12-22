@@ -173,6 +173,7 @@ extern char *gatewayspec;
 
 int rhizome_enabled();
 int rhizome_http_server_running();
+int rhizome_direct_async_setup();
 const char *rhizome_datastore_path();
 
 extern struct in_addr client_addr;

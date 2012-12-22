@@ -150,6 +150,11 @@ schedule(&_sched_##X); }
   /* Periodically update route table. */
   SCHEDULE(overlay_route_tick, 100, 100);
 
+  /* Setup Rhizome Direct Async */
+  rhizome_direct_async_setup();
+  /* Then keep an eye on each channel to see if it needs flushing */
+  SCHEDULE(rhizome_direct_async_periodic, 1000, 1000);
+
   /* Show CPU usage stats periodically */
   if (config.debug.timing){
     SCHEDULE(fd_periodicstats, 3000, 500);

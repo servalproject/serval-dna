@@ -250,6 +250,9 @@ int rhizome_manifest_bind_id(rhizome_manifest *m_in);
 int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout);
 int rhizome_add_manifest(rhizome_manifest *m_in,int ttl);
 
+int rhizome_direct_sync_bundle_added(rhizome_manifest *m);
+void rhizome_direct_async_periodic(struct sched_ent *alarm);
+
 void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCount);
 int rhizome_find_privatekey(rhizome_manifest *m);
 int rhizome_sign_hash(rhizome_manifest *m, rhizome_signature *out);

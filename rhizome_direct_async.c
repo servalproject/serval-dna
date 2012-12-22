@@ -40,12 +40,45 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define RDA_MSG_BARS_RAW 0x01
 #define RDA_MSG_MANIFESTS 0x02
 
+int rhizome_direct_async_setup()
+{
+  // XXX Load state of channels, i.e.:
+  // - last TX message number, 
+  // - last dispatch time
+  // - last rhizome inserttime dealt with
+
+  /* Add any bundles that have arrived since last run to be added to the 
+     queues. */
+  // XXX Go through rhizome database looking at insertion times
+  
+  return 0;
+}
+
+void rhizome_direct_async_periodic(struct sched_ent *alarm)
+{
+  // XXX Check if any channels need flushing
+
+  // XXX Check for new messages arriving on any channel
+
+  // Update next call time
+  alarm->alarm = gettime_ms()+1000;
+  alarm->deadline = alarm->alarm + 10000;
+  schedule(alarm);
+  return;
+}
+
+int rhizome_direct_sync_bundle_added(rhizome_manifest *m)
+{
+  return 0;
+}
+
 static int messagesRequired(int bytesPerMessage,int bytesToSend)
 {
   /* Overhead per message is as follows to deal with out-of-order delivery.
      We don't do retransmission or detection of dropped messages.     
-     1 byte - conversation ID 
-     1 byte - message sequence number
+     15 bits - sequence number
+     1 bit - communication boundary (to help get back in sync in case we do
+     have some dropped messages)
   */
   int netBytesPerMessage=bytesPerMessage-1-1;
 

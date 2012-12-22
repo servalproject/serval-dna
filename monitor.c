@@ -585,6 +585,10 @@ int monitor_announce_bundle(rhizome_manifest *m)
       }
     }
   }
+
+  // Also alert rhizome direct async that the bundle has been added
+  rhizome_direct_sync_bundle_added(m);
+
   return 0;
 }
 
