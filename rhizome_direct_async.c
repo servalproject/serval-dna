@@ -94,6 +94,7 @@ int monitor_rhizome_direct_async_rx(int argc, const char *const *argv,
 // message traffic!
 int rhizome_direct_sync_bundle_added(rhizome_manifest *m)
 {
+  DEBUGF("new manifest: BID=%s",alloca_tohex_bid(m->cryptoSignPublic));
   return 0;
 }
 
@@ -129,7 +130,10 @@ int app_rhizome_direct_async_check(int argc, const char *const *argv, const stru
       if (fds[0].revents & POLLIN){
 	char line[1024];
 	read(monitor_client_fd,line,1024);
-	if (strstr(line,"\nOK:\n")) break;
+	if (strstr(line,"\nOK:\n")) {
+	  INFOF("Serval process has accepted scan request.");
+	  break;
+	}
 	DEBUGF("monitor interface says '%s'",line);
       }
       
