@@ -43,12 +43,71 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define RDA_MSG_BARS_RAW 0x01
 #define RDA_MSG_MANIFESTS 0x02
 
+struct rhizome_direct_async_channel_state {
+  // Last rhizome database insertion time that we 
+  // have queued new manifests for
+  uint64_t lastInsertionTime;
+  // Last outbound message number
+  uint64_t lastTXMessageNumber;
+
+  // Number of manifests queued for announcement to
+  // the far end.
+  int queuedManifests;
+  // Time last manifest was added to the queue.
+  // Used with conf.rhizome_direct.asyncchannel.*.settle_time
+  uint64_t lastManifestQueueTime;
+  // Time first unannounced manifest was added to the queue
+  // Used with conf.rhizome_direct.asyncchannel.*.max_settle_time
+  uint64_t firstManifestQueueTime;
+};
+
+struct rhizome_direct_async_channel_state channel_states[16];
+
+int rhizome_direct_async_load_state()
+{
+  int i;
+  char filename[1024];
+
+  for(i=0;i<config.rhizome.direct.channels.ac;i++) {
+    bzero(&channel_states[i],sizeof(channel_states[i]));
+    if (config.rhizome.direct.channels.av[i].value.out_path) {
+      snprintf(filename,1024,"%s/queued_manifests",
+	       config.rhizome.direct.channels.av[i].value.out_path);
+      struct stat s;
+      if (stat(filename,&s)) {
+	channel_states[i].firstManifestQueueTime=1000*s.st_ctime;
+	channel_states[i].lastManifestQueueTime=1000*s.st_mtime;
+	channel_states[i].queuedManifests=s.st_size/RHIZOME_BAR_BYTES;
+      }
+      snprintf(filename,1024,"%s/state",
+	       config.rhizome.direct.channels.av[i].value.out_path);
+      FILE *f=fopen(filename,"r");
+      if (f) {
+	fscanf(f,"%lld:%lld",  
+	       &channel_states[i].lastInsertionTime,
+	       &channel_states[i].lastTXMessageNumber);
+	fclose(f);
+      }      
+    }
+    DEBUGF("RD channel #%d state: %lld:%lld:%d:%lld:%lld",
+	   channel_states[i].firstManifestQueueTime,
+	   channel_states[i].lastManifestQueueTime,
+	   channel_states[i].queuedManifests,
+	   channel_states[i].lastInsertionTime,
+	   channel_states[i].lastTXMessageNumber);
+	   
+  }
+
+  return 0;
+}
+
 int rhizome_direct_async_setup()
 {
   // XXX Load state of channels, i.e.:
   // - last TX message number, 
   // - last dispatch time
   // - last rhizome inserttime dealt with
+  rhizome_direct_async_load_state();
 
   /* Add any bundles that have arrived since last run to be added to the 
      queues. */
