@@ -123,15 +123,65 @@ test_channelsetup() {
    executeOk_servald config \
        set rhizome.direct.channels.a.alphabet_size 256 \
        set rhizome.direct.channels.a.encode_flag false \
-       set rhizome.direct.channels.a.in_path $PATHA/async-in \
+       set rhizome.direct.channels.a.in_path $instance_dir/async-in \
        set rhizome.direct.channels.a.max_pending 64 \
        set rhizome.direct.channels.a.max_settle_time 120000 \
        set rhizome.direct.channels.a.message_length 160 \
-       set rhizome.direct.channels.a.out_path $PATHA/async-out \
-       set rhizome.direct.channels.a.push_command /bin/false \
+       set rhizome.direct.channels.a.out_path $instance_dir/async-out \
+       set rhizome.direct.channels.a.push_command $instance_dir/async-push \
        set rhizome.direct.channels.a.settle_time 60000 \
        set rhizome.direct.channels.a.max_size 4096
    start_servald_instances +A
+}
+
+doc_messagesemitted="Message(s) are emitted when new bundles observed"
+test_messagesemitted() {
+    assert false
+}
+
+doc_messagesemittedonupdate="Message(s) are emitted when a new version of a bundle is observed"
+test_messagesemittedonupdate() {
+    assert false
+}
+
+doc_pushcommandiscalled="Async push command is called when messages are written"
+test_pushcommandiscalled() {
+    assert false
+}
+
+doc_messagesaccepted="Messages are accepted on calling rhizome direct async scan"
+test_messagesaccepted() {
+    assert false
+}
+
+doc_bundlerequestsgenerated="Bundle requests (SENDMEs) generated in response to IHAVE messages"
+test_bundlerequestsgenerated() {
+    assert false
+}
+
+doc_bundlessent="Bundles sent in response to SENDME requests"
+test_bundlessent() {
+    assert false
+}
+
+doc_bundlesreceived="Bundles received via async channel"
+test_bundlesreceived() {
+    assert false
+}
+
+doc_settletimehonoured="rhizome.direct.channels.*.settle_time is honoured"
+test_settletimehonoured() {
+    assert false
+}
+
+doc_maxsettletimehonoured="rhizome.direct.channels.*.max_settle_time is honoured"
+test_maxsettletimehonoured() {
+    assert false
+}
+
+doc_maxsizehonoured="rhizome.direct.channels.*.max_size is honoured"
+test_maxsizehonoured() {
+    assert false
 }
 
 runTests "$@"
