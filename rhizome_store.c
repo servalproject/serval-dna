@@ -31,6 +31,11 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
     write->id_known=0;
   }
   
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  
+  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") == -1)
+    return -1;
+  
   /* INSERT INTO FILES(id as text, data blob, length integer, highestpriority integer).
    BUT, we have to do this incrementally so that we can handle blobs larger than available memory.
    This is possible using:
@@ -40,8 +45,7 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
    int sqlite3_blob_write(sqlite3_blob *, const void *z, int n, int iOffset);
    */
   
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  int ret=sqlite_exec_void(
+  int ret=sqlite_exec_void_retry(&retry,
 	"INSERT OR REPLACE INTO FILES(id,length,highestpriority,datavalid,inserttime) VALUES('%s',%lld,%d,0,%lld);",
 	write->id, (long long)file_length, priority, (long long)gettime_ms());
   if (ret!=SQLITE_OK) {
@@ -77,6 +81,7 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
   if (!sqlite_code_ok(stepcode)){
   insert_row_fail:
     WHYF("Failed to insert row for fileid=%s", write->id);
+    sqlite_exec_void_retry(&retry, "ROLLBACK;");
     return -1;
   }
     
@@ -93,7 +98,7 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
     write->buffer_size=RHIZOME_BUFFER_MAXIMUM_SIZE;
   
   write->buffer=malloc(write->buffer_size);
-  return 0;
+  return sqlite_exec_void_retry(&retry, "COMMIT;");
 }
 
 /* Write write->buffer into the database blob */
@@ -119,15 +124,18 @@ int rhizome_flush(struct rhizome_write *write){
   }
   ret=sqlite3_blob_write(blob, write->buffer, write->data_size, 
 			 write->file_offset);
-  sqlite3_blob_close(blob); 
-  blob=NULL;
   
   if (ret!=SQLITE_OK) {
     WHYF("sqlite3_blob_write() failed: %s", 
 	 sqlite3_errmsg(rhizome_db));
+    if (blob) sqlite3_blob_close(blob);
     return -1;
   }
   
+  ret = sqlite3_blob_close(blob);
+  if (ret!=SQLITE_OK)
+    return WHYF("sqlite3_blob_close() failed: %s", sqlite3_errmsg(rhizome_db));
+  blob=NULL;
   SHA512_Update(&write->sha512_context, write->buffer, write->data_size);
   write->file_offset+=write->data_size;
   if (config.debug.rhizome)
@@ -194,6 +202,8 @@ int rhizome_finish_write(struct rhizome_write *write){
   SHA512_End(&write->sha512_context, hash_out);
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") == -1)
+    return -1;
   
   if (write->id_known){
     if (strcasecmp(write->id, hash_out)){
@@ -214,8 +224,8 @@ int rhizome_finish_write(struct rhizome_write *write){
       rhizome_fail_write(write);
     }else{
       // delete any half finished records
-      sqlite_exec_void("DELETE FROM FILEBLOBS WHERE id='%s';",hash_out);
-      sqlite_exec_void("DELETE FROM FILES WHERE id='%s';",hash_out);
+      sqlite_exec_void_retry(&retry,"DELETE FROM FILEBLOBS WHERE id='%s';",hash_out);
+      sqlite_exec_void_retry(&retry,"DELETE FROM FILES WHERE id='%s';",hash_out);
       
       if (sqlite_exec_void_retry(&retry,
 				 "UPDATE FILES SET datavalid=1, id='%s' WHERE id='%s'",
@@ -232,10 +242,10 @@ int rhizome_finish_write(struct rhizome_write *write){
     }
     strlcpy(write->id, hash_out, SHA512_DIGEST_STRING_LENGTH);
   }
-  
-  return 0;
+  return sqlite_exec_void_retry(&retry, "COMMIT;");
   
 failure:
+  sqlite_exec_void_retry(&retry, "ROLLBACK;");
   rhizome_fail_write(write);
   return -1;
 }
