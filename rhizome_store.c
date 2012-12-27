@@ -114,34 +114,57 @@ int rhizome_flush(struct rhizome_write *write){
     rhizome_crypt_xor_block(write->buffer, write->data_size, write->file_offset, write->key, write->nonce);
   }
   
-  sqlite3_blob *blob;
-  int ret = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", write->blob_rowid, 1 /* read/write */, &blob);
-  if (ret!=SQLITE_OK) {
-    WHYF("sqlite3_blob_open() failed: %s", 
-      sqlite3_errmsg(rhizome_db));
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  
+  do{
+    sqlite3_blob *blob=NULL;
+    
+    int ret = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", write->blob_rowid, 1 /* read/write */, &blob);
+    if (ret==SQLITE_BUSY || ret==SQLITE_LOCKED)
+      goto again;
+    else if (ret!=SQLITE_OK) {
+      WHYF("sqlite3_blob_open() failed: %s", 
+	sqlite3_errmsg(rhizome_db));
+      if (blob) sqlite3_blob_close(blob);
+      return -1;
+    }
+    
+    ret=sqlite3_blob_write(blob, write->buffer, write->data_size, 
+			   write->file_offset);
+    if (ret==SQLITE_BUSY || ret==SQLITE_LOCKED) 
+      goto again;
+    else if (ret!=SQLITE_OK) {
+      WHYF("sqlite3_blob_write() failed: %s", 
+	   sqlite3_errmsg(rhizome_db));
+      if (blob) sqlite3_blob_close(blob);
+      return -1;
+    }
+    
+    ret = sqlite3_blob_close(blob);
+    blob=NULL;
+    if (ret==SQLITE_BUSY || ret==SQLITE_LOCKED)
+      goto again;
+    else if (ret==SQLITE_OK)
+      break;
+    
+    WHYF("sqlite3_blob_close() failed: %s", sqlite3_errmsg(rhizome_db));
     if (blob) sqlite3_blob_close(blob);
     return -1;
-  }
-  ret=sqlite3_blob_write(blob, write->buffer, write->data_size, 
-			 write->file_offset);
-  
-  if (ret!=SQLITE_OK) {
-    WHYF("sqlite3_blob_write() failed: %s", 
-	 sqlite3_errmsg(rhizome_db));
+    
+  again:
     if (blob) sqlite3_blob_close(blob);
-    return -1;
-  }
+    if (_sqlite_retry(__WHENCE__, &retry, "sqlite3_blob_write")==0)
+      return -1;
+    
+  }while(1);
   
-  ret = sqlite3_blob_close(blob);
-  if (ret!=SQLITE_OK)
-    return WHYF("sqlite3_blob_close() failed: %s", sqlite3_errmsg(rhizome_db));
-  blob=NULL;
   SHA512_Update(&write->sha512_context, write->buffer, write->data_size);
   write->file_offset+=write->data_size;
   if (config.debug.rhizome)
     DEBUGF("Written %lld of %lld", write->file_offset, write->file_length);
   write->data_size=0;
   return 0;
+  
 }
 
 /* Expects file to be at least file_length in size */

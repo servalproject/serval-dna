@@ -1245,25 +1245,58 @@ void rhizome_fetch_write(struct rhizome_fetch_slot *slot)
 
 int rhizome_fetch_flush_blob_buffer(struct rhizome_fetch_slot *slot)
 {
-  sqlite3_blob *blob;
-  int ret = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", slot->rowid, 1 /* read/write */, &blob);
-  if (ret!=SQLITE_OK) {
-    if (blob) sqlite3_blob_close(blob);
-    return -1;
-  }
-  ret=sqlite3_blob_write(blob, slot->blob_buffer, slot->blob_buffer_bytes, 
-			 slot->file_ofs-slot->blob_buffer_bytes);
-  sqlite3_blob_close(blob); blob=NULL;
-
-  if (ret!=SQLITE_OK) {
-    WHYF("sqlite3_blob_write(,,%d,%lld) failed, %s", 
-	 slot->blob_buffer_bytes,slot->file_ofs-slot->blob_buffer_bytes,
-	 sqlite3_errmsg(rhizome_db));
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  do{
+    sqlite3_blob *blob=NULL;
+    
+    int ret = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", slot->rowid, 1 /* read/write */, &blob);
+    if (ret==SQLITE_BUSY || ret==SQLITE_LOCKED)
+      goto again;
+    else if (ret!=SQLITE_OK){
+      WHYF("sqlite3_blob_open() failed, %s", 
+	   sqlite3_errmsg(rhizome_db));
+      goto failed;
+    }
+    
+    ret=sqlite3_blob_write(blob, slot->blob_buffer, slot->blob_buffer_bytes, 
+			   slot->file_ofs-slot->blob_buffer_bytes);
+    
+    if (ret==SQLITE_BUSY || ret==SQLITE_LOCKED)
+      goto again;
+    else if (ret!=SQLITE_OK) {
+      WHYF("sqlite3_blob_write(,,%d,%lld) failed, %s", 
+	   slot->blob_buffer_bytes,slot->file_ofs-slot->blob_buffer_bytes,
+	   sqlite3_errmsg(rhizome_db));
+      goto failed;
+    }
+    
+    ret=sqlite3_blob_close(blob); 
+    blob=NULL;
+    if (ret==SQLITE_BUSY || ret==SQLITE_LOCKED)
+      goto again;
+    else if (ret!=SQLITE_OK) {
+      WHYF("sqlite3_blob_close() failed, %s", 
+	   sqlite3_errmsg(rhizome_db));
+      goto failed;
+    }
+    
+    slot->blob_buffer_bytes=0;
+    return 0;
+    
+  failed:
+    if (blob) sqlite3_blob_close(blob); 
     rhizome_fetch_close(slot);
     return -1;
-  }
-  slot->blob_buffer_bytes=0;
-  return 0;
+    
+  again:
+    if (blob)
+      sqlite3_blob_close(blob); 
+    blob=NULL;
+    
+    if (_sqlite_retry(__WHENCE__, &retry, "sqlite3_blob_write")==0)
+      return -1;
+    
+  }while(1);
 }
 
 int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int bytes)
@@ -1315,8 +1348,10 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
       slot->blob_buffer_bytes+=count;
       slot->file_ofs+=count;
       buffer+=count; bytesRemaining-=count;
-      if (slot->blob_buffer_bytes==slot->blob_buffer_size)
-	rhizome_fetch_flush_blob_buffer(slot);
+      if (slot->blob_buffer_bytes==slot->blob_buffer_size){
+	if (rhizome_fetch_flush_blob_buffer(slot))
+	  RETURN (-1);
+      }
     }
   }
 
@@ -1330,8 +1365,10 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 
       char hash_out[SHA512_DIGEST_STRING_LENGTH+1];
       SHA512_End(&slot->sha512_context, (char *)hash_out);      
-      if (slot->blob_buffer_bytes) rhizome_fetch_flush_blob_buffer(slot);
-      
+      if (slot->blob_buffer_bytes){
+	if (rhizome_fetch_flush_blob_buffer(slot))
+	  RETURN (-1);
+      }
       sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
       if (strcasecmp(hash_out,slot->manifest->fileHexHash)) {
 	if (config.debug.rhizome_rx)

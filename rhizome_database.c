@@ -303,15 +303,16 @@ int _sqlite_retry(struct __sourceloc __whence, sqlite_retry_state *retry, const 
   ++retry->busytries;
   if (retry->start == -1)
     retry->start = now;
-  else
-    retry->elapsed += now - retry->start;
-  INFOF("%s on try %u after %.3f seconds (%.3f elapsed): %s",
+  retry->elapsed = now - retry->start;
+  
+  INFOF("%s on try %u after %.3f seconds (limit %.3f): %s",
       sqlite3_errmsg(rhizome_db),
       retry->busytries,
-      (now - retry->start) / 1e3,
-      retry->elapsed / 1e3,
+      (retry->elapsed) / 1e3,
+      (retry->limit) / 1e3,
       action
     );
+  
   if (retry->elapsed >= retry->limit) {
     // reset ready for next query
     retry->busytries = 0;
@@ -319,6 +320,7 @@ int _sqlite_retry(struct __sourceloc __whence, sqlite_retry_state *retry, const 
       retry->start = -1;
     return 0; // tell caller to stop trying
   }
+  
   if (retry->sleep)
     sleep_ms(retry->sleep);
   return 1; // tell caller to try again
@@ -328,10 +330,10 @@ void _sqlite_retry_done(struct __sourceloc __whence, sqlite_retry_state *retry, 
 {
   if (retry->busytries) {
     time_ms_t now = gettime_ms();
-    INFOF("succeeded on try %u after %.3f seconds (%.3f elapsed): %s",
+    INFOF("succeeded on try %u after %.3f seconds (limit %.3f): %s",
 	retry->busytries + 1,
 	(now - retry->start) / 1e3,
-	retry->elapsed / 1e3,
+	(retry->limit) / 1e3,
 	action
       );
   }
@@ -773,6 +775,8 @@ int rhizome_store_bundle(rhizome_manifest *m)
 
   // we might need to leave the old file around for a bit
   // clean out unreferenced files first
+  
+  // FIXME where is the ? parameter bound????
   if (sqlite_exec_void("DELETE FROM FILES WHERE inserttime < ? AND NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);")) {
     WHYF("delete failed, %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(stmt));
     goto rollback;

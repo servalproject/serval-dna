@@ -82,4 +82,35 @@ test_FileTransferStress() {
    done
 }
 
+setup_AddStressTest() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B +C +D +E +F +G +H create_single_identity
+   start_servald_instances +A +B +C +D +E +F +G +H
+}
+
+ammendfile() {
+   echo "XXX  ${instance_name}  XXX" >> $instance_dir/file
+   executeOk_servald rhizome add file "" "" $instance_dir/file 
+}
+
+alldone() {
+   executeOk_servald rhizome list ''
+   local lineCount=$(( $(cat $_tfw_tmp/stdout | wc -l) + 0 ))
+   tfw_log "lines $lineCount"
+# total files = 26 * 8 + 2
+   if [ "$lineCount" -eq "210" ]; then return 0; fi
+   return 1
+}
+
+doc_AddStressTest="Add files while transferring"
+test_AddStressTest() {
+   for i in A B C D E F G H I J K L M N O P Q R S T U V W X Y Z
+   do
+      foreach_instance +A +B +C +D +E +F +G +H ammendfile
+   done
+   foreach_instance +A +B +C +D +E +F +G +H wait_until --timeout=120 alldone 
+   sleep 10
+}
+
 runTests "$@"
