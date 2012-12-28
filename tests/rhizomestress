@@ -91,7 +91,11 @@ setup_AddStressTest() {
 
 ammendfile() {
    echo "XXX  ${instance_name}  XXX" >> $instance_dir/file
-   executeOk_servald rhizome add file "" "" $instance_dir/file 
+   executeOk_servald rhizome add file "" "" "$instance_dir/file" "$instance_dir/file.manifest" 
+   tfw_cat --stdout --stderr
+   extract_manifest_filehash filehash "$instance_dir/file.manifest"
+   executeOk_servald rhizome extract file $filehash
+   rm "$instance_dir/file.manifest"
 }
 
 alldone() {
