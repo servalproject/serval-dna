@@ -19,11 +19,6 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
   if (expectedFileHash){
     if (rhizome_exists(expectedFileHash))
       return 1;
-    
-    /* Okay, so there are no records that match, but we should delete any half-baked record (with datavalid=0) so that the insert below doesn't fail.
-     Don't worry about the return result, since it might not delete any records. */
-    sqlite_exec_void("DELETE FROM FILEBLOBS WHERE id='%s';",expectedFileHash);
-    sqlite_exec_void("DELETE FROM FILES WHERE id='%s';",expectedFileHash);
     strlcpy(write->id, expectedFileHash, SHA512_DIGEST_STRING_LENGTH);
     write->id_known=1;
   }else{
@@ -87,6 +82,7 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
     
   /* Get rowid for inserted row, so that we can modify the blob */
   write->blob_rowid = sqlite3_last_insert_rowid(rhizome_db);
+  DEBUGF("Got rowid %lld for %s", write->blob_rowid, write->id);
   write->file_length = file_length;
   write->file_offset = 0;
   SHA512_Init(&write->sha512_context);

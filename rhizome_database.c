@@ -221,13 +221,17 @@ int rhizome_opendb()
   sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS bundlesizeindex ON manifests (filesize);");
   sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_HASH ON MANIFESTS(filehash);");
 
-  /* Clean out half-finished entries from the database */
+  // We can't delete a file that is being transferred in another process at this very moment...
+  // FIXME, reinstate with a check for insert time
+  
+  /* Clean out half-finished entries from the database 
   sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM MANIFESTS WHERE filehash IS NULL;");
   sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM FILES WHERE NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);");
   sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM FILEBLOBS WHERE NOT EXISTS( SELECT  1 FROM FILES WHERE FILEBLOBS.id = FILES.id);");
   sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM MANIFESTS WHERE filehash != '' AND NOT EXISTS( SELECT  1 FROM FILES WHERE MANIFESTS.filehash = FILES.id);");
+   sqlite_exec_void("DELETE FROM FILES WHERE datavalid=0;");
+   */
   RETURN(0);
-  sqlite_exec_void("DELETE FROM FILES WHERE datavalid=0;");
 }
 
 int rhizome_close_db()
@@ -960,11 +964,6 @@ int64_t rhizome_database_create_blob_for(const char *hashhex,int64_t fileLength,
   if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") != SQLITE_OK)
     return WHY("Failed to begin transaction");
   
-  /* Okay, so there are no records that match, but we should delete any half-baked record (with datavalid=0) so that the insert below doesn't fail.
-     Don't worry about the return result, since it might not delete any records. */
-  sqlite_exec_void_retry(&retry, "DELETE FROM FILES WHERE id='%s' AND datavalid=0;",hashhex);
-  sqlite_exec_void_retry(&retry, "DELETE FROM FILEBLOBS WHERE id='%s';",hashhex);
-
   /* INSERT INTO FILES(id as text, data blob, length integer, highestpriority integer).
    BUT, we have to do this incrementally so that we can handle blobs larger than available memory.
   This is possible using:
@@ -1007,9 +1006,10 @@ insert_row_fail:
   
   ret = sqlite_exec_void_retry(&retry, "COMMIT;");
   if (ret!=SQLITE_OK){
-    WHYF("Failed to commit transaction");
-    return -1;
+    sqlite_exec_void_retry(&retry, "ROLLBACK;");
+    return WHYF("Failed to commit transaction");
   }
+  DEBUGF("Got rowid %lld for %s", rowid, hashhex);
   return rowid;
 }
 
