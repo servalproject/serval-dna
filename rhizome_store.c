@@ -111,7 +111,8 @@ int rhizome_flush(struct rhizome_write *write){
     return WHY("No content supplied");
   
   if (write->crypt){
-    rhizome_crypt_xor_block(write->buffer, write->data_size, write->file_offset, write->key, write->nonce);
+    if (rhizome_crypt_xor_block(write->buffer, write->data_size, write->file_offset, write->key, write->nonce))
+      return -1;
   }
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
@@ -120,7 +121,7 @@ int rhizome_flush(struct rhizome_write *write){
     sqlite3_blob *blob=NULL;
     
     int ret = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", write->blob_rowid, 1 /* read/write */, &blob);
-    if (ret==SQLITE_BUSY || ret==SQLITE_LOCKED)
+    if (sqlite_code_busy(ret))
       goto again;
     else if (ret!=SQLITE_OK) {
       WHYF("sqlite3_blob_open() failed: %s", 
@@ -131,7 +132,7 @@ int rhizome_flush(struct rhizome_write *write){
     
     ret=sqlite3_blob_write(blob, write->buffer, write->data_size, 
 			   write->file_offset);
-    if (ret==SQLITE_BUSY || ret==SQLITE_LOCKED) 
+    if (sqlite_code_busy(ret))
       goto again;
     else if (ret!=SQLITE_OK) {
       WHYF("sqlite3_blob_write() failed: %s", 
@@ -142,7 +143,7 @@ int rhizome_flush(struct rhizome_write *write){
     
     ret = sqlite3_blob_close(blob);
     blob=NULL;
-    if (ret==SQLITE_BUSY || ret==SQLITE_LOCKED)
+    if (sqlite_code_busy(ret))
       goto again;
     else if (ret==SQLITE_OK)
       break;
@@ -153,7 +154,7 @@ int rhizome_flush(struct rhizome_write *write){
     
   again:
     if (blob) sqlite3_blob_close(blob);
-    if (_sqlite_retry(__WHENCE__, &retry, "sqlite3_blob_write")==0)
+    if (sqlite_retry(&retry, "sqlite3_blob_write")==0)
       return -1;
     
   }while(1);
@@ -343,27 +344,110 @@ int rhizome_add_file(rhizome_manifest *m, const char *filepath)
   return 0;
 }
 
-/*
-
-int rhizome_open_append(struct rhizome_write *write, int64_t size, const char *expectedFileHash, const char *existingFileHash){
+int rhizome_open_read(struct rhizome_read *read, const char *fileid, int hash){
   
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  
+  strncpy(read->id, fileid, sizeof read->id);
+  read->id[RHIZOME_FILEHASH_STRLEN] = '\0';
+  str_toupper_inplace(read->id);
+  
+  sqlite3_stmt *statement = sqlite_prepare(&retry, "SELECT FILEBLOBS.rowid FROM FILEBLOBS, FILES WHERE FILEBLOBS.id = FILES.id AND FILES.id = ? AND FILES.datavalid != 0");
+  if (!statement)
+    return -1;
+  
+  sqlite3_bind_text(statement, 1, read->id, -1, SQLITE_STATIC);
+  
+  int ret = sqlite_step_retry(&retry, statement);
+  if (ret != SQLITE_ROW){
+    WHYF("Failed to open file blob: %s", sqlite3_errmsg(rhizome_db));
+    sqlite3_finalize(statement);
+    return -1;
+  }
+  
+  if (!(sqlite3_column_count(statement) == 1
+	&& sqlite3_column_type(statement, 0) == SQLITE_INTEGER)) { 
+    sqlite3_finalize(statement);
+    return WHY("Incorrect statement column");
+  }
+  
+  read->blob_rowid = sqlite3_column_int64(statement, 0);
+  read->hash=hash;
+  read->offset=0;
+  read->length=-1;
+  
+  sqlite3_finalize(statement);
+  
+  if (hash)
+    SHA512_Init(&read->sha512_context);
+  
+  return 0;
 }
 
-struct rhizome_read{
-  
-};
-
-int rhizome_open_read(struct rhizome_read *read, ){
-  
-}
-
+// returns the number of bytes read
 int rhizome_read(struct rhizome_read *read, unsigned char *buffer, int buffer_length){
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   
+  do{
+    sqlite3_blob *blob = NULL;
+    
+    int ret = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", read->blob_rowid, 0 /* read only */, &blob);
+    if (sqlite_code_busy(ret))
+      goto again;
+    else if(ret!=SQLITE_OK)
+      return WHYF("sqlite3_blob_open failed: %s",sqlite3_errmsg(rhizome_db));
+    
+    if (read->length==-1)
+      read->length=sqlite3_blob_bytes(blob);
+    
+    if (!buffer){
+      sqlite3_blob_close(blob);
+      return 0;
+    }
+    
+    int count = read->length - read->offset;
+    if (count>buffer_length)
+      count=buffer_length;
+    
+    if (count>0){
+      ret = sqlite3_blob_read(blob, buffer, count, read->offset);
+      if (sqlite_code_busy(ret))
+	goto again;
+      else if(ret!=SQLITE_OK){
+	WHYF("sqlite3_blob_read failed: %s",sqlite3_errmsg(rhizome_db));
+	sqlite3_blob_close(blob);
+	return -1;
+      }
+      
+      if (read->hash){
+	SHA512_Update(&read->sha512_context, buffer, count);
+	
+	if (read->offset + count>=read->length){
+	  char hash_out[SHA512_DIGEST_STRING_LENGTH+1];
+	  SHA512_End(&read->sha512_context, hash_out);
+	  
+	  if (strcasecmp(read->id, hash_out)){
+	    sqlite3_blob_close(blob);
+	    WHYF("Expected hash=%s, got %s", read->id, hash_out);
+	  }
+	}
+      }
+      
+      if (read->crypt){
+	if(rhizome_crypt_xor_block(buffer, count, read->offset, read->key, read->nonce))
+	  return -1;
+      }
+      
+      read->offset+=count;
+      
+    }
+    
+    sqlite3_blob_close(blob);
+    return count;
+    
+  again:
+    if (blob) sqlite3_blob_close(blob);
+    if (sqlite_retry(&retry, "sqlite3_blob_open")==0)
+      return -1;
+  }while (1);
 }
-
-int rhizome_seek(struct rhizome_read *read, int64_t offset){
-  
-}
-
-
-*/

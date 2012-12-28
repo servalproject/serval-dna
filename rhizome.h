@@ -607,13 +607,30 @@ struct rhizome_write{
   int64_t file_offset;
   int64_t file_length;
   
+  int crypt;
   unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
   // note the last 8 bytes will be reset with the current file_offest
   unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
-  int crypt;
   
   SHA512_CTX sha512_context;
   int64_t blob_rowid;
+};
+
+struct rhizome_read{
+  char id[SHA512_DIGEST_STRING_LENGTH+1];
+  
+  int crypt;
+  unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
+  // note the last 8 bytes will be reset with the current file_offest
+  unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
+  
+  int hash;
+  SHA512_CTX sha512_context;
+  
+  int64_t blob_rowid;
+  
+  int64_t offset;
+  int64_t length;
 };
 
 int rhizome_exists(const char *fileHash);
@@ -627,5 +644,7 @@ int rhizome_stat_file(rhizome_manifest *m, const char *filepath);
 int rhizome_add_file(rhizome_manifest *m, const char *filepath);
 int rhizome_crypt_xor_block(unsigned char *buffer, int buffer_size, int64_t stream_offset, 
 			    const unsigned char *key, unsigned char *nonce);
+int rhizome_open_read(struct rhizome_read *read, const char *fileid, int hash);
+int rhizome_read(struct rhizome_read *read, unsigned char *buffer, int buffer_length);
 
 #endif //__SERVALDNA__RHIZOME_H

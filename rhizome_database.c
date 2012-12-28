@@ -1359,99 +1359,53 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
  */
 int rhizome_retrieve_file(const char *fileid, const char *filepath, const unsigned char *key)
 {
-  if (rhizome_update_file_priority(fileid) == -1) {
-    WHY("Failed to update file priority");
+  int ret;
+  
+  if (rhizome_update_file_priority(fileid) == -1)
+    return WHY("Failed to update file priority");
+  
+  struct rhizome_read read_state;
+  bzero(&read_state, sizeof read_state);
+  
+  // for now, always hash the file
+  if (rhizome_open_read(&read_state, fileid, 1))
     return 0;
+  
+  int fd=-1;
+  
+  if (filepath&&filepath[0]) {
+    fd = open(filepath, O_WRONLY | O_CREAT | O_TRUNC, 0775);
+    if (fd == -1)
+      return WHY_perror("open");
   }
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = sqlite_prepare(&retry, "SELECT rowid FROM fileblobs WHERE (SELECT 1 FROM files WHERE FILEBLOBS.id = FILES.id AND id = ? AND datavalid != 0)");
-  if (!statement)
-    return -1;
-  int ret = 0;
-  char fileIdUpper[RHIZOME_FILEHASH_STRLEN + 1];
-  strncpy(fileIdUpper, fileid, sizeof fileIdUpper);
-  fileIdUpper[RHIZOME_FILEHASH_STRLEN] = '\0';
-  str_toupper_inplace(fileIdUpper);
-  sqlite3_bind_text(statement, 1, fileIdUpper, -1, SQLITE_STATIC);
-  int stepcode = sqlite_step_retry(&retry, statement);
-  if (stepcode != SQLITE_ROW) {
-    ret = 0; // no files found
-  } else if (!(   sqlite3_column_count(statement) == 1
-		  && sqlite3_column_type(statement, 0) == SQLITE_INTEGER
-  )) { 
-    ret = WHY("Incorrect statement column");
-  } else {
-    long long length;
-    int64_t rowid = sqlite3_column_int64(statement, 0);
-    sqlite3_blob *blob = NULL;
-    int code;
-    do code = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", rowid, 0 /* read only */, &blob);
-    while (sqlite_code_busy(code) && sqlite_retry(&retry, "sqlite3_blob_open"));
-    if (!sqlite_code_ok(code)) {
-      ret = WHY("Could not open blob for reading");
-    } else {
-      length = sqlite3_blob_bytes(blob);
-      cli_puts("filehash"); cli_delim(":");
-      cli_puts(fileIdUpper); cli_delim("\n");
-      cli_puts("filesize"); cli_delim(":");
-      cli_printf("%lld", length); cli_delim("\n");
-      ret = 1;
-      if (filepath&&filepath[0]) {
-	int fd = open(filepath, O_WRONLY | O_CREAT | O_TRUNC, 0775);
-	if (fd == -1) {
-	  WHY_perror("open");
-	  ret = WHYF("Cannot open %s for write/create", filepath);
-	} else {
-	  /* read from blob and write to disk, decrypting if necessary as we go.  Each 4KB block of
-	     data has a nonce which is fed with the key into crypto_stream_xsalsa20().  The nonce is
-	     the file address divided by 4KB.  This approach is used as it allows us to append to
-	     files easily, without having to get the XOR stream for the whole file, and without the
-	     cipher on existing bytes having to change.  Both of these are important properties for
-	     journal bundles, such as will be used by MeshMS.  For non-journal bundles where it is
-	     important that changing the payload changes the encryption key (so that the XOR between
-	     any two versions of the payload cannot be easily obtained).  We will do this by having
-	     journal manifests identified, causing the key to be locked, rather than based on the
-	     version number.  But anyway, we are supplied with the key here, so all we need to do is
-	     do the block counting and call crypto_stream_xsalsa20().
-	  */
-	  long long offset;
-	  unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
-	  bzero(nonce, crypto_stream_xsalsa20_NONCEBYTES);
-	  unsigned char buffer[RHIZOME_CRYPT_PAGE_SIZE];
-	  for (offset = 0; offset < length; offset += RHIZOME_CRYPT_PAGE_SIZE) {
-	    long long count=length-offset;
-	    if (count>RHIZOME_CRYPT_PAGE_SIZE) count=RHIZOME_CRYPT_PAGE_SIZE;
-	    if(sqlite3_blob_read(blob,&buffer[0],count,offset)!=SQLITE_OK) {
-	      ret = 0;
-	      WHYF("query failed, %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));
-	      WHYF("Error reading %lld bytes of data from blob at offset 0x%llx", count, offset);
-	      break;
-	    }
-	    if (key) {
-	      if(rhizome_crypt_xor_block(buffer, count, offset, key, nonce)){
-		ret=0;
-		break;
-	      }
-	    }
-	    if (write(fd,buffer,count)!=count) {
-	      ret =0;
-	      WHY("Failed to write data to file");
-	      break;
-	    }
-	  }
-	  sqlite3_blob_close(blob);
-	  blob = NULL;
-	}
-	if (fd != -1 && close(fd) == -1) {
-	  WHY_perror("close");
-	  WHYF("Error flushing to %s ", filepath);
-	  ret = 0;
-	}
+  
+  if (key){
+    bcopy(key, read_state.key, sizeof(read_state.key));
+    read_state.crypt=1;
+  }
+  
+  unsigned char buffer[RHIZOME_CRYPT_PAGE_SIZE];
+  while((ret=rhizome_read(&read_state, buffer, sizeof(buffer)))>0){
+    if (fd!=-1){
+      if (write(fd,buffer,ret)!=ret) {
+	ret = WHY("Failed to write data to file");
+	break;
       }
-      if (blob)
-	sqlite3_blob_close(blob);
     }
   }
-  sqlite3_finalize(statement);
+  
+  if (fd!=-1){
+    if (close(fd)==-1)
+      ret=WHY_perror("close");
+  }
+  
+  if (ret>=0){
+    cli_puts("filehash"); cli_delim(":");
+    cli_puts(read_state.id); cli_delim("\n");
+    cli_puts("filesize"); cli_delim(":");
+    cli_printf("%lld", read_state.length); cli_delim("\n");
+    return 1;
+  }
+  
   return ret;
 }
