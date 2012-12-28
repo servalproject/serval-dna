@@ -33,8 +33,8 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   
-  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") == -1)
-    return -1;
+  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") != SQLITE_OK)
+    return WHY("Failed to begin transaction");
   
   /* INSERT INTO FILES(id as text, data blob, length integer, highestpriority integer).
    BUT, we have to do this incrementally so that we can handle blobs larger than available memory.
@@ -87,7 +87,6 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
     
   /* Get rowid for inserted row, so that we can modify the blob */
   write->blob_rowid = sqlite3_last_insert_rowid(rhizome_db);
-  DEBUGF("Got rowid %lld",write->blob_rowid);
   write->file_length = file_length;
   write->file_offset = 0;
   SHA512_Init(&write->sha512_context);
@@ -98,7 +97,10 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
     write->buffer_size=RHIZOME_BUFFER_MAXIMUM_SIZE;
   
   write->buffer=malloc(write->buffer_size);
-  return sqlite_exec_void_retry(&retry, "COMMIT;");
+  if (sqlite_exec_void_retry(&retry, "COMMIT;")!=SQLITE_OK){
+    return WHYF("Failed to commit transaction: %s", sqlite3_errmsg(rhizome_db));
+  }
+  return 0;
 }
 
 /* Write write->buffer into the database blob */
@@ -226,8 +228,10 @@ int rhizome_finish_write(struct rhizome_write *write){
   SHA512_End(&write->sha512_context, hash_out);
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") == -1)
-    return -1;
+  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") != SQLITE_OK){
+    WHY("Failed to begin transaction");
+    goto failure;
+  }
   
   if (write->id_known){
     if (strcasecmp(write->id, hash_out)){
@@ -266,7 +270,11 @@ int rhizome_finish_write(struct rhizome_write *write){
     }
     strlcpy(write->id, hash_out, SHA512_DIGEST_STRING_LENGTH);
   }
-  return sqlite_exec_void_retry(&retry, "COMMIT;");
+  if (sqlite_exec_void_retry(&retry, "COMMIT;")!=SQLITE_OK){
+    WHYF("Failed to commit transaction: %s", sqlite3_errmsg(rhizome_db));
+    goto failure;
+  }
+  return 0;
   
 failure:
   sqlite_exec_void_retry(&retry, "ROLLBACK;");

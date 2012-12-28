@@ -750,8 +750,8 @@ int rhizome_store_bundle(rhizome_manifest *m)
   const char *author = is_sid_any(m->author) ? NULL : alloca_tohex_sid(m->author);
 
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") == -1)
-    return -1;
+  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") != SQLITE_OK)
+    return WHY("Failed to begin transaction");
 
   sqlite3_stmt *stmt;
   if ((stmt = sqlite_prepare(&retry, "INSERT OR REPLACE INTO MANIFESTS(id,manifest,version,inserttime,bar,filesize,filehash,author) VALUES(?,?,?,?,?,?,?,?);")) == NULL)
@@ -825,7 +825,7 @@ int rhizome_store_bundle(rhizome_manifest *m)
     sqlite3_finalize(stmt);
     stmt = NULL;
   }
-  if (sqlite_exec_void_retry(&retry, "COMMIT;") != -1)
+  if (sqlite_exec_void_retry(&retry, "COMMIT;") == SQLITE_OK)
     return 0;
 rollback:
   if (stmt)
@@ -957,8 +957,8 @@ int64_t rhizome_database_create_blob_for(const char *hashhex,int64_t fileLength,
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   
-  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") == -1)
-    return -1;
+  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") != SQLITE_OK)
+    return WHY("Failed to begin transaction");
   
   /* Okay, so there are no records that match, but we should delete any half-baked record (with datavalid=0) so that the insert below doesn't fail.
      Don't worry about the return result, since it might not delete any records. */
@@ -1010,7 +1010,6 @@ insert_row_fail:
     WHYF("Failed to commit transaction");
     return -1;
   }
-
   return rowid;
 }
 
