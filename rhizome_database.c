@@ -954,10 +954,16 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
 int64_t rhizome_database_create_blob_for(const char *hashhex,int64_t fileLength,
 					 int priority)
 {
+  
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  
+  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") == -1)
+    return -1;
+  
   /* Okay, so there are no records that match, but we should delete any half-baked record (with datavalid=0) so that the insert below doesn't fail.
      Don't worry about the return result, since it might not delete any records. */
-  sqlite_exec_void("DELETE FROM FILES WHERE id='%s' AND datavalid=0;",hashhex);
-  sqlite_exec_void("DELETE FROM FILEBLOBS WHERE id='%s';",hashhex);
+  sqlite_exec_void_retry(&retry, "DELETE FROM FILES WHERE id='%s' AND datavalid=0;",hashhex);
+  sqlite_exec_void_retry(&retry, "DELETE FROM FILEBLOBS WHERE id='%s';",hashhex);
 
   /* INSERT INTO FILES(id as text, data blob, length integer, highestpriority integer).
    BUT, we have to do this incrementally so that we can handle blobs larger than available memory.
@@ -968,10 +974,10 @@ int64_t rhizome_database_create_blob_for(const char *hashhex,int64_t fileLength,
      int sqlite3_blob_write(sqlite3_blob *, const void *z, int n, int iOffset);
   */
 
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  int ret=sqlite_exec_void("INSERT OR REPLACE INTO FILES(id,length,highestpriority,datavalid,inserttime) VALUES('%s',%lld,%d,0,%lld);",
-			   hashhex, (long long)fileLength, priority, (long long)gettime_ms()
-			   );
+  int ret=sqlite_exec_void_retry(&retry, 
+	"INSERT OR REPLACE INTO FILES(id,length,highestpriority,datavalid,inserttime) VALUES('%s',%lld,%d,0,%lld);",
+	hashhex, (long long)fileLength, priority, (long long)gettime_ms()
+	);
   if (ret!=SQLITE_OK) {
     DEBUGF("insert or replace into files ... failed: %s",
 	   sqlite3_errmsg(rhizome_db));
@@ -992,13 +998,20 @@ int64_t rhizome_database_create_blob_for(const char *hashhex,int64_t fileLength,
   if (_sqlite_exec_void_prepared(__WHENCE__, LOG_LEVEL_ERROR, &retry, statement) == -1) {
 insert_row_fail:
     WHYF("Failed to insert row for fileid=%s", hashhex);
+    sqlite_exec_void_retry(&retry, "ROLLBACK;");
     return -1;
   }
 
   /* Get rowid for inserted row, so that we can modify the blob */
   int64_t rowid = sqlite3_last_insert_rowid(rhizome_db);
+  
+  ret = sqlite_exec_void_retry(&retry, "COMMIT;");
+  if (ret!=SQLITE_OK){
+    WHYF("Failed to commit transaction");
+    return -1;
+  }
 
-return rowid;
+  return rowid;
 }
 
 void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCount)
