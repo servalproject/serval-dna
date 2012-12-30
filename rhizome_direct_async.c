@@ -68,16 +68,19 @@ int rhizome_direct_async_load_state()
   int i;
   char filename[1024];
 
+  DEBUGF("There are %d RD async channels.",config.rhizome.direct.channels.ac);
   for(i=0;i<config.rhizome.direct.channels.ac;i++) {
+    /* All fields zero is the correct default state */
     bzero(&channel_states[i],sizeof(channel_states[i]));
+
     if (config.rhizome.direct.channels.av[i].value.out_path) {
       snprintf(filename,1024,"%s/queued_manifests",
 	       config.rhizome.direct.channels.av[i].value.out_path);
       struct stat s;
-      if (stat(filename,&s)) {
+      if (!stat(filename,&s)) {
+	channel_states[i].queuedManifests=s.st_size/RHIZOME_BAR_BYTES;
 	channel_states[i].firstManifestQueueTime=1000*s.st_ctime;
 	channel_states[i].lastManifestQueueTime=1000*s.st_mtime;
-	channel_states[i].queuedManifests=s.st_size/RHIZOME_BAR_BYTES;
       }
       snprintf(filename,1024,"%s/state",
 	       config.rhizome.direct.channels.av[i].value.out_path);
@@ -87,15 +90,16 @@ int rhizome_direct_async_load_state()
 	       &channel_states[i].lastInsertionTime,
 	       &channel_states[i].lastTXMessageNumber);
 	fclose(f);
-      }      
+      }
     }
-    DEBUGF("RD channel #%d state: %lld:%lld:%d:%lld:%lld",
-	   channel_states[i].firstManifestQueueTime,
-	   channel_states[i].lastManifestQueueTime,
-	   channel_states[i].queuedManifests,
-	   channel_states[i].lastInsertionTime,
-	   channel_states[i].lastTXMessageNumber);
-	   
+    if (config.debug.rhizome_async)
+      DEBUGF("RD channel #%d state: %lld:%lld:%d:%lld:%lld",
+	     i,
+	     channel_states[i].firstManifestQueueTime,
+	     channel_states[i].lastManifestQueueTime,
+	     channel_states[i].queuedManifests,
+	     channel_states[i].lastInsertionTime,
+	     channel_states[i].lastTXMessageNumber);	   
   }
 
   return 0;
