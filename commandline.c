@@ -1277,18 +1277,13 @@ int app_rhizome_extract_file(int argc, const char *const *argv, const struct com
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
-  /* Extract the file from the database.
-     We don't provide a decryption key here, because we don't know it.
-     (We probably should allow the user to provide one).
-  */
-  int ret = rhizome_retrieve_file(fileid, filepath, keyhex[0] ? key : NULL);
-  switch (ret) {
-    case 0: ret = 1; break;
-    case 1: ret = 0; break;
-    case -1: break;
-    default: ret = WHYF("Unsupported return value %d", ret); break;
+  /* Extract the file from the database. */
+  if (!rhizome_exists(fileid)){
+    return 1;
   }
-  return ret;
+  if (rhizome_retrieve_file(fileid, filepath, keyhex[0] ? key : NULL))
+    return -1;
+  return 0;
 }
 
 int app_rhizome_list(int argc, const char *const *argv, const struct command_line_option *o, void *context)

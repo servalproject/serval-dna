@@ -358,7 +358,7 @@ int rhizome_open_read(struct rhizome_read *read, const char *fileid, int hash){
   
   sqlite3_stmt *statement = sqlite_prepare(&retry, "SELECT FILEBLOBS.rowid FROM FILEBLOBS, FILES WHERE FILEBLOBS.id = FILES.id AND FILES.id = ? AND FILES.datavalid != 0");
   if (!statement)
-    return -1;
+    return WHYF("Failed to prepare statement: %s", sqlite3_errmsg(rhizome_db));
   
   sqlite3_bind_text(statement, 1, read->id, -1, SQLITE_STATIC);
   
