@@ -707,14 +707,8 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
     }
   }
 
-  if (!m->fileHashedP)
-    return WHY("Manifest missing filehash");
-
   // If the payload is already available, no need to fetch, so import now.
-  long long gotfile = 0;
-  if (sqlite_exec_int64(&gotfile, "SELECT COUNT(*) FROM FILES WHERE ID='%s' and datavalid=1;", m->fileHexHash) != 1)
-    return WHY("select failed");
-  if (gotfile) {
+  if (rhizome_exists(m->fileHexHash)){
     if (config.debug.rhizome_rx)
       DEBUGF("   fetch not started - payload already present, so importing instead");
     if (rhizome_add_manifest(m, m->ttl-1) == -1)
@@ -1384,8 +1378,8 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 	RETURN(-1);
       } else {
 	int ret=sqlite_exec_void_retry(&retry,
-				       "UPDATE FILES SET datavalid=1 WHERE id='%s'",
-				       slot->manifest->fileHexHash);
+				       "UPDATE FILES SET inserttime=%lld, datavalid=1 WHERE id='%s'",
+				       gettime_ms(), slot->manifest->fileHexHash);
 	if (ret!=SQLITE_OK) 
 	  if (config.debug.rhizome_rx)
 	    DEBUGF("error marking row valid: %s",sqlite3_errmsg(rhizome_db));

@@ -222,15 +222,8 @@ int rhizome_opendb()
   sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_HASH ON MANIFESTS(filehash);");
 
   // We can't delete a file that is being transferred in another process at this very moment...
-  // FIXME, reinstate with a check for insert time
-  
-  /* Clean out half-finished entries from the database 
-  sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM MANIFESTS WHERE filehash IS NULL;");
-  sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM FILES WHERE NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);");
-  sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM FILEBLOBS WHERE NOT EXISTS( SELECT  1 FROM FILES WHERE FILEBLOBS.id = FILES.id);");
-  sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM MANIFESTS WHERE filehash != '' AND NOT EXISTS( SELECT  1 FROM FILES WHERE MANIFESTS.filehash = FILES.id);");
-   sqlite_exec_void("DELETE FROM FILES WHERE datavalid=0;");
-   */
+  // TODO don't cleanup before every command line operation...
+  rhizome_cleanup();
   RETURN(0);
 }
 
@@ -590,6 +583,21 @@ long long rhizome_database_used_bytes()
   return db_page_size * (db_page_count - db_free_page_count);
 }
 
+void rhizome_cleanup()
+{
+  // clean out unreferenced files
+  // TODO keep updating inserttime for *very* long transfers?
+  if (sqlite_exec_void("DELETE FROM FILES WHERE inserttime < %lld AND datavalid=0;", gettime_ms() - 300000)) {
+    WARNF("delete failed: %s", sqlite3_errmsg(rhizome_db));
+  }
+  if (sqlite_exec_void("DELETE FROM FILES WHERE inserttime < %lld AND datavalid=1 AND NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);", gettime_ms() - 1000)) {
+    WARNF("delete failed: %s", sqlite3_errmsg(rhizome_db));
+  }
+  if (sqlite_exec_void("DELETE FROM FILEBLOBS WHERE NOT EXISTS ( SELECT  1 FROM FILES WHERE FILES.id = FILEBLOBS.id );")) {
+    WARNF("delete failed: %s", sqlite3_errmsg(rhizome_db));
+  }
+}
+
 int rhizome_make_space(int group_priority, long long bytes)
 {
   /* Asked for impossibly large amount */
@@ -599,6 +607,8 @@ int rhizome_make_space(int group_priority, long long bytes)
   long long db_used = rhizome_database_used_bytes();
   if (db_used == -1)
     return -1;
+  
+  rhizome_cleanup();
   
   /* If there is already enough space now, then do nothing more */
   if (db_used<=(config.rhizome.database_size-bytes-65536))
@@ -689,7 +699,6 @@ int rhizome_drop_stored_file(const char *id,int maximum_priority)
   return 0;
 }
 
-
 /*
   Store the specified manifest into the sqlite database.
   We assume that sufficient space has been made for us.
@@ -734,14 +743,8 @@ int rhizome_store_bundle(rhizome_manifest *m)
   rhizome_manifest_to_bar(m,bar);
 
   /* Store the file (but not if it is already in the database) */
-  // TODO encrypted payloads - pass encryption key here. Filehash should be of
-  // encrypted data.
-  // We should add the file in the same transaction, but closing the blob seems
-  // to cause some issues.
   char filehash[RHIZOME_FILEHASH_STRLEN + 1];
   if (m->fileLength > 0) {
-    if (!m->fileHashedP)
-      return WHY("Manifest payload hash unknown");
     strncpy(filehash, m->fileHexHash, sizeof filehash);
     str_toupper_inplace(filehash);
 
@@ -777,19 +780,8 @@ int rhizome_store_bundle(rhizome_manifest *m)
   sqlite3_finalize(stmt);
   stmt = NULL;
 
-  // we might need to leave the old file around for a bit
-  // clean out unreferenced files first
+  // TODO remove old payload?
   
-  // FIXME where is the ? parameter bound????
-  if (sqlite_exec_void("DELETE FROM FILES WHERE inserttime < ? AND NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);")) {
-    WHYF("delete failed, %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(stmt));
-    goto rollback;
-  }
-  if (sqlite_exec_void("DELETE FROM FILEBLOBS WHERE NOT EXISTS ( SELECT  1 FROM FILES WHERE FILES.id = FILEBLOBS.id );")) {
-    WHYF("delete failed, %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(stmt));
-    goto rollback;
-  }
-
   if (rhizome_manifest_get(m,"isagroup",NULL,0)!=NULL) {
     int closed=rhizome_manifest_get_ll(m,"closedgroup");
     if (closed<1) closed=0;
@@ -1063,8 +1055,6 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
   strbuf b = strbuf_local(sqlcmd, sizeof sqlcmd);
   strbuf_puts(b, "SELECT id, manifest, version, author FROM manifests WHERE ");
   if (m->fileLength != 0) {
-    if (!m->fileHashedP)
-      return WHY("Manifest payload is not hashed");
     strbuf_puts(b, "filehash = ?");
   } else
     strbuf_puts(b, "filesize = 0");
@@ -1196,7 +1186,6 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
 	  }
 	  memcpy(blob_m->cryptoSignPublic, manifest_id, RHIZOME_MANIFEST_ID_BYTES);
 	  memcpy(blob_m->fileHexHash, m->fileHexHash, RHIZOME_FILEHASH_STRLEN + 1);
-	  blob_m->fileHashedP = 1;
 	  blob_m->fileLength = m->fileLength;
 	  blob_m->version = q_version;
 	  *found = blob_m;
@@ -1279,13 +1268,11 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
 	    ret = WHY("Manifest is missing 'filehash' field");
 	  else {
 	    memcpy(m->fileHexHash, blob_filehash, RHIZOME_FILEHASH_STRLEN + 1);
-	    m->fileHashedP = 1;
 	  }
 	} else {
 	  if (blob_filehash != NULL)
 	    WARN("Manifest contains spurious 'filehash' field -- ignored");
 	  m->fileHexHash[0] = '\0';
-	  m->fileHashedP = 0;
 	}
 	long long blob_version = rhizome_manifest_get_ll(m, "version");
 	if (blob_version == -1)

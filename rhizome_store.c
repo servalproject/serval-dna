@@ -235,8 +235,8 @@ int rhizome_finish_write(struct rhizome_write *write){
       goto failure;
     }
     if (sqlite_exec_void_retry(&retry,
-			       "UPDATE FILES SET datavalid=1 WHERE id='%s'",
-			       write->id)!=SQLITE_OK){
+			       "UPDATE FILES SET inserttime=%lld, datavalid=1 WHERE id='%s'",
+			       gettime_ms(), write->id)!=SQLITE_OK){
       WHYF("Failed to update files: %s", sqlite3_errmsg(rhizome_db));
       goto failure;
     }
@@ -252,8 +252,8 @@ int rhizome_finish_write(struct rhizome_write *write){
       sqlite_exec_void_retry(&retry,"DELETE FROM FILES WHERE id='%s';",hash_out);
       
       if (sqlite_exec_void_retry(&retry,
-				 "UPDATE FILES SET datavalid=1, id='%s' WHERE id='%s'",
-				 hash_out, write->id)!=SQLITE_OK){
+				 "UPDATE FILES SET id='%s', inserttime=%lld, datavalid=1 WHERE id='%s'",
+				 hash_out, gettime_ms(), write->id)!=SQLITE_OK){
 	WHYF("Failed to update files: %s", sqlite3_errmsg(rhizome_db));
 	goto failure;
       }
@@ -318,7 +318,6 @@ int rhizome_stat_file(rhizome_manifest *m, const char *filepath)
   if (m->fileLength == 0){
     m->fileHexHash[0] = '\0';
     rhizome_manifest_del(m, "filehash");
-    m->fileHashedP = 0;
   }
   return 0;
 }
@@ -342,7 +341,6 @@ int rhizome_add_file(rhizome_manifest *m, const char *filepath)
   if (rhizome_finish_write(&write))
     return -1;
 
-  m->fileHashedP = 1;
   strlcpy(m->fileHexHash, write.id, SHA512_DIGEST_STRING_LENGTH);
   rhizome_manifest_set(m, "filehash", m->fileHexHash);
   return 0;

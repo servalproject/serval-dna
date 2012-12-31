@@ -175,7 +175,6 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 	    /* Force to upper case to avoid case sensitive comparison problems later. */
 	    str_toupper_inplace(m->values[m->var_count]);
 	    strcpy(m->fileHexHash, m->values[m->var_count]);
-	    m->fileHashedP = 1;
 	  }
 	} else if (strcasecmp(var, "BK") == 0) {
 	  if (!rhizome_str_is_bundle_key(value)) {
