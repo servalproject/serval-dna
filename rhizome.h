@@ -608,7 +608,6 @@ struct rhizome_write{
   
   int crypt;
   unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
-  // note the last 8 bytes will be reset with the current file_offest
   unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
   
   SHA512_CTX sha512_context;
@@ -620,7 +619,6 @@ struct rhizome_read{
   
   int crypt;
   unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
-  // note the last 8 bytes will be reset with the current file_offest
   unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
   
   int hash;
@@ -642,7 +640,7 @@ int rhizome_import_file(rhizome_manifest *m, const char *filepath);
 int rhizome_stat_file(rhizome_manifest *m, const char *filepath);
 int rhizome_add_file(rhizome_manifest *m, const char *filepath);
 int rhizome_crypt_xor_block(unsigned char *buffer, int buffer_size, int64_t stream_offset, 
-			    const unsigned char *key, unsigned char *nonce);
+			    const unsigned char *key, const unsigned char *nonce);
 int rhizome_open_read(struct rhizome_read *read, const char *fileid, int hash);
 int rhizome_read(struct rhizome_read *read, unsigned char *buffer, int buffer_length);
 int rhizome_extract_file(rhizome_manifest *m, const char *filepath);
