@@ -117,6 +117,7 @@ typedef struct rhizome_manifest {
   unsigned char signatureTypes[MAX_MANIFEST_VARS];
 
   int errors; /* if non-zero, then manifest should not be trusted */
+  time_ms_t inserttime;
 
   /* Set non-zero after variables have been packed and
      signature blocks appended.
@@ -303,9 +304,10 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
 long long rhizome_bar_version(unsigned char *bar);
 unsigned long long rhizome_bar_bidprefix_ll(unsigned char *bar);
 int rhizome_list_manifests(const char *service, const char *sender_sid, const char *recipient_sid, int limit, int offset);
-int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp);
+int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m);
 int rhizome_retrieve_file(const char *fileid, const char *filepath,
 			  const unsigned char *key);
+int rhizome_find_manifest_secret(rhizome_manifest *m);
 
 #define RHIZOME_DONTVERIFY 0
 #define RHIZOME_VERIFY 1

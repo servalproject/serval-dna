@@ -1232,32 +1232,58 @@ int app_rhizome_extract_manifest(int argc, const char *const *argv, const struct
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
-  /* Extract the manifest from the database */
-  rhizome_manifest *m = NULL;
-  int ret = rhizome_retrieve_manifest(manifestid, &m);
-  switch (ret) {
-    case 0: ret = 1; break;
-    case 1: ret = 0;
-      if (manifestpath && strcmp(manifestpath, "-") == 0) {
-	cli_puts("manifest");
-	cli_delim(":");
-	cli_write(m->manifestdata, m->manifest_all_bytes);
-	cli_delim("\n");
-      } else if (manifestpath) {
-	/* If the manifest has been read in from database, the blob is there,
-	   and we can lie and say we are finalised and just want to write it
-	   out.  TODO: really should have a dirty/clean flag, so that write
-	   works if clean but not finalised. */
-	m->finalised=1;
-	if (rhizome_write_manifest_file(m, manifestpath) == -1)
-	  ret = -1;
-      }
-      break;
-    case -1: break;
-    default: ret = WHYF("Unsupported return value %d", ret); break;
+  
+  unsigned char manifest_id[RHIZOME_MANIFEST_ID_BYTES];
+  if (fromhexstr(manifest_id, manifestid, RHIZOME_MANIFEST_ID_BYTES) == -1)
+    return WHY("Invalid manifest ID");
+  
+  char manifestIdUpper[RHIZOME_MANIFEST_ID_STRLEN + 1];
+  tohex(manifestIdUpper, manifest_id, RHIZOME_MANIFEST_ID_BYTES);
+  
+  rhizome_manifest *m = rhizome_new_manifest();
+  if (m == NULL)
+    return WHY("Out of manifests");
+  
+  int ret = rhizome_retrieve_manifest(manifestIdUpper, m);
+  if (ret==0){
+    if (m->errors){
+      // fail if the manifest is invalid?
+    }
+    
+    rhizome_find_manifest_secret(m);
+    
+    const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
+    
+    cli_puts("service");    cli_delim(":"); cli_puts(blob_service); cli_delim("\n");
+    cli_puts("manifestid"); cli_delim(":"); cli_puts(manifestIdUpper); cli_delim("\n");
+    cli_puts("version");    cli_delim(":"); cli_printf("%lld", m->version); cli_delim("\n");
+    cli_puts("inserttime"); cli_delim(":"); cli_printf("%lld", m->inserttime); cli_delim("\n");
+    if (m->haveSecret) {
+      cli_puts(".author");  cli_delim(":"); cli_puts(alloca_tohex_sid(m->author)); cli_delim("\n");
+    }
+    cli_puts(".readonly");  cli_delim(":"); cli_printf("%d", m->haveSecret?0:1); cli_delim("\n");
+    cli_puts("filesize");   cli_delim(":"); cli_printf("%lld", (long long) m->fileLength); cli_delim("\n");
+    if (m->fileLength != 0) {
+      cli_puts("filehash"); cli_delim(":"); cli_puts(m->fileHexHash); cli_delim("\n");
+    }
+    
+    if (manifestpath && strcmp(manifestpath, "-") == 0) {
+      cli_puts("manifest");
+      cli_delim(":");
+      cli_write(m->manifestdata, m->manifest_all_bytes);
+      cli_delim("\n");
+    } else if (manifestpath) {
+      /* If the manifest has been read in from database, the blob is there,
+       and we can lie and say we are finalised and just want to write it
+       out.  TODO: really should have a dirty/clean flag, so that write
+       works if clean but not finalised. */
+      m->finalised=1;
+      if (rhizome_write_manifest_file(m, manifestpath) == -1)
+	ret = -1;
+    }
   }
-  if (m)
-    rhizome_manifest_free(m);
+  
+  rhizome_manifest_free(m);
   return ret;
 }
 

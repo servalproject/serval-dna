@@ -292,6 +292,23 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
   RETURN(0);
 }
 
+/* Find the author and bundle secret */
+int rhizome_find_manifest_secret(rhizome_manifest *m)
+{
+  int ret;
+  if (is_sid_any(m->author)) {
+    ret=rhizome_find_bundle_author(m);
+  }else{
+    // should we try this first, then fall back to searching the keyring?
+    ret=rhizome_extract_privatekey(m);
+    if (ret){
+      INFOF("bundle author=%s is not in keyring -- ignored", alloca_tohex_sid(m->author));
+      memset(m->author, 0, sizeof m->author);
+    }
+  }
+  return ret;
+}
+
 int rhizome_hash_file(rhizome_manifest *m,const char *filename,char *hash_out)
 {
   /* Gnarf! NaCl's crypto_hash() function needs the whole file passed in in one

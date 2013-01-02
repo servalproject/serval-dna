@@ -1205,150 +1205,51 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
 
 /* Retrieve a manifest from the database, given its manifest ID.
  *
- * Returns 1 if manifest is found (if mp != NULL then a new manifest struct is allocated, made
- * finalisable and * assigned to *mp, caller is responsible for freeing).
- * Returns 0 if manifest is not found (*mp is unchanged).
- * Returns -1 on error (*mp is unchanged).
+ * Returns 0 if manifest is found
+ * Returns 1 if manifest is not found
+ * Returns -1 on error
+ * Caller is responsible for allocating and freeing rhizome_manifest
  */
-int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
-{
-  unsigned char manifest_id[RHIZOME_MANIFEST_ID_BYTES];
-  if (fromhexstr(manifest_id, manifestid, RHIZOME_MANIFEST_ID_BYTES) == -1)
-    return WHY("Invalid manifest ID");
+int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m){
+  int ret=0;
+  
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = sqlite_prepare(&retry, "SELECT id, manifest, version, inserttime, author FROM manifests WHERE id = ?");
+  
+  sqlite3_stmt *statement = sqlite_prepare(&retry, "SELECT manifest, version, inserttime, author FROM manifests WHERE id = ?");
   if (!statement)
     return -1;
-  char manifestIdUpper[RHIZOME_MANIFEST_ID_STRLEN + 1];
-  tohex(manifestIdUpper, manifest_id, RHIZOME_MANIFEST_ID_BYTES);
-  sqlite3_bind_text(statement, 1, manifestIdUpper, -1, SQLITE_STATIC);
-  int ret = 0;
-  rhizome_manifest *m = NULL;
-  while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
-    if (!(   sqlite3_column_count(statement) == 5
-	  && sqlite3_column_type(statement, 0) == SQLITE_TEXT
-	  && sqlite3_column_type(statement, 1) == SQLITE_BLOB
-	  && sqlite3_column_type(statement, 2) == SQLITE_INTEGER
-	  && sqlite3_column_type(statement, 3) == SQLITE_INTEGER
-	  && (  sqlite3_column_type(statement, 4) == SQLITE_TEXT
-	     || sqlite3_column_type(statement, 4) == SQLITE_NULL
-	     )
-    )) {
-      ret = WHY("Incorrect statement column");
-      break;
+
+  sqlite3_bind_text(statement, 1, manifestid, -1, SQLITE_STATIC);
+  if (sqlite_step_retry(&retry, statement) == SQLITE_ROW){
+    const char *manifestblob = (char *) sqlite3_column_blob(statement, 0);
+    long long q_version = (long long) sqlite3_column_int64(statement, 1);
+    long long q_inserttime = (long long) sqlite3_column_int64(statement, 2);
+    const char *q_author = (const char *) sqlite3_column_text(statement, 3);
+    size_t manifestblobsize = sqlite3_column_bytes(statement, 0); // must call after sqlite3_column_blob()
+    
+    if (rhizome_read_manifest_file(m, manifestblob, manifestblobsize)){
+      ret=WHYF("Manifest %s exists but is invalid", manifestid);
+      goto done;
     }
-    const char *q_manifestid = (const char *) sqlite3_column_text(statement, 0);
-    const char *manifestblob = (char *) sqlite3_column_blob(statement, 1);
-    long long q_version = (long long) sqlite3_column_int64(statement, 2);
-    long long q_inserttime = (long long) sqlite3_column_int64(statement, 3);
-    const char *q_author = (const char *) sqlite3_column_text(statement, 4);
-    size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
-    if (mp) {
-      m = rhizome_new_manifest();
-      if (m == NULL) {
-	WARNF("MANIFESTS row id=%s has invalid manifest blob -- skipped", q_manifestid);
-	ret = WHY("Out of manifests");
-      } else if (rhizome_read_manifest_file(m, manifestblob, manifestblobsize) == -1) {
-	WARNF("MANIFESTS row id=%s has invalid manifest blob -- skipped", q_manifestid);
-	ret = WHY("Invalid manifest blob from database");
-      } else {
-	ret = 1;
-	memcpy(m->cryptoSignPublic, manifest_id, RHIZOME_MANIFEST_ID_BYTES);
-	const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
-	if (blob_service == NULL)
-	  ret = WHY("Manifest is missing 'service' field");
-	long long filesizeq = rhizome_manifest_get_ll(m, "filesize");
-	if (filesizeq == -1)
-	  ret = WHY("Manifest is missing 'filesize' field");
-	else
-	  m->fileLength = filesizeq;
-	const char *blob_filehash = rhizome_manifest_get(m, "filehash", NULL, 0);
-	if (m->fileLength != 0) {
-	  if (blob_filehash == NULL)
-	    ret = WHY("Manifest is missing 'filehash' field");
-	  else {
-	    memcpy(m->fileHexHash, blob_filehash, RHIZOME_FILEHASH_STRLEN + 1);
-	  }
-	} else {
-	  if (blob_filehash != NULL)
-	    WARN("Manifest contains spurious 'filehash' field -- ignored");
-	  m->fileHexHash[0] = '\0';
-	}
-	long long blob_version = rhizome_manifest_get_ll(m, "version");
-	if (blob_version == -1)
-	  ret = WHY("Manifest is missing 'version' field");
-	else
-	  m->version = blob_version;
-	int read_only = 1;
-	if (q_author == NULL) {
-	  // Search for the author in the keyring.
-	  // TODO optimise: if manifest 'sender' is set, try that identity first.
-	  int result = rhizome_find_bundle_author(m);
-	  switch (result) {
-	  case -1:
-	    ret = WHY("Error searching keyring for bundle author");
-	    break;
-	  case 0:
-	    read_only = 0;
-	    if (sqlite_exec_void("UPDATE MANIFESTS SET author='%s' WHERE id='%s';", alloca_tohex_sid(m->author), manifestIdUpper) == -1)
-	      WHY("Error updating MANIFESTS author column");
-	    break;
-	  }
-	} else if (stowSid(m->author, 0, q_author) == -1) {
-	  WARNF("MANIFESTS row id=%s contains invalid author=%s -- ignored", q_manifestid, alloca_str_toprint(q_author));
-	} else {
-	  // If the AUTHOR column contains a valid SID, then it means that author verification has
-	  // already been done (either implicitly when the bundle was added locally, or explicitly
-	  // when rhizome_find_bundle_author() was called in the case above), so we represent this
-	  // bundle as writable if the author is present in the keyring and possesses a Rhizome
-	  // Secret.
-	  int result = rhizome_find_secret(m->author, NULL, NULL);
-	  switch (result) {
-	  case -1:
-	    ret = WHY("Error extracting manifest private key");
-	    break;
-	  case 0:
-	    read_only = 0;
-	    break;
-	  default:
-	    INFOF("bundle author=%s is not in keyring -- ignored", q_author);
-	    memset(m->author, 0, sizeof m->author); // do not output ".author" field
-	    break;
-	  }
-	}
-	if (ret == 1) {
-	  cli_puts("service"); cli_delim(":");
-	  cli_puts(blob_service); cli_delim("\n");
-	  cli_puts("manifestid"); cli_delim(":");
-	  cli_puts(q_manifestid); cli_delim("\n");
-	  cli_puts("version"); cli_delim(":");
-	  cli_printf("%lld", q_version); cli_delim("\n");
-	  cli_puts("inserttime"); cli_delim(":");
-	  cli_printf("%lld", q_inserttime); cli_delim("\n");
-	  if (!is_sid_any(m->author)) {
-	    cli_puts(".author"); cli_delim(":");
-	    cli_puts(alloca_tohex_sid(m->author)); cli_delim("\n");
-	  }
-	  cli_puts(".readonly"); cli_delim(":");
-	  cli_printf("%d", read_only); cli_delim("\n");
-	  cli_puts("filesize"); cli_delim(":");
-	  cli_printf("%lld", (long long) m->fileLength); cli_delim("\n");
-	  if (m->fileLength != 0) {
-	    cli_puts("filehash"); cli_delim(":");
-	    cli_puts(m->fileHexHash); cli_delim("\n");
-	  }
-	  // Could write the manifest blob to the CLI output here, but that would require the output to
-	  // support byte[] fields as well as String fields.
-	}
-      }
+    
+    if (q_author){
+      if (stowSid(m->author, 0, q_author) == -1)
+	WARNF("Manifest %s contains invalid author=%s -- ignored", manifestid, alloca_str_toprint(q_author));
     }
-    break;
+    
+    if (m->version!=q_version)
+      WARNF("Version mismatch, manifest is %lld, database is %lld", m->version, q_version);
+    
+    m->inserttime = q_inserttime;
+  }else{
+    ret=1;
   }
+  
+done:
   sqlite3_finalize(statement);
-  if (mp && ret == 1)
-    *mp = m;
-  return ret;
+  return ret;  
 }
+
 
 /* Retrieve a file from the database, given its file hash.
  *
