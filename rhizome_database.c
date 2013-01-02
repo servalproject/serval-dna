@@ -1242,68 +1242,11 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m){
     
     m->inserttime = q_inserttime;
   }else{
+    INFOF("Manifest %s was not found", manifestid);
     ret=1;
   }
   
 done:
   sqlite3_finalize(statement);
   return ret;  
-}
-
-
-/* Retrieve a file from the database, given its file hash.
- *
- * Returns 0 if file is valid, contents are written to filepath if given.
- * Returns -1 on error.
- */
-int rhizome_retrieve_file(const char *fileid, const char *filepath, const unsigned char *key)
-{
-  int ret=0;
-  
-  if (rhizome_update_file_priority(fileid) == -1)
-    return WHY("Failed to update file priority");
-  
-  struct rhizome_read read_state;
-  bzero(&read_state, sizeof read_state);
-  
-  // for now, always hash the file
-  if (rhizome_open_read(&read_state, fileid, 1))
-    return -1;
-  
-  int fd=-1;
-  
-  if (filepath&&filepath[0]) {
-    fd = open(filepath, O_WRONLY | O_CREAT | O_TRUNC, 0775);
-    if (fd == -1)
-      return WHY_perror("open");
-  }
-  
-  if (key){
-    bcopy(key, read_state.key, sizeof(read_state.key));
-    read_state.crypt=1;
-  }
-  
-  unsigned char buffer[RHIZOME_CRYPT_PAGE_SIZE];
-  while((ret=rhizome_read(&read_state, buffer, sizeof(buffer)))>0){
-    if (fd!=-1){
-      if (write(fd,buffer,ret)!=ret) {
-	ret = WHY("Failed to write data to file");
-	break;
-      }
-    }
-  }
-  
-  if (fd!=-1){
-    if (close(fd)==-1)
-      ret=WHY_perror("close");
-  }
-  
-  if (ret>=0){
-    cli_puts("filehash"); cli_delim(":");
-    cli_puts(read_state.id); cli_delim("\n");
-    cli_puts("filesize"); cli_delim(":");
-    cli_printf("%lld", read_state.length); cli_delim("\n");
-  }
-  
-  return ret;
 }

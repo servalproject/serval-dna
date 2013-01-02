@@ -93,8 +93,9 @@ ammendfile() {
    echo "XXX  ${instance_name}  XXX" >> $instance_dir/file
    executeOk_servald rhizome add file "" "" "$instance_dir/file" "$instance_dir/file.manifest" 
    tfw_cat --stdout --stderr
-   extract_manifest_filehash filehash "$instance_dir/file.manifest"
-   executeOk_servald rhizome extract file $filehash
+   extract_manifest_id id "$instance_dir/file.manifest"
+   # read file contents to verify successful add
+   executeOk_servald rhizome extract file $id
    rm "$instance_dir/file.manifest"
 }
 

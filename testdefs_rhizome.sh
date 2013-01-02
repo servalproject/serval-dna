@@ -361,11 +361,11 @@ rhizome_update_file() {
 assert_rhizome_received() {
    [ $# -ne 0 ] || error "missing arguments"
    local name
-   local _hash
+   local _id
    for name; do
       if [ -s "$name" ]; then
-         extract_manifest_filehash _hash "$name.manifest"
-         executeOk_servald rhizome extract file "$_hash" extracted
+         extract_manifest_id _id "$name.manifest"
+         executeOk_servald rhizome extract file "$_id" extracted
          assert cmp "$name" extracted
       fi
    done

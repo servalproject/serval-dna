@@ -453,3 +453,59 @@ int rhizome_read(struct rhizome_read *read, unsigned char *buffer, int buffer_le
       return -1;
   }while (1);
 }
+
+static int write_file(struct rhizome_read *read, const char *filepath){
+  int fd=-1, ret=0;
+  
+  if (filepath&&filepath[0]) {
+    fd = open(filepath, O_WRONLY | O_CREAT | O_TRUNC, 0775);
+    if (fd == -1)
+      return WHY_perror("open");
+  }
+  
+  unsigned char buffer[RHIZOME_CRYPT_PAGE_SIZE];
+  while((ret=rhizome_read(read, buffer, sizeof(buffer)))>0){
+    if (fd!=-1){
+      if (write(fd,buffer,ret)!=ret) {
+	ret = WHY("Failed to write data to file");
+	break;
+      }
+    }
+  }
+  
+  if (fd!=-1){
+    if (close(fd)==-1)
+      ret=WHY_perror("close");
+    if (ret<0){
+      // TODO delete partial file
+    }
+  }
+  
+  return ret;
+}
+
+/* Extract the file related to a manifest to the file system.
+ * The file will be de-crypted and verified while reading.
+ * If filepath is not supplied, the file will still be checked.
+ */
+int rhizome_extract_file(rhizome_manifest *m, const char *filepath){
+  struct rhizome_read read_state;
+  bzero(&read_state, sizeof read_state);
+  
+  // for now, always hash the file
+  if (rhizome_open_read(&read_state, m->fileHexHash, 1))
+    return -1;
+  
+  return write_file(&read_state, filepath);
+}
+
+/* dump the raw contents of a file */
+int rhizome_dump_file(const char *id, const char *filepath){
+  struct rhizome_read read_state;
+  bzero(&read_state, sizeof read_state);
+
+  if (rhizome_open_read(&read_state, id, 1))
+    return -1;
+  
+  return write_file(&read_state, filepath);
+}

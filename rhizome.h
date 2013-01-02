@@ -305,8 +305,6 @@ long long rhizome_bar_version(unsigned char *bar);
 unsigned long long rhizome_bar_bidprefix_ll(unsigned char *bar);
 int rhizome_list_manifests(const char *service, const char *sender_sid, const char *recipient_sid, int limit, int offset);
 int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m);
-int rhizome_retrieve_file(const char *fileid, const char *filepath,
-			  const unsigned char *key);
 int rhizome_find_manifest_secret(rhizome_manifest *m);
 
 #define RHIZOME_DONTVERIFY 0
@@ -647,5 +645,7 @@ int rhizome_crypt_xor_block(unsigned char *buffer, int buffer_size, int64_t stre
 			    const unsigned char *key, unsigned char *nonce);
 int rhizome_open_read(struct rhizome_read *read, const char *fileid, int hash);
 int rhizome_read(struct rhizome_read *read, unsigned char *buffer, int buffer_length);
+int rhizome_extract_file(rhizome_manifest *m, const char *filepath);
+int rhizome_dump_file(const char *id, const char *filepath);
 
 #endif //__SERVALDNA__RHIZOME_H

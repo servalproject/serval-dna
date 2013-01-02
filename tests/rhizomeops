@@ -283,25 +283,32 @@ setup_ExtractFileAfterAdd() {
    tfw_cat --stderr
    executeOk_servald rhizome list ''
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1
-   extract_manifest_filehash filehash file1.manifest
+   extract_manifest_id BID file1.manifest
 }
 test_ExtractFileAfterAdd() {
-   executeOk_servald rhizome extract file $filehash file1x
+   executeOk_servald rhizome extract file $BID file1x
+   tfw_cat --stderr
    assert cmp file1 file1x
    local size=$(( $(cat file1 | wc -c) + 0 ))
-   assertStdoutLineCount '==' 2
-   assertStdoutGrep --matches=1 "^filehash:$filehash$"
-   assertStdoutGrep --matches=1 "^filesize:$size$"
+   assertStdoutLineCount '==' 0
+#   assertStdoutGrep --matches=1 "^filehash:$filehash$"
+#   assertStdoutGrep --matches=1 "^filesize:$size$"
 }
 
 doc_ExtractFileMissing="Extract non-existent file"
 setup_ExtractFileMissing() {
    setup_servald
    setup_rhizome
+   BID=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF
    filehash=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF
 }
 test_ExtractFileMissing() {
-   execute --exit-status=1 $servald rhizome extract file $filehash foo
+   execute --exit-status=1 $servald rhizome extract file $BID foo
+   tfw_cat --stderr
+   assertStdoutLineCount '==' 0
+   assert [ ! -e foo ]
+   execute --exit-status=1 $servald rhizome dump file $filehash foo
+   tfw_cat --stderr
    assertStdoutLineCount '==' 0
    assert [ ! -e foo ]
 }
@@ -312,13 +319,22 @@ setup_ExtractFileInvalidID() {
    setup_rhizome
 }
 test_ExtractFileInvalidID() {
-   execute --exit-status=255 $servald rhizome extract file 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEx foo
+   execute --exit-status=255 $servald rhizome extract file 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEx foo
    assertStdoutLineCount '==' 0
    assert [ ! -e foo ]
-   execute --exit-status=255 $servald rhizome extract file 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDE foo
+   execute --exit-status=255 $servald rhizome extract file 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDE foo
    assertStdoutLineCount '==' 0
    assert [ ! -e foo ]
    execute --exit-status=255 $servald rhizome extract file '' foo
+   assertStdoutLineCount '==' 0
+   assert [ ! -e foo ]
+   execute --exit-status=255 $servald rhizome dump file 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEx foo
+   assertStdoutLineCount '==' 0
+   assert [ ! -e foo ]
+   execute --exit-status=255 $servald rhizome dump file 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDE foo
+   assertStdoutLineCount '==' 0
+   assert [ ! -e foo ]
+   execute --exit-status=255 $servald rhizome dump file '' foo
    assertStdoutLineCount '==' 0
    assert [ ! -e foo ]
 }
@@ -507,8 +523,8 @@ test_MeshMSAddCreate() {
    assert_manifest_complete file1.manifest
    executeOk_servald rhizome list ''
    assert_rhizome_list --fromhere=1 file1
-   extract_manifest_filehash filehash file1.manifest
-   executeOk_servald rhizome extract file $filehash file1x
+   extract_manifest_id BID file1.manifest
+   executeOk_servald rhizome extract file $BID file1x
    assert diff file1 file1x
 }
 
@@ -539,14 +555,13 @@ test_MeshMSAddGrow() {
       extract_manifest_id idx file1.manifest
       extract_manifest_filehash filehashx file1.manifest
       extract_manifest_BK bkx file1.manifest
-      compute_filehash filehash file1
       assert --message="manifest ID remains the same" [ "$idx" = "$id" ]
       assert --message="manifest BK remains the same" [ "$bkx" = "$bk" ]
-      assert --message="filehash is for new file" [ "$filehash" = "$filehashx" ]
-      executeOk_servald rhizome extract file "$filehash" file1x
+      assert --message="filehash is for new file" [ "$filehash" != "$filehashx" ]
+      executeOk_servald rhizome extract file "$id" file1x
       assert --message="extracted payload is correct" diff file1 file1x
       for ofilehash in "${ofilehashes[@]}"; do
-         execute --exit-status=1 --stderr $servald rhizome extract file "$ofilehash"
+         execute --exit-status=1 --stderr $servald rhizome dump file "$ofilehash"
       done
    done
 }
