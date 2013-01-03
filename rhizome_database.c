@@ -229,6 +229,7 @@ int rhizome_opendb()
 
 int rhizome_close_db()
 {
+  IN();
   if (rhizome_db) {
     sqlite3_stmt *stmt = NULL;
     while ((stmt = sqlite3_next_stmt(rhizome_db, stmt))) {
@@ -237,10 +238,10 @@ int rhizome_close_db()
     }
     int r = sqlite3_close(rhizome_db);
     if (r != SQLITE_OK)
-      return WHYF("Failed to close sqlite database, %s",sqlite3_errmsg(rhizome_db));
+      RETURN(WHYF("Failed to close sqlite database, %s",sqlite3_errmsg(rhizome_db)));
   }
   rhizome_db=NULL;
-  return 0;
+  RETURN(0);
 }
 
 /* SQL query retry logic.
@@ -585,6 +586,7 @@ long long rhizome_database_used_bytes()
 
 void rhizome_cleanup()
 {
+  IN();
   // clean out unreferenced files
   // TODO keep updating inserttime for *very* long transfers?
   if (sqlite_exec_void("DELETE FROM FILES WHERE inserttime < %lld AND datavalid=0;", gettime_ms() - 300000)) {
@@ -596,6 +598,7 @@ void rhizome_cleanup()
   if (sqlite_exec_void("DELETE FROM FILEBLOBS WHERE NOT EXISTS ( SELECT  1 FROM FILES WHERE FILES.id = FILEBLOBS.id );")) {
     WARNF("delete failed: %s", sqlite3_errmsg(rhizome_db));
   }
+  OUT();
 }
 
 int rhizome_make_space(int group_priority, long long bytes)

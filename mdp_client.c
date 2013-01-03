@@ -142,6 +142,7 @@ int overlay_mdp_client_init()
 
 int overlay_mdp_client_done()
 {
+  IN();
   if (mdp_client_socket!=-1) {
     /* Tell MDP server to release all our bindings */
     overlay_mdp_frame mdp;
@@ -154,7 +155,7 @@ int overlay_mdp_client_done()
   if (mdp_client_socket!=-1)
     close(mdp_client_socket);
   mdp_client_socket=-1;
-  return 0;
+  RETURN(0);
 }
 
 int overlay_mdp_client_poll(time_ms_t timeout_ms)

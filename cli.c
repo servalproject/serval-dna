@@ -89,7 +89,9 @@ int cli_parse(const int argc, const char *const *args, const struct command_line
 
 int cli_invoke(const struct command_line_option *option, const int argc, const char *const *args, void *context)
 {
-  return option->function(argc, args, option, context);
+  IN();
+  int ret=option->function(argc, args, option, context);
+  RETURN(ret);
 }
 
 int cli_arg(int argc, const char *const *argv, const struct command_line_option *o, char *argname, const char **dst, int (*validator)(const char *arg), char *defaultvalue)

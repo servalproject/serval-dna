@@ -163,7 +163,6 @@ int rhizome_flush(struct rhizome_write *write){
     DEBUGF("Written %lld of %lld", write->file_offset, write->file_length);
   write->data_size=0;
   return 0;
-  
 }
 
 /* Expects file to be at least file_length in size */
@@ -298,9 +297,7 @@ int rhizome_import_file(rhizome_manifest *m, const char *filepath)
     return -1;
   }
   
-  if (rhizome_finish_write(&write))
-    return -1;
-  return 0;
+  return rhizome_finish_write(&write);
 }
 
 int rhizome_stat_file(rhizome_manifest *m, const char *filepath)

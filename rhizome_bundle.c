@@ -627,6 +627,7 @@ int rhizome_manifest_dump(rhizome_manifest *m, const char *msg)
 
 int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout)
 {
+  IN();
   int ret=0;
   
   if (rhizome_manifest_check_duplicate(m, mout) == 2) {
@@ -638,21 +639,21 @@ int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout)
     
     /* Convert to final form for signing and writing to disk */
     if (rhizome_manifest_pack_variables(m))
-      return WHY("Could not convert manifest to wire format");
+      RETURN(WHY("Could not convert manifest to wire format"));
     
     /* Sign it */
     if (rhizome_manifest_selfsign(m))
-      return WHY("Could not sign manifest");
+      RETURN(WHY("Could not sign manifest"));
     
     /* mark manifest as finalised */
     m->finalised=1;
     if (rhizome_add_manifest(m, 255 /* TTL */)) {
       rhizome_manifest_free(m);
-      return WHY("Manifest not added to Rhizome database");
+      RETURN(WHY("Manifest not added to Rhizome database"));
     }
   }
   
-  return ret;
+  RETURN(ret);
 }
 
 int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSid, rhizome_bk_t *bsk){
