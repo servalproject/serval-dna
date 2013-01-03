@@ -34,7 +34,7 @@ unsigned char *rhizome_bundle_shared_secret(rhizome_manifest *m)
 
 int rhizome_manifest_createid(rhizome_manifest *m)
 {
-  m->haveSecret=1;
+  m->haveSecret=NEW_BUNDLE_ID;
   int r=crypto_sign_edwards25519sha512batch_keypair(m->cryptoSignPublic,m->cryptoSignSecret);
   if (!r) return 0;
   return WHY("Failed to create keypair for manifest ID.");
@@ -225,7 +225,7 @@ int rhizome_extract_privatekey(rhizome_manifest *m)
 			     bkBytes,m->cryptoSignSecret);
 
   if (result == 0) {
-    m->haveSecret=1;
+    m->haveSecret=EXISTING_BUNDLE_ID;
     RETURN(0); // bingo
   }
   memset(m->cryptoSignSecret, 0, sizeof m->cryptoSignSecret);
@@ -275,7 +275,7 @@ int rhizome_find_bundle_author(rhizome_manifest *m)
       if (!rhizome_bk2secret(m,m->cryptoSignPublic,rs,rs_len,
 			     bkBytes,m->cryptoSignSecret)) {
 	memcpy(m->author, authorSid, sizeof m->author);
-	m->haveSecret=1;
+	m->haveSecret=EXISTING_BUNDLE_ID;
 	if (config.debug.rhizome)
 	  DEBUGF("found bundle author sid=%s", alloca_tohex_sid(m->author));
 	
@@ -333,8 +333,8 @@ int rhizome_verify_bundle_privatekey(rhizome_manifest *m,
   if (config.debug.rhizome)
     DEBUGF("We have the private key for this bundle.");
   if (m&&sk==m->cryptoSignSecret&&pkin==m->cryptoSignPublic) {
-    DEBUGF("Set haveSecret=1 in manifest");
-    m->haveSecret=1;
+    DEBUGF("Set haveSecret=%d in manifest",EXISTING_BUNDLE_ID);
+    m->haveSecret=EXISTING_BUNDLE_ID;
   }
   RETURN(0);
 }

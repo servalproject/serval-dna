@@ -305,6 +305,8 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
   str_toupper_inplace(id);
   m->version = rhizome_manifest_get_ll(m, "version");
   
+  // TODO, work out why the cache was failing and fix it, then prove that it is faster than accessing the database.
+  
   // skip the cache for now
   long long dbVersion = -1;
   if (sqlite_exec_int64(&dbVersion, "SELECT version FROM MANIFESTS WHERE id='%s';", id) == -1)

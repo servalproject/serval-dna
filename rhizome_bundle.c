@@ -644,12 +644,8 @@ int rhizome_manifest_dump(rhizome_manifest *m, const char *msg)
 
 int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout)
 {
-  /* Add the manifest and its associated file to the Rhizome database, 
-   generating an "id" in the process.
-   PGS @20121003 - Hang on, didn't we create the ID above? Presumably the
-   following does NOT in fact generate a bundle ID. 
-   */
   int ret=0;
+  
   if (rhizome_manifest_check_duplicate(m, mout) == 2) {
     /* duplicate found -- verify it so that we can write it out later */
     rhizome_manifest_verify(*mout);

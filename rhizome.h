@@ -73,6 +73,9 @@ extern time_ms_t rhizome_voice_timeout;
 
 #define RHIZOME_IDLE_TIMEOUT 10000
 
+#define EXISTING_BUNDLE_ID 1
+#define NEW_BUNDLE_ID 2
+
 typedef struct rhizome_signature {
   unsigned char signature[crypto_sign_edwards25519sha512batch_BYTES
 			  +crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES+1];
@@ -298,8 +301,7 @@ int _sqlite_exec_strbuf(struct __sourceloc, strbuf sb, const char *sqlformat,...
 double rhizome_manifest_get_double(rhizome_manifest *m,char *var,double default_value);
 int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs);
 int rhizome_update_file_priority(const char *fileid);
-int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found,
-			   int checkVersionP);
+int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found);
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
 long long rhizome_bar_version(unsigned char *bar);
 unsigned long long rhizome_bar_bidprefix_ll(unsigned char *bar);

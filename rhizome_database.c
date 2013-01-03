@@ -1032,8 +1032,10 @@ int rhizome_update_file_priority(const char *fileid)
 
    @author Andrew Bettison <andrew@servalproject.com>
  */
-int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, int checkVersionP)
+int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
 {
+  // TODO, add service, name, sender & recipient to manifests table so we can simply query them.
+  
   const char *service = rhizome_manifest_get(m, "service", NULL, 0);
   const char *name = NULL;
   const char *sender = NULL;
@@ -1058,8 +1060,6 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
     strbuf_puts(b, "filehash = ?");
   } else
     strbuf_puts(b, "filesize = 0");
-  if (checkVersionP)
-    strbuf_puts(b, " AND version = ?");
   if (strbuf_overrun(b))
     return WHYF("SQL command too long: %s", strbuf_str(b));
   int ret = 0;
@@ -1076,8 +1076,6 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
       DEBUGF("filehash=\"%s\"", filehash);
     sqlite3_bind_text(statement, field++, filehash, -1, SQLITE_STATIC);
   }
-  if (checkVersionP)
-    sqlite3_bind_int64(statement, field++, m->version);
   size_t rows = 0;
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     ++rows;
@@ -1128,7 +1126,7 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
 	WARNF("MANIFESTS row id=%s has inconsistent blob with id=%s -- skipped", q_manifestid, blob_id);
 	++inconsistent;
       }
-      if (checkVersionP && blob_version != q_version) {
+      if (blob_version != q_version) {
 	WARNF("MANIFESTS row id=%s has inconsistent blob: manifests.version=%lld, blob.version=%lld -- skipped",
 	      q_manifestid, q_version, blob_version);
 	++inconsistent;
@@ -1150,10 +1148,6 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
 		q_manifestid);
 	  ++inconsistent;
 	}
-      }
-      if (checkVersionP && q_version != m->version) {
-	WARNF("SELECT query with version=%lld returned incorrect row: manifests.version=%lld -- skipped", m->version, q_version);
-	++inconsistent;
       }
       if (blob_service == NULL) {
 	WARNF("MANIFESTS row id=%s has blob with no 'service' -- skipped", q_manifestid, blob_id);

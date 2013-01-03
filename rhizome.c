@@ -202,14 +202,19 @@ int rhizome_manifest_bind_id(rhizome_manifest *m_in)
 }
 
 /* Check if a manifest is already stored for the same payload with the same details.
-   This catches the case of "dna rhizome add file <filename>" on the same file more than once.
+   This catches the case of "rhizome add file <filename>" on the same file more than once.
    (Debounce!) */
 int rhizome_manifest_check_duplicate(rhizome_manifest *m_in, rhizome_manifest **m_out)
 {
+  // if a manifest was supplied with an ID, don't bother to check for a duplicate.
+  // we only want to filter out added files with no existing manifest.
+  if (m_in->haveSecret!=NEW_BUNDLE_ID)
+    return 0;
+  
   if (config.debug.rhizome) DEBUG("Checking for duplicate");
   if (m_out) *m_out = NULL; 
   rhizome_manifest *dupm = NULL;
-  if (rhizome_find_duplicate(m_in, &dupm,0 /* version doesn't matter */) == -1)
+  if (rhizome_find_duplicate(m_in, &dupm) == -1)
     return WHY("Errors encountered searching for duplicate manifest");
   if (dupm) {
     /* If the caller wants the duplicate manifest, it must be finalised, otherwise discarded. */
