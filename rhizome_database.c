@@ -1103,6 +1103,8 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
     const char *manifestblob = (char *) sqlite3_column_blob(statement, 1);
     size_t manifestblobsize = sqlite3_column_bytes(statement, 1); // must call after sqlite3_column_blob()
     long long q_version = sqlite3_column_int64(statement, 2);
+    const char *q_author = (const char *) sqlite3_column_text(statement, 3);
+    
     rhizome_manifest *blob_m = rhizome_new_manifest();
     if (blob_m == NULL) {
       ret = WHY("Out of manifests");
@@ -1120,6 +1122,12 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
       long long blob_filesize = rhizome_manifest_get_ll(blob_m, "filesize");
       if (config.debug.rhizome)
 	DEBUGF("Consider manifest.service=%s manifest.id=%s manifest.version=%lld", blob_service, q_manifestid, blob_version);
+      if (q_author) {
+	if (config.debug.rhizome)
+	  strbuf_sprintf(b, " .author=%s", q_author);
+	stowSid(blob_m->author, 0, q_author);
+      }
+      
       /* Perform consistency checks, because we're paranoid. */
       int inconsistent = 0;
       if (blob_id && strcasecmp(blob_id, q_manifestid)) {
@@ -1172,21 +1180,14 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
 	  }
 	}
 	if (ret == 1) {
-	  const char *q_author = (const char *) sqlite3_column_text(statement, 3);
-	  if (q_author) {
-	    if (config.debug.rhizome)
-	      strbuf_sprintf(b, " .author=%s", q_author);
-	    stowSid(blob_m->author, 0, q_author);
+	  // check that we can re-author this manifest
+	  if (rhizome_extract_privatekey(blob_m, NULL)==0){
+	    *found = blob_m;
+	    DEBUGF("Found duplicate payload: service=%s%s version=%llu hexhash=%s",
+		    blob_service, strbuf_str(b), blob_m->version, blob_m->fileHexHash, q_author ? q_author : ""
+		  );
+	    break;
 	  }
-	  memcpy(blob_m->cryptoSignPublic, manifest_id, RHIZOME_MANIFEST_ID_BYTES);
-	  memcpy(blob_m->fileHexHash, m->fileHexHash, RHIZOME_FILEHASH_STRLEN + 1);
-	  blob_m->fileLength = m->fileLength;
-	  blob_m->version = q_version;
-	  *found = blob_m;
-	  DEBUGF("Found duplicate payload: service=%s%s version=%llu hexhash=%s",
-		  blob_service, strbuf_str(b), blob_m->version, blob_m->fileHexHash, q_author ? q_author : ""
-		);
-	  break;
 	}
       }
     }
