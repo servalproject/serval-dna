@@ -653,16 +653,6 @@ int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout)
   } else {
     *mout=m;
     
-    /* set version of manifest, either from version variable, or using current time */
-    if (rhizome_manifest_get(m,"version",NULL,0)==NULL)
-    {
-      /* No version set */
-      m->version = gettime_ms();
-      rhizome_manifest_set_ll(m,"version",m->version);
-    }
-    else
-      m->version = rhizome_manifest_get_ll(m,"version");
-    
     /* Convert to final form for signing and writing to disk */
     if (rhizome_manifest_pack_variables(m))
       return WHY("Could not convert manifest to wire format");
@@ -728,6 +718,14 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
     }
   }
 
+  /* set version of manifest, either from version variable, or using current time */
+  if (rhizome_manifest_get(m,"version",NULL,0)==NULL)
+  {
+    /* No version set, default to the current time */
+    m->version = gettime_ms();
+    rhizome_manifest_set_ll(m,"version",m->version);
+  }
+  
   const char *id = rhizome_manifest_get(m, "id", NULL, 0);
   if (id == NULL) {
     if (config.debug.rhizome) DEBUG("creating new bundle");
@@ -806,6 +804,7 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
 	}
       }
     }
+    // TODO assert that new version > old version?
   }
   return 0;
 }
