@@ -292,23 +292,6 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
   RETURN(0);
 }
 
-/* Find the author and bundle secret */
-int rhizome_find_manifest_secret(rhizome_manifest *m)
-{
-  int ret;
-  if (is_sid_any(m->author)) {
-    ret=rhizome_find_bundle_author(m);
-  }else{
-    // should we try this first, then fall back to searching the keyring?
-    ret=rhizome_extract_privatekey(m);
-    if (ret){
-      INFOF("bundle author=%s is not in keyring -- ignored", alloca_tohex_sid(m->author));
-      memset(m->author, 0, sizeof m->author);
-    }
-  }
-  return ret;
-}
-
 int rhizome_hash_file(rhizome_manifest *m,const char *filename,char *hash_out)
 {
   /* Gnarf! NaCl's crypto_hash() function needs the whole file passed in in one
@@ -730,81 +713,32 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
   if (id == NULL) {
     if (config.debug.rhizome) DEBUG("creating new bundle");
     if (rhizome_manifest_bind_id(m) == -1) {
-      rhizome_manifest_free(m);
       return WHY("Could not bind manifest to an ID");
     }
   } else {
     if (config.debug.rhizome) DEBUGF("modifying existing bundle bid=%s", id);
-    // Modifying an existing bundle.  If an author SID is supplied, we must ensure that it is valid,
-    // ie, that identity has permission to alter the bundle.  If no author SID is supplied but a BSK
-    // is supplied, then use that to alter the bundle.  Otherwise, search the keyring for an
-    // identity with permission to alter the bundle.
-    if (!is_sid_any(m->author)) {
-      // Check that the given author has permission to alter the bundle, and extract the secret
-      // bundle key if so.
-      int result = rhizome_extract_privatekey(m);
-      switch (result) {
-	case -1:
-	  rhizome_manifest_free(m);
-	  return WHY("error in rhizome_extract_privatekey()");
-	case 0:
-	  break;
-	case 1:
-	  if (!rhizome_is_bk_none(bsk))
-	    break;
-	  rhizome_manifest_free(m);
-	  return WHY("Manifest does not have BK field");
-	case 2:
-	  rhizome_manifest_free(m);
-	  return WHY("Author unknown");
-	case 3:
-	  rhizome_manifest_free(m);
-	  return WHY("Author does not have a Rhizome Secret");
-	case 4:
-	  rhizome_manifest_free(m);
-	  return WHY("Author does not have permission to modify manifest");
-	default:
-	  rhizome_manifest_free(m);
-	  return WHYF("Unknown result from rhizome_extract_privatekey(): %d", result);
-      }
+    
+    // Modifying an existing bundle.  Make sure we can find the bundle secret.
+    int result = rhizome_extract_privatekey(m, bsk);
+    switch (result) {
+      case -1:
+	return -1;
+      case 0:
+	break;
+      case 1:
+	return WHY("bundle contains no BK field, and no bundle secret supplied");
+      case 2:
+	return WHY("Author unknown");
+      case 3:
+	return WHY("Author does not have a Rhizome Secret");
+      case 4:
+	return WHY("Author does not have permission to modify manifest");
+      default:
+	return WHYF("Unknown result from rhizome_extract_privatekey(): %d", result);
     }
-    if (!rhizome_is_bk_none(bsk)){
-      if (config.debug.rhizome) DEBUGF("bskhex=%s", alloca_tohex(bsk->binary, RHIZOME_BUNDLE_KEY_BYTES));
-      if (m->haveSecret) {
-	// If a bundle secret key was supplied that does not match the secret key derived from the
-	// author, then warn but carry on using the author's.
-	if (memcmp(bsk, m->cryptoSignSecret, RHIZOME_BUNDLE_KEY_BYTES) != 0)
-	  WARNF("Supplied bundle secret key is invalid -- ignoring");
-      } else {
-	// The caller provided the bundle secret key, so ensure that it corresponds to the bundle's
-	// public key (its bundle ID), otherwise it won't work.
-	memcpy(m->cryptoSignSecret, bsk, RHIZOME_BUNDLE_KEY_BYTES);
-	if (rhizome_verify_bundle_privatekey(m,m->cryptoSignSecret,
-					     m->cryptoSignPublic) == -1) {
-	  rhizome_manifest_free(m);
-	  return WHY("Incorrect BID secret key.");
-	}
-      }
-    }
-    // If we still don't know the bundle secret or the author, then search for an author.
-    if (!m->haveSecret && is_sid_any(m->author)) {
-      if (config.debug.rhizome) DEBUG("bundle author not specified, searching keyring");
-      int result = rhizome_find_bundle_author(m);
-      if (result != 0) {
-	rhizome_manifest_free(m);
-	switch (result) {
-	  case -1:
-	    return WHY("error in rhizome_find_bundle_author()");
-	  case 4:
-	    return WHY("Manifest does not have BK field");
-	  case 1:
-	    return WHY("No author found");
-	  default:
-	    return WHYF("Unknown result from rhizome_find_bundle_author(): %d", result);
-	}
-      }
-    }
+    
     // TODO assert that new version > old version?
   }
+  
   return 0;
 }

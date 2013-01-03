@@ -203,35 +203,54 @@ int rhizome_find_secret(const unsigned char *authorSid, int *rs_len, const unsig
  * @author Andrew Bettison <andrew@servalproject.com>
 
  */
-int rhizome_extract_privatekey(rhizome_manifest *m)
+int rhizome_extract_privatekey(rhizome_manifest *m, rhizome_bk_t *bsk)
 {
   IN();
+  unsigned char bkBytes[RHIZOME_BUNDLE_KEY_BYTES];
   char *bk = rhizome_manifest_get(m, "BK", NULL, 0);
-  if (!bk) {
-    if (config.debug.rhizome) DEBUG("bundle contains no BK field");
+  
+  if (bk){
+    int result;
+    
+    if (fromhexstr(bkBytes, bk, RHIZOME_BUNDLE_KEY_BYTES) == -1)
+      RETURN(WHYF("invalid BK field: %s", bk));
+    
+    if (is_sid_any(m->author)) {
+      result=rhizome_find_bundle_author(m);
+    }else{
+      int rs_len;
+      const unsigned char *rs;
+      result = rhizome_find_secret(m->author, &rs_len, &rs);
+      if (result!=0)
+	RETURN(result);
+      
+      result = rhizome_bk2secret(m,m->cryptoSignPublic,rs,rs_len,
+				 bkBytes,m->cryptoSignSecret);
+    }
+    
+    if (result == 0){
+      m->haveSecret=EXISTING_BUNDLE_ID;
+      
+      if(bsk && !rhizome_is_bk_none(bsk)){
+	// If a bundle secret key was supplied that does not match the secret key derived from the
+	// author, then warn but carry on using the author's.
+	if (memcmp(bsk, m->cryptoSignSecret, RHIZOME_BUNDLE_KEY_BYTES) != 0)
+	  WARNF("Supplied bundle secret key is invalid -- ignoring");
+      }
+      
+    }else{
+      memset(m->cryptoSignSecret, 0, sizeof m->cryptoSignSecret);
+      m->haveSecret=0;
+    }
+    
+    RETURN(result);
+  }else if(bsk && !rhizome_is_bk_none(bsk)){
+    memcpy(m->cryptoSignSecret, bsk, RHIZOME_BUNDLE_KEY_BYTES);
+    RETURN(rhizome_verify_bundle_privatekey(m,m->cryptoSignSecret,
+					    m->cryptoSignPublic));
+  }else{
     RETURN(1);
   }
-  unsigned char bkBytes[RHIZOME_BUNDLE_KEY_BYTES];
-  if (fromhexstr(bkBytes, bk, RHIZOME_BUNDLE_KEY_BYTES) == -1)
-    RETURN(WHYF("invalid BK field: %s", bk));
-
-  int rs_len;
-  const unsigned char *rs;
-  int result = rhizome_find_secret(m->author, &rs_len, &rs);
-  if (result != 0)
-    return WHY("Error searching for Rhizome secret");
-
-  result = rhizome_bk2secret(m,m->cryptoSignPublic,rs,rs_len,
-			     bkBytes,m->cryptoSignSecret);
-
-  if (result == 0) {
-    m->haveSecret=EXISTING_BUNDLE_ID;
-    RETURN(0); // bingo
-  }
-  memset(m->cryptoSignSecret, 0, sizeof m->cryptoSignSecret);
-  m->haveSecret=0;
-  if (config.debug.rhizome) DEBUGF("result=%d", result);
-  RETURN(result);
 }
 
 /* Discover if the given manifest was created (signed) by any unlocked identity currently in the
@@ -343,7 +362,7 @@ int rhizome_sign_hash(rhizome_manifest *m,
 		      rhizome_signature *out)
 {
   IN();
-  if (!m->haveSecret && rhizome_extract_privatekey(m))
+  if (!m->haveSecret && rhizome_extract_privatekey(m, NULL))
     RETURN(WHY("Cannot find secret key to sign manifest data."));
 
   RETURN(rhizome_sign_hash_with_key(m,m->cryptoSignSecret,m->cryptoSignPublic,out));
@@ -554,4 +573,3 @@ int rhizome_crypt_xor_block(unsigned char *buffer, int buffer_size, int64_t stre
   
   return 0;
 }
-

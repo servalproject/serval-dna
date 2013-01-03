@@ -307,7 +307,6 @@ long long rhizome_bar_version(unsigned char *bar);
 unsigned long long rhizome_bar_bidprefix_ll(unsigned char *bar);
 int rhizome_list_manifests(const char *service, const char *sender_sid, const char *recipient_sid, int limit, int offset);
 int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m);
-int rhizome_find_manifest_secret(rhizome_manifest *m);
 
 #define RHIZOME_DONTVERIFY 0
 #define RHIZOME_VERIFY 1
@@ -338,7 +337,7 @@ int rhizome_secret2bk(
   const unsigned char secret[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]
 		      );
 unsigned char *rhizome_bundle_shared_secret(rhizome_manifest *m);
-int rhizome_extract_privatekey(rhizome_manifest *m);
+int rhizome_extract_privatekey(rhizome_manifest *m, rhizome_bk_t *bsk);
 int rhizome_sign_hash_with_key(rhizome_manifest *m,const unsigned char *sk,
 			       const unsigned char *pk,rhizome_signature *out);
 int rhizome_verify_bundle_privatekey(rhizome_manifest *m, const unsigned char *sk,

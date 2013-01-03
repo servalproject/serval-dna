@@ -1057,14 +1057,14 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
     return -1;
   cli_arg(argc, argv, o, "pin", &pin, NULL, "");
   cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "");
-  if (cli_arg(argc, argv, o, "bsk", &bskhex, cli_optional_bundle_key, "") == -1)
+  if (cli_arg(argc, argv, o, "bsk", &bskhex, cli_optional_bundle_key, NULL) == -1)
     return -1;
   
   sid_t authorSid;
   if (authorSidHex[0] && fromhexstr(authorSid.binary, authorSidHex, SID_SIZE) == -1)
     return WHYF("invalid author_sid: %s", authorSidHex);
   rhizome_bk_t bsk;
-  if (bskhex[0] && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
+  if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
     return WHYF("invalid bsk: %s", bskhex);
   
   if (create_serval_instance_dir() == -1)
@@ -1097,7 +1097,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
   if (rhizome_stat_file(m, filepath))
     return -1;
   
-  if (rhizome_fill_manifest(m, filepath, *authorSidHex?&authorSid:NULL, &bsk))
+  if (rhizome_fill_manifest(m, filepath, *authorSidHex?&authorSid:NULL, bskhex?&bsk:NULL))
     return -1;
   
   /* Keep note as to whether we are supposed to be encrypting this file or not */
@@ -1250,7 +1250,7 @@ int app_rhizome_extract_manifest(int argc, const char *const *argv, const struct
       // fail if the manifest is invalid?
     }
     
-    rhizome_find_manifest_secret(m);
+    rhizome_extract_privatekey(m, NULL);
     
     const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
     
