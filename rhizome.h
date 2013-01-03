@@ -121,7 +121,7 @@ typedef struct rhizome_manifest {
 
   int errors; /* if non-zero, then manifest should not be trusted */
   time_ms_t inserttime;
-
+  
   /* Set non-zero after variables have been packed and
      signature blocks appended.
      All fields below may not be valid until the manifest has been finalised */
@@ -139,8 +139,11 @@ typedef struct rhizome_manifest {
   char *dataFileName;
   /* If set, unlink(2) the associated file when freeing the manifest */
   int dataFileUnlinkOnFree;
+  
   /* Whether the paylaod is encrypted or not */
-  int payloadEncryption; 
+  int payloadEncryption;
+  unsigned char payloadKey[RHIZOME_CRYPT_KEY_BYTES];
+  unsigned char payloadNonce[crypto_stream_xsalsa20_NONCEBYTES];
 
   /* Whether we have the secret for this manifest on hand */
   int haveSecret;
@@ -338,6 +341,7 @@ int rhizome_secret2bk(
 		      );
 unsigned char *rhizome_bundle_shared_secret(rhizome_manifest *m);
 int rhizome_extract_privatekey(rhizome_manifest *m, rhizome_bk_t *bsk);
+int rhizome_extract_privatekey_required(rhizome_manifest *m, rhizome_bk_t *bsk);
 int rhizome_sign_hash_with_key(rhizome_manifest *m,const unsigned char *sk,
 			       const unsigned char *pk,rhizome_signature *out);
 int rhizome_verify_bundle_privatekey(rhizome_manifest *m, const unsigned char *sk,
@@ -640,11 +644,12 @@ int rhizome_finish_write(struct rhizome_write *write);
 int rhizome_import_file(rhizome_manifest *m, const char *filepath);
 int rhizome_stat_file(rhizome_manifest *m, const char *filepath);
 int rhizome_add_file(rhizome_manifest *m, const char *filepath);
+int rhizome_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk);
 int rhizome_crypt_xor_block(unsigned char *buffer, int buffer_size, int64_t stream_offset, 
 			    const unsigned char *key, const unsigned char *nonce);
 int rhizome_open_read(struct rhizome_read *read, const char *fileid, int hash);
 int rhizome_read(struct rhizome_read *read, unsigned char *buffer, int buffer_length);
-int rhizome_extract_file(rhizome_manifest *m, const char *filepath);
+int rhizome_extract_file(rhizome_manifest *m, const char *filepath, rhizome_bk_t *bsk);
 int rhizome_dump_file(const char *id, const char *filepath);
 
 #endif //__SERVALDNA__RHIZOME_H

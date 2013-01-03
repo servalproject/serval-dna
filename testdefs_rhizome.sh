@@ -24,6 +24,7 @@ rexp_bundlesecret="$rexp_bundlekey"
 rexp_filehash='[0-9a-fA-F]\{128\}'
 rexp_filesize='[0-9]\{1,\}'
 rexp_version='[0-9]\{1,\}'
+rexp_crypt='[0-9]\{1,\}'
 rexp_date='[0-9]\{1,\}'
 
 assert_manifest_complete() {
@@ -228,6 +229,10 @@ extract_manifest_version() {
    extract_manifest "$1" "$2" version "$rexp_version"
 }
 
+extract_manifest_crypt() {
+   extract_manifest "$1" "$2" crypt "$rexp_crypt"
+}
+
 compute_filehash() {
    local _var="$1"
    local _file="$2"
@@ -276,10 +281,10 @@ bundle_received_by() {
          matches_rexp "$rexp_manifestid" "$bid" || error "invalid bundle ID: $bid"
          bundles+=("$arg")
          if [ "$bid" = "$arg" ]; then
-            rexps+=("RHIZOME ADD MANIFEST service=file bid=$bid")
+            rexps+=("RHIZOME ADD MANIFEST service=.* bid=$bid")
          else
             version="${arg#*:}"
-            rexps+=("RHIZOME ADD MANIFEST service=file bid=$bid version=$version")
+            rexps+=("RHIZOME ADD MANIFEST service=.* bid=$bid version=$version")
          fi
          ;;
       +[A-Z])

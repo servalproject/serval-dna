@@ -720,25 +720,25 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
     if (config.debug.rhizome) DEBUGF("modifying existing bundle bid=%s", id);
     
     // Modifying an existing bundle.  Make sure we can find the bundle secret.
-    int result = rhizome_extract_privatekey(m, bsk);
-    switch (result) {
-      case -1:
-	return -1;
-      case 0:
-	break;
-      case 1:
-	return WHY("bundle contains no BK field, and no bundle secret supplied");
-      case 2:
-	return WHY("Author unknown");
-      case 3:
-	return WHY("Author does not have a Rhizome Secret");
-      case 4:
-	return WHY("Author does not have permission to modify manifest");
-      default:
-	return WHYF("Unknown result from rhizome_extract_privatekey(): %d", result);
-    }
+    if (rhizome_extract_privatekey_required(m, bsk))
+      return -1;
     
     // TODO assert that new version > old version?
+  }
+  
+  int crypt = rhizome_manifest_get_ll(m,"crypt"); 
+  if (crypt==-1 && m->fileLength){
+    // no explicit crypt flag, should we encrypt this bundle?
+    char *sender = rhizome_manifest_get(m, "sender", NULL, 0);
+    char *recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
+    
+    // anything sent from one person to another should be considered private and encrypted by default
+    if (sender && recipient){
+      if (config.debug.rhizome)
+	DEBUGF("Implicitly adding payload encryption due to presense of sender & recipient fields");
+      m->payloadEncryption=1;
+      rhizome_manifest_set_ll(m,"crypt",1); 
+    }
   }
   
   return 0;

@@ -330,6 +330,19 @@ int rhizome_add_file(rhizome_manifest *m, const char *filepath)
   if (rhizome_open_write(&write, NULL, m->fileLength, RHIZOME_PRIORITY_DEFAULT))
     return -1;
 
+  write.crypt=m->payloadEncryption;
+  if (write.crypt){
+    // if the manifest specifies encryption, make sure we can generate the payload key and encrypt the contents as we go
+    if (rhizome_derive_key(m, NULL))
+      return -1;
+    
+    if (config.debug.rhizome)
+      DEBUGF("Encrypting file contents");
+    
+    bcopy(m->payloadKey, write.key, sizeof(write.key));
+    bcopy(m->payloadNonce, write.nonce, sizeof(write.nonce));
+  }
+  
   if (rhizome_write_file(&write, filepath)){
     rhizome_fail_write(&write);
     return -1;
@@ -485,13 +498,26 @@ static int write_file(struct rhizome_read *read, const char *filepath){
  * The file will be de-crypted and verified while reading.
  * If filepath is not supplied, the file will still be checked.
  */
-int rhizome_extract_file(rhizome_manifest *m, const char *filepath){
+int rhizome_extract_file(rhizome_manifest *m, const char *filepath, rhizome_bk_t *bsk){
   struct rhizome_read read_state;
   bzero(&read_state, sizeof read_state);
   
   // for now, always hash the file
   if (rhizome_open_read(&read_state, m->fileHexHash, 1))
     return -1;
+  
+  read_state.crypt=m->payloadEncryption;
+  if (read_state.crypt){
+    // if the manifest specifies encryption, make sure we can generate the payload key and encrypt the contents as we go
+    if (rhizome_derive_key(m, bsk))
+      return -1;
+    
+    if (config.debug.rhizome)
+      DEBUGF("Decrypting file contents");
+    
+    bcopy(m->payloadKey, read_state.key, sizeof(read_state.key));
+    bcopy(m->payloadNonce, read_state.nonce, sizeof(read_state.nonce));
+  }
   
   return write_file(&read_state, filepath);
 }

@@ -510,6 +510,29 @@ test_AddUnsupportedService() {
    assertExitStatus '!=' 0
 }
 
+doc_EncryptedPayload="Add an encrypted payload"
+setup_EncryptedPayload() {
+   setup_servald
+   setup_rhizome
+   echo "Clear Text" >file1
+   echo -e "service=file\nname=private\ncrypt=1" >file1.manifest
+}
+test_EncryptedPayload() {
+   executeOk_servald rhizome add file $SIDB1 '' file1 file1.manifest
+   tfw_cat --stdout --stderr
+   assert_stdout_add_file file1
+   assert_manifest_complete file1.manifest
+   executeOk_servald rhizome list ''
+   assert_rhizome_list --fromhere=1 file1
+   extract_manifest_id BID file1.manifest
+   executeOk_servald rhizome extract file $BID file1x
+   tfw_cat --stdout --stderr
+   assert diff file1 file1x
+   extract_manifest_filehash filehash file1.manifest
+   executeOk_servald rhizome dump file $filehash file1y
+   assert ! diff file1 file1y
+}
+
 doc_MeshMSAddCreate="First add MeshMS creates manifest"
 setup_MeshMSAddCreate() {
    setup_servald
@@ -521,6 +544,8 @@ test_MeshMSAddCreate() {
    executeOk_servald rhizome add file $SIDB1 '' file1 file1.manifest
    assert_stdout_add_file file1
    assert_manifest_complete file1.manifest
+   extract_manifest_crypt crypt file1.manifest
+   assert [ $crypt = 1 ]
    executeOk_servald rhizome list ''
    assert_rhizome_list --fromhere=1 file1
    extract_manifest_id BID file1.manifest

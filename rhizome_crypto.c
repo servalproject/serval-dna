@@ -253,6 +253,27 @@ int rhizome_extract_privatekey(rhizome_manifest *m, rhizome_bk_t *bsk)
   }
 }
 
+/* Same as rhizome_extract_privatekey, except warnings become errors and are logged */
+int rhizome_extract_privatekey_required(rhizome_manifest *m, rhizome_bk_t *bsk)
+{
+  int result = rhizome_extract_privatekey(m, bsk);
+  switch (result) {
+    case -1:
+    case 0:
+      return result;
+    case 1:
+      return WHY("bundle contains no BK field, and no bundle secret supplied");
+    case 2:
+      return WHY("Author unknown");
+    case 3:
+      return WHY("Author does not have a Rhizome Secret");
+    case 4:
+      return WHY("Author does not have permission to modify manifest");
+    default:
+      return WHYF("Unknown result from rhizome_extract_privatekey(): %d", result);
+  }
+}
+
 /* Discover if the given manifest was created (signed) by any unlocked identity currently in the
  * keyring.
  *
@@ -362,10 +383,11 @@ int rhizome_sign_hash(rhizome_manifest *m,
 		      rhizome_signature *out)
 {
   IN();
-  if (!m->haveSecret && rhizome_extract_privatekey(m, NULL))
-    RETURN(WHY("Cannot find secret key to sign manifest data."));
+  if (!m->haveSecret && rhizome_extract_privatekey_required(m, NULL))
+    RETURN(-1);
 
-  RETURN(rhizome_sign_hash_with_key(m,m->cryptoSignSecret,m->cryptoSignPublic,out));
+  int ret=rhizome_sign_hash_with_key(m,m->cryptoSignSecret,m->cryptoSignPublic,out);
+  RETURN(ret);
 }
 
 int rhizome_sign_hash_with_key(rhizome_manifest *m,const unsigned char *sk,
@@ -572,4 +594,71 @@ int rhizome_crypt_xor_block(unsigned char *buffer, int buffer_size, int64_t stre
   }
   
   return 0;
+}
+
+int rhizome_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk)
+{
+  // don't do anything if the manifest isn't flagged as being encrypted
+  if (!m->payloadEncryption)
+    return 0;
+  if (m->payloadEncryption!=1)
+    return WHYF("Unsupported encryption scheme %d", m->payloadEncryption);
+  
+  char *sender = rhizome_manifest_get(m, "sender", NULL, 0);
+  char *recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
+  
+  if (sender && recipient){
+    sid_t sender_sid, recipient_sid;
+    if (cf_opt_sid(&sender_sid, sender)!=CFOK)
+      return WHYF("Unable to parse sender sid");
+    if (cf_opt_sid(&recipient_sid, recipient)!=CFOK)
+      return WHYF("Unable to parse recipient sid");
+    
+    unsigned char *nm_bytes=NULL;
+    int cn=0,in=0,kp=0;
+    if (!keyring_find_sid(keyring,&cn,&in,&kp,sender_sid.binary)){
+      cn=in=kp=0;
+      if (!keyring_find_sid(keyring,&cn,&in,&kp,recipient_sid.binary)){
+	return WHYF("Neither the sender %s nor the recipient %s appears in our keyring", sender, recipient);
+      }
+      nm_bytes=keyring_get_nm_bytes(recipient_sid.binary, sender_sid.binary);
+    }else{
+      nm_bytes=keyring_get_nm_bytes(sender_sid.binary, recipient_sid.binary);
+    }
+    
+    if (!nm_bytes)
+      return -1;
+    
+    unsigned char hash[crypto_hash_sha512_BYTES];
+    crypto_hash_sha512(hash, nm_bytes, crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES);
+    bcopy(hash, m->payloadKey, RHIZOME_CRYPT_KEY_BYTES);
+    
+  }else{
+    if(!m->haveSecret){
+      if (rhizome_extract_privatekey_required(m, bsk))
+	return -1;
+    }
+    
+    unsigned char raw_key[9+crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]="sasquatch";
+    bcopy(m->cryptoSignSecret, &raw_key[9], crypto_sign_edwards25519sha512batch_SECRETKEYBYTES);
+    
+    unsigned char hash[crypto_hash_sha512_BYTES];
+    
+    crypto_hash_sha512(hash, raw_key, sizeof(raw_key));
+    bcopy(hash, m->payloadKey, RHIZOME_CRYPT_KEY_BYTES);
+  }
+  
+  // generate nonce from version#bundle id#version;
+  unsigned char raw_nonce[8+8+sizeof(m->cryptoSignPublic)];
+  
+  write_uint64(&raw_nonce[0], m->version);
+  bcopy(m->cryptoSignPublic, &raw_nonce[8], sizeof(m->cryptoSignPublic));
+  write_uint64(&raw_nonce[8+sizeof(m->cryptoSignPublic)], m->version);
+  
+  unsigned char hash[crypto_hash_sha512_BYTES];
+  
+  crypto_hash_sha512(hash, raw_nonce, sizeof(raw_nonce));
+  bcopy(hash, m->payloadNonce, sizeof(m->payloadNonce));
+  
+  return 0;  
 }
