@@ -245,7 +245,8 @@ int rhizome_extract_privatekey(rhizome_manifest *m, rhizome_bk_t *bsk)
     
     RETURN(result);
   }else if(bsk && !rhizome_is_bk_none(bsk)){
-    memcpy(m->cryptoSignSecret, bsk, RHIZOME_BUNDLE_KEY_BYTES);
+    bcopy(m->cryptoSignPublic, &m->cryptoSignSecret[RHIZOME_BUNDLE_KEY_BYTES], sizeof(m->cryptoSignPublic));
+    bcopy(bsk, m->cryptoSignSecret, RHIZOME_BUNDLE_KEY_BYTES);
     RETURN(rhizome_verify_bundle_privatekey(m,m->cryptoSignSecret,
 					    m->cryptoSignPublic));
   }else{

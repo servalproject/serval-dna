@@ -85,6 +85,24 @@ test_AddNoAuthor() {
    assertGrep --matches=0 file1.manifest '^BK='
 }
 
+doc_AddNoAuthor="Add encrypted payload with no author"
+setup_AddNoAuthor() {
+   setup_servald
+   setup_rhizome
+   echo "A test file" >file1
+   echo "crypt=1" >file1.manifest
+}
+test_AddNoAuthor() {
+   executeOk_servald rhizome add file '' '' file1 file1.manifest
+   tfw_cat --stdout --stderr
+   assert_stdout_add_file file1
+   extract_stdout_secret file1_secret
+   assertGrep --matches=0 file1.manifest '^BK='
+   executeOk_servald rhizome extract file $re_manifestid file1x '' $file1_secret
+   tfw_cat --stdout --stderr
+   assert diff file1 file1x
+}
+
 doc_AddNonExistManifest="Add with non-existent manifest file"
 setup_AddNonExistManifest() {
    setup_servald
