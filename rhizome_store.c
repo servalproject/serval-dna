@@ -523,12 +523,15 @@ int rhizome_extract_file(rhizome_manifest *m, const char *filepath, rhizome_bk_t
 }
 
 /* dump the raw contents of a file */
-int rhizome_dump_file(const char *id, const char *filepath){
+int rhizome_dump_file(const char *id, const char *filepath, int64_t *length){
   struct rhizome_read read_state;
   bzero(&read_state, sizeof read_state);
 
   if (rhizome_open_read(&read_state, id, 1))
     return -1;
+  
+  if (length)
+    *length = read_state.length;
   
   return write_file(&read_state, filepath);
 }

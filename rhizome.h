@@ -650,6 +650,6 @@ int rhizome_crypt_xor_block(unsigned char *buffer, int buffer_size, int64_t stre
 int rhizome_open_read(struct rhizome_read *read, const char *fileid, int hash);
 int rhizome_read(struct rhizome_read *read, unsigned char *buffer, int buffer_length);
 int rhizome_extract_file(rhizome_manifest *m, const char *filepath, rhizome_bk_t *bsk);
-int rhizome_dump_file(const char *id, const char *filepath);
+int rhizome_dump_file(const char *id, const char *filepath, int64_t *length);
 
 #endif //__SERVALDNA__RHIZOME_H

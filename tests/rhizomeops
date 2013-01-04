@@ -302,15 +302,16 @@ setup_ExtractFileAfterAdd() {
    executeOk_servald rhizome list ''
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1
    extract_manifest_id BID file1.manifest
+   extract_manifest_filehash filehash file1.manifest
 }
 test_ExtractFileAfterAdd() {
    executeOk_servald rhizome extract file $BID file1x
    tfw_cat --stderr
    assert cmp file1 file1x
    local size=$(( $(cat file1 | wc -c) + 0 ))
-   assertStdoutLineCount '==' 0
-#   assertStdoutGrep --matches=1 "^filehash:$filehash$"
-#   assertStdoutGrep --matches=1 "^filesize:$size$"
+   assertStdoutLineCount '==' 2
+   assertStdoutGrep --matches=1 "^filehash:$filehash$"
+   assertStdoutGrep --matches=1 "^filesize:$size$"
 }
 
 doc_ExtractFileMissing="Extract non-existent file"

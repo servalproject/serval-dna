@@ -1324,14 +1324,28 @@ int app_rhizome_extract_file(int argc, const char *const *argv, const struct com
       ret = rhizome_extract_file(m, filepath, bskhex?&bsk:NULL);
     }
     
+    if (ret==0){
+      cli_puts("filehash"); cli_delim(":");
+      cli_puts(m->fileHexHash); cli_delim("\n");
+      cli_puts("filesize"); cli_delim(":");
+      cli_printf("%lld", m->fileLength); cli_delim("\n");
+    }
+    
     if (m)
       rhizome_manifest_free(m);
     
   }else if(fileid){
     if (!rhizome_exists(fileid))
       return 1;
+    int64_t length;
+    ret = rhizome_dump_file(fileid, filepath, &length);
     
-    ret = rhizome_dump_file(fileid, filepath);
+    if (ret==0){
+      cli_puts("filehash"); cli_delim(":");
+      cli_puts(fileid); cli_delim("\n");
+      cli_puts("filesize"); cli_delim(":");
+      cli_printf("%lld", length); cli_delim("\n");
+    }
   }
   
   return ret;
