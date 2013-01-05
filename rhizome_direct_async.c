@@ -105,6 +105,25 @@ int rhizome_direct_async_load_state()
   return 0;
 }
 
+char interval_description[128];
+char *describe_time_interval_ms(int64_t interval)
+{
+  int futureP=0;
+  if (!interval) return "right now";
+  if (interval<0) { futureP=1; interval=-interval; }
+  if (interval<400) snprintf(interval_description,128,"%lld milli seconds",interval);
+  else if (interval<60*1000) snprintf(interval_description,128,"%.1f seconds",interval/1000.0);
+  else if (interval<60*(60*1000)) snprintf(interval_description,128,"%.1f minutes",interval/(60*1000.0));
+  else if (interval<24*(60*60*1000)) snprintf(interval_description,128,"%.2f hours",interval/(60*60*1000.0));
+  else if (interval<365.24*(24*60*60*1000)) snprintf(interval_description,128,"%.2f days",interval/(24*60*60*1000.0));
+  else if (interval<1000*365.24*24*60*60*1000) snprintf(interval_description,128,"%.2f years",interval/(365.24*24*60*60*1000.0));
+  else if (interval<1000000*365.24*24*60*60*1000) snprintf(interval_description,128,"%.2fK years",interval/(365.24*24*60*60*1000.0*1000));
+  else snprintf(interval_description,128,"%.2fM years",interval/(365.24*60*60*1000.0*1000000));
+  if (futureP) strcat(interval_description," from now");
+  else  strcat(interval_description," ago");
+  return interval_description;
+}
+
 int rhizome_direct_async_setup()
 {
   // XXX Load state of channels, i.e.:
@@ -115,6 +134,16 @@ int rhizome_direct_async_setup()
 
   /* Add any bundles that have arrived since last run to be added to the 
      queues. */
+  int i;
+  uint64_t oldest_interesting_time=gettime_ms();
+  for(i=0;i<config.rhizome.direct.channels.ac;i++)
+    if (channel_states[i].lastInsertionTime<oldest_interesting_time)
+      oldest_interesting_time=channel_states[i].lastInsertionTime;
+  if (config.debug.rhizome_async)
+    DEBUGF("Examinining rhizome bundles inserted since %lld (%s)",
+	   oldest_interesting_time,
+	   describe_time_interval_ms((gettime_ms()-oldest_interesting_time)));
+
   // XXX Go through rhizome database looking at insertion times
   
   // XXX Go through received messages and see if there is a complete transmission.
