@@ -154,9 +154,12 @@ int rhizome_direct_async_setup()
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     char manifest[1024];    
     unsigned long long rowid=-1;
+    int64_t insertTime=0;
     sqlite3_blob *blob;
     if (sqlite3_column_type(statement, 0)==SQLITE_INTEGER)
       rowid = sqlite3_column_int64(statement, 0);
+    if (sqlite3_column_type(statement, 0)==SQLITE_INTEGER)
+      insertTime = sqlite3_column_int64(statement, 0);
     int ret;
     do ret = sqlite3_blob_open(rhizome_db, "main", "MANIFESTS", "manifest", 
 			       rowid, 0, &blob);
@@ -174,7 +177,13 @@ int rhizome_direct_async_setup()
 	continue;
       }
 
+      if (config.debug.rhizome_async)
+	DEBUGF("Read manifest of %d bytes, inserted %s",
+	       manifestSize,
+	       describe_time_interval_ms(gettime_ms()-insertTime));
+
       rhizome_manifest m;
+      bzero(&m,sizeof(m));
       if (rhizome_read_manifest_file(&m, manifest, manifestSize) != -1) {
 	rhizome_direct_sync_bundle_added(&m);
       }
