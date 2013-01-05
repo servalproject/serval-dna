@@ -143,10 +143,51 @@ int rhizome_direct_async_setup()
     DEBUGF("Examinining rhizome bundles inserted since %lld (%s)",
 	   oldest_interesting_time,
 	   describe_time_interval_ms((gettime_ms()-oldest_interesting_time)));
-
   // XXX Go through rhizome database looking at insertion times
-  
-  // XXX Go through received messages and see if there is a complete transmission.
+    sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  sqlite3_stmt *statement
+    = sqlite_prepare(&retry, "SELECT rowid,inserttime FROM manifests"
+		     " WHERE inserttime>=%lld ORDER BY inserttime", 
+		     oldest_interesting_time);
+  if (!statement)
+    return -1;
+  while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
+    char manifest[1024];    
+    unsigned long long rowid=-1;
+    sqlite3_blob *blob;
+    if (sqlite3_column_type(statement, 0)==SQLITE_INTEGER)
+      rowid = sqlite3_column_int64(statement, 0);
+    int ret;
+    do ret = sqlite3_blob_open(rhizome_db, "main", "MANIFESTS", "manifest", 
+			       rowid, 0, &blob);
+    while (sqlite_code_busy(ret) && sqlite_retry(&retry, "sqlite3_blob_open"));
+    if (ret != SQLITE_OK) {
+      WHYF("sqlite3_blob_open() failed, %s", sqlite3_errmsg(rhizome_db));
+      continue;
+    }
+    int manifestSize=sqlite3_blob_bytes(blob);
+    if (manifestSize<=1024) {
+      if(sqlite3_blob_read(blob,manifest,manifestSize,0)
+	 !=SQLITE_OK) {
+	sqlite3_blob_close(blob);
+	WHYF("sqlite3_blob_read() failed, %s", sqlite3_errmsg(rhizome_db));
+	continue;
+      }
+
+      rhizome_manifest m;
+      if (rhizome_read_manifest_file(&m, manifest, manifestSize) != -1) {
+	rhizome_direct_sync_bundle_added(&m);
+      }
+    }
+    sqlite3_blob_close(blob);
+
+  }
+  sqlite3_finalize(statement);
+
+
+  // Go through received messages and see if there is a complete transmission.
+  // Actually, don't bother, since rhizome_direct_async_periodic() will do
+  // this for us.
 
   return 0;
 }
@@ -267,9 +308,11 @@ int app_rhizome_direct_async(int argc, const char *const *argv,
   unsigned long long insertTimes[MAX_FRESH];
 
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = sqlite_prepare(&retry,   
-					   "SELECT rowid, inserttime FROM MANIFESTS WHERE inserttime>=%lld ORDER BY inserttime LIMIT %d",
-					   firstInsertTime,MAX_FRESH);
+  sqlite3_stmt *statement
+    = sqlite_prepare(&retry,   
+		     "SELECT rowid, inserttime FROM MANIFESTS WHERE"
+		     " inserttime>=%lld ORDER BY inserttime LIMIT %d",
+		     firstInsertTime,MAX_FRESH);
   while (freshBundles<MAX_FRESH
 	 && sqlite_step_retry(&retry, statement) == SQLITE_ROW
 	 ) {
