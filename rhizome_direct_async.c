@@ -129,8 +129,8 @@ void rhizome_direct_async_bundlescan()
   int i;
   uint64_t oldest_interesting_time=gettime_ms();
   for(i=0;i<config.rhizome.direct.channels.ac;i++)
-    if (channel_states[i].lastInsertionTime<oldest_interesting_time)
-      oldest_interesting_time=channel_states[i].lastInsertionTime;
+    if (channel_states[i].lastInsertionTime+1<oldest_interesting_time)
+      oldest_interesting_time=channel_states[i].lastInsertionTime+1;
   if (config.debug.rhizome_async)
     DEBUGF("Examinining rhizome bundles inserted since %lld (%s)",
 	   oldest_interesting_time,
@@ -304,6 +304,22 @@ int rhizome_direct_async_queue_ihave(int channelNumber,
       DEBUGF("Appending BAR to '%s' failed",filename);
   }
   fclose(f);
+
+  // Now update channel state so that we don't requeue the same bundle
+  if (config.debug.rhizome_async)
+    DEBUGF("Setting lastInsertionTime of channel #%d to %lld",
+	   channelNumber,insertionTime);
+  channel_states[channelNumber].lastInsertionTime=insertionTime;
+  snprintf(filename,1024,"%s/state",
+	   config.rhizome.direct.channels.av[channelNumber].value.out_path);
+  f=fopen(filename,"w");
+  if (f) {
+    fprintf(f,"%lld:%lld\n",  
+	    channel_states[channelNumber].lastInsertionTime,
+	    channel_states[channelNumber].lastTXMessageNumber);
+    fclose(f);
+  }
+  rhizome_direct_async_load_state();
   return 0;
 }
 
@@ -321,6 +337,9 @@ int rhizome_direct_sync_bundle_added(rhizome_manifest *m,int64_t insertionTime)
       rhizome_direct_async_queue_ihave(i,m,insertionTime);
     }
   }
+  // Re-read async channel state, in case we have appended to any
+  // queues.
+  rhizome_direct_async_load_state();
   return 0;
 }
 
