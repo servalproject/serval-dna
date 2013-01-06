@@ -92,8 +92,7 @@ test_bundlenotificationonstartup() {
 }
 
 
-doc_bundlenotificationondeduplication="RD Async only notifies once for each
-bundle"
+doc_bundlenotificationondeduplication="RD Async only notifies once for each bundle"
 setup_bundlenotificationondeduplication() {
    setup_servald
    set_instance +A
