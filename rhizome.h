@@ -439,7 +439,9 @@ typedef struct rhizome_http_request {
   int source_record_size;
   unsigned int source_flags;
   
-  sqlite3_blob *blob;
+  const char *sql_table;
+  const char *sql_row;
+  int64_t rowid;
   /* source_index used for offset in blob */
   long long blob_end; 
   
