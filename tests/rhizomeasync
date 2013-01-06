@@ -91,6 +91,41 @@ test_bundlenotificationonstartup() {
    assertGrep --matches=1 "$LOGA" "new manifest: BID=$BID"
 }
 
+
+doc_bundlenotificationondeduplication="RD Async only notifies once for each
+bundle"
+setup_bundlenotificationondeduplication() {
+   setup_servald
+   set_instance +A
+   executeOk_servald config \
+       set rhizome.direct.channels.a.alphabet_size 256 \
+       set rhizome.direct.channels.a.encode_flag false \
+       set rhizome.direct.channels.a.in_path $instance_dir/async-in \
+       set rhizome.direct.channels.a.max_pending 64 \
+       set rhizome.direct.channels.a.max_settle_time 120000 \
+       set rhizome.direct.channels.a.message_length 160 \
+       set rhizome.direct.channels.a.out_path $instance_dir/async-out \
+       set rhizome.direct.channels.a.push_command $instance_dir/async-push \
+       set rhizome.direct.channels.a.settle_time 60000 \
+       set rhizome.direct.channels.a.max_size 4096
+   assert_no_servald_processes
+   create_single_identity
+   rhizome_add_file file1
+   BID1=$BID
+   start_servald_instances +A
+}
+test_bundlenotificationondeduplication() {
+   assertGrep --matches=1 "$LOGA" "new manifest: BID=$BID"
+   stop_all_servald_servers
+   rhizome_add_file file2
+   BID2=$BID
+   start_servald_instances +A
+# Make sure newly added bundle gets advertised ...
+   assertGrep --matches=1 "$LOGA" "new manifest: BID=$BID2"
+# ... and that previously added bundle does not get re-advertised
+   assertGrep --matches=0 "$LOGA" "new manifest: BID=$BID1"
+}
+
 doc_bundlenotificationonscan="RD Async is notified of bundles added via scan command"
 setup_bundlenotificationonscan() {
    setup_servald +Z
