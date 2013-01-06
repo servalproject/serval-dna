@@ -81,6 +81,7 @@ setup_bundlenotificationonstartup() {
        set rhizome.direct.channels.a.push_command $instance_dir/async-push \
        set rhizome.direct.channels.a.settle_time 60000 \
        set rhizome.direct.channels.a.max_size 4096
+   mkdir $instance_dir/async-out
    assert_no_servald_processes
    create_single_identity
    rhizome_add_file file1
@@ -107,6 +108,7 @@ setup_bundlenotificationondeduplication() {
        set rhizome.direct.channels.a.push_command $instance_dir/async-push \
        set rhizome.direct.channels.a.settle_time 60000 \
        set rhizome.direct.channels.a.max_size 4096
+   mkdir $instance_dir/async-out    
    assert_no_servald_processes
    create_single_identity
    rhizome_add_file file1
@@ -142,6 +144,7 @@ setup_bundlenotificationonscan() {
        set rhizome.direct.channels.a.push_command $instance_dir/async-push \
        set rhizome.direct.channels.a.settle_time 60000 \
        set rhizome.direct.channels.a.max_size 4096
+   mkdir $instance_dir/async-out
    start_servald_instances +Z
 }
 test_bundlenotificationonscan() {

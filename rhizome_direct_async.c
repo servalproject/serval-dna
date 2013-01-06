@@ -240,6 +240,73 @@ int monitor_rhizome_direct_async_rx(int argc, const char *const *argv,
 // We need to make sure that when we receive a manifest from an async peer that
 // we don't bother announcing it back to that peer, and generate unnecessary 
 // message traffic!
+int rhizome_direct_async_does_far_end_have(int channelNumber,
+					   unsigned char *bid,
+					   long long version) 
+{
+  // XXX This uses a linear search which will be very inefficient once
+  // we start synchronising lots of bundles.
+  char filename[1024];
+  snprintf(filename,1024,"%s/received_announcements",
+	   config.rhizome.direct.channels.av[channelNumber].value.out_path);
+  FILE *f=fopen(filename,"r");
+  if (!f) return 0;
+  while(!feof(f)) {
+    unsigned char bar[RHIZOME_BAR_BYTES];
+    if (fread(bar,RHIZOME_BAR_BYTES,1,f)<1) break;
+    if (!bcmp(bid,&bar[RHIZOME_BAR_PREFIX_OFFSET],
+	      RHIZOME_BAR_PREFIX_BYTES)) {
+      if (rhizome_bar_version(bar)>=version) {
+	if (config.debug.rhizome_async)
+	  DEBUGF("RD Async channel#%d already knows about version %lld>=%lld of %016x* -- not queuing for announcement",
+		 channelNumber,rhizome_bar_version(bar),version,rhizome_bar_bidprefix_ll(bar));
+	return 1;
+      }
+      else return 0;
+    }
+  }
+  fclose(f);
+  return 0;
+}
+
+int rhizome_direct_async_queue_ihave(int channelNumber,
+				     rhizome_manifest *m,
+				     int64_t insertionTime)
+{
+  long long version=rhizome_manifest_get_ll(m, "version");
+  
+  // Ignore manifests that we know that the far end already has
+  if (rhizome_direct_async_does_far_end_have(channelNumber,
+					     m->cryptoSignPublic,version)) {
+    if (config.debug.rhizome_async)
+      DEBUGF("Not announcing %s.%lld to channel#%d, as they already have it",
+	     alloca_tohex_bid(m->cryptoSignPublic),version,channelNumber);
+    return 0;
+  }
+  if (config.debug.rhizome_async)
+    DEBUGF("Queueing %s.%lld for announcement via channel#%d",
+	   alloca_tohex_bid(m->cryptoSignPublic),version,channelNumber);
+  char filename[1024];
+  snprintf(filename,1024,"%s/queued_manifests",
+	   config.rhizome.direct.channels.av[channelNumber].value.out_path);
+  unsigned char bar[RHIZOME_BAR_BYTES];
+  if (rhizome_manifest_to_bar(m,bar)) {
+    if (config.debug.rhizome_async)
+      DEBUGF("rhizome_manifest_to_bar() failed");
+    return -1;
+  }
+  FILE *f=fopen(filename,"a");
+  if (!f) {
+    return WHYF("Could not open '%s' for append",filename);
+  }
+  if (fwrite(bar,RHIZOME_BAR_BYTES,1,f)!=1) {
+    if (config.debug.rhizome_async)
+      DEBUGF("Appending BAR to '%s' failed",filename);
+  }
+  fclose(f);
+  return 0;
+}
+
 int rhizome_direct_sync_bundle_added(rhizome_manifest *m,int64_t insertionTime)
 {
   if (config.debug.rhizome_async)
@@ -251,6 +318,7 @@ int rhizome_direct_sync_bundle_added(rhizome_manifest *m,int64_t insertionTime)
     if (channel_states[i].lastInsertionTime<insertionTime) {
       if (config.debug.rhizome_async)
 	DEBUGF("Bundle is new for channel #%d",i);
+      rhizome_direct_async_queue_ihave(i,m,insertionTime);
     }
   }
   return 0;
