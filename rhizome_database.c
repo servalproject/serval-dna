@@ -194,6 +194,13 @@ int rhizome_opendb()
     RETURN(WHY("No Directory"));
   }
   char dbpath[1024];
+  if (!sqlite3_temp_directory){
+    if (!FORM_RHIZOME_DATASTORE_PATH(dbpath, "")){
+      RETURN(WHY("Invalid path"));
+    }
+    sqlite3_temp_directory = sqlite3_mprintf("%s", dbpath);
+  }
+  
   if (!FORM_RHIZOME_DATASTORE_PATH(dbpath, "rhizome.db")){
     RETURN(WHY("Invalid path"));
   }
@@ -251,6 +258,10 @@ int rhizome_close_db()
 {
   IN();
   if (rhizome_db) {
+    if (!sqlite3_get_autocommit(rhizome_db)){
+      WHY("Uncommitted transaction!");
+      sqlite_exec_void("ROLLBACK;");
+    }
     sqlite3_stmt *stmt = NULL;
     while ((stmt = sqlite3_next_stmt(rhizome_db, stmt))) {
       const char *sql = sqlite3_sql(stmt);
@@ -307,7 +318,7 @@ int rhizome_close_db()
 sqlite_retry_state sqlite_retry_state_init(int serverLimit, int serverSleep, int otherLimit, int otherSleep)
 {
   return (sqlite_retry_state){
-      .limit = serverMode ? (serverLimit < 0 ? 50 : serverLimit) : (otherLimit < 0 ? 1500 : otherLimit),
+      .limit = serverMode ? (serverLimit < 0 ? 50 : serverLimit) : (otherLimit < 0 ? 5000 : otherLimit),
       .sleep = serverMode ? (serverSleep < 0 ? 10 : serverSleep) : (otherSleep < 0 ? 100 : otherSleep),
       .elapsed = 0,
       .start = -1,
