@@ -156,6 +156,10 @@ int (*sqlite_set_tracefunc(int (*newfunc)()))()
   return oldfunc;
 }
 
+void sqlite_log(void *ignored, int result, const char *msg){
+  WARNF("Sqlite: %d %s", result, msg);
+}
+
 /*
  * The MANIFESTS table 'author' column records the cryptographically verified SID of the author
  * that has write permission on the bundle, ie, possesses the Rhizome secret key that generated the
@@ -194,6 +198,8 @@ int rhizome_opendb()
     RETURN(WHY("Invalid path"));
   }
 
+  sqlite3_config(SQLITE_CONFIG_LOG,sqlite_log,NULL);
+  
   if (sqlite3_open(dbpath,&rhizome_db)){
     RETURN(WHYF("SQLite could not open database %s: %s", dbpath, sqlite3_errmsg(rhizome_db)));
   }
