@@ -220,6 +220,38 @@ test_loadchannelstate() {
    assertGrep --matches=1 "$LOGA" " RD channel #0 state: 0:0:0:0:0"
 }
 
+doc_barsqueued="BARs are queued when new bundles observed"
+setup_barsqueued() {
+   setup_servald
+   set_instance +A
+   executeOk_servald config \
+       set rhizome.direct.channels.a.alphabet_size 256 \
+       set rhizome.direct.channels.a.encode_flag false \
+       set rhizome.direct.channels.a.in_path $instance_dir/async-in \
+       set rhizome.direct.channels.a.max_pending 64 \
+       set rhizome.direct.channels.a.max_settle_time 120000 \
+       set rhizome.direct.channels.a.message_length 160 \
+       set rhizome.direct.channels.a.out_path $instance_dir/async-out \
+       set rhizome.direct.channels.a.push_command $instance_dir/async-push \
+       set rhizome.direct.channels.a.settle_time 60000 \
+       set rhizome.direct.channels.a.max_size 4096 \
+       set debug.rhizome_async yes
+   mkdir $instance_dir/async-out
+   assert_no_servald_processes
+   create_single_identity
+   rhizome_add_file file1
+   BID1=$BID
+   start_servald_instances +A
+}
+test_barsqueued() {
+   assertGrep --matches=1 "$LOGA" "new manifest: BID=$BID1"
+   set_instance +A
+   assert [ -e $instance_dir/async-out/queued_manifests ]
+   assert [ ! -z $instance_dir/async-out/queued_manifests ]
+   qmsize=`ls -l $instance_dir/async-out/queued_manifests | awk '{ print $5}'`
+   assert [ $qmsize == 32 ]
+}
+
 doc_messagesemitted="Message(s) are emitted when new bundles observed"
 test_messagesemitted() {
     assert false
