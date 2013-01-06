@@ -312,8 +312,6 @@ int rhizome_server_free_http_request(rhizome_http_request *r)
   close(r->alarm.poll.fd);
   if (r->buffer)
     free(r->buffer);
-  if (r->blob)
-    sqlite3_blob_close(r->blob);
   free(r);
   return 0;
 }
@@ -421,7 +419,7 @@ int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, c
       sqlite3_finalize(statement);
       return WHY("sqlite3 returned multiple columns for a single column query");
     }
-    sqlite3_blob *blob;
+    sqlite3_blob *blob=NULL;
     const unsigned char *value;
     int column_type=sqlite3_column_type(statement, 0);
     switch(column_type) {
@@ -541,18 +539,22 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
       } else {
 	// TODO: Check for Range: header and return 206 if returning partial content
 	str_toupper_inplace(id);
-	long long rowid = -1;
-	sqlite_exec_int64(&rowid, "select rowid from fileblobs where id='%s';", id);
-	if (rowid >= 0 && sqlite3_blob_open(rhizome_db, "main", "fileblobs", "data", rowid, 0, &r->blob) != SQLITE_OK)
-	  rowid = -1;
-	if (rowid == -1) {
+	r->rowid=-1;
+	sqlite3_blob *blob=NULL;
+	sqlite_exec_int64(&r->rowid, "select rowid from fileblobs where id='%s';", id);
+	r->sql_table="fileblobs";
+	r->sql_row="data";
+	if (r->rowid >= 0 && sqlite3_blob_open(rhizome_db, "main", r->sql_table, r->sql_row, r->rowid, 0, &blob) != SQLITE_OK)
+	  r->rowid = -1;
+	if (r->rowid == -1) {
 	  rhizome_server_simple_http_response(r, 404, "<html><h1>Payload not found</h1></html>\r\n");
 	} else {
 	  r->source_index = 0;
-	  r->blob_end = sqlite3_blob_bytes(r->blob);
+	  r->blob_end = sqlite3_blob_bytes(blob);
 	  rhizome_server_http_response_header(r, 200, "application/binary", r->blob_end - r->source_index);
 	  r->request_type |= RHIZOME_HTTP_REQUEST_BLOB;
 	}
+	if (blob) sqlite3_blob_close(blob);
       }
     } else if (str_startswith(path, "/rhizome/manifest/", (const char **)&id)) {
       // TODO: Stream the specified manifest
@@ -576,20 +578,26 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
       DEBUGF("Looking for manifest between %s and %s",
 	     bid_low,bid_high);
 
-      long long rowid = -1;
-      sqlite_exec_int64(&rowid, "select rowid from manifests where id between '%s' and '%s';", bid_low,bid_high);
-      if (rowid >= 0 && sqlite3_blob_open(rhizome_db, "main", "manifests", "manifest", rowid, 0, &r->blob) != SQLITE_OK)
-	rowid = -1;
-      if (rowid == -1) {
+      r->rowid = -1;
+      sqlite3_blob *blob=NULL;
+      r->sql_table="manifests";
+      r->sql_row="manifest";
+      sqlite_exec_int64(&r->rowid, "select rowid from manifests where id between '%s' and '%s';", bid_low,bid_high);
+      if (r->rowid >= 0 && sqlite3_blob_open(rhizome_db, "main", r->sql_table, r->sql_row, r->rowid, 0, &blob) != SQLITE_OK)
+	r->rowid = -1;
+      if (r->rowid == -1) {
 	DEBUGF("Row not found");
 	rhizome_server_simple_http_response(r, 404, "<html><h1>Payload not found</h1></html>\r\n");
       } else {
-	DEBUGF("row id = %d",rowid);
+	DEBUGF("row id = %d",r->rowid);
 	r->source_index = 0;
-	r->blob_end = sqlite3_blob_bytes(r->blob);
+	r->blob_end = sqlite3_blob_bytes(blob);
 	rhizome_server_http_response_header(r, 200, "application/binary", r->blob_end - r->source_index);
 	r->request_type |= RHIZOME_HTTP_REQUEST_BLOB;
       }
+      if (blob)
+	sqlite3_blob_close(blob);
+      
     }else {
       rhizome_server_simple_http_response(r, 404, "<html><h1>Not found</h1></html>\r\n");
       DEBUGF("Sending 404 not found for '%s'",path);
@@ -771,20 +779,23 @@ int rhizome_server_http_send_bytes(rhizome_http_request *r)
 	      }
 	      r->buffer_size=read_size;
 	    }
-	      
-	    if(sqlite3_blob_read(r->blob,&r->buffer[0],read_size,r->source_index)
-	       ==SQLITE_OK)
-	      {
+	    
+	    sqlite3_blob *blob=NULL;
+	    int ret=sqlite3_blob_open(rhizome_db, "main", r->sql_table, r->sql_row, r->rowid, 0, &blob);
+	    if (ret==SQLITE_OK){
+	      if (sqlite3_blob_read(blob,&r->buffer[0],read_size,r->source_index)==SQLITE_OK) {
 		r->buffer_length = read_size;
 		r->source_index+=read_size;
 		r->request_type|=RHIZOME_HTTP_REQUEST_FROMBUFFER;
 	      }
+	    }
+	    
+	    if (blob)
+	      sqlite3_blob_close(blob);
+	    // if the database was busy, just wait for the alarm to fire again.
 	  }
 	    
-	  if (r->source_index >= r->blob_end){
-	    sqlite3_blob_close(r->blob);
-	    r->blob=0;
-	  }else
+	  if (r->source_index < r->blob_end)
 	    r->request_type|=RHIZOME_HTTP_REQUEST_BLOB;
 	}
 	break;
