@@ -111,7 +111,7 @@ char *describe_time_interval_ms(int64_t interval)
   int futureP=0;
   if (!interval) return "right now";
   if (interval<0) { futureP=1; interval=-interval; }
-  if (interval<400) snprintf(interval_description,128,"%lld milli seconds",interval);
+  if (interval<400) snprintf(interval_description,128,"%lld milliseconds",interval);
   else if (interval<60*1000) snprintf(interval_description,128,"%.1f seconds",interval/1000.0);
   else if (interval<60*(60*1000)) snprintf(interval_description,128,"%.1f minutes",interval/(60*1000.0));
   else if (interval<24*(60*60*1000)) snprintf(interval_description,128,"%.2f hours",interval/(60*60*1000.0));
@@ -158,8 +158,8 @@ int rhizome_direct_async_setup()
     sqlite3_blob *blob;
     if (sqlite3_column_type(statement, 0)==SQLITE_INTEGER)
       rowid = sqlite3_column_int64(statement, 0);
-    if (sqlite3_column_type(statement, 0)==SQLITE_INTEGER)
-      insertTime = sqlite3_column_int64(statement, 0);
+    if (sqlite3_column_type(statement, 1)==SQLITE_INTEGER)
+      insertTime = sqlite3_column_int64(statement, 1);
     int ret;
     do ret = sqlite3_blob_open(rhizome_db, "main", "MANIFESTS", "manifest", 
 			       rowid, 0, &blob);
