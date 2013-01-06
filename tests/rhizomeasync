@@ -124,8 +124,8 @@ test_bundlenotificationondeduplication() {
    start_servald_instances +A
 # Make sure newly added bundle gets advertised ...
    assertGrep --matches=1 "$LOGA" "new manifest: BID=$BID2"
-# ... and that previously added bundle does not get re-advertised
-   assertGrep --matches=0 "$LOGA" "new manifest: BID=$BID1"
+# ... and that previously added bundle did not get re-advertised
+   assertGrep --matches=1 "$LOGA" "new manifest: BID=$BID1"
 }
 
 doc_bundlenotificationonscan="RD Async is notified of bundles added via scan command"
