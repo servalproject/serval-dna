@@ -177,7 +177,7 @@ void rhizome_direct_async_bundlescan()
       rhizome_manifest m;
       bzero(&m,sizeof(m));
       if (rhizome_read_manifest_file(&m, manifest, manifestSize) != -1) {
-	rhizome_direct_sync_bundle_added(&m);
+	rhizome_direct_sync_bundle_added(&m,insertTime);
       }
     }
     sqlite3_blob_close(blob);
@@ -240,9 +240,19 @@ int monitor_rhizome_direct_async_rx(int argc, const char *const *argv,
 // We need to make sure that when we receive a manifest from an async peer that
 // we don't bother announcing it back to that peer, and generate unnecessary 
 // message traffic!
-int rhizome_direct_sync_bundle_added(rhizome_manifest *m)
+int rhizome_direct_sync_bundle_added(rhizome_manifest *m,int64_t insertionTime)
 {
-  DEBUGF("new manifest: BID=%s",alloca_tohex_bid(m->cryptoSignPublic));
+  if (config.debug.rhizome_async)
+    DEBUGF("new manifest: BID=%s, insertTime is %s",
+	   alloca_tohex_bid(m->cryptoSignPublic),
+	   describe_time_interval_ms(gettime_ms()-insertionTime));
+  int i;
+  for(i=0;i<config.rhizome.direct.channels.ac;i++) {
+    if (channel_states[i].lastInsertionTime<insertionTime) {
+      if (config.debug.rhizome_async)
+	DEBUGF("Bundle is new for channel #%d",i);
+    }
+  }
   return 0;
 }
 

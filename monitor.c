@@ -539,7 +539,7 @@ int monitor_process_command(struct monitor_context *c)
   return 0;
 }
 
-int monitor_announce_bundle(rhizome_manifest *m)
+int monitor_announce_bundle(rhizome_manifest *m,int64_t insertionTime)
 {
   int i;
   char msg[1024];
@@ -568,7 +568,7 @@ int monitor_announce_bundle(rhizome_manifest *m)
   }
 
   // Also alert rhizome direct async that the bundle has been added
-  rhizome_direct_sync_bundle_added(m);
+  rhizome_direct_sync_bundle_added(m,insertionTime);
 
   return 0;
 }

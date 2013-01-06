@@ -130,6 +130,18 @@ setup_bundlenotificationonscan() {
    setup_servald +Z
    assert_no_servald_processes
    create_single_identity
+   set_instance +Z
+   executeOk_servald config \
+       set rhizome.direct.channels.a.alphabet_size 256 \
+       set rhizome.direct.channels.a.encode_flag false \
+       set rhizome.direct.channels.a.in_path $instance_dir/async-in \
+       set rhizome.direct.channels.a.max_pending 64 \
+       set rhizome.direct.channels.a.max_settle_time 120000 \
+       set rhizome.direct.channels.a.message_length 160 \
+       set rhizome.direct.channels.a.out_path $instance_dir/async-out \
+       set rhizome.direct.channels.a.push_command $instance_dir/async-push \
+       set rhizome.direct.channels.a.settle_time 60000 \
+       set rhizome.direct.channels.a.max_size 4096
    start_servald_instances +Z
 }
 test_bundlenotificationonscan() {
@@ -139,7 +151,7 @@ test_bundlenotificationonscan() {
    BID1=$BID
    assertGrep --matches=0 "$LOGZ" "new manifest: BID=$BID"
    executeOk_servald rhizome direct async scan
-   wait_until --sleep=0.25 assertGrep --matches=1 "$LOGZ" "new manifest: BID=$BID"
+   wait_until --sleep=2.5 assertGrep --matches=1 "$LOGZ" "new manifest: BID=$BID"
 }
 
 doc_bundlenotificationonrx="RD Async is notified of bundles that arrive via rhizome"

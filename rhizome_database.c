@@ -706,7 +706,7 @@ int rhizome_drop_stored_file(const char *id,int maximum_priority)
   We need to also need to create the appropriate row(s) in the MANIFESTS, FILES, 
    and GROUPMEMBERSHIPS tables, and possibly GROUPLIST as well.
  */
-int rhizome_store_bundle(rhizome_manifest *m)
+int64_t rhizome_store_bundle(rhizome_manifest *m)
 {
   if (!m->finalised) return WHY("Manifest was not finalised");
 
@@ -752,13 +752,15 @@ int rhizome_store_bundle(rhizome_manifest *m)
   if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") == -1)
     return -1;
 
+  int64_t insertTime=gettime_ms();
+
   sqlite3_stmt *stmt;
   if ((stmt = sqlite_prepare(&retry, "INSERT OR REPLACE INTO MANIFESTS(id,manifest,version,inserttime,bar,filesize,filehash,author) VALUES(?,?,?,?,?,?,?,?);")) == NULL)
     goto rollback;
   if (!(   sqlite_code_ok(sqlite3_bind_text(stmt, 1, manifestid, -1, SQLITE_TRANSIENT))
         && sqlite_code_ok(sqlite3_bind_blob(stmt, 2, m->manifestdata, m->manifest_bytes, SQLITE_TRANSIENT))
 	&& sqlite_code_ok(sqlite3_bind_int64(stmt, 3, m->version))
-	&& sqlite_code_ok(sqlite3_bind_int64(stmt, 4, (long long) gettime_ms()))
+	&& sqlite_code_ok(sqlite3_bind_int64(stmt, 4, (long long) insertTime))
 	&& sqlite_code_ok(sqlite3_bind_blob(stmt, 5, bar, RHIZOME_BAR_BYTES, SQLITE_TRANSIENT))
 	&& sqlite_code_ok(sqlite3_bind_int64(stmt, 6, m->fileLength))
 	&& sqlite_code_ok(sqlite3_bind_text(stmt, 7, filehash, -1, SQLITE_TRANSIENT))
@@ -823,7 +825,7 @@ int rhizome_store_bundle(rhizome_manifest *m)
     stmt = NULL;
   }
   if (sqlite_exec_void_retry(&retry, "COMMIT;") != -1)
-    return 0;
+    return insertTime;
 rollback:
   if (stmt)
     sqlite3_finalize(stmt);

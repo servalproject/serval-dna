@@ -283,7 +283,8 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
   }
 
   /* Okay, it is written, and can be put directly into the rhizome database now */
-  if (rhizome_store_bundle(m_in) == -1)
+  int64_t insertionTime=0;
+  if ((insertionTime=rhizome_store_bundle(m_in)) == -1)
     return WHY("rhizome_store_bundle() failed.");
 
   // This message used in tests; do not modify or remove.
@@ -293,7 +294,7 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
       alloca_tohex_sid(m_in->cryptoSignPublic),
       m_in->version
       );
-  monitor_announce_bundle(m_in);
+  monitor_announce_bundle(m_in,insertionTime);
   return 0;
 }
 

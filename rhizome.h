@@ -234,7 +234,7 @@ void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m);
 rhizome_manifest *_rhizome_new_manifest(struct __sourceloc __whence);
 #define rhizome_new_manifest() _rhizome_new_manifest(__WHENCE__)
 int rhizome_manifest_pack_variables(rhizome_manifest *m);
-int rhizome_store_bundle(rhizome_manifest *m);
+int64_t rhizome_store_bundle(rhizome_manifest *m);
 int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid);
 int rhizome_clean_payload(const char *fileidhex);
 int rhizome_store_file(rhizome_manifest *m,const unsigned char *key);
@@ -250,7 +250,7 @@ int rhizome_manifest_bind_id(rhizome_manifest *m_in);
 int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout);
 int rhizome_add_manifest(rhizome_manifest *m_in,int ttl);
 
-int rhizome_direct_sync_bundle_added(rhizome_manifest *m);
+int rhizome_direct_sync_bundle_added(rhizome_manifest *m,int64_t insertionTime);
 void rhizome_direct_async_periodic(struct sched_ent *alarm);
 int monitor_rhizome_direct_async_rx(int argc, const char *const *argv, 
 				    const struct command_line_option *o, 
@@ -319,7 +319,7 @@ int rhizome_retrieve_file(const char *fileid, const char *filepath,
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_manifest_version_cache_lookup(rhizome_manifest *m);
 int rhizome_manifest_version_cache_store(rhizome_manifest *m);
-int monitor_announce_bundle(rhizome_manifest *m);
+int monitor_announce_bundle(rhizome_manifest *m,int64_t insertionTime);
 int rhizome_find_secret(const unsigned char *authorSid, int *rs_len, const unsigned char **rs);
 int rhizome_bk_xor_stream(
   const unsigned char bid[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES],
