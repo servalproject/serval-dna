@@ -59,7 +59,6 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
   /* Bind appropriate sized zero-filled blob to data field */
   if (sqlite3_bind_zeroblob(statement, 1, file_length) != SQLITE_OK) {
     WHYF("sqlite3_bind_zeroblob() failed: %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));
-    sqlite3_finalize(statement);
     goto insert_row_fail;
   }
   
@@ -71,18 +70,26 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
   
   if (rowcount)
     WARNF("void query unexpectedly returned %d row%s", rowcount, rowcount == 1 ? "" : "s");
-  sqlite3_finalize(statement);
   
   if (!sqlite_code_ok(stepcode)){
   insert_row_fail:
     WHYF("Failed to insert row for fileid=%s", write->id);
+    if (statement) sqlite3_finalize(statement);
     sqlite_exec_void_retry(&retry, "ROLLBACK;");
     return -1;
   }
     
+  sqlite3_finalize(statement);
+  statement=NULL;
+  
   /* Get rowid for inserted row, so that we can modify the blob */
   write->blob_rowid = sqlite3_last_insert_rowid(rhizome_db);
   DEBUGF("Got rowid %lld for %s", write->blob_rowid, write->id);
+  
+  if (sqlite_exec_void_retry(&retry, "COMMIT;")!=SQLITE_OK){
+    return WHYF("Failed to commit transaction: %s", sqlite3_errmsg(rhizome_db));
+  }
+  
   write->file_length = file_length;
   write->file_offset = 0;
   SHA512_Init(&write->sha512_context);
@@ -93,9 +100,6 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
     write->buffer_size=RHIZOME_BUFFER_MAXIMUM_SIZE;
   
   write->buffer=malloc(write->buffer_size);
-  if (sqlite_exec_void_retry(&retry, "COMMIT;")!=SQLITE_OK){
-    return WHYF("Failed to commit transaction: %s", sqlite3_errmsg(rhizome_db));
-  }
   return 0;
 }
 
@@ -147,7 +151,6 @@ int rhizome_flush(struct rhizome_write *write){
       break;
     
     WHYF("sqlite3_blob_close() failed: %s", sqlite3_errmsg(rhizome_db));
-    if (blob) sqlite3_blob_close(blob);
     return -1;
     
   again:
@@ -297,7 +300,12 @@ int rhizome_import_file(rhizome_manifest *m, const char *filepath)
     return -1;
   }
   
-  return rhizome_finish_write(&write);
+  if (rhizome_finish_write(&write)){
+    rhizome_fail_write(&write);
+    return -1;
+  }
+  
+  return 0;
 }
 
 int rhizome_stat_file(rhizome_manifest *m, const char *filepath)
@@ -348,8 +356,10 @@ int rhizome_add_file(rhizome_manifest *m, const char *filepath)
     return -1;
   }
 
-  if (rhizome_finish_write(&write))
+  if (rhizome_finish_write(&write)){
+    rhizome_fail_write(&write);
     return -1;
+  }
 
   strlcpy(m->fileHexHash, write.id, SHA512_DIGEST_STRING_LENGTH);
   rhizome_manifest_set(m, "filehash", m->fileHexHash);
@@ -446,8 +456,10 @@ int rhizome_read(struct rhizome_read *read, unsigned char *buffer, int buffer_le
       }
       
       if (read->crypt){
-	if(rhizome_crypt_xor_block(buffer, count, read->offset, read->key, read->nonce))
+	if(rhizome_crypt_xor_block(buffer, count, read->offset, read->key, read->nonce)){
+	  sqlite3_blob_close(blob);
 	  return -1;
+        }
       }
       
       read->offset+=count;

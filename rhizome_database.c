@@ -204,23 +204,37 @@ int rhizome_opendb()
   if (config.debug.rhizome) {
     DEBUGF("Rhizome will use %lluB of storage for its database.", (unsigned long long) config.rhizome.database_size);
   }
-  /* Create tables as required */
-  sqlite_exec_void_loglevel(loglevel, "PRAGMA auto_vacuum=2;");
-  if (	sqlite_exec_void("CREATE TABLE IF NOT EXISTS GROUPLIST(id text not null primary key, closed integer,ciphered integer,priority integer);") == -1
-    ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS MANIFESTS(id text not null primary key, version integer,inserttime integer, filesize integer, filehash text, author text, bar blob, manifest blob);") == -1
-    ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS FILES(id text not null primary key, length integer, highestpriority integer, datavalid integer, inserttime integer);") == -1
-    ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS FILEBLOBS(id text not null primary key, data blob);") == -1
-    ||	sqlite_exec_void("DROP TABLE IF EXISTS FILEMANIFESTS;") == -1
-    ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS GROUPMEMBERSHIPS(manifestid text not null, groupid text not null);") == -1
-    ||	sqlite_exec_void("CREATE TABLE IF NOT EXISTS VERIFICATIONS(sid text not null, did text, name text, starttime integer, endtime integer, signature blob);") == -1
-  ) {
-    RETURN(WHY("Failed to create schema"));
+  
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+
+  long long version;
+  if (sqlite_exec_int64_retry(&retry, &version, "PRAGMA user_version;")<0)
+    RETURN(WHY("Failed to check schema version"));
+  
+  if (version<1){
+    /* Create tables as required */
+    sqlite_exec_void_loglevel(loglevel, "PRAGMA auto_vacuum=2;");
+    if (	sqlite_exec_void_retry(&retry, "CREATE TABLE IF NOT EXISTS GROUPLIST(id text not null primary key, closed integer,ciphered integer,priority integer);") == -1
+      ||	sqlite_exec_void_retry(&retry, "CREATE TABLE IF NOT EXISTS MANIFESTS(id text not null primary key, version integer,inserttime integer, filesize integer, filehash text, author text, bar blob, manifest blob);") == -1
+      ||	sqlite_exec_void_retry(&retry, "CREATE TABLE IF NOT EXISTS FILES(id text not null primary key, length integer, highestpriority integer, datavalid integer, inserttime integer);") == -1
+      ||	sqlite_exec_void_retry(&retry, "CREATE TABLE IF NOT EXISTS FILEBLOBS(id text not null primary key, data blob);") == -1
+      ||	sqlite_exec_void_retry(&retry, "DROP TABLE IF EXISTS FILEMANIFESTS;") == -1
+      ||	sqlite_exec_void_retry(&retry, "CREATE TABLE IF NOT EXISTS GROUPMEMBERSHIPS(manifestid text not null, groupid text not null);") == -1
+      ||	sqlite_exec_void_retry(&retry, "CREATE TABLE IF NOT EXISTS VERIFICATIONS(sid text not null, did text, name text, starttime integer, endtime integer, signature blob);") == -1
+    ) {
+      RETURN(WHY("Failed to create schema"));
+    }
+
+    /* Create indexes if they don't already exist */
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS bundlesizeindex ON manifests (filesize);");
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_HASH ON MANIFESTS(filehash);");
+    
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=1;");
   }
-
-  /* Create indexes if they don't already exist */
-  sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS bundlesizeindex ON manifests (filesize);");
-  sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_HASH ON MANIFESTS(filehash);");
-
+  /* Future schema updates should be performed here. 
+   The above schema can be assumed to exist.
+   All changes should attempt to preserve any existing data */
+  
   // We can't delete a file that is being transferred in another process at this very moment...
   // TODO don't cleanup before every command line operation...
   rhizome_cleanup();
@@ -403,7 +417,7 @@ int _sqlite_step_retry(struct __sourceloc __whence, int log_level, sqlite_retry_
 	}
 	// fall through...
       default:
-	LOGF(log_level, "query failed, %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));
+	LOGF(log_level, "query failed (%d), %s: %s", stepcode, sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));
 	ret = -1;
 	statement = NULL;
 	break;
