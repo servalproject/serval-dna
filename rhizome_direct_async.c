@@ -124,16 +124,8 @@ char *describe_time_interval_ms(int64_t interval)
   return interval_description;
 }
 
-int rhizome_direct_async_setup()
+void rhizome_direct_async_bundlescan()
 {
-  // XXX Load state of channels, i.e.:
-  // - last TX message number, 
-  // - last dispatch time
-  // - last rhizome inserttime dealt with
-  rhizome_direct_async_load_state();
-
-  /* Add any bundles that have arrived since last run to be added to the 
-     queues. */
   int i;
   uint64_t oldest_interesting_time=gettime_ms();
   for(i=0;i<config.rhizome.direct.channels.ac;i++)
@@ -150,7 +142,7 @@ int rhizome_direct_async_setup()
 		     " WHERE inserttime>=%lld ORDER BY inserttime", 
 		     oldest_interesting_time);
   if (!statement)
-    return -1;
+    return;
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     char manifest[1024];    
     unsigned long long rowid=-1;
@@ -192,7 +184,19 @@ int rhizome_direct_async_setup()
 
   }
   sqlite3_finalize(statement);
+}
 
+int rhizome_direct_async_setup()
+{
+  // XXX Load state of channels, i.e.:
+  // - last TX message number, 
+  // - last dispatch time
+  // - last rhizome inserttime dealt with
+  rhizome_direct_async_load_state();
+
+  /* Add any bundles that have arrived since last run to be added to the 
+     queues. */
+  rhizome_direct_async_bundlescan();
 
   // Go through received messages and see if there is a complete transmission.
   // Actually, don't bother, since rhizome_direct_async_periodic() will do
@@ -216,7 +220,7 @@ void rhizome_direct_async_periodic(struct sched_ent *alarm)
 
 // Called when the monitor command "rdasync check" is issued.  This tells us
 // to look for newly received messages in the in-bound spool directories for the
-// rhizome direct async channels.
+// rhizome direct async channels.  Also check for any recently arrived bundles.
 int monitor_rhizome_direct_async_rx(int argc, const char *const *argv, 
 					   const struct command_line_option *o, 
 					   void *context)
@@ -225,6 +229,8 @@ int monitor_rhizome_direct_async_rx(int argc, const char *const *argv,
   char msg[256];
   snprintf(msg, sizeof(msg), "\nOK:\n");
   write_str(c->alarm.poll.fd, msg);
+
+  rhizome_direct_async_bundlescan();
   return 0;
 }
 
