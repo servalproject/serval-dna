@@ -309,6 +309,23 @@ int rhizome_direct_async_does_far_end_have(int channelNumber,
   return 0;
 }
 
+int rhizome_direct_async_write_state(int channelNumber)
+{
+  FILE *f;
+  char filename[1024];
+  snprintf(filename,1024,"%s/state",
+	   config.rhizome.direct.channels.av[channelNumber].value.out_path);
+  f=fopen(filename,"w");
+  if (f) {
+    fprintf(f,"%lld:%lld\n",  
+	    channel_states[channelNumber].lastInsertionTime,
+	    channel_states[channelNumber].lastTXMessageNumber);
+    fclose(f);
+    return 0;
+  }
+  return -1;
+}
+
 int rhizome_direct_async_queue_ihave(int channelNumber,
 				     rhizome_manifest *m,
 				     int64_t insertionTime)
@@ -350,15 +367,7 @@ int rhizome_direct_async_queue_ihave(int channelNumber,
     DEBUGF("Setting lastInsertionTime of channel #%d to %lld",
 	   channelNumber,insertionTime);
   channel_states[channelNumber].lastInsertionTime=insertionTime;
-  snprintf(filename,1024,"%s/state",
-	   config.rhizome.direct.channels.av[channelNumber].value.out_path);
-  f=fopen(filename,"w");
-  if (f) {
-    fprintf(f,"%lld:%lld\n",  
-	    channel_states[channelNumber].lastInsertionTime,
-	    channel_states[channelNumber].lastTXMessageNumber);
-    fclose(f);
-  }
+  rhizome_direct_async_write_state(channelNumber);
   rhizome_direct_async_load_state();
   return 0;
 }
@@ -394,6 +403,26 @@ static int messagesRequired(int bytesPerMessage,int bytesToSend)
   int netBytesPerMessage=bytesPerMessage-1-1;
 
   return bytesToSend/netBytesPerMessage+(bytesToSend%netBytesPerMessage?1:0);
+}
+
+static int writeMessage(FILE *f,struct overlay_buffer *b,int m,int channel)
+{
+  switch (config.rhizome.direct.channels.av[channel].value.alphabet_size)
+    {
+    case 256: /* 8-bit clean */
+      if (fwrite(&b->bytes[config.rhizome.direct.channels.av[channel]
+			   .value.message_length*m],
+		 config.rhizome.direct.channels.av[channel].value.message_length,
+		 1,f)==1)
+	return 0;
+      else return -1;
+      break;
+    case 128: /* 7-bit clean */
+    default: /* arbitrary alphabet, use range-coder */
+      WHYF("Oops -- I don't support output in base %d yet.",
+	   config.rhizome.direct.channels.av[channel].value.alphabet_size);
+      return -1;
+    }
 }
 
 int app_rhizome_direct_async_check(int argc, const char *const *argv, const struct command_line_option *o, void *context)
@@ -434,15 +463,16 @@ int app_rhizome_direct_async_check(int argc, const char *const *argv, const stru
 }
 
 
-int rhizome_direct_async_flush_queue(int i)
+int rhizome_direct_async_flush_queue(int channel)
 {
-  int messageBytes=config.rhizome.direct.channels.av[i].value.message_length;
-  int maxMessages=config.rhizome.direct.channels.av[i].value.max_messages;
+  int j;
+  int messageBytes=config.rhizome.direct.channels.av[channel].value.message_length;
+  int maxMessages=config.rhizome.direct.channels.av[channel].value.max_messages;
 					 
   DEBUGF("Preparing upto %d messages of upto %d bytes,"
 	 " for rhizome content arrived later than %s",
 	 maxMessages,messageBytes,
-	 describe_time_interval_ms(channel_states[i].lastInsertionTime));
+	 describe_time_interval_ms(channel_states[channel].lastInsertionTime));
 
 #define MAX_FRESH 128
   int freshBundles=0;
@@ -452,7 +482,7 @@ int rhizome_direct_async_flush_queue(int i)
 
   char filename[1024];
   snprintf(filename,1024,"%s/queued_manifests",
-	   config.rhizome.direct.channels.av[i].value.out_path);
+	   config.rhizome.direct.channels.av[channel].value.out_path);
   FILE *f=fopen(filename,"r");
   
   while (freshBundles<MAX_FRESH
@@ -472,6 +502,7 @@ int rhizome_direct_async_flush_queue(int i)
 
     freshBundles++;    
   }
+  fclose(f);
 
   if (config.debug.rhizome_async) 
     DEBUGF("There are %d bundles that we need to tell the far side about.",
@@ -499,25 +530,26 @@ int rhizome_direct_async_flush_queue(int i)
   struct overlay_buffer *announceAsManifests=ob_new();
   
   /* Start of time range */
-  ob_append_ui32(header,channel_states[i].firstManifestQueueTime>>32);
-  ob_append_ui32(header,channel_states[i].firstManifestQueueTime&0xffffffff);
-  if (lastInsertTimeCovered-channel_states[i].firstManifestQueueTime>0xffffffffLL)
+  ob_append_ui32(header,channel_states[channel].firstManifestQueueTime>>32);
+  ob_append_ui32(header,channel_states[channel].firstManifestQueueTime&0xffffffff);
+  if (lastInsertTimeCovered-channel_states[channel].firstManifestQueueTime>0xffffffffLL)
     ob_append_ui32(header,0xffffffff);
   else
     ob_append_ui32(header,(unsigned int)(lastInsertTimeCovered
-					 -channel_states[i].firstManifestQueueTime));
+					 -channel_states[channel].firstManifestQueueTime));
 
   ob_append_bytes(announceAsBars,header->bytes,header->position);
   ob_append_byte(announceAsBars,RDA_MSG_BARS_RAW);
-  for(i=0;i<freshBundles;i++) {
+  for(j=0;j<freshBundles;j++) {
     /* XXX compact BARs (geobounding box and version are low entropy).
        Version is also potentially low entropy.  We can certainly order
        the BARs by version so that the entropy of the BARs is reduced. */
-    ob_append_bytes(announceAsBars,bars[i],RHIZOME_BAR_BYTES);
+    ob_append_bytes(announceAsBars,bars[j],RHIZOME_BAR_BYTES);
   }
 
   ob_append_bytes(announceAsManifests,header->bytes,header->position);
   ob_append_byte(announceAsManifests,RDA_MSG_MANIFESTS);
+  int i;
   for(i=0;i<freshBundles;i++) {    
 
     rhizome_manifest *m=NULL;
@@ -571,6 +603,35 @@ int rhizome_direct_async_flush_queue(int i)
       DEBUGF("Sending using %d bytes (%d messages)",
 	     bestbuffer->position,bestMessagesRequired);
     }
+
+  /* Write out the actual message files */
+  for(j=0;j<bestMessagesRequired;j++) {
+    snprintf(filename,1024,"%s/tx.%016llx",
+	     config.rhizome.direct.channels.av[channel].value.out_path,
+	     channel_states[i].lastTXMessageNumber);
+    f=fopen(filename,"w");
+    if (f) {
+      writeMessage(f,bestbuffer,j,i);
+      fclose(f);
+      channel_states[i].lastTXMessageNumber++;
+      rhizome_direct_async_write_state(i);
+    } else {
+      WHYF("Error writing rhizome direct async message file '%s'.  Expect strange behaviour and synchronisation failure.",filename);
+    }
+  }
+
+  /* Remove list of queued manifests */
+  snprintf(filename,1024,"%s/queued_manifests",
+	   config.rhizome.direct.channels.av[channel].value.out_path);
+  unlink(filename);
+
+  /* Re-read state */
+  rhizome_direct_async_load_state();
+
+  /* Clean up data structures */
+  ob_free(header);
+  ob_free(announceAsManifests);
+  ob_free(announceAsBars);
 
   return 0;
 }

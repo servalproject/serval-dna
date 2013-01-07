@@ -226,10 +226,11 @@ setup_messagesemitted() {
 test_messagesemitted() {
    assertGrep --matches=1 "$LOGA" "new manifest: BID=$BID1"
    set_instance +A
-   assert [ -e $instance_dir/async-out/queued_manifests ]
-   assert [ ! -z $instance_dir/async-out/queued_manifests ]
    sleep 2
    assert [ `ls -1 $instance_dir/async-out/ | grep ^tx | wc -l` == 1 ]
+   assert [ -e $instance_dir/async-out/queued_manifests/tx.0000000000000000 ]
+   assert [ ! -z $instance_dir/async-out/queued_manifests/tx.0000000000000000 ]
+   
 }
 
 doc_messagesemittedonupdate="Message(s) are emitted when a new version of a bundle is observed"
