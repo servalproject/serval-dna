@@ -407,13 +407,17 @@ static int messagesRequired(int bytesPerMessage,int bytesToSend)
 
 static int writeMessage(FILE *f,struct overlay_buffer *b,int m,int channel)
 {
+  int bytes=config.rhizome.direct.channels.av[channel].value.message_length;
   switch (config.rhizome.direct.channels.av[channel].value.alphabet_size)
     {
     case 256: /* 8-bit clean */
+      if (b->position<(config.rhizome.direct.channels.av[channel]
+		      .value.message_length*m+bytes))
+	bytes=b->position
+	  -config.rhizome.direct.channels.av[channel].value.message_length*m;
+
       if (fwrite(&b->bytes[config.rhizome.direct.channels.av[channel]
-			   .value.message_length*m],
-		 config.rhizome.direct.channels.av[channel].value.message_length,
-		 1,f)==1)
+			   .value.message_length*m],bytes,1,f)==1)
 	return 0;
       else return -1;
       break;
@@ -549,27 +553,27 @@ int rhizome_direct_async_flush_queue(int channel)
 
   ob_append_bytes(announceAsManifests,header->bytes,header->position);
   ob_append_byte(announceAsManifests,RDA_MSG_MANIFESTS);
-  int i;
-  for(i=0;i<freshBundles;i++) {    
+  int k;
+  for(k=0;k<freshBundles;k++) {    
 
     rhizome_manifest *m=NULL;
-    if (rhizome_retrieve_manifest_by_bar(bars[i],&m)<1)
+    if (rhizome_retrieve_manifest_by_bar(bars[k],&m)<1)
       {
 	if (m) rhizome_manifest_free(m);
 	continue;
       }
 
-    if (manifestBytes[i]<250)
-      ob_append_byte(announceAsManifests,manifestBytes[i]);
+    if (manifestBytes[k]<250)
+      ob_append_byte(announceAsManifests,manifestBytes[k]);
     else {
-      ob_append_byte(announceAsManifests,250+manifestBytes[i]/250);
-      ob_append_byte(announceAsManifests,manifestBytes[i]%255);
+      ob_append_byte(announceAsManifests,250+manifestBytes[k]/250);
+      ob_append_byte(announceAsManifests,manifestBytes[k]%255);
     }     
-    ob_makespace(announceAsManifests,manifestBytes[i]);
+    ob_makespace(announceAsManifests,manifestBytes[k]);
     bcopy(m->manifestdata,
 	  &announceAsManifests->bytes[announceAsManifests->position],
-	  manifestBytes[i]);
-    announceAsManifests->position+=manifestBytes[i];
+	  manifestBytes[k]);
+    announceAsManifests->position+=manifestBytes[k];
     rhizome_manifest_free(m);
   }
 
@@ -608,13 +612,13 @@ int rhizome_direct_async_flush_queue(int channel)
   for(j=0;j<bestMessagesRequired;j++) {
     snprintf(filename,1024,"%s/tx.%016llx",
 	     config.rhizome.direct.channels.av[channel].value.out_path,
-	     channel_states[i].lastTXMessageNumber);
+	     channel_states[channel].lastTXMessageNumber);
     f=fopen(filename,"w");
     if (f) {
-      writeMessage(f,bestbuffer,j,i);
+      writeMessage(f,bestbuffer,j,channel);
       fclose(f);
-      channel_states[i].lastTXMessageNumber++;
-      rhizome_direct_async_write_state(i);
+      channel_states[channel].lastTXMessageNumber++;
+      rhizome_direct_async_write_state(channel);
     } else {
       WHYF("Error writing rhizome direct async message file '%s'.  Expect strange behaviour and synchronisation failure.",filename);
     }

@@ -228,9 +228,9 @@ test_messagesemitted() {
    set_instance +A
    sleep 2
    assert [ `ls -1 $instance_dir/async-out/ | grep ^tx | wc -l` == 1 ]
-   assert [ -e $instance_dir/async-out/queued_manifests/tx.0000000000000000 ]
-   assert [ ! -z $instance_dir/async-out/queued_manifests/tx.0000000000000000 ]
-   
+   assert [ -e $instance_dir/async-out/tx.0000000000000000 ]
+   assert [ ! -z $instance_dir/async-out/tx.0000000000000000 ]
+   ls -l $instance_dir/async-out/tx.0000000000000000
 }
 
 doc_messagesemittedonupdate="Message(s) are emitted when a new version of a bundle is observed"
