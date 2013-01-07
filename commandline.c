@@ -1064,8 +1064,13 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
   if (authorSidHex[0] && fromhexstr(authorSid.binary, authorSidHex, SID_SIZE) == -1)
     return WHYF("invalid author_sid: %s", authorSidHex);
   rhizome_bk_t bsk;
+  
+  // treat empty string the same as null
+  if (bskhex && !*bskhex)
+    bskhex=NULL;
+  
   if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
-    return WHYF("invalid bsk: %s", bskhex);
+    return WHYF("invalid bsk: \"%s\"", bskhex);
   
   if (create_serval_instance_dir() == -1)
     return -1;
@@ -1311,9 +1316,13 @@ int app_rhizome_extract_file(int argc, const char *const *argv, const struct com
     char manifestIdUpper[RHIZOME_MANIFEST_ID_STRLEN + 1];
     tohex(manifestIdUpper, manifest_id, RHIZOME_MANIFEST_ID_BYTES);
     
+    // treat empty string the same as null
+    if (bskhex && !*bskhex)
+      bskhex=NULL;
+    
     rhizome_bk_t bsk;
     if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
-      return WHYF("invalid bsk: %s", bskhex);
+      return WHYF("invalid bsk: \"%s\"", bskhex);
     
     rhizome_manifest *m = rhizome_new_manifest();
     if (m==NULL)
