@@ -82,6 +82,14 @@ setup_channel() {
    mkdir $instance_dir/async-out
  }
 
+setup_channel_nodelay() {
+  setup_channel
+  executeOk_servald config \
+       set rhizome.direct.channels.a.max_pending 1 \
+       set rhizome.direct.channels.a.max_settle_time 1 \
+       set rhizome.direct.channels.a.settle_time 1
+ }
+
 doc_channelsetup="Channel setup works"
 setup_channelsetup() {
    setup_common
@@ -194,7 +202,7 @@ setup_barsqueued() {
    start_servald_instances +A
 }
 test_barsqueued() {
-   assertGrep --matches=1 "$LOGA" "new manifest: BID=$BID1"
+   assertGrep --matches=1 "$LOGA" "new manifest: BID=${BID1}"
    set_instance +A
    assert [ -e $instance_dir/async-out/queued_manifests ]
    assert [ ! -z $instance_dir/async-out/queued_manifests ]
@@ -203,8 +211,24 @@ test_barsqueued() {
 }
 
 doc_messagesemitted="Message(s) are emitted when new bundles observed"
+setup_messagesemitted() {
+   setup_servald
+   set_instance +A
+   setup_channel_nodelay
+   mkdir $instance_dir/async-out
+   assert_no_servald_processes
+   create_single_identity
+   rhizome_add_file file1
+   BID1=$BID
+   start_servald_instances +A
+}
 test_messagesemitted() {
-    assert false
+   assertGrep --matches=1 "$LOGA" "new manifest: BID=$BID1"
+   set_instance +A
+   assert [ -e $instance_dir/async-out/queued_manifests ]
+   assert [ ! -z $instance_dir/async-out/queued_manifests ]
+   txcount=`ls -l $instance_dir/async-out/tx.* | wc -l`
+   assert [ $txcount == 1 ]
 }
 
 doc_messagesemittedonupdate="Message(s) are emitted when a new version of a bundle is observed"
