@@ -79,8 +79,8 @@ int rhizome_direct_async_load_state()
       struct stat s;
       if (!stat(filename,&s)) {
 	channel_states[i].queuedManifests=s.st_size/RHIZOME_BAR_BYTES;
-	channel_states[i].firstManifestQueueTime=1000*s.st_ctime;
-	channel_states[i].lastManifestQueueTime=1000*s.st_mtime;
+	channel_states[i].firstManifestQueueTime=1000LL*s.st_ctime;
+	channel_states[i].lastManifestQueueTime=1000LL*s.st_mtime;
       }
       snprintf(filename,1024,"%s/state",
 	       config.rhizome.direct.channels.av[i].value.out_path);
@@ -216,7 +216,12 @@ void rhizome_direct_async_periodic(struct sched_ent *alarm)
       if (channel_states[i].queuedManifests) {
 	int flushQueue=0;
 	int64_t waitingTime=gettime_ms()-channel_states[i].firstManifestQueueTime;
+	if (!channel_states[i].firstManifestQueueTime) waitingTime=0;
 	int64_t settleTime=gettime_ms()-channel_states[i].lastManifestQueueTime;
+	if (!channel_states[i].lastManifestQueueTime)
+	  settleTime=0;
+	DEBUGF("waitingTime = %lld (%lld)",
+	       waitingTime,channel_states[i].firstManifestQueueTime);
 	// Channel has BARs queued -- check if queue needs flushing.
 
 	// Flush if there are too many BARs queued up
@@ -224,7 +229,8 @@ void rhizome_direct_async_periodic(struct sched_ent *alarm)
 	    >=config.rhizome.direct.channels.av[i].value.max_pending) 
 	  {
 	    if (config.debug.rhizome_async) 
-	      DEBUGF("Flushing channel #%d queue due to max_pending",i);	    
+	      DEBUGF("Flushing channel #%d queue due to max_pending"
+		     " (%d waiting)",i,channel_states[i].queuedManifests);	    
 	    flushQueue=1;
 	  }
 	// Flush if BARs have been queued for at least max_settle_time,
@@ -232,7 +238,9 @@ void rhizome_direct_async_periodic(struct sched_ent *alarm)
 	if (waitingTime>=config.rhizome.direct.channels.av[i].value.max_settle_time)
 	  {
 	    if (config.debug.rhizome_async) 
-	      DEBUGF("Flushing channel #%d queue due to max_settle_time",i);
+	      DEBUGF("Flushing channel #%d queue due to max_settle_time"
+		     " (BARs waiting since %s)",i,
+		     describe_time_interval_ms(waitingTime));
 	    flushQueue=1;
 	  }
 	// Flush if BARs have been waiting, and no new BARs have been queued 
@@ -240,7 +248,9 @@ void rhizome_direct_async_periodic(struct sched_ent *alarm)
 	if (settleTime>=config.rhizome.direct.channels.av[i].value.settle_time)
 	  {
 	    if (config.debug.rhizome_async) 
-	      DEBUGF("Flushing channel #%d queue due to settle_time",i);
+	      DEBUGF("Flushing channel #%d queue due to settle_time"
+		     " (BARs waiting since %s)",i,
+		     describe_time_interval_ms(settleTime));
 	    flushQueue=1;
 	  }
 	if (config.debug.rhizome_async) 
