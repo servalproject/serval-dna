@@ -254,12 +254,6 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
   if (m_in->version==-1)
     return WHY("Manifest must have a version number");
 
-  /* Supply manifest version number if missing, so we can do the version check below */
-  if (m_in->version == -1) {
-    m_in->version = gettime_ms();
-    rhizome_manifest_set_ll(m_in, "version", m_in->version);
-  }
-
   /* If the manifest already has an ID */
   char id[SID_STRLEN + 1];
   if (rhizome_manifest_get(m_in, "id", id, SID_STRLEN + 1)) {
