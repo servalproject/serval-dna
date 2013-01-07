@@ -18,17 +18,46 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "conf.h"
+#include "str.h"
 #include "rhizome.h"
 #include <stdlib.h>
 
-int rhizome_enabled()
+int is_rhizome_enabled()
 {
-  return confValueGetBoolean("rhizome.enable", 1);;
+  return config.rhizome.enable;
+}
+
+int is_rhizome_http_enabled()
+{
+  return config.rhizome.enable
+    &&   config.rhizome.http.enable
+    &&   rhizome_db;
+}
+
+int is_rhizome_mdp_enabled()
+{
+  return config.rhizome.enable
+    &&   config.rhizome.mdp.enable
+    &&   rhizome_db;
+}
+
+int is_rhizome_mdp_server_running()
+{
+  return is_rhizome_mdp_enabled();
+}
+
+int is_rhizome_advertise_enabled()
+{
+  return config.rhizome.enable
+    &&   config.rhizome.advertise.enable
+    &&   rhizome_db
+    &&   (is_rhizome_http_server_running() || is_rhizome_mdp_server_running());
 }
 
 int rhizome_fetch_delay_ms()
 {
-  return confValueGetInt64Range("rhizome.fetch_delay_ms", 50, 1, 3600000);
+  return config.rhizome.fetch_delay_ms;
 }
 
 /* Import a bundle from a pair of files, one containing the manifest and the optional other
@@ -36,38 +65,39 @@ int rhizome_fetch_delay_ms()
    that function and manages file and object buffers and lifetimes.
 */
 
-int rhizome_bundle_import_files(const char *manifest_path, const char *payload_path, int ttl)
+int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, const char *filepath)
 {
-  if (debug & DEBUG_RHIZOME)
-    DEBUGF("(manifest_path=%s, payload_path=%s, ttl=%d)",
+  if (config.debug.rhizome)
+    DEBUGF("(manifest_path=%s, filepath=%s)",
 	manifest_path ? alloca_str_toprint(manifest_path) : "NULL",
-	payload_path ? alloca_str_toprint(payload_path) : "NULL",
-	ttl
-      );
-  /* Read manifest file if no manifest was given */
-  if (!manifest_path)
-    return WHY("No manifest supplied");
-  int ret = 0;
-  rhizome_manifest *m = rhizome_new_manifest();
-  if (!m)
-    ret = WHY("Out of manifests");
-  else if (rhizome_read_manifest_file(m, manifest_path, 0 /* file not buffer */) == -1)
-    ret = WHY("Could not read manifest file");
-  else if (rhizome_manifest_verify(m))
-    ret = WHY("Verification of manifest file failed");
-  else {
-    /* Make sure we store signatures */
-    m->manifest_bytes=m->manifest_all_bytes;
-
-    m->dataFileName = strdup(payload_path);
-    if (rhizome_manifest_check_file(m))
-      ret = WHY("Payload does not belong to manifest");
-    else
-      ret = rhizome_bundle_import(m, ttl);
-  }
-  if (m)
-    rhizome_manifest_free(m);
-  return ret;
+	filepath ? alloca_str_toprint(filepath) : "NULL");
+  
+  if (rhizome_read_manifest_file(m, manifest_path, 0) == -1)
+    return WHY("could not read manifest file");
+  if (rhizome_manifest_verify(m))
+    return WHY("could not verify manifest");
+  
+  /* Make sure we store signatures */
+  // TODO, why do we need this? Why isn't the state correct from rhizome_read_manifest_file? 
+  // This feels like a hack...
+  m->manifest_bytes=m->manifest_all_bytes;
+  
+  int status = rhizome_import_file(m, filepath);
+  if (status<0)
+    return status;
+  
+  status = rhizome_manifest_check_duplicate(m, NULL);
+  if (status<0)
+    return status;
+  
+  if (status==0){
+    if (rhizome_add_manifest(m, 1) == -1) { // ttl = 1
+      return WHY("rhizome_add_manifest() failed");
+    }
+  }else
+    INFO("Duplicate found in store");
+  
+  return status;
 }
 
 /* Import a bundle from a finalised manifest struct.  The dataFileName element must give the path
@@ -78,13 +108,8 @@ int rhizome_bundle_import_files(const char *manifest_path, const char *payload_p
 
 int rhizome_bundle_import(rhizome_manifest *m, int ttl)
 {
-  if (debug & DEBUG_RHIZOME)
+  if (config.debug.rhizome)
     DEBUGF("(m=%p, ttl=%d)", m, ttl);
-  /* Add the manifest and its payload to the Rhizome database. */
-  if (m->fileLength > 0 && !(m->dataFileName && m->dataFileName[0]))
-    return WHY("Missing data file name");
-  if (rhizome_manifest_check_file(m))
-    return WHY("File does not belong to manifest");
   int ret = rhizome_manifest_check_duplicate(m, NULL);
   if (ret == 0) {
     ret = rhizome_add_manifest(m, ttl);
@@ -121,7 +146,7 @@ int rhizome_manifest_check_sanity(rhizome_manifest *m_in)
   } else {
     return WHY("Invalid service type");
   }
-  if (debug & DEBUG_RHIZOME)
+  if (config.debug.rhizome)
     DEBUGF("sender='%s'", sender ? sender : "(null)");
 
   /* passes all sanity checks */
@@ -167,7 +192,7 @@ int rhizome_manifest_bind_id(rhizome_manifest *m_in)
     if (!rhizome_secret2bk(m_in->cryptoSignPublic,rs,rs_len,bkbytes,m_in->cryptoSignSecret)) {
       char bkhex[RHIZOME_BUNDLE_KEY_STRLEN + 1];
       (void) tohex(bkhex, bkbytes, RHIZOME_BUNDLE_KEY_BYTES);
-      if (debug&DEBUG_RHIZOME) DEBUGF("set BK=%s", bkhex);
+      if (config.debug.rhizome) DEBUGF("set BK=%s", bkhex);
       rhizome_manifest_set(m_in, "BK", bkhex);
     } else {
       return WHY("Failed to set BK");
@@ -176,113 +201,20 @@ int rhizome_manifest_bind_id(rhizome_manifest *m_in)
   return 0;
 }
 
-int rhizome_manifest_bind_file(rhizome_manifest *m_in,const char *filename,int encryptP)
-{
-  /* Keep payload file name handy for later */
-  m_in->dataFileName = strdup(filename);
-
-  /* Keep note as to whether we are supposed to be encrypting this file or not */
-  m_in->payloadEncryption=encryptP;
-  if (encryptP) rhizome_manifest_set_ll(m_in,"crypt",1); 
-  else rhizome_manifest_set_ll(m_in,"crypt",0);
-
-  /* Get length of payload.  An empty filename means empty payload. */
-  if (filename[0]) {
-    struct stat stat;
-    if (lstat(filename,&stat))
-      return WHYF("Could not stat() payload file '%s'",filename);
-    m_in->fileLength = stat.st_size;
-  } else
-    m_in->fileLength = 0;
-  if (debug & DEBUG_RHIZOME)
-    DEBUGF("filename=%s, fileLength=%lld", filename, m_in->fileLength);
-  rhizome_manifest_set_ll(m_in,"filesize",m_in->fileLength);
-
-  /* Compute hash of non-empty payload */
-  if (m_in->fileLength != 0) {
-    char hexhashbuf[RHIZOME_FILEHASH_STRLEN + 1];
-    if (rhizome_hash_file(m_in,filename, hexhashbuf))
-      return WHY("Could not hash file.");
-    memcpy(&m_in->fileHexHash[0], &hexhashbuf[0], sizeof hexhashbuf);
-    rhizome_manifest_set(m_in, "filehash", m_in->fileHexHash);
-    m_in->fileHashedP = 1;
-  } else {
-    m_in->fileHexHash[0] = '\0';
-    rhizome_manifest_del(m_in, "filehash");
-    m_in->fileHashedP = 0;
-  }
-  
-  return 0;
-}
-
-int rhizome_manifest_check_file(rhizome_manifest *m_in)
-{
-  long long gotfile = 0;
-  if (sqlite_exec_int64(&gotfile, "SELECT COUNT(*) FROM FILES WHERE ID='%s' and datavalid=1;", m_in->fileHexHash) != 1) {
-    WHYF("Failed to count files");
-    return 0;
-  }
-  if (gotfile) {
-    /* Skipping file checks for bundle, as file is already in the database */
-    return 0;
-  }
-
-  /* Find out whether the payload is expected to be encrypted or not */
-  m_in->payloadEncryption=rhizome_manifest_get_ll(m_in, "crypt");
-  
-  /* Check payload file is accessible and discover its length, then check that it
-     matches the file size stored in the manifest */
-  long long mfilesize = rhizome_manifest_get_ll(m_in, "filesize");
-  m_in->fileLength = 0;
-  if (m_in->dataFileName && m_in->dataFileName[0]) {
-    struct stat stat;
-    if (lstat(m_in->dataFileName,&stat) == -1) {
-      if (errno != ENOENT || mfilesize != 0)
-	return WHYF_perror("stat(%s)", m_in->dataFileName);
-    } else {
-      m_in->fileLength = stat.st_size;
-    }
-  }
-  if (debug & DEBUG_RHIZOME)
-    DEBUGF("filename=%s, fileLength=%lld", m_in->dataFileName ? alloca_str_toprint(m_in->dataFileName) : "NULL", m_in->fileLength);
-  if (mfilesize != -1 && mfilesize != m_in->fileLength) {
-    WHYF("Manifest.filesize (%lld) != actual file size (%lld)", mfilesize, m_in->fileLength);
-    return -1;
-  }
-
-  /* If payload is empty, ensure manifest has not file hash, otherwis compute the hash of the
-     payload and check that it matches manifest. */
-  const char *mhexhash = rhizome_manifest_get(m_in, "filehash", NULL, 0);
-  if (m_in->fileLength != 0) {
-    char hexhashbuf[RHIZOME_FILEHASH_STRLEN + 1];
-    if (rhizome_hash_file(m_in,m_in->dataFileName, hexhashbuf))
-      return WHY("Could not hash file.");
-    memcpy(&m_in->fileHexHash[0], &hexhashbuf[0], sizeof hexhashbuf);
-    m_in->fileHashedP = 1;
-    if (!mhexhash) return WHY("manifest contains no file hash");
-    if (mhexhash && strcmp(m_in->fileHexHash, mhexhash)) {
-      WHYF("Manifest.filehash (%s) does not match payload hash (%s)", mhexhash, m_in->fileHexHash);
-      return -1;
-    }
-  } else {
-    if (mhexhash != NULL) {
-      WHYF("Manifest.filehash (%s) should be absent for empty payload", mhexhash);
-      return -1;
-    }
-  }
-
-  return 0;
-}
-
 /* Check if a manifest is already stored for the same payload with the same details.
-   This catches the case of "dna rhizome add file <filename>" on the same file more than once.
+   This catches the case of "rhizome add file <filename>" on the same file more than once.
    (Debounce!) */
 int rhizome_manifest_check_duplicate(rhizome_manifest *m_in, rhizome_manifest **m_out)
 {
-  if (debug & DEBUG_RHIZOME) DEBUG("Checking for duplicate");
+  // if a manifest was supplied with an ID, don't bother to check for a duplicate.
+  // we only want to filter out added files with no existing manifest.
+  if (m_in->haveSecret!=NEW_BUNDLE_ID)
+    return 0;
+  
+  if (config.debug.rhizome) DEBUG("Checking for duplicate");
   if (m_out) *m_out = NULL; 
   rhizome_manifest *dupm = NULL;
-  if (rhizome_find_duplicate(m_in, &dupm,0 /* version doesn't matter */) == -1)
+  if (rhizome_find_duplicate(m_in, &dupm) == -1)
     return WHY("Errors encountered searching for duplicate manifest");
   if (dupm) {
     /* If the caller wants the duplicate manifest, it must be finalised, otherwise discarded. */
@@ -291,16 +223,16 @@ int rhizome_manifest_check_duplicate(rhizome_manifest *m_in, rhizome_manifest **
     }
     else
       rhizome_manifest_free(dupm);
-    if (debug & DEBUG_RHIZOME) DEBUG("Found a duplicate");
+    if (config.debug.rhizome) DEBUG("Found a duplicate");
     return 2;
   }
-  if (debug & DEBUG_RHIZOME) DEBUG("No duplicate found");
+  if (config.debug.rhizome) DEBUG("No duplicate found");
   return 0;
 }
 
 int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
 {
-  if (debug & DEBUG_RHIZOME)
+  if (config.debug.rhizome)
     DEBUGF("rhizome_add_manifest(m_in=%p, ttl=%d)",m_in, ttl);
 
   if (m_in->finalised==0)
@@ -312,8 +244,10 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
   if (rhizome_manifest_check_sanity(m_in))
     return WHY("Sanity checks on manifest failed");
 
-  if (rhizome_manifest_check_file(m_in))
-    return WHY("File does not belong to this manifest");
+  if (m_in->fileLength){
+    if (!rhizome_exists(m_in->fileHexHash))
+      return WHY("File has not been imported");
+  }
 
   /* Get manifest version number. */
   m_in->version = rhizome_manifest_get_ll(m_in, "version");
@@ -336,10 +270,10 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
       case -1:
 	return WHY("Select failed");
       case 0:
-	if (debug & DEBUG_RHIZOME) DEBUG("No existing manifest");
+	if (config.debug.rhizome) DEBUG("No existing manifest");
 	break;
       case 1:
-	if (debug & DEBUG_RHIZOME) DEBUGF("Found existing version=%lld, new version=%lld", storedversion, m_in->version);
+	if (config.debug.rhizome) DEBUGF("Found existing version=%lld, new version=%lld", storedversion, m_in->version);
 	if (m_in->version < storedversion)
 	  return WHY("Newer version exists");
 	if (m_in->version == storedversion)

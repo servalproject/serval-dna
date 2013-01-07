@@ -69,12 +69,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "conf.h"
 #include "rhizome.h"
 #include "strbuf.h"
 
 int overlayMode=0;
-
-overlay_txqueue overlay_tx[OQ_MAX];
 
 keyring_file *keyring=NULL;
 
@@ -94,28 +93,7 @@ int overlayServerMode()
   /* put initial identity in if we don't have any visible */
   keyring_seed(keyring);
 
-  /* Set default congestion levels for queues */
-  int i;
-  for(i=0;i<OQ_MAX;i++) {
-    overlay_tx[i].maxLength=100;
-    overlay_tx[i].latencyTarget=1000; /* Keep packets in queue for 1 second by default */
-    overlay_tx[i].transmit_delay=5; /* Hold onto packets for 10ms before trying to send a full packet */
-    overlay_tx[i].grace_period=100; /* Delay sending a packet for up to 100ms if servald has other processing to do */
-  }
-  /* expire voice/video call packets much sooner, as they just aren't any use if late */
-  overlay_tx[OQ_ISOCHRONOUS_VOICE].latencyTarget=200;
-  overlay_tx[OQ_ISOCHRONOUS_VIDEO].latencyTarget=200;
-
-  /* try to send voice packets without any delay, and before other background processing */
-  overlay_tx[OQ_ISOCHRONOUS_VOICE].transmit_delay=0;
-  overlay_tx[OQ_ISOCHRONOUS_VOICE].grace_period=0;
-  
-  /* Routing payloads, ack's and nacks need to be sent immediately */
-  overlay_tx[OQ_MESH_MANAGEMENT].transmit_delay=0;
-
-  /* opportunistic traffic can be significantly delayed */
-  overlay_tx[OQ_OPPORTUNISTIC].transmit_delay=200;
-  overlay_tx[OQ_OPPORTUNISTIC].grace_period=500;
+  overlay_queue_init();
   
   /* Get the set of socket file descriptors we need to monitor.
      Note that end-of-file will trigger select(), so we cannot run select() if we 
@@ -139,6 +117,9 @@ schedule(&_sched_##X); }
   /* Periodically check for server shut down */
   SCHEDULE(server_shutdown_check, 0, 100);
   
+  /* Periodically reload configuration */
+  SCHEDULE(server_config_reload, SERVER_CONFIG_RELOAD_INTERVAL_MS, SERVER_CONFIG_RELOAD_INTERVAL_MS + 100);
+  
   /* Setup up MDP & monitor interface unix domain sockets */
   overlay_mdp_setup_sockets();
   monitor_setup_sockets();
@@ -147,16 +128,16 @@ schedule(&_sched_##X); }
 
   /* Get rhizome server started BEFORE populating fd list so that
      the server's listen socket is in the list for poll() */
-  if (rhizome_enabled()) {
-    if (!rhizome_opendb()){
-      /* Rhizome http server needs to know which callback to attach
+  if (is_rhizome_enabled()) rhizome_opendb();
+
+  /* Rhizome http server needs to know which callback to attach
 	 to client sockets, so provide it here, along with the name to
 	 appear in time accounting statistics. */
-      rhizome_http_server_start(rhizome_server_parse_http_request,
-				"rhizome_server_parse_http_request",
-				RHIZOME_HTTP_PORT,RHIZOME_HTTP_PORT_MAX);
-    }
-  }
+  if (is_rhizome_http_enabled())
+    rhizome_http_server_start(rhizome_server_parse_http_request,
+			      "rhizome_server_parse_http_request",
+			      RHIZOME_HTTP_PORT,RHIZOME_HTTP_PORT_MAX);    
+
   // start the dna helper if configured
   dna_helper_start();
   
@@ -170,16 +151,14 @@ schedule(&_sched_##X); }
   SCHEDULE(overlay_route_tick, 100, 100);
 
   /* Show CPU usage stats periodically */
-  if (debug&DEBUG_TIMING){
+  if (config.debug.timing){
     SCHEDULE(fd_periodicstats, 3000, 500);
   }
 
 #undef SCHEDULE
   
-  while(1) {
-    /* Check for activitiy and respond to it */
-    fd_poll();
-  }
+  /* Check for activitiy and respond to it */
+  while(fd_poll());
 
   return 0;
 }

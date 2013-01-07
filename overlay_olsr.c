@@ -32,13 +32,12 @@
 */
 
 #include "serval.h"
+#include "conf.h"
 #include "overlay_packet.h"
 #include "overlay_buffer.h"
 #include "overlay_address.h"
 
 #define PACKET_FORMAT_NUMBER 123
-static int local_port =4131;
-static int remote_port =4130;
 
 static void olsr_read(struct sched_ent *alarm);
 
@@ -60,17 +59,14 @@ int olsr_init_socket(void){
   if (read_watch.poll.fd>=0)
     return 0;
   
-  if (!confValueGetBoolean("olsr.enabled",0))
+  if (!config.olsr.enable)
     return 0;
   
-  local_port = confValueGetInt64Range("olsr.local.port", local_port, 1LL, 0xFFFFLL);
-  remote_port = confValueGetInt64Range("olsr.remote.port", remote_port, 1LL, 0xFFFFLL);
-  
-  INFOF("Initialising olsr broadcast forwarding via ports %d-%d", local_port, remote_port);
+  INFOF("Initialising olsr broadcast forwarding via ports %d-%d", config.olsr.local_port, config.olsr.remote_port);
   struct sockaddr_in addr = {
     .sin_family = AF_INET,
     .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
-    .sin_port = htons(local_port),
+    .sin_port = htons(config.olsr.local_port),
   };
   
   fd = socket(AF_INET,SOCK_DGRAM,0);
@@ -130,7 +126,6 @@ static void parse_frame(struct overlay_buffer *buff){
     WHYF("Unexpected magic number %d", magic);
     return;
   }
-  overlay_address_clear();
   
   frame.ttl = ob_get(buff);
   addr_len = ob_get(buff);
@@ -142,31 +137,29 @@ static void parse_frame(struct overlay_buffer *buff){
   addr = (struct in_addr *)ob_get_bytes_ptr(buff, addr_len);
   
   // read subscriber id of transmitter
-  struct subscriber *sender;
-  if (overlay_address_parse(&context, buff, NULL, &sender))
+  if (overlay_address_parse(&context, buff, &context.sender))
     goto end;
   
   if (context.invalid_addresses)
     goto end;
   
-  overlay_address_set_sender(sender);
-  
   // locate the interface we should send outgoing unicast packets to
-  overlay_interface *interface = overlay_interface_find(*addr);
+  overlay_interface *interface = overlay_interface_find(*addr, 1);
   if (interface){
     // always update the IP address we heard them from, even if we don't need to use it right now
-    sender->address.sin_family = AF_INET;
-    sender->address.sin_addr = *addr;
+    context.sender->address.sin_family = AF_INET;
+    context.sender->address.sin_addr = *addr;
     // assume the port number of the other servald matches our local port number configuration
-    sender->address.sin_port = htons(interface->port);
+    context.sender->address.sin_port = htons(interface->port);
 
-    if (sender->reachable==REACHABLE_NONE){
-      reachable_unicast(sender, interface, *addr, interface->port);
+    if (context.sender->reachable==REACHABLE_NONE){
+      set_reachable(context.sender, REACHABLE_UNICAST|REACHABLE_ASSUMED);
+      overlay_send_probe(context.sender, context.sender->address, interface, OQ_MESH_MANAGEMENT);
     }
   }
   
   // read subscriber id of payload origin
-  if (overlay_address_parse(&context, buff, NULL, &frame.source))
+  if (overlay_address_parse(&context, buff, &frame.source))
     goto end;
   
   if (context.invalid_addresses)
@@ -174,7 +167,7 @@ static void parse_frame(struct overlay_buffer *buff){
   
   // read source broadcast id
   // assume each packet may arrive multiple times due to routing loops between servald overlay and olsr.
-  if (overlay_address_parse(&context, buff, &frame.broadcast_id, NULL))
+  if (overlay_broadcast_parse(buff, &frame.broadcast_id))
     goto end;
   
   if (context.invalid_addresses)
@@ -182,7 +175,7 @@ static void parse_frame(struct overlay_buffer *buff){
   
   frame.modifiers=ob_get(buff);
   
-  if (debug&DEBUG_OVERLAYINTERFACES) 
+  if (config.debug.overlayinterfaces) 
     DEBUGF("Received %d byte payload via olsr", buff->sizeLimit - buff->position);
   
   // the remaining bytes are an mdp payload, process it
@@ -194,7 +187,7 @@ static void parse_frame(struct overlay_buffer *buff){
   
 end:
   // if we didn't understand one of the address abreviations, ask for explanation
-  send_please_explain(&context, my_subscriber, sender);
+  send_please_explain(&context, my_subscriber, context.sender);
 }
 
 static void olsr_read(struct sched_ent *alarm){
@@ -208,7 +201,7 @@ static void olsr_read(struct sched_ent *alarm){
       return;
     
     // drop packets from other port numbers
-    if (ntohs(addr.sin_port)!=remote_port){
+    if (ntohs(addr.sin_port)!= config.olsr.remote_port){
       WHYF("Dropping unexpected packet from port %d", ntohs(addr.sin_port));
       return;
     }
@@ -232,7 +225,7 @@ static int send_packet(unsigned char *header, int header_len, unsigned char *pay
   struct sockaddr_in addr={
     .sin_family=AF_INET,
     .sin_addr.s_addr=htonl(INADDR_LOOPBACK),
-    .sin_port=htons(remote_port),
+    .sin_port=htons(config.olsr.remote_port),
   };
   
   struct iovec iov[]={
@@ -266,22 +259,22 @@ int olsr_send(struct overlay_frame *frame){
   if (frame->destination)
     return 0;
   
+  struct decode_context context;
+  bzero(&context, sizeof context);
   struct overlay_buffer *b=ob_new();
-  overlay_address_clear();
   
   // build olsr specific frame header
   ob_append_byte(b, PACKET_FORMAT_NUMBER);
   ob_append_byte(b, frame->ttl);
   
   // address the packet as transmitted by me
-  overlay_address_append(b, my_subscriber);
-  overlay_address_set_sender(my_subscriber);
+  overlay_address_append(&context, b, my_subscriber);
   
-  overlay_address_append(b, frame->source);
+  overlay_address_append(&context, b, frame->source);
   overlay_broadcast_append(b, &frame->broadcast_id);
   ob_append_byte(b, frame->modifiers);
   
-  if (debug&DEBUG_OVERLAYINTERFACES) 
+  if (config.debug.overlayinterfaces) 
     DEBUGF("Sending %d byte payload via olsr", frame->payload->sizeLimit);
   
   // send the packet

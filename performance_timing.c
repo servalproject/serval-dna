@@ -1,6 +1,6 @@
 /*
  Serval Distributed Numbering Architecture (DNA)
- Copyright (C) 2012 Paul Gardner-Stephen
+ Copyright (C) 2012 Serval Project, Inc.
  
  This program is free software; you can redistribute it and/or
  modify it under the terms of the GNU General Public License
@@ -171,7 +171,8 @@ void fd_periodicstats(struct sched_ent *alarm)
   schedule(alarm);
 }
 
-void dump_stack(){
+void dump_stack()
+{
   struct call_stats *call = current_call;
   while(call){
     if (call->totals)
@@ -180,7 +181,7 @@ void dump_stack(){
   }
 }
 
-int fd_func_enter(struct call_stats *this_call)
+int fd_func_enter(struct __sourceloc __whence, struct call_stats *this_call)
 {
   this_call->enter_time=gettime_ms();
   this_call->child_time=0;
@@ -189,14 +190,14 @@ int fd_func_enter(struct call_stats *this_call)
   return 0;
 }
 
-int fd_func_exit(struct call_stats *this_call)
+int fd_func_exit(struct __sourceloc __whence, struct call_stats *this_call)
 {
+  // If current_call does not match this_call, then all bets are off as to where it points.  It
+  // probably points to somewhere on the stack (see the IN() macro) that has since been overwritten,
+  // so no sense in trying to print its contents in a diagnostic message; that would just cause
+  // a SEGV.
   if (current_call != this_call)
-    FATALF("stack-trace corrupted: %s%s%s exited through %s()",
-	 current_call?" entered through ":"no entry information, but",
-	 current_call?current_call->totals->name:"",	 
-	 current_call?"(), but":"",
-	 this_call->totals->name);
+    FATAL("performance timing stack trace corrupted");
   
   time_ms_t now = gettime_ms();
   time_ms_t elapsed = now - this_call->enter_time;

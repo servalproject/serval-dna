@@ -2,41 +2,53 @@ NACL_BASE=	nacl/src
 include $(NACL_BASE)/nacl.mk
 SERVAL_BASE=
 include sourcefiles.mk
-SRCS=	$(NACL_SOURCES) $(SERVAL_SOURCES)
 include headerfiles.mk
 
 HAVE_ALSA= @HAVE_ALSA@
 ifeq (HAVE_ALSA,1)
-SRCS+=	audio_alsa.c
+SERVAL_SOURCES+=	$(SERVAL_BASE)/audio_alsa.c
 endif
 
+HAVE_VOIPTEST=	@HAVE_VOIPTEST@
+ifeq ($(HAVE_VOIPTEST), 1)
+SERVAL_SOURCES+=	$(SERVAL_BASE)/pa_phone.c
+VOIPTEST_CFLAGS=-DHAVE_VOIPTEST=1
+endif
+
+SRCS=	$(NACL_SOURCES) $(SERVAL_SOURCES)
+
 MONITORCLIENTSRCS=conf.c \
+        conf_om.c \
+        conf_parse.c \
+        conf_schema.c \
+	dataformats.c \
 	log.c \
-	mkdir.c \
+	os.c \
+	mem.c \
 	monitor-client.c \
+        instance.c \
 	net.c \
 	str.c \
 	strbuf.c \
 	strbuf_helpers.c
 
 MDPCLIENTSRCS=conf.c \
+        conf_om.c \
+        conf_parse.c \
+        conf_schema.c \
 	dataformats.c \
-	mkdir.c \
+	os.c \
+	mem.c \
 	log.c \
 	mdp_client.c \
+        instance.c \
 	net.c \
 	str.c \
 	strbuf.c \
 	strbuf_helpers.c
 
-HAVE_VOIPTEST=	@HAVE_VOIPTEST@
-ifeq ($(HAVE_VOIPTEST), 1)
-SRCS+=	pa_phone.c
-VOIPTEST_CFLAGS=-DHAVE_VOIPTEST=1
-endif
-
 OBJS=	$(SRCS:.c=.o)
-
+SERVAL_OBJS=	$(SERVAL_SOURCES:.c=.o)
 MONITORCLIENTOBJS=	$(MONITORCLIENTSRCS:.c=.o)
 MDPCLIENTOBJS=	$(MDPCLIENTSRCS:.c=.o)
 
@@ -60,9 +72,13 @@ sqlite-amalgamation-3070900/sqlite3.o:	sqlite-amalgamation-3070900/sqlite3.c
 	@echo CC $<
 	@$(CC) $(CFLAGS) $(DEFS) -c $< -o sqlite-amalgamation-3070900/sqlite3.o
 
-%.o:	%.c $(HDRS)
+%.o:	%.c
 	@echo CC $<
 	@$(CC) $(CFLAGS) $(DEFS) -c $< -o $@
+
+$(SERVAL_OBJS): $(HDRS)
+$(MONITORCLIENTOBJS): $(HDRS)
+$(MDPCLIENTOBJS): $(HDRS)
 
 servald:	$(OBJS)
 	@echo LINK $@
@@ -72,9 +88,9 @@ directory_service: $(MDPCLIENTOBJS) directory_service.o
 	@echo LINK $@
 	@$(CC) $(CFLAGS) -Wall -o $@ $(MDPCLIENTOBJS) directory_service.o $(LDFLAGS) 
 
-tfw_createfile: tfw_createfile.o str.o
+tfw_createfile: tfw_createfile.o str.o strbuf.o strbuf_helpers.o
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -o $@ tfw_createfile.o str.o
+	@$(CC) $(CFLAGS) -Wall -o $@ tfw_createfile.o str.o strbuf.o strbuf_helpers.o
 
 # This does not build on 64 bit elf platforms as NaCL isn't built with -fPIC
 # DOC 20120615

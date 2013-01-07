@@ -18,6 +18,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "conf.h"
+#include "str.h"
 #include "strbuf.h"
 #include "overlay_buffer.h"
 #include "overlay_address.h"
@@ -192,20 +194,10 @@ overlay_node *get_node(struct subscriber *subscriber, int create){
   return subscriber->node;
 }
 
-overlay_node *overlay_route_find_node(const unsigned char *sid, int prefixLen, int createP)
-{
-  if (*sid==0){
-    INFOF("Sid %s/%d cannot ever become a node!", alloca_tohex_sid(sid), prefixLen);
-    return NULL;
-  }
-  
-  return get_node(find_subscriber(sid, prefixLen, createP), createP);
-}
-
-int overlay_route_ack_selfannounce(struct overlay_frame *f,
+int overlay_route_ack_selfannounce(overlay_interface *recv_interface,
 				   unsigned int s1,unsigned int s2,
 				   int interface,
-				   struct overlay_neighbour *n)
+				   struct subscriber *subscriber)
 {
   /* Acknowledge the receipt of a self-announcement of an immediate neighbour.
      We could acknowledge immediately, but that requires the transmission of an
@@ -242,14 +234,10 @@ int overlay_route_ack_selfannounce(struct overlay_frame *f,
 	         XXX 6 is quite an arbitrary selection however. */
 
   /* Set destination of ack to source of observed frame */
-  out->destination = n->node->subscriber;
+  out->destination = subscriber;
   /* set source to ourselves */
   out->source = my_subscriber;
 
-  /* Try to use broadcast if we don't have a route yet */
-  if (out->destination->reachable == REACHABLE_NONE)
-    set_reachable(out->destination, REACHABLE_BROADCAST);
-  
   /* Set the time in the ack. Use the last sequence number we have seen
      from this neighbour, as that may be helpful information for that neighbour
      down the track.  My policy is to communicate that information which should
@@ -269,36 +257,6 @@ int overlay_route_ack_selfannounce(struct overlay_frame *f,
      on the return path doesn't count against the link. */
   ob_append_ui32(out->payload,s1);
   ob_append_ui32(out->payload,s2);
-
-  /* The ack needs to contain the per-interface scores that we have built up
-     for this neighbour.
-     We expect that for most neighbours they will have many fewer than 32 interfaces,
-     and even when they have multiple interfaces that we will only be able to hear
-     them on one or a few. 
-
-     So we will structure the format so that we use fewer bytes when fewer interfaces
-     are involved.
-
-     Probably the simplest is to put each non-zero score followed by it's interface.
-     That way the whole list will be easy to parse, and as short as 3 bytes for a
-     single interface.
-
-     We could use the spare 2 bits at the top of the interface id to indicate
-     multiple interfaces with same score? 
-  */
-#ifdef NOTDEFINED
-  int i;
-  for(i=0;i<OVERLAY_MAX_INTERFACES;i++)
-    {
-      /* Only include interfaces with score >0 */
-      if (n->scores[i]) {
-	ob_append_byte(out->payload,n->scores[i]);
-	ob_append_byte(out->payload,i);
-      }
-    }
-  /* Terminate list */
-  ob_append_byte(out->payload,0);
-#endif
   ob_append_byte(out->payload,interface);
 
   /* Add to queue. Keep broadcast status that we have assigned here if required to
@@ -381,7 +339,7 @@ int overlay_route_node_can_hear_me(struct subscriber *subscriber, int sender_int
      the scanning of recent observations when re-calculating observation scores. */
   while (neh->observations[obs_index].valid && neh->observations[obs_index].s2 >= s1 - 1) {
     if (neh->observations[obs_index].sender_interface == sender_interface) {
-      if (debug&DEBUG_OVERLAYROUTING)
+      if (config.debug.overlayrouting)
 	DEBUGF("merging observation into slot #%d s1=%u s2=%u", obs_index, neh->observations[obs_index].s1, neh->observations[obs_index].s2);
       s1 = neh->observations[obs_index].s1;
       merge=1;
@@ -397,7 +355,7 @@ int overlay_route_node_can_hear_me(struct subscriber *subscriber, int sender_int
       obs_index = 0;
   }
   
-  if (debug&DEBUG_OVERLAYROUTING)
+  if (config.debug.overlayrouting)
     DEBUGF("assign observation slot #%d: s1=%u s2=%u time_ms=%lld", obs_index, s1, s2, (long long)now);
   neh->observations[obs_index].s1=s1;
   neh->observations[obs_index].s2=s2;
@@ -414,35 +372,8 @@ int overlay_route_node_can_hear_me(struct subscriber *subscriber, int sender_int
   if (overlay_route_recalc_neighbour_metrics(neh,now))
     return -1;
 
-  if (debug&DEBUG_OVERLAYROUTEMONITOR) overlay_route_dump();
+  if (config.debug.overlayroutemonitor) overlay_route_dump();
   return 0;
-}
-
-int overlay_route_saw_selfannounce(struct overlay_frame *f, time_ms_t now)
-{
-  IN();
-  unsigned int s1,s2;
-  unsigned char sender_interface;
-  
-  overlay_node *node = get_node(f->source, 1);
-  if (!node)
-    RETURN(-1);
-  
-  struct overlay_neighbour *n=overlay_route_get_neighbour_structure(node, 1 /* make neighbour if not yet one */);
- 
-  if (!n){
-    RETURN(-1);
-  }
-
-  s1=ob_get_ui32(f->payload);
-  s2=ob_get_ui32(f->payload);
-  sender_interface=ob_get(f->payload);
-  if (debug&DEBUG_OVERLAYROUTING)
-    DEBUGF("Received self-announcement for sequence range [%08x,%08x] from interface %d",s1,s2,sender_interface);
-
-  overlay_route_ack_selfannounce(f,s1,s2,sender_interface,n);
-
-  RETURN(0);
 }
 
 /* XXX Think about scheduling this node's score for readvertising? */
@@ -453,11 +384,14 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
   int best_observation=-1;
   int reachable = REACHABLE_NONE;
   
-  // TODO expiry timer since last self announce
-  if (n->subscriber->reachable==REACHABLE_BROADCAST)
-    reachable = REACHABLE_BROADCAST;
   overlay_interface *interface=NULL;
   struct subscriber *next_hop=NULL;
+  
+  // TODO assumption timeout...
+  if (n->subscriber->reachable&REACHABLE_ASSUMED){
+    reachable=n->subscriber->reachable;
+    interface=n->subscriber->interface;
+  }
   
   if (n->neighbour_id)
   {
@@ -475,7 +409,7 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
       {
 	best_score=neighbour->scores[i];
 	best_observation=-1;
-	reachable=REACHABLE_DIRECT;
+	reachable=REACHABLE_BROADCAST;
 	interface = &overlay_interfaces[i];
       }
     }
@@ -484,7 +418,9 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
   if (best_score<=0){
     for(o=0;o<OVERLAY_MAX_OBSERVATIONS;o++)
       {
-	if (n->observations[o].observed_score && n->observations[o].sender->reachable==REACHABLE_DIRECT)
+	// only count observations from neighbours that we *know* we have a 2 way path to
+	if (n->observations[o].observed_score && n->observations[o].sender->reachable&REACHABLE
+	    && !(n->observations[o].sender->reachable&REACHABLE_ASSUMED))
 	  {
 	    int discounted_score=n->observations[o].observed_score;
 	    discounted_score-=(now-n->observations[o].rx_time)/1000;
@@ -509,7 +445,7 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
   int diff=best_score - n->best_link_score;
   if (diff>0) {
     overlay_route_please_advertise(n);
-    if (debug&DEBUG_OVERLAYROUTEMONITOR) overlay_route_dump();
+    if (config.debug.overlayroutemonitor) overlay_route_dump();
   }
   int old_best = n->best_link_score;
   
@@ -518,9 +454,8 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
     case REACHABLE_INDIRECT:
       n->subscriber->next_hop = next_hop;
       break;
-    case REACHABLE_DIRECT:
+    case REACHABLE_BROADCAST:
       n->subscriber->interface = interface;
-      n->subscriber->address = interface->broadcast_address;
       break;
   }
   n->best_link_score=best_score;
@@ -529,12 +464,12 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
   
   if (old_best && !best_score){
     INFOF("PEER UNREACHABLE, sid=%s", alloca_tohex_sid(n->subscriber->sid));
-    monitor_announce_unreachable_peer(n->subscriber->sid);
+    overlay_send_probe(n->subscriber, n->subscriber->address, n->subscriber->interface, OQ_MESH_MANAGEMENT);
+    
   }else if(best_score && !old_best){
     INFOF("PEER REACHABLE, sid=%s", alloca_tohex_sid(n->subscriber->sid));
     /* Make sure node is advertised soon */
     overlay_route_please_advertise(n);
-    monitor_announce_peer(n->subscriber->sid);
   }
   
   return 0;
@@ -568,21 +503,21 @@ int overlay_route_recalc_neighbour_metrics(struct overlay_neighbour *n, time_ms_
   if (!n->node)
     RETURN(WHY("Neighbour is not a node"));
 
-  if (debug&DEBUG_OVERLAYROUTING)
+  if (config.debug.overlayrouting)
     DEBUGF("Updating neighbour metrics for %s", alloca_tohex_sid(n->node->subscriber->sid));
   
   /* At most one update per half second */
   if (n->last_metric_update == 0) {
-    if (debug&DEBUG_OVERLAYROUTING)
+    if (config.debug.overlayrouting)
       DEBUG("last update was never");
   } else {
     time_ms_t ago = now - n->last_metric_update;
     if (ago < 500) {
-      if (debug&DEBUG_OVERLAYROUTING)
+      if (config.debug.overlayrouting)
 	DEBUGF("last update was %lldms ago -- skipping", (long long)ago);
       RETURN (0);
     }
-    if (debug&DEBUG_OVERLAYROUTING)
+    if (config.debug.overlayrouting)
       DEBUGF("last update was %lldms ago", (long long)ago);
   }
   n->last_metric_update = now;
@@ -614,7 +549,7 @@ int overlay_route_recalc_neighbour_metrics(struct overlay_neighbour *n, time_ms_
     
     /* Check the observation age, and ignore if too old */
     time_ms_t obs_age = now - n->observations[i].time_ms;
-    if (debug&DEBUG_OVERLAYROUTING)
+    if (config.debug.overlayrouting)
       DEBUGF("tallying obs: %lldms old, %ums long", obs_age,interval);
     
     /* Ignore very large intervals (>1hour) as being likely to be erroneous.
@@ -624,10 +559,10 @@ int overlay_route_recalc_neighbour_metrics(struct overlay_neighbour *n, time_ms_
      50KB per 12 hours, which is the minimum traffic charge rate 
      on an expensive BGAN satellite link. 	 
      */
-    if (interval>=3600000 || obs_age>200000)
+    if (interval>=3600000 || obs_age>20000)
       continue;
 
-    if (debug&DEBUG_OVERLAYROUTING) 
+    if (config.debug.overlayrouting) 
       DEBUGF("adding %dms (interface %d '%s')",
 	      interval,n->observations[i].sender_interface,
 	      overlay_interfaces[n->observations[i].sender_interface].name);
@@ -671,7 +606,7 @@ int overlay_route_recalc_neighbour_metrics(struct overlay_neighbour *n, time_ms_
       scoreChanged=1;
       n->scores[i]=score;
     }
-    if ((debug&DEBUG_OVERLAYROUTING)&&score)
+    if ((config.debug.overlayrouting)&&score)
       DEBUGF("Neighbour score on interface #%d = %d (observations for %dms)",i,score,ms_observed_200sec[i]);
   }
   if (scoreChanged)
@@ -704,7 +639,7 @@ int overlay_route_recalc_neighbour_metrics(struct overlay_neighbour *n, time_ms_
 int overlay_route_saw_selfannounce_ack(struct overlay_frame *f,long long now)
 {
   IN();
-  if (debug&DEBUG_OVERLAYROUTING)
+  if (config.debug.overlayrouting)
     DEBUGF("processing selfannounce ack (payload length=%d)",f->payload->sizeLimit);
   
   if (f->payload->sizeLimit<9) 
@@ -722,31 +657,27 @@ int overlay_route_saw_selfannounce_ack(struct overlay_frame *f,long long now)
 
 /* if to and via are the same, then this is evidence that we can get to the
    node directly. */
-int overlay_route_record_link(time_ms_t now, unsigned char *to,
-			      unsigned char *via,int sender_interface,
+int overlay_route_record_link(time_ms_t now, struct subscriber *to,
+			      struct subscriber *via,int sender_interface,
 			      unsigned int s1,unsigned int s2,int score,
 			      int gateways_en_route)
 {
   IN();
-  if (debug & DEBUG_OVERLAYROUTING)
+  if (config.debug.overlayrouting)
     DEBUGF("to=%s, via=%s, sender_interface=%d, s1=%d, s2=%d score=%d gateways_en_route=%d",
-	alloca_tohex_sid(to), alloca_tohex_sid(via), sender_interface, s1, s2,
+	alloca_tohex_sid(to->sid), alloca_tohex_sid(via->sid), sender_interface, s1, s2,
 	score, gateways_en_route
       );
  
   if (sender_interface>OVERLAY_MAX_INTERFACES || score == 0) {
-    if (debug & DEBUG_OVERLAYROUTING)
+    if (config.debug.overlayrouting)
       DEBUG("invalid report");
     RETURN(0);
   }
 
-  overlay_node *n = overlay_route_find_node(to, SID_SIZE, 1 /* create node if missing */);
+  overlay_node *n = get_node(to,1);
   if (!n)
     RETURN(WHY("Could not create entry for node"));
-  
-  struct subscriber *sender = find_subscriber(via, SID_SIZE, 1);
-  if (!sender)
-    RETURN(WHY("Could not create subscriber"));
   
   int slot = -1;
   int i;
@@ -756,7 +687,7 @@ int overlay_route_record_link(time_ms_t now, unsigned char *to,
       slot = i;
     /* If the intermediate host ("via") address and interface numbers match, then overwrite old
        observation with new one */
-    if (n->observations[i].sender == sender) {
+    if (n->observations[i].sender == via) {
       slot = i;
       break;
     }
@@ -766,10 +697,10 @@ int overlay_route_record_link(time_ms_t now, unsigned char *to,
      enough for now. */
   if (slot == -1) {
     slot = random() % OVERLAY_MAX_OBSERVATIONS;
-    if (debug & DEBUG_OVERLAYROUTING)
+    if (config.debug.overlayrouting)
       DEBUGF("allocate observation slot=%d", slot);
   } else {
-    if (debug & DEBUG_OVERLAYROUTING)
+    if (config.debug.overlayrouting)
       DEBUGF("overwrite observation slot=%d (sender=%s interface=%u observed_score=%u rx_time=%lld)",
 	  slot,
 	  n->observations[slot].sender?alloca_tohex_sid(n->observations[slot].sender->sid):"[None]",
@@ -782,7 +713,7 @@ int overlay_route_record_link(time_ms_t now, unsigned char *to,
   n->observations[slot].observed_score=0;
   n->observations[slot].gateways_en_route=gateways_en_route;
   n->observations[slot].rx_time=now;
-  n->observations[slot].sender = sender;
+  n->observations[slot].sender = via;
   n->observations[slot].observed_score=score;
   n->observations[slot].interface=sender_interface;
   
@@ -801,7 +732,7 @@ int overlay_route_record_link(time_ms_t now, unsigned char *to,
 
   overlay_route_recalc_node_metrics(n,now);
   
-  if (debug & DEBUG_OVERLAYROUTEMONITOR)
+  if (config.debug.overlayroutemonitor)
     overlay_route_dump();
   
   RETURN(0);
@@ -961,30 +892,6 @@ int overlay_route_node_info(overlay_mdp_nodeinfo *node_info)
 		      ->keypairs[kp]->public_key[0],
 		      &node_info->sid[0],SID_SIZE);
 
-		node_info->did[0]=0;
-		if (node_info->resolve_did) {
-		  node_info->resolve_did=0;
-		  int k2;
-		  for(k2=0;k2<keyring->contexts[cn]->identities[in]
-			->keypair_count;k2++)
-		    if (keyring->contexts[cn]->identities[in]->keypairs[k2]->type
-			==KEYTYPE_DID)
-		      {
-			/* private key field has unpacked did */
-			bcopy(&keyring->contexts[cn]->identities[in]
-			      ->keypairs[k2]->private_key[0],
-			      &node_info->did[0],
-			      keyring->contexts[cn]->identities[in]
-			      ->keypairs[k2]->private_key_len);
-			/* public key has name */
-			bcopy(&keyring->contexts[cn]->identities[in]
-			      ->keypairs[k2]->public_key[0],
-			      &node_info->name[0],
-			      keyring->contexts[cn]->identities[in]
-			      ->keypairs[k2]->public_key_len);
-			node_info->resolve_did=1;
-		      }
-		}
 		return 0;
 	      }
 	  }
@@ -997,7 +904,6 @@ int overlay_route_node_info(overlay_mdp_nodeinfo *node_info)
     node_info->localP=0;
     node_info->score=-1;
     node_info->interface_number=-1;
-    node_info->resolve_did=0;
     bcopy(subscriber->sid,
 	  node_info->sid,SID_SIZE);
     

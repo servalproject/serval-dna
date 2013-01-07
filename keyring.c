@@ -17,6 +17,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "str.h"
+#include "conf.h"
 #include "rhizome.h"
 #include "nacl.h"
 #include "overlay_address.h"
@@ -214,7 +216,7 @@ void keyring_free_identity(keyring_identity *id)
   if (id->PKRPin) {
     /* Wipe pin before freeing (slightly tricky since this is a variable length string */
     for(i=0;id->PKRPin[i];i++) {
-      if (debug & DEBUG_KEYRING)
+      if (config.debug.keyring)
 	DEBUGF("clearing PIN char '%c'", id->PKRPin[i]);
       id->PKRPin[i]=' ';
     }
@@ -968,7 +970,7 @@ int keyring_commit(keyring_file *k)
 	      =KEYRING_PAGE_SIZE
 	      *k->contexts[cn]->identities[in]->slot;
 	    if (!file_offset) {
-	      if (debug * DEBUG_KEYRING)
+	      if (config.debug.keyring)
 		DEBUGF("ID %d:%d has slot=0", cn,in);
 	    }
 	    else if (fseeko(k->file,file_offset,SEEK_SET))
@@ -994,7 +996,7 @@ int keyring_set_did(keyring_identity *id,char *did,char *name)
   int i;
   for(i=0;i<id->keypair_count;i++)
     if (id->keypairs[i]->type==KEYTYPE_DID) {
-      if (debug & DEBUG_KEYRING)
+      if (config.debug.keyring)
 	DEBUG("Identity contains DID");
       break;
     }
@@ -1015,7 +1017,7 @@ int keyring_set_did(keyring_identity *id,char *did,char *name)
     id->keypairs[i]->public_key=packedName;
     id->keypairs[i]->public_key_len=64;
     id->keypair_count++;
-    if (debug & DEBUG_KEYRING)
+    if (config.debug.keyring)
       DEBUG("Created DID record for identity");
   }
   
@@ -1026,9 +1028,11 @@ int keyring_set_did(keyring_identity *id,char *did,char *name)
   len=strlen(name); if (len>63) len=63;
   bcopy(name,&id->keypairs[i]->public_key[0],len);
   bzero(&id->keypairs[i]->public_key[len],64-len);
-  dump("storing did",&id->keypairs[i]->private_key[0],32);
-  dump("storing name",&id->keypairs[i]->public_key[0],64);
   
+  if (config.debug.keyring){
+    dump("storing did",&id->keypairs[i]->private_key[0],32);
+    dump("storing name",&id->keypairs[i]->public_key[0],64);
+  }  
   return 0;
 }
 
@@ -1131,7 +1135,7 @@ unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
 							sas_private);
 	    keyring_commit(k);
 	  }
-	if (debug & DEBUG_KEYRING)
+	if (config.debug.keyring)
 	  DEBUGF("Found SAS entry for %s*", alloca_tohex(sid, 7));
 	if (sas_public_out) *sas_public_out=sas_public; 
 	RETURN(sas_private);
@@ -1144,12 +1148,12 @@ static int keyring_store_sas(overlay_mdp_frame *req){
   struct subscriber *subscriber = find_subscriber(req->in.src.sid,SID_SIZE,1);
   
   if (subscriber->sas_valid){
-    if (debug & DEBUG_KEYRING)
+    if (config.debug.keyring)
       DEBUGF("Ignoring SID:SAS mapping for %s, already have one", alloca_tohex_sid(req->in.src.sid));
     return 0;
   }
   
-  if (debug & DEBUG_KEYRING)
+  if (config.debug.keyring)
     DEBUGF("Received SID:SAS mapping, %d bytes", req->out.payload_length);
   
   unsigned keytype = req->out.payload[0];
@@ -1187,7 +1191,7 @@ static int keyring_store_sas(overlay_mdp_frame *req){
   subscriber->sas_valid=1;
   subscriber->sas_last_request=-1;
   
-  if (debug & DEBUG_KEYRING)
+  if (config.debug.keyring)
     DEBUGF("Stored SID:SAS mapping, SID=%s to SAS=%s",
 	   alloca_tohex_sid(req->out.src.sid),
 	   alloca_tohex_sas(subscriber->sas_public)
@@ -1235,7 +1239,8 @@ int keyring_mapping_request(keyring_file *k, overlay_mdp_frame *req)
     overlay_mdp_swap_src_dst(req);
     req->out.ttl=0;
     req->packetTypeAndFlags=MDP_TX; /* crypt and sign */
-    if (debug & DEBUG_KEYRING)
+    req->out.queue=OQ_MESH_MANAGEMENT;
+    if (config.debug.keyring)
       DEBUGF("Sending SID:SAS mapping, %d bytes, %s:0x%X -> %s:0x%X",
 	    req->out.payload_length,
 	    alloca_tohex_sid(req->out.src.sid), req->out.src.port,
@@ -1255,7 +1260,7 @@ int keyring_send_sas_request(struct subscriber *subscriber){
   time_ms_t now = gettime_ms();
   
   if (now < subscriber->sas_last_request + 100){
-    if (debug & DEBUG_KEYRING)
+    if (config.debug.keyring)
       INFO("Too soon to ask for SAS mapping again");
     return 0;
   }
@@ -1263,17 +1268,15 @@ int keyring_send_sas_request(struct subscriber *subscriber){
   if (!my_subscriber)
     return WHY("couldn't request SAS (I don't know who I am)");
   
-  if (debug & DEBUG_KEYRING)
+  if (config.debug.keyring)
     DEBUGF("Requesting SAS mapping for SID=%s", alloca_tohex_sid(subscriber->sid));
-  
-  // always send our sid in full, it's likely this is a new peer
-  my_subscriber->send_full = 1;
   
   /* request mapping (send request auth-crypted). */
   overlay_mdp_frame mdp;
   memset(&mdp,0,sizeof(overlay_mdp_frame));
   
   mdp.packetTypeAndFlags=MDP_TX;
+  mdp.out.queue=OQ_MESH_MANAGEMENT;
   bcopy(subscriber->sid,mdp.out.dst.sid,SID_SIZE);
   mdp.out.dst.port=MDP_PORT_KEYMAPREQUEST;
   mdp.out.src.port=MDP_PORT_KEYMAPREQUEST;
@@ -1283,7 +1286,7 @@ int keyring_send_sas_request(struct subscriber *subscriber){
   
   if (overlay_mdp_dispatch(&mdp, 0 /* system generated */, NULL, 0))
     return WHY("Failed to send SAS resolution request");
-  if (debug & DEBUG_KEYRING)
+  if (config.debug.keyring)
     DEBUGF("Dispatched SAS resolution request");
   
   subscriber->sas_last_request=now;

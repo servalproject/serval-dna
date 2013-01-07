@@ -26,18 +26,18 @@ import java.util.LinkedList;
 class ServalD
 {
 	int status;
-	List<String> outv;
+	List<byte[]> outv;
 
 	public ServalD()
 	{
 		System.loadLibrary("servald");
 	}
 
-	public native int rawCommand(List<String> outv, String... args);
+	public native int rawCommand(List<byte[]> outv, String... args);
 
 	public void command(String... args)
 	{
-		this.outv = new LinkedList<String>();
+		this.outv = new LinkedList<byte[]>();
 		this.status = this.rawCommand(this.outv, args);
 	}
 
@@ -45,8 +45,8 @@ class ServalD
 	{
 		ServalD servald = new ServalD();
 		servald.command(args);
-		for (String s: servald.outv) {
-			System.out.println(s);
+		for (byte[] a: servald.outv) {
+			System.out.println(new String(a));
 		}
 		System.exit(servald.status);
 	}

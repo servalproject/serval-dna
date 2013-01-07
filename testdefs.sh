@@ -279,6 +279,7 @@ start_servald_server() {
          new_pids="$new_pids $apid"
       fi
    done
+   eval LOG$instance_name=$instance_servald_log
    assert --message="a new servald process is running" --dump-on-fail="$instance_servald_log" [ -n "$new_pids" ]
    assert --message="servald pidfile process is running" --dump-on-fail="$instance_servald_log" $pidfile_running
    assert --message="servald log file $instance_servald_log is present" [ -r "$instance_servald_log" ]
@@ -636,16 +637,19 @@ start_servald_instances() {
       set_instance $I
       # These config settings can be overridden in a caller-supplied configure_servald_server().
       # They are extremely useful for the majority of fixtures.
-      executeOk_servald config set interfaces "+>$DUMMYNET"
-      executeOk_servald config set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name"
-      executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name"
+      executeOk_servald config \
+         set interfaces.1.dummy "$DUMMYNET" \
+         set interfaces.1.dummy_address 127.0.0.1 \
+         set interfaces.1.dummy_netmask 255.255.255.0 \
+         set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name" \
+         set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name"
       configure_servald_server
       start_servald_server
       eval DUMMY$instance_name="\$DUMMYNET"
-      eval LOG$instance_name="\$(shellarg "\$instance_servald_log")"
    done
    # Now wait until they see each other.
-   wait_until --sleep=0.25 instances_see_each_other "$@"
+   foreach_instance "$@" \
+      wait_until --sleep=0.25 has_seen_instances "$@"
    tfw_log "# dummynet file:" $(ls -l $DUMMYNET)
    pop_instance
 }
@@ -672,12 +676,13 @@ assert_peers_are_instances() {
 #   selfannounce mechanism
 has_seen_instances() {
    local I N
+   executeOk_servald route print
    for I; do
       [ $I = $instance_arg ] && continue
       for ((N=1; 1; ++N)); do
          local sidvar=SID${I#+}$N
          [ -n "${!sidvar}" ] || break
-         if ! grep "ADD OVERLAY NODE sid=${!sidvar}" $instance_servald_log; then
+         if ! grep "^${!sidvar}" $_tfw_tmp/stdout; then
             return 1
          fi
       done

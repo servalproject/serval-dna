@@ -18,6 +18,8 @@
 
 #include <sys/stat.h>
 #include "serval.h"
+#include "conf.h"
+#include "str.h"
 #include "strbuf.h"
 #include "overlay_buffer.h"
 #include "overlay_address.h"
@@ -55,9 +57,11 @@ int overlay_mdp_send(int mdp_sockfd, overlay_mdp_frame *mdp, int flags, int time
     }
   }
   
-  int port=mdp->out.dst.port;
+  int port=0;
+  if ((mdp->packetTypeAndFlags&MDP_TYPE_MASK) == MDP_TX)
+      port = mdp->out.dst.port;
+      
   time_ms_t started = gettime_ms();
-  
   while(timeout_ms>=0 && overlay_mdp_client_poll(mdp_sockfd, timeout_ms)>0){
     int ttl=-1;
     if (!overlay_mdp_recv(mdp_sockfd, mdp, port, &ttl)) {
@@ -107,9 +111,9 @@ int overlay_mdp_client_socket(void)
     return WHY("Could not form MDP client socket name");
   snprintf(overlay_mdp_client_socket_path,1024,fmt,getpid(),random_value);
   overlay_mdp_client_socket_path_len=strlen(overlay_mdp_client_socket_path)+1;
-  if(debug&DEBUG_IO) DEBUGF("MDP client socket name='%s'",overlay_mdp_client_socket_path);
-  if (overlay_mdp_client_socket_path_len > 104 - 1)
-    FATALF("MDP socket path too long (%d > %d)", overlay_mdp_client_socket_path_len, 104 - 1);
+  if(config.debug.io) DEBUGF("MDP client socket name='%s'",overlay_mdp_client_socket_path);
+  if (overlay_mdp_client_socket_path_len > sizeof(name.sun_path) - 1)
+    FATALF("MDP socket path too long (%d > %d)", overlay_mdp_client_socket_path_len, sizeof(name.sun_path) - 1);
 
   bcopy(overlay_mdp_client_socket_path,name.sun_path,
         overlay_mdp_client_socket_path_len);
@@ -120,7 +124,7 @@ int overlay_mdp_client_socket(void)
     WHY_perror("bind");
     return WHY("Could not bind MDP client socket to file name");
   }
-  
+
   int send_buffer_size=128*1024;
   if (setsockopt(mdp_sockfd, SOL_SOCKET, SO_RCVBUF,
                  &send_buffer_size, sizeof(send_buffer_size)) == -1)
@@ -194,8 +198,10 @@ int overlay_mdp_recv(int mdp_sockfd, overlay_mdp_frame *mdp, int port, int *ttl)
     }
     
     // silently drop incoming packets for the wrong port number
-    if (port>0 && port != mdp->in.dst.port)
+    if (port>0 && port != mdp->in.dst.port){
+      WARNF("Ignoring packet for port %d",mdp->in.dst.port);
       return -1;
+    }
     
     int expected_len = overlay_mdp_relevant_bytes(mdp);
     
@@ -258,6 +264,7 @@ int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
   int len;
   switch(mdp->packetTypeAndFlags&MDP_TYPE_MASK)
   {
+    case MDP_ROUTING_TABLE:
     case MDP_GOODBYE:
       /* no arguments for saying goodbye */
       len=&mdp->raw[0]-(char *)mdp;
@@ -273,6 +280,9 @@ int overlay_mdp_relevant_bytes(overlay_mdp_frame *mdp)
       break;
     case MDP_BIND:
       len=(&mdp->raw[0] - (char *)mdp) + sizeof(sockaddr_mdp);
+      break;
+    case MDP_SCAN:
+      len=(&mdp->raw[0] - (char *)mdp) + sizeof(struct overlay_mdp_scan);
       break;
     case MDP_ERROR: 
       /* This formulation is used so that we don't copy any bytes after the

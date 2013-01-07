@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/stat.h>
 
 #include "serval.h"
+#include "conf.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
 
@@ -36,7 +37,6 @@ char *exec_args[EXEC_NARGS + 1];
 int exec_argc = 0;
 
 int serverMode=0;
-int serverRespawnOnCrash = 0;
 int servalShutdown = 0;
 
 static int server_getpid = 0;
@@ -87,15 +87,14 @@ void server_save_argv(int argc, const char *const *argv)
 
 int server(char *backing_file)
 {
-  /* For testing, it can be very helpful to delay the start of the server
-     process, for example to check that the start/stop logic is robust.
+  /* For testing, it can be very helpful to delay the start of the server process, for example to
+   * check that the start/stop logic is robust.
    */
   const char *delay = getenv("SERVALD_SERVER_START_DELAY");
   if (delay)
     sleep_ms(atoi(delay));
 
   serverMode = 1;
-  serverRespawnOnCrash = confValueGetBoolean("server.respawn_on_crash", 0);
 
   /* Catch crash signals so that we can log a backtrace before expiring. */
   struct sigaction sig;
@@ -126,8 +125,7 @@ int server(char *backing_file)
   FILE *f=fopen(filename,"w");
   if (!f) {
     WHY_perror("fopen");
-    WHYF("Could not write to PID file %s", filename);
-    return -1;
+    return WHYF("Could not write to PID file %s", filename);
   }
   server_getpid = getpid();
   fprintf(f,"%d\n", server_getpid);
@@ -136,6 +134,28 @@ int server(char *backing_file)
   overlayServerMode();
 
   return 0;
+}
+
+/* Called periodically by the server process in its main loop.
+ */
+void server_config_reload(struct sched_ent *alarm)
+{
+  switch (cf_reload()) {
+  case -1:
+    WARN("server continuing with prior config");
+    break;
+  case 0:
+    break;
+  default:
+    INFO("server config successfully reloaded");
+    break;
+  }
+  if (alarm) {
+    time_ms_t now = gettime_ms();
+    alarm->alarm = now + SERVER_CONFIG_RELOAD_INTERVAL_MS;
+    alarm->deadline = alarm->alarm + 1000;
+    schedule(alarm);
+  }
 }
 
 /* Called periodically by the server process in its main loop.
@@ -362,7 +382,7 @@ void crash_handler(int signal)
   WHYF("Caught %s", buf);
   dump_stack();
   BACKTRACE;
-  if (serverRespawnOnCrash) {
+  if (config.server.respawn_on_crash) {
     int i;
     for(i=0;i<overlay_interface_count;i++)
       if (overlay_interfaces[i].alarm.poll.fd>-1)

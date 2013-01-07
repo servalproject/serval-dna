@@ -17,8 +17,12 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#ifndef __SERVALDNA__RHIZOME_H
+#define __SERVALDNA__RHIZOME_H
+
 #include <sqlite3.h>
 #include "sha2.h"
+#include "str.h"
 #include "strbuf.h"
 #include "nacl.h"
 #include <sys/stat.h>
@@ -40,10 +44,22 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define RHIZOME_CRYPT_KEY_BYTES         crypto_stream_xsalsa20_ref_KEYBYTES
 #define RHIZOME_CRYPT_KEY_STRLEN        (RHIZOME_CRYPT_KEY_BYTES * 2)
+
+// assumed to always be 2^n
 #define RHIZOME_CRYPT_PAGE_SIZE         4096
 
 #define RHIZOME_HTTP_PORT 4110
 #define RHIZOME_HTTP_PORT_MAX 4150
+
+typedef struct rhizome_bk_binary {
+    unsigned char binary[RHIZOME_BUNDLE_KEY_BYTES];
+} rhizome_bk_t;
+
+#define RHIZOME_BK_NONE ((rhizome_bk_t){{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}})
+
+__RHIZOME_INLINE int rhizome_is_bk_none(const rhizome_bk_t *bk) {
+    return is_all_matching(bk->binary, sizeof bk->binary, 0);
+}
 
 extern time_ms_t rhizome_voice_timeout;
 
@@ -56,6 +72,9 @@ extern time_ms_t rhizome_voice_timeout;
 #define RHIZOME_PRIORITY_NOTINTERESTED 0
 
 #define RHIZOME_IDLE_TIMEOUT 10000
+
+#define EXISTING_BUNDLE_ID 1
+#define NEW_BUNDLE_ID 2
 
 typedef struct rhizome_signature {
   unsigned char signature[crypto_sign_edwards25519sha512batch_BYTES
@@ -101,7 +120,8 @@ typedef struct rhizome_manifest {
   unsigned char signatureTypes[MAX_MANIFEST_VARS];
 
   int errors; /* if non-zero, then manifest should not be trusted */
-
+  time_ms_t inserttime;
+  
   /* Set non-zero after variables have been packed and
      signature blocks appended.
      All fields below may not be valid until the manifest has been finalised */
@@ -113,15 +133,17 @@ typedef struct rhizome_manifest {
   /* When finalised, we keep the filehash and maximum priority due to any
      group membership handy */
   long long fileLength;
-  int fileHashedP;
   char fileHexHash[SHA512_DIGEST_STRING_LENGTH];
   int fileHighestPriority;
   /* Absolute path of the file associated with the manifest */
   char *dataFileName;
   /* If set, unlink(2) the associated file when freeing the manifest */
   int dataFileUnlinkOnFree;
+  
   /* Whether the paylaod is encrypted or not */
-  int payloadEncryption; 
+  int payloadEncryption;
+  unsigned char payloadKey[RHIZOME_CRYPT_KEY_BYTES];
+  unsigned char payloadNonce[crypto_stream_xsalsa20_NONCEBYTES];
 
   /* Whether we have the secret for this manifest on hand */
   int haveSecret;
@@ -224,17 +246,16 @@ int rhizome_store_bundle(rhizome_manifest *m);
 int rhizome_manifest_add_group(rhizome_manifest *m,char *groupid);
 int rhizome_clean_payload(const char *fileidhex);
 int rhizome_store_file(rhizome_manifest *m,const unsigned char *key);
-int rhizome_bundle_import_files(const char *manifest_path, const char *payload_path, int ttl);
+int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, const char *filepath);
 int rhizome_bundle_import(rhizome_manifest *m, int ttl);
+int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSid, rhizome_bk_t *bsk);
 
 int rhizome_manifest_verify(rhizome_manifest *m);
 int rhizome_manifest_check_sanity(rhizome_manifest *m_in);
-int rhizome_manifest_check_file(rhizome_manifest *m_in);
 int rhizome_manifest_check_duplicate(rhizome_manifest *m_in,rhizome_manifest **m_out);
 
 int rhizome_manifest_bind_id(rhizome_manifest *m_in);
-int rhizome_manifest_bind_file(rhizome_manifest *m_in,const char *filename,int encryptP);
-int rhizome_manifest_finalise(rhizome_manifest *m);
+int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout);
 int rhizome_add_manifest(rhizome_manifest *m_in,int ttl);
 
 void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCount);
@@ -251,7 +272,9 @@ __RHIZOME_INLINE int sqlite_code_busy(int code)
   return code == SQLITE_BUSY || code == SQLITE_LOCKED;
 }
 
-debugflags_t sqlite_set_debugmask(debugflags_t newmask);
+int (*sqlite_set_tracefunc(int (*newfunc)()))();
+int is_debug_rhizome();
+int is_debug_rhizome_ads();
 
 sqlite3_stmt *_sqlite_prepare(struct __sourceloc __whence, sqlite_retry_state *retry, const char *sqlformat, ...);
 sqlite3_stmt *_sqlite_prepare_loglevel(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, strbuf stmt);
@@ -281,15 +304,12 @@ int _sqlite_exec_strbuf(struct __sourceloc, strbuf sb, const char *sqlformat,...
 double rhizome_manifest_get_double(rhizome_manifest *m,char *var,double default_value);
 int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs);
 int rhizome_update_file_priority(const char *fileid);
-int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found,
-			   int checkVersionP);
+int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found);
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
 long long rhizome_bar_version(unsigned char *bar);
 unsigned long long rhizome_bar_bidprefix_ll(unsigned char *bar);
 int rhizome_list_manifests(const char *service, const char *sender_sid, const char *recipient_sid, int limit, int offset);
-int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp);
-int rhizome_retrieve_file(const char *fileid, const char *filepath,
-			  const unsigned char *key);
+int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m);
 
 #define RHIZOME_DONTVERIFY 0
 #define RHIZOME_VERIFY 1
@@ -320,14 +340,15 @@ int rhizome_secret2bk(
   const unsigned char secret[crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]
 		      );
 unsigned char *rhizome_bundle_shared_secret(rhizome_manifest *m);
-int rhizome_extract_privatekey(rhizome_manifest *m);
+int rhizome_extract_privatekey(rhizome_manifest *m, rhizome_bk_t *bsk);
+int rhizome_extract_privatekey_required(rhizome_manifest *m, rhizome_bk_t *bsk);
 int rhizome_sign_hash_with_key(rhizome_manifest *m,const unsigned char *sk,
 			       const unsigned char *pk,rhizome_signature *out);
 int rhizome_verify_bundle_privatekey(rhizome_manifest *m, const unsigned char *sk,
 				     const unsigned char *pk);
 int rhizome_find_bundle_author(rhizome_manifest *m);
-int rhizome_queue_ignore_manifest(rhizome_manifest *m, const struct sockaddr_in *peerip, int timeout);
-int rhizome_ignore_manifest_check(rhizome_manifest *m, const struct sockaddr_in *peerip);
+int rhizome_queue_ignore_manifest(rhizome_manifest *m, const struct sockaddr_in *peerip, const unsigned char peersid[SID_SIZE], int timeout);
+int rhizome_ignore_manifest_check(rhizome_manifest *m, const struct sockaddr_in *peerip,const unsigned char peersid[SID_SIZE]);
 
 /* one manifest is required per candidate, plus a few spare.
    so MAX_RHIZOME_MANIFESTS must be > MAX_CANDIDATES. 
@@ -335,7 +356,7 @@ int rhizome_ignore_manifest_check(rhizome_manifest *m, const struct sockaddr_in 
 #define MAX_RHIZOME_MANIFESTS 24
 #define MAX_CANDIDATES 16
 
-int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sockaddr_in *peerip);
+int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sockaddr_in *peerip,const unsigned char peersid[SID_SIZE]);
 
 typedef struct rhizome_http_request {
   struct sched_ent alarm;
@@ -428,6 +449,12 @@ struct http_response {
   unsigned long long content_length;
   const char * body;
 };
+
+int rhizome_received_content(unsigned char *bidprefix,uint64_t version, 
+			     uint64_t offset,int count,unsigned char *bytes,
+			     int type);
+int64_t rhizome_database_create_blob_for(const char *hashhex,int64_t fileLength,
+					 int priority);
 int rhizome_server_set_response(rhizome_http_request *r, const struct http_response *h);
 int rhizome_server_free_http_request(rhizome_http_request *r);
 int rhizome_server_http_send_bytes(rhizome_http_request *r);
@@ -438,6 +465,13 @@ int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, c
 int rhizome_http_server_start(int (*http_parse_func)(rhizome_http_request *),
 			      const char *http_parse_func_description,
 			      int port_low,int port_high);
+
+int is_rhizome_enabled();
+int is_rhizome_mdp_enabled();
+int is_rhizome_http_enabled();
+int is_rhizome_advertise_enabled();
+int is_rhizome_mdp_server_running();
+int is_rhizome_http_server_running();
 
 typedef struct rhizome_direct_bundle_cursor {
   /* Where the current fill started */
@@ -552,8 +586,9 @@ enum rhizome_start_fetch_result {
   SLOTBUSY
 };
 
-enum rhizome_start_fetch_result rhizome_fetch_request_manifest_by_prefix(const struct sockaddr_in *peerip, const unsigned char *prefix, size_t prefix_length);
+enum rhizome_start_fetch_result rhizome_fetch_request_manifest_by_prefix(const struct sockaddr_in *peerip, const unsigned char sid[SID_SIZE],const unsigned char *prefix, size_t prefix_length);
 int rhizome_any_fetch_active();
+int rhizome_any_fetch_queued();
 
 struct http_response_parts {
   int code;
@@ -563,3 +598,58 @@ struct http_response_parts {
 };
 
 int unpack_http_response(char *response, struct http_response_parts *parts);
+
+/* Rhizome file storage api */
+struct rhizome_write{
+  char id[SHA512_DIGEST_STRING_LENGTH+1];
+  char id_known;
+  
+  unsigned char *buffer;
+  int buffer_size;
+  int data_size;
+  
+  int64_t file_offset;
+  int64_t file_length;
+  
+  int crypt;
+  unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
+  unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
+  
+  SHA512_CTX sha512_context;
+  int64_t blob_rowid;
+};
+
+struct rhizome_read{
+  char id[SHA512_DIGEST_STRING_LENGTH+1];
+  
+  int crypt;
+  unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
+  unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
+  
+  int hash;
+  SHA512_CTX sha512_context;
+  
+  int64_t blob_rowid;
+  
+  int64_t offset;
+  int64_t length;
+};
+
+int rhizome_exists(const char *fileHash);
+int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int64_t file_length, int priority);
+int rhizome_flush(struct rhizome_write *write);
+int rhizome_write_file(struct rhizome_write *write, const char *filename);
+int rhizome_fail_write(struct rhizome_write *write);
+int rhizome_finish_write(struct rhizome_write *write);
+int rhizome_import_file(rhizome_manifest *m, const char *filepath);
+int rhizome_stat_file(rhizome_manifest *m, const char *filepath);
+int rhizome_add_file(rhizome_manifest *m, const char *filepath);
+int rhizome_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk);
+int rhizome_crypt_xor_block(unsigned char *buffer, int buffer_size, int64_t stream_offset, 
+			    const unsigned char *key, const unsigned char *nonce);
+int rhizome_open_read(struct rhizome_read *read, const char *fileid, int hash);
+int rhizome_read(struct rhizome_read *read, unsigned char *buffer, int buffer_length);
+int rhizome_extract_file(rhizome_manifest *m, const char *filepath, rhizome_bk_t *bsk);
+int rhizome_dump_file(const char *id, const char *filepath, int64_t *length);
+
+#endif //__SERVALDNA__RHIZOME_H

@@ -19,6 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <stdlib.h>
 #include "serval.h"
+#include "conf.h"
 #include "rhizome.h"
 #include "str.h"
 
@@ -38,7 +39,7 @@ int rhizome_manifest_verify(rhizome_manifest *m)
   /* Read signature blocks from file. */
   int ofs=end_of_text;  
   while(ofs<m->manifest_all_bytes) {
-    if (debug & DEBUG_RHIZOME) DEBUGF("ofs=0x%x, m->manifest_bytes=0x%x", ofs,m->manifest_all_bytes);
+    if (config.debug.rhizome) DEBUGF("ofs=0x%x, m->manifest_bytes=0x%x", ofs,m->manifest_all_bytes);
     if (rhizome_manifest_extract_signature(m,&ofs)) break;
   }
   
@@ -58,7 +59,7 @@ int rhizome_manifest_verify(rhizome_manifest *m)
       WARN("Invalid manifest 'id' field");
       m->errors++;
     } else if (m->sig_count == 0 || memcmp(m->signatories[0], manifest_id, RHIZOME_MANIFEST_ID_BYTES) != 0) {
-      if (debug&DEBUG_RHIZOME) {
+      if (config.debug.rhizome) {
 	if (m->sig_count>0) {
 	  DEBUGF("Manifest id variable does not match first signature block (signature key is %s)",
 		  alloca_tohex(m->signatories[0], crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES)
@@ -174,7 +175,6 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 	    /* Force to upper case to avoid case sensitive comparison problems later. */
 	    str_toupper_inplace(m->values[m->var_count]);
 	    strcpy(m->fileHexHash, m->values[m->var_count]);
-	    m->fileHashedP = 1;
 	  }
 	} else if (strcasecmp(var, "BK") == 0) {
 	  if (!rhizome_str_is_bundle_key(value)) {
@@ -487,7 +487,7 @@ rhizome_manifest *_rhizome_new_manifest(struct __sourceloc __whence)
   for (; manifest_first_free < MAX_RHIZOME_MANIFESTS && !manifest_free[manifest_first_free]; ++manifest_first_free)
     ;
 
-  if (debug & DEBUG_MANIFESTS) _log_manifest_trace(__whence, __FUNCTION__);
+  if (config.debug.manifests) _log_manifest_trace(__whence, __FUNCTION__);
 
   return m;
 }
@@ -536,7 +536,7 @@ void _rhizome_manifest_free(struct __sourceloc __whence, rhizome_manifest *m)
   manifest_free_whence[mid]=__whence;
   if (mid<manifest_first_free) manifest_first_free=mid;
 
-  if (debug & DEBUG_MANIFESTS) _log_manifest_trace(__whence, __FUNCTION__);
+  if (config.debug.manifests) _log_manifest_trace(__whence, __FUNCTION__);
 
   return;
 }
@@ -558,7 +558,7 @@ int rhizome_manifest_pack_variables(rhizome_manifest *m)
     }
   m->manifestdata[ofs++]=0x00;
   m->manifest_bytes=ofs;
-  if (debug&DEBUG_RHIZOME) DEBUG("Repacked variables in manifest.");
+  if (config.debug.rhizome) DEBUG("Repacked variables in manifest.");
   m->manifest_all_bytes=ofs;
 
   /* Recalculate hash */
@@ -588,7 +588,7 @@ int rhizome_manifest_selfsign(rhizome_manifest *m)
 
 int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename)
 {
-  if (debug & DEBUG_RHIZOME) DEBUGF("write manifest (%d bytes) to %s", m->manifest_all_bytes, filename);
+  if (config.debug.rhizome) DEBUGF("write manifest (%d bytes) to %s", m->manifest_all_bytes, filename);
   if (!m) return WHY("Manifest is null.");
   if (!m->finalised) return WHY("Manifest must be finalised before it can be written.");
   FILE *f = fopen(filename, "w");
@@ -625,57 +625,121 @@ int rhizome_manifest_dump(rhizome_manifest *m, const char *msg)
   return 0;
 }
 
-int rhizome_manifest_finalise(rhizome_manifest *m)
+int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout)
 {
-  /* set fileLength and "filesize" var */
-  if (m->dataFileName[0]) {
-    struct stat stat;
-    if (lstat(m->dataFileName, &stat)) {
-      WHY_perror("lstat");
-      return WHY("Could not stat() associated file");
-    }
-    m->fileLength = stat.st_size;
-  } else
-    m->fileLength = 0;
-  rhizome_manifest_set_ll(m, "filesize", m->fileLength);
-
-  /* set fileHexHash and "filehash" var */
-  if (m->fileLength != 0) {
-    if (!m->fileHashedP) {
-      if (rhizome_hash_file(m, m->dataFileName, m->fileHexHash))
-	return WHY("rhizome_hash_file() failed during finalisation of manifest.");
-      m->fileHashedP = 1;
-    }
-    rhizome_manifest_set(m, "filehash", m->fileHexHash);
+  IN();
+  int ret=0;
+  
+  if (rhizome_manifest_check_duplicate(m, mout) == 2) {
+    /* duplicate found -- verify it so that we can write it out later */
+    rhizome_manifest_verify(*mout);
+    ret=2;
   } else {
-    m->fileHexHash[0] = '\0';
-    m->fileHashedP = 0;
-    rhizome_manifest_del(m, "filehash");
+    *mout=m;
+    
+    /* Convert to final form for signing and writing to disk */
+    if (rhizome_manifest_pack_variables(m))
+      RETURN(WHY("Could not convert manifest to wire format"));
+    
+    /* Sign it */
+    if (rhizome_manifest_selfsign(m))
+      RETURN(WHY("Could not sign manifest"));
+    
+    /* mark manifest as finalised */
+    m->finalised=1;
+    if (rhizome_add_manifest(m, 255 /* TTL */)) {
+      rhizome_manifest_free(m);
+      RETURN(WHY("Manifest not added to Rhizome database"));
+    }
   }
+  
+  RETURN(ret);
+}
 
-  /* set fileHighestPriority based on group associations.
-     XXX - Should probably be set as groups are added */
+int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSid, rhizome_bk_t *bsk){
+  /* Fill in a few missing manifest fields, to make it easier to use when adding new files:
+   - the default service is FILE
+   - use the current time for "date"
+   - if service is file, then use the payload file's basename for "name"
+   */
+  const char *service = rhizome_manifest_get(m, "service", NULL, 0);
+  if (service == NULL) {
+    rhizome_manifest_set(m, "service", (service = RHIZOME_SERVICE_FILE));
+    if (config.debug.rhizome) DEBUGF("missing 'service', set default service=%s", service);
+  } else {
+    if (config.debug.rhizome) DEBUGF("manifest contains service=%s", service);
+  }
+  
+  if (rhizome_manifest_get(m, "date", NULL, 0) == NULL) {
+    rhizome_manifest_set_ll(m, "date", (long long) gettime_ms());
+    if (config.debug.rhizome) DEBUGF("missing 'date', set default date=%s", rhizome_manifest_get(m, "date", NULL, 0));
+  }
+  
+  if (strcasecmp(RHIZOME_SERVICE_FILE, service) == 0) {
+    const char *name = rhizome_manifest_get(m, "name", NULL, 0);
+    if (name == NULL) {
+      if (filepath && *filepath){
+	name = strrchr(filepath, '/');
+	name = name ? name + 1 : filepath;
+      }else
+	name="";
+      rhizome_manifest_set(m, "name", name);
+      if (config.debug.rhizome) DEBUGF("missing 'name', set default name=\"%s\"", name);
+    } else {
+      if (config.debug.rhizome) DEBUGF("manifest contains name=\"%s\"", name);
+    }
+  }
+  
+  /* If the author was not specified, then the manifest's "sender"
+   field is used, if present. */
+  if (authorSid){
+    memcpy(m->author, authorSid, SID_SIZE);
+  }else{
+    const char *sender = rhizome_manifest_get(m, "sender", NULL, 0);
+    if (sender){
+      if (fromhexstr(m->author, sender, SID_SIZE) == -1)
+	return WHYF("invalid sender: %s", sender);
+    }
+  }
 
   /* set version of manifest, either from version variable, or using current time */
   if (rhizome_manifest_get(m,"version",NULL,0)==NULL)
-    {
-      /* No version set */
-      m->version = gettime_ms();
-      rhizome_manifest_set_ll(m,"version",m->version);
+  {
+    /* No version set, default to the current time */
+    m->version = gettime_ms();
+    rhizome_manifest_set_ll(m,"version",m->version);
+  }
+  
+  const char *id = rhizome_manifest_get(m, "id", NULL, 0);
+  if (id == NULL) {
+    if (config.debug.rhizome) DEBUG("creating new bundle");
+    if (rhizome_manifest_bind_id(m) == -1) {
+      return WHY("Could not bind manifest to an ID");
     }
-  else
-    m->version = rhizome_manifest_get_ll(m,"version");
-
-  /* Convert to final form for signing and writing to disk */
-  if (rhizome_manifest_pack_variables(m))
-    return WHY("Could not convert manifest to wire format");
-
-  /* Sign it */
-  if (rhizome_manifest_selfsign(m))
-    return WHY("Could not sign manifest");
-
-  /* mark manifest as finalised */
-  m->finalised=1;
-
+  } else {
+    if (config.debug.rhizome) DEBUGF("modifying existing bundle bid=%s", id);
+    
+    // Modifying an existing bundle.  Make sure we can find the bundle secret.
+    if (rhizome_extract_privatekey_required(m, bsk))
+      return -1;
+    
+    // TODO assert that new version > old version?
+  }
+  
+  int crypt = rhizome_manifest_get_ll(m,"crypt"); 
+  if (crypt==-1 && m->fileLength){
+    // no explicit crypt flag, should we encrypt this bundle?
+    char *sender = rhizome_manifest_get(m, "sender", NULL, 0);
+    char *recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
+    
+    // anything sent from one person to another should be considered private and encrypted by default
+    if (sender && recipient){
+      if (config.debug.rhizome)
+	DEBUGF("Implicitly adding payload encryption due to presense of sender & recipient fields");
+      m->payloadEncryption=1;
+      rhizome_manifest_set_ll(m,"crypt",1); 
+    }
+  }
+  
   return 0;
 }

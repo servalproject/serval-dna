@@ -35,14 +35,18 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <jni.h>
 #endif
 #include "serval.h"
+#include "conf.h"
 #include "rhizome.h"
 #include "strbuf.h"
+#include "strbuf_helpers.h"
+#include "str.h"
 #include "mdp_client.h"
 #include "cli.h"
+#include "overlay_address.h"
 
 extern struct command_line_option command_line_options[];
 
-int commandline_usage(int argc, const char *const *argv, struct command_line_option *o, void *context){
+int commandline_usage(int argc, const char *const *argv, const struct command_line_option *o, void *context){
   printf("Serval Mesh version <version>.\n");
   return cli_usage(command_line_options);
 }
@@ -82,20 +86,24 @@ static int outv_growbuf(size_t needed)
 
 static int outv_end_field()
 {
-  outv_growbuf(1);
-  *outv_current++ = '\0';
-  jstring str = (jstring)(*jni_env)->NewStringUTF(jni_env, outv_buffer);
+  size_t length = outv_current - outv_buffer;
   outv_current = outv_buffer;
-  if (str == NULL) {
+  jbyteArray arr = (*jni_env)->NewByteArray(jni_env, length);
+  if (arr == NULL) {
     jni_exception = 1;
-    return WHY("Exception thrown from NewStringUTF()");
+    return WHY("Exception thrown from NewByteArray()");
   }
-  (*jni_env)->CallBooleanMethod(jni_env, outv_list, listAddMethodId, str);
+  (*jni_env)->SetByteArrayRegion(jni_env, arr, 0, length, (jbyte*)outv_buffer);
+  if ((*jni_env)->ExceptionOccurred(jni_env)) {
+    jni_exception = 1;
+    return WHY("Exception thrown from SetByteArrayRegion()");
+  }
+  (*jni_env)->CallBooleanMethod(jni_env, outv_list, listAddMethodId, arr);
   if ((*jni_env)->ExceptionOccurred(jni_env)) {
     jni_exception = 1;
     return WHY("Exception thrown from CallBooleanMethod()");
   }
-  (*jni_env)->DeleteLocalRef(jni_env, str);
+  (*jni_env)->DeleteLocalRef(jni_env, arr);
   return 0;
 }
 
@@ -183,14 +191,28 @@ int parseCommandLine(const char *argv0, int argc, const char *const *args)
 {
   fd_clearstats();
   IN();
-  confSetDebugFlags();
   
-  int result = cli_execute(argv0, argc, args, command_line_options, NULL);
+  int result = cli_parse(argc, args, command_line_options);
+  if (result != -1) {
+    const struct command_line_option *option = &command_line_options[result];
+    // Do not run the command if the configuration does not load ok
+    if (((option->flags & CLIFLAG_PERMISSIVE_CONFIG) ? cf_reload_permissive() : cf_reload()) != -1)
+      result = cli_invoke(option, argc, args, NULL);
+    else {
+      strbuf b = strbuf_alloca(160);
+      strbuf_append_argv(b, argc, args);
+      result = WHYF("configuration unavailable, not running command: %s", strbuf_str(b));
+    }
+  } else {
+    // Load configuration so that "unsupported command" log message can get out
+    cf_reload_permissive();
+  }
+
   /* clean up after ourselves */
   rhizome_close_db();
   OUT();
   
-  if (debug&DEBUG_TIMING)
+  if (config.debug.timing)
     fd_showstats();
   return result;
 }
@@ -213,6 +235,32 @@ int cli_putchar(char c)
       return putchar(c);
 }
 
+/* Write a buffer of data to output.  If in a JNI call, then this appends the data to the
+   current output field, including any embedded nul characters.  Returns a non-negative integer on
+   success, EOF on error.
+ */
+int cli_write(const unsigned char *buf, size_t len)
+{
+#ifdef HAVE_JNI_H
+    if (jni_env) {
+      size_t avail = outv_limit - outv_current;
+      if (avail < len) {
+	memcpy(outv_current, buf, avail);
+	outv_current = outv_limit;
+	if (outv_growbuf(len) == -1)
+	  return EOF;
+	len -= avail;
+	buf += avail;
+      }
+      memcpy(outv_current, buf, len);
+      outv_current += len;
+      return 0;
+    }
+    else
+#endif
+      return fwrite(buf, len, 1, stdout);
+}
+
 /* Write a null-terminated string to output.  If in a JNI call, then this appends the string to the
    current output field.  The terminating null is not included.  Returns a non-negative integer on
    success, EOF on error.
@@ -220,21 +268,8 @@ int cli_putchar(char c)
 int cli_puts(const char *str)
 {
 #ifdef HAVE_JNI_H
-    if (jni_env) {
-      size_t len = strlen(str);
-      size_t avail = outv_limit - outv_current;
-      if (avail < len) {
-	strncpy(outv_current, str, avail);
-	outv_current = outv_limit;
-	if (outv_growbuf(len) == -1)
-	  return EOF;
-	len -= avail;
-	str += avail;
-      }
-      strncpy(outv_current, str, len);
-      outv_current += len;
-      return 0;
-    }
+    if (jni_env)
+      return cli_write((const unsigned char *) str, strlen(str));
     else
 #endif
       return fputs(str, stdout);
@@ -302,14 +337,24 @@ void cli_flush()
   fflush(stdout);
 }
 
-int app_echo(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_echo(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
-  int i;
-  for (i = 1; i < argc; ++i) {
-    if (debug & DEBUG_VERBOSE)
-      DEBUGF("echo:argv[%d]=%s", i, argv[i]);
-    cli_puts(argv[i]);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
+  int i = 1;
+  int escapes = 0;
+  if (i < argc && strcmp(argv[i], "-e") == 0) {
+    escapes = 1;
+    ++i;
+  }
+  for (; i < argc; ++i) {
+    if (config.debug.verbose)
+      DEBUGF("echo:argv[%d]=\"%s\"", i, argv[i]);
+    if (escapes) {
+      unsigned char buf[strlen(argv[i])];
+      size_t len = str_fromprint(buf, argv[i]);
+      cli_write(buf, len);
+    } else
+      cli_puts(argv[i]);
     cli_delim(NULL);
   }
   return 0;
@@ -348,22 +393,18 @@ void lookup_send_request(int mdp_sockfd, unsigned char *srcsid, int srcport, uns
   
   /* Also send an encrypted unicast request to a configured directory service */
   if (!dstsid){
-    const char *directory_service = confValueGet("directory.service", NULL);
-    if (directory_service){
-      if (stowSid(mdp.out.dst.sid, 0, directory_service)==-1){
-	WHYF("Invalid directory server SID %s", directory_service);
-      }else{
-	mdp.packetTypeAndFlags=MDP_TX;
-	overlay_mdp_send(mdp_sockfd, &mdp, 0, 0);
-      }
+    if (!is_sid_any(config.directory.service.binary)) {
+      memcpy(mdp.out.dst.sid, config.directory.service.binary, SID_SIZE);
+      mdp.packetTypeAndFlags=MDP_TX;
+      overlay_mdp_send(mdp_sockfd, &mdp, 0, 0);
     }
   }
 }
 
-int app_dna_lookup(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_dna_lookup(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   int mdp_sockfd;
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
@@ -487,9 +528,9 @@ int app_dna_lookup(int argc, const char *const *argv, struct command_line_option
   return 0;
 }
 
-int app_server_start(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_server_start(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   /* Process optional arguments */
   int pid=-1;
   int cpid=-1;
@@ -552,10 +593,8 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
     return -1;
   /* Now that we know our instance path, we can ask for the default set of
      network interfaces that we will take interest in. */
-  const char *interfaces = confValueGet("interfaces", "");
-  if (!interfaces[0])
-    WHY("No network interfaces configured (empty 'interfaces' config setting)");
-  overlay_interface_args(interfaces);
+  if (config.interfaces.ac == 0)
+    WARN("No network interfaces configured (empty 'interfaces' config option)");
   if (pid == -1)
     pid = server_pid();
   if (pid < 0)
@@ -580,7 +619,7 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
       return server(NULL);
     const char *dir = getenv("SERVALD_SERVER_CHDIR");
     if (!dir)
-      dir = confValueGet("server.chdir", "/");
+      dir = config.server.chdir;
     switch (cpid = fork()) {
       case -1:
 	/* Main process.  Fork failed.  There is no child process. */
@@ -598,9 +637,6 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
 	       streams, and start a new process session so that if we are being started by an adb
 	       shell session, then we don't receive a SIGHUP when the adb shell process ends.  */
 	    close_logging();
-	    
-	    //TODO close config
-	    
 	    int fd;
 	    if ((fd = open("/dev/null", O_RDWR, 0)) == -1)
 	      _exit(WHY_perror("open"));
@@ -665,9 +701,9 @@ int app_server_start(int argc, const char *const *argv, struct command_line_opti
   return ret;
 }
 
-int app_server_stop(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_server_stop(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   int			pid, tries, running;
   const char		*instancepath;
   time_ms_t		timeout;
@@ -726,9 +762,9 @@ int app_server_stop(int argc, const char *const *argv, struct command_line_optio
   return 0;
 }
 
-int app_server_status(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_server_status(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   int	pid;
   const char *instancepath;
   if (cli_arg(argc, argv, o, "instance path", &instancepath, cli_absolute_path, NULL) == -1)
@@ -753,10 +789,10 @@ int app_server_status(int argc, const char *const *argv, struct command_line_opt
   return pid > 0 ? 0 : 1;
 }
 
-int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_mdp_ping(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   int mdp_sockfd;
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   const char *sid, *count;
   if (cli_arg(argc, argv, o, "SID|broadcast", &sid, str_is_subscriber_id, "broadcast") == -1)
     return -1;
@@ -857,7 +893,7 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
 	      long long *txtime=(long long *)&mdp.in.payload[4];
 	      int hop_count = 64 - mdp.in.ttl;
 	      time_ms_t delay = gettime_ms() - *txtime;
-	      printf("%s: seq=%d time=%lld hops=%d ms%s%s\n",
+	      printf("%s: seq=%d time=%lldms hops=%d %s%s\n",
 		     alloca_tohex_sid(mdp.in.src.sid),
 		     (*rxseq)-firstSeq+1,
 		     delay,
@@ -910,39 +946,91 @@ int app_mdp_ping(int argc, const char *const *argv, struct command_line_option *
   return ret;
 }
 
-int app_config_set(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_config_schema(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
-  const char *var, *val;
-  if (	cli_arg(argc, argv, o, "variable", &var, is_configvarname, NULL)
-     || cli_arg(argc, argv, o, "value", &val, NULL, ""))
-    return -1;
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   if (create_serval_instance_dir() == -1)
     return -1;
-  return confValueSet(var, val) == -1 ? -1 : confWrite();
+  struct cf_om_node *root = NULL;
+  if (cf_sch_config_main(&root) == -1)
+    return -1;
+  struct cf_om_iterator it;
+  for (cf_om_iter_start(&it, root); it.node; cf_om_iter_next(&it))
+    if (it.node->text || it.node->nodc == 0) {
+      cli_puts(it.node->fullkey);
+      cli_delim("=");
+      if (it.node->text)
+	cli_puts(it.node->text);
+      cli_delim("\n");
+    }
+  return 0;
 }
 
-int app_config_del(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_config_set(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
-  const char *var;
-  if (cli_arg(argc, argv, o, "variable", &var, is_configvarname, NULL))
-    return -1;
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   if (create_serval_instance_dir() == -1)
     return -1;
-  return confValueSet(var, NULL) == -1 ? -1 : confWrite();
+  // <kludge>
+  // This fixes a subtle bug in when upgrading the Batphone app: the servald.conf file does
+  // not get upgraded.  The bug goes like this:
+  //  1. new Batphone APK is installed, but prior servald.conf is not overwritten because it
+  //     comes in serval.zip;
+  //  2. new Batphone is started, which calls JNI "stop" command, which reads the old servald.conf
+  //     into memory buffer;
+  //  3. new Batphone unpacks serval.zip, overwriting servald.conf with new version;
+  //  4. new Batphone calls JNI "config set rhizome.enable 1", which sets the "rhizome.enable"
+  //     config option in the existing memory buffer and overwrites servald.conf;
+  // Bingo, the old version of servald.conf is what remains.  This kludge intervenes in step 4, by
+  // reading the new servald.conf into the memory buffer before applying the "rhizome.enable" set
+  // value and overwriting.
+  if (cf_om_reload() == -1)
+    return -1;
+  // </kludge>
+  const char *var[argc - 1];
+  const char *val[argc - 1];
+  int nvar = 0;
+  int i;
+  for (i = 1; i < argc; ++i) {
+    int iv;
+    if (strcmp(argv[i], "set") == 0) {
+      if (i + 2 > argc)
+	return WHYF("malformed command at argv[%d]: 'set' not followed by two arguments", i);
+      var[nvar] = argv[iv = ++i];
+      val[nvar] = argv[++i];
+    } else if (strcmp(argv[i], "del") == 0) {
+      if (i + 1 > argc)
+	return WHYF("malformed command at argv[%d]: 'del' not followed by one argument", i);
+      var[nvar] = argv[iv = ++i];
+      val[nvar] = NULL;
+    } else
+      return WHYF("malformed command at argv[%d]: unsupported action '%s'", i, argv[i]);
+    if (!is_configvarname(var[nvar]))
+      return WHYF("malformed command at argv[%d]: '%s' is not a valid config option name", iv, var[nvar]);
+    ++nvar;
+  }
+  for (i = 0; i < nvar; ++i)
+    if (cf_om_set(&cf_om_root, var[i], val[i]) == -1)
+      return -1;
+  if (cf_om_save() == -1)
+    return -1;
+  if (cf_reload() == -1) // logs an error if the new config is bad
+    return 2;
+  return 0;
 }
 
-int app_config_get(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_config_get(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   const char *var;
-  if (cli_arg(argc, argv, o, "variable", &var, is_configvarname, NULL) == -1)
+  if (cli_arg(argc, argv, o, "variable", &var, is_configvarpattern, NULL) == -1)
     return -1;
   if (create_serval_instance_dir() == -1)
     return -1;
-  if (var) {
-    const char *value = confValueGet(var, NULL);
+  if (cf_om_reload() == -1)
+    return -1;
+  if (var && is_configvarname(var)) {
+    const char *value = cf_om_get(cf_om_root, var);
     if (value) {
       cli_puts(var);
       cli_delim("=");
@@ -950,23 +1038,24 @@ int app_config_get(int argc, const char *const *argv, struct command_line_option
       cli_delim("\n");
     }
   } else {
-    int n = confVarCount();
-    if (n == -1)
-      return -1;
-    unsigned int i;
-    for (i = 0; i != n; ++i) {
-      cli_puts(confVar(i));
-      cli_delim("=");
-      cli_puts(confValue(i));
-      cli_delim("\n");
+    struct cf_om_iterator it;
+    for (cf_om_iter_start(&it, cf_om_root); it.node; cf_om_iter_next(&it)) {
+      if (var && cf_om_match(var, it.node) <= 0)
+	continue;
+      if (it.node->text) {
+	cli_puts(it.node->fullkey);
+	cli_delim("=");
+	cli_puts(it.node->text);
+	cli_delim("\n");
+      }
     }
   }
   return 0;
 }
 
-int app_rhizome_hash_file(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_rhizome_hash_file(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   /* compute hash of file. We do this without a manifest, so it will necessarily
      return the hash of the file unencrypted. */
   const char *filepath;
@@ -979,36 +1068,40 @@ int app_rhizome_hash_file(int argc, const char *const *argv, struct command_line
   return 0;
 }
 
-int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_rhizome_add_file(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   const char *filepath, *manifestpath, *authorSidHex, *pin, *bskhex;
   cli_arg(argc, argv, o, "filepath", &filepath, NULL, "");
   if (cli_arg(argc, argv, o, "author_sid", &authorSidHex, cli_optional_sid, "") == -1)
     return -1;
   cli_arg(argc, argv, o, "pin", &pin, NULL, "");
   cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "");
-  if (cli_arg(argc, argv, o, "bsk", &bskhex, cli_optional_bundle_key, "") == -1)
+  if (cli_arg(argc, argv, o, "bsk", &bskhex, cli_optional_bundle_key, NULL) == -1)
     return -1;
-  unsigned char authorSid[SID_SIZE];
-  if (authorSidHex[0] && fromhexstr(authorSid, authorSidHex, SID_SIZE) == -1)
+  
+  sid_t authorSid;
+  if (authorSidHex[0] && fromhexstr(authorSid.binary, authorSidHex, SID_SIZE) == -1)
     return WHYF("invalid author_sid: %s", authorSidHex);
-  unsigned char bsk[RHIZOME_BUNDLE_KEY_BYTES];
-  if (bskhex[0] && fromhexstr(bsk, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
+  rhizome_bk_t bsk;
+  if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
     return WHYF("invalid bsk: %s", bskhex);
+  
   if (create_serval_instance_dir() == -1)
     return -1;
   if (!(keyring = keyring_open_with_pins((char *)pin)))
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
+  
   /* Create a new manifest that will represent the file.  If a manifest file was supplied, then read
    * it, otherwise create a blank manifest. */
   rhizome_manifest *m = rhizome_new_manifest();
   if (!m)
     return WHY("Manifest struct could not be allocated -- not added to rhizome");
+  
   if (manifestpath[0] && access(manifestpath, R_OK) == 0) {
-    if (debug & DEBUG_RHIZOME) DEBUGF("reading manifest from %s", manifestpath);
+    if (config.debug.rhizome) DEBUGF("reading manifest from %s", manifestpath);
     /* Don't verify the manifest, because it will fail if it is incomplete.
        This is okay, because we fill in any missing bits and sanity check before
        trying to write it out. */
@@ -1017,163 +1110,29 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
       return WHY("Manifest file could not be loaded -- not added to rhizome");
     }
   } else {
-    if (debug & DEBUG_RHIZOME) DEBUGF("manifest file %s does not exist -- creating new manifest", manifestpath);
+    if (config.debug.rhizome) DEBUGF("manifest file %s does not exist -- creating new manifest", manifestpath);
   }
-  /* Fill in a few missing manifest fields, to make it easier to use when adding new files:
-      - the default service is FILE
-      - use the current time for "date"
-      - if service is file, then use the payload file's basename for "name"
-  */
-  const char *service = rhizome_manifest_get(m, "service", NULL, 0);
-  if (service == NULL) {
-    rhizome_manifest_set(m, "service", (service = RHIZOME_SERVICE_FILE));
-    if (debug & DEBUG_RHIZOME) DEBUGF("missing 'service', set default service=%s", service);
-  } else {
-    if (debug & DEBUG_RHIZOME) DEBUGF("manifest contains service=%s", service);
+  
+  if (rhizome_stat_file(m, filepath))
+    return -1;
+  
+  if (rhizome_fill_manifest(m, filepath, *authorSidHex?&authorSid:NULL, bskhex?&bsk:NULL))
+    return -1;
+  
+  if (m->fileLength){
+    if (rhizome_add_file(m, filepath))
+      return -1;
   }
-  if (rhizome_manifest_get(m, "date", NULL, 0) == NULL) {
-    rhizome_manifest_set_ll(m, "date", (long long) gettime_ms());
-    if (debug & DEBUG_RHIZOME) DEBUGF("missing 'date', set default date=%s", rhizome_manifest_get(m, "date", NULL, 0));
-  }
-  if (strcasecmp(RHIZOME_SERVICE_FILE, service) == 0) {
-    const char *name = rhizome_manifest_get(m, "name", NULL, 0);
-    if (name == NULL) {
-      name = strrchr(filepath, '/');
-      name = name ? name + 1 : filepath;
-      rhizome_manifest_set(m, "name", name);
-      if (debug & DEBUG_RHIZOME) DEBUGF("missing 'name', set default name=\"%s\"", name);
-    } else {
-      if (debug & DEBUG_RHIZOME) DEBUGF("manifest contains name=\"%s\"", name);
-    }
-  }
-  /* If the author was not specified on the command-line, then the manifest's "sender"
-      field is used, if present. */
-  const char *sender = NULL;
-  if (!authorSidHex[0] && (sender = rhizome_manifest_get(m, "sender", NULL, 0)) != NULL) {
-    if (fromhexstr(authorSid, sender, SID_SIZE) == -1)
-      return WHYF("invalid sender: %s", sender);
-    authorSidHex = sender;
-  }
-  /* Bind an ID to the manifest, and also bind the file.  Then finalise the manifest.
-     But if the manifest already contains an ID, don't override it. */
-  if (authorSidHex[0]) {
-    if (debug & DEBUG_RHIZOME) DEBUGF("author=%s", authorSidHex);
-    memcpy(m->author, authorSid, SID_SIZE);
-  }
-  const char *id = rhizome_manifest_get(m, "id", NULL, 0);
-  if (id == NULL) {
-    if (debug & DEBUG_RHIZOME) DEBUG("creating new bundle");
-    if (rhizome_manifest_bind_id(m) == -1) {
-      rhizome_manifest_free(m);
-      return WHY("Could not bind manifest to an ID");
-    }
-  } else {
-    if (debug & DEBUG_RHIZOME) DEBUGF("modifying existing bundle bid=%s", id);
-    // Modifying an existing bundle.  If an author SID is supplied, we must ensure that it is valid,
-    // ie, that identity has permission to alter the bundle.  If no author SID is supplied but a BSK
-    // is supplied, then use that to alter the bundle.  Otherwise, search the keyring for an
-    // identity with permission to alter the bundle.
-    if (!is_sid_any(m->author)) {
-      // Check that the given author has permission to alter the bundle, and extract the secret
-      // bundle key if so.
-      int result = rhizome_extract_privatekey(m);
-      switch (result) {
-      case -1:
-	rhizome_manifest_free(m);
-	return WHY("error in rhizome_extract_privatekey()");
-      case 0:
-	break;
-      case 1:
-	if (bskhex[0])
-	  break;
-	rhizome_manifest_free(m);
-	return WHY("Manifest does not have BK field");
-      case 2:
-	rhizome_manifest_free(m);
-	return WHY("Author unknown");
-      case 3:
-	rhizome_manifest_free(m);
-	return WHY("Author does not have a Rhizome Secret");
-      case 4:
-	rhizome_manifest_free(m);
-	return WHY("Author does not have permission to modify manifest");
-      default:
-	rhizome_manifest_free(m);
-	return WHYF("Unknown result from rhizome_extract_privatekey(): %d", result);
-      }
-    }
-    if (bskhex[0]) {
-      if (debug & DEBUG_RHIZOME) DEBUGF("bskhex=%s", bskhex);
-      if (m->haveSecret) {
-	// If a bundle secret key was supplied that does not match the secret key derived from the
-	// author, then warn but carry on using the author's.
-	if (memcmp(bsk, m->cryptoSignSecret, RHIZOME_BUNDLE_KEY_BYTES) != 0)
-	  WARNF("Supplied bundle secret key is invalid -- ignoring");
-      } else {
-	// The caller provided the bundle secret key, so ensure that it corresponds to the bundle's
-	// public key (its bundle ID), otherwise it won't work.
-	memcpy(m->cryptoSignSecret, bsk, RHIZOME_BUNDLE_KEY_BYTES);
-	if (rhizome_verify_bundle_privatekey(m,m->cryptoSignSecret,
-					     m->cryptoSignPublic) == -1) {
-	  rhizome_manifest_free(m);
-	  return WHY("Incorrect BID secret key.");
-	}
-      }
-    }
-    // If we still don't know the bundle secret or the author, then search for an author.
-    if (!m->haveSecret && is_sid_any(m->author)) {
-      if (debug & DEBUG_RHIZOME) DEBUG("bundle author not specified, searching keyring");
-      int result = rhizome_find_bundle_author(m);
-      if (result != 0) {
-	rhizome_manifest_free(m);
-	switch (result) {
-	case -1:
-	  return WHY("error in rhizome_find_bundle_author()");
-	case 4:
-	  return WHY("Manifest does not have BK field");
-	case 1:
-	  return WHY("No author found");
-	default:
-	  return WHYF("Unknown result from rhizome_find_bundle_author(): %d", result);
-	}
-      }
-    }
-  }
-  int encryptP = 0; // TODO Determine here whether payload is to be encrypted.
-  if (rhizome_manifest_bind_file(m, filepath, encryptP)) {
-    rhizome_manifest_free(m);
-    return WHYF("Could not bind manifest to file '%s'",filepath);
-  }
-  /* Add the manifest and its associated file to the Rhizome database, 
-     generating an "id" in the process.
-     PGS @20121003 - Hang on, didn't we create the ID above? Presumably the
-     following does NOT in fact generate a bundle ID. 
-  */
-  int ret=0;
+  
   rhizome_manifest *mout = NULL;
-  if (rhizome_manifest_check_duplicate(m, &mout) == 2) {
-    /* duplicate found -- verify it so that we can write it out later */
-    rhizome_manifest_verify(mout);
-    ret=2;
-  } else {
-    /* not duplicate, so finalise and add to database */
-    if (rhizome_manifest_finalise(m)) {
-      rhizome_manifest_free(m);
-      return WHY("Could not finalise manifest");
-    }
-    if (rhizome_add_manifest(m, 255 /* TTL */)) {
-      rhizome_manifest_free(m);
-      return WHY("Manifest not added to Rhizome database");
-    }
-  }
-
-  /* If successfully added, overwrite the manifest file so that the Java component that is
-     invoking this command can read it to obtain feedback on the result. */
-  rhizome_manifest *mwritten = mout ? mout : m;
+  int ret=rhizome_manifest_finalise(m,&mout);
+  if (ret<0)
+    return -1;
+  
   if (manifestpath[0] 
-      && rhizome_write_manifest_file(mwritten, manifestpath) == -1)
+      && rhizome_write_manifest_file(mout, manifestpath) == -1)
     ret = WHY("Could not overwrite manifest file.");
-  service = rhizome_manifest_get(mwritten, "service", NULL, 0);
+  const char *service = rhizome_manifest_get(mout, "service", NULL, 0);
   if (service) {
     cli_puts("service");
     cli_delim(":");
@@ -1182,7 +1141,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   }
   {
     char bid[RHIZOME_MANIFEST_ID_STRLEN + 1];
-    rhizome_bytes_to_hex_upper(mwritten->cryptoSignPublic, bid, RHIZOME_MANIFEST_ID_BYTES);
+    rhizome_bytes_to_hex_upper(mout->cryptoSignPublic, bid, RHIZOME_MANIFEST_ID_BYTES);
     cli_puts("manifestid");
     cli_delim(":");
     cli_puts(bid);
@@ -1190,7 +1149,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   }
   {
     char secret[RHIZOME_BUNDLE_KEY_STRLEN + 1];
-    rhizome_bytes_to_hex_upper(mwritten->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
+    rhizome_bytes_to_hex_upper(mout->cryptoSignSecret, secret, RHIZOME_BUNDLE_KEY_BYTES);
     cli_puts("secret");
     cli_delim(":");
     cli_puts(secret);
@@ -1198,45 +1157,86 @@ int app_rhizome_add_file(int argc, const char *const *argv, struct command_line_
   }
   cli_puts("filesize");
   cli_delim(":");
-  cli_printf("%lld", mwritten->fileLength);
+  cli_printf("%lld", mout->fileLength);
   cli_delim("\n");
-  if (mwritten->fileLength != 0) {
+  if (mout->fileLength != 0) {
     cli_puts("filehash");
     cli_delim(":");
-    cli_puts(mwritten->fileHexHash);
+    cli_puts(mout->fileHexHash);
     cli_delim("\n");
   }
-  const char *name = rhizome_manifest_get(mwritten, "name", NULL, 0);
+  const char *name = rhizome_manifest_get(mout, "name", NULL, 0);
   if (name) {
     cli_puts("name");
     cli_delim(":");
     cli_puts(name);
     cli_delim("\n");
   }
-  rhizome_manifest_free(m);
   if (mout != m)
     rhizome_manifest_free(mout);
+  rhizome_manifest_free(m);
   return ret;
 }
 
-int app_rhizome_import_bundle(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_rhizome_import_bundle(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   const char *filepath, *manifestpath;
   cli_arg(argc, argv, o, "filepath", &filepath, NULL, "");
   cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "");
   if (rhizome_opendb() == -1)
     return -1;
-  int status=rhizome_import_from_files(manifestpath,filepath);
+  
+  rhizome_manifest *m = rhizome_new_manifest();
+  if (!m)
+    return WHY("Out of manifests.");
+  
+  int status=rhizome_bundle_import_files(m, manifestpath, filepath);
+  if (status<0)
+    goto cleanup;
+  
+  const char *service = rhizome_manifest_get(m, "service", NULL, 0);
+  if (service) {
+    cli_puts("service");
+    cli_delim(":");
+    cli_puts(service);
+    cli_delim("\n");
+  }
+  {
+    cli_puts("manifestid");
+    cli_delim(":");
+    cli_puts(alloca_tohex(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES));
+    cli_delim("\n");
+  }
+  cli_puts("filesize");
+  cli_delim(":");
+  cli_printf("%lld", m->fileLength);
+  cli_delim("\n");
+  if (m->fileLength != 0) {
+    cli_puts("filehash");
+    cli_delim(":");
+    cli_puts(m->fileHexHash);
+    cli_delim("\n");
+  }
+  const char *name = rhizome_manifest_get(m, "name", NULL, 0);
+  if (name) {
+    cli_puts("name");
+    cli_delim(":");
+    cli_puts(name);
+    cli_delim("\n");
+  }
+  
+cleanup:
+  rhizome_manifest_free(m);
   return status;
 }
 
-int app_rhizome_extract_manifest(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_rhizome_extract_manifest(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   const char *pins, *manifestid, *manifestpath;
   cli_arg(argc, argv, o, "pin,pin...", &pins, NULL, "");
-  if (cli_arg(argc, argv, o, "manifestid", &manifestid, cli_manifestid, NULL)
+  if (cli_arg(argc, argv, o, "manifestid", &manifestid, cli_manifestid, NULL) == -1
    || cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, NULL) == -1)
     return -1;
   /* Ensure the Rhizome database exists and is open */
@@ -1246,63 +1246,134 @@ int app_rhizome_extract_manifest(int argc, const char *const *argv, struct comma
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
-  /* Extract the manifest from the database */
-  rhizome_manifest *m = NULL;
-  int ret = rhizome_retrieve_manifest(manifestid, &m);
-  switch (ret) {
-    case 0: ret = 1; break;
-    case 1: ret = 0;
-      if (manifestpath) {
-	/* If the manifest has been read in from database, the blob is there,
-	   and we can lie and say we are finalised and just want to write it
-	   out.  XXX really should have a dirty/clean flag, so that write
-	   works is clean but not finalised. */
-	m->finalised=1;
-	if (rhizome_write_manifest_file(m, manifestpath) == -1)
-	  ret = -1;
-      }
-      break;
-    case -1: break;
-    default: ret = WHYF("Unsupported return value %d", ret); break;
+  
+  unsigned char manifest_id[RHIZOME_MANIFEST_ID_BYTES];
+  if (fromhexstr(manifest_id, manifestid, RHIZOME_MANIFEST_ID_BYTES) == -1)
+    return WHY("Invalid manifest ID");
+  
+  char manifestIdUpper[RHIZOME_MANIFEST_ID_STRLEN + 1];
+  tohex(manifestIdUpper, manifest_id, RHIZOME_MANIFEST_ID_BYTES);
+  
+  rhizome_manifest *m = rhizome_new_manifest();
+  if (m == NULL)
+    return WHY("Out of manifests");
+  
+  int ret = rhizome_retrieve_manifest(manifestIdUpper, m);
+  if (ret==0){
+    if (m->errors){
+      // fail if the manifest is invalid?
+    }
+    
+    rhizome_extract_privatekey(m, NULL);
+    
+    const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
+    
+    cli_puts("service");    cli_delim(":"); cli_puts(blob_service); cli_delim("\n");
+    cli_puts("manifestid"); cli_delim(":"); cli_puts(manifestIdUpper); cli_delim("\n");
+    cli_puts("version");    cli_delim(":"); cli_printf("%lld", m->version); cli_delim("\n");
+    cli_puts("inserttime"); cli_delim(":"); cli_printf("%lld", m->inserttime); cli_delim("\n");
+    if (m->haveSecret) {
+      cli_puts(".author");  cli_delim(":"); cli_puts(alloca_tohex_sid(m->author)); cli_delim("\n");
+    }
+    cli_puts(".readonly");  cli_delim(":"); cli_printf("%d", m->haveSecret?0:1); cli_delim("\n");
+    cli_puts("filesize");   cli_delim(":"); cli_printf("%lld", (long long) m->fileLength); cli_delim("\n");
+    if (m->fileLength != 0) {
+      cli_puts("filehash"); cli_delim(":"); cli_puts(m->fileHexHash); cli_delim("\n");
+    }
+    
+    if (manifestpath && strcmp(manifestpath, "-") == 0) {
+      cli_puts("manifest");
+      cli_delim(":");
+      cli_write(m->manifestdata, m->manifest_all_bytes);
+      cli_delim("\n");
+    } else if (manifestpath) {
+      /* If the manifest has been read in from database, the blob is there,
+       and we can lie and say we are finalised and just want to write it
+       out.  TODO: really should have a dirty/clean flag, so that write
+       works if clean but not finalised. */
+      m->finalised=1;
+      if (rhizome_write_manifest_file(m, manifestpath) == -1)
+	ret = -1;
+    }
   }
-  if (m)
-    rhizome_manifest_free(m);
+  
+  rhizome_manifest_free(m);
   return ret;
 }
 
-int app_rhizome_extract_file(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_rhizome_extract_file(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
-  const char *fileid, *filepath, *keyhex;
-  if (cli_arg(argc, argv, o, "fileid", &fileid, cli_fileid, NULL)
-   || cli_arg(argc, argv, o, "filepath", &filepath, NULL, "") == -1)
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
+  const char *fileid, *filepath, *manifestid, *pins, *bskhex;
+  if (cli_arg(argc, argv, o, "manifestid", &manifestid, cli_manifestid, NULL) == -1
+      || cli_arg(argc, argv, o, "filepath", &filepath, NULL, "") == -1
+      || cli_arg(argc, argv, o, "fileid", &fileid, cli_fileid, NULL) == -1
+      || cli_arg(argc, argv, o, "pin,pin...", &pins, NULL, "") == -1
+      || cli_arg(argc, argv, o, "bsk", &bskhex, cli_optional_bundle_key, NULL) == -1)
     return -1;
-  cli_arg(argc, argv, o, "key", &keyhex, cli_optional_bundle_crypt_key, "");
-  unsigned char key[RHIZOME_CRYPT_KEY_STRLEN + 1];
-  if (keyhex[0] && fromhexstr(key, keyhex, RHIZOME_CRYPT_KEY_BYTES) == -1)
-    return -1;
+  
   /* Ensure the Rhizome database exists and is open */
   if (create_serval_instance_dir() == -1)
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
-  /* Extract the file from the database.
-     We don't provide a decryption key here, because we don't know it.
-     (We probably should allow the user to provide one).
-  */
-  int ret = rhizome_retrieve_file(fileid, filepath, keyhex[0] ? key : NULL);
-  switch (ret) {
-    case 0: ret = 1; break;
-    case 1: ret = 0; break;
-    case -1: break;
-    default: ret = WHYF("Unsupported return value %d", ret); break;
+  
+  int ret=0;
+  
+  if (manifestid){
+    if (!(keyring = keyring_open_with_pins(pins)))
+      return -1;
+    
+    unsigned char manifest_id[RHIZOME_MANIFEST_ID_BYTES];
+    if (fromhexstr(manifest_id, manifestid, RHIZOME_MANIFEST_ID_BYTES) == -1)
+      return WHY("Invalid manifest ID");
+    
+    char manifestIdUpper[RHIZOME_MANIFEST_ID_STRLEN + 1];
+    tohex(manifestIdUpper, manifest_id, RHIZOME_MANIFEST_ID_BYTES);
+    
+    rhizome_bk_t bsk;
+    if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
+      return WHYF("invalid bsk: %s", bskhex);
+    
+    rhizome_manifest *m = rhizome_new_manifest();
+    if (m==NULL)
+      return WHY("Out of manifests");
+    
+    ret = rhizome_retrieve_manifest(manifestIdUpper, m);
+    if (ret==0){
+      ret = rhizome_extract_file(m, filepath, bskhex?&bsk:NULL);
+    }
+    
+    if (ret==0){
+      cli_puts("filehash"); cli_delim(":");
+      cli_puts(m->fileHexHash); cli_delim("\n");
+      cli_puts("filesize"); cli_delim(":");
+      cli_printf("%lld", m->fileLength); cli_delim("\n");
+    }
+    
+    if (m)
+      rhizome_manifest_free(m);
+    
+  }else if(fileid){
+    if (!rhizome_exists(fileid))
+      return 1;
+    int64_t length;
+    ret = rhizome_dump_file(fileid, filepath, &length);
+    
+    if (ret==0){
+      cli_puts("filehash"); cli_delim(":");
+      cli_puts(fileid); cli_delim("\n");
+      cli_puts("filesize"); cli_delim(":");
+      cli_printf("%lld", length); cli_delim("\n");
+    }
   }
+  
   return ret;
 }
 
-int app_rhizome_list(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_rhizome_list(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   const char *pins, *service, *sender_sid, *recipient_sid, *offset, *limit;
   cli_arg(argc, argv, o, "pin,pin...", &pins, NULL, "");
   cli_arg(argc, argv, o, "service", &service, NULL, "");
@@ -1320,9 +1391,9 @@ int app_rhizome_list(int argc, const char *const *argv, struct command_line_opti
   return rhizome_list_manifests(service, sender_sid, recipient_sid, atoi(offset), atoi(limit));
 }
 
-int app_keyring_create(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_keyring_create(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   const char *pin;
   cli_arg(argc, argv, o, "pin,pin...", &pin, NULL, "");
   if (!keyring_open_with_pins(pin))
@@ -1330,9 +1401,9 @@ int app_keyring_create(int argc, const char *const *argv, struct command_line_op
   return 0;
 }
 
-int app_keyring_list(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_keyring_list(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   const char *pins;
   cli_arg(argc, argv, o, "pin,pin...", &pins, NULL, "");
   keyring_file *k = keyring_open_with_pins(pins);
@@ -1357,9 +1428,9 @@ int app_keyring_list(int argc, const char *const *argv, struct command_line_opti
   return 0;
  }
 
-int app_keyring_add(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_keyring_add(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   const char *pin;
   cli_arg(argc, argv, o, "pin", &pin, NULL, "");
   keyring_file *k = keyring_open_with_pins("");
@@ -1402,9 +1473,9 @@ int app_keyring_add(int argc, const char *const *argv, struct command_line_optio
   return 0;
 }
 
-int app_keyring_set_did(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_keyring_set_did(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   const char *sid, *did, *pin, *name;
   cli_arg(argc, argv, o, "sid", &sid, str_is_subscriber_id, "");
   cli_arg(argc, argv, o, "did", &did, cli_optional_did, "");
@@ -1431,10 +1502,10 @@ int app_keyring_set_did(int argc, const char *const *argv, struct command_line_o
   return 0;
 }
 
-int app_id_self(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_id_self(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   int mdp_sockfd;
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   /* List my own identities */
   overlay_mdp_frame a;
   bzero(&a, sizeof(overlay_mdp_frame));
@@ -1486,7 +1557,8 @@ int app_id_self(int argc, const char *const *argv, struct command_line_option *o
   return 0;
 }
 
-int app_count_peers(int argc, const char *const *argv, struct command_line_option *o, void *context){
+int app_count_peers(int argc, const char *const *argv, const struct command_line_option *o, void *context)
+{
   int mdp_sockfd;
 
   if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
@@ -1509,25 +1581,9 @@ int app_count_peers(int argc, const char *const *argv, struct command_line_optio
   return 0;
 }
 
-int app_test_rfs(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_crypt_test(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
-  printf("Testing that RFS coder works properly.\n");
-  int i;
-  for(i=0;i<65536;i++) {
-    unsigned char bytes[8];
-    rfs_encode(i, &bytes[0]);
-    int zero=0;
-    int r=rfs_decode(&bytes[0],&zero);
-    if (i != r)
-      printf("RFS encoding of %d decodes to %d: %s\n", i, r, alloca_tohex(bytes, sizeof bytes));
-  }
-  return 0;
-}
-
-int app_crypt_test(int argc, const char *const *argv, struct command_line_option *o, void *context)
-{
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   unsigned char nonce[crypto_box_curve25519xsalsa20poly1305_NONCEBYTES];
   unsigned char k[crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES];
 
@@ -1688,10 +1744,10 @@ int app_crypt_test(int argc, const char *const *argv, struct command_line_option
   return 0;
 }
 
-int app_node_info(int argc, const char *const *argv, struct command_line_option *o, void *context)
+int app_node_info(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   int mdp_sockfd;
-  if (debug & DEBUG_VERBOSE) DEBUG_argv("command", argc, argv);
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
   const char *sid;
   cli_arg(argc, argv, o, "sid", &sid, NULL, "");
 
@@ -1700,12 +1756,9 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 
   overlay_mdp_frame mdp;
   bzero(&mdp,sizeof(mdp));
-  int resolveDid=0;
 
   mdp.packetTypeAndFlags=MDP_NODEINFO;
-  if (argc>3) resolveDid=1;
-  mdp.nodeinfo.resolve_did=1; // Request resolution of DID and Name by local server if it can.
-
+  
   /* get SID or SID prefix 
      XXX - Doesn't correctly handle odd-lengthed SID prefixes (ignores last digit).
      The matching code in overlay_route.c also has a similar problem with the last
@@ -1730,110 +1783,201 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
     }
   }
 
-  if (resolveDid&&(!mdp.nodeinfo.resolve_did)) {
-    /* Asked for DID resolution, but did not get it, so do a DNA lookup
-       here.  We do this on the client side, so that we don't block the 
-       single-threaded server. */
-    overlay_mdp_frame mdp_reply;
-    int port=32768+(random()&0xffff);
-    
-    unsigned char srcsid[SID_SIZE];
-    if (overlay_mdp_getmyaddr(mdp_sockfd, 0, srcsid)) {
-      overlay_mdp_client_close(mdp_sockfd);
-      port=0;
-    }
-    if (overlay_mdp_bind(mdp_sockfd, srcsid, port)) {
-      overlay_mdp_client_close(mdp_sockfd);
-      port=0;
-    }
-
-    if (port) {    
-      time_ms_t now = gettime_ms();
-      time_ms_t timeout = now + 3000;
-      time_ms_t next_send = now;
-      
-      while(now < timeout){
-	now=gettime_ms();
-	
-	if (now >= next_send){
-	  /* Send a unicast packet to this node, asking for any did */
-	  lookup_send_request(mdp_sockfd, srcsid, port, mdp.nodeinfo.sid, "");
-	  next_send+=125;
-	  continue;
-	}
-	
-	time_ms_t timeout_ms = (next_send>timeout?timeout:next_send) - now;
-	if (overlay_mdp_client_poll(mdp_sockfd, timeout_ms)<=0)
-	  continue;
-	
-	int ttl=-1;
-	if (overlay_mdp_recv(mdp_sockfd, &mdp_reply, port, &ttl))
-	  continue;
-	
-	if ((mdp_reply.packetTypeAndFlags&MDP_TYPE_MASK)==MDP_ERROR){
-	  // TODO log error?
-	  continue;
-	}
-	
-	if (mdp_reply.packetTypeAndFlags!=MDP_TX) {
-	  WHYF("MDP returned an unexpected message (type=0x%x)",
-	       mdp_reply.packetTypeAndFlags);
-	  
-	  if (mdp_reply.packetTypeAndFlags==MDP_ERROR) 
-	    WHYF("MDP message is return/error: %d:%s",
-		 mdp_reply.error.error,mdp_reply.error.message);
-	  continue;
-	}
-	
-	// we might receive a late response from an ealier request, ignore it
-	if (memcmp(mdp_reply.in.src.sid, mdp.nodeinfo.sid, SID_SIZE)){
-	  WHYF("Unexpected result from SID %s", alloca_tohex_sid(mdp_reply.in.src.sid));
-	  continue;
-	}
-	
-	{
-	  char sidhex[SID_STRLEN + 1];
-	  char did[DID_MAXSIZE + 1];
-	  char name[64];
-	  char uri[512];
-	  if ( !parseDnaReply((char *)mdp_reply.in.payload, mdp_reply.in.payload_length, sidhex, did, name, uri, NULL)
-	    || !str_is_subscriber_id(sidhex)
-	    || !str_is_did(did)
-	    || !str_is_uri(uri)
-	  ) {
-	    WHYF("Received malformed DNA reply: %s", 
-		 alloca_toprint(160, (const char *)mdp_reply.in.payload, mdp_reply.in.payload_length));
-	  } else {
-	    /* Got a good DNA reply, copy it into place and stop polling */
-	    bcopy(did,mdp.nodeinfo.did,32);
-	    bcopy(name,mdp.nodeinfo.name,64);
-	    mdp.nodeinfo.resolve_did=1;
-	    break;
-	  }
-	}
-      }
-    }
-  }
-
   cli_printf("record"); cli_delim(":");
-  // TODO remove these two unused output fields
-  cli_printf("%d",1); cli_delim(":");
-  cli_printf("%d",1); cli_delim(":");
   cli_printf("%s",mdp.nodeinfo.foundP?"found":"noresult"); cli_delim(":");
   cli_printf("%s", alloca_tohex_sid(mdp.nodeinfo.sid)); cli_delim(":");
-  cli_printf("%s",mdp.nodeinfo.resolve_did?mdp.nodeinfo.did:"did-not-resolved"); 
-  cli_delim(":");
   cli_printf("%s",mdp.nodeinfo.localP?"self":"peer"); cli_delim(":");
-  cli_printf("%s",mdp.nodeinfo.neighbourP?"direct":"indirect"); 
-  cli_delim(":");
+  cli_printf("%s",mdp.nodeinfo.neighbourP?"direct":"indirect"); cli_delim(":");
   cli_printf("%d",mdp.nodeinfo.score); cli_delim(":");
-  cli_printf("%d",mdp.nodeinfo.interface_number); cli_delim(":");
-  cli_printf("%s",mdp.nodeinfo.resolve_did?mdp.nodeinfo.name:"name-not-resolved");
+  cli_printf("%d",mdp.nodeinfo.interface_number); cli_delim("\n");
+
+  return 0;
+}
+
+int app_route_print(int argc, const char *const *argv, const struct command_line_option *o, void *context)
+{
+  int mdp_sockfd;
+
+  if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
+    WHY("Cannot create MDP socket");
+
+  overlay_mdp_frame mdp;
+  bzero(&mdp,sizeof(mdp));
+  
+  mdp.packetTypeAndFlags=MDP_ROUTING_TABLE;
+  overlay_mdp_send(mdp_sockfd, &mdp,0,0);
+  while(overlay_mdp_client_poll(mdp_sockfd, 200)){
+    overlay_mdp_frame rx;
+    int ttl;
+    if (overlay_mdp_recv(mdp_sockfd, &rx, 0, &ttl))
+      continue;
+
+    int ofs=0;
+    while(ofs + sizeof(struct overlay_route_record) <= rx.out.payload_length){
+      struct overlay_route_record *p=(struct overlay_route_record *)&rx.out.payload[ofs];
+      ofs+=sizeof(struct overlay_route_record);
+      
+      cli_printf(alloca_tohex_sid(p->sid));
+      cli_delim(":");
+      
+      if (p->reachable==REACHABLE_NONE)
+	cli_printf("NONE");
+      if (p->reachable & REACHABLE_SELF)
+	cli_printf("SELF ");
+      if (p->reachable & REACHABLE_ASSUMED)
+	cli_printf("ASSUMED ");
+      if (p->reachable & REACHABLE_BROADCAST)
+	cli_printf("BROADCAST ");
+      if (p->reachable & REACHABLE_UNICAST)
+	cli_printf("UNICAST ");
+      if (p->reachable & REACHABLE_INDIRECT)
+	cli_printf("INDIRECT ");
+      
+      cli_delim(":");
+      cli_printf(alloca_tohex_sid(p->neighbour));
+      cli_delim("\n");
+    }
+  }
+  return 0;
+}
+
+int app_reverse_lookup(int argc, const char *const *argv, const struct command_line_option *o, void *context)
+{
+  const char *sid, *delay;
+  int mdp_sockfd;
+
+  if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
+    WHY("Cannot create MDP socket");
+
+  if (cli_arg(argc, argv, o, "sid", &sid, str_is_subscriber_id, "") == -1)
+    return -1;
+  if (cli_arg(argc, argv, o, "timeout", &delay, NULL, "3000") == -1)
+    return -1;
+  
+  
+  int port=32768+(random()&0xffff);
+  
+  unsigned char srcsid[SID_SIZE];
+  unsigned char dstsid[SID_SIZE];
+  
+  stowSid(dstsid,0,(char *)sid);
+  
+  if (overlay_mdp_getmyaddr(mdp_sockfd, 0, srcsid)) {
+    overlay_mdp_client_close(mdp_sockfd);
+    return WHY("Unable to get my address");
+  }
+  if (overlay_mdp_bind(mdp_sockfd, srcsid, port)) {
+    overlay_mdp_client_close(mdp_sockfd);
+    return WHY("Unable to bind port");
+  }
+
+  time_ms_t now = gettime_ms();
+  time_ms_t timeout = now + atoi(delay);
+  time_ms_t next_send = now;
+  overlay_mdp_frame mdp_reply;
+  
+  while(now < timeout){
+    now=gettime_ms();
+    
+    if (now >= next_send){
+      /* Send a unicast packet to this node, asking for any did */
+      lookup_send_request(mdp_sockfd, srcsid, port, dstsid, "");
+      next_send+=125;
+      continue;
+    }
+    
+    time_ms_t poll_timeout = (next_send>timeout?timeout:next_send) - now;
+    if (overlay_mdp_client_poll(mdp_sockfd, poll_timeout)<=0)
+      continue;
+    
+    int ttl=-1;
+    if (overlay_mdp_recv(mdp_sockfd, &mdp_reply, port, &ttl))
+      continue;
+    
+    if ((mdp_reply.packetTypeAndFlags&MDP_TYPE_MASK)==MDP_ERROR){
+      // TODO log error?
+      continue;
+    }
+    
+    if (mdp_reply.packetTypeAndFlags!=MDP_TX) {
+      WHYF("MDP returned an unexpected message (type=0x%x)",
+	   mdp_reply.packetTypeAndFlags);
+      
+      if (mdp_reply.packetTypeAndFlags==MDP_ERROR) 
+	WHYF("MDP message is return/error: %d:%s",
+	     mdp_reply.error.error,mdp_reply.error.message);
+      continue;
+    }
+    
+    // we might receive a late response from an ealier request on the same socket, ignore it
+    if (memcmp(mdp_reply.in.src.sid, dstsid, SID_SIZE)){
+      WHYF("Unexpected result from SID %s", alloca_tohex_sid(mdp_reply.in.src.sid));
+      continue;
+    }
+      
+    {
+      char sidhex[SID_STRLEN + 1];
+      char did[DID_MAXSIZE + 1];
+      char name[64];
+      char uri[512];
+      if ( !parseDnaReply((char *)mdp_reply.in.payload, mdp_reply.in.payload_length, sidhex, did, name, uri, NULL)
+	  || !str_is_subscriber_id(sidhex)
+	  || !str_is_did(did)
+	  || !str_is_uri(uri)
+	  ) {
+	WHYF("Received malformed DNA reply: %s", 
+	     alloca_toprint(160, (const char *)mdp_reply.in.payload, mdp_reply.in.payload_length));
+	continue;
+      }
+      
+      /* Got a good DNA reply, copy it into place and stop polling */
+      cli_puts("did");
+      cli_delim(":");
+      cli_puts(did);
+      cli_delim("\n");
+      cli_puts("name");
+      cli_delim(":");
+      cli_puts(name);
+      cli_delim("\n");
+      break;
+    }
+  }
+  return 0;
+}
+
+int app_network_scan(int argc, const char *const *argv, const struct command_line_option *o, void *context)
+{
+  int mdp_sockfd;
+
+  if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
+    WHY("Cannot create MDP socket");
+
+  overlay_mdp_frame mdp;
+  bzero(&mdp,sizeof(mdp));
+  
+  mdp.packetTypeAndFlags=MDP_SCAN;
+  
+  struct overlay_mdp_scan *scan = (struct overlay_mdp_scan *)&mdp.raw;
+  const char *address;
+  if (cli_arg(argc, argv, o, "address", &address, NULL, NULL) == -1)
+    return -1;
+  
+  if (address){
+    DEBUGF("Parsing arg %s", address);
+    if (!inet_aton(address, &scan->addr))
+      return WHY("Unable to parse the address");
+  }else
+    DEBUGF("Scanning local networks");
+  
+  overlay_mdp_send(mdp_sockfd, &mdp, MDP_AWAITREPLY, 5000);
+  if (mdp.packetTypeAndFlags!=MDP_ERROR)
+    return -1;
+  cli_puts(mdp.error.message);
   cli_delim("\n");
 
   overlay_mdp_client_close(mdp_sockfd);
 
-  return 0;
+  return mdp.error.error;
 }
 
 /* NULL marks ends of command structure.
@@ -1856,7 +2000,7 @@ int app_node_info(int argc, const char *const *argv, struct command_line_option 
 struct command_line_option command_line_options[]={
   {app_dna_lookup,{"dna","lookup","<did>","[<timeout>]",NULL},0,
    "Lookup the SIP/MDP address of the supplied telephone number (DID)."},
-  {commandline_usage,{"help",NULL},0,
+  {commandline_usage,{"help",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Display command usage."},
   {app_echo,{"echo","...",NULL},CLIFLAG_STANDALONE,
    "Output the supplied string."},
@@ -1872,19 +2016,21 @@ struct command_line_option command_line_options[]={
    "Start Serval Mesh node process without detatching from foreground."},
   {app_server_start,{"start","foreground","in","<instance path>",NULL},CLIFLAG_STANDALONE,
    "Start Serval Mesh node process with given instance path, without detatching from foreground."},
-  {app_server_stop,{"stop",NULL},0,
+  {app_server_stop,{"stop",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Stop a running Serval Mesh node process with instance path taken from SERVALINSTANCE_PATH environment variable."},
-  {app_server_stop,{"stop","in","<instance path>",NULL},0,
+  {app_server_stop,{"stop","in","<instance path>",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Stop a running Serval Mesh node process with given instance path."},
-  {app_server_status,{"status",NULL},0,
+  {app_server_status,{"status",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Display information about any running Serval Mesh node."},
   {app_mdp_ping,{"mdp","ping","<SID|broadcast>","[<count>]",NULL},CLIFLAG_STANDALONE,
    "Attempts to ping specified node via Mesh Datagram Protocol (MDP)."},
-  {app_config_set,{"config","set","<variable>","<value>",NULL},CLIFLAG_STANDALONE,
-   "Set specified configuration variable."},
-  {app_config_del,{"config","del","<variable>",NULL},CLIFLAG_STANDALONE,
-   "Set specified configuration variable."},
-  {app_config_get,{"config","get","[<variable>]",NULL},CLIFLAG_STANDALONE,
+  {app_config_schema,{"config","schema",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
+   "Dump configuration schema."},
+  {app_config_set,{"config","set","<variable>","<value>","...",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
+   "Set and del specified configuration variables."},
+  {app_config_set,{"config","del","<variable>","...",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
+   "Del and set specified configuration variables."},
+  {app_config_get,{"config","get","[<variable>]",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
    "Get specified configuration variable."},
   {app_vomp_console,{"console",NULL},0,
     "Test phone call life-cycle from the console"},
@@ -1898,8 +2044,10 @@ struct command_line_option command_line_options[]={
    "List all manifests and files in Rhizome"},
   {app_rhizome_extract_manifest,{"rhizome","extract","manifest","<manifestid>","[<manifestpath>]","[<pin,pin...>]",NULL},CLIFLAG_STANDALONE,
    "Extract a manifest from Rhizome and write it to the given path"},
-  {app_rhizome_extract_file,{"rhizome","extract","file","<fileid>","[<filepath>]","[<key>]",NULL},CLIFLAG_STANDALONE,
+  {app_rhizome_extract_file,{"rhizome","extract","file","<manifestid>","[<filepath>]","[<pin,pin...>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,
    "Extract a file from Rhizome and write it to the given path"},
+  {app_rhizome_extract_file,{"rhizome","dump","file","<fileid>","[<filepath>]",NULL},CLIFLAG_STANDALONE,
+   "Extract a file from Rhizome and write it to the given path without attempting decryption"},
   {app_rhizome_direct_sync,{"rhizome","direct","sync","[peer url]",NULL},
    CLIFLAG_STANDALONE,
    "Synchronise with the specified Rhizome Direct server. Return when done."},
@@ -1923,12 +2071,16 @@ struct command_line_option command_line_options[]={
    "Return identity of known routable peers as URIs"},
   {app_id_self,{"id","allpeers",NULL},0,
    "Return identity of all known peers as URIs"},
-  {app_node_info,{"node","info","<sid>","[getdid]",NULL},0,
-   "Return information about SID, and optionally ask for DID resolution via network"},
+  {app_route_print, {"route","print",NULL},0,
+  "Print the routing table"},
+  {app_network_scan, {"scan","[<address>]",NULL},0,
+    "Scan the network for serval peers. If no argument is supplied, all local addresses will be scanned."},
+  {app_node_info,{"node","info","<sid>",NULL},0,
+   "Return routing information about a SID"},
   {app_count_peers,{"peer","count",NULL},0,
     "Return a count of routable peers on the network"},
-  {app_test_rfs,{"test","rfs",NULL},0,
-   "Test RFS field calculation"},
+  {app_reverse_lookup, {"reverse", "lookup", "<sid>", "[<timeout>]", NULL}, 0,
+    "Lookup the phone number and name of a given subscriber"},
   {app_monitor_cli,{"monitor",NULL},0,
    "Interactive servald monitor interface."},
   {app_crypt_test,{"crypt","test",NULL},0,

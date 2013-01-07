@@ -19,6 +19,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVALD_CONSTANTS_H
 #define __SERVALD_CONSTANTS_H
 
+#define NELS(a) (sizeof (a) / sizeof *(a))
+
 /* Packet format:
 
    16 bit - Magic value 0x4110
@@ -54,61 +56,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define SAS_SIZE 32 // == crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES
 #define DID_MINSIZE 5
 #define DID_MAXSIZE 32
-#define SIDDIDFIELD_LEN (SID_SIZE+1)
-#define PINFIELD_LEN 32
-#define HEADERFIELDS_LEN (2+2+2+2+8+1)
-#define OFS_TRANSIDFIELD (2+2+2+2)
-#define TRANSID_SIZE 8
-#define OFS_ROTATIONFIELD (OFS_TRANSIDFIELD+TRANSID_SIZE)
-#define OFS_SIDDIDFIELD HEADERFIELDS_LEN
-#define OFS_PINFIELD (OFS_SIDDIDFIELD+SIDDIDFIELD_LEN)
-#define OFS_PAYLOAD (OFS_PINFIELD+16+16)
 
 #define SID_STRLEN (SID_SIZE*2)
-
-/* Array of variables that can be placed in an MPHLR */
-#define VAR_EOR 0x00
-#define VAR_CREATETIME 0x01
-#define VAR_CREATOR 0x02
-#define VAR_REVISION 0x03
-#define VAR_REVISOR 0x04
-#define VAR_PIN 0x05
-#define VAR_VOICESIG 0x08
-#define VAR_HLRMASTER 0x0f
-#define VAR_NAME 0x10
-#define VAR_DIDS 0x80
-#define VAR_LOCATIONS 0x81
-#define VAR_IEMIS 0x82
-#define VAR_TEMIS 0x83
-#define VAR_CALLS_IN 0x90
-#define VAR_CALLS_MISSED 0x91
-#define VAR_CALLS_OUT 0x92
-#define VAR_SMESSAGES 0xa0
-#define VAR_DID2SUBSCRIBER 0xb0
-#define VAR_HLRBACKUPS 0xf0
-#define VAR_NOTE 0xff
-
-#define ACTION_GET 0x00
-#define ACTION_SET 0x01
-#define ACTION_DEL 0x02
-#define ACTION_INSERT 0x03
-#define ACTION_DIGITALTELEGRAM 0x04
-#define ACTION_CREATEHLR 0x0f
-
-#define ACTION_STATS 0x40
-
-#define ACTION_DONE 0x7e
-#define ACTION_ERROR 0x7f
-
-#define ACTION_DECLINED 0x80
-#define ACTION_OKAY 0x81
-#define ACTION_DATA 0x82
-#define ACTION_WROTE 0x83
-
-#define ACTION_XFER 0xf0
-#define ACTION_RECVTTL 0xfd
-#define ACTION_PAD 0xfe
-#define ACTION_EOT 0xff
 
 #define OVERLAY_MAX_INTERFACES 16
 
@@ -130,9 +79,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define OVERLAY_MAX_LOCAL_IDENTITIES 256
 
+/* All of these types should be considered deprecated. Processing code should migrate to well known MDP port numbers */
 /* Overlay mesh packet codes */
-#define OF_TYPE_BITS 0xf0
-#define OF_TYPE_SELFANNOUNCE 0x10 /* BATMAN style announcement frames */
 #define OF_TYPE_SELFANNOUNCE_ACK 0x20 /* BATMAN style "I saw your announcment" frames */
 #define OF_TYPE_DATA 0x30 /* Ordinary data frame.
 		        Upto MTU bytes of payload.
@@ -144,45 +92,21 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define OF_TYPE_RHIZOME_ADVERT 0x50 /* Advertisment of file availability via Rhizome */
 #define OF_TYPE_PLEASEEXPLAIN 0x60 /* Request for resolution of an abbreviated address */
 #define OF_TYPE_NODEANNOUNCE 0x70
-#define OF_TYPE_IDENTITYENQUIRY 0x80
-#define OF_TYPE_RESERVED_09 0x90
-#define OF_TYPE_RESERVED_0a 0xa0
-#define OF_TYPE_RESERVED_0b 0xb0
-#define OF_TYPE_RESERVED_0c 0xc0
-#define OF_TYPE_RESERVED_0d 0xd0
-#define OF_TYPE_EXTENDED12 0xe0 /* modifier bits and next byte provide 12 bits extended format
-				   (for future expansion, just allows us to skip the frame) */
-#define OF_TYPE_EXTENDED20 0xf0 /* modifier bits and next 2 bytes provide 20 bits extended format
-				 (for future expansion, just allows us to skip the frame) */
-/* Flags used to control the interpretation of the resolved type field */
-#define OF_TYPE_FLAG_BITS 0xf0000000
-#define OF_TYPE_FLAG_NORMAL 0x0
-#define OF_TYPE_FLAG_E12 0x10000000
-#define OF_TYPE_FLAG_E20 0x20000000
 
-/* Modifiers that indicate the disposition of the frame */
-#define OF_MODIFIER_BITS 0x0f
+#define PAYLOAD_FLAG_SENDER_SAME (1<<0)
+#define PAYLOAD_FLAG_TO_BROADCAST (1<<1)
+#define PAYLOAD_FLAG_ONE_HOP (1<<2)
+#define PAYLOAD_FLAG_LONG_PAYLOAD (1<<3)
+#define PAYLOAD_FLAG_CIPHERED (1<<4)
+#define PAYLOAD_FLAG_SIGNED (1<<5)
+
+// this can be removed once all overlay messages have been turned into mdp payloads
+#define PAYLOAD_FLAG_LEGACY_TYPE (1<<7)
 
 /* Crypto/security options */
-#define OF_CRYPTO_BITS 0x0c
 #define OF_CRYPTO_NONE 0x00
-#define OF_CRYPTO_CIPHERED 0x04 /* Encrypted frame */
-#define OF_CRYPTO_SIGNED 0x08   /* signed frame */
-/* The following was previously considered, but is not being implemented at this
-   time.
-   #define OF_CRYPTO_PARANOID 0x0c Encrypted and digitally signed frame, with final destination address also encrypted. */
-
-/* QOS packet queue bits */
-#define OF_QUEUE_BITS 0x03
-
-#define RFS_PLUS250 0xfa
-#define RFS_PLUS456 0xfb
-#define RFS_PLUS762 0xfc
-#define RFS_PLUS1018 0xfd
-#define RFS_PLUS1274 0xfe
-#define RFS_3BYTE 0xff
-
-#define COMPUTE_RFS_LENGTH -1
+#define OF_CRYPTO_CIPHERED PAYLOAD_FLAG_CIPHERED /* Encrypted frame */
+#define OF_CRYPTO_SIGNED PAYLOAD_FLAG_SIGNED   /* signed frame */
 
 /* Keep track of last 32 observations of a node.
    Hopefully this is enough, if not, we will increase.
@@ -199,31 +123,34 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define MAX_SIGNATURES 16
 
-#define IDENTITY_VERIFIED (1<<0)
-#define IDENTITY_VERIFIEDBYME (1<<1)
-#define IDENTITY_NOTVERIFIED (1<<2)
-  /* The value below is for caching negative results */
-#define IDENTITY_UNKNOWN (1<<3)
-
-#define MDP_PORT_ECHO 0x00000007
-#define MDP_PORT_KEYMAPREQUEST 0x10000001
-#define MDP_PORT_VOMP 0x10000002
-#define MDP_PORT_DNALOOKUP 0x10000003
-#define MDP_PORT_NOREPLY 0x10000000
-#define MDP_PORT_DIRECTORY 10
+#define MDP_PORT_KEYMAPREQUEST 1
+#define MDP_PORT_STUNREQ 4
+#define MDP_PORT_STUN 5
+#define MDP_PORT_PROBE 6
+#define MDP_PORT_ECHO 7
+#define MDP_PORT_DNALOOKUP 10
+#define MDP_PORT_VOMP 12
+#define MDP_PORT_RHIZOME_REQUEST 13
+#define MDP_PORT_RHIZOME_RESPONSE 14
+#define MDP_PORT_DIRECTORY 15
+#define MDP_PORT_NOREPLY 0x3f
 
 #define MDP_TYPE_MASK 0xff
 #define MDP_FLAG_MASK 0xff00
 #define MDP_FORCE 0x0100
 #define MDP_NOCRYPT 0x0200
 #define MDP_NOSIGN 0x0400
-#define MDP_MTU 2000
+#define MDP_MTU 1200
 
 #define MDP_TX 1
 #define MDP_BIND 3
 #define MDP_ERROR 4
 #define MDP_GETADDRS 5
 #define MDP_ADDRLIST 6
+#define MDP_ROUTING_TABLE 7
+#define MDP_NODEINFO 8
+#define MDP_GOODBYE 9
+#define MDP_SCAN 10
 
 // These are back-compatible with the old values of 'mode' when it was 'selfP'
 #define MDP_ADDRLIST_MODE_ROUTABLE_PEERS 0
@@ -241,26 +168,23 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define VOMP_STUFF_BYTES 800
 
 #define MAX_AUDIO_BYTES 1024
-#define MDP_NODEINFO 8
-#define MDP_GOODBYE 9
 #define MDP_AWAITREPLY 9999
 
 /* max number of recent samples to cram into a VoMP frame as well as the current
    frame of audio (preemptive audio retransmission) */
 #define VOMP_MAX_RECENT_SAMPLES 2
 
-#define VOMP_CODEC_NONE 0x00
-#define VOMP_CODEC_CODEC2_2400 0x01
-#define VOMP_CODEC_CODEC2_1400 0x02
-#define VOMP_CODEC_GSMHALF 0x03
-#define VOMP_CODEC_GSMFULL 0x04
-#define VOMP_CODEC_16SIGNED 0x05
-#define VOMP_CODEC_8ULAW 0x06
-#define VOMP_CODEC_8ALAW 0x07
-#define VOMP_CODEC_PCM 0x08
-#define VOMP_CODEC_DTMF 0x80
-#define VOMP_CODEC_ENGAGED 0x81
-#define VOMP_CODEC_ONHOLD 0x82
+// codec's with well defined parameters
+#define VOMP_CODEC_16SIGNED 0x01
+#define VOMP_CODEC_ULAW 0x02
+#define VOMP_CODEC_ALAW 0x03
+#define VOMP_CODEC_GSM 0x04
+
+// other out of band signals, probably shouldn't be codecs
+#define VOMP_CODEC_DTMF 0x20
+#define VOMP_CODEC_TEXT 0x21
+
+// Note, Don't add codec's we aren't using yet
 
 #define CODEC_FLAGS_LENGTH 32
 
@@ -276,12 +200,5 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define DEFAULT_MONITOR_SOCKET_NAME "org.servalproject.servald.monitor.socket"
 #define DEFAULT_MDP_SOCKET_NAME "org.servalproject.servald.mdp.socket"
-
-// flags for address types
-#define TYPE_NONE 0
-#define TYPE_BROADCAST 1
-#define TYPE_SUBSCRIBER 2
-#define TYPE_TOO_SHORT 3
-
 
 #endif // __SERVALD_CONSTANTS_H

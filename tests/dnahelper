@@ -42,11 +42,13 @@ teardown() {
 # Called by start_servald_instances immediately before starting the server
 # process in each instance.
 configure_servald_server() {
-   executeOk_servald config set log.show_pid on
-   executeOk_servald config set log.show_time on
-   executeOk_servald config set debug.dnahelper on
-   executeOk_servald config set dna.helper.executable "$dnahelper"
-   executeOk_servald config set dna.helper.argv.1 "Hello, World!"
+   executeOk_servald config \
+      set log.show_pid on \
+      set log.show_time on \
+      set debug.dnahelper on \
+      set dna.helper.executable "$dnahelper" \
+      set dna.helper.argv.1 "Hello," \
+      set dna.helper.argv.2 "World!"
 }
 
 setup_dnahelper() {
@@ -232,8 +234,8 @@ test_ExecError() {
    executeOk_servald dna lookup 12345
 }
 
-doc_ExecArg1="DNA helper configured argument"
-setup_ExecArg1() {
+doc_ExecArgs="DNA helper configured argument"
+setup_ExecArgs() {
    setup_servald
    assert_no_servald_processes
    dnahelper="$TFWTMP/dnahelper"
@@ -246,7 +248,7 @@ do
    line="${line#*|}"
    did="${line%%|*}"
    line="${line#*|}"
-   echo "$token|uri:dumb|$did|$1|"
+   echo "$token|uri:dumb|$did|$*|"
    echo DONE
 done
 EOF
@@ -254,7 +256,7 @@ EOF
    start_servald_instances +A
    assert_all_instance_peers_complete +A
 }
-test_ExecArg1() {
+test_ExecArgs() {
    executeOk_servald dna lookup 12345
    assertStdoutIs -e "uri:dumb:12345:Hello, World!\n"
 }

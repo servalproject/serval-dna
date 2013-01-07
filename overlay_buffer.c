@@ -18,6 +18,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "conf.h"
+#include "mem.h"
 #include "overlay_buffer.h"
 
 /*
@@ -47,7 +49,7 @@ struct overlay_buffer *ob_static(unsigned char *bytes, int size){
   if (!ret) return NULL;
   ret->bytes = bytes;
   ret->allocSize = size;
-  ret->allocated = 0;
+  ret->allocated = NULL;
   ob_unlimitsize(ret);
   
   return ret;
@@ -67,7 +69,7 @@ struct overlay_buffer *ob_slice(struct overlay_buffer *b, int offset, int length
       return NULL;
   ret->bytes = b->bytes+offset;
   ret->allocSize = length;
-  ret->allocated = 0;
+  ret->allocated = NULL;
   ob_unlimitsize(ret);
   
   return ret;
@@ -95,8 +97,10 @@ struct overlay_buffer *ob_dup(struct overlay_buffer *b){
 int ob_free(struct overlay_buffer *b)
 {
   if (!b) return WHY("Asked to free NULL");
-  if (b->bytes && b->allocated) free(b->bytes);
+  if (b->bytes && b->allocated) free(b->allocated);
+  // we're about to free this anyway, why are we clearing it?
   b->bytes=NULL;
+  b->allocated=NULL;
   b->allocSize=0;
   b->sizeLimit=0;
   free(b);
@@ -138,7 +142,7 @@ int ob_unlimitsize(struct overlay_buffer *b)
 int ob_makespace(struct overlay_buffer *b,int bytes)
 {
   if (b->sizeLimit!=-1 && b->position+bytes>b->sizeLimit) {
-    if (debug&DEBUG_PACKETFORMATS) WHY("Asked to make space beyond size limit");
+    if (config.debug.packetformats) WHY("Asked to make space beyond size limit");
     return -1;
   }
   
@@ -164,7 +168,7 @@ int ob_makespace(struct overlay_buffer *b,int bytes)
   }
   if (0) DEBUGF("realloc(b->bytes=%p,newSize=%d)", b->bytes,newSize);
   /* XXX OSX realloc() seems to be able to corrupt things if the heap is not happy when calling realloc(), making debugging memory corruption much harder.
-     So will do a three-stage malloc,bcopy,free to see if we can tease the bug out that way. */
+     So will do a three-stage malloc,bcopy,free to see if we can tease bugs out that way. */
   /*
     unsigned char *r=realloc(b->bytes,newSize);
     if (!r) return WHY("realloc() failed");
@@ -192,9 +196,9 @@ int ob_makespace(struct overlay_buffer *b,int bytes)
   unsigned char *new=malloc(newSize);
 #endif
   bcopy(b->bytes,new,b->position);
-  if (b->bytes) free(b->bytes);
+  if (b->allocated) free(b->allocated);
   b->bytes=new;
-  b->allocated=1;
+  b->allocated=new;
   b->allocSize=newSize;
   return 0;
 }
@@ -253,26 +257,24 @@ int ob_append_ui32(struct overlay_buffer *b, uint32_t v)
   return 0;
 }
 
+int ob_append_packed_ui32(struct overlay_buffer *b, uint32_t v)
+{
+  do{
+    
+    if (ob_append_byte(b, (v&0x7f) | (v>0x7f?0x80:0)))
+      return -1;
+    v = v>>7;
+    
+  }while(v!=0);
+  return 0;
+}
+
 int ob_append_rfs(struct overlay_buffer *b,int l)
 {
-  /* Encode the specified length and append it to the buffer */
   if (l<0||l>0xffff) return -1;
   
-  /* First work out how long the field needs to be, then write dummy bytes
-   and use ob_patch_rfs to set the value.  That way we have only one
-   lot of code that does the encoding. */
-  
   b->var_length_offset=b->position;
-  b->var_length_bytes=rfs_length(l);
-  
-  unsigned char c[3]={0,0,0};
-  if (ob_append_bytes(b,c,b->var_length_bytes)) {
-    b->var_length_offset=0;
-    return -1;
-  }
-  
-  return ob_patch_rfs(b,l);
-  
+  return ob_append_ui16(b,l);
 }
 
 
@@ -341,6 +343,21 @@ uint16_t ob_get_ui16(struct overlay_buffer *b)
   return ret;
 }
 
+uint32_t ob_get_packed_ui32(struct overlay_buffer *b)
+{
+  uint32_t ret=0;
+  int shift=0;
+  int byte;
+  do{
+    byte = ob_get(b);
+    if (byte<0)
+      return WHY("Failed to unpack integer");
+    ret |= (byte&0x7f)<<shift;
+    shift+=7;
+  }while(byte & 0x80);
+  return ret;
+}
+
 int ob_get(struct overlay_buffer *b){
   if (test_offset(b, b->position, 1))
     return -1;
@@ -348,96 +365,32 @@ int ob_get(struct overlay_buffer *b){
   return b->bytes[b->position++];
 }
 
-int rfs_length(int l)
+int ob_set_ui16(struct overlay_buffer *b, int offset, uint16_t v)
 {
-  if (l<0) return -1;
-  if (l<250) return 1;
-  else if (l<(255+250+(256*4))) return 2;
-  else if (l<=0xffff) return 3;
-  else return -1;
-}
-
-int rfs_encode(int l, unsigned char *b)
-{
-  if (l<250) { b[0]=l; }
-  else if (l<(255+250+(256*4))) {
-    l-=250;
-    int page=(l>>8);
-    l&=0xff;
-    b[0]=RFS_PLUS250+page;
-    b[1]=l;
-  } else {
-    b[0]=RFS_3BYTE;
-    b[1]=l>>8;
-    b[2]=l&0xff;
-  }
-  return 0;
-}
-
-int rfs_decode(unsigned char *b,int *ofs)
-{
-  int rfs=b[*ofs];
-  switch(rfs) {
-  case RFS_PLUS250: case RFS_PLUS456: case RFS_PLUS762: case RFS_PLUS1018: case RFS_PLUS1274: 
-    rfs=250+256*(rfs-RFS_PLUS250)+b[++(*ofs)]; 
-    break;
-  case RFS_3BYTE: rfs=(b[(*ofs)+1]<<8)+b[(*ofs)+2]; (*ofs)+=2;
-  default: /* Length is natural value of field, so nothing to do */
-    break;
-  }
-  (*ofs)++;
-  return rfs;
-}
-
-// move the data at offset, by shift bytes
-int ob_indel_space(struct overlay_buffer *b,int offset,int shift)
-{
-  if (offset>=b->position) return -1;
-  if (shift>0 && ob_makespace(b, shift)) return -1;
-  bcopy(&b->bytes[offset],&b->bytes[offset+shift],b->position-offset);
-  b->position+=shift;
-  return 0;
-}
-
-
-int ob_patch_rfs(struct overlay_buffer *b,int l)
-{
-  if (l==COMPUTE_RFS_LENGTH){
-    // assume the payload has been written, we can now calculate the actual length
-    l = b->position - (b->var_length_offset + b->var_length_bytes);
-  }
-  if (l<0||l>0xffff) return -1;
-
-  /* Adjust size of field */
-  int new_size=rfs_length(l);
-  int shift=new_size - b->var_length_bytes;
-  if (shift) {
-    if (debug&DEBUG_PACKETCONSTRUCTION) {
-      DEBUGF("Patching RFS for rfs_size=%d (was %d), so indel %d btyes",
-	      new_size,b->var_length_bytes,shift);
-      dump("before indel",
-	   &b->bytes[b->var_length_offset],
-	   b->position-b->var_length_offset);
-    }
-    if (ob_indel_space(b, b->var_length_offset + b->var_length_bytes, shift)) return -1;
-    if (debug&DEBUG_PACKETCONSTRUCTION) {
-      dump("after indel",
-	   &b->bytes[b->var_length_offset],
-	   b->position-b->var_length_offset);
-    }
-
-  }
+  if (test_offset(b, offset, 2))
+    return -1;
   
-  if (rfs_encode(l,&b->bytes[b->var_length_offset])) return -1;
-
-  if (debug&DEBUG_PACKETCONSTRUCTION) {
-    dump("after patch",
-	 &b->bytes[b->var_length_offset],
-	 b->position-b->var_length_offset);
-  }
-
+  b->bytes[offset] = (v >> 8) & 0xFF;
+  b->bytes[offset+1] = v & 0xFF;
   return 0;
-  
+}
+
+int ob_patch_rfs(struct overlay_buffer *b){
+  return ob_set_ui16(b,b->var_length_offset,b->position - (b->var_length_offset + 2));
+}
+
+
+int ob_position(struct overlay_buffer *b){
+  return b->position;
+}
+int ob_limit(struct overlay_buffer *b){
+  return b->sizeLimit;
+}
+int ob_remaining(struct overlay_buffer *b){
+  return b->sizeLimit - b->position;
+}
+unsigned char *ob_ptr(struct overlay_buffer *b){
+  return b->bytes;
 }
 
 int asprintable(int c)
@@ -449,33 +402,7 @@ int asprintable(int c)
 
 int ob_dump(struct overlay_buffer *b,char *desc)
 {
-  DEBUGF("overlay_buffer '%s' at %p : length=%d", desc, b, b->position);
-  dump(NULL, b->bytes, b->position);
+  DEBUGF("overlay_buffer '%s' at %p : position=%d, size=%d", desc, b, b->position, b->sizeLimit);
+  dump(NULL, b->bytes, b->sizeLimit>b->position?b->sizeLimit:b->position);
   return 0;
-}
-
-#undef malloc
-#undef calloc
-#undef free
-#undef realloc
-
-#define SDM_GUARD_AFTER 16384
-void *_serval_debug_malloc(unsigned int bytes, struct __sourceloc __whence)
-{
-  void *r=malloc(bytes+SDM_GUARD_AFTER);
-  DEBUGF("malloc(%d) -> %p", bytes, r); 
-  return r;
-}
-
-void *_serval_debug_calloc(unsigned int bytes, unsigned int count, struct __sourceloc __whence)
-{
-  void *r=calloc((bytes*count)+SDM_GUARD_AFTER,1);
-  DEBUGF("calloc(%d,%d) -> %p", bytes, count, r); 
-  return r;
-}
-
-void _serval_debug_free(void *p, struct __sourceloc __whence)
-{
-  free(p);
-  DEBUGF("free(%p)", p); 
 }

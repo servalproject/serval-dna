@@ -21,8 +21,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #ifndef __SERVALD_SERVALD_H
 #define __SERVALD_SERVALD_H
 
-// #define MALLOC_PARANOIA
-
 #include <stdio.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -112,41 +110,15 @@ struct in_addr {
 #include <sys/stat.h>
 
 #include "constants.h"
+#include "mem.h"
 #include "xprintf.h"
 #include "log.h"
 #include "net.h"
-#include "conf.h"
-
-/* All wall clock times in the Serval daemon are represented in milliseconds
- * since the Unix epoch.  The gettime_ms() function uses gettimeofday(2) to
- * return this value when called.  The time_ms_t typedef should be used
- * wherever this time value is handled or stored.
- *
- * This type could perfectly well be unsigned, but is defined as signed to
- * avoid the need to cast or define a special signed timedelta_ms_t type at **
- * (1):
- *
- *      static time_ms_t then = 0;
- *      time_ms_t now = gettime_ms();
- *      time_ms_t ago = now - then;  // ** (1)
- *      if (then && ago < 0) {
- *          ... time going backwards ...
- *      } else {
- *          ... time has advanced ...
- *          then = now;
- *      }
- */
-typedef long long time_ms_t;
-
-/* bzero(3) is deprecated in favour of memset(3). */
-#define bzero(addr,len) memset((addr), 0, (len))
+#include "os.h"
 
 /* UDP Port numbers for various Serval services.
  The overlay mesh works over DNA */
 #define PORT_DNA 4110
-
-/* OpenWRT libc doesn't have bcopy, but has memmove */
-#define bcopy(A,B,C) memmove(B,A,C)
 
 #define BATCH 1
 #define NONBATCH 0
@@ -168,7 +140,31 @@ typedef long long time_ms_t;
 /* Limit packet payloads to minimise packet loss of big packets in mesh networks */
 #define MAX_DATA_BYTES 256
 
-double simulatedBER;
+/*
+ * INSTANCE_PATH can be set via the ./configure option --enable-instance-path=<path>
+ */
+#ifdef INSTANCE_PATH
+#define DEFAULT_INSTANCE_PATH INSTANCE_PATH
+#else
+#ifdef ANDROID
+#define DEFAULT_INSTANCE_PATH "/data/data/org.servalproject/var/serval-node"
+#else
+#define DEFAULT_INSTANCE_PATH "/var/serval-node"
+#endif
+#endif
+
+/* Handy statement for forming a path to an instance file in a char buffer whose declaration
+ * is in scope (so that sizeof(buf) will work).  Evaluates to true if the pathname fitted into
+ * the provided buffer, false (0) otherwise (after logging an error).
+ */
+#define FORM_SERVAL_INSTANCE_PATH(buf, path) (form_serval_instance_path(buf, sizeof(buf), (path)))
+
+const char *serval_instancepath();
+int create_serval_instance_dir();
+int form_serval_instance_path(char *buf, size_t bufsiz, const char *path);
+void serval_setinstancepath(const char *instancepath);
+
+#define SERVER_CONFIG_RELOAD_INTERVAL_MS	1000
 
 extern int serverMode;
 extern int servalShutdown;
@@ -328,7 +324,21 @@ struct sched_ent{
   int _poll_index;
 };
 
+struct limit_state{
+  // length of time for a burst
+  time_ms_t burst_length;
+  // how many in a burst
+  int burst_size;
+  
+  // how many have we sent in this burst so far
+  int sent;
+  // when can we allow another burst
+  time_ms_t next_interval;
+};
+
 struct overlay_buffer;
+struct overlay_frame;
+struct broadcast;
 
 #define STRUCT_SCHED_ENT_UNUSED ((struct sched_ent){NULL, NULL, NULL, NULL, {-1, 0, 0}, 0LL, 0LL, NULL, -1})
 
@@ -341,10 +351,10 @@ extern int overlayMode;
 
 typedef struct overlay_interface {
   struct sched_ent alarm;
-  char name[80];
+  char name[256];
   int recv_offset;
-  int fileP;
-  int bits_per_second;
+  int fileP; // dummyP
+  int drop_broadcasts;
   int port;
   int type;
   /* Number of milli-seconds per tick for this interface, which is basically related to the     
@@ -358,7 +368,9 @@ typedef struct overlay_interface {
    For ~10K ISM915MHz (nominal range ~3000m) it will probably be about 15000ms.
    These figures will be refined over time, and we will allow people to set them per-interface.
    */
-  int tick_ms; /* milliseconds per tick */
+  unsigned tick_ms; /* milliseconds per tick */
+  struct subscriber *next_advert;
+  
   int send_broadcasts;
   /* The time of the last tick on this interface in milli seconds */
   time_ms_t last_tick_ms;
@@ -371,6 +383,8 @@ typedef struct overlay_interface {
   int sequence_number;
   /* XXX need recent packet buffers to support the above */
   
+  struct limit_state transfer_limit;
+  
   /* We need to make sure that interface name and broadcast address is unique for all interfaces that are UP.
    We bind a separate socket per interface / broadcast address Broadcast address and netmask, if known
    We really only case about distinct broadcast addresses on interfaces.
@@ -378,6 +392,8 @@ typedef struct overlay_interface {
   struct sockaddr_in address;
   struct sockaddr_in broadcast_address;
   struct in_addr netmask;
+  // can we use this interface for routes to addresses in other subnets?
+  int default_route;
   
   /* Not necessarily the real MTU, but the largest frame size we are willing to TX on this interface.
    For radio links the actual maximum and the maximum that is likely to be delivered reliably are
@@ -398,46 +414,12 @@ extern overlay_interface overlay_interfaces[OVERLAY_MAX_INTERFACES];
 extern int overlay_last_interface_number; // used to remember where a packet came from
 extern unsigned int overlay_sequence_number;
 
-typedef struct overlay_txqueue {
-  struct overlay_frame *first;
-  struct overlay_frame *last;
-  int length; /* # frames in queue */
-  int maxLength; /* max # frames in queue before we consider ourselves congested */
-  
-  /* wait until first->enqueued_at+transmit_delay before trying to force the transmission of a packet */
-  int transmit_delay;
-  
-  /* if servald is busy, wait this long before trying to force the transmission of a packet */
-  int grace_period;
-  
-  /* Latency target in ms for this traffic class.
-   Frames older than the latency target will get dropped. */
-  int latencyTarget;
-  
-  /* XXX Need to initialise these:
-   Real-time queue for voice (<200ms ?)
-   Real-time queue for video (<200ms ?) (lower priority than voice)
-   Ordinary service queue (<3 sec ?)
-   Rhizome opportunistic queue (infinity)
-   
-   (Mesh management doesn't need a queue, as each overlay packet is tagged with some mesh management information)
-   */
-} overlay_txqueue;
+typedef struct sid_binary {
+    unsigned char binary[SID_SIZE];
+} sid_t;
 
-
-extern overlay_txqueue overlay_tx[OQ_MAX];
-
-ssize_t recvwithttl(int sock, unsigned char *buffer, size_t bufferlen, int *ttl, struct sockaddr *recvaddr, socklen_t *recvaddrlen);
-
-int is_xsubstring(const char *text, int len);
-int is_xstring(const char *text, int len);
-char *tohex(char *dstHex, const unsigned char *srcBinary, size_t bytes);
-size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t bytes);
-int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t bytes);
-int hexvalue(char c);
-char *str_toupper_inplace(char *s);
-
-int is_all_matching(const unsigned char *ptr, size_t len, unsigned char value);
+#define SID_ANY         ((sid_t){{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}})
+#define SID_BROADCAST   ((sid_t){{0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff}})
 
 // is the SID entirely 0xFF?
 #define is_sid_broadcast(SID) is_all_matching(SID, SID_SIZE, 0xFF)
@@ -449,12 +431,8 @@ int str_is_subscriber_id(const char *sid);
 int strn_is_subscriber_id(const char *sid, size_t *lenp);
 int str_is_did(const char *did);
 int strn_is_did(const char *did, size_t *lenp);
-int str_is_uri(const char *uri);
 
 int stowSid(unsigned char *packet, int ofs, const char *sid);
-void srandomdev();
-time_ms_t gettime_ms();
-time_ms_t sleep_ms(time_ms_t milliseconds);
 int server_pid();
 void server_save_argv(int argc, const char *const *argv);
 int server(char *backing_file);
@@ -465,32 +443,30 @@ void serverCleanUp();
 int isTransactionInCache(unsigned char *transaction_id);
 void insertTransactionInCache(unsigned char *transaction_id);
 
-int packetOk(struct overlay_interface *interface,unsigned char *packet, size_t len,
-	     unsigned char *transaction_id, int recvttl,
-	     struct sockaddr *recvaddr, size_t recvaddrlen,int parseP);
-
 int overlay_forward_payload(struct overlay_frame *f);
 int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,
-		    unsigned char *transaction_id,int recvttl,
-		    struct sockaddr *recvaddr, size_t recvaddrlen,int parseP);
+		    int recvttl, struct sockaddr *recvaddr, size_t recvaddrlen);
 
 int overlay_frame_process(struct overlay_interface *interface, struct overlay_frame *f);
 int overlay_frame_resolve_addresses(struct overlay_frame *f);
 
-#define alloca_tohex(buf,len)           tohex((char *)alloca((len)*2+1), (buf), (len))
 #define alloca_tohex_sid(sid)           alloca_tohex((sid), SID_SIZE)
 #define alloca_tohex_sas(sas)           alloca_tohex((sas), SAS_SIZE)
 
 time_ms_t overlay_time_until_next_tick();
 
-int overlay_add_selfannouncement();
-int overlay_frame_append_payload(overlay_interface *interface, struct overlay_frame *p, struct subscriber *next_hop, struct overlay_buffer *b);
+int overlay_frame_append_payload(struct decode_context *context, overlay_interface *interface, 
+				 struct overlay_frame *p, struct overlay_buffer *b);
+int overlay_packet_init_header(struct decode_context *context, struct overlay_buffer *buff, 
+			       struct subscriber *destination, 
+			       char unicast, char interface, char seq);
+int overlay_frame_build_header(struct decode_context *context, struct overlay_buffer *buff, 
+			       int queue, int type, int modifiers, int ttl, 
+			       struct broadcast *broadcast, struct subscriber *next_hop,
+			       struct subscriber *destination, struct subscriber *source);
 int overlay_interface_args(const char *arg);
-int overlay_sendto(struct sockaddr_in *recipientaddr,unsigned char *bytes,int len);
-int overlay_rhizome_add_advertisements(int interface_number,struct overlay_buffer *e);
+int overlay_rhizome_add_advertisements(struct decode_context *context, int interface_number, struct overlay_buffer *e);
 int overlay_add_local_identity(unsigned char *s);
-void overlay_update_queue_schedule(overlay_txqueue *queue, struct overlay_frame *frame);
-void overlay_send_packet(struct sched_ent *alarm);
 
 extern int overlay_interface_count;
 
@@ -528,16 +504,19 @@ typedef struct overlay_node {
 } overlay_node;
 
 int overlay_route_saw_selfannounce_ack(struct overlay_frame *f, time_ms_t now);
-int overlay_route_saw_selfannounce(struct overlay_frame *f, time_ms_t now);
+int overlay_route_ack_selfannounce(overlay_interface *recv_interface,
+				   unsigned int s1,unsigned int s2,
+				   int interface,
+				   struct subscriber *subscriber);
 overlay_node *overlay_route_find_node(const unsigned char *sid,int prefixLen,int createP);
 
 int overlayServerMode();
 int overlay_payload_enqueue(struct overlay_frame *p);
-int overlay_route_record_link( time_ms_t now,unsigned char *to,
-			      unsigned char *via,int sender_interface,
+int overlay_route_record_link( time_ms_t now, struct subscriber *to,
+			      struct subscriber *via,int sender_interface,
 			      unsigned int s1,unsigned int s2,int score,int gateways_en_route);
 int overlay_route_dump();
-int overlay_route_add_advertisements(overlay_interface *interface, struct overlay_buffer *e);
+int overlay_route_queue_advertisements(overlay_interface *interface);
 int ovleray_route_please_advertise(overlay_node *n);
 
 int overlay_route_saw_advertisements(int i, struct overlay_frame *f, struct decode_context *context, time_ms_t now);
@@ -551,11 +530,9 @@ int serval_packetvisualise(XPRINTF xpf, const char *message, const unsigned char
 
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_opendb();
+void rhizome_cleanup();
 
 int parseCommandLine(const char *argv0, int argc, const char *const *argv);
-
-int form_serval_instance_path(char * buf, size_t bufsiz, const char *path);
-int create_serval_instance_dir();
 
 int overlay_mdp_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int overlay_mdp_reply_error(int sock,
@@ -599,14 +576,11 @@ typedef struct overlay_mdp_addrlist {
 typedef struct overlay_mdp_nodeinfo {
   unsigned char sid[SID_SIZE];
   int sid_prefix_length; /* must be long enough to be unique */
-  char did[64];
-  char name[64];
   int foundP;
   int localP;
   int neighbourP;
   int score;
   int interface_number;
-  int resolve_did;
   time_ms_t time_since_last_observation;
 } overlay_mdp_nodeinfo;
 
@@ -633,22 +607,8 @@ int overlay_mdp_reply(int sock,struct sockaddr_un *recvaddr,int recvaddrlen,
 			  overlay_mdp_frame *mdpreply);
 int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
 		     struct sockaddr_un *recvaddr,int recvaddlen);
+int overlay_mdp_encode_ports(struct overlay_buffer *plaintext, int dst_port, int src_port);
 int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const unsigned char *resolved_sid, const char *uri, const char *did, const char *name);
-
-int dump_payload(struct overlay_frame *p, char *message);
-
-int urandombytes(unsigned char *x,unsigned long long xlen);
-
-#ifdef MALLOC_PARANOIA
-#define malloc(X) _serval_debug_malloc(X,__WHENCE__)
-#define calloc(X,Y) _serval_debug_calloc(X,Y,__WHENCE__)
-#define free(X) _serval_debug_free(X,__WHENCE__)
-
-void *_serval_debug_malloc(unsigned int bytes, struct __sourceloc whence);
-void *_serval_debug_calloc(unsigned int bytes, unsigned int count, struct __sourceloc whence);
-void _serval_debug_free(void *p, struct __sourceloc whence);
-#endif
-
 
 struct vomp_call_state;
 
@@ -657,15 +617,13 @@ int is_codec_set(int codec, unsigned char *flags);
 
 struct vomp_call_state *vomp_find_call_by_session(int session_token);
 int vomp_mdp_received(overlay_mdp_frame *mdp);
-int vomp_tick_interval();
-int vomp_sample_size(int c);
-int vomp_codec_timespan(int c);
 int vomp_parse_dtmf_digit(char c);
-int vomp_dial(unsigned char *local_sid, unsigned char *remote_sid, const char *local_did, const char *remote_did);
+int vomp_dial(struct subscriber *local, struct subscriber *remote, const char *local_did, const char *remote_did);
 int vomp_pickup(struct vomp_call_state *call);
 int vomp_hangup(struct vomp_call_state *call);
 int vomp_ringing(struct vomp_call_state *call);
-int vomp_received_audio(struct vomp_call_state *call, int audio_codec, const unsigned char *audio, int audio_length);
+int vomp_received_audio(struct vomp_call_state *call, int audio_codec, int time, int sequence,
+			const unsigned char *audio, int audio_length);
 void monitor_get_all_supported_codecs(unsigned char *codecs);
 
 int cli_putchar(char c);
@@ -681,19 +639,23 @@ int overlay_route_node_info(overlay_mdp_nodeinfo *node_info);
 int overlay_interface_register(char *name,
 			       struct in_addr addr,
 			       struct in_addr mask);
-overlay_interface * overlay_interface_find(struct in_addr addr);
+overlay_interface * overlay_interface_get_default();
+overlay_interface * overlay_interface_find(struct in_addr addr, int return_default);
 overlay_interface * overlay_interface_find_name(const char *name);
+int overlay_broadcast_ensemble(int interface_number,
+			   struct sockaddr_in *recipientaddr,
+			       unsigned char *bytes,int len);
 
 int directory_registration();
 int directory_service_init();
 
 struct command_line_option;
-int app_rhizome_direct_sync(int argc, const char *const *argv, struct command_line_option *o, void *context);
+int app_rhizome_direct_sync(int argc, const char *const *argv, const struct command_line_option *o, void *context);
 #ifdef HAVE_VOIPTEST
-int app_pa_phone(int argc, const char *const *argv, struct command_line_option *o, void *context);
+int app_pa_phone(int argc, const char *const *argv, const struct command_line_option *o, void *context);
 #endif
-int app_monitor_cli(int argc, const char *const *argv, struct command_line_option *o, void *context);
-int app_vomp_console(int argc, const char *const *argv, struct command_line_option *o, void *context);
+int app_monitor_cli(int argc, const char *const *argv, const struct command_line_option *o, void *context);
+int app_vomp_console(int argc, const char *const *argv, const struct command_line_option *o, void *context);
 
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 
@@ -771,10 +733,17 @@ int fd_poll();
 void overlay_interface_discover(struct sched_ent *alarm);
 void overlay_dummy_poll(struct sched_ent *alarm);
 void overlay_route_tick(struct sched_ent *alarm);
+void server_config_reload(struct sched_ent *alarm);
 void server_shutdown_check(struct sched_ent *alarm);
 void overlay_mdp_poll(struct sched_ent *alarm);
+int overlay_mdp_try_interal_services(overlay_mdp_frame *mdp);
+int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay_interface *interface, int queue);
+int overlay_send_stun_request(struct subscriber *server, struct subscriber *request);
 void fd_periodicstats(struct sched_ent *alarm);
 void rhizome_check_connections(struct sched_ent *alarm);
+
+int overlay_tick_interface(int i, time_ms_t now);
+int overlay_queue_init();
 
 void monitor_client_poll(struct sched_ent *alarm);
 void monitor_poll(struct sched_ent *alarm);
@@ -782,26 +751,39 @@ void rhizome_client_poll(struct sched_ent *alarm);
 void rhizome_fetch_poll(struct sched_ent *alarm);
 void rhizome_server_poll(struct sched_ent *alarm);
 
+int overlay_mdp_service_stun_req(overlay_mdp_frame *mdp);
+int overlay_mdp_service_stun(overlay_mdp_frame *mdp);
+int overlay_mdp_service_probe(overlay_mdp_frame *mdp);
+
+time_ms_t limit_next_allowed(struct limit_state *state);
+int limit_is_allowed(struct limit_state *state);
+int limit_init(struct limit_state *state, int rate_micro_seconds);
+
 /* function timing routines */
 int fd_clearstats();
 int fd_showstats();
 int fd_checkalarms();
-int fd_func_exit(struct call_stats *this_call);
-int fd_func_enter(struct call_stats *this_call);
+int fd_func_enter(struct __sourceloc __whence, struct call_stats *this_call);
+int fd_func_exit(struct __sourceloc __whence, struct call_stats *this_call);
 void dump_stack();
 
 #define IN() static struct profile_total _aggregate_stats={NULL,0,__FUNCTION__,0,0,0}; \
     struct call_stats _this_call; \
     _this_call.totals=&_aggregate_stats; \
-    fd_func_enter(&_this_call);
+    fd_func_enter(__HERE__, &_this_call);
 
-#define OUT() fd_func_exit(&_this_call)
+#define OUT() fd_func_exit(__HERE__, &_this_call)
 #define RETURN(X) do { OUT(); return (X); } while (0);
 #define RETURNNULL do { OUT(); return (NULL); } while (0);
 
-
-
 int olsr_init_socket(void);
 int olsr_send(struct overlay_frame *frame);
+
+void write_uint64(unsigned char *o,uint64_t v);
+void write_uint16(unsigned char *o,uint16_t v);
+void write_uint32(unsigned char *o,uint32_t v);
+uint64_t read_uint64(unsigned char *o);
+uint32_t read_uint32(unsigned char *o);
+uint16_t read_uint16(unsigned char *o);
 
 #endif // __SERVALD_SERVALD_H

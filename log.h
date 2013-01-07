@@ -20,42 +20,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define __SERVALD_LOG_H
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdarg.h>
-#include "strbuf_helpers.h"
-
-typedef unsigned int debugflags_t;
-
-extern debugflags_t debug;
-
-#define DEBUG_ALL                   (~0)
-#define DEBUG_PACKETRX              (1 << 0)
-#define DEBUG_OVERLAYINTERFACES     (1 << 1)
-#define DEBUG_VERBOSE               (1 << 2)
-#define DEBUG_VERBOSE_IO            (1 << 3)
-#define DEBUG_PEERS                 (1 << 4)
-#define DEBUG_DNARESPONSES          (1 << 5)
-#define DEBUG_DNAHELPER             (1 << 6)
-#define DEBUG_VOMP                  (1 << 7)
-#define DEBUG_RHIZOME_RX            (1 << 8)
-#define DEBUG_PACKETFORMATS         (1 << 9)
-#define DEBUG_GATEWAY               (1 << 10)
-#define DEBUG_KEYRING               (1 << 11)
-#define DEBUG_IO                    (1 << 12)
-#define DEBUG_OVERLAYFRAMES         (1 << 13)
-#define DEBUG_OVERLAYABBREVIATIONS  (1 << 14)
-#define DEBUG_OVERLAYROUTING        (1 << 15)
-#define DEBUG_SECURITY              (1 << 16)
-#define DEBUG_RHIZOME               (1 << 17)
-#define DEBUG_OVERLAYROUTEMONITOR   (1 << 18)
-#define DEBUG_QUEUES                (1 << 19)
-#define DEBUG_BROADCASTS            (1 << 20)
-#define DEBUG_RHIZOME_TX            (1 << 21)
-#define DEBUG_PACKETTX              (1 << 22)
-#define DEBUG_PACKETCONSTRUCTION    (1 << 23)
-#define DEBUG_MANIFESTS             (1 << 24)
-#define DEBUG_MDPREQUESTS           (1 << 25)
-#define DEBUG_TIMING                (1 << 26)
-#define DEBUG_RHIZOME_ADS           (1 << 27)
+#include <sys/types.h>
+#include <errno.h>
 
 #define LOG_LEVEL_SILENT    (-1)
 #define LOG_LEVEL_DEBUG     (0)
@@ -63,8 +31,6 @@ extern debugflags_t debug;
 #define LOG_LEVEL_WARN      (2)
 #define LOG_LEVEL_ERROR     (3)
 #define LOG_LEVEL_FATAL     (4)
-
-struct strbuf;
 
 /*
  * Every log message identifies the location in the source code at which the
@@ -121,23 +87,16 @@ extern const struct __sourceloc __whence; // see above
 void set_logging(FILE *f);
 FILE *open_logging();
 void close_logging();
+void logFlush();
 void logArgv(int level, struct __sourceloc whence, const char *label, int argc, const char *const *argv);
-void logString(int level, struct __sourceloc whence, const char *str); 
+void logString(int level, struct __sourceloc whence, const char *str);
 void logMessage(int level, struct __sourceloc whence, const char *fmt, ...);
 void vlogMessage(int level, struct __sourceloc whence, const char *fmt, va_list);
-debugflags_t debugFlagMask(const char *flagname);
 int logDump(int level, struct __sourceloc whence, char *name, const unsigned char *addr, size_t len);
-char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcBytes, const char quotes[2]);
-char *toprint_str(char *dstStr, ssize_t dstBufSiz, const char *srcStr, const char quotes[2]);
-size_t toprint_len(const char *srcBuf, size_t srcBytes, const char quotes[2]);
-size_t toprint_str_len(const char *srcStr, const char quotes[2]);
 ssize_t get_self_executable_path(char *buf, size_t len);
 int log_backtrace(struct __sourceloc whence);
+struct strbuf;
 void set_log_implementation(void (*log_function)(int level, struct strbuf *buf));
-
-#define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca((dstlen) == -1 ? toprint_len((const char *)(buf),(len), "``") + 1 : (dstlen)), (dstlen), (const char *)(buf), (len), "``")
-#define alloca_str_toprint(str)  toprint_str((char *)alloca(toprint_str_len(str, "``") + 1), -1, (str), "``")
-#define alloca_sockaddr(addr)    strbuf_str(strbuf_append_sockaddr(strbuf_alloca(40), (const struct sockaddr *)(addr)))
 
 #define __HERE__            ((struct __sourceloc){ .file = __FILE__, .line = __LINE__, .function = __FUNCTION__ })
 #define __NOWHERE__         ((struct __sourceloc){ .file = NULL, .line = 0, .function = NULL })
@@ -150,7 +109,7 @@ void set_log_implementation(void (*log_function)(int level, struct strbuf *buf))
 
 #define logMessage_perror(L,whence,F,...) (logMessage(L, whence, F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno))
 
-#define FATALF(F,...)       do { LOGF(LOG_LEVEL_FATAL, F, ##__VA_ARGS__); exit(-1); } while (1)
+#define FATALF(F,...)       do { LOGF(LOG_LEVEL_FATAL, F, ##__VA_ARGS__); abort(); exit(-1); } while (1)
 #define FATAL(X)            FATALF("%s", (X))
 #define FATALF_perror(F,...) FATALF(F ": %s [errno=%d]", ##__VA_ARGS__, strerror(errno), errno)
 #define FATAL_perror(X)     FATALF_perror("%s", (X))

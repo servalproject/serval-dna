@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #include <sys/stat.h>
 #include "serval.h"
+#include "conf.h"
 #include "rhizome.h"
 #include "cli.h"
 #include "str.h"
@@ -111,7 +112,7 @@ int monitor_setup_sockets()
   if(setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &send_buffer_size, sizeof send_buffer_size)==-1)
     WHYF_perror("setsockopt(%d, SOL_SOCKET, SO_RCVBUF, &%d, %d)", sock, send_buffer_size, sizeof send_buffer_size);
 
-  if (debug&(DEBUG_IO|DEBUG_VERBOSE_IO))
+  if (config.debug.io || config.debug.verbose_io)
     DEBUGF("Monitor server socket bound to %s", alloca_toprint(-1, &name, len));
 
   named_socket.function=monitor_poll;
@@ -339,8 +340,7 @@ static void monitor_new_client(int s) {
 #endif
 
   if (otheruid != getuid()) {
-    int allowed_id = confValueGetInt64("monitor.uid",-1);
-    if (otheruid != allowed_id){
+    if (otheruid != config.monitor.uid){
       WHYF("monitor.socket client has wrong uid (%d versus %d)", otheruid,getuid());
       write_str(s, "\nCLOSE:Incorrect UID\n");
       goto error;
@@ -382,7 +382,7 @@ void monitor_get_all_supported_codecs(unsigned char *codecs){
   }
 }
 
-static int monitor_set(int argc, const char *const *argv, struct command_line_option *o, void *context){
+static int monitor_set(int argc, const char *const *argv, const struct command_line_option *o, void *context){
   struct monitor_context *c=context;
   if (strcase_startswith((char *)argv[1],"vomp",NULL)){
     c->flags|=MONITOR_VOMP;
@@ -410,7 +410,7 @@ static int monitor_set(int argc, const char *const *argv, struct command_line_op
   return 0;
 }
 
-static int monitor_clear(int argc, const char *const *argv, struct command_line_option *o, void *context){
+static int monitor_clear(int argc, const char *const *argv, const struct command_line_option *o, void *context){
   struct monitor_context *c=context;
   if (strcase_startswith((char *)argv[1],"vomp",NULL))
     c->flags&=~MONITOR_VOMP;
@@ -430,7 +430,7 @@ static int monitor_clear(int argc, const char *const *argv, struct command_line_
   return 0;
 }
 
-static int monitor_lookup_match(int argc, const char *const *argv, struct command_line_option *o, void *context){
+static int monitor_lookup_match(int argc, const char *const *argv, const struct command_line_option *o, void *context){
   struct monitor_context *c=context;
   const char *sid=argv[2];
   const char *ext=argv[4];
@@ -453,7 +453,7 @@ static int monitor_lookup_match(int argc, const char *const *argv, struct comman
   return 0;
 }
 
-static int monitor_call(int argc, const char *const *argv, struct command_line_option *o, void *context){
+static int monitor_call(int argc, const char *const *argv, const struct command_line_option *o, void *context){
   struct monitor_context *c=context;
   unsigned char sid[SID_SIZE];
   if (stowSid(sid, 0, argv[1]) == -1)
@@ -461,12 +461,12 @@ static int monitor_call(int argc, const char *const *argv, struct command_line_o
   
   if (!my_subscriber)
     return monitor_write_error(c,"I don't know who I am");
-  
-  vomp_dial(my_subscriber->sid, sid, argv[2], argv[3]);
+  struct subscriber *remote = find_subscriber(sid, SID_SIZE, 1);
+  vomp_dial(my_subscriber, remote, argv[2], argv[3]);
   return 0;
 }
 
-static int monitor_call_ring(int argc, const char *const *argv, struct command_line_option *o, void *context){
+static int monitor_call_ring(int argc, const char *const *argv, const struct command_line_option *o, void *context){
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(argv[1],NULL,16));
   if (!call)
     monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%s\n", argv[1]);
@@ -475,7 +475,7 @@ static int monitor_call_ring(int argc, const char *const *argv, struct command_l
   return 0;
 }
 
-static int monitor_call_pickup(int argc, const char *const *argv, struct command_line_option *o, void *context){
+static int monitor_call_pickup(int argc, const char *const *argv, const struct command_line_option *o, void *context){
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(argv[1],NULL,16));
   if (!call)
     monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%s\n", argv[1]);
@@ -484,17 +484,24 @@ static int monitor_call_pickup(int argc, const char *const *argv, struct command
   return 0;
 }
 
-static int monitor_call_audio(int argc, const char *const *argv, struct command_line_option *o, void *context){
+static int monitor_call_audio(int argc, const char *const *argv, const struct command_line_option *o, void *context){
   struct monitor_context *c=context;
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(argv[1],NULL,16));
-  if (!call)
+  
+  if (!call){
     monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%s\n", argv[1]);
-  else
-    vomp_received_audio(call, atoi(argv[2]), c->buffer, c->data_expected);
+    return 0;
+  }
+  
+  int codec_type = atoi(argv[2]);
+  int time = argc>=4?atoi(argv[3]):-1;
+  int sequence = argc>=5?atoi(argv[4]):-1;
+  
+  vomp_received_audio(call, codec_type, time, sequence, c->buffer, c->data_expected);
   return 0;
 }
 
-static int monitor_call_hangup(int argc, const char *const *argv, struct command_line_option *o, void *context){
+static int monitor_call_hangup(int argc, const char *const *argv, const struct command_line_option *o, void *context){
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(argv[1],NULL,16));
   if (!call)
     monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%s\n", argv[1]);
@@ -503,7 +510,7 @@ static int monitor_call_hangup(int argc, const char *const *argv, struct command
   return 0;
 }
 
-static int monitor_call_dtmf(int argc, const char *const *argv, struct command_line_option *o, void *context){
+static int monitor_call_dtmf(int argc, const char *const *argv, const struct command_line_option *o, void *context){
   struct monitor_context *c=context;
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(argv[1],NULL,16));
   if (!call)
@@ -520,7 +527,7 @@ static int monitor_call_dtmf(int argc, const char *const *argv, struct command_l
        of the majority of codec time units (70ms is the nominal
        DTMF tone length for most systems). */
       unsigned char code = digit <<4;
-      vomp_received_audio(call, VOMP_CODEC_DTMF, &code, 1);
+      vomp_received_audio(call, VOMP_CODEC_DTMF, -1, -1, &code, 1);
     }
   }
   return 0;
@@ -534,7 +541,7 @@ struct command_line_option monitor_options[]={
   {monitor_call, {"call","<sid>","<local_did>","<remote_did>",NULL},0,""},
   {monitor_call_ring, {"ringing","<token>",NULL},0,""},
   {monitor_call_pickup, {"pickup","<token>",NULL},0,""},
-  {monitor_call_audio,{"audio","<token>","<type>","[<offset>]",NULL},0,""},
+  {monitor_call_audio,{"audio","<token>","<type>","[<time>]","[<sequence>]",NULL},0,""},
   {monitor_call_hangup, {"hangup","<token>",NULL},0,""},
   {monitor_call_dtmf, {"dtmf","<token>","<digits>",NULL},0,""},
   {NULL},
@@ -545,7 +552,8 @@ int monitor_process_command(struct monitor_context *c)
   char *argv[16]={NULL,};
   int argc = parse_argv(c->line, ' ', argv, 16);
   
-  if (cli_execute(NULL, argc, (const char *const*)argv, monitor_options, c))
+  int res = cli_parse(argc, (const char *const*)argv, monitor_options);
+  if (res == -1 || cli_invoke(&monitor_options[res], argc, (const char *const*)argv, c))
     return monitor_write_error(c, "Invalid command");
   return 0;
 }

@@ -4,6 +4,7 @@
 #include <poll.h>
 #include <stdio.h>
 #include <unistd.h>
+#include "str.h"
 
 struct item{
   // simple tree structure
@@ -14,7 +15,7 @@ struct item{
   time_ms_t expires;
 };
 
-struct item *root;
+struct item *root=NULL;
 
 static struct item *create_item(const char *key){
   struct item *ret=calloc(1,sizeof(struct item));
@@ -45,8 +46,10 @@ static void add_item(char *key, char *value){
     int c=strcmp(item->key, key);
     if (c==0){
       c=strcmp(item->value, value);
-      if (c==0)
+      if (c==0){
+	item->expires = gettime_ms()+1200000;
 	return;
+      }
     }
     if (c<0){
       last_ptr = &item->_left;
@@ -96,13 +99,17 @@ static void add_record(){
   add_item(did, url);
 }
 
-static void respond(char *token, struct item *item){
+static void respond(char *token, struct item *item, char *key){
   if (!item)
     return;
-  respond(token, item->_left);
-  if (item->expires > gettime_ms())
+  
+  int c = strcmp(item->key, key);
+  if (c<=0)
+    respond(token, item->_left, key);
+  if (c==0 && item->expires > gettime_ms())
     printf("%s|%s|\n",token,item->value);
-  respond(token, item->_right);
+  if (c>=0)
+    respond(token, item->_right, key);
 }
 
 static void process_line(char *line){
@@ -114,7 +121,7 @@ static void process_line(char *line){
   while(*p && *p!='|') p++;
   *p++=0;
   
-  respond(token, find_item(did));
+  respond(token, find_item(did), did);
   printf("DONE\n");
   fflush(stdout);
 }

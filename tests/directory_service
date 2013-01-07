@@ -21,27 +21,11 @@ source "${0%/*}/../testframework.sh"
 source "${0%/*}/../testdefs.sh"
 
 configure_servald_server() {
-   executeOk_servald config set log.show_pid on
-   executeOk_servald config set log.show_time on
-   executeOk_servald config set debug.mdprequests Yes
-}
-
-setup() {
-   setup_servald
-   assert_no_servald_processes
-   foreach_instance +A +B +C create_single_identity
-   set_instance +D
-   DIDD1=$DIDC
-   NAMED1="Agent D Smith"
-   create_identities 1
-   SIDD=$SIDD1
-   DIDD=$DIDD1
-   NAMED=$NAMED1
-   set_instance +A
-   executeOk_servald config set dna.helper.executable "$servald_build_root/directory_service"
-   executeOk_servald config set debug.dnahelper on
-   foreach_instance +B +C +D executeOk_servald config set directory.service $SIDA
-   start_servald_instances +A +B +C +D
+   executeOk_servald config \
+      set log.show_pid on \
+      set log.show_time on \
+      set rhizome.enable No \
+      set debug.mdprequests Yes
 }
 
 teardown() {
@@ -51,19 +35,43 @@ teardown() {
 }
 
 is_published() {
-   grep "PUBLISHED" $LOGA || return 1
+   tfw_log "grep \"PUBLISHED.*$1\" $LOGA"
+   grep "PUBLISHED.*$1" $LOGA || return 1
    return 0   
 }
 
 sent_directory_request() {
-   grep "Sending directory registration" $LOGD || return 1
+   grep "Sending directory registration" $1 || return 1
    return 0
+}
+
+setup_publish() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B +C +D create_single_identity
+   set_instance +D
+   executeOk_servald set did $SIDD $DIDC "Agent D Smith"
+   DIDD1=$DIDC
+   NAMED1="Agent D Smith"
+   DIDD=$DIDC1
+   NAMED=$NAMED1
+   set_instance +A
+   executeOk_servald config \
+      set dna.helper.executable "$servald_build_root/directory_service" \
+      set debug.dnahelper on
+   foreach_instance +B +C +D executeOk_servald config set directory.service $SIDA
+   start_servald_instances +A +B +C +D
+   wait_until grep "DNAHELPER got STARTED ACK" $LOGA
 }
 
 doc_publish="Publish and retrieve a directory entry"
 test_publish() {
-   wait_until sent_directory_request
-   wait_until is_published
+   wait_until sent_directory_request $LOGB
+   wait_until sent_directory_request $LOGC
+   wait_until sent_directory_request $LOGD
+   wait_until is_published $SIDB
+   wait_until is_published $SIDC
+   wait_until is_published $SIDD
    stop_servald_server +B
    stop_servald_server +C
    stop_servald_server +D
@@ -78,53 +86,69 @@ test_publish() {
    assert_status_all_servald_servers running
 }
 
+interface_up() {
+  grep "Dummy interface .* is up" $instance_servald_log || return 1
+  return 0
+}
+
 start_routing_instance() {
-   executeOk_servald config set interface.folder "$SERVALD_VAR"
-   executeOk_servald config set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name"
-   executeOk_servald config set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name"
-   executeOk_servald config set log.show_pid on
-   executeOk_servald config set log.show_time on
-   executeOk_servald config set debug.mdprequests Yes
+   executeOk_servald config \
+      set server.dummy_interface_dir "$SERVALD_VAR" \
+      set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name" \
+      set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name" \
+      set rhizome.enable No \
+      set log.show_pid on \
+      set log.show_time on \
+      set debug.mdprequests Yes
    start_servald_server
+   wait_until interface_up
 }
 
 setup_routing() {
    setup_servald
    assert_no_servald_processes
-# create three nodes, on two dummy interfaces, with no interface ticks or routing
    foreach_instance +A +B +C create_single_identity
-   >$SERVALD_VAR/dummyB
-   >$SERVALD_VAR/dummyC
+   >$SERVALD_VAR/dummy1
+   foreach_instance +A +B +C \
+      executeOk_servald config \
+         set interfaces.0.dummy dummy1 \
+         set interfaces.0.mdp_tick_ms 0 \
+         set interfaces.0.default_route 1 \
+         set interfaces.0.dummy_netmask 255.255.255.0 
    set_instance +A
-   executeOk_servald config set interfaces "+>dummyB,+>dummyC"
-   executeOk_servald config set mdp.dummyB.tick_ms 0
-   executeOk_servald config set mdp.dummyC.tick_ms 0
-   executeOk_servald config set dna.helper.executable "$servald_build_root/directory_service"
-   executeOk_servald config set debug.dnahelper on
-   start_routing_instance
+   executeOk_servald config \
+      set interfaces.0.dummy_address 10.0.${instance_number}.1 \
+      set dna.helper.executable "$servald_build_root/directory_service" \
+      set debug.dnahelper on
    set_instance +B
-   executeOk_servald config set interfaces "+>dummyB"
-   executeOk_servald config set mdp.dummyB.tick_ms 0
-   executeOk_servald config set directory.service $SIDA
-   executeOk_servald config set $SIDA.interface "dummyB"
-   executeOk_servald config set $SIDA.address 127.0.0.1
-   start_routing_instance
+   executeOk_servald config \
+      set interfaces.0.dummy_address 10.0.${instance_number}.1 \
+      set directory.service $SIDA \
+      set hosts.$SIDA.address 10.0.1.1
    set_instance +C
-   executeOk_servald config set interfaces "+>dummyC"
-   executeOk_servald config set mdp.dummyC.tick_ms 0
-   executeOk_servald config set directory.service $SIDA
-   executeOk_servald config set $SIDA.interface "dummyC"
-   executeOk_servald config set $SIDA.address 127.0.0.1
-   start_routing_instance
+   executeOk_servald config \
+      set interfaces.0.dummy_address 10.0.${instance_number}.1 \
+      set directory.service $SIDA \
+      set hosts.$SIDA.address 10.0.1.1
+   foreach_instance +A +B +C start_routing_instance
+   wait_until grep "DNAHELPER got STARTED ACK" $LOGA
 }
 
 doc_routing="Ping via relay node"
 test_routing() {
+   foreach_instance +B +C \
+      wait_until sent_directory_request $instance_servald_log
+   wait_until is_published $SIDB
+   wait_until is_published $SIDC
    set_instance +B
+   executeOk_servald route print
+   assertStdoutGrep --matches=1 "^$SIDA:UNICAST :"
    executeOk_servald dna lookup "$DIDC"
    assertStdoutLineCount '==' 1
    assertStdoutGrep --matches=1 "^sid://$SIDC/local/$DIDC:$DIDC:$NAMEC\$"
    set_instance +C
+   executeOk_servald route print
+   assertStdoutGrep --matches=1 "^$SIDA:UNICAST :"
    executeOk_servald dna lookup "$DIDB"
    assertStdoutLineCount '==' 1
    assertStdoutGrep --matches=1 "^sid://$SIDB/local/$DIDB:$DIDB:$NAMEB\$"

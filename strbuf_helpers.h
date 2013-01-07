@@ -46,6 +46,14 @@ strbuf strbuf_toprint_quoted_len(strbuf sb, const char quotes[2], const char *bu
  */
 strbuf strbuf_toprint_quoted(strbuf sb, const char quotes[2], const char *str);
 
+/* Join Unix file path segments together with separator characters '/' to form
+ * a complete path.  Any segment that starts with '/' is taken as the start of
+ * an absolute path, and all prior segments are discarded.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+strbuf strbuf_path_join(strbuf sb, ...);
+
 /* Append a symbolic representation of the poll(2) event flags.
  * @author Andrew Bettison <andrew@servalproject.com>
  */
@@ -74,6 +82,13 @@ strbuf strbuf_append_shell_quote(strbuf sb, const char *word);
  */
 strbuf strbuf_append_shell_quotemeta(strbuf sb, const char *word);
 
+/* Append an array of nul-terminated strings as a space-separated sequence of
+ * quoted strings.  Any NULL entry in argv[] is printed as unquoted "NULL".
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+strbuf strbuf_append_argv(strbuf sb, int argc, const char *const *argv);
+
 /* Append a textual description of a process exit status as produced by wait(2)
  * and waitpid(2).
  * @author Andrew Bettison <andrew@servalproject.com>
@@ -85,5 +100,7 @@ strbuf strbuf_append_exit_status(strbuf sb, int status);
  */
 struct sockaddr;
 strbuf strbuf_append_sockaddr(strbuf sb, const struct sockaddr *);
+
+#define alloca_sockaddr(addr)    strbuf_str(strbuf_append_sockaddr(strbuf_alloca(40), (const struct sockaddr *)(addr)))
 
 #endif //__STRBUF_HELPERS_H__

@@ -13,7 +13,9 @@
  */
 
 #include "serval.h"
+#include "str.h"
 #include "overlay_address.h"
+#include "conf.h"
 
 struct subscriber *directory_service;
 
@@ -27,7 +29,7 @@ struct sched_ent directory_alarm={
   .function=directory_update,
   .stats=&directory_timing,
 };
-#define DIRECTORY_UPDATE_INTERVAL 300000
+#define DIRECTORY_UPDATE_INTERVAL 120000
 
 // send a registration packet
 static void directory_send(struct subscriber *directory_service, const unsigned char *sid, const char *did, const char *name){
@@ -39,6 +41,7 @@ static void directory_send(struct subscriber *directory_service, const unsigned 
   
   bcopy(sid, request.out.src.sid, SID_SIZE);
   request.out.src.port=MDP_PORT_NOREPLY;
+  request.out.queue=OQ_ORDINARY;
   
   bcopy(directory_service->sid, request.out.dst.sid, SID_SIZE);
   request.out.dst.port=MDP_PORT_DIRECTORY;
@@ -74,20 +77,12 @@ static void directory_send_keyring(struct subscriber *directory_service){
   }
 }
 
-static int load_directory_config(){
-  if (!directory_service){
-    const char *sid_hex = confValueGet("directory.service", NULL);
-    if (!sid_hex)
-      return 0;
-    
-    unsigned char sid[SID_SIZE];
-    if (stowSid(sid, 0, sid_hex)==-1)
-      return WHYF("Invalid directory server SID %s", sid_hex);
-    
-    directory_service = find_subscriber(sid, SID_SIZE, 1);
+static int load_directory_config()
+{
+  if (!directory_service && !is_sid_any(config.directory.service.binary)) {
+    directory_service = find_subscriber(config.directory.service.binary, SID_SIZE, 1);
     if (!directory_service)
       return WHYF("Failed to create subscriber record");
-    
     // used by tests
     INFOF("ADD DIRECTORY SERVICE %s", alloca_tohex_sid(directory_service->sid));
   }
@@ -99,9 +94,10 @@ static void directory_update(struct sched_ent *alarm){
   load_directory_config();
   
   if (directory_service){
-    if (subscriber_is_reachable(directory_service) != REACHABLE_NONE){
+    if (subscriber_is_reachable(directory_service) & REACHABLE){
       directory_send_keyring(directory_service);
       
+      unschedule(alarm);
       alarm->alarm = gettime_ms() + DIRECTORY_UPDATE_INTERVAL;
       alarm->deadline = alarm->alarm + 10000;
       schedule(alarm);
@@ -111,7 +107,6 @@ static void directory_update(struct sched_ent *alarm){
 }
 
 int directory_service_init(){
-  unschedule(&directory_alarm);
   directory_update(&directory_alarm);
   return 0;
 }

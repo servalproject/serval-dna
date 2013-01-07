@@ -5,7 +5,7 @@
 #include "serval.h"
 #include "rhizome.h"
 
-int cli_usage(struct command_line_option *options) {
+int cli_usage(const struct command_line_option *options) {
   printf("Usage:\n");
   int i,j;
   for(i=0;options[i].function;i++) {
@@ -16,7 +16,8 @@ int cli_usage(struct command_line_option *options) {
   return 0;
 }
 
-int cli_execute(const char *argv0, int argc, const char *const *args, struct command_line_option *options, void *context){
+int cli_parse(const int argc, const char *const *args, const struct command_line_option *options)
+{
   int ambiguous=0;
   int cli_call=-1;
   int i;
@@ -82,12 +83,18 @@ int cli_execute(const char *argv0, int argc, const char *const *args, struct com
     INFO("Use \"help\" command to see a list of valid commands");
     return -1;
   }
-  
-  /* Otherwise, make call */
-  return options[cli_call].function(argc, args, &options[cli_call], context);
+
+  return cli_call;
 }
 
-int cli_arg(int argc, const char *const *argv, struct command_line_option *o, char *argname, const char **dst, int (*validator)(const char *arg), char *defaultvalue)
+int cli_invoke(const struct command_line_option *option, const int argc, const char *const *args, void *context)
+{
+  IN();
+  int ret=option->function(argc, args, option, context);
+  RETURN(ret);
+}
+
+int cli_arg(int argc, const char *const *argv, const struct command_line_option *o, char *argname, const char **dst, int (*validator)(const char *arg), char *defaultvalue)
 {
   int arglen = strlen(argname);
   int i;

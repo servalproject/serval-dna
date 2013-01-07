@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #endif
 
 #include "serval.h"
+#include "conf.h"
 #include "str.h"
 #include "rhizome.h"
 #define RHIZOME_SERVER_MAX_LIVE_REQUESTS 32
@@ -72,7 +73,7 @@ unsigned char favicon_bytes[]={
 ,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 int favicon_len=318;
 
-int rhizome_http_server_running()
+int is_rhizome_http_server_running()
 {
   return rhizome_server_socket != -1;
 }
@@ -97,7 +98,7 @@ int rhizome_http_server_start(int (*parse_func)(rhizome_http_request *),
   if (now < rhizome_server_last_start_attempt + 5000)
     return 2;
   rhizome_server_last_start_attempt  = now;
-  if (debug & DEBUG_RHIZOME_TX)
+  if (config.debug.rhizome_tx)
     DEBUGF("Starting rhizome HTTP server");
 
   unsigned short port;
@@ -176,7 +177,7 @@ void rhizome_client_poll(struct sched_ent *alarm)
 {
   rhizome_http_request *r = (rhizome_http_request *)alarm;
   if (alarm->poll.revents == 0){
-    if (debug & DEBUG_RHIZOME_TX)
+    if (config.debug.rhizome_tx)
       DEBUG("Closing connection due to timeout");
     rhizome_server_free_http_request(r);
     return;
@@ -203,7 +204,7 @@ void rhizome_client_poll(struct sched_ent *alarm)
 	   The idle timeout should drop the connections instead.
 	*/
 	if (sigPipeFlag) {
-	  if (debug & DEBUG_RHIZOME_TX)
+	  if (config.debug.rhizome_tx)
 	    DEBUG("Received SIGPIPE, closing connection");
 	  rhizome_server_free_http_request(r);
 	  return;
@@ -228,13 +229,13 @@ void rhizome_client_poll(struct sched_ent *alarm)
 	  if (rhizome_http_parse_func!=NULL) rhizome_http_parse_func(r);
 	}
       } else {
-	if (debug & DEBUG_RHIZOME_TX)
+	if (config.debug.rhizome_tx)
 	  DEBUG("Empty read, closing connection");
 	rhizome_server_free_http_request(r);
 	return;
       }
       if (sigPipeFlag) {
-	if (debug & DEBUG_RHIZOME_TX)
+	if (config.debug.rhizome_tx)
 	  DEBUG("Received SIGPIPE, closing connection");
 	rhizome_server_free_http_request(r);
 	return;
@@ -350,7 +351,7 @@ int rhizome_server_sql_query_http_response(rhizome_http_request *r,
   /* Work out total response length */
   long long response_bytes=256+r->source_count*r->source_record_size;
   rhizome_server_http_response_header(r, 200, "servalproject.org/rhizome-list", response_bytes);
-  if (debug & DEBUG_RHIZOME_TX)
+  if (config.debug.rhizome_tx)
     DEBUGF("headers consumed %d bytes", r->buffer_length);
 
   /* Clear and prepare response header */
@@ -359,7 +360,7 @@ int rhizome_server_sql_query_http_response(rhizome_http_request *r,
   r->buffer[r->buffer_length]=0x01; /* type of response (list) */
   r->buffer[r->buffer_length+1]=0x01; /* version of response */
 
-  if (debug & DEBUG_RHIZOME_TX)
+  if (config.debug.rhizome_tx)
     DEBUGF("Found %lld records",r->source_count);
   /* Number of records we intend to return */
   r->buffer[r->buffer_length+4]=(r->source_count>>0)&0xff;
@@ -390,7 +391,7 @@ int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, c
 {
   unsigned char blob_value[r->source_record_size*2+1];
 
-  if (debug & DEBUG_RHIZOME_TX)
+  if (config.debug.rhizome_tx)
     DEBUGF("populating with sql rows at offset %d",r->buffer_length);
   if (r->source_index>=r->source_count)
     {
@@ -400,7 +401,7 @@ int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, c
 
   int record_count=(r->buffer_size-r->buffer_length)/r->source_record_size;
   if (record_count<1) {
-    if (debug & DEBUG_RHIZOME_TX)
+    if (config.debug.rhizome_tx)
       DEBUGF("r->buffer_size=%d, r->buffer_length=%d, r->source_record_size=%d",
 	   r->buffer_size, r->buffer_length, r->source_record_size);
     return WHY("Not enough space to fit any records");
@@ -410,7 +411,7 @@ int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, c
   sqlite3_stmt *statement = sqlite_prepare(&retry, "%s LIMIT %lld,%d", r->source, r->source_index, record_count);
   if (!statement)
     return -1;
-  if (debug & DEBUG_RHIZOME_TX)
+  if (config.debug.rhizome_tx)
     DEBUG(sqlite3_sql(statement));
   while(  r->buffer_length + r->source_record_size < r->buffer_size
       &&  sqlite_step_retry(&retry, statement) == SQLITE_ROW
@@ -426,7 +427,7 @@ int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, c
     switch(column_type) {
     case SQLITE_TEXT:	value=sqlite3_column_text(statement, 0); break;
     case SQLITE_BLOB:
-      if (debug & DEBUG_RHIZOME_TX)
+      if (config.debug.rhizome_tx)
 	DEBUGF("table='%s',col='%s',rowid=%lld", table, column, sqlite3_column_int64(statement,1));
 
       int ret;
@@ -501,10 +502,10 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
   // Parse the HTTP "GET" line.
   char *path = NULL;
   size_t pathlen = 0;
-  if (str_startswith(r->request, "POST ", &path)) {
+  if (str_startswith(r->request, "POST ", (const char **)&path)) {
     return rhizome_direct_parse_http_request(r);
-  } else if (str_startswith(r->request, "GET ", &path)) {
-    char *p;
+  } else if (str_startswith(r->request, "GET ", (const char **)&path)) {
+    const char *p;
     // This loop is guaranteed to terminate before the end of the buffer, because we know that the
     // buffer contains at least "\n\n" and maybe "\r\n\r\n" at the end of the header block.
     for (p = path; !isspace(*p); ++p)
@@ -533,7 +534,7 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
     } else if (strcmp(path, "/rhizome/bars") == 0) {
       /* Return the list of known BARs */
       rhizome_server_sql_query_http_response(r, "bar", "manifests", "from manifests", 32, 0);
-    } else if (str_startswith(path, "/rhizome/file/", &id)) {
+    } else if (str_startswith(path, "/rhizome/file/", (const char **)&id)) {
       /* Stream the specified payload */
       if (!rhizome_str_is_file_hash(id)) {
 	rhizome_server_simple_http_response(r, 400, "<html><h1>Invalid payload ID</h1></html>\r\n");
@@ -541,8 +542,8 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
 	// TODO: Check for Range: header and return 206 if returning partial content
 	str_toupper_inplace(id);
 	long long rowid = -1;
-	sqlite_exec_int64(&rowid, "select rowid from files where id='%s';", id);
-	if (rowid >= 0 && sqlite3_blob_open(rhizome_db, "main", "files", "data", rowid, 0, &r->blob) != SQLITE_OK)
+	sqlite_exec_int64(&rowid, "select rowid from fileblobs where id='%s';", id);
+	if (rowid >= 0 && sqlite3_blob_open(rhizome_db, "main", "fileblobs", "data", rowid, 0, &r->blob) != SQLITE_OK)
 	  rowid = -1;
 	if (rowid == -1) {
 	  rhizome_server_simple_http_response(r, 404, "<html><h1>Payload not found</h1></html>\r\n");
@@ -553,10 +554,10 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
 	  r->request_type |= RHIZOME_HTTP_REQUEST_BLOB;
 	}
       }
-    } else if (str_startswith(path, "/rhizome/manifest/", &id)) {
+    } else if (str_startswith(path, "/rhizome/manifest/", (const char **)&id)) {
       // TODO: Stream the specified manifest
       rhizome_server_simple_http_response(r, 500, "<html><h1>Not implemented</h1></html>\r\n");
-    } else if (str_startswith(path, "/rhizome/manifestbyprefix/", &id)) {
+    } else if (str_startswith(path, "/rhizome/manifestbyprefix/", (const char **)&id)) {
       /* Manifest by prefix */
       char bid_low[RHIZOME_MANIFEST_ID_STRLEN+1];
       char bid_high[RHIZOME_MANIFEST_ID_STRLEN+1];
@@ -594,7 +595,7 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
       DEBUGF("Sending 404 not found for '%s'",path);
     }
   } else {
-    if (debug & DEBUG_RHIZOME_TX)
+    if (config.debug.rhizome_tx)
       DEBUGF("Received malformed HTTP request: %s", alloca_toprint(120, (const char *)r->request, r->request_length));
     rhizome_server_simple_http_response(r, 400, "<html><h1>Malformed request</h1></html>\r\n");
   }
@@ -656,7 +657,7 @@ int rhizome_server_set_response(rhizome_http_request *r, const struct http_respo
   r->buffer_length = strbuf_len(b);
   r->buffer_offset = 0;
   r->request_type |= RHIZOME_HTTP_REQUEST_FROMBUFFER;
-  if (debug & DEBUG_RHIZOME_TX)
+  if (config.debug.rhizome_tx)
     DEBUGF("Sending HTTP response: %s", alloca_toprint(160, (const char *)r->buffer, r->buffer_length));
   return 0;
 }
@@ -745,7 +746,7 @@ int rhizome_server_http_send_bytes(rhizome_http_request *r)
 	    for(i=0;i<favicon_len;i++)
 	      r->buffer[i]=favicon_bytes[i];
 	    r->buffer_length=i;
-	    if (debug & DEBUG_RHIZOME_TX)
+	    if (config.debug.rhizome_tx)
 	      DEBUGF("favicon buffer_length=%d\n", r->buffer_length);
 	    r->request_type=RHIZOME_HTTP_REQUEST_FROMBUFFER;
 	}
@@ -795,7 +796,7 @@ int rhizome_server_http_send_bytes(rhizome_http_request *r)
       }
   }
   if (!r->request_type){
-    if (debug & DEBUG_RHIZOME_TX)
+    if (config.debug.rhizome_tx)
       DEBUG("Closing connection, done");
     return rhizome_server_free_http_request(r);
   }

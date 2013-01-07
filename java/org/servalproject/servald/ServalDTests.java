@@ -11,7 +11,7 @@ class ServalDTests
 	public static void main(String[] args)
 	{
 		try {
-			Class cls = new Object() { }.getClass().getEnclosingClass();
+			Class<?> cls = new Object() { }.getClass().getEnclosingClass();
 			Method m = cls.getMethod(args[0], String[].class);
 			m.invoke(null, (Object) Arrays.copyOfRange(args, 1, args.length));
 		}
@@ -29,9 +29,9 @@ class ServalDTests
 		for (int i = 0; i != repeat; ++i) {
 			servald.command(Arrays.copyOfRange(args, 1, args.length));
 			System.out.print(servald.status);
-			for (String s: servald.outv) {
+			for (byte[] a: servald.outv) {
 				System.out.print(":");
-				System.out.print(s);
+				System.out.print(new String(a));
 			}
 			System.out.println("");
 		}

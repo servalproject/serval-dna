@@ -18,6 +18,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "conf.h"
+#include "str.h"
 #include "rhizome.h"
 #include <stdlib.h>
 #include <ctype.h>
@@ -32,7 +34,7 @@ unsigned char *rhizome_bundle_shared_secret(rhizome_manifest *m)
 
 int rhizome_manifest_createid(rhizome_manifest *m)
 {
-  m->haveSecret=1;
+  m->haveSecret=NEW_BUNDLE_ID;
   int r=crypto_sign_edwards25519sha512batch_keypair(m->cryptoSignPublic,m->cryptoSignSecret);
   if (!r) return 0;
   return WHY("Failed to create keypair for manifest ID.");
@@ -139,13 +141,13 @@ int rhizome_find_secret(const unsigned char *authorSid, int *rs_len, const unsig
 {
   int cn=0, in=0, kp=0;
   if (!keyring_find_sid(keyring,&cn,&in,&kp,authorSid)) {
-    if (debug & DEBUG_RHIZOME)
+    if (config.debug.rhizome)
       DEBUGF("identity sid=%s is not in keyring", alloca_tohex_sid(authorSid));
     return 2;
   }
   kp = keyring_identity_find_keytype(keyring, cn, in, KEYTYPE_RHIZOME);
   if (kp == -1) {
-    if (debug & DEBUG_RHIZOME)
+    if (config.debug.rhizome)
       DEBUGF("identity sid=%s has no Rhizome Secret", alloca_tohex_sid(authorSid));
     return 3;
   }
@@ -201,35 +203,76 @@ int rhizome_find_secret(const unsigned char *authorSid, int *rs_len, const unsig
  * @author Andrew Bettison <andrew@servalproject.com>
 
  */
-int rhizome_extract_privatekey(rhizome_manifest *m)
+int rhizome_extract_privatekey(rhizome_manifest *m, rhizome_bk_t *bsk)
 {
   IN();
+  unsigned char bkBytes[RHIZOME_BUNDLE_KEY_BYTES];
   char *bk = rhizome_manifest_get(m, "BK", NULL, 0);
-  if (!bk) {
-    if (debug & DEBUG_RHIZOME) DEBUG("bundle contains no BK field");
+  
+  if (bk){
+    int result;
+    
+    if (fromhexstr(bkBytes, bk, RHIZOME_BUNDLE_KEY_BYTES) == -1)
+      RETURN(WHYF("invalid BK field: %s", bk));
+    
+    if (is_sid_any(m->author)) {
+      result=rhizome_find_bundle_author(m);
+    }else{
+      int rs_len;
+      const unsigned char *rs;
+      result = rhizome_find_secret(m->author, &rs_len, &rs);
+      if (result!=0)
+	RETURN(result);
+      
+      result = rhizome_bk2secret(m,m->cryptoSignPublic,rs,rs_len,
+				 bkBytes,m->cryptoSignSecret);
+    }
+    
+    if (result == 0){
+      m->haveSecret=EXISTING_BUNDLE_ID;
+      
+      if(bsk && !rhizome_is_bk_none(bsk)){
+	// If a bundle secret key was supplied that does not match the secret key derived from the
+	// author, then warn but carry on using the author's.
+	if (memcmp(bsk, m->cryptoSignSecret, RHIZOME_BUNDLE_KEY_BYTES) != 0)
+	  WARNF("Supplied bundle secret key is invalid -- ignoring");
+      }
+      
+    }else{
+      memset(m->cryptoSignSecret, 0, sizeof m->cryptoSignSecret);
+      m->haveSecret=0;
+    }
+    
+    RETURN(result);
+  }else if(bsk && !rhizome_is_bk_none(bsk)){
+    bcopy(m->cryptoSignPublic, &m->cryptoSignSecret[RHIZOME_BUNDLE_KEY_BYTES], sizeof(m->cryptoSignPublic));
+    bcopy(bsk, m->cryptoSignSecret, RHIZOME_BUNDLE_KEY_BYTES);
+    RETURN(rhizome_verify_bundle_privatekey(m,m->cryptoSignSecret,
+					    m->cryptoSignPublic));
+  }else{
     RETURN(1);
   }
-  unsigned char bkBytes[RHIZOME_BUNDLE_KEY_BYTES];
-  if (fromhexstr(bkBytes, bk, RHIZOME_BUNDLE_KEY_BYTES) == -1)
-    RETURN(WHYF("invalid BK field: %s", bk));
+}
 
-  int rs_len;
-  const unsigned char *rs;
-  int result = rhizome_find_secret(m->author, &rs_len, &rs);
-  if (result != 0)
-    return WHY("Error searching for Rhizome secret");
-
-  result = rhizome_bk2secret(m,m->cryptoSignPublic,rs,rs_len,
-			     bkBytes,m->cryptoSignSecret);
-
-  if (result == 0) {
-    m->haveSecret=1;
-    RETURN(0); // bingo
+/* Same as rhizome_extract_privatekey, except warnings become errors and are logged */
+int rhizome_extract_privatekey_required(rhizome_manifest *m, rhizome_bk_t *bsk)
+{
+  int result = rhizome_extract_privatekey(m, bsk);
+  switch (result) {
+    case -1:
+    case 0:
+      return result;
+    case 1:
+      return WHY("bundle contains no BK field, and no bundle secret supplied");
+    case 2:
+      return WHY("Author unknown");
+    case 3:
+      return WHY("Author does not have a Rhizome Secret");
+    case 4:
+      return WHY("Author does not have permission to modify manifest");
+    default:
+      return WHYF("Unknown result from rhizome_extract_privatekey(): %d", result);
   }
-  memset(m->cryptoSignSecret, 0, sizeof m->cryptoSignSecret);
-  m->haveSecret=0;
-  if (debug & DEBUG_RHIZOME) DEBUGF("result=%d", result);
-  RETURN(result);
 }
 
 /* Discover if the given manifest was created (signed) by any unlocked identity currently in the
@@ -252,7 +295,7 @@ int rhizome_find_bundle_author(rhizome_manifest *m)
   IN();
   char *bk = rhizome_manifest_get(m, "BK", NULL, 0);
   if (!bk) {
-    if (debug & DEBUG_RHIZOME)
+    if (config.debug.rhizome)
       DEBUGF("missing BK field");
     RETURN(4);
   }
@@ -262,7 +305,7 @@ int rhizome_find_bundle_author(rhizome_manifest *m)
   int cn = 0, in = 0, kp = 0;
   for (; keyring_next_identity(keyring, &cn, &in, &kp); ++kp) {
     const unsigned char *authorSid = keyring->contexts[cn]->identities[in]->keypairs[kp]->public_key;
-    //if (debug & DEBUG_RHIZOME) DEBUGF("try author identity sid=%s", alloca_tohex(authorSid, SID_SIZE));
+    //if (config.debug.rhizome) DEBUGF("try author identity sid=%s", alloca_tohex(authorSid, SID_SIZE));
     int rkp = keyring_identity_find_keytype(keyring, cn, in, KEYTYPE_RHIZOME);
     if (rkp != -1) {
       int rs_len = keyring->contexts[cn]->identities[in]->keypairs[rkp]->private_key_len;
@@ -273,14 +316,22 @@ int rhizome_find_bundle_author(rhizome_manifest *m)
       if (!rhizome_bk2secret(m,m->cryptoSignPublic,rs,rs_len,
 			     bkBytes,m->cryptoSignSecret)) {
 	memcpy(m->author, authorSid, sizeof m->author);
-	m->haveSecret=1;
-	if (debug & DEBUG_RHIZOME)
+	m->haveSecret=EXISTING_BUNDLE_ID;
+	if (config.debug.rhizome)
 	  DEBUGF("found bundle author sid=%s", alloca_tohex_sid(m->author));
+	
+	// if this bundle is already in the database, update the author.
+	if (m->inserttime){
+	  const char *id = rhizome_manifest_get(m, "id", NULL, 0);
+	  if (sqlite_exec_void("UPDATE MANIFESTS SET author='%s' WHERE id='%s';", alloca_tohex_sid(m->author), id) == -1)
+	    WARN("Error updating MANIFESTS author column");
+	}
+	
 	RETURN(0); // bingo
       }
     }
   }
-  if (debug & DEBUG_RHIZOME)
+  if (config.debug.rhizome)
     DEBUG("bundle author not found");
   RETURN(1);
 }
@@ -314,15 +365,17 @@ int rhizome_verify_bundle_privatekey(rhizome_manifest *m,
   ge_scalarmult_base(&A,h);
   ge_p3_tobytes(pk,&A);
 
-  for (i = 0;i < 32;++i) if (pkin[i] != pk[i]) {
+  for (i = 0;i < 32;++i) 
+    if (pkin[i] != pk[i]) {
       if (m&&sk==m->cryptoSignSecret&&pkin==m->cryptoSignPublic)
 	m->haveSecret=0;
       RETURN(-1);
     }
-  DEBUGF("We have the private key for this bundle.");
+  if (config.debug.rhizome)
+    DEBUGF("We have the private key for this bundle.");
   if (m&&sk==m->cryptoSignSecret&&pkin==m->cryptoSignPublic) {
-    DEBUGF("Set haveSecret=1 in manifest");
-    m->haveSecret=1;
+    DEBUGF("Set haveSecret=%d in manifest",EXISTING_BUNDLE_ID);
+    m->haveSecret=EXISTING_BUNDLE_ID;
   }
   RETURN(0);
 }
@@ -331,10 +384,11 @@ int rhizome_sign_hash(rhizome_manifest *m,
 		      rhizome_signature *out)
 {
   IN();
-  if (!m->haveSecret && rhizome_extract_privatekey(m))
-    RETURN(WHY("Cannot find secret key to sign manifest data."));
+  if (!m->haveSecret && rhizome_extract_privatekey_required(m, NULL))
+    RETURN(-1);
 
-  RETURN(rhizome_sign_hash_with_key(m,m->cryptoSignSecret,m->cryptoSignPublic,out));
+  int ret=rhizome_sign_hash_with_key(m,m->cryptoSignSecret,m->cryptoSignPublic,out);
+  RETURN(ret);
 }
 
 int rhizome_sign_hash_with_key(rhizome_manifest *m,const unsigned char *sk,
@@ -425,7 +479,7 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
   IN();
   if (!m)
     RETURN(WHY("NULL pointer passed in as manifest"));
-  if (debug&DEBUG_RHIZOME)
+  if (config.debug.rhizome)
     DEBUGF("m->manifest_all_bytes=%d m->manifest_bytes=%d *ofs=%d", m->manifest_all_bytes, m->manifest_bytes, *ofs);
 
   if ((*ofs)>=m->manifest_all_bytes) { RETURN(0); }
@@ -471,7 +525,7 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
 	  bcopy(&m->manifestdata[(*ofs)+1+64],m->signatories[m->sig_count],
 		crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
 	  m->sig_count++;
-	  if (debug&DEBUG_RHIZOME) DEBUG("Signature passed.");
+	  if (config.debug.rhizome) DEBUG("Signature passed.");
 	}
 	break;
       default:
@@ -488,4 +542,124 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
 
   (*ofs)+=len;
   RETURN(0);
+}
+
+// add value to nonce, with the same result regardless of CPU endian order
+// allowing for any carry value up to the size of the whole nonce
+static void add_nonce(unsigned char *nonce, int64_t value){
+  int i=crypto_stream_xsalsa20_NONCEBYTES -1;
+  while(i>=0 && value>0){
+    int x = nonce[i]+(value & 0xFF);
+    nonce[i]=x&0xFF;
+    value = (value>>8)+(x>>8);
+    i--;
+  }
+}
+
+/* crypt a block of a stream, allowing for offsets that don't align perfectly to block boundaries
+ * for efficiency the caller should use a buffer size of (n*RHIZOME_CRYPT_PAGE_SIZE)
+ */
+int rhizome_crypt_xor_block(unsigned char *buffer, int buffer_size, int64_t stream_offset, 
+			    const unsigned char *key, const unsigned char *nonce){
+  int64_t nonce_offset = stream_offset & ~(RHIZOME_CRYPT_PAGE_SIZE -1);
+  int offset=0;
+  
+  unsigned char block_nonce[crypto_stream_xsalsa20_NONCEBYTES];
+  bcopy(nonce, block_nonce, sizeof(block_nonce));
+  add_nonce(block_nonce, nonce_offset);
+  
+  if (nonce_offset < stream_offset){
+    int padding = stream_offset & (RHIZOME_CRYPT_PAGE_SIZE -1);
+    int size = RHIZOME_CRYPT_PAGE_SIZE - padding;
+    if (size>buffer_size)
+      size=buffer_size;
+    
+    unsigned char temp[RHIZOME_CRYPT_PAGE_SIZE];
+    bcopy(temp + padding, buffer, size);
+    crypto_stream_xsalsa20_xor(temp, temp, size, block_nonce, key);
+    bcopy(buffer, temp + padding, size);
+    
+    add_nonce(block_nonce, RHIZOME_CRYPT_PAGE_SIZE);
+    offset+=size;
+  }
+  
+  while(offset < buffer_size){
+    int size = buffer_size - offset;
+    if (size>RHIZOME_CRYPT_PAGE_SIZE)
+      size=RHIZOME_CRYPT_PAGE_SIZE;
+    
+    crypto_stream_xsalsa20_xor(buffer+offset, buffer+offset, size, block_nonce, key);
+    
+    add_nonce(block_nonce, RHIZOME_CRYPT_PAGE_SIZE);
+    offset+=size;
+  }
+  
+  return 0;
+}
+
+int rhizome_derive_key(rhizome_manifest *m, rhizome_bk_t *bsk)
+{
+  // don't do anything if the manifest isn't flagged as being encrypted
+  if (!m->payloadEncryption)
+    return 0;
+  if (m->payloadEncryption!=1)
+    return WHYF("Unsupported encryption scheme %d", m->payloadEncryption);
+  
+  char *sender = rhizome_manifest_get(m, "sender", NULL, 0);
+  char *recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
+  
+  if (sender && recipient){
+    sid_t sender_sid, recipient_sid;
+    if (cf_opt_sid(&sender_sid, sender)!=CFOK)
+      return WHYF("Unable to parse sender sid");
+    if (cf_opt_sid(&recipient_sid, recipient)!=CFOK)
+      return WHYF("Unable to parse recipient sid");
+    
+    unsigned char *nm_bytes=NULL;
+    int cn=0,in=0,kp=0;
+    if (!keyring_find_sid(keyring,&cn,&in,&kp,sender_sid.binary)){
+      cn=in=kp=0;
+      if (!keyring_find_sid(keyring,&cn,&in,&kp,recipient_sid.binary)){
+	return WHYF("Neither the sender %s nor the recipient %s appears in our keyring", sender, recipient);
+      }
+      nm_bytes=keyring_get_nm_bytes(recipient_sid.binary, sender_sid.binary);
+    }else{
+      nm_bytes=keyring_get_nm_bytes(sender_sid.binary, recipient_sid.binary);
+    }
+    
+    if (!nm_bytes)
+      return -1;
+    
+    unsigned char hash[crypto_hash_sha512_BYTES];
+    crypto_hash_sha512(hash, nm_bytes, crypto_box_curve25519xsalsa20poly1305_BEFORENMBYTES);
+    bcopy(hash, m->payloadKey, RHIZOME_CRYPT_KEY_BYTES);
+    
+  }else{
+    if(!m->haveSecret){
+      if (rhizome_extract_privatekey_required(m, bsk))
+	return -1;
+    }
+    
+    unsigned char raw_key[9+crypto_sign_edwards25519sha512batch_SECRETKEYBYTES]="sasquatch";
+    bcopy(m->cryptoSignSecret, &raw_key[9], crypto_sign_edwards25519sha512batch_SECRETKEYBYTES);
+    
+    unsigned char hash[crypto_hash_sha512_BYTES];
+    
+    crypto_hash_sha512(hash, raw_key, sizeof(raw_key));
+    bcopy(hash, m->payloadKey, RHIZOME_CRYPT_KEY_BYTES);
+  }
+  
+  // generate nonce from version#bundle id#version;
+  unsigned char raw_nonce[8+8+sizeof(m->cryptoSignPublic)];
+  
+  write_uint64(&raw_nonce[0], m->version);
+  bcopy(m->cryptoSignPublic, &raw_nonce[8], sizeof(m->cryptoSignPublic));
+  write_uint64(&raw_nonce[8+sizeof(m->cryptoSignPublic)], m->version);
+  
+  unsigned char hash[crypto_hash_sha512_BYTES];
+  
+  crypto_hash_sha512(hash, raw_nonce, sizeof(raw_nonce));
+  bcopy(hash, m->payloadNonce, sizeof(m->payloadNonce));
+  
+  return 0;  
 }

@@ -20,9 +20,75 @@
 #ifndef __STR_H__
 #define __STR_H__
 
-/* Check if a given string starts with a given sub-string.  If so, return 1 and, if afterp is not
- * NULL, set *afterp to point to the character immediately following the substring.  Otherwise
- * return 0.
+#include <string.h>
+#include <stdint.h>
+#include <sys/types.h>
+#include <ctype.h>
+#include <alloca.h>
+
+#ifndef __STR_INLINE
+# if __GNUC__ && !__GNUC_STDC_INLINE__
+#  define __STR_INLINE extern inline
+# else
+#  define __STR_INLINE inline
+# endif
+#endif
+
+/* Return true iff 'len' bytes starting at 'text' are hex digits, upper or lower case.
+ * Does not check the following byte.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+__STR_INLINE int is_xsubstring(const char *text, int len)
+{
+  while (len--)
+    if (!isxdigit(*text++))
+      return 0;
+  return 1;
+}
+
+/* Return true iff the nul-terminated string 'text' has length 'len' and consists only of hex
+ * digits, upper or lower case.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+__STR_INLINE int is_xstring(const char *text, int len)
+{
+  while (len--)
+    if (!isxdigit(*text++))
+      return 0;
+  return *text == '\0';
+}
+
+extern const char hexdigit[16];
+char *tohex(char *dstHex, const unsigned char *srcBinary, size_t bytes);
+size_t fromhex(unsigned char *dstBinary, const char *srcHex, size_t nbinary);
+int fromhexstr(unsigned char *dstBinary, const char *srcHex, size_t nbinary);
+int is_all_matching(const unsigned char *ptr, size_t len, unsigned char value);
+char *str_toupper_inplace(char *s);
+
+#define alloca_tohex(buf,len)           tohex((char *)alloca((len)*2+1), (buf), (len))
+
+__STR_INLINE int hexvalue(char c)
+{
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  return -1;
+}
+
+char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcBytes, const char quotes[2]);
+char *toprint_str(char *dstStr, ssize_t dstBufSiz, const char *srcStr, const char quotes[2]);
+size_t toprint_len(const char *srcBuf, size_t srcBytes, const char quotes[2]);
+size_t toprint_str_len(const char *srcStr, const char quotes[2]);
+size_t str_fromprint(unsigned char *dst, const char *src);
+
+#define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca((dstlen) == -1 ? toprint_len((const char *)(buf),(len), "``") + 1 : (dstlen)), (dstlen), (const char *)(buf), (len), "``")
+#define alloca_str_toprint(str)  toprint_str((char *)alloca(toprint_str_len(str, "``") + 1), -1, (str), "``")
+
+/* Check if a given nul-terminated string 'str' starts with a given nul-terminated sub-string.  If
+ * so, return 1 and, if afterp is not NULL, set *afterp to point to the character in 'str'
+ * immediately following the substring.  Otherwise return 0.
  *
  * This function is used to parse HTTP headers and responses, which are typically not
  * nul-terminated, but are held in a buffer which has an associated length.  To avoid this function
@@ -33,11 +99,25 @@
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int str_startswith(char *str, const char *substring, char **afterp);
+int str_startswith(const char *str, const char *substring, const char **afterp);
+
+/* Check if a given string 'str' of a given length 'len' starts with a given nul-terminated
+ * sub-string.  If so, return 1 and, if afterp is not NULL, set *afterp to point to the character
+ * immediately following the substring.  Otherwise return 0.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int strn_startswith(const char *str, size_t len, const char *substring, const char **afterp);
 
 /* Case-insensitive form of str_startswith().
+ * @author Andrew Bettison <andrew@servalproject.com>
  */
-int strcase_startswith(char *str, const char *substring, char **afterp);
+int strcase_startswith(const char *str, const char *substring, const char **afterp);
+
+/* Case-insensitive form of strn_startswith().
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int strncase_startswith(const char *str, size_t len, const char *substring, const char **afterp);
 
 /* like strstr(3), but doesn't depend on null termination.
  *
@@ -60,7 +140,107 @@ char *str_str(char *haystack, const char *needle, int haystack_len);
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int str_to_ll_scaled(const char *str, int base, long long *result, char **afterp);
+int str_to_int64_scaled(const char *str, int base, int64_t *result, const char **afterp);
+int str_to_uint64_scaled(const char *str, int base, uint64_t *result, const char **afterp);
+uint64_t scale_factor(const char *str, const char **afterp);
+
+/* Return true if the string resembles a nul-terminated URI.
+ * Based on RFC-3986 generic syntax, assuming nothing about the hierarchical part.
+ *
+ * uri :=           scheme ":" hierarchical [ "?" query ] [ "#" fragment ]
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int str_is_uri(const char *uri);
+
+__STR_INLINE int is_uri_char_scheme(char c)
+{
+  return isalpha(c) || isdigit(c) || c == '+' || c == '-' || c == '.';
+}
+
+__STR_INLINE int is_uri_char_unreserved(char c)
+{
+  return isalpha(c) || isdigit(c) || c == '-' || c == '.' || c == '_' || c == '~';
+}
+
+__STR_INLINE int is_uri_char_reserved(char c)
+{
+  switch (c) {
+    case ':': case '/': case '?': case '#': case '[': case ']': case '@':
+    case '!': case '$': case '&': case '\'': case '(': case ')':
+    case '*': case '+': case ',': case ';': case '=':
+      return 1;
+  }
+  return 0;
+}
+
+/* Return true if the string resembles a URI scheme without the terminating colon.
+ * Based on RFC-3986 generic syntax.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+__STR_INLINE int str_is_uri_scheme(const char *scheme)
+{
+  if (!isalpha(*scheme++))
+    return 0;
+  while (is_uri_char_scheme(*scheme))
+    ++scheme;
+  return *scheme == '\0';
+}
+
+/* Pick apart a URI into its basic parts.
+ *
+ * uri :=           scheme ":" hierarchical [ "?" query ] [ "#" fragment ]
+ *
+ * Based on RFC-3986 generic syntax, assuming nothing about the hierarchical
+ * part.  If the respective part is found, sets (*partp) to point to the start
+ * of the part within the supplied 'uri' string, sets (*lenp) to the length of
+ * the part substring and returns 1.  Otherwise returns 0.  These functions
+ * do not reliably validate that the string in 'uri' is a valid URI; that must
+ * be done by calling str_is_uri().
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int str_uri_scheme(const char *uri, const char **partp, size_t *lenp);
+int str_uri_hierarchical(const char *uri, const char **partp, size_t *lenp);
+int str_uri_query(const char *uri, const char **partp, size_t *lenp);
+int str_uri_fragment(const char *uri, const char **partp, size_t *lenp);
+
+/* Pick apart a URI hierarchical part into its basic parts.
+ *
+ * hierarchical :=  "//" authority [ "/" path ]
+ *
+ * If the respective part is found, sets (*partp) to point to the start of the
+ * part within the supplied 'uri' string, sets (*lenp) to the length of the
+ * part substring and returns 1.  Otherwise returns 0.
+ *
+ * These functions may be called directly on the part returned by
+ * str_uri_hierarchical(), even though it is not nul-terminated, because they
+ * treat "?" and "#" as equally valid terminators.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int str_uri_hierarchical_authority(const char *hier, const char **partp, size_t *lenp);
+int str_uri_hierarchical_path(const char *hier, const char **partp, size_t *lenp);
+
+/* Pick apart a URI authority into its basic parts.
+ *
+ * authority :=     [ username ":" password "@" ] hostname [ ":" port ]
+ *
+ * If the respective part is found, sets (*partp) to point to the start of the
+ * part within the supplied 'uri' string, sets (*lenp) to the length of the
+ * part substring and returns 1.  Otherwise returns 0.
+ *
+ * These functions may be called directly on the part returned by
+ * str_uri_hierarchical_authority(), even though it is not nul-terminated,
+ * because they treat "/", "?" and "#" as equally valid terminators.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int str_uri_authority_username(const char *auth, const char **partp, size_t *lenp);
+int str_uri_authority_password(const char *auth, const char **partp, size_t *lenp);
+int str_uri_authority_hostname(const char *auth, const char **partp, size_t *lenp);
+int str_uri_authority_port(const char *auth, unsigned short *portp);
 
 
 int parse_argv(char *cmdline, char delim, char **argv, int max_argv);

@@ -54,7 +54,6 @@ setup_AddNoAuthorNoManifest() {
    executeOk_servald rhizome list ''
    assert_rhizome_list
    echo "A test file" >file1
-   echo "Another test file" >file2
 }
 test_AddNoAuthorNoManifest() {
    executeOk_servald rhizome add file '' '' file1
@@ -86,6 +85,24 @@ test_AddNoAuthor() {
    assertGrep --matches=0 file1.manifest '^BK='
 }
 
+doc_AddNoAuthor="Add encrypted payload with no author"
+setup_AddNoAuthor() {
+   setup_servald
+   setup_rhizome
+   echo "A test file" >file1
+   echo "crypt=1" >file1.manifest
+}
+test_AddNoAuthor() {
+   executeOk_servald rhizome add file '' '' file1 file1.manifest
+   tfw_cat --stdout --stderr
+   assert_stdout_add_file file1
+   extract_stdout_secret file1_secret
+   assertGrep --matches=0 file1.manifest '^BK='
+   executeOk_servald rhizome extract file $re_manifestid file1x '' $file1_secret
+   tfw_cat --stdout --stderr
+   assert diff file1 file1x
+}
+
 doc_AddNonExistManifest="Add with non-existent manifest file"
 setup_AddNonExistManifest() {
    setup_servald
@@ -93,7 +110,6 @@ setup_AddNonExistManifest() {
    executeOk_servald rhizome list ''
    assert_rhizome_list
    echo "A test file" >file1
-   echo "Another test file" >file2
 }
 test_AddNonExistManifest() {
    assert --error-on-fail [ ! -e file1.manifest ]
@@ -113,7 +129,6 @@ setup_AddManifest() {
    assert_rhizome_list
    echo "A test file" >file1
    echo -e 'name=wah\ndate=12345' >file1.manifest
-   echo "Another test file" >file2
 }
 test_AddManifest() {
    executeOk_servald rhizome add file $SIDB1 '' file1 file1.manifest
@@ -178,7 +193,6 @@ setup_ExtractManifestAfterAdd() {
 }
 test_ExtractManifestAfterAdd() {
    executeOk_servald rhizome extract manifest $manifestid file1x.manifest
-   assert cmp file1.manifest file1x.manifest
    assertStdoutLineCount '==' 8
    local size=$(( $(cat file1 | wc -c) + 0 ))
    assertStdoutGrep --matches=1 "^service:file$"
@@ -189,6 +203,38 @@ test_ExtractManifestAfterAdd() {
    assertStdoutGrep --matches=1 "^filesize:$size\$"
    assertStdoutGrep --matches=1 "^\.author:$SIDB1\$"
    assertStdoutGrep --matches=1 "^\.readonly:0\$"
+   assert cmp file1.manifest file1x.manifest
+}
+
+doc_ExtractManifestToStdout="Extract manifest to output field"
+setup_ExtractManifestToStdout() {
+   setup_servald
+   setup_rhizome
+   echo "A test file" >file1
+   executeOk_servald rhizome add file $SIDB1 '' file1 file1.manifest
+   extract_manifest_id manifestid file1.manifest
+   extract_manifest_version version file1.manifest
+   extract_manifest_filehash filehash file1.manifest
+}
+test_ExtractManifestToStdout() {
+   executeOk_servald rhizome extract manifest $manifestid -
+   assertStdoutLineCount '>=' 9
+   local size=$(( $(cat file1 | wc -c) + 0 ))
+   assertStdoutGrep --line=..8 --matches=1 "^service:file$"
+   assertStdoutGrep --line=..8 --matches=1 "^manifestid:$manifestid\$"
+   assertStdoutGrep --line=..8 --matches=1 "^version:$version\$"
+   assertStdoutGrep --line=..8 --matches=1 "^inserttime:$rexp_date\$"
+   assertStdoutGrep --line=..8 --matches=1 "^filehash:$filehash\$"
+   assertStdoutGrep --line=..8 --matches=1 "^filesize:$size\$"
+   assertStdoutGrep --line=..8 --matches=1 "^\.author:$SIDB1\$"
+   assertStdoutGrep --line=..8 --matches=1 "^\.readonly:0\$"
+   assertStdoutGrep --line=9 --matches=1 "^manifest:"
+   replayStdout | $SED -n '9s/^manifest://p' >file1x.manifest
+   replayStdout | $SED -n '10,$p' >>file1x.manifest
+   cat file1.manifest >file1n.manifest
+   echo >>file1n.manifest
+   tfw_cat file1n.manifest file1x.manifest
+   assert cmp file1n.manifest file1x.manifest
 }
 
 doc_ExtractManifestAfterAddNoAuthor="Extract manifest after one add with no author"
@@ -255,10 +301,12 @@ setup_ExtractFileAfterAdd() {
    tfw_cat --stderr
    executeOk_servald rhizome list ''
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1
+   extract_manifest_id BID file1.manifest
    extract_manifest_filehash filehash file1.manifest
 }
 test_ExtractFileAfterAdd() {
-   executeOk_servald rhizome extract file $filehash file1x
+   executeOk_servald rhizome extract file $BID file1x
+   tfw_cat --stderr
    assert cmp file1 file1x
    local size=$(( $(cat file1 | wc -c) + 0 ))
    assertStdoutLineCount '==' 2
@@ -270,10 +318,16 @@ doc_ExtractFileMissing="Extract non-existent file"
 setup_ExtractFileMissing() {
    setup_servald
    setup_rhizome
+   BID=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF
    filehash=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF
 }
 test_ExtractFileMissing() {
-   execute --exit-status=1 $servald rhizome extract file $filehash foo
+   execute --exit-status=1 $servald rhizome extract file $BID foo
+   tfw_cat --stderr
+   assertStdoutLineCount '==' 0
+   assert [ ! -e foo ]
+   execute --exit-status=1 $servald rhizome dump file $filehash foo
+   tfw_cat --stderr
    assertStdoutLineCount '==' 0
    assert [ ! -e foo ]
 }
@@ -284,13 +338,22 @@ setup_ExtractFileInvalidID() {
    setup_rhizome
 }
 test_ExtractFileInvalidID() {
-   execute --exit-status=255 $servald rhizome extract file 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEx foo
+   execute --exit-status=255 $servald rhizome extract file 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEx foo
    assertStdoutLineCount '==' 0
    assert [ ! -e foo ]
-   execute --exit-status=255 $servald rhizome extract file 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDE foo
+   execute --exit-status=255 $servald rhizome extract file 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDE foo
    assertStdoutLineCount '==' 0
    assert [ ! -e foo ]
    execute --exit-status=255 $servald rhizome extract file '' foo
+   assertStdoutLineCount '==' 0
+   assert [ ! -e foo ]
+   execute --exit-status=255 $servald rhizome dump file 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEx foo
+   assertStdoutLineCount '==' 0
+   assert [ ! -e foo ]
+   execute --exit-status=255 $servald rhizome dump file 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDE foo
+   assertStdoutLineCount '==' 0
+   assert [ ! -e foo ]
+   execute --exit-status=255 $servald rhizome dump file '' foo
    assertStdoutLineCount '==' 0
    assert [ ! -e foo ]
 }
@@ -321,6 +384,7 @@ test_AddDuplicate() {
    execute --exit-status=2 $servald rhizome add file $SIDB1 '' file1 file1.manifestA
    assert [ -s file1.manifestA ]
    assert_stdout_add_file file1
+   extract_stdout_secret file1_dup_secret
    executeOk_servald rhizome list ''
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1 file2
    strip_signatures file1.manifest file1.manifestA
@@ -329,10 +393,13 @@ test_AddDuplicate() {
    execute --exit-status=2 $servald rhizome add file $SIDB1 '' file2 file2.manifestA
    assert [ -s file2.manifestA ]
    assert_stdout_add_file file2
+   extract_stdout_secret file2_dup_secret
    executeOk_servald rhizome list ''
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1 file2
    strip_signatures file2.manifest file2.manifestA
    assert diff file2.manifest file2.manifestA
+   assert [ $file1_secret = $file1_dup_secret ]
+   assert [ $file2_secret = $file2_dup_secret ]
 }
 
 doc_AddMismatched="Add mismatched manifest/payload fails"
@@ -462,6 +529,29 @@ test_AddUnsupportedService() {
    assertExitStatus '!=' 0
 }
 
+doc_EncryptedPayload="Add an encrypted payload"
+setup_EncryptedPayload() {
+   setup_servald
+   setup_rhizome
+   echo "Clear Text" >file1
+   echo -e "service=file\nname=private\ncrypt=1" >file1.manifest
+}
+test_EncryptedPayload() {
+   executeOk_servald rhizome add file $SIDB1 '' file1 file1.manifest
+   tfw_cat --stdout --stderr
+   assert_stdout_add_file file1
+   assert_manifest_complete file1.manifest
+   executeOk_servald rhizome list ''
+   assert_rhizome_list --fromhere=1 file1
+   extract_manifest_id BID file1.manifest
+   executeOk_servald rhizome extract file $BID file1x
+   tfw_cat --stdout --stderr
+   assert diff file1 file1x
+   extract_manifest_filehash filehash file1.manifest
+   executeOk_servald rhizome dump file $filehash file1y
+   assert ! diff file1 file1y
+}
+
 doc_MeshMSAddCreate="First add MeshMS creates manifest"
 setup_MeshMSAddCreate() {
    setup_servald
@@ -473,10 +563,12 @@ test_MeshMSAddCreate() {
    executeOk_servald rhizome add file $SIDB1 '' file1 file1.manifest
    assert_stdout_add_file file1
    assert_manifest_complete file1.manifest
+   extract_manifest_crypt crypt file1.manifest
+   assert [ $crypt = 1 ]
    executeOk_servald rhizome list ''
    assert_rhizome_list --fromhere=1 file1
-   extract_manifest_filehash filehash file1.manifest
-   executeOk_servald rhizome extract file $filehash file1x
+   extract_manifest_id BID file1.manifest
+   executeOk_servald rhizome extract file $BID file1x
    assert diff file1 file1x
 }
 
@@ -507,14 +599,13 @@ test_MeshMSAddGrow() {
       extract_manifest_id idx file1.manifest
       extract_manifest_filehash filehashx file1.manifest
       extract_manifest_BK bkx file1.manifest
-      compute_filehash filehash file1
       assert --message="manifest ID remains the same" [ "$idx" = "$id" ]
       assert --message="manifest BK remains the same" [ "$bkx" = "$bk" ]
-      assert --message="filehash is for new file" [ "$filehash" = "$filehashx" ]
-      executeOk_servald rhizome extract file "$filehash" file1x
+      assert --message="filehash is for new file" [ "$filehash" != "$filehashx" ]
+      executeOk_servald rhizome extract file "$id" file1x
       assert --message="extracted payload is correct" diff file1 file1x
       for ofilehash in "${ofilehashes[@]}"; do
-         execute --exit-status=1 --stderr $servald rhizome extract file "$ofilehash"
+         execute --exit-status=1 --stderr $servald rhizome dump file "$ofilehash"
       done
    done
 }

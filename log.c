@@ -32,20 +32,18 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <stdint.h>
+#include <assert.h>
 
 #include "log.h"
 #include "net.h"
 #include "conf.h"
+#include "str.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
 
 const struct __sourceloc __whence = __NOWHERE__;
 
-debugflags_t debug = 0;
-
 static FILE *logfile = NULL;
-static int flag_show_pid = -1;
-static int flag_show_time = -1;
 
 /* The logbuf is used to accumulate log messages before the log file is open and ready for
    writing.
@@ -68,7 +66,7 @@ void set_logging(FILE *f)
     INFOF("Logging to stream with fd=%d", fileno(f));
 }
 
-FILE *open_logging()
+static FILE *_open_logging()
 {
 #ifdef ANDROID
   return NULL;
@@ -76,39 +74,28 @@ FILE *open_logging()
   if (!logfile) {
     const char *logpath = getenv("SERVALD_LOG_FILE");
     if (!logpath) {
-      // If the configuration is locked (eg, it called WHY() or DEBUG() while initialising, which
-      // led back to here) then return NULL to indicate the message cannot be logged.
-      if (confLocked())
+      if (cf_limbo)
 	return NULL;
-      logpath = confValueGet("log.file", NULL);
+      logpath = config.log.file;
     }
-    if (!logpath) {
-      logfile = stderr;
+    if (!logpath || !logpath[0]) {
+      logfile = stderr; //fopen("/tmp/foo", "a");
       INFO("No logfile configured -- logging to stderr");
     } else if ((logfile = fopen(logpath, "a"))) {
       setlinebuf(logfile);
       INFOF("Logging to %s (fd %d)", logpath, fileno(logfile));
     } else {
-      logfile = stderr;
-      WARN_perror("fopen");
+      logfile = stderr; //fopen("/tmp/bar", "a");
+      WARNF_perror("fopen(%s)", logpath);
       WARNF("Cannot append to %s -- falling back to stderr", logpath);
     }
   }
   return logfile;
 }
 
-static int show_pid()
+FILE *open_logging()
 {
-  if (flag_show_pid < 0 && !confLocked())
-    flag_show_pid = confValueGetBoolean("log.show_pid", 0);
-  return flag_show_pid;
-}
-
-static int show_time()
-{
-  if (flag_show_time < 0 && !confLocked())
-    flag_show_time = confValueGetBoolean("log.show_time", 0);
-  return flag_show_time;
+  return _open_logging();
 }
 
 void close_logging()
@@ -137,9 +124,16 @@ static int _log_prepare(int level, struct __sourceloc whence)
 {
   if (level == LOG_LEVEL_SILENT)
     return 0;
+  struct timeval tv;
+  tv.tv_sec = 0;
+  if (config.log.show_time)
+    gettimeofday(&tv, NULL);
+  _open_logging(); // Put initial INFO message at start of log file
+  // No calls outside log.c from this point on.
   if (strbuf_is_empty(&logbuf))
     strbuf_init(&logbuf, _log_buf, sizeof _log_buf);
-  open_logging(); // Put initial INFO message at start of log file
+  else if (strbuf_len(&logbuf))
+    strbuf_putc(&logbuf, '\n');
 #ifndef ANDROID
   const char *levelstr = "UNKWN:";
   switch (level) {
@@ -151,11 +145,10 @@ static int _log_prepare(int level, struct __sourceloc whence)
   }
   strbuf_sprintf(&logbuf, "%-6.6s ", levelstr);
 #endif
-  if (show_pid())
+  if (config.log.show_pid)
     strbuf_sprintf(&logbuf, "[%5u] ", getpid());
-  if (show_time()) {
-    struct timeval tv;
-    if (gettimeofday(&tv, NULL) == -1) {
+  if (config.log.show_time) {
+    if (tv.tv_sec == 0) {
       strbuf_puts(&logbuf, "NOTIME______ ");
     } else {
       struct tm tm;
@@ -180,6 +173,18 @@ static int _log_prepare(int level, struct __sourceloc whence)
   return 1;
 }
 
+/* Internal logging implementation.
+ *
+ * This function is called after every single log message is appended to logbuf, and is given the
+ * level of the message.  This function must reset the given strbuf after its contents have been
+ * sent to the log, otherwise log messages will be repeated.  If this function never resets the
+ * strbuf, then it may eventually overrun.
+ *
+ * This function is also called to flush the given logbuf, by giving a log level of SILENT.  That
+ * indicates that no new message has been appended since the last time this function was called.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
 static void _log_internal(int level, struct strbuf *buf)
 {
 #ifdef ANDROID
@@ -190,13 +195,15 @@ static void _log_internal(int level, struct strbuf *buf)
     case LOG_LEVEL_INFO:  alevel = ANDROID_LOG_INFO; break;
     case LOG_LEVEL_WARN:  alevel = ANDROID_LOG_WARN; break;
     case LOG_LEVEL_DEBUG: alevel = ANDROID_LOG_DEBUG; break;
+    case LOG_LEVEL_SILENT: return;
+    default: abort();
   }
   __android_log_print(alevel, "servald", "%s", strbuf_str(buf));
   strbuf_reset(buf);
 #else
-  FILE *logf = open_logging();
+  FILE *logf = _open_logging();
   if (logf) {
-    fprintf(logf, "%s\n%s", strbuf_str(buf), strbuf_overrun(buf) ? "LOG OVERRUN\n" : "");
+    fprintf(logf, "%s%s%s", strbuf_str(buf), strbuf_len(buf) ? "\n" : "", strbuf_overrun(buf) ? "LOG OVERRUN\n" : "");
     strbuf_reset(buf);
   }
 #endif
@@ -215,6 +222,12 @@ void set_log_implementation(void (*log_function)(int level, struct strbuf *buf))
   _log_implementation=log_function;
 }
 
+void logFlush()
+{
+  if (_log_implementation)
+    _log_implementation(LOG_LEVEL_SILENT, &logbuf);
+}
+
 void logArgv(int level, struct __sourceloc whence, const char *label, int argc, const char *const *argv)
 {
   if (_log_prepare(level, whence)) {
@@ -222,15 +235,7 @@ void logArgv(int level, struct __sourceloc whence, const char *label, int argc, 
       strbuf_puts(&logbuf, label);
       strbuf_putc(&logbuf, ' ');
     }
-    int i;
-    for (i = 0; i < argc; ++i) {
-      if (i)
-	strbuf_putc(&logbuf, ' ');
-      if (argv[i])
-	strbuf_toprint_quoted(&logbuf, "\"\"", argv[i]);
-      else
-	strbuf_puts(&logbuf, "NULL");
-    }
+    strbuf_append_argv(&logbuf, argc, argv);
     _log_finish(level);
   }
 }
@@ -290,82 +295,6 @@ int logDump(int level, struct __sourceloc whence, char *name, const unsigned cha
     logMessage(level, whence, "%s", strbuf_str(b));
   }
   return 0;
-}
-
-debugflags_t debugFlagMask(const char *flagname)
-{
-  if	  (!strcasecmp(flagname,"all"))			return DEBUG_ALL;
-  else if (!strcasecmp(flagname,"interfaces"))		return DEBUG_OVERLAYINTERFACES;
-  else if (!strcasecmp(flagname,"rx"))			return DEBUG_PACKETRX;
-  else if (!strcasecmp(flagname,"tx"))			return DEBUG_PACKETTX;
-  else if (!strcasecmp(flagname,"verbose"))		return DEBUG_VERBOSE;
-  else if (!strcasecmp(flagname,"verbio"))		return DEBUG_VERBOSE_IO;
-  else if (!strcasecmp(flagname,"peers"))		return DEBUG_PEERS;
-  else if (!strcasecmp(flagname,"dnaresponses"))	return DEBUG_DNARESPONSES;
-  else if (!strcasecmp(flagname,"dnahelper"))		return DEBUG_DNAHELPER;
-  else if (!strcasecmp(flagname,"vomp"))		return DEBUG_VOMP;
-  else if (!strcasecmp(flagname,"packetformats"))	return DEBUG_PACKETFORMATS;
-  else if (!strcasecmp(flagname,"packetconstruction"))	return DEBUG_PACKETCONSTRUCTION;
-  else if (!strcasecmp(flagname,"gateway"))		return DEBUG_GATEWAY;
-  else if (!strcasecmp(flagname,"keyring"))		return DEBUG_KEYRING;
-  else if (!strcasecmp(flagname,"sockio"))		return DEBUG_IO;
-  else if (!strcasecmp(flagname,"frames"))		return DEBUG_OVERLAYFRAMES;
-  else if (!strcasecmp(flagname,"abbreviations"))	return DEBUG_OVERLAYABBREVIATIONS;
-  else if (!strcasecmp(flagname,"routing"))		return DEBUG_OVERLAYROUTING;
-  else if (!strcasecmp(flagname,"security"))		return DEBUG_SECURITY;
-  else if (!strcasecmp(flagname,"rhizome"))	        return DEBUG_RHIZOME;
-  else if (!strcasecmp(flagname,"rhizometx"))		return DEBUG_RHIZOME_TX;
-  else if (!strcasecmp(flagname,"rhizomerx"))		return DEBUG_RHIZOME_RX;
-  else if (!strcasecmp(flagname,"rhizomeads"))		return DEBUG_RHIZOME_ADS;
-  else if (!strcasecmp(flagname,"monitorroutes"))	return DEBUG_OVERLAYROUTEMONITOR;
-  else if (!strcasecmp(flagname,"queues"))		return DEBUG_QUEUES;
-  else if (!strcasecmp(flagname,"broadcasts"))		return DEBUG_BROADCASTS;
-  else if (!strcasecmp(flagname,"manifests"))		return DEBUG_MANIFESTS;
-  else if (!strcasecmp(flagname,"mdprequests"))		return DEBUG_MDPREQUESTS;
-  else if (!strcasecmp(flagname,"timing"))		return DEBUG_TIMING;
-  return 0;
-}
-
-/* Format a buffer of data as a printable representation, eg: "Abc\x0b\n\0", for display
-   in log messages.
-   @author Andrew Bettison <andrew@servalproject.com>
- */
-char *toprint(char *dstStr, ssize_t dstBufSiz, const char *srcBuf, size_t srcBytes, const char quotes[2])
-{
-  strbuf b = strbuf_local(dstStr, dstBufSiz);
-  strbuf_toprint_quoted_len(b, quotes, srcBuf, srcBytes);
-  return dstStr;
-}
-
-/* Compute the length of the string produced by toprint().  If dstStrLen == -1 then returns the
-   exact number of characters in the printable representation (excluding the terminating nul),
-   otherwise returns dstStrLen.
-   @author Andrew Bettison <andrew@servalproject.com>
- */
-size_t toprint_len(const char *srcBuf, size_t srcBytes, const char quotes[2])
-{
-  return strbuf_count(strbuf_toprint_quoted_len(strbuf_local(NULL, 0), quotes, srcBuf, srcBytes));
-}
-
-/* Format a null-terminated string as a printable representation, eg: "Abc\x0b\n", for display
-   in log messages.
-   @author Andrew Bettison <andrew@servalproject.com>
- */
-char *toprint_str(char *dstStr, ssize_t dstBufSiz, const char *srcStr, const char quotes[2])
-{
-  strbuf b = strbuf_local(dstStr, dstBufSiz);
-  strbuf_toprint_quoted(b, quotes, srcStr);
-  return dstStr;
-}
-
-/* Compute the length of the string produced by toprint_str().  If dstStrLen == -1 then returns the
-   exact number of characters in the printable representation (excluding the terminating nul),
-   otherwise returns dstStrLen.
-   @author Andrew Bettison <andrew@servalproject.com>
- */
-size_t toprint_str_len(const char *srcStr, const char quotes[2])
-{
-  return strbuf_count(strbuf_toprint_quoted(strbuf_local(NULL, 0), quotes, srcStr));
 }
 
 /* Read the symbolic link into the supplied buffer and add a terminating nul.  Return -1 if the

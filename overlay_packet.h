@@ -38,17 +38,21 @@ struct overlay_frame {
   /* Mark which interfaces the frame has been sent on,
    so that we can ensure that broadcast frames get sent
    exactly once on each interface */
-  int sendBroadcast;
   unsigned char broadcast_sent_via[OVERLAY_MAX_INTERFACES];
   struct broadcast broadcast_id;
   
   // null if destination is broadcast
   struct subscriber *destination;
+  struct subscriber *next_hop;
   
+  int source_full;
   struct subscriber *source;
   
-  /* IPv4 node frame was received from (if applicable) */
-  struct sockaddr *recvaddr;
+  /* IPv4 address the frame was received from, or should be sent to */
+  int destination_resolved;
+  struct sockaddr_in recvaddr;
+  overlay_interface *interface;
+  char unicast;
   
   /* Actual payload */
   struct overlay_buffer *payload;

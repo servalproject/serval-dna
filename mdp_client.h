@@ -21,6 +21,16 @@
 
 #include "serval.h"
 
+struct overlay_route_record{
+  unsigned char sid[SID_SIZE];
+  int reachable;
+  unsigned char neighbour[SID_SIZE];
+};
+
+struct overlay_mdp_scan{
+  struct in_addr addr;
+};
+
 /* Client-side MDP function */
 int overlay_mdp_client_socket(void);
 int overlay_mdp_client_close(int mdp_sockfd);

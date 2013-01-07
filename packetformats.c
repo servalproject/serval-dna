@@ -18,25 +18,16 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
 #include "serval.h"
+#include "conf.h"
+#include "str.h"
 
-int packetOk(struct overlay_interface *interface, unsigned char *packet, size_t len,
-	     unsigned char *transaction_id,int ttl,
-	     struct sockaddr *recvaddr, size_t recvaddrlen,int parseP)
+int stowSid(unsigned char *packet, int ofs, const char *sid)
 {
-  if (len<HEADERFIELDS_LEN) return WHY("Packet is too short");
-
-  if (packet[0]==0x4F&&packet[1]==0x10) 
-    {
-      if (interface!=NULL)
-	{
-	  return packetOkOverlay(interface,packet,len,transaction_id,ttl,
-				 recvaddr,recvaddrlen,parseP);
-	}
-      else
-	/* We ignore overlay mesh packets in simple server mode, which is indicated by interface==-1 */
-	return WHY("Ignoring overlay mesh packet");
-    }
-
-  return WHY("Packet type not recognised.");
+  if (config.debug.packetformats)
+    printf("stowing SID \"%s\"\n", sid);
+  if (strcasecmp(sid,"broadcast") == 0)
+    memset(packet + ofs, 0xff, SID_SIZE);
+  else if (fromhex(packet + ofs, sid, SID_SIZE) != SID_SIZE || sid[SID_STRLEN] != '\0')
+    return WHY("invalid SID");
+  return 0;
 }
-

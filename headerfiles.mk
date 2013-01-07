@@ -5,10 +5,14 @@ HDRS=	fifo.h \
 	overlay_packet.h \
 	rhizome.h \
 	serval.h \
+	str.h \
+	mem.h \
+	os.h \
 	strbuf.h \
 	strbuf_helpers.h \
 	sha2.h \
 	conf.h \
+	conf_schema.h \
 	crypto.h \
 	log.h \
 	net.h \

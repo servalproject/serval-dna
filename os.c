@@ -20,6 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <sys/types.h>
 #include <alloca.h>
 #include <dirent.h>
+#include <time.h>
 #include "serval.h"
 
 int mkdirs(const char *path, mode_t mode)
@@ -62,3 +63,61 @@ int mkdirsn(const char *path, size_t len, mode_t mode)
   return WHYF("cannot mkdir %s", pathfrag);
 }
 
+int urandombytes(unsigned char *buf, unsigned long long len)
+{
+  static int urandomfd = -1;
+  int tries = 0;
+  if (urandomfd == -1) {
+    for (tries = 0; tries < 4; ++tries) {
+      urandomfd = open("/dev/urandom",O_RDONLY);
+      if (urandomfd != -1) break;
+      sleep(1);
+    }
+    if (urandomfd == -1) {
+      WHY_perror("open(/dev/urandom)");
+      return -1;
+    }
+  }
+  tries = 0;
+  while (len > 0) {
+    int i = (len < 1048576) ? len : 1048576;
+    i = read(urandomfd, buf, i);
+    if (i == -1) {
+      if (++tries > 4) {
+	WHY_perror("read(/dev/urandom)");
+	return -1;
+      }
+      sleep(1);
+    } else {
+      tries = 0;
+      buf += i;
+      len -= i;
+    }
+  }
+  return 0;
+}
+
+time_ms_t gettime_ms()
+{
+  struct timeval nowtv;
+  // If gettimeofday() fails or returns an invalid value, all else is lost!
+  if (gettimeofday(&nowtv, NULL) == -1)
+    FATAL_perror("gettimeofday");
+  if (nowtv.tv_sec < 0 || nowtv.tv_usec < 0 || nowtv.tv_usec >= 1000000)
+    FATALF("gettimeofday returned tv_sec=%ld tv_usec=%ld", nowtv.tv_sec, nowtv.tv_usec);
+  return nowtv.tv_sec * 1000LL + nowtv.tv_usec / 1000;
+}
+
+// Returns sleep time remaining.
+time_ms_t sleep_ms(time_ms_t milliseconds)
+{
+  if (milliseconds <= 0)
+    return 0;
+  struct timespec delay;
+  struct timespec remain;
+  delay.tv_sec = milliseconds / 1000;
+  delay.tv_nsec = (milliseconds % 1000) * 1000000;
+  if (nanosleep(&delay, &remain) == -1 && errno != EINTR)
+    FATALF_perror("nanosleep(tv_sec=%ld, tv_nsec=%ld)", delay.tv_sec, delay.tv_nsec);
+  return remain.tv_sec * 1000 + remain.tv_nsec / 1000000;
+}
