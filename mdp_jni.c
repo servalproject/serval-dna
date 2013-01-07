@@ -6,7 +6,7 @@
 
 #ifdef HAVE_JNI_H
 #include <jni.h>
-#include "serval.h"
+#include "mdp_client.h"
 
 #define THROW_NULL_POINTER_EXCEPTION \
 	(*env)->ThrowNew(env, cl_nullpointerexception, NULL);
