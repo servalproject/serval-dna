@@ -252,11 +252,10 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl);
 
 int rhizome_direct_sync_bundle_added(rhizome_manifest *m,int64_t insertionTime);
 void rhizome_direct_async_periodic(struct sched_ent *alarm);
+int rhizome_direct_async_flush_queue(int i);
 int monitor_rhizome_direct_async_rx(int argc, const char *const *argv, 
 				    const struct command_line_option *o, 
 				    void *context);
-int app_rhizome_direct_async_check(int argc, const char *const *argv, const struct command_line_option *o, void *context);
-
 void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCount);
 int rhizome_find_privatekey(rhizome_manifest *m);
 int rhizome_sign_hash(rhizome_manifest *m, rhizome_signature *out);
@@ -310,6 +309,8 @@ long long rhizome_bar_version(unsigned char *bar);
 unsigned long long rhizome_bar_bidprefix_ll(unsigned char *bar);
 int rhizome_list_manifests(const char *service, const char *sender_sid, const char *recipient_sid, int limit, int offset);
 int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp);
+int rhizome_retrieve_manifest_by_bar(unsigned char *bar,
+				     rhizome_manifest **tmp);
 int rhizome_retrieve_file(const char *fileid, const char *filepath,
 			  const unsigned char *key);
 

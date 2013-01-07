@@ -74,6 +74,7 @@ setup_channel() {
        set rhizome.direct.channels.a.max_pending 64 \
        set rhizome.direct.channels.a.max_settle_time 120000 \
        set rhizome.direct.channels.a.message_length 160 \
+       set rhizome.direct.channels.a.max_messages 16 \
        set rhizome.direct.channels.a.out_path $instance_dir/async-out \
        set rhizome.direct.channels.a.push_command $instance_dir/async-push \
        set rhizome.direct.channels.a.settle_time 60000 \
@@ -227,8 +228,8 @@ test_messagesemitted() {
    set_instance +A
    assert [ -e $instance_dir/async-out/queued_manifests ]
    assert [ ! -z $instance_dir/async-out/queued_manifests ]
-   txcount=`ls -l $instance_dir/async-out/tx.* | wc -l`
-   assert [ $txcount == 1 ]
+   sleep 2
+   assert [ `ls -1 $instance_dir/async-out/ | grep ^tx | wc -l` == 1 ]
 }
 
 doc_messagesemittedonupdate="Message(s) are emitted when a new version of a bundle is observed"

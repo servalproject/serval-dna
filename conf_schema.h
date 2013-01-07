@@ -277,6 +277,7 @@ END_ARRAY(10)
 
 STRUCT(asyncchannel)
 ATOM(uint16_t,message_length, 160, cf_opt_uint16_nonzero,,"Max. length of each message in bytes")
+ATOM(uint16_t,max_messages, 16, cf_opt_uint16_nonzero,,"Max. # of messages dispatched in a batch")
 ATOM(uint16_t,alphabet_size, 128, cf_opt_uint16_2to256,,"Alphabet size for message bytes. Use 128 for 7-bit clean as for an SMS transport.")
 ATOM(int32_t,settle_time,5000, cf_opt_int32_nonneg,,"Interval in milli-seconds with no bundle reception before announcing new bundles")
 ATOM(int32_t,max_pending,16, cf_opt_int32_nonneg,,"Forces announcement once max_pending bundles are queued, irrespective of settle_time")

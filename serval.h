@@ -651,7 +651,7 @@ int directory_service_init();
 
 struct command_line_option;
 int app_rhizome_direct_sync(int argc, const char *const *argv, const struct command_line_option *o, void *context);
-int app_rhizome_direct_async(int argc, const char *const *argv, const struct command_line_option *o, void *context);
+int app_rhizome_direct_async_check(int argc, const char *const *argv, const struct command_line_option *o, void *context);
 #ifdef HAVE_VOIPTEST
 int app_pa_phone(int argc, const char *const *argv, const struct command_line_option *o, void *context);
 #endif

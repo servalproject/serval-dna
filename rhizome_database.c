@@ -1350,6 +1350,77 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest **mp)
   return ret;
 }
 
+/* Retrieve a manifest from the database, given its manifest ID.
+ *
+ * Returns 1 if manifest is found (if mp != NULL then a new manifest struct is allocated, made
+ * finalisable and * assigned to *mp, caller is responsible for freeing).
+ * Returns 0 if manifest is not found (*mp is unchanged).
+ * Returns -1 on error (*mp is unchanged).
+ */
+int rhizome_retrieve_manifest_by_bar(unsigned char *bar,
+				     rhizome_manifest **tmp)
+{
+  /* Obtain Manifest by prefix */
+  char bid_low[RHIZOME_MANIFEST_ID_STRLEN+1];
+  char bid_high[RHIZOME_MANIFEST_ID_STRLEN+1];
+  int i;
+  tohex(bid_low,&bar[RHIZOME_BAR_PREFIX_OFFSET],RHIZOME_BAR_PREFIX_BYTES);
+  tohex(bid_high,&bar[RHIZOME_BAR_PREFIX_OFFSET],RHIZOME_BAR_PREFIX_BYTES);
+  for(i=RHIZOME_BAR_PREFIX_BYTES*2;i<RHIZOME_MANIFEST_ID_STRLEN;i++) {
+    bid_low[i]='0';
+    bid_high[i]='F';
+  }
+  bid_low[RHIZOME_MANIFEST_ID_STRLEN]=0;
+  bid_high[RHIZOME_MANIFEST_ID_STRLEN]=0;
+  DEBUGF("Looking for manifest between %s and %s",
+	 bid_low,bid_high);
+  
+  long long rowid = -1;
+  sqlite3_blob *blob=NULL;
+  strbuf sb=strbuf_alloca(128);
+  sqlite_exec_int64(&rowid, "select count(*) from manifests;");
+  sqlite_exec_strbuf(sb, "select id from manifests;");
+  DEBUGF("There are %lld manifests in the database, first is '%s'",
+	 rowid,strbuf_str(sb));
+  sqlite_exec_int64(&rowid, "select rowid from manifests where id between '%s' and '%s';", bid_low,bid_high);
+  if (rowid >= 0 && sqlite3_blob_open(rhizome_db, "main", "manifests", "manifest", rowid, 0, &blob) != SQLITE_OK)
+    rowid = -1;
+  if (rowid == -1) {
+    DEBUGF("Row not found");
+    return -1;
+  }
+  
+  // Extract manifest from blob 
+  char buffer[1024];
+  int bytes=sqlite3_blob_bytes(blob);
+  if (bytes>1024||bytes<1) {
+    sqlite3_blob_close(blob);
+    return -1;
+  }
+  
+  if (sqlite3_blob_read(blob,&buffer[0],bytes,0)!=SQLITE_OK)
+    {
+      sqlite3_blob_close(blob);
+      return -1;
+    }
+  
+  *tmp=rhizome_new_manifest();
+  if (!*tmp) {
+    sqlite3_blob_close(blob);
+    return -1;
+  }
+  if (rhizome_read_manifest_file(*tmp,buffer,bytes))
+    {  
+      rhizome_manifest_free(*tmp);
+      *tmp=NULL;
+      sqlite3_blob_close(blob);
+      return -1;
+    }
+  
+  sqlite3_blob_close(blob);
+  return 1;
+}
+
 /* Retrieve a file from the database, given its file hash.
  *
  * Returns 1 if file is found (contents are written to filepath if given).
