@@ -105,7 +105,7 @@ Java_org_servalproject_servald_mdp_MeshSocket__1bind(JNIEnv * env,
                                                      jobject sid_obj)
 {
   jint fd;
-  jbyteArray jsid;
+  jbyteArray jsid = NULL;
   jbyte *sid = NULL;
   char any[SID_SIZE];
 
@@ -132,7 +132,7 @@ Java_org_servalproject_servald_mdp_MeshSocket__1bind(JNIEnv * env,
   } else {
     /* If sid_obj is NULL, then use sid = 0. */
     memset(any, 0, SID_SIZE);
-    sid = any;
+    sid = (jbyte *) any;
   }
 
   /* fd = this.fd; */
@@ -140,7 +140,7 @@ Java_org_servalproject_servald_mdp_MeshSocket__1bind(JNIEnv * env,
 
   /* Bind. */
 
-  if (overlay_mdp_bind(fd, sid, port)) {
+  if (overlay_mdp_bind(fd, (unsigned char *) sid, port)) {
     THROW_MESH_SOCKET_EXCEPTION("Cannot bind to MDP socket");
     /* fall through finally */
   }
@@ -160,7 +160,6 @@ Java_org_servalproject_servald_mdp_MeshSocket__1send(JNIEnv * env,
   jobject sid_obj;
   jbyteArray jbuf, jsid, jlocalsid;
   jbyte *buf, *sid, *localsid = NULL;
-  int src_port;
   overlay_mdp_frame mdp = { };  /* Init with zeros */
 
   /* Retrieve values from java objects. */
@@ -284,11 +283,11 @@ Java_org_servalproject_servald_mdp_MeshSocket__1receive(JNIEnv * env,
                                                         jobject this,
                                                         jobject mdppack)
 {
-  jint fd, localport, offset, length, port;
-  int buf_length;
+  jint fd, localport, offset, length;
+  int buf_length, ttl;
   jobject sid_obj;
   jbyteArray jbuf, jsid;
-  jbyte *buf, *sid;
+  jbyte *sid;
   overlay_mdp_frame mdp;
 
   /* fd = this.fd; */
@@ -301,7 +300,7 @@ Java_org_servalproject_servald_mdp_MeshSocket__1receive(JNIEnv * env,
   length = (*env)->GetIntField(env, mdppack, f_meshpacket_length);
 
   /* Receive data. */
-  if (overlay_mdp_recv(fd, &mdp, localport, -1)) {
+  if (overlay_mdp_recv(fd, &mdp, localport, &ttl)) {
     (*env)->ThrowNew(env, cl_meshsocketexception,
                      "Cannot receive data from servald");
     WHY("Cannot receive data from servald");
@@ -317,7 +316,8 @@ Java_org_servalproject_servald_mdp_MeshSocket__1receive(JNIEnv * env,
 
   /* Write payload. */
   jbuf = (jbyteArray) (*env)->GetObjectField(env, mdppack, f_meshpacket_buf);
-  (*env)->SetByteArrayRegion(env, jbuf, offset, buf_length, mdp.in.payload);
+  (*env)->SetByteArrayRegion(env, jbuf, offset, buf_length,
+    (jbyte *) mdp.in.payload);
 
   /* Write payload length (received length, not truncated). */
   (*env)->SetIntField(env, mdppack, f_meshpacket_length,
