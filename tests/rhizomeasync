@@ -254,7 +254,17 @@ test_messagesemittedonupdate() {
    assert [ -e $instance_dir/async-out/tx.0000000000000000 ]
    assert [ ! -z $instance_dir/async-out/tx.0000000000000000 ]
    ls -l $instance_dir/async-out/tx.0000000000000000
+# We have to stop and start here to test that updating works without
+# relying on the scan command, which is the subject of another test
+# make sure that the new messages occur only due to the update
+   stop_all_servald_servers
+   start_servald_instances +A
+   sleep 2
+   assert [ `ls -1 $instance_dir/async-out/ | grep ^tx | wc -l` == 1 ]
+   assert [ ! -e $instance_dir/async-out/tx.0000000000000001 ]
+   stop_all_servald_servers
    rhizome_update_file file1
+   start_servald_instances +A
    sleep 2
    assert [ `ls -1 $instance_dir/async-out/ | grep ^tx | wc -l` == 2 ]
    assert [ -e $instance_dir/async-out/tx.0000000000000001 ]
