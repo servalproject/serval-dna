@@ -20,7 +20,9 @@
 #ifndef __STRLCPY_H__
 #define __STRLCPY_H__
 
-#ifndef HAVE_STRLCPY
+#ifdef HAVE_STRLCPY
+#include <bsd/string.h>
+#else
 size_t	strlcpy(char *dst, const char *src, size_t sz);
 #endif
 
