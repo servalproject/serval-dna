@@ -195,7 +195,6 @@ setup_barsqueued() {
    setup_servald
    set_instance +A
    setup_channel
-   mkdir $instance_dir/async-out
    assert_no_servald_processes
    create_single_identity
    rhizome_add_file file1
@@ -216,7 +215,6 @@ setup_messagesemitted() {
    setup_servald
    set_instance +A
    setup_channel_nodelay
-   mkdir $instance_dir/async-out
    assert_no_servald_processes
    create_single_identity
    rhizome_add_file file1
@@ -238,7 +236,6 @@ setup_messagesemittedonupdate() {
    setup_servald
    set_instance +A
    setup_channel_nodelay
-   mkdir $instance_dir/async-out
    assert_no_servald_processes
    create_single_identity
    rhizome_add_file file1
@@ -277,7 +274,6 @@ setup_pushcommandiscalled() {
    setup_servald
    set_instance +A
    setup_channel_nodelay
-   mkdir $instance_dir/async-out
    echo touch $instance_dir/push-called >$instance_dir/async-push
    chmod 755 $instance_dir/async-push
    assert_no_servald_processes
@@ -326,6 +322,60 @@ test_maxsettletimehonoured() {
 doc_maxsizehonoured="rhizome.direct.channels.*.max_size is honoured"
 test_maxsizehonoured() {
     assert false
+}
+
+doc_maxmessageshonoured="rhizome.direct.channels.*.max_messages is honoured"
+setup_maxmessageshonoured() {
+   setup_servald
+   set_instance +A
+   setup_channel_nodelay
+# Set maximum message length to 20 bytes
+   executeOk_servald config \
+       set rhizome.direct.channels.a.message_length 20
+# Create some manifests to be communicated
+   rhizome_add_file file1 file2 file3
+}
+test_maxmessageshonoured() {
+   assertGrep --matches=1 "$LOGA" "new manifest: BID=$BID1"
+   set_instance +A
+   sleep 2
+   assert [ ! -e $instance_dir/queued_manifests ]
+   assert [ -e $instance_dir/async-out/tx.0000000000000000 ]
+   assert [ ! -z $instance_dir/async-out/tx.0000000000000000 ]
+   assert [ `ls -1 $instance_dir/async-out/ | grep ^tx | awk 'BEGIN { max=0;} { if ($5>max) max=$5; } END { print max}'` == 20 ]
+   ls -l $instance_dir/async-out/tx.*
+}
+
+doc_messagelengthhonoured="rhizome.direct.channels.*.message_length is honoured"
+setup_messagelengthhonoured() {
+   setup_servald
+   set_instance +A
+   setup_channel_nodelay
+# Set maximum message length to 20 bytes
+   executeOk_servald config \
+       set rhizome.direct.channels.a.message_length 20
+   assert_no_servald_processes
+   create_single_identity
+# Create some manifests to be communicated
+   rhizome_add_file file1
+   BID1=$BID
+   rhizome_add_file file2
+   BID2=$BID
+   rhizome_add_file file3
+   BID3=$BID
+   start_servald_instances +A
+}
+test_messagelengthhonoured() {
+   assertGrep --matches=1 "$LOGA" "new manifest: BID=$BID1"
+   assertGrep --matches=1 "$LOGA" "new manifest: BID=${BID2}"
+   assertGrep --matches=1 "$LOGA" "new manifest: BID=${BID3}"
+   set_instance +A
+   sleep 2
+   ls -l $instance_dir/async-out/tx.*
+   assert [ ! -e $instance_dir/queued_manifests ]
+   assert [ -e $instance_dir/async-out/tx.0000000000000000 ]
+   assert [ ! -z $instance_dir/async-out/tx.0000000000000000 ]
+   assert [ `ls -l $instance_dir/async-out/ | grep ^tx | awk 'BEGIN { max=0;} { if ($5>max) max=$5; } END { print max}'` == 20 ]
 }
 
 runTests "$@"
