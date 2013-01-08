@@ -406,8 +406,10 @@ static int messagesRequired(int bytesPerMessage,int bytesToSend)
 {
   /* Overhead per message is as follows to deal with out-of-order delivery.
      We don't do retransmission or detection of dropped messages.     
-     15 bits - sequence number
-     1 bit - communication boundary (to help get back in sync in case we do
+     14 bits - sequence number (to help deal with out-of-order delivery)
+     1 bit - communication start (to help get back in sync in case we do
+     have some dropped messages)
+     1 bit - communication end (to help get back in sync in case we do
      have some dropped messages)
   */
   int netBytesPerMessage=bytesPerMessage-1-1;
@@ -415,9 +417,20 @@ static int messagesRequired(int bytesPerMessage,int bytesToSend)
   return bytesToSend/netBytesPerMessage+(bytesToSend%netBytesPerMessage?1:0);
 }
 
-static int writeMessage(FILE *f,struct overlay_buffer *b,int m,int channel)
+static int writeMessage(FILE *f,struct overlay_buffer *b,int m,int of,int channel)
 {
-  int bytes=config.rhizome.direct.channels.av[channel].value.message_length;
+  /* Construct message header */
+  unsigned char header[2];
+  int startP=(!m)?1:0;
+  int endP=(m==(of-1))?1:0;
+  unsigned short header_short=channel_states[channel].lastTXMessageNumber&0x3fff;
+  header_short|=(startP<<14);
+  header_short|=(endP<<15);
+  header[0]=header_short>>8;
+  header[1]=header_short&0xff;
+  if (fwrite(&header[0],2,1,f)!=1) return -1;
+
+  int bytes=config.rhizome.direct.channels.av[channel].value.message_length-2;
   switch (config.rhizome.direct.channels.av[channel].value.alphabet_size)
     {
     case 256: /* 8-bit clean */
@@ -625,7 +638,7 @@ int rhizome_direct_async_flush_queue(int channel)
 	     channel_states[channel].lastTXMessageNumber);
     f=fopen(filename,"w");
     if (f) {
-      writeMessage(f,bestbuffer,j,channel);
+      writeMessage(f,bestbuffer,j,bestMessagesRequired,channel);
       fclose(f);
       channel_states[channel].lastTXMessageNumber++;
       rhizome_direct_async_write_state(channel);
