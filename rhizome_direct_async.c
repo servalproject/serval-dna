@@ -652,6 +652,10 @@ int rhizome_direct_async_flush_queue(int channel)
 	   config.rhizome.direct.channels.av[channel].value.out_path);
   unlink(filename);
 
+  if (config.rhizome.direct.channels.av[channel].value.push_command
+      &&config.rhizome.direct.channels.av[channel].value.push_command[0])
+    system(config.rhizome.direct.channels.av[channel].value.push_command);
+
   /* Re-read state */
   rhizome_direct_async_load_state();
 

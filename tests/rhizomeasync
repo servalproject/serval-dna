@@ -234,13 +234,52 @@ test_messagesemitted() {
 }
 
 doc_messagesemittedonupdate="Message(s) are emitted when a new version of a bundle is observed"
+setup_messagesemittedonupdate() {
+   setup_servald
+   set_instance +A
+   setup_channel_nodelay
+   mkdir $instance_dir/async-out
+   assert_no_servald_processes
+   create_single_identity
+   rhizome_add_file file1
+   BID1=$BID
+   start_servald_instances +A
+}
 test_messagesemittedonupdate() {
-    assert false
+   assertGrep --matches=1 "$LOGA" "new manifest: BID=$BID1"
+   set_instance +A
+   sleep 2
+   assert [ `ls -1 $instance_dir/async-out/ | grep ^tx | wc -l` == 1 ]
+   assert [ ! -e $instance_dir/queued_manifests ]
+   assert [ -e $instance_dir/async-out/tx.0000000000000000 ]
+   assert [ ! -z $instance_dir/async-out/tx.0000000000000000 ]
+   ls -l $instance_dir/async-out/tx.0000000000000000
+   rhizome_update_file file1
+   sleep 2
+   assert [ `ls -1 $instance_dir/async-out/ | grep ^tx | wc -l` == 2 ]
+   assert [ -e $instance_dir/async-out/tx.0000000000000001 ]
+   assert [ ! -z $instance_dir/async-out/tx.0000000000000001 ]
+   ls -l $instance_dir/async-out/tx.0000000000000001
 }
 
 doc_pushcommandiscalled="Async push command is called when messages are written"
+setup_pushcommandiscalled() {
+   setup_servald
+   set_instance +A
+   setup_channel_nodelay
+   mkdir $instance_dir/async-out
+   echo touch $instance_dir/push-called >$instance_dir/async-push
+   chmod 755 $instance_dir/async-push
+   assert_no_servald_processes
+   create_single_identity
+   rhizome_add_file file1
+   BID1=$BID
+   start_servald_instances +A
+}
 test_pushcommandiscalled() {
-    assert false
+   set_instance +A
+   sleep 2
+   assert [ -e $instance_dir/push-called ]
 }
 
 doc_messagesaccepted="Messages are accepted on calling rhizome direct async scan"
