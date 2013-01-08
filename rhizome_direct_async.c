@@ -413,6 +413,9 @@ static int messagesRequired(int bytesPerMessage,int bytesToSend)
      have some dropped messages)
   */
   int netBytesPerMessage=bytesPerMessage-1-1;
+  DEBUGF("bytesPerMessage=%d (%d usable), bytesToSend=%d",
+	 bytesPerMessage,netBytesPerMessage,bytesToSend);
+  DEBUGF("estimated messages = %d",bytesToSend/netBytesPerMessage);
 
   return bytesToSend/netBytesPerMessage+(bytesToSend%netBytesPerMessage?1:0);
 }
@@ -434,10 +437,10 @@ static int writeMessage(FILE *f,struct overlay_buffer *b,int m,int of,int channe
   switch (config.rhizome.direct.channels.av[channel].value.alphabet_size)
     {
     case 256: /* 8-bit clean */
-      if (b->position<(config.rhizome.direct.channels.av[channel]
-		      .value.message_length*m+bytes))
+      if (b->position<((config.rhizome.direct.channels.av[channel]
+			.value.message_length-2)*m+bytes))
 	bytes=b->position
-	  -config.rhizome.direct.channels.av[channel].value.message_length*m;
+	  -(config.rhizome.direct.channels.av[channel].value.message_length-2)*m;
 
       if (fwrite(&b->bytes[config.rhizome.direct.channels.av[channel]
 			   .value.message_length*m],bytes,1,f)==1)

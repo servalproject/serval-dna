@@ -375,7 +375,7 @@ test_messagelengthhonoured() {
    assert [ ! -e $instance_dir/queued_manifests ]
    assert [ -e $instance_dir/async-out/tx.0000000000000000 ]
    assert [ ! -z $instance_dir/async-out/tx.0000000000000000 ]
-   assert [ `ls -l $instance_dir/async-out/ | grep ^tx | awk 'BEGIN { max=0;} { if ($5>max) max=$5; } END { print max}'` == 20 ]
+   assert [ `ls -l $instance_dir/async-out/tx.* | awk 'BEGIN { max=0;} { if ($5>max) max=$5; } END { print max}'` == 20 ]
 }
 
 runTests "$@"
