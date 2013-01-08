@@ -274,6 +274,7 @@ setup_pushcommandiscalled() {
    create_single_identity
    rhizome_add_file file1
    BID1=$BID
+   assert [ ! -e $instance_dir/push-called ]
    start_servald_instances +A
 }
 test_pushcommandiscalled() {
