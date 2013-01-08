@@ -1372,16 +1372,10 @@ int rhizome_retrieve_manifest_by_bar(unsigned char *bar,
   }
   bid_low[RHIZOME_MANIFEST_ID_STRLEN]=0;
   bid_high[RHIZOME_MANIFEST_ID_STRLEN]=0;
-  DEBUGF("Looking for manifest between %s and %s",
-	 bid_low,bid_high);
+  // DEBUGF("Looking for manifest between %s and %s",bid_low,bid_high);
   
   long long rowid = -1;
   sqlite3_blob *blob=NULL;
-  strbuf sb=strbuf_alloca(128);
-  sqlite_exec_int64(&rowid, "select count(*) from manifests;");
-  sqlite_exec_strbuf(sb, "select id from manifests;");
-  DEBUGF("There are %lld manifests in the database, first is '%s'",
-	 rowid,strbuf_str(sb));
   sqlite_exec_int64(&rowid, "select rowid from manifests where id between '%s' and '%s';", bid_low,bid_high);
   if (rowid >= 0 && sqlite3_blob_open(rhizome_db, "main", "manifests", "manifest", rowid, 0, &blob) != SQLITE_OK)
     rowid = -1;
