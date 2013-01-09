@@ -67,7 +67,13 @@ setup_common() {
 }
 
 setup_channel() {
-   executeOk_servald config \
+# XXX These nodes need to be isolated, but the default in the test
+# framework is to establish a dummynet link between them.
+# Doesn't seem to matter what I do, the dummynet link is still
+# up and connected.  So I have opted for disabling rhizome as a
+# work around. I am sure that Andrew or Jeremy will be able to 
+# figure out what is going on.
+    executeOk_servald config \
        set rhizome.direct.channels.a.alphabet_size 256 \
        set rhizome.direct.channels.a.encode_flag false \
        set rhizome.direct.channels.a.in_path $instance_dir/async-in \
@@ -79,6 +85,7 @@ setup_channel() {
        set rhizome.direct.channels.a.push_command $instance_dir/async-push \
        set rhizome.direct.channels.a.settle_time 60000 \
        set rhizome.direct.channels.a.max_size 4096 \
+       set rhizome.enable no \
        set debug.rhizome_async yes
    mkdir $instance_dir/async-out
  }
@@ -290,7 +297,56 @@ test_pushcommandiscalled() {
 }
 
 doc_messagesaccepted="Messages are accepted on calling rhizome direct async scan"
+setup_messagesaccepted() {
+   setup_servald
+
+   set_instance +A
+   create_single_identity
+   PATHA=$instance_dir
+   setup_channel_nodelay
+   assert_no_servald_processes
+
+   set_instance +B
+   create_single_identity
+   PATHB=$instance_dir
+   setup_channel_nodelay
+   assert_no_servald_processes
+
+# Make in-path of instance be out-path of opposite instance.
+   set_instance +A
+   executeOk_servald config get
+   executeOk_servald config \
+       set rhizome.direct.channels.a.in_path $PATHB/async-out 
+   set_instance +B
+   executeOk_servald config get
+   executeOk_servald config \
+       set rhizome.direct.channels.a.in_path $PATHA/async-out 
+
+# Make push command call scan command on opposite instance
+   echo "SERVALINSTANCE_PATH=$PATHB/servald $servald rhizome direct async scan" >$PATHA/async-push
+   echo touch $PATHA/push-called >>$PATHA/async-push
+   chmod 755 $PATHA/async-push
+   cat $PATHA/async-push >/tmp/a
+
+   echo "SERVALINSTANCE_PATH=$PATHA/servald $servald rhizome direct async scan" >$PATHB/async-push
+   echo touch $PATHB/push-called >>$PATHB/async-push
+   chmod 755 $PATHB/async-push
+   cat $PATHB/async-push >/tmp/b
+
+   set_instance +A
+   rhizome_add_file file1
+   BID1=$BID
+   assert [ ! -e $instance_dir/push-called ]
+   start_servald_instances +A +B
+
+   set_instance +A
+   sleep 2
+   assert [ -e $instance_dir/push-called ]
+}
 test_messagesaccepted() {
+    set_instance +B
+    assertGrep --matches=1 "$LOGB" "Scanning for received rhizome direct async messages"
+    assertGrep --matches=1 "$LOGB" "Possible in-bound message in .*tx.0000000000000000"
     assert false
 }
 
@@ -329,21 +385,35 @@ setup_maxmessageshonoured() {
    setup_servald
    set_instance +A
    setup_channel_nodelay
-# Set maximum message length to 20 bytes
+# Set maximum message length to 20 bytes to force
+# many messages.
+# Also set maximum messages
    executeOk_servald config \
        set rhizome.direct.channels.a.message_length 20
+       set rhizome.direct.channels.a.max_messages 2
+   assert_no_servald_processes
+   create_single_identity
 # Create some manifests to be communicated
-   rhizome_add_file file1 file2 file3
+   rhizome_add_file file1
+   BID1=$BID
+   rhizome_add_file file2
+   BID2=$BID
+   rhizome_add_file file3
+   BID3=$BID
+   start_servald_instances +A
 }
 test_maxmessageshonoured() {
    assertGrep --matches=1 "$LOGA" "new manifest: BID=$BID1"
+   assertGrep --matches=1 "$LOGA" "new manifest: BID=${BID2}"
+   assertGrep --matches=1 "$LOGA" "new manifest: BID=${BID3}"
    set_instance +A
    sleep 2
+   ls -l $instance_dir/async-out/tx.*
    assert [ ! -e $instance_dir/queued_manifests ]
    assert [ -e $instance_dir/async-out/tx.0000000000000000 ]
+   assert [ ! -e $instance_dir/async-out/tx.0000000000000002 ]
    assert [ ! -z $instance_dir/async-out/tx.0000000000000000 ]
-   assert [ `ls -1 $instance_dir/async-out/ | grep ^tx | awk 'BEGIN { max=0;} { if ($5>max) max=$5; } END { print max}'` == 20 ]
-   ls -l $instance_dir/async-out/tx.*
+   assert [ `ls -l $instance_dir/async-out/tx.* | wc -l` < 3 ]
 }
 
 doc_messagelengthhonoured="rhizome.direct.channels.*.message_length is honoured"

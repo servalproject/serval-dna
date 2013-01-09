@@ -40,6 +40,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "conf.h"
 #include "str.h"
 
+#include <dirent.h>
+
 #define RDA_MSG_BARS_RAW 0x01
 #define RDA_MSG_MANIFESTS 0x02
 
@@ -268,6 +270,35 @@ void rhizome_direct_async_periodic(struct sched_ent *alarm)
   return;
 }
 
+int rhizome_direct_async_messagescan()
+{
+  int channel;
+  DIR *dir;
+  struct dirent *dirent;
+  if (config.debug.rhizome_async)
+    DEBUGF("Scanning for received rhizome direct async messages");
+  for(channel=0;channel<config.rhizome.direct.channels.ac;channel++) 
+    {
+      dir=opendir(config.rhizome.direct.channels.av[channel].value.in_path);
+      if (!dir) continue;
+      while((dirent=readdir(dir))!=NULL) {
+	if (dirent->d_type==DT_REG) {
+	  // consider file
+	  if (dirent->d_name[0]&&dirent->d_name[0]!='.')
+	    if (!strncasecmp("tx.",dirent->d_name,3)) {
+	      if (config.debug.rhizome_async)
+		DEBUGF("Possible in-bound message in %s/%s",
+		       config.rhizome.direct.channels.av[channel].value.in_path,
+		       dirent->d_name);
+	    }
+	}
+      }
+      closedir(dir);
+    }
+
+  return 0;
+}
+
 // Called when the monitor command "rdasync check" is issued.  This tells us
 // to look for newly received messages in the in-bound spool directories for the
 // rhizome direct async channels.  Also check for any recently arrived bundles.
@@ -280,7 +311,12 @@ int monitor_rhizome_direct_async_rx(int argc, const char *const *argv,
   snprintf(msg, sizeof(msg), "\nOK:\n");
   write_str(c->alarm.poll.fd, msg);
 
+  // Check for any new bundles
   rhizome_direct_async_bundlescan();
+
+  // Check for any new messages
+  rhizome_direct_async_messagescan();
+
   return 0;
 }
 
@@ -656,8 +692,12 @@ int rhizome_direct_async_flush_queue(int channel)
   unlink(filename);
 
   if (config.rhizome.direct.channels.av[channel].value.push_command
-      &&config.rhizome.direct.channels.av[channel].value.push_command[0])
-    system(config.rhizome.direct.channels.av[channel].value.push_command);
+      &&config.rhizome.direct.channels.av[channel].value.push_command[0]) {
+    int r=system(config.rhizome.direct.channels.av[channel].value.push_command);
+    if (config.debug.rhizome_async)
+      DEBUGF("Ran push command (exit=%d): %s",r,
+	     config.rhizome.direct.channels.av[channel].value.push_command);
+  }
 
   /* Re-read state */
   rhizome_direct_async_load_state();
