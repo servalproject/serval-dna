@@ -272,7 +272,8 @@ void rhizome_direct_async_periodic(struct sched_ent *alarm)
 
 int rhizome_direct_process_reconstructed_message(unsigned char *message,int len)
 {
-  DEBUGF("Processing RD async message of length %d",len);
+  if (config.debug.rhizome_async)
+    DEBUGF("Processing RD async message of length %d",len);
   DEBUGF("Not implemented!");
   return -1;
 }

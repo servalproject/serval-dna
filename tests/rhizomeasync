@@ -347,7 +347,7 @@ test_messagesaccepted() {
     set_instance +B
     assertGrep --matches=1 "$LOGB" "Scanning for received rhizome direct async messages"
     assertGrep --matches=1 "$LOGB" "Possible in-bound message in .*tx.0000000000000000"
-    assert false
+    assertGrep --matches=1 "$LOGB" "Processing RD async message of length"
 }
 
 doc_bundlerequestsgenerated="Bundle requests (SENDMEs) generated in response to IHAVE messages"
