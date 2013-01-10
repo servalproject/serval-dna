@@ -270,11 +270,176 @@ void rhizome_direct_async_periodic(struct sched_ent *alarm)
   return;
 }
 
+int rhizome_direct_process_reconstructed_message(unsigned char *message,int len)
+{
+  DEBUGF("Processing RD async message of length %d",len);
+  DEBUGF("Not implemented!");
+  return -1;
+}
+
+struct filename_list {
+  char *filename;
+  struct filename_list *next;
+};
+
+struct rdasync_message {
+  int startP;
+  int endP;
+  int sequence;
+  int byte_count;
+  unsigned char *bytes;
+  char *filename;
+  struct filename_list *filenames;
+  struct rdasync_message *next;
+};
+
+int rhizome_direct_async_scan_message_fragments
+(struct rdasync_message **message_list)
+{
+  // The message list is constructed in order of sequence number, which
+  // makes the job here nice and easy.
+
+  while (*message_list&&((*message_list)->next))
+    {
+      struct rdasync_message *a=*message_list;
+      struct rdasync_message *b=(*message_list)->next;
+      if (b->sequence==a->sequence+1) {
+	// Merge consecutive messages
+	unsigned char *d=realloc(a->bytes,a->byte_count+b->byte_count);
+	if (!d) {
+	  DEBUGF("Out of memory reassembling rhizome direct async message fragments");
+	} else {
+	  // Merging message fragments is fairly straight-forward.
+	  // The only complication is that we need to remember the names
+	  // of the fragment files that we have merged so that we can delete
+	  // them when we process the reconstructed.
+	  bcopy(b->bytes,&a->bytes[a->byte_count],b->byte_count);
+	  a->byte_count+=b->byte_count;
+	  a->next=b->next;
+	  a->endP|=b->endP;
+	  struct filename_list *f=calloc(sizeof(struct filename_list),1);
+	  f->filename=b->filename;
+	  f->next=a->filenames;
+	  a->filenames=f;
+	  free(b->bytes);
+	  free(b);
+	  if (a->startP&&a->endP) {
+	    // We have a complete message, so process it
+	    rhizome_direct_process_reconstructed_message(a->bytes,a->byte_count);
+	    // And then clean up after ourselves.
+	    free(a->bytes); a->bytes=NULL;
+	    while(a->filenames) {
+	      f=a->filenames->next;
+	      free(a->filenames->filename);
+	      free(a->filenames);
+	      a->filenames=f;
+	    }
+	  }
+	}
+      } else 
+	message_list=&((*message_list)->next);
+    }
+
+  DEBUGF("Not implemented");
+  return -1;
+}
+
+int rhizome_direct_async_readmessage(int channel,char *filename,
+				     struct rdasync_message **message_list)
+{
+  /* Sanity check the inbound message */
+  struct stat s;
+  if (stat(filename,&s)) return -1;
+  int64_t size=s.st_size;
+  if (size>0x10000) return -1;
+
+  unsigned char *data=malloc(size);
+  if (!data) return -1;
+
+  FILE *f=fopen(filename,"r");
+  if (!f) {
+    DEBUGF("Could not open rhizome direct async message file '%s'",filename);
+    free(data); 
+    return -1;
+  }
+  if (fread(data,size,1,f)!=1)
+    {
+      DEBUGF("Could not read rhizome direct async message data from '%s'",filename);
+      fclose(f);
+      free(data); 
+      return -1;
+    }
+  fclose(f);
+  if (config.rhizome.direct.channels.av[channel].value.alphabet_size!=256)
+    {
+      // Decode message of reduced alphabet size.
+      // currently not implemented
+      DEBUGF("Non 8-bit clean rhizome direct channels not yet supported");
+      free(data);
+      return -1;
+    }
+  if (size<2) {
+    DEBUGF("Decoded rhizome direct message from '%s' too short"
+	   " (must be at least 2 bytes)",filename);
+    free(data);
+    return -1;
+  }
+
+  unsigned short header_short=(data[0]<<8)+data[1];
+  int sequence_number=header_short&0x3fff;
+  int startP=header_short&0x4000;
+  int endP=header_short&0x8000;
+  int data_size=size-2;
+
+  if (config.debug.rhizome_async)
+    DEBUGF("Saw RD async message #%d startP=%d, endP=%d, size=%d",
+	   sequence_number,startP,endP,data_size);
+
+  if (startP&&endP) {
+    // Single message
+    rhizome_direct_process_reconstructed_message(&data[2],data_size);
+    unlink(filename);
+    free(data);
+    return 0;
+  } else {
+    // message fragment -- try to reassemble
+    
+    struct rdasync_message *m=calloc(sizeof(struct rdasync_message),1);
+    if (!m) {
+      DEBUGF("Out of memory reconstructing rhizome direct async message"
+	     " -- will try again");
+      free(data);
+      return -1;
+    }
+    m->startP=startP;
+    m->endP=endP;
+    m->sequence=sequence_number;
+    m->byte_count=data_size;
+    m->filename=strdup(filename);
+    m->bytes=data;
+    
+    struct rdasync_message **n=message_list;
+    while((*n)&&((*n)->sequence<m->sequence))
+      n=&((*n)->next);
+    m->next=*n;
+    *n=m;
+    if (config.debug.rhizome_async)
+      DEBUGF("Added message fragment to reconstruction list");
+    // Now see if we have any complete messages
+    rhizome_direct_async_scan_message_fragments(message_list);
+
+    return 0;
+  }
+}
+
+
 int rhizome_direct_async_messagescan()
 {
   int channel;
   DIR *dir;
   struct dirent *dirent;
+  struct rdasync_message *message_list=NULL;
+
   if (config.debug.rhizome_async)
     DEBUGF("Scanning for received rhizome direct async messages");
   for(channel=0;channel<config.rhizome.direct.channels.ac;channel++) 
@@ -286,14 +451,34 @@ int rhizome_direct_async_messagescan()
 	  // consider file
 	  if (dirent->d_name[0]&&dirent->d_name[0]!='.')
 	    if (!strncasecmp("tx.",dirent->d_name,3)) {
-	      if (config.debug.rhizome_async)
-		DEBUGF("Possible in-bound message in %s/%s",
+	      char filename[1024];
+	      snprintf(filename,1024,"%s/%s",
 		       config.rhizome.direct.channels.av[channel].value.in_path,
 		       dirent->d_name);
+	      if (config.debug.rhizome_async)
+		DEBUGF("Possible in-bound message in %s",filename);
+
+	      rhizome_direct_async_readmessage(channel,filename,&message_list);
 	    }
 	}
       }
       closedir(dir);
+    }
+
+  // Free any left over message fragments
+  while(message_list)
+    {
+      struct rdasync_message *m=message_list;
+      message_list=message_list->next;
+      while(m->filenames) {
+	struct filename_list *f=m->filenames->next;
+	free(m->filenames->filename);
+	free(m->filenames);
+	m->filenames=f;
+      }
+      free(m->filename);
+      free(m->bytes);
+      free(m);
     }
 
   return 0;
