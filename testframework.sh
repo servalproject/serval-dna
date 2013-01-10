@@ -529,10 +529,16 @@ wait_until() {
    local start=$SECONDS
    _tfw_getopts wait_until "$@"
    shift $_tfw_getopts_shift
+   local sense=
+   while [ "$1" = '!' ]; do
+      sense="$sense !"
+      shift
+   done
    sleep ${_tfw_opt_timeout:-$_tfw_default_timeout} &
    local timeout_pid=$!
    while true; do
-      "$@" && break
+      "$@"
+      [ $sense $? -eq 0 ] && break
       kill -0 $timeout_pid 2>/dev/null || fail "timeout"
       sleep ${_tfw_opt_sleep:-1}
    done
