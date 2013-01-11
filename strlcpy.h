@@ -21,7 +21,7 @@
 #define __STRLCPY_H__
 
 #ifdef HAVE_STRLCPY
-#include <bsd/string.h>
+#include <string.h>
 #else
 size_t	strlcpy(char *dst, const char *src, size_t sz);
 #endif
