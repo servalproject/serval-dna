@@ -348,6 +348,69 @@ test_messagesaccepted() {
     assertGrep --matches=1 "$LOGB" "Scanning for received rhizome direct async messages"
     assertGrep --matches=1 "$LOGB" "Possible in-bound message in .*tx.0000000000000000"
     assertGrep --matches=1 "$LOGB" "Processing RD async message of length"
+    assertGrep --matches=0 "$LOGB" "SIGABRT"
+}
+
+doc_fraggedmessagesaccepted="Multi-fragrment messages are accepted on calling rhizome direct async scan"
+setup_fraggedmessagesaccepted() {
+   setup_servald
+
+   set_instance +A
+   create_single_identity
+   PATHA=$instance_dir
+   setup_channel_nodelay
+   assert_no_servald_processes
+
+   set_instance +B
+   create_single_identity
+   PATHB=$instance_dir
+   setup_channel_nodelay
+   assert_no_servald_processes
+
+# Make in-path of instance be out-path of opposite instance.
+   set_instance +A
+   executeOk_servald config get
+   executeOk_servald config \
+       set rhizome.direct.channels.a.in_path $PATHB/async-out 
+   set_instance +B
+   executeOk_servald config get
+   executeOk_servald config \
+       set rhizome.direct.channels.a.in_path $PATHA/async-out 
+
+# Make push command call scan command on opposite instance
+   echo "SERVALINSTANCE_PATH=$PATHB/servald $servald rhizome direct async scan" >$PATHA/async-push
+   echo touch $PATHA/push-called >>$PATHA/async-push
+   chmod 755 $PATHA/async-push
+   cat $PATHA/async-push >/tmp/a
+
+   echo "SERVALINSTANCE_PATH=$PATHA/servald $servald rhizome direct async scan" >$PATHB/async-push
+   echo touch $PATHB/push-called >>$PATHB/async-push
+   chmod 755 $PATHB/async-push
+   cat $PATHB/async-push >/tmp/b
+
+   set_instance +A
+   rhizome_add_file file1
+   rhizome_add_file file2
+   rhizome_add_file file3
+   rhizome_add_file file4
+   rhizome_add_file file5
+   rhizome_add_file file6
+   rhizome_add_file file7
+   rhizome_add_file file8
+   BID1=$BID
+   assert [ ! -e $instance_dir/push-called ]
+   start_servald_instances +A +B
+
+   set_instance +A
+   sleep 2
+   assert [ -e $instance_dir/push-called ]
+}
+test_fraggedmessagesaccepted() {
+    set_instance +B
+    assertGrep --matches=1 "$LOGB" "Scanning for received rhizome direct async messages"
+    assertGrep --matches=1 "$LOGB" "Possible in-bound message in .*tx.0000000000000000"
+    assertGrep --matches=1 "$LOGB" "Processing RD async message of length"
+    assertGrep --matches=0 "$LOGB" "SIGABRT"
 }
 
 doc_bundlerequestsgenerated="Bundle requests (SENDMEs) generated in response to IHAVE messages"
