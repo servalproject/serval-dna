@@ -322,27 +322,40 @@ int rhizome_direct_async_scan_message_fragments
 	  f->filename=b->filename;
 	  f->next=a->filenames;
 	  a->filenames=f;
-	  free(b->bytes);
-	  free(b);
+	  free(b->bytes); free(b);
 	  if (a->startP&&a->endP) {
 	    // We have a complete message, so process it
+	    DEBUGF("Processing reconstructed fragmented message");
 	    rhizome_direct_process_reconstructed_message(a->bytes,a->byte_count);
+	    DEBUGF("checkpoint: a=%p, a->bytes=%p",a,a->bytes);
 	    // And then clean up after ourselves.
 	    free(a->bytes); a->bytes=NULL;
-	    while(a->filenames) {
+	    DEBUGF("checkpoint");
+	    while(a&&a->filenames) {
+	    DEBUGF("checkpoint");
 	      f=a->filenames->next;
+	    DEBUGF("checkpoint");
+	      if (config.debug.rhizome_async) DEBUGF("unlink(%s)",
+						     a->filenames->filename);
+	      unlink(a->filenames->filename);
+	    DEBUGF("checkpoint");
 	      free(a->filenames->filename);
 	      free(a->filenames);
 	      a->filenames=f;
 	    }
+	    DEBUGF("checkpoint");
+	    if (config.debug.rhizome_async) DEBUGF("unlink(%s)",a->filename);
+	    DEBUGF("checkpoint");
+	    unlink(a->filename);
 	  }
 	}
-      } else 
-	message_list=&((*message_list)->next);
+      } 
+      message_list=&((*message_list)->next);
     }
 
-  DEBUGF("Not implemented");
-  return -1;
+  
+
+  return 0;
 }
 
 int rhizome_direct_async_readmessage(int channel,char *filename,
@@ -398,7 +411,9 @@ int rhizome_direct_async_readmessage(int channel,char *filename,
 
   if (startP&&endP) {
     // Single message
+    DEBUGF("Processing unfragmented message");
     rhizome_direct_process_reconstructed_message(&data[2],data_size);
+    if (config.debug.rhizome_async) DEBUGF("unlink(%s)",filename);
     unlink(filename);
     free(data);
     return 0;
@@ -473,12 +488,16 @@ int rhizome_direct_async_messagescan()
       message_list=message_list->next;
       while(m->filenames) {
 	struct filename_list *f=m->filenames->next;
+	if (config.debug.rhizome_async) DEBUGF("unlink(%s)",m->filenames->filename);
+	unlink(m->filenames->filename);
 	free(m->filenames->filename);
 	free(m->filenames);
 	m->filenames=f;
       }
-      free(m->filename);
-      free(m->bytes);
+      if (config.debug.rhizome_async) DEBUGF("unlink(%s)",m->filename);
+      unlink(m->filename);
+      if (m->filename) free(m->filename);
+      if (m->bytes) free(m->bytes);
       free(m);
     }
 
@@ -875,6 +894,7 @@ int rhizome_direct_async_flush_queue(int channel)
   /* Remove list of queued manifests */
   snprintf(filename,1024,"%s/queued_manifests",
 	   config.rhizome.direct.channels.av[channel].value.out_path);
+  if (config.debug.rhizome_async) DEBUGF("unlink(%s)",filename);
   unlink(filename);
 
   if (config.rhizome.direct.channels.av[channel].value.push_command
