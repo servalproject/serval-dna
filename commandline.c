@@ -1115,7 +1115,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
     return -1;
   
   if (manifestpath[0] 
-      && rhizome_write_manifest_file(mout, manifestpath) == -1)
+      && rhizome_write_manifest_file(mout, manifestpath, 0) == -1)
     ret = WHY("Could not overwrite manifest file.");
   const char *service = rhizome_manifest_get(mout, "service", NULL, 0);
   if (service) {
@@ -1216,6 +1216,32 @@ cleanup:
   return status;
 }
 
+int app_rhizome_append_manifest(int argc, const char *const *argv, const struct command_line_option *o, void *context)
+{
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
+  const char *manifestpath, *filepath;
+  if (cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "") == -1
+    || cli_arg(argc, argv, o, "filepath", &filepath, NULL, "") == -1)
+    return -1;
+  
+  rhizome_manifest *m = rhizome_new_manifest();
+  if (!m)
+    return WHY("Out of manifests.");
+  
+  int ret=0;
+  if (rhizome_read_manifest_file(m, manifestpath, 0))
+    ret=-1;
+  // TODO why doesn't read manifest file set finalised???
+  m->finalised=1;
+  
+  if (ret==0 && rhizome_write_manifest_file(m, filepath, 1) == -1)
+    ret = -1;
+  
+  if (m)
+    rhizome_manifest_free(m);
+  return ret;
+}
+
 int app_rhizome_extract_bundle(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (config.debug.verbose) DEBUG_argv("command", argc, argv);
@@ -1292,13 +1318,16 @@ int app_rhizome_extract_bundle(int argc, const char *const *argv, const struct c
       cli_write(m->manifestdata, m->manifest_all_bytes);
       cli_delim("\n");
     } else {
-      /* If the manifest has been read in from database, the blob is there,
-       and we can lie and say we are finalised and just want to write it
-       out.  TODO: really should have a dirty/clean flag, so that write
-       works if clean but not finalised. */
-      m->finalised=1;
-      if (rhizome_write_manifest_file(m, manifestpath) == -1)
-	ret = -1;
+      int append = (strcmp(manifestpath, filepath)==0)?1:0;
+      // don't write out the manifest if we were asked to append it and writing the file failed.
+      if ((!append) || retfile==0){
+	/* If the manifest has been read in from database, the blob is there,
+	 and we can lie and say we are finalised and just want to write it
+	 out.  TODO: really should have a dirty/clean flag, so that write
+	 works if clean but not finalised. */
+	m->finalised=1;
+	if (rhizome_write_manifest_file(m, manifestpath, append) == -1)
+	  ret = -1;
       }
     }
   }
@@ -1964,6 +1993,8 @@ struct command_line_option command_line_options[]={
    "Get specified configuration variable."},
   {app_vomp_console,{"console",NULL},0,
     "Test phone call life-cycle from the console"},
+  {app_rhizome_append_manifest, {"rhizome", "append", "manifest", "<filepath>", "<manifestpath>", NULL}, CLIFLAG_STANDALONE,
+    "Append a manifest to the end of the file it belongs to."},
   {app_rhizome_hash_file,{"rhizome","hash","file","<filepath>",NULL},CLIFLAG_STANDALONE,
    "Compute the Rhizome hash of a file"},
   {app_rhizome_add_file,{"rhizome","add","file","<author_sid>","<pin>","<filepath>","[<manifestpath>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,

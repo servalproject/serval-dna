@@ -586,23 +586,31 @@ int rhizome_manifest_selfsign(rhizome_manifest *m)
   return 0;
 }
 
-int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename)
+int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename, char append)
 {
   if (config.debug.rhizome) DEBUGF("write manifest (%d bytes) to %s", m->manifest_all_bytes, filename);
   if (!m) return WHY("Manifest is null.");
   if (!m->finalised) return WHY("Manifest must be finalised before it can be written.");
-  FILE *f = fopen(filename, "w");
-  if (f == NULL) {
-    WHY_perror("fopen");
-    return WHYF("Cannot write manifest to %s", filename);
+  FILE *f = fopen(filename, (append?"a":"w"));
+  if (f == NULL)
+    return WHYF_perror("Cannot write manifest to %s", filename);
+  
+  int ret = 0;
+  if (fwrite(m->manifestdata, m->manifest_all_bytes, 1, f)!=1)
+    ret=WHYF_perror("fwrite(%s)", filename);
+  
+  if (ret==0 && append){
+    unsigned char marker[4];
+    write_uint16(marker, m->manifest_all_bytes);
+    marker[2]=0x41;
+    marker[3]=0x10;
+    if (fwrite(marker, 4,1,f)!=1)
+      ret=WHYF_perror("fwrite(%s)", filename);
   }
-  int r1 = fwrite(m->manifestdata, m->manifest_all_bytes, 1, f);
-  int r2 = fclose(f);
-  if (r1 != 1)
-    return WHYF("fwrite(%s) returned %d", filename, r1);
-  if (r2 == EOF)
-    return WHYF("fclose(%s) returned %d", filename, r2);
-  return 0;
+  
+  if (fclose(f))
+    ret=WHYF_perror("fclose(%s)", filename);
+  return ret;
 }
 
 /*

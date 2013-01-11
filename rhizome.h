@@ -225,7 +225,7 @@ sqlite_retry_state sqlite_retry_state_init(int serverLimit, int serverSleep, int
 
 #define SQLITE_RETRY_STATE_DEFAULT sqlite_retry_state_init(-1,-1,-1,-1)
 
-int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename);
+int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename, char append);
 int rhizome_manifest_selfsign(rhizome_manifest *m);
 int rhizome_drop_stored_file(const char *id,int maximum_priority);
 int rhizome_manifest_priority(sqlite_retry_state *retry, const char *id);

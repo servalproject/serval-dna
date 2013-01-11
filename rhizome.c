@@ -72,7 +72,62 @@ int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, 
 	manifest_path ? alloca_str_toprint(manifest_path) : "NULL",
 	filepath ? alloca_str_toprint(filepath) : "NULL");
   
-  if (rhizome_read_manifest_file(m, manifest_path, 0) == -1)
+  unsigned char buffer[MAX_MANIFEST_BYTES];
+  int buffer_len=0;
+  
+  // manifest has been appended to the end of the file.
+  if (strcmp(manifest_path, filepath)==0){
+    unsigned char marker[4];
+    int ret=0;
+    FILE *f = fopen(filepath, "r");
+    
+    if (f == NULL)
+      return WHYF_perror("Could not open manifest file %s for reading.", filepath);
+    
+    if (fseek(f, -sizeof(marker), SEEK_END))
+      ret=WHY_perror("Unable to seek to end of file");
+    
+    if (ret==0){
+      ret = fread(marker, 1, sizeof(marker), f);
+      if (ret==sizeof(marker))
+	ret=0;
+      else
+	ret=WHY_perror("Unable to read end of manifest marker");
+    }
+    
+    if (ret==0){
+      if (marker[2]!=0x41 || marker[3]!=0x10)
+	ret=WHYF("Expected 0x4110 marker at end of file");
+    }
+    
+    if (ret==0){
+      buffer_len = read_uint16(marker);
+      if (buffer_len < 1 || buffer_len > MAX_MANIFEST_BYTES)
+	ret=WHYF("Invalid manifest length %d", buffer_len);
+    }
+    
+    if (ret==0){
+      if (fseek(f, -(buffer_len+sizeof(marker)), SEEK_END))
+	ret=WHY_perror("Unable to seek to end of file");
+    }
+    
+    if (ret==0){
+      ret = fread(buffer, 1, buffer_len, f);
+      if (ret==buffer_len)
+	ret=0;
+      else
+	ret=WHY_perror("Unable to read manifest contents");
+    }
+    
+    fclose(f);
+    
+    if (ret)
+      return ret;
+    
+    manifest_path=(char*)buffer;
+  }
+  
+  if (rhizome_read_manifest_file(m, manifest_path, buffer_len) == -1)
     return WHY("could not read manifest file");
   if (rhizome_manifest_verify(m))
     return WHY("could not verify manifest");

@@ -805,4 +805,30 @@ test_ImportOwnBundle() {
    assert_rhizome_list --fromhere=1 --author=$SIDB2 fileB
 }
 
+doc_ImportCombinedBundle="Can generate a combined bundle, import into another instance and export again"
+setup_ImportCombinedBundle() {
+   setup_servald
+   setup_rhizome
+   set_instance +A
+   echo "Hello from A" >fileA
+   executeOk_servald rhizome add file $SIDA1 '' fileA fileA.manifest
+   assert_stdout_add_file fileA
+   extract_manifest_id manifestid fileA.manifest
+   extract_manifest_filehash filehash fileA.manifest
+   extract_manifest_filesize filesize fileA.manifest
+}
+test_ImportCombinedBundle() {
+   executeOk_servald rhizome append manifest fileA fileA.manifest
+   set_instance +B
+   executeOk_servald rhizome import bundle fileA fileA
+   assertStdoutGrep --matches=1 "^service:file$"
+   assertStdoutGrep --matches=1 "^manifestid:$manifestid\$"
+   assertStdoutGrep --matches=1 "^filehash:$filehash\$"
+   assertStdoutGrep --matches=1 "^filesize:$filesize\$"
+   executeOk_servald rhizome list ''
+   assert_rhizome_list --fromhere=0 fileA
+   executeOk_servald rhizome extract bundle $manifestid fileAx fileAx
+   assert diff fileA fileAx
+}
+
 runTests "$@"
