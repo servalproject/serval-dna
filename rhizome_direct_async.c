@@ -278,88 +278,27 @@ int rhizome_direct_process_reconstructed_message(unsigned char *message,int len)
   return -1;
 }
 
-struct filename_list {
+struct rdasync_message_status {
   char *filename;
-  struct filename_list *next;
-};
-
-struct rdasync_message {
-  int startP;
-  int endP;
-  int sequence;
   int byte_count;
-  unsigned char *bytes;
-  char *filename;
-  struct filename_list *filenames;
-  struct rdasync_message *next;
+  unsigned short sequence;
+  char startP;
+  char endP;
 };
 
-int rhizome_direct_async_scan_message_fragments
-(struct rdasync_message **message_list)
+int compare_rsams(const void *a, const void *b)
 {
-  // The message list is constructed in order of sequence number, which
-  // makes the job here nice and easy.
-
-  while (*message_list&&((*message_list)->next))
-    {
-      struct rdasync_message *a=*message_list;
-      struct rdasync_message *b=(*message_list)->next;
-      if (b->sequence==a->sequence+1) {
-	// Merge consecutive messages
-	unsigned char *d=realloc(a->bytes,a->byte_count+b->byte_count);
-	if (!d) {
-	  DEBUGF("Out of memory reassembling rhizome direct async message fragments");
-	} else {
-	  // Merging message fragments is fairly straight-forward.
-	  // The only complication is that we need to remember the names
-	  // of the fragment files that we have merged so that we can delete
-	  // them when we process the reconstructed.
-	  bcopy(b->bytes,&a->bytes[a->byte_count],b->byte_count);
-	  a->byte_count+=b->byte_count;
-	  a->next=b->next;
-	  a->endP|=b->endP;
-	  struct filename_list *f=calloc(sizeof(struct filename_list),1);
-	  f->filename=b->filename;
-	  f->next=a->filenames;
-	  a->filenames=f;
-	  free(b->bytes); free(b);
-	  if (a->startP&&a->endP) {
-	    // We have a complete message, so process it
-	    DEBUGF("Processing reconstructed fragmented message");
-	    rhizome_direct_process_reconstructed_message(a->bytes,a->byte_count);
-	    DEBUGF("checkpoint: a=%p, a->bytes=%p",a,a->bytes);
-	    // And then clean up after ourselves.
-	    free(a->bytes); a->bytes=NULL;
-	    DEBUGF("checkpoint");
-	    while(a&&a->filenames) {
-	    DEBUGF("checkpoint");
-	      f=a->filenames->next;
-	    DEBUGF("checkpoint");
-	      if (config.debug.rhizome_async) DEBUGF("unlink(%s)",
-						     a->filenames->filename);
-	      unlink(a->filenames->filename);
-	    DEBUGF("checkpoint");
-	      free(a->filenames->filename);
-	      free(a->filenames);
-	      a->filenames=f;
-	    }
-	    DEBUGF("checkpoint");
-	    if (config.debug.rhizome_async) DEBUGF("unlink(%s)",a->filename);
-	    DEBUGF("checkpoint");
-	    unlink(a->filename);
-	  }
-	}
-      } 
-      message_list=&((*message_list)->next);
-    }
-
-  
-
+  const struct rdasync_message_status 
+    *aa=(struct rdasync_message_status *)a,
+    *bb=(struct rdasync_message_status *)b;
+  if (aa->sequence<bb->sequence) return -1;
+  if (aa->sequence>bb->sequence) return 1;
   return 0;
 }
 
 int rhizome_direct_async_readmessage(int channel,char *filename,
-				     struct rdasync_message **message_list)
+				     struct rdasync_message_status *m,
+				     unsigned char *bytes, int max_bytes)
 {
   /* Sanity check the inbound message */
   struct stat s;
@@ -400,61 +339,29 @@ int rhizome_direct_async_readmessage(int channel,char *filename,
   }
 
   unsigned short header_short=(data[0]<<8)+data[1];
-  int sequence_number=header_short&0x3fff;
-  int startP=header_short&0x4000;
-  int endP=header_short&0x8000;
-  int data_size=size-2;
+  m->sequence=header_short&0x3fff;
+  m->startP=(header_short&0x4000)?1:0;
+  m->endP=(header_short&0x8000)?1:0;
+  m->byte_count=size-2;
+  m->filename=strdup(filename);
 
   if (config.debug.rhizome_async)
     DEBUGF("Saw RD async message #%d startP=%d, endP=%d, size=%d",
-	   sequence_number,startP,endP,data_size);
+	   m->sequence,m->startP,m->endP,m->byte_count);
 
-  if (startP&&endP) {
-    // Single message
-    DEBUGF("Processing unfragmented message");
-    rhizome_direct_process_reconstructed_message(&data[2],data_size);
-    if (config.debug.rhizome_async) DEBUGF("unlink(%s)",filename);
-    unlink(filename);
-    free(data);
-    return 0;
-  } else {
-    // message fragment -- try to reassemble
-    
-    struct rdasync_message *m=calloc(sizeof(struct rdasync_message),1);
-    if (!m) {
-      DEBUGF("Out of memory reconstructing rhizome direct async message"
-	     " -- will try again");
-      free(data);
-      return -1;
-    }
-    m->startP=startP;
-    m->endP=endP;
-    m->sequence=sequence_number;
-    m->byte_count=data_size;
-    m->filename=strdup(filename);
-    m->bytes=data;
-    
-    struct rdasync_message **n=message_list;
-    while((*n)&&((*n)->sequence<m->sequence))
-      n=&((*n)->next);
-    m->next=*n;
-    *n=m;
-    if (config.debug.rhizome_async)
-      DEBUGF("Added message fragment to reconstruction list");
-    // Now see if we have any complete messages
-    rhizome_direct_async_scan_message_fragments(message_list);
+  if (bytes&&m->byte_count<=max_bytes) bcopy(&data[2],bytes,m->byte_count);
 
-    return 0;
-  }
+  free(data);
+  return 0;
 }
-
 
 int rhizome_direct_async_messagescan()
 {
   int channel;
   DIR *dir;
   struct dirent *dirent;
-  struct rdasync_message *message_list=NULL;
+  struct rdasync_message_status message_list[RDASYNC_MAX_MESSAGE_FRAGMENTS];
+  int message_count=0;
 
   if (config.debug.rhizome_async)
     DEBUGF("Scanning for received rhizome direct async messages");
@@ -474,32 +381,81 @@ int rhizome_direct_async_messagescan()
 	      if (config.debug.rhizome_async)
 		DEBUGF("Possible in-bound message in %s",filename);
 
-	      rhizome_direct_async_readmessage(channel,filename,&message_list);
+	      // Get information about file 
+	      if (!rhizome_direct_async_readmessage(channel,filename,
+						    &message_list[message_count],
+						    NULL,0)) {
+		if (message_list[message_count].startP
+		    &&message_list[message_count].endP) {
+		  // Single piece message -- process it now.
+		  if (config.debug.rhizome_async)
+		    DEBUGF("unlink(%s)",message_list[message_count].filename);
+		  unlink(message_list[message_count].filename);
+		  free(message_list[message_count].filename);
+		} else
+		  message_count++;
+	      }
 	    }
 	}
       }
       closedir(dir);
     }
 
-  // Free any left over message fragments
-  while(message_list)
-    {
-      struct rdasync_message *m=message_list;
-      message_list=message_list->next;
-      while(m->filenames) {
-	struct filename_list *f=m->filenames->next;
-	if (config.debug.rhizome_async) DEBUGF("unlink(%s)",m->filenames->filename);
-	unlink(m->filenames->filename);
-	free(m->filenames->filename);
-	free(m->filenames);
-	m->filenames=f;
+  // Sort the list to deal with out-of-order delivery
+  qsort(&message_list[0],message_count,sizeof(struct rdasync_message_status),
+	compare_rsams);
+
+  // Scan for any complete messages.
+  // XXX Doesn't handle duplicate reception yet.
+  int i,j;
+  int dud,total_bytes;
+  for(i=0;i<message_count;i++) {
+    if (message_list[i].startP) {
+      dud=0;
+      total_bytes=0;
+      for(j=i+1;j<message_count&&message_list[j].endP==0;j++)
+	if (message_list[j].sequence
+	    !=((message_list[i].sequence+(j-i))&0x3fff)) {
+	  // this is not the next piece we need, so abort
+	  dud=1;
+	  break;
+	} else total_bytes+=message_list[j].byte_count;
+      if ((!dud)&&message_list[j].endP&&
+	  message_list[j].sequence
+	  ==((message_list[i].sequence+(j-i))&0x3fff)) {
+
+	// We have a complete message
+
+	// Skip messages >1MB
+	if (total_bytes>1024*1024) {
+	  INFOF("Skipping rhizome direct message >1MB");
+	} else {       
+	  unsigned char *message_buffer=malloc(total_bytes);
+	  int k,offset=0;
+	  struct rdasync_message_status message;
+	  for(k=i;k<=j;k++) {
+	    if (rhizome_direct_async_readmessage(channel,message_list[i].filename,
+						 &message,
+						 &message_buffer[offset],
+						 total_bytes-offset)) {
+	      
+	    }
+	    offset+=message.byte_count;
+	  }
+	  if(offset==total_bytes) {
+	    if (config.debug.rhizome_async)
+	      DEBUGF("Processing rhizome direct async message of %d bytes (%d fragments)",total_bytes,j-i+1);
+	  }
+	  free(message_buffer);
+	}
       }
-      if (config.debug.rhizome_async) DEBUGF("unlink(%s)",m->filename);
-      unlink(m->filename);
-      if (m->filename) free(m->filename);
-      if (m->bytes) free(m->bytes);
-      free(m);
     }
+  }
+
+  // Free up list
+  for(i=0;i<message_count;i++) {
+    if (message_list[i].filename) free(message_list[i].filename);
+  }
 
   return 0;
 }
