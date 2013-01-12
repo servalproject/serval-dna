@@ -327,7 +327,10 @@ int rhizome_direct_async_readmessage(int channel,char *filename,
     {
       // Decode message of reduced alphabet size.
       // currently not implemented
-      DEBUGF("Non 8-bit clean rhizome direct channels not yet supported");
+      DEBUGF("Non 8-bit clean rhizome direct channels not yet supported"
+	     " (channel #%d alphabet_size=%d)",
+	     channel,
+	     config.rhizome.direct.channels.av[channel].value.alphabet_size);
       free(data);
       return -1;
     }
@@ -386,12 +389,22 @@ int rhizome_direct_async_messagescan()
 						    &message_list[message_count],
 						    NULL,0)) {
 		if (message_list[message_count].startP
-		    &&message_list[message_count].endP) {
+		    &&message_list[message_count].endP
+		    &&message_list[message_count].byte_count<=1024*1024) {		  
 		  // Single piece message -- process it now.
+		  unsigned char message_buffer[message_list[message_count].byte_count];
+		  rhizome_direct_async_readmessage(channel,filename,
+						   &message_list[message_count],
+						   message_buffer,
+						   message_list[message_count].byte_count);
+		  rhizome_direct_process_reconstructed_message
+		    (message_buffer,message_list[message_count].byte_count);
+
 		  if (config.debug.rhizome_async)
 		    DEBUGF("unlink(%s)",message_list[message_count].filename);
 		  unlink(message_list[message_count].filename);
 		  free(message_list[message_count].filename);
+		  message_list[message_count].filename=NULL;
 		} else
 		  message_count++;
 	      }
@@ -444,7 +457,11 @@ int rhizome_direct_async_messagescan()
 	  }
 	  if(offset==total_bytes) {
 	    if (config.debug.rhizome_async)
-	      DEBUGF("Processing rhizome direct async message of %d bytes (%d fragments)",total_bytes,j-i+1);
+	      DEBUGF("Processing rhizome direct async message of %d fragments",j-i+1);
+	    rhizome_direct_process_reconstructed_message
+	      (message_buffer,total_bytes);
+	  } else {
+	    DEBUGF("Failed to reconstruct multi-fragment message.");
 	  }
 	  free(message_buffer);
 	}
