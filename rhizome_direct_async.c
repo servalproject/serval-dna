@@ -364,12 +364,15 @@ int rhizome_direct_async_messagescan()
   DIR *dir;
   struct dirent *dirent;
   struct rdasync_message_status message_list[RDASYNC_MAX_MESSAGE_FRAGMENTS];
-  int message_count=0;
+  int message_count;
 
   if (config.debug.rhizome_async)
     DEBUGF("Scanning for received rhizome direct async messages");
+
   for(channel=0;channel<config.rhizome.direct.channels.ac;channel++) 
     {
+      message_count=0;
+
       dir=opendir(config.rhizome.direct.channels.av[channel].value.in_path);
       if (!dir) continue;
       while((dirent=readdir(dir))!=NULL) {
@@ -382,7 +385,8 @@ int rhizome_direct_async_messagescan()
 		       config.rhizome.direct.channels.av[channel].value.in_path,
 		       dirent->d_name);
 	      if (config.debug.rhizome_async)
-		DEBUGF("Possible in-bound message in %s",filename);
+		DEBUGF("Possible in-bound message in for channel#%d in %s",
+		       channel,filename);
 
 	      // Get information about file 
 	      if (!rhizome_direct_async_readmessage(channel,filename,
@@ -412,67 +416,77 @@ int rhizome_direct_async_messagescan()
 	}
       }
       closedir(dir);
-    }
-
-  // Sort the list to deal with out-of-order delivery
-  qsort(&message_list[0],message_count,sizeof(struct rdasync_message_status),
-	compare_rsams);
-
-  // Scan for any complete messages.
-  // XXX Doesn't handle duplicate reception yet.
-  int i,j;
-  int dud,total_bytes;
-  for(i=0;i<message_count;i++) {
-    if (message_list[i].startP) {
-      dud=0;
-      total_bytes=0;
-      for(j=i+1;j<message_count&&message_list[j].endP==0;j++)
-	if (message_list[j].sequence
-	    !=((message_list[i].sequence+(j-i))&0x3fff)) {
-	  // this is not the next piece we need, so abort
-	  dud=1;
-	  break;
-	} else total_bytes+=message_list[j].byte_count;
-      if ((!dud)&&message_list[j].endP&&
-	  message_list[j].sequence
-	  ==((message_list[i].sequence+(j-i))&0x3fff)) {
-
-	// We have a complete message
-
-	// Skip messages >1MB
-	if (total_bytes>1024*1024) {
-	  INFOF("Skipping rhizome direct message >1MB");
-	} else {       
-	  unsigned char *message_buffer=malloc(total_bytes);
-	  int k,offset=0;
-	  struct rdasync_message_status message;
-	  for(k=i;k<=j;k++) {
-	    if (rhizome_direct_async_readmessage(channel,message_list[i].filename,
-						 &message,
-						 &message_buffer[offset],
-						 total_bytes-offset)) {
-	      
+    
+      // Sort the list to deal with out-of-order delivery
+      qsort(&message_list[0],message_count,sizeof(struct rdasync_message_status),
+	    compare_rsams);
+      
+      // Scan for any complete messages.
+      // XXX Doesn't handle duplicate reception yet.
+      int i,j;
+      int dud,total_bytes;
+      for(i=0;i<message_count;i++) {
+	if (message_list[i].startP) {
+	  dud=0;
+	  total_bytes=0;
+	  total_bytes=message_list[i].byte_count;
+	  for(j=i+1;j<message_count&&message_list[j].endP==0;j++)
+	    if (message_list[j].sequence
+		!=((message_list[i].sequence+(j-i))&0x3fff)) {
+	      // this is not the next piece we need, so abort
+	      dud=1;
+	      break;
+	    } else { 
+	      total_bytes+=message_list[j].byte_count;
 	    }
-	    offset+=message.byte_count;
+	  if ((!dud)&&message_list[j].endP&&
+	      message_list[j].sequence
+	      ==((message_list[i].sequence+(j-i))&0x3fff)) {
+	    
+	    // We have a complete message
+	    
+	    // Add length of final fragment
+	    total_bytes+=message_list[j].byte_count;
+
+	    // Skip messages >1MB
+	    if (total_bytes>1024*1024) {
+	      INFOF("Skipping rhizome direct message >1MB");
+	    } else {       
+	      INFOF("Reconstructing rhizome direct message of %d bytes",total_bytes);
+	      unsigned char *message_buffer=malloc(total_bytes);
+	      int k,offset=0;
+	      struct rdasync_message_status message;
+	      for(k=i;k<=j;k++) {
+		if (rhizome_direct_async_readmessage(channel,message_list[k].filename,
+						     &message,
+						     &message_buffer[offset],
+						     total_bytes-offset)) {
+		  
+		}
+		else offset+=message.byte_count;
+	      }
+	      if(offset==total_bytes) {
+		if (config.debug.rhizome_async)
+		  DEBUGF("Processing rhizome direct async message of %d fragments",j-i+1);
+		rhizome_direct_process_reconstructed_message
+		  (message_buffer,total_bytes);
+	      } else {
+		DEBUGF("Failed to reconstruct multi-fragment message"
+		       " (got length = %d instead of %d).",
+		       offset,total_bytes);
+	      }
+	      free(message_buffer);
+	    }
 	  }
-	  if(offset==total_bytes) {
-	    if (config.debug.rhizome_async)
-	      DEBUGF("Processing rhizome direct async message of %d fragments",j-i+1);
-	    rhizome_direct_process_reconstructed_message
-	      (message_buffer,total_bytes);
-	  } else {
-	    DEBUGF("Failed to reconstruct multi-fragment message.");
-	  }
-	  free(message_buffer);
 	}
       }
+      
+      // Free up list
+      for(i=0;i<message_count;i++) {
+	if (message_list[i].filename) free(message_list[i].filename);
+	message_list[i].filename=NULL;
+      }
     }
-  }
-
-  // Free up list
-  for(i=0;i<message_count;i++) {
-    if (message_list[i].filename) free(message_list[i].filename);
-  }
 
   return 0;
 }
