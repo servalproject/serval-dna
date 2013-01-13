@@ -1140,6 +1140,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
     cli_puts(secret);
     cli_delim("\n");
   }
+  cli_puts("version");    cli_delim(":"); cli_printf("%lld", m->version);    cli_delim("\n");
   cli_puts("filesize");
   cli_delim(":");
   cli_printf("%lld", mout->fileLength);
@@ -1180,6 +1181,9 @@ int app_rhizome_import_bundle(int argc, const char *const *argv, const struct co
   if (status<0)
     goto cleanup;
   
+  // TODO generalise the way we dump manifest details from add, import & export
+  // so callers can also generalise their parsing
+  
   const char *service = rhizome_manifest_get(m, "service", NULL, 0);
   if (service) {
     cli_puts("service");
@@ -1193,10 +1197,8 @@ int app_rhizome_import_bundle(int argc, const char *const *argv, const struct co
     cli_puts(alloca_tohex(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES));
     cli_delim("\n");
   }
-  cli_puts("filesize");
-  cli_delim(":");
-  cli_printf("%lld", m->fileLength);
-  cli_delim("\n");
+  cli_puts("version");    cli_delim(":"); cli_printf("%lld", m->version);    cli_delim("\n");
+  cli_puts("filesize");   cli_delim(":"); cli_printf("%lld", m->fileLength); cli_delim("\n");
   if (m->fileLength != 0) {
     cli_puts("filehash");
     cli_delim(":");
