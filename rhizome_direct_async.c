@@ -274,6 +274,32 @@ int rhizome_direct_process_reconstructed_message(unsigned char *message,int len)
 {
   if (config.debug.rhizome_async)
     DEBUGF("Processing RD async message of length %d",len);
+
+  if (len<(4+4+4)) {
+    DEBUGF("RD async message too short (minimum header length = 12 bytes)");
+  }
+
+  dump("RD async message",message,len);
+
+  struct overlay_buffer *ob=ob_static(message,len);
+
+  uint64_t timeRangeStart,timeRangeEnd;
+  /* 64 bits of time range start */
+  /* 32 bits of time range */
+  timeRangeStart=((unsigned long long )ob_get_ui32(ob))<<32LL;
+  timeRangeStart|=(unsigned int)ob_get_ui32(ob);
+  timeRangeEnd=timeRangeStart+(unsigned int)ob_get_ui32(ob);
+
+  if (config.debug.rhizome_async) {
+    char end[1024];
+    snprintf(end,1024,"%s",describe_time_interval_ms(gettime_ms()-timeRangeEnd));
+    DEBUGF("RD async message covers from %s to %s",
+	   describe_time_interval_ms(gettime_ms()-timeRangeStart),
+	   end);
+  }
+
+  ob_free(ob);
+
   DEBUGF("Not implemented!");
   return -1;
 }
