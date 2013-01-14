@@ -26,6 +26,69 @@
 #include "overlay_packet.h"
 #include "mdp_client.h"
 
+/* We randomly generate UNIX socket path names for communicating with servald,
+ * and handle only mdp_sockfd. But when we close the socket, the file is not
+ * deleted. Thus, we need to keep a mapping between mdp_sockfd and sun_path.
+ * Every time a MDP socket is open, we store it with its path_name.
+ * Every time a MDP socket is closed, we remove it from the list and delete the
+ * file.
+ */
+
+/* Item mapping mdp_sockfd and sun_path. */
+struct mdp_sock_node {
+  int mdp_sockfd;
+  char sun_path[108]; /* same size as struct sockaddr_un sun_path */
+  struct mdp_sock_node *next; /* next item for linked-list */
+};
+
+/* Linked-list storing the mapping between mdp_sockfd and sun_path for open MDP
+ * sockets. */
+static struct mdp_sock_node *open_mdp_sock_list;
+
+/* Add the socket to the open MDP socket list. */
+static void mdp_sock_opened(int mdp_sockfd, char *sun_path)
+{
+  struct mdp_sock_node *old_head = open_mdp_sock_list;
+
+  /* The new item becomes the head. */
+  open_mdp_sock_list =
+    (struct mdp_sock_node *) malloc(sizeof(struct mdp_sock_node));
+
+  open_mdp_sock_list->mdp_sockfd = mdp_sockfd;
+  strncpy(open_mdp_sock_list->sun_path, sun_path, 108);
+  open_mdp_sock_list->next = old_head;
+}
+
+/* Remove the socket from the list and delete associated file on filesystem. */
+static void mdp_sock_closed(int mdp_sockfd)
+{
+  struct mdp_sock_node *node = open_mdp_sock_list;
+  struct mdp_sock_node *prev_node = NULL;
+
+  /* Find the node having the same mdp_sockfd. */
+  while (node != NULL && node->mdp_sockfd != mdp_sockfd) {
+    prev_node = node;
+    node = node->next;
+  }
+
+  if (node != NULL) {
+    /* Node found. */
+
+    if (prev_node != NULL) {
+      /* General case. */
+      prev_node->next = node->next;
+    } else {
+      /* Special case for the first item. */
+      open_mdp_sock_list = node->next;
+    }
+    /* Remove socket file. */
+    unlink(node->sun_path);
+    free(node);
+  } else {
+    WARN("Socket to remove not found");
+  }
+}
+
 /* Send an mdp frame and return 0 if everything is OK, -1 otherwise.
  * Warning: does not return the length of characters sent like sendto().
  */
@@ -117,6 +180,10 @@ int overlay_mdp_client_socket(void)
 
   bcopy(overlay_mdp_client_socket_path,name.sun_path,
         overlay_mdp_client_socket_path_len);
+
+  /* Store the mapping sockfd/sun_path. */
+  mdp_sock_opened(mdp_sockfd, name.sun_path);
+
   unlink(name.sun_path);
   int len = 1 + strlen(name.sun_path) + sizeof(name.sun_family) + 1;
   int r=bind(mdp_sockfd, (struct sockaddr *)&name, len);
@@ -140,7 +207,12 @@ int overlay_mdp_client_close(int mdp_sockfd)
   mdp.packetTypeAndFlags=MDP_GOODBYE;
   overlay_mdp_send(mdp_sockfd, &mdp, 0, 0);
 
-  return close(mdp_sockfd);
+  int res = close(mdp_sockfd);
+
+  /* Remove the socket file. */
+  mdp_sock_closed(mdp_sockfd);
+
+  return res;
 }
 
 int overlay_mdp_client_poll(int mdp_sockfd, time_ms_t timeout_ms)
