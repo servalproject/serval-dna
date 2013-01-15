@@ -855,8 +855,17 @@ int rhizome_store_bundle(rhizome_manifest *m)
     sqlite3_finalize(stmt);
     stmt = NULL;
   }
-  if (sqlite_exec_void_retry(&retry, "COMMIT;") == SQLITE_OK)
+  if (sqlite_exec_void_retry(&retry, "COMMIT;") == SQLITE_OK){
+    // This message used in tests; do not modify or remove.
+    const char *service = rhizome_manifest_get(m, "service", NULL, 0);
+    INFOF("RHIZOME ADD MANIFEST service=%s bid=%s version=%lld",
+	  service ? service : "NULL",
+	  alloca_tohex_sid(m->cryptoSignPublic),
+	  m->version
+	  );
+    monitor_announce_bundle(m);
     return 0;
+  }
 rollback:
   if (stmt)
     sqlite3_finalize(stmt);
@@ -1066,7 +1075,7 @@ int rhizome_update_file_priority(const char *fileid)
 
    @author Andrew Bettison <andrew@servalproject.com>
  */
-int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
+int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, int check_author)
 {
   // TODO, add service, name, sender & recipient to manifests table so we can simply query them.
   
@@ -1202,27 +1211,32 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found)
 	  if (blob_name && !strcmp(blob_name, name)) {
 	    if (config.debug.rhizome)
 	      strbuf_sprintf(b, " name=\"%s\"", blob_name);
-	    ret = 1;
-	  }
+	  }else
+	    ++inconsistent;
 	} else if (strcasecmp(service, RHIZOME_SERVICE_MESHMS) == 0) {
 	  const char *blob_sender = rhizome_manifest_get(blob_m, "sender", NULL, 0);
 	  const char *blob_recipient = rhizome_manifest_get(blob_m, "recipient", NULL, 0);
 	  if (blob_sender && !strcasecmp(blob_sender, sender) && blob_recipient && !strcasecmp(blob_recipient, recipient)) {
 	    if (config.debug.rhizome)
 	      strbuf_sprintf(b, " sender=%s recipient=%s", blob_sender, blob_recipient);
-	    ret = 1;
-	  }
+	  }else
+	    ++inconsistent;
 	}
-	if (ret == 1) {
-	  // check that we can re-author this manifest
-	  if (rhizome_extract_privatekey(blob_m, NULL)==0){
-	    *found = blob_m;
-	    DEBUGF("Found duplicate payload: service=%s%s version=%llu hexhash=%s",
-		    blob_service, strbuf_str(b), blob_m->version, blob_m->fileHexHash, q_author ? q_author : ""
-		  );
-	    break;
-	  }
-	}
+      }
+      
+      if ((!inconsistent) && check_author) {
+	// check that we can re-author this manifest
+	if (rhizome_extract_privatekey(blob_m, NULL))
+	  ++inconsistent;
+      }
+      
+      if (!inconsistent) {
+	*found = blob_m;
+	DEBUGF("Found duplicate payload: service=%s%s version=%llu hexhash=%s",
+		blob_service, strbuf_str(b), blob_m->version, blob_m->fileHexHash, q_author ? q_author : ""
+	      );
+	ret = 1;
+	break;
       }
     }
     if (blob_m)

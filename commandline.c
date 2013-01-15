@@ -1098,21 +1098,29 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
     if (config.debug.rhizome) DEBUGF("manifest file %s does not exist -- creating new manifest", manifestpath);
   }
   
-  if (rhizome_stat_file(m, filepath))
+  if (rhizome_stat_file(m, filepath)){
+    rhizome_manifest_free(m);
     return -1;
+  }
   
-  if (rhizome_fill_manifest(m, filepath, *authorSidHex?&authorSid:NULL, bskhex?&bsk:NULL))
+  if (rhizome_fill_manifest(m, filepath, *authorSidHex?&authorSid:NULL, bskhex?&bsk:NULL)){
+    rhizome_manifest_free(m);
     return -1;
+  }
   
   if (m->fileLength){
-    if (rhizome_add_file(m, filepath))
+    if (rhizome_add_file(m, filepath)){
+      rhizome_manifest_free(m);
       return -1;
+    }
   }
   
   rhizome_manifest *mout = NULL;
   int ret=rhizome_manifest_finalise(m,&mout);
-  if (ret<0)
+  if (ret<0){
+    rhizome_manifest_free(m);
     return -1;
+  }
   
   if (manifestpath[0] 
       && rhizome_write_manifest_file(mout, manifestpath, 0) == -1)

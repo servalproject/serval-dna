@@ -762,6 +762,8 @@ setup_ImportForeignBundle() {
 test_ImportForeignBundle() {
    executeOk_servald rhizome import bundle fileA fileA.manifest
    assert_stdout_import_bundle fileA
+   execute --exit-status=2 --stdout --stderr $servald rhizome import bundle fileA fileA.manifest
+   assert_stdout_import_bundle fileA
    executeOk_servald rhizome list ''
    assert_rhizome_list --fromhere=0 fileA
 }

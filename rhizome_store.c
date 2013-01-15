@@ -309,6 +309,8 @@ int rhizome_import_file(rhizome_manifest *m, const char *filepath)
 
 int rhizome_stat_file(rhizome_manifest *m, const char *filepath)
 {
+  long long existing = rhizome_manifest_get_ll(m, "filesize");
+  
   m->fileLength = 0;
   if (filepath[0]) {
     struct stat stat;
@@ -316,6 +318,14 @@ int rhizome_stat_file(rhizome_manifest *m, const char *filepath)
       return WHYF("Could not stat() payload file '%s'",filepath);
     m->fileLength = stat.st_size;
   }
+  
+  // fail if the file is shorter than specified by the manifest
+  if (existing > m->fileLength)
+    return WHY("Manifest length is longer than the file");
+  
+  // if the file is longer than specified by the manifest, ignore the end.
+  if (existing!=-1 && existing < m->fileLength)
+    m->fileLength = existing;
   
   rhizome_manifest_set_ll(m, "filesize", m->fileLength);
   

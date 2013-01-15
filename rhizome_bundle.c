@@ -638,28 +638,29 @@ int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout)
   IN();
   int ret=0;
   
-  if (rhizome_manifest_check_duplicate(m, mout) == 2) {
-    /* duplicate found -- verify it so that we can write it out later */
-    rhizome_manifest_verify(*mout);
-    ret=2;
-  } else {
-    *mout=m;
-    
-    /* Convert to final form for signing and writing to disk */
-    if (rhizome_manifest_pack_variables(m))
-      RETURN(WHY("Could not convert manifest to wire format"));
-    
-    /* Sign it */
-    if (rhizome_manifest_selfsign(m))
-      RETURN(WHY("Could not sign manifest"));
-    
-    /* mark manifest as finalised */
-    m->finalised=1;
-    if (rhizome_add_manifest(m, 255 /* TTL */)) {
-      rhizome_manifest_free(m);
-      RETURN(WHY("Manifest not added to Rhizome database"));
+  // if a manifest was supplied with an ID, don't bother to check for a duplicate.
+  // we only want to filter out added files with no existing manifest.
+  if (m->haveSecret==NEW_BUNDLE_ID){
+    if (rhizome_manifest_check_duplicate(m, mout, 1) == 2) {
+      /* duplicate found -- verify it so that we can write it out later */
+      rhizome_manifest_verify(*mout);
+      RETURN(2);
     }
   }
+  
+  *mout=m;
+  
+  /* Convert to final form for signing and writing to disk */
+  if (rhizome_manifest_pack_variables(m))
+    RETURN(WHY("Could not convert manifest to wire format"));
+  
+  /* Sign it */
+  if (rhizome_manifest_selfsign(m))
+    RETURN(WHY("Could not sign manifest"));
+  
+  /* mark manifest as finalised */
+  m->finalised=1;
+  ret=rhizome_add_manifest(m, 255 /* TTL */);
   
   RETURN(ret);
 }

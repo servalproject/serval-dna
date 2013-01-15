@@ -252,7 +252,7 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
 
 int rhizome_manifest_verify(rhizome_manifest *m);
 int rhizome_manifest_check_sanity(rhizome_manifest *m_in);
-int rhizome_manifest_check_duplicate(rhizome_manifest *m_in,rhizome_manifest **m_out);
+int rhizome_manifest_check_duplicate(rhizome_manifest *m_in,rhizome_manifest **m_out, int check_author);
 
 int rhizome_manifest_bind_id(rhizome_manifest *m_in);
 int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout);
@@ -304,7 +304,7 @@ int _sqlite_exec_strbuf(struct __sourceloc, strbuf sb, const char *sqlformat,...
 double rhizome_manifest_get_double(rhizome_manifest *m,char *var,double default_value);
 int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs);
 int rhizome_update_file_priority(const char *fileid);
-int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found);
+int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, int check_author);
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
 long long rhizome_bar_version(unsigned char *bar);
 unsigned long long rhizome_bar_bidprefix_ll(unsigned char *bar);
