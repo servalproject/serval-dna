@@ -22,6 +22,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <math.h>
 #include <string.h>
 #include <ctype.h>
+#include <dirent.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #ifdef HAVE_STRINGS_H
 #include <strings.h>
 #endif
@@ -528,6 +531,40 @@ int app_dna_lookup(int argc, const char *const *argv, const struct command_line_
   return 0;
 }
 
+/* Delete all UNIX socket files in instance directory. */
+static void clean_socket_files()
+{
+  const char *instance_path = serval_instancepath();
+  char path[PATH_MAX];
+  DIR *dir;
+  struct dirent *dp;
+  struct stat st;
+
+  /* Open instance_path directory. */
+  if ((dir = opendir(instance_path)) == NULL) {
+    WARNF("Can't open %s\n", instance_path);
+    return;
+  }
+
+  /* Read all files in instance_path directory. */
+  while ((dp = readdir(dir)) != NULL) {
+
+    /* Concatenate dir and name. */
+    sprintf(path, "%s/%s", instance_path, dp->d_name);
+
+    /* Retrieve stat info. */
+    if (stat(path, &st)) {
+      WARNF("Cannot stat %s (errno=%d)\n", path, errno);
+      continue;
+    }
+
+    if (S_ISSOCK(st.st_mode)) {
+      /* The file is a UNIX socket, delete it. */
+      unlink(path);
+    }
+  }
+}
+
 int app_server_start(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (config.debug.verbose) DEBUG_argv("command", argc, argv);
@@ -591,6 +628,8 @@ int app_server_start(int argc, const char *const *argv, const struct command_lin
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
     return -1;
+  /* Clean old socket files from instance directory. */
+  clean_socket_files();
   /* Now that we know our instance path, we can ask for the default set of
      network interfaces that we will take interest in. */
   if (config.interfaces.ac == 0)
