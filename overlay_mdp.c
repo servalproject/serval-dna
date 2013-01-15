@@ -16,6 +16,8 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include <dirent.h>
+#include <sys/types.h>
 #include <sys/stat.h>
 #include "serval.h"
 #include "conf.h"
@@ -41,10 +43,47 @@ struct sched_ent mdp_named={
 
 static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame *mdp, time_ms_t now);
 
+/* Delete all UNIX socket files in instance directory. */
+static void overlay_mdp_clean_socket_files()
+{
+  const char *instance_path = serval_instancepath();
+  char path[PATH_MAX];
+  DIR *dir;
+  struct dirent *dp;
+  struct stat st;
+
+  /* Open instance_path directory. */
+  if ((dir = opendir(instance_path)) == NULL) {
+    WARNF("Can't open %s\n", instance_path);
+    return;
+  }
+
+  /* Read all files in instance_path directory. */
+  while ((dp = readdir(dir)) != NULL) {
+
+    /* Concatenate dir and name. */
+    sprintf(path, "%s/%s", instance_path, dp->d_name);
+
+    /* Retrieve stat info. */
+    if (stat(path, &st)) {
+      WARNF("Cannot stat %s (errno=%d)\n", path, errno);
+      continue;
+    }
+
+    if (S_ISSOCK(st.st_mode)) {
+      /* The file is a UNIX socket, delete it. */
+      unlink(path);
+    }
+  }
+}
+
 int overlay_mdp_setup_sockets()
 {
   struct sockaddr_un name;
   int len;
+  
+  /* Clean old socket files from instance directory. */
+  overlay_mdp_clean_socket_files();
   
   name.sun_family = AF_UNIX;
   
@@ -1101,4 +1140,3 @@ void overlay_mdp_poll(struct sched_ent *alarm)
   }
   return;
 }
-
