@@ -160,6 +160,40 @@ void sqlite_log(void *ignored, int result, const char *msg){
   WARNF("Sqlite: %d %s", result, msg);
 }
 
+static void verify_bundles(){
+  // assume that only the manifest itself can be trusted
+  // fetch all manifests and reinsert them.
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  // This cursor must be ordered descending as re-inserting the manifests will give them a new higher manifest id.
+  // If we didn't, we'd get stuck in an infinite loop.
+  sqlite3_stmt *statement = sqlite_prepare(&retry, "SELECT ROWID, MANIFEST FROM MANIFESTS ORDER BY ROWID DESC;");
+  while(sqlite_step_retry(&retry, statement)==SQLITE_ROW){
+    sqlite3_int64 rowid = sqlite3_column_int64(statement, 0);
+    const void *manifest = sqlite3_column_blob(statement, 1);
+    int manifest_length = sqlite3_column_bytes(statement, 1);
+    
+    rhizome_manifest *m=rhizome_new_manifest();
+    int ret=0;
+    ret = rhizome_read_manifest_file(m, manifest, manifest_length);
+    if (ret==0 && m->errors)
+      ret=-1;
+    if (ret==0)
+      ret=rhizome_manifest_verify(m);
+    if (ret==0){
+      m->finalised=1;
+      m->manifest_bytes=m->manifest_all_bytes;
+      // store it again, to ensure it is valid and stored correctly with matching file content.
+      ret=rhizome_store_bundle(m);
+    }
+    if (ret!=0){
+      DEBUGF("Removing invalid manifest entry @%lld", rowid);
+      //sqlite_exec_void_retry(&retry, "DELETE FROM MANIFESTS WHERE ROWID=%lld;", rowid);
+    }
+    rhizome_manifest_free(m);
+  }
+  sqlite3_finalize(statement);
+}
+
 /*
  * The MANIFESTS table 'author' column records the cryptographically verified SID of the author
  * that has write permission on the bundle, ie, possesses the Rhizome secret key that generated the
@@ -243,6 +277,15 @@ int rhizome_opendb()
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_HASH ON MANIFESTS(filehash);");
     
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=1;");
+  }
+  if (version<2){
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN service text;");
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN name text;");
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN sender text;");
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN recipient text;");
+    // if more bundle verification is required in later upgrades, move this to the end, don't run it more than once.
+    verify_bundles();
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=2;");
   }
   /* Future schema updates should be performed here. 
    The above schema can be assumed to exist.
@@ -789,13 +832,17 @@ int rhizome_store_bundle(rhizome_manifest *m)
   }
 
   const char *author = is_sid_any(m->author) ? NULL : alloca_tohex_sid(m->author);
-
+  const char *name = rhizome_manifest_get(m, "name", NULL, 0);
+  const char *sender = rhizome_manifest_get(m, "sender", NULL, 0);
+  const char *recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
+  const char *service = rhizome_manifest_get(m, "service", NULL, 0);
+  
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") != SQLITE_OK)
     return WHY("Failed to begin transaction");
 
   sqlite3_stmt *stmt;
-  if ((stmt = sqlite_prepare(&retry, "INSERT OR REPLACE INTO MANIFESTS(id,manifest,version,inserttime,bar,filesize,filehash,author) VALUES(?,?,?,?,?,?,?,?);")) == NULL)
+  if ((stmt = sqlite_prepare(&retry, "INSERT OR REPLACE INTO MANIFESTS(id,manifest,version,inserttime,bar,filesize,filehash,author,service,name,sender,recipient) VALUES(?,?,?,?,?,?,?,?,?,?,?,?);")) == NULL)
     goto rollback;
   if (!(   sqlite_code_ok(sqlite3_bind_text(stmt, 1, manifestid, -1, SQLITE_TRANSIENT))
         && sqlite_code_ok(sqlite3_bind_blob(stmt, 2, m->manifestdata, m->manifest_bytes, SQLITE_TRANSIENT))
@@ -805,6 +852,10 @@ int rhizome_store_bundle(rhizome_manifest *m)
 	&& sqlite_code_ok(sqlite3_bind_int64(stmt, 6, m->fileLength))
 	&& sqlite_code_ok(sqlite3_bind_text(stmt, 7, filehash, -1, SQLITE_TRANSIENT))
 	&& sqlite_code_ok(sqlite3_bind_text(stmt, 8, author, -1, SQLITE_TRANSIENT))
+	&& sqlite_code_ok(sqlite3_bind_text(stmt, 9, service, -1, SQLITE_TRANSIENT))
+	&& sqlite_code_ok(sqlite3_bind_text(stmt, 10, name, -1, SQLITE_TRANSIENT))
+	&& sqlite_code_ok(sqlite3_bind_text(stmt, 11, sender, -1, SQLITE_TRANSIENT))
+	&& sqlite_code_ok(sqlite3_bind_text(stmt, 12, recipient, -1, SQLITE_TRANSIENT))
   )) {
     WHYF("query failed, %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(stmt));
     goto rollback;
