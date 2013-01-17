@@ -98,6 +98,43 @@ setup_channel_nodelay() {
        set rhizome.direct.channels.a.settle_time 1
  }
 
+setup_async_paired_servalds() {
+   setup_servald
+
+   set_instance +A
+   create_single_identity
+   PATHA=$instance_dir
+   setup_channel_nodelay
+   assert_no_servald_processes
+
+   set_instance +B
+   create_single_identity
+   PATHB=$instance_dir
+   setup_channel_nodelay
+   assert_no_servald_processes
+
+# Make in-path of instance be out-path of opposite instance.
+   set_instance +A
+   executeOk_servald config get
+   executeOk_servald config \
+       set rhizome.direct.channels.a.in_path $PATHB/async-out 
+   set_instance +B
+   executeOk_servald config get
+   executeOk_servald config \
+       set rhizome.direct.channels.a.in_path $PATHA/async-out 
+
+# Make push command call scan command on opposite instance
+   echo "SERVALINSTANCE_PATH=$PATHB/servald $servald rhizome direct async scan" >$PATHA/async-push
+   echo touch $PATHA/push-called >>$PATHA/async-push
+   chmod 755 $PATHA/async-push
+   cat $PATHA/async-push >/tmp/a
+
+   echo "SERVALINSTANCE_PATH=$PATHA/servald $servald rhizome direct async scan" >$PATHB/async-push
+   echo touch $PATHB/push-called >>$PATHB/async-push
+   chmod 755 $PATHB/async-push
+   cat $PATHB/async-push >/tmp/b
+}
+
 doc_channelsetup="Channel setup works"
 setup_channelsetup() {
    setup_common
@@ -298,40 +335,7 @@ test_pushcommandiscalled() {
 
 doc_messagesaccepted="Messages are accepted on calling rhizome direct async scan"
 setup_messagesaccepted() {
-   setup_servald
-
-   set_instance +A
-   create_single_identity
-   PATHA=$instance_dir
-   setup_channel_nodelay
-   assert_no_servald_processes
-
-   set_instance +B
-   create_single_identity
-   PATHB=$instance_dir
-   setup_channel_nodelay
-   assert_no_servald_processes
-
-# Make in-path of instance be out-path of opposite instance.
-   set_instance +A
-   executeOk_servald config get
-   executeOk_servald config \
-       set rhizome.direct.channels.a.in_path $PATHB/async-out 
-   set_instance +B
-   executeOk_servald config get
-   executeOk_servald config \
-       set rhizome.direct.channels.a.in_path $PATHA/async-out 
-
-# Make push command call scan command on opposite instance
-   echo "SERVALINSTANCE_PATH=$PATHB/servald $servald rhizome direct async scan" >$PATHA/async-push
-   echo touch $PATHA/push-called >>$PATHA/async-push
-   chmod 755 $PATHA/async-push
-   cat $PATHA/async-push >/tmp/a
-
-   echo "SERVALINSTANCE_PATH=$PATHA/servald $servald rhizome direct async scan" >$PATHB/async-push
-   echo touch $PATHB/push-called >>$PATHB/async-push
-   chmod 755 $PATHB/async-push
-   cat $PATHB/async-push >/tmp/b
+   setup_async_paired_servalds
 
    set_instance +A
    rhizome_add_file file1
@@ -353,40 +357,7 @@ test_messagesaccepted() {
 
 doc_fraggedmessagesaccepted="Multi-fragrment messages are accepted on calling rhizome direct async scan"
 setup_fraggedmessagesaccepted() {
-   setup_servald
-
-   set_instance +A
-   create_single_identity
-   PATHA=$instance_dir
-   setup_channel_nodelay
-   assert_no_servald_processes
-
-   set_instance +B
-   create_single_identity
-   PATHB=$instance_dir
-   setup_channel_nodelay
-   assert_no_servald_processes
-
-# Make in-path of instance be out-path of opposite instance.
-   set_instance +A
-   executeOk_servald config get
-   executeOk_servald config \
-       set rhizome.direct.channels.a.in_path $PATHB/async-out 
-   set_instance +B
-   executeOk_servald config get
-   executeOk_servald config \
-       set rhizome.direct.channels.a.in_path $PATHA/async-out 
-
-# Make push command call scan command on opposite instance
-   echo "SERVALINSTANCE_PATH=$PATHB/servald $servald rhizome direct async scan" >$PATHA/async-push
-   echo touch $PATHA/push-called >>$PATHA/async-push
-   chmod 755 $PATHA/async-push
-   cat $PATHA/async-push >/tmp/a
-
-   echo "SERVALINSTANCE_PATH=$PATHA/servald $servald rhizome direct async scan" >$PATHB/async-push
-   echo touch $PATHB/push-called >>$PATHB/async-push
-   chmod 755 $PATHB/async-push
-   cat $PATHB/async-push >/tmp/b
+   setup_async_paired_servalds
 
    set_instance +A
    rhizome_add_file file1
