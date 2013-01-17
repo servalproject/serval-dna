@@ -384,6 +384,35 @@ test_fraggedmessagesaccepted() {
     assertGrep --matches=0 "$LOGB" "SIGABRT"
 }
 
+doc_ihavesrecorded="IHAVEs of far end are recorded"
+setup_ihavesrecorded() {
+   setup_async_paired_servalds
+
+   set_instance +A
+   rhizome_add_file file1
+   rhizome_add_file file2
+   rhizome_add_file file3
+   rhizome_add_file file4
+   rhizome_add_file file5
+   rhizome_add_file file6
+   rhizome_add_file file7
+   rhizome_add_file file8
+   BID1=$BID
+   assert [ ! -e $instance_dir/push-called ]
+   start_servald_instances +A +B
+
+   set_instance +A
+   sleep 2
+   assert [ -e $instance_dir/push-called ]
+}
+test_ihavesrecorded() {
+    set_instance +B
+    assertGrep --matches=1 "$LOGB" "Processing RD async message of length"
+    assertGrep --matches=0 "$LOGB" "SIGABRT"
+    ls -l $instance_dir/async-out/received_announcements
+    assert `ls -l $instance_dir/async-out/received_announcements | awk '{ print $5}'` == 256
+}
+
 doc_bundlerequestsgenerated="Bundle requests (SENDMEs) generated in response to IHAVE messages"
 test_bundlerequestsgenerated() {
     assert false
