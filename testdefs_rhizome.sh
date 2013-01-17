@@ -345,7 +345,7 @@ rhizome_add_file() {
    [ -e "$name" ] || create_file "$name" $size
    local sidvar="SID$instance_name"
    executeOk_servald rhizome add file "${!sidvar}" '' "$name" "$name.manifest"
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author="${!sidvar}" "$name" --and-others
    extract_manifest_vars "$name.manifest"
 }

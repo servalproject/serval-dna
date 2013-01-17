@@ -1382,9 +1382,10 @@ int app_rhizome_dump_file(int argc, const char *const *argv, const struct comman
 int app_rhizome_list(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (config.debug.verbose) DEBUG_argv("command", argc, argv);
-  const char *pins, *service, *sender_sid, *recipient_sid, *offset, *limit;
+  const char *pins, *service, *name, *sender_sid, *recipient_sid, *offset, *limit;
   cli_arg(argc, argv, o, "pin,pin...", &pins, NULL, "");
   cli_arg(argc, argv, o, "service", &service, NULL, "");
+  cli_arg(argc, argv, o, "name", &name, NULL, "");
   cli_arg(argc, argv, o, "sender_sid", &sender_sid, cli_optional_sid, "");
   cli_arg(argc, argv, o, "recipient_sid", &recipient_sid, cli_optional_sid, "");
   cli_arg(argc, argv, o, "offset", &offset, cli_uint, "0");
@@ -1396,7 +1397,7 @@ int app_rhizome_list(int argc, const char *const *argv, const struct command_lin
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
-  return rhizome_list_manifests(service, sender_sid, recipient_sid, atoi(offset), atoi(limit));
+  return rhizome_list_manifests(service, name, sender_sid, recipient_sid, atoi(offset), atoi(limit));
 }
 
 int app_keyring_create(int argc, const char *const *argv, const struct command_line_option *o, void *context)
@@ -2011,7 +2012,7 @@ struct command_line_option command_line_options[]={
    "Add a file to Rhizome and optionally write its manifest to the given path"},
   {app_rhizome_import_bundle,{"rhizome","import","bundle","<filepath>","<manifestpath>",NULL},CLIFLAG_STANDALONE,
    "Import a payload/manifest pair into Rhizome"},
-  {app_rhizome_list,{"rhizome","list","<pin,pin...>","[<service>]","[<sender_sid>]","[<recipient_sid>]","[<offset>]","[<limit>]",NULL},CLIFLAG_STANDALONE,
+  {app_rhizome_list,{"rhizome","list","[<pin,pin...>]","[<service>]","[<name>]","[<sender_sid>]","[<recipient_sid>]","[<offset>]","[<limit>]",NULL},CLIFLAG_STANDALONE,
    "List all manifests and files in Rhizome"},
   {app_rhizome_extract_bundle,{"rhizome","extract","bundle",
 	"<manifestid>","[<manifestpath>]","[<filepath>]","[<pin,pin...>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,

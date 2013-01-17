@@ -43,7 +43,7 @@ setup_InitialEmptyList() {
    setup_rhizome
 }
 test_InitialEmptyList() {
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list
 }
 
@@ -51,7 +51,7 @@ doc_AddNoAuthorNoManifest="Add with no author and no manifest file"
 setup_AddNoAuthorNoManifest() {
    setup_servald
    setup_rhizome
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list
    echo "A test file" >file1
 }
@@ -64,7 +64,7 @@ doc_AddNoManifest="Add with no manifest file"
 setup_AddNoManifest() {
    setup_servald
    setup_rhizome
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list
    echo "A test file" >file1
 }
@@ -107,7 +107,7 @@ doc_AddNonExistManifest="Add with non-existent manifest file"
 setup_AddNonExistManifest() {
    setup_servald
    setup_rhizome
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list
    echo "A test file" >file1
 }
@@ -125,7 +125,7 @@ doc_AddManifest="Add with minimal manifest file"
 setup_AddManifest() {
    setup_servald
    setup_rhizome
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list
    echo "A test file" >file1
    echo -e 'name=wah\ndate=12345' >file1.manifest
@@ -144,7 +144,7 @@ doc_AddEmpty="Add with empty payload"
 setup_AddEmpty() {
    setup_servald
    setup_rhizome
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list
 }
 test_AddEmpty() {
@@ -155,7 +155,7 @@ test_AddEmpty() {
    assertGrep .manifest '^service=file$'
    assertGrep .manifest '^name=$'
    assertGrep .manifest '^filesize=0$'
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDB1 ''
 }
 
@@ -163,7 +163,7 @@ doc_AddThenList="List contains one file after one add"
 setup_AddThenList() {
    setup_servald
    setup_rhizome
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list
    echo "A test file" >file1
    echo "Another test file" >file2
@@ -171,11 +171,11 @@ setup_AddThenList() {
 test_AddThenList() {
    # Add first file
    executeOk_servald rhizome add file $SIDB1 '' file1 file1.manifest
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1
    # Add second file
    executeOk_servald rhizome add file $SIDB1 '' file2 file2.manifest
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1 file2
 }
 
@@ -185,7 +185,7 @@ setup_ExtractManifestAfterAdd() {
    setup_rhizome
    echo "A test file" >file1
    executeOk_servald rhizome add file $SIDB1 '' file1 file1.manifest
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1
    extract_manifest_id manifestid file1.manifest
    extract_manifest_version version file1.manifest
@@ -214,7 +214,7 @@ setup_ExtractManifestFileAfterAdd() {
    setup_rhizome
    echo "A test file" >file1
    executeOk_servald rhizome add file $SIDB1 '' file1 file1.manifest
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1
    extract_manifest_id manifestid file1.manifest
    extract_manifest_version version file1.manifest
@@ -276,7 +276,7 @@ setup_ExtractManifestAfterAddNoAuthor() {
    setup_rhizome
    echo "A test file" >file1
    executeOk_servald rhizome add file '' '' file1 file1.manifest
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 file1
    extract_manifest_id manifestid file1.manifest
    extract_manifest_version version file1.manifest
@@ -332,7 +332,7 @@ setup_ExtractFileAfterAdd() {
    echo "A test file" >file1
    executeOk_servald rhizome add file $SIDB1 '' file1 file1.manifest
    tfw_cat --stderr
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1
    extract_manifest_id manifestid file1.manifest
    extract_manifest_version version file1.manifest
@@ -402,7 +402,7 @@ doc_AddDuplicate="Add same manifest detects duplicate"
 setup_AddDuplicate() {
    setup_servald
    setup_rhizome
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list
    echo "A test file" >file1
    echo "Another test file" >file2
@@ -414,7 +414,7 @@ setup_AddDuplicate() {
    executeOk_servald rhizome add file $SIDB1 '' file2 file2.manifest
    extract_stdout_secret file2_secret
    # Make sure they are both in the list.
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1 file2
 }
 test_AddDuplicate() {
@@ -425,7 +425,7 @@ test_AddDuplicate() {
    assert [ -s file1.manifestA ]
    assert_stdout_add_file file1
    extract_stdout_secret file1_dup_secret
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1 file2
    strip_signatures file1.manifest file1.manifestA
    assert diff file1.manifest file1.manifestA
@@ -434,7 +434,7 @@ test_AddDuplicate() {
    assert [ -s file2.manifestA ]
    assert_stdout_add_file file2
    extract_stdout_secret file2_dup_secret
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1 file2
    strip_signatures file2.manifest file2.manifestA
    assert diff file2.manifest file2.manifestA
@@ -454,7 +454,7 @@ test_AddMismatched() {
    assertExitStatus '!=' 0
    assert diff file1.manifest file1_2.manifest
    # And rhizome store should be unchanged.
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1 file2
 }
 
@@ -477,7 +477,7 @@ test_AddUpdateSameVersion() {
    tfw_cat -v file1_2.manifest
    assert cmp file1_2.manifest file1_2.manifest.orig
    # And rhizome store should be unchanged.
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1 file2
 }
 
@@ -496,7 +496,7 @@ test_AddUpdateNewVersion() {
    assert_stdout_add_file file1_2 name=file1
    assert_manifest_newer file1.manifest file1_2.manifest
    # Rhizome store contents reflect new payload.
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1_2 file2
 }
 
@@ -509,7 +509,7 @@ test_AddUpdateDiscoverAuthor() {
    executeOk_servald rhizome add file '' '' file1_2 file1_2.manifest
    tfw_cat --stderr
    # Rhizome store contents have new payload.
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1_2 file2
 }
 
@@ -524,7 +524,7 @@ test_AddUpdateNoAuthor() {
    tfw_cat --stderr
    assertExitStatus '!=' 0
    # Rhizome store contents have old payload.
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1 file2
 }
 
@@ -537,7 +537,7 @@ test_AddUpdateNoAuthorWithSecret() {
    executeOk_servald rhizome add file $SIDB1 '' file1_2 file1_2.manifest "$file1_secret"
    tfw_cat --stderr
    # Rhizome store contents have new payload.
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1_2 file2
 }
 
@@ -553,7 +553,7 @@ test_AddUpdateAutoVersion() {
    executeOk_servald rhizome add file $SIDB1 '' file1_2 file1_2.manifest
    assert_manifest_newer file1.manifest file1_2.manifest
    # Rhizome store contents reflect new payload.
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 file1_2 file2
 }
 
@@ -581,7 +581,7 @@ test_EncryptedPayload() {
    tfw_cat --stdout --stderr
    assert_stdout_add_file file1
    assert_manifest_complete file1.manifest
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 file1
    extract_manifest_id BID file1.manifest
    executeOk_servald rhizome extract file $BID file1x
@@ -605,7 +605,7 @@ test_MeshMSAddCreate() {
    assert_manifest_complete file1.manifest
    extract_manifest_crypt crypt file1.manifest
    assert [ $crypt = 1 ]
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 file1
    extract_manifest_id BID file1.manifest
    executeOk_servald rhizome extract file $BID file1x
@@ -623,7 +623,7 @@ test_MeshMSAddGrow() {
    executeOk_servald rhizome add file $SIDB1 '' file1 file1.manifest
    assert_stdout_add_file file1
    assert_manifest_complete file1.manifest
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 file1
    extract_manifest_id id file1.manifest
    extract_manifest_filehash filehash file1.manifest
@@ -634,7 +634,7 @@ test_MeshMSAddGrow() {
       echo -e "id=$id\nBK=$bk\nservice=MeshMS1\nsender=$SIDB1\nrecipient=$SIDB2" >file1.manifest
       echo "Message$m" >>file1
       executeOk_servald rhizome add file $SIDB1 '' file1 file1.manifest
-      executeOk_servald rhizome list ''
+      executeOk_servald rhizome list
       assert_rhizome_list --fromhere=1 file1
       extract_manifest_id idx file1.manifest
       extract_manifest_filehash filehashx file1.manifest
@@ -666,7 +666,7 @@ doc_MeshMSAddMissingRecipient="Add MeshMS without recipient fails"
 setup_MeshMSAddMissingRecipient() {
    setup_servald
    setup_rhizome
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list
    echo "Message1" >file1
    echo -e "service=MeshMS1\nsender=$SIDB1" >file1.manifest
@@ -687,8 +687,34 @@ test_MeshMSAddMissingAuthor() {
    executeOk_servald rhizome add file '' '' file1 file1.manifest
    assert_stdout_add_file file1
    assert_manifest_complete file1.manifest
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 file1
+}
+
+doc_ListFilter="List manifests by filter"
+setup_ListFilter() {
+   setup_servald
+   setup_rhizome
+   echo "File1" > file1
+   echo "File2" > file2
+   echo "File3" > file3
+   echo "File4" > file4
+   executeOk_servald rhizome add file '' '' file1 file1.manifest
+   assert_stdout_add_file file1
+   executeOk_servald rhizome add file '' '' file2 file2.manifest
+   assert_stdout_add_file file2
+   executeOk_servald rhizome add file '' '' file3 file3.manifest
+   assert_stdout_add_file file3
+   executeOk_servald rhizome add file '' '' file4 file4.manifest
+   assert_stdout_add_file file4
+}
+test_ListFilter() {
+   executeOk_servald rhizome list '' file
+   assert_rhizome_list file1 file2 file3 file4
+   executeOk_servald rhizome list '' file 'file%'
+   assert_rhizome_list file1 file2 file3 file4
+   executeOk_servald rhizome list '' '' 'file2'
+   assert_rhizome_list file2
 }
 
 doc_MeshMSListFilter="List MeshMS manifests by filter"
@@ -715,7 +741,7 @@ setup_MeshMSListFilter() {
    executeOk_servald rhizome add file '' '' file4 file4.manifest
    assert_stdout_add_file file4
    assert_manifest_complete file4.manifest
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 file1 file2 file3 file4
 }
 test_MeshMSListFilter() {
@@ -723,29 +749,29 @@ test_MeshMSListFilter() {
    assert_rhizome_list
    executeOk_servald rhizome list '' MeshMS1
    assert_rhizome_list --fromhere=1 file1 file2 file3 file4
-   executeOk_servald rhizome list '' '' $SIDB1
-   assert_rhizome_list --fromhere=1 file1 file2 file3
-   executeOk_servald rhizome list '' '' $SIDB2
-   assert_rhizome_list --fromhere=1 file4
-   executeOk_servald rhizome list '' '' $SIDB3
-   assert_rhizome_list
-   executeOk_servald rhizome list '' '' $SIDB4
-   assert_rhizome_list
    executeOk_servald rhizome list '' '' '' $SIDB1
-   assert_rhizome_list
+   assert_rhizome_list --fromhere=1 file1 file2 file3
    executeOk_servald rhizome list '' '' '' $SIDB2
-   assert_rhizome_list --fromhere=1 file1
+   assert_rhizome_list --fromhere=1 file4
    executeOk_servald rhizome list '' '' '' $SIDB3
-   assert_rhizome_list --fromhere=1 file2 file4
-   executeOk_servald rhizome list '' file '' $SIDB3
    assert_rhizome_list
    executeOk_servald rhizome list '' '' '' $SIDB4
-   assert_rhizome_list --fromhere=1 file3
-   executeOk_servald rhizome list '' '' $SIDB1 $SIDB4
-   assert_rhizome_list --fromhere=1 file3
-   executeOk_servald rhizome list '' '' $SIDB2 $SIDB4
    assert_rhizome_list
-   executeOk_servald rhizome list '' '' $SIDB2 $SIDB3
+   executeOk_servald rhizome list '' '' '' '' $SIDB1
+   assert_rhizome_list
+   executeOk_servald rhizome list '' '' '' '' $SIDB2
+   assert_rhizome_list --fromhere=1 file1
+   executeOk_servald rhizome list '' '' '' '' $SIDB3
+   assert_rhizome_list --fromhere=1 file2 file4
+   executeOk_servald rhizome list '' file '' '' $SIDB3
+   assert_rhizome_list
+   executeOk_servald rhizome list '' '' '' '' $SIDB4
+   assert_rhizome_list --fromhere=1 file3
+   executeOk_servald rhizome list '' '' '' $SIDB1 $SIDB4
+   assert_rhizome_list --fromhere=1 file3
+   executeOk_servald rhizome list '' '' '' $SIDB2 $SIDB4
+   assert_rhizome_list
+   executeOk_servald rhizome list '' '' '' $SIDB2 $SIDB3
    assert_rhizome_list --fromhere=1 file4
 }
 
@@ -764,7 +790,7 @@ test_ImportForeignBundle() {
    assert_stdout_import_bundle fileA
    execute --exit-status=2 --stdout --stderr $servald rhizome import bundle fileA fileA.manifest
    assert_stdout_import_bundle fileA
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 fileA
 }
 
@@ -779,14 +805,14 @@ setup_ImportOwnBundle() {
    extract_manifest_version version fileB.manifest
    extract_manifest_filehash filehash fileB.manifest
    rm -f $SERVALINSTANCE_PATH/rhizome.db
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list
 }
 test_ImportOwnBundle() {
    executeOk_servald rhizome import bundle fileB fileB.manifest
    assert_stdout_import_bundle fileB
    # Bundle author and sender are unknown, so appears not to be from here
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 fileB
    # Extracting the manifest discovers that it is ours.
    executeOk_servald rhizome extract manifest $manifestid fileBx.manifest
@@ -803,7 +829,7 @@ test_ImportOwnBundle() {
    assertStdoutGrep --matches=1 "^\.author:$SIDB2\$"
    assertStdoutGrep --matches=1 "^\.readonly:0\$"
    # Now bundle author is known, so appears to be from here
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDB2 fileB
 }
 
@@ -827,7 +853,7 @@ test_ImportCombinedBundle() {
    assertStdoutGrep --matches=1 "^manifestid:$manifestid\$"
    assertStdoutGrep --matches=1 "^filehash:$filehash\$"
    assertStdoutGrep --matches=1 "^filesize:$filesize\$"
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 fileA
    executeOk_servald rhizome extract bundle $manifestid fileAx fileAx
    assert diff fileA fileAx

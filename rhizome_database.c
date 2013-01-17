@@ -281,12 +281,15 @@ int rhizome_opendb()
   if (version<2){
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN service text;");
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN name text;");
-    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN sender text;");
-    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN recipient text;");
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN sender text collate nocase;");
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "ALTER TABLE MANIFESTS ADD COLUMN recipient text collate nocase;");
     // if more bundle verification is required in later upgrades, move this to the end, don't run it more than once.
     verify_bundles();
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=2;");
   }
+  
+  // TODO recreate tables with collate nocase on hex columns
+  
   /* Future schema updates should be performed here. 
    The above schema can be assumed to exist.
    All changes should attempt to preserve any existing data */
@@ -925,22 +928,56 @@ rollback:
   return -1;
 }
 
-int rhizome_list_manifests(const char *service, const char *sender_sid, const char *recipient_sid, int limit, int offset)
+int rhizome_list_manifests(const char *service, const char *name, 
+			   const char *sender_sid, const char *recipient_sid, 
+			   int limit, int offset)
 {
   IN();
   strbuf b = strbuf_alloca(1024);
-  strbuf_sprintf(b, "SELECT id, manifest, version, inserttime, author FROM manifests ORDER BY inserttime DESC");
+  strbuf_sprintf(b, "SELECT id, manifest, version, inserttime, author FROM manifests WHERE 1=1");
+  
+  if (service && *service)
+    strbuf_sprintf(b, " AND service = ?1");
+  if (name && *name)
+    strbuf_sprintf(b, " AND name like ?2");
+  if (sender_sid && *sender_sid)
+    strbuf_sprintf(b, " AND sender = ?3");
+  if (recipient_sid && *recipient_sid)
+    strbuf_sprintf(b, " AND recipient = ?4");
+  
+  strbuf_sprintf(b, " ORDER BY inserttime DESC");
+  
   if (limit)
     strbuf_sprintf(b, " LIMIT %u", limit);
   if (offset)
     strbuf_sprintf(b, " OFFSET %u", offset);
+  
   if (strbuf_overrun(b))
     RETURN(WHYF("SQL command too long: ", strbuf_str(b)));
+  
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare(&retry, "%s", strbuf_str(b));
   if (!statement)
     RETURN(-1);
+  
   int ret = 0;
+  
+  if (service && *service)
+    ret = sqlite3_bind_text(statement, 1, service, -1, SQLITE_STATIC);
+  if (ret==SQLITE_OK && name && *name)
+    ret = sqlite3_bind_text(statement, 2, name, -1, SQLITE_STATIC);
+  if (ret==SQLITE_OK && sender_sid && *sender_sid)
+    ret = sqlite3_bind_text(statement, 3, sender_sid, -1, SQLITE_STATIC);
+  if (ret==SQLITE_OK && recipient_sid && *recipient_sid)
+    ret = sqlite3_bind_text(statement, 4, recipient_sid, -1, SQLITE_STATIC);
+  
+  if (ret!=SQLITE_OK){
+    ret = WHYF("Failed to bind parameters: %s", sqlite3_errmsg(rhizome_db));
+    goto cleanup;
+  }
+  
+  ret=0;
+  
   size_t rows = 0;
   cli_puts("12"); cli_delim("\n"); // number of columns
   cli_puts("service"); cli_delim(":");
@@ -1037,6 +1074,7 @@ int rhizome_list_manifests(const char *service, const char *sender_sid, const ch
     }
     if (m) rhizome_manifest_free(m);
   }
+cleanup:
   sqlite3_finalize(statement);
   RETURN(ret);
 }
