@@ -834,6 +834,7 @@ int64_t rhizome_store_bundle(rhizome_manifest *m)
     filehash[0] = '\0';
   }
 
+  dump("m->author",m->author,SID_SIZE);
   const char *author = is_sid_any(m->author) ? NULL : alloca_tohex_sid(m->author);
   const char *name = rhizome_manifest_get(m, "name", NULL, 0);
   const char *sender = rhizome_manifest_get(m, "sender", NULL, 0);
@@ -1339,115 +1340,62 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
     
 /* Retrieve a manifest from the database, given its manifest ID.
  *
- * Returns 1 if manifest is found (if mp != NULL then a new manifest struct is allocated, made
- * finalisable and * assigned to *mp, caller is responsible for freeing).
- * Returns 0 if manifest is not found (*mp is unchanged).
- * Returns -1 on error (*mp is unchanged).
+ * Returns 0 if manifest is found
+ * Returns 1 if manifest is not found
+ * Returns -1 on error
+ * Caller is responsible for allocating and freeing rhizome_manifest
  */
-int rhizome_retrieve_manifest_by_bar(unsigned char *bar,
-				     rhizome_manifest **tmp)
+int rhizome_retrieve_manifest(const char *manifestpattern, rhizome_manifest *m){
+  int ret=0;
+  
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  
+  sqlite3_stmt *statement = sqlite_prepare(&retry, "SELECT manifest, version, inserttime, author FROM manifests WHERE id LIKE ?");
+  if (!statement)
+    return -1;
+
+  sqlite3_bind_text(statement, 1, manifestpattern, -1, SQLITE_STATIC);
+  if (sqlite_step_retry(&retry, statement) == SQLITE_ROW){
+    const char *manifestblob = (char *) sqlite3_column_blob(statement, 0);
+    long long q_version = (long long) sqlite3_column_int64(statement, 1);
+    long long q_inserttime = (long long) sqlite3_column_int64(statement, 2);
+    const char *q_author = (const char *) sqlite3_column_text(statement, 3);
+    size_t manifestblobsize = sqlite3_column_bytes(statement, 0); // must call after sqlite3_column_blob()
+    
+    if (rhizome_read_manifest_file(m, manifestblob, manifestblobsize)){
+      ret=WHYF("Manifest matching %s exists but is invalid", manifestpattern);
+      goto done;
+    }
+    
+    if (q_author){
+      if (stowSid(m->author, 0, q_author) == -1)
+	WARNF("Manifest %s contains invalid author=%s -- ignored", manifestpattern, alloca_str_toprint(q_author));
+    }
+    
+    if (m->version!=q_version)
+      WARNF("Version mismatch, manifest is %lld, database is %lld", m->version, q_version);
+    
+    m->inserttime = q_inserttime;
+  }else{
+    INFOF("Manifest %s was not found", manifestpattern);
+    ret=1;
+  }
+  
+done:
+  sqlite3_finalize(statement);
+  return ret;  
+}
+int rhizome_retrieve_manifest_by_bar(unsigned char *bar,rhizome_manifest *m)
 {
   /* Obtain Manifest by prefix */
-  char bid_low[RHIZOME_MANIFEST_ID_STRLEN+1];
-  char bid_high[RHIZOME_MANIFEST_ID_STRLEN+1];
-  int i;
-  tohex(bid_low,&bar[RHIZOME_BAR_PREFIX_OFFSET],RHIZOME_BAR_PREFIX_BYTES);
-  tohex(bid_high,&bar[RHIZOME_BAR_PREFIX_OFFSET],RHIZOME_BAR_PREFIX_BYTES);
-  for(i=RHIZOME_BAR_PREFIX_BYTES*2;i<RHIZOME_MANIFEST_ID_STRLEN;i++) {
-    bid_low[i]='0';
-    bid_high[i]='F';
-  }
-  bid_low[RHIZOME_MANIFEST_ID_STRLEN]=0;
-  bid_high[RHIZOME_MANIFEST_ID_STRLEN]=0;
-  // DEBUGF("Looking for manifest between %s and %s",bid_low,bid_high);
-  
-  long long rowid = -1;
-  sqlite3_blob *blob=NULL;
-  sqlite_exec_int64(&rowid, "select rowid from manifests where id between '%s' and '%s';", bid_low,bid_high);
-  if (rowid >= 0 && sqlite3_blob_open(rhizome_db, "main", "manifests", "manifest", rowid, 0, &blob) != SQLITE_OK)
-    rowid = -1;
-  if (rowid == -1) {
-    DEBUGF("Row not found");
-    return -1;
-  }
-  
-  // Extract manifest from blob 
-  char buffer[1024];
-  int bytes=sqlite3_blob_bytes(blob);
-  if (bytes>1024||bytes<1) {
-    sqlite3_blob_close(blob);
-    return -1;
-  }
-  
-  if (sqlite3_blob_read(blob,&buffer[0],bytes,0)!=SQLITE_OK)
-    {
-      sqlite3_blob_close(blob);
-      return -1;
-    }
-  
-  *tmp=rhizome_new_manifest();
-  if (!*tmp) {
-    sqlite3_blob_close(blob);
-    return -1;
-  }
-  if (rhizome_read_manifest_file(*tmp,buffer,bytes))
-    {  
-      rhizome_manifest_free(*tmp);
-      *tmp=NULL;
-      sqlite3_blob_close(blob);
-      return -1;
-    }
-  
-  sqlite3_blob_close(blob);
-  return 1;
+  char bid_pattern[RHIZOME_MANIFEST_ID_STRLEN+1+1];
+  tohex(bid_pattern,&bar[RHIZOME_BAR_PREFIX_OFFSET],RHIZOME_BAR_PREFIX_BYTES);
+  bid_pattern[RHIZOME_BAR_PREFIX_BYTES*2]='%';
+  bid_pattern[RHIZOME_BAR_PREFIX_BYTES*2+1]=0;
+  return rhizome_retrieve_manifest(bid_pattern, m);
 }
 
-/* Retrieve a manifest from the database, given its manifest ID.
- *
- * Returns 1 if manifest is found (if mp != NULL then a new manifest struct is allocated, made
- * finalisable and * assigned to *mp, caller is responsible for freeing).
- * Returns 0 if manifest is not found (*mp is unchanged).
- * Returns -1 on error (*mp is unchanged).
- */
-int rhizome_retrieve_manifest_bybidhex(char *bidhex,rhizome_manifest **tmp)
+int rhizome_retrieve_manifest_by_bidhex(char *bidhex,rhizome_manifest *m)
 {
-  long long rowid = -1;
-  sqlite3_blob *blob=NULL;
-  sqlite_exec_int64(&rowid, "select rowid from manifests where id = '%s';", bidhex);
-  if (rowid >= 0 && sqlite3_blob_open(rhizome_db, "main", "manifests", "manifest", rowid, 0, &blob) != SQLITE_OK)
-    rowid = -1;
-  if (rowid == -1) {
-    DEBUGF("Row not found");
-    return -1;
-  }
-  
-  // Extract manifest from blob 
-  char buffer[1024];
-  int bytes=sqlite3_blob_bytes(blob);
-  if (bytes>1024||bytes<1) {
-    sqlite3_blob_close(blob);
-    return -1;
-  }
-  
-  if (sqlite3_blob_read(blob,&buffer[0],bytes,0)!=SQLITE_OK)
-    {
-      sqlite3_blob_close(blob);
-      return -1;
-    }
-  
-  *tmp=rhizome_new_manifest();
-  if (!*tmp) {
-    sqlite3_blob_close(blob);
-    return -1;
-  }
-  if (rhizome_read_manifest_file(*tmp,buffer,bytes))
-    {  
-      rhizome_manifest_free(*tmp);
-      *tmp=NULL;
-      sqlite3_blob_close(blob);
-      return -1;
-    }
-  
-  sqlite3_blob_close(blob);
-  return 1;
+  return rhizome_retrieve_manifest(bidhex, m);
 }

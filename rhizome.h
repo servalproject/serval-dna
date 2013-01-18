@@ -316,9 +316,8 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
 long long rhizome_bar_version(unsigned char *bar);
 unsigned long long rhizome_bar_bidprefix_ll(unsigned char *bar);
-int rhizome_retrieve_manifest_bybidhex(char *bidhex,rhizome_manifest **tmp);
-int rhizome_retrieve_manifest_by_bar(unsigned char *bar,
-				     rhizome_manifest **tmp);
+int rhizome_retrieve_manifest_by_bidhex(char *bidhex,rhizome_manifest *m);
+int rhizome_retrieve_manifest_by_bar(unsigned char *bar,rhizome_manifest *m);
 int rhizome_retrieve_file(const char *fileid, const char *filepath,
 			  const unsigned char *key);
 int rhizome_list_manifests(const char *service, const char *name, 

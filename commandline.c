@@ -1288,11 +1288,12 @@ int app_rhizome_extract_bundle(int argc, const char *const *argv, const struct c
   if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
     return WHYF("invalid bsk: \"%s\"", bskhex);
 
-  rhizome_manifest *m = NULL;  
-  ret = rhizome_retrieve_manifest_bybidhex(manifestIdUpper, &m);
+  rhizome_manifest *m = rhizome_new_manifest();
+  ret = rhizome_retrieve_manifest_by_bidhex(manifestIdUpper, m);
+  DEBUGF("ret=%d",ret);
 
-  if (ret==1){
-    // ignore errors when extracting private key
+  if (ret==0){
+    // ignore errors when extracting private key   
     rhizome_extract_privatekey(m, NULL);
     const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
     

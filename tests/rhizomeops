@@ -800,6 +800,7 @@ setup_ImportOwnBundle() {
    setup_rhizome
    echo "Hello from B" >fileB
    executeOk_servald rhizome add file $SIDB2 '' fileB fileB.manifest
+   assertGrep fileB.manifest "^BK="
    assert_stdout_add_file fileB
    extract_manifest_id manifestid fileB.manifest
    extract_manifest_version version fileB.manifest
@@ -810,6 +811,7 @@ setup_ImportOwnBundle() {
 }
 test_ImportOwnBundle() {
    executeOk_servald rhizome import bundle fileB fileB.manifest
+   tfw_cat --stderr
    assert_stdout_import_bundle fileB
    # Bundle author and sender are unknown, so appears not to be from here
    executeOk_servald rhizome list
