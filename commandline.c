@@ -1309,7 +1309,7 @@ int app_rhizome_extract_bundle(int argc, const char *const *argv, const struct c
       cli_puts("filehash"); cli_delim(":"); cli_puts(m->fileHexHash); cli_delim("\n");
     }
     ret=0;
-  } else ret=-1;
+  } else ret=1;
   
   int retfile=0;
   
