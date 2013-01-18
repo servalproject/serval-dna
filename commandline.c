@@ -1290,9 +1290,9 @@ int app_rhizome_extract_bundle(int argc, const char *const *argv, const struct c
 
   rhizome_manifest *m = NULL;  
   ret = rhizome_retrieve_manifest_bybidhex(manifestIdUpper, &m);
-  
-  if (ret==0){
-    // ignore errors
+
+  if (ret==1){
+    // ignore errors when extracting private key
     rhizome_extract_privatekey(m, NULL);
     const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
     
@@ -1308,7 +1308,8 @@ int app_rhizome_extract_bundle(int argc, const char *const *argv, const struct c
     if (m->fileLength != 0) {
       cli_puts("filehash"); cli_delim(":"); cli_puts(m->fileHexHash); cli_delim("\n");
     }
-  }
+    ret=0;
+  } else ret=-1;
   
   int retfile=0;
   
