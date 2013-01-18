@@ -1057,15 +1057,20 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
     return -1;
   cli_arg(argc, argv, o, "pin", &pin, NULL, "");
   cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "");
-  if (cli_arg(argc, argv, o, "bsk", &bskhex, cli_optional_bundle_key, "") == -1)
+  if (cli_arg(argc, argv, o, "bsk", &bskhex, cli_optional_bundle_key, NULL) == -1)
     return -1;
   
   sid_t authorSid;
   if (authorSidHex[0] && fromhexstr(authorSid.binary, authorSidHex, SID_SIZE) == -1)
     return WHYF("invalid author_sid: %s", authorSidHex);
   rhizome_bk_t bsk;
-  if (bskhex[0] && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
-    return WHYF("invalid bsk: %s", bskhex);
+  
+  // treat empty string the same as null
+  if (bskhex && !*bskhex)
+    bskhex=NULL;
+  
+  if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
+    return WHYF("invalid bsk: \"%s\"", bskhex);
   
   if (create_serval_instance_dir() == -1)
     return -1;
@@ -1080,7 +1085,6 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
   if (!m)
     return WHY("Manifest struct could not be allocated -- not added to rhizome");
   
-  
   if (manifestpath[0] && access(manifestpath, R_OK) == 0) {
     if (config.debug.rhizome) DEBUGF("reading manifest from %s", manifestpath);
     /* Don't verify the manifest, because it will fail if it is incomplete.
@@ -1094,29 +1098,32 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
     if (config.debug.rhizome) DEBUGF("manifest file %s does not exist -- creating new manifest", manifestpath);
   }
   
-  if (rhizome_stat_file(m, filepath))
+  if (rhizome_stat_file(m, filepath)){
+    rhizome_manifest_free(m);
     return -1;
+  }
   
-  if (rhizome_fill_manifest(m, filepath, *authorSidHex?&authorSid:NULL, &bsk))
+  if (rhizome_fill_manifest(m, filepath, *authorSidHex?&authorSid:NULL, bskhex?&bsk:NULL)){
+    rhizome_manifest_free(m);
     return -1;
-  
-  /* Keep note as to whether we are supposed to be encrypting this file or not */
-  // TODO should we encrypt??
-  m->payloadEncryption=0;
-  rhizome_manifest_set_ll(m,"crypt",m->payloadEncryption?1:0); 
+  }
   
   if (m->fileLength){
-    if (rhizome_add_file(m, filepath))
+    if (rhizome_add_file(m, filepath)){
+      rhizome_manifest_free(m);
       return -1;
+    }
   }
   
   rhizome_manifest *mout = NULL;
   int ret=rhizome_manifest_finalise(m,&mout);
-  if (ret<0)
+  if (ret<0){
+    rhizome_manifest_free(m);
     return -1;
+  }
   
   if (manifestpath[0] 
-      && rhizome_write_manifest_file(mout, manifestpath) == -1)
+      && rhizome_write_manifest_file(mout, manifestpath, 0) == -1)
     ret = WHY("Could not overwrite manifest file.");
   const char *service = rhizome_manifest_get(mout, "service", NULL, 0);
   if (service) {
@@ -1141,6 +1148,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
     cli_puts(secret);
     cli_delim("\n");
   }
+  cli_puts("version");    cli_delim(":"); cli_printf("%lld", m->version);    cli_delim("\n");
   cli_puts("filesize");
   cli_delim(":");
   cli_printf("%lld", mout->fileLength);
@@ -1181,6 +1189,9 @@ int app_rhizome_import_bundle(int argc, const char *const *argv, const struct co
   if (status<0)
     goto cleanup;
   
+  // TODO generalise the way we dump manifest details from add, import & export
+  // so callers can also generalise their parsing
+  
   const char *service = rhizome_manifest_get(m, "service", NULL, 0);
   if (service) {
     cli_puts("service");
@@ -1194,10 +1205,8 @@ int app_rhizome_import_bundle(int argc, const char *const *argv, const struct co
     cli_puts(alloca_tohex(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES));
     cli_delim("\n");
   }
-  cli_puts("filesize");
-  cli_delim(":");
-  cli_printf("%lld", m->fileLength);
-  cli_delim("\n");
+  cli_puts("version");    cli_delim(":"); cli_printf("%lld", m->version);    cli_delim("\n");
+  cli_puts("filesize");   cli_delim(":"); cli_printf("%lld", m->fileLength); cli_delim("\n");
   if (m->fileLength != 0) {
     cli_puts("filehash");
     cli_delim(":");
@@ -1217,86 +1226,163 @@ cleanup:
   return status;
 }
 
-int app_rhizome_extract_manifest(int argc, const char *const *argv, const struct command_line_option *o, void *context)
+int app_rhizome_append_manifest(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (config.debug.verbose) DEBUG_argv("command", argc, argv);
-  const char *pins, *manifestid, *manifestpath;
-  cli_arg(argc, argv, o, "pin,pin...", &pins, NULL, "");
-  if (cli_arg(argc, argv, o, "manifestid", &manifestid, cli_manifestid, NULL)
-   || cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, NULL) == -1)
+  const char *manifestpath, *filepath;
+  if (cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "") == -1
+    || cli_arg(argc, argv, o, "filepath", &filepath, NULL, "") == -1)
     return -1;
-  /* Ensure the Rhizome database exists and is open */
-  if (create_serval_instance_dir() == -1)
-    return -1;
-  if (!(keyring = keyring_open_with_pins(pins)))
-    return -1;
-  if (rhizome_opendb() == -1)
-    return -1;
-  /* Extract the manifest from the database */
-  rhizome_manifest *m = NULL;
-  int ret = rhizome_retrieve_manifest(manifestid, &m);
-  switch (ret) {
-    case 0: ret = 1; break;
-    case 1: ret = 0;
-      if (manifestpath && strcmp(manifestpath, "-") == 0) {
-	cli_puts("manifest");
-	cli_delim(":");
-	cli_write(m->manifestdata, m->manifest_all_bytes);
-	cli_delim("\n");
-      } else if (manifestpath) {
-	/* If the manifest has been read in from database, the blob is there,
-	   and we can lie and say we are finalised and just want to write it
-	   out.  TODO: really should have a dirty/clean flag, so that write
-	   works if clean but not finalised. */
-	m->finalised=1;
-	if (rhizome_write_manifest_file(m, manifestpath) == -1)
-	  ret = -1;
-      }
-      break;
-    case -1: break;
-    default: ret = WHYF("Unsupported return value %d", ret); break;
-  }
+  
+  rhizome_manifest *m = rhizome_new_manifest();
+  if (!m)
+    return WHY("Out of manifests.");
+  
+  int ret=0;
+  if (rhizome_read_manifest_file(m, manifestpath, 0))
+    ret=-1;
+  // TODO why doesn't read manifest file set finalised???
+  m->finalised=1;
+  
+  if (ret==0 && rhizome_write_manifest_file(m, filepath, 1) == -1)
+    ret = -1;
+  
   if (m)
     rhizome_manifest_free(m);
   return ret;
 }
 
-int app_rhizome_extract_file(int argc, const char *const *argv, const struct command_line_option *o, void *context)
+int app_rhizome_extract_bundle(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (config.debug.verbose) DEBUG_argv("command", argc, argv);
-  const char *fileid, *filepath, *keyhex;
-  if (cli_arg(argc, argv, o, "fileid", &fileid, cli_fileid, NULL)
-   || cli_arg(argc, argv, o, "filepath", &filepath, NULL, "") == -1)
+  const char *manifestpath, *filepath, *manifestid, *pins, *bskhex;
+  if (cli_arg(argc, argv, o, "manifestid", &manifestid, cli_manifestid, "") == -1
+      || cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "") == -1
+      || cli_arg(argc, argv, o, "filepath", &filepath, NULL, "") == -1
+      || cli_arg(argc, argv, o, "pin,pin...", &pins, NULL, "") == -1
+      || cli_arg(argc, argv, o, "bsk", &bskhex, cli_optional_bundle_key, NULL) == -1)
     return -1;
-  cli_arg(argc, argv, o, "key", &keyhex, cli_optional_bundle_crypt_key, "");
-  unsigned char key[RHIZOME_CRYPT_KEY_STRLEN + 1];
-  if (keyhex[0] && fromhexstr(key, keyhex, RHIZOME_CRYPT_KEY_BYTES) == -1)
-    return -1;
+  
   /* Ensure the Rhizome database exists and is open */
   if (create_serval_instance_dir() == -1)
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
-  /* Extract the file from the database.
-     We don't provide a decryption key here, because we don't know it.
-     (We probably should allow the user to provide one).
-  */
-  int ret = rhizome_retrieve_file(fileid, filepath, keyhex[0] ? key : NULL);
-  switch (ret) {
-    case 0: ret = 1; break;
-    case 1: ret = 0; break;
-    case -1: break;
-    default: ret = WHYF("Unsupported return value %d", ret); break;
+  if (!(keyring = keyring_open_with_pins(pins)))
+    return -1;
+  
+  int ret=0;
+  
+  unsigned char manifest_id[RHIZOME_MANIFEST_ID_BYTES];
+  if (fromhexstr(manifest_id, manifestid, RHIZOME_MANIFEST_ID_BYTES) == -1)
+    return WHY("Invalid manifest ID");
+  
+  char manifestIdUpper[RHIZOME_MANIFEST_ID_STRLEN + 1];
+  tohex(manifestIdUpper, manifest_id, RHIZOME_MANIFEST_ID_BYTES);
+  
+  // treat empty string the same as null
+  if (bskhex && !*bskhex)
+    bskhex=NULL;
+  
+  rhizome_bk_t bsk;
+  if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
+    return WHYF("invalid bsk: \"%s\"", bskhex);
+
+  rhizome_manifest *m = NULL;  
+  ret = rhizome_retrieve_manifest_bybidhex(manifestIdUpper, &m);
+  
+  if (ret==0){
+    // ignore errors
+    rhizome_extract_privatekey(m, NULL);
+    const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
+    
+    cli_puts("service");    cli_delim(":"); cli_puts(blob_service); cli_delim("\n");
+    cli_puts("manifestid"); cli_delim(":"); cli_puts(manifestIdUpper); cli_delim("\n");
+    cli_puts("version");    cli_delim(":"); cli_printf("%lld", m->version); cli_delim("\n");
+    cli_puts("inserttime"); cli_delim(":"); cli_printf("%lld", m->inserttime); cli_delim("\n");
+    if (m->haveSecret) {
+      cli_puts(".author");  cli_delim(":"); cli_puts(alloca_tohex_sid(m->author)); cli_delim("\n");
+    }
+    cli_puts(".readonly");  cli_delim(":"); cli_printf("%d", m->haveSecret?0:1); cli_delim("\n");
+    cli_puts("filesize");   cli_delim(":"); cli_printf("%lld", (long long) m->fileLength); cli_delim("\n");
+    if (m->fileLength != 0) {
+      cli_puts("filehash"); cli_delim(":"); cli_puts(m->fileHexHash); cli_delim("\n");
+    }
   }
+  
+  int retfile=0;
+  
+  if (ret==0 && m->fileLength != 0 && filepath && *filepath){
+    // TODO, this may cause us to search for an author a second time if the above call to rhizome_extract_privatekey failed
+    retfile = rhizome_extract_file(m, filepath, bskhex?&bsk:NULL);
+  }
+  
+  if (ret==0 && manifestpath && *manifestpath){
+    if (strcmp(manifestpath, "-") == 0) {
+      // always extract a manifest to stdout, even if writing the file itself failed.
+      cli_puts("manifest");
+      cli_delim(":");
+      cli_write(m->manifestdata, m->manifest_all_bytes);
+      cli_delim("\n");
+    } else {
+      int append = (strcmp(manifestpath, filepath)==0)?1:0;
+      // don't write out the manifest if we were asked to append it and writing the file failed.
+      if ((!append) || retfile==0){
+	/* If the manifest has been read in from database, the blob is there,
+	 and we can lie and say we are finalised and just want to write it
+	 out.  TODO: really should have a dirty/clean flag, so that write
+	 works if clean but not finalised. */
+	m->finalised=1;
+	if (rhizome_write_manifest_file(m, manifestpath, append) == -1)
+	  ret = -1;
+      }
+    }
+  }
+  
+  if (retfile)
+    ret=retfile;
+  
+  if (m)
+    rhizome_manifest_free(m);
+    
   return ret;
+}
+
+int app_rhizome_dump_file(int argc, const char *const *argv, const struct command_line_option *o, void *context)
+{
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
+  const char *fileid, *filepath;
+  if (cli_arg(argc, argv, o, "filepath", &filepath, NULL, "") == -1
+      || cli_arg(argc, argv, o, "fileid", &fileid, cli_fileid, NULL) == -1)
+    return -1;
+  
+  if (create_serval_instance_dir() == -1)
+    return -1;
+  if (rhizome_opendb() == -1)
+    return -1;
+  
+  if (!rhizome_exists(fileid))
+    return 1;
+  
+  int64_t length;
+  if (rhizome_dump_file(fileid, filepath, &length))
+    return -1;
+  
+  cli_puts("filehash"); cli_delim(":");
+  cli_puts(fileid); cli_delim("\n");
+  cli_puts("filesize"); cli_delim(":");
+  cli_printf("%lld", length); cli_delim("\n");
+  
+  return 0;
 }
 
 int app_rhizome_list(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (config.debug.verbose) DEBUG_argv("command", argc, argv);
-  const char *pins, *service, *sender_sid, *recipient_sid, *offset, *limit;
+  const char *pins, *service, *name, *sender_sid, *recipient_sid, *offset, *limit;
   cli_arg(argc, argv, o, "pin,pin...", &pins, NULL, "");
   cli_arg(argc, argv, o, "service", &service, NULL, "");
+  cli_arg(argc, argv, o, "name", &name, NULL, "");
   cli_arg(argc, argv, o, "sender_sid", &sender_sid, cli_optional_sid, "");
   cli_arg(argc, argv, o, "recipient_sid", &recipient_sid, cli_optional_sid, "");
   cli_arg(argc, argv, o, "offset", &offset, cli_uint, "0");
@@ -1308,7 +1394,7 @@ int app_rhizome_list(int argc, const char *const *argv, const struct command_lin
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
-  return rhizome_list_manifests(service, sender_sid, recipient_sid, atoi(offset), atoi(limit));
+  return rhizome_list_manifests(service, name, sender_sid, recipient_sid, atoi(offset), atoi(limit));
 }
 
 int app_keyring_create(int argc, const char *const *argv, const struct command_line_option *o, void *context)
@@ -1915,18 +2001,27 @@ struct command_line_option command_line_options[]={
    "Get specified configuration variable."},
   {app_vomp_console,{"console",NULL},0,
     "Test phone call life-cycle from the console"},
+  {app_rhizome_append_manifest, {"rhizome", "append", "manifest", "<filepath>", "<manifestpath>", NULL}, CLIFLAG_STANDALONE,
+    "Append a manifest to the end of the file it belongs to."},
   {app_rhizome_hash_file,{"rhizome","hash","file","<filepath>",NULL},CLIFLAG_STANDALONE,
    "Compute the Rhizome hash of a file"},
   {app_rhizome_add_file,{"rhizome","add","file","<author_sid>","<pin>","<filepath>","[<manifestpath>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,
    "Add a file to Rhizome and optionally write its manifest to the given path"},
   {app_rhizome_import_bundle,{"rhizome","import","bundle","<filepath>","<manifestpath>",NULL},CLIFLAG_STANDALONE,
    "Import a payload/manifest pair into Rhizome"},
-  {app_rhizome_list,{"rhizome","list","<pin,pin...>","[<service>]","[<sender_sid>]","[<recipient_sid>]","[<offset>]","[<limit>]",NULL},CLIFLAG_STANDALONE,
+  {app_rhizome_list,{"rhizome","list","[<pin,pin...>]","[<service>]","[<name>]","[<sender_sid>]","[<recipient_sid>]","[<offset>]","[<limit>]",NULL},CLIFLAG_STANDALONE,
    "List all manifests and files in Rhizome"},
-  {app_rhizome_extract_manifest,{"rhizome","extract","manifest","<manifestid>","[<manifestpath>]","[<pin,pin...>]",NULL},CLIFLAG_STANDALONE,
-   "Extract a manifest from Rhizome and write it to the given path"},
-  {app_rhizome_extract_file,{"rhizome","extract","file","<fileid>","[<filepath>]","[<key>]",NULL},CLIFLAG_STANDALONE,
-   "Extract a file from Rhizome and write it to the given path"},
+  {app_rhizome_extract_bundle,{"rhizome","extract","bundle",
+	"<manifestid>","[<manifestpath>]","[<filepath>]","[<pin,pin...>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,
+	"Extract a manifest and decrypted file to the given paths."},
+  {app_rhizome_extract_bundle,{"rhizome","extract","manifest",
+	"<manifestid>","[<manifestpath>]","[<pin,pin...>]",NULL},CLIFLAG_STANDALONE,
+        "Extract a manifest from Rhizome and write it to the given path"},
+  {app_rhizome_extract_bundle,{"rhizome","extract","file",
+	"<manifestid>","[<filepath>]","[<pin,pin...>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,
+        "Extract a file from Rhizome and write it to the given path"},
+  {app_rhizome_dump_file,{"rhizome","dump","file","<fileid>","[<filepath>]",NULL},CLIFLAG_STANDALONE,
+   "Extract a file from Rhizome and write it to the given path without attempting decryption"},
   {app_rhizome_direct_sync,{"rhizome","direct","sync","[peer url]",NULL},
    CLIFLAG_STANDALONE,
    "Synchronise with the specified Rhizome Direct server. Return when done."},

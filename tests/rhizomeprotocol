@@ -89,6 +89,26 @@ test_FileTransfer() {
    assert_rhizome_received file2
 }
 
+doc_EncryptedTransfer="Encrypted payload can be opened by destination"
+setup_EncryptedTransfer() {
+   setup_common
+   set_instance +A
+   echo "Clear Text" >file1
+   echo -e "service=MeshMS1\nsender=$SIDA\nrecipient=$SIDB" >file1.manifest
+   executeOk_servald rhizome add file $SIDA '' file1 file1.manifest
+   extract_manifest_id BID file1.manifest
+   extract_manifest_version VERSION file1.manifest
+   start_servald_instances +A +B
+   foreach_instance +A assert_peers_are_instances +B
+   foreach_instance +B assert_peers_are_instances +A
+}
+test_EncryptedTransfer() {
+   wait_until bundle_received_by $BID:$VERSION +B
+   set_instance +B
+   executeOk_servald rhizome extract file $BID file1x
+   assert diff file1 file1x
+}
+
 doc_DisablingHTTPServer="Disabling HTTP rhizome transports works"
 setup_DisablingHTTPServer() {
    setup_common

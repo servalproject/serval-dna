@@ -533,6 +533,7 @@ int serval_packetvisualise(XPRINTF xpf, const char *message, const unsigned char
 
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_opendb();
+void rhizome_cleanup();
 
 int parseCommandLine(const char *argv0, int argc, const char *const *argv);
 

@@ -317,6 +317,8 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
   str_toupper_inplace(id);
   m->version = rhizome_manifest_get_ll(m, "version");
   
+  // TODO, work out why the cache was failing and fix it, then prove that it is faster than accessing the database.
+  
   // skip the cache for now
   long long dbVersion = -1;
   if (sqlite_exec_int64(&dbVersion, "SELECT version FROM MANIFESTS WHERE id='%s';", id) == -1)
@@ -720,14 +722,8 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
     }
   }
 
-  if (!m->fileHashedP)
-    return WHY("Manifest missing filehash");
-
   // If the payload is already available, no need to fetch, so import now.
-  long long gotfile = 0;
-  if (sqlite_exec_int64(&gotfile, "SELECT COUNT(*) FROM FILES WHERE ID='%s' and datavalid=1;", m->fileHexHash) != 1)
-    return WHY("select failed");
-  if (gotfile) {
+  if (rhizome_exists(m->fileHexHash)){
     if (config.debug.rhizome_rx)
       DEBUGF("   fetch not started - payload already present, so importing instead");
     if (rhizome_add_manifest(m, m->ttl-1) == -1)
@@ -1359,27 +1355,58 @@ void rhizome_fetch_write(struct rhizome_fetch_slot *slot)
 
 int rhizome_fetch_flush_blob_buffer(struct rhizome_fetch_slot *slot)
 {
-  sqlite3_blob *blob;
-  int ret = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", slot->rowid, 1 /* read/write */, &blob);
-  if (ret!=SQLITE_OK) {
-    if (blob) sqlite3_blob_close(blob);
-    return -1;
-  }
-  ret=sqlite3_blob_write(blob, slot->blob_buffer, slot->blob_buffer_bytes, 
-			 slot->file_ofs-slot->blob_buffer_bytes);
-  sqlite3_blob_close(blob); blob=NULL;
-
-  if (ret!=SQLITE_OK) {
-    WHYF("sqlite3_blob_write(,,%d,%lld) failed, %s", 
-	 slot->blob_buffer_bytes,slot->file_ofs-slot->blob_buffer_bytes,
-	 sqlite3_errmsg(rhizome_db));
-    rhizome_queue_ignore_manifest(slot->manifest, 
-				  &slot->peer_ipandport, slot->peer_sid, 60000);
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  do{
+    sqlite3_blob *blob=NULL;
+    
+    int ret = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", slot->rowid, 1 /* read/write */, &blob);
+    if (ret==SQLITE_BUSY || ret==SQLITE_LOCKED)
+      goto again;
+    else if (ret!=SQLITE_OK){
+      WHYF("sqlite3_blob_open() failed, %s", 
+	   sqlite3_errmsg(rhizome_db));
+      goto failed;
+    }
+    
+    ret=sqlite3_blob_write(blob, slot->blob_buffer, slot->blob_buffer_bytes, 
+			   slot->file_ofs-slot->blob_buffer_bytes);
+    
+    if (ret==SQLITE_BUSY || ret==SQLITE_LOCKED)
+      goto again;
+    else if (ret!=SQLITE_OK) {
+      WHYF("sqlite3_blob_write(,,%d,%lld) failed, %s", 
+	   slot->blob_buffer_bytes,slot->file_ofs-slot->blob_buffer_bytes,
+	   sqlite3_errmsg(rhizome_db));
+      goto failed;
+    }
+    
+    ret=sqlite3_blob_close(blob); 
+    blob=NULL;
+    if (ret==SQLITE_BUSY || ret==SQLITE_LOCKED)
+      goto again;
+    else if (ret!=SQLITE_OK) {
+      WHYF("sqlite3_blob_close() failed, %s", 
+	   sqlite3_errmsg(rhizome_db));
+      goto failed;
+    }
+    
+    slot->blob_buffer_bytes=0;
+    return 0;
+    
+  failed:
+    if (blob) sqlite3_blob_close(blob); 
     rhizome_fetch_close(slot);
     return -1;
-  }
-  slot->blob_buffer_bytes=0;
-  return 0;
+    
+  again:
+    if (blob)
+      sqlite3_blob_close(blob); 
+    blob=NULL;
+    
+    if (_sqlite_retry(__WHENCE__, &retry, "sqlite3_blob_write")==0)
+      return -1;
+    
+  }while(1);
 }
 
 int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int bytes)
@@ -1431,8 +1458,10 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
       slot->blob_buffer_bytes+=count;
       slot->file_ofs+=count;
       buffer+=count; bytesRemaining-=count;
-      if (slot->blob_buffer_bytes==slot->blob_buffer_size)
-	rhizome_fetch_flush_blob_buffer(slot);
+      if (slot->blob_buffer_bytes==slot->blob_buffer_size){
+	if (rhizome_fetch_flush_blob_buffer(slot))
+	  RETURN (-1);
+      }
     }
   }
 
@@ -1450,8 +1479,10 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 
       char hash_out[SHA512_DIGEST_STRING_LENGTH+1];
       SHA512_End(&slot->sha512_context, (char *)hash_out);      
-      if (slot->blob_buffer_bytes) rhizome_fetch_flush_blob_buffer(slot);
-      
+      if (slot->blob_buffer_bytes){
+	if (rhizome_fetch_flush_blob_buffer(slot))
+	  RETURN (-1);
+      }
       sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
       if (strcasecmp(hash_out,slot->manifest->fileHexHash)) {
 	if (config.debug.rhizome_rx)
@@ -1469,8 +1500,8 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 	RETURN(-1);
       } else {
 	int ret=sqlite_exec_void_retry(&retry,
-				       "UPDATE FILES SET datavalid=1 WHERE id='%s'",
-				       slot->manifest->fileHexHash);
+				       "UPDATE FILES SET inserttime=%lld, datavalid=1 WHERE id='%s'",
+				       gettime_ms(), slot->manifest->fileHexHash);
 	if (ret!=SQLITE_OK) 
 	  if (config.debug.rhizome_rx)
 	    DEBUGF("error marking row valid: %s",sqlite3_errmsg(rhizome_db));

@@ -175,7 +175,6 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 	    /* Force to upper case to avoid case sensitive comparison problems later. */
 	    str_toupper_inplace(m->values[m->var_count]);
 	    strcpy(m->fileHexHash, m->values[m->var_count]);
-	    m->fileHashedP = 1;
 	  }
 	} else if (strcasecmp(var, "BK") == 0) {
 	  if (!rhizome_str_is_bundle_key(value)) {
@@ -587,23 +586,31 @@ int rhizome_manifest_selfsign(rhizome_manifest *m)
   return 0;
 }
 
-int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename)
+int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename, char append)
 {
   if (config.debug.rhizome) DEBUGF("write manifest (%d bytes) to %s", m->manifest_all_bytes, filename);
   if (!m) return WHY("Manifest is null.");
   if (!m->finalised) return WHY("Manifest must be finalised before it can be written.");
-  FILE *f = fopen(filename, "w");
-  if (f == NULL) {
-    WHY_perror("fopen");
-    return WHYF("Cannot write manifest to %s", filename);
+  FILE *f = fopen(filename, (append?"a":"w"));
+  if (f == NULL)
+    return WHYF_perror("Cannot write manifest to %s", filename);
+  
+  int ret = 0;
+  if (fwrite(m->manifestdata, m->manifest_all_bytes, 1, f)!=1)
+    ret=WHYF_perror("fwrite(%s)", filename);
+  
+  if (ret==0 && append){
+    unsigned char marker[4];
+    write_uint16(marker, m->manifest_all_bytes);
+    marker[2]=0x41;
+    marker[3]=0x10;
+    if (fwrite(marker, 4,1,f)!=1)
+      ret=WHYF_perror("fwrite(%s)", filename);
   }
-  int r1 = fwrite(m->manifestdata, m->manifest_all_bytes, 1, f);
-  int r2 = fclose(f);
-  if (r1 != 1)
-    return WHYF("fwrite(%s) returned %d", filename, r1);
-  if (r2 == EOF)
-    return WHYF("fclose(%s) returned %d", filename, r2);
-  return 0;
+  
+  if (fclose(f))
+    ret=WHYF_perror("fclose(%s)", filename);
+  return ret;
 }
 
 /*
@@ -628,46 +635,34 @@ int rhizome_manifest_dump(rhizome_manifest *m, const char *msg)
 
 int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout)
 {
-  /* Add the manifest and its associated file to the Rhizome database, 
-   generating an "id" in the process.
-   PGS @20121003 - Hang on, didn't we create the ID above? Presumably the
-   following does NOT in fact generate a bundle ID. 
-   */
+  IN();
   int ret=0;
-  if (rhizome_manifest_check_duplicate(m, mout) == 2) {
-    /* duplicate found -- verify it so that we can write it out later */
-    rhizome_manifest_verify(*mout);
-    ret=2;
-  } else {
-    *mout=m;
-    
-    /* set version of manifest, either from version variable, or using current time */
-    if (rhizome_manifest_get(m,"version",NULL,0)==NULL)
-    {
-      /* No version set */
-      m->version = gettime_ms();
-      rhizome_manifest_set_ll(m,"version",m->version);
-    }
-    else
-      m->version = rhizome_manifest_get_ll(m,"version");
-    
-    /* Convert to final form for signing and writing to disk */
-    if (rhizome_manifest_pack_variables(m))
-      return WHY("Could not convert manifest to wire format");
-    
-    /* Sign it */
-    if (rhizome_manifest_selfsign(m))
-      return WHY("Could not sign manifest");
-    
-    /* mark manifest as finalised */
-    m->finalised=1;
-    if (rhizome_add_manifest(m, 255 /* TTL */)) {
-      rhizome_manifest_free(m);
-      return WHY("Manifest not added to Rhizome database");
+  
+  // if a manifest was supplied with an ID, don't bother to check for a duplicate.
+  // we only want to filter out added files with no existing manifest.
+  if (m->haveSecret==NEW_BUNDLE_ID){
+    if (rhizome_manifest_check_duplicate(m, mout, 1) == 2) {
+      /* duplicate found -- verify it so that we can write it out later */
+      rhizome_manifest_verify(*mout);
+      RETURN(2);
     }
   }
   
-  return ret;
+  *mout=m;
+  
+  /* Convert to final form for signing and writing to disk */
+  if (rhizome_manifest_pack_variables(m))
+    RETURN(WHY("Could not convert manifest to wire format"));
+  
+  /* Sign it */
+  if (rhizome_manifest_selfsign(m))
+    RETURN(WHY("Could not sign manifest"));
+  
+  /* mark manifest as finalised */
+  m->finalised=1;
+  ret=rhizome_add_manifest(m, 255 /* TTL */);
+  
+  RETURN(ret);
 }
 
 int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSid, rhizome_bk_t *bsk){
@@ -716,84 +711,44 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
     }
   }
 
+  /* set version of manifest, either from version variable, or using current time */
+  if (rhizome_manifest_get(m,"version",NULL,0)==NULL)
+  {
+    /* No version set, default to the current time */
+    m->version = gettime_ms();
+    rhizome_manifest_set_ll(m,"version",m->version);
+  }
+  
   const char *id = rhizome_manifest_get(m, "id", NULL, 0);
   if (id == NULL) {
     if (config.debug.rhizome) DEBUG("creating new bundle");
     if (rhizome_manifest_bind_id(m) == -1) {
-      rhizome_manifest_free(m);
       return WHY("Could not bind manifest to an ID");
     }
   } else {
     if (config.debug.rhizome) DEBUGF("modifying existing bundle bid=%s", id);
-    // Modifying an existing bundle.  If an author SID is supplied, we must ensure that it is valid,
-    // ie, that identity has permission to alter the bundle.  If no author SID is supplied but a BSK
-    // is supplied, then use that to alter the bundle.  Otherwise, search the keyring for an
-    // identity with permission to alter the bundle.
-    if (!is_sid_any(m->author)) {
-      // Check that the given author has permission to alter the bundle, and extract the secret
-      // bundle key if so.
-      int result = rhizome_extract_privatekey(m);
-      switch (result) {
-	case -1:
-	  rhizome_manifest_free(m);
-	  return WHY("error in rhizome_extract_privatekey()");
-	case 0:
-	  break;
-	case 1:
-	  if (!rhizome_is_bk_none(bsk))
-	    break;
-	  rhizome_manifest_free(m);
-	  return WHY("Manifest does not have BK field");
-	case 2:
-	  rhizome_manifest_free(m);
-	  return WHY("Author unknown");
-	case 3:
-	  rhizome_manifest_free(m);
-	  return WHY("Author does not have a Rhizome Secret");
-	case 4:
-	  rhizome_manifest_free(m);
-	  return WHY("Author does not have permission to modify manifest");
-	default:
-	  rhizome_manifest_free(m);
-	  return WHYF("Unknown result from rhizome_extract_privatekey(): %d", result);
-      }
-    }
-    if (!rhizome_is_bk_none(bsk)){
-      if (config.debug.rhizome) DEBUGF("bskhex=%s", alloca_tohex(bsk->binary, RHIZOME_BUNDLE_KEY_BYTES));
-      if (m->haveSecret) {
-	// If a bundle secret key was supplied that does not match the secret key derived from the
-	// author, then warn but carry on using the author's.
-	if (memcmp(bsk, m->cryptoSignSecret, RHIZOME_BUNDLE_KEY_BYTES) != 0)
-	  WARNF("Supplied bundle secret key is invalid -- ignoring");
-      } else {
-	// The caller provided the bundle secret key, so ensure that it corresponds to the bundle's
-	// public key (its bundle ID), otherwise it won't work.
-	memcpy(m->cryptoSignSecret, bsk, RHIZOME_BUNDLE_KEY_BYTES);
-	if (rhizome_verify_bundle_privatekey(m,m->cryptoSignSecret,
-					     m->cryptoSignPublic) == -1) {
-	  rhizome_manifest_free(m);
-	  return WHY("Incorrect BID secret key.");
-	}
-      }
-    }
-    // If we still don't know the bundle secret or the author, then search for an author.
-    if (!m->haveSecret && is_sid_any(m->author)) {
-      if (config.debug.rhizome) DEBUG("bundle author not specified, searching keyring");
-      int result = rhizome_find_bundle_author(m);
-      if (result != 0) {
-	rhizome_manifest_free(m);
-	switch (result) {
-	  case -1:
-	    return WHY("error in rhizome_find_bundle_author()");
-	  case 4:
-	    return WHY("Manifest does not have BK field");
-	  case 1:
-	    return WHY("No author found");
-	  default:
-	    return WHYF("Unknown result from rhizome_find_bundle_author(): %d", result);
-	}
-      }
+    
+    // Modifying an existing bundle.  Make sure we can find the bundle secret.
+    if (rhizome_extract_privatekey_required(m, bsk))
+      return -1;
+    
+    // TODO assert that new version > old version?
+  }
+  
+  int crypt = rhizome_manifest_get_ll(m,"crypt"); 
+  if (crypt==-1 && m->fileLength){
+    // no explicit crypt flag, should we encrypt this bundle?
+    char *sender = rhizome_manifest_get(m, "sender", NULL, 0);
+    char *recipient = rhizome_manifest_get(m, "recipient", NULL, 0);
+    
+    // anything sent from one person to another should be considered private and encrypted by default
+    if (sender && recipient){
+      if (config.debug.rhizome)
+	DEBUGF("Implicitly adding payload encryption due to presense of sender & recipient fields");
+      m->payloadEncryption=1;
+      rhizome_manifest_set_ll(m,"crypt",1); 
     }
   }
+  
   return 0;
 }

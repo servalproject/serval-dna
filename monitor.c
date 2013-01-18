@@ -414,7 +414,7 @@ static int monitor_lookup_match(int argc, const char *const *argv, const struct 
   struct monitor_context *c=context;
   const char *sid=argv[2];
   const char *ext=argv[4];
-  const char *name=argv[5];
+  const char *name=argc>=4?argv[5]:"";
   
   if (!my_subscriber)
     return monitor_write_error(c,"I don't know who I am");
@@ -517,7 +517,7 @@ struct command_line_option monitor_options[]={
   {monitor_set,{"monitor","vomp","<codec>","...",NULL},0,""},
   {monitor_set,{"monitor","<type>",NULL},0,""},
   {monitor_clear,{"ignore","<type>",NULL},0,""},
-  {monitor_lookup_match,{"lookup","match","<sid>","<port>","<ext>","<name>",NULL},0,""},
+  {monitor_lookup_match,{"lookup","match","<sid>","<port>","<ext>","[<name>]",NULL},0,""},
   {monitor_call, {"call","<sid>","<local_did>","<remote_did>",NULL},0,""},
   {monitor_call_ring, {"ringing","<token>",NULL},0,""},
   {monitor_call_pickup, {"pickup","<token>",NULL},0,""},
