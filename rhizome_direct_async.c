@@ -270,7 +270,7 @@ void rhizome_direct_async_periodic(struct sched_ent *alarm)
   return;
 }
 
-int rhizome_direct_process_reconstructed_message(unsigned char *message,int len)
+int rhizome_direct_process_reconstructed_message(int channel,unsigned char *message,int len)
 {
   if (config.debug.rhizome_async)
     DEBUGF("Processing RD async message of length %d",len);
@@ -298,6 +298,32 @@ int rhizome_direct_process_reconstructed_message(unsigned char *message,int len)
 	   end);
   }
 
+  char filename[1024];
+  snprintf(filename,1024,"%s/received_announcements",
+	   config.rhizome.direct.channels.av[channel].value.out_path);
+  FILE *f=fopen(filename,"a+");
+
+  int messageType=ob_get(ob);
+  if (config.debug.rhizome_async)
+    DEBUGF("RD Async message type = 0x%02x",messageType);
+  switch(messageType) {
+  case RDA_MSG_BARS_RAW:
+    /* Raw BARs */
+    while(ob->position+RHIZOME_BAR_BYTES<=len) {
+    if (config.debug.rhizome_async)
+      dump("received IHAVE BAR",&ob->bytes[ob->position],RHIZOME_BAR_BYTES);
+    /* Remember that far end has announced this BAR */
+    if (f) fwrite(&ob->bytes[ob->position],RHIZOME_BAR_BYTES,1,f);    
+    DEBUGF("See whether we want to receive this bundle");
+    /* Look at next BAR */
+    ob->position+=RHIZOME_BAR_BYTES;
+    }
+  default:
+  if (config.debug.rhizome_async)
+    DEBUGF("Ignoring unknown or unimplemented message type.");
+  }
+
+  fclose(f);
   ob_free(ob);
 
   DEBUGF("Not implemented!");
@@ -428,7 +454,7 @@ int rhizome_direct_async_messagescan()
 						   message_buffer,
 						   message_list[message_count].byte_count);
 		  rhizome_direct_process_reconstructed_message
-		    (message_buffer,message_list[message_count].byte_count);
+		    (channel,message_buffer,message_list[message_count].byte_count);
 
 		  if (config.debug.rhizome_async)
 		    DEBUGF("unlink(%s)",message_list[message_count].filename);
@@ -495,7 +521,7 @@ int rhizome_direct_async_messagescan()
 		if (config.debug.rhizome_async)
 		  DEBUGF("Processing rhizome direct async message of %d fragments",j-i+1);
 		rhizome_direct_process_reconstructed_message
-		  (message_buffer,total_bytes);
+		  (channel,message_buffer,total_bytes);
 	      } else {
 		DEBUGF("Failed to reconstruct multi-fragment message"
 		       " (got length = %d instead of %d).",
