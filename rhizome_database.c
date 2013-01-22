@@ -930,11 +930,11 @@ rollback:
 
 int rhizome_list_manifests(const char *service, const char *name, 
 			   const char *sender_sid, const char *recipient_sid, 
-			   int limit, int offset)
+			   int limit, int offset, char count_rows)
 {
   IN();
   strbuf b = strbuf_alloca(1024);
-  strbuf_sprintf(b, "SELECT id, manifest, version, inserttime, author FROM manifests WHERE 1=1");
+  strbuf_sprintf(b, "SELECT id, manifest, version, inserttime, author, rowid FROM manifests WHERE 1=1");
   
   if (service && *service)
     strbuf_sprintf(b, " AND service = ?1");
@@ -947,8 +947,6 @@ int rhizome_list_manifests(const char *service, const char *name,
   
   strbuf_sprintf(b, " ORDER BY inserttime DESC");
   
-  if (limit)
-    strbuf_sprintf(b, " LIMIT %u", limit);
   if (offset)
     strbuf_sprintf(b, " OFFSET %u", offset);
   
@@ -977,24 +975,30 @@ int rhizome_list_manifests(const char *service, const char *name,
   }
   
   ret=0;
-  
   size_t rows = 0;
-  cli_puts("12"); cli_delim("\n"); // number of columns
-  cli_puts("service"); cli_delim(":");
-  cli_puts("id"); cli_delim(":");
-  cli_puts("version"); cli_delim(":");
-  cli_puts("date"); cli_delim(":");
-  cli_puts(".inserttime"); cli_delim(":");
-  cli_puts(".author"); cli_delim(":");
-  cli_puts(".fromhere"); cli_delim(":");
-  cli_puts("filesize"); cli_delim(":");
-  cli_puts("filehash"); cli_delim(":");
-  cli_puts("sender"); cli_delim(":");
-  cli_puts("recipient"); cli_delim(":");
-  cli_puts("name"); cli_delim("\n"); // should be last, because name may contain ':'
+  
+  const char *names[]={
+    "_id",
+    "service",
+    "id",
+    "version",
+    "date",
+    ".inserttime",
+    ".author",
+    ".fromhere",
+    "filesize",
+    "filehash",
+    "sender",
+    "recipient",
+    "name"
+  };
+  cli_columns(13,names);
+  
   while (sqlite_step_retry(&retry, statement) == SQLITE_ROW) {
     ++rows;
-    if (!(   sqlite3_column_count(statement) == 5
+    if (limit>0 && rows>limit)
+      break;
+    if (!(   sqlite3_column_count(statement) == 6
 	  && sqlite3_column_type(statement, 0) == SQLITE_TEXT
 	  && sqlite3_column_type(statement, 1) == SQLITE_BLOB
 	  && sqlite3_column_type(statement, 2) == SQLITE_INTEGER
@@ -1017,6 +1021,8 @@ int rhizome_list_manifests(const char *service, const char *name,
     long long q_version = sqlite3_column_int64(statement, 2);
     long long q_inserttime = sqlite3_column_int64(statement, 3);
     const char *q_author = (const char *) sqlite3_column_text(statement, 4);
+    long long rowid = sqlite3_column_int64(statement, 5);
+    
     if (rhizome_read_manifest_file(m, manifestblob, manifestblobsize) == -1) {
       WARNF("MANIFESTS row id=%s has invalid manifest blob -- skipped", q_manifestid);
     } else {
@@ -1024,6 +1030,7 @@ int rhizome_list_manifests(const char *service, const char *name,
       if (blob_version != q_version)
 	WARNF("MANIFESTS row id=%s version=%lld does not match manifest blob.version=%lld", q_manifestid, q_version, blob_version);
       int match = 1;
+      
       const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
       if (service[0] && !(blob_service && strcasecmp(service, blob_service) == 0))
 	match = 0;
@@ -1037,43 +1044,64 @@ int rhizome_list_manifests(const char *service, const char *name,
 	if (!(blob_recipient && strcasecmp(recipient_sid, blob_recipient) == 0))
 	  match = 0;
       }
+      
       if (match) {
 	const char *blob_name = rhizome_manifest_get(m, "name", NULL, 0);
 	long long blob_date = rhizome_manifest_get_ll(m, "date");
 	const char *blob_filehash = rhizome_manifest_get(m, "filehash", NULL, 0);
 	long long blob_filesize = rhizome_manifest_get_ll(m, "filesize");
 	int from_here = 0;
+	unsigned char senderSid[SID_SIZE];
+	unsigned char recipientSid[SID_SIZE];
+	
+	if (blob_sender)
+	  stowSid(senderSid, 0, blob_sender);
+	if (blob_recipient)
+	  stowSid(recipientSid, 0, blob_recipient);
+	
 	if (q_author) {
 	  if (config.debug.rhizome) DEBUGF("q_author=%s", alloca_str_toprint(q_author));
-	  unsigned char authorSid[SID_SIZE];
-	  stowSid(authorSid, 0, q_author);
+	  stowSid(m->author, 0, q_author);
 	  int cn = 0, in = 0, kp = 0;
-	  from_here = keyring_find_sid(keyring, &cn, &in, &kp, authorSid);
+	  from_here = keyring_find_sid(keyring, &cn, &in, &kp, m->author);
 	}
 	if (!from_here && blob_sender) {
 	  if (config.debug.rhizome) DEBUGF("blob_sender=%s", alloca_str_toprint(blob_sender));
-	  unsigned char senderSid[SID_SIZE];
-	  stowSid(senderSid, 0, blob_sender);
 	  int cn = 0, in = 0, kp = 0;
 	  from_here = keyring_find_sid(keyring, &cn, &in, &kp, senderSid);
 	}
 	if (config.debug.rhizome) DEBUGF("manifest payload size = %lld", blob_filesize);
-	cli_puts(blob_service ? blob_service : ""); cli_delim(":");
-	cli_puts(q_manifestid); cli_delim(":");
-	cli_printf("%lld", blob_version); cli_delim(":");
-	cli_printf("%lld", blob_date); cli_delim(":");
-	cli_printf("%lld", q_inserttime); cli_delim(":");
-	cli_puts(q_author ? q_author : ""); cli_delim(":");
-	cli_printf("%d", from_here); cli_delim(":");
-	cli_printf("%lld", blob_filesize); cli_delim(":");
-	cli_puts(blob_filehash ? blob_filehash : ""); cli_delim(":");
-	cli_puts(blob_sender ? blob_sender : ""); cli_delim(":");
-	cli_puts(blob_recipient ? blob_recipient : ""); cli_delim(":");
-	cli_puts(blob_name ? blob_name : ""); cli_delim("\n");
+	
+	cli_put_long(rowid, ":");
+	cli_put_string(blob_service, ":");
+	cli_put_hexvalue(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES, ":");
+	cli_put_long(blob_version, ":");
+	cli_put_long(blob_date, ":");
+	cli_put_long(q_inserttime, ":");
+	cli_put_hexvalue(q_author?m->author:NULL, SID_SIZE, ":");
+	cli_put_long(from_here, ":");
+	cli_put_long(m->fileLength, ":");
+	
+	unsigned char filehash[SHA512_DIGEST_LENGTH];
+	if (m->fileLength)
+	  fromhex(filehash, blob_filehash, SHA512_DIGEST_LENGTH);
+	
+	cli_put_hexvalue(m->fileLength?filehash:NULL, SHA512_DIGEST_LENGTH, ":");
+	
+	cli_put_hexvalue(blob_sender?senderSid:NULL, SID_SIZE, ":");
+	cli_put_hexvalue(blob_recipient?recipientSid:NULL, SID_SIZE, ":");
+	cli_put_string(blob_name, "\n");
       }
     }
     if (m) rhizome_manifest_free(m);
   }
+  
+  if (ret==0 && count_rows){
+    while (sqlite_step_retry(&retry, statement) == SQLITE_ROW)
+      ++rows;
+  }
+  cli_row_count(rows);
+  
 cleanup:
   sqlite3_finalize(statement);
   RETURN(ret);

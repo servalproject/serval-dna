@@ -630,6 +630,12 @@ int cli_putchar(char c);
 int cli_puts(const char *str);
 int cli_printf(const char *fmt, ...);
 int cli_delim(const char *opt);
+void cli_columns(int columns, const char *names[]);
+void cli_row_count(int rows);
+void cli_field_name(const char *name, const char *delim);
+void cli_put_long(int64_t value, const char *delim);
+void cli_put_string(const char *value, const char *delim);
+void cli_put_hexvalue(const unsigned char *value, int length, const char *delim);
 
 int overlay_mdp_getmyaddr(int index,unsigned char *sid);
 int overlay_mdp_bind(unsigned char *localaddr,int port); 
