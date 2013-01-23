@@ -79,15 +79,21 @@ static FILE *_open_logging()
       logpath = config.log.file;
     }
     if (!logpath || !logpath[0]) {
-      logfile = stderr; //fopen("/tmp/foo", "a");
+      logfile = stderr;
       INFO("No logfile configured -- logging to stderr");
-    } else if ((logfile = fopen(logpath, "a"))) {
-      setlinebuf(logfile);
-      INFOF("Logging to %s (fd %d)", logpath, fileno(logfile));
     } else {
-      logfile = stderr; //fopen("/tmp/bar", "a");
-      WARNF_perror("fopen(%s)", logpath);
-      WARNF("Cannot append to %s -- falling back to stderr", logpath);
+      char path[1024];
+      if (!FORM_SERVAL_INSTANCE_PATH(path, logpath)) {
+	logfile = stderr;
+	INFO("Logfile path overrun -- logging to stderr");
+      } else if ((logfile = fopen(path, "a"))) {
+	setlinebuf(logfile);
+	INFOF("Logging to %s (fd %d)", path, fileno(logfile));
+      } else {
+	logfile = stderr;
+	WARNF_perror("fopen(%s)", path);
+	WARNF("Cannot append to %s -- falling back to stderr", path);
+      }
     }
   }
   return logfile;

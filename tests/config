@@ -264,4 +264,24 @@ test_InterfacesModernIncompatible() {
       --error-pattern='config file.*not loaded.*incompatible'
 }
 
+doc_LogFileAbsolute="Absolute log file"
+test_LogFileAbsolute() {
+   executeOk_servald config \
+      set debug.verbose true \
+      set log.file "$PWD/log"
+   executeOk_servald echo one
+   assertGrep log '^DEBUG:.*echo:argv\[1\]="one"$'
+   assertGrep --matches=0 --message="log contains no error messages" log '^ERROR:'
+}
+
+doc_LogFileRelative="Relative log file"
+test_LogFileRelative() {
+   executeOk_servald config \
+      set debug.verbose true \
+      set log.file "log"
+   executeOk_servald echo one
+   assertGrep "$SERVALINSTANCE_PATH/log" '^DEBUG:.*echo:argv\[1\]="one"$'
+   assertGrep --matches=0 --message="log contains no error messages" "$SERVALINSTANCE_PATH/log" '^ERROR:'
+}
+
 runTests "$@"

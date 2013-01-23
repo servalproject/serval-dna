@@ -210,7 +210,7 @@ ATOM(char, vomp,		        0, cf_opt_char_boolean,, "")
 END_STRUCT
 
 STRUCT(log)
-STRING(256,                 file,       "", cf_opt_absolute_path,, "Absolute path of log file")
+STRING(256,                 file,       "", cf_opt_str_nonempty,, "Path of log file, either absolute or relative to instance directory")
 ATOM(int,                   show_pid,   1, cf_opt_int_boolean,, "If true, all log lines contain PID of logging process")
 ATOM(int,                   show_time,  1, cf_opt_int_boolean,, "If true, all log lines contain time stamp")
 END_STRUCT
