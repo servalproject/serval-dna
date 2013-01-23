@@ -26,6 +26,7 @@ rexp_filesize='[0-9]\{1,\}'
 rexp_version='[0-9]\{1,\}'
 rexp_crypt='[0-9]\{1,\}'
 rexp_date='[0-9]\{1,\}'
+rexp_rowid='[0-9]\{1,\}'
 
 assert_manifest_complete() {
    local manifest="$1"
@@ -49,8 +50,8 @@ assert_manifest_complete() {
 # Assertion function:
 # - assert that the output of a "servald rhizome list" command exactly describes the given files
 assert_rhizome_list() {
-   assertStdoutIs --stderr --line=1 -e '12\n'
-   assertStdoutIs --stderr --line=2 -e 'service:id:version:date:.inserttime:.author:.fromhere:filesize:filehash:sender:recipient:name\n'
+   assertStdoutIs --stderr --line=1 -e '13\n'
+   assertStdoutIs --stderr --line=2 -e '_id:service:id:version:date:.inserttime:.author:.fromhere:filesize:filehash:sender:recipient:name\n'
    local filename
    local exactly=true
    local re__inserttime="$rexp_date"
@@ -65,7 +66,7 @@ assert_rhizome_list() {
       --*) error "unsupported option: $filename";;
       *)
          unpack_manifest_for_grep "$filename"
-         assertStdoutGrep --stderr --matches=1 "^$re_service:$re_manifestid:$re_version:$re_date:$re__inserttime:$re__author:$re__fromhere:$re_filesize:$re_filehash:$re_sender:$re_recipient:$re_name\$"
+         assertStdoutGrep --stderr --matches=1 "^$rexp_rowid:$re_service:$re_manifestid:$re_version:$re_date:$re__inserttime:$re__author:$re__fromhere:$re_filesize:$re_filehash:$re_sender:$re_recipient:$re_name\$"
          let files+=1
          ;;
       esac
