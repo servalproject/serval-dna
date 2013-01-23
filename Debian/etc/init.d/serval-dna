@@ -31,7 +31,7 @@ test -f "$DEFAULTFILE" && . "$DEFAULTFILE"
 
 test -x "$DAEMON" || exit 0
 
-NAME="${DAEMON%%*/}"
+NAME="${DAEMON##*/}"
 
 if [ -z "$CONFFILE" ]; then
     CONFFILE="$SERVALINSTANCE_PATH/serval.conf"
