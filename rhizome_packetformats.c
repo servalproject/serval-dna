@@ -206,7 +206,7 @@ int overlay_rhizome_add_advertisements(struct decode_context *context, int inter
 				 NULL, NULL,
 				 NULL, my_subscriber)){
     ob_rewind(e);
-    return -1;
+    RETURN(-1);
   }
   
   /* Version of rhizome advert block (1 byte):
@@ -217,12 +217,12 @@ int overlay_rhizome_add_advertisements(struct decode_context *context, int inter
    */
   if (ob_append_byte(e,3+skipmanifests)){
     ob_rewind(e);
-    return -1;
+    RETURN(-1);
   }
   /* Rhizome HTTP server port number (2 bytes) */
   if (ob_append_ui16(e, rhizome_http_server_port)){
     ob_rewind(e);
-    return -1;
+    RETURN(-1);
   }
   
   for(pass=skipmanifests;pass<2;pass++) {
