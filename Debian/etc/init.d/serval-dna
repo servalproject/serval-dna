@@ -13,28 +13,31 @@
 # Description:       Daemon for providing Serval Mesh network services
 ### END INIT INFO
 
-PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
-SCRIPTNAME=serval-dna
-DESC="Serval DNA daemon"
-NAME=servald
-USER=serval
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
 
+SCRIPTNAME=serval-dna
 DEFAULTFILE=/etc/default/$SCRIPTNAME
-DEFAULTFILE="${0%/*}/../default/$SCRIPTNAME"
-DAEMON=/usr/local/sbin/$NAME
-INSTANCEDIR=/var/local/serval/instance
 SCRIPTPATH=/etc/init.d/$SCRIPTNAME
 
+DESC="Serval DNA daemon"
+USER=serval
+DAEMON=/usr/sbin/servald
+SERVALINSTANCE_PATH=/var/serval-node
+START_DAEMON=yes
+
 . /lib/lsb/init-functions
+
 test -f "$DEFAULTFILE" && . "$DEFAULTFILE"
 
 test -x "$DAEMON" || exit 0
 
+NAME="${DAEMON%%*/}"
+
 if [ -z "$CONFFILE" ]; then
-    CONFFILE="$INSTANCEDIR/serval.conf"
+    CONFFILE="$SERVALINSTANCE_PATH/serval.conf"
 fi
 if [ -z "$PIDFILE" ]; then
-    PIDFILE="$INSTANCEDIR/servald.pid"
+    PIDFILE="${SERVALINSTANCE_PATH:-/var/serval-node}/servald.pid"
 fi
 
 if [ ! "$START_DAEMON" = "yes" -a "$1" = "start" ]; then
@@ -52,7 +55,6 @@ if ! id $USER >/dev/null 2>&1; then
     exit 1
 fi
 
-SERVALINSTANCE_PATH="$INSTANCEDIR"
 export SERVALINSTANCE_PATH
 
 daemon_start() {
@@ -127,4 +129,4 @@ esac
 
 exit 0
 
-# vim:sw=4:
+# vim:sw=8:sts=4:sw=4:
