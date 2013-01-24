@@ -3,10 +3,10 @@
 # Provides:          serval-dna
 # Required-Start:    $local_fs
 # Required-Stop:     $local_fs
-# Should-Start:
-# Should-Stop:
-# X-Start-Before:
-# X-Stop-After:
+# Should-Start:      $network
+# Should-Stop:       $network
+# X-Start-Before:    asterisk
+# X-Stop-After:      asterisk
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
 # Short-Description: Serval DNA daemon

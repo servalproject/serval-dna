@@ -5,10 +5,13 @@
 # means the /etc/init.d/serval-dna script will not start the daemon.
 #START_DAEMON=yes
 
+# USER
+# Set this to start the daemon running as the given user.
+#USER=serval
+
 # SERVALINSTANCE_PATH
-# Set and export this to make the daemon use an instance path other than the
-# default.
-#export SERVALINSTANCE_PATH=/var/serval-node
+# Set this to make the daemon use an instance path other than the default.
+#SERVALINSTANCE_PATH=/var/serval-node
 
 # DAEMON
 # Set to use an executable installed in a non-standard location, eg,
