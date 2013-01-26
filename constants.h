@@ -190,7 +190,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 /* in milliseconds of inactivity */
 // 20 seconds to start ringing
-#define VOMP_CALL_DIAL_TIMEOUT 5000
+#define VOMP_CALL_DIAL_TIMEOUT 15000
 // 60 seconds to answer
 #define VOMP_CALL_RING_TIMEOUT 60000
 // 2 minutes of zero network traffic
