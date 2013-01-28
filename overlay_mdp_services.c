@@ -109,7 +109,7 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
     memset(reply.out.dst.sid,0xff,SID_SIZE);
   }
   reply.out.dst.port=MDP_PORT_RHIZOME_RESPONSE;
-  reply.out.queue=OQ_ORDINARY;
+  reply.out.queue=OQ_OPPORTUNISTIC;
   reply.out.payload[0]='B'; // reply contains blocks
   // include 16 bytes of BID prefix for identification
   bcopy(&mdp->out.payload[0],&reply.out.payload[1],16);
@@ -129,6 +129,9 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
 	if (blockBytes>blockLength) blockBytes=blockLength;
 	// read data for block
 	if (blob_bytes>=blockOffset) {
+	  if (overlay_queue_remaining(reply.out.queue) < 10)
+	    break;
+	  
 	  sqlite3_blob_read(blob,&reply.out.payload[1+16+8+8],
 			    blockBytes,blockOffset);	  
 	  reply.out.payload_length=1+16+8+8+blockBytes;
@@ -136,7 +139,8 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
 	  // Mark terminal block if required
 	  if (blockOffset+blockBytes==blob_bytes) reply.out.payload[0]='T';
 	  // send packet
-	  overlay_mdp_dispatch(&reply,0 /* system generated */, NULL,0); 
+	  if (overlay_mdp_dispatch(&reply,0 /* system generated */, NULL,0))
+	    break;
 	} else break;
       }
 

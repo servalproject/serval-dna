@@ -125,6 +125,12 @@ overlay_queue_dump(overlay_txqueue *q)
 }
 #endif
 
+int overlay_queue_remaining(int queue){
+  if (queue<0 || queue>=OQ_MAX)
+    return -1;
+  return overlay_tx[queue].maxLength - overlay_tx[queue].length;
+}
+
 int overlay_payload_enqueue(struct overlay_frame *p)
 {
   /* Add payload p to queue q.

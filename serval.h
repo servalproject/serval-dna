@@ -512,6 +512,7 @@ overlay_node *overlay_route_find_node(const unsigned char *sid,int prefixLen,int
 
 int overlayServerMode();
 int overlay_payload_enqueue(struct overlay_frame *p);
+int overlay_queue_remaining(int queue);
 int overlay_route_record_link( time_ms_t now, struct subscriber *to,
 			      struct subscriber *via,int sender_interface,
 			      unsigned int s1,unsigned int s2,int score,int gateways_en_route);
