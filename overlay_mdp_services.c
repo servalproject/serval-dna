@@ -100,14 +100,24 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
   reply.out.ttl=1;
   bcopy(my_subscriber->sid,reply.out.src.sid,SID_SIZE);
   reply.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
-  if (source && source->reachable&REACHABLE_UNICAST){
-    // if we get a request from a peer that we can only talk to via unicast, send data via unicast too.
-    bcopy(mdp->out.src.sid,reply.out.dst.sid,SID_SIZE);
-  }else{
+  int send_broadcast=1;
+  
+  if (source){
+    if (!(source->reachable&REACHABLE_DIRECT))
+      send_broadcast=0;
+    if (source->reachable&REACHABLE_UNICAST && source->interface && source->interface->prefer_unicast)
+      send_broadcast=0;
+  }
+  
+  if (send_broadcast){
     // send replies to broadcast so that others can hear blocks and record them
     // (not that preemptive listening is implemented yet).
     memset(reply.out.dst.sid,0xff,SID_SIZE);
+  }else{
+    // if we get a request from a peer that we can only talk to via unicast, send data via unicast too.
+    bcopy(mdp->out.src.sid,reply.out.dst.sid,SID_SIZE);
   }
+  
   reply.out.dst.port=MDP_PORT_RHIZOME_RESPONSE;
   reply.out.queue=OQ_OPPORTUNISTIC;
   reply.out.payload[0]='B'; // reply contains blocks
