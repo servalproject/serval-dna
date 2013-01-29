@@ -235,22 +235,23 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
     
     // TODO probe unicast links when we detect an address change.
     
-    // always update the IP address we heard them from, even if we don't need to use it right now
-    context.sender->address = f.recvaddr;
-    
     // if this is a dummy announcement for a node that isn't in our routing table
     if (context.sender->reachable == REACHABLE_NONE) {
       context.sender->interface = interface;
+      context.sender->address = f.recvaddr;
+      context.sender->last_probe = 0;
       
       // assume for the moment, that we can reply with the same packet type
       if (packet_flags&PACKET_UNICAST){
-	/* Note the probe payload must be queued before any SID/SAS request so we can force the packet to have a full sid */
-	overlay_send_probe(context.sender, f.recvaddr, interface, OQ_MESH_MANAGEMENT);
 	set_reachable(context.sender, REACHABLE_UNICAST|REACHABLE_ASSUMED);
       }else{
 	set_reachable(context.sender, REACHABLE_BROADCAST|REACHABLE_ASSUMED);
       }
     }
+    
+    /* Note the probe payload must be queued before any SID/SAS request so we can force the packet to have a full sid */
+    if (context.sender->last_probe==0 || now - context.sender->last_probe > 5000)
+      overlay_send_probe(context.sender, f.recvaddr, interface, OQ_MESH_MANAGEMENT);
     
     if ((!(packet_flags&PACKET_UNICAST)) && context.sender->last_acked + interface->tick_ms <= now){
       overlay_route_ack_selfannounce(interface,
@@ -259,6 +260,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
       
       context.sender->last_acked = now;
     }
+    
   }
   
   if (packet_flags & PACKET_UNICAST)

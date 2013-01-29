@@ -397,6 +397,8 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
     return WHYF("Invalid tick interval %d specified for interface %s", interface->tick_ms, name);
 
   limit_init(&interface->transfer_limit, packet_interval);
+
+  interface->prefer_unicast = ifconfig->prefer_unicast;
   
   if (ifconfig->dummy[0]) {
     interface->fileP = 1;
@@ -421,6 +423,7 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
     interface->broadcast_address.sin_port = htons(PORT_DNA);
     interface->broadcast_address.sin_addr.s_addr = interface->address.sin_addr.s_addr | ~interface->netmask.s_addr;
     interface->drop_broadcasts = ifconfig->dummy_filter_broadcasts;
+    interface->drop_unicasts = ifconfig->dummy_filter_unicasts;
     
     /* Seek to end of file as initial reading point */
     interface->recv_offset = lseek(interface->alarm.poll.fd,0,SEEK_END);
@@ -586,7 +589,7 @@ void overlay_dummy_poll(struct sched_ent *alarm)
       if (config.debug.packetrx)
 	DEBUG_packet_visualise("Read from dummy interface", packet.payload, packet.payload_length);
       
-      if (memcmp(&packet.dst_addr, &interface->address, sizeof(packet.dst_addr))==0 ||
+      if (((!interface->drop_unicasts) && memcmp(&packet.dst_addr, &interface->address, sizeof(packet.dst_addr))==0) ||
 	  ((!interface->drop_broadcasts) &&
 	  memcmp(&packet.dst_addr, &interface->broadcast_address, sizeof(packet.dst_addr))==0)){
 	

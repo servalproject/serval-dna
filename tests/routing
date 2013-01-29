@@ -75,7 +75,7 @@ test_single_link() {
    executeOk_servald mdp ping $SIDB 1
    tfw_cat --stdout --stderr
    executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDB:BROADCAST :"
+   assertStdoutGrep --matches=1 "^$SIDB:BROADCAST UNICAST :"
 }
 
 setup_multiple_nodes() {
@@ -98,9 +98,9 @@ test_multiple_nodes() {
    executeOk_servald mdp ping $SIDD 1
    tfw_cat --stdout --stderr
    executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDB:BROADCAST :"
-   assertStdoutGrep --matches=1 "^$SIDC:BROADCAST :"
-   assertStdoutGrep --matches=1 "^$SIDD:BROADCAST :"
+   assertStdoutGrep --matches=1 "^$SIDB:BROADCAST "
+   assertStdoutGrep --matches=1 "^$SIDC:BROADCAST "
+   assertStdoutGrep --matches=1 "^$SIDD:BROADCAST "
 }
 
 setup_scan() {
@@ -134,6 +134,52 @@ test_scan() {
    assertStdoutGrep --matches=1 "^$SIDB:UNICAST :"
 }
 
+setup_broadcast_only() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B create_single_identity
+   foreach_instance +A +B add_interface 1
+  foreach_instance +A +B \
+    executeOk_servald config \
+      set interfaces.1.dummy_filter_unicasts 1
+   foreach_instance +A +B start_routing_instance
+}
+
+doc_broadcast_only="Broadcast packets only"
+test_broadcast_only() {
+   foreach_instance +A +B \
+      wait_until has_seen_instances +A +B
+   set_instance +A
+   executeOk_servald mdp ping $SIDB 1
+   tfw_cat --stdout --stderr
+   executeOk_servald route print
+   assertStdoutGrep --matches=1 "^$SIDB:BROADCAST :"
+}
+
+setup_prefer_unicast() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B create_single_identity
+   foreach_instance +A +B add_interface 1
+   foreach_instance +A +B \
+      executeOk_servald config \
+         set interfaces.1.prefer_unicast 1 \
+         set debug.overlayframes 1
+   foreach_instance +A +B start_routing_instance
+}
+
+doc_prefer_unicast="Prefer unicast packets"
+test_prefer_unicast() {
+   foreach_instance +A +B \
+      wait_until has_seen_instances +A +B
+   set_instance +A
+   executeOk_servald mdp ping $SIDB 1
+   tfw_cat --stdout --stderr
+   executeOk_servald route print
+   assertStdoutGrep --matches=1 "^$SIDB:BROADCAST UNICAST :"
+   assertGrep "$instance_servald_log" 'Choosing to send via unicast'
+}
+
 setup_multihop_linear() {
    setup_servald
    assert_no_servald_processes
@@ -152,7 +198,7 @@ test_multihop_linear() {
    executeOk_servald mdp ping $SIDD 1
    tfw_cat --stdout --stderr
    executeOk_servald route print
-   assertStdoutGrep --matches=1 "^$SIDB:BROADCAST :"
+   assertStdoutGrep --matches=1 "^$SIDB:BROADCAST UNICAST :"
    assertStdoutGrep --matches=1 "^$SIDC:INDIRECT :"
    assertStdoutGrep --matches=1 "^$SIDD:INDIRECT :"
 }

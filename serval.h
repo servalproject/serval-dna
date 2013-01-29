@@ -354,7 +354,8 @@ typedef struct overlay_interface {
   char name[256];
   int recv_offset;
   int fileP; // dummyP
-  int drop_broadcasts;
+  char drop_broadcasts;
+  char drop_unicasts;
   int port;
   int type;
   /* Number of milli-seconds per tick for this interface, which is basically related to the     
@@ -371,11 +372,11 @@ typedef struct overlay_interface {
   unsigned tick_ms; /* milliseconds per tick */
   struct subscriber *next_advert;
   
-  int send_broadcasts;
+  char send_broadcasts;
+  char prefer_unicast;
+  
   /* The time of the last tick on this interface in milli seconds */
   time_ms_t last_tick_ms;
-  /* How many times have we abbreviated our address since we last announced it in full? */
-  int ticks_since_sent_full_address;
   
   /* sequence number of last packet sent on this interface.
    Used to allow NACKs that can request retransmission of recent packets.

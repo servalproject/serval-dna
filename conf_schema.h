@@ -334,13 +334,15 @@ ATOM(struct pattern_list,   match,      PATTERN_LIST_EMPTY, cf_opt_pattern_list,
 STRING(256,                 dummy,      "", cf_opt_str_nonempty,, "Path of dummy file, absolute or relative to server.dummy_interface_dir")
 ATOM(struct in_addr,        dummy_address,    (struct in_addr){htonl(0x7F000001)}, cf_opt_in_addr,, "Dummy interface address")
 ATOM(struct in_addr,        dummy_netmask,    (struct in_addr){htonl(0xFFFFFF00)}, cf_opt_in_addr,, "Dummy interface netmask")
-ATOM(int,                   dummy_filter_broadcasts,     0, cf_opt_int_boolean,, "If true, drop all incoming broadcast packets")
+ATOM(char,                  dummy_filter_broadcasts,     0, cf_opt_char_boolean,, "If true, drop all incoming broadcast packets")
+ATOM(char,                  dummy_filter_unicasts,     0, cf_opt_char_boolean,, "If true, drop all incoming unicast packets")
 ATOM(short,                 type,       OVERLAY_INTERFACE_WIFI, cf_opt_interface_type,, "Type of network interface")
 ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, cf_opt_uint16_nonzero,, "Port number for network interface")
 ATOM(int,                   packet_interval,    -1, cf_opt_int,, "Minimum interval between packets in microseconds")
 ATOM(int,                   mdp_tick_ms, -1, cf_opt_int32_nonneg,, "Override MDP tick interval for this interface")
 ATOM(char,                  send_broadcasts, 1, cf_opt_char_boolean,, "If false, don't send any broadcast packets")
-ATOM(int,                   default_route, 0, cf_opt_int_boolean,, "If true, use this interface as a default route")
+ATOM(char,                  default_route, 0, cf_opt_char_boolean,, "If true, use this interface as a default route")
+ATOM(char,                  prefer_unicast, 0, cf_opt_char_boolean,, "If true, send unicast data as unicast IP packets if available")
 END_STRUCT
 
 ARRAY(interface_list, SORTED NO_DUPLICATES)
