@@ -211,7 +211,7 @@ runTests() {
       $_tfw_stop_on_error && [ $_tfw_errorcount -ne 0 ] && break
       $_tfw_stop_on_failure && [ $_tfw_failcount -ne 0 ] && break
       # Start the next test in a child process.
-      _tfw_echo_intro $testPosition $testNumber $testName
+      _tfw_echo_progress $testPosition $testNumber $testName
       if $_tfw_verbose || [ $_tfw_njobs -ne 1 ]; then
          echo
       fi
@@ -313,12 +313,6 @@ _tfw_killtests() {
    done
 }
 
-_tfw_echo_intro() {
-   local docvar="doc_$3"
-   echo -n "$2. ${!docvar:-$3}..."
-   [ $1 -gt $_tfw_test_number_watermark ] && _tfw_test_number_watermark=$1
-}
-
 _tfw_harvest_processes() {
    # <incantation>
    # This is the only way known to get the effect of a 'wait' builtin that will
@@ -364,22 +358,18 @@ _tfw_harvest_processes() {
          esac
          local lines
          if ! $_tfw_verbose && [ $_tfw_njobs -eq 1 ]; then
-            echo -n " "
-            _tfw_echo_result "$result"
+            _tfw_echo_progress $testPosition $testNumber $testName $result
             echo
          elif ! $_tfw_verbose && lines=$($_tfw_tput lines); then
             local travel=$(($_tfw_test_number_watermark - $testPosition + 1))
             if [ $travel -gt 0 -a $travel -lt $lines ] && $_tfw_tput cuu $travel ; then
-               _tfw_echo_intro $testPosition $testNumber $testName
-               echo -n " "
-               _tfw_echo_result "$result"
+               _tfw_echo_progress $testPosition $testNumber $testName $result
                echo
                travel=$(($_tfw_test_number_watermark - $testPosition))
                [ $travel -gt 0 ] && $_tfw_tput cud $travel
             fi
          else
-            echo -n "$testNumber. ... "
-            _tfw_echo_result "$result"
+            _tfw_echo_progress $testPosition $testNumber $testName $result
             echo
          fi
       else
@@ -388,6 +378,15 @@ _tfw_harvest_processes() {
       rm -f "$_tfw_results_dir/job-$job"
    done
    _tfw_running_jobs=(${surviving_jobs[*]})
+}
+
+_tfw_echo_progress() {
+   local docvar="doc_$3"
+   echo -n -e '\r'
+   echo -n "$2 ["
+   _tfw_echo_result "$4"
+   echo -n "] ${!docvar:-$3}"
+   [ $1 -gt $_tfw_test_number_watermark ] && _tfw_test_number_watermark=$1
 }
 
 _tfw_echo_result() {
@@ -404,14 +403,17 @@ _tfw_echo_result() {
       $_tfw_tput setaf 2
       echo -n "$result"
       $_tfw_tput op
+      echo -n "."
       ;;
    FAIL)
       $_tfw_tput setaf 1
       echo -n "$result"
       $_tfw_tput op
+      echo -n "."
       ;;
    *)
-      echo -n "$result"
+      result="$result....."
+      echo -n "${result:0:5}"
       ;;
    esac
 }
