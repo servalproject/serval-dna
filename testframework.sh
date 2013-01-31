@@ -145,7 +145,7 @@ runTests() {
    trap '_tfw_status=$?; _tfw_killtests; rm -rf "$_tfw_tmpmain"; exit $_tfw_status' EXIT SIGHUP SIGINT SIGTERM
    rm -rf "$_tfw_tmpmain"
    mkdir -p "$_tfw_tmpmain" || return $?
-   _tfw_logdir="${TFW_LOGDIR:-$_tfw_cwd/testlog}/$_tfw_suite_name"
+   _tfw_logdir_suite="${TFW_LOGDIR:-$_tfw_cwd/testlog}/$_tfw_suite_name"
    _tfw_trace=false
    _tfw_verbose=false
    _tfw_stop_on_error=false
@@ -180,8 +180,8 @@ runTests() {
    _tfw_results_dir="$_tfw_tmpmain/results"
    mkdir "$_tfw_results_dir" || return $?
    # Create an empty log directory.
-   mkdir -p "$_tfw_logdir" || return $?
-   rm -f "$_tfw_logdir"/*
+   mkdir -p "$_tfw_logdir_suite" || return $?
+   rm -r -f "$_tfw_logdir_suite"/*
    # Enumerate all the test cases.
    _tfw_find_tests "${filters[@]}"
    # Enable job control.
@@ -218,6 +218,10 @@ runTests() {
       echo "$testPosition $testNumber $testName" >"$_tfw_results_dir/$testName"
       (
          _tfw_test_name="$testName"
+         # The directory where this test's log.txt and other artifacts are
+         # deposited.
+         _tfw_logdir_test="$_tfw_logdir_suite/$testNumber.$testName"
+         mkdir "$_tfw_logdir_test" || exit 255
          # Pick a unique decimal number that must not coincide with other tests
          # being run concurrently, _including tests being run in other test
          # scripts by other users on the same host_.  We cannot simply use
@@ -271,7 +275,8 @@ runTests() {
                cat $_tfw_tmp/log.xtrace
                echo '++++++++++'
             fi
-         } >"$_tfw_logdir/$testNumber.$testName.$result"
+         } >"$_tfw_logdir_test/log.txt"
+         mv "$_tfw_logdir_test" "$_tfw_logdir_test.$result"
          exit 0
       ) </dev/null &
       local job=$(jobs %% | $SED -n -e '1s/^\[\([0-9]\{1,\}\)\].*/\1/p')
@@ -345,7 +350,7 @@ _tfw_harvest_processes() {
          case "$result" in
          ERROR)
             let _tfw_errorcount=_tfw_errorcount+1
-            ;; 
+            ;;
          PASS)
             let _tfw_passcount=_tfw_passcount+1
             ;;
@@ -607,6 +612,19 @@ EOF
    fi
 }
 
+# Copy the given file(s) into the log directory, so they form part of the residue
+# of the log execution (together with log.txt).
+tfw_preserve() {
+   local arg
+   for arg; do
+      if cp -a "$arg" "$_tfw_logdir_test"; then
+         tfw_log "# PRESERVE" $(ls -l -d "$arg")
+      else
+         error "cp failed"
+      fi
+   done
+}
+
 # Execute the given command with log messages quietened.
 tfw_nolog() {
    if [ "$1" = ! ]; then
@@ -812,6 +830,7 @@ _tfw_setup() {
       tail --pid=$mypid --follow $_tfw_tmp/log.stdout >&$_tfw_stdout 2>/dev/null &
       tail --pid=$mypid --follow $_tfw_tmp/log.stderr >&$_tfw_stderr 2>/dev/null &
    fi
+   export TFWLOG=$_tfw_logdir_test
    export TFWUNIQUE=$_tfw_unique
    export TFWVAR=$_tfw_tmp/var
    mkdir $TFWVAR
