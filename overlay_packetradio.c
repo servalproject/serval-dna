@@ -82,7 +82,20 @@ int overlay_rx_packet_append_byte(overlay_interface *interface,unsigned char byt
 void overlay_packetradio_poll(struct sched_ent *alarm)
 {
   overlay_interface *interface = (overlay_interface *)alarm;
-  time_ms_t now = gettime_ms();
+
+  if (alarm->poll.revents==0){
+    
+    if (interface->state==INTERFACE_STATE_UP && interface->tick_ms>0){
+      // tick the interface
+      time_ms_t now = gettime_ms();
+      overlay_route_queue_advertisements(interface);
+      alarm->alarm=now+interface->tick_ms;
+      alarm->deadline=alarm->alarm+interface->tick_ms/2;
+      schedule(alarm);
+    }
+    
+    return;
+  }
 
   // Read data from the serial port
   // We will almost certainly support more than one type of packet radio
@@ -155,14 +168,6 @@ void overlay_packetradio_poll(struct sched_ent *alarm)
       }
     }
     break;
-  }
-
-  // tick the interface
-  if (interface->tick_ms>0 && 
-      (interface->last_tick_ms == -1 || now >= interface->last_tick_ms + interface->tick_ms)) {
-    // tick the interface
-    overlay_route_queue_advertisements(interface);
-    interface->last_tick_ms=now;
   }
   
   watch(alarm);

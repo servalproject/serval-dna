@@ -466,6 +466,14 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
       if (config.debug.packetradio) 
 	DEBUGF("Watching file descriptor #%d for packet radio interface",
 	       interface->alarm.poll.fd);
+
+      if (interface->tick_ms>0){
+	// run the first tick asap
+	interface->alarm.alarm=gettime_ms();
+	interface->alarm.deadline=interface->alarm.alarm+10;
+	schedule(&interface->alarm);
+      }
+
     }
     
     interface->state=INTERFACE_STATE_UP;
