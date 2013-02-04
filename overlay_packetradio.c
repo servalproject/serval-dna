@@ -1,5 +1,6 @@
 #include "serval.h"
 #include "conf.h"
+#include <termios.h>
 
 /* interface decoder states. broadly based on RFC1055 */
 #define DC_NORMAL 0
@@ -11,6 +12,36 @@
 #define SLIP_ESC 0333
 #define SLIP_ESC_END 0334
 #define SLIP_ESC_ESC 0335
+
+int overlay_packetradio_setup_port(overlay_interface *interface)
+{
+  struct termios t;
+  tcgetattr(interface->alarm.poll.fd, &t);
+  // XXX Speed and options should be configurable
+  cfsetispeed(&t, B57600);
+  cfsetospeed(&t, B57600);
+  // 8N1
+  t.c_cflag &= ~PARENB;
+  t.c_cflag &= ~CSTOPB;
+  t.c_cflag &= ~CSIZE;
+  t.c_cflag |= CS8;
+
+  // Disable CTS/RTS flow control (for now)
+#ifndef CNEW_RTSCTS
+  t.c_cflag &= ~CRTSCTS;
+#else
+  t.c_cflag &= ~CNEW_RTSCTS;
+#endif
+  // and software flow control
+  t.c_iflag &= ~(IXON | IXOFF | IXANY);
+
+  // raw data please
+  t.c_lflag &= ~(ICANON | ECHO | ECHOE | ISIG);
+  t.c_oflag &= ~OPOST;
+
+  tcsetattr(interface->alarm.poll.fd, TCSANOW, &t);
+  return 0;
+}
 
 int overlay_rx_packet_complete(overlay_interface *interface)
 {
@@ -130,18 +161,6 @@ void overlay_packetradio_poll(struct sched_ent *alarm)
     interface->last_tick_ms=now;
   }
   
-  unsigned char buffer[8192];
-  ssize_t nread = read(alarm->poll.fd, buffer,8192);
-  if (nread == -1){
-    WHY_perror("read");
-    return;
-  }
-  if (nread>0) {
-    buffer[8191]=0;
-    if (nread<8192) buffer[nread]=0;
-    DEBUGF("Read '%s'",buffer);
-  }
-
   schedule(alarm);
 
   return ;

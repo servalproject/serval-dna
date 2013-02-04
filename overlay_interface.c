@@ -403,9 +403,11 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
   if (ifconfig->dummy[0]||ifconfig->type==OVERLAY_INTERFACE_PACKETRADIO) {
     interface->fileP = 1;
     char dummyfile[1024];
-    if (ifconfig->type==OVERLAY_INTERFACE_PACKETRADIO)
+    if (ifconfig->type==OVERLAY_INTERFACE_PACKETRADIO) {
+      if (config.debug.packetradio) DEBUGF("Considering packet radio interface %s",
+					   ifconfig->dummy);
       snprintf(dummyfile, 1024, "%s",ifconfig->dummy);
-    else {
+    } else {
       strbuf d = strbuf_local(dummyfile, sizeof dummyfile);
       strbuf_path_join(d, serval_instancepath(), config.server.dummy_interface_dir, ifconfig->dummy, NULL);
       if (strbuf_overrun(d))
@@ -413,6 +415,11 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
     }
     if ((interface->alarm.poll.fd = open(dummyfile,O_APPEND|O_RDWR)) < 1) {
       return WHYF("could not open dummy or packet radio interface file %s for append (errno=%d)", dummyfile,errno);
+    }
+
+    if (interface->type==OVERLAY_INTERFACE_PACKETRADIO) {
+      if (config.debug.packetradio) DEBUGF("Opened packet radio interface");
+      overlay_packetradio_setup_port(interface);
     }
 
     bzero(&interface->address, sizeof(interface->address));
@@ -439,6 +446,8 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
       // XXX This needs to be parameterised at some point
       // Make sure it is not in command mode
       write(interface->alarm.poll.fd,"ATO\r",4);
+      if (config.debug.packetradio) 
+	DEBUGF("Sent ATO to make sure we are in on-line mode");
     }
 
     // schedule an alarm for this interface
