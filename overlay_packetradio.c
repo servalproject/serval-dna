@@ -17,8 +17,6 @@ int overlay_packetradio_setup_port(overlay_interface *interface)
 {
   struct termios t;
 
-  set_nonblock(interface->alarm.poll.fd);
-
   tcgetattr(interface->alarm.poll.fd, &t);
   // XXX Speed and options should be configurable
   cfsetispeed(&t, B57600);
@@ -29,11 +27,11 @@ int overlay_packetradio_setup_port(overlay_interface *interface)
   t.c_cflag &= ~CSIZE;
   t.c_cflag |= CS8;
 
-  // Disable CTS/RTS flow control (for now)
+  // Enable CTS/RTS flow control (for now)
 #ifndef CNEW_RTSCTS
-  t.c_cflag &= ~CRTSCTS;
+  t.c_cflag |= CRTSCTS;
 #else
-  t.c_cflag &= ~CNEW_RTSCTS;
+  t.c_cflag |= CNEW_RTSCTS;
 #endif
   // and software flow control
   t.c_iflag &= ~(IXON | IXOFF | IXANY);
@@ -43,6 +41,8 @@ int overlay_packetradio_setup_port(overlay_interface *interface)
   t.c_oflag &= ~OPOST;
 
   tcsetattr(interface->alarm.poll.fd, TCSANOW, &t);
+
+  set_nonblock(interface->alarm.poll.fd);
 
   return 0;
 }
@@ -165,7 +165,7 @@ void overlay_packetradio_poll(struct sched_ent *alarm)
     interface->last_tick_ms=now;
   }
   
-  schedule(alarm);
+  watch(alarm);
 
   return ;
 }

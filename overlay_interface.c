@@ -446,7 +446,7 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
       // XXX This needs to be parameterised at some point
       // Make sure it is not in command mode
       write(interface->alarm.poll.fd,"ATO\r",4);
-      if (config.debug.packetradio) 
+      if (config.debug.packetradio)
 	DEBUGF("Sent ATO to make sure we are in on-line mode");
     }
 
@@ -454,14 +454,19 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
     if (interface->type!=OVERLAY_INTERFACE_PACKETRADIO) {
       interface->alarm.function=overlay_dummy_poll;
       dummy_poll_stats.name="overlay_dummy_poll";
+      interface->alarm.alarm=gettime_ms()+10;
+      interface->alarm.deadline=interface->alarm.alarm;
+      interface->alarm.stats=&dummy_poll_stats;
+      schedule(&interface->alarm);
     } else {
       interface->alarm.function=overlay_packetradio_poll;
       dummy_poll_stats.name="overlay_packetradio_poll";
+      interface->alarm.poll.events=POLLIN;
+      watch(&interface->alarm);
+      if (config.debug.packetradio) 
+	DEBUGF("Watching file descriptor #%d for packet radio interface",
+	       interface->alarm.poll.fd);
     }
-    interface->alarm.alarm=gettime_ms()+10;
-    interface->alarm.deadline=interface->alarm.alarm;
-    interface->alarm.stats=&dummy_poll_stats;
-    schedule(&interface->alarm);
     
     interface->state=INTERFACE_STATE_UP;
     if (interface->type!=OVERLAY_INTERFACE_PACKETRADIO)
