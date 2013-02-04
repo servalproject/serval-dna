@@ -16,6 +16,9 @@
 int overlay_packetradio_setup_port(overlay_interface *interface)
 {
   struct termios t;
+
+  set_nonblock(interface->alarm.poll.fd);
+
   tcgetattr(interface->alarm.poll.fd, &t);
   // XXX Speed and options should be configurable
   cfsetispeed(&t, B57600);
@@ -40,6 +43,7 @@ int overlay_packetradio_setup_port(overlay_interface *interface)
   t.c_oflag &= ~OPOST;
 
   tcsetattr(interface->alarm.poll.fd, TCSANOW, &t);
+
   return 0;
 }
 
@@ -164,5 +168,13 @@ void overlay_packetradio_poll(struct sched_ent *alarm)
   schedule(alarm);
 
   return ;
+}
+
+int overlay_packetradio_tx_packet(int interface_number,
+				  struct sockaddr_in *recipientaddr,
+				  unsigned char *bytes,int len)
+{
+  if (config.debug.packetradio) DEBUGF("Sending packet of %d bytes",len);
+  return 0;
 }
 

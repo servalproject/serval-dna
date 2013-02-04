@@ -753,6 +753,9 @@ int fd_poll();
 void overlay_interface_discover(struct sched_ent *alarm);
 void overlay_packetradio_poll(struct sched_ent *alarm);
 int overlay_packetradio_setup_port(overlay_interface *interface);
+int overlay_packetradio_tx_packet(int interface_number,
+				  struct sockaddr_in *recipientaddr,
+				  unsigned char *bytes,int len);
 void overlay_dummy_poll(struct sched_ent *alarm);
 void overlay_route_tick(struct sched_ent *alarm);
 void server_config_reload(struct sched_ent *alarm);
