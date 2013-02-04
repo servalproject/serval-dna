@@ -400,15 +400,19 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
 
   interface->prefer_unicast = ifconfig->prefer_unicast;
   
-  if (ifconfig->dummy[0]) {
+  if (ifconfig->dummy[0]||ifconfig->type==OVERLAY_INTERFACE_PACKETRADIO) {
     interface->fileP = 1;
     char dummyfile[1024];
-    strbuf d = strbuf_local(dummyfile, sizeof dummyfile);
-    strbuf_path_join(d, serval_instancepath(), config.server.dummy_interface_dir, ifconfig->dummy, NULL);
-    if (strbuf_overrun(d))
-      return WHYF("dummy interface file name overrun: %s", alloca_str_toprint(strbuf_str(d)));
+    if (ifconfig->type==OVERLAY_INTERFACE_PACKETRADIO)
+      snprintf(dummyfile, 1024, "%s",ifconfig->dummy);
+    else {
+      strbuf d = strbuf_local(dummyfile, sizeof dummyfile);
+      strbuf_path_join(d, serval_instancepath(), config.server.dummy_interface_dir, ifconfig->dummy, NULL);
+      if (strbuf_overrun(d))
+	return WHYF("dummy or packet radio interface file name overrun: %s", alloca_str_toprint(strbuf_str(d)));
+    }
     if ((interface->alarm.poll.fd = open(dummyfile,O_APPEND|O_RDWR)) < 1) {
-      return WHYF("could not open dummy interface file %s for append", dummyfile);
+      return WHYF("could not open dummy or packet radio interface file %s for append", dummyfile);
     }
 
     bzero(&interface->address, sizeof(interface->address));
@@ -425,22 +429,37 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
     interface->drop_broadcasts = ifconfig->dummy_filter_broadcasts;
     interface->drop_unicasts = ifconfig->dummy_filter_unicasts;
     
-    /* Seek to end of file as initial reading point */
-    interface->recv_offset = lseek(interface->alarm.poll.fd,0,SEEK_END);
-    /* XXX later add pretend location information so that we can decide which "packets" to receive
-       based on closeness */    
-    
+    if (interface->type!=OVERLAY_INTERFACE_PACKETRADIO) {
+      /* Seek to end of file as initial reading point */
+      interface->recv_offset = lseek(interface->alarm.poll.fd,0,SEEK_END);
+      /* XXX later add pretend location information so that we can decide which "packets" to receive
+	 based on closeness */    
+    } else {
+      // Setup packet radio device
+      // XXX This needs to be parameterised at some point
+      // Make sure it is not in command mode
+      write(interface->alarm.poll.fd,"ATO\r",4);
+    }
+
     // schedule an alarm for this interface
-    interface->alarm.function=overlay_dummy_poll;
+    if (interface->type!=OVERLAY_INTERFACE_PACKETRADIO) {
+      interface->alarm.function=overlay_dummy_poll;
+      dummy_poll_stats.name="overlay_dummy_poll";
+    } else {
+      interface->alarm.function=overlay_packetradio_poll;
+      dummy_poll_stats.name="overlay_packetradio_poll";
+    }
     interface->alarm.alarm=gettime_ms()+10;
     interface->alarm.deadline=interface->alarm.alarm;
-    dummy_poll_stats.name="overlay_dummy_poll";
     interface->alarm.stats=&dummy_poll_stats;
     schedule(&interface->alarm);
     
     interface->state=INTERFACE_STATE_UP;
-    INFOF("Dummy interface %s addr %s:%d, is up",interface->name,
-	  inet_ntoa(interface->address.sin_addr), ntohs(interface->address.sin_port));
+    if (interface->type!=OVERLAY_INTERFACE_PACKETRADIO)
+      INFOF("Dummy interface %s addr %s:%d, is up",interface->name,
+	    inet_ntoa(interface->address.sin_addr), ntohs(interface->address.sin_port));
+    else
+      INFOF("Packet radio interface %s, is up",interface->name);
     
     directory_registration();
     
@@ -544,6 +563,44 @@ struct dummy_packet{
   
   unsigned char payload[1400];
 };
+
+void overlay_packetradio_poll(struct sched_ent *alarm)
+{
+  overlay_interface *interface = (overlay_interface *)alarm;
+  time_ms_t now = gettime_ms();
+
+  // We will almost certainly support more than one type of packet radio
+  // so lets parameterise this.
+  switch(1) {
+  case 1:
+    // Read data from the serial port
+    break;
+  }
+
+  // tick the interface
+  if (interface->tick_ms>0 && 
+      (interface->last_tick_ms == -1 || now >= interface->last_tick_ms + interface->tick_ms)) {
+    // tick the interface
+    overlay_route_queue_advertisements(interface);
+    interface->last_tick_ms=now;
+  }
+  
+  unsigned char buffer[8192];
+  ssize_t nread = read(alarm->poll.fd, buffer,8192);
+  if (nread == -1){
+    WHY_perror("read");
+    return;
+  }
+  if (nread>0) {
+    buffer[8191]=0;
+    if (nread<8192) buffer[nread]=0;
+    DEBUGF("Read '%s'",buffer);
+  }
+
+  schedule(alarm);
+
+  return ;
+}
 
 void overlay_dummy_poll(struct sched_ent *alarm)
 {
@@ -707,7 +764,7 @@ overlay_interface_register(char *name,
   int i;
   for (i = 0; i < config.interfaces.ac; ++i, ifconfig = NULL) {
     ifconfig = &config.interfaces.av[i].value;
-    if (!ifconfig->dummy[0]) {
+    if ((!ifconfig->dummy[0])&&ifconfig->type!=OVERLAY_INTERFACE_PACKETRADIO) {
       int j;
       for (j = 0; j < ifconfig->match.patc; ++j){
 	if (fnmatch(ifconfig->match.patv[j], name, 0) == 0)
@@ -791,17 +848,18 @@ void overlay_interface_discover(struct sched_ent *alarm)
   const struct config_network_interface *ifconfig = NULL;
   for (i = 0; i < config.interfaces.ac; ++i, ifconfig = NULL) {
     ifconfig = &config.interfaces.av[i].value;
-    if (!ifconfig->dummy[0]) {
+    if (ifconfig->type!=OVERLAY_INTERFACE_PACKETRADIO&&(!ifconfig->dummy[0])) {
       detect_real_interfaces = 1;
       continue;
     }
-    for (i = 0; i < overlay_interface_count; i++)
-      if (strcasecmp(overlay_interfaces[i].name, ifconfig->dummy) == 0) {
-	if (overlay_interfaces[i].state==INTERFACE_STATE_DETECTING)
-	  overlay_interfaces[i].state=INTERFACE_STATE_UP;
+    int j;
+    for (j = 0; j < overlay_interface_count; j++)
+      if (strcasecmp(overlay_interfaces[j].name, ifconfig->dummy) == 0) {
+	if (overlay_interfaces[j].state==INTERFACE_STATE_DETECTING)
+	  overlay_interfaces[j].state=INTERFACE_STATE_UP;
 	break;
       }
-    if (i >= overlay_interface_count) {
+    if (j >= overlay_interface_count) {
       // New dummy interface, so register it.
       struct in_addr dummyaddr = hton_in_addr(INADDR_NONE);
       overlay_interface_init(ifconfig->dummy, dummyaddr, dummyaddr, dummyaddr, ifconfig);

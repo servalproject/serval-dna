@@ -743,6 +743,7 @@ int _unwatch(struct __sourceloc whence, struct sched_ent *alarm);
 int fd_poll();
 
 void overlay_interface_discover(struct sched_ent *alarm);
+void overlay_packetradio_poll(struct sched_ent *alarm);
 void overlay_dummy_poll(struct sched_ent *alarm);
 void overlay_route_tick(struct sched_ent *alarm);
 void server_config_reload(struct sched_ent *alarm);
