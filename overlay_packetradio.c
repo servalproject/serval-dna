@@ -5,7 +5,6 @@
 /* interface decoder states. broadly based on RFC1055 */
 #define DC_NORMAL 0
 #define DC_ESC 1
-#define DC_END 2
 
 /* SLIP-style escape characters used for serial packet radio interfaces */
 #define SLIP_END 0300
@@ -115,9 +114,8 @@ void overlay_packetradio_poll(struct sched_ent *alarm)
 	  The challenge is that we need to make sure that the packet encapsulation
 	  is self-synchronising in the event that a data error occurs (including
 	  failure to receive an arbitrary number of bytes).
-	  For now we will reuse the antiquated and sub-optimal method described in
-	  RFC1055 for SLIP, but with a couple of tweaks to reduce byte wastage when
-	  encountering ESC and END characters in packets.
+	  For now we will reuse the functional but sub-optimal method described in
+	  RFC1055 for SLIP.
 	*/
 	int i;
 	for(i=0;i<nread;i++)
@@ -127,28 +125,15 @@ void overlay_packetradio_poll(struct sched_ent *alarm)
 	      // escaped character
 	      switch(buffer[i]) {
 	      case SLIP_ESC_END: // escaped END byte
-		overlay_rx_packet_append_byte(interface,SLIP_END); break;
-	      case SLIP_ESC_ESC: // escaped escape character
-		overlay_rx_packet_append_byte(interface,SLIP_ESC); break;
-	      default: /* unknown escape character
-			  This is where the inefficiency comes, because
-			  we don't use the spare bits.
-			  We can reduce the inefficiency by making ESC <otherbyte>
-			  mean literally that. */
-		overlay_rx_packet_append_byte(interface,SLIP_ESC); 
-		overlay_rx_packet_append_byte(interface,buffer[i]);
-		break;
-	      }
-	      break;
-	    case DC_END:
-	      // character preceeded by END character
-	      switch(buffer[i]) {
-	      case SLIP_ESC_END:
-		overlay_rx_packet_complete(interface);
-		break;
-	      default:
 		overlay_rx_packet_append_byte(interface,SLIP_END); 
-		overlay_rx_packet_append_byte(interface,buffer[i]);
+		break;
+	      case SLIP_ESC_ESC: // escaped escape character
+		overlay_rx_packet_append_byte(interface,SLIP_ESC); 
+		break;
+	      default: /* Unknown escape character. This is an error. */
+		if (config.debug.packetradio)
+		  WARN("Packet radio stream contained illegal escape sequence -- ignoring packet.");
+		interface->recv_offset=0;
 		break;
 	      }
 	      break;
@@ -158,7 +143,7 @@ void overlay_packetradio_poll(struct sched_ent *alarm)
 	      case SLIP_ESC:
 		interface->decoder_state=DC_ESC; break;
 	      case SLIP_END:
-		interface->decoder_state=DC_END; break;
+		overlay_rx_packet_complete(interface);
 	      default:
 		overlay_rx_packet_append_byte(interface,buffer[i]);
 	      }
@@ -180,6 +165,48 @@ int overlay_packetradio_tx_packet(int interface_number,
 				  unsigned char *bytes,int len)
 {
   if (config.debug.packetradio) DEBUGF("Sending packet of %d bytes",len);
+  
+  /*
+    This is a bit interesting, because we have to deal with RTS/CTS potentially
+    blocking our writing of the packet.
+
+    For now, just try to write it, and if we only write part of it, then so be it.
+
+    We will surround each packet with SLIP END characters, so we should be able to
+    deal with such truncation in a fairly sane manner.
+  */
+  
+  if (len>OVERLAY_INTERFACE_RX_BUFFER_SIZE) {
+    if (config.debug.packetradio) WHYF("Not sending over-size packet");
+    return -1;
+  }
+
+  /* Encode packet with SLIP escaping.
+     XXX - Add error correction here also */
+  char buffer[len*2+4];
+  int out_len=0;
+  int i;
+
+  buffer[out_len++]=SLIP_END;
+  for(i=0;i<len;i++)
+    {
+      switch(bytes[i]) {
+      case SLIP_END:
+	buffer[out_len++]=SLIP_ESC;
+	buffer[out_len++]=SLIP_ESC_END;
+	break;
+      case SLIP_ESC:
+	buffer[out_len++]=SLIP_ESC;
+	buffer[out_len++]=SLIP_ESC_ESC;
+	break;
+      default:
+	buffer[out_len++]=bytes[i];
+      }
+    }
+  buffer[out_len++]=SLIP_END;
+
+  DEBUGF("Encoded length is %d",out_len);
+
   return 0;
 }
 
