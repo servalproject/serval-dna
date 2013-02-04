@@ -412,7 +412,7 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
 	return WHYF("dummy or packet radio interface file name overrun: %s", alloca_str_toprint(strbuf_str(d)));
     }
     if ((interface->alarm.poll.fd = open(dummyfile,O_APPEND|O_RDWR)) < 1) {
-      return WHYF("could not open dummy or packet radio interface file %s for append", dummyfile);
+      return WHYF("could not open dummy or packet radio interface file %s for append (errno=%d)", dummyfile,errno);
     }
 
     bzero(&interface->address, sizeof(interface->address));
@@ -548,59 +548,22 @@ struct dummy_packet{
   int payload_length;
   
   /* TODO ? ;
-  half-power beam height (uint16)
-  half-power beam width (uint16)
-  range in metres, centre beam (uint32)
-  latitude (uint32)
-  longitude (uint32)
-  X/Z direction (uint16)
-  Y direction (uint16)
-  speed in metres per second (uint16)
-  TX frequency in Hz, uncorrected for doppler (which must be done at the receiving end to take into account
-   relative motion)
-  coding method (use for doppler response etc) null terminated string
+     half-power beam height (uint16)
+     half-power beam width (uint16)
+     range in metres, centre beam (uint32)
+     latitude (uint32)
+     longitude (uint32)
+     X/Z direction (uint16)
+     Y direction (uint16)
+     speed in metres per second (uint16)
+     TX frequency in Hz, uncorrected for doppler (which must be done at the receiving end to take into account
+     relative motion)
+     coding method (use for doppler response etc) null terminated string
   */
   
   unsigned char payload[1400];
 };
 
-void overlay_packetradio_poll(struct sched_ent *alarm)
-{
-  overlay_interface *interface = (overlay_interface *)alarm;
-  time_ms_t now = gettime_ms();
-
-  // We will almost certainly support more than one type of packet radio
-  // so lets parameterise this.
-  switch(1) {
-  case 1:
-    // Read data from the serial port
-    break;
-  }
-
-  // tick the interface
-  if (interface->tick_ms>0 && 
-      (interface->last_tick_ms == -1 || now >= interface->last_tick_ms + interface->tick_ms)) {
-    // tick the interface
-    overlay_route_queue_advertisements(interface);
-    interface->last_tick_ms=now;
-  }
-  
-  unsigned char buffer[8192];
-  ssize_t nread = read(alarm->poll.fd, buffer,8192);
-  if (nread == -1){
-    WHY_perror("read");
-    return;
-  }
-  if (nread>0) {
-    buffer[8191]=0;
-    if (nread<8192) buffer[nread]=0;
-    DEBUGF("Read '%s'",buffer);
-  }
-
-  schedule(alarm);
-
-  return ;
-}
 
 void overlay_dummy_poll(struct sched_ent *alarm)
 {
@@ -618,8 +581,8 @@ void overlay_dummy_poll(struct sched_ent *alarm)
   
   if (interface->recv_offset >= length) {
     /* if there's no input, while we want to check for more soon,
-	we need to allow all other low priority alarms to fire first,
-	otherwise we'll dominate the scheduler without accomplishing anything */
+       we need to allow all other low priority alarms to fire first,
+       otherwise we'll dominate the scheduler without accomplishing anything */
     alarm->alarm = gettime_ms() + 5;
     if (interface->last_tick_ms != -1 && alarm->alarm > interface->last_tick_ms + interface->tick_ms)
       alarm->alarm = interface->last_tick_ms + interface->tick_ms;
@@ -648,7 +611,7 @@ void overlay_dummy_poll(struct sched_ent *alarm)
       
       if (((!interface->drop_unicasts) && memcmp(&packet.dst_addr, &interface->address, sizeof(packet.dst_addr))==0) ||
 	  ((!interface->drop_broadcasts) &&
-	  memcmp(&packet.dst_addr, &interface->broadcast_address, sizeof(packet.dst_addr))==0)){
+	   memcmp(&packet.dst_addr, &interface->broadcast_address, sizeof(packet.dst_addr))==0)){
 	
 	if (packetOkOverlay(interface, packet.payload, packet.payload_length, -1, 
 			    (struct sockaddr*)&packet.src_addr, sizeof(packet.src_addr))) {
