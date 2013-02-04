@@ -673,7 +673,7 @@ overlay_broadcast_ensemble(int interface_number,
 {
   if (config.debug.packettx)
     {
-      DEBUGF("Sending this packet via interface #%d",interface_number);
+      DEBUGF("Sending this packet via interface #%d (len=%d)",interface_number,len);
       DEBUG_packet_visualise(NULL,bytes,len);
     }
 
@@ -887,6 +887,7 @@ void overlay_interface_discover(struct sched_ent *alarm)
 static void
 logServalPacket(int level, struct __sourceloc __whence, const char *message, const unsigned char *packet, size_t len) {
   struct mallocbuf mb = STRUCT_MALLOCBUF_NULL;
+  if (!message) message="<no message>";
   if (serval_packetvisualise(XPRINTF_MALLOCBUF(&mb), message, packet, len) == -1)
     WHY("serval_packetvisualise() failed");
   else if (mb.buffer == NULL)
