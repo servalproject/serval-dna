@@ -7,10 +7,10 @@
 #define DC_ESC 1
 
 /* SLIP-style escape characters used for serial packet radio interfaces */
-#define SLIP_END 0300
-#define SLIP_ESC 0333
-#define SLIP_ESC_END 0334
-#define SLIP_ESC_ESC 0335
+#define SLIP_END 0xc0
+#define SLIP_ESC 0xdb
+#define SLIP_ESC_END 0xdc
+#define SLIP_ESC_ESC 0xdd
 
 int overlay_packetradio_setup_port(overlay_interface *interface)
 {
@@ -223,6 +223,8 @@ int overlay_packetradio_tx_packet(int interface_number,
   int out_len=0;
   int i;
 
+  dump("unencapsulated",bytes,len);
+
   buffer[out_len++]=SLIP_END;
   for(i=0;i<len;i++)
     {
@@ -240,6 +242,8 @@ int overlay_packetradio_tx_packet(int interface_number,
       }
     }
   buffer[out_len++]=SLIP_END;
+
+  dump("SLIP encapsulated",buffer,out_len);
 
   if (config.debug.packetradio) DEBUGF("Encoded length is %d",out_len);
   
