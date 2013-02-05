@@ -100,11 +100,13 @@ void overlay_packetradio_poll(struct sched_ent *alarm)
 	if (config.debug.packetradio) DEBUGF("Failed to write any data");
       }
       alarm->poll.revents&=~POLLOUT;
+      watch(alarm);
       if (interface->tx_bytes_pending>0) {
 	// more to write, so keep POLLOUT flag
       } else {
 	// nothing more to write, so clear POLLOUT flag
 	alarm->poll.events&=~POLLOUT;
+	watch(alarm);      
       }
     }
   }
