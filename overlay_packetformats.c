@@ -187,7 +187,7 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
      the source having received the frame from elsewhere.
   */
 
-  if (recvaddr->sa_family!=AF_INET)
+  if (recvaddr&&recvaddr->sa_family!=AF_INET)
     RETURN(WHYF("Unexpected protocol family %d",recvaddr->sa_family));
   
   struct overlay_frame f;

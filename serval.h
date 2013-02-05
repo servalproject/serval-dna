@@ -354,13 +354,18 @@ extern int overlayMode;
 // This effectively sets the MRU for packet radio interfaces
 // where we have to buffer packets on the receive side
 #define OVERLAY_INTERFACE_RX_BUFFER_SIZE 2048
+// TX buffer must handle FEC encoded and encapsulated data, so needs to be
+// larger.
+#define OVERLAY_INTERFACE_TX_BUFFER_SIZE (2+2048*2)
 
 typedef struct overlay_interface {
   struct sched_ent alarm;
   char name[256];
-  unsigned char buffer[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
+  unsigned char rxbuffer[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
   int recv_offset; /* either dummy file offset or number of bytes in RX buffer
 		      for packet radio interfaces */
+  unsigned char txbuffer[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
+  int tx_bytes_pending;
   char decoder_state; // decoder state for packet radio interfaces
   int fileP; // non-zero for dummy and packet radio serial interfaces
   char drop_broadcasts;

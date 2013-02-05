@@ -50,7 +50,7 @@ int overlay_rx_packet_complete(overlay_interface *interface)
 {
   if (interface->recv_offset) {
     // dispatch received packet
-    if (packetOkOverlay(interface, interface->buffer, interface->recv_offset, -1, 
+    if (packetOkOverlay(interface, interface->rxbuffer, interface->recv_offset, -1, 
 			NULL,0)) {
       if (config.debug.packetradio)
 	WARN("Corrupted or unsupported packet from packet radio interface");
@@ -67,7 +67,7 @@ int overlay_rx_packet_append_byte(overlay_interface *interface,unsigned char byt
       ||interface->recv_offset>=OVERLAY_INTERFACE_RX_BUFFER_SIZE)
     interface->recv_offset=0;
   
-  interface->buffer[interface->recv_offset++]=byte;
+  interface->rxbuffer[interface->recv_offset++]=byte;
   if (interface->recv_offset==OVERLAY_INTERFACE_RX_BUFFER_SIZE) {
     // packet fills buffer.  Who knows, we might be able to decode what we
     // have of it.
@@ -80,7 +80,34 @@ int overlay_rx_packet_append_byte(overlay_interface *interface,unsigned char byt
 
 void overlay_packetradio_poll(struct sched_ent *alarm)
 {
+  DEBUGF("here, events=0x%x, revents=0x%x",alarm->poll.events,alarm->poll.revents);
+
   overlay_interface *interface = (overlay_interface *)alarm;
+
+  {
+    if (interface->tx_bytes_pending>0) {
+      int written=write(alarm->poll.fd,interface->txbuffer,
+			interface->tx_bytes_pending);
+      if (config.debug.packetradio) DEBUGF("Trying to write %d bytes",
+					   interface->tx_bytes_pending);
+      if (written>0) {
+	interface->tx_bytes_pending-=written;
+	bcopy(&interface->txbuffer[written],&interface->txbuffer[0],
+	      interface->tx_bytes_pending);
+	if (config.debug.packetradio) DEBUGF("Wrote %d bytes (%d left pending)",
+					     written,interface->tx_bytes_pending);
+      } else {
+	if (config.debug.packetradio) DEBUGF("Failed to write any data");
+      }
+      alarm->poll.revents&=~POLLOUT;
+      if (interface->tx_bytes_pending>0) {
+	// more to write, so keep POLLOUT flag
+      } else {
+	// nothing more to write, so clear POLLOUT flag
+	alarm->poll.events&=~POLLOUT;
+      }
+    }
+  }
 
   if (alarm->poll.revents==0){
     
@@ -90,6 +117,7 @@ void overlay_packetradio_poll(struct sched_ent *alarm)
       overlay_route_queue_advertisements(interface);
       alarm->alarm=now+interface->tick_ms;
       alarm->deadline=alarm->alarm+interface->tick_ms/2;
+      unschedule(alarm);
       schedule(alarm);
     }
     
@@ -104,8 +132,9 @@ void overlay_packetradio_poll(struct sched_ent *alarm)
     {
       unsigned char buffer[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
       ssize_t nread = read(alarm->poll.fd, buffer, OVERLAY_INTERFACE_RX_BUFFER_SIZE);
+      DEBUGF("Reading from packet radio interface (r=%d, errno=%d)",nread,errno);
       if (nread == -1){
-	WHY_perror("read");
+	// WHY_perror("read");
 	return;
       }
       if (nread>0) {
@@ -180,6 +209,11 @@ int overlay_packetradio_tx_packet(int interface_number,
     if (config.debug.packetradio) WHYF("Not sending over-size packet");
     return -1;
   }
+  if (overlay_interfaces[interface_number].tx_bytes_pending) {
+    if (config.debug.packetradio) 
+      WHYF("Dropping packet due to congestion");
+    return -1;
+  }
 
   /* Encode packet with SLIP escaping.
      XXX - Add error correction here also */
@@ -205,7 +239,25 @@ int overlay_packetradio_tx_packet(int interface_number,
     }
   buffer[out_len++]=SLIP_END;
 
-  DEBUGF("Encoded length is %d",out_len);
+  if (config.debug.packetradio) DEBUGF("Encoded length is %d",out_len);
+  
+  int written=write(overlay_interfaces[interface_number].alarm.poll.fd,
+		    buffer,out_len);
+
+  if (config.debug.packetradio) 
+    DEBUGF("Wrote %d of %d bytes",written,out_len);
+  
+  if (written<out_len) {
+    int deferred=out_len-written;
+    if (deferred>OVERLAY_INTERFACE_TX_BUFFER_SIZE)
+      deferred=OVERLAY_INTERFACE_TX_BUFFER_SIZE;
+    bcopy(&buffer[written],overlay_interfaces[interface_number].txbuffer,deferred);
+    overlay_interfaces[interface_number].tx_bytes_pending=deferred;
+    overlay_interfaces[interface_number].alarm.poll.events|=POLLOUT;
+    watch(&overlay_interfaces[interface_number].alarm);
+    if (config.debug.packetradio) 
+      DEBUGF("Buffered %d bytes for transmission",deferred);
+  }
 
   return 0;
 }
