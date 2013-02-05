@@ -48,6 +48,7 @@ int overlay_packetradio_setup_port(overlay_interface *interface)
 
 int overlay_rx_packet_complete(overlay_interface *interface)
 {
+  dump("received packet",interface->rxbuffer,interface->recv_offset);
   if (interface->recv_offset) {
     // dispatch received packet
     if (packetOkOverlay(interface, interface->rxbuffer, interface->recv_offset, -1, 
@@ -74,7 +75,6 @@ int overlay_rx_packet_append_byte(overlay_interface *interface,unsigned char byt
     return overlay_rx_packet_complete(interface);
   } 
 
-  if (config.debug.packetradio) DEBUGF("RXd %d bytes",interface->recv_offset);
   return 0;
 }
 
@@ -164,6 +164,7 @@ void overlay_packetradio_poll(struct sched_ent *alarm)
 	      default: /* Unknown escape character. This is an error. */
 		if (config.debug.packetradio)
 		  WARN("Packet radio stream contained illegal escape sequence -- ignoring packet.");
+		interface->decoder_state=DC_NORMAL;
 		interface->recv_offset=0;
 		break;
 	      }
@@ -172,9 +173,11 @@ void overlay_packetradio_poll(struct sched_ent *alarm)
 	      // non-escape character
 	      switch(buffer[i]) {
 	      case SLIP_ESC:
-		interface->decoder_state=DC_ESC; break;
+		interface->decoder_state=DC_ESC; 
+		break;
 	      case SLIP_END:
 		overlay_rx_packet_complete(interface);
+		break;
 	      default:
 		overlay_rx_packet_append_byte(interface,buffer[i]);
 	      }
