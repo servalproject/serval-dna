@@ -48,7 +48,6 @@ int overlay_packetradio_setup_port(overlay_interface *interface)
 
 int overlay_rx_packet_complete(overlay_interface *interface)
 {
-  dump("received packet",interface->rxbuffer,interface->recv_offset);
   if (interface->recv_offset) {
     // dispatch received packet
     if (packetOkOverlay(interface, interface->rxbuffer, interface->recv_offset, -1, 
@@ -151,18 +150,18 @@ void overlay_packetradio_poll(struct sched_ent *alarm)
 	    switch (interface->decoder_state) {
 	    case DC_ESC:
 	      // escaped character
+	      interface->decoder_state=DC_NORMAL;
 	      switch(buffer[i]) {
 	      case SLIP_ESC_END: // escaped END byte
-		overlay_rx_packet_append_byte(interface,SLIP_END); 
+		overlay_rx_packet_append_byte(interface,SLIP_END);
 		break;
 	      case SLIP_ESC_ESC: // escaped escape character
 		overlay_rx_packet_append_byte(interface,SLIP_ESC); 
 		break;
 	      default: /* Unknown escape character. This is an error. */
 		if (config.debug.packetradio)
-		  WARN("Packet radio stream contained illegal escape sequence -- ignoring packet.");
-		interface->decoder_state=DC_NORMAL;
-		interface->recv_offset=0;
+		  WARNF("Packet radio stream contained illegal escaped byte 0x%02x -- ignoring packet.",buffer[i]);
+		// interface->recv_offset=0;
 		break;
 	      }
 	      break;
@@ -223,8 +222,6 @@ int overlay_packetradio_tx_packet(int interface_number,
   int out_len=0;
   int i;
 
-  dump("unencapsulated",bytes,len);
-
   buffer[out_len++]=SLIP_END;
   for(i=0;i<len;i++)
     {
@@ -242,8 +239,6 @@ int overlay_packetradio_tx_packet(int interface_number,
       }
     }
   buffer[out_len++]=SLIP_END;
-
-  dump("SLIP encapsulated",buffer,out_len);
 
   if (config.debug.packetradio) DEBUGF("Encoded length is %d",out_len);
   
