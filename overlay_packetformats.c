@@ -206,7 +206,9 @@ int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, s
   
   context.interface = f.interface = interface;
   
-  f.recvaddr = *((struct sockaddr_in *)recvaddr); 
+  if (recvaddr)
+    f.recvaddr = *((struct sockaddr_in *)recvaddr); 
+  else bzero(&f.recvaddr, sizeof f.recvaddr);
 
   if (config.debug.overlayframes)
     DEBUG("Received overlay packet");

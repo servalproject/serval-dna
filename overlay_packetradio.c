@@ -80,8 +80,6 @@ int overlay_rx_packet_append_byte(overlay_interface *interface,unsigned char byt
 
 void overlay_packetradio_poll(struct sched_ent *alarm)
 {
-  DEBUGF("here, events=0x%x, revents=0x%x",alarm->poll.events,alarm->poll.revents);
-
   overlay_interface *interface = (overlay_interface *)alarm;
 
   {
@@ -134,7 +132,6 @@ void overlay_packetradio_poll(struct sched_ent *alarm)
     {
       unsigned char buffer[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
       ssize_t nread = read(alarm->poll.fd, buffer, OVERLAY_INTERFACE_RX_BUFFER_SIZE);
-      DEBUGF("Reading from packet radio interface (r=%d, errno=%d)",nread,errno);
       if (nread == -1){
 	// WHY_perror("read");
 	return;
