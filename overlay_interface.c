@@ -803,7 +803,7 @@ void overlay_interface_discover(struct sched_ent *alarm)
       }
     if (i >= overlay_interface_count) {
       // New dummy interface, so register it.
-      struct in_addr dummyaddr = (struct in_addr){htonl(INADDR_NONE)};
+      struct in_addr dummyaddr = hton_in_addr(INADDR_NONE);
       overlay_interface_init(ifconfig->dummy, dummyaddr, dummyaddr, dummyaddr, ifconfig);
     }
   }
