@@ -539,11 +539,17 @@ int overlay_route_recalc_neighbour_metrics(struct overlay_neighbour *n, time_ms_
      Also, we might like to take into account the interface we received 
      the announcements on. */
   for(i=0;i<OVERLAY_MAX_OBSERVATIONS;i++) {
+    int interface_number=n->observations[i].sender_interface;
+    overlay_interface *interface = &overlay_interfaces[interface_number];
+    
     if (!n->observations[i].valid ||
 	n->observations[i].sender_interface>=OVERLAY_MAX_INTERFACES ||
-	overlay_interfaces[n->observations[i].sender_interface].state!=INTERFACE_STATE_UP)
+	interface->state!=INTERFACE_STATE_UP)
       continue;
       
+    int long_interval=interface->tick_ms * 400;
+    int short_interval=interface->tick_ms * 10;
+    
     /* Work out the interval covered by the observation.
        The times are represented as lowest 32 bits of a 64-bit 
        millisecond clock.  This introduces modulo problems, 
@@ -563,17 +569,17 @@ int overlay_route_recalc_neighbour_metrics(struct overlay_neighbour *n, time_ms_
      50KB per 12 hours, which is the minimum traffic charge rate 
      on an expensive BGAN satellite link. 	 
      */
-    if (interval>=3600000 || obs_age>20000)
+    if (interval>=3600000 || obs_age>long_interval)
       continue;
 
     if (config.debug.overlayrouting) 
       DEBUGF("adding %dms (interface %d '%s')",
-	      interval,n->observations[i].sender_interface,
-	      overlay_interfaces[n->observations[i].sender_interface].name);
+	      interval,interface_number,
+	      overlay_interfaces[interface_number].name);
 
-    ms_observed_200sec[n->observations[i].sender_interface]+=interval;
-    if (obs_age<=5000){
-      ms_observed_5sec[n->observations[i].sender_interface]+=(interval>5000?5000:interval);
+    ms_observed_200sec[interface_number]+=interval;
+    if (obs_age<=short_interval){
+      ms_observed_5sec[interface_number]+=(interval>short_interval?short_interval:interval);
     }
 
     if (n->observations[i].time_ms>most_recent_observation) most_recent_observation=n->observations[i].time_ms;
@@ -586,15 +592,19 @@ int overlay_route_recalc_neighbour_metrics(struct overlay_neighbour *n, time_ms_
   int scoreChanged=0;
   
   for(i=0;i<OVERLAY_MAX_INTERFACES;i++) {
+    overlay_interface *interface = &overlay_interfaces[i];
+    int long_interval=interface->tick_ms * 400;
+    int short_interval=interface->tick_ms * 10;
+    
     int score;
-    if (ms_observed_200sec[i]>200000) ms_observed_200sec[i]=200000;
-    if (ms_observed_5sec[i]>5000) ms_observed_5sec[i]=5000;
+    if (ms_observed_200sec[i]>long_interval) ms_observed_200sec[i]=long_interval;
+    if (ms_observed_5sec[i]>short_interval) ms_observed_5sec[i]=short_interval;
     if (ms_observed_200sec[i]==0) {
       // Not observed at all
       score=0;
     } else {
-      int contrib_200=ms_observed_200sec[i]/(200000/128);
-      int contrib_5=ms_observed_5sec[i]/(5000/128);
+      int contrib_200=ms_observed_200sec[i]/(long_interval/128);
+      int contrib_5=ms_observed_5sec[i]/(short_interval/128);
 
       if (contrib_5<1)
 	score=contrib_200/2; 
