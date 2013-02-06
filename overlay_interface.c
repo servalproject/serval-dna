@@ -684,7 +684,7 @@ overlay_broadcast_ensemble(int interface_number,
   }
 
   if (interface->type==OVERLAY_INTERFACE_PACKETRADIO) {
-    return overlay_packetradio_tx_packet(interface_number,recipientaddr,bytes,len);
+    return overlay_packetradio_tx_packet(interface,recipientaddr,bytes,len);
   } else if (interface->fileP)
     {
       

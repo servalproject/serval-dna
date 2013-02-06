@@ -829,7 +829,6 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
     goto end;
   }
   close(sock);
-  dump("response", actionlist, content_length);
   
   /* We now have the list of (1+RHIZOME_BAR_PREFIX_BYTES)-byte records that indicate
      the list of BAR prefixes that differ between the two nodes.  We can now action
@@ -846,9 +845,6 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   for(i=10;i<content_length;i+=(1+RHIZOME_BAR_PREFIX_BYTES))
     {
       int type=actionlist[i];
-      unsigned long long 
-	bid_prefix_ll=rhizome_bar_bidprefix_ll((unsigned char *)&actionlist[i+1]);
-      DEBUGF("%s %016llx* @ 0x%x",type==1?"push":"pull",bid_prefix_ll,i);
       if (type==2&&r->pullP) {
 	/* Need to fetch manifest.  Once we have the manifest, then we can
 	   use our normal bundle fetch routines from rhizome_fetch.c	 
@@ -859,6 +855,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	   Then as noted above, we can use that to pull the file down using
 	   existing routines.
 	*/
+	DEBUGF("Fetching manifest %s* @ 0x%x",alloca_tohex(&actionlist[i], 1+RHIZOME_BAR_PREFIX_BYTES),i);
 	if (!rhizome_fetch_request_manifest_by_prefix(&addr,zerosid,&actionlist[i+1],RHIZOME_BAR_PREFIX_BYTES))
 	  {
 	    /* Fetching the manifest, and then using it to see if we want to 
@@ -1003,7 +1000,6 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	if (m) rhizome_manifest_free(m);
       }
     next_item:
-      DEBUGF("Next item.");
       continue;
     }
 

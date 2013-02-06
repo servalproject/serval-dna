@@ -533,6 +533,7 @@ overlay_node *overlay_route_find_node(const unsigned char *sid,int prefixLen,int
 int overlayServerMode();
 int overlay_payload_enqueue(struct overlay_frame *p);
 int overlay_queue_remaining(int queue);
+int overlay_queue_schedule_next(time_ms_t next_allowed_packet);
 int overlay_route_record_link( time_ms_t now, struct subscriber *to,
 			      struct subscriber *via,int sender_interface,
 			      unsigned int s1,unsigned int s2,int score,int gateways_en_route);
@@ -758,7 +759,7 @@ int fd_poll();
 void overlay_interface_discover(struct sched_ent *alarm);
 void overlay_packetradio_poll(struct sched_ent *alarm);
 int overlay_packetradio_setup_port(overlay_interface *interface);
-int overlay_packetradio_tx_packet(int interface_number,
+int overlay_packetradio_tx_packet(overlay_interface *interface,
 				  struct sockaddr_in *recipientaddr,
 				  unsigned char *bytes,int len);
 void overlay_dummy_poll(struct sched_ent *alarm);

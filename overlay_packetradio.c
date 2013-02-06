@@ -77,125 +77,123 @@ int overlay_rx_packet_append_byte(overlay_interface *interface,unsigned char byt
   return 0;
 }
 
+static void write_buffer(overlay_interface *interface){
+  if (interface->tx_bytes_pending>0) {
+    int written=write(interface->alarm.poll.fd,interface->txbuffer,
+		      interface->tx_bytes_pending);
+    if (config.debug.packetradio) DEBUGF("Trying to write %d bytes",
+					 interface->tx_bytes_pending);
+    if (written>0) {
+      interface->tx_bytes_pending-=written;
+      bcopy(&interface->txbuffer[written],&interface->txbuffer[0],
+	    interface->tx_bytes_pending);
+      if (config.debug.packetradio) DEBUGF("Wrote %d bytes (%d left pending)",
+					   written,interface->tx_bytes_pending);
+    } else {
+      if (config.debug.packetradio) DEBUGF("Failed to write any data");
+    }
+  }
+  
+  if (interface->tx_bytes_pending>0) {
+    // more to write, so keep POLLOUT flag
+    interface->alarm.poll.events|=POLLOUT;
+  } else {
+    // nothing more to write, so clear POLLOUT flag
+    interface->alarm.poll.events&=~POLLOUT;
+    // try to empty another packet from the queue ASAP
+    overlay_queue_schedule_next(gettime_ms());
+  }
+  watch(&interface->alarm);
+}
+
 void overlay_packetradio_poll(struct sched_ent *alarm)
 {
   overlay_interface *interface = (overlay_interface *)alarm;
 
-  {
-    if (interface->tx_bytes_pending>0) {
-      int written=write(alarm->poll.fd,interface->txbuffer,
-			interface->tx_bytes_pending);
-      if (config.debug.packetradio) DEBUGF("Trying to write %d bytes",
-					   interface->tx_bytes_pending);
-      if (written>0) {
-	interface->tx_bytes_pending-=written;
-	bcopy(&interface->txbuffer[written],&interface->txbuffer[0],
-	      interface->tx_bytes_pending);
-	if (config.debug.packetradio) DEBUGF("Wrote %d bytes (%d left pending)",
-					     written,interface->tx_bytes_pending);
-      } else {
-	if (config.debug.packetradio) DEBUGF("Failed to write any data");
-      }
-      alarm->poll.revents&=~POLLOUT;
-      watch(alarm);
-      if (interface->tx_bytes_pending>0) {
-	// more to write, so keep POLLOUT flag
-      } else {
-	// nothing more to write, so clear POLLOUT flag
-	alarm->poll.events&=~POLLOUT;
-	watch(alarm);      
-      }
-    }
-  }
-
+  time_ms_t now = gettime_ms();
+  
   if (alarm->poll.revents==0){
-    
-    if (interface->state==INTERFACE_STATE_UP && interface->tick_ms>0){
+    if (interface->state==INTERFACE_STATE_UP && 
+	(interface->last_tick_ms==-1 || interface->last_tick_ms + interface->tick_ms<now)){
       // tick the interface
-      time_ms_t now = gettime_ms();
       overlay_route_queue_advertisements(interface);
-      alarm->alarm=now+interface->tick_ms;
-      alarm->deadline=alarm->alarm+interface->tick_ms/2;
-      unschedule(alarm);
-      schedule(alarm);
+      interface->last_tick_ms=now;
     }
-    
+    alarm->alarm=interface->last_tick_ms + interface->tick_ms;
+    alarm->deadline=alarm->alarm + interface->tick_ms/2;
+    unschedule(alarm);
+    schedule(alarm);
     return;
+  }
+  
+  if (alarm->poll.revents&POLLOUT){
+    write_buffer(interface);
   }
 
   // Read data from the serial port
-  // We will almost certainly support more than one type of packet radio
-  // so lets parameterise this.
-  switch(1) {
-  case 1:
-    {
-      unsigned char buffer[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
-      ssize_t nread = read(alarm->poll.fd, buffer, OVERLAY_INTERFACE_RX_BUFFER_SIZE);
-      if (nread == -1){
-	// WHY_perror("read");
-	return;
-      }
-      if (nread>0) {
-	/*
-	  Examine received bytes for end of packet marker.
-	  The challenge is that we need to make sure that the packet encapsulation
-	  is self-synchronising in the event that a data error occurs (including
-	  failure to receive an arbitrary number of bytes).
-	  For now we will reuse the functional but sub-optimal method described in
-	  RFC1055 for SLIP.
-	*/
-	int i;
-	for(i=0;i<nread;i++)
-	  {
-	    switch (interface->decoder_state) {
-	    case DC_ESC:
-	      // escaped character
-	      interface->decoder_state=DC_NORMAL;
-	      switch(buffer[i]) {
-	      case SLIP_ESC_END: // escaped END byte
-		overlay_rx_packet_append_byte(interface,SLIP_END);
-		break;
-	      case SLIP_ESC_ESC: // escaped escape character
-		overlay_rx_packet_append_byte(interface,SLIP_ESC); 
-		break;
-	      default: /* Unknown escape character. This is an error. */
-		if (config.debug.packetradio)
-		  WARNF("Packet radio stream contained illegal escaped byte 0x%02x -- ignoring packet.",buffer[i]);
-		// interface->recv_offset=0;
-		break;
-	      }
-	      break;
-	    default:
-	      // non-escape character
-	      switch(buffer[i]) {
-	      case SLIP_ESC:
-		interface->decoder_state=DC_ESC; 
-		break;
-	      case SLIP_END:
-		overlay_rx_packet_complete(interface);
-		break;
-	      default:
-		overlay_rx_packet_append_byte(interface,buffer[i]);
-	      }
-	      break;
-	    }
+  if (alarm->poll.revents&POLLIN){
+    unsigned char buffer[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
+    ssize_t nread = read(alarm->poll.fd, buffer, OVERLAY_INTERFACE_RX_BUFFER_SIZE);
+    if (nread == -1){
+      // WHY_perror("read");
+      return;
+    }
+    if (nread>0) {
+      /*
+	Examine received bytes for end of packet marker.
+	The challenge is that we need to make sure that the packet encapsulation
+	is self-synchronising in the event that a data error occurs (including
+	failure to receive an arbitrary number of bytes).
+	For now we will reuse the functional but sub-optimal method described in
+	RFC1055 for SLIP.
+      */
+      int i;
+      for(i=0;i<nread;i++)
+	{
+	  switch (interface->decoder_state) {
+	  case DC_ESC:
+	    // escaped character
+	    interface->decoder_state=DC_NORMAL;
+	    switch(buffer[i]) {
+	    case SLIP_ESC_END: // escaped END byte
+	      overlay_rx_packet_append_byte(interface,SLIP_END);
+	    break;
+	  case SLIP_ESC_ESC: // escaped escape character
+	    overlay_rx_packet_append_byte(interface,SLIP_ESC); 
+	    break;
+	  default: /* Unknown escape character. This is an error. */
+	    if (config.debug.packetradio)
+		WARNF("Packet radio stream contained illegal escaped byte 0x%02x -- ignoring packet.",buffer[i]);
+	      // interface->recv_offset=0;
+	    break;
 	  }
+	  break;
+	default:
+	  // non-escape character
+	  switch(buffer[i]) {
+	  case SLIP_ESC:
+	    interface->decoder_state=DC_ESC; 
+	    break;
+	  case SLIP_END:
+	    overlay_rx_packet_complete(interface);
+	    break;
+	  default:
+	    overlay_rx_packet_append_byte(interface,buffer[i]);
+	  }
+	  break;
+	}
       }
     }
-    break;
   }
   
-  watch(alarm);
-
   return ;
 }
 
-int overlay_packetradio_tx_packet(int interface_number,
+int overlay_packetradio_tx_packet(overlay_interface *interface,
 				  struct sockaddr_in *recipientaddr,
 				  unsigned char *bytes,int len)
 {
   if (config.debug.packetradio) DEBUGF("Sending packet of %d bytes",len);
-  
   /*
     This is a bit interesting, because we have to deal with RTS/CTS potentially
     blocking our writing of the packet.
@@ -206,19 +204,14 @@ int overlay_packetradio_tx_packet(int interface_number,
     deal with such truncation in a fairly sane manner.
   */
   
-  if (len>OVERLAY_INTERFACE_RX_BUFFER_SIZE) {
-    if (config.debug.packetradio) WHYF("Not sending over-size packet");
-    return -1;
-  }
-  if (overlay_interfaces[interface_number].tx_bytes_pending) {
-    if (config.debug.packetradio) 
-      WHYF("Dropping packet due to congestion");
-    return -1;
-  }
+  if (len>OVERLAY_INTERFACE_RX_BUFFER_SIZE)
+    return WHYF("Not sending over-size packet");
+  if (interface->tx_bytes_pending>0)
+    return WHYF("Cannot send two packets at the same time");
 
   /* Encode packet with SLIP escaping.
      XXX - Add error correction here also */
-  char buffer[len*2+4];
+  unsigned char *buffer = interface->txbuffer;
   int out_len=0;
   int i;
 
@@ -242,24 +235,9 @@ int overlay_packetradio_tx_packet(int interface_number,
 
   if (config.debug.packetradio) DEBUGF("Encoded length is %d",out_len);
   
-  int written=write(overlay_interfaces[interface_number].alarm.poll.fd,
-		    buffer,out_len);
-
-  if (config.debug.packetradio) 
-    DEBUGF("Wrote %d of %d bytes",written,out_len);
+  interface->tx_bytes_pending=out_len;
+  write_buffer(interface);
   
-  if (written<out_len) {
-    int deferred=out_len-written;
-    if (deferred>OVERLAY_INTERFACE_TX_BUFFER_SIZE)
-      deferred=OVERLAY_INTERFACE_TX_BUFFER_SIZE;
-    bcopy(&buffer[written],overlay_interfaces[interface_number].txbuffer,deferred);
-    overlay_interfaces[interface_number].tx_bytes_pending=deferred;
-    overlay_interfaces[interface_number].alarm.poll.events|=POLLOUT;
-    watch(&overlay_interfaces[interface_number].alarm);
-    if (config.debug.packetradio) 
-      DEBUGF("Buffered %d bytes for transmission",deferred);
-  }
-
   return 0;
 }
 

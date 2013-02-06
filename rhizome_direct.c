@@ -213,8 +213,6 @@ int rhizome_direct_continue_sync_request(rhizome_direct_sync_request *r)
   int count=rhizome_direct_bundle_iterator_fill(r->cursor,-1);
 
   DEBUGF("Got %d BARs",count);
-  dump("BARs",r->cursor->buffer,
-       r->cursor->buffer_used+r->cursor->buffer_offset_bytes);
   
   r->dispatch_function(r);
 

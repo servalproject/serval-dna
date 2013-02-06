@@ -249,6 +249,23 @@ overlay_init_packet(struct outgoing_packet *packet, struct subscriber *destinati
   packet->header_length = ob_position(packet->buffer);
 }
 
+int overlay_queue_schedule_next(time_ms_t next_allowed_packet){
+  if (next_packet.alarm==0 || next_allowed_packet < next_packet.alarm){
+    
+    if (!next_packet.function){
+      next_packet.function=overlay_send_packet;
+      send_packet.name="overlay_send_packet";
+      next_packet.stats=&send_packet;
+    }
+    unschedule(&next_packet);
+    next_packet.alarm=next_allowed_packet;
+    // small grace period, we want to read incoming IO first
+    next_packet.deadline=next_allowed_packet+15;
+    schedule(&next_packet);
+  }
+  return 0;  
+}
+
 // update the alarm time and return 1 if changed
 static int
 overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
@@ -269,6 +286,9 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
   
   time_ms_t next_allowed_packet=0;
   if (frame->interface){
+    // don't include interfaces which are currently transmitting using a serial buffer
+    if (frame->interface->tx_bytes_pending>0)
+      return 0;
     next_allowed_packet = limit_next_allowed(&frame->interface->transfer_limit);
   }else{
     // check all interfaces
@@ -285,18 +305,7 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
       return 0;
   }
   
-  if (next_packet.alarm==0 || next_allowed_packet < next_packet.alarm){
-    if (!next_packet.function){
-      next_packet.function=overlay_send_packet;
-      send_packet.name="overlay_send_packet";
-      next_packet.stats=&send_packet;
-    }
-    unschedule(&next_packet);
-    next_packet.alarm=next_allowed_packet;
-    // small grace period, we want to read incoming IO first
-    next_packet.deadline=next_allowed_packet+15;
-    schedule(&next_packet);
-  }
+  overlay_queue_schedule_next(next_allowed_packet);
   
   return 0;
 }
@@ -410,6 +419,10 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     }
     
     if (!packet->buffer){
+      // don't transmit on an interface that uses the serial tx buffer
+      if (frame->interface->tx_bytes_pending>0)
+	goto skip;
+      
       // can we send a packet on this interface now?
       if (limit_is_allowed(&frame->interface->transfer_limit))
 	goto skip;

@@ -514,7 +514,7 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
   /* TODO We should stream file straight into the database */
   slot->start_time=gettime_ms();
   if (create_rhizome_import_dir() == -1)
-    return -1;
+    return WHY("Unable to create import directory");
   if (slot->manifest) {
     slot->file_len=slot->manifest->fileLength;
     slot->rowid=
@@ -569,8 +569,10 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
     if (config.debug.rhizome_rx)
       DEBUGF("RHIZOME HTTP REQUEST family=%u addr=%s sid=%s port=%u %s",
 	     slot->peer_ipandport.sin_family, 
+	     buf,
 	     alloca_tohex_sid(slot->peer_sid),
-	     buf, ntohs(slot->peer_ipandport.sin_port), alloca_str_toprint(slot->request)
+	     ntohs(slot->peer_ipandport.sin_port), 
+	     alloca_str_toprint(slot->request)
 	);
     slot->alarm.poll.fd = sock;
     /* Watch for activity on the socket */
