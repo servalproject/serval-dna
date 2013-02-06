@@ -252,7 +252,7 @@ runTests() {
       if $_tfw_verbose || [ $_tfw_njobs -ne 1 ]; then
          echo
       fi
-      echo "$testPosition $testNumber $testName" NONE "$testSourceFile" >"$_tfw_results_dir/$testName"
+      echo "$testPosition $testNumber $testName" NONE "$testSourceFile" >"$_tfw_results_dir/$testNumber"
       (
          _tfw_test_name="$testName"
          # The directory where this test's log.txt and other artifacts are
@@ -323,7 +323,7 @@ runTests() {
          1) result=FAIL;;
          0) result=PASS;;
          esac
-         echo "$testPosition $testNumber $testName $result $testSourceFile" >"$_tfw_results_dir/$testName"
+         echo "$testPosition $testNumber $testName $result $testSourceFile" >"$_tfw_results_dir/$testNumber"
          {
             echo "Name:     $testName"
             echo "Suite:    $_tfw_script_name"
@@ -348,7 +348,7 @@ runTests() {
       local job=$(jobs %% | $SED -n -e '1s/^\[\([0-9]\{1,\}\)\].*/\1/p')
       _tfw_running_jobs+=($job)
       _tfw_job_pgids[$job]=$(jobs -p %%)
-      ln -f -s "$_tfw_results_dir/$testName" "$_tfw_results_dir/job-$job"
+      ln -f -s "$_tfw_results_dir/$testNumber" "$_tfw_results_dir/job-$job"
    done
    # Wait for all child processes to finish.
    while [ ${#_tfw_running_jobs[*]} -ne 0 ]; do
