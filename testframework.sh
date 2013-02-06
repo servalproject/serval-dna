@@ -61,7 +61,6 @@ TSFMT='+%Y-%m-%d %H:%M:%S'
 
 SYSTYPE=`uname -s`
 if [ $SYSTYPE = "SunOS" ]; then
-    abspath () { case "$1" in /*)printf "%s\n" "$1";; *)printf "%s\n" "$PWD/$1";; esac; }
     AWK=gawk
     SED=gsed
     GREP=ggrep
@@ -122,30 +121,50 @@ _tfw_shopt_restore() {
    [ -n "${!_var}" ] && eval "${!_var}"
 }
 
-declare -a _tfw_running_jobs
-declare -a _tfw_job_pgids
+declare -a _tfw_included_tests=()
+declare -a _tfw_test_names=()
+declare -a _tfw_test_sourcefiles=()
+declare -a _tfw_job_pgids=()
+declare -a _tfw_running_jobs=()
 
 # The rest of this file is parsed for extended glob patterns.
 _tfw_shopt _tfw_orig_shopt -s extglob
 
+includeTests() {
+   local arg
+   for arg; do
+      local path
+      case "$arg" in
+      /*) path="$(abspath "$arg")";;
+      *) path="$(abspath "$_tfw_script_dir/arg")";;
+      esac
+      local n=$((${#BASH_LINENO[*]} - 1))
+      while [ $n -gt 0 -a ${BASH_LINENO[$n]} -eq 0 ]; do
+         let n=n-1
+      done
+      _tfw_included_tests+=("${BASH_LINENO[$n]} $arg")
+   done
+}
+
 runTests() {
+   [ -n "${_tfw_running}" ] && return 0
    _tfw_stdout=1
    _tfw_stderr=2
+   _tfw_log_fd=
    _tfw_checkBashVersion
    export PATH="$(_tfw_abspath "${BASH_SOURCE%/*}"):$PATH"
    _tfw_checkTerminfo
    _tfw_checkCommandInPATH tfw_createfile
    _tfw_invoking_script=$(abspath "${BASH_SOURCE[1]}")
-   _tfw_suite_name="${_tfw_invoking_script##*/}"
+   _tfw_script_name="${_tfw_invoking_script##*/}"
+   _tfw_script_dir="${_tfw_invoking_script%/*}"
    _tfw_cwd=$(abspath "$PWD")
    _tfw_tmpdir="$(_tfw_abspath -P "${TFW_TMPDIR:-${TMPDIR:-/tmp}}")"
    _tfw_tmpmain="$_tfw_tmpdir/_tfw-$$"
    _tfw_njobs=1
    _tfw_lognoise=true
-   trap '_tfw_status=$?; _tfw_killtests; rm -rf "$_tfw_tmpmain"; exit $_tfw_status' EXIT SIGHUP SIGINT SIGTERM
-   rm -rf "$_tfw_tmpmain"
-   mkdir -p "$_tfw_tmpmain" || return $?
-   _tfw_logdir_suite="${TFW_LOGDIR:-$_tfw_cwd/testlog}/$_tfw_suite_name"
+   _tfw_logdir_script="${TFW_LOGDIR:-$_tfw_cwd/testlog}/$_tfw_script_name"
+   _tfw_list=false
    _tfw_trace=false
    _tfw_verbose=false
    _tfw_stop_on_error=false
@@ -158,6 +177,7 @@ runTests() {
    while [ $# -ne 0 ]; do
       case "$1" in
       --help) usage; exit 0;;
+      -l|--list) _tfw_list=true;;
       -t|--trace) _tfw_trace=true;;
       -v|--verbose) _tfw_verbose=true;;
       --filter=*) filters+=("${1#*=}");;
@@ -176,14 +196,30 @@ runTests() {
    if $_tfw_verbose && [ $_tfw_njobs -ne 1 ]; then
       _tfw_fatal "--verbose is incompatible with --jobs=$_tfw_njobs"
    fi
+   # Enumerate all the test cases.
+   _tfw_list_tests
+   # If we are only asked to list them, then do so and finish.
+   if $_tfw_list; then
+      local testNumber
+      for ((testNumber = 1; testNumber <= ${#_tfw_test_names[*]}; ++testNumber)); do
+         local testSourceFile="${_tfw_test_sourcefiles[$(($testNumber - 1))]}"
+         local testName="${_tfw_test_names[$(($testNumber - 1))]}"
+         if _tfw_filter_predicate "$testNumber" "$testName" "${filters[@]}"; then
+            echo "$testNumber $testName ${testSourceFile#$_tfw_script_dir/}"
+         fi
+      done
+      return 0
+   fi
+   # Create base temporary working directory.
+   trap '_tfw_status=$?; _tfw_killtests; rm -rf "$_tfw_tmpmain"; exit $_tfw_status' EXIT SIGHUP SIGINT SIGTERM
+   rm -rf "$_tfw_tmpmain"
+   mkdir -p "$_tfw_tmpmain" || return $?
    # Create an empty results directory.
    _tfw_results_dir="$_tfw_tmpmain/results"
    mkdir "$_tfw_results_dir" || return $?
    # Create an empty log directory.
-   mkdir -p "$_tfw_logdir_suite" || return $?
-   rm -r -f "$_tfw_logdir_suite"/*
-   # Enumerate all the test cases.
-   _tfw_find_tests "${filters[@]}"
+   mkdir -p "$_tfw_logdir_script" || return $?
+   rm -r -f "$_tfw_logdir_script"/*
    # Enable job control.
    set -m
    # Iterate through all test cases, starting a new test whenever the number of
@@ -198,9 +234,10 @@ runTests() {
    _tfw_test_number_watermark=0
    local testNumber
    local testPosition=0
-   for ((testNumber = 1; testNumber <= ${#_tfw_tests[*]}; ++testNumber)); do
-      testName="${_tfw_tests[$(($testNumber - 1))]}"
-      [ -z "$testName" ] && continue
+   for ((testNumber = 1; testNumber <= ${#_tfw_test_names[*]}; ++testNumber)); do
+      local testSourceFile="${_tfw_test_sourcefiles[$(($testNumber - 1))]}"
+      local testName="${_tfw_test_names[$(($testNumber - 1))]}"
+      _tfw_filter_predicate "$testNumber" "$testName" "${filters[@]}" || continue
       let ++testPosition
       let ++_tfw_testcount
       # Wait for any existing child process to finish.
@@ -211,17 +248,17 @@ runTests() {
       $_tfw_stop_on_error && [ $_tfw_errorcount -ne 0 ] && break
       $_tfw_stop_on_failure && [ $_tfw_failcount -ne 0 ] && break
       # Start the next test in a child process.
-      _tfw_echo_progress $testPosition $testNumber $testName
+      _tfw_echo_progress $testPosition $testNumber "$testSourceFile" $testName
       if $_tfw_verbose || [ $_tfw_njobs -ne 1 ]; then
          echo
       fi
-      echo "$testPosition $testNumber $testName" >"$_tfw_results_dir/$testName"
+      echo "$testPosition $testNumber $testName" NONE "$testSourceFile" >"$_tfw_results_dir/$testName"
       (
          _tfw_test_name="$testName"
          # The directory where this test's log.txt and other artifacts are
          # deposited.
-         _tfw_logdir_test="$_tfw_logdir_suite/$testNumber.$testName"
-         mkdir "$_tfw_logdir_test" || exit 255
+         _tfw_logdir_test="$_tfw_logdir_script/$testNumber.$testName"
+         mkdir "$_tfw_logdir_test" || _tfw_fatalexit
          # Pick a unique decimal number that must not coincide with other tests
          # being run concurrently, _including tests being run in other test
          # scripts by other users on the same host_.  We cannot simply use
@@ -237,9 +274,37 @@ runTests() {
          local start_time=$(_tfw_timestamp)
          local finish_time=unknown
          (
-            trap '_tfw_finalise; _tfw_teardown; _tfw_exit' EXIT SIGHUP SIGINT SIGTERM
+            _tfw_result=FATAL
+            mkdir $_tfw_tmp || _tfw_fatalexit
+            exec <&- 5>&1 5>&2 6>$_tfw_tmp/log.stdout 1>&6 2>$_tfw_tmp/log.stderr 7>$_tfw_tmp/log.xtrace
+            _tfw_stdout=5
+            _tfw_stderr=5
+            _tfw_log_fd=6
+            BASH_XTRACEFD=7
+            if [ "$testSourceFile" != "$_tfw_invoking_script" ]; then
+               _tfw_running=true
+               source "$testSourceFile"
+               unset _tfw_running
+            fi
+            declare -f test_$_tfw_test_name >/dev/null || _tfw_fatal "test_$_tfw_test_name not defined"
+            export TFWLOG=$_tfw_logdir_test
+            export TFWUNIQUE=$_tfw_unique
+            export TFWVAR=$_tfw_tmp/var
+            mkdir $TFWVAR || _tfw_fatalexit
+            export TFWTMP=$_tfw_tmp/tmp
+            mkdir $TFWTMP || _tfw_fatalexit
+            cd $TFWTMP || _tfw_fatalexit
+            if $_tfw_verbose; then
+               # Find the PID of the current subshell process.  Cannot use $BASHPID
+               # because MacOS only has Bash-3.2, and $BASHPID was introduced in Bash-4.
+               local mypid=$($BASH -c 'echo $PPID')
+               # These tail processes will die when the current subshell exits.
+               tail --pid=$mypid --follow $_tfw_tmp/log.stdout >&$_tfw_stdout 2>/dev/null &
+               tail --pid=$mypid --follow $_tfw_tmp/log.stderr >&$_tfw_stderr 2>/dev/null &
+            fi
+            _tfw_phase=setup
             _tfw_result=ERROR
-            mkdir $_tfw_tmp || exit 255
+            trap '_tfw_finalise; _tfw_teardown; _tfw_exit' EXIT SIGHUP SIGINT SIGTERM
             _tfw_setup
             _tfw_result=FAIL
             _tfw_phase=testcase
@@ -248,7 +313,7 @@ runTests() {
             test_$_tfw_test_name
             set +x
             _tfw_result=PASS
-            exit 255
+            _tfw_fatalexit
          )
          local stat=$?
          finish_time=$(_tfw_timestamp)
@@ -258,9 +323,10 @@ runTests() {
          1) result=FAIL;;
          0) result=PASS;;
          esac
-         echo "$testPosition $testNumber $testName $result" >"$_tfw_results_dir/$testName"
+         echo "$testPosition $testNumber $testName $result $testSourceFile" >"$_tfw_results_dir/$testName"
          {
             echo "Name:     $testName"
+            echo "Suite:    $_tfw_script_name"
             echo "Result:   $result"
             echo "Started:  $start_time"
             echo "Finished: $finish_time"
@@ -336,11 +402,12 @@ _tfw_harvest_processes() {
       [ -n "$pgid" ] && kill -TERM -$pgid 2>/dev/null
       # Report the test script outcome.
       if [ -s "$_tfw_results_dir/job-$job" ]; then
-         set -- $(<"$_tfw_results_dir/job-$job")
-         local testPosition="$1"
-         local testNumber="$2"
-         local testName="$3"
-         local result="$4"
+         local testPosition
+         local testNumber
+         local testName
+         local result
+         local testSourceFile
+         _tfw_unpack_words "$(<"$_tfw_results_dir/job-$job")" testPosition testNumber testName result testSourceFile
          case "$result" in
          ERROR)
             let _tfw_errorcount=_tfw_errorcount+1
@@ -358,18 +425,18 @@ _tfw_harvest_processes() {
          esac
          local lines
          if ! $_tfw_verbose && [ $_tfw_njobs -eq 1 ]; then
-            _tfw_echo_progress $testPosition $testNumber $testName $result
+            _tfw_echo_progress $testPosition $testNumber "$testSourceFile" $testName $result
             echo
          elif ! $_tfw_verbose && lines=$($_tfw_tput lines); then
             local travel=$(($_tfw_test_number_watermark - $testPosition + 1))
             if [ $travel -gt 0 -a $travel -lt $lines ] && $_tfw_tput cuu $travel ; then
-               _tfw_echo_progress $testPosition $testNumber $testName $result
+               _tfw_echo_progress $testPosition $testNumber "$testSourceFile" $testName $result
                echo
                travel=$(($_tfw_test_number_watermark - $testPosition))
                [ $travel -gt 0 ] && $_tfw_tput cud $travel
             fi
          else
-            _tfw_echo_progress $testPosition $testNumber $testName $result
+            _tfw_echo_progress $testPosition $testNumber "$testSourceFile" $testName $result
             echo
          fi
       else
@@ -381,11 +448,20 @@ _tfw_harvest_processes() {
 }
 
 _tfw_echo_progress() {
-   local docvar="doc_$3"
-   echo -n -e '\r'
-   echo -n "$2 ["
-   _tfw_echo_result "$4"
-   echo -n "] ${!docvar:-$3}"
+   (
+      local script=
+      if [ "$testSourceFile" != "$_tfw_invoking_script" ]; then
+         _tfw_running=true
+         source "$testSourceFile"
+         unset _tfw_running
+         script=" (${3#$_tfw_script_dir/})"
+      fi
+      local docvar="doc_$4"
+      echo -n -e '\r'
+      echo -n "$2 ["
+      _tfw_echo_result "$5"
+      echo -n "]$script ${!docvar:-$4}"
+   )
    [ $1 -gt $_tfw_test_number_watermark ] && _tfw_test_number_watermark=$1
 }
 
@@ -818,27 +894,6 @@ _tfw_timestamp() {
 }
 
 _tfw_setup() {
-   _tfw_phase=setup
-   exec <&- 5>&1 5>&2 6>$_tfw_tmp/log.stdout 1>&6 2>$_tfw_tmp/log.stderr 7>$_tfw_tmp/log.xtrace
-   BASH_XTRACEFD=7
-   _tfw_log_fd=6
-   _tfw_stdout=5
-   _tfw_stderr=5
-   if $_tfw_verbose; then
-      # Find the PID of the current subshell process.  Cannot use $BASHPID
-      # because MacOS only has Bash-3.2, and $BASHPID was introduced in Bash-4.
-      local mypid=$($BASH -c 'echo $PPID')
-      # These tail processes will die when the current subshell exits.
-      tail --pid=$mypid --follow $_tfw_tmp/log.stdout >&$_tfw_stdout 2>/dev/null &
-      tail --pid=$mypid --follow $_tfw_tmp/log.stderr >&$_tfw_stderr 2>/dev/null &
-   fi
-   export TFWLOG=$_tfw_logdir_test
-   export TFWUNIQUE=$_tfw_unique
-   export TFWVAR=$_tfw_tmp/var
-   mkdir $TFWVAR
-   export TFWTMP=$_tfw_tmp/tmp
-   mkdir $TFWTMP
-   cd $TFWTMP
    tfw_log '# SETUP'
    case `type -t setup_$_tfw_test_name` in
    function)
@@ -903,7 +958,7 @@ _tfw_exit() {
    FAIL) exit 1;;
    ERROR) exit 254;;
    esac
-   exit 255
+   _tfw_fatalexit
 }
 
 # Executes $_tfw_executable with the given arguments.
@@ -1291,80 +1346,139 @@ _tfw_checkCommandInPATH() {
    esac
 }
 
-# Return a list of test names in the _tfw_tests array variable, in the order
-# that the test_TestName functions were defined.  Test names must start with
-# an alphabetic character (not numeric or '_').
-_tfw_find_tests() {
-   _tfw_tests=()
-   local oo
-   _tfw_shopt oo -s extdebug
-   local name
-   for name in $(builtin declare -F |
-         $SED -n -e '/^declare -f test_[A-Za-z]/s/^declare -f test_//p' |
-         while read name; do builtin declare -F "test_$name"; done |
-         sort -k 2,2n -k 3,3 |
-         $SED -e 's/^test_//' -e 's/[    ].*//')
-   do
-      local number=$((${#_tfw_tests[*]} + 1))
-      local testName=
-      if [ $# -eq 0 ]; then
-         testName="$name"
-      else
-         local filter
-         for filter; do
-            case "$filter" in
-            +([0-9]))
-               if [ $number -eq $filter ]; then
-                  testName="$name"
-                  break
-               fi
-               ;;
-            +([0-9])*(,+([0-9])))
-               local oIFS="$IFS"
-               IFS=,
-               local -a numbers=($filter)
-               IFS="$oIFS"
-               local n
-               for n in ${numbers[*]}; do
-                  if [ $number -eq $n ]; then
-                     testName="$name"
-                     break 2
-                  fi
-               done
-               ;;
-            +([0-9])-)
-               local start=${filter%-}
-               if [ $number -ge $start ]; then
-                  testName="$name"
-                  break
-               fi
-               ;;
-            -+([0-9]))
-               local end=${filter#-}
-               if [ $number -le $end ]; then
-                  testName="$name"
-                  break
-               fi
-               ;;
-            +([0-9])-+([0-9]))
-               local start=${filter%-*}
-               local end=${filter#*-}
-               if [ $number -ge $start -a $number -le $end ]; then
-                  testName="$name"
-                  break
-               fi
-               ;;
-            *)
-               case "$name" in
-               "$filter"*) testName="$name"; break;;
-               esac
-               ;;
-            esac
-         done
-      fi
-      _tfw_tests+=("$testName")
+_tfw_unpack_words() {
+   local __text="$1"
+   shift
+   while [ $# -gt 1 ]; do
+      eval "$1=\"\${__text%% *}\""
+      shift
+      __text="${__text#* }"
    done
+   if [ $# -ne 0 ]; then
+      eval "$1=\"\$__text\""
+   fi
+}
+
+_tfw_find_tests() {
+   (
+      local oo
+      _tfw_shopt oo -s extdebug
+      local func
+      for func in $(builtin declare -F | $SED -n -e '/^declare -f test_[A-Za-z]/s/^declare -f //p'); do
+         local funcname
+         local lineno
+         local path
+         _tfw_unpack_words "$(builtin declare -F $func)" funcname lineno path
+         echo $lineno ${funcname#test_} "$(abspath "$path")"
+      done
+      local include
+      for include in "${_tfw_included_tests[@]}"; do
+         local lineno
+         local script
+         _tfw_unpack_words "$include" lineno script
+         local listline
+         "$_tfw_script_dir/$script" --list 2>/dev/null | while read listline; do
+            local number
+            local name
+            local path
+            _tfw_unpack_words "$listline" number name path
+            case "$path" in
+            /*) ;;
+            *) path="$(abspath "$_tfw_script_dir/$path")";;
+            esac
+            echo $lineno.$number $name "$path"
+         done
+      done
+      _tfw_shopt_restore oo
+   ) | sort -V | $SED -e 's/^[^ ]* //'
+}
+
+# Return a list of test names in the _tfw_test_sourcefiles and _tfw_test_names
+# array variables, in the order that the test_TestName functions were defined.
+# Test names must start with an alphabetic character (not numeric or '_').
+_tfw_list_tests() {
+   _tfw_test_sourcefiles=()
+   _tfw_test_names=()
+   local oIFS="$IFS"
+   IFS="
+"
+   local -a testlines=($(_tfw_find_tests))
+   IFS="$oIFS"
+   local testline
+   for testline in "${testlines[@]}"; do
+      local name
+      local path
+      _tfw_unpack_words "$testline" name path
+      _tfw_test_names+=("$name")
+      _tfw_test_sourcefiles+=("$path")
+   done
+}
+
+_tfw_filter_predicate() {
+   local number="$1"
+   local name="$2"
+   shift 2
+   local -a filters=("$@")
+   local ret=1
+   local oo
+   _tfw_shopt oo -s extglob
+   if [ ${#filters[*]} -eq 0 ]; then
+      ret=0
+   else
+      local filter
+      for filter in "${filters[@]}"; do
+         case "$filter" in
+         +([0-9]))
+            if [ $number -eq $filter ]; then
+               ret=0
+               break
+            fi
+            ;;
+         +([0-9])*(,+([0-9])))
+            local oIFS="$IFS"
+            IFS=,
+            local -a numbers=($filter)
+            IFS="$oIFS"
+            local n
+            for n in ${numbers[*]}; do
+               if [ $number -eq $n ]; then
+                  ret=0
+                  break 2
+               fi
+            done
+            ;;
+         +([0-9])-)
+            local start=${filter%-}
+            if [ $number -ge $start ]; then
+               ret=0
+               break
+            fi
+            ;;
+         -+([0-9]))
+            local end=${filter#-}
+            if [ $number -le $end ]; then
+               ret=0
+               break
+            fi
+            ;;
+         +([0-9])-+([0-9]))
+            local start=${filter%-*}
+            local end=${filter#*-}
+            if [ $number -ge $start -a $number -le $end ]; then
+               ret=0
+               break
+            fi
+            ;;
+         *)
+            case "$name" in
+            "$filter"*) ret=0; break;;
+            esac
+            ;;
+         esac
+      done
+   fi
    _tfw_shopt_restore oo
+   return $ret
 }
 
 # A "fail" event occurs when any assertion fails, and indicates that the test
@@ -1392,7 +1506,7 @@ _tfw_backtrace() {
    done
    local -i i=0
    while [ $up -lt ${#FUNCNAME[*]} -a "${BASH_SOURCE[$up]}" != "${BASH_SOURCE[0]}" ]; do
-      echo "[$i] ${FUNCNAME[$(($up-1))]}() called from ${FUNCNAME[$up]}() at line ${BASH_LINENO[$(($up-1))]} of ${BASH_SOURCE[$up]}" >&$_tfw_log_fd 
+      echo "[$i] ${FUNCNAME[$(($up-1))]}() called from ${FUNCNAME[$up]}() at line ${BASH_LINENO[$(($up-1))]} of ${BASH_SOURCE[$up]}" >&$_tfw_log_fd
       let up=up+1
       let i=i+1
    done
