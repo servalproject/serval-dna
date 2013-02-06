@@ -251,6 +251,10 @@ int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay
   if (!interface)
     return WHY("I don't know which interface to use");
   
+  // never send unicast probes over packet radio
+  if (interface->type==OVERLAY_INTERFACE_PACKETRADIO)
+    return 0;
+  
   time_ms_t now = gettime_ms();
   
   if (peer && peer->last_probe+1000>now)
