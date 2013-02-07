@@ -1395,7 +1395,7 @@ _tfw_find_tests() {
          local lineno
          local path
          _tfw_unpack_words "$(builtin declare -F $func)" funcname lineno path
-         echo $lineno ${funcname#test_} "$(abspath "$path")"
+         echo $lineno 0 ${funcname#test_} "$(abspath "$path")"
       done
       local include
       for include in "${_tfw_included_tests[@]}"; do
@@ -1412,11 +1412,11 @@ _tfw_find_tests() {
             /*) ;;
             *) path="$(abspath "$_tfw_script_dir/$path")";;
             esac
-            echo $lineno.$number $name "$path"
+            echo $lineno $number $name "$path"
          done
       done
       _tfw_shopt_restore oo
-   ) | sort -V | $SED -e 's/^[^ ]* //'
+   ) | sort -n -k1 -k2 | $SED -e 's/^[0-9][0-9]* [0-9][0-9]* //'
 }
 
 # Return a list of test names in the _tfw_test_sourcefiles and _tfw_test_names
