@@ -209,6 +209,11 @@ int overlay_rhizome_add_advertisements(struct decode_context *context, int inter
     RETURN(-1);
   }
   
+  if (ob_append_rfs(e, 2)){
+    ob_rewind(e);
+    RETURN(-1);
+  }
+  
   /* Version of rhizome advert block (1 byte):
    1 = manifests then BARs,
    2 = BARs only,

@@ -419,9 +419,19 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     }
     
     if (!packet->buffer){
-      // don't transmit on an interface that uses the serial tx buffer
-      if (frame->interface->tx_bytes_pending>0)
-	goto skip;
+      
+      // TODO, interface flag for this behaviour?
+      if (frame->interface->type==OVERLAY_INTERFACE_PACKETRADIO){
+	// don't transmit if the serial tx buffer has data
+	if (frame->interface->tx_bytes_pending>0)
+	  goto skip;
+	
+	// send packets without aggregating them together
+	if (overlay_packetradio_tx_packet(frame))
+	  goto skip;
+	
+	goto sent;
+      }
       
       // can we send a packet on this interface now?
       if (limit_is_allowed(&frame->interface->transfer_limit))
@@ -437,25 +447,26 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       }
     }    
     
-    if (config.debug.overlayframes){
-      DEBUGF("Sending payload type %x len %d for %s via %s", frame->type, ob_position(frame->payload),
-	     frame->destination?alloca_tohex_sid(frame->destination->sid):"All",
-	     frame->next_hop?alloca_tohex_sid(frame->next_hop->sid):alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN));
-    }
-    
     if (overlay_frame_append_payload(&packet->context, packet->interface, frame, packet->buffer)){
       // payload was not queued
       goto skip;
+    }
+    
+    // don't send rhizome adverts if the packet contains a voice payload
+    if (frame->queue==OQ_ISOCHRONOUS_VOICE)
+      packet->add_advertisements=0;
+    
+  sent:    
+    if (config.debug.overlayframes){
+      DEBUGF("Sent payload type %x len %d for %s via %s", frame->type, ob_position(frame->payload),
+	     frame->destination?alloca_tohex_sid(frame->destination->sid):"All",
+	     frame->next_hop?alloca_tohex_sid(frame->next_hop->sid):alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN));
     }
     
     if (frame->destination)
       frame->destination->last_tx=now;
     if (frame->next_hop)
       frame->next_hop->last_tx=now;
-    
-    // don't send rhizome adverts if the packet contains a voice payload
-    if (frame->queue==OQ_ISOCHRONOUS_VOICE)
-      packet->add_advertisements=0;
     
     // mark the payload as sent
     int keep_payload = 0;

@@ -683,9 +683,10 @@ overlay_broadcast_ensemble(int interface_number,
     return WHYF("Cannot send to interface %s as it is down", interface->name);
   }
 
-  if (interface->type==OVERLAY_INTERFACE_PACKETRADIO) {
-    return overlay_packetradio_tx_packet(interface,recipientaddr,bytes,len);
-  } else if (interface->fileP)
+  if (interface->type==OVERLAY_INTERFACE_PACKETRADIO)
+    return WHYF("Cannot send aggregate packets to packet radios");
+    
+  if (interface->fileP)
     {
       
       struct dummy_packet packet={

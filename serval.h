@@ -466,6 +466,12 @@ void insertTransactionInCache(unsigned char *transaction_id);
 int overlay_forward_payload(struct overlay_frame *f);
 int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,
 		    int recvttl, struct sockaddr *recvaddr, size_t recvaddrlen);
+int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *frame, 
+			 struct overlay_buffer *buffer, struct subscriber **nexthop);
+int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface *interface, 
+			struct sockaddr_in *addr, struct overlay_buffer *buffer);
+int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, 
+			   struct overlay_frame *f, struct decode_context *context);
 
 int overlay_frame_process(struct overlay_interface *interface, struct overlay_frame *f);
 int overlay_frame_resolve_addresses(struct overlay_frame *f);
@@ -759,9 +765,7 @@ int fd_poll();
 void overlay_interface_discover(struct sched_ent *alarm);
 void overlay_packetradio_poll(struct sched_ent *alarm);
 int overlay_packetradio_setup_port(overlay_interface *interface);
-int overlay_packetradio_tx_packet(overlay_interface *interface,
-				  struct sockaddr_in *recipientaddr,
-				  unsigned char *bytes,int len);
+int overlay_packetradio_tx_packet(struct overlay_frame *frame);
 void overlay_dummy_poll(struct sched_ent *alarm);
 void overlay_route_tick(struct sched_ent *alarm);
 void server_config_reload(struct sched_ent *alarm);

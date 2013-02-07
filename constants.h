@@ -100,6 +100,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define PAYLOAD_FLAG_CIPHERED (1<<4)
 #define PAYLOAD_FLAG_SIGNED (1<<5)
 
+// return codes for parsing mdp packet headers
+#define HEADER_PROCESS 1
+#define HEADER_FORWARD 2
+
 // this can be removed once all overlay messages have been turned into mdp payloads
 #define PAYLOAD_FLAG_LEGACY_TYPE (1<<7)
 

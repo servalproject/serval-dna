@@ -1,5 +1,8 @@
 #include "serval.h"
 #include "conf.h"
+#include "overlay_address.h"
+#include "overlay_buffer.h"
+#include "overlay_packet.h"
 #include <termios.h>
 
 /* interface decoder states. broadly based on RFC1055 */
@@ -49,12 +52,40 @@ int overlay_packetradio_setup_port(overlay_interface *interface)
 int overlay_rx_packet_complete(overlay_interface *interface)
 {
   if (interface->recv_offset) {
-    // dispatch received packet
-    if (packetOkOverlay(interface, interface->rxbuffer, interface->recv_offset, -1, 
-			NULL,0)) {
-      if (config.debug.packetradio)
-	WARN("Corrupted or unsupported packet from packet radio interface");
-    }
+    
+    struct decode_context context;
+    struct overlay_buffer *buffer=ob_static(interface->rxbuffer, interface->recv_offset);
+    ob_limitsize(buffer, interface->recv_offset);
+    struct overlay_frame frame;
+    struct subscriber *next_hop=NULL;
+    
+    bzero(&context, sizeof(struct decode_context));
+    bzero(&frame, sizeof(struct overlay_frame));
+    
+    if (parseEnvelopeHeader(&context, interface, NULL, buffer))
+      goto end;
+    
+    int packetFlags = parseMdpPacketHeader(&context, &frame, buffer, &next_hop);
+    if (packetFlags<=0)
+      goto end;
+    
+    frame.payload = ob_slice(buffer, ob_position(buffer), ob_remaining(buffer));
+    ob_limitsize(frame.payload, ob_remaining(buffer));
+    
+    // forward payloads that are for someone else or everyone
+    if (packetFlags&HEADER_FORWARD)
+      overlay_forward_payload(&frame);
+    
+    // process payloads that are for me or everyone
+    if (packetFlags&HEADER_PROCESS)
+      process_incoming_frame(gettime_ms(), interface, &frame, &context);
+
+    ob_free(frame.payload);
+    
+  end:
+    send_please_explain(&context, my_subscriber, context.sender);
+    
+    ob_free(buffer);
   }
   interface->recv_offset=0;
   return 0;
@@ -189,11 +220,32 @@ void overlay_packetradio_poll(struct sched_ent *alarm)
   return ;
 }
 
-int overlay_packetradio_tx_packet(overlay_interface *interface,
-				  struct sockaddr_in *recipientaddr,
-				  unsigned char *bytes,int len)
+static int encode(unsigned char *src, int src_bytes, unsigned char *dst, int dst_len){
+  int offset=0;
+  int i;
+  for (i=0;i<src_bytes;i++){
+    
+    if (offset+2>dst_len)
+      return WHY("Buffer overflow while encoding frame");
+    
+    switch(src[i]) {
+      case SLIP_END:
+	dst[offset++]=SLIP_ESC;
+	dst[offset++]=SLIP_ESC_END;
+	break;
+      case SLIP_ESC:
+	dst[offset++]=SLIP_ESC;
+	dst[offset++]=SLIP_ESC_ESC;
+	break;
+      default:
+	dst[offset++]=src[i];
+    }
+  }
+  return offset;
+}
+
+int overlay_packetradio_tx_packet(struct overlay_frame *frame)
 {
-  if (config.debug.packetradio) DEBUGF("Sending packet of %d bytes",len);
   /*
     This is a bit interesting, because we have to deal with RTS/CTS potentially
     blocking our writing of the packet.
@@ -203,41 +255,77 @@ int overlay_packetradio_tx_packet(overlay_interface *interface,
     We will surround each packet with SLIP END characters, so we should be able to
     deal with such truncation in a fairly sane manner.
   */
+  overlay_interface *interface=frame->interface;
+  int interface_number = interface - overlay_interfaces;
   
-  if (len>OVERLAY_INTERFACE_RX_BUFFER_SIZE)
+  if (frame->payload->position>OVERLAY_INTERFACE_RX_BUFFER_SIZE)
     return WHYF("Not sending over-size packet");
   if (interface->tx_bytes_pending>0)
     return WHYF("Cannot send two packets at the same time");
 
+  struct overlay_buffer *headers=ob_new();
+  if (!headers) 
+    return WHY("could not allocate overlay buffer for headers");
+  
+  
+  struct decode_context context;
+  bzero(&context, sizeof(struct decode_context));
+  
+  if (frame->source_full)
+    my_subscriber->send_full=1;
+  
+  if (overlay_packet_init_header(&context, headers, NULL, 0, interface_number, 0))
+    goto cleanup;
+  
+  struct broadcast *broadcast=NULL;
+  if ((!frame->destination) && !is_all_matching(frame->broadcast_id.id,BROADCAST_LEN,0))
+    broadcast = &frame->broadcast_id;
+  
+  if (overlay_frame_build_header(&context, headers,
+				 frame->queue, frame->type, 
+				 frame->modifiers, frame->ttl,
+				 broadcast, frame->next_hop, 
+				 frame->destination, frame->source))
+    goto cleanup;
+    
   /* Encode packet with SLIP escaping.
      XXX - Add error correction here also */
   unsigned char *buffer = interface->txbuffer;
   int out_len=0;
-  int i;
 
   buffer[out_len++]=SLIP_END;
-  for(i=0;i<len;i++)
-    {
-      switch(bytes[i]) {
-      case SLIP_END:
-	buffer[out_len++]=SLIP_ESC;
-	buffer[out_len++]=SLIP_ESC_END;
-	break;
-      case SLIP_ESC:
-	buffer[out_len++]=SLIP_ESC;
-	buffer[out_len++]=SLIP_ESC_ESC;
-	break;
-      default:
-	buffer[out_len++]=bytes[i];
-      }
-    }
+  
+  int encoded=encode(headers->bytes, headers->position, 
+		     buffer+out_len, sizeof(interface->txbuffer) - out_len);
+  if (encoded<0){
+    WHY("Ran out of buffer space while encoding headers");
+    goto cleanup;
+  }
+  
+  out_len+=encoded;
+  
+  encoded=encode(frame->payload->bytes, frame->payload->position, 
+		  buffer+out_len, sizeof(interface->txbuffer) - out_len);
+  if (encoded<0){
+    WHY("Ran out of buffer space while encoding payload body");
+    goto cleanup;
+  }
+  
+  out_len+=encoded;
   buffer[out_len++]=SLIP_END;
 
-  if (config.debug.packetradio) DEBUGF("Encoded length is %d",out_len);
+  if (config.debug.packetradio){
+    DEBUGF("Encoded length is %d",out_len);
+  }
   
   interface->tx_bytes_pending=out_len;
   write_buffer(interface);
   
+  ob_free(headers);
   return 0;
+  
+cleanup:
+  ob_free(headers);
+  return -1;
 }
 

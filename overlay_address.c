@@ -355,6 +355,9 @@ int send_please_explain(struct decode_context *context, struct subscriber *sourc
   else
     frame->source = my_subscriber;
   
+  if (!context->sender)
+    frame->source_full=1;
+  
   frame->source->send_full=1;
   frame->destination = destination;
   
