@@ -208,10 +208,9 @@ int rhizome_extract_privatekey(rhizome_manifest *m, rhizome_bk_t *bsk)
   IN();
   unsigned char bkBytes[RHIZOME_BUNDLE_KEY_BYTES];
   char *bk = rhizome_manifest_get(m, "BK", NULL, 0);
+  int result;
   
   if (bk){
-    int result;
-    
     if (fromhexstr(bkBytes, bk, RHIZOME_BUNDLE_KEY_BYTES) == -1)
       RETURN(WHYF("invalid BK field: %s", bk));
     
@@ -221,37 +220,38 @@ int rhizome_extract_privatekey(rhizome_manifest *m, rhizome_bk_t *bsk)
       int rs_len;
       const unsigned char *rs;
       result = rhizome_find_secret(m->author, &rs_len, &rs);
-      if (result!=0)
-	RETURN(result);
-      
-      result = rhizome_bk2secret(m,m->cryptoSignPublic,rs,rs_len,
-				 bkBytes,m->cryptoSignSecret);
+      if (result==0)
+	result = rhizome_bk2secret(m,m->cryptoSignPublic,rs,rs_len,
+				   bkBytes,m->cryptoSignSecret);
     }
     
-    if (result == 0){
-      m->haveSecret=EXISTING_BUNDLE_ID;
-      
-      if(bsk && !rhizome_is_bk_none(bsk)){
-	// If a bundle secret key was supplied that does not match the secret key derived from the
-	// author, then warn but carry on using the author's.
-	if (memcmp(bsk, m->cryptoSignSecret, RHIZOME_BUNDLE_KEY_BYTES) != 0)
-	  WARNF("Supplied bundle secret key is invalid -- ignoring");
-      }
-      
-    }else{
-      memset(m->cryptoSignSecret, 0, sizeof m->cryptoSignSecret);
-      m->haveSecret=0;
+    if (result == 0 && bsk && !rhizome_is_bk_none(bsk)){
+      // If a bundle secret key was supplied that does not match the secret key derived from the
+      // author, then warn but carry on using the author's.
+      if (memcmp(bsk, m->cryptoSignSecret, RHIZOME_BUNDLE_KEY_BYTES) != 0)
+	WARNF("Supplied bundle secret key is invalid -- ignoring");
     }
     
-    RETURN(result);
   }else if(bsk && !rhizome_is_bk_none(bsk)){
     bcopy(m->cryptoSignPublic, &m->cryptoSignSecret[RHIZOME_BUNDLE_KEY_BYTES], sizeof(m->cryptoSignPublic));
     bcopy(bsk, m->cryptoSignSecret, RHIZOME_BUNDLE_KEY_BYTES);
-    RETURN(rhizome_verify_bundle_privatekey(m,m->cryptoSignSecret,
-					    m->cryptoSignPublic));
+    if (rhizome_verify_bundle_privatekey(m,m->cryptoSignSecret,
+					    m->cryptoSignPublic))
+      result=5;
+    else
+      result=0;
   }else{
-    RETURN(1);
+    result=1;
   }
+  
+  if (result == 0){
+    m->haveSecret=EXISTING_BUNDLE_ID;
+  }else{
+    memset(m->cryptoSignSecret, 0, sizeof m->cryptoSignSecret);
+    m->haveSecret=0;
+  }
+  
+  RETURN(result);
 }
 
 /* Same as rhizome_extract_privatekey, except warnings become errors and are logged */
@@ -263,13 +263,15 @@ int rhizome_extract_privatekey_required(rhizome_manifest *m, rhizome_bk_t *bsk)
     case 0:
       return result;
     case 1:
-      return WHY("bundle contains no BK field, and no bundle secret supplied");
+      return WHY("Bundle contains no BK field, and no bundle secret supplied");
     case 2:
       return WHY("Author unknown");
     case 3:
       return WHY("Author does not have a Rhizome Secret");
     case 4:
       return WHY("Author does not have permission to modify manifest");
+    case 5:
+      return WHY("Bundle secret is not valid for this manifest");
     default:
       return WHYF("Unknown result from rhizome_extract_privatekey(): %d", result);
   }

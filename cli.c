@@ -99,6 +99,7 @@ int cli_arg(int argc, const char *const *argv, const struct command_line_option 
   int arglen = strlen(argname);
   int i;
   const char *word;
+  *dst = defaultvalue;
   for(i = 0; (word = o->words[i]); ++i) {
     int wordlen = strlen(word);
     /* No need to check that the "<...>" and "[<...>]" are all intact in the command_line_option,
@@ -118,7 +119,6 @@ int cli_arg(int argc, const char *const *argv, const struct command_line_option 
    never happen, but it can because more than one version of a command line option may exist, one
    with a given argument and another without, and allowing a default value means we can have a
    single function handle both in a fairly simple manner. */
-  *dst = defaultvalue;
   return 1;
 }
 

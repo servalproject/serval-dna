@@ -1,6 +1,7 @@
 #include "serval.h"
 #include "rhizome.h"
 #include "conf.h"
+#include "strlcpy.h"
 
 #define RHIZOME_BUFFER_MAXIMUM_SIZE (1024*1024)
 
@@ -39,49 +40,47 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
    opening a handle to the blob using:
    int sqlite3_blob_write(sqlite3_blob *, const void *z, int n, int iOffset);
    */
-  
+
+  sqlite3_stmt *statement = NULL;
   int ret=sqlite_exec_void_retry(&retry,
 	"INSERT OR REPLACE INTO FILES(id,length,highestpriority,datavalid,inserttime) VALUES('%s',%lld,%d,0,%lld);",
 	write->id, (long long)file_length, priority, (long long)gettime_ms());
   if (ret!=SQLITE_OK) {
-    WHYF("Failed to insert into files: %s",
-	   sqlite3_errmsg(rhizome_db));
+    WHYF("Failed to insert into files: %s", sqlite3_errmsg(rhizome_db));
     goto insert_row_fail;
   }
-    
-  sqlite3_stmt *statement = sqlite_prepare(&retry,"INSERT OR REPLACE INTO FILEBLOBS(id,data) VALUES('%s',?)",write->id);
-  if (!statement){
-    WHYF("Failed to insert into fileblobs: %s",
-	 sqlite3_errmsg(rhizome_db));
+
+  statement = sqlite_prepare(&retry,"INSERT OR REPLACE INTO FILEBLOBS(id,data) VALUES('%s',?)",write->id);
+  if (!statement) {
+    WHYF("Failed to insert into fileblobs: %s", sqlite3_errmsg(rhizome_db));
     goto insert_row_fail;
   }
-  
+
   /* Bind appropriate sized zero-filled blob to data field */
   if (sqlite3_bind_zeroblob(statement, 1, file_length) != SQLITE_OK) {
     WHYF("sqlite3_bind_zeroblob() failed: %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));
     goto insert_row_fail;
   }
-  
+
   /* Do actual insert, and abort if it fails */
   int rowcount = 0;
   int stepcode;
   while ((stepcode = _sqlite_step_retry(__WHENCE__, LOG_LEVEL_ERROR, &retry, statement)) == SQLITE_ROW)
     ++rowcount;
-  
   if (rowcount)
     WARNF("void query unexpectedly returned %d row%s", rowcount, rowcount == 1 ? "" : "s");
-  
+
   if (!sqlite_code_ok(stepcode)){
-  insert_row_fail:
+insert_row_fail:
     WHYF("Failed to insert row for fileid=%s", write->id);
     if (statement) sqlite3_finalize(statement);
     sqlite_exec_void_retry(&retry, "ROLLBACK;");
     return -1;
   }
-    
+
   sqlite3_finalize(statement);
   statement=NULL;
-  
+
   /* Get rowid for inserted row, so that we can modify the blob */
   write->blob_rowid = sqlite3_last_insert_rowid(rhizome_db);
   DEBUGF("Got rowid %lld for %s", write->blob_rowid, write->id);
@@ -310,6 +309,8 @@ int rhizome_import_file(rhizome_manifest *m, const char *filepath)
 
 int rhizome_stat_file(rhizome_manifest *m, const char *filepath)
 {
+  long long existing = rhizome_manifest_get_ll(m, "filesize");
+  
   m->fileLength = 0;
   if (filepath[0]) {
     struct stat stat;
@@ -317,6 +318,14 @@ int rhizome_stat_file(rhizome_manifest *m, const char *filepath)
       return WHYF("Could not stat() payload file '%s'",filepath);
     m->fileLength = stat.st_size;
   }
+  
+  // fail if the file is shorter than specified by the manifest
+  if (existing > m->fileLength)
+    return WHY("Manifest length is longer than the file");
+  
+  // if the file is longer than specified by the manifest, ignore the end.
+  if (existing!=-1 && existing < m->fileLength)
+    m->fileLength = existing;
   
   rhizome_manifest_set_ll(m, "filesize", m->fileLength);
   

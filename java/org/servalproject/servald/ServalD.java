@@ -28,17 +28,20 @@ class ServalD
 	int status;
 	List<byte[]> outv;
 
-	public ServalD()
+	static
 	{
+		String property = System.getProperty("java.library.path");
+		System.err.println("Attempting to load libservald.so from "+property);
 		System.loadLibrary("servald");
 	}
 
-	public native int rawCommand(List<byte[]> outv, String... args);
+	private static native int rawCommand(IJniResults outv, String[] args);
 
 	public void command(String... args)
 	{
 		this.outv = new LinkedList<byte[]>();
-		this.status = this.rawCommand(this.outv, args);
+		IJniResults results = new JniResultsList(outv);
+		this.status = this.rawCommand(results, args);
 	}
 
 	public static void main(String[] args)

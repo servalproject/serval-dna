@@ -2,7 +2,7 @@
 
 # Tests for Serval DNA server operations.
 #
-# Copyright 2012 Paul Gardner-Stephen
+# Copyright 2012 Serval Project, Inc.
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -126,7 +126,10 @@ test_NoZombie() {
    assert kill -KILL $servald_pid
    tfw_log "After kill -KILL $servald_pid"
    ps -l $start_pid $servald_pid
-   assert --message="zombie servald process does not exist" ! kill -0 $servald_pid
+   wait_until --timeout=2 ! kill -0 $servald_pid 2>/dev/null
+   tfw_log "After waiting"
+   ps -l $start_pid $servald_pid
+   assert --message="zombie servald process does not exist" ! kill -0 $servald_pid 2>/dev/null
 }
 teardown_NoZombie() {
    kill -TERM $start_pid

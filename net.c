@@ -29,6 +29,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "net.h"
 #include "str.h"
 
+struct in_addr hton_in_addr(in_addr_t addr)
+{
+  struct in_addr a;
+  a.s_addr = htonl(addr);
+  return a;
+}
+
 int _set_nonblock(int fd, struct __sourceloc __whence)
 {
   int flags;

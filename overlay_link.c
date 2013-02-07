@@ -225,18 +225,20 @@ overlay_mdp_service_probe(overlay_mdp_frame *mdp)
   }
   
   struct subscriber *peer = find_subscriber(mdp->out.src.sid, SID_SIZE, 0);
+  if (peer->reachable == REACHABLE_SELF)
+    RETURN(0);
+  
   struct probe_contents probe;
   bcopy(&mdp->out.payload, &probe, sizeof(struct probe_contents));
   if (probe.addr.sin_family!=AF_INET)
     RETURN(WHY("Unsupported address family"));
   
-  if (peer->reachable == REACHABLE_NONE || peer->reachable == REACHABLE_INDIRECT || (peer->reachable & REACHABLE_ASSUMED)){
-    peer->interface = &overlay_interfaces[probe.interface];
-    peer->address.sin_family = AF_INET;
-    peer->address.sin_addr = probe.addr.sin_addr;
-    peer->address.sin_port = probe.addr.sin_port;
-    set_reachable(peer, REACHABLE_UNICAST);
-  }
+  peer->last_probe_response = gettime_ms();
+  peer->interface = &overlay_interfaces[probe.interface];
+  peer->address.sin_family = AF_INET;
+  peer->address.sin_addr = probe.addr.sin_addr;
+  peer->address.sin_port = probe.addr.sin_port;
+  set_reachable(peer, REACHABLE_UNICAST | (peer->reachable & REACHABLE_DIRECT));
   RETURN(0);
 }
 

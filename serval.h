@@ -354,7 +354,8 @@ typedef struct overlay_interface {
   char name[256];
   int recv_offset;
   int fileP; // dummyP
-  int drop_broadcasts;
+  char drop_broadcasts;
+  char drop_unicasts;
   int port;
   int type;
   /* Number of milli-seconds per tick for this interface, which is basically related to the     
@@ -371,11 +372,11 @@ typedef struct overlay_interface {
   unsigned tick_ms; /* milliseconds per tick */
   struct subscriber *next_advert;
   
-  int send_broadcasts;
+  char send_broadcasts;
+  char prefer_unicast;
+  
   /* The time of the last tick on this interface in milli seconds */
   time_ms_t last_tick_ms;
-  /* How many times have we abbreviated our address since we last announced it in full? */
-  int ticks_since_sent_full_address;
   
   /* sequence number of last packet sent on this interface.
    Used to allow NACKs that can request retransmission of recent packets.
@@ -512,6 +513,7 @@ overlay_node *overlay_route_find_node(const unsigned char *sid,int prefixLen,int
 
 int overlayServerMode();
 int overlay_payload_enqueue(struct overlay_frame *p);
+int overlay_queue_remaining(int queue);
 int overlay_route_record_link( time_ms_t now, struct subscriber *to,
 			      struct subscriber *via,int sender_interface,
 			      unsigned int s1,unsigned int s2,int score,int gateways_en_route);
@@ -630,6 +632,12 @@ int cli_putchar(char c);
 int cli_puts(const char *str);
 int cli_printf(const char *fmt, ...);
 int cli_delim(const char *opt);
+void cli_columns(int columns, const char *names[]);
+void cli_row_count(int rows);
+void cli_field_name(const char *name, const char *delim);
+void cli_put_long(int64_t value, const char *delim);
+void cli_put_string(const char *value, const char *delim);
+void cli_put_hexvalue(const unsigned char *value, int length, const char *delim);
 
 int is_configvarname(const char *arg);
 

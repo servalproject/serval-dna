@@ -125,6 +125,12 @@ overlay_queue_dump(overlay_txqueue *q)
 }
 #endif
 
+int overlay_queue_remaining(int queue){
+  if (queue<0 || queue>=OQ_MAX)
+    return -1;
+  return overlay_tx[queue].maxLength - overlay_tx[queue].length;
+}
+
 int overlay_payload_enqueue(struct overlay_frame *p)
 {
   /* Add payload p to queue q.
@@ -158,6 +164,10 @@ int overlay_payload_enqueue(struct overlay_frame *p)
   
   if (p->queue>=OQ_MAX) 
     return WHY("Invalid queue specified");
+  
+  /* queue a unicast probe if we haven't for a while. */
+  if (p->destination && (p->destination->last_probe==0 || gettime_ms() - p->destination->last_probe > 5000))
+    overlay_send_probe(p->destination, p->destination->address, p->destination->interface, OQ_MESH_MANAGEMENT);
   
   overlay_txqueue *queue = &overlay_tx[p->queue];
   
@@ -339,6 +349,17 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
 	}
 	
 	frame->interface = frame->next_hop->interface;
+	
+	// if both broadcast and unicast are available, pick on based on interface preference
+	if ((r&(REACHABLE_UNICAST|REACHABLE_BROADCAST))==(REACHABLE_UNICAST|REACHABLE_BROADCAST)){
+	  if (frame->interface->prefer_unicast){
+	    r=REACHABLE_UNICAST;
+	    // used by tests
+	    if (config.debug.overlayframes)
+	      DEBUGF("Choosing to send via unicast for %s", alloca_tohex_sid(frame->destination->sid));
+	  }else
+	    r=REACHABLE_BROADCAST;
+	}
 	
 	if(r&REACHABLE_UNICAST){
 	  frame->recvaddr = frame->next_hop->address;

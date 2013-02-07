@@ -72,7 +72,62 @@ int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, 
 	manifest_path ? alloca_str_toprint(manifest_path) : "NULL",
 	filepath ? alloca_str_toprint(filepath) : "NULL");
   
-  if (rhizome_read_manifest_file(m, manifest_path, 0) == -1)
+  unsigned char buffer[MAX_MANIFEST_BYTES];
+  int buffer_len=0;
+  
+  // manifest has been appended to the end of the file.
+  if (strcmp(manifest_path, filepath)==0){
+    unsigned char marker[4];
+    int ret=0;
+    FILE *f = fopen(filepath, "r");
+    
+    if (f == NULL)
+      return WHYF_perror("Could not open manifest file %s for reading.", filepath);
+    
+    if (fseek(f, -sizeof(marker), SEEK_END))
+      ret=WHY_perror("Unable to seek to end of file");
+    
+    if (ret==0){
+      ret = fread(marker, 1, sizeof(marker), f);
+      if (ret==sizeof(marker))
+	ret=0;
+      else
+	ret=WHY_perror("Unable to read end of manifest marker");
+    }
+    
+    if (ret==0){
+      if (marker[2]!=0x41 || marker[3]!=0x10)
+	ret=WHYF("Expected 0x4110 marker at end of file");
+    }
+    
+    if (ret==0){
+      buffer_len = read_uint16(marker);
+      if (buffer_len < 1 || buffer_len > MAX_MANIFEST_BYTES)
+	ret=WHYF("Invalid manifest length %d", buffer_len);
+    }
+    
+    if (ret==0){
+      if (fseek(f, -(buffer_len+sizeof(marker)), SEEK_END))
+	ret=WHY_perror("Unable to seek to end of file");
+    }
+    
+    if (ret==0){
+      ret = fread(buffer, 1, buffer_len, f);
+      if (ret==buffer_len)
+	ret=0;
+      else
+	ret=WHY_perror("Unable to read manifest contents");
+    }
+    
+    fclose(f);
+    
+    if (ret)
+      return ret;
+    
+    manifest_path=(char*)buffer;
+  }
+  
+  if (rhizome_read_manifest_file(m, manifest_path, buffer_len) == -1)
     return WHY("could not read manifest file");
   if (rhizome_manifest_verify(m))
     return WHY("could not verify manifest");
@@ -86,18 +141,11 @@ int rhizome_bundle_import_files(rhizome_manifest *m, const char *manifest_path, 
   if (status<0)
     return status;
   
-  status = rhizome_manifest_check_duplicate(m, NULL);
-  if (status<0)
+  status = rhizome_manifest_check_duplicate(m, NULL, 0);
+  if (status)
     return status;
-  
-  if (status==0){
-    if (rhizome_add_manifest(m, 1) == -1) { // ttl = 1
-      return WHY("rhizome_add_manifest() failed");
-    }
-  }else
-    INFO("Duplicate found in store");
-  
-  return status;
+    
+  return rhizome_add_manifest(m, 1);
 }
 
 /* Import a bundle from a finalised manifest struct.  The dataFileName element must give the path
@@ -110,7 +158,7 @@ int rhizome_bundle_import(rhizome_manifest *m, int ttl)
 {
   if (config.debug.rhizome)
     DEBUGF("(m=%p, ttl=%d)", m, ttl);
-  int ret = rhizome_manifest_check_duplicate(m, NULL);
+  int ret = rhizome_manifest_check_duplicate(m, NULL, 0);
   if (ret == 0) {
     ret = rhizome_add_manifest(m, ttl);
     if (ret == -1)
@@ -130,6 +178,12 @@ int rhizome_manifest_check_sanity(rhizome_manifest *m_in)
       return WHY("Manifest missing 'service' field");
   if (rhizome_manifest_get_ll(m_in, "date") == -1)
       return WHY("Manifest missing 'date' field");
+  
+  /* Get manifest version number. */
+  m_in->version = rhizome_manifest_get_ll(m_in, "version");
+  if (m_in->version==-1)
+    return WHY("Manifest must have a version number");
+  
   if (strcasecmp(service, RHIZOME_SERVICE_FILE) == 0) {
     const char *name = rhizome_manifest_get(m_in, "name", NULL, 0);
     if (name == NULL)
@@ -204,17 +258,12 @@ int rhizome_manifest_bind_id(rhizome_manifest *m_in)
 /* Check if a manifest is already stored for the same payload with the same details.
    This catches the case of "rhizome add file <filename>" on the same file more than once.
    (Debounce!) */
-int rhizome_manifest_check_duplicate(rhizome_manifest *m_in, rhizome_manifest **m_out)
+int rhizome_manifest_check_duplicate(rhizome_manifest *m_in, rhizome_manifest **m_out, int check_author)
 {
-  // if a manifest was supplied with an ID, don't bother to check for a duplicate.
-  // we only want to filter out added files with no existing manifest.
-  if (m_in->haveSecret!=NEW_BUNDLE_ID)
-    return 0;
-  
   if (config.debug.rhizome) DEBUG("Checking for duplicate");
   if (m_out) *m_out = NULL; 
   rhizome_manifest *dupm = NULL;
-  if (rhizome_find_duplicate(m_in, &dupm) == -1)
+  if (rhizome_find_duplicate(m_in, &dupm, check_author) == -1)
     return WHY("Errors encountered searching for duplicate manifest");
   if (dupm) {
     /* If the caller wants the duplicate manifest, it must be finalised, otherwise discarded. */
@@ -242,64 +291,41 @@ int rhizome_add_manifest(rhizome_manifest *m_in,int ttl)
   m_in->ttl = ttl < 0 ? 0 : ttl > 254 ? 254 : ttl;
 
   if (rhizome_manifest_check_sanity(m_in))
-    return WHY("Sanity checks on manifest failed");
+    return -1;
 
   if (m_in->fileLength){
     if (!rhizome_exists(m_in->fileHexHash))
       return WHY("File has not been imported");
   }
 
-  /* Get manifest version number. */
-  m_in->version = rhizome_manifest_get_ll(m_in, "version");
-  if (m_in->version==-1)
-    return WHY("Manifest must have a version number");
-
-  /* Supply manifest version number if missing, so we can do the version check below */
-  if (m_in->version == -1) {
-    m_in->version = gettime_ms();
-    rhizome_manifest_set_ll(m_in, "version", m_in->version);
-  }
-
   /* If the manifest already has an ID */
   char id[SID_STRLEN + 1];
-  if (rhizome_manifest_get(m_in, "id", id, SID_STRLEN + 1)) {
-    str_toupper_inplace(id);
-    /* Discard the new manifest unless it is newer than the most recent known version with the same ID */
-    long long storedversion = -1;
-    switch (sqlite_exec_int64(&storedversion, "SELECT version from manifests where id='%s';", id)) {
-      case -1:
-	return WHY("Select failed");
-      case 0:
-	if (config.debug.rhizome) DEBUG("No existing manifest");
-	break;
-      case 1:
-	if (config.debug.rhizome) DEBUGF("Found existing version=%lld, new version=%lld", storedversion, m_in->version);
-	if (m_in->version < storedversion)
-	  return WHY("Newer version exists");
-	if (m_in->version == storedversion)
-	  return WHY("Same version of manifest exists, not adding");
-	break;
-      default:
-	return WHY("Select found too many rows!");
-    }
-  } else {
-    /* no manifest ID */
+  if (!rhizome_manifest_get(m_in, "id", id, SID_STRLEN + 1))
+  /* no manifest ID */
     return WHY("Manifest does not have an ID");   
+  
+  str_toupper_inplace(id);
+  /* Discard the new manifest unless it is newer than the most recent known version with the same ID */
+  long long storedversion = -1;
+  switch (sqlite_exec_int64(&storedversion, "SELECT version from manifests where id='%s';", id)) {
+    case -1:
+      return WHY("Select failed");
+    case 0:
+      if (config.debug.rhizome) DEBUG("No existing manifest");
+      break;
+    case 1:
+      if (config.debug.rhizome) DEBUGF("Found existing version=%lld, new version=%lld", storedversion, m_in->version);
+      if (m_in->version < storedversion)
+	return WHY("Newer version exists");
+      if (m_in->version == storedversion)
+	return WHY("Same version of manifest exists, not adding");
+      break;
+    default:
+      return WHY("Select found too many rows!");
   }
 
   /* Okay, it is written, and can be put directly into the rhizome database now */
-  if (rhizome_store_bundle(m_in) == -1)
-    return WHY("rhizome_store_bundle() failed.");
-
-  // This message used in tests; do not modify or remove.
-  const char *service = rhizome_manifest_get(m_in, "service", NULL, 0);
-  INFOF("RHIZOME ADD MANIFEST service=%s bid=%s version=%lld",
-      service ? service : "NULL",
-      alloca_tohex_sid(m_in->cryptoSignPublic),
-      m_in->version
-      );
-  monitor_announce_bundle(m_in);
-  return 0;
+  return rhizome_store_bundle(m_in);
 }
 
 /* Update an existing Rhizome bundle */

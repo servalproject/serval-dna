@@ -64,8 +64,9 @@ int commandline_usage(int argc, const char *const *argv, const struct command_li
 JNIEnv *jni_env = NULL;
 int jni_exception = 0;
 
-jobject outv_list = NULL;
-jmethodID listAddMethodId = NULL;
+jobject jniResults = NULL;
+jclass IJniResults = NULL;
+jmethodID startResultSet, setColumnName, putString, putBlob, putLong, putDouble, totalRowCount;
 
 char *outv_buffer = NULL;
 char *outv_current = NULL;
@@ -87,27 +88,43 @@ static int outv_growbuf(size_t needed)
   return 0;
 }
 
+static int put_blob(jbyte *value, jsize length){
+  jbyteArray arr = NULL;
+  if (value && length>0){
+    arr = (*jni_env)->NewByteArray(jni_env, length);
+    if (arr == NULL || (*jni_env)->ExceptionOccurred(jni_env)) {
+      jni_exception = 1;
+      return WHY("Exception thrown from NewByteArray()");
+    }
+    (*jni_env)->SetByteArrayRegion(jni_env, arr, 0, length, value);
+    if ((*jni_env)->ExceptionOccurred(jni_env)) {
+      jni_exception = 1;
+      return WHYF("Exception thrown from SetByteArrayRegion()");
+    }
+  }
+  (*jni_env)->CallVoidMethod(jni_env, jniResults, putBlob, arr);
+  if ((*jni_env)->ExceptionOccurred(jni_env)) {
+    jni_exception = 1;
+    return WHY("Exception thrown from CallVoidMethod()");
+  }
+  if (arr)
+    (*jni_env)->DeleteLocalRef(jni_env, arr);
+  return 0;
+}
+
 static int outv_end_field()
 {
-  size_t length = outv_current - outv_buffer;
+  jsize length = outv_current - outv_buffer;
   outv_current = outv_buffer;
-  jbyteArray arr = (*jni_env)->NewByteArray(jni_env, length);
-  if (arr == NULL) {
-    jni_exception = 1;
-    return WHY("Exception thrown from NewByteArray()");
-  }
-  (*jni_env)->SetByteArrayRegion(jni_env, arr, 0, length, (jbyte*)outv_buffer);
-  if ((*jni_env)->ExceptionOccurred(jni_env)) {
-    jni_exception = 1;
-    return WHY("Exception thrown from SetByteArrayRegion()");
-  }
-  (*jni_env)->CallBooleanMethod(jni_env, outv_list, listAddMethodId, arr);
-  if ((*jni_env)->ExceptionOccurred(jni_env)) {
-    jni_exception = 1;
-    return WHY("Exception thrown from CallBooleanMethod()");
-  }
-  (*jni_env)->DeleteLocalRef(jni_env, arr);
-  return 0;
+  return put_blob((jbyte *)outv_buffer, length);
+}
+
+int Throw(JNIEnv *env, const char *class, const char *msg){
+  jclass exceptionClass = NULL;
+  if ((exceptionClass = (*env)->FindClass(env, class)) == NULL)
+    return -1; // exception
+  (*env)->ThrowNew(env, exceptionClass, msg);
+  return -1;
 }
 
 /* JNI entry point to command line.  See org.servalproject.servald.ServalD class for the Java side.
@@ -115,70 +132,84 @@ static int outv_end_field()
 */
 JNIEXPORT jint JNICALL Java_org_servalproject_servald_ServalD_rawCommand(JNIEnv *env, jobject this, jobject outv, jobjectArray args)
 {
-  jclass stringClass = NULL;
-  jclass listClass = NULL;
-  unsigned char status = 0; // to match what the shell gets: 0..255
-  // Enforce non re-entrancy.
-  if (jni_env) {
-    jclass exceptionClass = NULL;
-    if ((exceptionClass = (*env)->FindClass(env, "java/lang/IllegalStateException")) == NULL)
-      return -1; // exception
-    (*env)->ThrowNew(env, exceptionClass, "re-entrancy not supported");
-    return -1;
+  if (!IJniResults){
+    IJniResults = (*env)->FindClass(env, "org/servalproject/servald/IJniResults");
+    if (IJniResults==NULL)
+      return Throw(env, "java/lang/IllegalStateException", "Unable to locate class org.servalproject.servald.IJniResults");
+    startResultSet = (*env)->GetMethodID(env, IJniResults, "startResultSet", "(I)V");
+    if (startResultSet==NULL)
+      return Throw(env, "java/lang/IllegalStateException", "Unable to locate method startResultSet");
+    setColumnName = (*env)->GetMethodID(env, IJniResults, "setColumnName", "(ILjava/lang/String;)V");
+    if (setColumnName==NULL)
+      return Throw(env, "java/lang/IllegalStateException", "Unable to locate method setColumnName");
+    putString = (*env)->GetMethodID(env, IJniResults, "putString", "(Ljava/lang/String;)V");
+    if (putString==NULL)
+      return Throw(env, "java/lang/IllegalStateException", "Unable to locate method putString");
+    putBlob = (*env)->GetMethodID(env, IJniResults, "putBlob", "([B)V");
+    if (putBlob==NULL)
+      return Throw(env, "java/lang/IllegalStateException", "Unable to locate method putBlob");
+    putLong = (*env)->GetMethodID(env, IJniResults, "putLong", "(J)V");
+    if (putLong==NULL)
+      return Throw(env, "java/lang/IllegalStateException", "Unable to locate method putLong");
+    putDouble = (*env)->GetMethodID(env, IJniResults, "putDouble", "(D)V");
+    if (putDouble==NULL)
+      return Throw(env, "java/lang/IllegalStateException", "Unable to locate method putDouble");
+    totalRowCount = (*env)->GetMethodID(env, IJniResults, "totalRowCount", "(I)V");
+    if (totalRowCount==NULL)
+      return Throw(env, "java/lang/IllegalStateException", "Unable to locate method totalRowCount");
   }
-  // Get some handles to some classes and methods that we use later on.
-  if ((stringClass = (*env)->FindClass(env, "java/lang/String")) == NULL)
-    return -1; // exception
-  if ((listClass = (*env)->FindClass(env, "java/util/List")) == NULL)
-    return -1; // exception
-  if ((listAddMethodId = (*env)->GetMethodID(env, listClass, "add", "(Ljava/lang/Object;)Z")) == NULL)
-    return -1; // exception
+  unsigned char status = 0; // to match what the shell gets: 0..255
+  
+  if (jni_env)
+    return Throw(env, "java/lang/IllegalStateException", "re-entrancy not supported");
+  
   // Construct argv, argc from this method's arguments.
   jsize len = (*env)->GetArrayLength(env, args);
-  const char **argv = malloc(sizeof(char*) * (len + 1));
-  if (argv == NULL) {
-    jclass exceptionClass = NULL;
-    if ((exceptionClass = (*env)->FindClass(env, "java/lang/OutOfMemoryError")) == NULL)
-      return -1; // exception
-    (*env)->ThrowNew(env, exceptionClass, "malloc returned NULL");
-    return -1;
-  }
+  const char **argv = alloca(sizeof(char*) * (len + 1));
+  if (argv == NULL)
+    return Throw(env, "java/lang/OutOfMemoryError", "alloca returned NULL");
+  
+  argv[len]=NULL;
+  
   jsize i;
-  for (i = 0; i <= len; ++i)
-    argv[i] = NULL;
   int argc = len;
   // From now on, in case of an exception we have to free some resources before
   // returning.
   jni_exception = 0;
-  for (i = 0; !jni_exception && i != len; ++i) {
+  const char *empty="";
+  
+  for (i = 0; i < len; ++i) {
     const jstring arg = (jstring)(*env)->GetObjectArrayElement(env, args, i);
-    if (arg == NULL)
+    if ((*env)->ExceptionOccurred(env))
       jni_exception = 1;
-    else {
+    
+    argv[i] = empty;
+    if (arg != NULL && !jni_exception){
       const char *str = (*env)->GetStringUTFChars(env, arg, NULL);
-      if (str == NULL)
+      if (str == NULL){
 	jni_exception = 1;
-      else
+      }else
 	argv[i] = str;
     }
   }
+  
   if (!jni_exception) {
     // Set up the output buffer.
-    outv_list = outv;
+    jniResults = outv;
     outv_current = outv_buffer;
     // Execute the command.
     jni_env = env;
     status = parseCommandLine(NULL, argc, argv);
     jni_env = NULL;
   }
+  
   // Release argv Java string buffers.
-  for (i = 0; i != len; ++i) {
-    if (argv[i]) {
+  for (i = 0; i < len; ++i) {
+    if (argv[i] && argv[i]!=empty) {
       const jstring arg = (jstring)(*env)->GetObjectArrayElement(env, args, i);
       (*env)->ReleaseStringUTFChars(env, arg, argv[i]);
     }
   }
-  free(argv);
   // Deal with Java exceptions: NewStringUTF out of memory in outv_end_field().
   if (jni_exception || (outv_current != outv_buffer && outv_end_field() == -1))
     return -1;
@@ -227,15 +258,14 @@ int parseCommandLine(const char *argv0, int argc, const char *const *args)
 int cli_putchar(char c)
 {
 #ifdef HAVE_JNI_H
-    if (jni_env) {
-      if (outv_current == outv_limit && outv_growbuf(1) == -1)
-	return EOF;
-      *outv_current++ = c;
-      return (unsigned char) c;
-    }
-    else
+  if (jni_env) {
+    if (outv_current == outv_limit && outv_growbuf(1) == -1)
+      return EOF;
+    *outv_current++ = c;
+    return (unsigned char) c;
+  }
 #endif
-      return putchar(c);
+  return putchar(c);
 }
 
 /* Write a buffer of data to output.  If in a JNI call, then this appends the data to the
@@ -245,23 +275,22 @@ int cli_putchar(char c)
 int cli_write(const unsigned char *buf, size_t len)
 {
 #ifdef HAVE_JNI_H
-    if (jni_env) {
-      size_t avail = outv_limit - outv_current;
-      if (avail < len) {
-	memcpy(outv_current, buf, avail);
-	outv_current = outv_limit;
-	if (outv_growbuf(len) == -1)
-	  return EOF;
-	len -= avail;
-	buf += avail;
-      }
-      memcpy(outv_current, buf, len);
-      outv_current += len;
-      return 0;
+  if (jni_env) {
+    size_t avail = outv_limit - outv_current;
+    if (avail < len) {
+      memcpy(outv_current, buf, avail);
+      outv_current = outv_limit;
+      if (outv_growbuf(len) == -1)
+	return EOF;
+      len -= avail;
+      buf += avail;
     }
-    else
+    memcpy(outv_current, buf, len);
+    outv_current += len;
+    return 0;
+  }
 #endif
-      return fwrite(buf, len, 1, stdout);
+  return fwrite(buf, len, 1, stdout);
 }
 
 /* Write a null-terminated string to output.  If in a JNI call, then this appends the string to the
@@ -309,6 +338,117 @@ int cli_printf(const char *fmt, ...)
     va_end(ap);
   }
   return ret;
+}
+
+void cli_columns(int columns, const char *names[]){
+#ifdef HAVE_JNI_H
+  if (jni_env) {
+    (*jni_env)->CallVoidMethod(jni_env, jniResults, startResultSet, columns);
+    if ((*jni_env)->ExceptionOccurred(jni_env)) {
+      jni_exception = 1;
+      WHY("Exception thrown from CallVoidMethod()");
+      return;
+    }
+    int i;
+    for (i=0;i<columns;i++){
+      jstring str = (jstring)(*jni_env)->NewStringUTF(jni_env, names[i]);
+      if (str == NULL) {
+	jni_exception = 1;
+	WHY("Exception thrown from NewStringUTF()");
+	return;
+      }
+      (*jni_env)->CallVoidMethod(jni_env, jniResults, setColumnName, i, str);
+      (*jni_env)->DeleteLocalRef(jni_env, str);
+    }
+    return;
+  }
+#endif
+  cli_printf("%d",columns);
+  cli_delim("\n");
+  int i;
+  for (i=0;i<columns;i++){
+    cli_puts(names[i]);
+    if (i+1==columns)
+      cli_delim("\n");
+    else
+      cli_delim(":");
+  }
+}
+
+void cli_field_name(const char *name, const char *delim){
+#ifdef HAVE_JNI_H
+  if (jni_env) {
+    jstring str = (jstring)(*jni_env)->NewStringUTF(jni_env, name);
+    if (str == NULL) {
+      jni_exception = 1;
+      WHY("Exception thrown from NewStringUTF()");
+      return;
+    }
+    (*jni_env)->CallVoidMethod(jni_env, jniResults, setColumnName, -1, str);
+    (*jni_env)->DeleteLocalRef(jni_env, str);
+    return;
+  }
+#endif
+  cli_puts(name);
+  cli_delim(delim);
+}
+
+void cli_put_long(int64_t value, const char *delim){
+#ifdef HAVE_JNI_H
+  if (jni_env) {
+    (*jni_env)->CallVoidMethod(jni_env, jniResults, putLong, value);
+    return;
+  }
+#endif
+  cli_printf("%lld",value);
+  cli_delim(delim);
+}
+
+void cli_put_string(const char *value, const char *delim){
+#ifdef HAVE_JNI_H
+  if (jni_env) {
+    jstring str = NULL;
+    if (value){
+      str = (jstring)(*jni_env)->NewStringUTF(jni_env, value);
+      if (str == NULL) {
+	jni_exception = 1;
+	WHY("Exception thrown from NewStringUTF()");
+	return;
+      }
+    }
+    (*jni_env)->CallVoidMethod(jni_env, jniResults, putString, str);
+    (*jni_env)->DeleteLocalRef(jni_env, str);
+    return;
+  }
+#endif
+  if (value)
+    cli_puts(value);
+  cli_delim(delim);
+}
+
+void cli_put_hexvalue(const unsigned char *value, int length, const char *delim){
+#ifdef HAVE_JNI_H
+  if (jni_env) {
+    put_blob((jbyte*)value, length);
+    return;
+  }
+#endif
+  if (value)
+    cli_puts(alloca_tohex(value, length));
+  cli_delim(delim);
+}
+
+void cli_row_count(int rows){
+#ifdef HAVE_JNI_H
+  if (jni_env) {
+    (*jni_env)->CallVoidMethod(jni_env, jniResults, totalRowCount, rows);
+    if ((*jni_env)->ExceptionOccurred(jni_env)) {
+      jni_exception = 1;
+      WHY("Exception thrown from CallVoidMethod()");
+      return;
+    }
+  }
+#endif
 }
 
 /* Delimit the current output field.  This closes the current field, so that the next cli_ output
@@ -1123,8 +1263,13 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
   if (authorSidHex[0] && fromhexstr(authorSid.binary, authorSidHex, SID_SIZE) == -1)
     return WHYF("invalid author_sid: %s", authorSidHex);
   rhizome_bk_t bsk;
+  
+  // treat empty string the same as null
+  if (bskhex && !*bskhex)
+    bskhex=NULL;
+  
   if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
-    return WHYF("invalid bsk: %s", bskhex);
+    return WHYF("invalid bsk: \"%s\"", bskhex);
   
   if (create_serval_instance_dir() == -1)
     return -1;
@@ -1152,24 +1297,32 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
     if (config.debug.rhizome) DEBUGF("manifest file %s does not exist -- creating new manifest", manifestpath);
   }
   
-  if (rhizome_stat_file(m, filepath))
+  if (rhizome_stat_file(m, filepath)){
+    rhizome_manifest_free(m);
     return -1;
+  }
   
-  if (rhizome_fill_manifest(m, filepath, *authorSidHex?&authorSid:NULL, bskhex?&bsk:NULL))
+  if (rhizome_fill_manifest(m, filepath, *authorSidHex?&authorSid:NULL, bskhex?&bsk:NULL)){
+    rhizome_manifest_free(m);
     return -1;
+  }
   
   if (m->fileLength){
-    if (rhizome_add_file(m, filepath))
+    if (rhizome_add_file(m, filepath)){
+      rhizome_manifest_free(m);
       return -1;
+    }
   }
   
   rhizome_manifest *mout = NULL;
   int ret=rhizome_manifest_finalise(m,&mout);
-  if (ret<0)
+  if (ret<0){
+    rhizome_manifest_free(m);
     return -1;
+  }
   
   if (manifestpath[0] 
-      && rhizome_write_manifest_file(mout, manifestpath) == -1)
+      && rhizome_write_manifest_file(mout, manifestpath, 0) == -1)
     ret = WHY("Could not overwrite manifest file.");
   const char *service = rhizome_manifest_get(mout, "service", NULL, 0);
   if (service) {
@@ -1194,6 +1347,7 @@ int app_rhizome_add_file(int argc, const char *const *argv, const struct command
     cli_puts(secret);
     cli_delim("\n");
   }
+  cli_puts("version");    cli_delim(":"); cli_printf("%lld", m->version);    cli_delim("\n");
   cli_puts("filesize");
   cli_delim(":");
   cli_printf("%lld", mout->fileLength);
@@ -1234,6 +1388,9 @@ int app_rhizome_import_bundle(int argc, const char *const *argv, const struct co
   if (status<0)
     goto cleanup;
   
+  // TODO generalise the way we dump manifest details from add, import & export
+  // so callers can also generalise their parsing
+  
   const char *service = rhizome_manifest_get(m, "service", NULL, 0);
   if (service) {
     cli_puts("service");
@@ -1247,10 +1404,8 @@ int app_rhizome_import_bundle(int argc, const char *const *argv, const struct co
     cli_puts(alloca_tohex(m->cryptoSignPublic, RHIZOME_MANIFEST_ID_BYTES));
     cli_delim("\n");
   }
-  cli_puts("filesize");
-  cli_delim(":");
-  cli_printf("%lld", m->fileLength);
-  cli_delim("\n");
+  cli_puts("version");    cli_delim(":"); cli_printf("%lld", m->version);    cli_delim("\n");
+  cli_puts("filesize");   cli_delim(":"); cli_printf("%lld", m->fileLength); cli_delim("\n");
   if (m->fileLength != 0) {
     cli_puts("filehash");
     cli_delim(":");
@@ -1270,21 +1425,52 @@ cleanup:
   return status;
 }
 
-int app_rhizome_extract_manifest(int argc, const char *const *argv, const struct command_line_option *o, void *context)
+int app_rhizome_append_manifest(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (config.debug.verbose) DEBUG_argv("command", argc, argv);
-  const char *pins, *manifestid, *manifestpath;
-  cli_arg(argc, argv, o, "pin,pin...", &pins, NULL, "");
-  if (cli_arg(argc, argv, o, "manifestid", &manifestid, cli_manifestid, NULL) == -1
-   || cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, NULL) == -1)
+  const char *manifestpath, *filepath;
+  if (cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "") == -1
+    || cli_arg(argc, argv, o, "filepath", &filepath, NULL, "") == -1)
     return -1;
+  
+  rhizome_manifest *m = rhizome_new_manifest();
+  if (!m)
+    return WHY("Out of manifests.");
+  
+  int ret=0;
+  if (rhizome_read_manifest_file(m, manifestpath, 0))
+    ret=-1;
+  // TODO why doesn't read manifest file set finalised???
+  m->finalised=1;
+  
+  if (ret==0 && rhizome_write_manifest_file(m, filepath, 1) == -1)
+    ret = -1;
+  
+  if (m)
+    rhizome_manifest_free(m);
+  return ret;
+}
+
+int app_rhizome_extract_bundle(int argc, const char *const *argv, const struct command_line_option *o, void *context)
+{
+  if (config.debug.verbose) DEBUG_argv("command", argc, argv);
+  const char *manifestpath, *filepath, *manifestid, *pins, *bskhex;
+  if (cli_arg(argc, argv, o, "manifestid", &manifestid, cli_manifestid, "") == -1
+      || cli_arg(argc, argv, o, "manifestpath", &manifestpath, NULL, "") == -1
+      || cli_arg(argc, argv, o, "filepath", &filepath, NULL, "") == -1
+      || cli_arg(argc, argv, o, "pin,pin...", &pins, NULL, "") == -1
+      || cli_arg(argc, argv, o, "bsk", &bskhex, cli_optional_bundle_key, NULL) == -1)
+    return -1;
+  
   /* Ensure the Rhizome database exists and is open */
   if (create_serval_instance_dir() == -1)
     return -1;
-  if (!(keyring = keyring_open_with_pins(pins)))
-    return -1;
   if (rhizome_opendb() == -1)
     return -1;
+  if (!(keyring = keyring_open_with_pins(pins)))
+    return -1;
+  
+  int ret=0;
   
   unsigned char manifest_id[RHIZOME_MANIFEST_ID_BYTES];
   if (fromhexstr(manifest_id, manifestid, RHIZOME_MANIFEST_ID_BYTES) == -1)
@@ -1293,18 +1479,23 @@ int app_rhizome_extract_manifest(int argc, const char *const *argv, const struct
   char manifestIdUpper[RHIZOME_MANIFEST_ID_STRLEN + 1];
   tohex(manifestIdUpper, manifest_id, RHIZOME_MANIFEST_ID_BYTES);
   
+  // treat empty string the same as null
+  if (bskhex && !*bskhex)
+    bskhex=NULL;
+  
+  rhizome_bk_t bsk;
+  if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
+    return WHYF("invalid bsk: \"%s\"", bskhex);
+
   rhizome_manifest *m = rhizome_new_manifest();
-  if (m == NULL)
+  if (m==NULL)
     return WHY("Out of manifests");
   
-  int ret = rhizome_retrieve_manifest(manifestIdUpper, m);
+  ret = rhizome_retrieve_manifest(manifestIdUpper, m);
+  
   if (ret==0){
-    if (m->errors){
-      // fail if the manifest is invalid?
-    }
-    
+    // ignore errors
     rhizome_extract_privatekey(m, NULL);
-    
     const char *blob_service = rhizome_manifest_get(m, "service", NULL, 0);
     
     cli_puts("service");    cli_delim(":"); cli_puts(blob_service); cli_delim("\n");
@@ -1319,103 +1510,81 @@ int app_rhizome_extract_manifest(int argc, const char *const *argv, const struct
     if (m->fileLength != 0) {
       cli_puts("filehash"); cli_delim(":"); cli_puts(m->fileHexHash); cli_delim("\n");
     }
-    
-    if (manifestpath && strcmp(manifestpath, "-") == 0) {
+  }
+  
+  int retfile=0;
+  
+  if (ret==0 && m->fileLength != 0 && filepath && *filepath){
+    // TODO, this may cause us to search for an author a second time if the above call to rhizome_extract_privatekey failed
+    retfile = rhizome_extract_file(m, filepath, bskhex?&bsk:NULL);
+  }
+  
+  if (ret==0 && manifestpath && *manifestpath){
+    if (strcmp(manifestpath, "-") == 0) {
+      // always extract a manifest to stdout, even if writing the file itself failed.
       cli_puts("manifest");
       cli_delim(":");
       cli_write(m->manifestdata, m->manifest_all_bytes);
       cli_delim("\n");
-    } else if (manifestpath) {
-      /* If the manifest has been read in from database, the blob is there,
-       and we can lie and say we are finalised and just want to write it
-       out.  TODO: really should have a dirty/clean flag, so that write
-       works if clean but not finalised. */
-      m->finalised=1;
-      if (rhizome_write_manifest_file(m, manifestpath) == -1)
-	ret = -1;
+    } else {
+      int append = (strcmp(manifestpath, filepath)==0)?1:0;
+      // don't write out the manifest if we were asked to append it and writing the file failed.
+      if ((!append) || retfile==0){
+	/* If the manifest has been read in from database, the blob is there,
+	 and we can lie and say we are finalised and just want to write it
+	 out.  TODO: really should have a dirty/clean flag, so that write
+	 works if clean but not finalised. */
+	m->finalised=1;
+	if (rhizome_write_manifest_file(m, manifestpath, append) == -1)
+	  ret = -1;
+      }
     }
   }
   
-  rhizome_manifest_free(m);
+  if (retfile)
+    ret=retfile;
+  
+  if (m)
+    rhizome_manifest_free(m);
+    
   return ret;
 }
 
-int app_rhizome_extract_file(int argc, const char *const *argv, const struct command_line_option *o, void *context)
+int app_rhizome_dump_file(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (config.debug.verbose) DEBUG_argv("command", argc, argv);
-  const char *fileid, *filepath, *manifestid, *pins, *bskhex;
-  if (cli_arg(argc, argv, o, "manifestid", &manifestid, cli_manifestid, NULL) == -1
-      || cli_arg(argc, argv, o, "filepath", &filepath, NULL, "") == -1
-      || cli_arg(argc, argv, o, "fileid", &fileid, cli_fileid, NULL) == -1
-      || cli_arg(argc, argv, o, "pin,pin...", &pins, NULL, "") == -1
-      || cli_arg(argc, argv, o, "bsk", &bskhex, cli_optional_bundle_key, NULL) == -1)
+  const char *fileid, *filepath;
+  if (cli_arg(argc, argv, o, "filepath", &filepath, NULL, "") == -1
+      || cli_arg(argc, argv, o, "fileid", &fileid, cli_fileid, NULL) == -1)
     return -1;
   
-  /* Ensure the Rhizome database exists and is open */
   if (create_serval_instance_dir() == -1)
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
   
-  int ret=0;
+  if (!rhizome_exists(fileid))
+    return 1;
   
-  if (manifestid){
-    if (!(keyring = keyring_open_with_pins(pins)))
-      return -1;
-    
-    unsigned char manifest_id[RHIZOME_MANIFEST_ID_BYTES];
-    if (fromhexstr(manifest_id, manifestid, RHIZOME_MANIFEST_ID_BYTES) == -1)
-      return WHY("Invalid manifest ID");
-    
-    char manifestIdUpper[RHIZOME_MANIFEST_ID_STRLEN + 1];
-    tohex(manifestIdUpper, manifest_id, RHIZOME_MANIFEST_ID_BYTES);
-    
-    rhizome_bk_t bsk;
-    if (bskhex && fromhexstr(bsk.binary, bskhex, RHIZOME_BUNDLE_KEY_BYTES) == -1)
-      return WHYF("invalid bsk: %s", bskhex);
-    
-    rhizome_manifest *m = rhizome_new_manifest();
-    if (m==NULL)
-      return WHY("Out of manifests");
-    
-    ret = rhizome_retrieve_manifest(manifestIdUpper, m);
-    if (ret==0){
-      ret = rhizome_extract_file(m, filepath, bskhex?&bsk:NULL);
-    }
-    
-    if (ret==0){
-      cli_puts("filehash"); cli_delim(":");
-      cli_puts(m->fileHexHash); cli_delim("\n");
-      cli_puts("filesize"); cli_delim(":");
-      cli_printf("%lld", m->fileLength); cli_delim("\n");
-    }
-    
-    if (m)
-      rhizome_manifest_free(m);
-    
-  }else if(fileid){
-    if (!rhizome_exists(fileid))
-      return 1;
-    int64_t length;
-    ret = rhizome_dump_file(fileid, filepath, &length);
-    
-    if (ret==0){
-      cli_puts("filehash"); cli_delim(":");
-      cli_puts(fileid); cli_delim("\n");
-      cli_puts("filesize"); cli_delim(":");
-      cli_printf("%lld", length); cli_delim("\n");
-    }
-  }
+  int64_t length;
+  if (rhizome_dump_file(fileid, filepath, &length))
+    return -1;
   
-  return ret;
+  cli_puts("filehash"); cli_delim(":");
+  cli_puts(fileid); cli_delim("\n");
+  cli_puts("filesize"); cli_delim(":");
+  cli_printf("%lld", length); cli_delim("\n");
+  
+  return 0;
 }
 
 int app_rhizome_list(int argc, const char *const *argv, const struct command_line_option *o, void *context)
 {
   if (config.debug.verbose) DEBUG_argv("command", argc, argv);
-  const char *pins, *service, *sender_sid, *recipient_sid, *offset, *limit;
+  const char *pins, *service, *name, *sender_sid, *recipient_sid, *offset, *limit;
   cli_arg(argc, argv, o, "pin,pin...", &pins, NULL, "");
   cli_arg(argc, argv, o, "service", &service, NULL, "");
+  cli_arg(argc, argv, o, "name", &name, NULL, "");
   cli_arg(argc, argv, o, "sender_sid", &sender_sid, cli_optional_sid, "");
   cli_arg(argc, argv, o, "recipient_sid", &recipient_sid, cli_optional_sid, "");
   cli_arg(argc, argv, o, "offset", &offset, cli_uint, "0");
@@ -1427,7 +1596,7 @@ int app_rhizome_list(int argc, const char *const *argv, const struct command_lin
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
-  return rhizome_list_manifests(service, sender_sid, recipient_sid, atoi(offset), atoi(limit));
+  return rhizome_list_manifests(service, name, sender_sid, recipient_sid, atoi(offset), atoi(limit), 0);
 }
 
 int app_keyring_create(int argc, const char *const *argv, const struct command_line_option *o, void *context)
@@ -2073,19 +2242,26 @@ struct command_line_option command_line_options[]={
    "Get specified configuration variable."},
   {app_vomp_console,{"console",NULL},0,
     "Test phone call life-cycle from the console"},
+  {app_rhizome_append_manifest, {"rhizome", "append", "manifest", "<filepath>", "<manifestpath>", NULL}, CLIFLAG_STANDALONE,
+    "Append a manifest to the end of the file it belongs to."},
   {app_rhizome_hash_file,{"rhizome","hash","file","<filepath>",NULL},CLIFLAG_STANDALONE,
    "Compute the Rhizome hash of a file"},
   {app_rhizome_add_file,{"rhizome","add","file","<author_sid>","<pin>","<filepath>","[<manifestpath>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,
    "Add a file to Rhizome and optionally write its manifest to the given path"},
   {app_rhizome_import_bundle,{"rhizome","import","bundle","<filepath>","<manifestpath>",NULL},CLIFLAG_STANDALONE,
    "Import a payload/manifest pair into Rhizome"},
-  {app_rhizome_list,{"rhizome","list","<pin,pin...>","[<service>]","[<sender_sid>]","[<recipient_sid>]","[<offset>]","[<limit>]",NULL},CLIFLAG_STANDALONE,
+  {app_rhizome_list,{"rhizome","list","[<pin,pin...>]","[<service>]","[<name>]","[<sender_sid>]","[<recipient_sid>]","[<offset>]","[<limit>]",NULL},CLIFLAG_STANDALONE,
    "List all manifests and files in Rhizome"},
-  {app_rhizome_extract_manifest,{"rhizome","extract","manifest","<manifestid>","[<manifestpath>]","[<pin,pin...>]",NULL},CLIFLAG_STANDALONE,
-   "Extract a manifest from Rhizome and write it to the given path"},
-  {app_rhizome_extract_file,{"rhizome","extract","file","<manifestid>","[<filepath>]","[<pin,pin...>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,
-   "Extract a file from Rhizome and write it to the given path"},
-  {app_rhizome_extract_file,{"rhizome","dump","file","<fileid>","[<filepath>]",NULL},CLIFLAG_STANDALONE,
+  {app_rhizome_extract_bundle,{"rhizome","extract","bundle",
+	"<manifestid>","[<manifestpath>]","[<filepath>]","[<pin,pin...>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,
+	"Extract a manifest and decrypted file to the given paths."},
+  {app_rhizome_extract_bundle,{"rhizome","extract","manifest",
+	"<manifestid>","[<manifestpath>]","[<pin,pin...>]",NULL},CLIFLAG_STANDALONE,
+        "Extract a manifest from Rhizome and write it to the given path"},
+  {app_rhizome_extract_bundle,{"rhizome","extract","file",
+	"<manifestid>","[<filepath>]","[<pin,pin...>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,
+        "Extract a file from Rhizome and write it to the given path"},
+  {app_rhizome_dump_file,{"rhizome","dump","file","<fileid>","[<filepath>]",NULL},CLIFLAG_STANDALONE,
    "Extract a file from Rhizome and write it to the given path without attempting decryption"},
   {app_rhizome_direct_sync,{"rhizome","direct","sync","[peer url]",NULL},
    CLIFLAG_STANDALONE,

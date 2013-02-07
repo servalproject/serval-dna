@@ -1,0 +1,19 @@
+# This file controls the system-wide Serval DNA daemon
+
+# START_DAEMON
+# Set this to 'yes' to allow the daemon to start at boot time.  Any other value
+# means the /etc/init.d/serval-dna script will not start the daemon.
+#START_DAEMON=yes
+
+# USER
+# Set this to start the daemon running as the given user.
+#USER=serval
+
+# SERVALINSTANCE_PATH
+# Set this to make the daemon use an instance path other than the default.
+#SERVALINSTANCE_PATH=/var/serval-node
+
+# DAEMON
+# Set to use an executable installed in a non-standard location, eg,
+# /usr/local/sbin.
+#DAEMON=/usr/sbin/servald

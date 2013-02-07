@@ -488,7 +488,7 @@ int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const unsigned char
   /* build reply as TOKEN|URI|DID|NAME|<NUL> */
   strbuf b = strbuf_local((char *)mdpreply.out.payload, sizeof mdpreply.out.payload);
   strbuf_tohex(b, resolved_sid, SID_SIZE);
-  strbuf_sprintf(b, "|%s|%s|%s|", uri, did, name);
+  strbuf_sprintf(b, "|%s|%s|%s|", uri, did, name?name:"");
   if (strbuf_overrun(b))
     return WHY("MDP payload overrun");
   mdpreply.out.payload_length = strbuf_len(b) + 1;

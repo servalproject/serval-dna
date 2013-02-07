@@ -411,6 +411,9 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
 	best_observation=-1;
 	reachable=REACHABLE_BROADCAST;
 	interface = &overlay_interfaces[i];
+	// if we've probed this unicast link, preserve the status
+	if ((n->subscriber->reachable&REACHABLE_UNICAST) && !(n->subscriber->reachable&REACHABLE_ASSUMED))
+	  reachable|=REACHABLE_UNICAST;
       }
     }
   }
@@ -455,6 +458,7 @@ int overlay_route_recalc_node_metrics(overlay_node *n, time_ms_t now)
       n->subscriber->next_hop = next_hop;
       break;
     case REACHABLE_BROADCAST:
+    case REACHABLE_BROADCAST|REACHABLE_UNICAST:
       n->subscriber->interface = interface;
       break;
   }

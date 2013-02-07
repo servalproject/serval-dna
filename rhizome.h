@@ -225,7 +225,7 @@ sqlite_retry_state sqlite_retry_state_init(int serverLimit, int serverSleep, int
 
 #define SQLITE_RETRY_STATE_DEFAULT sqlite_retry_state_init(-1,-1,-1,-1)
 
-int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename);
+int rhizome_write_manifest_file(rhizome_manifest *m, const char *filename, char append);
 int rhizome_manifest_selfsign(rhizome_manifest *m);
 int rhizome_drop_stored_file(const char *id,int maximum_priority);
 int rhizome_manifest_priority(sqlite_retry_state *retry, const char *id);
@@ -252,7 +252,7 @@ int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t
 
 int rhizome_manifest_verify(rhizome_manifest *m);
 int rhizome_manifest_check_sanity(rhizome_manifest *m_in);
-int rhizome_manifest_check_duplicate(rhizome_manifest *m_in,rhizome_manifest **m_out);
+int rhizome_manifest_check_duplicate(rhizome_manifest *m_in,rhizome_manifest **m_out, int check_author);
 
 int rhizome_manifest_bind_id(rhizome_manifest *m_in);
 int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout);
@@ -304,11 +304,13 @@ int _sqlite_exec_strbuf(struct __sourceloc, strbuf sb, const char *sqlformat,...
 double rhizome_manifest_get_double(rhizome_manifest *m,char *var,double default_value);
 int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs);
 int rhizome_update_file_priority(const char *fileid);
-int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found);
+int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, int check_author);
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
 long long rhizome_bar_version(unsigned char *bar);
 unsigned long long rhizome_bar_bidprefix_ll(unsigned char *bar);
-int rhizome_list_manifests(const char *service, const char *sender_sid, const char *recipient_sid, int limit, int offset);
+int rhizome_list_manifests(const char *service, const char *name, 
+			   const char *sender_sid, const char *recipient_sid, 
+			   int limit, int offset, char count_rows);
 int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m);
 
 #define RHIZOME_DONTVERIFY 0
@@ -437,7 +439,9 @@ typedef struct rhizome_http_request {
   int source_record_size;
   unsigned int source_flags;
   
-  sqlite3_blob *blob;
+  const char *sql_table;
+  const char *sql_row;
+  int64_t rowid;
   /* source_index used for offset in blob */
   long long blob_end; 
   

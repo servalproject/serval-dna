@@ -2,7 +2,7 @@
 
 # Tests for Serval DNA configuration operations.
 #
-# Copyright 2012 Paul Gardner-Stephen
+# Copyright 2012 Serval Project, Inc.
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -262,6 +262,26 @@ test_InterfacesModernIncompatible() {
    assert_stderr_log \
       --warn-pattern='"interfaces\.0\..*incompatible' \
       --error-pattern='config file.*not loaded.*incompatible'
+}
+
+doc_LogFileAbsolute="Absolute log file"
+test_LogFileAbsolute() {
+   executeOk_servald config \
+      set debug.verbose true \
+      set log.file "$PWD/log"
+   executeOk_servald echo one
+   assertGrep log '^DEBUG:.*echo:argv\[1\]="one"$'
+   assertGrep --matches=0 --message="log contains no error messages" log '^ERROR:'
+}
+
+doc_LogFileRelative="Relative log file"
+test_LogFileRelative() {
+   executeOk_servald config \
+      set debug.verbose true \
+      set log.file "log"
+   executeOk_servald echo one
+   assertGrep "$SERVALINSTANCE_PATH/log" '^DEBUG:.*echo:argv\[1\]="one"$'
+   assertGrep --matches=0 --message="log contains no error messages" "$SERVALINSTANCE_PATH/log" '^ERROR:'
 }
 
 runTests "$@"

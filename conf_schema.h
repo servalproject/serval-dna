@@ -210,7 +210,7 @@ ATOM(char, vomp,		        0, cf_opt_char_boolean,, "")
 END_STRUCT
 
 STRUCT(log)
-STRING(256,                 file,       "", cf_opt_absolute_path,, "Absolute path of log file")
+STRING(256,                 file,       "", cf_opt_str_nonempty,, "Path of log file, either absolute or relative to instance directory")
 ATOM(int,                   show_pid,   1, cf_opt_int_boolean,, "If true, all log lines contain PID of logging process")
 ATOM(int,                   show_time,  1, cf_opt_int_boolean,, "If true, all log lines contain time stamp")
 END_STRUCT
@@ -278,7 +278,7 @@ END_STRUCT
 
 STRUCT(rhizome_api_addfile)
 STRING(64,                  uri_path, "", cf_opt_absolute_path,, "URI path for HTTP add-file request")
-ATOM(struct in_addr,        allow_host, (struct in_addr){htonl(INADDR_LOOPBACK)}, cf_opt_in_addr,, "IP address of host allowed to make HTTP add-file request")
+ATOM(struct in_addr,        allow_host, hton_in_addr(INADDR_LOOPBACK), cf_opt_in_addr,, "IP address of host allowed to make HTTP add-file request")
 STRING(256,                 manifest_template_file, "", cf_opt_str_nonempty,, "Path of manifest template file, either absolute or relative to instance directory")
 ATOM(sid_t,                 default_author, SID_ANY, cf_opt_sid,, "Author of add-file bundle if sender not given")
 ATOM(rhizome_bk_t,          bundle_secret_key, RHIZOME_BK_NONE, cf_opt_rhizome_bk,, "Secret key of add-file bundle to try if sender not given")
@@ -319,7 +319,7 @@ END_STRUCT
 STRUCT(host)
 STRING(INTERFACE_NAME_STRLEN, interface, "", cf_opt_str_nonempty,, "Interface name")
 STRING(256,                 host,       "", cf_opt_str_nonempty,, "Host Name")
-ATOM(struct in_addr,        address,    (struct in_addr){htonl(INADDR_NONE)}, cf_opt_in_addr,, "Host IP address")
+ATOM(struct in_addr,        address,    hton_in_addr(INADDR_NONE), cf_opt_in_addr,, "Host IP address")
 ATOM(uint16_t,              port,       PORT_DNA, cf_opt_uint16_nonzero,, "Port number")
 END_STRUCT
 
@@ -332,15 +332,17 @@ STRUCT(network_interface, vld_network_interface)
 ATOM(int,                   exclude,    0, cf_opt_int_boolean,, "If true, do not use matching interfaces")
 ATOM(struct pattern_list,   match,      PATTERN_LIST_EMPTY, cf_opt_pattern_list,, "Names that match network interface")
 STRING(256,                 dummy,      "", cf_opt_str_nonempty,, "Path of dummy file, absolute or relative to server.dummy_interface_dir")
-ATOM(struct in_addr,        dummy_address,    (struct in_addr){htonl(0x7F000001)}, cf_opt_in_addr,, "Dummy interface address")
-ATOM(struct in_addr,        dummy_netmask,    (struct in_addr){htonl(0xFFFFFF00)}, cf_opt_in_addr,, "Dummy interface netmask")
-ATOM(int,                   dummy_filter_broadcasts,     0, cf_opt_int_boolean,, "If true, drop all incoming broadcast packets")
+ATOM(struct in_addr,        dummy_address,    hton_in_addr(INADDR_LOOPBACK), cf_opt_in_addr,, "Dummy interface address")
+ATOM(struct in_addr,        dummy_netmask,    hton_in_addr(0xFFFFFF00), cf_opt_in_addr,, "Dummy interface netmask")
+ATOM(char,                  dummy_filter_broadcasts,     0, cf_opt_char_boolean,, "If true, drop all incoming broadcast packets")
+ATOM(char,                  dummy_filter_unicasts,     0, cf_opt_char_boolean,, "If true, drop all incoming unicast packets")
 ATOM(short,                 type,       OVERLAY_INTERFACE_WIFI, cf_opt_interface_type,, "Type of network interface")
 ATOM(uint16_t,              port,       RHIZOME_HTTP_PORT, cf_opt_uint16_nonzero,, "Port number for network interface")
 ATOM(int,                   packet_interval,    -1, cf_opt_int,, "Minimum interval between packets in microseconds")
 ATOM(int,                   mdp_tick_ms, -1, cf_opt_int32_nonneg,, "Override MDP tick interval for this interface")
 ATOM(char,                  send_broadcasts, 1, cf_opt_char_boolean,, "If false, don't send any broadcast packets")
-ATOM(int,                   default_route, 0, cf_opt_int_boolean,, "If true, use this interface as a default route")
+ATOM(char,                  default_route, 0, cf_opt_char_boolean,, "If true, use this interface as a default route")
+ATOM(char,                  prefer_unicast, 0, cf_opt_char_boolean,, "If true, send unicast data as unicast IP packets if available")
 END_STRUCT
 
 ARRAY(interface_list, SORTED NO_DUPLICATES)
