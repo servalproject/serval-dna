@@ -164,19 +164,19 @@ test_StressRhizomeDirect() {
    forkWaitAll
    set_instance +A
    executeOk_servald rhizome list ''
-   assert_rhizome_list --fromhere=1 file-A-? --fromhere=0 file-[BDE]-?
+   assert_rhizome_list --fromhere=1 file-A-!(*.manifest) --fromhere=0 file-[BDE]-!(*.manifest)
    set_instance +B
    executeOk_servald rhizome list ''
-   assert_rhizome_list --fromhere=1 file-B-?
+   assert_rhizome_list --fromhere=1 file-B-!(*.manifest)
    set_instance +C
    executeOk_servald rhizome list ''
-   assert_rhizome_list --fromhere=1 file-C-? --fromhere=0 file-A-? --and-others
+   assert_rhizome_list --fromhere=1 file-C-!(*.manifest) --fromhere=0 file-A-!(*.manifest) --and-others
    set_instance +D
    executeOk_servald rhizome list ''
-   assert_rhizome_list --fromhere=1 file-D-? --fromhere=0 file-A-? --and-others
+   assert_rhizome_list --fromhere=1 file-D-!(*.manifest) --fromhere=0 file-A-!(*.manifest) --and-others
    set_instance +E
    executeOk_servald rhizome list ''
-   assert_rhizome_list --fromhere=1 file-E-? --fromhere=0 file-A-? --and-others
+   assert_rhizome_list --fromhere=1 file-E-!(*.manifest) --fromhere=0 file-A-!(*.manifest) --and-others
 }
 
 runTests "$@"
