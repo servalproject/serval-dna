@@ -125,6 +125,7 @@ declare -a _tfw_included_tests=()
 declare -a _tfw_test_names=()
 declare -a _tfw_test_sourcefiles=()
 declare -a _tfw_job_pgids=()
+declare -a _tfw_forked_pids=()
 
 # The rest of this file is parsed for extended glob patterns.
 _tfw_shopt _tfw_orig_shopt -s extglob
@@ -146,7 +147,7 @@ includeTests() {
 }
 
 runTests() {
-   [ -n "${_tfw_running}" ] && return 0
+   [ -n "${_tfw_recursive_source}" ] && return 0
    _tfw_stdout=1
    _tfw_stderr=2
    _tfw_log_fd=
@@ -280,17 +281,26 @@ runTests() {
             _tfw_stderr=5
             _tfw_log_fd=6
             BASH_XTRACEFD=7
+            # Disable job control.
+            set +m
+            # If the test is from a different source script than the one
+            # invoking us, then source that file to pull in all the test
+            # definitions.
             if [ "$testSourceFile" != "$_tfw_invoking_script" ]; then
-               _tfw_running=true
+               _tfw_recursive_source=true
                source "$testSourceFile"
-               unset _tfw_running
+               unset _tfw_recursive_source
             fi
             declare -f test_$testName >/dev/null || _tfw_fatal "test_$testName not defined"
-            export TFWLOG=$_tfw_logdir_test
+            # Where per-forked-process files get stored -- see fork().
+            _tfw_process_tmp="$_tfw_tmp"
+            # Environment variables and temporary directories that test cases
+            # depend upon.
+            export TFWLOG="$_tfw_logdir_test"
             export TFWUNIQUE=$_tfw_unique
-            export TFWVAR=$_tfw_tmp/var
+            export TFWVAR="$_tfw_tmp/var"
             mkdir $TFWVAR || _tfw_fatalexit
-            export TFWTMP=$_tfw_tmp/tmp
+            export TFWTMP="$_tfw_tmp/tmp"
             mkdir $TFWTMP || _tfw_fatalexit
             cd $TFWTMP || _tfw_fatalexit
             if $_tfw_verbose; then
@@ -301,6 +311,7 @@ runTests() {
                tail --pid=$mypid --follow $_tfw_tmp/log.stdout >&$_tfw_stdout 2>/dev/null &
                tail --pid=$mypid --follow $_tfw_tmp/log.stderr >&$_tfw_stderr 2>/dev/null &
             fi
+            # Execute the test case.
             _tfw_phase=setup
             _tfw_result=ERROR
             trap "_tfw_finalise $testName; _tfw_teardown $testName; trap - EXIT; _tfw_exit" EXIT SIGHUP SIGINT SIGTERM
@@ -313,7 +324,7 @@ runTests() {
             set +x
             _tfw_result=PASS
             _tfw_fatalexit
-         ) <&- 5>&1 5>&2 6>$_tfw_tmp/log.stdout 1>&6 2>$_tfw_tmp/log.stderr 7>$_tfw_tmp/log.xtrace
+         ) <&- 5>&1 5>&2 6>"$_tfw_tmp/log.stdout" 1>&6 2>"$_tfw_tmp/log.stderr" 7>"$_tfw_tmp/log.xtrace"
          local stat=$?
          finish_time=$(_tfw_timestamp)
          local result=FATAL
@@ -474,9 +485,9 @@ _tfw_echo_progress() {
    (
       local script=
       if [ "$testSourceFile" != "$_tfw_invoking_script" ]; then
-         _tfw_running=true
+         _tfw_recursive_source=true
          source "$testSourceFile"
-         unset _tfw_running
+         unset _tfw_recursive_source
          script=" (${3#$_tfw_script_dir/})"
       fi
       local docvar="doc_$4"
@@ -708,6 +719,68 @@ fatal() {
    _tfw_fatalexit
 }
 
+fork() {
+   local forkid=${#_tfw_forked_pids[*]}
+   local _tfw_process_tmp="$_tfw_tmp/fork-$forkid"
+   mkdir "$_tfw_process_tmp" || _tfw_fatalexit
+   tfw_log "# fork[$forkid] START" $(shellarg "$@")
+   ( "$@" ) 6>"$_tfw_process_tmp/log.stdout" 1>&6 2>"$_tfw_process_tmp/log.stderr" 7>"$_tfw_process_tmp/log.xtrace" &
+   _tfw_forked_pids[$forkid]=$!
+   tfw_log "# fork[$forkid] pid=$! STARTED"  
+}
+
+forkKillAll() {
+   tfw_log "# fork kill all"
+   local forkid
+   for ((forkid=0; forkid < ${#_tfw_forked_pids[*]}; ++forkid)); do
+      local pid=${_tfw_forked_pids[$forkid]}
+      [ -z "$pid" ] && continue
+      tfw_log "# fork[$forkid] pid=$pid KILL"  
+      kill -TERM $pid 2>/dev/null
+   done
+}
+
+forkWaitAll() {
+   _tfw_getopts forkwaitall "$@"
+   shift $_tfw_getopts_shift
+   tfw_log "# fork wait all"
+   while true; do
+      local running=0
+      local forkid
+      for ((forkid=0; forkid < ${#_tfw_forked_pids[*]}; ++forkid)); do
+         local pid=${_tfw_forked_pids[$forkid]}
+         [ -z "$pid" ] && continue
+         if kill -0 $pid 2>/dev/null; then
+            let running+=1
+         else
+            _tfw_forked_pids[$forkid]=
+            wait $pid # should not block because process has exited
+            local status=$?
+            tfw_log "# fork[$forkid] pid=$pid EXIT status=$status"
+            echo "++++++++++ fork[$forkid] log.stdout ++++++++++"
+            cat $_tfw_tmp/fork-$forkid/log.stdout
+            echo "++++++++++"
+            echo "++++++++++ fork[$forkid] log.stderr ++++++++++"
+            cat $_tfw_tmp/fork-$forkid/log.stderr
+            echo "++++++++++"
+            if $_tfw_trace; then
+               echo "++++++++++ fork[$forkid] log.xtrace ++++++++++"
+               cat $_tfw_tmp/fork-$forkid/log.xtrace
+               echo "++++++++++"
+            fi
+            case $status in
+            0) ;;
+            1) _tfw_fail "fork[$forkid] process exited with FAIL status";;
+            254) _tfw_error "fork[$forkid] process exited with ERROR status";;
+            255) _tfw_fatal "fork[$forkid] process exited with FATAL status";;
+            *) _tfw_error "fork[$forkid] process exited with status=$status";;
+            esac
+         fi
+      done
+      [ $running -eq 0 ] && return 0
+   done
+}
+
 # Append a time stamped message to the test case's stdout log.  Will work even
 # in a context that stdout (fd 1) is redirected.  Will not log anything in a
 # quietened region.
@@ -766,11 +839,11 @@ tfw_cat() {
          continue
          ;;
       --stdout)
-         file="$_tfw_tmp/stdout"
+         file="$_tfw_process_tmp/stdout"
          header="${header:-stdout of ($executed)}"
          ;;
       --stderr)
-         file="$_tfw_tmp/stderr"
+         file="$_tfw_process_tmp/stderr"
          header="${header:-stderr of ($executed)}"
          ;;
       *)
@@ -793,11 +866,11 @@ tfw_cat() {
 tfw_core_backtrace() {
    local executable="$1"
    local corefile="$2"
-   echo backtrace >"$_tfw_tmpmain/backtrace.gdb"
+   echo backtrace >"$_tfw_process_tmp/backtrace.gdb"
    tfw_log "#----- gdb backtrace from $executable $corefile -----"
-   gdb -n -batch -x "$_tfw_tmpmain/backtrace.gdb" "$executable" "$corefile" </dev/null
+   gdb -n -batch -x "$_tfw_process_tmp/backtrace.gdb" "$executable" "$corefile" </dev/null
    tfw_log "#-----"
-   rm -f "$_tfw_tmpmain/backtrace.gdb"
+   rm -f "$_tfw_process_tmp/backtrace.gdb"
 }
 
 assertExitStatus() {
@@ -961,6 +1034,8 @@ _tfw_finalise() {
       set +x
       ;;
    esac
+   forkKillAll
+   forkWaitAll
    tfw_log '# END FINALLY'
 }
 
@@ -1001,7 +1076,7 @@ _tfw_execute() {
       ulimit -S -c unlimited
       rm -f core
    fi
-   { time -p "$_tfw_executable" "$@" >$_tfw_tmp/stdout 2>$_tfw_tmp/stderr ; } 2>$_tfw_tmp/times
+   { time -p "$_tfw_executable" "$@" >"$_tfw_process_tmp/stdout" 2>"$_tfw_process_tmp/stderr" ; } 2>"$_tfw_process_tmp/times"
    _tfw_exitStatus=$?
    # Deal with core dump.
    if $_tfw_opt_core_backtrace && [ -s core ]; then
@@ -1022,7 +1097,7 @@ _tfw_execute() {
       ! _tfw_parse_times_to_milliseconds sys systime_ms
    then
       tfw_log '# malformed output from time:'
-      tfw_cat -v $_tfw_tmp/times
+      tfw_cat -v "$_tfw_process_tmp/times"
    fi
    return 0
 }
@@ -1044,7 +1119,7 @@ _tfw_parse_times_to_milliseconds() {
             seconds = value + 0
             print (minutes * 60 + seconds) * 1000
          }
-      }' $_tfw_tmp/times)
+      }' $_tfw_process_tmp/times)
    [ -z "$milliseconds" ] && return 1
    [ -n "$var" ] && eval $var=$milliseconds
    return 0
@@ -1105,7 +1180,7 @@ _tfw_getopts() {
       *:--stdout) _tfw_dump_on_fail --stdout;;
       *:--stderr) _tfw_dump_on_fail --stderr;;
       assert*:--dump-on-fail=*) _tfw_dump_on_fail "${1#*=}";;
-      assert*:--error-on-fail) _tfw_opt_error_on_fail=true;;
+      @(assert*|forkwait*):--error-on-fail) _tfw_opt_error_on_fail=true;;
       assert*:--message=*) _tfw_message="${1#*=}";;
       execute:--exit-status=+([0-9])) _tfw_opt_exit_status="${1#*=}";;
       execute:--exit-status=*) _tfw_error "invalid value: $1";;
@@ -1200,8 +1275,8 @@ _tfw_assertExpr() {
 
 _tfw_get_content() {
    case "$_tfw_opt_line_sed" in
-   '') ln -f "$1" "$_tfw_tmp/content" || error "ln failed";;
-   *) $SED -n -e "${_tfw_opt_line_sed}p" "$1" >"$_tfw_tmp/content" || error "sed failed";;
+   '') ln -f "$1" "$_tfw_process_tmp/content" || error "ln failed";;
+   *) $SED -n -e "${_tfw_opt_line_sed}p" "$1" >"$_tfw_process_tmp/content" || error "sed failed";;
    esac
 }
 
@@ -1214,10 +1289,10 @@ _tfw_assert_stdxxx_is() {
       _tfw_error "incorrect arguments"
       return $?
    fi
-   _tfw_get_content "$_tfw_tmp/$qual" || return $?
+   _tfw_get_content "$_tfw_process_tmp/$qual" || return $?
    local message="${_tfw_message:-${_tfw_opt_line_msg:+$_tfw_opt_line_msg of }$qual of ($executed) is $(shellarg "$@")}"
-   echo -n "$@" >$_tfw_tmp/stdxxx_is.tmp
-   if ! cmp -s $_tfw_tmp/stdxxx_is.tmp "$_tfw_tmp/content"; then
+   echo -n "$@" >$_tfw_process_tmp/stdxxx_is.tmp
+   if ! cmp -s $_tfw_process_tmp/stdxxx_is.tmp "$_tfw_process_tmp/content"; then
       _tfw_failmsg "assertion failed: $message"
       _tfw_backtrace
       return 1
@@ -1235,7 +1310,7 @@ _tfw_assert_stdxxx_linecount() {
       _tfw_error "incorrect arguments"
       return $?
    fi
-   local lineCount=$(( $(cat $_tfw_tmp/$qual | wc -l) + 0 ))
+   local lineCount=$(( $(cat $_tfw_process_tmp/$qual | wc -l) + 0 ))
    [ -z "$_tfw_message" ] && _tfw_message="$qual line count ($lineCount) $*"
    _tfw_assertExpr "$lineCount" "$@" || _tfw_failexit || return $?
    tfw_log "# assert $_tfw_message"
@@ -1251,8 +1326,8 @@ _tfw_assert_stdxxx_grep() {
       _tfw_error "incorrect arguments"
       return $?
    fi
-   _tfw_get_content "$_tfw_tmp/$qual" || return $?
-   _tfw_assert_grep "${_tfw_opt_line_msg:+$_tfw_opt_line_msg of }$qual of ($executed)" "$_tfw_tmp/content" "$@"
+   _tfw_get_content "$_tfw_process_tmp/$qual" || return $?
+   _tfw_assert_grep "${_tfw_opt_line_msg:+$_tfw_opt_line_msg of }$qual of ($executed)" "$_tfw_process_tmp/content" "$@"
 }
 
 _tfw_assert_grep() {
@@ -1531,6 +1606,12 @@ _tfw_failmsg() {
    tfw_log "ERROR: $*"
 }
 
+_tfw_fail() {
+   _tfw_failmsg "$*"
+   _tfw_backtrace
+   _tfw_failexit
+}
+
 _tfw_backtrace() {
    tfw_log '#----- shell backtrace -----'
    local -i up=1
@@ -1581,11 +1662,11 @@ _tfw_errormsg() {
    while [ $up -lt $top -a "${BASH_SOURCE[$up]}" == "${BASH_SOURCE[0]}" ]; do
       let up=up+1
    done
-   tfw_log "ERROR in ${FUNCNAME[$up]}: $*"
+   tfw_log "ERROR: in ${FUNCNAME[$up]}: $*"
 }
 
 _tfw_error() {
-   _tfw_errormsg "ERROR: $*"
+   _tfw_errormsg "$*"
    _tfw_backtrace
    _tfw_errorexit
 }
