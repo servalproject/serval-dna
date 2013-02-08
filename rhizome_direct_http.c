@@ -687,6 +687,16 @@ static int receive_http_response(int sock, char *buffer, size_t buffer_len, stru
     return -1;
   }
   DEBUGF("content_length=%d", parts->content_length);
+  return len - (parts->content_start - buffer);
+}
+
+static int fill_buffer(int sock, unsigned char *buffer, int len, int buffer_size){
+  int count;
+  do {
+    if ((count = read(sock, &buffer[len], buffer_size - len)) == -1)
+      return WHYF_perror("read(%d, %p, %d)", sock, &buffer[len], buffer_size - len);
+    len += count;
+  } while (len < buffer_size);
   return 0;
 }
 
@@ -803,17 +813,24 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   struct http_response_parts parts;
  rx:
   /* request sent, now get response back. */
-  if (receive_http_response(sock, buffer, sizeof buffer, &parts) == -1) {
+  len=receive_http_response(sock, buffer, sizeof buffer, &parts);
+  if (len == -1) {
     close(sock);
     goto end;
   }
 
-  /* For some reason the response data gets overwritten during a push,
-     so we need to copy it, and use the copy instead. */
-  unsigned char *actionlist=alloca(parts.content_length);
-  bcopy(parts.content_start, actionlist, parts.content_length);
-  dump("response", actionlist, parts.content_length);
-
+  /* Allocate a buffer to receive the entire action list */
+  content_length = parts.content_length;
+  unsigned char *actionlist=malloc(content_length);
+  bcopy(parts.content_start, actionlist, len);
+  if (fill_buffer(sock, actionlist, len, content_length)==-1){
+    free(actionlist);
+    close(sock);
+    goto end;
+  }
+  close(sock);
+  dump("response", actionlist, content_length);
+  
   /* We now have the list of (1+RHIZOME_BAR_PREFIX_BYTES)-byte records that indicate
      the list of BAR prefixes that differ between the two nodes.  We can now action
      those which are relevant, i.e., based on whether we are pushing, pulling or 
@@ -990,6 +1007,8 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
       continue;
     }
 
+  free(actionlist);
+  
   /* now update cursor according to what range was covered in the response.
      We set our current position to just past the high limit of the returned
      cursor.
