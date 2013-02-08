@@ -46,7 +46,7 @@ configure_servald_server() {
       set mdp.iftype.wifi.tick_ms 500
 }
 
-doc_StressRhizomeTransfer="Stress - five nodes each sharing 16 bundles"
+doc_StressRhizomeTransfer="Five nodes each sharing 16 bundles from 1KiB to 32MiB"
 setup_StressRhizomeTransfer() {
    setup_servald
    assert_no_servald_processes
@@ -58,7 +58,11 @@ setup_StressRhizomeTransfer() {
       let j=0
       for n in 1 2 3 4 5 6 7 8 9 a b c d e f g
       do
-         rhizome_add_file file-$i-$n $((2 ** (j + 10)))
+         local sidvar="SID$instance_name"
+         create_file file-$i-$n $((2 ** (j + 10)))
+         executeOk_servald rhizome add file "${!sidvar}" '' file-$i-$n file-$i-$n.manifest
+         extract_stdout_manifestid BID
+         extract_stdout_version VERSION
          eval "bundles$i+=(\$BID:\$VERSION)"
          let j=j+1
       done
@@ -82,13 +86,6 @@ test_StressRhizomeTransfer() {
    done
 }
 
-setup_StressRhizomeAdd() {
-   setup_servald
-   assert_no_servald_processes
-   foreach_instance +A +B +C +D +E +F +G +H create_single_identity
-   start_servald_instances +A +B +C +D +E +F +G +H
-}
-
 amend_file() {
    create_file --append file$instance_name 100
    rm -f file$instance_name.manifest # ensure 'rhizome add file' generates a new Bundle ID
@@ -106,7 +103,13 @@ rhizome_bundle_count_equals() {
    [ $(rhizome_list_bundle_count) -eq $1 ]
 }
 
-doc_StressRhizomeAdd="Add files while transferring"
+doc_StressRhizomeAdd="Add new bundles while transferring"
+setup_StressRhizomeAdd() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B +C +D +E +F +G +H create_single_identity
+   start_servald_instances +A +B +C +D +E +F +G +H
+}
 test_StressRhizomeAdd() {
    local total_files=0
    for i in A B C D E F G H I J K L M N O P Q R S T U V W X Y Z
@@ -115,6 +118,65 @@ test_StressRhizomeAdd() {
       let total_files+=8
    done
    foreach_instance +A +B +C +D +E +F +G +H wait_until --timeout=120 rhizome_bundle_count_equals $total_files
+}
+
+doc_StressRhizomeDirect="Direct push/pull/sync 1500 bundles at once"
+setup_StressRhizomeDirect() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B +C +D +E create_single_identity
+   local i
+   for i in A B C D E
+   do
+      set_instance +$i
+      executeOk_servald config \
+         set log.show_time on \
+         set debug.rhizome off \
+         set debug.rhizome_tx off \
+         set debug.rhizome_rx off \
+         set server.respawn_on_crash off \
+         set mdp.iftype.wifi.tick_ms 500
+      local sidvar="SID$instance_name"
+      for ((n = 0; n < 300; ++n)); do
+         create_file file-$i-$n 10000
+         executeOk_servald rhizome add file "${!sidvar}" '' file-$i-$n file-$i-$n.manifest
+      done
+   done
+   start_servald_instances dummy1 +A
+   wait_until rhizome_http_server_started +A
+   get_rhizome_server_port PORTA +A
+   for i in B C D E
+   do
+      set_instance +$i
+      executeOk_servald config \
+         set rhizome.direct.peer.0 "http://${addr_localhost}:${PORTA}"
+   done
+}
+test_StressRhizomeDirect() {
+   set_instance +B
+   fork executeOk_servald rhizome direct push
+   set_instance +C
+   fork executeOk_servald rhizome direct pull
+   set_instance +D
+   fork executeOk_servald rhizome direct sync
+   set_instance +E
+   fork executeOk_servald rhizome direct sync
+   forkWaitAll
+   set_instance +A
+   executeOk_servald rhizome list ''
+   assert_rhizome_list --fromhere=1 file-A-? --fromhere=0 file-[BDE]-?
+   set_instance +B
+   executeOk_servald rhizome list ''
+   assert_rhizome_list --fromhere=1 file-B-?
+   set_instance +C
+   executeOk_servald rhizome list ''
+   assert_rhizome_list --fromhere=1 file-C-? --fromhere=0 file-A-? --and-others
+   set_instance +D
+   executeOk_servald rhizome list ''
+   assert_rhizome_list --fromhere=1 file-D-? --fromhere=0 file-A-? --and-others
+   set_instance +E
+   executeOk_servald rhizome list ''
+   assert_rhizome_list --fromhere=1 file-E-? --fromhere=0 file-A-? --and-others
 }
 
 runTests "$@"
