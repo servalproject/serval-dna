@@ -378,11 +378,17 @@ test_HttpAddLocal() {
    assert_rhizome_received file1
 }
 
-setup_sync() {
+setup_direct() {
    set_instance +A
-   rhizome_add_file file1
-   BID1=$BID
-   VERSION1=$VERSION
+   rhizome_add_file fileA1 1000
+   BID_A1=$BID
+   VERSION_A1=$VERSION
+   rhizome_add_file fileA2 10000
+   BID_A2=$BID
+   VERSION_A2=$VERSION
+   rhizome_add_file fileA3 100000
+   BID_A3=$BID
+   VERSION_A3=$VERSION
    start_servald_instances dummy1 +A
    wait_until rhizome_http_server_started +A
    get_rhizome_server_port PORTA +A
@@ -393,67 +399,81 @@ setup_sync() {
       set debug.rhizome_tx on \
       set debug.rhizome_rx on \
       set rhizome.direct.peer.0 "http://${addr_localhost}:${PORTA}"
-   rhizome_add_file file2
-   BID2=$BID
-   VERSION2=$VERSION
+   rhizome_add_file fileB1 2000
+   BID_B1=$BID
+   VERSION_B1=$VERSION
+   rhizome_add_file fileB2 20000
+   BID_B2=$BID
+   VERSION_B2=$VERSION
+   rhizome_add_file fileB3 200000
+   BID_B3=$BID
+   VERSION_B3=$VERSION
 }
 
-doc_DirectPush="One way push bundle to unconnected node"
+doc_DirectPush="One way push bundles to unconnected node"
 setup_DirectPush() {
    setup_common
-   setup_sync
+   setup_direct
 }
 test_DirectPush() {
    set_instance +B
    executeOk_servald rhizome direct push
    tfw_cat --stdout --stderr
-   assert bundle_received_by $BID2:$VERSION2 +A
+   assert bundle_received_by $BID_B1:$VERSION_B1 $BID_B2:$VERSION_B2 $BID_B3:$VERSION_B3 +A
    set_instance +A
    executeOk_servald rhizome list ''
-   assert_rhizome_list --fromhere=1 file1 --fromhere=0 file2
-   assert_rhizome_received file2
+   assert_rhizome_list --fromhere=1 fileA1 fileA2 fileA3 --fromhere=0 fileB1 fileB2 fileB3
+   assert_rhizome_received fileB1
+   assert_rhizome_received fileB2
+   assert_rhizome_received fileB3
    set_instance +B
    executeOk_servald rhizome list ''
-   assert_rhizome_list --fromhere=1 file2
+   assert_rhizome_list --fromhere=1 fileB1 fileB2 fileB3
 }
 
 doc_DirectPull="One way pull bundle from unconnected node"
 setup_DirectPull() {
    setup_common
-   setup_sync
+   setup_direct
 }
 test_DirectPull() {
    set_instance +B
    executeOk_servald rhizome direct pull
    tfw_cat --stdout --stderr
-   assert bundle_received_by $BID1:$VERSION1 --stderr
+   assert bundle_received_by $BID_A1:$VERSION_A1 $BID_A2:$VERSION_A2 $BID_A2:$VERSION_A2 --stderr
    set_instance +A
    executeOk_servald rhizome list ''
-   assert_rhizome_list --fromhere=1 file1
+   assert_rhizome_list --fromhere=1 fileA1 fileA2 fileA3
    set_instance +B
    executeOk_servald rhizome list ''
-   assert_rhizome_list --fromhere=0 file1 --fromhere=1 file2
-   assert_rhizome_received file1
+   assert_rhizome_list --fromhere=0 fileA1 fileA2 fileA3 --fromhere=1 fileB1 fileB2 fileB3
+   assert_rhizome_received fileA1
+   assert_rhizome_received fileA2
+   assert_rhizome_received fileA3
 }
 
 doc_DirectSync="Two-way sync bundles between unconnected nodes"
 setup_DirectSync() {
    setup_common
-   setup_sync
+   setup_direct
 }
 test_DirectSync() {
    set_instance +B
    executeOk_servald rhizome direct sync
    tfw_cat --stdout --stderr
-   assert bundle_received_by $BID1:$VERSION1 --stderr $BID2:$VERSION2 +A
+   assert bundle_received_by $BID_A1:$VERSION_A1 $BID_A2:$VERSION_A2 $BID_A2:$VERSION_A2 --stderr
    set_instance +A
    executeOk_servald rhizome list ''
-   assert_rhizome_list --fromhere=1 file1 --fromhere=0 file2
-   assert_rhizome_received file2
+   assert_rhizome_list --fromhere=1 fileA1 fileA2 fileA3 --fromhere=0 fileB1 fileB2 fileB3
+   assert_rhizome_received fileB1
+   assert_rhizome_received fileB2
+   assert_rhizome_received fileB3
    set_instance +B
    executeOk_servald rhizome list ''
-   assert_rhizome_list --fromhere=0 file1 --fromhere=1 file2
-   assert_rhizome_received file1
+   assert_rhizome_list --fromhere=0 fileA1 fileA2 fileA3 --fromhere=1 fileB1 fileB2 fileB3
+   assert_rhizome_received fileA1
+   assert_rhizome_received fileA2
+   assert_rhizome_received fileA3
 }
 
 runTests "$@"
