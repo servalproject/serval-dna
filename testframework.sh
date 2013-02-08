@@ -594,12 +594,19 @@ matches_rexp() {
 }
 
 # Create a file with the given size (default 0).
-# Usage: create_file <path> [<size>]
+# Usage: create_file [--append] <path> [<size>]
 # where: <size> is of the form Nu
 #        N is decimal integer
 #        u is one of kKmMgG (k=10^3, K=2^10, m=10^6, M=2^20, g=10^9, G=2^30)
 create_file() {
-   tfw_createfile --label="$1" ${2:+--size=$2} >"$1" || error "failed command: create_file $@"
+   local args=("$@")
+   case "$1" in
+   --append) shift;;
+   *) rm -f "$1";;
+   esac
+   local path="$1"
+   local size="$2"
+   tfw_createfile --label="$path" ${size:+--size=$size} >>"$path" || error "failed command: create_file ${args[*]}"
 }
 
 # Executes its arguments as a command:
