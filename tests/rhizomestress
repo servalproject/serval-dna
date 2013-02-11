@@ -122,6 +122,7 @@ test_StressRhizomeAdd() {
 
 doc_StressRhizomeDirect="Direct push/pull/sync 1500 bundles at once"
 setup_StressRhizomeDirect() {
+   files_per_instance=300
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B +C +D +E create_single_identity
@@ -137,9 +138,9 @@ setup_StressRhizomeDirect() {
          set server.respawn_on_crash off \
          set mdp.iftype.wifi.tick_ms 500
       local sidvar="SID$instance_name"
-      for ((n = 0; n < 300; ++n)); do
+      for ((n = 0; n < $files_per_instance; ++n)); do
          create_file file-$i-$n 10000
-         executeOk_servald rhizome add file "${!sidvar}" '' file-$i-$n file-$i-$n.manifest
+         tfw_quietly executeOk_servald rhizome add file "${!sidvar}" '' file-$i-$n file-$i-$n.manifest
       done
    done
    start_servald_instances dummy1 +A
@@ -149,34 +150,45 @@ setup_StressRhizomeDirect() {
    do
       set_instance +$i
       executeOk_servald config \
-         set rhizome.direct.peer.0 "http://${addr_localhost}:${PORTA}"
+         set rhizome.direct.peer.0 "http://${addr_localhost}:${PORTA}" \
+         set log.file "$instance_servald_log"
+
    done
 }
 test_StressRhizomeDirect() {
    set_instance +B
-   fork executeOk_servald rhizome direct push
+   fork executeOk_servald rhizome direct sync
    set_instance +C
    fork executeOk_servald rhizome direct pull
    set_instance +D
-   fork executeOk_servald rhizome direct sync
+   fork executeOk_servald rhizome direct push
    set_instance +E
    fork executeOk_servald rhizome direct sync
    forkWaitAll
    set_instance +A
    executeOk_servald rhizome list ''
-   assert_rhizome_list --fromhere=1 file-A-!(*.manifest) --fromhere=0 file-[BDE]-!(*.manifest)
+   tfw_quietly assert_rhizome_list --fromhere=1 file-A-!(*.manifest) --fromhere=0 file-[BDE]-!(*.manifest)
    set_instance +B
    executeOk_servald rhizome list ''
-   assert_rhizome_list --fromhere=1 file-B-!(*.manifest)
+   tfw_quietly assert_rhizome_list --fromhere=1 file-B-!(*.manifest) --fromhere=0 file-A-!(*.manifest) --and-others
+   reportfiles CDE
    set_instance +C
    executeOk_servald rhizome list ''
-   assert_rhizome_list --fromhere=1 file-C-!(*.manifest) --fromhere=0 file-A-!(*.manifest) --and-others
+   tfw_quietly assert_rhizome_list --fromhere=1 file-C-!(*.manifest) --fromhere=0 file-A-!(*.manifest) --and-others
+   reportfiles BDE
    set_instance +D
    executeOk_servald rhizome list ''
-   assert_rhizome_list --fromhere=1 file-D-!(*.manifest) --fromhere=0 file-A-!(*.manifest) --and-others
+   tfw_quietly assert_rhizome_list --fromhere=1 file-D-!(*.manifest)
    set_instance +E
    executeOk_servald rhizome list ''
-   assert_rhizome_list --fromhere=1 file-E-!(*.manifest) --fromhere=0 file-A-!(*.manifest) --and-others
+   tfw_quietly assert_rhizome_list --fromhere=1 file-E-!(*.manifest) --fromhere=0 file-A-!(*.manifest) --and-others
+   reportfiles BCD
+}
+
+reportfiles() {
+   replayStdout | sed -n -e '1,2p' -e "/:file-[$1]-/p" | rhizome_list_dump name bundleid >extrafiles || exit $?
+   tfw_log "$(cat extrafiles | wc -l) file(s) received by instance +$instance_name"
+   sort -t- -k2,2 -k3,3n extrafiles
 }
 
 runTests "$@"
