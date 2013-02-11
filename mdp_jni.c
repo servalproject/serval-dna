@@ -45,6 +45,8 @@ static jfieldID f_meshpacket_offset;
 static jfieldID f_meshpacket_length;
 static jfieldID f_meshpacket_sid;
 static jfieldID f_meshpacket_port;
+static jfieldID f_meshpacket_flags;
+static jfieldID f_meshpacket_qos;
 
 /* SubscriberId fields */
 static jfieldID f_subscriberid_binary;
@@ -71,6 +73,8 @@ Java_org_servalproject_servald_mdp_MeshSocket_init(JNIEnv * env, jclass cls)
     G_FIELD(env, cl_meshpacket, "sid",
             "Lorg/servalproject/servald/SubscriberId;");
   f_meshpacket_port = G_FIELD(env, cl_meshpacket, "port", "I");
+  f_meshpacket_flags = G_FIELD(env, cl_meshpacket, "flags", "I");
+  f_meshpacket_qos = G_FIELD(env, cl_meshpacket, "qos", "I");
 
   cl_subscriberid = GG_CLASS(env, "org/servalproject/servald/SubscriberId");
   f_subscriberid_binary = G_FIELD(env, cl_subscriberid, "binary", "[B");
@@ -156,7 +160,7 @@ Java_org_servalproject_servald_mdp_MeshSocket__1send(JNIEnv * env,
                                                      jobject this,
                                                      jobject mdppack)
 {
-  jint fd, localport, offset, length, port;
+  jint fd, localport, offset, length, port, flags, qos;
   jobject sid_obj;
   jbyteArray jbuf, jsid, jlocalsid;
   jbyte *buf, *sid, *localsid = NULL;
@@ -187,6 +191,12 @@ Java_org_servalproject_servald_mdp_MeshSocket__1send(JNIEnv * env,
 
   /* port = mdppack.port; */
   port = (*env)->GetIntField(env, mdppack, f_meshpacket_port);
+
+  /* flags = mdppack.flags; */
+  flags = (*env)->GetIntField(env, mdppack, f_meshpacket_flags);
+
+  /* qos = mdppack.qos; */
+  qos = (*env)->GetIntField(env, mdppack, f_meshpacket_qos);
 
   /* sid_obj = mdppack.sid; */
   if ((sid_obj =
@@ -246,7 +256,8 @@ Java_org_servalproject_servald_mdp_MeshSocket__1send(JNIEnv * env,
 
   /* Fill mdp structure. */
 
-  mdp.packetTypeAndFlags = MDP_TX;
+  mdp.packetTypeAndFlags = MDP_TX | flags & MDP_FLAG_MASK;
+  mdp.out.queue = qos;
   mdp.out.src.port = localport;
   if (localsid != NULL) {
     memcpy(mdp.out.src.sid, localsid, SID_SIZE);
