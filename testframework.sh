@@ -162,7 +162,8 @@ runTests() {
    _tfw_tmpdir="$(_tfw_abspath -P "${TFW_TMPDIR:-${TMPDIR:-/tmp}}")"
    _tfw_tmpmain="$_tfw_tmpdir/_tfw-$$"
    _tfw_njobs=1
-   _tfw_lognoise=true
+   _tfw_log_noise=true
+   _tfw_assert_noise=true
    _tfw_logdir_script="${TFW_LOGDIR:-$_tfw_cwd/testlog}/$_tfw_script_name"
    _tfw_list=false
    _tfw_trace=false
@@ -271,7 +272,7 @@ runTests() {
          # The path name must be kept short because it is used to construct
          # named socket paths, which have a limited length.
          _tfw_tmp=$_tfw_tmpdir/_tfw-$_tfw_unique
-         trap '_tfw_status=$?; rm -rf "$_tfw_tmp"; trap - EXIT; exit $_tfw_status' EXIT SIGHUP SIGINT SIGTERM
+         trap '_tfw_status=$?; rm -rf "$_tfw_tmp"; exit $_tfw_status' EXIT SIGHUP SIGINT SIGTERM
          mkdir $_tfw_tmp || _tfw_fatalexit
          local start_time=$(_tfw_timestamp)
          local finish_time=unknown
@@ -296,6 +297,7 @@ runTests() {
             _tfw_process_tmp="$_tfw_tmp"
             # Environment variables and temporary directories that test cases
             # depend upon.
+            export COLUMNS=80 # for ls(1) multi-column output
             export TFWLOG="$_tfw_logdir_test"
             export TFWUNIQUE=$_tfw_unique
             export TFWVAR="$_tfw_tmp/var"
@@ -314,7 +316,8 @@ runTests() {
             # Execute the test case.
             _tfw_phase=setup
             _tfw_result=ERROR
-            trap "_tfw_finalise $testName; _tfw_teardown $testName; trap - EXIT; _tfw_exit" EXIT SIGHUP SIGINT SIGTERM
+            _tfw_status=
+            trap "_tfw_status=\$?; _tfw_finalise $testName; _tfw_teardown $testName; _tfw_exit" EXIT SIGHUP SIGINT SIGTERM
             _tfw_setup $testName
             _tfw_result=FAIL
             _tfw_phase=testcase
@@ -323,7 +326,7 @@ runTests() {
             test_$testName
             set +x
             _tfw_result=PASS
-            _tfw_fatalexit
+            exit 0
          ) <&- 5>&1 5>&2 6>"$_tfw_tmp/log.stdout" 1>&6 2>"$_tfw_tmp/log.stderr" 7>"$_tfw_tmp/log.xtrace"
          local stat=$?
          finish_time=$(_tfw_timestamp)
@@ -627,14 +630,14 @@ create_file() {
 #  - sets the $executed variable to a description of the command that was
 #    executed
 execute() {
-   tfw_log "# execute" $(shellarg "$@")
+   $_tfw_assert_noise && tfw_log "# execute" $(shellarg "$@")
    _tfw_getopts execute "$@"
    shift $_tfw_getopts_shift
    _tfw_execute "$@"
 }
 
 executeOk() {
-   tfw_log "# executeOk" $(shellarg "$@")
+   $_tfw_assert_noise && tfw_log "# executeOk" $(shellarg "$@")
    _tfw_getopts executeok "$@"
    _tfw_opt_exit_status=0
    _tfw_dump_on_fail --stderr
@@ -649,7 +652,7 @@ executeOk() {
 #    status
 # where SECONDS may be fractional, eg, 1.5
 wait_until() {
-   tfw_log "# wait_until" $(shellarg "$@")
+   $_tfw_assert_noise && tfw_log "# wait_until" $(shellarg "$@")
    local start=$SECONDS
    _tfw_getopts wait_until "$@"
    shift $_tfw_getopts_shift
@@ -667,7 +670,7 @@ wait_until() {
       sleep ${_tfw_opt_sleep:-1}
    done
    local end=$SECONDS
-   tfw_log "# waited for" $((end - start)) "seconds"
+   $_tfw_assert_noise && tfw_log "# waited for" $((end - start)) "seconds"
    return 0
 }
 
@@ -681,7 +684,7 @@ assert() {
    shift $_tfw_getopts_shift
    [ -z "$_tfw_message" ] && _tfw_message=$(shellarg "$@")
    _tfw_assert "$@" || _tfw_failexit || return $?
-   tfw_log "# assert $_tfw_message"
+   $_tfw_assert_noise && tfw_log "# assert $_tfw_message"
    return 0
 }
 
@@ -692,7 +695,7 @@ assertExpr() {
    _tfw_message="${_tfw_message:+$_tfw_message }("$@")"
    _tfw_shellarg "${_tfw_expr[@]}"
    _tfw_assert eval "${_tfw_args[@]}" || _tfw_failexit || return $?
-   tfw_log "# assert $_tfw_message"
+   $_tfw_assert_noise && tfw_log "# assert $_tfw_message"
    return 0
 }
 
@@ -723,19 +726,19 @@ fork() {
    local forkid=${#_tfw_forked_pids[*]}
    local _tfw_process_tmp="$_tfw_tmp/fork-$forkid"
    mkdir "$_tfw_process_tmp" || _tfw_fatalexit
-   tfw_log "# fork[$forkid] START" $(shellarg "$@")
+   $_tfw_assert_noise && tfw_log "# fork[$forkid] START" $(shellarg "$@")
    ( "$@" ) 6>"$_tfw_process_tmp/log.stdout" 1>&6 2>"$_tfw_process_tmp/log.stderr" 7>"$_tfw_process_tmp/log.xtrace" &
    _tfw_forked_pids[$forkid]=$!
-   tfw_log "# fork[$forkid] pid=$! STARTED"  
+   $_tfw_assert_noise && tfw_log "# fork[$forkid] pid=$! STARTED"  
 }
 
 forkKillAll() {
-   tfw_log "# fork kill all"
+   $_tfw_assert_noise && tfw_log "# fork kill all"
    local forkid
    for ((forkid=0; forkid < ${#_tfw_forked_pids[*]}; ++forkid)); do
       local pid=${_tfw_forked_pids[$forkid]}
       [ -z "$pid" ] && continue
-      tfw_log "# fork[$forkid] pid=$pid KILL"  
+      $_tfw_assert_noise && tfw_log "# fork[$forkid] pid=$pid KILL"  
       kill -TERM $pid 2>/dev/null
    done
 }
@@ -743,7 +746,7 @@ forkKillAll() {
 forkWaitAll() {
    _tfw_getopts forkwaitall "$@"
    shift $_tfw_getopts_shift
-   tfw_log "# fork wait all"
+   $_tfw_assert_noise && tfw_log "# fork wait all"
    while true; do
       local running=0
       local forkid
@@ -756,7 +759,7 @@ forkWaitAll() {
             _tfw_forked_pids[$forkid]=
             wait $pid # should not block because process has exited
             local status=$?
-            tfw_log "# fork[$forkid] pid=$pid EXIT status=$status"
+            $_tfw_assert_noise && tfw_log "# fork[$forkid] pid=$pid EXIT status=$status"
             echo "++++++++++ fork[$forkid] log.stdout ++++++++++"
             cat $_tfw_tmp/fork-$forkid/log.stdout
             echo "++++++++++"
@@ -785,7 +788,7 @@ forkWaitAll() {
 # in a context that stdout (fd 1) is redirected.  Will not log anything in a
 # quietened region.
 tfw_log() {
-   if $_tfw_lognoise; then
+   if $_tfw_log_noise; then
       local ts=$(_tfw_timestamp)
       cat >&$_tfw_log_fd <<EOF
 ${ts##* } $*
@@ -799,7 +802,7 @@ tfw_preserve() {
    local arg
    for arg; do
       if cp -a "$arg" "$_tfw_logdir_test"; then
-         tfw_log "# PRESERVE" $(ls -l -d "$arg")
+         $_tfw_assert_noise && tfw_log "# PRESERVE" $(ls -l -d "$arg")
       else
          error "cp failed"
       fi
@@ -812,11 +815,26 @@ tfw_nolog() {
       shift
       ! tfw_nolog "$@"
    else
-      local old_lognoise=$_tfw_lognoise
-      _tfw_lognoise=false
+      local old_log_noise=$_tfw_log_noise
+      _tfw_log_noise=false
       "$@" >/dev/null
       local stat=$?
-      _tfw_lognoise=$old_lognoise
+      _tfw_log_noise=$old_log_noise
+      return $stat
+   fi
+}
+
+# Execute the given command with successful assert log messages quietened.
+tfw_quietly() {
+   if [ "$1" = ! ]; then
+      shift
+      ! tfw_quietly "$@"
+   else
+      local old_assert_noise=$_tfw_assert_noise
+      _tfw_assert_noise=false
+      "$@" >/dev/null
+      local stat=$?
+      _tfw_assert_noise=$old_assert_noise
       return $stat
    fi
 }
@@ -863,6 +881,37 @@ tfw_cat() {
    done
 }
 
+tfw_multicolumn() {
+   awk '
+      function pad(s, n) {
+         return sprintf("%-" n "s", s)
+      }
+      {
+         line[nlines++] = $0
+         if (length($0) > colwid)
+            colwid = length($0)
+      }
+      END {
+         wid = 0 + ENVIRON["COLUMNS"]
+         if (wid != 0) {
+            ncol = int(wid / (colwid + 2))
+            if (ncol < 1)
+                  ncol = 1
+         }
+         collen = int((nlines + ncol - 1) / ncol)
+         for (r = 0; r < collen; ++r) {
+            for (c = 0; c < ncol; ++c) {
+                  i = c * collen + r
+                  if (i >= nlines)
+                     break
+                  printf "%s  ", pad(line[i], colwid)
+            }
+            printf "\n"
+         }
+      }
+   '
+}
+
 tfw_core_backtrace() {
    local executable="$1"
    local corefile="$2"
@@ -878,7 +927,7 @@ assertExitStatus() {
    shift $_tfw_getopts_shift
    [ -z "$_tfw_message" ] && _tfw_message="exit status ($_tfw_exitStatus) of ($executed) $*"
    _tfw_assertExpr "$_tfw_exitStatus" "$@" || _tfw_failexit || return $?
-   tfw_log "# assert $_tfw_message"
+   $_tfw_assert_noise && tfw_log "# assert $_tfw_message"
    return 0
 }
 
@@ -887,7 +936,7 @@ assertRealTime() {
    shift $_tfw_getopts_shift
    [ -z "$_tfw_message" ] && _tfw_message="real execution time ($realtime) of ($executed) $*"
    _tfw_assertExpr "$realtime" "$@" || _tfw_failexit || return $?
-   tfw_log "# assert $_tfw_message"
+   $_tfw_assert_noise && tfw_log "# assert $_tfw_message"
    return 0
 }
 
@@ -1061,12 +1110,12 @@ _tfw_teardown() {
 }
 
 _tfw_exit() {
-   case $_tfw_result in
-   PASS) exit 0;;
-   FAIL) exit 1;;
-   ERROR) exit 254;;
+   case $_tfw_status:$_tfw_result in
+   254:* | *:ERROR ) exit 254;;
+   1:* | *:FAIL ) exit 1;;
+   0:PASS ) exit 0;;
    esac
-   _tfw_fatalexit
+   _tfw_fatal "_tfw_status='$_tfw_status' _tfw_result='$_tfw_result'"
 }
 
 # Executes $_tfw_executable with the given arguments.
@@ -1087,9 +1136,9 @@ _tfw_execute() {
       _tfw_message="exit status ($_tfw_exitStatus) of ($executed) is $_tfw_opt_exit_status"
       _tfw_dump_stderr_on_fail=true
       _tfw_assert [ "$_tfw_exitStatus" -eq "$_tfw_opt_exit_status" ] || _tfw_failexit || return $?
-      tfw_log "# assert $_tfw_message"
+      $_tfw_assert_noise && tfw_log "# assert $_tfw_message"
    else
-      tfw_log "# exit status of ($executed) = $_tfw_exitStatus"
+      $_tfw_assert_noise && tfw_log "# exit status of ($executed) = $_tfw_exitStatus"
    fi
    # Parse execution time report.
    if ! _tfw_parse_times_to_milliseconds real realtime_ms ||
@@ -1289,15 +1338,16 @@ _tfw_assert_stdxxx_is() {
       _tfw_error "incorrect arguments"
       return $?
    fi
+   [ -r "$_tfw_process_tmp/$qual" ] || fail "no $qual"
    _tfw_get_content "$_tfw_process_tmp/$qual" || return $?
    local message="${_tfw_message:-${_tfw_opt_line_msg:+$_tfw_opt_line_msg of }$qual of ($executed) is $(shellarg "$@")}"
-   echo -n "$@" >$_tfw_process_tmp/stdxxx_is.tmp
-   if ! cmp -s $_tfw_process_tmp/stdxxx_is.tmp "$_tfw_process_tmp/content"; then
+   echo -n "$@" >"$_tfw_process_tmp/stdxxx_is.tmp"
+   if ! cmp -s "$_tfw_process_tmp/stdxxx_is.tmp" "$_tfw_process_tmp/content"; then
       _tfw_failmsg "assertion failed: $message"
       _tfw_backtrace
       return 1
    fi
-   tfw_log "# assert $message"
+   $_tfw_assert_noise && tfw_log "# assert $message"
    return 0
 }
 
@@ -1310,10 +1360,11 @@ _tfw_assert_stdxxx_linecount() {
       _tfw_error "incorrect arguments"
       return $?
    fi
-   local lineCount=$(( $(cat $_tfw_process_tmp/$qual | wc -l) + 0 ))
+   [ -r "$_tfw_process_tmp/$qual" ] || fail "no $qual"
+   local lineCount=$(( $(cat "$_tfw_process_tmp/$qual" | wc -l) + 0 ))
    [ -z "$_tfw_message" ] && _tfw_message="$qual line count ($lineCount) $*"
    _tfw_assertExpr "$lineCount" "$@" || _tfw_failexit || return $?
-   tfw_log "# assert $_tfw_message"
+   $_tfw_assert_noise && tfw_log "# assert $_tfw_message"
    return 0
 }
 
@@ -1326,6 +1377,7 @@ _tfw_assert_stdxxx_grep() {
       _tfw_error "incorrect arguments"
       return $?
    fi
+   [ -r "$_tfw_process_tmp/$qual" ] || fail "no $qual"
    _tfw_get_content "$_tfw_process_tmp/$qual" || return $?
    _tfw_assert_grep "${_tfw_opt_line_msg:+$_tfw_opt_line_msg of }$qual of ($executed)" "$_tfw_process_tmp/content" "$@"
 }
@@ -1356,7 +1408,7 @@ _tfw_assert_grep() {
          done=true
          message="${_tfw_message:-$label contains a line matching \"$pattern\"}"
          if [ $matches -ne 0 ]; then
-            tfw_log "# assert $message"
+            $_tfw_assert_noise && tfw_log "# assert $message"
          else
             _tfw_failmsg "assertion failed ($info): $message"
             ret=1
@@ -1369,7 +1421,7 @@ _tfw_assert_grep() {
          local s=$([ $_tfw_opt_matches -ne 1 ] && echo s)
          message="${_tfw_message:-$label contains exactly $_tfw_opt_matches line$s matching \"$pattern\"}"
          if [ $matches -eq $_tfw_opt_matches ]; then
-            tfw_log "# assert $message"
+            $_tfw_assert_noise && tfw_log "# assert $message"
          else
             _tfw_failmsg "assertion failed ($info): $message"
             ret=1
@@ -1383,7 +1435,7 @@ _tfw_assert_grep() {
          local s=$([ $bound -ne 1 ] && echo s)
          message="${_tfw_message:-$label contains at least $bound line$s matching \"$pattern\"}"
          if [ $matches -ge $bound ]; then
-            tfw_log "# assert $message"
+            $_tfw_assert_noise && tfw_log "# assert $message"
          else
             _tfw_failmsg "assertion failed ($info): $message"
             ret=1
@@ -1397,7 +1449,7 @@ _tfw_assert_grep() {
          local s=$([ $bound -ne 1 ] && echo s)
          message="${_tfw_message:-$label contains at most $bound line$s matching \"$pattern\"}"
          if [ $matches -le $bound ]; then
-            tfw_log "# assert $message"
+            $_tfw_assert_noise && tfw_log "# assert $message"
          else
             _tfw_failmsg "assertion failed ($info): $message"
             ret=1
