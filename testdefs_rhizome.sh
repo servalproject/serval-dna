@@ -72,6 +72,41 @@ assert_rhizome_list() {
       esac
    done
    $exactly && assertStdoutLineCount --stderr '==' $(($files + 2))
+   rhizome_list_file_count=$(( $(replayStdout | wc -l) - 2 ))
+}
+
+rhizome_list_dump() {
+   local ncols
+   local -a headers
+   local readvars=
+   read ncols
+   local oIFS="$IFS"
+   IFS=:
+   read -r -a headers
+   IFS="$oIFS"
+   local hdr
+   local colvar
+   for hdr in "${headers[@]}"; do
+      readvars="$readvars __col_${hdr//[^A-Za-z0-9_]/_}"
+   done
+   eval local $readvars
+   for colvar in $readvars; do
+      eval "$colvar=ok"
+   done
+   local echoargs
+   for colname; do
+      case $colname in
+      manifestid|bundleid) colvar=__col_id;;
+      *) colvar="__col_${colname//[^A-Za-z0-9_]/_}";;
+      esac
+      eval [ -n "\"\${$colvar+ok}\"" ] || error "invalid column name: $colname" || return $?
+      echoargs="$echoargs $colname=\"\${$colvar}\""
+   done
+   IFS=:
+   while eval read -r $readvars; do
+      eval echo $echoargs
+   done
+   IFS="$oIFS"
 }
 
 assert_stdout_add_file() {
