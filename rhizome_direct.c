@@ -513,25 +513,27 @@ static int rhizome_sync_with_peers(int mode, int peer_count, const struct config
   return 0;
 }
 
-int app_rhizome_direct_sync(int argc, const char *const *argv, const struct command_line_option *o, void *context)
+int app_rhizome_direct_sync(const struct parsed_command *parsed, void *context)
 {
+  if (config.debug.verbose)
+    DEBUG_parsed(parsed);
   /* Attempt to connect with a remote Rhizome Direct instance,
      and negotiate which BARs to synchronise. */
-  const char *modeName = (argc >= 3 ? argv[2] : "sync");
+  const char *modeName = (parsed->argc >= 3 ? parsed->args[2] : "sync");
   int mode=3; /* two-way sync */
   if (!strcasecmp(modeName,"push")) mode=1; /* push only */
   if (!strcasecmp(modeName,"pull")) mode=2; /* pull only */
   DEBUGF("sync direction = %d",mode);
-  if (argv[3]) {
+  if (parsed->args[3]) {
     struct config_rhizome_peer peer;
     const struct config_rhizome_peer *peers[1] = { &peer };
-    int result = cf_opt_rhizome_peer_from_uri(&peer, argv[3]);
+    int result = cf_opt_rhizome_peer_from_uri(&peer, parsed->args[3]);
     if (result == CFOK)
       return rhizome_sync_with_peers(mode, 1, peers);
     else {
       strbuf b = strbuf_alloca(128);
       strbuf_cf_flag_reason(b, result);
-      return WHYF("Invalid peer URI %s -- %s", alloca_str_toprint(argv[3]), strbuf_str(b));
+      return WHYF("Invalid peer URI %s -- %s", alloca_str_toprint(parsed->args[3]), strbuf_str(b));
     }
   } else if (config.rhizome.direct.peer.ac == 0) {
     DEBUG("No rhizome direct peers were configured or supplied");

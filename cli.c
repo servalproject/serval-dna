@@ -5,77 +5,103 @@
 #include "serval.h"
 #include "rhizome.h"
 
-int cli_usage(const struct command_line_option *options) {
+int cli_usage(const struct command_line_option *commands) {
   printf("Usage:\n");
   int i,j;
-  for(i=0;options[i].function;i++) {
-    for(j=0;options[i].words[j];j++)
-      printf(" %s",options[i].words[j]);
-    printf("\n   %s\n",options[i].description);
+  for(i=0;commands[i].function;i++) {
+    for(j=0;commands[i].words[j];j++)
+      printf(" %s",commands[i].words[j]);
+    printf("\n   %s\n",commands[i].description);
   }
   return 0;
 }
 
-int cli_parse(const int argc, const char *const *args, const struct command_line_option *options)
+static const char * parsed_add_label_arg(struct parsed_command *parsed, const char *label, unsigned labellen, unsigned argi)
 {
-  int ambiguous=0;
-  int cli_call=-1;
-  int i;
-  for(i=0;options[i].function;i++)
-  {
-    int j;
+  if (parsed->labelc >= NELS(parsed->labelv))
+    return "too many labeled args";
+  parsed->labelv[parsed->labelc].label = label;
+  parsed->labelv[parsed->labelc].len = labellen;
+  parsed->labelv[parsed->labelc].argi = argi;
+  ++parsed->labelc;
+  return NULL;
+}
+
+int cli_parse(const int argc, const char *const *args, const struct command_line_option *commands, struct parsed_command *parsed)
+{
+  int ambiguous = 0;
+  int matched_cmd = -1;
+  int cmd;
+  for (cmd = 0; commands[cmd].function; ++cmd) {
+    struct parsed_command cmdpa;
+    memset(&cmdpa, 0, sizeof cmdpa);
+    cmdpa.command = &commands[cmd];
+    cmdpa.args = args;
+    cmdpa.argc = argc;
+    cmdpa.labelc = 0;
+    cmdpa.varargi = -1;
+    const char *problem = NULL;
     const char *word = NULL;
-    int optional = 0;
-    int mandatory = 0;
-    for (j = 0; (word = options[i].words[j]); ++j) {
+    int arg, opt;
+    for (arg = 0, opt = 0; !problem && (word = commands[cmd].words[opt]); ++opt) {
       int wordlen = strlen(word);
-      if (optional < 0) {
-	WHYF("Internal error: command_line_options[%d].word[%d]=\"%s\" not allowed after \"...\"", i, j, word);
-	break;
-      }
-      else if (!(  (wordlen > 2 && word[0] == '<' && word[wordlen-1] == '>')
-		 || (wordlen > 4 && word[0] == '[' && word[1] == '<' && word[wordlen-2] == '>' && word[wordlen-1] == ']')
-		 || (wordlen > 0)
-		 )) {
-	WHYF("Internal error: command_line_options[%d].word[%d]=\"%s\" is malformed", i, j, word);
-	break;
-      } else if (word[0] == '<') {
-	++mandatory;
-	if (optional) {
-	  WHYF("Internal error: command_line_options[%d].word[%d]=\"%s\" should be optional", i, j, word);
-	  break;
-	}
-      } else if (word[0] == '[') {
-	++optional;
+      if (cmdpa.varargi != -1)
+	problem = "more words not allowed after \"...\"";
+      else if (wordlen > 4 && word[0] == '[' && word[1] == '<' && word[wordlen-2] == '>' && word[wordlen-1] == ']') {
+	// "[<label>]" consumes one argument if available, records it with label "label".
+	if (arg < argc)
+	  problem = parsed_add_label_arg(&cmdpa, &word[2], wordlen - 4, arg++);
+      } else if (wordlen > 2 && word[0] == '[' && word[wordlen-1] == ']') {
+	// "[word]" consumes one argument if it exactly matches "word", records it with label
+	// "word".
+	const char *endp = NULL;
+	if (arg < argc && strncase_startswith(word + 1, wordlen - 2, args[arg], &endp) && endp == word + wordlen - 1)
+	  problem = parsed_add_label_arg(&cmdpa, &word[1], wordlen - 2, arg++);
       } else if (wordlen == 3 && word[0] == '.' && word[1] == '.' && word[2] == '.') {
-	optional = -1;
-      } else {
-	++mandatory;
-	if (j < argc && strcasecmp(word, args[j])) // literal words don't match
+	// "..." consumes all remaining arguments.
+	cmdpa.varargi = arg;
+	arg = argc;
+      } else if (wordlen > 2 && word[0] == '<' && word[wordlen-1] == '>') {
+	// "<label>" consumes exactly one argument, records it with label "label".
+	if (arg < argc)
+	  problem = parsed_add_label_arg(&cmdpa, &word[1], wordlen - 2, arg++);
+	else
 	  break;
-      }
+      } else if (wordlen > 0) {
+	const char *endp = NULL;
+	// "word" consumes exactly one argument which must exactly match "word".
+	if (arg < argc && strncase_startswith(word, wordlen, args[arg], &endp) && endp == word + wordlen)
+	  ++arg;
+	else
+	  break;
+      } else
+	problem = "malformed";
     }
-    if (!word && argc >= mandatory && (optional < 0 || argc <= mandatory + optional)) {
+    if (problem)
+      return WHYF("Internal error: commands[%d].word[%d]=\"%s\" - %s", cmd, opt - 1, word, problem);
+    if (!word && arg == argc) {
       /* A match!  We got through the command definition with no internal errors and all literal
        args matched and we have a proper number of args.  If we have multiple matches, then note
        that the call is ambiguous. */
-      if (cli_call>=0) ambiguous++;
-      if (ambiguous==1) {
+      if (matched_cmd >= 0)
+	++ambiguous;
+      if (ambiguous == 1) {
 	WHY("Ambiguous command line call:");
 	WHY_argv("   ", argc, args);
 	WHY("Matches the following known command line calls:");
-	WHY_argv("   ", argc, options[cli_call].words);
+	WHY_argv("   ", argc, commands[matched_cmd].words);
       }
       if (ambiguous)
-	WHY_argv("   ", argc, options[i].words);
-      cli_call=i;
+	WHY_argv("   ", argc, commands[cmd].words);
+      matched_cmd = cmd;
+      *parsed = cmdpa;
     }
   }
-  
   /* Don't process ambiguous calls */
-  if (ambiguous) return -1;
+  if (ambiguous)
+    return -1;
   /* Complain if we found no matching calls */
-  if (cli_call<0) {
+  if (matched_cmd < 0) {
     if (argc) {
       WHY("Unknown command line call:");
       WHY_argv("   ", argc, args);
@@ -83,35 +109,43 @@ int cli_parse(const int argc, const char *const *args, const struct command_line
     INFO("Use \"help\" command to see a list of valid commands");
     return -1;
   }
-
-  return cli_call;
+  return matched_cmd;
 }
 
-int cli_invoke(const struct command_line_option *option, const int argc, const char *const *args, void *context)
+void _debug_parsed(struct __sourceloc __whence, const struct parsed_command *parsed)
+{
+  DEBUG_argv("command", parsed->argc, parsed->args);
+  strbuf b = strbuf_alloca(1024);
+  int i;
+  for (i = 0; i < parsed->labelc; ++i) {
+    const struct labelv *lab = &parsed->labelv[i];
+    strbuf_sprintf(b, " %s=%d", alloca_toprint(-1, lab->label, lab->len), lab->argi);
+  }
+  if (parsed->varargi >= 0)
+    strbuf_sprintf(b, " varargi=%d", parsed->varargi); 
+  DEBUGF("parsed%s", strbuf_str(b));
+}
+
+int cli_invoke(const struct parsed_command *parsed, void *context)
 {
   IN();
-  int ret=option->function(argc, args, option, context);
+  int ret = parsed->command->function(parsed, context);
   RETURN(ret);
 }
 
-int cli_arg(int argc, const char *const *argv, const struct command_line_option *o, char *argname, const char **dst, int (*validator)(const char *arg), char *defaultvalue)
+int cli_arg(const struct parsed_command *parsed, char *label, const char **dst, int (*validator)(const char *arg), char *defaultvalue)
 {
-  int arglen = strlen(argname);
+  int labellen = strlen(label);
+  if (dst)
+    *dst = defaultvalue;
   int i;
-  const char *word;
-  *dst = defaultvalue;
-  for(i = 0; (word = o->words[i]); ++i) {
-    int wordlen = strlen(word);
-    /* No need to check that the "<...>" and "[<...>]" are all intact in the command_line_option,
-     because that was already checked in parseCommandLine(). */
-    if (i < argc
-	&&(  (wordlen == arglen + 2 && word[0] == '<' && !strncasecmp(&word[1], argname, arglen))
-	   || (wordlen == arglen + 4 && word[0] == '[' && !strncasecmp(&word[2], argname, arglen)))
-	) {
-      const char *value = argv[i];
+  for (i = 0; i < parsed->labelc; ++i) {
+    if (parsed->labelv[i].len == labellen && strncasecmp(label, parsed->labelv[i].label, labellen) == 0) {
+      const char *value = parsed->args[parsed->labelv[i].argi];
       if (validator && !(*validator)(value))
-	return WHYF("Invalid argument %d '%s': \"%s\"", i + 1, argname, value);
-      *dst = value;
+	return WHYF("Invalid argument %d '%s': \"%s\"", i + 1, label, value);
+      if (dst)
+	*dst = value;
       return 0;
     }
   }

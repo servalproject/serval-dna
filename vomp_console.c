@@ -186,19 +186,21 @@ struct monitor_command_handler console_handlers[]={
   {.command="MONITORSTATUS", .handler=remote_noop},
 };
 
-static int console_dial(int argc, const char *const *argv, const struct command_line_option *o, void *context){
+static int console_dial(const struct parsed_command *parsed, void *context)
+{
   if (call_token!=-1){
     printf("Already in a call\n");
     return 0;
   }
-  const char *sid=argv[1];
-  const char *local=argc>=3?argv[2]:"";
-  const char *remote=argc>=4?argv[3]:"";
+  const char *sid = parsed->args[1];
+  const char *local = parsed->argc >= 3 ? parsed->args[2] : "";
+  const char *remote = parsed->argc >= 4 ? parsed->args[3] : "";
   send_call(sid, local, remote);
   return 0;
 }
 
-static int console_answer(int argc, const char *const *argv, const struct command_line_option *o, void *context){
+static int console_answer(const struct parsed_command *parsed, void *context)
+{
   if (call_token==-1){
     printf("No active call to answer\n");
     fflush(stdout);
@@ -207,7 +209,8 @@ static int console_answer(int argc, const char *const *argv, const struct comman
   return 0;
 }
 
-static int console_hangup(int argc, const char *const *argv, const struct command_line_option *o, void *context){
+static int console_hangup(const struct parsed_command *parsed, void *context)
+{
   if (call_token==-1){
     printf("No call to hangup\n");
     fflush(stdout);
@@ -216,7 +219,8 @@ static int console_hangup(int argc, const char *const *argv, const struct comman
   return 0;
 }
 
-static int console_audio(int argc, const char *const *argv, const struct command_line_option *o, void *context){
+static int console_audio(const struct parsed_command *parsed, void *context)
+{
   if (call_token==-1){
     printf("No active call\n");
     fflush(stdout);
@@ -225,11 +229,11 @@ static int console_audio(int argc, const char *const *argv, const struct command
     static struct strbuf str_buf = STRUCT_STRBUF_EMPTY;
     int i;
     strbuf_init(&str_buf, buf, sizeof(buf));
-    for (i = 0; i < argc; ++i) {
+    for (i = 0; i < parsed->argc; ++i) {
       if (i)
 	strbuf_putc(&str_buf, ' ');
-      if (argv[i])
-	strbuf_toprint_quoted(&str_buf, "\"\"", argv[i]);
+      if (parsed->args[i])
+	strbuf_toprint_quoted(&str_buf, "\"\"", parsed->args[i]);
       else
 	strbuf_puts(&str_buf, "NULL");
     }
@@ -239,7 +243,7 @@ static int console_audio(int argc, const char *const *argv, const struct command
   return 0;
 }
 
-static int console_usage(int argc, const char *const *argv, const struct command_line_option *o, void *context);
+static int console_usage(const struct parsed_command *parsed, void *context);
 
 struct command_line_option console_commands[]={
   {console_answer,{"answer",NULL},0,"Answer an incoming phone call"},
@@ -250,7 +254,8 @@ struct command_line_option console_commands[]={
   {NULL},
 };
 
-static int console_usage(int argc, const char *const *argv, const struct command_line_option *o, void *context){
+static int console_usage(const struct parsed_command *parsed, void *context)
+{
   cli_usage(console_commands);
   fflush(stdout);
   return 0;
@@ -260,12 +265,13 @@ static void console_command(char *line){
   char *argv[16];
   int argc = parse_argv(line, ' ', argv, 16);
   
-  int ret = cli_parse(argc, (const char *const*)argv, console_commands);
+  struct parsed_command parsed;
+  int ret = cli_parse(argc, (const char *const*)argv, console_commands, &parsed);
   if (ret == -1) {
     printf("Unknown command, try help\n");
     fflush(stdout);
   } else {
-    cli_invoke(&console_commands[ret], argc, (const char *const*)argv, NULL);
+    cli_invoke(&parsed, NULL);
   }
 }
 
@@ -306,8 +312,10 @@ static void monitor_read(struct sched_ent *alarm){
   }
 }
 
-int app_vomp_console(int argc, const char *const *argv, const struct command_line_option *o, void *context)
+int app_vomp_console(const struct parsed_command *parsed, void *context)
 {
+  if (config.debug.verbose)
+    DEBUG_parsed(parsed);
   static struct profile_total stdin_profile={
     .name="read_lines",
   };
