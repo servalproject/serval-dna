@@ -491,7 +491,7 @@ int overlay_frame_build_header(struct decode_context *context, struct overlay_bu
 			       struct broadcast *broadcast, struct subscriber *next_hop,
 			       struct subscriber *destination, struct subscriber *source);
 int overlay_interface_args(const char *arg);
-int overlay_rhizome_add_advertisements(struct decode_context *context, int interface_number, struct overlay_buffer *e);
+void overlay_rhizome_advertise(struct sched_ent *alarm);
 int overlay_add_local_identity(unsigned char *s);
 
 extern int overlay_interface_count;

@@ -528,6 +528,7 @@ int overlay_mdp_check_binding(struct subscriber *subscriber, int port, int userG
     case MDP_PORT_DNALOOKUP:
     case MDP_PORT_RHIZOME_RESPONSE:
     case MDP_PORT_RHIZOME_REQUEST:
+    case MDP_PORT_RHIZOME_MANIFEST_REQUEST:
     case MDP_PORT_PROBE:
     case MDP_PORT_STUNREQ:
     case MDP_PORT_STUN:

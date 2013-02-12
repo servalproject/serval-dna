@@ -287,7 +287,6 @@ int rhizome_opendb()
     verify_bundles();
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=2;");
   }
-  
   // TODO recreate tables with collate nocase on hex columns
   
   /* Future schema updates should be performed here. 
@@ -843,22 +842,22 @@ int rhizome_store_bundle(rhizome_manifest *m)
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") != SQLITE_OK)
     return WHY("Failed to begin transaction");
-
+  
   sqlite3_stmt *stmt;
   if ((stmt = sqlite_prepare(&retry, "INSERT OR REPLACE INTO MANIFESTS(id,manifest,version,inserttime,bar,filesize,filehash,author,service,name,sender,recipient) VALUES(?,?,?,?,?,?,?,?,?,?,?,?);")) == NULL)
     goto rollback;
-  if (!(   sqlite_code_ok(sqlite3_bind_text(stmt, 1, manifestid, -1, SQLITE_TRANSIENT))
-        && sqlite_code_ok(sqlite3_bind_blob(stmt, 2, m->manifestdata, m->manifest_bytes, SQLITE_TRANSIENT))
+  if (!(   sqlite_code_ok(sqlite3_bind_text(stmt, 1, manifestid, -1, SQLITE_STATIC))
+        && sqlite_code_ok(sqlite3_bind_blob(stmt, 2, m->manifestdata, m->manifest_bytes, SQLITE_STATIC))
 	&& sqlite_code_ok(sqlite3_bind_int64(stmt, 3, m->version))
 	&& sqlite_code_ok(sqlite3_bind_int64(stmt, 4, (long long) gettime_ms()))
-	&& sqlite_code_ok(sqlite3_bind_blob(stmt, 5, bar, RHIZOME_BAR_BYTES, SQLITE_TRANSIENT))
+	&& sqlite_code_ok(sqlite3_bind_blob(stmt, 5, bar, RHIZOME_BAR_BYTES, SQLITE_STATIC))
 	&& sqlite_code_ok(sqlite3_bind_int64(stmt, 6, m->fileLength))
-	&& sqlite_code_ok(sqlite3_bind_text(stmt, 7, filehash, -1, SQLITE_TRANSIENT))
-	&& sqlite_code_ok(sqlite3_bind_text(stmt, 8, author, -1, SQLITE_TRANSIENT))
-	&& sqlite_code_ok(sqlite3_bind_text(stmt, 9, service, -1, SQLITE_TRANSIENT))
-	&& sqlite_code_ok(sqlite3_bind_text(stmt, 10, name, -1, SQLITE_TRANSIENT))
-	&& sqlite_code_ok(sqlite3_bind_text(stmt, 11, sender, -1, SQLITE_TRANSIENT))
-	&& sqlite_code_ok(sqlite3_bind_text(stmt, 12, recipient, -1, SQLITE_TRANSIENT))
+	&& sqlite_code_ok(sqlite3_bind_text(stmt, 7, filehash, -1, SQLITE_STATIC))
+	&& sqlite_code_ok(sqlite3_bind_text(stmt, 8, author, -1, SQLITE_STATIC))
+	&& sqlite_code_ok(sqlite3_bind_text(stmt, 9, service, -1, SQLITE_STATIC))
+	&& sqlite_code_ok(sqlite3_bind_text(stmt, 10, name, -1, SQLITE_STATIC))
+	&& sqlite_code_ok(sqlite3_bind_text(stmt, 11, sender, -1, SQLITE_STATIC))
+	&& sqlite_code_ok(sqlite3_bind_text(stmt, 12, recipient, -1, SQLITE_STATIC))
   )) {
     WHYF("query failed, %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(stmt));
     goto rollback;
@@ -1375,7 +1374,7 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m){
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   
-  sqlite3_stmt *statement = sqlite_prepare(&retry, "SELECT manifest, version, inserttime, author FROM manifests WHERE id = ?");
+  sqlite3_stmt *statement = sqlite_prepare(&retry, "SELECT manifest, version, inserttime, author FROM manifests WHERE id like ?");
   if (!statement)
     return -1;
 
@@ -1409,4 +1408,37 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m){
 done:
   sqlite3_finalize(statement);
   return ret;  
+}
+
+int rhizome_is_bar_interesting(unsigned char *bar){
+  int64_t version = rhizome_bar_version(bar);
+  int ret=1;
+  char id_hex[RHIZOME_MANIFEST_ID_STRLEN];
+  tohex(id_hex, &bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES);
+  strcat(id_hex, "%");
+  
+  // are we ignoring this manifest?
+  if (rhizome_ignore_manifest_check(&bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES)){
+    DEBUGF("Ignoring %s", id_hex);
+    return 0;
+  }
+    
+ // do we have this bundle [or later]?
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  sqlite3_stmt *statement = sqlite_prepare(&retry, 
+    "SELECT id, version FROM manifests WHERE id like ? and version >= ?");
+  
+  sqlite3_bind_text(statement, 1, id_hex, -1, SQLITE_STATIC);
+  sqlite3_bind_int64(statement, 2, version);
+  
+  if (sqlite_step_retry(&retry, statement) == SQLITE_ROW){
+    if (0){
+      const char *q_id = (const char *) sqlite3_column_text(statement, 0);
+      long long q_version = (long long) sqlite3_column_int64(statement, 1);
+      DEBUGF("Already have %s, %lld (vs %s, %lld)", q_id, q_version, id_hex, version);
+    }
+    ret=0;
+  }  
+  sqlite3_finalize(statement);
+  return ret;
 }

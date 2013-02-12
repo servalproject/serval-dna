@@ -150,6 +150,9 @@ schedule(&_sched_##X); }
   /* Periodically update route table. */
   SCHEDULE(overlay_route_tick, 100, 100);
 
+  /* Periodically advertise bundles */
+  SCHEDULE(overlay_rhizome_advertise, 1000, 10000);
+  
   /* Show CPU usage stats periodically */
   if (config.debug.timing){
     SCHEDULE(fd_periodicstats, 3000, 500);

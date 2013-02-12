@@ -425,9 +425,7 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
 }
 
 typedef struct ignored_manifest {
-  unsigned char bid[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
-  struct sockaddr_in peer_ipandport;
-  unsigned char peer_sid[SID_SIZE];
+  unsigned char bid[RHIZOME_BAR_PREFIX_BYTES];
   time_ms_t timeout;
 } ignored_manifest;
 
@@ -447,15 +445,18 @@ typedef struct ignored_manifest_cache {
    a collision is exceedingly remote */
 ignored_manifest_cache ignored;
 
-int rhizome_ignore_manifest_check(rhizome_manifest *m, const struct sockaddr_in *peerip,const unsigned char *peersid)
+int rhizome_ignore_manifest_check(unsigned char *bid_prefix, int prefix_len)
 {
-  int bin = m->cryptoSignPublic[0]>>(8-IGNORED_BIN_BITS);
+  if (prefix_len < RHIZOME_BAR_PREFIX_BYTES)
+    FATAL("Prefix length is too short");
+  
+  int bin = bid_prefix[0]>>(8-IGNORED_BIN_BITS);
   int slot;
   for(slot = 0; slot != IGNORED_BIN_SIZE; ++slot)
     {
       if (!memcmp(ignored.bins[bin].m[slot].bid,
-		  m->cryptoSignPublic,
-		  crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES))
+		  bid_prefix,
+		  RHIZOME_BAR_PREFIX_BYTES))
 	{
 	  if (ignored.bins[bin].m[slot].timeout>gettime_ms())
 	    return 1;
@@ -466,31 +467,28 @@ int rhizome_ignore_manifest_check(rhizome_manifest *m, const struct sockaddr_in 
   return 0;
 }
 
-int rhizome_queue_ignore_manifest(rhizome_manifest *m, const struct sockaddr_in *peerip, const unsigned char peersid[SID_SIZE], int timeout)
+int rhizome_queue_ignore_manifest(unsigned char *bid_prefix, int prefix_len, int timeout)
 {
+  if (prefix_len < RHIZOME_BAR_PREFIX_BYTES)
+    FATAL("Prefix length is too short");
+  
   /* The supplied manifest from a given IP has errors, so remember 
      that it isn't worth considering */
-  int bin = m->cryptoSignPublic[0]>>(8-IGNORED_BIN_BITS);
+  int bin = bid_prefix[0]>>(8-IGNORED_BIN_BITS);
   int slot;
   for(slot = 0; slot != IGNORED_BIN_SIZE; ++slot)
     {
       if (!memcmp(ignored.bins[bin].m[slot].bid,
-		  m->cryptoSignPublic,
-		  crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES))
+		  bid_prefix,
+		  RHIZOME_BAR_PREFIX_BYTES))
 	break;
     }
   if (slot>=IGNORED_BIN_SIZE) slot=random()%IGNORED_BIN_SIZE;
-  bcopy(&m->cryptoSignPublic[0],
+  bcopy(&bid_prefix[0],
 	&ignored.bins[bin].m[slot].bid[0],
-	crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+	RHIZOME_BAR_PREFIX_BYTES);
   /* ignore for a while */
   ignored.bins[bin].m[slot].timeout=gettime_ms()+timeout;
-  bcopy(peerip,
-	&ignored.bins[bin].m[slot].peer_ipandport,
-	sizeof(struct sockaddr_in));
-  bcopy(peersid,
-	ignored.bins[bin].m[slot].peer_sid,
-	SID_SIZE);
   return 0;
 
 }
@@ -897,7 +895,8 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
     if (rhizome_manifest_verify(m) != 0) {
       WHY("Error verifying manifest when considering for import");
       /* Don't waste time looking at this manifest again for a while */
-      rhizome_queue_ignore_manifest(m, peerip, peersid, 60000);
+      rhizome_queue_ignore_manifest(m->cryptoSignPublic,
+				    crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES, 60000);
       rhizome_manifest_free(m);
       RETURN(-1);
     }
@@ -931,7 +930,8 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
 	  if (!m->selfSigned && rhizome_manifest_verify(m)) {
 	    WHY("Error verifying manifest when considering queuing for import");
 	    /* Don't waste time looking at this manifest again for a while */
-	    rhizome_queue_ignore_manifest(m, peerip, peersid, 60000);
+	    rhizome_queue_ignore_manifest(m->cryptoSignPublic,
+					  crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES, 60000);
 	    rhizome_manifest_free(m);
 	    RETURN(-1);
 	  }
@@ -957,7 +957,8 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
   if (!m->selfSigned && rhizome_manifest_verify(m)) {
     WHY("Error verifying manifest when considering queuing for import");
     /* Don't waste time looking at this manifest again for a while */
-    rhizome_queue_ignore_manifest(m, peerip, peersid, 60000);
+    rhizome_queue_ignore_manifest(m->cryptoSignPublic,
+				  crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES, 60000);
     rhizome_manifest_free(m);
     RETURN(-1);
   }

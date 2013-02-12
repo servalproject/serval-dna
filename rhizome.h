@@ -306,12 +306,14 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs);
 int rhizome_update_file_priority(const char *fileid);
 int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, int check_author);
 int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar);
-long long rhizome_bar_version(unsigned char *bar);
+int64_t rhizome_bar_version(unsigned char *bar);
 unsigned long long rhizome_bar_bidprefix_ll(unsigned char *bar);
+int rhizome_is_bar_interesting(unsigned char *bar);
 int rhizome_list_manifests(const char *service, const char *name, 
 			   const char *sender_sid, const char *recipient_sid, 
 			   int limit, int offset, char count_rows);
 int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m);
+int rhizome_advertise_manifest(rhizome_manifest *m);
 
 #define RHIZOME_DONTVERIFY 0
 #define RHIZOME_VERIFY 1
@@ -349,8 +351,8 @@ int rhizome_sign_hash_with_key(rhizome_manifest *m,const unsigned char *sk,
 int rhizome_verify_bundle_privatekey(rhizome_manifest *m, const unsigned char *sk,
 				     const unsigned char *pk);
 int rhizome_find_bundle_author(rhizome_manifest *m);
-int rhizome_queue_ignore_manifest(rhizome_manifest *m, const struct sockaddr_in *peerip, const unsigned char peersid[SID_SIZE], int timeout);
-int rhizome_ignore_manifest_check(rhizome_manifest *m, const struct sockaddr_in *peerip,const unsigned char peersid[SID_SIZE]);
+int rhizome_queue_ignore_manifest(unsigned char *bid_prefix, int prefix_len, int timeout);
+int rhizome_ignore_manifest_check(unsigned char *bid_prefix, int prefix_len);
 
 /* one manifest is required per candidate, plus a few spare.
    so MAX_RHIZOME_MANIFESTS must be > MAX_CANDIDATES. 
