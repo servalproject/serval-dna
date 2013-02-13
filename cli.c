@@ -5,7 +5,7 @@
 #include "serval.h"
 #include "rhizome.h"
 
-int cli_usage(const struct command_line_option *commands) {
+int cli_usage(const struct cli_schema *commands) {
   printf("Usage:\n");
   int i,j;
   for(i=0;commands[i].function;i++) {
@@ -16,13 +16,13 @@ int cli_usage(const struct command_line_option *commands) {
   return 0;
 }
 
-int cli_parse(const int argc, const char *const *args, const struct command_line_option *commands, struct parsed_command *parsed)
+int cli_parse(const int argc, const char *const *args, const struct cli_schema *commands, struct cli_parsed *parsed)
 {
   int ambiguous = 0;
   int matched_cmd = -1;
   int cmd;
   for (cmd = 0; commands[cmd].function; ++cmd) {
-    struct parsed_command cmdpa;
+    struct cli_parsed cmdpa;
     memset(&cmdpa, 0, sizeof cmdpa);
     cmdpa.command = &commands[cmd];
     cmdpa.args = args;
@@ -172,7 +172,7 @@ int cli_parse(const int argc, const char *const *args, const struct command_line
   return matched_cmd;
 }
 
-void _debug_parsed(struct __sourceloc __whence, const struct parsed_command *parsed)
+void _debug_cli_parsed(struct __sourceloc __whence, const struct cli_parsed *parsed)
 {
   DEBUG_argv("command", parsed->argc, parsed->args);
   strbuf b = strbuf_alloca(1024);
@@ -186,14 +186,14 @@ void _debug_parsed(struct __sourceloc __whence, const struct parsed_command *par
   DEBUGF("parsed%s", strbuf_str(b));
 }
 
-int cli_invoke(const struct parsed_command *parsed, void *context)
+int cli_invoke(const struct cli_parsed *parsed, void *context)
 {
   IN();
   int ret = parsed->command->function(parsed, context);
   RETURN(ret);
 }
 
-int cli_arg(const struct parsed_command *parsed, char *label, const char **dst, int (*validator)(const char *arg), char *defaultvalue)
+int cli_arg(const struct cli_parsed *parsed, char *label, const char **dst, int (*validator)(const char *arg), char *defaultvalue)
 {
   int labellen = strlen(label);
   if (dst)

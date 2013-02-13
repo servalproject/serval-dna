@@ -186,7 +186,7 @@ struct monitor_command_handler console_handlers[]={
   {.command="MONITORSTATUS", .handler=remote_noop},
 };
 
-static int console_dial(const struct parsed_command *parsed, void *context)
+static int console_dial(const struct cli_parsed *parsed, void *context)
 {
   if (call_token!=-1){
     printf("Already in a call\n");
@@ -199,7 +199,7 @@ static int console_dial(const struct parsed_command *parsed, void *context)
   return 0;
 }
 
-static int console_answer(const struct parsed_command *parsed, void *context)
+static int console_answer(const struct cli_parsed *parsed, void *context)
 {
   if (call_token==-1){
     printf("No active call to answer\n");
@@ -209,7 +209,7 @@ static int console_answer(const struct parsed_command *parsed, void *context)
   return 0;
 }
 
-static int console_hangup(const struct parsed_command *parsed, void *context)
+static int console_hangup(const struct cli_parsed *parsed, void *context)
 {
   if (call_token==-1){
     printf("No call to hangup\n");
@@ -219,7 +219,7 @@ static int console_hangup(const struct parsed_command *parsed, void *context)
   return 0;
 }
 
-static int console_audio(const struct parsed_command *parsed, void *context)
+static int console_audio(const struct cli_parsed *parsed, void *context)
 {
   if (call_token==-1){
     printf("No active call\n");
@@ -243,9 +243,9 @@ static int console_audio(const struct parsed_command *parsed, void *context)
   return 0;
 }
 
-static int console_usage(const struct parsed_command *parsed, void *context);
+static int console_usage(const struct cli_parsed *parsed, void *context);
 
-struct command_line_option console_commands[]={
+struct cli_schema console_commands[]={
   {console_answer,{"answer",NULL},0,"Answer an incoming phone call"},
   {console_dial,{"call","<sid>","[<local_number>]","[<remote_extension>]",NULL},0,"Start dialling a given person"},
   {console_hangup,{"hangup",NULL},0,"Hangup the phone line"},
@@ -254,7 +254,7 @@ struct command_line_option console_commands[]={
   {NULL},
 };
 
-static int console_usage(const struct parsed_command *parsed, void *context)
+static int console_usage(const struct cli_parsed *parsed, void *context)
 {
   cli_usage(console_commands);
   fflush(stdout);
@@ -265,7 +265,7 @@ static void console_command(char *line){
   char *argv[16];
   int argc = parse_argv(line, ' ', argv, 16);
   
-  struct parsed_command parsed;
+  struct cli_parsed parsed;
   int ret = cli_parse(argc, (const char *const*)argv, console_commands, &parsed);
   if (ret == -1) {
     printf("Unknown command, try help\n");
@@ -312,10 +312,10 @@ static void monitor_read(struct sched_ent *alarm){
   }
 }
 
-int app_vomp_console(const struct parsed_command *parsed, void *context)
+int app_vomp_console(const struct cli_parsed *parsed, void *context)
 {
   if (config.debug.verbose)
-    DEBUG_parsed(parsed);
+    DEBUG_cli_parsed(parsed);
   static struct profile_total stdin_profile={
     .name="read_lines",
   };

@@ -266,7 +266,7 @@ extern keyring_file *keyring;
 /* Public calls to keyring management */
 keyring_file *keyring_open(char *file);
 keyring_file *keyring_open_instance();
-keyring_file *keyring_open_instance_cli(const struct parsed_command *parsed);
+keyring_file *keyring_open_instance_cli(const struct cli_parsed *parsed);
 int keyring_enter_pin(keyring_file *k, const char *pin);
 int keyring_set_did(keyring_identity *id,char *did,char *name);
 int keyring_sanitise_position(const keyring_file *k,int *cn,int *in,int *kp);
@@ -656,13 +656,13 @@ int overlay_broadcast_ensemble(int interface_number,
 int directory_registration();
 int directory_service_init();
 
-struct command_line_option;
-int app_rhizome_direct_sync(const struct parsed_command *parsed, void *context);
+struct cli_parsed;
+int app_rhizome_direct_sync(const struct cli_parsed *parsed, void *context);
 #ifdef HAVE_VOIPTEST
-int app_pa_phone(const struct parsed_command *parsed, void *context);
+int app_pa_phone(const struct cli_parsed *parsed, void *context);
 #endif
-int app_monitor_cli(const struct parsed_command *parsed, void *context);
-int app_vomp_console(const struct parsed_command *parsed, void *context);
+int app_monitor_cli(const struct cli_parsed *parsed, void *context);
+int app_vomp_console(const struct cli_parsed *parsed, void *context);
 
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 

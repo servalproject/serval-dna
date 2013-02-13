@@ -57,8 +57,7 @@ static PaCtx	*pa_phone_setup(void);
 
 /* Declarations */
 
-int
-app_pa_phone(int argc, const char *const *argv, const struct command_line_option *o)
+int app_pa_phone(const struct cli_parsed *parsed, void *context)
 {
   PaCtx	 	*ctx;
   

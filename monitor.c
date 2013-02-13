@@ -382,7 +382,7 @@ void monitor_get_all_supported_codecs(unsigned char *codecs){
   }
 }
 
-static int monitor_set(const struct parsed_command *parsed, void *context)
+static int monitor_set(const struct cli_parsed *parsed, void *context)
 {
   struct monitor_context *c=context;
   if (strcase_startswith(parsed->args[1],"vomp",NULL)){
@@ -411,7 +411,7 @@ static int monitor_set(const struct parsed_command *parsed, void *context)
   return 0;
 }
 
-static int monitor_clear(const struct parsed_command *parsed, void *context)
+static int monitor_clear(const struct cli_parsed *parsed, void *context)
 {
   struct monitor_context *c=context;
   if (strcase_startswith(parsed->args[1],"vomp",NULL))
@@ -432,7 +432,7 @@ static int monitor_clear(const struct parsed_command *parsed, void *context)
   return 0;
 }
 
-static int monitor_lookup_match(const struct parsed_command *parsed, void *context)
+static int monitor_lookup_match(const struct cli_parsed *parsed, void *context)
 {
   struct monitor_context *c = context;
   const char *sid = parsed->args[2];
@@ -456,7 +456,7 @@ static int monitor_lookup_match(const struct parsed_command *parsed, void *conte
   return 0;
 }
 
-static int monitor_call(const struct parsed_command *parsed, void *context)
+static int monitor_call(const struct cli_parsed *parsed, void *context)
 {
   struct monitor_context *c=context;
   unsigned char sid[SID_SIZE];
@@ -470,7 +470,7 @@ static int monitor_call(const struct parsed_command *parsed, void *context)
   return 0;
 }
 
-static int monitor_call_ring(const struct parsed_command *parsed, void *context)
+static int monitor_call_ring(const struct cli_parsed *parsed, void *context)
 {
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
   if (!call)
@@ -480,7 +480,7 @@ static int monitor_call_ring(const struct parsed_command *parsed, void *context)
   return 0;
 }
 
-static int monitor_call_pickup(const struct parsed_command *parsed, void *context)
+static int monitor_call_pickup(const struct cli_parsed *parsed, void *context)
 {
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
   if (!call)
@@ -490,7 +490,7 @@ static int monitor_call_pickup(const struct parsed_command *parsed, void *contex
   return 0;
 }
 
-static int monitor_call_audio(const struct parsed_command *parsed, void *context)
+static int monitor_call_audio(const struct cli_parsed *parsed, void *context)
 {
   struct monitor_context *c=context;
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
@@ -508,7 +508,7 @@ static int monitor_call_audio(const struct parsed_command *parsed, void *context
   return 0;
 }
 
-static int monitor_call_hangup(const struct parsed_command *parsed, void *context)
+static int monitor_call_hangup(const struct cli_parsed *parsed, void *context)
 {
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
   if (!call)
@@ -518,7 +518,7 @@ static int monitor_call_hangup(const struct parsed_command *parsed, void *contex
   return 0;
 }
 
-static int monitor_call_dtmf(const struct parsed_command *parsed, void *context)
+static int monitor_call_dtmf(const struct cli_parsed *parsed, void *context)
 {
   struct monitor_context *c=context;
   struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
@@ -542,7 +542,7 @@ static int monitor_call_dtmf(const struct parsed_command *parsed, void *context)
   return 0;
 }
 
-struct command_line_option monitor_options[]={
+struct cli_schema monitor_options[]={
   {monitor_set,{"monitor","vomp","<codec>","...",NULL},0,""},
   {monitor_set,{"monitor","<type>",NULL},0,""},
   {monitor_clear,{"ignore","<type>",NULL},0,""},
@@ -561,7 +561,7 @@ int monitor_process_command(struct monitor_context *c)
   char *argv[16]={NULL,};
   int argc = parse_argv(c->line, ' ', argv, 16);
   
-  struct parsed_command parsed;
+  struct cli_parsed parsed;
   int res = cli_parse(argc, (const char *const*)argv, monitor_options, &parsed);
   if (res == -1 || cli_invoke(&parsed, c))
     return monitor_write_error(c, "Invalid command");

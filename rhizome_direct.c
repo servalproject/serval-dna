@@ -513,10 +513,10 @@ static int rhizome_sync_with_peers(int mode, int peer_count, const struct config
   return 0;
 }
 
-int app_rhizome_direct_sync(const struct parsed_command *parsed, void *context)
+int app_rhizome_direct_sync(const struct cli_parsed *parsed, void *context)
 {
   if (config.debug.verbose)
-    DEBUG_parsed(parsed);
+    DEBUG_cli_parsed(parsed);
   /* Attempt to connect with a remote Rhizome Direct instance,
      and negotiate which BARs to synchronise. */
   const char *modeName = (parsed->argc >= 3 ? parsed->args[2] : "sync");

@@ -1343,7 +1343,7 @@ keyring_file *keyring_open_instance()
   RETURN(k);
 }
 
-keyring_file *keyring_open_instance_cli(const struct parsed_command *parsed)
+keyring_file *keyring_open_instance_cli(const struct cli_parsed *parsed)
 {
   IN();
   keyring_file *k = keyring_open_instance();
