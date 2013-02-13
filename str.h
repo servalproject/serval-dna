@@ -119,6 +119,22 @@ int strcase_startswith(const char *str, const char *substring, const char **afte
  */
 int strncase_startswith(const char *str, size_t len, const char *substring, const char **afterp);
 
+/* Compare the given string 'str1' of a given length 'len1' with a given nul-terminated string
+ * 'str2'.  Equivalent to { str1[len1] = '\0'; return strcmp(str1, str2); } except without modifying
+ * str1[].
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int strn_str_cmp(const char *str1, size_t len1, const char *str2);
+
+/* Compare case-insenstivively the given string 'str1' of a given length 'len1' with a given
+ * nul-terminated string 'str2'.  Equivalent to { str1[len1] = '\0'; return strcasecmp(str1, str2);
+ * } except without modifying str1[].
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int strn_str_casecmp(const char *str1, size_t len1, const char *str2);
+
 /* like strstr(3), but doesn't depend on null termination.
  *
  * @author Paul Gardner-Stephen <paul@servalproject.org>

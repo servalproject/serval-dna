@@ -131,6 +131,24 @@ int strncase_startswith(const char *str, size_t len, const char *substring, cons
   return 1;
 }
 
+int strn_str_cmp(const char *str1, size_t len1, const char *str2)
+{
+  int r = strncmp(str1, str2, len1);
+  if (r)
+    return r;
+  size_t len2 = strlen(str2);
+  return len1 < len2 ? -1 : len1 > len2 ? 1 : 0;
+}
+
+int strn_str_casecmp(const char *str1, size_t len1, const char *str2)
+{
+  int r = strncasecmp(str1, str2, len1);
+  if (r)
+    return r;
+  size_t len2 = strlen(str2);
+  return len1 < len2 ? -1 : len1 > len2 ? 1 : 0;
+}
+
 int parse_argv(char *cmdline, char delim, char **argv, int max_argv)
 {
   int argc=0;
