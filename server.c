@@ -420,7 +420,7 @@ int getKeyring(char *backing_file)
 	exit(WHY("Keyring being opened twice"));
       keyring=keyring_open(backing_file);
       /* unlock all entries with blank pins */
-      keyring_enter_pins(keyring,"");
+      keyring_enter_pin(keyring, "");
     }
  keyring_seed(keyring);
 

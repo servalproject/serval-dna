@@ -77,14 +77,14 @@ setup_FileTransfer() {
 test_FileTransfer() {
    wait_until bundle_received_by $BID:$VERSION +B
    set_instance +B
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 file1
    assert_rhizome_received file1
    set_instance +A
    rhizome_update_file file1 file2
    set_instance +B
    wait_until bundle_received_by $BID:$VERSION +B
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 file2
    assert_rhizome_received file2
 }
@@ -95,7 +95,7 @@ setup_EncryptedTransfer() {
    set_instance +A
    echo "Clear Text" >file1
    echo -e "service=MeshMS1\nsender=$SIDA\nrecipient=$SIDB" >file1.manifest
-   executeOk_servald rhizome add file $SIDA '' file1 file1.manifest
+   executeOk_servald rhizome add file $SIDA file1 file1.manifest
    extract_manifest_id BID file1.manifest
    extract_manifest_version VERSION file1.manifest
    start_servald_instances +A +B
@@ -136,14 +136,14 @@ setup_HTTPTransport() {
 test_HTTPTransport() {
    wait_until bundle_received_by $BID:$VERSION +B
    set_instance +B
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 file1
    assert_rhizome_received file1
    set_instance +A
    rhizome_update_file file1 file2
    set_instance +B
    wait_until bundle_received_by $BID:$VERSION +B
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 file2
    assert_rhizome_received file2
 }
@@ -163,14 +163,14 @@ setup_MDPTransport() {
 test_MDPTransport() {
    wait_until bundle_received_by $BID:$VERSION +B
    set_instance +B
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 file1
    assert_rhizome_received file1
    set_instance +A
    rhizome_update_file file1 file2
    set_instance +B
    wait_until bundle_received_by $BID:$VERSION +B
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 file2
    assert_rhizome_received file2
 }
@@ -193,7 +193,7 @@ setup_FileTransferBigMDP() {
 test_FileTransferBigMDP() {
    wait_until bundle_received_by $BID:$VERSION +B
    set_instance +B
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 file1
    assert_rhizome_received file1
 }
@@ -216,7 +216,7 @@ setup_FileTransferBig() {
 test_FileTransferBig() {
    wait_until bundle_received_by $BID:$VERSION +B
    set_instance +B
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 file1
    assert_rhizome_received file1
 }
@@ -246,7 +246,7 @@ test_FileTransferMulti() {
    wait_until bundle_received_by $BID:$VERSION +B +C +D +E
    for i in B C D E; do
       set_instance +$i
-      executeOk_servald rhizome list ''
+      executeOk_servald rhizome list
       assert_rhizome_list --fromhere=0 file1
       assert_rhizome_received file1
    done
@@ -277,7 +277,7 @@ test_FileTransferMultiMDP() {
    wait_until bundle_received_by $BID:$VERSION +B +C +D +E
    for i in B C D E; do
       set_instance +$i
-      executeOk_servald rhizome list ''
+      executeOk_servald rhizome list
       assert_rhizome_list --fromhere=0 file1
       assert_rhizome_received file1
    done
@@ -300,7 +300,7 @@ setup_FileTransferDelete() {
 test_FileTransferDelete() {
    wait_until bundle_received_by $BID:$VERSION +B
    set_instance +B
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 file1_2
    assert_rhizome_received file1_2
 }
@@ -332,7 +332,7 @@ name. We decided against this approach as the VOMP channel driver was written
 in time to avoid it.
 EOF
    set_instance +B
-   executeOk_servald rhizome add file $SIDB '' README.WHYNOTSIPS README.WHYNOTSIPS.manifest
+   executeOk_servald rhizome add file $SIDB README.WHYNOTSIPS README.WHYNOTSIPS.manifest
    assert_manifest_complete README.WHYNOTSIPS.manifest
    assert_stdout_add_file README.WHYNOTSIPS
    set_instance +A
@@ -350,7 +350,7 @@ test_HttpImport() {
          --form 'manifest=@README.WHYNOTSIPS.manifest' \
          "$addr_localhost:$PORTA/rhizome/import"
    tfw_cat http.headers http.output
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 README.WHYNOTSIPS
    assert_rhizome_received README.WHYNOTSIPS
 }
@@ -371,7 +371,7 @@ test_HttpAddLocal() {
    echo 'File file1' >file1
    executeOk curl --silent --form 'data=@file1' "http://${addr_localhost}:$PORTA/rhizome/secretaddfile" --output file1.manifest
    assert_manifest_complete file1.manifest
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 file1
    extract_manifest_name name file1.manifest
    assert [ "$name" = file1 ]
@@ -421,13 +421,13 @@ test_DirectPush() {
    tfw_cat --stdout --stderr
    assert bundle_received_by $BID_B1:$VERSION_B1 $BID_B2:$VERSION_B2 $BID_B3:$VERSION_B3 +A
    set_instance +A
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 fileA1 fileA2 fileA3 --fromhere=0 fileB1 fileB2 fileB3
    assert_rhizome_received fileB1
    assert_rhizome_received fileB2
    assert_rhizome_received fileB3
    set_instance +B
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 fileB1 fileB2 fileB3
 }
 
@@ -442,10 +442,10 @@ test_DirectPull() {
    tfw_cat --stdout --stderr
    assert bundle_received_by $BID_A1:$VERSION_A1 $BID_A2:$VERSION_A2 $BID_A2:$VERSION_A2 --stderr
    set_instance +A
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 fileA1 fileA2 fileA3
    set_instance +B
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 fileA1 fileA2 fileA3 --fromhere=1 fileB1 fileB2 fileB3
    assert_rhizome_received fileA1
    assert_rhizome_received fileA2
@@ -463,13 +463,13 @@ test_DirectSync() {
    tfw_cat --stdout --stderr
    assert bundle_received_by $BID_A1:$VERSION_A1 $BID_A2:$VERSION_A2 $BID_A2:$VERSION_A2 --stderr
    set_instance +A
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 fileA1 fileA2 fileA3 --fromhere=0 fileB1 fileB2 fileB3
    assert_rhizome_received fileB1
    assert_rhizome_received fileB2
    assert_rhizome_received fileB3
    set_instance +B
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 fileA1 fileA2 fileA3 --fromhere=1 fileB1 fileB2 fileB3
    assert_rhizome_received fileA1
    assert_rhizome_received fileA2

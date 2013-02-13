@@ -388,7 +388,7 @@ rhizome_add_file() {
    local size="${2:-64}"
    [ -e "$name" ] || create_file "$name" $size
    local sidvar="SID$instance_name"
-   executeOk_servald rhizome add file "${!sidvar}" '' "$name" "$name.manifest"
+   executeOk_servald rhizome add file "${!sidvar}" "$name" "$name.manifest"
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author="${!sidvar}" "$name" --and-others
    extract_manifest_vars "$name.manifest"
@@ -401,8 +401,8 @@ rhizome_update_file() {
    local sidvar="SID$instance_name"
    [ "$new_name" != "$orig_name" ] && cp "$orig_name.manifest" "$new_name.manifest"
    $SED -i -e '/^date=/d;/^filehash=/d;/^filesize=/d;/^version=/d;/^name=/d' "$new_name.manifest"
-   executeOk_servald rhizome add file "${!sidvar}" '' "$new_name" "$new_name.manifest"
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome add file "${!sidvar}" "$new_name" "$new_name.manifest"
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 "$new_name"
    extract_manifest_vars "$new_name.manifest"
 }

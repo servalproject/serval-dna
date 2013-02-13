@@ -265,9 +265,9 @@ extern keyring_file *keyring;
 
 /* Public calls to keyring management */
 keyring_file *keyring_open(char *file);
-keyring_file *keyring_open_with_pins(const char *pinlist);
+keyring_file *keyring_open_instance();
+keyring_file *keyring_open_instance_cli(const struct parsed_command *parsed);
 int keyring_enter_pin(keyring_file *k, const char *pin);
-int keyring_enter_pins(keyring_file *k, const char *pinlist);
 int keyring_set_did(keyring_identity *id,char *did,char *name);
 int keyring_sanitise_position(const keyring_file *k,int *cn,int *in,int *kp);
 int keyring_next_keytype(const keyring_file *k, int *cn, int *in, int *kp, int keytype);

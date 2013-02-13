@@ -32,17 +32,18 @@ assert_keyring_list() {
     tfw_cat --stdout
 }
 
-doc_KeyringCreate="Creating a keyring overrwites any existing keyring"
+doc_KeyringCreate="Create keyring destroys existing keys"
 test_KeyringCreate() {
     executeOk_servald keyring add ''
+    executeOk_servald keyring add ''
     executeOk_servald keyring list
-    assert_keyring_list 1
+    assert_keyring_list 2
     executeOk_servald keyring create
     assert_keyring_list 0
 }
 
-doc_KeyringPinless="Add and list all PIN-less keys"
-test_KeyringPinless() {
+doc_Pinless="No keyring PIN with PIN-less identities"
+test_Pinless() {
     executeOk_servald keyring add ''
     executeOk_servald keyring list
     assert_keyring_list 1
@@ -54,31 +55,48 @@ test_KeyringPinless() {
     assert_keyring_list 3
 }
 
-doc_KeyringEntryPin="Add and list PIN-locked keys"
-test_KeyringEntryPin() {
+doc_IdentityPins="No keyring PIN with identity PINs"
+test_IdentityPins() {
     executeOk_servald keyring add 'one'
     executeOk_servald keyring list
     assert_keyring_list 0
-    executeOk_servald keyring list 'one'
+    executeOk_servald keyring list --entry-pin 'one'
     assert_keyring_list 1
     executeOk_servald keyring add 'two'
     executeOk_servald keyring list
     assert_keyring_list 0
-    executeOk_servald keyring list 'one'
+    executeOk_servald keyring list --entry-pin 'one'
     assert_keyring_list 1
-    executeOk_servald keyring list 'one,two'
+    executeOk_servald keyring list --entry-pin 'one' --entry-pin 'two'
     assert_keyring_list 2
     executeOk_servald keyring add 'three'
     executeOk_servald keyring list
     assert_keyring_list 0
-    executeOk_servald keyring list 'one'
+    executeOk_servald keyring list --entry-pin 'one'
     assert_keyring_list 1
-    executeOk_servald keyring list 'one,two'
+    executeOk_servald keyring list --entry-pin 'one' --entry-pin 'two'
     assert_keyring_list 2
-    executeOk_servald keyring list 'one,two,three'
+    executeOk_servald keyring list --entry-pin 'one' --entry-pin 'two' --entry-pin 'three'
     assert_keyring_list 3
-    executeOk_servald keyring list 'two,three,one'
+    executeOk_servald keyring list --entry-pin 'two' --entry-pin 'three'
+    assert_keyring_list 2
+    executeOk_servald keyring list --entry-pin 'three'
+    assert_keyring_list 1
+}
+
+doc_KeyringPinIdentityPinless="Keyring PIN with PIN-less identities"
+test_KeyringPinIdentityPinless() {
+    executeOk_servald keyring add --keyring-pin=hello ''
+    executeOk_servald keyring list --keyring-pin=hello
+    assert_keyring_list 1
+    executeOk_servald keyring add --keyring-pin=hello ''
+    executeOk_servald keyring list --keyring-pin=hello
+    assert_keyring_list 2
+    executeOk_servald keyring add --keyring-pin=hello ''
+    executeOk_servald keyring list --keyring-pin=hello
     assert_keyring_list 3
+    executeOk_servald keyring list
+    assert_keyring_list 0
 }
 
 runTests "$@"

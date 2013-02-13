@@ -123,7 +123,8 @@ keyring_file *keyring_open(char *file)
 	keyring_free(k);
 	return NULL;
       }
-      k->contexts[0]->KeyRingPin=strdup(""); /* Implied empty PIN if none provided */
+      // First context is always with null keyring PIN.
+      k->contexts[0]->KeyRingPin=strdup("");
       k->contexts[0]->KeyRingSaltLen=KEYRING_PAGE_SIZE-KEYRING_BAM_BYTES;
       k->contexts[0]->KeyRingSalt=malloc(k->contexts[0]->KeyRingSaltLen);
       if (!k->contexts[0]->KeyRingSalt) {
@@ -257,20 +258,23 @@ void keyring_free_keypair(keypair *kp)
 
 /* Create a new keyring context for the loaded keyring file.
    We don't need to load any identities etc, as that happens when we enter
-   an identity pin. 
+   an identity pin.
    If the pin is NULL, it is assumed to be blank.
    The pin does NOT have to be numeric, and has no practical length limitation,
    as it is used as an input into a hashing function.  But for sanity sake, let's
    limit it to 16KB.
 */
-int keyring_enter_keyringpin(keyring_file *k,char *pin)
+int keyring_enter_keyringpin(keyring_file *k, const char *pin)
 {
   if (!k) return WHY("k is null");
-  if (k->context_count>=KEYRING_MAX_CONTEXTS) 
+  if (k->context_count>=KEYRING_MAX_CONTEXTS)
     return WHY("Too many loaded contexts already");
   if (k->context_count<1)
     return WHY("Cannot enter PIN without keyring salt being available");
-
+  int cn;
+  for (cn = 0; cn < k->context_count; ++cn)
+    if (strcmp(k->contexts[cn]->KeyRingPin, pin) == 0)
+      return 1;
   k->contexts[k->context_count]=calloc(sizeof(keyring_context),1);
   if (!k->contexts[k->context_count]) return WHY("Could not allocate new keyring context structure");
   keyring_context *c=k->contexts[k->context_count];
@@ -1325,25 +1329,7 @@ void keyring_identity_extract(const keyring_identity *id, const unsigned char **
   }
 }
 
-int keyring_enter_pins(keyring_file *k, const char *pinlist)
-{
-  char pin[1024];
-  int i,j=0;
-
-  for(i=0;i<=strlen(pinlist);i++)
-    if (pinlist[i]==','||pinlist[i]==0)
-      {
-	pin[j]=0;
-	keyring_enter_pin(k,pin);
-	j=0;
-      }
-    else
-      if (j<1023) pin[j++]=pinlist[i];
-
-  return 0;
-}
-
-keyring_file *keyring_open_with_pins(const char *pinlist)
+keyring_file *keyring_open_instance()
 {
   keyring_file *k = NULL;
   IN();
@@ -1354,7 +1340,25 @@ keyring_file *keyring_open_with_pins(const char *pinlist)
     RETURN(NULL);
   if ((k = keyring_open(keyringFile)) == NULL)
     RETURN(NULL);
-  keyring_enter_pins(k,pinlist);
+  RETURN(k);
+}
+
+keyring_file *keyring_open_instance_cli(const struct parsed_command *parsed)
+{
+  IN();
+  keyring_file *k = keyring_open_instance();
+  if (k == NULL)
+    RETURN(NULL);
+  const char *kpin = NULL;
+  cli_arg(parsed, "--keyring-pin", &kpin, NULL, "");
+  keyring_enter_keyringpin(k, kpin);
+  // Always open all PIN-less entries.
+  keyring_enter_pin(k, "");
+  // Open all entries for which an entry PIN has been given.
+  unsigned i;
+  for (i = 0; i < parsed->labelc; ++i)
+    if (strn_str_cmp(parsed->labelv[i].label, parsed->labelv[i].len, "--entry-pin") == 0)
+      keyring_enter_pin(k, parsed->labelv[i].text);
   RETURN(k);
 }
 

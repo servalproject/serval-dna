@@ -1201,11 +1201,10 @@ int app_rhizome_add_file(const struct parsed_command *parsed, void *context)
 {
   if (config.debug.verbose)
     DEBUG_parsed(parsed);
-  const char *filepath, *manifestpath, *authorSidHex, *pin, *bskhex;
+  const char *filepath, *manifestpath, *authorSidHex, *bskhex;
   cli_arg(parsed, "filepath", &filepath, NULL, "");
   if (cli_arg(parsed, "author_sid", &authorSidHex, cli_optional_sid, "") == -1)
     return -1;
-  cli_arg(parsed, "pin", &pin, NULL, "");
   cli_arg(parsed, "manifestpath", &manifestpath, NULL, "");
   if (cli_arg(parsed, "bsk", &bskhex, cli_optional_bundle_key, NULL) == -1)
     return -1;
@@ -1224,7 +1223,7 @@ int app_rhizome_add_file(const struct parsed_command *parsed, void *context)
   
   if (create_serval_instance_dir() == -1)
     return -1;
-  if (!(keyring = keyring_open_with_pins((char *)pin)))
+  if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
@@ -1408,11 +1407,10 @@ int app_rhizome_extract_bundle(const struct parsed_command *parsed, void *contex
 {
   if (config.debug.verbose)
     DEBUG_parsed(parsed);
-  const char *manifestpath, *filepath, *manifestid, *pins, *bskhex;
+  const char *manifestpath, *filepath, *manifestid, *bskhex;
   if (   cli_arg(parsed, "manifestid", &manifestid, cli_manifestid, "") == -1
       || cli_arg(parsed, "manifestpath", &manifestpath, NULL, "") == -1
       || cli_arg(parsed, "filepath", &filepath, NULL, "") == -1
-      || cli_arg(parsed, "pin,pin...", &pins, NULL, "") == -1
       || cli_arg(parsed, "bsk", &bskhex, cli_optional_bundle_key, NULL) == -1)
     return -1;
   
@@ -1421,7 +1419,7 @@ int app_rhizome_extract_bundle(const struct parsed_command *parsed, void *contex
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
-  if (!(keyring = keyring_open_with_pins(pins)))
+  if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
   
   int ret=0;
@@ -1537,8 +1535,7 @@ int app_rhizome_list(const struct parsed_command *parsed, void *context)
 {
   if (config.debug.verbose)
     DEBUG_parsed(parsed);
-  const char *pins, *service, *name, *sender_sid, *recipient_sid, *offset, *limit;
-  cli_arg(parsed, "pin,pin...", &pins, NULL, "");
+  const char *service, *name, *sender_sid, *recipient_sid, *offset, *limit;
   cli_arg(parsed, "service", &service, NULL, "");
   cli_arg(parsed, "name", &name, NULL, "");
   cli_arg(parsed, "sender_sid", &sender_sid, cli_optional_sid, "");
@@ -1548,7 +1545,7 @@ int app_rhizome_list(const struct parsed_command *parsed, void *context)
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
     return -1;
-  if (!(keyring = keyring_open_with_pins(pins)))
+  if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
@@ -1559,9 +1556,7 @@ int app_keyring_create(const struct parsed_command *parsed, void *context)
 {
   if (config.debug.verbose)
     DEBUG_parsed(parsed);
-  const char *pin;
-  cli_arg(parsed, "pin,pin...", &pin, NULL, "");
-  if (!keyring_open_with_pins(pin))
+  if (!keyring_open_instance())
     return -1;
   return 0;
 }
@@ -1570,9 +1565,7 @@ int app_keyring_list(const struct parsed_command *parsed, void *context)
 {
   if (config.debug.verbose)
     DEBUG_parsed(parsed);
-  const char *pins;
-  cli_arg(parsed, "pin,pin...", &pins, NULL, "");
-  keyring_file *k = keyring_open_with_pins(pins);
+  keyring_file *k = keyring_open_instance_cli(parsed);
   if (!k)
     return -1;
   int cn, in;
@@ -1600,10 +1593,11 @@ int app_keyring_add(const struct parsed_command *parsed, void *context)
     DEBUG_parsed(parsed);
   const char *pin;
   cli_arg(parsed, "pin", &pin, NULL, "");
-  keyring_file *k = keyring_open_with_pins("");
+  keyring_file *k = keyring_open_instance_cli(parsed);
   if (!k)
     return -1;
-  const keyring_identity *id = keyring_create_identity(k, k->contexts[0], pin);
+  keyring_enter_pin(k, pin);
+  const keyring_identity *id = keyring_create_identity(k, k->contexts[k->context_count - 1], pin);
   if (id == NULL) {
     keyring_free(k);
     return WHY("Could not create new identity");
@@ -1644,15 +1638,14 @@ int app_keyring_set_did(const struct parsed_command *parsed, void *context)
 {
   if (config.debug.verbose)
     DEBUG_parsed(parsed);
-  const char *sid, *did, *pin, *name;
+  const char *sid, *did, *name;
   cli_arg(parsed, "sid", &sid, str_is_subscriber_id, "");
   cli_arg(parsed, "did", &did, cli_optional_did, "");
   cli_arg(parsed, "name", &name, NULL, "");
-  cli_arg(parsed, "pin", &pin, NULL, "");
 
   if (strlen(name)>63) return WHY("Name too long (31 char max)");
 
-  if (!(keyring = keyring_open_with_pins(pin)))
+  if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
 
   unsigned char packedSid[SID_SIZE];
@@ -2136,6 +2129,7 @@ int app_network_scan(const struct parsed_command *parsed, void *context)
 
    Keep this list alphabetically sorted for user convenience.
 */
+#define KEYRING_PIN_OPTIONS ,"[--keyring-pin=<pin>]","[--entry-pin=<pin>]..."
 struct command_line_option command_line_options[]={
   {app_dna_lookup,{"dna","lookup","<did>","[<timeout>]",NULL},0,
    "Lookup the SIP/MDP address of the supplied telephone number (DID)."},
@@ -2177,20 +2171,20 @@ struct command_line_option command_line_options[]={
     "Append a manifest to the end of the file it belongs to."},
   {app_rhizome_hash_file,{"rhizome","hash","file","<filepath>",NULL},CLIFLAG_STANDALONE,
    "Compute the Rhizome hash of a file"},
-  {app_rhizome_add_file,{"rhizome","add","file","<author_sid>","<pin>","<filepath>","[<manifestpath>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,
+  {app_rhizome_add_file,{"rhizome","add","file" KEYRING_PIN_OPTIONS,"<author_sid>","<filepath>","[<manifestpath>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,
    "Add a file to Rhizome and optionally write its manifest to the given path"},
   {app_rhizome_import_bundle,{"rhizome","import","bundle","<filepath>","<manifestpath>",NULL},CLIFLAG_STANDALONE,
    "Import a payload/manifest pair into Rhizome"},
-  {app_rhizome_list,{"rhizome","list","[<pin,pin...>]","[<service>]","[<name>]","[<sender_sid>]","[<recipient_sid>]","[<offset>]","[<limit>]",NULL},CLIFLAG_STANDALONE,
+  {app_rhizome_list,{"rhizome","list" KEYRING_PIN_OPTIONS,"[<service>]","[<name>]","[<sender_sid>]","[<recipient_sid>]","[<offset>]","[<limit>]",NULL},CLIFLAG_STANDALONE,
    "List all manifests and files in Rhizome"},
-  {app_rhizome_extract_bundle,{"rhizome","extract","bundle",
-	"<manifestid>","[<manifestpath>]","[<filepath>]","[<pin,pin...>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,
+  {app_rhizome_extract_bundle,{"rhizome","extract","bundle" KEYRING_PIN_OPTIONS,
+	"<manifestid>","[<manifestpath>]","[<filepath>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,
 	"Extract a manifest and decrypted file to the given paths."},
-  {app_rhizome_extract_bundle,{"rhizome","extract","manifest",
-	"<manifestid>","[<manifestpath>]","[<pin,pin...>]",NULL},CLIFLAG_STANDALONE,
+  {app_rhizome_extract_bundle,{"rhizome","extract","manifest" KEYRING_PIN_OPTIONS,
+	"<manifestid>","[<manifestpath>]",NULL},CLIFLAG_STANDALONE,
         "Extract a manifest from Rhizome and write it to the given path"},
-  {app_rhizome_extract_bundle,{"rhizome","extract","file",
-	"<manifestid>","[<filepath>]","[<pin,pin...>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,
+  {app_rhizome_extract_bundle,{"rhizome","extract","file" KEYRING_PIN_OPTIONS,
+	"<manifestid>","[<filepath>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,
         "Extract a file from Rhizome and write it to the given path"},
   {app_rhizome_dump_file,{"rhizome","dump","file","<fileid>","[<filepath>]",NULL},CLIFLAG_STANDALONE,
    "Extract a file from Rhizome and write it to the given path without attempting decryption"},
@@ -2205,11 +2199,11 @@ struct command_line_option command_line_options[]={
    "Fetch all new content from the specified Rhizome Direct server. Return when done."},
   {app_keyring_create,{"keyring","create",NULL},0,
    "Create a new keyring file."},
-  {app_keyring_list,{"keyring","list","[<pin,pin...>]",NULL},CLIFLAG_STANDALONE,
+  {app_keyring_list,{"keyring","list" KEYRING_PIN_OPTIONS,NULL},CLIFLAG_STANDALONE,
    "List identites in specified key ring that can be accessed using the specified PINs"},
-  {app_keyring_add,{"keyring","add","[<pin>]",NULL},CLIFLAG_STANDALONE,
+  {app_keyring_add,{"keyring","add" KEYRING_PIN_OPTIONS,"[<pin>]",NULL},CLIFLAG_STANDALONE,
    "Create a new identity in the keyring protected by the provided PIN"},
-  {app_keyring_set_did,{"set","did","<sid>","<did>","<name>","[<pin>]",NULL},CLIFLAG_STANDALONE,
+  {app_keyring_set_did,{"set","did" KEYRING_PIN_OPTIONS,"<sid>","<did>","<name>",NULL},CLIFLAG_STANDALONE,
    "Set the DID for the specified SID.  Optionally supply PIN to unlock the SID record in the keyring."},
   {app_id_self,{"id","self",NULL},0,
    "Return my own identity(s) as URIs"},
