@@ -16,17 +16,6 @@ int cli_usage(const struct command_line_option *commands) {
   return 0;
 }
 
-static const char * parsed_add_label_arg(struct parsed_command *parsed, const char *label, unsigned labellen, unsigned argi)
-{
-  if (parsed->labelc >= NELS(parsed->labelv))
-    return "too many labeled args";
-  parsed->labelv[parsed->labelc].label = label;
-  parsed->labelv[parsed->labelc].len = labellen;
-  parsed->labelv[parsed->labelc].argi = argi;
-  ++parsed->labelc;
-  return NULL;
-}
-
 int cli_parse(const int argc, const char *const *args, const struct command_line_option *commands, struct parsed_command *parsed)
 {
   int ambiguous = 0;
@@ -40,45 +29,116 @@ int cli_parse(const int argc, const char *const *args, const struct command_line
     cmdpa.argc = argc;
     cmdpa.labelc = 0;
     cmdpa.varargi = -1;
-    const char *problem = NULL;
     const char *word = NULL;
-    int arg, opt;
-    for (arg = 0, opt = 0; !problem && (word = commands[cmd].words[opt]); ++opt) {
-      int wordlen = strlen(word);
+    unsigned arg = 0;
+    unsigned opt = 0;
+    while ((word = commands[cmd].words[opt])) {
+      //DEBUGF("cmd=%d opt=%d word='%s' args[arg=%d]='%s'", cmd, opt, word, arg, arg < argc ? args[arg] : "");
+      unsigned wordlen = strlen(word);
       if (cmdpa.varargi != -1)
-	problem = "more words not allowed after \"...\"";
-      else if (wordlen > 4 && word[0] == '[' && word[1] == '<' && word[wordlen-2] == '>' && word[wordlen-1] == ']') {
-	// "[<label>]" consumes one argument if available, records it with label "label".
-	if (arg < argc)
-	  problem = parsed_add_label_arg(&cmdpa, &word[2], wordlen - 4, arg++);
-      } else if (wordlen > 2 && word[0] == '[' && word[wordlen-1] == ']') {
-	// "[word]" consumes one argument if it exactly matches "word", records it with label
-	// "word".
-	const char *endp = NULL;
-	if (arg < argc && strncase_startswith(word + 1, wordlen - 2, args[arg], &endp) && endp == word + wordlen - 1)
-	  problem = parsed_add_label_arg(&cmdpa, &word[1], wordlen - 2, arg++);
-      } else if (wordlen == 3 && word[0] == '.' && word[1] == '.' && word[2] == '.') {
-	// "..." consumes all remaining arguments.
+	return WHYF("Internal error: commands[%d].word[%d]=\"%s\" - more words not allowed after \"...\"", cmd, opt, word);
+      /* These are the argument matching rules:
+       *
+       * "..." consumes all remaining arguments
+       *
+       * "word" consumes one argument that exactly matches "word", does not label it
+       *
+       * "<label>" consumes exactly one argument "ANY", records it with label "label"
+       *
+       * "prefix=<any>" consumes one argument "prefix=ANY" or two arguments "prefix" "ANY",
+       * and records the text matching ANY with label "prefix"
+       *
+       * "prefix <any>" consumes one argyment "prefix ANY" if available or two arguments "prefix"
+       * "ANY", and records the text matching ANY with label "prefix"
+       *
+       * "prefix<any>" consumes one argument "prefixANY", and records the text matching ANY with
+       * label "prefix"
+       *
+       * "[<label>]" consumes one argument "ANY" if available, records it with label "label"
+       *
+       * "[prefix=<any>]" consumes one argument "prefix=ANY" if available or two arguments
+       * "prefix" "ANY" if available, records the text matching ANY with label "prefix"
+       *
+       * "[prefix <any>]" consumes one argument "prefix ANY" if available or two arguments
+       * "prefix" "ANY" if available, records the text matching ANY with label "prefix"
+       *
+       * "[prefix<any>]" consumes one argument "prefixANY" if available, records the text matching
+       * ANY with label "prefix"
+       *
+       * "[word]" consumes one argument if it exactly matches "word", records it with label
+       * "word"
+       */
+      if (wordlen == 3 && word[0] == '.' && word[1] == '.' && word[2] == '.') {
 	cmdpa.varargi = arg;
 	arg = argc;
-      } else if (wordlen > 2 && word[0] == '<' && word[wordlen-1] == '>') {
-	// "<label>" consumes exactly one argument, records it with label "label".
-	if (arg < argc)
-	  problem = parsed_add_label_arg(&cmdpa, &word[1], wordlen - 2, arg++);
-	else
-	  break;
-      } else if (wordlen > 0) {
-	const char *endp = NULL;
-	// "word" consumes exactly one argument which must exactly match "word".
-	if (arg < argc && strncase_startswith(word, wordlen, args[arg], &endp) && endp == word + wordlen)
+	++opt;
+      } else {
+	int optional = 0;
+	int repeating = 0;
+	if (wordlen > 5 && word[0] == '[' && word[wordlen-4] == ']' && word[wordlen-3] == '.' && word[wordlen-2] == '.' && word[wordlen-1] == '.') {
+	  optional = repeating = 1;
+	  word += 1;
+	  wordlen -= 5;
+	}
+	else if (wordlen > 2 && word[0] == '[' && word[wordlen-1] == ']') {
+	  optional = 1;
+	  word += 1;
+	  wordlen -= 2;
+	}
+	const char *prefix = NULL;
+	unsigned prefixlen = 0;
+	char prefixarglen = 0;
+	const char *label = NULL;
+	unsigned labellen = 0;
+	const char *text = NULL;
+	const char *caret = strchr(word, '<');
+	unsigned oarg = arg;
+	if (wordlen > 2 && caret && word[wordlen-1] == '>') {
+	  if ((prefixarglen = prefixlen = caret - word)) {
+	    prefix = word;
+	    if (prefixlen > 1 && (prefix[prefixlen-1] == '=' || prefix[prefixlen-1] == ' '))
+	      --prefixarglen;
+	    label = prefix;
+	    labellen = prefixarglen;
+	    if (arg < argc) {
+	      unsigned arglen = strlen(args[arg]);
+	      if (arglen >= prefixlen && strncmp(args[arg], prefix, prefixlen) == 0) {
+		text = args[arg++] + prefixlen;
+	      } else if (arg + 1 < argc && arglen == prefixarglen && strncmp(args[arg], prefix, prefixarglen) == 0) {
+		++arg;
+		text = args[arg++];
+	      }
+	    }
+	  } else {
+	    label = &word[1];
+	    labellen = wordlen - 2;
+	    if (arg < argc)
+	      text = args[arg++];
+	  }
+	} else if (arg < argc && strlen(args[arg]) == wordlen && strncmp(args[arg], word, wordlen) == 0) {
+	  if (optional) {
+	    text = args[arg];
+	    label = word;
+	    labellen = wordlen;
+	  }
 	  ++arg;
-	else
+	}
+	if (arg == oarg && !optional)
 	  break;
-      } else
-	problem = "malformed";
+	if (labellen && text) {
+	  if (cmdpa.labelc >= NELS(cmdpa.labelv))
+	    return WHYF("Internal error: commands[%d].word[%d]=\"%s\" - label limit exceeded", cmd, opt, word);
+	  cmdpa.labelv[cmdpa.labelc].label = label;
+	  cmdpa.labelv[cmdpa.labelc].len = labellen;
+	  cmdpa.labelv[cmdpa.labelc].text = text;
+	  ++cmdpa.labelc;
+	  if (!repeating)
+	    ++opt;
+	} else
+	  ++opt;
+      }
     }
-    if (problem)
-      return WHYF("Internal error: commands[%d].word[%d]=\"%s\" - %s", cmd, opt - 1, word, problem);
+    //DEBUGF("cmd=%d opt=%d args[arg=%d]='%s'", cmd, opt, arg, arg < argc ? args[arg] : "");
     if (!word && arg == argc) {
       /* A match!  We got through the command definition with no internal errors and all literal
        args matched and we have a proper number of args.  If we have multiple matches, then note
@@ -119,7 +179,7 @@ void _debug_parsed(struct __sourceloc __whence, const struct parsed_command *par
   int i;
   for (i = 0; i < parsed->labelc; ++i) {
     const struct labelv *lab = &parsed->labelv[i];
-    strbuf_sprintf(b, " %s=%d", alloca_toprint(-1, lab->label, lab->len), lab->argi);
+    strbuf_sprintf(b, " %s=%s", alloca_toprint(-1, lab->label, lab->len), alloca_str_toprint(lab->text));
   }
   if (parsed->varargi >= 0)
     strbuf_sprintf(b, " varargi=%d", parsed->varargi); 
@@ -141,7 +201,7 @@ int cli_arg(const struct parsed_command *parsed, char *label, const char **dst, 
   int i;
   for (i = 0; i < parsed->labelc; ++i) {
     if (parsed->labelv[i].len == labellen && strncasecmp(label, parsed->labelv[i].label, labellen) == 0) {
-      const char *value = parsed->args[parsed->labelv[i].argi];
+      const char *value = parsed->labelv[i].text;
       if (validator && !(*validator)(value))
 	return WHYF("Invalid argument %d '%s': \"%s\"", i + 1, label, value);
       if (dst)

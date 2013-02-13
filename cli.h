@@ -41,7 +41,7 @@ struct parsed_command {
   struct labelv {
     const char *label;
     unsigned int len;
-    unsigned argi;
+    const char *text;
   } labelv[COMMAND_LINE_MAX_LABELS];
   unsigned labelc;
   const char *const *args;
