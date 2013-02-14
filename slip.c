@@ -94,9 +94,9 @@ int parse_rfd900_rssi(char *s)
       int maxmargin=lmargin; if (rmargin>maxmargin) maxmargin=rmargin;
 
       if (config.debug.packetradio||(gettime_ms()-last_rssi_report>30000)) {
-	  INFOF("Link budget = %ddB, temperature=%dC",maxmargin,temp);
-	  last_rssi_report=gettime_ms();
-	}
+	INFOF("Link budget = %ddB, temperature=%dC",maxmargin,temp);
+	last_rssi_report=gettime_ms();
+      }
     }
 
   return 0;
