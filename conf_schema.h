@@ -299,6 +299,7 @@ END_STRUCT
 
 STRUCT(rhizome_advertise)
 ATOM(int,                   enable,     1, cf_opt_int_boolean,, "If true, Rhizome advertisements are sent")
+ATOM(uint32_t,              interval,   500, cf_opt_uint32_nonzero,, "Interval between Rhizome advertisements")
 END_STRUCT
 
 STRUCT(rhizome)

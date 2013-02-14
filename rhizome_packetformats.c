@@ -223,7 +223,7 @@ void overlay_rhizome_advertise(struct sched_ent *alarm){
   
 end:
   sqlite_set_tracefunc(oldfunc);
-  alarm->alarm = gettime_ms()+500;
+  alarm->alarm = gettime_ms()+config.rhizome.advertise.interval;
   alarm->deadline = alarm->alarm+10000;
   schedule(alarm);
 }
