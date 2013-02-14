@@ -237,6 +237,10 @@ int ob_append_bytes(struct overlay_buffer *b,unsigned char *bytes,int count)
   return 0;
 }
 
+int ob_append_buffer(struct overlay_buffer *b,struct overlay_buffer *s){
+  return ob_append_bytes(b, s->bytes, s->position);
+}
+
 int ob_append_ui16(struct overlay_buffer *b, uint16_t v)
 {
   if (ob_makespace(b, 2)) return WHY("ob_makespace() failed");

@@ -206,4 +206,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define DEFAULT_MONITOR_SOCKET_NAME "org.servalproject.servald.monitor.socket"
 #define DEFAULT_MDP_SOCKET_NAME "org.servalproject.servald.mdp.socket"
 
+#define SOCK_FILE 0xFF
+#define SOCK_UNSPECIFIED 0
+
+#define ENCAP_OVERLAY 1
+#define ENCAP_SINGLE 2
+
 #endif // __SERVALD_CONSTANTS_H

@@ -361,6 +361,7 @@ ssize_t get_self_executable_path(char *buf, size_t len)
 
 int log_backtrace(struct __sourceloc whence)
 {
+#ifndef NO_BACKTRACE
   open_logging();
   char execpath[MAXPATHLEN];
   if (get_self_executable_path(execpath, sizeof execpath) == -1)
@@ -458,5 +459,6 @@ int log_backtrace(struct __sourceloc whence)
   strbuf_append_exit_status(b, status);
   logMessage(LOG_LEVEL_DEBUG, __NOWHERE__, "gdb %s", buf);
   unlink(tempfile);
+#endif
   return 0;
 }

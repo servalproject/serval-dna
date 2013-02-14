@@ -175,7 +175,7 @@ int resolve_name(const char *name, struct in_addr *addr){
       DEBUGF("Resolved %s into %s", name, inet_ntoa(*addr));
     
   }else
-    ret=-1;
+    ret=WHY("Ignoring non IPv4 address");
   
   freeaddrinfo(addresses);
   RETURN(ret);
@@ -195,7 +195,7 @@ int load_subscriber_address(struct subscriber *subscriber)
   if (*hostc->interface){
     interface = overlay_interface_find_name(hostc->interface);
     if (!interface)
-      return -1;
+      return WHY("Can't fund configured interface");
   }
   struct sockaddr_in addr;
   bzero(&addr, sizeof(addr));
@@ -251,8 +251,8 @@ int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay
   if (!interface)
     return WHY("I don't know which interface to use");
   
-  // never send unicast probes over packet radio
-  if (interface->type==OVERLAY_INTERFACE_PACKETRADIO)
+  // never send unicast probes over a stream interface
+  if (interface->socket_type==SOCK_STREAM)
     return 0;
   
   time_ms_t now = gettime_ms();

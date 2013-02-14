@@ -243,7 +243,8 @@ overlay_init_packet(struct outgoing_packet *packet, struct subscriber *destinati
     packet->unicast_subscriber = destination;
   ob_limitsize(packet->buffer, packet->interface->mtu);
   
-  overlay_packet_init_header(&packet->context, packet->buffer, destination, unicast, packet->i, 0);
+  overlay_packet_init_header(ENCAP_OVERLAY, &packet->context, packet->buffer, 
+			     destination, unicast, packet->i, 0);
   packet->header_length = ob_position(packet->buffer);
 }
 
@@ -417,23 +418,32 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     }
     
     if (!packet->buffer){
-      
-      // TODO, interface flag for this behaviour?
-      if (frame->interface->type==OVERLAY_INTERFACE_PACKETRADIO){
-	// don't transmit if the serial tx buffer has data
+      if (frame->interface->socket_type==SOCK_STREAM){
+	// skip this interface if the stream tx buffer has data
 	if (frame->interface->tx_bytes_pending>0)
 	  goto skip;
-	
-	// send packets without aggregating them together
-	if (overlay_packetradio_tx_packet(frame))
-	  goto skip;
-	
-	goto sent;
       }
       
       // can we send a packet on this interface now?
       if (limit_is_allowed(&frame->interface->transfer_limit))
 	goto skip;
+      
+      if (frame->interface->encapsulation==ENCAP_SINGLE){
+	// send MDP packets without aggregating them together
+	struct overlay_buffer *buff = ob_new();
+	
+	int ret=single_packet_encapsulation(buff, frame);
+	if (!ret){
+	  ret=overlay_broadcast_ensemble(frame->interface, &frame->recvaddr, ob_ptr(buff), ob_position(buff));
+	}
+	
+	ob_free(buff);
+	
+	if (ret)
+	  goto skip;
+	
+	goto sent;
+      }
       
       if (frame->source_full)
 	my_subscriber->send_full=1;
@@ -518,7 +528,7 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
       if (config.debug.packetconstruction)
 	ob_dump(packet->buffer,"assembled packet");
       
-      if (overlay_broadcast_ensemble(packet->i, &packet->dest, ob_ptr(packet->buffer), ob_position(packet->buffer))){
+      if (overlay_broadcast_ensemble(packet->interface, &packet->dest, ob_ptr(packet->buffer), ob_position(packet->buffer))){
 	// sendto failed. We probably don't have a valid route
 	if (packet->unicast_subscriber){
 	  set_reachable(packet->unicast_subscriber, REACHABLE_NONE);

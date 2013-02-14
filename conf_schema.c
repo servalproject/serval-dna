@@ -319,6 +319,36 @@ int cf_opt_interface_type(short *typep, const char *text)
   return CFINVALID;
 }
 
+int cf_opt_socket_type(int *typep, const char *text)
+{
+  if (strcasecmp(text, "dgram") == 0) {
+    *typep = SOCK_DGRAM;
+    return CFOK;
+  }
+  if (strcasecmp(text, "stream") == 0) {
+    *typep = SOCK_STREAM;
+    return CFOK;
+  }
+  if (strcasecmp(text, "file") == 0) {
+    *typep = SOCK_FILE;
+    return CFOK;
+  }
+  return CFINVALID;
+}
+
+int cf_opt_encapsulation(int *typep, const char *text)
+{
+  if (strcasecmp(text, "overlay") == 0) {
+    *typep = ENCAP_OVERLAY;
+    return CFOK;
+  }
+  if (strcasecmp(text, "single") == 0) {
+    *typep = ENCAP_SINGLE;
+    return CFOK;
+  }
+  return CFINVALID;
+}
+
 int cf_opt_pattern_list(struct pattern_list *listp, const char *text)
 {
   struct pattern_list list;
@@ -391,9 +421,9 @@ static int cf_opt_network_interface_legacy(struct config_network_interface *nifp
     p = endtext;
   size_t len = p - name;
   if (name[0] == '>') {
-    if (len - 1 >= sizeof(nif.dummy))
+    if (len - 1 >= sizeof(nif.file))
       return CFSTRINGOVERFLOW;
-    strncpy(nif.dummy, &name[1], len - 1)[len - 1] = '\0';
+    strncpy(nif.file, &name[1], len - 1)[len - 1] = '\0';
     nif.match.patc = 0;
   } else {
     int star = (strchr(name, '*') != NULL) ? 1 : 0;
@@ -460,19 +490,41 @@ int cf_opt_network_interface(struct config_network_interface *nifp, const struct
 
 int vld_network_interface(const struct cf_om_node *parent, struct config_network_interface *nifp, int result)
 {
-  if (nifp->match.patc != 0 && nifp->dummy[0]) {
+  if (nifp->match.patc != 0 && nifp->file[0]) {
     int nodei_match = cf_om_get_child(parent, "match", NULL);
-    int nodei_dummy = cf_om_get_child(parent, "dummy", NULL);
+    int nodei_file = cf_om_get_child(parent, "file", NULL);
     assert(nodei_match != -1);
-    assert(nodei_dummy != -1);
-    cf_warn_incompatible(parent->nodv[nodei_match], parent->nodv[nodei_dummy]);
+    assert(nodei_file != -1);
+    cf_warn_incompatible(parent->nodv[nodei_match], parent->nodv[nodei_file]);
     return result | CFSUB(CFINCOMPATIBLE);
   }
-  if (nifp->match.patc == 0 && !nifp->dummy[0]) {
-    DEBUGF("dummy=%s", alloca_str_toprint(nifp->dummy));
-    cf_warn_missing_node(parent, "match");
-    return result | CFINCOMPLETE;
+  
+  if (nifp->socket_type == SOCK_UNSPECIFIED){
+    if (nifp->match.patc != 0)
+      nifp->socket_type=SOCK_DGRAM;
+    else if (nifp->file[0])
+      nifp->socket_type=SOCK_FILE;
+    else{
+      cf_warn_missing_node(parent, "match");
+      return result | CFINCOMPLETE;
+    }
+  }else{
+    
+    if (nifp->socket_type==SOCK_DGRAM && nifp->file[0]){
+      int nodei_socket_type = cf_om_get_child(parent, "socket_type", NULL);
+      int nodei_file = cf_om_get_child(parent, "file", NULL);
+      assert(nodei_socket_type != -1);
+      assert(nodei_file != -1);
+      cf_warn_incompatible(parent->nodv[nodei_socket_type], parent->nodv[nodei_file]);
+      return result | CFSUB(CFINCOMPATIBLE);
+    }
+    
+    if (nifp->socket_type!=SOCK_DGRAM && !nifp->file[0]){
+      cf_warn_missing_node(parent, "file");
+      return result | CFSUB(CFINCOMPATIBLE);
+    }
   }
+  
   return result;
 }
 

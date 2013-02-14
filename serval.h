@@ -358,20 +358,38 @@ extern int overlayMode;
 // larger.
 #define OVERLAY_INTERFACE_TX_BUFFER_SIZE (2+2048*2)
 
+struct slip_decode_state{
+  int state;
+  unsigned char *src;
+  int src_size;
+  unsigned char dst[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
+  int src_offset;
+  int dst_offset;
+};
+
 typedef struct overlay_interface {
   struct sched_ent alarm;
+  
   char name[256];
-  unsigned char rxbuffer[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
-  int recv_offset; /* either dummy file offset or number of bytes in RX buffer
-		      for packet radio interfaces */
+  
+  int recv_offset; /* file offset */
   unsigned char txbuffer[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
   int tx_bytes_pending;
-  char decoder_state; // decoder state for packet radio interfaces
-  int fileP; // non-zero for dummy and packet radio serial interfaces
+  
+  struct slip_decode_state slip_decode_state;
+
+  // copy of ifconfig flags
   char drop_broadcasts;
   char drop_unicasts;
   int port;
   int type;
+  int socket_type;
+  int encapsulation;
+  char send_broadcasts;
+  char prefer_unicast;
+  // can we use this interface for routes to addresses in other subnets?
+  int default_route;
+  
   /* Number of milli-seconds per tick for this interface, which is basically related to the     
    the typical TX range divided by the maximum expected speed of nodes in the network.
    This means that short-range communications has a higher bandwidth requirement than
@@ -384,10 +402,8 @@ typedef struct overlay_interface {
    These figures will be refined over time, and we will allow people to set them per-interface.
    */
   unsigned tick_ms; /* milliseconds per tick */
-  struct subscriber *next_advert;
   
-  char send_broadcasts;
-  char prefer_unicast;
+  struct subscriber *next_advert;
   
   /* The time of the last tick on this interface in milli seconds */
   time_ms_t last_tick_ms;
@@ -407,8 +423,6 @@ typedef struct overlay_interface {
   struct sockaddr_in address;
   struct sockaddr_in broadcast_address;
   struct in_addr netmask;
-  // can we use this interface for routes to addresses in other subnets?
-  int default_route;
   
   /* Not necessarily the real MTU, but the largest frame size we are willing to TX on this interface.
    For radio links the actual maximum and the maximum that is likely to be delivered reliably are
@@ -483,7 +497,9 @@ time_ms_t overlay_time_until_next_tick();
 
 int overlay_frame_append_payload(struct decode_context *context, overlay_interface *interface, 
 				 struct overlay_frame *p, struct overlay_buffer *b);
-int overlay_packet_init_header(struct decode_context *context, struct overlay_buffer *buff, 
+int single_packet_encapsulation(struct overlay_buffer *b, struct overlay_frame *frame);
+int overlay_packet_init_header(int encapsulation, 
+			       struct decode_context *context, struct overlay_buffer *buff, 
 			       struct subscriber *destination, 
 			       char unicast, char interface, char seq);
 int overlay_frame_build_header(struct decode_context *context, struct overlay_buffer *buff, 
@@ -674,9 +690,10 @@ int overlay_interface_register(char *name,
 overlay_interface * overlay_interface_get_default();
 overlay_interface * overlay_interface_find(struct in_addr addr, int return_default);
 overlay_interface * overlay_interface_find_name(const char *name);
-int overlay_broadcast_ensemble(int interface_number,
+int
+overlay_broadcast_ensemble(overlay_interface *interface,
 			   struct sockaddr_in *recipientaddr,
-			       unsigned char *bytes,int len);
+			   unsigned char *bytes,int len);
 
 int directory_registration();
 int directory_service_init();
@@ -820,5 +837,8 @@ void write_uint32(unsigned char *o,uint32_t v);
 uint64_t read_uint64(unsigned char *o);
 uint32_t read_uint32(unsigned char *o);
 uint16_t read_uint16(unsigned char *o);
+
+int slip_encode(unsigned char *src, int src_bytes, unsigned char *dst, int dst_len);
+int slip_decode(struct slip_decode_state *state);
 
 #endif // __SERVALD_SERVALD_H

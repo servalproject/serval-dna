@@ -104,7 +104,7 @@ int overlay_frame_append_payload(struct decode_context *context, overlay_interfa
   if (ob_append_ui16(b, ob_position(p->payload)))
       goto cleanup;
       
-  if (ob_append_bytes(b,p->payload->bytes,p->payload->position)) {
+  if (ob_append_bytes(b, ob_ptr(p->payload), ob_position(p->payload))) {
     WHY("could not append payload"); 
     goto cleanup;
   }
@@ -115,7 +115,36 @@ cleanup:
   ob_rewind(b);
   return -1;
 }
+
+int single_packet_encapsulation(struct overlay_buffer *b, struct overlay_frame *frame){
+  overlay_interface *interface=frame->interface;
+  int interface_number = interface - overlay_interfaces;
+  struct decode_context context;
+  bzero(&context, sizeof(struct decode_context));
   
+  if (frame->source_full)
+    my_subscriber->send_full=1;
+  
+  if (overlay_packet_init_header(ENCAP_SINGLE, &context, b, NULL, 0, interface_number, 0))
+    return -1;
+
+  struct broadcast *broadcast=NULL;
+  if ((!frame->destination) && !is_all_matching(frame->broadcast_id.id,BROADCAST_LEN,0))
+    broadcast = &frame->broadcast_id;
+
+  if (overlay_frame_build_header(&context, b,
+				 frame->queue, frame->type, 
+				 frame->modifiers, frame->ttl,
+				 broadcast, frame->next_hop, 
+				 frame->destination, frame->source))
+    return -1;
+  
+  if (ob_append_buffer(b, frame->payload))
+    return -1;
+  
+  return 0;
+}
+
 int op_free(struct overlay_frame *p)
 {
   if (!p) return WHY("Asked to free NULL");

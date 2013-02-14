@@ -54,6 +54,7 @@ int ob_unlimitsize(struct overlay_buffer *b);
 int ob_makespace(struct overlay_buffer *b,int bytes);
 int ob_append_byte(struct overlay_buffer *b,unsigned char byte);
 int ob_append_bytes(struct overlay_buffer *b,unsigned char *bytes,int count);
+int ob_append_buffer(struct overlay_buffer *b,struct overlay_buffer *s);
 unsigned char *ob_append_space(struct overlay_buffer *b,int count);
 int ob_append_ui16(struct overlay_buffer *b, uint16_t v);
 int ob_append_ui32(struct overlay_buffer *b, uint32_t v);

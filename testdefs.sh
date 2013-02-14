@@ -616,7 +616,7 @@ configure_servald_server() {
 }
 
 # Utility function:
-#  - start a set of servald server processes running on a shared dummy interface
+#  - start a set of servald server processes running on a shared file interface
 #    and with its own private monitor and MDP abstract socket names
 #  - set variables DUMMYx to the full path name of shared dummy interface
 #  - set variables LOGx to the full path of server log file for instance x: LOGA,
@@ -638,9 +638,7 @@ start_servald_instances() {
       # These config settings can be overridden in a caller-supplied configure_servald_server().
       # They are extremely useful for the majority of fixtures.
       executeOk_servald config \
-         set interfaces.1.dummy "$DUMMYNET" \
-         set interfaces.1.dummy_address 127.0.0.1 \
-         set interfaces.1.dummy_netmask 255.255.255.0 \
+         set interfaces.1.file "$DUMMYNET" \
          set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name" \
          set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name"
       configure_servald_server

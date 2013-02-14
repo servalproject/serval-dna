@@ -56,6 +56,7 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)server.c \
 	$(SERVAL_BASE)sha2.c \
 	$(SERVAL_BASE)sighandlers.c \
+	$(SERVAL_BASE)slip.c \
 	$(SERVAL_BASE)sqlite-amalgamation-3070900/sqlite3.c \
 	$(SERVAL_BASE)srandomdev.c \
 	$(SERVAL_BASE)str.c \

@@ -734,6 +734,8 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
 
   /* Prepare for fetching via HTTP */
   slot->peer_ipandport = *peerip;
+  slot->alarm.poll.fd=-1;
+  
   strbuf r = strbuf_local(slot->request, sizeof slot->request);
   strbuf_sprintf(r, "GET /rhizome/file/%s HTTP/1.0\r\n\r\n", m->fileHexHash);
   if (strbuf_overrun(r))
