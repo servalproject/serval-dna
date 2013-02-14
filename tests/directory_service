@@ -51,7 +51,7 @@ setup_publish() {
    assert_no_servald_processes
    foreach_instance +A +B +C +D create_single_identity
    set_instance +D
-   executeOk_servald set did $SIDD $DIDC "Agent D Smith"
+   executeOk_servald keyring set did $SIDD $DIDC "Agent D Smith"
    DIDD1=$DIDC
    NAMED1="Agent D Smith"
    DIDD=$DIDC1

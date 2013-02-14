@@ -22,6 +22,31 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include <ctype.h>
 
+int str_to_sid_t(sid_t *sid, const char *hex)
+{
+  if (strcmp(hex, "broadcast") == 0) {
+    *sid = SID_BROADCAST;
+    return 0;
+  }
+  return fromhexstr(sid->binary, hex, sizeof sid->binary);
+}
+
+int strn_to_sid_t(sid_t *sid, const char *hex, const char **endp)
+{
+  if (str_startswith(hex, "broadcast", endp) == 0) {
+    *sid = SID_BROADCAST;
+    return 0;
+  }
+  sid_t tmp;
+  int n = fromhex(tmp.binary, hex, sizeof tmp.binary);
+  if (n != sizeof tmp.binary)
+    return -1;
+  *sid = tmp;
+  if (endp)
+    *endp = hex + sizeof sid->binary * 2;
+  return 0;
+}
+
 int str_is_subscriber_id(const char *sid)
 {
   size_t len = 0;

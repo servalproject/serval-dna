@@ -1638,8 +1638,8 @@ int app_keyring_set_did(const struct cli_parsed *parsed, void *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
-  const char *sid, *did, *name;
-  cli_arg(parsed, "sid", &sid, str_is_subscriber_id, "");
+  const char *sidhex, *did, *name;
+  cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, "");
   cli_arg(parsed, "did", &did, cli_optional_did, "");
   cli_arg(parsed, "name", &name, NULL, "");
 
@@ -1648,18 +1648,34 @@ int app_keyring_set_did(const struct cli_parsed *parsed, void *context)
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
 
-  unsigned char packedSid[SID_SIZE];
-  stowSid(packedSid,0,(char *)sid);
+  sid_t sid;
+  if (str_to_sid_t(&sid, sidhex) == -1)
+    return WHY("str_to_sid_t() failed");
 
   int cn=0,in=0,kp=0;
-  int r=keyring_find_sid(keyring,&cn,&in,&kp,packedSid);
+  int r=keyring_find_sid(keyring, &cn, &in, &kp, sid.binary);
   if (!r) return WHY("No matching SID");
-  if (keyring_set_did(keyring->contexts[cn]->identities[in],
-		      (char *)did,(char *)name))
+  if (keyring_set_did(keyring->contexts[cn]->identities[in], did, name))
     return WHY("Could not set DID");
   if (keyring_commit(keyring))
     return WHY("Could not write updated keyring record");
-
+  cli_puts("sid");
+  cli_delim(":");
+  cli_printf("%s", alloca_tohex_sid_t(sid));
+  cli_delim("\n");
+  if (did) {
+    cli_puts("did");
+    cli_delim(":");
+    cli_puts(did);
+    cli_delim("\n");
+  }
+  if (name) {
+    cli_puts("name");
+    cli_delim(":");
+    cli_puts(name);
+    cli_delim("\n");
+  }
+  keyring_free(keyring);
   return 0;
 }
 
@@ -2203,7 +2219,7 @@ struct cli_schema command_line_options[]={
    "List identites in specified key ring that can be accessed using the specified PINs"},
   {app_keyring_add,{"keyring","add" KEYRING_PIN_OPTIONS,"[<pin>]",NULL},CLIFLAG_STANDALONE,
    "Create a new identity in the keyring protected by the provided PIN"},
-  {app_keyring_set_did,{"set","did" KEYRING_PIN_OPTIONS,"<sid>","<did>","<name>",NULL},CLIFLAG_STANDALONE,
+  {app_keyring_set_did,{"keyring", "set","did" KEYRING_PIN_OPTIONS,"<sid>","<did>","<name>",NULL},CLIFLAG_STANDALONE,
    "Set the DID for the specified SID.  Optionally supply PIN to unlock the SID record in the keyring."},
   {app_id_self,{"id","self",NULL},0,
    "Return my own identity(s) as URIs"},

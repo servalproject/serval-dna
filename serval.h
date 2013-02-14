@@ -268,7 +268,7 @@ keyring_file *keyring_open(char *file);
 keyring_file *keyring_open_instance();
 keyring_file *keyring_open_instance_cli(const struct cli_parsed *parsed);
 int keyring_enter_pin(keyring_file *k, const char *pin);
-int keyring_set_did(keyring_identity *id,char *did,char *name);
+int keyring_set_did(keyring_identity *id, const char *did, const char *name);
 int keyring_sanitise_position(const keyring_file *k,int *cn,int *in,int *kp);
 int keyring_next_keytype(const keyring_file *k, int *cn, int *in, int *kp, int keytype);
 int keyring_next_identity(const keyring_file *k,int *cn,int *in,int *kp);
@@ -428,6 +428,11 @@ typedef struct sid_binary {
 
 // is the SID entirely 0x00?
 #define is_sid_any(SID) is_all_matching(SID, SID_SIZE, 0)
+
+#define alloca_tohex_sid_t(sid)         alloca_tohex((sid).binary, sizeof (*(sid_t*)0).binary)
+
+int str_to_sid_t(sid_t *sid, const char *hex);
+int strn_to_sid_t(sid_t *sid, const char *hex, const char **endp);
 
 int str_is_subscriber_id(const char *sid);
 int strn_is_subscriber_id(const char *sid, size_t *lenp);

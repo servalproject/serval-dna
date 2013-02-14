@@ -990,7 +990,7 @@ int keyring_commit(keyring_file *k)
   return errorCount;
 }
 
-int keyring_set_did(keyring_identity *id,char *did,char *name)
+int keyring_set_did(keyring_identity *id, const char *did, const char *name)
 {
   if (!id) return WHY("id is null");
   if (!did) return WHY("did is null");
@@ -1373,9 +1373,9 @@ int keyring_seed(keyring_file *k)
     return 0;
 
   int i;
-  unsigned char did[65];
+  char did[65];
   /* Securely generate random telephone number */
-  urandombytes((unsigned char *)did,10);
+  urandombytes((unsigned char *)did, 11);
   /* Make DID start with 2 through 9, as 1 is special in many number spaces, 
      and 0 is commonly used for escaping to national or international dialling. */ 
   did[0]='2'+(did[0]%8);
@@ -1384,7 +1384,7 @@ int keyring_seed(keyring_file *k)
   
   keyring_identity *id=keyring_create_identity(k,k->contexts[0],"");
   if (!id) return WHY("Could not create new identity");
-  if (keyring_set_did(id,(char *)did,"")) return WHY("Could not set DID of new identity");
+  if (keyring_set_did(id, did, "")) return WHY("Could not set DID of new identity");
   if (keyring_commit(k)) return WHY("Could not commit new identity to keyring file");
   return 0;
 }
