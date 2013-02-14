@@ -235,8 +235,6 @@ int slip_decode(struct slip_decode_state *state)
   case SLIP_FORMAT_UPPER7:
     {
       if (config.debug.slip) {
-	dump("RX bytes",&state->src[state->src_offset],
-	     state->src_size-state->src_offset);
 	if (state->rssi_len<0) state->rssi_len=0;
 	if (state->rssi_len>=RSSI_TEXT_SIZE) state->rssi_len=RSSI_TEXT_SIZE-1;
 	state->rssi_text[state->rssi_len]=0;
@@ -257,7 +255,7 @@ int slip_decode(struct slip_decode_state *state)
 	  } else {
 	    if (config.debug.packetradio) 
 	      DEBUGF("Accepted packet of %d bytes (CRC ok)",state->packet_length);
-	    return state->packet_length;
+	    return 1;
 	  }
 	}
     }

@@ -595,7 +595,12 @@ static void interface_read_stream(struct overlay_interface *interface){
     WHY_perror("read");
     return;
   }
+  
   struct slip_decode_state *state=&interface->slip_decode_state;
+  
+  if (config.debug.slip)
+    dump("RX bytes",&state->src[state->src_offset],
+       state->src_size-state->src_offset);
   
   state->src=buffer;
   state->src_size=nread;
@@ -604,7 +609,7 @@ static void interface_read_stream(struct overlay_interface *interface){
   while (state->src_offset < state->src_size) {
     int ret = slip_decode(state);
     if (ret==1){
-      packetOkOverlay(interface, state->dst, state->dst_offset, -1, NULL, -1);
+      packetOkOverlay(interface, state->dst, state->packet_length, -1, NULL, -1);
       state->dst_offset=0;
     }
   }
