@@ -217,7 +217,8 @@ overlay_interface_read_any(struct sched_ent *alarm){
 	     interface->name);
     
     if (packetOkOverlay(interface, packet, plen, recvttl, &src_addr, addrlen)) {
-      WHY("Malformed packet");
+      WHYF("Malformed packet (length = %d)",plen);
+      if (config.debug.slip) dump("the malformed packet",packet,plen);
     }
   }
   if (alarm->poll.revents & (POLLHUP | POLLERR)) {
