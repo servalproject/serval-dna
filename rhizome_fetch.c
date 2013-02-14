@@ -854,6 +854,26 @@ static void rhizome_start_next_queued_fetches(struct sched_ent *alarm)
     rhizome_start_next_queued_fetch(&rhizome_fetch_queues[i].active);
 }
 
+/* Search all fetch slots, including active downloads, for a matching manifest */
+rhizome_manifest * rhizome_fetch_search(unsigned char *id, int prefix_length){
+  int i, j;
+  for (i = 0; i < NQUEUES; ++i) {
+    struct rhizome_fetch_queue *q = &rhizome_fetch_queues[i];
+    
+    if (q->active.state != RHIZOME_FETCH_FREE && 
+	memcmp(id, q->active.manifest->cryptoSignPublic, prefix_length) == 0)
+      return q->active.manifest;
+      
+    for (j = 0; j < q->candidate_queue_size; j++) {
+      struct rhizome_fetch_candidate *c = &q->candidate_queue[j];
+      if (c->manifest && memcmp(id, c->manifest->cryptoSignPublic, prefix_length) == 0)
+	return c->manifest;
+    }
+  }
+  
+  return NULL;
+}
+
 /* Queue a fetch for the payload of the given manifest.  If 'peerip' is not NULL, then it is used as
  * the port and IP address of an HTTP server from which the fetch is performed.  Otherwise the fetch
  * is performed over MDP.

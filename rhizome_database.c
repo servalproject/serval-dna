@@ -1422,8 +1422,13 @@ int rhizome_is_bar_interesting(unsigned char *bar){
     DEBUGF("Ignoring %s", id_hex);
     return 0;
   }
-    
- // do we have this bundle [or later]?
+  
+  // are we already fetching this bundle [or later]?
+  rhizome_manifest *m=rhizome_fetch_search(&bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES);
+  if (m && m->version >= version)
+    return 0;
+  
+  // do we have this bundle [or later]?
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   sqlite3_stmt *statement = sqlite_prepare(&retry, 
     "SELECT id, version FROM manifests WHERE id like ? and version >= ?");
