@@ -17,6 +17,7 @@ int slip_encode(int format,
       L/R RSSI: 48/0  L/R noise: 62/0 pkts: 0  txe=0 rxe=0 stx=0 srx=0 ecc=0/0 temp=21 dco=0
       So we are using 0x80-0xff to hold data, and { and } to frame packets.
     */
+    if (config.debug.slip) dump("pre-slipped packet",src,src_bytes);
     {
       if (src_bytes<1) return 0;
       if (src_bytes>0x3fff) 
@@ -41,7 +42,7 @@ int slip_encode(int format,
       dst[out_len++]=0x80|((crc>>(25-7-7-7))&0x7f);
       dst[out_len++]=0x80|((crc>>0)&0x7f);
 
-      for(i=0;i<src_bytes;i+=8)
+      for(i=0;i<src_bytes;i+=7)
 	{
 	  // Create 8 bytes of output consisting of 8x7 bits
 
@@ -119,8 +120,19 @@ int parse_rfd900_rssi(char *s)
 #define UPPER7_STATE_D7 15
 int upper7_decode(struct slip_decode_state *state,unsigned char byte)
 {
+  if (0&&config.debug.slip)
+    DEBUGF("state=%d, byte=0x%02x",state->state,byte);
+
   // Parse out inline RSSI reports
-  if (byte>=' '&&byte<=0x7f) {
+  if (byte=='{') {
+    state->state=UPPER7_STATE_L1; 
+    state->packet_length=0;
+    return 0;
+  } else if (byte=='}') {
+    // End of packet marker -- report end of received packet to caller
+    // for CRC verification etc.
+    state->state=UPPER7_STATE_NOTINPACKET; return 1;
+  } else if (byte>=' '&&byte<=0x7f) {
     if (state->rssi_len<RSSI_TEXT_SIZE) 
       state->rssi_text[state->rssi_len++]=byte;
     return 0;
@@ -132,17 +144,12 @@ int upper7_decode(struct slip_decode_state *state,unsigned char byte)
     state->rssi_len=0;
   }
 
-  // Non-data bytes
+  // Non-data bytes (none currently used, but we need to catch them before
+  // moving onto processing data bytes)
   if (byte<0x80) {
     switch (byte) {
-    case '{': 
-      state->state=UPPER7_STATE_L1; 
-      state->packet_length=0;
+    default:
       return 0;
-    case '}':
-      // End of packet marker -- report end of received packet to caller
-      // for CRC verification etc.
-      state->state=UPPER7_STATE_NOTINPACKET; return 1;
     }    
   }
 
@@ -177,32 +184,32 @@ int upper7_decode(struct slip_decode_state *state,unsigned char byte)
     return 0;
   case UPPER7_STATE_D1:
     state->dst[state->dst_offset+0]|=(byte>>6)&0x01;
-    state->dst[state->dst_offset+1]=(byte<<2)&0x7f;
+    state->dst[state->dst_offset+1]=(byte<<2);
     state->state++;
     return 0;
   case UPPER7_STATE_D2:
     state->dst[state->dst_offset+1]|=(byte>>5)&0x03;
-    state->dst[state->dst_offset+2]=(byte<<3)&0x7f;
+    state->dst[state->dst_offset+2]=(byte<<3);
     state->state++;
     return 0;
   case UPPER7_STATE_D3:
     state->dst[state->dst_offset+2]|=(byte>>4)&0x07;
-    state->dst[state->dst_offset+3]=(byte<<4)&0x7f;
+    state->dst[state->dst_offset+3]=(byte<<4);
     state->state++;
     return 0;
   case UPPER7_STATE_D4:
     state->dst[state->dst_offset+3]|=(byte>>3)&0x0f;
-    state->dst[state->dst_offset+4]=(byte<<5)&0x7f;
+    state->dst[state->dst_offset+4]=(byte<<5);
     state->state++;
     return 0;
   case UPPER7_STATE_D5:
     state->dst[state->dst_offset+4]|=(byte>>2)&0x1f;
-    state->dst[state->dst_offset+5]=(byte<<6)&0x7f;
+    state->dst[state->dst_offset+5]=(byte<<6);
     state->state++;
     return 0;
   case UPPER7_STATE_D6:
     state->dst[state->dst_offset+5]|=(byte>>1)&0x3f;
-    state->dst[state->dst_offset+6]=(byte<<7)&0x7f;
+    state->dst[state->dst_offset+6]=(byte<<7);
     state->state++;
     return 0;
   case UPPER7_STATE_D7:
@@ -227,15 +234,29 @@ int slip_decode(struct slip_decode_state *state)
     return WHYF("SLIP encapsulation not implemented");
   case SLIP_FORMAT_UPPER7:
     {
+      if (config.debug.slip) {
+	dump("RX bytes",&state->src[state->src_offset],
+	     state->src_size-state->src_offset);
+	if (state->rssi_len<0) state->rssi_len=0;
+	if (state->rssi_len>=RSSI_TEXT_SIZE) state->rssi_len=RSSI_TEXT_SIZE-1;
+	state->rssi_text[state->rssi_len]=0;
+	DEBUGF("RX state=%d, rssi_len=%d, rssi_text='%s'",
+	       state->state,state->rssi_len,state->rssi_text);
+      }
       while(state->src_offset<state->src_size) 
 	if (upper7_decode(state,state->src[state->src_offset++])==1) {
+	  if (config.debug.slip)
+	    dump("de-slipped packet",state->dst,state->packet_length);
+	 
 	  // Check that CRC matches
 	  unsigned long crc=Crc32_ComputeBuf( 0, state->dst, state->packet_length);
 	  if (crc!=state->crc) {
-	    if (config.debug.packetradio)
+	    if (config.debug.slip)
 	      DEBUGF("Rejected packet of %d bytes due to CRC mis-match (%08x vs %08x)",
 		     state->packet_length,crc,state->crc);
-	  } else {	  
+	  } else {
+	    if (config.debug.slip) 
+	      DEBUGF("Accepted packet of %d bytes (CRC ok)",state->packet_length);
 	    return state->packet_length;
 	  }
 	}

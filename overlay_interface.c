@@ -729,7 +729,18 @@ overlay_broadcast_ensemble(overlay_interface *interface,
 				bytes, len, buffer+out_len, sizeof(interface->txbuffer) - out_len);
       if (encoded < 0)
 	return WHY("Buffer overflow");
-      
+						
+      if (config.debug.slip)
+	{
+	  // Test decoding of the packet we send
+	  struct slip_decode_state state;
+	  state.encapsulator=SLIP_FORMAT_UPPER7;
+	  state.src_size=encoded;
+	  state.src_offset=0;
+	  state.src=buffer+out_len;
+	  slip_decode(&state);
+	}
+
       out_len+=encoded;
       
       interface->tx_bytes_pending=out_len;
