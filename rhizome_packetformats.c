@@ -387,8 +387,7 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
   while(ob_remaining(f->payload)>0){
     unsigned char *bar=ob_get_bytes_ptr(f->payload, RHIZOME_BAR_BYTES);
     if (!bar){
-      WARNF("Expected whole BAR @%d (only %d remains)", ob_position(f->payload), ob_remaining(f->payload));
-      dump("buffer", ob_ptr(f->payload), ob_limit(f->payload));
+      WARNF("Expected whole BAR @%x (only %d bytes remain)", ob_position(f->payload), ob_remaining(f->payload));
       break;
     }
     if (rhizome_is_bar_interesting(bar)==1){

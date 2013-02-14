@@ -556,12 +556,12 @@ static void interface_read_file(struct overlay_interface *interface)
 	  ((!interface->drop_broadcasts) &&
 	   memcmp(&packet.dst_addr, &interface->broadcast_address, sizeof(packet.dst_addr))==0)){
 	    
-	    if (packetOkOverlay(interface, packet.payload, packet.payload_length, -1, 
-				(struct sockaddr*)&packet.src_addr, sizeof(packet.src_addr))<0) {
-	      WARN("Unsupported packet from dummy interface");
-	    }
-	  }else if (config.debug.packetrx)
-	    DEBUGF("Ignoring packet addressed to %s:%d", inet_ntoa(packet.dst_addr.sin_addr), ntohs(packet.dst_addr.sin_port));
+	if (packetOkOverlay(interface, packet.payload, packet.payload_length, -1, 
+			    (struct sockaddr*)&packet.src_addr, sizeof(packet.src_addr))<0) {
+	  WARN("Unsupported packet from dummy interface");
+	}
+      }else if (config.debug.packetrx)
+	DEBUGF("Ignoring packet addressed to %s:%d", inet_ntoa(packet.dst_addr.sin_addr), ntohs(packet.dst_addr.sin_port));
     }
   }
   
@@ -587,10 +587,9 @@ static void interface_read_stream(struct overlay_interface *interface){
   unsigned char buffer[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
   ssize_t nread = read(interface->alarm.poll.fd, buffer, OVERLAY_INTERFACE_RX_BUFFER_SIZE);
   if (nread == -1){
-    // WHY_perror("read");
+    WHY_perror("read");
     return;
   }
-  
   struct slip_decode_state *state=&interface->slip_decode_state;
   
   state->src=buffer;
@@ -645,7 +644,6 @@ static void overlay_interface_poll(struct sched_ent *alarm)
     
     if (interface->state==INTERFACE_STATE_UP && interface->tick_ms>0 && now >= interface->last_tick_ms+interface->tick_ms){
       // tick the interface
-      DEBUG("TICK");
       overlay_route_queue_advertisements(interface);
       interface->last_tick_ms=now;
       alarm->alarm=interface->last_tick_ms+interface->tick_ms;

@@ -25,22 +25,24 @@ int main(int argc,char **argv)
   fds[0].fd=left;
   fds[0].events=POLLIN;
   fds[1].fd=right;
-  fds[2].events=POLLIN;
+  fds[1].events=POLLIN;
 
   while(1) {
     poll(fds,2,1000);
     for(i=0;i<2;i++) {
-      if (1||fds[i].revents&POLLIN) {
-	int bytes=read(fds[i].fd,buffer,8192);
+      if (fds[i].revents&POLLIN) {
+	int bytes=read(fds[i].fd,buffer,sizeof(buffer));
 	if (bytes>0) {
-	  write(fds[i^1].fd,buffer,bytes);
-	  printf("reading from %d, read %d, errno=%d\n",i,bytes,errno);
+	  // every write operation consumes "air time" and adds delay to the next read
+	  usleep(100000);
+	  int written = write(fds[i^1].fd,buffer,bytes);
+	  printf("reading from %d, read %d, written %d, errno=%d\n",i,bytes,written,errno);
 	}       
 	fds[i].revents=0;
       }
+      if (fds[i].revents&~POLLIN)
+	printf("revents %x\n", fds[i].revents);
     }
-    usleep(100000);
-
   }
 
   return 0;
