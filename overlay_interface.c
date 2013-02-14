@@ -428,6 +428,10 @@ overlay_interface_init(const char *name, struct in_addr src_addr, struct in_addr
     
     if (ifconfig->socket_type==SOCK_STREAM){
       interface->slip_decode_state.dst_offset=0;
+      // The encapsulation type should be configurable,
+      // but for now default to the one that should be safe on the RFD900 
+      // radios, and that also allows us to receive RSSI reports inline
+      interface->slip_decode_state.encapsulator=SLIP_FORMAT_UPPER7;
       interface->alarm.poll.events=POLLIN;
       watch(&interface->alarm);
     }else if(ifconfig->socket_type==SOCK_FILE){
@@ -721,7 +725,8 @@ overlay_broadcast_ensemble(overlay_interface *interface,
       unsigned char *buffer = interface->txbuffer;
       int out_len=0;
       
-      int encoded = slip_encode(bytes, len, buffer+out_len, sizeof(interface->txbuffer) - out_len);
+      int encoded = slip_encode(SLIP_FORMAT_UPPER7,
+				bytes, len, buffer+out_len, sizeof(interface->txbuffer) - out_len);
       if (encoded < 0)
 	return WHY("Buffer overflow");
       

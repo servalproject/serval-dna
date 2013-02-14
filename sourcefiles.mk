@@ -6,6 +6,7 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)conf_om.c \
 	$(SERVAL_BASE)conf_parse.c \
 	$(SERVAL_BASE)conf_schema.c \
+	$(SERVAL_BASE)crc32.c \
 	$(SERVAL_BASE)crypto.c \
 	$(SERVAL_BASE)dataformats.c \
 	$(SERVAL_BASE)directory_client.c \

@@ -357,12 +357,24 @@ extern int overlayMode;
 // TX buffer must handle FEC encoded and encapsulated data, so needs to be
 // larger.
 #define OVERLAY_INTERFACE_TX_BUFFER_SIZE (2+2048*2)
+// buffer size for reading RFD900 RSSI reports
+// (minimum length is ~87 bytes, and includes 13 numeric fields
+// each of which may presumably end up being ~10 bytes, so 256 bytes
+// should be a safe size).
+#define RSSI_TEXT_SIZE 256
 
 struct slip_decode_state{
+#define SLIP_FORMAT_SLIP 0
+#define SLIP_FORMAT_UPPER7 1
+  int encapsulator;
   int state;
   unsigned char *src;
   int src_size;
+  char rssi_text[RSSI_TEXT_SIZE];
+  int rssi_len;
+  int packet_length;
   unsigned char dst[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
+  unsigned long crc;
   int src_offset;
   int dst_offset;
 };
@@ -838,7 +850,10 @@ uint64_t read_uint64(unsigned char *o);
 uint32_t read_uint32(unsigned char *o);
 uint16_t read_uint16(unsigned char *o);
 
-int slip_encode(unsigned char *src, int src_bytes, unsigned char *dst, int dst_len);
+int slip_encode(int format,
+		unsigned char *src, int src_bytes, unsigned char *dst, int dst_len);
 int slip_decode(struct slip_decode_state *state);
+unsigned long Crc32_ComputeBuf( unsigned long inCrc32, const void *buf,
+				size_t bufLen );
 
 #endif // __SERVALD_SERVALD_H
