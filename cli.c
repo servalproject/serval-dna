@@ -193,7 +193,7 @@ int cli_invoke(const struct cli_parsed *parsed, void *context)
   RETURN(ret);
 }
 
-int cli_arg(const struct cli_parsed *parsed, char *label, const char **dst, int (*validator)(const char *arg), char *defaultvalue)
+int _cli_arg(struct __sourceloc __whence, const struct cli_parsed *parsed, char *label, const char **dst, int (*validator)(const char *arg), char *defaultvalue)
 {
   int labellen = strlen(label);
   if (dst)
@@ -203,7 +203,7 @@ int cli_arg(const struct cli_parsed *parsed, char *label, const char **dst, int 
     if (parsed->labelv[i].len == labellen && strncasecmp(label, parsed->labelv[i].label, labellen) == 0) {
       const char *value = parsed->labelv[i].text;
       if (validator && !(*validator)(value))
-	return WHYF("Invalid argument %d '%s': \"%s\"", i + 1, label, value);
+	return WHYF("Invalid '%s' argument \"%s\"", label, value);
       if (dst)
 	*dst = value;
       return 0;

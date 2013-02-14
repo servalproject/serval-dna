@@ -56,7 +56,9 @@ void _debug_cli_parsed(struct __sourceloc __whence, const struct cli_parsed *par
 int cli_usage(const struct cli_schema *commands);
 int cli_parse(const int argc, const char *const *args, const struct cli_schema *commands, struct cli_parsed *parsed);
 int cli_invoke(const struct cli_parsed *parsed, void *context);
-int cli_arg(const struct cli_parsed *parsed, char *label, const char **dst, int (*validator)(const char *arg), char *defaultvalue);
+int _cli_arg(struct __sourceloc __whence, const struct cli_parsed *parsed, char *label, const char **dst, int (*validator)(const char *arg), char *defaultvalue);
+
+#define cli_arg(parsed, label, dst, validator, defaultvalue) _cli_arg(__WHENCE__, parsed, label, dst, validator, defaultvalue)
 
 int cli_lookup_did(const char *text);
 int cli_absolute_path(const char *arg);
