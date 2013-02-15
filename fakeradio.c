@@ -35,8 +35,26 @@ int main(int argc,char **argv)
 	if (bytes>0) {
 	  // every write operation consumes "air time" and adds delay to the next read
 	  usleep(100000);
-	  int written = write(fds[i^1].fd,buffer,bytes);
-	  printf("reading from %d, read %d, written %d, errno=%d\n",i,bytes,written,errno);
+	  int fd = i^1;
+	  
+	  // set blocking
+	  fcntl(fd,F_SETFL,fcntl(fd, F_GETFL, NULL)&~O_NONBLOCK);
+	  
+	  int offset=0;
+	  while(offset < bytes){
+	    int written = write(fds[i^1].fd,buffer+offset,bytes - offset);
+	    if (written >0)
+	      offset+=written;
+	    else{
+	      printf("Write returned %d, errno=%d\n",written,errno);
+	      usleep(10000);
+	    }
+	  }
+	  
+	  // set non-blocking
+	  fcntl(fd,F_SETFL,fcntl(fd, F_GETFL, NULL)|O_NONBLOCK);
+	  
+	  printf("reading from %d, read %d, written %d, errno=%d\n",i,bytes,offset,errno);
 	}       
 	fds[i].revents=0;
       }
