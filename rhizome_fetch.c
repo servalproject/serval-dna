@@ -146,6 +146,14 @@ int rhizome_active_fetch_count()
   return active;
 }
 
+int rhizome_active_fetch_bytes_received(int q)
+{
+  if (q<0) return -1;
+  if (q>=NQUEUES) return -1;
+  if (rhizome_fetch_queues[q].active.state==RHIZOME_FETCH_FREE) return -1;
+  return (int)rhizome_fetch_queues[q].active.file_ofs;
+}
+
 static struct sched_ent sched_activate = STRUCT_SCHED_ENT_UNUSED;
 static struct profile_total fetch_stats;
 

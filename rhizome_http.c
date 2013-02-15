@@ -533,12 +533,17 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
 	       "Radio temperature = %d&deg;C<br>"
 	       "SID: %s*<br>"
 	       "%d rhizome bundles in database<br>"
-	       "%d rhizome transfers in progress<br>"
+	       "%d rhizome transfers in progress (%d,%d,%d,%d,%d bytes)<br>"
 	       "</h1></html>\n",
 	       last_radio_rssi,last_radio_temperature,
 	       alloca_tohex_sid(my_subscriber->sid),
 	       (int)bundles_available,
-	       rhizome_active_fetch_count()
+	       rhizome_active_fetch_count(),
+	       rhizome_active_fetch_bytes_received(0),
+	       rhizome_active_fetch_bytes_received(1),
+	       rhizome_active_fetch_bytes_received(2),
+	       rhizome_active_fetch_bytes_received(3),
+	       rhizome_active_fetch_bytes_received(4)
 	       );
       rhizome_server_simple_http_response(r, 200, temp);
     } else if (strcmp(path, "/rhizome/groups") == 0) {
