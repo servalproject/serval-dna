@@ -83,7 +83,8 @@ insert_row_fail:
 
   /* Get rowid for inserted row, so that we can modify the blob */
   write->blob_rowid = sqlite3_last_insert_rowid(rhizome_db);
-  DEBUGF("Got rowid %lld for %s", write->blob_rowid, write->id);
+  if (config.debug.rhizome_rx)
+    DEBUGF("Got rowid %lld for %s", write->blob_rowid, write->id);
   
   if (sqlite_exec_void_retry(&retry, "COMMIT;")!=SQLITE_OK){
     return WHYF("Failed to commit transaction: %s", sqlite3_errmsg(rhizome_db));
