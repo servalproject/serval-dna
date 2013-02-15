@@ -853,6 +853,7 @@ uint16_t read_uint16(unsigned char *o);
 int slip_encode(int format,
 		unsigned char *src, int src_bytes, unsigned char *dst, int dst_len);
 int slip_decode(struct slip_decode_state *state);
+int upper7_decode(struct slip_decode_state *state,unsigned char byte);
 uint32_t Crc32_ComputeBuf( uint32_t inCrc32, const void *buf,
 			  size_t bufLen );
 

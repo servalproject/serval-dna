@@ -1313,6 +1313,37 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, void *context)
   return ret;
 }
 
+int app_slip_test(const struct cli_parsed *parsed, void *context)
+{
+  int len;
+  unsigned char bufin[8192];
+  unsigned char bufout[8192];
+  int count=0;
+  for(count=0;count<1000000;count++) {
+    len=1+random()%1500;
+    int i;
+    for(i=0;i<len;i++) bufin[i]=random()&0xff;
+    struct slip_decode_state state;
+    bzero(&state,sizeof state);
+    int outlen=slip_encode(SLIP_FORMAT_UPPER7,bufin,len,bufout,8192);
+    for(i=0;i<outlen;i++) upper7_decode(&state,bufout[i]);
+    unsigned long crc=Crc32_ComputeBuf( 0, state.dst, state.packet_length);
+    if (crc!=state.crc) {
+      WHYF("CRC error (%08x vs %08x)",crc,state.crc);
+      dump("input",bufin,len);
+      dump("encoded",bufout,outlen);
+      dump("decoded",state.dst,state.packet_length);
+      exit(-1);
+    } else { 
+      if (!(count%1000)) {
+	printf("."); fflush(stdout); 
+      }
+    }   
+  }
+  printf("Test passed.\n");
+  return 0;
+}
+
 int app_rhizome_import_bundle(const struct cli_parsed *parsed, void *context)
 {
   if (config.debug.verbose)
@@ -2236,8 +2267,10 @@ struct cli_schema command_line_options[]={
     "Lookup the phone number and name of a given subscriber"},
   {app_monitor_cli,{"monitor",NULL},0,
    "Interactive servald monitor interface."},
-  {app_crypt_test,{"crypt","test",NULL},0,
+  {app_crypt_test,{"test","crypt",NULL},0,
    "Run cryptography speed test"},
+  {app_slip_test,{"test","slip",NULL},0,
+   "Run serial encapsulation test"},
 #ifdef HAVE_VOIPTEST
   {app_pa_phone,{"phone",NULL},0,
    "Run phone test application"},
