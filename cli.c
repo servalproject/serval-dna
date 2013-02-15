@@ -254,8 +254,8 @@ int cli_optional_bundle_crypt_key(const char *arg)
 int cli_uint(const char *arg)
 {
   register const char *s = arg;
-  while (isdigit(*s++))
-    ;
+  while (isdigit(*s))
+    ++s;
   return s != arg && *s == '\0';
 }
 
