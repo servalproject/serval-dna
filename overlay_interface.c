@@ -217,8 +217,10 @@ overlay_interface_read_any(struct sched_ent *alarm){
 	     interface->name);
     
     if (packetOkOverlay(interface, packet, plen, recvttl, &src_addr, addrlen)) {
-      WHYF("Malformed packet (length = %d)",plen);
-      if (config.debug.slip) dump("the malformed packet",packet,plen);
+      if (config.debug.rejecteddata) {
+	WHYF("Malformed packet (length = %d)",plen);
+	dump("the malformed packet",packet,plen);
+      }
     }
   }
   if (alarm->poll.revents & (POLLHUP | POLLERR)) {
@@ -494,9 +496,10 @@ static void interface_read_dgram(struct overlay_interface *interface){
 	   interface->name);
   }
   if (packetOkOverlay(interface, packet, plen, recvttl, &src_addr, addrlen)) {
-    WHY("Malformed packet");
-    // Do we really want to attempt to parse it again?
-    //DEBUG_packet_visualise("Malformed packet", packet,plen);
+    if (config.debug.rejecteddata) {
+      WHYF("Malformed packet (length = %d)",plen);
+      dump("the malformed packet",packet,plen);
+    }
   }
 }
 
@@ -563,7 +566,11 @@ static void interface_read_file(struct overlay_interface *interface)
 	    
 	if (packetOkOverlay(interface, packet.payload, packet.payload_length, -1, 
 			    (struct sockaddr*)&packet.src_addr, sizeof(packet.src_addr))<0) {
-	  WARN("Unsupported packet from dummy interface");
+	  if (config.debug.rejecteddata) {
+	    WARN("Unsupported packet from dummy interface");
+	    WHYF("Malformed packet (length = %d)",packet.payload_length);
+	    dump("the malformed packet",packet.payload,packet.payload_length);
+	  }
 	}
       }else if (config.debug.packetrx)
 	DEBUGF("Ignoring packet addressed to %s:%d", inet_ntoa(packet.dst_addr.sin_addr), ntohs(packet.dst_addr.sin_port));
@@ -610,6 +617,10 @@ static void interface_read_stream(struct overlay_interface *interface){
     int ret = slip_decode(state);
     if (ret==1){
       packetOkOverlay(interface, state->dst, state->packet_length, -1, NULL, -1);
+      if (config.debug.rejecteddata) {
+	WHYF("Malformed packet (length = %d)",state->packet_length);
+	dump("the malformed packet",state->dst,state->packet_length);
+      }
       state->dst_offset=0;
     }
   }
