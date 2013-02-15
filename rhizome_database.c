@@ -1410,7 +1410,26 @@ done:
   return ret;  
 }
 
+long long lookup_time=0;
+long long last_bar_lookup=0;
 int rhizome_is_bar_interesting(unsigned char *bar){
+  IN();
+
+  if (last_bar_lookup>(gettime_ms()-1000)) {
+    /* Looking up rhizome bundles by BAR can be slow.
+       If so, then ignore some percentage of BARs. */
+    if (lookup_time>10) {
+      // if >10ms then only check 1 in 4 BARs
+      if (random()&0x3) RETURN(0);    
+    }
+    if (lookup_time>100) {
+      // if >10ms then only check 1 in 16 (1 in 4 of 1 in 4) BARs
+      if (random()&0x3) RETURN(0);   
+    }
+  }
+
+  long long start_time=gettime_ms();
+
   int64_t version = rhizome_bar_version(bar);
   int ret=1;
   char id_hex[RHIZOME_MANIFEST_ID_STRLEN];
@@ -1420,13 +1439,13 @@ int rhizome_is_bar_interesting(unsigned char *bar){
   // are we ignoring this manifest?
   if (rhizome_ignore_manifest_check(&bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES)){
     DEBUGF("Ignoring %s", id_hex);
-    return 0;
+    RETURN(0);
   }
   
   // are we already fetching this bundle [or later]?
   rhizome_manifest *m=rhizome_fetch_search(&bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES);
   if (m && m->version >= version)
-    return 0;
+    RETURN(0);
   
   // do we have this bundle [or later]?
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
@@ -1445,5 +1464,10 @@ int rhizome_is_bar_interesting(unsigned char *bar){
     ret=0;
   }  
   sqlite3_finalize(statement);
-  return ret;
+
+  long long end_time=gettime_ms();
+  lookup_time=end_time-start_time;
+  last_bar_lookup=end_time;
+
+  RETURN(ret);
 }

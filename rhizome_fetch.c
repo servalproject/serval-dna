@@ -489,8 +489,8 @@ int rhizome_queue_ignore_manifest(unsigned char *bid_prefix, int prefix_len, int
   if (prefix_len < RHIZOME_BAR_PREFIX_BYTES)
     FATAL("Prefix length is too short");
   
-  /* The supplied manifest from a given IP has errors, so remember 
-     that it isn't worth considering */
+  /* The supplied manifest from a given IP has errors, or we already have it,
+     so remember that it isn't worth considering for a while */
   int bin = bid_prefix[0]>>(8-IGNORED_BIN_BITS);
   int slot;
   for(slot = 0; slot != IGNORED_BIN_SIZE; ++slot)
