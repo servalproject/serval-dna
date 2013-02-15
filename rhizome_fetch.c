@@ -524,6 +524,7 @@ static int rhizome_import_received_bundle(struct rhizome_manifest *m)
 
 static int schedule_fetch(struct rhizome_fetch_slot *slot)
 {
+  IN();
   int sock = -1;
   /* TODO Don't forget to implement resume */
   /* TODO We should stream file straight into the database */
@@ -601,7 +602,7 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
     slot->alarm.alarm = gettime_ms() + RHIZOME_IDLE_TIMEOUT;
     slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
     schedule(&slot->alarm);
-    return 0;
+    RETURN(0);
   }
 
  bail_http:
@@ -609,7 +610,7 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
        the connection/attempt to fetch via HTTP failed. */
   slot->state=RHIZOME_FETCH_RXFILEMDP;
   rhizome_fetch_switch_to_mdp(slot);
-  return 0;
+  RETURN(0);
 }
 
 /* Start fetching a bundle's payload ready for importing.
@@ -675,12 +676,12 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
 
   if (config.debug.rhizome_rx)
     DEBUGF("Fetching bundle slot=%d bid=%s version=%lld size=%lld peerip=%s",
-	slotno(slot),
-	bid,
-	m->version,
-	m->fileLength,
-	alloca_sockaddr(peerip)
-      );
+	   slotno(slot),
+	   bid,
+	   m->version,
+	   m->fileLength,
+	   alloca_sockaddr(peerip)
+	   );
 
   // If the payload is empty, no need to fetch, so import now.
   if (m->fileLength == 0) {
@@ -828,6 +829,7 @@ rhizome_fetch_request_manifest_by_prefix(const struct sockaddr_in *peerip,
  */
 static void rhizome_start_next_queued_fetch(struct rhizome_fetch_slot *slot)
 {
+  IN();
   struct rhizome_fetch_queue *q;
   for (q = (struct rhizome_fetch_queue *) slot; q >= rhizome_fetch_queues; --q) {
     int i = 0;
@@ -836,11 +838,11 @@ static void rhizome_start_next_queued_fetch(struct rhizome_fetch_slot *slot)
       int result = rhizome_fetch(slot, c->manifest, &c->peer_ipandport,c->peer_sid);
       switch (result) {
       case SLOTBUSY:
-	return;
+	OUT(); return;
       case STARTED:
 	c->manifest = NULL;
 	rhizome_fetch_unqueue(q, i);
-	return;
+	OUT(); return;
       case IMPORTED:
       case SAMEBUNDLE:
       case SAMEPAYLOAD:
@@ -858,6 +860,7 @@ static void rhizome_start_next_queued_fetch(struct rhizome_fetch_slot *slot)
       }
     }
   }
+  OUT();
 }
 
 /* Called soon after any fetch candidate is queued, to start any queued fetches.
@@ -866,9 +869,11 @@ static void rhizome_start_next_queued_fetch(struct rhizome_fetch_slot *slot)
  */
 static void rhizome_start_next_queued_fetches(struct sched_ent *alarm)
 {
+  IN();
   int i;
   for (i = 0; i < NQUEUES; ++i)
     rhizome_start_next_queued_fetch(&rhizome_fetch_queues[i].active);
+  OUT();
 }
 
 /* Search all fetch slots, including active downloads, for a matching manifest */
@@ -908,6 +913,9 @@ rhizome_manifest * rhizome_fetch_search(unsigned char *id, int prefix_length){
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
+struct profile_total rsnqf_stats={.name="rhizome_start_next_queued_fetches"};
+struct profile_total rfmsc_stats={.name="rhizome_fetch_mdp_slot_callback"};
+
 int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sockaddr_in *peerip,const unsigned char peersid[SID_SIZE])
 {
   IN();
@@ -1029,7 +1037,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
 
   if (!is_scheduled(&sched_activate)) {
     sched_activate.function = rhizome_start_next_queued_fetches;
-    sched_activate.stats = NULL;
+    sched_activate.stats = &rsnqf_stats;
     sched_activate.alarm = gettime_ms() + rhizome_fetch_delay_ms();
     sched_activate.deadline = sched_activate.alarm + 5000;
     schedule(&sched_activate);
@@ -1074,28 +1082,33 @@ static int rhizome_fetch_close(struct rhizome_fetch_slot *slot)
 
 static void rhizome_fetch_mdp_slot_callback(struct sched_ent *alarm)
 {
+  IN();
   struct rhizome_fetch_slot *slot=(struct rhizome_fetch_slot*)alarm;
 
   if (slot->state!=5) {
     DEBUGF("Stale alarm triggered on idle/reclaimed slot. Ignoring");
     unschedule(alarm);
+    OUT();
     return;
   }
 
   long long now=gettime_ms();
   if (now-slot->last_write_time>slot->mdpIdleTimeout) {
-    DEBUGF("MDP connection timed out: last RX %lldms ago",
-	   now-slot->last_write_time);
+    DEBUGF("MDP connection timed out: last RX %lldms ago (read %d of %d bytes)",
+	   now-slot->last_write_time,
+	   slot->file_ofs,slot->file_len);
     rhizome_fetch_close(slot);
+    OUT();
     return;
   }
   if (config.debug.rhizome_rx)
-    DEBUGF("Timeout waiting for blocks. Resending request for slot=0x%p",
-	   slot);
+    DEBUGF("Timeout: Resending request for slot=0x%p (%d of %d received)",
+	   slot,slot->file_ofs,slot->file_len);
   if (slot->bidP)
     rhizome_fetch_mdp_requestblocks(slot);
   else
     rhizome_fetch_mdp_requestmanifest(slot);
+  OUT();
 }
 
 static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
@@ -1138,6 +1151,7 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   slot->mdpResponsesOutstanding=32; // TODO: set according to bitmap
 
   unschedule(&slot->alarm);
+  slot->alarm.stats=&rfmsc_stats;
   slot->alarm.function = rhizome_fetch_mdp_slot_callback;
   // 266ms @ 1mbit (WiFi broadcast speed) = 32x1024 byte packets.
   slot->alarm.alarm=gettime_ms()+266; 
@@ -1205,7 +1219,8 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
   }
 
   if (config.debug.rhizome_rx)
-    DEBUGF("Trying to switch to MDP for Rhizome fetch: slot=0x%p",slot);
+    DEBUGF("Trying to switch to MDP for Rhizome fetch: slot=0x%p (%d bytes)",
+	   slot,slot->file_len);
   
   /* close socket and stop watching it */
   if (slot->alarm.poll.fd>=0) {
@@ -1365,7 +1380,7 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
     if (config.debug.rhizome_rx) {
       DEBUGF("slot->blob_buffer_bytes=%d, slot->file_ofs=%d",
 	     slot->blob_buffer_bytes,slot->file_ofs);
-      dump("buffer",buffer,bytes);
+      // dump("buffer",buffer,bytes);
     }
 
     if (!slot->blob_buffer_size) {

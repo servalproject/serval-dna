@@ -18,6 +18,7 @@
  */
 
 #include "serval.h"
+#include "conf.h"
 
 struct profile_total *stats_head=NULL;
 struct call_stats *current_call=NULL;
@@ -148,16 +149,30 @@ int fd_showstats()
     stats = stats->_next;
   }
   
-  INFOF("servald time usage stats:");
-  stats = stats_head;
-  while(stats!=NULL){
-    /* Get total time spent doing everything */
-    if (stats->calls)
-      fd_showstat(&total,stats);
-    stats = stats->_next;
+  // Report any functions that take too much time
+  if (!config.debug.timing)
+    {
+      stats = stats_head;
+      while(stats!=NULL){
+	/* If a function spends more than 1 second in any 
+	   notionally 3 second period, then dob on it */
+	if (stats->total_time>1000
+	    &&strcmp(stats->name,"Idle (in poll)"))
+	  fd_showstat(&total,stats);
+	stats = stats->_next;
+      }
+    }
+  else {
+    INFOF("servald time usage stats:");
+    stats = stats_head;
+    while(stats!=NULL){
+      /* Get total time spent doing everything */
+      if (stats->calls)
+	fd_showstat(&total,stats);
+      stats = stats->_next;
+    }    
+    fd_showstat(&total,&total);
   }
-  
-  fd_showstat(&total,&total);
   
   return 0;
 }

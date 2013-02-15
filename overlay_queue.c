@@ -316,8 +316,9 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
   // TODO stop when the packet is nearly full?
   while(frame){
     if (frame->enqueued_at + queue->latencyTarget < now){
-      DEBUGF("Dropping frame type %x for %s due to expiry timeout", 
-	     frame->type, frame->destination?alloca_tohex_sid(frame->destination->sid):"All");
+      if (config.debug.rejecteddata)
+	DEBUGF("Dropping frame type %x for %s due to expiry timeout", 
+	       frame->type, frame->destination?alloca_tohex_sid(frame->destination->sid):"All");
       frame = overlay_queue_remove(queue, frame);
       continue;
     }

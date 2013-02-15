@@ -87,6 +87,7 @@ void server_save_argv(int argc, const char *const *argv)
 
 int server(char *backing_file)
 {
+  IN();
   /* For testing, it can be very helpful to delay the start of the server process, for example to
    * check that the start/stop logic is robust.
    */
@@ -121,11 +122,11 @@ int server(char *backing_file)
   /* Record PID to advertise that the server is now running */
   char filename[1024];
   if (!FORM_SERVAL_INSTANCE_PATH(filename, PIDFILE_NAME))
-    return -1;
+    RETURN(-1);
   FILE *f=fopen(filename,"w");
   if (!f) {
     WHY_perror("fopen");
-    return WHYF("Could not write to PID file %s", filename);
+    RETURN(WHYF("Could not write to PID file %s", filename));
   }
   server_getpid = getpid();
   fprintf(f,"%d\n", server_getpid);
@@ -133,7 +134,7 @@ int server(char *backing_file)
 
   overlayServerMode();
 
-  return 0;
+  RETURN(0);
 }
 
 /* Called periodically by the server process in its main loop.

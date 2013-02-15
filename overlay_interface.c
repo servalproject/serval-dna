@@ -627,9 +627,10 @@ static void interface_read_stream(struct overlay_interface *interface){
   
   struct slip_decode_state *state=&interface->slip_decode_state;
   
-  if (config.debug.slip)
-    dump("RX bytes",&state->src[state->src_offset],
-       state->src_size-state->src_offset);
+  if (config.debug.slip) {
+   dump("RX bytes",&state->src[state->src_offset],
+	state->src_size-state->src_offset);
+ }
   
   state->src=buffer;
   state->src_size=nread;

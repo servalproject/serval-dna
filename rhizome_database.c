@@ -1115,11 +1115,11 @@ cleanup:
 int64_t rhizome_database_create_blob_for(const char *hashhex,int64_t fileLength,
 					 int priority)
 {
-  
+  IN();
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   
   if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") != SQLITE_OK)
-    return WHY("Failed to begin transaction");
+    RETURN(WHY("Failed to begin transaction"));
   
   /* INSERT INTO FILES(id as text, data blob, length integer, highestpriority integer).
    BUT, we have to do this incrementally so that we can handle blobs larger than available memory.
@@ -1155,7 +1155,7 @@ int64_t rhizome_database_create_blob_for(const char *hashhex,int64_t fileLength,
 insert_row_fail:
     WHYF("Failed to insert row for fileid=%s", hashhex);
     sqlite_exec_void_retry(&retry, "ROLLBACK;");
-    return -1;
+    RETURN(-1);
   }
 
   /* Get rowid for inserted row, so that we can modify the blob */
@@ -1164,10 +1164,10 @@ insert_row_fail:
   ret = sqlite_exec_void_retry(&retry, "COMMIT;");
   if (ret!=SQLITE_OK){
     sqlite_exec_void_retry(&retry, "ROLLBACK;");
-    return WHYF("Failed to commit transaction");
+    RETURN(WHYF("Failed to commit transaction"));
   }
   DEBUGF("Got rowid %lld for %s", rowid, hashhex);
-  return rowid;
+  RETURN(rowid);
 }
 
 void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCount)

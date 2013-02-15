@@ -193,22 +193,24 @@ int parse_rfd900_rssi(char *s)
 #define UPPER7_STATE_D7 15
 int upper7_decode(struct slip_decode_state *state,unsigned char byte)
 {
-  if (0&&config.debug.slip)
+  IN()
+  if (config.debug.slipdecode)
     DEBUGF("state=%d, byte=0x%02x",state->state,byte);
 
   // Parse out inline RSSI reports
   if (byte=='{') {
     state->state=UPPER7_STATE_L1; 
     state->packet_length=0;
-    return 0;
+    RETURN(0);
   } else if (byte=='}') {
     // End of packet marker -- report end of received packet to caller
     // for CRC verification etc.
-    state->state=UPPER7_STATE_NOTINPACKET; return 1;
+    state->state=UPPER7_STATE_NOTINPACKET; RETURN(1);
   } else if (byte>=' '&&byte<=0x7f) {
+    if (state->rssi_len<0) state->rssi_len=0;
     if (state->rssi_len<RSSI_TEXT_SIZE) 
       state->rssi_text[state->rssi_len++]=byte;
-    return 0;
+    RETURN(0);
   } else if (byte=='\r'||byte=='\n') {
     if (state->rssi_len>=RSSI_TEXT_SIZE) state->rssi_len=RSSI_TEXT_SIZE-1;
     if (state->rssi_len<0) state->rssi_len=0;
@@ -220,17 +222,21 @@ int upper7_decode(struct slip_decode_state *state,unsigned char byte)
   // Non-data bytes (none currently used, but we need to catch them before
   // moving onto processing data bytes)
   if (byte<0x80) {
-    switch (byte) {
-    default:
-      return 0;
-    }    
+    RETURN(0);   
   }
 
   // Data bytes and packet fields
   byte&=0x7f;
+  if (state->packet_length>=OVERLAY_INTERFACE_RX_BUFFER_SIZE
+      ||(state->dst_offset+7)>=OVERLAY_INTERFACE_RX_BUFFER_SIZE
+      ||state->dst_offset<0)
+    {
+      WARNF("state->dst_offset=%d, ->packet_length=%d, ->state=%d",
+	    state->dst_offset,state->packet_length,state->state);
+    }
   switch(state->state) {
-  case UPPER7_STATE_NOTINPACKET: return 0;
-  case UPPER7_STATE_L1: state->packet_length=byte<<7; state->state++; return 0;
+  case UPPER7_STATE_NOTINPACKET: RETURN(0);
+  case UPPER7_STATE_L1: state->packet_length=byte<<7; state->state++; RETURN(0);
   case UPPER7_STATE_L2: state->packet_length|=byte;
     // Make sure packet length can fit in RX buffer, including that we might
     // need upto 7 bytes extra temporary space due to blocking
@@ -242,57 +248,57 @@ int upper7_decode(struct slip_decode_state *state,unsigned char byte)
 	DEBUGF("Ignoring jumbo packet of %d bytes",state->packet_length);
       state->state=UPPER7_STATE_NOTINPACKET;
     }
-    return 0;
-  case UPPER7_STATE_C1: state->crc=byte<<25; state->state++; return 0;
-  case UPPER7_STATE_C2: state->crc|=byte<<(25-7); state->state++; return 0;
-  case UPPER7_STATE_C3: state->crc|=byte<<(25-7-7); state->state++; return 0;
-  case UPPER7_STATE_C4: state->crc|=byte<<(25-7-7-7); state->state++; return 0;
-  case UPPER7_STATE_C5: state->crc|=byte<<0; state->state++; return 0;
+    RETURN(0);
+  case UPPER7_STATE_C1: state->crc=byte<<25; state->state++; RETURN(0);
+  case UPPER7_STATE_C2: state->crc|=byte<<(25-7); state->state++; RETURN(0);
+  case UPPER7_STATE_C3: state->crc|=byte<<(25-7-7); state->state++; RETURN(0);
+  case UPPER7_STATE_C4: state->crc|=byte<<(25-7-7-7); state->state++; RETURN(0);
+  case UPPER7_STATE_C5: state->crc|=byte<<0; state->state++; RETURN(0);
   case UPPER7_STATE_D0:
     // Prevent buffer overruns
     if (state->dst_offset+7>OVERLAY_INTERFACE_RX_BUFFER_SIZE) 
       state=UPPER7_STATE_NOTINPACKET;
     state->dst[state->dst_offset]=byte<<1;   
     state->state++;
-    return 0;
+    RETURN(0);
   case UPPER7_STATE_D1:
     state->dst[state->dst_offset+0]|=(byte>>6)&0x01;
     state->dst[state->dst_offset+1]=(byte<<2);
     state->state++;
-    return 0;
+    RETURN(0);
   case UPPER7_STATE_D2:
     state->dst[state->dst_offset+1]|=(byte>>5)&0x03;
     state->dst[state->dst_offset+2]=(byte<<3);
     state->state++;
-    return 0;
+    RETURN(0);
   case UPPER7_STATE_D3:
     state->dst[state->dst_offset+2]|=(byte>>4)&0x07;
     state->dst[state->dst_offset+3]=(byte<<4);
     state->state++;
-    return 0;
+    RETURN(0);
   case UPPER7_STATE_D4:
     state->dst[state->dst_offset+3]|=(byte>>3)&0x0f;
     state->dst[state->dst_offset+4]=(byte<<5);
     state->state++;
-    return 0;
+    RETURN(0);
   case UPPER7_STATE_D5:
     state->dst[state->dst_offset+4]|=(byte>>2)&0x1f;
     state->dst[state->dst_offset+5]=(byte<<6);
     state->state++;
-    return 0;
+    RETURN(0);
   case UPPER7_STATE_D6:
     state->dst[state->dst_offset+5]|=(byte>>1)&0x3f;
     state->dst[state->dst_offset+6]=(byte<<7);
     state->state++;
-    return 0;
+    RETURN(0);
   case UPPER7_STATE_D7:
     state->dst[state->dst_offset+6]|=(byte>>0)&0x7f;
     state->dst_offset+=7;
     state->state=UPPER7_STATE_D0;
-    return 0;
+    RETURN(0);
   default:
     state->state=UPPER7_STATE_NOTINPACKET;
-    return 0;
+    RETURN(0);
   }
 
 }
@@ -387,13 +393,15 @@ int slip_decode(struct slip_decode_state *state)
 	if (state->rssi_len<0) state->rssi_len=0;
 	if (state->rssi_len>=RSSI_TEXT_SIZE) state->rssi_len=RSSI_TEXT_SIZE-1;
 	state->rssi_text[state->rssi_len]=0;
-	DEBUGF("RX state=%d, rssi_len=%d, rssi_text='%s'",
-	       state->state,state->rssi_len,state->rssi_text);
+	DEBUGF("RX state=%d, rssi_len=%d, rssi_text='%s',src=%p, src_size=%d",
+	       state->state,state->rssi_len,state->rssi_text,
+	       state->src,state->src_size);
       }
-      while(state->src_offset<state->src_size) 
+     while(state->src_offset<state->src_size) {
 	if (upper7_decode(state,state->src[state->src_offset++])==1) {
-	  if (config.debug.slip)
+	  if (config.debug.slip) {
 	    dump("de-slipped packet",state->dst,state->packet_length);
+          }
 	 
 	  // Check that CRC matches
 	  uint32_t crc=Crc32_ComputeBuf( 0, state->dst, state->packet_length);
@@ -410,6 +418,7 @@ int slip_decode(struct slip_decode_state *state)
 	    return 1;
 	  }
 	}
+      }
     }
     return 0;
   default:

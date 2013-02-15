@@ -92,7 +92,6 @@ int _schedule(struct __sourceloc __whence, struct sched_ent *alarm)
 	   __whence.function,__whence.file,__whence.line);
   if (!alarm->stats)
     WARNF("schedule() called from %s() %s:%d without supplying an alarm name", 
-	  alloca_alarm_name(alarm),
 	  __whence.function,__whence.file,__whence.line);
 
   struct sched_ent *node = next_alarm, *last = NULL;
@@ -159,6 +158,9 @@ int _watch(struct __sourceloc __whence, struct sched_ent *alarm)
 {
   if (config.debug.io)
     DEBUGF("watch(alarm=%s)", alloca_alarm_name(alarm));
+  if (!alarm->stats)
+    WARNF("watch() called from %s() %s:%d without supplying an alarm name", 
+	  __whence.function,__whence.file,__whence.line);
 
   if (!alarm->function)
     return WHY("Can't watch if you haven't set the function pointer");
@@ -208,9 +210,13 @@ int _unwatch(struct __sourceloc __whence, struct sched_ent *alarm)
 
 static void call_alarm(struct sched_ent *alarm, int revents)
 {
+  IN();
   struct call_stats call_stats;
   call_stats.totals = alarm->stats;
   
+  if (config.debug.io) DEBUGF("Calling alarm/callback %p ('%s')",
+			      alarm, alloca_alarm_name(alarm));
+
   if (call_stats.totals)
     fd_func_enter(__HERE__, &call_stats);
   
@@ -219,16 +225,21 @@ static void call_alarm(struct sched_ent *alarm, int revents)
   
   if (call_stats.totals)
     fd_func_exit(__HERE__, &call_stats);
+
+  if (config.debug.io) DEBUGF("Alarm %p returned",alarm);
+
+  OUT();
 }
 
 int fd_poll()
 {
+  IN();
   int i, r=0;
   int ms=60000;
   time_ms_t now = gettime_ms();
   
   if (!next_alarm && !next_deadline && fdcount==0)
-    return 0;
+    RETURN(0);
   
   /* move alarms that have elapsed to the deadline queue */
   while (next_alarm!=NULL&&next_alarm->alarm <=now){
@@ -258,6 +269,7 @@ int fd_poll()
       else
 	usleep(ms*1000);
     }else{
+      if (config.debug.io) DEBUGF("poll(X,%d,%d)",fdcount,ms);
       r = poll(fds, fdcount, ms);
       if (config.debug.io) {
 	strbuf b = strbuf_alloca(1024);
@@ -298,5 +310,5 @@ int fd_poll()
 	  set_block(fds[i].fd);
       }
   }
-  return 1;
+  RETURN(1);
 }

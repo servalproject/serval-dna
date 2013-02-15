@@ -657,6 +657,7 @@ int app_dna_lookup(const struct cli_parsed *parsed, void *context)
 
 int app_server_start(const struct cli_parsed *parsed, void *context)
 {
+  IN();
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   /* Process optional arguments */
@@ -680,7 +681,7 @@ int app_server_start(const struct cli_parsed *parsed, void *context)
       status=server_probe(&pid);
       if (status!=SERVER_NOTRUNNING) {
 	WHY("Tried to stop stuck servald process, but attempt failed.");
-	return -1;
+	RETURN(-1);
       }
       WHY("Killed stuck servald process, so will try to start");
       pid=-1;
@@ -702,23 +703,23 @@ int app_server_start(const struct cli_parsed *parsed, void *context)
   int foregroundP = parsed->argc >= 2 && !strcasecmp(parsed->args[1], "foreground");
   if (cli_arg(parsed, "instance path", &instancepath, cli_absolute_path, NULL) == -1
    || cli_arg(parsed, "exec path", &execpath, cli_absolute_path, NULL) == -1)
-    return -1;
+    RETURN(-1);
   if (instancepath != NULL)
     serval_setinstancepath(instancepath);
   if (execpath == NULL) {
 #ifdef HAVE_JNI_H
     if (jni_env)
-      return WHY("Must supply <exec path> argument when invoked via JNI");
+      RETURN(WHY("Must supply <exec path> argument when invoked via JNI"));
 #endif
     if ((tmp = malloc(PATH_MAX)) == NULL)
 	return WHY("Out of memory");
   if (get_self_executable_path(tmp, PATH_MAX) == -1)
-    return WHY("unable to determine own executable name");
+    RETURN(WHY("unable to determine own executable name"));
   execpath = tmp;
   }
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)
-    return -1;
+    RETURN(-1);
   /* Now that we know our instance path, we can ask for the default set of
      network interfaces that we will take interest in. */
   if (config.interfaces.ac == 0)
@@ -726,7 +727,7 @@ int app_server_start(const struct cli_parsed *parsed, void *context)
   if (pid == -1)
     pid = server_pid();
   if (pid < 0)
-    return -1;
+    RETURN(-1);
   int ret = -1;
   // If the pidfile identifies this process, it probably means we are re-spawning after a SEGV, so
   // go ahead and do the fork/exec.
@@ -741,17 +742,17 @@ int app_server_start(const struct cli_parsed *parsed, void *context)
     /* Start the Serval process.  All server settings will be read by the server process from the
        instance directory when it starts up.  */
     if (server_remove_stopfile() == -1)
-      return -1;
+      RETURN(-1);
     overlayMode = 1;
     if (foregroundP)
-      return server(NULL);
+      RETURN(server(NULL));
     const char *dir = getenv("SERVALD_SERVER_CHDIR");
     if (!dir)
       dir = config.server.chdir;
     switch (cpid = fork()) {
       case -1:
 	/* Main process.  Fork failed.  There is no child process. */
-	return WHY_perror("fork");
+	RETURN(WHY_perror("fork"));
       case 0: {
 	/* Child process.  Fork then exit, to disconnect daemon from parent process, so that
 	   when daemon exits it does not live on as a zombie. N.B. Do not return from within this
@@ -800,9 +801,9 @@ int app_server_start(const struct cli_parsed *parsed, void *context)
       sleep_ms(200); // 5 Hz
     } while ((pid = server_pid()) == 0 && gettime_ms() < timeout);
     if (pid == -1)
-      return -1;
+      RETURN(-1);
     if (pid == 0)
-      return WHY("Server process did not start");
+      RETURN(WHY("Server process did not start"));
     ret = 0;
   }
   cli_puts("instancepath");
@@ -826,7 +827,7 @@ int app_server_start(const struct cli_parsed *parsed, void *context)
       sleep_ms(milliseconds);
     }
   }
-  return ret;
+  RETURN(ret);
 }
 
 int app_server_stop(const struct cli_parsed *parsed, void *context)

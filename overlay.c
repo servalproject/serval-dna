@@ -79,6 +79,8 @@ keyring_file *keyring=NULL;
 
 int overlayServerMode()
 {
+  IN();
+
   /* In overlay mode we need to listen to all of our sockets, and also to
      send periodic traffic. This means we need to */
   INFO("Running in overlay mode.");
@@ -152,15 +154,13 @@ schedule(&_sched_##X); }
   /* Periodically advertise bundles */
   SCHEDULE(overlay_rhizome_advertise, 1000, 10000);
   
-  /* Show CPU usage stats periodically */
-  if (config.debug.timing){
-    SCHEDULE(fd_periodicstats, 3000, 500);
-  }
+  /* Calculate (and possibly show) CPU usage stats periodically */
+  SCHEDULE(fd_periodicstats, 3000, 500);
 
 #undef SCHEDULE
   
   /* Check for activitiy and respond to it */
   while(fd_poll());
 
-  return 0;
+  RETURN(0);
 }
