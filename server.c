@@ -361,6 +361,7 @@ void signal_handler(int signal)
   char buf[80];
   signame(buf, sizeof(buf), signal);
   INFOF("Caught %s", buf);
+ WHYF("The following clue may help: %s",crash_handler_clue); 
   dump_stack();
 
   switch (signal) {
@@ -378,11 +379,13 @@ void signal_handler(int signal)
   exit(0);
 }
 
+char crash_handler_clue[1024]="no clue";
 void crash_handler(int signal)
 {
   char buf[80];
   signame(buf, sizeof(buf), signal);
   WHYF("Caught %s", buf);
+  WHYF("The following clue may help: %s",crash_handler_clue);
   dump_stack();
   BACKTRACE;
   if (config.server.respawn_on_crash) {
