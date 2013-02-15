@@ -117,7 +117,8 @@ static int outv_end_field()
   return put_blob((jbyte *)outv_buffer, length);
 }
 
-int Throw(JNIEnv *env, const char *class, const char *msg){
+int Throw(JNIEnv *env, const char *class, const char *msg)
+{
   jclass exceptionClass = NULL;
   if ((exceptionClass = (*env)->FindClass(env, class)) == NULL)
     return -1; // exception
@@ -157,40 +158,36 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servald_ServalD_rawCommand(JNIEnv 
       return Throw(env, "java/lang/IllegalStateException", "Unable to locate method totalRowCount");
   }
   unsigned char status = 0; // to match what the shell gets: 0..255
-  
   if (jni_env)
     return Throw(env, "java/lang/IllegalStateException", "re-entrancy not supported");
-  
   // Construct argv, argc from this method's arguments.
   jsize len = (*env)->GetArrayLength(env, args);
   const char **argv = alloca(sizeof(char*) * (len + 1));
   if (argv == NULL)
-    return Throw(env, "java/lang/OutOfMemoryError", "alloca returned NULL");
-  
-  argv[len]=NULL;
-  
+    return Throw(env, "java/lang/OutOfMemoryError", "alloca() returned NULL");
   jsize i;
+  for (i = 0; i <= len; ++i)
+    argv[i] = NULL;
   int argc = len;
   // From now on, in case of an exception we have to free some resources before
   // returning.
   jni_exception = 0;
-  const char *empty="";
-  
-  for (i = 0; i < len; ++i) {
+  for (i = 0; !jni_exception && i < len; ++i) {
     const jstring arg = (jstring)(*env)->GetObjectArrayElement(env, args, i);
     if ((*env)->ExceptionOccurred(env))
       jni_exception = 1;
-    
-    argv[i] = empty;
-    if (arg != NULL && !jni_exception){
+    else if (arg == NULL) {
+      Throw(env, "java/lang/NullPointerException", "null element in argv");
+      jni_exception = 1;
+    }
+    else {
       const char *str = (*env)->GetStringUTFChars(env, arg, NULL);
-      if (str == NULL){
+      if (str == NULL)
 	jni_exception = 1;
-      }else
+      else
 	argv[i] = str;
     }
   }
-  
   if (!jni_exception) {
     // Set up the output buffer.
     jniResults = outv;
@@ -200,10 +197,9 @@ JNIEXPORT jint JNICALL Java_org_servalproject_servald_ServalD_rawCommand(JNIEnv 
     status = parseCommandLine(NULL, argc, argv);
     jni_env = NULL;
   }
-  
   // Release argv Java string buffers.
   for (i = 0; i < len; ++i) {
-    if (argv[i] && argv[i]!=empty) {
+    if (argv[i]) {
       const jstring arg = (jstring)(*env)->GetObjectArrayElement(env, args, i);
       (*env)->ReleaseStringUTFChars(env, arg, argv[i]);
     }
