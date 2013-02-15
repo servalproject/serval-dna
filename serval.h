@@ -856,5 +856,6 @@ int slip_decode(struct slip_decode_state *state);
 int upper7_decode(struct slip_decode_state *state,unsigned char byte);
 uint32_t Crc32_ComputeBuf( uint32_t inCrc32, const void *buf,
 			  size_t bufLen );
-
+extern int last_radio_rssi;
+extern int last_radio_temperature;
 #endif // __SERVALD_SERVALD_H

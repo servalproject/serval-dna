@@ -523,6 +523,15 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
     if (strcmp(path, "/favicon.ico") == 0) {
       r->request_type = RHIZOME_HTTP_REQUEST_FAVICON;
       rhizome_server_http_response_header(r, 200, "image/vnd.microsoft.icon", favicon_len);
+    } else if (strcmp(path, "/rssi") == 0) {
+      r->request_type = RHIZOME_HTTP_REQUEST_FROMBUFFER;
+      char temp[8192];
+      snprintf(temp,8192,
+	       "<head><meta http-equiv=\"refresh\" content=\"5\" >"
+	       "</head><html>Radio link margin = %+ddB<br>"
+	       "Radio temperature = %d&deg;C</html>\n",
+	       last_radio_rssi,last_radio_temperature);
+      rhizome_server_simple_http_response(r, 200, temp);
     } else if (strcmp(path, "/rhizome/groups") == 0) {
       /* Return the list of known groups */
       rhizome_server_sql_query_http_response(r, "id", "groups", "from groups", 32, 1);

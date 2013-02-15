@@ -149,7 +149,9 @@ int slip_encode(int format,
 
 }
 
-unsigned long long last_rssi_report=0;
+unsigned long long last_rssi_time=0;
+int last_radio_rssi=-999;
+int last_radio_temperature=-999;
 int parse_rfd900_rssi(char *s)
 {
   int lrssi,rrssi,lnoise,rnoise,temp;
@@ -161,10 +163,12 @@ int parse_rfd900_rssi(char *s)
       int lmargin=(lrssi-lnoise)/1.9;
       int rmargin=(lrssi-lnoise)/1.9;
       int maxmargin=lmargin; if (rmargin>maxmargin) maxmargin=rmargin;
+      last_radio_rssi=maxmargin;
+      last_radio_temperature=temp;
 
-      if (config.debug.packetradio||(gettime_ms()-last_rssi_report>30000)) {
+      if (config.debug.packetradio||(gettime_ms()-last_rssi_time>30000)) {
 	INFOF("Link budget = %ddB, temperature=%dC",maxmargin,temp);
-	last_rssi_report=gettime_ms();
+	last_rssi_time=gettime_ms();
       }
     }
 
