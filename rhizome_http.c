@@ -532,10 +532,12 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
 	       "</head><html><h1>Radio link margin = %+ddB<br>"
 	       "Radio temperature = %d&deg;C<br>"
 	       "SID: %s*<br>"
+	       "%d rhizome bundles in database<br>"
 	       "%d rhizome transfers in progress<br>"
 	       "</h1></html>\n",
 	       last_radio_rssi,last_radio_temperature,
 	       alloca_tohex_sid(my_subscriber->sid),
+	       (int)bundles_available,
 	       rhizome_active_fetch_count()
 	       );
       rhizome_server_simple_http_response(r, 200, temp);

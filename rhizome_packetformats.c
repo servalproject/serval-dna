@@ -171,8 +171,9 @@ static int append_bars(struct overlay_buffer *e, sqlite_retry_state *retry, cons
 /* Periodically queue BAR advertisements
  Always advertise the most recent 3 manifests in the table, cycle through the rest of the table, adding 17 BAR's at a time
  */
+long long bundles_available=0;
 void overlay_rhizome_advertise(struct sched_ent *alarm){
-  static long long bundles_available=0;
+  bundles_available=0;
   static int64_t bundle_last_rowid=INT64_MAX;
   
   if (!is_rhizome_advertise_enabled())
