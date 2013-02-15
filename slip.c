@@ -1,13 +1,82 @@
 #include "serval.h"
 #include "conf.h"
+#include "log.h"
+
+/* SLIP-style escape characters used for serial packet radio interfaces */
+#define SLIP_END 0xc0
+#define SLIP_ESC 0xdb
+#define SLIP_0a 0x0a
+#define SLIP_0d 0x0d
+#define SLIP_0f 0x0f
+#define SLIP_1b 0x1b
+
+#define SLIP_ESC_END 0xdc
+#define SLIP_ESC_ESC 0xdd
+#define SLIP_ESC_0a 0x7a
+#define SLIP_ESC_0d 0x7d
+#define SLIP_ESC_0f 0x7f
+#define SLIP_ESC_1b 0x6b
+
+/* interface decoder state bits */
+#define DC_VALID 1
+#define DC_ESC 2
 
 int slip_encode(int format,
 		unsigned char *src, int src_bytes, unsigned char *dst, int dst_len)
 {
   switch(format) {
   case SLIP_FORMAT_SLIP:
-    return WHYF("SLIP encoding not implemented",format);
-    break;
+    {
+      int offset=0;
+      int i;
+      
+      if (offset+2>dst_len)
+	return WHY("Dest buffer full");
+      
+      dst[offset++]=SLIP_END;
+      
+      uint32_t crc=Crc32_ComputeBuf( 0, src, src_bytes);
+      // (I'm assuming there are 4 extra bytes in memory here, which is very naughty...)
+      write_uint32(src+src_bytes, crc);
+      
+      for (i=0;i<src_bytes+4;i++){
+	
+	if (offset+3>dst_len)
+	  return WHY("Dest buffer full");
+	
+	switch(src[i]) {
+	  case SLIP_END:
+	    dst[offset++]=SLIP_ESC;
+	    dst[offset++]=SLIP_ESC_END;
+	    break;
+	  case SLIP_ESC:
+	    dst[offset++]=SLIP_ESC;
+	    dst[offset++]=SLIP_ESC_ESC;
+	    break;
+	  case SLIP_0a:
+	    dst[offset++]=SLIP_ESC;
+	    dst[offset++]=SLIP_ESC_0a;
+	    break;
+	  case SLIP_0d:
+	    dst[offset++]=SLIP_ESC;
+	    dst[offset++]=SLIP_ESC_0d;
+	    break;
+	  case SLIP_0f:
+	    dst[offset++]=SLIP_ESC;
+	    dst[offset++]=SLIP_ESC_0f;
+	    break;
+	  case SLIP_1b:
+	    dst[offset++]=SLIP_ESC;
+	    dst[offset++]=SLIP_ESC_1b;
+	    break;
+	  default:
+	    dst[offset++]=src[i];
+	}
+      }
+      dst[offset++]=SLIP_END;
+      
+      return offset;
+    }
   case SLIP_FORMAT_UPPER7:
     /*
       The purpose of this encoder is to work nicely with the RFD900 radios,
@@ -17,7 +86,8 @@ int slip_encode(int format,
       L/R RSSI: 48/0  L/R noise: 62/0 pkts: 0  txe=0 rxe=0 stx=0 srx=0 ecc=0/0 temp=21 dco=0
       So we are using 0x80-0xff to hold data, and { and } to frame packets.
     */
-    if (config.debug.slip) dump("pre-slipped packet",src,src_bytes);
+    if (config.debug.slip)
+      dump("pre-slipped packet",src,src_bytes);
     {
       if (src_bytes<1) return 0;
       if (src_bytes>0x3fff) 
@@ -73,7 +143,6 @@ int slip_encode(int format,
       }
       return out_len;
     }
-    break;
   default:
     return WHYF("Unsupported slip encoding #%d",format);
   }
@@ -231,7 +300,83 @@ int slip_decode(struct slip_decode_state *state)
 {
   switch(state->encapsulator) {
   case SLIP_FORMAT_SLIP:
-    return WHYF("SLIP encapsulation not implemented");
+    {
+      /*
+       Examine received bytes for end of packet marker.
+       The challenge is that we need to make sure that the packet encapsulation
+       is self-synchronising in the event that a data error occurs (including
+       failure to receive an arbitrary number of bytes).
+       */
+      while(state->src_offset < state->src_size){
+	// clear the valid bit flag if we hit the end of the destination buffer
+	if (state->dst_offset>=sizeof(state->dst))
+	  state->state&=~DC_VALID;
+	
+	if (state->state&DC_ESC){
+	  // clear escape bit
+	  state->state&=~DC_ESC;
+	  switch(state->src[state->src_offset]) {
+	    case SLIP_ESC_END: // escaped END byte
+	      state->dst[state->dst_offset++]=SLIP_END;
+	      break;
+	    case SLIP_ESC_ESC: // escaped escape character
+	      state->dst[state->dst_offset++]=SLIP_ESC;
+	      break;
+	    case SLIP_ESC_0a:
+	      state->dst[state->dst_offset++]=SLIP_0a;
+	      break;
+	    case SLIP_ESC_0d:
+	      state->dst[state->dst_offset++]=SLIP_0d;
+	      break;
+	    case SLIP_ESC_0f:
+	      state->dst[state->dst_offset++]=SLIP_0f;
+	      break;
+	    case SLIP_ESC_1b:
+	      state->dst[state->dst_offset++]=SLIP_1b;
+	      break;
+	    default: /* Unknown escape character. This is an error. */
+	      if (config.debug.packetradio)
+		WARNF("Packet radio stream contained illegal escaped byte 0x%02x -- resetting parser.",state->src[state->src_offset]);
+	      state->dst_offset=0;
+	      // skip everything until the next SLIP_END
+	      state->state=0;
+	  }
+	}else{
+	  // non-escape character
+	  switch(state->src[state->src_offset]) {
+	    case SLIP_ESC:
+	      // set escape bit
+	      state->state|=DC_ESC; 
+	      break;
+	    case SLIP_END:
+	      if (state->dst_offset>4){
+		
+		uint32_t src_crc = read_uint32(state->dst + state->dst_offset -4);
+		uint32_t crc=Crc32_ComputeBuf( 0, state->dst, state->dst_offset -4);
+		
+		if (src_crc != crc){
+		  DEBUGF("Dropping frame due to CRC failure (%08x vs %08x)", src_crc, crc);
+		  dump("frame", state->dst, state->dst_offset);
+		  state->dst_offset=0;
+		  state->state=0;
+		  break;
+		}
+		// return once we've successfully parsed a valid packet that isn't empty
+		state->packet_length=state->dst_offset -4;
+		return 1;
+	      }
+	      // set the valid flag to begin parsing the next packet
+	      state->state=DC_VALID;
+	      break;
+	    default:
+	      if (state->state&DC_VALID)
+		state->dst[state->dst_offset++]=state->src[state->src_offset];
+	  }
+	}
+	state->src_offset++;
+      }
+      return 0;
+    }
   case SLIP_FORMAT_UPPER7:
     {
       if (config.debug.slip) {

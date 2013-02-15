@@ -43,16 +43,8 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
 
   struct subscriber *source = find_subscriber(mdp->out.src.sid, SID_SIZE, 0);
   
-  if(0) {
-    DEBUGF("Someone sent me a rhizome request via MDP");
-    DEBUGF("requestor sid = %s",alloca_tohex_sid(mdp->out.src.sid));
-    DEBUGF("bundle ID = %s",alloca_tohex_bid(&mdp->out.payload[0]));
-    DEBUGF("manifest version = 0x%llx",
-	   read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES]));
-    DEBUGF("file offset = 0x%llx",fileOffset);
-    DEBUGF("bitmap = 0x%08x",bitmap);
-    DEBUGF("block length = %d",blockLength);
-  }
+  if (config.debug.rhizome_tx)
+    DEBUGF("Requested blocks for %s @%llx", alloca_tohex_bid(&mdp->out.payload[0]), fileOffset);
 
   /* Find manifest that corresponds to BID and version.
      If we don't have this combination, then do nothing.
@@ -176,7 +168,7 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
       uint64_t offset=read_uint64(&mdp->out.payload[1+16+8]);
       int count=mdp->out.payload_length-(1+16+8+8);
       unsigned char *bytes=&mdp->out.payload[1+16+8+8];
-      if (0) 
+      if (config.debug.rhizome_rx) 
 	DEBUGF("Received %d bytes @ 0x%llx for %s* version 0x%llx",
 	       count,offset,alloca_tohex(bidprefix,16),version);
 
@@ -335,7 +327,8 @@ int overlay_mdp_try_interal_services(overlay_mdp_frame *mdp)
   case MDP_PORT_RHIZOME_REQUEST: 
     if (is_rhizome_mdp_server_running()) {
       RETURN(overlay_mdp_service_rhizomerequest(mdp));
-    } else break;
+    }
+    break;
   case MDP_PORT_RHIZOME_RESPONSE: RETURN(overlay_mdp_service_rhizomeresponse(mdp));    
   case MDP_PORT_RHIZOME_MANIFEST_REQUEST: RETURN(overlay_mdp_service_manifest_response(mdp));
   }
