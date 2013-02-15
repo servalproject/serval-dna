@@ -360,6 +360,8 @@ void signal_handler(int signal)
   char buf[80];
   signame(buf, sizeof(buf), signal);
   INFOF("Caught %s", buf);
+  dump_stack();
+
   switch (signal) {
     case SIGHUP:
     case SIGINT:
