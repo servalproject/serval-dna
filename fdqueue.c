@@ -87,7 +87,13 @@ int is_scheduled(const struct sched_ent *alarm)
 int _schedule(struct __sourceloc __whence, struct sched_ent *alarm)
 {
   if (config.debug.io)
-    DEBUGF("schedule(alarm=%s)", alloca_alarm_name(alarm));
+    DEBUGF("schedule(alarm=%s) called from %s() %s:%d", 
+	   alloca_alarm_name(alarm),
+	   __whence.function,__whence.file,__whence.line);
+  if (!alarm->stats)
+    WARNF("schedule() called from %s() %s:%d without supplying an alarm name", 
+	  alloca_alarm_name(alarm),
+	  __whence.function,__whence.file,__whence.line);
 
   struct sched_ent *node = next_alarm, *last = NULL;
   

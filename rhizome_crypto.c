@@ -17,6 +17,9 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include "crypto_sign_edwards25519sha512batch.h"
+#include "nacl/src/crypto_sign_edwards25519sha512batch_ref/ge.h"
+
 #include "serval.h"
 #include "conf.h"
 #include "str.h"
@@ -350,9 +353,6 @@ int rhizome_verify_bundle_privatekey(rhizome_manifest *m,
 				     const unsigned char *pkin)
 {
   IN();
-
-#include "crypto_sign_edwards25519sha512batch.h"
-#include "nacl/src/crypto_sign_edwards25519sha512batch_ref/ge.h"
 
   unsigned char h[64];
   unsigned char pk[32];

@@ -210,6 +210,7 @@ ATOM(char, rhizome_rx,		        0, cf_opt_char_boolean,, "")
 ATOM(char, rhizome_ads,		        0, cf_opt_char_boolean,, "")
 ATOM(char, manifests,		        0, cf_opt_char_boolean,, "")
 ATOM(char, vomp,		        0, cf_opt_char_boolean,, "")
+ATOM(char, trace,		        0, cf_opt_char_boolean,, "")
 END_STRUCT
 
 STRUCT(log)

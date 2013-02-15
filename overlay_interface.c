@@ -705,8 +705,9 @@ static void overlay_interface_poll(struct sched_ent *alarm)
 	interface_read_file(interface);
 	break;
     }
-    if (alarm->alarm!=-1)
+    if (alarm->alarm!=-1) {
       schedule(alarm);
+    }
   }
   
   if (alarm->poll.revents & POLLOUT){
