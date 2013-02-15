@@ -1319,7 +1319,7 @@ int app_slip_test(const struct cli_parsed *parsed, void *context)
   unsigned char bufin[8192];
   unsigned char bufout[8192];
   int count=0;
-  for(count=0;count<1000000;count++) {
+  for(count=0;count<1000000;count++) {    
     len=1+random()%1500;
     int i;
     for(i=0;i<len;i++) bufin[i]=random()&0xff;

@@ -249,9 +249,12 @@ int slip_decode(struct slip_decode_state *state)
 	  // Check that CRC matches
 	  uint32_t crc=Crc32_ComputeBuf( 0, state->dst, state->packet_length);
 	  if (crc!=state->crc) {
-	    if (config.debug.packetradio)
+	    if (config.debug.packetradio||config.debug.rejecteddata)
 	      DEBUGF("Rejected packet of %d bytes due to CRC mis-match (%08x vs %08x)",
 		     state->packet_length,crc,state->crc);
+	    if (config.debug.rejecteddata) {
+	      dump("bad packet",state->dst,state->packet_length);
+	    }
 	  } else {
 	    if (config.debug.packetradio) 
 	      DEBUGF("Accepted packet of %d bytes (CRC ok)",state->packet_length);
