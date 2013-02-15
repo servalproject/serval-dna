@@ -236,6 +236,11 @@ int upper7_decode(struct slip_decode_state *state,unsigned char byte)
       WARNF("state->dst_offset=%d, ->packet_length=%d, ->state=%d",
 	    state->dst_offset,state->packet_length,state->state);
     }
+  // Prevent buffer overruns
+  if (state->dst_offset+7>OVERLAY_INTERFACE_RX_BUFFER_SIZE) {
+    state=UPPER7_STATE_NOTINPACKET;
+    state->dst_offset=0;
+  }
   switch(state->state) {
   case UPPER7_STATE_NOTINPACKET: RETURN(0);
   case UPPER7_STATE_L1: state->packet_length=byte<<7; state->state++; RETURN(0);
@@ -257,9 +262,6 @@ int upper7_decode(struct slip_decode_state *state,unsigned char byte)
   case UPPER7_STATE_C4: state->crc|=byte<<(25-7-7-7); state->state++; RETURN(0);
   case UPPER7_STATE_C5: state->crc|=byte<<0; state->state++; RETURN(0);
   case UPPER7_STATE_D0:
-    // Prevent buffer overruns
-    if (state->dst_offset+7>OVERLAY_INTERFACE_RX_BUFFER_SIZE) 
-      state=UPPER7_STATE_NOTINPACKET;
     state->dst[state->dst_offset]=byte<<1;   
     state->state++;
     RETURN(0);
