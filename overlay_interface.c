@@ -49,6 +49,7 @@ struct profile_total sock_any_stats;
 
 static void overlay_interface_poll(struct sched_ent *alarm);
 static void logServalPacket(int level, struct __sourceloc __whence, const char *message, const unsigned char *packet, size_t len);
+static int re_init_socket(int interface_index);
 
 #define DEBUG_packet_visualise(M,P,N) logServalPacket(LOG_LEVEL_DEBUG, __WHENCE__, (M), (P), (N))
 
@@ -288,7 +289,7 @@ overlay_interface_init_socket(int interface_index)
   interface->alarm.poll.fd = overlay_bind_socket(addr, sizeof(interface->broadcast_address), interface->name);
   if (interface->alarm.poll.fd<0){
     interface->state=INTERFACE_STATE_DOWN;
-    return -1;
+    return WHYF("Failed to bind interface %s", interface->name);
   }
   
   if (config.debug.packetrx || config.debug.io) {
@@ -299,6 +300,23 @@ overlay_interface_init_socket(int interface_index)
 
   interface->alarm.poll.events=POLLIN;
   watch(&interface->alarm);
+  
+  return 0;
+}
+
+static int re_init_socket(int interface_index){
+  if (overlay_interface_init_socket(interface_index))
+    return -1;
+  overlay_interface *interface = &overlay_interfaces[interface_index];
+  // schedule the first tick asap
+  interface->alarm.alarm=gettime_ms();
+  interface->alarm.deadline=interface->alarm.alarm;
+  schedule(&interface->alarm);
+  interface->state=INTERFACE_STATE_UP;
+  INFOF("Interface %s addr %s:%d, is up",interface->name,
+	inet_ntoa(interface->address.sin_addr), ntohs(interface->address.sin_port));
+  
+  directory_registration();
   
   return 0;
 }
@@ -883,7 +901,7 @@ overlay_interface_register(char *name,
       // try to bring the interface back up again even if the address has changed
       if (overlay_interfaces[i].state==INTERFACE_STATE_DOWN){
 	overlay_interfaces[i].address.sin_addr = addr;
-	overlay_interface_init_socket(i);
+	re_init_socket(i);
       }
       
       // we already know about this interface, and it's up so stop looking immediately
@@ -900,7 +918,7 @@ overlay_interface_register(char *name,
     overlay_interfaces[found_interface].address.sin_addr = addr;
     overlay_interfaces[found_interface].broadcast_address.sin_addr = broadcast;
     overlay_interfaces[found_interface].netmask = mask;
-    return overlay_interface_init_socket(found_interface);
+    return re_init_socket(found_interface);
   }
   
   /* New interface, so register it */
