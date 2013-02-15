@@ -1425,11 +1425,11 @@ int rhizome_is_bar_interesting(unsigned char *bar){
     /* Looking up rhizome bundles by BAR can be slow.
        If so, then ignore some percentage of BARs. */
     if (lookup_time>10) {
-      // if >10ms then only check 1 in 4 BARs
-      if (random()&0x3) RETURN(0);    
+      // if >10ms then only check 1 in 8 BARs
+      if (random()&0x7) RETURN(0);    
     }
     if (lookup_time>100) {
-      // if >10ms then only check 1 in 16 (1 in 4 of 1 in 4) BARs
+      // if >10ms then only check 1 in 32 (1 in 8 of 1 in 4) BARs
       if (random()&0x3) RETURN(0);   
     }
   }
