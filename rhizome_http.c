@@ -528,8 +528,8 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
       char temp[8192];
       snprintf(temp,8192,
 	       "<head><meta http-equiv=\"refresh\" content=\"5\" >"
-	       "</head><html>Radio link margin = %+ddB<br>"
-	       "Radio temperature = %d&deg;C</html>\n",
+	       "</head><html><h1>Radio link margin = %+ddB<br>"
+	       "Radio temperature = %d&deg;C</h1></html>\n",
 	       last_radio_rssi,last_radio_temperature);
       rhizome_server_simple_http_response(r, 200, temp);
     } else if (strcmp(path, "/rhizome/groups") == 0) {
