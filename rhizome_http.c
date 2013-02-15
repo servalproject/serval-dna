@@ -546,16 +546,17 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
 	       rhizome_active_fetch_bytes_received(4)
 	       );
       rhizome_server_simple_http_response(r, 200, temp);
-    } else if (strcmp(path, "/rhizome/groups") == 0) {
-      /* Return the list of known groups */
-      rhizome_server_sql_query_http_response(r, "id", "groups", "from groups", 32, 1);
-    } else if (strcmp(path, "/rhizome/files") == 0) {
-      /* Return the list of known files */
-      rhizome_server_sql_query_http_response(r, "id", "files", "from files", 32, 1);
-    } else if (strcmp(path, "/rhizome/bars") == 0) {
-      /* Return the list of known BARs */
-      rhizome_server_sql_query_http_response(r, "bar", "manifests", "from manifests", 32, 0);
-    } else if (str_startswith(path, "/rhizome/file/", (const char **)&id)) {
+    } else if (is_rhizome_http_enabled()&&(strcmp(path, "/rhizome/groups") == 0)) {
+	/* Return the list of known groups */
+	rhizome_server_sql_query_http_response(r, "id", "groups", "from groups", 32, 1);
+    } else if (is_rhizome_http_enabled()&&(strcmp(path, "/rhizome/files") == 0)) {
+	/* Return the list of known files */
+	rhizome_server_sql_query_http_response(r, "id", "files", "from files", 32, 1);
+    } else if (is_rhizome_http_enabled()&&(strcmp(path, "/rhizome/bars") == 0)) {
+	/* Return the list of known BARs */
+	rhizome_server_sql_query_http_response(r, "bar", "manifests", "from manifests", 32, 0);
+    } else if (is_rhizome_http_enabled()
+	       &&(str_startswith(path, "/rhizome/file/", (const char **)&id))) {
       /* Stream the specified payload */
       if (!rhizome_str_is_file_hash(id)) {
 	rhizome_server_simple_http_response(r, 400, "<html><h1>Invalid payload ID</h1></html>\r\n");
@@ -579,7 +580,8 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
 	}
 	if (blob) sqlite3_blob_close(blob);
       }
-    } else if (str_startswith(path, "/rhizome/manifest/", (const char **)&id)) {
+    } else if (is_rhizome_http_enabled()&&
+	       (str_startswith(path, "/rhizome/manifest/", (const char **)&id))) {
       // TODO: Stream the specified manifest
       rhizome_server_simple_http_response(r, 500, "<html><h1>Not implemented</h1></html>\r\n");
     } else if (str_startswith(path, "/rhizome/manifestbyprefix/", (const char **)&id)) {
@@ -600,7 +602,7 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
       bid_high[RHIZOME_MANIFEST_ID_STRLEN]=0;
       DEBUGF("Looking for manifest between %s and %s",
 	     bid_low,bid_high);
-
+      
       r->rowid = -1;
       sqlite3_blob *blob=NULL;
       r->sql_table="manifests";
