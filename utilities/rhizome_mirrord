@@ -1,0 +1,328 @@
+#!/usr/bin/env python
+
+# Rhizome mirror daemon
+# Copyright (C) 2013 Serval Project Inc.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+"""This daemon regularly extracts file-sharing (service=file) bundles from
+Rhizome into a mirror directory, and unpacks all bundles which are archive
+format (zip, tar, tgz, etc.), into their constituent files.  If a newer version
+of an already-unpacked bundle arrives, the prior unpack is deleted and the new
+version unpacked in its place.
+
+This effectively maintains the directory as an up-to-date mirror of the local
+Rhizome store content.
+
+On-disk file/directory names are formed by conactenating the bundle name field
+and the bundle ID separated by ':', in order to avoid collisions.
+
+@author Andrew Bettison <andrew@servalproject.com>
+"""
+
+import sys
+import os.path
+import re
+import argparse
+import subprocess
+import datetime
+
+def main():
+    parser = argparse.ArgumentParser(description='Unpack Rhizome bundles into mirror directory.')
+    parser.add_argument('--servald', dest='servald', default='servald', help='Path of servald executable')
+    parser.add_argument('--servald-instance', dest='instancepath', default=os.environ.get('SERVALINSTANCE_PATH'), help='Path of servald instance directory')
+    parser.add_argument('--interval', dest='interval', type=int, default=0, help='Seconds to sleep between polling Rhizome')
+    parser.add_argument('--mirror-dir', dest='mirror_dir', required=True, help='Path of directory to store extracted payloads')
+    opts = parser.parse_args()
+    if opts.instancepath is None:
+        fatal('missing --servald-instance option')
+    if invoke_servald(opts, ['help']) is None:
+        fatal('no executable servald')
+    mirror = RhizomeMirror(opts)
+    mirror.seed()
+    mirror.update_list()
+
+class RhizomeMirror(object):
+
+    def __init__(self, opts):
+        self.opts = opts
+        self.extracted = {}
+        self.payloads_path = opts.mirror_dir
+        self.manifests_path = os.path.join(self.payloads_path, '.manifests')
+
+    def seed(self):
+        self.extracted = {}
+        os.makedirs(self.manifests_path)
+        for manifest_name in os.listdir(self.manifests_path):
+            manifest_path = os.path.join(self.manifests_path, manifest_name)
+            if manifest_name.endswith('.manifest'):
+                stem = os.path.splitext(manifest_name)[0]
+                manifest = RhizomeManifest().read(file(manifest_path))
+                if manifest is not None:
+                    if stem == manifest.stem():
+                        payload_path = os.path.join(self.payloads_path, stem)
+                        if os.path.exists(payload_path):
+                            payload_hash = servald_rhizome_hash(self.opts, payload_path)
+                            if payload_hash == manifest.filehash:
+                                log('seeded %r' % (stem,))
+                                self.extracted[stem] = manifest
+                                continue
+            log('unlink %r' % (manifest_path,))
+            try:
+                os.unlink(manifest_path)
+            except OSError, e:
+                error('cannot unlink %r - %s' % (manifest_path, e))
+
+    def update_list(self):
+        entries = servald_rhizome_list(self.opts)
+        for ent in entries:
+            manifest = RhizomeManifest().from_list_entry(ent)
+            if manifest is not None:
+                stem = manifest.stem()
+                extracted_manifest = self.extracted.get(stem)
+                if extracted_manifest is None or manifest.succeeds(extracted_manifest):
+                    servald_rhizome_extract(self.opts, manifest.bid, stem)
+
+class RhizomeManifest(object):
+
+    def __init__(self):
+        self._fields = {}
+        self.service = None
+        self.bid = None
+        self.version = None
+        self.filesize = None
+        self.filehash = None
+        self.name = None
+
+    def stem(self):
+        return os.path.splitext(self.name)[0] + ':' + self.bid[:12]
+
+    def from_list_entry(self, ent):
+        try:
+            service = ent.service
+            bid = manifest_id(ent.id)
+            date = time_ms(ent.date) if ent.date else None
+            version = long(ent.version)
+            filesize = long(ent.filesize)
+            fhash = filehash(ent.filehash) if filesize else None
+            sender = subscriber_id(ent.sender)
+            recipient = subscriber_id(ent.recipient)
+            name = ent.name if service == 'file' else None
+        except (KeyError, ValueError):
+            return None
+        self._fields = {}
+        self._fields['service'] = str(service)
+        self._fields['manifestid'] = str(bid)
+        self._fields['version'] = str(version)
+        self._fields['filesize'] = str(filesize)
+        if filesize:
+            self._fields['filehash'] = str(filehash)
+        if date:
+            self._fields['date'] = str(date)
+        if sender:
+            self._fields['sender'] = str(sender)
+        if recipient:
+            self._fields['recipient'] = str(recipient)
+        if name is not None:
+            self._fields['name'] = str(name)
+        self.service = service
+        self.bid = bid
+        self.version = version
+        self.filesize = filesize
+        self.filehash = fhash
+        self.name = name
+        return self
+
+    def read(self, f):
+        fields = {}
+        try:
+            for line in f:
+                if not line.endswith('\n'):
+                    return None
+                field, value = line.split('=', 1)
+                fields[field] = value
+            service = manifest_id(fields['service'])
+            bid = manifest_id(fields['manifestid'])
+            version = long(fields['version'])
+            filesize = long(fields['filesize'])
+            fhash = filehash(fields['filehash']) if filesize else None
+            name = fields['name'] if service == 'file' else None
+        except (KeyError, ValueError):
+            return None
+        self._fields = fields
+        self.service = service
+        self.bid = bid
+        self.version = version
+        self.filesize = filesize
+        self.filehash = fhash
+        self.name = name
+        return self
+
+def time_ms(text):
+    try:
+        return long(text)
+    except ValueError:
+        pass
+    raise ValueError('invalid literal for time_ms(): %r' % (text,))
+
+def datetime_ms(text):
+    try:
+        ms = time_ms(text)
+        return datetime.fromtimestamp(ms / 1000).replace(microsecond= ms % 1000)
+    except ValueError:
+        pass
+    raise ValueError('invalid literal for datetime_ms(): %r' % (text,))
+
+def subscriber_id(text):
+    try:
+        if len(text) == 64:
+            return '%64X' % long(text, 16)
+    except ValueError:
+        pass
+    raise ValueError('invalid literal for subscriber_id(): %r' % (text,))
+
+def manifest_id(text):
+    try:
+        if len(text) == 64:
+            return '%64X' % long(text, 16)
+    except ValueError:
+        pass
+    raise ValueError('invalid literal for manifest_id(): %r' % (text,))
+
+def filehash(text):
+    try:
+        if len(text) == 128:
+            return '%128X' % long(text, 16)
+    except ValueError:
+        pass
+    raise ValueError('invalid literal for filehash(): %r' % (text,))
+
+class ServaldInterfaceException(Exception):
+    def __init__(self, servald, output, msg):
+        Exception.__init__(self, msg)
+        self.output = output
+        self.servald = servald
+
+class RhizomeListEntry(object):
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+    def __repr__(self):
+        return '%s(%s)' % (self.__class__.__name__, ', '.join('%s=%r' % i for i in self.__dict__.iteritems()))
+
+def servald_rhizome_list(opts):
+    args = ['rhizome', 'list', 'file']
+    words = invoke_servald(opts, args, output_words=True)
+    if words is None:
+        return None
+    try:
+        if len(words) < 1:
+            raise ValueError('missing first word')
+        ncols = int(words[0])
+        if len(words) < 1 + ncols:
+            raise ValueError('missing column header')
+        if (len(words) - (1 + ncols)) % ncols != 0:
+            raise ValueError('incomplete row')
+        colmap = {}
+        for col, hdr in enumerate(words[1:ncols+1]):
+            colmap[col] = re.sub(r'[^A-Za-z0-9_]', '_', hdr)
+        rows = []
+        for i in xrange(ncols + 1, len(words), ncols):
+            ent = RhizomeListEntry()
+            for col in xrange(ncols):
+                setattr(ent, colmap[col], words[i + col])
+            rows.append(ent)
+        return rows
+    except ValueError, e:
+        error('invalid output from %s: %s' % (' '.join([opts.servald,] + args), e))
+        return None
+
+def servald_rhizome_hash(opts, path):
+    args = ['rhizome', 'hash', 'file', path]
+    out = invoke_servald(opts, args)
+    if out is None:
+        return None
+    try:
+        return filehash(out)
+    except ValueError:
+        raise ServaldInterfaceException(opts.servald, out, 'invalid output, not a hex file hash')
+
+def servald_rhizome_extract(opts, bid, manifest_path=None, payload_path=None):
+    args = None
+    if payload_path and manifest_path:
+        args = ['rhizome', 'extract', 'bundle', bid, manifest_path, payload_path]
+    elif payload_path:
+        args = ['rhizome', 'extract', 'file', bid, payload_path]
+    elif manifest_path:
+        args = ['rhizome', 'extract', 'manifest', bid, manifest_path]
+    if not args:
+        return None
+    keyval = invoke_servald(opts, args, output_keyvalue=True)
+    print keyval
+
+def invoke_servald(opts, args, output_keyvalue=False, output_words=False):
+    env = dict(os.environ)
+    if output_words or output_keyvalue:
+        delim = '\x01'
+        env['SERVALD_OUTPUT_DELIMITER'] = delim
+    env['SERVALD_INSTANCEPATH'] = opts.instancepath
+    try:
+        allargs = (opts.servald,) + tuple(args)
+        log('execute ' + ' '.join(map(repr, allargs)))
+        proc = subprocess.Popen(allargs,
+                    stdout= subprocess.PIPE,
+                    stderr= subprocess.PIPE,
+                    env= env,
+                )
+        out, err = proc.communicate()
+    except OSError, e:
+        error('cannot execute %s - %s' % (executable, e))
+        return None
+    if proc.returncode != 0:
+        error('%s exited with status %d' % (os.path.basename(opts.servald), proc.returncode))
+        for line in err.split('\n'):
+            if line.startswith('ERROR:') or line.startswith('WARN:'):
+                error(re.sub(r'^(ERROR|WARN):\s*(\[\d+])?\s*\d\d\:\d\d\:\d\d\.\d+\s*', '', line))
+        return None
+    if out is None:
+        return None
+    if output_words or output_keyvalue:
+        if not out.endswith(delim):
+            raise ServaldInterfaceException(opts.servald, out, 'missing delimiter')
+        out = out[:-1]
+        words = out.split(delim)
+        if output_keyvalue:
+            keyvalue = {}
+            if len(words) % 2 != 0:
+                raise ServaldInterfaceException(opts.servald, out, 'odd number of output fields')
+            while words:
+                key = words.pop(0)
+                value = words.pop(0)
+                keyvalue[key] = value
+            return keyvalue
+        return words
+    return out
+
+def log(msg):
+    print '+ %s' % (msg,)
+
+def error(msg):
+    print >>sys.stderr, '%s: %s' % (os.path.basename(sys.argv[0]), msg)
+
+def fatal(msg):
+    error(msg)
+    sys.exit(1)
+
+if __name__ == '__main__':
+    main()
