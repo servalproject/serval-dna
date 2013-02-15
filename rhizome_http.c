@@ -25,6 +25,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #endif
 
 #include "serval.h"
+#include "overlay_address.h"
 #include "conf.h"
 #include "str.h"
 #include "rhizome.h"
@@ -529,8 +530,11 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
       snprintf(temp,8192,
 	       "<head><meta http-equiv=\"refresh\" content=\"5\" >"
 	       "</head><html><h1>Radio link margin = %+ddB<br>"
-	       "Radio temperature = %d&deg;C</h1></html>\n",
-	       last_radio_rssi,last_radio_temperature);
+	       "Radio temperature = %d&deg;C<br>"
+	       "SID: %s*"
+	       "</h1></html>\n",
+	       last_radio_rssi,last_radio_temperature,
+	       alloca_tohex_sid(my_subscriber->sid));
       rhizome_server_simple_http_response(r, 200, temp);
     } else if (strcmp(path, "/rhizome/groups") == 0) {
       /* Return the list of known groups */
