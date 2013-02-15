@@ -1198,9 +1198,10 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
      or with a temporary generated SID, so that we don't end up with two
      instances with the same SID.
   */
+  IN()
   if (!my_subscriber) {
     DEBUGF("I don't have an identity, so we cannot fall back to MDP");
-    return rhizome_fetch_close(slot);
+    RETURN(rhizome_fetch_close(slot));
   }
 
   if (config.debug.rhizome_rx)
@@ -1250,17 +1251,19 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
     rhizome_fetch_mdp_requestmanifest(slot);
   }
 
-  return 0;
+  RETURN(0);
 }
 
 void rhizome_fetch_write(struct rhizome_fetch_slot *slot)
 {
+  IN();
   if (config.debug.rhizome_rx)
     DEBUGF("write_nonblock(%d, %s)", slot->alarm.poll.fd, alloca_toprint(-1, &slot->request[slot->request_ofs], slot->request_len-slot->request_ofs));
   int bytes = write_nonblock(slot->alarm.poll.fd, &slot->request[slot->request_ofs], slot->request_len-slot->request_ofs);
   if (bytes == -1) {
     WHY("Got error while sending HTTP request.");
     rhizome_fetch_switch_to_mdp(slot);
+    OUT();
     return;
   } else {
     // reset timeout
@@ -1279,6 +1282,8 @@ void rhizome_fetch_write(struct rhizome_fetch_slot *slot)
     }else if(slot->state==RHIZOME_FETCH_CONNECTING)
       slot->state = RHIZOME_FETCH_SENDINGHTTPREQUEST;
   }
+  OUT();
+  return;
 }
 
 int rhizome_fetch_flush_blob_buffer(struct rhizome_fetch_slot *slot)
@@ -1644,6 +1649,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
  */
 int unpack_http_response(char *response, struct http_response_parts *parts)
 {
+  IN();
   parts->code = -1;
   parts->reason = NULL;
   parts->content_length = -1;
@@ -1652,12 +1658,12 @@ int unpack_http_response(char *response, struct http_response_parts *parts)
   if (!str_startswith(response, "HTTP/1.0 ", (const char **)&p)) {
     if (config.debug.rhizome_rx)
       DEBUGF("Malformed HTTP reply: missing HTTP/1.0 preamble");
-    return -1;
+    RETURN(-1);
   }
   if (!(isdigit(p[0]) && isdigit(p[1]) && isdigit(p[2]) && p[3] == ' ')) {
     if (config.debug.rhizome_rx)
       DEBUGF("Malformed HTTP reply: missing three-digit status code");
-    return -1;
+    RETURN(-1);
   }
   parts->code = (p[0]-'0') * 100 + (p[1]-'0') * 10 + p[2]-'0';
   p += 4;
@@ -1679,7 +1685,7 @@ int unpack_http_response(char *response, struct http_response_parts *parts)
       if (p == nump || (*p != '\r' && *p != '\n')) {
 	if (config.debug.rhizome_rx)
 	  DEBUGF("Invalid HTTP reply: malformed Content-Length header");
-	return -1;
+	RETURN(-1);
       }
     }
     while (*p++ != '\n')
@@ -1689,5 +1695,5 @@ int unpack_http_response(char *response, struct http_response_parts *parts)
     ++p;
   ++p; // skip '\n' at end of blank line
   parts->content_start = p;
-  return 0;
+  RETURN(0);
 }

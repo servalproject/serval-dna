@@ -546,6 +546,7 @@ struct file_packet{
 
 static void interface_read_file(struct overlay_interface *interface)
 {
+  IN();
   /* Grab packets, unpackage and dispatch frames to consumers */
   struct file_packet packet;
   time_ms_t now = gettime_ms();
@@ -560,6 +561,7 @@ static void interface_read_file(struct overlay_interface *interface)
   if (interface->recv_offset<length){
     if (lseek(interface->alarm.poll.fd,interface->recv_offset,SEEK_SET) == -1){
       WHY_perror("lseek");
+      OUT();
       return;
     }
     
@@ -614,10 +616,12 @@ static void interface_read_file(struct overlay_interface *interface)
 }
 
 static void interface_read_stream(struct overlay_interface *interface){
+  IN();
   unsigned char buffer[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
   ssize_t nread = read(interface->alarm.poll.fd, buffer, OVERLAY_INTERFACE_RX_BUFFER_SIZE);
   if (nread == -1){
     WHY_perror("read");
+    OUT();
     return;
   }
   
@@ -643,6 +647,7 @@ static void interface_read_stream(struct overlay_interface *interface){
       state->dst_offset=0;
     }
   }
+  OUT();
 }
 
 static void write_stream_buffer(overlay_interface *interface){

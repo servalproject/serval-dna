@@ -474,6 +474,7 @@ int rhizome_server_sql_query_fill_buffer(rhizome_http_request *r, char *table, c
 
 int http_header_complete(const char *buf, size_t len, size_t read_since_last_call)
 {
+  IN();
   const char *bufend = buf + len;
   size_t tail = read_since_last_call + 4;
   if (tail < len)
@@ -487,7 +488,7 @@ int http_header_complete(const char *buf, size_t len, size_t read_since_last_cal
       default: count = 0; break;
     }
   }
-  return count == 2;
+  RETURN(count == 2);
 }
 
 int rhizome_direct_parse_http_request(rhizome_http_request *r);
