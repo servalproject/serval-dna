@@ -374,7 +374,7 @@ struct slip_decode_state{
   int rssi_len;
   int packet_length;
   unsigned char dst[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
-  unsigned long crc;
+  uint32_t crc;
   int src_offset;
   int dst_offset;
 };
@@ -853,7 +853,7 @@ uint16_t read_uint16(unsigned char *o);
 int slip_encode(int format,
 		unsigned char *src, int src_bytes, unsigned char *dst, int dst_len);
 int slip_decode(struct slip_decode_state *state);
-unsigned long Crc32_ComputeBuf( unsigned long inCrc32, const void *buf,
-				size_t bufLen );
+uint32_t Crc32_ComputeBuf( uint32_t inCrc32, const void *buf,
+			  size_t bufLen );
 
 #endif // __SERVALD_SERVALD_H
