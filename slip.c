@@ -191,13 +191,15 @@ int parse_rfd900_rssi(char *s)
 #define UPPER7_STATE_D5 13
 #define UPPER7_STATE_D6 14
 #define UPPER7_STATE_D7 15
+int u7d_calls=0;
 int upper7_decode(struct slip_decode_state *state,unsigned char byte)
 {
   IN()
+    u7d_calls++;
   if (config.debug.slipdecode)
     snprintf(crash_handler_clue,1024,
-	     "upper7_decode(): state=%d, byte=0x%02x, rssi_len=%d, dst_offset=%d",
-	     state->state,byte,state->rssi_len,state->dst_offset);
+	     "upper7_decode() call #%d: state=%d, byte=0x%02x, rssi_len=%d, dst_offset=%d",
+	     u7d_calls,state->state,byte,state->rssi_len,state->dst_offset);
 
   // Parse out inline RSSI reports
   if (byte=='{') {
@@ -233,14 +235,13 @@ int upper7_decode(struct slip_decode_state *state,unsigned char byte)
       ||(state->dst_offset+7)>=OVERLAY_INTERFACE_RX_BUFFER_SIZE
       ||state->dst_offset<0)
     {
-      WARNF("state->dst_offset=%d, ->packet_length=%d, ->state=%d",
-	    state->dst_offset,state->packet_length,state->state);
+      WARNF("state=%p, state->dst_offset=%d, ->packet_length=%d, ->state=%d. State reset.",
+	    state,state->dst_offset,state->packet_length,state->state);
+      state->state=UPPER7_STATE_NOTINPACKET;
+      state->dst_offset=0;
+      state->packet_length=0;
+      RETURN(0);
     }
-  // Prevent buffer overruns
-  if (state->dst_offset+7>OVERLAY_INTERFACE_RX_BUFFER_SIZE) {
-    state=UPPER7_STATE_NOTINPACKET;
-    state->dst_offset=0;
-  }
   switch(state->state) {
   case UPPER7_STATE_NOTINPACKET: RETURN(0);
   case UPPER7_STATE_L1: state->packet_length=byte<<7; state->state++; RETURN(0);
@@ -262,6 +263,17 @@ int upper7_decode(struct slip_decode_state *state,unsigned char byte)
   case UPPER7_STATE_C4: state->crc|=byte<<(25-7-7-7); state->state++; RETURN(0);
   case UPPER7_STATE_C5: state->crc|=byte<<0; state->state++; RETURN(0);
   case UPPER7_STATE_D0:
+    if (state->packet_length>=OVERLAY_INTERFACE_RX_BUFFER_SIZE
+	||(state->dst_offset+7)>=OVERLAY_INTERFACE_RX_BUFFER_SIZE
+	||state->dst_offset<0)
+      {
+	WARNF("state->dst_offset=%d, ->packet_length=%d, ->state=%d. State reset (again).",
+	      state->dst_offset,state->packet_length,state->state);
+	state->state=UPPER7_STATE_NOTINPACKET;
+	state->dst_offset=0;
+	state->packet_length=0;
+	RETURN(0);
+      }
     state->dst[state->dst_offset]=byte<<1;   
     state->state++;
     RETURN(0);
