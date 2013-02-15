@@ -254,6 +254,11 @@ int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay
   if (interface->state!=INTERFACE_STATE_UP)
     return WHY("I can't send a probe if the interface is down.");
   
+  if (addr.sin_addr.s_addr==0)
+    return WHY("I can't send a probe to address 0.0.0.0");
+  if (addr.sin_port==0)
+    return WHY("I can't send a probe to port 0");
+  
   // never send unicast probes over a stream interface
   if (interface->socket_type==SOCK_STREAM)
     return 0;
