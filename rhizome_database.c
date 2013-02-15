@@ -287,6 +287,12 @@ int rhizome_opendb()
     verify_bundles();
     sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=2;");
   }
+  
+  if (version<3){
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "CREATE INDEX IF NOT EXISTS IDX_MANIFESTS_ID_VERSION ON MANIFESTS(id, version);");
+    sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "PRAGMA user_version=3;");
+  }
+  
   // TODO recreate tables with collate nocase on hex columns
   
   /* Future schema updates should be performed here. 
