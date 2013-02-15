@@ -858,4 +858,6 @@ uint32_t Crc32_ComputeBuf( uint32_t inCrc32, const void *buf,
 			  size_t bufLen );
 extern int last_radio_rssi;
 extern int last_radio_temperature;
+int rhizome_active_fetch_count();
+
 #endif // __SERVALD_SERVALD_H

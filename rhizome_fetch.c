@@ -137,6 +137,15 @@ struct rhizome_fetch_queue rhizome_fetch_queues[] = {
 
 #define NQUEUES	    NELS(rhizome_fetch_queues)
 
+int rhizome_active_fetch_count()
+{
+  int i,active=0;
+  for(i=0;i<NQUEUES;i++)
+    if (rhizome_fetch_queues[i].active.state!=RHIZOME_FETCH_FREE)
+      active++;
+  return active;
+}
+
 static struct sched_ent sched_activate = STRUCT_SCHED_ENT_UNUSED;
 static struct profile_total fetch_stats;
 
