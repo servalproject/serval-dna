@@ -162,10 +162,10 @@ int main(int argc, char **argv){
   struct pollfd fds[2];
 
   // bind for incoming directory updates
-  unsigned char srcsid[SID_SIZE];
-  if (overlay_mdp_getmyaddr(0,srcsid))
+  sid_t srcsid;
+  if (overlay_mdp_getmyaddr(0, &srcsid))
     return WHY("Could not get local address");
-  if (overlay_mdp_bind(srcsid,MDP_PORT_DIRECTORY))
+  if (overlay_mdp_bind(&srcsid, MDP_PORT_DIRECTORY))
     return WHY("Could not bind to MDP socket");
   
   fds[0].fd = STDIN_FILENO;

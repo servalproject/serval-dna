@@ -645,8 +645,8 @@ void cli_put_long(int64_t value, const char *delim);
 void cli_put_string(const char *value, const char *delim);
 void cli_put_hexvalue(const unsigned char *value, int length, const char *delim);
 
-int overlay_mdp_getmyaddr(int index,unsigned char *sid);
-int overlay_mdp_bind(unsigned char *localaddr,int port); 
+int overlay_mdp_getmyaddr(int index, sid_t *sid);
+int overlay_mdp_bind(const sid_t *localaddr, int port) ;
 int overlay_route_node_info(overlay_mdp_nodeinfo *node_info);
 int overlay_interface_register(char *name,
 			       struct in_addr addr,

@@ -496,7 +496,8 @@ int app_echo(const struct cli_parsed *parsed, void *context)
   return 0;
 }
 
-void lookup_send_request(unsigned char *srcsid, int srcport, unsigned char *dstsid, const char *did){
+void lookup_send_request(const sid_t *srcsid, int srcport, const sid_t *dstsid, const char *did)
+{
   int i;
   overlay_mdp_frame mdp;
   bzero(&mdp,sizeof(mdp));
@@ -504,14 +505,14 @@ void lookup_send_request(unsigned char *srcsid, int srcport, unsigned char *dsts
   
   /* set source address to a local address, and pick a random port */
   mdp.out.src.port=srcport;
-  bcopy(srcsid,mdp.out.src.sid,SID_SIZE);
+  bcopy(srcsid->binary, mdp.out.src.sid, SID_SIZE);
   
   /* Send to destination address and DNA lookup port */
   
-  if (dstsid){
+  if (dstsid) {
     /* Send an encrypted unicast packet */
     mdp.packetTypeAndFlags=MDP_TX;
-    bcopy(dstsid, mdp.out.dst.sid, SID_SIZE);
+    bcopy(dstsid->binary, mdp.out.dst.sid, SID_SIZE);
   }else{
     /* Send a broadcast packet, flooding across the local mesh network */
     mdp.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT;
@@ -566,10 +567,10 @@ int app_dna_lookup(const struct cli_parsed *parsed, void *context)
   }
   
   /* Bind to MDP socket and await confirmation */
-  unsigned char srcsid[SID_SIZE];
+  sid_t srcsid;
   int port=32768+(random()&32767);
-  if (overlay_mdp_getmyaddr(0,srcsid)) return WHY("Could not get local address");
-  if (overlay_mdp_bind(srcsid,port)) return WHY("Could not bind to MDP socket");
+  if (overlay_mdp_getmyaddr(0, &srcsid)) return WHY("Could not get local address");
+  if (overlay_mdp_bind(&srcsid, port)) return WHY("Could not bind to MDP socket");
 
   /* use MDP to send the lookup request to MDP_PORT_DNALOOKUP, and wait for
      replies. */
@@ -586,7 +587,7 @@ int app_dna_lookup(const struct cli_parsed *parsed, void *context)
       if ((last_tx+interval)<now)
 	{
 
-	  lookup_send_request(srcsid, port, NULL, did);
+	  lookup_send_request(&srcsid, port, NULL, did);
 
 	  last_tx=now;
 	  interval+=interval>>1;
@@ -922,8 +923,8 @@ int app_mdp_ping(const struct cli_parsed *parsed, void *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
-  const char *sid, *count;
-  if (cli_arg(parsed, "SID|broadcast", &sid, str_is_subscriber_id, "broadcast") == -1)
+  const char *sidhex, *count;
+  if (cli_arg(parsed, "SID|broadcast", &sidhex, str_is_subscriber_id, "broadcast") == -1)
     return -1;
   if (cli_arg(parsed, "count", &count, NULL, "0") == -1)
     return -1;
@@ -935,30 +936,25 @@ int app_mdp_ping(const struct cli_parsed *parsed, void *context)
   overlay_mdp_frame mdp;
   bzero(&mdp, sizeof(overlay_mdp_frame));
   /* Bind to MDP socket and await confirmation */
-  unsigned char srcsid[SID_SIZE];
+  sid_t srcsid;
   int port=32768+(random()&32767);
-  if (overlay_mdp_getmyaddr(0,srcsid)) return WHY("Could not get local address");
-  if (overlay_mdp_bind(srcsid,port)) return WHY("Could not bind to MDP socket");
+  if (overlay_mdp_getmyaddr(0, &srcsid)) return WHY("Could not get local address");
+  if (overlay_mdp_bind(&srcsid, port)) return WHY("Could not bind to MDP socket");
 
   /* First sequence number in the echo frames */
   unsigned int firstSeq=random();
   unsigned int sequence_number=firstSeq;
 
   /* Get SID that we want to ping.
-     XXX - allow lookup of SID prefixes and telephone numbers
+     TODO - allow lookup of SID prefixes and telephone numbers
      (that would require MDP lookup of phone numbers, which doesn't yet occur) */
-  int i;
-  int broadcast=0;
-  unsigned char ping_sid[SID_SIZE];
-  if (strcasecmp(sid,"broadcast")) {
-    stowSid(ping_sid,0,sid);
-  } else {
-    for(i=0;i<SID_SIZE;i++) ping_sid[i]=0xff;
-    broadcast=1;
-  }
+  sid_t ping_sid;
+  if (str_to_sid_t(&ping_sid, sidhex) == -1)
+    return WHY("str_to_sid_t() failed");
+  int broadcast = is_sid_broadcast(ping_sid.binary);
 
-  /* XXX Eventually we should try to resolve SID to phone number and vice versa */
-  printf("MDP PING %s (%s): 12 data bytes\n", alloca_tohex_sid(ping_sid), alloca_tohex_sid(ping_sid));
+  /* TODO Eventually we should try to resolve SID to phone number and vice versa */
+  printf("MDP PING %s (%s): 12 data bytes\n", alloca_tohex_sid_t(ping_sid), alloca_tohex_sid_t(ping_sid));
 
   time_ms_t rx_mintime=-1;
   time_ms_t rx_maxtime=-1;
@@ -966,15 +962,15 @@ int app_mdp_ping(const struct cli_parsed *parsed, void *context)
   time_ms_t rx_times[1024];
   long long rx_count=0,tx_count=0;
 
-  if (broadcast) 
+  if (broadcast)
     WHY("WARNING: broadcast ping packets will not be encryped.");
   while(icount==0 || tx_count<icount) {
     /* Now send the ping packets */
     mdp.packetTypeAndFlags=MDP_TX;
     if (broadcast) mdp.packetTypeAndFlags|=MDP_NOCRYPT;
     mdp.out.src.port=port;
-    bcopy(srcsid,mdp.out.src.sid,SID_SIZE);
-    bcopy(ping_sid,mdp.out.dst.sid,SID_SIZE);
+    bcopy(srcsid.binary, mdp.out.src.sid, SID_SIZE);
+    bcopy(ping_sid.binary, mdp.out.dst.sid, SID_SIZE);
     mdp.out.queue=OQ_MESH_MANAGEMENT;
     /* Set port to well known echo port */
     mdp.out.dst.port=MDP_PORT_ECHO;
@@ -1055,7 +1051,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, void *context)
     rx_stddev=sqrtf(rx_stddev);
 
     /* XXX Report final statistics before going */
-    printf("--- %s ping statistics ---\n", alloca_tohex_sid(ping_sid));
+    printf("--- %s ping statistics ---\n", alloca_tohex_sid_t(ping_sid));
     printf("%lld packets transmitted, %lld packets received, %3.1f%% packet loss\n",
 	   tx_count,rx_count,tx_count?(tx_count-rx_count)*100.0/tx_count:0);
     printf("round-trip min/avg/max/stddev%s = %lld/%.3f/%lld/%.3f ms\n",
@@ -1206,7 +1202,7 @@ int app_rhizome_add_file(const struct cli_parsed *parsed, void *context)
     return -1;
   
   sid_t authorSid;
-  if (authorSidHex[0] && fromhexstr(authorSid.binary, authorSidHex, SID_SIZE) == -1)
+  if (authorSidHex[0] && str_to_sid_t(&authorSid, authorSidHex) == -1)
     return WHYF("invalid author_sid: %s", authorSidHex);
   rhizome_bk_t bsk;
   
@@ -2003,22 +1999,23 @@ int app_reverse_lookup(const struct cli_parsed *parsed, void *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
-  const char *sid, *delay;
-  if (cli_arg(parsed, "sid", &sid, str_is_subscriber_id, "") == -1)
+  const char *sidhex, *delay;
+  if (cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, "") == -1)
     return -1;
   if (cli_arg(parsed, "timeout", &delay, NULL, "3000") == -1)
     return -1;
-  
+
   int port=32768+(random()&0xffff);
-  
-  unsigned char srcsid[SID_SIZE];
-  unsigned char dstsid[SID_SIZE];
-  
-  stowSid(dstsid,0,(char *)sid);
-  
-  if (overlay_mdp_getmyaddr(0,srcsid))
+
+  sid_t srcsid;
+  sid_t dstsid;
+
+  if (str_to_sid_t(&dstsid, sidhex) == -1)
+    return WHY("str_to_sid_t() failed");
+
+  if (overlay_mdp_getmyaddr(0, &srcsid))
     return WHY("Unable to get my address");
-  if (overlay_mdp_bind(srcsid,port))
+  if (overlay_mdp_bind(&srcsid, port))
     return WHY("Unable to bind port");
 
   time_ms_t now = gettime_ms();
@@ -2026,12 +2023,12 @@ int app_reverse_lookup(const struct cli_parsed *parsed, void *context)
   time_ms_t next_send = now;
   overlay_mdp_frame mdp_reply;
   
-  while(now < timeout){
+  while (now < timeout){
     now=gettime_ms();
     
     if (now >= next_send){
       /* Send a unicast packet to this node, asking for any did */
-      lookup_send_request(srcsid, port, dstsid, "");
+      lookup_send_request(&srcsid, port, &dstsid, "");
       next_send+=125;
       continue;
     }
@@ -2060,7 +2057,7 @@ int app_reverse_lookup(const struct cli_parsed *parsed, void *context)
     }
     
     // we might receive a late response from an ealier request on the same socket, ignore it
-    if (memcmp(mdp_reply.in.src.sid, dstsid, SID_SIZE)){
+    if (memcmp(mdp_reply.in.src.sid, dstsid.binary, sizeof dstsid.binary)){
       WHYF("Unexpected result from SID %s", alloca_tohex_sid(mdp_reply.in.src.sid));
       continue;
     }
@@ -2081,6 +2078,10 @@ int app_reverse_lookup(const struct cli_parsed *parsed, void *context)
       }
       
       /* Got a good DNA reply, copy it into place and stop polling */
+      cli_puts("sid");
+      cli_delim(":");
+      cli_puts(alloca_tohex_sid_t(dstsid));
+      cli_delim("\n");
       cli_puts("did");
       cli_delim(":");
       cli_puts(did);
@@ -2089,10 +2090,10 @@ int app_reverse_lookup(const struct cli_parsed *parsed, void *context)
       cli_delim(":");
       cli_puts(name);
       cli_delim("\n");
-      break;
+      return 0;
     }
   }
-  return 0;
+  return 1;
 }
 
 int app_network_scan(const struct cli_parsed *parsed, void *context)

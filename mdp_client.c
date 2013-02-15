@@ -232,11 +232,11 @@ int overlay_mdp_recv(overlay_mdp_frame *mdp, int port, int *ttl)
 }
 
 // send a request to servald deamon to add a port binding
-int overlay_mdp_bind(unsigned char *localaddr,int port) 
+int overlay_mdp_bind(const sid_t *localaddr, int port) 
 {
   overlay_mdp_frame mdp;
   mdp.packetTypeAndFlags=MDP_BIND|MDP_FORCE;
-  bcopy(localaddr,mdp.bind.sid,SID_SIZE);
+  bcopy(localaddr->binary, mdp.bind.sid, SID_SIZE);
   mdp.bind.port=port;
   int result=overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000);
   if (result) {
@@ -250,7 +250,7 @@ int overlay_mdp_bind(unsigned char *localaddr,int port)
   return 0;
 }
 
-int overlay_mdp_getmyaddr(int index,unsigned char *sid)
+int overlay_mdp_getmyaddr(int index, sid_t *sid)
 {
   overlay_mdp_frame a;
   memset(&a, 0, sizeof(a));
@@ -269,7 +269,7 @@ int overlay_mdp_getmyaddr(int index,unsigned char *sid)
   if ((a.packetTypeAndFlags&MDP_TYPE_MASK)!=MDP_ADDRLIST)
     return WHY("MDP Server returned something other than an address list");
   if (0) DEBUGF("local addr 0 = %s",alloca_tohex_sid(a.addrlist.sids[0]));
-  bcopy(&a.addrlist.sids[0][0],sid,SID_SIZE);
+  bcopy(&a.addrlist.sids[0][0], sid->binary, sizeof sid->binary);
   return 0;
 }
 
