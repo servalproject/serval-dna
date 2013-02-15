@@ -616,10 +616,11 @@ static void interface_read_stream(struct overlay_interface *interface){
   while (state->src_offset < state->src_size) {
     int ret = slip_decode(state);
     if (ret==1){
-      packetOkOverlay(interface, state->dst, state->packet_length, -1, NULL, -1);
-      if (config.debug.rejecteddata) {
-	WHYF("Malformed packet (length = %d)",state->packet_length);
-	dump("the malformed packet",state->dst,state->packet_length);
+      if (packetOkOverlay(interface, state->dst, state->packet_length, -1, NULL, -1)) {
+	if (config.debug.rejecteddata) {
+	  WHYF("Malformed packet (length = %d)",state->packet_length);
+	  dump("the malformed packet",state->dst,state->packet_length);
+	}
       }
       state->dst_offset=0;
     }
