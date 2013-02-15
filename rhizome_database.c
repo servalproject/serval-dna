@@ -1474,6 +1474,7 @@ int rhizome_is_bar_interesting(unsigned char *bar){
   long long end_time=gettime_ms();
   lookup_time=end_time-start_time;
   last_bar_lookup=end_time;
+  if (lookup_time>50) WARNF("Looking up a BAR took %lldms",lookup_time);
 
   RETURN(ret);
 }
