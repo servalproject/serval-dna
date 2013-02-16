@@ -571,6 +571,7 @@ static void interface_read_file(struct overlay_interface *interface)
     ssize_t nread = read(interface->alarm.poll.fd, &packet, sizeof packet);
     if (nread == -1){
       WHY_perror("read");
+      OUT();
       return;
     }
     
@@ -613,6 +614,7 @@ static void interface_read_file(struct overlay_interface *interface)
       interface->alarm.deadline = interface->alarm.alarm + 10000;
     }
   }
+  OUT();
 }
 
 static void interface_read_stream(struct overlay_interface *interface){

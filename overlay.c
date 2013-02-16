@@ -90,7 +90,7 @@ int overlayServerMode()
      HLR for DNA lookups, even in non-overlay mode. */
   keyring = keyring_open_instance();
   if (!keyring)
-    return WHY("Could not open serval keyring file.");
+    RETURN(WHY("Could not open serval keyring file."));
   keyring_enter_pin(keyring, "");
   /* put initial identity in if we don't have any visible */
   keyring_seed(keyring);
@@ -163,4 +163,5 @@ schedule(&_sched_##X); }
   while(fd_poll());
 
   RETURN(0);
+  OUT();
 }

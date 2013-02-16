@@ -111,6 +111,7 @@ int rhizome_manifest_to_bar(rhizome_manifest *m,unsigned char *bar)
   else bar[RHIZOME_BAR_TTL_OFFSET]=0;
   
   RETURN(0);
+  OUT();
 }
 
 int64_t rhizome_bar_version(unsigned char *bar)
@@ -417,4 +418,5 @@ int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long
 
   sqlite_set_tracefunc(oldfunc);
   RETURN(0);
+  OUT();
 }

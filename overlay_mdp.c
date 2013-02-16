@@ -360,6 +360,7 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
     }    
   }
   RETURN(WHY("Failed to decode mdp payload"));
+  OUT();
 }
 
 int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now)
@@ -391,6 +392,7 @@ int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now)
 
   /* and do something with it! */
   RETURN(overlay_saw_mdp_frame(f, &mdp,now));
+  OUT();
 }
 
 int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp)
@@ -474,6 +476,7 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
   }
 
   RETURN(0);
+  OUT();
 }
 
 int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const unsigned char *resolved_sid, const char *uri, const char *did, const char *name)
@@ -777,6 +780,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   if (overlay_payload_enqueue(frame))
     op_free(frame);
   RETURN(0);
+  OUT();
 }
 
 static int search_subscribers(struct subscriber *subscriber, void *context){

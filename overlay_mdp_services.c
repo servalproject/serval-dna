@@ -137,6 +137,7 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
   rhizome_database_blob_close(blob); blob=NULL;
 
   RETURN(-1);
+  OUT();
 }
 
 int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
@@ -174,8 +175,8 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
     break;
   }
 
-
   RETURN(-1);
+  OUT();
 }
 
 int overlay_mdp_service_dnalookup(overlay_mdp_frame *mdp)

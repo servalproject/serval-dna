@@ -204,6 +204,7 @@ int cli_invoke(const struct cli_parsed *parsed, void *context)
   IN();
   int ret = parsed->command->function(parsed, context);
   RETURN(ret);
+  OUT();
 }
 
 int _cli_arg(struct __sourceloc __whence, const struct cli_parsed *parsed, char *label, const char **dst, int (*validator)(const char *arg), char *defaultvalue)

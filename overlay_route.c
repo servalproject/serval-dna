@@ -627,6 +627,7 @@ int overlay_route_recalc_neighbour_metrics(struct overlay_neighbour *n, time_ms_
     overlay_route_recalc_node_metrics(n->node, now);
   
   RETURN(0);
+  OUT();
 }
 
 /* 
@@ -667,6 +668,7 @@ int overlay_route_saw_selfannounce_ack(struct overlay_frame *f,long long now)
   overlay_route_node_can_hear_me(f->source,iface,s1,s2,now);
   
   RETURN(0);
+  OUT();
 }
 
 /* if to and via are the same, then this is evidence that we can get to the
@@ -750,6 +752,7 @@ int overlay_route_record_link(time_ms_t now, struct subscriber *to,
     overlay_route_dump();
   
   RETURN(0);
+  OUT();
 }
 
 int node_dump(struct subscriber *subscriber, void *context){

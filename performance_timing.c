@@ -198,6 +198,10 @@ void dump_stack()
 
 int fd_func_enter(struct __sourceloc __whence, struct call_stats *this_call)
 {
+  if (config.debug.profiling)
+    DEBUGF("%s called from %s() %s:%d",
+	   __FUNCTION__,__whence.function,__whence.file,__whence.line); 
+ 
   this_call->enter_time=gettime_ms();
   this_call->child_time=0;
   this_call->prev = current_call;
@@ -211,6 +215,10 @@ int fd_func_exit(struct __sourceloc __whence, struct call_stats *this_call)
   // probably points to somewhere on the stack (see the IN() macro) that has since been overwritten,
   // so no sense in trying to print its contents in a diagnostic message; that would just cause
   // a SEGV.
+  if (config.debug.profiling)
+    DEBUGF("%s called from %s() %s:%d",
+	   __FUNCTION__,__whence.function,__whence.file,__whence.line); 
+
   if (current_call != this_call)
     FATAL("performance timing stack trace corrupted");
   

@@ -301,6 +301,7 @@ int rhizome_opendb()
   
   // We can't delete a file that is being transferred in another process at this very moment...
   RETURN(0);
+  OUT();
 }
 
 int rhizome_close_db()
@@ -322,6 +323,7 @@ int rhizome_close_db()
   }
   rhizome_db=NULL;
   RETURN(0);
+  OUT();
 }
 
 /* SQL query retry logic.
@@ -710,6 +712,7 @@ rhizome_blob_handle *rhizome_database_open_blob_bybid(const char *id,
     RETURN(NULL);
   }
   RETURN(rhizome_database_open_blob_byrowid(row_id,writeP));
+  OUT();
 }
 
 rhizome_blob_handle *rhizome_database_open_blob_byrowid(int row_id,int writeP)
@@ -750,6 +753,7 @@ rhizome_blob_handle *rhizome_database_open_blob_byrowid(int row_id,int writeP)
   // Couldn't open, so fail 
   free(blob);
   RETURN(NULL);
+  OUT();
 }
 
 int rhizome_database_blob_close(rhizome_blob_handle *blob)
@@ -774,6 +778,7 @@ int rhizome_database_blob_read(rhizome_blob_handle *blob,unsigned char *out,
     if (r==count) RETURN(SQLITE_OK);
   }
   RETURN(-1);
+  OUT();
 }
 
 int rhizome_database_blob_write(rhizome_blob_handle *blob,unsigned char *buffer,
@@ -792,6 +797,7 @@ int rhizome_database_blob_write(rhizome_blob_handle *blob,unsigned char *buffer,
     if (r==count) RETURN(SQLITE_OK);
   }
   RETURN(-1);
+  OUT();
 }
 
 const char *rhizome_database_blob_errmsg(rhizome_blob_handle *blob)
@@ -1271,6 +1277,7 @@ int rhizome_list_manifests(const char *service, const char *name,
 cleanup:
   sqlite3_finalize(statement);
   RETURN(ret);
+  OUT();
 }
 
 int64_t rhizome_database_create_blob_for(const char *filehashhex_or_tempid,
@@ -1348,6 +1355,7 @@ int64_t rhizome_database_create_blob_for(const char *filehashhex_or_tempid,
   }
   DEBUGF("Got rowid %lld for %s", rowid, filehashhex_or_tempid);
   RETURN(rowid);
+  OUT();
 }
 
 void rhizome_bytes_to_hex_upper(unsigned const char *in, char *out, int byteCount)
@@ -1657,4 +1665,5 @@ int rhizome_is_bar_interesting(unsigned char *bar){
   if (lookup_time>50) WARNF("Looking up a BAR took %lldms",lookup_time);
 
   RETURN(ret);
+  OUT();
 }

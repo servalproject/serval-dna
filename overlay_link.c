@@ -179,6 +179,7 @@ int resolve_name(const char *name, struct in_addr *addr){
   
   freeaddrinfo(addresses);
   RETURN(ret);
+  OUT();
 }
 
 // load a unicast address from configuration
@@ -242,6 +243,7 @@ overlay_mdp_service_probe(overlay_mdp_frame *mdp)
   peer->address.sin_port = probe.addr.sin_port;
   set_reachable(peer, REACHABLE_UNICAST | (peer->reachable & REACHABLE_DIRECT));
   RETURN(0);
+  OUT();
 }
 
 int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay_interface *interface, int queue){

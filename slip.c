@@ -316,7 +316,7 @@ int upper7_decode(struct slip_decode_state *state,unsigned char byte)
     state->state=UPPER7_STATE_NOTINPACKET;
     RETURN(0);
   }
-
+  OUT();
 }
 
 /* state->src and state->src_size contain the freshly read bytes

@@ -489,6 +489,7 @@ int http_header_complete(const char *buf, size_t len, size_t read_since_last_cal
     }
   }
   RETURN(count == 2);
+  OUT();
 }
 
 int rhizome_direct_parse_http_request(rhizome_http_request *r);

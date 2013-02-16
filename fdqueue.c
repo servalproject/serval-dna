@@ -311,4 +311,5 @@ int fd_poll()
       }
   }
   RETURN(1);
+  OUT();
 }

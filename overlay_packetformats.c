@@ -106,6 +106,7 @@ int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, s
       RETURN(WHYF("Support for f->type=0x%x not implemented",f->type));
   }
   RETURN(0);
+  OUT();
 }
 
 // duplicate the frame and queue it
@@ -136,6 +137,7 @@ int overlay_forward_payload(struct overlay_frame *f){
   }
   
   RETURN(0);
+  OUT();
 }
 
 // Parse the mdp envelope header
@@ -236,6 +238,7 @@ int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *f
     forward=process=0;
   }
   RETURN(forward|process);
+  OUT();
 }
 
 int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface *interface, 
@@ -307,6 +310,7 @@ int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface
       context->addr=interface->broadcast_address;
   }
   RETURN(0);
+  OUT();
 }
 
 int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,
@@ -471,4 +475,5 @@ end:
   ob_free(b);
   
   RETURN(ret);
+  OUT();
 }

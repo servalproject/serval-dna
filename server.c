@@ -139,6 +139,7 @@ int server(char *backing_file)
   overlayServerMode();
 
   RETURN(0);
+  OUT();
 }
 
 /* Called periodically by the server process in its main loop.

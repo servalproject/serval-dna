@@ -712,7 +712,7 @@ int app_server_start(const struct cli_parsed *parsed, void *context)
       RETURN(WHY("Must supply <exec path> argument when invoked via JNI"));
 #endif
     if ((tmp = malloc(PATH_MAX)) == NULL)
-	return WHY("Out of memory");
+      RETURN(WHY("Out of memory"));
   if (get_self_executable_path(tmp, PATH_MAX) == -1)
     RETURN(WHY("unable to determine own executable name"));
   execpath = tmp;
@@ -828,6 +828,7 @@ int app_server_start(const struct cli_parsed *parsed, void *context)
     }
   }
   RETURN(ret);
+  OUT();
 }
 
 int app_server_stop(const struct cli_parsed *parsed, void *context)

@@ -541,6 +541,7 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
     RETURN(1);
   }
   RETURN(0);
+  OUT();
 }
 
 // when the queue timer elapses, send a packet

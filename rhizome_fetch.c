@@ -611,6 +611,7 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
   slot->state=RHIZOME_FETCH_RXFILEMDP;
   rhizome_fetch_switch_to_mdp(slot);
   RETURN(0);
+  OUT();
 }
 
 /* Start fetching a bundle's payload ready for importing.
@@ -1044,6 +1045,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
   }
 
   RETURN(0);
+  OUT();
 }
 
 static int rhizome_fetch_close(struct rhizome_fetch_slot *slot)
@@ -1170,6 +1172,7 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   rhizome_fetch_mdp_touch_timeout(slot);
   
   RETURN(0);
+  OUT();
 }
 
 static int rhizome_fetch_mdp_requestmanifest(struct rhizome_fetch_slot *slot)
@@ -1278,6 +1281,7 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
   }
 
   RETURN(0);
+  OUT();
 }
 
 void rhizome_fetch_write(struct rhizome_fetch_slot *slot)
@@ -1503,6 +1507,7 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 
   // slot is still open
   RETURN(0);
+  OUT();
 }
 
 int rhizome_received_content(unsigned char *bidprefix,
@@ -1541,6 +1546,7 @@ int rhizome_received_content(unsigned char *bidprefix,
   }  
 
   RETURN(-1);
+  OUT();
 }
 
 void rhizome_fetch_poll(struct sched_ent *alarm)
@@ -1717,4 +1723,5 @@ int unpack_http_response(char *response, struct http_response_parts *parts)
   ++p; // skip '\n' at end of blank line
   parts->content_start = p;
   RETURN(0);
+  OUT();
 }

@@ -778,7 +778,7 @@ int keyring_enter_pin(keyring_file *k, const char *pin)
   
   /* Tell the caller how many identities we found */
   RETURN(identitiesFound);
-  
+  OUT();
 }
 
 /* Create a new identity in the specified context (which supplies the keyring pin)
@@ -1146,6 +1146,7 @@ unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
       }
 
   RETURNNULL(WHYNULL("Identity lacks SAS"));
+  OUT();
 }
 
 static int keyring_store_sas(overlay_mdp_frame *req){
@@ -1341,6 +1342,7 @@ keyring_file *keyring_open_instance()
   if ((k = keyring_open(keyringFile)) == NULL)
     RETURN(NULL);
   RETURN(k);
+  OUT();
 }
 
 keyring_file *keyring_open_instance_cli(const struct cli_parsed *parsed)
@@ -1360,6 +1362,7 @@ keyring_file *keyring_open_instance_cli(const struct cli_parsed *parsed)
     if (strn_str_cmp(parsed->labelv[i].label, parsed->labelv[i].len, "--entry-pin") == 0)
       keyring_enter_pin(k, parsed->labelv[i].text);
   RETURN(k);
+  OUT();
 }
 
 /* If no identities, create an initial identity with a phone number.
@@ -1454,4 +1457,5 @@ unsigned char *keyring_get_nm_bytes(unsigned char *known_sid, unsigned char *unk
 						 ->keypairs[kp]->private_key);
 						 
   RETURN(nm_cache[i].nm_bytes);
+  OUT();
 }

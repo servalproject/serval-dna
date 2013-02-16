@@ -313,6 +313,7 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
   }
 
   RETURN(0);
+  OUT();
 }
 
 int rhizome_hash_file(rhizome_manifest *m,const char *filename,char *hash_out)
@@ -686,6 +687,7 @@ int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout)
   ret=rhizome_add_manifest(m, 255 /* TTL */);
   
   RETURN(ret);
+  OUT();
 }
 
 int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSid, rhizome_bk_t *bsk){

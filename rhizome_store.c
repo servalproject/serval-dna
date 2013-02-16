@@ -98,6 +98,7 @@ int rhizome_flush(struct rhizome_write *write){
     DEBUGF("Written %lld of %lld", write->file_offset, write->file_length);
   write->data_size=0;
   RETURN(0);
+  OUT();
 }
 
 /* Expects file to be at least file_length in size */
