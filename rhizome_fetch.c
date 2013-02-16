@@ -1039,7 +1039,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
     sched_activate.function = rhizome_start_next_queued_fetches;
     sched_activate.stats = &rsnqf_stats;
     sched_activate.alarm = gettime_ms() + rhizome_fetch_delay_ms();
-    sched_activate.deadline = sched_activate.alarm + 5000;
+    sched_activate.deadline = sched_activate.alarm + RHIZOME_IDLE_TIMEOUT;
     schedule(&sched_activate);
   }
 
@@ -1254,7 +1254,7 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
     */
     slot->file_len=slot->manifest->fileLength;
 
-    slot->mdpIdleTimeout=5000; // give up if nothing received for 5 seconds
+    slot->mdpIdleTimeout=RHIZOME_IDLE_TIMEOUT; // give up if nothing received for 5 seconds
     slot->mdpRXBitmap=0x00000000; // no blocks received yet
     slot->mdpRXBlockLength=1024;
     rhizome_fetch_mdp_requestblocks(slot);    
@@ -1262,7 +1262,7 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
     /* We are requesting a manifest, which is stateless, except that we eventually
        give up. All we need to do now is send the request, and set our alarm to
        try again in case we haven't heard anything back. */
-    slot->mdpIdleTimeout=2000; // only try for two seconds
+    slot->mdpIdleTimeout=RHIZOME_IDLE_TIMEOUT;
     rhizome_fetch_mdp_requestmanifest(slot);
   }
 
