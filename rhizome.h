@@ -460,8 +460,8 @@ struct http_response {
 int rhizome_received_content(unsigned char *bidprefix,uint64_t version, 
 			     uint64_t offset,int count,unsigned char *bytes,
 			     int type);
-int64_t rhizome_database_create_blob_for(const char *hashhex,int64_t fileLength,
-					 int priority);
+int64_t rhizome_database_create_blob_for(const char *filehashhex_or_tempid,
+					 int64_t fileLength,int priority);
 int rhizome_server_set_response(rhizome_http_request *r, const struct http_response *h);
 int rhizome_server_free_http_request(rhizome_http_request *r);
 int rhizome_server_http_send_bytes(rhizome_http_request *r);
@@ -658,5 +658,22 @@ int rhizome_open_read(struct rhizome_read *read, const char *fileid, int hash);
 int rhizome_read(struct rhizome_read *read, unsigned char *buffer, int buffer_length);
 int rhizome_extract_file(rhizome_manifest *m, const char *filepath, rhizome_bk_t *bsk);
 int rhizome_dump_file(const char *id, const char *filepath, int64_t *length);
+char *rhizome_database_get_blob_filename(int64_t fileblob_rowid);
+
+typedef struct rhizome_blob_handle {
+  uint64_t blob_bytes;
+  sqlite3_blob *sqlite_blob;
+  int fd_blob;
+} rhizome_blob_handle;
+rhizome_blob_handle *rhizome_database_open_blob_bybid(const char *id,
+						      uint64_t version,
+						      int writeP);
+rhizome_blob_handle *rhizome_database_open_blob_byrowid(int row_id,int writeP);
+int rhizome_database_blob_close(rhizome_blob_handle *blob);
+int rhizome_database_blob_read(rhizome_blob_handle *blob,unsigned char *buffer,
+			       uint64_t count,uint64_t offset);
+int rhizome_database_blob_write(rhizome_blob_handle *blob,unsigned char *buffer,
+			       uint64_t count,uint64_t offset);
+const char *rhizome_database_blob_errmsg(rhizome_blob_handle *blob);
 
 #endif //__SERVALDNA__RHIZOME_H

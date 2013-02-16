@@ -885,6 +885,8 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	DEBUGF("bundle file hash = '%s'",hash);
 	long long filesize = rhizome_manifest_get_ll(m, "filesize");
 	DEBUGF("file size = %lld",filesize);
+	long long version = rhizome_manifest_get_ll(m, "version");
+	DEBUGF("version = %lld",version);
 
 	/* We now have everything we need to compose the POST request and send it.
 	 */
@@ -947,13 +949,9 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	}
 
 	/* send file contents now */
-	long long rowid = -1;
-	sqlite3_blob *blob=NULL;
-	sqlite_exec_int64(&rowid, "select rowid from fileblobs where id='%s';", hash);
-	DEBUGF("Reading from rowid #%lld filehash='%s'",rowid,hash?hash:"(null)");
-	if (rowid >= 0 && sqlite3_blob_open(rhizome_db, "main", "fileblobs", "data", 
-					    rowid, 0, &blob) != SQLITE_OK)
-	  goto closeit;
+	rhizome_blob_handle *blob=rhizome_database_open_blob_bybid(id,version,
+								   0 /* read */);
+	if (!blob) goto closeit;
 	int i;
 	for(i=0;i<filesize;)
 	  {
@@ -961,12 +959,12 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	    if (filesize-i<count) count=filesize-i;
 	    unsigned char buffer[4096];
 	    DEBUGF("reading %d bytes @ %d from blob",count,i);
-	    int sr=sqlite3_blob_read(blob,buffer,count,i);
+	    int sr=rhizome_database_blob_read(blob,buffer,count,i);
 	    if (sr==SQLITE_OK||sr==SQLITE_DONE) {
 	      count=write(sock,buffer,count);
 	      if (count<0) {
 		WHY_perror("write");
-		sqlite3_blob_close(blob);
+		rhizome_database_blob_close(blob);
 		goto closeit;
 	      } else { 
 		i+=count;
@@ -974,12 +972,12 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	      }
 	    } else {
 	      WHYF("sqlite error #%d occurred reading from the blob: %s",sr, sqlite3_errmsg(rhizome_db));
-	      sqlite3_blob_close(blob);
+	      rhizome_database_blob_close(blob);
 	      goto closeit;
 	    }
 	  }
-	sqlite3_blob_close(blob);
-
+	rhizome_database_blob_close(blob);      
+      
 	/* Send final mime boundary */
 	len=snprintf(buffer,8192,"\r\n--%s--\r\n",boundary);
 	sent=0;

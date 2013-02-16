@@ -27,69 +27,8 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
     write->id_known=0;
   }
   
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  
-  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") != SQLITE_OK)
-    return WHY("Failed to begin transaction");
-  
-  /* INSERT INTO FILES(id as text, data blob, length integer, highestpriority integer).
-   BUT, we have to do this incrementally so that we can handle blobs larger than available memory.
-   This is possible using:
-   int sqlite3_bind_zeroblob(sqlite3_stmt*, int, int n);
-   That binds an all zeroes blob to a field.  We can then populate the data by
-   opening a handle to the blob using:
-   int sqlite3_blob_write(sqlite3_blob *, const void *z, int n, int iOffset);
-   */
+  write->blob_rowid=rhizome_database_create_blob_for(write->id,file_length,priority);
 
-  sqlite3_stmt *statement = NULL;
-  int ret=sqlite_exec_void_retry(&retry,
-	"INSERT OR REPLACE INTO FILES(id,length,highestpriority,datavalid,inserttime) VALUES('%s',%lld,%d,0,%lld);",
-	write->id, (long long)file_length, priority, (long long)gettime_ms());
-  if (ret!=SQLITE_OK) {
-    WHYF("Failed to insert into files: %s", sqlite3_errmsg(rhizome_db));
-    goto insert_row_fail;
-  }
-
-  statement = sqlite_prepare(&retry,"INSERT OR REPLACE INTO FILEBLOBS(id,data) VALUES('%s',?)",write->id);
-  if (!statement) {
-    WHYF("Failed to insert into fileblobs: %s", sqlite3_errmsg(rhizome_db));
-    goto insert_row_fail;
-  }
-
-  /* Bind appropriate sized zero-filled blob to data field */
-  if (sqlite3_bind_zeroblob(statement, 1, file_length) != SQLITE_OK) {
-    WHYF("sqlite3_bind_zeroblob() failed: %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));
-    goto insert_row_fail;
-  }
-
-  /* Do actual insert, and abort if it fails */
-  int rowcount = 0;
-  int stepcode;
-  while ((stepcode = _sqlite_step_retry(__WHENCE__, LOG_LEVEL_ERROR, &retry, statement)) == SQLITE_ROW)
-    ++rowcount;
-  if (rowcount)
-    WARNF("void query unexpectedly returned %d row%s", rowcount, rowcount == 1 ? "" : "s");
-
-  if (!sqlite_code_ok(stepcode)){
-insert_row_fail:
-    WHYF("Failed to insert row for fileid=%s", write->id);
-    if (statement) sqlite3_finalize(statement);
-    sqlite_exec_void_retry(&retry, "ROLLBACK;");
-    return -1;
-  }
-
-  sqlite3_finalize(statement);
-  statement=NULL;
-
-  /* Get rowid for inserted row, so that we can modify the blob */
-  write->blob_rowid = sqlite3_last_insert_rowid(rhizome_db);
-  if (config.debug.rhizome_rx)
-    DEBUGF("Got rowid %lld for %s", write->blob_rowid, write->id);
-  
-  if (sqlite_exec_void_retry(&retry, "COMMIT;")!=SQLITE_OK){
-    return WHYF("Failed to commit transaction: %s", sqlite3_errmsg(rhizome_db));
-  }
-  
   write->file_length = file_length;
   write->file_offset = 0;
   SHA512_Init(&write->sha512_context);
@@ -105,45 +44,38 @@ insert_row_fail:
 
 /* Write write->buffer into the database blob */
 int rhizome_flush(struct rhizome_write *write){
+  IN();
   /* Just in case we're reading in a file that is still being written to. */
   if (write->file_offset + write->data_size > write->file_length)
-    return WHY("Too much content supplied");
+    RETURN(WHY("Too much content supplied"));
   
   if (write->data_size<=0)
-    return WHY("No content supplied");
+    RETURN(WHY("No content supplied"));
   
   if (write->crypt){
     if (rhizome_crypt_xor_block(write->buffer, write->data_size, write->file_offset, write->key, write->nonce))
-      return -1;
+      RETURN(-1);
   }
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   
   do{
-    sqlite3_blob *blob=NULL;
+    rhizome_blob_handle *blob=
+      rhizome_database_open_blob_byrowid(write->blob_rowid,1 /* write */);
+    if (!blob) goto again;
     
-    int ret = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", write->blob_rowid, 1 /* read/write */, &blob);
+    int ret=rhizome_database_blob_write(blob, write->buffer, write->data_size, 
+					write->file_offset);
     if (sqlite_code_busy(ret))
       goto again;
     else if (ret!=SQLITE_OK) {
-      WHYF("sqlite3_blob_open() failed: %s", 
-	sqlite3_errmsg(rhizome_db));
-      if (blob) sqlite3_blob_close(blob);
-      return -1;
+      WHYF("rhizome_database_blob_write() failed: %s", 
+	   rhizome_database_blob_errmsg(blob));
+      if (blob) rhizome_database_blob_close(blob);
+      RETURN(-1);
     }
     
-    ret=sqlite3_blob_write(blob, write->buffer, write->data_size, 
-			   write->file_offset);
-    if (sqlite_code_busy(ret))
-      goto again;
-    else if (ret!=SQLITE_OK) {
-      WHYF("sqlite3_blob_write() failed: %s", 
-	   sqlite3_errmsg(rhizome_db));
-      if (blob) sqlite3_blob_close(blob);
-      return -1;
-    }
-    
-    ret = sqlite3_blob_close(blob);
+    ret = rhizome_database_blob_close(blob);
     blob=NULL;
     if (sqlite_code_busy(ret))
       goto again;
@@ -151,12 +83,12 @@ int rhizome_flush(struct rhizome_write *write){
       break;
     
     WHYF("sqlite3_blob_close() failed: %s", sqlite3_errmsg(rhizome_db));
-    return -1;
+    RETURN(-1);
     
   again:
-    if (blob) sqlite3_blob_close(blob);
-    if (sqlite_retry(&retry, "sqlite3_blob_write")==0)
-      return -1;
+    if (blob) rhizome_database_blob_close(blob);
+    if (sqlite_retry(&retry, "rhizome_database_blob_write")==0)
+      RETURN(-1);
     
   }while(1);
   
@@ -165,7 +97,7 @@ int rhizome_flush(struct rhizome_write *write){
   if (config.debug.rhizome)
     DEBUGF("Written %lld of %lld", write->file_offset, write->file_length);
   write->data_size=0;
-  return 0;
+  RETURN(0);
 }
 
 /* Expects file to be at least file_length in size */
@@ -418,23 +350,20 @@ int rhizome_open_read(struct rhizome_read *read, const char *fileid, int hash){
 
 // returns the number of bytes read
 int rhizome_read(struct rhizome_read *read, unsigned char *buffer, int buffer_length){
+  IN();
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   
   do{
-    sqlite3_blob *blob = NULL;
-    
-    int ret = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", read->blob_rowid, 0 /* read only */, &blob);
-    if (sqlite_code_busy(ret))
-      goto again;
-    else if(ret!=SQLITE_OK)
-      return WHYF("sqlite3_blob_open failed: %s",sqlite3_errmsg(rhizome_db));
+    rhizome_blob_handle *blob = 
+      rhizome_database_open_blob_byrowid(read->blob_rowid,0 /* read only */);
+    if (!blob) goto again;
     
     if (read->length==-1)
-      read->length=sqlite3_blob_bytes(blob);
+      read->length=blob->blob_bytes;
     
     if (!buffer){
-      sqlite3_blob_close(blob);
-      return 0;
+      rhizome_database_blob_close(blob);
+      RETURN(0);
     }
     
     int count = read->length - read->offset;
@@ -442,13 +371,14 @@ int rhizome_read(struct rhizome_read *read, unsigned char *buffer, int buffer_le
       count=buffer_length;
     
     if (count>0){
-      ret = sqlite3_blob_read(blob, buffer, count, read->offset);
+      int ret = rhizome_database_blob_read(blob, buffer, count, read->offset);
       if (sqlite_code_busy(ret))
 	goto again;
       else if(ret!=SQLITE_OK){
-	WHYF("sqlite3_blob_read failed: %s",sqlite3_errmsg(rhizome_db));
-	sqlite3_blob_close(blob);
-	return -1;
+	WHYF("rhizome_database_blob_read failed: %s",
+	     rhizome_database_blob_errmsg(blob));
+	rhizome_database_blob_close(blob);
+	RETURN(-1);
       }
       
       if (read->hash){
@@ -459,7 +389,7 @@ int rhizome_read(struct rhizome_read *read, unsigned char *buffer, int buffer_le
 	  SHA512_End(&read->sha512_context, hash_out);
 	  
 	  if (strcasecmp(read->id, hash_out)){
-	    sqlite3_blob_close(blob);
+	    rhizome_database_blob_close(blob);
 	    WHYF("Expected hash=%s, got %s", read->id, hash_out);
 	  }
 	}
@@ -467,8 +397,8 @@ int rhizome_read(struct rhizome_read *read, unsigned char *buffer, int buffer_le
       
       if (read->crypt){
 	if(rhizome_crypt_xor_block(buffer, count, read->offset, read->key, read->nonce)){
-	  sqlite3_blob_close(blob);
-	  return -1;
+	  rhizome_database_blob_close(blob);
+	  RETURN(-1);
         }
       }
       
@@ -476,14 +406,16 @@ int rhizome_read(struct rhizome_read *read, unsigned char *buffer, int buffer_le
       
     }
     
-    sqlite3_blob_close(blob);
-    return count;
+    rhizome_database_blob_close(blob);
+    DEBUGF("Read and returned %d",count);
+    RETURN(count);
     
   again:
-    if (blob) sqlite3_blob_close(blob);
-    if (sqlite_retry(&retry, "sqlite3_blob_open")==0)
-      return -1;
+    if (blob) rhizome_database_blob_close(blob);
+    if (sqlite_retry(&retry, "rhizome_database_blob_open")==0)
+      RETURN(-1);
   }while (1);
+  OUT();
 }
 
 static int write_file(struct rhizome_read *read, const char *filepath){

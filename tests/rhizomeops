@@ -239,6 +239,39 @@ test_ExtractManifestFileAfterAdd() {
    assert diff file1 file1x
 }
 
+doc_ExtractManifestFileFromExtBlob="Extract manifest and file from external blob"
+setup_ExtractManifestFileFromExtBlob() {
+   setup_servald
+   setup_rhizome
+   executeOk_servald config set rhizome.max_internal_blob_size 1
+   echo "A test file" >file1
+   executeOk_servald rhizome add file $SIDB1 file1 file1.manifest
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 --author=$SIDB1 file1
+   extract_manifest_id manifestid file1.manifest
+   extract_manifest_version version file1.manifest
+   extract_manifest_filehash filehash file1.manifest
+}
+test_ExtractManifestFileFromExtBlob() {
+   executeOk_servald rhizome extract bundle $manifestid file1x.manifest file1x
+   tfw_cat --stdout --stderr
+   assertStdoutLineCount '==' 8
+   local size=$(( $(cat file1 | wc -c) + 0 ))
+   assertStdoutGrep --matches=1 "^service:file$"
+   assertStdoutGrep --matches=1 "^manifestid:$manifestid\$"
+   assertStdoutGrep --matches=1 "^version:$version\$"
+   assertStdoutGrep --matches=1 "^inserttime:$rexp_date\$"
+   assertStdoutGrep --matches=1 "^filehash:$filehash\$"
+   assertStdoutGrep --matches=1 "^filesize:$size\$"
+   assertStdoutGrep --matches=1 "^\.author:$SIDB1\$"
+   assertStdoutGrep --matches=1 "^\.readonly:0\$"
+   assert [ -e file1x.manifest ]
+   assert diff file1.manifest file1x.manifest
+   assert [ -e file1x ]
+   tfw_cat file1 file1x
+   assert diff file1 file1x
+}
+
 doc_ExtractManifestToStdout="Extract manifest to output field"
 setup_ExtractManifestToStdout() {
    setup_servald

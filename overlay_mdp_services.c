@@ -54,26 +54,14 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
      TODO: If we have a newer version of the manifest, and the manifest is a
      journal, then the newer version is okay to use to service this request.
   */
-  long long row_id=-1;
-  if (sqlite_exec_int64(&row_id, "SELECT rowid FROM FILEBLOBS WHERE id IN (SELECT filehash FROM MANIFESTS WHERE manifests.version=%lld AND manifests.id='%s');",
-			read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES]),
-			alloca_tohex_bid(&mdp->out.payload[0])) < 1)
-    {
-      DEBUGF("Couldn't find stored file.");
-      RETURN(-1);
-    }
   
-  sqlite3_blob *blob=NULL; 
-  int ret=sqlite3_blob_open(rhizome_db, "main", "fileblobs", "data",
-				   row_id, 0 /* read only */, &blob);
-  if (ret!=SQLITE_OK)
-    {
-      DEBUGF("Failed to open blob: %s",sqlite3_errmsg(rhizome_db));     
-      RETURN(-1);
-    }
-  int blob_bytes=sqlite3_blob_bytes(blob);  
-  if (blob_bytes<fileOffset) {
-    sqlite3_blob_close(blob); blob=NULL;
+  rhizome_blob_handle *blob=NULL;
+  blob=rhizome_database_open_blob_bybid
+    (alloca_tohex_bid(&mdp->out.payload[0]),
+     read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES]), 0 /* read only */);
+
+  if (blob->blob_bytes<fileOffset) {
+    rhizome_database_blob_close(blob); blob=NULL;
     RETURN(-1);
   }
 
@@ -127,26 +115,26 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
 	uint64_t blockOffset=fileOffset+i*blockLength;
 	write_uint64(&reply.out.payload[1+16+8],blockOffset);
 	// work out how many bytes to read
-	int blockBytes=blob_bytes-blockOffset;
+	int blockBytes=blob->blob_bytes-blockOffset;
 	if (blockBytes>blockLength) blockBytes=blockLength;
 	// read data for block
-	if (blob_bytes>=blockOffset) {
+	if (blob->blob_bytes>=blockOffset) {
 	  if (overlay_queue_remaining(reply.out.queue) < 10)
 	    break;
 	  
-	  sqlite3_blob_read(blob,&reply.out.payload[1+16+8+8],
-			    blockBytes,blockOffset);	  
+	  rhizome_database_blob_read(blob,&reply.out.payload[1+16+8+8],
+				     blockBytes,blockOffset);	  
 	  reply.out.payload_length=1+16+8+8+blockBytes;
 
 	  // Mark terminal block if required
-	  if (blockOffset+blockBytes==blob_bytes) reply.out.payload[0]='T';
+	  if (blockOffset+blockBytes==blob->blob_bytes) reply.out.payload[0]='T';
 	  // send packet
 	  if (overlay_mdp_dispatch(&reply,0 /* system generated */, NULL,0))
 	    break;
 	} else break;
       }
 
-  sqlite3_blob_close(blob); blob=NULL;
+  rhizome_database_blob_close(blob); blob=NULL;
 
   RETURN(-1);
 }
