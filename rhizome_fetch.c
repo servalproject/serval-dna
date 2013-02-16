@@ -1111,6 +1111,23 @@ static void rhizome_fetch_mdp_slot_callback(struct sched_ent *alarm)
   OUT();
 }
 
+static int rhizome_fetch_mdp_touch_timeout(struct rhizome_fetch_slot *slot)
+{
+  // 266ms @ 1mbit (WiFi broadcast speed) = 32x1024 byte packets.
+  // But on a packet radio interface at perhaps 50kbit, this is clearly
+  // a bad policy.  Ideally we should know about the interface speed
+  // and adjust behaviour accordingly.
+  // For now, we will just make the timeout 1 second from the time of the last
+  // received block.
+  unschedule(&slot->alarm);
+  slot->alarm.stats=&rfmsc_stats;
+  slot->alarm.function = rhizome_fetch_mdp_slot_callback;
+  slot->alarm.alarm=gettime_ms()+1000; 
+  slot->alarm.deadline=slot->alarm.alarm+500;
+  schedule(&slot->alarm);
+  return 0;
+}
+
 static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
 {
   IN();
@@ -1150,13 +1167,7 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   // interval based on how fast the packets arrive.
   slot->mdpResponsesOutstanding=32; // TODO: set according to bitmap
 
-  unschedule(&slot->alarm);
-  slot->alarm.stats=&rfmsc_stats;
-  slot->alarm.function = rhizome_fetch_mdp_slot_callback;
-  // 266ms @ 1mbit (WiFi broadcast speed) = 32x1024 byte packets.
-  slot->alarm.alarm=gettime_ms()+266; 
-  slot->alarm.deadline=slot->alarm.alarm+500;
-  schedule(&slot->alarm);
+  rhizome_fetch_mdp_touch_timeout(slot);
   
   RETURN(0);
 }
@@ -1514,6 +1525,7 @@ int rhizome_received_content(unsigned char *bidprefix,
 	  if (slot->file_ofs==offset) {
 	    if (!rhizome_write_content(slot,(char *)bytes,count))
 	      {
+		rhizome_fetch_mdp_touch_timeout(slot);
 		slot->mdpResponsesOutstanding--;
 		if (slot->mdpResponsesOutstanding==0) {
 		  // We have received all responses, so immediately ask for more
