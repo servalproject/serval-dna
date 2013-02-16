@@ -156,7 +156,10 @@ error:
   return WHY("Failed to start rhizome HTTP server");
 
 success:
-  INFOF("RHIZOME HTTP SERVER, START port=%d fd=%d", port, rhizome_server_socket);
+  if (config.rhizome.http.enable)
+    INFOF("RHIZOME HTTP SERVER, START port=%d fd=%d", port, rhizome_server_socket);
+  else
+    INFOF("HTTP SERVER (LIMITED SERVICE), START port=%d fd=%d", port, rhizome_server_socket);
 
   /* Remember which function to call when handling client connections */
   rhizome_http_parse_func=parse_func;
