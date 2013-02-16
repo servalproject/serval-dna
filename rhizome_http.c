@@ -527,17 +527,18 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
       rhizome_server_http_response_header(r, 200, "image/vnd.microsoft.icon", favicon_len);
     } else if (strcmp(path, "/rssi") == 0) {
       r->request_type = RHIZOME_HTTP_REQUEST_FROMBUFFER;
-      char temp[8192];      
+      char temp[8192];
+      char *sidprefix=alloca_tohex_sid(my_subscriber->sid); sidprefix[8]=0;
       snprintf(temp,8192,
 	       "<head><meta http-equiv=\"refresh\" content=\"5\" >"
 	       "</head><html><h1>Radio link margin = %+ddB<br>"
 	       "Radio temperature = %d&deg;C<br>"
 	       "SID: %s*<br>"
 	       "%d rhizome bundles in database<br>"
-	       "%d rhizome transfers in progress (%d,%d,%d,%d,%d bytes)<br>"
+	       "%d rhizome transfers in progress<br>(%d,%d,%d,%d,%d bytes)<br>"
 	       "</h1></html>\n",
 	       last_radio_rssi,last_radio_temperature,
-	       alloca_tohex_sid(my_subscriber->sid),
+	       sidprefix,
 	       (int)bundles_available,
 	       rhizome_active_fetch_count(),
 	       rhizome_active_fetch_bytes_received(0),
