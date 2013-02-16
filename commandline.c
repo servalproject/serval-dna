@@ -839,7 +839,10 @@ int app_server_stop(const struct cli_parsed *parsed, void *context)
   const char		*instancepath;
   time_ms_t		timeout;
   if (cli_arg(parsed, "instance path", &instancepath, cli_absolute_path, NULL) == -1)
-    return WHY("Unable to determine instance path");
+    { 
+      WHY("Unable to determine instance path");
+      return 254;
+    }
   if (instancepath != NULL)
     serval_setinstancepath(instancepath);
   instancepath = serval_instancepath();
@@ -860,11 +863,13 @@ int app_server_stop(const struct cli_parsed *parsed, void *context)
   tries = 0;
   running = pid;
   while (running == pid) {
-    if (tries >= 5)
-      return WHYF(
-	  "Servald pid=%d for instance '%s' did not stop after %d SIGHUP signals",
-	  pid, instancepath, tries
-	);
+    if (tries >= 5) {
+      WHYF(
+	   "Servald pid=%d for instance '%s' did not stop after %d SIGHUP signals",
+	   pid, instancepath, tries
+	   );
+      return 253;
+    }
     ++tries;
     /* Create the stopfile, which causes the server process's signal handler to exit
        instead of restarting. */
@@ -877,7 +882,8 @@ int app_server_stop(const struct cli_parsed *parsed, void *context)
 	break;
       }
       WHY_perror("kill");
-      return WHYF("Error sending SIGHUP to Servald pid=%d for instance '%s'", pid, instancepath);
+      WHYF("Error sending SIGHUP to Servald pid=%d for instance '%s'", pid, instancepath);
+      return 252;
     }
     /* Allow a few seconds for the process to die. */
     timeout = gettime_ms() + 2000;
