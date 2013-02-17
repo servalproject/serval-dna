@@ -268,7 +268,6 @@ test_ExtractManifestFileFromExtBlob() {
    assert [ -e file1x.manifest ]
    assert diff file1.manifest file1x.manifest
    assert [ -e file1x ]
-   tfw_cat file1 file1x
    assert diff file1 file1x
 }
 
