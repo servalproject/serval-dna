@@ -148,7 +148,21 @@ int fd_showstats()
     fd_tallystats(&total,stats);
     stats = stats->_next;
   }
-  
+
+  // Show periodic rhizome transfer information, but only
+  // if there are some active rhizome transfers.
+  if ((rhizome_active_fetch_bytes_received(0)+
+       rhizome_active_fetch_bytes_received(1)+
+       rhizome_active_fetch_bytes_received(2)+
+       rhizome_active_fetch_bytes_received(3)+
+       rhizome_active_fetch_bytes_received(4))!=-5)
+    INFOF("Rhizome transfer progress: %d,%d,%d,%d,%d",
+	  rhizome_active_fetch_bytes_received(0),
+	  rhizome_active_fetch_bytes_received(1),
+	  rhizome_active_fetch_bytes_received(2),
+	  rhizome_active_fetch_bytes_received(3),
+	  rhizome_active_fetch_bytes_received(4));
+
   // Report any functions that take too much time
   if (!config.debug.timing)
     {
