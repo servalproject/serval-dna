@@ -1118,7 +1118,8 @@ static int rhizome_fetch_mdp_touch_timeout(struct rhizome_fetch_slot *slot)
   // 266ms @ 1mbit (WiFi broadcast speed) = 32x1024 byte packets.
   // But on a packet radio interface at perhaps 50kbit, this is clearly
   // a bad policy.  Ideally we should know about the interface speed
-  // and adjust behaviour accordingly.
+  // and adjust behaviour accordingly. Also the packet size should be smaller
+  // on lossy links.  1K packets seem to get through only very rarely.
   // For now, we will just make the timeout 1 second from the time of the last
   // received block.
   unschedule(&slot->alarm);
@@ -1270,7 +1271,7 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
 
     slot->mdpIdleTimeout=RHIZOME_IDLE_TIMEOUT; // give up if nothing received for 5 seconds
     slot->mdpRXBitmap=0x00000000; // no blocks received yet
-    slot->mdpRXBlockLength=1024;
+    slot->mdpRXBlockLength=config.rhizome.rhizome_mdp_block_size; // Rhizome over MDP block size
     rhizome_fetch_mdp_requestblocks(slot);    
   } else {
     /* We are requesting a manifest, which is stateless, except that we eventually

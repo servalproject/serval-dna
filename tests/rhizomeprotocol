@@ -283,6 +283,29 @@ test_FileTransferMultiMDP() {
    done
 }
 
+doc_FileTransferBigMDPExtBlob="Big new bundle transfers to one node via MDP, external blob file"
+setup_FileTransferBigMDPExtBlob() {
+   setup_common
+   set_instance +B
+   executeOk_servald config set rhizome.http.enable 0
+   set_instance +A
+   executeOk_servald config set rhizome.http.enable 0
+   dd if=/dev/urandom of=file1 bs=1k count=16k 2>&1
+   echo x >>file1
+   ls -l file1
+   rhizome_add_file file1
+   start_servald_instances +A +B
+   foreach_instance +A assert_peers_are_instances +B
+   foreach_instance +B assert_peers_are_instances +A
+}
+test_FileTransferBigMDPExtBlob() {
+   wait_until bundle_received_by $BID:$VERSION +B
+   set_instance +B
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=0 file1
+   assert_rhizome_received file1
+}
+
 doc_FileTransferMultiMDPExtBlob="New bundle transfers to four nodes via MDP, external blob files"
 setup_FileTransferMultiMDPExtBlob() {
    setup_common
