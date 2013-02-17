@@ -313,6 +313,7 @@ STRING(256,                 datastore_path, "", cf_opt_absolute_path,, "Path of 
 ATOM(uint64_t,              database_size, 1000000, cf_opt_uint64_scaled,, "Size of database in bytes")
 ATOM(uint64_t,              max_internal_blob_size, 10000000000, cf_opt_uint64_scaled,, "Size of largest bundle to store internally in database.")
 ATOM(uint64_t,              rhizome_mdp_block_size, 512, cf_opt_uint64_scaled,, "Rhizome MDP block size.")
+ATOM(uint64_t,              idle_timeout, RHIZOME_IDLE_TIMEOUT, cf_opt_uint64_scaled,, "Rhizome transfer timeout if no data received.")
 ATOM(uint32_t,              fetch_delay_ms, 50, cf_opt_uint32_nonzero,, "Delay from receiving first bundle advert to initiating fetch")
 SUB_STRUCT(rhizome_direct,  direct,)
 SUB_STRUCT(rhizome_api,     api,)

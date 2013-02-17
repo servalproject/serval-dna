@@ -599,8 +599,8 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
     watch(&slot->alarm);
     /* And schedule a timeout alarm */
     unschedule(&slot->alarm);
-    slot->alarm.alarm = gettime_ms() + RHIZOME_IDLE_TIMEOUT;
-    slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
+    slot->alarm.alarm = gettime_ms() + config.rhizome.idle_timeout;
+    slot->alarm.deadline = slot->alarm.alarm + config.rhizome.idle_timeout;
     schedule(&slot->alarm);
     RETURN(0);
   }
@@ -1040,7 +1040,7 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
     sched_activate.function = rhizome_start_next_queued_fetches;
     sched_activate.stats = &rsnqf_stats;
     sched_activate.alarm = gettime_ms() + rhizome_fetch_delay_ms();
-    sched_activate.deadline = sched_activate.alarm + RHIZOME_IDLE_TIMEOUT;
+    sched_activate.deadline = sched_activate.alarm + config.rhizome.idle_timeout;
     schedule(&sched_activate);
   }
 
@@ -1269,7 +1269,7 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
     */
     slot->file_len=slot->manifest->fileLength;
 
-    slot->mdpIdleTimeout=RHIZOME_IDLE_TIMEOUT; // give up if nothing received for 5 seconds
+    slot->mdpIdleTimeout=config.rhizome.idle_timeout; // give up if nothing received for 5 seconds
     slot->mdpRXBitmap=0x00000000; // no blocks received yet
     slot->mdpRXBlockLength=config.rhizome.rhizome_mdp_block_size; // Rhizome over MDP block size
     rhizome_fetch_mdp_requestblocks(slot);    
@@ -1277,7 +1277,7 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
     /* We are requesting a manifest, which is stateless, except that we eventually
        give up. All we need to do now is send the request, and set our alarm to
        try again in case we haven't heard anything back. */
-    slot->mdpIdleTimeout=RHIZOME_IDLE_TIMEOUT;
+    slot->mdpIdleTimeout=config.rhizome.idle_timeout;
     rhizome_fetch_mdp_requestmanifest(slot);
   }
 
@@ -1299,8 +1299,8 @@ void rhizome_fetch_write(struct rhizome_fetch_slot *slot)
   } else {
     // reset timeout
     unschedule(&slot->alarm);
-    slot->alarm.alarm=gettime_ms() + RHIZOME_IDLE_TIMEOUT;
-    slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
+    slot->alarm.alarm=gettime_ms() + config.rhizome.idle_timeout;
+    slot->alarm.deadline = slot->alarm.alarm + config.rhizome.idle_timeout;
     schedule(&slot->alarm);
     slot->request_ofs+=bytes;
     if (slot->request_ofs>=slot->request_len) {
@@ -1570,8 +1570,8 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	rhizome_write_content(slot, buffer, bytes);
 	// reset inactivity timeout
 	unschedule(&slot->alarm);
-	slot->alarm.alarm=gettime_ms() + RHIZOME_IDLE_TIMEOUT;
-	slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
+	slot->alarm.alarm=gettime_ms() + config.rhizome.idle_timeout;
+	slot->alarm.deadline = slot->alarm.alarm + config.rhizome.idle_timeout;
 	slot->alarm.function = rhizome_fetch_poll;
 	schedule(&slot->alarm);	
 	return;
@@ -1598,8 +1598,8 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
       if (bytes > 0) {
 	// reset timeout
 	unschedule(&slot->alarm);
-	slot->alarm.alarm = gettime_ms() + RHIZOME_IDLE_TIMEOUT;
-	slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
+	slot->alarm.alarm = gettime_ms() + config.rhizome.idle_timeout;
+	slot->alarm.deadline = slot->alarm.alarm + config.rhizome.idle_timeout;
 	schedule(&slot->alarm);
 	slot->request_len += bytes;
 	if (http_header_complete(slot->request, slot->request_len, bytes)) {
@@ -1636,8 +1636,8 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	    rhizome_write_content(slot, parts.content_start, content_bytes);
 	    // reset inactivity timeout
 	    unschedule(&slot->alarm);
-	    slot->alarm.alarm=gettime_ms() + RHIZOME_IDLE_TIMEOUT;
-	    slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
+	    slot->alarm.alarm=gettime_ms() + config.rhizome.idle_timeout;
+	    slot->alarm.deadline = slot->alarm.alarm + config.rhizome.idle_timeout;
 	    slot->alarm.function = rhizome_fetch_poll;
 	    schedule(&slot->alarm);
 
