@@ -288,9 +288,11 @@ setup_FileTransferBigMDPExtBlob() {
    setup_common
    set_instance +B
    executeOk_servald config set rhizome.http.enable 0
+   executeOk_servald config set rhizome.external_blobs 1
    set_instance +A
    executeOk_servald config set rhizome.http.enable 0
-   dd if=/dev/urandom of=file1 bs=1k count=16k 2>&1
+   executeOk_servald config set rhizome.external_blobs 1
+   dd if=/dev/urandom of=file1 bs=1k count=4k 2>&1
    echo x >>file1
    ls -l file1
    rhizome_add_file file1
@@ -311,19 +313,19 @@ setup_FileTransferMultiMDPExtBlob() {
    setup_common
    set_instance +A
    executeOk_servald config set rhizome.http.enable 0
-   executeOk_servald config set rhizome.max_internal_blob_size 0
+   executeOk_servald config set rhizome.external_blobs 1
    set_instance +B
    executeOk_servald config set rhizome.http.enable 0
-   executeOk_servald config set rhizome.max_internal_blob_size 0
+   executeOk_servald config set rhizome.external_blobs 1
    set_instance +C
    executeOk_servald config set rhizome.http.enable 0
-   executeOk_servald config set rhizome.max_internal_blob_size 0
+   executeOk_servald config set rhizome.external_blobs 1
    set_instance +D
    executeOk_servald config set rhizome.http.enable 0
-   executeOk_servald config set rhizome.max_internal_blob_size 0
+   executeOk_servald config set rhizome.external_blobs 1
    set_instance +E
    executeOk_servald config set rhizome.http.enable 0
-   executeOk_servald config set rhizome.max_internal_blob_size 0
+   executeOk_servald config set rhizome.external_blobs 1
    set_instance +A
    rhizome_add_file file1
    start_servald_instances +A +B +C +D +E

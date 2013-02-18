@@ -243,7 +243,7 @@ doc_ExtractManifestFileFromExtBlob="Extract manifest and file from external blob
 setup_ExtractManifestFileFromExtBlob() {
    setup_servald
    setup_rhizome
-   executeOk_servald config set rhizome.max_internal_blob_size 1
+   executeOk_servald config set rhizome.external_blobs 1
    echo "A test file" >file1
    executeOk_servald rhizome add file $SIDB1 file1 file1.manifest
    executeOk_servald rhizome list

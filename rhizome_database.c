@@ -724,32 +724,37 @@ rhizome_blob_handle *rhizome_database_open_blob_byrowid(int row_id,int writeP)
   if (config.debug.externalblobs)
     DEBUGF("Opening blob for rowid #%d",row_id);
 
-  // Try opening as internal blob.
-  // If column is not a blob, then this will fail.
-  int ret=sqlite3_blob_open(rhizome_db, "main", "fileblobs", "data",
-			    row_id, writeP, &blob->sqlite_blob);
-  if (ret==SQLITE_OK) {
-    blob->blob_bytes=sqlite3_blob_bytes(blob->sqlite_blob);  
-    RETURN(blob);
+  if (!config.rhizome.external_blobs)
+    {
+      // Try opening as internal blob.
+      // If column is not a blob, then this will fail.
+      int ret=sqlite3_blob_open(rhizome_db, "main", "fileblobs", "data",
+				row_id, writeP, &blob->sqlite_blob);
+      if (ret==SQLITE_OK) {
+	blob->blob_bytes=sqlite3_blob_bytes(blob->sqlite_blob);  
+	RETURN(blob);
+      }
+      free(blob);
+      RETURN(NULL);
     }
-
-  // Try opening as an external file
-  {    
-    char *blobfile=rhizome_database_get_blob_filename(row_id);
-    errno=0;
-    blob->fd_blob=open(blobfile,O_RDWR);
-    if (blob->fd_blob==-1&&writeP) blob->fd_blob=open(blobfile,O_CREAT|O_RDWR,0664);
-    if (blob->fd_blob>-1) {
-      // File is stored externally
-      blob->blob_bytes=lseek(blob->fd_blob,0,SEEK_END);
-      DEBUGF("Opened fileblobs blob file '%s' (%lld bytes)",
-	     blobfile,blob->blob_bytes);
-      RETURN(blob);
-    } 
-    DEBUGF("Could not open fileblobs blob file '%s', will try sqlite blob",
-	   blobfile);
-    // WHY_perror("open");
-  }
+  else
+    {    
+      // Try opening as an external file
+      char *blobfile=rhizome_database_get_blob_filename(row_id);
+      errno=0;
+      blob->fd_blob=open(blobfile,O_RDWR);
+      if (blob->fd_blob==-1&&writeP) blob->fd_blob=open(blobfile,O_CREAT|O_RDWR,0664);
+      if (blob->fd_blob>-1) {
+	// File is stored externally
+	blob->blob_bytes=lseek(blob->fd_blob,0,SEEK_END);
+	DEBUGF("Opened fileblobs blob file '%s' (%lld bytes)",
+	       blobfile,blob->blob_bytes);
+	RETURN(blob);
+      } 
+      DEBUGF("Could not open fileblobs blob file '%s', will try sqlite blob",
+	     blobfile);
+      // WHY_perror("open");
+    }
   
   // Couldn't open, so fail 
   free(blob);
@@ -1315,7 +1320,7 @@ int64_t rhizome_database_create_blob_for(const char *filehashhex_or_tempid,
   sqlite3_int64 fileblob_rowid=sqlite3_last_insert_rowid(rhizome_db);  
 
   sqlite3_stmt *statement=NULL;
-  if (fileLength<config.rhizome.max_internal_blob_size) {
+  if (!config.rhizome.external_blobs) {
     statement = sqlite_prepare(&retry,"INSERT OR REPLACE INTO FILEBLOBS(id,data) VALUES('%s',?)",filehashhex_or_tempid);
     if (!statement)
       goto insert_row_fail;
