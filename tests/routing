@@ -229,6 +229,8 @@ test_multihop_linear() {
    set_instance +A
    executeOk_servald mdp ping $SIDD 1
    tfw_cat --stdout --stderr
+   executeOk_servald mdp trace $SIDD
+   tfw_cat --stdout --stderr
    executeOk_servald route print
    assertStdoutGrep --matches=1 "^$SIDB:BROADCAST UNICAST :"
    assertStdoutGrep --matches=1 "^$SIDC:INDIRECT :"

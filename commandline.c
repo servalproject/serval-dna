@@ -43,6 +43,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "mdp_client.h"
 #include "cli.h"
 #include "overlay_address.h"
+#include "overlay_buffer.h"
 
 extern struct cli_schema command_line_options[];
 
@@ -1065,6 +1066,68 @@ int app_mdp_ping(const struct cli_parsed *parsed, void *context)
     printf("round-trip min/avg/max/stddev%s = %lld/%.3f/%lld/%.3f ms\n",
 	   (samples<rx_count)?" (stddev calculated from last 1024 samples)":"",
 	   rx_mintime,rx_mean,rx_maxtime,rx_stddev);
+  }
+  overlay_mdp_client_done();
+  return ret;
+}
+
+int app_trace(const struct cli_parsed *parsed, void *context){
+  
+  const char *sidhex;
+  if (cli_arg(parsed, "SID", &sidhex, str_is_subscriber_id, NULL) == -1)
+    return -1;
+  
+  sid_t srcsid;
+  sid_t dstsid;
+  if (str_to_sid_t(&dstsid, sidhex) == -1)
+    return WHY("str_to_sid_t() failed");
+  
+  overlay_mdp_frame mdp;
+  bzero(&mdp, sizeof(mdp));
+  
+  int port=32768+(random()&32767);
+  if (overlay_mdp_getmyaddr(0, &srcsid)) return WHY("Could not get local address");
+  if (overlay_mdp_bind(&srcsid, port)) return WHY("Could not bind to MDP socket");
+  
+  bcopy(srcsid.binary, mdp.out.src.sid, SID_SIZE);
+  bcopy(srcsid.binary, mdp.out.dst.sid, SID_SIZE);
+  mdp.out.src.port=port;
+  mdp.out.dst.port=MDP_PORT_TRACE;
+  mdp.packetTypeAndFlags=MDP_TX;
+  struct overlay_buffer *b = ob_static(mdp.out.payload, sizeof(mdp.out.payload));
+  
+  ob_append_byte(b, SID_SIZE);
+  ob_append_bytes(b, srcsid.binary, SID_SIZE);
+  
+  ob_append_byte(b, SID_SIZE);
+  ob_append_bytes(b, dstsid.binary, SID_SIZE);
+  
+  mdp.out.payload_length = ob_position(b);
+  cli_printf("Tracing the network path from %s to %s", 
+	 alloca_tohex_sid(srcsid.binary), alloca_tohex_sid(dstsid.binary));
+  cli_delim("\n");
+  int ret=overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000);
+  ob_free(b);
+  if (ret)
+    DEBUGF("overlay_mdp_send returned %d", ret);
+  else{
+    int offset=0;
+    {
+      // skip the first two sid's
+      int len = mdp.out.payload[offset++];
+      offset+=len;
+      len = mdp.out.payload[offset++];
+      offset+=len;
+    }
+    int i=0;
+    while(offset<mdp.out.payload_length){
+      int len = mdp.out.payload[offset++];
+      cli_printf("%d: ",i);
+      cli_puts(alloca_tohex(&mdp.out.payload[offset], len));
+      cli_delim("\n");
+      offset+=len;
+      i++;
+    }
   }
   overlay_mdp_client_done();
   return ret;
@@ -2216,8 +2279,10 @@ struct cli_schema command_line_options[]={
    "Stop a running Serval Mesh node process with given instance path."},
   {app_server_status,{"status",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Display information about any running Serval Mesh node."},
-  {app_mdp_ping,{"mdp","ping","<SID|broadcast>","[<count>]",NULL},CLIFLAG_STANDALONE,
+  {app_mdp_ping,{"mdp","ping","<SID|broadcast>","[<count>]",NULL},0,
    "Attempts to ping specified node via Mesh Datagram Protocol (MDP)."},
+  {app_trace,{"mdp","trace","<SID>",NULL},0,
+   "Trace through the network to the specified node via MDP."},
   {app_config_schema,{"config","schema",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
    "Dump configuration schema."},
   {app_config_set,{"config","set","<variable>","<value>","...",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,

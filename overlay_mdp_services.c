@@ -281,6 +281,91 @@ int overlay_mdp_service_echo(overlay_mdp_frame *mdp)
   RETURN(0);
 }
 
+static int overlay_mdp_service_trace(overlay_mdp_frame *mdp){
+  IN();
+  int ret=0;
+  
+  struct overlay_buffer *b = ob_static(mdp->out.payload, sizeof(mdp->out.payload));
+  ob_limitsize(b, mdp->out.payload_length);
+  
+  struct subscriber *src=NULL, *dst=NULL, *last=NULL, *next=NULL;
+  struct decode_context context;
+  bzero(&context, sizeof context);
+  
+  if (overlay_address_parse(&context, b, &src)){
+    ret=WHYF("Invalid trace packet");
+    goto end;
+  }
+  if (overlay_address_parse(&context, b, &dst)){
+    ret=WHYF("Invalid trace packet");
+    goto end;
+  }
+  if (context.invalid_addresses){
+    ret=WHYF("Invalid address in trace packet");
+    goto end;
+  }
+
+  INFOF("Trace from %s to %s", alloca_tohex_sid(src->sid), alloca_tohex_sid(dst->sid));
+  
+  while(ob_remaining(b)>0){
+    struct subscriber *trace=NULL;
+    if (overlay_address_parse(&context, b, &trace)){
+      ret=WHYF("Invalid trace packet");
+      goto end;
+    }
+    if (context.invalid_addresses){
+      ret=WHYF("Invalid address in trace packet");
+      goto end;
+    }
+    INFOF("Via %s", alloca_tohex_sid(trace->sid));
+    
+    if (trace->reachable==REACHABLE_SELF && !next)
+      // We're already in this trace, send the next packet to the node before us in the list
+      next = last;
+    last = trace;
+  }
+  
+  if (src->reachable==REACHABLE_SELF && last){
+    // it came back to us, we can send the reply to our mdp client...
+    next=src;
+    mdp->out.dst.port=mdp->out.src.port;
+    mdp->out.src.port=MDP_PORT_TRACE;
+  }
+  
+  if (!next){
+    // destination is our neighbour?
+    if (dst->reachable & REACHABLE_DIRECT)
+      next = dst;
+    // destination is indirect?
+    else if (dst->reachable & REACHABLE_INDIRECT)
+      next = dst->next_hop;
+    // destination is not reachable or is ourselves? bounce back to the previous node or the sender.
+    else if (last)
+      next = last;
+    else
+      next = src;
+  }
+  
+  INFOF("Next node is %s", alloca_tohex_sid(next->sid));
+  
+  ob_unlimitsize(b);
+  // always write a full sid into the payload
+  my_subscriber->send_full=1;
+  if (overlay_address_append(&context, b, my_subscriber)){
+    ret = WHYF("Unable to append my address to the trace");
+    goto end;
+  }
+  
+  mdp->out.payload_length = ob_position(b);
+  bcopy(my_subscriber->sid, mdp->out.src.sid, SID_SIZE);
+  bcopy(next->sid, mdp->out.dst.sid, SID_SIZE);
+  
+  ret = overlay_mdp_dispatch(mdp, 0, NULL, 0);
+end:
+  ob_free(b);
+  RETURN(ret);
+}
+
 static int overlay_mdp_service_manifest_response(overlay_mdp_frame *mdp){
   int offset=0;
   char id_hex[RHIZOME_MANIFEST_ID_STRLEN];
@@ -310,6 +395,7 @@ int overlay_mdp_try_interal_services(overlay_mdp_frame *mdp)
   case MDP_PORT_KEYMAPREQUEST:    RETURN(keyring_mapping_request(keyring,mdp));
   case MDP_PORT_DNALOOKUP:        RETURN(overlay_mdp_service_dnalookup(mdp));
   case MDP_PORT_ECHO:             RETURN(overlay_mdp_service_echo(mdp));
+  case MDP_PORT_TRACE:            RETURN(overlay_mdp_service_trace(mdp));
   case MDP_PORT_PROBE:            RETURN(overlay_mdp_service_probe(mdp));
   case MDP_PORT_STUNREQ:          RETURN(overlay_mdp_service_stun_req(mdp));
   case MDP_PORT_STUN:             RETURN(overlay_mdp_service_stun(mdp));

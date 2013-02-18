@@ -63,7 +63,7 @@ int overlay_mdp_send(overlay_mdp_frame *mdp,int flags,int timeout_ms)
   
   int port=0;
   if ((mdp->packetTypeAndFlags&MDP_TYPE_MASK) == MDP_TX)
-      port = mdp->out.dst.port;
+      port = mdp->out.src.port;
       
   time_ms_t started = gettime_ms();
   while(timeout_ms>=0 && overlay_mdp_client_poll(timeout_ms)>0){

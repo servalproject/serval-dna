@@ -502,6 +502,9 @@ int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const unsigned char
 int overlay_mdp_check_binding(struct subscriber *subscriber, int port, int userGeneratedFrameP,
 			      struct sockaddr_un *recvaddr, int recvaddrlen)
 {
+  /* System generated frames can send anything they want */
+  if (!userGeneratedFrameP)
+    return 0;
 
   /* Check if the address is in the list of bound addresses,
      and that the recvaddr matches. */
@@ -518,24 +521,6 @@ int overlay_mdp_check_binding(struct subscriber *subscriber, int port, int userG
 	/* Everything matches, so this unix socket and MDP address combination is valid */
 	return 0;
       }
-    }
-  }
-
-  /* Check for build-in port listeners */
-  if (!userGeneratedFrameP){
-    switch(port) {
-    case MDP_PORT_NOREPLY:
-    case MDP_PORT_ECHO:
-    case MDP_PORT_KEYMAPREQUEST:
-    case MDP_PORT_VOMP:
-    case MDP_PORT_DNALOOKUP:
-    case MDP_PORT_RHIZOME_RESPONSE:
-    case MDP_PORT_RHIZOME_REQUEST:
-    case MDP_PORT_RHIZOME_MANIFEST_REQUEST:
-    case MDP_PORT_PROBE:
-    case MDP_PORT_STUNREQ:
-    case MDP_PORT_STUN:
-      return 0;
     }
   }
 
