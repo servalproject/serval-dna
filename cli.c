@@ -7,11 +7,16 @@
 
 int cli_usage(const struct cli_schema *commands) {
   printf("Usage:\n");
-  int i,j;
-  for(i=0;commands[i].function;i++) {
-    for(j=0;commands[i].words[j];j++)
-      printf(" %s",commands[i].words[j]);
-    printf("\n   %s\n",commands[i].description);
+  unsigned cmd;
+  for (cmd = 0; commands[cmd].function; ++cmd) {
+    unsigned opt;
+    const char *word;
+    for (opt = 0; (word = commands[cmd].words[opt]); ++opt) {
+      if (word[0] == '\\')
+	++word;
+      printf(" %s", word);
+    }
+    printf("\n   %s\n",commands[cmd].description);
   }
   return 0;
 }
@@ -43,6 +48,11 @@ int cli_parse(const int argc, const char *const *args, const struct cli_schema *
        *
        * "word" consumes one argument that exactly matches "word", does not label it
        *
+       * "\word" consumes one argument that exactly matches "word" and labels it "word"
+       *
+       * "[word]" consumes one argument if it exactly matches "word", records it with label
+       * "word"
+       *
        * "<label>" consumes exactly one argument "ANY", records it with label "label"
        *
        * "prefix=<any>" consumes one argument "prefix=ANY" or two arguments "prefix" "ANY",
@@ -64,9 +74,6 @@ int cli_parse(const int argc, const char *const *args, const struct cli_schema *
        *
        * "[prefix<any>]" consumes one argument "prefixANY" if available, records the text matching
        * ANY with label "prefix"
-       *
-       * "[word]" consumes one argument if it exactly matches "word", records it with label
-       * "word"
        */
       if (wordlen == 3 && word[0] == '.' && word[1] == '.' && word[2] == '.') {
 	cmdpa.varargi = arg;
@@ -114,6 +121,12 @@ int cli_parse(const int argc, const char *const *args, const struct cli_schema *
 	    labellen = wordlen - 2;
 	    if (arg < argc)
 	      text = args[arg++];
+	  }
+	} else if (wordlen > 1 && word[0] == '\\') {
+	  if (strlen(args[arg]) == wordlen - 1 && strncmp(args[arg], &word[1], wordlen - 1) == 0) {
+	    label = &word[1];
+	    labellen = wordlen - 1;
+	    text = args[arg++];
 	  }
 	} else if (arg < argc && strlen(args[arg]) == wordlen && strncmp(args[arg], word, wordlen) == 0) {
 	  if (optional) {
