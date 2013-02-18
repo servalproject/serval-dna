@@ -1999,6 +1999,15 @@ int app_route_print(const struct cli_parsed *parsed, void *context)
   
   mdp.packetTypeAndFlags=MDP_ROUTING_TABLE;
   overlay_mdp_send(&mdp,0,0);
+  
+  const char *names[]={
+    "Subscriber id",
+    "Routing flags",
+    "Interface",
+    "Next hop"
+  };
+  cli_columns(4, names);
+  
   while(overlay_mdp_client_poll(200)){
     overlay_mdp_frame rx;
     int ttl;
@@ -2010,25 +2019,25 @@ int app_route_print(const struct cli_parsed *parsed, void *context)
       struct overlay_route_record *p=(struct overlay_route_record *)&rx.out.payload[ofs];
       ofs+=sizeof(struct overlay_route_record);
       
-      cli_printf(alloca_tohex_sid(p->sid));
-      cli_delim(":");
+      cli_put_hexvalue(p->sid, SID_SIZE, ":");
+      char flags[32];
+      strbuf b = strbuf_local(flags, sizeof flags);
       
       if (p->reachable==REACHABLE_NONE)
-	cli_printf("NONE");
+	strbuf_puts(b, "NONE");
       if (p->reachable & REACHABLE_SELF)
-	cli_printf("SELF ");
+	strbuf_puts(b, "SELF ");
       if (p->reachable & REACHABLE_ASSUMED)
-	cli_printf("ASSUMED ");
+	strbuf_puts(b, "ASSUMED ");
       if (p->reachable & REACHABLE_BROADCAST)
-	cli_printf("BROADCAST ");
+	strbuf_puts(b, "BROADCAST ");
       if (p->reachable & REACHABLE_UNICAST)
-	cli_printf("UNICAST ");
+	strbuf_puts(b, "UNICAST ");
       if (p->reachable & REACHABLE_INDIRECT)
-	cli_printf("INDIRECT ");
-      
-      cli_delim(":");
-      cli_printf(alloca_tohex_sid(p->neighbour));
-      cli_delim("\n");
+	strbuf_puts(b, "INDIRECT ");
+      cli_put_string(strbuf_str(b), ":");
+      cli_put_string(p->interface_name, ":");
+      cli_put_hexvalue(p->neighbour, SID_SIZE, "\n");
     }
   }
   return 0;

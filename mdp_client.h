@@ -23,6 +23,7 @@
 
 struct overlay_route_record{
   unsigned char sid[SID_SIZE];
+  char interface_name[256];
   int reachable;
   unsigned char neighbour[SID_SIZE];
 };

@@ -856,6 +856,10 @@ static int routing_table(struct subscriber *subscriber, void *context){
   r->reachable = subscriber->reachable;
   if (subscriber->reachable==REACHABLE_INDIRECT && subscriber->next_hop)
     memcpy(r->neighbour, subscriber->next_hop->sid, SID_SIZE);
+  if (subscriber->reachable & REACHABLE_DIRECT && subscriber->interface)
+    strcpy(r->interface_name, subscriber->interface->name);
+  else
+    r->interface_name[0]=0;
   overlay_mdp_reply(mdp_named.poll.fd, state->recvaddr_un, state->recvaddrlen, &reply);
   return 0;
 }
