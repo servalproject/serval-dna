@@ -721,7 +721,8 @@ rhizome_blob_handle *rhizome_database_open_blob_byrowid(int row_id,int writeP)
   struct rhizome_blob_handle *blob=calloc(sizeof(struct rhizome_blob_handle),1);
   if (!blob) RETURN(NULL);
 
-  DEBUGF("Opening blob for rowid #%d",row_id);
+  if (config.debug.externalblobs)
+    DEBUGF("Opening blob for rowid #%d",row_id);
 
   // Try opening as internal blob.
   // If column is not a blob, then this will fail.
@@ -1286,8 +1287,9 @@ int64_t rhizome_database_create_blob_for(const char *filehashhex_or_tempid,
   IN();
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   
-  DEBUGF("Creating blob for (filehash or temp id)='%s', length=%d, priority=%d",
-	 filehashhex_or_tempid,fileLength,priority);
+  if (config.debug.externalblobs)
+    DEBUGF("Creating blob for (filehash or temp id)='%s', length=%d, priority=%d",
+	   filehashhex_or_tempid,fileLength,priority);
 
   if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") != SQLITE_OK)
     RETURN(WHY("Failed to begin transaction"));
@@ -1353,7 +1355,8 @@ int64_t rhizome_database_create_blob_for(const char *filehashhex_or_tempid,
     sqlite_exec_void_retry(&retry, "ROLLBACK;");
     RETURN(WHYF("Failed to commit transaction"));
   }
-  DEBUGF("Got rowid %lld for %s", rowid, filehashhex_or_tempid);
+  if (config.debug.externalblobs)
+    DEBUGF("Got rowid %lld for %s", rowid, filehashhex_or_tempid);
   RETURN(rowid);
   OUT();
 }
