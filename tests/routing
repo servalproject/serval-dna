@@ -116,6 +116,15 @@ test_mismatched_encap() {
    assertStdoutGrep --matches=1 "^$SIDB:BROADCAST UNICAST :"
 }
 
+doc_slip_encoding="Test slip encoding and decoding"
+setup_slip_encoding() {
+   setup_servald
+   assert_no_servald_processes
+}
+test_slip_encoding() {
+   executeOk_servald test slip
+}
+
 doc_multiple_nodes="Multiple nodes on one link"
 setup_multiple_nodes() {
    setup_servald
