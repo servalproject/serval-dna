@@ -295,8 +295,8 @@ int rhizome_opendb()
    All changes should attempt to preserve any existing data */
   
   // We can't delete a file that is being transferred in another process at this very moment...
-  // TODO don't cleanup before every command line operation...
-  rhizome_cleanup();
+  if (config.rhizome.clean_on_open)
+    rhizome_cleanup();
   RETURN(0);
 }
 

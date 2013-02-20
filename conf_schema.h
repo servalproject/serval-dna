@@ -302,6 +302,7 @@ END_STRUCT
 
 STRUCT(rhizome)
 ATOM(int,                   enable,     1, cf_opt_int_boolean,, "If true, server opens Rhizome database when starting")
+ATOM(int,                   clean_on_open, 1, cf_opt_int_boolean,, "If true, Rhizome database is cleaned at start of every command")
 STRING(256,                 datastore_path, "", cf_opt_absolute_path,, "Path of rhizome storage directory, absolute or relative to instance directory")
 ATOM(uint64_t,              database_size, 1000000, cf_opt_uint64_scaled,, "Size of database in bytes")
 ATOM(uint32_t,              fetch_delay_ms, 50, cf_opt_uint32_nonzero,, "Delay from receiving first bundle advert to initiating fetch")
