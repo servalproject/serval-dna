@@ -1395,7 +1395,69 @@ int app_rhizome_append_manifest(const struct cli_parsed *parsed, void *context)
   return ret;
 }
 
-int app_rhizome_extract_bundle(const struct cli_parsed *parsed, void *context)
+int app_rhizome_delete(const struct cli_parsed *parsed, void *context)
+{
+  if (config.debug.verbose)
+    DEBUG_cli_parsed(parsed);
+  const char *manifestid, *fileid;
+  if (cli_arg(parsed, "manifestid", &manifestid, cli_manifestid, NULL) == -1)
+    return -1;
+  if (cli_arg(parsed, "fileid", &fileid, cli_fileid, NULL) == -1)
+    return -1;
+  /* Ensure the Rhizome database exists and is open */
+  if (create_serval_instance_dir() == -1)
+    return -1;
+  if (rhizome_opendb() == -1)
+    return -1;
+  if (!(keyring = keyring_open_instance_cli(parsed)))
+    return -1;
+  int ret=0;
+  if (cli_arg(parsed, "file", NULL, NULL, NULL) == 0) {
+    if (!fileid)
+      return WHY("missing <fileid> argument");
+    unsigned char filehash[RHIZOME_FILEHASH_BYTES];
+    if (fromhexstr(filehash, fileid, RHIZOME_FILEHASH_BYTES) == -1)
+      return WHY("Invalid file ID");
+    char fileIDUpper[RHIZOME_FILEHASH_STRLEN + 1];
+    tohex(fileIDUpper, filehash, RHIZOME_FILEHASH_BYTES);
+    ret = rhizome_delete_file(fileIDUpper);
+  } else {
+    if (!manifestid)
+      return WHY("missing <manifestid> argument");
+    unsigned char manifest_id[RHIZOME_MANIFEST_ID_BYTES];
+    if (fromhexstr(manifest_id, manifestid, RHIZOME_MANIFEST_ID_BYTES) == -1)
+      return WHY("Invalid manifest ID");
+    char manifestIdUpper[RHIZOME_MANIFEST_ID_STRLEN + 1];
+    tohex(manifestIdUpper, manifest_id, RHIZOME_MANIFEST_ID_BYTES);
+    if (cli_arg(parsed, "bundle", NULL, NULL, NULL) == 0)
+      ret = rhizome_delete_bundle(manifestIdUpper);
+    else if (cli_arg(parsed, "manifest", NULL, NULL, NULL) == 0)
+      ret = rhizome_delete_manifest(manifestIdUpper);
+    else if (cli_arg(parsed, "payload", NULL, NULL, NULL) == 0)
+      ret = rhizome_delete_payload(manifestIdUpper);
+    else
+      return WHY("unrecognised command");
+  }
+  return ret;
+}
+
+int app_rhizome_clean(const struct cli_parsed *parsed, void *context)
+{
+  if (config.debug.verbose)
+    DEBUG_cli_parsed(parsed);
+  struct rhizome_cleanup_report report;
+  if (rhizome_cleanup(&report) == -1)
+    return -1;
+  cli_field_name("deleted_stale_incoming_files", ":");
+  cli_put_long(report.deleted_stale_incoming_files, "\n");
+  cli_field_name("deleted_orphan_files", ":");
+  cli_put_long(report.deleted_orphan_files, "\n");
+  cli_field_name("deleted_orphan_fileblobs", ":");
+  cli_put_long(report.deleted_orphan_fileblobs, "\n");
+  return 0;
+}
+
+int app_rhizome_extract(const struct cli_parsed *parsed, void *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -1484,13 +1546,10 @@ int app_rhizome_extract_bundle(const struct cli_parsed *parsed, void *context)
       }
     }
   }
-  
   if (retfile)
-    ret=retfile;
-  
+    ret = retfile == -1 ? -1 : 1;
   if (m)
     rhizome_manifest_free(m);
-    
   return ret;
 }
 
@@ -1502,24 +1561,20 @@ int app_rhizome_dump_file(const struct cli_parsed *parsed, void *context)
   if (   cli_arg(parsed, "filepath", &filepath, NULL, "") == -1
       || cli_arg(parsed, "fileid", &fileid, cli_fileid, NULL) == -1)
     return -1;
-  
   if (create_serval_instance_dir() == -1)
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
-  
   if (!rhizome_exists(fileid))
     return 1;
-  
   int64_t length;
-  if (rhizome_dump_file(fileid, filepath, &length))
-    return -1;
-  
+  int ret = rhizome_dump_file(fileid, filepath, &length);
+  if (ret)
+    return ret == -1 ? -1 : 1;
   cli_puts("filehash"); cli_delim(":");
   cli_puts(fileid); cli_delim("\n");
   cli_puts("filesize"); cli_delim(":");
   cli_printf("%lld", length); cli_delim("\n");
-  
   return 0;
 }
 
@@ -2188,28 +2243,40 @@ struct cli_schema command_line_options[]={
    "Add a file to Rhizome and optionally write its manifest to the given path"},
   {app_rhizome_import_bundle,{"rhizome","import","bundle","<filepath>","<manifestpath>",NULL},CLIFLAG_STANDALONE,
    "Import a payload/manifest pair into Rhizome"},
-  {app_rhizome_list,{"rhizome","list" KEYRING_PIN_OPTIONS,"[<service>]","[<name>]","[<sender_sid>]","[<recipient_sid>]","[<offset>]","[<limit>]",NULL},CLIFLAG_STANDALONE,
-   "List all manifests and files in Rhizome"},
-  {app_rhizome_extract_bundle,{"rhizome","extract","bundle" KEYRING_PIN_OPTIONS,
+  {app_rhizome_list,{"rhizome","list" KEYRING_PIN_OPTIONS,
+	"[<service>]","[<name>]","[<sender_sid>]","[<recipient_sid>]","[<offset>]","[<limit>]",NULL},CLIFLAG_STANDALONE,
+	"List all manifests and files in Rhizome"},
+  {app_rhizome_extract,{"rhizome","extract","bundle" KEYRING_PIN_OPTIONS,
 	"<manifestid>","[<manifestpath>]","[<filepath>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,
 	"Extract a manifest and decrypted file to the given paths."},
-  {app_rhizome_extract_bundle,{"rhizome","extract","manifest" KEYRING_PIN_OPTIONS,
+  {app_rhizome_extract,{"rhizome","extract","manifest" KEYRING_PIN_OPTIONS,
 	"<manifestid>","[<manifestpath>]",NULL},CLIFLAG_STANDALONE,
         "Extract a manifest from Rhizome and write it to the given path"},
-  {app_rhizome_extract_bundle,{"rhizome","extract","file" KEYRING_PIN_OPTIONS,
+  {app_rhizome_extract,{"rhizome","extract","file" KEYRING_PIN_OPTIONS,
 	"<manifestid>","[<filepath>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,
         "Extract a file from Rhizome and write it to the given path"},
   {app_rhizome_dump_file,{"rhizome","dump","file","<fileid>","[<filepath>]",NULL},CLIFLAG_STANDALONE,
-   "Extract a file from Rhizome and write it to the given path without attempting decryption"},
-  {app_rhizome_direct_sync,{"rhizome","direct","sync","[peer url]",NULL},
-   CLIFLAG_STANDALONE,
-   "Synchronise with the specified Rhizome Direct server. Return when done."},
-  {app_rhizome_direct_sync,{"rhizome","direct","push","[peer url]",NULL},
-   CLIFLAG_STANDALONE,
-   "Deliver all new content to the specified Rhizome Direct server. Return when done."},
-  {app_rhizome_direct_sync,{"rhizome","direct","pull","[peer url]",NULL},
-   CLIFLAG_STANDALONE,
-   "Fetch all new content from the specified Rhizome Direct server. Return when done."},
+        "Extract a file from Rhizome and write it to the given path without attempting decryption"},
+  {app_rhizome_delete,{"rhizome","delete","\\manifest",
+	"<manifestid>",NULL},CLIFLAG_STANDALONE,
+	"Remove the manifest for the given bundle from the Rhizome store"},
+  {app_rhizome_delete,{"rhizome","delete","\\payload",
+	"<manifestid>",NULL},CLIFLAG_STANDALONE,
+	"Remove the payload for the given bundle from the Rhizome store"},
+  {app_rhizome_delete,{"rhizome","delete","\\bundle",
+	"<manifestid>",NULL},CLIFLAG_STANDALONE,
+	"Remove the manifest and payload for the given bundle from the Rhizome store"},
+  {app_rhizome_delete,{"rhizome","delete","\\file",
+	"<fileid>",NULL},CLIFLAG_STANDALONE,
+	"Remove the file with the given hash from the Rhizome store"},
+  {app_rhizome_direct_sync,{"rhizome","direct","sync","[peer url]",NULL}, CLIFLAG_STANDALONE,
+	"Synchronise with the specified Rhizome Direct server. Return when done."},
+  {app_rhizome_direct_sync,{"rhizome","direct","push","[peer url]",NULL}, CLIFLAG_STANDALONE,
+	"Deliver all new content to the specified Rhizome Direct server. Return when done."},
+  {app_rhizome_direct_sync,{"rhizome","direct","pull","[peer url]",NULL}, CLIFLAG_STANDALONE,
+	"Fetch all new content from the specified Rhizome Direct server. Return when done."},
+  {app_rhizome_clean,{"rhizome","clean",NULL},CLIFLAG_STANDALONE,
+	"Remove stale and orphaned content from the Rhizome store"},
   {app_keyring_create,{"keyring","create",NULL},0,
    "Create a new keyring file."},
   {app_keyring_list,{"keyring","list" KEYRING_PIN_OPTIONS,NULL},CLIFLAG_STANDALONE,

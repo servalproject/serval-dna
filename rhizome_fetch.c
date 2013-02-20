@@ -1371,20 +1371,16 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
 	  DEBUGF("Hash mismatch -- dropping row from table.");	
 	WARNF("Expected hash=%s, got %s",
 	       slot->manifest->fileHexHash,hash_out);
-	sqlite_exec_void_retry(&retry,
-			       "DELETE FROM FILEBLOBS WHERE rowid=%lld",slot->rowid);
-	sqlite_exec_void_retry(&retry,
-			       "DELETE FROM FILES WHERE id='%s'",
-			       slot->manifest->fileHexHash);
+	sqlite_exec_void_retry(&retry, "DELETE FROM FILEBLOBS WHERE rowid=%lld",slot->rowid);
+	sqlite_exec_void_retry(&retry, "DELETE FROM FILES WHERE id='%s'", slot->manifest->fileHexHash);
 	rhizome_fetch_close(slot);
 	RETURN(-1);
       } else {
-	int ret=sqlite_exec_void_retry(&retry,
+	int ret = sqlite_exec_void_retry(&retry,
 				       "UPDATE FILES SET inserttime=%lld, datavalid=1 WHERE id='%s'",
 				       gettime_ms(), slot->manifest->fileHexHash);
-	if (ret!=SQLITE_OK) 
-	  if (config.debug.rhizome_rx)
-	    DEBUGF("error marking row valid: %s",sqlite3_errmsg(rhizome_db));
+	if (ret == -1 && config.debug.rhizome_rx)
+	  DEBUGF("error marking row valid: %s",sqlite3_errmsg(rhizome_db));
       }
 
       if (!rhizome_import_received_bundle(slot->manifest)){

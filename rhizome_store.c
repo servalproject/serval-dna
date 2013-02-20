@@ -29,7 +29,7 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   
-  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") != SQLITE_OK)
+  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") == -1)
     return WHY("Failed to begin transaction");
   
   /* INSERT INTO FILES(id as text, data blob, length integer, highestpriority integer).
@@ -42,13 +42,11 @@ int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int6
    */
 
   sqlite3_stmt *statement = NULL;
-  int ret=sqlite_exec_void_retry(&retry,
+  int ret = sqlite_exec_void_retry(&retry,
 	"INSERT OR REPLACE INTO FILES(id,length,highestpriority,datavalid,inserttime) VALUES('%s',%lld,%d,0,%lld);",
 	write->id, (long long)file_length, priority, (long long)gettime_ms());
-  if (ret!=SQLITE_OK) {
-    WHYF("Failed to insert into files: %s", sqlite3_errmsg(rhizome_db));
+  if (ret == -1)
     goto insert_row_fail;
-  }
 
   statement = sqlite_prepare(&retry,"INSERT OR REPLACE INTO FILEBLOBS(id,data) VALUES('%s',?)",write->id);
   if (!statement) {
@@ -85,9 +83,8 @@ insert_row_fail:
   write->blob_rowid = sqlite3_last_insert_rowid(rhizome_db);
   DEBUGF("Got rowid %lld for %s", write->blob_rowid, write->id);
   
-  if (sqlite_exec_void_retry(&retry, "COMMIT;")!=SQLITE_OK){
-    return WHYF("Failed to commit transaction: %s", sqlite3_errmsg(rhizome_db));
-  }
+  if (sqlite_exec_void_retry(&retry, "COMMIT;") == -1)
+    return -1;
   
   write->file_length = file_length;
   write->file_offset = 0;
@@ -201,14 +198,9 @@ int rhizome_fail_write(struct rhizome_write *write){
   if (write->buffer)
     free(write->buffer);
   write->buffer=NULL;
-  
-  // don't worry too much about sql failures.
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite_exec_void_retry(&retry,
-			 "DELETE FROM FILEBLOBS WHERE rowid=%lld",write->blob_rowid);
-  sqlite_exec_void_retry(&retry,
-			 "DELETE FROM FILES WHERE id='%s'",
-			 write->id);
+  sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry, "DELETE FROM FILEBLOBS WHERE rowid=%lld",write->blob_rowid);
+  sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry, "DELETE FROM FILES WHERE id='%s'", write->id);
   return 0; 
 }
 
@@ -225,22 +217,17 @@ int rhizome_finish_write(struct rhizome_write *write){
   SHA512_End(&write->sha512_context, hash_out);
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") != SQLITE_OK){
-    WHY("Failed to begin transaction");
+  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") == -1)
     goto failure;
-  }
   
   if (write->id_known){
     if (strcasecmp(write->id, hash_out)){
       WHYF("Expected hash=%s, got %s", write->id, hash_out);
       goto failure;
     }
-    if (sqlite_exec_void_retry(&retry,
-			       "UPDATE FILES SET inserttime=%lld, datavalid=1 WHERE id='%s'",
-			       gettime_ms(), write->id)!=SQLITE_OK){
-      WHYF("Failed to update files: %s", sqlite3_errmsg(rhizome_db));
+    if (sqlite_exec_void_retry(&retry, "UPDATE FILES SET inserttime=%lld, datavalid=1 WHERE id='%s'",
+			       gettime_ms(), write->id) == -1)
       goto failure;
-    }
   }else{
     str_toupper_inplace(hash_out);
     
@@ -249,28 +236,22 @@ int rhizome_finish_write(struct rhizome_write *write){
       rhizome_fail_write(write);
     }else{
       // delete any half finished records
-      sqlite_exec_void_retry(&retry,"DELETE FROM FILEBLOBS WHERE id='%s';",hash_out);
-      sqlite_exec_void_retry(&retry,"DELETE FROM FILES WHERE id='%s';",hash_out);
+      sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,"DELETE FROM FILEBLOBS WHERE id='%s';",hash_out);
+      sqlite_exec_void_retry_loglevel(LOG_LEVEL_WARN, &retry,"DELETE FROM FILES WHERE id='%s';",hash_out);
       
       if (sqlite_exec_void_retry(&retry,
 				 "UPDATE FILES SET id='%s', inserttime=%lld, datavalid=1 WHERE id='%s'",
-				 hash_out, gettime_ms(), write->id)!=SQLITE_OK){
-	WHYF("Failed to update files: %s", sqlite3_errmsg(rhizome_db));
+				 hash_out, gettime_ms(), write->id) == -1)
 	goto failure;
-      }
       if (sqlite_exec_void_retry(&retry,
 				 "UPDATE FILEBLOBS SET id='%s' WHERE rowid=%lld",
-				 hash_out, write->blob_rowid)!=SQLITE_OK){
-	WHYF("Failed to update files: %s", sqlite3_errmsg(rhizome_db));
+				 hash_out, write->blob_rowid) == -1)
 	goto failure;
-      }
     }
     strlcpy(write->id, hash_out, SHA512_DIGEST_STRING_LENGTH);
   }
-  if (sqlite_exec_void_retry(&retry, "COMMIT;")!=SQLITE_OK){
-    WHYF("Failed to commit transaction: %s", sqlite3_errmsg(rhizome_db));
+  if (sqlite_exec_void_retry(&retry, "COMMIT;") == -1)
     goto failure;
-  }
   return 0;
   
 failure:
@@ -375,43 +356,24 @@ int rhizome_add_file(rhizome_manifest *m, const char *filepath)
   return 0;
 }
 
-int rhizome_open_read(struct rhizome_read *read, const char *fileid, int hash){
-  
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  
+/* Return -1 on error, 0 if file blob found, 1 if not found.
+ */
+int rhizome_open_read(struct rhizome_read *read, const char *fileid, int hash)
+{
   strncpy(read->id, fileid, sizeof read->id);
   read->id[RHIZOME_FILEHASH_STRLEN] = '\0';
   str_toupper_inplace(read->id);
-  
-  sqlite3_stmt *statement = sqlite_prepare(&retry, "SELECT FILEBLOBS.rowid FROM FILEBLOBS, FILES WHERE FILEBLOBS.id = FILES.id AND FILES.id = ? AND FILES.datavalid != 0");
-  if (!statement)
-    return WHYF("Failed to prepare statement: %s", sqlite3_errmsg(rhizome_db));
-  
-  sqlite3_bind_text(statement, 1, read->id, -1, SQLITE_STATIC);
-  
-  int ret = sqlite_step_retry(&retry, statement);
-  if (ret != SQLITE_ROW){
-    WHYF("Failed to open file blob: %s", sqlite3_errmsg(rhizome_db));
-    sqlite3_finalize(statement);
+  int64_t rowid = -1;
+  if (sqlite_exec_int64(&rowid, "SELECT FILEBLOBS.rowid FROM FILEBLOBS, FILES WHERE FILEBLOBS.id = FILES.id AND FILES.id = '%s' AND FILES.datavalid != 0", read->id) == -1)
     return -1;
-  }
-  
-  if (!(sqlite3_column_count(statement) == 1
-	&& sqlite3_column_type(statement, 0) == SQLITE_INTEGER)) { 
-    sqlite3_finalize(statement);
-    return WHY("Incorrect statement column");
-  }
-  
-  read->blob_rowid = sqlite3_column_int64(statement, 0);
+  if (rowid == -1)
+    return 1;
+  read->blob_rowid = rowid;
   read->hash=hash;
   read->offset=0;
   read->length=-1;
-  
-  sqlite3_finalize(statement);
-  
   if (hash)
     SHA512_Init(&read->sha512_context);
-  
   return 0;
 }
 
@@ -485,6 +447,8 @@ int rhizome_read(struct rhizome_read *read, unsigned char *buffer, int buffer_le
   }while (1);
 }
 
+/* Returns -1 on error, 0 on success.
+ */
 static int write_file(struct rhizome_read *read, const char *filepath){
   int fd=-1, ret=0;
   
@@ -515,44 +479,44 @@ static int write_file(struct rhizome_read *read, const char *filepath){
   return ret;
 }
 
-/* Extract the file related to a manifest to the file system.
- * The file will be de-crypted and verified while reading.
- * If filepath is not supplied, the file will still be checked.
+/* Extract the file related to a manifest to the file system.  The file will be de-crypted and
+ * verified while reading.  If filepath is not supplied, the file will still be checked.
+ *
+ * Returns -1 on error, 0 if extracted successfully, 1 if not found.
  */
-int rhizome_extract_file(rhizome_manifest *m, const char *filepath, rhizome_bk_t *bsk){
+int rhizome_extract_file(rhizome_manifest *m, const char *filepath, rhizome_bk_t *bsk)
+{
   struct rhizome_read read_state;
   bzero(&read_state, sizeof read_state);
-  
   // for now, always hash the file
-  if (rhizome_open_read(&read_state, m->fileHexHash, 1))
-    return -1;
-  
+  int ret = rhizome_open_read(&read_state, m->fileHexHash, 1);
+  if (ret != 0)
+    return ret;
   read_state.crypt=m->payloadEncryption;
   if (read_state.crypt){
     // if the manifest specifies encryption, make sure we can generate the payload key and encrypt the contents as we go
     if (rhizome_derive_key(m, bsk))
       return -1;
-    
     if (config.debug.rhizome)
       DEBUGF("Decrypting file contents");
-    
     bcopy(m->payloadKey, read_state.key, sizeof(read_state.key));
     bcopy(m->payloadNonce, read_state.nonce, sizeof(read_state.nonce));
   }
-  
   return write_file(&read_state, filepath);
 }
 
-/* dump the raw contents of a file */
-int rhizome_dump_file(const char *id, const char *filepath, int64_t *length){
+/* dump the raw contents of a file
+ *
+ * Returns -1 on error, 0 if dumped successfully, 1 if not found.
+ */
+int rhizome_dump_file(const char *id, const char *filepath, int64_t *length)
+{
   struct rhizome_read read_state;
   bzero(&read_state, sizeof read_state);
-
-  if (rhizome_open_read(&read_state, id, 1))
-    return -1;
-  
+  int ret = rhizome_open_read(&read_state, id, 1);
+  if (ret != 0)
+    return ret;
   if (length)
     *length = read_state.length;
-  
   return write_file(&read_state, filepath);
 }

@@ -255,8 +255,8 @@ int rhizome_opendb()
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
 
   long long version;
-  if (sqlite_exec_int64_retry(&retry, &version, "PRAGMA user_version;")<0)
-    RETURN(WHY("Failed to check schema version"));
+  if (sqlite_exec_int64_retry(&retry, &version, "PRAGMA user_version;") == -1)
+    RETURN(-1);
   
   if (version<1){
     /* Create tables as required */
@@ -296,7 +296,7 @@ int rhizome_opendb()
   
   // We can't delete a file that is being transferred in another process at this very moment...
   if (config.rhizome.clean_on_open)
-    rhizome_cleanup();
+    rhizome_cleanup(NULL);
   RETURN(0);
 }
 
@@ -491,13 +491,21 @@ int _sqlite_step_retry(struct __sourceloc __whence, int log_level, sqlite_retry_
 }
 
 /*
-   Convenience wrapper for executing a prepared SQL statement that returns no value.  If an error
-   occurs then logs it at the given level and returns -1.  If 'retry' is non-NULL and the BUSY error
-   occurs (indicating the database is locked, ie, currently in use by another process), then resets
-   the statement and retries while sqlite_retry() returns true.  If sqlite_retry() returns false
-   then returns -1.  Otherwise returns zero.  Always finalises the statement before returning.
+ * Convenience wrapper for executing a prepared SQL statement where the row outputs are not wanted.
+ * Always finalises the statement before returning.
+ *
+ * If an error occurs then logs it at the given level and returns -1.
+ *
+ * If 'retry' is non-NULL and the BUSY error occurs (indicating the database is locked, ie,
+ * currently in use by another process), then resets the statement and retries while sqlite_retry()
+ * returns true.  If sqlite_retry() returns false then returns -1.
+ *
+ * Otherwise returns the number of rows (SQLITE_ROW) results, which will be zero if the first result
+ * was SQLITE_OK or SQLITE_DONE.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
  */
-static int _sqlite_exec_void_prepared(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement)
+static int _sqlite_exec_prepared(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, sqlite3_stmt *statement)
 {
   if (!statement)
     return -1;
@@ -505,22 +513,29 @@ static int _sqlite_exec_void_prepared(struct __sourceloc __whence, int log_level
   int stepcode;
   while ((stepcode = _sqlite_step_retry(__whence, log_level, retry, statement)) == SQLITE_ROW)
     ++rowcount;
-  if (rowcount)
-    WARNF("void query unexpectedly returned %d row%s", rowcount, rowcount == 1 ? "" : "s");
   sqlite3_finalize(statement);
-  return sqlite_code_ok(stepcode) ? 0 : -1;
+  if (sqlite_trace_func())
+    DEBUGF("rowcount=%d changes=%d", rowcount, sqlite3_changes(rhizome_db));
+  return sqlite_code_ok(stepcode) ? rowcount : -1;
 }
 
 static int _sqlite_vexec_void(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, const char *sqlformat, va_list ap)
 {
   strbuf stmt = strbuf_alloca(8192);
   strbuf_vsprintf(stmt, sqlformat, ap);
-  return _sqlite_exec_void_prepared(__whence, log_level, retry, _sqlite_prepare_loglevel(__whence, log_level, retry, stmt));
+  int rowcount = _sqlite_exec_prepared(__whence, log_level, retry, _sqlite_prepare_loglevel(__whence, log_level, retry, stmt));
+  if (rowcount == -1)
+    return -1;
+  if (rowcount)
+    WARNF("void query unexpectedly returned %d row%s", rowcount, rowcount == 1 ? "" : "s");
+  return sqlite3_changes(rhizome_db);
 }
 
 /* Convenience wrapper for executing an SQL command that returns no value.
-   If an error occurs then logs it at ERROR level and returns -1.  Otherwise returns zero.
-   @author Andrew Bettison <andrew@servalproject.com>
+ * If an error occurs then logs it at ERROR level and returns -1.  Otherwise returns the number of
+ * rows changed by the command.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
  */
 int _sqlite_exec_void(struct __sourceloc __whence, const char *sqlformat, ...)
 {
@@ -533,7 +548,8 @@ int _sqlite_exec_void(struct __sourceloc __whence, const char *sqlformat, ...)
 }
 
 /* Same as sqlite_exec_void(), but logs any error at the given level instead of ERROR.
-   @author Andrew Bettison <andrew@servalproject.com>
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
  */
 int _sqlite_exec_void_loglevel(struct __sourceloc __whence, int log_level, const char *sqlformat, ...)
 {
@@ -546,16 +562,30 @@ int _sqlite_exec_void_loglevel(struct __sourceloc __whence, int log_level, const
 }
 
 /* Same as sqlite_exec_void() but if the statement cannot be executed because the database is
-   currently locked for updates, then will call sqlite_retry() on the supplied retry state variable
-   instead of its own, internal one.  If 'retry' is passed as NULL, then will not sleep and retry at
-   all in the event of a busy condition, but will log it as an error and return immediately.
-   @author Andrew Bettison <andrew@servalproject.com>
+ * currently locked for updates, then will call sqlite_retry() on the supplied retry state variable
+ * instead of its own, internal one.  If 'retry' is passed as NULL, then will not sleep and retry at
+ * all in the event of a busy condition, but will log it as an error and return immediately.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
  */
 int _sqlite_exec_void_retry(struct __sourceloc __whence, sqlite_retry_state *retry, const char *sqlformat, ...)
 {
   va_list ap;
   va_start(ap, sqlformat);
   int ret = _sqlite_vexec_void(__whence, LOG_LEVEL_ERROR, retry, sqlformat, ap);
+  va_end(ap);
+  return ret;
+}
+
+/* Same as sqlite_exec_void_retry(), but logs any error at the given level instead of ERROR.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int _sqlite_exec_void_retry_loglevel(struct __sourceloc __whence, int log_level, sqlite_retry_state *retry, const char *sqlformat, ...)
+{
+  va_list ap;
+  va_start(ap, sqlformat);
+  int ret = _sqlite_vexec_void(__whence, log_level, retry, sqlformat, ap);
   va_end(ap);
   return ret;
 }
@@ -580,16 +610,22 @@ static int _sqlite_vexec_int64(struct __sourceloc __whence, sqlite_retry_state *
   if (rowcount > 1)
     WARNF("query unexpectedly returned %d rows, ignored all but first", rowcount);
   sqlite3_finalize(statement);
-  return sqlite_code_ok(stepcode) && ret != -1 ? rowcount : -1;
+  if (!sqlite_code_ok(stepcode) || ret == -1)
+    return -1;
+  if (sqlite_trace_func())
+    DEBUGF("rowcount=%d changes=%d", rowcount, sqlite3_changes(rhizome_db));
+  return rowcount;
 }
 
 /*
-   Convenience wrapper for executing an SQL command that returns a single int64 value.
-   Logs an error and returns -1 if an error occurs.
-   If no row is found, then returns 0 and does not alter *result.
-   If exactly one row is found, the assigns its value to *result and returns 1.
-   If more than one row is found, then logs a warning, assigns the value of the first row to *result
-   and returns the number of rows.
+ * Convenience wrapper for executing an SQL command that returns a single int64 value.
+ * Logs an error and returns -1 if an error occurs.
+ * If no row is found, then returns 0 and does not alter *result.
+ * If exactly one row is found, the assigns its value to *result and returns 1.
+ * If more than one row is found, then logs a warning, assigns the value of the first row to *result
+ * and returns the number of rows.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
  */
 int _sqlite_exec_int64(struct __sourceloc __whence, long long *result, const char *sqlformat,...)
 {
@@ -602,10 +638,11 @@ int _sqlite_exec_int64(struct __sourceloc __whence, long long *result, const cha
 }
 
 /* Same as sqlite_exec_int64() but if the statement cannot be executed because the database is
-   currently locked for updates, then will call sqlite_retry() on the supplied retry state variable
-   instead of its own, internal one.  If 'retry' is passed as NULL, then will not sleep and retry at
-   all in the event of a busy condition, but will log it as an error and return immediately.
-   @author Andrew Bettison <andrew@servalproject.com>
+ * currently locked for updates, then will call sqlite_retry() on the supplied retry state variable
+ * instead of its own, internal one.  If 'retry' is passed as NULL, then will not sleep and retry at
+ * all in the event of a busy condition, but will log it as an error and return immediately.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
  */
 int _sqlite_exec_int64_retry(struct __sourceloc __whence, sqlite_retry_state *retry, long long *result, const char *sqlformat,...)
 {
@@ -616,26 +653,44 @@ int _sqlite_exec_int64_retry(struct __sourceloc __whence, sqlite_retry_state *re
   return ret;
 }
 
-/*
-   Convenience wrapper for executing an SQL command that returns a single text value.
-   Logs an error and returns -1 if an error occurs, otherwise the number of rows that were found:
-    0 means no rows, nothing is appended to the strbuf
-    1 means exactly one row, appends its column to the strbuf
-    2 more than one row, logs a warning and appends the first row's column to the strbuf
-   @author Andrew Bettison <andrew@servalproject.com>
+/* Convenience wrapper for executing an SQL command that returns a single text value.
+ * Logs an error and returns -1 if an error occurs, otherwise the number of rows that were found:
+ *  0 means no rows, nothing is appended to the strbuf
+ *  1 means exactly one row, appends its column to the strbuf
+ *  2 more than one row, logs a warning and appends the first row's column to the strbuf
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
  */
 int _sqlite_exec_strbuf(struct __sourceloc __whence, strbuf sb, const char *sqlformat,...)
 {
-  strbuf stmt = strbuf_alloca(8192);
-  strbuf_va_printf(stmt, sqlformat);
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  sqlite3_stmt *statement = _sqlite_prepare_loglevel(__whence, LOG_LEVEL_ERROR, &retry, stmt);
+  va_list ap;
+  va_start(ap, sqlformat);
+  int ret = _sqlite_vexec_strbuf_retry(__whence, &retry, sb, sqlformat, ap);
+  va_end(ap);
+  return ret;
+}
+
+int _sqlite_exec_strbuf_retry(struct __sourceloc __whence, sqlite_retry_state *retry, strbuf sb, const char *sqlformat, ...)
+{
+  va_list ap;
+  va_start(ap, sqlformat);
+  int ret = _sqlite_vexec_strbuf_retry(__whence, retry, sb, sqlformat, ap);
+  va_end(ap);
+  return ret;
+}
+
+int _sqlite_vexec_strbuf_retry(struct __sourceloc __whence, sqlite_retry_state *retry, strbuf sb, const char *sqlformat, va_list ap)
+{
+  strbuf stmt = strbuf_alloca(8192);
+  strbuf_vsprintf(stmt, sqlformat, ap);
+  sqlite3_stmt *statement = _sqlite_prepare_loglevel(__whence, LOG_LEVEL_ERROR, retry, stmt);
   if (!statement)
     return -1;
   int ret = 0;
   int rowcount = 0;
   int stepcode;
-  while ((stepcode = _sqlite_step_retry(__whence, LOG_LEVEL_ERROR, &retry, statement)) == SQLITE_ROW) {
+  while ((stepcode = _sqlite_step_retry(__whence, LOG_LEVEL_ERROR, retry, statement)) == SQLITE_ROW) {
     int columncount = sqlite3_column_count(statement);
     if (columncount != 1)
       ret - WHYF("incorrect column count %d (should be 1): %s", columncount, sqlite3_sql(statement));
@@ -661,21 +716,22 @@ long long rhizome_database_used_bytes()
   return db_page_size * (db_page_count - db_free_page_count);
 }
 
-void rhizome_cleanup()
+int rhizome_cleanup(struct rhizome_cleanup_report *report)
 {
   IN();
   // clean out unreferenced files
   // TODO keep updating inserttime for *very* long transfers?
-  if (sqlite_exec_void("DELETE FROM FILES WHERE inserttime < %lld AND datavalid=0;", gettime_ms() - 300000)) {
-    WARNF("delete failed: %s", sqlite3_errmsg(rhizome_db));
-  }
-  if (sqlite_exec_void("DELETE FROM FILES WHERE inserttime < %lld AND datavalid=1 AND NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);", gettime_ms() - 1000)) {
-    WARNF("delete failed: %s", sqlite3_errmsg(rhizome_db));
-  }
-  if (sqlite_exec_void("DELETE FROM FILEBLOBS WHERE NOT EXISTS ( SELECT  1 FROM FILES WHERE FILES.id = FILEBLOBS.id );")) {
-    WARNF("delete failed: %s", sqlite3_errmsg(rhizome_db));
-  }
-  OUT();
+  int ret;
+  ret = sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM FILES WHERE inserttime < %lld AND datavalid=0;", gettime_ms() - 300000);
+  if (report)
+    report->deleted_stale_incoming_files = ret;
+  ret = sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM FILES WHERE inserttime < %lld AND datavalid=1 AND NOT EXISTS( SELECT  1 FROM MANIFESTS WHERE MANIFESTS.filehash = FILES.id);", gettime_ms() - 1000);
+  if (report)
+    report->deleted_orphan_files = ret;
+  ret = sqlite_exec_void_loglevel(LOG_LEVEL_WARN, "DELETE FROM FILEBLOBS WHERE NOT EXISTS ( SELECT  1 FROM FILES WHERE FILES.id = FILEBLOBS.id );");
+  if (report)
+    report->deleted_orphan_fileblobs = ret;
+  RETURN(0);
 }
 
 int rhizome_make_space(int group_priority, long long bytes)
@@ -688,7 +744,7 @@ int rhizome_make_space(int group_priority, long long bytes)
   if (db_used == -1)
     return -1;
   
-  rhizome_cleanup();
+  rhizome_cleanup(NULL);
   
   /* If there is already enough space now, then do nothing more */
   if (db_used<=(config.rhizome.database_size-bytes-65536))
@@ -841,7 +897,7 @@ int rhizome_store_bundle(rhizome_manifest *m)
   const char *service = rhizome_manifest_get(m, "service", NULL, 0);
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") != SQLITE_OK)
+  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") == -1)
     return WHY("Failed to begin transaction");
 
   sqlite3_stmt *stmt;
@@ -909,7 +965,7 @@ int rhizome_store_bundle(rhizome_manifest *m)
     sqlite3_finalize(stmt);
     stmt = NULL;
   }
-  if (sqlite_exec_void_retry(&retry, "COMMIT;") == SQLITE_OK){
+  if (sqlite_exec_void_retry(&retry, "COMMIT;") != -1){
     // This message used in tests; do not modify or remove.
     const char *service = rhizome_manifest_get(m, "service", NULL, 0);
     INFOF("RHIZOME ADD MANIFEST service=%s bid=%s version=%lld",
@@ -1049,7 +1105,6 @@ int rhizome_list_manifests(const char *service, const char *name,
 	const char *blob_name = rhizome_manifest_get(m, "name", NULL, 0);
 	long long blob_date = rhizome_manifest_get_ll(m, "date");
 	const char *blob_filehash = rhizome_manifest_get(m, "filehash", NULL, 0);
-	long long blob_filesize = rhizome_manifest_get_ll(m, "filesize");
 	int from_here = 0;
 	unsigned char senderSid[SID_SIZE];
 	unsigned char recipientSid[SID_SIZE];
@@ -1070,7 +1125,6 @@ int rhizome_list_manifests(const char *service, const char *name,
 	  int cn = 0, in = 0, kp = 0;
 	  from_here = keyring_find_sid(keyring, &cn, &in, &kp, senderSid);
 	}
-	if (config.debug.rhizome) DEBUGF("manifest payload size = %lld", blob_filesize);
 	
 	cli_put_long(rowid, ":");
 	cli_put_string(blob_service, ":");
@@ -1107,13 +1161,12 @@ cleanup:
   RETURN(ret);
 }
 
-int64_t rhizome_database_create_blob_for(const char *hashhex,int64_t fileLength,
-					 int priority)
+int64_t rhizome_database_create_blob_for(const char *hashhex,int64_t fileLength, int priority)
 {
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
   
-  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") != SQLITE_OK)
+  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") == -1)
     return WHY("Failed to begin transaction");
   
   /* INSERT INTO FILES(id as text, data blob, length integer, highestpriority integer).
@@ -1125,15 +1178,12 @@ int64_t rhizome_database_create_blob_for(const char *hashhex,int64_t fileLength,
      int sqlite3_blob_write(sqlite3_blob *, const void *z, int n, int iOffset);
   */
 
-  int ret=sqlite_exec_void_retry(&retry, 
+  int ret = sqlite_exec_void_retry(&retry, 
 	"INSERT OR REPLACE INTO FILES(id,length,highestpriority,datavalid,inserttime) VALUES('%s',%lld,%d,0,%lld);",
 	hashhex, (long long)fileLength, priority, (long long)gettime_ms()
-	);
-  if (ret!=SQLITE_OK) {
-    DEBUGF("insert or replace into files ... failed: %s",
-	   sqlite3_errmsg(rhizome_db));
+      );
+  if (ret == -1)
     goto insert_row_fail;
-  }
   
   sqlite3_stmt *statement = sqlite_prepare(&retry,"INSERT OR REPLACE INTO FILEBLOBS(id,data) VALUES('%s',?)",hashhex);
   if (!statement)
@@ -1146,7 +1196,7 @@ int64_t rhizome_database_create_blob_for(const char *hashhex,int64_t fileLength,
     goto insert_row_fail;
   }
   /* Do actual insert, and abort if it fails */
-  if (_sqlite_exec_void_prepared(__WHENCE__, LOG_LEVEL_ERROR, &retry, statement) == -1) {
+  if (_sqlite_exec_prepared(__WHENCE__, LOG_LEVEL_ERROR, &retry, statement) == -1) {
 insert_row_fail:
     WHYF("Failed to insert row for fileid=%s", hashhex);
     sqlite_exec_void_retry(&retry, "ROLLBACK;");
@@ -1157,7 +1207,7 @@ insert_row_fail:
   int64_t rowid = sqlite3_last_insert_rowid(rhizome_db);
   
   ret = sqlite_exec_void_retry(&retry, "COMMIT;");
-  if (ret!=SQLITE_OK){
+  if (ret == -1) {
     sqlite_exec_void_retry(&retry, "ROLLBACK;");
     return WHYF("Failed to commit transaction");
   }
@@ -1182,8 +1232,8 @@ int rhizome_update_file_priority(const char *fileid)
 	"   AND groupmemberships.groupid=grouplist.id;",
 	fileid) == -1)
     return -1;
-  if (highestPriority >= 0 && sqlite_exec_void_retry(&retry, "UPDATE files set highestPriority=%lld WHERE id='%s';", highestPriority, fileid) != 0)
-    WHYF("cannot update priority for fileid=%s", fileid);
+  if (highestPriority >= 0 && sqlite_exec_void_retry(&retry, "UPDATE files set highestPriority=%lld WHERE id='%s';", highestPriority, fileid) == -1)
+    return WHYF("cannot update priority for fileid=%s", fileid);
   return 0;
 }
 
@@ -1349,7 +1399,8 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
       
       if (!inconsistent) {
 	*found = blob_m;
-	DEBUGF("Found duplicate payload: service=%s%s version=%llu hexhash=%s",
+	if (config.debug.rhizome)
+	  DEBUGF("Found duplicate payload: service=%s%s version=%llu hexhash=%s",
 		blob_service, strbuf_str(b), blob_m->version, blob_m->fileHexHash, q_author ? q_author : ""
 	      );
 	ret = 1;
@@ -1370,7 +1421,8 @@ int rhizome_find_duplicate(const rhizome_manifest *m, rhizome_manifest **found, 
  * Returns -1 on error
  * Caller is responsible for allocating and freeing rhizome_manifest
  */
-int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m){
+int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m)
+{
   int ret=0;
   
   sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
@@ -1409,4 +1461,109 @@ int rhizome_retrieve_manifest(const char *manifestid, rhizome_manifest *m){
 done:
   sqlite3_finalize(statement);
   return ret;  
+}
+
+int rhizome_delete_manifest_retry(sqlite_retry_state *retry, const char *manifestid)
+{
+  sqlite3_stmt *statement = sqlite_prepare(retry, "DELETE FROM manifests WHERE id = ?");
+  if (!statement)
+    return -1;
+  sqlite3_bind_text(statement, 1, manifestid, -1, SQLITE_STATIC);
+  if (_sqlite_exec_prepared(__WHENCE__, LOG_LEVEL_ERROR, retry, statement) == -1)
+    return -1;
+  return sqlite3_changes(rhizome_db) ? 0 : 1;
+}
+
+static int rhizome_delete_file_retry(sqlite_retry_state *retry, const char *fileid)
+{
+  int ret = 0;
+  sqlite3_stmt *statement = sqlite_prepare(retry, "DELETE FROM files WHERE id = ?");
+  if (!statement)
+    ret = -1;
+  else {
+    sqlite3_bind_text(statement, 1, fileid, -1, SQLITE_STATIC);
+    if (_sqlite_exec_prepared(__WHENCE__, LOG_LEVEL_ERROR, retry, statement) == -1)
+      ret = -1;
+  }
+  statement = sqlite_prepare(retry, "DELETE FROM fileblobs WHERE id = ?");
+  if (!statement)
+    ret = -1;
+  else {
+    sqlite3_bind_text(statement, 1, fileid, -1, SQLITE_STATIC);
+    if (_sqlite_exec_prepared(__WHENCE__, LOG_LEVEL_ERROR, retry, statement) == -1)
+      ret = -1;
+  }
+  return ret == -1 ? -1 : sqlite3_changes(rhizome_db) ? 0 : 1;
+}
+
+int rhizome_delete_payload_retry(sqlite_retry_state *retry, const char *manifestid)
+{
+  strbuf fh = strbuf_alloca(RHIZOME_FILEHASH_STRLEN + 1);
+  int rows = sqlite_exec_strbuf_retry(retry, fh, "SELECT filehash FROM manifests WHERE id = '%s'", manifestid);
+  if (rows == -1)
+    return -1;
+  if (rows && rhizome_delete_file_retry(retry, strbuf_str(fh)) == -1)
+    return -1;
+  return 0;
+}
+/* Remove a manifest and its bundle from the database, given its manifest ID.
+ *
+ * Returns 0 if manifest is found and removed and bundle was either absent or removed
+ * Returns 1 if manifest is not found
+ * Returns -1 on error
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int rhizome_delete_bundle(const char *manifestid)
+{
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  if (rhizome_delete_payload_retry(&retry, manifestid) == -1)
+    return -1;
+  if (rhizome_delete_manifest_retry(&retry, manifestid) == -1)
+    return -1;
+  return 0;
+}
+
+/* Remove a manifest from the database, given its manifest ID, leaving its bundle (fileblob)
+ * untouched if present.
+ *
+ * Returns 0 if manifest is found and removed
+ * Returns 1 if manifest is not found
+ * Returns -1 on error
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int rhizome_delete_manifest(const char *manifestid)
+{
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  return rhizome_delete_manifest_retry(&retry, manifestid);
+}
+
+/* Remove a bundle's payload (file) from the database, given its manifest ID, leaving its manifest
+ * untouched if present.
+ *
+ * Returns 0 if manifest is found, its payload is found and removed
+ * Returns 1 if manifest or payload is not found
+ * Returns -1 on error
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int rhizome_delete_payload(const char *manifestid)
+{
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  return rhizome_delete_payload_retry(&retry, manifestid);
+}
+
+/* Remove a file from the database, given its file hash.
+ *
+ * Returns 0 if file is found and removed
+ * Returns 1 if file is not found
+ * Returns -1 on error
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int rhizome_delete_file(const char *fileid)
+{
+  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
+  return rhizome_delete_file_retry(&retry, fileid);
 }

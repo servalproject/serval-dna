@@ -386,12 +386,28 @@ extract_manifest_vars() {
 rhizome_add_file() {
    local name="$1"
    local size="${2:-64}"
-   [ -e "$name" ] || create_file "$name" $size
-   local sidvar="SID$instance_name"
-   executeOk_servald rhizome add file "${!sidvar}" "$name" "$name.manifest"
-   executeOk_servald rhizome list
-   assert_rhizome_list --fromhere=1 --author="${!sidvar}" "$name" --and-others
+   rhizome_add_files --size="$size" "$name"
    extract_manifest_vars "$name.manifest"
+}
+
+rhizome_add_files() {
+   local size=64
+   local sidvar="SID$instance_name"
+   local -a names=()
+   for arg; do
+      case "$arg" in
+      --size=*)
+         size="${arg##*=}"
+         ;;
+      *)
+         local name="$arg"
+         [ -e "$name" ] || create_file "$name" $size
+         executeOk_servald rhizome add file "${!sidvar}" "$name" "$name.manifest"
+         names+=("$name")
+      esac
+   done
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 --author="${!sidvar}" "${names[@]}" --and-others
 }
 
 rhizome_update_file() {
