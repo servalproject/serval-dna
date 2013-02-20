@@ -413,7 +413,6 @@ rhizome_manifest *rhizome_direct_get_manifest(unsigned char *bid_prefix,int pref
   */
   assert(prefix_length>=0);
   assert(prefix_length<=RHIZOME_MANIFEST_ID_BYTES);
-  DEBUGF("here");
   unsigned char low[RHIZOME_MANIFEST_ID_BYTES];
   unsigned char high[RHIZOME_MANIFEST_ID_BYTES];
 
