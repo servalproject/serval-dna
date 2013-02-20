@@ -242,7 +242,7 @@ int rhizome_advertise_manifest(rhizome_manifest *m){
   ob_limitsize(frame->payload, 800);
   
   if (ob_append_byte(frame->payload, 3)) goto error;
-  if (ob_append_ui16(frame->payload, rhizome_http_server_port)) goto error;
+  if (ob_append_ui16(frame->payload, is_rhizome_http_enabled()?rhizome_http_server_port:0)) goto error;
   if (ob_append_ui16(frame->payload, m->manifest_all_bytes)) goto error;
   if (ob_append_bytes(frame->payload, m->manifestdata, m->manifest_all_bytes)) goto error;
   ob_append_byte(frame->payload, 0xFF);
