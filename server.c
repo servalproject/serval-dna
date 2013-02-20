@@ -132,10 +132,6 @@ int server(char *backing_file)
   fprintf(f,"%d\n", server_getpid);
   fclose(f);
   
-  /* Open Rhizome database and clean out any cruft */
-  rhizome_opendb();
-  rhizome_cleanup();
-
   overlayServerMode();
 
   RETURN(0);

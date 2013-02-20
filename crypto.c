@@ -28,12 +28,9 @@ int crypto_verify_signature(unsigned char *sas_key,
 					    reassembled,sizeof(reassembled),
 					    sas_key);
   
-  if (result) {
-    WHY("Signature verification failed");
-    RETURN(-1);
-  }
+  if (result)
+    RETURN(WHY("Signature verification failed"));
   RETURN(0);
-  OUT();
 }
 
 // verify the signature at the end of a message, on return message_len will be reduced by the length of the signature.

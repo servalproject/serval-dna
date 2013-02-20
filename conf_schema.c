@@ -425,6 +425,7 @@ static int cf_opt_network_interface_legacy(struct config_network_interface *nifp
       return CFSTRINGOVERFLOW;
     strncpy(nif.file, &name[1], len - 1)[len - 1] = '\0';
     nif.match.patc = 0;
+    nif.socket_type = SOCK_FILE;
   } else {
     int star = (strchr(name, '*') != NULL) ? 1 : 0;
     if (len + star >= sizeof(nif.match.patv[0]))
@@ -433,6 +434,7 @@ static int cf_opt_network_interface_legacy(struct config_network_interface *nifp
     if (star)
       nif.match.patv[0][len] = '*';
     nif.match.patc = 1;
+    nif.socket_type = SOCK_DGRAM;
   }
   if (*p == '=') {
     const char *const type = p + 1;

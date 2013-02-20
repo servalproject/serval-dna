@@ -27,7 +27,7 @@ shopt -s extglob
 setup_rhizome() {
    set_instance +A
    executeOk_servald config set debug.rhizome on
-   create_identities 1
+   create_single_identity
    set_instance +B
    executeOk_servald config set debug.rhizome on
    create_identities 4
@@ -865,7 +865,7 @@ test_ImportOwnBundle() {
    assert_rhizome_list --fromhere=1 --author=$SIDB2 fileB
 }
 
-doc_ImportCombinedBundle="Can generate a combined bundle, import into another instance and export again"
+doc_ImportCombinedBundle="Create and import combined bundle"
 setup_ImportCombinedBundle() {
    setup_servald
    setup_rhizome
@@ -889,6 +889,71 @@ test_ImportCombinedBundle() {
    assert_rhizome_list --fromhere=0 fileA
    executeOk_servald rhizome extract bundle $manifestid fileAx fileAx
    assert diff fileA fileAx
+}
+
+setup_delete() {
+   setup_servald
+   setup_rhizome
+   set_instance +A
+   executeOk_servald config set rhizome.clean_on_open off
+   rhizome_add_files file{1..4}
+   for i in {1..4}; do
+      extract_manifest_id BID$i file$i.manifest
+      extract_manifest_filehash HASH$i file$i.manifest
+   done
+}
+
+doc_DeleteManifest="Delete a manifest from store"
+setup_DeleteManifest() {
+   setup_delete
+}
+test_DeleteManifest() {
+   executeOk_servald rhizome delete manifest "$BID2"
+   tfw_cat --stderr
+   executeOk_servald rhizome list
+   assert_rhizome_list file{1,3,4}
+   execute --exit-status=1 --stderr $servald rhizome extract manifest "$BID2"
+   executeOk_servald rhizome dump file "$HASH2" file2x
+   assert diff file2 file2x
+}
+
+doc_DeletePayload="Delete a payload from store"
+setup_DeletePayload() {
+   setup_delete
+}
+test_DeletePayload() {
+   executeOk_servald rhizome delete payload "$BID3"
+   tfw_cat --stderr
+   executeOk_servald rhizome list
+   assert_rhizome_list file{1..4}
+   executeOk_servald rhizome extract manifest "$BID3"
+   execute --exit-status=1 --stderr $servald rhizome dump file "$HASH3" file3x
+}
+
+doc_DeleteBundle="Delete a bundle from store"
+setup_DeleteBundle() {
+   setup_delete
+}
+test_DeleteBundle() {
+   executeOk_servald rhizome delete bundle "$BID4"
+   tfw_cat --stderr
+   executeOk_servald rhizome list
+   assert_rhizome_list file{1..3}
+   execute --exit-status=1 --stderr $servald rhizome extract manifest "$BID4"
+   execute --exit-status=1 --stderr $servald rhizome dump file "$HASH4" file4x
+}
+
+doc_DeleteFile="Delete a file from store"
+setup_DeleteFile() {
+   setup_delete
+}
+test_DeleteFile() {
+   executeOk_servald rhizome delete file "$HASH1"
+   tfw_cat --stderr
+   executeOk_servald rhizome list
+   assert_rhizome_list file{1..4}
+   executeOk_servald rhizome extract manifest "$BID1"
+   execute --exit-status=1 --stderr $servald rhizome dump file "$HASH1" file1x
 }
 
 runTests "$@"

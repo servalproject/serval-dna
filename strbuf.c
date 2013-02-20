@@ -54,11 +54,19 @@ strbuf strbuf_ncat(strbuf sb, const char *text, size_t len)
 
 strbuf strbuf_puts(strbuf sb, const char *text)
 {
-  if (sb->start && (!sb->end || sb->current < sb->end)) {
-    register size_t n = sb->end ? sb->end - sb->current : -1;
-    while (n-- && (*sb->current = *text)) {
-      ++sb->current;
-      ++text;
+  if (sb->start) {
+    if (!sb->end) {
+      while ((*sb->current = *text)) {
+	++sb->current;
+	++text;
+      }
+    } else if (sb->current < sb->end) {
+      register size_t n = sb->end - sb->current;
+      while (n-- && (*sb->current = *text)) {
+	++sb->current;
+	++text;
+      }
+      *sb->current = '\0';
     }
   }
   while (*text++)

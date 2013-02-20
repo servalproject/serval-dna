@@ -130,7 +130,8 @@ schedule(&_sched_##X); }
 
   /* Get rhizome server started BEFORE populating fd list so that
      the server's listen socket is in the list for poll() */
-  if (is_rhizome_enabled()) rhizome_opendb();
+  if (is_rhizome_enabled())
+    rhizome_opendb();
 
   /* Rhizome http server needs to know which callback to attach
 	 to client sockets, so provide it here, along with the name to
