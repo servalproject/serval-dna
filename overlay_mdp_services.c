@@ -33,12 +33,14 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
 {
   IN();
 
+  uint64_t version=
+    read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES]);
   uint64_t fileOffset=
     read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8]);
   uint32_t bitmap=
     read_uint32(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8]);
   uint16_t blockLength=
-  read_uint16(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4]);
+    read_uint16(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4]);
   if (blockLength>1024) RETURN(-1);
 
   struct subscriber *source = find_subscriber(mdp->out.src.sid, SID_SIZE, 0);
@@ -55,88 +57,95 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
      journal, then the newer version is okay to use to service this request.
   */
   
-  rhizome_blob_handle *blob=NULL;
-  blob=rhizome_database_open_blob_bybid
-    (alloca_tohex_bid(&mdp->out.payload[0]),
-     read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES]), 0 /* read only */);
-
-  if (blob->blob_bytes<fileOffset) {
-    rhizome_database_blob_close(blob); blob=NULL;
+  char filehash[SHA512_DIGEST_STRING_LENGTH];
+  if (rhizome_database_filehash_from_id(alloca_tohex_bid(mdp->out.payload), version, filehash)<=0)
     RETURN(-1);
+  
+  struct rhizome_read read;
+  bzero(&read, sizeof read);
+  
+  int ret=rhizome_open_read(&read, filehash, 0);
+  
+  if (!ret){
+    overlay_mdp_frame reply;
+    bzero(&reply,sizeof(reply));
+    // Reply is broadcast, so we cannot authcrypt, and signing is too time consuming
+    // for low devices.  The result is that an attacker can prevent rhizome transfers
+    // if they want to by injecting fake blocks.  The alternative is to not broadcast
+    // back replies, and then we can authcrypt.
+    // multiple receivers starting at different times, we really need merkle-tree hashing.
+    // so multiple receivers is not realistic for now.  So use non-broadcast unicode
+    // for now would seem the safest.  But that would stop us from allowing multiple
+    // receivers in the special case where additional nodes begin listening in from the
+    // beginning.
+    reply.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT|MDP_NOSIGN;
+    bcopy(my_subscriber->sid,reply.out.src.sid,SID_SIZE);
+    reply.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
+    int send_broadcast=1;
+    
+    if (source){
+      if (!(source->reachable&REACHABLE_DIRECT))
+	send_broadcast=0;
+      if (source->reachable&REACHABLE_UNICAST && source->interface && source->interface->prefer_unicast)
+	send_broadcast=0;
+    }
+    
+    if (send_broadcast){
+      // send replies to broadcast so that others can hear blocks and record them
+      // (not that preemptive listening is implemented yet).
+      memset(reply.out.dst.sid,0xff,SID_SIZE);
+      reply.out.ttl=1;
+    }else{
+      // if we get a request from a peer that we can only talk to via unicast, send data via unicast too.
+      bcopy(mdp->out.src.sid,reply.out.dst.sid,SID_SIZE);
+      reply.out.ttl=64;
+    }
+    
+    reply.out.dst.port=MDP_PORT_RHIZOME_RESPONSE;
+    reply.out.queue=OQ_OPPORTUNISTIC;
+    reply.out.payload[0]='B'; // reply contains blocks
+    // include 16 bytes of BID prefix for identification
+    bcopy(&mdp->out.payload[0],&reply.out.payload[1],16);
+    // and version of manifest
+    bcopy(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES],
+	  &reply.out.payload[1+16],8);
+    
+    int i;
+    for(i=0;i<32;i++){
+      if (bitmap&(1<<(31-i)))
+	continue;
+      
+      if (overlay_queue_remaining(reply.out.queue) < 10)
+	break;
+      
+      // calculate and set offset of block
+      read.offset = fileOffset+i*blockLength;
+      
+      // stop if we passed the length of the file
+      // (but we may not know the file length until we attempt a read)
+      if (read.length!=-1 && read.offset>read.length)
+	break;
+      
+      write_uint64(&reply.out.payload[1+16+8], read.offset);
+      
+      int bytes_read = rhizome_read(&read, &reply.out.payload[1+16+8+8], blockLength);
+      if (bytes_read<=0)
+	break;
+      
+      reply.out.payload_length=1+16+8+8+bytes_read;
+      
+      // Mark the last block of the file, if required
+      if (read.offset >= read.length)
+	reply.out.payload[0]='T';
+      
+      // send packet
+      if (overlay_mdp_dispatch(&reply,0 /* system generated */, NULL,0))
+	break;
+    }
   }
+  rhizome_read_close(&read);
 
-  overlay_mdp_frame reply;
-  bzero(&reply,sizeof(reply));
-  // Reply is broadcast, so we cannot authcrypt, and signing is too time consuming
-  // for low devices.  The result is that an attacker can prevent rhizome transfers
-  // if they want to by injecting fake blocks.  The alternative is to not broadcast
-  // back replies, and then we can authcrypt.
-  // multiple receivers starting at different times, we really need merkle-tree hashing.
-  // so multiple receivers is not realistic for now.  So use non-broadcast unicode
-  // for now would seem the safest.  But that would stop us from allowing multiple
-  // receivers in the special case where additional nodes begin listening in from the
-  // beginning.
-  reply.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT|MDP_NOSIGN;
-  reply.out.ttl=1;
-  bcopy(my_subscriber->sid,reply.out.src.sid,SID_SIZE);
-  reply.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
-  int send_broadcast=1;
-  
-  if (source){
-    if (!(source->reachable&REACHABLE_DIRECT))
-      send_broadcast=0;
-    if (source->reachable&REACHABLE_UNICAST && source->interface && source->interface->prefer_unicast)
-      send_broadcast=0;
-  }
-  
-  if (send_broadcast){
-    // send replies to broadcast so that others can hear blocks and record them
-    // (not that preemptive listening is implemented yet).
-    memset(reply.out.dst.sid,0xff,SID_SIZE);
-  }else{
-    // if we get a request from a peer that we can only talk to via unicast, send data via unicast too.
-    bcopy(mdp->out.src.sid,reply.out.dst.sid,SID_SIZE);
-  }
-  
-  reply.out.dst.port=MDP_PORT_RHIZOME_RESPONSE;
-  reply.out.queue=OQ_OPPORTUNISTIC;
-  reply.out.payload[0]='B'; // reply contains blocks
-  // include 16 bytes of BID prefix for identification
-  bcopy(&mdp->out.payload[0],&reply.out.payload[1],16);
-  // and version of manifest
-  bcopy(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES],
-	&reply.out.payload[1+16],8);
-  
-  int i;
-  for(i=0;i<32;i++)
-    if (!(bitmap&(1<<(31-i))))
-      {	
-	// calculate and set offset of block
-	uint64_t blockOffset=fileOffset+i*blockLength;
-	write_uint64(&reply.out.payload[1+16+8],blockOffset);
-	// work out how many bytes to read
-	int blockBytes=blob->blob_bytes-blockOffset;
-	if (blockBytes>blockLength) blockBytes=blockLength;
-	// read data for block
-	if (blob->blob_bytes>=blockOffset) {
-	  if (overlay_queue_remaining(reply.out.queue) < 10)
-	    break;
-	  
-	  rhizome_database_blob_read(blob,&reply.out.payload[1+16+8+8],
-				     blockBytes,blockOffset);	  
-	  reply.out.payload_length=1+16+8+8+blockBytes;
-
-	  // Mark terminal block if required
-	  if (blockOffset+blockBytes==blob->blob_bytes) reply.out.payload[0]='T';
-	  // send packet
-	  if (overlay_mdp_dispatch(&reply,0 /* system generated */, NULL,0))
-	    break;
-	} else break;
-      }
-
-  rhizome_database_blob_close(blob); blob=NULL;
-
-  RETURN(-1);
+  RETURN(ret);
   OUT();
 }
 

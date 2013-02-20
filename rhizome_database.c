@@ -666,157 +666,20 @@ long long rhizome_database_used_bytes()
   return db_page_size * (db_page_count - db_free_page_count);
 }
 
-
-
-char blobfile[1024];
-char *rhizome_database_get_blob_filename(int64_t rowid)
-{
-  const char *blobpath=config.rhizome.datastore_path;
-  if (!blobpath||!blobpath[0]) {
-    blobpath=serval_instancepath();
-  }
-  if (!blobpath) return NULL;
-
-  snprintf(blobfile,1024,"%s/blob.%lld",blobpath,rowid);
-  return blobfile;
-}
-
-rhizome_blob_handle *rhizome_database_open_blob_bybid(const char *id,
-						      uint64_t version,
-						      int writeP)
+int rhizome_database_filehash_from_id(const char *id, uint64_t version, char hash[SHA512_DIGEST_STRING_LENGTH])
 {
   IN();
-
-  long long row_id=-1;
-  if (sqlite_exec_int64(&row_id, "SELECT rowid FROM FILEBLOBS WHERE id IN (SELECT filehash FROM MANIFESTS WHERE manifests.version=%lld AND manifests.id='%s');",
-			version,id) < 1)
-    {
-      DEBUGF("Couldn't find stored bundle.");
-#if 0
-      sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-      sqlite3_stmt *statement = sqlite_prepare(&retry, "SELECT rowid,id,filehash FROM MANIFESTS");
-      while(sqlite_step_retry(&retry, statement)==SQLITE_ROW){
-	sqlite3_int64 rowid = sqlite3_column_int64(statement, 0);
-	const char *idhex = (const char *) sqlite3_column_text(statement, 1);
-	const char *filehashhex = (const char *) sqlite3_column_text(statement, 2);
-	DEBUGF("rowid=%lld, id='%s', filehash='%s'",
-	       rowid,idhex,filehashhex);
-      }
-      sqlite3_finalize(statement);
-#endif
-      RETURN(NULL);
-    }
   
-  if (row_id==-1) {
-    DEBUGF("Couldn't find stored bundle.");
-    RETURN(NULL);
-  }
-  RETURN(rhizome_database_open_blob_byrowid(row_id,writeP));
+  strbuf hash_sb = strbuf_local(hash, SHA512_DIGEST_STRING_LENGTH);
+  RETURN(sqlite_exec_strbuf(hash_sb, "SELECT filehash FROM MANIFESTS WHERE manifests.version=%lld AND manifests.id='%s';",
+			    version,id));
   OUT();
-}
-
-rhizome_blob_handle *rhizome_database_open_blob_byrowid(int row_id,int writeP)
-{
-  IN();
-  struct rhizome_blob_handle *blob=calloc(sizeof(struct rhizome_blob_handle),1);
-  if (!blob) RETURN(NULL);
-
-  if (config.debug.externalblobs)
-    DEBUGF("Opening blob for rowid #%d",row_id);
-
-  if (!config.rhizome.external_blobs)
-    {
-      // Try opening as internal blob.
-      // If column is not a blob, then this will fail.
-      int ret=sqlite3_blob_open(rhizome_db, "main", "fileblobs", "data",
-				row_id, writeP, &blob->sqlite_blob);
-      if (ret==SQLITE_OK) {
-	blob->blob_bytes=sqlite3_blob_bytes(blob->sqlite_blob);  
-	RETURN(blob);
-      }
-      free(blob);
-      RETURN(NULL);
-    }
-  else
-    {    
-      // Try opening as an external file
-      char *blobfile=rhizome_database_get_blob_filename(row_id);
-      errno=0;
-      blob->fd_blob=open(blobfile,O_RDWR);
-      if (blob->fd_blob==-1&&writeP) blob->fd_blob=open(blobfile,O_CREAT|O_RDWR,0664);
-      if (blob->fd_blob>-1) {
-	// File is stored externally
-	blob->blob_bytes=lseek(blob->fd_blob,0,SEEK_END);
-	DEBUGF("Opened fileblobs blob file '%s' (%lld bytes)",
-	       blobfile,blob->blob_bytes);
-	RETURN(blob);
-      } 
-      DEBUGF("Could not open fileblobs blob file '%s', will try sqlite blob",
-	     blobfile);
-      // WHY_perror("open");
-    }
-  
-  // Couldn't open, so fail 
-  free(blob);
-  RETURN(NULL);
-  OUT();
-}
-
-int rhizome_database_blob_close(rhizome_blob_handle *blob)
-{
-  if (!blob) return 0;
-  if (blob->sqlite_blob) sqlite3_blob_close(blob->sqlite_blob);
-  if (blob->fd_blob) close(blob->fd_blob);
-  bzero(blob,sizeof(struct rhizome_blob_handle));
-  return 0;
-}
-
-int rhizome_database_blob_read(rhizome_blob_handle *blob,unsigned char *out,
-			       uint64_t count,uint64_t offset)
-{
-  IN();
-  if (!blob) RETURN(-1);
-  if (blob->sqlite_blob) RETURN(sqlite3_blob_read(blob->sqlite_blob,
-						   out,count,offset));
-  if (blob->fd_blob) {
-    lseek(blob->fd_blob,offset,SEEK_SET);
-    int r=read(blob->fd_blob,out,count);
-    if (r==count) RETURN(SQLITE_OK);
-  }
-  RETURN(-1);
-  OUT();
-}
-
-int rhizome_database_blob_write(rhizome_blob_handle *blob,unsigned char *buffer,
-			       uint64_t count,uint64_t offset)
-{
-  IN();
-  if (!blob) RETURN(-1);
-  if (blob->sqlite_blob) RETURN(sqlite3_blob_write(blob->sqlite_blob,
-						   buffer,count,offset));
-  if (blob->fd_blob) {
-    DEBUGF("Writing to external file backed blob");
-    if (lseek(blob->fd_blob,offset,SEEK_SET)<0) 
-      RETURN(WHYF("lseek(fd,%lld,SEEK_SET) failed",offset));
-    int r=write(blob->fd_blob,buffer,count);
-    DEBUGF("  wrote %d of %lld bytes",r,count);
-    if (r==count) RETURN(SQLITE_OK);
-  }
-  RETURN(-1);
-  OUT();
-}
-
-const char *rhizome_database_blob_errmsg(rhizome_blob_handle *blob)
-{
-  if (!blob) return "blob is null";
-  if (blob->sqlite_blob) return sqlite3_errmsg(rhizome_db);
-  if (blob->fd_blob) return strerror(errno);
-  return "blob has no open channel";
 }
 
 void rhizome_cleanup()
 {
   IN();
+  /* FIXME
   // clean out unreferenced files
   // TODO keep updating inserttime for *very* long transfers?
   if (sqlite_exec_void("DELETE FROM FILES WHERE inserttime < %lld AND datavalid=0;", gettime_ms() - 300000)) {
@@ -847,6 +710,7 @@ void rhizome_cleanup()
       WARNF("delete failed: %s", sqlite3_errmsg(rhizome_db));
     }
   }
+   */
   OUT();
 }
 
@@ -946,12 +810,7 @@ int rhizome_drop_stored_file(const char *id,int maximum_priority)
   sqlite3_finalize(statement);
   if (can_drop) {
     sqlite_exec_void_retry(&retry, "delete from files where id='%s';",id);
-    int64_t fileblob_rowid=-1;
-    sqlite_exec_int64_retry(&retry,&fileblob_rowid,"select rowid from fileblobs where id='%s';",id);
-    if (fileblob_rowid>-1) {
-      char *blobfile=rhizome_database_get_blob_filename(fileblob_rowid);
-      if (blobfile) unlink(blobfile);
-    }
+    rhizome_store_delete(id);
     sqlite_exec_void_retry(&retry, "delete from fileblobs where id='%s';",id);
   }
   return 0;
@@ -1283,86 +1142,6 @@ int rhizome_list_manifests(const char *service, const char *name,
 cleanup:
   sqlite3_finalize(statement);
   RETURN(ret);
-  OUT();
-}
-
-int64_t rhizome_database_create_blob_for(const char *filehashhex_or_tempid,
-					 int64_t fileLength, int priority)
-{
-  IN();
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  
-  if (config.debug.externalblobs)
-    DEBUGF("Creating blob for (filehash or temp id)='%s', length=%d, priority=%d",
-	   filehashhex_or_tempid,fileLength,priority);
-
-  if (sqlite_exec_void_retry(&retry, "BEGIN TRANSACTION;") != SQLITE_OK)
-    RETURN(WHY("Failed to begin transaction"));
-  
-  /* INSERT INTO FILES(id as text, data blob, length integer, highestpriority integer).
-   BUT, we have to do this incrementally so that we can handle blobs larger than available memory.
-  This is possible using:
-     int sqlite3_bind_zeroblob(sqlite3_stmt*, int, int n);
-  That binds an all zeroes blob to a field.  We can then populate the data by
-  opening a handle to the blob using:
-     int sqlite3_blob_write(sqlite3_blob *, const void *z, int n, int iOffset);
-  */
-
-  int ret=sqlite_exec_void_retry(&retry, 
-	"INSERT OR REPLACE INTO FILES(id,length,highestpriority,datavalid,inserttime) VALUES('%s',%lld,%d,0,%lld);",
-				 filehashhex_or_tempid, (long long)fileLength, 
-				 priority, (long long)gettime_ms());
-  if (ret!=SQLITE_OK) {
-    DEBUGF("insert or replace into files ... failed: %s",
-	   sqlite3_errmsg(rhizome_db));
-    goto insert_row_fail;
-  }
-  sqlite3_int64 fileblob_rowid=sqlite3_last_insert_rowid(rhizome_db);  
-
-  sqlite3_stmt *statement=NULL;
-  if (!config.rhizome.external_blobs) {
-    statement = sqlite_prepare(&retry,"INSERT OR REPLACE INTO FILEBLOBS(id,data) VALUES('%s',?)",filehashhex_or_tempid);
-    if (!statement)
-      goto insert_row_fail;
-    
-    /* Bind appropriate sized zero-filled blob to data field */
-    if (sqlite3_bind_zeroblob(statement, 1, fileLength) != SQLITE_OK) {
-      WHYF("sqlite3_bind_zeroblob() failed: %s: %s", sqlite3_errmsg(rhizome_db), sqlite3_sql(statement));
-      sqlite3_finalize(statement);
-      goto insert_row_fail;
-    }
-  } else {
-    char *blobfile=rhizome_database_get_blob_filename(fileblob_rowid);
-    DEBUGF("Attempting to put blob for %s in %s",
-	   filehashhex_or_tempid,blobfile?blobfile:"(null)");
-    int fd=open(blobfile, O_CREAT | O_TRUNC | O_WRONLY, 0664);
-    if (fd<0) goto insert_row_fail;
-    else DEBUGF("Blob file created (fd=%d)",fd);
-    close(fd);
-
-    statement = sqlite_prepare(&retry,"INSERT OR REPLACE INTO FILEBLOBS(id,data) VALUES('%s',%lld)",filehashhex_or_tempid,fileblob_rowid);
-    if (!statement)
-      goto insert_row_fail;
-  }
-  /* Do actual insert, and abort if it fails */
-  if (_sqlite_exec_void_prepared(__WHENCE__, LOG_LEVEL_ERROR, &retry, statement) == -1) {
-  insert_row_fail:
-    WHYF("Failed to insert row for fileid=%s", filehashhex_or_tempid);
-    sqlite_exec_void_retry(&retry, "ROLLBACK;");
-    RETURN(-1);
-  }
-
-  /* Get rowid for inserted row, so that we can modify the blob */
-  int64_t rowid = sqlite3_last_insert_rowid(rhizome_db);
-  
-  ret = sqlite_exec_void_retry(&retry, "COMMIT;");
-  if (ret!=SQLITE_OK){
-    sqlite_exec_void_retry(&retry, "ROLLBACK;");
-    RETURN(WHYF("Failed to commit transaction"));
-  }
-  if (config.debug.externalblobs)
-    DEBUGF("Got rowid %lld for %s", rowid, filehashhex_or_tempid);
-  RETURN(rowid);
   OUT();
 }
 

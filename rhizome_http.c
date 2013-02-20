@@ -316,6 +316,7 @@ int rhizome_server_free_http_request(rhizome_http_request *r)
   close(r->alarm.poll.fd);
   if (r->buffer)
     free(r->buffer);
+  rhizome_read_close(&r->read_state);
   free(r);
   return 0;
 }
@@ -552,84 +553,85 @@ int rhizome_server_parse_http_request(rhizome_http_request *r)
 	       rhizome_active_fetch_bytes_received(4)
 	       );
       rhizome_server_simple_http_response(r, 200, temp);
-    } else if (is_rhizome_http_enabled()&&(strcmp(path, "/rhizome/groups") == 0)) {
-	/* Return the list of known groups */
-	rhizome_server_sql_query_http_response(r, "id", "groups", "from groups", 32, 1);
-    } else if (is_rhizome_http_enabled()&&(strcmp(path, "/rhizome/files") == 0)) {
-	/* Return the list of known files */
-	rhizome_server_sql_query_http_response(r, "id", "files", "from files", 32, 1);
-    } else if (is_rhizome_http_enabled()&&(strcmp(path, "/rhizome/bars") == 0)) {
-	/* Return the list of known BARs */
-	rhizome_server_sql_query_http_response(r, "bar", "manifests", "from manifests", 32, 0);
-    } else if (is_rhizome_http_enabled()
-	       &&(str_startswith(path, "/rhizome/file/", (const char **)&id))) {
-      /* Stream the specified payload */
-      if (!rhizome_str_is_file_hash(id)) {
-	rhizome_server_simple_http_response(r, 400, "<html><h1>Invalid payload ID</h1></html>\r\n");
-      } else {
-	// TODO: Check for Range: header and return 206 if returning partial content
-	str_toupper_inplace(id);
-	r->rowid=-1;
+    } else if (is_rhizome_http_enabled()){
+      if (strcmp(path, "/rhizome/groups") == 0) {
+	  /* Return the list of known groups */
+	  rhizome_server_sql_query_http_response(r, "id", "groups", "from groups", 32, 1);
+      } else if (strcmp(path, "/rhizome/files") == 0) {
+	  /* Return the list of known files */
+	  rhizome_server_sql_query_http_response(r, "id", "files", "from files", 32, 1);
+      } else if (strcmp(path, "/rhizome/bars") == 0) {
+	  /* Return the list of known BARs */
+	  rhizome_server_sql_query_http_response(r, "bar", "manifests", "from manifests", 32, 0);
+      } else if (str_startswith(path, "/rhizome/file/", (const char **)&id)) {
+	/* Stream the specified payload */
+	if (!rhizome_str_is_file_hash(id)) {
+	  rhizome_server_simple_http_response(r, 400, "<html><h1>Invalid payload ID</h1></html>\r\n");
+	} else {
+	  // TODO: Check for Range: header and return 206 if returning partial content
+	  str_toupper_inplace(id);
+	  bzero(&r->read_state, sizeof(r->read_state));
+	  if (rhizome_open_read(&r->read_state, id, 1))
+	    rhizome_server_simple_http_response(r, 404, "<html><h1>Payload not found</h1></html>\r\n");
+	  else{
+	    if (r->read_state.length==-1){
+	      if (rhizome_read(&r->read_state, NULL, 0)){
+		rhizome_server_simple_http_response(r, 404, "<html><h1>Unknown length</h1></html>\r\n");
+	      }
+	    }
+	    r->read_state.offset = r->source_index = 0;
+	    if (r->read_state.length - r->read_state.offset>0){
+	      rhizome_server_http_response_header(r, 200, "application/binary", r->read_state.length - r->read_state.offset);
+	      r->request_type |= RHIZOME_HTTP_REQUEST_STORE;
+	    }
+	  }
+	}
+      } else if (str_startswith(path, "/rhizome/manifest/", (const char **)&id)) {
+	// TODO: Stream the specified manifest
+	rhizome_server_simple_http_response(r, 500, "<html><h1>Not implemented</h1></html>\r\n");
+      } else if (str_startswith(path, "/rhizome/manifestbyprefix/", (const char **)&id)) {
+	/* Manifest by prefix */
+	char bid_low[RHIZOME_MANIFEST_ID_STRLEN+1];
+	char bid_high[RHIZOME_MANIFEST_ID_STRLEN+1];
+	int i;
+	for (i=0;i<RHIZOME_MANIFEST_ID_STRLEN
+	       &&path[strlen("/rhizome/manifestbyprefix/")+i];i++) {
+	  bid_low[i]=path[strlen("/rhizome/manifestbyprefix/")+i];
+	  bid_high[i]=path[strlen("/rhizome/manifestbyprefix/")+i];
+	}
+	for(;i<RHIZOME_MANIFEST_ID_STRLEN;i++) {
+	  bid_low[i]='0';
+	  bid_high[i]='f';
+	}
+	bid_low[RHIZOME_MANIFEST_ID_STRLEN]=0;
+	bid_high[RHIZOME_MANIFEST_ID_STRLEN]=0;
+	DEBUGF("Looking for manifest between %s and %s",
+	       bid_low,bid_high);
+	
+	r->rowid = -1;
 	sqlite3_blob *blob=NULL;
-	sqlite_exec_int64(&r->rowid, "select rowid from fileblobs where id='%s';", id);
-	r->sql_table="fileblobs";
-	r->sql_row="data";
+	r->sql_table="manifests";
+	r->sql_row="manifest";
+	sqlite_exec_int64(&r->rowid, "select rowid from manifests where id between '%s' and '%s';", bid_low,bid_high);
 	if (r->rowid >= 0 && sqlite3_blob_open(rhizome_db, "main", r->sql_table, r->sql_row, r->rowid, 0, &blob) != SQLITE_OK)
 	  r->rowid = -1;
 	if (r->rowid == -1) {
+	  DEBUGF("Row not found");
 	  rhizome_server_simple_http_response(r, 404, "<html><h1>Payload not found</h1></html>\r\n");
 	} else {
+	  DEBUGF("row id = %d",r->rowid);
 	  r->source_index = 0;
 	  r->blob_end = sqlite3_blob_bytes(blob);
 	  rhizome_server_http_response_header(r, 200, "application/binary", r->blob_end - r->source_index);
 	  r->request_type |= RHIZOME_HTTP_REQUEST_BLOB;
 	}
-	if (blob) sqlite3_blob_close(blob);
-      }
-    } else if (is_rhizome_http_enabled()&&
-	       (str_startswith(path, "/rhizome/manifest/", (const char **)&id))) {
-      // TODO: Stream the specified manifest
-      rhizome_server_simple_http_response(r, 500, "<html><h1>Not implemented</h1></html>\r\n");
-    } else if (str_startswith(path, "/rhizome/manifestbyprefix/", (const char **)&id)) {
-      /* Manifest by prefix */
-      char bid_low[RHIZOME_MANIFEST_ID_STRLEN+1];
-      char bid_high[RHIZOME_MANIFEST_ID_STRLEN+1];
-      int i;
-      for (i=0;i<RHIZOME_MANIFEST_ID_STRLEN
-	     &&path[strlen("/rhizome/manifestbyprefix/")+i];i++) {
-	bid_low[i]=path[strlen("/rhizome/manifestbyprefix/")+i];
-	bid_high[i]=path[strlen("/rhizome/manifestbyprefix/")+i];
-      }
-      for(;i<RHIZOME_MANIFEST_ID_STRLEN;i++) {
-	bid_low[i]='0';
-	bid_high[i]='f';
-      }
-      bid_low[RHIZOME_MANIFEST_ID_STRLEN]=0;
-      bid_high[RHIZOME_MANIFEST_ID_STRLEN]=0;
-      DEBUGF("Looking for manifest between %s and %s",
-	     bid_low,bid_high);
-      
-      r->rowid = -1;
-      sqlite3_blob *blob=NULL;
-      r->sql_table="manifests";
-      r->sql_row="manifest";
-      sqlite_exec_int64(&r->rowid, "select rowid from manifests where id between '%s' and '%s';", bid_low,bid_high);
-      if (r->rowid >= 0 && sqlite3_blob_open(rhizome_db, "main", r->sql_table, r->sql_row, r->rowid, 0, &blob) != SQLITE_OK)
-	r->rowid = -1;
-      if (r->rowid == -1) {
-	DEBUGF("Row not found");
-	rhizome_server_simple_http_response(r, 404, "<html><h1>Payload not found</h1></html>\r\n");
+	if (blob)
+	  sqlite3_blob_close(blob);
       } else {
-	DEBUGF("row id = %d",r->rowid);
-	r->source_index = 0;
-	r->blob_end = sqlite3_blob_bytes(blob);
-	rhizome_server_http_response_header(r, 200, "application/binary", r->blob_end - r->source_index);
-	r->request_type |= RHIZOME_HTTP_REQUEST_BLOB;
+	rhizome_server_simple_http_response(r, 404, "<html><h1>Not found</h1></html>\r\n");
+	DEBUGF("Sending 404 not found for '%s'",path);
       }
-      if (blob)
-	sqlite3_blob_close(blob);
-      
-    }else {
+    } else {
       rhizome_server_simple_http_response(r, 404, "<html><h1>Not found</h1></html>\r\n");
       DEBUGF("Sending 404 not found for '%s'",path);
     }
@@ -749,8 +751,6 @@ int rhizome_server_http_send_bytes(rhizome_http_request *r)
 	  return 1;
 	}
 	
-	if (0)
-	  dump("bytes written",&r->buffer[r->buffer_offset],bytes);
 	r->buffer_offset+=bytes;
 	  
 	// reset inactivity timer
@@ -790,6 +790,34 @@ int rhizome_server_http_send_bytes(rhizome_http_request *r)
 	    r->request_type=RHIZOME_HTTP_REQUEST_FROMBUFFER;
 	}
 	break;
+      case RHIZOME_HTTP_REQUEST_STORE:
+      {
+	r->request_type=0;
+	int suggested_size=65536;
+	if (suggested_size > r->read_state.length - r->read_state.offset)
+	  suggested_size = r->read_state.length - r->read_state.offset;
+	
+	if (r->buffer_size < suggested_size){
+	  r->buffer_size = suggested_size;
+	  if (r->buffer)
+	    free(r->buffer);
+	  r->buffer = malloc(r->buffer_size);
+	  if (!r->buffer){
+	    r->buffer_size=0;
+	    break;
+	  }
+	}
+	
+	r->buffer_length = rhizome_read(&r->read_state, r->buffer, r->buffer_size);
+	
+	if (r->buffer_length>0)
+	  r->request_type|=RHIZOME_HTTP_REQUEST_FROMBUFFER;
+	
+	if (r->read_state.offset < r->read_state.length)
+	  r->request_type|=RHIZOME_HTTP_REQUEST_STORE;
+	
+	break;
+      }
       case RHIZOME_HTTP_REQUEST_BLOB:
 	{
 	  /* Get more data from the file and put it in the buffer */

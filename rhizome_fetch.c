@@ -60,18 +60,10 @@ struct rhizome_fetch_slot {
 #define RHIZOME_FETCH_RXFILEMDP 5
 
   /* Keep track of how much of the file we have read */
-  SHA512_CTX sha512_context;
-  int64_t rowid;
-  int64_t file_len;
-  int64_t file_ofs;
+  struct rhizome_write write_state;
 
   int64_t last_write_time;
   int64_t start_time;
-
-#define RHIZOME_BLOB_BUFFER_MAXIMUM_SIZE (1024*1024)
-  int blob_buffer_size;
-  unsigned char *blob_buffer;
-  int blob_buffer_bytes;
 
   /* HTTP transport specific elements */
   char request[1024];
@@ -151,7 +143,7 @@ int rhizome_active_fetch_bytes_received(int q)
   if (q<0) return -1;
   if (q>=NQUEUES) return -1;
   if (rhizome_fetch_queues[q].active.state==RHIZOME_FETCH_FREE) return -1;
-  return (int)rhizome_fetch_queues[q].active.file_ofs;
+  return (int)rhizome_fetch_queues[q].active.write_state.file_offset + rhizome_fetch_queues[q].active.write_state.data_size;
 }
 
 static struct sched_ent sched_activate = STRUCT_SCHED_ENT_UNUSED;
@@ -527,37 +519,21 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
   IN();
   int sock = -1;
   /* TODO Don't forget to implement resume */
-  /* TODO We should stream file straight into the database */
   slot->start_time=gettime_ms();
   if (create_rhizome_import_dir() == -1)
     RETURN(WHY("Unable to create import directory"));
   if (slot->manifest) {
-    slot->file_len=slot->manifest->fileLength;
-    slot->rowid=
-      rhizome_database_create_blob_for(slot->manifest->fileHexHash,
-				       slot->file_len,
-				       RHIZOME_PRIORITY_DEFAULT);
-    if (slot->rowid<0) {
-      RETURN(WHYF_perror("Could not obtain rowid for blob for file '%s'",
-			 alloca_tohex_sid(slot->bid)));
-    }
+    if (rhizome_open_write(&slot->write_state, slot->manifest->fileHexHash, slot->manifest->fileLength, RHIZOME_PRIORITY_DEFAULT))
+      RETURN(-1);
   } else {
-    slot->rowid=-1;
+    slot->write_state.blob_rowid=-1;
+    slot->write_state.file_offset=0;
+    slot->write_state.file_length=-1;
   }
 
   slot->request_ofs = 0;
   slot->state = RHIZOME_FETCH_CONNECTING;
-  slot->file_len = -1;
-  slot->file_ofs = 0;
-  slot->blob_buffer_bytes = 0;
-  if (slot->blob_buffer) {
-    free(slot->blob_buffer);
-    slot->blob_buffer=NULL;
-  }
-  slot->blob_buffer_size=0;
 
-  SHA512_Init(&slot->sha512_context);
-    
   if (slot->peer_ipandport.sin_family == AF_INET && slot->peer_ipandport.sin_port) {
     /* Transfer via HTTP over IPv4 */
     if ((sock = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
@@ -814,7 +790,7 @@ rhizome_fetch_request_manifest_by_prefix(const struct sockaddr_in *peerip,
      We do need to cache it in the slot structure, though, and then offer it
      for inserting into the database, but we can avoid the temporary file in
      the process. */
-  slot->rowid=-1;
+  slot->write_state.blob_rowid=-1;
   slot->manifest_bytes=0;
   
   if (schedule_fetch(slot) == -1) {
@@ -1068,9 +1044,8 @@ static int rhizome_fetch_close(struct rhizome_fetch_slot *slot)
     rhizome_manifest_free(slot->manifest);
   slot->manifest = NULL;
 
-  if (slot->blob_buffer) free(slot->blob_buffer);
-  slot->blob_buffer=NULL;
-  slot->blob_buffer_size=0;
+  if (slot->write_state.buffer)
+    rhizome_fail_write(&slot->write_state);
 
   // Release the fetch slot.
   slot->state = RHIZOME_FETCH_FREE;
@@ -1098,14 +1073,14 @@ static void rhizome_fetch_mdp_slot_callback(struct sched_ent *alarm)
   if (now-slot->last_write_time>slot->mdpIdleTimeout) {
     DEBUGF("MDP connection timed out: last RX %lldms ago (read %d of %d bytes)",
 	   now-slot->last_write_time,
-	   slot->file_ofs,slot->file_len);
+	   slot->write_state.file_offset + slot->write_state.data_size,slot->write_state.file_length);
     rhizome_fetch_close(slot);
     OUT();
     return;
   }
   if (config.debug.rhizome_rx)
     DEBUGF("Timeout: Resending request for slot=0x%p (%d of %d received)",
-	   slot,slot->file_ofs,slot->file_len);
+	   slot,slot->write_state.file_offset + slot->write_state.data_size,slot->write_state.file_length);
   if (slot->bidP)
     rhizome_fetch_mdp_requestblocks(slot);
   else
@@ -1155,14 +1130,14 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   bcopy(slot->bid,&mdp.out.payload[0],RHIZOME_MANIFEST_ID_BYTES);
 
   write_uint64(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES],slot->bidVersion);
-  write_uint64(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8],slot->file_ofs);
+  write_uint64(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8],slot->write_state.file_offset + slot->write_state.data_size);
   write_uint32(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8],slot->mdpRXBitmap);
   write_uint16(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4],slot->mdpRXBlockLength);  
 
   if (config.debug.rhizome_tx)
     DEBUGF("src sid=%s, dst sid=%s, mdpRXWindowStart=0x%x",
 	   alloca_tohex_sid(mdp.out.src.sid),alloca_tohex_sid(mdp.out.dst.sid),
-	   slot->file_ofs);
+	   slot->write_state.file_offset + slot->write_state.data_size);
 
   overlay_mdp_dispatch(&mdp,0 /* system generated */,NULL,0);
   
@@ -1235,7 +1210,7 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
 
   if (config.debug.rhizome_rx)
     DEBUGF("Trying to switch to MDP for Rhizome fetch: slot=0x%p (%d bytes)",
-	   slot,slot->file_len);
+	   slot,slot->write_state.file_length);
   
   /* close socket and stop watching it */
   if (slot->alarm.poll.fd>=0) {
@@ -1267,8 +1242,6 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
        down too much.  Much careful thought is required to optimise this
        transport.
     */
-    slot->file_len=slot->manifest->fileLength;
-
     slot->mdpIdleTimeout=config.rhizome.idle_timeout; // give up if nothing received for 5 seconds
     slot->mdpRXBitmap=0x00000000; // no blocks received yet
     slot->mdpRXBlockLength=config.rhizome.rhizome_mdp_block_size; // Rhizome over MDP block size
@@ -1317,146 +1290,62 @@ void rhizome_fetch_write(struct rhizome_fetch_slot *slot)
   return;
 }
 
-int rhizome_fetch_flush_blob_buffer(struct rhizome_fetch_slot *slot)
-{
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  do{
-    rhizome_blob_handle *blob
-      = rhizome_database_open_blob_byrowid(slot->rowid,1 /* read/write */);
-    if (!blob) goto again;
-    
-    int ret=rhizome_database_blob_write(blob, slot->blob_buffer, 
-				    slot->blob_buffer_bytes, 
-				    slot->file_ofs-slot->blob_buffer_bytes);
-    
-    if (ret==SQLITE_BUSY || ret==SQLITE_LOCKED)
-      goto again;
-    else if (ret!=SQLITE_OK) {
-      WHYF("rhizome_database_blob_write(,,%d,%lld) failed, possibly due to %s", 
-	   slot->blob_buffer_bytes,slot->file_ofs-slot->blob_buffer_bytes,
-	   rhizome_database_blob_errmsg(blob));
-      goto failed;
-    }
-    
-    ret=rhizome_database_blob_close(blob); 
-    blob=NULL;
-    if (ret==SQLITE_BUSY || ret==SQLITE_LOCKED)
-      goto again;
-    else if (ret!=SQLITE_OK) {
-      WHYF("sqlite3_blob_close() failed, %s", 
-	   sqlite3_errmsg(rhizome_db));
-      goto failed;
-    }
-    
-    slot->blob_buffer_bytes=0;
-    return 0;
-    
-  failed:
-    if (blob) rhizome_database_blob_close(blob); 
-    rhizome_fetch_close(slot);
-    return -1;
-    
-  again:
-    if (blob)
-      rhizome_database_blob_close(blob); 
-    blob=NULL;
-    
-    if (_sqlite_retry(__WHENCE__, &retry, "rhizome_database_blob_write")==0)
-      return -1;
-    
-  }while(1);
-}
-
 int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int bytes)
 {
   IN();
+  
+  if (bytes<=0)
+    RETURN(0);
+  
   // Truncate to known length of file (handy for reading from journal bundles that
   // might grow while we are reading from them).
-  if (bytes>(slot->file_len-slot->file_ofs))
-    bytes=slot->file_len-slot->file_ofs;
+  if (bytes>(slot->write_state.file_length-(slot->write_state.file_offset+slot->write_state.data_size))){
+    bytes=slot->write_state.file_length-(slot->write_state.file_offset+slot->write_state.data_size);
+  }
 
-  if (slot->rowid==-1) {
+  if (slot->write_state.blob_rowid==-1) {
     /* We are reading a manifest.  Read it into a buffer. */
     int count=bytes;
     if (count+slot->manifest_bytes>1024) count=1024-slot->manifest_bytes;
     bcopy(buffer,&slot->manifest_buffer[slot->manifest_bytes],count);
     slot->manifest_bytes+=count;
-    slot->file_ofs+=count;
+    slot->write_state.file_offset+=count;
   } else {
-    /* We are reading a file. Stream it into the database. */  
-    if (bytes>0)
-      SHA512_Update(&slot->sha512_context,(unsigned char *)buffer,bytes);
-
-    if (config.debug.rhizome_rx) {
-      DEBUGF("slot->blob_buffer_bytes=%d, slot->file_ofs=%d",
-	     slot->blob_buffer_bytes,slot->file_ofs);
-      // dump("buffer",buffer,bytes);
-    }
-
-    if (!slot->blob_buffer_size) {
-      /* Allocate an appropriately sized buffer so that we don't have to pay
-	 the cost of blob_open() and blob_close() too often. */
-      slot->blob_buffer_size=slot->file_len;
-      if (slot->blob_buffer_size>RHIZOME_BLOB_BUFFER_MAXIMUM_SIZE)
-	slot->blob_buffer_size=RHIZOME_BLOB_BUFFER_MAXIMUM_SIZE;
-      slot->blob_buffer=malloc(slot->blob_buffer_size);
-      assert(slot->blob_buffer);
-    }
-
-    assert(slot->blob_buffer_size);
-    int bytesRemaining=bytes;
-    while(bytesRemaining>0) {      
-      int count=slot->blob_buffer_size-slot->blob_buffer_bytes;
-      if (count>bytes) count=bytesRemaining;
-      //      DEBUGF("copying %d bytes to &blob_buffer[0x%x]",
-      //	     count,slot->blob_buffer_bytes);
-      //      dump("buffer",buffer,count);
-      bcopy(buffer,&slot->blob_buffer[slot->blob_buffer_bytes],count);
-      //      dump("first bytes into slot->blob_buffer",slot->blob_buffer,256);
-      slot->blob_buffer_bytes+=count;
-      slot->file_ofs+=count;
-      buffer+=count; bytesRemaining-=count;
-      if (slot->blob_buffer_bytes==slot->blob_buffer_size){
-	if (rhizome_fetch_flush_blob_buffer(slot))
-	  RETURN (-1);
+    
+    /* We are reading a file. Stream it into the database. */
+    int ofs=0;
+    while (ofs<bytes){
+      int block_size = bytes - ofs;
+      if (block_size > slot->write_state.buffer_size - slot->write_state.data_size)
+	block_size = slot->write_state.buffer_size - slot->write_state.data_size;
+      
+      if (block_size>0){
+	bcopy(buffer+ofs, slot->write_state.buffer + slot->write_state.data_size, block_size);
+	slot->write_state.data_size+=block_size;
+	ofs+=block_size;
+      }
+      
+      if (slot->write_state.data_size>=slot->write_state.buffer_size){
+	int ret = rhizome_flush(&slot->write_state);
+	if (ret!=0){
+	  rhizome_fetch_close(slot);
+	  RETURN(-1);
+	}
       }
     }
   }
 
   slot->last_write_time=gettime_ms();
-  if (slot->file_ofs>=slot->file_len) {
+  if (slot->write_state.file_offset + slot->write_state.data_size>=slot->write_state.file_length) {
     /* got all of file */
     if (config.debug.rhizome_rx)
       DEBUGF("Received all of file via rhizome -- now to import it");
     if (slot->manifest) {
+      
       // Were fetching payload, now we have it.
-
-      char hash_out[SHA512_DIGEST_STRING_LENGTH+1];
-      SHA512_End(&slot->sha512_context, (char *)hash_out);      
-      if (slot->blob_buffer_bytes){
-	if (rhizome_fetch_flush_blob_buffer(slot))
-	  RETURN (-1);
-      }
-      sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-      if (strcasecmp(hash_out,slot->manifest->fileHexHash)) {
-	if (config.debug.rhizome_rx)
-	  DEBUGF("Hash mismatch -- dropping row from table.");	
-	WARNF("Expected hash=%s, got %s",
-	       slot->manifest->fileHexHash,hash_out);
-	sqlite_exec_void_retry(&retry,
-			       "DELETE FROM FILEBLOBS WHERE rowid=%lld",slot->rowid);
-	sqlite_exec_void_retry(&retry,
-			       "DELETE FROM FILES WHERE id='%s'",
-			       slot->manifest->fileHexHash);
+      if (rhizome_finish_write(&slot->write_state)){
 	rhizome_fetch_close(slot);
 	RETURN(-1);
-      } else {
-	int ret=sqlite_exec_void_retry(&retry,
-				       "UPDATE FILES SET inserttime=%lld, datavalid=1 WHERE id='%s'",
-				       gettime_ms(), slot->manifest->fileHexHash);
-	if (ret!=SQLITE_OK) 
-	  if (config.debug.rhizome_rx)
-	    DEBUGF("error marking row valid: %s",sqlite3_errmsg(rhizome_db));
       }
 
       if (!rhizome_import_received_bundle(slot->manifest)){
@@ -1499,9 +1388,10 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
     }
     if (config.debug.rhizome_rx)
       DEBUGF("Closing rhizome fetch slot = 0x%p.  Received %lld bytes in %lldms (%lldKB/sec).  Buffer size = %d",
-	     slot,(long long)slot->file_ofs,(long long)gettime_ms()-slot->start_time,
-	     (long long)slot->file_ofs/(gettime_ms()-slot->start_time),
-	     slot->blob_buffer_size);
+	     slot,(long long)slot->write_state.file_offset+slot->write_state.data_size,
+	     (long long)gettime_ms()-slot->start_time,
+	     (long long)(slot->write_state.file_offset+slot->write_state.data_size)/(gettime_ms()-slot->start_time),
+	     slot->write_state.buffer_size);
     rhizome_fetch_close(slot);
     RETURN(-1);
   }
@@ -1522,7 +1412,7 @@ int rhizome_received_content(unsigned char *bidprefix,
     if (slot->state==RHIZOME_FETCH_RXFILEMDP&&slot->bidP) {
       if (!memcmp(slot->bid,bidprefix,16))
 	{
-	  if (slot->file_ofs==offset) {
+	  if (slot->write_state.file_offset + slot->write_state.data_size==offset) {
 	    if (!rhizome_write_content(slot,(char *)bytes,count))
 	      {
 		rhizome_fetch_mdp_touch_timeout(slot);
@@ -1578,7 +1468,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
       } else {
 	if (config.debug.rhizome_rx)
 	  DEBUGF("Empty read, closing connection: received %lld of %lld bytes",
-		slot->file_ofs,slot->file_len);
+		slot->write_state.file_offset + slot->write_state.data_size,slot->write_state.file_length);
 	rhizome_fetch_switch_to_mdp(slot);
 	return;
       }
@@ -1626,7 +1516,10 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	    rhizome_fetch_switch_to_mdp(slot);
 	    return;
 	  }
-	  slot->file_len = parts.content_length;
+	  if (slot->write_state.file_length==-1)
+	    slot->write_state.file_length=parts.content_length;
+	  else if (parts.content_length != slot->write_state.file_length)
+	    WARNF("Expected content length %lld, got %lld", slot->write_state.file_length, parts.content_length);
 	  /* We have all we need.  The file is already open, so just write out any initial bytes of
 	     the body we read.
 	  */

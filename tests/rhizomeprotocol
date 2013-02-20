@@ -175,13 +175,9 @@ test_MDPTransport() {
    assert_rhizome_received file2
 }
 
-doc_FileTransferBigMDP="Big new bundle transfers to one node via MDP"
-setup_FileTransferBigMDP() {
-   setup_common
-   set_instance +B
-   executeOk_servald config set rhizome.http.enable 0
+#common setup and test routines for transferring a 1MB file
+setup_bigfile_common() {
    set_instance +A
-   executeOk_servald config set rhizome.http.enable 0
    dd if=/dev/urandom of=file1 bs=1k count=1k 2>&1
    echo x >>file1
    ls -l file1
@@ -190,151 +186,79 @@ setup_FileTransferBigMDP() {
    foreach_instance +A assert_peers_are_instances +B
    foreach_instance +B assert_peers_are_instances +A
 }
-test_FileTransferBigMDP() {
-   wait_until bundle_received_by $BID:$VERSION +B
+bigfile_common_test() {
    set_instance +B
+   wait_until bundle_received_by $BID:$VERSION +B
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 file1
    assert_rhizome_received file1
+}
+
+doc_FileTransferBigMDP="Big new bundle transfers to one node via MDP"
+setup_FileTransferBigMDP() {
+   setup_common
+   foreach_instance +A +B \
+      executeOk_servald config set rhizome.http.enable 0
+   setup_bigfile_common
+}
+test_FileTransferBigMDP() {
+   bigfile_common_test
 }
 
 doc_FileTransferBig="Big new bundle transfers to one node via HTTP"
 setup_FileTransferBig() {
    setup_common
-   set_instance +B
-   executeOk_servald config set rhizome.mdp.enable 0
-   set_instance +A
-   executeOk_servald config set rhizome.mdp.enable 0
-   dd if=/dev/urandom of=file1 bs=1k count=1k 2>&1
-   echo x >>file1
-   ls -l file1
-   rhizome_add_file file1
-   start_servald_instances +A +B
-   foreach_instance +A assert_peers_are_instances +B
-   foreach_instance +B assert_peers_are_instances +A
+   foreach_instance +A +B \
+      executeOk_servald config set rhizome.mdp.enable 0
+   setup_bigfile_common
 }
 test_FileTransferBig() {
-   wait_until bundle_received_by $BID:$VERSION +B
-   set_instance +B
-   executeOk_servald rhizome list
-   assert_rhizome_list --fromhere=0 file1
-   assert_rhizome_received file1
-}
-
-doc_FileTransferMulti="New bundle transfers to four nodes via HTTP"
-setup_FileTransferMulti() {
-   setup_common
-   set_instance +A
-   executeOk_servald config set rhizome.mdp.enable 0
-   set_instance +B
-   executeOk_servald config set rhizome.mdp.enable 0
-   set_instance +C
-   executeOk_servald config set rhizome.mdp.enable 0
-   set_instance +D
-   executeOk_servald config set rhizome.mdp.enable 0
-   set_instance +E
-   executeOk_servald config set rhizome.mdp.enable 0
-   set_instance +A
-   rhizome_add_file file1
-   start_servald_instances +A +B +C +D +E
-   foreach_instance +A assert_peers_are_instances +B +C +D +E
-   foreach_instance +B assert_peers_are_instances +A +C +D +E
-   foreach_instance +C assert_peers_are_instances +A +B +D +E
-   foreach_instance +D assert_peers_are_instances +A +B +C +E
-}
-test_FileTransferMulti() {
-   wait_until bundle_received_by $BID:$VERSION +B +C +D +E
-   for i in B C D E; do
-      set_instance +$i
-      executeOk_servald rhizome list
-      assert_rhizome_list --fromhere=0 file1
-      assert_rhizome_received file1
-   done
-}
-
-doc_FileTransferMultiMDP="New bundle transfers to four nodes via MDP"
-setup_FileTransferMultiMDP() {
-   setup_common
-   set_instance +A
-   executeOk_servald config set rhizome.http.enable 0
-   set_instance +B
-   executeOk_servald config set rhizome.http.enable 0
-   set_instance +C
-   executeOk_servald config set rhizome.http.enable 0
-   set_instance +D
-   executeOk_servald config set rhizome.http.enable 0
-   set_instance +E
-   executeOk_servald config set rhizome.http.enable 0
-   set_instance +A
-   rhizome_add_file file1
-   start_servald_instances +A +B +C +D +E
-   foreach_instance +A assert_peers_are_instances +B +C +D +E
-   foreach_instance +B assert_peers_are_instances +A +C +D +E
-   foreach_instance +C assert_peers_are_instances +A +B +D +E
-   foreach_instance +D assert_peers_are_instances +A +B +C +E
-}
-test_FileTransferMultiMDP() {
-   wait_until bundle_received_by $BID:$VERSION +B +C +D +E
-   for i in B C D E; do
-      set_instance +$i
-      executeOk_servald rhizome list
-      assert_rhizome_list --fromhere=0 file1
-      assert_rhizome_received file1
-   done
+   bigfile_common_test
 }
 
 doc_FileTransferBigMDPExtBlob="Big new bundle transfers to one node via MDP, external blob file"
 setup_FileTransferBigMDPExtBlob() {
    setup_common
-   set_instance +B
-   executeOk_servald config set rhizome.http.enable 0
-   executeOk_servald config set rhizome.external_blobs 1
-   set_instance +A
-   executeOk_servald config set rhizome.http.enable 0
-   executeOk_servald config set rhizome.external_blobs 1
-   dd if=/dev/urandom of=file1 bs=1k count=4k 2>&1
-   echo x >>file1
-   ls -l file1
-   rhizome_add_file file1
-   start_servald_instances +A +B
-   foreach_instance +A assert_peers_are_instances +B
-   foreach_instance +B assert_peers_are_instances +A
+   foreach_instance +A +B \
+      executeOk_servald config \
+         set rhizome.http.enable 0 \
+         set rhizome.external_blobs 1
+   setup_bigfile_common
 }
 test_FileTransferBigMDPExtBlob() {
-   wait_until bundle_received_by $BID:$VERSION +B
-   set_instance +B
-   executeOk_servald rhizome list
-   assert_rhizome_list --fromhere=0 file1
-   assert_rhizome_received file1
+   bigfile_common_test
 }
 
-doc_FileTransferMultiMDPExtBlob="New bundle transfers to four nodes via MDP, external blob files"
-setup_FileTransferMultiMDPExtBlob() {
+doc_FileTransferBigHTTPExtBlob="Big new bundle transfers to one node via HTTP, external blob file"
+setup_FileTransferBigHTTPExtBlob() {
    setup_common
-   set_instance +A
-   executeOk_servald config set rhizome.http.enable 0
-   executeOk_servald config set rhizome.external_blobs 1
-   set_instance +B
-   executeOk_servald config set rhizome.http.enable 0
-   executeOk_servald config set rhizome.external_blobs 1
-   set_instance +C
-   executeOk_servald config set rhizome.http.enable 0
-   executeOk_servald config set rhizome.external_blobs 1
-   set_instance +D
-   executeOk_servald config set rhizome.http.enable 0
-   executeOk_servald config set rhizome.external_blobs 1
-   set_instance +E
-   executeOk_servald config set rhizome.http.enable 0
-   executeOk_servald config set rhizome.external_blobs 1
+   foreach_instance +A +B \
+      executeOk_servald config \
+         set rhizome.mdp.enable 0 \
+         set rhizome.external_blobs 1
+   setup_bigfile_common
+}
+test_FileTransferBigHTTPExtBlob() {
+   bigfile_common_test
+}
+
+# common setup and test routines for transfers to 4 nodes
+setup_multitransfer_common() {
    set_instance +A
    rhizome_add_file file1
    start_servald_instances +A +B +C +D +E
-   foreach_instance +A assert_peers_are_instances +B +C +D +E
-   foreach_instance +B assert_peers_are_instances +A +C +D +E
-   foreach_instance +C assert_peers_are_instances +A +B +D +E
-   foreach_instance +D assert_peers_are_instances +A +B +C +E
+   set_instance +A
+   assert_peers_are_instances +B +C +D +E
+   set_instance +B
+   assert_peers_are_instances +A +C +D +E
+   set_instance +C
+   assert_peers_are_instances +A +B +D +E
+   set_instance +D
+   assert_peers_are_instances +A +B +C +E
+   set_instance +E
+   assert_peers_are_instances +A +B +C +D
 }
-test_FileTransferMultiMDPExtBlob() {
+multitransfer_common_test() {
    wait_until bundle_received_by $BID:$VERSION +B +C +D +E
    for i in B C D E; do
       set_instance +$i
@@ -342,6 +266,54 @@ test_FileTransferMultiMDPExtBlob() {
       assert_rhizome_list --fromhere=0 file1
       assert_rhizome_received file1
    done
+}
+
+doc_FileTransferMulti="New bundle transfers to four nodes via HTTP"
+setup_FileTransferMulti() {
+   setup_common
+   foreach_instance +A +B +C +D +E \
+      executeOk_servald config set rhizome.mdp.enable 0
+   setup_multitransfer_common
+}
+test_FileTransferMulti() {
+   multitransfer_common_test
+}
+
+doc_FileTransferMultiMDP="New bundle transfers to four nodes via MDP"
+setup_FileTransferMultiMDP() {
+   setup_common
+   foreach_instance +A +B +C +D +E \
+      executeOk_servald config set rhizome.http.enable 0
+   setup_multitransfer_common
+}
+test_FileTransferMultiMDP() {
+   multitransfer_common_test
+}
+
+doc_FileTransferMultiMDPExtBlob="New bundle transfers to four nodes via MDP, external blob files"
+setup_FileTransferMultiMDPExtBlob() {
+   setup_common
+   foreach_instance +A +B +C +D +E \
+      executeOk_servald config \
+         set rhizome.http.enable 0 \
+         set rhizome.external_blobs 1
+   setup_multitransfer_common
+}
+test_FileTransferMultiMDPExtBlob() {
+   multitransfer_common_test
+}
+
+doc_FileTransferMultiHTTPExtBlob="New bundle transfers to four nodes via HTTP, external blob files"
+setup_FileTransferMultiHTTPExtBlob() {
+   setup_common
+   foreach_instance +A +B +C +D +E \
+      executeOk_servald config \
+         set rhizome.mdp.enable 0 \
+         set rhizome.external_blobs 1
+   setup_multitransfer_common
+}
+test_FileTransferMultiHTTPExtBlob() {
+   multitransfer_common_test
 }
 
 doc_FileTransferDelete="Payload deletion transfers to one node"

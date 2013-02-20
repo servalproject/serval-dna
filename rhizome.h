@@ -363,6 +363,45 @@ int rhizome_ignore_manifest_check(unsigned char *bid_prefix, int prefix_len);
 int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sockaddr_in *peerip,const unsigned char peersid[SID_SIZE]);
 rhizome_manifest * rhizome_fetch_search(unsigned char *id, int prefix_length);
 
+
+/* Rhizome file storage api */
+struct rhizome_write{
+  char id[SHA512_DIGEST_STRING_LENGTH+1];
+  char id_known;
+  
+  unsigned char *buffer;
+  int buffer_size;
+  int data_size;
+  
+  int64_t file_offset;
+  int64_t file_length;
+  
+  int crypt;
+  unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
+  unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
+  
+  SHA512_CTX sha512_context;
+  int64_t blob_rowid;
+  int blob_fd;
+};
+
+struct rhizome_read{
+  char id[SHA512_DIGEST_STRING_LENGTH+1];
+  
+  int crypt;
+  unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
+  unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
+  
+  int hash;
+  SHA512_CTX sha512_context;
+  
+  int64_t blob_rowid;
+  int blob_fd;
+  
+  int64_t offset;
+  int64_t length;
+};
+
 typedef struct rhizome_http_request {
   struct sched_ent alarm;
   long long initiate_time; /* time connection was initiated */
@@ -390,8 +429,8 @@ typedef struct rhizome_http_request {
 #define RHIZOME_HTTP_REQUEST_ALLGROUPLIST 8
 #define RHIZOME_HTTP_REQUEST_BUNDLESINGROUP 16
   // manifests are small enough to send from a buffer
-  // #define RHIZOME_HTTP_REQUEST_BUNDLEMANIFEST 32
   // for anything too big, we can just use a blob
+#define RHIZOME_HTTP_REQUEST_STORE 32
 #define RHIZOME_HTTP_REQUEST_BLOB 64
 #define RHIZOME_HTTP_REQUEST_FAVICON 128
   
@@ -404,6 +443,8 @@ typedef struct rhizome_http_request {
   int buffer_size; // size
   int buffer_length; // number of bytes loaded into buffer
   int buffer_offset; // where we are between [0,buffer_length)
+  
+  struct rhizome_read read_state;
   
   /* Path of request (used by POST multipart form requests where
      the actual processing of the request does not occur while the
@@ -606,41 +647,7 @@ struct http_response_parts {
 
 int unpack_http_response(char *response, struct http_response_parts *parts);
 
-/* Rhizome file storage api */
-struct rhizome_write{
-  char id[SHA512_DIGEST_STRING_LENGTH+1];
-  char id_known;
-  
-  unsigned char *buffer;
-  int buffer_size;
-  int data_size;
-  
-  int64_t file_offset;
-  int64_t file_length;
-  
-  int crypt;
-  unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
-  unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
-  
-  SHA512_CTX sha512_context;
-  int64_t blob_rowid;
-};
-
-struct rhizome_read{
-  char id[SHA512_DIGEST_STRING_LENGTH+1];
-  
-  int crypt;
-  unsigned char key[RHIZOME_CRYPT_KEY_BYTES];
-  unsigned char nonce[crypto_stream_xsalsa20_NONCEBYTES];
-  
-  int hash;
-  SHA512_CTX sha512_context;
-  
-  int64_t blob_rowid;
-  
-  int64_t offset;
-  int64_t length;
-};
+/* rhizome storage methods */
 
 int rhizome_exists(const char *fileHash);
 int rhizome_open_write(struct rhizome_write *write, char *expectedFileHash, int64_t file_length, int priority);
@@ -656,24 +663,12 @@ int rhizome_crypt_xor_block(unsigned char *buffer, int buffer_size, int64_t stre
 			    const unsigned char *key, const unsigned char *nonce);
 int rhizome_open_read(struct rhizome_read *read, const char *fileid, int hash);
 int rhizome_read(struct rhizome_read *read, unsigned char *buffer, int buffer_length);
+int rhizome_read_close(struct rhizome_read *read);
+int rhizome_store_delete(const char *id);
+int rhizome_open_decrypt_read(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizome_read *read_state, int hash);
 int rhizome_extract_file(rhizome_manifest *m, const char *filepath, rhizome_bk_t *bsk);
 int rhizome_dump_file(const char *id, const char *filepath, int64_t *length);
-char *rhizome_database_get_blob_filename(int64_t fileblob_rowid);
 
-typedef struct rhizome_blob_handle {
-  uint64_t blob_bytes;
-  sqlite3_blob *sqlite_blob;
-  int fd_blob;
-} rhizome_blob_handle;
-rhizome_blob_handle *rhizome_database_open_blob_bybid(const char *id,
-						      uint64_t version,
-						      int writeP);
-rhizome_blob_handle *rhizome_database_open_blob_byrowid(int row_id,int writeP);
-int rhizome_database_blob_close(rhizome_blob_handle *blob);
-int rhizome_database_blob_read(rhizome_blob_handle *blob,unsigned char *buffer,
-			       uint64_t count,uint64_t offset);
-int rhizome_database_blob_write(rhizome_blob_handle *blob,unsigned char *buffer,
-			       uint64_t count,uint64_t offset);
-const char *rhizome_database_blob_errmsg(rhizome_blob_handle *blob);
+int rhizome_database_filehash_from_id(const char *id, uint64_t version, char hash[SHA512_DIGEST_STRING_LENGTH]);
 
 #endif //__SERVALDNA__RHIZOME_H

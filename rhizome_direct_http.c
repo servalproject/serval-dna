@@ -948,36 +948,42 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	  if (r<0) goto closeit;
 	}
 
-	/* send file contents now */
-	rhizome_blob_handle *blob=rhizome_database_open_blob_bybid(id,version,
-								   0 /* read */);
-	if (!blob) goto closeit;
-	int i;
-	for(i=0;i<filesize;)
-	  {
-	    int count=4096;
-	    if (filesize-i<count) count=filesize-i;
+	/* send file contents */
+	{
+	  char filehash[SHA512_DIGEST_STRING_LENGTH];
+	  if (rhizome_database_filehash_from_id(id, version, filehash)<=0)
+	    goto closeit;
+	  
+	  struct rhizome_read read;
+	  bzero(&read, sizeof read);
+	  if (rhizome_open_read(&read, filehash, 0))
+	    goto closeit;
+	
+	  int read_ofs;
+	  for(read_ofs=0;read_ofs<filesize;){
 	    unsigned char buffer[4096];
-	    DEBUGF("reading %d bytes @ %d from blob",count,i);
-	    int sr=rhizome_database_blob_read(blob,buffer,count,i);
-	    if (sr==SQLITE_OK||sr==SQLITE_DONE) {
-	      count=write(sock,buffer,count);
-	      if (count<0) {
-		WHY_perror("write");
-		rhizome_database_blob_close(blob);
-		goto closeit;
-	      } else { 
-		i+=count;
-		DEBUGF("Wrote %d bytes of file",count);
-	      }
-	    } else {
-	      WHYF("sqlite error #%d occurred reading from the blob: %s",sr, sqlite3_errmsg(rhizome_db));
-	      rhizome_database_blob_close(blob);
+	    read.offset=read_ofs;
+	    int bytes_read = rhizome_read(&read, buffer, sizeof buffer);
+	    if (bytes_read<0){
+	      rhizome_read_close(&read);
 	      goto closeit;
 	    }
+
+	    int write_ofs=0;
+	    while(write_ofs < bytes_read){
+	      int written = write(sock, buffer + write_ofs, bytes_read - write_ofs);
+	      if (written<0){
+		WHY_perror("write");
+		rhizome_read_close(&read);
+		goto closeit;
+	      }
+	      write_ofs+=written;
+	    }
+	    
+	    read_ofs+=bytes_read;
 	  }
-	rhizome_database_blob_close(blob);      
-      
+	  rhizome_read_close(&read);
+	}
 	/* Send final mime boundary */
 	len=snprintf(buffer,8192,"\r\n--%s--\r\n",boundary);
 	sent=0;
