@@ -300,6 +300,8 @@ Java_org_servalproject_servald_mdp_MeshSocket__1receive(JNIEnv * env,
   jbyteArray jbuf, jsid;
   jbyte *sid;
   overlay_mdp_frame mdp;
+  int res;
+  char *msg;
 
   /* fd = this.fd; */
   fd = (*env)->GetIntField(env, this, f_meshsocket_fd);
@@ -311,10 +313,15 @@ Java_org_servalproject_servald_mdp_MeshSocket__1receive(JNIEnv * env,
   length = (*env)->GetIntField(env, mdppack, f_meshpacket_length);
 
   /* Receive data. */
-  if (overlay_mdp_recv(fd, &mdp, localport, &ttl)) {
-    (*env)->ThrowNew(env, cl_meshsocketexception,
-                     "Cannot receive data from servald");
-    WHY("Cannot receive data from servald");
+  if (res = (overlay_mdp_recv(fd, &mdp, localport, &ttl))) {
+    if (res == -2) {
+      /* Socket is closed. */
+      msg = "Socket closed";
+    } else {
+      msg = "Cannot receive data from servald";
+    }
+    (*env)->ThrowNew(env, cl_meshsocketexception, msg);
+    WHY(msg);
     return;
   }
 

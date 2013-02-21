@@ -251,6 +251,10 @@ int overlay_mdp_recv(int mdp_sockfd, overlay_mdp_frame *mdp, int port, int *ttl)
   
   /* Check if reply available */
   ssize_t len = recvwithttl(mdp_sockfd,(unsigned char *)mdp, sizeof(overlay_mdp_frame),ttl,recvaddr,&recvaddrlen);
+  if (len == 0) {
+    /* Socket is closed. */
+    return -2; /* would be better to always return len */
+  }
   
   recvaddr_un=(struct sockaddr_un *)recvaddr;
   /* Null terminate received address so that the stat() call below can succeed */
