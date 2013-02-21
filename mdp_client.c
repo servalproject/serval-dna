@@ -119,6 +119,8 @@ int overlay_mdp_client_close(int mdp_sockfd)
     if (unlink(addr.sun_path) == -1)
       WARNF_perror("unlink(%s)", alloca_str_toprint(addr.sun_path));
   }
+  /* attempt graceful socket shutdown() */
+  shutdown(mdp_sockfd, SHUT_RDWR);
   close(mdp_sockfd);
   return 0;
 }
