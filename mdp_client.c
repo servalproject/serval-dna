@@ -207,7 +207,9 @@ int overlay_mdp_client_close(int mdp_sockfd)
   mdp.packetTypeAndFlags=MDP_GOODBYE;
   overlay_mdp_send(mdp_sockfd, &mdp, 0, 0);
 
-  int res = close(mdp_sockfd);
+  /* shutdown() makes any blocking recv exit, close() does not. */
+  int res = shutdown(mdp_sockfd, SHUT_RDWR);
+  // int res = close(mdp_sockfd);
 
   /* Remove the socket file. */
   mdp_sock_closed(mdp_sockfd);
