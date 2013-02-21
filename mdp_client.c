@@ -160,7 +160,7 @@ int overlay_mdp_recv(int mdp_sockfd, overlay_mdp_frame *mdp, int port, int *ttl)
   mdp->packetTypeAndFlags = 0;
   len = recvwithttl(mdp_sockfd, (unsigned char *)mdp, sizeof(overlay_mdp_frame), ttl, (struct sockaddr *)&recvaddr, &recvaddrlen);
   if (len <= 0)
-    return -1; // no packet received
+    return -2; // no packet received
 
   // If the received address overflowed the buffer, then it cannot have come from the server, whose
   // address always fits within a struct sockaddr_un.
