@@ -463,69 +463,63 @@ int rhizome_open_read(struct rhizome_read *read, const char *fileid, int hash)
   strncpy(read->id, fileid, sizeof read->id);
   read->id[RHIZOME_FILEHASH_STRLEN] = '\0';
   str_toupper_inplace(read->id);
-  
-  if (config.rhizome.external_blobs){
-    // Don't even bother checking the FILES table...
+  read->blob_rowid = -1;
+  read->blob_fd = -1;
+  if (sqlite_exec_int64(&read->blob_rowid, "SELECT FILEBLOBS.rowid FROM FILEBLOBS, FILES WHERE FILEBLOBS.id = FILES.id AND FILES.id = '%s' AND FILES.datavalid != 0", read->id) == -1)
+    return -1;
+  if (read->blob_rowid != -1) {
+    read->length = -1; // discover the length on opening the db BLOB
+  } else {
+    // No row in FILEBLOBS, look for an external blob file.
     char blob_path[1024];
     if (!FORM_RHIZOME_DATASTORE_PATH(blob_path, read->id))
-      return WHYF("Failed to generate file path");
-    
-    read->blob_fd = open(blob_path, O_RDONLY);
-    if (read->blob_fd<0)
-      return WHY_perror("Failed to open blob file");
-    
-    read->length=lseek(read->blob_fd,0,SEEK_END);
-  }else{
-    if (sqlite_exec_int64(&read->blob_rowid, "SELECT FILEBLOBS.rowid FROM FILEBLOBS, FILES WHERE FILEBLOBS.id = FILES.id AND FILES.id = '%s' AND FILES.datavalid != 0", read->id) == -1)
       return -1;
-    if (read->blob_rowid == -1)
-      return 1;
-    read->length=-1;
+    read->blob_fd = open(blob_path, O_RDONLY);
+    if (read->blob_fd == -1) {
+      if (errno == ENOENT)
+	return 1; // file not available
+      return WHYF_perror("open(%s)", alloca_str_toprint(blob_path));
+    }
+    if ((read->length = lseek(read->blob_fd, 0, SEEK_END)) == -1)
+      return WHYF_perror("lseek(%s,0,SEEK_END)", alloca_str_toprint(blob_path));
   }
-  read->hash=hash;
-  read->offset=0;
-  
+  read->hash = hash;
+  read->offset = 0;
   if (hash)
     SHA512_Init(&read->sha512_context);
-
-  return 0;
+  return 0; // file opened
 }
 
 /* Read content from the store, hashing and decrypting as we go. 
  Random access is supported, but hashing requires reads to be sequential though we don't enforce this. */
 // returns the number of bytes read
-int rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, int buffer_length){
+int rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, int buffer_length)
+{
   IN();
-  int bytes_read=0;
-  
-  if (config.rhizome.external_blobs){
-    if (lseek(read_state->blob_fd, read_state->offset, SEEK_SET)<0)
-      RETURN(WHY_perror("lseek"));
+  int bytes_read = 0;
+  if (read_state->blob_fd != -1) {
+    if (lseek(read_state->blob_fd, read_state->offset, SEEK_SET) == -1)
+      RETURN(WHYF_perror("lseek(%d,%ld,SEEK_SET)", read_state->blob_fd, (long)read_state->offset));
     bytes_read = read(read_state->blob_fd, buffer, buffer_length);
-    if (bytes_read<0)
-      RETURN(WHY_perror("read"));
-  }else{
+    if (bytes_read == -1)
+      RETURN(WHYF_perror("read(%d,%p,%ld)", read_state->blob_fd, buffer, (long)buffer_length));
+  } else if (read_state->blob_rowid != -1) {
     sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
     do{
       sqlite3_blob *blob = NULL;
-      
       int ret = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", read_state->blob_rowid, 0 /* read only */, &blob);
       if (sqlite_code_busy(ret))
 	goto again;
       else if(ret!=SQLITE_OK)
 	RETURN(WHYF("sqlite3_blob_open failed: %s",sqlite3_errmsg(rhizome_db)));
-      
       if (read_state->length==-1)
 	read_state->length=sqlite3_blob_bytes(blob);
-      
       bytes_read = read_state->length - read_state->offset;
       if (bytes_read>buffer_length)
 	bytes_read=buffer_length;
-      
       // allow the caller to do a dummy read, just to work out the length
       if (!buffer)
 	bytes_read=0;
-      
       if (bytes_read>0){
 	ret = sqlite3_blob_read(blob, buffer, bytes_read, read_state->offset);
 	if (sqlite_code_busy(ret))
@@ -535,49 +529,43 @@ int rhizome_read(struct rhizome_read *read_state, unsigned char *buffer, int buf
 	  sqlite3_blob_close(blob);
 	  RETURN(-1);
 	}
-	
       }
-      
       sqlite3_blob_close(blob);
       break;
-      
     again:
       if (blob) sqlite3_blob_close(blob);
-      if (sqlite_retry(&retry, "sqlite3_blob_open")==0)
+      if (!sqlite_retry(&retry, "sqlite3_blob_open"))
 	RETURN(-1);
-    }while (1);
-  }
-  
+    } while (1);
+  } else
+    RETURN(WHY("file not open"));
   if (read_state->hash){
     if (buffer && bytes_read>0)
       SHA512_Update(&read_state->sha512_context, buffer, bytes_read);
-    
     if (read_state->offset + bytes_read>=read_state->length){
       char hash_out[SHA512_DIGEST_STRING_LENGTH+1];
       SHA512_End(&read_state->sha512_context, hash_out);
-      
       if (strcasecmp(read_state->id, hash_out)){
 	WHYF("Expected hash=%s, got %s", read_state->id, hash_out);
       }
       read_state->hash=0;
     }
   }
-  
   if (read_state->crypt && buffer && bytes_read>0){
     if(rhizome_crypt_xor_block(buffer, bytes_read, read_state->offset, read_state->key, read_state->nonce)){
       RETURN(-1);
     }
   }
-  
   read_state->offset+=bytes_read;
   RETURN(bytes_read);
   OUT();
 }
 
-int rhizome_read_close(struct rhizome_read *read){
-  if (read->blob_fd)
+int rhizome_read_close(struct rhizome_read *read)
+{
+  if (read->blob_fd != -1)
     close(read->blob_fd);
-  read->blob_fd=0;
+  read->blob_fd = -1;
   return 0;
 }
 
@@ -616,22 +604,23 @@ static int write_file(struct rhizome_read *read, const char *filepath){
 int rhizome_open_decrypt_read(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhizome_read *read_state, int hash){
   
   // for now, always hash the file
-  if (rhizome_open_read(read_state, m->fileHexHash, hash))
-    return -1;
-  
-  read_state->crypt=m->payloadEncryption;
-  if (read_state->crypt){
-    // if the manifest specifies encryption, make sure we can generate the payload key and encrypt the contents as we go
-    if (rhizome_derive_key(m, bsk))
-      return -1;
-    
-    if (config.debug.rhizome)
-      DEBUGF("Decrypting file contents");
-    
-    bcopy(m->payloadKey, read_state->key, sizeof(read_state->key));
-    bcopy(m->payloadNonce, read_state->nonce, sizeof(read_state->nonce));
+  int ret = rhizome_open_read(read_state, m->fileHexHash, hash);
+  if (ret == 0) {
+    read_state->crypt=m->payloadEncryption;
+    if (read_state->crypt){
+      // if the manifest specifies encryption, make sure we can generate the payload key and encrypt
+      // the contents as we go
+      if (rhizome_derive_key(m, bsk)) {
+	rhizome_read_close(read_state);
+	return -1;
+      }
+      if (config.debug.rhizome)
+	DEBUGF("Decrypting file contents");
+      bcopy(m->payloadKey, read_state->key, sizeof(read_state->key));
+      bcopy(m->payloadNonce, read_state->nonce, sizeof(read_state->nonce));
+    }
   }
-  return 0;
+  return ret;
 }
 
 /* Extract the file related to a manifest to the file system.  The file will be de-crypted and
@@ -639,11 +628,12 @@ int rhizome_open_decrypt_read(rhizome_manifest *m, rhizome_bk_t *bsk, struct rhi
  *
  * Returns -1 on error, 0 if extracted successfully, 1 if not found.
  */
-int rhizome_extract_file(rhizome_manifest *m, const char *filepath, rhizome_bk_t *bsk){
+int rhizome_extract_file(rhizome_manifest *m, const char *filepath, rhizome_bk_t *bsk)
+{
   struct rhizome_read read_state;
   bzero(&read_state, sizeof read_state);
   int ret = rhizome_open_decrypt_read(m, bsk, &read_state, 1);
-  if (!ret)
+  if (ret == 0)
     ret = write_file(&read_state, filepath);
   rhizome_read_close(&read_state);
   return ret;
@@ -660,9 +650,8 @@ int rhizome_dump_file(const char *id, const char *filepath, int64_t *length)
 
   int ret = rhizome_open_read(&read_state, id, 1);
   
-  if (!ret){
-    ret=write_file(&read_state, filepath);
-    
+  if (ret == 0) {
+    ret = write_file(&read_state, filepath);
     if (length)
       *length = read_state.length;
   }
