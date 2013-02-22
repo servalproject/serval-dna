@@ -68,7 +68,7 @@ Instructions for use
 
         ./servald start
 
-10. Start the Rhizome mirror daemon to update the mirror every minute:
+ 10. Start the Rhizome mirror daemon to update the mirror every minute:
 
         ./utilities/rhizome_mirrord \
             --interval 60 \
@@ -80,19 +80,19 @@ Instructions for use
             --exec-on-unpack ./utilities/serval_maps_push.sh \
             --log-to-stdout
 
-    This command will only extract bundles with names matching the
-    `--filter-name` glob pattern, so adjust that pattern to match the names of
-    the files produced by the application being visualised.
+   This command will only extract bundles with names matching the
+   `--filter-name` glob pattern, so adjust that pattern to match the names of
+   the files produced by the application being visualised.
 
-    The `--log-to-stdout` option produces a log of activity on standard output,
-    which may be redirected to a file if desired.
+   The `--log-to-stdout` option produces a log of activity on standard output,
+   which may be redirected to a file if desired.
 
-    The daemon reports errors on standard output and continues execution, so
-    standard output may also be redirected to a file if desired, possibly the
-    same as standard error.
+   The daemon reports errors on standard output and continues execution, so
+   standard output may also be redirected to a file if desired, possibly the
+   same as standard error.
 
-    The daemon is relatively untested, and may terminate if there is a code
-    error.  It must be watched and restarted if necessary.
+   The daemon is relatively untested, and may terminate if there is a code
+   error.  It must be watched and restarted if necessary.
 
 
 [Serval Project]: http://www.servalproject.org/
