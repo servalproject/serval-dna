@@ -29,6 +29,7 @@ of Rhizome content.
 
 
 [Serval Project]: http://www.servalproject.org/
+[Serval DNA]: https://github.com/servalproject/serval-dna
 [`rhizome_mirrord`]: ./rhizome_mirrord
 [`serval_maps_push.sh`]: ./serval_maps_push.sh
 [Serval Maps testing server]: http://maps.servalproject.org/testing/
