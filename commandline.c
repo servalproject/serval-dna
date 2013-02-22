@@ -714,9 +714,9 @@ int app_server_start(const struct cli_parsed *parsed, void *context)
 #endif
     if ((tmp = malloc(PATH_MAX)) == NULL)
       RETURN(WHY("Out of memory"));
-  if (get_self_executable_path(tmp, PATH_MAX) == -1)
-    RETURN(WHY("unable to determine own executable name"));
-  execpath = tmp;
+    if (get_self_executable_path(tmp, PATH_MAX) == -1)
+      RETURN(WHY("unable to determine own executable name"));
+    execpath = tmp;
   }
   /* Create the instance directory if it does not yet exist */
   if (create_serval_instance_dir() == -1)

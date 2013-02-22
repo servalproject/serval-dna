@@ -88,7 +88,7 @@ int overlay_mdp_setup_sockets()
   }
 #endif
   if (mdp_named.poll.fd<=0) {
-    if (!form_serval_instance_path(&name.sun_path[0], PATH_MAX, "mdp.socket"))
+    if (!form_serval_instance_path(&name.sun_path[0], sizeof name.sun_path, "mdp.socket"))
       return WHY("Cannot construct name of unix domain socket.");
     unlink(&name.sun_path[0]);
     len = 0+strlen(&name.sun_path[0]) + sizeof(name.sun_family)+1;
