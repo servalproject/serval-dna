@@ -511,7 +511,7 @@ def file_hash(text):
 
 class ServaldInterfaceException(Exception):
     def __init__(self, servald, status, output, msg):
-        Exception.__init__(self, msg)
+        super(ServaldInterfaceException, self).__init__('%s (exit status %d): %s' % (servald, status, msg))
         self.status = status
         self.output = output
         self.servald = servald
@@ -609,7 +609,7 @@ def invoke_servald(opts, args, output_keyvalue=False, output_words=False):
         for line in err.split('\n'):
             if line.startswith('ERROR:') or line.startswith('WARN:'):
                 error(re.sub(r'^(ERROR|WARN):\s*(\[\d+])?\s*\d\d\:\d\d\:\d\d\.\d+\s*', '', line))
-        raise ServaldInterfaceException(opts.servald, 255, None, 'exited with error')
+        raise ServaldInterfaceException(opts.servald, proc.returncode, None, 'exited with error')
     if out is not None and (output_words or output_keyvalue):
         if not out.endswith(delim):
             raise ServaldInterfaceException(opts.servald, proc.returncode, out, 'missing delimiter')
