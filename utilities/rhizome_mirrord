@@ -348,12 +348,11 @@ class RhizomeMirror(object):
             log("execute " + ' '.join(args))
             try:
                 stat = subprocess.call(args, stdin= open('/dev/null'), env= env)
-                if stat == 0:
-                    self.unpacked.clear()
-                else:
+                if stat != 0:
                     error('exec-on-unpack script %r failed - error status %d' % (self.opts.exec_on_unpack, stat))
             except OSError, e:
                 error('cannot execute %r - %s' % (self.opts.exec_on_unpack, e))
+            self.unpacked.clear()
 
     def mkdirs(self, path):
         if os.path.isdir(path):
@@ -666,10 +665,12 @@ def log(msg):
         print >>log_output, '+ %s' % (msg,)
 
 def error(msg):
+    if log_output:
+        print >>log_output, '+ error(%r)' % (str(msg),)
     print >>sys.stderr, '%s: %s' % (os.path.basename(sys.argv[0]), msg)
 
 def fatal(msg):
-    error(msg)
+    error('FATAL: %s' % (msg,))
     sys.exit(1)
 
 if __name__ == '__main__':

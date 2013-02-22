@@ -19,6 +19,7 @@
 
 set -e
 
+TARGET=testing
 UNPACK_DIR="${1?}"
 shift
 
@@ -30,9 +31,22 @@ fi
 
 rsync -a \
    "$UNPACK_DIR/" \
-   servalp@servalproject.org:/home/servalp/maps.servalproject.org/testing/admin/data/instances/
+   "servalp@servalproject.org:/home/servalp/maps.servalproject.org/$TARGET/admin/data/instances/"
 
 curl -s \
    -o serval_maps_push_result.html \
    -D serval_maps_push_headers.txt \
-   http://maps.servalproject.org/testing/admin/cache-update/instances/2798a6651e9caecd3d30fdc5e6a0e0f5
+   "http://maps.servalproject.org/$TARGET/admin/cache-update/instances/2798a6651e9caecd3d30fdc5e6a0e0f5"
+
+response=`sed -n -e '1s/^HTTP\/1\.. //p' serval_maps_push_headers.txt` 
+case $response in
+2[0-9][0-9]\ *) exit 0;;
+3[0-9][0-9]\ *) echo "Unexpected HTTP response: $response" >&2;;
+[45][0-9][0-9]\ *) echo "HTTP error response: $response" >&2;;
+*) echo "Malformed HTTP response" >&2;;
+esac
+if [ -n "$RHIZOME_MIRRORD_LOG_STDOUT" ]; then
+   cat serval_maps_push_headers.txt
+   cat serval_maps_push_result.html
+fi
+exit 1
