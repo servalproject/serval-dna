@@ -327,8 +327,13 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
       }
       
       unsigned char *nonce=ob_get_bytes_ptr(f->payload, nb);
+      if (!nonce)
+	RETURN(WHYF("Expected %d bytes of nonce", nb));
+      
       int cipher_len=ob_remaining(f->payload);
       unsigned char *cipher_text=ob_get_bytes_ptr(f->payload, cipher_len);
+      if (!cipher_text)
+	RETURN(WHYF("Expected %d bytes of cipher text", cipher_len));
       
       unsigned char plain_block[cipher_len+cz];
       
@@ -680,9 +685,9 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       ob_free(plaintext);
       
       frame->payload = ob_new();
-      ob_makespace(frame->payload, nb+cipher_len);
       
-      unsigned char *nonce = ob_append_space(frame->payload, nb);
+      unsigned char *nonce = ob_append_space(frame->payload, nb+cipher_len);
+      unsigned char *cipher_text = nonce + nb;
       if (!nonce)
 	RETURN(-1);
       if (urandombytes(nonce,nb)) {
@@ -698,12 +703,6 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       if (!k) {
 	op_free(frame);
 	RETURN(WHY("could not compute Curve25519(NxM)")); 
-      }
-      /* Get pointer to place in frame where the ciphered text needs to go */
-      unsigned char *cipher_text=ob_append_space(frame->payload,cipher_len);
-      if ((!cipher_text)){
-	op_free(frame);
-	RETURN(WHY("could not make space for ciphered text")); 
       }
       /* Actually authcrypt the payload */
       if (crypto_box_curve25519xsalsa20poly1305_afternm

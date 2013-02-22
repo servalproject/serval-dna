@@ -147,7 +147,7 @@ int ob_makespace(struct overlay_buffer *b,int bytes)
   }
   
   // already enough space?
-  if (b->position + bytes < b->allocSize)
+  if (b->position + bytes <= b->allocSize)
     return 0;
   
   if (b->bytes && !b->allocated)
