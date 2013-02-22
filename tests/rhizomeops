@@ -246,22 +246,28 @@ setup_ExtractManifestFileFromExtBlob() {
    executeOk_servald config set rhizome.external_blobs 1
    echo "A test file" >file1
    executeOk_servald rhizome add file $SIDB1 file1 file1.manifest
+   executeOk_servald config set rhizome.external_blobs 0
+   echo "Another test file" >file2
+   executeOk_servald rhizome add file $SIDB1 file2 file2.manifest
    executeOk_servald rhizome list
-   assert_rhizome_list --fromhere=1 --author=$SIDB1 file1
-   extract_manifest_id manifestid file1.manifest
-   extract_manifest_version version file1.manifest
-   extract_manifest_filehash filehash file1.manifest
+   assert_rhizome_list --fromhere=1 --author=$SIDB1 file1 file2
+   extract_manifest_id manifestid1 file1.manifest
+   extract_manifest_version version1 file1.manifest
+   extract_manifest_filehash filehash1 file1.manifest
+   extract_manifest_id manifestid2 file2.manifest
+   extract_manifest_version version2 file2.manifest
+   extract_manifest_filehash filehash2 file2.manifest
 }
 test_ExtractManifestFileFromExtBlob() {
-   executeOk_servald rhizome extract bundle $manifestid file1x.manifest file1x
+   executeOk_servald rhizome extract bundle $manifestid1 file1x.manifest file1x
    tfw_cat --stdout --stderr
    assertStdoutLineCount '==' 8
    local size=$(( $(cat file1 | wc -c) + 0 ))
    assertStdoutGrep --matches=1 "^service:file$"
-   assertStdoutGrep --matches=1 "^manifestid:$manifestid\$"
-   assertStdoutGrep --matches=1 "^version:$version\$"
+   assertStdoutGrep --matches=1 "^manifestid:$manifestid1\$"
+   assertStdoutGrep --matches=1 "^version:$version1\$"
    assertStdoutGrep --matches=1 "^inserttime:$rexp_date\$"
-   assertStdoutGrep --matches=1 "^filehash:$filehash\$"
+   assertStdoutGrep --matches=1 "^filehash:$filehash1\$"
    assertStdoutGrep --matches=1 "^filesize:$size\$"
    assertStdoutGrep --matches=1 "^\.author:$SIDB1\$"
    assertStdoutGrep --matches=1 "^\.readonly:0\$"
@@ -269,6 +275,22 @@ test_ExtractManifestFileFromExtBlob() {
    assert diff file1.manifest file1x.manifest
    assert [ -e file1x ]
    assert diff file1 file1x
+   executeOk_servald rhizome extract bundle $manifestid2 file2x.manifest file2x
+   tfw_cat --stdout --stderr
+   assertStdoutLineCount '==' 8
+   local size=$(( $(cat file2 | wc -c) + 0 ))
+   assertStdoutGrep --matches=1 "^service:file$"
+   assertStdoutGrep --matches=1 "^manifestid:$manifestid2\$"
+   assertStdoutGrep --matches=1 "^version:$version2\$"
+   assertStdoutGrep --matches=1 "^inserttime:$rexp_date\$"
+   assertStdoutGrep --matches=1 "^filehash:$filehash2\$"
+   assertStdoutGrep --matches=1 "^filesize:$size\$"
+   assertStdoutGrep --matches=1 "^\.author:$SIDB1\$"
+   assertStdoutGrep --matches=1 "^\.readonly:0\$"
+   assert [ -e file2x.manifest ]
+   assert diff file2.manifest file2x.manifest
+   assert [ -e file2x ]
+   assert diff file2 file2x
 }
 
 doc_ExtractManifestToStdout="Extract manifest to output field"
