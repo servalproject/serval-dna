@@ -75,4 +75,34 @@ int mkdirsn(const char *path, size_t len, mode_t mode);
 void srandomdev();
 int urandombytes(unsigned char *buf, unsigned long long len);
 
+/* Read the symbolic link into the supplied buffer and add a terminating nul.
+ * Logs an ERROR and returns -1 if the buffer is too short to hold the link
+ * content and the terminating nul.  If readlink(2) returns an error, then logs
+ * an ERROR and returns -1.  Otherwise, returns the number of bytes read,
+ * including the terminating nul, ie, returns what readlink(2) returns plus
+ * one.  If the 'len' argument is given as zero, then returns the number of
+ * bytes that would be read, by calling lstat(2) instead of readlink(2), plus
+ * one for the terminating nul.  Beware of the following race condition: a
+ * symbolic link may be altered between calling the lstat(2) and readlink(2),
+ * so the following apparently overflow-proof code may still fail from a buffer
+ * overflow in the second call to read_symlink():
+ *
+ *    char *readlink_malloc(const char *path) {
+ *	ssize_t len = read_symlink(path, NULL, 0);
+ *	if (len == -1)
+ *	  return NULL;
+ *	char *buf = malloc(len);
+ *	if (buf == NULL)
+ *	  return NULL;
+ *	if (read_symlink(path, buf, len) == -1) {
+ *	  free(buf);
+ *	  return NULL;
+ *	}
+ *	return buf;
+ *    }
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+ssize_t read_symlink(const char *path, char *buf, size_t len);
+
 #endif //__SERVALDNA_OS_H

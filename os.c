@@ -140,3 +140,20 @@ time_ms_t sleep_ms(time_ms_t milliseconds)
     FATALF_perror("nanosleep(tv_sec=%ld, tv_nsec=%ld)", delay.tv_sec, delay.tv_nsec);
   return remain.tv_sec * 1000 + remain.tv_nsec / 1000000;
 }
+
+ssize_t read_symlink(const char *path, char *buf, size_t len)
+{
+  if (len == 0) {
+    struct stat stat;
+    if (lstat(path, &stat) == -1)
+      return WHYF_perror("lstat(%s)", path);
+    return stat.st_size;
+  }
+  ssize_t nr = readlink(path, buf, len);
+  if (nr == -1)
+    return WHYF_perror("readlink(%s)", path);
+  if (nr >= len)
+    return WHYF("buffer overrun from readlink(%s, len=%lu)", path, (unsigned long) len);
+  buf[nr] = '\0';
+  return nr;
+}
