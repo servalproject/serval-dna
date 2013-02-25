@@ -24,15 +24,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 // Generate config set-default function definitions, cf_dfl_config_NAME().
 #define STRUCT(__name, __validator...) \
     int cf_dfl_config_##__name(struct config_##__name *s) {
-#define NODE(__type, __element, __default, __parser, __flags, __comment) \
+#define NODE(__type, __element, __default, __repr, __flags, __comment) \
         s->__element = (__default);
-#define ATOM(__type, __element, __default, __parser, __flags, __comment) \
+#define ATOM(__type, __element, __default, __repr, __flags, __comment) \
         s->__element = (__default);
-#define STRING(__size, __element, __default, __parser, __flags, __comment) \
+#define STRING(__size, __element, __default, __repr, __flags, __comment) \
         strncpy(s->__element, (__default), (__size))[(__size)] = '\0';
 #define SUB_STRUCT(__name, __element, __flags) \
         cf_dfl_config_##__name(&s->__element);
-#define NODE_STRUCT(__name, __element, __parser, __flags) \
+#define NODE_STRUCT(__name, __element, __repr, __flags) \
         cf_dfl_config_##__name(&s->__element);
 #define END_STRUCT \
         return CFOK; \
@@ -42,13 +42,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
         a->ac = 0; \
         return CFOK; \
     }
-#define KEY_ATOM(__type, __keyparser, __cmpfunc...)
-#define KEY_STRING(__strsize, __keyparser, __cmpfunc...)
-#define VALUE_ATOM(__type, __eltparser)
-#define VALUE_STRING(__strsize, __eltparser)
-#define VALUE_NODE(__type, __eltparser)
+#define KEY_ATOM(__type, __keyrepr, __cmpfunc...)
+#define KEY_STRING(__strsize, __keyrepr, __cmpfunc...)
+#define VALUE_ATOM(__type, __eltrepr)
+#define VALUE_STRING(__strsize, __eltrepr)
+#define VALUE_NODE(__type, __eltrepr)
 #define VALUE_SUB_STRUCT(__structname)
-#define VALUE_NODE_STRUCT(__structname, __eltparser)
+#define VALUE_NODE_STRUCT(__structname, __eltrepr)
 #define END_ARRAY(__size)
 #include "conf_schema.h"
 #undef STRUCT
@@ -70,26 +70,26 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 // Generate array element comparison functions.
 #define STRUCT(__name, __validator...)
-#define NODE(__type, __element, __default, __parser, __flags, __comment)
-#define ATOM(__type, __element, __default, __parser, __flags, __comment)
-#define STRING(__size, __element, __default, __parser, __flags, __comment)
+#define NODE(__type, __element, __default, __repr, __flags, __comment)
+#define ATOM(__type, __element, __default, __repr, __flags, __comment)
+#define STRING(__size, __element, __default, __repr, __flags, __comment)
 #define SUB_STRUCT(__name, __element, __flags)
-#define NODE_STRUCT(__name, __element, __parser, __flags)
+#define NODE_STRUCT(__name, __element, __repr, __flags)
 #define END_STRUCT
 #define ARRAY(__name, __flags, __validator...) \
     static int __cmp_config_##__name(const struct config_##__name##__element *a, const struct config_##__name##__element *b) { \
       __compare_func__config_##__name##__t *cmp = (NULL
-#define KEY_ATOM(__type, __keyparser, __cmpfunc...) \
+#define KEY_ATOM(__type, __keyrepr, __cmpfunc...) \
 	,##__cmpfunc); \
       return cmp ? (*cmp)(&a->key, &b->key) : memcmp(&a->key, &b->key, sizeof a->key);
-#define KEY_STRING(__strsize, __keyparser, __cmpfunc...) \
+#define KEY_STRING(__strsize, __keyrepr, __cmpfunc...) \
 	,##__cmpfunc); \
       return cmp ? (*cmp)(a->key, b->key) : strcmp(a->key, b->key);
-#define VALUE_ATOM(__type, __eltparser)
-#define VALUE_STRING(__strsize, __eltparser)
-#define VALUE_NODE(__type, __eltparser)
+#define VALUE_ATOM(__type, __eltrepr)
+#define VALUE_STRING(__strsize, __eltrepr)
+#define VALUE_NODE(__type, __eltrepr)
 #define VALUE_SUB_STRUCT(__structname)
-#define VALUE_NODE_STRUCT(__structname, __eltparser)
+#define VALUE_NODE_STRUCT(__structname, __eltrepr)
 #define END_ARRAY(__size) \
     }
 #include "conf_schema.h"
@@ -157,16 +157,16 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	  result |= CFSUB(ret); \
 	} \
       }
-#define NODE(__type, __element, __default, __parser, __flags, __comment) \
-        __ITEM(__element, 0 __flags, __parser(&strct->__element, child))
-#define ATOM(__type, __element, __default, __parser, __flags, __comment) \
-        __ITEM(__element, ((0 __flags)|__TEXT)&~__CHILDREN, child->text ? __parser(&strct->__element, child->text) : CFEMPTY)
-#define STRING(__size, __element, __default, __parser, __flags, __comment) \
-        __ITEM(__element, ((0 __flags)|__TEXT)&~__CHILDREN, child->text ? __parser(strct->__element, (__size) + 1, child->text) : CFEMPTY)
+#define NODE(__type, __element, __default, __repr, __flags, __comment) \
+        __ITEM(__element, 0 __flags, cf_opt_##__repr(&strct->__element, child))
+#define ATOM(__type, __element, __default, __repr, __flags, __comment) \
+        __ITEM(__element, ((0 __flags)|__TEXT)&~__CHILDREN, child->text ? cf_opt_##__repr(&strct->__element, child->text) : CFEMPTY)
+#define STRING(__size, __element, __default, __repr, __flags, __comment) \
+        __ITEM(__element, ((0 __flags)|__TEXT)&~__CHILDREN, child->text ? cf_opt_##__repr(strct->__element, (__size) + 1, child->text) : CFEMPTY)
 #define SUB_STRUCT(__name, __element, __flags) \
         __ITEM(__element, (0 __flags)|__CHILDREN, cf_opt_config_##__name(&strct->__element, child))
-#define NODE_STRUCT(__name, __element, __parser, __flags) \
-        __ITEM(__element, (0 __flags)|__TEXT|__CHILDREN, __parser(&strct->__element, child))
+#define NODE_STRUCT(__name, __element, __repr, __flags) \
+        __ITEM(__element, (0 __flags)|__TEXT|__CHILDREN, cf_opt_##__repr(&strct->__element, child))
 #define END_STRUCT \
       { \
 	int i; \
@@ -249,20 +249,20 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	result |= CFEMPTY; \
       return result; \
     }
-#define KEY_ATOM(__type, __keyparser, __cmpfunc...) \
-      __ARRAY_KEY(__keyparser(&array->av[n].key, child->key), ##__cmpfunc)
-#define KEY_STRING(__strsize, __keyparser, __cmpfunc...) \
-      __ARRAY_KEY(__keyparser(array->av[n].key, sizeof array->av[n].key, child->key), ##__cmpfunc)
-#define VALUE_ATOM(__type, __eltparser) \
-      __ARRAY_VALUE(CFOK, child->text ? __eltparser(&array->av[n].value, child->text) : CFEMPTY)
-#define VALUE_STRING(__strsize, __eltparser) \
-      __ARRAY_VALUE(CFOK, child->text ? __eltparser(array->av[n].value, sizeof array->av[n].value, child->text) : CFEMPTY)
-#define VALUE_NODE(__type, __eltparser) \
-      __ARRAY_VALUE(CFOK, __eltparser(&array->av[n].value, child))
+#define KEY_ATOM(__type, __keyrepr, __cmpfunc...) \
+      __ARRAY_KEY(cf_opt_##__keyrepr(&array->av[n].key, child->key), ##__cmpfunc)
+#define KEY_STRING(__strsize, __keyrepr, __cmpfunc...) \
+      __ARRAY_KEY(cf_opt_##__keyrepr(array->av[n].key, sizeof array->av[n].key, child->key), ##__cmpfunc)
+#define VALUE_ATOM(__type, __eltrepr) \
+      __ARRAY_VALUE(CFOK, child->text ? cf_opt_##__eltrepr(&array->av[n].value, child->text) : CFEMPTY)
+#define VALUE_STRING(__strsize, __eltrepr) \
+      __ARRAY_VALUE(CFOK, child->text ? cf_opt_##__eltrepr(array->av[n].value, sizeof array->av[n].value, child->text) : CFEMPTY)
+#define VALUE_NODE(__type, __eltrepr) \
+      __ARRAY_VALUE(CFOK, cf_opt_##__eltrepr(&array->av[n].value, child))
 #define VALUE_SUB_STRUCT(__structname) \
       __ARRAY_VALUE(cf_dfl_config_##__structname(&array->av[n].value), cf_opt_config_##__structname(&array->av[n].value, child))
-#define VALUE_NODE_STRUCT(__structname, __eltparser) \
-      __ARRAY_VALUE(cf_dfl_config_##__structname(&array->av[n].value), __eltparser(&array->av[n].value, child))
+#define VALUE_NODE_STRUCT(__structname, __eltrepr) \
+      __ARRAY_VALUE(cf_dfl_config_##__structname(&array->av[n].value), cf_opt_##__eltrepr(&array->av[n].value, child))
 #include "conf_schema.h"
 #undef STRUCT
 #undef NODE
@@ -283,15 +283,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 // Generate config array search-by-key functions.
 #define STRUCT(__name, __validator...)
-#define NODE(__type, __element, __default, __parser, __flags, __comment)
-#define ATOM(__type, __element, __default, __parser, __flags, __comment)
-#define STRING(__size, __element, __default, __parser, __flags, __comment)
+#define NODE(__type, __element, __default, __repr, __flags, __comment)
+#define ATOM(__type, __element, __default, __repr, __flags, __comment)
+#define STRING(__size, __element, __default, __repr, __flags, __comment)
 #define SUB_STRUCT(__name, __element, __flags)
-#define NODE_STRUCT(__name, __element, __parser, __flags)
+#define NODE_STRUCT(__name, __element, __repr, __flags)
 #define END_STRUCT
 #define ARRAY(__name, __flags, __validator...) \
     int config_##__name##__get(const struct config_##__name *array,
-#define KEY_ATOM(__type, __keyparser, __cmpfunc...) \
+#define KEY_ATOM(__type, __keyrepr, __cmpfunc...) \
 	  const __type *key) { \
       int (*cmp)(const __type *, const __type *) = (NULL, ##__cmpfunc); \
       int i; \
@@ -300,7 +300,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	  return i; \
       return -1; \
     }
-#define KEY_STRING(__strsize, __keyparser, __cmpfunc...) \
+#define KEY_STRING(__strsize, __keyrepr, __cmpfunc...) \
 	  const char *key) { \
       int (*cmp)(const char *, const char *) = (NULL, ##__cmpfunc); \
       int i; \
@@ -309,11 +309,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	  return i; \
       return -1; \
     }
-#define VALUE_ATOM(__type, __eltparser)
-#define VALUE_STRING(__strsize, __eltparser)
-#define VALUE_NODE(__type, __eltparser)
+#define VALUE_ATOM(__type, __eltrepr)
+#define VALUE_STRING(__strsize, __eltrepr)
+#define VALUE_NODE(__type, __eltrepr)
 #define VALUE_SUB_STRUCT(__structname)
-#define VALUE_NODE_STRUCT(__structname, __eltparser)
+#define VALUE_NODE_STRUCT(__structname, __eltrepr)
 #define END_ARRAY(__size)
 #include "conf_schema.h"
 #undef STRUCT
@@ -348,23 +348,23 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define __STRUCT(nodep, __structname) \
 	if (cf_sch_config_##__structname(nodep) == -1) \
 	  return -1;
-#define NODE(__type, __element, __default, __parser, __flags, __comment) \
+#define NODE(__type, __element, __default, __repr, __flags, __comment) \
 	__ADD_CHILD(rootp, #__element) \
-	__ATOM(childp, "(" #__parser ")") \
-	__ADD_CHILD(childp, "(" #__parser ")") \
-	__ATOM(childp, "(" #__parser ")")
-#define ATOM(__type, __element, __default, __parser, __flags, __comment) \
+	__ATOM(childp, "(" #__repr ")") \
+	__ADD_CHILD(childp, "(" #__repr ")") \
+	__ATOM(childp, "(" #__repr ")")
+#define ATOM(__type, __element, __default, __repr, __flags, __comment) \
 	__ADD_CHILD(rootp, #__element) \
-	__ATOM(childp, "(" #__parser ")")
-#define STRING(__size, __element, __default, __parser, __flags, __comment) \
+	__ATOM(childp, "(" #__repr ")")
+#define STRING(__size, __element, __default, __repr, __flags, __comment) \
 	__ADD_CHILD(rootp, #__element) \
-	__ATOM(childp, "(" #__parser ")")
+	__ATOM(childp, "(" #__repr ")")
 #define SUB_STRUCT(__structname, __element, __flags) \
 	__ADD_CHILD(rootp, #__element) \
 	__STRUCT(childp, __structname)
-#define NODE_STRUCT(__structname, __element, __parser, __flags) \
+#define NODE_STRUCT(__structname, __element, __repr, __flags) \
 	__ADD_CHILD(rootp, #__element) \
-	__ATOM(childp, "(" #__parser ")") \
+	__ATOM(childp, "(" #__repr ")") \
 	__STRUCT(childp, __structname)
 #define END_STRUCT \
         return 0; \
@@ -373,22 +373,22 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
     int cf_sch_config_##__name(struct cf_om_node **rootp) { \
       int i; \
       struct cf_om_node **childp;
-#define KEY_ATOM(__type, __keyparser, __cmpfunc...) \
-	__ADD_CHILD(rootp, "[" #__keyparser "]")
-#define KEY_STRING(__strsize, __keyparser, __cmpfunc...) \
-	__ADD_CHILD(rootp, "[" #__keyparser "]")
-#define VALUE_ATOM(__type, __eltparser) \
-	__ATOM(childp, "(" #__eltparser ")")
-#define VALUE_STRING(__strsize, __eltparser) \
-	__ATOM(childp, "(" #__eltparser ")")
-#define VALUE_NODE(__type, __eltparser) \
-	__ATOM(childp, "(" #__eltparser ")") \
-	__ADD_CHILD(childp, "(" #__eltparser ")") \
-	__ATOM(childp, "(" #__eltparser ")")
+#define KEY_ATOM(__type, __keyrepr, __cmpfunc...) \
+	__ADD_CHILD(rootp, "[" #__keyrepr "]")
+#define KEY_STRING(__strsize, __keyrepr, __cmpfunc...) \
+	__ADD_CHILD(rootp, "[" #__keyrepr "]")
+#define VALUE_ATOM(__type, __eltrepr) \
+	__ATOM(childp, "(" #__eltrepr ")")
+#define VALUE_STRING(__strsize, __eltrepr) \
+	__ATOM(childp, "(" #__eltrepr ")")
+#define VALUE_NODE(__type, __eltrepr) \
+	__ATOM(childp, "(" #__eltrepr ")") \
+	__ADD_CHILD(childp, "(" #__eltrepr ")") \
+	__ATOM(childp, "(" #__eltrepr ")")
 #define VALUE_SUB_STRUCT(__structname) \
 	__STRUCT(childp, __structname)
-#define VALUE_NODE_STRUCT(__structname, __eltparser) \
-	__ATOM(childp, "(" #__eltparser ")") \
+#define VALUE_NODE_STRUCT(__structname, __eltrepr) \
+	__ATOM(childp, "(" #__eltrepr ")") \
 	__STRUCT(childp, __structname)
 
 #define END_ARRAY(__size) \
