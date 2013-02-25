@@ -70,7 +70,7 @@ dnl Solaris hides nanosleep here
 AC_CHECK_LIB(rt,nanosleep)
 
 dnl BSD way of getting socket creds
-AC_CHECK_FUNCS(getpeereid)
+AC_CHECK_FUNCS([getpeereid bcopy bzero])
 
 AC_CHECK_HEADERS(
     stdio.h \

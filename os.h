@@ -17,13 +17,21 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#ifndef __SERVALDNA_OS_H
+#define __SERVALDNA_OS_H
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/types.h>
 
-#ifndef __SERVALDNA_OS_H
-#define __SERVALDNA_OS_H
+#ifndef __SERVALDNA_OS_INLINE
+# if __GNUC__ && !__GNUC_STDC_INLINE__
+#  define __SERVALDNA_OS_INLINE extern inline
+# else
+#  define __SERVALDNA_OS_INLINE inline
+# endif
+#endif
 
 /* All wall clock times in the Serval daemon are represented in milliseconds
  * since the Unix epoch.  The gettime_ms() function uses gettimeofday(2) to
@@ -49,11 +57,17 @@ typedef long long time_ms_t;
 time_ms_t gettime_ms();
 time_ms_t sleep_ms(time_ms_t milliseconds);
 
-/* bzero(3) is deprecated in favour of memset(3). */
-#define bzero(addr,len) memset((addr), 0, (len))
+#ifndef HAVE_BZERO
+__SERVALDNA_OS_INLINE void bzero(void *buf, size_t len) {
+    memset(buf, 0, len);
+}
+#endif
 
-/* OpenWRT libc doesn't have bcopy, but has memmove */
-#define bcopy(A,B,C) memmove(B,A,C)
+#ifndef HAVE_BCOPY
+__SERVALDNA_OS_INLINE void bcopy(void *src, void *dst, size_t len) {
+    memcpy(dst, src, len);
+}
+#endif
 
 int mkdirs(const char *path, mode_t mode);
 int mkdirsn(const char *path, size_t len, mode_t mode);
