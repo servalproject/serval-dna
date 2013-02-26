@@ -30,18 +30,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include <time.h>
 #include <string.h>
 
-#ifndef HAVE_BZERO
-__SERVALDNA_OS_INLINE void bzero(void *buf, size_t len) {
-    memset(buf, 0, len);
-}
-#endif
-
-#ifndef HAVE_BCOPY
-__SERVALDNA_OS_INLINE void bcopy(void *src, void *dst, size_t len) {
-    memcpy(dst, src, len);
-}
-#endif
-
 int mkdirs(const char *path, mode_t mode)
 {
   return mkdirsn(path, strlen(path), mode);
