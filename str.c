@@ -20,6 +20,7 @@
 #define __STR_INLINE
 #include "str.h"
 #include "strbuf_helpers.h"
+#include "constants.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -181,17 +182,29 @@ char *str_str(char *haystack, const char *needle, int haystack_len)
   return NULL;
 }
 
+static struct scale_factor {
+  char symbol;
+  uint64_t factor;
+}
+  scale_factors[] = {
+      { 'G', 1024LL * 1024LL * 1024LL },
+      { 'g', 1000LL * 1000LL * 1000LL },
+      { 'M', 1024LL * 1024LL },
+      { 'm', 1000LL * 1000LL },
+      { 'K', 1024LL },
+      { 'k', 1000LL }
+  };
+
 uint64_t scale_factor(const char *str, const char **afterp)
 {
   uint64_t factor = 1;
-  switch (str[0]) {
-    case 'k': ++str; factor = 1000LL; break;
-    case 'K': ++str; factor = 1024LL; break;
-    case 'm': ++str; factor = 1000LL * 1000LL; break;
-    case 'M': ++str; factor = 1024LL * 1024LL; break;
-    case 'g': ++str; factor = 1000LL * 1000LL * 1000LL; break;
-    case 'G': ++str; factor = 1024LL * 1024LL * 1024LL; break;
-  }
+  int i;
+  for (i = 0; i != NELS(scale_factors); ++i)
+    if (scale_factors[i].symbol == str[0]) {
+      ++str;
+      factor = scale_factors[i].factor;
+      break;
+    }
   if (afterp)
     *afterp = str;
   else if (*str)
@@ -201,7 +214,7 @@ uint64_t scale_factor(const char *str, const char **afterp)
 
 int str_to_int64_scaled(const char *str, int base, int64_t *result, const char **afterp)
 {
-  if (!(isdigit(*str) || *str == '-' || *str == '+'))
+  if (isspace(*str))
     return 0;
   const char *end = str;
   long long value = strtoll(str, (char**)&end, base);
@@ -218,7 +231,7 @@ int str_to_int64_scaled(const char *str, int base, int64_t *result, const char *
 
 int str_to_uint64_scaled(const char *str, int base, uint64_t *result, const char **afterp)
 {
-  if (!isdigit(*str))
+  if (isspace(*str))
     return 0;
   const char *end = str;
   unsigned long long value = strtoull(str, (char**)&end, base);
@@ -231,6 +244,23 @@ int str_to_uint64_scaled(const char *str, int base, uint64_t *result, const char
     return 0;
   *result = value;
   return 1;
+}
+
+int uint64_scaled_to_str(char *str, size_t len, uint64_t value)
+{
+  char symbol = '\0';
+  int i;
+  for (i = 0; i != NELS(scale_factors); ++i)
+    if (value % scale_factors[i].factor == 0) {
+      value /= scale_factors[i].factor;
+      symbol = scale_factors[i].symbol;
+      break;
+    }
+  strbuf b = strbuf_local(str, len);
+  strbuf_sprintf(b, "%llu", (unsigned long long) value);
+  if (symbol)
+    strbuf_putc(b, symbol);
+  return strbuf_overrun(b) ? 0 : 1;
 }
 
 /* Format a buffer of data as a printable representation, eg: "Abc\x0b\n\0", for display
