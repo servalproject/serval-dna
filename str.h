@@ -160,6 +160,17 @@ int str_to_int64_scaled(const char *str, int base, int64_t *result, const char *
 int str_to_uint64_scaled(const char *str, int base, uint64_t *result, const char **afterp);
 uint64_t scale_factor(const char *str, const char **afterp);
 
+/* Format a string as a decimal integer in ASCII radix notation with a scale suffix character in the
+ * set {kKmMgG}: 'k' = 1e3, 'K' = 1<<10, 'm' = 1e6, 'M' = 1<<20, 'g' = 1e9, 'G' = * 1<<30 if the
+ * value is an exact multiple.
+ *
+ * Return 1 if the supplied string buffer was large enough to hold the formatted result plus a
+ * terminating nul character, 0 otherwise.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int uint64_scaled_to_str(char *str, size_t len, uint64_t value);
+
 /* Return true if the string resembles a nul-terminated URI.
  * Based on RFC-3986 generic syntax, assuming nothing about the hierarchical part.
  *
