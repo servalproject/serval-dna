@@ -415,3 +415,157 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef VALUE_NODE_STRUCT
 #undef END_ARRAY
 
+// Generate formatting functions, cf_fmt_config_SECTION()
+#define STRUCT(__name, __validator...) \
+    int cf_fmt_config_##__name(struct cf_om_node **parentp, const struct config_##__name *strct) { \
+      DEBUGF("STRUCT(" #__name ", " #__validator ")"); \
+      int result = CFOK; \
+      int ret;
+#define __HANDLE_TEXT(__elementstr) \
+      WHYF("  ret=%s", strbuf_str(strbuf_cf_flags(strbuf_alloca(300), ret))); \
+      if (ret == CFOK) { \
+	int n; \
+	if (text == NULL) { \
+	  WHY("  text=NULL"); \
+	  ret = CFERROR; \
+	} else if ((n = cf_om_add_child(parentp, __elementstr)) == -1) { \
+	  WHY("  cf_om_add_child() returned -1"); \
+	  ret = CFERROR; \
+	} else { \
+	  (*parentp)->nodv[n]->text = text; \
+	  text = NULL; \
+	} \
+      } \
+      if (text) { \
+	free((char *)text); \
+	text = NULL; \
+      }
+#define __HANDLE_RET \
+      if (ret == CFERROR) \
+	return CFERROR; \
+      else if (ret != CFOK) \
+	result |= (ret & CF__SUBFLAGS) | CFSUB(ret & CF__FLAGS);
+#define NODE(__type, __element, __default, __repr, __flags, __comment) \
+      DEBUGF("  NODE(" #__type ", " #__element ", " #__repr ")"); \
+      ret = cf_fmt_##__repr(parentp, &strct->__element); \
+      __HANDLE_RET
+#define ATOM(__type, __element, __default, __repr, __flags, __comment) \
+      DEBUGF("  ATOM(" #__type ", " #__element ", " #__repr ")"); \
+      { \
+	const char *text = NULL; \
+	ret = cf_fmt_##__repr(&text, &strct->__element);\
+        __HANDLE_TEXT(#__element) \
+        __HANDLE_RET \
+      }
+#define STRING(__size, __element, __default, __repr, __flags, __comment) \
+      DEBUGF("  STRING(" #__size ", " #__element ", " #__repr ")"); \
+      { \
+	const char *text = NULL; \
+	ret = cf_fmt_##__repr(&text, &strct->__element[0]);\
+        __HANDLE_TEXT(#__element) \
+        __HANDLE_RET \
+      }
+#define SUB_STRUCT(__structname, __element, __flags) \
+      DEBUGF("  SUB_STRUCT(" #__structname ", " #__element ")"); \
+      ret = cf_fmt_config_##__structname(parentp, &strct->__element); \
+      __HANDLE_RET
+#define NODE_STRUCT(__structname, __element, __repr, __flags) \
+      DEBUGF("  SUB_STRUCT(" #__structname ", " #__element ", " #__repr ")"); \
+      ret = cf_fmt_##__repr(parentp, &strct->__element); \
+      __HANDLE_RET
+#define END_STRUCT \
+      if ((*parentp)->nodc == 0) \
+	cf_om_free_node(parentp); \
+      return result; \
+    }
+#define ARRAY(__name, __flags, __validator...) \
+    int cf_fmt_config_##__name(struct cf_om_node **parentp, const struct config_##__name *array) { \
+      DEBUGF("ARRAY(" #__name ", " #__flags ", " #__validator ")"); \
+      int flags = (0 __flags); \
+      int (*eltcmp)(const struct config_##__name##__element *, const struct config_##__name##__element *) = __cmp_config_##__name; \
+      int result = CFOK; \
+      int i; \
+      for (i = 0; i < array->ac; ++i) { \
+	int ret; \
+	const char *key = NULL; \
+	int n = -1; \
+	struct cf_om_node *child = NULL;
+#define __HANDLE_KEY \
+	if (key == NULL) \
+	  ret = CFERROR; \
+	if (ret == CFOK) { \
+	  if ((n = cf_om_add_child(parentp, key)) == -1) \
+	    ret = CFERROR; \
+	  else \
+	    child = (*parentp)->nodv[n]; \
+	} \
+	if (key) { \
+	  free((char *)key); \
+	  key = NULL; \
+	} \
+	if (!child) \
+	  continue;
+#define __HANDLE_VALUE \
+	if (child->text == NULL) \
+	  ret = CFERROR;
+#define END_ARRAY(__size) \
+	if (child && child->nodc == 0) \
+	  cf_om_remove_child(parentp, n); \
+      } \
+      if ((*parentp)->nodc == 0) \
+	cf_om_free_node(parentp); \
+      return result; \
+    }
+#define KEY_ATOM(__type, __keyrepr, __cmpfunc...) \
+	DEBUGF("  KEY_ATOM(" #__type ", " #__keyrepr ", " #__cmpfunc ")"); \
+	ret = cf_fmt_##__keyrepr(&key, &array->av[i].key); \
+	__HANDLE_KEY \
+	__HANDLE_RET
+#define KEY_STRING(__strsize, __keyrepr, __cmpfunc...) \
+	DEBUGF("  KEY_STRING(" #__strsize ", " #__keyrepr ", " #__cmpfunc ")"); \
+	ret = cf_fmt_##__keyrepr(&key, &array->av[i].key[0]); \
+	__HANDLE_KEY \
+	__HANDLE_RET
+#define VALUE_ATOM(__type, __eltrepr) \
+	DEBUGF("  VALUE_ATOM(" #__type ", " #__eltrepr ")"); \
+	ret = cf_fmt_##__eltrepr(&child->text, &array->av[i].value); \
+	__HANDLE_VALUE \
+	__HANDLE_RET
+#define VALUE_STRING(__strsize, __eltrepr) \
+	DEBUGF("  VALUE_STRING(" #__strsize ", " #__eltrepr ")"); \
+	ret = cf_fmt_##__eltrepr(&child->text, &array->av[i].value[0]); \
+	__HANDLE_VALUE \
+	__HANDLE_RET
+#define VALUE_NODE(__type, __eltrepr) \
+	DEBUGF("  VALUE_NODE(" #__type ", " #__eltrepr ")"); \
+	ret = cf_fmt_##__eltrepr(&child, &array->av[i].value); \
+	__HANDLE_VALUE \
+	__HANDLE_RET
+#define VALUE_SUB_STRUCT(__structname) \
+	DEBUGF("  VALUE_SUB_STRUCT(" #__structname ")"); \
+	ret = cf_fmt_config_##__structname(&child, &array->av[i].value); \
+	__HANDLE_VALUE \
+	__HANDLE_RET
+#define VALUE_NODE_STRUCT(__structname, __eltrepr) \
+	DEBUGF("  VALUE_NODE_STRUCT(" #__structname ", " #__eltrepr ")"); \
+	ret = cf_fmt_##__eltrepr(&child, &array->av[i].value); \
+	__HANDLE_VALUE \
+	__HANDLE_RET
+#include "conf_schema.h"
+#undef STRUCT
+#undef NODE
+#undef ATOM
+#undef STRING
+#undef SUB_STRUCT
+#undef NODE_STRUCT
+#undef END_STRUCT
+#undef ARRAY
+#undef KEY_ATOM
+#undef KEY_STRING
+#undef VALUE_ATOM
+#undef VALUE_STRING
+#undef VALUE_NODE
+#undef VALUE_SUB_STRUCT
+#undef VALUE_NODE_STRUCT
+#undef END_ARRAY
+

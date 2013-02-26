@@ -45,6 +45,19 @@ int cf_opt_char_boolean(char *booleanp, const char *text)
   return CFINVALID;
 }
 
+int cf_fmt_char_boolean(const char **textp, const char *booleanp)
+{
+  if (*booleanp == 1) {
+    *textp = str_edup("true");
+    return CFOK;
+  }
+  else if (*booleanp == 0) {
+    *textp = str_edup("false");
+    return CFOK;
+  }
+  return CFINVALID;
+}
+
 int cf_opt_int_boolean(int *booleanp, const char *text)
 {
   char b;
@@ -52,6 +65,19 @@ int cf_opt_int_boolean(int *booleanp, const char *text)
   if (ret == CFOK)
     *booleanp = b;
   return ret;
+}
+
+int cf_fmt_int_boolean(const char **textp, const int *booleanp)
+{
+  if (*booleanp == 1) {
+    *textp = str_edup("true");
+    return CFOK;
+  }
+  else if (*booleanp == 0) {
+    *textp = str_edup("false");
+    return CFOK;
+  }
+  return CFINVALID;
 }
 
 int cf_opt_absolute_path(char *str, size_t len, const char *text)
@@ -62,6 +88,14 @@ int cf_opt_absolute_path(char *str, size_t len, const char *text)
     return CFSTRINGOVERFLOW;
   strncpy(str, text, len);
   assert(str[len - 1] == '\0');
+  return CFOK;
+}
+
+int cf_fmt_absolute_path(const char **textp, const char *str)
+{
+  if (str[0] != '/')
+    return CFINVALID;
+  *textp = str_edup(str);
   return CFOK;
 }
 
@@ -76,6 +110,14 @@ int cf_opt_protocol(char *str, size_t len, const char *text)
   return CFOK;
 }
 
+int cf_fmt_protocol(const char **textp, const char *str)
+{
+  if (!str_is_uri_scheme(str))
+    return CFINVALID;
+  *textp = str_edup(str);
+  return CFOK;
+}
+
 int cf_opt_rhizome_peer(struct config_rhizome_peer *rpeer, const struct cf_om_node *node)
 {
   if (!node->text)
@@ -85,6 +127,11 @@ int cf_opt_rhizome_peer(struct config_rhizome_peer *rpeer, const struct cf_om_no
     return CFINCOMPATIBLE;
   }
   return cf_opt_rhizome_peer_from_uri(rpeer, node->text);
+}
+
+int cf_fmt_rhizome_peer(struct cf_om_node **parentp, const struct config_rhizome_peer *rpeer)
+{
+  return cf_fmt_config_rhizome_peer(parentp, rpeer);
 }
 
 int cf_opt_rhizome_peer_from_uri(struct config_rhizome_peer *rpeer, const char *text)
@@ -129,11 +176,25 @@ int cf_opt_str(char *str, size_t len, const char *text)
   return CFOK;
 }
 
+int cf_fmt_str(const char **textp, const char *str)
+{
+  *textp = str_edup(str);
+  return CFOK;
+}
+
 int cf_opt_str_nonempty(char *str, size_t len, const char *text)
 {
   if (!text[0])
     return CFINVALID;
   return cf_opt_str(str, len, text);
+}
+
+int cf_fmt_str_nonempty(const char **textp, const char *str)
+{
+  if (!str[0])
+    return CFINVALID;
+  *textp = str_edup(str);
+  return CFOK;
 }
 
 int cf_opt_int(int *intp, const char *text)
@@ -143,6 +204,14 @@ int cf_opt_int(int *intp, const char *text)
   if (end == text || *end)
     return CFINVALID;
   *intp = value;
+  return CFOK;
+}
+
+int cf_fmt_int(const char **textp, const int *intp)
+{
+  char buf[22];
+  sprintf(buf, "%d", *intp);
+  *textp = str_edup(buf);
   return CFOK;
 }
 
@@ -156,6 +225,14 @@ int cf_opt_uint(unsigned int *uintp, const char *text)
   return CFOK;
 }
 
+int cf_fmt_uint(const char **textp, const unsigned int *uintp)
+{
+  char buf[22];
+  sprintf(buf, "%u", *uintp);
+  *textp = str_edup(buf);
+  return CFOK;
+}
+
 int cf_opt_int32_nonneg(int32_t *intp, const char *text)
 {
   const char *end = text;
@@ -164,6 +241,29 @@ int cf_opt_int32_nonneg(int32_t *intp, const char *text)
     return CFINVALID;
   *intp = value;
   return CFOK;
+}
+
+static int cf_fmt_int32(const char **textp, const int32_t *intp)
+{
+  char buf[12];
+  sprintf(buf, "%d", *intp);
+  *textp = str_edup(buf);
+  return CFOK;
+}
+
+static int cf_fmt_uint32(const char **textp, const uint32_t *uintp)
+{
+  char buf[12];
+  sprintf(buf, "%u", *uintp);
+  *textp = str_edup(buf);
+  return CFOK;
+}
+
+int cf_fmt_int32_nonneg(const char **textp, const int32_t *intp)
+{
+  if (*intp < 0)
+    return CFINVALID;
+  return cf_fmt_int32(textp, intp);
 }
 
 int cf_opt_uint32_nonzero(uint32_t *intp, const char *text)
@@ -176,6 +276,13 @@ int cf_opt_uint32_nonzero(uint32_t *intp, const char *text)
   return CFOK;
 }
 
+int cf_fmt_uint32_nonzero(const char **textp, const uint32_t *uintp)
+{
+  if (*uintp == 0)
+    return CFINVALID;
+  return cf_fmt_uint32(textp, uintp);
+}
+
 int cf_opt_uint64_scaled(uint64_t *intp, const char *text)
 {
   uint64_t result;
@@ -186,6 +293,15 @@ int cf_opt_uint64_scaled(uint64_t *intp, const char *text)
   return CFOK;
 }
 
+int cf_fmt_uint64_scaled(const char **textp, const uint64_t *uintp)
+{
+  char buf[25];
+  int n = uint64_scaled_to_str(buf, sizeof buf, *uintp);
+  assert(n != 0);
+  *textp = str_edup(buf);
+  return CFOK;
+}
+
 int cf_opt_ushort_nonzero(unsigned short *ushortp, const char *text)
 {
   uint32_t ui;
@@ -193,6 +309,21 @@ int cf_opt_ushort_nonzero(unsigned short *ushortp, const char *text)
     return CFINVALID;
   *ushortp = ui;
   return CFOK;
+}
+
+int cf_fmt_ushort(const char **textp, const unsigned short *ushortp)
+{
+  char buf[12];
+  sprintf(buf, "%u", (unsigned int) *ushortp);
+  *textp = str_edup(buf);
+  return CFOK;
+}
+
+int cf_fmt_ushort_nonzero(const char **textp, const unsigned short *ushortp)
+{
+  if (*ushortp == 0)
+    return CFINVALID;
+  return cf_fmt_ushort(textp, ushortp);
 }
 
 int cmp_short(const short *a, const short *b)
@@ -255,7 +386,13 @@ int cf_opt_in_addr(struct in_addr *addrp, const char *text)
   return CFOK;
 }
 
-int cf_opt_uint16(uint16_t *intp, const char *text)
+int cf_fmt_in_addr(const char **textp, const struct in_addr *addrp)
+{
+  *textp = str_edup(inet_ntoa(*addrp));
+  return CFOK;
+}
+
+int cf_opt_uint16(uint16_t *uintp, const char *text)
 {
   uint16_t ui = 0;
   const char *p;
@@ -267,17 +404,32 @@ int cf_opt_uint16(uint16_t *intp, const char *text)
   }
   if (*p)
     return CFINVALID;
-  *intp = ui;
+  *uintp = ui;
   return CFOK;
 }
 
-int cf_opt_uint16_nonzero(uint16_t *intp, const char *text)
+int cf_fmt_uint16(const char **textp, const uint16_t *uintp)
+{
+  char buf[12];
+  sprintf(buf, "%u", (unsigned int) *uintp);
+  *textp = str_edup(buf);
+  return CFOK;
+}
+
+int cf_opt_uint16_nonzero(uint16_t *uintp, const char *text)
 {
   uint16_t ui;
   if (cf_opt_uint16(&ui, text) != CFOK || ui == 0)
     return CFINVALID;
-  *intp = ui;
+  *uintp = ui;
   return CFOK;
+}
+
+int cf_fmt_uint16_nonzero(const char **textp, const uint16_t *uintp)
+{
+  if (*uintp == 0)
+    return CFINVALID;
+  return cf_fmt_uint16(textp, uintp);
 }
 
 int cf_opt_sid(sid_t *sidp, const char *text)
@@ -289,12 +441,24 @@ int cf_opt_sid(sid_t *sidp, const char *text)
   return CFOK;
 }
 
+int cf_fmt_sid(const char **textp, const sid_t *sidp)
+{
+  *textp = str_edup(alloca_tohex_sid_t(*sidp));
+  return CFOK;
+}
+
 int cf_opt_rhizome_bk(rhizome_bk_t *bkp, const char *text)
 {
   if (!rhizome_str_is_bundle_key(text))
     return CFINVALID;
   size_t n = fromhex(bkp->binary, text, RHIZOME_BUNDLE_KEY_BYTES);
   assert(n == RHIZOME_BUNDLE_KEY_BYTES);
+  return CFOK;
+}
+
+int cf_fmt_rhizome_bk(const char **textp, const rhizome_bk_t *bkp)
+{
+  *textp = str_edup(alloca_tohex_rhizome_bk_t(*bkp));
   return CFOK;
 }
 
@@ -319,7 +483,22 @@ int cf_opt_interface_type(short *typep, const char *text)
   return CFINVALID;
 }
 
-int cf_opt_socket_type(int *typep, const char *text)
+int cf_fmt_interface_type(const char **textp, const short *typep)
+{
+  const char *t = NULL;
+  switch (*typep) {
+    case OVERLAY_INTERFACE_ETHERNET:	t = "ethernet"; break;
+    case OVERLAY_INTERFACE_WIFI:	t = "wifi"; break;
+    case OVERLAY_INTERFACE_PACKETRADIO: t = "catear"; break;
+    case OVERLAY_INTERFACE_UNKNOWN:	t = "other"; break;
+  }
+  if (!t)
+    return CFINVALID;
+  *textp = str_edup(t);
+  return CFOK;
+}
+
+int cf_opt_socket_type(short *typep, const char *text)
 {
   if (strcasecmp(text, "dgram") == 0) {
     *typep = SOCK_DGRAM;
@@ -336,17 +515,44 @@ int cf_opt_socket_type(int *typep, const char *text)
   return CFINVALID;
 }
 
-int cf_opt_encapsulation(int *typep, const char *text)
+int cf_fmt_socket_type(const char **textp, const short *typep)
+{
+  const char *t = NULL;
+  switch (*typep) {
+    case SOCK_DGRAM:  t = "dgram"; break;
+    case SOCK_STREAM: t = "stream"; break;
+    case SOCK_FILE:   t = "file"; break;
+  }
+  if (!t)
+    return CFINVALID;
+  *textp = str_edup(t);
+  return CFOK;
+}
+
+int cf_opt_encapsulation(short *encapp, const char *text)
 {
   if (strcasecmp(text, "overlay") == 0) {
-    *typep = ENCAP_OVERLAY;
+    *encapp = ENCAP_OVERLAY;
     return CFOK;
   }
   if (strcasecmp(text, "single") == 0) {
-    *typep = ENCAP_SINGLE;
+    *encapp = ENCAP_SINGLE;
     return CFOK;
   }
   return CFINVALID;
+}
+
+int cf_fmt_encapsulation(const char **textp, const short *encapp)
+{
+  const char *t = NULL;
+  switch (*encapp) {
+    case ENCAP_OVERLAY: t = "overlay"; break;
+    case ENCAP_SINGLE:  t = "single"; break;
+  }
+  if (!t)
+    return CFINVALID;
+  *textp = str_edup(t);
+  return CFOK;
 }
 
 int cf_opt_pattern_list(struct pattern_list *listp, const char *text)
@@ -374,6 +580,24 @@ int cf_opt_pattern_list(struct pattern_list *listp, const char *text)
   return CFOK;
 }
 
+int cf_fmt_pattern_list(const char **textp, const struct pattern_list *listp)
+{
+  char buf[sizeof listp->patv];
+  char *bufp = buf;
+  unsigned i;
+  for (i = 0; i < listp->patc; ++i) {
+    if (bufp != buf)
+      *bufp++ = ',';
+    const char *patvp = listp->patv[i];
+    const char *npatvp = listp->patv[i + 1];
+    while (bufp < &buf[sizeof buf - 1] && patvp < npatvp && (*bufp = *patvp))
+      ++bufp, ++patvp;
+    if (bufp >= &buf[sizeof buf - 1] || patvp >= npatvp)
+      return CFINVALID;
+  }
+  *textp = str_edup(buf);
+  return CFOK;
+}
 
 /* Config parse function.  Implements the original form of the 'interfaces' config option.  Parses a
  * single text string of the form:
@@ -490,6 +714,11 @@ int cf_opt_network_interface(struct config_network_interface *nifp, const struct
   return cf_opt_network_interface_legacy(nifp, node->text);
 }
 
+int cf_fmt_network_interface(struct cf_om_node **parentp, const struct config_network_interface *nifp)
+{
+  return cf_fmt_config_network_interface(parentp, nifp);
+}
+
 int vld_network_interface(const struct cf_om_node *parent, struct config_network_interface *nifp, int result)
 {
   if (nifp->match.patc != 0 && nifp->file[0]) {
@@ -500,19 +729,17 @@ int vld_network_interface(const struct cf_om_node *parent, struct config_network
     cf_warn_incompatible(parent->nodv[nodei_match], parent->nodv[nodei_file]);
     return result | CFSUB(CFINCOMPATIBLE);
   }
-  
-  if (nifp->socket_type == SOCK_UNSPECIFIED){
+  if (nifp->socket_type == SOCK_UNSPECIFIED) {
     if (nifp->match.patc != 0)
-      nifp->socket_type=SOCK_DGRAM;
+      nifp->socket_type = SOCK_DGRAM;
     else if (nifp->file[0])
-      nifp->socket_type=SOCK_FILE;
-    else{
+      nifp->socket_type = SOCK_FILE;
+    else {
       cf_warn_missing_node(parent, "match");
       return result | CFINCOMPLETE;
     }
-  }else{
-    
-    if (nifp->socket_type==SOCK_DGRAM && nifp->file[0]){
+  } else {
+    if (nifp->socket_type == SOCK_DGRAM && nifp->file[0]){
       int nodei_socket_type = cf_om_get_child(parent, "socket_type", NULL);
       int nodei_file = cf_om_get_child(parent, "file", NULL);
       assert(nodei_socket_type != -1);
@@ -520,13 +747,11 @@ int vld_network_interface(const struct cf_om_node *parent, struct config_network
       cf_warn_incompatible(parent->nodv[nodei_socket_type], parent->nodv[nodei_file]);
       return result | CFSUB(CFINCOMPATIBLE);
     }
-    
-    if (nifp->socket_type!=SOCK_DGRAM && !nifp->file[0]){
+    if (nifp->socket_type != SOCK_DGRAM && !nifp->file[0]){
       cf_warn_missing_node(parent, "file");
       return result | CFSUB(CFINCOMPATIBLE);
     }
   }
-  
   return result;
 }
 
@@ -591,4 +816,9 @@ bye:
   if (listp->ac == 0)
     result |= CFEMPTY;
   return result;
+}
+
+int cf_fmt_interface_list(struct cf_om_node **parentp, const struct config_interface_list *listp)
+{
+  return cf_fmt_config_interface_list(parentp, listp);
 }

@@ -191,6 +191,16 @@ int cf_om_get_child(const struct cf_om_node *parent, const char *key, const char
   return -1;
 }
 
+void cf_om_remove_child(struct cf_om_node **parentp, unsigned n)
+{
+  if (n < (*parentp)->nodc && (*parentp)->nodv[n]) {
+    cf_om_free_node(&(*parentp)->nodv[n]);
+    --(*parentp)->nodc;
+    for (; n < (*parentp)->nodc; ++n)
+      (*parentp)->nodv[n] = (*parentp)->nodv[n+1];
+  }
+}
+
 int cf_om_parse(const char *source, const char *buf, size_t len, struct cf_om_node **rootp)
 {
   const char *end = buf + len;
