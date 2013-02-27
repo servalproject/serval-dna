@@ -179,7 +179,7 @@ test_AddThenList() {
    assert_rhizome_list --fromhere=1 --author=$SIDB1 file1 file2
 }
 
-doc_ExtractManifestAfterAdd="Extract manifest after one add"
+doc_ExtractManifestAfterAdd="Export manifest after one add"
 setup_ExtractManifestAfterAdd() {
    setup_servald
    setup_rhizome
@@ -192,7 +192,7 @@ setup_ExtractManifestAfterAdd() {
    extract_manifest_filehash filehash file1.manifest
 }
 test_ExtractManifestAfterAdd() {
-   executeOk_servald rhizome extract manifest $manifestid file1x.manifest
+   executeOk_servald rhizome export manifest $manifestid file1x.manifest
    tfw_cat --stdout --stderr
    assertStdoutLineCount '==' 8
    local size=$(( $(cat file1 | wc -c) + 0 ))
@@ -208,7 +208,7 @@ test_ExtractManifestAfterAdd() {
    assert diff file1.manifest file1x.manifest
 }
 
-doc_ExtractManifestFileAfterAdd="Extract manifest and file after one add"
+doc_ExtractManifestFileAfterAdd="Export bundle after one add"
 setup_ExtractManifestFileAfterAdd() {
    setup_servald
    setup_rhizome
@@ -221,7 +221,7 @@ setup_ExtractManifestFileAfterAdd() {
    extract_manifest_filehash filehash file1.manifest
 }
 test_ExtractManifestFileAfterAdd() {
-   executeOk_servald rhizome extract bundle $manifestid file1x.manifest file1x
+   executeOk_servald rhizome export bundle $manifestid file1x.manifest file1x
    tfw_cat --stdout --stderr
    assertStdoutLineCount '==' 8
    local size=$(( $(cat file1 | wc -c) + 0 ))
@@ -239,7 +239,7 @@ test_ExtractManifestFileAfterAdd() {
    assert diff file1 file1x
 }
 
-doc_ExtractManifestFileFromExtBlob="Extract manifest and file from external blob"
+doc_ExtractManifestFileFromExtBlob="Export bundle from external blob"
 setup_ExtractManifestFileFromExtBlob() {
    setup_servald
    setup_rhizome
@@ -259,7 +259,7 @@ setup_ExtractManifestFileFromExtBlob() {
    extract_manifest_filehash filehash2 file2.manifest
 }
 test_ExtractManifestFileFromExtBlob() {
-   executeOk_servald rhizome extract bundle $manifestid1 file1x.manifest file1x
+   executeOk_servald rhizome export bundle $manifestid1 file1x.manifest file1x
    tfw_cat --stdout --stderr
    assertStdoutLineCount '==' 8
    local size=$(( $(cat file1 | wc -c) + 0 ))
@@ -275,7 +275,7 @@ test_ExtractManifestFileFromExtBlob() {
    assert diff file1.manifest file1x.manifest
    assert [ -e file1x ]
    assert diff file1 file1x
-   executeOk_servald rhizome extract bundle $manifestid2 file2x.manifest file2x
+   executeOk_servald rhizome export bundle $manifestid2 file2x.manifest file2x
    tfw_cat --stdout --stderr
    assertStdoutLineCount '==' 8
    local size=$(( $(cat file2 | wc -c) + 0 ))
@@ -293,7 +293,7 @@ test_ExtractManifestFileFromExtBlob() {
    assert diff file2 file2x
 }
 
-doc_ExtractManifestToStdout="Extract manifest to output field"
+doc_ExtractManifestToStdout="Export manifest to output field"
 setup_ExtractManifestToStdout() {
    setup_servald
    setup_rhizome
@@ -304,7 +304,7 @@ setup_ExtractManifestToStdout() {
    extract_manifest_filehash filehash file1.manifest
 }
 test_ExtractManifestToStdout() {
-   executeOk_servald rhizome extract manifest $manifestid -
+   executeOk_servald rhizome export manifest $manifestid -
    assertStdoutLineCount '>=' 9
    local size=$(( $(cat file1 | wc -c) + 0 ))
    assertStdoutGrep --line=..8 --matches=1 "^service:file$"
@@ -324,7 +324,7 @@ test_ExtractManifestToStdout() {
    assert diff file1n.manifest file1x.manifest
 }
 
-doc_ExtractManifestAfterAddNoAuthor="Extract manifest after one add with no author"
+doc_ExtractManifestAfterAddNoAuthor="Export manifest after one add with no author"
 setup_ExtractManifestAfterAddNoAuthor() {
    setup_servald
    setup_rhizome
@@ -337,7 +337,7 @@ setup_ExtractManifestAfterAddNoAuthor() {
    extract_manifest_filehash filehash file1.manifest
 }
 test_ExtractManifestAfterAddNoAuthor() {
-   executeOk_servald rhizome extract manifest $manifestid file1x.manifest
+   executeOk_servald rhizome export manifest $manifestid file1x.manifest
    assert diff file1.manifest file1x.manifest
    assertStdoutLineCount '==' 7
    local size=$(( $(cat file1 | wc -c) + 0 ))
@@ -350,31 +350,31 @@ test_ExtractManifestAfterAddNoAuthor() {
    assertStdoutGrep --matches=1 "^\.readonly:1\$"
 }
 
-doc_ExtractManifestNonExistent="Extract non-existent manifest"
+doc_ExtractManifestNonExistent="Export non-existent manifest"
 setup_ExtractManifestNonExistent() {
    setup_servald
    setup_rhizome
    manifestid=0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF
 }
 test_ExtractManifestNonExistent() {
-   execute --exit-status=1 $servald rhizome extract manifest $manifestid foo.manifest
+   execute --exit-status=1 $servald rhizome export manifest $manifestid foo.manifest
    assertStdoutLineCount '==' 0
    assert [ ! -e foo.manifest ]
 }
 
-doc_ExtractManifestInvalidID="Extract manifest using invalid ID"
+doc_ExtractManifestInvalidID="Export manifest using invalid ID"
 setup_ExtractManifestInvalidID() {
    setup_servald
    setup_rhizome
 }
 test_ExtractManifestInvalidID() {
-   execute --exit-status=255 $servald rhizome extract manifest 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEx foo.manifest
+   execute --exit-status=255 $servald rhizome export manifest 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEx foo.manifest
    assertStdoutLineCount '==' 0
    assert [ ! -e foo.manifest ]
-   execute --exit-status=255 $servald rhizome extract manifest 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDE foo.manifest
+   execute --exit-status=255 $servald rhizome export manifest 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDE foo.manifest
    assertStdoutLineCount '==' 0
    assert [ ! -e foo.manifest ]
-   execute --exit-status=255 $servald rhizome extract manifest foo.manifest
+   execute --exit-status=255 $servald rhizome export manifest foo.manifest
    assertStdoutLineCount '==' 0
    assert [ ! -e foo.manifest ]
 }
@@ -408,7 +408,7 @@ test_ExtractFileAfterAdd() {
    assertStdoutGrep --matches=1 "^\.readonly:0\$"
 }
 
-doc_ExtractFileMissing="Extract non-existent file"
+doc_ExtractFileMissing="Extract and export non-existent file"
 setup_ExtractFileMissing() {
    setup_servald
    setup_rhizome
@@ -420,13 +420,13 @@ test_ExtractFileMissing() {
    tfw_cat --stderr
    assertStdoutLineCount '==' 0
    assert [ ! -e foo ]
-   execute --exit-status=1 $servald rhizome dump file $filehash foo
+   execute --exit-status=1 $servald rhizome export file $filehash foo
    tfw_cat --stderr
    assertStdoutLineCount '==' 0
    assert [ ! -e foo ]
 }
 
-doc_ExtractFileInvalidID="Extract file using invalid ID"
+doc_ExtractFileInvalidID="Extract and export file using invalid ID"
 setup_ExtractFileInvalidID() {
    setup_servald
    setup_rhizome
@@ -441,13 +441,13 @@ test_ExtractFileInvalidID() {
    execute --exit-status=255 $servald rhizome extract file foo
    assertStdoutLineCount '==' 0
    assert [ ! -e foo ]
-   execute --exit-status=255 $servald rhizome dump file 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEx foo
+   execute --exit-status=255 $servald rhizome export file 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEx foo
    assertStdoutLineCount '==' 0
    assert [ ! -e foo ]
-   execute --exit-status=255 $servald rhizome dump file 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDE foo
+   execute --exit-status=255 $servald rhizome export file 0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDE foo
    assertStdoutLineCount '==' 0
    assert [ ! -e foo ]
-   execute --exit-status=255 $servald rhizome dump file foo
+   execute --exit-status=255 $servald rhizome export file foo
    assertStdoutLineCount '==' 0
    assert [ ! -e foo ]
 }
@@ -623,7 +623,7 @@ test_AddUnsupportedService() {
    assertExitStatus '!=' 0
 }
 
-doc_EncryptedPayload="Add an encrypted payload"
+doc_EncryptedPayload="Add and extract an encrypted payload"
 setup_EncryptedPayload() {
    setup_servald
    setup_rhizome
@@ -642,7 +642,7 @@ test_EncryptedPayload() {
    tfw_cat --stdout --stderr
    assert diff file1 file1x
    extract_manifest_filehash filehash file1.manifest
-   executeOk_servald rhizome dump file $filehash file1y
+   executeOk_servald rhizome export file $filehash file1y
    assert ! diff file1 file1y
 }
 
@@ -699,7 +699,7 @@ test_MeshMSAddGrow() {
       executeOk_servald rhizome extract file "$id" file1x
       assert --message="extracted payload is correct" diff file1 file1x
       for ofilehash in "${ofilehashes[@]}"; do
-         execute --exit-status=1 --stderr $servald rhizome dump file "$ofilehash"
+         execute --exit-status=1 --stderr $servald rhizome export file "$ofilehash"
       done
    done
 }
@@ -869,9 +869,10 @@ test_ImportOwnBundle() {
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 fileB
    # Extracting the manifest discovers that it is ours.
-   executeOk_servald rhizome extract manifest $manifestid fileBx.manifest
+   executeOk_servald rhizome extract bundle $manifestid fileBx.manifest fileBx
    tfw_cat --stderr
    assert cmp fileB.manifest fileBx.manifest
+   assert cmp fileB fileBx
    assertStdoutLineCount '==' 8
    local size=$(( $(cat fileB | wc -c) + 0 ))
    assertStdoutGrep --matches=1 "^service:file$"
@@ -882,7 +883,7 @@ test_ImportOwnBundle() {
    assertStdoutGrep --matches=1 "^filesize:$size\$"
    assertStdoutGrep --matches=1 "^\.author:$SIDB2\$"
    assertStdoutGrep --matches=1 "^\.readonly:0\$"
-   # Now bundle author is known, so appears to be from here
+   # Now bundle author should be known, so appears to be from here
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 --author=$SIDB2 fileB
 }
@@ -909,7 +910,7 @@ test_ImportCombinedBundle() {
    assertStdoutGrep --matches=1 "^filesize:$filesize\$"
    executeOk_servald rhizome list
    assert_rhizome_list --fromhere=0 fileA
-   executeOk_servald rhizome extract bundle $manifestid fileAx fileAx
+   executeOk_servald rhizome export bundle $manifestid fileAx fileAx
    assert diff fileA fileAx
 }
 
@@ -934,8 +935,8 @@ test_DeleteManifest() {
    tfw_cat --stderr
    executeOk_servald rhizome list
    assert_rhizome_list file{1,3,4}
-   execute --exit-status=1 --stderr $servald rhizome extract manifest "$BID2"
-   executeOk_servald rhizome dump file "$HASH2" file2x
+   execute --exit-status=1 --stderr $servald rhizome export manifest "$BID2"
+   executeOk_servald rhizome export file "$HASH2" file2x
    assert diff file2 file2x
 }
 
@@ -948,8 +949,8 @@ test_DeletePayload() {
    tfw_cat --stderr
    executeOk_servald rhizome list
    assert_rhizome_list file{1..4}
-   executeOk_servald rhizome extract manifest "$BID3"
-   execute --exit-status=1 --stderr $servald rhizome dump file "$HASH3" file3x
+   executeOk_servald rhizome export manifest "$BID3"
+   execute --exit-status=1 --stderr $servald rhizome export file "$HASH3" file3x
 }
 
 doc_DeleteBundle="Delete a bundle from store"
@@ -961,8 +962,8 @@ test_DeleteBundle() {
    tfw_cat --stderr
    executeOk_servald rhizome list
    assert_rhizome_list file{1..3}
-   execute --exit-status=1 --stderr $servald rhizome extract manifest "$BID4"
-   execute --exit-status=1 --stderr $servald rhizome dump file "$HASH4" file4x
+   execute --exit-status=1 --stderr $servald rhizome export manifest "$BID4"
+   execute --exit-status=1 --stderr $servald rhizome export file "$HASH4" file4x
 }
 
 doc_DeleteFile="Delete a file from store"
@@ -974,8 +975,8 @@ test_DeleteFile() {
    tfw_cat --stderr
    executeOk_servald rhizome list
    assert_rhizome_list file{1..4}
-   executeOk_servald rhizome extract manifest "$BID1"
-   execute --exit-status=1 --stderr $servald rhizome dump file "$HASH1" file1x
+   executeOk_servald rhizome export manifest "$BID1"
+   execute --exit-status=1 --stderr $servald rhizome export file "$HASH1" file1x
 }
 
 runTests "$@"

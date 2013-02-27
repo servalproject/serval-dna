@@ -1570,11 +1570,14 @@ int app_rhizome_extract(const struct cli_parsed *parsed, void *context)
       || cli_arg(parsed, "bsk", &bskhex, cli_optional_bundle_key, NULL) == -1)
     return -1;
   
+  int extract = strcasecmp(parsed->args[1], "extract")==0;
+  
   /* Ensure the Rhizome database exists and is open */
   if (create_serval_instance_dir() == -1)
     return -1;
   if (rhizome_opendb() == -1)
     return -1;
+  
   if (!(keyring = keyring_open_instance_cli(parsed)))
     return -1;
   
@@ -1623,8 +1626,15 @@ int app_rhizome_extract(const struct cli_parsed *parsed, void *context)
   int retfile=0;
   
   if (ret==0 && m->fileLength != 0 && filepath && *filepath){
-    // TODO, this may cause us to search for an author a second time if the above call to rhizome_extract_privatekey failed
-    retfile = rhizome_extract_file(m, filepath, bskhex?&bsk:NULL);
+    if (extract){
+      // Save the file, implicitly decrypting if required.
+      // TODO, this may cause us to search for an author a second time if the above call to rhizome_extract_privatekey failed
+      retfile = rhizome_extract_file(m, filepath, bskhex?&bsk:NULL);
+    }else{
+      // Save the file without attempting to decrypt
+      int64_t length;
+      retfile = rhizome_dump_file(m->fileHexHash, filepath, &length);
+    }
   }
   
   if (ret==0 && manifestpath && *manifestpath){
@@ -1655,7 +1665,7 @@ int app_rhizome_extract(const struct cli_parsed *parsed, void *context)
   return ret;
 }
 
-int app_rhizome_dump_file(const struct cli_parsed *parsed, void *context)
+int app_rhizome_export_file(const struct cli_parsed *parsed, void *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
@@ -2359,17 +2369,20 @@ struct cli_schema command_line_options[]={
   {app_rhizome_list,{"rhizome","list" KEYRING_PIN_OPTIONS,
 	"[<service>]","[<name>]","[<sender_sid>]","[<recipient_sid>]","[<offset>]","[<limit>]",NULL},CLIFLAG_STANDALONE,
 	"List all manifests and files in Rhizome"},
+  {app_rhizome_extract,{"rhizome","export","bundle" KEYRING_PIN_OPTIONS,
+	"<manifestid>","[<manifestpath>]","[<filepath>]",NULL},CLIFLAG_STANDALONE,
+	"Export a manifest and payload file to the given paths, without decrypting."},
+  {app_rhizome_extract,{"rhizome","export","manifest" KEYRING_PIN_OPTIONS,
+	"<manifestid>","[<manifestpath>]",NULL},CLIFLAG_STANDALONE,
+	"Export a manifest from Rhizome and write it to the given path"},
+  {app_rhizome_export_file,{"rhizome","export","file","<fileid>","[<filepath>]",NULL},CLIFLAG_STANDALONE,
+	"Export a file from Rhizome and write it to the given path without attempting decryption"},
   {app_rhizome_extract,{"rhizome","extract","bundle" KEYRING_PIN_OPTIONS,
 	"<manifestid>","[<manifestpath>]","[<filepath>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,
-	"Extract a manifest and decrypted file to the given paths."},
-  {app_rhizome_extract,{"rhizome","extract","manifest" KEYRING_PIN_OPTIONS,
-	"<manifestid>","[<manifestpath>]",NULL},CLIFLAG_STANDALONE,
-        "Extract a manifest from Rhizome and write it to the given path"},
+	"Extract and decrypt a manifest and file to the given paths."},
   {app_rhizome_extract,{"rhizome","extract","file" KEYRING_PIN_OPTIONS,
 	"<manifestid>","[<filepath>]","[<bsk>]",NULL},CLIFLAG_STANDALONE,
-        "Extract a file from Rhizome and write it to the given path"},
-  {app_rhizome_dump_file,{"rhizome","dump","file","<fileid>","[<filepath>]",NULL},CLIFLAG_STANDALONE,
-        "Extract a file from Rhizome and write it to the given path without attempting decryption"},
+        "Extract and decrypt a file from Rhizome and write it to the given path"},
   {app_rhizome_delete,{"rhizome","delete","\\manifest",
 	"<manifestid>",NULL},CLIFLAG_STANDALONE,
 	"Remove the manifest for the given bundle from the Rhizome store"},
