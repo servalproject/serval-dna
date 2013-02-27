@@ -149,21 +149,25 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *      Only used for ATOM and NODE struct elements.  Gives the default value for the element if
  *      absent from the config file.
  * 'repr'
- *      The string representation.  This name specifies a pair of functions, <repr> and
- *      cf_fmt_<repr> that convert the given 'type' from and to a string respectively:
- *       - The <repr> functions for ATOM, STRING, KEY_ATOM, KEY_STRING, VALUE_ATOM and
+ *      The string representation.  This name specifies a trio of functions, cf_opt_<repr>(),
+ *      cf_fmt_<repr>() and cf_cmp_<repr>():
+ *       - The cf_opt_<repr>() functions for ATOM, STRING, KEY_ATOM, KEY_STRING, VALUE_ATOM and
  *         VALUE_STRING take a (const char *) argument pointing to nul-terminated text.  The
  *         <repr> functions for NODE and VALUE_NODE take a pointer to a COM node (const
  *         struct cf_om_node *), and are responsible for parsing the node's text and all of its
  *         descendents (children).
- *       - Each cf_fmt_<repr> function is the inverse of <repr>.  The cf_fmt_<repr>
- *         functions for ATOM, STRING, KEY_ATOM, KEY_STRING, VALUE_ATOM and VALUE_STRING all take a
- *         pointer to a const 'type', and return a malloc()ed nul-terminated string which, if passed
- *         to <repr>(), would produce the same original value.  If the value is invalid
- *         (outside the legal range) or malloc() fails, then cf_fmt_<repr> returns NULL.  The
- *         cf_fmt_<repr> functions for NODE and VALUE_NODE take a pointer to a const 'type' and
- *         return a pointer to a malloc()ed COM node (struct cf_om_node *) which, if passed to
- *         <repr> would produce the same original value.
+ *       - Each cf_fmt_<repr>() function is the inverse of cf_opt_<repr>.  The cf_fmt_<repr>
+ *         functions for ATOM, KEY_ATOM, KEY_STRING, VALUE_ATOM and VALUE_STRING all take a pointer
+ *         to a const 'type', and produce a malloc()ed nul-terminated string which, if passed to
+ *         cf_opt_<repr>(), would produce the same original value.  If the value is invalid (outside
+ *         the legal range) then cf_fmt_<repr> returns CFINVALID or CFEMPTY.  The cf_fmt_<repr>
+ *         functions for NODE and VALUE_NODE take a pointer to a const 'type' and produce a
+ *         malloc()ed COM node (struct cf_om_node *) which, if passed to cf_opt_<repr> would produce
+ *         the same original value.
+ *       - Each cf_cmp_<repr>() function compares two values of the given 'type' and returns -1, 0
+ *         or 1 to indicate the natural ordering of the values.  These functions are used to detect
+ *         when config elements have their default values, to avoid calling cf_fmt_<repr>().  They
+ *         are also used to sort array keys.
  * 'comparefunc'
  *      A function used to sort an array after all elements have been parsed, and before being
  *      validated (see below).
@@ -248,7 +252,7 @@ ATOM(int32_t,               packet_interval, -1, int32_nonneg,, "Minimum interva
 END_STRUCT
 
 ARRAY(mdp_iftypelist, NO_DUPLICATES)
-KEY_ATOM(short, interface_type, cmp_short)
+KEY_ATOM(short, interface_type, cf_cmp_short)
 VALUE_SUB_STRUCT(mdp_iftype)
 END_ARRAY(5)
 
@@ -264,7 +268,7 @@ ATOM(uint16_t,              local_port, 4131, uint16_nonzero,, "Local port numbe
 END_STRUCT
 
 ARRAY(argv, SORTED NO_DUPLICATES, vld_argv)
-KEY_ATOM(unsigned short, ushort_nonzero, cmp_ushort)
+KEY_ATOM(unsigned short, ushort_nonzero, cf_cmp_ushort)
 VALUE_STRING(128, str)
 END_ARRAY(16)
 
@@ -346,7 +350,7 @@ ATOM(uint16_t,              port,       PORT_DNA, uint16_nonzero,, "Port number"
 END_STRUCT
 
 ARRAY(host_list, NO_DUPLICATES)
-KEY_ATOM(sid_t, sid, cmp_sid)
+KEY_ATOM(sid_t, sid, cf_cmp_sid)
 VALUE_SUB_STRUCT(host)
 END_ARRAY(32)
 

@@ -58,6 +58,11 @@ int cf_fmt_char_boolean(const char **textp, const char *booleanp)
   return CFINVALID;
 }
 
+int cf_cmp_char_boolean(const char *a, const char *b)
+{
+  return !*a && *b ? -1 : *a && !*b ? 1 : 0;
+}
+
 int cf_opt_int_boolean(int *booleanp, const char *text)
 {
   char b;
@@ -80,6 +85,11 @@ int cf_fmt_int_boolean(const char **textp, const int *booleanp)
   return CFINVALID;
 }
 
+int cf_cmp_int_boolean(const int *a, const int *b)
+{
+  return !*a && *b ? -1 : *a && !*b ? 1 : 0;
+}
+
 int cf_opt_absolute_path(char *str, size_t len, const char *text)
 {
   if (text[0] != '/')
@@ -97,6 +107,11 @@ int cf_fmt_absolute_path(const char **textp, const char *str)
     return CFINVALID;
   *textp = str_edup(str);
   return CFOK;
+}
+
+int cf_cmp_absolute_path(const char *a, const char *b)
+{
+  return strcmp(a, b);
 }
 
 int cf_opt_protocol(char *str, size_t len, const char *text)
@@ -118,6 +133,11 @@ int cf_fmt_protocol(const char **textp, const char *str)
   return CFOK;
 }
 
+int cf_cmp_protocol(const char *a, const char *b)
+{
+  return strcmp(a, b);
+}
+
 int cf_opt_rhizome_peer(struct config_rhizome_peer *rpeer, const struct cf_om_node *node)
 {
   if (!node->text)
@@ -132,6 +152,11 @@ int cf_opt_rhizome_peer(struct config_rhizome_peer *rpeer, const struct cf_om_no
 int cf_fmt_rhizome_peer(struct cf_om_node **parentp, const struct config_rhizome_peer *rpeer)
 {
   return cf_fmt_config_rhizome_peer(parentp, rpeer);
+}
+
+int cf_cmp_rhizome_peer(const struct config_rhizome_peer *a, const struct config_rhizome_peer *b)
+{
+  return cf_cmp_config_rhizome_peer(a, b);
 }
 
 int cf_opt_rhizome_peer_from_uri(struct config_rhizome_peer *rpeer, const char *text)
@@ -182,6 +207,11 @@ int cf_fmt_str(const char **textp, const char *str)
   return CFOK;
 }
 
+int cf_cmp_str(const char *a, const char *b)
+{
+  return strcmp(a, b);
+}
+
 int cf_opt_str_nonempty(char *str, size_t len, const char *text)
 {
   if (!text[0])
@@ -195,6 +225,11 @@ int cf_fmt_str_nonempty(const char **textp, const char *str)
     return CFINVALID;
   *textp = str_edup(str);
   return CFOK;
+}
+
+int cf_cmp_str_nonempty(const char *a, const char *b)
+{
+  return strcmp(a, b);
 }
 
 int cf_opt_int(int *intp, const char *text)
@@ -215,6 +250,11 @@ int cf_fmt_int(const char **textp, const int *intp)
   return CFOK;
 }
 
+int cf_cmp_int(const int *a, const int *b)
+{
+  return *a < *b ? -1 : *a > *b ? 1 : 0;
+}
+
 int cf_opt_uint(unsigned int *uintp, const char *text)
 {
   const char *end = text;
@@ -231,6 +271,11 @@ int cf_fmt_uint(const char **textp, const unsigned int *uintp)
   sprintf(buf, "%u", *uintp);
   *textp = str_edup(buf);
   return CFOK;
+}
+
+int cf_cmp_uint(const unsigned int *a, const unsigned int *b)
+{
+  return *a < *b ? -1 : *a > *b ? 1 : 0;
 }
 
 int cf_opt_int32_nonneg(int32_t *intp, const char *text)
@@ -251,6 +296,11 @@ static int cf_fmt_int32(const char **textp, const int32_t *intp)
   return CFOK;
 }
 
+int cf_cmp_int32(const int32_t *a, const int32_t *b)
+{
+  return *a < *b ? -1 : *a > *b ? 1 : 0;
+}
+
 static int cf_fmt_uint32(const char **textp, const uint32_t *uintp)
 {
   char buf[12];
@@ -259,11 +309,21 @@ static int cf_fmt_uint32(const char **textp, const uint32_t *uintp)
   return CFOK;
 }
 
+int cf_cmp_uint32(const uint32_t *a, const uint32_t *b)
+{
+  return *a < *b ? -1 : *a > *b ? 1 : 0;
+}
+
 int cf_fmt_int32_nonneg(const char **textp, const int32_t *intp)
 {
   if (*intp < 0)
     return CFINVALID;
   return cf_fmt_int32(textp, intp);
+}
+
+int cf_cmp_int32_nonneg(const int32_t *a, const int32_t *b)
+{
+  return cf_cmp_int32(a, b);
 }
 
 int cf_opt_uint32_nonzero(uint32_t *intp, const char *text)
@@ -281,6 +341,11 @@ int cf_fmt_uint32_nonzero(const char **textp, const uint32_t *uintp)
   if (*uintp == 0)
     return CFINVALID;
   return cf_fmt_uint32(textp, uintp);
+}
+
+int cf_cmp_uint32_nonzero(const uint32_t *a, const uint32_t *b)
+{
+  return cf_cmp_uint32(a, b);
 }
 
 int cf_opt_uint64_scaled(uint64_t *intp, const char *text)
@@ -302,6 +367,11 @@ int cf_fmt_uint64_scaled(const char **textp, const uint64_t *uintp)
   return CFOK;
 }
 
+int cf_cmp_uint64_scaled(const uint64_t *a, const uint64_t *b)
+{
+  return *a < *b ? -1 : *a > *b ? 1 : 0;
+}
+
 int cf_opt_ushort_nonzero(unsigned short *ushortp, const char *text)
 {
   uint32_t ui;
@@ -319,6 +389,11 @@ int cf_fmt_ushort(const char **textp, const unsigned short *ushortp)
   return CFOK;
 }
 
+int cf_cmp_ushort(const unsigned short *a, const unsigned short *b)
+{
+  return *a < *b ? -1 : *a > *b ? 1 : 0;
+}
+
 int cf_fmt_ushort_nonzero(const char **textp, const unsigned short *ushortp)
 {
   if (*ushortp == 0)
@@ -326,19 +401,14 @@ int cf_fmt_ushort_nonzero(const char **textp, const unsigned short *ushortp)
   return cf_fmt_ushort(textp, ushortp);
 }
 
-int cmp_short(const short *a, const short *b)
+int cf_cmp_short(const short *a, const short *b)
 {
   return *a < *b ? -1 : *a > *b ? 1 : 0;
 }
 
-int cmp_ushort(const unsigned short *a, const unsigned short *b)
+int cf_cmp_ushort_nonzero(const unsigned short *a, const unsigned short *b)
 {
-  return *a < *b ? -1 : *a > *b ? 1 : 0;
-}
-
-int cmp_sid(const sid_t *a, const sid_t *b)
-{
-  return memcmp(a->binary, b->binary, sizeof a->binary);
+  return cf_cmp_ushort(a, b);
 }
 
 int vld_argv(const struct cf_om_node *parent, struct config_argv *array, int result)
@@ -392,6 +462,11 @@ int cf_fmt_in_addr(const char **textp, const struct in_addr *addrp)
   return CFOK;
 }
 
+int cf_cmp_in_addr(const struct in_addr *a, const struct in_addr *b)
+{
+  return memcmp(a, b, sizeof(struct in_addr));
+}
+
 int cf_opt_uint16(uint16_t *uintp, const char *text)
 {
   uint16_t ui = 0;
@@ -416,6 +491,11 @@ int cf_fmt_uint16(const char **textp, const uint16_t *uintp)
   return CFOK;
 }
 
+int cf_cmp_uint16(const uint16_t *a, const uint16_t *b)
+{
+  return *a < *b ? -1 : *a > *b ? 1 : 0;
+}
+
 int cf_opt_uint16_nonzero(uint16_t *uintp, const char *text)
 {
   uint16_t ui;
@@ -430,6 +510,11 @@ int cf_fmt_uint16_nonzero(const char **textp, const uint16_t *uintp)
   if (*uintp == 0)
     return CFINVALID;
   return cf_fmt_uint16(textp, uintp);
+}
+
+int cf_cmp_uint16_nonzero(const uint16_t *a, const uint16_t *b)
+{
+  return cf_cmp_uint16(a, b);
 }
 
 int cf_opt_sid(sid_t *sidp, const char *text)
@@ -447,6 +532,11 @@ int cf_fmt_sid(const char **textp, const sid_t *sidp)
   return CFOK;
 }
 
+int cf_cmp_sid(const sid_t *a, const sid_t *b)
+{
+  return memcmp(a->binary, b->binary, sizeof a->binary);
+}
+
 int cf_opt_rhizome_bk(rhizome_bk_t *bkp, const char *text)
 {
   if (!rhizome_str_is_bundle_key(text))
@@ -460,6 +550,11 @@ int cf_fmt_rhizome_bk(const char **textp, const rhizome_bk_t *bkp)
 {
   *textp = str_edup(alloca_tohex_rhizome_bk_t(*bkp));
   return CFOK;
+}
+
+int cf_cmp_rhizome_bk(const rhizome_bk_t *a, const rhizome_bk_t *b)
+{
+  return memcmp(a, b, sizeof a->binary);
 }
 
 int cf_opt_interface_type(short *typep, const char *text)
@@ -498,6 +593,11 @@ int cf_fmt_interface_type(const char **textp, const short *typep)
   return CFOK;
 }
 
+int cf_cmp_interface_type(const short *a, const short *b)
+{
+  return *a < *b ? -1 : *a > *b ? 1 : 0;
+}
+
 int cf_opt_socket_type(short *typep, const char *text)
 {
   if (strcasecmp(text, "dgram") == 0) {
@@ -529,6 +629,11 @@ int cf_fmt_socket_type(const char **textp, const short *typep)
   return CFOK;
 }
 
+int cf_cmp_socket_type(const short *a, const short *b)
+{
+  return cf_cmp_short(a, b);
+}
+
 int cf_opt_encapsulation(short *encapp, const char *text)
 {
   if (strcasecmp(text, "overlay") == 0) {
@@ -553,6 +658,11 @@ int cf_fmt_encapsulation(const char **textp, const short *encapp)
     return CFINVALID;
   *textp = str_edup(t);
   return CFOK;
+}
+
+int cf_cmp_encapsulation(const short *a, const short *b)
+{
+  return cf_cmp_short(a, b);
 }
 
 int cf_opt_pattern_list(struct pattern_list *listp, const char *text)
@@ -604,6 +714,17 @@ int cf_fmt_pattern_list(const char **textp, const struct pattern_list *listp)
   DEBUGF("buf=%s", alloca_toprint(-1, buf, sizeof buf));
   *textp = str_edup(buf);
   return CFOK;
+}
+
+int cf_cmp_pattern_list(const struct pattern_list *a, const struct pattern_list *b)
+{
+  unsigned i;
+  for (i = 0; i < a->patc && i < b->patc; ++i) {
+    int c = strcmp(a->patv[i], b->patv[i]);
+    if (c)
+      return c;
+  }
+  return (a->patc < b->patc) ? -1 : (a->patc > b->patc) ? 1 : 0;
 }
 
 /* Config parse function.  Implements the original form of the 'interfaces' config option.  Parses a
@@ -726,6 +847,11 @@ int cf_fmt_network_interface(struct cf_om_node **parentp, const struct config_ne
   return cf_fmt_config_network_interface(parentp, nifp);
 }
 
+int cf_cmp_network_interface(const struct config_network_interface *a, const struct config_network_interface *b)
+{
+  return cf_cmp_config_network_interface(a, b);
+}
+
 int vld_network_interface(const struct cf_om_node *parent, struct config_network_interface *nifp, int result)
 {
   if (nifp->match.patc != 0 && nifp->file[0]) {
@@ -828,4 +954,9 @@ bye:
 int cf_fmt_interface_list(struct cf_om_node **parentp, const struct config_interface_list *listp)
 {
   return cf_fmt_config_interface_list(parentp, listp);
+}
+
+int cf_cmp_interface_list(const struct config_interface_list *a, const struct config_interface_list *b)
+{
+  return cf_cmp_config_interface_list(a, b);
 }

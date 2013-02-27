@@ -548,6 +548,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef SUB_STRUCT
 #undef NODE_STRUCT
 #undef END_STRUCT
+#undef __FMT_TEXT
+#undef __FMT_NODE
+#undef __REMOVE_EMPTY
+#undef __HANDLE_RET
 #undef ARRAY
 #undef KEY_ATOM
 #undef KEY_STRING
@@ -559,3 +563,72 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef __ARRAY_KEY
 #undef END_ARRAY
 
+// Generate comparison functions, cf_cmp_config_SECTION()
+#define STRUCT(__name, __validator...) \
+    int cf_cmp_config_##__name(const struct config_##__name *a, const struct config_##__name *b) { \
+      int c;
+#define NODE(__type, __element, __default, __repr, __flags, __comment) \
+      if ((c = cf_cmp_##__repr(&a->__element, &b->__element))) \
+	  return c;
+#define ATOM(__type, __element, __default, __repr, __flags, __comment) \
+      if ((c = cf_cmp_##__repr(&a->__element, &b->__element))) \
+	  return c;
+#define STRING(__size, __element, __default, __repr, __flags, __comment) \
+      if ((c = cf_cmp_##__repr(&a->__element[0], &b->__element[0]))) \
+	  return c;
+#define SUB_STRUCT(__structname, __element, __flags) \
+      if ((c = cf_cmp_config_##__structname(&a->__element, &b->__element))) \
+	  return c;
+#define NODE_STRUCT(__structname, __element, __repr, __flags) \
+      if ((c = cf_cmp_##__repr(&a->__element, &b->__element))) \
+	  return c;
+#define END_STRUCT \
+      return 0; \
+    }
+#define ARRAY(__name, __flags, __validator...) \
+    int cf_cmp_config_##__name(const struct config_##__name *a, const struct config_##__name *b) { \
+      int c; \
+      int i; \
+      for (i = 0; i < a->ac && i < b->ac; ++i) {
+#define KEY_ATOM(__type, __keyrepr, __cmpfunc...) \
+      if ((c = cf_cmp_##__keyrepr(&a->av[i].key, &b->av[i].key))) \
+	  return c;
+#define KEY_STRING(__strsize, __keyrepr, __cmpfunc...) \
+      if ((c = cf_cmp_##__keyrepr(&a->av[i].key[0], &b->av[i].key[0]))) \
+	  return c;
+#define VALUE_ATOM(__type, __eltrepr) \
+      if ((c = cf_cmp_##__eltrepr(&a->av[i].value, &b->av[i].value))) \
+	  return c;
+#define VALUE_STRING(__strsize, __eltrepr) \
+      if ((c = cf_cmp_##__eltrepr(&a->av[i].value[0], &b->av[i].value[0]))) \
+	  return c;
+#define VALUE_NODE(__type, __eltrepr) \
+      if ((c = cf_cmp_##__eltrepr(&a->av[i].value, &b->av[i].value))) \
+	  return c;
+#define VALUE_SUB_STRUCT(__structname) \
+      if ((c = cf_cmp_config_##__structname(&a->av[i].value, &b->av[i].value))) \
+	  return c;
+#define VALUE_NODE_STRUCT(__structname, __eltrepr) \
+      if ((c = cf_cmp_##__eltrepr(&a->av[i].value, &b->av[i].value))) \
+	  return c;
+#define END_ARRAY(__size) \
+      } \
+      return (a->ac < b->ac) ? -1 : (a->ac > b->ac) ? 1 : 0; \
+    }
+#include "conf_schema.h"
+#undef STRUCT
+#undef NODE
+#undef ATOM
+#undef STRING
+#undef SUB_STRUCT
+#undef NODE_STRUCT
+#undef END_STRUCT
+#undef ARRAY
+#undef KEY_ATOM
+#undef KEY_STRING
+#undef VALUE_ATOM
+#undef VALUE_STRING
+#undef VALUE_NODE
+#undef VALUE_SUB_STRUCT
+#undef VALUE_NODE_STRUCT
+#undef END_ARRAY
