@@ -91,7 +91,7 @@ size_t str_fromprint(unsigned char *dst, const char *src);
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
-int strnchr(const char *s, size_t n, char c);
+const char *strnchr(const char *s, size_t n, char c);
 
 /* Check if a given nul-terminated string 'str' starts with a given nul-terminated sub-string.  If
  * so, return 1 and, if afterp is not NULL, set *afterp to point to the character in 'str'

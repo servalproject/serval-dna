@@ -88,7 +88,7 @@ char *str_toupper_inplace(char *str)
   return str;
 }
 
-int strnchr(const char *s, size_t n, char c)
+const char *strnchr(const char *s, size_t n, char c)
 {
   for (; n; --n, ++s) {
     if (*s == c)
