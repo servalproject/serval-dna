@@ -46,7 +46,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  * the following schema would do:
  *
  *      STRUCT(happy)
- *          ATOM(int32_t, element1, 0, int32_nonnegative,, "An integer >= 0")
+ *          ATOM(int32_t, element1, 0, int32_nonneg,, "An integer >= 0")
  *          STRING(80, element2, "boo!", str_nonempty, MANDATORY, "A non-empty string")
  *      END_STRUCT
  *
@@ -239,12 +239,12 @@ END_STRUCT
 
 STRUCT(monitor)
 STRING(256,                 socket,     DEFAULT_MONITOR_SOCKET_NAME, str_nonempty,, "Name of socket for monitor interface")
-ATOM(int,                   uid,        -1, int,, "Allowed UID for monitor socket client")
+ATOM(uint32_t,              uid,        0, uint32_nonzero,, "Allowed UID for monitor socket client")
 END_STRUCT
 
 STRUCT(mdp_iftype)
 ATOM(uint32_t,              tick_ms,    -1, uint32_nonzero,, "Tick interval for this interface type")
-ATOM(int,                   packet_interval,    -1, int,, "Minimum interval between packets in microseconds")
+ATOM(int32_t,               packet_interval, -1, int32_nonneg,, "Minimum interval between packets in microseconds")
 END_STRUCT
 
 ARRAY(mdp_iftypelist, NO_DUPLICATES)
@@ -362,8 +362,8 @@ ATOM(uint16_t,              port,       PORT_DNA, uint16_nonzero,, "Port number 
 ATOM(char,                  drop_broadcasts,     0, char_boolean,, "If true, drop all incoming broadcast packets")
 ATOM(char,                  drop_unicasts,     0, char_boolean,, "If true, drop all incoming unicast packets")
 ATOM(short,                 type,       OVERLAY_INTERFACE_WIFI, interface_type,, "Type of network interface")
-ATOM(int,                   packet_interval,    -1, int,, "Minimum interval between packets in microseconds")
-ATOM(int,                   mdp_tick_ms, -1, int32_nonneg,, "Override MDP tick interval for this interface")
+ATOM(int32_t,               packet_interval,    -1, int32_nonneg,, "Minimum interval between packets in microseconds")
+ATOM(int32_t,               mdp_tick_ms, -1, int32_nonneg,, "Override MDP tick interval for this interface")
 ATOM(char,                  send_broadcasts, 1, char_boolean,, "If false, don't send any broadcast packets")
 ATOM(char,                  default_route, 0, char_boolean,, "If true, use this interface as a default route")
 ATOM(char,                  prefer_unicast, 0, char_boolean,, "If true, send unicast data as unicast IP packets if available")
