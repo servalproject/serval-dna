@@ -88,6 +88,17 @@ char *str_toupper_inplace(char *str)
   return str;
 }
 
+int strnchr(const char *s, size_t n, char c)
+{
+  for (; n; --n, ++s) {
+    if (*s == c)
+      return s;
+    if (!*s)
+      break;
+  }
+  return NULL;
+}
+
 int str_startswith(const char *str, const char *substring, const char **afterp)
 {
   while (*substring && *substring == *str)
