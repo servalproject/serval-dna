@@ -576,12 +576,16 @@ int cf_opt_pattern_list(struct pattern_list *listp, const char *text)
       word = p;
   }
   assert(word == NULL);
+  if (list.patc == 0)
+    return CFEMPTY;
   *listp = list;
   return CFOK;
 }
 
 int cf_fmt_pattern_list(const char **textp, const struct pattern_list *listp)
 {
+  if (listp->patc == 0)
+    return CFEMPTY;
   char buf[sizeof listp->patv];
   char *bufp = buf;
   unsigned i;
@@ -592,9 +596,12 @@ int cf_fmt_pattern_list(const char **textp, const struct pattern_list *listp)
     const char *npatvp = listp->patv[i + 1];
     while (bufp < &buf[sizeof buf - 1] && patvp < npatvp && (*bufp = *patvp))
       ++bufp, ++patvp;
-    if (bufp >= &buf[sizeof buf - 1] || patvp >= npatvp)
+    if (patvp >= npatvp)
       return CFINVALID;
+    assert(bufp < &buf[sizeof buf - 1]);
   }
+  *bufp = '\0';
+  DEBUGF("buf=%s", alloca_toprint(-1, buf, sizeof buf));
   *textp = str_edup(buf);
   return CFOK;
 }
@@ -651,11 +658,11 @@ static int cf_opt_network_interface_legacy(struct config_network_interface *nifp
     nif.match.patc = 0;
     nif.socket_type = SOCK_FILE;
   } else {
-    int star = (strchr(name, '*') != NULL) ? 1 : 0;
-    if (len + star >= sizeof(nif.match.patv[0]))
+    int addstar = strnchr(name, len, '*') == NULL ? 1 : 0;
+    if (len + addstar >= sizeof(nif.match.patv[0]))
       return CFSTRINGOVERFLOW;
-    strncpy(nif.match.patv[0], name, len)[len + star] = '\0';
-    if (star)
+    strncpy(nif.match.patv[0], name, len)[len + addstar] = '\0';
+    if (addstar)
       nif.match.patv[0][len] = '*';
     nif.match.patc = 1;
     nif.socket_type = SOCK_DGRAM;
