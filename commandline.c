@@ -1170,13 +1170,15 @@ int app_config_dump(const struct cli_parsed *parsed, void *context)
     return -1;
   }
   struct cf_om_iterator it;
-  for (cf_om_iter_start(&it, root); it.node; cf_om_iter_next(&it))
+  for (cf_om_iter_start(&it, root); it.node; cf_om_iter_next(&it)) {
+    //DEBUGF("%s text=%s nodc=%d", it.node->fullkey, alloca_str_toprint(it.node->text), it.node->nodc);
     if (it.node->text) {
       cli_puts(it.node->fullkey);
       cli_delim("=");
       cli_puts(it.node->text);
       cli_delim("\n");
     }
+  }
   cf_om_free_node(&root);
   return ret == CFOK ? 0 : 1;
 }

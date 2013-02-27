@@ -148,6 +148,11 @@ static int cf_om_make_child(struct cf_om_node **const parentp, const char *const
   assert(i <= (*parentp)->nodc);
   if ((child = emalloc_zero(sizeof *child)) == NULL)
     return -1;
+  if (!(child->fullkey = strn_edup(fullkey, keyend - fullkey))) {
+    free(child);
+    return -1;
+  }
+  child->key = child->fullkey + (key - fullkey);
   ++(*parentp)->nodc;
   if ((*parentp)->nodc > NELS((*parentp)->nodv))
     *parentp = realloc(*parentp, sizeof(**parentp) + sizeof((*parentp)->nodv[0]) * ((*parentp)->nodc - NELS((*parentp)->nodv)));
@@ -155,11 +160,6 @@ static int cf_om_make_child(struct cf_om_node **const parentp, const char *const
   for (j = (*parentp)->nodc - 1; j > i; --j)
     (*parentp)->nodv[j] = (*parentp)->nodv[j-1];
   (*parentp)->nodv[i] = child;
-  if (!(child->fullkey = strn_edup(fullkey, keyend - fullkey))) {
-    free(child);
-    return -1;
-  }
-  child->key = child->fullkey + (key - fullkey);
   //DEBUGF("   insert i=%d", i);
   return i;
 }
@@ -193,7 +193,7 @@ int cf_om_get_child(const struct cf_om_node *parent, const char *key, const char
 
 void cf_om_remove_child(struct cf_om_node **parentp, unsigned n)
 {
-  if (n < (*parentp)->nodc && (*parentp)->nodv[n]) {
+  if (n < (*parentp)->nodc) {
     cf_om_free_node(&(*parentp)->nodv[n]);
     --(*parentp)->nodc;
     for (; n < (*parentp)->nodc; ++n)
@@ -271,6 +271,7 @@ int cf_om_parse(const char *source, const char *buf, size_t len, struct cf_om_no
 void cf_om_free_node(struct cf_om_node **nodep)
 {
   if (*nodep) {
+    //DEBUGF("%s text=%s nodc=%d", (*nodep)->fullkey, alloca_str_toprint((*nodep)->text), (*nodep)->nodc);
     while ((*nodep)->nodc)
       cf_om_free_node(&(*nodep)->nodv[--(*nodep)->nodc]);
     if ((*nodep)->fullkey) {
@@ -428,8 +429,10 @@ int cf_om_iter_next(struct cf_om_iterator *it)
     int i = it->stack[it->sp].index++;
     if (i < parent->nodc) {
       it->node = parent->nodv[i];
+      if (it->node == NULL)
+	return WHY("null node");
       if (it->sp >= NELS(it->stack))
-	return -1;
+	return WHY("stack overflow");
       ++it->sp;
       it->stack[it->sp].node = it->node;
       it->stack[it->sp].index = 0;
