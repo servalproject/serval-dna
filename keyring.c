@@ -1381,9 +1381,9 @@ int keyring_seed(keyring_file *k)
   urandombytes((unsigned char *)did, 11);
   /* Make DID start with 2 through 9, as 1 is special in many number spaces, 
      and 0 is commonly used for escaping to national or international dialling. */ 
-  did[0]='2'+(did[0]%8);
+  did[0]='2'+(((unsigned char)did[0])%8);
   /* Then add 10 more digits, which is what we do in the mobile phone software */
-  for(i=1;i<11;i++) did[i]='0'+(did[i]%10); did[11]=0;
+  for(i=1;i<11;i++) did[i]='0'+(((unsigned char)did[i])%10); did[11]=0;
   
   keyring_identity *id=keyring_create_identity(k,k->contexts[0],"");
   if (!id) return WHY("Could not create new identity");
