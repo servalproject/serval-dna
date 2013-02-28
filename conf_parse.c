@@ -420,7 +420,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 // Generate formatting functions, cf_fmt_config_SECTION()
 #define STRUCT(__name, __validator...) \
     int cf_fmt_config_##__name(struct cf_om_node **parentp, const struct config_##__name *strct) { \
-      DEBUGF("STRUCT(" #__name ", " #__validator ")"); \
       int result = CFOK; \
       int ret;
 #define __FMT_TEXT(__repr, __eltname, __eltexpr, __defaultvar) \
@@ -429,19 +428,17 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	if (ret == CFOK) { \
 	  int n; \
 	  if (text == NULL) { \
-	    WHY("  text=NULL"); \
+	    WHY("cf_fmt_" #__repr "() returned CFOK but text=NULL"); \
 	    ret = CFERROR; \
 	  } else if ((n = cf_om_add_child(parentp, __eltname)) == -1) { \
-	    WHY("  cf_om_add_child() returned -1"); \
 	    ret = CFERROR; \
 	  } else { \
 	    (*parentp)->nodv[n]->text = text; \
 	    (*parentp)->nodv[n]->line_number = is_default ? 0 : 1; \
 	    text = NULL; \
-	    DEBUGF("  %s text=%s", (*parentp)->nodv[n]->fullkey, alloca_str_toprint((*parentp)->nodv[n]->text)); \
 	  } \
-	} else \
-	  WHYF("  ret=%s", strbuf_str(strbuf_cf_flags(strbuf_alloca(300), ret))); \
+	} else if (ret == CFERROR || !is_default) \
+	  WARNF("cf_fmt_" #__repr "() returned %s", strbuf_str(strbuf_cf_flags(strbuf_alloca(300), ret))); \
 	if (text) { \
 	  free((char *)text); \
 	  text = NULL; \
@@ -459,9 +456,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	  ret = __fmtfunc(&(*parentp)->nodv[n], &strct->__element); \
 	  cf_om_remove_null_child(parentp, n); \
 	  if (ret != CFOK) \
-	    WHYF("  ret=%s", strbuf_str(strbuf_cf_flags(strbuf_alloca(300), ret))); \
+	    WARNF(#__fmtfunc "() returned %s", strbuf_str(strbuf_cf_flags(strbuf_alloca(300), ret))); \
 	  if (n < (*parentp)->nodc && cf_om_remove_empty_child(parentp, n)) { \
-	    WHYF("  " #__fmtfunc "() returned empty node, n=%d", n); \
+	    WHYF(#__fmtfunc "() returned empty node at n=%d", n); \
 	    ret = CFERROR; \
 	  } \
 	} \
@@ -471,26 +468,21 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	  result |= (ret & CF__SUBFLAGS) | CFSUB(ret & CF__FLAGS); \
       }
 #define NODE(__type, __element, __default, __repr, __flags, __comment) \
-      DEBUGF("  NODE(" #__type ", " #__element ", " #__repr ")"); \
       __FMT_NODE(cf_fmt_##__repr, __element)
 #define ATOM(__type, __element, __default, __repr, __flags, __comment) \
-      DEBUGF("  ATOM(" #__type ", " #__element ", " #__repr ")"); \
       { \
 	__type dfl = __default; \
 	int is_default = cf_cmp_##__repr(&strct->__element, &dfl) == 0; \
 	__FMT_TEXT(__repr, #__element, &strct->__element, __default) \
       }
 #define STRING(__size, __element, __default, __repr, __flags, __comment) \
-      DEBUGF("  STRING(" #__size ", " #__element ", " #__repr ")"); \
       { \
         int is_default = cf_cmp_##__repr(&strct->__element[0], __default) == 0; \
 	__FMT_TEXT(__repr, #__element, &strct->__element[0], __default) \
       }
 #define SUB_STRUCT(__structname, __element, __flags) \
-      DEBUGF("  SUB_STRUCT(" #__structname ", " #__element ")"); \
       __FMT_NODE(cf_fmt_config_##__structname, __element)
 #define NODE_STRUCT(__structname, __element, __repr, __flags) \
-      DEBUGF("  SUB_STRUCT(" #__structname ", " #__element ", " #__repr ")"); \
       __FMT_NODE(cf_fmt_##__repr, __element)
 #define END_STRUCT \
       if ((*parentp)->nodc == 0) \
@@ -499,7 +491,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
     }
 #define ARRAY(__name, __flags, __validator...) \
     int cf_fmt_config_##__name(struct cf_om_node **parentp, const struct config_##__name *array) { \
-      DEBUGF("ARRAY(" #__name ", " #__flags ", " #__validator ")"); \
       int result = CFOK; \
       int i; \
       for (i = 0; i < array->ac; ++i) {
@@ -508,30 +499,35 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	int ret = __keyfunc(&key, __keyexpr); \
 	int n = -1; \
 	if (ret != CFOK) { \
-	  WHYF("  ret=%s", strbuf_str(strbuf_cf_flags(strbuf_alloca(300), ret))); \
+	  WARNF(#__keyfunc "() returned %s", strbuf_str(strbuf_cf_flags(strbuf_alloca(300), ret))); \
 	} else if (key == NULL) { \
-	  WHY("  key=NULL"); \
+	  WHY(#__keyfunc "() returned CFOK but key=NULL"); \
 	  ret = CFERROR; \
 	} else { \
 	  n = cf_om_add_child(parentp, key); \
-	  if (n == -1) { \
-	    WHYF("  cf_om_add_child() returned -1"); \
+	  if (n == -1) \
 	    ret = CFERROR; \
-	  } \
 	} \
 	if (key) { \
 	  free((char *)key); \
 	  key = NULL; \
 	} \
 	if (ret == CFOK) {
-#define END_ARRAY(__size) \
+#define __ARRAY_VALUE(__valuefunc) \
 	  cf_om_remove_null_child(parentp, n); \
 	  if (ret != CFOK) \
-	    WHYF("  ret=%s", strbuf_str(strbuf_cf_flags(strbuf_alloca(300), ret))); \
+	    WARNF(#__valuefunc "() returned %s", strbuf_str(strbuf_cf_flags(strbuf_alloca(300), ret))); \
 	  if (n < (*parentp)->nodc && cf_om_remove_empty_child(parentp, n)) { \
-	    WHYF("  returned empty node, n=%d", n); \
+	    WHYF(#__valuefunc "() returned empty node at n=%d", n); \
 	    ret = CFERROR; \
-	  } \
+	  }
+#define __ARRAY_TEXT(__valuefunc, __eltexpr) \
+	  ret = __valuefunc(&(*parentp)->nodv[n]->text, __eltexpr); \
+	  __ARRAY_VALUE(__valuefunc)
+#define __ARRAY_NODE(__valuefunc, __eltexpr) \
+	  ret = __valuefunc(&(*parentp)->nodv[n], __eltexpr); \
+	  __ARRAY_VALUE(__valuefunc)
+#define END_ARRAY(__size) \
 	} \
 	if (ret == CFERROR) \
 	  return CFERROR; \
@@ -543,26 +539,19 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
       return result; \
     }
 #define KEY_ATOM(__type, __keyrepr, __cmpfunc...) \
-	DEBUGF("  KEY_ATOM(" #__type ", " #__keyrepr ", " #__cmpfunc ")"); \
 	__ARRAY_KEY(cf_fmt_##__keyrepr, &array->av[i].key);
 #define KEY_STRING(__strsize, __keyrepr, __cmpfunc...) \
-	DEBUGF("  KEY_STRING(" #__strsize ", " #__keyrepr ", " #__cmpfunc ")"); \
 	__ARRAY_KEY(cf_fmt_##__keyrepr, &array->av[i].key[0]);
 #define VALUE_ATOM(__type, __eltrepr) \
-	DEBUGF("  VALUE_ATOM(" #__type ", " #__eltrepr ")"); \
-	ret = cf_fmt_##__eltrepr(&(*parentp)->nodv[n]->text, &array->av[i].value);
+	__ARRAY_TEXT(cf_fmt_##__eltrepr, &array->av[i].value)
 #define VALUE_STRING(__strsize, __eltrepr) \
-	DEBUGF("  VALUE_STRING(" #__strsize ", " #__eltrepr ")"); \
-	ret = cf_fmt_##__eltrepr(&(*parentp)->nodv[n]->text, &array->av[i].value[0]);
+	__ARRAY_TEXT(cf_fmt_##__eltrepr, &array->av[i].value[0])
 #define VALUE_NODE(__type, __eltrepr) \
-	DEBUGF("  VALUE_NODE(" #__type ", " #__eltrepr ")"); \
-	ret = cf_fmt_##__eltrepr(&(*parentp)->nodv[n], &array->av[i].value);
+	__ARRAY_NODE(cf_fmt_##__eltrepr, &array->av[i].value)
 #define VALUE_SUB_STRUCT(__structname) \
-	DEBUGF("  VALUE_SUB_STRUCT(" #__structname ")"); \
-	ret = cf_fmt_config_##__structname(&(*parentp)->nodv[n], &array->av[i].value);
+	__ARRAY_NODE(cf_fmt_config_##__structname, &array->av[i].value)
 #define VALUE_NODE_STRUCT(__structname, __eltrepr) \
-	DEBUGF("  VALUE_NODE_STRUCT(" #__structname ", " #__eltrepr ")"); \
-	ret = cf_fmt_##__eltrepr(&(*parentp)->nodv[n], &array->av[i].value);
+	__ARRAY_NODE(cf_fmt_##__eltrepr, &array->av[i].value)
 #include "conf_schema.h"
 #undef STRUCT
 #undef NODE
@@ -582,6 +571,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef VALUE_SUB_STRUCT
 #undef VALUE_NODE_STRUCT
 #undef __ARRAY_KEY
+#undef __ARRAY_TEXT
+#undef __ARRAY_NODE
+#undef __ARRAY_VALUE
 #undef END_ARRAY
 
 // Generate comparison functions, cf_cmp_config_SECTION()
