@@ -29,6 +29,7 @@ setup() {
 
 assert_keyring_list() {
     assertStdoutLineCount --stdout --stderr '==' $1
+    assertStdoutGrep --stderr --matches=$1 "^[0-9a-fA-F]\{64\}:[0-9*#+]*:.*\$"
     tfw_cat --stdout
 }
 
@@ -97,6 +98,14 @@ test_KeyringPinIdentityPinless() {
     assert_keyring_list 3
     executeOk_servald keyring list
     assert_keyring_list 0
+}
+
+doc_KeyringAutoCreate="Starting a server with no keyring creates a valid identity"
+test_KeyringAutoCreate() {
+   executeOk_servald start
+   executeOk_servald keyring list
+   assert_keyring_list 1
+   executeOk_servald stop
 }
 
 runTests "$@"
