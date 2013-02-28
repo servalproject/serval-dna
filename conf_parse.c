@@ -423,12 +423,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
       DEBUGF("STRUCT(" #__name ", " #__validator ")"); \
       int result = CFOK; \
       int ret;
-#define __FMT_TEXT(__fmtfunc, __eltname, __eltexpr) \
-      { \
+#define __FMT_TEXT(__repr, __eltname, __eltexpr, __defaultvar) \
 	const char *text = NULL; \
-	ret = __fmtfunc(&text, __eltexpr); \
-	if (ret != CFOK) \
-	  WHYF("  ret=%s", strbuf_str(strbuf_cf_flags(strbuf_alloca(300), ret))); \
+	ret = cf_fmt_##__repr(&text, __eltexpr); \
 	if (ret == CFOK) { \
 	  int n; \
 	  if (text == NULL) { \
@@ -439,45 +436,56 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	    ret = CFERROR; \
 	  } else { \
 	    (*parentp)->nodv[n]->text = text; \
+	    (*parentp)->nodv[n]->line_number = is_default ? 0 : 1; \
 	    text = NULL; \
 	    DEBUGF("  %s text=%s", (*parentp)->nodv[n]->fullkey, alloca_str_toprint((*parentp)->nodv[n]->text)); \
 	  } \
-	} \
+	} else \
+	  WHYF("  ret=%s", strbuf_str(strbuf_cf_flags(strbuf_alloca(300), ret))); \
 	if (text) { \
 	  free((char *)text); \
 	  text = NULL; \
 	} \
-        __HANDLE_RET \
-      }
+	if (ret == CFERROR) \
+	  return CFERROR; \
+	else if (ret != CFOK && !is_default) \
+	  result |= (ret & CF__SUBFLAGS) | CFSUB(ret & CF__FLAGS);
 #define __FMT_NODE(__fmtfunc, __element) \
       { \
 	int n = cf_om_add_child(parentp, #__element); \
-	ret = (n != -1) ? __fmtfunc(&(*parentp)->nodv[n], &strct->__element) : CFERROR; \
-	if (ret != CFOK) \
-	  WHYF("  ret=%s", strbuf_str(strbuf_cf_flags(strbuf_alloca(300), ret))); \
-	__REMOVE_EMPTY \
-	__HANDLE_RET \
+	if (n == -1) \
+	  ret = CFERROR; \
+	else { \
+	  ret = __fmtfunc(&(*parentp)->nodv[n], &strct->__element); \
+	  cf_om_remove_null_child(parentp, n); \
+	  if (ret != CFOK) \
+	    WHYF("  ret=%s", strbuf_str(strbuf_cf_flags(strbuf_alloca(300), ret))); \
+	  if (n < (*parentp)->nodc && cf_om_remove_empty_child(parentp, n)) { \
+	    WHYF("  " #__fmtfunc "() returned empty node, n=%d", n); \
+	    ret = CFERROR; \
+	  } \
+	} \
+	if (ret == CFERROR) \
+	  return CFERROR; \
+	else if (ret != CFOK) \
+	  result |= (ret & CF__SUBFLAGS) | CFSUB(ret & CF__FLAGS); \
       }
-#define __REMOVE_EMPTY \
-      if (n != -1 && ((*parentp)->nodv[n] == NULL || ((*parentp)->nodv[n]->text == NULL && (*parentp)->nodv[n]->nodc == 0))) { \
-	WHYF("  child n=%d empty", n); \
-	cf_om_remove_child(parentp, n); \
-	ret |= CFEMPTY; \
-      }
-#define __HANDLE_RET \
-      if (ret == CFERROR) \
-	return CFERROR; \
-      else if (ret != CFOK) \
-	result |= (ret & CF__SUBFLAGS) | CFSUB(ret & CF__FLAGS);
 #define NODE(__type, __element, __default, __repr, __flags, __comment) \
       DEBUGF("  NODE(" #__type ", " #__element ", " #__repr ")"); \
       __FMT_NODE(cf_fmt_##__repr, __element)
 #define ATOM(__type, __element, __default, __repr, __flags, __comment) \
       DEBUGF("  ATOM(" #__type ", " #__element ", " #__repr ")"); \
-      __FMT_TEXT(cf_fmt_##__repr, #__element, &strct->__element)
+      { \
+	__type dfl = __default; \
+	int is_default = cf_cmp_##__repr(&strct->__element, &dfl) == 0; \
+	__FMT_TEXT(__repr, #__element, &strct->__element, __default) \
+      }
 #define STRING(__size, __element, __default, __repr, __flags, __comment) \
       DEBUGF("  STRING(" #__size ", " #__element ", " #__repr ")"); \
-      __FMT_TEXT(cf_fmt_##__repr, #__element, &strct->__element[0])
+      { \
+        int is_default = cf_cmp_##__repr(&strct->__element[0], __default) == 0; \
+	__FMT_TEXT(__repr, #__element, &strct->__element[0], __default) \
+      }
 #define SUB_STRUCT(__structname, __element, __flags) \
       DEBUGF("  SUB_STRUCT(" #__structname ", " #__element ")"); \
       __FMT_NODE(cf_fmt_config_##__structname, __element)
@@ -492,28 +500,43 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define ARRAY(__name, __flags, __validator...) \
     int cf_fmt_config_##__name(struct cf_om_node **parentp, const struct config_##__name *array) { \
       DEBUGF("ARRAY(" #__name ", " #__flags ", " #__validator ")"); \
-      int flags = (0 __flags); \
-      int (*eltcmp)(const struct config_##__name##__element *, const struct config_##__name##__element *) = __cmp_config_##__name; \
       int result = CFOK; \
       int i; \
       for (i = 0; i < array->ac; ++i) {
 #define __ARRAY_KEY(__keyfunc, __keyexpr) \
 	const char *key = NULL; \
 	int ret = __keyfunc(&key, __keyexpr); \
-	if (key == NULL) \
+	int n = -1; \
+	if (ret != CFOK) { \
+	  WHYF("  ret=%s", strbuf_str(strbuf_cf_flags(strbuf_alloca(300), ret))); \
+	} else if (key == NULL) { \
+	  WHY("  key=NULL"); \
 	  ret = CFERROR; \
-	int n = ret == CFOK ? cf_om_add_child(parentp, key) : -1; \
+	} else { \
+	  n = cf_om_add_child(parentp, key); \
+	  if (n == -1) { \
+	    WHYF("  cf_om_add_child() returned -1"); \
+	    ret = CFERROR; \
+	  } \
+	} \
 	if (key) { \
 	  free((char *)key); \
 	  key = NULL; \
 	} \
-	if (n == -1) { \
-	  result |= CFSUB(CFINVALID); \
-	  continue; \
-	}
+	if (ret == CFOK) {
 #define END_ARRAY(__size) \
-	__REMOVE_EMPTY \
-	__HANDLE_RET \
+	  cf_om_remove_null_child(parentp, n); \
+	  if (ret != CFOK) \
+	    WHYF("  ret=%s", strbuf_str(strbuf_cf_flags(strbuf_alloca(300), ret))); \
+	  if (n < (*parentp)->nodc && cf_om_remove_empty_child(parentp, n)) { \
+	    WHYF("  returned empty node, n=%d", n); \
+	    ret = CFERROR; \
+	  } \
+	} \
+	if (ret == CFERROR) \
+	  return CFERROR; \
+	else if (ret != CFOK) \
+	  result |= (ret & CF__SUBFLAGS) | CFSUB(ret & CF__FLAGS); \
       } \
       if ((*parentp)->nodc == 0) \
 	cf_om_free_node(parentp); \
@@ -550,8 +573,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef END_STRUCT
 #undef __FMT_TEXT
 #undef __FMT_NODE
-#undef __REMOVE_EMPTY
-#undef __HANDLE_RET
 #undef ARRAY
 #undef KEY_ATOM
 #undef KEY_STRING

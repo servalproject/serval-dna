@@ -1161,6 +1161,7 @@ int app_config_dump(const struct cli_parsed *parsed, void *context)
 {
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
+  int full = 0 == cli_arg(parsed, "--full", NULL, NULL, NULL);
   if (create_serval_instance_dir() == -1)
     return -1;
   struct cf_om_node *root = NULL;
@@ -1171,8 +1172,7 @@ int app_config_dump(const struct cli_parsed *parsed, void *context)
   }
   struct cf_om_iterator it;
   for (cf_om_iter_start(&it, root); it.node; cf_om_iter_next(&it)) {
-    //DEBUGF("%s text=%s nodc=%d", it.node->fullkey, alloca_str_toprint(it.node->text), it.node->nodc);
-    if (it.node->text) {
+    if (it.node->text && (full || it.node->line_number)) {
       cli_puts(it.node->fullkey);
       cli_delim("=");
       cli_puts(it.node->text);
@@ -2369,7 +2369,7 @@ struct cli_schema command_line_options[]={
    "Trace through the network to the specified node via MDP."},
   {app_config_schema,{"config","schema",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
    "Display configuration schema."},
-  {app_config_dump,{"config","dump",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
+  {app_config_dump,{"config","dump","[--full]",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
    "Dump configuration settings."},
   {app_config_set,{"config","set","<variable>","<value>","...",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
    "Set and del specified configuration variables."},

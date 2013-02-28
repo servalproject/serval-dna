@@ -191,14 +191,33 @@ int cf_om_get_child(const struct cf_om_node *parent, const char *key, const char
   return -1;
 }
 
+int cf_om_remove_null_child(struct cf_om_node **parentp, unsigned n)
+{
+  assert(n < (*parentp)->nodc);
+  if ((*parentp)->nodv[n] == NULL) {
+    cf_om_remove_child(parentp, n);
+    return 1;
+  }
+  return 0;
+}
+
+int cf_om_remove_empty_child(struct cf_om_node **parentp, unsigned n)
+{
+  assert(n < (*parentp)->nodc);
+  if ((*parentp)->nodv[n] && (*parentp)->nodv[n]->text == NULL && (*parentp)->nodv[n]->nodc == 0) {
+    cf_om_remove_child(parentp, n);
+    return 1;
+  }
+  return 0;
+}
+
 void cf_om_remove_child(struct cf_om_node **parentp, unsigned n)
 {
-  if (n < (*parentp)->nodc) {
-    cf_om_free_node(&(*parentp)->nodv[n]);
-    --(*parentp)->nodc;
-    for (; n < (*parentp)->nodc; ++n)
-      (*parentp)->nodv[n] = (*parentp)->nodv[n+1];
-  }
+  assert(n < (*parentp)->nodc);
+  cf_om_free_node(&(*parentp)->nodv[n]);
+  --(*parentp)->nodc;
+  for (; n < (*parentp)->nodc; ++n)
+    (*parentp)->nodv[n] = (*parentp)->nodv[n+1];
 }
 
 int cf_om_parse(const char *source, const char *buf, size_t len, struct cf_om_node **rootp)

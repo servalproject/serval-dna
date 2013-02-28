@@ -238,6 +238,8 @@ int cf_om_get_child(const struct cf_om_node *parent, const char *key, const char
 const char *cf_om_get(const struct cf_om_node *root, const char *fullkey);
 int cf_om_set(struct cf_om_node **nodep, const char *fullkey, const char *text);
 int cf_om_add_child(struct cf_om_node **const parentp, const char *const key);
+int cf_om_remove_null_child(struct cf_om_node **parentp, unsigned n);
+int cf_om_remove_empty_child(struct cf_om_node **parentp, unsigned n);
 void cf_om_remove_child(struct cf_om_node **parent, unsigned n);
 void cf_om_free_node(struct cf_om_node **nodep);
 void cf_om_dump_node(const struct cf_om_node *node, int indent);
