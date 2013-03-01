@@ -61,6 +61,8 @@ __RHIZOME_INLINE int rhizome_is_bk_none(const rhizome_bk_t *bk) {
     return is_all_matching(bk->binary, sizeof bk->binary, 0);
 }
 
+#define alloca_tohex_rhizome_bk_t(bk) alloca_tohex((bk).binary, sizeof (*(rhizome_bk_t*)0).binary)
+
 extern time_ms_t rhizome_voice_timeout;
 
 #define RHIZOME_PRIORITY_HIGHEST RHIZOME_PRIORITY_SERVAL_CORE

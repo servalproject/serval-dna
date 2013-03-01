@@ -86,6 +86,13 @@ size_t str_fromprint(unsigned char *dst, const char *src);
 #define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca((dstlen) == -1 ? toprint_len((const char *)(buf),(len), "``") + 1 : (dstlen)), (dstlen), (const char *)(buf), (len), "``")
 #define alloca_str_toprint(str)  toprint_str((char *)alloca(toprint_str_len(str, "``") + 1), -1, (str), "``")
 
+/* Like strchr(3), but only looks for 'c' in the first 'n' characters of 's', stopping at the first
+ * nul char in 's'.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+const char *strnchr(const char *s, size_t n, char c);
+
 /* Check if a given nul-terminated string 'str' starts with a given nul-terminated sub-string.  If
  * so, return 1 and, if afterp is not NULL, set *afterp to point to the character in 'str'
  * immediately following the substring.  Otherwise return 0.

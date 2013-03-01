@@ -1140,8 +1140,10 @@ int app_config_schema(const struct cli_parsed *parsed, void *context)
   if (create_serval_instance_dir() == -1)
     return -1;
   struct cf_om_node *root = NULL;
-  if (cf_sch_config_main(&root) == -1)
+  if (cf_sch_config_main(&root) == -1) {
+    cf_om_free_node(&root);
     return -1;
+  }
   struct cf_om_iterator it;
   for (cf_om_iter_start(&it, root); it.node; cf_om_iter_next(&it))
     if (it.node->text || it.node->nodc == 0) {
@@ -1151,7 +1153,34 @@ int app_config_schema(const struct cli_parsed *parsed, void *context)
 	cli_puts(it.node->text);
       cli_delim("\n");
     }
+  cf_om_free_node(&root);
   return 0;
+}
+
+int app_config_dump(const struct cli_parsed *parsed, void *context)
+{
+  if (config.debug.verbose)
+    DEBUG_cli_parsed(parsed);
+  int full = 0 == cli_arg(parsed, "--full", NULL, NULL, NULL);
+  if (create_serval_instance_dir() == -1)
+    return -1;
+  struct cf_om_node *root = NULL;
+  int ret = cf_fmt_config_main(&root, &config);
+  if (ret == CFERROR) {
+    cf_om_free_node(&root);
+    return -1;
+  }
+  struct cf_om_iterator it;
+  for (cf_om_iter_start(&it, root); it.node; cf_om_iter_next(&it)) {
+    if (it.node->text && (full || it.node->line_number)) {
+      cli_puts(it.node->fullkey);
+      cli_delim("=");
+      cli_puts(it.node->text);
+      cli_delim("\n");
+    }
+  }
+  cf_om_free_node(&root);
+  return ret == CFOK ? 0 : 1;
 }
 
 int app_config_set(const struct cli_parsed *parsed, void *context)
@@ -2349,7 +2378,9 @@ struct cli_schema command_line_options[]={
   {app_trace,{"mdp","trace","<SID>",NULL},0,
    "Trace through the network to the specified node via MDP."},
   {app_config_schema,{"config","schema",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
-   "Dump configuration schema."},
+   "Display configuration schema."},
+  {app_config_dump,{"config","dump","[--full]",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
+   "Dump configuration settings."},
   {app_config_set,{"config","set","<variable>","<value>","...",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,
    "Set and del specified configuration variables."},
   {app_config_set,{"config","del","<variable>","...",NULL},CLIFLAG_STANDALONE|CLIFLAG_PERMISSIVE_CONFIG,

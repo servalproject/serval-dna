@@ -46,7 +46,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  * the following schema would do:
  *
  *      STRUCT(happy)
- *          ATOM(int32_t, element1, 0, int32_nonnegative,, "An integer >= 0")
+ *          ATOM(int32_t, element1, 0, int32_nonneg,, "An integer >= 0")
  *          STRING(80, element2, "boo!", str_nonempty, MANDATORY, "A non-empty string")
  *      END_STRUCT
  *
@@ -111,8 +111,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *  
  *          where key-declaration is one of:
  *
- *          KEY_ATOM(type, repr[, comparefunc])
- *          KEY_STRING(strlen, repr[, comparefunc])
+ *          KEY_ATOM(type, repr)
+ *          KEY_STRING(strlen, repr)
  *
  *          and value-declaration is one of:
  *
@@ -149,24 +149,25 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *      Only used for ATOM and NODE struct elements.  Gives the default value for the element if
  *      absent from the config file.
  * 'repr'
- *      The string representation.  This name specifies a pair of functions, <repr> and
- *      cf_fmt_<repr> that convert the given 'type' from and to a string respectively:
- *       - The <repr> functions for ATOM, STRING, KEY_ATOM, KEY_STRING, VALUE_ATOM and
+ *      The string representation.  This name specifies a trio of functions, cf_opt_<repr>(),
+ *      cf_fmt_<repr>() and cf_cmp_<repr>():
+ *       - The cf_opt_<repr>() functions for ATOM, STRING, KEY_ATOM, KEY_STRING, VALUE_ATOM and
  *         VALUE_STRING take a (const char *) argument pointing to nul-terminated text.  The
  *         <repr> functions for NODE and VALUE_NODE take a pointer to a COM node (const
  *         struct cf_om_node *), and are responsible for parsing the node's text and all of its
  *         descendents (children).
- *       - Each cf_fmt_<repr> function is the inverse of <repr>.  The cf_fmt_<repr>
- *         functions for ATOM, STRING, KEY_ATOM, KEY_STRING, VALUE_ATOM and VALUE_STRING all take a
- *         pointer to a const 'type', and return a malloc()ed nul-terminated string which, if passed
- *         to <repr>(), would produce the same original value.  If the value is invalid
- *         (outside the legal range) or malloc() fails, then cf_fmt_<repr> returns NULL.  The
- *         cf_fmt_<repr> functions for NODE and VALUE_NODE take a pointer to a const 'type' and
- *         return a pointer to a malloc()ed COM node (struct cf_om_node *) which, if passed to
- *         <repr> would produce the same original value.
- * 'comparefunc'
- *      A function used to sort an array after all elements have been parsed, and before being
- *      validated (see below).
+ *       - Each cf_fmt_<repr>() function is the inverse of cf_opt_<repr>.  The cf_fmt_<repr>
+ *         functions for ATOM, KEY_ATOM, KEY_STRING, VALUE_ATOM and VALUE_STRING all take a pointer
+ *         to a const 'type', and produce a malloc()ed nul-terminated string which, if passed to
+ *         cf_opt_<repr>(), would produce the same original value.  If the value is invalid (outside
+ *         the legal range) then cf_fmt_<repr> returns CFINVALID or CFEMPTY.  The cf_fmt_<repr>
+ *         functions for NODE and VALUE_NODE take a pointer to a const 'type' and produce a
+ *         malloc()ed COM node (struct cf_om_node *) which, if passed to cf_opt_<repr> would produce
+ *         the same original value.
+ *       - Each cf_cmp_<repr>() function compares two values of the given 'type' and returns -1, 0
+ *         or 1 to indicate the natural ordering of the values.  These functions are used to detect
+ *         when config elements have their default values, to avoid calling cf_fmt_<repr>().  They
+ *         are also used to sort array keys.
  * 'validatorfunc'
  *      A function that is called after the struct/array is fully parsed and populated.  This
  *      function can perform validation checks on the whole struct/array that cannot be performed by
@@ -239,16 +240,16 @@ END_STRUCT
 
 STRUCT(monitor)
 STRING(256,                 socket,     DEFAULT_MONITOR_SOCKET_NAME, str_nonempty,, "Name of socket for monitor interface")
-ATOM(int,                   uid,        -1, int,, "Allowed UID for monitor socket client")
+ATOM(uint32_t,              uid,        0, uint32_nonzero,, "Allowed UID for monitor socket client")
 END_STRUCT
 
 STRUCT(mdp_iftype)
 ATOM(uint32_t,              tick_ms,    -1, uint32_nonzero,, "Tick interval for this interface type")
-ATOM(int,                   packet_interval,    -1, int,, "Minimum interval between packets in microseconds")
+ATOM(int32_t,               packet_interval, -1, int32_nonneg,, "Minimum interval between packets in microseconds")
 END_STRUCT
 
 ARRAY(mdp_iftypelist, NO_DUPLICATES)
-KEY_ATOM(short, interface_type, cmp_short)
+KEY_ATOM(short, interface_type)
 VALUE_SUB_STRUCT(mdp_iftype)
 END_ARRAY(5)
 
@@ -263,8 +264,8 @@ ATOM(uint16_t,              remote_port,4130, uint16_nonzero,, "Remote port numb
 ATOM(uint16_t,              local_port, 4131, uint16_nonzero,, "Local port number")
 END_STRUCT
 
-ARRAY(argv, SORTED NO_DUPLICATES, vld_argv)
-KEY_ATOM(unsigned short, ushort_nonzero, cmp_ushort)
+ARRAY(argv, NO_DUPLICATES, vld_argv)
+KEY_ATOM(unsigned short, ushort_nonzero)
 VALUE_STRING(128, str)
 END_ARRAY(16)
 
@@ -346,15 +347,15 @@ ATOM(uint16_t,              port,       PORT_DNA, uint16_nonzero,, "Port number"
 END_STRUCT
 
 ARRAY(host_list, NO_DUPLICATES)
-KEY_ATOM(sid_t, sid, cmp_sid)
+KEY_ATOM(sid_t, sid)
 VALUE_SUB_STRUCT(host)
 END_ARRAY(32)
 
 STRUCT(network_interface, vld_network_interface)
 ATOM(int,                   exclude,    0, int_boolean,, "If true, do not use matching interfaces")
 ATOM(struct pattern_list,   match,      PATTERN_LIST_EMPTY, pattern_list,, "Names that match network interface")
-ATOM(int,                   socket_type,  SOCK_UNSPECIFIED, socket_type,, "Type of network socket")
-ATOM(int,                   encapsulation, ENCAP_OVERLAY, encapsulation,, "Type of packet encapsulation")
+ATOM(short,                 socket_type,  SOCK_UNSPECIFIED, socket_type,, "Type of network socket")
+ATOM(short,                 encapsulation, ENCAP_OVERLAY, encapsulation,, "Type of packet encapsulation")
 STRING(256,                 file,      "", str_nonempty,, "Path of interface file, absolute or relative to server.interface_path")
 ATOM(struct in_addr,        dummy_address,    hton_in_addr(INADDR_LOOPBACK), in_addr,, "Dummy interface address")
 ATOM(struct in_addr,        dummy_netmask,    hton_in_addr(0xFFFFFF00), in_addr,, "Dummy interface netmask")
@@ -362,14 +363,14 @@ ATOM(uint16_t,              port,       PORT_DNA, uint16_nonzero,, "Port number 
 ATOM(char,                  drop_broadcasts,     0, char_boolean,, "If true, drop all incoming broadcast packets")
 ATOM(char,                  drop_unicasts,     0, char_boolean,, "If true, drop all incoming unicast packets")
 ATOM(short,                 type,       OVERLAY_INTERFACE_WIFI, interface_type,, "Type of network interface")
-ATOM(int,                   packet_interval,    -1, int,, "Minimum interval between packets in microseconds")
-ATOM(int,                   mdp_tick_ms, -1, int32_nonneg,, "Override MDP tick interval for this interface")
+ATOM(int32_t,               packet_interval,    -1, int32_nonneg,, "Minimum interval between packets in microseconds")
+ATOM(int32_t,               mdp_tick_ms, -1, int32_nonneg,, "Override MDP tick interval for this interface")
 ATOM(char,                  send_broadcasts, 1, char_boolean,, "If false, don't send any broadcast packets")
 ATOM(char,                  default_route, 0, char_boolean,, "If true, use this interface as a default route")
 ATOM(char,                  prefer_unicast, 0, char_boolean,, "If true, send unicast data as unicast IP packets if available")
 END_STRUCT
 
-ARRAY(interface_list, SORTED NO_DUPLICATES)
+ARRAY(interface_list, NO_DUPLICATES)
 KEY_ATOM(unsigned, uint)
 VALUE_NODE_STRUCT(network_interface, network_interface)
 END_ARRAY(10)
