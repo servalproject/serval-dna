@@ -111,8 +111,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *  
  *          where key-declaration is one of:
  *
- *          KEY_ATOM(type, repr[, comparefunc])
- *          KEY_STRING(strlen, repr[, comparefunc])
+ *          KEY_ATOM(type, repr)
+ *          KEY_STRING(strlen, repr)
  *
  *          and value-declaration is one of:
  *
@@ -168,9 +168,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *         or 1 to indicate the natural ordering of the values.  These functions are used to detect
  *         when config elements have their default values, to avoid calling cf_fmt_<repr>().  They
  *         are also used to sort array keys.
- * 'comparefunc'
- *      A function used to sort an array after all elements have been parsed, and before being
- *      validated (see below).
  * 'validatorfunc'
  *      A function that is called after the struct/array is fully parsed and populated.  This
  *      function can perform validation checks on the whole struct/array that cannot be performed by
@@ -252,7 +249,7 @@ ATOM(int32_t,               packet_interval, -1, int32_nonneg,, "Minimum interva
 END_STRUCT
 
 ARRAY(mdp_iftypelist, NO_DUPLICATES)
-KEY_ATOM(short, interface_type, cf_cmp_short)
+KEY_ATOM(short, interface_type)
 VALUE_SUB_STRUCT(mdp_iftype)
 END_ARRAY(5)
 
@@ -267,8 +264,8 @@ ATOM(uint16_t,              remote_port,4130, uint16_nonzero,, "Remote port numb
 ATOM(uint16_t,              local_port, 4131, uint16_nonzero,, "Local port number")
 END_STRUCT
 
-ARRAY(argv, SORTED NO_DUPLICATES, vld_argv)
-KEY_ATOM(unsigned short, ushort_nonzero, cf_cmp_ushort)
+ARRAY(argv, NO_DUPLICATES, vld_argv)
+KEY_ATOM(unsigned short, ushort_nonzero)
 VALUE_STRING(128, str)
 END_ARRAY(16)
 
@@ -350,7 +347,7 @@ ATOM(uint16_t,              port,       PORT_DNA, uint16_nonzero,, "Port number"
 END_STRUCT
 
 ARRAY(host_list, NO_DUPLICATES)
-KEY_ATOM(sid_t, sid, cf_cmp_sid)
+KEY_ATOM(sid_t, sid)
 VALUE_SUB_STRUCT(host)
 END_ARRAY(32)
 
@@ -373,7 +370,7 @@ ATOM(char,                  default_route, 0, char_boolean,, "If true, use this 
 ATOM(char,                  prefer_unicast, 0, char_boolean,, "If true, send unicast data as unicast IP packets if available")
 END_STRUCT
 
-ARRAY(interface_list, SORTED NO_DUPLICATES)
+ARRAY(interface_list, NO_DUPLICATES)
 KEY_ATOM(unsigned, uint)
 VALUE_NODE_STRUCT(network_interface, network_interface)
 END_ARRAY(10)

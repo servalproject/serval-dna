@@ -322,10 +322,10 @@ struct pattern_list {
     struct config_##__name { \
         unsigned ac; \
         struct config_##__name##__element {
-#define KEY_ATOM(__type, __keyrepr, __cmpfunc...) \
-            __type key;
-#define KEY_STRING(__strsize, __keyrepr, __cmpfunc...) \
-            char key[(__strsize) + 1];
+#define KEY_ATOM(__type, __keyrepr) \
+            __type key; // key must be first element in struct
+#define KEY_STRING(__strsize, __keyrepr) \
+            char key[(__strsize) + 1]; // key must be first element in struct
 #define VALUE_ATOM(__type, __eltrepr) \
             __type value;
 #define VALUE_STRING(__strsize, __eltrepr) \
@@ -370,8 +370,8 @@ struct pattern_list {
 #define ARRAY(__name, __flags, __validator...) \
     int cf_dfl_config_##__name(struct config_##__name *a); \
     int cf_sch_config_##__name(struct cf_om_node **parentp);
-#define KEY_ATOM(__type, __keyrepr, __cmpfunc...)
-#define KEY_STRING(__strsize, __keyrepr, __cmpfunc...)
+#define KEY_ATOM(__type, __keyrepr)
+#define KEY_STRING(__strsize, __keyrepr)
 #define VALUE_ATOM(__type, __eltrepr)
 #define VALUE_STRING(__strsize, __eltrepr)
 #define VALUE_NODE(__type, __eltrepr)
@@ -432,11 +432,11 @@ struct pattern_list {
     int cf_fmt_config_##__name(struct cf_om_node **, const struct config_##__name *); \
     int cf_cmp_config_##__name(const struct config_##__name *, const struct config_##__name *); \
     __VALIDATOR(__name, ##__validator)
-#define KEY_ATOM(__type, __keyrepr, __cmpfunc...) \
+#define KEY_ATOM(__type, __keyrepr) \
     int cf_opt_##__keyrepr(__type *, const char *); \
     int cf_fmt_##__keyrepr(const char **, const __type *); \
     int cf_cmp_##__keyrepr(const __type *, const __type *);
-#define KEY_STRING(__strsize, __keyrepr, __cmpfunc...) \
+#define KEY_STRING(__strsize, __keyrepr) \
     int cf_opt_##__keyrepr(char *, size_t, const char *); \
     int cf_fmt_##__keyrepr(const char **, const char *); \
     int cf_cmp_##__keyrepr(const char *, const char *);
@@ -481,54 +481,6 @@ struct pattern_list {
 #undef VALUE_NODE_STRUCT
 #undef END_ARRAY
 
-// Generate config array key comparison function prototypes.
-#define STRUCT(__name, __validator...)
-#define NODE(__type, __element, __default, __repr, __flags, __comment)
-#define ATOM(__type, __element, __default, __repr, __flags, __comment)
-#define STRING(__size, __element, __default, __repr, __flags, __comment)
-#define SUB_STRUCT(__name, __element, __flags)
-#define NODE_STRUCT(__name, __element, __repr, __flags)
-#define END_STRUCT
-#define ARRAY(__name, __flags, __validator...) \
-    typedef int __compare_func__config_##__name##__t
-#define KEY_ATOM(__type, __keyrepr, __cmpfunc...) \
-        (const __type *, const __type *);
-#define KEY_STRING(__strsize, __keyrepr, __cmpfunc...) \
-        (const char *, const char *);
-#define VALUE_ATOM(__type, __eltrepr)
-#define VALUE_STRING(__strsize, __eltrepr)
-#define VALUE_NODE(__type, __eltrepr)
-#define VALUE_SUB_STRUCT(__structname)
-#define VALUE_NODE_STRUCT(__structname, __eltrepr)
-#define END_ARRAY(__size)
-#include "conf_schema.h"
-#undef ARRAY
-#undef KEY_ATOM
-#undef KEY_STRING
-#define ARRAY(__name, __flags, __validator...) \
-    __compare_func__config_##__name##__t __dummy__compare_func__config_##__name
-#define KEY_ATOM(__type, __keyrepr, __cmpfunc...) \
-        ,##__cmpfunc;
-#define KEY_STRING(__strsize, __keyrepr, __cmpfunc...) \
-        ,##__cmpfunc;
-#include "conf_schema.h"
-#undef STRUCT
-#undef NODE
-#undef ATOM
-#undef STRING
-#undef SUB_STRUCT
-#undef NODE_STRUCT
-#undef END_STRUCT
-#undef ARRAY
-#undef KEY_ATOM
-#undef KEY_STRING
-#undef VALUE_ATOM
-#undef VALUE_STRING
-#undef VALUE_NODE
-#undef VALUE_SUB_STRUCT
-#undef VALUE_NODE_STRUCT
-#undef END_ARRAY
-
 // Generate config array search-by-key function prototypes.
 #define STRUCT(__name, __validator...)
 #define NODE(__type, __element, __default, __repr, __flags, __comment)
@@ -539,9 +491,9 @@ struct pattern_list {
 #define END_STRUCT
 #define ARRAY(__name, __flags, __validator...) \
     int config_##__name##__get(const struct config_##__name *,
-#define KEY_ATOM(__type, __keyrepr, __cmpfunc...) \
+#define KEY_ATOM(__type, __keyrepr) \
         const __type *);
-#define KEY_STRING(__strsize, __keyrepr, __cmpfunc...) \
+#define KEY_STRING(__strsize, __keyrepr) \
         const char *);
 #define VALUE_ATOM(__type, __eltrepr)
 #define VALUE_STRING(__strsize, __eltrepr)

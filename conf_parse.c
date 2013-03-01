@@ -42,8 +42,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
         a->ac = 0; \
         return CFOK; \
     }
-#define KEY_ATOM(__type, __keyrepr, __cmpfunc...)
-#define KEY_STRING(__strsize, __keyrepr, __cmpfunc...)
+#define KEY_ATOM(__type, __keyrepr)
+#define KEY_STRING(__strsize, __keyrepr)
 #define VALUE_ATOM(__type, __eltrepr)
 #define VALUE_STRING(__strsize, __eltrepr)
 #define VALUE_NODE(__type, __eltrepr)
@@ -68,60 +68,16 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef VALUE_NODE_STRUCT
 #undef END_ARRAY
 
-// Generate array element comparison functions.
-#define STRUCT(__name, __validator...)
-#define NODE(__type, __element, __default, __repr, __flags, __comment)
-#define ATOM(__type, __element, __default, __repr, __flags, __comment)
-#define STRING(__size, __element, __default, __repr, __flags, __comment)
-#define SUB_STRUCT(__name, __element, __flags)
-#define NODE_STRUCT(__name, __element, __repr, __flags)
-#define END_STRUCT
-#define ARRAY(__name, __flags, __validator...) \
-    static int __cmp_config_##__name(const struct config_##__name##__element *a, const struct config_##__name##__element *b) { \
-      __compare_func__config_##__name##__t *cmp = (NULL
-#define KEY_ATOM(__type, __keyrepr, __cmpfunc...) \
-	,##__cmpfunc); \
-      return cmp ? (*cmp)(&a->key, &b->key) : memcmp(&a->key, &b->key, sizeof a->key);
-#define KEY_STRING(__strsize, __keyrepr, __cmpfunc...) \
-	,##__cmpfunc); \
-      return cmp ? (*cmp)(a->key, b->key) : strcmp(a->key, b->key);
-#define VALUE_ATOM(__type, __eltrepr)
-#define VALUE_STRING(__strsize, __eltrepr)
-#define VALUE_NODE(__type, __eltrepr)
-#define VALUE_SUB_STRUCT(__structname)
-#define VALUE_NODE_STRUCT(__structname, __eltrepr)
-#define END_ARRAY(__size) \
-    }
-#include "conf_schema.h"
-#undef STRUCT
-#undef NODE
-#undef ATOM
-#undef STRING
-#undef SUB_STRUCT
-#undef NODE_STRUCT
-#undef END_STRUCT
-#undef ARRAY
-#undef KEY_ATOM
-#undef KEY_STRING
-#undef VALUE_ATOM
-#undef VALUE_STRING
-#undef VALUE_NODE
-#undef VALUE_SUB_STRUCT
-#undef VALUE_NODE_STRUCT
-#undef END_ARRAY
-
 // Schema item flags.
 #define __MANDATORY     (1<<0)
 #define __TEXT		(1<<1)
 #define __CHILDREN	(1<<2)
-#define __SORTED	(1<<3)
-#define __NO_DUPLICATES	(1<<4)
+#define __NO_DUPLICATES	(1<<3)
 
 // Schema flag symbols, to be used in the '__flags' macro arguments.
 #define MANDATORY	|__MANDATORY
 #define USES_TEXT	|__TEXT
 #define USES_CHILDREN	|__CHILDREN
-#define SORTED		|__SORTED
 #define NO_DUPLICATES	|__NO_DUPLICATES
 
 // Generate parsing functions, cf_opt_config_SECTION()
@@ -188,14 +144,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define ARRAY(__name, __flags, __validator...) \
     int cf_opt_config_##__name(struct config_##__name *array, const struct cf_om_node *node) { \
       int flags = (0 __flags); \
-      int (*eltcmp)(const struct config_##__name##__element *, const struct config_##__name##__element *) = __cmp_config_##__name; \
+      int (*keycmp)(const void *, const void *) = NULL; \
       int (*validator)(const struct cf_om_node *, struct config_##__name *, int) = (NULL, ##__validator); \
       int result = CFOK; \
       int i, n; \
       for (n = 0, i = 0; i < node->nodc && n < NELS(array->av); ++i) { \
 	const struct cf_om_node *child = node->nodv[i]; \
 	int ret = CFEMPTY;
-#define __ARRAY_KEY(__parseexpr, __cmpfunc...) \
+#define __ARRAY_KEY(__parseexpr, __cmpfunc, __cmpfuncargs) \
+	keycmp = (int (*)(const void *, const void *)) __cmpfunc; \
 	ret = (__parseexpr); \
 	if (ret == CFERROR) \
 	  return CFERROR; \
@@ -205,7 +162,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	if (ret == CFOK && (flags & __NO_DUPLICATES)) { \
 	  int j; \
 	  for (j = 0; j < n; ++j) { \
-	    if ((*eltcmp)(&array->av[j], &array->av[n]) == 0) { \
+	    if (__cmpfunc __cmpfuncargs == 0) { \
 	      cf_warn_duplicate_node(child, NULL); \
 	      ret |= CFDUPLICATE; \
 	    } \
@@ -237,8 +194,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	  cf_warn_list_overflow(node->nodv[i]); \
       } \
       array->ac = n; \
-      if (flags & __SORTED) \
-	qsort(array->av, array->ac, sizeof array->av[0], (int (*)(const void *, const void *)) eltcmp); \
+      qsort(array->av, array->ac, sizeof array->av[0], (int (*)(const void *, const void *)) keycmp); \
       if (validator) \
 	result = (*validator)(node, array, result); \
       if (result & ~CFEMPTY) { \
@@ -249,10 +205,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	result |= CFEMPTY; \
       return result; \
     }
-#define KEY_ATOM(__type, __keyrepr, __cmpfunc...) \
-      __ARRAY_KEY(cf_opt_##__keyrepr(&array->av[n].key, child->key), ##__cmpfunc)
-#define KEY_STRING(__strsize, __keyrepr, __cmpfunc...) \
-      __ARRAY_KEY(cf_opt_##__keyrepr(array->av[n].key, sizeof array->av[n].key, child->key), ##__cmpfunc)
+#define KEY_ATOM(__type, __keyrepr) \
+      __ARRAY_KEY(cf_opt_##__keyrepr(&array->av[n].key, child->key), cf_cmp_##__keyrepr, (&array->av[j].key, &array->av[n].key))
+#define KEY_STRING(__strsize, __keyrepr) \
+      __ARRAY_KEY(cf_opt_##__keyrepr(array->av[n].key, sizeof array->av[n].key, child->key), cf_cmp_##__keyrepr, (&array->av[j].key[0], &array->av[n].key[0]))
 #define VALUE_ATOM(__type, __eltrepr) \
       __ARRAY_VALUE(CFOK, child->text ? cf_opt_##__eltrepr(&array->av[n].value, child->text) : CFEMPTY)
 #define VALUE_STRING(__strsize, __eltrepr) \
@@ -293,21 +249,19 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define END_STRUCT
 #define ARRAY(__name, __flags, __validator...) \
     int config_##__name##__get(const struct config_##__name *array,
-#define KEY_ATOM(__type, __keyrepr, __cmpfunc...) \
+#define KEY_ATOM(__type, __keyrepr) \
 	  const __type *key) { \
-      int (*cmp)(const __type *, const __type *) = (NULL, ##__cmpfunc); \
       int i; \
       for (i = 0; i < array->ac; ++i) \
-	if ((cmp ? (*cmp)(key, &array->av[i].key) : memcmp(key, &array->av[i].key, sizeof *key)) == 0) \
+	if ((cf_cmp_##__keyrepr(key, &array->av[i].key)) == 0) \
 	  return i; \
       return -1; \
     }
-#define KEY_STRING(__strsize, __keyrepr, __cmpfunc...) \
+#define KEY_STRING(__strsize, __keyrepr) \
 	  const char *key) { \
-      int (*cmp)(const char *, const char *) = (NULL, ##__cmpfunc); \
       int i; \
       for (i = 0; i < array->ac; ++i) \
-	if ((cmp ? (*cmp)(key, array->av[i].key) : strcmp(key, array->av[i].key)) == 0) \
+	if ((cf_cmp_##__keyrepr(&key[0], &array->av[i].key[0])) == 0) \
 	  return i; \
       return -1; \
     }
@@ -375,9 +329,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
     int cf_sch_config_##__name(struct cf_om_node **rootp) { \
       int i; \
       struct cf_om_node **childp;
-#define KEY_ATOM(__type, __keyrepr, __cmpfunc...) \
+#define KEY_ATOM(__type, __keyrepr) \
 	__ADD_CHILD(rootp, "[" #__keyrepr "]")
-#define KEY_STRING(__strsize, __keyrepr, __cmpfunc...) \
+#define KEY_STRING(__strsize, __keyrepr) \
 	__ADD_CHILD(rootp, "[" #__keyrepr "]")
 #define VALUE_ATOM(__type, __eltrepr) \
 	__ATOM(childp, "(" #__eltrepr ")")
@@ -538,9 +492,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	cf_om_free_node(parentp); \
       return result; \
     }
-#define KEY_ATOM(__type, __keyrepr, __cmpfunc...) \
+#define KEY_ATOM(__type, __keyrepr) \
 	__ARRAY_KEY(cf_fmt_##__keyrepr, &array->av[i].key);
-#define KEY_STRING(__strsize, __keyrepr, __cmpfunc...) \
+#define KEY_STRING(__strsize, __keyrepr) \
 	__ARRAY_KEY(cf_fmt_##__keyrepr, &array->av[i].key[0]);
 #define VALUE_ATOM(__type, __eltrepr) \
 	__ARRAY_TEXT(cf_fmt_##__eltrepr, &array->av[i].value)
@@ -603,10 +557,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
       int c; \
       int i; \
       for (i = 0; i < a->ac && i < b->ac; ++i) {
-#define KEY_ATOM(__type, __keyrepr, __cmpfunc...) \
+#define KEY_ATOM(__type, __keyrepr) \
       if ((c = cf_cmp_##__keyrepr(&a->av[i].key, &b->av[i].key))) \
 	  return c;
-#define KEY_STRING(__strsize, __keyrepr, __cmpfunc...) \
+#define KEY_STRING(__strsize, __keyrepr) \
       if ((c = cf_cmp_##__keyrepr(&a->av[i].key[0], &b->av[i].key[0]))) \
 	  return c;
 #define VALUE_ATOM(__type, __eltrepr) \
