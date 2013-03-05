@@ -896,6 +896,10 @@ struct profile_total rfmsc_stats={.name="rhizome_fetch_mdp_slot_callback"};
 int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sockaddr_in *peerip,const unsigned char peersid[SID_SIZE])
 {
   IN();
+  
+  if (!config.rhizome.fetch)
+    RETURN(0);
+  
   const char *bid = alloca_tohex_bid(m->cryptoSignPublic);
   int priority=100; /* normal priority */
 

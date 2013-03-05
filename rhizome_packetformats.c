@@ -257,9 +257,11 @@ error:
 int overlay_rhizome_saw_advertisements(int i, struct overlay_frame *f, long long now)
 {
   IN();
-  if (!f) { RETURN(-1); }
+  if (!f)
+    RETURN(-1);
   
-  if (!rhizome_db) { RETURN(0); }
+  if (!(rhizome_db && config.rhizome.fetch)) 
+    RETURN(0);
   
   int ad_frame_type=ob_get(f->payload);
   struct sockaddr_in httpaddr = f->recvaddr;

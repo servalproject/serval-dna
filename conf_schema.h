@@ -320,6 +320,7 @@ END_STRUCT
 
 STRUCT(rhizome)
 ATOM(int,                   enable,     1, int_boolean,, "If true, server opens Rhizome database when starting")
+ATOM(char,                  fetch,     1, char_boolean,, "If false, no new bundles will be fetched from peers")
 ATOM(int,                   clean_on_open, 1, int_boolean,, "If true, Rhizome database is cleaned at start of every command")
 STRING(256,                 datastore_path, "", absolute_path,, "Path of rhizome storage directory, absolute or relative to instance directory")
 ATOM(uint64_t,              database_size, 1000000, uint64_scaled,, "Size of database in bytes")

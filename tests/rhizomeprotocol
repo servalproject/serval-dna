@@ -109,6 +109,30 @@ test_EncryptedTransfer() {
    assert diff file1 file1x
 }
 
+doc_NoFetch="Disabling fetching still allows pushing bundles"
+setup_NoFetch() {
+   setup_common
+   set_instance +A
+   rhizome_add_file file1
+   BID1=$BID
+   VERSION1=$VERSION
+   set_instance +B
+   rhizome_add_file file2
+   BID2=$BID
+   VERSION2=$VERSION
+   executeOk_servald config set rhizome.fetch 0
+   start_servald_instances +A +B
+}
+test_NoFetch() {
+   wait_until bundle_received_by $BID2:$VERSION2 +A
+   set_instance +A
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 file1 --fromhere=0 file2
+   set_instance +B
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 file2
+}
+
 doc_DisablingHTTPServer="Disabling HTTP rhizome transports works"
 setup_DisablingHTTPServer() {
    setup_common
