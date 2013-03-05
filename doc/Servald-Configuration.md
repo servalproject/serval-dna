@@ -67,13 +67,13 @@ To examine all configuration option settings:
 To list all supported configuration options:
 
     $ servald config schema
-    debug.broadcasts=(cf_opt_char_boolean)
-    debug.dnahelper=(cf_opt_char_boolean)
-    debug.dnaresponses=(cf_opt_char_boolean)
+    debug.broadcasts=(boolean)
+    debug.dnahelper=(boolean)
+    debug.dnaresponses=(boolean)
     ...
-    server.chdir=(cf_opt_absolute_path)
-    server.dummy_interface_dir=(cf_opt_str_nonempty)
-    server.respawn_on_crash=(cf_opt_int_boolean)
+    server.chdir=(absolute_path)
+    server.dummy_interface_dir=(str_nonempty)
+    server.respawn_on_crash=(boolean)
     $
 
 The configuration schema is defined in the [conf_schema.h](../conf_schema.h)

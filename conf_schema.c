@@ -32,7 +32,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf_helpers.h"
 #include "conf.h"
 
-int cf_opt_char_boolean(char *booleanp, const char *text)
+int cf_opt_boolean(bool_t *booleanp, const char *text)
 {
   if (!strcasecmp(text, "true") || !strcasecmp(text, "yes") || !strcasecmp(text, "on") || !strcasecmp(text, "1")) {
     *booleanp = 1;
@@ -45,7 +45,7 @@ int cf_opt_char_boolean(char *booleanp, const char *text)
   return CFINVALID;
 }
 
-int cf_fmt_char_boolean(const char **textp, const char *booleanp)
+int cf_fmt_boolean(const char **textp, const bool_t *booleanp)
 {
   if (*booleanp == 1) {
     *textp = str_edup("true");
@@ -58,34 +58,7 @@ int cf_fmt_char_boolean(const char **textp, const char *booleanp)
   return CFINVALID;
 }
 
-int cf_cmp_char_boolean(const char *a, const char *b)
-{
-  return !*a && *b ? -1 : *a && !*b ? 1 : 0;
-}
-
-int cf_opt_int_boolean(int *booleanp, const char *text)
-{
-  char b;
-  int ret = cf_opt_char_boolean(&b, text);
-  if (ret == CFOK)
-    *booleanp = b;
-  return ret;
-}
-
-int cf_fmt_int_boolean(const char **textp, const int *booleanp)
-{
-  if (*booleanp == 1) {
-    *textp = str_edup("true");
-    return CFOK;
-  }
-  else if (*booleanp == 0) {
-    *textp = str_edup("false");
-    return CFOK;
-  }
-  return CFINVALID;
-}
-
-int cf_cmp_int_boolean(const int *a, const int *b)
+int cf_cmp_boolean(const bool_t *a, const bool_t *b)
 {
   return !*a && *b ? -1 : *a && !*b ? 1 : 0;
 }

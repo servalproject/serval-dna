@@ -194,6 +194,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "rhizome.h"
 
+typedef char bool_t;
+
 #define CONFIG_FILE_MAX_SIZE        (32 * 1024)
 #define INTERFACE_NAME_STRLEN       40
 
@@ -519,11 +521,8 @@ struct pattern_list {
 #undef VALUE_NODE_STRUCT
 #undef END_ARRAY
 
-int cf_opt_char_boolean(char *booleanp, const char *text);
-int cf_fmt_char_boolean(const char **, const char *booleanp);
-
-int cf_opt_int_boolean(int *booleanp, const char *text);
-int cf_fmt_int_boolean(const char **, const int *booleanp);
+int cf_opt_boolean(bool_t *booleanp, const char *text);
+int cf_fmt_boolean(const char **, const bool_t *booleanp);
 
 int cf_opt_absolute_path(char *str, size_t len, const char *text);
 int cf_fmt_absolute_path(const char **, const char *path);
