@@ -333,7 +333,6 @@ int keyring_munge_block(unsigned char *block,int len /* includes the first 96 by
   unsigned char hashNonce[crypto_hash_sha512_BYTES];
 
   unsigned char work[65536];
-  int ofs;
 
   if (len<96) return WHY("block too short");
 
@@ -348,8 +347,16 @@ int keyring_munge_block(unsigned char *block,int len /* includes the first 96 by
 #endif
 
   /* Generate key and nonce hashes from the various inputs */
-#define APPEND(b,l) if (ofs+(l)>=65536) { WHY("Input too long"); goto kmb_safeexit; } bcopy((b),&work[ofs],(l)); ofs+=(l)
-
+  int ofs;
+#define APPEND(buf, len) { \
+    unsigned __len = (len); \
+    if (ofs + __len >= sizeof work) { \
+      WHY("Input too long"); \
+      goto kmb_safeexit; \
+    } \
+    bcopy((buf), &work[ofs], __len); \
+    ofs += __len; \
+  }
   /* Form key as hash of various concatenated inputs.
      The ordering and repetition of the inputs is designed to make rainbow tables
      infeasible */
@@ -371,8 +378,7 @@ int keyring_munge_block(unsigned char *block,int len /* includes the first 96 by
   /* Now en/de-crypt the remainder of the block. 
      We do this in-place for convenience, so you should not pass in a mmap()'d
      lump. */
-  crypto_stream_xsalsa20_xor(&block[96],&block[96],len-96,
-			     hashNonce,hashKey);
+  crypto_stream_xsalsa20_xor(&block[96],&block[96],len-96, hashNonce,hashKey);
   exit_code=0;
 
  kmb_safeexit:
@@ -647,8 +653,8 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot, const char *pin)
 int keyring_identity_mac(keyring_context *c,keyring_identity *id,
 			 unsigned char *pkrsalt,unsigned char *mac)
 {
-  int ofs;
   unsigned char work[65536];
+  int ofs = 0;
 #define APPEND(buf, len) { \
     unsigned __len = (len); \
     if (ofs + __len >= sizeof work) { \
@@ -658,7 +664,6 @@ int keyring_identity_mac(keyring_context *c,keyring_identity *id,
     bcopy((buf), &work[ofs], __len); \
     ofs += __len; \
   }
-  ofs=0;
   APPEND(&pkrsalt[0], 32);
   APPEND(id->keypairs[0]->private_key, id->keypairs[0]->private_key_len);
   APPEND(id->keypairs[0]->public_key, id->keypairs[0]->public_key_len);
@@ -988,14 +993,15 @@ int keyring_commit(keyring_file *k)
 				  k->contexts[cn]->KeyRingSalt, 
 				  k->contexts[cn]->KeyRingSaltLen, 
 				  k->contexts[cn]->KeyRingPin,
-				  k->contexts[cn]->identities[in]->PKRPin))
+				  k->contexts[cn]->identities[in]->PKRPin)) {
+	    WHY("keyring_munge_block() failed");
 	    errorCount++;
-	  else {
+	  } else {
 	    /* Store */
-	    off_t file_offset = KEYRING_PAGE_SIZE *k->contexts[cn]->identities[in]->slot;
+	    off_t file_offset = KEYRING_PAGE_SIZE * k->contexts[cn]->identities[in]->slot;
 	    if (!file_offset) {
 	      if (config.debug.keyring)
-		DEBUGF("ID %d:%d has slot=0", cn,in);
+		DEBUGF("ID cn=%d in=%d has slot=0", cn, in);
 	    } else if (fseeko(k->file, file_offset, SEEK_SET) == -1) {
 	      WHYF_perror("fseeko(%d, %ld, SEEK_SET)", fileno(k->file), (long)file_offset);
 	      errorCount++;
@@ -1007,9 +1013,7 @@ int keyring_commit(keyring_file *k)
 	}
       }
 
-  if (errorCount)
-    WHYF("%u errors commiting keyring to disk", errorCount);
-  return errorCount;
+  return errorCount ? WHYF("%u errors commiting keyring to disk", errorCount) : 0;
 }
 
 int keyring_set_did(keyring_identity *id, const char *did, const char *name)
