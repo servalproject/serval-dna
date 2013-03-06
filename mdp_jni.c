@@ -111,7 +111,6 @@ Java_org_servalproject_servald_mdp_MeshSocket__1bind(JNIEnv * env,
   jint fd;
   jbyteArray jsid = NULL;
   jbyte *sid = NULL;
-  char any[SID_SIZE];
 
   /* Retrieve values from java objects. */
 
@@ -135,8 +134,7 @@ Java_org_servalproject_servald_mdp_MeshSocket__1bind(JNIEnv * env,
     }
   } else {
     /* If sid_obj is NULL, then use sid = 0. */
-    memset(any, 0, SID_SIZE);
-    sid = (jbyte *) any;
+    sid = (jbyte *) SID_ANY.binary;
   }
 
   /* fd = this.fd; */
@@ -144,7 +142,7 @@ Java_org_servalproject_servald_mdp_MeshSocket__1bind(JNIEnv * env,
 
   /* Bind. */
 
-  if (overlay_mdp_bind(fd, (unsigned char *) sid, port)) {
+  if (overlay_mdp_bind(fd, (const sid_t *) sid, port)) {
     THROW_MESH_SOCKET_EXCEPTION("Cannot bind to MDP socket");
     /* fall through finally */
   }
