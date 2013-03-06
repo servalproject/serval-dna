@@ -638,14 +638,21 @@ int keyring_identity_mac(keyring_context *c,keyring_identity *id,
 {
   int ofs;
   unsigned char work[65536];
-#define APPEND(b,l) if (ofs+(l)>=65536) { bzero(work,ofs); return WHY("Input too long"); } bcopy((b),&work[ofs],(l)); ofs+=(l)
-
+#define APPEND(buf, len) { \
+    unsigned __len = (len); \
+    if (ofs + __len >= sizeof work) { \
+      bzero(work, ofs); \
+      return WHY("Input too long"); \
+    } \
+    bcopy((buf), &work[ofs], __len); \
+    ofs += __len; \
+  }
   ofs=0;
-  APPEND(&pkrsalt[0],32);
-  APPEND(id->keypairs[0]->private_key,id->keypairs[0]->private_key_len);
-  APPEND(id->keypairs[0]->public_key,id->keypairs[0]->public_key_len);
-  APPEND(id->PKRPin,strlen(id->PKRPin));
-  crypto_hash_sha512(mac,work,ofs);
+  APPEND(&pkrsalt[0], 32);
+  APPEND(id->keypairs[0]->private_key, id->keypairs[0]->private_key_len);
+  APPEND(id->keypairs[0]->public_key, id->keypairs[0]->public_key_len);
+  APPEND(id->PKRPin, strlen(id->PKRPin));
+  crypto_hash_sha512(mac, work, ofs);
   return 0;
 }
 
@@ -662,7 +669,6 @@ int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
   int exit_code=1;
   unsigned char slot[KEYRING_PAGE_SIZE];
   unsigned char hash[crypto_hash_sha512_BYTES];
-  unsigned char work[65536];
   keyring_identity *id=NULL; 
 
   /* 1. Read slot. */
@@ -727,7 +733,6 @@ int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
   /* Clean up any potentially sensitive data before exiting */
   bzero(slot,KEYRING_PAGE_SIZE);
   bzero(hash,crypto_hash_sha512_BYTES);
-  bzero(&work[0],65536);
   if (id) keyring_free_identity(id); id=NULL;
   return exit_code;
 }
