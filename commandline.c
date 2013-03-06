@@ -571,7 +571,7 @@ int app_dna_lookup(const struct cli_parsed *parsed, void *context)
   }
 
   if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
-    WHY("Cannot create MDP socket");
+    return WHY("Cannot create MDP socket");
 
   /* Bind to MDP socket and await confirmation */
   sid_t srcsid;
@@ -994,7 +994,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, void *context)
   int icount=atoi(count);
 
   if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
-    WHY("Cannot create MDP socket");
+    return WHY("Cannot create MDP socket");
 
   overlay_mdp_frame mdp;
   bzero(&mdp, sizeof(overlay_mdp_frame));
@@ -1951,7 +1951,7 @@ int app_id_self(const struct cli_parsed *parsed, void *context)
   a.addrlist.first_sid=0;
 
   if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
-    WHY("Cannot create MDP socket");
+    return WHY("Cannot create MDP socket");
 
   do{
     result=overlay_mdp_send(mdp_sockfd, &a, MDP_AWAITREPLY, 5000);
@@ -1990,7 +1990,7 @@ int app_count_peers(const struct cli_parsed *parsed, void *context)
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
-    WHY("Cannot create MDP socket");
+    return WHY("Cannot create MDP socket");
 
   overlay_mdp_frame a;
   bzero(&a, sizeof(overlay_mdp_frame));
@@ -2182,7 +2182,7 @@ int app_node_info(const struct cli_parsed *parsed, void *context)
   cli_arg(parsed, "sid", &sid, NULL, "");
 
   if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
-    WHY("Cannot create MDP socket");
+    return WHY("Cannot create MDP socket");
 
   overlay_mdp_frame mdp;
   bzero(&mdp,sizeof(mdp));
@@ -2230,7 +2230,7 @@ int app_route_print(const struct cli_parsed *parsed, void *context)
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
-    WHY("Cannot create MDP socket");
+    return WHY("Cannot create MDP socket");
 
   overlay_mdp_frame mdp;
   bzero(&mdp,sizeof(mdp));
@@ -2287,7 +2287,7 @@ int app_reverse_lookup(const struct cli_parsed *parsed, void *context)
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
-    WHY("Cannot create MDP socket");
+    return WHY("Cannot create MDP socket");
 
   const char *sidhex, *delay;
   if (cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, "") == -1)
@@ -2396,7 +2396,7 @@ int app_network_scan(const struct cli_parsed *parsed, void *context)
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
   if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
-    WHY("Cannot create MDP socket");
+    return WHY("Cannot create MDP socket");
 
   overlay_mdp_frame mdp;
   bzero(&mdp,sizeof(mdp));
