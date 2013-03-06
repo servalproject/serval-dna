@@ -10,8 +10,8 @@ Run the following commands:
     ./configure
     make
 
-On Solaris, the system ''make'' command may not be GNU Make, and the system
-''cc'' command may not be GNU Gcc.  The following may work:
+On Solaris, the system `make` command may not be GNU Make, and the system
+`cc` command may not be GNU Gcc.  The following may work:
 
     autoreconf -f -i
     CC=gcc ./configure
