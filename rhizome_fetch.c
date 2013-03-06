@@ -748,12 +748,12 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
   m->dataFileName = NULL;
   m->dataFileUnlinkOnFree = 0;
   slot->manifest = m;
-  if (schedule_fetch(slot) == -1) {
+  if (schedule_fetch(slot) == -1)
     return -1;
-  }
-  if (config.debug.rhizome_rx) 
-    DEBUGF("   started fetch bid %s version 0x%llx into %s, slot=%d filehash=%s", 
-	   alloca_tohex_bid(slot->bid), slot->bidVersion, slot->manifest->dataFileName, slotno(slot), m->fileHexHash);
+  if (config.debug.rhizome_rx)
+    DEBUGF("   started fetch bid %s version 0x%llx into %s, slot=%d filehash=%s",
+	   alloca_tohex_bid(slot->bid), (long long) slot->bidVersion,
+	   alloca_str_toprint(slot->manifest->dataFileName), slotno(slot), m->fileHexHash);
   return STARTED;
 }
 
