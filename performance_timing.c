@@ -18,6 +18,7 @@
  */
 
 #include "serval.h"
+#include "conf.h"
 
 struct profile_total *stats_head=NULL;
 struct call_stats *current_call=NULL;
@@ -147,17 +148,45 @@ int fd_showstats()
     fd_tallystats(&total,stats);
     stats = stats->_next;
   }
-  
-  INFOF("servald time usage stats:");
-  stats = stats_head;
-  while(stats!=NULL){
-    /* Get total time spent doing everything */
-    if (stats->calls)
-      fd_showstat(&total,stats);
-    stats = stats->_next;
+
+  // Show periodic rhizome transfer information, but only
+  // if there are some active rhizome transfers.
+  if ((rhizome_active_fetch_bytes_received(0)+
+       rhizome_active_fetch_bytes_received(1)+
+       rhizome_active_fetch_bytes_received(2)+
+       rhizome_active_fetch_bytes_received(3)+
+       rhizome_active_fetch_bytes_received(4))!=-5)
+    INFOF("Rhizome transfer progress: %d,%d,%d,%d,%d",
+	  rhizome_active_fetch_bytes_received(0),
+	  rhizome_active_fetch_bytes_received(1),
+	  rhizome_active_fetch_bytes_received(2),
+	  rhizome_active_fetch_bytes_received(3),
+	  rhizome_active_fetch_bytes_received(4));
+
+  // Report any functions that take too much time
+  if (!config.debug.timing)
+    {
+      stats = stats_head;
+      while(stats!=NULL){
+	/* If a function spends more than 1 second in any 
+	   notionally 3 second period, then dob on it */
+	if (stats->total_time>1000
+	    &&strcmp(stats->name,"Idle (in poll)"))
+	  fd_showstat(&total,stats);
+	stats = stats->_next;
+      }
+    }
+  else {
+    INFOF("servald time usage stats:");
+    stats = stats_head;
+    while(stats!=NULL){
+      /* Get total time spent doing everything */
+      if (stats->calls)
+	fd_showstat(&total,stats);
+      stats = stats->_next;
+    }    
+    fd_showstat(&total,&total);
   }
-  
-  fd_showstat(&total,&total);
   
   return 0;
 }
@@ -183,6 +212,10 @@ void dump_stack()
 
 int fd_func_enter(struct __sourceloc __whence, struct call_stats *this_call)
 {
+  if (config.debug.profiling)
+    DEBUGF("%s called from %s() %s:%d",
+	   __FUNCTION__,__whence.function,__whence.file,__whence.line); 
+ 
   this_call->enter_time=gettime_ms();
   this_call->child_time=0;
   this_call->prev = current_call;
@@ -196,6 +229,10 @@ int fd_func_exit(struct __sourceloc __whence, struct call_stats *this_call)
   // probably points to somewhere on the stack (see the IN() macro) that has since been overwritten,
   // so no sense in trying to print its contents in a diagnostic message; that would just cause
   // a SEGV.
+  if (config.debug.profiling)
+    DEBUGF("%s called from %s() %s:%d",
+	   __FUNCTION__,__whence.function,__whence.file,__whence.line); 
+
   if (current_call != this_call)
     FATAL("performance timing stack trace corrupted");
   

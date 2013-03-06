@@ -171,13 +171,15 @@ int resolve_name(const char *name, struct in_addr *addr){
   
   if (addresses->ai_addr->sa_family==AF_INET){
     *addr = ((struct sockaddr_in *)addresses->ai_addr)->sin_addr;
-    DEBUGF("Resolved %s into %s", name, inet_ntoa(*addr));
+    if (config.debug.overlayrouting)
+      DEBUGF("Resolved %s into %s", name, inet_ntoa(*addr));
     
   }else
-    ret=-1;
+    ret=WHY("Ignoring non IPv4 address");
   
   freeaddrinfo(addresses);
   RETURN(ret);
+  OUT();
 }
 
 // load a unicast address from configuration
@@ -194,7 +196,7 @@ int load_subscriber_address(struct subscriber *subscriber)
   if (*hostc->interface){
     interface = overlay_interface_find_name(hostc->interface);
     if (!interface)
-      return -1;
+      return WHY("Can't fund configured interface");
   }
   struct sockaddr_in addr;
   bzero(&addr, sizeof(addr));
@@ -210,7 +212,8 @@ int load_subscriber_address(struct subscriber *subscriber)
       return 1;
     }
   }
-  DEBUGF("Loaded address %s:%d for %s", inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), alloca_tohex_sid(subscriber->sid));
+  if (config.debug.overlayrouting)
+    DEBUGF("Loaded address %s:%d for %s", inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), alloca_tohex_sid(subscriber->sid));
   return overlay_send_probe(subscriber, addr, interface, OQ_MESH_MANAGEMENT);
 }
 
@@ -240,6 +243,7 @@ overlay_mdp_service_probe(overlay_mdp_frame *mdp)
   peer->address.sin_port = probe.addr.sin_port;
   set_reachable(peer, REACHABLE_UNICAST | (peer->reachable & REACHABLE_DIRECT));
   RETURN(0);
+  OUT();
 }
 
 int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay_interface *interface, int queue){
@@ -248,6 +252,24 @@ int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay
   
   if (!interface)
     return WHY("I don't know which interface to use");
+  
+  if (interface->state!=INTERFACE_STATE_UP)
+    return WHY("I can't send a probe if the interface is down.");
+  
+    if (addr.sin_addr.s_addr==0) {
+      if (config.debug.overlayinterfaces) 
+	WHY("I can't send a probe to address 0.0.0.0");
+      return -1;
+    }
+    if (addr.sin_port==0) {
+      if (config.debug.overlayinterfaces) 
+	WHY("I can't send a probe to port 0");
+      return -1;
+    }
+  
+  // never send unicast probes over a stream interface
+  if (interface->socket_type==SOCK_STREAM)
+    return 0;
   
   time_ms_t now = gettime_ms();
   
@@ -291,7 +313,8 @@ int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay
     op_free(frame);
     return -1;
   }
-  DEBUGF("Queued probe packet on interface %s to %s:%d for %s", 
+  if (config.debug.overlayrouting)
+    DEBUGF("Queued probe packet on interface %s to %s:%d for %s", 
 	 interface->name, inet_ntoa(addr.sin_addr), ntohs(addr.sin_port), peer?alloca_tohex_sid(peer->sid):"ANY");
   return 0;
 }
@@ -300,7 +323,8 @@ int overlay_send_probe(struct subscriber *peer, struct sockaddr_in addr, overlay
 static int overlay_append_unicast_address(struct subscriber *subscriber, struct overlay_buffer *buff)
 {
   if (subscriber->reachable & REACHABLE_ASSUMED || !(subscriber->reachable & REACHABLE_UNICAST)){
-    DEBUGF("Unable to give address of %s, %d", alloca_tohex_sid(subscriber->sid),subscriber->reachable);
+    if (config.debug.overlayrouting)
+      DEBUGF("Unable to give address of %s, %d", alloca_tohex_sid(subscriber->sid),subscriber->reachable);
     return 0;
   }
   
@@ -311,7 +335,8 @@ static int overlay_append_unicast_address(struct subscriber *subscriber, struct 
   if (ob_append_ui16(buff, subscriber->address.sin_port))
     return -1;
   ob_checkpoint(buff);
-  DEBUGF("Added STUN info for %s", alloca_tohex_sid(subscriber->sid));
+  if (config.debug.overlayrouting)
+    DEBUGF("Added STUN info for %s", alloca_tohex_sid(subscriber->sid));
   return 0;
 }
 
@@ -333,8 +358,9 @@ static int overlay_append_unicast_address(struct subscriber *subscriber, struct 
 
 int overlay_mdp_service_stun_req(overlay_mdp_frame *mdp)
 {
-  DEBUGF("Processing STUN request from %s", alloca_tohex_sid(mdp->out.src.sid));
-  
+  if (config.debug.overlayrouting)
+    DEBUGF("Processing STUN request from %s", alloca_tohex_sid(mdp->out.src.sid));
+
   struct overlay_buffer *payload = ob_static(mdp->out.payload, mdp->out.payload_length);
   ob_limitsize(payload, mdp->out.payload_length);
   
@@ -358,7 +384,8 @@ int overlay_mdp_service_stun_req(overlay_mdp_frame *mdp)
       break;
     
     if (!subscriber){
-      DEBUGF("Unknown subscriber");
+      if (config.debug.overlayrouting)
+	DEBUGF("Unknown subscriber");
       continue;
     }
     
@@ -370,9 +397,9 @@ int overlay_mdp_service_stun_req(overlay_mdp_frame *mdp)
   reply.out.payload_length=ob_position(replypayload);
   
   if (reply.out.payload_length){
-    DEBUGF("Sending reply");
-    overlay_mdp_dispatch(&reply,0 /* system generated */,
-			 NULL,0);
+    if (config.debug.overlayrouting)
+      DEBUGF("Sending reply");
+    overlay_mdp_dispatch(&reply,0 /* system generated */, NULL,0);
   }
   ob_free(replypayload);
   ob_free(payload);
@@ -383,9 +410,10 @@ int overlay_mdp_service_stun(overlay_mdp_frame *mdp)
 {
   struct overlay_buffer *buff = ob_static(mdp->out.payload, mdp->out.payload_length);
   ob_limitsize(buff, mdp->out.payload_length);
-  
-  DEBUGF("Processing STUN info from %s", alloca_tohex_sid(mdp->out.src.sid));
-  
+
+  if (config.debug.overlayrouting)
+    DEBUGF("Processing STUN info from %s", alloca_tohex_sid(mdp->out.src.sid));
+
   while(ob_remaining(buff)>0){
     struct subscriber *subscriber=NULL;
     struct sockaddr_in addr;
@@ -439,7 +467,8 @@ int overlay_send_stun_request(struct subscriber *server, struct subscriber *requ
   struct overlay_buffer *payload = ob_static(mdp.out.payload, sizeof(mdp.out.payload));
   overlay_address_append(NULL, payload, request);
   mdp.out.payload_length=ob_position(payload);
-  DEBUGF("Sending STUN request to %s", alloca_tohex_sid(server->sid));
+  if (config.debug.overlayrouting)
+    DEBUGF("Sending STUN request to %s", alloca_tohex_sid(server->sid));
   overlay_mdp_dispatch(&mdp,0 /* system generated */,
 		       NULL,0);
   ob_free(payload);

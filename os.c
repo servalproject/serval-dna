@@ -17,11 +17,18 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#define __SERVALDNA_OS_INLINE
+#include "os.h"
+#include "log.h"
+
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <fcntl.h>
 #include <alloca.h>
 #include <dirent.h>
 #include <time.h>
-#include "serval.h"
+#include <string.h>
 
 int mkdirs(const char *path, mode_t mode)
 {
@@ -120,4 +127,21 @@ time_ms_t sleep_ms(time_ms_t milliseconds)
   if (nanosleep(&delay, &remain) == -1 && errno != EINTR)
     FATALF_perror("nanosleep(tv_sec=%ld, tv_nsec=%ld)", delay.tv_sec, delay.tv_nsec);
   return remain.tv_sec * 1000 + remain.tv_nsec / 1000000;
+}
+
+ssize_t read_symlink(const char *path, char *buf, size_t len)
+{
+  if (len == 0) {
+    struct stat stat;
+    if (lstat(path, &stat) == -1)
+      return WHYF_perror("lstat(%s)", path);
+    return stat.st_size;
+  }
+  ssize_t nr = readlink(path, buf, len);
+  if (nr == -1)
+    return WHYF_perror("readlink(%s)", path);
+  if (nr >= len)
+    return WHYF("buffer overrun from readlink(%s, len=%lu)", path, (unsigned long) len);
+  buf[nr] = '\0';
+  return nr;
 }

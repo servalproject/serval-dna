@@ -17,13 +17,21 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#ifndef __SERVALDNA_OS_H
+#define __SERVALDNA_OS_H
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/types.h>
 
-#ifndef __SERVALDNA_OS_H
-#define __SERVALDNA_OS_H
+#ifndef __SERVALDNA_OS_INLINE
+# if __GNUC__ && !__GNUC_STDC_INLINE__
+#  define __SERVALDNA_OS_INLINE extern inline
+# else
+#  define __SERVALDNA_OS_INLINE inline
+# endif
+#endif
 
 /* All wall clock times in the Serval daemon are represented in milliseconds
  * since the Unix epoch.  The gettime_ms() function uses gettimeofday(2) to
@@ -49,16 +57,52 @@ typedef long long time_ms_t;
 time_ms_t gettime_ms();
 time_ms_t sleep_ms(time_ms_t milliseconds);
 
-/* bzero(3) is deprecated in favour of memset(3). */
-#define bzero(addr,len) memset((addr), 0, (len))
+#ifndef HAVE_BZERO
+__SERVALDNA_OS_INLINE void bzero(void *buf, size_t len) {
+    memset(buf, 0, len);
+}
+#endif
 
-/* OpenWRT libc doesn't have bcopy, but has memmove */
-#define bcopy(A,B,C) memmove(B,A,C)
+#ifndef HAVE_BCOPY
+__SERVALDNA_OS_INLINE void bcopy(void *src, void *dst, size_t len) {
+    memcpy(dst, src, len);
+}
+#endif
 
 int mkdirs(const char *path, mode_t mode);
 int mkdirsn(const char *path, size_t len, mode_t mode);
 
 void srandomdev();
 int urandombytes(unsigned char *buf, unsigned long long len);
+
+/* Read the symbolic link into the supplied buffer and add a terminating nul.
+ * Logs an ERROR and returns -1 if the buffer is too short to hold the link
+ * content and the terminating nul.  If readlink(2) returns an error, then logs
+ * an ERROR and returns -1.  Otherwise, returns the number of bytes read,
+ * including the terminating nul, ie, returns what readlink(2) returns plus
+ * one.  If the 'len' argument is given as zero, then returns the number of
+ * bytes that would be read, by calling lstat(2) instead of readlink(2), plus
+ * one for the terminating nul.  Beware of the following race condition: a
+ * symbolic link may be altered between calling the lstat(2) and readlink(2),
+ * so the following apparently overflow-proof code may still fail from a buffer
+ * overflow in the second call to read_symlink():
+ *
+ *    char *readlink_malloc(const char *path) {
+ *	ssize_t len = read_symlink(path, NULL, 0);
+ *	if (len == -1)
+ *	  return NULL;
+ *	char *buf = malloc(len);
+ *	if (buf == NULL)
+ *	  return NULL;
+ *	if (read_symlink(path, buf, len) == -1) {
+ *	  free(buf);
+ *	  return NULL;
+ *	}
+ *	return buf;
+ *    }
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+ssize_t read_symlink(const char *path, char *buf, size_t len);
 
 #endif //__SERVALDNA_OS_H

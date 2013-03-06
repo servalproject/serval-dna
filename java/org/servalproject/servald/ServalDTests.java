@@ -34,5 +34,23 @@ class ServalDTests
 			}
 			System.out.println("");
 		}
+		System.exit(0);
 	}
+
+	public static void nullArg(String[] args)
+	{
+		ServalD servald = new ServalD();
+		for (int i = 0; i != args.length; ++i)
+			if ("(null)".equals(args[i]))
+				args[i] = null;
+		servald.command(Arrays.copyOfRange(args, 0, args.length));
+		System.out.print(servald.status);
+		for (byte[] a: servald.outv) {
+			System.out.print(":");
+			System.out.print(new String(a));
+		}
+		System.out.println("");
+		System.exit(0);
+	}
+
 }

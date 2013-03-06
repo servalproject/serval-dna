@@ -60,18 +60,10 @@ struct rhizome_fetch_slot {
 #define RHIZOME_FETCH_RXFILEMDP 5
 
   /* Keep track of how much of the file we have read */
-  SHA512_CTX sha512_context;
-  int64_t rowid;
-  int64_t file_len;
-  int64_t file_ofs;
+  struct rhizome_write write_state;
 
   int64_t last_write_time;
   int64_t start_time;
-
-#define RHIZOME_BLOB_BUFFER_MAXIMUM_SIZE (1024*1024)
-  int blob_buffer_size;
-  unsigned char *blob_buffer;
-  int blob_buffer_bytes;
 
   /* HTTP transport specific elements */
   char request[1024];
@@ -136,6 +128,23 @@ struct rhizome_fetch_queue rhizome_fetch_queues[] = {
 };
 
 #define NQUEUES	    NELS(rhizome_fetch_queues)
+
+int rhizome_active_fetch_count()
+{
+  int i,active=0;
+  for(i=0;i<NQUEUES;i++)
+    if (rhizome_fetch_queues[i].active.state!=RHIZOME_FETCH_FREE)
+      active++;
+  return active;
+}
+
+int rhizome_active_fetch_bytes_received(int q)
+{
+  if (q<0) return -1;
+  if (q>=NQUEUES) return -1;
+  if (rhizome_fetch_queues[q].active.state==RHIZOME_FETCH_FREE) return -1;
+  return (int)rhizome_fetch_queues[q].active.write_state.file_offset + rhizome_fetch_queues[q].active.write_state.data_size;
+}
 
 static struct sched_ent sched_activate = STRUCT_SCHED_ENT_UNUSED;
 static struct profile_total fetch_stats;
@@ -425,9 +434,7 @@ int rhizome_manifest_version_cache_lookup(rhizome_manifest *m)
 }
 
 typedef struct ignored_manifest {
-  unsigned char bid[crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES];
-  struct sockaddr_in peer_ipandport;
-  unsigned char peer_sid[SID_SIZE];
+  unsigned char bid[RHIZOME_BAR_PREFIX_BYTES];
   time_ms_t timeout;
 } ignored_manifest;
 
@@ -447,15 +454,18 @@ typedef struct ignored_manifest_cache {
    a collision is exceedingly remote */
 ignored_manifest_cache ignored;
 
-int rhizome_ignore_manifest_check(rhizome_manifest *m, const struct sockaddr_in *peerip,const unsigned char *peersid)
+int rhizome_ignore_manifest_check(unsigned char *bid_prefix, int prefix_len)
 {
-  int bin = m->cryptoSignPublic[0]>>(8-IGNORED_BIN_BITS);
+  if (prefix_len < RHIZOME_BAR_PREFIX_BYTES)
+    FATAL("Prefix length is too short");
+  
+  int bin = bid_prefix[0]>>(8-IGNORED_BIN_BITS);
   int slot;
   for(slot = 0; slot != IGNORED_BIN_SIZE; ++slot)
     {
       if (!memcmp(ignored.bins[bin].m[slot].bid,
-		  m->cryptoSignPublic,
-		  crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES))
+		  bid_prefix,
+		  RHIZOME_BAR_PREFIX_BYTES))
 	{
 	  if (ignored.bins[bin].m[slot].timeout>gettime_ms())
 	    return 1;
@@ -466,31 +476,28 @@ int rhizome_ignore_manifest_check(rhizome_manifest *m, const struct sockaddr_in 
   return 0;
 }
 
-int rhizome_queue_ignore_manifest(rhizome_manifest *m, const struct sockaddr_in *peerip, const unsigned char peersid[SID_SIZE], int timeout)
+int rhizome_queue_ignore_manifest(unsigned char *bid_prefix, int prefix_len, int timeout)
 {
-  /* The supplied manifest from a given IP has errors, so remember 
-     that it isn't worth considering */
-  int bin = m->cryptoSignPublic[0]>>(8-IGNORED_BIN_BITS);
+  if (prefix_len < RHIZOME_BAR_PREFIX_BYTES)
+    FATAL("Prefix length is too short");
+  
+  /* The supplied manifest from a given IP has errors, or we already have it,
+     so remember that it isn't worth considering for a while */
+  int bin = bid_prefix[0]>>(8-IGNORED_BIN_BITS);
   int slot;
   for(slot = 0; slot != IGNORED_BIN_SIZE; ++slot)
     {
       if (!memcmp(ignored.bins[bin].m[slot].bid,
-		  m->cryptoSignPublic,
-		  crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES))
+		  bid_prefix,
+		  RHIZOME_BAR_PREFIX_BYTES))
 	break;
     }
   if (slot>=IGNORED_BIN_SIZE) slot=random()%IGNORED_BIN_SIZE;
-  bcopy(&m->cryptoSignPublic[0],
+  bcopy(&bid_prefix[0],
 	&ignored.bins[bin].m[slot].bid[0],
-	crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES);
+	RHIZOME_BAR_PREFIX_BYTES);
   /* ignore for a while */
   ignored.bins[bin].m[slot].timeout=gettime_ms()+timeout;
-  bcopy(peerip,
-	&ignored.bins[bin].m[slot].peer_ipandport,
-	sizeof(struct sockaddr_in));
-  bcopy(peersid,
-	ignored.bins[bin].m[slot].peer_sid,
-	SID_SIZE);
   return 0;
 
 }
@@ -509,39 +516,24 @@ static int rhizome_import_received_bundle(struct rhizome_manifest *m)
 
 static int schedule_fetch(struct rhizome_fetch_slot *slot)
 {
+  IN();
   int sock = -1;
   /* TODO Don't forget to implement resume */
-  /* TODO We should stream file straight into the database */
   slot->start_time=gettime_ms();
   if (create_rhizome_import_dir() == -1)
-    return -1;
+    RETURN(WHY("Unable to create import directory"));
   if (slot->manifest) {
-    slot->file_len=slot->manifest->fileLength;
-    slot->rowid=
-      rhizome_database_create_blob_for(slot->manifest->fileHexHash,
-				       slot->file_len,
-				       RHIZOME_PRIORITY_DEFAULT);
-    if (slot->rowid<0) {
-      return WHYF_perror("Could not obtain rowid for blob for file '%s'",
-		  alloca_tohex_sid(slot->bid));
-    }
+    if (rhizome_open_write(&slot->write_state, slot->manifest->fileHexHash, slot->manifest->fileLength, RHIZOME_PRIORITY_DEFAULT))
+      RETURN(-1);
   } else {
-    slot->rowid=-1;
+    slot->write_state.blob_rowid=-1;
+    slot->write_state.file_offset=0;
+    slot->write_state.file_length=-1;
   }
 
   slot->request_ofs = 0;
   slot->state = RHIZOME_FETCH_CONNECTING;
-  slot->file_len = -1;
-  slot->file_ofs = 0;
-  slot->blob_buffer_bytes = 0;
-  if (slot->blob_buffer) {
-    free(slot->blob_buffer);
-    slot->blob_buffer=NULL;
-  }
-  slot->blob_buffer_size=0;
 
-  SHA512_Init(&slot->sha512_context);
-    
   if (slot->peer_ipandport.sin_family == AF_INET && slot->peer_ipandport.sin_port) {
     /* Transfer via HTTP over IPv4 */
     if ((sock = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
@@ -569,8 +561,10 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
     if (config.debug.rhizome_rx)
       DEBUGF("RHIZOME HTTP REQUEST family=%u addr=%s sid=%s port=%u %s",
 	     slot->peer_ipandport.sin_family, 
+	     buf,
 	     alloca_tohex_sid(slot->peer_sid),
-	     buf, ntohs(slot->peer_ipandport.sin_port), alloca_str_toprint(slot->request)
+	     ntohs(slot->peer_ipandport.sin_port), 
+	     alloca_str_toprint(slot->request)
 	);
     slot->alarm.poll.fd = sock;
     /* Watch for activity on the socket */
@@ -581,10 +575,10 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
     watch(&slot->alarm);
     /* And schedule a timeout alarm */
     unschedule(&slot->alarm);
-    slot->alarm.alarm = gettime_ms() + RHIZOME_IDLE_TIMEOUT;
-    slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
+    slot->alarm.alarm = gettime_ms() + config.rhizome.idle_timeout;
+    slot->alarm.deadline = slot->alarm.alarm + config.rhizome.idle_timeout;
     schedule(&slot->alarm);
-    return 0;
+    RETURN(0);
   }
 
  bail_http:
@@ -592,7 +586,8 @@ static int schedule_fetch(struct rhizome_fetch_slot *slot)
        the connection/attempt to fetch via HTTP failed. */
   slot->state=RHIZOME_FETCH_RXFILEMDP;
   rhizome_fetch_switch_to_mdp(slot);
-  return 0;
+  RETURN(0);
+  OUT();
 }
 
 /* Start fetching a bundle's payload ready for importing.
@@ -658,12 +653,12 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
 
   if (config.debug.rhizome_rx)
     DEBUGF("Fetching bundle slot=%d bid=%s version=%lld size=%lld peerip=%s",
-	slotno(slot),
-	bid,
-	m->version,
-	m->fileLength,
-	alloca_sockaddr(peerip)
-      );
+	   slotno(slot),
+	   bid,
+	   m->version,
+	   m->fileLength,
+	   alloca_sockaddr(peerip)
+	   );
 
   // If the payload is empty, no need to fetch, so import now.
   if (m->fileLength == 0) {
@@ -734,6 +729,8 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
 
   /* Prepare for fetching via HTTP */
   slot->peer_ipandport = *peerip;
+  slot->alarm.poll.fd=-1;
+  
   strbuf r = strbuf_local(slot->request, sizeof slot->request);
   strbuf_sprintf(r, "GET /rhizome/file/%s HTTP/1.0\r\n\r\n", m->fileHexHash);
   if (strbuf_overrun(r))
@@ -751,12 +748,12 @@ rhizome_fetch(struct rhizome_fetch_slot *slot, rhizome_manifest *m, const struct
   m->dataFileName = NULL;
   m->dataFileUnlinkOnFree = 0;
   slot->manifest = m;
-  if (schedule_fetch(slot) == -1) {
+  if (schedule_fetch(slot) == -1)
     return -1;
-  }
-  if (config.debug.rhizome_rx) 
-    DEBUGF("   started fetch bid %s version 0x%llx into %s, slot=%d filehash=%s", 
-	   alloca_tohex_bid(slot->bid), slot->bidVersion, slot->manifest->dataFileName, slotno(slot), m->fileHexHash);
+  if (config.debug.rhizome_rx)
+    DEBUGF("   started fetch bid %s version 0x%llx into %s, slot=%d filehash=%s",
+	   alloca_tohex_bid(slot->bid), (long long) slot->bidVersion,
+	   alloca_str_toprint(slot->manifest->dataFileName), slotno(slot), m->fileHexHash);
   return STARTED;
 }
 
@@ -793,7 +790,7 @@ rhizome_fetch_request_manifest_by_prefix(const struct sockaddr_in *peerip,
      We do need to cache it in the slot structure, though, and then offer it
      for inserting into the database, but we can avoid the temporary file in
      the process. */
-  slot->rowid=-1;
+  slot->write_state.blob_rowid=-1;
   slot->manifest_bytes=0;
   
   if (schedule_fetch(slot) == -1) {
@@ -809,6 +806,7 @@ rhizome_fetch_request_manifest_by_prefix(const struct sockaddr_in *peerip,
  */
 static void rhizome_start_next_queued_fetch(struct rhizome_fetch_slot *slot)
 {
+  IN();
   struct rhizome_fetch_queue *q;
   for (q = (struct rhizome_fetch_queue *) slot; q >= rhizome_fetch_queues; --q) {
     int i = 0;
@@ -817,11 +815,11 @@ static void rhizome_start_next_queued_fetch(struct rhizome_fetch_slot *slot)
       int result = rhizome_fetch(slot, c->manifest, &c->peer_ipandport,c->peer_sid);
       switch (result) {
       case SLOTBUSY:
-	return;
+	OUT(); return;
       case STARTED:
 	c->manifest = NULL;
 	rhizome_fetch_unqueue(q, i);
-	return;
+	OUT(); return;
       case IMPORTED:
       case SAMEBUNDLE:
       case SAMEPAYLOAD:
@@ -839,6 +837,7 @@ static void rhizome_start_next_queued_fetch(struct rhizome_fetch_slot *slot)
       }
     }
   }
+  OUT();
 }
 
 /* Called soon after any fetch candidate is queued, to start any queued fetches.
@@ -847,9 +846,31 @@ static void rhizome_start_next_queued_fetch(struct rhizome_fetch_slot *slot)
  */
 static void rhizome_start_next_queued_fetches(struct sched_ent *alarm)
 {
+  IN();
   int i;
   for (i = 0; i < NQUEUES; ++i)
     rhizome_start_next_queued_fetch(&rhizome_fetch_queues[i].active);
+  OUT();
+}
+
+/* Search all fetch slots, including active downloads, for a matching manifest */
+rhizome_manifest * rhizome_fetch_search(unsigned char *id, int prefix_length){
+  int i, j;
+  for (i = 0; i < NQUEUES; ++i) {
+    struct rhizome_fetch_queue *q = &rhizome_fetch_queues[i];
+    
+    if (q->active.state != RHIZOME_FETCH_FREE && 
+	memcmp(id, q->active.manifest->cryptoSignPublic, prefix_length) == 0)
+      return q->active.manifest;
+      
+    for (j = 0; j < q->candidate_queue_size; j++) {
+      struct rhizome_fetch_candidate *c = &q->candidate_queue[j];
+      if (c->manifest && memcmp(id, c->manifest->cryptoSignPublic, prefix_length) == 0)
+	return c->manifest;
+    }
+  }
+  
+  return NULL;
 }
 
 /* Queue a fetch for the payload of the given manifest.  If 'peerip' is not NULL, then it is used as
@@ -869,9 +890,16 @@ static void rhizome_start_next_queued_fetches(struct sched_ent *alarm)
  *
  * @author Andrew Bettison <andrew@servalproject.com>
  */
+struct profile_total rsnqf_stats={.name="rhizome_start_next_queued_fetches"};
+struct profile_total rfmsc_stats={.name="rhizome_fetch_mdp_slot_callback"};
+
 int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sockaddr_in *peerip,const unsigned char peersid[SID_SIZE])
 {
   IN();
+  
+  if (!config.rhizome.fetch)
+    RETURN(0);
+  
   const char *bid = alloca_tohex_bid(m->cryptoSignPublic);
   int priority=100; /* normal priority */
 
@@ -895,7 +923,8 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
     if (rhizome_manifest_verify(m) != 0) {
       WHY("Error verifying manifest when considering for import");
       /* Don't waste time looking at this manifest again for a while */
-      rhizome_queue_ignore_manifest(m, peerip, peersid, 60000);
+      rhizome_queue_ignore_manifest(m->cryptoSignPublic,
+				    crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES, 60000);
       rhizome_manifest_free(m);
       RETURN(-1);
     }
@@ -929,7 +958,8 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
 	  if (!m->selfSigned && rhizome_manifest_verify(m)) {
 	    WHY("Error verifying manifest when considering queuing for import");
 	    /* Don't waste time looking at this manifest again for a while */
-	    rhizome_queue_ignore_manifest(m, peerip, peersid, 60000);
+	    rhizome_queue_ignore_manifest(m->cryptoSignPublic,
+					  crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES, 60000);
 	    rhizome_manifest_free(m);
 	    RETURN(-1);
 	  }
@@ -955,7 +985,8 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
   if (!m->selfSigned && rhizome_manifest_verify(m)) {
     WHY("Error verifying manifest when considering queuing for import");
     /* Don't waste time looking at this manifest again for a while */
-    rhizome_queue_ignore_manifest(m, peerip, peersid, 60000);
+    rhizome_queue_ignore_manifest(m->cryptoSignPublic,
+				  crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES, 60000);
     rhizome_manifest_free(m);
     RETURN(-1);
   }
@@ -987,13 +1018,14 @@ int rhizome_suggest_queue_manifest_import(rhizome_manifest *m, const struct sock
 
   if (!is_scheduled(&sched_activate)) {
     sched_activate.function = rhizome_start_next_queued_fetches;
-    sched_activate.stats = NULL;
+    sched_activate.stats = &rsnqf_stats;
     sched_activate.alarm = gettime_ms() + rhizome_fetch_delay_ms();
-    sched_activate.deadline = sched_activate.alarm + 5000;
+    sched_activate.deadline = sched_activate.alarm + config.rhizome.idle_timeout;
     schedule(&sched_activate);
   }
 
   RETURN(0);
+  OUT();
 }
 
 static int rhizome_fetch_close(struct rhizome_fetch_slot *slot)
@@ -1016,9 +1048,8 @@ static int rhizome_fetch_close(struct rhizome_fetch_slot *slot)
     rhizome_manifest_free(slot->manifest);
   slot->manifest = NULL;
 
-  if (slot->blob_buffer) free(slot->blob_buffer);
-  slot->blob_buffer=NULL;
-  slot->blob_buffer_size=0;
+  if (slot->write_state.buffer)
+    rhizome_fail_write(&slot->write_state);
 
   // Release the fetch slot.
   slot->state = RHIZOME_FETCH_FREE;
@@ -1032,28 +1063,51 @@ static int rhizome_fetch_close(struct rhizome_fetch_slot *slot)
 
 static void rhizome_fetch_mdp_slot_callback(struct sched_ent *alarm)
 {
+  IN();
   struct rhizome_fetch_slot *slot=(struct rhizome_fetch_slot*)alarm;
 
   if (slot->state!=5) {
     DEBUGF("Stale alarm triggered on idle/reclaimed slot. Ignoring");
     unschedule(alarm);
+    OUT();
     return;
   }
 
   long long now=gettime_ms();
   if (now-slot->last_write_time>slot->mdpIdleTimeout) {
-    DEBUGF("MDP connection timed out: last RX %lldms ago",
-	   now-slot->last_write_time);
+    DEBUGF("MDP connection timed out: last RX %lldms ago (read %d of %d bytes)",
+	   now-slot->last_write_time,
+	   slot->write_state.file_offset + slot->write_state.data_size,slot->write_state.file_length);
     rhizome_fetch_close(slot);
+    OUT();
     return;
   }
   if (config.debug.rhizome_rx)
-    DEBUGF("Timeout waiting for blocks. Resending request for slot=0x%p",
-	   slot);
+    DEBUGF("Timeout: Resending request for slot=0x%p (%d of %d received)",
+	   slot,slot->write_state.file_offset + slot->write_state.data_size,slot->write_state.file_length);
   if (slot->bidP)
     rhizome_fetch_mdp_requestblocks(slot);
   else
     rhizome_fetch_mdp_requestmanifest(slot);
+  OUT();
+}
+
+static int rhizome_fetch_mdp_touch_timeout(struct rhizome_fetch_slot *slot)
+{
+  // 266ms @ 1mbit (WiFi broadcast speed) = 32x1024 byte packets.
+  // But on a packet radio interface at perhaps 50kbit, this is clearly
+  // a bad policy.  Ideally we should know about the interface speed
+  // and adjust behaviour accordingly. Also the packet size should be smaller
+  // on lossy links.  1K packets seem to get through only very rarely.
+  // For now, we will just make the timeout 1 second from the time of the last
+  // received block.
+  unschedule(&slot->alarm);
+  slot->alarm.stats=&rfmsc_stats;
+  slot->alarm.function = rhizome_fetch_mdp_slot_callback;
+  slot->alarm.alarm=gettime_ms()+1000; 
+  slot->alarm.deadline=slot->alarm.alarm+500;
+  schedule(&slot->alarm);
+  return 0;
 }
 
 static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
@@ -1080,14 +1134,14 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   bcopy(slot->bid,&mdp.out.payload[0],RHIZOME_MANIFEST_ID_BYTES);
 
   write_uint64(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES],slot->bidVersion);
-  write_uint64(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8],slot->file_ofs);
+  write_uint64(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8],slot->write_state.file_offset + slot->write_state.data_size);
   write_uint32(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8],slot->mdpRXBitmap);
   write_uint16(&mdp.out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4],slot->mdpRXBlockLength);  
 
-  if (0)
+  if (config.debug.rhizome_tx)
     DEBUGF("src sid=%s, dst sid=%s, mdpRXWindowStart=0x%x",
 	   alloca_tohex_sid(mdp.out.src.sid),alloca_tohex_sid(mdp.out.dst.sid),
-	   slot->file_ofs);
+	   slot->write_state.file_offset + slot->write_state.data_size);
 
   overlay_mdp_dispatch(&mdp,0 /* system generated */,NULL,0);
   
@@ -1095,14 +1149,10 @@ static int rhizome_fetch_mdp_requestblocks(struct rhizome_fetch_slot *slot)
   // interval based on how fast the packets arrive.
   slot->mdpResponsesOutstanding=32; // TODO: set according to bitmap
 
-  unschedule(&slot->alarm);
-  slot->alarm.function = rhizome_fetch_mdp_slot_callback;
-  // 266ms @ 1mbit (WiFi broadcast speed) = 32x1024 byte packets.
-  slot->alarm.alarm=gettime_ms()+266; 
-  slot->alarm.deadline=slot->alarm.alarm+500;
-  schedule(&slot->alarm);
+  rhizome_fetch_mdp_touch_timeout(slot);
   
   RETURN(0);
+  OUT();
 }
 
 static int rhizome_fetch_mdp_requestmanifest(struct rhizome_fetch_slot *slot)
@@ -1156,13 +1206,15 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
      or with a temporary generated SID, so that we don't end up with two
      instances with the same SID.
   */
+  IN()
   if (!my_subscriber) {
     DEBUGF("I don't have an identity, so we cannot fall back to MDP");
-    return rhizome_fetch_close(slot);
+    RETURN(rhizome_fetch_close(slot));
   }
 
   if (config.debug.rhizome_rx)
-    DEBUGF("Trying to switch to MDP for Rhizome fetch: slot=0x%p",slot);
+    DEBUGF("Trying to switch to MDP for Rhizome fetch: slot=0x%p (%d bytes)",
+	   slot,slot->write_state.file_length);
   
   /* close socket and stop watching it */
   if (slot->alarm.poll.fd>=0) {
@@ -1194,37 +1246,38 @@ static int rhizome_fetch_switch_to_mdp(struct rhizome_fetch_slot *slot)
        down too much.  Much careful thought is required to optimise this
        transport.
     */
-    slot->file_len=slot->manifest->fileLength;
-
-    slot->mdpIdleTimeout=5000; // give up if nothing received for 5 seconds
+    slot->mdpIdleTimeout=config.rhizome.idle_timeout; // give up if nothing received for 5 seconds
     slot->mdpRXBitmap=0x00000000; // no blocks received yet
-    slot->mdpRXBlockLength=1024;
+    slot->mdpRXBlockLength=config.rhizome.rhizome_mdp_block_size; // Rhizome over MDP block size
     rhizome_fetch_mdp_requestblocks(slot);    
   } else {
     /* We are requesting a manifest, which is stateless, except that we eventually
        give up. All we need to do now is send the request, and set our alarm to
        try again in case we haven't heard anything back. */
-    slot->mdpIdleTimeout=2000; // only try for two seconds
+    slot->mdpIdleTimeout=config.rhizome.idle_timeout;
     rhizome_fetch_mdp_requestmanifest(slot);
   }
 
-  return 0;
+  RETURN(0);
+  OUT();
 }
 
 void rhizome_fetch_write(struct rhizome_fetch_slot *slot)
 {
+  IN();
   if (config.debug.rhizome_rx)
     DEBUGF("write_nonblock(%d, %s)", slot->alarm.poll.fd, alloca_toprint(-1, &slot->request[slot->request_ofs], slot->request_len-slot->request_ofs));
   int bytes = write_nonblock(slot->alarm.poll.fd, &slot->request[slot->request_ofs], slot->request_len-slot->request_ofs);
   if (bytes == -1) {
     WHY("Got error while sending HTTP request.");
     rhizome_fetch_switch_to_mdp(slot);
+    OUT();
     return;
   } else {
     // reset timeout
     unschedule(&slot->alarm);
-    slot->alarm.alarm=gettime_ms() + RHIZOME_IDLE_TIMEOUT;
-    slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
+    slot->alarm.alarm=gettime_ms() + config.rhizome.idle_timeout;
+    slot->alarm.deadline = slot->alarm.alarm + config.rhizome.idle_timeout;
     schedule(&slot->alarm);
     slot->request_ofs+=bytes;
     if (slot->request_ofs>=slot->request_len) {
@@ -1237,154 +1290,66 @@ void rhizome_fetch_write(struct rhizome_fetch_slot *slot)
     }else if(slot->state==RHIZOME_FETCH_CONNECTING)
       slot->state = RHIZOME_FETCH_SENDINGHTTPREQUEST;
   }
-}
-
-int rhizome_fetch_flush_blob_buffer(struct rhizome_fetch_slot *slot)
-{
-  sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-  do{
-    sqlite3_blob *blob=NULL;
-    
-    int ret = sqlite3_blob_open(rhizome_db, "main", "FILEBLOBS", "data", slot->rowid, 1 /* read/write */, &blob);
-    if (ret==SQLITE_BUSY || ret==SQLITE_LOCKED)
-      goto again;
-    else if (ret!=SQLITE_OK){
-      WHYF("sqlite3_blob_open() failed, %s", 
-	   sqlite3_errmsg(rhizome_db));
-      goto failed;
-    }
-    
-    ret=sqlite3_blob_write(blob, slot->blob_buffer, slot->blob_buffer_bytes, 
-			   slot->file_ofs-slot->blob_buffer_bytes);
-    
-    if (ret==SQLITE_BUSY || ret==SQLITE_LOCKED)
-      goto again;
-    else if (ret!=SQLITE_OK) {
-      WHYF("sqlite3_blob_write(,,%d,%lld) failed, %s", 
-	   slot->blob_buffer_bytes,slot->file_ofs-slot->blob_buffer_bytes,
-	   sqlite3_errmsg(rhizome_db));
-      goto failed;
-    }
-    
-    ret=sqlite3_blob_close(blob); 
-    blob=NULL;
-    if (ret==SQLITE_BUSY || ret==SQLITE_LOCKED)
-      goto again;
-    else if (ret!=SQLITE_OK) {
-      WHYF("sqlite3_blob_close() failed, %s", 
-	   sqlite3_errmsg(rhizome_db));
-      goto failed;
-    }
-    
-    slot->blob_buffer_bytes=0;
-    return 0;
-    
-  failed:
-    if (blob) sqlite3_blob_close(blob); 
-    rhizome_fetch_close(slot);
-    return -1;
-    
-  again:
-    if (blob)
-      sqlite3_blob_close(blob); 
-    blob=NULL;
-    
-    if (_sqlite_retry(__WHENCE__, &retry, "sqlite3_blob_write")==0)
-      return -1;
-    
-  }while(1);
+  OUT();
+  return;
 }
 
 int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int bytes)
 {
   IN();
+  
+  if (bytes<=0)
+    RETURN(0);
+  
   // Truncate to known length of file (handy for reading from journal bundles that
   // might grow while we are reading from them).
-  if (bytes>(slot->file_len-slot->file_ofs))
-    bytes=slot->file_len-slot->file_ofs;
+  if (bytes>(slot->write_state.file_length-(slot->write_state.file_offset+slot->write_state.data_size))){
+    bytes=slot->write_state.file_length-(slot->write_state.file_offset+slot->write_state.data_size);
+  }
 
-  if (slot->rowid==-1) {
+  if (slot->write_state.blob_rowid==-1) {
     /* We are reading a manifest.  Read it into a buffer. */
     int count=bytes;
     if (count+slot->manifest_bytes>1024) count=1024-slot->manifest_bytes;
     bcopy(buffer,&slot->manifest_buffer[slot->manifest_bytes],count);
     slot->manifest_bytes+=count;
-    slot->file_ofs+=count;
+    slot->write_state.file_offset+=count;
   } else {
-    /* We are reading a file. Stream it into the database. */  
-    if (bytes>0)
-      SHA512_Update(&slot->sha512_context,(unsigned char *)buffer,bytes);
-
-    if (config.debug.rhizome_rx) {
-      DEBUGF("slot->blob_buffer_bytes=%d, slot->file_ofs=%d",
-	     slot->blob_buffer_bytes,slot->file_ofs);
-      dump("buffer",buffer,bytes);
-    }
-
-    if (!slot->blob_buffer_size) {
-      /* Allocate an appropriately sized buffer so that we don't have to pay
-	 the cost of blob_open() and blob_close() too often. */
-      slot->blob_buffer_size=slot->file_len;
-      if (slot->blob_buffer_size>RHIZOME_BLOB_BUFFER_MAXIMUM_SIZE)
-	slot->blob_buffer_size=RHIZOME_BLOB_BUFFER_MAXIMUM_SIZE;
-      slot->blob_buffer=malloc(slot->blob_buffer_size);
-      assert(slot->blob_buffer);
-    }
-
-    assert(slot->blob_buffer_size);
-    int bytesRemaining=bytes;
-    while(bytesRemaining>0) {      
-      int count=slot->blob_buffer_size-slot->blob_buffer_bytes;
-      if (count>bytes) count=bytesRemaining;
-      //      DEBUGF("copying %d bytes to &blob_buffer[0x%x]",
-      //	     count,slot->blob_buffer_bytes);
-      //      dump("buffer",buffer,count);
-      bcopy(buffer,&slot->blob_buffer[slot->blob_buffer_bytes],count);
-      //      dump("first bytes into slot->blob_buffer",slot->blob_buffer,256);
-      slot->blob_buffer_bytes+=count;
-      slot->file_ofs+=count;
-      buffer+=count; bytesRemaining-=count;
-      if (slot->blob_buffer_bytes==slot->blob_buffer_size){
-	if (rhizome_fetch_flush_blob_buffer(slot))
-	  RETURN (-1);
+    
+    /* We are reading a file. Stream it into the database. */
+    int ofs=0;
+    while (ofs<bytes){
+      int block_size = bytes - ofs;
+      if (block_size > slot->write_state.buffer_size - slot->write_state.data_size)
+	block_size = slot->write_state.buffer_size - slot->write_state.data_size;
+      
+      if (block_size>0){
+	bcopy(buffer+ofs, slot->write_state.buffer + slot->write_state.data_size, block_size);
+	slot->write_state.data_size+=block_size;
+	ofs+=block_size;
+      }
+      
+      if (slot->write_state.data_size>=slot->write_state.buffer_size){
+	int ret = rhizome_flush(&slot->write_state);
+	if (ret!=0){
+	  rhizome_fetch_close(slot);
+	  RETURN(-1);
+	}
       }
     }
   }
 
   slot->last_write_time=gettime_ms();
-  if (slot->file_ofs>=slot->file_len) {
+  if (slot->write_state.file_offset + slot->write_state.data_size>=slot->write_state.file_length) {
     /* got all of file */
     if (config.debug.rhizome_rx)
       DEBUGF("Received all of file via rhizome -- now to import it");
     if (slot->manifest) {
+      
       // Were fetching payload, now we have it.
-
-      char hash_out[SHA512_DIGEST_STRING_LENGTH+1];
-      SHA512_End(&slot->sha512_context, (char *)hash_out);      
-      if (slot->blob_buffer_bytes){
-	if (rhizome_fetch_flush_blob_buffer(slot))
-	  RETURN (-1);
-      }
-      sqlite_retry_state retry = SQLITE_RETRY_STATE_DEFAULT;
-      if (strcasecmp(hash_out,slot->manifest->fileHexHash)) {
-	if (config.debug.rhizome_rx)
-	  DEBUGF("Hash mismatch -- dropping row from table.");	
-	WARNF("Expected hash=%s, got %s",
-	       slot->manifest->fileHexHash,hash_out);
-	sqlite_exec_void_retry(&retry,
-			       "DELETE FROM FILEBLOBS WHERE rowid=%lld",slot->rowid);
-	sqlite_exec_void_retry(&retry,
-			       "DELETE FROM FILES WHERE id='%s'",
-			       slot->manifest->fileHexHash);
+      if (rhizome_finish_write(&slot->write_state)){
 	rhizome_fetch_close(slot);
 	RETURN(-1);
-      } else {
-	int ret=sqlite_exec_void_retry(&retry,
-				       "UPDATE FILES SET inserttime=%lld, datavalid=1 WHERE id='%s'",
-				       gettime_ms(), slot->manifest->fileHexHash);
-	if (ret!=SQLITE_OK) 
-	  if (config.debug.rhizome_rx)
-	    DEBUGF("error marking row valid: %s",sqlite3_errmsg(rhizome_db));
       }
 
       if (!rhizome_import_received_bundle(slot->manifest)){
@@ -1427,15 +1392,17 @@ int rhizome_write_content(struct rhizome_fetch_slot *slot, char *buffer, int byt
     }
     if (config.debug.rhizome_rx)
       DEBUGF("Closing rhizome fetch slot = 0x%p.  Received %lld bytes in %lldms (%lldKB/sec).  Buffer size = %d",
-	     slot,(long long)slot->file_ofs,(long long)gettime_ms()-slot->start_time,
-	     (long long)slot->file_ofs/(gettime_ms()-slot->start_time),
-	     slot->blob_buffer_size);
+	     slot,(long long)slot->write_state.file_offset+slot->write_state.data_size,
+	     (long long)gettime_ms()-slot->start_time,
+	     (long long)(slot->write_state.file_offset+slot->write_state.data_size)/(gettime_ms()-slot->start_time),
+	     slot->write_state.buffer_size);
     rhizome_fetch_close(slot);
     RETURN(-1);
   }
 
   // slot is still open
   RETURN(0);
+  OUT();
 }
 
 int rhizome_received_content(unsigned char *bidprefix,
@@ -1449,9 +1416,10 @@ int rhizome_received_content(unsigned char *bidprefix,
     if (slot->state==RHIZOME_FETCH_RXFILEMDP&&slot->bidP) {
       if (!memcmp(slot->bid,bidprefix,16))
 	{
-	  if (slot->file_ofs==offset) {
+	  if (slot->write_state.file_offset + slot->write_state.data_size==offset) {
 	    if (!rhizome_write_content(slot,(char *)bytes,count))
 	      {
+		rhizome_fetch_mdp_touch_timeout(slot);
 		slot->mdpResponsesOutstanding--;
 		if (slot->mdpResponsesOutstanding==0) {
 		  // We have received all responses, so immediately ask for more
@@ -1473,6 +1441,7 @@ int rhizome_received_content(unsigned char *bidprefix,
   }  
 
   RETURN(-1);
+  OUT();
 }
 
 void rhizome_fetch_poll(struct sched_ent *alarm)
@@ -1495,15 +1464,15 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	rhizome_write_content(slot, buffer, bytes);
 	// reset inactivity timeout
 	unschedule(&slot->alarm);
-	slot->alarm.alarm=gettime_ms() + RHIZOME_IDLE_TIMEOUT;
-	slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
+	slot->alarm.alarm=gettime_ms() + config.rhizome.idle_timeout;
+	slot->alarm.deadline = slot->alarm.alarm + config.rhizome.idle_timeout;
 	slot->alarm.function = rhizome_fetch_poll;
 	schedule(&slot->alarm);	
 	return;
       } else {
 	if (config.debug.rhizome_rx)
 	  DEBUGF("Empty read, closing connection: received %lld of %lld bytes",
-		slot->file_ofs,slot->file_len);
+		slot->write_state.file_offset + slot->write_state.data_size,slot->write_state.file_length);
 	rhizome_fetch_switch_to_mdp(slot);
 	return;
       }
@@ -1523,8 +1492,8 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
       if (bytes > 0) {
 	// reset timeout
 	unschedule(&slot->alarm);
-	slot->alarm.alarm = gettime_ms() + RHIZOME_IDLE_TIMEOUT;
-	slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
+	slot->alarm.alarm = gettime_ms() + config.rhizome.idle_timeout;
+	slot->alarm.deadline = slot->alarm.alarm + config.rhizome.idle_timeout;
 	schedule(&slot->alarm);
 	slot->request_len += bytes;
 	if (http_header_complete(slot->request, slot->request_len, bytes)) {
@@ -1551,7 +1520,10 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	    rhizome_fetch_switch_to_mdp(slot);
 	    return;
 	  }
-	  slot->file_len = parts.content_length;
+	  if (slot->write_state.file_length==-1)
+	    slot->write_state.file_length=parts.content_length;
+	  else if (parts.content_length != slot->write_state.file_length)
+	    WARNF("Expected content length %lld, got %lld", slot->write_state.file_length, parts.content_length);
 	  /* We have all we need.  The file is already open, so just write out any initial bytes of
 	     the body we read.
 	  */
@@ -1561,8 +1533,8 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
 	    rhizome_write_content(slot, parts.content_start, content_bytes);
 	    // reset inactivity timeout
 	    unschedule(&slot->alarm);
-	    slot->alarm.alarm=gettime_ms() + RHIZOME_IDLE_TIMEOUT;
-	    slot->alarm.deadline = slot->alarm.alarm + RHIZOME_IDLE_TIMEOUT;
+	    slot->alarm.alarm=gettime_ms() + config.rhizome.idle_timeout;
+	    slot->alarm.deadline = slot->alarm.alarm + config.rhizome.idle_timeout;
 	    slot->alarm.function = rhizome_fetch_poll;
 	    schedule(&slot->alarm);
 
@@ -1602,6 +1574,7 @@ void rhizome_fetch_poll(struct sched_ent *alarm)
  */
 int unpack_http_response(char *response, struct http_response_parts *parts)
 {
+  IN();
   parts->code = -1;
   parts->reason = NULL;
   parts->content_length = -1;
@@ -1610,12 +1583,12 @@ int unpack_http_response(char *response, struct http_response_parts *parts)
   if (!str_startswith(response, "HTTP/1.0 ", (const char **)&p)) {
     if (config.debug.rhizome_rx)
       DEBUGF("Malformed HTTP reply: missing HTTP/1.0 preamble");
-    return -1;
+    RETURN(-1);
   }
   if (!(isdigit(p[0]) && isdigit(p[1]) && isdigit(p[2]) && p[3] == ' ')) {
     if (config.debug.rhizome_rx)
       DEBUGF("Malformed HTTP reply: missing three-digit status code");
-    return -1;
+    RETURN(-1);
   }
   parts->code = (p[0]-'0') * 100 + (p[1]-'0') * 10 + p[2]-'0';
   p += 4;
@@ -1637,7 +1610,7 @@ int unpack_http_response(char *response, struct http_response_parts *parts)
       if (p == nump || (*p != '\r' && *p != '\n')) {
 	if (config.debug.rhizome_rx)
 	  DEBUGF("Invalid HTTP reply: malformed Content-Length header");
-	return -1;
+	RETURN(-1);
       }
     }
     while (*p++ != '\n')
@@ -1647,5 +1620,6 @@ int unpack_http_response(char *response, struct http_response_parts *parts)
     ++p;
   ++p; // skip '\n' at end of blank line
   parts->content_start = p;
-  return 0;
+  RETURN(0);
+  OUT();
 }

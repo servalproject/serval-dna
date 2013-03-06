@@ -6,6 +6,7 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)conf_om.c \
 	$(SERVAL_BASE)conf_parse.c \
 	$(SERVAL_BASE)conf_schema.c \
+	$(SERVAL_BASE)crc32.c \
 	$(SERVAL_BASE)crypto.c \
 	$(SERVAL_BASE)dataformats.c \
 	$(SERVAL_BASE)directory_client.c \
@@ -32,6 +33,7 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)overlay_buffer.c \
 	$(SERVAL_BASE)overlay_interface.c \
 	$(SERVAL_BASE)overlay_link.c \
+	$(SERVAL_BASE)overlay_packetradio.c \
 	$(SERVAL_BASE)overlay_queue.c \
 	$(SERVAL_BASE)overlay_mdp.c \
 	$(SERVAL_BASE)overlay_mdp_services.c \
@@ -56,6 +58,7 @@ SERVAL_SOURCES = $(SERVAL_BASE)audiodevices.c \
 	$(SERVAL_BASE)server.c \
 	$(SERVAL_BASE)sha2.c \
 	$(SERVAL_BASE)sighandlers.c \
+	$(SERVAL_BASE)slip.c \
 	$(SERVAL_BASE)sqlite-amalgamation-3070900/sqlite3.c \
 	$(SERVAL_BASE)srandomdev.c \
 	$(SERVAL_BASE)str.c \

@@ -301,6 +301,7 @@ static int store_jitter_sample(struct jitter_measurements *measurements, int sam
   *delay=sample->delta - measurements->sorted_samples[0]->delta;
 
   RETURN(0);
+  OUT();
 }
 
 static int get_jitter_size(struct jitter_measurements *measurements){
@@ -313,6 +314,7 @@ static int get_jitter_size(struct jitter_measurements *measurements){
   if (jitter < 60)
     jitter=60;
   RETURN(jitter);
+  OUT();
 }
 
 void set_codec_flag(int codec, unsigned char *flags){

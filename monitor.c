@@ -382,23 +382,24 @@ void monitor_get_all_supported_codecs(unsigned char *codecs){
   }
 }
 
-static int monitor_set(int argc, const char *const *argv, const struct command_line_option *o, void *context){
+static int monitor_set(const struct cli_parsed *parsed, void *context)
+{
   struct monitor_context *c=context;
-  if (strcase_startswith((char *)argv[1],"vomp",NULL)){
+  if (strcase_startswith(parsed->args[1],"vomp",NULL)){
     c->flags|=MONITOR_VOMP;
     // store the list of supported codecs against the monitor connection,
     // since we need to forget about them when the client disappears.
     int i;
-    for (i=2;i<argc;i++){
-      int codec = atoi(argv[i]);
+    for (i = 2; i < parsed->argc; ++i) {
+      int codec = atoi(parsed->args[i]);
       if (codec>=0 && codec <=255)
 	set_codec_flag(codec, c->supported_codecs);
     }
-  }else if (strcase_startswith((char *)argv[1],"rhizome", NULL))
+  }else if (strcase_startswith(parsed->args[1],"rhizome", NULL))
     c->flags|=MONITOR_RHIZOME;
-  else if (strcase_startswith((char *)argv[1],"peers", NULL))
+  else if (strcase_startswith(parsed->args[1],"peers", NULL))
     c->flags|=MONITOR_PEERS;
-  else if (strcase_startswith((char *)argv[1],"dnahelper", NULL))
+  else if (strcase_startswith(parsed->args[1],"dnahelper", NULL))
     c->flags|=MONITOR_DNAHELPER;
   else
     return monitor_write_error(c,"Unknown monitor type");
@@ -410,15 +411,16 @@ static int monitor_set(int argc, const char *const *argv, const struct command_l
   return 0;
 }
 
-static int monitor_clear(int argc, const char *const *argv, const struct command_line_option *o, void *context){
+static int monitor_clear(const struct cli_parsed *parsed, void *context)
+{
   struct monitor_context *c=context;
-  if (strcase_startswith((char *)argv[1],"vomp",NULL))
+  if (strcase_startswith(parsed->args[1],"vomp",NULL))
     c->flags&=~MONITOR_VOMP;
-  else if (strcase_startswith((char *)argv[1],"rhizome", NULL))
+  else if (strcase_startswith(parsed->args[1],"rhizome", NULL))
     c->flags&=~MONITOR_RHIZOME;
-  else if (strcase_startswith((char *)argv[1],"peers", NULL))
+  else if (strcase_startswith(parsed->args[1],"peers", NULL))
     c->flags&=~MONITOR_PEERS;
-  else if (strcase_startswith((char *)argv[1],"dnahelper", NULL))
+  else if (strcase_startswith(parsed->args[1],"dnahelper", NULL))
     c->flags&=~MONITOR_DNAHELPER;
   else
     return monitor_write_error(c,"Unknown monitor type");
@@ -430,17 +432,18 @@ static int monitor_clear(int argc, const char *const *argv, const struct command
   return 0;
 }
 
-static int monitor_lookup_match(int argc, const char *const *argv, const struct command_line_option *o, void *context){
-  struct monitor_context *c=context;
-  const char *sid=argv[2];
-  const char *ext=argv[4];
-  const char *name=argc>=4?argv[5]:"";
+static int monitor_lookup_match(const struct cli_parsed *parsed, void *context)
+{
+  struct monitor_context *c = context;
+  const char *sid = parsed->args[2];
+  const char *ext = parsed->args[4];
+  const char *name = parsed->argc >= 4 ? parsed->args[5] : "";
   
   if (!my_subscriber)
     return monitor_write_error(c,"I don't know who I am");
   
   struct sockaddr_mdp addr={
-    .port = atoi(argv[3]),
+    .port = atoi(parsed->args[3]),
   };
   
   if (stowSid((unsigned char *)&addr.sid, 0, sid)==-1)
@@ -453,69 +456,75 @@ static int monitor_lookup_match(int argc, const char *const *argv, const struct 
   return 0;
 }
 
-static int monitor_call(int argc, const char *const *argv, const struct command_line_option *o, void *context){
+static int monitor_call(const struct cli_parsed *parsed, void *context)
+{
   struct monitor_context *c=context;
   unsigned char sid[SID_SIZE];
-  if (stowSid(sid, 0, argv[1]) == -1)
+  if (stowSid(sid, 0, parsed->args[1]) == -1)
     return monitor_write_error(c,"invalid SID, so cannot place call");
   
   if (!my_subscriber)
     return monitor_write_error(c,"I don't know who I am");
   struct subscriber *remote = find_subscriber(sid, SID_SIZE, 1);
-  vomp_dial(my_subscriber, remote, argv[2], argv[3]);
+  vomp_dial(my_subscriber, remote, parsed->args[2], parsed->args[3]);
   return 0;
 }
 
-static int monitor_call_ring(int argc, const char *const *argv, const struct command_line_option *o, void *context){
-  struct vomp_call_state *call=vomp_find_call_by_session(strtol(argv[1],NULL,16));
+static int monitor_call_ring(const struct cli_parsed *parsed, void *context)
+{
+  struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
   if (!call)
-    monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%s\n", argv[1]);
+    monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%s\n", parsed->args[1]);
   else
     vomp_ringing(call);
   return 0;
 }
 
-static int monitor_call_pickup(int argc, const char *const *argv, const struct command_line_option *o, void *context){
-  struct vomp_call_state *call=vomp_find_call_by_session(strtol(argv[1],NULL,16));
+static int monitor_call_pickup(const struct cli_parsed *parsed, void *context)
+{
+  struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
   if (!call)
-    monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%s\n", argv[1]);
+    monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%s\n", parsed->args[1]);
   else
     vomp_pickup(call);
   return 0;
 }
 
-static int monitor_call_audio(int argc, const char *const *argv, const struct command_line_option *o, void *context){
+static int monitor_call_audio(const struct cli_parsed *parsed, void *context)
+{
   struct monitor_context *c=context;
-  struct vomp_call_state *call=vomp_find_call_by_session(strtol(argv[1],NULL,16));
+  struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
   
   if (!call){
-    monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%s\n", argv[1]);
+    monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%s\n", parsed->args[1]);
     return 0;
   }
   
-  int codec_type = atoi(argv[2]);
-  int time = argc>=4?atoi(argv[3]):-1;
-  int sequence = argc>=5?atoi(argv[4]):-1;
+  int codec_type = atoi(parsed->args[2]);
+  int time = parsed->argc >=4 ? atoi(parsed->args[3]) : -1;
+  int sequence = parsed->argc >= 5 ? atoi(parsed->args[4]) : -1;
   
   vomp_received_audio(call, codec_type, time, sequence, c->buffer, c->data_expected);
   return 0;
 }
 
-static int monitor_call_hangup(int argc, const char *const *argv, const struct command_line_option *o, void *context){
-  struct vomp_call_state *call=vomp_find_call_by_session(strtol(argv[1],NULL,16));
+static int monitor_call_hangup(const struct cli_parsed *parsed, void *context)
+{
+  struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
   if (!call)
-    monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%s\n", argv[1]);
+    monitor_tell_formatted(MONITOR_VOMP, "\nHANGUP:%s\n", parsed->args[1]);
   else
     vomp_hangup(call);
   return 0;
 }
 
-static int monitor_call_dtmf(int argc, const char *const *argv, const struct command_line_option *o, void *context){
+static int monitor_call_dtmf(const struct cli_parsed *parsed, void *context)
+{
   struct monitor_context *c=context;
-  struct vomp_call_state *call=vomp_find_call_by_session(strtol(argv[1],NULL,16));
+  struct vomp_call_state *call=vomp_find_call_by_session(strtol(parsed->args[1],NULL,16));
   if (!call)
     return monitor_write_error(c,"Invalid call token");
-  const char *digits = argv[2];
+  const char *digits = parsed->args[2];
   
   int i;
   for(i=0;i<strlen(digits);i++) {
@@ -533,7 +542,7 @@ static int monitor_call_dtmf(int argc, const char *const *argv, const struct com
   return 0;
 }
 
-struct command_line_option monitor_options[]={
+struct cli_schema monitor_options[]={
   {monitor_set,{"monitor","vomp","<codec>","...",NULL},0,""},
   {monitor_set,{"monitor","<type>",NULL},0,""},
   {monitor_clear,{"ignore","<type>",NULL},0,""},
@@ -552,8 +561,9 @@ int monitor_process_command(struct monitor_context *c)
   char *argv[16]={NULL,};
   int argc = parse_argv(c->line, ' ', argv, 16);
   
-  int res = cli_parse(argc, (const char *const*)argv, monitor_options);
-  if (res == -1 || cli_invoke(&monitor_options[res], argc, (const char *const*)argv, c))
+  struct cli_parsed parsed;
+  int res = cli_parse(argc, (const char *const*)argv, monitor_options, &parsed);
+  if (res == -1 || cli_invoke(&parsed, c))
     return monitor_write_error(c, "Invalid command");
   return 0;
 }

@@ -194,6 +194,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "serval.h"
 #include "rhizome.h"
 
+typedef char bool_t;
+
 #define CONFIG_FILE_MAX_SIZE        (32 * 1024)
 #define INTERFACE_NAME_STRLEN       40
 
@@ -238,6 +240,9 @@ int cf_om_get_child(const struct cf_om_node *parent, const char *key, const char
 const char *cf_om_get(const struct cf_om_node *root, const char *fullkey);
 int cf_om_set(struct cf_om_node **nodep, const char *fullkey, const char *text);
 int cf_om_add_child(struct cf_om_node **const parentp, const char *const key);
+int cf_om_remove_null_child(struct cf_om_node **parentp, unsigned n);
+int cf_om_remove_empty_child(struct cf_om_node **parentp, unsigned n);
+void cf_om_remove_child(struct cf_om_node **parent, unsigned n);
 void cf_om_free_node(struct cf_om_node **nodep);
 void cf_om_dump_node(const struct cf_om_node *node, int indent);
 int cf_om_match(const char *pattern, const struct cf_om_node *node);
@@ -303,15 +308,15 @@ struct pattern_list {
 // Generate config struct definitions, struct config_NAME.
 #define STRUCT(__name, __validator...) \
     struct config_##__name {
-#define NODE(__type, __element, __default, __parser, __flags, __comment) \
+#define NODE(__type, __element, __default, __repr, __flags, __comment) \
         __type __element;
-#define ATOM(__type, __element, __default, __parser, __flags, __comment) \
+#define ATOM(__type, __element, __default, __repr, __flags, __comment) \
         __type __element;
-#define STRING(__size, __element, __default, __parser, __flags, __comment) \
+#define STRING(__size, __element, __default, __repr, __flags, __comment) \
         char __element[__size + 1];
 #define SUB_STRUCT(__name, __element, __flags) \
         struct config_##__name __element;
-#define NODE_STRUCT(__name, __element, __parser, __flags) \
+#define NODE_STRUCT(__name, __element, __repr, __flags) \
         struct config_##__name __element;
 #define END_STRUCT \
     };
@@ -319,19 +324,19 @@ struct pattern_list {
     struct config_##__name { \
         unsigned ac; \
         struct config_##__name##__element {
-#define KEY_ATOM(__type, __eltparser, __cmpfunc...) \
-            __type key;
-#define KEY_STRING(__strsize, __eltparser, __cmpfunc...) \
-            char key[(__strsize) + 1];
-#define VALUE_ATOM(__type, __eltparser) \
+#define KEY_ATOM(__type, __keyrepr) \
+            __type key; // key must be first element in struct
+#define KEY_STRING(__strsize, __keyrepr) \
+            char key[(__strsize) + 1]; // key must be first element in struct
+#define VALUE_ATOM(__type, __eltrepr) \
             __type value;
-#define VALUE_STRING(__strsize, __eltparser) \
+#define VALUE_STRING(__strsize, __eltrepr) \
             char value[(__strsize) + 1];
-#define VALUE_NODE(__type, __eltparser) \
+#define VALUE_NODE(__type, __eltrepr) \
             __type value;
 #define VALUE_SUB_STRUCT(__structname) \
             struct config_##__structname value;
-#define VALUE_NODE_STRUCT(__structname, __eltparser) \
+#define VALUE_NODE_STRUCT(__structname, __eltrepr) \
             struct config_##__structname value;
 #define END_ARRAY(__size) \
         } av[(__size)]; \
@@ -358,22 +363,22 @@ struct pattern_list {
 #define STRUCT(__name, __validator...) \
     int cf_dfl_config_##__name(struct config_##__name *s); \
     int cf_sch_config_##__name(struct cf_om_node **parentp);
-#define NODE(__type, __element, __default, __parser, __flags, __comment)
-#define ATOM(__type, __element, __default, __parser, __flags, __comment)
-#define STRING(__size, __element, __default, __parser, __flags, __comment)
+#define NODE(__type, __element, __default, __repr, __flags, __comment)
+#define ATOM(__type, __element, __default, __repr, __flags, __comment)
+#define STRING(__size, __element, __default, __repr, __flags, __comment)
 #define SUB_STRUCT(__name, __element, __flags)
-#define NODE_STRUCT(__name, __element, __parser, __flags)
+#define NODE_STRUCT(__name, __element, __repr, __flags)
 #define END_STRUCT
 #define ARRAY(__name, __flags, __validator...) \
     int cf_dfl_config_##__name(struct config_##__name *a); \
     int cf_sch_config_##__name(struct cf_om_node **parentp);
-#define KEY_ATOM(__type, __eltparser, __cmpfunc...)
-#define KEY_STRING(__strsize, __eltparser, __cmpfunc...)
-#define VALUE_ATOM(__type, __eltparser)
-#define VALUE_STRING(__strsize, __eltparser)
-#define VALUE_NODE(__type, __eltparser)
+#define KEY_ATOM(__type, __keyrepr)
+#define KEY_STRING(__strsize, __keyrepr)
+#define VALUE_ATOM(__type, __eltrepr)
+#define VALUE_STRING(__strsize, __eltrepr)
+#define VALUE_NODE(__type, __eltrepr)
 #define VALUE_SUB_STRUCT(__structname)
-#define VALUE_NODE_STRUCT(__structname, __eltparser)
+#define VALUE_NODE_STRUCT(__structname, __eltrepr)
 #define END_ARRAY(__size)
 #include "conf_schema.h"
 #undef STRUCT
@@ -393,41 +398,71 @@ struct pattern_list {
 #undef VALUE_NODE_STRUCT
 #undef END_ARRAY
 
-// Generate config parser function prototypes.
+// Generate config parser function prototypes: cf_opt_REPR(), cf_fmt_REPR(), cf_cmp_REPR()
 #define __VALIDATOR(__name, __validator...) \
     typedef int __validator_func__config_##__name##__t(const struct cf_om_node *, struct config_##__name *, int); \
     __validator_func__config_##__name##__t __dummy__validator_func__config_##__name, ##__validator;
 #define STRUCT(__name, __validator...) \
     int cf_opt_config_##__name(struct config_##__name *, const struct cf_om_node *); \
+    int cf_fmt_config_##__name(struct cf_om_node **, const struct config_##__name *); \
+    int cf_cmp_config_##__name(const struct config_##__name *, const struct config_##__name *); \
     __VALIDATOR(__name, ##__validator)
-#define NODE(__type, __element, __default, __parser, __flags, __comment) \
-    int __parser(__type *, const struct cf_om_node *);
-#define ATOM(__type, __element, __default, __parser, __flags, __comment) \
-    int __parser(__type *, const char *);
-#define STRING(__size, __element, __default, __parser, __flags, __comment) \
-    int __parser(char *, size_t, const char *);
-#define SUB_STRUCT(__name, __element, __flags) \
-    int cf_opt_config_##__name(struct config_##__name *, const struct cf_om_node *);
-#define NODE_STRUCT(__name, __element, __parser, __flags) \
-    int __parser(struct config_##__name *, const struct cf_om_node *);
+#define NODE(__type, __element, __default, __repr, __flags, __comment) \
+    int cf_opt_##__repr(__type *, const struct cf_om_node *); \
+    int cf_fmt_##__repr(struct cf_om_node **, const __type *); \
+    int cf_cmp_##__repr(const __type *, const __type *);
+#define ATOM(__type, __element, __default, __repr, __flags, __comment) \
+    int cf_opt_##__repr(__type *, const char *); \
+    int cf_fmt_##__repr(const char **, const __type *); \
+    int cf_cmp_##__repr(const __type *, const __type *);
+#define STRING(__size, __element, __default, __repr, __flags, __comment) \
+    int cf_opt_##__repr(char *, size_t, const char *); \
+    int cf_fmt_##__repr(const char **, const char *); \
+    int cf_cmp_##__repr(const char *, const char *);
+#define SUB_STRUCT(__structname, __element, __flags) \
+    int cf_opt_config_##__structname(struct config_##__structname *, const struct cf_om_node *); \
+    int cf_fmt_config_##__structname(struct cf_om_node **, const struct config_##__structname *); \
+    int cf_cmp_config_##__structname(const struct config_##__structname *, const struct config_##__structname *);
+#define NODE_STRUCT(__structname, __element, __repr, __flags) \
+    SUB_STRUCT(__structname, __element, __flags) \
+    int cf_opt_##__repr(struct config_##__structname *, const struct cf_om_node *); \
+    int cf_fmt_##__repr(struct cf_om_node **, const struct config_##__structname *); \
+    int cf_cmp_##__repr(const struct config_##__structname *, const struct config_##__structname *);
 #define END_STRUCT
 #define ARRAY(__name, __flags, __validator...) \
     int cf_opt_config_##__name(struct config_##__name *, const struct cf_om_node *); \
+    int cf_fmt_config_##__name(struct cf_om_node **, const struct config_##__name *); \
+    int cf_cmp_config_##__name(const struct config_##__name *, const struct config_##__name *); \
     __VALIDATOR(__name, ##__validator)
-#define KEY_ATOM(__type, __eltparser, __cmpfunc...) \
-    int __eltparser(__type *, const char *);
-#define KEY_STRING(__strsize, __eltparser, __cmpfunc...) \
-    int __eltparser(char *, size_t, const char *);
-#define VALUE_ATOM(__type, __eltparser) \
-    int __eltparser(__type *, const char *);
-#define VALUE_STRING(__strsize, __eltparser) \
-    int __eltparser(char *, size_t, const char *);
-#define VALUE_NODE(__type, __eltparser) \
-    int __eltparser(__type *, const struct cf_om_node *);
+#define KEY_ATOM(__type, __keyrepr) \
+    int cf_opt_##__keyrepr(__type *, const char *); \
+    int cf_fmt_##__keyrepr(const char **, const __type *); \
+    int cf_cmp_##__keyrepr(const __type *, const __type *);
+#define KEY_STRING(__strsize, __keyrepr) \
+    int cf_opt_##__keyrepr(char *, size_t, const char *); \
+    int cf_fmt_##__keyrepr(const char **, const char *); \
+    int cf_cmp_##__keyrepr(const char *, const char *);
+#define VALUE_ATOM(__type, __eltrepr) \
+    int cf_opt_##__eltrepr(__type *, const char *); \
+    int cf_fmt_##__eltrepr(const char **, const __type *); \
+    int cf_cmp_##__eltrepr(const __type *, const __type *);
+#define VALUE_STRING(__strsize, __eltrepr) \
+    int cf_opt_##__eltrepr(char *, size_t, const char *); \
+    int cf_fmt_##__eltrepr(const char **, const char *); \
+    int cf_cmp_##__eltrepr(const char *, const char *);
+#define VALUE_NODE(__type, __eltrepr) \
+    int cf_opt_##__eltrepr(__type *, const struct cf_om_node *); \
+    int cf_fmt_##__eltrepr(struct cf_om_node **, const __type *); \
+    int cf_cmp_##__eltrepr(const __type *, const __type *);
 #define VALUE_SUB_STRUCT(__structname) \
-    int cf_opt_config_##__structname(struct config_##__structname *, const struct cf_om_node *);
-#define VALUE_NODE_STRUCT(__structname, __eltparser) \
-    int __eltparser(struct config_##__structname *, const struct cf_om_node *);
+    int cf_opt_config_##__structname(struct config_##__structname *, const struct cf_om_node *); \
+    int cf_fmt_config_##__structname(struct cf_om_node **, const struct config_##__structname *); \
+    int cf_cmp_config_##__structname(const struct config_##__structname *, const struct config_##__structname *);
+#define VALUE_NODE_STRUCT(__structname, __repr) \
+    VALUE_SUB_STRUCT(__structname) \
+    int cf_opt_##__repr(struct config_##__structname *, const struct cf_om_node *); \
+    int cf_fmt_##__repr(struct cf_om_node **, const struct config_##__structname *); \
+    int cf_cmp_##__repr(const struct config_##__structname *, const struct config_##__structname *);
 #define END_ARRAY(__size)
 #include "conf_schema.h"
 #undef __VALIDATOR
@@ -448,73 +483,25 @@ struct pattern_list {
 #undef VALUE_NODE_STRUCT
 #undef END_ARRAY
 
-// Generate config array key comparison function prototypes.
-#define STRUCT(__name, __validator...)
-#define NODE(__type, __element, __default, __parser, __flags, __comment)
-#define ATOM(__type, __element, __default, __parser, __flags, __comment)
-#define STRING(__size, __element, __default, __parser, __flags, __comment)
-#define SUB_STRUCT(__name, __element, __flags)
-#define NODE_STRUCT(__name, __element, __parser, __flags)
-#define END_STRUCT
-#define ARRAY(__name, __flags, __validator...) \
-    typedef int __compare_func__config_##__name##__t
-#define KEY_ATOM(__type, __eltparser, __cmpfunc...) \
-        (const __type *, const __type *);
-#define KEY_STRING(__strsize, __eltparser, __cmpfunc...) \
-        (const char *, const char *);
-#define VALUE_ATOM(__type, __eltparser)
-#define VALUE_STRING(__strsize, __eltparser)
-#define VALUE_NODE(__type, __eltparser)
-#define VALUE_SUB_STRUCT(__structname)
-#define VALUE_NODE_STRUCT(__structname, __eltparser)
-#define END_ARRAY(__size)
-#include "conf_schema.h"
-#undef ARRAY
-#undef KEY_ATOM
-#undef KEY_STRING
-#define ARRAY(__name, __flags, __validator...) \
-    __compare_func__config_##__name##__t __dummy__compare_func__config_##__name
-#define KEY_ATOM(__type, __eltparser, __cmpfunc...) \
-        ,##__cmpfunc;
-#define KEY_STRING(__strsize, __eltparser, __cmpfunc...) \
-        ,##__cmpfunc;
-#include "conf_schema.h"
-#undef STRUCT
-#undef NODE
-#undef ATOM
-#undef STRING
-#undef SUB_STRUCT
-#undef NODE_STRUCT
-#undef END_STRUCT
-#undef ARRAY
-#undef KEY_ATOM
-#undef KEY_STRING
-#undef VALUE_ATOM
-#undef VALUE_STRING
-#undef VALUE_NODE
-#undef VALUE_SUB_STRUCT
-#undef VALUE_NODE_STRUCT
-#undef END_ARRAY
-
 // Generate config array search-by-key function prototypes.
 #define STRUCT(__name, __validator...)
-#define NODE(__type, __element, __default, __parser, __flags, __comment)
-#define ATOM(__type, __element, __default, __parser, __flags, __comment)
-#define STRING(__size, __element, __default, __parser, __flags, __comment)
+#define NODE(__type, __element, __default, __repr, __flags, __comment)
+#define ATOM(__type, __element, __default, __repr, __flags, __comment)
+#define STRING(__size, __element, __default, __repr, __flags, __comment)
 #define SUB_STRUCT(__name, __element, __flags)
-#define NODE_STRUCT(__name, __element, __parser, __flags)
+#define NODE_STRUCT(__name, __element, __repr, __flags)
 #define END_STRUCT
 #define ARRAY(__name, __flags, __validator...) \
     int config_##__name##__get(const struct config_##__name *,
-#define KEY_ATOM(__type, __eltparser, __cmpfunc...) \
+#define KEY_ATOM(__type, __keyrepr) \
         const __type *);
-#define KEY_STRING(__strsize, __eltparser, __cmpfunc...) \
+#define KEY_STRING(__strsize, __keyrepr) \
         const char *);
-#define VALUE_ATOM(__type, __eltparser)
-#define VALUE_STRING(__strsize, __eltparser)
-#define VALUE_NODE(__type, __eltparser)
+#define VALUE_ATOM(__type, __eltrepr)
+#define VALUE_STRING(__strsize, __eltrepr)
+#define VALUE_NODE(__type, __eltrepr)
 #define VALUE_SUB_STRUCT(__structname)
-#define VALUE_NODE_STRUCT(__structname, __eltparser)
+#define VALUE_NODE_STRUCT(__structname, __eltrepr)
 #define END_ARRAY(__size)
 #include "conf_schema.h"
 #undef STRUCT
@@ -534,27 +521,70 @@ struct pattern_list {
 #undef VALUE_NODE_STRUCT
 #undef END_ARRAY
 
-int cf_opt_char_boolean(char *booleanp, const char *text);
-int cf_opt_int_boolean(int *booleanp, const char *text);
+int cf_opt_boolean(bool_t *booleanp, const char *text);
+int cf_fmt_boolean(const char **, const bool_t *booleanp);
+
 int cf_opt_absolute_path(char *str, size_t len, const char *text);
+int cf_fmt_absolute_path(const char **, const char *path);
+
 int cf_opt_rhizome_peer(struct config_rhizome_peer *, const struct cf_om_node *node);
+int cf_fmt_rhizome_peer(struct cf_om_node **, const struct config_rhizome_peer *);
+
 int cf_opt_rhizome_peer_from_uri(struct config_rhizome_peer *, const char *uri);
+
 int cf_opt_str(char *str, size_t len, const char *text);
+int cf_fmt_str(const char **, const char *str);
+
 int cf_opt_str_nonempty(char *str, size_t len, const char *text);
+int cf_fmt_str_nonempty(const char **, const char *str);
+
 int cf_opt_int(int *intp, const char *text);
+int cf_fmt_int(const char **, const int *intp);
+
 int cf_opt_uint16(uint16_t *intp, const char *text);
+int cf_fmt_int16(const char **, const int16_t *intp);
+
 int cf_opt_uint16_nonzero(uint16_t *intp, const char *text);
+int cf_fmt_int16_nonzero(const char **, const uint16_t *intp);
+
 int cf_opt_int32_nonneg(int32_t *intp, const char *text);
+int cf_fmt_int32_nonneg(const char **, const int32_t *intp);
+
 int cf_opt_uint32_nonzero(uint32_t *intp, const char *text);
+int cf_fmt_uint32_nonzero(const char **, const uint32_t *intp);
+
 int cf_opt_uint64_scaled(uint64_t *intp, const char *text);
+int cf_fmt_uint64_scaled(const char **, const uint64_t *intp);
+
 int cf_opt_protocol(char *str, size_t len, const char *text);
+int cf_fmt_protocol(const char **, const char *str);
+
 int cf_opt_in_addr(struct in_addr *addrp, const char *text);
+int cf_fmt_in_addr(const char **, const struct in_addr *addrp);
+
 int cf_opt_sid(sid_t *sidp, const char *text);
+int cf_fmt_sid(const char **, const sid_t *sidp);
+
 int cf_opt_rhizome_bk(rhizome_bk_t *bkp, const char *text);
+int cf_fmt_rhizome_bk(const char **, const rhizome_bk_t *bkp);
+
 int cf_opt_interface_type(short *typep, const char *text);
+int cf_fmt_interface_type(const char **, const short *typep);
+
 int cf_opt_pattern_list(struct pattern_list *listp, const char *text);
+int cf_fmt_pattern_list(const char **, const struct pattern_list *listp);
+
 int cf_opt_network_interface(struct config_network_interface *nifp, const struct cf_om_node *node);
+int cf_fmt_network_interface(struct cf_om_node **, const struct config_network_interface *nifp);
+
 int cf_opt_interface_list(struct config_interface_list *listp, const struct cf_om_node *node);
+int cf_fmt_interface_list(struct cf_om_node **, const struct config_interface_list *listp);
+
+int cf_opt_socket_type(short *typep, const char *text);
+int cf_fmt_socket_type(const char **, const short *typep);
+
+int cf_opt_encapsulation(short *encapp, const char *text);
+int cf_fmt_encapsulation(const char **, const short *encapp);
 
 extern int cf_limbo;
 extern struct config_main config;

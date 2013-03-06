@@ -109,6 +109,7 @@ struct in_addr {
 #include <ctype.h>
 #include <sys/stat.h>
 
+#include "cli.h"
 #include "constants.h"
 #include "mem.h"
 #include "xprintf.h"
@@ -194,9 +195,9 @@ struct decode_context;
 typedef struct keypair {
   int type;
   unsigned char *private_key;
-  int private_key_len;
+  unsigned private_key_len;
   unsigned char *public_key;
-  int public_key_len;
+  unsigned public_key_len;
 } keypair;
 
 /* Contains just the list of private:public key pairs and types,
@@ -264,10 +265,10 @@ extern keyring_file *keyring;
 
 /* Public calls to keyring management */
 keyring_file *keyring_open(char *file);
-keyring_file *keyring_open_with_pins(const char *pinlist);
+keyring_file *keyring_open_instance();
+keyring_file *keyring_open_instance_cli(const struct cli_parsed *parsed);
 int keyring_enter_pin(keyring_file *k, const char *pin);
-int keyring_enter_pins(keyring_file *k, const char *pinlist);
-int keyring_set_did(keyring_identity *id,char *did,char *name);
+int keyring_set_did(keyring_identity *id, const char *did, const char *name);
 int keyring_sanitise_position(const keyring_file *k,int *cn,int *in,int *kp);
 int keyring_next_keytype(const keyring_file *k, int *cn, int *in, int *kp, int keytype);
 int keyring_next_identity(const keyring_file *k,int *cn,int *in,int *kp);
@@ -349,15 +350,58 @@ extern int overlayMode;
 #define INTERFACE_STATE_DOWN 2
 #define INTERFACE_STATE_DETECTING 3
 
+// Specify the size of the receive buffer.
+// This effectively sets the MRU for packet radio interfaces
+// where we have to buffer packets on the receive side
+#define OVERLAY_INTERFACE_RX_BUFFER_SIZE 2048
+// TX buffer must handle FEC encoded and encapsulated data, so needs to be
+// larger.
+#define OVERLAY_INTERFACE_TX_BUFFER_SIZE (2+2048*2)
+// buffer size for reading RFD900 RSSI reports
+// (minimum length is ~87 bytes, and includes 13 numeric fields
+// each of which may presumably end up being ~10 bytes, so 256 bytes
+// should be a safe size).
+#define RSSI_TEXT_SIZE 256
+
+struct slip_decode_state{
+#define SLIP_FORMAT_SLIP 0
+#define SLIP_FORMAT_UPPER7 1
+  int encapsulator;
+  int state;
+  unsigned char *src;
+  int src_size;
+  char rssi_text[RSSI_TEXT_SIZE];
+  int rssi_len;
+  int packet_length;
+  unsigned char dst[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
+  uint32_t crc;
+  int src_offset;
+  int dst_offset;
+};
+
 typedef struct overlay_interface {
   struct sched_ent alarm;
+  
   char name[256];
-  int recv_offset;
-  int fileP; // dummyP
+  
+  int recv_offset; /* file offset */
+  unsigned char txbuffer[OVERLAY_INTERFACE_RX_BUFFER_SIZE];
+  int tx_bytes_pending;
+  
+  struct slip_decode_state slip_decode_state;
+
+  // copy of ifconfig flags
   char drop_broadcasts;
   char drop_unicasts;
   int port;
   int type;
+  int socket_type;
+  int encapsulation;
+  char send_broadcasts;
+  char prefer_unicast;
+  // can we use this interface for routes to addresses in other subnets?
+  int default_route;
+  
   /* Number of milli-seconds per tick for this interface, which is basically related to the     
    the typical TX range divided by the maximum expected speed of nodes in the network.
    This means that short-range communications has a higher bandwidth requirement than
@@ -370,10 +414,8 @@ typedef struct overlay_interface {
    These figures will be refined over time, and we will allow people to set them per-interface.
    */
   unsigned tick_ms; /* milliseconds per tick */
-  struct subscriber *next_advert;
   
-  char send_broadcasts;
-  char prefer_unicast;
+  struct subscriber *next_advert;
   
   /* The time of the last tick on this interface in milli seconds */
   time_ms_t last_tick_ms;
@@ -393,8 +435,6 @@ typedef struct overlay_interface {
   struct sockaddr_in address;
   struct sockaddr_in broadcast_address;
   struct in_addr netmask;
-  // can we use this interface for routes to addresses in other subnets?
-  int default_route;
   
   /* Not necessarily the real MTU, but the largest frame size we are willing to TX on this interface.
    For radio links the actual maximum and the maximum that is likely to be delivered reliably are
@@ -428,6 +468,11 @@ typedef struct sid_binary {
 // is the SID entirely 0x00?
 #define is_sid_any(SID) is_all_matching(SID, SID_SIZE, 0)
 
+#define alloca_tohex_sid_t(sid)         alloca_tohex((sid).binary, sizeof (*(sid_t*)0).binary)
+
+int str_to_sid_t(sid_t *sid, const char *hex);
+int strn_to_sid_t(sid_t *sid, const char *hex, const char **endp);
+
 int str_is_subscriber_id(const char *sid);
 int strn_is_subscriber_id(const char *sid, size_t *lenp);
 int str_is_did(const char *did);
@@ -447,6 +492,12 @@ void insertTransactionInCache(unsigned char *transaction_id);
 int overlay_forward_payload(struct overlay_frame *f);
 int packetOkOverlay(struct overlay_interface *interface,unsigned char *packet, size_t len,
 		    int recvttl, struct sockaddr *recvaddr, size_t recvaddrlen);
+int parseMdpPacketHeader(struct decode_context *context, struct overlay_frame *frame, 
+			 struct overlay_buffer *buffer, struct subscriber **nexthop);
+int parseEnvelopeHeader(struct decode_context *context, struct overlay_interface *interface, 
+			struct sockaddr_in *addr, struct overlay_buffer *buffer);
+int process_incoming_frame(time_ms_t now, struct overlay_interface *interface, 
+			   struct overlay_frame *f, struct decode_context *context);
 
 int overlay_frame_process(struct overlay_interface *interface, struct overlay_frame *f);
 int overlay_frame_resolve_addresses(struct overlay_frame *f);
@@ -458,7 +509,9 @@ time_ms_t overlay_time_until_next_tick();
 
 int overlay_frame_append_payload(struct decode_context *context, overlay_interface *interface, 
 				 struct overlay_frame *p, struct overlay_buffer *b);
-int overlay_packet_init_header(struct decode_context *context, struct overlay_buffer *buff, 
+int single_packet_encapsulation(struct overlay_buffer *b, struct overlay_frame *frame);
+int overlay_packet_init_header(int encapsulation, 
+			       struct decode_context *context, struct overlay_buffer *buff, 
 			       struct subscriber *destination, 
 			       char unicast, char interface, char seq);
 int overlay_frame_build_header(struct decode_context *context, struct overlay_buffer *buff, 
@@ -466,7 +519,7 @@ int overlay_frame_build_header(struct decode_context *context, struct overlay_bu
 			       struct broadcast *broadcast, struct subscriber *next_hop,
 			       struct subscriber *destination, struct subscriber *source);
 int overlay_interface_args(const char *arg);
-int overlay_rhizome_add_advertisements(struct decode_context *context, int interface_number, struct overlay_buffer *e);
+void overlay_rhizome_advertise(struct sched_ent *alarm);
 int overlay_add_local_identity(unsigned char *s);
 
 extern int overlay_interface_count;
@@ -514,6 +567,7 @@ overlay_node *overlay_route_find_node(const unsigned char *sid,int prefixLen,int
 int overlayServerMode();
 int overlay_payload_enqueue(struct overlay_frame *p);
 int overlay_queue_remaining(int queue);
+int overlay_queue_schedule_next(time_ms_t next_allowed_packet);
 int overlay_route_record_link( time_ms_t now, struct subscriber *to,
 			      struct subscriber *via,int sender_interface,
 			      unsigned int s1,unsigned int s2,int score,int gateways_en_route);
@@ -532,7 +586,6 @@ int serval_packetvisualise(XPRINTF xpf, const char *message, const unsigned char
 
 int rhizome_fetching_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 int rhizome_opendb();
-void rhizome_cleanup();
 
 int parseCommandLine(const char *argv0, int argc, const char *const *argv);
 
@@ -639,10 +692,8 @@ void cli_put_long(int64_t value, const char *delim);
 void cli_put_string(const char *value, const char *delim);
 void cli_put_hexvalue(const unsigned char *value, int length, const char *delim);
 
-int is_configvarname(const char *arg);
-
-int overlay_mdp_getmyaddr(int mpd_sockfd, int index, unsigned char *sid);
-int overlay_mdp_bind(int mdp_sockfd, unsigned char *localaddr, int port);
+int overlay_mdp_getmyaddr(int mpd_sockfd, int index, sid_t *sid);
+int overlay_mdp_bind(int mdp_sockfd, const sid_t *localaddr, int port);
 int overlay_route_node_info(overlay_mdp_nodeinfo *node_info);
 int overlay_interface_register(char *name,
 			       struct in_addr addr,
@@ -650,20 +701,21 @@ int overlay_interface_register(char *name,
 overlay_interface * overlay_interface_get_default();
 overlay_interface * overlay_interface_find(struct in_addr addr, int return_default);
 overlay_interface * overlay_interface_find_name(const char *name);
-int overlay_broadcast_ensemble(int interface_number,
+int
+overlay_broadcast_ensemble(overlay_interface *interface,
 			   struct sockaddr_in *recipientaddr,
-			       unsigned char *bytes,int len);
+			   unsigned char *bytes,int len);
 
 int directory_registration();
 int directory_service_init();
 
-struct command_line_option;
-int app_rhizome_direct_sync(int argc, const char *const *argv, const struct command_line_option *o, void *context);
+struct cli_parsed;
+int app_rhizome_direct_sync(const struct cli_parsed *parsed, void *context);
 #ifdef HAVE_VOIPTEST
-int app_pa_phone(int argc, const char *const *argv, const struct command_line_option *o, void *context);
+int app_pa_phone(const struct cli_parsed *parsed, void *context);
 #endif
-int app_monitor_cli(int argc, const char *const *argv, const struct command_line_option *o, void *context);
-int app_vomp_console(int argc, const char *const *argv, const struct command_line_option *o, void *context);
+int app_monitor_cli(const struct cli_parsed *parsed, void *context);
+int app_vomp_console(const struct cli_parsed *parsed, void *context);
 
 int monitor_get_fds(struct pollfd *fds,int *fdcount,int fdmax);
 
@@ -739,6 +791,9 @@ int _unwatch(struct __sourceloc whence, struct sched_ent *alarm);
 int fd_poll();
 
 void overlay_interface_discover(struct sched_ent *alarm);
+void overlay_packetradio_poll(struct sched_ent *alarm);
+int overlay_packetradio_setup_port(overlay_interface *interface);
+int overlay_packetradio_tx_packet(struct overlay_frame *frame);
 void overlay_dummy_poll(struct sched_ent *alarm);
 void overlay_route_tick(struct sched_ent *alarm);
 void server_config_reload(struct sched_ent *alarm);
@@ -793,5 +848,18 @@ void write_uint32(unsigned char *o,uint32_t v);
 uint64_t read_uint64(unsigned char *o);
 uint32_t read_uint32(unsigned char *o);
 uint16_t read_uint16(unsigned char *o);
+
+int slip_encode(int format,
+		unsigned char *src, int src_bytes, unsigned char *dst, int dst_len);
+int slip_decode(struct slip_decode_state *state);
+int upper7_decode(struct slip_decode_state *state,unsigned char byte);
+uint32_t Crc32_ComputeBuf( uint32_t inCrc32, const void *buf,
+			  size_t bufLen );
+extern int last_radio_rssi;
+extern int last_radio_temperature;
+int rhizome_active_fetch_count();
+int rhizome_active_fetch_bytes_received(int q);
+extern long long bundles_available;
+extern char crash_handler_clue[1024];
 
 #endif // __SERVALD_SERVALD_H

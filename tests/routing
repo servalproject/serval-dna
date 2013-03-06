@@ -24,19 +24,19 @@ source "${0%/*}/../testdefs.sh"
 add_interface() {
    >$SERVALD_VAR/dummy$1
    executeOk_servald config \
-      set interfaces.$1.dummy dummy$1 \
+      set interfaces.$1.file dummy$1 \
       set interfaces.$1.dummy_address 127.0.$1.$instance_number \
       set interfaces.$1.dummy_netmask 255.255.255.224 
 }
 
 interface_up() {
-  grep "Dummy interface .* is up" $instance_servald_log || return 1
+  grep "Interface .* is up" $instance_servald_log || return 1
   return 0
 }
 
 start_routing_instance() {
    executeOk_servald config \
-      set server.dummy_interface_dir "$SERVALD_VAR" \
+      set server.interface_path "$SERVALD_VAR" \
       set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name" \
       set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name" \
       set log.show_pid on \
@@ -60,6 +60,7 @@ teardown() {
    report_all_servald_servers
 }
 
+doc_single_link="Start 2 instances on one link"
 setup_single_link() {
    setup_servald
    assert_no_servald_processes
@@ -67,8 +68,6 @@ setup_single_link() {
    foreach_instance +A +B add_interface 1
    foreach_instance +A +B start_routing_instance
 }
-
-doc_single_link="Start 2 instances on one link"
 test_single_link() {
    foreach_instance +A +B \
       wait_until has_seen_instances +A +B
@@ -79,6 +78,54 @@ test_single_link() {
    assertStdoutGrep --matches=1 "^$SIDB:BROADCAST UNICAST :"
 }
 
+doc_single_mdp="Use single MDP per packet encapsulation"
+setup_single_mdp() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B create_single_identity
+   foreach_instance +A +B add_interface 1
+   foreach_instance +A +B executeOk_servald config set interfaces.1.encapsulation single
+   foreach_instance +A +B start_routing_instance
+}
+test_single_mdp() {
+   foreach_instance +A +B \
+      wait_until has_seen_instances +A +B
+   set_instance +A
+   executeOk_servald mdp ping $SIDB 1
+   tfw_cat --stdout --stderr
+   executeOk_servald route print
+   assertStdoutGrep --matches=1 "^$SIDB:BROADCAST UNICAST :"
+}
+
+doc_mismatched_encap="Mismatched MDP packet encapsulation"
+setup_mismatched_encap() {
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B create_single_identity
+   foreach_instance +A +B add_interface 1
+   foreach_instance +A executeOk_servald config set interfaces.1.encapsulation single
+   foreach_instance +A +B start_routing_instance
+}
+test_mismatched_encap() {
+   foreach_instance +A +B \
+      wait_until has_seen_instances +A +B
+   set_instance +A
+   executeOk_servald mdp ping $SIDB 1
+   tfw_cat --stdout --stderr
+   executeOk_servald route print
+   assertStdoutGrep --matches=1 "^$SIDB:BROADCAST UNICAST :"
+}
+
+doc_slip_encoding="Test slip encoding and decoding"
+setup_slip_encoding() {
+   setup_servald
+   assert_no_servald_processes
+}
+test_slip_encoding() {
+   executeOk_servald test slip
+}
+
+doc_multiple_nodes="Multiple nodes on one link"
 setup_multiple_nodes() {
    setup_servald
    assert_no_servald_processes
@@ -86,8 +133,6 @@ setup_multiple_nodes() {
    foreach_instance +A +B +C +D add_interface 1
    foreach_instance +A +B +C +D start_routing_instance
 }
-
-doc_multiple_nodes="Multiple nodes on one link"
 test_multiple_nodes() {
    foreach +A +B +C +D \
       wait_until has_seen_instances +A +B +C +D
@@ -104,6 +149,7 @@ test_multiple_nodes() {
    assertStdoutGrep --matches=1 "^$SIDD:BROADCAST "
 }
 
+doc_scan="Simulate isolated clients"
 setup_scan() {
   setup_servald
   assert_no_servald_processes
@@ -114,16 +160,9 @@ setup_scan() {
       set interfaces.1.dummy_address 127.0.1.11
   foreach_instance +A +B \
     executeOk_servald config \
-      set interfaces.1.dummy_filter_broadcasts 1
+      set interfaces.1.drop_broadcasts 1
   foreach_instance +A +B start_routing_instance
 }
-
-scan_completed() {
-  grep "Scan completed" $LOG||return1
-  return 0
-}
-
-doc_scan="Simulate isolated clients"
 test_scan() {
    set_instance +A
    executeOk_servald scan
@@ -135,18 +174,21 @@ test_scan() {
    assertStdoutGrep --matches=1 "^$SIDB:UNICAST :"
 }
 
+scan_completed() {
+  grep "Scan completed" $LOG||return1
+  return 0
+}
+
+doc_broadcast_only="Broadcast packets only"
 setup_broadcast_only() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B create_single_identity
    foreach_instance +A +B add_interface 1
   foreach_instance +A +B \
-    executeOk_servald config \
-      set interfaces.1.dummy_filter_unicasts 1
+    executeOk_servald config set interfaces.1.drop_unicasts 1
    foreach_instance +A +B start_routing_instance
 }
-
-doc_broadcast_only="Broadcast packets only"
 test_broadcast_only() {
    foreach_instance +A +B \
       wait_until has_seen_instances +A +B
@@ -157,6 +199,7 @@ test_broadcast_only() {
    assertStdoutGrep --matches=1 "^$SIDB:BROADCAST :"
 }
 
+doc_prefer_unicast="Prefer unicast packets"
 setup_prefer_unicast() {
    setup_servald
    assert_no_servald_processes
@@ -168,8 +211,6 @@ setup_prefer_unicast() {
          set debug.overlayframes 1
    foreach_instance +A +B start_routing_instance
 }
-
-doc_prefer_unicast="Prefer unicast packets"
 test_prefer_unicast() {
    foreach_instance +A +B \
       wait_until has_seen_instances +A +B
@@ -181,6 +222,7 @@ test_prefer_unicast() {
    assertGrep "$instance_servald_log" 'Choosing to send via unicast'
 }
 
+doc_multihop_linear="Start 4 instances in a linear arrangement"
 setup_multihop_linear() {
    setup_servald
    assert_no_servald_processes
@@ -190,13 +232,13 @@ setup_multihop_linear() {
    foreach_instance +C +D add_interface 3
    foreach_instance +A +B +C +D start_routing_instance
 }
-
-doc_multihop_linear="Start 4 instances in a linear arrangement"
 test_multihop_linear() {
    foreach_instance +A +B +C +D \
       wait_until has_seen_instances +A +B +C +D
    set_instance +A
    executeOk_servald mdp ping $SIDD 1
+   tfw_cat --stdout --stderr
+   executeOk_servald mdp trace $SIDD
    tfw_cat --stdout --stderr
    executeOk_servald route print
    assertStdoutGrep --matches=1 "^$SIDB:BROADCAST UNICAST :"

@@ -10,6 +10,13 @@ Run the following commands:
     ./configure
     make
 
+On Solaris, the system `make` command may not be GNU Make, and the system
+`cc` command may not be GNU Gcc.  The following may work:
+
+    autoreconf -f -i
+    CC=gcc ./configure
+    CC=gcc gmake
+
 Supported Targets
 -----------------
 
@@ -71,7 +78,7 @@ for performing voice call testing:
 
  * [Port audio](http://www.portaudio.com)
  * [Secret Rabbit Code](http://www.mega-nerd.com/SRC/) (a.k.a. Sample Rate
-   Convert) by Erik de Castor Lopo
+   Convert) by Erik de Castro Lopo
  * [SpanDSP](http://www.soft-switch.org/) by Steve Underwood
  * [Codec2](http://www.rowetel.com/blog/?page_id=452) by Dave Rowe of Rowetel
 
@@ -91,27 +98,18 @@ Test scripts
 ------------
 
 The scripts in the [tests](./tests/) directory require [Bash][] version 3.2.48
-or later.  To run the tests, build the `servald` executable natively using [GNU
-make][], then invoke them manually:
+or later.  To run all the tests (except long-running, resource-hungry stress
+tests), build the `servald` executable natively using [GNU make][], then invoke
+them manually:
 
-    ./tests/config
-    ./tests/directory_service
-    ./tests/dnahelper
-    ./tests/dnaprotocol
-    ./tests/jni
-    ./tests/rhizomeops
-    ./tests/rhizomeprotocol
-    ./tests/rhizomestress
-    ./tests/routing
-    ./tests/server
+    ./tests/all
 
 There are options to run tests concurrently for faster results, and to select
-subsets of test cases within each script.  To see the options, give the
-`--help` option to any script:
+subsets of test cases.  To see the options, give the `--help` option:
 
-    ./tests/server --help
+    ./tests/all --help
 
-The logs of the most recent test runs are under the [testlog](./testlog/)
+The logs of the most recent test run are in the [testlog/all](./testlog/all/)
 directory.
 
 

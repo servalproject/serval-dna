@@ -244,20 +244,20 @@ test_InterfacesModernMatch() {
    executeOk_servald config set interfaces.0.match 'eth*, wifi*'
 }
 
-doc_InterfacesModernDummy="Modern 'interfaces.N.dummy' config option"
+doc_InterfacesModernDummy="Modern 'interfaces.N.file' config option"
 test_InterfacesModernDummy() {
-   executeOk_servald config set interfaces.0.dummy dummyname
+   executeOk_servald config set interfaces.0.file dummyname
 }
 teardown_InterfacesModernDummy() {
    tfw_cat $SERVALINSTANCE_PATH/serval.conf
    teardown
 }
 
-doc_InterfacesModernIncompatible="Config options 'interfaces.match' and 'interfaces.dummy' are incompatible"
+doc_InterfacesModernIncompatible="Config options 'interfaces.match' and 'interfaces.file' are incompatible"
 test_InterfacesModernIncompatible() {
    executeOk_servald config set interfaces.0.match eth
    execute --stderr --core-backtrace --executable=$servald \
-      config set interfaces.0.dummy dummy
+      config set interfaces.0.file dummy
    assertExitStatus '==' 2
    assert_stderr_log \
       --warn-pattern='"interfaces\.0\..*incompatible' \

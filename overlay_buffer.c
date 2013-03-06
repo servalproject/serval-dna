@@ -147,7 +147,7 @@ int ob_makespace(struct overlay_buffer *b,int bytes)
   }
   
   // already enough space?
-  if (b->position + bytes < b->allocSize)
+  if (b->position + bytes <= b->allocSize)
     return 0;
   
   if (b->bytes && !b->allocated)
@@ -235,6 +235,10 @@ int ob_append_bytes(struct overlay_buffer *b,unsigned char *bytes,int count)
   bcopy(bytes,&b->bytes[b->position],count);
   b->position+=count;
   return 0;
+}
+
+int ob_append_buffer(struct overlay_buffer *b,struct overlay_buffer *s){
+  return ob_append_bytes(b, s->bytes, s->position);
 }
 
 int ob_append_ui16(struct overlay_buffer *b, uint16_t v)

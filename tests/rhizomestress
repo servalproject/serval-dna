@@ -46,8 +46,8 @@ configure_servald_server() {
       set mdp.iftype.wifi.tick_ms 500
 }
 
-doc_FileTransferStress="Stress - five nodes each sharing 16 bundles"
-setup_FileTransferStress() {
+doc_StressRhizomeTransfer="Five nodes each sharing 16 bundles from 1KiB to 32MiB"
+setup_StressRhizomeTransfer() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B +C +D +E create_single_identity
@@ -58,13 +58,17 @@ setup_FileTransferStress() {
       let j=0
       for n in 1 2 3 4 5 6 7 8 9 a b c d e f g
       do
-         rhizome_add_file file-$i-$n $((2 ** (j + 10)))
+         local sidvar="SID$instance_name"
+         create_file file-$i-$n $((2 ** (j + 10)))
+         executeOk_servald rhizome add file "${!sidvar}" '' file-$i-$n file-$i-$n.manifest
+         extract_stdout_manifestid BID
+         extract_stdout_version VERSION
          eval "bundles$i+=(\$BID:\$VERSION)"
          let j=j+1
       done
    done
 }
-test_FileTransferStress() {
+test_StressRhizomeTransfer() {
    start_servald_instances +A +B +C +D +E
    wait_until --timeout=600 bundle_received_by \
       ${bundlesA[*]} +B +C +D +E \
@@ -82,40 +86,109 @@ test_FileTransferStress() {
    done
 }
 
-setup_AddStressTest() {
+amend_file() {
+   create_file --append file$instance_name 100
+   rm -f file$instance_name.manifest # ensure 'rhizome add file' generates a new Bundle ID
+   rhizome_add_file file$instance_name
+}
+
+rhizome_list_bundle_count() {
+   executeOk_servald rhizome list ''
+   local lineCount=$(( $(replayStdout | wc -l) + 0 ))
+   tfw_log "lineCount=$lineCount"
+   echo $(($lineCount - 2))
+}
+
+rhizome_bundle_count_equals() {
+   [ $(rhizome_list_bundle_count) -eq $1 ]
+}
+
+doc_StressRhizomeAdd="Add new bundles while transferring"
+setup_StressRhizomeAdd() {
    setup_servald
    assert_no_servald_processes
    foreach_instance +A +B +C +D +E +F +G +H create_single_identity
    start_servald_instances +A +B +C +D +E +F +G +H
 }
-
-ammendfile() {
-   echo "XXX  ${instance_name}  XXX" >> $instance_dir/file
-   executeOk_servald rhizome add file "" "" "$instance_dir/file" "$instance_dir/file.manifest" 
-   tfw_cat --stdout --stderr
-   extract_manifest_id id "$instance_dir/file.manifest"
-   # read file contents to verify successful add
-   executeOk_servald rhizome extract file $id
-   rm "$instance_dir/file.manifest"
-}
-
-alldone() {
-   executeOk_servald rhizome list ''
-   local lineCount=$(( $(cat $_tfw_tmp/stdout | wc -l) + 0 ))
-   tfw_log "lines $lineCount"
-# total files = 26 * 8 + 2
-   if [ "$lineCount" -eq "210" ]; then return 0; fi
-   return 1
-}
-
-doc_AddStressTest="Add files while transferring"
-test_AddStressTest() {
+test_StressRhizomeAdd() {
+   local total_files=0
    for i in A B C D E F G H I J K L M N O P Q R S T U V W X Y Z
    do
-      foreach_instance +A +B +C +D +E +F +G +H ammendfile
+      foreach_instance +A +B +C +D +E +F +G +H amend_file
+      let total_files+=8
    done
-   foreach_instance +A +B +C +D +E +F +G +H wait_until --timeout=120 alldone 
-   sleep 10
+   foreach_instance +A +B +C +D +E +F +G +H wait_until --timeout=120 rhizome_bundle_count_equals $total_files
+}
+
+doc_StressRhizomeDirect="Direct push/pull/sync 1500 bundles at once"
+setup_StressRhizomeDirect() {
+   files_per_instance=300
+   setup_servald
+   assert_no_servald_processes
+   foreach_instance +A +B +C +D +E create_single_identity
+   local i
+   for i in A B C D E
+   do
+      set_instance +$i
+      executeOk_servald config \
+         set log.show_time on \
+         set debug.rhizome off \
+         set debug.rhizome_tx off \
+         set debug.rhizome_rx off \
+         set server.respawn_on_crash off \
+         set mdp.iftype.wifi.tick_ms 500
+      local sidvar="SID$instance_name"
+      for ((n = 0; n < $files_per_instance; ++n)); do
+         create_file file-$i-$n 10000
+         tfw_quietly executeOk_servald rhizome add file "${!sidvar}" '' file-$i-$n file-$i-$n.manifest
+      done
+   done
+   start_servald_instances dummy1 +A
+   wait_until rhizome_http_server_started +A
+   get_rhizome_server_port PORTA +A
+   for i in B C D E
+   do
+      set_instance +$i
+      executeOk_servald config \
+         set rhizome.direct.peer.0 "http://${addr_localhost}:${PORTA}" \
+         set log.file "$instance_servald_log"
+
+   done
+}
+test_StressRhizomeDirect() {
+   set_instance +B
+   fork executeOk_servald rhizome direct sync
+   set_instance +C
+   fork executeOk_servald rhizome direct pull
+   set_instance +D
+   fork executeOk_servald rhizome direct push
+   set_instance +E
+   fork executeOk_servald rhizome direct sync
+   forkWaitAll
+   set_instance +A
+   executeOk_servald rhizome list ''
+   tfw_quietly assert_rhizome_list --fromhere=1 file-A-!(*.manifest) --fromhere=0 file-[BDE]-!(*.manifest)
+   set_instance +B
+   executeOk_servald rhizome list ''
+   tfw_quietly assert_rhizome_list --fromhere=1 file-B-!(*.manifest) --fromhere=0 file-A-!(*.manifest) --and-others
+   reportfiles CDE
+   set_instance +C
+   executeOk_servald rhizome list ''
+   tfw_quietly assert_rhizome_list --fromhere=1 file-C-!(*.manifest) --fromhere=0 file-A-!(*.manifest) --and-others
+   reportfiles BDE
+   set_instance +D
+   executeOk_servald rhizome list ''
+   tfw_quietly assert_rhizome_list --fromhere=1 file-D-!(*.manifest)
+   set_instance +E
+   executeOk_servald rhizome list ''
+   tfw_quietly assert_rhizome_list --fromhere=1 file-E-!(*.manifest) --fromhere=0 file-A-!(*.manifest) --and-others
+   reportfiles BCD
+}
+
+reportfiles() {
+   replayStdout | sed -n -e '1,2p' -e "/:file-[$1]-/p" | rhizome_list_dump name bundleid >extrafiles || exit $?
+   tfw_log "$(cat extrafiles | wc -l) file(s) received by instance +$instance_name"
+   sort -t- -k2,2 -k3,3n extrafiles
 }
 
 runTests "$@"

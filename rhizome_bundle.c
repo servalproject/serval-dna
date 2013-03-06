@@ -149,10 +149,12 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
       char *var = line;
       char *value = p;
       if (rhizome_manifest_get(m, var, NULL, 0)) {
-	WARNF("Ill formed manifest file, duplicate variable \"%s\"", var);
+	if (config.debug.rejecteddata)
+	  WARNF("Ill formed manifest file, duplicate variable \"%s\"", var);
 	m->errors++;
       } else if (m->var_count >= MAX_MANIFEST_VARS) {
-	WARN("Ill formed manifest file, too many variables");
+	if (config.debug.rejecteddata)
+	  WARN("Ill formed manifest file, too many variables");
 	m->errors++;
       } else {
 	m->vars[m->var_count] = strdup(var);
@@ -160,7 +162,8 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 	if (strcasecmp(var, "id") == 0) {
 	  have_id = 1;
 	  if (fromhexstr(m->cryptoSignPublic, value, RHIZOME_MANIFEST_ID_BYTES) == -1) {
-	    WARNF("Invalid manifest id: %s", value);
+	    if (config.debug.rejecteddata)
+	      WARNF("Invalid manifest id: %s", value);
 	    m->errors++;
 	  } else {
 	    /* Force to upper case to avoid case sensitive comparison problems later. */
@@ -169,7 +172,8 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 	} else if (strcasecmp(var, "filehash") == 0) {
 	  have_filehash = 1;
 	  if (!rhizome_str_is_file_hash(value)) {
-	    WARNF("Invalid filehash: %s", value);
+	    if (config.debug.rejecteddata)
+	      WARNF("Invalid filehash: %s", value);
 	    m->errors++;
 	  } else {
 	    /* Force to upper case to avoid case sensitive comparison problems later. */
@@ -178,7 +182,8 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 	  }
 	} else if (strcasecmp(var, "BK") == 0) {
 	  if (!rhizome_str_is_bundle_key(value)) {
-	    WARNF("Invalid BK: %s", value);
+	    if (config.debug.rejecteddata)
+	      WARNF("Invalid BK: %s", value);
 	    m->errors++;
 	  } else {
 	    /* Force to upper case to avoid case sensitive comparison problems later. */
@@ -189,7 +194,8 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 	  char *ep = value;
 	  long long filesize = strtoll(value, &ep, 10);
 	  if (ep == value || *ep || filesize < 0) {
-	    WARNF("Invalid filesize: %s", value);
+	    if (config.debug.rejecteddata)
+	      WARNF("Invalid filesize: %s", value);
 	    m->errors++;
 	  } else {
 	    m->fileLength = filesize;
@@ -207,7 +213,8 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 	  char *ep = value;
 	  long long version = strtoll(value, &ep, 10);
 	  if (ep == value || *ep || version < 0) {
-	    WARNF("Invalid version: %s", value);
+	    if (config.debug.rejecteddata)
+	      WARNF("Invalid version: %s", value);
 	    m->errors++;
 	  } else {
 	    m->version = version;
@@ -217,13 +224,15 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 	  char *ep = value;
 	  long long date = strtoll(value, &ep, 10);
 	  if (ep == value || *ep || date < 0) {
-	    WARNF("Invalid date: %s", value);
+	    if (config.debug.rejecteddata)
+	      WARNF("Invalid date: %s", value);
 	    m->errors++;
 	  }
 	  // TODO: store date in manifest struct
 	} else if (strcasecmp(var, "sender") == 0 || strcasecmp(var, "recipient") == 0) {
 	  if (!str_is_subscriber_id(value)) {
-	    WARNF("Invalid %s: %s", var, value);
+	    if (config.debug.rejecteddata)
+	      WARNF("Invalid %s: %s", var, value);
 	    m->errors++;
 	  } else {
 	    /* Force to upper case to avoid case sensitive comparison problems later. */
@@ -231,13 +240,15 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
 	  }
 	} else if (strcasecmp(var, "name") == 0) {
 	  if (value[0] == '\0') {
-	    WARNF("Empty name", value);
+	    if (config.debug.rejecteddata)
+	      WARNF("Empty name", value);
 	    m->errors++;
 	  }
 	  // TODO: complain if service is not MeshMS
 	} else if (strcasecmp(var, "crypt") == 0) {
 	  if (!(strcmp(value, "0") == 0 || strcmp(value, "1") == 0)) {
-	    WARNF("Invalid crypt: %s", value);
+	    if (config.debug.rejecteddata)
+	      WARNF("Invalid crypt: %s", value);
 	    m->errors++;
 	  } else {
 	    m->payloadEncryption = atoi(value);
@@ -259,37 +270,50 @@ int rhizome_read_manifest_file(rhizome_manifest *m, const char *filename, int bu
   m->manifest_bytes = end_of_text;
 
   if (!have_service) {
-    WARNF("Missing service field");
+    if (config.debug.rejecteddata)
+      WARNF("Missing service field");
     m->errors++;
   }
   if (!have_id) {
-    WARNF("Missing manifest id field");
+    if (config.debug.rejecteddata)
+      WARNF("Missing manifest id field");
     m->errors++;
   }
   if (!have_version) {
-    WARNF("Missing version field");
+    if (config.debug.rejecteddata)
+      WARNF("Missing version field");
     m->errors++;
   }
   if (!have_date) {
-    WARNF("Missing date field");
+    if (config.debug.rejecteddata)
+      WARNF("Missing date field");
     m->errors++;
   }
   if (!have_filesize) {
-    WARNF("Missing filesize field");
+    if (config.debug.rejecteddata)
+      WARNF("Missing filesize field");
     m->errors++;
   }
   if (!have_filehash && m->fileLength != 0) {
-    WARNF("Missing filehash field");
+    if (config.debug.rejecteddata)
+      WARNF("Missing filehash field");
     m->errors++;
   }
   if (have_filehash && m->fileLength == 0) {
-    WARNF("Spurious filehash field");
+    if (config.debug.rejecteddata)
+      WARNF("Spurious filehash field");
     m->errors++;
   }
 
   // TODO Determine group membership here.
 
+  if (m->errors) {
+    if (config.debug.rejecteddata)
+      dump("manifest body",m->manifestdata,m->manifest_bytes);
+  }
+
   RETURN(0);
+  OUT();
 }
 
 int rhizome_hash_file(rhizome_manifest *m,const char *filename,char *hash_out)
@@ -663,6 +687,7 @@ int rhizome_manifest_finalise(rhizome_manifest *m, rhizome_manifest **mout)
   ret=rhizome_add_manifest(m, 255 /* TTL */);
   
   RETURN(ret);
+  OUT();
 }
 
 int rhizome_fill_manifest(rhizome_manifest *m, const char *filepath, const sid_t *authorSid, rhizome_bk_t *bsk){

@@ -687,6 +687,16 @@ static int receive_http_response(int sock, char *buffer, size_t buffer_len, stru
     return -1;
   }
   DEBUGF("content_length=%d", parts->content_length);
+  return len - (parts->content_start - buffer);
+}
+
+static int fill_buffer(int sock, unsigned char *buffer, int len, int buffer_size){
+  int count;
+  do {
+    if ((count = read(sock, &buffer[len], buffer_size - len)) == -1)
+      return WHYF_perror("read(%d, %p, %d)", sock, &buffer[len], buffer_size - len);
+    len += count;
+  } while (len < buffer_size);
   return 0;
 }
 
@@ -803,17 +813,23 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   struct http_response_parts parts;
  rx:
   /* request sent, now get response back. */
-  if (receive_http_response(sock, buffer, sizeof buffer, &parts) == -1) {
+  len=receive_http_response(sock, buffer, sizeof buffer, &parts);
+  if (len == -1) {
     close(sock);
     goto end;
   }
 
-  /* For some reason the response data gets overwritten during a push,
-     so we need to copy it, and use the copy instead. */
-  unsigned char *actionlist=alloca(parts.content_length);
-  bcopy(parts.content_start, actionlist, parts.content_length);
-  dump("response", actionlist, parts.content_length);
-
+  /* Allocate a buffer to receive the entire action list */
+  content_length = parts.content_length;
+  unsigned char *actionlist=malloc(content_length);
+  bcopy(parts.content_start, actionlist, len);
+  if (fill_buffer(sock, actionlist, len, content_length)==-1){
+    free(actionlist);
+    close(sock);
+    goto end;
+  }
+  close(sock);
+  
   /* We now have the list of (1+RHIZOME_BAR_PREFIX_BYTES)-byte records that indicate
      the list of BAR prefixes that differ between the two nodes.  We can now action
      those which are relevant, i.e., based on whether we are pushing, pulling or 
@@ -829,9 +845,6 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
   for(i=10;i<content_length;i+=(1+RHIZOME_BAR_PREFIX_BYTES))
     {
       int type=actionlist[i];
-      unsigned long long 
-	bid_prefix_ll=rhizome_bar_bidprefix_ll((unsigned char *)&actionlist[i+1]);
-      DEBUGF("%s %016llx* @ 0x%x",type==1?"push":"pull",bid_prefix_ll,i);
       if (type==2&&r->pullP) {
 	/* Need to fetch manifest.  Once we have the manifest, then we can
 	   use our normal bundle fetch routines from rhizome_fetch.c	 
@@ -842,6 +855,7 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	   Then as noted above, we can use that to pull the file down using
 	   existing routines.
 	*/
+	DEBUGF("Fetching manifest %s* @ 0x%x",alloca_tohex(&actionlist[i], 1+RHIZOME_BAR_PREFIX_BYTES),i);
 	if (!rhizome_fetch_request_manifest_by_prefix(&addr,zerosid,&actionlist[i+1],RHIZOME_BAR_PREFIX_BYTES))
 	  {
 	    /* Fetching the manifest, and then using it to see if we want to 
@@ -871,6 +885,8 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	DEBUGF("bundle file hash = '%s'",hash);
 	long long filesize = rhizome_manifest_get_ll(m, "filesize");
 	DEBUGF("file size = %lld",filesize);
+	long long version = rhizome_manifest_get_ll(m, "version");
+	DEBUGF("version = %lld",version);
 
 	/* We now have everything we need to compose the POST request and send it.
 	 */
@@ -932,40 +948,42 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	  if (r<0) goto closeit;
 	}
 
-	/* send file contents now */
-	long long rowid = -1;
-	sqlite3_blob *blob=NULL;
-	sqlite_exec_int64(&rowid, "select rowid from fileblobs where id='%s';", hash);
-	DEBUGF("Reading from rowid #%lld filehash='%s'",rowid,hash?hash:"(null)");
-	if (rowid >= 0 && sqlite3_blob_open(rhizome_db, "main", "fileblobs", "data", 
-					    rowid, 0, &blob) != SQLITE_OK)
-	  goto closeit;
-	int i;
-	for(i=0;i<filesize;)
-	  {
-	    int count=4096;
-	    if (filesize-i<count) count=filesize-i;
+	/* send file contents */
+	{
+	  char filehash[SHA512_DIGEST_STRING_LENGTH];
+	  if (rhizome_database_filehash_from_id(id, version, filehash)<=0)
+	    goto closeit;
+	  
+	  struct rhizome_read read;
+	  bzero(&read, sizeof read);
+	  if (rhizome_open_read(&read, filehash, 0))
+	    goto closeit;
+	
+	  int read_ofs;
+	  for(read_ofs=0;read_ofs<filesize;){
 	    unsigned char buffer[4096];
-	    DEBUGF("reading %d bytes @ %d from blob",count,i);
-	    int sr=sqlite3_blob_read(blob,buffer,count,i);
-	    if (sr==SQLITE_OK||sr==SQLITE_DONE) {
-	      count=write(sock,buffer,count);
-	      if (count<0) {
-		WHY_perror("write");
-		sqlite3_blob_close(blob);
-		goto closeit;
-	      } else { 
-		i+=count;
-		DEBUGF("Wrote %d bytes of file",count);
-	      }
-	    } else {
-	      WHYF("sqlite error #%d occurred reading from the blob: %s",sr, sqlite3_errmsg(rhizome_db));
-	      sqlite3_blob_close(blob);
+	    read.offset=read_ofs;
+	    int bytes_read = rhizome_read(&read, buffer, sizeof buffer);
+	    if (bytes_read<0){
+	      rhizome_read_close(&read);
 	      goto closeit;
 	    }
-	  }
-	sqlite3_blob_close(blob);
 
+	    int write_ofs=0;
+	    while(write_ofs < bytes_read){
+	      int written = write(sock, buffer + write_ofs, bytes_read - write_ofs);
+	      if (written<0){
+		WHY_perror("write");
+		rhizome_read_close(&read);
+		goto closeit;
+	      }
+	      write_ofs+=written;
+	    }
+	    
+	    read_ofs+=bytes_read;
+	  }
+	  rhizome_read_close(&read);
+	}
 	/* Send final mime boundary */
 	len=snprintf(buffer,8192,"\r\n--%s--\r\n",boundary);
 	sent=0;
@@ -986,10 +1004,11 @@ void rhizome_direct_http_dispatch(rhizome_direct_sync_request *r)
 	if (m) rhizome_manifest_free(m);
       }
     next_item:
-      DEBUGF("Next item.");
       continue;
     }
 
+  free(actionlist);
+  
   /* now update cursor according to what range was covered in the response.
      We set our current position to just past the high limit of the returned
      cursor.

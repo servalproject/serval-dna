@@ -33,26 +33,20 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
 {
   IN();
 
+  uint64_t version=
+    read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES]);
   uint64_t fileOffset=
     read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8]);
   uint32_t bitmap=
     read_uint32(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8]);
   uint16_t blockLength=
-  read_uint16(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4]);
+    read_uint16(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES+8+8+4]);
   if (blockLength>1024) RETURN(-1);
 
   struct subscriber *source = find_subscriber(mdp->out.src.sid, SID_SIZE, 0);
   
-  if(0) {
-    DEBUGF("Someone sent me a rhizome request via MDP");
-    DEBUGF("requestor sid = %s",alloca_tohex_sid(mdp->out.src.sid));
-    DEBUGF("bundle ID = %s",alloca_tohex_bid(&mdp->out.payload[0]));
-    DEBUGF("manifest version = 0x%llx",
-	   read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES]));
-    DEBUGF("file offset = 0x%llx",fileOffset);
-    DEBUGF("bitmap = 0x%08x",bitmap);
-    DEBUGF("block length = %d",blockLength);
-  }
+  if (config.debug.rhizome_tx)
+    DEBUGF("Requested blocks for %s @%llx", alloca_tohex_bid(&mdp->out.payload[0]), fileOffset);
 
   /* Find manifest that corresponds to BID and version.
      If we don't have this combination, then do nothing.
@@ -62,101 +56,97 @@ int overlay_mdp_service_rhizomerequest(overlay_mdp_frame *mdp)
      TODO: If we have a newer version of the manifest, and the manifest is a
      journal, then the newer version is okay to use to service this request.
   */
-  long long row_id=-1;
-  if (sqlite_exec_int64(&row_id, "SELECT rowid FROM FILEBLOBS WHERE id IN (SELECT filehash FROM MANIFESTS WHERE manifests.version=%lld AND manifests.id='%s');",
-			read_uint64(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES]),
-			alloca_tohex_bid(&mdp->out.payload[0])) < 1)
-    {
-      DEBUGF("Couldn't find stored file.");
-      RETURN(-1);
-    }
   
-  sqlite3_blob *blob=NULL; 
-  int ret=sqlite3_blob_open(rhizome_db, "main", "fileblobs", "data",
-				   row_id, 0 /* read only */, &blob);
-  if (ret!=SQLITE_OK)
-    {
-      DEBUGF("Failed to open blob: %s",sqlite3_errmsg(rhizome_db));     
-      RETURN(-1);
-    }
-  int blob_bytes=sqlite3_blob_bytes(blob);  
-  if (blob_bytes<fileOffset) {
-    sqlite3_blob_close(blob); blob=NULL;
+  char filehash[SHA512_DIGEST_STRING_LENGTH];
+  if (rhizome_database_filehash_from_id(alloca_tohex_bid(mdp->out.payload), version, filehash)<=0)
     RETURN(-1);
+  
+  struct rhizome_read read;
+  bzero(&read, sizeof read);
+  
+  int ret=rhizome_open_read(&read, filehash, 0);
+  
+  if (!ret){
+    overlay_mdp_frame reply;
+    bzero(&reply,sizeof(reply));
+    // Reply is broadcast, so we cannot authcrypt, and signing is too time consuming
+    // for low devices.  The result is that an attacker can prevent rhizome transfers
+    // if they want to by injecting fake blocks.  The alternative is to not broadcast
+    // back replies, and then we can authcrypt.
+    // multiple receivers starting at different times, we really need merkle-tree hashing.
+    // so multiple receivers is not realistic for now.  So use non-broadcast unicode
+    // for now would seem the safest.  But that would stop us from allowing multiple
+    // receivers in the special case where additional nodes begin listening in from the
+    // beginning.
+    reply.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT|MDP_NOSIGN;
+    bcopy(my_subscriber->sid,reply.out.src.sid,SID_SIZE);
+    reply.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
+    int send_broadcast=1;
+    
+    if (source){
+      if (!(source->reachable&REACHABLE_DIRECT))
+	send_broadcast=0;
+      if (source->reachable&REACHABLE_UNICAST && source->interface && source->interface->prefer_unicast)
+	send_broadcast=0;
+    }
+    
+    if (send_broadcast){
+      // send replies to broadcast so that others can hear blocks and record them
+      // (not that preemptive listening is implemented yet).
+      memset(reply.out.dst.sid,0xff,SID_SIZE);
+      reply.out.ttl=1;
+    }else{
+      // if we get a request from a peer that we can only talk to via unicast, send data via unicast too.
+      bcopy(mdp->out.src.sid,reply.out.dst.sid,SID_SIZE);
+      reply.out.ttl=64;
+    }
+    
+    reply.out.dst.port=MDP_PORT_RHIZOME_RESPONSE;
+    reply.out.queue=OQ_OPPORTUNISTIC;
+    reply.out.payload[0]='B'; // reply contains blocks
+    // include 16 bytes of BID prefix for identification
+    bcopy(&mdp->out.payload[0],&reply.out.payload[1],16);
+    // and version of manifest
+    bcopy(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES],
+	  &reply.out.payload[1+16],8);
+    
+    int i;
+    for(i=0;i<32;i++){
+      if (bitmap&(1<<(31-i)))
+	continue;
+      
+      if (overlay_queue_remaining(reply.out.queue) < 10)
+	break;
+      
+      // calculate and set offset of block
+      read.offset = fileOffset+i*blockLength;
+      
+      // stop if we passed the length of the file
+      // (but we may not know the file length until we attempt a read)
+      if (read.length!=-1 && read.offset>read.length)
+	break;
+      
+      write_uint64(&reply.out.payload[1+16+8], read.offset);
+      
+      int bytes_read = rhizome_read(&read, &reply.out.payload[1+16+8+8], blockLength);
+      if (bytes_read<=0)
+	break;
+      
+      reply.out.payload_length=1+16+8+8+bytes_read;
+      
+      // Mark the last block of the file, if required
+      if (read.offset >= read.length)
+	reply.out.payload[0]='T';
+      
+      // send packet
+      if (overlay_mdp_dispatch(&reply,0 /* system generated */, NULL,0))
+	break;
+    }
   }
+  rhizome_read_close(&read);
 
-  overlay_mdp_frame reply;
-  bzero(&reply,sizeof(reply));
-  // Reply is broadcast, so we cannot authcrypt, and signing is too time consuming
-  // for low devices.  The result is that an attacker can prevent rhizome transfers
-  // if they want to by injecting fake blocks.  The alternative is to not broadcast
-  // back replies, and then we can authcrypt.
-  // multiple receivers starting at different times, we really need merkle-tree hashing.
-  // so multiple receivers is not realistic for now.  So use non-broadcast unicode
-  // for now would seem the safest.  But that would stop us from allowing multiple
-  // receivers in the special case where additional nodes begin listening in from the
-  // beginning.
-  reply.packetTypeAndFlags=MDP_TX|MDP_NOCRYPT|MDP_NOSIGN;
-  reply.out.ttl=1;
-  bcopy(my_subscriber->sid,reply.out.src.sid,SID_SIZE);
-  reply.out.src.port=MDP_PORT_RHIZOME_RESPONSE;
-  int send_broadcast=1;
-  
-  if (source){
-    if (!(source->reachable&REACHABLE_DIRECT))
-      send_broadcast=0;
-    if (source->reachable&REACHABLE_UNICAST && source->interface && source->interface->prefer_unicast)
-      send_broadcast=0;
-  }
-  
-  if (send_broadcast){
-    // send replies to broadcast so that others can hear blocks and record them
-    // (not that preemptive listening is implemented yet).
-    memset(reply.out.dst.sid,0xff,SID_SIZE);
-  }else{
-    // if we get a request from a peer that we can only talk to via unicast, send data via unicast too.
-    bcopy(mdp->out.src.sid,reply.out.dst.sid,SID_SIZE);
-  }
-  
-  reply.out.dst.port=MDP_PORT_RHIZOME_RESPONSE;
-  reply.out.queue=OQ_OPPORTUNISTIC;
-  reply.out.payload[0]='B'; // reply contains blocks
-  // include 16 bytes of BID prefix for identification
-  bcopy(&mdp->out.payload[0],&reply.out.payload[1],16);
-  // and version of manifest
-  bcopy(&mdp->out.payload[RHIZOME_MANIFEST_ID_BYTES],
-	&reply.out.payload[1+16],8);
-  
-  int i;
-  for(i=0;i<32;i++)
-    if (!(bitmap&(1<<(31-i))))
-      {	
-	// calculate and set offset of block
-	uint64_t blockOffset=fileOffset+i*blockLength;
-	write_uint64(&reply.out.payload[1+16+8],blockOffset);
-	// work out how many bytes to read
-	int blockBytes=blob_bytes-blockOffset;
-	if (blockBytes>blockLength) blockBytes=blockLength;
-	// read data for block
-	if (blob_bytes>=blockOffset) {
-	  if (overlay_queue_remaining(reply.out.queue) < 10)
-	    break;
-	  
-	  sqlite3_blob_read(blob,&reply.out.payload[1+16+8+8],
-			    blockBytes,blockOffset);	  
-	  reply.out.payload_length=1+16+8+8+blockBytes;
-
-	  // Mark terminal block if required
-	  if (blockOffset+blockBytes==blob_bytes) reply.out.payload[0]='T';
-	  // send packet
-	  if (overlay_mdp_dispatch(&reply,0 /* system generated */, NULL,0))
-	    break;
-	} else break;
-      }
-
-  sqlite3_blob_close(blob); blob=NULL;
-
-  RETURN(-1);
+  RETURN(ret);
+  OUT();
 }
 
 int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
@@ -176,7 +166,7 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
       uint64_t offset=read_uint64(&mdp->out.payload[1+16+8]);
       int count=mdp->out.payload_length-(1+16+8+8);
       unsigned char *bytes=&mdp->out.payload[1+16+8+8];
-      if (0) 
+      if (config.debug.rhizome_rx) 
 	DEBUGF("Received %d bytes @ 0x%llx for %s* version 0x%llx",
 	       count,offset,alloca_tohex(bidprefix,16),version);
 
@@ -194,8 +184,8 @@ int overlay_mdp_service_rhizomeresponse(overlay_mdp_frame *mdp)
     break;
   }
 
-
   RETURN(-1);
+  OUT();
 }
 
 int overlay_mdp_service_dnalookup(overlay_mdp_frame *mdp)
@@ -300,6 +290,112 @@ int overlay_mdp_service_echo(overlay_mdp_frame *mdp)
   RETURN(0);
 }
 
+static int overlay_mdp_service_trace(overlay_mdp_frame *mdp){
+  IN();
+  int ret=0;
+  
+  struct overlay_buffer *b = ob_static(mdp->out.payload, sizeof(mdp->out.payload));
+  ob_limitsize(b, mdp->out.payload_length);
+  
+  struct subscriber *src=NULL, *dst=NULL, *last=NULL, *next=NULL;
+  struct decode_context context;
+  bzero(&context, sizeof context);
+  
+  if (overlay_address_parse(&context, b, &src)){
+    ret=WHYF("Invalid trace packet");
+    goto end;
+  }
+  if (overlay_address_parse(&context, b, &dst)){
+    ret=WHYF("Invalid trace packet");
+    goto end;
+  }
+  if (context.invalid_addresses){
+    ret=WHYF("Invalid address in trace packet");
+    goto end;
+  }
+
+  INFOF("Trace from %s to %s", alloca_tohex_sid(src->sid), alloca_tohex_sid(dst->sid));
+  
+  while(ob_remaining(b)>0){
+    struct subscriber *trace=NULL;
+    if (overlay_address_parse(&context, b, &trace)){
+      ret=WHYF("Invalid trace packet");
+      goto end;
+    }
+    if (context.invalid_addresses){
+      ret=WHYF("Invalid address in trace packet");
+      goto end;
+    }
+    INFOF("Via %s", alloca_tohex_sid(trace->sid));
+    
+    if (trace->reachable==REACHABLE_SELF && !next)
+      // We're already in this trace, send the next packet to the node before us in the list
+      next = last;
+    last = trace;
+  }
+  
+  if (src->reachable==REACHABLE_SELF && last){
+    // it came back to us, we can send the reply to our mdp client...
+    next=src;
+    mdp->out.dst.port=mdp->out.src.port;
+    mdp->out.src.port=MDP_PORT_TRACE;
+  }
+  
+  if (!next){
+    // destination is our neighbour?
+    if (dst->reachable & REACHABLE_DIRECT)
+      next = dst;
+    // destination is indirect?
+    else if (dst->reachable & REACHABLE_INDIRECT)
+      next = dst->next_hop;
+    // destination is not reachable or is ourselves? bounce back to the previous node or the sender.
+    else if (last)
+      next = last;
+    else
+      next = src;
+  }
+  
+  INFOF("Next node is %s", alloca_tohex_sid(next->sid));
+  
+  ob_unlimitsize(b);
+  // always write a full sid into the payload
+  my_subscriber->send_full=1;
+  if (overlay_address_append(&context, b, my_subscriber)){
+    ret = WHYF("Unable to append my address to the trace");
+    goto end;
+  }
+  
+  mdp->out.payload_length = ob_position(b);
+  bcopy(my_subscriber->sid, mdp->out.src.sid, SID_SIZE);
+  bcopy(next->sid, mdp->out.dst.sid, SID_SIZE);
+  
+  ret = overlay_mdp_dispatch(mdp, 0, NULL, 0);
+end:
+  ob_free(b);
+  RETURN(ret);
+}
+
+static int overlay_mdp_service_manifest_response(overlay_mdp_frame *mdp){
+  int offset=0;
+  char id_hex[RHIZOME_MANIFEST_ID_STRLEN];
+  rhizome_manifest *m = rhizome_new_manifest();
+  if (!m)
+    return WHY("Unable to allocate manifest");
+  
+  while (offset<mdp->out.payload_length){
+    unsigned char *bar=&mdp->out.payload[offset];
+    tohex(id_hex, &bar[RHIZOME_BAR_PREFIX_OFFSET], RHIZOME_BAR_PREFIX_BYTES);
+    strcat(id_hex, "%");
+    if (!rhizome_retrieve_manifest(id_hex, m)){
+      rhizome_advertise_manifest(m);
+    }
+    offset+=RHIZOME_BAR_BYTES;
+  }
+  
+  rhizome_manifest_free(m);
+  return 0;
+}
+
 int overlay_mdp_try_interal_services(overlay_mdp_frame *mdp)
 {
   IN();
@@ -308,14 +404,17 @@ int overlay_mdp_try_interal_services(overlay_mdp_frame *mdp)
   case MDP_PORT_KEYMAPREQUEST:    RETURN(keyring_mapping_request(keyring,mdp));
   case MDP_PORT_DNALOOKUP:        RETURN(overlay_mdp_service_dnalookup(mdp));
   case MDP_PORT_ECHO:             RETURN(overlay_mdp_service_echo(mdp));
+  case MDP_PORT_TRACE:            RETURN(overlay_mdp_service_trace(mdp));
   case MDP_PORT_PROBE:            RETURN(overlay_mdp_service_probe(mdp));
   case MDP_PORT_STUNREQ:          RETURN(overlay_mdp_service_stun_req(mdp));
   case MDP_PORT_STUN:             RETURN(overlay_mdp_service_stun(mdp));
   case MDP_PORT_RHIZOME_REQUEST: 
     if (is_rhizome_mdp_server_running()) {
       RETURN(overlay_mdp_service_rhizomerequest(mdp));
-    } else break;
+    }
+    break;
   case MDP_PORT_RHIZOME_RESPONSE: RETURN(overlay_mdp_service_rhizomeresponse(mdp));    
+  case MDP_PORT_RHIZOME_MANIFEST_REQUEST: RETURN(overlay_mdp_service_manifest_response(mdp));
   }
    
   /* Unbound socket.  We won't be sending ICMP style connection refused

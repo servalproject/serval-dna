@@ -225,4 +225,5 @@ int overlay_route_saw_advertisements(int i, struct overlay_frame *f, struct deco
   // restore the previous subscriber id for parsing the next header
   context->previous=previous;
   RETURN(0);
+  OUT();
 }

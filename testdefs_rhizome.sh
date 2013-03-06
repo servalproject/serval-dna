@@ -72,6 +72,41 @@ assert_rhizome_list() {
       esac
    done
    $exactly && assertStdoutLineCount --stderr '==' $(($files + 2))
+   rhizome_list_file_count=$(( $(replayStdout | wc -l) - 2 ))
+}
+
+rhizome_list_dump() {
+   local ncols
+   local -a headers
+   local readvars=
+   read ncols
+   local oIFS="$IFS"
+   IFS=:
+   read -r -a headers
+   IFS="$oIFS"
+   local hdr
+   local colvar
+   for hdr in "${headers[@]}"; do
+      readvars="$readvars __col_${hdr//[^A-Za-z0-9_]/_}"
+   done
+   eval local $readvars
+   for colvar in $readvars; do
+      eval "$colvar=ok"
+   done
+   local echoargs
+   for colname; do
+      case $colname in
+      manifestid|bundleid) colvar=__col_id;;
+      *) colvar="__col_${colname//[^A-Za-z0-9_]/_}";;
+      esac
+      eval [ -n "\"\${$colvar+ok}\"" ] || error "invalid column name: $colname" || return $?
+      echoargs="$echoargs $colname=\"\${$colvar}\""
+   done
+   IFS=:
+   while eval read -r $readvars; do
+      eval echo $echoargs
+   done
+   IFS="$oIFS"
 }
 
 assert_stdout_add_file() {
@@ -180,6 +215,14 @@ strip_signatures() {
    for file; do
       cat -v "$file" | $SED -e '/^^@/,$d' >"tmp.$file" && mv -f "tmp.$file" "$file"
    done
+}
+
+extract_stdout_manifestid() {
+   extract_stdout_keyvalue "$1" manifestid "$rexp_manifestid"
+}
+
+extract_stdout_version() {
+   extract_stdout_keyvalue "$1" version "$rexp_version"
 }
 
 extract_stdout_secret() {
@@ -343,12 +386,28 @@ extract_manifest_vars() {
 rhizome_add_file() {
    local name="$1"
    local size="${2:-64}"
-   [ -e "$name" ] || create_file "$name" $size
-   local sidvar="SID$instance_name"
-   executeOk_servald rhizome add file "${!sidvar}" '' "$name" "$name.manifest"
-   executeOk_servald rhizome list
-   assert_rhizome_list --fromhere=1 --author="${!sidvar}" "$name" --and-others
+   rhizome_add_files --size="$size" "$name"
    extract_manifest_vars "$name.manifest"
+}
+
+rhizome_add_files() {
+   local size=64
+   local sidvar="SID$instance_name"
+   local -a names=()
+   for arg; do
+      case "$arg" in
+      --size=*)
+         size="${arg##*=}"
+         ;;
+      *)
+         local name="$arg"
+         [ -e "$name" ] || create_file "$name" $size
+         executeOk_servald rhizome add file "${!sidvar}" "$name" "$name.manifest"
+         names+=("$name")
+      esac
+   done
+   executeOk_servald rhizome list
+   assert_rhizome_list --fromhere=1 --author="${!sidvar}" "${names[@]}" --and-others
 }
 
 rhizome_update_file() {
@@ -358,8 +417,8 @@ rhizome_update_file() {
    local sidvar="SID$instance_name"
    [ "$new_name" != "$orig_name" ] && cp "$orig_name.manifest" "$new_name.manifest"
    $SED -i -e '/^date=/d;/^filehash=/d;/^filesize=/d;/^version=/d;/^name=/d' "$new_name.manifest"
-   executeOk_servald rhizome add file "${!sidvar}" '' "$new_name" "$new_name.manifest"
-   executeOk_servald rhizome list ''
+   executeOk_servald rhizome add file "${!sidvar}" "$new_name" "$new_name.manifest"
+   executeOk_servald rhizome list
    assert_rhizome_list --fromhere=1 "$new_name"
    extract_manifest_vars "$new_name.manifest"
 }

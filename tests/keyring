@@ -1,0 +1,111 @@
+#!/bin/bash
+
+# Stress tests for Serval rhizome protocol.
+#
+# Copyright 2012 Serval Project, Inc.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+source "${0%/*}/../testframework.sh"
+source "${0%/*}/../testdefs.sh"
+
+shopt -s extglob
+
+setup() {
+    setup_servald
+}
+
+assert_keyring_list() {
+    assertStdoutLineCount --stdout --stderr '==' $1
+    assertStdoutGrep --stderr --matches=$1 "^[0-9a-fA-F]\{64\}:[0-9*#+]*:.*\$"
+    tfw_cat --stdout
+}
+
+doc_KeyringCreate="Create keyring destroys existing keys"
+test_KeyringCreate() {
+    executeOk_servald keyring add ''
+    executeOk_servald keyring add ''
+    executeOk_servald keyring list
+    assert_keyring_list 2
+    executeOk_servald keyring create
+    assert_keyring_list 0
+}
+
+doc_Pinless="No keyring PIN with PIN-less identities"
+test_Pinless() {
+    executeOk_servald keyring add ''
+    executeOk_servald keyring list
+    assert_keyring_list 1
+    executeOk_servald keyring add ''
+    executeOk_servald keyring list
+    assert_keyring_list 2
+    executeOk_servald keyring add ''
+    executeOk_servald keyring list
+    assert_keyring_list 3
+}
+
+doc_IdentityPins="No keyring PIN with identity PINs"
+test_IdentityPins() {
+    executeOk_servald keyring add 'one'
+    executeOk_servald keyring list
+    assert_keyring_list 0
+    executeOk_servald keyring list --entry-pin 'one'
+    assert_keyring_list 1
+    executeOk_servald keyring add 'two'
+    executeOk_servald keyring list
+    assert_keyring_list 0
+    executeOk_servald keyring list --entry-pin 'one'
+    assert_keyring_list 1
+    executeOk_servald keyring list --entry-pin 'one' --entry-pin 'two'
+    assert_keyring_list 2
+    executeOk_servald keyring add 'three'
+    executeOk_servald keyring list
+    assert_keyring_list 0
+    executeOk_servald keyring list --entry-pin 'one'
+    assert_keyring_list 1
+    executeOk_servald keyring list --entry-pin 'one' --entry-pin 'two'
+    assert_keyring_list 2
+    executeOk_servald keyring list --entry-pin 'one' --entry-pin 'two' --entry-pin 'three'
+    assert_keyring_list 3
+    executeOk_servald keyring list --entry-pin 'two' --entry-pin 'three'
+    assert_keyring_list 2
+    executeOk_servald keyring list --entry-pin 'three'
+    assert_keyring_list 1
+}
+
+doc_KeyringPinIdentityPinless="Keyring PIN with PIN-less identities"
+test_KeyringPinIdentityPinless() {
+    executeOk_servald keyring add --keyring-pin=hello ''
+    executeOk_servald keyring list --keyring-pin=hello
+    assert_keyring_list 1
+    executeOk_servald keyring add --keyring-pin=hello ''
+    executeOk_servald keyring list --keyring-pin=hello
+    assert_keyring_list 2
+    executeOk_servald keyring add --keyring-pin=hello ''
+    executeOk_servald keyring list --keyring-pin=hello
+    assert_keyring_list 3
+    executeOk_servald keyring list
+    assert_keyring_list 0
+}
+
+doc_KeyringAutoCreate="Starting a server with no keyring creates a valid identity"
+test_KeyringAutoCreate() {
+   executeOk_servald start
+   executeOk_servald keyring list
+   assert_keyring_list 1
+   executeOk_servald stop
+}
+
+runTests "$@"

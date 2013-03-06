@@ -41,7 +41,6 @@ struct outgoing_packet{
   overlay_interface *interface;
   int i;
   struct subscriber *unicast_subscriber;
-  int add_advertisements;
   struct sockaddr_in dest;
   int header_length;
   struct overlay_buffer *buffer;
@@ -240,13 +239,30 @@ overlay_init_packet(struct outgoing_packet *packet, struct subscriber *destinati
   packet->i = (interface - overlay_interfaces);
   packet->dest=addr;
   packet->buffer=ob_new();
-  packet->add_advertisements=1;
   if (unicast)
     packet->unicast_subscriber = destination;
   ob_limitsize(packet->buffer, packet->interface->mtu);
   
-  overlay_packet_init_header(&packet->context, packet->buffer, destination, unicast, packet->i, 0);
+  overlay_packet_init_header(ENCAP_OVERLAY, &packet->context, packet->buffer, 
+			     destination, unicast, packet->i, 0);
   packet->header_length = ob_position(packet->buffer);
+}
+
+int overlay_queue_schedule_next(time_ms_t next_allowed_packet){
+  if (next_packet.alarm==0 || next_allowed_packet < next_packet.alarm){
+    
+    if (!next_packet.function){
+      next_packet.function=overlay_send_packet;
+      send_packet.name="overlay_send_packet";
+      next_packet.stats=&send_packet;
+    }
+    unschedule(&next_packet);
+    next_packet.alarm=next_allowed_packet;
+    // small grace period, we want to read incoming IO first
+    next_packet.deadline=next_allowed_packet+15;
+    schedule(&next_packet);
+  }
+  return 0;  
 }
 
 // update the alarm time and return 1 if changed
@@ -269,6 +285,9 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
   
   time_ms_t next_allowed_packet=0;
   if (frame->interface){
+    // don't include interfaces which are currently transmitting using a serial buffer
+    if (frame->interface->tx_bytes_pending>0)
+      return 0;
     next_allowed_packet = limit_next_allowed(&frame->interface->transfer_limit);
   }else{
     // check all interfaces
@@ -285,18 +304,7 @@ overlay_calc_queue_time(overlay_txqueue *queue, struct overlay_frame *frame){
       return 0;
   }
   
-  if (next_packet.alarm==0 || next_allowed_packet < next_packet.alarm){
-    if (!next_packet.function){
-      next_packet.function=overlay_send_packet;
-      send_packet.name="overlay_send_packet";
-      next_packet.stats=&send_packet;
-    }
-    unschedule(&next_packet);
-    next_packet.alarm=next_allowed_packet;
-    // small grace period, we want to read incoming IO first
-    next_packet.deadline=next_allowed_packet+15;
-    schedule(&next_packet);
-  }
+  overlay_queue_schedule_next(next_allowed_packet);
   
   return 0;
 }
@@ -308,8 +316,9 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
   // TODO stop when the packet is nearly full?
   while(frame){
     if (frame->enqueued_at + queue->latencyTarget < now){
-      DEBUGF("Dropping frame type %x for %s due to expiry timeout", 
-	     frame->type, frame->destination?alloca_tohex_sid(frame->destination->sid):"All");
+      if (config.debug.rejecteddata)
+	DEBUGF("Dropping frame type %x for %s due to expiry timeout", 
+	       frame->type, frame->destination?alloca_tohex_sid(frame->destination->sid):"All");
       frame = overlay_queue_remove(queue, frame);
       continue;
     }
@@ -410,9 +419,32 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
     }
     
     if (!packet->buffer){
+      if (frame->interface->socket_type==SOCK_STREAM){
+	// skip this interface if the stream tx buffer has data
+	if (frame->interface->tx_bytes_pending>0)
+	  goto skip;
+      }
+      
       // can we send a packet on this interface now?
       if (limit_is_allowed(&frame->interface->transfer_limit))
 	goto skip;
+      
+      if (frame->interface->encapsulation==ENCAP_SINGLE){
+	// send MDP packets without aggregating them together
+	struct overlay_buffer *buff = ob_new();
+	
+	int ret=single_packet_encapsulation(buff, frame);
+	if (!ret){
+	  ret=overlay_broadcast_ensemble(frame->interface, &frame->recvaddr, ob_ptr(buff), ob_position(buff));
+	}
+	
+	ob_free(buff);
+	
+	if (ret)
+	  goto skip;
+	
+	goto sent;
+      }
       
       if (frame->source_full)
 	my_subscriber->send_full=1;
@@ -424,25 +456,22 @@ overlay_stuff_packet(struct outgoing_packet *packet, overlay_txqueue *queue, tim
       }
     }    
     
-    if (config.debug.overlayframes){
-      DEBUGF("Sending payload type %x len %d for %s via %s", frame->type, ob_position(frame->payload),
-	     frame->destination?alloca_tohex_sid(frame->destination->sid):"All",
-	     frame->next_hop?alloca_tohex_sid(frame->next_hop->sid):alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN));
-    }
-    
     if (overlay_frame_append_payload(&packet->context, packet->interface, frame, packet->buffer)){
       // payload was not queued
       goto skip;
+    }
+    
+  sent:    
+    if (config.debug.overlayframes){
+      DEBUGF("Sent payload type %x len %d for %s via %s", frame->type, ob_position(frame->payload),
+	     frame->destination?alloca_tohex_sid(frame->destination->sid):"All",
+	     frame->next_hop?alloca_tohex_sid(frame->next_hop->sid):alloca_tohex(frame->broadcast_id.id, BROADCAST_LEN));
     }
     
     if (frame->destination)
       frame->destination->last_tx=now;
     if (frame->next_hop)
       frame->next_hop->last_tx=now;
-    
-    // don't send rhizome adverts if the packet contains a voice payload
-    if (frame->queue==OQ_ISOCHRONOUS_VOICE)
-      packet->add_advertisements=0;
     
     // mark the payload as sent
     int keep_payload = 0;
@@ -497,14 +526,10 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
   if(packet->buffer){
     if (ob_position(packet->buffer) > packet->header_length){
     
-      // stuff rhizome announcements at the last moment
-      if (packet->add_advertisements)
-	overlay_rhizome_add_advertisements(&packet->context, packet->i,packet->buffer);
-      
       if (config.debug.packetconstruction)
 	ob_dump(packet->buffer,"assembled packet");
       
-      if (overlay_broadcast_ensemble(packet->i, &packet->dest, ob_ptr(packet->buffer), ob_position(packet->buffer))){
+      if (overlay_broadcast_ensemble(packet->interface, &packet->dest, ob_ptr(packet->buffer), ob_position(packet->buffer))){
 	// sendto failed. We probably don't have a valid route
 	if (packet->unicast_subscriber){
 	  set_reachable(packet->unicast_subscriber, REACHABLE_NONE);
@@ -516,6 +541,7 @@ overlay_fill_send_packet(struct outgoing_packet *packet, time_ms_t now) {
     RETURN(1);
   }
   RETURN(0);
+  OUT();
 }
 
 // when the queue timer elapses, send a packet

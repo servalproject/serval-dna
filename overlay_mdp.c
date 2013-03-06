@@ -88,7 +88,7 @@ int overlay_mdp_setup_sockets()
   }
 #endif
   if (mdp_named.poll.fd<=0) {
-    if (!form_serval_instance_path(&name.sun_path[0], 100, "mdp.socket"))
+    if (!form_serval_instance_path(&name.sun_path[0], sizeof name.sun_path, "mdp.socket"))
       return WHY("Cannot construct name of unix domain socket.");
     unlink(&name.sun_path[0]);
     len = 0+strlen(&name.sun_path[0]) + sizeof(name.sun_family)+1;
@@ -327,8 +327,13 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
       }
       
       unsigned char *nonce=ob_get_bytes_ptr(f->payload, nb);
+      if (!nonce)
+	RETURN(WHYF("Expected %d bytes of nonce", nb));
+      
       int cipher_len=ob_remaining(f->payload);
       unsigned char *cipher_text=ob_get_bytes_ptr(f->payload, cipher_len);
+      if (!cipher_text)
+	RETURN(WHYF("Expected %d bytes of cipher text", cipher_len));
       
       unsigned char plain_block[cipher_len+cz];
       
@@ -360,6 +365,7 @@ int overlay_mdp_decrypt(struct overlay_frame *f, overlay_mdp_frame *mdp)
     }    
   }
   RETURN(WHY("Failed to decode mdp payload"));
+  OUT();
 }
 
 int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now)
@@ -391,6 +397,7 @@ int overlay_saw_mdp_containing_frame(struct overlay_frame *f, time_ms_t now)
 
   /* and do something with it! */
   RETURN(overlay_saw_mdp_frame(f, &mdp,now));
+  OUT();
 }
 
 int overlay_mdp_swap_src_dst(overlay_mdp_frame *mdp)
@@ -474,6 +481,7 @@ static int overlay_saw_mdp_frame(struct overlay_frame *frame, overlay_mdp_frame 
   }
 
   RETURN(0);
+  OUT();
 }
 
 int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const unsigned char *resolved_sid, const char *uri, const char *did, const char *name)
@@ -499,6 +507,9 @@ int overlay_mdp_dnalookup_reply(const sockaddr_mdp *dstaddr, const unsigned char
 int overlay_mdp_check_binding(struct subscriber *subscriber, int port, int userGeneratedFrameP,
 			      struct sockaddr_un *recvaddr, int recvaddrlen)
 {
+  /* System generated frames can send anything they want */
+  if (!userGeneratedFrameP)
+    return 0;
 
   /* Check if the address is in the list of bound addresses,
      and that the recvaddr matches. */
@@ -515,23 +526,6 @@ int overlay_mdp_check_binding(struct subscriber *subscriber, int port, int userG
 	/* Everything matches, so this unix socket and MDP address combination is valid */
 	return 0;
       }
-    }
-  }
-
-  /* Check for build-in port listeners */
-  if (!userGeneratedFrameP){
-    switch(port) {
-    case MDP_PORT_NOREPLY:
-    case MDP_PORT_ECHO:
-    case MDP_PORT_KEYMAPREQUEST:
-    case MDP_PORT_VOMP:
-    case MDP_PORT_DNALOOKUP:
-    case MDP_PORT_RHIZOME_RESPONSE:
-    case MDP_PORT_RHIZOME_REQUEST:
-    case MDP_PORT_PROBE:
-    case MDP_PORT_STUNREQ:
-    case MDP_PORT_STUN:
-      return 0;
     }
   }
 
@@ -691,9 +685,9 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       ob_free(plaintext);
       
       frame->payload = ob_new();
-      ob_makespace(frame->payload, nb+cipher_len);
       
-      unsigned char *nonce = ob_append_space(frame->payload, nb);
+      unsigned char *nonce = ob_append_space(frame->payload, nb+cipher_len);
+      unsigned char *cipher_text = nonce + nb;
       if (!nonce)
 	RETURN(-1);
       if (urandombytes(nonce,nb)) {
@@ -709,12 +703,6 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
       if (!k) {
 	op_free(frame);
 	RETURN(WHY("could not compute Curve25519(NxM)")); 
-      }
-      /* Get pointer to place in frame where the ciphered text needs to go */
-      unsigned char *cipher_text=ob_append_space(frame->payload,cipher_len);
-      if ((!cipher_text)){
-	op_free(frame);
-	RETURN(WHY("could not make space for ciphered text")); 
       }
       /* Actually authcrypt the payload */
       if (crypto_box_curve25519xsalsa20poly1305_afternm
@@ -776,6 +764,7 @@ int overlay_mdp_dispatch(overlay_mdp_frame *mdp,int userGeneratedFrameP,
   if (overlay_payload_enqueue(frame))
     op_free(frame);
   RETURN(0);
+  OUT();
 }
 
 static int search_subscribers(struct subscriber *subscriber, void *context){
@@ -851,6 +840,10 @@ static int routing_table(struct subscriber *subscriber, void *context){
   r->reachable = subscriber->reachable;
   if (subscriber->reachable==REACHABLE_INDIRECT && subscriber->next_hop)
     memcpy(r->neighbour, subscriber->next_hop->sid, SID_SIZE);
+  if (subscriber->reachable & REACHABLE_DIRECT && subscriber->interface)
+    strcpy(r->interface_name, subscriber->interface->name);
+  else
+    r->interface_name[0]=0;
   overlay_mdp_reply(mdp_named.poll.fd, state->recvaddr_un, state->recvaddrlen, &reply);
   return 0;
 }

@@ -17,6 +17,9 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include "crypto_sign_edwards25519sha512batch.h"
+#include "nacl/src/crypto_sign_edwards25519sha512batch_ref/ge.h"
+
 #include "serval.h"
 #include "conf.h"
 #include "str.h"
@@ -55,7 +58,7 @@ int rhizome_bk_xor_stream(
   int xor_stream_byte_count)
 {
   IN();
-  if (rs_len<1||rs_len>65536) return WHY("rs_len invalid");
+  if (rs_len<1||rs_len>65536) RETURN(WHY("rs_len invalid"));
   if (xor_stream_byte_count<1||xor_stream_byte_count>crypto_hash_sha512_BYTES)
     RETURN(WHY("xor_stream_byte_count invalid"));
 
@@ -67,7 +70,8 @@ int rhizome_bk_xor_stream(
   crypto_hash_sha512(hash,buffer,combined_len);
   bcopy(hash,xor_stream,xor_stream_byte_count);
 
-  RETURN(0);
+  OUT();
+  return 0;
 }
 
 /*
@@ -99,7 +103,7 @@ int rhizome_bk2secret(rhizome_manifest *m,
   bzero(xor_stream, sizeof xor_stream);
   
   RETURN(rhizome_verify_bundle_privatekey(m,secret,bid));
-  
+  OUT();
 }
 
 int rhizome_secret2bk(
@@ -123,6 +127,7 @@ int rhizome_secret2bk(
 
   bzero(xor_stream, sizeof xor_stream);
   RETURN(0);
+  OUT();
 }
 
 
@@ -252,6 +257,7 @@ int rhizome_extract_privatekey(rhizome_manifest *m, rhizome_bk_t *bsk)
   }
   
   RETURN(result);
+  OUT();
 }
 
 /* Same as rhizome_extract_privatekey, except warnings become errors and are logged */
@@ -336,6 +342,7 @@ int rhizome_find_bundle_author(rhizome_manifest *m)
   if (config.debug.rhizome)
     DEBUG("bundle author not found");
   RETURN(1);
+  OUT();
 }
 
 /* Verify the validity of the manifest's secret key, ie, is the given manifest's 'cryptoSignSecret'
@@ -350,9 +357,6 @@ int rhizome_verify_bundle_privatekey(rhizome_manifest *m,
 				     const unsigned char *pkin)
 {
   IN();
-
-#include "crypto_sign_edwards25519sha512batch.h"
-#include "nacl/src/crypto_sign_edwards25519sha512batch_ref/ge.h"
 
   unsigned char h[64];
   unsigned char pk[32];
@@ -380,6 +384,7 @@ int rhizome_verify_bundle_privatekey(rhizome_manifest *m,
     m->haveSecret=EXISTING_BUNDLE_ID;
   }
   RETURN(0);
+  OUT();
 }
 
 int rhizome_sign_hash(rhizome_manifest *m,
@@ -391,6 +396,7 @@ int rhizome_sign_hash(rhizome_manifest *m,
 
   int ret=rhizome_sign_hash_with_key(m,m->cryptoSignSecret,m->cryptoSignPublic,out);
   RETURN(ret);
+  OUT();
 }
 
 int rhizome_sign_hash_with_key(rhizome_manifest *m,const unsigned char *sk,
@@ -413,6 +419,7 @@ int rhizome_sign_hash_with_key(rhizome_manifest *m,const unsigned char *sk,
   out->signatureLength = 65 + crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES;
   out->signature[0] = 0x17; // CryptoSign
   RETURN(0);
+  OUT();
 }
 
 typedef struct manifest_signature_block_cache {
@@ -474,6 +481,7 @@ int rhizome_manifest_lookup_signature_validity(unsigned char *hash,unsigned char
       ? -1 : 0;
   }
   RETURN(sig_cache[i].signature_valid);
+  OUT();
 }
 
 int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
@@ -544,6 +552,7 @@ int rhizome_manifest_extract_signature(rhizome_manifest *m,int *ofs)
 
   (*ofs)+=len;
   RETURN(0);
+  OUT();
 }
 
 // add value to nonce, with the same result regardless of CPU endian order

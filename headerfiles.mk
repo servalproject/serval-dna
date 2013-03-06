@@ -5,6 +5,7 @@ HDRS=	fifo.h \
 	overlay_packet.h \
 	rhizome.h \
 	serval.h \
+	cli.h \
 	str.h \
 	mem.h \
 	os.h \

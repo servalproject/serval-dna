@@ -100,6 +100,10 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define PAYLOAD_FLAG_CIPHERED (1<<4)
 #define PAYLOAD_FLAG_SIGNED (1<<5)
 
+// return codes for parsing mdp packet headers
+#define HEADER_PROCESS 1
+#define HEADER_FORWARD 2
+
 // this can be removed once all overlay messages have been turned into mdp payloads
 #define PAYLOAD_FLAG_LEGACY_TYPE (1<<7)
 
@@ -128,11 +132,13 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define MDP_PORT_STUN 5
 #define MDP_PORT_PROBE 6
 #define MDP_PORT_ECHO 7
+#define MDP_PORT_TRACE 8
 #define MDP_PORT_DNALOOKUP 10
 #define MDP_PORT_VOMP 12
 #define MDP_PORT_RHIZOME_REQUEST 13
 #define MDP_PORT_RHIZOME_RESPONSE 14
 #define MDP_PORT_DIRECTORY 15
+#define MDP_PORT_RHIZOME_MANIFEST_REQUEST 16
 #define MDP_PORT_NOREPLY 0x3f
 
 #define MDP_TYPE_MASK 0xff
@@ -200,5 +206,11 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 #define DEFAULT_MONITOR_SOCKET_NAME "org.servalproject.servald.monitor.socket"
 #define DEFAULT_MDP_SOCKET_NAME "org.servalproject.servald.mdp.socket"
+
+#define SOCK_FILE 0xFF
+#define SOCK_UNSPECIFIED 0
+
+#define ENCAP_OVERLAY 1
+#define ENCAP_SINGLE 2
 
 #endif // __SERVALD_CONSTANTS_H

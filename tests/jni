@@ -47,7 +47,7 @@ assert_echo_works() {
 
 doc_Echo="Serval JNI echo Hello world"
 test_Echo() {
-   executeOk java "-Djava.library.path=$LD_LIBRARY_PATH" -classpath "$PWD/classes" org.servalproject.servald.ServalD echo -e 'Hello,\ttab' 'world\0!'
+   executeOk java "-Djava.library.path=$LD_LIBRARY_PATH" -classpath "$PWD/classes" org.servalproject.servald.ServalD 'echo' '-e' 'Hello,\ttab' 'world\0!'
    assertStdoutIs -e 'Hello,\ttab\nworld\0!\n'
 }
 
@@ -64,9 +64,18 @@ test_Delim() {
 
 doc_Repeat="Serval JNI repeated calls in same process"
 test_Repeat() {
-   executeOk java "-Djava.library.path=$LD_LIBRARY_PATH" -classpath "$PWD/classes" org.servalproject.servald.ServalDTests repeat 50 echo 'Hello,' 'world!'
+   executeOk --core-backtrace java "-Djava.library.path=$LD_LIBRARY_PATH" -classpath "$PWD/classes" org.servalproject.servald.ServalDTests repeat 50 'echo' 'Hello,' 'world!'
    assertStdoutLineCount '==' 50
    assertStdoutGrep --matches=50 '^0:Hello,:world!$'
 }
+
+doc_NullArg="Serval JNI null arguments throw exception"
+test_NullArg() {
+   execute --core-backtrace java "-Djava.library.path=$LD_LIBRARY_PATH" -classpath "$PWD/classes" org.servalproject.servald.ServalDTests nullArg 'echo' '(null)'
+   tfw_cat --stdout --stderr
+   assertExitStatus '!=' 0
+   assertStderrGrep 'NullPointerException: null element in argv'
+}
+
 
 runTests "$@"

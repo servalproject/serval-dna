@@ -86,6 +86,13 @@ size_t str_fromprint(unsigned char *dst, const char *src);
 #define alloca_toprint(dstlen,buf,len)  toprint((char *)alloca((dstlen) == -1 ? toprint_len((const char *)(buf),(len), "``") + 1 : (dstlen)), (dstlen), (const char *)(buf), (len), "``")
 #define alloca_str_toprint(str)  toprint_str((char *)alloca(toprint_str_len(str, "``") + 1), -1, (str), "``")
 
+/* Like strchr(3), but only looks for 'c' in the first 'n' characters of 's', stopping at the first
+ * nul char in 's'.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+const char *strnchr(const char *s, size_t n, char c);
+
 /* Check if a given nul-terminated string 'str' starts with a given nul-terminated sub-string.  If
  * so, return 1 and, if afterp is not NULL, set *afterp to point to the character in 'str'
  * immediately following the substring.  Otherwise return 0.
@@ -119,6 +126,22 @@ int strcase_startswith(const char *str, const char *substring, const char **afte
  */
 int strncase_startswith(const char *str, size_t len, const char *substring, const char **afterp);
 
+/* Compare the given string 'str1' of a given length 'len1' with a given nul-terminated string
+ * 'str2'.  Equivalent to { str1[len1] = '\0'; return strcmp(str1, str2); } except without modifying
+ * str1[].
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int strn_str_cmp(const char *str1, size_t len1, const char *str2);
+
+/* Compare case-insenstivively the given string 'str1' of a given length 'len1' with a given
+ * nul-terminated string 'str2'.  Equivalent to { str1[len1] = '\0'; return strcasecmp(str1, str2);
+ * } except without modifying str1[].
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int strn_str_casecmp(const char *str1, size_t len1, const char *str2);
+
 /* like strstr(3), but doesn't depend on null termination.
  *
  * @author Paul Gardner-Stephen <paul@servalproject.org>
@@ -143,6 +166,17 @@ char *str_str(char *haystack, const char *needle, int haystack_len);
 int str_to_int64_scaled(const char *str, int base, int64_t *result, const char **afterp);
 int str_to_uint64_scaled(const char *str, int base, uint64_t *result, const char **afterp);
 uint64_t scale_factor(const char *str, const char **afterp);
+
+/* Format a string as a decimal integer in ASCII radix notation with a scale suffix character in the
+ * set {kKmMgG}: 'k' = 1e3, 'K' = 1<<10, 'm' = 1e6, 'M' = 1<<20, 'g' = 1e9, 'G' = * 1<<30 if the
+ * value is an exact multiple.
+ *
+ * Return 1 if the supplied string buffer was large enough to hold the formatted result plus a
+ * terminating nul character, 0 otherwise.
+ *
+ * @author Andrew Bettison <andrew@servalproject.com>
+ */
+int uint64_scaled_to_str(char *str, size_t len, uint64_t value);
 
 /* Return true if the string resembles a nul-terminated URI.
  * Based on RFC-3986 generic syntax, assuming nothing about the hierarchical part.

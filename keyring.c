@@ -123,7 +123,8 @@ keyring_file *keyring_open(char *file)
 	keyring_free(k);
 	return NULL;
       }
-      k->contexts[0]->KeyRingPin=strdup(""); /* Implied empty PIN if none provided */
+      // First context is always with null keyring PIN.
+      k->contexts[0]->KeyRingPin=strdup("");
       k->contexts[0]->KeyRingSaltLen=KEYRING_PAGE_SIZE-KEYRING_BAM_BYTES;
       k->contexts[0]->KeyRingSalt=malloc(k->contexts[0]->KeyRingSaltLen);
       if (!k->contexts[0]->KeyRingSalt) {
@@ -257,20 +258,23 @@ void keyring_free_keypair(keypair *kp)
 
 /* Create a new keyring context for the loaded keyring file.
    We don't need to load any identities etc, as that happens when we enter
-   an identity pin. 
+   an identity pin.
    If the pin is NULL, it is assumed to be blank.
    The pin does NOT have to be numeric, and has no practical length limitation,
    as it is used as an input into a hashing function.  But for sanity sake, let's
    limit it to 16KB.
 */
-int keyring_enter_keyringpin(keyring_file *k,char *pin)
+int keyring_enter_keyringpin(keyring_file *k, const char *pin)
 {
   if (!k) return WHY("k is null");
-  if (k->context_count>=KEYRING_MAX_CONTEXTS) 
+  if (k->context_count>=KEYRING_MAX_CONTEXTS)
     return WHY("Too many loaded contexts already");
   if (k->context_count<1)
     return WHY("Cannot enter PIN without keyring salt being available");
-
+  int cn;
+  for (cn = 0; cn < k->context_count; ++cn)
+    if (strcmp(k->contexts[cn]->KeyRingPin, pin) == 0)
+      return 1;
   k->contexts[k->context_count]=calloc(sizeof(keyring_context),1);
   if (!k->contexts[k->context_count]) return WHY("Could not allocate new keyring context structure");
   keyring_context *c=k->contexts[k->context_count];
@@ -634,14 +638,21 @@ int keyring_identity_mac(keyring_context *c,keyring_identity *id,
 {
   int ofs;
   unsigned char work[65536];
-#define APPEND(b,l) if (ofs+(l)>=65536) { bzero(work,ofs); return WHY("Input too long"); } bcopy((b),&work[ofs],(l)); ofs+=(l)
-
+#define APPEND(buf, len) { \
+    unsigned __len = (len); \
+    if (ofs + __len >= sizeof work) { \
+      bzero(work, ofs); \
+      return WHY("Input too long"); \
+    } \
+    bcopy((buf), &work[ofs], __len); \
+    ofs += __len; \
+  }
   ofs=0;
-  APPEND(&pkrsalt[0],32);
-  APPEND(id->keypairs[0]->private_key,id->keypairs[0]->private_key_len);
-  APPEND(id->keypairs[0]->public_key,id->keypairs[0]->public_key_len);
-  APPEND(id->PKRPin,strlen(id->PKRPin));
-  crypto_hash_sha512(mac,work,ofs);
+  APPEND(&pkrsalt[0], 32);
+  APPEND(id->keypairs[0]->private_key, id->keypairs[0]->private_key_len);
+  APPEND(id->keypairs[0]->public_key, id->keypairs[0]->public_key_len);
+  APPEND(id->PKRPin, strlen(id->PKRPin));
+  crypto_hash_sha512(mac, work, ofs);
   return 0;
 }
 
@@ -658,7 +669,6 @@ int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
   int exit_code=1;
   unsigned char slot[KEYRING_PAGE_SIZE];
   unsigned char hash[crypto_hash_sha512_BYTES];
-  unsigned char work[65536];
   keyring_identity *id=NULL; 
 
   /* 1. Read slot. */
@@ -723,7 +733,6 @@ int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
   /* Clean up any potentially sensitive data before exiting */
   bzero(slot,KEYRING_PAGE_SIZE);
   bzero(hash,crypto_hash_sha512_BYTES);
-  bzero(&work[0],65536);
   if (id) keyring_free_identity(id); id=NULL;
   return exit_code;
 }
@@ -774,7 +783,7 @@ int keyring_enter_pin(keyring_file *k, const char *pin)
   
   /* Tell the caller how many identities we found */
   RETURN(identitiesFound);
-  
+  OUT();
 }
 
 /* Create a new identity in the specified context (which supplies the keyring pin)
@@ -986,7 +995,7 @@ int keyring_commit(keyring_file *k)
   return errorCount;
 }
 
-int keyring_set_did(keyring_identity *id,char *did,char *name)
+int keyring_set_did(keyring_identity *id, const char *did, const char *name)
 {
   if (!id) return WHY("id is null");
   if (!did) return WHY("did is null");
@@ -1142,6 +1151,7 @@ unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
       }
 
   RETURNNULL(WHYNULL("Identity lacks SAS"));
+  OUT();
 }
 
 static int keyring_store_sas(overlay_mdp_frame *req){
@@ -1325,25 +1335,7 @@ void keyring_identity_extract(const keyring_identity *id, const unsigned char **
   }
 }
 
-int keyring_enter_pins(keyring_file *k, const char *pinlist)
-{
-  char pin[1024];
-  int i,j=0;
-
-  for(i=0;i<=strlen(pinlist);i++)
-    if (pinlist[i]==','||pinlist[i]==0)
-      {
-	pin[j]=0;
-	keyring_enter_pin(k,pin);
-	j=0;
-      }
-    else
-      if (j<1023) pin[j++]=pinlist[i];
-
-  return 0;
-}
-
-keyring_file *keyring_open_with_pins(const char *pinlist)
+keyring_file *keyring_open_instance()
 {
   keyring_file *k = NULL;
   IN();
@@ -1354,8 +1346,28 @@ keyring_file *keyring_open_with_pins(const char *pinlist)
     RETURN(NULL);
   if ((k = keyring_open(keyringFile)) == NULL)
     RETURN(NULL);
-  keyring_enter_pins(k,pinlist);
   RETURN(k);
+  OUT();
+}
+
+keyring_file *keyring_open_instance_cli(const struct cli_parsed *parsed)
+{
+  IN();
+  keyring_file *k = keyring_open_instance();
+  if (k == NULL)
+    RETURN(NULL);
+  const char *kpin = NULL;
+  cli_arg(parsed, "--keyring-pin", &kpin, NULL, "");
+  keyring_enter_keyringpin(k, kpin);
+  // Always open all PIN-less entries.
+  keyring_enter_pin(k, "");
+  // Open all entries for which an entry PIN has been given.
+  unsigned i;
+  for (i = 0; i < parsed->labelc; ++i)
+    if (strn_str_cmp(parsed->labelv[i].label, parsed->labelv[i].len, "--entry-pin") == 0)
+      keyring_enter_pin(k, parsed->labelv[i].text);
+  RETURN(k);
+  OUT();
 }
 
 /* If no identities, create an initial identity with a phone number.
@@ -1369,18 +1381,18 @@ int keyring_seed(keyring_file *k)
     return 0;
 
   int i;
-  unsigned char did[65];
+  char did[65];
   /* Securely generate random telephone number */
-  urandombytes((unsigned char *)did,10);
+  urandombytes((unsigned char *)did, 11);
   /* Make DID start with 2 through 9, as 1 is special in many number spaces, 
      and 0 is commonly used for escaping to national or international dialling. */ 
-  did[0]='2'+(did[0]%8);
+  did[0]='2'+(((unsigned char)did[0])%8);
   /* Then add 10 more digits, which is what we do in the mobile phone software */
-  for(i=1;i<11;i++) did[i]='0'+(did[i]%10); did[11]=0;
+  for(i=1;i<11;i++) did[i]='0'+(((unsigned char)did[i])%10); did[11]=0;
   
   keyring_identity *id=keyring_create_identity(k,k->contexts[0],"");
   if (!id) return WHY("Could not create new identity");
-  if (keyring_set_did(id,(char *)did,"")) return WHY("Could not set DID of new identity");
+  if (keyring_set_did(id, did, "")) return WHY("Could not set DID of new identity");
   if (keyring_commit(k)) return WHY("Could not commit new identity to keyring file");
   return 0;
 }
@@ -1450,4 +1462,5 @@ unsigned char *keyring_get_nm_bytes(unsigned char *known_sid, unsigned char *unk
 						 ->keypairs[kp]->private_key);
 						 
   RETURN(nm_cache[i].nm_bytes);
+  OUT();
 }

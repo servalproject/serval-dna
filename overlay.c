@@ -79,6 +79,8 @@ keyring_file *keyring=NULL;
 
 int overlayServerMode()
 {
+  IN();
+
   /* In overlay mode we need to listen to all of our sockets, and also to
      send periodic traffic. This means we need to */
   INFO("Running in overlay mode.");
@@ -86,10 +88,10 @@ int overlayServerMode()
   /* Get keyring available for use.
      Required for MDP, and very soon as a complete replacement for the
      HLR for DNA lookups, even in non-overlay mode. */
-  keyring=keyring_open_with_pins("");
-  if (!keyring) {
-    return WHY("Could not open serval keyring file.");
-  }
+  keyring = keyring_open_instance();
+  if (!keyring)
+    RETURN(WHY("Could not open serval keyring file."));
+  keyring_enter_pin(keyring, "");
   /* put initial identity in if we don't have any visible */
   keyring_seed(keyring);
 
@@ -128,15 +130,15 @@ schedule(&_sched_##X); }
 
   /* Get rhizome server started BEFORE populating fd list so that
      the server's listen socket is in the list for poll() */
-  if (is_rhizome_enabled()) rhizome_opendb();
+  if (is_rhizome_enabled())
+    rhizome_opendb();
 
   /* Rhizome http server needs to know which callback to attach
 	 to client sockets, so provide it here, along with the name to
 	 appear in time accounting statistics. */
-  if (is_rhizome_http_enabled())
-    rhizome_http_server_start(rhizome_server_parse_http_request,
-			      "rhizome_server_parse_http_request",
-			      RHIZOME_HTTP_PORT,RHIZOME_HTTP_PORT_MAX);    
+  rhizome_http_server_start(rhizome_server_parse_http_request,
+			    "rhizome_server_parse_http_request",
+			    RHIZOME_HTTP_PORT,RHIZOME_HTTP_PORT_MAX);    
 
   // start the dna helper if configured
   dna_helper_start();
@@ -150,15 +152,17 @@ schedule(&_sched_##X); }
   /* Periodically update route table. */
   SCHEDULE(overlay_route_tick, 100, 100);
 
-  /* Show CPU usage stats periodically */
-  if (config.debug.timing){
-    SCHEDULE(fd_periodicstats, 3000, 500);
-  }
+  /* Periodically advertise bundles */
+  SCHEDULE(overlay_rhizome_advertise, 1000, 10000);
+  
+  /* Calculate (and possibly show) CPU usage stats periodically */
+  SCHEDULE(fd_periodicstats, 3000, 500);
 
 #undef SCHEDULE
   
   /* Check for activitiy and respond to it */
   while(fd_poll());
 
-  return 0;
+  RETURN(0);
+  OUT();
 }

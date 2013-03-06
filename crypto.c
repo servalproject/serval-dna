@@ -28,11 +28,8 @@ int crypto_verify_signature(unsigned char *sas_key,
 					    reassembled,sizeof(reassembled),
 					    sas_key);
   
-  if (result) {
-    WHY("Signature verification failed");
-    RETURN(-1);
-  }
-  
+  if (result)
+    RETURN(WHY("Signature verification failed"));
   RETURN(0);
 }
 
@@ -75,7 +72,8 @@ int crypto_create_signature(unsigned char *key,
   
   bcopy(sig, signature, SIGNATURE_BYTES);
   *sig_length=SIGNATURE_BYTES;
-  RETURN(0);
+  OUT();
+  return 0;
 }
 
 // sign the hash of a message, adding the signature to the end of the message buffer.
