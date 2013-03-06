@@ -25,6 +25,9 @@ shopt -s extglob
 
 setup() {
     setup_servald
+    executeOk_servald config set debug.keyring on
+    executeOk_servald keyring list
+    assert_keyring_list 0
 }
 
 assert_keyring_list() {
@@ -102,10 +105,15 @@ test_KeyringPinIdentityPinless() {
 
 doc_KeyringAutoCreate="Starting a server with no keyring creates a valid identity"
 test_KeyringAutoCreate() {
-   executeOk_servald start
-   executeOk_servald keyring list
-   assert_keyring_list 1
-   executeOk_servald stop
+    servald_start
+    executeOk_servald keyring list
+    assert_keyring_list 1
+}
+finally_KeyringAutoCreate() {
+    stop_servald_server
+}
+teardown_KeyringAutoCreate() {
+   report_servald_server
 }
 
 runTests "$@"

@@ -266,6 +266,8 @@ void keyring_free_keypair(keypair *kp)
 */
 int keyring_enter_keyringpin(keyring_file *k, const char *pin)
 {
+  if (config.debug.keyring)
+    DEBUGF("k=%p", k);
   if (!k) return WHY("k is null");
   if (k->context_count>=KEYRING_MAX_CONTEXTS)
     return WHY("Too many loaded contexts already");
@@ -741,6 +743,8 @@ int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
    We might find more than one. */
 int keyring_enter_pin(keyring_file *k, const char *pin)
 {
+  if (config.debug.keyring)
+    DEBUGF("k=%p, pin=%s", k, alloca_str_toprint(pin));
   IN();
   if (!k) RETURN(-1);
   if (!pin) pin="";
@@ -1374,6 +1378,8 @@ keyring_file *keyring_open_instance_cli(const struct cli_parsed *parsed)
    This identity will not be pin protected (initially). */
 int keyring_seed(keyring_file *k)
 {
+  if (config.debug.keyring)
+    DEBUGF("k=%p", k);
   if (!k) return WHY("keyring is null");
 
   /* nothing to do if there is already an identity */
