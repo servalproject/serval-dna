@@ -684,7 +684,6 @@ int cf_fmt_pattern_list(const char **textp, const struct pattern_list *listp)
     assert(bufp < &buf[sizeof buf - 1]);
   }
   *bufp = '\0';
-  DEBUGF("buf=%s", alloca_toprint(-1, buf, sizeof buf));
   *textp = str_edup(buf);
   return CFOK;
 }
