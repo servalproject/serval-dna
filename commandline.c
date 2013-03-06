@@ -1131,8 +1131,9 @@ int app_mdp_ping(const struct cli_parsed *parsed, void *context)
   return ret;
 }
 
-int app_trace(const struct cli_parsed *parsed, void *context){
-  
+int app_trace(const struct cli_parsed *parsed, void *context)
+{
+  int mdp_sockfd;
   const char *sidhex;
   if (cli_arg(parsed, "SID", &sidhex, str_is_subscriber_id, NULL) == -1)
     return -1;
@@ -1141,13 +1142,22 @@ int app_trace(const struct cli_parsed *parsed, void *context){
   sid_t dstsid;
   if (str_to_sid_t(&dstsid, sidhex) == -1)
     return WHY("str_to_sid_t() failed");
-  
+
+  if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
+    return WHY("Cannot create MDP socket");
+
   overlay_mdp_frame mdp;
   bzero(&mdp, sizeof(mdp));
   
   int port=32768+(random()&32767);
-  if (overlay_mdp_getmyaddr(0, &srcsid)) return WHY("Could not get local address");
-  if (overlay_mdp_bind(&srcsid, port)) return WHY("Could not bind to MDP socket");
+  if (overlay_mdp_getmyaddr(mdp_sockfd, 0, &srcsid)) {
+    overlay_mdp_client_close(mdp_sockfd);
+    return WHY("Could not get local address");
+  }
+  if (overlay_mdp_bind(mdp_sockfd, &srcsid, port)) {
+    overlay_mdp_client_close(mdp_sockfd);
+    return WHY("Could not bind to MDP socket");
+  }
   
   bcopy(srcsid.binary, mdp.out.src.sid, SID_SIZE);
   bcopy(srcsid.binary, mdp.out.dst.sid, SID_SIZE);
@@ -1166,7 +1176,7 @@ int app_trace(const struct cli_parsed *parsed, void *context){
   cli_printf("Tracing the network path from %s to %s", 
 	 alloca_tohex_sid(srcsid.binary), alloca_tohex_sid(dstsid.binary));
   cli_delim("\n");
-  int ret=overlay_mdp_send(&mdp,MDP_AWAITREPLY,5000);
+  int ret=overlay_mdp_send(mdp_sockfd, &mdp, MDP_AWAITREPLY, 5000);
   ob_free(b);
   if (ret)
     DEBUGF("overlay_mdp_send returned %d", ret);
@@ -1189,7 +1199,7 @@ int app_trace(const struct cli_parsed *parsed, void *context){
       i++;
     }
   }
-  overlay_mdp_client_done();
+  overlay_mdp_client_close(mdp_sockfd);
   return ret;
 }
 
