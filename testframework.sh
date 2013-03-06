@@ -882,7 +882,7 @@ tfw_cat() {
 }
 
 tfw_multicolumn() {
-   awk '
+   $AWK '
       function pad(s, n) {
          return sprintf("%-" n "s", s)
       }
@@ -1164,7 +1164,7 @@ _tfw_parse_times_to_milliseconds() {
          if (substr(value, length(value)) == "s") {
             value = substr(value, 1, length(value) - 1)
          }
-         if (match(value, "^[0-9]+(\.[0-9]+)?$")) {
+         if (match(value, "^[0-9]+(\\.[0-9]+)?$")) {
             seconds = value + 0
             print (minutes * 60 + seconds) * 1000
          }
