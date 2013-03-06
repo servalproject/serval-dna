@@ -1537,7 +1537,7 @@ _tfw_find_tests() {
          local script
          _tfw_unpack_words "$include" lineno script
          local listline
-         "$_tfw_script_dir/$script" --list 2>/dev/null | while read listline; do
+         "$BASH" "$_tfw_script_dir/$script" --list 2>/dev/null | while read listline; do
             local number
             local name
             local path
