@@ -945,22 +945,25 @@ keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, co
 
 int keyring_commit(keyring_file *k)
 {
-  int errorCount=0;
+  if (config.debug.keyring)
+    DEBUGF("k=%p", k);
   if (!k) return WHY("keyring was NULL");
   if (k->context_count<1) return WHY("Keyring has no contexts");
+  unsigned errorCount=0;
 
   /* Write all BAMs */
-  keyring_bam *b=k->bam;
-  while (b) {
-    if (fseeko(k->file,b->file_offset,SEEK_SET)==0)
-      {
-	if (fwrite(b->bitmap,KEYRING_BAM_BYTES,1,k->file)!=1) errorCount++;
-	else
-	  if (fwrite(k->contexts[0]->KeyRingSalt,k->contexts[0]->KeyRingSaltLen,1,
-		   k->file)!=1) errorCount++;
-      }
-    else errorCount++;
-    b=b->next;
+  keyring_bam *b;
+  for (b = k->bam; b; b = b->next) {
+    if (fseeko(k->file, b->file_offset, SEEK_SET) == -1) {
+      WHYF_perror("fseeko(%d, %ld, SEEK_SET)", fileno(k->file), (long)b->file_offset);
+      errorCount++;
+    } else if (fwrite(b->bitmap, KEYRING_BAM_BYTES, 1, k->file) != 1) {
+      WHYF_perror("fwrite(%p, %ld, 1, %d)", b->bitmap, (long)KEYRING_BAM_BYTES, fileno(k->file));
+      errorCount++;
+    } else if (fwrite(k->contexts[0]->KeyRingSalt, k->contexts[0]->KeyRingSaltLen, 1, k->file)!=1) {
+      WHYF_perror("fwrite(%p, %ld, 1, %d)", k->contexts[0]->KeyRingSalt, (long)k->contexts[0]->KeyRingSaltLen, fileno(k->file));
+      errorCount++;
+    }
   }
 
   /* For each identity in each context, write the record to disk.
@@ -989,23 +992,23 @@ int keyring_commit(keyring_file *k)
 	    errorCount++;
 	  else {
 	    /* Store */
-	    off_t file_offset
-	      =KEYRING_PAGE_SIZE
-	      *k->contexts[cn]->identities[in]->slot;
+	    off_t file_offset = KEYRING_PAGE_SIZE *k->contexts[cn]->identities[in]->slot;
 	    if (!file_offset) {
 	      if (config.debug.keyring)
 		DEBUGF("ID %d:%d has slot=0", cn,in);
-	    }
-	    else if (fseeko(k->file,file_offset,SEEK_SET))
+	    } else if (fseeko(k->file, file_offset, SEEK_SET) == -1) {
+	      WHYF_perror("fseeko(%d, %ld, SEEK_SET)", fileno(k->file), (long)file_offset);
 	      errorCount++;
-	    else
-	      if (fwrite(pkr,KEYRING_PAGE_SIZE,1,k->file)!=1)
-		errorCount++;
+	    } else if (fwrite(pkr, KEYRING_PAGE_SIZE, 1, k->file) != 1) {
+	      WHYF_perror("fwrite(%p, %ld, 1, %d)", pkr, (long)KEYRING_PAGE_SIZE, fileno(k->file));
+	      errorCount++;
+	    }
 	  }
 	}
       }
 
-  if (errorCount) WHY("One or more errors occurred while commiting keyring to disk");
+  if (errorCount)
+    WHYF("%u errors commiting keyring to disk", errorCount);
   return errorCount;
 }
 
