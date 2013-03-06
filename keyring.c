@@ -16,8 +16,10 @@ along with this program; if not, write to the Free Software
 Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 */
 
+#include <assert.h>
 #include "serval.h"
 #include "str.h"
+#include "mem.h"
 #include "conf.h"
 #include "rhizome.h"
 #include "nacl.h"
@@ -29,24 +31,33 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 keyring_file *keyring_open(char *file)
 {
   /* Allocate structure */
-  keyring_file *k=calloc(sizeof(keyring_file),1);
-  if (!k) {
-    WHY_perror("calloc");
+  keyring_file *k = emalloc_zero(sizeof(keyring_file));
+  if (!k)
     return NULL;
-  }
   /* Open keyring file read-write if we can, else use it read-only */
-  k->file=fopen(file,"r+");
-  if (!k->file) k->file=fopen(file,"r");
-  if (!k->file) k->file=fopen(file,"w+");
+  k->file = fopen(file, "r+");
   if (!k->file) {
-    WHY_perror("fopen");
-    WHYF("Could not open keyring file %s", file);
-    keyring_free(k);
-    return NULL;
+    if (errno != EPERM && errno != ENOENT)
+      WHYF_perror("fopen(%s, \"r+\")", alloca_str_toprint(file));
+    if (config.debug.keyring)
+      DEBUGF("cannot open %s in \"r+\" mode, falling back to \"r\"", alloca_str_toprint(file));
+    k->file = fopen(file, "r");
+    if (!k->file) {
+      if (errno != EPERM && errno != ENOENT)
+	WHYF_perror("fopen(%s, \"r\")", alloca_str_toprint(file));
+      if (config.debug.keyring)
+	DEBUGF("cannot open %s in \"r\" mode, falling back to \"w+\"", alloca_str_toprint(file));
+      k->file = fopen(file, "w+");
+      if (!k->file) {
+	WHYF_perror("fopen(%s, \"w+\")", alloca_str_toprint(file));
+	keyring_free(k);
+	return NULL;
+      }
+    }
   }
-  if (fseeko(k->file,0,SEEK_END)) {
-    WHY_perror("fseeko");
-    WHYF("Could not seek to end of keyring file %s", file);
+  assert(k->file != NULL);
+  if (fseeko(k->file, 0, SEEK_END)) {
+    WHYF_perror("fseeko(%s, 0, SEEK_END)", alloca_str_toprint(file));
     keyring_free(k);
     return NULL;
   }
@@ -54,17 +65,16 @@ keyring_file *keyring_open(char *file)
   if (k->file_size<KEYRING_PAGE_SIZE) {
     /* Uninitialised, so write 2KB of zeroes, 
        followed by 2KB of random bytes as salt. */
-    if (fseeko(k->file,0,SEEK_SET)) {
-      WHY_perror("fseeko");
-      WHYF("Could not seek to start of keyring file %s", file);
+    if (fseeko(k->file, 0, SEEK_SET)) {
+      WHYF_perror("fseeko(%s, 0, SEEK_END)", alloca_str_toprint(file));
       keyring_free(k);
       return NULL;
     }
     unsigned char buffer[KEYRING_PAGE_SIZE];
     bzero(&buffer[0],KEYRING_BAM_BYTES);
-    if (fwrite(&buffer[0],2048,1,k->file)!=1) {
-      WHY_perror("fwrite");
-      WHYF("Could not write empty bitmap in fresh keyring file %s", file);
+    if (fwrite(buffer, 2048, 1, k->file)!=1) {
+      WHYF_perror("fwrite(%p, 2048, 1, %s)", buffer, alloca_str_toprint(file));
+      WHY("Could not write empty bitmap in fresh keyring file");
       keyring_free(k);
       return NULL;
     }
@@ -73,9 +83,9 @@ keyring_file *keyring_open(char *file)
       keyring_free(k);
       return NULL;
     }
-    if (fwrite(&buffer[0],KEYRING_PAGE_SIZE-KEYRING_BAM_BYTES,1,k->file) != 1) {
-      WHY_perror("fwrite");
-      WHYF("Could not write keyring salt in fresh keyring file %s", file);
+    if (fwrite(buffer, KEYRING_PAGE_SIZE - KEYRING_BAM_BYTES, 1, k->file) != 1) {
+      WHYF_perror("fwrite(%p, %lu, 1, %s)", buffer, (long)(KEYRING_PAGE_SIZE - KEYRING_BAM_BYTES), alloca_str_toprint(file));
+      WHYF("Could not write keyring salt in fresh keyring file");
       keyring_free(k);
       return NULL;
     }
@@ -89,24 +99,23 @@ keyring_file *keyring_open(char *file)
     /* Read bitmap from slab.
        Also, if offset is zero, read the salt */
     if (fseeko(k->file,offset,SEEK_SET)) {
-      WHY_perror("fseeko");
-      WHYF("Could not seek to BAM in keyring file %s", file);
+      WHYF_perror("fseeko(%s, %ld, SEEK_SET)", alloca_str_toprint(file), (long)offset);
+      WHY("Could not seek to BAM in keyring file");
       keyring_free(k);
       return NULL;
     }
-    *b=calloc(sizeof(keyring_bam),1);
+    *b = emalloc_zero(sizeof(keyring_bam));
     if (!(*b)) {
-      WHY_perror("calloc");
       WHYF("Could not allocate keyring_bam structure for key ring file %s", file);
       keyring_free(k);
       return NULL;
     }
     (*b)->file_offset=offset;
     /* Read bitmap */
-    int r=fread(&(*b)->bitmap[0],KEYRING_BAM_BYTES,1,k->file);
+    int r=fread((*b)->bitmap, KEYRING_BAM_BYTES, 1, k->file);
     if (r!=1) {
-      WHY_perror("fread");
-      WHYF("Could not read BAM from keyring file %s", file);
+      WHYF_perror("fread(%p, %ld, 1, %s)", (*b)->bitmap, (long)KEYRING_BAM_BYTES, alloca_str_toprint(file));
+      WHYF("Could not read BAM from keyring file");
       keyring_free(k);
       return NULL;
     }
@@ -116,26 +125,24 @@ keyring_file *keyring_open(char *file)
        (other keyring salts may be provided later on, resulting in
        multiple contexts being loaded) */
     if (!offset) {     
-      k->contexts[0]=calloc(sizeof(keyring_context),1);     
+      k->contexts[0] = emalloc_zero(sizeof(keyring_context));
       if (!k->contexts[0]) {
-	WHY_perror("calloc");
 	WHYF("Could not allocate keyring_context for keyring file %s", file);
 	keyring_free(k);
 	return NULL;
       }
       // First context is always with null keyring PIN.
-      k->contexts[0]->KeyRingPin=strdup("");
+      k->contexts[0]->KeyRingPin = str_edup("");
       k->contexts[0]->KeyRingSaltLen=KEYRING_PAGE_SIZE-KEYRING_BAM_BYTES;
-      k->contexts[0]->KeyRingSalt=malloc(k->contexts[0]->KeyRingSaltLen);
+      k->contexts[0]->KeyRingSalt = emalloc(k->contexts[0]->KeyRingSaltLen);
       if (!k->contexts[0]->KeyRingSalt) {
-	WHY_perror("malloc");
 	WHYF("Could not allocate keyring_context->salt for keyring file %s", file);
 	keyring_free(k);
 	return NULL;
       }
-      r=fread(&k->contexts[0]->KeyRingSalt[0],k->contexts[0]->KeyRingSaltLen,1,k->file);
+      r = fread(k->contexts[0]->KeyRingSalt, k->contexts[0]->KeyRingSaltLen, 1, k->file);
       if (r!=1) {
-	WHY_perror("fread");
+	WHYF_perror("fread(%p, %ld, 1, %s)", k->contexts[0]->KeyRingSalt, k->contexts[0]->KeyRingSaltLen, alloca_str_toprint(file));
 	WHYF("Could not read salt from keyring file %s", file);
 	keyring_free(k);
 	return NULL;
@@ -277,15 +284,17 @@ int keyring_enter_keyringpin(keyring_file *k, const char *pin)
   for (cn = 0; cn < k->context_count; ++cn)
     if (strcmp(k->contexts[cn]->KeyRingPin, pin) == 0)
       return 1;
-  k->contexts[k->context_count]=calloc(sizeof(keyring_context),1);
-  if (!k->contexts[k->context_count]) return WHY("Could not allocate new keyring context structure");
+  k->contexts[k->context_count] = emalloc_zero(sizeof(keyring_context));
+  if (!k->contexts[k->context_count])
+    return WHY("Could not allocate new keyring context structure");
   keyring_context *c=k->contexts[k->context_count];
   /* Store pin */
-  c->KeyRingPin=pin?strdup(pin):strdup("");
+  c->KeyRingPin = pin ? str_edup(pin) : str_edup("");
   /* Get salt from the zeroeth context */
-  c->KeyRingSalt=malloc(k->contexts[0]->KeyRingSaltLen);
+  c->KeyRingSalt = emalloc(k->contexts[0]->KeyRingSaltLen);
   if (!c->KeyRingSalt) {
-    free(c); k->contexts[k->context_count]=NULL;
+    free(c);
+    k->contexts[k->context_count]=NULL;
     return WHY("Could not copy keyring salt from context zero");
   }
   c->KeyRingSaltLen=k->contexts[0]->KeyRingSaltLen;
@@ -516,11 +525,11 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot, const char *pin)
   /* Skip salt and MAC */
   int i;
   int ofs;
-  keyring_identity *id=calloc(sizeof(keyring_identity),1);
-  if (!id) { WHY("calloc() of identity failed"); return NULL; }
+  keyring_identity *id = emalloc_zero(sizeof(keyring_identity));
+  if (!id) { WHY("malloc of identity failed"); return NULL; }
   if (!slot) { WHY("slot is null"); return NULL; }
 
-  id->PKRPin=strdup(pin);
+  id->PKRPin = str_edup(pin);
 
   /* There was a known plain-text opportunity here:
      byte 96 must be 0x01, and some other bytes are likely deducible, e.g., the
@@ -550,9 +559,9 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot, const char *pin)
 	  keyring_free_identity(id);
 	  return NULL;
 	}
-	keypair *kp=id->keypairs[id->keypair_count]=calloc(sizeof(keypair),1);
+	keypair *kp=id->keypairs[id->keypair_count] = emalloc_zero(sizeof(keypair));
 	if (!id->keypairs[id->keypair_count]) {
-	  WHY("calloc() of key pair structure failed.");
+	  WHY("malloc of key pair structure failed.");
 	  keyring_free_identity(id);
 	  return NULL;
 	}
@@ -573,16 +582,16 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot, const char *pin)
 	  kp->private_key_len=32; kp->public_key_len=64;
 	  break;
 	}
-	kp->private_key=malloc(kp->private_key_len);
+	kp->private_key = emalloc(kp->private_key_len);
 	if (!kp->private_key) {
-	  WHY("malloc() of private key storage failed.");
+	  WHY("malloc of private key storage failed");
 	  keyring_free_identity(id);
 	  return NULL;
 	}
 	for(i=0;i<kp->private_key_len;i++) kp->private_key[i]=slot_byte(ofs+1+i);
-	kp->public_key=malloc(kp->public_key_len);
+	kp->public_key = emalloc(kp->public_key_len);
 	if (!kp->public_key) {
-	  WHY("malloc() of public key storage failed.");
+	  WHY("malloc of public key storage failed");
 	  keyring_free_identity(id);
 	  return NULL;
 	}
@@ -807,11 +816,12 @@ keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, co
 
   if (!pin) pin="";
 
-  keyring_identity *id=calloc(sizeof(keyring_identity),1);
-  if (!id) { WHY_perror("calloc"); return NULL; }
+  keyring_identity *id = emalloc_zero(sizeof(keyring_identity));
+  if (!id)
+    return NULL;
   
   /* Store pin */
-  id->PKRPin=strdup(pin);
+  id->PKRPin = str_edup(pin);
   if (!id->PKRPin) {
     WHY("Could not store pin");
     goto kci_safeexit;
@@ -839,23 +849,23 @@ keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, co
   /* Allocate key pairs */
 
   /* crypto_box key pair */
-  id->keypairs[0]=calloc(sizeof(keypair),1);
+  id->keypairs[0] = emalloc_zero(sizeof(keypair));
   if (!id->keypairs[0]) {
-    WHY("calloc() failed preparing first key pair storage");
+    WHY("malloc failed preparing first key pair storage");
     goto kci_safeexit;
   }
   id->keypair_count=1;
   id->keypairs[0]->type=KEYTYPE_CRYPTOBOX;
   id->keypairs[0]->private_key_len=crypto_box_curve25519xsalsa20poly1305_SECRETKEYBYTES;
-  id->keypairs[0]->private_key=malloc(id->keypairs[0]->private_key_len);
+  id->keypairs[0]->private_key = emalloc(id->keypairs[0]->private_key_len);
   if (!id->keypairs[0]->private_key) {
-    WHY("malloc() failed preparing first private key storage");
+    WHY("malloc failed preparing first private key storage");
     goto kci_safeexit;
   }
   id->keypairs[0]->public_key_len=crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES;
-  id->keypairs[0]->public_key=malloc(id->keypairs[0]->public_key_len);
+  id->keypairs[0]->public_key = emalloc(id->keypairs[0]->public_key_len);
   if (!id->keypairs[0]->public_key) {
-    WHY("malloc() failed preparing first public key storage");
+    WHY("malloc failed preparing first public key storage");
     goto kci_safeexit;
   }
   /* Filter out public keys that start with 0x0, as they are reserved for address
@@ -866,23 +876,23 @@ keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, co
 						  id->keypairs[0]->private_key);
 
   /* crypto_sign key pair */
-  id->keypairs[1]=calloc(sizeof(keypair),1);
+  id->keypairs[1] = emalloc_zero(sizeof(keypair));
   if (!id->keypairs[1]) {
-    WHY("calloc() failed preparing second key pair storage");
+    WHY("malloc failed preparing second key pair storage");
     goto kci_safeexit;
   }
   id->keypair_count=2;
   id->keypairs[1]->type=KEYTYPE_CRYPTOSIGN;
   id->keypairs[1]->private_key_len=crypto_sign_edwards25519sha512batch_SECRETKEYBYTES;
-  id->keypairs[1]->private_key=malloc(id->keypairs[1]->private_key_len);
+  id->keypairs[1]->private_key = emalloc(id->keypairs[1]->private_key_len);
   if (!id->keypairs[1]->private_key) {
-    WHY("malloc() failed preparing second private key storage");
+    WHY("malloc failed preparing second private key storage");
     goto kci_safeexit;
   }
   id->keypairs[1]->public_key_len=crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES;
-  id->keypairs[1]->public_key=malloc(id->keypairs[1]->public_key_len);
+  id->keypairs[1]->public_key = emalloc(id->keypairs[1]->public_key_len);
   if (!id->keypairs[1]->public_key) {
-    WHY("malloc() failed preparing second public key storage");
+    WHY("malloc failed preparing second public key storage");
     goto kci_safeexit;
   }
 
@@ -890,17 +900,17 @@ keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, co
 					      id->keypairs[1]->private_key);
 
   /* Rhizome Secret (for protecting Bundle Private Keys) */
-  id->keypairs[2]=calloc(sizeof(keypair),1);
+  id->keypairs[2] = emalloc_zero(sizeof(keypair));
   if (!id->keypairs[2]) {
-    WHY("calloc() failed preparing second key pair storage");
+    WHY("malloc failed preparing second key pair storage");
     goto kci_safeexit;
   }
   id->keypair_count=3;
   id->keypairs[2]->type=KEYTYPE_RHIZOME;
   id->keypairs[2]->private_key_len=32;
-  id->keypairs[2]->private_key=malloc(id->keypairs[2]->private_key_len);
+  id->keypairs[2]->private_key = emalloc(id->keypairs[2]->private_key_len);
   if (!id->keypairs[2]->private_key) {
-    WHY("malloc() failed preparing second private key storage");
+    WHY("malloc failed preparing second private key storage");
     goto kci_safeexit;
   }
   id->keypairs[2]->public_key_len=0;
@@ -1018,13 +1028,16 @@ int keyring_set_did(keyring_identity *id, const char *did, const char *name)
 
   /* allocate if needed */
   if (i>=id->keypair_count) {
-    id->keypairs[i]=calloc(sizeof(keypair),1);
-    if (!id->keypairs[i]) return WHY_perror("calloc");
+    id->keypairs[i] = emalloc_zero(sizeof(keypair));
+    if (!id->keypairs[i])
+      return -1;
     id->keypairs[i]->type=KEYTYPE_DID;
-    unsigned char *packedDid=calloc(32,1);
-    if (!packedDid) return WHY_perror("calloc");
-    unsigned char *packedName=calloc(64,1);
-    if (!packedName) return WHY_perror("calloc");
+    unsigned char *packedDid = emalloc_zero(32);
+    if (!packedDid)
+      return -1;
+    unsigned char *packedName = emalloc_zero(64);
+    if (!packedName)
+      return -1;
     id->keypairs[i]->private_key=packedDid;
     id->keypairs[i]->private_key_len=32;
     id->keypairs[i]->public_key=packedName;
