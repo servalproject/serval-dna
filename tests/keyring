@@ -105,7 +105,7 @@ test_KeyringPinIdentityPinless() {
 
 doc_KeyringAutoCreate="Starting a server with no keyring creates a valid identity"
 test_KeyringAutoCreate() {
-    servald_start
+    start_servald_server
     executeOk_servald keyring list
     assert_keyring_list 1
 }
@@ -113,6 +113,8 @@ finally_KeyringAutoCreate() {
     stop_servald_server
 }
 teardown_KeyringAutoCreate() {
+   kill_all_servald_processes
+   assert_no_servald_processes
    report_servald_server
 }
 
