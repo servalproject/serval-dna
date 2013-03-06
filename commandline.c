@@ -988,6 +988,13 @@ int app_mdp_ping(const struct cli_parsed *parsed, void *context)
     return -1;
   if (cli_arg(parsed, "count", &count, NULL, "0") == -1)
     return -1;
+
+  /* Get SID that we want to ping.
+     TODO - allow lookup of SID prefixes and telephone numbers
+     (that would require MDP lookup of phone numbers, which doesn't yet occur) */
+  sid_t ping_sid;
+  if (str_to_sid_t(&ping_sid, sidhex) == -1)
+    return WHY("str_to_sid_t() failed");
   
   // assume we wont hear any responses
   int ret=-1;
@@ -1014,12 +1021,6 @@ int app_mdp_ping(const struct cli_parsed *parsed, void *context)
   unsigned int firstSeq=random();
   unsigned int sequence_number=firstSeq;
 
-  /* Get SID that we want to ping.
-     TODO - allow lookup of SID prefixes and telephone numbers
-     (that would require MDP lookup of phone numbers, which doesn't yet occur) */
-  sid_t ping_sid;
-  if (str_to_sid_t(&ping_sid, sidhex) == -1)
-    return WHY("str_to_sid_t() failed");
   int broadcast = is_sid_broadcast(ping_sid.binary);
 
   /* TODO Eventually we should try to resolve SID to phone number and vice versa */
@@ -2296,14 +2297,14 @@ int app_reverse_lookup(const struct cli_parsed *parsed, void *context)
   int mdp_sockfd;
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
-  if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
-    return WHY("Cannot create MDP socket");
-
   const char *sidhex, *delay;
   if (cli_arg(parsed, "sid", &sidhex, str_is_subscriber_id, "") == -1)
     return -1;
   if (cli_arg(parsed, "timeout", &delay, NULL, "3000") == -1)
     return -1;
+
+  if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
+    return WHY("Cannot create MDP socket");
 
   int port=32768+(random()&0xffff);
 
@@ -2405,9 +2406,6 @@ int app_network_scan(const struct cli_parsed *parsed, void *context)
   int mdp_sockfd;
   if (config.debug.verbose)
     DEBUG_cli_parsed(parsed);
-  if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
-    return WHY("Cannot create MDP socket");
-
   overlay_mdp_frame mdp;
   bzero(&mdp,sizeof(mdp));
   
@@ -2425,9 +2423,13 @@ int app_network_scan(const struct cli_parsed *parsed, void *context)
   }else
     DEBUGF("Scanning local networks");
   
+  if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
+   return WHY("Cannot create MDP socket");
   overlay_mdp_send(mdp_sockfd, &mdp, MDP_AWAITREPLY, 5000);
-  if (mdp.packetTypeAndFlags!=MDP_ERROR)
+  if (mdp.packetTypeAndFlags!=MDP_ERROR) {
+    overlay_mdp_client_close(mdp_sockfd);
     return -1;
+  }
   cli_puts(mdp.error.message);
   cli_delim("\n");
 
