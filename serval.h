@@ -210,7 +210,7 @@ typedef struct keyring_identity {
   char *PKRPin;
   struct subscriber *subscriber;
   unsigned int slot;
-  int keypair_count;
+  unsigned int keypair_count;
   keypair *keypairs[PKR_MAX_KEYPAIRS];
 } keyring_identity;
 
@@ -223,8 +223,7 @@ typedef struct keyring_context {
   char *KeyRingPin;
   unsigned char *KeyRingSalt;
   int KeyRingSaltLen;
-
-  int identity_count;
+  unsigned int identity_count;
   keyring_identity *identities[KEYRING_MAX_IDENTITIES];
 } keyring_context;
 

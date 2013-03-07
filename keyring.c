@@ -347,10 +347,11 @@ int keyring_munge_block(unsigned char *block,int len /* includes the first 96 by
 #endif
 
   /* Generate key and nonce hashes from the various inputs */
-  int ofs;
+  unsigned ofs;
 #define APPEND(buf, len) { \
+    assert(ofs <= sizeof work); \
     unsigned __len = (len); \
-    if (ofs + __len >= sizeof work) { \
+    if (__len > sizeof work - ofs) { \
       WHY("Input too long"); \
       goto kmb_safeexit; \
     } \
@@ -395,7 +396,7 @@ int keyring_munge_block(unsigned char *block,int len /* includes the first 96 by
 int keyring_pack_identity(keyring_context *c,keyring_identity *i,
 			  unsigned char packed[KEYRING_PAGE_SIZE])
 {
-  int ofs=0;
+  unsigned ofs=0;
   int exit_code=-1;
 
   /* Convert an identity to a KEYRING_PAGE_SIZE bytes long block that
@@ -530,7 +531,7 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot, const char *pin)
 {
   /* Skip salt and MAC */
   int i;
-  int ofs;
+  unsigned ofs;
   keyring_identity *id = emalloc_zero(sizeof(keyring_identity));
   if (!id) { WHY("malloc of identity failed"); return NULL; }
   if (!slot) { WHY("slot is null"); return NULL; }
@@ -571,8 +572,14 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot, const char *pin)
 	  keyring_free_identity(id);
 	  return NULL;
 	}
-	kp->type=slot_byte(ofs);
-	switch(kp->type) {
+	kp->type = slot_byte(ofs++);
+	/* TODO The keyring format is not back-compatible, ie, old software cannot cope with a
+	 * keyring from newer software that stores new key types.  The simple solution to this is to
+	 * encode the length in the type byte, or add an extra length byte, using a representation
+	 * that is not extensible, ie, is not subject to change.  This will allow the software to
+	 * skip unrecognised key types and pick up the ones it recognises.
+	 */
+	switch (kp->type) {
 	case KEYTYPE_CRYPTOBOX:
 	  kp->private_key_len=crypto_box_curve25519xsalsa20poly1305_SECRETKEYBYTES;
 	  kp->public_key_len=crypto_box_curve25519xsalsa20poly1305_PUBLICKEYBYTES;
@@ -581,28 +588,23 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot, const char *pin)
 	  kp->private_key_len=crypto_sign_edwards25519sha512batch_SECRETKEYBYTES;
 	  kp->public_key_len=crypto_sign_edwards25519sha512batch_PUBLICKEYBYTES;
 	  break;
-	case KEYTYPE_RHIZOME: 
+	case KEYTYPE_RHIZOME:
 	  kp->private_key_len=32; kp->public_key_len=0;
 	  break;
 	case KEYTYPE_DID:
 	  kp->private_key_len=32; kp->public_key_len=64;
 	  break;
 	}
-	kp->private_key = emalloc(kp->private_key_len);
-	if (!kp->private_key) {
-	  WHY("malloc of private key storage failed");
+	if (kp->private_key_len && (kp->private_key = emalloc(kp->private_key_len)) == NULL) {
 	  keyring_free_identity(id);
 	  return NULL;
 	}
-	for(i=0;i<kp->private_key_len;i++) kp->private_key[i]=slot_byte(ofs+1+i);
-	kp->public_key = emalloc(kp->public_key_len);
-	if (!kp->public_key) {
-	  WHY("malloc of public key storage failed");
+	for (i = 0; i < kp->private_key_len; ++i)
+	  kp->private_key[i] = slot_byte(ofs++);
+	if (kp->public_key_len && (kp->public_key = emalloc(kp->public_key_len)) == NULL) {
 	  keyring_free_identity(id);
 	  return NULL;
 	}
-	/* Hop over the private key and token that we have read */
-	ofs+=1+kp->private_key_len;
 	switch(kp->type) {
 	case KEYTYPE_CRYPTOBOX:
 	  /* Compute public key from private key.
@@ -629,10 +631,10 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot, const char *pin)
 	     So we just copy it out.  We use the same code for extracting the
 	     public key for a DID (i.e, subscriber name)
 	  */
-	  for(i=0;i<kp->public_key_len;i++) kp->public_key[i]=slot_byte(ofs+i);
-	  ofs+=kp->public_key_len;
+	  for (i = 0; i < kp->public_key_len; ++i)
+	    kp->public_key[i] = slot_byte(ofs++);
 	  break;
-	case KEYTYPE_RHIZOME: 
+	case KEYTYPE_RHIZOME:
 	  /* no public key value for these, just do nothing */
 	  break;
 	}
@@ -642,22 +644,23 @@ keyring_identity *keyring_unpack_identity(unsigned char *slot, const char *pin)
 	/* Invalid data, so invalid record.  Free and return failure.
 	   We don't complain about this, however, as it is the natural
 	   effect of trying a pin on an incorrect keyring slot. */
-	keyring_free_identity(id);	
+	keyring_free_identity(id);
 	return NULL;
       }
-      
     }
   return id;
 }
 
-int keyring_identity_mac(keyring_context *c,keyring_identity *id,
+int keyring_identity_mac(keyring_context *c, keyring_identity *id,
 			 unsigned char *pkrsalt,unsigned char *mac)
 {
+  //assert(id->keypair_count >= 1);
   unsigned char work[65536];
-  int ofs = 0;
+  unsigned ofs = 0;
 #define APPEND(buf, len) { \
+    assert(ofs <= sizeof work); \
     unsigned __len = (len); \
-    if (ofs + __len >= sizeof work) { \
+    if (__len > sizeof work - ofs) { \
       bzero(work, ofs); \
       return WHY("Input too long"); \
     } \
@@ -685,7 +688,7 @@ int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
   int exit_code=1;
   unsigned char slot[KEYRING_PAGE_SIZE];
   unsigned char hash[crypto_hash_sha512_BYTES];
-  keyring_identity *id=NULL; 
+  keyring_identity *id=NULL;
 
   /* 1. Read slot. */
   if (fseeko(k->file,slot_number*KEYRING_PAGE_SIZE,SEEK_SET))
@@ -699,16 +702,14 @@ int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
 			  c->KeyRingPin,pin)) {
     WHY("keyring_munge_block() failed");
     goto kdp_safeexit;
-  }  
-
-  /* 3. Unpack contents of slot into a new identity in the provided context. */  
-  id=keyring_unpack_identity(slot,pin);
-  if (!id) {
-    // Don't complain, because this happens routinely when trying pins against slots.
-    // WHY("keyring_unpack_identity() failed");
-    goto kdp_safeexit;
   }
-  id->slot=slot_number;
+
+  /* 3. Unpack contents of slot into a new identity in the provided context. */
+  if ((id = keyring_unpack_identity(slot, pin)) == NULL)
+    goto kdp_safeexit; // Not a valid slot
+  if (id->keypair_count < 1)
+    goto kdp_safeexit; // Not a valid slot
+  id->slot = slot_number;
 
   /* 4. Verify that slot is self-consistent (check MAC) */
   if (keyring_identity_mac(k->contexts[0],id,&slot[0],hash)) {
@@ -717,7 +718,7 @@ int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
   }
   /* compare hash to record */
   if (memcmp(hash,&slot[32],crypto_hash_sha512_BYTES))
-    {      
+    {
       WHY("Slot is not valid (MAC mismatch)");
       dump("computed",hash,crypto_hash_sha512_BYTES);
       dump("stored",&slot[32],crypto_hash_sha512_BYTES);
@@ -749,7 +750,10 @@ int keyring_decrypt_pkr(keyring_file *k,keyring_context *c,
   /* Clean up any potentially sensitive data before exiting */
   bzero(slot,KEYRING_PAGE_SIZE);
   bzero(hash,crypto_hash_sha512_BYTES);
-  if (id) keyring_free_identity(id); id=NULL;
+  if (id) {
+    keyring_free_identity(id);
+    id = NULL;
+  }
   return exit_code;
 }
 
@@ -812,6 +816,8 @@ int keyring_enter_pin(keyring_file *k, const char *pin)
 */
 keyring_identity *keyring_create_identity(keyring_file *k,keyring_context *c, const char *pin)
 {
+  if (config.debug.keyring)
+    DEBUGF("k=%p", k);
   /* Check obvious abort conditions early */
   if (!k) { WHY("keyring is NULL"); return NULL; }
   if (!k->bam) { WHY("keyring lacks BAM (not to be confused with KAPOW)"); return NULL; }
@@ -954,8 +960,7 @@ int keyring_commit(keyring_file *k)
     DEBUGF("k=%p", k);
   if (!k) return WHY("keyring was NULL");
   if (k->context_count<1) return WHY("Keyring has no contexts");
-  unsigned errorCount=0;
-
+  unsigned errorCount = 0;
   /* Write all BAMs */
   keyring_bam *b;
   for (b = k->bam; b; b = b->next) {
@@ -970,7 +975,6 @@ int keyring_commit(keyring_file *k)
       errorCount++;
     }
   }
-
   /* For each identity in each context, write the record to disk.
      This re-salts every identity as it is re-written, and the pin 
      for each identity and context is used, so changing a keypair or pin
@@ -1012,7 +1016,10 @@ int keyring_commit(keyring_file *k)
 	  }
 	}
       }
-
+  if (fflush(k->file) == -1) {
+    WHYF_perror("fflush(%d)", fileno(k->file));
+    errorCount++;
+  }
   return errorCount ? WHYF("%u errors commiting keyring to disk", errorCount) : 0;
 }
 
@@ -1163,9 +1170,8 @@ unsigned char *keyring_find_sas_private(keyring_file *k,unsigned char *sid,
 	  {
 	    /* SAS key is invalid (perhaps because it was a pre 0.90 format one),
 	       so replace it */
-	    DEBUGF("SAS key is invalid -- regenerating.");
-	    crypto_sign_edwards25519sha512batch_keypair(sas_public,
-							sas_private);
+	    WARN("SAS key is invalid -- regenerating.");
+	    crypto_sign_edwards25519sha512batch_keypair(sas_public, sas_private);
 	    keyring_commit(k);
 	  }
 	if (config.debug.keyring)
@@ -1405,7 +1411,6 @@ int keyring_seed(keyring_file *k)
   /* nothing to do if there is already an identity */
   if (k->contexts[0]->identity_count)
     return 0;
-
   int i;
   char did[65];
   /* Securely generate random telephone number */
@@ -1415,11 +1420,21 @@ int keyring_seed(keyring_file *k)
   did[0]='2'+(((unsigned char)did[0])%8);
   /* Then add 10 more digits, which is what we do in the mobile phone software */
   for(i=1;i<11;i++) did[i]='0'+(((unsigned char)did[i])%10); did[11]=0;
-  
   keyring_identity *id=keyring_create_identity(k,k->contexts[0],"");
   if (!id) return WHY("Could not create new identity");
   if (keyring_set_did(id, did, "")) return WHY("Could not set DID of new identity");
   if (keyring_commit(k)) return WHY("Could not commit new identity to keyring file");
+  {
+    const unsigned char *sid_binary = NULL;
+    const char *did = NULL;
+    const char *name = NULL;
+    keyring_identity_extract(id, &sid_binary, &did, &name);
+    INFOF("Seeded keyring with identity: did=%s name=%s sid=%s",
+	did ? did : "(null)",
+	alloca_str_toprint(name),
+	sid_binary ? alloca_tohex_sid(sid_binary) : "(null)"
+      );
+  }
   return 0;
 }
 
