@@ -986,8 +986,7 @@ int app_mdp_ping(const struct cli_parsed *parsed, void *context)
     mdp.out.payload_length=4+8;
     int *seq=(int *)&mdp.out.payload;
     *seq=sequence_number;
-    long long *txtime=(long long *)&mdp.out.payload[4];
-    *txtime=gettime_ms();
+    write_uint64(&mdp.out.payload[4], gettime_ms());
     
     int res=overlay_mdp_send(&mdp,0,0);
     if (res) {
@@ -1015,9 +1014,9 @@ int app_mdp_ping(const struct cli_parsed *parsed, void *context)
 	  case MDP_TX:
 	    {
 	      int *rxseq=(int *)&mdp.in.payload;
-	      long long *txtime=(long long *)&mdp.in.payload[4];
+	      time_ms_t txtime = read_uint64(&mdp.in.payload[4]);
 	      int hop_count = 64 - mdp.in.ttl;
-	      time_ms_t delay = gettime_ms() - *txtime;
+	      time_ms_t delay = gettime_ms() - txtime;
 	      printf("%s: seq=%d time=%lldms hops=%d %s%s\n",
 		     alloca_tohex_sid(mdp.in.src.sid),
 		     (*rxseq)-firstSeq+1,
