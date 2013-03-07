@@ -69,11 +69,11 @@ static void add_item(char *key, char *value){
   fprintf(stderr, "PUBLISHED \"%s\" = \"%s\"\n", key, value);
 }
 
-static void add_record(){
+static void add_record(int mdp_sockfd){
   int ttl;
   overlay_mdp_frame mdp;
   
-  if (overlay_mdp_recv(&mdp, MDP_PORT_DIRECTORY, &ttl))
+  if (overlay_mdp_recv(mdp_sockfd, &mdp, MDP_PORT_DIRECTORY, &ttl))
     return;
   
   if (mdp.packetTypeAndFlags&MDP_NOCRYPT){
@@ -160,17 +160,25 @@ static void resolve_request(){
 
 int main(int argc, char **argv){
   struct pollfd fds[2];
+  int mdp_sockfd;
+
+  if ((mdp_sockfd = overlay_mdp_client_socket()) < 0)
+    return WHY("Cannot create MDP socket");
 
   // bind for incoming directory updates
   sid_t srcsid;
-  if (overlay_mdp_getmyaddr(0, &srcsid))
+  if (overlay_mdp_getmyaddr(mdp_sockfd, 0, &srcsid)) {
+    overlay_mdp_client_close(mdp_sockfd);
     return WHY("Could not get local address");
-  if (overlay_mdp_bind(&srcsid, MDP_PORT_DIRECTORY))
+  }
+  if (overlay_mdp_bind(mdp_sockfd, &srcsid, MDP_PORT_DIRECTORY)) {
+    overlay_mdp_client_close(mdp_sockfd);
     return WHY("Could not bind to MDP socket");
+  }
   
   fds[0].fd = STDIN_FILENO;
   fds[0].events = POLLIN;
-  fds[1].fd = mdp_client_socket;
+  fds[1].fd = mdp_sockfd;
   fds[1].events = POLLIN;
   
   printf("STARTED\n");
@@ -180,15 +188,15 @@ int main(int argc, char **argv){
     int r = poll(fds, 2, 100);
     if (r>0){
       if (fds[0].revents & POLLIN)
-	resolve_request();
+        resolve_request();
       if (fds[1].revents & POLLIN)
-	add_record();
+        add_record(mdp_sockfd);
       
       if (fds[0].revents & (POLLHUP | POLLERR))
 	break;
     }
   }
   
-  overlay_mdp_client_done();
+  overlay_mdp_client_close(mdp_sockfd);
   return 0;
 }
