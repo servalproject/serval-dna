@@ -78,16 +78,18 @@ static int reload(const char *path, int *resultp)
     return -1;
   if (cmp_meta(&meta, &conffile_meta) == 0)
     return 0;
-  if (conffile_meta.mtime != -1)
+  if (conffile_meta.mtime != -1 && serverMode)
     INFOF("config file %s -- detected new version", conffile_path());
   char *buf = NULL;
-  if (meta.mtime == -1)
-    INFOF("config file %s does not exist", path);
-  else if (meta.size > CONFIG_FILE_MAX_SIZE) {
+  if (meta.mtime == -1) {
+    if (serverMode)
+      INFOF("config file %s does not exist", path);
+  } else if (meta.size > CONFIG_FILE_MAX_SIZE) {
     WHYF("config file %s is too big (%ld bytes exceeds limit %ld)", path, meta.size, CONFIG_FILE_MAX_SIZE);
     return -1;
   } else if (meta.size <= 0) {
-    INFOF("config file %s is zero size", path);
+    if (serverMode)
+      INFOF("config file %s is zero size", path);
   } else {
     FILE *f = fopen(path, "r");
     if (f == NULL) {
@@ -112,7 +114,8 @@ static int reload(const char *path, int *resultp)
       free(buf);
       return -1;
     }
-    INFOF("config file %s successfully read %ld bytes", path, (long) meta.size);
+    if (serverMode)
+      INFOF("config file %s successfully read %ld bytes", path, (long) meta.size);
   }
   conffile_meta = meta;
   struct cf_om_node *new_root = NULL;
@@ -218,6 +221,7 @@ static int reload_and_parse(int permissive)
       return WHYF("config file %s not loaded -- %s", conffile_path(), strbuf_str(b));
     WARNF("config file %s loaded despite problems -- %s", conffile_path(), strbuf_str(b));
   }
+  logDebugFlags();
   return 1;
 }
 

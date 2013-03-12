@@ -92,6 +92,8 @@ void logArgv(int level, struct __sourceloc whence, const char *label, int argc, 
 void logString(int level, struct __sourceloc whence, const char *str);
 void logMessage(int level, struct __sourceloc whence, const char *fmt, ...);
 void vlogMessage(int level, struct __sourceloc whence, const char *fmt, va_list);
+void logVersion();
+void logDebugFlags();
 int logDump(int level, struct __sourceloc whence, char *name, const unsigned char *addr, size_t len);
 ssize_t get_self_executable_path(char *buf, size_t len);
 int log_backtrace(struct __sourceloc whence);
