@@ -49,7 +49,7 @@ extern struct cli_schema command_line_options[];
 
 int commandline_usage(const struct cli_parsed *parsed, void *context)
 {
-  printf("Serval Mesh version <version>.\n");
+  printf("Serval DNA version %s\n", version_servald);
   return cli_usage(command_line_options);
 }
 

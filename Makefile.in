@@ -82,7 +82,7 @@ $(MDPCLIENTOBJS): $(HDRS)
 
 servald:	$(OBJS)
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -o $@ $(OBJS) $(LDFLAGS)
+	@v=`./version_string.sh` && $(CC) $(CFLAGS) -Wall -o $@ -DSERVALD_VERSION="\"$$v\"" version_servald.c $(OBJS) $(LDFLAGS)
 
 directory_service: $(MDPCLIENTOBJS) directory_service.o
 	@echo LINK $@

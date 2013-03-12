@@ -141,6 +141,9 @@ struct in_addr {
 /* Limit packet payloads to minimise packet loss of big packets in mesh networks */
 #define MAX_DATA_BYTES 256
 
+
+extern const char version_servald[];
+
 /*
  * INSTANCE_PATH can be set via the ./configure option --enable-instance-path=<path>
  */
