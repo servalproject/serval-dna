@@ -23,10 +23,11 @@ get_author_label() {
    # See git-commit-tree(1) for the semantics of working out the author's email
    # address when committing.
    local email
-   email="${GIT_AUTHOR_EMAIL:-${GIT_COMMITTER_EMAIL:-${EMAIL:-$(git config --get user.email)}}}"
+   email="${GIT_AUTHOR_EMAIL:-${GIT_COMMITTER_EMAIL:-${EMAIL:-$(git config --get user.email || true)}}}"
    # Serval Project email addresses get special treatment, to reduce day-to-day
    # version string verbosity.
    case "$email" in
+   '') author_label="${LOGNAME?}@$(hostname --fqdn)";;
    *@servalproject.org) author_label="${email%@*}";;
    *) author_label="$email";;
    esac
@@ -48,8 +49,8 @@ if ! git describe "${dirty:+--dirty=$dirty}" 2>/dev/null; then
       echo "$0: original commit unknown" >&2
       exit 1
    fi
-   existing_start_tag="$(git tag --points-at $original_commit --list START)"
-   if [ -n "$(git tag --list START)" -a -z "$existing_start_tag" ]; then
+   existing_start_tag="$(git rev-list --no-walk START 2>/dev/null | true)"
+   if [ -n "$(git tag --list START)" -a "$existing_start_tag" != "$original_commit" ]; then
       echo "$0: tag 'START' is already in use" >&2
       exit 1
    fi
