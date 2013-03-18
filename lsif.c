@@ -76,25 +76,29 @@ int scrapeProcNetRoute()
   if (config.debug.overlayinterfaces) DEBUG("called");
 
   FILE *f=fopen("/proc/net/route","r");
-  if (!f) return WHY_perror("fopen(\"/proc/net/route\")");
+  if (!f)
+    return WHY_perror("fopen(\"/proc/net/route\")");
 
   char line[1024],name[1024],dest[1024],mask[1024];
 
   /* skip header line */
-  line[0]=0; fgets(line,1024,f);
+  line[0] = '\0';
+  if (fgets(line,1024,f) == NULL)
+    return WHYF_perror("fgets(%p,1024,\"/proc/net/route\")", line);
 
-  line[0]=0; fgets(line,1024,f);
+  line[0] = '\0';
+  if (fgets(line,1024,f) == NULL)
+    return WHYF_perror("fgets(%p,1024,\"/proc/net/route\")", line);
   while(line[0]) {
     int r;
-    if ((r=sscanf(line,"%s %s %*s %*s %*s %*s %*s %s",name,dest,mask))==3)
-      {
-	struct in_addr addr = {.s_addr=strtol(dest,NULL,16)};
-	struct in_addr netmask = {.s_addr=strtol(mask,NULL,16)};
-	
-	overlay_interface_register(name,addr,netmask);
-      }
-
-    line[0]=0; fgets(line,1024,f);    
+    if ((r=sscanf(line,"%s %s %*s %*s %*s %*s %*s %s",name,dest,mask))==3) {
+      struct in_addr addr = {.s_addr=strtol(dest,NULL,16)};
+      struct in_addr netmask = {.s_addr=strtol(mask,NULL,16)};
+      overlay_interface_register(name,addr,netmask);
+    }
+    line[0] = '\0';
+    if (fgets(line,1024,f) == NULL)
+      return WHYF_perror("fgets(%p,1024,\"/proc/net/route\")", line);
   }
   fclose(f);
   return 0;

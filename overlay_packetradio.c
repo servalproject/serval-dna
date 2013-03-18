@@ -39,11 +39,11 @@ int overlay_packetradio_setup_port(overlay_interface *interface)
   tcsetattr(interface->alarm.poll.fd, TCSANOW, &t);
 
   // Ask radio to report RSSI
-  write(interface->alarm.poll.fd,"\r",1);
+  (void)write_all(interface->alarm.poll.fd,"\r",1);
   usleep(1200000);
-  write(interface->alarm.poll.fd,"+++",3);
+  (void)write_all(interface->alarm.poll.fd,"+++",3);
   usleep(1200000);
-  write(interface->alarm.poll.fd,"\rAT&T\rAT&T=RSSI\rATO\r",20);
+  (void)write_all(interface->alarm.poll.fd,"\rAT&T\rAT&T=RSSI\rATO\r",20);
   if (config.debug.packetradio) {
     DEBUGF("Enabled RSSI reporting for RFD900 radios");
     DEBUGF("Sent ATO to make sure we are in on-line mode");
@@ -55,7 +55,7 @@ int overlay_packetradio_setup_port(overlay_interface *interface)
     int i;
     for (i=0;i<sizeof buff;i++)
       buff[i]=i;
-    write(interface->alarm.poll.fd,buff,sizeof buff);
+    (void)write_all(interface->alarm.poll.fd,buff,sizeof buff);
   }
   
   set_nonblock(interface->alarm.poll.fd);

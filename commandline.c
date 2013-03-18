@@ -769,13 +769,17 @@ int app_server_start(const struct cli_parsed *parsed, void *context)
 	    close_logging();
 	    int fd;
 	    if ((fd = open("/dev/null", O_RDWR, 0)) == -1)
-	      _exit(WHY_perror("open"));
+	      _exit(WHY_perror("open(\"/dev/null\")"));
 	    if (setsid() == -1)
 	      _exit(WHY_perror("setsid"));
-	    (void)chdir(dir);
-	    (void)dup2(fd, 0);
-	    (void)dup2(fd, 1);
-	    (void)dup2(fd, 2);
+	    if (chdir(dir) == -1)
+	      _exit(WHYF_perror("chdir(%s)", alloca_str_toprint(dir)));
+	    if (dup2(fd, 0) == -1)
+	      _exit(WHYF_perror("dup2(%d,0)", fd));
+	    if (dup2(fd, 1) == -1)
+	      _exit(WHYF_perror("dup2(%d,1)", fd));
+	    if (dup2(fd, 2) == -1)
+	      _exit(WHYF_perror("dup2(%d,2)", fd));
 	    if (fd > 2)
 	      (void)close(fd);
 	    /* The execpath option is provided so that a JNI call to "start" can be made which

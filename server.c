@@ -65,9 +65,8 @@ int server_pid()
   FILE *f = NULL;
   if ((f = fopen(filename, "r"))) {
     char buf[20];
-    fgets(buf, sizeof buf, f);
+    int pid = (fgets(buf, sizeof buf, f) != NULL) ? atoi(buf) : -1;
     fclose(f);
-    int pid = atoi(buf);
     if (pid > 0 && kill(pid, 0) != -1)
       return pid;
     INFOF("Unlinking stale pidfile %s", filename);

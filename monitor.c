@@ -542,7 +542,10 @@ static int monitor_call_dtmf(const struct cli_parsed *parsed, void *context)
   return 0;
 }
 
-struct cli_schema monitor_options[]={
+static int monitor_help(const struct cli_parsed *parsed, void *context);
+
+struct cli_schema monitor_commands[] = {
+  {monitor_help,{"help",NULL},0,""},
   {monitor_set,{"monitor","vomp","<codec>","...",NULL},0,""},
   {monitor_set,{"monitor","<type>",NULL},0,""},
   {monitor_clear,{"ignore","<type>",NULL},0,""},
@@ -562,9 +565,29 @@ int monitor_process_command(struct monitor_context *c)
   int argc = parse_argv(c->line, ' ', argv, 16);
   
   struct cli_parsed parsed;
-  int res = cli_parse(argc, (const char *const*)argv, monitor_options, &parsed);
+  int res = cli_parse(argc, (const char *const*)argv, monitor_commands, &parsed);
   if (res == -1 || cli_invoke(&parsed, c))
     return monitor_write_error(c, "Invalid command");
+  return 0;
+}
+
+static int monitor_help(const struct cli_parsed *parsed, void *context)
+{
+  struct monitor_context *c=context;
+  strbuf b = strbuf_alloca(16384);
+  strbuf_puts(b, "\nINFO:Usage\n");
+  unsigned cmd;
+  for (cmd = 0; monitor_commands[cmd].function; ++cmd) {
+    unsigned opt;
+    const char *word;
+    for (opt = 0; (word = monitor_commands[cmd].words[opt]); ++opt) {
+      if (word[0] == '\\')
+	++word;
+      strbuf_sprintf(b, " %s", word);
+    }
+    strbuf_puts(b, "\n");
+  }
+  (void)write_all(c->alarm.poll.fd, strbuf_str(b), strbuf_len(b));
   return 0;
 }
 
