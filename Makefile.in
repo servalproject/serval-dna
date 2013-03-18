@@ -86,7 +86,7 @@ servald:	$(OBJS)
 
 directory_service: $(MDPCLIENTOBJS) directory_service.o
 	@echo LINK $@
-	@$(CC) $(CFLAGS) -Wall -o $@ $(MDPCLIENTOBJS) directory_service.o $(LDFLAGS) 
+	@v=`./version_string.sh` && $(CC) $(CFLAGS) -Wall -o $@ -DSERVALD_VERSION="\"$$v\"" version_servald.c $(MDPCLIENTOBJS) directory_service.o $(LDFLAGS)
 
 tfw_createfile: tfw_createfile.o str.o strbuf.o strbuf_helpers.o
 	@echo LINK $@
