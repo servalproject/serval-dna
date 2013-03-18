@@ -170,7 +170,6 @@ void serval_setinstancepath(const char *instancepath);
 
 #define SERVER_CONFIG_RELOAD_INTERVAL_MS	1000
 
-extern int serverMode;
 extern int servalShutdown;
 
 extern char *gatewayspec;

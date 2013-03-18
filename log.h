@@ -84,6 +84,8 @@ struct __sourceloc {
 
 extern const struct __sourceloc __whence; // see above
 
+extern int serverMode;
+
 void set_logging(FILE *f);
 FILE *open_logging();
 void close_logging();

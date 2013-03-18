@@ -42,6 +42,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "strbuf.h"
 #include "strbuf_helpers.h"
 
+int serverMode = 0;
 const struct __sourceloc __whence = __NOWHERE__;
 
 static FILE *logfile = NULL;
