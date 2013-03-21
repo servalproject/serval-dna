@@ -8,10 +8,19 @@ Single and double quotes around arguments are part of the shell syntax, so are
 not seen by the command.  Lines ending in backslash `\` continue the command on
 the next line.
 
+Configuration options
+---------------------
+
+The **servald** configuration is a set of label-value pairs called *options*.
+A label is a sequence of one or more alphanumeric words separated by period
+characters `.`.  A value is a string of characters which is parsed according
+to the option's type, for example a decimal integer, a boolean, or an internet
+address.
+
 Instance path
 -------------
 
-By default, **servald** keeps its configuration, keyring, and other temporary
+By default, **servald** stores its configuration, keyring, and other temporary
 files in its *instance directory*.  The instance directory is set at run time
 by the `SERVALINSTANCE_PATH` environment variable.  If this is not set, then
 **servald** uses a built-in default path which depends on its build-time option
@@ -31,54 +40,6 @@ must have its own instance path (and hence its own `serval.conf`).  Set the
 starting each daemon.  Each **servald** daemon will create its own instance
 directory (and all enclosing parent directories) if it does not already exist.
 
-Configuration options
----------------------
-
-The **servald** configuration is a set of label-value pairs called *options*.
-A label is a sequence of one or more alphanumeric words separated by period
-characters `.`.  A value is a string of characters which is parsed according
-to the option's type, for example a decimal integer, a boolean, or an internet
-address.
-
-To set a configuration option:
-
-    $ servald config set name.of.option 'value'
-    $
-
-To unset a configuration option, returning it to its default value:
-
-    $ servald config del name.of.option
-    $
-
-To examine an option's current value:
-
-    $ servald config get name.of.option
-    name.of.option=value
-    $
-
-To examine all configuration option settings:
-
-    $ servald config get
-    interfaces=+eth0,+wifi0
-    name.of.option=value
-    name.of.other_option=value2
-    $
-
-To list all supported configuration options:
-
-    $ servald config schema
-    debug.broadcasts=(boolean)
-    debug.dnahelper=(boolean)
-    debug.dnaresponses=(boolean)
-    ...
-    server.chdir=(absolute_path)
-    server.dummy_interface_dir=(str_nonempty)
-    server.respawn_on_crash=(boolean)
-    $
-
-The configuration schema is defined in the [conf_schema.h](../conf_schema.h)
-source header file.
-
 Configuration persistence
 -------------------------
 
@@ -90,21 +51,36 @@ until its `serval.conf` file is altered or removed.
 Invalid configuration
 ---------------------
 
-If `serval.conf` is syntactically malformed or refers to an unsupported option
-or contains an invalid value or inconsistency, then every invocation of
-**servald** will log explanatory warnings and reject the file, failing with an
-error instead of performing the command.  The warnings will be logged according
-to any valid logging options found in `serval.conf`.
+Although `serval.conf` is usually written and read only by **servald**, in
+fact it is an external file which could be modified by other means, so
+**servald** has no control over its contents.  The semantics of the
+configuration loading anticipate the possibility of encountering a
+syntactically malformed file or an unsupported option or an option with an
+invalid value:
+
+ * If `serval.conf` is syntactically malformed, then **servald** will log a
+   warning, skip the malformed line and continue parsing;
+
+ * If an unsupported configuration option is encountered (which could be a mis-
+   spelling of a proper option), then **servald** will log a warning and
+   ignore the option, leaving it with the built-in default value;
+
+ * If a configuration option has an invalid value, then **servald** will log
+   a warning and ignore the option, leaving it with the built-in default value.
+  
+In all the above cases, **servald** will usually reject the file and the command
+will fail with an error instead of executing.  The warnings are logged according
+to any valid logging options that were successfully parsed.
 
 The only exceptions to this rule are the `help` and `stop` commands and the
-various `config` commands described above.  Those commands will proceed instead
+various `config` commands described below.  Those commands will proceed instead
 of failing by omitting the offending config options and using built-in defaults
 in their place.  This means that despite an invalid `serval.conf`, **servald**
 may still be used to inspect and correct the configuration, and to stop a
 running daemon.
 
-Configuration of daemons
-------------------------
+Invalid configuration of daemons
+--------------------------------
 
 As described above, an invalid `serval.conf` will prevent the **servald**
 `start` command from starting a daemon process.  Once the daemon is running, it
@@ -113,6 +89,77 @@ modification time) and attempts to re-load it if it detects a change.  If the
 re-loaded file is invalid, the daemon rejects it, logs an error, and continues
 execution with unchanged configuration.  However, if the daemon is stopped or
 killed, it cannot be re-started while the invalid `serval.conf` persists.
+
+Configuration commands
+----------------------
+
+To set a configuration option:
+
+    $ servald config set name.of.option 'value'
+    $
+
+To unset (remove) a configuration option, returning it to its default value:
+
+    $ servald config del name.of.option
+    $
+
+To examine an option's current value as defined in the `serval.conf` file
+(even invalid and unsupported options may be examined):
+
+    $ servald config get name.of.option
+    name.of.option=value
+    $
+
+To examine all configuration option settings as defined in the `serval.conf`
+file (even invalid and unsupported options are included, unlike `config dump`
+shown later):
+
+    $ servald config get
+    interfaces=+eth0,+wifi0
+    name.of.option=value
+    name.of.other_option=value2
+    $
+
+To list the names and types of all supported configuration options:
+
+    $ servald config schema
+    debug.broadcasts=(boolean)
+    debug.dnahelper=(boolean)
+    debug.dnaresponses=(boolean)
+    ...
+    server.chdir=(absolute_path)
+    server.interface_path=(str_nonempty)
+    server.respawn_on_crash=(boolean)
+    $
+
+To examine all current *valid* configuration option settings, omitting
+invalid and unsupported options from `serval.conf`, shows exactly the effect
+that the current configuration would have if used:
+
+    $ servald config dump --full
+    debug.broadcasts=false
+    debug.dnahelper=false
+    debug.dnaresponses=false
+    ...
+    rhizome.rhizome_mdp_block_size=512
+    server.chdir=/
+    server.respawn_on_crash=true
+    $
+
+Omitting the `--full` argument omits all options which have their default
+value, leaving only the minimal settings that need be present in `serval.conf`
+to produce the current configuration:
+
+    $ servald config dump
+    debug.rhizome=true
+    interfaces.0.file=/var/serval-node/dummy
+    interfaces.0.socket_type=file
+    rhizome.direct.peer.0.host=129.128.127.126
+    server.respawn_on_crash=true
+    $
+
+The configuration schema, with default values, is defined in the
+[conf_schema.h](../conf_schema.h) source header file.
 
 Logging configuration
 ---------------------
