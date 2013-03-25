@@ -49,8 +49,8 @@ extern struct cli_schema command_line_options[];
 
 int commandline_usage(const struct cli_parsed *parsed, void *context)
 {
-  printf("Serval DNA version %s\n", version_servald);
-  return cli_usage(command_line_options);
+  printf("Serval DNA version %s\nUsage:\n", version_servald);
+  return cli_usage_parsed(parsed, XPRINTF_STDIO(stdout));
 }
 
 /* Data structures for accumulating output of a single JNI call.
@@ -225,7 +225,7 @@ int parseCommandLine(const char *argv0, int argc, const char *const *args)
   int result = cli_parse(argc, args, command_line_options, &parsed);
   if (result != -1) {
     // Do not run the command if the configuration does not load ok
-    if (((parsed.command->flags & CLIFLAG_PERMISSIVE_CONFIG) ? cf_reload_permissive() : cf_reload()) != -1)
+    if (((parsed.commands[parsed.cmdi].flags & CLIFLAG_PERMISSIVE_CONFIG) ? cf_reload_permissive() : cf_reload()) != -1)
       result = cli_invoke(&parsed, NULL);
     else {
       strbuf b = strbuf_alloca(160);
@@ -2354,7 +2354,7 @@ int app_network_scan(const struct cli_parsed *parsed, void *context)
 struct cli_schema command_line_options[]={
   {app_dna_lookup,{"dna","lookup","<did>","[<timeout>]",NULL},0,
    "Lookup the SIP/MDP address of the supplied telephone number (DID)."},
-  {commandline_usage,{"help",NULL},CLIFLAG_PERMISSIVE_CONFIG,
+  {commandline_usage,{"help","...",NULL},CLIFLAG_PERMISSIVE_CONFIG,
    "Display command usage."},
   {app_echo,{"echo","[-e]","[--]","...",NULL},CLIFLAG_STANDALONE,
    "Output the supplied string."},

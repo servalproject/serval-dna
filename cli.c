@@ -4,19 +4,47 @@
 #include "log.h"
 #include "serval.h"
 #include "rhizome.h"
+#include "strbuf_helpers.h"
 
-int cli_usage(const struct cli_schema *commands) {
-  printf("Usage:\n");
+int cli_usage(const struct cli_schema *commands, XPRINTF xpf)
+{
+  return cli_usage_args(0, NULL, commands, xpf);
+}
+
+int cli_usage_parsed(const struct cli_parsed *parsed, XPRINTF xpf)
+{
+  if (parsed->varargi == -1)
+    return cli_usage(parsed->commands, xpf);
+  return cli_usage_args(parsed->argc - parsed->varargi, &parsed->args[parsed->varargi], parsed->commands, xpf);
+}
+
+int cli_usage_args(const int argc, const char *const *args, const struct cli_schema *commands, XPRINTF xpf)
+{
   unsigned cmd;
+  int matched_any = 0;
   for (cmd = 0; commands[cmd].function; ++cmd) {
     unsigned opt;
     const char *word;
-    for (opt = 0; (word = commands[cmd].words[opt]); ++opt) {
-      if (word[0] == '\\')
-	++word;
-      printf(" %s", word);
+    int matched = 1;
+    for (opt = 0; matched && opt < argc && (word = commands[cmd].words[opt]); ++opt)
+      if (strncmp(word, args[opt], strlen(args[opt])) != 0)
+	matched = 0;
+    if (matched) {
+      matched_any = 1;
+      for (opt = 0; (word = commands[cmd].words[opt]); ++opt) {
+	if (word[0] == '\\')
+	  ++word;
+	xprintf(xpf, " %s", word);
+      }
+      xputc('\n', xpf);
+      if (commands[cmd].description && commands[cmd].description[0])
+	xprintf(xpf, "   %s\n", commands[cmd].description);
     }
-    printf("\n   %s\n",commands[cmd].description);
+  }
+  if (!matched_any && argc) {
+    strbuf b = strbuf_alloca(160);
+    strbuf_append_argv(b, argc, args);
+    xprintf(xpf, " No commands matching %s\n", strbuf_str(b));
   }
   return 0;
 }
@@ -29,7 +57,8 @@ int cli_parse(const int argc, const char *const *args, const struct cli_schema *
   for (cmd = 0; commands[cmd].function; ++cmd) {
     struct cli_parsed cmdpa;
     memset(&cmdpa, 0, sizeof cmdpa);
-    cmdpa.command = &commands[cmd];
+    cmdpa.commands = commands;
+    cmdpa.cmdi = cmd;
     cmdpa.args = args;
     cmdpa.argc = argc;
     cmdpa.labelc = 0;
@@ -202,7 +231,7 @@ void _debug_cli_parsed(struct __sourceloc __whence, const struct cli_parsed *par
 int cli_invoke(const struct cli_parsed *parsed, void *context)
 {
   IN();
-  int ret = parsed->command->function(parsed, context);
+  int ret = parsed->commands[parsed->cmdi].function(parsed, context);
   RETURN(ret);
   OUT();
 }

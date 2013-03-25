@@ -576,17 +576,7 @@ static int monitor_help(const struct cli_parsed *parsed, void *context)
   struct monitor_context *c=context;
   strbuf b = strbuf_alloca(16384);
   strbuf_puts(b, "\nINFO:Usage\n");
-  unsigned cmd;
-  for (cmd = 0; monitor_commands[cmd].function; ++cmd) {
-    unsigned opt;
-    const char *word;
-    for (opt = 0; (word = monitor_commands[cmd].words[opt]); ++opt) {
-      if (word[0] == '\\')
-	++word;
-      strbuf_sprintf(b, " %s", word);
-    }
-    strbuf_puts(b, "\n");
-  }
+  cli_usage(monitor_commands, XPRINTF_STRBUF(b));
   (void)write_all(c->alarm.poll.fd, strbuf_str(b), strbuf_len(b));
   return 0;
 }

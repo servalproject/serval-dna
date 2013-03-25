@@ -256,7 +256,7 @@ struct cli_schema console_commands[]={
 
 static int console_usage(const struct cli_parsed *parsed, void *context)
 {
-  cli_usage(console_commands);
+  cli_usage(console_commands, XPRINTF_STDIO(stdout));
   fflush(stdout);
   return 0;
 }

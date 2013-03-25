@@ -20,6 +20,7 @@
 #ifndef __SERVALD_CLI_H
 #define __SERVALD_CLI_H 
 
+#include "xprintf.h"
 #include "log.h"
 
 #define COMMAND_LINE_MAX_LABELS   (32)
@@ -37,7 +38,8 @@ struct cli_schema {
 };
 
 struct cli_parsed {
-  const struct cli_schema *command;
+  const struct cli_schema *commands;
+  unsigned int cmdi;
   struct labelv {
     const char *label;
     unsigned int len;
@@ -53,7 +55,9 @@ void _debug_cli_parsed(struct __sourceloc __whence, const struct cli_parsed *par
 
 #define DEBUG_cli_parsed(parsed) _debug_cli_parsed(__WHENCE__, parsed)
 
-int cli_usage(const struct cli_schema *commands);
+int cli_usage(const struct cli_schema *commands, XPRINTF xpf);
+int cli_usage_args(const int argc, const char *const *args, const struct cli_schema *commands, XPRINTF xpf);
+int cli_usage_parsed(const struct cli_parsed *parsed, XPRINTF xpf);
 int cli_parse(const int argc, const char *const *args, const struct cli_schema *commands, struct cli_parsed *parsed);
 int cli_invoke(const struct cli_parsed *parsed, void *context);
 int _cli_arg(struct __sourceloc __whence, const struct cli_parsed *parsed, char *label, const char **dst, int (*validator)(const char *arg), char *defaultvalue);
