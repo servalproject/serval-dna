@@ -88,7 +88,7 @@ static FILE *_open_logging()
     if (!logpath) {
       if (cf_limbo)
 	return NULL;
-      logpath = config.log.file;
+      logpath = config.log.file_path;
     }
     if (!logpath || !logpath[0]) {
       logfile = stderr;
@@ -142,11 +142,12 @@ static const char *_trimbuildpath(const char *path)
 
 static int _log_prepare(int level, struct __sourceloc whence)
 {
-  if (level == LOG_LEVEL_SILENT)
+  assert(level <= LOG_LEVEL_FATAL);
+  if (level < config.log.file_format.level)
     return 0;
   struct timeval tv;
   tv.tv_sec = 0;
-  if (config.log.show_time)
+  if (config.log.file_format.show_time)
     gettimeofday(&tv, NULL);
   if (!version_logged)
     logVersion();
@@ -162,15 +163,15 @@ static int _log_prepare(int level, struct __sourceloc whence)
     switch (level) {
       case LOG_LEVEL_FATAL: levelstr = "FATAL:"; break;
       case LOG_LEVEL_ERROR: levelstr = "ERROR:"; break;
-      case LOG_LEVEL_INFO:  levelstr = "INFO:"; break;
       case LOG_LEVEL_WARN:  levelstr = "WARN:"; break;
+      case LOG_LEVEL_INFO:  levelstr = "INFO:"; break;
       case LOG_LEVEL_DEBUG: levelstr = "DEBUG:"; break;
     }
     strbuf_sprintf(&logbuf, "%-6.6s", levelstr);
 #endif
-    if (config.log.show_pid)
+    if (config.log.file_format.show_pid)
       strbuf_sprintf(&logbuf, " [%5u]", getpid());
-    if (config.log.show_time) {
+    if (config.log.file_format.show_time) {
       if (tv.tv_sec == 0) {
 	strbuf_puts(&logbuf, " NOTIME______");
       } else {

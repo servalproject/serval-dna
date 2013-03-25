@@ -82,14 +82,12 @@ static int reload(const char *path, int *resultp)
     INFOF("config file %s -- detected new version", conffile_path());
   char *buf = NULL;
   if (meta.mtime == -1) {
-    if (serverMode)
-      INFOF("config file %s does not exist", path);
+    WARNF("config file %s does not exist -- using all defaults", path);
   } else if (meta.size > CONFIG_FILE_MAX_SIZE) {
     WHYF("config file %s is too big (%ld bytes exceeds limit %ld)", path, meta.size, CONFIG_FILE_MAX_SIZE);
     return -1;
   } else if (meta.size <= 0) {
-    if (serverMode)
-      INFOF("config file %s is zero size", path);
+    WARNF("config file %s is zero size -- using all defaults", path);
   } else {
     FILE *f = fopen(path, "r");
     if (f == NULL) {

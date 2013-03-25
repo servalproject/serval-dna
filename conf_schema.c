@@ -932,3 +932,54 @@ int cf_cmp_interface_list(const struct config_interface_list *a, const struct co
 {
   return cf_cmp_config_interface_list(a, b);
 }
+
+int cf_opt_log_level(int *levelp, const char *text)
+{
+  if (strcmp(text, "none") == 0) {
+    *levelp = LOG_LEVEL_NONE;
+    return CFOK;
+  }
+  if (strcmp(text, "fatal") == 0) {
+    *levelp = LOG_LEVEL_FATAL;
+    return CFOK;
+  }
+  if (strcmp(text, "error") == 0) {
+    *levelp = LOG_LEVEL_ERROR;
+    return CFOK;
+  }
+  if (strcmp(text, "warn") == 0) {
+    *levelp = LOG_LEVEL_WARN;
+    return CFOK;
+  }
+  if (strcmp(text, "info") == 0) {
+    *levelp = LOG_LEVEL_INFO;
+    return CFOK;
+  }
+  if (strcmp(text, "debug") == 0) {
+    *levelp = LOG_LEVEL_DEBUG;
+    return CFOK;
+  }
+  return CFINVALID;
+}
+
+int cf_fmt_log_level(const char **textp, const int *levelp)
+{
+  const char *t = NULL;
+  switch (*levelp) {
+    case LOG_LEVEL_NONE:   t = "none"; break;
+    case LOG_LEVEL_FATAL:  t = "fatal"; break;
+    case LOG_LEVEL_ERROR:  t = "error"; break;
+    case LOG_LEVEL_WARN:   t = "warn"; break;
+    case LOG_LEVEL_INFO:   t = "info"; break;
+    case LOG_LEVEL_DEBUG:  t = "debug"; break;
+  }
+  if (!t)
+    return CFINVALID;
+  *textp = str_edup(t);
+  return CFOK;
+}
+
+int cf_cmp_log_level(const int *a, const int *b)
+{
+  return cf_cmp_int(a, b);
+}

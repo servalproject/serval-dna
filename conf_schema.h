@@ -226,11 +226,29 @@ ATOM(bool_t, profiling,                 0, boolean,, "")
 ATOM(bool_t, externalblobs,             0, boolean,, "")
 END_STRUCT
 
-STRUCT(log)
-STRING(256,                 file,       "", str_nonempty,, "Path of log file, either absolute or relative to instance directory")
+STRUCT(log_format)
 ATOM(bool_t,                show_pid,   1, boolean,, "If true, all log lines contain PID of logging process")
 ATOM(bool_t,                show_time,  1, boolean,, "If true, all log lines contain time stamp")
+ATOM(int,                   level,      LOG_LEVEL_DEBUG, log_level,, "Only log messages at and above this level of severity")
 END_STRUCT
+
+STRUCT(log)
+STRING(256,                 file_path,      "", str_nonempty,, "Path of log file, either absolute or relative to instance directory")
+SUB_STRUCT(log_format,      file_format,,   full)
+SUB_STRUCT(log_format,      stderr_format,, helpful)
+END_STRUCT
+
+STRUCT_DEFAULT(log_format, helpful)
+ATOM_DEFAULT(show_pid,   0)
+ATOM_DEFAULT(show_time,  0)
+ATOM_DEFAULT(level,      LOG_LEVEL_WARN)
+END_STRUCT_DEFAULT
+
+STRUCT_DEFAULT(log_format, full)
+ATOM_DEFAULT(show_pid,   1)
+ATOM_DEFAULT(show_time,  1)
+ATOM_DEFAULT(level,      LOG_LEVEL_DEBUG)
+END_STRUCT_DEFAULT
 
 STRUCT(server)
 STRING(256,                 chdir,      "/", absolute_path,, "Absolute path of chdir(2) for server process")

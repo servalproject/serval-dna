@@ -314,12 +314,18 @@ struct pattern_list {
         __type __element;
 #define STRING(__size, __element, __default, __repr, __flags, __comment) \
         char __element[__size + 1];
-#define SUB_STRUCT(__name, __element, __flags) \
+#define SUB_STRUCT(__name, __element, __flags, __dfllabel...) \
         struct config_##__name __element;
-#define NODE_STRUCT(__name, __element, __repr, __flags) \
+#define NODE_STRUCT(__name, __element, __repr, __flags, __dfllabel...) \
         struct config_##__name __element;
 #define END_STRUCT \
     };
+#define STRUCT_DEFAULT(__name, __dfllabel)
+#define ATOM_DEFAULT(__element, __default)
+#define STRING_DEFAULT(__element, __default)
+#define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel)
+#define NODE_STRUCT_DEFAULT(__name, __element, __dfllabel)
+#define END_STRUCT_DEFAULT
 #define ARRAY(__name, __flags, __validator...) \
     struct config_##__name { \
         unsigned ac; \
@@ -334,7 +340,7 @@ struct pattern_list {
             char value[(__strsize) + 1];
 #define VALUE_NODE(__type, __eltrepr) \
             __type value;
-#define VALUE_SUB_STRUCT(__structname) \
+#define VALUE_SUB_STRUCT(__structname, __dfllabel...) \
             struct config_##__structname value;
 #define VALUE_NODE_STRUCT(__structname, __eltrepr) \
             struct config_##__structname value;
@@ -349,6 +355,12 @@ struct pattern_list {
 #undef SUB_STRUCT
 #undef NODE_STRUCT
 #undef END_STRUCT
+#undef STRUCT_DEFAULT
+#undef ATOM_DEFAULT
+#undef STRING_DEFAULT
+#undef SUB_STRUCT_DEFAULT
+#undef NODE_STRUCT_DEFAULT
+#undef END_STRUCT_DEFAULT
 #undef ARRAY
 #undef KEY_ATOM
 #undef KEY_STRING
@@ -362,13 +374,23 @@ struct pattern_list {
 // Generate config function prototypes, cf_dfl_config_NAME(), cf_sch_config_NAME().
 #define STRUCT(__name, __validator...) \
     int cf_dfl_config_##__name(struct config_##__name *s); \
+    int cf_dfl_config_##__name##_cf_(struct config_##__name *s); \
     int cf_sch_config_##__name(struct cf_om_node **parentp);
 #define NODE(__type, __element, __default, __repr, __flags, __comment)
 #define ATOM(__type, __element, __default, __repr, __flags, __comment)
 #define STRING(__size, __element, __default, __repr, __flags, __comment)
-#define SUB_STRUCT(__name, __element, __flags)
-#define NODE_STRUCT(__name, __element, __repr, __flags)
+#define SUB_STRUCT(__name, __element, __flags, __dfllabel...) \
+    int cf_dfl_config_##__name##_cf_##__dfllabel(struct config_##__name *s);
+#define NODE_STRUCT(__name, __element, __repr, __flags, __dfllabel...) \
+    int cf_dfl_config_##__name##_cf_##__dfllabel(struct config_##__name *s);
 #define END_STRUCT
+#define STRUCT_DEFAULT(__name, __dfllabel) \
+    int cf_dfl_config_##__name##_cf_##__dfllabel(struct config_##__name *s);
+#define ATOM_DEFAULT(__element, __default)
+#define STRING_DEFAULT(__element, __default)
+#define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel)
+#define NODE_STRUCT_DEFAULT(__name, __element, __dfllabel)
+#define END_STRUCT_DEFAULT
 #define ARRAY(__name, __flags, __validator...) \
     int cf_dfl_config_##__name(struct config_##__name *a); \
     int cf_sch_config_##__name(struct cf_om_node **parentp);
@@ -377,7 +399,7 @@ struct pattern_list {
 #define VALUE_ATOM(__type, __eltrepr)
 #define VALUE_STRING(__strsize, __eltrepr)
 #define VALUE_NODE(__type, __eltrepr)
-#define VALUE_SUB_STRUCT(__structname)
+#define VALUE_SUB_STRUCT(__structname, __dfllabel...)
 #define VALUE_NODE_STRUCT(__structname, __eltrepr)
 #define END_ARRAY(__size)
 #include "conf_schema.h"
@@ -388,6 +410,12 @@ struct pattern_list {
 #undef SUB_STRUCT
 #undef NODE_STRUCT
 #undef END_STRUCT
+#undef STRUCT_DEFAULT
+#undef ATOM_DEFAULT
+#undef STRING_DEFAULT
+#undef SUB_STRUCT_DEFAULT
+#undef NODE_STRUCT_DEFAULT
+#undef END_STRUCT_DEFAULT
 #undef ARRAY
 #undef KEY_ATOM
 #undef KEY_STRING
@@ -405,6 +433,7 @@ struct pattern_list {
 #define STRUCT(__name, __validator...) \
     int cf_opt_config_##__name(struct config_##__name *, const struct cf_om_node *); \
     int cf_fmt_config_##__name(struct cf_om_node **, const struct config_##__name *); \
+    int cf_xfmt_config_##__name(struct cf_om_node **, const struct config_##__name *, const struct config_##__name *); \
     int cf_cmp_config_##__name(const struct config_##__name *, const struct config_##__name *); \
     __VALIDATOR(__name, ##__validator)
 #define NODE(__type, __element, __default, __repr, __flags, __comment) \
@@ -419,19 +448,27 @@ struct pattern_list {
     int cf_opt_##__repr(char *, size_t, const char *); \
     int cf_fmt_##__repr(const char **, const char *); \
     int cf_cmp_##__repr(const char *, const char *);
-#define SUB_STRUCT(__structname, __element, __flags) \
+#define SUB_STRUCT(__structname, __element, __flags, __dfllabel...) \
     int cf_opt_config_##__structname(struct config_##__structname *, const struct cf_om_node *); \
     int cf_fmt_config_##__structname(struct cf_om_node **, const struct config_##__structname *); \
+    int cf_xfmt_config_##__structname(struct cf_om_node **, const struct config_##__structname *, const struct config_##__structname *); \
     int cf_cmp_config_##__structname(const struct config_##__structname *, const struct config_##__structname *);
-#define NODE_STRUCT(__structname, __element, __repr, __flags) \
-    SUB_STRUCT(__structname, __element, __flags) \
+#define NODE_STRUCT(__structname, __element, __repr, __flags, __dfllabel...) \
+    SUB_STRUCT(__structname, __element, __flags, ##__dfllabel) \
     int cf_opt_##__repr(struct config_##__structname *, const struct cf_om_node *); \
     int cf_fmt_##__repr(struct cf_om_node **, const struct config_##__structname *); \
     int cf_cmp_##__repr(const struct config_##__structname *, const struct config_##__structname *);
 #define END_STRUCT
+#define STRUCT_DEFAULT(__name, __dfllabel)
+#define ATOM_DEFAULT(__element, __default)
+#define STRING_DEFAULT(__element, __default)
+#define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel)
+#define NODE_STRUCT_DEFAULT(__name, __element, __dfllabel)
+#define END_STRUCT_DEFAULT
 #define ARRAY(__name, __flags, __validator...) \
     int cf_opt_config_##__name(struct config_##__name *, const struct cf_om_node *); \
     int cf_fmt_config_##__name(struct cf_om_node **, const struct config_##__name *); \
+    int cf_xfmt_config_##__name(struct cf_om_node **, const struct config_##__name *, const struct config_##__name *); \
     int cf_cmp_config_##__name(const struct config_##__name *, const struct config_##__name *); \
     __VALIDATOR(__name, ##__validator)
 #define KEY_ATOM(__type, __keyrepr) \
@@ -454,9 +491,10 @@ struct pattern_list {
     int cf_opt_##__eltrepr(__type *, const struct cf_om_node *); \
     int cf_fmt_##__eltrepr(struct cf_om_node **, const __type *); \
     int cf_cmp_##__eltrepr(const __type *, const __type *);
-#define VALUE_SUB_STRUCT(__structname) \
+#define VALUE_SUB_STRUCT(__structname, __dfllabel...) \
     int cf_opt_config_##__structname(struct config_##__structname *, const struct cf_om_node *); \
     int cf_fmt_config_##__structname(struct cf_om_node **, const struct config_##__structname *); \
+    int cf_xfmt_config_##__structname(struct cf_om_node **, const struct config_##__structname *, const struct config_##__structname *); \
     int cf_cmp_config_##__structname(const struct config_##__structname *, const struct config_##__structname *);
 #define VALUE_NODE_STRUCT(__structname, __repr) \
     VALUE_SUB_STRUCT(__structname) \
@@ -473,6 +511,12 @@ struct pattern_list {
 #undef SUB_STRUCT
 #undef NODE_STRUCT
 #undef END_STRUCT
+#undef STRUCT_DEFAULT
+#undef ATOM_DEFAULT
+#undef STRING_DEFAULT
+#undef SUB_STRUCT_DEFAULT
+#undef NODE_STRUCT_DEFAULT
+#undef END_STRUCT_DEFAULT
 #undef ARRAY
 #undef KEY_ATOM
 #undef KEY_STRING
@@ -488,9 +532,15 @@ struct pattern_list {
 #define NODE(__type, __element, __default, __repr, __flags, __comment)
 #define ATOM(__type, __element, __default, __repr, __flags, __comment)
 #define STRING(__size, __element, __default, __repr, __flags, __comment)
-#define SUB_STRUCT(__name, __element, __flags)
-#define NODE_STRUCT(__name, __element, __repr, __flags)
+#define SUB_STRUCT(__name, __element, __flags, __dfllabel...)
+#define NODE_STRUCT(__name, __element, __repr, __flags, __dfllabel...)
 #define END_STRUCT
+#define STRUCT_DEFAULT(__name, __dfllabel)
+#define ATOM_DEFAULT(__element, __default)
+#define STRING_DEFAULT(__element, __default)
+#define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel)
+#define NODE_STRUCT_DEFAULT(__name, __element, __dfllabel)
+#define END_STRUCT_DEFAULT
 #define ARRAY(__name, __flags, __validator...) \
     int config_##__name##__get(const struct config_##__name *,
 #define KEY_ATOM(__type, __keyrepr) \
@@ -500,7 +550,7 @@ struct pattern_list {
 #define VALUE_ATOM(__type, __eltrepr)
 #define VALUE_STRING(__strsize, __eltrepr)
 #define VALUE_NODE(__type, __eltrepr)
-#define VALUE_SUB_STRUCT(__structname)
+#define VALUE_SUB_STRUCT(__structname, __dfllabel...)
 #define VALUE_NODE_STRUCT(__structname, __eltrepr)
 #define END_ARRAY(__size)
 #include "conf_schema.h"
@@ -511,6 +561,12 @@ struct pattern_list {
 #undef SUB_STRUCT
 #undef NODE_STRUCT
 #undef END_STRUCT
+#undef STRUCT_DEFAULT
+#undef ATOM_DEFAULT
+#undef STRING_DEFAULT
+#undef SUB_STRUCT_DEFAULT
+#undef NODE_STRUCT_DEFAULT
+#undef END_STRUCT_DEFAULT
 #undef ARRAY
 #undef KEY_ATOM
 #undef KEY_STRING

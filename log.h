@@ -31,6 +31,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define LOG_LEVEL_WARN      (2)
 #define LOG_LEVEL_ERROR     (3)
 #define LOG_LEVEL_FATAL     (4)
+#define LOG_LEVEL_NONE      (127)
 
 /*
  * Every log message identifies the location in the source code at which the

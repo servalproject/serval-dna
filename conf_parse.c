@@ -23,22 +23,41 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 // Generate config set-default function definitions, cf_dfl_config_NAME().
 #define STRUCT(__name, __validator...) \
-    int cf_dfl_config_##__name(struct config_##__name *s) {
+    int cf_dfl_config_##__name(struct config_##__name *s) { \
+      return cf_dfl_config_##__name##_cf_(s); \
+    } \
+    int cf_dfl_config_##__name##_cf_(struct config_##__name *s) {
 #define NODE(__type, __element, __default, __repr, __flags, __comment) \
         s->__element = (__default);
 #define ATOM(__type, __element, __default, __repr, __flags, __comment) \
         s->__element = (__default);
 #define STRING(__size, __element, __default, __repr, __flags, __comment) \
         strncpy(s->__element, (__default), (__size))[(__size)] = '\0';
-#define SUB_STRUCT(__name, __element, __flags) \
-        cf_dfl_config_##__name(&s->__element);
-#define NODE_STRUCT(__name, __element, __repr, __flags) \
-        cf_dfl_config_##__name(&s->__element);
+#define SUB_STRUCT(__name, __element, __flags, __dlflabel...) \
+	cf_dfl_config_##__name##_cf_##__dlflabel(&s->__element);
+#define NODE_STRUCT(__name, __element, __repr, __flags, __dfllabel...) \
+	SUB_STRUCT(__name, __element, __flags, ##__dfllabel)
 #define END_STRUCT \
         return CFOK; \
     }
+#define STRUCT_DEFAULT(__name, __dfllabel) \
+    int cf_dfl_config_##__name##_cf_##__dfllabel(struct config_##__name *s) {
+#define ATOM_DEFAULT(__element, __default) \
+        s->__element = (__default);
+#define STRING_DEFAULT(__element, __default) \
+        s->__element = (__default);
+#define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel...) \
+	cf_dfl_config_##__name##_cf_##__dlflabel(&s->__element);
+#define NODE_STRUCT_DEFAULT(__name, __element, __dfllabel...) \
+	SUB_STRUCT_DEFAULT(__name, __element, ##__dfllabel)
+#define END_STRUCT_DEFAULT \
+        return CFOK; \
+    }
 #define ARRAY(__name, __flags, __validator...) \
-    int cf_dfl_config_##__name(struct config_##__name *a) { \
+    int cf_dfl_config_##__name(struct config_##__name *s) { \
+      return cf_dfl_config_##__name##_cf_(s); \
+    } \
+    int cf_dfl_config_##__name##_cf_(struct config_##__name *a) { \
         a->ac = 0; \
         return CFOK; \
     }
@@ -47,7 +66,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define VALUE_ATOM(__type, __eltrepr)
 #define VALUE_STRING(__strsize, __eltrepr)
 #define VALUE_NODE(__type, __eltrepr)
-#define VALUE_SUB_STRUCT(__structname)
+#define VALUE_SUB_STRUCT(__structname, __dfllabel...)
 #define VALUE_NODE_STRUCT(__structname, __eltrepr)
 #define END_ARRAY(__size)
 #include "conf_schema.h"
@@ -58,6 +77,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef SUB_STRUCT
 #undef NODE_STRUCT
 #undef END_STRUCT
+#undef STRUCT_DEFAULT
+#undef ATOM_DEFAULT
+#undef STRING_DEFAULT
+#undef SUB_STRUCT_DEFAULT
+#undef NODE_STRUCT_DEFAULT
+#undef END_STRUCT_DEFAULT
 #undef ARRAY
 #undef KEY_ATOM
 #undef KEY_STRING
@@ -119,9 +144,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
         __ITEM(__element, ((0 __flags)|__TEXT)&~__CHILDREN, child->text ? cf_opt_##__repr(&strct->__element, child->text) : CFEMPTY)
 #define STRING(__size, __element, __default, __repr, __flags, __comment) \
         __ITEM(__element, ((0 __flags)|__TEXT)&~__CHILDREN, child->text ? cf_opt_##__repr(strct->__element, (__size) + 1, child->text) : CFEMPTY)
-#define SUB_STRUCT(__name, __element, __flags) \
+#define SUB_STRUCT(__name, __element, __flags, __dfllabel...) \
         __ITEM(__element, (0 __flags)|__CHILDREN, cf_opt_config_##__name(&strct->__element, child))
-#define NODE_STRUCT(__name, __element, __repr, __flags) \
+#define NODE_STRUCT(__name, __element, __repr, __flags, __dfllabel...) \
         __ITEM(__element, (0 __flags)|__TEXT|__CHILDREN, cf_opt_##__repr(&strct->__element, child))
 #define END_STRUCT \
       { \
@@ -141,6 +166,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	result = (*validator)(node, strct, result); \
       return result; \
     }
+#define STRUCT_DEFAULT(__name, __dfllabel)
+#define ATOM_DEFAULT(__element, __default)
+#define STRING_DEFAULT(__element, __default)
+#define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel)
+#define NODE_STRUCT_DEFAULT(__name, __element, __dfllabel)
+#define END_STRUCT_DEFAULT
 #define ARRAY(__name, __flags, __validator...) \
     int cf_opt_config_##__name(struct config_##__name *array, const struct cf_om_node *node) { \
       int flags = (0 __flags); \
@@ -215,8 +246,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
       __ARRAY_VALUE(CFOK, child->text ? cf_opt_##__eltrepr(array->av[n].value, sizeof array->av[n].value, child->text) : CFEMPTY)
 #define VALUE_NODE(__type, __eltrepr) \
       __ARRAY_VALUE(CFOK, cf_opt_##__eltrepr(&array->av[n].value, child))
-#define VALUE_SUB_STRUCT(__structname) \
-      __ARRAY_VALUE(cf_dfl_config_##__structname(&array->av[n].value), cf_opt_config_##__structname(&array->av[n].value, child))
+#define VALUE_SUB_STRUCT(__structname, __dfllabel...) \
+      __ARRAY_VALUE(cf_dfl_config_##__structname##_cf_##__dfllabel(&array->av[n].value), cf_opt_config_##__structname(&array->av[n].value, child))
 #define VALUE_NODE_STRUCT(__structname, __eltrepr) \
       __ARRAY_VALUE(cf_dfl_config_##__structname(&array->av[n].value), cf_opt_##__eltrepr(&array->av[n].value, child))
 #include "conf_schema.h"
@@ -227,6 +258,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef SUB_STRUCT
 #undef NODE_STRUCT
 #undef END_STRUCT
+#undef STRUCT_DEFAULT
+#undef ATOM_DEFAULT
+#undef STRING_DEFAULT
+#undef SUB_STRUCT_DEFAULT
+#undef NODE_STRUCT_DEFAULT
+#undef END_STRUCT_DEFAULT
 #undef ARRAY
 #undef KEY_ATOM
 #undef KEY_STRING
@@ -244,9 +281,15 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define NODE(__type, __element, __default, __repr, __flags, __comment)
 #define ATOM(__type, __element, __default, __repr, __flags, __comment)
 #define STRING(__size, __element, __default, __repr, __flags, __comment)
-#define SUB_STRUCT(__name, __element, __flags)
-#define NODE_STRUCT(__name, __element, __repr, __flags)
+#define SUB_STRUCT(__name, __element, __flags, __dfllabel...)
+#define NODE_STRUCT(__name, __element, __repr, __flags, __dfllabel...)
 #define END_STRUCT
+#define STRUCT_DEFAULT(__name, __dfllabel)
+#define ATOM_DEFAULT(__element, __default)
+#define STRING_DEFAULT(__element, __default)
+#define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel)
+#define NODE_STRUCT_DEFAULT(__name, __element, __dfllabel)
+#define END_STRUCT_DEFAULT
 #define ARRAY(__name, __flags, __validator...) \
     int config_##__name##__get(const struct config_##__name *array,
 #define KEY_ATOM(__type, __keyrepr) \
@@ -268,7 +311,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define VALUE_ATOM(__type, __eltrepr)
 #define VALUE_STRING(__strsize, __eltrepr)
 #define VALUE_NODE(__type, __eltrepr)
-#define VALUE_SUB_STRUCT(__structname)
+#define VALUE_SUB_STRUCT(__structname, __dfllabel...)
 #define VALUE_NODE_STRUCT(__structname, __eltrepr)
 #define END_ARRAY(__size)
 #include "conf_schema.h"
@@ -279,6 +322,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef SUB_STRUCT
 #undef NODE_STRUCT
 #undef END_STRUCT
+#undef STRUCT_DEFAULT
+#undef ATOM_DEFAULT
+#undef STRING_DEFAULT
+#undef SUB_STRUCT_DEFAULT
+#undef NODE_STRUCT_DEFAULT
+#undef END_STRUCT_DEFAULT
 #undef ARRAY
 #undef KEY_ATOM
 #undef KEY_STRING
@@ -315,16 +364,22 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define STRING(__size, __element, __default, __repr, __flags, __comment) \
 	__ADD_CHILD(rootp, #__element) \
 	__ATOM(childp, "(" #__repr ")")
-#define SUB_STRUCT(__structname, __element, __flags) \
+#define SUB_STRUCT(__structname, __element, __flags, __dfllabel...) \
 	__ADD_CHILD(rootp, #__element) \
 	__STRUCT(childp, __structname)
-#define NODE_STRUCT(__structname, __element, __repr, __flags) \
+#define NODE_STRUCT(__structname, __element, __repr, __flags, __dfllabel...) \
 	__ADD_CHILD(rootp, #__element) \
 	__ATOM(childp, "(" #__repr ")") \
 	__STRUCT(childp, __structname)
 #define END_STRUCT \
         return 0; \
     }
+#define STRUCT_DEFAULT(__name, __dfllabel)
+#define ATOM_DEFAULT(__element, __default)
+#define STRING_DEFAULT(__element, __default)
+#define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel)
+#define NODE_STRUCT_DEFAULT(__name, __element, __dfllabel)
+#define END_STRUCT_DEFAULT
 #define ARRAY(__name, __flags, __validator...) \
     int cf_sch_config_##__name(struct cf_om_node **rootp) { \
       int i; \
@@ -341,7 +396,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	__ATOM(childp, "(" #__eltrepr ")") \
 	__ADD_CHILD(childp, "(" #__eltrepr ")") \
 	__ATOM(childp, "(" #__eltrepr ")")
-#define VALUE_SUB_STRUCT(__structname) \
+#define VALUE_SUB_STRUCT(__structname, __dfllabel...) \
 	__STRUCT(childp, __structname)
 #define VALUE_NODE_STRUCT(__structname, __eltrepr) \
 	__ATOM(childp, "(" #__eltrepr ")") \
@@ -361,6 +416,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef SUB_STRUCT
 #undef NODE_STRUCT
 #undef END_STRUCT
+#undef STRUCT_DEFAULT
+#undef ATOM_DEFAULT
+#undef STRING_DEFAULT
+#undef SUB_STRUCT_DEFAULT
+#undef NODE_STRUCT_DEFAULT
+#undef END_STRUCT_DEFAULT
 #undef ARRAY
 #undef KEY_ATOM
 #undef KEY_STRING
@@ -374,6 +435,9 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 // Generate formatting functions, cf_fmt_config_SECTION()
 #define STRUCT(__name, __validator...) \
     int cf_fmt_config_##__name(struct cf_om_node **parentp, const struct config_##__name *strct) { \
+      return cf_xfmt_config_##__name(parentp, strct, NULL); \
+    } \
+    int cf_xfmt_config_##__name(struct cf_om_node **parentp, const struct config_##__name *strct, const struct config_##__name *dflt) { \
       int result = CFOK; \
       int ret;
 #define __FMT_TEXT(__repr, __eltname, __eltexpr, __defaultvar) \
@@ -401,49 +465,79 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 	  return CFERROR; \
 	else if (ret != CFOK && !is_default) \
 	  result |= (ret & CF__SUBFLAGS) | CFSUB(ret & CF__FLAGS);
-#define __FMT_NODE(__fmtfunc, __element) \
+#define ATOM(__type, __element, __default, __repr, __flags, __comment) \
       { \
+	__type dfl = dflt ? dflt->__element : __default; \
+	int is_default = cf_cmp_##__repr(&strct->__element, &dfl) == 0; \
+	__FMT_TEXT(__repr, #__element, &strct->__element, __default) \
+      }
+#define STRING(__size, __element, __default, __repr, __flags, __comment) \
+      { \
+        int is_default = cf_cmp_##__repr(strct->__element, dflt ? dflt->__element : __default) == 0; \
+	__FMT_TEXT(__repr, #__element, strct->__element, __default) \
+      }
+#define __FMT_NODE_START(__element) \
 	int n = cf_om_add_child(parentp, #__element); \
 	if (n == -1) \
 	  ret = CFERROR; \
 	else { \
-	  ret = __fmtfunc(&(*parentp)->nodv[n], &strct->__element); \
+	  const char *funcname = NULL;
+#define __FMT_NODE_END \
 	  cf_om_remove_null_child(parentp, n); \
 	  if (ret != CFOK) \
-	    WARNF(#__fmtfunc "() returned %s", strbuf_str(strbuf_cf_flags(strbuf_alloca(300), ret))); \
+	    WARNF("%s() returned %s", funcname, strbuf_str(strbuf_cf_flags(strbuf_alloca(300), ret))); \
 	  if (n < (*parentp)->nodc && cf_om_remove_empty_child(parentp, n)) { \
-	    WHYF(#__fmtfunc "() returned empty node at n=%d", n); \
+	    WHYF("%s() returned empty node at n=%d", funcname, n); \
 	    ret = CFERROR; \
 	  } \
 	} \
 	if (ret == CFERROR) \
 	  return CFERROR; \
 	else if (ret != CFOK) \
-	  result |= (ret & CF__SUBFLAGS) | CFSUB(ret & CF__FLAGS); \
-      }
+	  result |= (ret & CF__SUBFLAGS) | CFSUB(ret & CF__FLAGS);
 #define NODE(__type, __element, __default, __repr, __flags, __comment) \
-      __FMT_NODE(cf_fmt_##__repr, __element)
-#define ATOM(__type, __element, __default, __repr, __flags, __comment) \
       { \
-	__type dfl = __default; \
-	int is_default = cf_cmp_##__repr(&strct->__element, &dfl) == 0; \
-	__FMT_TEXT(__repr, #__element, &strct->__element, __default) \
+	__FMT_NODE_START(__element) \
+	    ret = cf_fmt_##__repr(&(*parentp)->nodv[n], &strct->__element); \
+	    funcname = "cf_fmt_" #__repr; \
+	__FMT_NODE_END \
       }
-#define STRING(__size, __element, __default, __repr, __flags, __comment) \
+#define SUB_STRUCT(__structname, __element, __flags, __dfllabel...) \
       { \
-        int is_default = cf_cmp_##__repr(&strct->__element[0], __default) == 0; \
-	__FMT_TEXT(__repr, #__element, &strct->__element[0], __default) \
+	__FMT_NODE_START(__element) \
+	    if (#__dfllabel[0]) { \
+	      struct config_##__structname dfl; \
+	      cf_dfl_config_##__structname##_cf_##__dfllabel(&dfl); \
+	      ret = cf_xfmt_config_##__structname(&(*parentp)->nodv[n], &strct->__element, &dfl); \
+	      funcname = "cf_xfmt_config_" #__structname; \
+	    } else { \
+	      ret = cf_fmt_config_##__structname(&(*parentp)->nodv[n], &strct->__element); \
+	      funcname = "cf_fmt_config_" #__structname; \
+	    } \
+	__FMT_NODE_END \
       }
-#define SUB_STRUCT(__structname, __element, __flags) \
-      __FMT_NODE(cf_fmt_config_##__structname, __element)
-#define NODE_STRUCT(__structname, __element, __repr, __flags) \
-      __FMT_NODE(cf_fmt_##__repr, __element)
+#define NODE_STRUCT(__structname, __element, __repr, __flags, __dfllabel...) \
+      { \
+	__FMT_NODE_START(__element) \
+	    ret = cf_fmt_##__repr(&(*parentp)->nodv[n], &strct->__element); \
+	    funcname = "cf_fmt_" #__repr; \
+	__FMT_NODE_END \
+      }
 #define END_STRUCT \
       if ((*parentp)->nodc == 0) \
 	cf_om_free_node(parentp); \
       return result; \
     }
+#define STRUCT_DEFAULT(__name, __dfllabel)
+#define ATOM_DEFAULT(__element, __default)
+#define STRING_DEFAULT(__element, __default)
+#define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel)
+#define NODE_STRUCT_DEFAULT(__name, __element, __dfllabel)
+#define END_STRUCT_DEFAULT
 #define ARRAY(__name, __flags, __validator...) \
+    int cf_xfmt_config_##__name(struct cf_om_node **parentp, const struct config_##__name *array, const struct config_##__name *dflt) { \
+      return cf_fmt_config_##__name(parentp, array); \
+    } \
     int cf_fmt_config_##__name(struct cf_om_node **parentp, const struct config_##__name *array) { \
       int result = CFOK; \
       int i; \
@@ -478,9 +572,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define __ARRAY_TEXT(__valuefunc, __eltexpr) \
 	  ret = __valuefunc(&(*parentp)->nodv[n]->text, __eltexpr); \
 	  __ARRAY_VALUE(__valuefunc)
-#define __ARRAY_NODE(__valuefunc, __eltexpr) \
-	  ret = __valuefunc(&(*parentp)->nodv[n], __eltexpr); \
-	  __ARRAY_VALUE(__valuefunc)
 #define END_ARRAY(__size) \
 	} \
 	if (ret == CFERROR) \
@@ -501,11 +592,20 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define VALUE_STRING(__strsize, __eltrepr) \
 	__ARRAY_TEXT(cf_fmt_##__eltrepr, &array->av[i].value[0])
 #define VALUE_NODE(__type, __eltrepr) \
-	__ARRAY_NODE(cf_fmt_##__eltrepr, &array->av[i].value)
-#define VALUE_SUB_STRUCT(__structname) \
-	__ARRAY_NODE(cf_fmt_config_##__structname, &array->av[i].value)
+	ret = cf_fmt_##__eltrepr(&(*parentp)->nodv[n], &array->av[i].value); \
+	__ARRAY_VALUE(cf_fmt_##__eltrepr)
+#define VALUE_SUB_STRUCT(__structname, __dfllabel...) \
+	if (#__dfllabel[0]) { \
+	  struct config_##__structname dfl; \
+	  cf_dfl_config_##__structname##_cf_##__dfllabel(&dfl); \
+	  ret = cf_xfmt_config_##__structname(&(*parentp)->nodv[n], &array->av[i].value, &dfl); \
+	} else { \
+	  ret = cf_fmt_config_##__structname(&(*parentp)->nodv[n], &array->av[i].value); \
+	} \
+	__ARRAY_VALUE(cf_fmt_config_##__structname)
 #define VALUE_NODE_STRUCT(__structname, __eltrepr) \
-	__ARRAY_NODE(cf_fmt_##__eltrepr, &array->av[i].value)
+	ret = cf_fmt_##__eltrepr(&(*parentp)->nodv[n], &array->av[i].value); \
+	__ARRAY_VALUE(cf_fmt_##__eltrepr)
 #include "conf_schema.h"
 #undef STRUCT
 #undef NODE
@@ -515,7 +615,14 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef NODE_STRUCT
 #undef END_STRUCT
 #undef __FMT_TEXT
-#undef __FMT_NODE
+#undef __FMT_NODE_START
+#undef __FMT_NODE_END
+#undef STRUCT_DEFAULT
+#undef ATOM_DEFAULT
+#undef STRING_DEFAULT
+#undef SUB_STRUCT_DEFAULT
+#undef NODE_STRUCT_DEFAULT
+#undef END_STRUCT_DEFAULT
 #undef ARRAY
 #undef KEY_ATOM
 #undef KEY_STRING
@@ -526,7 +633,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef VALUE_NODE_STRUCT
 #undef __ARRAY_KEY
 #undef __ARRAY_TEXT
-#undef __ARRAY_NODE
 #undef __ARRAY_VALUE
 #undef END_ARRAY
 
@@ -543,15 +649,21 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define STRING(__size, __element, __default, __repr, __flags, __comment) \
       if ((c = cf_cmp_##__repr(&a->__element[0], &b->__element[0]))) \
 	  return c;
-#define SUB_STRUCT(__structname, __element, __flags) \
+#define SUB_STRUCT(__structname, __element, __flags, __dfllabel...) \
       if ((c = cf_cmp_config_##__structname(&a->__element, &b->__element))) \
 	  return c;
-#define NODE_STRUCT(__structname, __element, __repr, __flags) \
+#define NODE_STRUCT(__structname, __element, __repr, __flags, __dfllabel...) \
       if ((c = cf_cmp_##__repr(&a->__element, &b->__element))) \
 	  return c;
 #define END_STRUCT \
       return 0; \
     }
+#define STRUCT_DEFAULT(__name, __dfllabel)
+#define ATOM_DEFAULT(__element, __default)
+#define STRING_DEFAULT(__element, __default)
+#define SUB_STRUCT_DEFAULT(__name, __element, __dfllabel)
+#define NODE_STRUCT_DEFAULT(__name, __element, __dfllabel)
+#define END_STRUCT_DEFAULT
 #define ARRAY(__name, __flags, __validator...) \
     int cf_cmp_config_##__name(const struct config_##__name *a, const struct config_##__name *b) { \
       int c; \
@@ -572,7 +684,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #define VALUE_NODE(__type, __eltrepr) \
       if ((c = cf_cmp_##__eltrepr(&a->av[i].value, &b->av[i].value))) \
 	  return c;
-#define VALUE_SUB_STRUCT(__structname) \
+#define VALUE_SUB_STRUCT(__structname, __dfllabel...) \
       if ((c = cf_cmp_config_##__structname(&a->av[i].value, &b->av[i].value))) \
 	  return c;
 #define VALUE_NODE_STRUCT(__structname, __eltrepr) \
@@ -590,6 +702,12 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #undef SUB_STRUCT
 #undef NODE_STRUCT
 #undef END_STRUCT
+#undef STRUCT_DEFAULT
+#undef ATOM_DEFAULT
+#undef STRING_DEFAULT
+#undef SUB_STRUCT_DEFAULT
+#undef NODE_STRUCT_DEFAULT
+#undef END_STRUCT_DEFAULT
 #undef ARRAY
 #undef KEY_ATOM
 #undef KEY_STRING
