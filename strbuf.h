@@ -37,7 +37,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
         strbuf_str(sb)[strbuf_len(sb)] == '\0'
 
     char buf[100];
-    strbuf b;
+    struct strbuf b;
     strbuf_init(&b, buf, sizeof buf);
     strbuf_puts(&b, "text");
     strbuf_sprintf(&b, "fmt", val...);
