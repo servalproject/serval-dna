@@ -41,88 +41,102 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #include "str.h"
 #include "strbuf.h"
 #include "strbuf_helpers.h"
+#include "xprintf.h"
 
 int serverMode = 0;
 const struct __sourceloc __whence = __NOWHERE__;
 
-static FILE *logfile = NULL;
+static FILE *logfile_file = NULL;
+static FILE *logfile_stderr = NULL;
+#define NO_FILE ((FILE *)1)
 
-/* The logbuf is used to accumulate log messages before the log file is open and ready for
+/* The file logbuf is used to accumulate log messages before the log file is open and ready for
  * writing.
  */
 static char _log_buf[8192];
 static struct strbuf logbuf = STRUCT_STRBUF_EMPTY;
 
-/* Whether the software version has been logged in the current file yet.
- */
-bool_t version_logged = 0;
-
-struct tm last_tm;
-/* The time stamp of the last logged message, used to detect when the date advances so that
- * the date can be logged.
- */
-struct tm last_tm;
-
 #ifdef ANDROID
+
 #include <android/log.h>
-#endif
 
-void set_logging(FILE *f)
-{
-  logfile = f;
-  if (f == stdout)
-    INFO("Logging to stdout");
-  else if (f == stderr)
-    INFO("Logging to stderr");
-  else if (f != NULL)
-    INFOF("Logging to stream with fd=%d", fileno(f));
-}
+/* The Android logbuf is used to accumulate a single log line before printing to Android's
+ * logging API.
+ */
+static char _log_buf_android[1024];
+static struct strbuf logbuf_android;
 
-static FILE *_open_logging()
+#endif // ANDROID
+
+static void _open_log_file()
 {
-#ifdef ANDROID
-  return NULL;
-#endif
-  if (!logfile) {
+  if (!logfile_file) {
     const char *logpath = getenv("SERVALD_LOG_FILE");
     if (!logpath) {
       if (cf_limbo)
-	return NULL;
+	return;
       logpath = config.log.file_path;
     }
     if (!logpath || !logpath[0]) {
-      logfile = stderr;
+      logfile_file = NO_FILE;
       if (serverMode)
-	logMessage(LOG_LEVEL_INFO, __NOWHERE__, "No logfile configured -- logging to stderr");
+	logMessage(LOG_LEVEL_INFO, __NOWHERE__, "No logfile_file configured");
     } else {
       char path[1024];
       if (!FORM_SERVAL_INSTANCE_PATH(path, logpath)) {
-	logfile = stderr;
-	logMessage(LOG_LEVEL_WARN, __NOWHERE__, "Logfile path overrun -- logging to stderr");
-      } else if ((logfile = fopen(path, "a"))) {
-	setlinebuf(logfile);
+	logfile_file = NO_FILE;
+	logMessage(LOG_LEVEL_WARN, __NOWHERE__, "Logfile path overrun");
+      } else if ((logfile_file = fopen(path, "a"))) {
+	setlinebuf(logfile_file);
 	if (serverMode)
-	  logMessage(LOG_LEVEL_INFO, __NOWHERE__, "Logging to %s (fd %d)", path, fileno(logfile));
+	  logMessage(LOG_LEVEL_INFO, __NOWHERE__, "Logging to %s (fd %d)", path, fileno(logfile_file));
       } else {
-	logfile = stderr;
+	logfile_file = NO_FILE;
 	WARNF_perror("fopen(%s)", path);
-	logMessage(LOG_LEVEL_WARN, __NOWHERE__, "Cannot append to %s -- falling back to stderr", path);
+	logMessage(LOG_LEVEL_WARN, __NOWHERE__, "Cannot append to %s", path);
       }
     }
   }
-  return logfile;
 }
 
-FILE *open_logging()
+static void _flush_log_file()
 {
-  return _open_logging();
+  if (logfile_file && logfile_file != NO_FILE) {
+    fprintf(logfile_file, "%s%s%s",
+	strbuf_len(&logbuf) ? strbuf_str(&logbuf) : "",
+	strbuf_len(&logbuf) ? "\n" : "",
+	strbuf_overrun(&logbuf) ? "LOG OVERRUN\n" : ""
+      );
+    strbuf_reset(&logbuf);
+  }
 }
 
-void close_logging()
+void close_log_file()
 {
-  if (logfile) {
-    fclose(logfile);
-    logfile = NULL;
+  if (logfile_file && logfile_file != NO_FILE)
+    fclose(logfile_file);
+  logfile_file = NULL;
+}
+
+static void _open_log_stderr()
+{
+  if (!logfile_stderr) {
+    logfile_stderr = stderr;
+    setlinebuf(logfile_stderr);
+  }
+}
+
+static void _flush_log_stderr()
+{
+  if (logfile_stderr && logfile_stderr != NO_FILE)
+    fflush(logfile_stderr);
+}
+
+void disable_log_stderr()
+{
+  if (logfile_stderr && logfile_stderr != NO_FILE) {
+    fflush(logfile_stderr);
+    logfile_stderr = NO_FILE;
   }
 }
 
@@ -140,161 +154,254 @@ static const char *_trimbuildpath(const char *path)
   return &path[lastsep];
 }
 
-static int _log_prepare(int level, struct __sourceloc whence)
+struct _log_state {
+
+  /* This structure is initially zerofilled. */
+
+  /* Whether the software version has been logged in the current file yet.
+  */
+  bool_t version_logged;
+
+  /* The time stamp of the last logged message, used to detect when the date advances so that
+  * the date can be logged.
+  */
+  struct tm last_tm;
+
+};
+
+struct _log_state state_file;
+#ifdef ANDROID
+struct _log_state state_android;
+#endif
+struct _log_state state_stderr;
+
+typedef struct _log_iterator {
+  int level;
+  struct __sourceloc whence;
+  struct timeval tv;
+  struct tm tm;
+  XPRINTF xpf;
+  int _file;
+#ifdef ANDROID
+  int _android;
+#endif
+  int _stderr;
+} _log_iterator;
+
+static void _log_iterator_start(_log_iterator *it, int level, struct __sourceloc whence)
 {
   assert(level <= LOG_LEVEL_FATAL);
-  if (level < config.log.file_format.level)
-    return 0;
-  struct timeval tv;
-  tv.tv_sec = 0;
-  if (config.log.file_format.show_time)
-    gettimeofday(&tv, NULL);
-  if (!version_logged)
-    logVersion();
-  _open_logging(); // Put initial INFO message at start of log file
-  // No calls outside log.c from this point on.
-  while (1) {
+  memset(it, 0, sizeof *it);
+  it->level = level;
+  it->whence = whence;
+  gettimeofday(&it->tv, NULL);
+  localtime_r(&it->tv.tv_sec, &it->tm);
+}
+
+static void _log_level_prefix(_log_iterator *it, int level)
+{
+  const char *levelstr = "UNKWN:";
+  switch (level) {
+    case LOG_LEVEL_FATAL: levelstr = "FATAL:"; break;
+    case LOG_LEVEL_ERROR: levelstr = "ERROR:"; break;
+    case LOG_LEVEL_WARN:  levelstr = "WARN:"; break;
+    case LOG_LEVEL_INFO:  levelstr = "INFO:"; break;
+    case LOG_LEVEL_DEBUG: levelstr = "DEBUG:"; break;
+  }
+  xprintf(it->xpf, "%-6.6s", levelstr);
+}
+
+static int _log_prefix(const struct config_log_format *cfg, _log_iterator *it, int level)
+{
+  if (cfg == &config.log.file) {
+    _open_log_file(); // puts initial INFO message at start of log file
+    if (logfile_file == NO_FILE)
+      return 0;
     if (strbuf_is_empty(&logbuf))
       strbuf_init(&logbuf, _log_buf, sizeof _log_buf);
     else if (strbuf_len(&logbuf))
       strbuf_putc(&logbuf, '\n');
-#ifndef ANDROID
-    const char *levelstr = "UNKWN:";
-    switch (level) {
-      case LOG_LEVEL_FATAL: levelstr = "FATAL:"; break;
-      case LOG_LEVEL_ERROR: levelstr = "ERROR:"; break;
-      case LOG_LEVEL_WARN:  levelstr = "WARN:"; break;
-      case LOG_LEVEL_INFO:  levelstr = "INFO:"; break;
-      case LOG_LEVEL_DEBUG: levelstr = "DEBUG:"; break;
-    }
-    strbuf_sprintf(&logbuf, "%-6.6s", levelstr);
-#endif
-    if (config.log.file_format.show_pid)
-      strbuf_sprintf(&logbuf, " [%5u]", getpid());
-    if (config.log.file_format.show_time) {
-      if (tv.tv_sec == 0) {
-	strbuf_puts(&logbuf, " NOTIME______");
-      } else {
-	struct tm tm;
-	localtime_r(&tv.tv_sec, &tm);
-	char buf[50];
-	if (strftime(buf, sizeof buf, "%T", &tm) == 0)
-	  strbuf_puts(&logbuf, " EMPTYTIME___");
-	else
-	  strbuf_sprintf(&logbuf, " %s.%03u", buf, tv.tv_usec / 1000);
-	if (tm.tm_mday != last_tm.tm_mday || tm.tm_mon != last_tm.tm_mon || tm.tm_year != last_tm.tm_year) {
-	  if (strftime(buf, sizeof buf, "%F %T %z", &tm))
-	    strbuf_puts(&logbuf, " Local date/time: ");
-	    strbuf_puts(&logbuf, buf);
-	    last_tm = tm;
-	    continue;
-	}
-	last_tm = tm;
-      }
-    }
-    break;
+    it->xpf = XPRINTF_STRBUF(&logbuf);
+    _log_level_prefix(it, level);
   }
-  if (whence.file) {
-    strbuf_sprintf(&logbuf, " %s", _trimbuildpath(whence.file));
-    if (whence.line)
-      strbuf_sprintf(&logbuf, ":%u", whence.line);
-    if (whence.function)
-      strbuf_sprintf(&logbuf, ":%s()", whence.function);
-    strbuf_putc(&logbuf, ' ');
-  } else if (whence.function) {
-    strbuf_sprintf(&logbuf, " %s() ", whence.function);
+#ifdef ANDROID
+  else if (cfg == &config.log.android) {
+    strbuf_init(&logbuf_android, _log_buf_android, sizeof _log_buf_android);
+    it->xpf = XPRINTF_STRBUF(&logbuf_android);
   }
-  strbuf_putc(&logbuf, ' ');
+#endif // ANDROID
+  else if (cfg == &config.log.stderr) {
+    _open_log_stderr();
+    if (logfile_stderr == NULL || logfile_stderr == NO_FILE)
+      return 0;
+    it->xpf = XPRINTF_STDIO(logfile_stderr);
+    _log_level_prefix(it, level);
+  }
+  else
+    abort();
+  if (cfg->show_pid)
+    xprintf(it->xpf, "[%5u] ", getpid());
+  if (cfg->show_time) {
+    if (it->tv.tv_sec == 0) {
+      xputs("NOTIME______ ", it->xpf);
+    } else {
+      char buf[50];
+      if (strftime(buf, sizeof buf, "%T", &it->tm) == 0)
+	xputs("EMPTYTIME___ ", it->xpf);
+      else
+	xprintf(it->xpf, "%s.%03u ", buf, it->tv.tv_usec / 1000);
+    }
+  }
   return 1;
 }
 
-/* Internal logging implementation.
- *
- * This function is called after every single log message is appended to logbuf, and is given the
- * level of the message.  This function must reset the given strbuf after its contents have been
- * sent to the log, otherwise log messages will be repeated.  If this function never resets the
- * strbuf, then it may eventually overrun.
- *
- * This function is also called to flush the given logbuf, by giving a log level of SILENT.  That
- * indicates that no new message has been appended since the last time this function was called.
- *
- * @author Andrew Bettison <andrew@servalproject.com>
- */
-static void _log_internal(int level, struct strbuf *buf)
+static void _log_finish(const struct config_log_format *cfg, _log_iterator *it, int level)
 {
+  if (cfg == &config.log.file) {
+    _flush_log_file();
+  }
 #ifdef ANDROID
-  int alevel = ANDROID_LOG_UNKNOWN;
-  switch (level) {
-    case LOG_LEVEL_FATAL: alevel = ANDROID_LOG_FATAL; break;
-    case LOG_LEVEL_ERROR: alevel = ANDROID_LOG_ERROR; break;
-    case LOG_LEVEL_INFO:  alevel = ANDROID_LOG_INFO; break;
-    case LOG_LEVEL_WARN:  alevel = ANDROID_LOG_WARN; break;
-    case LOG_LEVEL_DEBUG: alevel = ANDROID_LOG_DEBUG; break;
-    case LOG_LEVEL_SILENT: return;
-    default: abort();
+  else if (cfg == &config.log.android) {
+    int alevel = ANDROID_LOG_UNKNOWN;
+    switch (it->level) {
+      case LOG_LEVEL_FATAL: alevel = ANDROID_LOG_FATAL; break;
+      case LOG_LEVEL_ERROR: alevel = ANDROID_LOG_ERROR; break;
+      case LOG_LEVEL_INFO:  alevel = ANDROID_LOG_INFO; break;
+      case LOG_LEVEL_WARN:  alevel = ANDROID_LOG_WARN; break;
+      case LOG_LEVEL_DEBUG: alevel = ANDROID_LOG_DEBUG; break;
+      case LOG_LEVEL_SILENT: return;
+      default: abort();
+    }
+    __android_log_print(alevel, "servald", "%s", strbuf_str(_log_buf_android));
   }
-  __android_log_print(alevel, "servald", "%s", strbuf_str(buf));
-  strbuf_reset(buf);
-#else
-  FILE *logf = _open_logging();
-  if (logf) {
-    fprintf(logf, "%s%s%s",
-	strbuf_len(buf) ? strbuf_str(buf) : "",
-	strbuf_len(buf) ? "\n" : "",
-	strbuf_overrun(buf) ? "LOG OVERRUN\n" : ""
-      );
-    strbuf_reset(buf);
+#endif // ANDROID
+  else if (cfg == &config.log.stderr) {
+    fputc('\n', logfile_stderr);
+    _flush_log_stderr();
   }
-#endif
+  else
+    abort();
 }
 
-void (*_log_implementation)(int level, struct strbuf *buf) = _log_internal;
-
-static void _log_finish(int level)
+static int _log_prepare(const struct config_log_format *cfg, struct _log_state *state, _log_iterator *it)
 {
-  if (_log_implementation)
-    _log_implementation(level, &logbuf);
+  if (it->level < cfg->level)
+    return 0;
+  if ( it->tm.tm_mday != state->last_tm.tm_mday
+    || it->tm.tm_mon != state->last_tm.tm_mon
+    || it->tm.tm_year != state->last_tm.tm_year
+  ) {
+    char buf[50];
+    if (strftime(buf, sizeof buf, "%F %T %z", &it->tm)) {
+      if (!_log_prefix(cfg, it, LOG_LEVEL_INFO))
+	return 0;
+      xputs("Local date/time: ", it->xpf);
+      xputs(buf, it->xpf);
+      state->last_tm = it->tm;
+      _log_finish(cfg, it, LOG_LEVEL_INFO);
+    }
+  }
+  if (!state->version_logged) {
+    if (!_log_prefix(cfg, it, LOG_LEVEL_INFO))
+      return 0;
+    xprintf(it->xpf, "Serval DNA version: %s", version_servald);
+    state->version_logged = 1;
+    _log_finish(cfg, it, LOG_LEVEL_INFO);
+  }
+  if (!_log_prefix(cfg, it, it->level))
+    return 0;
+  if (it->whence.file) {
+    xprintf(it->xpf, "%s", _trimbuildpath(it->whence.file));
+    if (it->whence.line)
+      xprintf(it->xpf, ":%u", it->whence.line);
+    if (it->whence.function)
+      xprintf(it->xpf, ":%s()", it->whence.function);
+    xputs("  ", it->xpf);
+  } else if (it->whence.function) {
+    xprintf(it->xpf, "%s()  ", it->whence.function);
+  }
+  return 1;
 }
 
-void set_log_implementation(void (*log_function)(int level, struct strbuf *buf))
+static int _log_iterator_next(_log_iterator *it)
 {
-  _log_implementation=log_function;
+  if (it->_file == 0) {
+    if (_log_prepare(&config.log.file, &state_file, it)) {
+      it->_file = 1;
+      return 1;
+    }
+  }
+  else if (it->_file == 1) {
+    _log_finish(&config.log.file, it, it->level);
+  }
+  it->_file = 2;
+#ifdef ANDROID
+  if (it->_android == 0) {
+    if (_log_prepare(&config.log.android, &state_android, it)) {
+      it->_android = 1;
+      return 1;
+    }
+  }
+  else if (it->_android == 1) {
+    _log_finish(&config.log.android, it, it->level);
+  }
+  it->_android = 2;
+#endif // ANDROID
+  if (it->_stderr == 0) {
+    if (_log_prepare(&config.log.stderr, &state_stderr, it)) {
+      it->_stderr = 1;
+      return 1;
+    }
+  }
+  else if (it->_stderr == 1) {
+    _log_finish(&config.log.stderr, it, it->level);
+  }
+  it->_stderr = 2;
+  return 0;
 }
 
 void logFlush()
 {
-  if (_log_implementation)
-    _log_implementation(LOG_LEVEL_SILENT, &logbuf);
+  _flush_log_file();
+  _flush_log_stderr();
 }
 
 void logArgv(int level, struct __sourceloc whence, const char *label, int argc, const char *const *argv)
 {
-  if (_log_prepare(level, whence)) {
+  struct strbuf b;
+  strbuf_init(&b, NULL, 0);
+  strbuf_append_argv(&b, argc, argv);
+  size_t len = strbuf_count(&b);
+  strbuf_init(&b, alloca(len + 1), len + 1);
+  strbuf_append_argv(&b, argc, argv);
+  _log_iterator it;
+  _log_iterator_start(&it, level, whence);
+  while (_log_iterator_next(&it)) {
     if (label) {
-      strbuf_puts(&logbuf, label);
-      strbuf_putc(&logbuf, ' ');
+      xputs(label, it.xpf);
+      xputc(' ', it.xpf);
     }
-    strbuf_append_argv(&logbuf, argc, argv);
-    _log_finish(level);
+    xputs(strbuf_str(&b), it.xpf);
   }
 }
 
 void logString(int level, struct __sourceloc whence, const char *str)
 {
+  _log_iterator it;
   const char *s = str;
   const char *p;
   for (p = str; *p; ++p) {
     if (*p == '\n') {
-      if (_log_prepare(level, whence)) {
-	strbuf_ncat(&logbuf, s, p - s);
-	_log_finish(level);
-      }
+      _log_iterator_start(&it, level, whence);
+      while (_log_iterator_next(&it))
+	xprintf(it.xpf, "%.*s", p - s, s);
       s = p + 1;
     }
   }
-  if (p > s && _log_prepare(level, whence)) {
-    strbuf_ncat(&logbuf, s, p - s);
-    _log_finish(level);
+  if (p > s) {
+    _log_iterator_start(&it, level, whence);
+    while (_log_iterator_next(&it))
+      xprintf(it.xpf, "%.*s", p - s, s);
   }
 }
 
@@ -308,16 +415,10 @@ void logMessage(int level, struct __sourceloc whence, const char *fmt, ...)
 
 void vlogMessage(int level, struct __sourceloc whence, const char *fmt, va_list ap)
 {
-  if (_log_prepare(level, whence)) {
-    strbuf_vsprintf(&logbuf, fmt, ap);
-    _log_finish(level);
-  }
-}
-
-void logVersion()
-{
-  version_logged = 1;
-  logMessage(LOG_LEVEL_INFO, __NOWHERE__, "Serval DNA version: %s", version_servald);
+  _log_iterator it;
+  _log_iterator_start(&it, level, whence);
+  while (_log_iterator_next(&it))
+    vxprintf(it.xpf, fmt, ap);
 }
 
 void logDebugFlags()
@@ -382,7 +483,7 @@ ssize_t get_self_executable_path(char *buf, size_t len)
 int log_backtrace(struct __sourceloc whence)
 {
 #ifndef NO_BACKTRACE
-  open_logging();
+  _open_log_file();
   char execpath[MAXPATHLEN];
   if (get_self_executable_path(execpath, sizeof execpath) == -1)
     return WHY("cannot log backtrace: own executable path unknown");

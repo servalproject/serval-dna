@@ -23,8 +23,8 @@ source "${0%/*}/../testdefs.sh"
 
 configure_servald_server() {
    executeOk_servald config \
-      set log.show_pid on \
-      set log.show_time on \
+      set log.stderr.show_pid on \
+      set log.stderr.show_time on \
       set rhizome.enable No \
       set debug.mdprequests Yes
 }
@@ -38,7 +38,7 @@ teardown() {
 is_published() {
    tfw_log "grep \"PUBLISHED.*$1\" $LOGA"
    grep "PUBLISHED.*$1" $LOGA || return 1
-   return 0   
+   return 0
 }
 
 sent_directory_request() {
@@ -98,8 +98,8 @@ start_routing_instance() {
       set monitor.socket "org.servalproject.servald.monitor.socket.$TFWUNIQUE.$instance_name" \
       set mdp.socket "org.servalproject.servald.mdp.socket.$TFWUNIQUE.$instance_name" \
       set rhizome.enable No \
-      set log.show_pid on \
-      set log.show_time on \
+      set log.stderr.show_pid on \
+      set log.stderr.show_time on \
       set debug.mdprequests Yes
    start_servald_server
    wait_until interface_up

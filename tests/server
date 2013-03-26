@@ -53,7 +53,7 @@ test_StartCreateInstanceDir() {
 doc_StartLogfile="Starting server gives no errors"
 setup_StartLogfile() {
    setup
-   executeOk_servald config set log.file "$PWD/log"
+   executeOk_servald config set log.file_path "$PWD/log"
 }
 test_StartLogfile() {
    executeOk $servald start

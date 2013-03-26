@@ -234,8 +234,9 @@ END_STRUCT
 
 STRUCT(log)
 STRING(256,                 file_path,      "", str_nonempty,, "Path of log file, either absolute or relative to instance directory")
-SUB_STRUCT(log_format,      file_format,,   full)
-SUB_STRUCT(log_format,      stderr_format,, helpful)
+SUB_STRUCT(log_format,      file,,   full)
+SUB_STRUCT(log_format,      stderr,, helpful)
+SUB_STRUCT(log_format,      android,, android)
 END_STRUCT
 
 STRUCT_DEFAULT(log_format, helpful)
@@ -246,6 +247,12 @@ END_STRUCT_DEFAULT
 
 STRUCT_DEFAULT(log_format, full)
 ATOM_DEFAULT(show_pid,   1)
+ATOM_DEFAULT(show_time,  1)
+ATOM_DEFAULT(level,      LOG_LEVEL_DEBUG)
+END_STRUCT_DEFAULT
+
+STRUCT_DEFAULT(log_format, android)
+ATOM_DEFAULT(show_pid,   0)
 ATOM_DEFAULT(show_time,  1)
 ATOM_DEFAULT(level,      LOG_LEVEL_DEBUG)
 END_STRUCT_DEFAULT

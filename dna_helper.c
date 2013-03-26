@@ -192,24 +192,22 @@ dna_helper_start()
   switch (dna_helper_pid = fork()) {
   case 0:
     /* Child, should exec() to become helper after installing file descriptors. */
+    close_log_file();
     setenv("MYSID", mysid, 1);
-    set_logging(stderr);
     signal(SIGTERM, SIG_DFL);
     close(stdin_fds[1]);
     close(stdout_fds[0]);
     close(stderr_fds[0]);
     if (dup2(stderr_fds[1], 2) == -1 || dup2(stdout_fds[1], 1) == -1 || dup2(stdin_fds[0], 0) == -1) {
       LOG_perror(LOG_LEVEL_FATAL, "dup2");
-      fflush(stderr);
       _exit(-1);
     }
     {
       execv(config.dna.helper.executable, (char **)argv);
-      LOGF_perror(LOG_LEVEL_FATAL, "execl(%s, [%s])",
+      LOGF_perror(LOG_LEVEL_FATAL, "execv(%s, [%s])",
 	  alloca_str_toprint(config.dna.helper.executable),
 	  strbuf_str(argv_sb)
 	);
-      fflush(stderr);
     }
     do { _exit(-1); } while (1);
     break;

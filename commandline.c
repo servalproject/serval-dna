@@ -763,10 +763,12 @@ int app_server_start(const struct cli_parsed *parsed, void *context)
 	    exit(WHY_perror("fork"));
 	  case 0: {
 	    /* Grandchild process.  Close logfile (so that it gets re-opened again on demand, with
-	       our own file pointer), disconnect from current directory, disconnect standard I/O
-	       streams, and start a new process session so that if we are being started by an adb
-	       shell session, then we don't receive a SIGHUP when the adb shell process ends.  */
-	    close_logging();
+	       our own file pointer), disable logging to stderr (about to get closed), disconnect
+	       from current directory, disconnect standard I/O streams, and start a new process
+	       session so that if we are being started by an adb shell session on an Android device,
+	       then we don't receive a SIGHUP when the adb shell process ends.  */
+	    close_log_file();
+	    disable_log_stderr();
 	    int fd;
 	    if ((fd = open("/dev/null", O_RDWR, 0)) == -1)
 	      _exit(WHY_perror("open(\"/dev/null\")"));
@@ -789,6 +791,7 @@ int app_server_start(const struct cli_parsed *parsed, void *context)
 	    /* Need the cast on Solaris because it defines NULL as 0L and gcc doesn't see it as a
 	       sentinal. */
 	      execl(execpath, execpath, "start", "foreground", (void *)NULL);
+	      WHYF_perror("execl(%s,\"start\",\"foreground\")", alloca_str_toprint(execpath));
 	      _exit(-1);
 	    }
 	    _exit(server(NULL));

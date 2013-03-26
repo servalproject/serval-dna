@@ -87,21 +87,18 @@ extern const struct __sourceloc __whence; // see above
 
 extern int serverMode;
 
-void set_logging(FILE *f);
-FILE *open_logging();
-void close_logging();
+void close_log_file();
+void disable_log_stderr();
 void logFlush();
 void logArgv(int level, struct __sourceloc whence, const char *label, int argc, const char *const *argv);
 void logString(int level, struct __sourceloc whence, const char *str);
 void logMessage(int level, struct __sourceloc whence, const char *fmt, ...);
 void vlogMessage(int level, struct __sourceloc whence, const char *fmt, va_list);
-void logVersion();
 void logDebugFlags();
 int logDump(int level, struct __sourceloc whence, char *name, const unsigned char *addr, size_t len);
 ssize_t get_self_executable_path(char *buf, size_t len);
 int log_backtrace(struct __sourceloc whence);
 struct strbuf;
-void set_log_implementation(void (*log_function)(int level, struct strbuf *buf));
 
 #define __HERE__            ((struct __sourceloc){ .file = __FILE__, .line = __LINE__, .function = __FUNCTION__ })
 #define __NOWHERE__         ((struct __sourceloc){ .file = NULL, .line = 0, .function = NULL })
