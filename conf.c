@@ -219,7 +219,7 @@ static int reload_and_parse(int permissive)
       return WHYF("config file %s not loaded -- %s", conffile_path(), strbuf_str(b));
     WARNF("config file %s loaded despite problems -- %s", conffile_path(), strbuf_str(b));
   }
-  logDebugFlags();
+  logCurrentConfig();
   return 1;
 }
 

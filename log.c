@@ -421,27 +421,21 @@ void vlogMessage(int level, struct __sourceloc whence, const char *fmt, va_list 
     vxprintf(it.xpf, fmt, ap);
 }
 
-void logDebugFlags()
+void logCurrentConfig()
 {
-  struct cf_om_node *debug_root = NULL;
-  cf_fmt_config_debug(&debug_root, &config.debug);
-  strbuf b = strbuf_alloca(1024);
-  struct cf_om_iterator it;
-  for (cf_om_iter_start(&it, debug_root); it.node; cf_om_iter_next(&it))
-    if (it.node->text) {
-      bool_t val = 0;
-      if (cf_opt_boolean(&val, it.node->text) != CFOK || val) {
-	if (strbuf_len(b))
-	  strbuf_puts(b, ", ");
-	strbuf_puts(b, it.node->fullkey);
-	if (!val) {
-	  strbuf_putc(b, '=');
-	  strbuf_puts(b, it.node->text);
-	}
-      }
+  struct cf_om_node *root = NULL;
+  int ret = cf_fmt_config_main(&root, &config);
+  if (ret == CFERROR) {
+    cf_om_free_node(&root);
+    WHY("cannot log current config");
+  } else {
+    struct cf_om_iterator it;
+    logMessage(LOG_LEVEL_INFO, __NOWHERE__, "Current configuration:");
+    for (cf_om_iter_start(&it, root); it.node; cf_om_iter_next(&it)) {
+      if (it.node->text && it.node->line_number)
+	logMessage(LOG_LEVEL_INFO, __NOWHERE__, "   %s=%s", it.node->fullkey, it.node->text);
     }
-  if (strbuf_len(b))
-    logMessage(LOG_LEVEL_INFO, __NOWHERE__, "Debug options: %s", strbuf_str(b));
+  }
 }
 
 int logDump(int level, struct __sourceloc whence, char *name, const unsigned char *addr, size_t len)
